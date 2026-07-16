@@ -11165,6 +11165,31 @@ function makeCardIssuanceTierRow(
   };
 }
 
+function cardIssuanceTierRowsFromMetadata(tiers: CardTierMetadata[]): CardIssuanceTierRow[] {
+  const sorted = [...tiers].sort((a, b) => {
+    const na = a.minUsdc6 != null && a.minUsdc6 !== '' ? Number(a.minUsdc6) : NaN;
+    const nb = b.minUsdc6 != null && b.minUsdc6 !== '' ? Number(b.minUsdc6) : NaN;
+    return (Number.isFinite(na) ? na : Number.POSITIVE_INFINITY) -
+      (Number.isFinite(nb) ? nb : Number.POSITIVE_INFINITY);
+  });
+  return sorted.map((t, i) => {
+    const minRaw = t.minUsdc6 != null && t.minUsdc6 !== '' ? Number(t.minUsdc6) : NaN;
+    const minUnits = Number.isFinite(minRaw)
+      ? Math.max(1, Math.round(minRaw / 1e6))
+      : CARD_ISSUANCE_MIN_TOPUP_DEFAULT + i;
+    const discountPct = parseDiscountPctFromTierMetadataDescription(t.description);
+    return makeCardIssuanceTierRow({
+      id: i === 0 ? CARD_ISSUANCE_SINGLE_TIER_ID : `tier-issued-${t.index ?? i}`,
+      name: (t.name ?? '').trim() || (i === 0 ? 'Base' : `Tier ${i + 1}`),
+      preset: i === 0 ? 'silver' : i === 1 ? 'gold' : 'custom',
+      threshold: String(minUnits),
+      discountPercent: Number.isFinite(discountPct) ? String(discountPct) : '0',
+      tierDescription: t.description ?? '',
+      backgroundColor: t.backgroundColor ?? (i === 0 ? '#94a3b8' : '#6366f1'),
+    });
+  });
+}
+
 function nextCardIssuanceTierTemplate(
   tiers: CardIssuanceTierRow[],
   minTopupStr: string
@@ -13228,28 +13253,7 @@ useEffect(() => {
 
 useEffect(() => {
   if (!cardIssuanceExistingCard?.cardAddress || !cardIssuanceExistingCard.meta?.tiers?.length) return;
-  const sorted = [...cardIssuanceExistingCard.meta.tiers].sort((a, b) => {
-    const na = a.minUsdc6 != null && a.minUsdc6 !== '' ? Number(a.minUsdc6) : NaN;
-    const nb = b.minUsdc6 != null && b.minUsdc6 !== '' ? Number(b.minUsdc6) : NaN;
-    const ca = Number.isFinite(na) ? na : Number.POSITIVE_INFINITY;
-    const cb = Number.isFinite(nb) ? nb : Number.POSITIVE_INFINITY;
-    return ca - cb;
-  });
-  const rows = sorted.map((t, i) => {
-    const minRaw = t.minUsdc6 != null && t.minUsdc6 !== '' ? Number(t.minUsdc6) : NaN;
-    const minUnits = Number.isFinite(minRaw) ? Math.max(1, Math.round(minRaw / 1e6)) : CARD_ISSUANCE_MIN_TOPUP_DEFAULT + i;
-    const discountPct = parseDiscountPctFromTierMetadataDescription(t.description);
-    return makeCardIssuanceTierRow({
-      id: i === 0 ? CARD_ISSUANCE_SINGLE_TIER_ID : `tier-issued-${t.index ?? i}`,
-      name: (t.name ?? '').trim() || (i === 0 ? 'Base' : `Tier ${i + 1}`),
-      preset: i === 0 ? 'silver' : i === 1 ? 'gold' : 'custom',
-      threshold: String(minUnits),
-      discountPercent: Number.isFinite(discountPct) ? String(discountPct) : '0',
-      tierDescription: t.description ?? '',
-      tierDescriptionOpen: false,
-      backgroundColor: t.backgroundColor ?? (i === 0 ? '#94a3b8' : '#6366f1'),
-    });
-  });
+  const rows = cardIssuanceTierRowsFromMetadata(cardIssuanceExistingCard.meta.tiers);
   const ut = cardIssuanceExistingCard.upgradeType;
   const ruleKeyFromChain = ut != null && ut >= 0 && ut <= 2 ? cardIssuanceTierRuleFromUpgradeType(ut) : null;
   const ruleKey = ruleKeyFromChain ?? cardIssuanceTierRule;
@@ -14456,7 +14460,75 @@ const programBasicReloadDirty = useMemo(() => {
   cardIssuanceMaxTopup,
 ]);
 
-const programBasicPanelDirty = merchantPanelTextDirty || programBasicReloadDirty;
+const programBasicTiersDirty = useMemo(() => {
+  const saved = cardIssuanceExistingCard?.meta?.tiers;
+  if (!saved?.length) return false;
+  const draft = [...cardIssuanceTiers].sort(
+    (a, b) => cardIssuanceTierThresholdToInt(a.threshold) - cardIssuanceTierThresholdToInt(b.threshold)
+  );
+  const baseline = cardIssuanceTierRowsFromMetadata(saved);
+  if (draft.length !== baseline.length) return true;
+  return draft.some((row, index) => {
+    const base = baseline[index];
+    return (
+      row.name.trim() !== base.name.trim() ||
+      cardIssuanceTierThresholdToInt(row.threshold) !== cardIssuanceTierThresholdToInt(base.threshold) ||
+      Math.round(Number(row.discountPercent) || 0) !== Math.round(Number(base.discountPercent) || 0) ||
+      (tierBackgroundColorForPayload(row.backgroundColor) ?? '') !==
+        (tierBackgroundColorForPayload(base.backgroundColor) ?? '')
+    );
+  });
+}, [cardIssuanceExistingCard?.meta?.tiers, cardIssuanceTiers]);
+
+const programBasicPanelDirty = merchantPanelTextDirty || programBasicReloadDirty || programBasicTiersDirty;
+
+const confirmLeavingProgramBasic = useCallback(
+  (nextTab?: string) => {
+    if (activeTab !== PROGRAM_TAB_BASIC || !programBasicPanelDirty || nextTab === PROGRAM_TAB_BASIC) {
+      return true;
+    }
+    return window.confirm('You have unpublished Basic program changes. Publish or discard them before leaving?');
+  },
+  [activeTab, programBasicPanelDirty]
+);
+
+useEffect(() => {
+  if (!programBasicPanelDirty) return;
+  const onBeforeUnload = (event: BeforeUnloadEvent) => {
+    event.preventDefault();
+    event.returnValue = '';
+  };
+  window.addEventListener('beforeunload', onBeforeUnload);
+  return () => window.removeEventListener('beforeunload', onBeforeUnload);
+}, [programBasicPanelDirty]);
+
+const discardProgramBasicChanges = useCallback(() => {
+  const card = cardIssuanceExistingCard;
+  const meta = card?.meta;
+  if (!card || !meta) return;
+  setCardIssuanceProgramName((meta.name ?? card.userCard.name ?? '').trim());
+  setCardIssuanceDescription((meta.description ?? '').trim());
+  setCardIssuanceStoreDisplayName((meta.displayName ?? '').trim());
+  setCardIssuanceDiscoverAboutDetail((meta.discoverAbout?.detail ?? '').trim());
+  setCardIssuanceDiscoverAboutOpeningHours((meta.discoverAbout?.openingHours ?? '').trim());
+  setCardIssuanceDiscoverAboutContact((meta.discoverAbout?.contact ?? '').trim());
+  setCardIssuanceDiscoverAboutLocation((meta.discoverAbout?.location ?? '').trim());
+  if (meta.minimumTopupCad != null && Number.isFinite(meta.minimumTopupCad)) {
+    setCardIssuanceMinTopup(String(Math.round(Number(meta.minimumTopupCad))));
+  }
+  if (meta.maximumTopupCad != null && Number.isFinite(meta.maximumTopupCad)) {
+    setCardIssuanceMaxTopup(String(Math.round(Number(meta.maximumTopupCad))));
+  }
+  if (meta.tiers?.length) {
+    const rows = cardIssuanceTierRowsFromMetadata(meta.tiers);
+    setTiersByLoyaltyRule((prev) => ({
+      ...prev,
+      [cardIssuanceTierRule]: reconcileTierThresholdsWithMinTopup(rows, rows[0]?.threshold ?? cardIssuanceMinTopup),
+    }));
+  }
+  setCardIssuanceCreateError('');
+  setCardIssuanceOwnerAdminNotice(null);
+}, [cardIssuanceExistingCard, cardIssuanceTierRule, cardIssuanceMinTopup]);
 
 const merchantPanelAboutPreviewTitle = useMemo(() => {
   const name =
@@ -19019,8 +19091,8 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
    setCardIssuanceOwnerAdminNotice(null);
    setCardIssuanceMerchantTextSaving(true);
    try {
-     const metadataOk = await handlePublishCardIssuanceRef.current({
-       metadataOnly: !programBasicReloadDirty,
+    const metadataOk = await handlePublishCardIssuanceRef.current({
+      metadataOnly: !programBasicReloadDirty && !programBasicTiersDirty,
        loadingScope: 'bonusEditor',
      });
      if (!metadataOk) return;
@@ -19061,6 +19133,9 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
                    ...(programBasicReloadDirty && Number.isFinite(parsedMax)
                      ? { maximumTopupCad: parsedMax }
                      : {}),
+                   ...(programBasicTiersDirty
+                     ? { tiers: buildCardIssuanceTiersPayloadFromRows(cardIssuanceTiers) }
+                     : {}),
                  }
                : ({
                    name: trimmedName,
@@ -19073,13 +19148,16 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
                    ...(programBasicReloadDirty && Number.isFinite(parsedMax)
                      ? { maximumTopupCad: parsedMax }
                      : {}),
+                   ...(programBasicTiersDirty
+                     ? { tiers: buildCardIssuanceTiersPayloadFromRows(cardIssuanceTiers) }
+                     : {}),
                  } as CardMetadataFromUri),
            }
          : prev
      );
      setCardIssuanceOwnerAdminNotice({
        kind: 'ok',
-       text: programBasicReloadDirty
+      text: programBasicReloadDirty || programBasicTiersDirty
          ? 'Program profile and reload limits published. Discover and consumer apps will refresh after a short cache delay.'
          : 'Merchant profile published. Discover and consumer apps will refresh after a short cache delay.',
      });
@@ -19098,9 +19176,11 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
    cardIssuanceDiscoverAboutContact,
    cardIssuanceDiscoverAboutLocation,
    programBasicReloadDirty,
+  programBasicTiersDirty,
    cardIssuanceRechargeLimitError,
    cardIssuanceMinTopup,
    cardIssuanceMaxTopup,
+  cardIssuanceTiers,
  ]);
 
  useEffect(() => {
@@ -21198,6 +21278,7 @@ const [memberDirectoryUserTypeDb, setMemberDirectoryUserTypeDb] = useState<Recor
 
  const handleProgramTabChange = useCallback(
    (tab: ProgramTabId) => {
+    if (!confirmLeavingProgramBasic(tab)) return;
      if (isTerminalsMarketRoute) {
        navigate('/native-pos');
      }
@@ -21206,10 +21287,11 @@ const [memberDirectoryUserTypeDb, setMemberDirectoryUserTypeDb] = useState<Recor
      setCardIssuanceProductionsPanelOpen(tab === PROGRAM_TAB_BUSINESS);
      setIsMobileMenuOpen(false);
    },
-   [isTerminalsMarketRoute, navigate]
+   [confirmLeavingProgramBasic, isTerminalsMarketRoute, navigate]
  );
 
  const handleTabChange = useCallback((tab: string, opts?: { transactionsSidebar?: 'transactions' | 'insights' }) => {
+  if (!confirmLeavingProgramBasic(tab)) return;
   if (isTerminalsMarketRoute && tab !== 'Staff') {
     navigate('/native-pos');
   }
@@ -21227,7 +21309,7 @@ const [memberDirectoryUserTypeDb, setMemberDirectoryUserTypeDb] = useState<Recor
    if (tab === 'Transactions') {
      setTransactionsSidebarAccent(opts?.transactionsSidebar ?? 'transactions');
    }
-}, [isTerminalsMarketRoute, isBusinessRoute, activeTab, navigate, handleProgramTabChange]);
+}, [confirmLeavingProgramBasic, isTerminalsMarketRoute, isBusinessRoute, activeTab, navigate, handleProgramTabChange]);
 
  const mobileHeaderBeamioTag = useMemo(() => {
    const raw =
@@ -35952,87 +36034,192 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
 
                    {cardIssuanceProgramSection === 'basic' ? (
                    <>
-                   <div className="flex flex-col gap-4 rounded-xl border border-[#e5e9eb] bg-[#eef1f3]/50 p-4 sm:rounded-2xl sm:gap-5 sm:p-5 lg:p-6">
-                     <div>
-                       <div className="mb-4 flex flex-wrap items-center justify-between gap-2 sm:mb-5 sm:gap-3">
-                         <h3 className="font-manrope text-lg font-extrabold tracking-tight text-[#2c2f31] sm:text-xl">{tu('programs_tiers_rules')}</h3>
-                        <div className="flex items-center gap-2">
-                          <span className="rounded-full border border-[#1562f0]/15 bg-white px-3 py-0.5 text-[10px] font-bold text-[#1562f0] sm:px-4 sm:py-1 sm:text-xs">
-                            {programsOverviewTierRowsSortedAscending.length.toLocaleString()} active tiers
-                          </span>
-                          <button
-                            type="button"
-                            onClick={openCardIssuanceTierCreate}
-                            className={`inline-flex h-8 w-8 items-center justify-center rounded-full bg-white text-[#1562f0] shadow-sm transition-colors hover:bg-[#1562f0]/10 ${bizFocusRingClass}`}
-                            aria-label={tu('programs_tier_add_aria')}
+                  <div className="sticky top-3 z-20 rounded-2xl border border-[#1562f0]/15 bg-[#eef1f3]/95 p-4 shadow-[0_12px_32px_rgba(21,98,240,0.12)] backdrop-blur-md sm:p-5 lg:p-6">
+                    <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#0051d1]">Membership tiers</p>
+                        <p className="mt-1 text-xs font-medium text-[#595c5e]">
+                          Click a key field to edit. Changes stay as a draft until published.
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="rounded-full border border-[#1562f0]/15 bg-white px-3 py-1 text-[10px] font-bold text-[#1562f0]">
+                          {cardIssuanceTiers.length.toLocaleString()} active tiers
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const nextRow = nextCardIssuanceTierTemplate(cardIssuanceTiers, cardIssuanceMinTopup);
+                            const nextTiers = reconcileTierThresholdsWithMinTopup(
+                              [...cardIssuanceTiers, nextRow],
+                              cardIssuanceMinTopup
+                            );
+                            setCardIssuanceTiers(nextTiers);
+                            setCardIssuancePreviewTierId(nextRow.id);
+                          }}
+                          className={`inline-flex h-10 w-10 items-center justify-center rounded-xl bg-[#0051d1] text-white shadow-sm transition-colors hover:bg-[#0d4ec4] ${bizFocusRingClass}`}
+                          aria-label="Add membership tier"
+                        >
+                          <Plus className="h-5 w-5" strokeWidth={2.5} aria-hidden />
+                        </button>
+                      </div>
+                    </div>
+                    <div className="flex gap-3 overflow-x-auto pb-1">
+                      {cardIssuanceTiers.map((row, index) => {
+                        const isBaseTier = row.id === CARD_ISSUANCE_SINGLE_TIER_ID;
+                        const threshold = cardIssuanceTierThresholdToInt(row.threshold);
+                        const discount = Math.min(100, Math.max(0, Number.parseInt(row.discountPercent || '0', 10) || 0));
+                        const theme = cardIssuanceTierGradientTheme(row.backgroundColor);
+                        return (
+                          <div
+                            key={row.id}
+                            className={`min-w-[15.5rem] flex-1 rounded-2xl border p-4 shadow-sm transition-shadow ${
+                              cardIssuancePreviewTierId === row.id
+                                ? 'border-[#0051d1] ring-2 ring-[#0051d1]/20'
+                                : 'border-white/70'
+                            }`}
+                            style={{ background: cardIssuanceTierRowGradientCss(row.backgroundColor), color: theme.primary }}
                           >
-                            <Plus className="h-4 w-4" strokeWidth={2.4} aria-hidden />
-                          </button>
-                        </div>
-                       </div>
-                       <div className="space-y-2 sm:space-y-3">
-                        {programsOverviewTierRowsSortedAscending.length > 0 ? (
-                          programsOverviewTierRowsSortedAscending.map((row, i) => {
-                            const isBaseTier = row.id === CARD_ISSUANCE_SINGLE_TIER_ID;
-                            const minRaw = cardIssuanceTierThresholdToInt(row.threshold);
-                            const minLabel = Number.isFinite(minRaw) ? minRaw.toLocaleString() : '—';
-                            const currencyLabel = cardIssuanceExistingCard.userCard.currency?.trim() || 'pts';
-                            const currencyPrefix =
-                              currencyLabel.toUpperCase() === 'CAD'
-                                ? 'C$'
-                                : currencyLabel.toUpperCase() === 'USD' || currencyLabel.toUpperCase() === 'USDC'
-                                  ? '$'
-                                  : `${currencyLabel} `;
-                            const medal = ['🥉', '🥈', '🥇'][Math.min(i, 2)] as string;
-                             const isTop = i === programsOverviewTierRowsSortedAscending.length - 1;
-                             return (
-                               <div
-                                key={row.id}
-                                 className={`flex items-center justify-between gap-3 rounded-lg border border-transparent bg-white p-3 transition-all hover:border-[#1562f0]/20 sm:gap-4 sm:rounded-xl sm:p-4 ${
-                                   isTop ? 'ring-1 ring-[#1562f0]/10' : ''
-                                 }`}
-                               >
-                                 <div className="flex min-w-0 items-center gap-3 sm:gap-4">
-                                   <div className="text-2xl sm:text-[1.65rem]" aria-hidden>
-                                     {medal}
-                                   </div>
-                                   <div className="min-w-0">
-                                     <div className="flex min-w-0 items-center gap-2">
-                                       <h4 className="truncate font-manrope text-sm font-bold text-[#2c2f31] sm:text-base">
-                                         {row.name.trim() || (isBaseTier ? 'Base' : 'Tier')}
-                                       </h4>
-                                       {isBaseTier ? (
-                                         <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[8px] font-black uppercase tracking-wide text-slate-500">
-                                           Base
-                                         </span>
-                                       ) : null}
-                                     </div>
-                                     <p className="font-manrope text-sm font-bold tracking-tight text-[#2c2f31] sm:text-base">
-                                       {Number.isFinite(minRaw) ? `${currencyPrefix}${minLabel}` : '—'}
-                                     </p>
-                                   </div>
-                                 </div>
-                                 <div className="flex shrink-0 items-center gap-2 text-right">
-                                   <button
-                                     type="button"
-                                     onClick={() => openCardIssuanceTierEdit(row.id)}
-                                     className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-[#1562f0] transition-colors hover:bg-[#1562f0]/10 ${bizFocusRingClass}`}
-                                     aria-label={`Edit ${row.name.trim() || (isBaseTier ? 'Base' : 'tier')}`}
-                                   >
-                                     <Pencil className="h-4 w-4" strokeWidth={2.2} aria-hidden />
-                                   </button>
-                                 </div>
-                               </div>
-                             );
-                           })
-                         ) : (
-                           <div className="rounded-lg border border-dashed border-[#abadaf]/40 bg-white p-4 text-xs font-medium text-slate-600 sm:rounded-xl sm:p-5 sm:text-sm">
-                           {tu('programs_tier_empty_hint')}
-                           </div>
-                         )}
-                       </div>
-                     </div>
-                   </div>
+                            <div className="mb-3 flex items-center justify-between gap-2">
+                              <span className="text-[10px] font-black uppercase tracking-[0.16em]" style={{ color: theme.secondary }}>
+                                Tier {index + 1}{isBaseTier ? ' · Base' : ''}
+                              </span>
+                              {!isBaseTier ? (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const nextTiers = reconcileTierThresholdsWithMinTopup(
+                                      cardIssuanceTiers.filter((t) => t.id !== row.id),
+                                      cardIssuanceMinTopup
+                                    );
+                                    setCardIssuanceTiers(nextTiers);
+                                  }}
+                                  className={`rounded-full p-1 transition-colors hover:bg-black/10 ${bizFocusRingClass}`}
+                                  aria-label={`Remove ${row.name.trim() || 'tier'}`}
+                                >
+                                  <Trash2 className="h-4 w-4" strokeWidth={2} aria-hidden />
+                                </button>
+                              ) : null}
+                            </div>
+                            <input
+                              type="text"
+                              value={row.name}
+                              onChange={(e) =>
+                                setCardIssuanceTiers((tiers) =>
+                                  tiers.map((t) => (t.id === row.id ? { ...t, name: e.target.value.slice(0, 32) } : t))
+                                )
+                              }
+                              className="mb-3 w-full rounded-lg border border-white/40 bg-white/25 px-2.5 py-2 text-base font-black outline-none placeholder:opacity-60"
+                              style={{ color: theme.primary }}
+                              placeholder="Tier name"
+                              aria-label={`Tier ${index + 1} name`}
+                            />
+                            <div className="grid grid-cols-2 gap-2">
+                              <label className="rounded-lg border border-white/30 bg-white/15 px-2.5 py-2">
+                                <span className="block text-[9px] font-bold uppercase tracking-wide" style={{ color: theme.secondary }}>
+                                  Min threshold
+                                </span>
+                                <input
+                                  type="number"
+                                  inputMode="numeric"
+                                  min={cardIssuanceMinTopupCurrencyFloor}
+                                  value={row.threshold}
+                                  onKeyDown={preventNumericInputStepKeys}
+                                  onWheel={preventNumericInputWheelStep}
+                                  onChange={(e) => {
+                                    const value = e.target.value.replace(/\D/g, '');
+                                    setCardIssuanceTiers((tiers) =>
+                                      tiers.map((t) => (t.id === row.id ? { ...t, threshold: value } : t))
+                                    );
+                                    if (isBaseTier) setCardIssuanceMinTopup(value);
+                                  }}
+                                  onBlur={() =>
+                                    setCardIssuanceTiers((tiers) =>
+                                      reconcileTierThresholdsWithMinTopup(tiers, cardIssuanceMinTopup)
+                                    )
+                                  }
+                                  className={`${bizNumericNoSpinnerClass} mt-1 w-full bg-transparent text-sm font-black outline-none`}
+                                  style={{ color: theme.primary }}
+                                  aria-label={`Minimum threshold for ${row.name || 'tier'}`}
+                                />
+                              </label>
+                              <label className="rounded-lg border border-white/30 bg-white/15 px-2.5 py-2">
+                                <span className="block text-[9px] font-bold uppercase tracking-wide" style={{ color: theme.secondary }}>
+                                  Discount
+                                </span>
+                                <input
+                                  type="number"
+                                  inputMode="numeric"
+                                  min={0}
+                                  max={100}
+                                  value={discount}
+                                  onKeyDown={preventNumericInputStepKeys}
+                                  onWheel={preventNumericInputWheelStep}
+                                  onChange={(e) => {
+                                    const value = e.target.value.replace(/\D/g, '');
+                                    setCardIssuanceTiers((tiers) =>
+                                      tiers.map((t) => (t.id === row.id ? { ...t, discountPercent: value } : t))
+                                    );
+                                  }}
+                                  className={`${bizNumericNoSpinnerClass} mt-1 w-full bg-transparent text-sm font-black outline-none`}
+                                  style={{ color: theme.primary }}
+                                  aria-label={`Discount for ${row.name || 'tier'}`}
+                                />
+                              </label>
+                            </div>
+                            <p className="mt-3 text-[10px] font-bold uppercase tracking-wide" style={{ color: theme.secondary }}>
+                              {cardIssuanceDisplayMoneyPrefix}{Number.isFinite(threshold) ? threshold.toLocaleString('en-US') : '—'} minimum · {discount}% off
+                            </p>
+                          </div>
+                        );
+                      })}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const nextRow = nextCardIssuanceTierTemplate(cardIssuanceTiers, cardIssuanceMinTopup);
+                          const nextTiers = reconcileTierThresholdsWithMinTopup(
+                            [...cardIssuanceTiers, nextRow],
+                            cardIssuanceMinTopup
+                          );
+                          setCardIssuanceTiers(nextTiers);
+                          setCardIssuancePreviewTierId(nextRow.id);
+                        }}
+                        className={`flex min-w-[7rem] shrink-0 items-center justify-center rounded-2xl border-2 border-dashed border-[#0051d1]/35 bg-white/60 text-[#0051d1] transition-colors hover:bg-white ${bizFocusRingClass}`}
+                        aria-label="Add membership tier"
+                      >
+                        <Plus className="h-7 w-7" strokeWidth={2.25} aria-hidden />
+                      </button>
+                    </div>
+                    {cardIssuanceRechargeLimitError && programBasicTiersDirty ? (
+                      <p className="mt-3 text-xs font-medium text-rose-600">{cardIssuanceRechargeLimitError}</p>
+                    ) : null}
+                    {programBasicPanelDirty ? (
+                      <div className="mt-4 flex flex-wrap items-center justify-end gap-2 border-t border-[#0051d1]/10 pt-4">
+                        <button
+                          type="button"
+                          onClick={discardProgramBasicChanges}
+                          disabled={cardIssuanceMerchantTextSaving || cardIssuanceCreateLoading}
+                          className={`rounded-xl border border-[#abadaf]/40 bg-white px-4 py-2.5 text-xs font-black uppercase tracking-wider text-[#595c5e] transition-colors hover:bg-[#eef1f3] disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
+                        >
+                          Discard all changes
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleSaveMerchantImagePanelMetadata()}
+                          disabled={
+                            cardIssuanceMerchantTextSaving ||
+                            cardIssuanceCreateLoading ||
+                            Boolean(cardIssuanceRechargeLimitError) ||
+                            !cardIssuanceProgramName.trim()
+                          }
+                          className={`inline-flex items-center gap-2 rounded-xl bg-[#0051d1] px-4 py-2.5 text-xs font-black uppercase tracking-wider text-white shadow-sm transition-colors hover:bg-[#0d4ec4] disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
+                        >
+                          {cardIssuanceMerchantTextSaving ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Check className="h-4 w-4" aria-hidden />}
+                          Publish changes
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
                    <div className="grid grid-cols-2 gap-2 sm:gap-3">
                      <div className="min-w-0 rounded-xl bg-[#e8eaed] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] ring-1 ring-black/[0.05] sm:rounded-2xl sm:p-4">
                        <ProgramLivePreviewInlineField

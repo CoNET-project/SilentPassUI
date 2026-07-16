@@ -13053,6 +13053,23 @@ useEffect(() => {
    if (!cardIssuancePreviewTierId) return null;
    return cardIssuanceTiers.find((t) => t.id === cardIssuancePreviewTierId) ?? null;
  }, [cardIssuanceTiers, cardIssuancePreviewTierId]);
+ const cardIssuancePreviewEditTier = useMemo(
+   () => cardIssuancePreviewSelectedTier ?? cardIssuanceBaseTier,
+   [cardIssuanceBaseTier, cardIssuancePreviewSelectedTier]
+ );
+ const cardIssuancePreviewSwipeStartXRef = useRef<number | null>(null);
+ const moveCardIssuancePreviewTier = useCallback(
+   (direction: -1 | 1) => {
+     if (cardIssuanceTiers.length < 2) return;
+     const currentIndex = Math.max(
+       0,
+       cardIssuanceTiers.findIndex((tier) => tier.id === cardIssuancePreviewEditTier?.id)
+     );
+     const nextIndex = (currentIndex + direction + cardIssuanceTiers.length) % cardIssuanceTiers.length;
+     setCardIssuancePreviewTierId(cardIssuanceTiers[nextIndex]?.id ?? null);
+   },
+   [cardIssuancePreviewEditTier?.id, cardIssuanceTiers]
+ );
  /** Pass / preview card chrome uses the highest-threshold tier color (not the tier row selected for badge preview). */
  const cardIssuancePreviewHeroBackgroundTier = useMemo(
    () => findHighestCardIssuanceTierRow(cardIssuanceTiers),
@@ -34327,28 +34344,50 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                        className={`sticky z-40 w-full bg-transparent px-1 pb-3 sm:px-2 sm:pb-4 ${CARD_CONFIGURATOR_MOBILE_STICKY_BELOW_HEADER_CLASS}`}
                      >
                        <section aria-label={tu('programs_config_issued_preview_aria')}>
-                         <div className="relative mx-auto w-full max-w-[380px] group/prev sm:max-w-[400px]">
+                         <div className="flex w-full items-stretch justify-center gap-3 overflow-x-auto px-1 pb-1 scrollbar-hide">
+                         <div
+                           className="relative w-full max-w-[380px] shrink-0 touch-pan-y group/prev sm:max-w-[400px]"
+                           onPointerDown={(event) => {
+                             cardIssuancePreviewSwipeStartXRef.current = event.clientX;
+                             event.currentTarget.setPointerCapture(event.pointerId);
+                           }}
+                           onPointerUp={(event) => {
+                             const startX = cardIssuancePreviewSwipeStartXRef.current;
+                             cardIssuancePreviewSwipeStartXRef.current = null;
+                             if (startX == null) return;
+                             const distance = event.clientX - startX;
+                             if (Math.abs(distance) < 40) return;
+                             moveCardIssuancePreviewTier(distance < 0 ? 1 : -1);
+                           }}
+                           onPointerCancel={() => {
+                             cardIssuancePreviewSwipeStartXRef.current = null;
+                           }}
+                         >
                            <div
                              className="absolute -inset-1 rounded-xl bg-primary/20 blur-2xl transition duration-500 group-hover/prev:bg-primary/30"
                              aria-hidden
                            />
+                           {cardIssuanceTiers.length > 1 ? (
+                             <>
+                               <button
+                                 type="button"
+                                 onClick={() => moveCardIssuancePreviewTier(-1)}
+                                 className={`absolute -left-3 top-1/2 z-20 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-white/90 text-[#1562f0] shadow-lg ring-1 ring-black/10 transition hover:bg-white ${bizFocusRingClass}`}
+                                 aria-label="Show previous tier"
+                               >
+                                 <ChevronLeft className="h-4 w-4" strokeWidth={2.5} aria-hidden />
+                               </button>
+                               <button
+                                 type="button"
+                                 onClick={() => moveCardIssuancePreviewTier(1)}
+                                 className={`absolute -right-3 top-1/2 z-20 inline-flex h-9 w-9 -translate-y-1/2 justify-center items-center rounded-full bg-white/90 text-[#1562f0] shadow-lg ring-1 ring-black/10 transition hover:bg-white ${bizFocusRingClass}`}
+                                 aria-label="Show next tier"
+                               >
+                                 <ChevronRight className="h-4 w-4" strokeWidth={2.5} aria-hidden />
+                               </button>
+                             </>
+                           ) : null}
                            <div className="relative rounded-xl shadow-lg shadow-black/15 sm:rounded-2xl sm:shadow-xl sm:shadow-black/20">
-                             <button
-                               type="button"
-                               onClick={() => {
-                                 const nextRow = nextCardIssuanceTierTemplate(cardIssuanceTiers, cardIssuanceMinTopup);
-                                 const nextTiers = reconcileTierThresholdsWithMinTopup(
-                                   [...cardIssuanceTiers, nextRow],
-                                   cardIssuanceMinTopup
-                                 );
-                                 setCardIssuanceTiers(nextTiers);
-                                 setCardIssuancePreviewTierId(nextRow.id);
-                               }}
-                               className={`absolute -right-3 -top-3 z-20 inline-flex h-9 w-9 items-center justify-center rounded-full bg-[#1562f0] text-white shadow-lg ring-2 ring-white transition hover:bg-[#0d4ec4] ${bizFocusRingClass}`}
-                               aria-label="Add tier card preview"
-                             >
-                               <Plus className="h-4 w-4" strokeWidth={2.5} aria-hidden />
-                             </button>
                              <div
                                className="relative flex aspect-[408/260] w-full flex-col justify-between overflow-hidden rounded-xl border p-4 sm:rounded-2xl sm:p-5"
                                style={{
@@ -34405,17 +34444,30 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                  </div>
                                  {programsOverviewTiersSortedAscending.length > 0 ? (
                                    <div className="text-right">
-                                     <p
-                                       className="mb-1 text-[10px] font-bold uppercase tracking-widest opacity-80"
-                                       style={{ color: programsOverviewPassHeroTheme.secondary }}
-                                     >
-                                       {tu('programs_overview_up_to')}
-                                     </p>
-                                     <p className="font-manrope text-lg font-black leading-tight tracking-tight sm:text-xl">
-                                       {programsOverviewCardMaxDiscountPct > 0
-                                         ? tu('programs_overview_discount_pct', { pct: String(Math.round(programsOverviewCardMaxDiscountPct)) })
-                                         : tu('programs_overview_member_pricing')}
-                                     </p>
+                                     <ProgramLivePreviewInlineField
+                                       hideLabel
+                                       label="Discount"
+                                       value={cardIssuancePreviewEditTier?.discountPercent ?? ''}
+                                       onChange={(value) =>
+                                         setCardIssuanceTiers((tiers) =>
+                                           tiers.map((tier) =>
+                                             tier.id === cardIssuancePreviewEditTier?.id
+                                               ? { ...tier, discountPercent: value.replace(/\D/g, '').slice(0, 3) }
+                                               : tier
+                                           )
+                                         )
+                                       }
+                                       inputMode="numeric"
+                                       displayValue={
+                                         cardIssuancePreviewEditTier?.discountPercent
+                                           ? `${tu('programs_overview_up_to')} ${cardIssuancePreviewEditTier.discountPercent}%`
+                                           : tu('programs_overview_member_pricing')
+                                       }
+                                       displayClassName="!text-current text-lg font-black leading-tight tracking-tight sm:text-xl"
+                                       className="rounded-md px-1 py-0.5 text-right hover:bg-white/10"
+                                       disabled={cardIssuanceMerchantTextSaving}
+                                       focusRingClass={bizFocusRingClass}
+                                     />
                                    </div>
                                  ) : null}
                                </div>
@@ -34424,6 +34476,26 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                    <p className="font-manrope text-2xl font-extrabold leading-tight tracking-tight sm:text-[1.65rem]">
                                      {programsOverviewDisplayName}
                                    </p>
+                                   <ProgramLivePreviewInlineField
+                                     hideLabel
+                                     label="Tier name"
+                                     value={cardIssuancePreviewEditTier?.name ?? ''}
+                                     onChange={(value) =>
+                                       setCardIssuanceTiers((tiers) =>
+                                         tiers.map((tier) =>
+                                           tier.id === cardIssuancePreviewEditTier?.id
+                                             ? { ...tier, name: value.slice(0, 32) }
+                                             : tier
+                                         )
+                                       )
+                                     }
+                                     placeholder="Tier name"
+                                     displayValue={cardIssuancePreviewEditTier?.name || 'Tier'}
+                                     displayClassName="!text-current text-[10px] font-bold uppercase tracking-wider"
+                                     className="mt-1 rounded-md px-1 py-0.5 hover:bg-white/10"
+                                     disabled={cardIssuanceMerchantTextSaving}
+                                     focusRingClass={bizFocusRingClass}
+                                   />
                                  </div>
                                  <div className="shrink-0 text-right">
                                    <div
@@ -34433,22 +34505,24 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                      <ProgramLivePreviewInlineField
                                        hideLabel
                                        label="Starting amount"
-                                       value={cardIssuanceBaseTier?.threshold ?? ''}
+                                       value={cardIssuancePreviewEditTier?.threshold ?? ''}
                                        onChange={(value) => {
                                          const digits = value.replace(/\D/g, '');
                                          setCardIssuanceTiers((tiers) =>
                                            tiers.map((tier) =>
-                                             tier.id === cardIssuanceBaseTier?.id
+                                             tier.id === cardIssuancePreviewEditTier?.id
                                                ? { ...tier, threshold: digits }
                                                : tier
                                            )
                                          );
-                                         if (cardIssuanceBaseTier?.id === CARD_ISSUANCE_SINGLE_TIER_ID) {
+                                         if (cardIssuancePreviewEditTier?.id === CARD_ISSUANCE_SINGLE_TIER_ID) {
                                            setCardIssuanceMinTopup(digits);
                                          }
                                        }}
                                        inputMode="numeric"
-                                       displayValue={`${tu('programs_overview_starting_from_label')} ${cardIssuanceDisplayMoneyPrefix} ${programsOverviewCardMinTopupDisplay}`}
+                                       displayValue={`${tu('programs_overview_starting_from_label')} ${cardIssuanceDisplayMoneyPrefix} ${
+                                         cardIssuancePreviewEditTier?.threshold || programsOverviewCardMinTopupDisplay
+                                       }`}
                                        displayClassName="text-[10px] font-bold uppercase tracking-wider"
                                        className="rounded-md px-1 py-0 text-right hover:bg-white/10"
                                        disabled={cardIssuanceMerchantTextSaving}
@@ -34473,100 +34547,26 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                              </div>
                            </div>
                          </div>
-                         {cardIssuanceTiers.slice(1).length > 0 ? (
-                           <div className="mt-4 flex gap-3 overflow-x-auto pb-1 scrollbar-hide">
-                             {cardIssuanceTiers.slice(1).map((tier) => {
-                               const theme = cardIssuanceTierGradientTheme(tier.backgroundColor);
-                               const tierName = tier.name.trim() || 'Tier';
-                               return (
-                                 <div
-                                   key={tier.id}
-                                   className="relative min-w-[17rem] flex-1 overflow-hidden rounded-2xl border p-4 shadow-lg"
-                                   style={{
-                                     background: cardIssuanceTierRowGradientCss(tier.backgroundColor),
-                                     borderColor: theme.cardBorder,
-                                   }}
-                                 >
-                                   <button
-                                     type="button"
-                                     onClick={() =>
-                                       setCardIssuanceTiers((tiers) =>
-                                         reconcileTierThresholdsWithMinTopup(
-                                           tiers.filter((item) => item.id !== tier.id),
-                                           cardIssuanceMinTopup
-                                         )
-                                       )
-                                     }
-                                     className={`absolute right-2 top-2 inline-flex h-7 w-7 items-center justify-center rounded-full text-[#b31b25] transition hover:bg-white/30 ${bizFocusRingClass}`}
-                                     aria-label={`Remove ${tierName} card preview`}
-                                   >
-                                     <Trash2 className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />
-                                   </button>
-                                   <div className="mb-5 pr-8 text-[10px] font-black uppercase tracking-[0.16em]" style={{ color: theme.secondary }}>
-                                     Tier preview
-                                   </div>
-                                   <ProgramLivePreviewInlineField
-                                     hideLabel
-                                     label="Tier name"
-                                     value={tier.name}
-                                     onChange={(value) =>
-                                       setCardIssuanceTiers((tiers) =>
-                                         tiers.map((item) =>
-                                           item.id === tier.id ? { ...item, name: value.slice(0, 32) } : item
-                                         )
-                                       )
-                                     }
-                                     placeholder="Tier name"
-                                     displayClassName="text-lg font-black"
-                                     className="rounded-lg px-1 py-0.5 hover:bg-white/10"
-                                     disabled={cardIssuanceMerchantTextSaving}
-                                     focusRingClass={bizFocusRingClass}
-                                   />
-                                   <div className="mt-6 grid grid-cols-2 gap-2">
-                                     <ProgramLivePreviewInlineField
-                                       label="Starting from"
-                                       value={tier.threshold}
-                                       onChange={(value) =>
-                                         setCardIssuanceTiers((tiers) =>
-                                           tiers.map((item) =>
-                                             item.id === tier.id
-                                               ? { ...item, threshold: value.replace(/\D/g, '') }
-                                               : item
-                                           )
-                                         )
-                                       }
-                                       inputMode="numeric"
-                                       displayValue={`${cardIssuanceDisplayMoneyPrefix} ${tier.threshold || '0'}`}
-                                       displayClassName="text-sm font-black"
-                                       className="rounded-lg px-1 py-1 hover:bg-white/10"
-                                       disabled={cardIssuanceMerchantTextSaving}
-                                       focusRingClass={bizFocusRingClass}
-                                     />
-                                     <ProgramLivePreviewInlineField
-                                       label="Discount"
-                                       value={tier.discountPercent}
-                                       onChange={(value) =>
-                                         setCardIssuanceTiers((tiers) =>
-                                           tiers.map((item) =>
-                                             item.id === tier.id
-                                               ? { ...item, discountPercent: value.replace(/\D/g, '').slice(0, 3) }
-                                               : item
-                                           )
-                                         )
-                                       }
-                                       inputMode="numeric"
-                                       displayValue={`${tier.discountPercent || '0'}% off`}
-                                       displayClassName="text-sm font-black"
-                                       className="rounded-lg px-1 py-1 hover:bg-white/10"
-                                       disabled={cardIssuanceMerchantTextSaving}
-                                       focusRingClass={bizFocusRingClass}
-                                     />
-                                   </div>
-                                 </div>
-                               );
-                             })}
-                           </div>
-                         ) : null}
+                         <button
+                           type="button"
+                           onClick={() => {
+                             const nextRow = nextCardIssuanceTierTemplate(cardIssuanceTiers, cardIssuanceMinTopup);
+                             const nextTiers = reconcileTierThresholdsWithMinTopup(
+                               [...cardIssuanceTiers, nextRow],
+                               cardIssuanceMinTopup
+                             );
+                             setCardIssuanceTiers(nextTiers);
+                             setCardIssuancePreviewTierId(nextRow.id);
+                           }}
+                           className={`flex min-h-[260px] min-w-[10rem] shrink-0 flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-[#1562f0]/35 bg-[#eaf1ff] px-4 text-center text-[#1562f0] transition hover:border-[#1562f0] hover:bg-[#dfeaff] ${bizFocusRingClass}`}
+                           aria-label="Add tier"
+                         >
+                           <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#1562f0] text-white shadow-sm">
+                             <Plus className="h-5 w-5" strokeWidth={2.5} aria-hidden />
+                           </span>
+                           <span className="text-xs font-black uppercase tracking-[0.12em]">Add tier</span>
+                         </button>
+                         </div>
                        </section>
                      </div>
 

@@ -12402,6 +12402,10 @@ useEffect(() => {
  /** Tier row selected for App / Physical preview card (gradient + badge). */
  const [cardIssuancePreviewTierId, setCardIssuancePreviewTierId] = useState<string | null>(null);
  const cardConfigPreviewAnchorRef = useRef<HTMLDivElement | null>(null);
+ const cardIssuanceBaseTier = useMemo(
+   () => cardIssuanceTiers.find((tier) => tier.id === CARD_ISSUANCE_SINGLE_TIER_ID) ?? cardIssuanceTiers[0] ?? null,
+   [cardIssuanceTiers]
+ );
  /** Issued program: `overview` matches `newOnloading.html`; `configure` shows the full Card Configurator. */
  const [cardIssuanceActiveProgramView, setCardIssuanceActiveProgramView] = useState<'overview' | 'configure'>(
    'overview'
@@ -34329,6 +34333,22 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                              aria-hidden
                            />
                            <div className="relative rounded-xl shadow-lg shadow-black/15 sm:rounded-2xl sm:shadow-xl sm:shadow-black/20">
+                             <button
+                               type="button"
+                               onClick={() => {
+                                 const nextRow = nextCardIssuanceTierTemplate(cardIssuanceTiers, cardIssuanceMinTopup);
+                                 const nextTiers = reconcileTierThresholdsWithMinTopup(
+                                   [...cardIssuanceTiers, nextRow],
+                                   cardIssuanceMinTopup
+                                 );
+                                 setCardIssuanceTiers(nextTiers);
+                                 setCardIssuancePreviewTierId(nextRow.id);
+                               }}
+                               className={`absolute -right-3 -top-3 z-20 inline-flex h-9 w-9 items-center justify-center rounded-full bg-[#1562f0] text-white shadow-lg ring-2 ring-white transition hover:bg-[#0d4ec4] ${bizFocusRingClass}`}
+                               aria-label="Add tier card preview"
+                             >
+                               <Plus className="h-4 w-4" strokeWidth={2.5} aria-hidden />
+                             </button>
                              <div
                                className="relative flex aspect-[408/260] w-full flex-col justify-between overflow-hidden rounded-xl border p-4 sm:rounded-2xl sm:p-5"
                                style={{
@@ -34406,13 +34426,35 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                    </p>
                                  </div>
                                  <div className="shrink-0 text-right">
-                                   <p
+                                   <div
                                      className="text-[10px] font-bold uppercase tracking-wider opacity-80"
                                      style={{ color: programsOverviewPassHeroTheme.tertiary }}
                                    >
-                                     {tu('programs_overview_starting_from_label')} {cardIssuanceDisplayMoneyPrefix}{' '}
-                                     {programsOverviewCardMinTopupDisplay}
-                                   </p>
+                                     <ProgramLivePreviewInlineField
+                                       hideLabel
+                                       label="Starting amount"
+                                       value={cardIssuanceBaseTier?.threshold ?? ''}
+                                       onChange={(value) => {
+                                         const digits = value.replace(/\D/g, '');
+                                         setCardIssuanceTiers((tiers) =>
+                                           tiers.map((tier) =>
+                                             tier.id === cardIssuanceBaseTier?.id
+                                               ? { ...tier, threshold: digits }
+                                               : tier
+                                           )
+                                         );
+                                         if (cardIssuanceBaseTier?.id === CARD_ISSUANCE_SINGLE_TIER_ID) {
+                                           setCardIssuanceMinTopup(digits);
+                                         }
+                                       }}
+                                       inputMode="numeric"
+                                       displayValue={`${tu('programs_overview_starting_from_label')} ${cardIssuanceDisplayMoneyPrefix} ${programsOverviewCardMinTopupDisplay}`}
+                                       displayClassName="text-[10px] font-bold uppercase tracking-wider"
+                                       className="rounded-md px-1 py-0 text-right hover:bg-white/10"
+                                       disabled={cardIssuanceMerchantTextSaving}
+                                       focusRingClass={bizFocusRingClass}
+                                     />
+                                   </div>
                                    {cardIssuanceTopupPromotionPayload ? (
                                      <p
                                        className="mt-0.5 font-manrope text-base font-bold leading-tight sm:text-lg"
@@ -34431,144 +34473,100 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                              </div>
                            </div>
                          </div>
-                         <div className="mt-4 space-y-3">
-                           <div className="flex items-center justify-between gap-3 px-1">
-                             <div className="min-w-0">
-                               <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#747779]">Tier items</p>
-                               <p className="mt-1 text-[11px] font-medium leading-snug text-[#595c5e]">
-                                 Click a field to edit. Changes stay as a draft until Publish.
-                               </p>
-                             </div>
-                             <button
-                               type="button"
-                               onClick={() => {
-                                 const template = nextCardIssuanceTierTemplate(cardIssuanceTiers, cardIssuanceMinTopup);
-                                 setCardIssuanceTiers((tiers) =>
-                                   reconcileTierThresholdsWithMinTopup([...tiers, template], cardIssuanceMinTopup)
-                                 );
-                               }}
-                               className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#1562f0] text-white shadow-sm transition hover:bg-[#0d4ec4] ${bizFocusRingClass}`}
-                               aria-label="Add tier item"
-                             >
-                               <Plus className="h-4 w-4" strokeWidth={2.5} aria-hidden />
-                             </button>
-                           </div>
-                           <div className="flex gap-3 overflow-x-auto pb-1 scrollbar-hide">
-                             {cardIssuanceTiers.map((row) => {
-                               const isBaseTier = row.id === CARD_ISSUANCE_SINGLE_TIER_ID;
-                               const tierTheme = cardIssuanceTierGradientTheme(row.backgroundColor);
-                               const tierName = row.name.trim() || (isBaseTier ? 'Base' : 'Tier');
+                         {cardIssuanceTiers.slice(1).length > 0 ? (
+                           <div className="mt-4 flex gap-3 overflow-x-auto pb-1 scrollbar-hide">
+                             {cardIssuanceTiers.slice(1).map((tier) => {
+                               const theme = cardIssuanceTierGradientTheme(tier.backgroundColor);
+                               const tierName = tier.name.trim() || 'Tier';
                                return (
                                  <div
-                                   key={row.id}
-                                   className="min-w-[15rem] flex-1 rounded-2xl border p-3 shadow-[0_8px_20px_rgba(15,23,42,0.08)]"
+                                   key={tier.id}
+                                   className="relative min-w-[17rem] flex-1 overflow-hidden rounded-2xl border p-4 shadow-lg"
                                    style={{
-                                     background: cardIssuanceTierRowGradientCss(row.backgroundColor),
-                                     borderColor: tierTheme.cardBorder,
+                                     background: cardIssuanceTierRowGradientCss(tier.backgroundColor),
+                                     borderColor: theme.cardBorder,
                                    }}
                                  >
-                                   <div className="mb-2 flex items-center justify-between gap-2">
-                                     <span
-                                       className="truncate text-[10px] font-black uppercase tracking-[0.14em]"
-                                       style={{ color: tierTheme.secondary }}
-                                     >
-                                       {isBaseTier ? 'Base tier' : 'Tier item'}
-                                     </span>
-                                     {!isBaseTier ? (
-                                       <button
-                                         type="button"
-                                         onClick={() =>
-                                           setCardIssuanceTiers((tiers) =>
-                                             reconcileTierThresholdsWithMinTopup(
-                                               tiers.filter((tier) => tier.id !== row.id),
-                                               cardIssuanceMinTopup
-                                             )
-                                           )
-                                         }
-                                         className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[#b31b25] transition hover:bg-white/40 ${bizFocusRingClass}`}
-                                         aria-label={`Remove ${tierName} tier`}
-                                       >
-                                         <Trash2 className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />
-                                       </button>
-                                     ) : null}
+                                   <button
+                                     type="button"
+                                     onClick={() =>
+                                       setCardIssuanceTiers((tiers) =>
+                                         reconcileTierThresholdsWithMinTopup(
+                                           tiers.filter((item) => item.id !== tier.id),
+                                           cardIssuanceMinTopup
+                                         )
+                                       )
+                                     }
+                                     className={`absolute right-2 top-2 inline-flex h-7 w-7 items-center justify-center rounded-full text-[#b31b25] transition hover:bg-white/30 ${bizFocusRingClass}`}
+                                     aria-label={`Remove ${tierName} card preview`}
+                                   >
+                                     <Trash2 className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />
+                                   </button>
+                                   <div className="mb-5 pr-8 text-[10px] font-black uppercase tracking-[0.16em]" style={{ color: theme.secondary }}>
+                                     Tier preview
                                    </div>
-                                   <div className="space-y-2">
-                                     <input
-                                       type="text"
-                                       value={row.name}
-                                       onChange={(e) =>
+                                   <ProgramLivePreviewInlineField
+                                     hideLabel
+                                     label="Tier name"
+                                     value={tier.name}
+                                     onChange={(value) =>
+                                       setCardIssuanceTiers((tiers) =>
+                                         tiers.map((item) =>
+                                           item.id === tier.id ? { ...item, name: value.slice(0, 32) } : item
+                                         )
+                                       )
+                                     }
+                                     placeholder="Tier name"
+                                     displayClassName="text-lg font-black"
+                                     className="rounded-lg px-1 py-0.5 hover:bg-white/10"
+                                     disabled={cardIssuanceMerchantTextSaving}
+                                     focusRingClass={bizFocusRingClass}
+                                   />
+                                   <div className="mt-6 grid grid-cols-2 gap-2">
+                                     <ProgramLivePreviewInlineField
+                                       label="Starting from"
+                                       value={tier.threshold}
+                                       onChange={(value) =>
                                          setCardIssuanceTiers((tiers) =>
-                                           tiers.map((tier) =>
-                                             tier.id === row.id ? { ...tier, name: e.target.value.slice(0, 32) } : tier
+                                           tiers.map((item) =>
+                                             item.id === tier.id
+                                               ? { ...item, threshold: value.replace(/\D/g, '') }
+                                               : item
                                            )
                                          )
                                        }
-                                       aria-label={`Tier name for ${tierName}`}
-                                       placeholder="Tier name"
-                                       className={`w-full rounded-xl border border-white/50 bg-white/70 px-3 py-2 text-sm font-bold text-[#2c2f31] placeholder:text-[#747779] focus:bg-white ${bizFocusRingClass}`}
+                                       inputMode="numeric"
+                                       displayValue={`${cardIssuanceDisplayMoneyPrefix} ${tier.threshold || '0'}`}
+                                       displayClassName="text-sm font-black"
+                                       className="rounded-lg px-1 py-1 hover:bg-white/10"
+                                       disabled={cardIssuanceMerchantTextSaving}
+                                       focusRingClass={bizFocusRingClass}
                                      />
-                                     <div className="grid grid-cols-2 gap-2">
-                                       <label className="min-w-0">
-                                         <span className="mb-1 block text-[9px] font-black uppercase tracking-wide" style={{ color: tierTheme.tertiary }}>
-                                           Min threshold
-                                         </span>
-                                         <input
-                                           type="number"
-                                           inputMode="numeric"
-                                           autoComplete="off"
-                                           value={row.threshold}
-                                           onKeyDown={preventNumericInputStepKeys}
-                                           onWheel={preventNumericInputWheelStep}
-                                           onChange={(e) => {
-                                             const digits = e.target.value.replace(/\D/g, '');
-                                             setCardIssuanceTiers((tiers) =>
-                                               tiers.map((tier) =>
-                                                 tier.id === row.id ? { ...tier, threshold: digits } : tier
-                                               )
-                                             );
-                                             if (isBaseTier) setCardIssuanceMinTopup(digits);
-                                           }}
-                                           aria-label={`Minimum threshold for ${tierName}`}
-                                           className={`w-full rounded-xl border border-white/50 bg-white/70 px-3 py-2 text-sm font-bold text-[#2c2f31] focus:bg-white ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
-                                         />
-                                       </label>
-                                       <label className="min-w-0">
-                                         <span className="mb-1 block text-[9px] font-black uppercase tracking-wide" style={{ color: tierTheme.tertiary }}>
-                                           Discount
-                                         </span>
-                                         <div className="relative">
-                                           <input
-                                             type="number"
-                                             inputMode="numeric"
-                                             autoComplete="off"
-                                             min={0}
-                                             max={100}
-                                             step={1}
-                                             value={row.discountPercent}
-                                             onKeyDown={preventNumericInputStepKeys}
-                                             onWheel={preventNumericInputWheelStep}
-                                             onChange={(e) => {
-                                               const raw = e.target.value.replace(/\D/g, '');
-                                               const value = raw === '' ? '' : String(Math.min(100, Number(raw)));
-                                               setCardIssuanceTiers((tiers) =>
-                                                 tiers.map((tier) =>
-                                                   tier.id === row.id ? { ...tier, discountPercent: value } : tier
-                                                 )
-                                               );
-                                             }}
-                                             aria-label={`Discount percentage for ${tierName}`}
-                                             className={`w-full rounded-xl border border-white/50 bg-white/70 px-3 py-2 pr-7 text-sm font-bold text-[#2c2f31] focus:bg-white ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
-                                           />
-                                           <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-[#747779]">%</span>
-                                         </div>
-                                       </label>
-                                     </div>
+                                     <ProgramLivePreviewInlineField
+                                       label="Discount"
+                                       value={tier.discountPercent}
+                                       onChange={(value) =>
+                                         setCardIssuanceTiers((tiers) =>
+                                           tiers.map((item) =>
+                                             item.id === tier.id
+                                               ? { ...item, discountPercent: value.replace(/\D/g, '').slice(0, 3) }
+                                               : item
+                                           )
+                                         )
+                                       }
+                                       inputMode="numeric"
+                                       displayValue={`${tier.discountPercent || '0'}% off`}
+                                       displayClassName="text-sm font-black"
+                                       className="rounded-lg px-1 py-1 hover:bg-white/10"
+                                       disabled={cardIssuanceMerchantTextSaving}
+                                       focusRingClass={bizFocusRingClass}
+                                     />
                                    </div>
                                  </div>
                                );
                              })}
                            </div>
-                         </div>
+                         ) : null}
                        </section>
                      </div>
 

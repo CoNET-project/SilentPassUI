@@ -17,6 +17,18 @@ export function useConetWalletBalances(_eoaAddress?: string): {
 	}
 }
 
+/** CoNET Smart Wallet（AA）USDC / CNET / GB — 只读 DaemonProvider 全局喂料结果。 */
+export function useConetAaWalletBalances(): {
+	balances: ConetWalletBalances
+	loading: boolean
+} {
+	const { conetAaWalletBalances } = useDaemonContext()
+	return {
+		balances: conetAaWalletBalances ?? EMPTY_CONET_WALLET_BALANCES,
+		loading: false,
+	}
+}
+
 /** CoNET-USDC only — 共用 daemon 喂料。 */
 export function useConetUsdcBalance(_eoaAddress?: string): {
 	balance: string

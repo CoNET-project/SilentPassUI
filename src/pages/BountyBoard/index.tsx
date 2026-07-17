@@ -17,7 +17,7 @@ import {
 } from 'lucide-react'
 import { useDaemonReferrerSummary } from '@/hooks/useDaemonReferrerSummary'
 import { useScrollCapsuleOpacity } from '@/hooks/useScrollCapsuleOpacity'
-import { useConetWalletBalances } from '@/hooks/useConetUsdcBalance'
+import { useConetAaWalletBalances, useConetWalletBalances } from '@/hooks/useConetUsdcBalance'
 import { useDaemonValidatorWalletNodeProfile } from '@/hooks/useDaemonValidatorWalletNodeProfile'
 import { useDaemonUnifiedIncomeStats } from '@/hooks/useDaemonUnifiedIncomeStats'
 import { useDaemonContext } from '@/providers/DaemonProvider'
@@ -320,8 +320,10 @@ export default function BountyBoard() {
 	const { opacity: capsuleOpacity, onScroll: onCapsuleScroll, setRef: setScrollRef } = useScrollCapsuleOpacity(true)
 	const { profiles, currencyData, beamio } = useDaemonContext()
 	const eoa = profiles?.[0]?.keyID?.trim() ?? ''
+	const aaAccount = profiles?.[0]?.aaAccount?.trim() ?? ''
 	const profileCurrency = (beamio?.currency ?? 'USD') as ICurrency
 	const { balances: conetWalletBalances } = useConetWalletBalances(eoa)
+	const { balances: aaWalletBalances } = useConetAaWalletBalances()
 	const { profile: validatorProfile } = useDaemonValidatorWalletNodeProfile()
 	const { stats: incomeStats } = useDaemonUnifiedIncomeStats()
 	const [socialReferralRows, setSocialReferralRows] = useState<MerchantSocialReferralPoints[] | null>(
@@ -425,6 +427,30 @@ export default function BountyBoard() {
 						<p className="mt-4 text-[11px] leading-snug text-white/60">
 							All rewards are automatically synced to your Main Wallet.
 						</p>
+					</section>
+
+					{/* User wallet CNET balances — EOA and AA are separate spending wallets. */}
+					<section className={`${cardChrome} p-5`}>
+						<div className="flex items-center justify-between gap-2">
+							<p className="text-[11px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">
+								CNET BALANCES
+							</p>
+							<span className="text-[11px] font-medium text-slate-400 dark:text-slate-500">CoNET Network</span>
+						</div>
+						<div className="mt-4 grid grid-cols-2 gap-3">
+							<div className="rounded-xl bg-[#e9edff] px-3 py-3 dark:bg-[#0051d1]/15">
+								<p className="text-xs font-semibold text-slate-600 dark:text-slate-300">EOA Wallet</p>
+								<p className="mt-1 text-lg font-extrabold tabular-nums text-[#0051d1] dark:text-blue-300">
+									{formatConetChainTokenBalance(conetWalletBalances.cnet)} CNET
+								</p>
+							</div>
+							<div className="rounded-xl bg-[#f5ecff] px-3 py-3 dark:bg-[#8d3a8b]/15">
+								<p className="text-xs font-semibold text-slate-600 dark:text-slate-300">Smart Wallet (AA)</p>
+								<p className="mt-1 text-lg font-extrabold tabular-nums text-[#8d3a8b] dark:text-purple-300">
+									{aaAccount ? `${formatConetChainTokenBalance(aaWalletBalances.cnet)} CNET` : 'Not connected'}
+								</p>
+							</div>
+						</div>
 					</section>
 
 					{/* CONET mining */}

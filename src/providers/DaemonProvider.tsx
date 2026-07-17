@@ -398,6 +398,8 @@ type DaemonContext = {
 	conetDepinStats: ConetDepinStats
 	/** CoNET L1 钱包 USDC / CNET / GB；本地优先，全局 daemon 每 6s 刷新 */
 	conetWalletBalances: ConetWalletBalances
+	/** CoNET Smart Wallet（AA）USDC / CNET / GB；本地优先，全局 daemon 每 6s 刷新 */
+	conetAaWalletBalances: ConetWalletBalances
 	/** 用户 Validator / DePIN 节点档案；本地优先，全局 daemon 每 6s 刷新 */
 	validatorWalletNodeProfile: ValidatorWalletNodeProfile | null
 	/** 用户 CoNET Mining 收益（resolveUnifiedIncomeStats）；本地优先，全局 daemon 每 6s 刷新 */
@@ -612,6 +614,7 @@ const defaultContextValue: DaemonContext = {
 	conetNetworkStats: CONET_MINING_STATS_SEED.network,
 	conetDepinStats: CONET_MINING_STATS_SEED.depin,
 	conetWalletBalances: EMPTY_CONET_WALLET_BALANCES,
+	conetAaWalletBalances: EMPTY_CONET_WALLET_BALANCES,
 	validatorWalletNodeProfile: null,
 	unifiedIncomeStats: null,
 	referrerSummary: null,
@@ -1321,6 +1324,9 @@ export function DaemonProvider({ children }: DaemonProps) {
   const [conetWalletBalances, setConetWalletBalances] = useState<ConetWalletBalances>(
     () => EMPTY_CONET_WALLET_BALANCES
   )
+  const [conetAaWalletBalances, setConetAaWalletBalances] = useState<ConetWalletBalances>(
+    () => EMPTY_CONET_WALLET_BALANCES
+  )
 
   /** EOA 切换：从本地恢复 CoNET USDC / CNET / GB；无缓存则用零值首帧，等 daemon 回填 */
   useLayoutEffect(() => {
@@ -1334,6 +1340,18 @@ export function DaemonProvider({ children }: DaemonProps) {
     setConetWalletBalances(hit ?? EMPTY_CONET_WALLET_BALANCES)
   }, [profileWalletKeyId])
 
+  /** AA 切换：从本地恢复 Smart Wallet 的 CoNET CNET / GB / USDC 余额。 */
+  const profileAaAccount = profiles?.[0]?.aaAccount?.trim() ?? ''
+  useLayoutEffect(() => {
+    const aaLower = profileAaAccount.toLowerCase()
+    if (!aaLower || !ethers.isAddress(aaLower)) {
+      setConetAaWalletBalances(EMPTY_CONET_WALLET_BALANCES)
+      return
+    }
+    const hit = loadConetWalletBalancesLocalCache(aaLower)
+    setConetAaWalletBalances(hit ?? EMPTY_CONET_WALLET_BALANCES)
+  }, [profileAaAccount])
+
   const runConetWalletBalancesFeedTick = useCallback(async (): Promise<void> => {
     const eoa = profilesRef.current?.[0]?.keyID?.trim() ?? ''
     if (!eoa || !ethers.isAddress(eoa)) return
@@ -1345,6 +1363,21 @@ export function DaemonProvider({ children }: DaemonProps) {
     if (profilesRef.current?.[0]?.keyID?.trim().toLowerCase() !== eoaLower) return
     setConetWalletBalances(res.balances)
     saveConetWalletBalancesLocalCache(eoaLower, res.balances)
+
+    const aa = profilesRef.current?.[0]?.aaAccount?.trim() ?? ''
+    if (!aa || !ethers.isAddress(aa)) {
+      setConetAaWalletBalances(EMPTY_CONET_WALLET_BALANCES)
+      return
+    }
+    const aaLower = aa.toLowerCase()
+    const aaRes = await fetchConetWalletBalances(aa, { bypassMemoryCache: true }).catch(
+      () => ({ ok: false as const })
+    )
+    if (!aaRes.ok) return
+    const currentAa = profilesRef.current?.[0]?.aaAccount?.trim().toLowerCase() ?? ''
+    if (currentAa !== aaLower) return
+    setConetAaWalletBalances(aaRes.balances)
+    saveConetWalletBalancesLocalCache(aaLower, aaRes.balances)
   }, [])
 
   const [validatorWalletNodeProfile, setValidatorWalletNodeProfile] =
@@ -1930,7 +1963,7 @@ export function DaemonProvider({ children }: DaemonProps) {
 				airdropSuccess, setAirdropSuccess, airdropTokens, setAirdropTokens, airdropProcessReff, setAirdropProcessReff, getWebFilter, listenningProcess, setListenningProcess,
 				myBrandCards, myBrandCardDetails, myBrandsFeedLoading, myBrandsFeedLastConetBlock,
 				recentActivityNoAaItems, recentActivityNoAaLoading, recentActivityNoAaError, refreshRecentActivityNoAa,
-				conetNetworkStats, conetDepinStats, conetWalletBalances, validatorWalletNodeProfile, unifiedIncomeStats, referrerSummary,
+				conetNetworkStats, conetDepinStats, conetWalletBalances, conetAaWalletBalances, validatorWalletNodeProfile, unifiedIncomeStats, referrerSummary,
 				discoverMerchantStatByCard, registerDiscoverMerchantStatFeedCards, applyDiscoverMerchantLikeCountDelta,
 				setGetWebFilter,switchValue, setSwitchValue, webFilterRef, quickLinksShow, setQuickLinksShow, duplicateAccount, checkinBalanceUP, setCheckinBalanceUP, gossip, setGossip,
 				beamioUsers, setbBeamioUsers, showFooter, setShowFooter, chatSearchOpen, setChatSearchOpen, payMePayment, setPayMePayment, navigateLeftButtonArray, setNavigateLeftButtonArray, allNodes, setAllNodes,

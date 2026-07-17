@@ -868,6 +868,8 @@ export type UnifiedIncomeStats = {
 	nodes: NodeIncomeRow[]
 	/** CNET airdrop（vesting）账本；本轮未能可信读取时为 null（不覆盖 UI 上次可信值）。 */
 	airdrop: AirdropInfo | null
+	/** Whether airdropInfoOf was trusted in this refresh. */
+	airdropReadOk: boolean
 }
 
 export type UnifiedIncomeStatsResult =
@@ -929,7 +931,7 @@ function parseUnifiedIncomeStats(r: ethers.Result | Record<string, unknown> | un
 			cnet: parseIncomeTotals(nGet('cnet', 3) as ethers.Result),
 		}
 	})
-	return { beneficiary, gbBeneficiary, cnetBeneficiary, nodes, airdrop: null }
+	return { beneficiary, gbBeneficiary, cnetBeneficiary, nodes, airdrop: null, airdropReadOk: true }
 }
 
 /** CL skim rewards actually paid to beneficiary via {settleNodeRewards} (wei). Indexer cumulative may lag. */
@@ -1179,7 +1181,14 @@ async function assembleUnifiedIncomeStatsClientSide(
 		})
 	}
 
-	const stats: UnifiedIncomeStats = { beneficiary: ben, gbBeneficiary, cnetBeneficiary, nodes, airdrop: null }
+	const stats: UnifiedIncomeStats = {
+		beneficiary: ben,
+		gbBeneficiary,
+		cnetBeneficiary,
+		nodes,
+		airdrop: null,
+		airdropReadOk: true,
+	}
 	if (ben) {
 		const [clPaid, guardianClPaid] = await Promise.all([
 			readClRewardPaidWei(redeem, ben),
@@ -1265,10 +1274,17 @@ export async function fetchUnifiedIncomeStats(
 				const airdropRow = await (redeem.airdropInfoOf!(airdropBeneficiary) as Promise<ethers.Result>).catch(
 					() => null,
 				)
-				if (airdropRow) stats.airdrop = parseAirdropInfo(airdropRow)
+				if (airdropRow) {
+					stats.airdrop = parseAirdropInfo(airdropRow)
+					stats.airdropReadOk = true
+				} else {
+					stats.airdropReadOk = false
+				}
 			} catch {
-				/* keep airdrop = null */
+				stats.airdropReadOk = false
 			}
+		} else {
+			stats.airdropReadOk = true
 		}
 		if (parsedBundle) {
 			try {

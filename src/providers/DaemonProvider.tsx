@@ -1406,16 +1406,20 @@ export function DaemonProvider({ children }: DaemonProps) {
   }, [])
 
   const [unifiedIncomeStats, setUnifiedIncomeStats] = useState<UnifiedIncomeStats | null>(null)
+  const unifiedIncomeStatsRef = useRef<UnifiedIncomeStats | null>(null)
 
   /** EOA 切换：从模块缓存恢复收益统计；无缓存则等 daemon 回填 */
   useLayoutEffect(() => {
     const raw = profileWalletKeyId?.trim() ?? ''
     const eoaLower = raw.toLowerCase()
     if (!eoaLower || !ethers.isAddress(eoaLower)) {
+      unifiedIncomeStatsRef.current = null
       setUnifiedIncomeStats(null)
       return
     }
-    setUnifiedIncomeStats(peekUnifiedIncomeStatsCache(eoaLower))
+    const hit = peekUnifiedIncomeStatsCache(eoaLower)
+    unifiedIncomeStatsRef.current = hit
+    setUnifiedIncomeStats(hit)
   }, [profileWalletKeyId])
 
   const runUnifiedIncomeStatsFeedTick = useCallback(async (): Promise<void> => {
@@ -1425,8 +1429,18 @@ export function DaemonProvider({ children }: DaemonProps) {
     const res = await fetchUnifiedIncomeStats(eoa, 0).catch(() => ({ ok: false as const }))
     if (!res.ok) return
     if (profilesRef.current?.[0]?.keyID?.trim().toLowerCase() !== eoaLower) return
-    setUnifiedIncomeStats(res.stats)
-    seedUnifiedIncomeStatsCache(eoaLower, res.stats)
+    const previous = unifiedIncomeStatsRef.current
+    const sameBeneficiary =
+      previous?.beneficiary &&
+      res.stats.beneficiary &&
+      previous.beneficiary.toLowerCase() === res.stats.beneficiary.toLowerCase()
+    const nextStats =
+      !res.stats.airdropReadOk && sameBeneficiary && previous?.airdrop
+        ? { ...res.stats, airdrop: previous.airdrop }
+        : res.stats
+    unifiedIncomeStatsRef.current = nextStats
+    setUnifiedIncomeStats(nextStats)
+    seedUnifiedIncomeStatsCache(eoaLower, nextStats)
   }, [])
 
   const [referrerSummary, setReferrerSummary] = useState<ReferrerDashboardSummary | null>(null)

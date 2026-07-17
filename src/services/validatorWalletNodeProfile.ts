@@ -1190,12 +1190,8 @@ async function assembleUnifiedIncomeStatsClientSide(
 		airdropReadOk: true,
 	}
 	if (ben) {
-		const [clPaid, guardianClPaid] = await Promise.all([
-			readClRewardPaidWei(redeem, ben),
-			readClRewardPaidByGuardian(redeem, ben),
-		])
+		const clPaid = await readClRewardPaidWei(redeem, ben)
 		mergeClRewardPaidIntoCnetBeneficiary(stats, clPaid)
-		mergeClRewardPaidIntoNodes(stats, guardianClPaid)
 	}
 	return stats
 }
@@ -1263,8 +1259,6 @@ export async function fetchUnifiedIncomeStats(
 			// potentially slow historical per-guardian event scan.
 			const clPaid = await readClRewardPaidWei(redeem, incomeBeneficiary)
 			mergeClRewardPaidIntoCnetBeneficiary(stats, clPaid)
-			const guardianClPaid = await readClRewardPaidByGuardian(redeem, incomeBeneficiary)
-			mergeClRewardPaidIntoNodes(stats, guardianClPaid)
 		}
 		// airdrop（vesting）账本按 redeem **beneficiary** 查询（非 node operator 钱包）。
 		// 登录 EOA 可能是 nodeWallet；须用 resolve 出的 beneficiary，否则 accrued 恒为 0。
@@ -1285,6 +1279,12 @@ export async function fetchUnifiedIncomeStats(
 			}
 		} else {
 			stats.airdropReadOk = true
+		}
+		if (incomeBeneficiary) {
+			// Start the slow per-guardian history scan only after the
+			// beneficiary-level airdrop read has completed.
+			const guardianClPaid = await readClRewardPaidByGuardian(redeem, incomeBeneficiary)
+			mergeClRewardPaidIntoNodes(stats, guardianClPaid)
 		}
 		if (parsedBundle) {
 			try {

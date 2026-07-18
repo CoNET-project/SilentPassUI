@@ -1,8 +1,9 @@
 import { ethers } from 'ethers'
 import { CONET_REFERRAL_REGISTRY_VAULT_V1 } from '@/config/chainAddresses'
-import { conetDepinProvider } from '@/utils/constants'
+import { beamioApi, conetDepinProvider } from '@/utils/constants'
 
 const ROLE_CACHE_TTL_MS = 30_000
+const REFERRAL_REGISTRY_DEPLOY_BLOCK = 431_457
 
 const REFERRAL_REGISTRY_ABI = [
 	'function admins(address) view returns (bool)',
@@ -12,6 +13,12 @@ const REFERRAL_REGISTRY_ABI = [
 	'function l0ClaimPaused(address) view returns (bool)',
 	'function l1ClaimPaused(address l0, address l1) view returns (bool)',
 ] as const
+
+const MEMBER_REGISTERED_EVENT = 'MemberRegistered(address,uint8,address,address)'
+const MEMBER_REGISTERED_TOPIC = ethers.id(MEMBER_REGISTERED_EVENT)
+const MEMBER_REGISTERED_INTERFACE = new ethers.Interface([
+	`event ${MEMBER_REGISTERED_EVENT}`,
+])
 
 export type ReferralRegistryRole = 'none' | 'l0' | 'l1' | 'merchant'
 
@@ -30,7 +37,16 @@ export type ReferralRegistryRoleSnapshot = {
 	claimedCodeCount: string
 	claimableConetUsdc: string
 	claimPaused: boolean
+	downstream: ReferralRegistryDownstreamItem[]
 	fetchedAt: number
+}
+
+export type ReferralRegistryDownstreamItem = {
+	address: string
+	role: Exclude<ReferralRegistryRole, 'none'>
+	rebateBps: string
+	ratioBps: string
+	active: boolean
 }
 
 export type ReferralRegistryRoleResult =
@@ -60,6 +76,65 @@ function roleFromValue(role: number): ReferralRegistryRole {
 	if (role === 2) return 'l1'
 	if (role === 3) return 'merchant'
 	return 'none'
+}
+
+async function readDownstream(
+	registry: ethers.Contract,
+	eoa: string,
+	role: ReferralRegistryRole,
+): Promise<ReferralRegistryDownstreamItem[]> {
+	if (role !== 'l0' && role !== 'none') {
+		return []
+	}
+	const latestBlock = await conetDepinProvider.getBlockNumber()
+	const addresses = new Set<string>()
+	try {
+		const response = await fetch(`${beamioApi}/api/referralRegistryClaims?parent=${encodeURIComponent(eoa)}`)
+		const json = await response.json() as { success?: boolean; claims?: Array<{ claimer?: string }> }
+		if (response.ok && json.success === true && Array.isArray(json.claims)) {
+			for (const claim of json.claims) {
+				if (claim.claimer && ethers.isAddress(claim.claimer)) addresses.add(ethers.getAddress(claim.claimer))
+			}
+		}
+	} catch {
+		// The API is an auxiliary directory; the chain event scan remains authoritative.
+	}
+	const topicFilter = role === 'l0'
+		? [MEMBER_REGISTERED_TOPIC, null, ethers.zeroPadValue(eoa, 32)]
+		: [MEMBER_REGISTERED_TOPIC, null, null, ethers.zeroPadValue(eoa, 32)]
+	for (let fromBlock = REFERRAL_REGISTRY_DEPLOY_BLOCK; fromBlock <= latestBlock; fromBlock += 5_000) {
+		const toBlock = Math.min(fromBlock + 4_999, latestBlock)
+		const logs = await conetDepinProvider.getLogs({
+			address: CONET_REFERRAL_REGISTRY_VAULT_V1,
+			fromBlock,
+			toBlock,
+			topics: topicFilter,
+		})
+		for (const log of logs) {
+			const parsed = MEMBER_REGISTERED_INTERFACE.parseLog(log)
+			if (parsed) addresses.add(ethers.getAddress(parsed.args.account))
+		}
+	}
+	const downstream: ReferralRegistryDownstreamItem[] = []
+	for (const address of addresses) {
+		const member = await registry.members(address)
+		const memberRole = roleFromValue(Number(member.role))
+		if (memberRole === 'none') continue
+		if (role === 'l0' && memberRole !== 'l1' && memberRole !== 'merchant') continue
+		if (role === 'none' && memberRole !== 'l0') continue
+		const parentMatches = role === 'l0'
+			? ethers.getAddress(member.parentL0) === eoa
+			: ethers.getAddress(member.parentAdmin) === eoa
+		if (!parentMatches) continue
+		downstream.push({
+			address,
+			role: memberRole,
+			rebateBps: member.rebateBps.toString(),
+			ratioBps: member.ratioBps.toString(),
+			active: Boolean(member.active),
+		})
+	}
+	return downstream.sort((a, b) => a.address.localeCompare(b.address))
 }
 
 export function referralRegistryRoleLabel(role: ReferralRegistryRole): string {
@@ -131,6 +206,7 @@ export async function fetchReferralRegistryRole(
 				...quota,
 				claimableConetUsdc: (await registry.claimableConetUsdc(eoa)).toString(),
 				claimPaused,
+				downstream: await readDownstream(registry, eoa, role),
 				fetchedAt: Date.now(),
 			}
 			cache.set(key, { snapshot, fetchedAt: snapshot.fetchedAt })

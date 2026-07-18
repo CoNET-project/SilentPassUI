@@ -9,6 +9,7 @@ export type ReferralRedeemStatus = 'pending' | 'claimed' | 'cancelled'
 
 export type ReferralRedeemCodeRecord = {
 	hash: string
+	secret?: string
 	issuer: string
 	rebateBps: string
 	ratioBps: string
@@ -32,6 +33,9 @@ const ABI = [
 	'function issueL1RedeemCode(bytes32 redeemHash,uint256 l1RebateBps)',
 	'function cancelL0RedeemCode(bytes32 redeemHash)',
 	'function cancelL1RedeemCode(bytes32 redeemHash)',
+	'function claimL0RedeemCode(bytes secret)',
+	'function claimL1RedeemCode(bytes secret)',
+	'function referralClaimNonces(address) view returns (uint256)',
 	'function redeemActionNonces(address) view returns (uint256)',
 	'function l0RedeemCodeCount() view returns (uint256)',
 	'function l1RedeemCodeCount() view returns (uint256)',
@@ -46,6 +50,34 @@ const RPC_TTL_MS = 30_000
 const listCache = new Map<string, { fetchedAt: number; records: ReferralRedeemCodeRecord[] }>()
 const listInFlight = new Map<string, Promise<ReferralRedeemCodeRecord[]>>()
 let writeQueue: Promise<void> = Promise.resolve()
+const LOCAL_SECRET_STORAGE_KEY = 'beamio:referral-redeem-secrets:v1'
+
+function readLocalSecrets(): Record<string, string> {
+	if (typeof window === 'undefined') return {}
+	try {
+		const raw = window.localStorage.getItem(LOCAL_SECRET_STORAGE_KEY)
+		const parsed = raw ? JSON.parse(raw) : {}
+		return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, string> : {}
+	} catch {
+		return {}
+	}
+}
+
+function saveLocalSecret(kind: ReferralRedeemKind, issuer: string, hash: string, secret: string): void {
+	if (typeof window === 'undefined') return
+	try {
+		const key = `${kind}:${ethers.getAddress(issuer).toLowerCase()}:${hash.toLowerCase()}`
+		const next = { ...readLocalSecrets(), [key]: secret }
+		window.localStorage.setItem(LOCAL_SECRET_STORAGE_KEY, JSON.stringify(next))
+	} catch {
+		// Local persistence is best-effort; the code is still shown immediately after creation.
+	}
+}
+
+function localSecretFor(kind: ReferralRedeemKind, issuer: string, hash: string): string | undefined {
+	const key = `${kind}:${ethers.getAddress(issuer).toLowerCase()}:${hash.toLowerCase()}`
+	return readLocalSecrets()[key]
+}
 
 function enqueueWrite<T>(work: () => Promise<T>): Promise<T> {
 	const next = writeQueue.then(work, work)
@@ -95,6 +127,17 @@ export function referralRedeemHash(secret: string): string {
 	return ethers.keccak256(ethers.toUtf8Bytes(normalized))
 }
 
+export function referralRedeemKindFromSecret(secret: string): ReferralRedeemKind {
+	const normalized = secret.trim().toLowerCase()
+	if (normalized.startsWith('beamio-l0-')) return 'l0'
+	if (normalized.startsWith('beamio-l1-')) return 'l1'
+	throw new Error('The code must start with beamio-l0- or beamio-l1-.')
+}
+
+function normalizeReferralRedeemSecret(secret: string): string {
+	return secret.replace(/[\s\u200B-\u200D\uFEFF]+/g, '').trim()
+}
+
 export function referralPercentToBps(value: string): bigint {
 	const normalized = value.trim()
 	if (!/^(?:\d{1,3})(?:\.\d{1,2})?$/.test(normalized)) {
@@ -123,7 +166,10 @@ async function readRecords(kind: ReferralRedeemKind, issuer: string): Promise<Re
 			kind === 'l0'
 				? normalizeRecord(hash, raw.issuerAdmin, raw.rebateBps, 0n, raw.validAfter, raw.validBefore, raw.active, raw.claimed, raw.cancelled)
 				: normalizeRecord(hash, raw.issuerL0, raw.rebateBps, raw.ratioBps, raw.validAfter, raw.validBefore, raw.active, raw.claimed, raw.cancelled)
-		if (record.issuer.toLowerCase() === normalizedIssuer) records.push(record)
+		if (record.issuer.toLowerCase() === normalizedIssuer) {
+			record.secret = localSecretFor(kind, issuer, hash)
+			records.push(record)
+		}
 	}
 	return records.reverse()
 }
@@ -190,6 +236,7 @@ export async function issueReferralRedeemCode(params: {
 		})
 		const json = await response.json() as { success?: boolean; txHash?: string; error?: string }
 		if (!response.ok || !json.success || !json.txHash) throw new Error(json.error ?? 'Referral redeem relay failed.')
+		saveLocalSecret(params.kind, wallet.address, hash, secret)
 		const records = await fetchReferralRedeemCodes(params.kind, wallet.address, { force: true })
 		const record = records.find((item) => item.hash.toLowerCase() === hash.toLowerCase())
 		if (!record) throw new Error('Redeem code was confirmed but could not be read back from CoNET.')
@@ -233,6 +280,60 @@ export async function cancelReferralRedeemCode(params: {
 		})
 		const json = await response.json() as { success?: boolean; txHash?: string; error?: string }
 		if (!response.ok || !json.success || !json.txHash) throw new Error(json.error ?? 'Referral redeem cancellation relay failed.')
+		return json.txHash
+	})
+}
+
+export async function claimReferralRedeemCode(params: {
+	kind?: ReferralRedeemKind
+	secret: string
+	privateKeyArmor: string
+}): Promise<string> {
+	const secret = normalizeReferralRedeemSecret(params.secret)
+	if (!secret) throw new Error('Enter a redeem code.')
+	const kind = params.kind ?? referralRedeemKindFromSecret(secret)
+	return enqueueWrite(async () => {
+		const wallet = new ethers.Wallet(params.privateKeyArmor)
+		const hash = referralRedeemHash(secret)
+		const raw = kind === 'l0' ? await registryRead.l0RedeemCodes(hash) : await registryRead.l1RedeemCodes(hash)
+		if (!raw.active || raw.claimed || raw.cancelled) {
+			throw new Error('This redeem code is not active on CoNET. Copy the complete code from the issuer.')
+		}
+		const nonceResponse = await fetch(`${beamioApi}/api/referralRegistryClaimNonce?account=${encodeURIComponent(wallet.address)}`)
+		const nonceJson = await nonceResponse.json() as { success?: boolean; nonce?: string; error?: string }
+		if (!nonceResponse.ok || !nonceJson.success || nonceJson.nonce == null) throw new Error(nonceJson.error ?? 'Could not read referral claim nonce.')
+		const nonce = BigInt(nonceJson.nonce)
+		const deadline = BigInt(Math.floor(Date.now() / 1000) + 300)
+		const typeName = kind === 'l0' ? 'ClaimL0RedeemCode' : 'ClaimL1RedeemCode'
+		const types = {
+			[typeName]: [
+				{ name: 'claimer', type: 'address' },
+				{ name: 'redeemHash', type: 'bytes32' },
+				{ name: 'nonce', type: 'uint256' },
+				{ name: 'deadline', type: 'uint256' },
+			],
+		}
+		const message = { claimer: wallet.address, redeemHash: hash, nonce, deadline }
+		const signature = await wallet.signTypedData(
+			{ name: 'ReferralRegistryVaultV1', version: '1', chainId: 224422, verifyingContract: CONET_REFERRAL_REGISTRY_VAULT_V1 },
+			types,
+			message,
+		)
+		const response = await fetch(`${beamioApi}/api/referralRegistryClaim`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({
+				kind,
+				account: wallet.address,
+				secret,
+				redeemHash: hash,
+				nonce: nonce.toString(),
+				deadline: deadline.toString(),
+				signature,
+			}),
+		})
+		const json = await response.json() as { success?: boolean; txHash?: string; error?: string }
+		if (!response.ok || !json.success || !json.txHash) throw new Error(json.error ?? 'Referral redeem claim relay failed.')
 		return json.txHash
 	})
 }

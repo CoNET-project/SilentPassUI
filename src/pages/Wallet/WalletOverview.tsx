@@ -5,7 +5,7 @@
 import React, { useCallback, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ethers } from 'ethers'
-import { Gift, Hexagon, ShieldCheck } from 'lucide-react'
+import { Gift, Hexagon, ShieldCheck, Ticket } from 'lucide-react'
 import { ReactComponent as WalletBlueIcon } from '@/components/Footer/assets/wallet-1-icon-blue.svg'
 import { useScrollCapsuleOpacity } from '@/hooks/useScrollCapsuleOpacity'
 import { useBusinessStartKetRedeemAdmin } from '@/hooks/useBusinessStartKetRedeemAdmin'
@@ -15,6 +15,7 @@ import { resolveSigningPrivateKeyArmor } from '@/utils/resolveSigningPrivateKeyA
 import { MyBrandsFullScreenDrawer } from '@/pages/Brands/MyBrandsFullScreenDrawer'
 import { WalletMerchantPassStack } from '@/pages/Wallet/WalletMerchantPassStack'
 import { useWalletMerchantPassesStickyDisplay } from '@/pages/Wallet/useWalletMerchantPassesStickyDisplay'
+import ReferralRedeemClaimSheet from '@/pages/Wallet/ReferralRedeemClaimSheet'
 import { tu } from '@/locale/beamioLocale'
 
 /** 与 Home 顶栏左侧胶囊 `homeAccent` 一致 */
@@ -37,13 +38,15 @@ export default function WalletOverview() {
 	const profile = profiles?.[0]
 	const signingArmor = resolveSigningPrivateKeyArmor(profile)
 	const derivedEoa = signingArmor ? new ethers.Wallet(signingArmor).address : ''
-	const eoa = profile?.keyID?.trim() || derivedEoa
+	const profileKeyId = profile?.keyID?.trim() ?? ''
+	const profileEoa = ethers.isAddress(profileKeyId) ? ethers.getAddress(profileKeyId) : ''
+	const eoa = derivedEoa || profileEoa
 	const aaAccount = profile?.aaAccount?.trim() ?? ''
 	const showAaMultisigIcon = aaAccount.length > 0
 	const eoaLower = eoa.toLowerCase()
 	const { isRedeemAdmin } = useBusinessStartKetRedeemAdmin(eoa)
 	const showRedeemAdminIcon = isRedeemAdmin === true
-	const { isPrivileged: showReferralRegistryIcon } = useReferralRegistryRole(eoa)
+	const { snapshot: referralSnapshot, isPrivileged: showReferralRegistryIcon, refresh: refreshReferralRole } = useReferralRegistryRole(eoa)
 
 	const merchantPassesView = useWalletMerchantPassesStickyDisplay(
 		eoaLower,
@@ -53,6 +56,8 @@ export default function WalletOverview() {
 	)
 
 	const [showMyBrandsDrawer, setShowMyBrandsDrawer] = useState(false)
+	const [showReferralClaimSheet, setShowReferralClaimSheet] = useState(false)
+	const showReferralClaimIcon = referralSnapshot?.isAdmin !== true && referralSnapshot?.role === 'none'
 
 	const openMerchantDetail = useCallback(
 		(cardAddress: string) => {
@@ -70,6 +75,9 @@ export default function WalletOverview() {
 	)
 
 	const capsulePointer = capsuleOpacity < 0.05 ? 'none' : 'auto'
+	const handleReferralClaimed = useCallback(() => {
+		void refreshReferralRole()
+	}, [refreshReferralRole])
 
 	return (
 		<div className="flex h-full min-h-0 flex-1 flex-col bg-[#F2F2F7] text-slate-900 dark:bg-slate-950 dark:text-slate-50">
@@ -134,6 +142,18 @@ export default function WalletOverview() {
 							<ShieldCheck className="h-5 w-5" strokeWidth={2.25} aria-hidden />
 						</button>
 					) : null}
+					{showReferralClaimIcon ? (
+						<button
+							type="button"
+							onClick={() => setShowReferralClaimSheet(true)}
+							className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${capsuleChrome} text-emerald-600 transition-transform active:scale-[0.98] hover:bg-slate-50 dark:text-emerald-300 dark:hover:bg-slate-700/50`}
+							style={{ pointerEvents: capsulePointer }}
+							aria-label="Claim referral redeem code"
+							title="Claim referral redeem code"
+						>
+							<Ticket className="h-5 w-5" strokeWidth={2.25} aria-hidden />
+						</button>
+					) : null}
 				</div>
 			</div>
 
@@ -156,6 +176,15 @@ export default function WalletOverview() {
 				</main>
 			</div>
 			<MyBrandsFullScreenDrawer open={showMyBrandsDrawer} onClose={() => setShowMyBrandsDrawer(false)} />
+			{showReferralClaimSheet && referralSnapshot && signingArmor ? (
+				<ReferralRedeemClaimSheet
+					snapshot={referralSnapshot}
+					privateKeyArmor={signingArmor}
+					setShowFooter={setShowFooter}
+					onClose={() => setShowReferralClaimSheet(false)}
+					onClaimed={handleReferralClaimed}
+				/>
+			) : null}
 		</div>
 	)
 }

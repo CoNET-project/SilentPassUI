@@ -125,6 +125,38 @@ function RoleSection({ snapshot }: { snapshot: ReferralRegistryRoleSnapshot }) {
 	)
 }
 
+function DownstreamSection({ snapshot }: { snapshot: ReferralRegistryRoleSnapshot }) {
+	const canView = snapshot.isAdmin || snapshot.role === 'l0'
+	if (!canView) return null
+	const title = snapshot.isAdmin ? 'Your L0 members' : 'Your downstream members'
+	return (
+		<div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+			<div className="flex items-center justify-between gap-3">
+				<h3 className="font-semibold text-white">{title}</h3>
+				<span className="text-xs text-slate-400">{snapshot.downstream.length} item{snapshot.downstream.length === 1 ? '' : 's'}</span>
+			</div>
+			{snapshot.downstream.length === 0 ? (
+				<p className="mt-3 text-sm text-slate-400">No downstream members found.</p>
+			) : (
+				<div className="mt-3 space-y-2">
+					{snapshot.downstream.map((item) => (
+						<div key={`${item.role}:${item.address}`} className="rounded-xl border border-white/10 bg-black/10 p-3">
+							<div className="flex items-center justify-between gap-3">
+								<span className="text-xs font-semibold uppercase tracking-[0.12em] text-indigo-200">{referralRegistryRoleLabel(item.role)}</span>
+								<span className={item.active ? 'text-xs text-emerald-300' : 'text-xs text-slate-500'}>{item.active ? 'Active' : 'Inactive'}</span>
+							</div>
+							<div className="mt-2"><AddressCapsule address={item.address} /></div>
+							<p className="mt-2 text-xs text-slate-300">
+								Rebate {Number(item.rebateBps) / 100}%{item.role === 'l1' ? ` · Ratio ${Number(item.ratioBps) / 100}%` : ''}
+							</p>
+						</div>
+					))}
+				</div>
+			)}
+		</div>
+	)
+}
+
 function ReferralRedeemManagementPanel({
 	snapshot,
 	kind,
@@ -144,6 +176,7 @@ function ReferralRedeemManagementPanel({
 	const [error, setError] = useState('')
 	const [newSecret, setNewSecret] = useState('')
 	const [copiedSecret, setCopiedSecret] = useState(false)
+	const [copiedRecordHash, setCopiedRecordHash] = useState('')
 
 	const loadRecords = useCallback(async (force = false) => {
 		setLoadingRecords(true)
@@ -204,11 +237,22 @@ function ReferralRedeemManagementPanel({
 		}
 	}, [newSecret])
 
+	const copyRecordSecret = useCallback(async (record: ReferralRedeemCodeRecord) => {
+		if (!record.secret) return
+		try {
+			await navigator.clipboard.writeText(record.secret)
+			setCopiedRecordHash(record.hash)
+			window.setTimeout(() => setCopiedRecordHash(''), 2000)
+		} catch {
+			setError('Could not copy the redeem code.')
+		}
+	}, [])
+
 	const isL0 = kind === 'l0'
 	const title = isL0 ? 'L0 redeem codes' : 'L1 redeem codes'
 	const description = isL0
-		? 'Create one-minute codes that register a new L0 under this Admin.'
-		: 'Create one-minute codes that register a new L1 under this L0.'
+		? 'Create permanent codes that register a new L0 under this Admin.'
+		: 'Create permanent codes that register a new L1 under this L0.'
 	let ratioPreview = '0.00%'
 	if (!isL0 && snapshot.rebateBps && Number(snapshot.rebateBps) > 0) {
 		try {
@@ -291,7 +335,7 @@ function ReferralRedeemManagementPanel({
 									<Gift className="mt-0.5 h-5 w-5 shrink-0 text-amber-200" aria-hidden />
 									<div>
 										<h3 className="font-semibold text-white">Code rules</h3>
-										<p className="mt-2 text-sm leading-6 text-slate-300">Each code is valid for 60 seconds after the creation transaction is confirmed. Pending codes can be cancelled by the issuer.</p>
+										<p className="mt-2 text-sm leading-6 text-slate-300">Each code is permanent after the creation transaction is confirmed. Pending codes can be cancelled by the issuer.</p>
 										<p className="mt-3 text-xs leading-5 text-slate-400">Keep the secret code private and deliver it directly to the intended wallet.</p>
 									</div>
 								</div>
@@ -317,11 +361,25 @@ function ReferralRedeemManagementPanel({
 													</button>
 												) : null}
 											</div>
-											<p className="mt-2 break-all font-mono text-[10px] text-slate-500">{record.hash}</p>
+											<div className="mt-2 flex items-start gap-2">
+												<code className="min-w-0 flex-1 break-all rounded-lg bg-black/20 px-2 py-1.5 font-mono text-xs text-white">
+													{record.secret ?? 'Redeem code unavailable on this device'}
+												</code>
+												{record.secret ? (
+													<button
+														type="button"
+														onClick={() => void copyRecordSecret(record)}
+														className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-300/15 text-emerald-200"
+														aria-label="Copy redeem code"
+													>
+														{copiedRecordHash === record.hash ? <Check className="h-4 w-4" aria-hidden /> : <Copy className="h-4 w-4" aria-hidden />}
+													</button>
+												) : null}
+											</div>
 											<p className="mt-2 text-xs text-slate-300">
 												Rebate {referralBpsToPercent(record.rebateBps)}%{kind === 'l1' ? ` · Ratio ${referralBpsToPercent(record.ratioBps)}%` : ''}
 											</p>
-											<p className="mt-1 text-[10px] text-slate-500">Expires {new Date(record.validBefore * 1000).toLocaleString()}</p>
+											<p className="mt-1 text-[10px] text-slate-500">{record.validBefore === 0 ? 'Permanent code' : `Expires ${new Date(record.validBefore * 1000).toLocaleString()}`}</p>
 										</div>
 									))}
 								</div>
@@ -438,6 +496,7 @@ export default function ReferralRegistryDashboardPage() {
 									</div>
 								) : null}
 								<RoleSection snapshot={snapshot} />
+								<DownstreamSection snapshot={snapshot} />
 							</div>
 						) : (
 							<div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 text-sm text-slate-300">This wallet is not registered as a contract Admin, L0, or L1.</div>

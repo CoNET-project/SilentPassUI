@@ -3,13 +3,21 @@ import { useNavigate } from 'react-router-dom'
 import { ethers } from 'ethers'
 import { AlertTriangle, Check, Clipboard, Copy, Gift, Loader2, RefreshCw, ShieldCheck, XCircle } from 'lucide-react'
 import { useDaemonContext } from '@/providers/DaemonProvider'
+import { useBeamioTagDatabase } from '@/providers/BeamioTagDatabaseProvider'
 import { BeamioCircularBackButton } from '@/components/BeamioCircularBackButton'
 import { useReferralRegistryRole } from '@/hooks/useReferralRegistryRole'
 import { resolveSigningPrivateKeyArmor } from '@/utils/resolveSigningPrivateKeyArmor'
 import {
 	referralRegistryRoleLabel,
+	type ReferralRegistryDownstreamItem,
 	type ReferralRegistryRoleSnapshot,
 } from '@/services/referralRegistryRole'
+import {
+	assignReferralMerchantToL0,
+	fetchReferralMerchantCandidates,
+	setReferralL0RebateRate,
+	type ReferralMerchantCandidate,
+} from '@/services/referralRegistryAdminManagement'
 import {
 	cancelReferralRedeemCode,
 	fetchReferralRedeemCodes,
@@ -79,6 +87,186 @@ function MetricCard({ label, value, detail }: { label: string; value: string; de
 	)
 }
 
+function BeamioTagCapsule({ address }: { address: string }) {
+	const { resolveTagPlain, avatarImgUrl } = useBeamioTagDatabase()
+	const tag = resolveTagPlain(address)
+	const displayTag = tag || 'Beamio'
+	return (
+		<div
+			className="inline-flex max-w-full items-center gap-2 rounded-full border border-indigo-200/20 bg-indigo-300/10 px-2.5 py-1.5 text-sm font-medium text-indigo-100"
+			aria-label={`Beamio tag @${displayTag}`}
+		>
+			<img
+				src={avatarImgUrl(tag, address)}
+				alt=""
+				className="h-6 w-6 shrink-0 rounded-full object-cover"
+				aria-hidden
+			/>
+			<span className="truncate">@{displayTag}</span>
+		</div>
+	)
+}
+
+function AdminL0ManagementPanel({
+	adminPrivateKeyArmor,
+	l0,
+	item,
+	onClose,
+	onUpdated,
+}: {
+	adminPrivateKeyArmor: string
+	l0: string
+	item: ReferralRegistryDownstreamItem
+	onClose: () => void
+	onUpdated: () => Promise<void>
+}) {
+	const [rebateInput, setRebateInput] = useState((Number(item.rebateBps) / 100).toString())
+	const [candidates, setCandidates] = useState<ReferralMerchantCandidate[]>([])
+	const [selectedCandidate, setSelectedCandidate] = useState('')
+	const [loadingCandidates, setLoadingCandidates] = useState(true)
+	const [savingRate, setSavingRate] = useState(false)
+	const [assigning, setAssigning] = useState(false)
+	const [error, setError] = useState('')
+	const [success, setSuccess] = useState('')
+
+	useEffect(() => {
+		let cancelled = false
+		void fetchReferralMerchantCandidates(new ethers.Wallet(adminPrivateKeyArmor).address)
+			.then((next) => {
+				if (!cancelled) setCandidates(next)
+			})
+			.catch((cause) => {
+				if (!cancelled) setError(cause instanceof Error ? cause.message : 'Could not load merchant candidates.')
+			})
+			.finally(() => {
+				if (!cancelled) setLoadingCandidates(false)
+			})
+		return () => {
+			cancelled = true
+		}
+	}, [adminPrivateKeyArmor])
+
+	const handleSaveRate = useCallback(async () => {
+		if (savingRate) return
+		setSavingRate(true)
+		setError('')
+		setSuccess('')
+		try {
+			const numeric = Number(rebateInput)
+			if (!Number.isFinite(numeric) || numeric < 0 || numeric > 100) throw new Error('Rebate rate must be between 0% and 100%.')
+			const rebateBps = BigInt(Math.round(numeric * 100))
+			await setReferralL0RebateRate({ adminPrivateKeyArmor, l0, rebateBps })
+			await onUpdated()
+			setSuccess('L0 rebate rate updated.')
+		} catch (cause) {
+			setError(cause instanceof Error ? cause.message : 'Could not update the L0 rebate rate.')
+		} finally {
+			setSavingRate(false)
+		}
+	}, [adminPrivateKeyArmor, l0, onUpdated, rebateInput, savingRate])
+
+	const handleAssign = useCallback(async () => {
+		if (assigning || !selectedCandidate) return
+		const candidate = candidates.find((item) => item.merchant.toLowerCase() === selectedCandidate.toLowerCase())
+		if (!candidate) return
+		setAssigning(true)
+		setError('')
+		setSuccess('')
+		try {
+			await assignReferralMerchantToL0({
+				adminPrivateKeyArmor,
+				l0,
+				merchant: candidate.merchant,
+				card: candidate.cardAddress,
+			})
+			await onUpdated()
+			setCandidates((previous) => previous.filter((item) => item.merchant.toLowerCase() !== candidate.merchant.toLowerCase()))
+			setSelectedCandidate('')
+			setSuccess('Merchant assigned to this L0.')
+		} catch (cause) {
+			setError(cause instanceof Error ? cause.message : 'Could not assign the merchant.')
+		} finally {
+			setAssigning(false)
+		}
+	}, [adminPrivateKeyArmor, assigning, candidates, l0, onUpdated, selectedCandidate])
+
+	return (
+		<div className="fixed inset-0 z-[110] flex min-h-0 flex-col overflow-hidden bg-[#071126] text-slate-50 animate-in slide-in-from-right duration-300" role="dialog" aria-modal="true" aria-label="Manage L0">
+			<div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 pb-10">
+				<div className="mx-auto w-full max-w-2xl" style={{ paddingTop: 'max(1rem, env(safe-area-inset-top, 0px))' }}>
+					<div className="flex items-center justify-between">
+						<BeamioCircularBackButton onClick={onClose} />
+						<span className="text-xs font-semibold uppercase tracking-[0.14em] text-indigo-200">L0 management</span>
+					</div>
+					<header className="pb-6 pt-8">
+						<p className="text-xs font-semibold uppercase tracking-[0.18em] text-indigo-200">Manage member</p>
+						<h2 className="mt-2 text-2xl font-semibold text-white"><BeamioTagCapsule address={l0} /></h2>
+					</header>
+
+					<div className="space-y-4">
+						<section className="rounded-2xl border border-white/10 bg-white/[0.05] p-5">
+							<h3 className="font-semibold text-white">L0 rebate rate</h3>
+							<div className="mt-3 flex items-center gap-2">
+								<input
+									type="text"
+									inputMode="decimal"
+									value={rebateInput}
+									onChange={(event) => setRebateInput(event.target.value)}
+									className="min-w-0 flex-1 rounded-xl border border-white/15 bg-black/20 px-3 py-2.5 text-white outline-none focus:border-indigo-300/70"
+									aria-label="L0 rebate rate percentage"
+								/>
+								<span className="text-slate-400">%</span>
+							</div>
+							<button
+								type="button"
+								onClick={() => void handleSaveRate()}
+								disabled={savingRate}
+								aria-busy={savingRate}
+								className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-500 px-4 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+							>
+								{savingRate ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
+								{savingRate ? 'Saving…' : 'Save rebate rate'}
+							</button>
+						</section>
+
+						<section className="rounded-2xl border border-white/10 bg-white/[0.05] p-5">
+							<h3 className="font-semibold text-white">Assign unregistered merchant</h3>
+							<p className="mt-2 text-sm leading-6 text-slate-400">Select a merchant card owner with no current referral relationship.</p>
+							<select
+								value={selectedCandidate}
+								onChange={(event) => setSelectedCandidate(event.target.value)}
+								disabled={loadingCandidates || assigning}
+								className="mt-4 w-full rounded-xl border border-white/15 bg-[#0b1833] px-3 py-3 text-sm text-white outline-none"
+								aria-label="Select merchant to assign"
+							>
+								<option value="">{loadingCandidates ? 'Loading merchants…' : 'Select a merchant'}</option>
+								{candidates.map((candidate) => (
+									<option key={`${candidate.merchant}:${candidate.cardAddress}`} value={candidate.merchant}>
+										{candidate.merchant} · {candidate.cardAddress}
+									</option>
+								))}
+							</select>
+							<button
+								type="button"
+								onClick={() => void handleAssign()}
+								disabled={assigning || !selectedCandidate}
+								aria-busy={assigning}
+								className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-amber-500 px-4 py-3 text-sm font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
+							>
+								{assigning ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
+								{assigning ? 'Assigning…' : 'Assign merchant to this L0'}
+							</button>
+						</section>
+
+						{error ? <div className="rounded-xl border border-rose-300/20 bg-rose-400/10 p-3 text-sm text-rose-100">{error}</div> : null}
+						{success ? <div className="rounded-xl border border-emerald-300/20 bg-emerald-400/10 p-3 text-sm text-emerald-100">{success}</div> : null}
+					</div>
+				</div>
+			</div>
+		</div>
+	)
+}
+
 function RoleSection({ snapshot }: { snapshot: ReferralRegistryRoleSnapshot }) {
 	const role = referralRegistryRoleLabel(snapshot.role)
 	return (
@@ -125,27 +313,57 @@ function RoleSection({ snapshot }: { snapshot: ReferralRegistryRoleSnapshot }) {
 	)
 }
 
-function DownstreamSection({ snapshot }: { snapshot: ReferralRegistryRoleSnapshot }) {
+function DownstreamSection({
+	snapshot,
+	onManageL0,
+}: {
+	snapshot: ReferralRegistryRoleSnapshot
+	onManageL0?: (item: ReferralRegistryDownstreamItem) => void
+}) {
+	const { ensureProfilesForAddresses } = useBeamioTagDatabase()
 	const canView = snapshot.isAdmin || snapshot.role === 'l0'
+	const downstream = snapshot.isAdmin
+		? snapshot.downstream
+		: snapshot.downstream.filter((item) => item.role === 'l1')
+	const title = snapshot.isAdmin ? 'Your L0 members' : 'Your L1 members'
+	const downstreamAddresses = downstream.map((item) => item.address)
+
+	useEffect(() => {
+		if (downstreamAddresses.length === 0) return
+		void ensureProfilesForAddresses(downstreamAddresses)
+	}, [ensureProfilesForAddresses, downstreamAddresses.join('|')])
+
 	if (!canView) return null
-	const title = snapshot.isAdmin ? 'Your L0 members' : 'Your downstream members'
+
 	return (
 		<div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
 			<div className="flex items-center justify-between gap-3">
 				<h3 className="font-semibold text-white">{title}</h3>
-				<span className="text-xs text-slate-400">{snapshot.downstream.length} item{snapshot.downstream.length === 1 ? '' : 's'}</span>
+				<span className="text-xs text-slate-400">{downstream.length} item{downstream.length === 1 ? '' : 's'}</span>
 			</div>
-			{snapshot.downstream.length === 0 ? (
+			{downstream.length === 0 ? (
 				<p className="mt-3 text-sm text-slate-400">No downstream members found.</p>
 			) : (
 				<div className="mt-3 space-y-2">
-					{snapshot.downstream.map((item) => (
+					{downstream.map((item) => (
 						<div key={`${item.role}:${item.address}`} className="rounded-xl border border-white/10 bg-black/10 p-3">
 							<div className="flex items-center justify-between gap-3">
 								<span className="text-xs font-semibold uppercase tracking-[0.12em] text-indigo-200">{referralRegistryRoleLabel(item.role)}</span>
-								<span className={item.active ? 'text-xs text-emerald-300' : 'text-xs text-slate-500'}>{item.active ? 'Active' : 'Inactive'}</span>
+										<div className="flex items-center gap-2">
+											<span className={item.active ? 'text-xs text-emerald-300' : 'text-xs text-slate-500'}>{item.active ? 'Active' : 'Inactive'}</span>
+											{snapshot.isAdmin && item.role === 'l0' && onManageL0 ? (
+												<button
+													type="button"
+													onClick={() => onManageL0(item)}
+													className="rounded-full border border-indigo-200/20 bg-indigo-300/10 px-2.5 py-1 text-xs font-medium text-indigo-100"
+													aria-label={`Manage L0 ${item.address}`}
+												>
+													Edit
+												</button>
+											) : null}
+										</div>
 							</div>
-							<div className="mt-2"><AddressCapsule address={item.address} /></div>
+							<div className="mt-2"><BeamioTagCapsule address={item.address} /></div>
 							<p className="mt-2 text-xs text-slate-300">
 								Rebate {Number(item.rebateBps) / 100}%{item.role === 'l1' ? ` · Ratio ${Number(item.ratioBps) / 100}%` : ''}
 							</p>
@@ -408,6 +626,7 @@ export default function ReferralRegistryDashboardPage() {
 	const { snapshot, loading, error, isPrivileged, refresh } = useReferralRegistryRole(eoa)
 	const [refreshStatus, setRefreshStatus] = useState<RefreshStatus>('idle')
 	const [redeemPanelKind, setRedeemPanelKind] = useState<ReferralRedeemKind | null>(null)
+	const [managedL0, setManagedL0] = useState<ReferralRegistryDownstreamItem | null>(null)
 
 	useEffect(() => {
 		setShowFooter(false)
@@ -426,6 +645,10 @@ export default function ReferralRegistryDashboardPage() {
 			window.setTimeout(() => setRefreshStatus('idle'), 3000)
 		}
 	}, [refresh, refreshStatus])
+
+	const handleManagementUpdated = useCallback(async () => {
+		await refresh()
+	}, [refresh])
 
 	return (
 		<div className="fixed inset-0 z-[90] flex min-h-0 flex-col overflow-hidden bg-[#050b1d] text-slate-50 animate-in slide-in-from-right duration-300">
@@ -496,7 +719,7 @@ export default function ReferralRegistryDashboardPage() {
 									</div>
 								) : null}
 								<RoleSection snapshot={snapshot} />
-								<DownstreamSection snapshot={snapshot} />
+								<DownstreamSection snapshot={snapshot} onManageL0={(item) => setManagedL0(item)} />
 							</div>
 						) : (
 							<div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 text-sm text-slate-300">This wallet is not registered as a contract Admin, L0, or L1.</div>
@@ -510,6 +733,15 @@ export default function ReferralRegistryDashboardPage() {
 					kind={redeemPanelKind}
 					privateKeyArmor={signingArmor}
 					onClose={() => setRedeemPanelKind(null)}
+				/>
+			) : null}
+			{managedL0 && snapshot?.isAdmin && signingArmor ? (
+				<AdminL0ManagementPanel
+					adminPrivateKeyArmor={signingArmor}
+					l0={managedL0.address}
+					item={managedL0}
+					onClose={() => setManagedL0(null)}
+					onUpdated={handleManagementUpdated}
 				/>
 			) : null}
 		</div>

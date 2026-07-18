@@ -2,6 +2,8 @@ import { ethers } from 'ethers'
 import { CONET_REFERRAL_REGISTRY_VAULT_V1 } from '@/config/chainAddresses'
 import { beamioApi, conetDepinProvider } from '@/utils/constants'
 
+const uuid62 = require('uuid62') as { v4: () => string }
+
 export type ReferralRedeemKind = 'l0' | 'l1'
 export type ReferralRedeemStatus = 'pending' | 'claimed' | 'cancelled'
 
@@ -84,7 +86,7 @@ function normalizeRecord(
 
 export function generateReferralRedeemSecret(kind: ReferralRedeemKind): string {
 	const prefix = kind === 'l0' ? 'beamio-l0' : 'beamio-l1'
-	return `${prefix}-${ethers.hexlify(ethers.randomBytes(24)).slice(2)}`
+	return `${prefix}-${uuid62.v4()}`
 }
 
 export function referralRedeemHash(secret: string): string {

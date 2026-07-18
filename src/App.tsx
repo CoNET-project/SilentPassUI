@@ -50,6 +50,7 @@ import WalletOverview from '@/pages/Wallet/WalletOverview'
 import BusinessStartKetRedeemAdminPage from '@/pages/Wallet/BusinessStartKetRedeemAdminPage'
 import AaMultisigPage from '@/pages/Wallet/AaMultisigPage'
 import ValidatorNodeProfilePage from '@/pages/Wallet/ValidatorNodeProfilePage'
+import ReferralRegistryDashboardPage from '@/pages/Wallet/ReferralRegistryDashboardPage'
 import MyBrandsPage from '@/pages/Brands/MyBrandsPage'
 import BountyBoard from '@/pages/BountyBoard'
 import CoNetMiningDetailPage from '@/pages/BountyBoard/CoNetMiningDetailPage'
@@ -1495,6 +1496,7 @@ function AppShell() {
 					<Route path="/wallet/business-start-ket-redeem" element={<BusinessStartKetRedeemAdminPage />} />
 					<Route path="/wallet/aa-multisig" element={<AaMultisigPage />} />
 					<Route path="/wallet/conet-nodes" element={<ValidatorNodeProfilePage />} />
+					<Route path="/wallet/referral-registry" element={<ReferralRegistryDashboardPage />} />
 					<Route path="/History" element={<History />} />
 					<Route path="/Pay" element={<Pay />} />
 					<Route path="/BountyBoard" element={<BountyBoard />} />

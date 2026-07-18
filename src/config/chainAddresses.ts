@@ -22,6 +22,8 @@ export const CONET_MAINNET_CHAIN_ID = 224422
 export const CONET_RPC_URL = 'https://publicrpc.conet.network'
 export const CONET_BUINT = '0x54ac4672cE75EC5ACebaeF1a7aFC6F49E77Ae9Ae'
 export const BEAMIO_INDEXER_DIAMOND = '0x6113fE738489c0aB64B4606Ce333aD29b44ED0C4'
+/** CoNET ReferralRegistryVaultV1 ERC1967 proxy (Admin → L0 → L1/Merchant). */
+export const CONET_REFERRAL_REGISTRY_VAULT_V1 = '0xD6252Cbf266B80231397Ac2a4f25ed2d9b01DEE6'
 /** CoNET BUnitAirdrop（claim / getBUnitBalance）；与 deployments/conet-addresses.json 同步 */
 export const CONET_BUNIT_AIRDROP_ADDRESS = '0xa01DFfD68b355540B840310a9f0C1E7a779C3Ce8'
 /** BuintRedeemAirdrop（CoNET） */

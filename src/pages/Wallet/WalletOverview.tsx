@@ -5,11 +5,13 @@
 import React, { useCallback, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ethers } from 'ethers'
-import { Gift, Hexagon } from 'lucide-react'
+import { Gift, Hexagon, ShieldCheck } from 'lucide-react'
 import { ReactComponent as WalletBlueIcon } from '@/components/Footer/assets/wallet-1-icon-blue.svg'
 import { useScrollCapsuleOpacity } from '@/hooks/useScrollCapsuleOpacity'
 import { useBusinessStartKetRedeemAdmin } from '@/hooks/useBusinessStartKetRedeemAdmin'
+import { useReferralRegistryRole } from '@/hooks/useReferralRegistryRole'
 import { useDaemonContext } from '@/providers/DaemonProvider'
+import { resolveSigningPrivateKeyArmor } from '@/utils/resolveSigningPrivateKeyArmor'
 import { MyBrandsFullScreenDrawer } from '@/pages/Brands/MyBrandsFullScreenDrawer'
 import { WalletMerchantPassStack } from '@/pages/Wallet/WalletMerchantPassStack'
 import { useWalletMerchantPassesStickyDisplay } from '@/pages/Wallet/useWalletMerchantPassesStickyDisplay'
@@ -32,12 +34,16 @@ export default function WalletOverview() {
 		setShowFooter,
 	} = useDaemonContext()
 
-	const eoa = profiles?.[0]?.keyID?.trim() ?? ''
-	const aaAccount = profiles?.[0]?.aaAccount?.trim() ?? ''
+	const profile = profiles?.[0]
+	const signingArmor = resolveSigningPrivateKeyArmor(profile)
+	const derivedEoa = signingArmor ? new ethers.Wallet(signingArmor).address : ''
+	const eoa = profile?.keyID?.trim() || derivedEoa
+	const aaAccount = profile?.aaAccount?.trim() ?? ''
 	const showAaMultisigIcon = aaAccount.length > 0
 	const eoaLower = eoa.toLowerCase()
 	const { isRedeemAdmin } = useBusinessStartKetRedeemAdmin(eoa)
 	const showRedeemAdminIcon = isRedeemAdmin === true
+	const { isPrivileged: showReferralRegistryIcon } = useReferralRegistryRole(eoa)
 
 	const merchantPassesView = useWalletMerchantPassesStickyDisplay(
 		eoaLower,
@@ -114,6 +120,18 @@ export default function WalletOverview() {
 							title="Redeem admin"
 						>
 							<Gift className="h-5 w-5" strokeWidth={2.25} aria-hidden />
+						</button>
+					) : null}
+					{showReferralRegistryIcon ? (
+						<button
+							type="button"
+							onClick={() => navigate('/wallet/referral-registry')}
+							className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${capsuleChrome} text-indigo-600 transition-transform active:scale-[0.98] hover:bg-slate-50 dark:text-indigo-300 dark:hover:bg-slate-700/50`}
+							style={{ pointerEvents: capsulePointer }}
+							aria-label="Referral management"
+							title="Referral management"
+						>
+							<ShieldCheck className="h-5 w-5" strokeWidth={2.25} aria-hidden />
 						</button>
 					) : null}
 				</div>

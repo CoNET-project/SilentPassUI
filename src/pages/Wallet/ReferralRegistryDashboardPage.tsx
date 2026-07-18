@@ -232,20 +232,30 @@ function AdminL0ManagementPanel({
 						<section className="rounded-2xl border border-white/10 bg-white/[0.05] p-5">
 							<h3 className="font-semibold text-white">Assign unregistered merchant</h3>
 							<p className="mt-2 text-sm leading-6 text-slate-400">Select a merchant card owner with no current referral relationship.</p>
-							<select
-								value={selectedCandidate}
-								onChange={(event) => setSelectedCandidate(event.target.value)}
-								disabled={loadingCandidates || assigning}
-								className="mt-4 w-full rounded-xl border border-white/15 bg-[#0b1833] px-3 py-3 text-sm text-white outline-none"
-								aria-label="Select merchant to assign"
-							>
-								<option value="">{loadingCandidates ? 'Loading merchants…' : 'Select a merchant'}</option>
-								{candidates.map((candidate) => (
-									<option key={`${candidate.merchant}:${candidate.cardAddress}`} value={candidate.merchant}>
-										{candidate.merchant} · {candidate.cardAddress}
-									</option>
-								))}
-							</select>
+							<div className="mt-4 space-y-2">
+								{loadingCandidates ? (
+									<div className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/10 p-3 text-sm text-slate-400">
+										<Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Loading merchants…
+									</div>
+								) : candidates.length === 0 ? (
+									<div className="rounded-xl border border-white/10 bg-black/10 p-3 text-sm text-slate-400">No unregistered merchant cards found.</div>
+								) : candidates.map((candidate) => {
+									const selected = selectedCandidate.toLowerCase() === candidate.merchant.toLowerCase()
+									return (
+										<button
+											key={`${candidate.merchant}:${candidate.cardAddress}`}
+											type="button"
+											onClick={() => setSelectedCandidate(candidate.merchant)}
+											disabled={assigning}
+											className={`block w-full rounded-xl border p-3 text-left transition ${selected ? 'border-amber-300/60 bg-amber-300/10' : 'border-white/10 bg-black/10 hover:border-white/25'}`}
+											aria-pressed={selected}
+										>
+											<BeamioTagCapsule address={candidate.merchant} />
+											<div className="mt-2"><AddressCapsule address={candidate.cardAddress} /></div>
+										</button>
+									)
+								})}
+							</div>
 							<button
 								type="button"
 								onClick={() => void handleAssign()}

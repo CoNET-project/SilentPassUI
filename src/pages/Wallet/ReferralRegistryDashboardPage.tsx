@@ -191,9 +191,11 @@ function AdminL0ManagementPanel({
 	}, [adminPrivateKeyArmor, assigning, candidates, l0, onUpdated, selectedCandidate])
 
 	return (
-		<div className="fixed inset-0 z-[110] flex min-h-0 flex-col overflow-hidden bg-[#071126] text-slate-50 animate-in slide-in-from-right duration-300" role="dialog" aria-modal="true" aria-label="Manage L0">
+		<>
+			<div className="fixed inset-0 z-[109] bg-slate-950/55 backdrop-blur-[2px]" aria-hidden />
+			<aside className="fixed inset-y-0 right-0 z-[110] flex w-full max-w-xl min-h-0 flex-col overflow-hidden border-l border-white/10 bg-[#071126] text-slate-50 shadow-[-16px_0_48px_rgba(2,6,23,0.35)] animate-in slide-in-from-right duration-300" role="dialog" aria-modal="true" aria-label={`Manage L0 ${l0}`}>
 			<div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 pb-10">
-				<div className="mx-auto w-full max-w-2xl" style={{ paddingTop: 'max(1rem, env(safe-area-inset-top, 0px))' }}>
+				<div className="mx-auto w-full max-w-lg" style={{ paddingTop: 'max(1rem, env(safe-area-inset-top, 0px))' }}>
 					<div className="flex items-center justify-between">
 						<BeamioCircularBackButton onClick={onClose} />
 						<span className="text-xs font-semibold uppercase tracking-[0.14em] text-indigo-200">L0 management</span>
@@ -273,7 +275,8 @@ function AdminL0ManagementPanel({
 					</div>
 				</div>
 			</div>
-		</div>
+			</aside>
+		</>
 	)
 }
 

@@ -27,6 +27,7 @@ import {
 	type ReferralRedeemCodeRecord,
 	type ReferralRedeemKind,
 } from '@/services/referralRegistryRedeem'
+import { merchantProgramCardDisplayNameFromMetadataRoot } from '@/services/BeamioCard'
 
 type RefreshStatus = 'idle' | 'loading' | 'success' | 'error'
 
@@ -243,6 +244,7 @@ function AdminL0ManagementPanel({
 									<div className="rounded-xl border border-white/10 bg-black/10 p-3 text-sm text-slate-400">No unregistered merchant cards found.</div>
 								) : candidates.map((candidate) => {
 									const selected = selectedCandidate.toLowerCase() === candidate.merchant.toLowerCase()
+									const businessName = merchantProgramCardDisplayNameFromMetadataRoot(candidate.metadata) || 'Unnamed business'
 									return (
 										<button
 											key={`${candidate.merchant}:${candidate.cardAddress}`}
@@ -252,6 +254,7 @@ function AdminL0ManagementPanel({
 											className={`block w-full rounded-xl border p-3 text-left transition ${selected ? 'border-amber-300/60 bg-amber-300/10' : 'border-white/10 bg-black/10 hover:border-white/25'}`}
 											aria-pressed={selected}
 										>
+											<div className="mb-2 truncate text-sm font-semibold text-white">{businessName}</div>
 											<BeamioTagCapsule address={candidate.merchant} />
 											<div className="mt-2"><AddressCapsule address={candidate.cardAddress} /></div>
 										</button>

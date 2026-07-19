@@ -36,28 +36,6 @@ import {
 
 type RefreshStatus = 'idle' | 'loading' | 'success' | 'error'
 
-function formatUsdc6(value: string): string {
-	try {
-		return (Number(value) / 1_000_000).toLocaleString(undefined, {
-			minimumFractionDigits: 2,
-			maximumFractionDigits: 2,
-		})
-	} catch {
-		return '0.00'
-	}
-}
-
-function formatUnits6(value: string): string {
-	try {
-		return (Number(value) / 1_000_000).toLocaleString(undefined, {
-			minimumFractionDigits: 2,
-			maximumFractionDigits: 2,
-		})
-	} catch {
-		return '0.00'
-	}
-}
-
 function AddressCapsule({ address }: { address: string }) {
 	const [copied, setCopied] = useState(false)
 	const short = `${address.slice(0, 6)}…${address.slice(-4)}`
@@ -80,16 +58,6 @@ function AddressCapsule({ address }: { address: string }) {
 			<span className="truncate">{short}</span>
 			{copied ? <Check className="h-3.5 w-3.5 shrink-0 text-emerald-400" aria-hidden /> : <Clipboard className="h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden />}
 		</button>
-	)
-}
-
-function MetricCard({ label, value, detail }: { label: string; value: string; detail?: string }) {
-	return (
-		<div className="rounded-2xl border border-white/10 bg-white/[0.06] p-4">
-			<p className="text-xs font-medium uppercase tracking-[0.12em] text-slate-400">{label}</p>
-			<p className="mt-2 text-2xl font-semibold text-white">{value}</p>
-			{detail ? <p className="mt-1 text-xs text-slate-400">{detail}</p> : null}
-		</div>
 	)
 }
 
@@ -314,52 +282,6 @@ function AdminL0ManagementPanel({
 				</div>
 			</div>
 			</aside>
-		</>
-	)
-}
-
-function RoleSection({ snapshot }: { snapshot: ReferralRegistryRoleSnapshot }) {
-	const role = referralRegistryRoleLabel(snapshot.role)
-	return (
-		<>
-			<div className="rounded-3xl border border-indigo-300/20 bg-gradient-to-br from-indigo-500/20 to-purple-500/10 p-5 shadow-[0_12px_40px_rgba(45,55,120,0.18)]">
-				<div className="flex items-start justify-between gap-4">
-					<div>
-						<p className="text-xs font-semibold uppercase tracking-[0.16em] text-indigo-200">Referral role</p>
-						<h2 className="mt-2 text-2xl font-semibold text-white">{role}</h2>
-					</div>
-					<ShieldCheck className="h-7 w-7 text-indigo-200" aria-hidden />
-				</div>
-				<div className="mt-4">
-					<p className="text-xs text-slate-400">Connected EOA</p>
-					<div className="mt-2"><AddressCapsule address={snapshot.eoa} /></div>
-				</div>
-				{snapshot.role === 'l1' ? (
-					<div className="mt-4">
-						<p className="text-xs text-slate-400">Parent L0</p>
-						<div className="mt-2"><AddressCapsule address={snapshot.parentL0} /></div>
-					</div>
-				) : null}
-			</div>
-
-			<div className="grid grid-cols-2 gap-3">
-				<MetricCard label="Rebate rate" value={`${Number(snapshot.rebateBps) / 100}%`} />
-				<MetricCard label="L1 ratio" value={`${Number(snapshot.ratioBps) / 100}%`} detail={snapshot.role === 'l0' ? 'Applied to L1 rewards' : undefined} />
-				<MetricCard label="Claimable CONET-USDC" value={`$${formatUsdc6(snapshot.claimableConetUsdc)}`} />
-				<MetricCard label="Claim status" value={snapshot.claimPaused ? 'Paused' : 'Active'} />
-			</div>
-
-			{snapshot.role === 'l0' ? (
-				<div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-					<h3 className="font-semibold text-white">Merchant code quota</h3>
-					<div className="mt-3 grid grid-cols-2 gap-3 text-sm">
-						<div><p className="text-slate-400">Starter Kets remaining</p><p className="mt-1 text-white">{snapshot.starterKetRemaining}</p></div>
-						<div><p className="text-slate-400">Paid B-Units remaining</p><p className="mt-1 text-white">{formatUnits6(snapshot.paidBunitRemaining)}</p></div>
-						<div><p className="text-slate-400">Codes issued</p><p className="mt-1 text-white">{snapshot.issuedCodeCount}</p></div>
-						<div><p className="text-slate-400">Codes claimed</p><p className="mt-1 text-white">{snapshot.claimedCodeCount}</p></div>
-					</div>
-				</div>
-			) : null}
 		</>
 	)
 }
@@ -792,7 +714,6 @@ export default function ReferralRegistryDashboardPage() {
 										</div>
 									</div>
 								) : null}
-								<RoleSection snapshot={snapshot} />
 								<DownstreamSection snapshot={snapshot} onManageL0={(item) => setManagedL0(item)} />
 							</div>
 						) : (

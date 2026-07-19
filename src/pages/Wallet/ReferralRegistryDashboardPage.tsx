@@ -5,6 +5,7 @@ import { AlertTriangle, Check, Clipboard, Copy, Gift, Loader2, RefreshCw, Shield
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { useBeamioTagDatabase } from '@/providers/BeamioTagDatabaseProvider'
 import { BeamioCircularBackButton } from '@/components/BeamioCircularBackButton'
+import { IpfsImg } from '@/components/IpfsImg'
 import { useReferralRegistryRole } from '@/hooks/useReferralRegistryRole'
 import { resolveSigningPrivateKeyArmor } from '@/utils/resolveSigningPrivateKeyArmor'
 import {
@@ -27,7 +28,11 @@ import {
 	type ReferralRedeemCodeRecord,
 	type ReferralRedeemKind,
 } from '@/services/referralRegistryRedeem'
-import { merchantProgramCardDisplayNameFromMetadataRoot } from '@/services/BeamioCard'
+import {
+	merchantBackgroundImageFromMetadataRoot,
+	merchantIconUrlFromMetadataRoot,
+	merchantProgramCardDisplayNameFromMetadataRoot,
+} from '@/services/BeamioCard'
 
 type RefreshStatus = 'idle' | 'loading' | 'success' | 'error'
 
@@ -259,6 +264,7 @@ function AdminL0ManagementPanel({
 								) : candidates.map((candidate) => {
 									const selected = selectedCandidates.some((merchant) => merchant.toLowerCase() === candidate.merchant.toLowerCase())
 									const businessName = merchantProgramCardDisplayNameFromMetadataRoot(candidate.metadata) || 'Unnamed business'
+									const businessImage = merchantBackgroundImageFromMetadataRoot(candidate.metadata) ?? merchantIconUrlFromMetadataRoot(candidate.metadata)
 									return (
 										<button
 											key={`${candidate.merchant}:${candidate.cardAddress}`}
@@ -272,8 +278,20 @@ function AdminL0ManagementPanel({
 											className={`block w-full rounded-xl border p-3 text-left transition ${selected ? 'border-amber-300/60 bg-amber-300/10' : 'border-white/10 bg-black/10 hover:border-white/25'}`}
 											aria-pressed={selected}
 										>
-											<div className="mb-2 truncate text-sm font-semibold text-white">{businessName}</div>
-											<div className="mt-2"><AddressCapsule address={candidate.cardAddress} /></div>
+											<div className="flex items-center gap-3">
+												<div className="min-w-0 flex-1">
+													<div className="truncate text-sm font-semibold text-white">{businessName}</div>
+													<div className="mt-2"><AddressCapsule address={candidate.cardAddress} /></div>
+												</div>
+												{businessImage ? (
+													<IpfsImg
+														src={businessImage}
+														alt={businessName}
+														className="h-16 w-16 shrink-0 rounded-xl border border-white/15 object-cover"
+														draggable={false}
+													/>
+												) : null}
+											</div>
 										</button>
 									)
 								})}

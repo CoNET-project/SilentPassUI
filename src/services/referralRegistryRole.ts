@@ -39,6 +39,7 @@ export type ReferralRegistryDownstreamItem = {
 	rebateBps: string
 	ratioBps: string
 	active: boolean
+	merchantItems?: ReferralRegistryDownstreamItem[]
 }
 
 export type ReferralRegistryRoleResult =
@@ -93,7 +94,7 @@ async function readDownstream(
 	if (!response.ok || json.success !== true || !Array.isArray(json.directChildren)) {
 		throw new Error(json.error ?? 'Referral registry tree unavailable.')
 	}
-	return json.directChildren
+	const directChildren = json.directChildren
 		.filter((item): item is Required<typeof item> => Boolean(item.account && ethers.isAddress(item.account) && item.role && item.role !== 'none'))
 		.map((item) => ({
 			address: ethers.getAddress(item.account),
@@ -103,6 +104,40 @@ async function readDownstream(
 			active: Boolean(item.active),
 		}))
 		.sort((a, b) => a.address.localeCompare(b.address))
+	if (!isAdmin) return directChildren
+
+	const enriched: ReferralRegistryDownstreamItem[] = []
+	for (const item of directChildren) {
+		if (item.role !== 'l0') {
+			enriched.push(item)
+			continue
+		}
+		try {
+			const nestedResponse = await fetch(`${beamioApi}/api/referralRegistryTree?account=${encodeURIComponent(item.address)}`)
+			const nestedJson = await nestedResponse.json() as typeof json
+			if (!nestedResponse.ok || nestedJson.success !== true || !Array.isArray(nestedJson.directChildren)) {
+				enriched.push(item)
+				continue
+			}
+			const merchantItems = nestedJson.directChildren
+				.filter((child): child is Required<typeof child> =>
+					Boolean(child.account && ethers.isAddress(child.account) && child.role === 'merchant'),
+				)
+				.map((child) => ({
+					address: ethers.getAddress(child.account),
+					role: 'merchant' as const,
+					rebateBps: String(child.rebateBps ?? '0'),
+					ratioBps: String(child.ratioBps ?? '0'),
+					active: Boolean(child.active),
+				}))
+				.sort((a, b) => a.address.localeCompare(b.address))
+			enriched.push({ ...item, merchantItems })
+		} catch {
+			// Preserve the L0 row when the optional nested merchant read is unavailable.
+			enriched.push(item)
+		}
+	}
+	return enriched
 }
 
 export function referralRegistryRoleLabel(role: ReferralRegistryRole): string {

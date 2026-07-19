@@ -377,7 +377,10 @@ function DownstreamSection({
 		? snapshot.downstream
 		: snapshot.downstream.filter((item) => item.role === 'l1')
 	const title = snapshot.isAdmin ? 'Your L0 members' : 'Your L1 members'
-	const downstreamAddresses = downstream.map((item) => item.address)
+	const downstreamAddresses = downstream.flatMap((item) => [
+		item.address,
+		...(item.merchantItems ?? []).map((merchant) => merchant.address),
+	])
 
 	useEffect(() => {
 		if (downstreamAddresses.length === 0) return
@@ -415,6 +418,21 @@ function DownstreamSection({
 										</div>
 							</div>
 							<div className="mt-2"><BeamioTagCapsule address={item.address} /></div>
+							{snapshot.isAdmin && item.role === 'l0' && item.merchantItems?.length ? (
+								<div className="mt-3 rounded-xl border border-amber-200/10 bg-amber-200/[0.04] p-3">
+									<div className="flex items-center justify-between gap-2">
+										<p className="text-xs font-semibold uppercase tracking-[0.12em] text-amber-100">Merchant items</p>
+										<span className="text-xs text-slate-400">{item.merchantItems.length}</span>
+									</div>
+									<div className="mt-2 space-y-2">
+										{item.merchantItems.map((merchant) => (
+											<div key={merchant.address} className="rounded-lg border border-white/10 bg-black/10 p-2">
+												<BeamioTagCapsule address={merchant.address} />
+											</div>
+										))}
+									</div>
+								</div>
+							) : null}
 							<p className="mt-2 text-xs text-slate-300">
 								Rebate {Number(item.rebateBps) / 100}%{item.role === 'l1' ? ` · Ratio ${Number(item.ratioBps) / 100}%` : ''}
 							</p>

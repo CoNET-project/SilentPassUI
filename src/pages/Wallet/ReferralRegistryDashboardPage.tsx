@@ -400,11 +400,11 @@ function DownstreamSection({
 			) : (
 				<div className="mt-3 space-y-2">
 					{downstream.map((item) => (
-						<div key={`${item.role}:${item.address}`} className="rounded-xl border border-white/10 bg-black/10 p-3">
+						<div key={`${item.role}:${item.address}`} className={`border border-white/10 bg-black/10 ${snapshot.isAdmin ? 'rounded-lg p-2' : 'rounded-xl p-3'}`}>
 							<div className="flex items-center justify-between gap-3">
-								<span className="text-xs font-semibold uppercase tracking-[0.12em] text-indigo-200">{referralRegistryRoleLabel(item.role)}</span>
+								<span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-indigo-200">{referralRegistryRoleLabel(item.role)}</span>
 										<div className="flex items-center gap-2">
-											<span className={item.active ? 'text-xs text-emerald-300' : 'text-xs text-slate-500'}>{item.active ? 'Active' : 'Inactive'}</span>
+											<span className={item.active ? 'text-[11px] text-emerald-300' : 'text-[11px] text-slate-500'}>{item.active ? 'Active' : 'Inactive'}</span>
 											{snapshot.isAdmin && item.role === 'l0' && onManageL0 ? (
 												<button
 													type="button"
@@ -417,23 +417,23 @@ function DownstreamSection({
 											) : null}
 										</div>
 							</div>
-							<div className="mt-2"><BeamioTagCapsule address={item.address} /></div>
+							<div className="mt-1.5"><BeamioTagCapsule address={item.address} /></div>
 							{snapshot.isAdmin && item.role === 'l0' && item.merchantItems?.length ? (
-								<div className="mt-3 rounded-xl border border-amber-200/10 bg-amber-200/[0.04] p-3">
+								<div className="mt-2 rounded-lg border border-amber-200/10 bg-amber-200/[0.04] p-2">
 									<div className="flex items-center justify-between gap-2">
-										<p className="text-xs font-semibold uppercase tracking-[0.12em] text-amber-100">Merchant items</p>
-										<span className="text-xs text-slate-400">{item.merchantItems.length}</span>
+										<p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-amber-100">Merchants</p>
+										<span className="text-[11px] text-slate-400">{item.merchantItems.length}</span>
 									</div>
-									<div className="mt-2 space-y-2">
+									<div className="mt-1.5 flex flex-wrap gap-1.5">
 										{item.merchantItems.map((merchant) => (
-											<div key={merchant.address} className="rounded-lg border border-white/10 bg-black/10 p-2">
+											<div key={merchant.address} className="rounded-md border border-white/10 bg-black/10 p-1">
 												<BeamioTagCapsule address={merchant.address} />
 											</div>
 										))}
 									</div>
 								</div>
 							) : null}
-							<p className="mt-2 text-xs text-slate-300">
+							<p className="mt-1.5 text-[11px] text-slate-300">
 								Rebate {Number(item.rebateBps) / 100}%{item.role === 'l1' ? ` · Ratio ${Number(item.ratioBps) / 100}%` : ''}
 							</p>
 						</div>

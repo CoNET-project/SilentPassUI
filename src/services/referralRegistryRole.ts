@@ -76,7 +76,7 @@ async function readDownstream(
 	isAdmin: boolean,
 	role: ReferralRegistryRole,
 ): Promise<ReferralRegistryDownstreamItem[]> {
-	if (!isAdmin && role !== 'l0') {
+	if (!isAdmin && role !== 'l0' && role !== 'l1') {
 		return []
 	}
 	const response = await fetch(`${beamioApi}/api/referralRegistryTree?account=${encodeURIComponent(eoa)}`)

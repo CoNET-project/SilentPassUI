@@ -294,11 +294,13 @@ function DownstreamSection({
 	onManageL0?: (item: ReferralRegistryDownstreamItem) => void
 }) {
 	const { ensureProfilesForAddresses } = useBeamioTagDatabase()
-	const canView = snapshot.isAdmin || snapshot.role === 'l0'
+	const canView = snapshot.isAdmin || snapshot.role === 'l0' || snapshot.role === 'l1'
 	const downstream = snapshot.isAdmin
 		? snapshot.downstream
-		: snapshot.downstream.filter((item) => item.role === 'l1')
-	const title = snapshot.isAdmin ? 'Your L0 members' : 'Your L1 members'
+		: snapshot.role === 'l0'
+			? snapshot.downstream.filter((item) => item.role === 'l1')
+			: snapshot.downstream.filter((item) => item.role === 'merchant')
+	const title = snapshot.isAdmin ? 'Your L0 members' : snapshot.role === 'l0' ? 'Your L1 members' : 'Your merchant items'
 	const downstreamAddresses = downstream.flatMap((item) => [
 		item.address,
 		...(item.merchantItems ?? []).map((merchant) => merchant.address),

@@ -17,7 +17,7 @@ import {
 	assignReferralMerchantToL0,
 	fetchReferralL0Quota,
 	fetchReferralMerchantCandidates,
-	setReferralL0Quota,
+	setReferralL0StarterQuota,
 	setReferralL0RebateRate,
 	type ReferralMerchantCandidate,
 } from '@/services/referralRegistryAdminManagement'
@@ -102,7 +102,6 @@ function AdminL0ManagementPanel({
 	const [loadingCandidates, setLoadingCandidates] = useState(true)
 	const [savingRate, setSavingRate] = useState(false)
 	const [starterKetInput, setStarterKetInput] = useState('')
-	const [paidBunitInput, setPaidBunitInput] = useState('')
 	const [loadingQuota, setLoadingQuota] = useState(true)
 	const [savingQuota, setSavingQuota] = useState(false)
 	const [assigning, setAssigning] = useState(false)
@@ -133,7 +132,6 @@ function AdminL0ManagementPanel({
 			.then((quota) => {
 				if (cancelled) return
 				setStarterKetInput(quota.starterKetRemaining)
-				setPaidBunitInput(quota.paidBunitRemaining)
 			})
 			.catch((cause) => {
 				if (!cancelled) setError(cause instanceof Error ? cause.message : 'Could not load the L0 redeem quota.')
@@ -171,14 +169,13 @@ function AdminL0ManagementPanel({
 		setError('')
 		setSuccess('')
 		try {
-			if (!/^\d+$/.test(starterKetInput.trim()) || !/^\d+$/.test(paidBunitInput.trim())) {
-				throw new Error('Start Kit and paid B-Unit limits must be whole numbers.')
+			if (!/^\d+$/.test(starterKetInput.trim())) {
+				throw new Error('Start Kit limit must be a whole number.')
 			}
-			await setReferralL0Quota({
+			await setReferralL0StarterQuota({
 				adminPrivateKeyArmor,
 				l0,
 				starterKetRemaining: BigInt(starterKetInput.trim()),
-				paidBunitRemaining: BigInt(paidBunitInput.trim()),
 			})
 			await onUpdated()
 			setSuccess('L0 redeem quota updated.')
@@ -187,7 +184,7 @@ function AdminL0ManagementPanel({
 		} finally {
 			setSavingQuota(false)
 		}
-	}, [adminPrivateKeyArmor, l0, onUpdated, paidBunitInput, savingQuota, starterKetInput])
+	}, [adminPrivateKeyArmor, l0, onUpdated, savingQuota, starterKetInput])
 
 	const handleAssign = useCallback(async () => {
 		if (assigning || selectedCandidates.length === 0) return
@@ -271,8 +268,8 @@ function AdminL0ManagementPanel({
 
 						<section className="rounded-2xl border border-white/10 bg-white/[0.05] p-5">
 							<h3 className="font-semibold text-white">Redeem code quota</h3>
-							<p className="mt-2 text-sm leading-6 text-slate-400">Set the remaining Start Kit and paid B-Unit limits this L0 can use to issue merchant redeem codes.</p>
-							<div className="mt-3 grid grid-cols-2 gap-3">
+							<p className="mt-2 text-sm leading-6 text-slate-400">Set how many merchant redeem codes this L0 can issue. Each code grants the fixed Start Kit airdrop of 100 paid B-Units.</p>
+							<div className="mt-3">
 								<label className="text-xs text-slate-400">
 									Start Kit remaining
 									<input
@@ -283,18 +280,6 @@ function AdminL0ManagementPanel({
 										disabled={loadingQuota || savingQuota}
 										className="mt-1.5 w-full rounded-xl border border-white/15 bg-black/20 px-3 py-2.5 text-sm text-white outline-none focus:border-indigo-300/70 disabled:opacity-60"
 										aria-label="Start Kit remaining"
-									/>
-								</label>
-								<label className="text-xs text-slate-400">
-									Paid B-Units remaining
-									<input
-										type="text"
-										inputMode="numeric"
-										value={paidBunitInput}
-										onChange={(event) => setPaidBunitInput(event.target.value)}
-										disabled={loadingQuota || savingQuota}
-										className="mt-1.5 w-full rounded-xl border border-white/15 bg-black/20 px-3 py-2.5 text-sm text-white outline-none focus:border-indigo-300/70 disabled:opacity-60"
-										aria-label="Paid B-Units remaining"
 									/>
 								</label>
 							</div>

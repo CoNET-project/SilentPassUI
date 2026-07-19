@@ -29,6 +29,15 @@ const TYPES = {
 			{ name: 'deadline', type: 'uint256' },
 		],
 	},
+	setL0StarterQuota: {
+		SetL0StarterKetQuota: [
+			{ name: 'admin', type: 'address' },
+			{ name: 'l0', type: 'address' },
+			{ name: 'starterKetRemaining', type: 'uint256' },
+			{ name: 'nonce', type: 'uint256' },
+			{ name: 'deadline', type: 'uint256' },
+		],
+	},
 	assignMerchant: {
 		AssignMerchantToL0: [
 			{ name: 'admin', type: 'address' },
@@ -146,6 +155,33 @@ export async function setReferralL0Quota(params: {
 		l0: message.l0,
 		starterKetRemaining: params.starterKetRemaining.toString(),
 		paidBunitRemaining: params.paidBunitRemaining.toString(),
+		nonce: nonce.toString(),
+		deadline: deadline.toString(),
+		signature,
+	})
+}
+
+export async function setReferralL0StarterQuota(params: {
+	adminPrivateKeyArmor: string
+	l0: string
+	starterKetRemaining: bigint
+}): Promise<string> {
+	const wallet = new ethers.Wallet(params.adminPrivateKeyArmor)
+	const nonce = await readAdminNonce(wallet.address)
+	const deadline = BigInt(Math.floor(Date.now() / 1000) + 300)
+	const message = {
+		admin: wallet.address,
+		l0: ethers.getAddress(params.l0),
+		starterKetRemaining: params.starterKetRemaining,
+		nonce,
+		deadline,
+	}
+	const signature = await wallet.signTypedData(DOMAIN, TYPES.setL0StarterQuota as any, message)
+	return postAdminAction({
+		action: 'setL0StarterQuota',
+		admin: wallet.address,
+		l0: message.l0,
+		starterKetRemaining: params.starterKetRemaining.toString(),
 		nonce: nonce.toString(),
 		deadline: deadline.toString(),
 		signature,

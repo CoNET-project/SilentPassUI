@@ -19,6 +19,16 @@ const TYPES = {
 			{ name: 'deadline', type: 'uint256' },
 		],
 	},
+	setL0Quota: {
+		SetL0Quota: [
+			{ name: 'admin', type: 'address' },
+			{ name: 'l0', type: 'address' },
+			{ name: 'starterKetRemaining', type: 'uint256' },
+			{ name: 'paidBunitRemaining', type: 'uint256' },
+			{ name: 'nonce', type: 'uint256' },
+			{ name: 'deadline', type: 'uint256' },
+		],
+	},
 	assignMerchant: {
 		AssignMerchantToL0: [
 			{ name: 'admin', type: 'address' },
@@ -35,6 +45,23 @@ export type ReferralMerchantCandidate = {
 	merchant: string
 	cardAddress: string
 	metadata: Record<string, unknown> | null
+}
+
+export type ReferralL0Quota = {
+	starterKetRemaining: string
+	paidBunitRemaining: string
+}
+
+export async function fetchReferralL0Quota(l0: string): Promise<ReferralL0Quota> {
+	const response = await fetch(`${beamioApi}/api/referralRegistryL0Quota?l0=${encodeURIComponent(l0)}`)
+	const json = await response.json() as { success?: boolean; starterKetRemaining?: string; paidBunitRemaining?: string; error?: string }
+	if (!response.ok || !json.success || json.starterKetRemaining == null || json.paidBunitRemaining == null) {
+		throw new Error(json.error ?? 'Could not load the L0 redeem quota.')
+	}
+	return {
+		starterKetRemaining: json.starterKetRemaining,
+		paidBunitRemaining: json.paidBunitRemaining,
+	}
 }
 
 async function readAdminNonce(admin: string): Promise<bigint> {
@@ -89,6 +116,36 @@ export async function setReferralL0RebateRate(params: {
 		admin: wallet.address,
 		l0: message.l0,
 		rebateBps: params.rebateBps.toString(),
+		nonce: nonce.toString(),
+		deadline: deadline.toString(),
+		signature,
+	})
+}
+
+export async function setReferralL0Quota(params: {
+	adminPrivateKeyArmor: string
+	l0: string
+	starterKetRemaining: bigint
+	paidBunitRemaining: bigint
+}): Promise<string> {
+	const wallet = new ethers.Wallet(params.adminPrivateKeyArmor)
+	const nonce = await readAdminNonce(wallet.address)
+	const deadline = BigInt(Math.floor(Date.now() / 1000) + 300)
+	const message = {
+		admin: wallet.address,
+		l0: ethers.getAddress(params.l0),
+		starterKetRemaining: params.starterKetRemaining,
+		paidBunitRemaining: params.paidBunitRemaining,
+		nonce,
+		deadline,
+	}
+	const signature = await wallet.signTypedData(DOMAIN, TYPES.setL0Quota as any, message)
+	return postAdminAction({
+		action: 'setL0Quota',
+		admin: wallet.address,
+		l0: message.l0,
+		starterKetRemaining: params.starterKetRemaining.toString(),
+		paidBunitRemaining: params.paidBunitRemaining.toString(),
 		nonce: nonce.toString(),
 		deadline: deadline.toString(),
 		signature,

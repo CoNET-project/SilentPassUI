@@ -406,11 +406,14 @@ function DownstreamSection({
 									<BeamioTagCapsule address={item.address} />
 								</div>
 								<div className="flex shrink-0 items-center gap-1.5">
-									<span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-indigo-200">{referralRegistryRoleLabel(item.role)}</span>
-									<span className={item.active ? 'text-[11px] text-emerald-300' : 'text-[11px] text-slate-500'}>{item.active ? 'Active' : 'Inactive'}</span>
-									<span className="text-[11px] text-slate-300">
-										Rebate {Number(item.rebateBps) / 100}%{item.role === 'l1' ? ` · Ratio ${Number(item.ratioBps) / 100}%` : ''}
+									<span className="rounded-full border border-indigo-200/20 bg-indigo-300/10 px-2 py-0.5 text-[11px] font-medium text-indigo-100">
+										{Number(item.rebateBps) / 100}%
 									</span>
+									{item.role === 'l1' ? (
+										<span className="rounded-full border border-white/10 bg-white/[0.06] px-2 py-0.5 text-[11px] text-slate-300">
+											R {Number(item.ratioBps) / 100}%
+										</span>
+									) : null}
 									{snapshot.isAdmin && item.role === 'l0' && onManageL0 ? (
 										<button
 											type="button"

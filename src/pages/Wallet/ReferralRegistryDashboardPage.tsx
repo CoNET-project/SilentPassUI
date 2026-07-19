@@ -702,7 +702,6 @@ export default function ReferralRegistryDashboardPage() {
 									</span>
 								) : null}
 							</div>
-							<p className="mt-2 max-w-xl text-sm leading-6 text-slate-400">Your live Admin, L0, or L1 permissions and balances from the CoNET referral registry.</p>
 						</header>
 
 						{loading && !snapshot ? (

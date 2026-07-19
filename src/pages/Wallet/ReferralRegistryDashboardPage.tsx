@@ -123,7 +123,7 @@ function AdminL0ManagementPanel({
 }) {
 	const [rebateInput, setRebateInput] = useState((Number(item.rebateBps) / 100).toString())
 	const [candidates, setCandidates] = useState<ReferralMerchantCandidate[]>([])
-	const [selectedCandidate, setSelectedCandidate] = useState('')
+	const [selectedCandidates, setSelectedCandidates] = useState<string[]>([])
 	const [loadingCandidates, setLoadingCandidates] = useState(true)
 	const [savingRate, setSavingRate] = useState(false)
 	const [assigning, setAssigning] = useState(false)
@@ -167,29 +167,43 @@ function AdminL0ManagementPanel({
 	}, [adminPrivateKeyArmor, l0, onUpdated, rebateInput, savingRate])
 
 	const handleAssign = useCallback(async () => {
-		if (assigning || !selectedCandidate) return
-		const candidate = candidates.find((item) => item.merchant.toLowerCase() === selectedCandidate.toLowerCase())
-		if (!candidate) return
+		if (assigning || selectedCandidates.length === 0) return
+		const selected = candidates.filter((candidate) =>
+			selectedCandidates.some((merchant) => merchant.toLowerCase() === candidate.merchant.toLowerCase()),
+		)
+		if (selected.length === 0) return
 		setAssigning(true)
 		setError('')
 		setSuccess('')
+		const assignedMerchants: string[] = []
 		try {
-			await assignReferralMerchantToL0({
-				adminPrivateKeyArmor,
-				l0,
-				merchant: candidate.merchant,
-				card: candidate.cardAddress,
-			})
+			for (const candidate of selected) {
+				await assignReferralMerchantToL0({
+					adminPrivateKeyArmor,
+					l0,
+					merchant: candidate.merchant,
+					card: candidate.cardAddress,
+				})
+				assignedMerchants.push(candidate.merchant)
+			}
 			await onUpdated()
-			setCandidates((previous) => previous.filter((item) => item.merchant.toLowerCase() !== candidate.merchant.toLowerCase()))
-			setSelectedCandidate('')
-			setSuccess('Merchant assigned to this L0.')
+			setCandidates((previous) => previous.filter((candidate) =>
+				!assignedMerchants.some((merchant) => merchant.toLowerCase() === candidate.merchant.toLowerCase()),
+			))
+			setSelectedCandidates([])
+			setSuccess(`${assignedMerchants.length} merchant${assignedMerchants.length === 1 ? '' : 's'} assigned to this L0.`)
 		} catch (cause) {
+			setCandidates((previous) => previous.filter((candidate) =>
+				!assignedMerchants.some((merchant) => merchant.toLowerCase() === candidate.merchant.toLowerCase()),
+			))
+			setSelectedCandidates((previous) => previous.filter((merchant) =>
+				!assignedMerchants.some((assigned) => assigned.toLowerCase() === merchant.toLowerCase()),
+			))
 			setError(cause instanceof Error ? cause.message : 'Could not assign the merchant.')
 		} finally {
 			setAssigning(false)
 		}
-	}, [adminPrivateKeyArmor, assigning, candidates, l0, onUpdated, selectedCandidate])
+	}, [adminPrivateKeyArmor, assigning, candidates, l0, onUpdated, selectedCandidates])
 
 	return (
 		<>
@@ -243,13 +257,17 @@ function AdminL0ManagementPanel({
 								) : candidates.length === 0 ? (
 									<div className="rounded-xl border border-white/10 bg-black/10 p-3 text-sm text-slate-400">No unregistered merchant cards found.</div>
 								) : candidates.map((candidate) => {
-									const selected = selectedCandidate.toLowerCase() === candidate.merchant.toLowerCase()
+									const selected = selectedCandidates.some((merchant) => merchant.toLowerCase() === candidate.merchant.toLowerCase())
 									const businessName = merchantProgramCardDisplayNameFromMetadataRoot(candidate.metadata) || 'Unnamed business'
 									return (
 										<button
 											key={`${candidate.merchant}:${candidate.cardAddress}`}
 											type="button"
-											onClick={() => setSelectedCandidate(candidate.merchant)}
+											onClick={() => setSelectedCandidates((previous) =>
+												selected
+													? previous.filter((merchant) => merchant.toLowerCase() !== candidate.merchant.toLowerCase())
+													: [...previous, candidate.merchant],
+											)}
 											disabled={assigning}
 											className={`block w-full rounded-xl border p-3 text-left transition ${selected ? 'border-amber-300/60 bg-amber-300/10' : 'border-white/10 bg-black/10 hover:border-white/25'}`}
 											aria-pressed={selected}
@@ -263,12 +281,12 @@ function AdminL0ManagementPanel({
 							<button
 								type="button"
 								onClick={() => void handleAssign()}
-								disabled={assigning || !selectedCandidate}
+								disabled={assigning || selectedCandidates.length === 0}
 								aria-busy={assigning}
 								className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-amber-500 px-4 py-3 text-sm font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
 							>
 								{assigning ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
-								{assigning ? 'Assigning…' : 'Assign merchant to this L0'}
+								{assigning ? 'Assigning…' : selectedCandidates.length > 0 ? `Assign ${selectedCandidates.length} merchant${selectedCandidates.length === 1 ? '' : 's'} to this L0` : 'Assign selected merchants'}
 							</button>
 						</section>
 

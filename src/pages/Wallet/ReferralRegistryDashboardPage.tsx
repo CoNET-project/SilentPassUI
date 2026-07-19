@@ -255,7 +255,6 @@ function AdminL0ManagementPanel({
 											aria-pressed={selected}
 										>
 											<div className="mb-2 truncate text-sm font-semibold text-white">{businessName}</div>
-											<BeamioTagCapsule address={candidate.merchant} />
 											<div className="mt-2"><AddressCapsule address={candidate.cardAddress} /></div>
 										</button>
 									)

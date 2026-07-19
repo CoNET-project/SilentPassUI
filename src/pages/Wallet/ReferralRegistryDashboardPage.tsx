@@ -300,11 +300,14 @@ function DownstreamSection({
 		: snapshot.role === 'l0'
 			? snapshot.downstream.filter((item) => item.role === 'l1')
 			: snapshot.downstream.filter((item) => item.role === 'merchant')
+	const merchantItems = snapshot.role === 'l0'
+		? snapshot.downstream.filter((item) => item.role === 'merchant')
+		: []
 	const title = snapshot.isAdmin ? 'Your L0 members' : snapshot.role === 'l0' ? 'Your L1 members' : 'Your merchant items'
 	const downstreamAddresses = downstream.flatMap((item) => [
 		item.address,
 		...(item.merchantItems ?? []).map((merchant) => merchant.address),
-	])
+	]).concat(merchantItems.map((item) => item.address))
 
 	useEffect(() => {
 		if (downstreamAddresses.length === 0) return
@@ -369,6 +372,28 @@ function DownstreamSection({
 					))}
 				</div>
 			)}
+			{snapshot.role === 'l0' ? (
+				<div className="mt-4 border-t border-white/10 pt-3">
+					<div className="flex items-center justify-between gap-2">
+						<h4 className="text-xs font-semibold uppercase tracking-[0.12em] text-amber-100">Your merchant items</h4>
+						<span className="text-[11px] text-slate-400">{merchantItems.length}</span>
+					</div>
+					{merchantItems.length === 0 ? (
+						<p className="mt-2 text-xs text-slate-500">No merchant items found.</p>
+					) : (
+						<div className="mt-2 flex flex-wrap gap-1.5">
+							{merchantItems.map((item) => (
+								<div key={item.address} className="flex items-center gap-1.5 rounded-md border border-white/10 bg-black/10 p-1">
+									<BeamioTagCapsule address={item.address} />
+									<span className="rounded-full border border-indigo-200/20 bg-indigo-300/10 px-2 py-0.5 text-[11px] font-medium text-indigo-100">
+										{Number(item.rebateBps) / 100}%
+									</span>
+								</div>
+							))}
+						</div>
+					)}
+				</div>
+			) : null}
 		</div>
 	)
 }

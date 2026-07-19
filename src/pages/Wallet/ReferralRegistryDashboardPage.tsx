@@ -691,7 +691,17 @@ export default function ReferralRegistryDashboardPage() {
 						</div>
 						<header className="pb-7 pt-8">
 							<p className="text-xs font-semibold uppercase tracking-[0.18em] text-indigo-200">On-chain management</p>
-							<h1 className="mt-2 text-3xl font-semibold tracking-tight">Referral dashboard</h1>
+							<div className="mt-2 flex items-center justify-between gap-3">
+								<h1 className="text-3xl font-semibold tracking-tight">Referral dashboard</h1>
+								{snapshot ? (
+									<span
+										className="shrink-0 rounded-full border border-indigo-200/20 bg-indigo-300/10 px-2.5 py-1 text-xs font-semibold text-indigo-100"
+										aria-label={`Current referral role: ${snapshot.isAdmin ? 'Admin' : referralRegistryRoleLabel(snapshot.role)}`}
+									>
+										{snapshot.isAdmin ? 'Admin' : referralRegistryRoleLabel(snapshot.role)}
+									</span>
+								) : null}
+							</div>
 							<p className="mt-2 max-w-xl text-sm leading-6 text-slate-400">Your live Admin, L0, or L1 permissions and balances from the CoNET referral registry.</p>
 						</header>
 

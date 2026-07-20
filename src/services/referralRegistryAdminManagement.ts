@@ -1,5 +1,5 @@
 import { ethers } from 'ethers'
-import { beamioApi } from '@/utils/constants'
+import { beamioApi, conetDepinProvider } from '@/utils/constants'
 import { CONET_REFERRAL_REGISTRY_VAULT_V1 } from '@/config/chainAddresses'
 
 const DOMAIN = {
@@ -61,15 +61,74 @@ export type ReferralL0Quota = {
 	paidBunitRemaining: string
 }
 
-export async function fetchReferralL0Quota(l0: string): Promise<ReferralL0Quota> {
-	const response = await fetch(`${beamioApi}/api/referralRegistryL0Quota?l0=${encodeURIComponent(l0)}`)
-	const json = await response.json() as { success?: boolean; starterKetRemaining?: string; paidBunitRemaining?: string; error?: string }
-	if (!response.ok || !json.success || json.starterKetRemaining == null || json.paidBunitRemaining == null) {
-		throw new Error(json.error ?? 'Could not load the L0 redeem quota.')
+const REFERRAL_L0_QUOTA_CACHE_PREFIX = 'beamio:referral:l0-quota:v1:'
+const REFERRAL_L0_QUOTA_TTL_MS = 30_000
+const REFERRAL_REGISTRY_QUOTA_ABI = [
+	'function merchantQuotas(address) view returns (uint256 starterKetRemaining,uint256 paidBunitRemaining,uint256 issuedCodeCount,uint256 claimedCodeCount)',
+] as const
+const quotaCache = new Map<string, { fetchedAt: number; quota: ReferralL0Quota }>()
+const quotaInFlight = new Map<string, Promise<ReferralL0Quota>>()
+
+function quotaCacheKey(l0: string): string {
+	return `${REFERRAL_L0_QUOTA_CACHE_PREFIX}${ethers.getAddress(l0).toLowerCase()}`
+}
+
+function isValidQuotaValue(value: unknown): value is string {
+	return typeof value === 'string' && /^\d+$/.test(value)
+}
+
+export function readCachedReferralL0Quota(l0: string): ReferralL0Quota | null {
+	try {
+		const raw = localStorage.getItem(quotaCacheKey(l0))
+		if (!raw) return null
+		const parsed = JSON.parse(raw) as Partial<ReferralL0Quota>
+		if (!isValidQuotaValue(parsed.starterKetRemaining) || !isValidQuotaValue(parsed.paidBunitRemaining)) return null
+		return {
+			starterKetRemaining: parsed.starterKetRemaining,
+			paidBunitRemaining: parsed.paidBunitRemaining,
+		}
+	} catch {
+		return null
 	}
-	return {
-		starterKetRemaining: json.starterKetRemaining,
-		paidBunitRemaining: json.paidBunitRemaining,
+}
+
+function saveCachedReferralL0Quota(l0: string, quota: ReferralL0Quota): void {
+	try {
+		localStorage.setItem(quotaCacheKey(l0), JSON.stringify(quota))
+	} catch {
+		// Cache failure must not change the trusted network result.
+	}
+}
+
+export async function fetchReferralL0Quota(l0: string): Promise<ReferralL0Quota> {
+	const normalizedL0 = ethers.getAddress(l0)
+	const key = normalizedL0.toLowerCase()
+	const cached = quotaCache.get(key)
+	if (cached && Date.now() - cached.fetchedAt < REFERRAL_L0_QUOTA_TTL_MS) return cached.quota
+	const existing = quotaInFlight.get(key)
+	if (existing) return existing
+	const request = (async () => {
+		try {
+			const registry = new ethers.Contract(CONET_REFERRAL_REGISTRY_VAULT_V1, REFERRAL_REGISTRY_QUOTA_ABI, conetDepinProvider)
+			const raw = await registry.merchantQuotas(normalizedL0)
+			const quota = {
+				starterKetRemaining: raw.starterKetRemaining.toString(),
+				paidBunitRemaining: raw.paidBunitRemaining.toString(),
+			}
+			quotaCache.set(key, { fetchedAt: Date.now(), quota })
+			saveCachedReferralL0Quota(normalizedL0, quota)
+			return quota
+		} catch (error) {
+			const previous = quotaCache.get(key)?.quota ?? readCachedReferralL0Quota(normalizedL0)
+			if (previous) return previous
+			throw error
+		}
+	})()
+	quotaInFlight.set(key, request)
+	try {
+		return await request
+	} finally {
+		quotaInFlight.delete(key)
 	}
 }
 

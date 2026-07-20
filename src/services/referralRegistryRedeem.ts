@@ -11,6 +11,8 @@ export type ReferralRedeemCodeRecord = {
 	hash: string
 	secret?: string
 	issuer: string
+	/** Bound L1 for Start Kit (merchant) codes; empty for L0/L1 codes. */
+	assignedL1?: string
 	rebateBps: string
 	ratioBps: string
 	validAfter: number
@@ -46,11 +48,14 @@ const ABI = [
 	'function merchantCodeCount() view returns (uint256)',
 	'function merchantCodeHashAt(uint256) view returns (bytes32)',
 	'function merchantCodes(bytes32) view returns (address issuerL0,uint256 paidBunitAmount,uint64 validAfter,uint64 validBefore,bool active,bool claimed)',
+	'function merchantCodeAssignedL1(bytes32) view returns (address)',
 	'function merchantRedeemBunitAirdrop() view returns (uint256)',
 ] as const
 
 const registryRead = new ethers.Contract(CONET_REFERRAL_REGISTRY_VAULT_V1, ABI, conetDepinProvider)
 const RPC_TTL_MS = 30_000
+const LOCAL_LIST_CACHE_PREFIX = 'beamio:referral:redeem-list:v1:'
+const LOCAL_AMOUNT_CACHE_KEY = 'beamio:referral:start-kit-airdrop:v1'
 const listCache = new Map<string, { fetchedAt: number; records: ReferralRedeemCodeRecord[] }>()
 const listInFlight = new Map<string, Promise<ReferralRedeemCodeRecord[]>>()
 const amountCache: { fetchedAt: number; value: string } = { fetchedAt: 0, value: '' }
@@ -58,6 +63,30 @@ let amountInFlight: Promise<string> | undefined
 let rpcQueue: Promise<void> = Promise.resolve()
 let writeQueue: Promise<void> = Promise.resolve()
 const LOCAL_SECRET_STORAGE_KEY = 'beamio:referral-redeem-secrets:v1'
+
+function listCacheKey(kind: ReferralRedeemKind, issuer: string): string {
+	return `${LOCAL_LIST_CACHE_PREFIX}${kind}:${ethers.getAddress(issuer).toLowerCase()}`
+}
+
+function readPersistentList(key: string): { fetchedAt: number; records: ReferralRedeemCodeRecord[] } | null {
+	try {
+		const raw = localStorage.getItem(key)
+		if (!raw) return null
+		const parsed = JSON.parse(raw) as { fetchedAt?: number; records?: ReferralRedeemCodeRecord[] }
+		if (!Number.isFinite(parsed.fetchedAt) || !Array.isArray(parsed.records)) return null
+		return { fetchedAt: Number(parsed.fetchedAt), records: parsed.records }
+	} catch {
+		return null
+	}
+}
+
+function savePersistentList(key: string, records: ReferralRedeemCodeRecord[]): void {
+	try {
+		localStorage.setItem(key, JSON.stringify({ fetchedAt: Date.now(), records }))
+	} catch {
+		// Cache failure must not affect the trusted RPC result.
+	}
+}
 
 function readLocalSecrets(): Record<string, string> {
 	if (typeof window === 'undefined') return {}
@@ -114,10 +143,14 @@ function normalizeRecord(
 	active: boolean,
 	claimed: boolean,
 	cancelled: boolean,
+	assignedL1?: string,
 ): ReferralRedeemCodeRecord {
 	return {
 		hash,
 		issuer: ethers.getAddress(issuer),
+		...(assignedL1 && assignedL1 !== ethers.ZeroAddress
+			? { assignedL1: ethers.getAddress(assignedL1) }
+			: {}),
 		rebateBps: rebateBps.toString(),
 		ratioBps: ratioBps.toString(),
 		validAfter: Number(validAfter),
@@ -172,15 +205,39 @@ export function referralBpsToPercent(value: string): string {
 export async function fetchMerchantRedeemBunitAirdrop(): Promise<string> {
 	if (amountCache.value && Date.now() - amountCache.fetchedAt < RPC_TTL_MS) return amountCache.value
 	if (amountInFlight) return amountInFlight
+	let persistedValue: string | undefined
+	try {
+		const raw = localStorage.getItem(LOCAL_AMOUNT_CACHE_KEY)
+		if (raw) {
+			const parsed = JSON.parse(raw) as { fetchedAt?: number; value?: string }
+			if (typeof parsed.value === 'string') persistedValue = parsed.value
+			if (Number.isFinite(parsed.fetchedAt) && typeof parsed.value === 'string' && Date.now() - Number(parsed.fetchedAt) < RPC_TTL_MS) {
+				amountCache.value = parsed.value
+				amountCache.fetchedAt = Number(parsed.fetchedAt)
+				return parsed.value
+			}
+		}
+	} catch {
+		// Ignore malformed local cache and continue with a trusted RPC read.
+	}
 	amountInFlight = enqueueRpc(async () => {
 		const amount = await registryRead.merchantRedeemBunitAirdrop()
 		const value = ethers.formatUnits(amount, 6)
 		amountCache.value = value
 		amountCache.fetchedAt = Date.now()
+		try {
+			localStorage.setItem(LOCAL_AMOUNT_CACHE_KEY, JSON.stringify({ fetchedAt: amountCache.fetchedAt, value }))
+		} catch {
+			// Cache failure must not affect the trusted RPC result.
+		}
 		return value
 	})
 	try {
 		return await amountInFlight
+	} catch (error) {
+		if (amountCache.value) return amountCache.value
+		if (persistedValue) return persistedValue
+		throw error
 	} finally {
 		amountInFlight = undefined
 	}
@@ -193,12 +250,14 @@ async function readRecords(kind: ReferralRedeemKind, issuer: string): Promise<Re
 	for (let index = 0n; index < count; index += 1n) {
 		const hash = await registryRead[kind === 'l0' ? 'l0RedeemCodeHashAt' : kind === 'l1' ? 'l1RedeemCodeHashAt' : 'merchantCodeHashAt'](index)
 		const raw = await registryRead[kind === 'l0' ? 'l0RedeemCodes' : kind === 'l1' ? 'l1RedeemCodes' : 'merchantCodes'](hash)
+		const assignedL1 =
+			kind === 'merchant' ? String(await registryRead.merchantCodeAssignedL1(hash)) : undefined
 		const record =
 			kind === 'l0'
 				? normalizeRecord(hash, raw.issuerAdmin, raw.rebateBps, 0n, raw.validAfter, raw.validBefore, raw.active, raw.claimed, raw.cancelled)
 			: kind === 'l1'
 				? normalizeRecord(hash, raw.issuerL0, raw.rebateBps, raw.ratioBps, raw.validAfter, raw.validBefore, raw.active, raw.claimed, raw.cancelled)
-				: normalizeRecord(hash, raw.issuerL0, 0n, 0n, raw.validAfter, raw.validBefore, raw.active, raw.claimed, false)
+				: normalizeRecord(hash, raw.issuerL0, 0n, 0n, raw.validAfter, raw.validBefore, raw.active, raw.claimed, false, assignedL1)
 		if (record.issuer.toLowerCase() === normalizedIssuer) {
 			record.secret = localSecretFor(kind, issuer, hash)
 			records.push(record)
@@ -215,12 +274,26 @@ export async function fetchReferralRedeemCodes(
 	const key = `${kind}:${ethers.getAddress(issuer).toLowerCase()}`
 	const cached = listCache.get(key)
 	if (!options.force && cached && Date.now() - cached.fetchedAt < RPC_TTL_MS) return cached.records
+	if (!options.force) {
+		const persisted = readPersistentList(`${LOCAL_LIST_CACHE_PREFIX}${key}`)
+		if (persisted && Date.now() - persisted.fetchedAt < RPC_TTL_MS) {
+			listCache.set(key, persisted)
+			return persisted.records
+		}
+	}
 	const existing = listInFlight.get(key)
 	if (existing) return existing
-	const request = enqueueRpc(() => readRecords(kind, issuer)).then((records) => {
-		listCache.set(key, { fetchedAt: Date.now(), records })
-		return records
-	})
+	const request = enqueueRpc(() => readRecords(kind, issuer))
+		.then((records) => {
+			listCache.set(key, { fetchedAt: Date.now(), records })
+			savePersistentList(`${LOCAL_LIST_CACHE_PREFIX}${key}`, records)
+			return records
+		})
+		.catch((error) => {
+			const previous = listCache.get(key) ?? readPersistentList(`${LOCAL_LIST_CACHE_PREFIX}${key}`)
+			if (previous) return previous.records
+			throw error
+		})
 	listInFlight.set(key, request)
 	try {
 		return await request
@@ -233,11 +306,22 @@ export async function issueReferralRedeemCode(params: {
 	kind: ReferralRedeemKind
 	issuerPrivateKeyArmor: string
 	rebateBps: bigint
+	/** Required when kind === 'merchant': active L1 under this L0. */
+	l1?: string
 }): Promise<IssuedReferralRedeem> {
 	const secret = generateReferralRedeemSecret(params.kind)
 	const hash = referralRedeemHash(secret)
 	return enqueueWrite(async () => {
 		const wallet = new ethers.Wallet(params.issuerPrivateKeyArmor)
+		let l1 = ethers.ZeroAddress
+		if (params.kind === 'merchant') {
+			try {
+				l1 = ethers.getAddress(String(params.l1 ?? ''))
+			} catch {
+				throw new Error('Select an L1 before creating a Start Kit code.')
+			}
+			if (l1 === ethers.ZeroAddress) throw new Error('Select an L1 before creating a Start Kit code.')
+		}
 		const nonceResponse = await fetch(`${beamioApi}/api/referralRegistryRedeemNonce?account=${encodeURIComponent(wallet.address)}`)
 		const nonceJson = await nonceResponse.json() as { success?: boolean; nonce?: string; error?: string }
 		if (!nonceResponse.ok || !nonceJson.success || nonceJson.nonce == null) throw new Error(nonceJson.error ?? 'Could not read referral redeem nonce.')
@@ -246,19 +330,27 @@ export async function issueReferralRedeemCode(params: {
 		const action = params.kind === 'l0' ? 'issueL0' : params.kind === 'l1' ? 'issueL1' : 'issueMerchant'
 		const typeName = params.kind === 'l0' ? 'IssueL0RedeemCode' : params.kind === 'l1' ? 'IssueL1RedeemCode' : 'IssueMerchantRedeemCode'
 		const types = {
-			[typeName]: [
-				{ name: params.kind === 'l0' ? 'admin' : 'l0', type: 'address' },
-				{ name: 'redeemHash', type: 'bytes32' },
-				...(params.kind === 'merchant' ? [] : [{ name: 'rebateBps', type: 'uint256' }]),
-				{ name: 'nonce', type: 'uint256' },
-				{ name: 'deadline', type: 'uint256' },
-			],
+			[typeName]: params.kind === 'merchant'
+				? [
+					{ name: 'l0', type: 'address' },
+					{ name: 'l1', type: 'address' },
+					{ name: 'redeemHash', type: 'bytes32' },
+					{ name: 'nonce', type: 'uint256' },
+					{ name: 'deadline', type: 'uint256' },
+				]
+				: [
+					{ name: params.kind === 'l0' ? 'admin' : 'l0', type: 'address' },
+					{ name: 'redeemHash', type: 'bytes32' },
+					{ name: 'rebateBps', type: 'uint256' },
+					{ name: 'nonce', type: 'uint256' },
+					{ name: 'deadline', type: 'uint256' },
+				],
 		}
 		const message = params.kind === 'l0'
 			? { admin: wallet.address, redeemHash: hash, rebateBps: params.rebateBps, nonce, deadline }
 			: params.kind === 'l1'
 				? { l0: wallet.address, redeemHash: hash, rebateBps: params.rebateBps, nonce, deadline }
-				: { l0: wallet.address, redeemHash: hash, nonce, deadline }
+				: { l0: wallet.address, l1, redeemHash: hash, nonce, deadline }
 		const signature = await wallet.signTypedData(
 			{ name: 'ReferralRegistryVaultV1', version: '1', chainId: 224422, verifyingContract: CONET_REFERRAL_REGISTRY_VAULT_V1 },
 			types,
@@ -267,7 +359,17 @@ export async function issueReferralRedeemCode(params: {
 		const response = await fetch(`${beamioApi}/api/referralRegistryRedeem`, {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ action, account: wallet.address, redeemHash: hash, ...(params.kind === 'merchant' ? {} : { rebateBps: params.rebateBps.toString() }), nonce: nonce.toString(), deadline: deadline.toString(), signature }),
+			body: JSON.stringify({
+				action,
+				account: wallet.address,
+				redeemHash: hash,
+				...(params.kind === 'merchant'
+					? { l1 }
+					: { rebateBps: params.rebateBps.toString() }),
+				nonce: nonce.toString(),
+				deadline: deadline.toString(),
+				signature,
+			}),
 		})
 		const json = await response.json() as { success?: boolean; txHash?: string; error?: string }
 		if (!response.ok || !json.success || !json.txHash) throw new Error(json.error ?? 'Referral redeem relay failed.')

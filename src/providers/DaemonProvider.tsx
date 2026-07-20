@@ -112,6 +112,11 @@ import {
 	saveConetWalletBalancesLocalCache,
 	EMPTY_CONET_WALLET_BALANCES,
 } from '@/utils/conetWalletBalancesLocalCache'
+import {
+	fetchReferralL0StartKitQuotaFeed,
+	loadReferralL0StartKitQuotaLocalCache,
+	type ReferralL0StartKitQuota,
+} from '@/services/referralL0StartKitQuotaFeed'
 
 export type { MyBrandCardFeedDetailsMap }
 
@@ -405,6 +410,13 @@ type DaemonContext = {
 	unifiedIncomeStats: UnifiedIncomeStats | null
 	/** 用户 Genesis Node 推荐进度（ValidatorDepositRedeem referrer extension）；本地优先，daemon 每 6s 刷新 */
 	referrerSummary: ReferrerDashboardSummary | null
+	/**
+	 * L0 Start Kit remaining（merchantQuotas）；仅当前 EOA 为 L0 时有值。
+	 * 本地优先 + 全局钱包 feeder 串行刷新；页面只读，勿在页面内自建轮询。
+	 */
+	referralL0StartKitQuota: ReferralL0StartKitQuota | null
+	/** 发行 Start Kit / Admin 改配额后强制刷新（仍走同一 trusted fetch） */
+	refreshReferralL0StartKitQuota: () => Promise<void>
 	/** Discover Featured Brands 链上点赞 / 转发点击；localStorage 首屏 + daemon 30s 刷新 */
 	discoverMerchantStatByCard: DiscoverMerchantStatsMap
 	/** Market 注册需刷新的商户卡地址（来自 trusted `/api/latestCards`） */
@@ -617,6 +629,8 @@ const defaultContextValue: DaemonContext = {
 	validatorWalletNodeProfile: null,
 	unifiedIncomeStats: null,
 	referrerSummary: null,
+	referralL0StartKitQuota: null,
+	refreshReferralL0StartKitQuota: async () => {},
 	discoverMerchantStatByCard: {},
 	applyDiscoverMerchantLikeCountDelta: () => {},
 	registerDiscoverMerchantStatFeedCards: () => {},
@@ -1458,6 +1472,39 @@ export function DaemonProvider({ children }: DaemonProps) {
     seedReferrerSummaryCache(eoaLower, summary)
   }, [])
 
+  const [referralL0StartKitQuota, setReferralL0StartKitQuota] = useState<ReferralL0StartKitQuota | null>(null)
+
+  /** EOA 切换：L0 Start Kit 配额本地优先；非 L0 / 无缓存则为 null，等 feeder 可信回填 */
+  useLayoutEffect(() => {
+    const raw = profileWalletKeyId?.trim() ?? ''
+    if (!raw || !ethers.isAddress(raw)) {
+      setReferralL0StartKitQuota(null)
+      return
+    }
+    setReferralL0StartKitQuota(loadReferralL0StartKitQuotaLocalCache(raw))
+  }, [profileWalletKeyId])
+
+  const runReferralL0StartKitQuotaFeedTick = useCallback(async (force = false): Promise<void> => {
+    const eoa = profilesRef.current?.[0]?.keyID?.trim() ?? ''
+    if (!eoa || !ethers.isAddress(eoa)) {
+      setReferralL0StartKitQuota(null)
+      return
+    }
+    const eoaLower = eoa.toLowerCase()
+    const result = await fetchReferralL0StartKitQuotaFeed(eoa, { force }).catch(() => ({ ok: false }) as const)
+    if (profilesRef.current?.[0]?.keyID?.trim().toLowerCase() !== eoaLower) return
+    if (!result.ok) return
+    if (!result.isL0) {
+      setReferralL0StartKitQuota(null)
+      return
+    }
+    setReferralL0StartKitQuota(result.quota)
+  }, [])
+
+  const refreshReferralL0StartKitQuota = useCallback(async () => {
+    await runReferralL0StartKitQuotaFeedTick(true)
+  }, [runReferralL0StartKitQuotaFeedTick])
+
   const discoverMerchantStatFeedAddressesRef = useRef<string[]>([])
   const discoverMerchantStatsFeedInFlightRef = useRef(false)
   const [discoverMerchantStatByCard, setDiscoverMerchantStatByCard] = useState<DiscoverMerchantStatsMap>(
@@ -1818,6 +1865,7 @@ export function DaemonProvider({ children }: DaemonProps) {
         runValidatorWalletNodeProfileFeedTick(),
         runUnifiedIncomeStatsFeedTick(),
         runReferrerSummaryFeedTick(),
+        runReferralL0StartKitQuotaFeedTick(),
       ])
     })()
     globalWalletFeedInFlightRef.current = work
@@ -1836,6 +1884,7 @@ export function DaemonProvider({ children }: DaemonProps) {
     runValidatorWalletNodeProfileFeedTick,
     runUnifiedIncomeStatsFeedTick,
     runReferrerSummaryFeedTick,
+    runReferralL0StartKitQuotaFeedTick,
   ])
 
   const refreshRecentActivityNoAa = useCallback(async () => {
@@ -1974,6 +2023,7 @@ export function DaemonProvider({ children }: DaemonProps) {
 				myBrandCards, myBrandCardDetails, myBrandsFeedLoading, myBrandsFeedLastConetBlock,
 				recentActivityNoAaItems, recentActivityNoAaLoading, recentActivityNoAaError, refreshRecentActivityNoAa,
 				conetNetworkStats, conetDepinStats, conetWalletBalances, conetAaWalletBalances, validatorWalletNodeProfile, unifiedIncomeStats, referrerSummary,
+				referralL0StartKitQuota, refreshReferralL0StartKitQuota,
 				discoverMerchantStatByCard, registerDiscoverMerchantStatFeedCards, applyDiscoverMerchantLikeCountDelta,
 				setGetWebFilter,switchValue, setSwitchValue, webFilterRef, quickLinksShow, setQuickLinksShow, duplicateAccount, checkinBalanceUP, setCheckinBalanceUP, gossip, setGossip,
 				beamioUsers, setbBeamioUsers, showFooter, setShowFooter, chatSearchOpen, setChatSearchOpen, payMePayment, setPayMePayment, navigateLeftButtonArray, setNavigateLeftButtonArray, allNodes, setAllNodes,

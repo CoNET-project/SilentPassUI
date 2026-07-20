@@ -1,23 +1,24 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
 	fetchReferralRegistryRole,
+	readCachedReferralRegistryRole,
 	type ReferralRegistryRoleResult,
 	type ReferralRegistryRoleSnapshot,
 } from '@/services/referralRegistryRole'
 
 export function useReferralRegistryRole(eoa: string) {
-	const [snapshot, setSnapshot] = useState<ReferralRegistryRoleSnapshot | null>(null)
+	const [snapshot, setSnapshot] = useState<ReferralRegistryRoleSnapshot | null>(() => eoa ? readCachedReferralRegistryRole(eoa) : null)
 	const [loading, setLoading] = useState(false)
 	const [error, setError] = useState<string | null>(null)
 
-	const refresh = useCallback(async () => {
+	const refresh = useCallback(async (options: { force?: boolean } = {}) => {
 		if (!eoa.trim()) {
 			setSnapshot(null)
 			setError(null)
 			return
 		}
 		setLoading(true)
-		const result: ReferralRegistryRoleResult = await fetchReferralRegistryRole(eoa, { force: true })
+		const result: ReferralRegistryRoleResult = await fetchReferralRegistryRole(eoa, options)
 		if (result.ok) {
 			setSnapshot(result.snapshot)
 			setError(null)
@@ -29,7 +30,7 @@ export function useReferralRegistryRole(eoa: string) {
 
 	useEffect(() => {
 		let cancelled = false
-		setSnapshot(null)
+		setSnapshot(readCachedReferralRegistryRole(eoa))
 		if (!eoa.trim()) {
 			setError(null)
 			return

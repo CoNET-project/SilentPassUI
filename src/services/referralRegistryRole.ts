@@ -3,6 +3,7 @@ import { CONET_REFERRAL_REGISTRY_VAULT_V1 } from '@/config/chainAddresses'
 import { beamioApi, conetDepinProvider } from '@/utils/constants'
 
 const ROLE_CACHE_TTL_MS = 30_000
+const ROLE_LOCAL_CACHE_PREFIX = 'beamio:referral:role:v1:'
 const REFERRAL_REGISTRY_ABI = [
 	'function admins(address) view returns (bool)',
 	'function members(address) view returns (uint8 role, address parentAdmin, address parentL0, uint256 rebateBps, uint256 ratioBps, bool active)',
@@ -36,6 +37,8 @@ export type ReferralRegistryRoleSnapshot = {
 export type ReferralRegistryDownstreamItem = {
 	address: string
 	role: Exclude<ReferralRegistryRole, 'none'>
+	/** For merchants: assigned L1 (or zero for legacy direct-under-L0). */
+	parentAdmin?: string
 	rebateBps: string
 	ratioBps: string
 	active: boolean
@@ -56,6 +59,30 @@ const inFlight = new Map<string, Promise<ReferralRegistryRoleResult>>()
 const treeCache = new Map<string, { fetchedAt: number; directChildren: ReferralRegistryDownstreamItem[] }>()
 const treeInFlight = new Map<string, Promise<ReferralRegistryDownstreamItem[]>>()
 let rpcQueue: Promise<void> = Promise.resolve()
+
+function roleCacheKey(eoa: string): string {
+	return `${ROLE_LOCAL_CACHE_PREFIX}${eoa.toLowerCase()}`
+}
+
+export function readCachedReferralRegistryRole(eoa: string): ReferralRegistryRoleSnapshot | null {
+	try {
+		const raw = localStorage.getItem(roleCacheKey(eoa))
+		if (!raw) return null
+		const parsed = JSON.parse(raw) as ReferralRegistryRoleSnapshot
+		if (parsed.eoa?.toLowerCase() !== eoa.toLowerCase() || !parsed.role || !Array.isArray(parsed.downstream)) return null
+		return parsed
+	} catch {
+		return null
+	}
+}
+
+function savePersistentSnapshot(snapshot: ReferralRegistryRoleSnapshot): void {
+	try {
+		localStorage.setItem(roleCacheKey(snapshot.eoa), JSON.stringify(snapshot))
+	} catch {
+		// Cache failure must not affect the trusted RPC result.
+	}
+}
 
 function enqueueRpc<T>(work: () => Promise<T>): Promise<T> {
 	const next = rpcQueue.then(work, work)
@@ -81,6 +108,43 @@ async function readDownstream(
 	if (!isAdmin && role !== 'l0' && role !== 'l1') {
 		return []
 	}
+	const mapChild = (item: {
+		account?: string
+		role?: ReferralRegistryRole
+		parentAdmin?: string | null
+		rebateBps?: string
+		ratioBps?: string
+		active?: boolean
+	}): ReferralRegistryDownstreamItem | null => {
+		if (!item.account || !ethers.isAddress(item.account) || !item.role || item.role === 'none') return null
+		let parentAdmin: string | undefined
+		if (item.parentAdmin && ethers.isAddress(item.parentAdmin)) {
+			parentAdmin = ethers.getAddress(item.parentAdmin)
+		}
+		return {
+			address: ethers.getAddress(item.account),
+			role: item.role as Exclude<ReferralRegistryRole, 'none'>,
+			...(parentAdmin && parentAdmin !== ethers.ZeroAddress ? { parentAdmin } : {}),
+			rebateBps: String(item.rebateBps ?? '0'),
+			ratioBps: String(item.ratioBps ?? '0'),
+			active: Boolean(item.active),
+		}
+	}
+	const nestMerchantsUnderL1 = (children: ReferralRegistryDownstreamItem[]): ReferralRegistryDownstreamItem[] => {
+		const merchants = children.filter((child) => child.role === 'merchant')
+		const others = children.filter((child) => child.role !== 'merchant')
+		return others.map((item) => {
+			if (item.role !== 'l1') return item
+			const merchantItems = merchants
+				.filter((merchant) => merchant.parentAdmin?.toLowerCase() === item.address.toLowerCase())
+				.sort((a, b) => a.address.localeCompare(b.address))
+			return merchantItems.length ? { ...item, merchantItems } : item
+		}).concat(
+			merchants
+				.filter((merchant) => !merchant.parentAdmin || merchant.parentAdmin === ethers.ZeroAddress)
+				.sort((a, b) => a.address.localeCompare(b.address)),
+		)
+	}
 	const readTree = async (): Promise<ReferralRegistryDownstreamItem[]> => {
 		const key = ethers.getAddress(eoa).toLowerCase()
 		const cached = treeCache.get(key)
@@ -94,6 +158,7 @@ async function readDownstream(
 					directChildren?: Array<{
 						account?: string
 						role?: ReferralRegistryRole
+						parentAdmin?: string | null
 						rebateBps?: string
 						ratioBps?: string
 						active?: boolean
@@ -104,14 +169,8 @@ async function readDownstream(
 					throw new Error(json.error ?? 'Referral registry tree unavailable.')
 				}
 				const directChildren = json.directChildren
-					.filter((item): item is Required<typeof item> => Boolean(item.account && ethers.isAddress(item.account) && item.role && item.role !== 'none'))
-					.map((item) => ({
-						address: ethers.getAddress(item.account),
-						role: item.role as Exclude<ReferralRegistryRole, 'none'>,
-						rebateBps: String(item.rebateBps ?? '0'),
-						ratioBps: String(item.ratioBps ?? '0'),
-						active: Boolean(item.active),
-					}))
+					.map(mapChild)
+					.filter((item): item is ReferralRegistryDownstreamItem => item != null)
 					.sort((a, b) => a.address.localeCompare(b.address))
 				treeCache.set(key, { fetchedAt: Date.now(), directChildren })
 				return directChildren
@@ -124,7 +183,10 @@ async function readDownstream(
 		}
 	}
 	const directChildren = await readTree()
-	if (!isAdmin) return directChildren
+	if (!isAdmin) {
+		if (role === 'l0') return nestMerchantsUnderL1(directChildren)
+		return directChildren
+	}
 
 	const enriched: ReferralRegistryDownstreamItem[] = []
 	for (const item of directChildren) {
@@ -133,16 +195,12 @@ async function readDownstream(
 			continue
 		}
 		try {
-			const nestedChildren = await readTreeForAccount(item.address)
+			const nestedChildren = nestMerchantsUnderL1(await readTreeForAccount(item.address))
 			const merchantItems = nestedChildren
 				.filter((child) => child.role === 'merchant')
-				.map((child) => ({
-					address: child.address,
-					role: 'merchant' as const,
-					rebateBps: String(child.rebateBps ?? '0'),
-					ratioBps: String(child.ratioBps ?? '0'),
-					active: Boolean(child.active),
-				}))
+				.concat(
+					nestedChildren.flatMap((child) => child.merchantItems ?? []),
+				)
 				.sort((a, b) => a.address.localeCompare(b.address))
 			enriched.push({ ...item, merchantItems })
 		} catch {
@@ -161,11 +219,35 @@ async function readTreeForAccount(eoa: string): Promise<ReferralRegistryDownstre
 	if (existing) return existing
 	const request = fetch(`${beamioApi}/api/referralRegistryTree?account=${encodeURIComponent(eoa)}`)
 		.then(async (response) => {
-			const json = await response.json() as { success?: boolean; directChildren?: Array<{ account?: string; role?: ReferralRegistryRole; rebateBps?: string; ratioBps?: string; active?: boolean }>; error?: string }
+			const json = await response.json() as {
+				success?: boolean
+				directChildren?: Array<{
+					account?: string
+					role?: ReferralRegistryRole
+					parentAdmin?: string | null
+					rebateBps?: string
+					ratioBps?: string
+					active?: boolean
+				}>
+				error?: string
+			}
 			if (!response.ok || json.success !== true || !Array.isArray(json.directChildren)) throw new Error(json.error ?? 'Referral registry tree unavailable.')
 			const directChildren = json.directChildren
 				.filter((item): item is Required<typeof item> => Boolean(item.account && ethers.isAddress(item.account) && item.role && item.role !== 'none'))
-				.map((item) => ({ address: ethers.getAddress(item.account), role: item.role as Exclude<ReferralRegistryRole, 'none'>, rebateBps: String(item.rebateBps ?? '0'), ratioBps: String(item.ratioBps ?? '0'), active: Boolean(item.active) }))
+				.map((item) => {
+					let parentAdmin: string | undefined
+					if (item.parentAdmin && ethers.isAddress(item.parentAdmin)) {
+						parentAdmin = ethers.getAddress(item.parentAdmin)
+					}
+					return {
+						address: ethers.getAddress(item.account),
+						role: item.role as Exclude<ReferralRegistryRole, 'none'>,
+						...(parentAdmin && parentAdmin !== ethers.ZeroAddress ? { parentAdmin } : {}),
+						rebateBps: String(item.rebateBps ?? '0'),
+						ratioBps: String(item.ratioBps ?? '0'),
+						active: Boolean(item.active),
+					}
+				})
 				.sort((a, b) => a.address.localeCompare(b.address))
 			treeCache.set(key, { fetchedAt: Date.now(), directChildren })
 			return directChildren
@@ -200,6 +282,13 @@ export async function fetchReferralRegistryRole(
 	const cached = cache.get(key)
 	if (!options.force && cached && Date.now() - cached.fetchedAt < ROLE_CACHE_TTL_MS) {
 		return { ok: true, snapshot: cached.snapshot }
+	}
+	if (!options.force) {
+		const persisted = readCachedReferralRegistryRole(key)
+		if (persisted && Date.now() - persisted.fetchedAt < ROLE_CACHE_TTL_MS) {
+			cache.set(key, { snapshot: persisted, fetchedAt: persisted.fetchedAt })
+			return { ok: true, snapshot: persisted }
+		}
 	}
 	const existing = inFlight.get(key)
 	if (existing) return existing
@@ -251,9 +340,12 @@ export async function fetchReferralRegistryRole(
 				fetchedAt: Date.now(),
 			}
 			cache.set(key, { snapshot, fetchedAt: snapshot.fetchedAt })
+			savePersistentSnapshot(snapshot)
 			return { ok: true, snapshot }
 		} catch (error) {
 			console.warn('[ReferralRegistryRole] RPC read failed', error)
+			const previous = cache.get(key)?.snapshot ?? readCachedReferralRegistryRole(key)
+			if (previous) return { ok: true, snapshot: previous }
 			return { ok: false, error: 'Could not read referral permissions from CoNET.' }
 		}
 	})

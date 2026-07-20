@@ -4,7 +4,7 @@ import { beamioApi, conetDepinProvider } from '@/utils/constants'
 
 const uuid62 = require('uuid62') as { v4: () => string }
 
-export type ReferralRedeemKind = 'l0' | 'l1'
+export type ReferralRedeemKind = 'l0' | 'l1' | 'merchant'
 export type ReferralRedeemStatus = 'pending' | 'claimed' | 'cancelled'
 
 export type ReferralRedeemCodeRecord = {
@@ -43,12 +43,19 @@ const ABI = [
 	'function l1RedeemCodeHashAt(uint256 index) view returns (bytes32)',
 	'function l0RedeemCodes(bytes32) view returns (address issuerAdmin,uint256 rebateBps,uint64 validAfter,uint64 validBefore,bool active,bool claimed,bool cancelled)',
 	'function l1RedeemCodes(bytes32) view returns (address issuerL0,uint256 rebateBps,uint256 ratioBps,uint64 validAfter,uint64 validBefore,bool active,bool claimed,bool cancelled)',
+	'function merchantCodeCount() view returns (uint256)',
+	'function merchantCodeHashAt(uint256) view returns (bytes32)',
+	'function merchantCodes(bytes32) view returns (address issuerL0,uint256 paidBunitAmount,uint64 validAfter,uint64 validBefore,bool active,bool claimed)',
+	'function merchantRedeemBunitAirdrop() view returns (uint256)',
 ] as const
 
 const registryRead = new ethers.Contract(CONET_REFERRAL_REGISTRY_VAULT_V1, ABI, conetDepinProvider)
 const RPC_TTL_MS = 30_000
 const listCache = new Map<string, { fetchedAt: number; records: ReferralRedeemCodeRecord[] }>()
 const listInFlight = new Map<string, Promise<ReferralRedeemCodeRecord[]>>()
+const amountCache: { fetchedAt: number; value: string } = { fetchedAt: 0, value: '' }
+let amountInFlight: Promise<string> | undefined
+let rpcQueue: Promise<void> = Promise.resolve()
 let writeQueue: Promise<void> = Promise.resolve()
 const LOCAL_SECRET_STORAGE_KEY = 'beamio:referral-redeem-secrets:v1'
 
@@ -85,6 +92,12 @@ function enqueueWrite<T>(work: () => Promise<T>): Promise<T> {
 	return next
 }
 
+function enqueueRpc<T>(work: () => Promise<T>): Promise<T> {
+	const next = rpcQueue.then(work, work)
+	rpcQueue = next.then(() => undefined, () => undefined)
+	return next
+}
+
 function statusOf(value: { active: boolean; claimed: boolean; cancelled: boolean }): ReferralRedeemStatus {
 	if (value.claimed) return 'claimed'
 	if (value.cancelled) return 'cancelled'
@@ -117,7 +130,7 @@ function normalizeRecord(
 }
 
 export function generateReferralRedeemSecret(kind: ReferralRedeemKind): string {
-	const prefix = kind === 'l0' ? 'beamio-l0' : 'beamio-l1'
+	const prefix = kind === 'l0' ? 'beamio-l0' : kind === 'l1' ? 'beamio-l1' : 'beamio-start-kit'
 	return `${prefix}-${uuid62.v4()}`
 }
 
@@ -131,6 +144,7 @@ export function referralRedeemKindFromSecret(secret: string): ReferralRedeemKind
 	const normalized = secret.trim().toLowerCase()
 	if (normalized.startsWith('beamio-l0-')) return 'l0'
 	if (normalized.startsWith('beamio-l1-')) return 'l1'
+	if (normalized.startsWith('beamio-start-kit-')) return 'merchant'
 	throw new Error('The code must start with beamio-l0- or beamio-l1-.')
 }
 
@@ -155,17 +169,36 @@ export function referralBpsToPercent(value: string): string {
 	})
 }
 
+export async function fetchMerchantRedeemBunitAirdrop(): Promise<string> {
+	if (amountCache.value && Date.now() - amountCache.fetchedAt < RPC_TTL_MS) return amountCache.value
+	if (amountInFlight) return amountInFlight
+	amountInFlight = enqueueRpc(async () => {
+		const amount = await registryRead.merchantRedeemBunitAirdrop()
+		const value = ethers.formatUnits(amount, 6)
+		amountCache.value = value
+		amountCache.fetchedAt = Date.now()
+		return value
+	})
+	try {
+		return await amountInFlight
+	} finally {
+		amountInFlight = undefined
+	}
+}
+
 async function readRecords(kind: ReferralRedeemKind, issuer: string): Promise<ReferralRedeemCodeRecord[]> {
 	const normalizedIssuer = ethers.getAddress(issuer).toLowerCase()
-	const count = BigInt(await registryRead[kind === 'l0' ? 'l0RedeemCodeCount' : 'l1RedeemCodeCount']())
+	const count = BigInt(await registryRead[kind === 'l0' ? 'l0RedeemCodeCount' : kind === 'l1' ? 'l1RedeemCodeCount' : 'merchantCodeCount']())
 	const records: ReferralRedeemCodeRecord[] = []
 	for (let index = 0n; index < count; index += 1n) {
-		const hash = await registryRead[kind === 'l0' ? 'l0RedeemCodeHashAt' : 'l1RedeemCodeHashAt'](index)
-		const raw = await registryRead[kind === 'l0' ? 'l0RedeemCodes' : 'l1RedeemCodes'](hash)
+		const hash = await registryRead[kind === 'l0' ? 'l0RedeemCodeHashAt' : kind === 'l1' ? 'l1RedeemCodeHashAt' : 'merchantCodeHashAt'](index)
+		const raw = await registryRead[kind === 'l0' ? 'l0RedeemCodes' : kind === 'l1' ? 'l1RedeemCodes' : 'merchantCodes'](hash)
 		const record =
 			kind === 'l0'
 				? normalizeRecord(hash, raw.issuerAdmin, raw.rebateBps, 0n, raw.validAfter, raw.validBefore, raw.active, raw.claimed, raw.cancelled)
-				: normalizeRecord(hash, raw.issuerL0, raw.rebateBps, raw.ratioBps, raw.validAfter, raw.validBefore, raw.active, raw.claimed, raw.cancelled)
+			: kind === 'l1'
+				? normalizeRecord(hash, raw.issuerL0, raw.rebateBps, raw.ratioBps, raw.validAfter, raw.validBefore, raw.active, raw.claimed, raw.cancelled)
+				: normalizeRecord(hash, raw.issuerL0, 0n, 0n, raw.validAfter, raw.validBefore, raw.active, raw.claimed, false)
 		if (record.issuer.toLowerCase() === normalizedIssuer) {
 			record.secret = localSecretFor(kind, issuer, hash)
 			records.push(record)
@@ -184,7 +217,7 @@ export async function fetchReferralRedeemCodes(
 	if (!options.force && cached && Date.now() - cached.fetchedAt < RPC_TTL_MS) return cached.records
 	const existing = listInFlight.get(key)
 	if (existing) return existing
-	const request = readRecords(kind, issuer).then((records) => {
+	const request = enqueueRpc(() => readRecords(kind, issuer)).then((records) => {
 		listCache.set(key, { fetchedAt: Date.now(), records })
 		return records
 	})
@@ -210,20 +243,22 @@ export async function issueReferralRedeemCode(params: {
 		if (!nonceResponse.ok || !nonceJson.success || nonceJson.nonce == null) throw new Error(nonceJson.error ?? 'Could not read referral redeem nonce.')
 		const nonce = BigInt(nonceJson.nonce)
 		const deadline = BigInt(Math.floor(Date.now() / 1000) + 300)
-		const action = params.kind === 'l0' ? 'issueL0' : 'issueL1'
-		const typeName = params.kind === 'l0' ? 'IssueL0RedeemCode' : 'IssueL1RedeemCode'
+		const action = params.kind === 'l0' ? 'issueL0' : params.kind === 'l1' ? 'issueL1' : 'issueMerchant'
+		const typeName = params.kind === 'l0' ? 'IssueL0RedeemCode' : params.kind === 'l1' ? 'IssueL1RedeemCode' : 'IssueMerchantRedeemCode'
 		const types = {
 			[typeName]: [
 				{ name: params.kind === 'l0' ? 'admin' : 'l0', type: 'address' },
 				{ name: 'redeemHash', type: 'bytes32' },
-				{ name: 'rebateBps', type: 'uint256' },
+				...(params.kind === 'merchant' ? [] : [{ name: 'rebateBps', type: 'uint256' }]),
 				{ name: 'nonce', type: 'uint256' },
 				{ name: 'deadline', type: 'uint256' },
 			],
 		}
 		const message = params.kind === 'l0'
 			? { admin: wallet.address, redeemHash: hash, rebateBps: params.rebateBps, nonce, deadline }
-			: { l0: wallet.address, redeemHash: hash, rebateBps: params.rebateBps, nonce, deadline }
+			: params.kind === 'l1'
+				? { l0: wallet.address, redeemHash: hash, rebateBps: params.rebateBps, nonce, deadline }
+				: { l0: wallet.address, redeemHash: hash, nonce, deadline }
 		const signature = await wallet.signTypedData(
 			{ name: 'ReferralRegistryVaultV1', version: '1', chainId: 224422, verifyingContract: CONET_REFERRAL_REGISTRY_VAULT_V1 },
 			types,
@@ -232,7 +267,7 @@ export async function issueReferralRedeemCode(params: {
 		const response = await fetch(`${beamioApi}/api/referralRegistryRedeem`, {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ action, account: wallet.address, redeemHash: hash, rebateBps: params.rebateBps.toString(), nonce: nonce.toString(), deadline: deadline.toString(), signature }),
+			body: JSON.stringify({ action, account: wallet.address, redeemHash: hash, ...(params.kind === 'merchant' ? {} : { rebateBps: params.rebateBps.toString() }), nonce: nonce.toString(), deadline: deadline.toString(), signature }),
 		})
 		const json = await response.json() as { success?: boolean; txHash?: string; error?: string }
 		if (!response.ok || !json.success || !json.txHash) throw new Error(json.error ?? 'Referral redeem relay failed.')
@@ -256,7 +291,7 @@ export async function cancelReferralRedeemCode(params: {
 		if (!nonceResponse.ok || !nonceJson.success || nonceJson.nonce == null) throw new Error(nonceJson.error ?? 'Could not read referral redeem nonce.')
 		const nonce = BigInt(nonceJson.nonce)
 		const deadline = BigInt(Math.floor(Date.now() / 1000) + 300)
-		const typeName = params.kind === 'l0' ? 'CancelL0RedeemCode' : 'CancelL1RedeemCode'
+		const typeName = params.kind === 'l0' ? 'CancelL0RedeemCode' : params.kind === 'l1' ? 'CancelL1RedeemCode' : 'CancelMerchantRedeemCode'
 		const types = {
 			[typeName]: [
 				{ name: params.kind === 'l0' ? 'admin' : 'l0', type: 'address' },
@@ -276,10 +311,55 @@ export async function cancelReferralRedeemCode(params: {
 		const response = await fetch(`${beamioApi}/api/referralRegistryRedeem`, {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ action: params.kind === 'l0' ? 'cancelL0' : 'cancelL1', account: wallet.address, redeemHash: params.hash, nonce: nonce.toString(), deadline: deadline.toString(), signature }),
+			body: JSON.stringify({ action: params.kind === 'l0' ? 'cancelL0' : params.kind === 'l1' ? 'cancelL1' : 'cancelMerchant', account: wallet.address, redeemHash: params.hash, nonce: nonce.toString(), deadline: deadline.toString(), signature }),
 		})
 		const json = await response.json() as { success?: boolean; txHash?: string; error?: string }
 		if (!response.ok || !json.success || !json.txHash) throw new Error(json.error ?? 'Referral redeem cancellation relay failed.')
+		return json.txHash
+	})
+}
+
+export async function setMerchantRedeemBunitAirdrop(params: {
+	adminPrivateKeyArmor: string
+	amountBunits: string
+}): Promise<string> {
+	return enqueueWrite(async () => {
+		const wallet = new ethers.Wallet(params.adminPrivateKeyArmor)
+		const amount = ethers.parseUnits(params.amountBunits.trim(), 6)
+		if (amount <= 0n) throw new Error('Start Kit airdrop must be greater than zero.')
+		const nonceResponse = await fetch(`${beamioApi}/api/referralRegistryRedeemNonce?account=${encodeURIComponent(wallet.address)}`)
+		const nonceJson = await nonceResponse.json() as { success?: boolean; nonce?: string; error?: string }
+		if (!nonceResponse.ok || !nonceJson.success || nonceJson.nonce == null) throw new Error(nonceJson.error ?? 'Could not read referral redeem nonce.')
+		const nonce = BigInt(nonceJson.nonce)
+		const deadline = BigInt(Math.floor(Date.now() / 1000) + 300)
+		const types = {
+			SetMerchantRedeemBunitAirdrop: [
+				{ name: 'admin', type: 'address' },
+				{ name: 'amount', type: 'uint256' },
+				{ name: 'nonce', type: 'uint256' },
+				{ name: 'deadline', type: 'uint256' },
+			],
+		}
+		const message = { admin: wallet.address, amount, nonce, deadline }
+		const signature = await wallet.signTypedData(
+			{ name: 'ReferralRegistryVaultV1', version: '1', chainId: 224422, verifyingContract: CONET_REFERRAL_REGISTRY_VAULT_V1 },
+			types,
+			message,
+		)
+		const response = await fetch(`${beamioApi}/api/referralRegistryRedeem`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({
+				action: 'setMerchantAirdrop',
+				account: wallet.address,
+				amount: amount.toString(),
+				nonce: nonce.toString(),
+				deadline: deadline.toString(),
+				signature,
+			}),
+		})
+		const json = await response.json() as { success?: boolean; txHash?: string; error?: string }
+		if (!response.ok || !json.success || !json.txHash) throw new Error(json.error ?? 'Start Kit airdrop update relay failed.')
 		return json.txHash
 	})
 }
@@ -292,6 +372,7 @@ export async function claimReferralRedeemCode(params: {
 	const secret = normalizeReferralRedeemSecret(params.secret)
 	if (!secret) throw new Error('Enter a redeem code.')
 	const kind = params.kind ?? referralRedeemKindFromSecret(secret)
+	if (kind === 'merchant') throw new Error('Start Kit codes are claimed through the merchant onboarding flow.')
 	return enqueueWrite(async () => {
 		const wallet = new ethers.Wallet(params.privateKeyArmor)
 		const hash = referralRedeemHash(secret)

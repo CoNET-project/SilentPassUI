@@ -9,9 +9,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { ethers } from 'ethers'
-import { baseEndpoint, USDCContract_BASE } from '@/utils/constants'
 import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
-import usdc_abi from '@/services/ABI/usdc_abi.json'
 import {
 	Sparkles,
 	Zap,
@@ -69,7 +67,7 @@ import BeamioNavBack from '@/components/Setting/BeamioNavBack'
 import BeamioPayMe from '@/pages/Pay/BeamioPayMe'
 import ShowPayQR from '@/pages/Vouchers/showPayQR'
 import { encodeOpenContainerRelayQrPayload, signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpen, type OpenContainerRelayPayload } from '@/services/AAaccount'
-import { getBalanceProcess, getUsdcBalanceFromApi, formatWithThousands, aesGcmDecrypt, fetchUIDAssets, type UIDAssetsResponse } from '@/services/beamio'
+import { formatWithThousands, aesGcmDecrypt, fetchUIDAssets, type UIDAssetsResponse } from '@/services/beamio'
 import { getMyAssets, getCardOwner, getCardMetadataFromUri, getCardMetadataFromApi, getCardMetadataFrom1155Json, getNftMetadataFromApi, getCardsOfOwnerWithDetailsForProfile, postCardRedeem, removeNotFoundRedeems, getRedeemDetailsForDisplay, signExecuteForOwner, encodeCreateIssuedNft, postCardCreateIssuedNft, getTierIndexForRedeemAmount, isCardExcludedFromDisplay, filterDisplayUserCards, loadApiExcludedUserCards, type UserCardInfo, type RedeemDetailsForDisplay, type CardRedeemBatch, type CardTierMetadata, type NftTierMetadata, type CardMetadataFromUri } from '@/services/BeamioCard'
 import { filterExcludedCardDetailKeys } from '@/utils/apiExcludedUserCards'
 import { postToIPFS } from '@/services/beamio'
@@ -79,7 +77,6 @@ import type { RedeemStatusChain } from '@/services/BeamioCard'
 import { fiatPrefix, parseNodeEX, calcFeeFromReceived, formatTimev2, formatAmount, type ParsedNote } from '@/services/currency'
 import { CCSA_Card_Address, BEAMIO_USER_CARD_ASSET_ADDRESS, CASH_TREES_CARD_ADDRESS, beamioApi } from '@/utils/constants'
 import { BASE_MAINNET_FACTORIES } from '@/config/chainAddresses'
-import { isRpcDegraded, reportRpcFailure, isRpcQuotaOrNetworkError } from '@/utils/rpcStatus'
 import { getRedeemStatusBatchFromChain } from '@/services/BeamioCard'
 import ccsabackphoto from '../Vouchers/assets/ccsacard.avif'
 import greenCard from '../Vouchers/assets/greenCard.png'
@@ -99,8 +96,6 @@ import { tu } from '@/locale/beamioLocale'
 
 const HISTORY_BALANCE_CACHE_KEY_PREFIX = 'beamio:history:balance:v1:'
 const getHistoryBalanceCacheKey = (keyID: string) => `${HISTORY_BALANCE_CACHE_KEY_PREFIX}${keyID.toLowerCase()}`
-const HISTORY_AA_BALANCE_CACHE_KEY_PREFIX = 'beamio:history:aa-balance:v1:'
-const getHistoryAaBalanceCacheKey = (aa: string) => `${HISTORY_AA_BALANCE_CACHE_KEY_PREFIX}${aa.toLowerCase()}`
 
 type HistoryBalanceCache = {
 	usdcbalance: number
@@ -123,42 +118,6 @@ const readHistoryBalanceCache = (keyID: string): HistoryBalanceCache | null => {
 	} catch {
 		return null
 	}
-}
-
-const writeHistoryBalanceCache = (keyID: string, usdcbalance: number, usdcToUSD?: number) => {
-	if (!keyID || typeof window === 'undefined' || !window.localStorage) return
-	try {
-		const payload: HistoryBalanceCache = {
-			usdcbalance,
-			usdcToUSD,
-			updatedAt: Date.now(),
-		}
-		window.localStorage.setItem(getHistoryBalanceCacheKey(keyID), JSON.stringify(payload))
-	} catch {}
-}
-
-const readHistoryAaBalanceCache = (aa: string): string | null => {
-	if (!aa || typeof window === 'undefined' || !window.localStorage) return null
-	try {
-		const raw = window.localStorage.getItem(getHistoryAaBalanceCacheKey(aa))
-		if (!raw) return null
-		const parsed = JSON.parse(raw) as { aaAccountUsdcBalance?: string | number } | null
-		const val = parsed?.aaAccountUsdcBalance
-		if (val == null) return null
-		return String(val)
-	} catch {
-		return null
-	}
-}
-
-const writeHistoryAaBalanceCache = (aa: string, aaAccountUsdcBalance: string) => {
-	if (!aa || typeof window === 'undefined' || !window.localStorage) return
-	try {
-		window.localStorage.setItem(
-			getHistoryAaBalanceCacheKey(aa),
-			JSON.stringify({ aaAccountUsdcBalance, updatedAt: Date.now() })
-		)
-	} catch {}
 }
 
 const getHistoryUserCardsCacheKey = (profile: profile): string => {
@@ -743,6 +702,8 @@ export default function MyWalletDashboardNew() {
 		setRedeemFromUrl,
 		voucherPayFromScan,
 		setVoucherPayFromScan,
+		aaAccountUsdcBalance,
+		refreshRecentActivityNoAa,
 	} = useDaemonContext()
 
 	const [activeView, setActiveView] = useState<string | null>(null) // 'eoa' | 'aa' | 'ccsa' | null
@@ -750,7 +711,6 @@ export default function MyWalletDashboardNew() {
 	const [loading, setLoading] = useState(false)
 	const [itemTx, setItemTx] = useState<TransferHistork>()
 	const [showTxDetail, setShowTxDetail] = useState(false)
-	const [aaAccountUsdcBalance, setAaAccountUsdcBalance] = useState<string>('0')
 	/** 从 api/latestCards 拉取的卡一览，用于 passes 展示（替代固定 CCSA/infra/CashTrees 列表） */
 	const [latestCardsItems, setLatestCardsItems] = useState<Array<{ cardAddress: string }>>([])
 	/** 每张资产卡的 assets + metadata，key = cardAddress 小写。含 latestCards 及 CCSA（主卡展示用） */
@@ -1103,57 +1063,6 @@ export default function MyWalletDashboardNew() {
 		refetchUserCards()
 	}, [setShowFooter, refetchUserCards])
 
-	// 获取 AA 账号的 USDC 余额。返回 string 表示可信，null 表示 RPC/API 失败不可信（调用方应保留原值）
-	const loadAaAccountBalanceInFlightRef = useRef<Promise<string | null> | null>(null)
-	const loadAaAccountBalance = useCallback(async (): Promise<string | null> => {
-		const aa = profilesRef.current?.[0]?.aaAccount
-		if (!aa) {
-			setAaAccountUsdcBalance('0')
-			return '0'
-		}
-		// 单飞：相同请求不重复发出
-		if (loadAaAccountBalanceInFlightRef.current) {
-			return loadAaAccountBalanceInFlightRef.current
-		}
-		const run = async (): Promise<string | null> => {
-			try {
-				// 限流时仅用 CoNET 节点，baseEndpoint 内部会走 CoNET-only
-				const usdcContract = new ethers.Contract(USDCContract_BASE, usdc_abi as ethers.InterfaceAbi, baseEndpoint)
-				const balanceRaw = await usdcContract.balanceOf(aa)
-				const bal = ethers.formatUnits(balanceRaw, 6)
-				setAaAccountUsdcBalance(bal)
-				writeHistoryAaBalanceCache(aa, bal)
-				return bal
-			} catch (e) {
-				if (isRpcQuotaOrNetworkError(e)) reportRpcFailure()
-				if (!isRpcDegraded()) {
-					const bal = await getUsdcBalanceFromApi(aa)
-					if (bal != null) {
-						setAaAccountUsdcBalance(bal)
-						writeHistoryAaBalanceCache(aa, bal)
-						return bal
-					}
-				}
-				// RPC 错误且无可信兜底：不更新余额，返回 null 让调用方保留原值
-				return null
-			} finally {
-				loadAaAccountBalanceInFlightRef.current = null
-			}
-		}
-		loadAaAccountBalanceInFlightRef.current = run()
-		return loadAaAccountBalanceInFlightRef.current
-	}, [])
-
-	// EOA 余额刷新：仅在链上/可信接口成功返回时更新余额并写缓存；失败时保留当前（缓存）值
-	const refreshEoaBalance = useCallback(async (keyID: string): Promise<boolean> => {
-		const result = await getBalanceProcess(keyID, setUsdcbalance, setUsdcToUSD)
-		if (result.success && Number.isFinite(Number(result.balance))) {
-			writeHistoryBalanceCache(keyID, Number(result.balance), result.usdcToUSD)
-			return true
-		}
-		return false
-	}, [setUsdcbalance, setUsdcToUSD])
-
 	// 拉取 EOA 交易历史（与 MyWalletDashboard 一致，供 Active & Pending / History 展示）
 	const loadEoaHistory = useCallback(async () => {
 		const fetchSeq = ++eoaHistoryFetchSeqRef.current
@@ -1389,10 +1298,7 @@ export default function MyWalletDashboardNew() {
 			.slice(0, 6)
 	}, [allItems])
 
-	// ref 稳定 loadAaAccountBalance，避免 profiles 更新触发 effect 重复执行导致 RPC 循环
-	const loadAaAccountBalanceRef = useRef(loadAaAccountBalance)
-	loadAaAccountBalanceRef.current = loadAaAccountBalance
-	// 初始化：EOA 余额、AA 余额、myAddress（延迟一帧，让首屏先可交互）。仅依赖 keyID 避免 profiles 引用变化触发循环
+	// 初始化：只恢复本地 EOA 快照；余额 RPC 统一由 DaemonProvider 喂料。
 	useEffect(() => {
 		if (!profiles?.length) return
 		const profile = profiles[0]
@@ -1404,19 +1310,7 @@ export default function MyWalletDashboardNew() {
 			setUsdcbalance(cachedBalance.usdcbalance)
 			if (typeof cachedBalance.usdcToUSD === 'number') setUsdcToUSD(cachedBalance.usdcToUSD)
 		}
-		const aa = profile?.aaAccount
-		if (aa) {
-			const cachedAaBalance = readHistoryAaBalanceCache(aa)
-			if (cachedAaBalance != null) {
-				setAaAccountUsdcBalance(cachedAaBalance)
-			}
-		}
-		const id = requestAnimationFrame(() => {
-			refreshEoaBalance(keyID)
-			loadAaAccountBalanceRef.current()
-		})
-		return () => cancelAnimationFrame(id)
-	}, [profiles?.[0]?.keyID, myAddress, setMyAddress, setUsdcbalance, setUsdcToUSD, refreshEoaBalance])
+	}, [profiles?.[0]?.keyID, myAddress, setMyAddress, setUsdcbalance, setUsdcToUSD])
 
 	// 1. 拉取 api/latestCards 作为需展示的卡一览（替代固定 CCSA/infra/CashTrees 列表）
 	useEffect(() => {
@@ -1622,15 +1516,14 @@ export default function MyWalletDashboardNew() {
 		if (source === 'eoa') setEoaReflash(true)
 		else setAaReflash(true)
 		try {
-			await refreshEoaBalance(profile.keyID)
-			await loadAaAccountBalance()
+			await refreshRecentActivityNoAa()
 			await loadEoaHistory()
 			refetchUserCards()
 		} finally {
 			if (source === 'eoa') setEoaReflash(false)
 			else setAaReflash(false)
 		}
-	}, [eoaReflash, aaReflash, profiles, refreshEoaBalance, loadAaAccountBalance, loadEoaHistory, refetchUserCards])
+	}, [eoaReflash, aaReflash, profiles, refreshRecentActivityNoAa, loadEoaHistory, refetchUserCards])
 
 	// 刷新资产卡：先拉取 latestCards，再刷新 assetCardDetails（含 CCSA）
 	const refreshCcsaAssets = useCallback(async () => {

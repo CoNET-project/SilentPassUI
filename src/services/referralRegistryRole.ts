@@ -53,6 +53,8 @@ type CacheEntry = {
 
 const cache = new Map<string, CacheEntry>()
 const inFlight = new Map<string, Promise<ReferralRegistryRoleResult>>()
+const treeCache = new Map<string, { fetchedAt: number; directChildren: ReferralRegistryDownstreamItem[] }>()
+const treeInFlight = new Map<string, Promise<ReferralRegistryDownstreamItem[]>>()
 let rpcQueue: Promise<void> = Promise.resolve()
 
 function enqueueRpc<T>(work: () => Promise<T>): Promise<T> {
@@ -79,31 +81,49 @@ async function readDownstream(
 	if (!isAdmin && role !== 'l0' && role !== 'l1') {
 		return []
 	}
-	const response = await fetch(`${beamioApi}/api/referralRegistryTree?account=${encodeURIComponent(eoa)}`)
-	const json = await response.json() as {
-		success?: boolean
-		directChildren?: Array<{
-			account?: string
-			role?: ReferralRegistryRole
-			rebateBps?: string
-			ratioBps?: string
-			active?: boolean
-		}>
-		error?: string
+	const readTree = async (): Promise<ReferralRegistryDownstreamItem[]> => {
+		const key = ethers.getAddress(eoa).toLowerCase()
+		const cached = treeCache.get(key)
+		if (cached && Date.now() - cached.fetchedAt < ROLE_CACHE_TTL_MS) return cached.directChildren
+		const existing = treeInFlight.get(key)
+		if (existing) return existing
+		const request = fetch(`${beamioApi}/api/referralRegistryTree?account=${encodeURIComponent(eoa)}`)
+			.then(async (response) => {
+				const json = await response.json() as {
+					success?: boolean
+					directChildren?: Array<{
+						account?: string
+						role?: ReferralRegistryRole
+						rebateBps?: string
+						ratioBps?: string
+						active?: boolean
+					}>
+					error?: string
+				}
+				if (!response.ok || json.success !== true || !Array.isArray(json.directChildren)) {
+					throw new Error(json.error ?? 'Referral registry tree unavailable.')
+				}
+				const directChildren = json.directChildren
+					.filter((item): item is Required<typeof item> => Boolean(item.account && ethers.isAddress(item.account) && item.role && item.role !== 'none'))
+					.map((item) => ({
+						address: ethers.getAddress(item.account),
+						role: item.role as Exclude<ReferralRegistryRole, 'none'>,
+						rebateBps: String(item.rebateBps ?? '0'),
+						ratioBps: String(item.ratioBps ?? '0'),
+						active: Boolean(item.active),
+					}))
+					.sort((a, b) => a.address.localeCompare(b.address))
+				treeCache.set(key, { fetchedAt: Date.now(), directChildren })
+				return directChildren
+			})
+		treeInFlight.set(key, request)
+		try {
+			return await request
+		} finally {
+			treeInFlight.delete(key)
+		}
 	}
-	if (!response.ok || json.success !== true || !Array.isArray(json.directChildren)) {
-		throw new Error(json.error ?? 'Referral registry tree unavailable.')
-	}
-	const directChildren = json.directChildren
-		.filter((item): item is Required<typeof item> => Boolean(item.account && ethers.isAddress(item.account) && item.role && item.role !== 'none'))
-		.map((item) => ({
-			address: ethers.getAddress(item.account),
-			role: item.role as Exclude<ReferralRegistryRole, 'none'>,
-			rebateBps: String(item.rebateBps ?? '0'),
-			ratioBps: String(item.ratioBps ?? '0'),
-			active: Boolean(item.active),
-		}))
-		.sort((a, b) => a.address.localeCompare(b.address))
+	const directChildren = await readTree()
 	if (!isAdmin) return directChildren
 
 	const enriched: ReferralRegistryDownstreamItem[] = []
@@ -113,18 +133,11 @@ async function readDownstream(
 			continue
 		}
 		try {
-			const nestedResponse = await fetch(`${beamioApi}/api/referralRegistryTree?account=${encodeURIComponent(item.address)}`)
-			const nestedJson = await nestedResponse.json() as typeof json
-			if (!nestedResponse.ok || nestedJson.success !== true || !Array.isArray(nestedJson.directChildren)) {
-				enriched.push(item)
-				continue
-			}
-			const merchantItems = nestedJson.directChildren
-				.filter((child): child is Required<typeof child> =>
-					Boolean(child.account && ethers.isAddress(child.account) && child.role === 'merchant'),
-				)
+			const nestedChildren = await readTreeForAccount(item.address)
+			const merchantItems = nestedChildren
+				.filter((child) => child.role === 'merchant')
 				.map((child) => ({
-					address: ethers.getAddress(child.account),
+					address: child.address,
 					role: 'merchant' as const,
 					rebateBps: String(child.rebateBps ?? '0'),
 					ratioBps: String(child.ratioBps ?? '0'),
@@ -138,6 +151,31 @@ async function readDownstream(
 		}
 	}
 	return enriched
+}
+
+async function readTreeForAccount(eoa: string): Promise<ReferralRegistryDownstreamItem[]> {
+	const key = ethers.getAddress(eoa).toLowerCase()
+	const cached = treeCache.get(key)
+	if (cached && Date.now() - cached.fetchedAt < ROLE_CACHE_TTL_MS) return cached.directChildren
+	const existing = treeInFlight.get(key)
+	if (existing) return existing
+	const request = fetch(`${beamioApi}/api/referralRegistryTree?account=${encodeURIComponent(eoa)}`)
+		.then(async (response) => {
+			const json = await response.json() as { success?: boolean; directChildren?: Array<{ account?: string; role?: ReferralRegistryRole; rebateBps?: string; ratioBps?: string; active?: boolean }>; error?: string }
+			if (!response.ok || json.success !== true || !Array.isArray(json.directChildren)) throw new Error(json.error ?? 'Referral registry tree unavailable.')
+			const directChildren = json.directChildren
+				.filter((item): item is Required<typeof item> => Boolean(item.account && ethers.isAddress(item.account) && item.role && item.role !== 'none'))
+				.map((item) => ({ address: ethers.getAddress(item.account), role: item.role as Exclude<ReferralRegistryRole, 'none'>, rebateBps: String(item.rebateBps ?? '0'), ratioBps: String(item.ratioBps ?? '0'), active: Boolean(item.active) }))
+				.sort((a, b) => a.address.localeCompare(b.address))
+			treeCache.set(key, { fetchedAt: Date.now(), directChildren })
+			return directChildren
+		})
+	treeInFlight.set(key, request)
+	try {
+		return await request
+	} finally {
+		treeInFlight.delete(key)
+	}
 }
 
 export function referralRegistryRoleLabel(role: ReferralRegistryRole): string {

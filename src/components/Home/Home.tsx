@@ -526,12 +526,6 @@ const Home = (_props: HomeProps) => {
 		if (!profile) return
 		// AA 地址检测与落盘由 DaemonProvider 全局喂料 runNoAaWalletFeedTick 负责（与 EOA-only Recent Activity 同轨）
 		reflashProcess()
-		// 拉取 CCSA + beamioUserCard 聚合资产（延迟执行，避免首屏阻塞）
-		setTimeout(() => {
-			getMyAssetsAggregated(profile)
-				.then(setCcsaAssets)
-				.catch(() => setCcsaAssets(null))
-		}, 150)
 		const bo: beamio = temp?.beamio || await getUserInfo(profile.keyID)
 
 		if (!bo) return

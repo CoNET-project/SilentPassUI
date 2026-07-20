@@ -20,7 +20,6 @@ import {
 	rememberCardBasicMetadataTrusted,
 	resolveMyCardAssetsForFeedRow,
 	myCardAssetsHasHoldings,
-	enrichMyCardAssetsWithProgramStatHoldings,
 	type UserCardInfo,
 	type CardActiveIssuedCouponSeriesItem,
 } from '@/services/BeamioCard'
@@ -1169,14 +1168,6 @@ export function DaemonProvider({ children }: DaemonProps) {
               assetsFromWallet,
               prevRow?.assets ?? null
             )
-          if (eoaNormForCoupons && ethers.isAddress(eoaNormForCoupons)) {
-            mergedAssets = await enrichMyCardAssetsWithProgramStatHoldings(
-              mergedAssets,
-              uc.cardAddress,
-              eoaNormForCoupons,
-              aaNormForCoupons
-            )
-          }
           next[key] = {
             meta: meta ?? prevRow?.meta ?? null,
             assets: mergedAssets,
@@ -1356,7 +1347,7 @@ export function DaemonProvider({ children }: DaemonProps) {
     const eoa = profilesRef.current?.[0]?.keyID?.trim() ?? ''
     if (!eoa || !ethers.isAddress(eoa)) return
     const eoaLower = eoa.toLowerCase()
-    const res = await fetchConetWalletBalances(eoa, { bypassMemoryCache: true }).catch(
+    const res = await fetchConetWalletBalances(eoa).catch(
       () => ({ ok: false as const })
     )
     if (!res.ok) return
@@ -1370,7 +1361,7 @@ export function DaemonProvider({ children }: DaemonProps) {
       return
     }
     const aaLower = aa.toLowerCase()
-    const aaRes = await fetchConetWalletBalances(aa, { bypassMemoryCache: true }).catch(
+    const aaRes = await fetchConetWalletBalances(aa).catch(
       () => ({ ok: false as const })
     )
     if (!aaRes.ok) return
@@ -1814,16 +1805,29 @@ export function DaemonProvider({ children }: DaemonProps) {
     )
   }, [currencyData])
 
+  const globalWalletFeedInFlightRef = useRef<Promise<void> | null>(null)
   const runGlobalWalletFeedTick = useCallback(async () => {
-    const cardDetails = await runMyBrandsFeedTick()
-    await runNoAaWalletFeedTick(cardDetails)
-    await Promise.all([
-      runConetWalletBalancesFeedTick(),
-      runConetMiningStatsFeedTick(),
-      runValidatorWalletNodeProfileFeedTick(),
-      runUnifiedIncomeStatsFeedTick(),
-      runReferrerSummaryFeedTick(),
-    ])
+    const current = globalWalletFeedInFlightRef.current
+    if (current) return current
+    const work = (async () => {
+      const cardDetails = await runMyBrandsFeedTick()
+      await runNoAaWalletFeedTick(cardDetails)
+      await Promise.all([
+        runConetWalletBalancesFeedTick(),
+        runConetMiningStatsFeedTick(),
+        runValidatorWalletNodeProfileFeedTick(),
+        runUnifiedIncomeStatsFeedTick(),
+        runReferrerSummaryFeedTick(),
+      ])
+    })()
+    globalWalletFeedInFlightRef.current = work
+    try {
+      await work
+    } finally {
+      if (globalWalletFeedInFlightRef.current === work) {
+        globalWalletFeedInFlightRef.current = null
+      }
+    }
   }, [
     runMyBrandsFeedTick,
     runNoAaWalletFeedTick,
@@ -1835,9 +1839,8 @@ export function DaemonProvider({ children }: DaemonProps) {
   ])
 
   const refreshRecentActivityNoAa = useCallback(async () => {
-    const cardDetails = await runMyBrandsFeedTick()
-    await runNoAaWalletFeedTick(cardDetails)
-  }, [runMyBrandsFeedTick, runNoAaWalletFeedTick])
+    await runGlobalWalletFeedTick()
+  }, [runGlobalWalletFeedTick])
 
   /** My Brands + Recent Activity（EOA+AA 合并）：setTimeout 串行链，每轮 await 结束后再排 6s */
   useEffect(() => {
@@ -1858,13 +1861,6 @@ export function DaemonProvider({ children }: DaemonProps) {
       if (timer !== undefined) window.clearTimeout(timer)
     }
   }, [runGlobalWalletFeedTick])
-
-  const walletFeedProfileKeyId = profiles?.[0]?.keyID
-  const walletFeedProfileAa = profiles?.[0]?.aaAccount
-  const walletFeedProfilePk = profiles?.[0]?.privateKeyArmor
-  useEffect(() => {
-    void runGlobalWalletFeedTick()
-  }, [walletFeedProfileKeyId, walletFeedProfileAa, walletFeedProfilePk, myAddress, runGlobalWalletFeedTick])
 
   useEffect(() => {
     const pac = `http://${serverIpAddress}:${serverPort}/pac`

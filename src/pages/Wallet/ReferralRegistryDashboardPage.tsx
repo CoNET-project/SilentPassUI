@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ethers } from 'ethers'
-import { AlertTriangle, Check, Clipboard, Copy, Gift, Loader2, RefreshCw, ShieldCheck, XCircle } from 'lucide-react'
+import { AlertTriangle, Check, Clipboard, Copy, Gift, Loader2, RefreshCw, Settings2, ShieldCheck, XCircle } from 'lucide-react'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { useBeamioTagDatabase } from '@/providers/BeamioTagDatabaseProvider'
 import { BeamioCircularBackButton } from '@/components/BeamioCircularBackButton'
@@ -23,10 +23,12 @@ import {
 } from '@/services/referralRegistryAdminManagement'
 import {
 	cancelReferralRedeemCode,
+	fetchMerchantRedeemBunitAirdrop,
 	fetchReferralRedeemCodes,
 	issueReferralRedeemCode,
 	referralBpsToPercent,
 	referralPercentToBps,
+	setMerchantRedeemBunitAirdrop,
 	type ReferralRedeemCodeRecord,
 	type ReferralRedeemKind,
 } from '@/services/referralRegistryRedeem'
@@ -104,6 +106,7 @@ function AdminL0ManagementPanel({
 	const [starterKetInput, setStarterKetInput] = useState('')
 	const [loadingQuota, setLoadingQuota] = useState(true)
 	const [savingQuota, setSavingQuota] = useState(false)
+	const [quotaFeedback, setQuotaFeedback] = useState<{ kind: 'success' | 'error'; text: string } | null>(null)
 	const [assigning, setAssigning] = useState(false)
 	const [error, setError] = useState('')
 	const [success, setSuccess] = useState('')
@@ -144,6 +147,7 @@ function AdminL0ManagementPanel({
 		}
 	}, [l0])
 
+
 	const handleSaveRate = useCallback(async () => {
 		if (savingRate) return
 		setSavingRate(true)
@@ -166,6 +170,7 @@ function AdminL0ManagementPanel({
 	const handleSaveQuota = useCallback(async () => {
 		if (savingQuota) return
 		setSavingQuota(true)
+		setQuotaFeedback(null)
 		setError('')
 		setSuccess('')
 		try {
@@ -178,13 +183,17 @@ function AdminL0ManagementPanel({
 				starterKetRemaining: BigInt(starterKetInput.trim()),
 			})
 			await onUpdated()
+			setQuotaFeedback({ kind: 'success', text: 'Redeem quota updated successfully.' })
 			setSuccess('L0 redeem quota updated.')
 		} catch (cause) {
-			setError(cause instanceof Error ? cause.message : 'Could not update the L0 redeem quota.')
+			const message = cause instanceof Error ? cause.message : 'Could not update the L0 redeem quota.'
+			setQuotaFeedback({ kind: 'error', text: message })
+			setError(message)
 		} finally {
 			setSavingQuota(false)
 		}
 	}, [adminPrivateKeyArmor, l0, onUpdated, savingQuota, starterKetInput])
+
 
 	const handleAssign = useCallback(async () => {
 		if (assigning || selectedCandidates.length === 0) return
@@ -268,7 +277,13 @@ function AdminL0ManagementPanel({
 
 						<section className="rounded-2xl border border-white/10 bg-white/[0.05] p-5">
 							<h3 className="font-semibold text-white">Redeem code quota</h3>
-							<p className="mt-2 text-sm leading-6 text-slate-400">Set how many merchant redeem codes this L0 can issue. Each code grants the fixed Start Kit airdrop of 100 paid B-Units.</p>
+							<p className="mt-2 text-sm leading-6 text-slate-400">Set how many merchant redeem codes this L0 can issue. Each code uses the current global Start Kit airdrop amount.</p>
+							<div className="mt-3 flex items-center justify-between rounded-xl border border-amber-200/20 bg-amber-300/[0.08] px-3 py-2.5">
+								<span className="text-xs font-semibold uppercase tracking-[0.12em] text-amber-100">Unused Start Kits</span>
+								<span className="rounded-full border border-amber-200/25 bg-amber-200/15 px-2.5 py-1 text-sm font-semibold text-amber-50">
+									{loadingQuota ? '…' : starterKetInput || '0'}
+								</span>
+							</div>
 							<div className="mt-3">
 								<label className="text-xs text-slate-400">
 									Start Kit remaining
@@ -293,6 +308,12 @@ function AdminL0ManagementPanel({
 								{savingQuota ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
 								{savingQuota ? 'Saving…' : 'Save redeem quota'}
 							</button>
+							{quotaFeedback ? (
+								<div className={`mt-3 rounded-xl border p-3 text-sm ${quotaFeedback.kind === 'success' ? 'border-emerald-300/20 bg-emerald-400/10 text-emerald-100' : 'border-rose-300/20 bg-rose-400/10 text-rose-100'}`} role={quotaFeedback.kind === 'error' ? 'alert' : 'status'}>
+									{quotaFeedback.kind === 'success' ? <Check className="mr-2 inline-block h-4 w-4" aria-hidden /> : <AlertTriangle className="mr-2 inline-block h-4 w-4" aria-hidden />}
+									{quotaFeedback.text}
+								</div>
+							) : null}
 						</section>
 
 						<section className="rounded-2xl border border-white/10 bg-white/[0.05] p-5">
@@ -474,6 +495,103 @@ function DownstreamSection({
 	)
 }
 
+function ReferralGlobalSettingsDrawer({
+	privateKeyArmor,
+	onClose,
+}: {
+	privateKeyArmor: string
+	onClose: () => void
+}) {
+	const [amount, setAmount] = useState('')
+	const [loading, setLoading] = useState(true)
+	const [saving, setSaving] = useState(false)
+	const [error, setError] = useState('')
+	const [success, setSuccess] = useState('')
+
+	useEffect(() => {
+		let cancelled = false
+		void fetchMerchantRedeemBunitAirdrop()
+			.then((value) => {
+				if (!cancelled) setAmount(value)
+			})
+			.catch((cause) => {
+				if (!cancelled) setError(cause instanceof Error ? cause.message : 'Could not load global settings.')
+			})
+			.finally(() => {
+				if (!cancelled) setLoading(false)
+			})
+		return () => {
+			cancelled = true
+		}
+	}, [])
+
+	const save = useCallback(async () => {
+		if (saving) return
+		setSaving(true)
+		setError('')
+		setSuccess('')
+		try {
+			if (!/^\d+(?:\.\d{1,6})?$/.test(amount.trim()) || Number(amount) <= 0) {
+				throw new Error('Start Kit airdrop must be a positive B-Unit amount.')
+			}
+			await setMerchantRedeemBunitAirdrop({ adminPrivateKeyArmor: privateKeyArmor, amountBunits: amount })
+			setSuccess('Global Start Kit airdrop updated.')
+		} catch (cause) {
+			setError(cause instanceof Error ? cause.message : 'Could not update global settings.')
+		} finally {
+			setSaving(false)
+		}
+	}, [amount, privateKeyArmor, saving])
+
+	return (
+		<>
+			<div className="fixed inset-0 z-[119] bg-slate-950/60 backdrop-blur-[2px]" aria-hidden />
+			<aside className="fixed inset-y-0 right-0 z-[120] flex w-full max-w-xl min-h-0 flex-col overflow-hidden border-l border-white/10 bg-[#071126] text-slate-50 shadow-[-16px_0_48px_rgba(2,6,23,0.35)] animate-in slide-in-from-right duration-300" role="dialog" aria-modal="true" aria-label="Global referral settings">
+				<div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 pb-10">
+					<div className="mx-auto w-full max-w-lg" style={{ paddingTop: 'max(1rem, env(safe-area-inset-top, 0px))' }}>
+						<div className="flex items-center justify-between">
+							<BeamioCircularBackButton onClick={onClose} />
+							<Settings2 className="h-5 w-5 text-indigo-200" aria-hidden />
+						</div>
+						<header className="pb-7 pt-8">
+							<p className="text-xs font-semibold uppercase tracking-[0.18em] text-indigo-200">Admin controls</p>
+							<h2 className="mt-2 text-3xl font-semibold tracking-tight">Global referral settings</h2>
+							<p className="mt-2 text-sm leading-6 text-slate-400">These values apply to all newly issued Start Kit redeem codes. Existing codes keep their original amount.</p>
+						</header>
+						<section className="rounded-2xl border border-amber-200/20 bg-amber-300/[0.08] p-5">
+							<h3 className="font-semibold text-white">Start Kit airdrop</h3>
+							<label className="mt-3 block text-xs text-slate-400">
+								Paid B-Units per code
+								<input
+									type="text"
+									inputMode="decimal"
+									value={amount}
+									onChange={(event) => setAmount(event.target.value)}
+									disabled={loading || saving}
+									className="mt-1.5 w-full rounded-xl border border-white/15 bg-black/20 px-3 py-2.5 text-sm text-white outline-none focus:border-amber-300/70 disabled:opacity-60"
+									aria-label="Paid B-Units per Start Kit code"
+								/>
+							</label>
+							<button
+								type="button"
+								onClick={() => void save()}
+								disabled={loading || saving}
+								aria-busy={saving}
+								className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-amber-400 px-4 py-3 text-sm font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
+							>
+								{saving ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
+								{saving ? 'Saving…' : 'Save global setting'}
+							</button>
+						</section>
+						{error ? <div className="mt-4 rounded-xl border border-rose-300/20 bg-rose-400/10 p-3 text-sm text-rose-100">{error}</div> : null}
+						{success ? <div className="mt-4 rounded-xl border border-emerald-300/20 bg-emerald-400/10 p-3 text-sm text-emerald-100">{success}</div> : null}
+					</div>
+				</div>
+			</aside>
+		</>
+	)
+}
+
 function ReferralRedeemManagementPanel({
 	snapshot,
 	kind,
@@ -488,12 +606,16 @@ function ReferralRedeemManagementPanel({
 	const [records, setRecords] = useState<ReferralRedeemCodeRecord[]>([])
 	const [rateInput, setRateInput] = useState(kind === 'l1' ? referralBpsToPercent(snapshot.rebateBps) : '')
 	const [loadingRecords, setLoadingRecords] = useState(true)
+	const [starterKetRemaining, setStarterKetRemaining] = useState<string | null>(null)
+	const [loadingQuota, setLoadingQuota] = useState(false)
 	const [isCreating, setIsCreating] = useState(false)
 	const [cancellingHash, setCancellingHash] = useState('')
 	const [error, setError] = useState('')
 	const [newSecret, setNewSecret] = useState('')
 	const [copiedSecret, setCopiedSecret] = useState(false)
 	const [copiedRecordHash, setCopiedRecordHash] = useState('')
+	const isL0 = kind === 'l0'
+	const isMerchant = kind === 'merchant'
 
 	const loadRecords = useCallback(async (force = false) => {
 		setLoadingRecords(true)
@@ -512,22 +634,45 @@ function ReferralRedeemManagementPanel({
 		void loadRecords()
 	}, [loadRecords])
 
+	useEffect(() => {
+		if (kind !== 'merchant') return
+		let cancelled = false
+		setLoadingQuota(true)
+		void fetchReferralL0Quota(snapshot.eoa)
+			.then((quota) => {
+				if (!cancelled) setStarterKetRemaining(quota.starterKetRemaining)
+			})
+			.catch(() => {
+				if (!cancelled) setStarterKetRemaining(null)
+			})
+			.finally(() => {
+				if (!cancelled) setLoadingQuota(false)
+			})
+		return () => {
+			cancelled = true
+		}
+	}, [kind, snapshot.eoa])
+
 	const handleCreate = useCallback(async () => {
 		if (isCreating || !privateKeyArmor) return
 		setIsCreating(true)
 		setError('')
 		setNewSecret('')
 		try {
-			const rebateBps = referralPercentToBps(rateInput)
+			const rebateBps = isMerchant ? 0n : referralPercentToBps(rateInput)
 			const created = await issueReferralRedeemCode({ kind, issuerPrivateKeyArmor: privateKeyArmor, rebateBps })
 			setNewSecret(created.secret)
 			await loadRecords(true)
+			if (isMerchant) {
+				const quota = await fetchReferralL0Quota(snapshot.eoa)
+				setStarterKetRemaining(quota.starterKetRemaining)
+			}
 		} catch (cause) {
 			setError(cause instanceof Error ? cause.message : 'Could not issue the redeem code.')
 		} finally {
 			setIsCreating(false)
 		}
-	}, [isCreating, privateKeyArmor, rateInput, kind, loadRecords])
+	}, [isCreating, privateKeyArmor, rateInput, kind, loadRecords, isL0, snapshot.eoa])
 
 	const handleCancel = useCallback(async (hash: string) => {
 		if (cancellingHash || !privateKeyArmor) return
@@ -565,11 +710,12 @@ function ReferralRedeemManagementPanel({
 		}
 	}, [])
 
-	const isL0 = kind === 'l0'
-	const title = isL0 ? 'L0 redeem codes' : 'L1 redeem codes'
+	const title = isL0 ? 'L0 redeem codes' : isMerchant ? 'Start Kit redeem codes' : 'L1 redeem codes'
 	const description = isL0
 		? 'Create permanent codes that register a new L0 under this Admin.'
-		: 'Create permanent codes that register a new L1 under this L0.'
+		: isMerchant
+			? 'Create permanent codes that grant a new merchant the fixed Start Kit airdrop.'
+			: 'Create permanent codes that register a new L1 under this L0.'
 	let ratioPreview = '0.00%'
 	if (!isL0 && snapshot.rebateBps && Number(snapshot.rebateBps) > 0) {
 		try {
@@ -598,10 +744,24 @@ function ReferralRedeemManagementPanel({
 						</header>
 
 						<div className="space-y-4">
+							{isMerchant ? (
+								<div className="rounded-2xl border border-amber-200/20 bg-amber-300/[0.08] p-5">
+									<div className="flex items-center justify-between gap-3">
+										<div>
+											<p className="text-xs font-semibold uppercase tracking-[0.14em] text-amber-200">Start Kit remaining</p>
+											<p className="mt-1 text-3xl font-semibold text-white">
+												{loadingQuota ? '…' : starterKetRemaining ?? 'Unavailable'}
+											</p>
+										</div>
+										<Gift className="h-7 w-7 text-amber-200" aria-hidden />
+									</div>
+									<p className="mt-2 text-xs leading-5 text-slate-400">Each issued code consumes one allowance and grants 2,000 paid B-Units.</p>
+								</div>
+							) : null}
 							<div className="rounded-2xl border border-white/10 bg-white/[0.05] p-5">
-								<label htmlFor="referral-rebate-rate" className="text-sm font-semibold text-white">
+								{isMerchant ? null : <label htmlFor="referral-rebate-rate" className="text-sm font-semibold text-white">
 									{isL0 ? 'L0 rebate rate' : 'L1 rebate rate'}
-								</label>
+								</label>}
 								<div className="mt-2 flex items-center gap-2">
 									<input
 										id="referral-rebate-rate"
@@ -615,7 +775,7 @@ function ReferralRedeemManagementPanel({
 									/>
 									<span className="text-slate-400">%</span>
 								</div>
-								{isL0 ? null : (
+								{isL0 || isMerchant ? null : (
 									<p className="mt-2 text-xs text-slate-400">
 										Current L0 rebate: {referralBpsToPercent(snapshot.rebateBps)}% · L1 ratio: {ratioPreview}
 									</p>
@@ -628,7 +788,7 @@ function ReferralRedeemManagementPanel({
 									className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-indigo-400 disabled:cursor-not-allowed disabled:opacity-60"
 								>
 									{isCreating ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Gift className="h-4 w-4" aria-hidden />}
-									{isCreating ? 'Creating code…' : `Create ${isL0 ? 'L0' : 'L1'} redeem code`}
+									{isCreating ? 'Creating code…' : `Create ${isL0 ? 'L0' : isMerchant ? 'Start Kit' : 'L1'} redeem code`}
 								</button>
 							</div>
 
@@ -694,7 +854,7 @@ function ReferralRedeemManagementPanel({
 												) : null}
 											</div>
 											<p className="mt-2 text-xs text-slate-300">
-												Rebate {referralBpsToPercent(record.rebateBps)}%{kind === 'l1' ? ` · Ratio ${referralBpsToPercent(record.ratioBps)}%` : ''}
+												{isMerchant ? 'Start Kit · 2,000 paid B-Units' : `Rebate ${referralBpsToPercent(record.rebateBps)}%${kind === 'l1' ? ` · Ratio ${referralBpsToPercent(record.ratioBps)}%` : ''}`}
 											</p>
 											<p className="mt-1 text-[10px] text-slate-500">{record.validBefore === 0 ? 'Permanent code' : `Expires ${new Date(record.validBefore * 1000).toLocaleString()}`}</p>
 										</div>
@@ -726,6 +886,7 @@ export default function ReferralRegistryDashboardPage() {
 	const [refreshStatus, setRefreshStatus] = useState<RefreshStatus>('idle')
 	const [redeemPanelKind, setRedeemPanelKind] = useState<ReferralRedeemKind | null>(null)
 	const [managedL0, setManagedL0] = useState<ReferralRegistryDownstreamItem | null>(null)
+	const [globalSettingsOpen, setGlobalSettingsOpen] = useState(false)
 
 	useEffect(() => {
 		setShowFooter(false)
@@ -761,6 +922,17 @@ export default function ReferralRegistryDashboardPage() {
 									{snapshot?.isAdmin ? (
 										<button
 											type="button"
+											onClick={() => setGlobalSettingsOpen(true)}
+											className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-indigo-200/20 bg-indigo-300/10 text-indigo-200 transition hover:bg-indigo-300/20"
+											aria-label="Open global referral settings"
+											title="Global referral settings"
+										>
+											<Settings2 className="h-4 w-4" aria-hidden />
+										</button>
+									) : null}
+									{snapshot?.isAdmin ? (
+										<button
+											type="button"
 											onClick={() => setRedeemPanelKind('l0')}
 											className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-blue-200/20 bg-blue-300/10 text-blue-200 transition hover:bg-blue-300/20"
 											aria-label="Manage L0 redeem codes"
@@ -772,10 +944,10 @@ export default function ReferralRegistryDashboardPage() {
 									{snapshot?.role === 'l0' ? (
 										<button
 											type="button"
-											onClick={() => setRedeemPanelKind('l1')}
+											onClick={() => setRedeemPanelKind('merchant')}
 											className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-amber-200/20 bg-amber-300/10 text-amber-200 transition hover:bg-amber-300/20"
-											aria-label="Manage L1 redeem codes"
-											title="Manage L1 redeem codes"
+											aria-label="Issue Start Kit redeem codes"
+											title="Issue Start Kit redeem codes"
 										>
 											<Gift className="h-4 w-4" aria-hidden />
 										</button>
@@ -849,6 +1021,12 @@ export default function ReferralRegistryDashboardPage() {
 					item={managedL0}
 					onClose={() => setManagedL0(null)}
 					onUpdated={handleManagementUpdated}
+				/>
+			) : null}
+			{globalSettingsOpen && snapshot?.isAdmin && signingArmor ? (
+				<ReferralGlobalSettingsDrawer
+					privateKeyArmor={signingArmor}
+					onClose={() => setGlobalSettingsOpen(false)}
 				/>
 			) : null}
 		</div>

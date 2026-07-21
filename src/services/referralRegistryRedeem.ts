@@ -7,34 +7,6 @@ const uuid62 = require('uuid62') as { v4: () => string }
 export type ReferralRedeemKind = 'l0' | 'l1' | 'merchant' | 'adminPackage'
 export type ReferralRedeemStatus = 'pending' | 'claimed' | 'cancelled'
 
-/** On-chain PackagePaymentMethod (Cash = 0 default). */
-export type AdminPackagePaymentMethod = 0 | 1 | 2 | 3
-
-export const ADMIN_PACKAGE_PAYMENT_LABELS: Record<AdminPackagePaymentMethod, string> = {
-	0: 'Cash',
-	1: 'Credit card',
-	2: 'Gift',
-	3: 'Compensation',
-}
-
-export type AdminMerchantPackageRecord = {
-	hash: string
-	secret?: string
-	issuerAdmin: string
-	optionalL0: string
-	bunitAmount: string
-	bunitAmountDisplay: string
-	isPaid: boolean
-	includeStartKet: boolean
-	paymentMethod: AdminPackagePaymentMethod
-	paymentMethodLabel: string
-	description: string
-	active: boolean
-	claimed: boolean
-	cancelled: boolean
-	status: ReferralRedeemStatus
-}
-
 export type ReferralRedeemCodeRecord = {
 	hash: string
 	secret?: string

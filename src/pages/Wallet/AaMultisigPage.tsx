@@ -87,7 +87,7 @@ import {
 	type AaMultisigTransferEligibleWallet,
 	type InstitutionalManageableWallet,
 } from '@/utils/aaMultisigTransferEligible'
-import { createInstitutionalAa } from '@/utils/institutionalAaAccounts'
+import { createInstitutionalAa, normalizeInstitutionalBeamioTag } from '@/utils/institutionalAaAccounts'
 import {
 	buildUnsignedAaMultisigUserOp,
 	encodeAAExecuteConetAssetTransfer,
@@ -464,6 +464,7 @@ export default function AaMultisigPage() {
 	const [institutionalListLoading, setInstitutionalListLoading] = useState(false)
 	const [creatingInstitutionalAa, setCreatingInstitutionalAa] = useState(false)
 	const [createInstitutionalError, setCreateInstitutionalError] = useState<string | null>(null)
+	const [newInstitutionalTag, setNewInstitutionalTag] = useState('')
 	const createInstitutionalInFlightRef = useRef(false)
 	/** Derived for existing tab logic (Signers / Transfer / History). */
 	const transferEligibleWallets = useMemo(
@@ -763,15 +764,23 @@ export default function AaMultisigPage() {
 
 	const handleCreateInstitutionalAa = useCallback(async () => {
 		if (!eoa || createInstitutionalInFlightRef.current) return
+		const tag = normalizeInstitutionalBeamioTag(newInstitutionalTag)
+		if (!tag) {
+			setCreateInstitutionalError(
+				'Enter a BeamioTag (3–26 letters, numbers, _ or .) so others can find this wallet.'
+			)
+			return
+		}
 		createInstitutionalInFlightRef.current = true
 		setCreatingInstitutionalAa(true)
 		setCreateInstitutionalError(null)
 		try {
-			const result = await createInstitutionalAa(eoa)
+			const result = await createInstitutionalAa(eoa, { accountName: tag })
 			if (!result.success) {
 				setCreateInstitutionalError(result.error)
 				return
 			}
+			setNewInstitutionalTag('')
 			await refreshInstitutionalWallets()
 			selectManagedAa(result.aa)
 			setTab('signers')
@@ -779,7 +788,7 @@ export default function AaMultisigPage() {
 			createInstitutionalInFlightRef.current = false
 			setCreatingInstitutionalAa(false)
 		}
-	}, [eoa, refreshInstitutionalWallets, selectManagedAa])
+	}, [eoa, newInstitutionalTag, refreshInstitutionalWallets, selectManagedAa])
 
 	useEffect(() => {
 		if (!selectedManagedAa) {
@@ -1975,8 +1984,9 @@ export default function AaMultisigPage() {
 						Manage your institutional-grade smart wallets
 					</h2>
 					<p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-						Create and manage Smart Wallets beyond your personal Express Pay wallet. Select a wallet
-						below to configure co-signers, pending approvals, transfers, and history.
+						Create and manage Smart Wallets beyond your personal Express Pay wallet. Give each wallet
+						a unique @BeamioTag so others can search and find its address. Select a wallet below to
+						configure co-signers, pending approvals, transfers, and history.
 					</p>
 
 					{institutionalListLoading && institutionalWallets.length === 0 ? (
@@ -1986,8 +1996,8 @@ export default function AaMultisigPage() {
 						</p>
 					) : institutionalWallets.length === 0 ? (
 						<p className="mt-3 text-sm text-slate-500">
-							No institutional Smart Wallets yet. Create one, or wait until you are added as a
-							co-signer on another wallet.
+							No institutional Smart Wallets yet. Create one with a BeamioTag, or wait until you are
+							added as a co-signer on another wallet.
 						</p>
 					) : (
 						<ul className="mt-3 space-y-2" role="listbox" aria-label="Institutional Smart Wallets">
@@ -1995,6 +2005,11 @@ export default function AaMultisigPage() {
 								const selected =
 									selectedManagedAa &&
 									w.aaAccount.toLowerCase() === selectedManagedAa.toLowerCase()
+								const tagLine = w.accountName
+									? w.accountName.startsWith('@')
+										? w.accountName
+										: `@${w.accountName}`
+									: null
 								return (
 									<li key={w.aaAccount}>
 										<button
@@ -2018,6 +2033,11 @@ export default function AaMultisigPage() {
 														Co-managed
 													</span>
 												)}
+												{tagLine ? (
+													<span className="truncate text-xs font-semibold text-[#8d3a8b]">
+														{tagLine}
+													</span>
+												) : null}
 												<span className="text-[10px] font-medium text-slate-500">
 													{w.policy.threshold}/{w.policy.managers.length} sigs
 												</span>
@@ -2038,6 +2058,38 @@ export default function AaMultisigPage() {
 							<p className="min-w-0 break-words">{createInstitutionalError}</p>
 						</div>
 					) : null}
+
+					<label
+						htmlFor="institutional-aa-beamio-tag"
+						className="mt-3 block text-xs font-medium text-slate-600 dark:text-slate-400"
+					>
+						BeamioTag for new wallet
+					</label>
+					<div className="relative mt-1">
+						<span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">
+							@
+						</span>
+						<input
+							id="institutional-aa-beamio-tag"
+							type="text"
+							value={newInstitutionalTag.replace(/^@+/, '')}
+							onChange={(e) => {
+								setNewInstitutionalTag(e.target.value.replace(/^@+/, ''))
+								if (createInstitutionalError) setCreateInstitutionalError(null)
+							}}
+							placeholder="treasury_ops"
+							autoComplete="off"
+							autoCapitalize="off"
+							spellCheck={false}
+							enterKeyHint="done"
+							disabled={creatingInstitutionalAa}
+							className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-7 pr-3 text-sm text-slate-900 outline-none focus:border-[#8d3a8b] dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+						/>
+					</div>
+					<p className="mt-1 text-[11px] text-slate-500">
+						3–26 characters (letters, numbers, _ or .). Others can search this tag to get the wallet
+						address.
+					</p>
 
 					<button
 						type="button"

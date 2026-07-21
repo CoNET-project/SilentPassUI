@@ -2,7 +2,7 @@ import { ethers } from 'ethers'
 import type { AaMultisigTaskLocal } from '@/utils/aaMultisigProtocol'
 import { listAaMultisigStorageAaAccounts } from '@/utils/aaMultisigLocalStore'
 import { readAaThresholdPolicy, type AaThresholdPolicy } from '@/utils/aaMultisigUserOp'
-import { listOwnInstitutionalAa } from '@/utils/institutionalAaAccounts'
+import { listOwnInstitutionalAa, resolveBeamioTagForAddress } from '@/utils/institutionalAaAccounts'
 import { CONET_AA_FACTORY } from '@/config/chainAddresses'
 
 export type AaMultisigTransferEligibleWallet = {
@@ -17,6 +17,8 @@ export type InstitutionalManageableWallet = {
 	aaAccount: string
 	kind: 'own_institutional' | 'comanaged'
 	index?: number
+	/** BeamioTag bound to this AA (AccountRegistry), if any. */
+	accountName?: string
 	policy: AaThresholdPolicy
 	lastActivityAt: number
 }
@@ -145,6 +147,7 @@ export async function discoverInstitutionalManageableWallets(
 				aaAccount: row.aa,
 				kind: 'own_institutional',
 				index: row.index,
+				accountName: row.accountName,
 				policy,
 				lastActivityAt: activityByAa.get(key) ?? 0,
 			})
@@ -171,6 +174,7 @@ export async function discoverInstitutionalManageableWallets(
 			byAa.set(key, {
 				aaAccount,
 				kind: 'comanaged',
+				accountName: (await resolveBeamioTagForAddress(aaAccount, provider)) || undefined,
 				policy,
 				lastActivityAt: activityByAa.get(key) ?? 0,
 			})

@@ -1087,33 +1087,37 @@ function ReferralRedeemManagementPanel({
 								</div>
 							) : null}
 							<div className="rounded-2xl border border-white/10 bg-white/[0.05] p-5">
-								{isMerchant ? null : <label htmlFor="referral-rebate-rate" className="text-sm font-semibold text-white">
-									{isL0 ? 'L0 rebate rate' : 'L1 rebate rate'}
-								</label>}
-								<div className="mt-2 flex items-center gap-2">
-									<input
-										id="referral-rebate-rate"
-										type="text"
-										inputMode="decimal"
-										autoComplete="off"
-										value={rateInput}
-										onChange={(event) => setRateInput(event.target.value)}
-										placeholder="5"
-										className="min-w-0 flex-1 rounded-xl border border-white/15 bg-black/20 px-3 py-2.5 text-white outline-none focus:border-indigo-300/70"
-									/>
-									<span className="text-slate-400">%</span>
-								</div>
-								{isL0 || isMerchant ? null : (
-									<p className="mt-2 text-xs text-slate-400">
-										Current L0 rebate: {referralBpsToPercent(snapshot.rebateBps)}% · L1 ratio: {ratioPreview}
-									</p>
-								)}
+								{!isMerchant ? (
+									<>
+										<label htmlFor="referral-rebate-rate" className="text-sm font-semibold text-white">
+											{isL0 ? 'L0 rebate rate' : 'L1 rebate rate'}
+										</label>
+										<div className="mt-2 flex items-center gap-2">
+											<input
+												id="referral-rebate-rate"
+												type="text"
+												inputMode="decimal"
+												autoComplete="off"
+												value={rateInput}
+												onChange={(event) => setRateInput(event.target.value)}
+												placeholder="5"
+												className="min-w-0 flex-1 rounded-xl border border-white/15 bg-black/20 px-3 py-2.5 text-white outline-none focus:border-indigo-300/70"
+											/>
+											<span className="text-slate-400">%</span>
+										</div>
+										{isL0 ? null : (
+											<p className="mt-2 text-xs text-slate-400">
+												Current L0 rebate: {referralBpsToPercent(snapshot.rebateBps)}% · L1 ratio: {ratioPreview}
+											</p>
+										)}
+									</>
+								) : null}
 								<button
 									type="button"
 									onClick={() => void handleCreate()}
 									disabled={isCreating || !privateKeyArmor}
 									aria-busy={isCreating}
-									className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-indigo-400 disabled:cursor-not-allowed disabled:opacity-60"
+									className={`inline-flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-indigo-400 disabled:cursor-not-allowed disabled:opacity-60${!isMerchant ? ' mt-4' : ''}`}
 								>
 									{isCreating ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Gift className="h-4 w-4" aria-hidden />}
 									{isCreating ? 'Creating code…' : `Create ${isL0 ? 'L0' : isMerchant ? 'Start Kit' : 'L1'} redeem code`}

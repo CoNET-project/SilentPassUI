@@ -519,21 +519,47 @@ export async function claimReferralRedeemCode(params: {
 	}
 	if (kind === 'adminPackage') {
 		return enqueueWrite(async () => {
-			const wallet = new ethers.Wallet(params.privateKeyArmor, conetDepinProvider)
+			const wallet = new ethers.Wallet(params.privateKeyArmor)
 			const hash = referralRedeemHash(secret)
 			const raw = await registryRead.adminMerchantPackageCodes(hash)
 			if (!raw.active || raw.claimed || raw.cancelled) {
 				throw new Error('This package code is not active on CoNET. Copy the complete code from the issuer.')
 			}
-			const registry = new ethers.Contract(
-				CONET_REFERRAL_REGISTRY_VAULT_V1,
-				['function claimAdminMerchantPackageCode(bytes secret)'],
-				wallet,
+			const nonceResponse = await fetch(`${beamioApi}/api/referralRegistryClaimNonce?account=${encodeURIComponent(wallet.address)}`)
+			const nonceJson = await nonceResponse.json() as { success?: boolean; nonce?: string; error?: string }
+			if (!nonceResponse.ok || !nonceJson.success || nonceJson.nonce == null) throw new Error(nonceJson.error ?? 'Could not read referral claim nonce.')
+			const nonce = BigInt(nonceJson.nonce)
+			const deadline = BigInt(Math.floor(Date.now() / 1000) + 300)
+			const types = {
+				ClaimAdminMerchantPackageCode: [
+					{ name: 'claimer', type: 'address' },
+					{ name: 'redeemHash', type: 'bytes32' },
+					{ name: 'nonce', type: 'uint256' },
+					{ name: 'deadline', type: 'uint256' },
+				],
+			}
+			const message = { claimer: wallet.address, redeemHash: hash, nonce, deadline }
+			const signature = await wallet.signTypedData(
+				{ name: 'ReferralRegistryVaultV1', version: '1', chainId: 224422, verifyingContract: CONET_REFERRAL_REGISTRY_VAULT_V1 },
+				types,
+				message,
 			)
-			const tx = await registry.claimAdminMerchantPackageCode(ethers.toUtf8Bytes(secret))
-			const receipt = await tx.wait()
-			if (!receipt || receipt.status !== 1) throw new Error('Admin package claim transaction failed.')
-			return tx.hash as string
+			const response = await fetch(`${beamioApi}/api/referralRegistryClaim`, {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({
+					kind: 'adminPackage',
+					account: wallet.address,
+					secret,
+					redeemHash: hash,
+					nonce: nonce.toString(),
+					deadline: deadline.toString(),
+					signature,
+				}),
+			})
+			const json = await response.json() as { success?: boolean; txHash?: string; error?: string }
+			if (!response.ok || !json.success || !json.txHash) throw new Error(json.error ?? 'Admin package claim relay failed.')
+			return json.txHash
 		})
 	}
 	return enqueueWrite(async () => {

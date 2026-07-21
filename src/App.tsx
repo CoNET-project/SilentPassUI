@@ -14,7 +14,7 @@ import ChatDetail from "./pages/chatDetail"
 import BeamioInstallOnboarding from "@/components/launchPage"
 import Browser from "@/pages/Browser"
 import { initChat, checkSign, getKeysFromCoNETPGPSC, makeMessage, sendMessage, getRandomNodes, currentGossipAbortController } from "@/services/chat"
-import { checkStorage, searchUsername, storeSystemData, runAutoBUnitFreeClaimIfEligible } from "@/services/beamio"
+import { checkStorage, searchUsername, storeSystemData } from "@/services/beamio"
 import { postCardCouponOpenClaimWithCurrentWallet } from "@/services/BeamioCard"
 import { CoNET_Data, setCoNET_Data } from "@/utils/globals"
 import { baseEndpoint, USDCContract_BASE, setBaseRpcNodeProvider, setRpcDegradedGetter } from "@/utils/constants"
@@ -128,7 +128,6 @@ function AppShell() {
   const processedIdsRef = useRef<Set<string>>(new Set())
   const setChartsRef = useRef(setCharts)
   setChartsRef.current = setCharts
-  const bUnitClaimAttemptedRef = useRef(false)
   const initialRedeemUrlProcessedRef = useRef(false)
   const initialOpenClaimUrlProcessedRef = useRef(false)
 
@@ -206,31 +205,6 @@ function AppShell() {
       navigate('/History')
     })
   }, [isInitialLoading, profiles, navigate])
-
-  // App 初始化时检查可否领取 BeamioBUnits，可领取则自动发起领取请求
-  // 重要：claimant 必须从私钥推导，不能使用 keyID，否则会导致 signer != claimant 链上失败
-  useEffect(() => {
-    if (bUnitClaimAttemptedRef.current || !profiles?.length) return
-    const p0 = profiles[0] as { privateKeyArmor?: string; keyID?: string } | undefined
-    if (!p0?.privateKeyArmor) return
-    let claimant: string
-    try {
-      claimant = new ethers.Wallet(p0.privateKeyArmor).address
-    } catch {
-      return
-    }
-    if (!claimant || !ethers.isAddress(claimant)) return
-    // 防御：keyID 与私钥推导地址不一致时跳过，避免 signer != claimant 导致链上 revert
-    if (p0.keyID && ethers.isAddress(p0.keyID) && p0.keyID.toLowerCase() !== claimant.toLowerCase()) {
-      return
-    }
-    bUnitClaimAttemptedRef.current = true
-    void runAutoBUnitFreeClaimIfEligible(p0.privateKeyArmor!, claimant).then((outcome) => {
-      if (outcome === 'claimed_success') {
-        Toast.show({ content: '20 B-Units claimed!', position: 'top' })
-      }
-    }).catch(() => {})
-  }, [profiles])
 
   const { pathname } = useLocation()
 

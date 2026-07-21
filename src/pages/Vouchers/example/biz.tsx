@@ -12402,6 +12402,8 @@ useEffect(() => {
  /** Tier row selected for App / Physical preview card (gradient + badge). */
  const [cardIssuancePreviewTierId, setCardIssuancePreviewTierId] = useState<string | null>(null);
  const cardConfigPreviewAnchorRef = useRef<HTMLDivElement | null>(null);
+ const [cardIssuancePreviewDisplayNameFontSize, setCardIssuancePreviewDisplayNameFontSize] = useState(26.4);
+ const cardIssuancePreviewDisplayNameRef = useRef<HTMLParagraphElement | null>(null);
  const cardIssuanceBaseTier = useMemo(
    () => cardIssuanceTiers.find((tier) => tier.id === CARD_ISSUANCE_SINGLE_TIER_ID) ?? cardIssuanceTiers[0] ?? null,
    [cardIssuanceTiers]
@@ -13093,6 +13095,9 @@ useEffect(() => {
  );
 
  const programsOverviewActiveCardGradientCss = useMemo(() => {
+  if (cardIssuancePreviewEditTier) {
+    return cardIssuanceTierRowGradientCss(cardIssuancePreviewEditTier.backgroundColor ?? '');
+  }
    if (cardIssuanceExistingCard && cardIssuanceTiers.length > 0) {
      const hero = findHighestCardIssuanceTierRow(cardIssuanceTiers);
      if (hero) {
@@ -13112,10 +13117,19 @@ useEffect(() => {
      return cardIssuanceTierRowGradientCss(top?.backgroundColor ?? '');
    }
    return cardIssuancePreviewCardGradientCss;
- }, [cardIssuanceExistingCard, cardIssuanceTiers, cardIssuanceExistingCard?.meta?.tiers, cardIssuancePreviewCardGradientCss]);
+}, [
+  cardIssuanceExistingCard,
+  cardIssuanceTiers,
+  cardIssuanceExistingCard?.meta?.tiers,
+  cardIssuancePreviewCardGradientCss,
+  cardIssuancePreviewEditTier,
+]);
 
- /** Pass hero colors aligned with Tiers panel (highest threshold row); fallback to last metadata / configure preview. */
+/** Main card preview colors follow the currently selected tier. */
  const programsOverviewPassHeroTheme = useMemo(() => {
+  if (cardIssuancePreviewEditTier) {
+    return cardIssuanceTierGradientTheme(cardIssuancePreviewEditTier.backgroundColor ?? '');
+  }
    if (cardIssuanceExistingCard && cardIssuanceTiers.length > 0) {
      const hero = findHighestCardIssuanceTierRow(cardIssuanceTiers);
      if (hero) {
@@ -13135,7 +13149,13 @@ useEffect(() => {
      return cardIssuanceTierGradientTheme(top?.backgroundColor ?? '');
    }
    return cardIssuancePreviewPassHeroTheme;
- }, [cardIssuanceExistingCard, cardIssuanceTiers, cardIssuanceExistingCard?.meta?.tiers, cardIssuancePreviewPassHeroTheme]);
+}, [
+  cardIssuanceExistingCard,
+  cardIssuanceTiers,
+  cardIssuanceExistingCard?.meta?.tiers,
+  cardIssuancePreviewPassHeroTheme,
+  cardIssuancePreviewEditTier,
+]);
 
  const programsOverviewCardMaxDiscountPct = useMemo(() => {
    if (cardIssuanceExistingCard && cardIssuanceTiers.length > 0) {
@@ -13222,6 +13242,36 @@ useEffect(() => {
    cardIssuanceStoreDisplayName,
    cardIssuanceProgramName,
  ]);
+
+ useLayoutEffect(() => {
+   const element = cardIssuancePreviewDisplayNameRef.current;
+   if (!element) return;
+
+   const fitDisplayName = () => {
+     const maxFontSize = 26.4;
+     const minFontSize = 12;
+     let fontSize = maxFontSize;
+     element.style.fontSize = `${fontSize}px`;
+     while (element.scrollWidth > element.clientWidth && fontSize > minFontSize) {
+       fontSize = Math.max(minFontSize, fontSize - 0.5);
+       element.style.fontSize = `${fontSize}px`;
+     }
+     setCardIssuancePreviewDisplayNameFontSize((previous) =>
+       previous === fontSize ? previous : fontSize
+     );
+   };
+
+   let frame = requestAnimationFrame(fitDisplayName);
+   const handleWindowResize = () => {
+     cancelAnimationFrame(frame);
+     frame = requestAnimationFrame(fitDisplayName);
+   };
+   window.addEventListener('resize', handleWindowResize);
+   return () => {
+     cancelAnimationFrame(frame);
+     window.removeEventListener('resize', handleWindowResize);
+   };
+ }, [programsOverviewDisplayName]);
 
  useEffect(() => {
    if (!cardIssuanceExistingCard?.cardAddress || !cardIssuanceExistingCard.meta) return;
@@ -34344,10 +34394,14 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                        className={`sticky z-40 w-full bg-transparent px-1 pb-3 sm:px-2 sm:pb-4 ${CARD_CONFIGURATOR_MOBILE_STICKY_BELOW_HEADER_CLASS}`}
                      >
                        <section aria-label={tu('programs_config_issued_preview_aria')}>
-                         <div className="flex w-full items-stretch justify-center gap-3 overflow-x-auto px-1 pb-1 scrollbar-hide">
+                         <div className="flex w-full items-stretch justify-start gap-3 overflow-x-auto px-1 pb-1 scrollbar-hide sm:justify-center">
                          <div
                            className="relative w-full max-w-[380px] shrink-0 touch-pan-y group/prev sm:max-w-[400px]"
                            onPointerDown={(event) => {
+                             const target = event.target;
+                             if (target instanceof Element && target.closest('button, input, textarea, select, a')) {
+                               return;
+                             }
                              cardIssuancePreviewSwipeStartXRef.current = event.clientX;
                              event.currentTarget.setPointerCapture(event.pointerId);
                            }}
@@ -34371,7 +34425,11 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                              <>
                                <button
                                  type="button"
-                                 onClick={() => moveCardIssuancePreviewTier(-1)}
+                                 onPointerDown={(event) => event.stopPropagation()}
+                                 onClick={(event) => {
+                                   event.stopPropagation();
+                                   moveCardIssuancePreviewTier(-1);
+                                 }}
                                  className={`absolute -left-3 top-1/2 z-20 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-white/90 text-[#1562f0] shadow-lg ring-1 ring-black/10 transition hover:bg-white ${bizFocusRingClass}`}
                                  aria-label="Show previous tier"
                                >
@@ -34379,7 +34437,11 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                </button>
                                <button
                                  type="button"
-                                 onClick={() => moveCardIssuancePreviewTier(1)}
+                                 onPointerDown={(event) => event.stopPropagation()}
+                                 onClick={(event) => {
+                                   event.stopPropagation();
+                                   moveCardIssuancePreviewTier(1);
+                                 }}
                                  className={`absolute -right-3 top-1/2 z-20 inline-flex h-9 w-9 -translate-y-1/2 justify-center items-center rounded-full bg-white/90 text-[#1562f0] shadow-lg ring-1 ring-black/10 transition hover:bg-white ${bizFocusRingClass}`}
                                  aria-label="Show next tier"
                                >
@@ -34473,7 +34535,11 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                </div>
                                <div className="relative z-[1] flex items-end justify-between gap-3">
                                  <div className="min-w-0">
-                                   <p className="font-manrope text-2xl font-extrabold leading-tight tracking-tight sm:text-[1.65rem]">
+                                   <p
+                                     ref={cardIssuancePreviewDisplayNameRef}
+                                     className="max-w-full truncate whitespace-nowrap font-manrope font-extrabold leading-tight tracking-tight"
+                                     style={{ fontSize: `${cardIssuancePreviewDisplayNameFontSize}px` }}
+                                   >
                                      {programsOverviewDisplayName}
                                    </p>
                                    <ProgramLivePreviewInlineField
@@ -34558,13 +34624,13 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                              setCardIssuanceTiers(nextTiers);
                              setCardIssuancePreviewTierId(nextRow.id);
                            }}
-                           className={`flex min-h-[260px] min-w-[10rem] shrink-0 flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-[#1562f0]/35 bg-[#eaf1ff] px-4 text-center text-[#1562f0] transition hover:border-[#1562f0] hover:bg-[#dfeaff] ${bizFocusRingClass}`}
+                           className={`flex h-24 w-24 min-w-24 shrink-0 self-center flex-col items-center justify-center gap-1 rounded-full border-2 border-dashed border-[#1562f0]/40 bg-[#eaf1ff] px-2 text-center text-[#1562f0] shadow-sm transition hover:border-[#1562f0] hover:bg-[#dfeaff] ${bizFocusRingClass}`}
                            aria-label="Add tier"
                          >
-                           <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#1562f0] text-white shadow-sm">
-                             <Plus className="h-5 w-5" strokeWidth={2.5} aria-hidden />
+                           <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[#1562f0] text-white shadow-sm">
+                             <Plus className="h-4 w-4" strokeWidth={2.5} aria-hidden />
                            </span>
-                           <span className="text-xs font-black uppercase tracking-[0.12em]">Add tier</span>
+                           <span className="text-[9px] font-black uppercase tracking-[0.1em]">Add tier</span>
                          </button>
                          </div>
                        </section>

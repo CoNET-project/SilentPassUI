@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
 	Hexagon,
 	Loader2,
-	Users,
 	Send,
 	History,
 	AlertTriangle,
@@ -12,8 +12,9 @@ import {
 	Search,
 	X,
 	ChevronLeft,
-	Wallet,
 	Plus,
+	Minus,
+	ChevronDown,
 } from 'lucide-react'
 import { Toast } from 'antd-mobile'
 import { ethers } from 'ethers'
@@ -89,6 +90,11 @@ import {
 } from '@/utils/aaMultisigTransferEligible'
 import { createInstitutionalAa, normalizeInstitutionalBeamioTag } from '@/utils/institutionalAaAccounts'
 import {
+	loadInstitutionalManageableWalletsLocal,
+	mergeTrustedInstitutionalManageableWalletsLocal,
+	upsertInstitutionalManageableWalletLocal,
+} from '@/utils/institutionalManageableWalletsLocalCache'
+import {
 	buildUnsignedAaMultisigUserOp,
 	encodeAAExecuteConetAssetTransfer,
 	encodeAAExecuteSetThresholdPolicy,
@@ -96,7 +102,6 @@ import {
 	readAaThresholdPolicy,
 	signAaUserOpHash,
 	submitAaMultisigUserOp,
-	orderAaCosignersWithOwnerFirst,
 	resolveEffectiveAaOwner,
 	aaMultisigProvider,
 } from '@/utils/aaMultisigUserOp'
@@ -128,7 +133,7 @@ import {
 	resolveCosignerEoaFromSearchRow,
 } from '@/utils/resolveCosignerWalletIdentity'
 
-type TabId = 'signers' | 'pending' | 'transfer' | 'history'
+type TabId = 'pending' | 'transfer' | 'history'
 
 const aaAccent = beamioWalletAccent('aa')
 
@@ -229,7 +234,14 @@ function CosignerAddressCapsule({ address }: { address: string }) {
 	)
 }
 
-function AaAccountAddressCapsule({ address }: { address: string }) {
+function AaAccountAddressCapsule({
+	address,
+	beamioTag,
+}: {
+	address: string
+	/** Optional @BeamioTag shown on the left inside the capsule. */
+	beamioTag?: string | null
+}) {
 	const [copied, setCopied] = React.useState(false)
 	const fullAddress = (() => {
 		try {
@@ -239,6 +251,11 @@ function AaAccountAddressCapsule({ address }: { address: string }) {
 		}
 	})()
 	const short = shortAddr(fullAddress)
+	const tagDisplay = (() => {
+		const raw = (beamioTag ?? '').trim()
+		if (!raw) return null
+		return raw.startsWith('@') ? raw : `@${raw}`
+	})()
 
 	const handleCopy = useCallback(
 		async (e: React.MouseEvent) => {
@@ -263,8 +280,17 @@ function AaAccountAddressCapsule({ address }: { address: string }) {
 			onClick={handleCopy}
 			className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-[#eadcf7] bg-[#f5ecff] py-1.5 pl-2 pr-2.5 font-mono text-[11px] font-medium text-[#424655] transition-colors hover:border-[#8d3a8b]/30 hover:bg-[#8d3a8b]/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#8d3a8b]/30 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300"
 			title="Copy Smart Wallet address"
-			aria-label={`Copy Smart Wallet address ${short}`}
+			aria-label={
+				tagDisplay
+					? `Copy Smart Wallet address ${short} (${tagDisplay})`
+					: `Copy Smart Wallet address ${short}`
+			}
 		>
+			{tagDisplay ? (
+				<span className="max-w-[7.5rem] shrink-0 truncate font-sans text-[11px] font-semibold text-[#8d3a8b]">
+					{tagDisplay}
+				</span>
+			) : null}
 			<Hexagon className="h-3.5 w-3.5 shrink-0 text-[#8d3a8b]" strokeWidth={2.25} aria-hidden />
 			<span className="truncate">{short}</span>
 			{copied ? (
@@ -276,70 +302,220 @@ function AaAccountAddressCapsule({ address }: { address: string }) {
 	)
 }
 
-type BeamioTagCapsuleLookupProps = {
-	ownerEoa: string | null
-	resolveTag: (address: string) => string
-	lookupByAddress: (address: string) => { image?: string; accountName?: string } | undefined
-	toCapsuleItem: (address: string) => {
-		first_name?: string
-		last_name?: string
-		username?: string
-		image?: string
-	} | null
-	avatarImgUrl: (preferred: string | undefined, address?: string) => string
-}
+/** Second row: left = asset-name dropdown only; right = balance + unit (outside the menu). */
+function InstitutionalAaAssetsRow({ aaAccount }: { aaAccount: string }) {
+	const [options, setOptions] = useState<AaMultisigTransferAssetOption[]>([])
+	const [selectedId, setSelectedId] = useState<AaMultisigTransferAssetId | ''>('')
+	const [loading, setLoading] = useState(false)
+	const [open, setOpen] = useState(false)
+	const rootRef = useRef<HTMLDivElement>(null)
+	const listId = `institutional-aa-asset-list-${aaAccount.toLowerCase()}`
 
-/** Smart Wallet owner EOA — Beamio capsule (avatar + name + @tag), EOA blue chrome. */
-function SmartWalletOwnerBeamioCapsule({
-	ownerEoa,
-	resolveTag,
-	lookupByAddress,
-	toCapsuleItem,
-	avatarImgUrl,
-}: BeamioTagCapsuleLookupProps) {
-	if (!ownerEoa || !ethers.isAddress(ownerEoa)) {
-		return (
-			<div className="inline-flex max-w-full min-w-0 items-center gap-2 rounded-full border border-[#dce2f7] bg-[#e9edff] py-1.5 pl-1.5 pr-3 dark:border-slate-600 dark:bg-slate-800/80">
-				<div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white dark:bg-slate-700">
-					<Wallet className="h-4 w-4 text-[#0051d1]" strokeWidth={2.25} aria-hidden />
-				</div>
-				<span className="truncate text-[13px] font-semibold text-[#424655] dark:text-slate-200">
-					@Beamio
-				</span>
-			</div>
-		)
+	useEffect(() => {
+		if (!aaAccount || !ethers.isAddress(aaAccount)) {
+			setOptions([])
+			setSelectedId('')
+			setOpen(false)
+			return
+		}
+		let cancelled = false
+		setLoading(true)
+		void (async () => {
+			try {
+				const next = await fetchAaMultisigTransferAssetOptions(aaAccount)
+				if (cancelled) return
+				setOptions(next)
+				setSelectedId((prev) => {
+					if (prev && next.some((o) => o.id === prev)) return prev
+					return next[0]?.id ?? ''
+				})
+			} catch {
+				// untrusted — keep previous options / selection
+			} finally {
+				if (!cancelled) setLoading(false)
+			}
+		})()
+		return () => {
+			cancelled = true
+		}
+	}, [aaAccount])
+
+	useEffect(() => {
+		if (!open) return
+		const onDocPointer = (e: PointerEvent) => {
+			const el = rootRef.current
+			if (!el) return
+			if (e.target instanceof Node && el.contains(e.target)) return
+			setOpen(false)
+		}
+		const onKey = (e: KeyboardEvent) => {
+			if (e.key === 'Escape') setOpen(false)
+		}
+		document.addEventListener('pointerdown', onDocPointer, true)
+		document.addEventListener('keydown', onKey)
+		return () => {
+			document.removeEventListener('pointerdown', onDocPointer, true)
+			document.removeEventListener('keydown', onKey)
+		}
+	}, [open])
+
+	const selected = options.find((o) => o.id === selectedId) ?? null
+
+	const assetName = (opt: AaMultisigTransferAssetOption) =>
+		opt.chain === 'base' ? `${opt.label} · Base` : opt.label
+
+	const balanceSuffix = (opt: AaMultisigTransferAssetOption) => {
+		switch (opt.id) {
+			case 'cnet':
+				return 'CNET'
+			case 'usdc':
+				return 'USDC'
+			case 'gb_paid':
+				return 'GB'
+			case 'buint_paid':
+				return 'B-Unit'
+			case 'base_eth':
+				return 'ETH'
+			case 'base_usdc':
+				return 'USDC'
+			default:
+				return opt.label
+		}
 	}
 
-	const record = lookupByAddress(ownerEoa)
-	const capsule = toCapsuleItem(ownerEoa)
-	const tagRaw = resolveTag(ownerEoa)
-	const tagLine = formatBeamioTagDisplayLine(tagRaw)
-	const displayName = signerDisplayName(capsule, tagRaw)
-	const imgSrc =
-		record?.image?.trim() ||
-		capsule?.image?.trim() ||
-		avatarImgUrl(record?.accountName ?? tagRaw, ownerEoa)
-
 	return (
-		<div className="inline-flex max-w-full min-w-0 items-center gap-2 rounded-full border border-[#dce2f7] bg-[#e9edff] py-1.5 pl-1.5 pr-3 dark:border-slate-600 dark:bg-slate-800/80">
-			<img
-				src={imgSrc}
-				alt=""
-				className="h-8 w-8 shrink-0 rounded-full border border-white/80 object-cover bg-white dark:border-slate-600"
-			/>
-			<div className="min-w-0">
-				{displayName ? (
-					<p className="truncate text-[13px] font-semibold leading-tight text-[#424655] dark:text-slate-100">
-						{displayName}
-					</p>
-				) : null}
-				<p
-					className={`truncate text-[12px] font-bold leading-tight text-[#424655] dark:text-slate-200 ${
-						displayName ? '' : 'text-[13px]'
-					}`}
-				>
-					{tagLine}
+		<div
+			ref={rootRef}
+			className="relative mt-2"
+			data-institutional-aa-no-select
+			onClick={(e) => e.stopPropagation()}
+			onMouseDown={(e) => e.stopPropagation()}
+			onKeyDown={(e) => e.stopPropagation()}
+			onPointerDown={(e) => e.stopPropagation()}
+		>
+			{loading && options.length === 0 ? (
+				<p className="flex items-center gap-1.5 text-xs text-slate-500">
+					<Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+					Loading assets…
 				</p>
+			) : options.length === 0 ? (
+				<p className="text-xs text-slate-500">No assets in this Smart Wallet</p>
+			) : (
+				<div className="flex min-w-0 items-center gap-2">
+					<div className="relative min-w-0 flex-1">
+						<button
+							type="button"
+							id={`institutional-aa-asset-trigger-${aaAccount.toLowerCase()}`}
+							aria-haspopup="listbox"
+							aria-expanded={open}
+							aria-controls={listId}
+							disabled={loading}
+							aria-busy={loading}
+							aria-label="Smart Wallet asset"
+							onClick={() => setOpen((v) => !v)}
+							className="flex w-full min-w-0 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-left outline-none transition hover:border-slate-300 focus-visible:ring-2 focus-visible:ring-[#8d3a8b]/30 disabled:opacity-70 dark:border-slate-600 dark:bg-slate-800 dark:hover:border-slate-500"
+						>
+							<span className="min-w-0 flex-1 truncate text-xs font-medium text-slate-700 dark:text-slate-200">
+								{selected ? assetName(selected) : 'Select asset'}
+							</span>
+							<ChevronDown
+								className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`}
+								aria-hidden
+								strokeWidth={2.25}
+							/>
+						</button>
+						{open ? (
+							<ul
+								id={listId}
+								role="listbox"
+								aria-label="Smart Wallet assets"
+								className="absolute left-0 right-0 z-20 mt-1 max-h-52 overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-600 dark:bg-slate-800"
+							>
+								{options.map((opt) => {
+									const isSelected = opt.id === selectedId
+									return (
+										<li key={opt.id} role="presentation">
+											<button
+												type="button"
+												role="option"
+												aria-selected={isSelected}
+												onClick={() => {
+													setSelectedId(opt.id)
+													setOpen(false)
+												}}
+												className={`w-full truncate px-3 py-2.5 text-left text-xs font-medium text-slate-700 transition hover:bg-[#f5ecff]/80 dark:text-slate-200 dark:hover:bg-slate-700/80 ${
+													isSelected ? 'bg-[#f5ecff] dark:bg-slate-700/60' : ''
+												}`}
+											>
+												{assetName(opt)}
+											</button>
+										</li>
+									)
+								})}
+							</ul>
+						) : null}
+					</div>
+					{selected ? (
+						<p
+							className="shrink-0 text-right tabular-nums tracking-tight text-slate-900 dark:text-slate-100"
+							aria-live="polite"
+						>
+							<span className="text-sm font-semibold">{selected.balanceDisplay}</span>{' '}
+							<span className="text-[11px] font-normal text-slate-500 dark:text-slate-400">
+								{balanceSuffix(selected)}
+							</span>
+						</p>
+					) : null}
+				</div>
+			)}
+		</div>
+	)
+}
+
+/** Third row: − / M-of-N sigs / + capsule (hide − when only one signer). */
+function InstitutionalSigsCapsule({
+	threshold,
+	managerCount,
+	onAdd,
+	onReduce,
+}: {
+	threshold: number
+	managerCount: number
+	onAdd: () => void
+	onReduce: () => void
+}) {
+	const canReduce = managerCount > 1
+	return (
+		<div
+			className="mt-2"
+			data-institutional-aa-no-select
+			onPointerDown={(e) => e.stopPropagation()}
+			onClick={(e) => e.stopPropagation()}
+		>
+			<div className="flex w-full items-center gap-1 rounded-full border border-[#eadcf7] bg-[#f5ecff] py-1 pl-1 pr-1 dark:border-slate-600 dark:bg-slate-800/80">
+				{canReduce ? (
+					<button
+						type="button"
+						onClick={onReduce}
+						aria-label="Reduce signers or adjust multisig rule"
+						className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[#8d3a8b] transition hover:bg-[#8d3a8b]/10 active:scale-[0.96]"
+					>
+						<Minus className="h-4 w-4" strokeWidth={2.4} aria-hidden />
+					</button>
+				) : (
+					<span className="inline-flex h-8 w-8 shrink-0" aria-hidden />
+				)}
+				<span className="min-w-0 flex-1 truncate text-center text-xs font-semibold tabular-nums text-[#424655] dark:text-slate-200">
+					{threshold}/{managerCount} sigs
+				</span>
+				<button
+					type="button"
+					onClick={onAdd}
+					aria-label="Add another signing wallet"
+					className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[#8d3a8b] transition hover:bg-[#8d3a8b]/10 active:scale-[0.96]"
+				>
+					<Plus className="h-4 w-4" strokeWidth={2.4} aria-hidden />
+				</button>
 			</div>
 		</div>
 	)
@@ -414,6 +590,16 @@ function autoRequiredSignaturesAfterAddCosigner(
 	return Math.min(Math.max(1, currentThreshold), nextManagerCount)
 }
 
+function autoRequiredSignaturesAfterRemoveCosigner(
+	currentThreshold: number,
+	nextManagerCount: number
+): number {
+	if (nextManagerCount < 1) return 1
+	return Math.min(Math.max(1, currentThreshold), nextManagerCount)
+}
+
+type SigsDrawerMode = 'add' | 'remove' | null
+
 const OFFLINE_SYNC_PAGE_SIZE = 10
 
 export default function AaMultisigPage() {
@@ -442,7 +628,6 @@ export default function AaMultisigPage() {
 	const [cosignerSearchLoading, setCosignerSearchLoading] = useState(false)
 	const [showCosignerDropdown, setShowCosignerDropdown] = useState(false)
 	const [selectedCosigner, setSelectedCosigner] = useState<searchResult | null>(null)
-	const [proposedRequiredSigs, setProposedRequiredSigs] = useState(1)
 	const cosignerSearchRequestId = useRef(0)
 	const [transferTo, setTransferTo] = useState('')
 	const [transferAmount, setTransferAmount] = useState('')
@@ -465,6 +650,12 @@ export default function AaMultisigPage() {
 	const [creatingInstitutionalAa, setCreatingInstitutionalAa] = useState(false)
 	const [createInstitutionalError, setCreateInstitutionalError] = useState<string | null>(null)
 	const [newInstitutionalTag, setNewInstitutionalTag] = useState('')
+	/** When user already has institutional wallets, create form is hidden until + is tapped. */
+	const [showNewInstitutionalWalletForm, setShowNewInstitutionalWalletForm] = useState(false)
+	/** Upward drawer from list sigs capsule: add or reduce signers / adjust M-of-N. */
+	const [sigsDrawerMode, setSigsDrawerMode] = useState<SigsDrawerMode>(null)
+	const [drawerRemoveTargetEoa, setDrawerRemoveTargetEoa] = useState<string | null>(null)
+	const [drawerThreshold, setDrawerThreshold] = useState(1)
 	const createInstitutionalInFlightRef = useRef(false)
 	/** Derived for existing tab logic (Signers / Transfer / History). */
 	const transferEligibleWallets = useMemo(
@@ -472,6 +663,8 @@ export default function AaMultisigPage() {
 		[institutionalWallets]
 	)
 	const transferEligibleLoading = institutionalListLoading
+	const hasInstitutionalWallets = institutionalWallets.length > 0
+	const showInstitutionalCreateForm = !hasInstitutionalWallets || showNewInstitutionalWalletForm
 	/** Persists until the next Create multisig task press (Toast alone disappears too fast). */
 	const [transferCreateError, setTransferCreateError] = useState<string | null>(null)
 	const [signersAaAccount, setSignersAaAccount] = useState('')
@@ -713,6 +906,11 @@ export default function AaMultisigPage() {
 		}
 	}, [transferAaAccount])
 
+	const selectedManagedAaRef = useRef('')
+	selectedManagedAaRef.current = selectedManagedAa
+	const institutionalTasksRef = useRef(tasks)
+	institutionalTasksRef.current = tasks
+
 	const refreshInstitutionalWallets = useCallback(async () => {
 		if (!eoa) {
 			setInstitutionalWallets([])
@@ -722,40 +920,53 @@ export default function AaMultisigPage() {
 			setSignersAaAccount('')
 			return
 		}
+		// Local-first: show semi-permanent cache immediately (created AAs never disappear).
+		const local = loadInstitutionalManageableWalletsLocal(eoa)
+		if (local.length > 0) {
+			setInstitutionalWallets(local)
+		}
 		setInstitutionalListLoading(true)
 		try {
 			const wallets = await discoverInstitutionalManageableWallets(aaMultisigProvider, eoa, {
 				primaryAaAccount: aaAccount,
-				tasks,
+				tasks: institutionalTasksRef.current,
 				fallbackEoa: eoa,
 			})
-			setInstitutionalWallets(wallets)
+			const merged = mergeTrustedInstitutionalManageableWalletsLocal(eoa, wallets)
+			setInstitutionalWallets(merged)
+			// Never clear an in-progress user selection when discover finishes (tasks churn
+			// used to re-run this and wipe selectedManagedAa → laggy / missed clicks).
 			setSelectedManagedAa((prev) => {
-				const persisted = prev || loadPersistedInstitutionalSelectedAa(eoa)
+				const current = (prev || selectedManagedAaRef.current || '').trim()
+				if (current && ethers.isAddress(current)) {
+					return ethers.getAddress(current)
+				}
+				const persisted = loadPersistedInstitutionalSelectedAa(eoa)
 				if (
 					persisted &&
-					wallets.some((w) => w.aaAccount.toLowerCase() === persisted.toLowerCase())
+					merged.some((w) => w.aaAccount.toLowerCase() === persisted.toLowerCase())
 				) {
 					return ethers.getAddress(persisted)
 				}
-				// Do not auto-select — tabs stay hidden until the user picks an item.
 				return ''
 			})
 		} catch {
-			// untrusted — keep previous list
+			// untrusted — keep previous / local list; never clear created AAs
 		} finally {
 			setInstitutionalListLoading(false)
 		}
-	}, [eoa, aaAccount, tasks])
+	}, [eoa, aaAccount])
 
 	const selectManagedAa = useCallback(
 		(aa: string) => {
 			if (!aa || !ethers.isAddress(aa)) {
+				selectedManagedAaRef.current = ''
 				setSelectedManagedAa('')
 				if (eoa) persistInstitutionalSelectedAa(eoa, '')
 				return
 			}
 			const checksum = ethers.getAddress(aa)
+			selectedManagedAaRef.current = checksum
 			setSelectedManagedAa(checksum)
 			if (eoa) persistInstitutionalSelectedAa(eoa, checksum)
 		},
@@ -781,9 +992,24 @@ export default function AaMultisigPage() {
 				return
 			}
 			setNewInstitutionalTag('')
+			setShowNewInstitutionalWalletForm(false)
+			const eoaChecksum = ethers.getAddress(eoa)
+			const merged = upsertInstitutionalManageableWalletLocal(eoa, {
+				aaAccount: result.aa,
+				kind: 'own_institutional',
+				index: result.index,
+				accountName: result.accountName || tag,
+				policy: {
+					owner: eoaChecksum,
+					managers: [eoaChecksum],
+					threshold: 1,
+				},
+				lastActivityAt: Date.now(),
+			})
+			setInstitutionalWallets(merged)
 			await refreshInstitutionalWallets()
 			selectManagedAa(result.aa)
-			setTab('signers')
+			setTab('pending')
 		} finally {
 			createInstitutionalInFlightRef.current = false
 			setCreatingInstitutionalAa(false)
@@ -830,6 +1056,14 @@ export default function AaMultisigPage() {
 		transferAaHasActiveTasks && busy !== 'transfer'
 
 	useEffect(() => {
+		if (!eoa) {
+			setInstitutionalWallets([])
+			return
+		}
+		setInstitutionalWallets(loadInstitutionalManageableWalletsLocal(eoa))
+	}, [eoa])
+
+	useEffect(() => {
 		void refreshInstitutionalWallets()
 	}, [refreshInstitutionalWallets])
 
@@ -872,9 +1106,9 @@ export default function AaMultisigPage() {
 	useEffect(() => {
 		const tabParam = searchParams.get('tab')
 		const taskId = searchParams.get('taskId')?.trim()
-		if (tabParam === 'signers' || tabParam === 'pending' || tabParam === 'transfer' || tabParam === 'history') {
+		if (tabParam === 'pending' || tabParam === 'transfer' || tabParam === 'history') {
 			setTab(tabParam)
-		} else if (taskId) {
+		} else if (tabParam === 'signers' || taskId) {
 			setTab('pending')
 		}
 		if (taskId) setFocusTaskId(taskId)
@@ -903,27 +1137,6 @@ export default function AaMultisigPage() {
 		setCosignerSearchResults([])
 		setShowCosignerDropdown(false)
 	}, [signersAaAccount])
-
-	const selectedSignersWallet = useMemo(
-		() =>
-			transferEligibleWallets.find(
-				(w) => w.aaAccount.toLowerCase() === signersAaAccount.toLowerCase()
-			) ?? null,
-		[transferEligibleWallets, signersAaAccount]
-	)
-
-	const selectedSignersOwnerEoa = useMemo(
-		() =>
-			selectedSignersWallet
-				? resolveAaMultisigPolicyOwnerEoa(selectedSignersWallet.policy.managers)
-				: null,
-		[selectedSignersWallet]
-	)
-
-	useEffect(() => {
-		if (!selectedSignersOwnerEoa) return
-		void ensureProfilesForAddresses([selectedSignersOwnerEoa])
-	}, [selectedSignersOwnerEoa, ensureProfilesForAddresses])
 
 	useEffect(() => {
 		void reloadPolicy()
@@ -1047,76 +1260,13 @@ export default function AaMultisigPage() {
 		void refreshChainEntryPointNonce()
 	}, [signersAaAccount, refreshChainEntryPointNonce])
 
-	const previewRequiredSignatures = useMemo(() => {
-		if (!policy) return null
-		return autoRequiredSignaturesAfterAddCosigner(
-			policy.threshold,
-			policy.managers.length,
-			policy.managers.length + 1
-		)
-	}, [policy])
-
-	const proposedSignerCount = useMemo(() => {
-		if (!policy) return 0
-		return selectedCosigner ? policy.managers.length + 1 : policy.managers.length
-	}, [policy, selectedCosigner])
-
-	const canSubmitPolicyProposal = useMemo(() => {
-		if (!policy) return false
-		if (selectedCosigner) return true
-		return proposedRequiredSigs !== policy.threshold
-	}, [policy, selectedCosigner, proposedRequiredSigs])
-
-	useEffect(() => {
-		if (!policy) return
-		if (selectedCosigner && previewRequiredSignatures != null) {
-			setProposedRequiredSigs(previewRequiredSignatures)
-			return
-		}
-		setProposedRequiredSigs(policy.threshold)
-	}, [selectedCosigner, policy?.threshold, policy?.managers.length, previewRequiredSignatures])
-
-	const displayCosigners = useMemo(() => {
-		if (policy) {
-			const effectiveOwner = resolveEffectiveAaOwner(policy, eoa)
-			if (!effectiveOwner) return policy.managers.filter((m) => m && m !== ethers.ZeroAddress)
-			return orderAaCosignersWithOwnerFirst(effectiveOwner, policy.managers)
-		}
-		if (eoa && ethers.isAddress(eoa)) return [ethers.getAddress(eoa)]
-		return []
-	}, [policy, eoa])
-
-	const cosignersFromChainFallback = !policy && displayCosigners.length > 0
-
-	const viewerIsPolicyManager = useMemo(() => {
-		if (!eoa || !policy?.managers?.length) return false
-		return policy.managers.some((m) => m.toLowerCase() === eoa.toLowerCase())
-	}, [policy, eoa])
-
-	const canProposeSignerChanges = viewerIsPolicyManager || cosignersFromChainFallback
-
-	const effectiveOwner = useMemo(
-		() => resolveEffectiveAaOwner(policy, eoa),
-		[policy, eoa]
-	)
-
-	const viewerIsOwnerOnSelectedSignersWallet = useMemo(() => {
-		if (!eoa || !effectiveOwner) return false
-		return effectiveOwner.toLowerCase() === eoa.toLowerCase()
-	}, [eoa, effectiveOwner])
-
-	useEffect(() => {
-		if (!displayCosigners.length) return
-		void ensureProfilesForAddresses(displayCosigners)
-	}, [displayCosigners, ensureProfilesForAddresses])
-
 	const requireWalletReady = (): boolean => {
 		if (!eoa || !signersAaAccount) {
 			Toast.show({
 				content:
 					transferEligibleLoading && transferEligibleWallets.length === 0
 						? 'Loading Smart Wallets you can manage…'
-						: 'Select a Smart Wallet on the Signers tab.',
+						: 'Select an institutional Smart Wallet above.',
 			})
 			return false
 		}
@@ -1153,12 +1303,6 @@ export default function AaMultisigPage() {
 			return false
 		}
 		return true
-	}
-
-	const sortedCurrentPolicyManagers = (): string[] => {
-		if (!policy) return []
-		const owner = resolveEffectiveAaOwner(policy, eoa) ?? policy.owner
-		return sortManagersStrict(owner, policy.managers)
 	}
 
 	const proposeSetPolicyMultisigTask = async (opts: {
@@ -1274,8 +1418,128 @@ export default function AaMultisigPage() {
 		return resolveCosignerEoaFromSearchRow(row)
 	}
 
-	const proposePolicyUpdate = async () => {
+	const closeSigsDrawer = useCallback(() => {
+		setSigsDrawerMode(null)
+		setDrawerRemoveTargetEoa(null)
+		setSelectedCosigner(null)
+		setNewSignerTag('')
+		setShowCosignerDropdown(false)
+		setCosignerSearchResults([])
+	}, [])
+
+	const openSigsDrawer = useCallback(
+		(aa: string, mode: Exclude<SigsDrawerMode, null>, walletPolicy: {
+			owner: string
+			managers: string[]
+			threshold: number
+		}) => {
+			selectManagedAa(aa)
+			setSigsDrawerMode(mode)
+			setDrawerRemoveTargetEoa(null)
+			setSelectedCosigner(null)
+			setNewSignerTag('')
+			setShowCosignerDropdown(false)
+			setCosignerSearchResults([])
+			if (mode === 'add') {
+				setDrawerThreshold(
+					autoRequiredSignaturesAfterAddCosigner(
+						walletPolicy.threshold,
+						walletPolicy.managers.length,
+						walletPolicy.managers.length + 1
+					)
+				)
+			} else {
+				setDrawerThreshold(
+					autoRequiredSignaturesAfterRemoveCosigner(
+						walletPolicy.threshold,
+						Math.max(1, walletPolicy.managers.length - 1)
+					)
+				)
+			}
+		},
+		[selectManagedAa]
+	)
+
+	const drawerPolicy = useMemo(() => {
+		if (policy && selectedManagedAa) {
+			return policy
+		}
+		const w = institutionalWallets.find(
+			(x) =>
+				selectedManagedAa &&
+				x.aaAccount.toLowerCase() === selectedManagedAa.toLowerCase()
+		)
+		return w?.policy ?? null
+	}, [policy, selectedManagedAa, institutionalWallets])
+
+	const drawerRemovableManagers = useMemo(() => {
+		if (!drawerPolicy) return []
+		const owner =
+			resolveEffectiveAaOwner(drawerPolicy, eoa) ?? drawerPolicy.owner
+		return drawerPolicy.managers.filter(
+			(m) => m && m !== ethers.ZeroAddress && m.toLowerCase() !== owner.toLowerCase()
+		)
+	}, [drawerPolicy, eoa])
+
+	const drawerAddSignerCount = useMemo(() => {
+		if (!drawerPolicy) return 0
+		return selectedCosigner ? drawerPolicy.managers.length + 1 : drawerPolicy.managers.length
+	}, [drawerPolicy, selectedCosigner])
+
+	const drawerRemoveSignerCount = useMemo(() => {
+		if (!drawerPolicy) return 0
+		return drawerRemoveTargetEoa
+			? Math.max(1, drawerPolicy.managers.length - 1)
+			: drawerPolicy.managers.length
+	}, [drawerPolicy, drawerRemoveTargetEoa])
+
+	useEffect(() => {
+		if (sigsDrawerMode !== 'add' || !drawerPolicy) return
+		if (selectedCosigner) {
+			setDrawerThreshold(
+				autoRequiredSignaturesAfterAddCosigner(
+					drawerPolicy.threshold,
+					drawerPolicy.managers.length,
+					drawerPolicy.managers.length + 1
+				)
+			)
+			return
+		}
+		setDrawerThreshold(drawerPolicy.threshold)
+	}, [
+		sigsDrawerMode,
+		selectedCosigner,
+		drawerPolicy?.threshold,
+		drawerPolicy?.managers.length,
+	])
+
+	useEffect(() => {
+		if (sigsDrawerMode !== 'remove' || !drawerPolicy) return
+		setDrawerThreshold(
+			autoRequiredSignaturesAfterRemoveCosigner(
+				drawerPolicy.threshold,
+				drawerRemoveTargetEoa
+					? Math.max(1, drawerPolicy.managers.length - 1)
+					: drawerPolicy.managers.length
+			)
+		)
+	}, [
+		sigsDrawerMode,
+		drawerRemoveTargetEoa,
+		drawerPolicy?.threshold,
+		drawerPolicy?.managers.length,
+	])
+
+	const proposeAddSignerFromDrawer = async () => {
 		if (!requireWalletReady() || !policy) return
+		if (
+			!selectedManagedAa ||
+			!signersAaAccount ||
+			signersAaAccount.toLowerCase() !== selectedManagedAa.toLowerCase()
+		) {
+			Toast.show({ content: 'Loading Smart Wallet policy…' })
+			return
+		}
 		try {
 			const signerEoa = await resolveNewSignerEoa()
 			if (!signerEoa) {
@@ -1290,19 +1554,23 @@ export default function AaMultisigPage() {
 				Toast.show({ content: 'This address is already a co-signer.' })
 				return
 			}
-			const managers = sortManagersStrict(resolveEffectiveAaOwner(policy, eoa) ?? policy.owner, [
-				...policy.managers.filter((m) => m.toLowerCase() !== signerEoa.toLowerCase()),
-				signerEoa,
-			])
+			const managers = sortManagersStrict(
+				resolveEffectiveAaOwner(policy, eoa) ?? policy.owner,
+				[
+					...policy.managers.filter((m) => m.toLowerCase() !== signerEoa.toLowerCase()),
+					signerEoa,
+				]
+			)
 			await proposeSetPolicyMultisigTask({
 				newManagers: managers,
-				newThreshold: proposedRequiredSigs,
+				newThreshold: Math.min(drawerThreshold, managers.length),
 				title: 'Update multisig signers',
 				busyKey: 'policy',
 				gossipRecipients: managers,
 				onAfterSuccess: () => {
 					setNewSignerTag('')
 					setSelectedCosigner(null)
+					closeSigsDrawer()
 				},
 			})
 		} catch (e: unknown) {
@@ -1311,29 +1579,53 @@ export default function AaMultisigPage() {
 		}
 	}
 
-	const proposeThresholdChange = async () => {
-		if (!requireWalletReady() || !policy || !viewerIsPolicyManager) return
-		const managers = sortedCurrentPolicyManagers()
-		if (proposedRequiredSigs === policy.threshold) {
-			Toast.show({ content: 'Select a different required signature count or add a co-signer.' })
+	const proposeRemoveSignerFromDrawer = async () => {
+		if (!requireWalletReady() || !policy) return
+		if (
+			!selectedManagedAa ||
+			!signersAaAccount ||
+			signersAaAccount.toLowerCase() !== selectedManagedAa.toLowerCase()
+		) {
+			Toast.show({ content: 'Loading Smart Wallet policy…' })
 			return
 		}
+		if (!drawerRemoveTargetEoa) {
+			Toast.show({ content: 'Select a co-signer to remove.' })
+			return
+		}
+		const owner = resolveEffectiveAaOwner(policy, eoa) ?? policy.owner
+		if (drawerRemoveTargetEoa.toLowerCase() === owner.toLowerCase()) {
+			Toast.show({ content: 'The owner cannot be removed from the signer set.' })
+			return
+		}
+		const managers = sortManagersStrict(
+			owner,
+			policy.managers.filter(
+				(m) => m.toLowerCase() !== drawerRemoveTargetEoa.toLowerCase()
+			)
+		)
+		if (managers.length < 1) {
+			Toast.show({ content: 'At least one signer must remain.' })
+			return
+		}
+		const nextThreshold = Math.min(Math.max(1, drawerThreshold), managers.length)
 		await proposeSetPolicyMultisigTask({
 			newManagers: managers,
-			newThreshold: proposedRequiredSigs,
-			title: `Update required signatures (${proposedRequiredSigs}/${managers.length})`,
+			newThreshold: nextThreshold,
+			title: `Remove signer (${nextThreshold}/${managers.length})`,
 			busyKey: 'policy',
 			gossipRecipients: managers,
+			onAfterSuccess: () => {
+				setDrawerRemoveTargetEoa(null)
+				closeSigsDrawer()
+			},
 		})
 	}
 
-	const proposePolicyChange = async () => {
-		if (selectedCosigner) {
-			await proposePolicyUpdate()
-			return
-		}
-		await proposeThresholdChange()
-	}
+	useEffect(() => {
+		if (sigsDrawerMode !== 'remove' || drawerRemovableManagers.length === 0) return
+		void ensureProfilesForAddresses(drawerRemovableManagers)
+	}, [sigsDrawerMode, drawerRemovableManagers, ensureProfilesForAddresses])
 
 	const proposeTransfer = async () => {
 		setTransferCreateError(null)
@@ -1945,6 +2237,7 @@ export default function AaMultisigPage() {
 	}
 
 	return (
+		<>
 		<div className="flex min-h-[100dvh] flex-col overflow-hidden bg-[#F2F2F7] dark:bg-slate-950">
 			<button
 				type="button"
@@ -1980,21 +2273,57 @@ export default function AaMultisigPage() {
 				</div>
 
 				<section className="mb-4 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
-					<h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-						Manage your institutional-grade smart wallets
-					</h2>
+					<div className="flex items-center justify-between gap-2">
+						<h2 className="min-w-0 text-sm font-semibold leading-snug text-slate-900 dark:text-slate-100">
+							Manage your institutional-grade smart wallets
+						</h2>
+						{hasInstitutionalWallets ? (
+							<button
+								type="button"
+								onClick={() => {
+									setShowNewInstitutionalWalletForm((open) => {
+										const next = !open
+										if (!next) {
+											setCreateInstitutionalError(null)
+											setNewInstitutionalTag('')
+										}
+										return next
+									})
+								}}
+								disabled={creatingInstitutionalAa}
+								aria-expanded={showInstitutionalCreateForm}
+								aria-label={
+									showInstitutionalCreateForm
+										? 'Hide new institutional wallet form'
+										: 'New institutional-grade smart wallet'
+								}
+								className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+								style={
+									showInstitutionalCreateForm
+										? undefined
+										: { color: aaAccent.accent, borderColor: `${aaAccent.accent}55` }
+								}
+							>
+								{showInstitutionalCreateForm ? (
+									<X className="h-4 w-4" aria-hidden strokeWidth={2.25} />
+								) : (
+									<Plus className="h-4 w-4" aria-hidden strokeWidth={2.25} />
+								)}
+							</button>
+						) : null}
+					</div>
 					<p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
 						Create and manage Smart Wallets beyond your personal Express Pay wallet. Give each wallet
-						a unique @BeamioTag so others can search and find its address. Select a wallet below to
-						configure co-signers, pending approvals, transfers, and history.
+						a unique @BeamioTag so others can search and find its address. Use + / − on a wallet to
+						change co-signers; select a wallet for pending approvals, transfers, and history.
 					</p>
 
-					{institutionalListLoading && institutionalWallets.length === 0 ? (
+					{institutionalListLoading && !hasInstitutionalWallets ? (
 						<p className="mt-3 flex items-center gap-2 text-sm text-slate-500">
 							<Loader2 className="h-4 w-4 animate-spin" aria-hidden />
 							Loading institutional Smart Wallets…
 						</p>
-					) : institutionalWallets.length === 0 ? (
+					) : !hasInstitutionalWallets ? (
 						<p className="mt-3 text-sm text-slate-500">
 							No institutional Smart Wallets yet. Create one with a BeamioTag, or wait until you are
 							added as a co-signer on another wallet.
@@ -2012,103 +2341,127 @@ export default function AaMultisigPage() {
 									: null
 								return (
 									<li key={w.aaAccount}>
-										<button
-											type="button"
+										<div
 											role="option"
 											aria-selected={!!selected}
-											onClick={() => selectManagedAa(w.aaAccount)}
-											className={`w-full rounded-2xl border p-3 text-left transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#8d3a8b]/40 ${
+											tabIndex={0}
+											onPointerDown={(e) => {
+												const target = e.target as HTMLElement | null
+												if (
+													target?.closest(
+														'select, option, label, a, [data-institutional-aa-no-select]'
+													)
+												) {
+													return
+												}
+												selectManagedAa(w.aaAccount)
+											}}
+											onKeyDown={(e) => {
+												if (e.key === 'Enter' || e.key === ' ') {
+													e.preventDefault()
+													selectManagedAa(w.aaAccount)
+												}
+											}}
+											className={`cursor-pointer rounded-2xl border p-3 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#8d3a8b]/40 ${
 												selected
 													? 'border-[#8d3a8b] bg-[#f5ecff] ring-2 ring-[#8d3a8b]/20 dark:border-[#8d3a8b]/60 dark:bg-slate-800/80'
 													: 'border-slate-200 bg-white hover:border-slate-300 dark:border-slate-700 dark:bg-slate-800/40 dark:hover:border-slate-600'
 											}`}
 										>
-											<div className="flex flex-wrap items-center gap-2">
-												{w.kind === 'own_institutional' ? (
-													<span className="shrink-0 rounded-full bg-[#8d3a8b]/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#8d3a8b]">
-														Institutional #{w.index ?? '?'}
-													</span>
-												) : (
+											<div className="flex min-w-0 flex-wrap items-center gap-2">
+												{w.kind === 'comanaged' ? (
 													<span className="shrink-0 rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600 dark:bg-slate-700 dark:text-slate-300">
 														Co-managed
 													</span>
-												)}
-												{tagLine ? (
-													<span className="truncate text-xs font-semibold text-[#8d3a8b]">
-														{tagLine}
-													</span>
 												) : null}
-												<span className="text-[10px] font-medium text-slate-500">
-													{w.policy.threshold}/{w.policy.managers.length} sigs
-												</span>
+												<div
+													className="min-w-0 max-w-full"
+													data-institutional-aa-no-select
+													onPointerDown={(e) => e.stopPropagation()}
+												>
+													<AaAccountAddressCapsule
+														address={w.aaAccount}
+														beamioTag={tagLine}
+													/>
+												</div>
 											</div>
-											<div className="mt-2">
-												<AaAccountAddressCapsule address={w.aaAccount} />
+											<div data-institutional-aa-no-select>
+												<InstitutionalAaAssetsRow aaAccount={w.aaAccount} />
 											</div>
-										</button>
+											<InstitutionalSigsCapsule
+												threshold={w.policy.threshold}
+												managerCount={w.policy.managers.length}
+												onAdd={() => openSigsDrawer(w.aaAccount, 'add', w.policy)}
+												onReduce={() => openSigsDrawer(w.aaAccount, 'remove', w.policy)}
+											/>
+										</div>
 									</li>
 								)
 							})}
 						</ul>
 					)}
 
-					{createInstitutionalError ? (
-						<div className="mt-3 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-900/40 dark:bg-red-950/40 dark:text-red-200">
-							<AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-							<p className="min-w-0 break-words">{createInstitutionalError}</p>
-						</div>
+					{showInstitutionalCreateForm ? (
+						<>
+							{createInstitutionalError ? (
+								<div className="mt-3 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-900/40 dark:bg-red-950/40 dark:text-red-200">
+									<AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+									<p className="min-w-0 break-words">{createInstitutionalError}</p>
+								</div>
+							) : null}
+
+							<label
+								htmlFor="institutional-aa-beamio-tag"
+								className="mt-3 block text-xs font-medium text-slate-600 dark:text-slate-400"
+							>
+								BeamioTag for new wallet
+							</label>
+							<div className="relative mt-1">
+								<span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">
+									@
+								</span>
+								<input
+									id="institutional-aa-beamio-tag"
+									type="text"
+									value={newInstitutionalTag.replace(/^@+/, '')}
+									onChange={(e) => {
+										setNewInstitutionalTag(e.target.value.replace(/^@+/, ''))
+										if (createInstitutionalError) setCreateInstitutionalError(null)
+									}}
+									placeholder="treasury_ops"
+									autoComplete="off"
+									autoCapitalize="off"
+									spellCheck={false}
+									enterKeyHint="done"
+									disabled={creatingInstitutionalAa}
+									className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-7 pr-3 text-sm text-slate-900 outline-none focus:border-[#8d3a8b] dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+								/>
+							</div>
+							<p className="mt-1 text-[11px] text-slate-500">
+								3–26 characters (letters, numbers, _ or .). Others can search this tag to get the
+								wallet address.
+							</p>
+
+							<button
+								type="button"
+								onClick={() => void handleCreateInstitutionalAa()}
+								disabled={creatingInstitutionalAa || !eoa}
+								aria-busy={creatingInstitutionalAa}
+								aria-label="New institutional-grade smart wallet"
+								className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+								style={{ backgroundColor: aaAccent.accent }}
+							>
+								{creatingInstitutionalAa ? (
+									<Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+								) : (
+									<Plus className="h-4 w-4" aria-hidden />
+								)}
+								{creatingInstitutionalAa
+									? 'Creating…'
+									: 'New institutional-grade smart wallet'}
+							</button>
+						</>
 					) : null}
-
-					<label
-						htmlFor="institutional-aa-beamio-tag"
-						className="mt-3 block text-xs font-medium text-slate-600 dark:text-slate-400"
-					>
-						BeamioTag for new wallet
-					</label>
-					<div className="relative mt-1">
-						<span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">
-							@
-						</span>
-						<input
-							id="institutional-aa-beamio-tag"
-							type="text"
-							value={newInstitutionalTag.replace(/^@+/, '')}
-							onChange={(e) => {
-								setNewInstitutionalTag(e.target.value.replace(/^@+/, ''))
-								if (createInstitutionalError) setCreateInstitutionalError(null)
-							}}
-							placeholder="treasury_ops"
-							autoComplete="off"
-							autoCapitalize="off"
-							spellCheck={false}
-							enterKeyHint="done"
-							disabled={creatingInstitutionalAa}
-							className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-7 pr-3 text-sm text-slate-900 outline-none focus:border-[#8d3a8b] dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
-						/>
-					</div>
-					<p className="mt-1 text-[11px] text-slate-500">
-						3–26 characters (letters, numbers, _ or .). Others can search this tag to get the wallet
-						address.
-					</p>
-
-					<button
-						type="button"
-						onClick={() => void handleCreateInstitutionalAa()}
-						disabled={creatingInstitutionalAa || !eoa}
-						aria-busy={creatingInstitutionalAa}
-						aria-label="New institutional-grade smart wallet"
-						className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
-						style={{ backgroundColor: aaAccent.accent }}
-					>
-						{creatingInstitutionalAa ? (
-							<Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-						) : (
-							<Plus className="h-4 w-4" aria-hidden />
-						)}
-						{creatingInstitutionalAa
-							? 'Creating…'
-							: 'New institutional-grade smart wallet'}
-					</button>
 				</section>
 
 				{selectedManagedAa ? (
@@ -2116,7 +2469,6 @@ export default function AaMultisigPage() {
 				<div className="mb-4 flex gap-1 overflow-x-auto rounded-full bg-white p-1 shadow-sm dark:bg-slate-900">
 					{(
 						[
-							['signers', Users],
 							['pending', Check],
 							['transfer', Send],
 							['history', History],
@@ -2136,268 +2488,6 @@ export default function AaMultisigPage() {
 						</button>
 					))}
 				</div>
-
-				{tab === 'signers' ? (
-					<div className="space-y-4">
-						{!canProposeSignerChanges && policy && !cosignersFromChainFallback ? (
-									<div className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/40 dark:text-amber-200">
-										<AlertTriangle className="h-4 w-4 shrink-0" aria-hidden />
-										You are not listed as a signer on the selected Smart Wallet policy.
-									</div>
-								) : null}
-
-						<div className="rounded-2xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
-							<p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Current co-signers</p>
-							{selectedSignersWallet && signersAaAccount ? (
-								<p className="mt-1 text-xs text-slate-500">
-									For{' '}
-									{selectedSignersWallet.isOwnAa
-										? `institutional Smart Wallet #${
-												institutionalWallets.find(
-													(w) =>
-														w.aaAccount.toLowerCase() === signersAaAccount.toLowerCase()
-												)?.index ?? '?'
-											}`
-										: `co-managed Smart Wallet (${signersAaAccount.slice(0, 6)}…${signersAaAccount.slice(-4)})`}
-									{policy && !cosignersFromChainFallback
-										? ` · ${policy.threshold}/${policy.managers.length} required`
-										: ''}
-								</p>
-							) : null}
-							{policyLoading ? (
-								<Loader2
-									className="mt-3 h-5 w-5 animate-spin"
-									style={{ color: aaAccent.accent }}
-									aria-hidden
-								/>
-							) : displayCosigners.length > 0 ? (
-								<>
-									{cosignersFromChainFallback ? (
-										<p className="mt-2 text-xs text-slate-500">
-											On-chain policy unavailable; showing your wallet as the sole signer.
-										</p>
-									) : null}
-									<ul className="mt-3 space-y-2">
-									{displayCosigners.map((manager) => {
-										const tag = resolveTag(manager)
-										const capsule = toCapsuleItem(manager)
-										const record = lookupByAddress(manager)
-										const imgSrc =
-											record?.image?.trim() ||
-											capsule?.image?.trim() ||
-											avatarImgUrl(record?.accountName ?? tag, manager)
-										const displayName = signerDisplayName(capsule, tag)
-										const tagLine = tag ? (tag.startsWith('@') ? tag : `@${tag}`) : '@Beamio'
-										const isOwner =
-											effectiveOwner != null &&
-											effectiveOwner.toLowerCase() === manager.toLowerCase()
-										const isYou = eoa.toLowerCase() === manager.toLowerCase()
-										return (
-											<li
-												key={manager}
-												className="flex items-center gap-3 rounded-xl border border-[#eadcf7] bg-[#f5ecff] px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800/80"
-											>
-												<img
-													src={imgSrc}
-													alt=""
-													className="h-10 w-10 shrink-0 rounded-full object-cover bg-white"
-												/>
-												<div className="min-w-0 flex-1">
-													<div className="flex flex-wrap items-center gap-1.5">
-														{displayName ? (
-															<p className="truncate text-sm font-semibold text-[#424655] dark:text-slate-100">
-																{displayName}
-															</p>
-														) : (
-															<p className="truncate text-sm font-semibold text-[#424655] dark:text-slate-100">
-																{tagLine}
-															</p>
-														)}
-														{isOwner ? (
-															<span
-																className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white"
-																style={{ backgroundColor: aaAccent.accent }}
-															>
-																Owner
-															</span>
-														) : null}
-														{isYou ? (
-															<span className="shrink-0 rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600 dark:bg-slate-700 dark:text-slate-300">
-																You
-															</span>
-														) : null}
-													</div>
-													{displayName ? (
-														<p className="truncate text-xs text-slate-600 dark:text-slate-400">
-															{tagLine}
-														</p>
-													) : null}
-													<CosignerAddressCapsule address={manager} />
-												</div>
-											</li>
-										)
-									})}
-									</ul>
-								</>
-							) : (
-								<p className="mt-3 text-sm text-slate-500">No co-signers on chain yet.</p>
-							)}
-						</div>
-
-						{canProposeSignerChanges && policy && !cosignersFromChainFallback ? (
-						<div className="relative overflow-visible rounded-2xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
-							<p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-								Update co-signers &amp; signatures
-							</p>
-							<p className="mt-1 text-xs text-slate-500">
-								Add a co-signer or change the M-of-N rule. Proposals go to all signers via CoNET chat.
-								Owner must remain the lowest address among signers.
-							</p>
-							<div className="mt-3 rounded-xl border border-slate-100 bg-slate-50/80 p-3 dark:border-slate-600 dark:bg-slate-800/50">
-								<p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-									Updating this Smart Wallet
-								</p>
-								<div className="mt-2 flex flex-wrap items-center gap-2">
-									<SmartWalletOwnerBeamioCapsule
-										ownerEoa={selectedSignersOwnerEoa}
-										resolveTag={resolveTag}
-										lookupByAddress={lookupByAddress}
-										toCapsuleItem={toCapsuleItem}
-										avatarImgUrl={avatarImgUrl}
-									/>
-									{selectedSignersWallet?.isOwnAa ? (
-										<span className="shrink-0 rounded-full bg-[#0051d1]/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#0051d1]">
-											Your Smart Wallet
-										</span>
-									) : (
-										<span className="shrink-0 rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600 dark:bg-slate-700 dark:text-slate-300">
-											Co-signer
-										</span>
-									)}
-									{viewerIsOwnerOnSelectedSignersWallet ? (
-										<span
-											className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white"
-											style={{ backgroundColor: aaAccent.accent }}
-										>
-											You are owner
-										</span>
-									) : eoa && policy.managers.some((m) => m.toLowerCase() === eoa.toLowerCase()) ? (
-										<span className="shrink-0 rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600 dark:bg-slate-700 dark:text-slate-300">
-											You are co-signer
-										</span>
-									) : null}
-								</div>
-								{signersAaAccount ? (
-									<div className="mt-2">
-										<AaAccountAddressCapsule address={signersAaAccount} />
-									</div>
-								) : null}
-							</div>
-							<label className="mt-3 block text-xs font-medium text-slate-600 dark:text-slate-400">
-								Add co-signer (optional)
-							</label>
-							{selectedCosigner ? (
-								<div className="mt-1 rounded-2xl border border-[#eadcf7] bg-[#f5ecff] p-3 dark:border-slate-600 dark:bg-slate-800/80">
-									<div className="flex items-start justify-between gap-3">
-										<div className="flex min-w-0 flex-1 items-center gap-2.5">
-											<IpfsImg
-												src={
-													selectedCosigner.image?.trim() ||
-													beamioSearchAvatarUrl(selectedCosigner.username || selectedCosigner.address)
-												}
-												alt=""
-												className="h-9 w-9 shrink-0 rounded-full border border-slate-200/80 object-cover dark:border-slate-600"
-											/>
-											<div className="min-w-0 flex-1 leading-tight">
-												<p className="truncate text-[13px] font-semibold text-slate-900 dark:text-slate-100">
-													{beamioSearchDisplayName(selectedCosigner)}
-												</p>
-												<p className="truncate text-[11px] text-slate-500 dark:text-slate-400">
-													@{selectedCosigner.username} · {beamioSearchShortAddress(selectedCosigner.address)}
-												</p>
-											</div>
-										</div>
-										<button
-											type="button"
-											className="rounded-full p-2 text-slate-500 hover:bg-white/60 dark:hover:bg-slate-700"
-											onClick={() => setSelectedCosigner(null)}
-											aria-label="Clear selected co-signer"
-										>
-											<X className="h-4 w-4" aria-hidden />
-										</button>
-									</div>
-								</div>
-							) : (
-								<div className="relative mt-1">
-									<div className="flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 shadow-sm ring-1 ring-transparent focus-within:ring-slate-300 dark:border-slate-600 dark:bg-slate-800">
-										<Search className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
-										<input
-											value={newSignerTag}
-											onChange={(e) => setNewSignerTag(e.currentTarget.value)}
-											onFocus={() => {
-												if (canSearchCosigner && (cosignerSearchResults.length > 0 || cosignerSearchLoading)) {
-													setShowCosignerDropdown(true)
-												}
-											}}
-											placeholder="Search @BeamioTag or wallet address"
-											autoComplete="off"
-											inputMode="search"
-											className="w-full min-w-0 bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400 dark:text-slate-100"
-										/>
-										{cosignerSearchLoading ? (
-											<Loader2 className="h-4 w-4 shrink-0 animate-spin text-slate-400" aria-hidden />
-										) : null}
-									</div>
-									{showCosignerDropdown && canSearchCosigner ? (
-										<div className="absolute left-0 right-0 z-30 mt-2 overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-xl dark:border-slate-600 dark:bg-slate-800">
-											<div className="max-h-72 overflow-y-auto py-1">
-												{!cosignerSearchLoading &&
-													cosignerSearchResults.map((item) => (
-														<BeamioSearchResultRow
-															key={item.address}
-															item={item}
-															onSelect={(row) => void handleSelectCosigner(row)}
-														/>
-													))}
-												{!cosignerSearchLoading && cosignerSearchResults.length === 0 ? (
-													<div className="px-3 py-2.5 text-xs text-slate-400">No results</div>
-												) : null}
-											</div>
-										</div>
-									) : null}
-								</div>
-							)}
-							{selectedCosigner || policy.managers.length > 1 ? (
-								<ThresholdRatioPicker
-									signerCount={proposedSignerCount}
-									value={Math.min(proposedRequiredSigs, proposedSignerCount)}
-									onChange={setProposedRequiredSigs}
-									accentColor={aaAccent.accent}
-									hint={
-										selectedCosigner
-											? `After adding this co-signer, ${proposedSignerCount} signers total (was ${policy.threshold}/${policy.managers.length}). Pick a new M-of-N.`
-											: `Current: ${policy.threshold}/${policy.managers.length}. Select a new ratio.`
-									}
-								/>
-							) : (
-								<p className="mt-3 text-xs text-slate-500">
-									Required signatures: {policy.threshold}/{policy.managers.length}. Search above to add
-									a co-signer.
-								</p>
-							)}
-							<button
-								type="button"
-								disabled={!canSubmitPolicyProposal || busy === 'policy'}
-								onClick={() => void proposePolicyChange()}
-								className="mt-4 w-full rounded-xl py-2.5 text-sm font-semibold text-white disabled:opacity-50"
-								style={{ backgroundColor: aaAccent.accent }}
-							>
-								{busy === 'policy' ? 'Proposing…' : 'Propose threshold'}
-							</button>
-						</div>
-						) : null}
-					</div>
-				) : null}
 
 				{tab === 'pending' ? (
 					<div className="space-y-3">
@@ -2670,12 +2760,284 @@ export default function AaMultisigPage() {
 				</>
 				) : (
 					<p className="mb-4 text-center text-sm text-slate-500">
-						Select an institutional Smart Wallet above to manage co-signers, pending approvals,
-						transfers, and history.
+						Select an institutional Smart Wallet above to manage pending approvals,
+						transfers, and history. Use + / − on a wallet to change co-signers.
 					</p>
 				)}
 				</div>
 			</div>
 		</div>
+		{sigsDrawerMode
+			? createPortal(
+					<div
+						className="fixed inset-0 z-[100] flex flex-col justify-end bg-black/45"
+						role="dialog"
+						aria-modal="true"
+						aria-label={
+							sigsDrawerMode === 'add'
+								? 'Add signing wallet'
+								: 'Reduce signing wallet or adjust multisig rule'
+						}
+					>
+						<button
+							type="button"
+							className="absolute inset-0 cursor-default"
+							aria-label="Close"
+							onClick={closeSigsDrawer}
+						/>
+						<div
+							className="relative z-10 flex max-h-[min(92dvh,720px)] w-full flex-col overflow-hidden rounded-t-[28px] bg-white shadow-2xl animate-slide-up dark:bg-slate-950"
+							style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
+							onClick={(e) => e.stopPropagation()}
+						>
+							<div className="flex items-start justify-between gap-3 px-5 pt-5">
+								<div className="min-w-0">
+									<h2 className="text-lg font-bold tracking-tight text-slate-900 dark:text-slate-50">
+										{sigsDrawerMode === 'add'
+											? 'Add signing wallet'
+											: 'Reduce signers / adjust rule'}
+									</h2>
+									<p className="mt-1 text-xs text-slate-500">
+										{sigsDrawerMode === 'add'
+											? 'Search a @BeamioTag and propose a new M-of-N policy. All signers are notified via CoNET chat.'
+											: 'Remove a co-signer (owner cannot be removed) and set the required signatures for the remaining set.'}
+									</p>
+								</div>
+								<button
+									type="button"
+									onClick={closeSigsDrawer}
+									className="-mr-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800"
+									aria-label="Close panel"
+								>
+									<X className="h-5 w-5" aria-hidden />
+								</button>
+							</div>
+
+							<div className="mt-4 min-h-0 flex-1 overflow-y-auto px-5 pb-2">
+								{policyLoading && !drawerPolicy ? (
+									<p className="flex items-center gap-2 text-sm text-slate-500">
+										<Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+										Loading policy…
+									</p>
+								) : !drawerPolicy ? (
+									<p className="text-sm text-slate-500">Smart Wallet policy unavailable.</p>
+								) : sigsDrawerMode === 'add' ? (
+									<div className="space-y-3">
+										<p className="text-xs text-slate-500">
+											Current: {drawerPolicy.threshold}/{drawerPolicy.managers.length} required
+										</p>
+										{selectedCosigner ? (
+											<div className="rounded-2xl border border-[#eadcf7] bg-[#f5ecff] p-3 dark:border-slate-600 dark:bg-slate-800/80">
+												<div className="flex items-start justify-between gap-3">
+													<div className="flex min-w-0 flex-1 items-center gap-2.5">
+														<IpfsImg
+															src={
+																selectedCosigner.image?.trim() ||
+																beamioSearchAvatarUrl(
+																	selectedCosigner.username || selectedCosigner.address
+																)
+															}
+															alt=""
+															className="h-9 w-9 shrink-0 rounded-full border border-slate-200/80 object-cover dark:border-slate-600"
+														/>
+														<div className="min-w-0 flex-1 leading-tight">
+															<p className="truncate text-[13px] font-semibold text-slate-900 dark:text-slate-100">
+																{beamioSearchDisplayName(selectedCosigner)}
+															</p>
+															<p className="truncate text-[11px] text-slate-500 dark:text-slate-400">
+																@{selectedCosigner.username} ·{' '}
+																{beamioSearchShortAddress(selectedCosigner.address)}
+															</p>
+														</div>
+													</div>
+													<button
+														type="button"
+														className="rounded-full p-2 text-slate-500 hover:bg-white/60 dark:hover:bg-slate-700"
+														onClick={() => setSelectedCosigner(null)}
+														aria-label="Clear selected co-signer"
+													>
+														<X className="h-4 w-4" aria-hidden />
+													</button>
+												</div>
+											</div>
+										) : (
+											<div className="relative">
+												<div className="flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 shadow-sm ring-1 ring-transparent focus-within:ring-slate-300 dark:border-slate-600 dark:bg-slate-800">
+													<Search className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
+													<input
+														value={newSignerTag}
+														onChange={(e) => setNewSignerTag(e.currentTarget.value)}
+														onFocus={() => {
+															if (
+																canSearchCosigner &&
+																(cosignerSearchResults.length > 0 || cosignerSearchLoading)
+															) {
+																setShowCosignerDropdown(true)
+															}
+														}}
+														placeholder="Search @BeamioTag or wallet address"
+														autoComplete="off"
+														inputMode="search"
+														className="w-full min-w-0 bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400 dark:text-slate-100"
+													/>
+													{cosignerSearchLoading ? (
+														<Loader2
+															className="h-4 w-4 shrink-0 animate-spin text-slate-400"
+															aria-hidden
+														/>
+													) : null}
+												</div>
+												{showCosignerDropdown && canSearchCosigner ? (
+													<div className="absolute left-0 right-0 z-30 mt-2 overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-xl dark:border-slate-600 dark:bg-slate-800">
+														<div className="max-h-60 overflow-y-auto py-1">
+															{!cosignerSearchLoading &&
+																cosignerSearchResults.map((item) => (
+																	<BeamioSearchResultRow
+																		key={item.address}
+																		item={item}
+																		onSelect={(row) => void handleSelectCosigner(row)}
+																	/>
+																))}
+															{!cosignerSearchLoading && cosignerSearchResults.length === 0 ? (
+																<div className="px-3 py-2.5 text-xs text-slate-400">
+																	No results
+																</div>
+															) : null}
+														</div>
+													</div>
+												) : null}
+											</div>
+										)}
+										{selectedCosigner ? (
+											<ThresholdRatioPicker
+												signerCount={drawerAddSignerCount}
+												value={Math.min(drawerThreshold, Math.max(1, drawerAddSignerCount))}
+												onChange={setDrawerThreshold}
+												accentColor={aaAccent.accent}
+												hint={`After adding this co-signer, ${drawerAddSignerCount} signers total. Pick a new M-of-N.`}
+											/>
+										) : (
+											<p className="text-xs text-slate-500">
+												Select a co-signer above to continue.
+											</p>
+										)}
+									</div>
+								) : (
+									<div className="space-y-3">
+										<p className="text-xs text-slate-500">
+											Current: {drawerPolicy.threshold}/{drawerPolicy.managers.length} required.
+											Owner cannot be removed.
+										</p>
+										{drawerRemovableManagers.length === 0 ? (
+											<p className="text-sm text-slate-500">
+												No removable co-signers. Only the owner remains on this Smart Wallet.
+											</p>
+										) : (
+											<ul className="space-y-2">
+												{drawerRemovableManagers.map((manager) => {
+													const tag = resolveTag(manager)
+													const capsule = toCapsuleItem(manager)
+													const record = lookupByAddress(manager)
+													const imgSrc =
+														record?.image?.trim() ||
+														capsule?.image?.trim() ||
+														avatarImgUrl(record?.accountName ?? tag, manager)
+													const displayName = signerDisplayName(capsule, tag)
+													const tagLine = tag
+														? tag.startsWith('@')
+															? tag
+															: `@${tag}`
+														: '@Beamio'
+													const selected =
+														drawerRemoveTargetEoa != null &&
+														drawerRemoveTargetEoa.toLowerCase() === manager.toLowerCase()
+													return (
+														<li key={manager}>
+															<button
+																type="button"
+																onClick={() => setDrawerRemoveTargetEoa(manager)}
+																aria-pressed={selected}
+																className={`flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition ${
+																	selected
+																		? 'border-[#8d3a8b] bg-[#f5ecff] ring-2 ring-[#8d3a8b]/20 dark:border-[#8d3a8b]/60 dark:bg-slate-800/80'
+																		: 'border-slate-200 bg-white hover:border-slate-300 dark:border-slate-700 dark:bg-slate-800/40'
+																}`}
+															>
+																<img
+																	src={imgSrc}
+																	alt=""
+																	className="h-10 w-10 shrink-0 rounded-full object-cover bg-white"
+																/>
+																<div className="min-w-0 flex-1">
+																	<p className="truncate text-sm font-semibold text-[#424655] dark:text-slate-100">
+																		{displayName || tagLine}
+																	</p>
+																	{displayName ? (
+																		<p className="truncate text-xs text-slate-600 dark:text-slate-400">
+																			{tagLine}
+																		</p>
+																	) : null}
+																	<p className="mt-0.5 font-mono text-[11px] text-slate-500">
+																		{shortAddr(manager)}
+																	</p>
+																</div>
+															</button>
+														</li>
+													)
+												})}
+											</ul>
+										)}
+										{drawerRemoveTargetEoa ? (
+											<ThresholdRatioPicker
+												signerCount={drawerRemoveSignerCount}
+												value={Math.min(
+													drawerThreshold,
+													Math.max(1, drawerRemoveSignerCount)
+												)}
+												onChange={setDrawerThreshold}
+												accentColor={aaAccent.accent}
+												hint={`After removal, ${drawerRemoveSignerCount} signers remain. Pick the new M-of-N.`}
+											/>
+										) : drawerRemovableManagers.length > 0 ? (
+											<p className="text-xs text-slate-500">
+												Select a co-signer to remove, then set the required signatures.
+											</p>
+										) : null}
+									</div>
+								)}
+							</div>
+
+							<div className="border-t border-slate-100 px-5 pt-3 dark:border-slate-800">
+								{sigsDrawerMode === 'add' ? (
+									<button
+										type="button"
+										disabled={!selectedCosigner || busy === 'policy' || policyLoading}
+										onClick={() => void proposeAddSignerFromDrawer()}
+										className="w-full rounded-xl py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+										style={{ backgroundColor: aaAccent.accent }}
+									>
+										{busy === 'policy' ? 'Proposing…' : 'Propose add signer'}
+									</button>
+								) : (
+									<button
+										type="button"
+										disabled={
+											!drawerRemoveTargetEoa || busy === 'policy' || policyLoading
+										}
+										onClick={() => void proposeRemoveSignerFromDrawer()}
+										className="w-full rounded-xl py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+										style={{ backgroundColor: aaAccent.accent }}
+									>
+										{busy === 'policy' ? 'Proposing…' : 'Propose remove / adjust rule'}
+									</button>
+								)}
+							</div>
+						</div>
+						<style>{`@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } } .animate-slide-up { animation: slideUp 0.35s cubic-bezier(0.32, 0.72, 0, 1); }`}</style>
+					</div>,
+					document.body
+				)
+			: null}
+		</>
 	)
 }

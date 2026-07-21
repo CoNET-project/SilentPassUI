@@ -1632,10 +1632,10 @@ export default function ReferralRegistryDashboardPage() {
 									{snapshot?.role === 'l0' ? (
 										<button
 											type="button"
-											onClick={() => setRedeemPanelKind('merchant')}
+											onClick={() => setRedeemPanelKind('l1')}
 											className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-amber-200/20 bg-amber-300/10 text-amber-200 transition hover:bg-amber-300/20"
-											aria-label="Issue Start Kit redeem codes"
-											title="Issue Start Kit redeem codes"
+											aria-label="Manage L1 redeem codes"
+											title="Manage L1 redeem codes"
 										>
 											<Gift className="h-4 w-4" aria-hidden />
 										</button>

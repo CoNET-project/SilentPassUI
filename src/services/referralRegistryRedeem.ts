@@ -773,7 +773,15 @@ export async function issueAdminMerchantPackageCode(params: {
 			}),
 		})
 		const json = await response.json() as { success?: boolean; txHash?: string; error?: string }
-		if (!response.ok || !json.success || !json.txHash) throw new Error(json.error ?? 'Admin package issue relay failed.')
+		if (!response.ok || !json.success || !json.txHash) {
+			const raw = json.error ?? 'Admin package issue relay failed.'
+			if (/execution reverted \(no data present/i.test(raw) || /CALL_EXCEPTION/i.test(raw)) {
+				throw new Error(
+					'Package create failed on CoNET (contract rejected the call). Confirm you are a registry admin and the vault supports Admin Merchant Package codes, then try again.',
+				)
+			}
+			throw new Error(raw)
+		}
 		saveLocalSecret('adminPackage', wallet.address, hash, secret)
 		const records = await fetchAdminMerchantPackageCodes(wallet.address, { force: true })
 		const record = records.find((item) => item.hash.toLowerCase() === hash.toLowerCase())

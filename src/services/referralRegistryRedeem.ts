@@ -472,7 +472,51 @@ export async function claimReferralRedeemCode(params: {
 	const secret = normalizeReferralRedeemSecret(params.secret)
 	if (!secret) throw new Error('Enter a redeem code.')
 	const kind = params.kind ?? referralRedeemKindFromSecret(secret)
-	if (kind === 'merchant') throw new Error('Start Kit codes are claimed through the merchant onboarding flow.')
+	if (kind === 'merchant') {
+		return enqueueWrite(async () => {
+			const wallet = new ethers.Wallet(params.privateKeyArmor)
+			const hash = referralRedeemHash(secret)
+			const raw = await registryRead.merchantCodes(hash)
+			if (!raw.active || raw.claimed) {
+				throw new Error('This Start Kit code is not active on CoNET. Copy the complete code from the issuer.')
+			}
+			const nonceResponse = await fetch(`${beamioApi}/api/referralRegistryClaimNonce?account=${encodeURIComponent(wallet.address)}`)
+			const nonceJson = await nonceResponse.json() as { success?: boolean; nonce?: string; error?: string }
+			if (!nonceResponse.ok || !nonceJson.success || nonceJson.nonce == null) throw new Error(nonceJson.error ?? 'Could not read referral claim nonce.')
+			const nonce = BigInt(nonceJson.nonce)
+			const deadline = BigInt(Math.floor(Date.now() / 1000) + 300)
+			const types = {
+				ClaimMerchantRedeemCode: [
+					{ name: 'claimer', type: 'address' },
+					{ name: 'redeemHash', type: 'bytes32' },
+					{ name: 'nonce', type: 'uint256' },
+					{ name: 'deadline', type: 'uint256' },
+				],
+			}
+			const message = { claimer: wallet.address, redeemHash: hash, nonce, deadline }
+			const signature = await wallet.signTypedData(
+				{ name: 'ReferralRegistryVaultV1', version: '1', chainId: 224422, verifyingContract: CONET_REFERRAL_REGISTRY_VAULT_V1 },
+				types,
+				message,
+			)
+			const response = await fetch(`${beamioApi}/api/referralRegistryClaim`, {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({
+					kind: 'merchant',
+					account: wallet.address,
+					secret,
+					redeemHash: hash,
+					nonce: nonce.toString(),
+					deadline: deadline.toString(),
+					signature,
+				}),
+			})
+			const json = await response.json() as { success?: boolean; txHash?: string; error?: string }
+			if (!response.ok || !json.success || !json.txHash) throw new Error(json.error ?? 'Start Kit claim relay failed.')
+			return json.txHash
+		})
+	}
 	if (kind === 'adminPackage') {
 		return enqueueWrite(async () => {
 			const wallet = new ethers.Wallet(params.privateKeyArmor, conetDepinProvider)

@@ -92,6 +92,9 @@ import {
   queryBusinessStartKetRedeemOnChain,
   queryBusinessStartKetBalanceOfOnChain,
   postBusinessStartKetRedeemRedeem,
+  isReferralMerchantStartKitCode,
+  queryReferralMerchantStartKitRedeemOnChain,
+  postReferralMerchantStartKitClaim,
   queryValidatorDepositRedeemAdminOnChain,
   fetchPosTerminalDbBinding,
   fetchPosTerminalMetadataFromApi,
@@ -20861,6 +20864,63 @@ const [memberDirectoryUserTypeDb, setMemberDirectoryUserTypeDb] = useState<Recor
    setMerchantKitBuintRedeemBusy(true);
    setMerchantKitRedeemFeedback(null);
    try {
+     const isStartKit = isReferralMerchantStartKitCode(code);
+     if (isStartKit) {
+       const pk =
+         getSessionPrivateKeyArmor()?.trim() ||
+         profiles?.[0]?.privateKeyArmor?.trim() ||
+         '';
+       if (!pk) {
+         setMerchantKitRedeemFeedback({
+           type: 'error',
+           message: 'Unlock your wallet to redeem this Start Kit code.',
+         });
+         return;
+       }
+       const pre = await queryReferralMerchantStartKitRedeemOnChain(code);
+       if (!pre.redeemable) {
+         setMerchantKitRedeemFeedback({
+           type: 'error',
+           message: pre.error ?? 'This code cannot be redeemed.',
+         });
+         return;
+       }
+       const buRaw = pre.buintAmount ?? '0';
+       let buDisplay = '0.00';
+       try {
+         const buHuman = Number(ethers.formatUnits(buRaw, 6));
+         buDisplay = Number.isFinite(buHuman) ? buHuman.toFixed(2) : buRaw;
+       } catch {
+         buDisplay = buRaw;
+       }
+       const res = await postReferralMerchantStartKitClaim({ privateKeyArmor: pk, code });
+       if (!res.success) {
+         setMerchantKitRedeemFeedback({
+           type: 'error',
+           message: res.error ?? 'Redeem failed. Try again.',
+         });
+         return;
+       }
+       const txShort =
+         res.txHash && res.txHash.length > 20
+           ? `${res.txHash.slice(0, 10)}…${res.txHash.slice(-8)}`
+           : '';
+       setMerchantKitProgramLiveSource({
+         kind: 'redeem',
+         summary: {
+           bUnitsDisplay: buDisplay,
+           hasBuint: buRaw !== '0' && buRaw !== '',
+           ketLine: 'Start Ket #0 × 1',
+           txHashShort: txShort,
+         },
+       });
+       setMerchantKitRedeemFeedback(null);
+       setMerchantKitStripeUi('succeeded');
+       setMerchantKitRedeemInput('');
+       setOverviewRefreshTrigger((t) => t + 1);
+       setCardIssuanceOnChainRefreshNonce((n) => n + 1);
+       return;
+     }
      const pre = await queryBusinessStartKetRedeemOnChain(code);
      if (!pre.redeemable) {
        setMerchantKitRedeemFeedback({

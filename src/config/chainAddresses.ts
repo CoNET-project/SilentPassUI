@@ -55,6 +55,8 @@ export const CONET_ADDRESS_PGP = '0x684b0ac760cEE9c9b85de36d69746420648Cf9e2'
 export const CONET_ACCOUNT_REGISTRY = '0xfFDc8d2021A41F4638Cb3eCf58B5155383EE9f6d'
 /** MerchantPOSManagement（CoNET）；与 deployments/conet-addresses.json / x402sdk chainAddresses 同步 */
 export const MERCHANT_POS_MANAGEMENT_CONET = '0x74140e0C8118889538da8625Fc96Aac6B1342AE5'
+/** ReferralRegistryVaultV1（CoNET）；Start Kit `beamio-start-kit-*` merchant redeem */
+export const CONET_REFERRAL_REGISTRY_VAULT_V1 = '0xD6252Cbf266B80231397Ac2a4f25ed2d9b01DEE6'
 
 export const BASE_MAINNET_FACTORIES = {
   AA_FACTORY: BEAMIO_AA_FACTORY,

@@ -1,7 +1,8 @@
 import { ethers } from 'ethers'
 import { conetDepinProvider } from '@/utils/constants'
 
-const CONET_BUNIT_AIRDROP_ADDRESS = '0xa01DFfD68b355540B840310a9f0C1E7a779C3Ce8'
+const CONET_BUNIT_AIRDROP_ADDRESS = '0x305f90A7f38289219BA1b4be98CB5b47e7b15Ac2'
+const CONET_BUNIT_AIRDROP_PREVIOUS_ADDRESS = '0xa01DFfD68b355540B840310a9f0C1E7a779C3Ce8'
 const CONET_BUNIT_AIRDROP_LEGACY_ADDRESS = '0xb9cf45AF87b16853c8F48a16b0495F030309e70f'
 
 const DB_NAME = 'beamio_bunit_free_claim_gate_v1'
@@ -85,7 +86,11 @@ export async function readBUnitFreeClaimHasClaimedOnChain(
 	if (!eoa || !ethers.isAddress(eoa)) return null
 	const claimant = ethers.getAddress(eoa)
 	let anyTrustedRead = false
-	for (const addr of [CONET_BUNIT_AIRDROP_ADDRESS, CONET_BUNIT_AIRDROP_LEGACY_ADDRESS]) {
+	for (const addr of [
+		CONET_BUNIT_AIRDROP_ADDRESS,
+		CONET_BUNIT_AIRDROP_PREVIOUS_ADDRESS,
+		CONET_BUNIT_AIRDROP_LEGACY_ADDRESS,
+	]) {
 		try {
 			const c = new ethers.Contract(addr, HAS_CLAIMED_ABI, provider)
 			anyTrustedRead = true

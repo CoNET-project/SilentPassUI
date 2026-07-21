@@ -46,6 +46,44 @@ function bpsToPercent(bps: string | bigint): string {
 	return (n / 100).toFixed(n % 100 === 0 ? 0 : 2)
 }
 
+/**
+ * Merchant-share module stores shareBps as a cut of the **L0 rebate pool**.
+ * Display as a cut of the **merchant full payment**:
+ *   ofMerchantBps = l0RebateBps * shareBps / 10_000
+ */
+export function shareBpsAsMerchantFullPercent(
+	l0RebateBps: string | bigint,
+	shareBps: string | bigint,
+): string {
+	try {
+		const ofMerchantBps = (BigInt(l0RebateBps) * BigInt(shareBps)) / 10_000n
+		return bpsToPercent(ofMerchantBps)
+	} catch {
+		return '0'
+	}
+}
+
+/**
+ * L0’s remaining cut of merchant full after allocating L1 shares of the L0 rebate pool:
+ *   remainingPoolBps = 10_000 − Σ shareBps
+ *   ofMerchantBps = l0RebateBps * remainingPoolBps / 10_000
+ */
+export function l0RemainingOfMerchantFullPercent(
+	l0RebateBps: string | bigint,
+	allocatedShareBpsList: Array<string | bigint>,
+): string {
+	try {
+		let allocated = 0n
+		for (const s of allocatedShareBpsList) allocated += BigInt(s)
+		if (allocated > 10_000n) allocated = 10_000n
+		const remainingPoolBps = 10_000n - allocated
+		const ofMerchantBps = (BigInt(l0RebateBps) * remainingPoolBps) / 10_000n
+		return bpsToPercent(ofMerchantBps)
+	} catch {
+		return '0'
+	}
+}
+
 function percentToBps(raw: string): bigint {
 	const trimmed = raw.trim()
 	if (!/^\d+(?:\.\d{1,2})?$/.test(trimmed)) throw new Error('Share percent must be a number with up to 2 decimals.')

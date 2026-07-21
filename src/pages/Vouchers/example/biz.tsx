@@ -93,8 +93,11 @@ import {
   queryBusinessStartKetBalanceOfOnChain,
   postBusinessStartKetRedeemRedeem,
   isReferralMerchantStartKitCode,
+  isReferralAdminMerchantPackageCode,
   queryReferralMerchantStartKitRedeemOnChain,
+  queryReferralAdminMerchantPackageRedeemOnChain,
   postReferralMerchantStartKitClaim,
+  postReferralAdminMerchantPackageClaim,
   queryValidatorDepositRedeemAdminOnChain,
   fetchPosTerminalDbBinding,
   fetchPosTerminalMetadataFromApi,
@@ -20864,6 +20867,66 @@ const [memberDirectoryUserTypeDb, setMemberDirectoryUserTypeDb] = useState<Recor
    setMerchantKitBuintRedeemBusy(true);
    setMerchantKitRedeemFeedback(null);
    try {
+     const isAdminPackage = isReferralAdminMerchantPackageCode(code);
+     if (isAdminPackage) {
+       const pk =
+         getSessionPrivateKeyArmor()?.trim() ||
+         profiles?.[0]?.privateKeyArmor?.trim() ||
+         '';
+       if (!pk) {
+         setMerchantKitRedeemFeedback({
+           type: 'error',
+           message: 'Unlock your wallet to redeem this package code.',
+         });
+         return;
+       }
+       const pre = await queryReferralAdminMerchantPackageRedeemOnChain(code);
+       if (!pre.redeemable) {
+         setMerchantKitRedeemFeedback({
+           type: 'error',
+           message: pre.error ?? 'This code cannot be redeemed.',
+         });
+         return;
+       }
+       const buRaw = pre.buintAmount ?? '0';
+       let buDisplay = '0.00';
+       try {
+         const buHuman = Number(ethers.formatUnits(buRaw, 6));
+         buDisplay = Number.isFinite(buHuman) ? buHuman.toFixed(2) : buRaw;
+       } catch {
+         buDisplay = buRaw;
+       }
+       const res = await postReferralAdminMerchantPackageClaim({ privateKeyArmor: pk, code });
+       if (!res.success) {
+         setMerchantKitRedeemFeedback({
+           type: 'error',
+           message: res.error ?? 'Redeem failed. Try again.',
+         });
+         return;
+       }
+       const txShort =
+         res.txHash && res.txHash.length > 20
+           ? `${res.txHash.slice(0, 10)}…${res.txHash.slice(-8)}`
+           : '';
+       const ketN = Number(pre.ketAmount ?? '0');
+       const ketPart =
+         Number.isFinite(ketN) && ketN > 0 ? 'Start Ket #0 × 1' : null;
+       setMerchantKitProgramLiveSource({
+         kind: 'redeem',
+         summary: {
+           bUnitsDisplay: buDisplay,
+           hasBuint: buRaw !== '0' && buRaw !== '',
+           ketLine: ketPart,
+           txHashShort: txShort,
+         },
+       });
+       setMerchantKitRedeemFeedback(null);
+       setMerchantKitStripeUi('succeeded');
+       setMerchantKitRedeemInput('');
+       setOverviewRefreshTrigger((t) => t + 1);
+       setCardIssuanceOnChainRefreshNonce((n) => n + 1);
+       return;
+     }
      const isStartKit = isReferralMerchantStartKitCode(code);
      if (isStartKit) {
        const pk =

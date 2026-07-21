@@ -4396,6 +4396,163 @@ export function isReferralMerchantStartKitCode(code: string): boolean {
 	return code.trim().toLowerCase().startsWith('beamio-start-kit-')
 }
 
+export function isReferralAdminMerchantPackageCode(code: string): boolean {
+	return code.trim().toLowerCase().startsWith('beamio-admin-pkg-')
+}
+
+const REFERRAL_ADMIN_PACKAGE_CODE_ABI = [
+	'function adminMerchantPackageCodes(bytes32) view returns (address issuerAdmin,address optionalL0,uint256 bunitAmount,bool isPaid,bool includeStartKet,uint8 paymentMethod,string description,uint64 validAfter,uint64 validBefore,bool active,bool claimed,bool cancelled)',
+] as const
+
+/** CoNET ReferralRegistryVault admin package code (`beamio-admin-pkg-*`). */
+export async function queryReferralAdminMerchantPackageRedeemOnChain(
+	code: string
+): Promise<BusinessStartKetRedeemPreCheckApiResponse> {
+	const trimmed = code.trim()
+	const b = ethers.toUtf8Bytes(trimmed)
+	const now = Math.floor(Date.now() / 1000)
+	const codeHash = ethers.keccak256(b)
+	if (b.length === 0) {
+		return {
+			valid: false,
+			codeHash,
+			tokenId: '0',
+			ketAmount: '0',
+			buintAmount: '0',
+			validAfter: 0,
+			validBefore: 0,
+			active: false,
+			consumed: false,
+			timeOk: false,
+			redeemable: false,
+			error: 'Invalid redeem code',
+		}
+	}
+	const c = new ethers.Contract(
+		CONET_REFERRAL_REGISTRY_VAULT_V1,
+		REFERRAL_ADMIN_PACKAGE_CODE_ABI,
+		conetDepinProvider
+	)
+	try {
+		const r = await c.adminMerchantPackageCodes!(codeHash)
+		const paid = (r.bunitAmount ?? 0n) as bigint
+		const validAfter = Number(r.validAfter ?? 0n)
+		const validBefore = Number(r.validBefore ?? 0n)
+		const active = Boolean(r.active)
+		const claimed = Boolean(r.claimed)
+		const cancelled = Boolean(r.cancelled)
+		const includeStartKet = Boolean(r.includeStartKet)
+		const timeOk =
+			(validAfter === 0 || now >= validAfter) && (validBefore === 0 || now <= validBefore)
+		let error: string | undefined
+		if (!active || cancelled) error = 'Redeem is not active'
+		else if (claimed) error = 'Redeem already consumed'
+		else if (!timeOk) error = 'Outside valid time window'
+		else if (paid <= 0n) error = 'Nothing to redeem'
+		const redeemable = active && !claimed && !cancelled && timeOk && paid > 0n
+		return {
+			valid: true,
+			codeHash,
+			tokenId: '0',
+			ketAmount: includeStartKet ? '1' : '0',
+			buintAmount: paid.toString(),
+			validAfter,
+			validBefore,
+			active: active && !cancelled,
+			consumed: claimed,
+			timeOk,
+			redeemable,
+			error,
+		}
+	} catch (e: unknown) {
+		const err = e as { shortMessage?: string; message?: string }
+		return {
+			valid: false,
+			codeHash,
+			tokenId: '0',
+			ketAmount: '0',
+			buintAmount: '0',
+			validAfter: 0,
+			validBefore: 0,
+			active: false,
+			consumed: false,
+			timeOk: false,
+			redeemable: false,
+			error: err?.shortMessage ?? err?.message ?? 'adminMerchantPackageCodes failed',
+		}
+	}
+}
+
+/** Gasless claim of admin merchant package via Cluster → Master `claimAdminMerchantPackageCodeFor`. */
+export async function postReferralAdminMerchantPackageClaim(params: {
+	privateKeyArmor: string
+	code: string
+}): Promise<{ success: boolean; txHash?: string; error?: string }> {
+	const secret = params.code.trim()
+	if (!secret) return { success: false, error: 'Enter a redeem code.' }
+	try {
+		const wallet = new ethers.Wallet(params.privateKeyArmor.trim())
+		const redeemHash = ethers.keccak256(ethers.toUtf8Bytes(secret))
+		const pre = await queryReferralAdminMerchantPackageRedeemOnChain(secret)
+		if (!pre.redeemable) return { success: false, error: pre.error ?? 'This code cannot be redeemed.' }
+		const nonceRes = await fetch(
+			`${beamioApi}/api/referralRegistryClaimNonce?account=${encodeURIComponent(wallet.address)}`
+		)
+		const nonceJson = (await nonceRes.json().catch(() => ({}))) as {
+			success?: boolean
+			nonce?: string
+			error?: string
+		}
+		if (!nonceRes.ok || !nonceJson.success || nonceJson.nonce == null) {
+			return { success: false, error: nonceJson.error ?? 'Could not read claim nonce.' }
+		}
+		const nonce = BigInt(nonceJson.nonce)
+		const deadline = BigInt(Math.floor(Date.now() / 1000) + 300)
+		const signature = await wallet.signTypedData(
+			{
+				name: 'ReferralRegistryVaultV1',
+				version: '1',
+				chainId: 224422,
+				verifyingContract: CONET_REFERRAL_REGISTRY_VAULT_V1,
+			},
+			{
+				ClaimAdminMerchantPackageCode: [
+					{ name: 'claimer', type: 'address' },
+					{ name: 'redeemHash', type: 'bytes32' },
+					{ name: 'nonce', type: 'uint256' },
+					{ name: 'deadline', type: 'uint256' },
+				],
+			},
+			{ claimer: wallet.address, redeemHash, nonce, deadline }
+		)
+		const res = await fetch(`${beamioApi}/api/referralRegistryClaim`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				kind: 'adminPackage',
+				account: wallet.address,
+				secret,
+				redeemHash,
+				nonce: nonce.toString(),
+				deadline: deadline.toString(),
+				signature,
+			}),
+		})
+		const data = (await res.json().catch(() => ({}))) as {
+			success?: boolean
+			txHash?: string
+			error?: string
+		}
+		if (!res.ok || !data.success) {
+			return { success: false, error: data.error ?? res.statusText }
+		}
+		return { success: true, txHash: data.txHash }
+	} catch (e: unknown) {
+		const err = e as { shortMessage?: string; message?: string }
+		return { success: false, error: err?.shortMessage ?? err?.message ?? 'Claim failed' }
+	}
+}
+
 /** CoNET ReferralRegistryVault merchant Start Kit code (`beamio-start-kit-*`). */
 export async function queryReferralMerchantStartKitRedeemOnChain(
 	code: string

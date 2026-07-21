@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ethers } from 'ethers'
-import { AlertTriangle, Check, Clipboard, Copy, Gift, LayoutDashboard, Loader2, RefreshCw, Settings2, ShieldCheck, XCircle } from 'lucide-react'
+import { AlertTriangle, Check, Clipboard, Copy, Gift, Loader2, Package, Pencil, RefreshCw, Settings2, ShieldCheck, SlidersHorizontal, Trash2, XCircle } from 'lucide-react'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { useBeamioTagDatabase } from '@/providers/BeamioTagDatabaseProvider'
 import { BeamioCircularBackButton } from '@/components/BeamioCircularBackButton'
@@ -23,13 +23,25 @@ import {
 	type ReferralMerchantCandidate,
 } from '@/services/referralRegistryAdminManagement'
 import {
+	fetchL1MerchantShares,
+	fetchMerchantL1Shares,
+	setMerchantL1Share,
+	type MerchantL1ShareRow,
+} from '@/services/referralRegistryMerchantShare'
+import {
+	cancelAdminMerchantPackageCode,
 	cancelReferralRedeemCode,
+	fetchAdminMerchantPackageCodes,
 	fetchMerchantRedeemBunitAirdrop,
 	fetchReferralRedeemCodes,
+	issueAdminMerchantPackageCode,
 	issueReferralRedeemCode,
+	PACKAGE_PAYMENT_METHOD_LABELS,
 	referralBpsToPercent,
 	referralPercentToBps,
 	setMerchantRedeemBunitAirdrop,
+	type AdminMerchantPackageRecord,
+	type PackagePaymentMethod,
 	type ReferralRedeemCodeRecord,
 	type ReferralRedeemKind,
 } from '@/services/referralRegistryRedeem'
@@ -418,9 +430,13 @@ function AdminL0ManagementPanel({
 function DownstreamSection({
 	snapshot,
 	onManageL0,
+	onManageMerchantShare,
+	onManageL1Share,
 }: {
 	snapshot: ReferralRegistryRoleSnapshot
 	onManageL0?: (item: ReferralRegistryDownstreamItem) => void
+	onManageMerchantShare?: (item: ReferralRegistryDownstreamItem) => void
+	onManageL1Share?: (item: ReferralRegistryDownstreamItem) => void
 }) {
 	const { ensureProfilesForAddresses } = useBeamioTagDatabase()
 	const canView = snapshot.isAdmin || snapshot.role === 'l0' || snapshot.role === 'l1'
@@ -430,7 +446,7 @@ function DownstreamSection({
 			? snapshot.downstream.filter((item) => item.role === 'l1')
 			: snapshot.downstream.filter((item) => item.role === 'merchant')
 	const merchantItems = snapshot.role === 'l0'
-		? snapshot.downstream.filter((item) => item.role === 'merchant' && !item.parentAdmin)
+		? snapshot.downstream.filter((item) => item.role === 'merchant')
 		: []
 	const title = snapshot.isAdmin ? 'Your L0 members' : snapshot.role === 'l0' ? 'Your L1 members' : 'Your merchant items'
 	const downstreamAddresses = downstream.flatMap((item) => [
@@ -480,17 +496,27 @@ function DownstreamSection({
 											Edit
 										</button>
 									) : null}
+									{snapshot.role === 'l0' && item.role === 'l1' && onManageL1Share ? (
+										<button
+											type="button"
+											onClick={() => onManageL1Share(item)}
+											className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-amber-200/20 bg-amber-300/10 text-amber-100 transition hover:bg-amber-300/20"
+											aria-label={`Edit merchant revenue shares for L1 ${item.address}`}
+											title="Edit merchant shares"
+										>
+											<Pencil className="h-3.5 w-3.5" aria-hidden />
+										</button>
+									) : null}
 								</div>
 							</div>
-							{(snapshot.isAdmin && item.role === 'l0' && item.merchantItems?.length) ||
-							(snapshot.role === 'l0' && item.role === 'l1' && item.merchantItems?.length) ? (
+							{snapshot.isAdmin && item.role === 'l0' && item.merchantItems?.length ? (
 								<div className="mt-2 rounded-lg border border-amber-200/10 bg-amber-200/[0.04] p-2">
 									<div className="flex items-center justify-between gap-2">
 										<p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-amber-100">Merchants</p>
-										<span className="text-[11px] text-slate-400">{item.merchantItems!.length}</span>
+										<span className="text-[11px] text-slate-400">{item.merchantItems.length}</span>
 									</div>
 									<div className="mt-1.5 flex flex-wrap gap-1.5">
-										{item.merchantItems!.map((merchant) => (
+										{item.merchantItems.map((merchant) => (
 											<div key={merchant.address} className="rounded-md border border-white/10 bg-black/10 p-1">
 												<BeamioTagCapsule address={merchant.address} />
 											</div>
@@ -509,15 +535,30 @@ function DownstreamSection({
 						<span className="text-[11px] text-slate-400">{merchantItems.length}</span>
 					</div>
 					{merchantItems.length === 0 ? (
-						<p className="mt-2 text-xs text-slate-500">No legacy merchant items found.</p>
+						<p className="mt-2 text-xs text-slate-500">No merchant items found.</p>
 					) : (
-						<div className="mt-2 flex flex-wrap gap-1.5">
+						<div className="mt-2 space-y-2">
 							{merchantItems.map((item) => (
-								<div key={item.address} className="flex items-center gap-1.5 rounded-md border border-white/10 bg-black/10 p-1">
-									<BeamioTagCapsule address={item.address} />
-									<span className="rounded-full border border-indigo-200/20 bg-indigo-300/10 px-2 py-0.5 text-[11px] font-medium text-indigo-100">
-										{Number(item.rebateBps) / 100}%
-									</span>
+								<div key={item.address} className="flex min-w-0 items-center justify-between gap-2 rounded-xl border border-white/10 bg-black/10 p-2.5">
+									<div className="min-w-0 flex-1">
+										<BeamioTagCapsule address={item.address} />
+									</div>
+									<div className="flex shrink-0 items-center gap-1.5">
+										<span className="rounded-full border border-indigo-200/20 bg-indigo-300/10 px-2 py-0.5 text-[11px] font-medium text-indigo-100">
+											{Number(item.rebateBps) / 100}%
+										</span>
+										{onManageMerchantShare ? (
+											<button
+												type="button"
+												onClick={() => onManageMerchantShare(item)}
+												className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-amber-200/20 bg-amber-300/10 text-amber-100 transition hover:bg-amber-300/20"
+												aria-label={`Edit L1 revenue shares for merchant ${item.address}`}
+												title="Edit L1 shares"
+											>
+												<Pencil className="h-3.5 w-3.5" aria-hidden />
+											</button>
+										) : null}
+									</div>
 								</div>
 							))}
 						</div>
@@ -525,6 +566,234 @@ function DownstreamSection({
 				</div>
 			) : null}
 		</div>
+	)
+}
+
+function L0RevenueSharePanel({
+	mode,
+	focus,
+	l0,
+	l1Candidates,
+	merchantCandidates,
+	privateKeyArmor,
+	onClose,
+}: {
+	mode: 'merchant' | 'l1'
+	focus: ReferralRegistryDownstreamItem
+	l0: string
+	l1Candidates: ReferralRegistryDownstreamItem[]
+	merchantCandidates: ReferralRegistryDownstreamItem[]
+	privateKeyArmor: string
+	onClose: () => void
+}) {
+	const [rows, setRows] = useState<MerchantL1ShareRow[]>([])
+	const [loading, setLoading] = useState(true)
+	const [selectedCounterparty, setSelectedCounterparty] = useState('')
+	const [sharePercent, setSharePercent] = useState('')
+	const [saving, setSaving] = useState(false)
+	const [removingKey, setRemovingKey] = useState('')
+	const [error, setError] = useState('')
+	const [success, setSuccess] = useState('')
+	const { close, slideStyle } = useReferralSlideOut(onClose)
+
+	const loadRows = useCallback(async () => {
+		setLoading(true)
+		setError('')
+		try {
+			const next = mode === 'merchant'
+				? await fetchMerchantL1Shares(l0, focus.address)
+				: await fetchL1MerchantShares(l0, focus.address)
+			setRows(next)
+		} catch (cause) {
+			setError(cause instanceof Error ? cause.message : 'Could not load revenue shares.')
+		} finally {
+			setLoading(false)
+		}
+	}, [mode, l0, focus.address])
+
+	useEffect(() => {
+		void loadRows()
+	}, [loadRows])
+
+	const counterparties = mode === 'merchant' ? l1Candidates : merchantCandidates
+	const selectedInList = selectedCounterparty
+		? counterparties.some((item) => item.address.toLowerCase() === selectedCounterparty.toLowerCase())
+		: true
+	const availableCounterparties = counterparties.filter((item) => {
+		// Allow the currently selected counterparty so existing rows can be edited.
+		if (selectedCounterparty && item.address.toLowerCase() === selectedCounterparty.toLowerCase()) return true
+		if (mode === 'merchant') return !rows.some((row) => row.l1.toLowerCase() === item.address.toLowerCase())
+		return !rows.some((row) => row.merchant.toLowerCase() === item.address.toLowerCase())
+	})
+	const selectOptions = !selectedCounterparty || selectedInList
+		? availableCounterparties
+		: [{ address: selectedCounterparty, role: (mode === 'merchant' ? 'l1' : 'merchant') as 'l1' | 'merchant', rebateBps: '0', ratioBps: '0', active: true }, ...availableCounterparties]
+
+	const handleSave = useCallback(async () => {
+		if (saving || !privateKeyArmor) return
+		setSaving(true)
+		setError('')
+		setSuccess('')
+		try {
+			if (!selectedCounterparty) throw new Error(mode === 'merchant' ? 'Select an L1 member.' : 'Select a merchant.')
+			if (!sharePercent.trim()) throw new Error('Enter a share percent.')
+			await setMerchantL1Share({
+				l0PrivateKeyArmor: privateKeyArmor,
+				merchant: mode === 'merchant' ? focus.address : selectedCounterparty,
+				l1: mode === 'merchant' ? selectedCounterparty : focus.address,
+				sharePercent,
+			})
+			setSelectedCounterparty('')
+			setSharePercent('')
+			await loadRows()
+			setSuccess('Revenue share updated.')
+		} catch (cause) {
+			setError(cause instanceof Error ? cause.message : 'Could not update the revenue share.')
+		} finally {
+			setSaving(false)
+		}
+	}, [saving, privateKeyArmor, selectedCounterparty, sharePercent, mode, focus.address, loadRows])
+
+	const handleRemove = useCallback(async (row: MerchantL1ShareRow) => {
+		if (removingKey || !privateKeyArmor) return
+		const key = `${row.merchant}:${row.l1}`
+		setRemovingKey(key)
+		setError('')
+		setSuccess('')
+		try {
+			await setMerchantL1Share({
+				l0PrivateKeyArmor: privateKeyArmor,
+				merchant: row.merchant,
+				l1: row.l1,
+				sharePercent: '0',
+			})
+			await loadRows()
+			setSuccess('Revenue share removed.')
+		} catch (cause) {
+			setError(cause instanceof Error ? cause.message : 'Could not remove the revenue share.')
+		} finally {
+			setRemovingKey('')
+		}
+	}, [removingKey, privateKeyArmor, loadRows])
+
+	const title = mode === 'merchant' ? 'Merchant revenue shares' : 'L1 merchant shares'
+	const description = mode === 'merchant'
+		? 'Share a percentage of this merchant’s rebate pool with selected L1 members under you.'
+		: 'Pick merchants under you and share a percentage of each merchant’s rebate pool with this L1.'
+
+	return (
+		<>
+			<div className="fixed inset-0 z-[119] bg-slate-950/60 backdrop-blur-[2px]" aria-hidden />
+			<aside className="fixed inset-y-0 right-0 z-[120] flex w-full max-w-xl min-h-0 flex-col overflow-hidden border-l border-white/10 bg-[#071126] text-slate-50 transition-transform duration-300 ease-out" style={slideStyle} role="dialog" aria-modal="true" aria-label={title}>
+				<div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 pb-10">
+					<div className="mx-auto w-full max-w-lg" style={{ paddingTop: 'max(1rem, env(safe-area-inset-top, 0px))' }}>
+						<div className="flex items-center justify-between">
+							<BeamioCircularBackButton onClick={close} />
+							<SlidersHorizontal className="h-5 w-5 text-amber-200" aria-hidden />
+						</div>
+						<header className="pb-7 pt-8">
+							<p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-200">L0 controls</p>
+							<h2 className="mt-2 text-3xl font-semibold tracking-tight">{title}</h2>
+							<p className="mt-2 text-sm leading-6 text-slate-400">{description}</p>
+							<div className="mt-4"><BeamioTagCapsule address={focus.address} /></div>
+						</header>
+
+						<section className="rounded-2xl border border-white/10 bg-white/[0.05] p-5">
+							<h3 className="font-semibold text-white">{mode === 'merchant' ? 'Add L1 share' : 'Add merchant share'}</h3>
+							<label className="mt-3 block text-xs text-slate-400" htmlFor="share-counterparty">
+								{mode === 'merchant' ? 'L1 member' : 'Merchant'}
+								<select
+									id="share-counterparty"
+									value={selectedCounterparty}
+									onChange={(event) => setSelectedCounterparty(event.target.value)}
+									disabled={saving || selectOptions.length === 0}
+									className="mt-1.5 w-full rounded-xl border border-white/15 bg-black/20 px-3 py-2.5 text-sm text-white outline-none focus:border-amber-300/70 disabled:opacity-60"
+								>
+									<option value="">{selectOptions.length === 0 ? 'No available members' : 'Select…'}</option>
+									{selectOptions.map((item) => (
+										<option key={item.address} value={item.address}>{item.address}</option>
+									))}
+								</select>
+							</label>
+							<label className="mt-3 block text-xs text-slate-400" htmlFor="share-percent">
+								Share of merchant rebate (%)
+								<input
+									id="share-percent"
+									type="text"
+									inputMode="decimal"
+									autoComplete="off"
+									value={sharePercent}
+									onChange={(event) => setSharePercent(event.target.value)}
+									disabled={saving}
+									placeholder="10"
+									className="mt-1.5 w-full rounded-xl border border-white/15 bg-black/20 px-3 py-2.5 text-sm text-white outline-none focus:border-amber-300/70 disabled:opacity-60"
+									aria-label="Share percent"
+								/>
+							</label>
+							<p className="mt-2 text-[11px] leading-5 text-slate-500">All L1 shares for one merchant must total at most 100% of that merchant’s rebate to you.</p>
+							<button
+								type="button"
+								onClick={() => void handleSave()}
+								disabled={saving || !privateKeyArmor}
+								aria-busy={saving}
+								className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-indigo-400 disabled:cursor-not-allowed disabled:opacity-60"
+							>
+								{saving ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
+								{saving ? 'Saving…' : 'Save share'}
+							</button>
+						</section>
+
+						{error ? <div className="mt-4 rounded-xl border border-amber-300/20 bg-amber-400/10 p-3 text-sm text-amber-100">{error}</div> : null}
+						{success ? <div className="mt-4 rounded-xl border border-emerald-300/20 bg-emerald-400/10 p-3 text-sm text-emerald-100">{success}</div> : null}
+
+						<section className="mt-4 rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+							<div className="flex items-center justify-between gap-3">
+								<h3 className="font-semibold text-white">Configured shares</h3>
+								<button type="button" onClick={() => void loadRows()} disabled={loading} className="text-xs text-indigo-200 disabled:opacity-50">
+									{loading ? 'Refreshing…' : 'Refresh'}
+								</button>
+							</div>
+							<div className="mt-3 space-y-2">
+								{loading && rows.length === 0 ? <p className="text-sm text-slate-400">Loading…</p> : null}
+								{!loading && rows.length === 0 ? <p className="text-sm text-slate-400">No shares configured yet.</p> : null}
+								{rows.map((row) => {
+									const key = `${row.merchant}:${row.l1}`
+									const counterparty = mode === 'merchant' ? row.l1 : row.merchant
+									return (
+										<div key={key} className="flex min-w-0 items-center justify-between gap-2 rounded-xl border border-white/10 bg-black/10 p-3">
+											<button
+												type="button"
+												onClick={() => {
+													setSelectedCounterparty(counterparty)
+													setSharePercent(row.sharePercent)
+													setSuccess('')
+													setError('')
+												}}
+												className="min-w-0 flex-1 text-left"
+												aria-label={`Edit share for ${counterparty}`}
+											>
+												<BeamioTagCapsule address={counterparty} />
+												<p className="mt-1 text-xs text-slate-400">{row.sharePercent}% of merchant rebate · tap to edit</p>
+											</button>
+											<button
+												type="button"
+												onClick={() => void handleRemove(row)}
+												disabled={removingKey !== ''}
+												aria-busy={removingKey === key}
+												aria-label="Remove share"
+												className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-rose-300/20 bg-rose-400/10 text-rose-200 disabled:opacity-50"
+											>
+												{removingKey === key ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <Trash2 className="h-3.5 w-3.5" aria-hidden />}
+											</button>
+										</div>
+									)
+								})}
+							</div>
+						</section>
+					</div>
+				</div>
+			</aside>
+		</>
 	)
 }
 
@@ -654,10 +923,10 @@ function L0StartKitQuotaCard({
 						aria-label="Open Start Kit redeem controls"
 						title="Start Kit controls"
 					>
-						<LayoutDashboard className="h-4 w-4" aria-hidden />
+						<SlidersHorizontal className="h-4 w-4" aria-hidden />
 					</button>
 				) : (
-					<LayoutDashboard className="h-7 w-7 shrink-0 text-amber-200" aria-hidden />
+					<SlidersHorizontal className="h-7 w-7 shrink-0 text-amber-200" aria-hidden />
 				)}
 			</div>
 		</div>
@@ -678,11 +947,8 @@ function ReferralRedeemManagementPanel({
 	onCodesChanged?: () => void | Promise<void>
 }) {
 	const { referralL0StartKitQuota, refreshReferralL0StartKitQuota } = useDaemonContext()
-	const { ensureProfilesForAddresses } = useBeamioTagDatabase()
 	const [records, setRecords] = useState<ReferralRedeemCodeRecord[]>([])
 	const [rateInput, setRateInput] = useState(kind === 'l1' ? referralBpsToPercent(snapshot.rebateBps) : '')
-	const l1Options = snapshot.downstream.filter((item) => item.role === 'l1' && item.active)
-	const [selectedL1, setSelectedL1] = useState(() => l1Options[0]?.address ?? '')
 	const [loadingRecords, setLoadingRecords] = useState(true)
 	const [isCreating, setIsCreating] = useState(false)
 	const [cancellingHash, setCancellingHash] = useState('')
@@ -698,31 +964,18 @@ function ReferralRedeemManagementPanel({
 			? referralL0StartKitQuota.starterKetRemaining
 			: null
 
-	useEffect(() => {
-		if (!isMerchant || l1Options.length === 0) return
-		void ensureProfilesForAddresses(l1Options.map((item) => item.address))
-	}, [isMerchant, l1Options.map((item) => item.address).join('|'), ensureProfilesForAddresses])
-
-	useEffect(() => {
-		if (!isMerchant) return
-		if (selectedL1 && l1Options.some((item) => item.address.toLowerCase() === selectedL1.toLowerCase())) return
-		setSelectedL1(l1Options[0]?.address ?? '')
-	}, [isMerchant, selectedL1, l1Options.map((item) => item.address).join('|')])
-
 	const loadRecords = useCallback(async (force = false) => {
 		setLoadingRecords(true)
 		try {
 			const next = await fetchReferralRedeemCodes(kind, snapshot.eoa, { force })
 			setRecords(next)
 			setError('')
-			const assigned = next.map((item) => item.assignedL1).filter((addr): addr is string => Boolean(addr))
-			if (assigned.length) void ensureProfilesForAddresses(assigned)
 		} catch {
 			setError('Could not load redeem code history from CoNET. The previous list was kept.')
 		} finally {
 			setLoadingRecords(false)
 		}
-	}, [kind, snapshot.eoa, ensureProfilesForAddresses])
+	}, [kind, snapshot.eoa])
 
 	useEffect(() => {
 		void loadRecords()
@@ -730,23 +983,12 @@ function ReferralRedeemManagementPanel({
 
 	const handleCreate = useCallback(async () => {
 		if (isCreating || !privateKeyArmor) return
-		if (isMerchant && (!selectedL1 || l1Options.length === 0)) {
-			setError(l1Options.length === 0
-				? 'Create an L1 first before issuing Start Kit codes.'
-				: 'Select an L1 for this Start Kit code.')
-			return
-		}
 		setIsCreating(true)
 		setError('')
 		setNewSecret('')
 		try {
 			const rebateBps = isMerchant ? 0n : referralPercentToBps(rateInput)
-			const created = await issueReferralRedeemCode({
-				kind,
-				issuerPrivateKeyArmor: privateKeyArmor,
-				rebateBps,
-				...(isMerchant ? { l1: selectedL1 } : {}),
-			})
+			const created = await issueReferralRedeemCode({ kind, issuerPrivateKeyArmor: privateKeyArmor, rebateBps })
 			setNewSecret(created.secret)
 			await loadRecords(true)
 			if (isMerchant) {
@@ -758,7 +1000,7 @@ function ReferralRedeemManagementPanel({
 		} finally {
 			setIsCreating(false)
 		}
-	}, [isCreating, privateKeyArmor, rateInput, kind, loadRecords, isMerchant, selectedL1, l1Options.length, refreshReferralL0StartKitQuota, onCodesChanged])
+	}, [isCreating, privateKeyArmor, rateInput, kind, loadRecords, isMerchant, refreshReferralL0StartKitQuota, onCodesChanged])
 
 	const handleCancel = useCallback(async (hash: string) => {
 		if (cancellingHash || !privateKeyArmor) return
@@ -800,17 +1042,16 @@ function ReferralRedeemManagementPanel({
 	const description = isL0
 		? 'Create permanent codes that register a new L0 under this Admin.'
 		: isMerchant
-			? 'Create permanent codes that grant a new merchant the fixed Start Kit airdrop under a selected L1.'
+			? 'Create permanent codes that grant a new merchant the fixed Start Kit airdrop.'
 			: 'Create permanent codes that register a new L1 under this L0.'
 	let ratioPreview = '0.00%'
-	if (!isL0 && !isMerchant && snapshot.rebateBps && Number(snapshot.rebateBps) > 0) {
+	if (!isL0 && snapshot.rebateBps && Number(snapshot.rebateBps) > 0) {
 		try {
 			ratioPreview = `${((Number(referralPercentToBps(rateInput)) / Number(snapshot.rebateBps)) * 100).toFixed(2)}%`
 		} catch {
 			ratioPreview = 'Enter a valid rate'
 		}
 	}
-	const canCreateMerchant = !isMerchant || (Boolean(selectedL1) && l1Options.length > 0)
 
 	return (
 		<div className="fixed inset-0 z-[100] flex min-h-0 flex-col overflow-hidden bg-[#071126] text-slate-50 transition-transform duration-300 ease-out" style={slideStyle} role="dialog" aria-modal="true" aria-labelledby="referral-code-management-title">
@@ -846,62 +1087,31 @@ function ReferralRedeemManagementPanel({
 								</div>
 							) : null}
 							<div className="rounded-2xl border border-white/10 bg-white/[0.05] p-5">
-								{isMerchant ? (
-									<>
-										<label htmlFor="referral-start-kit-l1" className="text-sm font-semibold text-white">
-											Assign to L1
-										</label>
-										{l1Options.length === 0 ? (
-											<p className="mt-2 text-sm text-amber-100">Create an L1 under this L0 before issuing Start Kit codes.</p>
-										) : (
-											<select
-												id="referral-start-kit-l1"
-												value={selectedL1}
-												onChange={(event) => setSelectedL1(event.target.value)}
-												className="mt-2 w-full rounded-xl border border-white/15 bg-black/20 px-3 py-2.5 text-white outline-none focus:border-indigo-300/70"
-											>
-												{l1Options.map((item) => (
-													<option key={item.address} value={item.address}>
-														{item.address}
-													</option>
-												))}
-											</select>
-										)}
-										{selectedL1 ? (
-											<div className="mt-3">
-												<BeamioTagCapsule address={selectedL1} />
-											</div>
-										) : null}
-									</>
-								) : (
-									<>
-										<label htmlFor="referral-rebate-rate" className="text-sm font-semibold text-white">
-											{isL0 ? 'L0 rebate rate' : 'L1 rebate rate'}
-										</label>
-										<div className="mt-2 flex items-center gap-2">
-											<input
-												id="referral-rebate-rate"
-												type="text"
-												inputMode="decimal"
-												autoComplete="off"
-												value={rateInput}
-												onChange={(event) => setRateInput(event.target.value)}
-												placeholder="5"
-												className="min-w-0 flex-1 rounded-xl border border-white/15 bg-black/20 px-3 py-2.5 text-white outline-none focus:border-indigo-300/70"
-											/>
-											<span className="text-slate-400">%</span>
-										</div>
-										{isL0 ? null : (
-											<p className="mt-2 text-xs text-slate-400">
-												Current L0 rebate: {referralBpsToPercent(snapshot.rebateBps)}% · L1 ratio: {ratioPreview}
-											</p>
-										)}
-									</>
+								{isMerchant ? null : <label htmlFor="referral-rebate-rate" className="text-sm font-semibold text-white">
+									{isL0 ? 'L0 rebate rate' : 'L1 rebate rate'}
+								</label>}
+								<div className="mt-2 flex items-center gap-2">
+									<input
+										id="referral-rebate-rate"
+										type="text"
+										inputMode="decimal"
+										autoComplete="off"
+										value={rateInput}
+										onChange={(event) => setRateInput(event.target.value)}
+										placeholder="5"
+										className="min-w-0 flex-1 rounded-xl border border-white/15 bg-black/20 px-3 py-2.5 text-white outline-none focus:border-indigo-300/70"
+									/>
+									<span className="text-slate-400">%</span>
+								</div>
+								{isL0 || isMerchant ? null : (
+									<p className="mt-2 text-xs text-slate-400">
+										Current L0 rebate: {referralBpsToPercent(snapshot.rebateBps)}% · L1 ratio: {ratioPreview}
+									</p>
 								)}
 								<button
 									type="button"
 									onClick={() => void handleCreate()}
-									disabled={isCreating || !privateKeyArmor || !canCreateMerchant}
+									disabled={isCreating || !privateKeyArmor}
 									aria-busy={isCreating}
 									className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-indigo-400 disabled:cursor-not-allowed disabled:opacity-60"
 								>
@@ -974,12 +1184,6 @@ function ReferralRedeemManagementPanel({
 											<p className="mt-2 text-xs text-slate-300">
 												{isMerchant ? 'Start Kit · 2,000 paid B-Units' : `Rebate ${referralBpsToPercent(record.rebateBps)}%${kind === 'l1' ? ` · Ratio ${referralBpsToPercent(record.ratioBps)}%` : ''}`}
 											</p>
-											{isMerchant && record.assignedL1 ? (
-												<div className="mt-2">
-													<p className="mb-1 text-[10px] uppercase tracking-[0.12em] text-slate-500">Bound L1</p>
-													<BeamioTagCapsule address={record.assignedL1} />
-												</div>
-											) : null}
 											<p className="mt-1 text-[10px] text-slate-500">{record.validBefore === 0 ? 'Permanent code' : `Expires ${new Date(record.validBefore * 1000).toLocaleString()}`}</p>
 										</div>
 									))}
@@ -999,6 +1203,335 @@ function ReferralRedeemManagementPanel({
 	)
 }
 
+function AdminMerchantPackagePanel({
+	snapshot,
+	privateKeyArmor,
+	onClose,
+	onCodesChanged,
+}: {
+	snapshot: ReferralRegistryRoleSnapshot
+	privateKeyArmor: string
+	onClose: () => void
+	onCodesChanged: () => Promise<void>
+}) {
+	const { close, slideStyle } = useReferralSlideOut(onClose)
+	const [records, setRecords] = useState<AdminMerchantPackageRecord[]>([])
+	const [loading, setLoading] = useState(true)
+	const [error, setError] = useState('')
+	const [amount, setAmount] = useState('20')
+	const [isPaid, setIsPaid] = useState(false)
+	const [includeStartKet, setIncludeStartKet] = useState(true)
+	const [paymentMethod, setPaymentMethod] = useState<PackagePaymentMethod>(0)
+	const [description, setDescription] = useState('')
+	const [optionalL0, setOptionalL0] = useState('')
+	const [isCreating, setIsCreating] = useState(false)
+	const [cancellingHash, setCancellingHash] = useState('')
+	const [newSecret, setNewSecret] = useState('')
+	const [copiedSecret, setCopiedSecret] = useState(false)
+	const [copiedRecordHash, setCopiedRecordHash] = useState('')
+
+	const l0Options = snapshot.downstream.filter((item) => item.role === 'l0')
+
+	const loadRecords = useCallback(async (force = false) => {
+		setLoading(true)
+		setError('')
+		try {
+			const next = await fetchAdminMerchantPackageCodes(snapshot.eoa, { force })
+			setRecords(next)
+		} catch (cause) {
+			setError(cause instanceof Error ? cause.message : 'Could not load package codes.')
+		} finally {
+			setLoading(false)
+		}
+	}, [snapshot.eoa])
+
+	useEffect(() => {
+		void loadRecords()
+	}, [loadRecords])
+
+	const handleCreate = useCallback(async () => {
+		if (isCreating || !privateKeyArmor) return
+		setIsCreating(true)
+		setError('')
+		setNewSecret('')
+		try {
+			const issued = await issueAdminMerchantPackageCode({
+				adminPrivateKeyArmor: privateKeyArmor,
+				optionalL0: optionalL0 || undefined,
+				bunitAmount: amount,
+				isPaid,
+				includeStartKet,
+				paymentMethod,
+				description,
+			})
+			setNewSecret(issued.secret)
+			await loadRecords(true)
+			await onCodesChanged()
+		} catch (cause) {
+			setError(cause instanceof Error ? cause.message : 'Could not create the package code.')
+		} finally {
+			setIsCreating(false)
+		}
+	}, [isCreating, privateKeyArmor, optionalL0, amount, isPaid, includeStartKet, paymentMethod, description, loadRecords, onCodesChanged])
+
+	const handleCancel = useCallback(async (hash: string) => {
+		if (cancellingHash || !privateKeyArmor) return
+		setCancellingHash(hash)
+		setError('')
+		try {
+			await cancelAdminMerchantPackageCode({ adminPrivateKeyArmor: privateKeyArmor, hash })
+			await loadRecords(true)
+			await onCodesChanged()
+		} catch (cause) {
+			setError(cause instanceof Error ? cause.message : 'Could not cancel the package code.')
+		} finally {
+			setCancellingHash('')
+		}
+	}, [cancellingHash, privateKeyArmor, loadRecords, onCodesChanged])
+
+	const copySecret = useCallback(async () => {
+		if (!newSecret) return
+		try {
+			await navigator.clipboard.writeText(newSecret)
+			setCopiedSecret(true)
+			window.setTimeout(() => setCopiedSecret(false), 2000)
+		} catch {
+			setError('Could not copy the redeem code.')
+		}
+	}, [newSecret])
+
+	const copyRecordSecret = useCallback(async (record: AdminMerchantPackageRecord) => {
+		if (!record.secret) return
+		try {
+			await navigator.clipboard.writeText(record.secret)
+			setCopiedRecordHash(record.hash)
+			window.setTimeout(() => setCopiedRecordHash(''), 2000)
+		} catch {
+			setError('Could not copy the redeem code.')
+		}
+	}, [])
+
+	return (
+		<div className="fixed inset-0 z-[100] flex min-h-0 flex-col overflow-hidden bg-[#071126] text-slate-50 transition-transform duration-300 ease-out" style={slideStyle} role="dialog" aria-modal="true" aria-labelledby="admin-merchant-package-title">
+			<div className="pointer-events-none absolute inset-x-0 top-0 h-64 bg-gradient-to-b from-emerald-500/20 via-indigo-500/10 to-transparent" aria-hidden />
+			<div className="relative z-10 flex min-h-0 flex-1 flex-col">
+				<div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-y-contain px-5 pb-10" style={{ WebkitOverflowScrolling: 'touch' }}>
+					<div className="mx-auto w-full max-w-2xl" style={{ paddingTop: 'max(1rem, env(safe-area-inset-top, 0px))' }}>
+						<div className="flex items-center justify-between">
+							<BeamioCircularBackButton onClick={close} />
+							<div className="flex h-9 w-9 items-center justify-center rounded-full border border-emerald-200/20 bg-emerald-300/10 text-emerald-200" aria-hidden>
+								<Package className="h-4 w-4" />
+							</div>
+						</div>
+						<header className="pb-7 pt-8">
+							<p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-200">Admin redeem management</p>
+							<h2 id="admin-merchant-package-title" className="mt-2 text-3xl font-semibold tracking-tight">Start Ket NFT &amp; B-Unit codes</h2>
+							<p className="mt-2 text-sm leading-6 text-slate-400">
+								Issue redeem codes that grant free or paid B-Units and optionally a Business Start Ket NFT. Payment method and credential notes are stored on-chain as plaintext. Free B-Units are one-time per EOA (shared with any prior free grant).
+							</p>
+						</header>
+
+						<div className="space-y-4">
+							<section className="rounded-2xl border border-emerald-200/20 bg-emerald-300/[0.08] p-5">
+								<label className="block text-xs text-slate-400">
+									B-Unit amount
+									<input
+										type="text"
+										inputMode="decimal"
+										value={amount}
+										onChange={(event) => setAmount(event.target.value)}
+										disabled={isCreating}
+										className="mt-1.5 w-full rounded-xl border border-white/15 bg-black/20 px-3 py-2.5 text-sm text-white outline-none focus:border-emerald-300/70 disabled:opacity-60"
+										aria-label="B-Unit amount"
+									/>
+								</label>
+
+								<div className="mt-4">
+									<p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">B-Unit type</p>
+									<div className="mt-2 grid grid-cols-2 gap-2">
+										<button
+											type="button"
+											onClick={() => setIsPaid(false)}
+											disabled={isCreating}
+											className={`rounded-xl border px-3 py-2.5 text-sm font-semibold transition ${!isPaid ? 'border-emerald-300/40 bg-emerald-400/20 text-emerald-50' : 'border-white/10 bg-black/20 text-slate-300'}`}
+										>
+											Free
+										</button>
+										<button
+											type="button"
+											onClick={() => setIsPaid(true)}
+											disabled={isCreating}
+											className={`rounded-xl border px-3 py-2.5 text-sm font-semibold transition ${isPaid ? 'border-amber-300/40 bg-amber-400/20 text-amber-50' : 'border-white/10 bg-black/20 text-slate-300'}`}
+										>
+											Paid
+										</button>
+									</div>
+									{!isPaid ? (
+										<p className="mt-2 text-xs leading-5 text-slate-400">Free grants are one-time per EOA. Recipients who already claimed free B-Units cannot claim this code.</p>
+									) : null}
+								</div>
+
+								<label className="mt-4 flex items-start gap-3 rounded-xl border border-white/10 bg-black/15 px-3 py-3">
+									<input
+										type="checkbox"
+										checked={includeStartKet}
+										onChange={(event) => setIncludeStartKet(event.target.checked)}
+										disabled={isCreating}
+										className="mt-0.5 h-4 w-4 rounded border-white/30 bg-transparent"
+									/>
+									<span>
+										<span className="block text-sm font-semibold text-white">Include Business Start Ket NFT</span>
+										<span className="mt-1 block text-xs leading-5 text-slate-400">
+											On claim, mint the Start Ket NFT credential. Merchant card creation still uses createMerchantCard after claim.
+										</span>
+									</span>
+								</label>
+
+								<label className="mt-4 block text-xs text-slate-400">
+									Optional L0 bind
+									<select
+										value={optionalL0}
+										onChange={(event) => setOptionalL0(event.target.value)}
+										disabled={isCreating || !includeStartKet}
+										className="mt-1.5 w-full rounded-xl border border-white/15 bg-black/20 px-3 py-2.5 text-sm text-white outline-none focus:border-emerald-300/70 disabled:opacity-60"
+										aria-label="Optional L0"
+									>
+										<option value="">None (claimer may supply L0 at card creation)</option>
+										{l0Options.map((item) => (
+											<option key={item.address} value={item.address}>{item.address}</option>
+										))}
+									</select>
+								</label>
+
+								<label className="mt-4 block text-xs text-slate-400">
+									Payment method (on-chain)
+									<select
+										value={paymentMethod}
+										onChange={(event) => setPaymentMethod(Number(event.target.value) as PackagePaymentMethod)}
+										disabled={isCreating}
+										className="mt-1.5 w-full rounded-xl border border-white/15 bg-black/20 px-3 py-2.5 text-sm text-white outline-none focus:border-emerald-300/70 disabled:opacity-60"
+										aria-label="Payment method"
+									>
+										{([0, 1, 2, 3] as PackagePaymentMethod[]).map((key) => (
+											<option key={key} value={key}>{PACKAGE_PAYMENT_METHOD_LABELS[key]}</option>
+										))}
+									</select>
+								</label>
+
+								<label className="mt-4 block text-xs text-slate-400">
+									Credential note (on-chain plaintext, max 512)
+									<textarea
+										value={description}
+										onChange={(event) => setDescription(event.target.value.slice(0, 512))}
+										disabled={isCreating}
+										rows={3}
+										className="mt-1.5 w-full rounded-xl border border-white/15 bg-black/20 px-3 py-2.5 text-sm text-white outline-none focus:border-emerald-300/70 disabled:opacity-60"
+										aria-label="Credential description"
+										placeholder="Invoice #… / cash receipt …"
+									/>
+									<span className="mt-1 block text-[11px] text-slate-500">{description.length}/512</span>
+								</label>
+
+								<button
+									type="button"
+									onClick={() => void handleCreate()}
+									disabled={isCreating || !amount.trim()}
+									aria-busy={isCreating}
+									className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-400 px-4 py-3 text-sm font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
+								>
+									{isCreating ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Package className="h-4 w-4" aria-hidden />}
+									{isCreating ? 'Creating code…' : 'Create package code'}
+								</button>
+							</section>
+
+							{newSecret ? (
+								<div className="rounded-2xl border border-emerald-300/20 bg-emerald-400/10 p-4">
+									<p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-200">New code (copy now)</p>
+									<p className="mt-2 break-all font-mono text-sm text-emerald-50">{newSecret}</p>
+									<button
+										type="button"
+										onClick={() => void copySecret()}
+										className="mt-3 inline-flex items-center gap-2 rounded-full border border-emerald-200/30 bg-emerald-300/10 px-3 py-1.5 text-xs font-semibold text-emerald-100"
+									>
+										{copiedSecret ? <Check className="h-3.5 w-3.5 text-emerald-400" aria-hidden /> : <Copy className="h-3.5 w-3.5" aria-hidden />}
+										{copiedSecret ? 'Copied' : 'Copy code'}
+									</button>
+								</div>
+							) : null}
+
+							{error ? <div className="rounded-xl border border-rose-300/20 bg-rose-400/10 p-3 text-sm text-rose-100">{error}</div> : null}
+
+							<section className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+								<div className="flex items-center justify-between gap-3">
+									<h3 className="font-semibold text-white">Issued codes</h3>
+									<span className="text-xs text-slate-400">{records.length}</span>
+								</div>
+								{loading ? (
+									<div className="mt-4 flex items-center gap-2 text-sm text-slate-400">
+										<Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+										Loading…
+									</div>
+								) : records.length === 0 ? (
+									<p className="mt-3 text-sm text-slate-400">No package codes yet.</p>
+								) : (
+									<div className="mt-3 space-y-2">
+										{records.map((record) => (
+											<div key={record.hash} className="rounded-xl border border-white/10 bg-black/15 p-3">
+												<div className="flex items-start justify-between gap-2">
+													<div className="min-w-0">
+														<p className="font-mono text-xs text-slate-300">{record.hash.slice(0, 10)}…{record.hash.slice(-8)}</p>
+														<p className="mt-1 text-sm text-white">
+															{Number(record.bunitDisplay).toFixed(2)} {record.isPaid ? 'paid' : 'free'} B-Units
+															{record.includeStartKet ? ' · Start Ket' : ''}
+														</p>
+														<p className="mt-1 text-xs text-slate-400">{record.paymentLabel}{record.description ? ` · ${record.description}` : ''}</p>
+														{record.optionalL0 !== ethers.ZeroAddress ? (
+															<p className="mt-1 font-mono text-[11px] text-slate-500">L0 {record.optionalL0.slice(0, 6)}…{record.optionalL0.slice(-4)}</p>
+														) : null}
+													</div>
+													<span className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-medium ${record.status === 'pending' ? 'border-emerald-200/20 bg-emerald-300/10 text-emerald-100' : record.status === 'claimed' ? 'border-blue-200/20 bg-blue-300/10 text-blue-100' : 'border-slate-200/20 bg-slate-300/10 text-slate-200'}`}>
+														{record.status}
+													</span>
+												</div>
+												<div className="mt-3 flex flex-wrap items-center gap-2">
+													{record.secret ? (
+														<button
+															type="button"
+															onClick={() => void copyRecordSecret(record)}
+															className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-[11px] text-slate-200"
+														>
+															{copiedRecordHash === record.hash ? <Check className="h-3 w-3 text-emerald-400" aria-hidden /> : <Clipboard className="h-3 w-3" aria-hidden />}
+															{copiedRecordHash === record.hash ? 'Copied' : 'Copy code'}
+														</button>
+													) : (
+														<span className="text-[11px] text-slate-500">Secret unavailable on this device</span>
+													)}
+													{record.status === 'pending' ? (
+														<button
+															type="button"
+															onClick={() => void handleCancel(record.hash)}
+															disabled={!!cancellingHash}
+															aria-busy={cancellingHash === record.hash}
+															className="inline-flex items-center gap-1.5 rounded-full border border-rose-300/20 bg-rose-400/10 px-2.5 py-1 text-[11px] text-rose-100 disabled:opacity-60"
+														>
+															{cancellingHash === record.hash ? <Loader2 className="h-3 w-3 animate-spin" aria-hidden /> : <XCircle className="h-3 w-3" aria-hidden />}
+															Cancel
+														</button>
+													) : null}
+												</div>
+											</div>
+										))}
+									</div>
+								)}
+							</section>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	)
+}
+
 export default function ReferralRegistryDashboardPage() {
 	const navigate = useNavigate()
 	const { profiles, setShowFooter, referralL0StartKitQuota, refreshReferralL0StartKitQuota } = useDaemonContext()
@@ -1010,7 +1543,9 @@ export default function ReferralRegistryDashboardPage() {
 	const [refreshStatus, setRefreshStatus] = useState<RefreshStatus>('idle')
 	const [redeemPanelKind, setRedeemPanelKind] = useState<ReferralRedeemKind | null>(null)
 	const [managedL0, setManagedL0] = useState<ReferralRegistryDownstreamItem | null>(null)
+	const [shareEditor, setShareEditor] = useState<{ mode: 'merchant' | 'l1'; item: ReferralRegistryDownstreamItem } | null>(null)
 	const [globalSettingsOpen, setGlobalSettingsOpen] = useState(false)
+	const [adminPackageOpen, setAdminPackageOpen] = useState(false)
 	const { close, slideStyle } = useReferralSlideOut(() => navigate('/wallet'))
 
 	useEffect(() => {
@@ -1066,6 +1601,17 @@ export default function ReferralRegistryDashboardPage() {
 											title="Global referral settings"
 										>
 											<Settings2 className="h-4 w-4" aria-hidden />
+										</button>
+									) : null}
+									{snapshot?.isAdmin ? (
+										<button
+											type="button"
+											onClick={() => setAdminPackageOpen(true)}
+											className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-emerald-200/20 bg-emerald-300/10 text-emerald-200 transition hover:bg-emerald-300/20"
+											aria-label="Manage Start Ket NFT and B-Unit redeem codes"
+											title="Start Ket NFT & B-Unit codes"
+										>
+											<Package className="h-4 w-4" aria-hidden />
 										</button>
 									) : null}
 									{snapshot?.isAdmin ? (
@@ -1143,7 +1689,12 @@ export default function ReferralRegistryDashboardPage() {
 										onIssue={() => setRedeemPanelKind('merchant')}
 									/>
 								) : null}
-								<DownstreamSection snapshot={snapshot} onManageL0={(item) => setManagedL0(item)} />
+								<DownstreamSection
+									snapshot={snapshot}
+									onManageL0={(item) => setManagedL0(item)}
+									onManageMerchantShare={(item) => setShareEditor({ mode: 'merchant', item })}
+									onManageL1Share={(item) => setShareEditor({ mode: 'l1', item })}
+								/>
 							</div>
 						) : (
 							<div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 text-sm text-slate-300">This wallet is not registered as a contract Admin, L0, or L1.</div>
@@ -1169,10 +1720,29 @@ export default function ReferralRegistryDashboardPage() {
 					onUpdated={handleManagementUpdated}
 				/>
 			) : null}
+			{shareEditor && snapshot?.role === 'l0' && signingArmor && eoa ? (
+				<L0RevenueSharePanel
+					mode={shareEditor.mode}
+					focus={shareEditor.item}
+					l0={eoa}
+					l1Candidates={snapshot.downstream.filter((item) => item.role === 'l1')}
+					merchantCandidates={snapshot.downstream.filter((item) => item.role === 'merchant')}
+					privateKeyArmor={signingArmor}
+					onClose={() => setShareEditor(null)}
+				/>
+			) : null}
 			{globalSettingsOpen && snapshot?.isAdmin && signingArmor ? (
 				<ReferralGlobalSettingsDrawer
 					privateKeyArmor={signingArmor}
 					onClose={() => setGlobalSettingsOpen(false)}
+				/>
+			) : null}
+			{adminPackageOpen && snapshot?.isAdmin && signingArmor ? (
+				<AdminMerchantPackagePanel
+					snapshot={snapshot}
+					privateKeyArmor={signingArmor}
+					onClose={() => setAdminPackageOpen(false)}
+					onCodesChanged={handleManagementUpdated}
 				/>
 			) : null}
 		</div>

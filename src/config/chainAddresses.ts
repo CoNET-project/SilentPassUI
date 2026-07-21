@@ -24,8 +24,16 @@ export const CONET_BUINT = '0x54ac4672cE75EC5ACebaeF1a7aFC6F49E77Ae9Ae'
 export const BEAMIO_INDEXER_DIAMOND = '0x6113fE738489c0aB64B4606Ce333aD29b44ED0C4'
 /** CoNET ReferralRegistryVaultV1 ERC1967 proxy (Admin → L0 → L1/Merchant). */
 export const CONET_REFERRAL_REGISTRY_VAULT_V1 = '0xD6252Cbf266B80231397Ac2a4f25ed2d9b01DEE6'
-/** CoNET BUnitAirdrop（claim / getBUnitBalance）；与 deployments/conet-addresses.json 同步 */
-export const CONET_BUNIT_AIRDROP_ADDRESS = '0xa01DFfD68b355540B840310a9f0C1E7a779C3Ce8'
+/** CoNET ReferralMerchantShareModuleV1 proxy — L0 merchant→L1 rebate share config. */
+export const CONET_REFERRAL_MERCHANT_SHARE_MODULE = '0xe3e06f47D89159713d67ec8530E4FE97D31Bb708'
+/**
+ * CoNET BUnitAirdropV2 proxy（claim / getBUnitBalance / free redeem gate）。
+ * 与 deployments/conet-addresses.json `BUnitAirdrop` / `BUnitAirdropV2` 同步。
+ * 免费 20 B-Unit 与 Referral 免费 redeem 码共享同一 hasClaimed，每 EOA 仅一次。
+ */
+export const CONET_BUNIT_AIRDROP_ADDRESS = '0x305f90A7f38289219BA1b4be98CB5b47e7b15Ac2'
+/** 切到 V2 前的 BUnitAirdrop；免费领取资格须一并检查 */
+export const CONET_BUNIT_AIRDROP_PREVIOUS_ADDRESS = '0xa01DFfD68b355540B840310a9f0C1E7a779C3Ce8'
 /** BuintRedeemAirdrop（CoNET） */
 export const CONET_BUINT_REDEEM_AIRDROP = '0x74Fc5C1f105E64663689692e3240127DdE649AF1'
 /** BusinessStartKet ERC1155（CoNET） */

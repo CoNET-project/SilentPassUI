@@ -4,15 +4,41 @@ import { beamioApi, conetDepinProvider } from '@/utils/constants'
 
 const uuid62 = require('uuid62') as { v4: () => string }
 
-export type ReferralRedeemKind = 'l0' | 'l1' | 'merchant'
+export type ReferralRedeemKind = 'l0' | 'l1' | 'merchant' | 'adminPackage'
 export type ReferralRedeemStatus = 'pending' | 'claimed' | 'cancelled'
+
+/** On-chain PackagePaymentMethod (Cash = 0 default). */
+export type AdminPackagePaymentMethod = 0 | 1 | 2 | 3
+
+export const ADMIN_PACKAGE_PAYMENT_LABELS: Record<AdminPackagePaymentMethod, string> = {
+	0: 'Cash',
+	1: 'Credit card',
+	2: 'Gift',
+	3: 'Compensation',
+}
+
+export type AdminMerchantPackageRecord = {
+	hash: string
+	secret?: string
+	issuerAdmin: string
+	optionalL0: string
+	bunitAmount: string
+	bunitAmountDisplay: string
+	isPaid: boolean
+	includeStartKet: boolean
+	paymentMethod: AdminPackagePaymentMethod
+	paymentMethodLabel: string
+	description: string
+	active: boolean
+	claimed: boolean
+	cancelled: boolean
+	status: ReferralRedeemStatus
+}
 
 export type ReferralRedeemCodeRecord = {
 	hash: string
 	secret?: string
 	issuer: string
-	/** Bound L1 for Start Kit (merchant) codes; empty for L0/L1 codes. */
-	assignedL1?: string
 	rebateBps: string
 	ratioBps: string
 	validAfter: number
@@ -48,9 +74,39 @@ const ABI = [
 	'function merchantCodeCount() view returns (uint256)',
 	'function merchantCodeHashAt(uint256) view returns (bytes32)',
 	'function merchantCodes(bytes32) view returns (address issuerL0,uint256 paidBunitAmount,uint64 validAfter,uint64 validBefore,bool active,bool claimed)',
-	'function merchantCodeAssignedL1(bytes32) view returns (address)',
 	'function merchantRedeemBunitAirdrop() view returns (uint256)',
+	'function adminMerchantPackageCodeCount() view returns (uint256)',
+	'function adminMerchantPackageCodeHashAt(uint256 index) view returns (bytes32)',
+	'function adminMerchantPackageCodes(bytes32) view returns (address issuerAdmin,address optionalL0,uint256 bunitAmount,bool isPaid,bool includeStartKet,uint8 paymentMethod,string description,uint64 validAfter,uint64 validBefore,bool active,bool claimed,bool cancelled)',
+	'function claimAdminMerchantPackageCode(bytes secret)',
 ] as const
+
+export type PackagePaymentMethod = 0 | 1 | 2 | 3
+
+export const PACKAGE_PAYMENT_METHOD_LABELS: Record<PackagePaymentMethod, string> = {
+	0: 'Cash',
+	1: 'Credit card',
+	2: 'Gift',
+	3: 'Compensation',
+}
+
+export type AdminMerchantPackageRecord = {
+	hash: string
+	secret?: string
+	issuer: string
+	optionalL0: string
+	bunitAmount: string
+	bunitDisplay: string
+	isPaid: boolean
+	includeStartKet: boolean
+	paymentMethod: PackagePaymentMethod
+	paymentLabel: string
+	description: string
+	active: boolean
+	claimed: boolean
+	cancelled: boolean
+	status: ReferralRedeemStatus
+}
 
 const registryRead = new ethers.Contract(CONET_REFERRAL_REGISTRY_VAULT_V1, ABI, conetDepinProvider)
 const RPC_TTL_MS = 30_000
@@ -99,7 +155,7 @@ function readLocalSecrets(): Record<string, string> {
 	}
 }
 
-function saveLocalSecret(kind: ReferralRedeemKind, issuer: string, hash: string, secret: string): void {
+function saveLocalSecret(kind: string, issuer: string, hash: string, secret: string): void {
 	if (typeof window === 'undefined') return
 	try {
 		const key = `${kind}:${ethers.getAddress(issuer).toLowerCase()}:${hash.toLowerCase()}`
@@ -110,7 +166,7 @@ function saveLocalSecret(kind: ReferralRedeemKind, issuer: string, hash: string,
 	}
 }
 
-function localSecretFor(kind: ReferralRedeemKind, issuer: string, hash: string): string | undefined {
+function localSecretFor(kind: string, issuer: string, hash: string): string | undefined {
 	const key = `${kind}:${ethers.getAddress(issuer).toLowerCase()}:${hash.toLowerCase()}`
 	return readLocalSecrets()[key]
 }
@@ -143,14 +199,10 @@ function normalizeRecord(
 	active: boolean,
 	claimed: boolean,
 	cancelled: boolean,
-	assignedL1?: string,
 ): ReferralRedeemCodeRecord {
 	return {
 		hash,
 		issuer: ethers.getAddress(issuer),
-		...(assignedL1 && assignedL1 !== ethers.ZeroAddress
-			? { assignedL1: ethers.getAddress(assignedL1) }
-			: {}),
 		rebateBps: rebateBps.toString(),
 		ratioBps: ratioBps.toString(),
 		validAfter: Number(validAfter),
@@ -167,18 +219,23 @@ export function generateReferralRedeemSecret(kind: ReferralRedeemKind): string {
 	return `${prefix}-${uuid62.v4()}`
 }
 
+export function generateAdminMerchantPackageSecret(): string {
+	return `beamio-admin-pkg-${uuid62.v4()}`
+}
+
 export function referralRedeemHash(secret: string): string {
 	const normalized = secret.trim()
 	if (!normalized) throw new Error('Redeem code cannot be empty.')
 	return ethers.keccak256(ethers.toUtf8Bytes(normalized))
 }
 
-export function referralRedeemKindFromSecret(secret: string): ReferralRedeemKind {
+export function referralRedeemKindFromSecret(secret: string): ReferralRedeemKind | 'adminPackage' {
 	const normalized = secret.trim().toLowerCase()
 	if (normalized.startsWith('beamio-l0-')) return 'l0'
 	if (normalized.startsWith('beamio-l1-')) return 'l1'
 	if (normalized.startsWith('beamio-start-kit-')) return 'merchant'
-	throw new Error('The code must start with beamio-l0- or beamio-l1-.')
+	if (normalized.startsWith('beamio-admin-pkg-')) return 'adminPackage'
+	throw new Error('The code must start with beamio-l0-, beamio-l1-, beamio-start-kit-, or beamio-admin-pkg-.')
 }
 
 function normalizeReferralRedeemSecret(secret: string): string {
@@ -250,14 +307,12 @@ async function readRecords(kind: ReferralRedeemKind, issuer: string): Promise<Re
 	for (let index = 0n; index < count; index += 1n) {
 		const hash = await registryRead[kind === 'l0' ? 'l0RedeemCodeHashAt' : kind === 'l1' ? 'l1RedeemCodeHashAt' : 'merchantCodeHashAt'](index)
 		const raw = await registryRead[kind === 'l0' ? 'l0RedeemCodes' : kind === 'l1' ? 'l1RedeemCodes' : 'merchantCodes'](hash)
-		const assignedL1 =
-			kind === 'merchant' ? String(await registryRead.merchantCodeAssignedL1(hash)) : undefined
 		const record =
 			kind === 'l0'
 				? normalizeRecord(hash, raw.issuerAdmin, raw.rebateBps, 0n, raw.validAfter, raw.validBefore, raw.active, raw.claimed, raw.cancelled)
 			: kind === 'l1'
 				? normalizeRecord(hash, raw.issuerL0, raw.rebateBps, raw.ratioBps, raw.validAfter, raw.validBefore, raw.active, raw.claimed, raw.cancelled)
-				: normalizeRecord(hash, raw.issuerL0, 0n, 0n, raw.validAfter, raw.validBefore, raw.active, raw.claimed, false, assignedL1)
+				: normalizeRecord(hash, raw.issuerL0, 0n, 0n, raw.validAfter, raw.validBefore, raw.active, raw.claimed, false)
 		if (record.issuer.toLowerCase() === normalizedIssuer) {
 			record.secret = localSecretFor(kind, issuer, hash)
 			records.push(record)
@@ -306,22 +361,11 @@ export async function issueReferralRedeemCode(params: {
 	kind: ReferralRedeemKind
 	issuerPrivateKeyArmor: string
 	rebateBps: bigint
-	/** Required when kind === 'merchant': active L1 under this L0. */
-	l1?: string
 }): Promise<IssuedReferralRedeem> {
 	const secret = generateReferralRedeemSecret(params.kind)
 	const hash = referralRedeemHash(secret)
 	return enqueueWrite(async () => {
 		const wallet = new ethers.Wallet(params.issuerPrivateKeyArmor)
-		let l1 = ethers.ZeroAddress
-		if (params.kind === 'merchant') {
-			try {
-				l1 = ethers.getAddress(String(params.l1 ?? ''))
-			} catch {
-				throw new Error('Select an L1 before creating a Start Kit code.')
-			}
-			if (l1 === ethers.ZeroAddress) throw new Error('Select an L1 before creating a Start Kit code.')
-		}
 		const nonceResponse = await fetch(`${beamioApi}/api/referralRegistryRedeemNonce?account=${encodeURIComponent(wallet.address)}`)
 		const nonceJson = await nonceResponse.json() as { success?: boolean; nonce?: string; error?: string }
 		if (!nonceResponse.ok || !nonceJson.success || nonceJson.nonce == null) throw new Error(nonceJson.error ?? 'Could not read referral redeem nonce.')
@@ -330,27 +374,19 @@ export async function issueReferralRedeemCode(params: {
 		const action = params.kind === 'l0' ? 'issueL0' : params.kind === 'l1' ? 'issueL1' : 'issueMerchant'
 		const typeName = params.kind === 'l0' ? 'IssueL0RedeemCode' : params.kind === 'l1' ? 'IssueL1RedeemCode' : 'IssueMerchantRedeemCode'
 		const types = {
-			[typeName]: params.kind === 'merchant'
-				? [
-					{ name: 'l0', type: 'address' },
-					{ name: 'l1', type: 'address' },
-					{ name: 'redeemHash', type: 'bytes32' },
-					{ name: 'nonce', type: 'uint256' },
-					{ name: 'deadline', type: 'uint256' },
-				]
-				: [
-					{ name: params.kind === 'l0' ? 'admin' : 'l0', type: 'address' },
-					{ name: 'redeemHash', type: 'bytes32' },
-					{ name: 'rebateBps', type: 'uint256' },
-					{ name: 'nonce', type: 'uint256' },
-					{ name: 'deadline', type: 'uint256' },
-				],
+			[typeName]: [
+				{ name: params.kind === 'l0' ? 'admin' : 'l0', type: 'address' },
+				{ name: 'redeemHash', type: 'bytes32' },
+				...(params.kind === 'merchant' ? [] : [{ name: 'rebateBps', type: 'uint256' }]),
+				{ name: 'nonce', type: 'uint256' },
+				{ name: 'deadline', type: 'uint256' },
+			],
 		}
 		const message = params.kind === 'l0'
 			? { admin: wallet.address, redeemHash: hash, rebateBps: params.rebateBps, nonce, deadline }
 			: params.kind === 'l1'
 				? { l0: wallet.address, redeemHash: hash, rebateBps: params.rebateBps, nonce, deadline }
-				: { l0: wallet.address, l1, redeemHash: hash, nonce, deadline }
+				: { l0: wallet.address, redeemHash: hash, nonce, deadline }
 		const signature = await wallet.signTypedData(
 			{ name: 'ReferralRegistryVaultV1', version: '1', chainId: 224422, verifyingContract: CONET_REFERRAL_REGISTRY_VAULT_V1 },
 			types,
@@ -359,17 +395,7 @@ export async function issueReferralRedeemCode(params: {
 		const response = await fetch(`${beamioApi}/api/referralRegistryRedeem`, {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({
-				action,
-				account: wallet.address,
-				redeemHash: hash,
-				...(params.kind === 'merchant'
-					? { l1 }
-					: { rebateBps: params.rebateBps.toString() }),
-				nonce: nonce.toString(),
-				deadline: deadline.toString(),
-				signature,
-			}),
+			body: JSON.stringify({ action, account: wallet.address, redeemHash: hash, ...(params.kind === 'merchant' ? {} : { rebateBps: params.rebateBps.toString() }), nonce: nonce.toString(), deadline: deadline.toString(), signature }),
 		})
 		const json = await response.json() as { success?: boolean; txHash?: string; error?: string }
 		if (!response.ok || !json.success || !json.txHash) throw new Error(json.error ?? 'Referral redeem relay failed.')
@@ -467,7 +493,7 @@ export async function setMerchantRedeemBunitAirdrop(params: {
 }
 
 export async function claimReferralRedeemCode(params: {
-	kind?: ReferralRedeemKind
+	kind?: ReferralRedeemKind | 'adminPackage'
 	secret: string
 	privateKeyArmor: string
 }): Promise<string> {
@@ -475,6 +501,25 @@ export async function claimReferralRedeemCode(params: {
 	if (!secret) throw new Error('Enter a redeem code.')
 	const kind = params.kind ?? referralRedeemKindFromSecret(secret)
 	if (kind === 'merchant') throw new Error('Start Kit codes are claimed through the merchant onboarding flow.')
+	if (kind === 'adminPackage') {
+		return enqueueWrite(async () => {
+			const wallet = new ethers.Wallet(params.privateKeyArmor, conetDepinProvider)
+			const hash = referralRedeemHash(secret)
+			const raw = await registryRead.adminMerchantPackageCodes(hash)
+			if (!raw.active || raw.claimed || raw.cancelled) {
+				throw new Error('This package code is not active on CoNET. Copy the complete code from the issuer.')
+			}
+			const registry = new ethers.Contract(
+				CONET_REFERRAL_REGISTRY_VAULT_V1,
+				['function claimAdminMerchantPackageCode(bytes secret)'],
+				wallet,
+			)
+			const tx = await registry.claimAdminMerchantPackageCode(ethers.toUtf8Bytes(secret))
+			const receipt = await tx.wait()
+			if (!receipt || receipt.status !== 1) throw new Error('Admin package claim transaction failed.')
+			return tx.hash as string
+		})
+	}
 	return enqueueWrite(async () => {
 		const wallet = new ethers.Wallet(params.privateKeyArmor)
 		const hash = referralRedeemHash(secret)
@@ -517,6 +562,249 @@ export async function claimReferralRedeemCode(params: {
 		})
 		const json = await response.json() as { success?: boolean; txHash?: string; error?: string }
 		if (!response.ok || !json.success || !json.txHash) throw new Error(json.error ?? 'Referral redeem claim relay failed.')
+		return json.txHash
+	})
+}
+
+const ADMIN_PACKAGE_LIST_CACHE_PREFIX = 'beamio:referral:admin-pkg-list:v1:'
+const adminPackageListCache = new Map<string, { fetchedAt: number; records: AdminMerchantPackageRecord[] }>()
+const adminPackageListInFlight = new Map<string, Promise<AdminMerchantPackageRecord[]>>()
+
+function normalizeAdminPackageRecord(
+	hash: string,
+	raw: {
+		issuerAdmin: string
+		optionalL0: string
+		bunitAmount: bigint
+		isPaid: boolean
+		includeStartKet: boolean
+		paymentMethod: number | bigint
+		description: string
+		active: boolean
+		claimed: boolean
+		cancelled: boolean
+	},
+	issuer: string,
+): AdminMerchantPackageRecord {
+	const paymentMethod = Number(raw.paymentMethod) as PackagePaymentMethod
+	const status = statusOf({ active: raw.active, claimed: raw.claimed, cancelled: raw.cancelled })
+	return {
+		hash,
+		secret: localSecretFor('adminPackage', issuer, hash),
+		issuer: ethers.getAddress(raw.issuerAdmin),
+		optionalL0: raw.optionalL0 && raw.optionalL0 !== ethers.ZeroAddress ? ethers.getAddress(raw.optionalL0) : ethers.ZeroAddress,
+		bunitAmount: raw.bunitAmount.toString(),
+		bunitDisplay: ethers.formatUnits(raw.bunitAmount, 6),
+		isPaid: Boolean(raw.isPaid),
+		includeStartKet: Boolean(raw.includeStartKet),
+		paymentMethod: paymentMethod >= 0 && paymentMethod <= 3 ? paymentMethod : 0,
+		paymentLabel: PACKAGE_PAYMENT_METHOD_LABELS[paymentMethod >= 0 && paymentMethod <= 3 ? paymentMethod : 0],
+		description: String(raw.description ?? ''),
+		active: Boolean(raw.active),
+		claimed: Boolean(raw.claimed),
+		cancelled: Boolean(raw.cancelled),
+		status,
+	}
+}
+
+async function readAdminPackageRecords(issuer: string): Promise<AdminMerchantPackageRecord[]> {
+	const normalizedIssuer = ethers.getAddress(issuer).toLowerCase()
+	const count = Number(await registryRead.adminMerchantPackageCodeCount())
+	const records: AdminMerchantPackageRecord[] = []
+	for (let i = 0; i < count; i += 1) {
+		const hash = await registryRead.adminMerchantPackageCodeHashAt(i)
+		const raw = await registryRead.adminMerchantPackageCodes(hash)
+		const record = normalizeAdminPackageRecord(hash, raw, issuer)
+		if (record.issuer.toLowerCase() === normalizedIssuer) records.push(record)
+	}
+	return records.reverse()
+}
+
+export async function fetchAdminMerchantPackageCodes(
+	issuer: string,
+	options: { force?: boolean } = {},
+): Promise<AdminMerchantPackageRecord[]> {
+	const key = ethers.getAddress(issuer).toLowerCase()
+	const cached = adminPackageListCache.get(key)
+	if (!options.force && cached && Date.now() - cached.fetchedAt < RPC_TTL_MS) return cached.records
+	if (!options.force) {
+		try {
+			const raw = localStorage.getItem(`${ADMIN_PACKAGE_LIST_CACHE_PREFIX}${key}`)
+			if (raw) {
+				const parsed = JSON.parse(raw) as { fetchedAt?: number; records?: AdminMerchantPackageRecord[] }
+				if (Number.isFinite(parsed.fetchedAt) && Array.isArray(parsed.records) && Date.now() - Number(parsed.fetchedAt) < RPC_TTL_MS) {
+					adminPackageListCache.set(key, { fetchedAt: Number(parsed.fetchedAt), records: parsed.records })
+					return parsed.records
+				}
+			}
+		} catch {
+			// ignore
+		}
+	}
+	const existing = adminPackageListInFlight.get(key)
+	if (existing) return existing
+	const request = enqueueRpc(() => readAdminPackageRecords(issuer))
+		.then((records) => {
+			adminPackageListCache.set(key, { fetchedAt: Date.now(), records })
+			try {
+				localStorage.setItem(`${ADMIN_PACKAGE_LIST_CACHE_PREFIX}${key}`, JSON.stringify({ fetchedAt: Date.now(), records }))
+			} catch {
+				// ignore
+			}
+			return records
+		})
+		.catch((error) => {
+			const previous = adminPackageListCache.get(key)
+			if (previous) return previous.records
+			try {
+				const raw = localStorage.getItem(`${ADMIN_PACKAGE_LIST_CACHE_PREFIX}${key}`)
+				if (raw) {
+					const parsed = JSON.parse(raw) as { records?: AdminMerchantPackageRecord[] }
+					if (Array.isArray(parsed.records)) return parsed.records
+				}
+			} catch {
+				// ignore
+			}
+			throw error
+		})
+	adminPackageListInFlight.set(key, request)
+	try {
+		return await request
+	} finally {
+		adminPackageListInFlight.delete(key)
+	}
+}
+
+export type IssuedAdminMerchantPackage = {
+	secret: string
+	hash: string
+	txHash: string
+	record: AdminMerchantPackageRecord
+}
+
+export async function issueAdminMerchantPackageCode(params: {
+	adminPrivateKeyArmor: string
+	optionalL0?: string
+	bunitAmount: string
+	isPaid: boolean
+	includeStartKet: boolean
+	paymentMethod: PackagePaymentMethod
+	description: string
+}): Promise<IssuedAdminMerchantPackage> {
+	const secret = generateAdminMerchantPackageSecret()
+	const hash = referralRedeemHash(secret)
+	return enqueueWrite(async () => {
+		const wallet = new ethers.Wallet(params.adminPrivateKeyArmor)
+		const amount = ethers.parseUnits(params.bunitAmount.trim(), 6)
+		if (amount <= 0n) throw new Error('B-Unit amount must be greater than zero.')
+		const description = params.description.trim()
+		if (description.length > 512) throw new Error('Description cannot exceed 512 characters.')
+		const optionalL0 = params.optionalL0 && ethers.isAddress(params.optionalL0)
+			? ethers.getAddress(params.optionalL0)
+			: ethers.ZeroAddress
+		const nonceResponse = await fetch(`${beamioApi}/api/referralRegistryRedeemNonce?account=${encodeURIComponent(wallet.address)}`)
+		const nonceJson = await nonceResponse.json() as { success?: boolean; nonce?: string; error?: string }
+		if (!nonceResponse.ok || !nonceJson.success || nonceJson.nonce == null) throw new Error(nonceJson.error ?? 'Could not read referral redeem nonce.')
+		const nonce = BigInt(nonceJson.nonce)
+		const deadline = BigInt(Math.floor(Date.now() / 1000) + 300)
+		const types = {
+			IssueAdminMerchantPackageCode: [
+				{ name: 'admin', type: 'address' },
+				{ name: 'redeemHash', type: 'bytes32' },
+				{ name: 'optionalL0', type: 'address' },
+				{ name: 'bunitAmount', type: 'uint256' },
+				{ name: 'isPaid', type: 'bool' },
+				{ name: 'includeStartKet', type: 'bool' },
+				{ name: 'paymentMethod', type: 'uint8' },
+				{ name: 'description', type: 'string' },
+				{ name: 'nonce', type: 'uint256' },
+				{ name: 'deadline', type: 'uint256' },
+			],
+		}
+		const message = {
+			admin: wallet.address,
+			redeemHash: hash,
+			optionalL0,
+			bunitAmount: amount,
+			isPaid: params.isPaid,
+			includeStartKet: params.includeStartKet,
+			paymentMethod: params.paymentMethod,
+			description,
+			nonce,
+			deadline,
+		}
+		const signature = await wallet.signTypedData(
+			{ name: 'ReferralRegistryVaultV1', version: '1', chainId: 224422, verifyingContract: CONET_REFERRAL_REGISTRY_VAULT_V1 },
+			types,
+			message,
+		)
+		const response = await fetch(`${beamioApi}/api/referralRegistryRedeem`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({
+				action: 'issueAdminMerchantPackage',
+				account: wallet.address,
+				redeemHash: hash,
+				optionalL0,
+				bunitAmount: amount.toString(),
+				isPaid: params.isPaid,
+				includeStartKet: params.includeStartKet,
+				paymentMethod: String(params.paymentMethod),
+				description,
+				nonce: nonce.toString(),
+				deadline: deadline.toString(),
+				signature,
+			}),
+		})
+		const json = await response.json() as { success?: boolean; txHash?: string; error?: string }
+		if (!response.ok || !json.success || !json.txHash) throw new Error(json.error ?? 'Admin package issue relay failed.')
+		saveLocalSecret('adminPackage', wallet.address, hash, secret)
+		const records = await fetchAdminMerchantPackageCodes(wallet.address, { force: true })
+		const record = records.find((item) => item.hash.toLowerCase() === hash.toLowerCase())
+		if (!record) throw new Error('Package code was confirmed but could not be read back from CoNET.')
+		return { secret, hash, txHash: json.txHash, record }
+	})
+}
+
+export async function cancelAdminMerchantPackageCode(params: {
+	adminPrivateKeyArmor: string
+	hash: string
+}): Promise<string> {
+	return enqueueWrite(async () => {
+		const wallet = new ethers.Wallet(params.adminPrivateKeyArmor)
+		const nonceResponse = await fetch(`${beamioApi}/api/referralRegistryRedeemNonce?account=${encodeURIComponent(wallet.address)}`)
+		const nonceJson = await nonceResponse.json() as { success?: boolean; nonce?: string; error?: string }
+		if (!nonceResponse.ok || !nonceJson.success || nonceJson.nonce == null) throw new Error(nonceJson.error ?? 'Could not read referral redeem nonce.')
+		const nonce = BigInt(nonceJson.nonce)
+		const deadline = BigInt(Math.floor(Date.now() / 1000) + 300)
+		const types = {
+			CancelAdminMerchantPackageCode: [
+				{ name: 'admin', type: 'address' },
+				{ name: 'redeemHash', type: 'bytes32' },
+				{ name: 'nonce', type: 'uint256' },
+				{ name: 'deadline', type: 'uint256' },
+			],
+		}
+		const message = { admin: wallet.address, redeemHash: params.hash, nonce, deadline }
+		const signature = await wallet.signTypedData(
+			{ name: 'ReferralRegistryVaultV1', version: '1', chainId: 224422, verifyingContract: CONET_REFERRAL_REGISTRY_VAULT_V1 },
+			types,
+			message,
+		)
+		const response = await fetch(`${beamioApi}/api/referralRegistryRedeem`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({
+				action: 'cancelAdminMerchantPackage',
+				account: wallet.address,
+				redeemHash: params.hash,
+				nonce: nonce.toString(),
+				deadline: deadline.toString(),
+				signature,
+			}),
+		})
+		const json = await response.json() as { success?: boolean; txHash?: string; error?: string }
+		if (!response.ok || !json.success || !json.txHash) throw new Error(json.error ?? 'Admin package cancellation relay failed.')
 		return json.txHash
 	})
 }

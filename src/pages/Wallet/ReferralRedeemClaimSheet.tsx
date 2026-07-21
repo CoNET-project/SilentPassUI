@@ -70,7 +70,7 @@ export default function ReferralRedeemClaimSheet({
 						autoComplete="off"
 						value={secret}
 						onChange={(event) => setSecret(event.target.value)}
-						placeholder="beamio-l0-… or beamio-l1-…"
+						placeholder="beamio-l0-… / beamio-l1-… / beamio-admin-pkg-…"
 						disabled={isClaiming}
 						className="mt-2 w-full rounded-xl border border-white/15 bg-black/20 px-3 py-3 font-mono text-sm text-white outline-none focus:border-indigo-300/70 disabled:opacity-60"
 					/>

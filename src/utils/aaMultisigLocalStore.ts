@@ -138,6 +138,59 @@ export function upsertAaMultisigTaskRecord(walletEoa: string, task: AaMultisigTa
 	upsertAaMultisigTask(walletEoa, task.aaAccount, task)
 }
 
+/** Remove a task from local storage (e.g. nonce submit failure — do not keep in History). */
+export function removeAaMultisigTask(
+	walletEoa: string,
+	aaAccount: string,
+	taskId: string
+): boolean {
+	const list = loadAaMultisigTasks(walletEoa, aaAccount)
+	const next = list.filter((t) => t.taskId !== taskId)
+	if (next.length === list.length) return false
+	saveAaMultisigTasks(walletEoa, aaAccount, next)
+	return true
+}
+
+export function removeAaMultisigTaskRecord(walletEoa: string, task: AaMultisigTaskLocal): boolean {
+	return removeAaMultisigTask(walletEoa, task.aaAccount, task.taskId)
+}
+
+/**
+ * Drop `failed` tasks (typically EntryPoint nonce / AA25 after submit).
+ * They clutter History; user should re-propose with a fresh nonce.
+ */
+export function pruneFailedAaMultisigTasksForWallet(walletEoa: string): number {
+	const w = (walletEoa ?? '').trim().toLowerCase()
+	if (!w.startsWith('0x') || w.length !== 42) return 0
+	let removed = 0
+	for (const aa of listAaMultisigStorageAaAccounts(walletEoa)) {
+		const list = loadAaMultisigTasks(walletEoa, aa)
+		const next = list.filter((t) => {
+			if (t.status !== 'failed') return true
+			removed += 1
+			return false
+		})
+		if (next.length !== list.length) {
+			saveAaMultisigTasks(walletEoa, aa, next)
+		}
+	}
+	return removed
+}
+
+/** True when submit error is EntryPoint / account nonce related (do not archive as History). */
+export function isAaMultisigNonceRelatedSubmitError(error: string | undefined | null): boolean {
+	const m = (error ?? '').toLowerCase()
+	if (!m) return false
+	return (
+		m.includes('aa25') ||
+		m.includes('invalid account nonce') ||
+		m.includes('entrypoint nonce') ||
+		m.includes('nonce consumed') ||
+		m.includes('nonce mismatch') ||
+		/\bnonce\b/.test(m)
+	)
+}
+
 export function getAaMultisigTask(
 	walletEoa: string,
 	aaAccount: string,
@@ -159,7 +212,7 @@ function filterReadyTasks(tasks: AaMultisigTaskLocal[]): AaMultisigTaskLocal[] {
 
 function filterHistoryTasks(tasks: AaMultisigTaskLocal[]): AaMultisigTaskLocal[] {
 	return tasks.filter((t) =>
-		(['completed', 'rejected', 'failed', 'submitted', 'expired'] as AaMultisigTaskLocal['status'][]).includes(
+		(['completed', 'rejected', 'submitted', 'expired'] as AaMultisigTaskLocal['status'][]).includes(
 			t.status
 		)
 	)

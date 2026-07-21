@@ -2,12 +2,22 @@ import { ethers } from 'ethers'
 import type { AaMultisigTaskLocal } from '@/utils/aaMultisigProtocol'
 import { listAaMultisigStorageAaAccounts } from '@/utils/aaMultisigLocalStore'
 import { readAaThresholdPolicy, type AaThresholdPolicy } from '@/utils/aaMultisigUserOp'
+import { listOwnInstitutionalAa } from '@/utils/institutionalAaAccounts'
+import { CONET_AA_FACTORY } from '@/config/chainAddresses'
 
 export type AaMultisigTransferEligibleWallet = {
 	aaAccount: string
 	policy: AaThresholdPolicy
 	/** Profile / factory-resolved Smart Wallet for the viewer EOA. */
 	isOwnAa: boolean
+	lastActivityAt: number
+}
+
+export type InstitutionalManageableWallet = {
+	aaAccount: string
+	kind: 'own_institutional' | 'comanaged'
+	index?: number
+	policy: AaThresholdPolicy
 	lastActivityAt: number
 }
 
@@ -83,4 +93,99 @@ export async function discoverAaMultisigTransferEligibleWallets(
 		return b.lastActivityAt - a.lastActivityAt
 	})
 	return eligible
+}
+
+/**
+ * Institutional AA Multisig list: own index≥1 Smart Wallets ∪ AAs where viewer is a manager.
+ * Explicitly excludes the viewer's personal Express Pay AA (index=0 / profile aaAccount).
+ */
+export async function discoverInstitutionalManageableWallets(
+	provider: ethers.Provider,
+	viewerEoa: string,
+	opts?: {
+		/** Personal Express Pay AA (index=0) — excluded from the list. */
+		primaryAaAccount?: string
+		tasks?: AaMultisigTaskLocal[]
+		factoryAddress?: string
+		fallbackEoa?: string
+	}
+): Promise<InstitutionalManageableWallet[]> {
+	const viewer = viewerEoa.trim().toLowerCase()
+	if (!viewer.startsWith('0x') || viewer.length !== 42) return []
+
+	const primaryLower = opts?.primaryAaAccount?.trim().toLowerCase()
+	const exclude = new Set<string>()
+	if (primaryLower?.startsWith('0x') && primaryLower.length === 42) {
+		exclude.add(primaryLower)
+	}
+
+	const activityByAa = new Map<string, number>()
+	for (const t of opts?.tasks ?? []) {
+		const key = t.aaAccount.toLowerCase()
+		const at = Math.max(t.updatedAt, t.createdAt)
+		activityByAa.set(key, Math.max(activityByAa.get(key) ?? 0, at))
+	}
+
+	const byAa = new Map<string, InstitutionalManageableWallet>()
+
+	const ownInstitutional = await listOwnInstitutionalAa(
+		provider,
+		viewerEoa,
+		opts?.factoryAddress ?? CONET_AA_FACTORY
+	).catch(() => [] as Awaited<ReturnType<typeof listOwnInstitutionalAa>>)
+
+	for (const row of ownInstitutional) {
+		const key = row.aa.toLowerCase()
+		if (exclude.has(key)) continue
+		try {
+			const policy = await readAaThresholdPolicy(provider, row.aa, {
+				fallbackEoa: opts?.fallbackEoa ?? viewerEoa,
+			})
+			byAa.set(key, {
+				aaAccount: row.aa,
+				kind: 'own_institutional',
+				index: row.index,
+				policy,
+				lastActivityAt: activityByAa.get(key) ?? 0,
+			})
+		} catch {
+			/* skip unreadable */
+		}
+	}
+
+	const candidates = collectTransferAaAccountCandidates(
+		viewerEoa,
+		opts?.primaryAaAccount ?? '',
+		opts?.tasks ?? []
+	)
+	for (const raw of candidates) {
+		const key = raw.toLowerCase()
+		if (exclude.has(key)) continue
+		if (byAa.has(key)) continue
+		try {
+			const aaAccount = ethers.getAddress(raw)
+			const policy = await readAaThresholdPolicy(provider, aaAccount, {
+				fallbackEoa: opts?.fallbackEoa ?? viewerEoa,
+			})
+			if (!policy.managers.some((m) => m.toLowerCase() === viewer)) continue
+			byAa.set(key, {
+				aaAccount,
+				kind: 'comanaged',
+				policy,
+				lastActivityAt: activityByAa.get(key) ?? 0,
+			})
+		} catch {
+			/* skip */
+		}
+	}
+
+	const list = [...byAa.values()]
+	list.sort((a, b) => {
+		if (a.kind !== b.kind) return a.kind === 'own_institutional' ? -1 : 1
+		if (a.kind === 'own_institutional' && b.kind === 'own_institutional') {
+			return (a.index ?? 0) - (b.index ?? 0)
+		}
+		return b.lastActivityAt - a.lastActivityAt
+	})
+	return list
 }

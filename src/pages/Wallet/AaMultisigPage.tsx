@@ -13,6 +13,7 @@ import {
 	X,
 	ChevronLeft,
 	Wallet,
+	Plus,
 } from 'lucide-react'
 import { Toast } from 'antd-mobile'
 import { ethers } from 'ethers'
@@ -39,6 +40,8 @@ import {
 	loadAllAaMultisigTasksForWallet,
 	filterPendingAaMultisigTasksForSigner,
 	upsertAaMultisigTaskRecord,
+	removeAaMultisigTaskRecord,
+	pruneFailedAaMultisigTasksForWallet,
 } from '@/utils/aaMultisigLocalStore'
 import {
 	filterPendingCollectingSignatures,
@@ -80,10 +83,11 @@ import {
 	reconcileAaMultisigPendingNoncesForWallet,
 } from '@/utils/aaMultisigPendingNonceReconcile'
 import {
-	collectTransferAaAccountCandidates,
-	discoverAaMultisigTransferEligibleWallets,
+	discoverInstitutionalManageableWallets,
 	type AaMultisigTransferEligibleWallet,
+	type InstitutionalManageableWallet,
 } from '@/utils/aaMultisigTransferEligible'
+import { createInstitutionalAa } from '@/utils/institutionalAaAccounts'
 import {
 	buildUnsignedAaMultisigUserOp,
 	encodeAAExecuteConetAssetTransfer,
@@ -341,83 +345,42 @@ function SmartWalletOwnerBeamioCapsule({
 	)
 }
 
-function TransferSmartWalletPicker({
-	wallets,
-	selectedAaAccount,
-	onSelect,
-	resolveTag,
-	lookupByAddress,
-	toCapsuleItem,
-	avatarImgUrl,
-}: {
-	wallets: AaMultisigTransferEligibleWallet[]
-	selectedAaAccount: string
-	onSelect: (aaAccount: string) => void
-} & Omit<BeamioTagCapsuleLookupProps, 'ownerEoa'>) {
-	const capsuleProps = { resolveTag, lookupByAddress, toCapsuleItem, avatarImgUrl }
+const INSTITUTIONAL_SELECTED_AA_LS_PREFIX = 'beamio:silentpass:eoa:'
 
-	if (wallets.length === 0) return null
+function institutionalSelectedAaStorageKey(eoa: string): string {
+	return `${INSTITUTIONAL_SELECTED_AA_LS_PREFIX}${eoa.trim().toLowerCase()}:aa-multisig-selected-institutional-v1`
+}
 
-	if (wallets.length === 1) {
-		const w = wallets[0]
-		const owner = resolveAaMultisigPolicyOwnerEoa(w.policy.managers)
-		return (
-			<div className="mt-2 space-y-2">
-				<div className="flex flex-wrap items-center gap-2">
-					<SmartWalletOwnerBeamioCapsule ownerEoa={owner} {...capsuleProps} />
-					{w.isOwnAa ? (
-						<span className="shrink-0 rounded-full bg-[#0051d1]/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#0051d1]">
-							Your Smart Wallet
-						</span>
-					) : (
-						<span className="shrink-0 rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600 dark:bg-slate-700 dark:text-slate-300">
-							Co-signer
-						</span>
-					)}
-				</div>
-				<AaAccountAddressCapsule address={w.aaAccount} />
-			</div>
-		)
+function loadPersistedInstitutionalSelectedAa(eoa: string): string {
+	try {
+		const raw = localStorage.getItem(institutionalSelectedAaStorageKey(eoa))
+		if (!raw || !ethers.isAddress(raw)) return ''
+		return ethers.getAddress(raw)
+	} catch {
+		return ''
 	}
+}
 
-	return (
-		<div className="mt-2 space-y-2" role="listbox" aria-label="Smart Wallet">
-			{wallets.map((w) => {
-				const owner = resolveAaMultisigPolicyOwnerEoa(w.policy.managers)
-				const selected = w.aaAccount.toLowerCase() === selectedAaAccount.toLowerCase()
-				return (
-					<button
-						key={w.aaAccount}
-						type="button"
-						role="option"
-						aria-selected={selected}
-						onClick={() => onSelect(w.aaAccount)}
-						className={`w-full rounded-2xl border p-3 text-left transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#8d3a8b]/40 ${
-							selected
-								? 'border-[#8d3a8b] bg-[#f5ecff] ring-2 ring-[#8d3a8b]/20 dark:border-[#8d3a8b]/60 dark:bg-slate-800/80'
-								: 'border-slate-200 bg-white hover:border-slate-300 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-slate-600'
-						}`}
-					>
-						<div className="flex flex-wrap items-center gap-2">
-							<SmartWalletOwnerBeamioCapsule ownerEoa={owner} {...capsuleProps} />
-							{w.isOwnAa ? (
-								<span className="shrink-0 rounded-full bg-[#0051d1]/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#0051d1]">
-									Your Smart Wallet
-								</span>
-							) : (
-								<span className="shrink-0 rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600 dark:bg-slate-700 dark:text-slate-300">
-									Co-signer
-								</span>
-							)}
-						</div>
-						<div className="mt-2">
-							<AaAccountAddressCapsule address={w.aaAccount} />
-						</div>
-					</button>
-				)
-			})}
-		</div>
-	)
+function persistInstitutionalSelectedAa(eoa: string, aa: string): void {
+	try {
+		const key = institutionalSelectedAaStorageKey(eoa)
+		if (!aa || !ethers.isAddress(aa)) {
+			localStorage.removeItem(key)
+			return
+		}
+		localStorage.setItem(key, ethers.getAddress(aa))
+	} catch {
+		/* ignore */
+	}
+}
+
+function institutionalToEligibleWallet(w: InstitutionalManageableWallet): AaMultisigTransferEligibleWallet {
+	return {
+		aaAccount: w.aaAccount,
+		policy: w.policy,
+		isOwnAa: w.kind === 'own_institutional',
+		lastActivityAt: w.lastActivityAt,
+	}
 }
 
 
@@ -494,10 +457,22 @@ export default function AaMultisigPage() {
 		managers: string[]
 		threshold: number
 	} | null>(null)
-	const [transferEligibleWallets, setTransferEligibleWallets] = useState<
-		AaMultisigTransferEligibleWallet[]
-	>([])
-	const [transferEligibleLoading, setTransferEligibleLoading] = useState(false)
+	const [institutionalWallets, setInstitutionalWallets] = useState<InstitutionalManageableWallet[]>(
+		[]
+	)
+	const [selectedManagedAa, setSelectedManagedAa] = useState('')
+	const [institutionalListLoading, setInstitutionalListLoading] = useState(false)
+	const [creatingInstitutionalAa, setCreatingInstitutionalAa] = useState(false)
+	const [createInstitutionalError, setCreateInstitutionalError] = useState<string | null>(null)
+	const createInstitutionalInFlightRef = useRef(false)
+	/** Derived for existing tab logic (Signers / Transfer / History). */
+	const transferEligibleWallets = useMemo(
+		() => institutionalWallets.map(institutionalToEligibleWallet),
+		[institutionalWallets]
+	)
+	const transferEligibleLoading = institutionalListLoading
+	/** Persists until the next Create multisig task press (Toast alone disappears too fast). */
+	const [transferCreateError, setTransferCreateError] = useState<string | null>(null)
 	const [signersAaAccount, setSignersAaAccount] = useState('')
 	const [importPayload, setImportPayload] = useState('')
 	const [showImportPanel, setShowImportPanel] = useState(false)
@@ -508,7 +483,12 @@ export default function AaMultisigPage() {
 	const outboundListScrolledRef = useRef(false)
 	const prevMultisigTaskStatusRef = useRef<Map<string, AaMultisigTaskLocal['status']>>(new Map())
 	const autoSubmitInFlightRef = useRef(new Set<string>())
-	const submitTaskRef = useRef<(task: AaMultisigTaskLocal) => Promise<boolean>>(async () => false)
+	const submitTaskRef = useRef<
+		(
+			task: AaMultisigTaskLocal,
+			opts?: { quiet?: boolean; retainBusy?: boolean },
+		) => Promise<{ ok: boolean; error?: string }>
+	>(async () => ({ ok: false, error: 'Submit unavailable' }))
 
 	const privateKeyArmor = resolveSigningPrivateKeyArmor(profile)
 
@@ -704,6 +684,8 @@ export default function AaMultisigPage() {
 			setTasks([])
 			return
 		}
+		// Failed submit (usually EntryPoint nonce) must not linger in History.
+		pruneFailedAaMultisigTasksForWallet(eoa)
 		setTasks(loadAllAaMultisigTasksForWallet(eoa))
 	}, [eoa])
 
@@ -730,43 +712,84 @@ export default function AaMultisigPage() {
 		}
 	}, [transferAaAccount])
 
-	const refreshTransferEligibleWallets = useCallback(async () => {
+	const refreshInstitutionalWallets = useCallback(async () => {
 		if (!eoa) {
-			setTransferEligibleWallets([])
+			setInstitutionalWallets([])
+			setSelectedManagedAa('')
 			setTransferAaAccount('')
 			setTransferPolicy(null)
 			setSignersAaAccount('')
 			return
 		}
-		setTransferEligibleLoading(true)
+		setInstitutionalListLoading(true)
 		try {
-			const candidates = collectTransferAaAccountCandidates(eoa, aaAccount, tasks)
-			const wallets = await discoverAaMultisigTransferEligibleWallets(
-				aaMultisigProvider,
-				eoa,
-				candidates,
-				{ ownAaAccount: aaAccount, tasks, fallbackEoa: eoa }
-			)
-			setTransferEligibleWallets(wallets)
-			setTransferAaAccount((prev) => {
-				if (prev && wallets.some((w) => w.aaAccount.toLowerCase() === prev.toLowerCase())) {
-					return prev
-				}
-				return wallets[0]?.aaAccount ?? ''
+			const wallets = await discoverInstitutionalManageableWallets(aaMultisigProvider, eoa, {
+				primaryAaAccount: aaAccount,
+				tasks,
+				fallbackEoa: eoa,
 			})
-			setSignersAaAccount((prev) => {
-				if (prev && wallets.some((w) => w.aaAccount.toLowerCase() === prev.toLowerCase())) {
-					return prev
+			setInstitutionalWallets(wallets)
+			setSelectedManagedAa((prev) => {
+				const persisted = prev || loadPersistedInstitutionalSelectedAa(eoa)
+				if (
+					persisted &&
+					wallets.some((w) => w.aaAccount.toLowerCase() === persisted.toLowerCase())
+				) {
+					return ethers.getAddress(persisted)
 				}
-				const own = wallets.find((w) => w.isOwnAa)
-				return own?.aaAccount ?? wallets[0]?.aaAccount ?? ''
+				// Do not auto-select — tabs stay hidden until the user picks an item.
+				return ''
 			})
 		} catch {
-			// untrusted — keep previous eligible list
+			// untrusted — keep previous list
 		} finally {
-			setTransferEligibleLoading(false)
+			setInstitutionalListLoading(false)
 		}
 	}, [eoa, aaAccount, tasks])
+
+	const selectManagedAa = useCallback(
+		(aa: string) => {
+			if (!aa || !ethers.isAddress(aa)) {
+				setSelectedManagedAa('')
+				if (eoa) persistInstitutionalSelectedAa(eoa, '')
+				return
+			}
+			const checksum = ethers.getAddress(aa)
+			setSelectedManagedAa(checksum)
+			if (eoa) persistInstitutionalSelectedAa(eoa, checksum)
+		},
+		[eoa]
+	)
+
+	const handleCreateInstitutionalAa = useCallback(async () => {
+		if (!eoa || createInstitutionalInFlightRef.current) return
+		createInstitutionalInFlightRef.current = true
+		setCreatingInstitutionalAa(true)
+		setCreateInstitutionalError(null)
+		try {
+			const result = await createInstitutionalAa(eoa)
+			if (!result.success) {
+				setCreateInstitutionalError(result.error)
+				return
+			}
+			await refreshInstitutionalWallets()
+			selectManagedAa(result.aa)
+			setTab('signers')
+		} finally {
+			createInstitutionalInFlightRef.current = false
+			setCreatingInstitutionalAa(false)
+		}
+	}, [eoa, refreshInstitutionalWallets, selectManagedAa])
+
+	useEffect(() => {
+		if (!selectedManagedAa) {
+			setTransferAaAccount('')
+			setSignersAaAccount('')
+			return
+		}
+		setTransferAaAccount(selectedManagedAa)
+		setSignersAaAccount(selectedManagedAa)
+	}, [selectedManagedAa])
 
 	useEffect(() => {
 		const wallet = transferEligibleWallets.find(
@@ -793,10 +816,13 @@ export default function AaMultisigPage() {
 		() => (transferAaAccount ? hasActiveMultisigTasksForAa(tasks, transferAaAccount) : false),
 		[tasks, transferAaAccount]
 	)
+	/** While Create is in-flight the draft may already be `ready` in local store — do not treat that as a block. */
+	const transferCreateBlockedByActive =
+		transferAaHasActiveTasks && busy !== 'transfer'
 
 	useEffect(() => {
-		void refreshTransferEligibleWallets()
-	}, [refreshTransferEligibleWallets])
+		void refreshInstitutionalWallets()
+	}, [refreshInstitutionalWallets])
 
 	useEffect(() => {
 		if (tab !== 'transfer' || !transferAaAccount) return
@@ -1100,22 +1126,21 @@ export default function AaMultisigPage() {
 
 	const requireTransferWalletReady = (): boolean => {
 		if (!eoa || !transferAaAccount) {
-			Toast.show({
-				content:
-					transferEligibleLoading
-						? 'Loading Smart Wallets you can sign for…'
-						: 'No Smart Wallet available where you are a co-signer.',
-			})
+			setTransferCreateError(
+				transferEligibleLoading
+					? 'Loading Smart Wallets you can sign for…'
+					: 'No Smart Wallet available where you are a co-signer.',
+			)
 			return false
 		}
 		if (
 			!transferPolicy?.managers.some((m) => m.toLowerCase() === eoa.toLowerCase())
 		) {
-			Toast.show({ content: 'You are not a signer on this Smart Wallet.' })
+			setTransferCreateError('You are not a signer on this Smart Wallet.')
 			return false
 		}
 		if (!privateKeyArmor) {
-			Toast.show({ content: 'Wallet signing key unavailable.' })
+			setTransferCreateError('Wallet signing key unavailable.')
 			return false
 		}
 		return true
@@ -1302,29 +1327,30 @@ export default function AaMultisigPage() {
 	}
 
 	const proposeTransfer = async () => {
+		setTransferCreateError(null)
 		if (!requireTransferWalletReady()) return
 		if (!selectedTransferAsset || !transferAssetId) {
-			Toast.show({ content: 'No transferable assets in this Smart Wallet.' })
+			setTransferCreateError('No transferable assets in this Smart Wallet.')
 			return
 		}
 		if (hasActiveMultisigTasksForAa(tasks, transferAaAccount)) {
-			Toast.show({ content: AA_MULTISIG_BLOCK_NEW_TRANSFER_TOAST })
+			setTransferCreateError(AA_MULTISIG_BLOCK_NEW_TRANSFER_TOAST)
 			return
 		}
 		setBusy('transfer')
 		try {
 			const to = transferTo.trim()
 			if (!ethers.isAddress(to)) {
-				Toast.show({ content: 'Invalid recipient address.' })
+				setTransferCreateError('Invalid recipient address.')
 				return
 			}
 			const amountRaw = parseTransferAmountToRaw(transferAmount, selectedTransferAsset.decimals)
 			if (amountRaw == null || amountRaw <= 0n) {
-				Toast.show({ content: 'Enter a positive amount.' })
+				setTransferCreateError('Enter a positive amount.')
 				return
 			}
 			if (amountRaw > selectedTransferAsset.balanceRaw) {
-				Toast.show({ content: 'Amount exceeds available balance.' })
+				setTransferCreateError('Amount exceeds available balance.')
 				return
 			}
 			const { chainNonce, userOpNonce, expired } = await prepareAaMultisigNewTaskNonce(
@@ -1377,48 +1403,65 @@ export default function AaMultisigPage() {
 				creatorSignature,
 			})
 			const merged = mergeInboundMultisigInner(null, inner, eoa)
-			if (merged) upsertAaMultisigTaskRecord(eoa, merged)
-			const pub = await publishAaMultisigInnerWithOfflineFallback({
-				walletEoa: eoa,
-				recipients: managers,
-				inner,
-				privateKeyArmor,
-				allNodes: allNodes ?? [],
-				excludeEoa: eoa,
-			})
-			refreshOutboundQueue()
-
 			const soleSignerReady =
 				merged?.kind === 'transfer' &&
 				merged.status === 'ready' &&
 				isSoleSelfSignerMultisig(eoa, managers, threshold)
 
-			if (soleSignerReady && merged) {
-				const submitted = await submitTask(merged)
+			// Claim auto-submit before upsert so the tasks useEffect cannot double-submit the same draft.
+			const soleSubmitClaimedId =
+				soleSignerReady && merged ? merged.taskId : null
+			if (soleSubmitClaimedId) {
+				autoSubmitInFlightRef.current.add(soleSubmitClaimedId)
+			}
+			try {
+				if (merged) upsertAaMultisigTaskRecord(eoa, merged)
+				const pub = await publishAaMultisigInnerWithOfflineFallback({
+					walletEoa: eoa,
+					recipients: managers,
+					inner,
+					privateKeyArmor,
+					allNodes: allNodes ?? [],
+					excludeEoa: eoa,
+				})
+				refreshOutboundQueue()
+
+				if (soleSignerReady && merged) {
+					// Quiet: keep Transfer chrome until we finish; parent owns busy='transfer'.
+					const result = await submitTask(merged, { quiet: true, retainBusy: true })
+					if (result.ok) {
+						Toast.show({ content: 'Multisig transfer submitted.' })
+						setTransferCreateError(null)
+						setTransferTo('')
+						setTransferAmount('')
+						void reloadTransferAssets()
+						setTab('history')
+						return
+					}
+					setTransferCreateError(result.error?.trim() || 'Submit failed')
+					reloadTasks()
+					return
+				}
+
+				Toast.show({
+					content:
+						pub.mode === 'broadcast' && pub.sent > 0
+							? 'Transfer task created and sent to co-signers via CoNET chat.'
+							: 'Transfer task saved locally. Export or sync when CoNET chat is online.',
+				})
+				setTransferCreateError(null)
 				setTransferTo('')
 				setTransferAmount('')
-				void reloadTransferAssets()
-				if (submitted) {
-					setTab('history')
-				} else {
-					setTab('pending')
+				reloadTasks()
+				setTab('pending')
+			} finally {
+				if (soleSubmitClaimedId) {
+					autoSubmitInFlightRef.current.delete(soleSubmitClaimedId)
 				}
-				return
 			}
-
-			Toast.show({
-				content:
-					pub.mode === 'broadcast' && pub.sent > 0
-						? 'Transfer task created and sent to co-signers via CoNET chat.'
-						: 'Transfer task saved locally. Export or sync when CoNET chat is online.',
-			})
-			setTransferTo('')
-			setTransferAmount('')
-			reloadTasks()
-			setTab('pending')
 		} catch (e: unknown) {
 			const msg = e instanceof Error ? e.message : String(e)
-			Toast.show({ content: msg.slice(0, 120) })
+			setTransferCreateError(msg.trim() || 'Create multisig task failed.')
 		} finally {
 			setBusy(null)
 		}
@@ -1464,7 +1507,7 @@ export default function AaMultisigPage() {
 				autoSubmitInFlightRef.current.add(merged.taskId)
 				const submitted = await submitTask(merged)
 				autoSubmitInFlightRef.current.delete(merged.taskId)
-				if (submitted) return
+				if (submitted.ok) return
 			}
 
 			if (pub.mode === 'broadcast' && pub.sent > 0) {
@@ -1522,34 +1565,60 @@ export default function AaMultisigPage() {
 		}
 	}
 
-	const submitTask = async (task: AaMultisigTaskLocal): Promise<boolean> => {
-		if (!requireWalletReady()) return false
+	const submitTask = async (
+		task: AaMultisigTaskLocal,
+		opts?: { quiet?: boolean; retainBusy?: boolean },
+	): Promise<{ ok: boolean; error?: string }> => {
+		const fail = (error: string): { ok: false; error: string } => {
+			if (!opts?.quiet) Toast.show({ content: error.slice(0, 120) })
+			return { ok: false, error }
+		}
+		if (!requireWalletReady()) return fail('Wallet not ready.')
 		if (task.signatures.length < task.threshold) {
-			Toast.show({ content: 'Not enough signatures yet.' })
-			return false
+			return fail('Not enough signatures yet.')
 		}
 		if (
 			task.kind === 'set_policy' &&
 			isSetPolicyCallDataSelfExecuteWrapped(task.aaAccount, task.packedUserOp.callData)
 		) {
-			Toast.show({
-				content: 'Outdated policy UserOp encoding. Reject this task and propose again.',
-			})
-			return false
+			return fail('Outdated policy UserOp encoding. Reject this task and propose again.')
+		}
+		// Already completed (e.g. raced auto-submit) — treat as success for the caller.
+		const latest = loadAllAaMultisigTasksForWallet(eoa).find((t) => t.taskId === task.taskId)
+		if (latest?.status === 'completed' || task.status === 'completed') {
+			if (!opts?.quiet) {
+				reloadTasks()
+				setTab('history')
+			}
+			return { ok: true }
 		}
 		const nonceCheck = await assertAaMultisigTaskEntryPointNonceFresh(task.aaAccount, task)
 		if (!nonceCheck.ok) {
 			const expired = markAaMultisigTaskExpiredIfNonceStale(task, nonceCheck.chainNonce)
 			if (expired) upsertAaMultisigTaskRecord(eoa, expired)
 			reloadTasks()
-			Toast.show({ content: 'This signing request expired and was moved to History.' })
-			return false
+			return fail('This signing request expired and was moved to History.')
 		}
-		setBusy(`submit-${task.taskId}`)
+		if (!opts?.retainBusy) {
+			setBusy(`submit-${task.taskId}`)
+		}
 		try {
 			const combinedSig = concatMultisigSignatures(task.signatures)
 			const packedUserOp = { ...task.packedUserOp, signature: combinedSig }
 			let hash: string | undefined
+
+			const discardFailedSubmit = (err: string): { ok: false; error: string } => {
+				// Do not archive FAILED in History — user must re-propose with a fresh nonce.
+				removeAaMultisigTaskRecord(eoa, task)
+				reloadTasks()
+				const hint =
+					chainEntryPointNonce != null
+						? ` Re-propose with EntryPoint nonce ${chainEntryPointNonce}.`
+						: ' Re-propose with a fresh EntryPoint nonce.'
+				const base = (err.trim() || 'Submit failed').replace(/\.\s*$/, '')
+				return fail(`${base}.${hint}`)
+			}
+
 			if (
 				task.kind === 'transfer' &&
 				task.toEoa &&
@@ -1566,11 +1635,7 @@ export default function AaMultisigPage() {
 					transferAsset: task.transferAsset ?? 'usdc',
 				})
 				if (!res.success) {
-					const failed: AaMultisigTaskLocal = { ...task, status: 'failed', updatedAt: Date.now() }
-					upsertAaMultisigTaskRecord(eoa, failed)
-					Toast.show({ content: res.error ?? 'Submit failed' })
-					reloadTasks()
-					return false
+					return discardFailedSubmit(res.error ?? 'Submit failed')
 				}
 				hash = res.hash
 			} else if (task.kind === 'set_policy') {
@@ -1581,17 +1646,12 @@ export default function AaMultisigPage() {
 					transferAsset: 'cnet',
 				})
 				if (!res.success) {
-					const failed: AaMultisigTaskLocal = { ...task, status: 'failed', updatedAt: Date.now() }
-					upsertAaMultisigTaskRecord(eoa, failed)
-					Toast.show({ content: res.error ?? 'Submit failed' })
-					reloadTasks()
-					return false
+					return discardFailedSubmit(res.error ?? 'Submit failed')
 				}
 				hash = res.hash
 				void reloadPolicy()
 			} else {
-				Toast.show({ content: 'Unsupported task kind for submit.' })
-				return false
+				return fail('Unsupported task kind for submit.')
 			}
 			const completed: AaMultisigTaskLocal = {
 				...task,
@@ -1618,16 +1678,18 @@ export default function AaMultisigPage() {
 				})
 				refreshOutboundQueue()
 			}
-			Toast.show({ content: 'Multisig transfer submitted.' })
+			if (!opts?.quiet) Toast.show({ content: 'Multisig transfer submitted.' })
 			reloadTasks()
-			setTab('history')
-			return true
+			// Parent Create flow navigates after clearing busy; avoid mid-flight tab steal.
+			if (!opts?.quiet) setTab('history')
+			return { ok: true }
 		} catch (e: unknown) {
 			const msg = e instanceof Error ? e.message : String(e)
-			Toast.show({ content: msg.slice(0, 120) })
-			return false
+			return fail(msg.trim() || 'Submit failed')
 		} finally {
-			setBusy(null)
+			if (!opts?.retainBusy) {
+				setBusy(null)
+			}
 		}
 	}
 
@@ -1908,13 +1970,97 @@ export default function AaMultisigPage() {
 					</div>
 				</div>
 
-				{transferEligibleWallets.length === 0 && !transferEligibleLoading ? (
-					<div className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/40 dark:text-amber-200">
-						<AlertTriangle className="h-4 w-4 shrink-0" />
-						No Smart Wallet available where you are a co-signer.
-					</div>
-				) : null}
+				<section className="mb-4 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+					<h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+						Manage your institutional-grade smart wallets
+					</h2>
+					<p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+						Create and manage Smart Wallets beyond your personal Express Pay wallet. Select a wallet
+						below to configure co-signers, pending approvals, transfers, and history.
+					</p>
 
+					{institutionalListLoading && institutionalWallets.length === 0 ? (
+						<p className="mt-3 flex items-center gap-2 text-sm text-slate-500">
+							<Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+							Loading institutional Smart Wallets…
+						</p>
+					) : institutionalWallets.length === 0 ? (
+						<p className="mt-3 text-sm text-slate-500">
+							No institutional Smart Wallets yet. Create one, or wait until you are added as a
+							co-signer on another wallet.
+						</p>
+					) : (
+						<ul className="mt-3 space-y-2" role="listbox" aria-label="Institutional Smart Wallets">
+							{institutionalWallets.map((w) => {
+								const selected =
+									selectedManagedAa &&
+									w.aaAccount.toLowerCase() === selectedManagedAa.toLowerCase()
+								return (
+									<li key={w.aaAccount}>
+										<button
+											type="button"
+											role="option"
+											aria-selected={!!selected}
+											onClick={() => selectManagedAa(w.aaAccount)}
+											className={`w-full rounded-2xl border p-3 text-left transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#8d3a8b]/40 ${
+												selected
+													? 'border-[#8d3a8b] bg-[#f5ecff] ring-2 ring-[#8d3a8b]/20 dark:border-[#8d3a8b]/60 dark:bg-slate-800/80'
+													: 'border-slate-200 bg-white hover:border-slate-300 dark:border-slate-700 dark:bg-slate-800/40 dark:hover:border-slate-600'
+											}`}
+										>
+											<div className="flex flex-wrap items-center gap-2">
+												{w.kind === 'own_institutional' ? (
+													<span className="shrink-0 rounded-full bg-[#8d3a8b]/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#8d3a8b]">
+														Institutional #{w.index ?? '?'}
+													</span>
+												) : (
+													<span className="shrink-0 rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600 dark:bg-slate-700 dark:text-slate-300">
+														Co-managed
+													</span>
+												)}
+												<span className="text-[10px] font-medium text-slate-500">
+													{w.policy.threshold}/{w.policy.managers.length} sigs
+												</span>
+											</div>
+											<div className="mt-2">
+												<AaAccountAddressCapsule address={w.aaAccount} />
+											</div>
+										</button>
+									</li>
+								)
+							})}
+						</ul>
+					)}
+
+					{createInstitutionalError ? (
+						<div className="mt-3 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-900/40 dark:bg-red-950/40 dark:text-red-200">
+							<AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+							<p className="min-w-0 break-words">{createInstitutionalError}</p>
+						</div>
+					) : null}
+
+					<button
+						type="button"
+						onClick={() => void handleCreateInstitutionalAa()}
+						disabled={creatingInstitutionalAa || !eoa}
+						aria-busy={creatingInstitutionalAa}
+						aria-label="New institutional-grade smart wallet"
+						className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+						style={{ backgroundColor: aaAccent.accent }}
+					>
+						{creatingInstitutionalAa ? (
+							<Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+						) : (
+							<Plus className="h-4 w-4" aria-hidden />
+						)}
+						{creatingInstitutionalAa
+							? 'Creating…'
+							: 'New institutional-grade smart wallet'}
+					</button>
+				</section>
+
+				{selectedManagedAa ? (
+				<>
 				<div className="mb-4 flex gap-1 overflow-x-auto rounded-full bg-white p-1 shadow-sm dark:bg-slate-900">
 					{(
 						[
@@ -1941,38 +2087,7 @@ export default function AaMultisigPage() {
 
 				{tab === 'signers' ? (
 					<div className="space-y-4">
-						{transferEligibleLoading && transferEligibleWallets.length === 0 ? (
-							<p className="flex items-center gap-2 text-sm text-slate-500">
-								<Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-								Loading Smart Wallets you can manage…
-							</p>
-						) : transferEligibleWallets.length === 0 ? (
-							<p className="text-sm text-slate-500">
-								No Smart Wallet found where you are a co-signer. Join a multisig via CoNET chat or
-								create your Smart Wallet first.
-							</p>
-						) : (
-							<>
-								<div className="rounded-2xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
-									<p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-										Smart Wallet to manage
-									</p>
-									<p className="mt-1 text-xs text-slate-500">
-										Choose which Smart Wallet co-signers and signature rules apply to. Your own
-										Smart Wallet and co-signer wallets are listed separately.
-									</p>
-									<TransferSmartWalletPicker
-										wallets={transferEligibleWallets}
-										selectedAaAccount={signersAaAccount}
-										onSelect={setSignersAaAccount}
-										resolveTag={resolveTag}
-										lookupByAddress={lookupByAddress}
-										toCapsuleItem={toCapsuleItem}
-										avatarImgUrl={avatarImgUrl}
-									/>
-								</div>
-
-								{!canProposeSignerChanges && policy && !cosignersFromChainFallback ? (
+						{!canProposeSignerChanges && policy && !cosignersFromChainFallback ? (
 									<div className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/40 dark:text-amber-200">
 										<AlertTriangle className="h-4 w-4 shrink-0" aria-hidden />
 										You are not listed as a signer on the selected Smart Wallet policy.
@@ -1985,8 +2100,13 @@ export default function AaMultisigPage() {
 								<p className="mt-1 text-xs text-slate-500">
 									For{' '}
 									{selectedSignersWallet.isOwnAa
-										? 'your Smart Wallet'
-										: `co-signer Smart Wallet (${signersAaAccount.slice(0, 6)}…${signersAaAccount.slice(-4)})`}
+										? `institutional Smart Wallet #${
+												institutionalWallets.find(
+													(w) =>
+														w.aaAccount.toLowerCase() === signersAaAccount.toLowerCase()
+												)?.index ?? '?'
+											}`
+										: `co-managed Smart Wallet (${signersAaAccount.slice(0, 6)}…${signersAaAccount.slice(-4)})`}
 									{policy && !cosignersFromChainFallback
 										? ` · ${policy.threshold}/${policy.managers.length} required`
 										: ''}
@@ -2224,8 +2344,6 @@ export default function AaMultisigPage() {
 							</button>
 						</div>
 						) : null}
-							</>
-						)}
 					</div>
 				) : null}
 
@@ -2380,36 +2498,17 @@ export default function AaMultisigPage() {
 								Currently supports CoNET L1 and Base L2.
 							</p>
 						) : null}
-						{transferEligibleLoading && transferEligibleWallets.length === 0 ? (
-							<p className="mt-4 flex items-center gap-2 text-sm text-slate-500">
-								<Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-								Loading Smart Wallets you can sign for…
+						{transferAaAccount ? (
+							<p className="mt-2 text-xs text-slate-500">
+								From selected institutional Smart Wallet
 							</p>
-						) : transferEligibleWallets.length === 0 ? (
-							<p className="mt-4 text-sm text-slate-500">
-								No Smart Wallet found where you are a co-signer. Join a multisig on the Signers tab
-								or wait for a co-signer invite via CoNET chat.
-							</p>
-						) : (
-							<>
-								<label className="mt-3 block text-xs font-medium text-slate-600 dark:text-slate-400">
-									Smart Wallet
-								</label>
-								<TransferSmartWalletPicker
-									wallets={transferEligibleWallets}
-									selectedAaAccount={transferAaAccount}
-									onSelect={(aa) => {
-										setTransferAaAccount(aa)
-										setTransferAssetId('')
-									}}
-									resolveTag={resolveTag}
-									lookupByAddress={lookupByAddress}
-									toCapsuleItem={toCapsuleItem}
-									avatarImgUrl={avatarImgUrl}
-								/>
-							</>
-						)}
-						{transferEligibleWallets.length > 0 && transferAaAccount ? (
+						) : null}
+						{transferAaAccount ? (
+							<div className="mt-2">
+								<AaAccountAddressCapsule address={transferAaAccount} />
+							</div>
+						) : null}
+						{transferAaAccount ? (
 							transferAssetsLoading && transferAssetOptions.length === 0 ? (
 							<p className="mt-4 flex items-center gap-2 text-sm text-slate-500">
 								<Loader2 className="h-4 w-4 animate-spin" aria-hidden />
@@ -2476,16 +2575,24 @@ export default function AaMultisigPage() {
 										Available: {selectedTransferAsset.balanceDisplay} {selectedTransferAsset.label}
 									</p>
 								) : null}
-								{transferAaHasActiveTasks ? (
+								{transferCreateBlockedByActive ? (
 									<p className="mt-3 text-xs font-medium text-amber-700">
 										{AA_MULTISIG_BLOCK_NEW_TRANSFER_TOAST} Use the Pending tab to sign,
 										submit, or reject it first.
 									</p>
 								) : null}
+								{transferCreateError ? (
+									<p
+										className="mt-3 whitespace-pre-wrap break-words rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-300"
+										role="alert"
+									>
+										{transferCreateError}
+									</p>
+								) : null}
 								<button
 									type="button"
 									disabled={
-										busy === 'transfer' || !selectedTransferAsset || transferAaHasActiveTasks
+										busy === 'transfer' || !selectedTransferAsset || transferCreateBlockedByActive
 									}
 									onClick={() => void proposeTransfer()}
 									className="mt-4 w-full rounded-xl py-2.5 text-sm font-semibold text-white disabled:opacity-50"
@@ -2508,6 +2615,13 @@ export default function AaMultisigPage() {
 						)}
 					</div>
 				) : null}
+				</>
+				) : (
+					<p className="mb-4 text-center text-sm text-slate-500">
+						Select an institutional Smart Wallet above to manage co-signers, pending approvals,
+						transfers, and history.
+					</p>
+				)}
 				</div>
 			</div>
 		</div>

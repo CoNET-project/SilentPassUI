@@ -216,7 +216,7 @@ export function filterHistoryMultisigForManager(
 	if (!viewer) return []
 	return tasks.filter(
 		(t) =>
-			['completed', 'rejected', 'failed', 'submitted', 'expired'].includes(t.status) &&
+			['completed', 'rejected', 'submitted', 'expired'].includes(t.status) &&
 			t.managers.some((m) => m.toLowerCase() === viewer)
 	)
 }

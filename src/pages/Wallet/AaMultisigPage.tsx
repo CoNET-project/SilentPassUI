@@ -1558,6 +1558,18 @@ export default function AaMultisigPage() {
 				resolveEffectiveAaOwner(policy, eoa) ??
 				(ethers.isAddress(policy.owner) ? ethers.getAddress(policy.owner) : eoa)
 			const managersSorted = buildManagersOwnerFirst(ownerAddr, opts.newManagers)
+			const aaRead = new ethers.Contract(
+				signersAaAccount,
+				[
+					'function threshold() view returns (uint256)',
+					'function getTask(uint256) view returns (uint8,uint8)',
+				],
+				aaMultisigProvider
+			)
+			// Auto-exec on propose uses *pre*-policy threshold. Reading threshold after
+			// a 1→N set_policy would see the new T>1 and wrongly attempt a second vote
+			// ("Task is not pending" — already Executed in the propose tx).
+			const thrBefore = (await aaRead.threshold()) as bigint
 			const deadline = defaultAaV2DeadlineSec()
 			const nonce = newAaV2SigNonce()
 			const signature = await signAaV2ProposeSetPolicy({
@@ -1581,45 +1593,49 @@ export default function AaMultisigPage() {
 				fail(proposed.error.slice(0, 240))
 				return
 			}
-			const aaRead = new ethers.Contract(
-				signersAaAccount,
-				['function threshold() view returns (uint256)'],
-				aaMultisigProvider
-			)
-			const thr = (await aaRead.threshold()) as bigint
-			if (thr > 1n) {
-				// Proposer auto-approve (counts toward threshold > 1)
-				const voteNonce = newAaV2SigNonce()
-				const voteDeadline = defaultAaV2DeadlineSec()
-				const voteSig = await signAaV2Vote({
-					privateKeyArmor,
-					account: signersAaAccount,
-					taskId: proposed.taskId,
-					approve: true,
-					deadline: voteDeadline,
-					nonce: voteNonce,
-				})
-				const voted = await relayAaV2Vote({
-					account: signersAaAccount,
-					taskId: proposed.taskId,
-					approve: true,
-					deadline: voteDeadline,
-					nonce: voteNonce,
-					signature: voteSig,
-					signerEoa: eoa,
-				})
-				if (!voted.success) {
-					fail(
-						`Proposed on-chain (#${proposed.taskId}). Auto-approve failed: ${voted.error.slice(0, 160)}`
-					)
-					await syncAaV2TasksIntoLocal(eoa, signersAaAccount, upsertAaMultisigTaskRecord)
-					reloadTasks()
-					return
+			if (thrBefore > 1n) {
+				// Proposer auto-approve (counts toward threshold > 1); skip if already executed.
+				let stillPending = true
+				try {
+					const t = await aaRead.getTask(BigInt(proposed.taskId))
+					const status = Number(t[1] ?? t.status)
+					stillPending = status === 1 // TaskStatus: None=0, Pending=1, Executed=2
+				} catch {
+					stillPending = true
+				}
+				if (stillPending) {
+					const voteNonce = newAaV2SigNonce()
+					const voteDeadline = defaultAaV2DeadlineSec()
+					const voteSig = await signAaV2Vote({
+						privateKeyArmor,
+						account: signersAaAccount,
+						taskId: proposed.taskId,
+						approve: true,
+						deadline: voteDeadline,
+						nonce: voteNonce,
+					})
+					const voted = await relayAaV2Vote({
+						account: signersAaAccount,
+						taskId: proposed.taskId,
+						approve: true,
+						deadline: voteDeadline,
+						nonce: voteNonce,
+						signature: voteSig,
+						signerEoa: eoa,
+					})
+					if (!voted.success) {
+						fail(
+							`Proposed on-chain (#${proposed.taskId}). Auto-approve failed: ${voted.error.slice(0, 160)}`
+						)
+						await syncAaV2TasksIntoLocal(eoa, signersAaAccount, upsertAaMultisigTaskRecord)
+						reloadTasks()
+						return
+					}
 				}
 			}
 			Toast.show({
 				content:
-					thr === 1n
+					thrBefore === 1n
 						? `Policy updated on-chain (#${proposed.taskId}).`
 						: `Policy update proposed on-chain (#${proposed.taskId}).`,
 			})

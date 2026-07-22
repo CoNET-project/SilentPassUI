@@ -9,6 +9,7 @@ import {
 } from '@/utils/aaInstitutionalV2Eip712'
 import type { AaMultisigTaskLocal, AaMultisigTaskStatus, AaMultisigTransferAssetId } from '@/utils/aaMultisigProtocol'
 import { CONET_USDC, CONET_BUINT, CONET_GB_ERC20 } from '@/config/chainAddresses'
+import { getAaMultisigTaskAny } from '@/utils/aaMultisigLocalStore'
 
 /** TaskKind: None=0, Transfer=1, SetPolicy=2 */
 /** TaskStatus: None=0, Pending=1, Executed=2, Cancelled=3, Expired=4 */
@@ -213,6 +214,99 @@ export function isAaV2LocalTask(task: AaMultisigTaskLocal): boolean {
 	return ext.protocolVersion === 2 || task.taskId.startsWith('v2-')
 }
 
+const AA_V2_TASK_EVENT_ABI = [
+	'event TaskProposed(uint256 indexed taskId, uint8 kind, address indexed proposer)',
+	'event TaskVoted(uint256 indexed taskId, address indexed voter, bool approve)',
+	'event TaskExecuted(uint256 indexed taskId)',
+] as const
+
+function normalizeTxHash(h: string | null | undefined): string | undefined {
+	const t = (h ?? '').trim().toLowerCase()
+	return /^0x[0-9a-f]{64}$/.test(t) ? t : undefined
+}
+
+/** Preserve locally known tx hashes when on-chain sync rebuilds the task. */
+export function mergeAaV2TaskExplorerMeta(
+	prev: AaMultisigTaskLocal | null | undefined,
+	next: AaMultisigTaskLocal
+): AaMultisigTaskLocal {
+	if (!prev) return next
+	const prevSigTx = new Map<string, string>()
+	for (const s of prev.signatures) {
+		const h = normalizeTxHash(s.txHash)
+		if (h) prevSigTx.set(s.signer.toLowerCase(), h)
+	}
+	return {
+		...next,
+		txHash: normalizeTxHash(next.txHash) ?? normalizeTxHash(prev.txHash),
+		signatures: next.signatures.map((s) => ({
+			...s,
+			txHash: normalizeTxHash(s.txHash) ?? prevSigTx.get(s.signer.toLowerCase()),
+		})),
+	}
+}
+
+/**
+ * Fill per-signer vote tx hashes + execute tx from AA TaskVoted / TaskExecuted logs.
+ */
+export async function enrichAaV2LocalTaskWithEventTxHashes(
+	aaAccount: string,
+	task: AaMultisigTaskLocal,
+	provider: ethers.Provider = conetDepinProvider
+): Promise<AaMultisigTaskLocal> {
+	const onChainId = getOnChainTaskId(task)
+	if (!onChainId) return task
+	const taskId = BigInt(onChainId)
+	const aa = new ethers.Contract(aaAccount, AA_V2_TASK_EVENT_ABI, provider)
+	const voteTxBySigner = new Map<string, string>()
+	let executeTx: string | undefined
+	try {
+		const voted = await aa.queryFilter(aa.filters.TaskVoted(taskId))
+		for (const ev of voted) {
+			const voter = ethers.getAddress(String((ev as ethers.EventLog).args?.voter ?? ''))
+			const h = normalizeTxHash(ev.transactionHash)
+			if (voter && h) voteTxBySigner.set(voter.toLowerCase(), h)
+		}
+	} catch {
+		/* keep prior */
+	}
+	try {
+		const executed = await aa.queryFilter(aa.filters.TaskExecuted(taskId))
+		const last = executed[executed.length - 1]
+		executeTx = last ? normalizeTxHash(last.transactionHash) : undefined
+	} catch {
+		/* keep prior */
+	}
+	// T=1: propose+vote+execute share one tx — also map proposer from TaskProposed.
+	if (voteTxBySigner.size === 0 || !executeTx) {
+		try {
+			const proposed = await aa.queryFilter(aa.filters.TaskProposed(taskId))
+			const first = proposed[0]
+			const h = first ? normalizeTxHash(first.transactionHash) : undefined
+			const proposer = first
+				? ethers.getAddress(String((first as ethers.EventLog).args?.proposer ?? ''))
+				: ''
+			if (h && proposer) {
+				if (!voteTxBySigner.has(proposer.toLowerCase())) {
+					voteTxBySigner.set(proposer.toLowerCase(), h)
+				}
+				if (!executeTx && task.status === 'completed') executeTx = h
+			}
+		} catch {
+			/* ignore */
+		}
+	}
+	const signatures = task.signatures.map((s) => ({
+		...s,
+		txHash: normalizeTxHash(s.txHash) ?? voteTxBySigner.get(s.signer.toLowerCase()),
+	}))
+	return {
+		...task,
+		txHash: normalizeTxHash(task.txHash) ?? executeTx,
+		signatures,
+	}
+}
+
 export async function syncAaV2TasksIntoLocal(
 	eoa: string,
 	aaAccount: string,
@@ -231,7 +325,13 @@ export async function syncAaV2TasksIntoLocal(
 				/* keep count-based placeholders */
 			}
 		}
-		upsert(eoa, local)
+		try {
+			local = await enrichAaV2LocalTaskWithEventTxHashes(aaAccount, local, provider)
+		} catch {
+			/* explorer meta optional */
+		}
+		const prev = getAaMultisigTaskAny(eoa, local.taskId)
+		upsert(eoa, mergeAaV2TaskExplorerMeta(prev, local))
 	}
 	return rows.length
 }

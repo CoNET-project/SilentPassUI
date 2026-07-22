@@ -17,6 +17,7 @@ import {
 	ChevronDown,
 	Eye,
 	EyeOff,
+	ExternalLink,
 } from 'lucide-react'
 import { Toast } from 'antd-mobile'
 import { ethers } from 'ethers'
@@ -37,7 +38,7 @@ import { beamioWalletAccent } from '@/utils/beamioWalletAccent'
 import { resolveSigningPrivateKeyArmor } from '@/utils/resolveSigningPrivateKeyArmor'
 import { resolveBeamioAaOnConet } from '@/utils/resolveBeamioAaFromCardFactory'
 import { searchUsername } from '@/services/beamio'
-import { conetDepinProvider } from '@/utils/constants'
+import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
 import {
 	AA_MULTISIG_TASKS_CHANGED_EVENT,
 	loadAllAaMultisigTasksForWallet,
@@ -190,6 +191,156 @@ function ThresholdRatioPicker({
 					)
 				})}
 			</div>
+		</div>
+	)
+}
+
+const CONET_MAINNET_EXPLORER = 'https://mainnet.conet.network'
+
+function conetExplorerAddressUrl(address: string): string {
+	return `${CONET_MAINNET_EXPLORER}/address/${encodeURIComponent(address)}`
+}
+
+function conetExplorerTxUrl(txHash: string): string {
+	const h = txHash.startsWith('0x') ? txHash : `0x${txHash}`
+	return `${CONET_MAINNET_EXPLORER}/tx/${encodeURIComponent(h)}`
+}
+
+function shortTxHash(hash: string): string {
+	const h = hash.trim()
+	if (h.length < 14) return h
+	return `${h.slice(0, 8)}…${h.slice(-6)}`
+}
+
+/** Address capsule → CoNET explorer account page (+ copy). */
+function ConetExplorerAddressCapsule({
+	address,
+	variant = 'eoa',
+}: {
+	address: string
+	variant?: 'eoa' | 'aa'
+}) {
+	const [copied, setCopied] = React.useState(false)
+	const fullAddress = (() => {
+		try {
+			return ethers.isAddress(address) ? ethers.getAddress(address) : ''
+		} catch {
+			return ''
+		}
+	})()
+	if (!fullAddress) return null
+	const short = shortAddr(fullAddress)
+	const isAa = variant === 'aa'
+	const shell = isAa
+		? 'border-[#eadcf7] bg-[#f5ecff] text-[#424655] dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300'
+		: 'border-[#dce2f7] bg-[#e9edff] text-[#424655] dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300'
+	const accent = isAa ? 'text-[#8d3a8b]' : 'text-[#0051d1]'
+	const hover = isAa ? 'hover:bg-[#8d3a8b]/10' : 'hover:bg-[#0051d1]/10'
+
+	const copyAddress = async (e: React.MouseEvent) => {
+		e.preventDefault()
+		e.stopPropagation()
+		try {
+			await navigator.clipboard.writeText(fullAddress)
+			setCopied(true)
+			window.setTimeout(() => setCopied(false), 2000)
+		} catch {
+			/* ignore */
+		}
+	}
+
+	return (
+		<div className={`inline-flex max-w-full items-center overflow-hidden rounded-full border ${shell}`}>
+			<a
+				href={conetExplorerAddressUrl(fullAddress)}
+				target="_blank"
+				rel="noopener noreferrer"
+				onClick={(e) => {
+					e.preventDefault()
+					openExternalUrl(conetExplorerAddressUrl(fullAddress))
+				}}
+				className={`inline-flex min-w-0 items-center gap-1.5 py-1 pl-2.5 pr-1.5 font-mono text-[11px] font-medium transition ${hover}`}
+				aria-label={`Open ${short} on CoNET Explorer`}
+			>
+				{isAa ? (
+					<Hexagon className={`h-3.5 w-3.5 shrink-0 ${accent}`} strokeWidth={2.25} aria-hidden />
+				) : null}
+				<span className="truncate">{short}</span>
+				<ExternalLink className={`h-3 w-3 shrink-0 ${accent}`} strokeWidth={2.25} aria-hidden />
+			</a>
+			<button
+				type="button"
+				onClick={(e) => void copyAddress(e)}
+				className={`inline-flex h-7 w-7 shrink-0 items-center justify-center ${accent} transition ${hover}`}
+				aria-label={copied ? 'Address copied' : 'Copy address'}
+			>
+				{copied ? (
+					<Check className="h-3 w-3 text-emerald-500" strokeWidth={2.4} aria-hidden />
+				) : (
+					<Copy className="h-3 w-3" strokeWidth={2.2} aria-hidden />
+				)}
+			</button>
+		</div>
+	)
+}
+
+/** Tx hash capsule → CoNET explorer transaction page (+ copy). */
+function ConetExplorerTxHashCapsule({ txHash, label }: { txHash: string; label?: string }) {
+	const [copied, setCopied] = React.useState(false)
+	const full = (() => {
+		const t = txHash.trim()
+		if (!/^0x[0-9a-fA-F]{64}$/.test(t)) return ''
+		return t.toLowerCase()
+	})()
+	if (!full) return null
+	const short = shortTxHash(full)
+	const url = conetExplorerTxUrl(full)
+
+	const copyHash = async (e: React.MouseEvent) => {
+		e.preventDefault()
+		e.stopPropagation()
+		try {
+			await navigator.clipboard.writeText(full)
+			setCopied(true)
+			window.setTimeout(() => setCopied(false), 2000)
+		} catch {
+			/* ignore */
+		}
+	}
+
+	return (
+		<div className="inline-flex max-w-full items-center overflow-hidden rounded-full border border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200">
+			<a
+				href={url}
+				target="_blank"
+				rel="noopener noreferrer"
+				onClick={(e) => {
+					e.preventDefault()
+					openExternalUrl(url)
+				}}
+				className="inline-flex min-w-0 items-center gap-1.5 py-1 pl-2.5 pr-1.5 font-mono text-[11px] font-medium transition hover:bg-slate-100 dark:hover:bg-slate-700"
+				aria-label={label ? `Open ${label} transaction on CoNET Explorer` : `Open transaction ${short}`}
+			>
+				{label ? (
+					<span className="max-w-[5.5rem] shrink-0 truncate font-sans text-[10px] font-semibold text-slate-500">
+						{label}
+					</span>
+				) : null}
+				<span className="truncate">{short}</span>
+				<ExternalLink className="h-3 w-3 shrink-0 text-slate-500" strokeWidth={2.25} aria-hidden />
+			</a>
+			<button
+				type="button"
+				onClick={(e) => void copyHash(e)}
+				className="inline-flex h-7 w-7 shrink-0 items-center justify-center text-slate-500 transition hover:bg-slate-100 dark:hover:bg-slate-700"
+				aria-label={copied ? 'Transaction hash copied' : 'Copy transaction hash'}
+			>
+				{copied ? (
+					<Check className="h-3 w-3 text-emerald-500" strokeWidth={2.4} aria-hidden />
+				) : (
+					<Copy className="h-3 w-3" strokeWidth={2.2} aria-hidden />
+				)}
+			</button>
 		</div>
 	)
 }
@@ -1374,6 +1525,16 @@ export default function AaMultisigPage() {
 		)
 	}, [tasks, eoa, selectedManagedAa])
 
+	useEffect(() => {
+		if (tab !== 'history' || history.length === 0) return
+		const addrs: string[] = []
+		for (const t of history) {
+			addrs.push(t.aaAccount, t.creatorEoa, ...(t.toEoa ? [t.toEoa] : []))
+			for (const s of t.signatures) addrs.push(s.signer)
+		}
+		void ensureProfilesForAddresses(addrs)
+	}, [tab, history, ensureProfilesForAddresses])
+
 	const [chainEntryPointNonce, setChainEntryPointNonce] = useState<string | null>(null)
 	const nonceReconcileInFlightRef = useRef(false)
 
@@ -2281,9 +2442,15 @@ export default function AaMultisigPage() {
 						</p>
 					) : null}
 					{aaAccount && task.aaAccount.toLowerCase() !== aaAccount.toLowerCase() ? (
-						<p className="mt-0.5 font-mono text-[11px] text-slate-400">
-							Smart Wallet {task.aaAccount.slice(0, 6)}…{task.aaAccount.slice(-4)}
-						</p>
+						effectiveMode === 'history' ? (
+							<div className="mt-1.5">
+								<ConetExplorerAddressCapsule address={task.aaAccount} variant="aa" />
+							</div>
+						) : (
+							<p className="mt-0.5 font-mono text-[11px] text-slate-400">
+								Smart Wallet {task.aaAccount.slice(0, 6)}…{task.aaAccount.slice(-4)}
+							</p>
+						)
 					) : null}
 					<p className="mt-1 text-xs font-medium text-slate-600 dark:text-slate-300">{progressLabel}</p>
 					{effectiveMode === 'waiting' && secondaryPending ? (
@@ -2388,8 +2555,71 @@ export default function AaMultisigPage() {
 					{task.kind === 'transfer' ? 'Submit transfer' : 'Submit'}
 				</button>
 			) : null}
-			{effectiveMode === 'history' && task.txHash ? (
-				<p className="mt-2 truncate text-xs text-slate-500">Tx {task.txHash}</p>
+			{effectiveMode === 'history' ? (
+				<div className="mt-3 space-y-2 border-t border-slate-100 pt-3 dark:border-slate-800">
+					<div>
+						<p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+							Smart Wallet
+						</p>
+						<div className="mt-1">
+							<ConetExplorerAddressCapsule address={task.aaAccount} variant="aa" />
+						</div>
+					</div>
+					{task.kind === 'transfer' && task.toEoa && ethers.isAddress(task.toEoa) ? (
+						<div>
+							<p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+								Recipient
+							</p>
+							<div className="mt-1">
+								<ConetExplorerAddressCapsule address={task.toEoa} variant="eoa" />
+							</div>
+						</div>
+					) : null}
+					{task.signatures.length > 0 ? (
+						<div>
+							<p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+								Signatures
+							</p>
+							<ul className="mt-1.5 space-y-2">
+								{task.signatures.map((sig) => {
+									const tag = resolveTag(sig.signer)
+									const tagLine = tag
+										? tag.startsWith('@')
+											? tag
+											: `@${tag}`
+										: shortAddr(sig.signer)
+									return (
+										<li
+											key={`${task.taskId}-sig-${sig.signer}`}
+											className="flex flex-col gap-1.5"
+										>
+											<span className="text-[11px] font-medium text-slate-500">{tagLine}</span>
+											<div className="flex flex-wrap items-center gap-1.5">
+												<ConetExplorerAddressCapsule address={sig.signer} variant="eoa" />
+												{sig.txHash ? (
+													<ConetExplorerTxHashCapsule
+														txHash={sig.txHash}
+														label="Sign tx"
+													/>
+												) : null}
+											</div>
+										</li>
+									)
+								})}
+							</ul>
+						</div>
+					) : null}
+					{task.txHash ? (
+						<div>
+							<p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+								Execution
+							</p>
+							<div className="mt-1">
+								<ConetExplorerTxHashCapsule txHash={task.txHash} label="Tx" />
+							</div>
+						</div>
+					) : null}
+				</div>
 			) : null}
 		</div>
 		)

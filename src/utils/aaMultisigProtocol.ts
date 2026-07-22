@@ -46,6 +46,8 @@ export type AaMultisigSignatureEntry = {
 	signer: string
 	signature: string
 	signedAt: number
+	/** CoNET relay / vote tx hash when known (explorer `/tx/`). */
+	txHash?: string
 }
 
 export type AaMultisigRejectEntry = {

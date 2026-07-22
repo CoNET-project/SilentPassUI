@@ -212,7 +212,7 @@ function filterReadyTasks(tasks: AaMultisigTaskLocal[]): AaMultisigTaskLocal[] {
 
 function filterHistoryTasks(tasks: AaMultisigTaskLocal[]): AaMultisigTaskLocal[] {
 	return tasks.filter((t) =>
-		(['completed', 'rejected', 'submitted', 'expired'] as AaMultisigTaskLocal['status'][]).includes(
+		(['completed', 'rejected', 'submitted', 'expired', 'failed'] as AaMultisigTaskLocal['status'][]).includes(
 			t.status
 		)
 	)

@@ -9,7 +9,7 @@ import type { InstitutionalManageableWallet } from '@/utils/aaMultisigTransferEl
 import type { AaThresholdPolicy } from '@/utils/aaMultisigUserOp'
 
 const PREFIX = 'beamio:silentpass:eoa:'
-const SUFFIX = ':institutional-manageable-aas:v1'
+const SUFFIX = ':institutional-manageable-aas:v2'
 const MAX_STORE_CHARS = 800_000
 
 type StoredRow = {

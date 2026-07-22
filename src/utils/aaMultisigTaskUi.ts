@@ -208,6 +208,25 @@ export function multisigPendingSecondaryMessage(
 	return null
 }
 
+export function isTerminalAaMultisigTaskStatus(
+	status: AaMultisigTaskLocal['status']
+): boolean {
+	return (
+		status === 'completed' ||
+		status === 'rejected' ||
+		status === 'submitted' ||
+		status === 'expired' ||
+		status === 'failed'
+	)
+}
+
+/** Deep link from chat: terminal tasks live under History, active under Pending. */
+export function multisigTaskDeepLinkTab(
+	task: Pick<AaMultisigTaskLocal, 'status'>
+): 'pending' | 'history' {
+	return isTerminalAaMultisigTaskStatus(task.status) ? 'history' : 'pending'
+}
+
 export function filterHistoryMultisigForManager(
 	tasks: AaMultisigTaskLocal[],
 	managerEoa: string
@@ -216,7 +235,7 @@ export function filterHistoryMultisigForManager(
 	if (!viewer) return []
 	return tasks.filter(
 		(t) =>
-			['completed', 'rejected', 'submitted', 'expired'].includes(t.status) &&
+			isTerminalAaMultisigTaskStatus(t.status) &&
 			t.managers.some((m) => m.toLowerCase() === viewer)
 	)
 }

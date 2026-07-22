@@ -91,6 +91,10 @@ export type AaMultisigTaskLocal = {
 	txHash?: string
 	createdAt: number
 	updatedAt: number
+	/** 2 = on-chain Institutional V2 task (EIP-712); omit / 1 = legacy UserOp path */
+	protocolVersion?: 1 | 2
+	/** On-chain task id when protocolVersion === 2 */
+	onChainTaskId?: string
 }
 
 export type AaMultisigInnerBase = {
@@ -153,7 +157,10 @@ function normEoa(a: string | undefined | null): string {
 	return t.startsWith('0x') && t.length === 42 ? t : ''
 }
 
-/** Strictly ascending manager list; owner must be index 0 (contract rule). */
+/**
+ * V1 legacy: entire manager list strictly ascending ⇒ owner must be lowest address.
+ * Prefer `buildManagersOwnerFirst` for Institutional V2.
+ */
 export function sortManagersStrict(owner: string, others: string[]): string[] {
 	const ownerAddr = ethers.getAddress(owner)
 	const set = new Set<string>([ownerAddr])
@@ -167,6 +174,23 @@ export function sortManagersStrict(owner: string, others: string[]): string[] {
 		)
 	}
 	return sorted
+}
+
+/**
+ * Institutional V2: `managers[0] == owner`; remaining co-signers unique + ascending.
+ * Owner address may be higher or lower than co-signers (not the V1 “lowest address” rule).
+ */
+export function buildManagersOwnerFirst(owner: string, others: string[]): string[] {
+	const ownerAddr = ethers.getAddress(owner)
+	const rest = new Set<string>()
+	for (const raw of others) {
+		if (!ethers.isAddress(raw)) continue
+		const addr = ethers.getAddress(raw)
+		if (addr.toLowerCase() === ownerAddr.toLowerCase()) continue
+		rest.add(addr)
+	}
+	const sortedRest = [...rest].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()))
+	return [ownerAddr, ...sortedRest]
 }
 
 export function concatMultisigSignatures(entries: AaMultisigSignatureEntry[]): string {

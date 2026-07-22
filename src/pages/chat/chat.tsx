@@ -53,6 +53,7 @@ import {
 	formatMultisigSignatureProgress,
 	multisigHistorySummary,
 	multisigPendingSecondaryMessage,
+	multisigTaskDeepLinkTab,
 	viewerNeedsToSignMultisigTask,
 } from '@/utils/aaMultisigTaskUi'
 import type { AaMultisigChatPreview } from '@/utils/aaMultisigChatPreview'
@@ -86,10 +87,15 @@ function enrichMultisigChatPreview(
 	stored: NonNullable<ReturnType<typeof getAaMultisigTaskAny>>,
 	viewerEoa: string
 ): AaMultisigChatPreview {
-	const progressLabel = formatMultisigSignatureProgress(stored)
 	const historySummary = multisigHistorySummary(stored)
 	const needsSign = viewerNeedsToSignMultisigTask(stored, viewerEoa)
 	const waitingLine = multisigPendingSecondaryMessage(stored, viewerEoa)
+	const progressLabel =
+		stored.status === 'expired'
+			? 'Expired — create a new request'
+			: stored.status === 'completed'
+				? 'Completed'
+				: formatMultisigSignatureProgress(stored)
 
 	let ctaLabel = preview.ctaLabel
 	if (stored.status === 'completed' || stored.status === 'expired') ctaLabel = 'View in history'
@@ -377,8 +383,18 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 					/* multisig ingest must not break chat navigation */
 				}
 			}
-			const params = new URLSearchParams({ tab: 'pending', taskId })
-			if (aaAccount?.trim()) params.set('aaAccount', aaAccount.trim())
+			// Expired / completed tasks only appear under History — never hardcode Pending.
+			let tab: 'pending' | 'history' = 'pending'
+			let resolvedAa = (aaAccount ?? '').trim()
+			if (walletEoa && taskId) {
+				const stored = getAaMultisigTaskAny(walletEoa, taskId)
+				if (stored) {
+					tab = multisigTaskDeepLinkTab(stored)
+					if (!resolvedAa && stored.aaAccount) resolvedAa = stored.aaAccount
+				}
+			}
+			const params = new URLSearchParams({ tab, taskId })
+			if (resolvedAa) params.set('aaAccount', resolvedAa)
 			navigate(`/wallet/aa-multisig?${params.toString()}`)
 		},
 		[navigate, walletEoa, toAddress]

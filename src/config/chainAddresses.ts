@@ -6,7 +6,11 @@
 export const BASE_MAINNET_CHAIN_ID = 8453
 
 /** BeamioFactoryPaymasterV07 on Base. CoNET uses CONET_AA_FACTORY until the new bytecode is deployed on Base too. */
+/** V1 Factory — 存量 Express Pay */
 export const BEAMIO_AA_FACTORY = '0x869B31C87ABd9bFB858F5183Ef6021b28ED225E2'
+export const BEAMIO_AA_FACTORY_V1 = BEAMIO_AA_FACTORY
+/** V2 — 新 AA + institutional（CoNET 已部署；见 beamio-aa-account-dev.mdc） */
+export const BEAMIO_AA_FACTORY_V2 = '0x02F00061ae54d76C3308EA24D2B3d0a24df60fAd'
 
 /** @deprecated 使用 BEAMIO_AA_FACTORY */
 export const BASE_AA_FACTORY = BEAMIO_AA_FACTORY
@@ -44,6 +48,8 @@ export const CONET_BUSINESS_START_KET_REDEEM = '0x02F98E8A2066F15F83E7758c523039
 export const CONET_CARD_FACTORY = '0xfA52a0CcC96C19cF4b6Ea864615F6d52BD0774FB'
 /** CoNET EntryPoint-aware BeamioFactoryPaymasterV07（224422） */
 export const CONET_AA_FACTORY = '0x869B31C87ABd9bFB858F5183Ef6021b28ED225E2'
+/** CoNET Institutional V2 Factory */
+export const CONET_AA_FACTORY_V2 = '0x02F00061ae54d76C3308EA24D2B3d0a24df60fAd'
 /** CoNET 默认 BeamioUserCard（AA Factory `beamioUserCard`） */
 export const CONET_BEAMIO_USER_CARD_DEFAULT = '0xA5C727d11d04BeBC095bd814c6530c4e77fD6662'
 /** CoNET USDC（ConetTreasury FactoryERC20） */

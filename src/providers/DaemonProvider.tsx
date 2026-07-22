@@ -117,6 +117,12 @@ import {
 	loadReferralL0StartKitQuotaLocalCache,
 	type ReferralL0StartKitQuota,
 } from '@/services/referralL0StartKitQuotaFeed'
+import {
+	AA_V2_PENDING_TASKS_FEED_INTERVAL_MS,
+	runAaInstitutionalV2PendingTasksDaemonTick,
+} from '@/utils/aaInstitutionalV2PendingDaemon'
+import { viewerNeedsToSignMultisigTask } from '@/utils/aaMultisigTaskUi'
+import { loadAllAaMultisigTasksForWallet } from '@/utils/aaMultisigLocalStore'
 
 export type { MyBrandCardFeedDetailsMap }
 
@@ -124,6 +130,8 @@ export type { MyBrandCardFeedDetailsMap }
 const MY_BRANDS_FEED_INTERVAL_MS = 6_000
 /** Discover 商户点赞 / 转发点击：30s TTL 对齐 beamio-chain-fetch-protocol */
 const DISCOVER_MERCHANT_STATS_FEED_INTERVAL_MS = 30_000
+/** Institutional AA V2：共同签署者拉取链上 pending task（离线签字上链后本地投票） */
+const AA_V2_PENDING_TASKS_FEED_MS = AA_V2_PENDING_TASKS_FEED_INTERVAL_MS
 
 type ClaimableCouponSummary = {
   count: number
@@ -423,6 +431,13 @@ type DaemonContext = {
 	registerDiscoverMerchantStatFeedCards: (cardAddresses: string[]) => void
 	/** Like/unlike API 成功后乐观更新点赞数（链上 totalSupply 确认前） */
 	applyDiscoverMerchantLikeCountDelta: (cardAddress: string, delta: number) => void
+	/**
+	 * Institutional AA V2：当前 EOA 作为共同签署者仍需投票的 pending task 数。
+	 * 由全局 daemon 拉取链上 task → 本地 store；页面只读，勿自建轮询。
+	 */
+	aaV2PendingNeedVoteCount: number
+	/** 手动触发一轮 V2 pending task 拉取（propose/vote 后可调用） */
+	refreshAaV2PendingTasks: () => Promise<void>
 	paymentLinkCode: string
 	setPaymentLinkCode: (val: string) => void
 	redeemCode: string
@@ -634,6 +649,8 @@ const defaultContextValue: DaemonContext = {
 	discoverMerchantStatByCard: {},
 	applyDiscoverMerchantLikeCountDelta: () => {},
 	registerDiscoverMerchantStatFeedCards: () => {},
+	aaV2PendingNeedVoteCount: 0,
+	refreshAaV2PendingTasks: async () => {},
 
 	beamioUsers: [],
 	setbBeamioUsers: (val: searchResult[]) => {},
@@ -1627,6 +1644,63 @@ export function DaemonProvider({ children }: DaemonProps) {
   }, [])
 
   /**
+   * Institutional AA V2 pending tasks：共同签署者本地优先 + 15s daemon 拉取链上 task。
+   * 发起者离线 EIP-712 上链后，共管方靠本 feeder 发现待投票项（非 gossip alone）。
+   */
+  const [aaV2PendingNeedVoteCount, setAaV2PendingNeedVoteCount] = useState(0)
+  const aaV2PendingInFlightRef = useRef(false)
+
+  const refreshLocalAaV2PendingNeedVoteCount = useCallback((eoa: string) => {
+    if (!ethers.isAddress(eoa)) {
+      setAaV2PendingNeedVoteCount(0)
+      return
+    }
+    try {
+      const n = loadAllAaMultisigTasksForWallet(eoa).filter((t) =>
+        viewerNeedsToSignMultisigTask(t, eoa)
+      ).length
+      setAaV2PendingNeedVoteCount(n)
+    } catch {
+      /* keep last trusted count */
+    }
+  }, [])
+
+  const runAaV2PendingTasksFeedTick = useCallback(async (): Promise<void> => {
+    if (aaV2PendingInFlightRef.current) return
+    const raw = profilesRef.current?.[0]?.keyID?.trim() ?? ''
+    if (!raw || !ethers.isAddress(raw)) {
+      setAaV2PendingNeedVoteCount(0)
+      return
+    }
+    aaV2PendingInFlightRef.current = true
+    try {
+      const r = await runAaInstitutionalV2PendingTasksDaemonTick(raw)
+      if (r.ok) {
+        setAaV2PendingNeedVoteCount(r.pendingNeedVote)
+      } else {
+        refreshLocalAaV2PendingNeedVoteCount(raw)
+      }
+    } catch {
+      refreshLocalAaV2PendingNeedVoteCount(raw)
+    } finally {
+      aaV2PendingInFlightRef.current = false
+    }
+  }, [refreshLocalAaV2PendingNeedVoteCount])
+
+  const refreshAaV2PendingTasks = useCallback(async () => {
+    await runAaV2PendingTasksFeedTick()
+  }, [runAaV2PendingTasksFeedTick])
+
+  useLayoutEffect(() => {
+    const raw = profileWalletKeyId?.trim() ?? ''
+    if (!raw || !ethers.isAddress(raw)) {
+      setAaV2PendingNeedVoteCount(0)
+      return
+    }
+    refreshLocalAaV2PendingNeedVoteCount(raw)
+  }, [profileWalletKeyId, refreshLocalAaV2PendingNeedVoteCount])
+
+  /**
    * CoNET Mining 全网指标（Total staked validators / DePIN nodes）：本地优先 + 6s 全局喂料。
    * 与 CoNetMiningDetailPage 同源（conetNetworkStats / conetDepinStats）。
    */
@@ -2010,6 +2084,29 @@ export function DaemonProvider({ children }: DaemonProps) {
     }
   }, [runDiscoverMerchantStatsFeedTick])
 
+  /** Institutional AA V2 pending：共同签署者 15s daemon 拉取链上 task → 本地投票列表 */
+  useEffect(() => {
+    let cancelled = false
+    let timer: number | undefined
+    const runChain = () => {
+      if (cancelled) return
+      void (async () => {
+        try {
+          await runAaV2PendingTasksFeedTick()
+        } finally {
+          if (!cancelled) {
+            timer = window.setTimeout(runChain, AA_V2_PENDING_TASKS_FEED_MS) as unknown as number
+          }
+        }
+      })()
+    }
+    runChain()
+    return () => {
+      cancelled = true
+      if (timer !== undefined) window.clearTimeout(timer)
+    }
+  }, [runAaV2PendingTasksFeedTick, profileWalletKeyId])
+
   return (
     <Daemon.Provider value={{ power, setPower, sRegion, setSRegion, allRegions, setAllRegions, setRuleVisible,hasNewVersion, setHasNewVersion, version, secureCode, setSecureCode,
 				closestRegion, setClosestRegion, isRandom, setIsRandom, miningData, setMiningData, currentBlock,setCurrentBlock,paymentLink, setPaymentLink, redeemCode, setRedeemCode,
@@ -2025,6 +2122,7 @@ export function DaemonProvider({ children }: DaemonProps) {
 				conetNetworkStats, conetDepinStats, conetWalletBalances, conetAaWalletBalances, validatorWalletNodeProfile, unifiedIncomeStats, referrerSummary,
 				referralL0StartKitQuota, refreshReferralL0StartKitQuota,
 				discoverMerchantStatByCard, registerDiscoverMerchantStatFeedCards, applyDiscoverMerchantLikeCountDelta,
+				aaV2PendingNeedVoteCount, refreshAaV2PendingTasks,
 				setGetWebFilter,switchValue, setSwitchValue, webFilterRef, quickLinksShow, setQuickLinksShow, duplicateAccount, checkinBalanceUP, setCheckinBalanceUP, gossip, setGossip,
 				beamioUsers, setbBeamioUsers, showFooter, setShowFooter, chatSearchOpen, setChatSearchOpen, payMePayment, setPayMePayment, navigateLeftButtonArray, setNavigateLeftButtonArray, allNodes, setAllNodes,
 				chatHomeItem,setChatHomeItem,scanData, setScanData, scanIntent, setScanIntent, voucherPayAmount, setVoucherPayAmount, voucherPayToAA, setVoucherPayToAA, voucherPayError, setVoucherPayError, messageCount, setMessageCount, msgCountLockRef, seenMsgRef, scanRef, historyPayData, setHistoryPayData,

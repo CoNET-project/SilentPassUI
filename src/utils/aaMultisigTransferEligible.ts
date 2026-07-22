@@ -3,7 +3,8 @@ import type { AaMultisigTaskLocal } from '@/utils/aaMultisigProtocol'
 import { listAaMultisigStorageAaAccounts } from '@/utils/aaMultisigLocalStore'
 import { readAaThresholdPolicy, type AaThresholdPolicy } from '@/utils/aaMultisigUserOp'
 import { listOwnInstitutionalAa, resolveBeamioTagForAddress } from '@/utils/institutionalAaAccounts'
-import { CONET_AA_FACTORY } from '@/config/chainAddresses'
+import { BEAMIO_AA_FACTORY_V2 } from '@/config/chainAddresses'
+import { isInstitutionalAaV2 } from '@/utils/aaInstitutionalV2Eip712'
 
 export type AaMultisigTransferEligibleWallet = {
 	aaAccount: string
@@ -98,14 +99,14 @@ export async function discoverAaMultisigTransferEligibleWallets(
 }
 
 /**
- * Institutional AA Multisig list: own index≥1 Smart Wallets ∪ AAs where viewer is a manager.
- * Explicitly excludes the viewer's personal Express Pay AA (index=0 / profile aaAccount).
+ * Institutional AA Multisig list: own V2 Factory AAs ∪ V2 AAs where viewer is a manager.
+ * Excludes personal Express Pay (V1 index=0) and abandoned V1 institutional AAs.
  */
 export async function discoverInstitutionalManageableWallets(
 	provider: ethers.Provider,
 	viewerEoa: string,
 	opts?: {
-		/** Personal Express Pay AA (index=0) — excluded from the list. */
+		/** Personal Express Pay AA (V1 index=0) — excluded from the list. */
 		primaryAaAccount?: string
 		tasks?: AaMultisigTaskLocal[]
 		factoryAddress?: string
@@ -129,12 +130,11 @@ export async function discoverInstitutionalManageableWallets(
 	}
 
 	const byAa = new Map<string, InstitutionalManageableWallet>()
+	const factory = opts?.factoryAddress ?? BEAMIO_AA_FACTORY_V2
 
-	const ownInstitutional = await listOwnInstitutionalAa(
-		provider,
-		viewerEoa,
-		opts?.factoryAddress ?? CONET_AA_FACTORY
-	).catch(() => [] as Awaited<ReturnType<typeof listOwnInstitutionalAa>>)
+	const ownInstitutional = await listOwnInstitutionalAa(provider, viewerEoa, factory).catch(
+		() => [] as Awaited<ReturnType<typeof listOwnInstitutionalAa>>
+	)
 
 	for (const row of ownInstitutional) {
 		const key = row.aa.toLowerCase()
@@ -167,6 +167,7 @@ export async function discoverInstitutionalManageableWallets(
 		if (byAa.has(key)) continue
 		try {
 			const aaAccount = ethers.getAddress(raw)
+			if (!(await isInstitutionalAaV2(aaAccount, provider))) continue
 			const policy = await readAaThresholdPolicy(provider, aaAccount, {
 				fallbackEoa: opts?.fallbackEoa ?? viewerEoa,
 			})

@@ -15,6 +15,8 @@ import {
 	Plus,
 	Minus,
 	ChevronDown,
+	Eye,
+	EyeOff,
 } from 'lucide-react'
 import { Toast } from 'antd-mobile'
 import { ethers } from 'ethers'
@@ -40,6 +42,7 @@ import {
 	AA_MULTISIG_TASKS_CHANGED_EVENT,
 	loadAllAaMultisigTasksForWallet,
 	filterPendingAaMultisigTasksForSigner,
+	getAaMultisigTaskAny,
 	upsertAaMultisigTaskRecord,
 	removeAaMultisigTaskRecord,
 	pruneFailedAaMultisigTasksForWallet,
@@ -51,6 +54,7 @@ import {
 	formatMultisigSignatureProgress,
 	multisigHistorySummary,
 	multisigPendingSecondaryMessage,
+	multisigTaskDeepLinkTab,
 	multisigTaskStatusChipLabel,
 	AA_MULTISIG_BLOCK_NEW_TRANSFER_TOAST,
 	formatBeamioTagDisplayLine,
@@ -63,7 +67,7 @@ import {
 	concatMultisigSignatures,
 	isSoleSelfSignerMultisig,
 	mergeInboundMultisigInner,
-	sortManagersStrict,
+	buildManagersOwnerFirst,
 	type AaMultisigTaskLocal,
 	type AaMultisigTransferAssetId,
 } from '@/utils/aaMultisigProtocol'
@@ -94,6 +98,10 @@ import {
 	mergeTrustedInstitutionalManageableWalletsLocal,
 	upsertInstitutionalManageableWalletLocal,
 } from '@/utils/institutionalManageableWalletsLocalCache'
+import {
+	loadInstitutionalAaHiddenSet,
+	setInstitutionalAaHidden,
+} from '@/utils/institutionalAaListUiPrefs'
 import {
 	buildUnsignedAaMultisigUserOp,
 	encodeAAExecuteConetAssetTransfer,
@@ -132,6 +140,23 @@ import {
 	resolveCosignerEoaFromInput,
 	resolveCosignerEoaFromSearchRow,
 } from '@/utils/resolveCosignerWalletIdentity'
+import {
+	defaultAaV2DeadlineSec,
+	isInstitutionalAaV2,
+	newAaV2SigNonce,
+	relayAaV2ProposeSetPolicy,
+	relayAaV2ProposeTransfer,
+	relayAaV2Vote,
+	signAaV2ProposeSetPolicy,
+	signAaV2ProposeTransfer,
+	signAaV2Vote,
+	tokenAddressForTransferAsset,
+} from '@/utils/aaInstitutionalV2Eip712'
+import {
+	getOnChainTaskId,
+	isAaV2LocalTask,
+	syncAaV2TasksIntoLocal,
+} from '@/utils/aaInstitutionalV2Tasks'
 
 type TabId = 'pending' | 'transfer' | 'history'
 
@@ -578,6 +603,54 @@ function signerDisplayName(
 	return null
 }
 
+/** Compact Beamio capsule for Smart Wallet policy owner (co-signer rows only; owner hides own tag). */
+function OwnerBeamioTagCapsule({
+	ownerEoa,
+	tagLine,
+	imgSrc,
+	displayName,
+	muted = false,
+}: {
+	ownerEoa: string
+	tagLine: string
+	imgSrc: string
+	displayName?: string | null
+	/** Collapsed / hidden list row — gray identity capsule. */
+	muted?: boolean
+}) {
+	return (
+		<span
+			className={
+				muted
+					? 'inline-flex max-w-[14rem] shrink-0 items-center gap-1.5 rounded-full border border-slate-200 bg-slate-100 py-1 pl-1 pr-2.5 dark:border-slate-600 dark:bg-slate-800/80'
+					: 'inline-flex max-w-[12rem] shrink-0 items-center gap-1.5 rounded-full border border-slate-200/90 bg-white py-0.5 pl-0.5 pr-2 shadow-[0_1px_2px_rgba(15,23,42,0.06)] dark:border-slate-600 dark:bg-slate-800'
+			}
+			title={displayName ? `${displayName} · ${tagLine}` : tagLine}
+			aria-label={muted ? `Hidden wallet ${tagLine}` : `Owner ${tagLine}`}
+		>
+			<img
+				src={imgSrc}
+				alt=""
+				className={
+					muted
+						? 'h-6 w-6 shrink-0 rounded-full object-cover bg-slate-200 opacity-70 grayscale dark:bg-slate-700'
+						: 'h-5 w-5 shrink-0 rounded-full object-cover bg-slate-100 dark:bg-slate-700'
+				}
+			/>
+			<span
+				className={
+					muted
+						? 'min-w-0 truncate text-[12px] font-semibold text-slate-500 dark:text-slate-400'
+						: 'min-w-0 truncate text-[11px] font-semibold text-[#424655] dark:text-slate-200'
+				}
+			>
+				{tagLine}
+			</span>
+			<span className="sr-only">{shortAddr(ownerEoa)}</span>
+		</span>
+	)
+}
+
 function autoRequiredSignaturesAfterAddCosigner(
 	currentThreshold: number,
 	currentManagerCount: number,
@@ -606,7 +679,7 @@ export default function AaMultisigPage() {
 	const navigate = useNavigate()
 	const [searchParams, setSearchParams] = useSearchParams()
 	const [focusTaskId, setFocusTaskId] = useState<string | null>(null)
-	const { profiles, setShowFooter, allNodes } = useDaemonContext()
+	const { profiles, setShowFooter, allNodes, refreshAaV2PendingTasks } = useDaemonContext()
 	const { opacity: backBtnOpacity, onScroll: onPageScroll, setRef: setPageScrollRef } =
 		useScrollCapsuleOpacity(true)
 	const { lookupByAddress, toCapsuleItem, avatarImgUrl, ensureProfilesForAddresses, resolveTag } =
@@ -645,6 +718,12 @@ export default function AaMultisigPage() {
 	const [institutionalWallets, setInstitutionalWallets] = useState<InstitutionalManageableWallet[]>(
 		[]
 	)
+	/** AA addresses (lower) the user collapsed in the institutional list. */
+	const [hiddenInstitutionalAa, setHiddenInstitutionalAa] = useState<Set<string>>(() => new Set())
+	/** Session peek: temporarily expand a hidden row to show details. */
+	const [peekExpandedInstitutionalAa, setPeekExpandedInstitutionalAa] = useState<Set<string>>(
+		() => new Set()
+	)
 	const [selectedManagedAa, setSelectedManagedAa] = useState('')
 	const [institutionalListLoading, setInstitutionalListLoading] = useState(false)
 	const [creatingInstitutionalAa, setCreatingInstitutionalAa] = useState(false)
@@ -667,6 +746,8 @@ export default function AaMultisigPage() {
 	const showInstitutionalCreateForm = !hasInstitutionalWallets || showNewInstitutionalWalletForm
 	/** Persists until the next Create multisig task press (Toast alone disappears too fast). */
 	const [transferCreateError, setTransferCreateError] = useState<string | null>(null)
+	/** Add / reduce signer drawer: inline error above primary CTA (replaces Toast for failures). */
+	const [sigsDrawerError, setSigsDrawerError] = useState<string | null>(null)
 	const [signersAaAccount, setSignersAaAccount] = useState('')
 	const [importPayload, setImportPayload] = useState('')
 	const [showImportPanel, setShowImportPanel] = useState(false)
@@ -883,6 +964,22 @@ export default function AaMultisigPage() {
 		setTasks(loadAllAaMultisigTasksForWallet(eoa))
 	}, [eoa])
 
+	const syncSelectedAaV2Tasks = useCallback(async () => {
+		if (!eoa || !selectedManagedAa) return
+		try {
+			if (!(await isInstitutionalAaV2(selectedManagedAa))) return
+			await syncAaV2TasksIntoLocal(eoa, selectedManagedAa, upsertAaMultisigTaskRecord)
+			reloadTasks()
+			void refreshAaV2PendingTasks()
+		} catch {
+			/* keep local */
+		}
+	}, [eoa, selectedManagedAa, reloadTasks, refreshAaV2PendingTasks])
+
+	useEffect(() => {
+		void syncSelectedAaV2Tasks()
+	}, [syncSelectedAaV2Tasks])
+
 	const reloadTransferAssets = useCallback(async () => {
 		if (!transferAaAccount) {
 			setTransferAssetOptions([])
@@ -1047,6 +1144,97 @@ export default function AaMultisigPage() {
 		void ensureProfilesForAddresses(transferWalletOwnerEoas)
 	}, [transferWalletOwnerEoas, ensureProfilesForAddresses])
 
+	const institutionalOwnerEoas = useMemo(() => {
+		const owners = new Set<string>()
+		for (const w of institutionalWallets) {
+			const owner =
+				resolveEffectiveAaOwner(w.policy, eoa) ??
+				resolveAaMultisigPolicyOwnerEoa(w.policy.managers)
+			if (owner) owners.add(owner)
+		}
+		return [...owners]
+	}, [institutionalWallets, eoa])
+
+	useEffect(() => {
+		if (!institutionalOwnerEoas.length) return
+		void ensureProfilesForAddresses(institutionalOwnerEoas)
+	}, [institutionalOwnerEoas, ensureProfilesForAddresses])
+
+	useEffect(() => {
+		if (!eoa) {
+			setHiddenInstitutionalAa(new Set())
+			setPeekExpandedInstitutionalAa(new Set())
+			return
+		}
+		setHiddenInstitutionalAa(loadInstitutionalAaHiddenSet(eoa))
+		setPeekExpandedInstitutionalAa(new Set())
+	}, [eoa])
+
+	const hideInstitutionalAaRow = useCallback(
+		(aa: string) => {
+			if (!eoa || !ethers.isAddress(aa)) return
+			const next = setInstitutionalAaHidden(eoa, aa, true)
+			setHiddenInstitutionalAa(new Set(next))
+			const lower = ethers.getAddress(aa).toLowerCase()
+			setPeekExpandedInstitutionalAa((prev) => {
+				if (!prev.has(lower)) return prev
+				const n = new Set(prev)
+				n.delete(lower)
+				return n
+			})
+			// Hidden wallets cannot be operated — drop selection so tab bar disappears.
+			if (selectedManagedAaRef.current.toLowerCase() === lower) {
+				selectManagedAa('')
+			}
+		},
+		[eoa, selectManagedAa]
+	)
+
+	const restoreInstitutionalAaRow = useCallback(
+		(aa: string) => {
+			if (!eoa || !ethers.isAddress(aa)) return
+			const next = setInstitutionalAaHidden(eoa, aa, false)
+			setHiddenInstitutionalAa(new Set(next))
+			const lower = ethers.getAddress(aa).toLowerCase()
+			setPeekExpandedInstitutionalAa((prev) => {
+				if (!prev.has(lower)) return prev
+				const n = new Set(prev)
+				n.delete(lower)
+				return n
+			})
+			// Restoring makes the wallet operable again — select it for tabs.
+			selectManagedAa(aa)
+		},
+		[eoa, selectManagedAa]
+	)
+
+	const peekInstitutionalAaRow = useCallback((aa: string) => {
+		if (!ethers.isAddress(aa)) return
+		const lower = ethers.getAddress(aa).toLowerCase()
+		setPeekExpandedInstitutionalAa((prev) => {
+			if (prev.has(lower)) return prev
+			const n = new Set(prev)
+			n.add(lower)
+			return n
+		})
+	}, [])
+
+	/** Hidden wallets are view-only until "Show normally" — no Pending/Transfer/History tabs. */
+	const selectedManagedAaOperable = useMemo(() => {
+		const aa = selectedManagedAa.trim()
+		if (!aa || !ethers.isAddress(aa)) return ''
+		if (hiddenInstitutionalAa.has(aa.toLowerCase())) return ''
+		return aa
+	}, [selectedManagedAa, hiddenInstitutionalAa])
+
+	// Drop selection if the current AA became hidden (deep link / race) so tab bar stays off.
+	useEffect(() => {
+		const aa = selectedManagedAa.trim()
+		if (!aa || !ethers.isAddress(aa)) return
+		if (!hiddenInstitutionalAa.has(aa.toLowerCase())) return
+		selectManagedAa('')
+	}, [selectedManagedAa, hiddenInstitutionalAa, selectManagedAa])
+
 	const transferAaHasActiveTasks = useMemo(
 		() => (transferAaAccount ? hasActiveMultisigTasksForAa(tasks, transferAaAccount) : false),
 		[tasks, transferAaAccount]
@@ -1106,16 +1294,42 @@ export default function AaMultisigPage() {
 	useEffect(() => {
 		const tabParam = searchParams.get('tab')
 		const taskId = searchParams.get('taskId')?.trim()
+		const aaParam = searchParams.get('aaAccount')?.trim()
+
+		// Chat deep link: select the Smart Wallet so Pending/History tabs are visible.
+		let deepLinkAa = ''
+		if (aaParam && ethers.isAddress(aaParam)) {
+			deepLinkAa = ethers.getAddress(aaParam)
+		}
+		if (taskId && eoa) {
+			const stored = getAaMultisigTaskAny(eoa, taskId)
+			if (stored?.aaAccount && ethers.isAddress(stored.aaAccount) && !deepLinkAa) {
+				deepLinkAa = ethers.getAddress(stored.aaAccount)
+			}
+			if (stored) {
+				setTab(multisigTaskDeepLinkTab(stored))
+				setFocusTaskId(taskId)
+				if (deepLinkAa && !hiddenInstitutionalAa.has(deepLinkAa.toLowerCase())) {
+					selectManagedAa(deepLinkAa)
+				}
+				return
+			}
+		}
+		if (deepLinkAa && !hiddenInstitutionalAa.has(deepLinkAa.toLowerCase())) {
+			selectManagedAa(deepLinkAa)
+		}
+
 		if (tabParam === 'pending' || tabParam === 'transfer' || tabParam === 'history') {
 			setTab(tabParam)
 		} else if (tabParam === 'signers' || taskId) {
 			setTab('pending')
 		}
 		if (taskId) setFocusTaskId(taskId)
-	}, [searchParams])
+	}, [searchParams, eoa, selectManagedAa, hiddenInstitutionalAa])
 
 	useEffect(() => {
-		if (!focusTaskId || tab !== 'pending') return
+		if (!focusTaskId || (tab !== 'pending' && tab !== 'history')) return
+		if (!selectedManagedAaOperable) return
 		const el = document.getElementById(`aa-multisig-task-${focusTaskId}`)
 		if (!el) return
 		el.scrollIntoView({ behavior: 'smooth', block: 'center' })
@@ -1124,7 +1338,7 @@ export default function AaMultisigPage() {
 			setSearchParams({}, { replace: true })
 		}, 2400)
 		return () => window.clearTimeout(clear)
-	}, [focusTaskId, tab, tasks, setSearchParams])
+	}, [focusTaskId, tab, selectedManagedAaOperable, tasks, setSearchParams])
 
 	useEffect(() => {
 		setShowFooter(false)
@@ -1178,10 +1392,13 @@ export default function AaMultisigPage() {
 		() => (eoa ? filterReadyMultisigForManager(tasks, eoa) : []),
 		[tasks, eoa]
 	)
-	const history = useMemo(
-		() => (eoa ? filterHistoryMultisigForManager(tasks, eoa) : []),
-		[tasks, eoa]
-	)
+	const history = useMemo(() => {
+		if (!eoa || !selectedManagedAa) return []
+		const aaLower = selectedManagedAa.toLowerCase()
+		return filterHistoryMultisigForManager(tasks, eoa).filter(
+			(t) => t.aaAccount.toLowerCase() === aaLower
+		)
+	}, [tasks, eoa, selectedManagedAa])
 
 	const [chainEntryPointNonce, setChainEntryPointNonce] = useState<string | null>(null)
 	const nonceReconcileInFlightRef = useRef(false)
@@ -1312,14 +1529,105 @@ export default function AaMultisigPage() {
 		busyKey: string
 		gossipRecipients: string[]
 		onAfterSuccess?: () => void
+		/** When set, failures go here instead of Toast (e.g. Add signing wallet drawer). */
+		reportError?: (message: string) => void
 	}) => {
-		if (!requireWalletReady() || !policy || !signersAaAccount) return
+		const fail = (message: string) => {
+			const msg = message.trim() || 'Request failed.'
+			if (opts.reportError) opts.reportError(msg)
+			else Toast.show({ content: msg.slice(0, 120) })
+		}
+		if (opts.reportError) {
+			if (!eoa || !signersAaAccount) {
+				fail(
+					transferEligibleLoading && transferEligibleWallets.length === 0
+						? 'Loading Smart Wallets you can manage…'
+						: 'Select an institutional Smart Wallet above.'
+				)
+				return
+			}
+			if (!policy?.managers.some((m) => m.toLowerCase() === eoa.toLowerCase())) {
+				fail('You are not a signer on this Smart Wallet.')
+				return
+			}
+			if (!privateKeyArmor) {
+				fail('Wallet signing key unavailable.')
+				return
+			}
+		} else if (!requireWalletReady() || !policy || !signersAaAccount) {
+			return
+		}
+		if (!policy || !signersAaAccount) return
 		if (opts.newThreshold < 1 || opts.newThreshold > opts.newManagers.length) {
-			Toast.show({ content: 'Required signatures must be between 1 and the total signer count.' })
+			fail('Required signatures must be between 1 and the total signer count.')
 			return
 		}
 		setBusy(opts.busyKey)
 		try {
+			const useV2 = await isInstitutionalAaV2(signersAaAccount)
+			if (useV2) {
+				const ownerAddr =
+					resolveEffectiveAaOwner(policy, eoa) ??
+					(ethers.isAddress(policy.owner) ? ethers.getAddress(policy.owner) : eoa)
+				const managersSorted = buildManagersOwnerFirst(ownerAddr, opts.newManagers)
+				const deadline = defaultAaV2DeadlineSec()
+				const nonce = newAaV2SigNonce()
+				const signature = await signAaV2ProposeSetPolicy({
+					privateKeyArmor,
+					account: signersAaAccount,
+					managersSorted,
+					newThreshold: opts.newThreshold,
+					deadline,
+					nonce,
+				})
+				const proposed = await relayAaV2ProposeSetPolicy({
+					account: signersAaAccount,
+					managersSorted,
+					newThreshold: opts.newThreshold,
+					deadline,
+					nonce,
+					signature,
+					signerEoa: eoa,
+				})
+				if (!proposed.success) {
+					fail(proposed.error.slice(0, 240))
+					return
+				}
+				// Proposer auto-approve (counts toward threshold)
+				const voteNonce = newAaV2SigNonce()
+				const voteDeadline = defaultAaV2DeadlineSec()
+				const voteSig = await signAaV2Vote({
+					privateKeyArmor,
+					account: signersAaAccount,
+					taskId: proposed.taskId,
+					approve: true,
+					deadline: voteDeadline,
+					nonce: voteNonce,
+				})
+				const voted = await relayAaV2Vote({
+					account: signersAaAccount,
+					taskId: proposed.taskId,
+					approve: true,
+					deadline: voteDeadline,
+					nonce: voteNonce,
+					signature: voteSig,
+					signerEoa: eoa,
+				})
+				if (!voted.success) {
+					fail(
+						`Proposed on-chain (#${proposed.taskId}). Auto-approve failed: ${voted.error.slice(0, 160)}`
+					)
+					await syncAaV2TasksIntoLocal(eoa, signersAaAccount, upsertAaMultisigTaskRecord)
+					reloadTasks()
+					return
+				}
+				Toast.show({ content: `Policy update proposed on-chain (#${proposed.taskId}).` })
+				await syncAaV2TasksIntoLocal(eoa, signersAaAccount, upsertAaMultisigTaskRecord)
+				opts.onAfterSuccess?.()
+				reloadTasks()
+				return
+			}
+
 			const { userOpNonce, expired, chainNonce } = await prepareAaMultisigNewTaskNonce(
 				eoa,
 				signersAaAccount,
@@ -1383,7 +1691,7 @@ export default function AaMultisigPage() {
 			reloadTasks()
 		} catch (e: unknown) {
 			const msg = e instanceof Error ? e.message : String(e)
-			Toast.show({ content: msg.slice(0, 120) })
+			fail(msg.slice(0, 240))
 		} finally {
 			setBusy(null)
 		}
@@ -1392,9 +1700,12 @@ export default function AaMultisigPage() {
 	const handleSelectCosigner = async (item: searchResult) => {
 		const signerEoa = await resolveCosignerEoaFromSearchRow(item)
 		if (!signerEoa) {
-			Toast.show({ content: 'Co-signer must be a Beamio EOA (not a contract).' })
+			const msg = 'Co-signer must be a Beamio EOA (not a contract).'
+			if (sigsDrawerMode === 'add') setSigsDrawerError(msg)
+			else Toast.show({ content: msg })
 			return
 		}
+		setSigsDrawerError(null)
 		setSelectedCosigner({ ...item, address: signerEoa })
 		setNewSignerTag('')
 		setCosignerSearchResults([])
@@ -1425,6 +1736,7 @@ export default function AaMultisigPage() {
 		setNewSignerTag('')
 		setShowCosignerDropdown(false)
 		setCosignerSearchResults([])
+		setSigsDrawerError(null)
 	}, [])
 
 	const openSigsDrawer = useCallback(
@@ -1440,6 +1752,7 @@ export default function AaMultisigPage() {
 			setNewSignerTag('')
 			setShowCosignerDropdown(false)
 			setCosignerSearchResults([])
+			setSigsDrawerError(null)
 			if (mode === 'add') {
 				setDrawerThreshold(
 					autoRequiredSignaturesAfterAddCosigner(
@@ -1531,30 +1844,34 @@ export default function AaMultisigPage() {
 	])
 
 	const proposeAddSignerFromDrawer = async () => {
-		if (!requireWalletReady() || !policy) return
+		setSigsDrawerError(null)
+		if (!policy) {
+			setSigsDrawerError('Smart Wallet policy unavailable.')
+			return
+		}
 		if (
 			!selectedManagedAa ||
 			!signersAaAccount ||
 			signersAaAccount.toLowerCase() !== selectedManagedAa.toLowerCase()
 		) {
-			Toast.show({ content: 'Loading Smart Wallet policy…' })
+			setSigsDrawerError('Loading Smart Wallet policy…')
 			return
 		}
 		try {
 			const signerEoa = await resolveNewSignerEoa()
 			if (!signerEoa) {
-				Toast.show({ content: 'Search and select a @BeamioTag for the new signer.' })
+				setSigsDrawerError('Search and select a @BeamioTag for the new signer.')
 				return
 			}
 			if (signerEoa.toLowerCase() === eoa.toLowerCase()) {
-				Toast.show({ content: 'You cannot add yourself as a co-signer.' })
+				setSigsDrawerError('You cannot add yourself as a co-signer.')
 				return
 			}
 			if (policy.managers.some((m) => m.toLowerCase() === signerEoa.toLowerCase())) {
-				Toast.show({ content: 'This address is already a co-signer.' })
+				setSigsDrawerError('This address is already a co-signer.')
 				return
 			}
-			const managers = sortManagersStrict(
+			const managers = buildManagersOwnerFirst(
 				resolveEffectiveAaOwner(policy, eoa) ?? policy.owner,
 				[
 					...policy.managers.filter((m) => m.toLowerCase() !== signerEoa.toLowerCase()),
@@ -1567,6 +1884,7 @@ export default function AaMultisigPage() {
 				title: 'Update multisig signers',
 				busyKey: 'policy',
 				gossipRecipients: managers,
+				reportError: setSigsDrawerError,
 				onAfterSuccess: () => {
 					setNewSignerTag('')
 					setSelectedCosigner(null)
@@ -1575,7 +1893,7 @@ export default function AaMultisigPage() {
 			})
 		} catch (e: unknown) {
 			const msg = e instanceof Error ? e.message : String(e)
-			Toast.show({ content: msg.slice(0, 120) })
+			setSigsDrawerError(msg.slice(0, 240))
 		}
 	}
 
@@ -1598,7 +1916,7 @@ export default function AaMultisigPage() {
 			Toast.show({ content: 'The owner cannot be removed from the signer set.' })
 			return
 		}
-		const managers = sortManagersStrict(
+		const managers = buildManagersOwnerFirst(
 			owner,
 			policy.managers.filter(
 				(m) => m.toLowerCase() !== drawerRemoveTargetEoa.toLowerCase()
@@ -1634,7 +1952,24 @@ export default function AaMultisigPage() {
 			setTransferCreateError('No transferable assets in this Smart Wallet.')
 			return
 		}
-		if (hasActiveMultisigTasksForAa(tasks, transferAaAccount)) {
+		const useV2Early = await isInstitutionalAaV2(transferAaAccount)
+		if (useV2Early) {
+			try {
+				const aa = new ethers.Contract(
+					transferAaAccount,
+					['function policyLockActive() view returns (bool)'],
+					aaMultisigProvider
+				)
+				if (await aa.policyLockActive()) {
+					setTransferCreateError(
+						'A policy change is pending — transfers are frozen until it completes.'
+					)
+					return
+				}
+			} catch {
+				/* continue; Cluster will re-check */
+			}
+		} else if (hasActiveMultisigTasksForAa(tasks, transferAaAccount)) {
 			setTransferCreateError(AA_MULTISIG_BLOCK_NEW_TRANSFER_TOAST)
 			return
 		}
@@ -1654,6 +1989,70 @@ export default function AaMultisigPage() {
 				setTransferCreateError('Amount exceeds available balance.')
 				return
 			}
+
+			const useV2 = useV2Early
+			if (useV2) {
+				const token = tokenAddressForTransferAsset(transferAssetId)
+				const deadline = defaultAaV2DeadlineSec()
+				const nonce = newAaV2SigNonce()
+				const signature = await signAaV2ProposeTransfer({
+					privateKeyArmor,
+					account: transferAaAccount,
+					token,
+					to: ethers.getAddress(to),
+					amount: amountRaw,
+					deadline,
+					nonce,
+				})
+				const proposed = await relayAaV2ProposeTransfer({
+					account: transferAaAccount,
+					token,
+					to: ethers.getAddress(to),
+					amount: amountRaw.toString(),
+					deadline,
+					nonce,
+					signature,
+					signerEoa: eoa,
+				})
+				if (!proposed.success) {
+					setTransferCreateError(proposed.error)
+					return
+				}
+				const voteNonce = newAaV2SigNonce()
+				const voteDeadline = defaultAaV2DeadlineSec()
+				const voteSig = await signAaV2Vote({
+					privateKeyArmor,
+					account: transferAaAccount,
+					taskId: proposed.taskId,
+					approve: true,
+					deadline: voteDeadline,
+					nonce: voteNonce,
+				})
+				const voted = await relayAaV2Vote({
+					account: transferAaAccount,
+					taskId: proposed.taskId,
+					approve: true,
+					deadline: voteDeadline,
+					nonce: voteNonce,
+					signature: voteSig,
+					signerEoa: eoa,
+				})
+				await syncAaV2TasksIntoLocal(eoa, transferAaAccount, upsertAaMultisigTaskRecord)
+				reloadTasks()
+				if (!voted.success) {
+					Toast.show({
+						content: `Transfer proposed (#${proposed.taskId}). Auto-approve failed: ${voted.error.slice(0, 80)}`,
+					})
+				} else {
+					Toast.show({
+						content: `Transfer proposed on-chain (#${proposed.taskId}).`,
+					})
+				}
+				setTransferAmount('')
+				setTransferTo('')
+				return
+			}
+
 			const { chainNonce, userOpNonce, expired } = await prepareAaMultisigNewTaskNonce(
 				eoa,
 				transferAaAccount,
@@ -1770,6 +2169,48 @@ export default function AaMultisigPage() {
 
 	const signTask = async (task: AaMultisigTaskLocal) => {
 		if (!requireWalletReady()) return
+		if (isAaV2LocalTask(task)) {
+			const onChainId = getOnChainTaskId(task)
+			if (!onChainId) {
+				Toast.show({ content: 'Missing on-chain task id.' })
+				return
+			}
+			setBusy(task.taskId)
+			try {
+				const deadline = defaultAaV2DeadlineSec()
+				const nonce = newAaV2SigNonce()
+				const signature = await signAaV2Vote({
+					privateKeyArmor,
+					account: task.aaAccount,
+					taskId: onChainId,
+					approve: true,
+					deadline,
+					nonce,
+				})
+				const voted = await relayAaV2Vote({
+					account: task.aaAccount,
+					taskId: onChainId,
+					approve: true,
+					deadline,
+					nonce,
+					signature,
+					signerEoa: eoa,
+				})
+				if (!voted.success) {
+					Toast.show({ content: voted.error.slice(0, 120) })
+					return
+				}
+				await syncAaV2TasksIntoLocal(eoa, task.aaAccount, upsertAaMultisigTaskRecord)
+				Toast.show({ content: 'Approved on-chain.' })
+				reloadTasks()
+			} catch (e: unknown) {
+				const msg = e instanceof Error ? e.message : String(e)
+				Toast.show({ content: msg.slice(0, 120) })
+			} finally {
+				setBusy(null)
+			}
+			return
+		}
 		const nonceCheck = await assertAaMultisigTaskEntryPointNonceFresh(task.aaAccount, task)
 		if (!nonceCheck.ok) {
 			const expired = markAaMultisigTaskExpiredIfNonceStale(task, nonceCheck.chainNonce)
@@ -1833,6 +2274,48 @@ export default function AaMultisigPage() {
 
 	const rejectTask = async (task: AaMultisigTaskLocal) => {
 		if (!requireWalletReady()) return
+		if (isAaV2LocalTask(task)) {
+			const onChainId = getOnChainTaskId(task)
+			if (!onChainId) {
+				Toast.show({ content: 'Missing on-chain task id.' })
+				return
+			}
+			setBusy(`reject-${task.taskId}`)
+			try {
+				const deadline = defaultAaV2DeadlineSec()
+				const nonce = newAaV2SigNonce()
+				const signature = await signAaV2Vote({
+					privateKeyArmor,
+					account: task.aaAccount,
+					taskId: onChainId,
+					approve: false,
+					deadline,
+					nonce,
+				})
+				const voted = await relayAaV2Vote({
+					account: task.aaAccount,
+					taskId: onChainId,
+					approve: false,
+					deadline,
+					nonce,
+					signature,
+					signerEoa: eoa,
+				})
+				if (!voted.success) {
+					Toast.show({ content: voted.error.slice(0, 120) })
+					return
+				}
+				await syncAaV2TasksIntoLocal(eoa, task.aaAccount, upsertAaMultisigTaskRecord)
+				Toast.show({ content: 'Rejected on-chain.' })
+				reloadTasks()
+			} catch (e: unknown) {
+				const msg = e instanceof Error ? e.message : String(e)
+				Toast.show({ content: msg.slice(0, 120) })
+			} finally {
+				setBusy(null)
+			}
+			return
+		}
 		setBusy(`reject-${task.taskId}`)
 		try {
 			const now = Date.now()
@@ -1875,6 +2358,12 @@ export default function AaMultisigPage() {
 			return { ok: false, error }
 		}
 		if (!requireWalletReady()) return fail('Wallet not ready.')
+		if (isAaV2LocalTask(task)) {
+			// V2 executes on-chain when threshold is met during vote — no UserOp submit.
+			await syncAaV2TasksIntoLocal(eoa, task.aaAccount, upsertAaMultisigTaskRecord)
+			reloadTasks()
+			return { ok: true }
+		}
 		if (task.signatures.length < task.threshold) {
 			return fail('Not enough signatures yet.')
 		}
@@ -2315,7 +2804,8 @@ export default function AaMultisigPage() {
 					<p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
 						Create and manage Smart Wallets beyond your personal Express Pay wallet. Give each wallet
 						a unique @BeamioTag so others can search and find its address. Use + / − on a wallet to
-						change co-signers; select a wallet for pending approvals, transfers, and history.
+						change co-signers; select a wallet for pending approvals, transfers, and history. Hide a
+						wallet to collapse it to a gray owner tag; tap to expand, or choose Show normally.
 					</p>
 
 					{institutionalListLoading && !hasInstitutionalWallets ? (
@@ -2329,76 +2819,219 @@ export default function AaMultisigPage() {
 							added as a co-signer on another wallet.
 						</p>
 					) : (
-						<ul className="mt-3 space-y-2" role="listbox" aria-label="Institutional Smart Wallets">
-							{institutionalWallets.map((w) => {
-								const selected =
-									selectedManagedAa &&
-									w.aaAccount.toLowerCase() === selectedManagedAa.toLowerCase()
-								const tagLine = w.accountName
-									? w.accountName.startsWith('@')
-										? w.accountName
-										: `@${w.accountName}`
-									: null
-								return (
-									<li key={w.aaAccount}>
-										<div
-											role="option"
-											aria-selected={!!selected}
-											tabIndex={0}
-											onPointerDown={(e) => {
-												const target = e.target as HTMLElement | null
-												if (
-													target?.closest(
-														'select, option, label, a, [data-institutional-aa-no-select]'
-													)
-												) {
-													return
-												}
-												selectManagedAa(w.aaAccount)
-											}}
-											onKeyDown={(e) => {
-												if (e.key === 'Enter' || e.key === ' ') {
-													e.preventDefault()
-													selectManagedAa(w.aaAccount)
-												}
-											}}
-											className={`cursor-pointer rounded-2xl border p-3 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#8d3a8b]/40 ${
-												selected
-													? 'border-[#8d3a8b] bg-[#f5ecff] ring-2 ring-[#8d3a8b]/20 dark:border-[#8d3a8b]/60 dark:bg-slate-800/80'
-													: 'border-slate-200 bg-white hover:border-slate-300 dark:border-slate-700 dark:bg-slate-800/40 dark:hover:border-slate-600'
-											}`}
-										>
-											<div className="flex min-w-0 flex-wrap items-center gap-2">
-												{w.kind === 'comanaged' ? (
-													<span className="shrink-0 rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600 dark:bg-slate-700 dark:text-slate-300">
-														Co-managed
-													</span>
-												) : null}
-												<div
-													className="min-w-0 max-w-full"
-													data-institutional-aa-no-select
-													onPointerDown={(e) => e.stopPropagation()}
+						<div className="mt-3 max-h-[min(50vh,28rem)] overflow-y-auto overscroll-contain pr-1 [scrollbar-gutter:stable] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-300 dark:[&::-webkit-scrollbar-thumb]:bg-slate-600">
+							<ul className="space-y-2" role="listbox" aria-label="Institutional Smart Wallets">
+								{institutionalWallets.map((w) => {
+									const aaLower = w.aaAccount.toLowerCase()
+									const isHidden = hiddenInstitutionalAa.has(aaLower)
+									const isPeeking = peekExpandedInstitutionalAa.has(aaLower)
+									const showCompact = isHidden && !isPeeking
+									const selected =
+										!!selectedManagedAaOperable &&
+										aaLower === selectedManagedAaOperable.toLowerCase()
+									const walletTagLine = w.accountName
+										? w.accountName.startsWith('@')
+											? w.accountName
+											: `@${w.accountName}`
+										: null
+									const ownerEoa =
+										resolveEffectiveAaOwner(w.policy, eoa) ??
+										resolveAaMultisigPolicyOwnerEoa(w.policy.managers)
+									/** Self-owned AA: hide owner @tag chrome; co-signers see owner BeamioTag. */
+									const viewerIsOwner =
+										!!eoa &&
+										!!ownerEoa &&
+										eoa.toLowerCase() === ownerEoa.toLowerCase()
+									const showOwnerBeamioTag = !!ownerEoa && !viewerIsOwner
+									const ownerTag = ownerEoa ? resolveTag(ownerEoa) : ''
+									const ownerCapsule = ownerEoa ? toCapsuleItem(ownerEoa) : null
+									const ownerRecord = ownerEoa ? lookupByAddress(ownerEoa) : null
+									const ownerTagLine = (() => {
+										if (ownerEoa) {
+											const t = (ownerTag ?? '').trim()
+											if (t) return formatBeamioTagDisplayLine(t)
+											if (walletTagLine) return walletTagLine
+											return formatBeamioTagDisplayLine('')
+										}
+										if (walletTagLine) return walletTagLine
+										return `@${shortAddr(w.aaAccount)}`
+									})()
+									const ownerImgSrc =
+										ownerRecord?.image?.trim() ||
+										ownerCapsule?.image?.trim() ||
+										(ownerEoa
+											? avatarImgUrl(ownerRecord?.accountName ?? ownerTag, ownerEoa)
+											: avatarImgUrl(walletTagLine?.replace(/^@/, '') ?? '', w.aaAccount))
+									const ownerDisplayName = ownerEoa
+										? signerDisplayName(ownerCapsule, ownerTag)
+										: null
+									const compactSelfLabel =
+										walletTagLine ?? `@${shortAddr(w.aaAccount)}`
+									const compactSelfImg = avatarImgUrl(
+										walletTagLine?.replace(/^@/, '') ?? '',
+										w.aaAccount
+									)
+									/** Owner vs co-signer card chrome (AA purple vs EOA blue surfaces). */
+									const institutionalItemShellClass = (() => {
+										if (isHidden) {
+											return viewerIsOwner
+												? 'cursor-default border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900/50'
+												: 'cursor-default border-[#dce2f7] bg-[#e9edff]/70 dark:border-slate-600 dark:bg-slate-900/60'
+										}
+										if (viewerIsOwner) {
+											return selected
+												? 'cursor-pointer border-[#8d3a8b] bg-[#f5ecff] ring-2 ring-[#8d3a8b]/20 dark:border-[#8d3a8b]/60 dark:bg-slate-800/80'
+												: 'cursor-pointer border-[#eadcf7] bg-white hover:border-[#8d3a8b]/40 dark:border-slate-700 dark:bg-slate-800/40 dark:hover:border-slate-600'
+										}
+										return selected
+											? 'cursor-pointer border-[#0051d1] bg-[#e9edff] ring-2 ring-[#0051d1]/20 dark:border-[#0051d1]/50 dark:bg-slate-800/80'
+											: 'cursor-pointer border-[#dce2f7] bg-[#e9edff] hover:border-[#0051d1]/35 dark:border-slate-600 dark:bg-[#1a2338]/80 dark:hover:border-slate-500'
+									})()
+									const compactShellClass = viewerIsOwner
+										? 'flex w-full items-center rounded-full border border-slate-200 bg-slate-50 px-1.5 py-1 transition-colors hover:border-slate-300 hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#8d3a8b]/40 dark:border-slate-700 dark:bg-slate-900/60 dark:hover:border-slate-600'
+										: 'flex w-full items-center rounded-full border border-[#dce2f7] bg-[#e9edff] px-1.5 py-1 transition-colors hover:border-[#0051d1]/35 hover:bg-[#e0e8ff] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0051d1]/40 dark:border-slate-600 dark:bg-slate-900/60 dark:hover:border-slate-500'
+
+									if (showCompact) {
+										return (
+											<li key={w.aaAccount}>
+												<button
+													type="button"
+													role="option"
+													aria-selected={false}
+													aria-label={
+														showOwnerBeamioTag
+															? `Expand hidden wallet ${ownerTagLine}`
+															: `Expand hidden wallet ${compactSelfLabel}`
+													}
+													onClick={() => {
+														// Peek only — hidden wallets cannot be selected for tabs / operations.
+														peekInstitutionalAaRow(w.aaAccount)
+													}}
+													className={compactShellClass}
 												>
-													<AaAccountAddressCapsule
-														address={w.aaAccount}
-														beamioTag={tagLine}
-													/>
+													{showOwnerBeamioTag ? (
+														<OwnerBeamioTagCapsule
+															ownerEoa={ownerEoa || w.aaAccount}
+															tagLine={ownerTagLine}
+															imgSrc={ownerImgSrc}
+															displayName={ownerDisplayName}
+															muted
+														/>
+													) : (
+														<OwnerBeamioTagCapsule
+															ownerEoa={w.aaAccount}
+															tagLine={compactSelfLabel}
+															imgSrc={compactSelfImg}
+															muted
+														/>
+													)}
+												</button>
+											</li>
+										)
+									}
+
+									return (
+										<li key={w.aaAccount}>
+											<div
+												role="option"
+												aria-selected={!!selected}
+												tabIndex={isHidden ? -1 : 0}
+												onPointerDown={(e) => {
+													if (isHidden) return
+													const target = e.target as HTMLElement | null
+													if (
+														target?.closest(
+															'select, option, label, a, button, [data-institutional-aa-no-select]'
+														)
+													) {
+														return
+													}
+													selectManagedAa(w.aaAccount)
+												}}
+												onKeyDown={(e) => {
+													if (isHidden) return
+													if (e.key === 'Enter' || e.key === ' ') {
+														e.preventDefault()
+														selectManagedAa(w.aaAccount)
+													}
+												}}
+												className={`rounded-2xl border p-3 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#8d3a8b]/40 ${institutionalItemShellClass}`}
+											>
+												<div className="flex min-w-0 flex-wrap items-center gap-2">
+													{showOwnerBeamioTag ? (
+														<span data-institutional-aa-no-select>
+															<OwnerBeamioTagCapsule
+																ownerEoa={ownerEoa || w.aaAccount}
+																tagLine={ownerTagLine}
+																imgSrc={ownerImgSrc}
+																displayName={ownerDisplayName}
+															/>
+														</span>
+													) : null}
+													<div
+														className="min-w-0 max-w-full"
+														data-institutional-aa-no-select
+														onPointerDown={(e) => e.stopPropagation()}
+													>
+														<AaAccountAddressCapsule
+															address={w.aaAccount}
+															beamioTag={walletTagLine}
+														/>
+													</div>
+													<div
+														className="ml-auto flex shrink-0 items-center gap-1"
+														data-institutional-aa-no-select
+														onPointerDown={(e) => e.stopPropagation()}
+													>
+														{isHidden ? (
+															<button
+																type="button"
+																onClick={() => restoreInstitutionalAaRow(w.aaAccount)}
+																className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300"
+																aria-label="Show this wallet normally"
+															>
+																<Eye className="h-3.5 w-3.5" aria-hidden />
+																Show normally
+															</button>
+														) : (
+															<button
+																type="button"
+																onClick={() => hideInstitutionalAaRow(w.aaAccount)}
+																className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-400"
+																aria-label="Hide this wallet"
+																title="Hide"
+															>
+																<EyeOff className="h-3.5 w-3.5" aria-hidden />
+															</button>
+														)}
+													</div>
 												</div>
+												{isHidden ? (
+													<p className="mt-2 text-[11px] text-slate-500">
+														This wallet is hidden. Choose Show normally to use Pending,
+														Transfer, and History.
+													</p>
+												) : (
+													<>
+														<div data-institutional-aa-no-select>
+															<InstitutionalAaAssetsRow aaAccount={w.aaAccount} />
+														</div>
+														<InstitutionalSigsCapsule
+															threshold={w.policy.threshold}
+															managerCount={w.policy.managers.length}
+															onAdd={() => openSigsDrawer(w.aaAccount, 'add', w.policy)}
+															onReduce={() =>
+																openSigsDrawer(w.aaAccount, 'remove', w.policy)
+															}
+														/>
+													</>
+												)}
 											</div>
-											<div data-institutional-aa-no-select>
-												<InstitutionalAaAssetsRow aaAccount={w.aaAccount} />
-											</div>
-											<InstitutionalSigsCapsule
-												threshold={w.policy.threshold}
-												managerCount={w.policy.managers.length}
-												onAdd={() => openSigsDrawer(w.aaAccount, 'add', w.policy)}
-												onReduce={() => openSigsDrawer(w.aaAccount, 'remove', w.policy)}
-											/>
-										</div>
-									</li>
-								)
-							})}
-						</ul>
+										</li>
+									)
+								})}
+							</ul>
+						</div>
 					)}
 
 					{showInstitutionalCreateForm ? (
@@ -2464,7 +3097,7 @@ export default function AaMultisigPage() {
 					) : null}
 				</section>
 
-				{selectedManagedAa ? (
+				{selectedManagedAaOperable ? (
 				<>
 				<div className="mb-4 flex gap-1 overflow-x-auto rounded-full bg-white p-1 shadow-sm dark:bg-slate-900">
 					{(
@@ -2760,8 +3393,9 @@ export default function AaMultisigPage() {
 				</>
 				) : (
 					<p className="mb-4 text-center text-sm text-slate-500">
-						Select an institutional Smart Wallet above to manage pending approvals,
-						transfers, and history. Use + / − on a wallet to change co-signers.
+						Select a visible institutional Smart Wallet above to manage pending approvals,
+						transfers, and history. Hidden wallets stay collapsed until you choose Show
+						normally.
 					</p>
 				)}
 				</div>
@@ -2853,7 +3487,10 @@ export default function AaMultisigPage() {
 													<button
 														type="button"
 														className="rounded-full p-2 text-slate-500 hover:bg-white/60 dark:hover:bg-slate-700"
-														onClick={() => setSelectedCosigner(null)}
+														onClick={() => {
+															setSelectedCosigner(null)
+															setSigsDrawerError(null)
+														}}
 														aria-label="Clear selected co-signer"
 													>
 														<X className="h-4 w-4" aria-hidden />
@@ -3008,6 +3645,14 @@ export default function AaMultisigPage() {
 							</div>
 
 							<div className="border-t border-slate-100 px-5 pt-3 dark:border-slate-800">
+								{sigsDrawerMode === 'add' && sigsDrawerError ? (
+									<p
+										className="mb-3 whitespace-pre-wrap break-words rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-300"
+										role="alert"
+									>
+										{sigsDrawerError}
+									</p>
+								) : null}
 								{sigsDrawerMode === 'add' ? (
 									<button
 										type="button"

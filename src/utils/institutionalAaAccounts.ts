@@ -1,11 +1,10 @@
 import { ethers } from 'ethers'
-import { CONET_AA_FACTORY, CONET_ACCOUNT_REGISTRY } from '@/config/chainAddresses'
+import { BEAMIO_AA_FACTORY_V2, CONET_ACCOUNT_REGISTRY } from '@/config/chainAddresses'
 import { beamioApi, conetDepinProvider } from '@/utils/constants'
 
 const AA_FACTORY_LIST_ABI = [
 	'function nextIndexOfCreator(address creator) view returns (uint256)',
 	'function getAddress(address creator, uint256 index) view returns (address)',
-	'function beamioAccountOf(address eoa) view returns (address)',
 ] as const
 
 const ACCOUNT_REGISTRY_TAG_ABI = [
@@ -44,11 +43,11 @@ export async function resolveBeamioTagForAddress(
 	}
 }
 
-/** Enumerate all deployed CREATE2 AAs for an EOA (`0 .. nextIndex-1` with code). */
+/** Enumerate all deployed CREATE2 AAs for an EOA on the given factory (`0 .. nextIndex-1` with code). */
 export async function listOwnDeployedAaByIndex(
 	provider: ethers.Provider,
 	eoa: string,
-	factoryAddress: string = CONET_AA_FACTORY
+	factoryAddress: string = BEAMIO_AA_FACTORY_V2
 ): Promise<OwnDeployedAaByIndex[]> {
 	if (!ethers.isAddress(eoa)) return []
 	const eoaNorm = ethers.getAddress(eoa)
@@ -72,14 +71,16 @@ export async function listOwnDeployedAaByIndex(
 	return out
 }
 
-/** Own institutional Smart Wallets only (index ≥ 1). Excludes personal Express Pay (index=0). */
+/**
+ * Own institutional Smart Wallets on **V2 Factory** (all indexes).
+ * Legacy V1 index≥1 institutional AAs are abandoned — do not list them.
+ */
 export async function listOwnInstitutionalAa(
 	provider: ethers.Provider,
 	eoa: string,
-	factoryAddress: string = CONET_AA_FACTORY
+	factoryAddress: string = BEAMIO_AA_FACTORY_V2
 ): Promise<OwnDeployedAaByIndex[]> {
-	const all = await listOwnDeployedAaByIndex(provider, eoa, factoryAddress)
-	return all.filter((row) => row.index >= 1)
+	return listOwnDeployedAaByIndex(provider, eoa, factoryAddress)
 }
 
 export type CreateInstitutionalAaResult =

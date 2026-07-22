@@ -6,7 +6,7 @@
 
 import { ethers } from 'ethers'
 import type { InstitutionalManageableWallet } from '@/utils/aaMultisigTransferEligible'
-import type { AaThresholdPolicy } from '@/utils/aaMultisigUserOp'
+import { readAaThresholdPolicy, type AaThresholdPolicy } from '@/utils/aaMultisigUserOp'
 
 const PREFIX = 'beamio:silentpass:eoa:'
 const SUFFIX = ':institutional-manageable-aas:v2'
@@ -170,4 +170,49 @@ export function upsertInstitutionalManageableWalletLocal(
 	wallet: InstitutionalManageableWallet
 ): InstitutionalManageableWallet[] {
 	return mergeTrustedInstitutionalManageableWalletsLocal(eoa, [wallet])
+}
+
+/**
+ * Re-read on-chain M-of-N for every local list row and merge trusted policies.
+ *
+ * Discover only refreshes V2 Factory AAs; legacy V1 institutional AAs stay in local
+ * cache forever. Without this pass, list badges stay stuck at create-time `1/1`
+ * after a successful set_policy (e.g. chain already `2/2`).
+ */
+export async function refreshInstitutionalManageablePoliciesFromChain(
+	provider: ethers.Provider,
+	eoa: string,
+	wallets: InstitutionalManageableWallet[]
+): Promise<InstitutionalManageableWallet[]> {
+	if (!eoa || !ethers.isAddress(eoa) || wallets.length === 0) return wallets
+	const enriched: InstitutionalManageableWallet[] = []
+	for (const w of wallets) {
+		if (!w?.aaAccount || !ethers.isAddress(w.aaAccount)) continue
+		try {
+			const policy = await readAaThresholdPolicy(provider, w.aaAccount, { fallbackEoa: eoa })
+			enriched.push({
+				...w,
+				aaAccount: ethers.getAddress(w.aaAccount),
+				policy,
+			})
+		} catch {
+			/* untrusted — keep prior row; do not drop */
+		}
+	}
+	if (enriched.length === 0) return wallets
+	return mergeTrustedInstitutionalManageableWalletsLocal(eoa, enriched)
+}
+
+/** Replace the entire institutional list (e.g. drop legacy V1 rows). */
+export function replaceInstitutionalManageableWalletsLocal(
+	eoa: string,
+	wallets: InstitutionalManageableWallet[]
+): InstitutionalManageableWallet[] {
+	if (!eoa || !ethers.isAddress(eoa)) return wallets
+	const eoaLower = eoa.trim().toLowerCase()
+	const sorted = sortInstitutionalWallets(
+		wallets.filter((w) => w?.aaAccount && ethers.isAddress(w.aaAccount))
+	)
+	writePayload(eoaLower, sorted)
+	return sorted
 }

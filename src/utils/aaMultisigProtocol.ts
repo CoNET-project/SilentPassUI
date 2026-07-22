@@ -158,22 +158,13 @@ function normEoa(a: string | undefined | null): string {
 }
 
 /**
- * V1 legacy: entire manager list strictly ascending ⇒ owner must be lowest address.
- * Prefer `buildManagersOwnerFirst` for Institutional V2.
+ * @deprecated V1-only. Institutional `/wallet/aa-multisig` uses `buildManagersOwnerFirst`.
+ * Kept only so accidental imports fail with a clear message instead of silent wrong order.
  */
-export function sortManagersStrict(owner: string, others: string[]): string[] {
-	const ownerAddr = ethers.getAddress(owner)
-	const set = new Set<string>([ownerAddr])
-	for (const raw of others) {
-		if (ethers.isAddress(raw)) set.add(ethers.getAddress(raw))
-	}
-	const sorted = [...set].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()))
-	if (sorted[0].toLowerCase() !== ownerAddr.toLowerCase()) {
-		throw new Error(
-			'AA owner must be the lowest address among signers (required by Smart Wallet policy).'
-		)
-	}
-	return sorted
+export function sortManagersStrict(_owner: string, _others: string[]): never {
+	throw new Error(
+		'sortManagersStrict is V1-only and removed from institutional Smart Wallet flows. Use buildManagersOwnerFirst.'
+	)
 }
 
 /**

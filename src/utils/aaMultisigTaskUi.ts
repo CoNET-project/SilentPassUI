@@ -20,15 +20,14 @@ function ordinal(n: number): string {
 }
 
 /**
- * Smart Wallet policy owner EOA — lowest address among signers (Beamio AA contract rule).
- * Used to show the wallet owner's @beamioTag on pending rows and transfer selectors.
+ * Smart Wallet policy owner EOA — Institutional V2: `managers[0] == owner`.
+ * Do not use “lowest address” (that was V1-only).
  */
 export function resolveAaMultisigPolicyOwnerEoa(managers: string[]): string | null {
-	const sorted = managers
-		.filter((m) => ethers.isAddress(m))
-		.map((m) => ethers.getAddress(m))
-		.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()))
-	return sorted[0] ?? null
+	for (const m of managers) {
+		if (ethers.isAddress(m)) return ethers.getAddress(m)
+	}
+	return null
 }
 
 export function resolveAaMultisigTaskOwnerEoa(task: AaMultisigTaskLocal): string | null {

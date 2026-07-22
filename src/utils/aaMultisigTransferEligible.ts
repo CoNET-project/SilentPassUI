@@ -2,7 +2,7 @@ import { ethers } from 'ethers'
 import type { AaMultisigTaskLocal } from '@/utils/aaMultisigProtocol'
 import { listAaMultisigStorageAaAccounts } from '@/utils/aaMultisigLocalStore'
 import { readAaThresholdPolicy, type AaThresholdPolicy } from '@/utils/aaMultisigUserOp'
-import { listOwnInstitutionalAa, resolveBeamioTagForAddress } from '@/utils/institutionalAaAccounts'
+import { listOwnInstitutionalAa, resolveBeamioTagForAddress, listComanagedInstitutionalAa } from '@/utils/institutionalAaAccounts'
 import { BEAMIO_AA_FACTORY_V2 } from '@/config/chainAddresses'
 import { isInstitutionalAaV2 } from '@/utils/aaInstitutionalV2Eip712'
 
@@ -153,6 +153,31 @@ export async function discoverInstitutionalManageableWallets(
 			})
 		} catch {
 			/* skip unreadable */
+		}
+	}
+
+	// Factory reverse index: AAs where viewer is co-signer (not creator enumeration).
+	const comanaged = await listComanagedInstitutionalAa(provider, viewerEoa, factory).catch(
+		() => [] as Awaited<ReturnType<typeof listComanagedInstitutionalAa>>
+	)
+	for (const row of comanaged) {
+		const key = row.aa.toLowerCase()
+		if (exclude.has(key)) continue
+		if (byAa.has(key)) continue
+		try {
+			const policy = await readAaThresholdPolicy(provider, row.aa, {
+				fallbackEoa: opts?.fallbackEoa ?? viewerEoa,
+			})
+			if (!policy.managers.some((m) => m.toLowerCase() === viewer)) continue
+			byAa.set(key, {
+				aaAccount: row.aa,
+				kind: 'comanaged',
+				accountName: row.accountName,
+				policy,
+				lastActivityAt: activityByAa.get(key) ?? 0,
+			})
+		} catch {
+			/* skip */
 		}
 	}
 

@@ -64,27 +64,15 @@ import {
 	resolveMultisigTaskRowMode,
 } from '@/utils/aaMultisigTaskUi'
 import {
-	concatMultisigSignatures,
-	isSoleSelfSignerMultisig,
-	mergeInboundMultisigInner,
 	buildManagersOwnerFirst,
 	type AaMultisigTaskLocal,
 	type AaMultisigTransferAssetId,
 } from '@/utils/aaMultisigProtocol'
 import {
-	buildProposeInner,
-	buildRejectInner,
-	buildSignInner,
-	buildSubmittedInner,
-} from '@/services/aaMultisigGossip'
-import {
-	assertAaMultisigTaskEntryPointNonceFresh,
-	markAaMultisigTaskExpiredIfNonceStale,
 	readAaEntryPointNonce,
 } from '@/utils/aaMultisigEntryPointNonce'
 import {
 	AA_MULTISIG_PENDING_NONCE_RECONCILE_MS,
-	prepareAaMultisigNewTaskNonce,
 	reconcileAaMultisigPendingNoncesForWallet,
 } from '@/utils/aaMultisigPendingNonceReconcile'
 import {
@@ -96,6 +84,8 @@ import { createInstitutionalAa, normalizeInstitutionalBeamioTag } from '@/utils/
 import {
 	loadInstitutionalManageableWalletsLocal,
 	mergeTrustedInstitutionalManageableWalletsLocal,
+	refreshInstitutionalManageablePoliciesFromChain,
+	replaceInstitutionalManageableWalletsLocal,
 	upsertInstitutionalManageableWalletLocal,
 } from '@/utils/institutionalManageableWalletsLocalCache'
 import {
@@ -103,23 +93,13 @@ import {
 	setInstitutionalAaHidden,
 } from '@/utils/institutionalAaListUiPrefs'
 import {
-	buildUnsignedAaMultisigUserOp,
-	encodeAAExecuteConetAssetTransfer,
-	encodeAAExecuteSetThresholdPolicy,
-	isSetPolicyCallDataSelfExecuteWrapped,
 	readAaThresholdPolicy,
-	signAaUserOpHash,
-	submitAaMultisigUserOp,
 	resolveEffectiveAaOwner,
 	aaMultisigProvider,
 } from '@/utils/aaMultisigUserOp'
 import {
-	fetchAaMultisigTransferAssetOptions,
-	buildTransferTaskTitle,
 	formatTransferTaskSummary,
 	parseTransferAmountToRaw,
-	relayAmountUsdc6ForTransferAsset,
-	userOpProviderForTransferAsset,
 	type AaMultisigTransferAssetOption,
 } from '@/utils/aaMultisigConetTransferAssets'
 import {
@@ -161,6 +141,9 @@ import {
 type TabId = 'pending' | 'transfer' | 'history'
 
 const aaAccent = beamioWalletAccent('aa')
+
+/** Stable empty — avoid new [] each render for daemon asset map misses. */
+const EMPTY_INSTITUTIONAL_AA_ASSET_OPTIONS: AaMultisigTransferAssetOption[] = []
 
 function shortAddr(a: string): string {
 	if (!a || a.length < 12) return a
@@ -327,43 +310,28 @@ function AaAccountAddressCapsule({
 	)
 }
 
-/** Second row: left = asset-name dropdown only; right = balance + unit (outside the menu). */
+/** Second row: left = asset-name dropdown only; right = balance + unit (outside the menu).
+ * Balances come from DaemonProvider (local-first + 30s feed) — no per-item fetch.
+ */
 function InstitutionalAaAssetsRow({ aaAccount }: { aaAccount: string }) {
-	const [options, setOptions] = useState<AaMultisigTransferAssetOption[]>([])
+	const { institutionalAaAssetsByAa } = useDaemonContext()
+	const aaLower = aaAccount.trim().toLowerCase()
+	const options = institutionalAaAssetsByAa[aaLower] ?? EMPTY_INSTITUTIONAL_AA_ASSET_OPTIONS
 	const [selectedId, setSelectedId] = useState<AaMultisigTransferAssetId | ''>('')
-	const [loading, setLoading] = useState(false)
 	const [open, setOpen] = useState(false)
 	const rootRef = useRef<HTMLDivElement>(null)
-	const listId = `institutional-aa-asset-list-${aaAccount.toLowerCase()}`
+	const listId = `institutional-aa-asset-list-${aaLower}`
+
+	const optionsKey = options.map((o) => `${o.id}:${o.balanceRaw}`).join('|')
 
 	useEffect(() => {
-		if (!aaAccount || !ethers.isAddress(aaAccount)) {
-			setOptions([])
-			setSelectedId('')
-			setOpen(false)
-			return
-		}
-		let cancelled = false
-		setLoading(true)
-		void (async () => {
-			try {
-				const next = await fetchAaMultisigTransferAssetOptions(aaAccount)
-				if (cancelled) return
-				setOptions(next)
-				setSelectedId((prev) => {
-					if (prev && next.some((o) => o.id === prev)) return prev
-					return next[0]?.id ?? ''
-				})
-			} catch {
-				// untrusted — keep previous options / selection
-			} finally {
-				if (!cancelled) setLoading(false)
-			}
-		})()
-		return () => {
-			cancelled = true
-		}
-	}, [aaAccount])
+		setSelectedId((prev) => {
+			if (prev && options.some((o) => o.id === prev)) return prev
+			return options[0]?.id ?? ''
+		})
+		if (options.length === 0) setOpen(false)
+		// eslint-disable-next-line react-hooks/exhaustive-deps -- optionsKey fingerprints trusted daemon assets
+	}, [aaLower, optionsKey])
 
 	useEffect(() => {
 		if (!open) return
@@ -418,12 +386,7 @@ function InstitutionalAaAssetsRow({ aaAccount }: { aaAccount: string }) {
 			onKeyDown={(e) => e.stopPropagation()}
 			onPointerDown={(e) => e.stopPropagation()}
 		>
-			{loading && options.length === 0 ? (
-				<p className="flex items-center gap-1.5 text-xs text-slate-500">
-					<Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-					Loading assets…
-				</p>
-			) : options.length === 0 ? (
+			{options.length === 0 ? (
 				<p className="text-xs text-slate-500">No assets in this Smart Wallet</p>
 			) : (
 				<div className="flex min-w-0 items-center gap-2">
@@ -434,11 +397,9 @@ function InstitutionalAaAssetsRow({ aaAccount }: { aaAccount: string }) {
 							aria-haspopup="listbox"
 							aria-expanded={open}
 							aria-controls={listId}
-							disabled={loading}
-							aria-busy={loading}
 							aria-label="Smart Wallet asset"
 							onClick={() => setOpen((v) => !v)}
-							className="flex w-full min-w-0 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-left outline-none transition hover:border-slate-300 focus-visible:ring-2 focus-visible:ring-[#8d3a8b]/30 disabled:opacity-70 dark:border-slate-600 dark:bg-slate-800 dark:hover:border-slate-500"
+							className="flex w-full min-w-0 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-left outline-none transition hover:border-slate-300 focus-visible:ring-2 focus-visible:ring-[#8d3a8b]/30 dark:border-slate-600 dark:bg-slate-800 dark:hover:border-slate-500"
 						>
 							<span className="min-w-0 flex-1 truncate text-xs font-medium text-slate-700 dark:text-slate-200">
 								{selected ? assetName(selected) : 'Select asset'}
@@ -679,7 +640,8 @@ export default function AaMultisigPage() {
 	const navigate = useNavigate()
 	const [searchParams, setSearchParams] = useSearchParams()
 	const [focusTaskId, setFocusTaskId] = useState<string | null>(null)
-	const { profiles, setShowFooter, allNodes, refreshAaV2PendingTasks } = useDaemonContext()
+	const { profiles, setShowFooter, allNodes, refreshAaV2PendingTasks, refreshInstitutionalAaAssets, institutionalAaAssetsByAa } =
+		useDaemonContext()
 	const { opacity: backBtnOpacity, onScroll: onPageScroll, setRef: setPageScrollRef } =
 		useScrollCapsuleOpacity(true)
 	const { lookupByAddress, toCapsuleItem, avatarImgUrl, ensureProfilesForAddresses, resolveTag } =
@@ -708,7 +670,6 @@ export default function AaMultisigPage() {
 	const [transferAssetOptions, setTransferAssetOptions] = useState<AaMultisigTransferAssetOption[]>(
 		[]
 	)
-	const [transferAssetsLoading, setTransferAssetsLoading] = useState(false)
 	const [transferAaAccount, setTransferAaAccount] = useState('')
 	const [transferPolicy, setTransferPolicy] = useState<{
 		owner: string
@@ -986,22 +947,25 @@ export default function AaMultisigPage() {
 			setTransferAssetId('')
 			return
 		}
-		setTransferAssetsLoading(true)
-		try {
-			const options = await fetchAaMultisigTransferAssetOptions(transferAaAccount, {
-				previousBase: transferAssetOptions.filter((o) => o.chain === 'base'),
-			})
-			setTransferAssetOptions(options)
-			setTransferAssetId((prev) => {
-				if (prev && options.some((o) => o.id === prev)) return prev
-				return options[0]?.id ?? ''
-			})
-		} catch {
-			// untrusted — keep previous options
-		} finally {
-			setTransferAssetsLoading(false)
+		await refreshInstitutionalAaAssets([transferAaAccount])
+	}, [transferAaAccount, refreshInstitutionalAaAssets])
+
+	/** Transfer tab assets: local-first from daemon map (no per-page RPC). */
+	useEffect(() => {
+		if (!transferAaAccount) {
+			setTransferAssetOptions([])
+			setTransferAssetId('')
+			return
 		}
-	}, [transferAaAccount])
+		const cached =
+			institutionalAaAssetsByAa[transferAaAccount.toLowerCase()] ??
+			EMPTY_INSTITUTIONAL_AA_ASSET_OPTIONS
+		setTransferAssetOptions(cached)
+		setTransferAssetId((prev) => {
+			if (prev && cached.some((o) => o.id === prev)) return prev
+			return cached[0]?.id ?? ''
+		})
+	}, [transferAaAccount, institutionalAaAssetsByAa])
 
 	const selectedManagedAaRef = useRef('')
 	selectedManagedAaRef.current = selectedManagedAa
@@ -1030,29 +994,48 @@ export default function AaMultisigPage() {
 				fallbackEoa: eoa,
 			})
 			const merged = mergeTrustedInstitutionalManageableWalletsLocal(eoa, wallets)
-			setInstitutionalWallets(merged)
+			// Always re-read chain policy for local rows (incl. legacy V1 AAs discover skips).
+			const withFreshPolicy = await refreshInstitutionalManageablePoliciesFromChain(
+				aaMultisigProvider,
+				eoa,
+				merged
+			)
+			// This page is V2-only — drop Express Pay / legacy V1 institutional rows from the list.
+			const v2Only: InstitutionalManageableWallet[] = []
+			for (const w of withFreshPolicy) {
+				if (await isInstitutionalAaV2(w.aaAccount, aaMultisigProvider)) {
+					v2Only.push(w)
+				}
+			}
+			const nextList = replaceInstitutionalManageableWalletsLocal(eoa, v2Only)
+			setInstitutionalWallets(nextList)
 			// Never clear an in-progress user selection when discover finishes (tasks churn
 			// used to re-run this and wipe selectedManagedAa → laggy / missed clicks).
 			setSelectedManagedAa((prev) => {
 				const current = (prev || selectedManagedAaRef.current || '').trim()
-				if (current && ethers.isAddress(current)) {
+				if (
+					current &&
+					ethers.isAddress(current) &&
+					nextList.some((w) => w.aaAccount.toLowerCase() === current.toLowerCase())
+				) {
 					return ethers.getAddress(current)
 				}
 				const persisted = loadPersistedInstitutionalSelectedAa(eoa)
 				if (
 					persisted &&
-					merged.some((w) => w.aaAccount.toLowerCase() === persisted.toLowerCase())
+					nextList.some((w) => w.aaAccount.toLowerCase() === persisted.toLowerCase())
 				) {
 					return ethers.getAddress(persisted)
 				}
 				return ''
 			})
+			void refreshInstitutionalAaAssets()
 		} catch {
 			// untrusted — keep previous / local list; never clear created AAs
 		} finally {
 			setInstitutionalListLoading(false)
 		}
-	}, [eoa, aaAccount])
+	}, [eoa, aaAccount, refreshInstitutionalAaAssets])
 
 	const selectManagedAa = useCallback(
 		(aa: string) => {
@@ -1105,13 +1088,14 @@ export default function AaMultisigPage() {
 			})
 			setInstitutionalWallets(merged)
 			await refreshInstitutionalWallets()
+			void refreshInstitutionalAaAssets([result.aa])
 			selectManagedAa(result.aa)
 			setTab('pending')
 		} finally {
 			createInstitutionalInFlightRef.current = false
 			setCreatingInstitutionalAa(false)
 		}
-	}, [eoa, newInstitutionalTag, refreshInstitutionalWallets, selectManagedAa])
+	}, [eoa, newInstitutionalTag, refreshInstitutionalWallets, refreshInstitutionalAaAssets, selectManagedAa])
 
 	useEffect(() => {
 		if (!selectedManagedAa) {
@@ -1564,129 +1548,70 @@ export default function AaMultisigPage() {
 		}
 		setBusy(opts.busyKey)
 		try {
-			const useV2 = await isInstitutionalAaV2(signersAaAccount)
-			if (useV2) {
-				const ownerAddr =
-					resolveEffectiveAaOwner(policy, eoa) ??
-					(ethers.isAddress(policy.owner) ? ethers.getAddress(policy.owner) : eoa)
-				const managersSorted = buildManagersOwnerFirst(ownerAddr, opts.newManagers)
-				const deadline = defaultAaV2DeadlineSec()
-				const nonce = newAaV2SigNonce()
-				const signature = await signAaV2ProposeSetPolicy({
-					privateKeyArmor,
-					account: signersAaAccount,
-					managersSorted,
-					newThreshold: opts.newThreshold,
-					deadline,
-					nonce,
-				})
-				const proposed = await relayAaV2ProposeSetPolicy({
-					account: signersAaAccount,
-					managersSorted,
-					newThreshold: opts.newThreshold,
-					deadline,
-					nonce,
-					signature,
-					signerEoa: eoa,
-				})
-				if (!proposed.success) {
-					fail(proposed.error.slice(0, 240))
-					return
-				}
-				// Proposer auto-approve (counts toward threshold)
-				const voteNonce = newAaV2SigNonce()
-				const voteDeadline = defaultAaV2DeadlineSec()
-				const voteSig = await signAaV2Vote({
-					privateKeyArmor,
-					account: signersAaAccount,
-					taskId: proposed.taskId,
-					approve: true,
-					deadline: voteDeadline,
-					nonce: voteNonce,
-				})
-				const voted = await relayAaV2Vote({
-					account: signersAaAccount,
-					taskId: proposed.taskId,
-					approve: true,
-					deadline: voteDeadline,
-					nonce: voteNonce,
-					signature: voteSig,
-					signerEoa: eoa,
-				})
-				if (!voted.success) {
-					fail(
-						`Proposed on-chain (#${proposed.taskId}). Auto-approve failed: ${voted.error.slice(0, 160)}`
-					)
-					await syncAaV2TasksIntoLocal(eoa, signersAaAccount, upsertAaMultisigTaskRecord)
-					reloadTasks()
-					return
-				}
-				Toast.show({ content: `Policy update proposed on-chain (#${proposed.taskId}).` })
+			if (!(await isInstitutionalAaV2(signersAaAccount))) {
+				fail(
+					'This page only manages institutional Smart Wallets on Factory V2. Create a new institutional wallet, then add co-signers there.'
+				)
+				return
+			}
+			const ownerAddr =
+				resolveEffectiveAaOwner(policy, eoa) ??
+				(ethers.isAddress(policy.owner) ? ethers.getAddress(policy.owner) : eoa)
+			const managersSorted = buildManagersOwnerFirst(ownerAddr, opts.newManagers)
+			const deadline = defaultAaV2DeadlineSec()
+			const nonce = newAaV2SigNonce()
+			const signature = await signAaV2ProposeSetPolicy({
+				privateKeyArmor,
+				account: signersAaAccount,
+				managersSorted,
+				newThreshold: opts.newThreshold,
+				deadline,
+				nonce,
+			})
+			const proposed = await relayAaV2ProposeSetPolicy({
+				account: signersAaAccount,
+				managersSorted,
+				newThreshold: opts.newThreshold,
+				deadline,
+				nonce,
+				signature,
+				signerEoa: eoa,
+			})
+			if (!proposed.success) {
+				fail(proposed.error.slice(0, 240))
+				return
+			}
+			// Proposer auto-approve (counts toward threshold)
+			const voteNonce = newAaV2SigNonce()
+			const voteDeadline = defaultAaV2DeadlineSec()
+			const voteSig = await signAaV2Vote({
+				privateKeyArmor,
+				account: signersAaAccount,
+				taskId: proposed.taskId,
+				approve: true,
+				deadline: voteDeadline,
+				nonce: voteNonce,
+			})
+			const voted = await relayAaV2Vote({
+				account: signersAaAccount,
+				taskId: proposed.taskId,
+				approve: true,
+				deadline: voteDeadline,
+				nonce: voteNonce,
+				signature: voteSig,
+				signerEoa: eoa,
+			})
+			if (!voted.success) {
+				fail(
+					`Proposed on-chain (#${proposed.taskId}). Auto-approve failed: ${voted.error.slice(0, 160)}`
+				)
 				await syncAaV2TasksIntoLocal(eoa, signersAaAccount, upsertAaMultisigTaskRecord)
-				opts.onAfterSuccess?.()
 				reloadTasks()
 				return
 			}
-
-			const { userOpNonce, expired, chainNonce } = await prepareAaMultisigNewTaskNonce(
-				eoa,
-				signersAaAccount,
-				{ supersedeSameSlot: true }
-			)
-			setChainEntryPointNonce(String(chainNonce))
-			for (const task of expired) {
-				upsertAaMultisigTaskRecord(eoa, task)
-			}
-			if (expired.length > 0) reloadTasks()
-
-			const callData = encodeAAExecuteSetThresholdPolicy(
-				signersAaAccount,
-				opts.newManagers,
-				opts.newThreshold
-			)
-			const { packedUserOp, userOpHash } = await buildUnsignedAaMultisigUserOp(
-				aaMultisigProvider,
-				signersAaAccount,
-				callData,
-				undefined,
-				{ nonce: userOpNonce }
-			)
-			const creatorSignature = await signAaUserOpHash(privateKeyArmor, userOpHash)
-			const taskId = crypto.randomUUID().toLowerCase()
-			const now = Date.now()
-			const inner = buildProposeInner({
-				taskId,
-				aaAccount: signersAaAccount,
-				createdAt: now,
-				kind: 'set_policy',
-				creatorEoa: eoa,
-				threshold: policy.threshold,
-				managers: policy.managers,
-				entryPointNonce: packedUserOp.nonce,
-				userOpHash,
-				packedUserOp,
-				newManagers: opts.newManagers,
-				newThreshold: opts.newThreshold,
-				title: opts.title,
-				creatorSignature,
-			})
-			const merged = mergeInboundMultisigInner(null, inner, eoa)
-			if (merged) upsertAaMultisigTaskRecord(eoa, merged)
-			const pub = await publishAaMultisigInnerWithOfflineFallback({
-				walletEoa: eoa,
-				recipients: opts.gossipRecipients,
-				inner,
-				privateKeyArmor,
-				allNodes: allNodes ?? [],
-				excludeEoa: eoa,
-			})
-			refreshOutboundQueue()
-			Toast.show({
-				content:
-					pub.mode === 'broadcast' && pub.sent > 0
-						? `Policy update proposed (${pub.sent} peer${pub.sent > 1 ? 's' : ''} notified via CoNET chat).`
-						: 'Proposed locally. Export or sync when CoNET chat is online.',
-			})
+			Toast.show({ content: `Policy update proposed on-chain (#${proposed.taskId}).` })
+			await syncAaV2TasksIntoLocal(eoa, signersAaAccount, upsertAaMultisigTaskRecord)
+			void refreshInstitutionalWallets()
 			opts.onAfterSuccess?.()
 			reloadTasks()
 		} catch (e: unknown) {
@@ -1953,25 +1878,26 @@ export default function AaMultisigPage() {
 			return
 		}
 		const useV2Early = await isInstitutionalAaV2(transferAaAccount)
-		if (useV2Early) {
-			try {
-				const aa = new ethers.Contract(
-					transferAaAccount,
-					['function policyLockActive() view returns (bool)'],
-					aaMultisigProvider
-				)
-				if (await aa.policyLockActive()) {
-					setTransferCreateError(
-						'A policy change is pending — transfers are frozen until it completes.'
-					)
-					return
-				}
-			} catch {
-				/* continue; Cluster will re-check */
-			}
-		} else if (hasActiveMultisigTasksForAa(tasks, transferAaAccount)) {
-			setTransferCreateError(AA_MULTISIG_BLOCK_NEW_TRANSFER_TOAST)
+		if (!useV2Early) {
+			setTransferCreateError(
+				'Transfers on this page require an institutional Smart Wallet on Factory V2. Create a new institutional wallet first.'
+			)
 			return
+		}
+		try {
+			const aa = new ethers.Contract(
+				transferAaAccount,
+				['function policyLockActive() view returns (bool)'],
+				aaMultisigProvider
+			)
+			if (await aa.policyLockActive()) {
+				setTransferCreateError(
+					'A policy change is pending — transfers are frozen until it completes.'
+				)
+				return
+			}
+		} catch {
+			/* continue; Cluster will re-check */
 		}
 		setBusy('transfer')
 		try {
@@ -1990,175 +1916,64 @@ export default function AaMultisigPage() {
 				return
 			}
 
-			const useV2 = useV2Early
-			if (useV2) {
-				const token = tokenAddressForTransferAsset(transferAssetId)
-				const deadline = defaultAaV2DeadlineSec()
-				const nonce = newAaV2SigNonce()
-				const signature = await signAaV2ProposeTransfer({
-					privateKeyArmor,
-					account: transferAaAccount,
-					token,
-					to: ethers.getAddress(to),
-					amount: amountRaw,
-					deadline,
-					nonce,
-				})
-				const proposed = await relayAaV2ProposeTransfer({
-					account: transferAaAccount,
-					token,
-					to: ethers.getAddress(to),
-					amount: amountRaw.toString(),
-					deadline,
-					nonce,
-					signature,
-					signerEoa: eoa,
-				})
-				if (!proposed.success) {
-					setTransferCreateError(proposed.error)
-					return
-				}
-				const voteNonce = newAaV2SigNonce()
-				const voteDeadline = defaultAaV2DeadlineSec()
-				const voteSig = await signAaV2Vote({
-					privateKeyArmor,
-					account: transferAaAccount,
-					taskId: proposed.taskId,
-					approve: true,
-					deadline: voteDeadline,
-					nonce: voteNonce,
-				})
-				const voted = await relayAaV2Vote({
-					account: transferAaAccount,
-					taskId: proposed.taskId,
-					approve: true,
-					deadline: voteDeadline,
-					nonce: voteNonce,
-					signature: voteSig,
-					signerEoa: eoa,
-				})
-				await syncAaV2TasksIntoLocal(eoa, transferAaAccount, upsertAaMultisigTaskRecord)
-				reloadTasks()
-				if (!voted.success) {
-					Toast.show({
-						content: `Transfer proposed (#${proposed.taskId}). Auto-approve failed: ${voted.error.slice(0, 80)}`,
-					})
-				} else {
-					Toast.show({
-						content: `Transfer proposed on-chain (#${proposed.taskId}).`,
-					})
-				}
-				setTransferAmount('')
-				setTransferTo('')
+			const token = tokenAddressForTransferAsset(transferAssetId)
+			const deadline = defaultAaV2DeadlineSec()
+			const nonce = newAaV2SigNonce()
+			const signature = await signAaV2ProposeTransfer({
+				privateKeyArmor,
+				account: transferAaAccount,
+				token,
+				to: ethers.getAddress(to),
+				amount: amountRaw,
+				deadline,
+				nonce,
+			})
+			const proposed = await relayAaV2ProposeTransfer({
+				account: transferAaAccount,
+				token,
+				to: ethers.getAddress(to),
+				amount: amountRaw.toString(),
+				deadline,
+				nonce,
+				signature,
+				signerEoa: eoa,
+			})
+			if (!proposed.success) {
+				setTransferCreateError(proposed.error)
 				return
 			}
-
-			const { chainNonce, userOpNonce, expired } = await prepareAaMultisigNewTaskNonce(
-				eoa,
-				transferAaAccount,
-				{ supersedeSameSlot: false }
-			)
-			setChainEntryPointNonce(String(chainNonce))
-			for (const task of expired) {
-				upsertAaMultisigTaskRecord(eoa, task)
-			}
-			if (expired.length > 0) reloadTasks()
-
-			const callData = encodeAAExecuteConetAssetTransfer({
-				asset: transferAssetId,
-				toEOA: to,
-				amountRaw,
+			const voteNonce = newAaV2SigNonce()
+			const voteDeadline = defaultAaV2DeadlineSec()
+			const voteSig = await signAaV2Vote({
+				privateKeyArmor,
+				account: transferAaAccount,
+				taskId: proposed.taskId,
+				approve: true,
+				deadline: voteDeadline,
+				nonce: voteNonce,
 			})
-			const opProvider = userOpProviderForTransferAsset(transferAssetId)
-			const { packedUserOp, userOpHash } = await buildUnsignedAaMultisigUserOp(
-				opProvider,
-				transferAaAccount,
-				callData,
-				undefined,
-				{ nonce: userOpNonce }
-			)
-			const creatorSignature = await signAaUserOpHash(privateKeyArmor, userOpHash)
-			const managers = transferPolicy?.managers?.length ? transferPolicy.managers : [eoa]
-			const threshold = transferPolicy?.threshold ?? 1
-			const taskId = crypto.randomUUID().toLowerCase()
-			const now = Date.now()
-			const amountRawStr = amountRaw.toString()
-			const inner = buildProposeInner({
-				taskId,
-				aaAccount: transferAaAccount,
-				createdAt: now,
-				kind: 'transfer',
-				creatorEoa: eoa,
-				threshold,
-				managers,
-				entryPointNonce: packedUserOp.nonce,
-				userOpHash,
-				packedUserOp,
-				toEoa: to,
-				transferAsset: transferAssetId,
-				amountRaw: amountRawStr,
-				amountUsdc6:
-					transferAssetId === 'usdc' || transferAssetId === 'base_usdc' ? amountRawStr : undefined,
-				title: buildTransferTaskTitle(transferAssetId, amountRaw),
-				creatorSignature,
+			const voted = await relayAaV2Vote({
+				account: transferAaAccount,
+				taskId: proposed.taskId,
+				approve: true,
+				deadline: voteDeadline,
+				nonce: voteNonce,
+				signature: voteSig,
+				signerEoa: eoa,
 			})
-			const merged = mergeInboundMultisigInner(null, inner, eoa)
-			const soleSignerReady =
-				merged?.kind === 'transfer' &&
-				merged.status === 'ready' &&
-				isSoleSelfSignerMultisig(eoa, managers, threshold)
-
-			// Claim auto-submit before upsert so the tasks useEffect cannot double-submit the same draft.
-			const soleSubmitClaimedId =
-				soleSignerReady && merged ? merged.taskId : null
-			if (soleSubmitClaimedId) {
-				autoSubmitInFlightRef.current.add(soleSubmitClaimedId)
-			}
-			try {
-				if (merged) upsertAaMultisigTaskRecord(eoa, merged)
-				const pub = await publishAaMultisigInnerWithOfflineFallback({
-					walletEoa: eoa,
-					recipients: managers,
-					inner,
-					privateKeyArmor,
-					allNodes: allNodes ?? [],
-					excludeEoa: eoa,
-				})
-				refreshOutboundQueue()
-
-				if (soleSignerReady && merged) {
-					// Quiet: keep Transfer chrome until we finish; parent owns busy='transfer'.
-					const result = await submitTask(merged, { quiet: true, retainBusy: true })
-					if (result.ok) {
-						Toast.show({ content: 'Multisig transfer submitted.' })
-						setTransferCreateError(null)
-						setTransferTo('')
-						setTransferAmount('')
-						void reloadTransferAssets()
-						setTab('history')
-						return
-					}
-					setTransferCreateError(result.error?.trim() || 'Submit failed')
-					reloadTasks()
-					return
-				}
-
+			await syncAaV2TasksIntoLocal(eoa, transferAaAccount, upsertAaMultisigTaskRecord)
+			reloadTasks()
+			if (!voted.success) {
 				Toast.show({
-					content:
-						pub.mode === 'broadcast' && pub.sent > 0
-							? 'Transfer task created and sent to co-signers via CoNET chat.'
-							: 'Transfer task saved locally. Export or sync when CoNET chat is online.',
+					content: `Transfer proposed (#${proposed.taskId}). Auto-approve failed: ${voted.error.slice(0, 80)}`,
 				})
-				setTransferCreateError(null)
-				setTransferTo('')
-				setTransferAmount('')
-				reloadTasks()
-				setTab('pending')
-			} finally {
-				if (soleSubmitClaimedId) {
-					autoSubmitInFlightRef.current.delete(soleSubmitClaimedId)
-				}
+			} else {
+				Toast.show({
+					content: `Transfer proposed on-chain (#${proposed.taskId}).`,
+				})
 			}
+			setTransferAmount('')
+			setTransferTo('')
 		} catch (e: unknown) {
 			const msg = e instanceof Error ? e.message : String(e)
 			setTransferCreateError(msg.trim() || 'Create multisig task failed.')
@@ -2169,101 +1984,50 @@ export default function AaMultisigPage() {
 
 	const signTask = async (task: AaMultisigTaskLocal) => {
 		if (!requireWalletReady()) return
-		if (isAaV2LocalTask(task)) {
-			const onChainId = getOnChainTaskId(task)
-			if (!onChainId) {
-				Toast.show({ content: 'Missing on-chain task id.' })
-				return
-			}
-			setBusy(task.taskId)
-			try {
-				const deadline = defaultAaV2DeadlineSec()
-				const nonce = newAaV2SigNonce()
-				const signature = await signAaV2Vote({
-					privateKeyArmor,
-					account: task.aaAccount,
-					taskId: onChainId,
-					approve: true,
-					deadline,
-					nonce,
-				})
-				const voted = await relayAaV2Vote({
-					account: task.aaAccount,
-					taskId: onChainId,
-					approve: true,
-					deadline,
-					nonce,
-					signature,
-					signerEoa: eoa,
-				})
-				if (!voted.success) {
-					Toast.show({ content: voted.error.slice(0, 120) })
-					return
-				}
-				await syncAaV2TasksIntoLocal(eoa, task.aaAccount, upsertAaMultisigTaskRecord)
-				Toast.show({ content: 'Approved on-chain.' })
-				reloadTasks()
-			} catch (e: unknown) {
-				const msg = e instanceof Error ? e.message : String(e)
-				Toast.show({ content: msg.slice(0, 120) })
-			} finally {
-				setBusy(null)
-			}
+		if (!isAaV2LocalTask(task)) {
+			Toast.show({
+				content:
+					'This page only signs institutional Factory V2 tasks. Legacy V1 UserOp requests are not supported.',
+			})
 			return
 		}
-		const nonceCheck = await assertAaMultisigTaskEntryPointNonceFresh(task.aaAccount, task)
-		if (!nonceCheck.ok) {
-			const expired = markAaMultisigTaskExpiredIfNonceStale(task, nonceCheck.chainNonce)
-			if (expired) upsertAaMultisigTaskRecord(eoa, expired)
-			reloadTasks()
-			Toast.show({
-				content: 'This signing request expired and was moved to History.',
-			})
+		const onChainId = getOnChainTaskId(task)
+		if (!onChainId) {
+			Toast.show({ content: 'Missing on-chain task id.' })
 			return
 		}
 		setBusy(task.taskId)
 		try {
-			const signature = await signAaUserOpHash(privateKeyArmor, task.userOpHash)
-			const now = Date.now()
-			const inner = buildSignInner({
-				taskId: task.taskId,
-				aaAccount: task.aaAccount,
-				createdAt: now,
-				signerEoa: eoa,
-				userOpHash: task.userOpHash,
-				signature,
-			})
-			const merged = mergeInboundMultisigInner(task, inner, eoa)
-			if (merged) upsertAaMultisigTaskRecord(eoa, merged)
-			const pub = await publishAaMultisigInnerWithOfflineFallback({
-				walletEoa: eoa,
-				recipients: task.managers,
-				inner,
+			const deadline = defaultAaV2DeadlineSec()
+			const nonce = newAaV2SigNonce()
+			const signature = await signAaV2Vote({
 				privateKeyArmor,
-				allNodes: allNodes ?? [],
-				excludeEoa: eoa,
+				account: task.aaAccount,
+				taskId: onChainId,
+				approve: true,
+				deadline,
+				nonce,
 			})
-			refreshOutboundQueue()
-
-			if (merged?.status === 'ready') {
-				autoSubmitInFlightRef.current.add(merged.taskId)
-				const submitted = await submitTask(merged)
-				autoSubmitInFlightRef.current.delete(merged.taskId)
-				if (submitted.ok) return
+			const voted = await relayAaV2Vote({
+				account: task.aaAccount,
+				taskId: onChainId,
+				approve: true,
+				deadline,
+				nonce,
+				signature,
+				signerEoa: eoa,
+			})
+			if (!voted.success) {
+				Toast.show({ content: voted.error.slice(0, 120) })
+				return
 			}
-
-			if (pub.mode === 'broadcast' && pub.sent > 0) {
-				Toast.show({ content: 'Signature recorded and shared with all co-signers via CoNET chat.' })
-			} else if (pub.apiError) {
-				Toast.show({
-					content: `Signed locally. Offline submit needs 0.1 B-Unit: ${pub.apiError.slice(0, 80)}`,
-				})
-			} else {
-				Toast.show({
-					content: 'Signed offline. Copy export below or wait for chat sync.',
-				})
-			}
+			await syncAaV2TasksIntoLocal(eoa, task.aaAccount, upsertAaMultisigTaskRecord)
+			Toast.show({ content: 'Approved on-chain.' })
 			reloadTasks()
+			if (task.kind === 'set_policy') {
+				void reloadPolicy()
+				void refreshInstitutionalWallets()
+			}
 		} catch (e: unknown) {
 			const msg = e instanceof Error ? e.message : String(e)
 			Toast.show({ content: msg.slice(0, 120) })
@@ -2274,76 +2038,49 @@ export default function AaMultisigPage() {
 
 	const rejectTask = async (task: AaMultisigTaskLocal) => {
 		if (!requireWalletReady()) return
-		if (isAaV2LocalTask(task)) {
-			const onChainId = getOnChainTaskId(task)
-			if (!onChainId) {
-				Toast.show({ content: 'Missing on-chain task id.' })
-				return
-			}
-			setBusy(`reject-${task.taskId}`)
-			try {
-				const deadline = defaultAaV2DeadlineSec()
-				const nonce = newAaV2SigNonce()
-				const signature = await signAaV2Vote({
-					privateKeyArmor,
-					account: task.aaAccount,
-					taskId: onChainId,
-					approve: false,
-					deadline,
-					nonce,
-				})
-				const voted = await relayAaV2Vote({
-					account: task.aaAccount,
-					taskId: onChainId,
-					approve: false,
-					deadline,
-					nonce,
-					signature,
-					signerEoa: eoa,
-				})
-				if (!voted.success) {
-					Toast.show({ content: voted.error.slice(0, 120) })
-					return
-				}
-				await syncAaV2TasksIntoLocal(eoa, task.aaAccount, upsertAaMultisigTaskRecord)
-				Toast.show({ content: 'Rejected on-chain.' })
-				reloadTasks()
-			} catch (e: unknown) {
-				const msg = e instanceof Error ? e.message : String(e)
-				Toast.show({ content: msg.slice(0, 120) })
-			} finally {
-				setBusy(null)
-			}
+		if (!isAaV2LocalTask(task)) {
+			Toast.show({
+				content:
+					'This page only rejects institutional Factory V2 tasks. Legacy V1 UserOp requests are not supported.',
+			})
+			return
+		}
+		const onChainId = getOnChainTaskId(task)
+		if (!onChainId) {
+			Toast.show({ content: 'Missing on-chain task id.' })
 			return
 		}
 		setBusy(`reject-${task.taskId}`)
 		try {
-			const now = Date.now()
-			const inner = buildRejectInner({
-				taskId: task.taskId,
-				aaAccount: task.aaAccount,
-				createdAt: now,
-				signerEoa: eoa,
-				reason: 'Rejected by signer',
-			})
-			const merged = mergeInboundMultisigInner(task, inner, eoa)
-			if (merged) upsertAaMultisigTaskRecord(eoa, merged)
-			const pub = await publishAaMultisigInnerWithOfflineFallback({
-				walletEoa: eoa,
-				recipients: task.managers,
-				inner,
+			const deadline = defaultAaV2DeadlineSec()
+			const nonce = newAaV2SigNonce()
+			const signature = await signAaV2Vote({
 				privateKeyArmor,
-				allNodes: allNodes ?? [],
-				excludeEoa: eoa,
+				account: task.aaAccount,
+				taskId: onChainId,
+				approve: false,
+				deadline,
+				nonce,
 			})
-			refreshOutboundQueue()
-			Toast.show({
-				content:
-					pub.mode === 'broadcast' && pub.sent > 0
-						? 'Task rejected. Co-signers notified; nonce stays free for new tasks.'
-						: 'Rejected locally. Export or sync when CoNET chat is online.',
+			const voted = await relayAaV2Vote({
+				account: task.aaAccount,
+				taskId: onChainId,
+				approve: false,
+				deadline,
+				nonce,
+				signature,
+				signerEoa: eoa,
 			})
+			if (!voted.success) {
+				Toast.show({ content: voted.error.slice(0, 120) })
+				return
+			}
+			await syncAaV2TasksIntoLocal(eoa, task.aaAccount, upsertAaMultisigTaskRecord)
+			Toast.show({ content: 'Rejected on-chain.' })
 			reloadTasks()
+		} catch (e: unknown) {
+			const msg = e instanceof Error ? e.message : String(e)
+			Toast.show({ content: msg.slice(0, 120) })
 		} finally {
 			setBusy(null)
 		}
@@ -2358,129 +2095,15 @@ export default function AaMultisigPage() {
 			return { ok: false, error }
 		}
 		if (!requireWalletReady()) return fail('Wallet not ready.')
-		if (isAaV2LocalTask(task)) {
-			// V2 executes on-chain when threshold is met during vote — no UserOp submit.
-			await syncAaV2TasksIntoLocal(eoa, task.aaAccount, upsertAaMultisigTaskRecord)
-			reloadTasks()
-			return { ok: true }
+		if (!isAaV2LocalTask(task)) {
+			return fail(
+				'This page only supports institutional Factory V2 tasks. Legacy V1 UserOp submit is not available.'
+			)
 		}
-		if (task.signatures.length < task.threshold) {
-			return fail('Not enough signatures yet.')
-		}
-		if (
-			task.kind === 'set_policy' &&
-			isSetPolicyCallDataSelfExecuteWrapped(task.aaAccount, task.packedUserOp.callData)
-		) {
-			return fail('Outdated policy UserOp encoding. Reject this task and propose again.')
-		}
-		// Already completed (e.g. raced auto-submit) — treat as success for the caller.
-		const latest = loadAllAaMultisigTasksForWallet(eoa).find((t) => t.taskId === task.taskId)
-		if (latest?.status === 'completed' || task.status === 'completed') {
-			if (!opts?.quiet) {
-				reloadTasks()
-				setTab('history')
-			}
-			return { ok: true }
-		}
-		const nonceCheck = await assertAaMultisigTaskEntryPointNonceFresh(task.aaAccount, task)
-		if (!nonceCheck.ok) {
-			const expired = markAaMultisigTaskExpiredIfNonceStale(task, nonceCheck.chainNonce)
-			if (expired) upsertAaMultisigTaskRecord(eoa, expired)
-			reloadTasks()
-			return fail('This signing request expired and was moved to History.')
-		}
-		if (!opts?.retainBusy) {
-			setBusy(`submit-${task.taskId}`)
-		}
-		try {
-			const combinedSig = concatMultisigSignatures(task.signatures)
-			const packedUserOp = { ...task.packedUserOp, signature: combinedSig }
-			let hash: string | undefined
-
-			const discardFailedSubmit = (err: string): { ok: false; error: string } => {
-				// Do not archive FAILED in History — user must re-propose with a fresh nonce.
-				removeAaMultisigTaskRecord(eoa, task)
-				reloadTasks()
-				const hint =
-					chainEntryPointNonce != null
-						? ` Re-propose with EntryPoint nonce ${chainEntryPointNonce}.`
-						: ' Re-propose with a fresh EntryPoint nonce.'
-				const base = (err.trim() || 'Submit failed').replace(/\.\s*$/, '')
-				return fail(`${base}.${hint}`)
-			}
-
-			if (
-				task.kind === 'transfer' &&
-				task.toEoa &&
-				(task.amountRaw || task.amountUsdc6)
-			) {
-				const relayAmount = relayAmountUsdc6ForTransferAsset(
-					task.transferAsset ?? 'usdc',
-					BigInt(task.amountRaw ?? task.amountUsdc6 ?? '1')
-				)
-				const res = await submitAaMultisigUserOp({
-					toEOA: task.toEoa,
-					amountUSDC6: relayAmount,
-					packedUserOp,
-					transferAsset: task.transferAsset ?? 'usdc',
-				})
-				if (!res.success) {
-					return discardFailedSubmit(res.error ?? 'Submit failed')
-				}
-				hash = res.hash
-			} else if (task.kind === 'set_policy') {
-				const res = await submitAaMultisigUserOp({
-					toEOA: task.creatorEoa,
-					amountUSDC6: '1',
-					packedUserOp,
-					transferAsset: 'cnet',
-				})
-				if (!res.success) {
-					return discardFailedSubmit(res.error ?? 'Submit failed')
-				}
-				hash = res.hash
-				void reloadPolicy()
-			} else {
-				return fail('Unsupported task kind for submit.')
-			}
-			const completed: AaMultisigTaskLocal = {
-				...task,
-				status: 'completed',
-				txHash: hash,
-				updatedAt: Date.now(),
-			}
-			upsertAaMultisigTaskRecord(eoa, completed)
-			if (hash) {
-				const inner = buildSubmittedInner({
-					taskId: task.taskId,
-					aaAccount: task.aaAccount,
-					createdAt: Date.now(),
-					submitterEoa: eoa,
-					txHash: hash,
-				})
-				await publishAaMultisigInnerWithOfflineFallback({
-					walletEoa: eoa,
-					recipients: task.managers,
-					inner,
-					privateKeyArmor,
-					allNodes: allNodes ?? [],
-					excludeEoa: eoa,
-				})
-				refreshOutboundQueue()
-			}
-			if (!opts?.quiet) Toast.show({ content: 'Multisig transfer submitted.' })
-			reloadTasks()
-			// Parent Create flow navigates after clearing busy; avoid mid-flight tab steal.
-			if (!opts?.quiet) setTab('history')
-			return { ok: true }
-		} catch (e: unknown) {
-			const msg = e instanceof Error ? e.message : String(e)
-			return fail(msg.trim() || 'Submit failed')
-		} finally {
-			if (!opts?.retainBusy) {
-				setBusy(null)
-			}
-		}
+		// V2 executes on-chain when threshold is met during vote — no UserOp submit.
+		await syncAaV2TasksIntoLocal(eoa, task.aaAccount, upsertAaMultisigTaskRecord)
+		reloadTasks()
+		return { ok: true }
 	}
 
 	submitTaskRef.current = submitTask
@@ -2576,9 +2199,8 @@ export default function AaMultisigPage() {
 		const secondaryPending = multisigPendingSecondaryMessage(task, eoa)
 		const historySummary = multisigHistorySummary(task)
 		const statusChip = multisigTaskStatusChipLabel(task, eoa)
-		const brokenSetPolicyEncoding =
-			task.kind === 'set_policy' &&
-			isSetPolicyCallDataSelfExecuteWrapped(task.aaAccount, task.packedUserOp.callData)
+		// V1 UserOp self-execute wrap is obsolete; V2 set_policy never uses that encoding.
+		const brokenSetPolicyEncoding = false
 		const aaOwnerEoa =
 			effectiveMode === 'waiting' ? resolveAaMultisigTaskOwnerEoa(task) : null
 		const aaOwnerTagRaw = aaOwnerEoa ? resolveTag(aaOwnerEoa) : ''
@@ -3284,12 +2906,7 @@ export default function AaMultisigPage() {
 							</div>
 						) : null}
 						{transferAaAccount ? (
-							transferAssetsLoading && transferAssetOptions.length === 0 ? (
-							<p className="mt-4 flex items-center gap-2 text-sm text-slate-500">
-								<Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-								Loading wallet balances…
-							</p>
-						) : transferAssetOptions.length === 0 ? (
+							transferAssetOptions.length === 0 ? (
 							<p className="mt-4 text-sm text-slate-500">
 								No transferable assets in this Smart Wallet.
 							</p>

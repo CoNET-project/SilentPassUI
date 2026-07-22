@@ -1,10 +1,13 @@
 import { ethers } from 'ethers'
 import { BEAMIO_AA_FACTORY_V2, CONET_ACCOUNT_REGISTRY } from '@/config/chainAddresses'
 import { beamioApi, conetDepinProvider } from '@/utils/constants'
+import { isInstitutionalAaV2 } from '@/utils/aaInstitutionalV2Eip712'
+import { readAaThresholdPolicy } from '@/utils/aaMultisigUserOp'
 
 const AA_FACTORY_LIST_ABI = [
 	'function nextIndexOfCreator(address creator) view returns (uint256)',
 	'function getAddress(address creator, uint256 index) view returns (address)',
+	'function accountsOfManager(address manager) view returns (address[])',
 ] as const
 
 const ACCOUNT_REGISTRY_TAG_ABI = [
@@ -81,6 +84,76 @@ export async function listOwnInstitutionalAa(
 	factoryAddress: string = BEAMIO_AA_FACTORY_V2
 ): Promise<OwnDeployedAaByIndex[]> {
 	return listOwnDeployedAaByIndex(provider, eoa, factoryAddress)
+}
+
+export type ComanagedInstitutionalAa = {
+	aa: string
+	accountName?: string
+	owner: string
+}
+
+/**
+ * Institutional AAs where `eoa` is a threshold manager (Factory `accountsOfManager`).
+ * Includes owner-managed AAs; callers that want co-signer-only should filter owner ≠ eoa.
+ */
+export async function listAccountsOfManagerFromFactory(
+	provider: ethers.Provider,
+	eoa: string,
+	factoryAddress: string = BEAMIO_AA_FACTORY_V2
+): Promise<string[]> {
+	if (!ethers.isAddress(eoa)) return []
+	try {
+		const factory = new ethers.Contract(factoryAddress, AA_FACTORY_LIST_ABI, provider)
+		const raw = (await factory.accountsOfManager(ethers.getAddress(eoa))) as string[]
+		if (!Array.isArray(raw)) return []
+		const out: string[] = []
+		const seen = new Set<string>()
+		for (const a of raw) {
+			if (!ethers.isAddress(a)) continue
+			const checksum = ethers.getAddress(a)
+			const k = checksum.toLowerCase()
+			if (seen.has(k)) continue
+			seen.add(k)
+			out.push(checksum)
+		}
+		return out
+	} catch {
+		return []
+	}
+}
+
+/**
+ * Co-managed institutional AAs (viewer is manager, not owner) via Factory reverse index.
+ */
+export async function listComanagedInstitutionalAa(
+	provider: ethers.Provider,
+	eoa: string,
+	factoryAddress: string = BEAMIO_AA_FACTORY_V2
+): Promise<ComanagedInstitutionalAa[]> {
+	if (!ethers.isAddress(eoa)) return []
+	const viewer = ethers.getAddress(eoa)
+	const viewerLower = viewer.toLowerCase()
+	const candidates = await listAccountsOfManagerFromFactory(provider, viewer, factoryAddress)
+	const out: ComanagedInstitutionalAa[] = []
+
+	for (const aa of candidates) {
+		try {
+			if (!(await isInstitutionalAaV2(aa, provider))) continue
+			const policy = await readAaThresholdPolicy(provider, aa, { fallbackEoa: viewer })
+			if (!policy.managers.some((m) => m.toLowerCase() === viewerLower)) continue
+			const owner = ethers.getAddress(policy.owner)
+			if (owner.toLowerCase() === viewerLower) continue
+			const accountName = await resolveBeamioTagForAddress(aa, provider)
+			out.push({
+				aa,
+				owner,
+				accountName: accountName || undefined,
+			})
+		} catch {
+			/* skip unreadable */
+		}
+	}
+	return out
 }
 
 export type CreateInstitutionalAaResult =

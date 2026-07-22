@@ -121,8 +121,19 @@ import {
 	AA_V2_PENDING_TASKS_FEED_INTERVAL_MS,
 	runAaInstitutionalV2PendingTasksDaemonTick,
 } from '@/utils/aaInstitutionalV2PendingDaemon'
+import {
+	AA_MULTISIG_INSTITUTIONAL_ASSETS_FEED_INTERVAL_MS,
+	runAaMultisigInstitutionalAssetsDaemonTick,
+} from '@/utils/aaMultisigInstitutionalAssetsDaemon'
+import {
+	loadInstitutionalAaAssetsLocalCache,
+	type InstitutionalAaAssetsByAa,
+} from '@/utils/aaMultisigInstitutionalAssetsLocalCache'
+import type { AaMultisigTransferAssetOption } from '@/utils/aaMultisigConetTransferAssets'
 import { viewerNeedsToSignMultisigTask } from '@/utils/aaMultisigTaskUi'
 import { loadAllAaMultisigTasksForWallet } from '@/utils/aaMultisigLocalStore'
+
+const EMPTY_INSTITUTIONAL_AA_ASSETS: AaMultisigTransferAssetOption[] = []
 
 export type { MyBrandCardFeedDetailsMap }
 
@@ -132,6 +143,7 @@ const MY_BRANDS_FEED_INTERVAL_MS = 6_000
 const DISCOVER_MERCHANT_STATS_FEED_INTERVAL_MS = 30_000
 /** Institutional AA V2：共同签署者拉取链上 pending task（离线签字上链后本地投票） */
 const AA_V2_PENDING_TASKS_FEED_MS = AA_V2_PENDING_TASKS_FEED_INTERVAL_MS
+const AA_MULTISIG_INSTITUTIONAL_ASSETS_FEED_MS = AA_MULTISIG_INSTITUTIONAL_ASSETS_FEED_INTERVAL_MS
 
 type ClaimableCouponSummary = {
   count: number
@@ -438,6 +450,15 @@ type DaemonContext = {
 	aaV2PendingNeedVoteCount: number
 	/** 手动触发一轮 V2 pending task 拉取（propose/vote 后可调用） */
 	refreshAaV2PendingTasks: () => Promise<void>
+	/**
+	 * Smart Wallet Multisig 列表项资产余额（按 AA）；本地优先 + 30s daemon。
+	 * 页面只读；勿在 item 内自建 fetch。
+	 */
+	institutionalAaAssetsByAa: InstitutionalAaAssetsByAa
+	/** 手动刷新（创建 AA / Transfer 成功后）；可传指定 AA 列表 */
+	refreshInstitutionalAaAssets: (aaAccounts?: string[]) => Promise<void>
+	/** 取某一 AA 的资产选项（内存 map，缺省为空数组） */
+	getInstitutionalAaAssets: (aaAccount: string) => AaMultisigTransferAssetOption[]
 	paymentLinkCode: string
 	setPaymentLinkCode: (val: string) => void
 	redeemCode: string
@@ -651,6 +672,9 @@ const defaultContextValue: DaemonContext = {
 	registerDiscoverMerchantStatFeedCards: () => {},
 	aaV2PendingNeedVoteCount: 0,
 	refreshAaV2PendingTasks: async () => {},
+	institutionalAaAssetsByAa: {},
+	refreshInstitutionalAaAssets: async () => {},
+	getInstitutionalAaAssets: () => EMPTY_INSTITUTIONAL_AA_ASSETS,
 
 	beamioUsers: [],
 	setbBeamioUsers: (val: searchResult[]) => {},
@@ -1701,6 +1725,68 @@ export function DaemonProvider({ children }: DaemonProps) {
   }, [profileWalletKeyId, refreshLocalAaV2PendingNeedVoteCount])
 
   /**
+   * Smart Wallet Multisig list-item balances：本地优先 + 30s daemon（按 AA 串行拉取）。
+   */
+  const [institutionalAaAssetsByAa, setInstitutionalAaAssetsByAa] =
+    useState<InstitutionalAaAssetsByAa>({})
+  const institutionalAaAssetsInFlightRef = useRef(false)
+
+  useLayoutEffect(() => {
+    const raw = profileWalletKeyId?.trim() ?? ''
+    if (!raw || !ethers.isAddress(raw)) {
+      setInstitutionalAaAssetsByAa({})
+      return
+    }
+    setInstitutionalAaAssetsByAa(loadInstitutionalAaAssetsLocalCache(raw))
+  }, [profileWalletKeyId])
+
+  const runInstitutionalAaAssetsFeedTick = useCallback(
+    async (aaAccounts?: string[]): Promise<void> => {
+      const forced = Boolean(aaAccounts?.length)
+      if (!forced && institutionalAaAssetsInFlightRef.current) return
+      const raw = profilesRef.current?.[0]?.keyID?.trim() ?? ''
+      if (!raw || !ethers.isAddress(raw)) {
+        setInstitutionalAaAssetsByAa({})
+        return
+      }
+      if (!forced) institutionalAaAssetsInFlightRef.current = true
+      try {
+        const r = await runAaMultisigInstitutionalAssetsDaemonTick(raw, {
+          aaAccounts,
+        })
+        if (r.ok) {
+          if (profilesRef.current?.[0]?.keyID?.trim().toLowerCase() !== raw.toLowerCase()) {
+            return
+          }
+          setInstitutionalAaAssetsByAa(r.byAa)
+        }
+        /* failure: keep last trusted map */
+      } catch {
+        /* keep last trusted */
+      } finally {
+        if (!forced) institutionalAaAssetsInFlightRef.current = false
+      }
+    },
+    []
+  )
+
+  const refreshInstitutionalAaAssets = useCallback(
+    async (aaAccounts?: string[]) => {
+      await runInstitutionalAaAssetsFeedTick(aaAccounts)
+    },
+    [runInstitutionalAaAssetsFeedTick]
+  )
+
+  const getInstitutionalAaAssets = useCallback(
+    (aaAccount: string): AaMultisigTransferAssetOption[] => {
+      const key = aaAccount?.trim().toLowerCase()
+      if (!key) return EMPTY_INSTITUTIONAL_AA_ASSETS
+      return institutionalAaAssetsByAa[key] ?? EMPTY_INSTITUTIONAL_AA_ASSETS
+    },
+    [institutionalAaAssetsByAa]
+  )
+
+  /**
    * CoNET Mining 全网指标（Total staked validators / DePIN nodes）：本地优先 + 6s 全局喂料。
    * 与 CoNetMiningDetailPage 同源（conetNetworkStats / conetDepinStats）。
    */
@@ -2107,6 +2193,32 @@ export function DaemonProvider({ children }: DaemonProps) {
     }
   }, [runAaV2PendingTasksFeedTick, profileWalletKeyId])
 
+  /** Institutional Multisig list-item balances：30s daemon */
+  useEffect(() => {
+    let cancelled = false
+    let timer: number | undefined
+    const runChain = () => {
+      if (cancelled) return
+      void (async () => {
+        try {
+          await runInstitutionalAaAssetsFeedTick()
+        } finally {
+          if (!cancelled) {
+            timer = window.setTimeout(
+              runChain,
+              AA_MULTISIG_INSTITUTIONAL_ASSETS_FEED_MS
+            ) as unknown as number
+          }
+        }
+      })()
+    }
+    runChain()
+    return () => {
+      cancelled = true
+      if (timer !== undefined) window.clearTimeout(timer)
+    }
+  }, [runInstitutionalAaAssetsFeedTick, profileWalletKeyId])
+
   return (
     <Daemon.Provider value={{ power, setPower, sRegion, setSRegion, allRegions, setAllRegions, setRuleVisible,hasNewVersion, setHasNewVersion, version, secureCode, setSecureCode,
 				closestRegion, setClosestRegion, isRandom, setIsRandom, miningData, setMiningData, currentBlock,setCurrentBlock,paymentLink, setPaymentLink, redeemCode, setRedeemCode,
@@ -2123,6 +2235,7 @@ export function DaemonProvider({ children }: DaemonProps) {
 				referralL0StartKitQuota, refreshReferralL0StartKitQuota,
 				discoverMerchantStatByCard, registerDiscoverMerchantStatFeedCards, applyDiscoverMerchantLikeCountDelta,
 				aaV2PendingNeedVoteCount, refreshAaV2PendingTasks,
+				institutionalAaAssetsByAa, refreshInstitutionalAaAssets, getInstitutionalAaAssets,
 				setGetWebFilter,switchValue, setSwitchValue, webFilterRef, quickLinksShow, setQuickLinksShow, duplicateAccount, checkinBalanceUP, setCheckinBalanceUP, gossip, setGossip,
 				beamioUsers, setbBeamioUsers, showFooter, setShowFooter, chatSearchOpen, setChatSearchOpen, payMePayment, setPayMePayment, navigateLeftButtonArray, setNavigateLeftButtonArray, allNodes, setAllNodes,
 				chatHomeItem,setChatHomeItem,scanData, setScanData, scanIntent, setScanIntent, voucherPayAmount, setVoucherPayAmount, voucherPayToAA, setVoucherPayToAA, voucherPayError, setVoucherPayError, messageCount, setMessageCount, msgCountLockRef, seenMsgRef, scanRef, historyPayData, setHistoryPayData,

@@ -22,7 +22,7 @@ import {
 	upsertAaMultisigTaskRecord,
 } from '@/utils/aaMultisigLocalStore'
 import { loadInstitutionalManageableWalletsLocal } from '@/utils/institutionalManageableWalletsLocalCache'
-import { listOwnInstitutionalAa } from '@/utils/institutionalAaAccounts'
+import { listOwnInstitutionalAa, listAccountsOfManagerFromFactory } from '@/utils/institutionalAaAccounts'
 import { viewerNeedsToSignMultisigTask } from '@/utils/aaMultisigTaskUi'
 
 export const AA_V2_PENDING_TASKS_FEED_INTERVAL_MS = 15_000
@@ -66,6 +66,17 @@ async function collectInstitutionalAaCandidates(
 	try {
 		const own = await listOwnInstitutionalAa(provider, viewer, BEAMIO_AA_FACTORY_V2)
 		for (const row of own) add(row.aa)
+	} catch {
+		/* untrusted — keep local candidates */
+	}
+
+	try {
+		const asManager = await listAccountsOfManagerFromFactory(
+			provider,
+			viewer,
+			BEAMIO_AA_FACTORY_V2
+		)
+		for (const aa of asManager) add(aa)
 	} catch {
 		/* untrusted — keep local candidates */
 	}

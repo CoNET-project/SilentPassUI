@@ -2520,7 +2520,7 @@ export default function AaMultisigPage() {
 					</button>
 				</div>
 			) : null}
-			{userIsCreator ? (
+			{effectiveMode !== 'history' && userIsCreator ? (
 				<button
 					type="button"
 					onClick={() => void exportTaskProposalPacket(task)}
@@ -2530,7 +2530,7 @@ export default function AaMultisigPage() {
 					Copy proposal packet
 				</button>
 			) : null}
-			{userSigned ? (
+			{effectiveMode !== 'history' && userSigned ? (
 				<button
 					type="button"
 					onClick={() => void exportTaskSignPacket(task)}

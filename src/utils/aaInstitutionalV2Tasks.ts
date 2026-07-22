@@ -225,6 +225,54 @@ function normalizeTxHash(h: string | null | undefined): string | undefined {
 	return /^0x[0-9a-f]{64}$/.test(t) ? t : undefined
 }
 
+/** History Signatures: per-signer vote/approve tx for explorer capsule. */
+export function resolveSignatureVoteTxHash(
+	sig: { signer: string; txHash?: string },
+	task: AaMultisigTaskLocal
+): string | undefined {
+	const own = normalizeTxHash(sig.txHash)
+	if (own) return own
+	const exec = normalizeTxHash(task.txHash)
+	if (!exec) return undefined
+	// T=1 (or sole approve): propose/vote/execute share one hash.
+	if (task.signatures.length === 1) return exec
+	return undefined
+}
+
+/** Persist a known vote/propose tx hash onto a signer row (merge-safe). */
+export function attachSignerVoteTxHash(
+	task: AaMultisigTaskLocal,
+	signerEoa: string,
+	txHash: string
+): AaMultisigTaskLocal {
+	const h = normalizeTxHash(txHash)
+	if (!h || !ethers.isAddress(signerEoa)) return task
+	const sl = signerEoa.toLowerCase()
+	let found = false
+	const signatures = task.signatures.map((s) => {
+		if (s.signer.toLowerCase() !== sl) return s
+		found = true
+		return { ...s, txHash: normalizeTxHash(s.txHash) ?? h }
+	})
+	if (!found) {
+		signatures.push({
+			signer: ethers.getAddress(signerEoa),
+			signature: '0x',
+			signedAt: Date.now(),
+			txHash: h,
+		})
+	}
+	return {
+		...task,
+		signatures,
+		updatedAt: Date.now(),
+		txHash:
+			task.status === 'completed'
+				? normalizeTxHash(task.txHash) ?? h
+				: normalizeTxHash(task.txHash),
+	}
+}
+
 /** Preserve locally known tx hashes when on-chain sync rebuilds the task. */
 export function mergeAaV2TaskExplorerMeta(
 	prev: AaMultisigTaskLocal | null | undefined,
@@ -246,6 +294,36 @@ export function mergeAaV2TaskExplorerMeta(
 	}
 }
 
+function ingestTaskEventLog(
+	voteTxBySigner: Map<string, string>,
+	parsed: ethers.LogDescription | null,
+	txHash: string | undefined
+): void {
+	const h = normalizeTxHash(txHash)
+	if (!parsed || !h) return
+	if (parsed.name === 'TaskVoted') {
+		// Only skip explicit rejects; missing approve → treat as approve.
+		if (parsed.args?.approve === false) return
+		try {
+			const voter = ethers.getAddress(String(parsed.args?.voter ?? ''))
+			if (voter) voteTxBySigner.set(voter.toLowerCase(), h)
+		} catch {
+			/* ignore */
+		}
+		return
+	}
+	if (parsed.name === 'TaskProposed') {
+		try {
+			const proposer = ethers.getAddress(String(parsed.args?.proposer ?? ''))
+			if (proposer && !voteTxBySigner.has(proposer.toLowerCase())) {
+				voteTxBySigner.set(proposer.toLowerCase(), h)
+			}
+		} catch {
+			/* ignore */
+		}
+	}
+}
+
 /**
  * Fill per-signer vote tx hashes + execute tx from AA TaskVoted / TaskExecuted logs.
  */
@@ -257,15 +335,26 @@ export async function enrichAaV2LocalTaskWithEventTxHashes(
 	const onChainId = getOnChainTaskId(task)
 	if (!onChainId) return task
 	const taskId = BigInt(onChainId)
-	const aa = new ethers.Contract(aaAccount, AA_V2_TASK_EVENT_ABI, provider)
+	const aaAddr = ethers.getAddress(aaAccount)
+	const aa = new ethers.Contract(aaAddr, AA_V2_TASK_EVENT_ABI, provider)
+	const iface = aa.interface
 	const voteTxBySigner = new Map<string, string>()
 	let executeTx: string | undefined
+
 	try {
 		const voted = await aa.queryFilter(aa.filters.TaskVoted(taskId))
 		for (const ev of voted) {
-			const voter = ethers.getAddress(String((ev as ethers.EventLog).args?.voter ?? ''))
+			const el = ev as ethers.EventLog
+			if (el.args?.approve === false) continue
+			const voter = el.args?.voter
 			const h = normalizeTxHash(ev.transactionHash)
-			if (voter && h) voteTxBySigner.set(voter.toLowerCase(), h)
+			if (voter && h) {
+				try {
+					voteTxBySigner.set(ethers.getAddress(String(voter)).toLowerCase(), h)
+				} catch {
+					/* ignore */
+				}
+			}
 		}
 	} catch {
 		/* keep prior */
@@ -277,25 +366,52 @@ export async function enrichAaV2LocalTaskWithEventTxHashes(
 	} catch {
 		/* keep prior */
 	}
-	// T=1: propose+vote+execute share one tx — also map proposer from TaskProposed.
-	if (voteTxBySigner.size === 0 || !executeTx) {
+	try {
+		const proposed = await aa.queryFilter(aa.filters.TaskProposed(taskId))
+		const first = proposed[0]
+		const h = first ? normalizeTxHash(first.transactionHash) : undefined
+		const proposer = first ? String((first as ethers.EventLog).args?.proposer ?? '') : ''
+		if (h && proposer) {
+			try {
+				const p = ethers.getAddress(proposer).toLowerCase()
+				if (!voteTxBySigner.has(p)) voteTxBySigner.set(p, h)
+			} catch {
+				/* ignore */
+			}
+			if (!executeTx && task.status === 'completed') executeTx = h
+		}
+	} catch {
+		/* ignore */
+	}
+
+	const missingSignerHash = task.signatures.some(
+		(s) => !normalizeTxHash(s.txHash) && !voteTxBySigner.has(s.signer.toLowerCase())
+	)
+	const receiptHash = executeTx ?? normalizeTxHash(task.txHash)
+	if (receiptHash && (voteTxBySigner.size === 0 || missingSignerHash)) {
 		try {
-			const proposed = await aa.queryFilter(aa.filters.TaskProposed(taskId))
-			const first = proposed[0]
-			const h = first ? normalizeTxHash(first.transactionHash) : undefined
-			const proposer = first
-				? ethers.getAddress(String((first as ethers.EventLog).args?.proposer ?? ''))
-				: ''
-			if (h && proposer) {
-				if (!voteTxBySigner.has(proposer.toLowerCase())) {
-					voteTxBySigner.set(proposer.toLowerCase(), h)
+			const receipt = await provider.getTransactionReceipt(receiptHash)
+			if (receipt?.logs?.length) {
+				for (const log of receipt.logs) {
+					if (log.address.toLowerCase() !== aaAddr.toLowerCase()) continue
+					let parsed: ethers.LogDescription | null = null
+					try {
+						parsed = iface.parseLog({ topics: [...log.topics], data: log.data })
+					} catch {
+						continue
+					}
+					ingestTaskEventLog(voteTxBySigner, parsed, receipt.hash)
+					if (parsed?.name === 'TaskExecuted') {
+						executeTx = normalizeTxHash(receipt.hash) ?? executeTx
+					}
 				}
-				if (!executeTx && task.status === 'completed') executeTx = h
+				if (!executeTx) executeTx = normalizeTxHash(receipt.hash)
 			}
 		} catch {
 			/* ignore */
 		}
 	}
+
 	const signatures = task.signatures.map((s) => ({
 		...s,
 		txHash: normalizeTxHash(s.txHash) ?? voteTxBySigner.get(s.signer.toLowerCase()),

@@ -133,8 +133,10 @@ import {
 	tokenAddressForTransferAsset,
 } from '@/utils/aaInstitutionalV2Eip712'
 import {
+	attachSignerVoteTxHash,
 	getOnChainTaskId,
 	isAaV2LocalTask,
+	resolveSignatureVoteTxHash,
 	syncAaV2TasksIntoLocal,
 } from '@/utils/aaInstitutionalV2Tasks'
 
@@ -217,9 +219,12 @@ function shortTxHash(hash: string): string {
 function ConetExplorerAddressCapsule({
 	address,
 	variant = 'eoa',
+	beamioTag,
 }: {
 	address: string
 	variant?: 'eoa' | 'aa'
+	/** Optional @BeamioTag shown inside the capsule (left of address). */
+	beamioTag?: string | null
 }) {
 	const [copied, setCopied] = React.useState(false)
 	const fullAddress = (() => {
@@ -231,6 +236,11 @@ function ConetExplorerAddressCapsule({
 	})()
 	if (!fullAddress) return null
 	const short = shortAddr(fullAddress)
+	const tagDisplay = (() => {
+		const raw = (beamioTag ?? '').trim()
+		if (!raw) return null
+		return raw.startsWith('@') ? raw : `@${raw}`
+	})()
 	const isAa = variant === 'aa'
 	const shell = isAa
 		? 'border-[#eadcf7] bg-[#f5ecff] text-[#424655] dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300'
@@ -261,8 +271,19 @@ function ConetExplorerAddressCapsule({
 					openExternalUrl(conetExplorerAddressUrl(fullAddress))
 				}}
 				className={`inline-flex min-w-0 items-center gap-1.5 py-1 pl-2.5 pr-1.5 font-mono text-[11px] font-medium transition ${hover}`}
-				aria-label={`Open ${short} on CoNET Explorer`}
+				aria-label={
+					tagDisplay
+						? `Open ${tagDisplay} (${short}) on CoNET Explorer`
+						: `Open ${short} on CoNET Explorer`
+				}
 			>
+				{tagDisplay ? (
+					<span
+						className={`max-w-[7.5rem] shrink-0 truncate font-sans text-[11px] font-semibold ${accent}`}
+					>
+						{tagDisplay}
+					</span>
+				) : null}
 				{isAa ? (
 					<Hexagon className={`h-3.5 w-3.5 shrink-0 ${accent}`} strokeWidth={2.25} aria-hidden />
 				) : null}
@@ -1792,6 +1813,16 @@ export default function AaMultisigPage() {
 						: `Policy update proposed on-chain (#${proposed.taskId}).`,
 			})
 			await syncAaV2TasksIntoLocal(eoa, signersAaAccount, upsertAaMultisigTaskRecord)
+			if (proposed.txHash) {
+				const tid = `v2-${signersAaAccount.toLowerCase()}-${proposed.taskId}`
+				const prev = getAaMultisigTaskAny(eoa, tid)
+				if (prev) {
+					upsertAaMultisigTaskRecord(
+						eoa,
+						attachSignerVoteTxHash(prev, eoa, proposed.txHash)
+					)
+				}
+			}
 			void refreshInstitutionalWallets()
 			opts.onAfterSuccess?.()
 			reloadTasks()
@@ -2180,6 +2211,16 @@ export default function AaMultisigPage() {
 				setTab('pending')
 			}
 			await syncAaV2TasksIntoLocal(eoa, transferAaAccount, upsertAaMultisigTaskRecord)
+			if (proposed.txHash) {
+				const tid = `v2-${transferAaAccount.toLowerCase()}-${proposed.taskId}`
+				const prev = getAaMultisigTaskAny(eoa, tid)
+				if (prev) {
+					upsertAaMultisigTaskRecord(
+						eoa,
+						attachSignerVoteTxHash(prev, eoa, proposed.txHash)
+					)
+				}
+			}
 			reloadTasks()
 			void refreshInstitutionalWallets()
 			setTransferAmount('')
@@ -2230,6 +2271,12 @@ export default function AaMultisigPage() {
 			if (!voted.success) {
 				Toast.show({ content: voted.error.slice(0, 120) })
 				return
+			}
+			if (voted.txHash) {
+				const prev = getAaMultisigTaskAny(eoa, task.taskId)
+				if (prev) {
+					upsertAaMultisigTaskRecord(eoa, attachSignerVoteTxHash(prev, eoa, voted.txHash))
+				}
 			}
 			await syncAaV2TasksIntoLocal(eoa, task.aaAccount, upsertAaMultisigTaskRecord)
 			Toast.show({ content: 'Approved on-chain.' })
@@ -2442,16 +2489,12 @@ export default function AaMultisigPage() {
 							Smart Wallet owner {aaOwnerTagLine ?? '@Beamio'}
 						</p>
 					) : null}
-					{aaAccount && task.aaAccount.toLowerCase() !== aaAccount.toLowerCase() ? (
-						effectiveMode === 'history' ? (
-							<div className="mt-1.5">
-								<ConetExplorerAddressCapsule address={task.aaAccount} variant="aa" />
-							</div>
-						) : (
-							<p className="mt-0.5 font-mono text-[11px] text-slate-400">
-								Smart Wallet {task.aaAccount.slice(0, 6)}…{task.aaAccount.slice(-4)}
-							</p>
-						)
+					{effectiveMode !== 'history' &&
+					aaAccount &&
+					task.aaAccount.toLowerCase() !== aaAccount.toLowerCase() ? (
+						<p className="mt-0.5 font-mono text-[11px] text-slate-400">
+							Smart Wallet {task.aaAccount.slice(0, 6)}…{task.aaAccount.slice(-4)}
+						</p>
 					) : null}
 					<p className="mt-1 text-xs font-medium text-slate-600 dark:text-slate-300">{progressLabel}</p>
 					{effectiveMode === 'waiting' && secondaryPending ? (
@@ -2558,21 +2601,17 @@ export default function AaMultisigPage() {
 			) : null}
 			{effectiveMode === 'history' ? (
 				<div className="mt-3 space-y-2 border-t border-slate-100 pt-3 dark:border-slate-800">
-					<div>
-						<p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-							Smart Wallet
-						</p>
-						<div className="mt-1">
-							<ConetExplorerAddressCapsule address={task.aaAccount} variant="aa" />
-						</div>
-					</div>
 					{task.kind === 'transfer' && task.toEoa && ethers.isAddress(task.toEoa) ? (
 						<div>
 							<p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
 								Recipient
 							</p>
 							<div className="mt-1">
-								<ConetExplorerAddressCapsule address={task.toEoa} variant="eoa" />
+								<ConetExplorerAddressCapsule
+									address={task.toEoa}
+									variant="eoa"
+									beamioTag={resolveTag(task.toEoa) || null}
+								/>
 							</div>
 						</div>
 					) : null}
@@ -2588,22 +2627,21 @@ export default function AaMultisigPage() {
 										? tag.startsWith('@')
 											? tag
 											: `@${tag}`
-										: shortAddr(sig.signer)
+										: null
+									const voteTx = resolveSignatureVoteTxHash(sig, task)
 									return (
 										<li
 											key={`${task.taskId}-sig-${sig.signer}`}
-											className="flex flex-col gap-1.5"
+											className="flex flex-nowrap items-center gap-1.5 overflow-x-auto"
 										>
-											<span className="text-[11px] font-medium text-slate-500">{tagLine}</span>
-											<div className="flex flex-wrap items-center gap-1.5">
-												<ConetExplorerAddressCapsule address={sig.signer} variant="eoa" />
-												{sig.txHash ? (
-													<ConetExplorerTxHashCapsule
-														txHash={sig.txHash}
-														label="Sign tx"
-													/>
-												) : null}
-											</div>
+											<ConetExplorerAddressCapsule
+												address={sig.signer}
+												variant="eoa"
+												beamioTag={tagLine}
+											/>
+											{voteTx ? (
+												<ConetExplorerTxHashCapsule txHash={voteTx} />
+											) : null}
 										</li>
 									)
 								})}

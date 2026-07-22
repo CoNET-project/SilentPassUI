@@ -39,6 +39,7 @@ import { resolveSigningPrivateKeyArmor } from '@/utils/resolveSigningPrivateKeyA
 import { resolveBeamioAaOnConet } from '@/utils/resolveBeamioAaFromCardFactory'
 import { searchUsername } from '@/services/beamio'
 import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
+import { conetDepinProvider } from '@/utils/constants'
 import {
 	AA_MULTISIG_TASKS_CHANGED_EVENT,
 	loadAllAaMultisigTasksForWallet,

@@ -56,9 +56,7 @@ import {
 	multisigPendingSecondaryMessage,
 	multisigTaskDeepLinkTab,
 	multisigTaskStatusChipLabel,
-	AA_MULTISIG_BLOCK_NEW_TRANSFER_TOAST,
 	formatBeamioTagDisplayLine,
-	hasActiveMultisigTasksForAa,
 	resolveAaMultisigPolicyOwnerEoa,
 	resolveAaMultisigTaskOwnerEoa,
 	resolveMultisigTaskRowMode,
@@ -1219,14 +1217,6 @@ export default function AaMultisigPage() {
 		selectManagedAa('')
 	}, [selectedManagedAa, hiddenInstitutionalAa, selectManagedAa])
 
-	const transferAaHasActiveTasks = useMemo(
-		() => (transferAaAccount ? hasActiveMultisigTasksForAa(tasks, transferAaAccount) : false),
-		[tasks, transferAaAccount]
-	)
-	/** While Create is in-flight the draft may already be `ready` in local store — do not treat that as a block. */
-	const transferCreateBlockedByActive =
-		transferAaHasActiveTasks && busy !== 'transfer'
-
 	useEffect(() => {
 		if (!eoa) {
 			setInstitutionalWallets([])
@@ -1979,8 +1969,24 @@ export default function AaMultisigPage() {
 				aaMultisigProvider
 			)
 			const thr = (await aaRead.threshold()) as bigint
-			let executedInPropose = thr === 1n
-			if (!executedInPropose) {
+			if (thr === 1n) {
+				try {
+					const t = await aaRead.getTask(BigInt(proposed.taskId))
+					const status = Number(t[1] ?? t.status)
+					if (status !== 2) {
+						setTransferCreateError(
+							`Transfer #${proposed.taskId} did not execute (status ${status}). Check balance and try again.`
+						)
+						await syncAaV2TasksIntoLocal(eoa, transferAaAccount, upsertAaMultisigTaskRecord)
+						reloadTasks()
+						return
+					}
+				} catch {
+					/* sync below */
+				}
+				Toast.show({ content: `Transfer completed (#${proposed.taskId}).` })
+			} else {
+				// T>1: proposer auto-approve counts toward threshold; execution waits for remaining sigs.
 				const voteNonce = newAaV2SigNonce()
 				const voteDeadline = defaultAaV2DeadlineSec()
 				const voteSig = await signAaV2Vote({
@@ -2005,25 +2011,11 @@ export default function AaMultisigPage() {
 						content: `Transfer proposed (#${proposed.taskId}). Auto-approve failed: ${voted.error.slice(0, 80)}`,
 					})
 				} else {
-					executedInPropose = true
-					Toast.show({ content: `Transfer approved on-chain (#${proposed.taskId}).` })
+					Toast.show({
+						content: `Transfer #${proposed.taskId} proposed — you signed (1/${thr.toString()}). Waiting for co-signers.`,
+					})
 				}
-			} else {
-				try {
-					const t = await aaRead.getTask(BigInt(proposed.taskId))
-					const status = Number(t[1] ?? t.status)
-					if (status !== 2) {
-						setTransferCreateError(
-							`Transfer #${proposed.taskId} did not execute (status ${status}). Check balance and try again.`
-						)
-						await syncAaV2TasksIntoLocal(eoa, transferAaAccount, upsertAaMultisigTaskRecord)
-						reloadTasks()
-						return
-					}
-				} catch {
-					/* sync below */
-				}
-				Toast.show({ content: `Transfer completed (#${proposed.taskId}).` })
+				setTab('pending')
 			}
 			await syncAaV2TasksIntoLocal(eoa, transferAaAccount, upsertAaMultisigTaskRecord)
 			reloadTasks()
@@ -3023,12 +3015,6 @@ export default function AaMultisigPage() {
 										Available: {selectedTransferAsset.balanceDisplay} {selectedTransferAsset.label}
 									</p>
 								) : null}
-								{transferCreateBlockedByActive ? (
-									<p className="mt-3 text-xs font-medium text-amber-700">
-										{AA_MULTISIG_BLOCK_NEW_TRANSFER_TOAST} Use the Pending tab to sign,
-										submit, or reject it first.
-									</p>
-								) : null}
 								{transferCreateError ? (
 									<p
 										className="mt-3 whitespace-pre-wrap break-words rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-300"
@@ -3039,9 +3025,7 @@ export default function AaMultisigPage() {
 								) : null}
 								<button
 									type="button"
-									disabled={
-										busy === 'transfer' || !selectedTransferAsset || transferCreateBlockedByActive
-									}
+									disabled={busy === 'transfer' || !selectedTransferAsset}
 									onClick={() => void proposeTransfer()}
 									className="mt-4 w-full rounded-xl py-2.5 text-sm font-semibold text-white disabled:opacity-50"
 									style={{ backgroundColor: aaAccent.accent }}

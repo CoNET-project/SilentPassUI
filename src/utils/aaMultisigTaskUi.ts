@@ -59,7 +59,10 @@ export function formatTransferEligibleWalletOptionLabel(opts: {
 	return `${tag} · Co-signer (${shortAa})`
 }
 
-/** True when pending/ready tasks still hold the EntryPoint nonce for this Smart Wallet. */
+/**
+ * @deprecated V1 UserOp / EntryPoint-nonce era only.
+ * Institutional V2 allows multiple pending transfers (spendable − reserved). Do not block Create.
+ */
 export function hasActiveMultisigTasksForAa(
 	tasks: AaMultisigTaskLocal[],
 	aaAccount: string
@@ -72,6 +75,7 @@ export function hasActiveMultisigTasksForAa(
 	)
 }
 
+/** @deprecated V1-only copy — V2 Multisig page must not show this as an error after Create. */
 export const AA_MULTISIG_BLOCK_NEW_TRANSFER_TOAST =
 	'Finish or reject the pending transfer before creating a new one.'
 

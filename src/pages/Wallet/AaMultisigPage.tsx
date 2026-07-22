@@ -1581,35 +1581,48 @@ export default function AaMultisigPage() {
 				fail(proposed.error.slice(0, 240))
 				return
 			}
-			// Proposer auto-approve (counts toward threshold)
-			const voteNonce = newAaV2SigNonce()
-			const voteDeadline = defaultAaV2DeadlineSec()
-			const voteSig = await signAaV2Vote({
-				privateKeyArmor,
-				account: signersAaAccount,
-				taskId: proposed.taskId,
-				approve: true,
-				deadline: voteDeadline,
-				nonce: voteNonce,
-			})
-			const voted = await relayAaV2Vote({
-				account: signersAaAccount,
-				taskId: proposed.taskId,
-				approve: true,
-				deadline: voteDeadline,
-				nonce: voteNonce,
-				signature: voteSig,
-				signerEoa: eoa,
-			})
-			if (!voted.success) {
-				fail(
-					`Proposed on-chain (#${proposed.taskId}). Auto-approve failed: ${voted.error.slice(0, 160)}`
-				)
-				await syncAaV2TasksIntoLocal(eoa, signersAaAccount, upsertAaMultisigTaskRecord)
-				reloadTasks()
-				return
+			const aaRead = new ethers.Contract(
+				signersAaAccount,
+				['function threshold() view returns (uint256)'],
+				aaMultisigProvider
+			)
+			const thr = (await aaRead.threshold()) as bigint
+			if (thr > 1n) {
+				// Proposer auto-approve (counts toward threshold > 1)
+				const voteNonce = newAaV2SigNonce()
+				const voteDeadline = defaultAaV2DeadlineSec()
+				const voteSig = await signAaV2Vote({
+					privateKeyArmor,
+					account: signersAaAccount,
+					taskId: proposed.taskId,
+					approve: true,
+					deadline: voteDeadline,
+					nonce: voteNonce,
+				})
+				const voted = await relayAaV2Vote({
+					account: signersAaAccount,
+					taskId: proposed.taskId,
+					approve: true,
+					deadline: voteDeadline,
+					nonce: voteNonce,
+					signature: voteSig,
+					signerEoa: eoa,
+				})
+				if (!voted.success) {
+					fail(
+						`Proposed on-chain (#${proposed.taskId}). Auto-approve failed: ${voted.error.slice(0, 160)}`
+					)
+					await syncAaV2TasksIntoLocal(eoa, signersAaAccount, upsertAaMultisigTaskRecord)
+					reloadTasks()
+					return
+				}
 			}
-			Toast.show({ content: `Policy update proposed on-chain (#${proposed.taskId}).` })
+			Toast.show({
+				content:
+					thr === 1n
+						? `Policy updated on-chain (#${proposed.taskId}).`
+						: `Policy update proposed on-chain (#${proposed.taskId}).`,
+			})
 			await syncAaV2TasksIntoLocal(eoa, signersAaAccount, upsertAaMultisigTaskRecord)
 			void refreshInstitutionalWallets()
 			opts.onAfterSuccess?.()
@@ -1942,36 +1955,63 @@ export default function AaMultisigPage() {
 				setTransferCreateError(proposed.error)
 				return
 			}
-			const voteNonce = newAaV2SigNonce()
-			const voteDeadline = defaultAaV2DeadlineSec()
-			const voteSig = await signAaV2Vote({
-				privateKeyArmor,
-				account: transferAaAccount,
-				taskId: proposed.taskId,
-				approve: true,
-				deadline: voteDeadline,
-				nonce: voteNonce,
-			})
-			const voted = await relayAaV2Vote({
-				account: transferAaAccount,
-				taskId: proposed.taskId,
-				approve: true,
-				deadline: voteDeadline,
-				nonce: voteNonce,
-				signature: voteSig,
-				signerEoa: eoa,
-			})
+
+			// Current threshold == 1: Account executes in the same propose tx (no second vote).
+			const aaRead = new ethers.Contract(
+				transferAaAccount,
+				['function threshold() view returns (uint256)', 'function getTask(uint256) view returns (uint8,uint8)'],
+				aaMultisigProvider
+			)
+			const thr = (await aaRead.threshold()) as bigint
+			let executedInPropose = thr === 1n
+			if (!executedInPropose) {
+				const voteNonce = newAaV2SigNonce()
+				const voteDeadline = defaultAaV2DeadlineSec()
+				const voteSig = await signAaV2Vote({
+					privateKeyArmor,
+					account: transferAaAccount,
+					taskId: proposed.taskId,
+					approve: true,
+					deadline: voteDeadline,
+					nonce: voteNonce,
+				})
+				const voted = await relayAaV2Vote({
+					account: transferAaAccount,
+					taskId: proposed.taskId,
+					approve: true,
+					deadline: voteDeadline,
+					nonce: voteNonce,
+					signature: voteSig,
+					signerEoa: eoa,
+				})
+				if (!voted.success) {
+					Toast.show({
+						content: `Transfer proposed (#${proposed.taskId}). Auto-approve failed: ${voted.error.slice(0, 80)}`,
+					})
+				} else {
+					executedInPropose = true
+					Toast.show({ content: `Transfer approved on-chain (#${proposed.taskId}).` })
+				}
+			} else {
+				try {
+					const t = await aaRead.getTask(BigInt(proposed.taskId))
+					const status = Number(t[1] ?? t.status)
+					if (status !== 2) {
+						setTransferCreateError(
+							`Transfer #${proposed.taskId} did not execute (status ${status}). Check balance and try again.`
+						)
+						await syncAaV2TasksIntoLocal(eoa, transferAaAccount, upsertAaMultisigTaskRecord)
+						reloadTasks()
+						return
+					}
+				} catch {
+					/* sync below */
+				}
+				Toast.show({ content: `Transfer completed (#${proposed.taskId}).` })
+			}
 			await syncAaV2TasksIntoLocal(eoa, transferAaAccount, upsertAaMultisigTaskRecord)
 			reloadTasks()
-			if (!voted.success) {
-				Toast.show({
-					content: `Transfer proposed (#${proposed.taskId}). Auto-approve failed: ${voted.error.slice(0, 80)}`,
-				})
-			} else {
-				Toast.show({
-					content: `Transfer proposed on-chain (#${proposed.taskId}).`,
-				})
-			}
+			void refreshInstitutionalWallets()
 			setTransferAmount('')
 			setTransferTo('')
 		} catch (e: unknown) {

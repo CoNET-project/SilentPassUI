@@ -43,6 +43,7 @@ import { getCashcodeData, searchUsername, storeSystemData, AuthorizationSign } f
 import { fiatPrefix } from '@/services/currency'
 import { MessageSendReceiveCard } from "./components/messageSendReceiveCard"
 import { tu } from '@/locale/beamioLocale'
+import { Toast } from 'antd-mobile'
 
 const aptEndpoint = 'https://api.settleonbase.xyz'
 const baseExplorerTxUrl = (hash: string) => `https://basescan.org/tx/${hash}`
@@ -923,6 +924,10 @@ export default function Chat({ onBack, chatData, privateKey, layout = 'fullscree
 
 			chatData.messages = next
 			await storageData()
+			Toast.show({
+				content: 'Message failed to reach CoNET entry nodes. Check console [sendMessage] logs.',
+				position: 'top',
+			})
 			return
 		}
 

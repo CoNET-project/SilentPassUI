@@ -13,7 +13,7 @@ import Chat from "./pages/chat"
 import ChatDetail from "./pages/chatDetail"
 import BeamioInstallOnboarding from "@/components/launchPage"
 import Browser from "@/pages/Browser"
-import { initChat, checkSign, getKeysFromCoNETPGPSC, makeMessage, sendMessage, getRandomNodes, currentGossipAbortController } from "@/services/chat"
+import { initChat, checkSign, createInboundChatSession, makeMessage, sendMessage, getRandomNodes, currentGossipAbortController } from "@/services/chat"
 import { checkStorage, searchUsername, storeSystemData } from "@/services/beamio"
 import { postCardCouponOpenClaimWithCurrentWallet } from "@/services/BeamioCard"
 import { CoNET_Data, setCoNET_Data } from "@/utils/globals"
@@ -574,20 +574,47 @@ function AppShell() {
 		for (const raw of uniqLines) {
 			try {
 			const msg: message = JSON.parse(raw)
-			if (!msg?.from || !msg?.text || !msg?.signMessage) continue
+			if (!msg?.from || !msg?.text || !msg?.signMessage) {
+				console.warn('[addNewMessage] skip: missing from/text/signMessage')
+				continue
+			}
 
 			const resolved = resolveSignedInboundChatPayload(msg)
-			if (!resolved) continue
+			if (!resolved) {
+				console.warn('[addNewMessage] skip: signature verify failed', { from: msg.from })
+				continue
+			}
 			const { displayText, signAddr } = resolved
+			console.log('[addNewMessage] verified inbound', {
+				from: signAddr,
+				ts: msg.timestamp,
+				textPreview: String(displayText).slice(0, 80),
+			})
 
-			// POS 终端权限申请：只进 MerchantOS pending（localStorage），不写入 Messages 会话列表
+			// POS 终端权限申请：只进 MerchantOS Staff pending（localStorage），不写入 Messages 会话列表
 			const posTerminalPerm = parsePosTerminalPermissionV1FromChatDisplayText(displayText)
 			if (posTerminalPerm) {
 				const prof = profile as { keyID?: string; aaAccount?: string }
 				const parts = merchantPosPermissionPartitionAddresses(prof, myAddress)
-				if (parts.length > 0) {
+				if (parts.length === 0) {
+					console.warn('[addNewMessage] POS permission received but no merchant partition (keyID/aa/myAddress)', {
+						sendId: posTerminalPerm.sendId,
+						childTag: posTerminalPerm.childBeamioTag,
+					})
+				} else {
 					const added = appendPosTerminalPermissionPendingForMerchantPartitions(parts, posTerminalPerm)
-					if (added) notifyPosTerminalPermissionPendingUpdate()
+					if (added) {
+						notifyPosTerminalPermissionPendingUpdate()
+						Toast.show({
+							content: `POS approval request from @${posTerminalPerm.childBeamioTag}`,
+							position: 'top',
+						})
+					} else {
+						console.log('[addNewMessage] POS permission already queued', {
+							sendId: posTerminalPerm.sendId,
+							childTag: posTerminalPerm.childBeamioTag,
+						})
+					}
 				}
 				continue
 			}
@@ -595,29 +622,22 @@ function AppShell() {
 			let idx = chats.findIndex(n => n?.address?.toLowerCase() === signAddr.toLowerCase())
 			let chat = idx >= 0 ? { ...chats[idx] } : null
 
-			// ✅ 不存在：创建新 chat
+			// ✅ 不存在：创建新 chat（无 profile / 无发件人 PGP 也保留会话，禁止静默丢弃）
 			if (!chat) {
 				const _account = await searchUsername(signAddr)
-				if (!_account?.results?.length) continue
-
-				const acc: searchResult = _account.results[0]
-				const kk = await getKeysFromCoNETPGPSC(acc.address, profile.privateKeyArmor)
-				if (!kk?.publicArmored) continue
-
-				chat = {
-					address: signAddr,
-					beamio: acc,
-					messages: [],
-					pin: false,
-					hide: false,
-					chatData: kk,
-					unreadCount: 0,
-					tag: "grey",
-					muted: false
-				}
-
-				chats.unshift(chat) // ✅ 新会话放到最上面（更像 Messages）
+				const acc: searchResult | null = _account?.results?.length
+					? (_account.results.find((r: searchResult) => (r?.address ?? '').toLowerCase() === signAddr.toLowerCase()) ??
+						_account.results[0])
+					: null
+				chat = await createInboundChatSession(signAddr, profile.privateKeyArmor, acc)
+				chats.unshift(chat)
 				idx = 0
+				Toast.show({
+					content: acc?.username
+						? `New message from @${acc.username}`
+						: `New message from ${signAddr.slice(0, 6)}…${signAddr.slice(-4)}`,
+					position: 'top',
+				})
 			}
 
 			// ✅ 合并消息（去重 + 排序）；displayText 已归一化（嵌套格式时用 inner.text）

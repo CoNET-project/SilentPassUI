@@ -143,6 +143,23 @@ function localSecretFor(kind: string, issuer: string, hash: string): string | un
 	return readLocalSecrets()[key]
 }
 
+/** Re-attach device-local secrets after RPC / list-cache loads (never trust list cache for secrets). */
+function hydrateAdminPackageSecrets(
+	issuer: string,
+	records: AdminMerchantPackageRecord[],
+): AdminMerchantPackageRecord[] {
+	return records.map((record) => ({
+		...record,
+		secret: localSecretFor('adminPackage', issuer, record.hash) ?? record.secret,
+	}))
+}
+
+function stripAdminPackageSecretsForCache(
+	records: AdminMerchantPackageRecord[],
+): AdminMerchantPackageRecord[] {
+	return records.map(({ secret: _secret, ...rest }) => rest)
+}
+
 function enqueueWrite<T>(work: () => Promise<T>): Promise<T> {
 	const next = writeQueue.then(work, work)
 	writeQueue = next.then(() => undefined, () => undefined)
@@ -668,15 +685,18 @@ export async function fetchAdminMerchantPackageCodes(
 ): Promise<AdminMerchantPackageRecord[]> {
 	const key = ethers.getAddress(issuer).toLowerCase()
 	const cached = adminPackageListCache.get(key)
-	if (!options.force && cached && Date.now() - cached.fetchedAt < RPC_TTL_MS) return cached.records
+	if (!options.force && cached && Date.now() - cached.fetchedAt < RPC_TTL_MS) {
+		return hydrateAdminPackageSecrets(issuer, cached.records)
+	}
 	if (!options.force) {
 		try {
 			const raw = localStorage.getItem(`${ADMIN_PACKAGE_LIST_CACHE_PREFIX}${key}`)
 			if (raw) {
 				const parsed = JSON.parse(raw) as { fetchedAt?: number; records?: AdminMerchantPackageRecord[] }
 				if (Number.isFinite(parsed.fetchedAt) && Array.isArray(parsed.records) && Date.now() - Number(parsed.fetchedAt) < RPC_TTL_MS) {
-					adminPackageListCache.set(key, { fetchedAt: Number(parsed.fetchedAt), records: parsed.records })
-					return parsed.records
+					const records = hydrateAdminPackageSecrets(issuer, parsed.records)
+					adminPackageListCache.set(key, { fetchedAt: Number(parsed.fetchedAt), records: stripAdminPackageSecretsForCache(records) })
+					return records
 				}
 			}
 		} catch {
@@ -684,25 +704,35 @@ export async function fetchAdminMerchantPackageCodes(
 		}
 	}
 	const existing = adminPackageListInFlight.get(key)
-	if (existing) return existing
+	if (existing) return existing.then((records) => hydrateAdminPackageSecrets(issuer, records))
 	const request = enqueueRpc(() => readAdminPackageRecords(issuer))
 		.then((records) => {
-			adminPackageListCache.set(key, { fetchedAt: Date.now(), records })
+			const hydrated = hydrateAdminPackageSecrets(issuer, records)
+			adminPackageListCache.set(key, {
+				fetchedAt: Date.now(),
+				records: stripAdminPackageSecretsForCache(hydrated),
+			})
 			try {
-				localStorage.setItem(`${ADMIN_PACKAGE_LIST_CACHE_PREFIX}${key}`, JSON.stringify({ fetchedAt: Date.now(), records }))
+				localStorage.setItem(
+					`${ADMIN_PACKAGE_LIST_CACHE_PREFIX}${key}`,
+					JSON.stringify({
+						fetchedAt: Date.now(),
+						records: stripAdminPackageSecretsForCache(hydrated),
+					}),
+				)
 			} catch {
 				// ignore
 			}
-			return records
+			return hydrated
 		})
 		.catch((error) => {
 			const previous = adminPackageListCache.get(key)
-			if (previous) return previous.records
+			if (previous) return hydrateAdminPackageSecrets(issuer, previous.records)
 			try {
 				const raw = localStorage.getItem(`${ADMIN_PACKAGE_LIST_CACHE_PREFIX}${key}`)
 				if (raw) {
 					const parsed = JSON.parse(raw) as { records?: AdminMerchantPackageRecord[] }
-					if (Array.isArray(parsed.records)) return parsed.records
+					if (Array.isArray(parsed.records)) return hydrateAdminPackageSecrets(issuer, parsed.records)
 				}
 			} catch {
 				// ignore
@@ -810,8 +840,12 @@ export async function issueAdminMerchantPackageCode(params: {
 		}
 		saveLocalSecret('adminPackage', wallet.address, hash, secret)
 		const records = await fetchAdminMerchantPackageCodes(wallet.address, { force: true })
-		const record = records.find((item) => item.hash.toLowerCase() === hash.toLowerCase())
-		if (!record) throw new Error('Package code was confirmed but could not be read back from CoNET.')
+		const found = records.find((item) => item.hash.toLowerCase() === hash.toLowerCase())
+		if (!found) throw new Error('Package code was confirmed but could not be read back from CoNET.')
+		const record: AdminMerchantPackageRecord = {
+			...found,
+			secret: found.secret ?? secret,
+		}
 		return { secret, hash, txHash: json.txHash, record }
 	})
 }

@@ -1618,7 +1618,7 @@ function AdminMerchantPackagePanel({
 							<p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-200">Admin redeem management</p>
 							<h2 id="admin-merchant-package-title" className="mt-2 text-3xl font-semibold tracking-tight">Start Ket NFT &amp; B-Unit codes</h2>
 							<p className="mt-2 text-sm leading-6 text-slate-400">
-								Issue redeem codes that grant free or paid B-Units and optionally a Business Start Ket NFT. Payment method and credential notes are stored on-chain as plaintext. Free B-Units are one-time per EOA (shared with any prior free grant).
+								Issue redeem codes that grant free or paid B-Units and optionally a Business Start Ket NFT. Payment method and credential notes are stored on-chain as plaintext. Free B-Units are one-time per EOA (shared with any prior free grant). Full redeem codes are saved on this device for Issued codes.
 							</p>
 						</header>
 
@@ -1737,7 +1737,10 @@ function AdminMerchantPackagePanel({
 
 							{newSecret ? (
 								<div className="rounded-2xl border border-emerald-300/20 bg-emerald-400/10 p-4">
-									<p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-200">New code (copy now)</p>
+									<p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-200">New code saved on this device</p>
+									<p className="mt-1 text-xs leading-5 text-emerald-100/70">
+										The full redeem code is kept in local storage on this device only. Only its hash is on CoNET.
+									</p>
 									<p className="mt-2 break-all font-mono text-sm text-emerald-50">{newSecret}</p>
 									<button
 										type="button"
@@ -1757,6 +1760,9 @@ function AdminMerchantPackagePanel({
 									<h3 className="font-semibold text-white">Issued codes</h3>
 									<span className="text-xs text-slate-400">{records.length}</span>
 								</div>
+								<p className="mt-1 text-xs leading-5 text-slate-500">
+									Redeem codes created on this device are saved locally so you can copy them again. Codes issued elsewhere cannot be reconstructed from the on-chain hash.
+								</p>
 								{loading ? (
 									<div className="mt-4 flex items-center gap-2 text-sm text-slate-400">
 										<Loader2 className="h-4 w-4 animate-spin" aria-hidden />
@@ -1769,9 +1775,30 @@ function AdminMerchantPackagePanel({
 										{records.map((record) => (
 											<div key={record.hash} className="rounded-xl border border-white/10 bg-black/15 p-3">
 												<div className="flex items-start justify-between gap-2">
-													<div className="min-w-0">
-														<p className="font-mono text-xs text-slate-300">{record.hash.slice(0, 10)}…{record.hash.slice(-8)}</p>
-														<p className="mt-1 text-sm text-white">
+													<div className="min-w-0 flex-1">
+														<p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+															Redeem code
+														</p>
+														<div className="mt-1.5 flex items-start gap-2">
+															<code className="min-w-0 flex-1 break-all rounded-lg bg-black/25 px-2.5 py-2 font-mono text-xs text-white">
+																{record.secret ?? 'Redeem code unavailable on this device'}
+															</code>
+															{record.secret ? (
+																<button
+																	type="button"
+																	onClick={() => void copyRecordSecret(record)}
+																	className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/15 bg-white/5 text-slate-200"
+																	aria-label="Copy redeem code"
+																>
+																	{copiedRecordHash === record.hash ? (
+																		<Check className="h-3.5 w-3.5 text-emerald-400" aria-hidden />
+																	) : (
+																		<Clipboard className="h-3.5 w-3.5" aria-hidden />
+																	)}
+																</button>
+															) : null}
+														</div>
+														<p className="mt-2 text-sm text-white">
 															{Number(record.bunitDisplay).toFixed(2)} {record.isPaid ? 'paid' : 'free'} B-Units
 															{record.includeStartKet ? ' · Start Ket' : ''}
 														</p>
@@ -1784,20 +1811,8 @@ function AdminMerchantPackagePanel({
 														{record.status}
 													</span>
 												</div>
-												<div className="mt-3 flex flex-wrap items-center gap-2">
-													{record.secret ? (
-														<button
-															type="button"
-															onClick={() => void copyRecordSecret(record)}
-															className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-[11px] text-slate-200"
-														>
-															{copiedRecordHash === record.hash ? <Check className="h-3 w-3 text-emerald-400" aria-hidden /> : <Clipboard className="h-3 w-3" aria-hidden />}
-															{copiedRecordHash === record.hash ? 'Copied' : 'Copy code'}
-														</button>
-													) : (
-														<span className="text-[11px] text-slate-500">Secret unavailable on this device</span>
-													)}
-													{record.status === 'pending' ? (
+												{record.status === 'pending' ? (
+													<div className="mt-3 flex flex-wrap items-center gap-2">
 														<button
 															type="button"
 															onClick={() => void handleCancel(record.hash)}
@@ -1808,8 +1823,8 @@ function AdminMerchantPackagePanel({
 															{cancellingHash === record.hash ? <Loader2 className="h-3 w-3 animate-spin" aria-hidden /> : <XCircle className="h-3 w-3" aria-hidden />}
 															Cancel
 														</button>
-													) : null}
-												</div>
+													</div>
+												) : null}
 											</div>
 										))}
 									</div>

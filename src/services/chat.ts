@@ -705,11 +705,14 @@ export const connectToGossipNode = async (
   const rootSignal = myController.signal;
 
   try {
+      // Encrypt listen/mining to mailbox **B** (router armored key), but HTTP/SSE only via
+      // random healthy **entry C ≠ B** — Tor-like: never reveal client IP to mailbox B.
       const routeNodes = pickRouteNodesByArmoredKey(nodes, nodeArmoredPublicKey)
       if (!routeNodes.length) {
         chatBootLog('connectToGossipNode abort: no route node for router key', 'error')
         return
       }
+      const mailboxDomains = new Set(routeNodes.map(n => n.domain))
 
       // ... (加密/准备逻辑保持不变) ...
       const wallet = new ethers.Wallet(privateKeyArmor);
@@ -731,14 +734,19 @@ export const connectToGossipNode = async (
       console.log("🚀 [Gossip] Starting new connection...");
       chatBootLog('Gossip SSE connect starting…')
       const gossipBody = JSON.stringify({ data: postData })
-      const healthyNodes = await pickHealthyGossipNodes(routeNodes)
-      chatBootLog(`Gossip healthy route nodes: ${healthyNodes.length}/${routeNodes.length}`)
+      const entryCandidates = nodes.filter(n => !mailboxDomains.has(n.domain))
+      const healthyNodes = await pickHealthyGossipNodes(
+        entryCandidates.length ? entryCandidates : nodes,
+      )
+      chatBootLog(
+        `Gossip healthy entry C: ${healthyNodes.length} (mailbox B domains excluded: ${[...mailboxDomains].join(',') || 'none'})`,
+      )
       if (!healthyNodes.length) {
-        chatBootLog('connectToGossipNode abort: no healthy route node', 'error')
+        chatBootLog('connectToGossipNode abort: no healthy entry C for gossip listen', 'error')
         return
       }
 
-      // 启动递归循环，传入 nodes 数组，重连时随机换 node
+      // 启动递归循环，传入 entry C 数组，重连时随机换 entry（不直连 B）
       startGossip(
         healthyNodes, 
         gossipBody, 
@@ -888,13 +896,73 @@ const pickHealthyGossipNodes = async (nodes: nodeInfo[]): Promise<nodeInfo[]> =>
 }
 
 
+/** Minimal peer profile when tag search has no hit (still show inbound chat). */
+export const emptySearchResultForAddress = (address: string): searchResult => ({
+	address,
+	created_at: 0,
+	first_name: '',
+	last_name: '',
+	image: '',
+	username: '',
+	follow_count: '0',
+	follower_count: '0',
+})
+
+/**
+ * Open inbound chat for a verified sender EOA.
+ * Do not refuse solely because profile search or on-chain PGP is missing.
+ */
+export const createInboundChatSession = async (
+	signAddr: string,
+	privateKeyArmor: string,
+	peerProfile: searchResult | null | undefined,
+): Promise<chatData> => {
+	const addr = ethers.isAddress(signAddr) ? ethers.getAddress(signAddr) : signAddr
+	const beamio = peerProfile?.address ? peerProfile : emptySearchResultForAddress(addr)
+	const kk = await getKeysFromCoNETPGPSC(addr, privateKeyArmor)
+	if (!peerProfile?.address) {
+		console.warn(
+			`[chat inbound] no Beamio profile for ${addr} — creating address-only session (message still shown)`,
+		)
+	}
+	if (!kk?.publicArmored) {
+		console.warn(
+			`[chat inbound] sender ${addr} has no on-chain PGP publicArmored — can display inbound, reply may fail until they register Chat`,
+		)
+	}
+	return {
+		address: addr,
+		beamio,
+		messages: [],
+		pin: false,
+		hide: false,
+		chatData: {
+			privateArmored: kk?.privateArmored ?? '',
+			publicArmored: kk?.publicArmored ?? '',
+			routersArmoreds: kk?.routersArmoreds ?? '',
+			online: !!kk?.online,
+			routePgpKeyID: kk?.routePgpKeyID ?? '',
+		},
+		unreadCount: 0,
+		tag: 'grey',
+		muted: false,
+	}
+}
+
 export const sendMessage = async (
 	pgpPublic: string,
 	text: string,
 	privateKeyArmor: string,
 	entryNodes: nodeInfo[]
 ): Promise<boolean> => {
-	if (!entryNodes?.length) return false
+	if (!entryNodes?.length) {
+		console.error('[sendMessage] no entry nodes')
+		return false
+	}
+	if (!pgpPublic?.trim()) {
+		console.error('[sendMessage] missing recipient publicArmored')
+		return false
+	}
 
 	const wallet = new ethers.Wallet(privateKeyArmor)
 	const signMessage = await wallet.signMessage(text)
@@ -915,7 +983,7 @@ export const sendMessage = async (
 			config: { preferredCompressionAlgorithm: enums.compression.zlib }
 		}
 	} catch (ex: any) {
-		console.log(`connectToGossipNode !createMessage Errro! ${ex?.message || ex}`)
+		console.error(`[sendMessage] createMessage/readKey Error! ${ex?.message || ex}`)
 		return false
 	}
 
@@ -923,7 +991,7 @@ export const sendMessage = async (
 	try {
 		postData = await encrypt(encryptObj)
 	} catch (ex: any) {
-		console.log(`encrypt Error! ${ex?.message || ex}`)
+		console.error(`[sendMessage] encrypt Error! ${ex?.message || ex}`)
 		return false
 	}
 
@@ -935,20 +1003,31 @@ export const sendMessage = async (
 	}
 
 	const results = await Promise.all(
-		entryNodes.map(node => {
+		entryNodes.map(async node => {
 			const url = `https://${node.domain}.conet.network/post`
-			return postWithTimeout(url, postOpts, 12_000)
-				.then(res => {
-					return res.ok
-				})	
-				.catch((error) => {
-					console.error('[sendMessage] Error:', error)
+			try {
+				const res = await postWithTimeout(url, postOpts, 12_000)
+				if (!res.ok) {
+					console.warn(`[sendMessage] ${url} → HTTP ${res.status}`)
 					return false
-				})
+				}
+				console.log(`[sendMessage] ${url} → ${res.status}`)
+				return true
+			} catch (ex: any) {
+				console.warn(`[sendMessage] ${url} → ${ex?.name || 'error'}: ${ex?.message || ex}`)
+				return false
+			}
 		})
 	)
 
-	return results.some(ok => ok)
+	const ok = results.some(Boolean)
+	if (!ok) {
+		console.error(
+			'[sendMessage] all entry POSTs failed',
+			entryNodes.map(n => n.domain),
+		)
+	}
+	return ok
 }
 
 

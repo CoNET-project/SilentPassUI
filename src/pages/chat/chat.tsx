@@ -58,6 +58,7 @@ import {
 } from '@/utils/aaMultisigTaskUi'
 import type { AaMultisigChatPreview } from '@/utils/aaMultisigChatPreview'
 import { tu } from '@/locale/beamioLocale'
+import { Toast } from 'antd-mobile'
 
 const aptEndpoint = 'https://api.settleonbase.xyz'
 const baseExplorerTxUrl = (hash: string) => `https://basescan.org/tx/${hash}`
@@ -1094,6 +1095,10 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 
 			chatData.messages = next
 			await storageData()
+			Toast.show({
+				content: 'Message failed to reach CoNET entry nodes. Check console [sendMessage] logs.',
+				position: 'top',
+			})
 			return
 		}
 

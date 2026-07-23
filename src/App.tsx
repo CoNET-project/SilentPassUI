@@ -15,7 +15,7 @@ import Chat from "./pages/chat"
 import ChatDetail from "./pages/chatDetail"
 import BeamioInstallOnboarding from "@/components/launchPage"
 import Browser from "@/pages/Browser"
-import { initChat, checkSign, getKeysFromCoNETPGPSC, makeMessage, sendMessage, getRandomNodes, currentGossipAbortController } from "@/services/chat"
+import { initChat, checkSign, createInboundChatSession, makeMessage, sendMessage, getRandomNodes, currentGossipAbortController } from "@/services/chat"
 import { checkStorage, storeSystemData, runAutoBUnitFreeClaimIfEligible, handleNfcLinkAppDeepLinkScan, ensureProfilePrivateKeyArmorFromMnemonic, bootstrapProfileLocaleCurrencyIfUnset, mergeLocalLocaleLanguageOntoChainProfile } from "@/services/beamio"
 import { hasLocalPlaintextMnemonic } from "@/utils/consumerWalletGate"
 import { ensureEphemeralWalletForCouponClaim } from "@/utils/ephemeralCouponClaimWallet"
@@ -965,7 +965,10 @@ function AppShell() {
 					}
 				} catch {}
 			}
-			if (!sign) continue
+			if (!sign) {
+				console.warn('[addNewMessage] skip: signature verify failed', { from: msg.from })
+				continue
+			}
 			const signAddr = sign
 
 			const walletEoa = profile.keyID?.trim() ?? ''
@@ -980,7 +983,7 @@ function AppShell() {
 			let idx = chats.findIndex(n => n?.address?.toLowerCase() === signAddr.toLowerCase())
 			let chat = idx >= 0 ? { ...chats[idx] } : null
 
-			// ✅ 不存在：创建新 chat（本地 BeamioTag DB 优先，远程 search 仅补缺失）
+			// ✅ 不存在：创建新 chat（无 profile / 无发件人 PGP 也保留会话，禁止静默丢弃）
 			if (!chat) {
 				let acc: searchResult | null = resolvePeerSearchResult(signAddr)
 				if (!acc) {
@@ -989,31 +992,27 @@ function AppShell() {
 					if (res && typeof res === 'object' && Array.isArray((res as { results?: unknown }).results)) {
 						rows = (res as { results: searchResult[] }).results
 					}
-					if (rows.length === 0) continue
 					acc =
 						rows.find((r) => (r?.address ?? '').toLowerCase() === signAddr.toLowerCase()) ??
 						rows[0] ??
 						null
 				}
-				if (!acc) continue
 
-				const kk = await getKeysFromCoNETPGPSC(acc.address, profile.privateKeyArmor)
-				if (!kk?.publicArmored) continue
-
-				chat = {
-					address: signAddr,
-					beamio: acc,
-					messages: [],
-					pin: false,
-					hide: false,
-					chatData: kk,
-					unreadCount: 0,
-					tag: "grey",
-					muted: false
-				}
-
-				chats.unshift(chat) // ✅ 新会话放到最上面（更像 Messages）
+				chat = await createInboundChatSession(signAddr, profile.privateKeyArmor, acc)
+				chats.unshift(chat)
 				idx = 0
+				console.log('[addNewMessage] verified inbound new session', {
+					from: signAddr,
+					hasProfile: !!acc?.username,
+					hasPgp: !!chat.chatData?.publicArmored,
+					textPreview: String(displayText).slice(0, 80),
+				})
+				Toast.show({
+					content: acc?.username
+						? `New message from @${acc.username}`
+						: `New message from ${signAddr.slice(0, 6)}…${signAddr.slice(-4)}`,
+					position: 'top',
+				})
 			}
 
 			// ✅ 合并消息（去重 + 排序）；displayText 已归一化（嵌套格式时用 inner.text）

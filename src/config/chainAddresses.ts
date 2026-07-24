@@ -28,6 +28,8 @@ export const CONET_BUINT = '0x54ac4672cE75EC5ACebaeF1a7aFC6F49E77Ae9Ae'
 export const BEAMIO_INDEXER_DIAMOND = '0x6113fE738489c0aB64B4606Ce333aD29b44ED0C4'
 /** CoNET ReferralRegistryVaultV1 ERC1967 proxy (Admin → L0 → L1/Merchant). */
 export const CONET_REFERRAL_REGISTRY_VAULT_V1 = '0xD6252Cbf266B80231397Ac2a4f25ed2d9b01DEE6'
+/** Vault proxy deploy block — ClaimableAccrued / claim history scan floor. */
+export const CONET_REFERRAL_REGISTRY_VAULT_V1_DEPLOY_BLOCK = 431457
 /** CoNET ReferralMerchantShareModuleV1 proxy — L0 merchant→L1 rebate share config. */
 export const CONET_REFERRAL_MERCHANT_SHARE_MODULE = '0xe3e06f47D89159713d67ec8530E4FE97D31Bb708'
 /**

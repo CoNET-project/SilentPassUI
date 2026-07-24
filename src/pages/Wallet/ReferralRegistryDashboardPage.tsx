@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ethers } from 'ethers'
-import { AlertTriangle, Check, Clipboard, Copy, Gift, Loader2, Package, Pencil, RefreshCw, Settings2, ShieldCheck, SlidersHorizontal, Trash2, XCircle } from 'lucide-react'
+import { AlertTriangle, Check, ChevronRight, Clipboard, Copy, ExternalLink, Gift, Loader2, Package, Pencil, RefreshCw, Settings2, ShieldCheck, SlidersHorizontal, Trash2, Wallet, XCircle } from 'lucide-react'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { useBeamioTagDatabase } from '@/providers/BeamioTagDatabaseProvider'
 import { BeamioCircularBackButton } from '@/components/BeamioCircularBackButton'
@@ -15,6 +15,25 @@ import {
 	type ReferralRegistryDownstreamItem,
 	type ReferralRegistryRoleSnapshot,
 } from '@/services/referralRegistryRole'
+import {
+	fetchAdminL0ReferralUsdcBreakdown,
+	fetchReferralBeneficiaryUsdcBreakdown,
+	fetchReferralEarnings,
+	formatReferralUsdcAmount6,
+	getAdminL0MerchantUsdc,
+	getAdminL0UsdcRow,
+	getReferralBeneficiaryMerchantUsdc,
+	getReferralBeneficiaryUsdcRow,
+	readCachedAdminL0ReferralUsdc,
+	readCachedReferralBeneficiaryUsdc,
+	readCachedReferralEarnings,
+	sumUsdc6,
+	type ReferralBeneficiaryUsdcBreakdown,
+	type ReferralEarningsSnapshot,
+	type ReferralIncomeItem,
+} from '@/services/referralRegistryEarnings'
+import { formatBeamioTransactionTimeLabel } from '@/utils/beamioTransactionTimeLabel'
+import { beamioConetMainnetTxExplorerUrl } from '@/utils/beamioUserCardChain'
 import {
 	assignReferralMerchantToL0,
 	fetchReferralL0Quota,
@@ -100,14 +119,61 @@ function AddressCapsule({ address }: { address: string }) {
 	)
 }
 
-function BeamioTagCapsule({ address }: { address: string }) {
+function TxHashCapsule({
+	transactionHash,
+	timestampMs,
+}: {
+	transactionHash: string
+	timestampMs?: number
+}) {
+	const short =
+		transactionHash.length > 12
+			? `${transactionHash.slice(0, 8)}…${transactionHash.slice(-6)}`
+			: transactionHash
+	const href = beamioConetMainnetTxExplorerUrl(transactionHash)
+	const timeLabel =
+		timestampMs != null && timestampMs > 0 ? formatBeamioTransactionTimeLabel(timestampMs) : null
+	return (
+		<a
+			href={href}
+			target="_blank"
+			rel="noopener noreferrer"
+			className="inline-flex max-w-full items-center gap-2 rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-left text-xs text-slate-200 transition hover:bg-white/10"
+			aria-label={
+				timeLabel
+					? `Open transaction ${transactionHash} on CoNET explorer, ${timeLabel}`
+					: `Open transaction ${transactionHash} on CoNET explorer`
+			}
+		>
+			<span className="truncate font-mono">{short}</span>
+			{timeLabel ? <span className="shrink-0 text-slate-400">{timeLabel}</span> : null}
+			<ExternalLink className="h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden />
+		</a>
+	)
+}
+
+function BeamioTagCapsule({
+	address,
+	rebatePercent,
+	onEdit,
+}: {
+	address: string
+	/** Optional rebate % shown inside the capsule (admin → L0). */
+	rebatePercent?: string
+	onEdit?: () => void
+}) {
 	const { resolveTagPlain, avatarImgUrl } = useBeamioTagDatabase()
 	const tag = resolveTagPlain(address)
 	const displayTag = tag || 'Beamio'
+	const hasExtras = rebatePercent != null || Boolean(onEdit)
 	return (
 		<div
-			className="inline-flex max-w-full items-center gap-2 rounded-full border border-indigo-200/20 bg-indigo-300/10 px-2.5 py-1.5 text-sm font-medium text-indigo-100"
-			aria-label={`Beamio tag @${displayTag}`}
+			className={`inline-flex max-w-full items-center gap-2 rounded-full border border-indigo-200/20 bg-indigo-300/10 text-sm font-medium text-indigo-100 ${hasExtras ? 'py-1.5 pl-2 pr-1.5' : 'px-2.5 py-1.5'}`}
+			aria-label={
+				rebatePercent != null
+					? `Beamio tag @${displayTag}, ${rebatePercent}% rebate`
+					: `Beamio tag @${displayTag}`
+			}
 		>
 			<img
 				src={avatarImgUrl(tag, address)}
@@ -115,7 +181,23 @@ function BeamioTagCapsule({ address }: { address: string }) {
 				className="h-6 w-6 shrink-0 rounded-full object-cover"
 				aria-hidden
 			/>
-			<span className="truncate">@{displayTag}</span>
+			<span className="min-w-0 truncate">@{displayTag}</span>
+			{rebatePercent != null ? (
+				<span className="shrink-0 rounded-full border border-indigo-200/25 bg-black/20 px-2 py-0.5 text-[11px] font-semibold text-indigo-100">
+					{rebatePercent}%
+				</span>
+			) : null}
+			{onEdit ? (
+				<button
+					type="button"
+					onClick={onEdit}
+					className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-indigo-200/30 bg-indigo-200/15 text-indigo-50 transition hover:bg-indigo-200/25"
+					aria-label={`Manage L0 @${displayTag}`}
+					title="Edit"
+				>
+					<Pencil className="h-3 w-3" aria-hidden />
+				</button>
+			) : null}
 		</div>
 	)
 }
@@ -170,6 +252,8 @@ function L0L1MerchantShareList({
 	l1,
 	l0RebateBps,
 	refreshKey,
+	usdcByMerchant,
+	usdcLoading,
 	onEditShare,
 }: {
 	l0: string
@@ -177,6 +261,8 @@ function L0L1MerchantShareList({
 	/** L0 rebate bps of merchant full — used to convert shareBps → of-merchant %. */
 	l0RebateBps: string
 	refreshKey: number
+	usdcByMerchant?: Record<string, string>
+	usdcLoading?: boolean
 	onEditShare: (row: MerchantL1ShareRow) => void
 }) {
 	const { ensureProfilesForAddresses } = useBeamioTagDatabase()
@@ -225,15 +311,29 @@ function L0L1MerchantShareList({
 		return <p className="mt-2 text-[11px] text-slate-500">No merchant revenue shares for this L1.</p>
 	}
 	return (
-		<div className="mt-2 flex flex-wrap gap-2">
-			{rows.map((row) => (
-				<MerchantShareEditCapsule
-					key={row.merchant}
-					address={row.merchant}
-					sharePercent={shareBpsAsMerchantFullPercent(l0RebateBps, row.shareBps)}
-					onEdit={() => onEditShare(row)}
-				/>
-			))}
+		<div className="mt-2 space-y-1.5">
+			{rows.map((row) => {
+				const checksum = ethers.isAddress(row.merchant) ? ethers.getAddress(row.merchant) : row.merchant
+				const fromMerchant =
+					usdcByMerchant?.[checksum] ?? usdcByMerchant?.[checksum.toLowerCase()] ?? '0'
+				return (
+					<div
+						key={row.merchant}
+						className="flex min-w-0 items-center justify-between gap-2 rounded-md border border-white/5 bg-black/20 px-1.5 py-1.5"
+					>
+						<div className="min-w-0 flex-1">
+							<MerchantShareEditCapsule
+								address={row.merchant}
+								sharePercent={shareBpsAsMerchantFullPercent(l0RebateBps, row.shareBps)}
+								onEdit={() => onEditShare(row)}
+							/>
+						</div>
+						<p className="shrink-0 text-xs font-medium tabular-nums text-emerald-200">
+							{usdcLoading && !usdcByMerchant ? '…' : `$${formatReferralUsdcAmount6(fromMerchant)}`}
+						</p>
+					</div>
+				)
+			})}
 		</div>
 	)
 }
@@ -647,47 +747,6 @@ function L1MerchantSharesSection({
 	)
 }
 
-function L0MerchantRemainingShareBadge({
-	l0,
-	merchant,
-	l0RebateBps,
-	refreshKey,
-}: {
-	l0: string
-	merchant: string
-	l0RebateBps: string
-	refreshKey: number
-}) {
-	const [percent, setPercent] = useState<string | null>(null)
-
-	useEffect(() => {
-		let cancelled = false
-		const load = async () => {
-			try {
-				const rows = await fetchMerchantL1Shares(l0, merchant)
-				if (cancelled) return
-				setPercent(l0RemainingOfMerchantFullPercent(l0RebateBps, rows.map((row) => row.shareBps)))
-			} catch {
-				if (cancelled) return
-				// Keep last trusted percent on failure.
-			}
-		}
-		void load()
-		return () => {
-			cancelled = true
-		}
-	}, [l0, merchant, l0RebateBps, refreshKey])
-
-	return (
-		<span
-			className="rounded-full border border-emerald-200/20 bg-emerald-300/10 px-2 py-0.5 text-[11px] font-medium text-emerald-100"
-			title="Your remaining share of merchant total after L1 allocations"
-		>
-			{percent === null ? '…' : `${percent}%`}
-		</span>
-	)
-}
-
 function DownstreamSection({
 	snapshot,
 	l0Address,
@@ -710,16 +769,185 @@ function DownstreamSection({
 	const downstreamAddresses = downstream.flatMap((item) => [
 		item.address,
 		...(item.merchantItems ?? []).map((merchant) => merchant.address),
+		...(item.l1Items ?? []).map((l1) => l1.address),
 	])
+
+	const l0RowsForUsdc = snapshot.isAdmin
+		? downstream
+				.filter((item) => item.role === 'l0')
+				.map((item) => ({
+					l0: item.address,
+					merchants: (item.merchantItems ?? []).map((m) => m.address),
+					l1s: (item.l1Items ?? []).map((l1) => l1.address),
+				}))
+		: []
+
+	const [l0Usdc, setL0Usdc] = useState<ReferralBeneficiaryUsdcBreakdown | null>(() =>
+		snapshot.isAdmin && l0RowsForUsdc.length > 0
+			? readCachedAdminL0ReferralUsdc(snapshot.eoa, l0RowsForUsdc)
+			: null,
+	)
+	const [l0UsdcLoading, setL0UsdcLoading] = useState(false)
+	const l0UsdcForceNextRef = useRef(false)
+
+	const [l1Usdc, setL1Usdc] = useState<ReferralBeneficiaryUsdcBreakdown | null>(null)
+	const [l1UsdcLoading, setL1UsdcLoading] = useState(false)
+	const l1UsdcForceNextRef = useRef(false)
+
+	/** Per L0: full rebate-pool accrual items (L0 wallet + L1 shares). */
+	const [l0PoolItemsByAddr, setL0PoolItemsByAddr] = useState<Record<string, ReferralIncomeItem[]>>({})
+	const [l0EarningsLoading, setL0EarningsLoading] = useState(false)
+	const [l0EarningsError, setL0EarningsError] = useState<string | null>(null)
+	const [merchantAccrualOpen, setMerchantAccrualOpen] = useState<{ l0: string; merchant: string } | null>(null)
+	const l0EarningsForceNextRef = useRef(false)
 
 	useEffect(() => {
 		if (downstreamAddresses.length === 0) return
 		void ensureProfilesForAddresses(downstreamAddresses)
 	}, [ensureProfilesForAddresses, downstreamAddresses.join('|')])
 
+	useEffect(() => {
+		if (!snapshot.isAdmin || l0RowsForUsdc.length === 0) {
+			setL0Usdc(null)
+			return
+		}
+		const cached = readCachedAdminL0ReferralUsdc(snapshot.eoa, l0RowsForUsdc)
+		if (cached) setL0Usdc(cached)
+		let cancelled = false
+		setL0UsdcLoading(true)
+		const force = l0UsdcForceNextRef.current
+		l0UsdcForceNextRef.current = true
+		void fetchAdminL0ReferralUsdcBreakdown(snapshot.eoa, l0RowsForUsdc, { force }).then((result) => {
+			if (cancelled) return
+			if (result.ok) setL0Usdc(result.snapshot)
+			setL0UsdcLoading(false)
+		})
+		return () => {
+			cancelled = true
+		}
+	}, [
+		snapshot.isAdmin,
+		snapshot.eoa,
+		snapshot.fetchedAt,
+		shareRefreshKey,
+		l0RowsForUsdc.map((r) => `${r.l0}:${r.merchants.join(',')}:${(r.l1s ?? []).join(',')}`).join('|'),
+	])
+
+	useEffect(() => {
+		if (snapshot.role !== 'l0' || !l0Address || !ethers.isAddress(l0Address)) {
+			setL1Usdc(null)
+			return
+		}
+		const l1Items = downstream.filter((item) => item.role === 'l1')
+		if (l1Items.length === 0) {
+			setL1Usdc(null)
+			return
+		}
+		let cancelled = false
+		setL1UsdcLoading(true)
+		const force = l1UsdcForceNextRef.current
+		l1UsdcForceNextRef.current = true
+		void (async () => {
+			try {
+				const rows: Array<{ account: string; merchants: string[] }> = []
+				for (const l1 of l1Items) {
+					try {
+						const shares = await fetchL1MerchantShares(l0Address, l1.address)
+						rows.push({ account: l1.address, merchants: shares.map((s) => s.merchant) })
+					} catch {
+						rows.push({ account: l1.address, merchants: [] })
+					}
+				}
+				if (cancelled) return
+				const cached = readCachedReferralBeneficiaryUsdc(
+					snapshot.eoa,
+					rows.map((r) => r.account),
+				)
+				if (cached && !force) setL1Usdc(cached)
+				const result = await fetchReferralBeneficiaryUsdcBreakdown(snapshot.eoa, rows, { force })
+				if (cancelled) return
+				if (result.ok) setL1Usdc(result.snapshot)
+			} finally {
+				if (!cancelled) setL1UsdcLoading(false)
+			}
+		})()
+		return () => {
+			cancelled = true
+		}
+	}, [
+		snapshot.role,
+		snapshot.eoa,
+		snapshot.fetchedAt,
+		l0Address,
+		shareRefreshKey,
+		downstream.filter((item) => item.role === 'l1').map((item) => item.address).join('|'),
+	])
+
+	useEffect(() => {
+		if (!snapshot.isAdmin || l0RowsForUsdc.length === 0) {
+			setL0PoolItemsByAddr({})
+			setL0EarningsError(null)
+			return
+		}
+		let cancelled = false
+		setL0EarningsLoading(true)
+		const force = l0EarningsForceNextRef.current
+		l0EarningsForceNextRef.current = true
+		void (async () => {
+			const next: Record<string, ReferralIncomeItem[]> = {}
+			let firstError: string | null = null
+			for (const row of l0RowsForUsdc) {
+				const key = row.l0.toLowerCase()
+				const beneficiaries = [row.l0, ...(row.l1s ?? [])]
+				const poolItems: ReferralIncomeItem[] = []
+				for (const account of beneficiaries) {
+					const cached = readCachedReferralEarnings(account)
+					const result = await fetchReferralEarnings(account, { force })
+					if (cancelled) return
+					const items = result.ok ? result.snapshot.items : cached?.items ?? []
+					if (!result.ok && !cached && !firstError) firstError = result.error
+					for (const item of items) {
+						poolItems.push({ ...item, beneficiaryEoa: item.beneficiaryEoa ?? account })
+					}
+				}
+				const dedup = new Map<string, ReferralIncomeItem>()
+				for (const item of poolItems) {
+					const id = `${item.transactionHash}:${item.settlementId}:${item.amountUsdc6}:${(item.beneficiaryEoa ?? '').toLowerCase()}`
+					dedup.set(id, item)
+				}
+				next[key] = Array.from(dedup.values()).sort((a, b) => b.blockNumber - a.blockNumber || b.timestampMs - a.timestampMs)
+			}
+			if (cancelled) return
+			setL0PoolItemsByAddr(next)
+			setL0EarningsError(firstError)
+			setL0EarningsLoading(false)
+		})()
+		return () => {
+			cancelled = true
+		}
+	}, [
+		snapshot.isAdmin,
+		snapshot.fetchedAt,
+		shareRefreshKey,
+		l0RowsForUsdc.map((r) => `${r.l0}:${(r.l1s ?? []).join(',')}`).join('|'),
+	])
+
 	if (!canView) return null
 
+	const openMerchantKey = merchantAccrualOpen?.merchant.toLowerCase() ?? ''
+	const openL0Key = merchantAccrualOpen?.l0.toLowerCase() ?? ''
+	const openL0Items = openL0Key ? l0PoolItemsByAddr[openL0Key] ?? [] : []
+	const merchantAccrualItems = openMerchantKey
+		? openL0Items.filter((entry) => entry.merchantEoa?.toLowerCase() === openMerchantKey)
+		: []
+	const merchantAccrualTotalUsdc6 = merchantAccrualOpen
+		? merchantAccrualItems.length > 0
+			? merchantAccrualItems.reduce((acc, entry) => sumUsdc6(acc, entry.amountUsdc6), '0')
+			: getAdminL0MerchantUsdc(getAdminL0UsdcRow(l0Usdc, merchantAccrualOpen.l0), merchantAccrualOpen.merchant)
+		: '0'
+
 	return (
+		<>
 		<div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
 			<div className="flex items-center justify-between gap-3">
 				<h3 className="font-semibold text-white">{title}</h3>
@@ -729,28 +957,47 @@ function DownstreamSection({
 				<p className="mt-3 text-sm text-slate-400">No downstream members found.</p>
 			) : (
 				<div className="mt-3 space-y-2">
-					{downstream.map((item) => (
+					{downstream.map((item) => {
+						const l0Row = snapshot.isAdmin && item.role === 'l0' ? getAdminL0UsdcRow(l0Usdc, item.address) : null
+						const l1Row =
+							snapshot.role === 'l0' && item.role === 'l1'
+								? getReferralBeneficiaryUsdcRow(l1Usdc, item.address)
+								: null
+						const l0PoolItems =
+							snapshot.isAdmin && item.role === 'l0'
+								? l0PoolItemsByAddr[item.address.toLowerCase()] ?? []
+								: []
+						return (
 						<div key={`${item.role}:${item.address}`} className={`border border-white/10 bg-black/10 ${snapshot.isAdmin ? 'rounded-lg p-2' : 'rounded-xl p-3'}`}>
 							<div className="flex min-w-0 items-center justify-between gap-2">
 								<div className="min-w-0 flex-1">
-									<BeamioTagCapsule address={item.address} />
+									{snapshot.isAdmin && item.role === 'l0' ? (
+										<BeamioTagCapsule
+											address={item.address}
+											rebatePercent={(Number(item.rebateBps) / 100).toString()}
+											onEdit={onManageL0 ? () => onManageL0(item) : undefined}
+										/>
+									) : (
+										<BeamioTagCapsule address={item.address} />
+									)}
 								</div>
-								{snapshot.isAdmin ? (
-									<div className="flex shrink-0 items-center gap-1.5">
-										<span className="rounded-full border border-indigo-200/20 bg-indigo-300/10 px-2 py-0.5 text-[11px] font-medium text-indigo-100">
-											{Number(item.rebateBps) / 100}%
-										</span>
-										{item.role === 'l0' && onManageL0 ? (
-											<button
-												type="button"
-												onClick={() => onManageL0(item)}
-												className="rounded-full border border-indigo-200/20 bg-indigo-300/10 px-2 py-0.5 text-[11px] font-medium text-indigo-100"
-												aria-label={`Manage L0 ${item.address}`}
-											>
-												Edit
-											</button>
-										) : null}
-									</div>
+								{snapshot.isAdmin && item.role === 'l0' ? (
+									<p className="shrink-0 text-right text-sm font-semibold tabular-nums text-emerald-200">
+										{l0Row
+											? `$${formatReferralUsdcAmount6(l0Row.totalUsdc6)}`
+											: l0UsdcLoading
+												? '…'
+												: '$0.00'}
+									</p>
+								) : null}
+								{snapshot.role === 'l0' && item.role === 'l1' ? (
+									<p className="shrink-0 text-right text-sm font-semibold tabular-nums text-emerald-200">
+										{l1Row
+											? `$${formatReferralUsdcAmount6(l1Row.totalUsdc6)}`
+											: l1UsdcLoading
+												? '…'
+												: '$0.00'}
+									</p>
 								) : null}
 							</div>
 							{snapshot.isAdmin && item.role === 'l0' && item.merchantItems?.length ? (
@@ -759,30 +1006,78 @@ function DownstreamSection({
 										<p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-amber-100">Merchants</p>
 										<span className="text-[11px] text-slate-400">{item.merchantItems.length}</span>
 									</div>
-									<div className="mt-1.5 flex flex-wrap gap-1.5">
-										{item.merchantItems.map((merchant) => (
-											<BeamioTagCapsule key={merchant.address} address={merchant.address} />
-										))}
+									<div className="mt-1.5 space-y-1.5">
+										{item.merchantItems.map((merchant) => {
+											const fromMerchant = getAdminL0MerchantUsdc(l0Row, merchant.address)
+											const merchantItems = l0PoolItems.filter(
+												(entry) => entry.merchantEoa?.toLowerCase() === merchant.address.toLowerCase(),
+											)
+											const itemCount = merchantItems.length
+											return (
+												<button
+													key={merchant.address}
+													type="button"
+													onClick={() =>
+														setMerchantAccrualOpen({ l0: item.address, merchant: merchant.address })
+													}
+													className="flex w-full min-w-0 items-center justify-between gap-2 rounded-md border border-white/5 bg-black/20 px-1.5 py-1.5 text-left transition hover:border-amber-200/25 hover:bg-black/35"
+													aria-label="Open merchant accrual history"
+												>
+													<div className="min-w-0 flex-1">
+														<BeamioTagCapsule address={merchant.address} />
+													</div>
+													<div className="flex shrink-0 items-center gap-1.5">
+														<div className="text-right">
+															<p className="text-xs font-medium tabular-nums text-emerald-200">
+																${formatReferralUsdcAmount6(fromMerchant)}
+															</p>
+															<p className="text-[10px] text-slate-500">
+																{l0EarningsLoading && itemCount === 0
+																	? '…'
+																	: `${itemCount} item${itemCount === 1 ? '' : 's'}`}
+															</p>
+														</div>
+														<ChevronRight className="h-3.5 w-3.5 text-slate-500" aria-hidden />
+													</div>
+												</button>
+											)
+										})}
 									</div>
 								</div>
 							) : null}
 							{snapshot.role === 'l0' && item.role === 'l1' && l0Address && onEditL1MerchantShare ? (
 								<div className="mt-2 rounded-lg border border-amber-200/10 bg-amber-200/[0.04] p-2">
-									<p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-amber-100">Merchant shares</p>
+									<p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-amber-100">Merchants</p>
 									<L0L1MerchantShareList
 										l0={l0Address}
 										l1={item.address}
 										l0RebateBps={snapshot.rebateBps}
 										refreshKey={shareRefreshKey ?? snapshot.fetchedAt}
+										usdcByMerchant={l1Row?.byMerchant}
+										usdcLoading={l1UsdcLoading}
 										onEditShare={(row) => onEditL1MerchantShare(item, row)}
 									/>
 								</div>
 							) : null}
 						</div>
-					))}
+						)
+					})}
 				</div>
 			)}
 		</div>
+		{merchantAccrualOpen ? (
+			<ReferralIncomeDetailPanel
+				items={merchantAccrualItems}
+				loading={l0EarningsLoading && merchantAccrualItems.length === 0}
+				error={l0EarningsError && merchantAccrualItems.length === 0 ? l0EarningsError : null}
+				claimableUsdc6={merchantAccrualTotalUsdc6}
+				claimedUsdc6="0"
+				hideClaimBreakdown
+				merchantAddress={merchantAccrualOpen.merchant}
+				onClose={() => setMerchantAccrualOpen(null)}
+			/>
+		) : null}
+		</>
 	)
 }
 
@@ -799,11 +1094,79 @@ function L0MerchantItemsPanel({
 }) {
 	const { ensureProfilesForAddresses } = useBeamioTagDatabase()
 	const merchantItems = snapshot.downstream.filter((item) => item.role === 'merchant')
+	const merchantKey = merchantItems.map((item) => item.address).join('|')
+
+	const [remainingByMerchant, setRemainingByMerchant] = useState<Record<string, string>>({})
+	const [merchantUsdc, setMerchantUsdc] = useState<ReferralBeneficiaryUsdcBreakdown | null>(() =>
+		merchantItems.length > 0
+			? readCachedReferralBeneficiaryUsdc(snapshot.eoa, [l0Address])
+			: null,
+	)
+	const [merchantUsdcLoading, setMerchantUsdcLoading] = useState(false)
+	const merchantUsdcForceNextRef = useRef(false)
 
 	useEffect(() => {
 		if (merchantItems.length === 0) return
 		void ensureProfilesForAddresses(merchantItems.map((item) => item.address))
-	}, [ensureProfilesForAddresses, merchantItems.map((item) => item.address).join('|')])
+	}, [ensureProfilesForAddresses, merchantKey])
+
+	useEffect(() => {
+		if (!ethers.isAddress(l0Address) || merchantItems.length === 0) {
+			setRemainingByMerchant({})
+			return
+		}
+		let cancelled = false
+		void (async () => {
+			const next: Record<string, string> = {}
+			await Promise.all(
+				merchantItems.map(async (item) => {
+					try {
+						const rows = await fetchMerchantL1Shares(l0Address, item.address)
+						if (cancelled) return
+						next[ethers.getAddress(item.address)] = l0RemainingOfMerchantFullPercent(
+							snapshot.rebateBps,
+							rows.map((row) => row.shareBps),
+						)
+					} catch {
+						// Keep missing; UI shows … until trusted load.
+					}
+				}),
+			)
+			if (!cancelled) setRemainingByMerchant((prev) => ({ ...prev, ...next }))
+		})()
+		return () => {
+			cancelled = true
+		}
+	}, [l0Address, merchantKey, snapshot.rebateBps, shareRefreshKey])
+
+	useEffect(() => {
+		if (!ethers.isAddress(l0Address) || merchantItems.length === 0) {
+			setMerchantUsdc(null)
+			return
+		}
+		const rows = [
+			{
+				account: l0Address,
+				merchants: merchantItems.map((item) => item.address),
+			},
+		]
+		const cached = readCachedReferralBeneficiaryUsdc(snapshot.eoa, [l0Address])
+		if (cached) setMerchantUsdc(cached)
+		let cancelled = false
+		setMerchantUsdcLoading(true)
+		const force = merchantUsdcForceNextRef.current
+		merchantUsdcForceNextRef.current = true
+		void fetchReferralBeneficiaryUsdcBreakdown(snapshot.eoa, rows, { force }).then((result) => {
+			if (cancelled) return
+			if (result.ok) setMerchantUsdc(result.snapshot)
+			setMerchantUsdcLoading(false)
+		})
+		return () => {
+			cancelled = true
+		}
+	}, [snapshot.eoa, snapshot.fetchedAt, l0Address, merchantKey, shareRefreshKey])
+
+	const l0UsdcRow = getReferralBeneficiaryUsdcRow(merchantUsdc, l0Address)
 
 	return (
 		<div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
@@ -817,32 +1180,33 @@ function L0MerchantItemsPanel({
 				<p className="mt-3 text-sm text-slate-400">No merchant items found.</p>
 			) : (
 				<div className="mt-3 space-y-2">
-					{merchantItems.map((item) => (
-						<div key={item.address} className="flex min-w-0 items-center justify-between gap-2 rounded-xl border border-white/10 bg-black/10 p-2.5">
-							<div className="min-w-0 flex-1">
-								<BeamioTagCapsule address={item.address} />
+					{merchantItems.map((item) => {
+						const checksum = ethers.getAddress(item.address)
+						const remaining =
+							remainingByMerchant[checksum] ?? remainingByMerchant[item.address.toLowerCase()]
+						const fromMerchant = getReferralBeneficiaryMerchantUsdc(l0UsdcRow, item.address)
+						return (
+							<div
+								key={item.address}
+								className="flex min-w-0 items-center justify-between gap-2 rounded-xl border border-white/10 bg-black/10 p-2.5"
+							>
+								<div className="min-w-0 flex-1">
+									<BeamioTagCapsule
+										address={item.address}
+										rebatePercent={remaining}
+										onEdit={
+											onManageMerchantShare ? () => onManageMerchantShare(item) : undefined
+										}
+									/>
+								</div>
+								<p className="shrink-0 text-right text-sm font-semibold tabular-nums text-emerald-200">
+									{merchantUsdcLoading && !l0UsdcRow
+										? '…'
+										: `$${formatReferralUsdcAmount6(fromMerchant)}`}
+								</p>
 							</div>
-							<div className="flex shrink-0 items-center gap-1.5">
-								<L0MerchantRemainingShareBadge
-									l0={l0Address}
-									merchant={item.address}
-									l0RebateBps={snapshot.rebateBps}
-									refreshKey={shareRefreshKey}
-								/>
-								{onManageMerchantShare ? (
-									<button
-										type="button"
-										onClick={() => onManageMerchantShare(item)}
-										className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-amber-200/20 bg-amber-300/10 text-amber-100 transition hover:bg-amber-300/20"
-										aria-label={`Edit L1 revenue shares for merchant ${item.address}`}
-										title="Edit L1 shares"
-									>
-										<Pencil className="h-3.5 w-3.5" aria-hidden />
-									</button>
-								) : null}
-							</div>
-						</div>
-					))}
+						)
+					})}
 				</div>
 			)}
 		</div>
@@ -1215,6 +1579,198 @@ function L0StartKitQuotaCard({
 				) : (
 					<SlidersHorizontal className="h-7 w-7 shrink-0 text-amber-200" aria-hidden />
 				)}
+			</div>
+		</div>
+	)
+}
+
+function AccrualHistoryItemCard({
+	item,
+	hideMerchant = false,
+}: {
+	item: ReferralIncomeItem
+	hideMerchant?: boolean
+}) {
+	const leftAddress =
+		hideMerchant && item.beneficiaryEoa && ethers.isAddress(item.beneficiaryEoa)
+			? item.beneficiaryEoa
+			: !hideMerchant && item.merchantEoa && ethers.isAddress(item.merchantEoa)
+				? item.merchantEoa
+				: null
+	const leftUnavailable = hideMerchant ? 'Beneficiary unavailable' : 'Merchant unavailable'
+
+	return (
+		<div className="rounded-xl border border-white/10 bg-white/[0.04] p-3">
+			<div className="flex items-start justify-between gap-3">
+				<p className="text-sm font-medium text-white">Rebate accrued</p>
+				<p className="shrink-0 text-sm font-semibold tabular-nums text-emerald-300">
+					+${formatReferralUsdcAmount6(item.amountUsdc6)}
+				</p>
+			</div>
+			<div className="mt-2.5 flex min-w-0 items-center justify-between gap-2">
+				<div className="min-w-0 flex-1">
+					{leftAddress ? (
+						<BeamioTagCapsule address={leftAddress} />
+					) : (
+						<p className="text-xs text-slate-500">{leftUnavailable}</p>
+					)}
+				</div>
+				<div className="shrink-0">
+					<TxHashCapsule transactionHash={item.transactionHash} timestampMs={item.timestampMs} />
+				</div>
+			</div>
+		</div>
+	)
+}
+
+function ReferralUsdcEarningsCard({
+	claimableUsdc6,
+	claimedUsdc6,
+	itemCount,
+	onOpenIncome,
+}: {
+	claimableUsdc6: string
+	claimedUsdc6: string
+	itemCount: number
+	onOpenIncome: () => void
+}) {
+	const totalUsdc6 = sumUsdc6(claimableUsdc6, claimedUsdc6)
+	return (
+		<div className="rounded-2xl border border-emerald-200/20 bg-emerald-300/[0.08] p-5">
+			<div className="flex items-start justify-between gap-3">
+				<div className="min-w-0">
+					<p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-200">Referral USDC earned</p>
+					<p className="mt-1 text-3xl font-semibold text-white tabular-nums">
+						${formatReferralUsdcAmount6(totalUsdc6)}
+					</p>
+					<p className="mt-2 text-xs text-emerald-100/80">
+						Claimable ${formatReferralUsdcAmount6(claimableUsdc6)}
+						<span className="mx-1.5 text-emerald-200/40">·</span>
+						Claimed ${formatReferralUsdcAmount6(claimedUsdc6)}
+					</p>
+				</div>
+				<button
+					type="button"
+					onClick={onOpenIncome}
+					className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-emerald-200/25 bg-emerald-300/15 text-emerald-100 transition hover:bg-emerald-300/25"
+					aria-label="Open referral income details"
+					title="Income details"
+				>
+					<Wallet className="h-4 w-4" aria-hidden />
+				</button>
+			</div>
+			<button
+				type="button"
+				onClick={onOpenIncome}
+				className="mt-4 w-full rounded-xl border border-emerald-200/20 bg-black/20 px-3 py-2.5 text-left text-sm text-emerald-50 transition hover:bg-black/30"
+			>
+				<span className="font-medium">Income details</span>
+				<span className="mt-0.5 block text-xs text-emerald-100/70">
+					{itemCount === 0 ? 'No accrued items yet' : `${itemCount} item${itemCount === 1 ? '' : 's'}`}
+				</span>
+			</button>
+		</div>
+	)
+}
+
+function ReferralIncomeDetailPanel({
+	items,
+	loading,
+	error,
+	claimableUsdc6,
+	claimedUsdc6,
+	onClose,
+	merchantAddress = null,
+	hideClaimBreakdown = false,
+}: {
+	items: ReferralIncomeItem[]
+	loading: boolean
+	error: string | null
+	claimableUsdc6: string
+	claimedUsdc6: string
+	onClose: () => void
+	merchantAddress?: string | null
+	hideClaimBreakdown?: boolean
+}) {
+	const { close, slideStyle } = useReferralSlideOut(onClose)
+	const { ensureProfilesForAddresses } = useBeamioTagDatabase()
+	const totalUsdc6 = sumUsdc6(claimableUsdc6, claimedUsdc6)
+	const merchantScoped = Boolean(merchantAddress && ethers.isAddress(merchantAddress))
+
+	useEffect(() => {
+		const merchants = items
+			.map((item) => item.merchantEoa)
+			.filter((addr): addr is string => Boolean(addr && ethers.isAddress(addr)))
+		if (merchantAddress && ethers.isAddress(merchantAddress)) merchants.push(merchantAddress)
+		if (merchants.length === 0) return
+		void ensureProfilesForAddresses(merchants)
+	}, [ensureProfilesForAddresses, items, merchantAddress])
+
+	return (
+		<div className="fixed inset-0 z-[100] flex min-h-0 flex-col overflow-hidden bg-[#050b1d] text-slate-50 transition-transform duration-300 ease-out" style={slideStyle}>
+			<div className="pointer-events-none absolute inset-x-0 top-0 h-56 bg-gradient-to-b from-emerald-500/20 via-transparent to-transparent" aria-hidden />
+			<div className="relative z-10 flex min-h-0 flex-1 flex-col overflow-y-auto px-5 pb-10" style={{ WebkitOverflowScrolling: 'touch' }}>
+				<div className="mx-auto w-full max-w-2xl" style={{ paddingTop: 'max(1rem, env(safe-area-inset-top, 0px))' }}>
+					<div className="flex items-center justify-between">
+						<BeamioCircularBackButton onClick={close} />
+						<p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-200">
+							{merchantScoped ? 'Accrual history' : 'Income'}
+						</p>
+					</div>
+					{merchantScoped && merchantAddress ? (
+						<div className="mt-6 rounded-2xl border border-amber-200/15 bg-amber-300/[0.06] p-4">
+							<p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-amber-100">Merchant</p>
+							<div className="mt-2">
+								<BeamioTagCapsule address={merchantAddress} />
+							</div>
+						</div>
+					) : null}
+					<div className={`${merchantScoped ? 'mt-3' : 'mt-6'} rounded-2xl border border-emerald-200/20 bg-emerald-300/[0.08] p-5`}>
+						<p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-200">
+							{merchantScoped ? 'L0 rebate pool (L0 + L1)' : 'Total earned'}
+						</p>
+						<p className="mt-1 text-3xl font-semibold text-white tabular-nums">${formatReferralUsdcAmount6(totalUsdc6)}</p>
+						{!hideClaimBreakdown ? (
+							<p className="mt-2 text-xs text-emerald-100/80">
+								Claimable ${formatReferralUsdcAmount6(claimableUsdc6)}
+								<span className="mx-1.5 text-emerald-200/40">·</span>
+								Claimed ${formatReferralUsdcAmount6(claimedUsdc6)}
+							</p>
+						) : (
+							<p className="mt-2 text-xs text-emerald-100/80">
+								{items.length === 0
+									? 'No accrued items yet'
+									: `${items.length} accrual item${items.length === 1 ? '' : 's'}`}
+							</p>
+						)}
+					</div>
+					<div className="mt-4 space-y-3">
+						<p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">Accrual history</p>
+						{loading && items.length === 0 ? (
+							<div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-sm text-slate-300">
+								<Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+								Loading income items…
+							</div>
+						) : null}
+						{error && items.length === 0 ? (
+							<div className="rounded-2xl border border-amber-300/20 bg-amber-400/10 p-4 text-sm text-amber-100">{error}</div>
+						) : null}
+						{!loading && !error && items.length === 0 ? (
+							<div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-sm text-slate-300">
+								{merchantScoped
+									? 'No referral USDC has accrued from this merchant yet.'
+									: 'No referral USDC has accrued for this wallet yet.'}
+							</div>
+						) : null}
+						{items.map((item) => (
+							<AccrualHistoryItemCard
+								key={`${item.transactionHash}:${item.settlementId}:${item.amountUsdc6}`}
+								item={item}
+								hideMerchant={merchantScoped}
+							/>
+						))}
+					</div>
+				</div>
 			</div>
 		</div>
 	)
@@ -1858,6 +2414,12 @@ export default function ReferralRegistryDashboardPage() {
 	const [shareRefreshKey, setShareRefreshKey] = useState(0)
 	const [globalSettingsOpen, setGlobalSettingsOpen] = useState(false)
 	const [adminPackageOpen, setAdminPackageOpen] = useState(false)
+	const [incomeOpen, setIncomeOpen] = useState(false)
+	const [earnings, setEarnings] = useState<ReferralEarningsSnapshot | null>(() =>
+		eoa ? readCachedReferralEarnings(eoa) : null,
+	)
+	const [earningsLoading, setEarningsLoading] = useState(false)
+	const [earningsError, setEarningsError] = useState<string | null>(null)
 	const { close, slideStyle } = useReferralSlideOut(() => navigate('/wallet'))
 
 	useEffect(() => {
@@ -1865,18 +2427,40 @@ export default function ReferralRegistryDashboardPage() {
 		return () => setShowFooter(true)
 	}, [setShowFooter])
 
+	const loadEarnings = useCallback(async (options: { force?: boolean } = {}) => {
+		if (!eoa.trim()) {
+			setEarnings(null)
+			setEarningsError(null)
+			return
+		}
+		setEarningsLoading(true)
+		const result = await fetchReferralEarnings(eoa, options)
+		if (result.ok) {
+			setEarnings(result.snapshot)
+			setEarningsError(null)
+		} else {
+			setEarningsError(result.error)
+		}
+		setEarningsLoading(false)
+	}, [eoa])
+
+	useEffect(() => {
+		setEarnings(eoa ? readCachedReferralEarnings(eoa) : null)
+		void loadEarnings()
+	}, [eoa, loadEarnings])
+
 	const handleRefresh = useCallback(async () => {
 		if (refreshStatus !== 'idle') return
 		setRefreshStatus('loading')
 		try {
-			await Promise.all([refresh(), refreshReferralL0StartKitQuota()])
+			await Promise.all([refresh(), refreshReferralL0StartKitQuota(), loadEarnings({ force: true })])
 			setRefreshStatus('success')
 		} catch {
 			setRefreshStatus('error')
 		} finally {
 			window.setTimeout(() => setRefreshStatus('idle'), 3000)
 		}
-	}, [refresh, refreshReferralL0StartKitQuota, refreshStatus])
+	}, [loadEarnings, refresh, refreshReferralL0StartKitQuota, refreshStatus])
 
 	const handleManagementUpdated = useCallback(async () => {
 		await Promise.all([refresh({ force: true }), refreshReferralL0StartKitQuota()])
@@ -1980,6 +2564,14 @@ export default function ReferralRegistryDashboardPage() {
 							</div>
 						) : snapshot && isPrivileged ? (
 							<div className="space-y-4">
+								{(snapshot.role === 'l0' || snapshot.role === 'l1') ? (
+									<ReferralUsdcEarningsCard
+										claimableUsdc6={snapshot.claimableConetUsdc}
+										claimedUsdc6={snapshot.claimedConetUsdc ?? '0'}
+										itemCount={earnings?.items.length ?? 0}
+										onOpenIncome={() => setIncomeOpen(true)}
+									/>
+								) : null}
 								{snapshot.role === 'l0' ? (
 									<L0StartKitQuotaCard
 										starterKetRemaining={l0StartKitRemaining}
@@ -2067,6 +2659,16 @@ export default function ReferralRegistryDashboardPage() {
 					privateKeyArmor={signingArmor}
 					onClose={() => setAdminPackageOpen(false)}
 					onCodesChanged={handleManagementUpdated}
+				/>
+			) : null}
+			{incomeOpen && snapshot && (snapshot.role === 'l0' || snapshot.role === 'l1') ? (
+				<ReferralIncomeDetailPanel
+					items={earnings?.items ?? []}
+					loading={earningsLoading}
+					error={earningsError}
+					claimableUsdc6={snapshot.claimableConetUsdc}
+					claimedUsdc6={snapshot.claimedConetUsdc ?? '0'}
+					onClose={() => setIncomeOpen(false)}
 				/>
 			) : null}
 		</div>

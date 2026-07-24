@@ -3,12 +3,13 @@ import { CONET_REFERRAL_REGISTRY_VAULT_V1 } from '@/config/chainAddresses'
 import { beamioApi, conetDepinProvider } from '@/utils/constants'
 
 const ROLE_CACHE_TTL_MS = 30_000
-const ROLE_LOCAL_CACHE_PREFIX = 'beamio:referral:role:v1:'
+const ROLE_LOCAL_CACHE_PREFIX = 'beamio:referral:role:v2:'
 const REFERRAL_REGISTRY_ABI = [
 	'function admins(address) view returns (bool)',
 	'function members(address) view returns (uint8 role, address parentAdmin, address parentL0, uint256 rebateBps, uint256 ratioBps, bool active)',
 	'function merchantQuotas(address) view returns (uint256 starterKetRemaining, uint256 paidBunitRemaining, uint256 issuedCodeCount, uint256 claimedCodeCount)',
 	'function claimableConetUsdc(address) view returns (uint256)',
+	'function claimedConetUsdc(address) view returns (uint256)',
 	'function l0ClaimPaused(address) view returns (bool)',
 	'function l1ClaimPaused(address l0, address l1) view returns (bool)',
 ] as const
@@ -29,6 +30,8 @@ export type ReferralRegistryRoleSnapshot = {
 	issuedCodeCount: string
 	claimedCodeCount: string
 	claimableConetUsdc: string
+	/** Cumulative USDC already claimed via claimConetUsdc (6 decimals). */
+	claimedConetUsdc: string
 	claimPaused: boolean
 	downstream: ReferralRegistryDownstreamItem[]
 	fetchedAt: number
@@ -40,7 +43,10 @@ export type ReferralRegistryDownstreamItem = {
 	rebateBps: string
 	ratioBps: string
 	active: boolean
+	/** Admin L0 row: nested merchants under this L0. */
 	merchantItems?: ReferralRegistryDownstreamItem[]
+	/** Admin L0 row: nested L1 members under this L0. */
+	l1Items?: ReferralRegistryDownstreamItem[]
 }
 
 export type ReferralRegistryRoleResult =
@@ -68,6 +74,8 @@ export function readCachedReferralRegistryRole(eoa: string): ReferralRegistryRol
 		if (!raw) return null
 		const parsed = JSON.parse(raw) as ReferralRegistryRoleSnapshot
 		if (parsed.eoa?.toLowerCase() !== eoa.toLowerCase() || !parsed.role || !Array.isArray(parsed.downstream)) return null
+		if (parsed.claimedConetUsdc == null) parsed.claimedConetUsdc = '0'
+		if (parsed.claimableConetUsdc == null) parsed.claimableConetUsdc = '0'
 		return parsed
 	} catch {
 		return null
@@ -169,7 +177,17 @@ async function readDownstream(
 					active: Boolean(child.active),
 				}))
 				.sort((a, b) => a.address.localeCompare(b.address))
-			enriched.push({ ...item, merchantItems })
+			const l1Items = nestedChildren
+				.filter((child) => child.role === 'l1')
+				.map((child) => ({
+					address: child.address,
+					role: 'l1' as const,
+					rebateBps: String(child.rebateBps ?? '0'),
+					ratioBps: String(child.ratioBps ?? '0'),
+					active: Boolean(child.active),
+				}))
+				.sort((a, b) => a.address.localeCompare(b.address))
+			enriched.push({ ...item, merchantItems, l1Items })
 		} catch {
 			// Preserve the L0 row when the optional nested merchant read is unavailable.
 			enriched.push(item)
@@ -267,6 +285,10 @@ export async function fetchReferralRegistryRole(
 			} else if (role === 'l1' && parentL0 !== ethers.ZeroAddress) {
 				claimPaused = Boolean(await registry.l1ClaimPaused(parentL0, eoa))
 			}
+			const [claimableConetUsdc, claimedConetUsdc] = await Promise.all([
+				registry.claimableConetUsdc(eoa),
+				registry.claimedConetUsdc(eoa),
+			])
 			const snapshot: ReferralRegistryRoleSnapshot = {
 				eoa,
 				isAdmin,
@@ -277,7 +299,8 @@ export async function fetchReferralRegistryRole(
 				ratioBps: member.ratioBps.toString(),
 				active: Boolean(member.active),
 				...quota,
-				claimableConetUsdc: (await registry.claimableConetUsdc(eoa)).toString(),
+				claimableConetUsdc: claimableConetUsdc.toString(),
+				claimedConetUsdc: claimedConetUsdc.toString(),
 				claimPaused,
 				downstream: await readDownstream(eoa, isAdmin, role),
 				fetchedAt: Date.now(),

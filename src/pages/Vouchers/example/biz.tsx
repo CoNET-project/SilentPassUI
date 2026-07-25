@@ -279,6 +279,15 @@ import {
   CARD_PREVIEW_LOGO_SIZE_LABELS,
   type CardPreviewLogoDisplayTier,
 } from '@/utils/cardPreviewLogoDisplayTier';
+import {
+  TIER_LOGO_DISPLAY_SCALE_DEFAULT,
+  TIER_LOGO_DISPLAY_SCALE_LABELS,
+  TIER_LOGO_DISPLAY_SCALE_OPTIONS,
+  clampTierLogoDisplayScale,
+  tierLogoIconClassForScale,
+  tierLogoImgClassForScale,
+  type TierLogoDisplayScale,
+} from '@/utils/tierLogoDisplayScale';
 import { ONBOARDING_REGIONS_BY_COUNTRY } from '@/pages/Home/onboardingRegions';
 import {
   beamioTagFromRecord,
@@ -467,6 +476,8 @@ import {
   Package,
   Palette,
   History,
+  RectangleHorizontal,
+  AlignVerticalSpaceAround,
   Gift,
   Gauge,
  Bot,
@@ -10425,6 +10436,63 @@ function ProgramsCouponBannerImage({ src }: { src: string }) {
   );
 }
 
+/** Pass / overview card background: width-first or height-first (tier `imageFit`). */
+type CardIssuanceBackgroundImageFit = 'width' | 'height';
+
+function normalizeCardIssuanceBackgroundImageFit(raw: unknown): CardIssuanceBackgroundImageFit {
+  return raw === 'height' ? 'height' : 'width';
+}
+
+function CardPassBackgroundImage({
+  src,
+  fit,
+}: {
+  src: string;
+  fit: CardIssuanceBackgroundImageFit;
+}) {
+  const isLocal = src.startsWith('blob:') || src.startsWith('data:');
+  const fitWidth = fit === 'width';
+  const mediaClass = fitWidth
+    ? 'absolute left-0 top-1/2 z-[1] h-auto w-full max-h-none -translate-y-1/2 object-contain'
+    : 'absolute left-1/2 top-0 z-[1] h-full w-auto max-w-none -translate-x-1/2 object-contain';
+  return (
+    <div className="pointer-events-none absolute inset-0 overflow-hidden">
+      {fitWidth ? (
+        <>
+          <div
+            className="absolute inset-x-0 top-0 h-1/2 scale-110 bg-cover bg-top bg-no-repeat blur-xl"
+            style={{ backgroundImage: `url("${src}")` }}
+            aria-hidden
+          />
+          <div
+            className="absolute inset-x-0 bottom-0 h-1/2 scale-110 bg-cover bg-bottom bg-no-repeat blur-xl"
+            style={{ backgroundImage: `url("${src}")` }}
+            aria-hidden
+          />
+        </>
+      ) : (
+        <>
+          <div
+            className="absolute inset-y-0 left-0 w-1/2 scale-110 bg-cover bg-left bg-no-repeat blur-xl"
+            style={{ backgroundImage: `url("${src}")` }}
+            aria-hidden
+          />
+          <div
+            className="absolute inset-y-0 right-0 w-1/2 scale-110 bg-cover bg-right bg-no-repeat blur-xl"
+            style={{ backgroundImage: `url("${src}")` }}
+            aria-hidden
+          />
+        </>
+      )}
+      {isLocal ? (
+        <img src={src} alt="" className={mediaClass} draggable={false} />
+      ) : (
+        <IpfsImg key={`${src}:${fit}`} src={src} alt="" className={mediaClass} draggable={false} />
+      )}
+    </div>
+  );
+}
+
 function ProgramsCouponShareCardPreview({
   coupon,
   shareUrl,
@@ -11148,6 +11216,15 @@ type CardIssuanceTierRow = {
   tierDescriptionOpen: boolean;
   /** NFT tier metadata `backgroundColor` (CSS hex), same as CardManager `TierFormRow`. */
   backgroundColor: string;
+  /**
+   * Per-tier pass background image (IPFS URL). Maps to `TierMetadata.image`.
+   * Independent of card-level `merchantImage` (Discover / merchant hero).
+   */
+  backgroundImage: string;
+  /** Maps to `TierMetadata.imageFit` — width-first or height-first render. */
+  backgroundImageFit: CardIssuanceBackgroundImageFit;
+  /** Maps to `TierMetadata.logoDisplayScale` — top-left logo 2x/4x/6x/8x/hidden. */
+  logoDisplayScale: TierLogoDisplayScale;
 };
 
 const CARD_ISSUANCE_TIER_COLOR_PRESETS = ['#94a3b8', '#f59e0b', '#6366f1', '#0051d1', '#9333ea', '#059669', '#ec4899'];
@@ -11168,6 +11245,9 @@ function makeCardIssuanceTierRow(
     tierDescription: overrides.tierDescription ?? '',
     tierDescriptionOpen: overrides.tierDescriptionOpen ?? false,
     backgroundColor: overrides.backgroundColor ?? '#6366f1',
+    backgroundImage: overrides.backgroundImage ?? '',
+    backgroundImageFit: normalizeCardIssuanceBackgroundImageFit(overrides.backgroundImageFit),
+    logoDisplayScale: clampTierLogoDisplayScale(overrides.logoDisplayScale),
   };
 }
 
@@ -11192,6 +11272,12 @@ function cardIssuanceTierRowsFromMetadata(tiers: CardTierMetadata[]): CardIssuan
       discountPercent: Number.isFinite(discountPct) ? String(discountPct) : '0',
       tierDescription: t.description ?? '',
       backgroundColor: t.backgroundColor ?? (i === 0 ? '#94a3b8' : '#6366f1'),
+      backgroundImage: typeof t.image === 'string' ? t.image.trim() : '',
+      backgroundImageFit: normalizeCardIssuanceBackgroundImageFit(t.imageFit),
+      logoDisplayScale: clampTierLogoDisplayScale(
+        (t as { logoDisplayScale?: unknown }).logoDisplayScale ??
+          (t as { logoScale?: unknown }).logoScale
+      ),
     });
   });
 }
@@ -11510,6 +11596,9 @@ const defaultCardIssuanceTiers = (): CardIssuanceTierRow[] => [
     tierDescription: '',
     tierDescriptionOpen: false,
     backgroundColor: '#94a3b8',
+    backgroundImage: '',
+    backgroundImageFit: 'width',
+    logoDisplayScale: TIER_LOGO_DISPLAY_SCALE_DEFAULT,
   },
 ];
 
@@ -12275,8 +12364,38 @@ const handlePublishCardIssuanceRef = useRef<
  const [cardIssuanceCardBackgroundDrawerOpen, setCardIssuanceCardBackgroundDrawerOpen] = useState(false);
  const [cardIssuanceCardBackgroundMode, setCardIssuanceCardBackgroundMode] = useState<'color' | 'image'>('color');
  const [cardIssuanceCardBackgroundDraftColor, setCardIssuanceCardBackgroundDraftColor] = useState('#6366f1');
+ const [cardIssuanceCardBackgroundDraftImage, setCardIssuanceCardBackgroundDraftImage] = useState('');
+ const [cardIssuanceCardBackgroundDraftImageFit, setCardIssuanceCardBackgroundDraftImageFit] =
+   useState<CardIssuanceBackgroundImageFit>('width');
+ const [cardIssuanceCardBackgroundDraftName, setCardIssuanceCardBackgroundDraftName] = useState('');
+ const [cardIssuanceCardBackgroundDraftDiscount, setCardIssuanceCardBackgroundDraftDiscount] = useState('');
+ const [cardIssuanceCardBackgroundDraftThreshold, setCardIssuanceCardBackgroundDraftThreshold] = useState('');
+ const [cardIssuanceCardBackgroundDraftLogoScale, setCardIssuanceCardBackgroundDraftLogoScale] =
+   useState<TierLogoDisplayScale>(TIER_LOGO_DISPLAY_SCALE_DEFAULT);
+ const [cardIssuanceCardBackgroundBaseline, setCardIssuanceCardBackgroundBaseline] = useState<{
+   tierId: string;
+   color: string;
+   image: string;
+   imageFit: CardIssuanceBackgroundImageFit;
+   mode: 'color' | 'image';
+   name: string;
+   discountPercent: string;
+   threshold: string;
+   logoDisplayScale: TierLogoDisplayScale;
+ } | null>(null);
  const [cardIssuanceCardBackgroundApplying, setCardIssuanceCardBackgroundApplying] = useState(false);
+ const [cardIssuanceTierBackgroundImageUploading, setCardIssuanceTierBackgroundImageUploading] = useState(false);
+ const [cardIssuanceCardBackgroundDropActive, setCardIssuanceCardBackgroundDropActive] = useState(false);
  const cardIssuanceCardBackgroundApplyInFlightRef = useRef(false);
+ const cardIssuanceTierBackgroundFileRef = useRef<HTMLInputElement>(null);
+ /** IPFS URL ready for Save while draft preview may still be a local blob: URL. */
+ const cardIssuanceCardBackgroundPendingIpfsRef = useRef('');
+ /**
+  * Tier id created via Add tier (+) that is not yet confirmed by Card background Save.
+  * Closing the drawer without Save removes this tier from the preview list.
+  */
+ const [cardIssuanceCardBackgroundPendingNewTierId, setCardIssuanceCardBackgroundPendingNewTierId] =
+   useState<string | null>(null);
  /** Single category id (e.g. travel); stored in metadata `shareTokenMetadata.categories` as one-element array */
  const [cardIssuanceCategoryId, setCardIssuanceCategoryId] = useState<string>(CARD_ISSUANCE_DEFAULT_CATEGORY_ID);
  /** Card-level metadata description (`shareTokenMetadata.description`). */
@@ -13074,6 +13193,33 @@ useEffect(() => {
  const cardIssuancePreviewSwipeStartXRef = useRef<number | null>(null);
  const moveCardIssuancePreviewTier = useCallback(
    (direction: -1 | 1) => {
+     const pendingId = cardIssuanceCardBackgroundPendingNewTierId;
+     const leavingUnsavedNewTier =
+       cardIssuanceCardBackgroundDrawerOpen &&
+       !!pendingId &&
+       pendingId !== CARD_ISSUANCE_SINGLE_TIER_ID &&
+       cardIssuancePreviewEditTier?.id === pendingId;
+
+     if (leavingUnsavedNewTier && pendingId) {
+       const oldIndex = Math.max(
+         0,
+         cardIssuanceTiers.findIndex((tier) => tier.id === pendingId)
+       );
+       const remaining = cardIssuanceTiers.filter((tier) => tier.id !== pendingId);
+       setCardIssuanceTiers(remaining);
+       setCardIssuanceCardBackgroundPendingNewTierId(null);
+       if (remaining.length === 0) {
+         setCardIssuancePreviewTierId(null);
+         return;
+       }
+       const neighborIndex =
+         direction === 1
+           ? Math.min(oldIndex, remaining.length - 1)
+           : Math.max(0, oldIndex - 1);
+       setCardIssuancePreviewTierId(remaining[neighborIndex]?.id ?? remaining[0]?.id ?? null);
+       return;
+     }
+
      if (cardIssuanceTiers.length < 2) return;
      const currentIndex = Math.max(
        0,
@@ -13082,7 +13228,12 @@ useEffect(() => {
      const nextIndex = (currentIndex + direction + cardIssuanceTiers.length) % cardIssuanceTiers.length;
      setCardIssuancePreviewTierId(cardIssuanceTiers[nextIndex]?.id ?? null);
    },
-   [cardIssuancePreviewEditTier?.id, cardIssuanceTiers]
+   [
+     cardIssuanceCardBackgroundDrawerOpen,
+     cardIssuanceCardBackgroundPendingNewTierId,
+     cardIssuancePreviewEditTier?.id,
+     cardIssuanceTiers,
+   ]
  );
  /** Pass / preview card chrome uses the highest-threshold tier color (not the tier row selected for badge preview). */
  const cardIssuancePreviewHeroBackgroundTier = useMemo(
@@ -13107,6 +13258,13 @@ useEffect(() => {
  );
 
  const programsOverviewActiveCardGradientCss = useMemo(() => {
+  const liveColor =
+    cardIssuanceCardBackgroundDrawerOpen && cardIssuanceCardBackgroundMode === 'color'
+      ? cardIssuanceCardBackgroundDraftColor
+      : null;
+  if (liveColor != null) {
+    return cardIssuanceTierRowGradientCss(liveColor);
+  }
   if (cardIssuancePreviewEditTier) {
     return cardIssuanceTierRowGradientCss(cardIssuancePreviewEditTier.backgroundColor ?? '');
   }
@@ -13130,6 +13288,9 @@ useEffect(() => {
    }
    return cardIssuancePreviewCardGradientCss;
 }, [
+  cardIssuanceCardBackgroundDrawerOpen,
+  cardIssuanceCardBackgroundDraftColor,
+  cardIssuanceCardBackgroundMode,
   cardIssuanceExistingCard,
   cardIssuanceTiers,
   cardIssuanceExistingCard?.meta?.tiers,
@@ -13139,6 +13300,13 @@ useEffect(() => {
 
 /** Main card preview colors follow the currently selected tier. */
  const programsOverviewPassHeroTheme = useMemo(() => {
+  const liveColor =
+    cardIssuanceCardBackgroundDrawerOpen && cardIssuanceCardBackgroundMode === 'color'
+      ? cardIssuanceCardBackgroundDraftColor
+      : null;
+  if (liveColor != null) {
+    return cardIssuanceTierGradientTheme(liveColor);
+  }
   if (cardIssuancePreviewEditTier) {
     return cardIssuanceTierGradientTheme(cardIssuancePreviewEditTier.backgroundColor ?? '');
   }
@@ -13162,12 +13330,93 @@ useEffect(() => {
    }
    return cardIssuancePreviewPassHeroTheme;
 }, [
+  cardIssuanceCardBackgroundDrawerOpen,
+  cardIssuanceCardBackgroundDraftColor,
+  cardIssuanceCardBackgroundMode,
   cardIssuanceExistingCard,
   cardIssuanceTiers,
   cardIssuanceExistingCard?.meta?.tiers,
   cardIssuancePreviewPassHeroTheme,
   cardIssuancePreviewEditTier,
 ]);
+
+/** Pass preview background image: selected tier only (never merchantImage). Live-draft while drawer open. */
+const cardIssuancePreviewLiveBackgroundImage = useMemo(() => {
+  if (cardIssuanceCardBackgroundDrawerOpen) {
+    if (cardIssuanceCardBackgroundMode === 'color') return '';
+    return cardIssuanceCardBackgroundDraftImage.trim();
+  }
+  return (cardIssuancePreviewEditTier?.backgroundImage ?? '').trim();
+}, [
+  cardIssuanceCardBackgroundDrawerOpen,
+  cardIssuanceCardBackgroundDraftImage,
+  cardIssuanceCardBackgroundMode,
+  cardIssuancePreviewEditTier?.backgroundImage,
+]);
+
+const cardIssuancePreviewLiveBackgroundImageFit = useMemo((): CardIssuanceBackgroundImageFit => {
+  if (cardIssuanceCardBackgroundDrawerOpen) {
+    return cardIssuanceCardBackgroundDraftImageFit;
+  }
+  return normalizeCardIssuanceBackgroundImageFit(cardIssuancePreviewEditTier?.backgroundImageFit);
+}, [
+  cardIssuanceCardBackgroundDrawerOpen,
+  cardIssuanceCardBackgroundDraftImageFit,
+  cardIssuancePreviewEditTier?.backgroundImageFit,
+]);
+
+const cardIssuancePreviewLiveTierName = useMemo(() => {
+  if (cardIssuanceCardBackgroundDrawerOpen) {
+    return cardIssuanceCardBackgroundDraftName.trim() || 'Tier';
+  }
+  return (cardIssuancePreviewEditTier?.name ?? '').trim() || 'Tier';
+}, [
+  cardIssuanceCardBackgroundDrawerOpen,
+  cardIssuanceCardBackgroundDraftName,
+  cardIssuancePreviewEditTier?.name,
+]);
+
+const cardIssuancePreviewLiveDiscountPercent = useMemo(() => {
+  if (cardIssuanceCardBackgroundDrawerOpen) {
+    return cardIssuanceCardBackgroundDraftDiscount.replace(/\D/g, '').slice(0, 3);
+  }
+  return (cardIssuancePreviewEditTier?.discountPercent ?? '').replace(/\D/g, '').slice(0, 3);
+}, [
+  cardIssuanceCardBackgroundDrawerOpen,
+  cardIssuanceCardBackgroundDraftDiscount,
+  cardIssuancePreviewEditTier?.discountPercent,
+]);
+
+const cardIssuancePreviewLiveThreshold = useMemo(() => {
+  if (cardIssuanceCardBackgroundDrawerOpen) {
+    return cardIssuanceCardBackgroundDraftThreshold.replace(/\D/g, '');
+  }
+  return (cardIssuancePreviewEditTier?.threshold ?? '').replace(/\D/g, '');
+}, [
+  cardIssuanceCardBackgroundDrawerOpen,
+  cardIssuanceCardBackgroundDraftThreshold,
+  cardIssuancePreviewEditTier?.threshold,
+]);
+
+const cardIssuancePreviewLiveLogoScale = useMemo((): TierLogoDisplayScale => {
+  if (cardIssuanceCardBackgroundDrawerOpen) {
+    return cardIssuanceCardBackgroundDraftLogoScale;
+  }
+  return clampTierLogoDisplayScale(cardIssuancePreviewEditTier?.logoDisplayScale);
+}, [
+  cardIssuanceCardBackgroundDrawerOpen,
+  cardIssuanceCardBackgroundDraftLogoScale,
+  cardIssuancePreviewEditTier?.logoDisplayScale,
+]);
+
+const cardIssuancePreviewLiveLogoImgClass = useMemo(
+  () => tierLogoImgClassForScale(cardIssuancePreviewLiveLogoScale),
+  [cardIssuancePreviewLiveLogoScale]
+);
+const cardIssuancePreviewLiveLogoIconClass = useMemo(
+  () => tierLogoIconClassForScale(cardIssuancePreviewLiveLogoScale),
+  [cardIssuancePreviewLiveLogoScale]
+);
 
  const programsOverviewCardMaxDiscountPct = useMemo(() => {
    if (cardIssuanceExistingCard && cardIssuanceTiers.length > 0) {
@@ -14558,7 +14807,11 @@ const programBasicTiersDirty = useMemo(() => {
       cardIssuanceTierThresholdToInt(row.threshold) !== cardIssuanceTierThresholdToInt(base.threshold) ||
       Math.round(Number(row.discountPercent) || 0) !== Math.round(Number(base.discountPercent) || 0) ||
       (tierBackgroundColorForPayload(row.backgroundColor) ?? '') !==
-        (tierBackgroundColorForPayload(base.backgroundColor) ?? '')
+        (tierBackgroundColorForPayload(base.backgroundColor) ?? '') ||
+      (row.backgroundImage ?? '').trim() !== (base.backgroundImage ?? '').trim() ||
+      normalizeCardIssuanceBackgroundImageFit(row.backgroundImageFit) !==
+        normalizeCardIssuanceBackgroundImageFit(base.backgroundImageFit) ||
+      clampTierLogoDisplayScale(row.logoDisplayScale) !== clampTierLogoDisplayScale(base.logoDisplayScale)
     );
   });
 }, [cardIssuanceExistingCard?.meta?.tiers, cardIssuanceTiers]);
@@ -14796,6 +15049,18 @@ const applyCardIssuanceTierEditor = useCallback(async () => {
         ? ''
         : cardIssuanceTierEditorDescription.slice(0, CARD_ISSUANCE_CONFIGURATION_MAX_CHARS),
     backgroundColor: cardIssuanceTierEditorBackgroundColor,
+    backgroundImage:
+      (cardIssuanceEditingTierId
+        ? cardIssuanceTiers.find((tier) => tier.id === cardIssuanceEditingTierId)?.backgroundImage
+        : '') ?? '',
+    backgroundImageFit:
+      (cardIssuanceEditingTierId
+        ? cardIssuanceTiers.find((tier) => tier.id === cardIssuanceEditingTierId)?.backgroundImageFit
+        : undefined) ?? 'width',
+    logoDisplayScale:
+      (cardIssuanceEditingTierId
+        ? cardIssuanceTiers.find((tier) => tier.id === cardIssuanceEditingTierId)?.logoDisplayScale
+        : undefined) ?? TIER_LOGO_DISPLAY_SCALE_DEFAULT,
     tierDescriptionOpen: false,
   });
     const merged = cardIssuanceEditingTierId
@@ -17182,13 +17447,42 @@ const disableCardIssuanceTopupPromotion = useCallback(() => {
        const minUnits =
          Number.isFinite(minInt) && Number.isFinite(minFloat) && minFloat === minInt ? minInt : idx + 1;
        const customDesc = t.tierDescription.trim();
-       const description = customDesc || undefined;
+       const discountPct = Number.parseInt(
+         String(t.discountPercent ?? '')
+           .replace(/,/g, '')
+           .replace(/\D/g, '')
+           .trim(),
+         10
+       );
+       const hasDiscount = Number.isFinite(discountPct) && discountPct > 0;
+       let description: string | undefined;
+       if (hasDiscount) {
+         const discountLine = `${discountPct}% discount`;
+         if (customDesc) {
+           description = /\d+(?:\.\d+)?\s*%/.test(customDesc)
+             ? customDesc.replace(/(\d+(?:\.\d+)?)\s*%/, `${discountPct}%`)
+             : `${discountLine}\n${customDesc}`;
+         } else {
+           description = discountLine;
+         }
+       } else if (customDesc) {
+         const stripped = customDesc
+           .replace(/\d+(?:\.\d+)?\s*%(?:\s*discount)?/gi, '')
+           .replace(/\n{2,}/g, '\n')
+           .trim();
+         description = stripped || undefined;
+       }
        const backgroundColor = tierBackgroundColorForPayload(t.backgroundColor);
+       const image = (t.backgroundImage ?? '').trim();
+       const imageFit = normalizeCardIssuanceBackgroundImageFit(t.backgroundImageFit);
+       const logoDisplayScale = clampTierLogoDisplayScale(t.logoDisplayScale);
        return {
          minUsdc6: Math.round(minUnits * 1e6),
          name: t.name.trim(),
+         logoDisplayScale,
          ...(description ? { description } : {}),
          ...(backgroundColor ? { backgroundColor } : {}),
+         ...(image ? { image, imageFit } : {}),
        };
      });
    if (valid.length === 0) return undefined;
@@ -17198,8 +17492,10 @@ const disableCardIssuanceTopupPromotion = useCallback(() => {
      minUsdc6: String(t.minUsdc6),
      attr: idx,
      name: t.name,
+     logoDisplayScale: t.logoDisplayScale,
      ...(t.description ? { description: t.description } : {}),
      ...(t.backgroundColor ? { backgroundColor: t.backgroundColor } : {}),
+     ...(t.image ? { image: t.image, imageFit: t.imageFit } : {}),
    }));
  }, []);
 
@@ -17389,30 +17685,329 @@ const disableCardIssuanceTopupPromotion = useCallback(() => {
    return true;
  }, [cardIssuanceExistingCard?.cardAddress]);
 
-const openCardIssuanceCardBackgroundDrawer = useCallback(() => {
-  const hasImage = Boolean(cardIssuanceEffectiveMerchantImage.trim() || cardIssuanceMerchantImageUrl.trim());
+const seedCardIssuanceCardBackgroundDrawerFromTier = useCallback((tier: CardIssuanceTierRow) => {
+  const tierId = tier.id ?? '';
+  const tierImage = (tier.backgroundImage ?? '').trim();
+  const tierImageFit = normalizeCardIssuanceBackgroundImageFit(tier.backgroundImageFit);
   const tierColor =
-    tierBackgroundColorForPayload(cardIssuancePreviewEditTier?.backgroundColor ?? '') ??
-    (cardIssuancePreviewEditTier?.backgroundColor?.trim().startsWith('#')
-      ? cardIssuancePreviewEditTier.backgroundColor.trim().slice(0, 7)
+    tierBackgroundColorForPayload(tier.backgroundColor ?? '') ??
+    (tier.backgroundColor?.trim().startsWith('#')
+      ? tier.backgroundColor.trim().slice(0, 7)
       : '#6366f1');
+  const mode: 'color' | 'image' = tierImage ? 'image' : 'color';
+  const name = (tier.name ?? '').trim();
+  const discountPercent = (tier.discountPercent ?? '').replace(/\D/g, '').slice(0, 3);
+  const threshold = (tier.threshold ?? '').replace(/\D/g, '');
+  const logoDisplayScale = clampTierLogoDisplayScale(tier.logoDisplayScale);
+  cardIssuanceCardBackgroundPendingIpfsRef.current = '';
+  setCardIssuanceCardBackgroundDropActive(false);
   setCardIssuanceCardBackgroundDraftColor(tierColor);
-  setCardIssuanceCardBackgroundMode(hasImage ? 'image' : 'color');
-  setCardIssuanceCardBackgroundDrawerOpen(true);
-}, [
-  cardIssuanceEffectiveMerchantImage,
-  cardIssuanceMerchantImageUrl,
-  cardIssuancePreviewEditTier?.backgroundColor,
-]);
-
-const closeCardIssuanceCardBackgroundDrawer = useCallback(() => {
-  setCardIssuanceCardBackgroundDrawerOpen(false);
+  setCardIssuanceCardBackgroundDraftImage((prev) => {
+    if (prev.startsWith('blob:') && prev !== tierImage) {
+      try {
+        URL.revokeObjectURL(prev);
+      } catch {
+        /* ignore */
+      }
+    }
+    return tierImage;
+  });
+  setCardIssuanceCardBackgroundDraftImageFit(tierImageFit);
+  setCardIssuanceCardBackgroundDraftName(name);
+  setCardIssuanceCardBackgroundDraftDiscount(discountPercent);
+  setCardIssuanceCardBackgroundDraftThreshold(threshold);
+  setCardIssuanceCardBackgroundDraftLogoScale(logoDisplayScale);
+  setCardIssuanceCardBackgroundMode(mode);
+  setCardIssuanceCardBackgroundBaseline({
+    tierId,
+    color: tierColor,
+    image: tierImage,
+    imageFit: tierImageFit,
+    mode,
+    name,
+    discountPercent,
+    threshold,
+    logoDisplayScale,
+  });
+  setCardIssuanceCreateError('');
 }, []);
 
-const applyCardIssuanceCardBackgroundColor = useCallback(async () => {
+const openCardIssuanceCardBackgroundDrawer = useCallback(() => {
+  const tier = cardIssuancePreviewEditTier;
+  if (!tier) return;
+  const pendingId = cardIssuanceCardBackgroundPendingNewTierId;
+  if (
+    pendingId &&
+    pendingId !== tier.id &&
+    pendingId !== CARD_ISSUANCE_SINGLE_TIER_ID
+  ) {
+    setCardIssuanceTiers((prev) => prev.filter((row) => row.id !== pendingId));
+    setCardIssuanceCardBackgroundPendingNewTierId(null);
+  }
+  seedCardIssuanceCardBackgroundDrawerFromTier(tier);
+  setCardIssuanceCardBackgroundDrawerOpen(true);
+}, [
+  cardIssuanceCardBackgroundPendingNewTierId,
+  cardIssuancePreviewEditTier,
+  seedCardIssuanceCardBackgroundDrawerFromTier,
+]);
+
+const addCardIssuancePreviewTierAndOpenBackgroundDrawer = useCallback(() => {
+  let baseTiers = cardIssuanceTiers;
+  const abandonedId = cardIssuanceCardBackgroundPendingNewTierId;
+  if (abandonedId && abandonedId !== CARD_ISSUANCE_SINGLE_TIER_ID) {
+    baseTiers = cardIssuanceTiers.filter((tier) => tier.id !== abandonedId);
+  }
+  const nextRow = nextCardIssuanceTierTemplate(baseTiers, cardIssuanceMinTopup);
+  const nextTiers = reconcileTierThresholdsWithMinTopup(
+    [...baseTiers, nextRow],
+    cardIssuanceMinTopup
+  );
+  setCardIssuanceTiers(nextTiers);
+  setCardIssuancePreviewTierId(nextRow.id);
+  setCardIssuanceCardBackgroundPendingNewTierId(nextRow.id);
+  seedCardIssuanceCardBackgroundDrawerFromTier(nextRow);
+  setCardIssuanceCardBackgroundDrawerOpen(true);
+}, [
+  cardIssuanceCardBackgroundPendingNewTierId,
+  cardIssuanceMinTopup,
+  cardIssuanceTiers,
+  seedCardIssuanceCardBackgroundDrawerFromTier,
+]);
+
+/** When the user swipes to another tier, load that tier’s saved fields (unsaved draft is discarded). */
+useEffect(() => {
+  if (!cardIssuanceCardBackgroundDrawerOpen || !cardIssuancePreviewEditTier?.id) return;
+  if (cardIssuanceTierBackgroundImageUploading || cardIssuanceCardBackgroundApplying) return;
+  const tierId = cardIssuancePreviewEditTier.id;
+  if (cardIssuanceCardBackgroundBaseline?.tierId === tierId) return;
+  const tierImage = (cardIssuancePreviewEditTier.backgroundImage ?? '').trim();
+  const tierImageFit = normalizeCardIssuanceBackgroundImageFit(
+    cardIssuancePreviewEditTier.backgroundImageFit
+  );
+  const tierColor =
+    tierBackgroundColorForPayload(cardIssuancePreviewEditTier.backgroundColor ?? '') ??
+    (cardIssuancePreviewEditTier.backgroundColor?.trim().startsWith('#')
+      ? cardIssuancePreviewEditTier.backgroundColor.trim().slice(0, 7)
+      : '#6366f1');
+  const mode: 'color' | 'image' = tierImage ? 'image' : 'color';
+  const name = (cardIssuancePreviewEditTier.name ?? '').trim();
+  const discountPercent = (cardIssuancePreviewEditTier.discountPercent ?? '')
+    .replace(/\D/g, '')
+    .slice(0, 3);
+  const threshold = (cardIssuancePreviewEditTier.threshold ?? '').replace(/\D/g, '');
+  const logoDisplayScale = clampTierLogoDisplayScale(cardIssuancePreviewEditTier.logoDisplayScale);
+  setCardIssuanceCardBackgroundDraftImage((prev) => {
+    if (prev.startsWith('blob:')) {
+      try {
+        URL.revokeObjectURL(prev);
+      } catch {
+        /* ignore */
+      }
+    }
+    return tierImage;
+  });
+  setCardIssuanceCardBackgroundDraftColor(tierColor);
+  setCardIssuanceCardBackgroundDraftImageFit(tierImageFit);
+  setCardIssuanceCardBackgroundDraftName(name);
+  setCardIssuanceCardBackgroundDraftDiscount(discountPercent);
+  setCardIssuanceCardBackgroundDraftThreshold(threshold);
+  setCardIssuanceCardBackgroundDraftLogoScale(logoDisplayScale);
+  setCardIssuanceCardBackgroundMode(mode);
+  setCardIssuanceCardBackgroundBaseline({
+    tierId,
+    color: tierColor,
+    image: tierImage,
+    imageFit: tierImageFit,
+    mode,
+    name,
+    discountPercent,
+    threshold,
+    logoDisplayScale,
+  });
+}, [
+  cardIssuanceCardBackgroundApplying,
+  cardIssuanceCardBackgroundBaseline?.tierId,
+  cardIssuanceCardBackgroundDrawerOpen,
+  cardIssuancePreviewEditTier?.backgroundColor,
+  cardIssuancePreviewEditTier?.backgroundImage,
+  cardIssuancePreviewEditTier?.backgroundImageFit,
+  cardIssuancePreviewEditTier?.discountPercent,
+  cardIssuancePreviewEditTier?.id,
+  cardIssuancePreviewEditTier?.logoDisplayScale,
+  cardIssuancePreviewEditTier?.name,
+  cardIssuancePreviewEditTier?.threshold,
+  cardIssuanceTierBackgroundImageUploading,
+]);
+
+const cardIssuanceCardBackgroundDirty = useMemo(() => {
+  if (!cardIssuanceCardBackgroundBaseline) return false;
+  const base = cardIssuanceCardBackgroundBaseline;
+  const draftColor =
+    tierBackgroundColorForPayload(cardIssuanceCardBackgroundDraftColor) ??
+    cardIssuanceCardBackgroundDraftColor.trim();
+  const baseColor = tierBackgroundColorForPayload(base.color) ?? base.color.trim();
+  const draftName = cardIssuanceCardBackgroundDraftName.trim();
+  const draftDiscount = cardIssuanceCardBackgroundDraftDiscount.replace(/\D/g, '').slice(0, 3);
+  const draftThreshold = cardIssuanceCardBackgroundDraftThreshold.replace(/\D/g, '');
+  return (
+    cardIssuanceCardBackgroundMode !== base.mode ||
+    draftColor.toLowerCase() !== baseColor.toLowerCase() ||
+    cardIssuanceCardBackgroundDraftImage.trim() !== base.image.trim() ||
+    cardIssuanceCardBackgroundDraftImageFit !== base.imageFit ||
+    draftName !== base.name ||
+    draftDiscount !== base.discountPercent ||
+    draftThreshold !== base.threshold ||
+    cardIssuanceCardBackgroundDraftLogoScale !== base.logoDisplayScale
+  );
+}, [
+  cardIssuanceCardBackgroundBaseline,
+  cardIssuanceCardBackgroundDraftColor,
+  cardIssuanceCardBackgroundDraftDiscount,
+  cardIssuanceCardBackgroundDraftImage,
+  cardIssuanceCardBackgroundDraftImageFit,
+  cardIssuanceCardBackgroundDraftLogoScale,
+  cardIssuanceCardBackgroundDraftName,
+  cardIssuanceCardBackgroundDraftThreshold,
+  cardIssuanceCardBackgroundMode,
+]);
+
+/** Top-bar Save: dirty + required fields + same validation gates as save handler. */
+const cardIssuanceCardBackgroundCanSave = useMemo(() => {
+  if (!cardIssuanceCardBackgroundDirty) return false;
+  if (cardIssuanceCardBackgroundApplying || cardIssuanceTierBackgroundImageUploading) return false;
+  const nextName = cardIssuanceCardBackgroundDraftName.trim();
+  if (!nextName) return false;
+  const nextThresholdInt = Number.parseInt(
+    cardIssuanceCardBackgroundDraftThreshold.replace(/,/g, '').replace(/\D/g, '').trim(),
+    10
+  );
+  if (!Number.isFinite(nextThresholdInt) || nextThresholdInt <= 0) return false;
+  const tierId = cardIssuancePreviewEditTier?.id;
+  if (!tierId) return false;
+  const editingBaseTier = tierId === CARD_ISSUANCE_SINGLE_TIER_ID;
+  if (editingBaseTier && nextThresholdInt < cardIssuanceMinTopupCurrencyFloor) return false;
+  const minTopupN = cardIssuanceTierThresholdToInt(cardIssuanceMinTopup);
+  if (!editingBaseTier && nextThresholdInt <= minTopupN) return false;
+  const otherThresholds = cardIssuanceTiers
+    .filter((tier) => tier.id !== tierId)
+    .map((tier) => cardIssuanceTierThresholdToInt(tier.threshold));
+  if (otherThresholds.includes(nextThresholdInt)) return false;
+  const nextColor =
+    tierBackgroundColorForPayload(cardIssuanceCardBackgroundDraftColor) ??
+    (cardIssuanceCardBackgroundDraftColor.trim().startsWith('#')
+      ? cardIssuanceCardBackgroundDraftColor.trim().slice(0, 7)
+      : '');
+  if (!nextColor) return false;
+  if (cardIssuanceCardBackgroundMode === 'image') {
+    const draft = cardIssuanceCardBackgroundDraftImage.trim();
+    const pendingIpfs = cardIssuanceCardBackgroundPendingIpfsRef.current.trim();
+    if (!draft && !pendingIpfs) return false;
+    if (draft.startsWith('blob:') || draft.startsWith('data:')) {
+      if (!pendingIpfs) return false;
+    } else {
+      const nextImage = pendingIpfs || draft;
+      if (!nextImage || nextImage.startsWith('blob:') || nextImage.startsWith('data:')) return false;
+    }
+  }
+  return true;
+}, [
+  cardIssuanceCardBackgroundApplying,
+  cardIssuanceCardBackgroundDirty,
+  cardIssuanceCardBackgroundDraftColor,
+  cardIssuanceCardBackgroundDraftImage,
+  cardIssuanceCardBackgroundDraftName,
+  cardIssuanceCardBackgroundDraftThreshold,
+  cardIssuanceCardBackgroundMode,
+  cardIssuanceMinTopup,
+  cardIssuanceMinTopupCurrencyFloor,
+  cardIssuancePreviewEditTier?.id,
+  cardIssuanceTierBackgroundImageUploading,
+  cardIssuanceTiers,
+]);
+
+const revokeCardIssuanceCardBackgroundDraftBlob = useCallback((url: string) => {
+  if (!url.startsWith('blob:')) return;
+  try {
+    URL.revokeObjectURL(url);
+  } catch {
+    /* ignore */
+  }
+}, []);
+
+const discardCardIssuanceCardBackground = useCallback(() => {
+  const base = cardIssuanceCardBackgroundBaseline;
+  cardIssuanceCardBackgroundPendingIpfsRef.current = '';
+  setCardIssuanceCardBackgroundDraftImage((prev) => {
+    if (prev.startsWith('blob:') && prev !== (base?.image ?? '')) {
+      revokeCardIssuanceCardBackgroundDraftBlob(prev);
+    }
+    return (base?.image ?? '').trim();
+  });
+  setCardIssuanceCardBackgroundDraftColor(base?.color ?? '#6366f1');
+  setCardIssuanceCardBackgroundDraftImageFit(base?.imageFit ?? 'width');
+  setCardIssuanceCardBackgroundDraftName(base?.name ?? '');
+  setCardIssuanceCardBackgroundDraftDiscount(base?.discountPercent ?? '');
+  setCardIssuanceCardBackgroundDraftThreshold(base?.threshold ?? '');
+  setCardIssuanceCardBackgroundDraftLogoScale(
+    base?.logoDisplayScale ?? TIER_LOGO_DISPLAY_SCALE_DEFAULT
+  );
+  setCardIssuanceCardBackgroundMode(base?.mode ?? 'color');
+  setCardIssuanceCreateError('');
+}, [cardIssuanceCardBackgroundBaseline, revokeCardIssuanceCardBackgroundDraftBlob]);
+
+const closeCardIssuanceCardBackgroundDrawer = useCallback(() => {
+  const pendingId = cardIssuanceCardBackgroundPendingNewTierId;
+  discardCardIssuanceCardBackground();
+  setCardIssuanceCardBackgroundDropActive(false);
+  setCardIssuanceCardBackgroundDrawerOpen(false);
+  if (pendingId && pendingId !== CARD_ISSUANCE_SINGLE_TIER_ID) {
+    setCardIssuanceTiers((prev) => prev.filter((tier) => tier.id !== pendingId));
+    setCardIssuancePreviewTierId((cur) =>
+      cur === pendingId ? CARD_ISSUANCE_SINGLE_TIER_ID : cur
+    );
+    setCardIssuanceCardBackgroundPendingNewTierId(null);
+  }
+}, [cardIssuanceCardBackgroundPendingNewTierId, discardCardIssuanceCardBackground]);
+
+const saveCardIssuanceCardBackground = useCallback(async () => {
   if (cardIssuanceCardBackgroundApplyInFlightRef.current) return;
   const tierId = cardIssuancePreviewEditTier?.id;
   if (!tierId) return;
+
+  const nextName = cardIssuanceCardBackgroundDraftName.trim();
+  if (!nextName) {
+    setCardIssuanceCreateError('Tier name is required.');
+    return;
+  }
+  const nextThresholdInt = Number.parseInt(
+    cardIssuanceCardBackgroundDraftThreshold.replace(/,/g, '').replace(/\D/g, '').trim(),
+    10
+  );
+  if (!Number.isFinite(nextThresholdInt) || nextThresholdInt <= 0) {
+    setCardIssuanceCreateError('Enter a valid minimum spending amount.');
+    return;
+  }
+  const editingBaseTier = tierId === CARD_ISSUANCE_SINGLE_TIER_ID;
+  if (editingBaseTier && nextThresholdInt < cardIssuanceMinTopupCurrencyFloor) {
+    setCardIssuanceCreateError(`Base Tier must be at least ${cardIssuanceMinTopupFloorLabel}.`);
+    return;
+  }
+  const minTopupN = cardIssuanceTierThresholdToInt(cardIssuanceMinTopup);
+  if (!editingBaseTier && nextThresholdInt <= minTopupN) {
+    setCardIssuanceCreateError('Reward tiers must be above the Base minimum spending amount.');
+    return;
+  }
+  const otherThresholds = cardIssuanceTiers
+    .filter((tier) => tier.id !== tierId)
+    .map((tier) => cardIssuanceTierThresholdToInt(tier.threshold));
+  if (otherThresholds.includes(nextThresholdInt)) {
+    setCardIssuanceCreateError('Another tier already uses this minimum spending amount.');
+    return;
+  }
+  const nextThreshold = String(nextThresholdInt);
+  const nextDiscount = cardIssuanceCardBackgroundDraftDiscount.replace(/\D/g, '').slice(0, 3);
+
   const nextColor =
     tierBackgroundColorForPayload(cardIssuanceCardBackgroundDraftColor) ??
     (cardIssuanceCardBackgroundDraftColor.trim().startsWith('#')
@@ -17422,41 +18017,282 @@ const applyCardIssuanceCardBackgroundColor = useCallback(async () => {
     setCardIssuanceCreateError('Enter a valid background color (e.g. #0051d1).');
     return;
   }
+
+  let nextImage = '';
+  if (cardIssuanceCardBackgroundMode === 'image') {
+    const draft = cardIssuanceCardBackgroundDraftImage.trim();
+    const pendingIpfs = cardIssuanceCardBackgroundPendingIpfsRef.current.trim();
+    if (!draft && !pendingIpfs) {
+      setCardIssuanceCreateError('Choose a background image, or switch to Color.');
+      return;
+    }
+    if (draft.startsWith('blob:') || draft.startsWith('data:')) {
+      if (!pendingIpfs) {
+        setCardIssuanceCreateError('Image is still preparing. Wait for upload to finish, then Save.');
+        return;
+      }
+      nextImage = pendingIpfs;
+    } else {
+      nextImage = pendingIpfs || draft;
+    }
+    if (!nextImage || nextImage.startsWith('blob:') || nextImage.startsWith('data:')) {
+      setCardIssuanceCreateError('Image is still preparing. Wait for upload to finish, then Save.');
+      return;
+    }
+  }
+
   cardIssuanceCardBackgroundApplyInFlightRef.current = true;
   setCardIssuanceCardBackgroundApplying(true);
   setCardIssuanceCreateError('');
   try {
-    const hasImage = Boolean(cardIssuanceEffectiveMerchantImage.trim() || cardIssuanceMerchantImageUrl.trim());
-    if (hasImage) {
-      const cleared = await removeIssuedProgramMerchantImage();
-      if (!cleared) return;
-    }
-    const nextTiers = cardIssuanceTiers.map((tier) =>
-      tier.id === tierId ? { ...tier, backgroundColor: nextColor } : tier
+    const nextImageFit = cardIssuanceCardBackgroundDraftImageFit;
+    const nextLogoScale = clampTierLogoDisplayScale(cardIssuanceCardBackgroundDraftLogoScale);
+    const nextMinTopup = editingBaseTier ? nextThreshold : cardIssuanceMinTopup;
+    const pendingId = cardIssuanceCardBackgroundPendingNewTierId;
+    let nextTiers = cardIssuanceTiers.map((tier) =>
+      tier.id === tierId
+        ? {
+            ...tier,
+            name: nextName,
+            discountPercent: nextDiscount,
+            threshold: nextThreshold,
+            backgroundColor: nextColor,
+            backgroundImage: nextImage,
+            backgroundImageFit: nextImageFit,
+            logoDisplayScale: nextLogoScale,
+          }
+        : tier
     );
+    if (
+      pendingId &&
+      pendingId !== tierId &&
+      pendingId !== CARD_ISSUANCE_SINGLE_TIER_ID
+    ) {
+      nextTiers = nextTiers.filter((tier) => tier.id !== pendingId);
+    }
+    if (editingBaseTier) {
+      setCardIssuanceMinTopup(nextThreshold);
+    }
     setCardIssuanceTiers(nextTiers);
-    if (cardIssuanceExistingCard?.cardAddress) {
-      await handlePublishCardIssuanceRef.current({
-        tiersOverride: nextTiers,
-        minTopupOverride: cardIssuanceMinTopup,
+    if (pendingId) {
+      setCardIssuanceCardBackgroundPendingNewTierId(null);
+    }
+    const tiersPayload = buildCardIssuanceTiersPayloadFromRows(nextTiers);
+    if (tiersPayload?.length) {
+      setCardIssuanceExistingCard((prev) => {
+        if (!prev?.meta) return prev;
+        return { ...prev, meta: { ...prev.meta, tiers: tiersPayload } };
       });
     }
+    if (cardIssuanceExistingCard?.cardAddress) {
+      const ok = await handlePublishCardIssuanceRef.current({
+        tiersOverride: nextTiers,
+        minTopupOverride: nextMinTopup,
+        loadingScope: 'bonusEditor',
+        skipOnChainRefresh: true,
+      });
+      if (!ok) return;
+    }
+    const mode: 'color' | 'image' = nextImage ? 'image' : 'color';
+    setCardIssuanceCardBackgroundDraftImage((prev) => {
+      if (prev.startsWith('blob:') || prev.startsWith('data:')) {
+        revokeCardIssuanceCardBackgroundDraftBlob(prev);
+      }
+      return nextImage;
+    });
+    cardIssuanceCardBackgroundPendingIpfsRef.current = '';
+    setCardIssuanceCardBackgroundDraftColor(nextColor);
+    setCardIssuanceCardBackgroundDraftImageFit(nextImageFit);
+    setCardIssuanceCardBackgroundDraftName(nextName);
+    setCardIssuanceCardBackgroundDraftDiscount(nextDiscount);
+    setCardIssuanceCardBackgroundDraftThreshold(nextThreshold);
+    setCardIssuanceCardBackgroundDraftLogoScale(nextLogoScale);
+    setCardIssuanceCardBackgroundMode(mode);
+    setCardIssuanceCardBackgroundBaseline({
+      tierId,
+      color: nextColor,
+      image: nextImage,
+      imageFit: nextImageFit,
+      mode,
+      name: nextName,
+      discountPercent: nextDiscount,
+      threshold: nextThreshold,
+      logoDisplayScale: nextLogoScale,
+    });
     setCardIssuanceCardBackgroundDrawerOpen(false);
   } finally {
     cardIssuanceCardBackgroundApplyInFlightRef.current = false;
     setCardIssuanceCardBackgroundApplying(false);
   }
 }, [
+  buildCardIssuanceTiersPayloadFromRows,
   cardIssuanceCardBackgroundDraftColor,
-  cardIssuanceEffectiveMerchantImage,
+  cardIssuanceCardBackgroundDraftDiscount,
+  cardIssuanceCardBackgroundDraftImage,
+  cardIssuanceCardBackgroundDraftImageFit,
+  cardIssuanceCardBackgroundDraftLogoScale,
+  cardIssuanceCardBackgroundDraftName,
+  cardIssuanceCardBackgroundDraftThreshold,
+  cardIssuanceCardBackgroundMode,
+  cardIssuanceCardBackgroundPendingNewTierId,
   cardIssuanceExistingCard?.cardAddress,
-  cardIssuanceMerchantImageUrl,
   cardIssuanceMinTopup,
+  cardIssuanceMinTopupCurrencyFloor,
+  cardIssuanceMinTopupFloorLabel,
   cardIssuancePreviewEditTier?.id,
   cardIssuanceTiers,
-  removeIssuedProgramMerchantImage,
+  revokeCardIssuanceCardBackgroundDraftBlob,
 ]);
 
+/** Ingest a picked or dropped image into draft only — blob preview until Save; IPFS URL stored pending. */
+const ingestCardIssuanceTierBackgroundImageFile = useCallback(
+  async (file: File) => {
+    if (cardIssuanceTierBackgroundImageUploading || cardIssuanceCardBackgroundApplying) return;
+    const looksLikeImage =
+      (file.type && file.type.startsWith('image/')) ||
+      /\.(jpe?g|png|webp|gif|heic|heif|avif)$/i.test(file.name || '');
+    if (!looksLikeImage) {
+      setCardIssuanceCreateError('Please choose an image file (JPG, PNG, or WebP).');
+      return;
+    }
+    const p0 = profiles?.[0];
+    if (!p0?.privateKeyArmor) {
+      setCardIssuanceCreateError('Profile not available for upload. Open Settings and ensure your wallet is ready.');
+      return;
+    }
+    setCardIssuanceCreateError('');
+    setCardIssuanceCardBackgroundDropActive(false);
+    setCardIssuanceTierBackgroundImageUploading(true);
+    cardIssuanceCardBackgroundPendingIpfsRef.current = '';
+    const localPreview = URL.createObjectURL(file);
+    setCardIssuanceCardBackgroundDraftImage((prev) => {
+      if ((prev.startsWith('blob:') || prev.startsWith('data:')) && prev !== localPreview) {
+        revokeCardIssuanceCardBackgroundDraftBlob(prev);
+      }
+      return localPreview;
+    });
+    setCardIssuanceCardBackgroundMode('image');
+    try {
+      const hash = await uploadImageFileToIpfsWithRetry(file, (dataUrl) => postToIPFS(p0, dataUrl));
+      if (!hash) {
+        setCardIssuanceCreateError('Tier background image upload failed.');
+        cardIssuanceCardBackgroundPendingIpfsRef.current = '';
+        setCardIssuanceCardBackgroundDraftImage((prev) => {
+          if (prev === localPreview) {
+            revokeCardIssuanceCardBackgroundDraftBlob(localPreview);
+            return (cardIssuanceCardBackgroundBaseline?.image ?? '').trim();
+          }
+          return prev;
+        });
+        return;
+      }
+      // Keep blob as the visible draft preview; Save uses this IPFS URL.
+      cardIssuanceCardBackgroundPendingIpfsRef.current = `${IPFS_GET_FRAGMENT}${hash}&t=${Date.now()}`;
+    } catch (err: any) {
+      setCardIssuanceCreateError(err?.message ?? 'Tier background image upload failed.');
+      cardIssuanceCardBackgroundPendingIpfsRef.current = '';
+      setCardIssuanceCardBackgroundDraftImage((prev) => {
+        if (prev === localPreview || prev.startsWith('blob:') || prev.startsWith('data:')) {
+          revokeCardIssuanceCardBackgroundDraftBlob(prev === localPreview ? localPreview : prev);
+        }
+        return (cardIssuanceCardBackgroundBaseline?.image ?? '').trim();
+      });
+    } finally {
+      setCardIssuanceTierBackgroundImageUploading(false);
+    }
+  },
+  [
+    cardIssuanceCardBackgroundApplying,
+    cardIssuanceCardBackgroundBaseline?.image,
+    cardIssuanceTierBackgroundImageUploading,
+    profiles,
+    revokeCardIssuanceCardBackgroundDraftBlob,
+  ]
+);
+
+/** Pick image into draft only — keeps local blob preview until Save; IPFS URL stored pending. */
+const handleCardIssuanceTierBackgroundImagePick: React.ChangeEventHandler<HTMLInputElement> = useCallback(
+  (e) => {
+    const input = e.currentTarget;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) return;
+    void ingestCardIssuanceTierBackgroundImageFile(file);
+  },
+  [ingestCardIssuanceTierBackgroundImageFile]
+);
+
+const handleCardIssuanceTierBackgroundImageDragEnter = useCallback(
+  (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (cardIssuanceTierBackgroundImageUploading || cardIssuanceCardBackgroundApplying) return;
+    if ([...e.dataTransfer.types].includes('Files')) {
+      setCardIssuanceCardBackgroundDropActive(true);
+    }
+  },
+  [cardIssuanceCardBackgroundApplying, cardIssuanceTierBackgroundImageUploading]
+);
+
+const handleCardIssuanceTierBackgroundImageDragOver = useCallback(
+  (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (cardIssuanceTierBackgroundImageUploading || cardIssuanceCardBackgroundApplying) return;
+    e.dataTransfer.dropEffect = 'copy';
+    if ([...e.dataTransfer.types].includes('Files')) {
+      setCardIssuanceCardBackgroundDropActive(true);
+    }
+  },
+  [cardIssuanceCardBackgroundApplying, cardIssuanceTierBackgroundImageUploading]
+);
+
+const handleCardIssuanceTierBackgroundImageDragLeave = useCallback((e: React.DragEvent) => {
+  e.preventDefault();
+  e.stopPropagation();
+  const next = e.relatedTarget as Node | null;
+  if (next && e.currentTarget.contains(next)) return;
+  setCardIssuanceCardBackgroundDropActive(false);
+}, []);
+
+const handleCardIssuanceTierBackgroundImageDrop = useCallback(
+  (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setCardIssuanceCardBackgroundDropActive(false);
+    if (cardIssuanceTierBackgroundImageUploading || cardIssuanceCardBackgroundApplying) return;
+    const file =
+      [...(e.dataTransfer.files ?? [])].find(
+        (f) =>
+          (f.type && f.type.startsWith('image/')) ||
+          /\.(jpe?g|png|webp|gif|heic|heif|avif)$/i.test(f.name || '')
+      ) ?? e.dataTransfer.files?.[0];
+    if (!file) {
+      setCardIssuanceCreateError('Please drop an image file (JPG, PNG, or WebP).');
+      return;
+    }
+    void ingestCardIssuanceTierBackgroundImageFile(file);
+  },
+  [
+    cardIssuanceCardBackgroundApplying,
+    cardIssuanceTierBackgroundImageUploading,
+    ingestCardIssuanceTierBackgroundImageFile,
+  ]
+);
+
+/** Clear draft image only — does not persist until Save. */
+const clearCardIssuanceCardBackgroundDraftImage = useCallback(() => {
+  cardIssuanceCardBackgroundPendingIpfsRef.current = '';
+  setCardIssuanceCardBackgroundDropActive(false);
+  setCardIssuanceCardBackgroundDraftImage((prev) => {
+    if (prev.startsWith('blob:') || prev.startsWith('data:')) {
+      revokeCardIssuanceCardBackgroundDraftBlob(prev);
+    }
+    return '';
+  });
+  setCardIssuanceCardBackgroundMode('color');
+  setCardIssuanceCreateError('');
+}, [revokeCardIssuanceCardBackgroundDraftBlob]);
 const handleCardIssuanceProductionIconPick: React.ChangeEventHandler<HTMLInputElement> = useCallback(
   async (e) => {
     const input = e.currentTarget;
@@ -19554,6 +20390,9 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
        tierDescription: string
        tierDescriptionOpen: boolean
        backgroundColor: string
+       backgroundImage?: string
+       backgroundImageFit?: CardIssuanceBackgroundImageFit
+       logoDisplayScale?: TierLogoDisplayScale
      }): CardIssuanceTierRow => ({
        id: t.id,
        name: t.name,
@@ -19568,6 +20407,9 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
        tierDescription: t.tierDescription,
        tierDescriptionOpen: t.tierDescriptionOpen,
        backgroundColor: t.backgroundColor,
+       backgroundImage: typeof t.backgroundImage === 'string' ? t.backgroundImage : '',
+       backgroundImageFit: normalizeCardIssuanceBackgroundImageFit(t.backgroundImageFit),
+       logoDisplayScale: clampTierLogoDisplayScale(t.logoDisplayScale),
      });
      if (draft.tiersByLoyaltyRule && Object.keys(draft.tiersByLoyaltyRule).length > 0) {
        setTiersByLoyaltyRule((prev) => {
@@ -19677,6 +20519,9 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
          tierDescription: t.tierDescription,
          tierDescriptionOpen: t.tierDescriptionOpen,
          backgroundColor: t.backgroundColor,
+         backgroundImage: t.backgroundImage,
+         backgroundImageFit: t.backgroundImageFit,
+         logoDisplayScale: t.logoDisplayScale,
        })),
        cumulative: tiersByLoyaltyRule.cumulative.map((t) => ({
          id: t.id,
@@ -19687,6 +20532,9 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
          tierDescription: t.tierDescription,
          tierDescriptionOpen: t.tierDescriptionOpen,
          backgroundColor: t.backgroundColor,
+         backgroundImage: t.backgroundImage,
+         backgroundImageFit: t.backgroundImageFit,
+         logoDisplayScale: t.logoDisplayScale,
        })),
        balance: tiersByLoyaltyRule.balance.map((t) => ({
          id: t.id,
@@ -19697,6 +20545,9 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
          tierDescription: t.tierDescription,
          tierDescriptionOpen: t.tierDescriptionOpen,
          backgroundColor: t.backgroundColor,
+         backgroundImage: t.backgroundImage,
+         backgroundImageFit: t.backgroundImageFit,
+         logoDisplayScale: t.logoDisplayScale,
        })),
      },
      tiers: cardIssuanceTiers.map((t) => ({
@@ -19708,6 +20559,9 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
        tierDescription: t.tierDescription,
        tierDescriptionOpen: t.tierDescriptionOpen,
        backgroundColor: t.backgroundColor,
+       backgroundImage: t.backgroundImage,
+       backgroundImageFit: t.backgroundImageFit,
+       logoDisplayScale: t.logoDisplayScale,
      })),
      shareImageUrl: cardIssuanceShareImageUrl,
      merchantImageUrl: cardIssuanceMerchantImageUrl,
@@ -34582,19 +35436,29 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                 <section className="flex flex-col gap-5">
                   {cardIssuanceProgramSection === 'basic' ? (
                   <div className="space-y-4">
-                     <header className="min-w-0 space-y-0.5">
-                       <span className="block text-[9px] font-bold uppercase tracking-widest text-[#1562f0]">
-                         {tu('programs_overview_live_preview')}
-                       </span>
-                       <h3 className="font-manrope text-lg font-extrabold tracking-tight text-[#2c2f31] sm:text-xl">
-                         {tu('programs_overview_asset_title')}
-                       </h3>
+                     <header className="flex min-w-0 items-start justify-between gap-3">
+                       <div className="min-w-0 space-y-0.5">
+                         <span className="block text-[9px] font-bold uppercase tracking-widest text-[#1562f0]">
+                           {tu('programs_overview_live_preview')}
+                         </span>
+                         <h3 className="font-manrope text-lg font-extrabold tracking-tight text-[#2c2f31] sm:text-xl">
+                           {tu('programs_overview_asset_title')}
+                         </h3>
+                       </div>
+                       <button
+                         type="button"
+                         onClick={addCardIssuancePreviewTierAndOpenBackgroundDrawer}
+                         className={`mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#1562f0]/25 bg-[#eaf1ff] text-[#1562f0] shadow-sm transition hover:border-[#1562f0]/50 hover:bg-[#dfeaff] ${bizFocusRingClass}`}
+                         aria-label="Add tier"
+                       >
+                         <Plus className="h-4 w-4" strokeWidth={2.5} aria-hidden />
+                       </button>
                      </header>
                      <div
                        className={`sticky z-40 w-full bg-transparent px-1 pb-3 sm:px-2 sm:pb-4 ${CARD_CONFIGURATOR_MOBILE_STICKY_BELOW_HEADER_CLASS}`}
                      >
                        <section aria-label={tu('programs_config_issued_preview_aria')}>
-                         <div className="flex w-full items-stretch justify-start gap-3 overflow-x-auto px-1 pb-1 scrollbar-hide sm:justify-center">
+                         <div className="flex w-full items-stretch justify-start overflow-x-auto px-1 pb-1 scrollbar-hide sm:justify-center">
                          <div
                            className="relative w-full max-w-[380px] shrink-0 touch-pan-y group/prev sm:max-w-[400px]"
                            onPointerDown={(event) => {
@@ -34657,18 +35521,19 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                  borderColor: programsOverviewPassHeroTheme.cardBorder,
                                }}
                              >
-                               {cardIssuanceEffectiveMerchantImage ? (
-                                 <IpfsImg
-                                   src={cardIssuanceEffectiveMerchantImage}
-                                   alt=""
-                                   className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+                               {cardIssuancePreviewLiveBackgroundImage ? (
+                                 <CardPassBackgroundImage
+                                   src={cardIssuancePreviewLiveBackgroundImage}
+                                   fit={cardIssuancePreviewLiveBackgroundImageFit}
                                  />
                                ) : null}
                                <div
                                  className="pointer-events-none absolute inset-0"
                                  style={{
-                                   background: cardIssuanceEffectiveMerchantImage
-                                     ? `linear-gradient(165deg, rgba(0,0,0,0.58) 0%, rgba(0,0,0,0.28) 45%, rgba(0,0,0,0.2) 100%), ${programsOverviewActiveCardGradientCss}`
+                                   // Image mode: translucent scrim only — do not paint opaque tier
+                                   // gradient on top (that hides the draft photo entirely).
+                                   background: cardIssuancePreviewLiveBackgroundImage
+                                     ? 'linear-gradient(165deg, rgba(0,0,0,0.58) 0%, rgba(0,0,0,0.28) 45%, rgba(0,0,0,0.2) 100%)'
                                      : programsOverviewActiveCardGradientCss,
                                  }}
                                  aria-hidden
@@ -34695,11 +35560,13 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                    openCardIssuanceCardBackgroundDrawer();
                                  }}
                                  disabled={
-                                   cardIssuanceMerchantImageUploading || cardIssuanceCardBackgroundApplying
+                                   cardIssuanceTierBackgroundImageUploading ||
+                                   cardIssuanceCardBackgroundApplying
                                  }
                                  className="absolute right-3 top-3 z-20 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#2c2f31]/45 text-white shadow-md ring-1 ring-white/35 backdrop-blur-[2px] transition hover:bg-[#2c2f31]/60 disabled:cursor-not-allowed disabled:opacity-60"
                                >
-                                 {cardIssuanceMerchantImageUploading || cardIssuanceCardBackgroundApplying ? (
+                                 {cardIssuanceTierBackgroundImageUploading ||
+                                 cardIssuanceCardBackgroundApplying ? (
                                    <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} aria-hidden />
                                  ) : (
                                    <Pencil className="h-4 w-4" strokeWidth={2.2} aria-hidden />
@@ -34707,48 +35574,31 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                </button>
                                <div className="relative z-[1] flex items-start justify-between gap-3">
                                  <div className="shrink-0">
-                                   {programsOverviewShareImage ? (
-                                     <IpfsImg
-                                       key={programsOverviewShareImage}
-                                       src={programsOverviewShareImage}
-                                       alt=""
-                                       className={`object-contain ${CARD_PREVIEW_LOGO_IMG_TIER_CLASSES[cardIssuanceLogoDisplayTier]}`}
-                                     />
-                                   ) : (
-                                     <Store
-                                       className={CARD_PREVIEW_LOGO_ICON_TIER_CLASSES[cardIssuanceLogoDisplayTier]}
-                                       strokeWidth={2}
-                                       aria-hidden
-                                       style={{ color: programsOverviewPassHeroTheme.primary }}
-                                     />
-                                   )}
+                                   {cardIssuancePreviewLiveLogoImgClass ? (
+                                     programsOverviewShareImage ? (
+                                       <IpfsImg
+                                         key={programsOverviewShareImage}
+                                         src={programsOverviewShareImage}
+                                         alt=""
+                                         className={`object-contain ${cardIssuancePreviewLiveLogoImgClass}`}
+                                       />
+                                     ) : (
+                                       <Store
+                                         className={cardIssuancePreviewLiveLogoIconClass ?? undefined}
+                                         strokeWidth={2}
+                                         aria-hidden
+                                         style={{ color: programsOverviewPassHeroTheme.primary }}
+                                       />
+                                     )
+                                   ) : null}
                                  </div>
                                  {programsOverviewTiersSortedAscending.length > 0 ? (
                                    <div className="text-right">
-                                     <ProgramLivePreviewInlineField
-                                       hideLabel
-                                       label="Discount"
-                                       value={cardIssuancePreviewEditTier?.discountPercent ?? ''}
-                                       onChange={(value) =>
-                                         setCardIssuanceTiers((tiers) =>
-                                           tiers.map((tier) =>
-                                             tier.id === cardIssuancePreviewEditTier?.id
-                                               ? { ...tier, discountPercent: value.replace(/\D/g, '').slice(0, 3) }
-                                               : tier
-                                           )
-                                         )
-                                       }
-                                       inputMode="numeric"
-                                       displayValue={
-                                         cardIssuancePreviewEditTier?.discountPercent
-                                           ? `${tu('programs_overview_up_to')} ${cardIssuancePreviewEditTier.discountPercent}%`
-                                           : tu('programs_overview_member_pricing')
-                                       }
-                                       displayClassName="!text-current text-lg font-black leading-tight tracking-tight sm:text-xl"
-                                       className="rounded-md px-1 py-0.5 text-right hover:bg-white/10"
-                                       disabled={cardIssuanceMerchantTextSaving}
-                                       focusRingClass={bizFocusRingClass}
-                                     />
+                                     <p className="text-lg font-black leading-tight tracking-tight sm:text-xl">
+                                       {cardIssuancePreviewLiveDiscountPercent
+                                         ? `${tu('programs_overview_up_to')} ${cardIssuancePreviewLiveDiscountPercent}%`
+                                         : tu('programs_overview_member_pricing')}
+                                     </p>
                                    </div>
                                  ) : null}
                                </div>
@@ -34761,58 +35611,18 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                    >
                                      {programsOverviewDisplayName}
                                    </p>
-                                   <ProgramLivePreviewInlineField
-                                     hideLabel
-                                     label="Tier name"
-                                     value={cardIssuancePreviewEditTier?.name ?? ''}
-                                     onChange={(value) =>
-                                       setCardIssuanceTiers((tiers) =>
-                                         tiers.map((tier) =>
-                                           tier.id === cardIssuancePreviewEditTier?.id
-                                             ? { ...tier, name: value.slice(0, 32) }
-                                             : tier
-                                         )
-                                       )
-                                     }
-                                     placeholder="Tier name"
-                                     displayValue={cardIssuancePreviewEditTier?.name || 'Tier'}
-                                     displayClassName="!text-current text-[10px] font-bold uppercase tracking-wider"
-                                     className="mt-1 rounded-md px-1 py-0.5 hover:bg-white/10"
-                                     disabled={cardIssuanceMerchantTextSaving}
-                                     focusRingClass={bizFocusRingClass}
-                                   />
+                                   <p className="mt-1 text-[10px] font-bold uppercase tracking-wider">
+                                     {cardIssuancePreviewLiveTierName}
+                                   </p>
                                  </div>
                                  <div className="shrink-0 text-right">
                                    <div
                                      className="text-[10px] font-bold uppercase tracking-wider opacity-80"
                                      style={{ color: programsOverviewPassHeroTheme.tertiary }}
                                    >
-                                     <ProgramLivePreviewInlineField
-                                       hideLabel
-                                       label="Starting amount"
-                                       value={cardIssuancePreviewEditTier?.threshold ?? ''}
-                                       onChange={(value) => {
-                                         const digits = value.replace(/\D/g, '');
-                                         setCardIssuanceTiers((tiers) =>
-                                           tiers.map((tier) =>
-                                             tier.id === cardIssuancePreviewEditTier?.id
-                                               ? { ...tier, threshold: digits }
-                                               : tier
-                                           )
-                                         );
-                                         if (cardIssuancePreviewEditTier?.id === CARD_ISSUANCE_SINGLE_TIER_ID) {
-                                           setCardIssuanceMinTopup(digits);
-                                         }
-                                       }}
-                                       inputMode="numeric"
-                                       displayValue={`${tu('programs_overview_starting_from_label')} ${cardIssuanceDisplayMoneyPrefix} ${
-                                         cardIssuancePreviewEditTier?.threshold || programsOverviewCardMinTopupDisplay
-                                       }`}
-                                       displayClassName="text-[10px] font-bold uppercase tracking-wider"
-                                       className="rounded-md px-1 py-0 text-right hover:bg-white/10"
-                                       disabled={cardIssuanceMerchantTextSaving}
-                                       focusRingClass={bizFocusRingClass}
-                                     />
+                                     {`${tu('programs_overview_starting_from_label')} ${cardIssuanceDisplayMoneyPrefix} ${
+                                       cardIssuancePreviewLiveThreshold || programsOverviewCardMinTopupDisplay
+                                     }`}
                                    </div>
                                    {cardIssuanceTopupPromotionPayload ? (
                                      <p
@@ -34832,25 +35642,6 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                              </div>
                            </div>
                          </div>
-                         <button
-                           type="button"
-                           onClick={() => {
-                             const nextRow = nextCardIssuanceTierTemplate(cardIssuanceTiers, cardIssuanceMinTopup);
-                             const nextTiers = reconcileTierThresholdsWithMinTopup(
-                               [...cardIssuanceTiers, nextRow],
-                               cardIssuanceMinTopup
-                             );
-                             setCardIssuanceTiers(nextTiers);
-                             setCardIssuancePreviewTierId(nextRow.id);
-                           }}
-                           className={`flex h-24 w-24 min-w-24 shrink-0 self-center flex-col items-center justify-center gap-1 rounded-full border-2 border-dashed border-[#1562f0]/40 bg-[#eaf1ff] px-2 text-center text-[#1562f0] shadow-sm transition hover:border-[#1562f0] hover:bg-[#dfeaff] ${bizFocusRingClass}`}
-                           aria-label="Add tier"
-                         >
-                           <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[#1562f0] text-white shadow-sm">
-                             <Plus className="h-4 w-4" strokeWidth={2.5} aria-hidden />
-                           </span>
-                           <span className="text-[9px] font-black uppercase tracking-[0.1em]">Add tier</span>
-                         </button>
                          </div>
                        </section>
                      </div>
@@ -37334,80 +38125,233 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                     role="dialog"
                     aria-modal="true"
                     aria-labelledby="card-background-editor-title"
-                    className="fixed inset-x-0 bottom-0 z-[91] mx-auto max-h-[calc(100dvh-1rem)] w-full max-w-2xl overflow-y-auto rounded-t-[2rem] bg-white px-6 pb-[max(1.5rem,env(safe-area-inset-bottom,0px))] pt-6 shadow-[0_-24px_64px_rgba(0,0,0,0.12)]"
+                    className="fixed inset-x-0 bottom-0 z-[91] mx-auto max-h-[calc(100dvh-1rem)] w-full max-w-2xl overflow-y-auto rounded-t-[1.75rem] bg-white px-5 pb-[max(1.25rem,env(safe-area-inset-bottom,0px))] pt-4 shadow-[0_-24px_64px_rgba(0,0,0,0.12)]"
                     initial={{ y: '100%' }}
                     animate={{ y: 0 }}
                     exit={{ y: '100%' }}
                     transition={{ type: 'spring', stiffness: 320, damping: 30 }}
                   >
-                    <div className="mx-auto mb-4 h-1.5 w-14 rounded-full bg-[#d9dde0]" aria-hidden />
-                    <div className="mb-6 flex items-start justify-between gap-4">
-                      <div className="min-w-0">
-                        <span className="rounded-full bg-[#0051d1]/10 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-[#0051d1]">
-                          Background
-                        </span>
-                        <h3
-                          id="card-background-editor-title"
-                          className="mt-3 font-manrope text-2xl font-extrabold tracking-tight text-[#2c2f31]"
-                        >
-                          Card background
-                        </h3>
-                        <p className="mt-2 text-sm leading-relaxed text-[#595c5e]">
-                          Choose either a solid color or a background image — not both.
-                        </p>
-                      </div>
+                    <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-[#d9dde0]" aria-hidden />
+                    <div className="relative mb-4 flex items-center justify-between gap-3">
                       <button
                         type="button"
                         onClick={closeCardIssuanceCardBackgroundDrawer}
-                        className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#eef1f3] text-[#595c5e] transition-colors hover:bg-[#dfe3e6] ${bizFocusRingClass}`}
-                        aria-label="Close"
+                        tabIndex={-1}
+                        className={`relative z-10 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#eef1f3] text-[#595c5e] transition-colors hover:bg-[#dfe3e6] ${bizFocusRingClass}`}
+                        aria-label="Cancel"
                       >
-                        <X className="h-5 w-5" strokeWidth={2} aria-hidden />
+                        <X className="h-4 w-4" strokeWidth={2} aria-hidden />
+                      </button>
+                      <h3
+                        id="card-background-editor-title"
+                        className="pointer-events-none absolute inset-x-12 truncate text-center font-manrope text-base font-extrabold tracking-tight text-[#2c2f31] sm:text-lg"
+                      >
+                        Card background
+                      </h3>
+                      <button
+                        type="button"
+                        onClick={() => void saveCardIssuanceCardBackground()}
+                        disabled={!cardIssuanceCardBackgroundCanSave}
+                        tabIndex={-1}
+                        aria-busy={cardIssuanceCardBackgroundApplying}
+                        aria-label={cardIssuanceCardBackgroundApplying ? 'Saving' : 'Save'}
+                        className={`relative z-10 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#0051d1] text-white shadow-sm shadow-[#0051d1]/25 transition active:scale-[0.96] disabled:cursor-not-allowed disabled:bg-[#abadaf] disabled:shadow-none disabled:opacity-70 ${bizFocusRingClass}`}
+                      >
+                        {cardIssuanceCardBackgroundApplying ? (
+                          <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} aria-hidden />
+                        ) : (
+                          <Check className="h-4 w-4" strokeWidth={2.25} aria-hidden />
+                        )}
                       </button>
                     </div>
 
-                    <div
-                      className="mb-6 grid grid-cols-2 gap-2 rounded-2xl bg-[#eef1f3] p-1.5"
-                      role="tablist"
-                      aria-label="Background type"
-                    >
-                      <button
-                        type="button"
-                        role="tab"
-                        aria-selected={cardIssuanceCardBackgroundMode === 'color'}
-                        onClick={() => setCardIssuanceCardBackgroundMode('color')}
-                        className={`inline-flex items-center justify-center gap-2 rounded-xl px-3 py-3 text-sm font-bold transition ${
-                          cardIssuanceCardBackgroundMode === 'color'
-                            ? 'bg-white text-[#0051d1] shadow-sm'
-                            : 'text-[#595c5e] hover:text-[#2c2f31]'
-                        } ${bizFocusRingClass}`}
-                      >
-                        <Palette className="h-4 w-4" strokeWidth={2.2} aria-hidden />
-                        Color
-                      </button>
-                      <button
-                        type="button"
-                        role="tab"
-                        aria-selected={cardIssuanceCardBackgroundMode === 'image'}
-                        onClick={() => setCardIssuanceCardBackgroundMode('image')}
-                        className={`inline-flex items-center justify-center gap-2 rounded-xl px-3 py-3 text-sm font-bold transition ${
-                          cardIssuanceCardBackgroundMode === 'image'
-                            ? 'bg-white text-[#0051d1] shadow-sm'
-                            : 'text-[#595c5e] hover:text-[#2c2f31]'
-                        } ${bizFocusRingClass}`}
-                      >
-                        <ImagePlus className="h-4 w-4" strokeWidth={2.2} aria-hidden />
-                        Image
-                      </button>
-                    </div>
+                    <div className="mb-3 space-y-2.5">
+                      <div className="rounded-2xl bg-[#eef1f3] px-3.5 pb-2 pt-1.5">
+                        <label
+                          className="block text-[9px] font-bold uppercase tracking-[0.12em] text-[#747779]"
+                          htmlFor="card-background-tier-name"
+                        >
+                          {tu('programs_tier_name_label')}
+                        </label>
+                        <input
+                          id="card-background-tier-name"
+                          type="text"
+                          autoComplete="off"
+                          value={cardIssuanceCardBackgroundDraftName}
+                          onChange={(e) =>
+                            setCardIssuanceCardBackgroundDraftName(e.target.value.slice(0, 32))
+                          }
+                          placeholder={tu('programs_overview_tier_name_ph')}
+                          disabled={cardIssuanceCardBackgroundApplying}
+                          className={`w-full border-none bg-transparent px-0 py-0.5 text-sm font-medium text-[#2c2f31] placeholder:text-[#abadaf] focus:outline-none focus:ring-0 disabled:opacity-60`}
+                        />
+                      </div>
 
-                    {cardIssuanceCardBackgroundMode === 'color' ? (
-                      <div className="space-y-4">
-                        <div className="space-y-3">
-                          <label className="ml-2 block text-[10px] font-bold uppercase tracking-[0.15em] text-[#595c5e]">
-                            Background color
+                      <div className="grid grid-cols-2 gap-2.5">
+                        <div className="min-w-0 rounded-2xl bg-[#eef1f3] px-3.5 pb-2 pt-1.5">
+                          <label
+                            className="block truncate text-[9px] font-bold uppercase tracking-[0.12em] text-[#747779]"
+                            htmlFor="card-background-tier-threshold"
+                          >
+                            {getCardIssuanceTierThresholdLabel()[programsOverviewTierRuleKey]}
                           </label>
-                          <div className="flex flex-wrap gap-3">
+                          <div className="flex items-center gap-1">
+                            <span className="shrink-0 text-sm font-medium text-[#595c5e]">
+                              {cardIssuanceDisplayMoneyPrefix}
+                            </span>
+                            <input
+                              id="card-background-tier-threshold"
+                              type="number"
+                              inputMode="numeric"
+                              autoComplete="off"
+                              min={cardIssuanceMinTopupCurrencyFloor}
+                              value={cardIssuanceCardBackgroundDraftThreshold}
+                              onKeyDown={preventNumericInputStepKeys}
+                              onKeyDownCapture={preventNumericInputStepKeys}
+                              onWheel={preventNumericInputWheelStep}
+                              onChange={(e) => {
+                                const raw = e.target.value.replace(/,/g, '');
+                                if (raw === '') {
+                                  setCardIssuanceCardBackgroundDraftThreshold('');
+                                  return;
+                                }
+                                setCardIssuanceCardBackgroundDraftThreshold(
+                                  raw.split('.')[0].replace(/\D/g, '')
+                                );
+                              }}
+                              placeholder="5"
+                              disabled={cardIssuanceCardBackgroundApplying}
+                              className={`min-w-0 flex-1 border-none bg-transparent px-0 py-0.5 text-sm font-medium text-[#2c2f31] placeholder:text-[#abadaf] focus:outline-none focus:ring-0 disabled:opacity-60 ${bizNumericNoSpinnerClass}`}
+                            />
+                          </div>
+                        </div>
+                        <div className="min-w-0 rounded-2xl bg-[#eef1f3] px-3.5 pb-2 pt-1.5">
+                          <label
+                            className="block text-[9px] font-bold uppercase tracking-[0.12em] text-[#747779]"
+                            htmlFor="card-background-tier-discount"
+                          >
+                            Discount %
+                          </label>
+                          <div className="flex items-center gap-1">
+                            <input
+                              id="card-background-tier-discount"
+                              type="number"
+                              inputMode="numeric"
+                              autoComplete="off"
+                              min={0}
+                              max={100}
+                              value={cardIssuanceCardBackgroundDraftDiscount}
+                              onKeyDown={preventNumericInputStepKeys}
+                              onKeyDownCapture={preventNumericInputStepKeys}
+                              onWheel={preventNumericInputWheelStep}
+                              onChange={(e) => {
+                                const digits = e.target.value.replace(/\D/g, '').slice(0, 3);
+                                if (digits === '') {
+                                  setCardIssuanceCardBackgroundDraftDiscount('');
+                                  return;
+                                }
+                                const n = Number.parseInt(digits, 10);
+                                if (!Number.isFinite(n)) {
+                                  setCardIssuanceCardBackgroundDraftDiscount('');
+                                  return;
+                                }
+                                setCardIssuanceCardBackgroundDraftDiscount(String(Math.min(100, n)));
+                              }}
+                              placeholder="0"
+                              disabled={cardIssuanceCardBackgroundApplying}
+                              className={`min-w-0 flex-1 border-none bg-transparent px-0 py-0.5 text-sm font-medium text-[#2c2f31] placeholder:text-[#abadaf] focus:outline-none focus:ring-0 disabled:opacity-60 ${bizNumericNoSpinnerClass}`}
+                            />
+                            <span className="shrink-0 text-sm font-medium text-[#595c5e]">%</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div
+                        className="rounded-2xl bg-[#eef1f3] p-1.5 pt-1"
+                        role="radiogroup"
+                        aria-label="Card logo size"
+                      >
+                        <p className="px-2 pb-1 text-[9px] font-bold uppercase tracking-[0.12em] text-[#747779]">
+                          Logo size
+                        </p>
+                        <div className="grid grid-cols-5 gap-1">
+                          {TIER_LOGO_DISPLAY_SCALE_OPTIONS.map((scale) => {
+                            const selected = cardIssuanceCardBackgroundDraftLogoScale === scale;
+                            return (
+                              <button
+                                key={scale}
+                                type="button"
+                                role="radio"
+                                aria-checked={selected}
+                                disabled={cardIssuanceCardBackgroundApplying}
+                                onClick={() => setCardIssuanceCardBackgroundDraftLogoScale(scale)}
+                                className={`rounded-xl px-1 py-2 text-center text-[11px] font-bold transition ${
+                                  selected
+                                    ? 'bg-white text-[#0051d1] shadow-sm'
+                                    : 'text-[#595c5e] hover:text-[#2c2f31]'
+                                } ${bizFocusRingClass}`}
+                              >
+                                {TIER_LOGO_DISPLAY_SCALE_LABELS[scale]}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+
+                    {!cardIssuanceCardBackgroundDraftImage.trim() ? (
+                      <div
+                        className="mb-3 grid grid-cols-2 gap-1.5 rounded-2xl bg-[#eef1f3] p-1"
+                        role="tablist"
+                        aria-label="Background type"
+                      >
+                        <button
+                          type="button"
+                          role="tab"
+                          aria-selected={cardIssuanceCardBackgroundMode === 'color'}
+                          onClick={() => setCardIssuanceCardBackgroundMode('color')}
+                          className={`inline-flex items-center justify-center gap-1.5 rounded-xl px-2.5 py-2.5 text-xs font-bold transition ${
+                            cardIssuanceCardBackgroundMode === 'color'
+                              ? 'bg-white text-[#0051d1] shadow-sm'
+                              : 'text-[#595c5e] hover:text-[#2c2f31]'
+                          } ${bizFocusRingClass}`}
+                        >
+                          <Palette className="h-3.5 w-3.5" strokeWidth={2.2} aria-hidden />
+                          Color
+                        </button>
+                        <button
+                          type="button"
+                          role="tab"
+                          aria-selected={cardIssuanceCardBackgroundMode === 'image'}
+                          onClick={() => setCardIssuanceCardBackgroundMode('image')}
+                          className={`inline-flex items-center justify-center gap-1.5 rounded-xl px-2.5 py-2.5 text-xs font-bold transition ${
+                            cardIssuanceCardBackgroundMode === 'image'
+                              ? 'bg-white text-[#0051d1] shadow-sm'
+                              : 'text-[#595c5e] hover:text-[#2c2f31]'
+                          } ${bizFocusRingClass}`}
+                        >
+                          <ImagePlus className="h-3.5 w-3.5" strokeWidth={2.2} aria-hidden />
+                          Image
+                        </button>
+                      </div>
+                    ) : null}
+
+                    <input
+                      ref={cardIssuanceTierBackgroundFileRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handleCardIssuanceTierBackgroundImagePick}
+                    />
+
+                    {cardIssuanceCardBackgroundMode === 'color' &&
+                    !cardIssuanceCardBackgroundDraftImage.trim() ? (
+                      <div className="space-y-2.5">
+                        <div className="rounded-2xl bg-[#eef1f3] px-3.5 pb-2.5 pt-1.5">
+                          <p className="mb-2 text-[9px] font-bold uppercase tracking-[0.12em] text-[#747779]">
+                            Background color
+                          </p>
+                          <div className="flex flex-wrap gap-2">
                             {CARD_ISSUANCE_TIER_COLOR_PRESETS.map((hex) => {
                               const selected =
                                 (tierBackgroundColorForPayload(cardIssuanceCardBackgroundDraftColor) ??
@@ -37418,8 +38362,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                   type="button"
                                   aria-label={`Select ${hex} color`}
                                   onClick={() => setCardIssuanceCardBackgroundDraftColor(hex)}
-                                  className={`h-10 w-10 rounded-full ring-4 ring-offset-2 transition-all hover:scale-110 active:scale-90 ${
-                                    selected ? 'ring-[#1562f0]/20' : 'ring-transparent'
+                                  className={`h-8 w-8 rounded-full ring-2 ring-offset-1 transition-all hover:scale-110 active:scale-90 ${
+                                    selected ? 'ring-[#1562f0]/35' : 'ring-transparent'
                                   }`}
                                   style={{ backgroundColor: hex }}
                                 />
@@ -37428,136 +38372,179 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                             <button
                               type="button"
                               onClick={() => setCardIssuanceCardBackgroundDraftColor('#0051d1')}
-                              className="flex h-10 w-10 items-center justify-center rounded-full bg-[#dfe3e6] text-[#595c5e] ring-4 ring-transparent ring-offset-2 transition-all hover:scale-110 active:scale-90"
+                              className="flex h-8 w-8 items-center justify-center rounded-full bg-[#dfe3e6] text-[#595c5e] ring-2 ring-transparent ring-offset-1 transition-all hover:scale-110 active:scale-90"
                               aria-label="Reset background color"
                             >
-                              <Palette className="h-4 w-4" strokeWidth={2} aria-hidden />
+                              <Palette className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
                             </button>
                           </div>
-                          <div className="flex items-center gap-2">
+                        </div>
+                        <div className="flex items-stretch gap-2">
+                          <input
+                            type="color"
+                            value={
+                              tierBackgroundColorForPayload(cardIssuanceCardBackgroundDraftColor) ?? '#0051d1'
+                            }
+                            onChange={(e) => setCardIssuanceCardBackgroundDraftColor(e.target.value)}
+                            className="h-11 w-11 shrink-0 rounded-xl border border-[#dfe3e6] bg-transparent p-1"
+                            aria-label="Choose background color"
+                          />
+                          <div className="min-w-0 flex-1 rounded-2xl bg-[#eef1f3] px-3.5 pb-2 pt-1.5">
+                            <label
+                              className="block text-[9px] font-bold uppercase tracking-[0.12em] text-[#747779]"
+                              htmlFor="card-background-color-hex"
+                            >
+                              Hex
+                            </label>
                             <input
-                              type="color"
-                              value={
-                                tierBackgroundColorForPayload(cardIssuanceCardBackgroundDraftColor) ?? '#0051d1'
-                              }
-                              onChange={(e) => setCardIssuanceCardBackgroundDraftColor(e.target.value)}
-                              className="h-11 w-12 rounded-xl border border-[#dfe3e6] bg-transparent p-1"
-                              aria-label="Choose background color"
-                            />
-                            <input
+                              id="card-background-color-hex"
                               type="text"
                               value={cardIssuanceCardBackgroundDraftColor}
                               onChange={(e) => setCardIssuanceCardBackgroundDraftColor(e.target.value)}
                               placeholder="#0051d1"
-                              className={`min-w-0 flex-1 rounded-2xl border-none bg-[#eef1f3] px-4 py-3 text-sm font-mono text-[#2c2f31] placeholder:text-[#abadaf] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass}`}
+                              className={`w-full border-none bg-transparent px-0 py-0.5 font-mono text-sm text-[#2c2f31] placeholder:text-[#abadaf] focus:outline-none focus:ring-0`}
                             />
                           </div>
-                          {(cardIssuanceEffectiveMerchantImage.trim() || cardIssuanceMerchantImageUrl.trim()) ? (
-                            <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                              Applying a color will remove the current background image.
-                            </p>
-                          ) : null}
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => void applyCardIssuanceCardBackgroundColor()}
-                          disabled={cardIssuanceCardBackgroundApplying || cardIssuanceMerchantImageUploading}
-                          aria-busy={cardIssuanceCardBackgroundApplying}
-                          className={`flex w-full items-center justify-center gap-2 rounded-full bg-[#0051d1] py-4 font-manrope text-base font-bold text-white shadow-lg shadow-[#0051d1]/20 transition-transform active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 ${CARD_SETUP_MOBILE_CTA_TOUCH_CLASS} ${bizFocusRingClass}`}
-                        >
-                          {cardIssuanceCardBackgroundApplying ? (
-                            <Loader2 className="h-5 w-5 animate-spin" strokeWidth={2} aria-hidden />
-                          ) : (
-                            <Check className="h-5 w-5" strokeWidth={2} aria-hidden />
-                          )}
-                          <span>
-                            {cardIssuanceCardBackgroundApplying ? 'Saving…' : 'Apply color'}
-                          </span>
-                        </button>
+                        {cardIssuanceCardBackgroundDraftImage.trim() ||
+                        (cardIssuanceCardBackgroundBaseline?.image ?? '').trim() ? (
+                          <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                            Saving as Color will remove this tier&apos;s background image.
+                          </p>
+                        ) : null}
                       </div>
                     ) : (
-                      <div className="space-y-4">
-                        <div className="space-y-3">
-                          <label className="ml-2 block text-[10px] font-bold uppercase tracking-[0.15em] text-[#595c5e]">
-                            Background image
-                          </label>
-                          {cardIssuanceEffectiveMerchantImage.trim() || cardIssuanceMerchantImageUrl.trim() ? (
-                            <div className="overflow-hidden rounded-2xl border border-[#e8ecf0] bg-[#f7f8f9]">
-                              <IpfsImg
-                                src={
-                                  cardIssuanceEffectiveMerchantImage.trim() ||
-                                  cardIssuanceMerchantImageUrl.trim()
-                                }
-                                alt=""
-                                className="aspect-[16/9] w-full object-cover"
+                      <div className="space-y-2.5">
+                        {cardIssuanceCardBackgroundDraftImage.trim() ? (
+                          <div
+                            className={`relative overflow-hidden rounded-2xl border bg-[#f7f8f9] transition ${
+                              cardIssuanceCardBackgroundDropActive
+                                ? 'border-[#1562f0] ring-2 ring-[#1562f0]/25'
+                                : 'border-[#e8ecf0]'
+                            }`}
+                            onDragEnter={handleCardIssuanceTierBackgroundImageDragEnter}
+                            onDragOver={handleCardIssuanceTierBackgroundImageDragOver}
+                            onDragLeave={handleCardIssuanceTierBackgroundImageDragLeave}
+                            onDrop={handleCardIssuanceTierBackgroundImageDrop}
+                          >
+                            <div className="relative aspect-[16/9] w-full overflow-hidden bg-[#0f172a]">
+                              <CardPassBackgroundImage
+                                src={cardIssuanceCardBackgroundDraftImage.trim()}
+                                fit={cardIssuanceCardBackgroundDraftImageFit}
                               />
                             </div>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => cardIssuanceMerchantImageIssuedPanelFileRef.current?.click()}
-                              disabled={cardIssuanceMerchantImageUploading}
-                              className={`flex w-full flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-[#dfe3e6] bg-[#f7f8f9] px-4 py-10 text-[#595c5e] transition hover:border-[#1562f0]/40 hover:bg-[#eaf1ff]/40 disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
-                            >
-                              {cardIssuanceMerchantImageUploading ? (
-                                <Loader2 className="h-8 w-8 animate-spin text-[#1562f0]" strokeWidth={2} aria-hidden />
-                              ) : (
-                                <ImagePlus className="h-8 w-8 text-[#747779]" strokeWidth={2} aria-hidden />
-                              )}
-                              <span className="text-sm font-bold text-[#2c2f31]">
-                                {cardIssuanceMerchantImageUploading ? 'Uploading…' : 'Upload background image'}
-                              </span>
-                              <span className="text-xs text-[#747779]">JPG, PNG, or WebP</span>
-                            </button>
-                          )}
-                          <div className="flex flex-wrap gap-2">
-                            <button
-                              type="button"
-                              onClick={() => cardIssuanceMerchantImageIssuedPanelFileRef.current?.click()}
-                              disabled={cardIssuanceMerchantImageUploading}
-                              aria-busy={cardIssuanceMerchantImageUploading}
-                              className={`inline-flex flex-1 items-center justify-center gap-2 rounded-full bg-[#0051d1] px-4 py-3.5 text-sm font-bold text-white shadow-md shadow-[#0051d1]/15 transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
-                            >
-                              {cardIssuanceMerchantImageUploading ? (
-                                <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} aria-hidden />
-                              ) : (
-                                <ImagePlus className="h-4 w-4" strokeWidth={2.2} aria-hidden />
-                              )}
-                              {cardIssuanceEffectiveMerchantImage.trim() || cardIssuanceMerchantImageUrl.trim()
-                                ? cardIssuanceMerchantImageUploading
-                                  ? 'Uploading…'
-                                  : 'Replace image'
-                                : cardIssuanceMerchantImageUploading
-                                  ? 'Uploading…'
-                                  : 'Choose image'}
-                            </button>
-                            {cardIssuanceEffectiveMerchantImage.trim() || cardIssuanceMerchantImageUrl.trim() ? (
+                            <div className="absolute left-2.5 top-2.5 z-10 flex items-center gap-1.5">
                               <button
                                 type="button"
-                                onClick={() => void removeIssuedProgramMerchantImage()}
-                                disabled={cardIssuanceMerchantImageUploading}
-                                className={`inline-flex items-center justify-center gap-2 rounded-full border border-[#fb5151]/30 bg-[#fb5151]/8 px-4 py-3.5 text-sm font-bold text-[#b31b25] transition hover:bg-[#fb5151]/12 disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
+                                title="Fit to width"
+                                aria-label="Fit to width"
+                                aria-pressed={cardIssuanceCardBackgroundDraftImageFit === 'width'}
+                                onClick={() => setCardIssuanceCardBackgroundDraftImageFit('width')}
+                                disabled={
+                                  cardIssuanceTierBackgroundImageUploading || cardIssuanceCardBackgroundApplying
+                                }
+                                className={`flex h-8 w-8 items-center justify-center rounded-full text-white shadow-md ring-1 backdrop-blur-[2px] transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                                  cardIssuanceCardBackgroundDraftImageFit === 'width'
+                                    ? 'bg-[#0051d1]/90 ring-white/50'
+                                    : 'bg-[#2c2f31]/45 ring-white/35 hover:bg-[#2c2f31]/60'
+                                } ${bizFocusRingClass}`}
                               >
-                                <Trash2 className="h-4 w-4" strokeWidth={2} aria-hidden />
-                                Remove
+                                <RectangleHorizontal className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />
                               </button>
+                              <button
+                                type="button"
+                                title="Fit to height"
+                                aria-label="Fit to height"
+                                aria-pressed={cardIssuanceCardBackgroundDraftImageFit === 'height'}
+                                onClick={() => setCardIssuanceCardBackgroundDraftImageFit('height')}
+                                disabled={
+                                  cardIssuanceTierBackgroundImageUploading || cardIssuanceCardBackgroundApplying
+                                }
+                                className={`flex h-8 w-8 items-center justify-center rounded-full text-white shadow-md ring-1 backdrop-blur-[2px] transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                                  cardIssuanceCardBackgroundDraftImageFit === 'height'
+                                    ? 'bg-[#0051d1]/90 ring-white/50'
+                                    : 'bg-[#2c2f31]/45 ring-white/35 hover:bg-[#2c2f31]/60'
+                                } ${bizFocusRingClass}`}
+                              >
+                                <AlignVerticalSpaceAround className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />
+                              </button>
+                            </div>
+                            <div className="absolute right-2.5 top-2.5 z-10 flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => cardIssuanceTierBackgroundFileRef.current?.click()}
+                                disabled={cardIssuanceTierBackgroundImageUploading}
+                                aria-busy={cardIssuanceTierBackgroundImageUploading}
+                                aria-label={
+                                  cardIssuanceTierBackgroundImageUploading ? 'Preparing image' : 'Replace image'
+                                }
+                                className={`flex h-8 w-8 items-center justify-center rounded-full bg-[#2c2f31]/45 text-white shadow-md ring-1 ring-white/35 backdrop-blur-[2px] transition hover:bg-[#2c2f31]/60 disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
+                              >
+                                {cardIssuanceTierBackgroundImageUploading ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2} aria-hidden />
+                                ) : (
+                                  <ImagePlus className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />
+                                )}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={clearCardIssuanceCardBackgroundDraftImage}
+                                disabled={
+                                  cardIssuanceTierBackgroundImageUploading || cardIssuanceCardBackgroundApplying
+                                }
+                                aria-label="Remove image"
+                                className={`flex h-8 w-8 items-center justify-center rounded-full bg-[#2c2f31]/45 text-white shadow-md ring-1 ring-white/35 backdrop-blur-[2px] transition hover:bg-[#b31b25]/85 disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />
+                              </button>
+                            </div>
+                            {cardIssuanceCardBackgroundDropActive ? (
+                              <p className="absolute inset-x-0 bottom-0 z-10 bg-[#eaf1ff]/95 px-3 py-2 text-center text-xs font-semibold text-[#0051d1]">
+                                Drop to replace image
+                              </p>
                             ) : null}
                           </div>
-                          <p className="text-xs leading-relaxed text-[#747779]">
-                            A background image replaces the solid color fill on the merchant card preview. Color
-                            accents may still tint overlays for readability.
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={closeCardIssuanceCardBackgroundDrawer}
-                          disabled={cardIssuanceMerchantImageUploading}
-                          className={`flex w-full items-center justify-center gap-2 rounded-full border border-[#dfe3e6] bg-white py-4 font-manrope text-base font-bold text-[#2c2f31] transition hover:bg-[#f7f8f9] disabled:cursor-not-allowed disabled:opacity-60 ${CARD_SETUP_MOBILE_CTA_TOUCH_CLASS} ${bizFocusRingClass}`}
-                        >
-                          Done
-                        </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => cardIssuanceTierBackgroundFileRef.current?.click()}
+                            disabled={cardIssuanceTierBackgroundImageUploading}
+                            onDragEnter={handleCardIssuanceTierBackgroundImageDragEnter}
+                            onDragOver={handleCardIssuanceTierBackgroundImageDragOver}
+                            onDragLeave={handleCardIssuanceTierBackgroundImageDragLeave}
+                            onDrop={handleCardIssuanceTierBackgroundImageDrop}
+                            className={`flex w-full flex-col items-center justify-center gap-1.5 rounded-2xl border-2 border-dashed px-4 py-7 text-[#595c5e] transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                              cardIssuanceCardBackgroundDropActive
+                                ? 'border-[#1562f0] bg-[#eaf1ff]/70 text-[#0051d1]'
+                                : 'border-[#dfe3e6] bg-[#f7f8f9] hover:border-[#1562f0]/40 hover:bg-[#eaf1ff]/40'
+                            } ${bizFocusRingClass}`}
+                          >
+                            {cardIssuanceTierBackgroundImageUploading ? (
+                              <Loader2 className="h-7 w-7 animate-spin text-[#1562f0]" strokeWidth={2} aria-hidden />
+                            ) : (
+                              <ImagePlus
+                                className={`h-7 w-7 ${
+                                  cardIssuanceCardBackgroundDropActive ? 'text-[#1562f0]' : 'text-[#747779]'
+                                }`}
+                                strokeWidth={2}
+                                aria-hidden
+                              />
+                            )}
+                            <span className="text-[9px] font-bold uppercase tracking-[0.12em] text-[#747779]">
+                              Background image
+                            </span>
+                            <span className="text-sm font-bold text-[#2c2f31]">
+                              {cardIssuanceTierBackgroundImageUploading
+                                ? 'Preparing…'
+                                : cardIssuanceCardBackgroundDropActive
+                                  ? 'Drop image to upload'
+                                  : 'Upload background image'}
+                            </span>
+                          </button>
+                        )}
                       </div>
                     )}
+
                   </motion.div>
                 </>
               ) : null}

@@ -1490,7 +1490,11 @@ export type TierMetadata = {
 	name?: string
 	description?: string
 	image?: string
+	/** Pass card background image fit: width-first or height-first. */
+	imageFit?: 'width' | 'height'
 	backgroundColor?: string
+	/** Pass card top-left logo scale: `2x` | `4x` | `6x` | `8x` | `hidden`. */
+	logoDisplayScale?: '2x' | '4x' | '6x' | '8x' | 'hidden'
 }
 
 /** createCardCollectionWithInitCode 所需关键参数 */
@@ -3194,7 +3198,19 @@ export const getMyAssetsAggregated = async (profile: profile): Promise<MyCardAss
 }
 
 /** 卡 metadata 中的 tier 项（创建卡时由 cardManager 提交，存于 0x{owner}.json） */
-export type CardTierMetadata = { index: number; minUsdc6?: string; attr?: number; name?: string; description?: string; image?: string; backgroundColor?: string }
+export type CardTierMetadata = {
+	index: number
+	minUsdc6?: string
+	attr?: number
+	name?: string
+	description?: string
+	image?: string
+	/** Pass card background image fit: width-first or height-first. */
+	imageFit?: 'width' | 'height'
+	backgroundColor?: string
+	/** Pass card top-left logo scale: `2x` | `4x` | `6x` | `8x` | `hidden`. */
+	logoDisplayScale?: '2x' | '4x' | '6x' | '8x' | 'hidden'
+}
 
 /** 从 BeamioUserCard 合约读取 tiers（getTiersCount + getTierAt），用于根据 redeem 金额确定 tier */
 export const getCardTiersFromContract = async (cardAddress: string): Promise<{ minUsdc6: string; attr: number }[]> => {

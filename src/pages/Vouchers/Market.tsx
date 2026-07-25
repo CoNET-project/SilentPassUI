@@ -74,8 +74,8 @@ import {
 	usdc6ToExactTransferAmount,
 } from "@/utils/discoverEoaUsdcTopup"
 import {
-	buildDiscoverUsdcClientTopupQrUrl,
-	discoverClientTopupPaymentHint,
+	buildDiscoverUsdcTreasuryBridgeQrUrl,
+	discoverTreasuryBridgePaymentHint,
 	fetchDiscoverClientTopupQuotedUsdc6,
 	formatQuotedUsdc6ForDisplay,
 } from "@/utils/discoverUsdcTopupSession"
@@ -2936,6 +2936,8 @@ function DiscoverMerchantDetailFullScreen({
 	const [usdcTopupUsdcDisplay, setUsdcTopupUsdcDisplay] = useState('')
 	const [usdcTopupBaselineUsdc6, setUsdcTopupBaselineUsdc6] = useState<bigint>(0n)
 	const [usdcTopupUserEoa, setUsdcTopupUserEoa] = useState('')
+	const [usdcTopupRecipientAa, setUsdcTopupRecipientAa] = useState('')
+	const [usdcTopupWorkflow, setUsdcTopupWorkflow] = useState<'' | 'treasuryBridge'>('')
 	const [usdcTopupRequiredUsdc6, setUsdcTopupRequiredUsdc6] = useState<bigint>(0n)
 	const [usdcTopupProgress, setUsdcTopupProgress] = useState('')
 	const [usdcTopupSubmitting, setUsdcTopupSubmitting] = useState(false)
@@ -3194,6 +3196,18 @@ function DiscoverMerchantDetailFullScreen({
 		}
 	}, [profile])
 
+	const resolveUserAa = useCallback((): string | null => {
+		const raw = String((profile as ProfileForTopup | undefined)?.aaAccount ?? '').trim()
+		if (raw && ethers.isAddress(raw) && raw !== ethers.ZeroAddress) {
+			try {
+				return ethers.getAddress(raw)
+			} catch {
+				return null
+			}
+		}
+		return null
+	}, [profile])
+
 	const shareReferrerEoa = useMemo(() => {
 		const keyId = profile?.keyID?.trim() ?? ''
 		return keyId && ethers.isAddress(keyId) ? ethers.getAddress(keyId) : null
@@ -3350,6 +3364,8 @@ function DiscoverMerchantDetailFullScreen({
 		setUsdcTopupUsdcDisplay('')
 		setUsdcTopupBaselineUsdc6(0n)
 		setUsdcTopupUserEoa('')
+		setUsdcTopupRecipientAa('')
+		setUsdcTopupWorkflow('')
 		setUsdcTopupRequiredUsdc6(0n)
 		setUsdcTopupProgress('')
 		setUsdcTopupSubmitting(false)
@@ -3491,6 +3507,12 @@ function DiscoverMerchantDetailFullScreen({
 				return
 			}
 
+			const userAa = resolveUserAa()
+			if (!userAa) {
+				setUsdcTopupError('Smart Wallet (AA) is required for top-up. Open Wallet and finish setup, then retry.')
+				return
+			}
+
 			const quotedUsdc6 = await fetchDiscoverClientTopupQuotedUsdc6({
 				cardAddress,
 				cardOwner,
@@ -3513,39 +3535,25 @@ function DiscoverMerchantDetailFullScreen({
 			setUsdcTopupBaselineUsdc6(baselineUsdc6)
 			setUsdcTopupUsdcDisplay(usdcDisplay)
 
-			const qrValue = buildDiscoverUsdcClientTopupQrUrl({
+			const qrValue = buildDiscoverUsdcTreasuryBridgeQrUrl({
 				cardAddress,
 				cardOwner,
 				amount: parsed.apiAmount,
 				currency: displayCurrency,
-				beneficiaryEoa: userEoa,
+				recipientAa: userAa,
 			})
 			setUsdcTopupUserEoa(userEoa)
+			setUsdcTopupRecipientAa(userAa)
+			setUsdcTopupWorkflow('treasuryBridge')
 			setUsdcTopupQrValue(qrValue)
-
-			const currentAfterQuote = await readEoaUsdcBalance6(profile as profile)
-			const alreadyFunded =
-				eoaCanSelfFundDiscoverTopup(currentAfterQuote, quotedUsdc6) ||
-				eoaMeetsExternalFundingTarget(currentAfterQuote, baselineUsdc6, quotedUsdc6)
-			if (alreadyFunded) {
-				setUsdcTopupProgress('USDC received — completing top-up…')
-				setUsdcTopupPhase('receive')
-				await submitDiscoverEoaTopup(
-					quotedUsdc6,
-					usdc6ToExactTransferAmount(quotedUsdc6),
-					quotePrecheck.intent,
-				)
-				return
-			}
-
-			setUsdcTopupProgress('Waiting for USDC on your wallet…')
+			setUsdcTopupProgress('Waiting for payment on beamio.app…')
 			setUsdcTopupPhase('receive')
 		} catch (e: unknown) {
 			setUsdcTopupError(e instanceof Error ? e.message : 'Failed to prepare receive QR')
 		} finally {
 			setUsdcTopupSubmitting(false)
 		}
-	}, [displayCurrency, item.cardAddress, navigate, profile, resolveUserEoa, submitDiscoverEoaTopup, usdcTopupAmountText])
+	}, [displayCurrency, item.cardAddress, navigate, profile, resolveUserAa, resolveUserEoa, submitDiscoverEoaTopup, usdcTopupAmountText])
 
 	const copyUsdcTopupUrl = useCallback(async () => {
 		if (!usdcTopupQrValue) return
@@ -3567,6 +3575,21 @@ function DiscoverMerchantDetailFullScreen({
 	const runDiscoverEoaTopupNow = useCallback(async () => {
 		const cardAddress = item.cardAddress?.trim() ?? ''
 		if (!cardAddress || !profile?.keyID || !profile?.privateKeyArmor) return
+		if (usdcTopupWorkflow === 'treasuryBridge') {
+			setUsdcTopupSubmitting(true)
+			setUsdcTopupError('')
+			try {
+				refreshMerchantAssets()
+				Toast.show({
+					content: 'If payment succeeded, Smart Wallet card points update shortly.',
+					position: 'top',
+				})
+				resetUsdcTopupFlow()
+			} finally {
+				setUsdcTopupSubmitting(false)
+			}
+			return
+		}
 		if (usdcTopupRequiredUsdc6 <= 0n || !usdcTopupFiatAmount) return
 		usdcTopupPollAbortRef.current?.abort()
 		setUsdcTopupSubmitting(true)
@@ -3593,14 +3616,18 @@ function DiscoverMerchantDetailFullScreen({
 	}, [
 		item.cardAddress,
 		profile,
+		refreshMerchantAssets,
+		resetUsdcTopupFlow,
 		submitDiscoverEoaTopup,
 		usdcTopupBaselineUsdc6,
 		usdcTopupFiatAmount,
 		usdcTopupRequiredUsdc6,
+		usdcTopupWorkflow,
 	])
 
 	useEffect(() => {
 		if (usdcTopupPhase !== 'receive' || !item.cardAddress || !profile?.keyID) return
+		if (usdcTopupWorkflow === 'treasuryBridge') return
 		if (usdcTopupRequiredUsdc6 <= 0n || !usdcTopupFiatAmount) return
 		usdcTopupPollAbortRef.current?.abort()
 		const ac = new AbortController()
@@ -3647,6 +3674,7 @@ function DiscoverMerchantDetailFullScreen({
 		usdcTopupPhase,
 		usdcTopupRequiredUsdc6,
 		usdcTopupIntent,
+		usdcTopupWorkflow,
 	])
 
 	useEffect(
@@ -4106,10 +4134,13 @@ function DiscoverMerchantDetailFullScreen({
 						{usdcTopupPhase === 'receive' && usdcTopupQrValue ? (
 							<div className="mt-4 space-y-3 border-t border-slate-100 pt-4 dark:border-slate-800">
 								<p className="text-[13px] leading-relaxed text-slate-600 dark:text-slate-400">
-									{discoverClientTopupPaymentHint()}
+									{discoverTreasuryBridgePaymentHint()}
 								</p>
 								<p className="text-[12px] text-slate-500 dark:text-slate-400">
 									Merchant top-up: {fiatPrefix(displayCurrency)}{usdcTopupFiatAmount} {displayCurrency} → {usdcTopupUsdcDisplay} USDC
+									{usdcTopupRecipientAa
+										? ` · Smart Wallet ${usdcTopupRecipientAa.slice(0, 6)}…${usdcTopupRecipientAa.slice(-4)}`
+										: ''}
 								</p>
 								{usdcTopupProgress ? (
 									<p className="text-[13px] font-medium text-[#1562f0]">{usdcTopupProgress}</p>
@@ -4156,8 +4187,10 @@ function DiscoverMerchantDetailFullScreen({
 									{usdcTopupSubmitting ? (
 										<span className="inline-flex items-center justify-center gap-2">
 											<Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-											Complete top-up
+											{usdcTopupWorkflow === 'treasuryBridge' ? 'Refreshing…' : 'Complete top-up'}
 										</span>
+									) : usdcTopupWorkflow === 'treasuryBridge' ? (
+										"I've paid — refresh balance"
 									) : (
 										'Complete top-up'
 									)}

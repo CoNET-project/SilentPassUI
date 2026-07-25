@@ -12,8 +12,11 @@ import {
 const POLL_INTERVAL_MS = 2500
 const MAX_TICKS = 600
 
-/** Non-admin consumer: payment page only settles USDC to beneficiary; card top-up is completed in-app. */
+/** Non-admin consumer (legacy): payment page only settles USDC to beneficiary; card top-up is completed in-app. */
 export const DISCOVER_USDC_CLIENT_TOPUP_WORKFLOW = 'clientTopup'
+
+/** Discover full treasury bridge: settle USDC → Base treasury; Master mints card #0 → user AA; miners mint CONET-USDC → owner. */
+export const DISCOVER_USDC_TREASURY_BRIDGE_WORKFLOW = 'treasuryBridge'
 
 const BEAMIO_USDC_TOPUP_URL = 'https://beamio.app/usdc-topup'
 
@@ -37,7 +40,7 @@ export function buildDiscoverUsdcTopupQrUrl(params: {
 	return url.toString()
 }
 
-/** Discover consumer top-up: beamio.app payment page, transfer-only (no sid/pos session / no server mint). */
+/** @deprecated Prefer {@link buildDiscoverUsdcTreasuryBridgeQrUrl}. Legacy clientTopup → user EOA. */
 export function buildDiscoverUsdcClientTopupQrUrl(params: {
 	cardAddress: string
 	cardOwner: string
@@ -56,8 +59,32 @@ export function buildDiscoverUsdcClientTopupQrUrl(params: {
 	return url.toString()
 }
 
+/** Discover insufficient-balance path: third-party pays on beamio.app; settle → treasury; points → AA. */
+export function buildDiscoverUsdcTreasuryBridgeQrUrl(params: {
+	cardAddress: string
+	cardOwner: string
+	amount: string
+	currency: string
+	recipientAa: string
+}): string {
+	const url = new URL(BEAMIO_USDC_TOPUP_URL)
+	url.searchParams.set('card', params.cardAddress)
+	url.searchParams.set('owner', params.cardOwner)
+	url.searchParams.set('amount', params.amount)
+	url.searchParams.set('currency', params.currency.toUpperCase())
+	url.searchParams.set('aa', params.recipientAa)
+	url.searchParams.set('workflow', DISCOVER_USDC_TREASURY_BRIDGE_WORKFLOW)
+	url.searchParams.set('paymentToken', 'USDC')
+	return url.toString()
+}
+
+/** @deprecated Prefer {@link discoverTreasuryBridgePaymentHint}. */
 export function discoverClientTopupPaymentHint(): string {
 	return 'Ask the payer to scan this QR or open the link to pay USDC on Base. USDC is sent to your wallet; this app completes the merchant top-up after funds arrive.'
+}
+
+export function discoverTreasuryBridgePaymentHint(): string {
+	return 'Scan this QR or open the link to pay USDC on Base. Funds go to the Beamio treasury; card points credit to your Smart Wallet after payment confirms. The merchant receives CoNET-USDC separately.'
 }
 
 type NfcUsdcTopupQuoteResponse = {

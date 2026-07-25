@@ -1,12 +1,15 @@
-import { IpfsImg } from '@/components/IpfsImg';
+import { IpfsImg } from '@/components/IpfsImg'
 import React from 'react'
-import { Store, Info, QrCode, ShoppingBasket, type LucideIcon } from 'lucide-react'
+import { Store, Info } from 'lucide-react'
 import { ethers } from 'ethers'
 import type { UserCardInfo } from '@/services/BeamioCard'
 import type { WalletMerchantPassStackDisplay } from '@/pages/Wallet/walletMerchantPassDisplay'
 import { STACK_CARD_H, STACK_STEP_PX } from '@/pages/Wallet/walletMerchantPassStackLayout'
-
-const FOOTER_ICONS = [QrCode, ShoppingBasket] as const
+import { CardPassBackgroundImage } from '@/components/card/CardPassBackgroundImage'
+import {
+	tierLogoIconClassForScale,
+	tierLogoImgClassForScale,
+} from '@/utils/tierLogoDisplayScale'
 
 type Props = {
 	uc: UserCardInfo
@@ -22,85 +25,124 @@ type Props = {
 	onOpenMerchantDetail?: (cardAddress: string) => void
 }
 
-function PassCardFace({
-	display,
-	stackIdx,
-	suppressFooterIcon,
-}: {
-	display: WalletMerchantPassStackDisplay
-	stackIdx: number
-	suppressFooterIcon?: boolean
-}) {
-	const FooterIcon: LucideIcon = FOOTER_ICONS[stackIdx % FOOTER_ICONS.length]!
-	const { tierTheme, tierGradient, title, tierLbl, balanceLine, balanceSubtitle, imgUrl } = display
+/** Pass face chrome aligned with bizSite Programs card preview. */
+function PassCardFace({ display }: { display: WalletMerchantPassStackDisplay }) {
+	const {
+		tierTheme,
+		tierGradient,
+		title,
+		tierLbl,
+		balanceLine,
+		balanceSubtitle,
+		logoUrl,
+		backgroundImageUrl,
+		backgroundImageFit,
+		logoDisplayScale,
+		discountHeadline,
+		startingFromLine,
+	} = display
+	const logoImgClass = tierLogoImgClassForScale(logoDisplayScale)
+	const logoIconClass = tierLogoIconClassForScale(logoDisplayScale)
+	const hasBgImage = Boolean(backgroundImageUrl.trim())
 
 	return (
 		<>
+			{hasBgImage ? (
+				<CardPassBackgroundImage src={backgroundImageUrl} fit={backgroundImageFit} />
+			) : null}
 			<div
-				className="absolute inset-0 rounded-[1.5rem]"
-				style={{ background: tierGradient }}
+				className="pointer-events-none absolute inset-0 rounded-[1.5rem]"
+				style={{
+					background: hasBgImage
+						? 'linear-gradient(165deg, rgba(0,0,0,0.58) 0%, rgba(0,0,0,0.28) 45%, rgba(0,0,0,0.2) 100%)'
+						: tierGradient,
+				}}
 				aria-hidden
 			/>
-			<div className="relative z-10 flex w-full flex-1 flex-col">
-				<div className="flex w-full items-start justify-between gap-2">
-					<div className="flex min-w-0 items-center gap-3">
-						<div
-							className="h-9 w-9 shrink-0 overflow-hidden rounded-full border p-1 shadow-sm"
-							style={{
-								backgroundColor: tierTheme.iconOrbitBg,
-								borderColor: tierTheme.iconOrbitBorder,
-							}}
-						>
-							{imgUrl ? (
+			<div className="pointer-events-none absolute inset-0 rounded-[1.5rem] bg-white/5 backdrop-blur-[1px]" aria-hidden />
+			<div
+				className="pointer-events-none absolute -right-12 -top-12 h-48 w-48 rounded-full blur-3xl"
+				style={{
+					backgroundColor: tierTheme.isDarkStart ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.06)',
+				}}
+				aria-hidden
+			/>
+			<div className="relative z-[1] flex h-full w-full flex-col justify-between">
+				<div className="flex w-full items-start justify-between gap-3">
+					<div className="shrink-0">
+						{logoImgClass ? (
+							logoUrl ? (
 								<IpfsImg
-									src={imgUrl}
+									key={logoUrl}
+									src={logoUrl}
 									alt=""
-									className="h-full w-full object-contain"
+									className={`object-contain ${logoImgClass}`}
 									draggable={false}
 								/>
 							) : (
-								<div className="flex h-full w-full items-center justify-center">
-									<Store
-										className="h-4 w-4"
-										style={{ color: tierTheme.defaultBadgeFg }}
-										aria-hidden
-									/>
-								</div>
-							)}
-						</div>
-						<div className="min-w-0">
-							<p className="text-sm font-bold tracking-tight truncate" style={{ color: tierTheme.primary }}>
-								{title}
-							</p>
-							<p className="truncate text-[10px] font-medium" style={{ color: tierTheme.secondary }}>
-								{tierLbl}
-							</p>
-						</div>
+								<Store
+									className={logoIconClass ?? undefined}
+									strokeWidth={2}
+									aria-hidden
+									style={{ color: tierTheme.primary }}
+								/>
+							)
+						) : null}
+					</div>
+					<div className="min-w-0 text-right">
+						<p
+							className="text-lg font-black leading-tight tracking-tight"
+							style={{ color: tierTheme.primary }}
+						>
+							{discountHeadline}
+						</p>
+					</div>
+				</div>
+				<div className="flex w-full items-end justify-between gap-3">
+					<div className="min-w-0">
+						<p
+							className="max-w-full truncate whitespace-nowrap font-extrabold leading-tight tracking-tight"
+							style={{ color: tierTheme.primary, fontSize: '1.125rem' }}
+						>
+							{title}
+						</p>
+						<p
+							className="mt-1 text-[10px] font-bold uppercase tracking-wider"
+							style={{ color: tierTheme.primary }}
+						>
+							{tierLbl}
+						</p>
 					</div>
 					<div className="shrink-0 text-right">
-						<p className="text-[10px] font-bold tracking-widest" style={{ color: tierTheme.tertiary }}>
+						{startingFromLine ? (
+							<p
+								className="text-[10px] font-bold uppercase tracking-wider opacity-80"
+								style={{ color: tierTheme.tertiary }}
+							>
+								{startingFromLine}
+							</p>
+						) : null}
+						<p
+							className={`text-[10px] font-bold tracking-widest ${startingFromLine ? 'mt-1' : ''}`}
+							style={{ color: tierTheme.tertiary }}
+						>
 							BALANCE
 						</p>
 						<p
-							className="text-lg font-bold tabular-nums"
+							className="text-base font-bold tabular-nums leading-tight"
 							style={{ color: tierTheme.primary, minWidth: '4.5rem' }}
 						>
 							{balanceLine}
 						</p>
 						{balanceSubtitle ? (
-							<p className="text-[11px] font-semibold tabular-nums" style={{ color: tierTheme.secondary }}>
+							<p
+								className="text-[11px] font-semibold tabular-nums"
+								style={{ color: tierTheme.secondary }}
+							>
 								{balanceSubtitle}
 							</p>
 						) : null}
 					</div>
-				</div>
-				<div className="mt-auto flex items-end justify-between" style={{ color: tierTheme.accent }}>
-					<p className="text-[10px] font-bold uppercase">Pass</p>
-					{suppressFooterIcon ? (
-						<span className="h-4 w-4 shrink-0" aria-hidden />
-					) : (
-						<FooterIcon className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
-					)}
 				</div>
 			</div>
 		</>
@@ -149,15 +191,11 @@ function WalletMerchantPassStackCardInner({
 	return (
 		<>
 			<div
-				className="stack-card pointer-events-none absolute left-0 right-0 flex flex-col overflow-hidden rounded-[1.5rem] border border-white/10 p-5 text-left text-white shadow-[0_-8px_24px_rgba(0,0,0,0.12)]"
+				className="stack-card pointer-events-none absolute left-0 right-0 flex flex-col overflow-hidden rounded-[1.5rem] border border-white/10 p-4 text-left text-white shadow-[0_-8px_24px_rgba(0,0,0,0.12)] sm:p-5"
 				style={cardShellStyle}
 				aria-hidden
 			>
-				<PassCardFace
-					display={display}
-					stackIdx={stackIdx}
-					suppressFooterIcon={showMerchantDetailControl}
-				/>
+				<PassCardFace display={display} />
 			</div>
 
 			{showMerchantDetailControl ? (
@@ -169,8 +207,8 @@ function WalletMerchantPassStackCardInner({
 					}}
 					className="absolute flex h-9 w-9 items-center justify-center rounded-full border border-white/30 bg-white/15 text-white/90 backdrop-blur-sm transition active:scale-[0.96] hover:bg-white/25 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/80"
 					style={{
-						top: top + STACK_CARD_H - 44,
-						right: 16,
+						top: top + 12,
+						right: 12,
 						zIndex: zIndex + 2,
 						transition: 'top 300ms ease-out',
 					}}

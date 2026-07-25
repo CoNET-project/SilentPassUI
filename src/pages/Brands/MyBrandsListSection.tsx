@@ -394,6 +394,11 @@ export type MyBrandTierMetaRow = {
 	description?: string
 	backgroundColor?: string
 	background_color?: string
+	/** Pass face background image (TierMetadata.image) */
+	image?: string
+	backgroundImage?: string
+	imageFit?: 'width' | 'height' | string
+	logoDisplayScale?: string | number
 	discount?: string | number
 	discountPercent?: string | number
 	discount_pct?: string | number
@@ -667,6 +672,15 @@ function resolvePrimaryBonusRule(
 	}
 }
 
+function resolveTierBackgroundImageUrl(row: MyBrandTierMetaRow | undefined): string | undefined {
+	if (!row) return undefined
+	return resolveCardImageUrl(row.image) ?? resolveCardImageUrl(row.backgroundImage)
+}
+
+function resolveTierBackgroundImageFit(row: MyBrandTierMetaRow | undefined): 'width' | 'height' {
+	return row?.imageFit === 'height' ? 'height' : 'width'
+}
+
 /**
  * 根据当前持有的未过期 Pass，选取链上语义一致的 tier（minUsdc6 最大可解析档），取该档 metadata 的 backgroundColor 与 discount 类字段。
  * 无 Pass 或无 tiers 时回退到首个命名 tier / 首档，便于展示卡默认档位样式。
@@ -676,6 +690,10 @@ export function resolveHeldTierPresentation(detail: unknown): {
 	accentColor: string | undefined
 	discountLabel: string | null
 	bonusPill: string | null
+	backgroundImageUrl: string | undefined
+	backgroundImageFit: 'width' | 'height'
+	logoDisplayScale: string | undefined
+	minUsdc6: string | undefined
 } {
 	const meta = (detail as MyBrandCardDetailLike | null | undefined)?.meta
 	const assets = (detail as MyBrandCardDetailLike | null | undefined)?.assets
@@ -687,6 +705,10 @@ export function resolveHeldTierPresentation(detail: unknown): {
 			accentColor: undefined,
 			discountLabel: null,
 			bonusPill: bonusPresentation?.pill ?? null,
+			backgroundImageUrl: undefined,
+			backgroundImageFit: 'width',
+			logoDisplayScale: undefined,
+			minUsdc6: undefined,
 		}
 	}
 
@@ -740,11 +762,21 @@ export function resolveHeldTierPresentation(detail: unknown): {
 		!discountLabel && detailExtras?.nftMetadata
 			? discountLabelFromTierRow(detailExtras.nftMetadata)
 			: null
+	const logoScaleRaw =
+		chosen?.logoDisplayScale ??
+		(rec?.logoDisplayScale as string | number | undefined) ??
+		(rec?.properties && typeof rec.properties === 'object' && !Array.isArray(rec.properties)
+			? (rec.properties as Record<string, unknown>).logoDisplayScale
+			: undefined)
 	return {
 		tierName,
 		accentColor,
 		discountLabel: discountLabel ?? discountFromNft,
 		bonusPill: bonusPresentation?.pill ?? null,
+		backgroundImageUrl: resolveTierBackgroundImageUrl(chosen),
+		backgroundImageFit: resolveTierBackgroundImageFit(chosen),
+		logoDisplayScale: logoScaleRaw != null ? String(logoScaleRaw) : undefined,
+		minUsdc6: chosen?.minUsdc6 != null ? String(chosen.minUsdc6).trim() : undefined,
 	}
 }
 

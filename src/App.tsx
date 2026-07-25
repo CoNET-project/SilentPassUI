@@ -15,7 +15,7 @@ import Chat from "./pages/chat"
 import ChatDetail from "./pages/chatDetail"
 import BeamioInstallOnboarding from "@/components/launchPage"
 import Browser from "@/pages/Browser"
-import { initChat, checkSign, createInboundChatSession, makeMessage, sendMessage, getRandomNodes, currentGossipAbortController } from "@/services/chat"
+import { initChat, checkSign, createInboundChatSession, makeMessage, sendMessage, getRandomNodes } from "@/services/chat"
 import { checkStorage, storeSystemData, runAutoBUnitFreeClaimIfEligible, handleNfcLinkAppDeepLinkScan, ensureProfilePrivateKeyArmorFromMnemonic, bootstrapProfileLocaleCurrencyIfUnset, mergeLocalLocaleLanguageOntoChainProfile } from "@/services/beamio"
 import { hasLocalPlaintextMnemonic } from "@/utils/consumerWalletGate"
 import { ensureEphemeralWalletForCouponClaim } from "@/utils/ephemeralCouponClaimWallet"
@@ -811,12 +811,10 @@ function AppShell() {
 		return () => {
 			clearTimeout(t)
 			window.removeEventListener(BEAMIO_WALLET_READY_EVENT, onWalletReady)
-			console.log("🧹 Component unmounting, cleaning up gossip...")
-			if (currentGossipAbortController) {
-				currentGossipAbortController.abort("component_unmount")
-			}
-			// 必须重置 gossip 状态，否则重挂载时 initChat 会因 if (gossip) return 直接返回，无法恢复聆听
-			setGossip(false)
+			// Do NOT abort gossip / setGossip(false) here.
+			// React StrictMode remount + LoadingPage/AppShell dual init previously killed the
+			// SSE, which made mailbox B call setUserOnlineOnMe true/false in a tight loop.
+			// Gossip is process-lifetime; only replace via connectToGossipNode when dead.
 		}
 	}, [])
 

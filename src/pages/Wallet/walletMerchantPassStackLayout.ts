@@ -1,5 +1,6 @@
-export const STACK_CARD_OVERLAP_PX = 130
-export const STACK_CARD_H = 200
+/** ~408:260 at typical wallet column width; stack math stays fixed-height. */
+export const STACK_CARD_OVERLAP_PX = 140
+export const STACK_CARD_H = 220
 export const STACK_STEP_PX = STACK_CARD_H - STACK_CARD_OVERLAP_PX
 
 export function stackLayoutHeight(count: number): number {

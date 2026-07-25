@@ -406,12 +406,31 @@ interface SSEErrorType {
   retriable: boolean
 }
 
+const GOSSIP_STOP_REASONS = new Set([
+  'root_stop',
+  'replaced_by_new_connection',
+  'component_unmount',
+  'relaunching',
+])
+
+function resolveGossipAbortReason(err: unknown, controller: AbortController, rootSignal?: AbortSignal): string {
+  if (typeof err === 'string' && err) return err
+  const signalReason = controller.signal.reason ?? rootSignal?.reason
+  if (typeof signalReason === 'string' && signalReason) return signalReason
+  if (err && typeof err === 'object' && 'message' in err && typeof (err as Error).message === 'string') {
+    return (err as Error).message
+  }
+  return 'unknown'
+}
+
 function startGossip(
   nodes: nodeInfo[],
   body: string,
   callback?: (err?: string, data?: string) => void,
   rootSignal?: AbortSignal, // <--- 用于外部强行停止整个递归链
-  timeoutConfig?: Partial<TimeoutConfig>
+  timeoutConfig?: Partial<TimeoutConfig>,
+  /** Reconnect attempt for exponential backoff (reset on successful bytes). */
+  reconnectAttempt = 0,
 ) {
   // 【第一道防线】如果总开关已关，直接销毁，不准启动
   if (rootSignal?.aborted) return;
@@ -420,7 +439,8 @@ function startGossip(
   const node = getRandomNode(nodes)!
   const config: TimeoutConfig = {
     connectTimeout: 12_000,
-    idleTimeout: 60_000,
+    // Keep longer than SI liveness (~2 epochs) and entry socketForward idle (60s).
+    idleTimeout: 90_000,
     readOperationTimeout: 20_000,
     retryDelay: 2_000,
     ...timeoutConfig,
@@ -433,9 +453,9 @@ function startGossip(
   const onRootAbort = () => controller.abort("root_stop");
   rootSignal?.addEventListener("abort", onRootAbort);
 
-  // --- 重连触发器：每次随机换一个 node ---
+  // --- 重连触发器：每次随机换一个 node；退避避免 SI setUserOnlineOnMe flap ---
   let isRelaunching = false;
-  const triggerRelaunch = () => {
+  const triggerRelaunch = (reason?: string) => {
     // 【第二道防线】再次检查总开关
     if (rootSignal?.aborted) {
         console.log("🛑 [Gossip] Relaunch prevented: Root signal aborted.");
@@ -447,12 +467,14 @@ function startGossip(
     rootSignal?.removeEventListener("abort", onRootAbort);
     try { controller.abort("relaunching"); } catch {}
 
+    const nextAttempt = reconnectAttempt + 1
+    const delay = Math.min(30_000, Math.round(config.retryDelay * Math.pow(1.6, Math.min(nextAttempt, 8))))
     setTimeout(() => {
         // 【第三道防线】在定时器触发时，最后检查一次
         if (rootSignal?.aborted) return;
-        console.log("🔄 [Gossip] Reconnecting... (random node)");
-        startGossip(nodes, body, callback, rootSignal, timeoutConfig);
-    }, config.retryDelay);
+        console.log(`🔄 [Gossip] Reconnecting... (random entry C) attempt=${nextAttempt} reason=${reason || 'stream_end'} delayMs=${delay}`);
+        startGossip(nodes, body, callback, rootSignal, timeoutConfig, nextAttempt);
+    }, delay);
   };
 
   const connectTimer = setTimeout(() => {
@@ -469,6 +491,8 @@ function startGossip(
 
   (async () => {
     let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+    /** Single in-flight read — never call reader.read() again until this settles (flap root cause). */
+    let pendingRead: Promise<ReadableStreamReadResult<Uint8Array>> | null = null
     
     try {
       const res = await fetch(url, {
@@ -490,6 +514,8 @@ function startGossip(
       const connectedLine = `[SSE] Connected [${node.ip_addr}]`
       console.log(connectedLine)
       chatBootLog(connectedLine)
+      // Successful connect resets backoff for subsequent disconnects after a healthy session.
+      reconnectAttempt = 0
       reader = res.body.getReader();
       const decoder = new TextDecoder("utf-8");
       let buffer = "";
@@ -505,21 +531,26 @@ function startGossip(
         let readTimer: number | undefined;
 
         try {
-            // 使用 Promise 构造器来手动管理 timeout，防止 Unhandled Rejection
+            if (!pendingRead) {
+              pendingRead = reader.read()
+            }
+            // Race timeout against the SAME pending read — do not start a second read().
             const timeoutPromise = new Promise<never>((_, reject) => {
                 readTimer = window.setTimeout(() => reject(new Error("read_operation_timeout")), config.readOperationTimeout);
             });
             
-            readResult = await Promise.race([reader.read(), timeoutPromise]);
+            readResult = await Promise.race([pendingRead, timeoutPromise]);
+            pendingRead = null
             
         } catch (readErr: any) {
             if (readErr.message === "read_operation_timeout") {
-                // 超时通常只是没数据，不代表连接断了，我们在循环里 continue 即可
-                // 但要先检查是否被手动停止了
+                // Silence only: keep pendingRead, do not open a concurrent reader.read().
                 if (rootSignal?.aborted) throw "root_stop";
+                if (controller.signal.aborted) throw controller.signal.reason;
                 console.log(`[SSE] Silence (Keep-Alive)...`);
                 continue; 
             }
+            pendingRead = null
             throw readErr;
         } finally {
              if (readTimer) clearTimeout(readTimer); // 必须清理 timer
@@ -532,6 +563,7 @@ function startGossip(
         }
 
         resetIdle();
+        reconnectAttempt = 0
         const chunk = decoder.decode(value, { stream: true });
         buffer += chunk;
         
@@ -563,23 +595,24 @@ function startGossip(
       }
 
       // 循环正常结束（Server Done），触发重连
-      triggerRelaunch();
+      triggerRelaunch('server_closed');
 
     } catch (err: any) {
       clearTimeout(connectTimer);
       if (idleTimer) clearTimeout(idleTimer);
 
-      const msg = typeof err === 'string' ? err : err?.message;
+      const msg = resolveGossipAbortReason(err, controller, rootSignal);
 
       // 1. 如果是手动停止，彻底终结，不调用 triggerRelaunch
-      if (msg === "root_stop" || msg === "replaced_by_new_connection") {
+      if (GOSSIP_STOP_REASONS.has(msg)) {
           return; 
       }
-      
-      // 2. 内部重连信号
-      if (msg === "relaunching") return;
+      // AbortError with stop reason on signal (browser may use generic message)
+      if (err?.name === 'AbortError' && rootSignal?.aborted) {
+          return
+      }
 
-      if (err.name !== 'AbortError') {
+      if (err?.name !== 'AbortError') {
           console.error(`[SSE] Connection Error:`, msg);
           chatBootLog(`SSE error (${node.domain}): ${msg}`, 'warn')
           callback?.(msg);
@@ -588,7 +621,7 @@ function startGossip(
         markGossipNodeBad(node.domain)
       }
       
-      triggerRelaunch();
+      triggerRelaunch(msg);
 
     } finally {
       rootSignal?.removeEventListener("abort", onRootAbort);
@@ -688,18 +721,19 @@ export const connectToGossipNode = async (
 	pgpPublicArmored: string,
 	newMessage: (val: string) => void
 ) => {
-  // ==========================================
-  // 2. 关键修复：清理旧连接
-  // ==========================================
-  // 无论是由 React 重复渲染还是用户手动点击触发，
-  // 只要进来，先无条件杀掉上一个进程。
-  if (currentGossipAbortController) {
-    console.log("🛑 [Gossip] Killing previous connection...");
-    currentGossipAbortController.abort("replaced_by_new_connection");
-    currentGossipAbortController = null;
+  // Already listening: do NOT tear down + reconnect (that flaps SI setUserOnlineOnMe).
+  // LoadingPage + AppShell both call initChat; second call must be a no-op.
+  if (currentGossipAbortController && !currentGossipAbortController.signal.aborted) {
+    chatBootLog('connectToGossipNode skipped: gossip SSE already live', 'info')
+    return
   }
 
-  // 创建新的控制器，代表本次“会话”的生命周期
+  // Stale aborted controller from a prior session — drop and create a fresh one.
+  if (currentGossipAbortController) {
+    currentGossipAbortController = null
+  }
+
+  // 创建新的控制器，代表本次“会话”的生命周期（进程级，勿因 React remount 杀掉）
   const myController = new AbortController();
   currentGossipAbortController = myController;
   const rootSignal = myController.signal;

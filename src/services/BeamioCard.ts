@@ -2421,7 +2421,12 @@ export type TierMetadata = {
 	tierExpirySeconds?: number
 	name?: string
 	description?: string
+	/** Pass face background image (IPFS URL) */
 	image?: string
+	/** Pass background fit: width-first or height-first */
+	imageFit?: 'width' | 'height'
+	/** Top-left merchant logo scale on pass face */
+	logoDisplayScale?: '2x' | '4x' | '6x' | '8x' | 'hidden' | string
 	backgroundColor?: string
 }
 

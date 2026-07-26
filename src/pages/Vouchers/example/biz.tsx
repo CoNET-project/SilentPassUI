@@ -18085,11 +18085,18 @@ const saveCardIssuanceCardBackground = useCallback(async () => {
       });
     }
     if (cardIssuanceExistingCard?.cardAddress) {
+      /** Image/color/fit/name chrome can update off-chain; only threshold/count changes need setTiers. */
+      const prevChainSig = (buildCardIssuanceTiersPayloadFromRows(cardIssuanceTiers) ?? [])
+        .map((t) => String(t.minUsdc6))
+        .join('|');
+      const nextChainSig = (tiersPayload ?? []).map((t) => String(t.minUsdc6)).join('|');
+      const chainTierUnchanged = prevChainSig === nextChainSig && prevChainSig.length > 0;
       const ok = await handlePublishCardIssuanceRef.current({
         tiersOverride: nextTiers,
         minTopupOverride: nextMinTopup,
         loadingScope: 'bonusEditor',
         skipOnChainRefresh: true,
+        ...(chainTierUnchanged ? { metadataOnly: true } : {}),
       });
       if (!ok) return;
     }
@@ -19098,6 +19105,8 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
          res = await updateBeamioCardShareMetadata({
              cardAddress: cardIssuanceExistingCard.cardAddress,
              shareTokenMetadata: shareTokenMetadataForPublish as ShareTokenMetadata,
+             // metadataOnly / chrome-only path must still replace tiers (image / imageFit / color).
+             ...(tiersPayload && tiersPayload.length > 0 ? { tiers: tiersPayload } : {}),
              ...(tierRuleUpgradeForPublish != null ? { upgradeType: tierRuleUpgradeForPublish } : {}),
            });
        }

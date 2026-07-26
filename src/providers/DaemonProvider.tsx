@@ -17,7 +17,6 @@ import {
 	getMyAssets,
 	getCardBasicMetadataStaleWhileRevalidate,
 	getAAAccount,
-	rememberCardBasicMetadataTrusted,
 	resolveMyCardAssetsForFeedRow,
 	myCardAssetsHasHoldings,
 	type UserCardInfo,
@@ -54,6 +53,7 @@ import {
 	type MyBrandCardFeedDetailsMap,
 } from '@/utils/myBrandsFeedState'
 import { subscribeCardBasicMetadataUpdates } from '@/utils/cardBasicMetadataGlobalCache'
+import { clearWalletMerchantPassStackDisplayCache } from '@/pages/Wallet/walletMerchantPassDisplayCache'
 import {
 	summarizeOwnedCatalogCards,
 	type OwnedCatalogSummary,
@@ -914,6 +914,7 @@ export function DaemonProvider({ children }: DaemonProps) {
         }
         if (areMyBrandDetailsMapsEqual(prev, next)) return prev
         myBrandCardDetailsRef.current = next
+        clearWalletMerchantPassStackDisplayCache()
         const eoa = profileWalletKeyId?.trim().toLowerCase() ?? ''
         if (eoa && ethers.isAddress(eoa)) {
           saveMyBrandsFeedLocalCache(
@@ -955,10 +956,8 @@ export function DaemonProvider({ children }: DaemonProps) {
         myBrandHolderUnionCardsRef.current = filterDisplayUserCards(hit.holderUnionCards)
         setMyBrandCards(cards)
         setMyBrandCardDetails(details)
-        for (const c of cards) {
-          const row = details[c.cardAddress.toLowerCase()]
-          if (row?.meta) rememberCardBasicMetadataTrusted(c.cardAddress, row.meta)
-        }
+        // Do not rememberCardBasicMetadataTrusted(LS meta) here — that re-poisons the global
+        // card-basic cache with stale tier.image / imageFit and races awaitFresh feed ticks.
       } else {
         myBrandHolderUnionCardsRef.current = []
         setMyBrandCards([])

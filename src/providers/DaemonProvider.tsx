@@ -53,6 +53,7 @@ import {
 	myBrandCardListSignature,
 	type MyBrandCardFeedDetailsMap,
 } from '@/utils/myBrandsFeedState'
+import { subscribeCardBasicMetadataUpdates } from '@/utils/cardBasicMetadataGlobalCache'
 import {
 	summarizeOwnedCatalogCards,
 	type OwnedCatalogSummary,
@@ -897,6 +898,36 @@ export function DaemonProvider({ children }: DaemonProps) {
   useEffect(() => {
     myBrandCardDetailsRef.current = myBrandCardDetails
   }, [myBrandCardDetails])
+
+  /**
+   * SWR refreshes card metadata into the global cache without rewriting My Brands state.
+   * When tier.image / imageFit changes, patch the in-memory feed so /wallet pass updates.
+   */
+  useEffect(() => {
+    return subscribeCardBasicMetadataUpdates((cardLower, meta) => {
+      setMyBrandCardDetails((prev) => {
+        const row = prev[cardLower]
+        if (!row) return prev
+        const next: MyBrandCardFeedDetailsMap = {
+          ...prev,
+          [cardLower]: { ...row, meta },
+        }
+        if (areMyBrandDetailsMapsEqual(prev, next)) return prev
+        myBrandCardDetailsRef.current = next
+        const eoa = profileWalletKeyId?.trim().toLowerCase() ?? ''
+        if (eoa && ethers.isAddress(eoa)) {
+          saveMyBrandsFeedLocalCache(
+            eoa,
+            filterDisplayUserCards(myBrandCardsRef.current),
+            filterDisplayUserCards(myBrandHolderUnionCardsRef.current),
+            next
+          )
+        }
+        return next
+      })
+    })
+  }, [profileWalletKeyId])
+
   const lastEoaUsdcForPowerRef = useRef('0')
   const lastAaUsdcForPowerRef = useRef('0')
   const [myBrandsFeedLoading, setMyBrandsFeedLoading] = useState(false)

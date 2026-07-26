@@ -18,6 +18,17 @@ type StoredEntry = {
 
 const memory = new Map<string, CardMetadataFromUri>()
 
+type CardBasicMetadataListener = (cardAddressLower: string, meta: CardMetadataFromUri) => void
+const listeners = new Set<CardBasicMetadataListener>()
+
+/** Notify when trusted card metadata is rewritten (e.g. tier background image change). */
+export function subscribeCardBasicMetadataUpdates(listener: CardBasicMetadataListener): () => void {
+	listeners.add(listener)
+	return () => {
+		listeners.delete(listener)
+	}
+}
+
 function entryKey(cardLower: string): string {
 	return `${ENTRY_PREFIX}${cardLower}`
 }
@@ -50,10 +61,27 @@ export function peekCardBasicMetadata(cardAddress: string): CardMetadataFromUri 
 	}
 }
 
+function cardBasicMetaContentSig(meta: CardMetadataFromUri | null | undefined): string {
+	if (!meta) return ''
+	try {
+		return JSON.stringify({
+			n: meta.name ?? null,
+			i: meta.icon ?? meta.image ?? null,
+			tiers: meta.tiers ?? null,
+			ps: meta.pointSystem ?? null,
+			cat: meta.categoryId ?? null,
+		})
+	} catch {
+		return ''
+	}
+}
+
 /** 一次可信拉取成功后写入（内存 + 磁盘） */
 export function rememberCardBasicMetadataTrusted(cardAddress: string, meta: CardMetadataFromUri): void {
 	const lower = (cardAddress || '').trim().toLowerCase()
 	if (!lower || !ethers.isAddress(lower)) return
+	const prev = memory.get(lower)
+	const changed = cardBasicMetaContentSig(prev) !== cardBasicMetaContentSig(meta)
 	memory.set(lower, meta)
 	if (typeof window === 'undefined') return
 	try {
@@ -64,6 +92,15 @@ export function rememberCardBasicMetadataTrusted(cardAddress: string, meta: Card
 		trimOldestEntriesIfNeeded()
 	} catch {
 		/* quota */
+	}
+	if (changed) {
+		for (const listener of listeners) {
+			try {
+				listener(lower, meta)
+			} catch {
+				/* ignore subscriber errors */
+			}
+		}
 	}
 }
 

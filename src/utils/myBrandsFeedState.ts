@@ -178,6 +178,24 @@ function nftTierDisplaySig(
 		.join(',')
 }
 
+/** Tier pass chrome for /wallet — must include image/fit/color or UI stays on stale backgrounds. */
+function tiersDisplaySig(tiers: unknown): string {
+	if (!Array.isArray(tiers) || tiers.length === 0) return '0'
+	return tiers
+		.map((raw) => {
+			const t = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}
+			const image = String(t.image ?? t.backgroundImage ?? '').trim()
+			const fit = String(t.imageFit ?? '').trim()
+			const bg = String(t.backgroundColor ?? t.background_color ?? '').trim()
+			const name = String(t.name ?? '').trim()
+			const min = t.minUsdc6 != null ? String(t.minUsdc6).trim() : ''
+			const idx = t.index != null ? String(t.index) : ''
+			const logoScale = t.logoDisplayScale != null ? String(t.logoDisplayScale) : ''
+			return [idx, name, min, image, fit, bg, logoScale].join('^')
+		})
+		.join('||')
+}
+
 /** 展示相关字段快照，用于跳过无意义的 details 重渲染 */
 function detailRowDisplayKey(row: MyBrandCardFeedDetailsMap[string] | undefined): string {
 	if (!row) return ''
@@ -237,7 +255,8 @@ function detailRowDisplayKey(row: MyBrandCardFeedDetailsMap[string] | undefined)
 			)
 			.join('||'),
 		nft: nftTierDisplaySig(row.assets?.nfts),
-		tiers: Array.isArray(metaTiers) ? metaTiers.length : 0,
+		/** Full tier chrome sig — not length-only (tier.image / imageFit updates must invalidate). */
+		tiers: tiersDisplaySig(metaTiers),
 	})
 }
 

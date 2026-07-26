@@ -736,10 +736,8 @@ export function resolveHeldTierPresentation(detail: unknown): {
 
 	let chosen: MyBrandTierMetaRow | undefined
 	let tierName: string
-	let heldMatched = false
 	if (bestIdx != null && resolveTierRowByIndex(tiers, bestIdx)) {
 		chosen = resolveTierRowByIndex(tiers, bestIdx)!
-		heldMatched = true
 		const nm = chosen.name?.trim()
 		tierName = nm || `Tier ${bestIdx + 1}`
 	} else {
@@ -749,9 +747,13 @@ export function resolveHeldTierPresentation(detail: unknown): {
 	}
 
 	const rec = tierRowAsRecord(chosen)
-	const accentColor = heldMatched
-		? normalizeTierCssColor(chosen?.backgroundColor) ?? normalizeTierCssColor(chosen?.background_color)
-		: undefined
+	/**
+	 * Pass / wallet chrome must use the displayed tier's backgroundColor even without a
+	 * matched membership NFT. Otherwise gradient falls back to default blue (#1562f0)
+	 * while biz preview correctly shows Base tier pink/etc.
+	 */
+	const accentColor =
+		normalizeTierCssColor(chosen?.backgroundColor) ?? normalizeTierCssColor(chosen?.background_color)
 	/** 折扣与副标题 tier 同源：取自当前选中的 `chosen` 档 metadata（含仅有卡级 tiers、无 Pass 时的首档展示） */
 	const discountLabel = discountLabelFromTierRow(rec)
 	const detailExtras = detail as MyBrandCardDetailLike & {

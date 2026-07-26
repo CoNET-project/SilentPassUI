@@ -74,6 +74,7 @@ import {
 	usdc6ToExactTransferAmount,
 } from "@/utils/discoverEoaUsdcTopup"
 import {
+	buildDiscoverGenesisNodeSeatUrl,
 	buildDiscoverUsdcTreasuryBridgeQrUrl,
 	discoverTreasuryBridgePaymentHint,
 	fetchDiscoverClientTopupQuotedUsdc6,
@@ -2659,7 +2660,6 @@ function ConetGenesisNodeDiscoverSection({
 	onLockSeat: (quantity: number, cloudNode: boolean, totalUsdc: number) => void
 }) {
 	const [quantity, setQuantity] = useState(1)
-	const [cloudNode, setCloudNode] = useState(true)
 	const [linkCopied, setLinkCopied] = useState(false)
 	const linkCopiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -2669,11 +2669,10 @@ function ConetGenesisNodeDiscoverSection({
 		}
 	}, [])
 
+	// Cloud Node Deployment Service is mandatory (always included in the entry package).
 	const totalThreshold = useMemo(
-		() =>
-			quantity * CONET_GENESIS_NODE_PRICE_USDC +
-			(cloudNode ? quantity * CONET_GENESIS_CLOUD_OPEX_USDC : 0),
-		[quantity, cloudNode],
+		() => quantity * (CONET_GENESIS_NODE_PRICE_USDC + CONET_GENESIS_CLOUD_OPEX_USDC),
+		[quantity],
 	)
 
 	const copyEvangelistLink = useCallback(async () => {
@@ -2748,30 +2747,14 @@ function ConetGenesisNodeDiscoverSection({
 					</div>
 
 					<div className="mt-4 border-t border-white/70 pt-3 dark:border-slate-700/70">
-						<button
-							type="button"
-							onClick={() => setCloudNode((v) => !v)}
-							className="flex w-full items-center gap-3 text-left"
-							role="switch"
-							aria-checked={cloudNode}
-						>
-							<span
-								className={[
-									'relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition',
-									cloudNode ? 'bg-[#1562f0]' : 'bg-slate-300 dark:bg-slate-600',
-								].join(' ')}
-							>
-								<span
-									className={[
-										'inline-block h-5 w-5 transform rounded-full bg-white shadow transition',
-										cloudNode ? 'translate-x-[22px]' : 'translate-x-[2px]',
-									].join(' ')}
-								/>
-							</span>
+						<div className="flex items-center justify-between gap-3">
 							<span className="text-[14px] font-bold text-[#1f2328] dark:text-slate-100">
 								Cloud Node Deployment Service
 							</span>
-						</button>
+							<span className="shrink-0 rounded-full bg-emerald-100 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400">
+								Included
+							</span>
+						</div>
 						<p className="mt-2 text-[12px] leading-relaxed text-slate-500 dark:text-slate-400">
 							OPEX: {CONET_GENESIS_CLOUD_OPEX_USDC} USDC/year/node for 24/7 maintenance. Enjoy dual-track
 							rewards with zero hardware maintenance hassle.
@@ -2788,7 +2771,7 @@ function ConetGenesisNodeDiscoverSection({
 
 				<button
 					type="button"
-					onClick={() => onLockSeat(quantity, cloudNode, totalThreshold)}
+					onClick={() => onLockSeat(quantity, true, totalThreshold)}
 					className="mt-4 w-full rounded-full bg-[#1562f0] px-4 py-3.5 text-[15px] font-bold text-white shadow-lg shadow-blue-500/25 transition active:scale-[0.98] hover:bg-blue-600"
 				>
 					Lock Infrastructure Seat Now
@@ -3174,17 +3157,6 @@ function DiscoverMerchantDetailFullScreen({
 	const openConetExplore = useCallback(() => {
 		void openExternalUrl(CONET_EXPLORE_NETWORK_URL)
 	}, [])
-	const lockConetGenesisSeat = useCallback(
-		(quantity: number, cloudNode: boolean, totalUsdc: number) => {
-			Toast.show({
-				content: `Reserved ${quantity} Genesis Node${quantity > 1 ? 's' : ''}${
-					cloudNode ? ' + Cloud Service' : ''
-				} · ${totalUsdc.toLocaleString('en-US')} USDC`,
-			})
-			void openExternalUrl(CONET_EXPLORE_NETWORK_URL)
-		},
-		[],
-	)
 
 	const resolveUserEoa = useCallback((): string | null => {
 		const privateKeyArmor = resolveSigningPrivateKeyArmor(profile)
@@ -3195,6 +3167,33 @@ function DiscoverMerchantDetailFullScreen({
 			return null
 		}
 	}, [profile])
+
+	const lockConetGenesisSeat = useCallback(
+		(quantity: number, _cloudNode: boolean, totalUsdc: number) => {
+			const beneficiary = resolveUserEoa()
+			if (!beneficiary) {
+				Toast.show({ content: 'Restore your wallet to lock a Genesis seat' })
+				return
+			}
+			const cardOwner = issuerOwnerEoa
+			if (!cardOwner || !ethers.isAddress(cardOwner)) {
+				Toast.show({ content: 'Merchant card owner unavailable. Pull to refresh and try again.' })
+				return
+			}
+			const qty = Math.max(1, Math.floor(Number(quantity) || 1))
+			const payUrl = buildDiscoverGenesisNodeSeatUrl({
+				cardAddress: CONET_GENESIS_DISCOVER_CARD_ADDRESS,
+				cardOwner,
+				beneficiaryEoa: beneficiary,
+				quantity: qty,
+			})
+			Toast.show({
+				content: `Opening payment · ${qty} Genesis Node${qty > 1 ? 's' : ''} · ${totalUsdc.toLocaleString('en-US')} USDC`,
+			})
+			void openExternalUrl(payUrl)
+		},
+		[issuerOwnerEoa, resolveUserEoa],
+	)
 
 	const resolveUserAa = useCallback((): string | null => {
 		const raw = String((profile as ProfileForTopup | undefined)?.aaAccount ?? '').trim()

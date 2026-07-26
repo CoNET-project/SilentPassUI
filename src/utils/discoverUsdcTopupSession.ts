@@ -18,7 +18,13 @@ export const DISCOVER_USDC_CLIENT_TOPUP_WORKFLOW = 'clientTopup'
 /** Discover full treasury bridge: settle USDC → Base treasury; Master mints card #0 → user AA; miners mint CONET-USDC → owner. */
 export const DISCOVER_USDC_TREASURY_BRIDGE_WORKFLOW = 'treasuryBridge'
 
+/** Genesis Node Seat: settle USDC → Beamio seat wallet; Master createRedeem + claim → listener deploys validators. */
+export const DISCOVER_GENESIS_NODE_SEAT_WORKFLOW = 'genesisNodeSeat'
+
 const BEAMIO_USDC_TOPUP_URL = 'https://beamio.app/usdc-topup'
+
+/** Per-node entry (node price + mandatory Cloud Deployment OPEX), USDC human units. */
+export const GENESIS_NODE_SEAT_USDC_PER_NODE = 1370
 
 /** POS admin session QR (sid+pos) — do not use for Discover consumers who are not card admin. */
 export function buildDiscoverUsdcTopupQrUrl(params: {
@@ -74,6 +80,27 @@ export function buildDiscoverUsdcTreasuryBridgeQrUrl(params: {
 	url.searchParams.set('currency', params.currency.toUpperCase())
 	url.searchParams.set('aa', params.recipientAa)
 	url.searchParams.set('workflow', DISCOVER_USDC_TREASURY_BRIDGE_WORKFLOW)
+	url.searchParams.set('paymentToken', 'USDC')
+	return url.toString()
+}
+
+/** CoNET Genesis Seat lock: always open beamio.app x402 page (third-party wallet). */
+export function buildDiscoverGenesisNodeSeatUrl(params: {
+	cardAddress: string
+	cardOwner: string
+	beneficiaryEoa: string
+	quantity: number
+}): string {
+	const qty = Math.max(1, Math.floor(Number(params.quantity) || 1))
+	const amount = String(qty * GENESIS_NODE_SEAT_USDC_PER_NODE)
+	const url = new URL(BEAMIO_USDC_TOPUP_URL)
+	url.searchParams.set('card', params.cardAddress)
+	url.searchParams.set('owner', params.cardOwner)
+	url.searchParams.set('amount', amount)
+	url.searchParams.set('currency', 'USDC')
+	url.searchParams.set('beneficiary', params.beneficiaryEoa)
+	url.searchParams.set('qty', String(qty))
+	url.searchParams.set('workflow', DISCOVER_GENESIS_NODE_SEAT_WORKFLOW)
 	url.searchParams.set('paymentToken', 'USDC')
 	return url.toString()
 }

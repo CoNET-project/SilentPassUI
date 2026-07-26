@@ -1227,7 +1227,10 @@ export function DaemonProvider({ children }: DaemonProps) {
           const ownedCatalogs = ownedCatalogByCardKey.get(key) ?? prevRow?.ownedCatalogs ?? null
           const [assetsFromMyAssets, meta] = await Promise.all([
             getMyAssets(profile, uc.cardAddress).catch(() => null),
-            getCardBasicMetadataStaleWhileRevalidate(uc.cardAddress).catch(() => prevRow?.meta ?? null),
+            // awaitFresh: must not seed feed from stale local (tier.imageFit / image would stick).
+            getCardBasicMetadataStaleWhileRevalidate(uc.cardAddress, { awaitFresh: true }).catch(
+              () => prevRow?.meta ?? null
+            ),
           ])
           const assetsFromWallet = walletAssetsByCardKey?.[key] ?? null
           let couponsForRow = claimableCoupons ?? prevRow?.claimableCoupons ?? null
@@ -1260,7 +1263,7 @@ export function DaemonProvider({ children }: DaemonProps) {
             claimableCoupons: couponsForRow,
             ownedCatalogs,
           }
-          if (meta) rememberCardBasicMetadataTrusted(uc.cardAddress, meta)
+          // Fresh meta already remembered inside awaitFresh path — do not re-remember SWR-local.
         })
       )
       if (!areMyBrandDetailsMapsEqual(prevDetails, next)) {

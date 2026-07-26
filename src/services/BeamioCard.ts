@@ -4120,36 +4120,17 @@ export const getCardMetadataFromUri = async (
 	}
 }
 
-/**
- * 卡级基础 metadata：全局 localStorage 表优先（一次可信写入后长期复用），并后台 API→URI 刷新落盘。
- * 与 5 分钟内存 TTL 并存；页面应优先用此接口以跨会话、跨页面共享「卡基本设定」。
- */
-export async function getCardBasicMetadataStaleWhileRevalidate(
-	cardAddress: string
-): Promise<CardMetadataFromUri | null> {
-	const raw = (cardAddress || '').trim()
-	if (!raw || !ethers.isAddress(raw)) return null
+export type GetCardBasicMetadataSwrOptions = {
+	/**
+	 * When true (My Brands / wallet daemon): await API→URI refresh and return fresh on trusted success.
+	 * Default false: return local immediately and refresh in background (classic SWR).
+	 * Callers that write feed state from the return value MUST use awaitFresh, or they will
+	 * re-apply stale local meta (e.g. old tier.imageFit) over a concurrent background refresh.
+	 */
+	awaitFresh?: boolean
+}
 
-	const local = peekCardBasicMetadata(raw)
-	if (local) {
-		void (async () => {
-			try {
-				const fresh =
-					(await getCardMetadataFromApi(raw, { bypassMemoryCache: true })) ??
-					(await getCardMetadataFromUri(raw, { bypassMemoryCache: true }))
-				if (fresh) {
-					rememberCardBasicMetadataTrusted(raw, fresh)
-					const k = raw.toLowerCase()
-					cardMetadataCache.set(`api:${k}`, { ...fresh, timestamp: Date.now() })
-					cardMetadataCache.set(`uri:${k}`, { ...fresh, timestamp: Date.now() })
-				}
-			} catch {
-				/* ignore */
-			}
-		})()
-		return local
-	}
-
+async function fetchAndRememberCardBasicMetadata(raw: string): Promise<CardMetadataFromUri | null> {
 	const fresh =
 		(await getCardMetadataFromApi(raw, { bypassMemoryCache: true })) ??
 		(await getCardMetadataFromUri(raw, { bypassMemoryCache: true }))
@@ -4160,6 +4141,39 @@ export async function getCardBasicMetadataStaleWhileRevalidate(
 		cardMetadataCache.set(`uri:${k}`, { ...fresh, timestamp: Date.now() })
 	}
 	return fresh
+}
+
+/**
+ * 卡级基础 metadata：全局 localStorage 表优先（一次可信写入后长期复用），并后台 API→URI 刷新落盘。
+ * 与 5 分钟内存 TTL 并存；页面应优先用此接口以跨会话、跨页面共享「卡基本设定」。
+ */
+export async function getCardBasicMetadataStaleWhileRevalidate(
+	cardAddress: string,
+	opts?: GetCardBasicMetadataSwrOptions
+): Promise<CardMetadataFromUri | null> {
+	const raw = (cardAddress || '').trim()
+	if (!raw || !ethers.isAddress(raw)) return null
+
+	const local = peekCardBasicMetadata(raw)
+	if (opts?.awaitFresh) {
+		try {
+			const fresh = await fetchAndRememberCardBasicMetadata(raw)
+			return fresh ?? local
+		} catch {
+			return local
+		}
+	}
+
+	if (local) {
+		void fetchAndRememberCardBasicMetadata(raw).catch(() => null)
+		return local
+	}
+
+	try {
+		return await fetchAndRememberCardBasicMetadata(raw)
+	} catch {
+		return null
+	}
 }
 
 export { peekCardBasicMetadata, rememberCardBasicMetadataTrusted } from '@/utils/cardBasicMetadataGlobalCache'

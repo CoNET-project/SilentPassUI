@@ -59,15 +59,17 @@ function PassCardFace({ display }: { display: WalletMerchantPassStackDisplay }) 
 				}}
 				aria-hidden
 			/>
-			<div className="pointer-events-none absolute inset-0 rounded-[1.5rem] bg-white/5 backdrop-blur-[1px]" aria-hidden />
+			{/* Tint only — no backdrop-blur: filter + stacked blur-xl bg causes text subpixel jitter on scroll/repaint */}
+			<div className="pointer-events-none absolute inset-0 rounded-[1.5rem] bg-white/5" aria-hidden />
 			<div
-				className="pointer-events-none absolute -right-12 -top-12 h-48 w-48 rounded-full blur-3xl"
+				className="pointer-events-none absolute -right-12 -top-12 h-48 w-48 rounded-full opacity-40"
 				style={{
-					backgroundColor: tierTheme.isDarkStart ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.06)',
+					backgroundColor: tierTheme.isDarkStart ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)',
 				}}
 				aria-hidden
 			/>
-			<div className="relative z-[1] flex h-full w-full flex-col justify-between">
+			{/* Own compositor layer so text is not re-rasterized with background blur fills */}
+			<div className="relative z-[1] flex h-full w-full flex-col justify-between [transform:translateZ(0)] [-webkit-font-smoothing:antialiased]">
 				<div className="flex w-full items-start justify-between gap-3">
 					<div className="shrink-0">
 						{logoImgClass ? (
@@ -113,7 +115,7 @@ function PassCardFace({ display }: { display: WalletMerchantPassStackDisplay }) 
 							{tierLbl}
 						</p>
 					</div>
-					<div className="shrink-0 text-right">
+					<div className="flex min-h-[4.25rem] shrink-0 flex-col justify-end text-right">
 						{startingFromLine ? (
 							<p
 								className="text-[10px] font-bold uppercase tracking-wider opacity-80"
@@ -141,7 +143,9 @@ function PassCardFace({ display }: { display: WalletMerchantPassStackDisplay }) 
 							>
 								{balanceSubtitle}
 							</p>
-						) : null}
+						) : (
+							<p className="h-[1.125rem]" aria-hidden />
+						)}
 					</div>
 				</div>
 			</div>

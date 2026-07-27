@@ -1644,9 +1644,18 @@ function ReferralUsdcEarningsCard({
 						${formatReferralUsdcAmount6(totalUsdc6)}
 					</p>
 					<p className="mt-2 text-xs text-emerald-100/80">
-						Claimable ${formatReferralUsdcAmount6(claimableUsdc6)}
-						<span className="mx-1.5 text-emerald-200/40">·</span>
-						Claimed ${formatReferralUsdcAmount6(claimedUsdc6)}
+						Paid to wallet ${formatReferralUsdcAmount6(claimedUsdc6)}
+						{BigInt(claimableUsdc6 || '0') > 0n ? (
+							<>
+								<span className="mx-1.5 text-emerald-200/40">·</span>
+								Pending ${formatReferralUsdcAmount6(claimableUsdc6)}
+							</>
+						) : (
+							<>
+								<span className="mx-1.5 text-emerald-200/40">·</span>
+								No claim required
+							</>
+						)}
 					</p>
 				</div>
 				<button
@@ -1732,9 +1741,18 @@ function ReferralIncomeDetailPanel({
 						<p className="mt-1 text-3xl font-semibold text-white tabular-nums">${formatReferralUsdcAmount6(totalUsdc6)}</p>
 						{!hideClaimBreakdown ? (
 							<p className="mt-2 text-xs text-emerald-100/80">
-								Claimable ${formatReferralUsdcAmount6(claimableUsdc6)}
-								<span className="mx-1.5 text-emerald-200/40">·</span>
-								Claimed ${formatReferralUsdcAmount6(claimedUsdc6)}
+								Paid to wallet ${formatReferralUsdcAmount6(claimedUsdc6)}
+								{BigInt(claimableUsdc6 || '0') > 0n ? (
+									<>
+										<span className="mx-1.5 text-emerald-200/40">·</span>
+										Pending ${formatReferralUsdcAmount6(claimableUsdc6)}
+									</>
+								) : (
+									<>
+										<span className="mx-1.5 text-emerald-200/40">·</span>
+										No claim required
+									</>
+								)}
 							</p>
 						) : (
 							<p className="mt-2 text-xs text-emerald-100/80">

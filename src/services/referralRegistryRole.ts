@@ -30,7 +30,7 @@ export type ReferralRegistryRoleSnapshot = {
 	issuedCodeCount: string
 	claimedCodeCount: string
 	claimableConetUsdc: string
-	/** Cumulative USDC already claimed via claimConetUsdc (6 decimals). */
+	/** Cumulative USDC already paid to this EOA (direct-pay + legacy flush; 6 decimals). */
 	claimedConetUsdc: string
 	claimPaused: boolean
 	downstream: ReferralRegistryDownstreamItem[]

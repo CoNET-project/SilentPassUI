@@ -54,8 +54,19 @@ export const CONET_AA_FACTORY = '0x869B31C87ABd9bFB858F5183Ef6021b28ED225E2'
 export const CONET_AA_FACTORY_V2 = '0xE9577cFd00A00E97D26854243B6AB4B11D5E907f'
 /** CoNET 默认 BeamioUserCard（AA Factory `beamioUserCard`） */
 export const CONET_BEAMIO_USER_CARD_DEFAULT = '0xA5C727d11d04BeBC095bd814c6530c4e77fD6662'
-/** CoNET USDC（ConetTreasury FactoryERC20） */
-export const CONET_USDC = '0xfD0D7B0706AaB5E4351bcED37bC3C77ed6813907'
+/** CoNET 唯一 canonical USDC（Treasury V3 `TreasuryCanonicalERC20V3`） */
+export const CONET_USDC = '0x5209865D404aA5646eDe5B91CD4218909eA72eDA'
+/** CoNET 业务国库 = TreasuryBridgeV3（唯一 conet-USDC 增发 / fee mint / 桥） */
+export const CONET_TREASURY = '0xa208982212978550594A7FEEB70a61665d129003'
+/** TreasuryBridgeV3 proxy — 与 {@link CONET_TREASURY} 同址 */
+export const CONET_TREASURY_BRIDGE_V3 = CONET_TREASURY
+/**
+ * @deprecated 旧工厂 ConetTreasury CREATE2（Base Circle USDC settle 仍可能用同址）。
+ * CoNET 业务路径勿再用此址 mint。
+ */
+export const CONET_TREASURY_CREATE2 = '0xa311c8fBE7CafC611603Ee925465A62493B73B30'
+/** @deprecated 工厂版 USDC；停增发，仅存量 */
+export const CONET_USDC_FACTORY_LEGACY = '0xfD0D7B0706AaB5E4351bcED37bC3C77ed6813907'
 /** GBToken ERC20（Payment GB / paidPool）；与 deployments/conet-addresses.json GBTokenERC20 同步 */
 export const CONET_GB_ERC20 = '0xC3EF02DaE632b4C10abB66e07d92a387c10838D8'
 /** @deprecated minter=旧国库 0x6dC6… */
@@ -108,6 +119,8 @@ export const CONTRACT_ADDRESSES = {
     cardFactory: CONET_CARD_FACTORY,
     defaultUserCard: CONET_BEAMIO_USER_CARD_DEFAULT,
     usdc: CONET_USDC,
+    conetTreasury: CONET_TREASURY,
+    treasuryBridgeV3: CONET_TREASURY_BRIDGE_V3,
     beamioOracle: BEAMIO_ORACLE_CONET,
     guardianNodesInfoV6: CONET_GUARDIAN_NODES_INFO_V6,
     addressPgp: CONET_ADDRESS_PGP,

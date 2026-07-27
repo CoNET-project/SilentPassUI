@@ -25,7 +25,8 @@ export function CardPassBackgroundImage({
 		? 'absolute left-0 top-1/2 z-[1] h-auto w-full max-h-none -translate-y-1/2 object-contain'
 		: 'absolute left-1/2 top-0 z-[1] h-full w-auto max-w-none -translate-x-1/2 object-contain'
 	return (
-		<div className="pointer-events-none absolute inset-0 overflow-hidden">
+		// Isolate filter blur fills onto their own layer so pass face text does not re-rasterize with them.
+		<div className="pointer-events-none absolute inset-0 isolate overflow-hidden [transform:translateZ(0)]">
 			{fitWidth ? (
 				<>
 					<div

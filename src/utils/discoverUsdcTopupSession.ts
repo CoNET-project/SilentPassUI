@@ -1,8 +1,13 @@
 import { ethers } from 'ethers'
 import { beamioApi, baseEndpoint } from '@/utils/constants'
+import { AuthorizationSign } from '@/services/beamio'
 import { resolveSigningPrivateKeyArmor } from '@/utils/resolveSigningPrivateKeyArmor'
 import { signExecuteForAdmin } from '@/utils/signExecuteForAdmin'
 import { tu } from '@/locale/beamioLocale'
+import {
+	eoaCanSelfFundDiscoverTopup,
+	readEoaUsdcBalance6,
+} from '@/utils/discoverEoaUsdcTopup'
 import {
 	fetchUsdcChargeSession,
 	submitUsdcChargeTopupAuth,
@@ -25,6 +30,48 @@ const BEAMIO_USDC_TOPUP_URL = 'https://beamio.app/usdc-topup'
 
 /** Per-node entry (node price + mandatory Cloud Deployment OPEX), USDC human units. */
 export const GENESIS_NODE_SEAT_USDC_PER_NODE = 1370
+
+/** Per-node entry in USDC atomic 6-decimals (must match x402sdk GENESIS_NODE_SEAT_USDC_PER_NODE6). */
+export const GENESIS_NODE_SEAT_USDC_PER_NODE6 = 1_370_000_000n
+
+/**
+ * Hard-coded seat settlement recipient on Base (must match x402sdk GENESIS_NODE_SEAT_PAYTO).
+ * Local SilentPassUI wallet pays this address via EIP-3009 / x402 — not the merchant card owner.
+ */
+export const GENESIS_NODE_SEAT_PAYTO = '0x17FCE32f01f88FFBDAf6BA51cef9138bF6BD637A'
+
+/** Must match x402sdk `GENESIS_NODE_SEAT_TEST_CODE` — settle 1 USDC then full fulfill. */
+export const GENESIS_NODE_SEAT_TEST_CODE = '332266'
+
+/** Must match x402sdk `GENESIS_NODE_SEAT_TEST_USDC6`. */
+export const GENESIS_NODE_SEAT_TEST_USDC6 = 1_000_000n
+
+/**
+ * Local SilentPassUI E2E allowlist: this EOA may pay 1 USDC (`test=332266`) when Base balance ≥ 1 USDC.
+ * Mirror only in SilentPassUI — do not cross-import from x402sdk.
+ */
+export const GENESIS_NODE_SEAT_LOCAL_TEST_EOA = '0x6c2774534ec5c050c5573a7b57b63a45ae091a05'
+
+export function isGenesisNodeSeatLocalTestEoa(eoa: string | null | undefined): boolean {
+	if (!eoa || !ethers.isAddress(eoa)) return false
+	try {
+		return ethers.getAddress(eoa).toLowerCase() === GENESIS_NODE_SEAT_LOCAL_TEST_EOA.toLowerCase()
+	} catch {
+		return false
+	}
+}
+
+/** Settle amount required for local/self-fund gate (test EOA → 1 USDC @ qty 1). */
+export function genesisNodeSeatLocalRequiredUsdc6(params: {
+	beneficiaryEoa: string | null | undefined
+	quantity: number
+}): { required6: bigint; testMode: boolean; qty: number } {
+	if (isGenesisNodeSeatLocalTestEoa(params.beneficiaryEoa)) {
+		return { required6: GENESIS_NODE_SEAT_TEST_USDC6, testMode: true, qty: 1 }
+	}
+	const qty = Math.max(1, Math.min(100, Math.floor(Number(params.quantity) || 1)))
+	return { required6: BigInt(qty) * GENESIS_NODE_SEAT_USDC_PER_NODE6, testMode: false, qty }
+}
 
 /** POS admin session QR (sid+pos) — do not use for Discover consumers who are not card admin. */
 export function buildDiscoverUsdcTopupQrUrl(params: {
@@ -84,14 +131,19 @@ export function buildDiscoverUsdcTreasuryBridgeQrUrl(params: {
 	return url.toString()
 }
 
-/** CoNET Genesis Seat lock: always open beamio.app x402 page (third-party wallet). */
+/** CoNET Genesis Seat lock: open beamio.app x402 page (when local EOA USDC is insufficient). */
 export function buildDiscoverGenesisNodeSeatUrl(params: {
 	cardAddress: string
 	cardOwner: string
 	beneficiaryEoa: string
 	quantity: number
+	/** When set (e.g. `332266`), payment page settles 1 USDC then fulfills. */
+	testCode?: string
 }): string {
-	const qty = Math.max(1, Math.floor(Number(params.quantity) || 1))
+	const testMode =
+		Boolean(params.testCode?.trim()) &&
+		params.testCode!.trim() === GENESIS_NODE_SEAT_TEST_CODE
+	const qty = testMode ? 1 : Math.max(1, Math.floor(Number(params.quantity) || 1))
 	const amount = String(qty * GENESIS_NODE_SEAT_USDC_PER_NODE)
 	const url = new URL(BEAMIO_USDC_TOPUP_URL)
 	url.searchParams.set('card', params.cardAddress)
@@ -102,7 +154,146 @@ export function buildDiscoverGenesisNodeSeatUrl(params: {
 	url.searchParams.set('qty', String(qty))
 	url.searchParams.set('workflow', DISCOVER_GENESIS_NODE_SEAT_WORKFLOW)
 	url.searchParams.set('paymentToken', 'USDC')
+	if (testMode) url.searchParams.set('test', GENESIS_NODE_SEAT_TEST_CODE)
 	return url.toString()
+}
+
+export type PayGenesisNodeSeatLocalResult =
+	| { ok: true; USDC_tx?: string; testMode?: boolean }
+	| { ok: false; error: string; insufficientBalance?: boolean }
+
+/**
+ * When the local Verra EOA holds enough USDC on Base, sign EIP-3009 and POST
+ * `/api/nfcUsdcTopup` with workflow=genesisNodeSeat (same settle path as homepage).
+ *
+ * Special: {@link GENESIS_NODE_SEAT_LOCAL_TEST_EOA} may settle **1 USDC** via
+ * `test=332266` when balance ≥ 1 USDC (qty forced to 1; Master still full-fulfills).
+ *
+ * Caller should fall back to {@link buildDiscoverGenesisNodeSeatUrl} when
+ * `insufficientBalance` is true.
+ */
+export async function payGenesisNodeSeatWithLocalWallet(params: {
+	profile: profile
+	privateKeyArmor: string
+	cardAddress: string
+	cardOwner: string
+	beneficiaryEoa: string
+	quantity: number
+}): Promise<PayGenesisNodeSeatLocalResult> {
+	const { required6, testMode, qty } = genesisNodeSeatLocalRequiredUsdc6({
+		beneficiaryEoa: params.beneficiaryEoa,
+		quantity: params.quantity,
+	})
+	let balance6: bigint
+	try {
+		balance6 = await readEoaUsdcBalance6(params.profile)
+	} catch (e: unknown) {
+		const msg = e instanceof Error ? e.message : 'Unable to read USDC balance on Base'
+		return { ok: false, error: msg }
+	}
+	if (!eoaCanSelfFundDiscoverTopup(balance6, required6)) {
+		return {
+			ok: false,
+			insufficientBalance: true,
+			error: testMode
+				? 'Insufficient USDC on Base. Need 1.00 USDC for this test purchase.'
+				: `Insufficient USDC on Base. Need ${(qty * GENESIS_NODE_SEAT_USDC_PER_NODE).toLocaleString('en-US')} USDC.`,
+		}
+	}
+
+	const amountHuman = testMode ? '1' : String(qty * GENESIS_NODE_SEAT_USDC_PER_NODE)
+	const bodyObj: Record<string, string> = {
+		cardAddress: ethers.getAddress(params.cardAddress),
+		cardOwner: ethers.getAddress(params.cardOwner),
+		amount: amountHuman,
+		currency: 'USDC',
+		beneficiary: ethers.getAddress(params.beneficiaryEoa),
+		qty: String(qty),
+		workflow: DISCOVER_GENESIS_NODE_SEAT_WORKFLOW,
+	}
+	if (testMode) bodyObj.test = GENESIS_NODE_SEAT_TEST_CODE
+
+	const topupUrl = `${beamioApi}/api/nfcUsdcTopup`
+	const body = JSON.stringify(bodyObj)
+
+	const firstRes = await fetch(topupUrl, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body,
+	})
+
+	if (firstRes.status !== 402) {
+		const json = (await firstRes.json().catch(() => ({}))) as {
+			success?: boolean
+			error?: string
+			USDC_tx?: string
+		}
+		if (firstRes.ok && json.success !== false && json.USDC_tx) {
+			return { ok: true, USDC_tx: json.USDC_tx, testMode }
+		}
+		return {
+			ok: false,
+			error: json.error ?? `Payment challenge failed (HTTP ${firstRes.status})`,
+		}
+	}
+
+	const challenge = (await firstRes.json().catch(() => ({}))) as {
+		accepts?: Array<{
+			maxAmountRequired?: string | number
+			payTo?: string
+		}>
+	}
+	const message = Array.isArray(challenge.accepts) ? challenge.accepts[0] : null
+	if (!message?.payTo || message.maxAmountRequired == null) {
+		return { ok: false, error: 'Invalid payment challenge' }
+	}
+
+	let payTo: string
+	try {
+		payTo = ethers.getAddress(String(message.payTo))
+	} catch {
+		return { ok: false, error: 'Invalid payment recipient' }
+	}
+	if (payTo.toLowerCase() !== GENESIS_NODE_SEAT_PAYTO.toLowerCase()) {
+		return { ok: false, error: 'Unexpected payment recipient' }
+	}
+
+	let payAmount: bigint
+	try {
+		payAmount = BigInt(String(message.maxAmountRequired).split('.')[0])
+	} catch {
+		return { ok: false, error: 'Invalid payment amount' }
+	}
+	if (payAmount !== required6) {
+		return {
+			ok: false,
+			error: `Payment amount mismatch: ${payAmount.toString()} != ${required6.toString()}`,
+		}
+	}
+
+	const paymentHeader = await AuthorizationSign(payAmount, payTo, params.privateKeyArmor)
+	if (!paymentHeader) {
+		return { ok: false, error: 'Wallet signature failed' }
+	}
+
+	const secondRes = await fetch(topupUrl, {
+		method: 'POST',
+		headers: {
+			'Content-Type': 'application/json',
+			'X-PAYMENT': paymentHeader,
+			'Access-Control-Expose-Headers': 'X-PAYMENT-RESPONSE',
+		},
+		body,
+	})
+	const json = (await secondRes.json().catch(() => ({}))) as {
+		success?: boolean
+		error?: string
+		USDC_tx?: string
+	}
+	if (!secondRes.ok || json.success === false) {
+		return { ok: false, error: json.error ?? `Payment failed (HTTP ${secondRes.status})` }
+	}
+	return { ok: true, USDC_tx: json.USDC_tx, testMode }
 }
 
 /** @deprecated Prefer {@link discoverTreasuryBridgePaymentHint}. */

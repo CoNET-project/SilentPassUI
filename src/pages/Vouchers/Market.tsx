@@ -79,6 +79,10 @@ import {
 	discoverTreasuryBridgePaymentHint,
 	fetchDiscoverClientTopupQuotedUsdc6,
 	formatQuotedUsdc6ForDisplay,
+	GENESIS_NODE_SEAT_TEST_CODE,
+	genesisNodeSeatLocalRequiredUsdc6,
+	isGenesisNodeSeatLocalTestEoa,
+	payGenesisNodeSeatWithLocalWallet,
 } from "@/utils/discoverUsdcTopupSession"
 import { useMerchantCardDatabase } from "@/providers/MerchantCardDatabaseProvider"
 import { merchantCardRecordFromLatestCardsRaw } from "@/utils/merchantCardDatabase"
@@ -2654,11 +2658,19 @@ function ConetGenesisNodeDiscoverSection({
 	evangelistLink,
 	onExplore,
 	onLockSeat,
+	lockingSeat,
+	eoaUsdcBalance6,
+	beneficiaryEoa,
 }: {
 	evangelistLink: string
 	onExplore: () => void
-	onLockSeat: (quantity: number, cloudNode: boolean, totalUsdc: number) => void
+	onLockSeat: (quantity: number, cloudNode: boolean, totalUsdc: number, canPayLocally: boolean) => void
+	lockingSeat?: boolean
+	/** Trusted Base USDC balance of local EOA; null = unknown / not loaded. */
+	eoaUsdcBalance6: bigint | null
+	beneficiaryEoa: string | null
 }) {
+	const localTestEoa = isGenesisNodeSeatLocalTestEoa(beneficiaryEoa)
 	const [quantity, setQuantity] = useState(1)
 	const [linkCopied, setLinkCopied] = useState(false)
 	const linkCopiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -2669,11 +2681,27 @@ function ConetGenesisNodeDiscoverSection({
 		}
 	}, [])
 
+	useEffect(() => {
+		if (localTestEoa) setQuantity(1)
+	}, [localTestEoa])
+
 	// Cloud Node Deployment Service is mandatory (always included in the entry package).
 	const totalThreshold = useMemo(
 		() => quantity * (CONET_GENESIS_NODE_PRICE_USDC + CONET_GENESIS_CLOUD_OPEX_USDC),
 		[quantity],
 	)
+
+	const { required6: requiredUsdc6 } = useMemo(
+		() =>
+			genesisNodeSeatLocalRequiredUsdc6({
+				beneficiaryEoa,
+				quantity,
+			}),
+		[beneficiaryEoa, quantity],
+	)
+
+	const canPayLocally =
+		eoaUsdcBalance6 != null && eoaCanSelfFundDiscoverTopup(eoaUsdcBalance6, requiredUsdc6)
 
 	const copyEvangelistLink = useCallback(async () => {
 		const link = evangelistLink.trim()
@@ -2687,6 +2715,16 @@ function ConetGenesisNodeDiscoverSection({
 			Toast.show({ content: 'Unable to copy link' })
 		}
 	}, [evangelistLink])
+
+	const lockButtonClass = canPayLocally
+		? 'bg-emerald-600 shadow-lg shadow-emerald-500/25 hover:bg-emerald-500'
+		: 'bg-[#1562f0] shadow-lg shadow-blue-500/25 hover:bg-blue-600'
+
+	const lockButtonLabel = lockingSeat
+		? canPayLocally
+			? 'Paying with wallet…'
+			: 'Opening payment…'
+		: 'Lock Infrastructure Seat Now'
 
 	return (
 		<>
@@ -2726,7 +2764,7 @@ function ConetGenesisNodeDiscoverSection({
 							<button
 								type="button"
 								onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-								disabled={quantity <= 1}
+								disabled={quantity <= 1 || lockingSeat === true || localTestEoa}
 								className="flex h-7 w-7 items-center justify-center rounded-full text-[#1562f0] transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
 								aria-label="Decrease quantity"
 							>
@@ -2738,7 +2776,8 @@ function ConetGenesisNodeDiscoverSection({
 							<button
 								type="button"
 								onClick={() => setQuantity((q) => Math.min(CONET_GENESIS_GLOBAL_CAP, q + 1))}
-								className="flex h-7 w-7 items-center justify-center rounded-full text-[#1562f0] transition active:scale-95"
+								disabled={lockingSeat === true || localTestEoa}
+								className="flex h-7 w-7 items-center justify-center rounded-full text-[#1562f0] transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
 								aria-label="Increase quantity"
 							>
 								<Plus className="h-4 w-4" strokeWidth={2.75} aria-hidden />
@@ -2764,17 +2803,39 @@ function ConetGenesisNodeDiscoverSection({
 
 				<div className="mt-4 rounded-[18px] bg-[#f4f6fa] py-4 text-center dark:bg-slate-800/50">
 					<p className="text-[13px] font-medium text-slate-500 dark:text-slate-400">Total Entry Threshold</p>
-					<p className="mt-1 text-[26px] font-bold leading-none text-[#1562f0]">
+					<p
+						className={`mt-1 text-[26px] font-bold leading-none ${
+							canPayLocally ? 'text-emerald-600 dark:text-emerald-400' : 'text-[#1562f0]'
+						}`}
+					>
 						{totalThreshold.toLocaleString('en-US')} USDC
 					</p>
+					{eoaUsdcBalance6 != null ? (
+						<p className="mt-2 text-[12px] font-medium text-slate-500 dark:text-slate-400">
+							{canPayLocally
+								? localTestEoa
+									? 'Your wallet has enough USDC — pay 1 USDC in-app'
+									: 'Your wallet has enough USDC — pay in-app'
+								: 'Pay with an external wallet on Base'}
+						</p>
+					) : null}
 				</div>
 
 				<button
 					type="button"
-					onClick={() => onLockSeat(quantity, true, totalThreshold)}
-					className="mt-4 w-full rounded-full bg-[#1562f0] px-4 py-3.5 text-[15px] font-bold text-white shadow-lg shadow-blue-500/25 transition active:scale-[0.98] hover:bg-blue-600"
+					onClick={() => onLockSeat(quantity, true, totalThreshold, canPayLocally)}
+					disabled={lockingSeat === true}
+					aria-busy={lockingSeat === true}
+					className={`mt-4 flex w-full items-center justify-center gap-2 rounded-full px-4 py-3.5 text-[15px] font-bold text-white transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-70 ${lockButtonClass}`}
 				>
-					Lock Infrastructure Seat Now
+					{lockingSeat ? (
+						<>
+							<Loader2 className="h-5 w-5 animate-spin" strokeWidth={2} aria-hidden />
+							{lockButtonLabel}
+						</>
+					) : (
+						lockButtonLabel
+					)}
 				</button>
 			</div>
 
@@ -3168,10 +3229,35 @@ function DiscoverMerchantDetailFullScreen({
 		}
 	}, [profile])
 
+	const [genesisSeatLocking, setGenesisSeatLocking] = useState(false)
+	const genesisSeatLockInFlightRef = useRef(false)
+	const [genesisEoaUsdcBalance6, setGenesisEoaUsdcBalance6] = useState<bigint | null>(null)
+
+	useEffect(() => {
+		if (!isConetGenesisCard || !profile?.keyID) {
+			setGenesisEoaUsdcBalance6(null)
+			return
+		}
+		let cancelled = false
+		void (async () => {
+			try {
+				const bal = await readEoaUsdcBalance6(profile as profile)
+				if (!cancelled) setGenesisEoaUsdcBalance6(bal)
+			} catch {
+				// Untrusted failure — keep last trusted balance (or null).
+			}
+		})()
+		return () => {
+			cancelled = true
+		}
+	}, [isConetGenesisCard, profile, profile?.keyID])
+
 	const lockConetGenesisSeat = useCallback(
-		(quantity: number, _cloudNode: boolean, totalUsdc: number) => {
+		(quantity: number, _cloudNode: boolean, totalUsdc: number, canPayLocally: boolean) => {
+			if (genesisSeatLockInFlightRef.current) return
+			const privateKeyArmor = resolveSigningPrivateKeyArmor(profile)
 			const beneficiary = resolveUserEoa()
-			if (!beneficiary) {
+			if (!privateKeyArmor || !beneficiary) {
 				Toast.show({ content: 'Restore your wallet to lock a Genesis seat' })
 				return
 			}
@@ -3180,19 +3266,79 @@ function DiscoverMerchantDetailFullScreen({
 				Toast.show({ content: 'Merchant card owner unavailable. Pull to refresh and try again.' })
 				return
 			}
+			if (!profile) {
+				Toast.show({ content: 'Restore your wallet to lock a Genesis seat' })
+				return
+			}
 			const qty = Math.max(1, Math.floor(Number(quantity) || 1))
-			const payUrl = buildDiscoverGenesisNodeSeatUrl({
-				cardAddress: CONET_GENESIS_DISCOVER_CARD_ADDRESS,
-				cardOwner,
-				beneficiaryEoa: beneficiary,
-				quantity: qty,
-			})
+			const localTestEoa = isGenesisNodeSeatLocalTestEoa(beneficiary)
+			const openExternalPay = () => {
+				const payUrl = buildDiscoverGenesisNodeSeatUrl({
+					cardAddress: CONET_GENESIS_DISCOVER_CARD_ADDRESS,
+					cardOwner,
+					beneficiaryEoa: beneficiary,
+					quantity: localTestEoa ? 1 : qty,
+					testCode: localTestEoa ? GENESIS_NODE_SEAT_TEST_CODE : undefined,
+				})
+				Toast.show({
+					content: localTestEoa
+						? `Opening payment · 1 Genesis Node · 1 USDC`
+						: `Opening payment · ${qty} Genesis Node${qty > 1 ? 's' : ''} · ${totalUsdc.toLocaleString('en-US')} USDC`,
+				})
+				void openExternalUrl(payUrl)
+			}
+
+			if (!canPayLocally) {
+				openExternalPay()
+				return
+			}
+
+			genesisSeatLockInFlightRef.current = true
+			setGenesisSeatLocking(true)
 			Toast.show({
-				content: `Opening payment · ${qty} Genesis Node${qty > 1 ? 's' : ''} · ${totalUsdc.toLocaleString('en-US')} USDC`,
+				content: localTestEoa
+					? 'Paying with your wallet · 1 USDC'
+					: `Paying with your wallet · ${totalUsdc.toLocaleString('en-US')} USDC`,
 			})
-			void openExternalUrl(payUrl)
+			void (async () => {
+				try {
+					const result = await payGenesisNodeSeatWithLocalWallet({
+						profile: profile as profile,
+						privateKeyArmor,
+						cardAddress: CONET_GENESIS_DISCOVER_CARD_ADDRESS,
+						cardOwner,
+						beneficiaryEoa: beneficiary,
+						quantity: localTestEoa ? 1 : qty,
+					})
+					if (result.ok) {
+						Toast.show({
+							content: result.USDC_tx
+								? `Seat payment confirmed · ${localTestEoa ? 1 : qty} Genesis Node${(localTestEoa ? 1 : qty) > 1 ? 's' : ''}`
+								: `Seat payment submitted · ${localTestEoa ? 1 : qty} Genesis Node${(localTestEoa ? 1 : qty) > 1 ? 's' : ''}`,
+						})
+						try {
+							const bal = await readEoaUsdcBalance6(profile as profile)
+							setGenesisEoaUsdcBalance6(bal)
+						} catch {
+							/* keep last trusted balance */
+						}
+						return
+					}
+					if (result.insufficientBalance) {
+						openExternalPay()
+						return
+					}
+					Toast.show({ content: result.error || 'Genesis seat payment failed' })
+				} catch (e: unknown) {
+					const msg = e instanceof Error ? e.message : 'Genesis seat payment failed'
+					Toast.show({ content: msg })
+				} finally {
+					genesisSeatLockInFlightRef.current = false
+					setGenesisSeatLocking(false)
+				}
+			})()
 		},
-		[issuerOwnerEoa, resolveUserEoa],
+		[issuerOwnerEoa, profile, resolveUserEoa],
 	)
 
 	const resolveUserAa = useCallback((): string | null => {
@@ -4014,6 +4160,9 @@ function DiscoverMerchantDetailFullScreen({
 							evangelistLink={conetEvangelistLink}
 							onExplore={openConetExplore}
 							onLockSeat={lockConetGenesisSeat}
+							lockingSeat={genesisSeatLocking}
+							eoaUsdcBalance6={genesisEoaUsdcBalance6}
+							beneficiaryEoa={resolveUserEoa()}
 						/>
 					) : (
 					<>

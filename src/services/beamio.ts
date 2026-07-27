@@ -465,17 +465,13 @@ export const toBase64 = (s: string) => {
 export async function AuthorizationSign(
 	amount: bigint,
 	to: string,
+	/** Prefer explicit key (e.g. resolved from mnemonic) over CoNET_Data alone. */
+	privateKeyArmorOverride?: string,
 ): Promise<string> {
-
-	if (!CoNET_Data||!CoNET_Data?.profiles?.length) {
-		return ''
-	}
-
-	const profile = CoNET_Data?.profiles[0]
-
-
-  	// 1) 签名者
-	const privateKey = profile.privateKeyArmor
+	const privateKey =
+		(typeof privateKeyArmorOverride === 'string' && privateKeyArmorOverride.trim()) ||
+		CoNET_Data?.profiles?.[0]?.privateKeyArmor ||
+		''
 
 	if (!privateKey) {
 		return ''

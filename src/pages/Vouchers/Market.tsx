@@ -121,10 +121,15 @@ import {
 } from "@/config/chainAddresses"
 import {
 	beamioUserCardAddressExplorerUrl,
+	beamioConetMainnetTxExplorerUrl,
 	CONET_MAINNET_CHAIN_ID,
 	eip712ChainIdForBeamioUserCard,
 	resolveBeamioUserCardAddressExplorerUrl,
 } from "@/utils/beamioUserCardChain"
+import {
+	readGenesisSeatBeneficiaryBaseline,
+	waitForGenesisSeatNodesAssigned,
+} from "@/utils/genesisSeatDeployWait"
 import { mapActiveCouponRow, ActiveCouponTicketItem, type ActiveCouponListItem } from "@/pages/Home/ActiveCouponsScreen"
 import { BEAMIO_USER_CARD_ASSET_ADDRESS } from "@/config/chainAddresses"
 import CardItem from "./CardItem"
@@ -836,6 +841,84 @@ function shortDiscoverContractAddress(address: string): string {
 	const trimmed = address.trim()
 	if (trimmed.length < 12) return trimmed
 	return `${trimmed.slice(0, 6)}…${trimmed.slice(-4)}`
+}
+
+function shortDiscoverTxHash(txHash: string): string {
+	const trimmed = txHash.trim()
+	if (trimmed.length < 14) return trimmed
+	return `${trimmed.slice(0, 8)}…${trimmed.slice(-6)}`
+}
+
+type GenesisSeatPurchasePhase =
+	| { kind: 'idle' }
+	| { kind: 'paying' }
+	| { kind: 'deploying'; usdcTx: string | null; qty: number }
+	| {
+			kind: 'success'
+			usdcTx: string | null
+			claimTx: string | null
+			nodes: string[]
+			qty: number
+	  }
+	| { kind: 'error'; message: string }
+
+/** Tx hash capsule: shortened display + copy full hash (address-capsule protocol). */
+function GenesisSeatTxHashCapsule({
+	txHash,
+	explorerUrl,
+	label = 'Tx',
+}: {
+	txHash: string
+	explorerUrl: string
+	label?: string
+}) {
+	const [copied, setCopied] = useState(false)
+	const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+	useEffect(() => {
+		return () => {
+			if (copiedTimerRef.current != null) clearTimeout(copiedTimerRef.current)
+		}
+	}, [])
+
+	const onCopy = useCallback(async () => {
+		const full = txHash.trim()
+		if (!full) return
+		try {
+			await navigator.clipboard.writeText(full)
+			setCopied(true)
+			if (copiedTimerRef.current != null) clearTimeout(copiedTimerRef.current)
+			copiedTimerRef.current = setTimeout(() => setCopied(false), 2000)
+		} catch {
+			/* ignore */
+		}
+	}, [txHash])
+
+	return (
+		<div className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 py-1 pl-2.5 pr-1 text-[12px] font-semibold text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200">
+			<span className="shrink-0 text-slate-400 dark:text-slate-500">{label}</span>
+			<button
+				type="button"
+				onClick={() => openExternalUrl(explorerUrl)}
+				className="min-w-0 truncate tabular-nums hover:text-[#1562f0]"
+				aria-label={`View transaction ${txHash}`}
+			>
+				{shortDiscoverTxHash(txHash)}
+			</button>
+			<button
+				type="button"
+				onClick={() => void onCopy()}
+				className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-200/80 dark:hover:bg-slate-700"
+				aria-label="Copy transaction hash"
+			>
+				{copied ? (
+					<Check className="h-3.5 w-3.5 text-emerald-500" strokeWidth={2.5} aria-hidden />
+				) : (
+					<Copy className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />
+				)}
+			</button>
+		</div>
+	)
 }
 
 function DiscoverMerchantCardAddressCapsule({ address }: { address: string }) {
@@ -2586,7 +2669,7 @@ function DiscoverAboutDetailBody({
 	if (paragraphs.length <= 1) {
 		return (
 			<p className={`whitespace-pre-line text-[14px] leading-relaxed text-slate-600 dark:text-slate-400${className}`}>
-				{normalized}
+				<DiscoverDescriptionTextWithUrlCapsules text={normalized} />
 			</p>
 		)
 	}
@@ -2597,10 +2680,108 @@ function DiscoverAboutDetailBody({
 					key={`about-paragraph-${index}`}
 					className="whitespace-pre-line text-[14px] leading-relaxed text-slate-600 dark:text-slate-400"
 				>
-					{paragraph}
+					<DiscoverDescriptionTextWithUrlCapsules text={paragraph} />
 				</p>
 			))}
 		</div>
+	)
+}
+
+/** Match http(s) and www. URLs inside merchant description / About copy. */
+const DISCOVER_DESCRIPTION_URL_RE = /(?:https?:\/\/|www\.)[^\s<>"'`\]})]+/gi
+
+function stripDiscoverDescriptionUrlTrailingPunctuation(raw: string): string {
+	return raw.replace(/[)\]}>,.;:!?'"”’。、）》]+$/u, "")
+}
+
+function formatDiscoverDescriptionUrlCapsuleLabel(u: URL): string {
+	const host = u.host.replace(/^www\./i, "")
+	let rest = `${u.pathname === "/" ? "" : u.pathname}${u.search}${u.hash}`
+	if (rest.length > 1 && rest.endsWith("/")) rest = rest.slice(0, -1)
+	const full = `${host}${rest}`
+	if (full.length <= 40) return full
+	return `${full.slice(0, 20)}…${full.slice(-12)}`
+}
+
+function resolveDiscoverDescriptionUrl(rawMatch: string): { href: string; label: string } | null {
+	const cleaned = stripDiscoverDescriptionUrlTrailingPunctuation(rawMatch.trim())
+	if (!cleaned) return null
+	const candidate = /^www\./i.test(cleaned) ? `https://${cleaned}` : cleaned
+	try {
+		const u = new URL(candidate)
+		if (u.protocol !== "http:" && u.protocol !== "https:") return null
+		return { href: u.href, label: formatDiscoverDescriptionUrlCapsuleLabel(u) }
+	} catch {
+		return null
+	}
+}
+
+type DiscoverDescriptionTextSegment =
+	| { kind: "text"; value: string }
+	| { kind: "url"; href: string; label: string }
+
+function splitDiscoverDescriptionWithUrls(text: string): DiscoverDescriptionTextSegment[] {
+	if (!text) return [{ kind: "text", value: "" }]
+	const segments: DiscoverDescriptionTextSegment[] = []
+	const re = new RegExp(DISCOVER_DESCRIPTION_URL_RE.source, "gi")
+	let lastIndex = 0
+	let match: RegExpExecArray | null
+	while ((match = re.exec(text)) != null) {
+		const raw = match[0]
+		const start = match.index
+		if (start > lastIndex) {
+			segments.push({ kind: "text", value: text.slice(lastIndex, start) })
+		}
+		const cleaned = stripDiscoverDescriptionUrlTrailingPunctuation(raw)
+		const trailing = raw.slice(cleaned.length)
+		const resolved = resolveDiscoverDescriptionUrl(cleaned)
+		if (resolved) {
+			segments.push({ kind: "url", href: resolved.href, label: resolved.label })
+			if (trailing) segments.push({ kind: "text", value: trailing })
+		} else {
+			segments.push({ kind: "text", value: raw })
+		}
+		lastIndex = start + raw.length
+	}
+	if (lastIndex < text.length) {
+		segments.push({ kind: "text", value: text.slice(lastIndex) })
+	}
+	return segments.length > 0 ? segments : [{ kind: "text", value: text }]
+}
+
+function DiscoverDescriptionUrlCapsule({ href, label }: { href: string; label: string }) {
+	return (
+		<button
+			type="button"
+			onClick={() => openExternalUrl(href)}
+			className="mx-0.5 inline-flex max-w-[min(100%,18rem)] items-center gap-1 rounded-full border border-[#dce2f7] bg-[#e9edff] px-2.5 py-0.5 align-baseline text-[12px] font-semibold text-[#0051d1] transition hover:bg-[#dce6ff] active:scale-[0.98] dark:border-blue-500/30 dark:bg-blue-950/40 dark:text-blue-300 dark:hover:bg-blue-950/70"
+			aria-label={`Open link ${href}`}
+			title={href}
+		>
+			<span className="min-w-0 truncate tabular-nums">{label}</span>
+			<ExternalLink className="h-3 w-3 shrink-0 opacity-80" strokeWidth={2.25} aria-hidden />
+		</button>
+	)
+}
+
+function DiscoverDescriptionTextWithUrlCapsules({ text }: { text: string }) {
+	const segments = splitDiscoverDescriptionWithUrls(text)
+	const hasUrl = segments.some((s) => s.kind === "url")
+	if (!hasUrl) return <>{text}</>
+	return (
+		<>
+			{segments.map((segment, index) =>
+				segment.kind === "url" ? (
+					<DiscoverDescriptionUrlCapsule
+						key={`desc-url-${index}-${segment.href}`}
+						href={segment.href}
+						label={segment.label}
+					/>
+				) : (
+					<span key={`desc-text-${index}`}>{segment.value}</span>
+				),
+			)}
+		</>
 	)
 }
 
@@ -2658,14 +2839,14 @@ function ConetGenesisNodeDiscoverSection({
 	evangelistLink,
 	onExplore,
 	onLockSeat,
-	lockingSeat,
+	purchasePhase,
 	eoaUsdcBalance6,
 	beneficiaryEoa,
 }: {
 	evangelistLink: string
 	onExplore: () => void
 	onLockSeat: (quantity: number, cloudNode: boolean, totalUsdc: number, canPayLocally: boolean) => void
-	lockingSeat?: boolean
+	purchasePhase: GenesisSeatPurchasePhase
 	/** Trusted Base USDC balance of local EOA; null = unknown / not loaded. */
 	eoaUsdcBalance6: bigint | null
 	beneficiaryEoa: string | null
@@ -2674,6 +2855,10 @@ function ConetGenesisNodeDiscoverSection({
 	const [quantity, setQuantity] = useState(1)
 	const [linkCopied, setLinkCopied] = useState(false)
 	const linkCopiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+	const purchaseBusy =
+		purchasePhase.kind === 'paying' || purchasePhase.kind === 'deploying'
+	const purchaseSuccess = purchasePhase.kind === 'success'
 
 	useEffect(() => {
 		return () => {
@@ -2712,7 +2897,7 @@ function ConetGenesisNodeDiscoverSection({
 			if (linkCopiedTimerRef.current != null) clearTimeout(linkCopiedTimerRef.current)
 			linkCopiedTimerRef.current = setTimeout(() => setLinkCopied(false), 2500)
 		} catch {
-			Toast.show({ content: 'Unable to copy link' })
+			/* no popup — copy failed silently */
 		}
 	}, [evangelistLink])
 
@@ -2720,11 +2905,26 @@ function ConetGenesisNodeDiscoverSection({
 		? 'bg-emerald-600 shadow-lg shadow-emerald-500/25 hover:bg-emerald-500'
 		: 'bg-[#1562f0] shadow-lg shadow-blue-500/25 hover:bg-blue-600'
 
-	const lockButtonLabel = lockingSeat
-		? canPayLocally
-			? 'Paying with wallet…'
-			: 'Opening payment…'
-		: 'Lock Infrastructure Seat Now'
+	const lockButtonLabel =
+		purchasePhase.kind === 'paying'
+			? 'Completing payment…'
+			: purchasePhase.kind === 'deploying'
+				? 'Deploying CoNET DePIN nodes…'
+				: 'Lock Infrastructure Seat Now'
+
+	const successTxHash =
+		purchaseSuccess && purchasePhase.claimTx
+			? purchasePhase.claimTx
+			: purchaseSuccess
+				? purchasePhase.usdcTx
+				: null
+	const successTxExplorer =
+		purchaseSuccess && purchasePhase.claimTx
+			? beamioConetMainnetTxExplorerUrl(purchasePhase.claimTx)
+			: purchaseSuccess && purchasePhase.usdcTx
+				? `https://basescan.org/tx/${purchasePhase.usdcTx}`
+				: null
+	const successNodes = purchaseSuccess ? purchasePhase.nodes : []
 
 	return (
 		<>
@@ -2764,7 +2964,7 @@ function ConetGenesisNodeDiscoverSection({
 							<button
 								type="button"
 								onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-								disabled={quantity <= 1 || lockingSeat === true || localTestEoa}
+								disabled={quantity <= 1 || purchaseBusy || purchaseSuccess || localTestEoa}
 								className="flex h-7 w-7 items-center justify-center rounded-full text-[#1562f0] transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
 								aria-label="Decrease quantity"
 							>
@@ -2776,7 +2976,7 @@ function ConetGenesisNodeDiscoverSection({
 							<button
 								type="button"
 								onClick={() => setQuantity((q) => Math.min(CONET_GENESIS_GLOBAL_CAP, q + 1))}
-								disabled={lockingSeat === true || localTestEoa}
+								disabled={purchaseBusy || purchaseSuccess || localTestEoa}
 								className="flex h-7 w-7 items-center justify-center rounded-full text-[#1562f0] transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
 								aria-label="Increase quantity"
 							>
@@ -2821,22 +3021,57 @@ function ConetGenesisNodeDiscoverSection({
 					) : null}
 				</div>
 
-				<button
-					type="button"
-					onClick={() => onLockSeat(quantity, true, totalThreshold, canPayLocally)}
-					disabled={lockingSeat === true}
-					aria-busy={lockingSeat === true}
-					className={`mt-4 flex w-full items-center justify-center gap-2 rounded-full px-4 py-3.5 text-[15px] font-bold text-white transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-70 ${lockButtonClass}`}
-				>
-					{lockingSeat ? (
-						<>
-							<Loader2 className="h-5 w-5 animate-spin" strokeWidth={2} aria-hidden />
-							{lockButtonLabel}
-						</>
-					) : (
-						lockButtonLabel
-					)}
-				</button>
+				{purchaseSuccess ? (
+					<div className="mt-4 rounded-[18px] border border-emerald-200 bg-emerald-50/90 p-4 dark:border-emerald-500/30 dark:bg-emerald-950/40">
+						<div className="flex items-start gap-3">
+							<span className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+								<CheckCircle2 className="h-5 w-5" strokeWidth={2.25} aria-hidden />
+							</span>
+							<div className="min-w-0 flex-1">
+								<p className="text-[15px] font-bold leading-snug text-[#1f2328] dark:text-slate-100">
+									Thank you for becoming a CONET Infrastructure node owner
+								</p>
+								<p className="mt-2 text-[13px] leading-relaxed text-slate-600 dark:text-slate-300">
+									Your nodes:{' '}
+									<span className="font-semibold text-[#1f2328] dark:text-slate-100">
+										{successNodes.length > 0 ? successNodes.join(', ') : 'Assigned on-chain'}
+									</span>
+								</p>
+								{successTxHash && successTxExplorer ? (
+									<div className="mt-3">
+										<GenesisSeatTxHashCapsule
+											txHash={successTxHash}
+											explorerUrl={successTxExplorer}
+											label="Tx"
+										/>
+									</div>
+								) : null}
+							</div>
+						</div>
+					</div>
+				) : (
+					<button
+						type="button"
+						onClick={() => onLockSeat(quantity, true, totalThreshold, canPayLocally)}
+						disabled={purchaseBusy}
+						aria-busy={purchaseBusy}
+						className={`mt-4 flex w-full items-center justify-center gap-2 rounded-full px-4 py-3.5 text-[15px] font-bold text-white transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-70 ${lockButtonClass}`}
+					>
+						{purchaseBusy ? (
+							<>
+								<Loader2 className="h-5 w-5 shrink-0 animate-spin" strokeWidth={2} aria-hidden />
+								<span className="text-left leading-snug">{lockButtonLabel}</span>
+							</>
+						) : (
+							lockButtonLabel
+						)}
+					</button>
+				)}
+				{purchasePhase.kind === 'error' ? (
+					<p className="mt-2 text-center text-[12px] font-medium text-amber-600 dark:text-amber-400" role="alert">
+						{purchasePhase.message}
+					</p>
+				) : null}
 			</div>
 
 			{/* Evangelist Program */}
@@ -3229,9 +3464,17 @@ function DiscoverMerchantDetailFullScreen({
 		}
 	}, [profile])
 
-	const [genesisSeatLocking, setGenesisSeatLocking] = useState(false)
-	const genesisSeatLockInFlightRef = useRef(false)
 	const [genesisEoaUsdcBalance6, setGenesisEoaUsdcBalance6] = useState<bigint | null>(null)
+	const [genesisSeatPurchase, setGenesisSeatPurchase] = useState<GenesisSeatPurchasePhase>({ kind: 'idle' })
+	const genesisSeatLockInFlightRef = useRef(false)
+	const genesisSeatAbortRef = useRef<AbortController | null>(null)
+
+	useEffect(() => {
+		return () => {
+			genesisSeatAbortRef.current?.abort()
+			genesisSeatAbortRef.current = null
+		}
+	}, [])
 
 	useEffect(() => {
 		if (!isConetGenesisCard || !profile?.keyID) {
@@ -3253,37 +3496,43 @@ function DiscoverMerchantDetailFullScreen({
 	}, [isConetGenesisCard, profile, profile?.keyID])
 
 	const lockConetGenesisSeat = useCallback(
-		(quantity: number, _cloudNode: boolean, totalUsdc: number, canPayLocally: boolean) => {
+		(quantity: number, _cloudNode: boolean, _totalUsdc: number, canPayLocally: boolean) => {
 			if (genesisSeatLockInFlightRef.current) return
 			const privateKeyArmor = resolveSigningPrivateKeyArmor(profile)
 			const beneficiary = resolveUserEoa()
 			if (!privateKeyArmor || !beneficiary) {
-				Toast.show({ content: 'Restore your wallet to lock a Genesis seat' })
+				setGenesisSeatPurchase({
+					kind: 'error',
+					message: 'Restore your wallet to lock a Genesis seat.',
+				})
 				return
 			}
 			const cardOwner = issuerOwnerEoa
 			if (!cardOwner || !ethers.isAddress(cardOwner)) {
-				Toast.show({ content: 'Merchant card owner unavailable. Pull to refresh and try again.' })
+				setGenesisSeatPurchase({
+					kind: 'error',
+					message: 'Merchant card owner unavailable. Pull to refresh and try again.',
+				})
 				return
 			}
 			if (!profile) {
-				Toast.show({ content: 'Restore your wallet to lock a Genesis seat' })
+				setGenesisSeatPurchase({
+					kind: 'error',
+					message: 'Restore your wallet to lock a Genesis seat.',
+				})
 				return
 			}
 			const qty = Math.max(1, Math.floor(Number(quantity) || 1))
 			const localTestEoa = isGenesisNodeSeatLocalTestEoa(beneficiary)
+			const payQty = localTestEoa ? 1 : qty
+
 			const openExternalPay = () => {
 				const payUrl = buildDiscoverGenesisNodeSeatUrl({
 					cardAddress: CONET_GENESIS_DISCOVER_CARD_ADDRESS,
 					cardOwner,
 					beneficiaryEoa: beneficiary,
-					quantity: localTestEoa ? 1 : qty,
+					quantity: payQty,
 					testCode: localTestEoa ? GENESIS_NODE_SEAT_TEST_CODE : undefined,
-				})
-				Toast.show({
-					content: localTestEoa
-						? `Opening payment · 1 Genesis Node · 1 USDC`
-						: `Opening payment · ${qty} Genesis Node${qty > 1 ? 's' : ''} · ${totalUsdc.toLocaleString('en-US')} USDC`,
 				})
 				void openExternalUrl(payUrl)
 			}
@@ -3294,47 +3543,73 @@ function DiscoverMerchantDetailFullScreen({
 			}
 
 			genesisSeatLockInFlightRef.current = true
-			setGenesisSeatLocking(true)
-			Toast.show({
-				content: localTestEoa
-					? 'Paying with your wallet · 1 USDC'
-					: `Paying with your wallet · ${totalUsdc.toLocaleString('en-US')} USDC`,
-			})
+			genesisSeatAbortRef.current?.abort()
+			const abort = new AbortController()
+			genesisSeatAbortRef.current = abort
+			setGenesisSeatPurchase({ kind: 'paying' })
+
 			void (async () => {
 				try {
+					const baseline = await readGenesisSeatBeneficiaryBaseline(beneficiary)
 					const result = await payGenesisNodeSeatWithLocalWallet({
 						profile: profile as profile,
 						privateKeyArmor,
 						cardAddress: CONET_GENESIS_DISCOVER_CARD_ADDRESS,
 						cardOwner,
 						beneficiaryEoa: beneficiary,
-						quantity: localTestEoa ? 1 : qty,
+						quantity: payQty,
 					})
+					if (abort.signal.aborted) return
+
 					if (result.ok) {
-						Toast.show({
-							content: result.USDC_tx
-								? `Seat payment confirmed · ${localTestEoa ? 1 : qty} Genesis Node${(localTestEoa ? 1 : qty) > 1 ? 's' : ''}`
-								: `Seat payment submitted · ${localTestEoa ? 1 : qty} Genesis Node${(localTestEoa ? 1 : qty) > 1 ? 's' : ''}`,
-						})
+						const usdcTx = result.USDC_tx?.trim() || null
+						setGenesisSeatPurchase({ kind: 'deploying', usdcTx, qty: payQty })
 						try {
 							const bal = await readEoaUsdcBalance6(profile as profile)
-							setGenesisEoaUsdcBalance6(bal)
+							if (!abort.signal.aborted) setGenesisEoaUsdcBalance6(bal)
 						} catch {
 							/* keep last trusted balance */
 						}
+
+						const wait = await waitForGenesisSeatNodesAssigned({
+							beneficiaryEoa: beneficiary,
+							expectedQty: payQty,
+							baseline,
+							signal: abort.signal,
+						})
+						if (abort.signal.aborted) return
+
+						if (wait.ok) {
+							setGenesisSeatPurchase({
+								kind: 'success',
+								usdcTx,
+								claimTx: wait.claimTxHash,
+								nodes: wait.depinNodeIps,
+								qty: payQty,
+							})
+							return
+						}
+						setGenesisSeatPurchase({
+							kind: 'error',
+							message: wait.error || 'Node deployment is still pending. Check your wallet shortly.',
+						})
 						return
 					}
 					if (result.insufficientBalance) {
+						setGenesisSeatPurchase({ kind: 'idle' })
 						openExternalPay()
 						return
 					}
-					Toast.show({ content: result.error || 'Genesis seat payment failed' })
+					setGenesisSeatPurchase({
+						kind: 'error',
+						message: result.error || 'Genesis seat payment failed.',
+					})
 				} catch (e: unknown) {
-					const msg = e instanceof Error ? e.message : 'Genesis seat payment failed'
-					Toast.show({ content: msg })
+					if (abort.signal.aborted) return
+					const msg = e instanceof Error ? e.message : 'Genesis seat payment failed.'
+					setGenesisSeatPurchase({ kind: 'error', message: msg })
 				} finally {
 					genesisSeatLockInFlightRef.current = false
-					setGenesisSeatLocking(false)
 				}
 			})()
 		},
@@ -4160,7 +4435,7 @@ function DiscoverMerchantDetailFullScreen({
 							evangelistLink={conetEvangelistLink}
 							onExplore={openConetExplore}
 							onLockSeat={lockConetGenesisSeat}
-							lockingSeat={genesisSeatLocking}
+							purchasePhase={genesisSeatPurchase}
 							eoaUsdcBalance6={genesisEoaUsdcBalance6}
 							beneficiaryEoa={resolveUserEoa()}
 						/>

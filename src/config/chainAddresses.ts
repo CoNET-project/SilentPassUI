@@ -15,11 +15,17 @@ export const BEAMIO_AA_FACTORY_V2 = '0xE9577cFd00A00E97D26854243B6AB4B11D5E907f'
 export const BASE_AA_FACTORY = BEAMIO_AA_FACTORY
 export const BASE_CARD_FACTORY = '0xF2864210577359AcaE448D2B116031a0c5EE1016'
 export const BASE_CCSA_CARD_ADDRESS = '0x2032A363BB2cf331142391fC0DAd21D6504922C7'
-/** 统一国库 ConetTreasury CREATE2（Base + CoNET 同址） */
+/**
+ * @deprecated 旧工厂 ConetTreasury CREATE2。
+ * Base Circle USDC settle / NodeSale 仍用此址；CoNET 业务国库见 {@link CONET_TREASURY}。
+ */
 export const CONET_TREASURY_CREATE2 = '0xa311c8fBE7CafC611603Ee925465A62493B73B30'
+/** Base 主网 Circle USDC 入金（CREATE2 ConetTreasury） */
 export const BASE_TREASURY = CONET_TREASURY_CREATE2
 /** @deprecated 旧 BaseTreasury 0x5c64… */
 export const BASE_TREASURY_LEGACY = '0x5c64a8b0935DA72d60933bBD8cD10579E1C40c58'
+/** CoNET 业务国库 = TreasuryBridgeV3（唯一 conet-USDC 增发 / fee mint） */
+export const CONET_TREASURY = '0xa208982212978550594A7FEEB70a61665d129003'
 export const BEAMIO_USER_CARD_ASSET_ADDRESS = '0xA756F2E27a332d6Be2d399dA543E3Ce4C8455F14'
 export const USDC_BASE = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
 export const BEAMIO_INDEXER_DIAMOND = '0x6113fE738489c0aB64B4606Ce333aD29b44ED0C4'
@@ -41,8 +47,12 @@ export const CONET_CARD_FACTORY = '0xfA52a0CcC96C19cF4b6Ea864615F6d52BD0774FB'
 export const CONET_AA_FACTORY = '0x869B31C87ABd9bFB858F5183Ef6021b28ED225E2'
 /** CoNET 默认 BeamioUserCard */
 export const CONET_BEAMIO_USER_CARD_DEFAULT = '0xA5C727d11d04BeBC095bd814c6530c4e77fD6662'
-/** CoNET USDC（ConetTreasury FactoryERC20） */
-export const CONET_USDC = '0xfD0D7B0706AaB5E4351bcED37bC3C77ed6813907'
+/** CoNET 唯一 canonical USDC（Treasury V3 `TreasuryCanonicalERC20V3`） */
+export const CONET_USDC = '0x5209865D404aA5646eDe5B91CD4218909eA72eDA'
+/** TreasuryBridgeV3 proxy — 与 {@link CONET_TREASURY} 同址 */
+export const CONET_TREASURY_BRIDGE_V3 = CONET_TREASURY
+/** @deprecated 工厂版 USDC；停增发，仅存量 */
+export const CONET_USDC_FACTORY_LEGACY = '0xfD0D7B0706AaB5E4351bcED37bC3C77ed6813907'
 /** @deprecated minter=旧国库 0x6dC6… */
 export const CONET_USDC_LEGACY_UUPS_V1 = '0x84e55A7d82aEa1243cB88b20dDde9Ba5cea0E134'
 /** @deprecated legacy FactoryERC20 (non-UUPS) */
@@ -90,5 +100,7 @@ export const CONTRACT_ADDRESSES = {
     cardFactory: CONET_CARD_FACTORY,
     defaultUserCard: CONET_BEAMIO_USER_CARD_DEFAULT,
     usdc: CONET_USDC,
+    conetTreasury: CONET_TREASURY,
+    treasuryBridgeV3: CONET_TREASURY_BRIDGE_V3,
   },
 } as const

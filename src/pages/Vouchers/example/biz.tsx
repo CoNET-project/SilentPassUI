@@ -12390,6 +12390,8 @@ const handlePublishCardIssuanceRef = useRef<
  const cardIssuanceTierBackgroundFileRef = useRef<HTMLInputElement>(null);
  /** IPFS URL ready for Save while draft preview may still be a local blob: URL. */
  const cardIssuanceCardBackgroundPendingIpfsRef = useRef('');
+ /** Mirror of pending IPFS URL so `canSave` re-renders after upload (refs alone do not). */
+ const [cardIssuanceCardBackgroundPendingIpfs, setCardIssuanceCardBackgroundPendingIpfs] = useState('');
  /**
   * Tier id created via Add tier (+) that is not yet confirmed by Card background Save.
   * Closing the drawer without Save removes this tier from the preview list.
@@ -17700,6 +17702,7 @@ const seedCardIssuanceCardBackgroundDrawerFromTier = useCallback((tier: CardIssu
   const threshold = (tier.threshold ?? '').replace(/\D/g, '');
   const logoDisplayScale = clampTierLogoDisplayScale(tier.logoDisplayScale);
   cardIssuanceCardBackgroundPendingIpfsRef.current = '';
+  setCardIssuanceCardBackgroundPendingIpfs('');
   setCardIssuanceCardBackgroundDropActive(false);
   setCardIssuanceCardBackgroundDraftColor(tierColor);
   setCardIssuanceCardBackgroundDraftImage((prev) => {
@@ -17780,7 +17783,25 @@ useEffect(() => {
   if (!cardIssuanceCardBackgroundDrawerOpen || !cardIssuancePreviewEditTier?.id) return;
   if (cardIssuanceTierBackgroundImageUploading || cardIssuanceCardBackgroundApplying) return;
   const tierId = cardIssuancePreviewEditTier.id;
-  if (cardIssuanceCardBackgroundBaseline?.tierId === tierId) return;
+  const tierThreshold = (cardIssuancePreviewEditTier.threshold ?? '').replace(/\D/g, '');
+  if (cardIssuanceCardBackgroundBaseline?.tierId === tierId) {
+    /**
+     * Same tier: if min-topup reconcile bumped the row threshold while the drawer is open,
+     * sync draft/baseline when the user has not edited the amount (keeps Save from staying
+     * disabled on chrome-only edits against a stale below-min draft).
+     */
+    const baseThresh = cardIssuanceCardBackgroundBaseline.threshold;
+    if (tierThreshold && tierThreshold !== baseThresh) {
+      const draftThresh = cardIssuanceCardBackgroundDraftThreshold.replace(/\D/g, '');
+      if (draftThresh === baseThresh) {
+        setCardIssuanceCardBackgroundDraftThreshold(tierThreshold);
+        setCardIssuanceCardBackgroundBaseline((base) =>
+          base && base.tierId === tierId ? { ...base, threshold: tierThreshold } : base
+        );
+      }
+    }
+    return;
+  }
   const tierImage = (cardIssuancePreviewEditTier.backgroundImage ?? '').trim();
   const tierImageFit = normalizeCardIssuanceBackgroundImageFit(
     cardIssuancePreviewEditTier.backgroundImageFit
@@ -17795,8 +17816,10 @@ useEffect(() => {
   const discountPercent = (cardIssuancePreviewEditTier.discountPercent ?? '')
     .replace(/\D/g, '')
     .slice(0, 3);
-  const threshold = (cardIssuancePreviewEditTier.threshold ?? '').replace(/\D/g, '');
+  const threshold = tierThreshold;
   const logoDisplayScale = clampTierLogoDisplayScale(cardIssuancePreviewEditTier.logoDisplayScale);
+  cardIssuanceCardBackgroundPendingIpfsRef.current = '';
+  setCardIssuanceCardBackgroundPendingIpfs('');
   setCardIssuanceCardBackgroundDraftImage((prev) => {
     if (prev.startsWith('blob:')) {
       try {
@@ -17827,7 +17850,8 @@ useEffect(() => {
   });
 }, [
   cardIssuanceCardBackgroundApplying,
-  cardIssuanceCardBackgroundBaseline?.tierId,
+  cardIssuanceCardBackgroundBaseline,
+  cardIssuanceCardBackgroundDraftThreshold,
   cardIssuanceCardBackgroundDrawerOpen,
   cardIssuancePreviewEditTier?.backgroundColor,
   cardIssuancePreviewEditTier?.backgroundImage,
@@ -17878,30 +17902,34 @@ const cardIssuanceCardBackgroundCanSave = useMemo(() => {
   if (cardIssuanceCardBackgroundApplying || cardIssuanceTierBackgroundImageUploading) return false;
   const nextName = cardIssuanceCardBackgroundDraftName.trim();
   if (!nextName) return false;
-  const nextThresholdInt = Number.parseInt(
-    cardIssuanceCardBackgroundDraftThreshold.replace(/,/g, '').replace(/\D/g, '').trim(),
-    10
-  );
+  const draftThresholdDigits = cardIssuanceCardBackgroundDraftThreshold
+    .replace(/,/g, '')
+    .replace(/\D/g, '')
+    .trim();
+  const nextThresholdInt = Number.parseInt(draftThresholdDigits, 10);
   if (!Number.isFinite(nextThresholdInt) || nextThresholdInt <= 0) return false;
   const tierId = cardIssuancePreviewEditTier?.id;
   if (!tierId) return false;
-  const editingBaseTier = tierId === CARD_ISSUANCE_SINGLE_TIER_ID;
-  if (editingBaseTier && nextThresholdInt < cardIssuanceMinTopupCurrencyFloor) return false;
-  const minTopupN = cardIssuanceTierThresholdToInt(cardIssuanceMinTopup);
-  if (!editingBaseTier && nextThresholdInt <= minTopupN) return false;
-  const otherThresholds = cardIssuanceTiers
-    .filter((tier) => tier.id !== tierId)
-    .map((tier) => cardIssuanceTierThresholdToInt(tier.threshold));
-  if (otherThresholds.includes(nextThresholdInt)) return false;
-  const nextColor =
-    tierBackgroundColorForPayload(cardIssuanceCardBackgroundDraftColor) ??
-    (cardIssuanceCardBackgroundDraftColor.trim().startsWith('#')
-      ? cardIssuanceCardBackgroundDraftColor.trim().slice(0, 7)
-      : '');
+  const base = cardIssuanceCardBackgroundBaseline;
+  /** Chrome-only edits must not stay blocked by a pre-existing / stale threshold vs floor. */
+  const thresholdDirty = !base || draftThresholdDigits !== base.threshold;
+  if (thresholdDirty) {
+    const editingBaseTier = tierId === CARD_ISSUANCE_SINGLE_TIER_ID;
+    if (editingBaseTier && nextThresholdInt < cardIssuanceMinTopupCurrencyFloor) return false;
+    const minTopupN = cardIssuanceTierThresholdToInt(cardIssuanceMinTopup);
+    if (!editingBaseTier && nextThresholdInt <= minTopupN) return false;
+    const otherThresholds = cardIssuanceTiers
+      .filter((tier) => tier.id !== tierId)
+      .map((tier) => cardIssuanceTierThresholdToInt(tier.threshold));
+    if (otherThresholds.includes(nextThresholdInt)) return false;
+  }
+  const nextColor = tierBackgroundColorForPayload(cardIssuanceCardBackgroundDraftColor);
   if (!nextColor) return false;
   if (cardIssuanceCardBackgroundMode === 'image') {
     const draft = cardIssuanceCardBackgroundDraftImage.trim();
-    const pendingIpfs = cardIssuanceCardBackgroundPendingIpfsRef.current.trim();
+    const pendingIpfs =
+      cardIssuanceCardBackgroundPendingIpfs.trim() ||
+      cardIssuanceCardBackgroundPendingIpfsRef.current.trim();
     if (!draft && !pendingIpfs) return false;
     if (draft.startsWith('blob:') || draft.startsWith('data:')) {
       if (!pendingIpfs) return false;
@@ -17913,14 +17941,85 @@ const cardIssuanceCardBackgroundCanSave = useMemo(() => {
   return true;
 }, [
   cardIssuanceCardBackgroundApplying,
+  cardIssuanceCardBackgroundBaseline,
   cardIssuanceCardBackgroundDirty,
   cardIssuanceCardBackgroundDraftColor,
   cardIssuanceCardBackgroundDraftImage,
   cardIssuanceCardBackgroundDraftName,
   cardIssuanceCardBackgroundDraftThreshold,
   cardIssuanceCardBackgroundMode,
+  cardIssuanceCardBackgroundPendingIpfs,
   cardIssuanceMinTopup,
   cardIssuanceMinTopupCurrencyFloor,
+  cardIssuancePreviewEditTier?.id,
+  cardIssuanceTierBackgroundImageUploading,
+  cardIssuanceTiers,
+]);
+
+/** Why top-bar Save stays disabled while the form is dirty (English, for the drawer hint). */
+const cardIssuanceCardBackgroundSaveBlockedReason = useMemo(() => {
+  if (!cardIssuanceCardBackgroundDirty || cardIssuanceCardBackgroundCanSave) return '';
+  if (cardIssuanceCardBackgroundApplying || cardIssuanceTierBackgroundImageUploading) {
+    return cardIssuanceTierBackgroundImageUploading
+      ? 'Image is still preparing. Wait for upload to finish, then Save.'
+      : 'Saving…';
+  }
+  if (!cardIssuanceCardBackgroundDraftName.trim()) return 'Tier name is required.';
+  const draftThresholdDigits = cardIssuanceCardBackgroundDraftThreshold
+    .replace(/,/g, '')
+    .replace(/\D/g, '')
+    .trim();
+  const nextThresholdInt = Number.parseInt(draftThresholdDigits, 10);
+  if (!Number.isFinite(nextThresholdInt) || nextThresholdInt <= 0) {
+    return 'Enter a valid minimum spending amount.';
+  }
+  const tierId = cardIssuancePreviewEditTier?.id;
+  const base = cardIssuanceCardBackgroundBaseline;
+  const thresholdDirty = !base || draftThresholdDigits !== base.threshold;
+  if (thresholdDirty && tierId) {
+    const editingBaseTier = tierId === CARD_ISSUANCE_SINGLE_TIER_ID;
+    if (editingBaseTier && nextThresholdInt < cardIssuanceMinTopupCurrencyFloor) {
+      return `Base Tier must be at least ${cardIssuanceMinTopupFloorLabel}.`;
+    }
+    const minTopupN = cardIssuanceTierThresholdToInt(cardIssuanceMinTopup);
+    if (!editingBaseTier && nextThresholdInt <= minTopupN) {
+      return 'Reward tiers must be above the Base minimum spending amount.';
+    }
+    const otherThresholds = cardIssuanceTiers
+      .filter((tier) => tier.id !== tierId)
+      .map((tier) => cardIssuanceTierThresholdToInt(tier.threshold));
+    if (otherThresholds.includes(nextThresholdInt)) {
+      return 'Another tier already uses this minimum spending amount.';
+    }
+  }
+  if (!tierBackgroundColorForPayload(cardIssuanceCardBackgroundDraftColor)) {
+    return 'Enter a valid background color (e.g. #0051d1).';
+  }
+  if (cardIssuanceCardBackgroundMode === 'image') {
+    const draft = cardIssuanceCardBackgroundDraftImage.trim();
+    const pendingIpfs =
+      cardIssuanceCardBackgroundPendingIpfs.trim() ||
+      cardIssuanceCardBackgroundPendingIpfsRef.current.trim();
+    if (!draft && !pendingIpfs) return 'Choose a background image, or switch to Color.';
+    if ((draft.startsWith('blob:') || draft.startsWith('data:')) && !pendingIpfs) {
+      return 'Image is still preparing. Wait for upload to finish, then Save.';
+    }
+  }
+  return '';
+}, [
+  cardIssuanceCardBackgroundApplying,
+  cardIssuanceCardBackgroundBaseline,
+  cardIssuanceCardBackgroundCanSave,
+  cardIssuanceCardBackgroundDirty,
+  cardIssuanceCardBackgroundDraftColor,
+  cardIssuanceCardBackgroundDraftImage,
+  cardIssuanceCardBackgroundDraftName,
+  cardIssuanceCardBackgroundDraftThreshold,
+  cardIssuanceCardBackgroundMode,
+  cardIssuanceCardBackgroundPendingIpfs,
+  cardIssuanceMinTopup,
+  cardIssuanceMinTopupCurrencyFloor,
+  cardIssuanceMinTopupFloorLabel,
   cardIssuancePreviewEditTier?.id,
   cardIssuanceTierBackgroundImageUploading,
   cardIssuanceTiers,
@@ -17938,6 +18037,7 @@ const revokeCardIssuanceCardBackgroundDraftBlob = useCallback((url: string) => {
 const discardCardIssuanceCardBackground = useCallback(() => {
   const base = cardIssuanceCardBackgroundBaseline;
   cardIssuanceCardBackgroundPendingIpfsRef.current = '';
+  setCardIssuanceCardBackgroundPendingIpfs('');
   setCardIssuanceCardBackgroundDraftImage((prev) => {
     if (prev.startsWith('blob:') && prev !== (base?.image ?? '')) {
       revokeCardIssuanceCardBackgroundDraftBlob(prev);
@@ -17989,30 +18089,31 @@ const saveCardIssuanceCardBackground = useCallback(async () => {
     return;
   }
   const editingBaseTier = tierId === CARD_ISSUANCE_SINGLE_TIER_ID;
-  if (editingBaseTier && nextThresholdInt < cardIssuanceMinTopupCurrencyFloor) {
-    setCardIssuanceCreateError(`Base Tier must be at least ${cardIssuanceMinTopupFloorLabel}.`);
-    return;
-  }
-  const minTopupN = cardIssuanceTierThresholdToInt(cardIssuanceMinTopup);
-  if (!editingBaseTier && nextThresholdInt <= minTopupN) {
-    setCardIssuanceCreateError('Reward tiers must be above the Base minimum spending amount.');
-    return;
-  }
-  const otherThresholds = cardIssuanceTiers
-    .filter((tier) => tier.id !== tierId)
-    .map((tier) => cardIssuanceTierThresholdToInt(tier.threshold));
-  if (otherThresholds.includes(nextThresholdInt)) {
-    setCardIssuanceCreateError('Another tier already uses this minimum spending amount.');
-    return;
+  const base = cardIssuanceCardBackgroundBaseline;
+  const draftThresholdDigits = String(nextThresholdInt);
+  const thresholdDirty = !base || draftThresholdDigits !== base.threshold;
+  if (thresholdDirty) {
+    if (editingBaseTier && nextThresholdInt < cardIssuanceMinTopupCurrencyFloor) {
+      setCardIssuanceCreateError(`Base Tier must be at least ${cardIssuanceMinTopupFloorLabel}.`);
+      return;
+    }
+    const minTopupN = cardIssuanceTierThresholdToInt(cardIssuanceMinTopup);
+    if (!editingBaseTier && nextThresholdInt <= minTopupN) {
+      setCardIssuanceCreateError('Reward tiers must be above the Base minimum spending amount.');
+      return;
+    }
+    const otherThresholds = cardIssuanceTiers
+      .filter((tier) => tier.id !== tierId)
+      .map((tier) => cardIssuanceTierThresholdToInt(tier.threshold));
+    if (otherThresholds.includes(nextThresholdInt)) {
+      setCardIssuanceCreateError('Another tier already uses this minimum spending amount.');
+      return;
+    }
   }
   const nextThreshold = String(nextThresholdInt);
   const nextDiscount = cardIssuanceCardBackgroundDraftDiscount.replace(/\D/g, '').slice(0, 3);
 
-  const nextColor =
-    tierBackgroundColorForPayload(cardIssuanceCardBackgroundDraftColor) ??
-    (cardIssuanceCardBackgroundDraftColor.trim().startsWith('#')
-      ? cardIssuanceCardBackgroundDraftColor.trim().slice(0, 7)
-      : '');
+  const nextColor = tierBackgroundColorForPayload(cardIssuanceCardBackgroundDraftColor);
   if (!nextColor) {
     setCardIssuanceCreateError('Enter a valid background color (e.g. #0051d1).');
     return;
@@ -18021,7 +18122,9 @@ const saveCardIssuanceCardBackground = useCallback(async () => {
   let nextImage = '';
   if (cardIssuanceCardBackgroundMode === 'image') {
     const draft = cardIssuanceCardBackgroundDraftImage.trim();
-    const pendingIpfs = cardIssuanceCardBackgroundPendingIpfsRef.current.trim();
+    const pendingIpfs =
+      cardIssuanceCardBackgroundPendingIpfs.trim() ||
+      cardIssuanceCardBackgroundPendingIpfsRef.current.trim();
     if (!draft && !pendingIpfs) {
       setCardIssuanceCreateError('Choose a background image, or switch to Color.');
       return;
@@ -18108,6 +18211,7 @@ const saveCardIssuanceCardBackground = useCallback(async () => {
       return nextImage;
     });
     cardIssuanceCardBackgroundPendingIpfsRef.current = '';
+    setCardIssuanceCardBackgroundPendingIpfs('');
     setCardIssuanceCardBackgroundDraftColor(nextColor);
     setCardIssuanceCardBackgroundDraftImageFit(nextImageFit);
     setCardIssuanceCardBackgroundDraftName(nextName);
@@ -18133,6 +18237,7 @@ const saveCardIssuanceCardBackground = useCallback(async () => {
   }
 }, [
   buildCardIssuanceTiersPayloadFromRows,
+  cardIssuanceCardBackgroundBaseline,
   cardIssuanceCardBackgroundDraftColor,
   cardIssuanceCardBackgroundDraftDiscount,
   cardIssuanceCardBackgroundDraftImage,
@@ -18141,6 +18246,7 @@ const saveCardIssuanceCardBackground = useCallback(async () => {
   cardIssuanceCardBackgroundDraftName,
   cardIssuanceCardBackgroundDraftThreshold,
   cardIssuanceCardBackgroundMode,
+  cardIssuanceCardBackgroundPendingIpfs,
   cardIssuanceCardBackgroundPendingNewTierId,
   cardIssuanceExistingCard?.cardAddress,
   cardIssuanceMinTopup,
@@ -18171,6 +18277,7 @@ const ingestCardIssuanceTierBackgroundImageFile = useCallback(
     setCardIssuanceCardBackgroundDropActive(false);
     setCardIssuanceTierBackgroundImageUploading(true);
     cardIssuanceCardBackgroundPendingIpfsRef.current = '';
+    setCardIssuanceCardBackgroundPendingIpfs('');
     const localPreview = URL.createObjectURL(file);
     setCardIssuanceCardBackgroundDraftImage((prev) => {
       if ((prev.startsWith('blob:') || prev.startsWith('data:')) && prev !== localPreview) {
@@ -18184,6 +18291,7 @@ const ingestCardIssuanceTierBackgroundImageFile = useCallback(
       if (!hash) {
         setCardIssuanceCreateError('Tier background image upload failed.');
         cardIssuanceCardBackgroundPendingIpfsRef.current = '';
+        setCardIssuanceCardBackgroundPendingIpfs('');
         setCardIssuanceCardBackgroundDraftImage((prev) => {
           if (prev === localPreview) {
             revokeCardIssuanceCardBackgroundDraftBlob(localPreview);
@@ -18194,10 +18302,13 @@ const ingestCardIssuanceTierBackgroundImageFile = useCallback(
         return;
       }
       // Keep blob as the visible draft preview; Save uses this IPFS URL.
-      cardIssuanceCardBackgroundPendingIpfsRef.current = `${IPFS_GET_FRAGMENT}${hash}&t=${Date.now()}`;
+      const ipfsUrl = `${IPFS_GET_FRAGMENT}${hash}&t=${Date.now()}`;
+      cardIssuanceCardBackgroundPendingIpfsRef.current = ipfsUrl;
+      setCardIssuanceCardBackgroundPendingIpfs(ipfsUrl);
     } catch (err: any) {
       setCardIssuanceCreateError(err?.message ?? 'Tier background image upload failed.');
       cardIssuanceCardBackgroundPendingIpfsRef.current = '';
+      setCardIssuanceCardBackgroundPendingIpfs('');
       setCardIssuanceCardBackgroundDraftImage((prev) => {
         if (prev === localPreview || prev.startsWith('blob:') || prev.startsWith('data:')) {
           revokeCardIssuanceCardBackgroundDraftBlob(prev === localPreview ? localPreview : prev);
@@ -18290,6 +18401,7 @@ const handleCardIssuanceTierBackgroundImageDrop = useCallback(
 /** Clear draft image only — does not persist until Save. */
 const clearCardIssuanceCardBackgroundDraftImage = useCallback(() => {
   cardIssuanceCardBackgroundPendingIpfsRef.current = '';
+  setCardIssuanceCardBackgroundPendingIpfs('');
   setCardIssuanceCardBackgroundDropActive(false);
   setCardIssuanceCardBackgroundDraftImage((prev) => {
     if (prev.startsWith('blob:') || prev.startsWith('data:')) {
@@ -38173,6 +38285,11 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                         )}
                       </button>
                     </div>
+                    {cardIssuanceCardBackgroundSaveBlockedReason ? (
+                      <p className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900" role="status">
+                        {cardIssuanceCardBackgroundSaveBlockedReason}
+                      </p>
+                    ) : null}
 
                     <div className="mb-3 space-y-2.5">
                       <div className="rounded-2xl bg-[#eef1f3] px-3.5 pb-2 pt-1.5">

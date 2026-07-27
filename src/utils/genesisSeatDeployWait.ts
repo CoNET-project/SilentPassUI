@@ -33,7 +33,7 @@ export async function readGenesisSeatBeneficiaryBaseline(
 	if (!ethers.isAddress(beneficiaryEoa)) return null
 	const r = await fetchBeneficiaryNodeBundle(ethers.getAddress(beneficiaryEoa))
 	if (!r.ok) return null
-	const ips = (r.bundle.depinNodeIps ?? []).map((s) => String(s ?? '').trim()).filter(Boolean)
+	const ips = (r.bundle.conetDepinNodeIps ?? []).map((s) => String(s ?? '').trim()).filter(Boolean)
 	const ids = (r.bundle.guardianNodeIds ?? []).map((n) => String(n))
 	const claimCount = Number(r.bundle.claimCount ?? 0)
 	return {
@@ -128,7 +128,7 @@ export async function waitForGenesisSeatNodesAssigned(params: {
 		const bundle = await fetchBeneficiaryNodeBundle(beneficiary)
 
 		if (bundle.ok) {
-			const ips = (bundle.bundle.depinNodeIps ?? []).map((s) => String(s ?? '').trim()).filter(Boolean)
+			const ips = (bundle.bundle.conetDepinNodeIps ?? []).map((s) => String(s ?? '').trim()).filter(Boolean)
 			const ids = (bundle.bundle.guardianNodeIds ?? []).map((n) => String(n))
 			const claimCount = Number(bundle.bundle.claimCount ?? 0)
 			const claimGrew =

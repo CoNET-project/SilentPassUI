@@ -44,7 +44,10 @@ export function walletStoragePartitionLower(
 }
 
 export function plainBeamioTagSeed(raw: string | undefined): string {
-  return (raw ?? '').trim().replace(/^@+/, '');
+  const plain = (raw ?? '').trim().replace(/^@+/, '')
+  const lower = plain.toLowerCase()
+  if (!plain || lower === 'unknow' || lower === 'unknown' || plain === '未知') return ''
+  return plain
 }
 
 export function isWalletAddressLike(value: string | undefined): boolean {

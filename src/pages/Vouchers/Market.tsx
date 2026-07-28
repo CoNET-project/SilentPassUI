@@ -88,6 +88,13 @@ import {
 	isGenesisNodeSeatPwaTestBuyer,
 	payGenesisNodeSeatWithLocalWallet,
 } from "@/utils/discoverUsdcTopupSession"
+import {
+	fetchGenesisReferrerCandidates,
+	resolveGenesisReferrerRole,
+	type GenesisReferrerCandidate,
+	type GenesisReferrerRole,
+} from "@/services/genesisNodeReferral"
+import { plainBeamioTagSeed } from "@/utils/beamioTagDatabase"
 import { useMerchantCardDatabase } from "@/providers/MerchantCardDatabaseProvider"
 import { merchantCardRecordFromLatestCardsRaw } from "@/utils/merchantCardDatabase"
 import { formatDiscoverLikeCount, invalidateDiscoverMerchantStatCache } from "@/utils/discoverMerchantLikeCount"
@@ -181,7 +188,7 @@ const TRENDING_FETCH_TIMEOUT_MS = 12_000
 
 /**
  * CoNET Genesis Node merchant card — Discover detail renders a bespoke
- * infrastructure-sale layout (Genesis Node Offers / Evangelist Program /
+ * infrastructure-sale layout (Genesis Node Offers with Referral picker /
  * About CoNET) instead of the standard coupons + reward tiers body.
  */
 const CONET_GENESIS_DISCOVER_CARD_ADDRESS = '0xafE482D2612327a0D723544B9fB713C514a793a2'
@@ -2856,40 +2863,137 @@ function DiscoverMerchantInfoPanelCard({ panel }: { panel: DiscoverMerchantInfoP
  * Replaces the standard coupons / reward-tier panels for
  * {@link CONET_GENESIS_DISCOVER_CARD_ADDRESS}.
  */
+function genesisReferrerRoleLabel(role: GenesisReferrerRole): string {
+	if (role === 'admin') return 'Admin'
+	if (role === 'l0') return 'L0'
+	return 'L1'
+}
+
+/** Hide deployer / foundation payout EOA that has no real @BeamioTag (search-users → unknow). */
+const GENESIS_REFERRAL_HIDDEN_EOA = '0x87caed4e51c36a2c2ece3aaf4ddac9693d2405e1'
+
+function shortGenesisReferrerAddress(address: string): string {
+	const a = address.trim()
+	if (!ethers.isAddress(a)) return a
+	const checksum = ethers.getAddress(a)
+	return `${checksum.slice(0, 6)}…${checksum.slice(-4)}`
+}
+
+function isHiddenGenesisReferrerEoa(address: string): boolean {
+	return address.trim().toLowerCase() === GENESIS_REFERRAL_HIDDEN_EOA
+}
+
+/** Exact @BeamioTag match from search-users results (avoid results[0] collisions). */
+function pickExactBeamioTagAddressFromSearch(
+	res: unknown,
+	rawTag: string,
+): string | null {
+	const want = plainBeamioTagSeed(rawTag)
+	if (!want) return null
+	const results = (res as { results?: Array<Record<string, unknown>> })?.results
+	if (!Array.isArray(results) || results.length === 0) return null
+	const tagOf = (row: Record<string, unknown>) =>
+		plainBeamioTagSeed(
+			String(row.accountName ?? row.username ?? row.account_name ?? ''),
+		)
+	const exact = results.find((row) => tagOf(row) === want)
+	const ci = exact ?? results.find((row) => tagOf(row).toLowerCase() === want.toLowerCase())
+	if (!ci) return null
+	const addr = typeof ci.address === 'string' ? ci.address : ''
+	if (!addr || !ethers.isAddress(addr)) return null
+	return ethers.getAddress(addr)
+}
+
 function ConetGenesisNodeDiscoverSection({
-	evangelistLink,
 	onExplore,
 	onLockSeat,
 	purchasePhase,
 	eoaUsdcBalance6,
 	beneficiaryEoa,
+	initialReferrerEoa,
 }: {
-	evangelistLink: string
 	onExplore: () => void
-	onLockSeat: (quantity: number, cloudNode: boolean, totalUsdc: number, canPayLocally: boolean) => void
+	onLockSeat: (
+		quantity: number,
+		cloudNode: boolean,
+		totalUsdc: number,
+		canPayLocally: boolean,
+		referrerEoa: string | null,
+	) => void
 	purchasePhase: GenesisSeatPurchasePhase
 	/** Trusted Base USDC balance of local EOA; null = unknown / not loaded. */
 	eoaUsdcBalance6: bigint | null
 	beneficiaryEoa: string | null
+	/** Deep-link / share referrer EOA to prefill when valid Admin/L0/L1. */
+	initialReferrerEoa?: string | null
 }) {
+	const { resolveTagPlain, ensureProfilesForAddresses, searchRemoteAndIngest, lookupByAddress } =
+		useBeamioTagDatabase()
 	const localTestEoa = isGenesisNodeSeatPwaTestBuyer(beneficiaryEoa)
 	const [quantity, setQuantity] = useState(1)
-	const [linkCopied, setLinkCopied] = useState(false)
-	const linkCopiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+	const [candidates, setCandidates] = useState<GenesisReferrerCandidate[]>([])
+	const [candidatesLoading, setCandidatesLoading] = useState(true)
+	const [selectedReferrerEoa, setSelectedReferrerEoa] = useState<string | null>(null)
+	const [referralInputTag, setReferralInputTag] = useState('')
+	const [referralVerifyStatus, setReferralVerifyStatus] = useState<
+		'idle' | 'loading' | 'success' | 'error'
+	>('idle')
+	const [referralVerifyMessage, setReferralVerifyMessage] = useState('')
+	const [agreementAgreed, setAgreementAgreed] = useState(false)
+	const referralVerifyInFlightRef = useRef(false)
+	const initialReferrerAppliedRef = useRef(false)
 
 	const purchaseBusy =
 		purchasePhase.kind === 'paying' || purchasePhase.kind === 'deploying'
 	const purchaseSuccess = purchasePhase.kind === 'success'
 
 	useEffect(() => {
-		return () => {
-			if (linkCopiedTimerRef.current != null) clearTimeout(linkCopiedTimerRef.current)
-		}
-	}, [])
-
-	useEffect(() => {
 		if (localTestEoa) setQuantity(1)
 	}, [localTestEoa])
+
+	useEffect(() => {
+		let cancelled = false
+		setCandidatesLoading(true)
+		void (async () => {
+			try {
+				const list = await fetchGenesisReferrerCandidates()
+				if (cancelled) return
+				setCandidates(list)
+				const addrs = list.map((c) => c.address)
+				if (addrs.length > 0) {
+					// Force refresh so Admin EOAs resolve real @tags (e.g. Beamio_Manager),
+					// not stale search-users placeholder "unknow".
+					await ensureProfilesForAddresses(addrs, { maxPerTick: 40 }).catch(() => ({}))
+				}
+			} catch {
+				if (!cancelled) setCandidates([])
+			} finally {
+				if (!cancelled) setCandidatesLoading(false)
+			}
+		})()
+		return () => {
+			cancelled = true
+		}
+	}, [ensureProfilesForAddresses])
+
+	useEffect(() => {
+		if (initialReferrerAppliedRef.current) return
+		const raw = (initialReferrerEoa ?? '').trim()
+		if (!raw || !ethers.isAddress(raw)) return
+		initialReferrerAppliedRef.current = true
+		let cancelled = false
+		void (async () => {
+			const resolved = await resolveGenesisReferrerRole(raw)
+			if (cancelled || !resolved) return
+			if (isHiddenGenesisReferrerEoa(resolved.address)) return
+			setSelectedReferrerEoa(resolved.address)
+			const tag = resolveTagPlain(resolved.address)
+			if (tag) setReferralInputTag(tag.replace(/^@+/, ''))
+		})()
+		return () => {
+			cancelled = true
+		}
+	}, [initialReferrerEoa, resolveTagPlain])
 
 	// Cloud Node Deployment Service is mandatory (always included in the entry package).
 	const totalThreshold = useMemo(
@@ -2909,18 +3013,85 @@ function ConetGenesisNodeDiscoverSection({
 	const canPayLocally =
 		eoaUsdcBalance6 != null && eoaCanSelfFundDiscoverTopup(eoaUsdcBalance6, requiredUsdc6)
 
-	const copyEvangelistLink = useCallback(async () => {
-		const link = evangelistLink.trim()
-		if (!link) return
-		try {
-			await navigator.clipboard.writeText(link)
-			setLinkCopied(true)
-			if (linkCopiedTimerRef.current != null) clearTimeout(linkCopiedTimerRef.current)
-			linkCopiedTimerRef.current = setTimeout(() => setLinkCopied(false), 2500)
-		} catch {
-			/* no popup — copy failed silently */
+	const onSelectReferrerFromList = useCallback((address: string) => {
+		const trimmed = address.trim()
+		if (!trimmed) {
+			setSelectedReferrerEoa(null)
+			setReferralVerifyStatus('idle')
+			setReferralVerifyMessage('')
+			return
 		}
-	}, [evangelistLink])
+		if (!ethers.isAddress(trimmed)) return
+		const checksum = ethers.getAddress(trimmed)
+		if (isHiddenGenesisReferrerEoa(checksum)) {
+			setSelectedReferrerEoa(null)
+			setReferralVerifyStatus('idle')
+			setReferralVerifyMessage('')
+			return
+		}
+		setSelectedReferrerEoa(checksum)
+		setReferralVerifyStatus('idle')
+		setReferralVerifyMessage('')
+		const tag = resolveTagPlain(checksum).replace(/^@+/, '')
+		if (tag) setReferralInputTag(tag)
+	}, [resolveTagPlain])
+
+	const verifyReferralBeamioTag = useCallback(async () => {
+		if (referralVerifyInFlightRef.current) return
+		const tag = plainBeamioTagSeed(referralInputTag)
+		if (!tag) {
+			setReferralVerifyStatus('error')
+			setReferralVerifyMessage('Enter a Referral @BeamioTag.')
+			return
+		}
+		referralVerifyInFlightRef.current = true
+		setReferralVerifyStatus('loading')
+		setReferralVerifyMessage('')
+		try {
+			const res = await searchRemoteAndIngest(tag)
+			const eoa = pickExactBeamioTagAddressFromSearch(res, tag)
+			if (!eoa) {
+				setSelectedReferrerEoa(null)
+				setReferralVerifyStatus('error')
+				setReferralVerifyMessage('No wallet found for that @BeamioTag.')
+				return
+			}
+			if (isHiddenGenesisReferrerEoa(eoa)) {
+				setSelectedReferrerEoa(null)
+				setReferralVerifyStatus('error')
+				setReferralVerifyMessage('This wallet cannot be used as a Referral partner.')
+				return
+			}
+			const role = await resolveGenesisReferrerRole(eoa)
+			if (!role) {
+				setSelectedReferrerEoa(null)
+				setReferralVerifyStatus('error')
+				setReferralVerifyMessage(
+					'This wallet is not a valid Genesis Admin, L0, or L1 referrer.',
+				)
+				return
+			}
+			setSelectedReferrerEoa(role.address)
+			setReferralVerifyStatus('success')
+			setReferralVerifyMessage(
+				`Verified ${genesisReferrerRoleLabel(role.role)} referrer.`,
+			)
+		} catch {
+			setReferralVerifyStatus('error')
+			setReferralVerifyMessage('Unable to verify Referral @BeamioTag. Try again.')
+		} finally {
+			referralVerifyInFlightRef.current = false
+		}
+	}, [referralInputTag, searchRemoteAndIngest])
+
+	const selectedReferrerTagDisplay = useMemo(() => {
+		if (!selectedReferrerEoa) return ''
+		const fromDb = resolveTagPlain(selectedReferrerEoa).replace(/^@+/, '')
+		if (fromDb) return `@${fromDb}`
+		const rec = lookupByAddress(selectedReferrerEoa)
+		const t = plainBeamioTagSeed(rec?.accountName ?? rec?.username)
+		return t ? `@${t}` : ''
+	}, [selectedReferrerEoa, resolveTagPlain, lookupByAddress])
 
 	const lockButtonClass = canPayLocally
 		? 'bg-emerald-600 shadow-lg shadow-emerald-500/25 hover:bg-emerald-500'
@@ -3022,6 +3193,128 @@ function ConetGenesisNodeDiscoverSection({
 					</div>
 				</div>
 
+				{/* Referral BeamioTag */}
+				<div className="mt-4 rounded-[18px] border border-[#e2e7f0] bg-[#f8fafc] p-4 dark:border-slate-700 dark:bg-slate-800/40">
+					<p className="text-[14px] font-bold text-[#1f2328] dark:text-slate-100">
+						Referral @BeamioTag
+					</p>
+					<p className="mt-1 text-[12px] leading-relaxed text-slate-500 dark:text-slate-400">
+						Select a partner @BeamioTag — or enter a tag and verify their wallet is a valid Admin, L0, or L1
+						referrer on-chain.
+					</p>
+
+					<label className="mt-3 block" htmlFor="genesis-referral-select">
+						<span className="text-[12px] font-semibold text-slate-600 dark:text-slate-300">
+							Select from partners
+						</span>
+						<select
+							id="genesis-referral-select"
+							value={
+								selectedReferrerEoa && !isHiddenGenesisReferrerEoa(selectedReferrerEoa)
+									? selectedReferrerEoa
+									: ''
+							}
+							disabled={candidatesLoading || purchaseBusy || purchaseSuccess}
+							onChange={(e) => onSelectReferrerFromList(e.target.value)}
+							className="mt-1.5 w-full rounded-xl border border-[#dce2f0] bg-white px-3 py-2.5 text-[13px] font-medium text-[#1f2328] outline-none focus:border-[#1562f0] dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+						>
+							<option value="">No referral</option>
+							{candidates
+								.filter((c) => !isHiddenGenesisReferrerEoa(c.address))
+								.map((c) => {
+									const tag = resolveTagPlain(c.address).replace(/^@+/, '')
+									const short = shortGenesisReferrerAddress(c.address)
+									const label = tag ? `@${tag} · ${short}` : short
+									return (
+										<option key={c.address} value={c.address}>
+											{label}
+										</option>
+									)
+								})}
+						</select>
+					</label>
+					{candidatesLoading ? (
+						<p className="mt-1.5 flex items-center gap-1.5 text-[11px] text-slate-400">
+							<Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+							Loading partners…
+						</p>
+					) : null}
+
+					<label className="mt-3 block" htmlFor="genesis-referral-input">
+						<span className="text-[12px] font-semibold text-slate-600 dark:text-slate-300">
+							Or enter Referral Beamio tag
+						</span>
+						<div className="mt-1.5 flex gap-2">
+							<input
+								id="genesis-referral-input"
+								type="text"
+								autoComplete="off"
+								enterKeyHint="done"
+								placeholder="@beamioTag"
+								value={referralInputTag}
+								disabled={purchaseBusy || purchaseSuccess}
+								onChange={(e) => {
+									setReferralInputTag(e.target.value.replace(/^@+/, ''))
+									setReferralVerifyStatus('idle')
+									setReferralVerifyMessage('')
+								}}
+								onKeyDown={(e) => {
+									if (e.key === 'Enter') {
+										e.preventDefault()
+										void verifyReferralBeamioTag()
+									}
+								}}
+								className="min-w-0 flex-1 rounded-xl border border-[#dce2f0] bg-white px-3 py-2.5 text-[13px] font-medium text-[#1f2328] outline-none focus:border-[#1562f0] dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+							/>
+							<button
+								type="button"
+								onClick={() => void verifyReferralBeamioTag()}
+								disabled={
+									purchaseBusy ||
+									purchaseSuccess ||
+									referralVerifyStatus === 'loading' ||
+									!plainBeamioTagSeed(referralInputTag)
+								}
+								aria-busy={referralVerifyStatus === 'loading'}
+								aria-label="Verify referral tag"
+								className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl bg-[#1562f0] px-3.5 py-2.5 text-[13px] font-bold text-white transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+							>
+								{referralVerifyStatus === 'loading' ? (
+									<Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+								) : (
+									'Verify'
+								)}
+							</button>
+						</div>
+					</label>
+
+					{referralVerifyMessage ? (
+						<p
+							className={`mt-2 text-[12px] font-medium ${
+								referralVerifyStatus === 'success'
+									? 'text-emerald-600 dark:text-emerald-400'
+									: referralVerifyStatus === 'error'
+										? 'text-amber-600 dark:text-amber-400'
+										: 'text-slate-500'
+							}`}
+							role={referralVerifyStatus === 'error' ? 'alert' : undefined}
+						>
+							{referralVerifyMessage}
+						</p>
+					) : null}
+
+					{selectedReferrerEoa && !isHiddenGenesisReferrerEoa(selectedReferrerEoa) ? (
+						<p className="mt-2 text-[12px] font-semibold text-[#1f2328] dark:text-slate-200">
+							Selected:{' '}
+							<span className="text-[#1562f0]">
+								{selectedReferrerTagDisplay
+									? `${selectedReferrerTagDisplay} · ${shortGenesisReferrerAddress(selectedReferrerEoa)}`
+									: shortGenesisReferrerAddress(selectedReferrerEoa)}
+							</span>
+						</p>
+					) : null}
+				</div>
+
 				<div className="mt-4 rounded-[18px] bg-[#f4f6fa] py-4 text-center dark:bg-slate-800/50">
 					<p className="text-[13px] font-medium text-slate-500 dark:text-slate-400">Total Entry Threshold</p>
 					<p
@@ -3041,6 +3334,183 @@ function ConetGenesisNodeDiscoverSection({
 						</p>
 					) : null}
 				</div>
+
+				{/* Agreement — must scroll + check before Lock */}
+				{!purchaseSuccess ? (
+					<div className="mt-4 rounded-[18px] border border-[#e2e7f0] bg-white dark:border-slate-700 dark:bg-slate-900/60">
+						<div className="max-h-[min(22rem,50vh)] overflow-y-auto overscroll-contain px-3.5 py-3.5 text-[12px] leading-relaxed text-slate-600 dark:text-slate-300">
+							<h3 className="text-[13px] font-bold leading-snug text-[#1f2328] dark:text-slate-100">
+								CoNET Genesis Node Early Contributor Exemption &amp; Digital Rights Confirmation
+								Agreement
+							</h3>
+							<p className="mt-2.5">
+								This agreement serves as a transition and rights confirmation credential between Web2
+								fiat compliance and the Web3 Decentralized Physical Infrastructure Network (DePIN),
+								used to confirm the Node Operator&apos;s infrastructure grant and corresponding
+								underlying digital rights.
+							</p>
+							<p className="mt-2.5">
+								Based on the tiered network launch strategy of the CoNET L1 Data Sovereignty Layer,
+								with a global hard cap of 12,000 Genesis nodes, the infrastructure grant details are
+								as follows:
+							</p>
+							<div className="mt-3 overflow-x-auto rounded-lg ring-1 ring-slate-200 dark:ring-slate-600">
+								<table className="w-full min-w-[28rem] border-collapse text-left text-[10px] sm:text-[11px]">
+									<thead>
+										<tr className="bg-slate-50 dark:bg-slate-800">
+											<th className="border-b border-slate-200 px-2 py-1.5 font-bold text-slate-700 dark:border-slate-600 dark:text-slate-200">
+												Network Phase
+											</th>
+											<th className="border-b border-slate-200 px-2 py-1.5 font-bold text-slate-700 dark:border-slate-600 dark:text-slate-200">
+												Quantity
+											</th>
+											<th className="border-b border-slate-200 px-2 py-1.5 font-bold text-slate-700 dark:border-slate-600 dark:text-slate-200">
+												Protocol Infrastructure Grant
+											</th>
+											<th className="border-b border-slate-200 px-2 py-1.5 font-bold text-slate-700 dark:border-slate-600 dark:text-slate-200">
+												Decentralized OPEX Grant
+											</th>
+											<th className="border-b border-slate-200 px-2 py-1.5 font-bold text-slate-700 dark:border-slate-600 dark:text-slate-200">
+												Total Unit Grant
+											</th>
+										</tr>
+									</thead>
+									<tbody>
+										<tr>
+											<td className="border-b border-slate-100 px-2 py-1.5 dark:border-slate-700">
+												Tier 1 Institutional Cornerstone Round
+											</td>
+											<td className="border-b border-slate-100 px-2 py-1.5 tabular-nums dark:border-slate-700">
+												{quantity} {quantity === 1 ? 'seat' : 'seats'}
+											</td>
+											<td className="border-b border-slate-100 px-2 py-1.5 tabular-nums dark:border-slate-700">
+												1,250 USDC
+											</td>
+											<td className="border-b border-slate-100 px-2 py-1.5 dark:border-slate-700">
+												120 USDC/year
+											</td>
+											<td className="border-b border-slate-100 px-2 py-1.5 font-semibold tabular-nums dark:border-slate-700">
+												1,370 USDC
+											</td>
+										</tr>
+									</tbody>
+								</table>
+							</div>
+							<p className="mt-2.5">
+								<span className="font-semibold text-slate-700 dark:text-slate-200">*Special Note:</span>{' '}
+								The 120 USDC/year OPEX Grant covers the first-year cloud server procurement, system
+								deployment, and automated hosting maintenance. This service is executed by an
+								independent third-party technical provider commissioned by the open-source protocol
+								community. OPEX for subsequent years will be automatically deducted from the node&apos;s
+								daily bandwidth settlement yield via smart contract or renewed separately by the
+								operator.
+							</p>
+							<p className="mt-3 font-bold text-[#1f2328] dark:text-slate-100">
+								2. Dual-Role of Genesis Full-Node
+							</p>
+							<p className="mt-1.5">
+								<span className="font-semibold text-slate-700 dark:text-slate-200">Block Validation:</span>{' '}
+								As an L1 validator, the node executes EVM-compatible smart contracts and maintains a
+								6-second/block consensus speed, supporting high-frequency commercial settlement needs.
+							</p>
+							<p className="mt-1.5">
+								<span className="font-semibold text-slate-700 dark:text-slate-200">DePIN Routing:</span>{' '}
+								Running the W2W Protocol, it acts as a relay point for privacy routing, supporting
+								end-to-end encrypted communication and earning compensation through physical bandwidth
+								contributions.
+							</p>
+							<p className="mt-1.5">
+								<span className="font-semibold text-slate-700 dark:text-slate-200">Zero Dev Tax:</span>{' '}
+								Zero official commission; all underlying protocol inflationary block rewards and network
+								Gas priority fees belong 100% to the nodes.
+							</p>
+							<p className="mt-1.5">
+								<span className="font-semibold text-slate-700 dark:text-slate-200">
+									Fiat Bandwidth Settlement:
+								</span>{' '}
+								Nodes earn authentic labor compensation based on the constant underlying benchmark (1 GB
+								Settlement Unit = 0.01 USDC). Under the Twice-hop privacy routing mechanism, for every 1
+								GB of terminal business traffic consumed by the application layer, a total routing fee of
+								0.02 USDC is generated. The system precisely splits this into two 1 GB settlement units,
+								distributing 1 GB (equivalent to 0.01 USDC) each to the Relay Node providing blind
+								forwarding and the Agent Node providing data push.
+							</p>
+							<p className="mt-1.5">
+								<span className="font-semibold text-slate-700 dark:text-slate-200">
+									Deflationary Mechanism:
+								</span>{' '}
+								100% base fee burning under the EIP-1559 mechanism, allowing operators to share in the
+								asset scarcity evolution set by the underlying code.
+							</p>
+							<p className="mt-3 font-bold text-[#1f2328] dark:text-slate-100">
+								4. QoS &amp; Slashing Conditions
+							</p>
+							<p className="mt-1.5">
+								To ensure the anti-fragility of the protocol, faking throughput or malicious
+								disconnection will trigger Slashing penalties, resulting in the permanent destruction of
+								the 32 staked $CNET locked for life.
+							</p>
+							<p className="mt-3 font-bold text-[#1f2328] dark:text-slate-100">
+								5. On-Chain Delivery &amp; Digital Proof
+							</p>
+							<p className="mt-1.5">
+								The digital rights confirmation of this agreement uses the USDC payment hash on the Base
+								L2 Value Settlement Layer as the sole technical and jurisprudential proof.
+							</p>
+							<p className="mt-3 font-bold text-[#1f2328] dark:text-slate-100">
+								6. Early Contributor Disclaimer &amp; Non-Entity Acknowledgment
+							</p>
+							<p className="mt-1.5">
+								<span className="font-semibold text-slate-700 dark:text-slate-200">
+									Decentralized Network Nature:
+								</span>{' '}
+								The contributor explicitly acknowledges and agrees that CoNET L1 is in a very early,
+								non-entity DAO (Decentralized Autonomous Organization) bootstrap phase. There is
+								currently no &quot;CoNET Foundation&quot; or any other legal entity bearing statutory
+								joint liability.
+							</p>
+							<p className="mt-1.5">
+								<span className="font-semibold text-slate-700 dark:text-slate-200">
+									Non-Investment Nature &amp; Risk Disclosure:
+								</span>{' '}
+								The allocation of 1,250 USDC under this agreement constitutes a{' '}
+								<span className="font-semibold">non-refundable technical grant</span> to the open-source
+								DePIN, not the purchase of securities, financial products, or equity investments. The
+								contributor assumes all risks of network technical failure due to code vulnerabilities,
+								extreme macroeconomic volatility (including $CNET price fluctuations), and regulatory
+								changes.
+							</p>
+							<p className="mt-3 font-bold text-[#1f2328] dark:text-slate-100">
+								Digital Consent &amp; Compliance Area
+							</p>
+							<p className="mt-1.5">
+								By checking the box below and triggering the smart contract to complete the on-chain
+								payment, the grantor fully acknowledges, understands, and voluntarily agrees to be bound
+								by all terms of this agreement (including disclaimers). This digital confirmation carries
+								the same legal weight as a traditional handwritten signature.
+							</p>
+						</div>
+
+						<label className="flex cursor-pointer items-start gap-2.5 border-t border-[#e2e7f0] px-3.5 py-3 dark:border-slate-700">
+							<input
+								type="checkbox"
+								checked={agreementAgreed}
+								disabled={purchaseBusy}
+								onChange={(e) => setAgreementAgreed(e.target.checked)}
+								className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-[#1562f0] focus:ring-[#1562f0]"
+								aria-label="Agree to Genesis Node Early Contributor Agreement"
+							/>
+							<span className="min-w-0 text-[12px] leading-snug text-slate-700 dark:text-slate-200">
+								I have carefully read and fully agree to all terms of the Agreement, and fully
+								understand that I am interacting with a decentralized smart contract, not transacting
+								with any corporate entity.
+							</span>
+						</label>
+						<p className="border-t border-[#e2e7f0] px-3.5 py-2.5 text-[11px] leading-snug text-slate-500 dark:border-slate-700 dark:text-slate-400">
+							(Issuer &amp; Confirming Party): CoNET Open-Source DAO / Multi-sig Smart Contract
+						</p>
+					</div>
+				) : null}
 
 				{purchaseSuccess ? (
 					<div className="mt-4 rounded-[18px] border border-emerald-200 bg-emerald-50/90 p-4 dark:border-emerald-500/30 dark:bg-emerald-950/40">
@@ -3073,10 +3543,12 @@ function ConetGenesisNodeDiscoverSection({
 				) : (
 					<button
 						type="button"
-						onClick={() => onLockSeat(quantity, true, totalThreshold, canPayLocally)}
-						disabled={purchaseBusy}
+						onClick={() =>
+							onLockSeat(quantity, true, totalThreshold, canPayLocally, selectedReferrerEoa)
+						}
+						disabled={purchaseBusy || !agreementAgreed}
 						aria-busy={purchaseBusy}
-						className={`mt-4 flex w-full items-center justify-center gap-2 rounded-full px-4 py-3.5 text-[15px] font-bold text-white transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-70 ${lockButtonClass}`}
+						className={`mt-4 flex w-full items-center justify-center gap-2 rounded-full px-4 py-3.5 text-[15px] font-bold text-white transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 ${lockButtonClass}`}
 					>
 						{purchaseBusy ? (
 							<>
@@ -3093,60 +3565,6 @@ function ConetGenesisNodeDiscoverSection({
 						{purchasePhase.message}
 					</p>
 				) : null}
-			</div>
-
-			{/* Evangelist Program */}
-			<div className="rounded-[22px] bg-[#0e1c33] p-5 shadow-[0_8px_22px_rgba(15,23,42,0.18)] ring-1 ring-white/5">
-				<div className="mb-4 flex items-center gap-2">
-					<span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-400">
-						<Medal className="h-[18px] w-[18px]" strokeWidth={2.25} aria-hidden />
-					</span>
-					<h2 className="text-[18px] font-bold leading-snug text-white">Evangelist Program</h2>
-				</div>
-
-				<div className="rounded-[16px] bg-white/[0.04] p-4 ring-1 ring-white/5">
-					<p className="text-[12px] font-semibold uppercase tracking-wide text-slate-400">
-						Total USDC Cash Rewards
-					</p>
-					<p className="mt-1 text-[26px] font-bold leading-none text-white">
-						0.00 <span className="text-[14px] font-semibold text-slate-400">USDC</span>
-					</p>
-				</div>
-
-				<div className="mt-3 rounded-[16px] bg-white/[0.04] p-4 ring-1 ring-white/5">
-					<p className="text-[12px] font-semibold uppercase tracking-wide text-slate-400">
-						Activated Free Node Pool
-					</p>
-					<p className="mt-1 text-[26px] font-bold leading-none text-white">
-						0 <span className="text-[14px] font-semibold text-slate-400">Units</span>
-					</p>
-				</div>
-
-				<div className="mt-3 rounded-[16px] bg-white/[0.04] p-4 ring-1 ring-white/5">
-					<div className="flex items-center justify-between gap-2">
-						<p className="text-[12px] font-semibold text-slate-300">Referral Progress (10+1 Matrix)</p>
-						<p className="text-[13px] font-bold text-white tabular-nums">0 / 10</p>
-					</div>
-					<div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-white/10">
-						<div className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-teal-300" style={{ width: '0%' }} />
-					</div>
-					<p className="mt-2 text-[12px] leading-relaxed text-slate-400">
-						Refer 10 nodes to receive 1 physical validator node airdrop from the Treasury.
-					</p>
-				</div>
-
-				<button
-					type="button"
-					onClick={() => void copyEvangelistLink()}
-					className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-full border border-white/25 px-4 py-3 text-[14px] font-bold text-white transition active:scale-[0.98] hover:bg-white/5"
-				>
-					{linkCopied ? (
-						<Check className="h-[17px] w-[17px] text-emerald-400" strokeWidth={2.5} aria-hidden />
-					) : (
-						<Copy className="h-[17px] w-[17px]" strokeWidth={2.25} aria-hidden />
-					)}
-					{linkCopied ? 'Link Copied' : 'Copy My Evangelist Link'}
-				</button>
 			</div>
 
 			{/* About CoNET */}
@@ -3467,15 +3885,19 @@ function DiscoverMerchantDetailFullScreen({
 		[merchantMetadataRoot, chainCardSocialPromotion],
 	)
 	const topupPromotionCapsule = topupPromotionPresentation.capsuleCopy
-	const conetEvangelistLink = useMemo(() => {
-		const ref = (profile?.keyID ?? '').trim()
-		return ref
-			? `${CONET_EXPLORE_NETWORK_URL}?ref=${encodeURIComponent(ref)}`
-			: CONET_EXPLORE_NETWORK_URL
-	}, [profile?.keyID])
 	const openConetExplore = useCallback(() => {
 		void openExternalUrl(CONET_EXPLORE_NETWORK_URL)
 	}, [])
+
+	const genesisDeepLinkReferrerEoa = useMemo(() => {
+		const fromParams =
+			parseDiscoverMerchantFromParams(collectDeepLinkSearchParams(window.location.href))?.referrerEoa ??
+			null
+		const state = location.state as { discoverShareReferrerEoa?: string | null } | null
+		const fromState = state?.discoverShareReferrerEoa ?? null
+		const refRaw = fromParams ?? fromState
+		return refRaw && ethers.isAddress(refRaw) ? ethers.getAddress(refRaw) : null
+	}, [location.state, location.search])
 
 	const resolveUserEoa = useCallback((): string | null => {
 		const privateKeyArmor = resolveSigningPrivateKeyArmor(profile)
@@ -3519,7 +3941,13 @@ function DiscoverMerchantDetailFullScreen({
 	}, [isConetGenesisCard, profile, profile?.keyID])
 
 	const lockConetGenesisSeat = useCallback(
-		(quantity: number, _cloudNode: boolean, _totalUsdc: number, canPayLocally: boolean) => {
+		(
+			quantity: number,
+			_cloudNode: boolean,
+			_totalUsdc: number,
+			canPayLocally: boolean,
+			referrerEoaFromUi: string | null = null,
+		) => {
 			if (genesisSeatLockInFlightRef.current) return
 			const privateKeyArmor = resolveSigningPrivateKeyArmor(profile)
 			const beneficiary = resolveUserEoa()
@@ -3548,14 +3976,11 @@ function DiscoverMerchantDetailFullScreen({
 			const qty = Math.max(1, Math.floor(Number(quantity) || 1))
 			const localTestEoa = isGenesisNodeSeatPwaTestBuyer(beneficiary)
 			const payQty = localTestEoa ? 1 : qty
-			const fromParams =
-				parseDiscoverMerchantFromParams(collectDeepLinkSearchParams(window.location.href))?.referrerEoa ??
-				null
-			const state = location.state as { discoverShareReferrerEoa?: string | null } | null
-			const fromState = state?.discoverShareReferrerEoa ?? null
-			const refRaw = fromParams ?? fromState
-			const referrerL0 =
-				refRaw && ethers.isAddress(refRaw) ? ethers.getAddress(refRaw) : null
+			const uiRef =
+				referrerEoaFromUi && ethers.isAddress(referrerEoaFromUi)
+					? ethers.getAddress(referrerEoaFromUi)
+					: null
+			const referrerL0 = uiRef ?? genesisDeepLinkReferrerEoa
 
 			const openExternalPay = () => {
 				const payUrl = buildDiscoverGenesisNodeSeatUrl({
@@ -3646,7 +4071,7 @@ function DiscoverMerchantDetailFullScreen({
 				}
 			})()
 		},
-		[issuerOwnerEoa, location.state, profile, resolveUserEoa],
+		[genesisDeepLinkReferrerEoa, issuerOwnerEoa, profile, resolveUserEoa],
 	)
 
 	const resolveUserAa = useCallback((): string | null => {
@@ -4596,12 +5021,12 @@ function DiscoverMerchantDetailFullScreen({
 				<div className="mx-auto max-w-lg space-y-4">
 					{isConetGenesisCard ? (
 						<ConetGenesisNodeDiscoverSection
-							evangelistLink={conetEvangelistLink}
 							onExplore={openConetExplore}
 							onLockSeat={lockConetGenesisSeat}
 							purchasePhase={genesisSeatPurchase}
 							eoaUsdcBalance6={genesisEoaUsdcBalance6}
 							beneficiaryEoa={resolveUserEoa()}
+							initialReferrerEoa={genesisDeepLinkReferrerEoa}
 						/>
 					) : (
 					<>

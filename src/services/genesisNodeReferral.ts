@@ -238,6 +238,131 @@ export async function fetchGenesisMemberSnapshot(eoa: string): Promise<GenesisMe
 	}
 }
 
+export type GenesisReferrerRole = 'admin' | 'l0' | 'l1'
+
+export type GenesisReferrerCandidate = {
+	address: string
+	role: GenesisReferrerRole
+}
+
+/** Resolve whether an EOA is a valid Genesis purchase referrer (Admin / L0 / L1). */
+export async function resolveGenesisReferrerRole(
+	eoa: string,
+): Promise<{ address: string; role: GenesisReferrerRole } | null> {
+	if (!eoa || !ethers.isAddress(eoa)) return null
+	return enqueueRpc(async () => {
+		const account = ethers.getAddress(eoa)
+		const [isAdmin, isL1, isL0] = await Promise.all([
+			vaultRead.admins(account) as Promise<boolean>,
+			vaultRead.isActiveL1(account) as Promise<boolean>,
+			vaultRead.isActiveL0(account) as Promise<boolean>,
+		])
+		if (Boolean(isL1)) return { address: account, role: 'l1' }
+		if (Boolean(isL0)) return { address: account, role: 'l0' }
+		if (Boolean(isAdmin)) return { address: account, role: 'admin' }
+		return null
+	})
+}
+
+/**
+ * Selectable referrers for Discover Genesis seat purchase:
+ * all active Admins (from AdminUpdated logs + foundation / defaultAdminPayout),
+ * plus all active L0 + L1.
+ */
+export async function fetchGenesisReferrerCandidates(): Promise<GenesisReferrerCandidate[]> {
+	return enqueueRpc(async () => {
+		const out: GenesisReferrerCandidate[] = []
+		const seen = new Set<string>()
+		const push = (addr: string, role: GenesisReferrerRole) => {
+			const key = addr.toLowerCase()
+			if (seen.has(key)) return
+			seen.add(key)
+			out.push({ address: addr, role })
+		}
+
+		const [foundation, defaultAdminPayout] = await Promise.all([
+			vaultRead.foundation() as Promise<string>,
+			vaultRead.defaultAdminPayout() as Promise<string>,
+		])
+		const seedAdmins = [foundation, defaultAdminPayout]
+		try {
+			const fromEvents = await fetchGenesisAdminAddressesFromEvents()
+			seedAdmins.push(...fromEvents)
+		} catch {
+			/* event scan failed — still use foundation / defaultAdminPayout */
+		}
+		for (const raw of seedAdmins) {
+			if (!raw || !ethers.isAddress(raw)) continue
+			const a = ethers.getAddress(raw)
+			if (Boolean(await vaultRead.admins(a))) push(a, 'admin')
+		}
+
+		const l0Count = Number(await vaultRead.l0Count())
+		if (Number.isFinite(l0Count) && l0Count > 0) {
+			for (let i = 0; i < l0Count; i++) {
+				const a = await vaultRead.l0At(i)
+				if (!a || !ethers.isAddress(a)) continue
+				const addr = ethers.getAddress(a)
+				if (Boolean(await vaultRead.isActiveL0(addr))) push(addr, 'l0')
+			}
+		}
+
+		const l1Count = Number(await vaultRead.l1Count())
+		if (Number.isFinite(l1Count) && l1Count > 0) {
+			for (let i = 0; i < l1Count; i++) {
+				const a = await vaultRead.l1At(i)
+				if (!a || !ethers.isAddress(a)) continue
+				const addr = ethers.getAddress(a)
+				if (Boolean(await vaultRead.isActiveL1(addr))) push(addr, 'l1')
+			}
+		}
+
+		return out
+	})
+}
+
+/** Proxy deploy block (see deployments/conet-genesis-node-referral-vault.json). */
+const GENESIS_VAULT_PROXY_DEPLOY_BLOCK = 594_820
+const ADMIN_EVENT_LOG_CHUNK = 5_000
+
+/**
+ * Collect Admin EOAs from AdminUpdated events, then caller verifies with admins().
+ * CoNET RPC caps eth_getLogs at 5000 blocks.
+ */
+async function fetchGenesisAdminAddressesFromEvents(): Promise<string[]> {
+	const iface = new ethers.Interface([
+		'event AdminUpdated(address indexed account, bool enabled)',
+	])
+	const topic = iface.getEvent('AdminUpdated')!.topicHash
+	const latest = Number(await conetDepinProvider.getBlockNumber())
+	const enabled = new Map<string, string>()
+	for (
+		let from = GENESIS_VAULT_PROXY_DEPLOY_BLOCK;
+		from <= latest;
+		from += ADMIN_EVENT_LOG_CHUNK
+	) {
+		const to = Math.min(latest, from + ADMIN_EVENT_LOG_CHUNK - 1)
+		const logs = await conetDepinProvider.getLogs({
+			address: CONET_GENESIS_NODE_REFERRAL_VAULT,
+			fromBlock: from,
+			toBlock: to,
+			topics: [topic],
+		})
+		for (const log of logs) {
+			const parsed = iface.parseLog({ topics: log.topics as string[], data: log.data })
+			if (!parsed) continue
+			const account = ethers.getAddress(String(parsed.args.account))
+			if (Boolean(parsed.args.enabled)) {
+				enabled.set(account.toLowerCase(), account)
+			} else {
+				enabled.delete(account.toLowerCase())
+			}
+		}
+	}
+	return [...enabled.values()]
+}
+
+
 export type GenesisDownstreamL0Item = {
 	address: string
 	earnedUsdc6: string

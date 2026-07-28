@@ -93,9 +93,19 @@ export function recordFromSearchPeer(
   peer: ReturnType<typeof pickPeerFromSearchUsernameResponse>,
 ): BeamioAddressProfileRecord | null {
   if (!peer) return null;
+  const scrubTag = (raw: string | undefined): string | undefined => {
+    const t = raw?.trim();
+    if (!t) return undefined;
+    const plain = t.replace(/^@+/, '').trim();
+    const lower = plain.toLowerCase();
+    if (!plain || lower === 'unknow' || lower === 'unknown' || plain === '未知') return undefined;
+    return t;
+  };
+  const accountName = scrubTag(peer.accountName);
+  const username = scrubTag(peer.username);
   const has =
-    peer.accountName?.trim() ||
-    peer.username?.trim() ||
+    accountName ||
+    username ||
     peer.first_name?.trim() ||
     peer.last_name?.trim() ||
     peer.firstName?.trim() ||
@@ -104,8 +114,8 @@ export function recordFromSearchPeer(
   if (!has) return null;
   return {
     addressLower: addrLower,
-    accountName: peer.accountName?.trim() || undefined,
-    username: peer.username?.trim() || undefined,
+    accountName,
+    username,
     first_name: peer.first_name?.trim() || undefined,
     last_name: peer.last_name?.trim() || undefined,
     firstName: peer.firstName?.trim() || undefined,
@@ -132,6 +142,10 @@ export function beamioTagFromRecord(r: BeamioAddressProfileRecord | undefined | 
   if (!r) return '';
   const u = r.accountName?.trim() || r.username?.trim();
   if (!u) return '';
+  const plain = u.replace(/^@+/, '').trim();
+  // search-users returns placeholder "unknow" for EOAs with no registry tag
+  const lower = plain.toLowerCase();
+  if (!plain || lower === 'unknow' || lower === 'unknown' || plain === '未知') return '';
   return u.startsWith('@') ? u : `@${u}`;
 }
 

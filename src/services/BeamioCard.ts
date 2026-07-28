@@ -693,9 +693,14 @@ function openClaimCardReadContract(cardAddress: string): ethers.Contract {
  */
 export type CouponOpenClaimEligibility =
 	| 'claimable'
+	/** User still holds the coupon NFT (claimed, not burned). */
 	| 'already_claimed'
+	/** User already used claim sig and no longer holds the NFT (redeemed / burned). */
+	| 'already_redeemed'
 	| 'not_open_claim'
 	| 'insufficient_social_points'
+	| 'sold_out'
+	| 'expired'
 	| 'unknown'
 
 /** User #13 social reward voucher balance on a merchant program card (CoNET RPC). */
@@ -754,7 +759,7 @@ export async function resolveCouponOpenClaimEligibility(
 	if (!row.cardAddress || !ethers.isAddress(row.cardAddress)) return 'not_open_claim'
 	const validBeforeNum = Number(row.issuedNftValidBefore ?? 0)
 	if (Number.isFinite(validBeforeNum) && validBeforeNum > 0 && validBeforeNum <= Math.floor(Date.now() / 1000)) {
-		return 'already_claimed'
+		return 'expired'
 	}
 	if (!userEOA || !ethers.isAddress(userEOA)) return 'unknown'
 	try {
@@ -767,10 +772,10 @@ export async function resolveCouponOpenClaimEligibility(
 			cardRead.issuedNftMintedCount(tokenIdN) as Promise<bigint>,
 			userHoldsIssuedCouponNft(row.cardAddress, userNorm, tokenIdN),
 		])
-		// Already claimed/redeemed, or still holding the NFT — no Claim CTA on Discover.
-		if (alreadyClaimed || holdsNft === true) return 'already_claimed'
+		if (holdsNft === true) return 'already_claimed'
+		if (alreadyClaimed) return 'already_redeemed'
 		if (priceInCurrency6 !== 0n) return 'not_open_claim'
-		if (maxSupply > 0n && mintedCount >= maxSupply) return 'already_claimed'
+		if (maxSupply > 0n && mintedCount >= maxSupply) return 'sold_out'
 		const socialExchange = readSocialExchangeFromMetadata(row.metadata ?? null)
 		if (socialExchange) {
 			const pointsBal = await readUserSocialPoints13BalanceOnCard(row.cardAddress, userNorm)
@@ -1528,7 +1533,7 @@ export const postCardCouponOpenClaimWithCurrentWallet = async (params: {
 	privateKeyArmor: string
 	/** Share referrer EOA from coupon deep link (`ref=`). */
 	referrerEoa?: string | null
-}): Promise<{ success: boolean; tx?: string; tokenId?: string; error?: string; status?: number }> => {
+}): Promise<{ success: boolean; queued?: boolean; tx?: string; tokenId?: string; error?: string; status?: number }> => {
 	const cardAddress = params.cardAddress?.trim() ?? ''
 	const couponId = params.couponId?.trim() ?? ''
 	const tokenIdParam = params.tokenId?.trim() ?? ''
@@ -1652,7 +1657,13 @@ export const postCardCouponOpenClaimWithCurrentWallet = async (params: {
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify(requestBody),
 		})
-		const data = (await res.json().catch(() => ({}))) as { success?: boolean; tx?: string; error?: string; tokenId?: string }
+		const data = (await res.json().catch(() => ({}))) as {
+			success?: boolean
+			queued?: boolean
+			tx?: string
+			error?: string
+			tokenId?: string
+		}
 		if (!res.ok || data.success === false) {
 			return {
 				success: false,
@@ -1660,7 +1671,13 @@ export const postCardCouponOpenClaimWithCurrentWallet = async (params: {
 				status: res.status,
 			}
 		}
-		return { success: true, tx: data.tx, tokenId: data.tokenId ?? tokenId }
+		// Cluster precheck OK + Master queue accepted → treat as claimed (tx may still be pending).
+		return {
+			success: true,
+			queued: data.queued === true,
+			tx: data.tx,
+			tokenId: data.tokenId ?? tokenId,
+		}
 	} catch (e: any) {
 		return { success: false, error: mapCouponOpenClaimApiError(e?.shortMessage ?? e?.message ?? String(e)) }
 	}

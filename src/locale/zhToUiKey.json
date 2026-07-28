@@ -333,6 +333,7 @@
   "从快捷支付提现": "withdraw_from_express_pay",
   "充值至快捷支付": "add_to_express_pay",
   "已领取": "claimed",
+  "已核销": "redeemed",
   "礼品卡": "gift_card",
   "交易": "transaction",
   "Beamio 转账": "beamio_transfer",

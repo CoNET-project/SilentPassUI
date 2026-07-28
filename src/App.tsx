@@ -312,11 +312,12 @@ function AppShell() {
       })
       Toast.show({
         content: ret.success
-          ? `Coupon claimed${ret.tokenId ? ` (token ${ret.tokenId})` : ''}!`
+          ? tu('claimed')
           : (ret.error ?? tu('coupon_open_claim_failed')),
         position: 'top',
       })
       if (ret.success) {
+        // Cluster queue accept (`queued`) is success — close without waiting for chain confirm.
         closeCouponClaimPanel()
       }
     } catch (e: any) {

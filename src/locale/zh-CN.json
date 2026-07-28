@@ -345,6 +345,7 @@
     "withdraw_from_express_pay": "从快捷支付提现",
     "add_to_express_pay": "充值至快捷支付",
     "claimed": "已领取",
+    "redeemed": "已核销",
     "gift_card": "礼品卡",
     "transaction": "交易",
     "beamio_transfer": "Beamio 转账",

@@ -1372,21 +1372,33 @@ function DiscoverMerchantCouponOfferRow({
 	onWalletUnlock?: () => void
 }) {
 	const isAlreadyClaimed = claimEligibility === 'already_claimed'
+	const isAlreadyRedeemed = claimEligibility === 'already_redeemed'
 	const insufficientSocialPoints = claimEligibility === 'insufficient_social_points'
-	// Show Claim CTA, or a green check when already owned / claimed / redeemed.
+	// Claim CTA, or claimed / redeemed status capsule (not clickable).
 	const showClaimButton =
-		claimEligibility != null && claimEligibility !== 'not_open_claim'
-	const canClaim =
-		!isAlreadyClaimed &&
-		(claimEligibility === 'claimable' || claimEligibility === 'unknown')
+		claimEligibility === 'claimable' ||
+		claimEligibility === 'unknown' ||
+		claimEligibility === 'already_claimed' ||
+		claimEligibility === 'already_redeemed' ||
+		claimEligibility === 'insufficient_social_points'
+	const canClaim = claimEligibility === 'claimable' || claimEligibility === 'unknown'
 	const claimDisabled =
-		isAlreadyClaimed || insufficientSocialPoints || !canClaim || claimStatus !== 'idle'
+		!canClaim ||
+		isAlreadyClaimed ||
+		isAlreadyRedeemed ||
+		insufficientSocialPoints ||
+		claimStatus !== 'idle'
 	const ticketActionStatus: DiscoverCouponClaimButtonStatus =
 		claimStatus !== 'idle'
 			? claimStatus
-			: isAlreadyClaimed
+			: isAlreadyClaimed || isAlreadyRedeemed
 				? 'success'
 				: 'idle'
+	const ticketActionLabel = isAlreadyRedeemed
+		? tu('redeemed')
+		: isAlreadyClaimed
+			? tu('claimed')
+			: tu('claim')
 	const socialMissionBlock = useMemo(
 		() =>
 			resolveCouponSocialMissionBlockForSeries({
@@ -1416,17 +1428,19 @@ function DiscoverMerchantCouponOfferRow({
 					getPrivateKeyArmor={getPrivateKeyArmor}
 					onWalletUnlock={onWalletUnlock}
 					showActionButton={showClaimButton}
-					actionLabel={isAlreadyClaimed ? tu('owned') : tu('claim')}
+					actionLabel={ticketActionLabel}
 					actionStatus={ticketActionStatus}
 					actionError={claimError}
 					disabled={claimDisabled}
 					onAction={canClaim ? onClaim : undefined}
 					aria-label={
-						isAlreadyClaimed
-							? `Coupon ${row.coupon.title} already claimed`
-							: insufficientSocialPoints
-								? `Coupon ${row.coupon.title} requires more social points`
-								: `Claim coupon ${row.coupon.title}`
+						isAlreadyRedeemed
+							? `Coupon ${row.coupon.title} already redeemed`
+							: isAlreadyClaimed
+								? `Coupon ${row.coupon.title} already claimed`
+								: insufficientSocialPoints
+									? `Coupon ${row.coupon.title} requires more social points`
+									: `Claim coupon ${row.coupon.title}`
 					}
 				/>
 				{insufficientSocialPoints ? (
@@ -4169,17 +4183,21 @@ function DiscoverMerchantDetailFullScreen({
 					referrerEoa: shareReferrerFromUrl,
 				})
 				if (ret.success) {
+					// Cluster accepted queue (`queued: true`) counts as claimed for UI — do not wait for chain tx.
 					setCouponClaimEligibilityById((s) => ({ ...s, [row.id]: 'already_claimed' }))
 					setCouponClaimStatusById((s) => ({ ...s, [row.id]: 'success' }))
 					scheduleCouponClaimStatusReset(row.id)
 					Toast.show({
-						content: `Coupon claimed${ret.tokenId ? ` (token ${ret.tokenId})` : ''}!`,
+						content: tu('claimed'),
 						position: 'top',
 					})
 				} else {
 					const err = ret.error ?? 'Coupon claim failed'
 					if (/already claimed/i.test(err)) {
 						setCouponClaimEligibilityById((s) => ({ ...s, [row.id]: 'already_claimed' }))
+						setCouponClaimStatusById((s) => ({ ...s, [row.id]: 'idle' }))
+					} else if (/already redeemed|already used|SigClaimAlreadyUsed/i.test(err)) {
+						setCouponClaimEligibilityById((s) => ({ ...s, [row.id]: 'already_redeemed' }))
 						setCouponClaimStatusById((s) => ({ ...s, [row.id]: 'idle' }))
 					} else {
 						setCouponClaimStatusById((s) => ({ ...s, [row.id]: 'error' }))

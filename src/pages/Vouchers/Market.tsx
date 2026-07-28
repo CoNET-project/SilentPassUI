@@ -85,7 +85,7 @@ import {
 	formatQuotedUsdc6ForDisplay,
 	GENESIS_NODE_SEAT_TEST_CODE,
 	genesisNodeSeatLocalRequiredUsdc6,
-	isGenesisNodeSeatLocalTestEoa,
+	isGenesisNodeSeatPwaTestBuyer,
 	payGenesisNodeSeatWithLocalWallet,
 } from "@/utils/discoverUsdcTopupSession"
 import { useMerchantCardDatabase } from "@/providers/MerchantCardDatabaseProvider"
@@ -2872,7 +2872,7 @@ function ConetGenesisNodeDiscoverSection({
 	eoaUsdcBalance6: bigint | null
 	beneficiaryEoa: string | null
 }) {
-	const localTestEoa = isGenesisNodeSeatLocalTestEoa(beneficiaryEoa)
+	const localTestEoa = isGenesisNodeSeatPwaTestBuyer(beneficiaryEoa)
 	const [quantity, setQuantity] = useState(1)
 	const [linkCopied, setLinkCopied] = useState(false)
 	const linkCopiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -3035,7 +3035,7 @@ function ConetGenesisNodeDiscoverSection({
 						<p className="mt-2 text-[12px] font-medium text-slate-500 dark:text-slate-400">
 							{canPayLocally
 								? localTestEoa
-									? 'Your wallet has enough USDC — pay 1 USDC in-app'
+									? 'Your wallet has enough USDC — pay 1.37 USDC in-app'
 									: 'Your wallet has enough USDC — pay in-app'
 								: 'Pay with an external wallet on Base'}
 						</p>
@@ -3546,7 +3546,7 @@ function DiscoverMerchantDetailFullScreen({
 				return
 			}
 			const qty = Math.max(1, Math.floor(Number(quantity) || 1))
-			const localTestEoa = isGenesisNodeSeatLocalTestEoa(beneficiary)
+			const localTestEoa = isGenesisNodeSeatPwaTestBuyer(beneficiary)
 			const payQty = localTestEoa ? 1 : qty
 			const fromParams =
 				parseDiscoverMerchantFromParams(collectDeepLinkSearchParams(window.location.href))?.referrerEoa ??

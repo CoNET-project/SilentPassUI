@@ -7,16 +7,20 @@ import {
 	Copy,
 	Link2,
 	Loader2,
+	Pencil,
 	TicketPlus,
 	Users,
 	Wallet,
+	X,
 } from 'lucide-react'
 import { Toast } from 'antd-mobile'
 import { BeamioCircularBackButton } from '@/components/BeamioCircularBackButton'
+import { useBeamioTagDatabase } from '@/providers/BeamioTagDatabaseProvider'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { resolveSessionEoa } from '@/utils/resolveSessionEoa'
 import { resolveSigningPrivateKeyArmor } from '@/utils/resolveSigningPrivateKeyArmor'
 import { CoNET_Data } from '@/utils/globals'
+import { formatReferralUsdcAmount6 } from '@/services/referralRegistryEarnings'
 import {
 	buildGenesisEvangelistShareUrl,
 	cancelGenesisL0RedeemCode,
@@ -33,11 +37,63 @@ import {
 	ratioBpsToPercentLabel,
 	setGenesisDefaultAdminPayout,
 	setGenesisFoundation,
+	type GenesisDownstreamL0Item,
+	type GenesisDownstreamL1Item,
 	type GenesisL0RedeemRecord,
 	type GenesisL1RedeemRecord,
 	type GenesisMemberSnapshot,
 } from '@/services/genesisNodeReferral'
 import { CONET_GENESIS_NODE_REFERRAL_VAULT } from '@/config/chainAddresses'
+
+/** Same capsule chrome as `/wallet/referral-registry` Downstream rows. */
+function BeamioTagCapsule({
+	address,
+	rebatePercent,
+	onEdit,
+}: {
+	address: string
+	rebatePercent?: string
+	onEdit?: () => void
+}) {
+	const { resolveTagPlain, avatarImgUrl } = useBeamioTagDatabase()
+	const tag = resolveTagPlain(address)
+	const displayTag = tag || 'Beamio'
+	const hasExtras = rebatePercent != null || Boolean(onEdit)
+	return (
+		<div
+			className={`inline-flex max-w-full items-center gap-2 rounded-full border border-indigo-200/20 bg-indigo-300/10 text-sm font-medium text-indigo-100 ${hasExtras ? 'py-1.5 pl-2 pr-1.5' : 'px-2.5 py-1.5'}`}
+			aria-label={
+				rebatePercent != null
+					? `Beamio tag @${displayTag}, ${rebatePercent}%`
+					: `Beamio tag @${displayTag}`
+			}
+		>
+			<img
+				src={avatarImgUrl(tag, address)}
+				alt=""
+				className="h-6 w-6 shrink-0 rounded-full object-cover"
+				aria-hidden
+			/>
+			<span className="min-w-0 truncate">@{displayTag}</span>
+			{rebatePercent != null ? (
+				<span className="shrink-0 rounded-full border border-indigo-200/25 bg-black/20 px-2 py-0.5 text-[11px] font-semibold text-indigo-100">
+					{rebatePercent}%
+				</span>
+			) : null}
+			{onEdit ? (
+				<button
+					type="button"
+					onClick={onEdit}
+					className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-indigo-200/30 bg-indigo-200/15 text-indigo-50 transition hover:bg-indigo-200/25"
+					aria-label={`Edit @${displayTag}`}
+					title="Edit"
+				>
+					<Pencil className="h-3 w-3" aria-hidden />
+				</button>
+			) : null}
+		</div>
+	)
+}
 
 function preventNumericStepKeys(e: React.KeyboardEvent<HTMLInputElement>): void {
 	if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End'].includes(e.key)) {
@@ -83,11 +139,12 @@ function percentInputToBps(raw: string): number | null {
 export default function GenesisNodeReferralPage() {
 	const navigate = useNavigate()
 	const { profiles, setShowFooter } = useDaemonContext()
+	const { ensureProfilesForAddresses } = useBeamioTagDatabase()
 	const eoa = useMemo(() => resolveSessionEoa(profiles), [profiles])
 
 	const [snapshot, setSnapshot] = useState<GenesisMemberSnapshot | null>(null)
-	const [l0List, setL0List] = useState<string[]>([])
-	const [l1List, setL1List] = useState<Array<{ address: string; ratioBps: number }>>([])
+	const [l0List, setL0List] = useState<GenesisDownstreamL0Item[]>([])
+	const [l1List, setL1List] = useState<GenesisDownstreamL1Item[]>([])
 	const [codes, setCodes] = useState<GenesisL0RedeemRecord[]>([])
 	const [l1Codes, setL1Codes] = useState<GenesisL1RedeemRecord[]>([])
 	const [loading, setLoading] = useState(false)
@@ -103,6 +160,7 @@ export default function GenesisNodeReferralPage() {
 	const [lastIssuedL1Secret, setLastIssuedL1Secret] = useState<string | null>(null)
 	const [foundationDraft, setFoundationDraft] = useState('')
 	const [adminPayoutDraft, setAdminPayoutDraft] = useState('')
+	const [editingPayout, setEditingPayout] = useState<'foundation' | 'adminPayout' | null>(null)
 	const [savingPayout, setSavingPayout] = useState<'foundation' | 'adminPayout' | null>(null)
 
 	const issueInFlightRef = useRef(false)
@@ -140,7 +198,7 @@ export default function GenesisNodeReferralPage() {
 			}
 			if (snap?.isAdmin) {
 				const [list, issued] = await Promise.all([
-					fetchGenesisL0List(eoa).catch(() => [] as string[]),
+					fetchGenesisL0List(eoa).catch(() => [] as GenesisDownstreamL0Item[]),
 					fetchGenesisL0RedeemCodesForIssuer(eoa).catch(() => [] as GenesisL0RedeemRecord[]),
 				])
 				setL0List(list)
@@ -151,7 +209,7 @@ export default function GenesisNodeReferralPage() {
 			}
 			if (snap?.isL0) {
 				const [children, issuedL1] = await Promise.all([
-					fetchGenesisL1List(eoa).catch(() => [] as Array<{ address: string; ratioBps: number }>),
+					fetchGenesisL1List(eoa).catch(() => [] as GenesisDownstreamL1Item[]),
 					fetchGenesisL1RedeemCodesForIssuer(eoa).catch(() => [] as GenesisL1RedeemRecord[]),
 				])
 				setL1List(children)
@@ -301,6 +359,7 @@ export default function GenesisNodeReferralPage() {
 		try {
 			await setGenesisFoundation({ adminPrivateKeyArmor: armor, foundation: foundationDraft.trim() })
 			Toast.show({ content: 'Foundation address updated', position: 'center' })
+			setEditingPayout(null)
 			await reload()
 		} catch (cause) {
 			setError(cause instanceof Error ? cause.message : 'Could not update foundation.')
@@ -325,6 +384,7 @@ export default function GenesisNodeReferralPage() {
 				payout: adminPayoutDraft.trim(),
 			})
 			Toast.show({ content: 'Default admin payout updated', position: 'center' })
+			setEditingPayout(null)
 			await reload()
 		} catch (cause) {
 			setError(cause instanceof Error ? cause.message : 'Could not update default admin payout.')
@@ -333,6 +393,16 @@ export default function GenesisNodeReferralPage() {
 			setSavingPayout(null)
 		}
 	}, [adminPayoutDraft, armor, reload, snapshot?.isAdmin])
+
+	const cancelPayoutEdit = useCallback(
+		(kind: 'foundation' | 'adminPayout') => {
+			if (savingPayout) return
+			if (kind === 'foundation') setFoundationDraft(snapshot?.foundation ?? '')
+			else setAdminPayoutDraft(snapshot?.defaultAdminPayout ?? '')
+			setEditingPayout(null)
+		},
+		[savingPayout, snapshot?.defaultAdminPayout, snapshot?.foundation],
+	)
 
 	const copyText = useCallback(async (key: string, text: string) => {
 		try {
@@ -349,8 +419,24 @@ export default function GenesisNodeReferralPage() {
 		return buildGenesisEvangelistShareUrl(eoa)
 	}, [eoa, snapshot?.isL1])
 
-	const showClaim =
-		!snapshot?.isL0 && !snapshot?.isL1 && !snapshot?.isAdmin
+	const profileAddresses = useMemo(() => {
+		const addrs: string[] = []
+		for (const row of l0List) addrs.push(row.address)
+		for (const row of l1List) addrs.push(row.address)
+		if (snapshot?.foundation) addrs.push(snapshot.foundation)
+		if (snapshot?.defaultAdminPayout) addrs.push(snapshot.defaultAdminPayout)
+		if (snapshot?.parentAdmin) addrs.push(snapshot.parentAdmin)
+		if (snapshot?.parentL0) addrs.push(snapshot.parentL0)
+		return addrs
+	}, [l0List, l1List, snapshot?.defaultAdminPayout, snapshot?.foundation, snapshot?.parentAdmin, snapshot?.parentL0])
+
+	useEffect(() => {
+		if (profileAddresses.length === 0) return
+		void ensureProfilesForAddresses(profileAddresses)
+	}, [ensureProfilesForAddresses, profileAddresses.join('|').toLowerCase()])
+
+	/** Hide claim once the wallet is already Admin, L0, or L1. */
+	const showClaim = !snapshot?.isL0 && !snapshot?.isL1 && !snapshot?.isAdmin
 
 	const roleLabel = snapshot?.isAdmin
 		? 'Admin'
@@ -383,7 +469,7 @@ export default function GenesisNodeReferralPage() {
 								Genesis Node
 							</p>
 							<div className="mt-2 flex items-center justify-between gap-3">
-								<h1 className="text-3xl font-semibold tracking-tight">Referral</h1>
+								<h1 className="text-3xl font-semibold tracking-tight">Partnership</h1>
 								{eoa ? (
 									<span
 										className="shrink-0 rounded-full border border-indigo-200/20 bg-indigo-300/10 px-2.5 py-1 text-xs font-semibold text-indigo-100"
@@ -444,27 +530,30 @@ export default function GenesisNodeReferralPage() {
 								</div>
 								<p className="mt-2 font-mono text-xs text-slate-400">{shortAddr(eoa)}</p>
 								{snapshot?.isL0 && snapshot.parentAdmin ? (
-									<p className="mt-1 text-xs text-slate-400">
-										Parent admin:{' '}
-										<span className="font-mono text-slate-300">{shortAddr(snapshot.parentAdmin)}</span>
-									</p>
+									<div className="mt-3 flex min-w-0 flex-wrap items-center gap-2 text-xs text-slate-400">
+										<span className="shrink-0">Parent admin</span>
+										<BeamioTagCapsule address={snapshot.parentAdmin} />
+									</div>
 								) : null}
 								{snapshot?.isL1 && snapshot.parentL0 ? (
-									<p className="mt-1 text-xs text-slate-400">
-										Parent L0: <span className="font-mono text-slate-300">{shortAddr(snapshot.parentL0)}</span>
-										{' · '}
-										Share of L0 pool:{' '}
-										<span className="font-semibold text-slate-200">{ratioBpsToPercentLabel(snapshot.ratioBps)}</span>
-									</p>
+									<div className="mt-3 space-y-2 text-xs text-slate-400">
+										<div className="flex min-w-0 flex-wrap items-center gap-2">
+											<span className="shrink-0">Parent L0</span>
+											<BeamioTagCapsule address={snapshot.parentL0} />
+										</div>
+										<p>
+											Share of L0 pool:{' '}
+											<span className="font-semibold text-slate-200">
+												{ratioBpsToPercentLabel(snapshot.ratioBps)}
+											</span>
+										</p>
+									</div>
 								) : null}
 								<p className="mt-3 text-sm text-slate-200">
 									Earned:{' '}
-									<span className="font-semibold tabular-nums text-slate-50">
-										{Number(snapshot?.earnedUsdcDisplay ?? '0').toLocaleString(undefined, {
-											minimumFractionDigits: 2,
-											maximumFractionDigits: 2,
-										})}{' '}
-										USDC
+									<span className="font-semibold tabular-nums text-emerald-200">
+										$
+										{formatReferralUsdcAmount6(snapshot?.earnedUsdc6 ?? '0')}
 									</span>
 								</p>
 							</section>
@@ -626,26 +715,33 @@ export default function GenesisNodeReferralPage() {
 											<Users className="h-4 w-4 text-purple-200" aria-hidden />
 											<h2 className="text-sm font-bold text-slate-50">Downstream L1</h2>
 											<span className="ml-auto text-xs font-semibold tabular-nums text-slate-500">
-												{l1List.length}
+												{l1List.length} item{l1List.length === 1 ? '' : 's'}
 											</span>
 										</div>
-										<ul className="mt-3 space-y-1.5">
-											{l1List.length === 0 ? (
-												<li className="text-xs text-slate-500">No L1 Evangelists yet.</li>
-											) : (
-												l1List.map((row) => (
-													<li
+										{l1List.length === 0 ? (
+											<p className="mt-3 text-xs text-slate-500">No L1 Evangelists yet.</p>
+										) : (
+											<div className="mt-3 space-y-2">
+												{l1List.map((row) => (
+													<div
 														key={row.address}
-														className="flex items-center justify-between gap-2 rounded-lg border border-white/10 px-2.5 py-2 text-xs"
+														className="rounded-xl border border-white/10 bg-black/10 p-3"
 													>
-														<span className="truncate font-mono text-slate-300">{shortAddr(row.address)}</span>
-														<span className="shrink-0 font-semibold text-slate-400">
-															{ratioBpsToPercentLabel(row.ratioBps)}
-														</span>
-													</li>
-												))
-											)}
-										</ul>
+														<div className="flex min-w-0 items-center justify-between gap-2">
+															<div className="min-w-0 flex-1">
+																<BeamioTagCapsule
+																	address={row.address}
+																	rebatePercent={String(Number((row.ratioBps / 100).toFixed(2)))}
+																/>
+															</div>
+															<p className="shrink-0 text-right text-sm font-semibold tabular-nums text-emerald-200">
+																${formatReferralUsdcAmount6(row.earnedUsdc6)}
+															</p>
+														</div>
+													</div>
+												))}
+											</div>
+										)}
 									</section>
 								</>
 							) : null}
@@ -761,108 +857,168 @@ export default function GenesisNodeReferralPage() {
 											<Users className="h-4 w-4 text-indigo-200" aria-hidden />
 											<h2 className="text-sm font-bold text-slate-50">Downstream L0</h2>
 											<span className="ml-auto text-xs font-semibold tabular-nums text-slate-500">
-												{l0List.length}
+												{l0List.length} item{l0List.length === 1 ? '' : 's'}
 											</span>
 										</div>
-										<ul className="mt-3 space-y-1.5">
-											{l0List.length === 0 ? (
-												<li className="text-xs text-slate-500">No L0 members yet.</li>
-											) : (
-												l0List.map((addr) => (
-													<li
-														key={addr}
-														className="flex items-center justify-between gap-2 rounded-lg border border-white/10 px-2.5 py-2 font-mono text-xs"
+										{l0List.length === 0 ? (
+											<p className="mt-3 text-xs text-slate-500">No L0 members yet.</p>
+										) : (
+											<div className="mt-3 space-y-2">
+												{l0List.map((row) => (
+													<div
+														key={row.address}
+														className="rounded-xl border border-white/10 bg-black/10 p-3"
 													>
-														<span className="truncate text-slate-300">{shortAddr(addr)}</span>
-														<a
-															href={`https://mainnet.conet.network/address/${addr}`}
-															target="_blank"
-															rel="noopener noreferrer"
-															className="shrink-0 text-indigo-300"
-														>
-															Explorer
-														</a>
-													</li>
-												))
-											)}
-										</ul>
+														<div className="flex min-w-0 items-center justify-between gap-2">
+															<div className="min-w-0 flex-1">
+																<BeamioTagCapsule address={row.address} />
+															</div>
+															<div className="shrink-0 text-right">
+																<p className="text-sm font-semibold tabular-nums text-emerald-200">
+																	${formatReferralUsdcAmount6(row.earnedUsdc6)}
+																</p>
+																<p className="text-[10px] text-slate-500">
+																	{row.l1Count} item{row.l1Count === 1 ? '' : 's'}
+																</p>
+															</div>
+														</div>
+													</div>
+												))}
+											</div>
+										)}
 									</section>
 
 									<section className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
 										<h2 className="text-sm font-bold text-slate-50">Payout addresses</h2>
 										<p className="mt-1 text-xs text-slate-400">
-											Vault admins can update Foundation and Default admin payout (gasless relay).
+											Tap the edit icon on a BeamioTag capsule to change Foundation or Default admin payout
+											(gasless).
 										</p>
-										<label
-											htmlFor="genesis-foundation"
-											className="mt-4 block text-xs font-semibold text-slate-400"
-										>
-											Foundation
-										</label>
-										<input
-											id="genesis-foundation"
-											type="text"
-											value={foundationDraft}
-											onChange={(e) => setFoundationDraft(e.target.value)}
-											autoComplete="off"
-											spellCheck={false}
-											className="mt-1.5 w-full rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2.5 font-mono text-xs text-slate-50 placeholder:text-slate-500"
-										/>
-										<button
-											type="button"
-											onClick={() => void handleSaveFoundation()}
-											disabled={
-												savingPayout !== null ||
-												!armor ||
-												foundationDraft.trim().toLowerCase() ===
-													(snapshot.foundation ?? '').toLowerCase()
-											}
-											aria-busy={savingPayout === 'foundation'}
-											className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#1562f0] px-3 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
-										>
-											{savingPayout === 'foundation' ? (
-												<Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-											) : null}
-											{savingPayout === 'foundation' ? 'Saving…' : 'Save Foundation'}
-										</button>
 
-										<label
-											htmlFor="genesis-admin-payout"
-											className="mt-4 block text-xs font-semibold text-slate-400"
-										>
-											Default admin payout
-										</label>
-										<input
-											id="genesis-admin-payout"
-											type="text"
-											value={adminPayoutDraft}
-											onChange={(e) => setAdminPayoutDraft(e.target.value)}
-											autoComplete="off"
-											spellCheck={false}
-											className="mt-1.5 w-full rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2.5 font-mono text-xs text-slate-50 placeholder:text-slate-500"
-										/>
-										<button
-											type="button"
-											onClick={() => void handleSaveAdminPayout()}
-											disabled={
-												savingPayout !== null ||
-												!armor ||
-												adminPayoutDraft.trim().toLowerCase() ===
-													(snapshot.defaultAdminPayout ?? '').toLowerCase()
-											}
-											aria-busy={savingPayout === 'adminPayout'}
-											className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#1562f0] px-3 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
-										>
-											{savingPayout === 'adminPayout' ? (
-												<Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-											) : null}
-											{savingPayout === 'adminPayout' ? 'Saving…' : 'Save Default admin payout'}
-										</button>
+										<div className="mt-4 space-y-3">
+											<div>
+												<p className="text-xs font-semibold text-slate-400">Foundation</p>
+												{editingPayout === 'foundation' ? (
+													<div className="mt-2 space-y-2">
+														<input
+															id="genesis-foundation"
+															type="text"
+															value={foundationDraft}
+															onChange={(e) => setFoundationDraft(e.target.value)}
+															autoComplete="off"
+															spellCheck={false}
+															placeholder="0x…"
+															className="w-full rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2.5 font-mono text-xs text-slate-50 placeholder:text-slate-500"
+														/>
+														<div className="flex gap-2">
+															<button
+																type="button"
+																onClick={() => cancelPayoutEdit('foundation')}
+																disabled={savingPayout !== null}
+																className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm font-semibold text-slate-200 disabled:opacity-50"
+															>
+																<X className="h-4 w-4" aria-hidden />
+																Cancel
+															</button>
+															<button
+																type="button"
+																onClick={() => void handleSaveFoundation()}
+																disabled={
+																	savingPayout !== null ||
+																	!armor ||
+																	!ethers.isAddress(foundationDraft.trim()) ||
+																	foundationDraft.trim().toLowerCase() ===
+																		(snapshot.foundation ?? '').toLowerCase()
+																}
+																aria-busy={savingPayout === 'foundation'}
+																className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#1562f0] px-3 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+															>
+																{savingPayout === 'foundation' ? (
+																	<Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+																) : (
+																	<Check className="h-4 w-4" aria-hidden />
+																)}
+																{savingPayout === 'foundation' ? 'Saving…' : 'Save'}
+															</button>
+														</div>
+													</div>
+												) : (
+													<div className="mt-2">
+														<BeamioTagCapsule
+															address={snapshot.foundation}
+															onEdit={() => {
+																setFoundationDraft(snapshot.foundation)
+																setEditingPayout('foundation')
+															}}
+														/>
+													</div>
+												)}
+											</div>
+
+											<div>
+												<p className="text-xs font-semibold text-slate-400">Default admin payout</p>
+												{editingPayout === 'adminPayout' ? (
+													<div className="mt-2 space-y-2">
+														<input
+															id="genesis-admin-payout"
+															type="text"
+															value={adminPayoutDraft}
+															onChange={(e) => setAdminPayoutDraft(e.target.value)}
+															autoComplete="off"
+															spellCheck={false}
+															placeholder="0x…"
+															className="w-full rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2.5 font-mono text-xs text-slate-50 placeholder:text-slate-500"
+														/>
+														<div className="flex gap-2">
+															<button
+																type="button"
+																onClick={() => cancelPayoutEdit('adminPayout')}
+																disabled={savingPayout !== null}
+																className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm font-semibold text-slate-200 disabled:opacity-50"
+															>
+																<X className="h-4 w-4" aria-hidden />
+																Cancel
+															</button>
+															<button
+																type="button"
+																onClick={() => void handleSaveAdminPayout()}
+																disabled={
+																	savingPayout !== null ||
+																	!armor ||
+																	!ethers.isAddress(adminPayoutDraft.trim()) ||
+																	adminPayoutDraft.trim().toLowerCase() ===
+																		(snapshot.defaultAdminPayout ?? '').toLowerCase()
+																}
+																aria-busy={savingPayout === 'adminPayout'}
+																className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#1562f0] px-3 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+															>
+																{savingPayout === 'adminPayout' ? (
+																	<Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+																) : (
+																	<Check className="h-4 w-4" aria-hidden />
+																)}
+																{savingPayout === 'adminPayout' ? 'Saving…' : 'Save'}
+															</button>
+														</div>
+													</div>
+												) : (
+													<div className="mt-2">
+														<BeamioTagCapsule
+															address={snapshot.defaultAdminPayout}
+															onEdit={() => {
+																setAdminPayoutDraft(snapshot.defaultAdminPayout)
+																setEditingPayout('adminPayout')
+															}}
+														/>
+													</div>
+												)}
+											</div>
+										</div>
 									</section>
 								</>
 							) : null}
 
-							{showClaim || (!snapshot?.isL0 && !snapshot?.isL1) ? (
+							{showClaim ? (
 								<section className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
 									<h2 className="text-sm font-bold text-slate-50">Claim redeem code</h2>
 									<p className="mt-1 text-xs text-slate-400">

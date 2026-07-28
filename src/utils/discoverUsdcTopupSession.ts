@@ -42,33 +42,53 @@ export const GENESIS_NODE_BRIDGE_INITIATOR = '0x87cAeD4e51C36a2C2ece3Aaf4ddaC969
 /** @deprecated alias of {@link GENESIS_NODE_BRIDGE_INITIATOR} */
 export const GENESIS_NODE_SEAT_PAYTO = GENESIS_NODE_BRIDGE_INITIATOR
 
-/** Must match x402sdk `GENESIS_NODE_SEAT_TEST_CODE` — settle 1 USDC then full fulfill. */
+/** Must match x402sdk `GENESIS_NODE_SEAT_TEST_CODE` — settle 1.37 USDC then micro-split fulfill. */
 export const GENESIS_NODE_SEAT_TEST_CODE = '332266'
 
-/** Must match x402sdk `GENESIS_NODE_SEAT_TEST_USDC6`. */
-export const GENESIS_NODE_SEAT_TEST_USDC6 = 1_000_000n
+/** Must match x402sdk `GENESIS_NODE_SEAT_TEST_USDC6` (1.37 USDC = 1/1000 seat). */
+export const GENESIS_NODE_SEAT_TEST_USDC6 = 1_370_000n
 
 /**
- * Local SilentPassUI E2E allowlist: this EOA may pay 1 USDC (`test=332266`) when Base balance ≥ 1 USDC.
+ * PWA-only buyer allowlist for Genesis seat **testMode** (1.37 USDC + vault micro-split).
+ *
+ * - **Third-party** `/usdc-topup?...&test=332266`: still code-gated only (no buyer list).
+ * - **PWA** in-app pay / PWA-built pay URL: attach `test=332266` **only** when `beneficiary`
+ *   is on this list. Add checksummed EOAs here to allow more test buyers.
+ *
  * Mirror only in SilentPassUI — do not cross-import from x402sdk.
  */
-export const GENESIS_NODE_SEAT_LOCAL_TEST_EOA = '0x6c2774534ec5c050c5573a7b57b63a45ae091a05'
+export const GENESIS_NODE_SEAT_PWA_TEST_BUYER_WHITELIST: readonly string[] = [
+	'0x6c2774534ec5c050c5573a7b57b63a45ae091a05',
+]
 
-export function isGenesisNodeSeatLocalTestEoa(eoa: string | null | undefined): boolean {
+/** @deprecated Prefer {@link GENESIS_NODE_SEAT_PWA_TEST_BUYER_WHITELIST}[0] */
+export const GENESIS_NODE_SEAT_LOCAL_TEST_EOA = GENESIS_NODE_SEAT_PWA_TEST_BUYER_WHITELIST[0]!
+
+const pwaTestBuyerSetLower = new Set(
+	GENESIS_NODE_SEAT_PWA_TEST_BUYER_WHITELIST.map((a) => a.toLowerCase()),
+)
+
+/** True when this buyer EOA may use PWA Genesis testMode (1.37 USDC). */
+export function isGenesisNodeSeatPwaTestBuyer(eoa: string | null | undefined): boolean {
 	if (!eoa || !ethers.isAddress(eoa)) return false
 	try {
-		return ethers.getAddress(eoa).toLowerCase() === GENESIS_NODE_SEAT_LOCAL_TEST_EOA.toLowerCase()
+		return pwaTestBuyerSetLower.has(ethers.getAddress(eoa).toLowerCase())
 	} catch {
 		return false
 	}
 }
 
-/** Settle amount required for local/self-fund gate (test EOA → 1 USDC @ qty 1). */
+/** @deprecated Prefer {@link isGenesisNodeSeatPwaTestBuyer} */
+export function isGenesisNodeSeatLocalTestEoa(eoa: string | null | undefined): boolean {
+	return isGenesisNodeSeatPwaTestBuyer(eoa)
+}
+
+/** Settle amount required for local/self-fund gate (PWA whitelist → 1.37 USDC @ qty 1). */
 export function genesisNodeSeatLocalRequiredUsdc6(params: {
 	beneficiaryEoa: string | null | undefined
 	quantity: number
 }): { required6: bigint; testMode: boolean; qty: number } {
-	if (isGenesisNodeSeatLocalTestEoa(params.beneficiaryEoa)) {
+	if (isGenesisNodeSeatPwaTestBuyer(params.beneficiaryEoa)) {
 		return { required6: GENESIS_NODE_SEAT_TEST_USDC6, testMode: true, qty: 1 }
 	}
 	const qty = Math.max(1, Math.min(100, Math.floor(Number(params.quantity) || 1)))
@@ -139,11 +159,11 @@ export function buildDiscoverGenesisNodeSeatUrl(params: {
 	cardOwner: string
 	beneficiaryEoa: string
 	quantity: number
-	/** Evangelist L1 EOA from Discover share link (optional; field name legacy). */
+	/** Evangelist / Admin / L0 EOA from Discover share (optional; legacy name referrerL0). */
 	referrerL0?: string | null
-	/** Alias — same as referrerL0; purchase attribution must be active L1. */
+	/** Alias — purchase attribution: Admin (no L0 cut), L0 (no L1 cut), or L1 (ratio split). */
 	referrerL1?: string | null
-	/** When set (e.g. `332266`), payment page settles 1 USDC then fulfills. */
+	/** When set to `332266`, third-party page settles 1.37 USDC (PWA should only pass this for whitelist buyers). */
 	testCode?: string
 }): string {
 	const testMode =
@@ -178,8 +198,9 @@ export type PayGenesisNodeSeatLocalResult =
  * When the local Verra EOA holds enough USDC on Base, sign EIP-3009 and POST
  * `/api/nfcUsdcTopup` with workflow=genesisNodeSeat (same settle path as homepage).
  *
- * Special: {@link GENESIS_NODE_SEAT_LOCAL_TEST_EOA} may settle **1 USDC** via
- * `test=332266` when balance ≥ 1 USDC (qty forced to 1; Master still full-fulfills).
+ * Special: whitelisted PWA buyers ({@link isGenesisNodeSeatPwaTestBuyer}) may settle **1.37 USDC** via
+ * `test=332266` when balance ≥ 1.37 USDC (qty forced to 1; vault micro-split).
+ * Third-party pages still accept `test=332266` by code alone (no buyer whitelist).
  *
  * Caller should fall back to {@link buildDiscoverGenesisNodeSeatUrl} when
  * `insufficientBalance` is true.
@@ -191,7 +212,7 @@ export async function payGenesisNodeSeatWithLocalWallet(params: {
 	cardOwner: string
 	beneficiaryEoa: string
 	quantity: number
-	/** Evangelist L1 EOA (optional; legacy param name referrerL0). */
+	/** Evangelist / Admin / L0 EOA (optional; legacy param name referrerL0). */
 	referrerL0?: string | null
 	referrerL1?: string | null
 }): Promise<PayGenesisNodeSeatLocalResult> {
@@ -211,12 +232,12 @@ export async function payGenesisNodeSeatWithLocalWallet(params: {
 			ok: false,
 			insufficientBalance: true,
 			error: testMode
-				? 'Insufficient USDC on Base. Need 1.00 USDC for this test purchase.'
+				? 'Insufficient USDC on Base. Need 1.37 USDC for this test purchase.'
 				: `Insufficient USDC on Base. Need ${(qty * GENESIS_NODE_SEAT_USDC_PER_NODE).toLocaleString('en-US')} USDC.`,
 		}
 	}
 
-	const amountHuman = testMode ? '1' : String(qty * GENESIS_NODE_SEAT_USDC_PER_NODE)
+	const amountHuman = testMode ? '1.37' : String(qty * GENESIS_NODE_SEAT_USDC_PER_NODE)
 	const bodyObj: Record<string, string> = {
 		cardAddress: ethers.getAddress(params.cardAddress),
 		cardOwner: ethers.getAddress(params.cardOwner),

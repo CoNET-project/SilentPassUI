@@ -1,6 +1,6 @@
 /**
  * GenesisNodeReferralVaultV1 — CoNET Admin/L0/L1 redeem + read helpers for Mining UI.
- * Purchase attribution must use an active L1 Evangelist (not bare L0).
+ * Purchase attribution may use Admin (no L0 cut), active L0 (no L1 cut), or active L1 (ratio of L0 pool).
  * L0 sets ratioBps (% of L0's 10% node bucket) when issuing L1 redeem codes.
  */
 import { ethers } from 'ethers'
@@ -238,12 +238,38 @@ export async function fetchGenesisMemberSnapshot(eoa: string): Promise<GenesisMe
 	}
 }
 
-export async function fetchGenesisL0List(forAdmin?: string): Promise<string[]> {
+export type GenesisDownstreamL0Item = {
+	address: string
+	earnedUsdc6: string
+	/** Active L1 Evangelists under this L0 (item count for Admin Downstream list). */
+	l1Count: number
+}
+
+export type GenesisDownstreamL1Item = {
+	address: string
+	ratioBps: number
+	earnedUsdc6: string
+}
+
+export async function fetchGenesisL0List(forAdmin?: string): Promise<GenesisDownstreamL0Item[]> {
 	return enqueueRpc(async () => {
 		const count = Number(await vaultRead.l0Count())
 		if (!Number.isFinite(count) || count <= 0) return []
 		const adminLower = forAdmin && ethers.isAddress(forAdmin) ? ethers.getAddress(forAdmin).toLowerCase() : null
-		const addrs: string[] = []
+		const l1Total = Number(await vaultRead.l1Count())
+		const l1ParentCounts = new Map<string, number>()
+		if (Number.isFinite(l1Total) && l1Total > 0) {
+			for (let i = 0; i < l1Total; i++) {
+				const a = await vaultRead.l1At(i)
+				if (!a || !ethers.isAddress(a)) continue
+				const m = await vaultRead.members(ethers.getAddress(a))
+				if (!m.active || Number(m.role) !== 2) continue
+				const parent = ethers.getAddress(m.parentL0).toLowerCase()
+				if (parent === ethers.ZeroAddress.toLowerCase()) continue
+				l1ParentCounts.set(parent, (l1ParentCounts.get(parent) ?? 0) + 1)
+			}
+		}
+		const out: GenesisDownstreamL0Item[] = []
 		for (let i = 0; i < count; i++) {
 			const a = await vaultRead.l0At(i)
 			if (!a || !ethers.isAddress(a)) continue
@@ -253,18 +279,23 @@ export async function fetchGenesisL0List(forAdmin?: string): Promise<string[]> {
 				const parent = ethers.getAddress(m.parentAdmin).toLowerCase()
 				if (parent !== adminLower) continue
 			}
-			addrs.push(addr)
+			const earned = (await vaultRead.earnedUsdc6(addr)) as bigint
+			out.push({
+				address: addr,
+				earnedUsdc6: earned.toString(),
+				l1Count: l1ParentCounts.get(addr.toLowerCase()) ?? 0,
+			})
 		}
-		return addrs
+		return out
 	})
 }
 
-export async function fetchGenesisL1List(forL0?: string): Promise<Array<{ address: string; ratioBps: number }>> {
+export async function fetchGenesisL1List(forL0?: string): Promise<GenesisDownstreamL1Item[]> {
 	return enqueueRpc(async () => {
 		const count = Number(await vaultRead.l1Count())
 		if (!Number.isFinite(count) || count <= 0) return []
 		const l0Lower = forL0 && ethers.isAddress(forL0) ? ethers.getAddress(forL0).toLowerCase() : null
-		const out: Array<{ address: string; ratioBps: number }> = []
+		const out: GenesisDownstreamL1Item[] = []
 		for (let i = 0; i < count; i++) {
 			const a = await vaultRead.l1At(i)
 			if (!a || !ethers.isAddress(a)) continue
@@ -275,7 +306,8 @@ export async function fetchGenesisL1List(forL0?: string): Promise<Array<{ addres
 				const parent = ethers.getAddress(m.parentL0).toLowerCase()
 				if (parent !== l0Lower) continue
 			}
-			out.push({ address: addr, ratioBps: Number(m.ratioBps) })
+			const earned = (await vaultRead.earnedUsdc6(addr)) as bigint
+			out.push({ address: addr, ratioBps: Number(m.ratioBps), earnedUsdc6: earned.toString() })
 		}
 		return out
 	})

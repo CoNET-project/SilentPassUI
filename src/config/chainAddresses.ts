@@ -8,9 +8,23 @@ export const BASE_AA_FACTORY = '0x4b31D6a05Cdc817CAc1B06369555b37a5b182122'
 export const BASE_BEAMIO_ACCOUNT_DEPLOYER = '0x139D55591A03550259AF32097A9848ECE9869C90'
 export const BASE_CARD_FACTORY = '0xF2864210577359AcaE448D2B116031a0c5EE1016'
 export const BASE_CCSA_CARD_ADDRESS = '0x2032A363BB2cf331142391fC0DAd21D6504922C7'
-/** 统一国库 ConetTreasury CREATE2（Base + CoNET 同址） */
+/**
+ * @deprecated 旧工厂 ConetTreasury CREATE2（Base Circle USDC settle / NodeSale 仍可指向此址）。
+ * CoNET 业务国库已改绑 TreasuryBridgeV3。
+ */
 export const CONET_TREASURY_CREATE2 = '0xa311c8fBE7CafC611603Ee925465A62493B73B30'
+/** Base 主网 Circle USDC 入金（仍为 CREATE2 ConetTreasury） */
 export const BASE_TREASURY = CONET_TREASURY_CREATE2
+/**
+ * CoNET 业务国库 = TreasuryBridgeV3 proxy（Base + CoNET 同址）。
+ * 跨链桥 / feeSettlement mint / 唯一 conet-USDC 增发入口。
+ */
+export const CONET_TREASURY = '0xa208982212978550594A7FEEB70a61665d129003'
+export const CONET_TREASURY_BRIDGE_V3 = CONET_TREASURY
+/** CoNET 唯一 canonical USDC（TreasuryCanonicalERC20V3） */
+export const CONET_USDC = '0x5209865D404aA5646eDe5B91CD4218909eA72eDA'
+/** @deprecated 工厂版 USDC；停增发，仅存量 */
+export const CONET_USDC_FACTORY_LEGACY = '0xfD0D7B0706AaB5E4351bcED37bC3C77ed6813907'
 /** @deprecated 旧 BaseTreasury 0x5c64… */
 export const BASE_TREASURY_LEGACY = '0x5c64a8b0935DA72d60933bBD8cD10579E1C40c58'
 export const BEAMIO_USER_CARD_ASSET_ADDRESS = '0xA756F2E27a332d6Be2d399dA543E3Ce4C8455F14'
@@ -22,7 +36,7 @@ export const BEAMIO_INDEXER_DIAMOND = '0x45D45de73465b8913B50974Fc188529dFFb7AfF
 /** CoNET BUint UUPS proxy（canonical）；与 deployments/conet-addresses.json `BUint` 同步 */
 export const CONET_BUINT = '0x54ac4672cE75EC5ACebaeF1a7aFC6F49E77Ae9Ae'
 /** CoNET BUnitAirdrop（claim / getBUnitBalance） */
-export const CONET_BUNIT_AIRDROP_ADDRESS = '0x305f90A7f38289219BA1b4be98CB5b47e7b15Ac2'
+export const CONET_BUNIT_AIRDROP_ADDRESS = '0xa01DFfD68b355540B840310a9f0C1E7a779C3Ce8'
 export const CONET_BUINT_REDEEM_AIRDROP = '0x74Fc5C1f105E64663689692e3240127DdE649AF1'
 
 export const BASE_MAINNET_FACTORIES = {
@@ -48,5 +62,7 @@ export const CONTRACT_ADDRESSES = {
     bUint: CONET_BUINT,
     bunitAirdrop: CONET_BUNIT_AIRDROP_ADDRESS,
     buintRedeemAirdrop: CONET_BUINT_REDEEM_AIRDROP,
+    treasury: CONET_TREASURY,
+    usdc: CONET_USDC,
   },
 } as const

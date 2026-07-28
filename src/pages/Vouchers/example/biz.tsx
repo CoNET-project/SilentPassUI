@@ -1285,76 +1285,150 @@ const BEAMIO_APP_URL = 'https://beamio.app'
 const DASHBOARD_POINTS_TOKEN_ID = 0n
 const ACTIVE_CARDS_LOOKBACK_DAYS = 90
 
-/** Market → Refill / Unit Provisioning packages (CAD label + USDC checkout at 100 B-Units per 1 USDC). */
+/**
+ * Market → Refill / Unit Provisioning packages.
+ * Pricing is USDC on Base; paid B-Units = priceUsdc × 100; free = volume bonus on paid.
+ */
 type MarketFuelPackage = {
   id: string
   name: string
   desc: string
-  priceCad: number
+  /** Checkout USDC (Base). */
+  priceUsdc: number
+  /** Total B-Units (paid + free volume bonus). */
   bUnits: number
-  bUnitsApproximate?: boolean
-  /** USDC amount passed to custom fuel checkout (`bUnits / 100`). */
+  paidBUnits: number
+  freeBUnits: number
+  /** Volume bonus on paid pool (0–2000 = 0%–20%). */
+  bonusBps: number
+  /** USDC amount string for custom fuel checkout (`priceUsdc`). */
   usdcAmount: string
+  /** Hide after first purchase, or when merchant already has a program card / Ket #0 create NFT. */
+  firstTimeOnly?: boolean
   highlighted?: boolean
   badge?: string
 }
 
-/** SaaS B-Unit packs for Market → Unit Provisioning / Refill Packages (CAD label; checkout USDC). */
+/** Global SaaS Hashrate Prepayment Matrix (USDC; dual-pool paid + free). */
 const MARKET_FUEL_PACKAGES: MarketFuelPackage[] = [
   {
     id: 'genesis_starter',
-    name: 'Novice Genesis Pack',
-    desc: 'Ultimate ice-breaker for new stores and early makers. Zero-friction setup to go live.',
-    priceCad: 19,
+    name: 'Newcomer Genesis Pack',
+    desc: 'First-time ice-breaker only. Forcibly establishes the first wave of physical redemption and data flow.',
+    priceUsdc: 15,
     bUnits: 2000,
-    usdcAmount: '20',
+    paidBUnits: 1500,
+    freeBUnits: 500,
+    bonusBps: 3333,
+    usdcAmount: '15',
+    firstTimeOnly: true,
+    badge: 'First-time only',
   },
   {
-    id: 'trial',
-    name: 'Trial Pack',
-    desc: 'Basic single-point validation.',
-    priceCad: 49,
-    bUnits: 3430,
-    usdcAmount: '34.3',
+    id: 'testing_waters',
+    name: 'Testing the Waters Pack',
+    desc: 'Basic single-point verification for merchants starting to normalize digital asset issuance.',
+    priceUsdc: 49,
+    bUnits: 5145,
+    paidBUnits: 4900,
+    freeBUnits: 245,
+    bonusBps: 500,
+    usdcAmount: '49',
   },
   {
     id: 'growth',
     name: 'Growth Pack',
-    desc: 'For high-frequency active stores and mature IPs.',
-    priceCad: 199,
-    bUnits: 15380,
-    bUnitsApproximate: true,
-    usdcAmount: '153.8',
+    desc: 'For high-frequency active stores and mature IPs. Scale batch pools and high-frequency interaction.',
+    priceUsdc: 199,
+    bUnits: 21890,
+    paidBUnits: 19900,
+    freeBUnits: 1990,
+    bonusBps: 1000,
+    usdcAmount: '199',
     highlighted: true,
     badge: 'Best Value',
   },
   {
     id: 'enterprise',
     name: 'Enterprise Pack',
-    desc: 'Large chains and top direct-sales teams.',
-    priceCad: 999,
-    bUnits: 80410,
-    bUnitsApproximate: true,
-    usdcAmount: '804.1',
+    desc: 'Large chains and top direct-sales teams. High-density cross-border traffic and social fission.',
+    priceUsdc: 999,
+    bUnits: 114885,
+    paidBUnits: 99900,
+    freeBUnits: 14985,
+    bonusBps: 1500,
+    usdcAmount: '999',
   },
   {
     id: 'institutional',
     name: 'Institutional Pack',
-    desc: 'Super-node exclusive.',
-    priceCad: 4999,
-    bUnits: 419910,
-    bUnitsApproximate: true,
-    usdcAmount: '4199.1',
+    desc: 'Exclusive for super nodes. Regional agents and large ecosystem integrators.',
+    priceUsdc: 4999,
+    bUnits: 599880,
+    paidBUnits: 499900,
+    freeBUnits: 99980,
+    bonusBps: 2000,
+    usdcAmount: '4999',
   },
 ]
 
-function formatMarketFuelBUnits(pkg: MarketFuelPackage): string {
-  const n = pkg.bUnits.toLocaleString('en-US')
-  return `${pkg.bUnitsApproximate ? '~' : ''}${n} B-Units`
+const GENESIS_FUEL_PACK_LS_PREFIX = 'beamio:biz:eoa:'
+const GENESIS_FUEL_PACK_LS_SUFFIX = ':genesis-fuel-pack-purchased:v1'
+
+function genesisFuelPackPurchasedStorageKey(eoa: string): string {
+  return `${GENESIS_FUEL_PACK_LS_PREFIX}${eoa.trim().toLowerCase()}${GENESIS_FUEL_PACK_LS_SUFFIX}`
 }
 
-function formatMarketFuelPriceCad(pkg: MarketFuelPackage): string {
-  return `C$${pkg.priceCad.toLocaleString('en-US')}`
+function hasPurchasedGenesisFuelPack(eoa: string | null | undefined): boolean {
+  if (!eoa || typeof window === 'undefined') return false
+  try {
+    return window.localStorage.getItem(genesisFuelPackPurchasedStorageKey(eoa)) === '1'
+  } catch {
+    return false
+  }
+}
+
+function markGenesisFuelPackPurchased(eoa: string | null | undefined): void {
+  if (!eoa || typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(genesisFuelPackPurchasedStorageKey(eoa), '1')
+  } catch {
+    /* ignore quota */
+  }
+}
+
+/**
+ * Hide Newcomer Genesis when:
+ * - local EOA already bought that pack, or
+ * - merchant already owns a program card, or
+ * - merchant holds Ket #0 (create-card NFT via purchase or redeem).
+ */
+function visibleMarketFuelPackages(
+  eoa: string | null | undefined,
+  opts?: { hasMerchantCardOrCreateNft?: boolean },
+): MarketFuelPackage[] {
+  const hideGenesis =
+    hasPurchasedGenesisFuelPack(eoa) || Boolean(opts?.hasMerchantCardOrCreateNft)
+  return MARKET_FUEL_PACKAGES.filter((pkg) => !(pkg.firstTimeOnly && hideGenesis))
+}
+
+function formatMarketFuelBUnits(pkg: MarketFuelPackage): string {
+  return `${pkg.bUnits.toLocaleString('en-US')} B-Units`
+}
+
+function formatMarketFuelPriceUsdc(pkg: MarketFuelPackage): string {
+  return `$${pkg.priceUsdc.toLocaleString('en-US')}`
+}
+
+function formatMarketFuelPoolBreakdown(pkg: MarketFuelPackage): string {
+  const bonusPct =
+    pkg.bonusBps >= 1000
+      ? `${Math.round(pkg.bonusBps / 100)}%`
+      : `${(pkg.bonusBps / 100).toFixed(pkg.bonusBps % 100 === 0 ? 0 : 1)}%`
+  if (pkg.firstTimeOnly) {
+    return `${pkg.paidBUnits.toLocaleString('en-US')} Paid + ${pkg.freeBUnits.toLocaleString('en-US')} Free · ~${bonusPct} subsidy`
+  }
+  return `${pkg.paidBUnits.toLocaleString('en-US')} Paid + ${pkg.freeBUnits.toLocaleString('en-US')} Free · ${bonusPct} bonus`
 }
 
 function formatMarketFuelOrdersHint(pkg: MarketFuelPackage): string {
@@ -2494,7 +2568,7 @@ function MobileNoAaLiteMemberSelectionPage(props: {
               busy={voucherRedeemBusy}
               feedback={voucherRedeemFeedback}
             />
-            {MARKET_FUEL_PACKAGES.map((pkg) => (
+            {visibleMarketFuelPackages(merchantEoa).map((pkg) => (
               <div
                 key={pkg.id}
                 className={
@@ -2514,9 +2588,11 @@ function MobileNoAaLiteMemberSelectionPage(props: {
                   <div>
                     <h3 className="font-manrope text-xl font-bold">{pkg.name}</h3>
                     <p className="mt-1 text-xs font-medium text-[#0051d1]">{pkg.desc}</p>
+                    <p className="mt-1 text-[11px] font-medium text-slate-400">{formatMarketFuelPoolBreakdown(pkg)}</p>
                   </div>
                   <div className="shrink-0 text-right">
-                    <span className="text-2xl font-extrabold text-[#2c2f31]">{formatMarketFuelPriceCad(pkg)}</span>
+                    <span className="text-2xl font-extrabold text-[#2c2f31]">{formatMarketFuelPriceUsdc(pkg)}</span>
+                    <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">USDC</p>
                     <p className="mt-1 text-[11px] font-bold text-[#0051d1]">{formatMarketFuelBUnits(pkg)}</p>
                   </div>
                 </div>
@@ -21622,15 +21698,33 @@ const customFuelVolumeBUnits = useMemo(() => {
    const v = Number(String(customFuelAmount).replace(/,/g, '.'));
   return Number.isFinite(v) && v >= 0 ? Math.round(v * 100) : 0;
 }, [customFuelAmount, selectedCustomFuelPackage]);
-/** Custom Fuel Refill is priced in the selected pack's CAD amount, converted by the live CoNET oracle. */
+/** Custom Fuel Refill: pack price is USDC 1:1 (no CAD oracle). */
 const marketCustomFuelUsdc = useMemo(() => {
-  if (!selectedCustomFuelPackage) {
-    const v = Number(String(customFuelAmount).replace(/,/g, '.'));
-    return Number.isFinite(v) ? v : NaN;
-  }
-  if (!Number.isFinite(oracleCadUsdc ?? NaN) || (oracleCadUsdc ?? 0) <= 0) return NaN;
-  return selectedCustomFuelPackage.priceCad * Number(oracleCadUsdc);
-}, [customFuelAmount, oracleCadUsdc, selectedCustomFuelPackage]);
+  if (selectedCustomFuelPackage) return selectedCustomFuelPackage.priceUsdc;
+  const v = Number(String(customFuelAmount).replace(/,/g, '.'));
+  return Number.isFinite(v) ? v : NaN;
+}, [customFuelAmount, selectedCustomFuelPackage]);
+
+const marketFuelPackagesForWallet = useMemo(
+  () =>
+    visibleMarketFuelPackages(profiles?.[0]?.keyID ?? myAddress, {
+      hasMerchantCardOrCreateNft: profileOwnsIssuedBeamioCard || ownsBusinessStartKetToken0,
+    }),
+  [profiles, myAddress, profileOwnsIssuedBeamioCard, ownsBusinessStartKetToken0],
+);
+
+/** Drop Genesis checkout selection once the pack is no longer offered. */
+useEffect(() => {
+  if (!selectedCustomFuelPackage?.firstTimeOnly) return
+  if (!(profileOwnsIssuedBeamioCard || ownsBusinessStartKetToken0)) return
+  setCustomFuelAmount('')
+  if (selectedProduct === 'custom_fuel') setSelectedProduct(null)
+}, [
+  selectedCustomFuelPackage,
+  profileOwnsIssuedBeamioCard,
+  ownsBusinessStartKetToken0,
+  selectedProduct,
+]);
  /** Merchant Program kits (Standard / Custom) — Stripe Checkout from Programs marketing cards */
  const isMerchantKitStripeProduct = selectedProduct === 'standard_kit' || selectedProduct === 'custom_kit';
  const [merchantKitStripeUi, setMerchantKitStripeUi] = useState<'idle' | 'creating' | 'polling' | 'succeeded' | 'failed'>('idle');
@@ -23740,7 +23834,11 @@ const overviewCustomerBalanceFromActivity = useMemo(() => {
           ? marketCustomFuelUsdc.toFixed(6)
           : '';
     if (!amountHuman) {
-      setMarketRefuelError('Live CAD/USDC oracle rate is unavailable. Please refresh and try again.');
+      setMarketRefuelError(
+        selectedProduct === 'custom_fuel'
+          ? 'Select a refill package or enter a valid USDC amount.'
+          : 'Invalid purchase amount.'
+      );
       return;
     }
      let need6: bigint;
@@ -23779,6 +23877,12 @@ const overviewCustomerBalanceFromActivity = useMemo(() => {
        const payload = await signBUnitRefuel3009(pk, amountHuman);
        const result = await purchaseBUnitFromBase(payload);
        if (result.success) {
+         if (
+           selectedProduct === 'custom_fuel' &&
+           selectedCustomFuelPackage?.firstTimeOnly
+         ) {
+           markGenesisFuelPackPurchased(account);
+         }
          setMarketRefuelSuccess(result.txHash ?? '');
          setOverviewRefreshTrigger((t) => t + 1);
          const pollMs = 5000;
@@ -23810,7 +23914,7 @@ const overviewCustomerBalanceFromActivity = useMemo(() => {
      return null;
    });
    setActiveTab('Wallets');
-}, [marketCustomFuelUsdc, selectedProduct, profiles, myAddress, customFuelAmount]);
+}, [marketCustomFuelUsdc, selectedProduct, selectedCustomFuelPackage, profiles, myAddress, customFuelAmount]);
 
  const runMerchantKitStripeCheckout = useCallback(
    async (packageType: MerchantKitCheckoutPlanId) => {
@@ -31512,7 +31616,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                    </span>
                  </div>
                  <div className="grid grid-cols-1 gap-6">
-                   {MARKET_FUEL_PACKAGES.map((pkg) => (
+                   {marketFuelPackagesForWallet.map((pkg) => (
                      <div
                        key={pkg.id}
                        className={
@@ -31544,16 +31648,17 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                          )}
                        </div>
                        <h3 className="mb-1 text-xl font-bold text-[#2c2f31]">{pkg.name}</h3>
-                       <p className="mb-6 text-sm text-[#595c5e]">{pkg.desc}</p>
+                       <p className="mb-2 text-sm text-[#595c5e]">{pkg.desc}</p>
+                       <p className="mb-6 text-[11px] font-medium text-slate-400">{formatMarketFuelPoolBreakdown(pkg)}</p>
                        <div className="mb-6">
                          <span
                            className={`text-3xl font-extrabold ${pkg.highlighted ? 'text-[#0051d1]' : 'text-[#2c2f31]'}`}
                          >
-                           {formatMarketFuelPriceCad(pkg)}
+                           {formatMarketFuelPriceUsdc(pkg)}
                          </span>
                          <span className="text-sm font-medium text-slate-400">
                            {' '}
-                           / {formatMarketFuelBUnits(pkg).replace(' B-Units', ' units')}
+                           USDC / {formatMarketFuelBUnits(pkg).replace(' B-Units', ' units')}
                          </span>
                        </div>
                        <button
@@ -31640,7 +31745,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                        </button>
                      </div>
                      <p className="text-[10px] font-medium leading-relaxed text-[#595c5e]/80">
-                       C$50 worth of B-Units will be added when balance drops below 500 (preview — not wired yet).
+                       $50 USDC worth of B-Units will be added when balance drops below 500 (preview — not wired yet).
                      </p>
                    </div>
                  </div>
@@ -31669,13 +31774,13 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                      <h3 className="font-sans text-2xl font-extrabold text-[#2c2f31]">Refill Packages</h3>
                      <p className="mt-1 text-sm text-slate-500">Select a fuel package to recharge your merchant wallet.</p>
                      <p className="mt-2 text-[11px] font-medium text-slate-500">
-                       Package labels show CAD for comparison. Checkout charges USDC on Base (100 B-Units per 1 USDC).
+                       Prices in USDC on Base. Paid B-Units = USDC × 100; volume bonus adds free B-Units (5%–20%). Newcomer Genesis (~33% subsidy) is only for merchants with no program card and no create-card NFT.
                      </p>
                    </div>
                  </div>
 
                  <div className="grid grid-cols-1 items-stretch gap-5 md:grid-cols-2 xl:grid-cols-3">
-                   {MARKET_FUEL_PACKAGES.map((pkg) => (
+                   {marketFuelPackagesForWallet.map((pkg) => (
                      <div
                        key={pkg.id}
                        className={
@@ -31689,8 +31794,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                            <span className="text-[11px] font-black uppercase tracking-wider text-white">{pkg.badge}</span>
                          </div>
                        ) : null}
-                       <div className={`flex items-start justify-between ${pkg.badge ? 'pt-2' : ''}`}>
-                         <div>
+                       <div className={`flex items-start justify-between gap-3 ${pkg.badge ? 'pt-2' : ''}`}>
+                         <div className="min-w-0">
                            <h4
                              className={
                                pkg.highlighted
@@ -31701,6 +31806,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                              {pkg.name}
                            </h4>
                            <p className="mt-1 text-[12px] text-[#595c5e]">{pkg.desc}</p>
+                           <p className="mt-1 text-[11px] font-medium text-slate-400">{formatMarketFuelPoolBreakdown(pkg)}</p>
                            <p className="mt-1 text-[11px] font-medium text-slate-400">{formatMarketFuelOrdersHint(pkg)}</p>
                          </div>
                          <div className="shrink-0 text-right">
@@ -31711,7 +31817,10 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                  : 'font-sans text-2xl font-extrabold text-[#2c2f31]'
                              }
                            >
-                             {formatMarketFuelPriceCad(pkg)}
+                             {formatMarketFuelPriceUsdc(pkg)}
+                           </div>
+                           <div className="mt-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                             USDC
                            </div>
                            <div
                              className={
@@ -31781,7 +31890,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                      <div className="flex items-center gap-3">
                        <Info className="size-[18px] shrink-0 text-[#0051d1]" strokeWidth={2} aria-hidden />
                        <p className="text-xs font-medium leading-tight text-[#595c5e]">
-                         Packages compare at ~70 B-Units per C$1. Each Charge uses 5 B-Units. Settlement is USDC on Base at checkout.
+                         Packages settle in USDC on Base (100 paid B-Units per $1 USDC). Volume bonus adds free B-Units on paid packs. Each Charge uses 5 B-Units.
                        </p>
                      </div>
                    </div>
@@ -32894,7 +33003,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                  </p>
                </header>
                <section className="mb-10 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-                 {MARKET_FUEL_PACKAGES.map((pkg) => (
+                 {marketFuelPackagesForWallet.map((pkg) => (
                    <div
                      key={pkg.id}
                      className={
@@ -32921,6 +33030,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                              {pkg.name}
                            </h2>
                            <p className="mt-1.5 text-sm font-normal leading-snug text-slate-600">{pkg.desc}</p>
+                           <p className="mt-1 text-[11px] font-medium text-slate-400">{formatMarketFuelPoolBreakdown(pkg)}</p>
                          </div>
                          <div className="flex shrink-0 flex-col items-start gap-0.5 sm:items-end sm:text-right">
                            <span
@@ -32930,10 +33040,10 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                  : 'text-2xl font-bold tabular-nums text-slate-900'
                              }
                            >
-                             {formatMarketFuelPriceCad(pkg)}
+                             {formatMarketFuelPriceUsdc(pkg)}
                            </span>
                            <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                             {formatMarketFuelBUnits(pkg)}
+                             USDC · {formatMarketFuelBUnits(pkg)}
                            </span>
                          </div>
                        </div>
@@ -42167,13 +42277,13 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                  <div className="mb-2 flex h-16 w-16 items-center justify-center rounded-xl bg-[#0051d1] text-white shadow-lg">
                    <Coins className="size-9" strokeWidth={2} aria-hidden />
                  </div>
-                 <span className="text-lg font-black tracking-tighter text-[#0051d1]">~15k B</span>
+                 <span className="text-lg font-black tracking-tighter text-[#0051d1]">~22k B</span>
                </div>
                <div className="flex-1 text-center md:text-left">
                  <h4 className="mb-2 text-lg font-bold text-[#2c2f31]">What does a Growth Pack mean for you?</h4>
                  <p className="text-sm leading-relaxed text-[#595c5e]">
-                   The <span className="font-bold text-[#2c2f31]">C$199 Growth Pack</span> includes about 15,380 B-Units. This is enough fuel to
-                   automatically process over <span className="font-bold text-[#0051d1]">7,500 customer transactions</span>, or secure substantial
+                   The <span className="font-bold text-[#2c2f31]">$199 USDC Growth Pack</span> includes 21,890 B-Units (19,900 paid + 1,990 free at 10% volume bonus). This is enough fuel to
+                   automatically process over <span className="font-bold text-[#0051d1]">10,000 customer transactions</span>, or secure substantial
                    customer top-ups—without traditional POS fees.
                  </p>
                </div>
@@ -42690,7 +42800,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                   ) : selectedProduct === 'custom_fuel' ? (
                     <div className="flex gap-4">
                       <Zap size={20} className="text-emerald-500 shrink-0 mt-0.5" />
-                      <div><h4 className="text-[15px] font-bold text-white mb-1">{customFuelVolumeBUnits.toLocaleString('en-US')} B-Units Pre-load</h4><p className="text-[13px] font-medium text-slate-400 leading-relaxed">Current oracle settlement: {Number.isFinite(marketCustomFuelUsdc) ? `${marketCustomFuelUsdc.toFixed(2)} USDC` : 'unavailable'}. Instant clearing fuel to process your daily retail volume.</p></div>
+                      <div><h4 className="text-[15px] font-bold text-white mb-1">{customFuelVolumeBUnits.toLocaleString('en-US')} B-Units Pre-load</h4><p className="text-[13px] font-medium text-slate-400 leading-relaxed">{selectedCustomFuelPackage ? `${formatMarketFuelPoolBreakdown(selectedCustomFuelPackage)}. ` : ''}Checkout {Number.isFinite(marketCustomFuelUsdc) ? `${marketCustomFuelUsdc.toFixed(2)} USDC` : '—'} on Base. Instant clearing fuel for daily retail volume.</p></div>
                     </div>
                   ) : (
                     <div className="flex gap-4">

@@ -58,7 +58,7 @@ export const GENESIS_NODE_SEAT_TEST_USDC6 = 1_370_000n
  * Mirror only in SilentPassUI — do not cross-import from x402sdk.
  */
 export const GENESIS_NODE_SEAT_PWA_TEST_BUYER_WHITELIST: readonly string[] = [
-	'0x6c2774534ec5c050c5573a7b57b63a45ae091a05',
+	'0x6c2774534ec5c050C5573A7B57b63A45AE091a05',
 ]
 
 /** @deprecated Prefer {@link GENESIS_NODE_SEAT_PWA_TEST_BUYER_WHITELIST}[0] */

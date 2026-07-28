@@ -5,6 +5,7 @@ import {
 	Ban,
 	Check,
 	Copy,
+	ExternalLink,
 	Link2,
 	Loader2,
 	Pencil,
@@ -20,6 +21,7 @@ import { useDaemonContext } from '@/providers/DaemonProvider'
 import { resolveSessionEoa } from '@/utils/resolveSessionEoa'
 import { resolveSigningPrivateKeyArmor } from '@/utils/resolveSigningPrivateKeyArmor'
 import { CoNET_Data } from '@/utils/globals'
+import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
 import { formatReferralUsdcAmount6 } from '@/services/referralRegistryEarnings'
 import {
 	buildGenesisEvangelistShareUrl,
@@ -44,6 +46,64 @@ import {
 	type GenesisMemberSnapshot,
 } from '@/services/genesisNodeReferral'
 import { CONET_GENESIS_NODE_REFERRAL_VAULT } from '@/config/chainAddresses'
+
+const GENESIS_VAULT_EXPLORER_TXS_URL = `https://mainnet.conet.network/address/${CONET_GENESIS_NODE_REFERRAL_VAULT}?tab=txs`
+
+/** Vault proxy address capsule → CoNET explorer txs tab (+ copy full address). */
+function GenesisVaultAddressCapsule({ address }: { address: string }) {
+	const [copied, setCopied] = useState(false)
+	const fullAddress = useMemo(() => {
+		try {
+			return ethers.isAddress(address) ? ethers.getAddress(address) : ''
+		} catch {
+			return ''
+		}
+	}, [address])
+	if (!fullAddress) return null
+	const short = `${fullAddress.slice(0, 6)}…${fullAddress.slice(-4)}`
+
+	const openTxs = () => {
+		openExternalUrl(GENESIS_VAULT_EXPLORER_TXS_URL)
+	}
+
+	const copyAddress = async (e: React.MouseEvent) => {
+		e.preventDefault()
+		e.stopPropagation()
+		try {
+			await navigator.clipboard.writeText(fullAddress)
+			setCopied(true)
+			window.setTimeout(() => setCopied(false), 2000)
+		} catch {
+			/* ignore */
+		}
+	}
+
+	return (
+		<div className="mt-2 inline-flex max-w-full items-center overflow-hidden rounded-full border border-white/20 bg-white/15 text-white/90 backdrop-blur-sm">
+			<button
+				type="button"
+				onClick={openTxs}
+				className="inline-flex min-w-0 items-center gap-1.5 py-1 pl-2.5 pr-1.5 font-mono text-[11px] font-semibold transition hover:bg-white/20"
+				aria-label={`Open vault ${short} transactions on CoNET Explorer`}
+			>
+				<span className="truncate">{short}</span>
+				<ExternalLink className="h-3 w-3 shrink-0 opacity-80" strokeWidth={2} aria-hidden />
+			</button>
+			<button
+				type="button"
+				onClick={(e) => void copyAddress(e)}
+				className="inline-flex h-7 w-7 shrink-0 items-center justify-center border-l border-white/15 transition hover:bg-white/20"
+				aria-label={copied ? 'Address copied' : 'Copy vault address'}
+			>
+				{copied ? (
+					<Check className="h-3.5 w-3.5 text-emerald-400" strokeWidth={2.25} aria-hidden />
+				) : (
+					<Copy className="h-3.5 w-3.5 opacity-80" strokeWidth={2} aria-hidden />
+				)}
+			</button>
+		</div>
+	)
+}
 
 /** Same capsule chrome as `/wallet/referral-registry` Downstream rows. */
 function BeamioTagCapsule({
@@ -479,9 +539,7 @@ export default function GenesisNodeReferralPage() {
 									</span>
 								) : null}
 							</div>
-							<p className="mt-2 truncate font-mono text-[11px] text-slate-400">
-								{shortAddr(CONET_GENESIS_NODE_REFERRAL_VAULT)}
-							</p>
+							<GenesisVaultAddressCapsule address={CONET_GENESIS_NODE_REFERRAL_VAULT} />
 						</header>
 
 						{!eoa ? (

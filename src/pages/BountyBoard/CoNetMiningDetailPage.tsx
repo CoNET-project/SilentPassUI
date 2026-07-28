@@ -16,16 +16,13 @@ import {
 	Copy,
 	ExternalLink,
 	Lock,
-	Share2,
 } from 'lucide-react'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { BeamioCircularBackButton } from '@/components/BeamioCircularBackButton'
 import { ValidatorDepositRedeemAdminSheet } from '@/components/BountyBoard/ValidatorDepositRedeemAdminSheet'
 import { ValidatorDepositRedeemClaimSheet } from '@/components/BountyBoard/ValidatorDepositRedeemClaimSheet'
 import { GenesisLoyaltyVestingSheet } from '@/components/BountyBoard/GenesisLoyaltyVestingSheet'
-import { GenesisNodeReferralAdminSheet } from '@/components/BountyBoard/GenesisNodeReferralAdminSheet'
 import { useValidatorDepositRedeemAdmin } from '@/hooks/useValidatorDepositRedeemAdmin'
-import { fetchGenesisMemberSnapshot } from '@/services/genesisNodeReferral'
 import { useDaemonValidatorWalletNodeProfile } from '@/hooks/useDaemonValidatorWalletNodeProfile'
 import { useDaemonUnifiedIncomeStats } from '@/hooks/useDaemonUnifiedIncomeStats'
 import { useDepinNodeCountryLabelsByIp } from '@/hooks/useDepinNodeCountryLabelsByIp'
@@ -248,10 +245,6 @@ export default function CoNetMiningDetailPage() {
 	const [redeemSheetOpen, setRedeemSheetOpen] = useState(false)
 	const [claimSheetOpen, setClaimSheetOpen] = useState(false)
 	const [vestingSheetOpen, setVestingSheetOpen] = useState(false)
-	const [genesisReferralSheetOpen, setGenesisReferralSheetOpen] = useState(false)
-	const [isGenesisReferralAdmin, setIsGenesisReferralAdmin] = useState(false)
-	const [isGenesisL0, setIsGenesisL0] = useState(false)
-	const [isGenesisL1, setIsGenesisL1] = useState(false)
 
 	// Inline "Activate Your Node" redeem flow (replaces the old Redeem code button).
 	const [inlineCode, setInlineCode] = useState('')
@@ -312,37 +305,12 @@ export default function CoNetMiningDetailPage() {
 	}, [])
 
 	const showRedeemAdminManageButton = isRedeemAdmin === true
-	/** Admin / L0 manage; anyone with a wallet can open to claim an L0 code. */
-	const showGenesisReferralButton = Boolean(eoa)
 	const hasNodes = beneficiaryHasNodes(profile)
 
 	useEffect(() => {
 		setShowFooter(false)
 		return () => setShowFooter(true)
 	}, [setShowFooter])
-
-	useEffect(() => {
-		if (!eoa) {
-			setIsGenesisReferralAdmin(false)
-			setIsGenesisL0(false)
-			setIsGenesisL1(false)
-			return
-		}
-		let cancelled = false
-		void fetchGenesisMemberSnapshot(eoa)
-			.then((snap) => {
-				if (cancelled || !snap) return
-				setIsGenesisReferralAdmin(snap.isAdmin)
-				setIsGenesisL0(snap.isL0)
-				setIsGenesisL1(snap.isL1)
-			})
-			.catch(() => {
-				// Keep last trusted role flags on RPC failure.
-			})
-		return () => {
-			cancelled = true
-		}
-	}, [eoa])
 
 	// Background prune of local issued-code ghosts (failed old-contract creates, etc.)
 	useEffect(() => {
@@ -400,26 +368,6 @@ export default function CoNetMiningDetailPage() {
 									title="Create / manage redeem codes"
 								>
 									<TicketPlus className="h-[17px] w-[17px] stroke-[2.5]" aria-hidden />
-								</button>
-							) : null}
-							{showGenesisReferralButton ? (
-								<button
-									type="button"
-									onClick={() => setGenesisReferralSheetOpen(true)}
-									disabled={!eoa}
-									className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/40 bg-white/20 text-white/90 backdrop-blur-md shadow-[0_1px_3px_rgba(0,0,0,0.12)] transition hover:bg-white/30 disabled:cursor-not-allowed disabled:opacity-50"
-									aria-label={
-										isGenesisReferralAdmin || isGenesisL0 || isGenesisL1
-											? 'Genesis Node referral'
-											: 'Claim Genesis referral redeem code'
-									}
-									title={
-										isGenesisReferralAdmin || isGenesisL0 || isGenesisL1
-											? 'Genesis referral'
-											: 'Claim Genesis code'
-									}
-								>
-									<Share2 className="h-[17px] w-[17px] stroke-[2.5]" aria-hidden />
 								</button>
 							) : null}
 						</div>
@@ -790,24 +738,6 @@ export default function CoNetMiningDetailPage() {
 				airdrop={incomeStats?.airdrop ?? null}
 				eoa={eoa}
 			/>
-
-			{eoa ? (
-				<GenesisNodeReferralAdminSheet
-					open={genesisReferralSheetOpen}
-					onClose={() => {
-						setGenesisReferralSheetOpen(false)
-						void fetchGenesisMemberSnapshot(eoa)
-							.then((snap) => {
-								if (!snap) return
-								setIsGenesisReferralAdmin(snap.isAdmin)
-								setIsGenesisL0(snap.isL0)
-								setIsGenesisL1(snap.isL1)
-							})
-							.catch(() => undefined)
-					}}
-					eoa={eoa}
-				/>
-			) : null}
 		</div>
 	)
 }

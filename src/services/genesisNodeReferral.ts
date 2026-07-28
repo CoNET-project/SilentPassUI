@@ -631,3 +631,81 @@ export async function claimGenesisL1RedeemCode(params: {
 		return txHash
 	})
 }
+
+export async function setGenesisFoundation(params: {
+	adminPrivateKeyArmor: string
+	foundation: string
+}): Promise<string> {
+	if (!ethers.isAddress(params.foundation) || params.foundation === ethers.ZeroAddress) {
+		throw new Error('Foundation must be a non-zero address.')
+	}
+	const foundation = ethers.getAddress(params.foundation)
+	return enqueueWrite(async () => {
+		const wallet = new ethers.Wallet(params.adminPrivateKeyArmor)
+		const nonce = await readActionNonce(wallet.address)
+		const deadline = BigInt(Math.floor(Date.now() / 1000) + 300)
+		const types = {
+			SetFoundation: [
+				{ name: 'admin', type: 'address' },
+				{ name: 'foundation', type: 'address' },
+				{ name: 'nonce', type: 'uint256' },
+				{ name: 'deadline', type: 'uint256' },
+			],
+		}
+		const signature = await wallet.signTypedData(EIP712_DOMAIN, types, {
+			admin: wallet.address,
+			foundation,
+			nonce,
+			deadline,
+		})
+		const txHash = await postRedeem({
+			action: 'setFoundation',
+			account: wallet.address,
+			payoutAddress: foundation,
+			nonce: nonce.toString(),
+			deadline: deadline.toString(),
+			signature,
+		})
+		snapshotCache.clear()
+		return txHash
+	})
+}
+
+export async function setGenesisDefaultAdminPayout(params: {
+	adminPrivateKeyArmor: string
+	payout: string
+}): Promise<string> {
+	if (!ethers.isAddress(params.payout) || params.payout === ethers.ZeroAddress) {
+		throw new Error('Default admin payout must be a non-zero address.')
+	}
+	const payout = ethers.getAddress(params.payout)
+	return enqueueWrite(async () => {
+		const wallet = new ethers.Wallet(params.adminPrivateKeyArmor)
+		const nonce = await readActionNonce(wallet.address)
+		const deadline = BigInt(Math.floor(Date.now() / 1000) + 300)
+		const types = {
+			SetDefaultAdminPayout: [
+				{ name: 'admin', type: 'address' },
+				{ name: 'payout', type: 'address' },
+				{ name: 'nonce', type: 'uint256' },
+				{ name: 'deadline', type: 'uint256' },
+			],
+		}
+		const signature = await wallet.signTypedData(EIP712_DOMAIN, types, {
+			admin: wallet.address,
+			payout,
+			nonce,
+			deadline,
+		})
+		const txHash = await postRedeem({
+			action: 'setDefaultAdminPayout',
+			account: wallet.address,
+			payoutAddress: payout,
+			nonce: nonce.toString(),
+			deadline: deadline.toString(),
+			signature,
+		})
+		snapshotCache.clear()
+		return txHash
+	})
+}

@@ -125,6 +125,7 @@ function AppShell() {
 	setRedeemResult,
 	setMyAddress,
 	refreshRecentActivityNoAa,
+	applyCouponOpenClaimStatus,
   } = useDaemonContext()
 
   const {
@@ -317,6 +318,16 @@ function AppShell() {
         position: 'top',
       })
       if (ret.success) {
+        const tid = couponClaimPreviewRow?.tokenId?.trim()
+        if (tid) {
+          applyCouponOpenClaimStatus({
+            cardAddress: couponClaimIntent.cardAddress,
+            tokenId: tid,
+            couponId: couponClaimIntent.couponId,
+            status: 'claimed',
+            source: 'optimistic',
+          })
+        }
         // Cluster queue accept (`queued`) is success — close without waiting for chain confirm.
         closeCouponClaimPanel()
       }

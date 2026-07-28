@@ -1,11 +1,13 @@
 import React from 'react'
-import { Heart, Loader2 } from 'lucide-react'
+import { Heart, Loader2, Share2 } from 'lucide-react'
 import { formatDiscoverLikeCount } from '@/utils/discoverMerchantLikeCount'
 import { useCouponUserLike, type UseCouponUserLikeOptions } from '@/hooks/useCouponUserLike'
 
 type Props = UseCouponUserLikeOptions & {
 	/** Show aggregate like count under banner metadata row. */
 	showCountPill?: boolean
+	/** Show aggregate share-click count next to likes. */
+	showShareClickPill?: boolean
 }
 
 export function CouponUserLikeHeartButton({
@@ -106,9 +108,36 @@ export function CouponUserLikeCountPill({
 	)
 }
 
+export function CouponShareClickCountPill({
+	count,
+	variant = 'light',
+}: {
+	count: number | null
+	variant?: 'light' | 'onDark'
+}) {
+	if (count == null) return null
+	const style =
+		variant === 'onDark'
+			? 'bg-white/15 text-white ring-white/25'
+			: 'bg-sky-50 text-[#1562f0] ring-sky-100 dark:bg-sky-950/40 dark:text-sky-300 dark:ring-sky-900/50'
+	return (
+		<span
+			className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold ring-1 ${style}`}
+			aria-label={`${formatDiscoverLikeCount(count)} share clicks`}
+		>
+			<Share2 className="h-3 w-3" strokeWidth={2.25} aria-hidden />
+			{formatDiscoverLikeCount(count)}
+		</span>
+	)
+}
+
 /** Heart overlay + optional count pill for issued coupon tickets. Likes cannot be removed from UI. */
-export default function CouponUserLikeChrome({ showCountPill = true, ...options }: Props) {
-	const { userLiked, likeLoading, likeCount, onHeartClick } = useCouponUserLike(options)
+export default function CouponUserLikeChrome({
+	showCountPill = true,
+	showShareClickPill = false,
+	...options
+}: Props) {
+	const { userLiked, likeLoading, likeCount, shareClickCount, onHeartClick } = useCouponUserLike(options)
 
 	if (!options.enabled) return null
 
@@ -121,6 +150,9 @@ export default function CouponUserLikeChrome({ showCountPill = true, ...options 
 			/>
 			{showCountPill && likeCount != null ? (
 				<CouponUserLikeCountPill count={likeCount} />
+			) : null}
+			{showShareClickPill && shareClickCount != null ? (
+				<CouponShareClickCountPill count={shareClickCount} />
 			) : null}
 		</>
 	)

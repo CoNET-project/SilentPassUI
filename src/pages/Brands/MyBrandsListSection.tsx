@@ -3,7 +3,7 @@ import { IpfsImg } from '@/components/IpfsImg';
  * Shared My Brands list body — used by full page route and slide-over drawer.
  */
 
-import React, { useCallback, useMemo } from 'react'
+import React, { useCallback, useEffect, useMemo } from 'react'
 import { useObjectImgSrc } from '@/components/card/useObjectImgSrc'
 import { useNavigate } from 'react-router-dom'
 import { CreditCard, ExternalLink } from 'lucide-react'
@@ -28,6 +28,7 @@ import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
 import { fiatPrefix } from '@/services/currency'
 import type { UserCardInfo } from '@/services/BeamioCard'
 import { tu } from '@/locale/beamioLocale'
+import { pickCouponOpenClaimStatusFromMap } from '@/utils/couponOpenClaimStatusLocalCache'
 
 export function resolveCardImageUrl(url: string | undefined): string | undefined {
 	if (!url?.trim()) return undefined
@@ -212,30 +213,57 @@ export function MyBrandListEntries({
 	details: Record<string, MyBrandCardDetailLike | undefined>
 }) {
 	const punchBgClassName = 'bg-[#f3f4f5] dark:bg-slate-800'
-	const { profiles } = useDaemonContext()
+	const {
+		profiles,
+		couponOpenClaimStatusByKey,
+		registerCouponOpenClaimFeedTargets,
+	} = useDaemonContext()
 	const navigate = useNavigate()
 	const getPrivateKeyArmor = useCallback(
 		(): string | undefined => resolveSigningPrivateKeyArmor(profiles?.[0]) || undefined,
 		[profiles],
 	)
 
-	const allCoupons: ActiveCouponListItem[] = []
-	const seenCouponIds = new Set<string>()
-	for (const uc of cards) {
-		const detail = details[uc.cardAddress.toLowerCase()]
-		const ownedCoupons = resolveMyBrandsOwnedCouponDisplays(
-			uc.cardAddress,
-			detail?.claimableCoupons
-		) as ActiveCouponListItem[]
-		for (const ownedCoupon of ownedCoupons) {
-			const key =
-				ownedCoupon.id ||
-				`${ownedCoupon.cardAddress.toLowerCase()}:${ownedCoupon.tokenId || ownedCoupon.couponId}`
-			if (seenCouponIds.has(key)) continue
-			seenCouponIds.add(key)
-			allCoupons.push(ownedCoupon)
+	const allCoupons: ActiveCouponListItem[] = useMemo(() => {
+		const out: ActiveCouponListItem[] = []
+		const seenCouponIds = new Set<string>()
+		for (const uc of cards) {
+			const detail = details[uc.cardAddress.toLowerCase()]
+			const ownedCoupons = resolveMyBrandsOwnedCouponDisplays(
+				uc.cardAddress,
+				detail?.claimableCoupons
+			) as ActiveCouponListItem[]
+			for (const ownedCoupon of ownedCoupons) {
+				const key =
+					ownedCoupon.id ||
+					`${ownedCoupon.cardAddress.toLowerCase()}:${ownedCoupon.tokenId || ownedCoupon.couponId}`
+				if (seenCouponIds.has(key)) continue
+				/** Only held redeemable assets — hide already redeemed. */
+				const st = pickCouponOpenClaimStatusFromMap(
+					couponOpenClaimStatusByKey,
+					ownedCoupon.cardAddress,
+					ownedCoupon.tokenId,
+				)
+				if (st?.status === 'redeemed') continue
+				seenCouponIds.add(key)
+				out.push(ownedCoupon)
+			}
 		}
-	}
+		return out
+	}, [cards, details, couponOpenClaimStatusByKey])
+
+	useEffect(() => {
+		if (!allCoupons.length) return
+		registerCouponOpenClaimFeedTargets(
+			allCoupons
+				.filter((c) => c.tokenId)
+				.map((c) => ({
+					cardAddress: c.cardAddress,
+					tokenId: String(c.tokenId),
+					couponId: c.couponId,
+				})),
+		)
+	}, [allCoupons, registerCouponOpenClaimFeedTargets])
 
 	const allCatalogs: Array<{ item: ActiveCouponListItem; categoryLabel: string }> = []
 	const seenCatalogIds = new Set<string>()

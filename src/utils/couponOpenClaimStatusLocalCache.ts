@@ -1,10 +1,12 @@
 /**
- * Open-claim coupon status — EOA-scoped semi-permanent local store.
+ * Open-claim coupon status — EOA-scoped semi-permanent local store + daemon map source.
  * Once a wallet has claimed / redeemed a series token on-chain (or queued claim succeeded),
- * UI must keep showing claimed/redeemed across merchant-detail remounts even if RPC lags.
+ * UI must keep showing claimed/redeemed across remounts even if RPC lags.
  *
  * Key: eoa + card + issued series tokenId.
  * Never clear claimed/redeemed because of an untrusted empty/claimable read.
+ * UI must read via DaemonProvider (memory map hydrated from this store); pages must not
+ * reinvent per-page localStorage keys.
  */
 
 import { ethers } from 'ethers'
@@ -21,6 +23,14 @@ export type CouponOpenClaimLocalEntry = {
 	source: 'optimistic' | 'chain'
 }
 
+export type CouponOpenClaimStatusMap = Record<string, CouponOpenClaimLocalEntry>
+
+export type CouponOpenClaimFeedTarget = {
+	cardAddress: string
+	tokenId: string
+	couponId?: string
+}
+
 type StoredPayload = {
 	v: 1
 	eoa: string
@@ -31,6 +41,17 @@ type StoredPayload = {
 const PREFIX = 'beamio:couponOpenClaimStatus:v1:'
 const MAX_STORE_CHARS = 1_200_000
 const MAX_ENTRIES_PER_EOA = 2_500
+
+/** Daemon / UI map key: `{cardLower}:{tokenId}` */
+export function buildCouponOpenClaimStatusKey(
+	cardAddress: string | null | undefined,
+	tokenId: string | number | bigint | null | undefined,
+): string | null {
+	const card = normalizeCard(cardAddress)
+	const tid = normalizeTokenId(tokenId)
+	if (!card || !tid) return null
+	return entryKey(card, tid)
+}
 
 function eoaKey(eoaLower: string): string {
 	return `${PREFIX}${eoaLower}`
@@ -70,7 +91,7 @@ function normalizeTokenId(raw: string | number | bigint | null | undefined): str
 	}
 }
 
-function loadMap(eoaLower: string): Record<string, CouponOpenClaimLocalEntry> {
+function loadMap(eoaLower: string): CouponOpenClaimStatusMap {
 	if (typeof window === 'undefined' || !eoaLower) return {}
 	try {
 		const raw = localStorage.getItem(eoaKey(eoaLower))
@@ -84,7 +105,7 @@ function loadMap(eoaLower: string): Record<string, CouponOpenClaimLocalEntry> {
 	}
 }
 
-function persistMap(eoaLower: string, byKey: Record<string, CouponOpenClaimLocalEntry>): void {
+function persistMap(eoaLower: string, byKey: CouponOpenClaimStatusMap): void {
 	if (typeof window === 'undefined' || !eoaLower) return
 	try {
 		let next = byKey
@@ -114,8 +135,18 @@ function statusRank(status: CouponOpenClaimLocalStatus): number {
 	return status === 'redeemed' ? 2 : 1
 }
 
+/** Full map for current EOA (daemon hydrate). */
+export function loadCouponOpenClaimStatusMapForEoa(
+	eoaAddress: string | null | undefined,
+): CouponOpenClaimStatusMap {
+	const eoa = normalizeEoa(eoaAddress)
+	if (!eoa) return {}
+	return loadMap(eoa)
+}
+
 /**
  * Lookup local claim/redeem status for UI (sync, local-first).
+ * Prefer DaemonProvider.couponOpenClaimStatusByKey when inside React tree.
  */
 export function lookupCouponOpenClaimLocalStatus(
 	eoaAddress: string | null | undefined,
@@ -131,8 +162,21 @@ export function lookupCouponOpenClaimLocalStatus(
 	return entry
 }
 
+export function pickCouponOpenClaimStatusFromMap(
+	map: CouponOpenClaimStatusMap,
+	cardAddress: string | null | undefined,
+	tokenId: string | number | bigint | null | undefined,
+): CouponOpenClaimLocalEntry | null {
+	const k = buildCouponOpenClaimStatusKey(cardAddress, tokenId)
+	if (!k) return null
+	const entry = map[k]
+	if (!entry || (entry.status !== 'claimed' && entry.status !== 'redeemed')) return null
+	return entry
+}
+
 /**
  * Persist claimed/redeemed. Never downgrade redeemed→claimed or chain→optimistic wipe.
+ * Returns the entry written (or previous if no-op upgrade blocked), null if invalid args.
  */
 export function saveCouponOpenClaimLocalStatus(params: {
 	eoaAddress: string
@@ -141,26 +185,26 @@ export function saveCouponOpenClaimLocalStatus(params: {
 	couponId?: string | null
 	status: CouponOpenClaimLocalStatus
 	source: 'optimistic' | 'chain'
-}): void {
+}): CouponOpenClaimLocalEntry | null {
 	const eoa = normalizeEoa(params.eoaAddress)
 	const card = normalizeCard(params.cardAddress)
 	const tid = normalizeTokenId(params.tokenId)
-	if (!eoa || !card || !tid) return
+	if (!eoa || !card || !tid) return null
 	const map = { ...loadMap(eoa) }
 	const k = entryKey(card, tid)
 	const prev = map[k]
 	if (prev) {
-		if (statusRank(prev.status) > statusRank(params.status)) return
+		if (statusRank(prev.status) > statusRank(params.status)) return prev
 		if (
 			prev.status === params.status &&
 			prev.source === 'chain' &&
 			params.source === 'optimistic'
 		) {
-			return
+			return prev
 		}
 	}
 	const couponId = params.couponId?.trim() || prev?.couponId
-	map[k] = {
+	const next: CouponOpenClaimLocalEntry = {
 		status: params.status,
 		cardAddress: card,
 		tokenId: tid,
@@ -168,7 +212,9 @@ export function saveCouponOpenClaimLocalStatus(params: {
 		savedAt: Date.now(),
 		source: params.source,
 	}
+	map[k] = next
 	persistMap(eoa, map)
+	return next
 }
 
 /** Map local status → CouponOpenClaimEligibility terminal values. */

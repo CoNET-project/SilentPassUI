@@ -6,9 +6,10 @@ import { ethers } from 'ethers'
 import BeamioBaseScanNftCapsule from '@/components/BeamioBaseScanNftCapsule'
 import CouponOpenClaimShareButton from '@/components/CouponOpenClaimShareButton'
 import { DiscoverOfferSocialMissionTrigger } from '@/components/discover/DiscoverOfferSocialMissionTrigger'
-import { CouponUserLikeCountPill, CouponUserLikeHeartButton } from '@/components/CouponUserLikeChrome'
+import { CouponUserLikeCountPill, CouponUserLikeHeartButton, CouponShareClickCountPill } from '@/components/CouponUserLikeChrome'
 import type { DiscoverSocialMissionMetrics } from '@/utils/discoverMerchantPromotions'
 import { useCouponUserLike } from '@/hooks/useCouponUserLike'
+import { useDaemonContext } from '@/providers/DaemonProvider'
 import { beamioBaseScanNftUrl } from '@/utils/beamioBaseScanNft'
 import { Toast } from 'antd-mobile'
 import { t } from '@/locale/i18n'
@@ -440,6 +441,8 @@ export function ActiveCouponTicketItem({
 		getPrivateKeyArmor,
 		onWalletUnlock,
 	})
+	const { formatCouponSupplySummary } = useDaemonContext()
+	const supplySummaryFromDaemon = formatCouponSupplySummary(row.cardAddress, row.tokenId)
 	const expires = formatCouponExpiryPill(row.validBeforeSec)
 	const showExpiryPill = shouldShowCouponExpiryPill(expires)
 	const expiryUrgent = couponExpiryUsesUrgentVariant(expires)
@@ -462,8 +465,10 @@ export function ActiveCouponTicketItem({
 
 	const showShareButton = Boolean(showOpenClaimShareButton && row.couponId)
 	const showLikeCountPill = Boolean(showUserLike)
+	const showShareClickPill = Boolean(showUserLike && couponLike.shareClickCount != null)
 	const showSocialMission = Boolean(socialMissionUser || socialMissionReferrer)
-	const showSocialStatRow = showLikeCountPill || showShareButton || showSocialMission
+	const showSocialStatRow =
+		showLikeCountPill || showShareClickPill || showShareButton || showSocialMission || Boolean(supplySummaryFromDaemon)
 
 	/** Detail line only — never mix like/share capsules into this row. */
 	const renderDetailSubtitle = (subtitleClassName: string, marginTopClass = 'mt-0.5') => {
@@ -492,31 +497,47 @@ export function ActiveCouponTicketItem({
 	const renderSocialStatRow = (likeVariant: 'light' | 'onDark' = 'light') => {
 		if (!showSocialStatRow) return null
 		return (
-			<div className="mt-2 flex w-full flex-wrap items-center gap-2">
-				{showLikeCountPill ? (
-					<CouponUserLikeCountPill
-						count={couponLike.likeCount}
-						variant={likeVariant}
-						onClick={couponLike.onHeartClick}
-						disabled={couponLike.likeLoading || Boolean(couponLike.userLiked)}
-						loading={couponLike.likeLoading && couponLike.likeCount == null}
-						liked={Boolean(couponLike.userLiked)}
-					/>
-				) : null}
-				{showShareButton ? (
-					<CouponOpenClaimShareButton
-						cardAddress={row.cardAddress}
-						couponId={row.couponId}
-						couponTitle={row.title}
-						referrerEoa={shareReferrerEoa}
-						className="shrink-0"
-					/>
-				) : null}
-				{showSocialMission ? (
-					<DiscoverOfferSocialMissionTrigger
-						user={socialMissionUser}
-						referrer={socialMissionReferrer}
-					/>
+			<div className="mt-2 flex w-full flex-col gap-1.5">
+				<div className="flex w-full flex-wrap items-center gap-2">
+					{showLikeCountPill ? (
+						<CouponUserLikeCountPill
+							count={couponLike.likeCount}
+							variant={likeVariant}
+							onClick={couponLike.onHeartClick}
+							disabled={couponLike.likeLoading || Boolean(couponLike.userLiked)}
+							loading={couponLike.likeLoading && couponLike.likeCount == null}
+							liked={Boolean(couponLike.userLiked)}
+						/>
+					) : null}
+					{showShareClickPill ? (
+						<CouponShareClickCountPill count={couponLike.shareClickCount} variant={likeVariant} />
+					) : null}
+					{showShareButton ? (
+						<CouponOpenClaimShareButton
+							cardAddress={row.cardAddress}
+							couponId={row.couponId}
+							couponTitle={row.title}
+							referrerEoa={shareReferrerEoa}
+							className="shrink-0"
+						/>
+					) : null}
+					{showSocialMission ? (
+						<DiscoverOfferSocialMissionTrigger
+							user={socialMissionUser}
+							referrer={socialMissionReferrer}
+						/>
+					) : null}
+				</div>
+				{supplySummaryFromDaemon ? (
+					<p
+						className={`line-clamp-1 px-0.5 text-[11px] font-semibold ${
+							likeVariant === 'onDark'
+								? 'text-white'
+								: 'text-[#2c2f31] dark:text-slate-100'
+						}`}
+					>
+						{supplySummaryFromDaemon}
+					</p>
 				) : null}
 			</div>
 		)
@@ -699,7 +720,7 @@ export function ActiveCouponTicketItem({
 							{showCardAddress && row.cardAddress ? (
 								<CouponCardAddressCapsule address={row.cardAddress} />
 							) : null}
-							{renderSocialStatRow(hasBanner ? 'onDark' : 'light')}
+							{renderSocialStatRow('onDark')}
 							{showExpiryPill ? <div className="mt-2">{renderExpiryPill('inner')}</div> : null}
 						</div>
 					) : null}

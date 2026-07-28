@@ -9,13 +9,14 @@ import { resolveSigningPrivateKeyArmor } from '@/utils/resolveSigningPrivateKeyA
 import { resolveDiscoverShareReferrerEoa } from '@/utils/beamioDeepLinkParams'
 import {
 	DISCOVER_USER_LIKE_TARGET,
-	fetchCouponLikeCount,
 	invalidateCouponLikeCountCache,
 	invalidateDiscoverUserLikeBalanceCache,
 	readDiscoverUserLikedLocalSeed,
 	resolveDiscoverUserHasLiked,
 } from '@/utils/discoverUserLike'
 import { saveDiscoverUserLikeLocalCache } from '@/utils/discoverUserLikeLocalCache'
+import { useDaemonContext } from '@/providers/DaemonProvider'
+import { pickCouponSocialStatFromMap } from '@/utils/couponSocialStatsLocalCache'
 
 export type UseCouponUserLikeOptions = {
 	cardAddress: string
@@ -36,6 +37,12 @@ export function useCouponUserLike({
 	onWalletUnlock,
 }: UseCouponUserLikeOptions) {
 	const location = useLocation()
+	const {
+		couponSocialStatByKey,
+		registerCouponSocialFeedTargets,
+		applyCouponSocialLikeCountDelta,
+	} = useDaemonContext()
+
 	const referrerEoa = useMemo(() => {
 		if (referrerEoaProp !== undefined) return referrerEoaProp
 		const stateRef = (location.state as { discoverShareReferrerEoa?: string | null } | null)
@@ -45,7 +52,22 @@ export function useCouponUserLike({
 
 	const [userLiked, setUserLiked] = useState<boolean | null>(null)
 	const [likeLoading, setLikeLoading] = useState(false)
-	const [likeCount, setLikeCount] = useState<number | null>(null)
+
+	const daemonStat = useMemo(
+		() =>
+			enabled
+				? pickCouponSocialStatFromMap(couponSocialStatByKey, cardAddress, tokenId)
+				: null,
+		[enabled, couponSocialStatByKey, cardAddress, tokenId],
+	)
+	const likeCount =
+		typeof daemonStat?.likeCount === 'number' && Number.isFinite(daemonStat.likeCount)
+			? Math.trunc(daemonStat.likeCount)
+			: null
+	const shareClickCount =
+		typeof daemonStat?.shareClickCount === 'number' && Number.isFinite(daemonStat.shareClickCount)
+			? Math.trunc(daemonStat.shareClickCount)
+			: null
 
 	const resolveUserEoa = useCallback((): string | null => {
 		const privateKeyArmor = getPrivateKeyArmor?.()?.trim() ?? ''
@@ -57,20 +79,19 @@ export function useCouponUserLike({
 		}
 	}, [getPrivateKeyArmor])
 
-	const refreshLikeCount = useCallback(async () => {
-		if (!enabled || !cardAddress || !tokenId) return
-		const count = await fetchCouponLikeCount(cardAddress, tokenId)
-		if (count != null) setLikeCount(count)
-	}, [enabled, cardAddress, tokenId])
+	useEffect(() => {
+		if (!enabled || !cardAddress?.trim() || !tokenId?.trim()) return
+		registerCouponSocialFeedTargets([
+			{ cardAddress: cardAddress.trim(), tokenId: tokenId.trim() },
+		])
+	}, [enabled, cardAddress, tokenId, registerCouponSocialFeedTargets])
 
 	useEffect(() => {
 		if (!enabled || !cardAddress?.trim() || !tokenId?.trim()) {
 			setUserLiked(null)
-			setLikeCount(null)
 			return
 		}
 		let cancelled = false
-		void refreshLikeCount()
 		const eoa = resolveUserEoa()
 		if (eoa) {
 			void resolveDiscoverUserHasLiked(
@@ -98,7 +119,7 @@ export function useCouponUserLike({
 		return () => {
 			cancelled = true
 		}
-	}, [enabled, cardAddress, tokenId, resolveUserEoa, refreshLikeCount])
+	}, [enabled, cardAddress, tokenId, resolveUserEoa])
 
 	const submitLike = useCallback(async () => {
 		if (!enabled || likeLoading || !cardAddress?.trim() || !tokenId?.trim()) return
@@ -150,7 +171,7 @@ export function useCouponUserLike({
 			}
 			setUserLiked(true)
 			invalidateCouponLikeCountCache(cardNorm, tokenId)
-			await refreshLikeCount()
+			applyCouponSocialLikeCountDelta(cardNorm, tokenId, 1)
 			Toast.show({ content: 'Liked', position: 'top' })
 		} finally {
 			setLikeLoading(false)
@@ -163,8 +184,8 @@ export function useCouponUserLike({
 		getPrivateKeyArmor,
 		onWalletUnlock,
 		resolveUserEoa,
-		refreshLikeCount,
 		referrerEoa,
+		applyCouponSocialLikeCountDelta,
 	])
 
 	const onHeartClick = useCallback(
@@ -180,6 +201,7 @@ export function useCouponUserLike({
 		userLiked,
 		likeLoading,
 		likeCount,
+		shareClickCount,
 		onHeartClick,
 	}
 }

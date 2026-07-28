@@ -19,9 +19,31 @@ import {
 	getAAAccount,
 	resolveMyCardAssetsForFeedRow,
 	myCardAssetsHasHoldings,
+	refreshCouponOpenClaimChainStatus,
 	type UserCardInfo,
 	type CardActiveIssuedCouponSeriesItem,
 } from '@/services/BeamioCard'
+import {
+	buildCouponOpenClaimStatusKey,
+	loadCouponOpenClaimStatusMapForEoa,
+	pickCouponOpenClaimStatusFromMap,
+	saveCouponOpenClaimLocalStatus,
+	type CouponOpenClaimFeedTarget,
+	type CouponOpenClaimLocalEntry,
+	type CouponOpenClaimLocalStatus,
+	type CouponOpenClaimStatusMap,
+} from '@/utils/couponOpenClaimStatusLocalCache'
+import { fetchCouponSocialStatsBundle } from '@/utils/couponSocialStats'
+import {
+	buildCouponSocialStatKey,
+	formatCouponSupplySummaryFromStat,
+	loadCouponSocialStatsLocalCache,
+	mergeCouponSocialLikeCount,
+	pickCouponSocialStatFromMap,
+	saveCouponSocialStatEntry,
+	type CouponSocialStatEntry,
+	type CouponSocialStatsMap,
+} from '@/utils/couponSocialStatsLocalCache'
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
 import { storeSystemData } from '@/services/beamio'
 import { baseEndpoint, USDCContract_BASE } from '@/utils/constants'
@@ -142,6 +164,8 @@ export type { MyBrandCardFeedDetailsMap }
 const MY_BRANDS_FEED_INTERVAL_MS = 6_000
 /** Discover 商户点赞 / 转发点击：30s TTL 对齐 beamio-chain-fetch-protocol */
 const DISCOVER_MERCHANT_STATS_FEED_INTERVAL_MS = 30_000
+/** Coupons open-claim claimed/redeemed：EOA 本地库 + daemon 30s 链上刷新 */
+const COUPON_OPEN_CLAIM_STATUS_FEED_INTERVAL_MS = 30_000
 /** Institutional AA V2：共同签署者拉取链上 pending task（离线签字上链后本地投票） */
 const AA_V2_PENDING_TASKS_FEED_MS = AA_V2_PENDING_TASKS_FEED_INTERVAL_MS
 const AA_MULTISIG_INSTITUTIONAL_ASSETS_FEED_MS = AA_MULTISIG_INSTITUTIONAL_ASSETS_FEED_INTERVAL_MS
@@ -151,6 +175,14 @@ type ClaimableCouponSummary = {
   firstTitle?: string
   firstCoupon?: MyBrandsOwnedCouponSnapshot | null
   coupons?: MyBrandsOwnedCouponSnapshot[]
+}
+
+/** Trusted empty owned-coupon summary (balance/redeem cleared). Distinct from `null` = untrusted miss. */
+const EMPTY_OWNED_COUPON_SUMMARY: ClaimableCouponSummary = {
+	count: 0,
+	firstTitle: undefined,
+	firstCoupon: null,
+	coupons: [],
 }
 
 const couponMetaAsRecord = (v: unknown): Record<string, unknown> | null =>
@@ -282,6 +314,45 @@ function summarizeClaimableCouponCards(
 	return out
 }
 
+function summarizeOwnedCouponsForCardKey(
+	rows: CardActiveIssuedCouponSeriesItem[] | null,
+	cardKey: string,
+): ClaimableCouponSummary | null {
+	if (rows === null) return null
+	return summarizeClaimableCouponCards(rows)?.get(cardKey) ?? EMPTY_OWNED_COUPON_SUMMARY
+}
+
+/** Drop My Brands owned coupons already marked redeemed in Coupons global status map. */
+function pruneRedeemedOwnedCouponsFromDetails(
+	details: MyBrandCardFeedDetailsMap,
+	statusMap: CouponOpenClaimStatusMap,
+): MyBrandCardFeedDetailsMap {
+	let changed = false
+	const next: MyBrandCardFeedDetailsMap = { ...details }
+	for (const [cardKey, row] of Object.entries(details)) {
+		const summary = row?.claimableCoupons
+		if (!summary?.count) continue
+		let list = [...(summary.coupons ?? [])]
+		if (list.length === 0 && summary.firstCoupon) list = [summary.firstCoupon]
+		const kept = list.filter((c) => {
+			const st = pickCouponOpenClaimStatusFromMap(statusMap, c.cardAddress || cardKey, c.tokenId)
+			return st?.status !== 'redeemed'
+		})
+		if (kept.length === list.length) continue
+		changed = true
+		next[cardKey] = {
+			...row!,
+			claimableCoupons: {
+				count: kept.length,
+				firstTitle: kept[0]?.title,
+				firstCoupon: kept[0] ?? null,
+				coupons: kept,
+			},
+		}
+	}
+	return changed ? next : details
+}
+
 function resolveClaimableCouponsForCard(
 	cardKey: string,
 	couponSummaries: Map<string, ClaimableCouponSummary> | null,
@@ -291,7 +362,8 @@ function resolveClaimableCouponsForCard(
 	if (couponSummaries === null || couponRows === null) {
 		return prevRow?.claimableCoupons ?? null
 	}
-	return couponSummaries.get(cardKey) ?? null
+	/** Trusted fetch with no owned rows for this card → clear, do not keep redeemed cache. */
+	return couponSummaries.get(cardKey) ?? EMPTY_OWNED_COUPON_SUMMARY
 }
 
 function couponFallbackCardInfo(cardAddressLower: string, summary: ClaimableCouponSummary): UserCardInfo {
@@ -444,6 +516,51 @@ type DaemonContext = {
 	registerDiscoverMerchantStatFeedCards: (cardAddresses: string[]) => void
 	/** Like/unlike API 成功后乐观更新点赞数（链上 totalSupply 确认前） */
 	applyDiscoverMerchantLikeCountDelta: (cardAddress: string, delta: number) => void
+	/**
+	 * Coupons open-claim claimed/redeemed（按 card:tokenId）。
+	 * 首屏从 EOA localStorage hydrate；daemon 30s 链上刷新；页面只读，勿自建 localStorage 键。
+	 */
+	couponOpenClaimStatusByKey: CouponOpenClaimStatusMap
+	/** Discover / Active Coupons 等注册需刷新的 (card, tokenId) */
+	registerCouponOpenClaimFeedTargets: (targets: CouponOpenClaimFeedTarget[]) => void
+	/** Claim queued / chain confirmed：写本地库并更新 daemon map（所有 Coupons UI 共享） */
+	applyCouponOpenClaimStatus: (params: {
+		cardAddress: string
+		tokenId: string | number | bigint
+		couponId?: string | null
+		status: CouponOpenClaimLocalStatus
+		source: 'optimistic' | 'chain'
+	}) => void
+	/** 取某一 coupon 的 claimed/redeemed 条目（内存 map） */
+	getCouponOpenClaimStatus: (
+		cardAddress: string | null | undefined,
+		tokenId: string | number | bigint | null | undefined,
+	) => CouponOpenClaimLocalEntry | null
+	/** 手动触发一轮 Coupons 状态链上刷新 */
+	refreshCouponOpenClaimStatusFeed: () => Promise<void>
+	/**
+	 * Coupons 社交 + 库存（点赞 / 分享点击 / TOTAL·LEFT），按 card:tokenId。
+	 * 本地优先 + daemon 30s 链上刷新；页面只读。
+	 */
+	couponSocialStatByKey: CouponSocialStatsMap
+	/** 与 open-claim 共用 feed targets；Discover / ticket 注册即可 */
+	registerCouponSocialFeedTargets: (targets: CouponOpenClaimFeedTarget[]) => void
+	getCouponSocialStat: (
+		cardAddress: string | null | undefined,
+		tokenId: string | number | bigint | null | undefined,
+	) => CouponSocialStatEntry | null
+	/** TOTAL n · LEFT m 文案（daemon 库存优先） */
+	formatCouponSupplySummary: (
+		cardAddress: string | null | undefined,
+		tokenId: string | number | bigint | null | undefined,
+	) => string | null
+	/** Like API 成功后乐观 +1 */
+	applyCouponSocialLikeCountDelta: (
+		cardAddress: string,
+		tokenId: string | number | bigint,
+		delta: number,
+	) => void
+	refreshCouponSocialStatsFeed: () => Promise<void>
 	/**
 	 * Institutional AA V2：当前 EOA 作为共同签署者仍需投票的 pending task 数。
 	 * 由全局 daemon 拉取链上 task → 本地 store；页面只读，勿自建轮询。
@@ -671,6 +788,17 @@ const defaultContextValue: DaemonContext = {
 	discoverMerchantStatByCard: {},
 	applyDiscoverMerchantLikeCountDelta: () => {},
 	registerDiscoverMerchantStatFeedCards: () => {},
+	couponOpenClaimStatusByKey: {},
+	registerCouponOpenClaimFeedTargets: () => {},
+	applyCouponOpenClaimStatus: () => {},
+	getCouponOpenClaimStatus: () => null,
+	refreshCouponOpenClaimStatusFeed: async () => {},
+	couponSocialStatByKey: {},
+	registerCouponSocialFeedTargets: () => {},
+	getCouponSocialStat: () => null,
+	formatCouponSupplySummary: () => null,
+	applyCouponSocialLikeCountDelta: () => {},
+	refreshCouponSocialStatsFeed: async () => {},
 	aaV2PendingNeedVoteCount: 0,
 	refreshAaV2PendingTasks: async () => {},
 	institutionalAaAssetsByAa: {},
@@ -934,6 +1062,9 @@ export function DaemonProvider({ children }: DaemonProps) {
   const [myBrandsFeedLoading, setMyBrandsFeedLoading] = useState(false)
   const [myBrandsFeedLastConetBlock, setMyBrandsFeedLastConetBlock] = useState(0)
   const myBrandsFeedInFlight = useRef(false)
+  const registerCouponOpenClaimFeedTargetsRef = useRef<
+    ((targets: CouponOpenClaimFeedTarget[]) => void) | null
+  >(null)
 
   /** EOA 切换或登出：先拉 blacklist，再从本地恢复 My Brands（避免缓存先展示废弃卡）。 */
   useEffect(() => {
@@ -952,7 +1083,11 @@ export function DaemonProvider({ children }: DaemonProps) {
       const hit = loadMyBrandsFeedLocalCache(eoaLower)
       if (hit) {
         const cards = filterDisplayUserCards(hit.cards)
-        const details = filterExcludedCardDetailKeys(hit.details)
+        const statusMap = loadCouponOpenClaimStatusMapForEoa(eoaLower)
+        const details = pruneRedeemedOwnedCouponsFromDetails(
+          filterExcludedCardDetailKeys(hit.details),
+          statusMap,
+        )
         myBrandHolderUnionCardsRef.current = filterDisplayUserCards(hit.holderUnionCards)
         setMyBrandCards(cards)
         setMyBrandCardDetails(details)
@@ -1015,22 +1150,25 @@ export function DaemonProvider({ children }: DaemonProps) {
         const eoaNorm = ethers.getAddress(eoaForCoupons)
         const aaNorm =
           aaForCoupons && ethers.isAddress(aaForCoupons) ? ethers.getAddress(aaForCoupons) : null
+        /**
+         * My Brands Coupons = held redeemable NFTs only (balance > 0).
+         * Trusted empty (`[]`) must not fall through to another source that can revive redeemed rows.
+         * Only `null` (untrusted) continues the cascade.
+         */
         couponRows = await fetchOwnedCouponsFromWalletAssetsForCards(eoaNorm, null, 50).catch(
           () => null
         )
-        if (!couponRows?.length) {
+        if (couponRows === null) {
           couponRows = await fetchOwnedCouponsFromRecentSeriesForUser(eoaNorm, aaNorm, null, 50).catch(
             () => null
           )
         }
-        if (!couponRows?.length) {
-          if (holderOnlyAddresses.length > 0) {
-            couponRows = await fetchOwnedCouponsForKnownCards(holderOnlyAddresses, eoaNorm, aaNorm, 50).catch(
-              () => null
-            )
-          }
+        if (couponRows === null && holderOnlyAddresses.length > 0) {
+          couponRows = await fetchOwnedCouponsForKnownCards(holderOnlyAddresses, eoaNorm, aaNorm, 50).catch(
+            () => null
+          )
         }
-        if (!couponRows?.length) {
+        if (couponRows === null) {
           couponRows = await fetchMyBrandsCouponSeriesForUser(50, eoaNorm, aaNorm, knownCouponCardAddresses).catch(
             () => null
           )
@@ -1173,6 +1311,8 @@ export function DaemonProvider({ children }: DaemonProps) {
         prevRow: MyBrandCardFeedDetailsMap[string] | undefined
       ): Promise<ClaimableCouponSummary | null> => {
         const batch = resolveClaimableCouponsForCard(key, couponSummaries, couponRows, prevRow)
+        /** Batch trusted empty (count 0) or positive — do not re-fetch to revive redeemed. */
+        if (batch != null && couponRows !== null) return batch
         if (batch?.count) return batch
         if (!eoaNormForCoupons) return batch ?? prevRow?.claimableCoupons ?? null
         const fromWalletAssets = await fetchOwnedCouponsFromWalletAssetsForCards(
@@ -1180,8 +1320,8 @@ export function DaemonProvider({ children }: DaemonProps) {
           [cardAddress],
           50
         ).catch(() => null)
-        if (fromWalletAssets?.length) {
-          return summarizeClaimableCouponCards(fromWalletAssets)?.get(key) ?? batch ?? null
+        if (fromWalletAssets !== null) {
+          return summarizeOwnedCouponsForCardKey(fromWalletAssets, key)
         }
         const fromRecent = await fetchOwnedCouponsFromRecentSeriesForUser(
           eoaNormForCoupons,
@@ -1189,22 +1329,19 @@ export function DaemonProvider({ children }: DaemonProps) {
           [cardAddress],
           50
         ).catch(() => null)
-        if (fromRecent?.length) {
-          return summarizeClaimableCouponCards(fromRecent)?.get(key) ?? batch ?? null
+        if (fromRecent !== null) {
+          return summarizeOwnedCouponsForCardKey(fromRecent, key)
         }
-        if (fromRecent === null) {
-          const cardOwned = await fetchOwnedCouponsForKnownCards(
-            [cardAddress],
-            eoaNormForCoupons,
-            aaNormForCoupons,
-            50
-          ).catch(() => null)
-          if (cardOwned?.length) {
-            return summarizeClaimableCouponCards(cardOwned)?.get(key) ?? batch ?? null
-          }
-          return batch ?? prevRow?.claimableCoupons ?? null
+        const cardOwned = await fetchOwnedCouponsForKnownCards(
+          [cardAddress],
+          eoaNormForCoupons,
+          aaNormForCoupons,
+          50
+        ).catch(() => null)
+        if (cardOwned !== null) {
+          return summarizeOwnedCouponsForCardKey(cardOwned, key)
         }
-        return batch ?? null
+        return batch ?? prevRow?.claimableCoupons ?? null
       }
 
       const claimableByCardKey = new Map<string, ClaimableCouponSummary | null>()
@@ -1232,8 +1369,15 @@ export function DaemonProvider({ children }: DaemonProps) {
             ),
           ])
           const assetsFromWallet = walletAssetsByCardKey?.[key] ?? null
-          let couponsForRow = claimableCoupons ?? prevRow?.claimableCoupons ?? null
-          if (!couponsForRow?.count && assetsFromMyAssets && eoaNormForCoupons) {
+          let couponsForRow = claimableCoupons
+          if (couponsForRow == null) {
+            couponsForRow = prevRow?.claimableCoupons ?? null
+          }
+          /**
+           * Trusted empty (count 0) must stick. Only backfill when still missing holdings after untrusted miss.
+           * Never treat empty as “try late sources that might re-show redeemed coupons”.
+           */
+          if (couponsForRow == null && eoaNormForCoupons) {
             const lateOwned =
               (await fetchOwnedCouponsFromWalletAssetsForCards(
                 eoaNormForCoupons,
@@ -1246,10 +1390,9 @@ export function DaemonProvider({ children }: DaemonProps) {
                 [uc.cardAddress],
                 50
               ).catch(() => null))
-            const lateSummary = lateOwned?.length
-              ? summarizeClaimableCouponCards(lateOwned)?.get(key) ?? null
-              : null
-            if (lateSummary?.count) couponsForRow = lateSummary
+            if (lateOwned !== null) {
+              couponsForRow = summarizeOwnedCouponsForCardKey(lateOwned, key)
+            }
           }
           let mergedAssets = resolveMyCardAssetsForFeedRow(
               assetsFromMyAssets,
@@ -1268,10 +1411,31 @@ export function DaemonProvider({ children }: DaemonProps) {
       if (!areMyBrandDetailsMapsEqual(prevDetails, next)) {
         setMyBrandCardDetails(next)
       }
+      let detailsToSave = next
       if (eoaSave && ethers.isAddress(eoaSave)) {
-        saveMyBrandsFeedLocalCache(eoaSave, ownerCards, holderUnionCards, next)
+        const statusMap = loadCouponOpenClaimStatusMapForEoa(eoaSave)
+        detailsToSave = pruneRedeemedOwnedCouponsFromDetails(next, statusMap)
+        if (!areMyBrandDetailsMapsEqual(next, detailsToSave)) {
+          setMyBrandCardDetails(detailsToSave)
+          myBrandCardDetailsRef.current = detailsToSave
+        }
+        saveMyBrandsFeedLocalCache(eoaSave, ownerCards, holderUnionCards, detailsToSave)
+        const ownedTargets: CouponOpenClaimFeedTarget[] = []
+        for (const [cardKey, row] of Object.entries(detailsToSave)) {
+          for (const c of row?.claimableCoupons?.coupons ?? []) {
+            if (!c.tokenId) continue
+            ownedTargets.push({
+              cardAddress: c.cardAddress || cardKey,
+              tokenId: String(c.tokenId),
+              couponId: c.couponId,
+            })
+          }
+        }
+        if (ownedTargets.length > 0) {
+          registerCouponOpenClaimFeedTargetsRef.current?.(ownedTargets)
+        }
       }
-      return next
+      return detailsToSave
     } catch {
       /** 拉取失败：不覆盖内存/本地缓存，下一轮再试；Total Power 等用 ref 兜底 */
       return null
@@ -1699,6 +1863,332 @@ export function DaemonProvider({ children }: DaemonProps) {
       return { ...prev, [cardLower]: nextEntry }
     })
   }, [])
+
+  /**
+   * Coupons open-claim claimed/redeemed：EOA localStorage hydrate + 30s daemon 链上刷新。
+   * 所有 Coupons UI 只读本 map；claim 成功走 applyCouponOpenClaimStatus。
+   */
+  const couponOpenClaimFeedTargetsRef = useRef<CouponOpenClaimFeedTarget[]>([])
+  const couponOpenClaimFeedInFlightRef = useRef(false)
+  const runCouponSocialStatsFeedTickRef = useRef<() => Promise<void>>(async () => {})
+  const [couponOpenClaimStatusByKey, setCouponOpenClaimStatusByKey] = useState<CouponOpenClaimStatusMap>({})
+
+  useEffect(() => {
+    const raw = profileWalletKeyId?.trim() ?? ''
+    if (!raw || !ethers.isAddress(raw)) {
+      setCouponOpenClaimStatusByKey({})
+      couponOpenClaimFeedTargetsRef.current = []
+      return
+    }
+    setCouponOpenClaimStatusByKey(loadCouponOpenClaimStatusMapForEoa(raw))
+  }, [profileWalletKeyId])
+
+  const runCouponOpenClaimStatusFeedTick = useCallback(async (): Promise<void> => {
+    if (couponOpenClaimFeedInFlightRef.current) return
+    const eoaRaw = profilesRef.current?.[0]?.keyID?.trim() ?? ''
+    if (!eoaRaw || !ethers.isAddress(eoaRaw)) return
+    const targets = couponOpenClaimFeedTargetsRef.current
+    if (!targets.length) return
+    couponOpenClaimFeedInFlightRef.current = true
+    try {
+      const userEOA = ethers.getAddress(eoaRaw)
+      for (const t of targets) {
+        const status = await refreshCouponOpenClaimChainStatus({
+          cardAddress: t.cardAddress,
+          userEOA,
+          tokenId: t.tokenId,
+          couponId: t.couponId,
+        })
+        if (status !== 'claimed' && status !== 'redeemed') continue
+        const k = buildCouponOpenClaimStatusKey(t.cardAddress, t.tokenId)
+        if (!k) continue
+        const entry = pickCouponOpenClaimStatusFromMap(
+          loadCouponOpenClaimStatusMapForEoa(userEOA),
+          t.cardAddress,
+          t.tokenId,
+        )
+        if (!entry) continue
+        setCouponOpenClaimStatusByKey((prev) => {
+          const prevEntry = prev[k]
+          if (
+            prevEntry &&
+            prevEntry.status === entry.status &&
+            prevEntry.source === entry.source &&
+            prevEntry.savedAt === entry.savedAt
+          ) {
+            return prev
+          }
+          return { ...prev, [k]: entry }
+        })
+        if (status === 'redeemed') {
+          setMyBrandCardDetails((prev) => {
+            const pruned = pruneRedeemedOwnedCouponsFromDetails(prev, {
+              ...loadCouponOpenClaimStatusMapForEoa(userEOA),
+              [k]: entry,
+            })
+            if (pruned === prev) return prev
+            myBrandCardDetailsRef.current = pruned
+            return pruned
+          })
+        }
+      }
+    } finally {
+      couponOpenClaimFeedInFlightRef.current = false
+    }
+  }, [])
+
+  const registerCouponOpenClaimFeedTargets = useCallback(
+    (targets: CouponOpenClaimFeedTarget[]) => {
+      const normalized: CouponOpenClaimFeedTarget[] = []
+      const seen = new Set<string>()
+      for (const t of targets) {
+        const k = buildCouponOpenClaimStatusKey(t.cardAddress, t.tokenId)
+        if (!k || seen.has(k)) continue
+        seen.add(k)
+        let card: string
+        let tokenId: string
+        try {
+          card = ethers.getAddress(String(t.cardAddress).trim()).toLowerCase()
+          tokenId = BigInt(String(t.tokenId).trim()).toString()
+        } catch {
+          continue
+        }
+        normalized.push({
+          cardAddress: card,
+          tokenId,
+          ...(t.couponId?.trim() ? { couponId: t.couponId.trim() } : {}),
+        })
+      }
+      if (!normalized.length) return
+      const prev = couponOpenClaimFeedTargetsRef.current
+      const prevKeys = new Set(
+        prev
+          .map((p) => buildCouponOpenClaimStatusKey(p.cardAddress, p.tokenId))
+          .filter((x): x is string => Boolean(x)),
+      )
+      const mergedMap = new Map<string, CouponOpenClaimFeedTarget>()
+      for (const p of prev) {
+        const k = buildCouponOpenClaimStatusKey(p.cardAddress, p.tokenId)
+        if (k) mergedMap.set(k, p)
+      }
+      let added = false
+      for (const n of normalized) {
+        const k = buildCouponOpenClaimStatusKey(n.cardAddress, n.tokenId)!
+        if (!prevKeys.has(k)) added = true
+        mergedMap.set(k, n)
+      }
+      couponOpenClaimFeedTargetsRef.current = [...mergedMap.values()]
+      if (added) {
+        void runCouponOpenClaimStatusFeedTick()
+      }
+      // Social/supply feeder: kick on every register so ticket remounts get daemon data ASAP
+      // (fetch helpers still apply 30s TTL + in-flight merge).
+      if (normalized.length > 0) {
+        void runCouponSocialStatsFeedTickRef.current()
+      }
+    },
+    [runCouponOpenClaimStatusFeedTick],
+  )
+
+  registerCouponOpenClaimFeedTargetsRef.current = registerCouponOpenClaimFeedTargets
+
+  const applyCouponOpenClaimStatus = useCallback(
+    (params: {
+      cardAddress: string
+      tokenId: string | number | bigint
+      couponId?: string | null
+      status: CouponOpenClaimLocalStatus
+      source: 'optimistic' | 'chain'
+    }) => {
+      const eoaRaw = profilesRef.current?.[0]?.keyID?.trim() ?? ''
+      if (!eoaRaw || !ethers.isAddress(eoaRaw)) return
+      const entry = saveCouponOpenClaimLocalStatus({
+        eoaAddress: eoaRaw,
+        cardAddress: params.cardAddress,
+        tokenId: params.tokenId,
+        couponId: params.couponId,
+        status: params.status,
+        source: params.source,
+      })
+      const k = buildCouponOpenClaimStatusKey(params.cardAddress, params.tokenId)
+      if (!entry || !k) return
+      setCouponOpenClaimStatusByKey((prev) => ({ ...prev, [k]: entry }))
+      registerCouponOpenClaimFeedTargets([
+        {
+          cardAddress: params.cardAddress,
+          tokenId: String(params.tokenId),
+          couponId: params.couponId ?? undefined,
+        },
+      ])
+      /** My Brands Coupons: hide immediately once redeemed (no longer a held redeemable asset). */
+      if (params.status === 'redeemed' && ethers.isAddress(params.cardAddress)) {
+        const cardKey = ethers.getAddress(params.cardAddress).toLowerCase()
+        const tokenIdStr = String(params.tokenId).trim()
+        setMyBrandCardDetails((prev) => {
+          const row = prev[cardKey]
+          const summary = row?.claimableCoupons
+          if (!summary?.count) return prev
+          const coupons = (summary.coupons ?? []).filter(
+            (c) => String(c.tokenId ?? '').trim() !== tokenIdStr,
+          )
+          const firstStill =
+            summary.firstCoupon && String(summary.firstCoupon.tokenId ?? '').trim() !== tokenIdStr
+              ? summary.firstCoupon
+              : null
+          const firstCoupon = firstStill && coupons.some((c) => c.id === firstStill.id)
+            ? firstStill
+            : coupons[0] ?? null
+          const nextSummary: ClaimableCouponSummary = {
+            count: coupons.length,
+            firstTitle: firstCoupon?.title ?? (coupons.length ? summary.firstTitle : undefined),
+            firstCoupon,
+            coupons,
+          }
+          const next = {
+            ...prev,
+            [cardKey]: { ...row!, claimableCoupons: nextSummary },
+          }
+          myBrandCardDetailsRef.current = next
+          const eoaSave = profilesRef.current?.[0]?.keyID?.trim()
+          if (eoaSave && ethers.isAddress(eoaSave)) {
+            saveMyBrandsFeedLocalCache(
+              eoaSave,
+              myBrandCardsRef.current,
+              myBrandHolderUnionCardsRef.current,
+              next,
+            )
+          }
+          return next
+        })
+      }
+    },
+    [registerCouponOpenClaimFeedTargets],
+  )
+
+  const getCouponOpenClaimStatus = useCallback(
+    (
+      cardAddress: string | null | undefined,
+      tokenId: string | number | bigint | null | undefined,
+    ): CouponOpenClaimLocalEntry | null =>
+      pickCouponOpenClaimStatusFromMap(couponOpenClaimStatusByKey, cardAddress, tokenId),
+    [couponOpenClaimStatusByKey],
+  )
+
+  const refreshCouponOpenClaimStatusFeed = useCallback(async () => {
+    await runCouponOpenClaimStatusFeedTick()
+  }, [runCouponOpenClaimStatusFeedTick])
+
+  /**
+   * Coupons 社交 KPI + TOTAL·LEFT：与 open-claim 共用 targets ref；30s 链上刷新。
+   */
+  const [couponSocialStatByKey, setCouponSocialStatByKey] = useState<CouponSocialStatsMap>(() =>
+    loadCouponSocialStatsLocalCache(),
+  )
+  const couponSocialFeedInFlightRef = useRef(false)
+
+  const runCouponSocialStatsFeedTick = useCallback(async (): Promise<void> => {
+    if (couponSocialFeedInFlightRef.current) return
+    const targets = couponOpenClaimFeedTargetsRef.current
+    if (!targets.length) return
+    couponSocialFeedInFlightRef.current = true
+    try {
+      for (const t of targets) {
+        const bundle = await fetchCouponSocialStatsBundle(t.cardAddress, t.tokenId)
+        if (!bundle) continue
+        const k = buildCouponSocialStatKey(t.cardAddress, t.tokenId)
+        if (!k) continue
+        setCouponSocialStatByKey((prev) => {
+          const existing = prev[k]
+          const mergedLike = mergeCouponSocialLikeCount(
+            bundle.likeCount,
+            existing?.likeCount,
+            existing?.savedAt,
+          )
+          const patch: {
+            likeCount?: number
+            shareClickCount?: number
+            maxSupply?: string | null
+            remainingSupply?: string | null
+          } = {}
+          if (mergedLike != null) patch.likeCount = mergedLike
+          if (bundle.shareClickCount != null) patch.shareClickCount = bundle.shareClickCount
+          if (bundle.maxSupply !== undefined) patch.maxSupply = bundle.maxSupply
+          if (bundle.remainingSupply !== undefined) patch.remainingSupply = bundle.remainingSupply
+          if (Object.keys(patch).length === 0) return prev
+          const saved = saveCouponSocialStatEntry(t.cardAddress, t.tokenId, patch)
+          if (!saved) return prev
+          if (
+            existing?.likeCount === saved.likeCount &&
+            existing?.shareClickCount === saved.shareClickCount &&
+            existing?.maxSupply === saved.maxSupply &&
+            existing?.remainingSupply === saved.remainingSupply
+          ) {
+            return prev
+          }
+          return { ...prev, [k]: saved }
+        })
+      }
+    } finally {
+      couponSocialFeedInFlightRef.current = false
+    }
+  }, [])
+
+  runCouponSocialStatsFeedTickRef.current = runCouponSocialStatsFeedTick
+
+  const registerCouponSocialFeedTargets = useCallback(
+    (targets: CouponOpenClaimFeedTarget[]) => {
+      registerCouponOpenClaimFeedTargets(targets)
+    },
+    [registerCouponOpenClaimFeedTargets],
+  )
+
+  const getCouponSocialStat = useCallback(
+    (
+      cardAddress: string | null | undefined,
+      tokenId: string | number | bigint | null | undefined,
+    ): CouponSocialStatEntry | null =>
+      pickCouponSocialStatFromMap(couponSocialStatByKey, cardAddress, tokenId),
+    [couponSocialStatByKey],
+  )
+
+  const formatCouponSupplySummary = useCallback(
+    (
+      cardAddress: string | null | undefined,
+      tokenId: string | number | bigint | null | undefined,
+    ): string | null =>
+      formatCouponSupplySummaryFromStat(
+        pickCouponSocialStatFromMap(couponSocialStatByKey, cardAddress, tokenId),
+      ),
+    [couponSocialStatByKey],
+  )
+
+  const applyCouponSocialLikeCountDelta = useCallback(
+    (cardAddress: string, tokenId: string | number | bigint, delta: number) => {
+      if (!Number.isFinite(delta) || delta === 0) return
+      const k = buildCouponSocialStatKey(cardAddress, tokenId)
+      if (!k) return
+      setCouponSocialStatByKey((prev) => {
+        const existing = prev[k]
+        const base =
+          typeof existing?.likeCount === 'number' && Number.isFinite(existing.likeCount)
+            ? existing.likeCount
+            : 0
+        const nextLike = Math.max(0, Math.trunc(base + delta))
+        if (existing?.likeCount === nextLike) return prev
+        const saved = saveCouponSocialStatEntry(cardAddress, tokenId, { likeCount: nextLike })
+        if (!saved) return prev
+        return { ...prev, [k]: saved }
+      })
+      registerCouponOpenClaimFeedTargets([
+        { cardAddress, tokenId: String(tokenId) },
+      ])
+    },
+    [registerCouponOpenClaimFeedTargets],
+  )
+
+  const refreshCouponSocialStatsFeed = useCallback(async () => {
+    await runCouponSocialStatsFeedTick()
+  }, [runCouponSocialStatsFeedTick])
 
   /**
    * Institutional AA V2 pending tasks：共同签署者本地优先 + 15s daemon 拉取链上 task。
@@ -2203,6 +2693,58 @@ export function DaemonProvider({ children }: DaemonProps) {
     }
   }, [runDiscoverMerchantStatsFeedTick])
 
+  /** Coupons open-claim claimed/redeemed：setTimeout 链 30s；仅 trusted 链上结果升级 map + localStorage */
+  useEffect(() => {
+    let cancelled = false
+    let timer: number | undefined
+    const runChain = () => {
+      if (cancelled) return
+      void (async () => {
+        try {
+          await runCouponOpenClaimStatusFeedTick()
+        } finally {
+          if (!cancelled) {
+            timer = window.setTimeout(
+              runChain,
+              COUPON_OPEN_CLAIM_STATUS_FEED_INTERVAL_MS,
+            ) as unknown as number
+          }
+        }
+      })()
+    }
+    runChain()
+    return () => {
+      cancelled = true
+      if (timer !== undefined) window.clearTimeout(timer)
+    }
+  }, [runCouponOpenClaimStatusFeedTick, profileWalletKeyId])
+
+  /** Coupons 社交 + TOTAL·LEFT：与 open-claim 共用 targets，30s setTimeout 链 */
+  useEffect(() => {
+    let cancelled = false
+    let timer: number | undefined
+    const runChain = () => {
+      if (cancelled) return
+      void (async () => {
+        try {
+          await runCouponSocialStatsFeedTick()
+        } finally {
+          if (!cancelled) {
+            timer = window.setTimeout(
+              runChain,
+              COUPON_OPEN_CLAIM_STATUS_FEED_INTERVAL_MS,
+            ) as unknown as number
+          }
+        }
+      })()
+    }
+    runChain()
+    return () => {
+      cancelled = true
+      if (timer !== undefined) window.clearTimeout(timer)
+    }
+  }, [runCouponSocialStatsFeedTick])
+
   /** Institutional AA V2 pending：共同签署者 15s daemon 拉取链上 task → 本地投票列表 */
   useEffect(() => {
     let cancelled = false
@@ -2267,6 +2809,10 @@ export function DaemonProvider({ children }: DaemonProps) {
 				conetNetworkStats, conetDepinStats, conetWalletBalances, conetAaWalletBalances, validatorWalletNodeProfile, unifiedIncomeStats, referrerSummary,
 				referralL0StartKitQuota, refreshReferralL0StartKitQuota,
 				discoverMerchantStatByCard, registerDiscoverMerchantStatFeedCards, applyDiscoverMerchantLikeCountDelta,
+				couponOpenClaimStatusByKey, registerCouponOpenClaimFeedTargets, applyCouponOpenClaimStatus,
+				getCouponOpenClaimStatus, refreshCouponOpenClaimStatusFeed,
+				couponSocialStatByKey, registerCouponSocialFeedTargets, getCouponSocialStat,
+				formatCouponSupplySummary, applyCouponSocialLikeCountDelta, refreshCouponSocialStatsFeed,
 				aaV2PendingNeedVoteCount, refreshAaV2PendingTasks,
 				institutionalAaAssetsByAa, refreshInstitutionalAaAssets, getInstitutionalAaAssets,
 				setGetWebFilter,switchValue, setSwitchValue, webFilterRef, quickLinksShow, setQuickLinksShow, duplicateAccount, checkinBalanceUP, setCheckinBalanceUP, gossip, setGossip,

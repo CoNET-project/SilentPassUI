@@ -824,6 +824,64 @@ export async function resolveCouponOpenClaimEligibility(
 	}
 }
 
+/**
+ * Daemon feeder: trusted chain-only claimed/redeemed probe.
+ * Returns `null` on RPC failure (untrusted — do not clear local/daemon map).
+ * Writes EOA local store only when claimed/redeemed is confirmed on-chain.
+ */
+export async function refreshCouponOpenClaimChainStatus(params: {
+	cardAddress: string
+	userEOA: string
+	tokenId: string | number | bigint
+	couponId?: string | null
+}): Promise<'claimed' | 'redeemed' | null> {
+	const cardRaw = String(params.cardAddress ?? '').trim()
+	const eoaRaw = String(params.userEOA ?? '').trim()
+	if (!cardRaw || !eoaRaw || !ethers.isAddress(cardRaw) || !ethers.isAddress(eoaRaw)) return null
+	let tokenIdN: bigint
+	try {
+		tokenIdN = BigInt(params.tokenId)
+	} catch {
+		return null
+	}
+	if (tokenIdN < ISSUED_NFT_START_ID_MEMBER) return null
+	try {
+		const userNorm = ethers.getAddress(eoaRaw)
+		const cardNorm = ethers.getAddress(cardRaw)
+		const tokenIdStr = tokenIdN.toString()
+		const cardRead = openClaimCardReadContract(cardNorm)
+		const [alreadyClaimed, holdsNft] = await Promise.all([
+			cardRead.issuedNftUserSigClaimUsed(userNorm, tokenIdN) as Promise<boolean>,
+			userHoldsIssuedCouponNft(cardNorm, userNorm, tokenIdN),
+		])
+		if (holdsNft === true) {
+			saveCouponOpenClaimLocalStatus({
+				eoaAddress: userNorm,
+				cardAddress: cardNorm,
+				tokenId: tokenIdStr,
+				couponId: params.couponId,
+				status: 'claimed',
+				source: 'chain',
+			})
+			return 'claimed'
+		}
+		if (alreadyClaimed) {
+			saveCouponOpenClaimLocalStatus({
+				eoaAddress: userNorm,
+				cardAddress: cardNorm,
+				tokenId: tokenIdStr,
+				couponId: params.couponId,
+				status: 'redeemed',
+				source: 'chain',
+			})
+			return 'redeemed'
+		}
+		return null
+	} catch {
+		return null
+	}
+}
+
 async function passesOpenClaimListFiltersForUser(
 	row: CardActiveIssuedCouponSeriesItem,
 	userEOA: string
@@ -1393,10 +1451,8 @@ export async function fetchOwnedCouponsForKnownCards(
 		[...cardSet].map((c) => ethers.getAddress(c)),
 		normalizedLimit
 	)
-	if (fromRecent?.length) return fromRecent
-	if (fromRecent === null) {
-		return scanOwnedCouponSeriesWithBalanceCheck([...cardSet], normalizedLimit, userEOA, userAA)
-	}
+	/** Trusted empty (`[]`) must stand — do not fall through to another scan that can revive redeemed rows. */
+	if (fromRecent !== null) return fromRecent
 	return scanOwnedCouponSeriesWithBalanceCheck([...cardSet], normalizedLimit, userEOA, userAA)
 }
 
@@ -1748,7 +1804,14 @@ export const postCardRecordUserLikeWithCurrentWallet = async (params: {
 	targetKind?: number
 	issuedParentId?: string
 	referrerEoa?: string | null
-}): Promise<{ success: boolean; tx?: string; error?: string; status?: number; rewardTxQueued?: boolean }> => {
+}): Promise<{
+	success: boolean
+	tx?: string
+	error?: string
+	status?: number
+	queued?: boolean
+	rewardTxQueued?: boolean
+}> => {
 	const cardAddress = params.cardAddress?.trim() ?? ''
 	const privateKeyArmor = params.privateKeyArmor?.trim() ?? ''
 	const liked = Boolean(params.liked)
@@ -1811,6 +1874,8 @@ export const postCardRecordUserLikeWithCurrentWallet = async (params: {
 		const data = (await res.json().catch(() => ({}))) as {
 			success?: boolean
 			tx?: string
+			hash?: string
+			queued?: boolean
 			error?: string
 			code?: string
 		}
@@ -1821,21 +1886,24 @@ export const postCardRecordUserLikeWithCurrentWallet = async (params: {
 				status: res.status,
 			}
 		}
-		let rewardTxQueued = false
+		/** #13 like reward is best-effort; never block Like success / UI on reward relay. */
 		if (liked) {
-			try {
-				rewardTxQueued = await dispatchDiscoverLikeReward13IfNeeded({
-					cardAddress: cardNorm,
-					actorEOA: userEOA,
-					referrerEoa: params.referrerEoa,
-					targetKind,
-					issuedParentId,
-				})
-			} catch {
-				/* optional reward — like already recorded */
-			}
+			void dispatchDiscoverLikeReward13IfNeeded({
+				cardAddress: cardNorm,
+				actorEOA: userEOA,
+				referrerEoa: params.referrerEoa,
+				targetKind,
+				issuedParentId,
+			}).catch(() => {
+				/* optional reward — like already queued / recorded */
+			})
 		}
-		return { success: true, tx: data.tx, rewardTxQueued }
+		return {
+			success: true,
+			tx: data.tx ?? data.hash,
+			queued: data.queued === true,
+			rewardTxQueued: false,
+		}
 	} catch (e: any) {
 		return { success: false, error: e?.shortMessage ?? e?.message ?? String(e) }
 	}

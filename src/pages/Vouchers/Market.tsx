@@ -64,8 +64,7 @@ import { fiatPrefix, formatAmount } from "@/services/currency"
 import { getMyAssetsAggregated, getMyAssets, getCardTiersFromContract, getCardUpgradeTypeFromContract, quoteUSDCToCAD, postUSDCUserCardTopup, safeUsdc6ToAmountString, currencyAmountToSafeUsdc6, fetchCardActiveIssuedCouponSeriesTrusted, postCardCouponOpenClaimWithCurrentWallet, postCardRecordUserLikeWithCurrentWallet, resolveCouponOpenClaimEligibility, merchantBackgroundImageFromMetadataRoot, merchantIconUrlFromMetadataRoot, getCardOwner, readUserSocialPoints13BalanceOnCard, type CardActiveIssuedCouponSeriesItem, type CardMetadataFromUri, type CouponOpenClaimEligibility, type USDCUserCardTopupIntent } from "@/services/BeamioCard"
 import {
 	couponOpenClaimEligibilityFromLocal,
-	lookupCouponOpenClaimLocalStatus,
-	saveCouponOpenClaimLocalStatus,
+	pickCouponOpenClaimStatusFromMap,
 } from "@/utils/couponOpenClaimStatusLocalCache"
 import {
 	discoverUsdcTopupRulesHintText,
@@ -1376,6 +1375,9 @@ function DiscoverMerchantCouponOfferRow({
 	getPrivateKeyArmor?: () => string | undefined
 	onWalletUnlock?: () => void
 }) {
+	const { formatCouponSupplySummary } = useDaemonContext()
+	const supplyLine =
+		formatCouponSupplySummary(row.coupon.cardAddress, row.coupon.tokenId) ?? row.supplySummary
 	const isAlreadyClaimed = claimEligibility === 'already_claimed'
 	const isAlreadyRedeemed = claimEligibility === 'already_redeemed'
 	const insufficientSocialPoints = claimEligibility === 'insufficient_social_points'
@@ -1453,9 +1455,9 @@ function DiscoverMerchantCouponOfferRow({
 						Not enough social points for this exchange.
 					</p>
 				) : null}
-				{row.supplySummary ? (
-					<p className="line-clamp-1 px-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
-						{row.supplySummary}
+				{supplyLine ? (
+					<p className="line-clamp-1 px-1 text-[11px] font-semibold text-[#2c2f31] dark:text-slate-100">
+						{supplyLine}
 					</p>
 				) : null}
 			</div>
@@ -3186,7 +3188,7 @@ function DiscoverMerchantDetailFullScreen({
 }) {
 	const navigate = useNavigate()
 	const location = useLocation()
-	const { profiles, setProfiles, discoverMerchantStatByCard, registerDiscoverMerchantStatFeedCards, applyDiscoverMerchantLikeCountDelta } = useDaemonContext()
+	const { profiles, setProfiles, discoverMerchantStatByCard, registerDiscoverMerchantStatFeedCards, applyDiscoverMerchantLikeCountDelta, couponOpenClaimStatusByKey, registerCouponOpenClaimFeedTargets, applyCouponOpenClaimStatus } = useDaemonContext()
 	const { registerCardAddresses, resolveDisplayName, lookupByAddress, ensureCardMetadataForAddresses } =
 		useMerchantCardDatabase()
 	const {
@@ -4191,6 +4193,13 @@ function DiscoverMerchantDetailFullScreen({
 				})
 				if (ret.success) {
 					// Cluster accepted queue (`queued: true`) counts as claimed for UI — do not wait for chain tx.
+					applyCouponOpenClaimStatus({
+						cardAddress: ethers.getAddress(cardAddress),
+						tokenId,
+						couponId,
+						status: 'claimed',
+						source: 'optimistic',
+					})
 					setCouponClaimEligibilityById((s) => ({ ...s, [row.id]: 'already_claimed' }))
 					setCouponClaimStatusById((s) => ({ ...s, [row.id]: 'success' }))
 					scheduleCouponClaimStatusReset(row.id)
@@ -4205,8 +4214,7 @@ function DiscoverMerchantDetailFullScreen({
 					}
 					if (/already claimed/i.test(err)) {
 						if (claimerEoa) {
-							saveCouponOpenClaimLocalStatus({
-								eoaAddress: claimerEoa,
+							applyCouponOpenClaimStatus({
 								cardAddress: ethers.getAddress(cardAddress),
 								tokenId,
 								couponId,
@@ -4218,8 +4226,7 @@ function DiscoverMerchantDetailFullScreen({
 						setCouponClaimStatusById((s) => ({ ...s, [row.id]: 'idle' }))
 					} else if (/already redeemed|already used|SigClaimAlreadyUsed/i.test(err)) {
 						if (claimerEoa) {
-							saveCouponOpenClaimLocalStatus({
-								eoaAddress: claimerEoa,
+							applyCouponOpenClaimStatus({
 								cardAddress: ethers.getAddress(cardAddress),
 								tokenId,
 								couponId,
@@ -4244,7 +4251,7 @@ function DiscoverMerchantDetailFullScreen({
 				Toast.show({ content: mapServerError(err), position: 'top' })
 			}
 		},
-		[couponClaimStatusById, profile, navigate, scheduleCouponClaimStatusReset, setProfiles, shareReferrerFromUrl],
+		[couponClaimStatusById, profile, navigate, scheduleCouponClaimStatusReset, setProfiles, shareReferrerFromUrl, applyCouponOpenClaimStatus],
 	)
 
 	useEffect(() => {
@@ -4309,27 +4316,46 @@ function DiscoverMerchantDetailFullScreen({
 		}
 		let cancelled = false
 		const userEOA = resolveUserEoa()
-		// Sync hydrate from EOA local store so remount shows claimed/redeemed immediately.
-		if (userEOA) {
-			const fromLocal: Record<string, CouponOpenClaimEligibility> = {}
-			for (const offer of merchantCoupons) {
-				const el = couponOpenClaimEligibilityFromLocal(
-					lookupCouponOpenClaimLocalStatus(
-						userEOA,
-						offer.seriesRow.cardAddress || offer.coupon.cardAddress,
-						offer.seriesRow.tokenId || offer.coupon.tokenId,
-					),
-				)
-				if (el) fromLocal[offer.coupon.id] = el
-			}
-			if (Object.keys(fromLocal).length > 0) {
-				setCouponClaimEligibilityById((prev) => ({ ...prev, ...fromLocal }))
-			}
+		// Register with global daemon so all Coupons UIs share claimed/redeemed refreshes.
+		registerCouponOpenClaimFeedTargets(
+			merchantCoupons.map((offer) => ({
+				cardAddress: offer.seriesRow.cardAddress || offer.coupon.cardAddress,
+				tokenId: String(offer.seriesRow.tokenId || offer.coupon.tokenId),
+				couponId: offer.coupon.couponId,
+			})),
+		)
+		// Sync hydrate from daemon EOA map (local-first) so remount shows claimed/redeemed immediately.
+		const fromDaemon: Record<string, CouponOpenClaimEligibility> = {}
+		for (const offer of merchantCoupons) {
+			const el = couponOpenClaimEligibilityFromLocal(
+				pickCouponOpenClaimStatusFromMap(
+					couponOpenClaimStatusByKey,
+					offer.seriesRow.cardAddress || offer.coupon.cardAddress,
+					offer.seriesRow.tokenId || offer.coupon.tokenId,
+				),
+			)
+			if (el) fromDaemon[offer.coupon.id] = el
+		}
+		if (Object.keys(fromDaemon).length > 0) {
+			setCouponClaimEligibilityById((prev) => ({ ...prev, ...fromDaemon }))
 		}
 		void (async () => {
 			const entries = await Promise.all(
 				merchantCoupons.map(async (offer) => {
 					const eligibility = await resolveCouponOpenClaimEligibility(offer.seriesRow, userEOA)
+					if (eligibility === 'already_claimed' || eligibility === 'already_redeemed') {
+						const card = offer.seriesRow.cardAddress || offer.coupon.cardAddress
+						const tid = offer.seriesRow.tokenId || offer.coupon.tokenId
+						if (card && tid) {
+							applyCouponOpenClaimStatus({
+								cardAddress: card,
+								tokenId: tid,
+								couponId: offer.coupon.couponId,
+								status: eligibility === 'already_redeemed' ? 'redeemed' : 'claimed',
+								source: 'chain',
+							})
+						}
+					}
 					return [offer.coupon.id, eligibility] as const
 				}),
 			)
@@ -4352,7 +4378,38 @@ function DiscoverMerchantDetailFullScreen({
 		return () => {
 			cancelled = true
 		}
-	}, [merchantCoupons, resolveUserEoa])
+		// couponOpenClaimStatusByKey intentionally omitted: register+resolve on list change;
+		// daemon map merges via dedicated effect below.
+	}, [merchantCoupons, resolveUserEoa, registerCouponOpenClaimFeedTargets, applyCouponOpenClaimStatus])
+
+	/** Daemon map updates (optimistic claim / background chain) → Coupons eligibility without remount. */
+	useEffect(() => {
+		if (!merchantCoupons?.length) return
+		const patch: Record<string, CouponOpenClaimEligibility> = {}
+		for (const offer of merchantCoupons) {
+			const el = couponOpenClaimEligibilityFromLocal(
+				pickCouponOpenClaimStatusFromMap(
+					couponOpenClaimStatusByKey,
+					offer.seriesRow.cardAddress || offer.coupon.cardAddress,
+					offer.seriesRow.tokenId || offer.coupon.tokenId,
+				),
+			)
+			if (el) patch[offer.coupon.id] = el
+		}
+		if (Object.keys(patch).length === 0) return
+		setCouponClaimEligibilityById((prev) => {
+			let changed = false
+			const next = { ...prev }
+			for (const [id, el] of Object.entries(patch)) {
+				if (next[id] === el) continue
+				if (el === 'already_redeemed' || next[id] !== 'already_redeemed') {
+					next[id] = el
+					changed = true
+				}
+			}
+			return changed ? next : prev
+		})
+	}, [couponOpenClaimStatusByKey, merchantCoupons])
 
 	useEffect(
 		() => () => {

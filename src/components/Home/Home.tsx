@@ -3558,7 +3558,6 @@ const Home = (_props: HomeProps) => {
 										onManualEntry={() => setActivateGiftVoucherScreen('redeemVoucher')}
 										getPrivateKeyArmor={() => resolveSigningPrivateKeyArmor(profiles?.[0]) || undefined}
 										onWalletUnlock={() => navigate('/settings')}
-										onClaimSuccess={() => setActivateGiftVoucherScreen('')}
 									/>
 								) : null}
 								{activateGiftVoucherScreen === 'redeemVoucher' ? (

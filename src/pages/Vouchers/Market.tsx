@@ -63,6 +63,11 @@ import BeamioContactProfilePreview from "@/components/Home/BeamioContactProfileP
 import { fiatPrefix, formatAmount } from "@/services/currency"
 import { getMyAssetsAggregated, getMyAssets, getCardTiersFromContract, getCardUpgradeTypeFromContract, quoteUSDCToCAD, postUSDCUserCardTopup, safeUsdc6ToAmountString, currencyAmountToSafeUsdc6, fetchCardActiveIssuedCouponSeriesTrusted, postCardCouponOpenClaimWithCurrentWallet, postCardRecordUserLikeWithCurrentWallet, resolveCouponOpenClaimEligibility, merchantBackgroundImageFromMetadataRoot, merchantIconUrlFromMetadataRoot, getCardOwner, readUserSocialPoints13BalanceOnCard, type CardActiveIssuedCouponSeriesItem, type CardMetadataFromUri, type CouponOpenClaimEligibility, type USDCUserCardTopupIntent } from "@/services/BeamioCard"
 import {
+	couponOpenClaimEligibilityFromLocal,
+	lookupCouponOpenClaimLocalStatus,
+	saveCouponOpenClaimLocalStatus,
+} from "@/utils/couponOpenClaimStatusLocalCache"
+import {
 	discoverUsdcTopupRulesHintText,
 	eoaCanSelfFundDiscoverTopup,
 	eoaMeetsExternalFundingTarget,
@@ -3222,6 +3227,8 @@ function DiscoverMerchantDetailFullScreen({
 	>({})
 	const [couponClaimErrorById, setCouponClaimErrorById] = useState<Record<string, string>>({})
 	const couponClaimStatusTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
+	const merchantCouponsRef = useRef<DiscoverMerchantCouponOffer[] | null>(null)
+	merchantCouponsRef.current = merchantCoupons
 	const [usdcTopupPhase, setUsdcTopupPhase] = useState<'idle' | 'amount' | 'receive'>('idle')
 	const [usdcTopupAmountText, setUsdcTopupAmountText] = useState('')
 	const [usdcTopupFiatAmount, setUsdcTopupFiatAmount] = useState('')
@@ -4187,16 +4194,39 @@ function DiscoverMerchantDetailFullScreen({
 					setCouponClaimEligibilityById((s) => ({ ...s, [row.id]: 'already_claimed' }))
 					setCouponClaimStatusById((s) => ({ ...s, [row.id]: 'success' }))
 					scheduleCouponClaimStatusReset(row.id)
-					Toast.show({
-						content: tu('claimed'),
-						position: 'top',
-					})
+					// No Toast here: Toast remount/scroll often refreshes the Coupons panel on mobile.
 				} else {
 					const err = ret.error ?? 'Coupon claim failed'
+					let claimerEoa: string | null = null
+					try {
+						claimerEoa = new ethers.Wallet(privateKeyArmor).address
+					} catch {
+						claimerEoa = null
+					}
 					if (/already claimed/i.test(err)) {
+						if (claimerEoa) {
+							saveCouponOpenClaimLocalStatus({
+								eoaAddress: claimerEoa,
+								cardAddress: ethers.getAddress(cardAddress),
+								tokenId,
+								couponId,
+								status: 'claimed',
+								source: 'chain',
+							})
+						}
 						setCouponClaimEligibilityById((s) => ({ ...s, [row.id]: 'already_claimed' }))
 						setCouponClaimStatusById((s) => ({ ...s, [row.id]: 'idle' }))
 					} else if (/already redeemed|already used|SigClaimAlreadyUsed/i.test(err)) {
+						if (claimerEoa) {
+							saveCouponOpenClaimLocalStatus({
+								eoaAddress: claimerEoa,
+								cardAddress: ethers.getAddress(cardAddress),
+								tokenId,
+								couponId,
+								status: 'redeemed',
+								source: 'chain',
+							})
+						}
 						setCouponClaimEligibilityById((s) => ({ ...s, [row.id]: 'already_redeemed' }))
 						setCouponClaimStatusById((s) => ({ ...s, [row.id]: 'idle' }))
 					} else {
@@ -4279,6 +4309,23 @@ function DiscoverMerchantDetailFullScreen({
 		}
 		let cancelled = false
 		const userEOA = resolveUserEoa()
+		// Sync hydrate from EOA local store so remount shows claimed/redeemed immediately.
+		if (userEOA) {
+			const fromLocal: Record<string, CouponOpenClaimEligibility> = {}
+			for (const offer of merchantCoupons) {
+				const el = couponOpenClaimEligibilityFromLocal(
+					lookupCouponOpenClaimLocalStatus(
+						userEOA,
+						offer.seriesRow.cardAddress || offer.coupon.cardAddress,
+						offer.seriesRow.tokenId || offer.coupon.tokenId,
+					),
+				)
+				if (el) fromLocal[offer.coupon.id] = el
+			}
+			if (Object.keys(fromLocal).length > 0) {
+				setCouponClaimEligibilityById((prev) => ({ ...prev, ...fromLocal }))
+			}
+		}
 		void (async () => {
 			const entries = await Promise.all(
 				merchantCoupons.map(async (offer) => {
@@ -4287,7 +4334,20 @@ function DiscoverMerchantDetailFullScreen({
 				}),
 			)
 			if (cancelled) return
-			setCouponClaimEligibilityById(Object.fromEntries(entries))
+			// Merge chain results; keep optimistic claimed/redeemed until chain confirms
+			// (queued claim may still read claimable for a few seconds — do not flash the CTA).
+			setCouponClaimEligibilityById((prev) => {
+				const next = Object.fromEntries(entries) as Record<string, CouponOpenClaimEligibility>
+				for (const [id, prevEl] of Object.entries(prev)) {
+					if (
+						(prevEl === 'already_claimed' || prevEl === 'already_redeemed') &&
+						(next[id] === 'claimable' || next[id] === 'unknown' || next[id] == null)
+					) {
+						next[id] = prevEl
+					}
+				}
+				return next
+			})
 		})()
 		return () => {
 			cancelled = true
@@ -4310,8 +4370,11 @@ function DiscoverMerchantDetailFullScreen({
 			return
 		}
 		let cancelled = false
-		setMerchantOffersLoading(true)
 		const cardAddress = item.cardAddress
+		// Only show Coupons loading on first fetch — never blank the panel on metadata/cardMap refresh.
+		if (merchantCouponsRef.current == null) {
+			setMerchantOffersLoading(true)
+		}
 		registerCardAddresses([cardAddress])
 		Promise.all([
 			fetchCardActiveIssuedCouponSeriesTrusted(cardAddress, 50),
@@ -4335,10 +4398,24 @@ function DiscoverMerchantDetailFullScreen({
 							} satisfies DiscoverMerchantCouponOffer
 						})
 						.filter((x): x is DiscoverMerchantCouponOffer => x != null)
-					setMerchantCoupons(mapped)
+					setMerchantCoupons((prev) => {
+						if (
+							prev &&
+							prev.length === mapped.length &&
+							prev.every(
+								(p, i) =>
+									p.coupon.id === mapped[i]?.coupon.id &&
+									p.coupon.tokenId === mapped[i]?.coupon.tokenId &&
+									p.supplySummary === mapped[i]?.supplySummary,
+							)
+						) {
+							return prev
+						}
+						return mapped
+					})
 				}
 				const key = normalizeCardAddressKey(cardAddress)
-				const rec = (key ? ensuredMap[key] : undefined) ?? lookupByAddress(cardAddress)
+				const rec = (key ? ensuredMap[key] : undefined) ?? null
 				const metadataRoot =
 					rec?.metadataRoot && typeof rec.metadataRoot === 'object' ? rec.metadataRoot : null
 				if (metadataRoot) {
@@ -4366,7 +4443,9 @@ function DiscoverMerchantDetailFullScreen({
 		return () => {
 			cancelled = true
 		}
-	}, [item.cardAddress, ccy, ensureCardMetadataForAddresses, lookupByAddress, registerCardAddresses])
+		// Intentionally omit lookupByAddress: it changes whenever cardMap updates and would
+		// re-fetch/remount the Coupons panel (visible flash after claim / metadata warm).
+	}, [item.cardAddress, ccy, ensureCardMetadataForAddresses, registerCardAddresses])
 
 	useEffect(() => {
 		const onKey = (e: KeyboardEvent) => {

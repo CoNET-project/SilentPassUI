@@ -747,7 +747,6 @@ export default function ActiveCouponsScreen({
 	onManualEntry,
 	getPrivateKeyArmor,
 	onWalletUnlock,
-	onClaimSuccess,
 }: ActiveCouponsScreenProps) {
 	const [coupons, setCoupons] = useState<ActiveCouponListItem[]>([])
 	const [fetchState, setFetchState] = useState<FetchState>('loading')
@@ -875,8 +874,10 @@ export default function ActiveCouponsScreen({
 			if (ret.success) {
 				setClaimStatusById((s) => ({ ...s, [row.id]: 'success' }))
 				scheduleClaimStatusReset(row.id)
-				setCoupons((prev) => prev.filter((c) => c.id !== row.id))
-				onClaimSuccess?.()
+				// Keep the row briefly with success state, then drop from claimable list without closing the panel.
+				window.setTimeout(() => {
+					setCoupons((prev) => prev.filter((c) => c.id !== row.id))
+				}, 900)
 			} else {
 				setClaimStatusById((s) => ({ ...s, [row.id]: 'error' }))
 				setClaimErrorById((s) => ({ ...s, [row.id]: ret.error ?? 'Coupon claim failed' }))

@@ -31,6 +31,11 @@ import { tu } from '@/locale/beamioLocale'
 import { readSocialExchangeFromMetadata, REWARD_VOUCHER_TOKEN_ID } from '@/utils/socialExchangeMetadata'
 import { readCouponDisabledFromMetadata } from '@/utils/couponListedMetadata'
 import { dispatchDiscoverLikeReward13IfNeeded } from '@/utils/discoverMerchantLikeReward'
+import {
+	couponOpenClaimEligibilityFromLocal,
+	lookupCouponOpenClaimLocalStatus,
+	saveCouponOpenClaimLocalStatus,
+} from '@/utils/couponOpenClaimStatusLocalCache'
 //		UID 044073D2151990
 
 /** 购卡请求体：仅允许 string/number，禁止 BigInt，以便 JSON 序列化发给后端 */
@@ -741,6 +746,7 @@ export async function readUserSocialPoints13BalanceOnCard(
 /**
  * Discover / coupon list UI: whether the current wallet may use open-claim for this series row.
  * `not_open_claim` = redeem-code or paid coupon (no Claim button).
+ * Local EOA store is authoritative for claimed/redeemed once written (optimistic queue or chain).
  */
 export async function resolveCouponOpenClaimEligibility(
 	row: CardActiveIssuedCouponSeriesItem,
@@ -748,7 +754,8 @@ export async function resolveCouponOpenClaimEligibility(
 ): Promise<CouponOpenClaimEligibility> {
 	if (readCouponDisabledFromMetadata(row.metadata ?? null)) return 'not_open_claim'
 	if (readCouponRequiresRedeemCode(row.metadata ?? null)) return 'not_open_claim'
-	if (!readCouponIdFromMetadata(row.metadata ?? null)) return 'not_open_claim'
+	const couponIdMeta = readCouponIdFromMetadata(row.metadata ?? null)
+	if (!couponIdMeta) return 'not_open_claim'
 	let tokenIdN: bigint
 	try {
 		tokenIdN = BigInt(row.tokenId)
@@ -762,9 +769,16 @@ export async function resolveCouponOpenClaimEligibility(
 		return 'expired'
 	}
 	if (!userEOA || !ethers.isAddress(userEOA)) return 'unknown'
+
+	const userNorm = ethers.getAddress(userEOA)
+	const cardNorm = ethers.getAddress(row.cardAddress)
+	const tokenIdStr = tokenIdN.toString()
+	const localEligibility = couponOpenClaimEligibilityFromLocal(
+		lookupCouponOpenClaimLocalStatus(userNorm, cardNorm, tokenIdStr),
+	)
+
 	try {
 		const cardRead = openClaimCardReadContract(row.cardAddress)
-		const userNorm = ethers.getAddress(userEOA)
 		const [priceInCurrency6, alreadyClaimed, maxSupply, mintedCount, holdsNft] = await Promise.all([
 			cardRead.issuedNftPriceInCurrency6(tokenIdN) as Promise<bigint>,
 			cardRead.issuedNftUserSigClaimUsed(userNorm, tokenIdN) as Promise<boolean>,
@@ -772,10 +786,32 @@ export async function resolveCouponOpenClaimEligibility(
 			cardRead.issuedNftMintedCount(tokenIdN) as Promise<bigint>,
 			userHoldsIssuedCouponNft(row.cardAddress, userNorm, tokenIdN),
 		])
-		if (holdsNft === true) return 'already_claimed'
-		if (alreadyClaimed) return 'already_redeemed'
+		if (holdsNft === true) {
+			saveCouponOpenClaimLocalStatus({
+				eoaAddress: userNorm,
+				cardAddress: cardNorm,
+				tokenId: tokenIdStr,
+				couponId: couponIdMeta,
+				status: 'claimed',
+				source: 'chain',
+			})
+			return 'already_claimed'
+		}
+		if (alreadyClaimed) {
+			saveCouponOpenClaimLocalStatus({
+				eoaAddress: userNorm,
+				cardAddress: cardNorm,
+				tokenId: tokenIdStr,
+				couponId: couponIdMeta,
+				status: 'redeemed',
+				source: 'chain',
+			})
+			return 'already_redeemed'
+		}
 		if (priceInCurrency6 !== 0n) return 'not_open_claim'
 		if (maxSupply > 0n && mintedCount >= maxSupply) return 'sold_out'
+		// Queued / pending mint: keep local claimed/redeemed; do not flash claimable.
+		if (localEligibility) return localEligibility
 		const socialExchange = readSocialExchangeFromMetadata(row.metadata ?? null)
 		if (socialExchange) {
 			const pointsBal = await readUserSocialPoints13BalanceOnCard(row.cardAddress, userNorm)
@@ -784,7 +820,7 @@ export async function resolveCouponOpenClaimEligibility(
 		}
 		return 'claimable'
 	} catch {
-		return 'unknown'
+		return localEligibility ?? 'unknown'
 	}
 }
 
@@ -1672,11 +1708,20 @@ export const postCardCouponOpenClaimWithCurrentWallet = async (params: {
 			}
 		}
 		// Cluster precheck OK + Master queue accepted → treat as claimed (tx may still be pending).
+		const resolvedTokenId = data.tokenId ?? tokenId
+		saveCouponOpenClaimLocalStatus({
+			eoaAddress: userEOA,
+			cardAddress: cardNorm,
+			tokenId: resolvedTokenId,
+			couponId,
+			status: 'claimed',
+			source: 'optimistic',
+		})
 		return {
 			success: true,
 			queued: data.queued === true,
 			tx: data.tx,
-			tokenId: data.tokenId ?? tokenId,
+			tokenId: resolvedTokenId,
 		}
 	} catch (e: any) {
 		return { success: false, error: mapCouponOpenClaimApiError(e?.shortMessage ?? e?.message ?? String(e)) }

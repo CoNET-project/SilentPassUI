@@ -1260,10 +1260,6 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 											undefined
 										}
 										onWalletUnlock={() => navigate('/settings')}
-										onClaimSuccess={() => {
-											home()
-											navigate('/')
-										}}
 									/>
 								)
 							}

@@ -99,7 +99,6 @@ import {
   postReferralMerchantStartKitClaim,
   postReferralAdminMerchantPackageClaim,
   queryValidatorDepositRedeemAdminOnChain,
-  fetchPosTerminalDbBinding,
   fetchPosTerminalMetadataFromApi,
   fetchCardActiveIssuedCouponSeries,
   fetchCardActiveIssuedProductionSeries,
@@ -5711,9 +5710,9 @@ async function resolveSubordinateAdminEoa(addr: string, provider: ethers.Provide
 }
 
 /**
- * 与 Cluster `cardAddAdminByAdminPreCheck` + `assertPosEoaAvailableForCardBinding`对齐的终端登记预检：
- * 1) DB：POS EOA 已绑定其它商户卡则拒绝（文案与 `db.ts` 一致）。
- * 2) 目标 program卡：若 `to` 已是 admin 且 `adminParent(to) != 0` 且 parent不是当前签字商户，则拒绝（文案与 `MemberCard.ts` 一致）。
+ * 与 Cluster `cardAddAdminByAdminPreCheck` 对齐的终端登记预检（同卡 adminParent）：
+ * 目标 program 卡：若 `to` 已是 admin 且 `adminParent(to) != 0` 且 parent 不是当前签字商户，则拒绝。
+ * 多商家：同一 POS EOA 可绑定多张 program 卡；不再做「已绑其它卡则拒绝」的 DB 排他。
  */
 const POS_TERMINAL_CLUSTER_ALIGN_ABI = [
   'function isAdmin(address) view returns (bool)',
@@ -5731,17 +5730,6 @@ async function assertTerminalRegistrationPrecheckAlignedWithCluster(
 ): Promise<void> {
   const program = ethers.getAddress(params.programCard);
   const pos = ethers.getAddress(params.posNorm);
-  const db = await fetchPosTerminalDbBinding(pos);
-  if ('error' in db) {
-    throw new Error(db.error);
-  }
-  if ('boundCard' in db) {
-    if (db.boundCard.toLowerCase() !== program.toLowerCase()) {
-      throw new Error(
-        'This terminal address is already registered as a POS terminal. Remove it there before linking to this POS terminal.',
-      );
-    }
-  }
   const card = new ethers.Contract(program, POS_TERMINAL_CLUSTER_ALIGN_ABI, provider);
   let isAd: boolean;
   try {

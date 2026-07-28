@@ -552,8 +552,8 @@ export const ensureAAForEOA = async (eoa: string): Promise<string> => {
 }
 
 /**
- * Cluster DB：`beamio_pos_terminal_admin_card`（与 `assertPosEoaAvailableForCardBinding` / GET `/api/myPosAddress` 一致）。
- * 用于终端登记前预检：若已绑定其它 program 卡则与后端拒绝文案对齐。
+ * Cluster DB：`beamio_pos_terminal_admin_card` 活跃卡（与 GET `/api/myPosAddress` 一致）。
+ * 多商家：同一 POS 可有多行绑定；本 helper 只返回 **is_active** 卡，不作跨卡排他。
  */
 export const fetchPosTerminalDbBinding = async (
 	posEoa: string

@@ -30,6 +30,11 @@ export const BEAMIO_INDEXER_DIAMOND = '0x6113fE738489c0aB64B4606Ce333aD29b44ED0C
 export const CONET_REFERRAL_REGISTRY_VAULT_V1 = '0xD6252Cbf266B80231397Ac2a4f25ed2d9b01DEE6'
 /** Vault proxy deploy block — ClaimableAccrued / claim history scan floor. */
 export const CONET_REFERRAL_REGISTRY_VAULT_V1_DEPLOY_BLOCK = 431457
+/** CoNET GenesisNodeReferralVaultV1 — Genesis Node Offers Admin/L0 + LockMint split. */
+export const CONET_GENESIS_NODE_REFERRAL_VAULT = '0x051b65E5711E6E74bC236Fe220dcA7021841855C'
+export const CONET_GENESIS_NODE_REFERRAL_VAULT_DEPLOY_BLOCK = 594820
+/** Base USDC settle recipient before LockMint (must match Master settle_contractAdmin walletBase). */
+export const GENESIS_NODE_BRIDGE_INITIATOR = '0x87cAeD4e51C36a2C2ece3Aaf4ddaC9693d2405E1'
 /** CoNET ReferralMerchantShareModuleV1 proxy — L0 merchant→L1 rebate share config. */
 export const CONET_REFERRAL_MERCHANT_SHARE_MODULE = '0xe3e06f47D89159713d67ec8530E4FE97D31Bb708'
 /**

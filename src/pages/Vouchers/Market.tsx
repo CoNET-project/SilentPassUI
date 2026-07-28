@@ -3548,6 +3548,14 @@ function DiscoverMerchantDetailFullScreen({
 			const qty = Math.max(1, Math.floor(Number(quantity) || 1))
 			const localTestEoa = isGenesisNodeSeatLocalTestEoa(beneficiary)
 			const payQty = localTestEoa ? 1 : qty
+			const fromParams =
+				parseDiscoverMerchantFromParams(collectDeepLinkSearchParams(window.location.href))?.referrerEoa ??
+				null
+			const state = location.state as { discoverShareReferrerEoa?: string | null } | null
+			const fromState = state?.discoverShareReferrerEoa ?? null
+			const refRaw = fromParams ?? fromState
+			const referrerL0 =
+				refRaw && ethers.isAddress(refRaw) ? ethers.getAddress(refRaw) : null
 
 			const openExternalPay = () => {
 				const payUrl = buildDiscoverGenesisNodeSeatUrl({
@@ -3555,6 +3563,7 @@ function DiscoverMerchantDetailFullScreen({
 					cardOwner,
 					beneficiaryEoa: beneficiary,
 					quantity: payQty,
+					referrerL0,
 					testCode: localTestEoa ? GENESIS_NODE_SEAT_TEST_CODE : undefined,
 				})
 				void openExternalUrl(payUrl)
@@ -3581,6 +3590,7 @@ function DiscoverMerchantDetailFullScreen({
 						cardOwner,
 						beneficiaryEoa: beneficiary,
 						quantity: payQty,
+						referrerL0,
 					})
 					if (abort.signal.aborted) return
 
@@ -3636,7 +3646,7 @@ function DiscoverMerchantDetailFullScreen({
 				}
 			})()
 		},
-		[issuerOwnerEoa, profile, resolveUserEoa],
+		[issuerOwnerEoa, location.state, profile, resolveUserEoa],
 	)
 
 	const resolveUserAa = useCallback((): string | null => {

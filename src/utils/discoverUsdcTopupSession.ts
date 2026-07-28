@@ -35,10 +35,12 @@ export const GENESIS_NODE_SEAT_USDC_PER_NODE = 1370
 export const GENESIS_NODE_SEAT_USDC_PER_NODE6 = 1_370_000_000n
 
 /**
- * Hard-coded seat settlement recipient on Base (must match x402sdk GENESIS_NODE_SEAT_PAYTO).
+ * Hard-coded Base USDC settle recipient before LockMint (must match x402sdk GENESIS_NODE_BRIDGE_INITIATOR).
  * Local SilentPassUI wallet pays this address via EIP-3009 / x402 — not the merchant card owner.
  */
-export const GENESIS_NODE_SEAT_PAYTO = '0x17FCE32f01f88FFBDAf6BA51cef9138bF6BD637A'
+export const GENESIS_NODE_BRIDGE_INITIATOR = '0x87cAeD4e51C36a2C2ece3Aaf4ddaC9693d2405E1'
+/** @deprecated alias of {@link GENESIS_NODE_BRIDGE_INITIATOR} */
+export const GENESIS_NODE_SEAT_PAYTO = GENESIS_NODE_BRIDGE_INITIATOR
 
 /** Must match x402sdk `GENESIS_NODE_SEAT_TEST_CODE` — settle 1 USDC then full fulfill. */
 export const GENESIS_NODE_SEAT_TEST_CODE = '332266'
@@ -137,6 +139,10 @@ export function buildDiscoverGenesisNodeSeatUrl(params: {
 	cardOwner: string
 	beneficiaryEoa: string
 	quantity: number
+	/** Evangelist L1 EOA from Discover share link (optional; field name legacy). */
+	referrerL0?: string | null
+	/** Alias — same as referrerL0; purchase attribution must be active L1. */
+	referrerL1?: string | null
 	/** When set (e.g. `332266`), payment page settles 1 USDC then fulfills. */
 	testCode?: string
 }): string {
@@ -155,6 +161,12 @@ export function buildDiscoverGenesisNodeSeatUrl(params: {
 	url.searchParams.set('workflow', DISCOVER_GENESIS_NODE_SEAT_WORKFLOW)
 	url.searchParams.set('paymentToken', 'USDC')
 	if (testMode) url.searchParams.set('test', GENESIS_NODE_SEAT_TEST_CODE)
+	const ref = (params.referrerL1 ?? params.referrerL0)?.trim()
+	if (ref && ethers.isAddress(ref)) {
+		const checksum = ethers.getAddress(ref)
+		url.searchParams.set('referrerL1', checksum)
+		url.searchParams.set('referrerL0', checksum)
+	}
 	return url.toString()
 }
 
@@ -179,6 +191,9 @@ export async function payGenesisNodeSeatWithLocalWallet(params: {
 	cardOwner: string
 	beneficiaryEoa: string
 	quantity: number
+	/** Evangelist L1 EOA (optional; legacy param name referrerL0). */
+	referrerL0?: string | null
+	referrerL1?: string | null
 }): Promise<PayGenesisNodeSeatLocalResult> {
 	const { required6, testMode, qty } = genesisNodeSeatLocalRequiredUsdc6({
 		beneficiaryEoa: params.beneficiaryEoa,
@@ -212,6 +227,12 @@ export async function payGenesisNodeSeatWithLocalWallet(params: {
 		workflow: DISCOVER_GENESIS_NODE_SEAT_WORKFLOW,
 	}
 	if (testMode) bodyObj.test = GENESIS_NODE_SEAT_TEST_CODE
+	const ref = (params.referrerL1 ?? params.referrerL0)?.trim()
+	if (ref && ethers.isAddress(ref)) {
+		const checksum = ethers.getAddress(ref)
+		bodyObj.referrerL1 = checksum
+		bodyObj.referrerL0 = checksum
+	}
 
 	const topupUrl = `${beamioApi}/api/nfcUsdcTopup`
 	const body = JSON.stringify(bodyObj)
@@ -254,7 +275,7 @@ export async function payGenesisNodeSeatWithLocalWallet(params: {
 	} catch {
 		return { ok: false, error: 'Invalid payment recipient' }
 	}
-	if (payTo.toLowerCase() !== GENESIS_NODE_SEAT_PAYTO.toLowerCase()) {
+	if (payTo.toLowerCase() !== GENESIS_NODE_BRIDGE_INITIATOR.toLowerCase()) {
 		return { ok: false, error: 'Unexpected payment recipient' }
 	}
 

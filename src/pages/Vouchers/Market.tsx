@@ -94,6 +94,11 @@ import {
 	type GenesisReferrerCandidate,
 	type GenesisReferrerRole,
 } from "@/services/genesisNodeReferral"
+import {
+	loadGenesisReferrerCandidatesLocalCache,
+	mergeGenesisReferrerCandidateTags,
+	saveGenesisReferrerCandidatesLocalCache,
+} from "@/utils/genesisReferrerCandidatesLocalCache"
 import { plainBeamioTagSeed } from "@/utils/beamioTagDatabase"
 import { useMerchantCardDatabase } from "@/providers/MerchantCardDatabaseProvider"
 import { merchantCardRecordFromLatestCardsRaw } from "@/utils/merchantCardDatabase"
@@ -2880,8 +2885,11 @@ function genesisReferrerRoleLabel(role: GenesisReferrerRole): string {
 	return 'L1'
 }
 
-/** Hide deployer / foundation payout EOA that has no real @BeamioTag (search-users → unknow). */
+/** Hide deployer / settle admin EOA that has no real @BeamioTag (search-users → unknow). */
 const GENESIS_REFERRAL_HIDDEN_EOA = '0x87caed4e51c36a2c2ece3aaf4ddac9693d2405e1'
+/** Default required referral partner for Genesis Node Offers. */
+const GENESIS_DEFAULT_REFERRER_TAG = 'Beamio_Manager'
+const GENESIS_DEFAULT_REFERRER_EOA = '0x82DADaeC25bebB58D6FaD2B91f394Ad10A9b0eE1'
 
 function shortGenesisReferrerAddress(address: string): string {
 	const a = address.trim()
@@ -2892,6 +2900,55 @@ function shortGenesisReferrerAddress(address: string): string {
 
 function isHiddenGenesisReferrerEoa(address: string): boolean {
 	return address.trim().toLowerCase() === GENESIS_REFERRAL_HIDDEN_EOA
+}
+
+function isGenesisDefaultReferrerEoa(address: string): boolean {
+	return address.trim().toLowerCase() === GENESIS_DEFAULT_REFERRER_EOA.toLowerCase()
+}
+
+/** Ensure Beamio_Manager is always selectable even if event scan missed them. */
+function ensureGenesisDefaultReferrerInCandidates(
+	list: GenesisReferrerCandidate[],
+): GenesisReferrerCandidate[] {
+	const addr = ethers.getAddress(GENESIS_DEFAULT_REFERRER_EOA)
+	if (list.some((c) => c.address.toLowerCase() === addr.toLowerCase())) {
+		return list.map((c) =>
+			isGenesisDefaultReferrerEoa(c.address) && !c.accountName
+				? { ...c, accountName: GENESIS_DEFAULT_REFERRER_TAG }
+				: c,
+		)
+	}
+	return [
+		{ address: addr, role: 'admin', accountName: GENESIS_DEFAULT_REFERRER_TAG },
+		...list,
+	]
+}
+
+function visibleGenesisReferrerCandidates(
+	list: GenesisReferrerCandidate[],
+): GenesisReferrerCandidate[] {
+	return ensureGenesisDefaultReferrerInCandidates(list).filter(
+		(c) => !isHiddenGenesisReferrerEoa(c.address),
+	)
+}
+
+/** Prefer deep-link referrer when present in list; otherwise Beamio_Manager. */
+function pickRequiredGenesisReferrerEoa(
+	list: GenesisReferrerCandidate[],
+	preferred?: string | null,
+): string {
+	const visible = visibleGenesisReferrerCandidates(list)
+	const pref =
+		preferred && ethers.isAddress(preferred) && !isHiddenGenesisReferrerEoa(preferred)
+			? ethers.getAddress(preferred)
+			: null
+	if (pref && visible.some((c) => c.address.toLowerCase() === pref.toLowerCase())) {
+		return pref
+	}
+	const manager = visible.find((c) => isGenesisDefaultReferrerEoa(c.address))
+	if (manager) return manager.address
+	if (visible[0]) return visible[0].address
+	return ethers.getAddress(GENESIS_DEFAULT_REFERRER_EOA)
 }
 
 /** Exact @BeamioTag match from search-users results (avoid results[0] collisions). */
@@ -2929,7 +2986,7 @@ function ConetGenesisNodeDiscoverSection({
 		cloudNode: boolean,
 		totalUsdc: number,
 		canPayLocally: boolean,
-		referrerEoa: string | null,
+		referrerEoa: string,
 	) => void
 	purchasePhase: GenesisSeatPurchasePhase
 	/** Trusted Base USDC balance of local EOA; null = unknown / not loaded. */
@@ -2942,10 +2999,16 @@ function ConetGenesisNodeDiscoverSection({
 		useBeamioTagDatabase()
 	const localTestEoa = isGenesisNodeSeatPwaTestBuyer(beneficiaryEoa)
 	const [quantity, setQuantity] = useState(1)
-	const [candidates, setCandidates] = useState<GenesisReferrerCandidate[]>([])
-	const [candidatesLoading, setCandidatesLoading] = useState(true)
-	const [selectedReferrerEoa, setSelectedReferrerEoa] = useState<string | null>(null)
-	const [referralInputTag, setReferralInputTag] = useState('')
+	const [partnersBoot] = useState(() => loadGenesisReferrerCandidatesLocalCache())
+	const [candidates, setCandidates] = useState<GenesisReferrerCandidate[]>(() =>
+		ensureGenesisDefaultReferrerInCandidates(partnersBoot),
+	)
+	/** Background refresh only; seed/local already painted. */
+	const [candidatesLoading, setCandidatesLoading] = useState(false)
+	const [selectedReferrerEoa, setSelectedReferrerEoa] = useState<string>(() =>
+		pickRequiredGenesisReferrerEoa(partnersBoot, null),
+	)
+	const [referralInputTag, setReferralInputTag] = useState(GENESIS_DEFAULT_REFERRER_TAG)
 	const [referralVerifyStatus, setReferralVerifyStatus] = useState<
 		'idle' | 'loading' | 'success' | 'error'
 	>('idle')
@@ -2964,28 +3027,48 @@ function ConetGenesisNodeDiscoverSection({
 
 	useEffect(() => {
 		let cancelled = false
+		// Soft indicator only — seed already visible; do not clear list while refreshing.
 		setCandidatesLoading(true)
 		void (async () => {
 			try {
-				const list = await fetchGenesisReferrerCandidates()
+				const list = ensureGenesisDefaultReferrerInCandidates(
+					mergeGenesisReferrerCandidateTags(
+						await fetchGenesisReferrerCandidates(),
+						loadGenesisReferrerCandidatesLocalCache(),
+					),
+				)
 				if (cancelled) return
+				// Trusted success only — overwrite UI + local cache (incl. trusted-empty []).
 				setCandidates(list)
+				saveGenesisReferrerCandidatesLocalCache(list)
+				setCandidatesLoading(false)
+				setSelectedReferrerEoa((prev) =>
+					pickRequiredGenesisReferrerEoa(list, prev || initialReferrerEoa),
+				)
 				const addrs = list.map((c) => c.address)
 				if (addrs.length > 0) {
-					// Force refresh so Admin EOAs resolve real @tags (e.g. Beamio_Manager),
-					// not stale search-users placeholder "unknow".
-					await ensureProfilesForAddresses(addrs, { maxPerTick: 40 }).catch(() => ({}))
+					// Tag enrichment is best-effort background; never gates the picker.
+					void ensureProfilesForAddresses(addrs, { maxPerTick: 40 }).catch(() => {})
 				}
 			} catch {
-				if (!cancelled) setCandidates([])
-			} finally {
-				if (!cancelled) setCandidatesLoading(false)
+				// Untrusted failure — keep last local / seed list; only clear loading spinner.
+				if (!cancelled) {
+					setCandidatesLoading(false)
+					setSelectedReferrerEoa((prev) =>
+						pickRequiredGenesisReferrerEoa(
+							loadGenesisReferrerCandidatesLocalCache(),
+							prev || initialReferrerEoa,
+						),
+					)
+				}
 			}
 		})()
 		return () => {
 			cancelled = true
 		}
-	}, [ensureProfilesForAddresses])
+		// Mount-only: partner list is chain-global; do not re-run when tag DB callback identity changes.
+		// eslint-disable-next-line react-hooks/exhaustive-deps -- ensureProfilesForAddresses via closure is best-effort
+	}, [])
 
 	useEffect(() => {
 		if (initialReferrerAppliedRef.current) return
@@ -2998,8 +3081,17 @@ function ConetGenesisNodeDiscoverSection({
 			if (cancelled || !resolved) return
 			if (isHiddenGenesisReferrerEoa(resolved.address)) return
 			setSelectedReferrerEoa(resolved.address)
-			const tag = resolveTagPlain(resolved.address)
-			if (tag) setReferralInputTag(tag.replace(/^@+/, ''))
+			setCandidates((prev) => {
+				if (prev.some((c) => c.address.toLowerCase() === resolved.address.toLowerCase())) {
+					return prev
+				}
+				return ensureGenesisDefaultReferrerInCandidates([
+					{ address: resolved.address, role: resolved.role },
+					...prev,
+				])
+			})
+			const tag = resolveTagPlain(resolved.address).replace(/^@+/, '')
+			setReferralInputTag(tag || GENESIS_DEFAULT_REFERRER_TAG)
 		})()
 		return () => {
 			cancelled = true
@@ -3024,28 +3116,30 @@ function ConetGenesisNodeDiscoverSection({
 	const canPayLocally =
 		eoaUsdcBalance6 != null && eoaCanSelfFundDiscoverTopup(eoaUsdcBalance6, requiredUsdc6)
 
+	const visiblePartnerCandidates = useMemo(
+		() => visibleGenesisReferrerCandidates(candidates),
+		[candidates],
+	)
+
 	const onSelectReferrerFromList = useCallback((address: string) => {
 		const trimmed = address.trim()
-		if (!trimmed) {
-			setSelectedReferrerEoa(null)
-			setReferralVerifyStatus('idle')
-			setReferralVerifyMessage('')
-			return
-		}
-		if (!ethers.isAddress(trimmed)) return
+		if (!trimmed || !ethers.isAddress(trimmed)) return
 		const checksum = ethers.getAddress(trimmed)
-		if (isHiddenGenesisReferrerEoa(checksum)) {
-			setSelectedReferrerEoa(null)
-			setReferralVerifyStatus('idle')
-			setReferralVerifyMessage('')
-			return
-		}
+		if (isHiddenGenesisReferrerEoa(checksum)) return
 		setSelectedReferrerEoa(checksum)
 		setReferralVerifyStatus('idle')
 		setReferralVerifyMessage('')
-		const tag = resolveTagPlain(checksum).replace(/^@+/, '')
-		if (tag) setReferralInputTag(tag)
-	}, [resolveTagPlain])
+		const fromList = candidates.find(
+			(c) => c.address.toLowerCase() === checksum.toLowerCase(),
+		)
+		const tag =
+			resolveTagPlain(checksum).replace(/^@+/, '') ||
+			fromList?.accountName?.replace(/^@+/, '') ||
+			''
+		setReferralInputTag(
+			tag || (isGenesisDefaultReferrerEoa(checksum) ? GENESIS_DEFAULT_REFERRER_TAG : ''),
+		)
+	}, [resolveTagPlain, candidates])
 
 	const verifyReferralBeamioTag = useCallback(async () => {
 		if (referralVerifyInFlightRef.current) return
@@ -3062,20 +3156,17 @@ function ConetGenesisNodeDiscoverSection({
 			const res = await searchRemoteAndIngest(tag)
 			const eoa = pickExactBeamioTagAddressFromSearch(res, tag)
 			if (!eoa) {
-				setSelectedReferrerEoa(null)
 				setReferralVerifyStatus('error')
 				setReferralVerifyMessage('No wallet found for that @BeamioTag.')
 				return
 			}
 			if (isHiddenGenesisReferrerEoa(eoa)) {
-				setSelectedReferrerEoa(null)
 				setReferralVerifyStatus('error')
 				setReferralVerifyMessage('This wallet cannot be used as a Referral partner.')
 				return
 			}
 			const role = await resolveGenesisReferrerRole(eoa)
 			if (!role) {
-				setSelectedReferrerEoa(null)
 				setReferralVerifyStatus('error')
 				setReferralVerifyMessage(
 					'This wallet is not a valid Genesis Admin, L0, or L1 referrer.',
@@ -3083,6 +3174,23 @@ function ConetGenesisNodeDiscoverSection({
 				return
 			}
 			setSelectedReferrerEoa(role.address)
+			setCandidates((prev) => {
+				if (prev.some((c) => c.address.toLowerCase() === role.address.toLowerCase())) {
+					return prev.map((c) =>
+						c.address.toLowerCase() === role.address.toLowerCase()
+							? {
+									...c,
+									role: role.role,
+									accountName: tag || c.accountName,
+								}
+							: c,
+					)
+				}
+				return ensureGenesisDefaultReferrerInCandidates([
+					{ address: role.address, role: role.role, accountName: tag || undefined },
+					...prev,
+				])
+			})
 			setReferralVerifyStatus('success')
 			setReferralVerifyMessage(
 				`Verified ${genesisReferrerRoleLabel(role.role)} referrer.`,
@@ -3099,10 +3207,20 @@ function ConetGenesisNodeDiscoverSection({
 		if (!selectedReferrerEoa) return ''
 		const fromDb = resolveTagPlain(selectedReferrerEoa).replace(/^@+/, '')
 		if (fromDb) return `@${fromDb}`
+		const fromList = candidates.find(
+			(c) => c.address.toLowerCase() === selectedReferrerEoa.toLowerCase(),
+		)?.accountName
+		if (fromList) return `@${fromList.replace(/^@+/, '')}`
+		if (isGenesisDefaultReferrerEoa(selectedReferrerEoa)) return `@${GENESIS_DEFAULT_REFERRER_TAG}`
 		const rec = lookupByAddress(selectedReferrerEoa)
 		const t = plainBeamioTagSeed(rec?.accountName ?? rec?.username)
 		return t ? `@${t}` : ''
-	}, [selectedReferrerEoa, resolveTagPlain, lookupByAddress])
+	}, [selectedReferrerEoa, resolveTagPlain, lookupByAddress, candidates])
+
+	const hasRequiredReferrer =
+		!!selectedReferrerEoa &&
+		ethers.isAddress(selectedReferrerEoa) &&
+		!isHiddenGenesisReferrerEoa(selectedReferrerEoa)
 
 	const lockButtonClass = canPayLocally
 		? 'bg-emerald-600 shadow-lg shadow-emerald-500/25 hover:bg-emerald-500'
@@ -3204,14 +3322,14 @@ function ConetGenesisNodeDiscoverSection({
 					</div>
 				</div>
 
-				{/* Referral BeamioTag */}
+				{/* Referral BeamioTag — required */}
 				<div className="mt-4 rounded-[18px] border border-[#e2e7f0] bg-[#f8fafc] p-4 dark:border-slate-700 dark:bg-slate-800/40">
 					<p className="text-[14px] font-bold text-[#1f2328] dark:text-slate-100">
 						Referral @BeamioTag
 					</p>
 					<p className="mt-1 text-[12px] leading-relaxed text-slate-500 dark:text-slate-400">
-						Select a partner @BeamioTag — or enter a tag and verify their wallet is a valid Admin, L0, or L1
-						referrer on-chain.
+						A referral partner is required. Default is @{GENESIS_DEFAULT_REFERRER_TAG}. You can pick another
+						partner or enter a tag and verify their wallet is a valid Admin, L0, or L1 referrer on-chain.
 					</p>
 
 					<label className="mt-3 block" htmlFor="genesis-referral-select">
@@ -3221,33 +3339,35 @@ function ConetGenesisNodeDiscoverSection({
 						<select
 							id="genesis-referral-select"
 							value={
-								selectedReferrerEoa && !isHiddenGenesisReferrerEoa(selectedReferrerEoa)
+								hasRequiredReferrer
 									? selectedReferrerEoa
-									: ''
+									: pickRequiredGenesisReferrerEoa(candidates, initialReferrerEoa)
 							}
-							disabled={candidatesLoading || purchaseBusy || purchaseSuccess}
+							disabled={purchaseBusy || purchaseSuccess}
 							onChange={(e) => onSelectReferrerFromList(e.target.value)}
+							required
 							className="mt-1.5 w-full rounded-xl border border-[#dce2f0] bg-white px-3 py-2.5 text-[13px] font-medium text-[#1f2328] outline-none focus:border-[#1562f0] dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
 						>
-							<option value="">No referral</option>
-							{candidates
-								.filter((c) => !isHiddenGenesisReferrerEoa(c.address))
-								.map((c) => {
-									const tag = resolveTagPlain(c.address).replace(/^@+/, '')
-									const short = shortGenesisReferrerAddress(c.address)
-									const label = tag ? `@${tag} · ${short}` : short
-									return (
-										<option key={c.address} value={c.address}>
-											{label}
-										</option>
-									)
-								})}
+							{visiblePartnerCandidates.map((c) => {
+								const tag = resolveTagPlain(c.address).replace(/^@+/, '')
+								const short = shortGenesisReferrerAddress(c.address)
+								const displayTag =
+									tag ||
+									c.accountName?.replace(/^@+/, '') ||
+									(isGenesisDefaultReferrerEoa(c.address) ? GENESIS_DEFAULT_REFERRER_TAG : '')
+								const label = displayTag ? `@${displayTag} · ${short}` : short
+								return (
+									<option key={c.address} value={c.address}>
+										{label}
+									</option>
+								)
+							})}
 						</select>
 					</label>
 					{candidatesLoading ? (
 						<p className="mt-1.5 flex items-center gap-1.5 text-[11px] text-slate-400">
 							<Loader2 className="h-3 w-3 animate-spin" aria-hidden />
-							Loading partners…
+							Refreshing partners…
 						</p>
 					) : null}
 
@@ -3261,7 +3381,7 @@ function ConetGenesisNodeDiscoverSection({
 								type="text"
 								autoComplete="off"
 								enterKeyHint="done"
-								placeholder="@beamioTag"
+								placeholder={`@${GENESIS_DEFAULT_REFERRER_TAG}`}
 								value={referralInputTag}
 								disabled={purchaseBusy || purchaseSuccess}
 								onChange={(e) => {
@@ -3314,7 +3434,7 @@ function ConetGenesisNodeDiscoverSection({
 						</p>
 					) : null}
 
-					{selectedReferrerEoa && !isHiddenGenesisReferrerEoa(selectedReferrerEoa) ? (
+					{hasRequiredReferrer ? (
 						<p className="mt-2 text-[12px] font-semibold text-[#1f2328] dark:text-slate-200">
 							Selected:{' '}
 							<span className="text-[#1562f0]">
@@ -3323,7 +3443,11 @@ function ConetGenesisNodeDiscoverSection({
 									: shortGenesisReferrerAddress(selectedReferrerEoa)}
 							</span>
 						</p>
-					) : null}
+					) : (
+						<p className="mt-2 text-[12px] font-medium text-amber-600 dark:text-amber-400" role="alert">
+							Select a Referral partner to continue.
+						</p>
+					)}
 				</div>
 
 				<div className="mt-4 rounded-[18px] bg-[#f4f6fa] py-4 text-center dark:bg-slate-800/50">
@@ -3557,7 +3681,7 @@ function ConetGenesisNodeDiscoverSection({
 						onClick={() =>
 							onLockSeat(quantity, true, totalThreshold, canPayLocally, selectedReferrerEoa)
 						}
-						disabled={purchaseBusy || !agreementAgreed}
+						disabled={purchaseBusy || !agreementAgreed || !hasRequiredReferrer}
 						aria-busy={purchaseBusy}
 						className={`mt-4 flex w-full items-center justify-center gap-2 rounded-full px-4 py-3.5 text-[15px] font-bold text-white transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 ${lockButtonClass}`}
 					>
@@ -3957,7 +4081,7 @@ function DiscoverMerchantDetailFullScreen({
 			_cloudNode: boolean,
 			_totalUsdc: number,
 			canPayLocally: boolean,
-			referrerEoaFromUi: string | null = null,
+			referrerEoaFromUi: string,
 		) => {
 			if (genesisSeatLockInFlightRef.current) return
 			const privateKeyArmor = resolveSigningPrivateKeyArmor(profile)
@@ -3984,14 +4108,21 @@ function DiscoverMerchantDetailFullScreen({
 				})
 				return
 			}
+			if (
+				!referrerEoaFromUi ||
+				!ethers.isAddress(referrerEoaFromUi) ||
+				isHiddenGenesisReferrerEoa(referrerEoaFromUi)
+			) {
+				setGenesisSeatPurchase({
+					kind: 'error',
+					message: 'Select a Referral partner before locking a seat.',
+				})
+				return
+			}
 			const qty = Math.max(1, Math.floor(Number(quantity) || 1))
 			const localTestEoa = isGenesisNodeSeatPwaTestBuyer(beneficiary)
 			const payQty = localTestEoa ? 1 : qty
-			const uiRef =
-				referrerEoaFromUi && ethers.isAddress(referrerEoaFromUi)
-					? ethers.getAddress(referrerEoaFromUi)
-					: null
-			const referrerL0 = uiRef ?? genesisDeepLinkReferrerEoa
+			const referrerL0 = ethers.getAddress(referrerEoaFromUi)
 
 			const openExternalPay = () => {
 				const payUrl = buildDiscoverGenesisNodeSeatUrl({
@@ -5038,7 +5169,7 @@ function DiscoverMerchantDetailFullScreen({
 				</div>
 			</div>
 
-			<div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-28 pt-4">
+			<div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-[calc(2rem+env(safe-area-inset-bottom))] pt-4">
 				<div className="mx-auto max-w-lg space-y-4">
 					{isConetGenesisCard ? (
 						<ConetGenesisNodeDiscoverSection

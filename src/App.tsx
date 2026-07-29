@@ -1093,10 +1093,12 @@ function AppShell() {
 		}
 	}
 
+	/** Initial boot: hide footer while loading. Do NOT force `true` on every tick —
+	 *  overlays (Active Coupons, claim panels, Discover detail) manage their own hide;
+	 *  stomping `setShowFooter(true)` lets the global bar reappear over Coupons. */
 	useEffect(() => {
-		if (isInitialLoading) setShowFooter (false)
-		setShowFooter(true)
-	},[isInitialLoading])
+		if (isInitialLoading) setShowFooter(false)
+	}, [isInitialLoading, setShowFooter])
 
 
 	// ① 先统计（不要清 charts）
@@ -1723,7 +1725,7 @@ function AppShell() {
 				{redeemClaimIntent && (
 					<motion.div
 						key="redeem-claim-overlay"
-						className="fixed inset-0 z-[220] bg-white dark:bg-slate-900 flex flex-col"
+						className="fixed inset-0 z-[10000] bg-white dark:bg-slate-900 flex flex-col"
 						initial={{ x: "100%" }}
 						animate={{ x: 0 }}
 						exit={{ x: "100%" }}
@@ -1779,7 +1781,7 @@ function AppShell() {
 				{couponClaimIntent && (
 					<motion.div
 						key="coupon-claim-overlay"
-						className="fixed inset-0 z-[220] bg-white dark:bg-slate-900 flex flex-col"
+						className="fixed inset-0 z-[10000] bg-white dark:bg-slate-900 flex flex-col"
 						initial={{ x: "100%" }}
 						animate={{ x: 0 }}
 						exit={{ x: "100%" }}

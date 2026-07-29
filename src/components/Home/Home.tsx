@@ -3530,7 +3530,7 @@ const Home = (_props: HomeProps) => {
 						<AnimatePresence>
 							<motion.div
 								key="activate-gift-voucher-overlay"
-								className="fixed inset-0 z-[9998] flex min-h-0 flex-col bg-white dark:bg-slate-900"
+								className="fixed inset-0 z-[10000] flex min-h-0 flex-col bg-white dark:bg-slate-900"
 								initial={{ x: '100%' }}
 								animate={{ x: 0 }}
 								exit={{ x: '100%' }}

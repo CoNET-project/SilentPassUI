@@ -4,7 +4,10 @@
  * L0 sets ratioBps (% of L0's 10% node bucket) when issuing L1 redeem codes.
  */
 import { ethers } from 'ethers'
-import { CONET_GENESIS_NODE_REFERRAL_VAULT } from '@/config/chainAddresses'
+import {
+	CONET_GENESIS_NODE_REFERRAL_VAULT,
+	CONET_GENESIS_NODE_REFERRAL_VAULT_DEPLOY_BLOCK,
+} from '@/config/chainAddresses'
 import { beamioApi, conetDepinProvider } from '@/utils/constants'
 import { buildDiscoverMerchantShareUrl } from '@/utils/discoverMerchantShare'
 
@@ -243,6 +246,8 @@ export type GenesisReferrerRole = 'admin' | 'l0' | 'l1'
 export type GenesisReferrerCandidate = {
 	address: string
 	role: GenesisReferrerRole
+	/** Optional @BeamioTag plain name for first-paint / seed display. */
+	accountName?: string
 }
 
 /** Resolve whether an EOA is a valid Genesis purchase referrer (Admin / L0 / L1). */
@@ -286,10 +291,15 @@ export async function fetchGenesisReferrerCandidates(): Promise<GenesisReferrerC
 		])
 		const seedAdmins = [foundation, defaultAdminPayout]
 		try {
-			const fromEvents = await fetchGenesisAdminAddressesFromEvents()
+			const fromEvents = await Promise.race([
+				fetchGenesisAdminAddressesFromEvents(),
+				new Promise<string[]>((_, reject) => {
+					setTimeout(() => reject(new Error('AdminUpdated log scan timeout')), 12_000)
+				}),
+			])
 			seedAdmins.push(...fromEvents)
 		} catch {
-			/* event scan failed — still use foundation / defaultAdminPayout */
+			/* event scan failed / timed out — still use foundation / defaultAdminPayout */
 		}
 		for (const raw of seedAdmins) {
 			if (!raw || !ethers.isAddress(raw)) continue
@@ -321,13 +331,13 @@ export async function fetchGenesisReferrerCandidates(): Promise<GenesisReferrerC
 	})
 }
 
-/** Proxy deploy block (see deployments/conet-genesis-node-referral-vault.json). */
-const GENESIS_VAULT_PROXY_DEPLOY_BLOCK = 594_820
+/** Proxy deploy block — keep in sync with `CONET_GENESIS_NODE_REFERRAL_VAULT_DEPLOY_BLOCK`. */
+const GENESIS_VAULT_PROXY_DEPLOY_BLOCK = CONET_GENESIS_NODE_REFERRAL_VAULT_DEPLOY_BLOCK
+/** CoNET RPC caps eth_getLogs at 5000 blocks. */
 const ADMIN_EVENT_LOG_CHUNK = 5_000
 
 /**
  * Collect Admin EOAs from AdminUpdated events, then caller verifies with admins().
- * CoNET RPC caps eth_getLogs at 5000 blocks.
  */
 async function fetchGenesisAdminAddressesFromEvents(): Promise<string[]> {
 	const iface = new ethers.Interface([
@@ -336,11 +346,10 @@ async function fetchGenesisAdminAddressesFromEvents(): Promise<string[]> {
 	const topic = iface.getEvent('AdminUpdated')!.topicHash
 	const latest = Number(await conetDepinProvider.getBlockNumber())
 	const enabled = new Map<string, string>()
-	for (
-		let from = GENESIS_VAULT_PROXY_DEPLOY_BLOCK;
-		from <= latest;
-		from += ADMIN_EVENT_LOG_CHUNK
-	) {
+	const start = Number.isFinite(GENESIS_VAULT_PROXY_DEPLOY_BLOCK)
+		? GENESIS_VAULT_PROXY_DEPLOY_BLOCK
+		: Math.max(0, latest - ADMIN_EVENT_LOG_CHUNK)
+	for (let from = start; from <= latest; from += ADMIN_EVENT_LOG_CHUNK) {
 		const to = Math.min(latest, from + ADMIN_EVENT_LOG_CHUNK - 1)
 		const logs = await conetDepinProvider.getLogs({
 			address: CONET_GENESIS_NODE_REFERRAL_VAULT,

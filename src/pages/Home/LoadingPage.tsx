@@ -542,12 +542,28 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 		if (settingsOpen !== "CreateUsernamePinScreen") setCreateWalletLoading(false)
 	}, [settingsOpen])
 
-	// 隐藏全局 footer：redeem 进行中 Loading 或 Card Active 成功页
+	// Hide global footer during onboarding Coupons / redeem overlays (glass bar must not sit over tickets).
 	useEffect(() => {
-		const shouldHide = redeemActivating || redeeming || (redeemFromUrl && !redeeming && redeemResult?.success)
+		const onboardingCouponsOpen =
+			settingsOpen === 'ActiveCouponsScreen' || settingsOpen === 'RedeemVoucherScreen'
+		const shouldHide =
+			onboardingCouponsOpen ||
+			redeemActivating ||
+			redeeming ||
+			(!!redeemFromUrl && !redeeming && !!redeemResult?.success)
 		setShowFooter?.(!shouldHide)
+	}, [
+		settingsOpen,
+		redeemActivating,
+		redeeming,
+		redeemFromUrl,
+		redeemResult?.success,
+		setShowFooter,
+	])
+
+	useEffect(() => {
 		return () => setShowFooter?.(true)
-	}, [redeemActivating, redeeming, redeemFromUrl, redeemResult?.success, setShowFooter])
+	}, [setShowFooter])
 
 	const init = async (temp?: encrypt_keys_object, opts?: { dontClose?: boolean }) => {
 		// 显式传入的 restore/create 结果优先；仅缺失时才读本地（带超时，避免 Safari 私密模式挂起）。

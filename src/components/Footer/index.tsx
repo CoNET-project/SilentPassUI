@@ -510,22 +510,31 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 		<motion.div
 			ref={footerRef}
 			data-html2canvas-ignore
-			className="fixed left-0 right-0 z-50 flex items-center justify-between pl-4 pr-4 overflow-visible"
+			aria-hidden={!visible}
+			className="fixed left-0 right-0 z-[100] flex items-center justify-between pl-4 pr-4 overflow-visible"
 			animate={barControls}
 			initial={false}
 			style={{
 				bottom: '1rem',//'calc(1rem + env(safe-area-inset-bottom))',
-				willChange: 'bottom, opacity',
-				pointerEvents: 'none'
+				willChange: 'transform, opacity',
+				pointerEvents: 'none',
+				/* Hidden: hard-hide so Coupons / fullscreen sheets cannot paint "under" a translucent bar. */
+				visibility: visible ? 'visible' : 'hidden',
 			}}
 		>
 			 {/* ✅ 玻璃层：左侧 tab bar（布局宽 × scale 控制视觉长度）；右侧 Search 同行 flex 垂直居中 */}
 			<div
-				className="pointer-events-auto flex w-max shrink-0 flex-col justify-end overflow-visible"
+				className={[
+					'flex w-max shrink-0 flex-col justify-end overflow-visible',
+					visible ? 'pointer-events-auto' : 'pointer-events-none',
+				].join(' ')}
 				style={{ height: FOOTER_BAR_VISUAL_H_PX }}
 			>
 			<div
-				className="shrink-0 origin-bottom-left pointer-events-auto"
+				className={[
+					'shrink-0 origin-bottom-left',
+					visible ? 'pointer-events-auto' : 'pointer-events-none',
+				].join(' ')}
 				style={{
 					width: FOOTER_BAR_LAYOUT_W_PX,
 					maxWidth: FOOTER_BAR_LAYOUT_W_PX,
@@ -587,7 +596,12 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 					</div>
 
 					{/* ✅ 前景内容层：不裁切，所以 badge 可以越界 */}
-					<div className="relative pt-1 pb-1.5 overflow-visible pointer-events-auto">
+					<div
+						className={[
+							'relative pt-1 pb-1.5 overflow-visible',
+							visible ? 'pointer-events-auto' : 'pointer-events-none',
+						].join(' ')}
+					>
 						<div className="relative grid grid-cols-5 items-center gap-0 overflow-visible">
 						{tabs.map(t => (
 							<Item
@@ -608,15 +622,18 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 				{/* Search：与左侧 tab bar 同一行垂直居中，随 footer 同步显隐 */}
 				<button
 					type="button"
+					tabIndex={visible ? 0 : -1}
+					disabled={!visible}
 					onClick={() => {
 						setChatSearchOpen(true)
 						setShowFooter(false)
 					}}
-					className="
-						w-10 h-10 rounded-full flex items-center justify-center border shrink-0 pointer-events-auto
-						focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/70 focus-visible:ring-offset-2 focus-visible:ring-offset-white/90
-						dark:focus-visible:ring-[#6ba3ff]/75 dark:focus-visible:ring-offset-slate-900
-					"
+					className={[
+						'w-10 h-10 rounded-full flex items-center justify-center border shrink-0',
+						'focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/70 focus-visible:ring-offset-2 focus-visible:ring-offset-white/90',
+						'dark:focus-visible:ring-[#6ba3ff]/75 dark:focus-visible:ring-offset-slate-900',
+						visible ? 'pointer-events-auto' : 'pointer-events-none',
+					].join(' ')}
 					style={{
 						backgroundColor: isDarkUnderneath ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)',
 						color: isDarkUnderneath ? '#000' : '#fff',

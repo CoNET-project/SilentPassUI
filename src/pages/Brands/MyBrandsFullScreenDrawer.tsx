@@ -1,8 +1,4 @@
-/**
- * Full-screen My Brands — same slide-from-right + scroll-fade back as Recent Activity tu('view_all_2').
- */
-
-import React from 'react'
+import React, { useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { ChevronLeft } from 'lucide-react'
@@ -10,6 +6,7 @@ import { useScrollCapsuleOpacity } from '@/hooks/useScrollCapsuleOpacity'
 import { CAPSULE_BTN_CLASS } from '@/utils/uiCommon'
 import { MyBrandsListSection } from './MyBrandsListSection'
 import { tu } from '@/locale/beamioLocale'
+import { useDaemonContext } from '@/providers/DaemonProvider'
 
 export function MyBrandsFullScreenDrawer({
 	open,
@@ -20,8 +17,15 @@ export function MyBrandsFullScreenDrawer({
 	onClose: () => void
 	onAddNewMerchantCard?: () => void
 }) {
+	const { setShowFooter } = useDaemonContext()
 	const { opacity: backBtnOpacity, onScroll: onDrawerScroll, setRef: setDrawerScrollRef } =
 		useScrollCapsuleOpacity(open)
+
+	useEffect(() => {
+		if (!open) return
+		setShowFooter(false)
+		return () => setShowFooter(true)
+	}, [open, setShowFooter])
 
 	return createPortal(
 		<AnimatePresence>
@@ -50,7 +54,7 @@ export function MyBrandsFullScreenDrawer({
 					<div
 						ref={setDrawerScrollRef}
 						onScroll={onDrawerScroll}
-						className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-[calc(1rem+env(safe-area-inset-bottom))]"
+						className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-[calc(1.5rem+env(safe-area-inset-bottom))]"
 					>
 						<div className="shrink-0" style={{ minHeight: 'calc(env(safe-area-inset-top) + 5rem)' }} />
 						<div className="mx-auto max-w-2xl">

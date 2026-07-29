@@ -769,6 +769,14 @@ export default function ActiveCouponsScreen({
 	getPrivateKeyArmor,
 	onWalletUnlock,
 }: ActiveCouponsScreenProps) {
+	const { setShowFooter } = useDaemonContext()
+	/** Secondary Coupons page — hide global bar so tickets cannot bleed through the glass footer.
+	 *  Parents (Home / LoadingPage) restore the bar when leaving the Coupons flow; do not
+	 *  `setShowFooter(true)` on unmount or Redeem sibling screens flash the bar for a frame. */
+	useEffect(() => {
+		setShowFooter(false)
+	}, [setShowFooter])
+
 	const [coupons, setCoupons] = useState<ActiveCouponListItem[]>([])
 	const [fetchState, setFetchState] = useState<FetchState>('loading')
 	const [claimStatusById, setClaimStatusById] = useState<Record<string, ClaimButtonStatus>>({})
@@ -944,7 +952,7 @@ export default function ActiveCouponsScreen({
 				</div>
 			</header>
 
-			<main className="mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col gap-6 overflow-y-auto px-6 pb-32 pt-24 [@media(max-height:760px)]:gap-5 [@media(max-height:760px)]:pb-28">
+			<main className="mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col gap-6 overflow-y-auto px-6 pb-[calc(2rem+env(safe-area-inset-bottom))] pt-24 [@media(max-height:760px)]:gap-5">
 				<section className="space-y-2">
 					<div className="flex items-center gap-2">
 						<Gift className="h-5 w-5 text-[#1562f0]" strokeWidth={2.2} aria-hidden />

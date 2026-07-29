@@ -477,7 +477,7 @@ type DaemonContext = {
 	setCurrencyData: (val: currencyData) => void
 	/** 手动触发 oracle 刷新（全局 feeder 每 5 分钟自动刷新，页面一般无需调用） */
 	refreshOracle: () => void
-	/** 全局 My Brands 喂料：CoNET `block` 更新 currentBlock；每 6s setTimeout 链串行拉取用户 BeamioUserCard */
+	/** 全局 My Brands 喂料：CoNET `block` 写入 conetBlockRef；每 6s setTimeout 链串行拉取用户 BeamioUserCard（勿用每块 setState 广播，否则 /home 文字抖动） */
 	myBrandCards: UserCardInfo[]
 	myBrandCardDetails: MyBrandCardFeedDetailsMap
 	myBrandsFeedLoading: boolean
@@ -1124,6 +1124,7 @@ export function DaemonProvider({ children }: DaemonProps) {
         return null
       }
       setMyBrandsFeedLastConetBlock(conetBlockRef.current)
+      setCurrentBlock(conetBlockRef.current)
       const eoaSave = profile.keyID?.trim().toLowerCase() ?? ''
       const eoaForCoupons = profile.keyID?.trim()
       let aaForCoupons: string | null =
@@ -1445,12 +1446,16 @@ export function DaemonProvider({ children }: DaemonProps) {
     }
   }, [])
 
-  /** CoNET mainnet 新块：`currentBlock` + 喂料机块高元数据（时间机） */
+  /**
+   * CoNET mainnet 新块：只写 ref 供喂料机读块高。
+   * 禁止在此 setCurrentBlock —— 每 ~2s 出块会重建整棵 Daemon context，
+   * 导致 /home 等消费者整页重绘、文字亚像素抖动。
+   * 需要 React 态时用 myBrandsFeedLastConetBlock（喂料节拍）或显式 setCurrentBlock。
+   */
   useEffect(() => {
     const p = conetProviderRef.current!
     const onBlock = (n: number) => {
       conetBlockRef.current = n
-      setCurrentBlock(n)
     }
     p.on('block', onBlock)
     return () => {
@@ -2473,34 +2478,36 @@ export function DaemonProvider({ children }: DaemonProps) {
         const usdcContract = new ethers.Contract(USDCContract_BASE, usdc_abi as ethers.InterfaceAbi, baseEndpoint)
         const eoaRaw = await usdcContract.balanceOf(eoaAddr)
         eoaUsdcStr = ethers.formatUnits(eoaRaw, 6)
-        setUsdcbalance(parseFloat(eoaUsdcStr) || 0)
+        const eoaNum = parseFloat(eoaUsdcStr) || 0
+        setUsdcbalance((prev) => (prev === eoaNum ? prev : eoaNum))
       } catch (e) {
         if (isRpcQuotaOrNetworkError(e)) reportRpcFailure()
         if (!isRpcDegraded()) {
           const bal = await getUsdcBalanceFromApi(eoaAddr)
           if (bal != null) {
             eoaUsdcStr = bal
-            setUsdcbalance(parseFloat(bal) || 0)
+            const eoaNum = parseFloat(bal) || 0
+            setUsdcbalance((prev) => (prev === eoaNum ? prev : eoaNum))
           }
         }
       }
 
       if (!effectiveAa || effectiveAa.toLowerCase() === eoaAddr.toLowerCase()) {
         aaUsdcStr = '0'
-        setAaAccountUsdcBalance('0')
+        setAaAccountUsdcBalance((prev) => (prev === '0' ? prev : '0'))
       } else {
         try {
           const usdcContract = new ethers.Contract(USDCContract_BASE, usdc_abi as ethers.InterfaceAbi, baseEndpoint)
           const balanceRaw = await usdcContract.balanceOf(effectiveAa)
           aaUsdcStr = ethers.formatUnits(balanceRaw, 6)
-          setAaAccountUsdcBalance(aaUsdcStr)
+          setAaAccountUsdcBalance((prev) => (prev === aaUsdcStr ? prev : aaUsdcStr))
         } catch (e) {
           if (isRpcQuotaOrNetworkError(e)) reportRpcFailure()
           if (!isRpcDegraded()) {
             const bal = await getUsdcBalanceFromApi(effectiveAa)
             if (bal != null) {
               aaUsdcStr = bal
-              setAaAccountUsdcBalance(bal)
+              setAaAccountUsdcBalance((prev) => (prev === bal ? prev : bal))
             }
           }
         }
@@ -2509,8 +2516,14 @@ export function DaemonProvider({ children }: DaemonProps) {
       lastEoaUsdcForPowerRef.current = eoaUsdcStr
       lastAaUsdcForPowerRef.current = aaUsdcStr
       const detailsForPower = cardDetails ?? myBrandCardDetailsRef.current
-      setHomeTotalPowerCad(
-        computeHomeTotalPowerCad(eoaUsdcStr, aaUsdcStr, detailsForPower, currencyDataRef.current)
+      const nextPower = computeHomeTotalPowerCad(
+        eoaUsdcStr,
+        aaUsdcStr,
+        detailsForPower,
+        currencyDataRef.current
+      )
+      setHomeTotalPowerCad((prev) =>
+        prev.whole === nextPower.whole && prev.frac === nextPower.frac ? prev : nextPower
       )
     } finally {
       setRecentActivityNoAaLoading(false)
@@ -2522,16 +2535,19 @@ export function DaemonProvider({ children }: DaemonProps) {
   useEffect(() => {
     const profile = profilesRef.current?.[0]
     if (!profile?.keyID?.trim()) {
-      setHomeTotalPowerCad({ whole: '0', frac: '00' })
+      setHomeTotalPowerCad((prev) =>
+        prev.whole === '0' && prev.frac === '00' ? prev : { whole: '0', frac: '00' }
+      )
       return
     }
-    setHomeTotalPowerCad(
-      computeHomeTotalPowerCad(
-        lastEoaUsdcForPowerRef.current,
-        lastAaUsdcForPowerRef.current,
-        myBrandCardDetailsRef.current,
-        currencyData
-      )
+    const nextPower = computeHomeTotalPowerCad(
+      lastEoaUsdcForPowerRef.current,
+      lastAaUsdcForPowerRef.current,
+      myBrandCardDetailsRef.current,
+      currencyData
+    )
+    setHomeTotalPowerCad((prev) =>
+      prev.whole === nextPower.whole && prev.frac === nextPower.frac ? prev : nextPower
     )
   }, [currencyData])
 

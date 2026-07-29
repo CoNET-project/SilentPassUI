@@ -29,9 +29,6 @@ import CoinbaseRamps from '@/components/Setting/CoinbaseRamps'
 import BeamioAddUSDCFlow from '@/components/addUSDC/BeamioAddUSDCFlow'
 import usdcIcon from '@/components/assets/usdc.png'
 import baseIcon from '@/components/assets/base-logo.png'
-import cashTreesHeroBg1 from '@/components/assets/cashTreesHeroBg1.png'
-import cashTreesHeroBg2 from '@/components/assets/cashTreesHeroBg2.png'
-import cashTreesHeroBg3 from '@/components/assets/cashTreesHeroBg3.png'
 import senPhoCafeStoreCardBg from '@/components/assets/senPhoCafeStoreCardBg.png'
 import luminaRoastersStoreCardBg from '@/components/assets/luminaRoastersStoreCardBg.png'
 import PayScreen from '@/pages/Pay/send'
@@ -71,11 +68,6 @@ import { encodeOpenContainerRelayQrPayload, readContainerNonceFromAAStorage, sig
 import { ensureConetAaForProfileAndPersist } from '@/utils/ensureConetAa'
 import { tu } from '@/locale/beamioLocale'
 import { HomeLanguageSelector } from './HomeLanguageSelector'
-
-/** CashTrees 大卡背景轮播：每图静止 5s，短时 cross-fade 切换 */
-const CASH_TREES_HERO_BACKGROUNDS = [cashTreesHeroBg1, cashTreesHeroBg2, cashTreesHeroBg3] as const
-const CASH_TREES_HERO_BG_INTERVAL_MS = 5000
-const CASH_TREES_HERO_BG_FADE_MS = 480
 
 const getImg = (avatarSeed: string|undefined) => `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed||'@Beamio').toString()}`
 const fmtAddr = (a = '') => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '—')
@@ -354,18 +346,9 @@ const Home = (_props: HomeProps) => {
 	const [cardMgmtError, setCardMgmtError] = useState<string | null>(null)
 	const cashTreesNfcReq = useRef(0)
 	const [activateGiftVoucherScreen, setActivateGiftVoucherScreen] = useState<'' | 'activeCoupons' | 'redeemVoucher'>('')
-	const [cashTreesHeroBgIndex, setCashTreesHeroBgIndex] = useState(0)
 	const [homeStoreCards, setHomeStoreCards] = useState<HomeStoreCardRow[]>(INITIAL_HOME_STORE_CARDS)
 	const [selectedHomeStoreCard, setSelectedHomeStoreCard] = useState<HomeStoreCardRow | null>(null)
 	const { opacity: capsuleOpacity, onScroll: onCapsuleScroll, setRef: setScrollRef } = useScrollCapsuleOpacity(!openSearch)
-
-	/** CashTrees 大卡：背景每 5s 切换，短 opacity 过渡交叉淡入淡出 */
-	useEffect(() => {
-		const id = window.setInterval(() => {
-			setCashTreesHeroBgIndex((i) => (i + 1) % CASH_TREES_HERO_BACKGROUNDS.length)
-		}, CASH_TREES_HERO_BG_INTERVAL_MS)
-		return () => window.clearInterval(id)
-	}, [])
 
 	/** 链上 / 本地已存在与 EOA 不同的 Smart Account 地址时视为已激活 AA */
 	const hasAAWallet = useMemo(() => {
@@ -1904,12 +1887,13 @@ const Home = (_props: HomeProps) => {
 														<p className="text-[10px] font-bold uppercase tracking-widest text-white/60">
 															{tu('total_purchasing_power')}
 														</p>
-														<h2 className="text-4xl font-extrabold tabular-nums tracking-tight">
+														{/* Own compositor layer: avoid subpixel text shake when parent re-rasterizes */}
+														<h2 className="text-4xl font-extrabold tabular-nums tracking-tight [transform:translateZ(0)] [-webkit-font-smoothing:antialiased]">
 															CA$ {homeTotalPowerCad.whole}.{homeTotalPowerCad.frac}
 														</h2>
 													</div>
 												</div>
-												<div className="grid grid-cols-2 gap-4">
+												<div className="grid grid-cols-2 gap-4 [transform:translateZ(0)] [-webkit-font-smoothing:antialiased]">
 													<div className="space-y-1 text-left">
 														<p className="text-[10px] font-bold uppercase tracking-widest text-white/50">
 															{tu('usdc_balance')}

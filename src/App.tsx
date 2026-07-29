@@ -1640,12 +1640,13 @@ function AppShell() {
 					showAlphaHowItWorks ? "pointer-events-auto" : "pointer-events-none"
 				].join(" ")}
 			>
-				{/* 灰色遮罩：父页面不可用 */}
+				{/* 灰色遮罩：父页面不可用。Closed children must also be pointer-events-none —
+				    default `auto` on descendants re-enables hit-testing under a `none` parent. */}
 				<div
 					className={[
 						"absolute inset-0",
 						"bg-black/50 transition-opacity duration-300 ease-out",
-						showAlphaHowItWorks ? "opacity-100" : "opacity-0"
+						showAlphaHowItWorks ? "opacity-100" : "opacity-0 pointer-events-none"
 					].join(" ")}
 					onClick={() => {
 						setShowFooter(true)
@@ -1658,7 +1659,7 @@ function AppShell() {
 					className={[
 					"absolute inset-x-0 bottom-0",
 					"transition-transform duration-300 ease-out",
-					showAlphaHowItWorks ? "translate-y-0" : "translate-y-full"
+					showAlphaHowItWorks ? "translate-y-0" : "translate-y-full pointer-events-none"
 					].join(" ")}
 					onTouchMove={(e) => e.stopPropagation()}
 				>

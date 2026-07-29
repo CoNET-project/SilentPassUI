@@ -2573,8 +2573,14 @@ const PurchaseCreditsSheet = ({
   const formatDollar = (n: number) => (Number.isInteger(n) ? `${n}` : n.toFixed(2))
 
   return (
-    <div className={["fixed inset-0 z-[130]", open ? "pointer-events-auto" : "pointer-events-none"].join(" ")}>
-      {/* Closed: children must also be pointer-events-none — default `auto` on descendants still steals taps over Discover back. */}
+    <div
+      className={[
+        "fixed inset-0",
+        // Closed: sit under Discover detail (z-100). Parent `pointer-events-none` alone is not
+        // enough on some WebKit builds — opacity-0 layers above the hero still swallow back taps.
+        open ? "z-[130] pointer-events-auto" : "z-[90] pointer-events-none",
+      ].join(" ")}
+    >
       <div
         className={[
           "absolute inset-0 bg-black/40 transition-opacity duration-300",
@@ -5993,13 +5999,13 @@ export default function Market() {
 		)}
 
 			{/* Bottom Sheet：从底部向上，参考 Vouchers - PurchaseAccount / TopUpAccount.
-			    Closed: force pointer-events-none on scrim/sheet — parent `none` alone does NOT disable
-			    descendants with default `auto`, so an opacity-0 inset-0 layer above Discover (z-100)
-			    would swallow the hero back button taps intermittently (esp. mobile WebKit). */}
+			    Closed: z under Discover detail (z-100) + pointer-events-none on parent/children.
+			    Keeping closed sheets at z-120/130 above the detail caused intermittent dead taps on
+			    the hero back button (WebKit still hit-testing opacity-0 layers). */}
 			<div
 				className={[
-					"fixed inset-0 z-[120]",
-					settingsOpen ? "pointer-events-auto" : "pointer-events-none",
+					"fixed inset-0",
+					settingsOpen ? "z-[120] pointer-events-auto" : "z-[90] pointer-events-none",
 				].join(" ")}
 			>
 				<div

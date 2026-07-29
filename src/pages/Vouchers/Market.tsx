@@ -2574,15 +2574,20 @@ const PurchaseCreditsSheet = ({
 
   return (
     <div className={["fixed inset-0 z-[130]", open ? "pointer-events-auto" : "pointer-events-none"].join(" ")}>
+      {/* Closed: children must also be pointer-events-none — default `auto` on descendants still steals taps over Discover back. */}
       <div
-        className={["absolute inset-0 bg-black/40 transition-opacity duration-300", open ? "opacity-100" : "opacity-0"].join(" ")}
+        className={[
+          "absolute inset-0 bg-black/40 transition-opacity duration-300",
+          open ? "opacity-100" : "opacity-0 pointer-events-none",
+        ].join(" ")}
         onClick={onClose}
+        aria-hidden={!open}
       />
       <div
         className={[
           "absolute inset-x-0 bottom-0 bg-white rounded-t-[36px] shadow-2xl",
           "pb-[env(safe-area-inset-bottom)] transition-transform duration-300 ease-out",
-          open ? "translate-y-0" : "translate-y-full",
+          open ? "translate-y-0" : "translate-y-full pointer-events-none",
         ].join(" ")}
       >
         <div className="pt-3 pb-1 flex justify-center">
@@ -4955,47 +4960,19 @@ function DiscoverMerchantDetailFullScreen({
 					<DiscoverFeaturedBrandHeroImage
 						src={item.image}
 						alt=""
-						className="absolute inset-0 h-full w-full object-cover"
+						className="pointer-events-none absolute inset-0 h-full w-full object-cover"
 					/>
-					<div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/25 to-black/30" />
+					<div
+						className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/75 via-black/25 to-black/30"
+						aria-hidden
+					/>
 					{heroRechargeBonusPill ? (
 						<DiscoverRechargeBonusHeroChip
 							label={heroRechargeBonusPill}
-							className="absolute bottom-4 right-4 z-[15]"
+							className="pointer-events-none absolute bottom-4 right-4 z-[15]"
 						/>
 					) : null}
-					<div className={BEAMIO_HERO_FLOATING_BACK_ROW_CLASS} style={beamioHeroFloatingBackTopStyle}>
-						<BeamioCircularBackButton onClick={onClose} />
-						<div className="flex items-center gap-2">
-							{item.cardAddress ? (
-								<DiscoverMerchantShareButton
-									cardAddress={item.cardAddress}
-									merchantTitle={item.title}
-									referrerEoa={shareReferrerEoa}
-								/>
-							) : null}
-							<button
-								type="button"
-								onClick={onMerchantLikeHeartClick}
-								disabled={likeLoading || Boolean(userLiked)}
-								className={[
-									"flex h-11 w-11 items-center justify-center rounded-full shadow-lg ring-1 active:scale-95 disabled:opacity-70",
-									userLiked
-										? "bg-rose-500 text-white ring-rose-600/30 disabled:cursor-default"
-										: "bg-slate-800/85 text-white ring-white/10",
-								].join(" ")}
-								aria-label={userLiked ? "Liked" : "Like this brand"}
-								aria-pressed={Boolean(userLiked)}
-							>
-								{likeLoading ? (
-									<Loader2 className="h-5 w-5 animate-spin" strokeWidth={2} aria-hidden />
-								) : (
-									<Heart className="h-5 w-5" strokeWidth={2} fill={userLiked ? "currentColor" : "none"} />
-								)}
-							</button>
-						</div>
-					</div>
-					<div className="absolute bottom-0 left-0 right-0 z-10 px-5 pb-5 pt-8">
+					<div className="pointer-events-none absolute bottom-0 left-0 right-0 z-10 px-5 pb-5 pt-8">
 						<div className="mb-1 flex items-center gap-2">
 							<span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/20 text-white backdrop-blur-sm">
 								<MerchantCategoryIcon className="h-5 w-5" strokeWidth={2} aria-hidden />
@@ -5004,15 +4981,53 @@ function DiscoverMerchantDetailFullScreen({
 						<div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
 							<h1 className="text-2xl font-bold leading-tight text-white drop-shadow-sm">{item.title}</h1>
 							{issuerOwnerEoa ? (
-								<DiscoverMerchantOwnerBeamioTagCapsule
-									ownerEoa={issuerOwnerEoa}
-									onOpenProfile={() => void openIssuerProfile()}
-									profileOpening={issuerProfileOpening}
-								/>
+								<span className="pointer-events-auto">
+									<DiscoverMerchantOwnerBeamioTagCapsule
+										ownerEoa={issuerOwnerEoa}
+										onOpenProfile={() => void openIssuerProfile()}
+										profileOpening={issuerProfileOpening}
+									/>
+								</span>
 							) : null}
 						</div>
 						<DiscoverHeroStatCapsules likeCount={merchantLikeCount} shareClickCount={merchantShareClickCount} />
-						{item.cardAddress ? <DiscoverMerchantCardAddressCapsule address={item.cardAddress} /> : null}
+						{item.cardAddress ? (
+							<span className="pointer-events-auto">
+								<DiscoverMerchantCardAddressCapsule address={item.cardAddress} />
+							</span>
+						) : null}
+					</div>
+				</div>
+				{/* Chrome outside overflow-hidden so safe-area / WebKit hit targets are not clipped. */}
+				<div className={BEAMIO_HERO_FLOATING_BACK_ROW_CLASS} style={beamioHeroFloatingBackTopStyle}>
+					<BeamioCircularBackButton onClick={onClose} />
+					<div className="flex items-center gap-2">
+						{item.cardAddress ? (
+							<DiscoverMerchantShareButton
+								cardAddress={item.cardAddress}
+								merchantTitle={item.title}
+								referrerEoa={shareReferrerEoa}
+							/>
+						) : null}
+						<button
+							type="button"
+							onClick={onMerchantLikeHeartClick}
+							disabled={likeLoading || Boolean(userLiked)}
+							className={[
+								"flex h-11 w-11 items-center justify-center rounded-full shadow-lg ring-1 active:scale-95 disabled:opacity-70",
+								userLiked
+									? "bg-rose-500 text-white ring-rose-600/30 disabled:cursor-default"
+									: "bg-slate-800/85 text-white ring-white/10",
+							].join(" ")}
+							aria-label={userLiked ? "Liked" : "Like this brand"}
+							aria-pressed={Boolean(userLiked)}
+						>
+							{likeLoading ? (
+								<Loader2 className="h-5 w-5 animate-spin" strokeWidth={2} aria-hidden />
+							) : (
+								<Heart className="h-5 w-5" strokeWidth={2} fill={userLiked ? "currentColor" : "none"} />
+							)}
+						</button>
 					</div>
 				</div>
 			</div>
@@ -5977,7 +5992,10 @@ export default function Market() {
 		</AnimatePresence>
 		)}
 
-			{/* Bottom Sheet：从底部向上，参考 Vouchers - PurchaseAccount / TopUpAccount */}
+			{/* Bottom Sheet：从底部向上，参考 Vouchers - PurchaseAccount / TopUpAccount.
+			    Closed: force pointer-events-none on scrim/sheet — parent `none` alone does NOT disable
+			    descendants with default `auto`, so an opacity-0 inset-0 layer above Discover (z-100)
+			    would swallow the hero back button taps intermittently (esp. mobile WebKit). */}
 			<div
 				className={[
 					"fixed inset-0 z-[120]",
@@ -5988,7 +6006,7 @@ export default function Market() {
 					className={[
 						"absolute inset-0",
 						"bg-black/50 transition-opacity duration-300 ease-out",
-						settingsOpen ? "opacity-100" : "opacity-0",
+						settingsOpen ? "opacity-100" : "opacity-0 pointer-events-none",
 					].join(" ")}
 					onClick={() => {
 						setShowFooter(true)
@@ -5997,14 +6015,14 @@ export default function Market() {
 						setTopupPresetAmountEmpty(false)
 						setQrPayload("")
 					}}
-					aria-hidden
+					aria-hidden={!settingsOpen}
 				/>
 				<div
 					className={[
 						"absolute inset-x-0 bottom-0 z-[121]",
 						"transition-transform duration-300 ease-out",
 						"will-change-transform",
-						settingsOpen ? "translate-y-0" : "translate-y-full",
+						settingsOpen ? "translate-y-0" : "translate-y-full pointer-events-none",
 					].join(" ")}
 					onTouchMove={(e) => e.stopPropagation()}
 				>

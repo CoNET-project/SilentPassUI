@@ -27,9 +27,10 @@ export function BeamioCircularBackButton({
 			disabled={disabled}
 			onClick={onClick}
 			aria-label={ariaLabel}
+			style={{ touchAction: 'manipulation', WebkitTapHighlightColor: 'transparent' }}
 			className={[
-				'inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full',
-				'border border-white/40 bg-white/20 text-white/80 backdrop-blur-md',
+				'relative isolate inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full',
+				'border border-white/40 bg-white/20 text-white/80',
 				'dark:border-white/40 dark:bg-white/20',
 				'shadow-[0_1px_3px_rgba(0,0,0,0.12)]',
 				'transition active:scale-[0.96] disabled:pointer-events-none disabled:opacity-40',
@@ -38,7 +39,12 @@ export function BeamioCircularBackButton({
 			].join(' ')}
 			{...rest}
 		>
-			<ChevronLeft className="h-[17px] w-[17px] stroke-[2.5]" aria-hidden />
+			{/* Blur on a non-interactive layer — backdrop-filter on the button itself can miss taps on iOS WebKit. */}
+			<span
+				className="pointer-events-none absolute inset-0 rounded-full backdrop-blur-md dark:backdrop-blur-md"
+				aria-hidden
+			/>
+			<ChevronLeft className="relative z-[1] h-[17px] w-[17px] stroke-[2.5]" aria-hidden />
 		</button>
 	)
 }
@@ -51,7 +57,7 @@ export const BEAMIO_CIRCULAR_BACK_ROW_CLASS = 'relative mb-4 min-h-9'
  * @see beamio-circular-back-button.mdc § Hero overlay placement
  */
 export const BEAMIO_HERO_FLOATING_BACK_ROW_CLASS =
-	'absolute left-0 right-0 z-20 flex items-start justify-between px-4'
+	'absolute left-0 right-0 z-30 flex items-start justify-between px-4'
 
 export const beamioHeroFloatingBackTopStyle = {
 	top: 'max(0.75rem, env(safe-area-inset-top))',

@@ -877,9 +877,17 @@ export async function setGenesisDefaultAdminPayout(params: {
 }
 
 // ─── Income details (API ledger — Master writes on each purchase fulfill) ─────
+/**
+ * Purchase history is append-only once credited. Local store is semi-permanent
+ * (no TTL eviction of items). Daemon / UI only ask the API for rows newer than
+ * the last local `newestTimestampMs` (plus a one-time bootstrap page).
+ */
 
-const INCOME_TTL_MS = 30_000
-const INCOME_CACHE_PREFIX = 'beamio:genesis-referral:income:v2:'
+const INCOME_STORE_PREFIX = 'beamio:genesis-referral:income:v3:'
+/** Migrate one-shot from short-TTL v2 cache if present. */
+const INCOME_STORE_LEGACY_PREFIX = 'beamio:genesis-referral:income:v2:'
+export const GENESIS_INCOME_FEED_INTERVAL_MS = 30_000
+const INCOME_PAGE_LIMIT = 50
 
 export type GenesisIncomeRole = 'l0' | 'l1' | 'admin' | 'foundation'
 
@@ -902,6 +910,15 @@ export type GenesisIncomeItem = {
 export type GenesisIncomeSnapshot = {
 	eoa: string
 	items: GenesisIncomeItem[]
+	/** Max item timestampMs in local store — incremental `sinceMs` watermark. */
+	newestTimestampMs: number
+	/** Min item timestampMs (for older-page bootstrap). */
+	oldestTimestampMs: number
+	/** True after initial newest-page bootstrap finished (hasMore older may remain). */
+	bootstrapped: boolean
+	/** Wall clock of last trusted API merge. */
+	syncedAt: number
+	/** @deprecated alias of syncedAt for older callers */
 	fetchedAt: number
 }
 
@@ -909,45 +926,252 @@ export type GenesisIncomeResult =
 	| { ok: true; snapshot: GenesisIncomeSnapshot }
 	| { ok: false; error: string }
 
-type GenesisIncomeCacheEntry = {
-	snapshot: GenesisIncomeSnapshot
-	fetchedAt: number
+type GenesisIncomeApiBody = {
+	success?: boolean
+	items?: Array<{
+		transactionHash?: string
+		operationId?: string
+		bindTxHash?: string | null
+		lockMintTxHash?: string | null
+		bridgeSettleTxHash?: string | null
+		amountUsdc6?: string
+		role?: string
+		qty?: string
+		testMode?: boolean
+		buyer?: string
+		timestampMs?: number
+	}>
+	hasMore?: boolean
+	newestTimestampMs?: number
+	oldestTimestampMs?: number
+	error?: string
 }
 
-const incomeMemoryCache = new Map<string, GenesisIncomeCacheEntry>()
+const incomeMemoryCache = new Map<string, GenesisIncomeSnapshot>()
 const incomeInFlight = new Map<string, Promise<GenesisIncomeResult>>()
 
-function incomeCacheKey(eoa: string): string {
-	return `${INCOME_CACHE_PREFIX}${eoa.toLowerCase()}`
+function incomeStoreKey(eoa: string): string {
+	return `${INCOME_STORE_PREFIX}${eoa.toLowerCase()}`
 }
 
-export function readCachedGenesisIncome(eoa: string): GenesisIncomeSnapshot | null {
+function incomeItemKey(item: Pick<GenesisIncomeItem, 'transactionHash' | 'role'>): string {
+	return `${item.transactionHash.trim().toLowerCase()}:${item.role}`
+}
+
+function emptyIncomeSnapshot(eoa: string): GenesisIncomeSnapshot {
+	const now = Date.now()
+	return {
+		eoa,
+		items: [],
+		newestTimestampMs: 0,
+		oldestTimestampMs: 0,
+		bootstrapped: false,
+		syncedAt: now,
+		fetchedAt: now,
+	}
+}
+
+function recomputeIncomeBounds(items: GenesisIncomeItem[]): {
+	newestTimestampMs: number
+	oldestTimestampMs: number
+} {
+	let newestTimestampMs = 0
+	let oldestTimestampMs = 0
+	for (const item of items) {
+		if (!item.timestampMs) continue
+		if (item.timestampMs > newestTimestampMs) newestTimestampMs = item.timestampMs
+		if (!oldestTimestampMs || item.timestampMs < oldestTimestampMs) oldestTimestampMs = item.timestampMs
+	}
+	return { newestTimestampMs, oldestTimestampMs }
+}
+
+function parseIncomeApiItems(rows: GenesisIncomeApiBody['items']): GenesisIncomeItem[] {
+	if (!Array.isArray(rows)) return []
+	return rows.flatMap((row): GenesisIncomeItem[] => {
+		const role = String(row.role ?? '') as GenesisIncomeRole
+		if (!['l0', 'l1', 'admin', 'foundation'].includes(role)) return []
+		const transactionHash = String(row.transactionHash ?? '').trim()
+		if (!/^0x[0-9a-fA-F]{64}$/.test(transactionHash)) return []
+		const bridgeSettleRaw = String(row.bridgeSettleTxHash ?? '').trim()
+		const bridgeSettleTxHash = /^0x[0-9a-fA-F]{64}$/.test(bridgeSettleRaw) ? bridgeSettleRaw : null
+		return [
+			{
+				operationId: String(row.operationId ?? ''),
+				transactionHash,
+				bindTxHash: row.bindTxHash ?? null,
+				lockMintTxHash: row.lockMintTxHash ?? null,
+				bridgeSettleTxHash,
+				timestampMs: Number(row.timestampMs) || 0,
+				amountUsdc6: String(row.amountUsdc6 ?? '0'),
+				role,
+				qty: row.qty != null ? String(row.qty) : undefined,
+				testMode: Boolean(row.testMode),
+				buyer: row.buyer && ethers.isAddress(row.buyer) ? ethers.getAddress(row.buyer) : undefined,
+			},
+		]
+	})
+}
+
+/** Merge incoming trusted items into base; never drop existing keys on failure paths. */
+export function mergeGenesisIncomeItems(
+	base: GenesisIncomeItem[],
+	incoming: GenesisIncomeItem[],
+): GenesisIncomeItem[] {
+	const map = new Map<string, GenesisIncomeItem>()
+	for (const item of base) map.set(incomeItemKey(item), item)
+	for (const item of incoming) {
+		const key = incomeItemKey(item)
+		const prev = map.get(key)
+		if (!prev) {
+			map.set(key, item)
+			continue
+		}
+		map.set(key, {
+			...prev,
+			...item,
+			bridgeSettleTxHash: item.bridgeSettleTxHash || prev.bridgeSettleTxHash || null,
+			bindTxHash: item.bindTxHash ?? prev.bindTxHash ?? null,
+			lockMintTxHash: item.lockMintTxHash ?? prev.lockMintTxHash ?? null,
+		})
+	}
+	return Array.from(map.values()).sort((a, b) => b.timestampMs - a.timestampMs)
+}
+
+function persistGenesisIncomeSnapshot(snapshot: GenesisIncomeSnapshot): void {
 	try {
-		const raw = localStorage.getItem(incomeCacheKey(eoa))
-		if (!raw) return null
-		const parsed = JSON.parse(raw) as GenesisIncomeSnapshot
-		if (parsed.eoa?.toLowerCase() !== eoa.toLowerCase() || !Array.isArray(parsed.items)) return null
-		return parsed
+		localStorage.setItem(incomeStoreKey(snapshot.eoa), JSON.stringify(snapshot))
+	} catch {
+		/* quota / private mode */
+	}
+	incomeMemoryCache.set(snapshot.eoa.toLowerCase(), snapshot)
+}
+
+function migrateLegacyIncomeIfNeeded(eoa: string): GenesisIncomeSnapshot | null {
+	try {
+		const legacyRaw = localStorage.getItem(`${INCOME_STORE_LEGACY_PREFIX}${eoa.toLowerCase()}`)
+		if (!legacyRaw) return null
+		const parsed = JSON.parse(legacyRaw) as { eoa?: string; items?: GenesisIncomeItem[]; fetchedAt?: number }
+		if (!Array.isArray(parsed.items)) return null
+		const items = mergeGenesisIncomeItems([], parsed.items)
+		const bounds = recomputeIncomeBounds(items)
+		const now = Date.now()
+		const snapshot: GenesisIncomeSnapshot = {
+			eoa,
+			items,
+			newestTimestampMs: bounds.newestTimestampMs,
+			oldestTimestampMs: bounds.oldestTimestampMs,
+			bootstrapped: items.length > 0,
+			syncedAt: typeof parsed.fetchedAt === 'number' ? parsed.fetchedAt : now,
+			fetchedAt: typeof parsed.fetchedAt === 'number' ? parsed.fetchedAt : now,
+		}
+		persistGenesisIncomeSnapshot(snapshot)
+		try {
+			localStorage.removeItem(`${INCOME_STORE_LEGACY_PREFIX}${eoa.toLowerCase()}`)
+		} catch {
+			/* ignore */
+		}
+		return snapshot
 	} catch {
 		return null
 	}
 }
 
-function saveGenesisIncomePersistent(snapshot: GenesisIncomeSnapshot): void {
+/** Local-first semi-permanent purchase history for one EOA (never TTL-cleared). */
+export function readCachedGenesisIncome(rawEoa: string): GenesisIncomeSnapshot | null {
+	let eoa: string
 	try {
-		localStorage.setItem(incomeCacheKey(snapshot.eoa), JSON.stringify(snapshot))
+		eoa = ethers.getAddress(rawEoa.trim())
 	} catch {
-		/* quota / private mode */
+		return null
+	}
+	const mem = incomeMemoryCache.get(eoa.toLowerCase())
+	if (mem) return mem
+	try {
+		const raw = localStorage.getItem(incomeStoreKey(eoa))
+		if (!raw) return migrateLegacyIncomeIfNeeded(eoa)
+		const parsed = JSON.parse(raw) as Partial<GenesisIncomeSnapshot>
+		if (parsed.eoa?.toLowerCase() !== eoa.toLowerCase() || !Array.isArray(parsed.items)) {
+			return migrateLegacyIncomeIfNeeded(eoa)
+		}
+		const items = mergeGenesisIncomeItems([], parsed.items as GenesisIncomeItem[])
+		const bounds = recomputeIncomeBounds(items)
+		const snapshot: GenesisIncomeSnapshot = {
+			eoa,
+			items,
+			newestTimestampMs: Number(parsed.newestTimestampMs) || bounds.newestTimestampMs,
+			oldestTimestampMs: Number(parsed.oldestTimestampMs) || bounds.oldestTimestampMs,
+			bootstrapped: Boolean(parsed.bootstrapped) || items.length > 0,
+			syncedAt: Number(parsed.syncedAt) || Number(parsed.fetchedAt) || Date.now(),
+			fetchedAt: Number(parsed.fetchedAt) || Number(parsed.syncedAt) || Date.now(),
+		}
+		incomeMemoryCache.set(eoa.toLowerCase(), snapshot)
+		return snapshot
+	} catch {
+		return migrateLegacyIncomeIfNeeded(eoa)
 	}
 }
 
+async function fetchGenesisIncomePage(
+	eoa: string,
+	query: { sinceMs?: number; beforeMs?: number; limit?: number },
+): Promise<
+	| {
+			ok: true
+			items: GenesisIncomeItem[]
+			hasMore: boolean
+	  }
+	| { ok: false; error: string; status?: number }
+> {
+	const params = new URLSearchParams()
+	params.set('account', eoa)
+	params.set('limit', String(query.limit ?? INCOME_PAGE_LIMIT))
+	if (query.sinceMs && query.sinceMs > 0) params.set('sinceMs', String(query.sinceMs))
+	if (query.beforeMs && query.beforeMs > 0) params.set('beforeMs', String(query.beforeMs))
+	const response = await fetch(`${beamioApi}/api/genesisNodeReferralIncome?${params.toString()}`)
+	const body = (await response.json().catch(() => null)) as GenesisIncomeApiBody | null
+	if (!response.ok || !body?.success || !Array.isArray(body.items)) {
+		return {
+			ok: false,
+			error: body?.error || `Could not load Genesis income (${response.status}).`,
+			status: response.status,
+		}
+	}
+	return {
+		ok: true,
+		items: parseIncomeApiItems(body.items),
+		hasMore: Boolean(body.hasMore),
+	}
+}
+
+function applyTrustedIncomeMerge(
+	eoa: string,
+	base: GenesisIncomeSnapshot | null,
+	incoming: GenesisIncomeItem[],
+	patch: Partial<Pick<GenesisIncomeSnapshot, 'bootstrapped'>>,
+): GenesisIncomeSnapshot {
+	const mergedItems = mergeGenesisIncomeItems(base?.items ?? [], incoming)
+	const bounds = recomputeIncomeBounds(mergedItems)
+	const now = Date.now()
+	const snapshot: GenesisIncomeSnapshot = {
+		eoa,
+		items: mergedItems,
+		newestTimestampMs: bounds.newestTimestampMs,
+		oldestTimestampMs: bounds.oldestTimestampMs,
+		bootstrapped: patch.bootstrapped ?? base?.bootstrapped ?? false,
+		syncedAt: now,
+		fetchedAt: now,
+	}
+	persistGenesisIncomeSnapshot(snapshot)
+	return snapshot
+}
+
 /**
- * Income details from Cluster API (Master writes on each genesisNodeSeat fulfill).
- * Trusted-only cache; failures keep last snapshot and do not clear.
+ * Bootstrap newest page (once) then only pull updates after local newestTimestampMs.
+ * Trusted-only merge; failures keep last local snapshot.
  */
-export async function fetchGenesisIncomeHistory(
+export async function syncGenesisIncomeHistory(
 	rawEoa: string,
-	options: { force?: boolean } = {},
+	options: { forceBootstrap?: boolean } = {},
 ): Promise<GenesisIncomeResult> {
 	let eoa: string
 	try {
@@ -957,92 +1181,48 @@ export async function fetchGenesisIncomeHistory(
 	}
 
 	const key = eoa.toLowerCase()
-	const cached = incomeMemoryCache.get(key)
-	if (!options.force && cached && Date.now() - cached.fetchedAt < INCOME_TTL_MS) {
-		return { ok: true, snapshot: cached.snapshot }
-	}
-	if (!options.force) {
-		const persisted = readCachedGenesisIncome(eoa)
-		if (persisted && Date.now() - persisted.fetchedAt < INCOME_TTL_MS) {
-			incomeMemoryCache.set(key, { snapshot: persisted, fetchedAt: persisted.fetchedAt })
-			return { ok: true, snapshot: persisted }
-		}
-	}
-
 	const existing = incomeInFlight.get(key)
 	if (existing) return existing
 
 	const request = (async (): Promise<GenesisIncomeResult> => {
+		const local = readCachedGenesisIncome(eoa) ?? emptyIncomeSnapshot(eoa)
 		try {
-			const response = await fetch(
-				`${beamioApi}/api/genesisNodeReferralIncome?account=${encodeURIComponent(eoa)}`,
-			)
-			const body = (await response.json().catch(() => null)) as {
-				success?: boolean
-				items?: Array<{
-					transactionHash?: string
-					operationId?: string
-					bindTxHash?: string | null
-					lockMintTxHash?: string | null
-					bridgeSettleTxHash?: string | null
-					amountUsdc6?: string
-					role?: string
-					qty?: string
-					testMode?: boolean
-					buyer?: string
-					timestampMs?: number
-				}>
-				error?: string
-			} | null
-			if (!response.ok || !body?.success || !Array.isArray(body.items)) {
-				const previous = incomeMemoryCache.get(key)?.snapshot ?? readCachedGenesisIncome(eoa)
-				if (previous) return { ok: true, snapshot: previous }
-				return {
-					ok: false,
-					error: body?.error || `Could not load Genesis income (${response.status}).`,
+			// Incremental: only rows after last local history watermark.
+			if (local.bootstrapped && local.newestTimestampMs > 0 && !options.forceBootstrap) {
+				let snapshot = local
+				let sinceMs = local.newestTimestampMs
+				let guard = 0
+				while (guard < 6) {
+					guard += 1
+					const page = await fetchGenesisIncomePage(eoa, {
+						sinceMs,
+						limit: INCOME_PAGE_LIMIT,
+					})
+					if (!page.ok) {
+						return { ok: true, snapshot }
+					}
+					if (page.items.length === 0) {
+						snapshot = applyTrustedIncomeMerge(eoa, snapshot, [], { bootstrapped: true })
+						return { ok: true, snapshot }
+					}
+					snapshot = applyTrustedIncomeMerge(eoa, snapshot, page.items, { bootstrapped: true })
+					if (!page.hasMore) return { ok: true, snapshot }
+					sinceMs = snapshot.newestTimestampMs
 				}
+				return { ok: true, snapshot }
 			}
-			const items: GenesisIncomeItem[] = body.items
-				.flatMap((row): GenesisIncomeItem[] => {
-					const role = String(row.role ?? '') as GenesisIncomeRole
-					if (!['l0', 'l1', 'admin', 'foundation'].includes(role)) return []
-					const transactionHash = String(row.transactionHash ?? '').trim()
-					if (!/^0x[0-9a-fA-F]{64}$/.test(transactionHash)) return []
-					const bridgeSettleRaw = String(row.bridgeSettleTxHash ?? '').trim()
-					const bridgeSettleTxHash = /^0x[0-9a-fA-F]{64}$/.test(bridgeSettleRaw)
-						? bridgeSettleRaw
-						: null
-					return [
-						{
-							operationId: String(row.operationId ?? ''),
-							transactionHash,
-							bindTxHash: row.bindTxHash ?? null,
-							lockMintTxHash: row.lockMintTxHash ?? null,
-							bridgeSettleTxHash,
-							timestampMs: Number(row.timestampMs) || 0,
-							amountUsdc6: String(row.amountUsdc6 ?? '0'),
-							role,
-							qty: row.qty != null ? String(row.qty) : undefined,
-							testMode: Boolean(row.testMode),
-							buyer:
-								row.buyer && ethers.isAddress(row.buyer) ? ethers.getAddress(row.buyer) : undefined,
-						},
-					]
-				})
-				.sort((a, b) => b.timestampMs - a.timestampMs)
 
-			const snapshot: GenesisIncomeSnapshot = {
-				eoa,
-				items,
-				fetchedAt: Date.now(),
+			// First trusted page (newest): establish local history.
+			const first = await fetchGenesisIncomePage(eoa, { limit: INCOME_PAGE_LIMIT })
+			if (!first.ok) {
+				if (local.items.length > 0) return { ok: true, snapshot: local }
+				return { ok: false, error: first.error }
 			}
-			incomeMemoryCache.set(key, { snapshot, fetchedAt: snapshot.fetchedAt })
-			saveGenesisIncomePersistent(snapshot)
+			let snapshot = applyTrustedIncomeMerge(eoa, local, first.items, { bootstrapped: true })
 			return { ok: true, snapshot }
 		} catch (error) {
-			console.warn('[GenesisNodeReferral] income API failed', error)
-			const previous = incomeMemoryCache.get(key)?.snapshot ?? readCachedGenesisIncome(eoa)
-			if (previous) return { ok: true, snapshot: previous }
+			console.warn('[GenesisNodeReferral] income sync failed', error)
+			if (local.items.length > 0) return { ok: true, snapshot: local }
 			return {
 				ok: false,
 				error: error instanceof Error ? error.message : 'Could not load Genesis income history.',
@@ -1054,4 +1234,23 @@ export async function fetchGenesisIncomeHistory(
 
 	incomeInFlight.set(key, request)
 	return request
+}
+
+/**
+ * @deprecated Prefer {@link syncGenesisIncomeHistory}. Kept for call-site compatibility.
+ */
+export async function fetchGenesisIncomeHistory(
+	rawEoa: string,
+	_options: { force?: boolean } = {},
+): Promise<GenesisIncomeResult> {
+	return syncGenesisIncomeHistory(rawEoa, { forceBootstrap: Boolean(_options.force) && !readCachedGenesisIncome(rawEoa)?.bootstrapped })
+}
+
+/** Daemon tick helper: sync one account and return trusted snapshot (or null if unavailable). */
+export async function runGenesisIncomeFeedForAccount(rawEoa: string): Promise<GenesisIncomeSnapshot | null> {
+	const result = await syncGenesisIncomeHistory(rawEoa).catch(() => null)
+	if (!result || !result.ok) {
+		return readCachedGenesisIncome(rawEoa)
+	}
+	return result.snapshot
 }

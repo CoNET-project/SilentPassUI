@@ -30,7 +30,6 @@ import {
 	cancelGenesisL1RedeemCode,
 	claimGenesisL0RedeemCode,
 	claimGenesisL1RedeemCode,
-	fetchGenesisIncomeHistory,
 	fetchGenesisL0List,
 	fetchGenesisL1List,
 	fetchGenesisL1RedeemCodesForIssuer,
@@ -489,7 +488,8 @@ function percentInputToBps(raw: string): number | null {
  */
 export default function GenesisNodeReferralPage() {
 	const navigate = useNavigate()
-	const { profiles, setShowFooter } = useDaemonContext()
+	const { profiles, setShowFooter, genesisIncomeByEoa, registerGenesisIncomeFeedAccounts, refreshGenesisIncomeFeed } =
+		useDaemonContext()
 	const { ensureProfilesForAddresses } = useBeamioTagDatabase()
 	const eoa = useMemo(() => resolveSessionEoa(profiles), [profiles])
 
@@ -513,22 +513,12 @@ export default function GenesisNodeReferralPage() {
 	const [payoutDrawerOpen, setPayoutDrawerOpen] = useState(false)
 	const [payoutDrawerClosing, setPayoutDrawerClosing] = useState(false)
 	const [incomeOpen, setIncomeOpen] = useState(false)
-	const [income, setIncome] = useState<GenesisIncomeSnapshot | null>(null)
-	const [incomeLoading, setIncomeLoading] = useState(false)
-	const [incomeError, setIncomeError] = useState<string | null>(null)
-	/** Per Downstream partner address → their Genesis income purchase credits. */
-	const [downstreamIncomeByAddress, setDownstreamIncomeByAddress] = useState<
-		Record<string, GenesisIncomeItem[]>
-	>({})
-	const [downstreamIncomeLoadingKeys, setDownstreamIncomeLoadingKeys] = useState<
-		Record<string, boolean>
-	>({})
+	const [incomeRefreshing, setIncomeRefreshing] = useState(false)
 	/** Downstream partner Purchase history slide-out target. */
 	const [purchaseHistoryPartner, setPurchaseHistoryPartner] = useState<{
 		address: string
 		earnedUsdc6: string
 	} | null>(null)
-	const [purchaseHistoryRefreshing, setPurchaseHistoryRefreshing] = useState(false)
 
 	const issueL1InFlightRef = useRef(false)
 	const claimInFlightRef = useRef(false)
@@ -590,30 +580,23 @@ export default function GenesisNodeReferralPage() {
 		void reload()
 	}, [reload])
 
-	const loadIncome = useCallback(
-		async (options: { force?: boolean } = {}) => {
-			if (!eoa || !ethers.isAddress(eoa)) {
-				setIncome(null)
-				setIncomeError(null)
-				return
-			}
-			setIncomeLoading(true)
-			const result = await fetchGenesisIncomeHistory(eoa, options)
-			if (result.ok) {
-				setIncome(result.snapshot)
-				setIncomeError(null)
-			} else {
-				setIncomeError(result.error)
-			}
-			setIncomeLoading(false)
-		},
-		[eoa],
-	)
+	const income = useMemo((): GenesisIncomeSnapshot | null => {
+		if (!eoa || !ethers.isAddress(eoa)) return null
+		const key = incomeAddressKey(eoa)
+		return genesisIncomeByEoa[key] ?? readCachedGenesisIncome(eoa)
+	}, [eoa, genesisIncomeByEoa])
 
-	useEffect(() => {
-		setIncome(eoa ? readCachedGenesisIncome(eoa) : null)
-		void loadIncome()
-	}, [eoa, loadIncome])
+	const resolvePartnerIncomeItems = useCallback(
+		(address: string): GenesisIncomeItem[] => {
+			const key = incomeAddressKey(address)
+			return (
+				genesisIncomeByEoa[key]?.items ??
+				readCachedGenesisIncome(address)?.items ??
+				[]
+			)
+		},
+		[genesisIncomeByEoa],
+	)
 
 	const downstreamPartnerAddresses = useMemo(() => {
 		const keys = new Set<string>()
@@ -628,71 +611,18 @@ export default function GenesisNodeReferralPage() {
 		return ordered
 	}, [l0List, l1List])
 
+	/** Register self + Downstream partners for daemon incremental purchase-history sync. */
 	useEffect(() => {
-		if (downstreamPartnerAddresses.length === 0) {
-			setDownstreamIncomeByAddress({})
-			setDownstreamIncomeLoadingKeys({})
-			return
-		}
-		let cancelled = false
-		const seeded: Record<string, GenesisIncomeItem[]> = {}
-		const loading: Record<string, boolean> = {}
-		for (const addr of downstreamPartnerAddresses) {
-			const key = incomeAddressKey(addr)
-			const cached = readCachedGenesisIncome(addr)
-			if (cached) seeded[key] = cached.items
-			loading[key] = true
-		}
-		setDownstreamIncomeByAddress(seeded)
-		setDownstreamIncomeLoadingKeys(loading)
-
-		void (async () => {
-			const results = await Promise.all(
-				downstreamPartnerAddresses.map(async (addr) => {
-					const key = incomeAddressKey(addr)
-					const result = await fetchGenesisIncomeHistory(addr).catch(() => null)
-					const items =
-						result && result.ok
-							? result.snapshot.items
-							: seeded[key] ?? readCachedGenesisIncome(addr)?.items ?? []
-					return { key, items }
-				}),
-			)
-			if (cancelled) return
-			setDownstreamIncomeByAddress((prev) => {
-				const next = { ...prev }
-				for (const row of results) next[row.key] = row.items
-				return next
-			})
-			setDownstreamIncomeLoadingKeys({})
-		})()
-
-		return () => {
-			cancelled = true
-		}
-	}, [downstreamPartnerAddresses])
+		const accounts: string[] = []
+		if (eoa && ethers.isAddress(eoa)) accounts.push(eoa)
+		accounts.push(...downstreamPartnerAddresses)
+		if (accounts.length === 0) return
+		registerGenesisIncomeFeedAccounts(accounts)
+	}, [eoa, downstreamPartnerAddresses, registerGenesisIncomeFeedAccounts])
 
 	const openDownstreamPurchaseHistory = useCallback((address: string, earnedUsdc6: string) => {
 		if (!ethers.isAddress(address)) return
-		const checksummed = ethers.getAddress(address)
-		const key = incomeAddressKey(checksummed)
-		setPurchaseHistoryPartner({ address: checksummed, earnedUsdc6 })
-		setPurchaseHistoryRefreshing(true)
-		setDownstreamIncomeLoadingKeys((prev) => ({ ...prev, [key]: true }))
-		void (async () => {
-			const result = await fetchGenesisIncomeHistory(checksummed, { force: true }).catch(() => null)
-			const items =
-				result && result.ok
-					? result.snapshot.items
-					: readCachedGenesisIncome(checksummed)?.items ?? []
-			setDownstreamIncomeByAddress((prev) => ({ ...prev, [key]: items }))
-			setDownstreamIncomeLoadingKeys((prev) => {
-				const next = { ...prev }
-				delete next[key]
-				return next
-			})
-			setPurchaseHistoryRefreshing(false)
-		})()
+		setPurchaseHistoryPartner({ address: ethers.getAddress(address), earnedUsdc6 })
 	}, [])
 
 	const handleIssueL1 = useCallback(async () => {
@@ -1006,7 +936,8 @@ export default function GenesisNodeReferralPage() {
 										type="button"
 										onClick={() => {
 											setIncomeOpen(true)
-											void loadIncome({ force: true })
+											setIncomeRefreshing(true)
+											void refreshGenesisIncomeFeed().finally(() => setIncomeRefreshing(false))
 										}}
 										className="flex w-full items-center justify-between gap-3 text-left"
 										aria-label="Open income details"
@@ -1021,7 +952,7 @@ export default function GenesisNodeReferralPage() {
 														}`}
 											</p>
 										</div>
-										{incomeLoading ? (
+										{incomeRefreshing ? (
 											<Loader2 className="h-4 w-4 shrink-0 animate-spin text-emerald-200" aria-hidden />
 										) : (
 											<Wallet className="h-4 w-4 shrink-0 text-emerald-200" aria-hidden />
@@ -1195,9 +1126,7 @@ export default function GenesisNodeReferralPage() {
 										) : (
 											<div className="mt-3 space-y-2">
 												{l1List.map((row) => {
-													const key = incomeAddressKey(row.address)
-													const partnerItems = downstreamIncomeByAddress[key] ?? []
-													const partnerLoading = Boolean(downstreamIncomeLoadingKeys[key])
+													const partnerItems = resolvePartnerIncomeItems(row.address)
 													return (
 														<div
 															key={row.address}
@@ -1217,7 +1146,6 @@ export default function GenesisNodeReferralPage() {
 															<GenesisDownstreamIncomeSummary
 																earnedUsdc6={row.earnedUsdc6}
 																purchaseCount={partnerItems.length}
-																loading={partnerLoading}
 																onOpen={() =>
 																	openDownstreamPurchaseHistory(row.address, row.earnedUsdc6)
 																}
@@ -1246,9 +1174,7 @@ export default function GenesisNodeReferralPage() {
 										) : (
 											<div className="mt-3 space-y-2">
 												{l0List.map((row) => {
-													const key = incomeAddressKey(row.address)
-													const partnerItems = downstreamIncomeByAddress[key] ?? []
-													const partnerLoading = Boolean(downstreamIncomeLoadingKeys[key])
+													const partnerItems = resolvePartnerIncomeItems(row.address)
 													return (
 														<div
 															key={row.address}
@@ -1270,7 +1196,6 @@ export default function GenesisNodeReferralPage() {
 															<GenesisDownstreamIncomeSummary
 																earnedUsdc6={row.earnedUsdc6}
 																purchaseCount={partnerItems.length}
-																loading={partnerLoading}
 																onOpen={() =>
 																	openDownstreamPurchaseHistory(row.address, row.earnedUsdc6)
 																}
@@ -1501,8 +1426,8 @@ export default function GenesisNodeReferralPage() {
 				<GenesisIncomeDetailPanel
 					earnedUsdc6={snapshot?.earnedUsdc6 ?? '0'}
 					items={income?.items ?? []}
-					loading={incomeLoading}
-					error={incomeError}
+					loading={incomeRefreshing && (income?.items.length ?? 0) === 0}
+					error={null}
 					onClose={() => setIncomeOpen(false)}
 				/>
 			) : null}
@@ -1512,15 +1437,8 @@ export default function GenesisNodeReferralPage() {
 					heading="Purchase history"
 					partnerAddress={purchaseHistoryPartner.address}
 					earnedUsdc6={purchaseHistoryPartner.earnedUsdc6}
-					items={
-						downstreamIncomeByAddress[incomeAddressKey(purchaseHistoryPartner.address)] ?? []
-					}
-					loading={
-						purchaseHistoryRefreshing ||
-						Boolean(
-							downstreamIncomeLoadingKeys[incomeAddressKey(purchaseHistoryPartner.address)],
-						)
-					}
+					items={resolvePartnerIncomeItems(purchaseHistoryPartner.address)}
+					loading={false}
 					error={null}
 					onClose={() => setPurchaseHistoryPartner(null)}
 				/>

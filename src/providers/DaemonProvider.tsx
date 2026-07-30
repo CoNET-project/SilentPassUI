@@ -141,6 +141,12 @@ import {
 	type ReferralL0StartKitQuota,
 } from '@/services/referralL0StartKitQuotaFeed'
 import {
+	GENESIS_INCOME_FEED_INTERVAL_MS,
+	readCachedGenesisIncome,
+	runGenesisIncomeFeedForAccount,
+	type GenesisIncomeSnapshot,
+} from '@/services/genesisNodeReferral'
+import {
 	AA_V2_PENDING_TASKS_FEED_INTERVAL_MS,
 	runAaInstitutionalV2PendingTasksDaemonTick,
 } from '@/utils/aaInstitutionalV2PendingDaemon'
@@ -510,6 +516,15 @@ type DaemonContext = {
 	referralL0StartKitQuota: ReferralL0StartKitQuota | null
 	/** 发行 Start Kit / Admin 改配额后强制刷新（仍走同一 trusted fetch） */
 	refreshReferralL0StartKitQuota: () => Promise<void>
+	/**
+	 * Genesis Partnership purchase history（EOA → semi-permanent local ledger）.
+	 * Daemon 只拉 `sinceMs` 增量；页面只读本地 / 本 map，勿全量轮询 API。
+	 */
+	genesisIncomeByEoa: Record<string, GenesisIncomeSnapshot>
+	/** 注册需守护的钱包（当前用户 + Downstream partners）；合并去重 */
+	registerGenesisIncomeFeedAccounts: (accounts: string[]) => void
+	/** 手动触发一轮增量同步（仍 trusted-only merge） */
+	refreshGenesisIncomeFeed: () => Promise<void>
 	/** Discover Featured Brands 链上点赞 / 转发点击；localStorage 首屏 + daemon 30s 刷新 */
 	discoverMerchantStatByCard: DiscoverMerchantStatsMap
 	/** Market 注册需刷新的商户卡地址（来自 trusted `/api/latestCards`） */
@@ -785,6 +800,9 @@ const defaultContextValue: DaemonContext = {
 	referrerSummary: null,
 	referralL0StartKitQuota: null,
 	refreshReferralL0StartKitQuota: async () => {},
+	genesisIncomeByEoa: {},
+	registerGenesisIncomeFeedAccounts: () => {},
+	refreshGenesisIncomeFeed: async () => {},
 	discoverMerchantStatByCard: {},
 	applyDiscoverMerchantLikeCountDelta: () => {},
 	registerDiscoverMerchantStatFeedCards: () => {},
@@ -1748,6 +1766,86 @@ export function DaemonProvider({ children }: DaemonProps) {
     await runReferralL0StartKitQuotaFeedTick(true)
   }, [runReferralL0StartKitQuotaFeedTick])
 
+  const genesisIncomeFeedAccountsRef = useRef<string[]>([])
+  const genesisIncomeFeedInFlightRef = useRef(false)
+  const [genesisIncomeByEoa, setGenesisIncomeByEoa] = useState<Record<string, GenesisIncomeSnapshot>>({})
+
+  const registerGenesisIncomeFeedAccounts = useCallback((accounts: string[]) => {
+    const incoming = [
+      ...new Set(
+        accounts
+          .map((a) => String(a ?? '').trim())
+          .filter((a) => {
+            try {
+              return ethers.isAddress(a)
+            } catch {
+              return false
+            }
+          })
+          .map((a) => ethers.getAddress(a).toLowerCase()),
+      ),
+    ]
+    const prev = genesisIncomeFeedAccountsRef.current
+    const merged = [...new Set([...prev, ...incoming])]
+    if (merged.length === prev.length && merged.every((a, i) => a === prev[i])) return
+    genesisIncomeFeedAccountsRef.current = merged
+    // Seed map from semi-permanent local store for newly registered EOAs.
+    setGenesisIncomeByEoa((prevMap) => {
+      const next = { ...prevMap }
+      let changed = false
+      for (const key of incoming) {
+        if (next[key]) continue
+        const local = readCachedGenesisIncome(key)
+        if (local) {
+          next[key] = local
+          changed = true
+        }
+      }
+      return changed ? next : prevMap
+    })
+  }, [])
+
+  const runGenesisIncomeFeedTick = useCallback(async (): Promise<void> => {
+    if (genesisIncomeFeedInFlightRef.current) return
+    const sessionEoa = profilesRef.current?.[0]?.keyID?.trim() ?? ''
+    const registered = genesisIncomeFeedAccountsRef.current
+    const targets = [
+      ...new Set(
+        [sessionEoa, ...registered]
+          .map((a) => String(a ?? '').trim())
+          .filter((a) => ethers.isAddress(a))
+          .map((a) => ethers.getAddress(a).toLowerCase()),
+      ),
+    ]
+    if (targets.length === 0) return
+    genesisIncomeFeedInFlightRef.current = true
+    try {
+      const updates: Record<string, GenesisIncomeSnapshot> = {}
+      for (const addr of targets) {
+        const snap = await runGenesisIncomeFeedForAccount(addr).catch(() => null)
+        if (snap) updates[addr.toLowerCase()] = snap
+      }
+      if (Object.keys(updates).length === 0) return
+      setGenesisIncomeByEoa((prev) => ({ ...prev, ...updates }))
+    } finally {
+      genesisIncomeFeedInFlightRef.current = false
+    }
+  }, [])
+
+  const refreshGenesisIncomeFeed = useCallback(async () => {
+    await runGenesisIncomeFeedTick()
+  }, [runGenesisIncomeFeedTick])
+
+  /** EOA 切换：hydrate current wallet purchase history from local store */
+  useLayoutEffect(() => {
+    const raw = profileWalletKeyId?.trim() ?? ''
+    if (!raw || !ethers.isAddress(raw)) return
+    const key = ethers.getAddress(raw).toLowerCase()
+    const local = readCachedGenesisIncome(key)
+    if (!local) return
+    setGenesisIncomeByEoa((prev) => (prev[key] ? prev : { ...prev, [key]: local }))
+  }, [profileWalletKeyId])
+
   const discoverMerchantStatFeedAddressesRef = useRef<string[]>([])
   const discoverMerchantStatsFeedInFlightRef = useRef(false)
   const [discoverMerchantStatByCard, setDiscoverMerchantStatByCard] = useState<DiscoverMerchantStatsMap>(
@@ -2709,6 +2807,29 @@ export function DaemonProvider({ children }: DaemonProps) {
     }
   }, [runDiscoverMerchantStatsFeedTick])
 
+  /** Genesis Partnership purchase history：30s 增量 sinceMs；半永久本地 merge */
+  useEffect(() => {
+    let cancelled = false
+    let timer: number | undefined
+    const runChain = () => {
+      if (cancelled) return
+      void (async () => {
+        try {
+          await runGenesisIncomeFeedTick()
+        } finally {
+          if (!cancelled) {
+            timer = window.setTimeout(runChain, GENESIS_INCOME_FEED_INTERVAL_MS) as unknown as number
+          }
+        }
+      })()
+    }
+    runChain()
+    return () => {
+      cancelled = true
+      if (timer !== undefined) window.clearTimeout(timer)
+    }
+  }, [runGenesisIncomeFeedTick, profileWalletKeyId])
+
   /** Coupons open-claim claimed/redeemed：setTimeout 链 30s；仅 trusted 链上结果升级 map + localStorage */
   useEffect(() => {
     let cancelled = false
@@ -2824,6 +2945,7 @@ export function DaemonProvider({ children }: DaemonProps) {
 				recentActivityNoAaItems, recentActivityNoAaLoading, recentActivityNoAaError, refreshRecentActivityNoAa,
 				conetNetworkStats, conetDepinStats, conetWalletBalances, conetAaWalletBalances, validatorWalletNodeProfile, unifiedIncomeStats, referrerSummary,
 				referralL0StartKitQuota, refreshReferralL0StartKitQuota,
+				genesisIncomeByEoa, registerGenesisIncomeFeedAccounts, refreshGenesisIncomeFeed,
 				discoverMerchantStatByCard, registerDiscoverMerchantStatFeedCards, applyDiscoverMerchantLikeCountDelta,
 				couponOpenClaimStatusByKey, registerCouponOpenClaimFeedTargets, applyCouponOpenClaimStatus,
 				getCouponOpenClaimStatus, refreshCouponOpenClaimStatusFeed,

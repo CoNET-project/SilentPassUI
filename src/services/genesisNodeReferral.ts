@@ -889,6 +889,8 @@ export type GenesisIncomeItem = {
 	transactionHash: string
 	bindTxHash?: string | null
 	lockMintTxHash?: string | null
+	/** CoNET voteBridgeOperation — mint + Tokens transferred. */
+	bridgeSettleTxHash?: string | null
 	timestampMs: number
 	amountUsdc6: string
 	role: GenesisIncomeRole
@@ -982,6 +984,7 @@ export async function fetchGenesisIncomeHistory(
 					operationId?: string
 					bindTxHash?: string | null
 					lockMintTxHash?: string | null
+					bridgeSettleTxHash?: string | null
 					amountUsdc6?: string
 					role?: string
 					qty?: string
@@ -1005,12 +1008,17 @@ export async function fetchGenesisIncomeHistory(
 					if (!['l0', 'l1', 'admin', 'foundation'].includes(role)) return []
 					const transactionHash = String(row.transactionHash ?? '').trim()
 					if (!/^0x[0-9a-fA-F]{64}$/.test(transactionHash)) return []
+					const bridgeSettleRaw = String(row.bridgeSettleTxHash ?? '').trim()
+					const bridgeSettleTxHash = /^0x[0-9a-fA-F]{64}$/.test(bridgeSettleRaw)
+						? bridgeSettleRaw
+						: null
 					return [
 						{
 							operationId: String(row.operationId ?? ''),
 							transactionHash,
 							bindTxHash: row.bindTxHash ?? null,
 							lockMintTxHash: row.lockMintTxHash ?? null,
+							bridgeSettleTxHash,
 							timestampMs: Number(row.timestampMs) || 0,
 							amountUsdc6: String(row.amountUsdc6 ?? '0'),
 							role,

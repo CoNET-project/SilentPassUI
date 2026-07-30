@@ -49,6 +49,7 @@ import {
 
 const GENESIS_SLIDE_DURATION_MS = 300
 const BASE_TX_EXPLORER = 'https://basescan.org/tx/'
+const CONET_TX_EXPLORER = 'https://mainnet.conet.network/tx/'
 
 /** Partnership header capsule — CoNET explorer internal txs for this vault address. */
 const GENESIS_PARTNERSHIP_VAULT_CAPSULE_ADDRESS = '0xcC300E20Ec69a4cFd692C75A84882f6b4D0d1B39'
@@ -69,36 +70,84 @@ function useGenesisSlideOut(onClose: () => void) {
 	return { close, slideStyle: { transform } }
 }
 
-function GenesisPurchaseHashCapsule({
+function shortTxHash(transactionHash: string): string {
+	return transactionHash.length > 12
+		? `${transactionHash.slice(0, 8)}…${transactionHash.slice(-6)}`
+		: transactionHash
+}
+
+function isTxHash(value: string | null | undefined): value is string {
+	return typeof value === 'string' && /^0x[0-9a-fA-F]{64}$/.test(value.trim())
+}
+
+function GenesisTxHashCapsule({
 	transactionHash,
+	href,
+	label,
 	timestampMs,
 }: {
 	transactionHash: string
+	href: string
+	label: string
 	timestampMs?: number
 }) {
-	const short =
-		transactionHash.length > 12
-			? `${transactionHash.slice(0, 8)}…${transactionHash.slice(-6)}`
-			: transactionHash
 	const timeLabel =
 		timestampMs != null && timestampMs > 0 ? formatBeamioTransactionTimeLabel(timestampMs) : null
 	return (
 		<a
-			href={`${BASE_TX_EXPLORER}${transactionHash}`}
+			href={href}
 			target="_blank"
 			rel="noopener noreferrer"
 			className="inline-flex max-w-full items-center gap-2 rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-left text-xs text-slate-200 transition hover:bg-white/10"
 			aria-label={
 				timeLabel
-					? `Open purchase ${transactionHash} on BaseScan, ${timeLabel}`
-					: `Open purchase ${transactionHash} on BaseScan`
+					? `Open ${label} ${transactionHash}, ${timeLabel}`
+					: `Open ${label} ${transactionHash}`
 			}
 		>
-			<span className="truncate font-mono">{short}</span>
+			<span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+				{label}
+			</span>
+			<span className="truncate font-mono">{shortTxHash(transactionHash)}</span>
 			{timeLabel ? <span className="shrink-0 text-slate-400">{timeLabel}</span> : null}
 			<ExternalLink className="h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden />
 		</a>
 	)
+}
+
+/** Base USDC purchase hash + CoNET voteBridgeOperation (mint/split) hash side by side. */
+function GenesisPurchaseHashPair({
+	baseTxHash,
+	conetSplitTxHash,
+	timestampMs,
+}: {
+	baseTxHash: string
+	conetSplitTxHash?: string | null
+	timestampMs?: number
+}) {
+	const conetHash = isTxHash(conetSplitTxHash) ? conetSplitTxHash.trim() : null
+	return (
+		<div className="flex flex-wrap items-center gap-2">
+			<GenesisTxHashCapsule
+				transactionHash={baseTxHash}
+				href={`${BASE_TX_EXPLORER}${baseTxHash}`}
+				label="Base"
+				timestampMs={timestampMs}
+			/>
+			{conetHash ? (
+				<GenesisTxHashCapsule
+					transactionHash={conetHash}
+					href={`${CONET_TX_EXPLORER}${conetHash}`}
+					label="CoNET"
+				/>
+			) : null}
+		</div>
+	)
+}
+
+function genesisIncomeConetSplitHash(item: GenesisIncomeItem): string | null {
+	if (isTxHash(item.bridgeSettleTxHash)) return item.bridgeSettleTxHash.trim()
+	return null
 }
 
 function genesisIncomeRoleLabel(role: GenesisIncomeItem['role']): string {
@@ -114,6 +163,72 @@ function genesisIncomeRoleLabel(role: GenesisIncomeItem['role']): string {
 		default:
 			return 'Share'
 	}
+}
+
+function incomeAddressKey(address: string): string {
+	try {
+		return ethers.getAddress(address).toLowerCase()
+	} catch {
+		return address.toLowerCase()
+	}
+}
+
+/** Compact purchase-credit list embedded under a Downstream L0/L1 row. */
+function GenesisIncomeDetailsInline({
+	items,
+	loading,
+}: {
+	items: GenesisIncomeItem[]
+	loading?: boolean
+}) {
+	if (loading && items.length === 0) {
+		return (
+			<div className="mt-2.5 flex items-center gap-2 border-t border-white/5 pt-2.5 text-xs text-slate-500">
+				<Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+				Loading income details…
+			</div>
+		)
+	}
+	if (items.length === 0) {
+		return (
+			<p className="mt-2.5 border-t border-white/5 pt-2.5 text-xs text-slate-500">
+				No purchase credits yet
+			</p>
+		)
+	}
+	return (
+		<div className="mt-2.5 space-y-2 border-t border-white/5 pt-2.5">
+			<p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">
+				Income details · {items.length} purchase{items.length === 1 ? '' : 's'}
+			</p>
+			{items.map((item) => (
+				<div
+					key={`${item.transactionHash}:${item.role}:${item.amountUsdc6}`}
+					className="rounded-lg border border-white/10 bg-white/[0.03] p-2.5"
+				>
+					<div className="flex items-start justify-between gap-2">
+						<p className="text-xs font-medium text-slate-200">{genesisIncomeRoleLabel(item.role)}</p>
+						<p className="shrink-0 text-xs font-semibold tabular-nums text-emerald-300">
+							+${formatReferralUsdcAmount6(item.amountUsdc6)}
+						</p>
+					</div>
+					{item.qty ? (
+						<p className="mt-0.5 text-[10px] text-slate-500">
+							{item.qty} seat{item.qty === '1' ? '' : 's'}
+							{item.testMode ? ' · test mode' : ''}
+						</p>
+					) : null}
+					<div className="mt-1.5">
+						<GenesisPurchaseHashPair
+							baseTxHash={item.transactionHash}
+							conetSplitTxHash={genesisIncomeConetSplitHash(item)}
+							timestampMs={item.timestampMs}
+						/>
+					</div>
+				</div>
+			))}
+		</div>
+	)
 }
 
 function GenesisIncomeDetailPanel({
@@ -203,10 +318,11 @@ function GenesisIncomeDetailPanel({
 								) : null}
 								<div className="mt-2.5">
 									<p className="mb-1 text-[10px] font-semibold uppercase tracking-widest text-slate-500">
-										Purchase hash
+										Purchase hashes
 									</p>
-									<GenesisPurchaseHashCapsule
-										transactionHash={item.transactionHash}
+									<GenesisPurchaseHashPair
+										baseTxHash={item.transactionHash}
+										conetSplitTxHash={genesisIncomeConetSplitHash(item)}
 										timestampMs={item.timestampMs}
 									/>
 								</div>
@@ -396,6 +512,13 @@ export default function GenesisNodeReferralPage() {
 	const [income, setIncome] = useState<GenesisIncomeSnapshot | null>(null)
 	const [incomeLoading, setIncomeLoading] = useState(false)
 	const [incomeError, setIncomeError] = useState<string | null>(null)
+	/** Per Downstream partner address → their Genesis income purchase credits. */
+	const [downstreamIncomeByAddress, setDownstreamIncomeByAddress] = useState<
+		Record<string, GenesisIncomeItem[]>
+	>({})
+	const [downstreamIncomeLoadingKeys, setDownstreamIncomeLoadingKeys] = useState<
+		Record<string, boolean>
+	>({})
 
 	const issueL1InFlightRef = useRef(false)
 	const claimInFlightRef = useRef(false)
@@ -481,6 +604,63 @@ export default function GenesisNodeReferralPage() {
 		setIncome(eoa ? readCachedGenesisIncome(eoa) : null)
 		void loadIncome()
 	}, [eoa, loadIncome])
+
+	const downstreamPartnerAddresses = useMemo(() => {
+		const keys = new Set<string>()
+		const ordered: string[] = []
+		for (const row of [...l0List, ...l1List]) {
+			if (!row.address || !ethers.isAddress(row.address)) continue
+			const key = incomeAddressKey(row.address)
+			if (keys.has(key)) continue
+			keys.add(key)
+			ordered.push(ethers.getAddress(row.address))
+		}
+		return ordered
+	}, [l0List, l1List])
+
+	useEffect(() => {
+		if (downstreamPartnerAddresses.length === 0) {
+			setDownstreamIncomeByAddress({})
+			setDownstreamIncomeLoadingKeys({})
+			return
+		}
+		let cancelled = false
+		const seeded: Record<string, GenesisIncomeItem[]> = {}
+		const loading: Record<string, boolean> = {}
+		for (const addr of downstreamPartnerAddresses) {
+			const key = incomeAddressKey(addr)
+			const cached = readCachedGenesisIncome(addr)
+			if (cached) seeded[key] = cached.items
+			loading[key] = true
+		}
+		setDownstreamIncomeByAddress(seeded)
+		setDownstreamIncomeLoadingKeys(loading)
+
+		void (async () => {
+			const results = await Promise.all(
+				downstreamPartnerAddresses.map(async (addr) => {
+					const key = incomeAddressKey(addr)
+					const result = await fetchGenesisIncomeHistory(addr).catch(() => null)
+					const items =
+						result && result.ok
+							? result.snapshot.items
+							: seeded[key] ?? readCachedGenesisIncome(addr)?.items ?? []
+					return { key, items }
+				}),
+			)
+			if (cancelled) return
+			setDownstreamIncomeByAddress((prev) => {
+				const next = { ...prev }
+				for (const row of results) next[row.key] = row.items
+				return next
+			})
+			setDownstreamIncomeLoadingKeys({})
+		})()
+
+		return () => {
+			cancelled = true
+		}
+	}, [downstreamPartnerAddresses])
 
 	const handleIssueL1 = useCallback(async () => {
 		if (issueL1InFlightRef.current || !snapshot?.isL0) return
@@ -981,24 +1161,33 @@ export default function GenesisNodeReferralPage() {
 											<p className="mt-3 text-xs text-slate-500">No L1 Evangelists yet.</p>
 										) : (
 											<div className="mt-3 space-y-2">
-												{l1List.map((row) => (
-													<div
-														key={row.address}
-														className="rounded-xl border border-white/10 bg-black/10 p-3"
-													>
-														<div className="flex min-w-0 items-center justify-between gap-2">
-															<div className="min-w-0 flex-1">
-																<BeamioTagCapsule
-																	address={row.address}
-																	rebatePercent={String(Number((row.ratioBps / 100).toFixed(2)))}
-																/>
+												{l1List.map((row) => {
+													const key = incomeAddressKey(row.address)
+													const partnerItems = downstreamIncomeByAddress[key] ?? []
+													const partnerLoading = Boolean(downstreamIncomeLoadingKeys[key])
+													return (
+														<div
+															key={row.address}
+															className="rounded-xl border border-white/10 bg-black/10 p-3"
+														>
+															<div className="flex min-w-0 items-center justify-between gap-2">
+																<div className="min-w-0 flex-1">
+																	<BeamioTagCapsule
+																		address={row.address}
+																		rebatePercent={String(Number((row.ratioBps / 100).toFixed(2)))}
+																	/>
+																</div>
+																<p className="shrink-0 text-right text-sm font-semibold tabular-nums text-emerald-200">
+																	${formatReferralUsdcAmount6(row.earnedUsdc6)}
+																</p>
 															</div>
-															<p className="shrink-0 text-right text-sm font-semibold tabular-nums text-emerald-200">
-																${formatReferralUsdcAmount6(row.earnedUsdc6)}
-															</p>
+															<GenesisIncomeDetailsInline
+																items={partnerItems}
+																loading={partnerLoading}
+															/>
 														</div>
-													</div>
-												))}
+													)
+												})}
 											</div>
 										)}
 									</section>
@@ -1019,26 +1208,35 @@ export default function GenesisNodeReferralPage() {
 											<p className="mt-3 text-xs text-slate-500">No L0 members yet.</p>
 										) : (
 											<div className="mt-3 space-y-2">
-												{l0List.map((row) => (
-													<div
-														key={row.address}
-														className="rounded-xl border border-white/10 bg-black/10 p-3"
-													>
-														<div className="flex min-w-0 items-center justify-between gap-2">
-															<div className="min-w-0 flex-1">
-																<BeamioTagCapsule address={row.address} />
+												{l0List.map((row) => {
+													const key = incomeAddressKey(row.address)
+													const partnerItems = downstreamIncomeByAddress[key] ?? []
+													const partnerLoading = Boolean(downstreamIncomeLoadingKeys[key])
+													return (
+														<div
+															key={row.address}
+															className="rounded-xl border border-white/10 bg-black/10 p-3"
+														>
+															<div className="flex min-w-0 items-center justify-between gap-2">
+																<div className="min-w-0 flex-1">
+																	<BeamioTagCapsule address={row.address} />
+																</div>
+																<div className="shrink-0 text-right">
+																	<p className="text-sm font-semibold tabular-nums text-emerald-200">
+																		${formatReferralUsdcAmount6(row.earnedUsdc6)}
+																	</p>
+																	<p className="text-[10px] text-slate-500">
+																		{row.l1Count} item{row.l1Count === 1 ? '' : 's'}
+																	</p>
+																</div>
 															</div>
-															<div className="shrink-0 text-right">
-																<p className="text-sm font-semibold tabular-nums text-emerald-200">
-																	${formatReferralUsdcAmount6(row.earnedUsdc6)}
-																</p>
-																<p className="text-[10px] text-slate-500">
-																	{row.l1Count} item{row.l1Count === 1 ? '' : 's'}
-																</p>
-															</div>
+															<GenesisIncomeDetailsInline
+																items={partnerItems}
+																loading={partnerLoading}
+															/>
 														</div>
-													</div>
-												))}
+													)
+												})}
 											</div>
 										)}
 									</section>

@@ -4,6 +4,7 @@ import { ethers } from 'ethers'
 import {
 	Ban,
 	Check,
+	ChevronRight,
 	Copy,
 	ExternalLink,
 	Link2,
@@ -173,61 +174,43 @@ function incomeAddressKey(address: string): string {
 	}
 }
 
-/** Compact purchase-credit list embedded under a Downstream L0/L1 row. */
-function GenesisIncomeDetailsInline({
-	items,
+/** Downstream L0/L1 row: income summary only — opens Purchase history page. */
+function GenesisDownstreamIncomeSummary({
+	earnedUsdc6,
+	purchaseCount,
 	loading,
+	onOpen,
 }: {
-	items: GenesisIncomeItem[]
+	earnedUsdc6: string
+	purchaseCount: number
 	loading?: boolean
+	onOpen: () => void
 }) {
-	if (loading && items.length === 0) {
-		return (
-			<div className="mt-2.5 flex items-center gap-2 border-t border-white/5 pt-2.5 text-xs text-slate-500">
-				<Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-				Loading income details…
-			</div>
-		)
-	}
-	if (items.length === 0) {
-		return (
-			<p className="mt-2.5 border-t border-white/5 pt-2.5 text-xs text-slate-500">
-				No purchase credits yet
-			</p>
-		)
-	}
+	const summary =
+		loading && purchaseCount === 0
+			? 'Loading…'
+			: purchaseCount === 0
+				? 'No purchases yet'
+				: `${purchaseCount} purchase${purchaseCount === 1 ? '' : 's'} · $${formatReferralUsdcAmount6(earnedUsdc6)}`
 	return (
-		<div className="mt-2.5 space-y-2 border-t border-white/5 pt-2.5">
-			<p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">
-				Income details · {items.length} purchase{items.length === 1 ? '' : 's'}
-			</p>
-			{items.map((item) => (
-				<div
-					key={`${item.transactionHash}:${item.role}:${item.amountUsdc6}`}
-					className="rounded-lg border border-white/10 bg-white/[0.03] p-2.5"
-				>
-					<div className="flex items-start justify-between gap-2">
-						<p className="text-xs font-medium text-slate-200">{genesisIncomeRoleLabel(item.role)}</p>
-						<p className="shrink-0 text-xs font-semibold tabular-nums text-emerald-300">
-							+${formatReferralUsdcAmount6(item.amountUsdc6)}
-						</p>
-					</div>
-					{item.qty ? (
-						<p className="mt-0.5 text-[10px] text-slate-500">
-							{item.qty} seat{item.qty === '1' ? '' : 's'}
-							{item.testMode ? ' · test mode' : ''}
-						</p>
-					) : null}
-					<div className="mt-1.5">
-						<GenesisPurchaseHashPair
-							baseTxHash={item.transactionHash}
-							conetSplitTxHash={genesisIncomeConetSplitHash(item)}
-							timestampMs={item.timestampMs}
-						/>
-					</div>
-				</div>
-			))}
-		</div>
+		<button
+			type="button"
+			onClick={onOpen}
+			className="mt-2.5 flex w-full items-center justify-between gap-2 border-t border-white/5 pt-2.5 text-left transition hover:opacity-90"
+			aria-label={`Income summary: ${summary}. Open purchase history.`}
+		>
+			<div className="min-w-0">
+				<p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">
+					Income summary
+				</p>
+				<p className="mt-0.5 text-xs text-slate-300">{summary}</p>
+			</div>
+			{loading ? (
+				<Loader2 className="h-4 w-4 shrink-0 animate-spin text-slate-400" aria-hidden />
+			) : (
+				<ChevronRight className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
+			)}
+		</button>
 	)
 }
 
@@ -237,14 +220,21 @@ function GenesisIncomeDetailPanel({
 	loading,
 	error,
 	onClose,
+	heading = 'Income',
+	partnerAddress,
 }: {
 	earnedUsdc6: string
 	items: GenesisIncomeItem[]
 	loading: boolean
 	error: string | null
 	onClose: () => void
+	/** Top-right page label (e.g. Purchase history for Downstream partners). */
+	heading?: string
+	/** When set, show partner BeamioTag under the title. */
+	partnerAddress?: string | null
 }) {
 	const { close, slideStyle } = useGenesisSlideOut(onClose)
+	const showPurchaseHistoryHeading = heading.toLowerCase().includes('purchase')
 	return (
 		<div
 			className="fixed inset-0 z-[100] flex min-h-0 flex-col overflow-hidden bg-[#050b1d] text-slate-50 transition-transform duration-300 ease-out"
@@ -264,9 +254,21 @@ function GenesisIncomeDetailPanel({
 				>
 					<div className="flex items-center justify-between">
 						<BeamioCircularBackButton onClick={close} />
-						<p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-200">Income</p>
+						<p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-200">
+							{heading}
+						</p>
 					</div>
-					<div className="mt-6 rounded-2xl border border-emerald-200/20 bg-emerald-300/[0.08] p-5">
+					{partnerAddress && ethers.isAddress(partnerAddress) ? (
+						<div className="mt-5">
+							<BeamioTagCapsule address={partnerAddress} />
+						</div>
+					) : null}
+					<div
+						className={[
+							'rounded-2xl border border-emerald-200/20 bg-emerald-300/[0.08] p-5',
+							partnerAddress ? 'mt-4' : 'mt-6',
+						].join(' ')}
+					>
 						<p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-200">
 							Total earned
 						</p>
@@ -280,9 +282,11 @@ function GenesisIncomeDetailPanel({
 						</p>
 					</div>
 					<div className="mt-4 space-y-3">
-						<p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
-							Purchase history
-						</p>
+						{!showPurchaseHistoryHeading ? (
+							<p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
+								Purchase history
+							</p>
+						) : null}
 						{loading && items.length === 0 ? (
 							<div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-sm text-slate-300">
 								<Loader2 className="h-4 w-4 animate-spin" aria-hidden />
@@ -519,6 +523,12 @@ export default function GenesisNodeReferralPage() {
 	const [downstreamIncomeLoadingKeys, setDownstreamIncomeLoadingKeys] = useState<
 		Record<string, boolean>
 	>({})
+	/** Downstream partner Purchase history slide-out target. */
+	const [purchaseHistoryPartner, setPurchaseHistoryPartner] = useState<{
+		address: string
+		earnedUsdc6: string
+	} | null>(null)
+	const [purchaseHistoryRefreshing, setPurchaseHistoryRefreshing] = useState(false)
 
 	const issueL1InFlightRef = useRef(false)
 	const claimInFlightRef = useRef(false)
@@ -661,6 +671,29 @@ export default function GenesisNodeReferralPage() {
 			cancelled = true
 		}
 	}, [downstreamPartnerAddresses])
+
+	const openDownstreamPurchaseHistory = useCallback((address: string, earnedUsdc6: string) => {
+		if (!ethers.isAddress(address)) return
+		const checksummed = ethers.getAddress(address)
+		const key = incomeAddressKey(checksummed)
+		setPurchaseHistoryPartner({ address: checksummed, earnedUsdc6 })
+		setPurchaseHistoryRefreshing(true)
+		setDownstreamIncomeLoadingKeys((prev) => ({ ...prev, [key]: true }))
+		void (async () => {
+			const result = await fetchGenesisIncomeHistory(checksummed, { force: true }).catch(() => null)
+			const items =
+				result && result.ok
+					? result.snapshot.items
+					: readCachedGenesisIncome(checksummed)?.items ?? []
+			setDownstreamIncomeByAddress((prev) => ({ ...prev, [key]: items }))
+			setDownstreamIncomeLoadingKeys((prev) => {
+				const next = { ...prev }
+				delete next[key]
+				return next
+			})
+			setPurchaseHistoryRefreshing(false)
+		})()
+	}, [])
 
 	const handleIssueL1 = useCallback(async () => {
 		if (issueL1InFlightRef.current || !snapshot?.isL0) return
@@ -1181,9 +1214,13 @@ export default function GenesisNodeReferralPage() {
 																	${formatReferralUsdcAmount6(row.earnedUsdc6)}
 																</p>
 															</div>
-															<GenesisIncomeDetailsInline
-																items={partnerItems}
+															<GenesisDownstreamIncomeSummary
+																earnedUsdc6={row.earnedUsdc6}
+																purchaseCount={partnerItems.length}
 																loading={partnerLoading}
+																onOpen={() =>
+																	openDownstreamPurchaseHistory(row.address, row.earnedUsdc6)
+																}
 															/>
 														</div>
 													)
@@ -1230,9 +1267,13 @@ export default function GenesisNodeReferralPage() {
 																	</p>
 																</div>
 															</div>
-															<GenesisIncomeDetailsInline
-																items={partnerItems}
+															<GenesisDownstreamIncomeSummary
+																earnedUsdc6={row.earnedUsdc6}
+																purchaseCount={partnerItems.length}
 																loading={partnerLoading}
+																onOpen={() =>
+																	openDownstreamPurchaseHistory(row.address, row.earnedUsdc6)
+																}
 															/>
 														</div>
 													)
@@ -1463,6 +1504,25 @@ export default function GenesisNodeReferralPage() {
 					loading={incomeLoading}
 					error={incomeError}
 					onClose={() => setIncomeOpen(false)}
+				/>
+			) : null}
+
+			{purchaseHistoryPartner ? (
+				<GenesisIncomeDetailPanel
+					heading="Purchase history"
+					partnerAddress={purchaseHistoryPartner.address}
+					earnedUsdc6={purchaseHistoryPartner.earnedUsdc6}
+					items={
+						downstreamIncomeByAddress[incomeAddressKey(purchaseHistoryPartner.address)] ?? []
+					}
+					loading={
+						purchaseHistoryRefreshing ||
+						Boolean(
+							downstreamIncomeLoadingKeys[incomeAddressKey(purchaseHistoryPartner.address)],
+						)
+					}
+					error={null}
+					onClose={() => setPurchaseHistoryPartner(null)}
 				/>
 			) : null}
 		</div>

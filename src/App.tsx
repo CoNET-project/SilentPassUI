@@ -55,6 +55,7 @@ import MyBrandsPage from '@/pages/Brands/MyBrandsPage'
 import BountyBoard from '@/pages/BountyBoard'
 import CoNetMiningDetailPage from '@/pages/BountyBoard/CoNetMiningDetailPage'
 import GenesisNodeReferralPage from '@/pages/BountyBoard/GenesisNodeReferralPage'
+import GenesisL0RedeemManagePage from '@/pages/BountyBoard/GenesisL0RedeemManagePage'
 import RenderActionPage from '@/renderAction'
 import { getUserInfo } from "@/services/beamio"
 import { AppButton } from "@/components/button/AppButton"
@@ -1514,6 +1515,7 @@ function AppShell() {
 					<Route path="/BountyBoard" element={<BountyBoard />} />
 					<Route path="/BountyBoard/conet-mining" element={<CoNetMiningDetailPage />} />
 					<Route path="/BountyBoard/genesis-referral" element={<GenesisNodeReferralPage />} />
+					<Route path="/BountyBoard/genesis-referral/redeem" element={<GenesisL0RedeemManagePage />} />
 					<Route path="/qr" element={<QrOperationPage />} />
 					<Route path="/Chat" element={<Chat />} />
 					<Route path="/chat/:id" element={<ChatDetail />} />

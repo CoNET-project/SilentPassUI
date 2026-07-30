@@ -23,33 +23,203 @@ import { resolveSigningPrivateKeyArmor } from '@/utils/resolveSigningPrivateKeyA
 import { CoNET_Data } from '@/utils/globals'
 import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
 import { formatReferralUsdcAmount6 } from '@/services/referralRegistryEarnings'
+import { formatBeamioTransactionTimeLabel } from '@/utils/beamioTransactionTimeLabel'
 import {
 	buildGenesisEvangelistShareUrl,
-	cancelGenesisL0RedeemCode,
 	cancelGenesisL1RedeemCode,
 	claimGenesisL0RedeemCode,
 	claimGenesisL1RedeemCode,
+	fetchGenesisIncomeHistory,
 	fetchGenesisL0List,
-	fetchGenesisL0RedeemCodesForIssuer,
 	fetchGenesisL1List,
 	fetchGenesisL1RedeemCodesForIssuer,
 	fetchGenesisMemberSnapshot,
-	issueGenesisL0RedeemCode,
 	issueGenesisL1RedeemCode,
 	ratioBpsToPercentLabel,
+	readCachedGenesisIncome,
 	setGenesisDefaultAdminPayout,
 	setGenesisFoundation,
 	type GenesisDownstreamL0Item,
 	type GenesisDownstreamL1Item,
-	type GenesisL0RedeemRecord,
+	type GenesisIncomeItem,
+	type GenesisIncomeSnapshot,
 	type GenesisL1RedeemRecord,
 	type GenesisMemberSnapshot,
 } from '@/services/genesisNodeReferral'
-import { CONET_GENESIS_NODE_REFERRAL_VAULT } from '@/config/chainAddresses'
 
-const GENESIS_VAULT_EXPLORER_TXS_URL = `https://mainnet.conet.network/address/${CONET_GENESIS_NODE_REFERRAL_VAULT}?tab=txs`
+const GENESIS_SLIDE_DURATION_MS = 300
+const BASE_TX_EXPLORER = 'https://basescan.org/tx/'
 
-/** Vault proxy address capsule → CoNET explorer txs tab (+ copy full address). */
+/** Partnership header capsule — CoNET explorer internal txs for this vault address. */
+const GENESIS_PARTNERSHIP_VAULT_CAPSULE_ADDRESS = '0xcC300E20Ec69a4cFd692C75A84882f6b4D0d1B39'
+
+function useGenesisSlideOut(onClose: () => void) {
+	const [isClosing, setIsClosing] = useState(false)
+	const [isEntered, setIsEntered] = useState(false)
+	useEffect(() => {
+		const frame = window.requestAnimationFrame(() => setIsEntered(true))
+		return () => window.cancelAnimationFrame(frame)
+	}, [])
+	const close = useCallback(() => {
+		if (isClosing) return
+		setIsClosing(true)
+		window.setTimeout(onClose, GENESIS_SLIDE_DURATION_MS)
+	}, [isClosing, onClose])
+	const transform = isClosing || !isEntered ? 'translateX(100%)' : 'translateX(0)'
+	return { close, slideStyle: { transform } }
+}
+
+function GenesisPurchaseHashCapsule({
+	transactionHash,
+	timestampMs,
+}: {
+	transactionHash: string
+	timestampMs?: number
+}) {
+	const short =
+		transactionHash.length > 12
+			? `${transactionHash.slice(0, 8)}…${transactionHash.slice(-6)}`
+			: transactionHash
+	const timeLabel =
+		timestampMs != null && timestampMs > 0 ? formatBeamioTransactionTimeLabel(timestampMs) : null
+	return (
+		<a
+			href={`${BASE_TX_EXPLORER}${transactionHash}`}
+			target="_blank"
+			rel="noopener noreferrer"
+			className="inline-flex max-w-full items-center gap-2 rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-left text-xs text-slate-200 transition hover:bg-white/10"
+			aria-label={
+				timeLabel
+					? `Open purchase ${transactionHash} on BaseScan, ${timeLabel}`
+					: `Open purchase ${transactionHash} on BaseScan`
+			}
+		>
+			<span className="truncate font-mono">{short}</span>
+			{timeLabel ? <span className="shrink-0 text-slate-400">{timeLabel}</span> : null}
+			<ExternalLink className="h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden />
+		</a>
+	)
+}
+
+function genesisIncomeRoleLabel(role: GenesisIncomeItem['role']): string {
+	switch (role) {
+		case 'l0':
+			return 'L0 share'
+		case 'l1':
+			return 'L1 share'
+		case 'admin':
+			return 'Admin share'
+		case 'foundation':
+			return 'Foundation share'
+		default:
+			return 'Share'
+	}
+}
+
+function GenesisIncomeDetailPanel({
+	earnedUsdc6,
+	items,
+	loading,
+	error,
+	onClose,
+}: {
+	earnedUsdc6: string
+	items: GenesisIncomeItem[]
+	loading: boolean
+	error: string | null
+	onClose: () => void
+}) {
+	const { close, slideStyle } = useGenesisSlideOut(onClose)
+	return (
+		<div
+			className="fixed inset-0 z-[100] flex min-h-0 flex-col overflow-hidden bg-[#050b1d] text-slate-50 transition-transform duration-300 ease-out"
+			style={slideStyle}
+		>
+			<div
+				className="pointer-events-none absolute inset-x-0 top-0 h-56 bg-gradient-to-b from-emerald-500/20 via-transparent to-transparent"
+				aria-hidden
+			/>
+			<div
+				className="relative z-10 flex min-h-0 flex-1 flex-col overflow-y-auto px-5 pb-10"
+				style={{ WebkitOverflowScrolling: 'touch' }}
+			>
+				<div
+					className="mx-auto w-full max-w-2xl"
+					style={{ paddingTop: 'max(1rem, env(safe-area-inset-top, 0px))' }}
+				>
+					<div className="flex items-center justify-between">
+						<BeamioCircularBackButton onClick={close} />
+						<p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-200">Income</p>
+					</div>
+					<div className="mt-6 rounded-2xl border border-emerald-200/20 bg-emerald-300/[0.08] p-5">
+						<p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-200">
+							Total earned
+						</p>
+						<p className="mt-1 text-3xl font-semibold tabular-nums text-white">
+							${formatReferralUsdcAmount6(earnedUsdc6)}
+						</p>
+						<p className="mt-2 text-xs text-emerald-100/80">
+							{items.length === 0
+								? 'No purchase credits yet'
+								: `${items.length} purchase credit${items.length === 1 ? '' : 's'}`}
+						</p>
+					</div>
+					<div className="mt-4 space-y-3">
+						<p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
+							Purchase history
+						</p>
+						{loading && items.length === 0 ? (
+							<div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-sm text-slate-300">
+								<Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+								Loading income items…
+							</div>
+						) : null}
+						{error && items.length === 0 ? (
+							<div className="rounded-2xl border border-amber-300/20 bg-amber-400/10 p-4 text-sm text-amber-100">
+								{error}
+							</div>
+						) : null}
+						{!loading && !error && items.length === 0 ? (
+							<div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-sm text-slate-300">
+								No Genesis Seat purchases have credited this wallet yet.
+							</div>
+						) : null}
+						{items.map((item) => (
+							<div
+								key={`${item.transactionHash}:${item.role}:${item.amountUsdc6}`}
+								className="rounded-xl border border-white/10 bg-white/[0.04] p-3"
+							>
+								<div className="flex items-start justify-between gap-3">
+									<p className="text-sm font-medium text-white">{genesisIncomeRoleLabel(item.role)}</p>
+									<p className="shrink-0 text-sm font-semibold tabular-nums text-emerald-300">
+										+${formatReferralUsdcAmount6(item.amountUsdc6)}
+									</p>
+								</div>
+								{item.qty ? (
+									<p className="mt-1 text-xs text-slate-400">
+										{item.qty} seat{item.qty === '1' ? '' : 's'}
+										{item.testMode ? ' · test mode' : ''}
+									</p>
+								) : null}
+								<div className="mt-2.5">
+									<p className="mb-1 text-[10px] font-semibold uppercase tracking-widest text-slate-500">
+										Purchase hash
+									</p>
+									<GenesisPurchaseHashCapsule
+										transactionHash={item.transactionHash}
+										timestampMs={item.timestampMs}
+									/>
+								</div>
+							</div>
+						))}
+					</div>
+				</div>
+			</div>
+		</div>
+	)
+}
+
+/** Vault proxy address capsule → CoNET explorer internal_txns tab (+ copy full address). */
 function GenesisVaultAddressCapsule({ address }: { address: string }) {
 	const [copied, setCopied] = useState(false)
 	const fullAddress = useMemo(() => {
@@ -61,9 +231,10 @@ function GenesisVaultAddressCapsule({ address }: { address: string }) {
 	}, [address])
 	if (!fullAddress) return null
 	const short = `${fullAddress.slice(0, 6)}…${fullAddress.slice(-4)}`
+	const explorerInternalTxnsUrl = `https://mainnet.conet.network/address/${fullAddress}?tab=internal_txns`
 
-	const openTxs = () => {
-		openExternalUrl(GENESIS_VAULT_EXPLORER_TXS_URL)
+	const openInternalTxns = () => {
+		openExternalUrl(explorerInternalTxnsUrl)
 	}
 
 	const copyAddress = async (e: React.MouseEvent) => {
@@ -82,9 +253,9 @@ function GenesisVaultAddressCapsule({ address }: { address: string }) {
 		<div className="mt-2 inline-flex max-w-full items-center overflow-hidden rounded-full border border-white/20 bg-white/15 text-white/90 backdrop-blur-sm">
 			<button
 				type="button"
-				onClick={openTxs}
+				onClick={openInternalTxns}
 				className="inline-flex min-w-0 items-center gap-1.5 py-1 pl-2.5 pr-1.5 font-mono text-[11px] font-semibold transition hover:bg-white/20"
-				aria-label={`Open vault ${short} transactions on CoNET Explorer`}
+				aria-label={`Open vault ${short} internal transactions on CoNET Explorer`}
 			>
 				<span className="truncate">{short}</span>
 				<ExternalLink className="h-3 w-3 shrink-0 opacity-80" strokeWidth={2} aria-hidden />
@@ -172,7 +343,7 @@ function shortAddr(addr: string): string {
 	return `${addr.slice(0, 6)}…${addr.slice(-4)}`
 }
 
-function statusChipClass(status: GenesisL0RedeemRecord['status']): string {
+function statusChipClass(status: GenesisL1RedeemRecord['status']): string {
 	switch (status) {
 		case 'pending':
 			return 'bg-amber-400/10 text-amber-100 border-amber-300/20'
@@ -205,10 +376,8 @@ export default function GenesisNodeReferralPage() {
 	const [snapshot, setSnapshot] = useState<GenesisMemberSnapshot | null>(null)
 	const [l0List, setL0List] = useState<GenesisDownstreamL0Item[]>([])
 	const [l1List, setL1List] = useState<GenesisDownstreamL1Item[]>([])
-	const [codes, setCodes] = useState<GenesisL0RedeemRecord[]>([])
 	const [l1Codes, setL1Codes] = useState<GenesisL1RedeemRecord[]>([])
 	const [loading, setLoading] = useState(false)
-	const [issuing, setIssuing] = useState(false)
 	const [issuingL1, setIssuingL1] = useState(false)
 	const [cancellingHash, setCancellingHash] = useState<string | null>(null)
 	const [claimCode, setClaimCode] = useState('')
@@ -216,17 +385,22 @@ export default function GenesisNodeReferralPage() {
 	const [l1SharePercent, setL1SharePercent] = useState('50')
 	const [copiedKey, setCopiedKey] = useState<string | null>(null)
 	const [error, setError] = useState('')
-	const [lastIssuedSecret, setLastIssuedSecret] = useState<string | null>(null)
 	const [lastIssuedL1Secret, setLastIssuedL1Secret] = useState<string | null>(null)
 	const [foundationDraft, setFoundationDraft] = useState('')
 	const [adminPayoutDraft, setAdminPayoutDraft] = useState('')
 	const [editingPayout, setEditingPayout] = useState<'foundation' | 'adminPayout' | null>(null)
 	const [savingPayout, setSavingPayout] = useState<'foundation' | 'adminPayout' | null>(null)
+	const [payoutDrawerOpen, setPayoutDrawerOpen] = useState(false)
+	const [payoutDrawerClosing, setPayoutDrawerClosing] = useState(false)
+	const [incomeOpen, setIncomeOpen] = useState(false)
+	const [income, setIncome] = useState<GenesisIncomeSnapshot | null>(null)
+	const [incomeLoading, setIncomeLoading] = useState(false)
+	const [incomeError, setIncomeError] = useState<string | null>(null)
 
-	const issueInFlightRef = useRef(false)
 	const issueL1InFlightRef = useRef(false)
 	const claimInFlightRef = useRef(false)
 	const payoutInFlightRef = useRef(false)
+	const payoutDrawerCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
 	useEffect(() => {
 		setShowFooter(false)
@@ -243,7 +417,6 @@ export default function GenesisNodeReferralPage() {
 			setSnapshot(null)
 			setL0List([])
 			setL1List([])
-			setCodes([])
 			setL1Codes([])
 			return
 		}
@@ -257,15 +430,10 @@ export default function GenesisNodeReferralPage() {
 				setAdminPayoutDraft(snap.defaultAdminPayout)
 			}
 			if (snap?.isAdmin) {
-				const [list, issued] = await Promise.all([
-					fetchGenesisL0List(eoa).catch(() => [] as GenesisDownstreamL0Item[]),
-					fetchGenesisL0RedeemCodesForIssuer(eoa).catch(() => [] as GenesisL0RedeemRecord[]),
-				])
+				const list = await fetchGenesisL0List(eoa).catch(() => [] as GenesisDownstreamL0Item[])
 				setL0List(list)
-				setCodes(issued)
 			} else {
 				setL0List([])
-				setCodes([])
 			}
 			if (snap?.isL0) {
 				const [children, issuedL1] = await Promise.all([
@@ -289,27 +457,30 @@ export default function GenesisNodeReferralPage() {
 		void reload()
 	}, [reload])
 
-	const handleIssue = useCallback(async () => {
-		if (issueInFlightRef.current || !snapshot?.isAdmin) return
-		if (!armor) {
-			setError('Unlock your wallet to sign.')
-			return
-		}
-		issueInFlightRef.current = true
-		setIssuing(true)
-		setError('')
-		try {
-			const issued = await issueGenesisL0RedeemCode({ issuerPrivateKeyArmor: armor })
-			setLastIssuedSecret(issued.secret)
-			Toast.show({ content: 'L0 redeem code created', position: 'center' })
-			await reload()
-		} catch (cause) {
-			setError(cause instanceof Error ? cause.message : 'Could not issue L0 redeem code.')
-		} finally {
-			issueInFlightRef.current = false
-			setIssuing(false)
-		}
-	}, [armor, reload, snapshot?.isAdmin])
+	const loadIncome = useCallback(
+		async (options: { force?: boolean } = {}) => {
+			if (!eoa || !ethers.isAddress(eoa)) {
+				setIncome(null)
+				setIncomeError(null)
+				return
+			}
+			setIncomeLoading(true)
+			const result = await fetchGenesisIncomeHistory(eoa, options)
+			if (result.ok) {
+				setIncome(result.snapshot)
+				setIncomeError(null)
+			} else {
+				setIncomeError(result.error)
+			}
+			setIncomeLoading(false)
+		},
+		[eoa],
+	)
+
+	useEffect(() => {
+		setIncome(eoa ? readCachedGenesisIncome(eoa) : null)
+		void loadIncome()
+	}, [eoa, loadIncome])
 
 	const handleIssueL1 = useCallback(async () => {
 		if (issueL1InFlightRef.current || !snapshot?.isL0) return
@@ -337,24 +508,6 @@ export default function GenesisNodeReferralPage() {
 			setIssuingL1(false)
 		}
 	}, [armor, l1SharePercent, reload, snapshot?.isL0])
-
-	const handleCancel = useCallback(
-		async (hash: string) => {
-			if (!armor || cancellingHash) return
-			setCancellingHash(hash)
-			setError('')
-			try {
-				await cancelGenesisL0RedeemCode({ issuerPrivateKeyArmor: armor, hash })
-				Toast.show({ content: 'Code cancelled', position: 'center' })
-				await reload()
-			} catch (cause) {
-				setError(cause instanceof Error ? cause.message : 'Could not cancel code.')
-			} finally {
-				setCancellingHash(null)
-			}
-		},
-		[armor, cancellingHash, reload],
-	)
 
 	const handleCancelL1 = useCallback(
 		async (hash: string) => {
@@ -464,6 +617,39 @@ export default function GenesisNodeReferralPage() {
 		[savingPayout, snapshot?.defaultAdminPayout, snapshot?.foundation],
 	)
 
+	const closePayoutDrawer = useCallback(() => {
+		if (payoutDrawerClosing || !payoutDrawerOpen) return
+		if (savingPayout) return
+		setPayoutDrawerClosing(true)
+		setEditingPayout(null)
+		if (snapshot) {
+			setFoundationDraft(snapshot.foundation)
+			setAdminPayoutDraft(snapshot.defaultAdminPayout)
+		}
+		if (payoutDrawerCloseTimerRef.current) clearTimeout(payoutDrawerCloseTimerRef.current)
+		payoutDrawerCloseTimerRef.current = setTimeout(() => {
+			setPayoutDrawerOpen(false)
+			setPayoutDrawerClosing(false)
+			payoutDrawerCloseTimerRef.current = null
+		}, 300)
+	}, [payoutDrawerClosing, payoutDrawerOpen, savingPayout, snapshot])
+
+	const openPayoutDrawer = useCallback(() => {
+		if (payoutDrawerClosing) return
+		if (payoutDrawerCloseTimerRef.current) {
+			clearTimeout(payoutDrawerCloseTimerRef.current)
+			payoutDrawerCloseTimerRef.current = null
+		}
+		setPayoutDrawerClosing(false)
+		setPayoutDrawerOpen(true)
+	}, [payoutDrawerClosing])
+
+	useEffect(() => {
+		return () => {
+			if (payoutDrawerCloseTimerRef.current) clearTimeout(payoutDrawerCloseTimerRef.current)
+		}
+	}, [])
+
 	const copyText = useCallback(async (key: string, text: string) => {
 		try {
 			await navigator.clipboard.writeText(text)
@@ -506,6 +692,8 @@ export default function GenesisNodeReferralPage() {
 				? 'L1 Evangelist'
 				: 'Not registered'
 
+	const earnedUsdcLabel = formatReferralUsdcAmount6(snapshot?.earnedUsdc6 ?? '0')
+
 	return (
 		<div className="fixed inset-0 z-[90] flex min-h-0 flex-col overflow-hidden bg-[#050b1d] text-slate-50">
 			<div
@@ -523,23 +711,63 @@ export default function GenesisNodeReferralPage() {
 					>
 						<div className="flex items-center justify-between">
 							<BeamioCircularBackButton onClick={() => navigate('/BountyBoard')} />
+							{snapshot?.isAdmin ? (
+								<div className="flex items-center gap-2">
+									<button
+										type="button"
+										onClick={openPayoutDrawer}
+										className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-indigo-200/20 bg-indigo-300/10 text-indigo-200 transition hover:bg-indigo-300/20"
+										aria-label="Payout addresses"
+										title="Payout addresses"
+									>
+										<Wallet className="h-4 w-4" aria-hidden />
+									</button>
+									<button
+										type="button"
+										onClick={() => navigate('/BountyBoard/genesis-referral/redeem')}
+										className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-indigo-200/20 bg-indigo-300/10 text-indigo-200 transition hover:bg-indigo-300/20"
+										aria-label="Manage L0 redeem codes"
+										title="Manage L0 redeem codes"
+									>
+										<TicketPlus className="h-4 w-4" aria-hidden />
+									</button>
+								</div>
+							) : null}
 						</div>
 						<header className="pb-7 pt-8">
 							<p className="text-xs font-semibold uppercase tracking-[0.18em] text-indigo-200">
 								Genesis Node
 							</p>
-							<div className="mt-2 flex items-center justify-between gap-3">
-								<h1 className="text-3xl font-semibold tracking-tight">Partnership</h1>
+							<div className="mt-2 flex items-start gap-3">
+								<div className="flex min-w-0 flex-1 items-center gap-2.5 pt-0.5">
+									<h1 className="shrink-0 text-3xl font-semibold tracking-tight">Partnership</h1>
+									{eoa && snapshot ? (
+										<span
+											className="shrink-0 rounded-full border border-indigo-200/20 bg-indigo-300/10 px-2.5 py-1 text-xs font-semibold text-indigo-100"
+											aria-label={`Current Genesis referral role: ${roleLabel}`}
+										>
+											{roleLabel}
+										</span>
+									) : null}
+								</div>
 								{eoa ? (
-									<span
-										className="shrink-0 rounded-full border border-indigo-200/20 bg-indigo-300/10 px-2.5 py-1 text-xs font-semibold text-indigo-100"
-										aria-label={`Current Genesis referral role: ${roleLabel}`}
+									<button
+										type="button"
+										onClick={() => setIncomeOpen(true)}
+										className="shrink-0 text-right"
+										aria-label={`Earned USDC $${earnedUsdcLabel}. Open income details.`}
+										title="Income details"
 									>
-										{roleLabel}
-									</span>
+										<p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-200">
+											Earned USDC
+										</p>
+										<p className="mt-1 text-3xl font-semibold tabular-nums text-white">
+											{loading && !snapshot ? '…' : `$${earnedUsdcLabel}`}
+										</p>
+									</button>
 								) : null}
 							</div>
-							<GenesisVaultAddressCapsule address={CONET_GENESIS_NODE_REFERRAL_VAULT} />
+							<GenesisVaultAddressCapsule address={GENESIS_PARTNERSHIP_VAULT_CAPSULE_ADDRESS} />
 						</header>
 
 						{!eoa ? (
@@ -559,62 +787,35 @@ export default function GenesisNodeReferralPage() {
 								</div>
 							) : null}
 
-							<section className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-								<div className="flex items-center gap-2">
-									<Wallet className="h-4 w-4 text-[#7aa2ff]" aria-hidden />
-									<h2 className="text-sm font-bold text-slate-50">Your role</h2>
-								</div>
-								<div className="mt-3 flex flex-wrap gap-2">
-									{snapshot?.isAdmin ? (
-										<span className="rounded-full border border-indigo-200/20 bg-indigo-300/10 px-2.5 py-1 text-[11px] font-semibold text-indigo-100">
-											Admin
-										</span>
-									) : null}
-									{snapshot?.isL0 ? (
-										<span className="rounded-full border border-purple-200/20 bg-purple-300/10 px-2.5 py-1 text-[11px] font-semibold text-purple-100">
-											L0
-										</span>
-									) : null}
-									{snapshot?.isL1 ? (
-										<span className="rounded-full border border-emerald-200/20 bg-emerald-300/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-100">
-											L1 Evangelist
-										</span>
-									) : null}
-									{!snapshot?.isAdmin && !snapshot?.isL0 && !snapshot?.isL1 ? (
-										<span className="rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-[11px] font-semibold text-slate-300">
-											Not registered
-										</span>
-									) : null}
-								</div>
-								<p className="mt-2 font-mono text-xs text-slate-400">{shortAddr(eoa)}</p>
-								{snapshot?.isL0 && snapshot.parentAdmin ? (
-									<div className="mt-3 flex min-w-0 flex-wrap items-center gap-2 text-xs text-slate-400">
-										<span className="shrink-0">Parent admin</span>
-										<BeamioTagCapsule address={snapshot.parentAdmin} />
-									</div>
-								) : null}
-								{snapshot?.isL1 && snapshot.parentL0 ? (
-									<div className="mt-3 space-y-2 text-xs text-slate-400">
-										<div className="flex min-w-0 flex-wrap items-center gap-2">
-											<span className="shrink-0">Parent L0</span>
-											<BeamioTagCapsule address={snapshot.parentL0} />
+							{eoa ? (
+								<section className="rounded-2xl border border-emerald-200/20 bg-emerald-300/[0.08] p-4">
+									<button
+										type="button"
+										onClick={() => {
+											setIncomeOpen(true)
+											void loadIncome({ force: true })
+										}}
+										className="flex w-full items-center justify-between gap-3 text-left"
+										aria-label="Open income details"
+									>
+										<div className="min-w-0">
+											<p className="text-sm font-bold text-emerald-50">Income details</p>
+											<p className="mt-0.5 text-xs text-emerald-100/70">
+												{(income?.items.length ?? 0) === 0
+													? 'No purchase credits yet'
+													: `${income?.items.length} purchase hash${
+															(income?.items.length ?? 0) === 1 ? '' : 'es'
+														}`}
+											</p>
 										</div>
-										<p>
-											Share of L0 pool:{' '}
-											<span className="font-semibold text-slate-200">
-												{ratioBpsToPercentLabel(snapshot.ratioBps)}
-											</span>
-										</p>
-									</div>
-								) : null}
-								<p className="mt-3 text-sm text-slate-200">
-									Earned:{' '}
-									<span className="font-semibold tabular-nums text-emerald-200">
-										$
-										{formatReferralUsdcAmount6(snapshot?.earnedUsdc6 ?? '0')}
-									</span>
-								</p>
-							</section>
+										{incomeLoading ? (
+											<Loader2 className="h-4 w-4 shrink-0 animate-spin text-emerald-200" aria-hidden />
+										) : (
+											<Wallet className="h-4 w-4 shrink-0 text-emerald-200" aria-hidden />
+										)}
+									</button>
+								</section>
+							) : null}
 
 							{snapshot?.isL1 && evangelistUrl ? (
 								<section className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
@@ -808,110 +1009,6 @@ export default function GenesisNodeReferralPage() {
 								<>
 									<section className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
 										<div className="flex items-center gap-2">
-											<TicketPlus className="h-4 w-4 text-indigo-200" aria-hidden />
-											<h2 className="text-sm font-bold text-slate-50">Issue L0 redeem</h2>
-										</div>
-										<p className="mt-1 text-xs text-slate-400">
-											The full code is stored on this device only. Only its hash is written on CoNET.
-										</p>
-										<button
-											type="button"
-											onClick={() => void handleIssue()}
-											disabled={issuing || !armor}
-											aria-busy={issuing}
-											className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#1562f0] px-3 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
-										>
-											{issuing ? (
-												<Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-											) : (
-												<TicketPlus className="h-4 w-4" aria-hidden />
-											)}
-											{issuing ? 'Creating…' : 'Create L0 redeem code'}
-										</button>
-										{lastIssuedSecret ? (
-											<div className="mt-3 rounded-xl border border-emerald-300/20 bg-emerald-400/10 p-3">
-												<p className="text-[10px] font-bold uppercase tracking-widest text-emerald-200">
-													New code
-												</p>
-												<p className="mt-1 break-all font-mono text-xs text-emerald-50">
-													{lastIssuedSecret}
-												</p>
-												<button
-													type="button"
-													onClick={() => void copyText('last', lastIssuedSecret)}
-													className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-200"
-												>
-													{copiedKey === 'last' ? (
-														<Check className="h-3.5 w-3.5 text-emerald-400" aria-hidden />
-													) : (
-														<Copy className="h-3.5 w-3.5" aria-hidden />
-													)}
-													Copy code
-												</button>
-											</div>
-										) : null}
-
-										<ul className="mt-4 space-y-2">
-											{codes.length === 0 ? (
-												<li className="text-xs text-slate-500">No issued codes yet.</li>
-											) : (
-												codes.map((row) => (
-													<li
-														key={row.hash}
-														className="rounded-xl border border-white/10 bg-white/[0.03] p-3"
-													>
-														<div className="flex items-start justify-between gap-2">
-															<div className="min-w-0">
-																<span
-																	className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase ${statusChipClass(row.status)}`}
-																>
-																	{row.status}
-																</span>
-																<p className="mt-1 break-all font-mono text-[11px] text-slate-300">
-																	{row.secret ?? `${shortAddr(row.hash)} (secret not on this device)`}
-																</p>
-															</div>
-															<div className="flex shrink-0 items-center gap-1">
-																{row.secret ? (
-																	<button
-																		type="button"
-																		onClick={() => void copyText(row.hash, row.secret!)}
-																		className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/15 bg-white/10 text-slate-200"
-																		aria-label="Copy redeem code"
-																	>
-																		{copiedKey === row.hash ? (
-																			<Check className="h-3.5 w-3.5 text-emerald-400" aria-hidden />
-																		) : (
-																			<Copy className="h-3.5 w-3.5" aria-hidden />
-																		)}
-																	</button>
-																) : null}
-																{row.status === 'pending' ? (
-																	<button
-																		type="button"
-																		onClick={() => void handleCancel(row.hash)}
-																		disabled={cancellingHash === row.hash}
-																		aria-busy={cancellingHash === row.hash}
-																		className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-red-300/20 bg-red-400/10 text-red-300"
-																		aria-label="Cancel redeem code"
-																	>
-																		{cancellingHash === row.hash ? (
-																			<Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-																		) : (
-																			<Ban className="h-3.5 w-3.5" aria-hidden />
-																		)}
-																	</button>
-																) : null}
-															</div>
-														</div>
-													</li>
-												))
-											)}
-										</ul>
-									</section>
-
-									<section className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-										<div className="flex items-center gap-2">
 											<Users className="h-4 w-4 text-indigo-200" aria-hidden />
 											<h2 className="text-sm font-bold text-slate-50">Downstream L0</h2>
 											<span className="ml-auto text-xs font-semibold tabular-nums text-slate-500">
@@ -944,134 +1041,6 @@ export default function GenesisNodeReferralPage() {
 												))}
 											</div>
 										)}
-									</section>
-
-									<section className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-										<h2 className="text-sm font-bold text-slate-50">Payout addresses</h2>
-										<p className="mt-1 text-xs text-slate-400">
-											Tap the edit icon on a BeamioTag capsule to change Foundation or Default admin payout
-											(gasless).
-										</p>
-
-										<div className="mt-4 space-y-3">
-											<div>
-												<p className="text-xs font-semibold text-slate-400">Foundation</p>
-												{editingPayout === 'foundation' ? (
-													<div className="mt-2 space-y-2">
-														<input
-															id="genesis-foundation"
-															type="text"
-															value={foundationDraft}
-															onChange={(e) => setFoundationDraft(e.target.value)}
-															autoComplete="off"
-															spellCheck={false}
-															placeholder="0x…"
-															className="w-full rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2.5 font-mono text-xs text-slate-50 placeholder:text-slate-500"
-														/>
-														<div className="flex gap-2">
-															<button
-																type="button"
-																onClick={() => cancelPayoutEdit('foundation')}
-																disabled={savingPayout !== null}
-																className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm font-semibold text-slate-200 disabled:opacity-50"
-															>
-																<X className="h-4 w-4" aria-hidden />
-																Cancel
-															</button>
-															<button
-																type="button"
-																onClick={() => void handleSaveFoundation()}
-																disabled={
-																	savingPayout !== null ||
-																	!armor ||
-																	!ethers.isAddress(foundationDraft.trim()) ||
-																	foundationDraft.trim().toLowerCase() ===
-																		(snapshot.foundation ?? '').toLowerCase()
-																}
-																aria-busy={savingPayout === 'foundation'}
-																className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#1562f0] px-3 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
-															>
-																{savingPayout === 'foundation' ? (
-																	<Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-																) : (
-																	<Check className="h-4 w-4" aria-hidden />
-																)}
-																{savingPayout === 'foundation' ? 'Saving…' : 'Save'}
-															</button>
-														</div>
-													</div>
-												) : (
-													<div className="mt-2">
-														<BeamioTagCapsule
-															address={snapshot.foundation}
-															onEdit={() => {
-																setFoundationDraft(snapshot.foundation)
-																setEditingPayout('foundation')
-															}}
-														/>
-													</div>
-												)}
-											</div>
-
-											<div>
-												<p className="text-xs font-semibold text-slate-400">Default admin payout</p>
-												{editingPayout === 'adminPayout' ? (
-													<div className="mt-2 space-y-2">
-														<input
-															id="genesis-admin-payout"
-															type="text"
-															value={adminPayoutDraft}
-															onChange={(e) => setAdminPayoutDraft(e.target.value)}
-															autoComplete="off"
-															spellCheck={false}
-															placeholder="0x…"
-															className="w-full rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2.5 font-mono text-xs text-slate-50 placeholder:text-slate-500"
-														/>
-														<div className="flex gap-2">
-															<button
-																type="button"
-																onClick={() => cancelPayoutEdit('adminPayout')}
-																disabled={savingPayout !== null}
-																className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm font-semibold text-slate-200 disabled:opacity-50"
-															>
-																<X className="h-4 w-4" aria-hidden />
-																Cancel
-															</button>
-															<button
-																type="button"
-																onClick={() => void handleSaveAdminPayout()}
-																disabled={
-																	savingPayout !== null ||
-																	!armor ||
-																	!ethers.isAddress(adminPayoutDraft.trim()) ||
-																	adminPayoutDraft.trim().toLowerCase() ===
-																		(snapshot.defaultAdminPayout ?? '').toLowerCase()
-																}
-																aria-busy={savingPayout === 'adminPayout'}
-																className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#1562f0] px-3 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
-															>
-																{savingPayout === 'adminPayout' ? (
-																	<Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-																) : (
-																	<Check className="h-4 w-4" aria-hidden />
-																)}
-																{savingPayout === 'adminPayout' ? 'Saving…' : 'Save'}
-															</button>
-														</div>
-													</div>
-												) : (
-													<div className="mt-2">
-														<BeamioTagCapsule
-															address={snapshot.defaultAdminPayout}
-															onEdit={() => {
-																setAdminPayoutDraft(snapshot.defaultAdminPayout)
-																setEditingPayout('adminPayout')
-															}}
-														/>
-													</div>
-												)}
-											</div>
-										</div>
 									</section>
 								</>
 							) : null}
@@ -1109,6 +1078,195 @@ export default function GenesisNodeReferralPage() {
 					</div>
 				</div>
 			</div>
+
+			{/* Admin payout addresses — bottom sheet (opened from top-right Wallet control). */}
+			{snapshot?.isAdmin ? (
+				<div
+					className={[
+						'fixed inset-0 z-[100]',
+						payoutDrawerOpen && !payoutDrawerClosing
+							? 'pointer-events-auto'
+							: 'pointer-events-none',
+					].join(' ')}
+				>
+					<div
+						className={[
+							'absolute inset-0 bg-black/50 transition-opacity duration-300 ease-out',
+							payoutDrawerOpen && !payoutDrawerClosing
+								? 'opacity-100'
+								: 'opacity-0 pointer-events-none',
+						].join(' ')}
+						onClick={closePayoutDrawer}
+						aria-hidden={!payoutDrawerOpen || payoutDrawerClosing}
+					/>
+					<div
+						className={[
+							'absolute inset-x-0 bottom-0 transition-transform duration-300 ease-out will-change-transform',
+							payoutDrawerOpen && !payoutDrawerClosing
+								? 'translate-y-0'
+								: 'translate-y-full pointer-events-none',
+						].join(' ')}
+						onTouchMove={(e) => e.stopPropagation()}
+						role="dialog"
+						aria-modal="true"
+						aria-label="Payout addresses"
+					>
+						<div className="max-h-[calc(100dvh-env(safe-area-inset-top)-12px)] overflow-y-auto rounded-t-[22px] border border-white/10 bg-[#0b1224] pb-[env(safe-area-inset-bottom)] shadow-2xl">
+							<div className="flex justify-center pb-1 pt-2">
+								<div className="h-1 w-10 rounded-full bg-white/20" />
+							</div>
+							<div className="relative flex items-center justify-center px-4 pb-3 pt-1">
+								<button
+									type="button"
+									tabIndex={-1}
+									onClick={closePayoutDrawer}
+									disabled={savingPayout !== null}
+									className="absolute left-4 inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-slate-200 transition hover:bg-white/15 disabled:opacity-50"
+									aria-label="Close"
+								>
+									<X className="h-4 w-4" aria-hidden />
+								</button>
+								<h2 className="text-sm font-bold text-slate-50">Payout addresses</h2>
+							</div>
+							<div className="px-5 pb-6">
+								<p className="text-xs text-slate-400">
+									Tap the edit icon on a BeamioTag capsule to change Foundation or Default admin payout
+									(gasless).
+								</p>
+								<div className="mt-4 space-y-4">
+									<div>
+										<p className="text-xs font-semibold text-slate-400">Foundation</p>
+										{editingPayout === 'foundation' ? (
+											<div className="mt-2 space-y-2">
+												<input
+													id="genesis-foundation"
+													type="text"
+													value={foundationDraft}
+													onChange={(e) => setFoundationDraft(e.target.value)}
+													autoComplete="off"
+													spellCheck={false}
+													placeholder="0x…"
+													className="w-full rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2.5 font-mono text-xs text-slate-50 placeholder:text-slate-500"
+												/>
+												<div className="flex gap-2">
+													<button
+														type="button"
+														onClick={() => cancelPayoutEdit('foundation')}
+														disabled={savingPayout !== null}
+														className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm font-semibold text-slate-200 disabled:opacity-50"
+													>
+														<X className="h-4 w-4" aria-hidden />
+														Cancel
+													</button>
+													<button
+														type="button"
+														onClick={() => void handleSaveFoundation()}
+														disabled={
+															savingPayout !== null ||
+															!armor ||
+															!ethers.isAddress(foundationDraft.trim()) ||
+															foundationDraft.trim().toLowerCase() ===
+																(snapshot.foundation ?? '').toLowerCase()
+														}
+														aria-busy={savingPayout === 'foundation'}
+														className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#1562f0] px-3 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+													>
+														{savingPayout === 'foundation' ? (
+															<Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+														) : (
+															<Check className="h-4 w-4" aria-hidden />
+														)}
+														{savingPayout === 'foundation' ? 'Saving…' : 'Save'}
+													</button>
+												</div>
+											</div>
+										) : (
+											<div className="mt-2">
+												<BeamioTagCapsule
+													address={snapshot.foundation}
+													onEdit={() => {
+														setFoundationDraft(snapshot.foundation)
+														setEditingPayout('foundation')
+													}}
+												/>
+											</div>
+										)}
+									</div>
+
+									<div>
+										<p className="text-xs font-semibold text-slate-400">Default admin payout</p>
+										{editingPayout === 'adminPayout' ? (
+											<div className="mt-2 space-y-2">
+												<input
+													id="genesis-admin-payout"
+													type="text"
+													value={adminPayoutDraft}
+													onChange={(e) => setAdminPayoutDraft(e.target.value)}
+													autoComplete="off"
+													spellCheck={false}
+													placeholder="0x…"
+													className="w-full rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2.5 font-mono text-xs text-slate-50 placeholder:text-slate-500"
+												/>
+												<div className="flex gap-2">
+													<button
+														type="button"
+														onClick={() => cancelPayoutEdit('adminPayout')}
+														disabled={savingPayout !== null}
+														className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm font-semibold text-slate-200 disabled:opacity-50"
+													>
+														<X className="h-4 w-4" aria-hidden />
+														Cancel
+													</button>
+													<button
+														type="button"
+														onClick={() => void handleSaveAdminPayout()}
+														disabled={
+															savingPayout !== null ||
+															!armor ||
+															!ethers.isAddress(adminPayoutDraft.trim()) ||
+															adminPayoutDraft.trim().toLowerCase() ===
+																(snapshot.defaultAdminPayout ?? '').toLowerCase()
+														}
+														aria-busy={savingPayout === 'adminPayout'}
+														className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#1562f0] px-3 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+													>
+														{savingPayout === 'adminPayout' ? (
+															<Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+														) : (
+															<Check className="h-4 w-4" aria-hidden />
+														)}
+														{savingPayout === 'adminPayout' ? 'Saving…' : 'Save'}
+													</button>
+												</div>
+											</div>
+										) : (
+											<div className="mt-2">
+												<BeamioTagCapsule
+													address={snapshot.defaultAdminPayout}
+													onEdit={() => {
+														setAdminPayoutDraft(snapshot.defaultAdminPayout)
+														setEditingPayout('adminPayout')
+													}}
+												/>
+											</div>
+										)}
+									</div>
+								</div>
+							</div>
+						</div>
+					</div>
+				</div>
+			) : null}
+
+			{incomeOpen ? (
+				<GenesisIncomeDetailPanel
+					earnedUsdc6={snapshot?.earnedUsdc6 ?? '0'}
+					items={income?.items ?? []}
+					loading={incomeLoading}
+					error={incomeError}
+					onClose={() => setIncomeOpen(false)}
+				/>
+			) : null}
 		</div>
 	)
 }

@@ -1000,25 +1000,27 @@ export async function fetchGenesisIncomeHistory(
 				}
 			}
 			const items: GenesisIncomeItem[] = body.items
-				.map((row) => {
+				.flatMap((row): GenesisIncomeItem[] => {
 					const role = String(row.role ?? '') as GenesisIncomeRole
-					if (!['l0', 'l1', 'admin', 'foundation'].includes(role)) return null
+					if (!['l0', 'l1', 'admin', 'foundation'].includes(role)) return []
 					const transactionHash = String(row.transactionHash ?? '').trim()
-					if (!/^0x[0-9a-fA-F]{64}$/.test(transactionHash)) return null
-					return {
-						operationId: String(row.operationId ?? ''),
-						transactionHash,
-						bindTxHash: row.bindTxHash ?? null,
-						lockMintTxHash: row.lockMintTxHash ?? null,
-						timestampMs: Number(row.timestampMs) || 0,
-						amountUsdc6: String(row.amountUsdc6 ?? '0'),
-						role,
-						qty: row.qty != null ? String(row.qty) : undefined,
-						testMode: Boolean(row.testMode),
-						buyer: row.buyer && ethers.isAddress(row.buyer) ? ethers.getAddress(row.buyer) : undefined,
-					} satisfies GenesisIncomeItem
+					if (!/^0x[0-9a-fA-F]{64}$/.test(transactionHash)) return []
+					return [
+						{
+							operationId: String(row.operationId ?? ''),
+							transactionHash,
+							bindTxHash: row.bindTxHash ?? null,
+							lockMintTxHash: row.lockMintTxHash ?? null,
+							timestampMs: Number(row.timestampMs) || 0,
+							amountUsdc6: String(row.amountUsdc6 ?? '0'),
+							role,
+							qty: row.qty != null ? String(row.qty) : undefined,
+							testMode: Boolean(row.testMode),
+							buyer:
+								row.buyer && ethers.isAddress(row.buyer) ? ethers.getAddress(row.buyer) : undefined,
+						},
+					]
 				})
-				.filter((row): row is GenesisIncomeItem => row != null)
 				.sort((a, b) => b.timestampMs - a.timestampMs)
 
 			const snapshot: GenesisIncomeSnapshot = {

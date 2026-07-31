@@ -15,6 +15,8 @@ import { useDaemonContext } from "@/providers/DaemonProvider"
 import { checkSign, getKeysFromCoNETPGPSC, makeMessage, dedupeChatsByAddress, refreshChatRoutes } from '@/services/chat' 
 import {searchUsername, storeSystemData} from '@/services/beamio'
 import { tu } from '@/locale/beamioLocale'
+import { chatShareLinkListPreview } from '@/utils/chatShareLinkPreview'
+import { chatGenericLinkListPreview } from '@/utils/chatGenericLinkPreview'
 
 // 注意：不再接受 `list` prop。ChatList 内部直接从 useDaemonContext().profiles[0].chats
 // 读取并通过 useMemo 派生 items，避免与 profile.chats 出现两个数据源不一致的风险
@@ -338,7 +340,13 @@ export default function ChatList({
             const noRoute = !(it.chatData?.routersArmoreds?.trim())
 
             const isFailed = last?.from === "me" && last?.status === "failed"
-            const subtitle = isFailed ? "Message Send Failure" : (last?.text?.trim() || "")
+            const rawLast = last?.text?.trim() || ""
+            const sharePreview = rawLast ? chatShareLinkListPreview(rawLast) : null
+            const genericPreview =
+              !sharePreview && rawLast ? chatGenericLinkListPreview(rawLast) : null
+            const subtitle = isFailed
+              ? "Message Send Failure"
+              : sharePreview || genericPreview || rawLast
 
             return (
               <button

@@ -46,7 +46,18 @@ import { fiatPrefix } from '@/services/currency'
 import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
 import { MessageSendReceiveCard } from "./components/messageSendReceiveCard"
 import { AaMultisigChatRequestCard } from '@/components/chat/AaMultisigChatRequestCard'
+import { ChatShareLinkPreviewCard } from '@/components/chat/ChatShareLinkPreviewCard'
+import { ChatGenericLinkPreviewCard } from '@/components/chat/ChatGenericLinkPreviewCard'
 import { parseAaMultisigChatPreview } from '@/utils/aaMultisigChatPreview'
+import {
+	findBeamioShareUrlInText,
+	isPrimarilyBeamioShareLinkMessage,
+	resolveBeamioShareInAppNavigation,
+} from '@/utils/chatShareLinkPreview'
+import {
+	findHttpUrlInText,
+	isPrimarilyHttpUrlMessage,
+} from '@/utils/chatGenericLinkPreview'
 import { ingestAaMultisigFromChat } from '@/utils/aaMultisigIngest'
 import { getAaMultisigTaskAny } from '@/utils/aaMultisigLocalStore'
 import {
@@ -1435,6 +1446,16 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 										const multisigPreview = parseAaMultisigChatPreview(m.text)
 										const hasMultisigCard = !!multisigPreview
 										const hasCard = !!m.paymentCard
+										const shareUrl =
+											!hasMultisigCard && !hasCard && isPrimarilyBeamioShareLinkMessage(m.text)
+												? findBeamioShareUrlInText(m.text)
+												: null
+										const hasShareLinkCard = !!shareUrl
+										const genericUrl =
+											!hasMultisigCard && !hasCard && !hasShareLinkCard && isPrimarilyHttpUrlMessage(m.text)
+												? findHttpUrlInText(m.text)
+												: null
+										const hasGenericLinkCard = !!genericUrl
 
 										return (
 										<motion.div
@@ -1702,6 +1723,57 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 															setMessages(prev => prev.filter(x => x.id !== m.id))
 															}}
 														/>
+														</div>
+													)}
+												</div>
+											) : hasShareLinkCard && shareUrl ? (
+												<div className="relative">
+													<ChatShareLinkPreviewCard
+														shareUrl={shareUrl}
+														timeLabel={fmtTime(getMsgTs(m))}
+														isMe={isMe}
+														onOpen={() => {
+															const nav = resolveBeamioShareInAppNavigation(shareUrl)
+															if (nav) {
+																navigate({ pathname: nav.pathname, search: nav.search })
+																return
+															}
+															void openExternalUrl(shareUrl)
+														}}
+													/>
+													{isMe && (
+														<div className="absolute -bottom-2 -right-2">
+															<BubbleCornerStatus
+																status={m.status}
+																onRetry={() => {
+																	if (m.status !== "failed") return
+																	setText(m.text)
+																	setMessages(prev => prev.filter(x => x.id !== m.id))
+																}}
+															/>
+														</div>
+													)}
+												</div>
+											) : hasGenericLinkCard && genericUrl ? (
+												<div className="relative">
+													<ChatGenericLinkPreviewCard
+														url={genericUrl}
+														timeLabel={fmtTime(getMsgTs(m))}
+														isMe={isMe}
+														onOpen={() => {
+															void openExternalUrl(genericUrl)
+														}}
+													/>
+													{isMe && (
+														<div className="absolute -bottom-2 -right-2">
+															<BubbleCornerStatus
+																status={m.status}
+																onRetry={() => {
+																	if (m.status !== "failed") return
+																	setText(m.text)
+																	setMessages(prev => prev.filter(x => x.id !== m.id))
+																}}
+															/>
 														</div>
 													)}
 												</div>

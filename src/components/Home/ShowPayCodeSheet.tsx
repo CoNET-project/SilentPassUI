@@ -25,18 +25,11 @@ function formatPayRelayCountdown(secondsLeft: number): string {
 	return `${m}:${r.toString().padStart(2, '0')}`
 }
 
-type ProfileLike = {
-	privateKeyArmor?: string
-	mnemonicPhrase?: string
-	aaAccount?: string
-	keyID?: string
-}
-
 type ShowPayCodeSheetProps = {
 	isOpen: boolean
 	onClose: () => void
-	profile: ProfileLike | null | undefined
-	setProfiles: (updater: any) => void
+	profile: profile | null | undefined
+	setProfiles: React.Dispatch<React.SetStateAction<profile[]>>
 }
 
 /** OpenContainer pay QR for POS scan / coupon burn — same payload as Home Show Pay Code. */
@@ -139,10 +132,7 @@ export default function ShowPayCodeSheet({
 			setPayRelayQRPayload(null)
 			setSignError(null)
 			try {
-				const aaAccount = await ensureConetAaForProfileAndPersist(
-					{ ...profile, privateKeyArmor },
-					setProfiles,
-				)
+				const aaAccount = await ensureConetAaForProfileAndPersist(profile, setProfiles)
 				if (!aaAccount) throw new Error('CoNET Smart Account is not available')
 				const payload = await signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpenOnConet(
 					{ privateKeyArmor, aaAccount },

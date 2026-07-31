@@ -32,6 +32,8 @@ const LEDGER_ICON_CLASS = `${ICON_CLASS} origin-center scale-[1.15]`
 /** 未缩放内容约 34px 高 × FOOTER_BAR_SCALE，用于与右侧 Search 垂直居中对齐 */
 const FOOTER_BAR_LAYOUT_W_PX = 210
 const FOOTER_BAR_SCALE = 1.28
+/** Hit box must match visual size after CSS scale (layout box stays pre-transform). */
+const FOOTER_BAR_VISUAL_W_PX = Math.round(FOOTER_BAR_LAYOUT_W_PX * FOOTER_BAR_SCALE)
 const FOOTER_BAR_VISUAL_H_PX = Math.round(34 * FOOTER_BAR_SCALE)
 const SLOT_H = 'h-6'
 
@@ -106,25 +108,21 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 			return
 		}
 
-		// Already showing — do not reset to HIDE_Y (re-entry anim causes perceived page jitter).
-		if (wasVisible) {
-			barControls.set({ y: 0, opacity: 1 })
-			return
-		}
+		// Always land on interactive y=0 immediately (avoids mid-slide dead taps).
+		barControls.set({ y: 0, opacity: 1 })
+		if (wasVisible) return
 
-		// ✅ 显示：从下方滑入，无 overshoot/回落
-		barControls.set({ y: HIDE_Y, opacity: 0 })
-
+		// Soft fade-in only; keep y at 0 so hit targets stay under the finger.
+		barControls.set({ y: 0, opacity: 0 })
 		await barControls.start({
-			y: [HIDE_Y, 0],
-			opacity: [0, 1],
+			opacity: 1,
 			transition: {
-				duration: 0.32,
+				duration: 0.22,
 				ease: [0.2, 0.8, 0.2, 1]
 			}
 		})
-
 		if (cancelled) return
+		barControls.set({ y: 0, opacity: 1 })
 	}
 
 	run()
@@ -271,6 +269,14 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 		return 'home'
 	}, [pathname])
 
+	const scrollMainContentToTop = () => {
+		if (typeof document === 'undefined') return
+		document.querySelectorAll<HTMLElement>('.overflow-y-auto, .overflow-y-scroll').forEach((node) => {
+			if (node.scrollTop > 0) node.scrollTop = 0
+		})
+		window.scrollTo(0, 0)
+	}
+
 	const go = (k: TabKey) => {
 		const el = document.activeElement as HTMLElement | null
 		el?.blur()
@@ -281,6 +287,19 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 		}
 		if (pathname.startsWith('/chat')) {
 			setMessageCount(0)
+		}
+
+		const p = (pathname || '/').toLowerCase()
+		const alreadyOnMainTab =
+			(k === '/history' && (p === '/' || p.startsWith('/?'))) ||
+			(k === '/wallet' && (p === '/wallet' || p.startsWith('/wallet?'))) ||
+			(k === '/settings' && (p === '/discover' || p.startsWith('/discover?'))) ||
+			(k === '/chat' && (p === '/chat' || p.startsWith('/chat?'))) ||
+			(k === '/pay' && (p === '/bountyboard' || p.startsWith('/bountyboard?')))
+
+		if (alreadyOnMainTab) {
+			scrollMainContentToTop()
+			return
 		}
 
 		if (k === '/history') {
@@ -561,17 +580,17 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 				visibility: visible ? 'visible' : 'hidden',
 			}}
 		>
-			 {/* ✅ 玻璃层：左侧 tab bar（布局宽 × scale 控制视觉长度）；右侧 Search 同行 flex 垂直居中 */}
+			 {/* ✅ 玻璃层：hit box = visual size after scale；内层再 scale，避免右侧 tab 点到空白 */}
 			<div
 				className={[
-					'flex w-max shrink-0 flex-col justify-end overflow-visible',
+					'relative shrink-0 overflow-visible',
 					visible ? 'pointer-events-auto' : 'pointer-events-none',
 				].join(' ')}
-				style={{ height: FOOTER_BAR_VISUAL_H_PX }}
+				style={{ width: FOOTER_BAR_VISUAL_W_PX, height: FOOTER_BAR_VISUAL_H_PX }}
 			>
 			<div
 				className={[
-					'shrink-0 origin-bottom-left',
+					'absolute bottom-0 left-0 origin-bottom-left',
 					visible ? 'pointer-events-auto' : 'pointer-events-none',
 				].join(' ')}
 				style={{

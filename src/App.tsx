@@ -1,5 +1,5 @@
 // App.tsx
-import { useCallback, useEffect, useRef, useState, useLayoutEffect } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, useLayoutEffect } from "react"
 import { Route, Routes, useNavigate, useLocation } from "react-router-dom"
 import { useDaemonContext } from "./providers/DaemonProvider"
 import { useBeamioTagDatabase } from "./providers/BeamioTagDatabaseProvider"
@@ -461,10 +461,25 @@ function AppShell() {
     useState<"BeamioContactProfilePreview" | ""|'支付'>("")
   const [payFocusAmountOnMount, setPayFocusAmountOnMount] = useState(false)
 
-  // 当 showFooter 为 true 或路由变化时恢复 footer 可见，避免 scroll 隐藏后、页面切换时 footerVisible 未重置
+	// 当 showFooter 为 true 或路由变化时恢复 footer 可见，避免 scroll 隐藏后、页面切换时 footerVisible 未重置
   useLayoutEffect(() => {
     if (showFooter) setFooterVisible(true)
   }, [showFooter, pathname])
+
+	/** Main Footer tabs: keep global bar always tappable (no scroll-hide). Sub-routes use setShowFooter(false). */
+	const isGlobalBarPinRoute = useMemo(() => {
+		const p = (pathname || '/').toLowerCase()
+		if (p === '/' || p.startsWith('/?')) return true
+		if (p === '/wallet' || p.startsWith('/wallet?')) return true
+		if (p === '/discover' || p.startsWith('/discover?')) return true
+		if (p === '/chat' || p.startsWith('/chat?')) return true
+		if (p === '/bountyboard' || p.startsWith('/bountyboard?')) return true
+		return false
+	}, [pathname])
+
+	useEffect(() => {
+		if (isGlobalBarPinRoute) setFooterVisible(true)
+	}, [isGlobalBarPinRoute])
 
 	/** 消息唯一键：优先 sendId，否则 from_timestamp，用于去重与角标 */
 	const getMsgKey = (raw: any) => {
@@ -715,6 +730,14 @@ function AppShell() {
 					}
 				}
 
+				// Main tab routes: never scroll-hide the global bar (BountyBoard / Home / … taps must stay live).
+				if (isGlobalBarPinRoute) {
+					commitFooterVisible(true)
+					lastTopMap.set(src, getScrollTop(src))
+					ticking = false
+					return
+				}
+
 				const top = getScrollTop(src)
 				const lastTop = lastTopMap.get(src) ?? top
 				const delta = top - lastTop
@@ -749,7 +772,7 @@ function AppShell() {
 			window.removeEventListener("scroll", onAnyScroll)
 			document.removeEventListener("scroll", onAnyScroll, true)
 		}
-	}, [])
+	}, [isGlobalBarPinRoute])
 
 	const init = async (source = 'mount', temp?: encrypt_keys_object) => {
 		publishNativePwaLog('info', `[AppShell] init start (${source})`)

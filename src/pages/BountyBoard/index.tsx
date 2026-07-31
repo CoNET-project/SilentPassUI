@@ -69,7 +69,7 @@ function formatConetUsdcDisplay(balance: string): string {
 export default function BountyBoard() {
 	const navigate = useNavigate()
 	const { opacity: capsuleOpacity, onScroll: onCapsuleScroll, setRef: setScrollRef } = useScrollCapsuleOpacity(true)
-	const { profiles, currencyData, beamio } = useDaemonContext()
+	const { profiles, currencyData, beamio, setShowFooter } = useDaemonContext()
 	const eoa = profiles?.[0]?.keyID?.trim() ?? ''
 	const aaAccount = profiles?.[0]?.aaAccount?.trim() ?? ''
 	const profileCurrency = (beamio?.currency ?? 'USD') as ICurrency
@@ -112,6 +112,11 @@ export default function BountyBoard() {
 	const [isGenesisReferralAdmin, setIsGenesisReferralAdmin] = useState(false)
 	const [isGenesisL0, setIsGenesisL0] = useState(false)
 	const [isGenesisL1, setIsGenesisL1] = useState(false)
+
+	// Main tab: always keep global Footer (detail pages hide it and restore on unmount).
+	useEffect(() => {
+		setShowFooter(true)
+	}, [setShowFooter])
 
 	useEffect(() => {
 		if (!eoa) {

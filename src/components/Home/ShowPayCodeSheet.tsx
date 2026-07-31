@@ -12,7 +12,7 @@ import {
 import { ensureConetAaForProfileAndPersist } from '@/utils/ensureConetAa'
 import { conetDepinProvider } from '@/utils/constants'
 import { resolveSigningPrivateKeyArmor } from '@/utils/resolveSigningPrivateKeyArmor'
-import IpfsImg from '@/components/IpfsImg'
+import { IpfsImg } from '@/components/IpfsImg'
 import { tu } from '@/locale/beamioLocale'
 
 const PAY_RELAY_QR_TTL_SECONDS = 300

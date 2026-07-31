@@ -15,7 +15,7 @@ import CardPurchaseProcessing from "./CardPurchaseProcessing"
 import CCSACardVisual from "./CardVisual"
 import { ethers } from "ethers"
 import { createMessage, readKey, enums, encrypt } from "openpgp"
-import { getRandomNodes, initMessage, createMembershipActivatedCard, sendMessage } from "@/services/chat"
+import { initMessage, createMembershipActivatedCard, sendMessage } from "@/services/chat"
 import { tu } from '@/locale/beamioLocale'
 
 
@@ -226,8 +226,7 @@ export default function TopUpAccount({
 	const profile: profile = profiles[0]
 	
 	const chatData = await initMessage(profile, myAssets.cardOwner)
-	const nodes = getRandomNodes(allNodes, 2)
-	if (!chatData||!nodes.length) return
+	if (!chatData || !allNodes?.length) return
 	const chatDatas = profile?.chats || []
 	profile.chats = chatDatas
 
@@ -242,7 +241,7 @@ export default function TopUpAccount({
 	// setCharts(prof => [...prof, cardText])
 	await Promise.all([
 		storeSystemData(),
-		sendMessage(chatData.chatData.publicArmored, cardText, profile.privateKeyArmor, nodes )
+		sendMessage(chatData.chatData.publicArmored, cardText, profile.privateKeyArmor, allNodes )
 	])
 }
 

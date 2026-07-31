@@ -13,7 +13,7 @@ import FuelView from "@/components/Home/FuelView"
 import { Wallet, Users, User, MessageCircle, Loader2, CheckCircle, History } from "lucide-react"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import { searchUsername, postBeamio, storeSystemData } from "@/services/beamio"
-import { initMessage, sendMessage, getRandomNodes, getCoNETNodesForChat } from "@/services/chat"
+import { initMessage, sendMessage, getCoNETNodesForChat } from "@/services/chat"
 import { InlineHistoryPreview } from "./InlineHistoryPreview"
 import { GenerateAvatarImageCard } from "./GenerateAvatarImageCard"
 import { getBUnitBalanceOnConet } from "@/services/BeamioCard"
@@ -251,12 +251,16 @@ function SendChatCard({
         return
       }
       const allNodes = await getCoNETNodesForChat()
-      const nodes = getRandomNodes(allNodes, 2)
+      if (!allNodes?.length) {
+        setErrorMsg("Failed to send message")
+        setStatus("error")
+        return
+      }
       const ok = await sendMessage(
         chatData.chatData.publicArmored,
         text,
         profile.privateKeyArmor,
-        nodes
+        allNodes
       )
       if (ok) {
         setStatus("sent")

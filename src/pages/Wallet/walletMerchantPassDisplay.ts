@@ -76,7 +76,10 @@ export function buildWalletMerchantPassStackDisplay(
 ): WalletMerchantPassStackDisplay {
 	const title = (detail?.meta?.name && detail.meta.name.trim()) || uc.name || 'Merchant Pass'
 	const tierPres = resolveHeldTierPresentation(detail)
-	const tierLbl = tierPres.tierName.trim() || 'Loyalty Member'
+	// Default merchant tier is named "Base" in Programs; do not show that label on the wallet pass.
+	const rawTierName = tierPres.tierName.trim()
+	const tierLbl =
+		rawTierName && rawTierName.toLowerCase() !== 'base' ? rawTierName : ''
 	const logoUrl = resolveMyBrandCardIconUrl(detail?.meta) ?? ''
 	const backgroundImageUrl = tierPres.backgroundImageUrl ?? ''
 	const backgroundImageFit = tierPres.backgroundImageFit

@@ -14,7 +14,7 @@ import Securitycode from '@/components/input/Securitycode'
 import ConformView from '@/pages/Pay/send/ConformView'
 import giftEnvelope from '@/components/card/assets/giftEnvelope.svg'
 import {OverlayPortal} from '@/components/OverlayPortal/OverlayPortal'
-import { emitReactionAsNewMessage, sendMessage, initMessage, getRandomNodes} from '@/services/chat'
+import { emitReactionAsNewMessage, sendMessage, initMessage } from '@/services/chat'
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
 import { calcFeeFromReceived, formatAmount } from "@/services/currency"
 import { tu } from '@/locale/beamioLocale'

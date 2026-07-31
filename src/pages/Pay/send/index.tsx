@@ -17,7 +17,7 @@ import NetworkFeeGas from '../components/networkFee'
 import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
 import ShowTotal from '../components/ShowTotal_send'
 import { fiatPrefix, formatAmount } from '@/services/currency'
-import { emitReactionAsNewMessage, sendMessage, initMessage, getRandomNodes} from '@/services/chat'
+import { emitReactionAsNewMessage, sendMessage, initMessage } from '@/services/chat'
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
 import {OverlayPortal} from '@/components/OverlayPortal/OverlayPortal'
 import { ethers } from 'ethers'
@@ -403,8 +403,7 @@ export default function PayScreen ({close, beamioer, preferredToAddress, mode = 
 		}
 		const profile: profile = profiles[0]
 		const chatData = await initMessage(profile, item)
-		const nodes = getRandomNodes(allNodes, 2)
-		if (!chatData||!nodes.length) return
+		if (!chatData || !allNodes?.length) return
 		const chatDatas = profile?.chats || []
 		profile.chats = chatDatas
 
@@ -424,7 +423,7 @@ export default function PayScreen ({close, beamioer, preferredToAddress, mode = 
 		// setCharts(prof => [...prof, cardText])
 		await Promise.all([
 			storeSystemData(),
-			sendMessage(chatData.chatData.publicArmored, cardText, profile.privateKeyArmor, nodes )
+			sendMessage(chatData.chatData.publicArmored, cardText, profile.privateKeyArmor, allNodes )
 		])
 	}
 

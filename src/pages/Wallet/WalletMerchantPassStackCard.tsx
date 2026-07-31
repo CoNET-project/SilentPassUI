@@ -108,12 +108,14 @@ function PassCardFace({ display }: { display: WalletMerchantPassStackDisplay }) 
 						>
 							{title}
 						</p>
-						<p
-							className="mt-1 text-[10px] font-bold uppercase tracking-wider"
-							style={{ color: tierTheme.primary }}
-						>
-							{tierLbl}
-						</p>
+						{tierLbl ? (
+							<p
+								className="mt-1 text-[10px] font-bold uppercase tracking-wider"
+								style={{ color: tierTheme.primary }}
+							>
+								{tierLbl}
+							</p>
+						) : null}
 					</div>
 					<div className="flex min-h-[4.25rem] shrink-0 flex-col justify-end text-right">
 						{startingFromLine ? (

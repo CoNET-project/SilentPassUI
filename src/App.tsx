@@ -15,7 +15,7 @@ import Chat from "./pages/chat"
 import ChatDetail from "./pages/chatDetail"
 import BeamioInstallOnboarding from "@/components/launchPage"
 import Browser from "@/pages/Browser"
-import { initChat, checkSign, createInboundChatSession, makeMessage, sendMessage, getRandomNodes } from "@/services/chat"
+import { initChat, checkSign, createInboundChatSession, makeMessage, sendMessage } from "@/services/chat"
 import { checkStorage, storeSystemData, runAutoBUnitFreeClaimIfEligible, handleNfcLinkAppDeepLinkScan, ensureProfilePrivateKeyArmorFromMnemonic, bootstrapProfileLocaleCurrencyIfUnset, mergeLocalLocaleLanguageOntoChainProfile } from "@/services/beamio"
 import { hasLocalPlaintextMnemonic } from "@/utils/consumerWalletGate"
 import { ensureEphemeralWalletForCouponClaim } from "@/utils/ephemeralCouponClaimWallet"
@@ -883,10 +883,9 @@ function AppShell() {
 		setProfiles([...profiles])
 		await storeSystemData()
 
-		// 送出 message 到对方（随机 2 节点并行 post）
-		const nodes = getRandomNodes(allNodes, 2)
-		if (nodes.length) {
-			await sendMessage(chatData.chatData.publicArmored, text, profile.privateKeyArmor, nodes)
+		// 送出 message 到对方（sendMessage 内部挑选健康 entry 并重试）
+		if (allNodes?.length) {
+			await sendMessage(chatData.chatData.publicArmored, text, profile.privateKeyArmor, allNodes)
 		}
 	}
 

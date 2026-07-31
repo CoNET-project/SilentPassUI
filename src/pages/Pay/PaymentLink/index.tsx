@@ -4,7 +4,7 @@ import React, {useRef, useState, useEffect, useMemo} from "react"
 import SearchInputWithDropdown from '@/components/Home/SearchBarWithResults'
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
 import { storeSystemData } from '@/services/beamio'
-import { initMessage, getRandomNodes, sendMessage, createPaymentRequestCard } from '@/services/chat'
+import { initMessage, sendMessage, createPaymentRequestCard } from '@/services/chat'
 import {AuthorizationSign, getBalanceProcess, generateCODE} from '@/services/beamio'
 import AmountCurrency from '@/components/input/AmountCurrency'
 import { AppButton } from "@/components/button/AppButton"
@@ -228,8 +228,7 @@ export default function PaymentLink ({close, beamioer}: Props) {
 
 		try {
 			const chatData = await initMessage(profile, item)
-			const nodes = getRandomNodes(allNodes || [], 2)
-			if (!chatData?.chatData?.publicArmored || !nodes.length) {
+			if (!chatData?.chatData?.publicArmored || !(allNodes || []).length) {
 				setProcessError('Could not create chat or get node')
 				setProcessing(false)
 				return
@@ -259,7 +258,7 @@ export default function PaymentLink ({close, beamioer}: Props) {
 			}
 
 			await storeSystemData()
-			await sendMessage(chatData.chatData.publicArmored, JSON.stringify(paymentRequestMessage), profile.privateKeyArmor, nodes)
+			await sendMessage(chatData.chatData.publicArmored, JSON.stringify(paymentRequestMessage), profile.privateKeyArmor, allNodes || [])
 
 			setSuccessUrl(showUrl)
 		} catch (e) {

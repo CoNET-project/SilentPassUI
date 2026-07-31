@@ -7,7 +7,7 @@ import {
 	type AaMultisigSignInner,
 	type AaMultisigSubmittedInner,
 } from '@/utils/aaMultisigProtocol'
-import { getKeysFromCoNETPGPSC, getRandomNodes, sendMessage } from '@/services/chat'
+import { getKeysFromCoNETPGPSC, sendMessage } from '@/services/chat'
 
 async function sendMultisigInnerToRecipient(params: {
 	recipientEoa: string
@@ -18,9 +18,8 @@ async function sendMultisigInnerToRecipient(params: {
 	const keys = await getKeysFromCoNETPGPSC(params.recipientEoa, params.privateKeyArmor)
 	if (!keys?.publicArmored) return false
 	const outerLine = buildAaMultisigChatOuterLine(params.inner)
-	const nodes = getRandomNodes(params.allNodes, 2)
-	if (!nodes.length) return false
-	return sendMessage(keys.publicArmored, outerLine, params.privateKeyArmor, nodes)
+	if (!params.allNodes?.length) return false
+	return sendMessage(keys.publicArmored, outerLine, params.privateKeyArmor, params.allNodes)
 }
 
 export async function broadcastAaMultisigInner(params: {

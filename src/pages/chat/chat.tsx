@@ -35,7 +35,7 @@ import {
 	regiestChatRoute,
 	getKeysFromCoNETPGPSC,
 	connectToGossipNode,
-	getRandomNode, getRandomNodes, sendMessage,
+	sendMessage,
 	makeMessage
 
 } from '@/services/chat'
@@ -728,8 +728,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 			messagesRef.current = next
 			setMessages(next)
 		}
-		const nodes = getRandomNodes(allNodes, 2)
-		if (!nodes.length) {
+		if (!allNodes?.length) {
 			const next = (messagesRef.current || []).map(m =>
 				m.id === tempId ? { ...m, status: 'failed' as const } : m
 			)
@@ -741,7 +740,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		}
 		let ok = false
 		try {
-			ok = !!(await sendMessage(chatData.chatData.publicArmored, JSON.stringify(payload), privateKey, nodes))
+			ok = !!(await sendMessage(chatData.chatData.publicArmored, JSON.stringify(payload), privateKey, allNodes))
 		} catch {
 			ok = false
 		}
@@ -768,11 +767,10 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 			reply: { messageId: targetSendId, replyType: 'paymentRequestCancel' },
 		}
 		try {
-			const nodes = getRandomNodes(allNodes, 2)
-			if (!nodes.length) {
+			if (!allNodes?.length) {
 				return
 			}
-			const ok = !!(await sendMessage(chatData.chatData.publicArmored, JSON.stringify(payload), privateKey, nodes))
+			const ok = !!(await sendMessage(chatData.chatData.publicArmored, JSON.stringify(payload), privateKey, allNodes))
 			if (ok) {
 				const next: ChatMessage[] = [...(messagesRef.current || []), payload]
 				messagesRef.current = next
@@ -857,10 +855,9 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 			messagesRef.current = next
 			setMessages(next)
 			chatData.messages = next
-			const nodes = getRandomNodes(allNodes, 2)
-			if (nodes.length) {
+			if (allNodes?.length) {
 				try {
-					await sendMessage(chatData.chatData.publicArmored, JSON.stringify(payload), privateKey, nodes)
+					await sendMessage(chatData.chatData.publicArmored, JSON.stringify(payload), privateKey, allNodes)
 				} catch (_) {}
 			}
 			await storageData()
@@ -1061,9 +1058,8 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 			setMessages(next)
 		}
 
-		// ✅ 2) 找节点（随机 2 个，并行 post）
-		const nodes = getRandomNodes(allNodes, 2)
-		if (!nodes.length) {
+		// ✅ 2) entry pool（sendMessage 内部挑选健康节点并重试）
+		if (!allNodes?.length) {
 			const next: ChatMessage[] = (messagesRef.current || []).map(m =>
 			m.id === tempId ? { ...m, status: "failed" as const } : m
 			)
@@ -1081,7 +1077,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		setReplyTo(null)
 		let ok = false
 		try {
-			ok = !!(await sendMessage(chatData.chatData.publicArmored, JSON.stringify(payload), privateKey, nodes))
+			ok = !!(await sendMessage(chatData.chatData.publicArmored, JSON.stringify(payload), privateKey, allNodes))
 		} catch {
 			ok = false
 		}

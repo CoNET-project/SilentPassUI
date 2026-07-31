@@ -897,14 +897,44 @@ const pickRouteNodesByArmoredKey = (nodes: nodeInfo[], routerArmoredPublicKey: s
 }
 
 const probeGossipNode = async (node: nodeInfo, timeoutMs = 4_000) => {
-	// Probe HTTPS reachability. Some CoNET-SI nginx roots legitimately return 404,
-	// but a completed TLS+HTTP response still proves the browser can reach the node.
+	// Prefer OPTIONS /post — matches browser preflight and proves CoNET-SI is answering CORS.
+	// GET / alone can be a static nginx 200 while POST /post error paths lack ACAO (browser CORS).
+	const origin =
+		typeof window !== 'undefined' && window.location?.origin
+			? window.location.origin
+			: 'https://beamio.app'
+	const postUrl = `https://${node.domain}.conet.network/post`
+	try {
+		const res = await postWithTimeout(
+			postUrl,
+			{
+				method: 'OPTIONS',
+				headers: {
+					Origin: origin,
+					'Access-Control-Request-Method': 'POST',
+					'Access-Control-Request-Headers': 'content-type',
+				},
+			},
+			timeoutMs,
+		)
+		const acao = (res.headers.get('access-control-allow-origin') || '').trim()
+		if (res.status > 0 && res.status < 500 && (acao === '*' || acao.length > 0)) {
+			markGossipNodeHealthy(node.domain)
+			return true
+		}
+	} catch {
+		// fall through to GET /
+	}
 	const url = `https://${node.domain}.conet.network/`
 	try {
-		const res = await postWithTimeout(url, {
-			method: 'GET',
-			headers: { 'Accept': 'text/html' }
-		}, timeoutMs)
+		const res = await postWithTimeout(
+			url,
+			{
+				method: 'GET',
+				headers: { Accept: 'text/html' },
+			},
+			timeoutMs,
+		)
 		if (res.status > 0 && res.status < 500) {
 			markGossipNodeHealthy(node.domain)
 			return true
@@ -927,6 +957,21 @@ const pickHealthyGossipNodes = async (nodes: nodeInfo[]): Promise<nodeInfo[]> =>
 	const healthy = checks.filter(n => n.ok).map(n => n.node)
 
 	return healthy
+}
+
+/** Pick up to `n` entry nodes for gossip send (healthy preferred). */
+export const pickGossipEntryNodesForSend = async (
+	pool: nodeInfo[],
+	n = 4,
+	excludeDomains?: Set<string>,
+): Promise<nodeInfo[]> => {
+	const filtered = excludeDomains?.size
+		? pool.filter(node => !excludeDomains.has(node.domain))
+		: pool
+	if (!filtered.length) return []
+	const healthy = await pickHealthyGossipNodes(filtered)
+	const source = healthy.length >= 2 ? healthy : filtered
+	return getRandomNodes(source, Math.min(n, source.length))
 }
 
 
@@ -1030,38 +1075,54 @@ export const sendMessage = async (
 	}
 
 	const payload = { data: postData }
-	const postOpts = {
-		method: "POST" as const,
+	const postOpts: RequestInit = {
+		method: "POST",
 		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify(payload)
+		body: JSON.stringify(payload),
+		// Avoid Chrome Network panel noise; does not fix node/SI failures.
+		referrerPolicy: "no-referrer",
 	}
 
-	const results = await Promise.all(
-		entryNodes.map(async node => {
-			const url = `https://${node.domain}.conet.network/post`
-			try {
-				const res = await postWithTimeout(url, postOpts, 12_000)
-				if (!res.ok) {
-					console.warn(`[sendMessage] ${url} → HTTP ${res.status}`)
+	const postToNodes = async (nodes: nodeInfo[]): Promise<boolean> => {
+		if (!nodes.length) return false
+		const results = await Promise.all(
+			nodes.map(async node => {
+				const url = `https://${node.domain}.conet.network/post`
+				try {
+					const res = await postWithTimeout(url, postOpts, 12_000)
+					if (!res.ok) {
+						console.warn(`[sendMessage] ${url} → HTTP ${res.status}`)
+						markGossipNodeBad(node.domain)
+						return false
+					}
+					console.log(`[sendMessage] ${url} → ${res.status}`)
+					markGossipNodeHealthy(node.domain)
+					return true
+				} catch (ex: any) {
+					// Chrome often labels bare network / missing-ACAO failures as CORS
+					// ("strict-origin-when-cross-origin"). Prefer explicit fetch error text.
+					console.warn(`[sendMessage] ${url} → ${ex?.name || 'error'}: ${ex?.message || ex}`)
+					markGossipNodeBad(node.domain)
 					return false
 				}
-				console.log(`[sendMessage] ${url} → ${res.status}`)
-				return true
-			} catch (ex: any) {
-				console.warn(`[sendMessage] ${url} → ${ex?.name || 'error'}: ${ex?.message || ex}`)
-				return false
-			}
-		})
-	)
-
-	const ok = results.some(Boolean)
-	if (!ok) {
-		console.error(
-			'[sendMessage] all entry POSTs failed',
-			entryNodes.map(n => n.domain),
+			})
 		)
+		return results.some(Boolean)
 	}
-	return ok
+
+	// Callers may pass a full Guardian pool or a small sample; prefer healthy entries and retry.
+	const wave1 = await pickGossipEntryNodesForSend(entryNodes, Math.min(4, entryNodes.length))
+	if (await postToNodes(wave1)) return true
+
+	const tried = new Set(wave1.map(n => n.domain))
+	const wave2 = await pickGossipEntryNodesForSend(entryNodes, Math.min(4, entryNodes.length), tried)
+	if (await postToNodes(wave2)) return true
+
+	console.error(
+		'[sendMessage] all entry POSTs failed',
+		[...tried, ...wave2.map(n => n.domain)],
+	)
+	return false
 }
 
 

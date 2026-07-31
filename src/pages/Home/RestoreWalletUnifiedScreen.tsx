@@ -363,19 +363,29 @@ export default function RestoreWalletUnifiedScreen({
 		)
 	}
 
+	/** Match Create your Beamio ID field chrome (`CreateUsernamePinScreen`). */
+	const fieldLabelClass =
+		'block px-4 text-xs font-bold uppercase tracking-widest text-[#424655]'
+	const fieldInputClass =
+		'w-full rounded-lg border-none bg-[#e2e2e7] text-base font-semibold text-[#1a1c1f] outline-none transition-all placeholder:text-[#737687]/50 focus:ring-2 focus:ring-[#004bc3]/20 disabled:opacity-70'
+	const fieldInputPadClass =
+		'py-5 [@media(max-height:780px)]:py-4 [@media(max-height:700px)]:py-3.5 [@media(max-height:640px)]:py-3 [@media(max-height:640px)]:text-[15px] [@media(max-height:560px)]:rounded-[14px] [@media(max-height:560px)]:py-2.5 [@media(max-height:560px)]:text-[14px]'
+
 	return (
-		<div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-[#f9f9fe] font-sans text-[#1a1c1f]">
+		<div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-[#f3f3f8] font-[Inter,system-ui,sans-serif] text-[#1a1c1f]">
 			<VerraFloatingNavChrome onBack={onClose} tone="restore" />
 
 			<div
-				className={`flex min-h-0 flex-1 flex-col overflow-hidden px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] ${APP_FLOATING_CHROME_MAIN_TOP_PT}`}
+				className={`flex min-h-0 flex-1 flex-col overflow-hidden px-6 pb-[max(0.75rem,env(safe-area-inset-bottom))] [@media(max-height:560px)]:px-5 ${APP_FLOATING_CHROME_MAIN_TOP_PT}`}
 			>
 				<div className={`shrink-0 text-center ${APP_TITLE_BLOCK_TO_FIRST_CONTROL_MB}`}>
 					<h1 className="text-3xl font-extrabold tracking-tight text-[#1a1c1f] sm:text-3xl">Welcome Back</h1>
-					<p className="mt-0.5 text-[11px] font-medium text-[#424655] sm:text-xs">Access your local community vault.</p>
+					<p className="mt-0.5 text-base font-medium text-[#424655] [@media(max-height:640px)]:text-sm">
+						Access your local community vault.
+					</p>
 				</div>
 
-				<div className="mt-2 flex h-10 shrink-0 rounded-2xl bg-[#e8e8ed] p-1" role="tablist" aria-label="Restore method">
+				<div className="mt-2 flex h-12 shrink-0 rounded-2xl bg-[#e8e8ed] p-1" role="tablist" aria-label="Restore method">
 					<button
 						type="button"
 						role="tab"
@@ -384,7 +394,7 @@ export default function RestoreWalletUnifiedScreen({
 							setTab('login')
 							setLoginError('')
 						}}
-						className={`flex flex-1 items-center justify-center rounded-xl text-[11px] font-semibold transition sm:text-xs ${
+						className={`flex flex-1 items-center justify-center rounded-xl text-sm font-semibold transition ${
 							tab === 'login'
 								? 'bg-white text-[#1a1c1f] shadow-sm'
 								: 'text-[#424655]'
@@ -400,7 +410,7 @@ export default function RestoreWalletUnifiedScreen({
 							setTab('recovery')
 							setRecoveryError('')
 						}}
-						className={`flex flex-1 items-center justify-center rounded-xl text-[11px] font-semibold transition sm:text-xs ${
+						className={`flex flex-1 items-center justify-center rounded-xl text-sm font-semibold transition ${
 							tab === 'recovery'
 								? 'bg-white text-[#1a1c1f] shadow-sm'
 								: 'text-[#424655]'
@@ -414,28 +424,33 @@ export default function RestoreWalletUnifiedScreen({
 					<ScanBtn />
 				</div>
 
-				<div className="relative mt-2 flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden">
+				<div className="relative mt-4 flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden">
 					{tab === 'login' ? (
 						<form onSubmit={handleLoginSubmit} className="flex flex-col" noValidate>
-							<div className="flex flex-col gap-2">
-								<div>
-									<label className="mb-1 ml-0.5 block text-[10px] font-bold uppercase tracking-widest text-[#424655]">
+							<div className="flex flex-col gap-5 [@media(max-height:700px)]:gap-4 [@media(max-height:640px)]:gap-3">
+								<div className="space-y-2">
+									<label htmlFor="welcome-back-beamio-id" className={fieldLabelClass}>
 										Beamio ID
 									</label>
 									<div className="relative">
-										<span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-medium text-[#424655]">
-											@
-										</span>
+										<div className="pointer-events-none absolute inset-y-0 left-5 flex items-center [@media(max-height:560px)]:left-4">
+											<span className="text-lg font-bold text-[#004bc3] [@media(max-height:560px)]:text-base">@</span>
+										</div>
 										<input
+											id="welcome-back-beamio-id"
 											type="text"
 											autoCapitalize="none"
 											autoCorrect="off"
 											spellCheck={false}
-											autoComplete="用户名"
-											className={`w-full rounded-2xl border-none bg-[#e2e2e7] py-2.5 pl-8 pr-3 text-sm font-medium text-[#1a1c1f] placeholder:text-[#737687] outline-none ring-0 transition focus:ring-2 focus:ring-inset focus:ring-[#1562f0] ${
-												loginError && !username.trim() ? 'ring-2 ring-inset ring-red-400/60' : ''
-											}`}
-											placeholder="YourID"
+											autoComplete="username"
+											enterKeyHint="next"
+											className={[
+												fieldInputClass,
+												fieldInputPadClass,
+												'pl-12 pr-5 [@media(max-height:560px)]:pl-10 [@media(max-height:560px)]:pr-4',
+												loginError && !username.trim() ? 'ring-2 ring-orange-400/80 focus:ring-orange-400/30' : '',
+											].join(' ')}
+											placeholder="Username"
 											value={username}
 											onChange={e => {
 												setUsername(e.target.value.replace(/@/g, ''))
@@ -444,21 +459,26 @@ export default function RestoreWalletUnifiedScreen({
 										/>
 									</div>
 								</div>
-								<div>
-									<label className="mb-1 ml-0.5 block text-[10px] font-bold uppercase tracking-widest text-[#424655]">
+								<div className="space-y-2">
+									<label htmlFor="welcome-back-password" className={fieldLabelClass}>
 										Password
 									</label>
 									<div className="relative">
 										<input
+											id="welcome-back-password"
 											type={peekPin ? 'text' : 'password'}
 											autoComplete="current-password"
 											autoCapitalize="none"
 											autoCorrect="off"
 											spellCheck={false}
-											className={`w-full rounded-2xl border-none bg-[#e2e2e7] py-2.5 pl-3 pr-12 text-sm font-medium text-[#1a1c1f] outline-none ring-0 transition focus:ring-2 focus:ring-inset focus:ring-[#1562f0] ${
-												loginError && !pin.trim() ? 'ring-2 ring-inset ring-red-400/60' : ''
-											}`}
-											placeholder="••••••••"
+											enterKeyHint="done"
+											className={[
+												fieldInputClass,
+												fieldInputPadClass,
+												'pl-5 pr-14 [@media(max-height:560px)]:pl-4 [@media(max-height:560px)]:pr-12',
+												loginError && !pin.trim() ? 'ring-2 ring-orange-400/80 focus:ring-orange-400/30' : '',
+											].join(' ')}
+											placeholder="••••••••••••"
 											value={pin}
 											onChange={e => {
 												setPin(e.target.value)
@@ -468,35 +488,31 @@ export default function RestoreWalletUnifiedScreen({
 										<button
 											type="button"
 											tabIndex={-1}
-											className="absolute right-2 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full text-xs font-semibold text-[#1562f0] hover:opacity-80 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/45"
-											onPointerDown={e => {
-												e.preventDefault()
-												setPeekPin(true)
-											}}
-											onPointerUp={() => setPeekPin(false)}
-											onPointerLeave={() => setPeekPin(false)}
-											onClick={() => {
-												if (typeof window !== 'undefined' && 'ontouchstart' in window) setPeekPin(p => !p)
-											}}
-											aria-label={peekPin ? '隐藏密码' : '显示密码'}
+											className="absolute inset-y-0 right-5 flex items-center rounded-lg p-1 text-[#424655] transition-colors hover:text-[#1a1c1f] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#004bc3]/30 [@media(max-height:560px)]:right-4"
+											onClick={() => setPeekPin(p => !p)}
+											aria-label={peekPin ? 'Hide password' : 'Show password'}
 										>
-											{peekPin ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+											{peekPin ? (
+												<EyeOff className="h-6 w-6 [@media(max-height:560px)]:h-5 [@media(max-height:560px)]:w-5" strokeWidth={2} />
+											) : (
+												<Eye className="h-6 w-6 [@media(max-height:560px)]:h-5 [@media(max-height:560px)]:w-5" strokeWidth={2} />
+											)}
 										</button>
 									</div>
 								</div>
-								{loginError && (
-									<div className="flex items-start gap-1.5 text-red-600">
-										<AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-										<span className="text-[11px] font-semibold leading-snug">{loginError}</span>
+								{loginError ? (
+									<div className="flex items-center gap-2 px-4 text-orange-600">
+										<AlertCircle className="h-4 w-4 shrink-0" strokeWidth={2.5} aria-hidden />
+										<span className="text-[13px] font-semibold leading-snug">{loginError}</span>
 									</div>
-								)}
-								<div className="shrink-0 pt-2">
+								) : null}
+								<div className="shrink-0 pt-1">
 									<AppButton
 										type="submit"
 										fullWidth
 										disabled={loginLoading}
 										loading={loginLoading}
-										className="h-12 rounded-full text-base font-bold !bg-gradient-to-br !from-[#004bc3] !to-[#1562f0] !text-white shadow-[0_4px_24px_rgba(21,98,240,0.15)] hover:!opacity-90 active:!scale-[0.98] focus-visible:!ring-2 focus-visible:!ring-[#1562f0]/75"
+										className="h-14 rounded-full text-base font-bold !bg-gradient-to-br !from-[#004bc3] !to-[#1562f0] !text-white shadow-[0_4px_24px_rgba(21,98,240,0.15)] hover:!opacity-90 active:!scale-[0.98] focus-visible:!ring-2 focus-visible:!ring-[#004bc3]/40"
 									>
 										Unlock
 									</AppButton>
@@ -505,16 +521,16 @@ export default function RestoreWalletUnifiedScreen({
 						</form>
 					) : (
 						<form onSubmit={handleRecoverySubmit} className="flex flex-col" noValidate>
-							<div className="flex flex-col gap-2">
-								<div className="shrink-0 rounded-2xl bg-[#f3f3f8] px-3 py-2">
-									<p className="text-center text-[11px] font-medium leading-snug text-[#424655]">
+							<div className="flex flex-col gap-5 [@media(max-height:700px)]:gap-4 [@media(max-height:640px)]:gap-3">
+								<div className="shrink-0 rounded-lg bg-white px-4 py-3 shadow-[0_4px_24px_rgba(0,0,0,0.02)]">
+									<p className="text-center text-sm font-medium leading-snug text-[#424655]">
 										Use your securely saved Recovery QR or alphanumeric code to restore your vault.
 									</p>
 								</div>
 								<button
 									type="button"
 									onClick={onOpenScanner}
-									className="flex h-[100px] max-h-[22vmin] shrink-0 flex-col items-center justify-center gap-1 rounded-3xl border-2 border-dashed border-[#c3c6d8] bg-white transition hover:bg-[#f9f9fe] active:scale-[0.98]"
+									className="flex h-[100px] max-h-[22vmin] shrink-0 flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-[#c3c6d8] bg-white transition hover:bg-[#f9f9fe] active:scale-[0.98]"
 								>
 									<div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#1562f0]/10">
 										<QrCode className="h-6 w-6 text-[#1562f0]" strokeWidth={2.25} />
@@ -529,14 +545,17 @@ export default function RestoreWalletUnifiedScreen({
 									<span className="text-[9px] font-bold uppercase tracking-[0.18em] text-[#424655]">{tu('or')}</span>
 									<div className="h-px flex-1 bg-[#e8e8ed]" />
 								</div>
-								<div className="flex w-full shrink-0 flex-col">
-									<label className="mb-1 ml-0.5 text-[10px] font-bold uppercase tracking-widest text-[#424655]">
+								<div className="flex w-full shrink-0 flex-col space-y-2">
+									<label htmlFor="welcome-back-recovery-code" className={fieldLabelClass}>
 										Enter Recovery Code
 									</label>
 									<textarea
-										className={`min-h-[4.5rem] w-full resize-none rounded-2xl border-none bg-[#e2e2e7] px-3 py-2.5 text-xs font-medium leading-relaxed text-[#1a1c1f] placeholder:text-[#737687] outline-none ring-0 focus:ring-2 focus:ring-inset focus:ring-[#1562f0] ${
-											recoveryError ? 'ring-2 ring-inset ring-red-400/60' : ''
-										}`}
+										id="welcome-back-recovery-code"
+										className={[
+											fieldInputClass,
+											'min-h-[5.5rem] resize-none px-5 py-4 leading-relaxed [@media(max-height:560px)]:px-4 [@media(max-height:560px)]:py-3 [@media(max-height:560px)]:text-[14px]',
+											recoveryError ? 'ring-2 ring-orange-400/80 focus:ring-orange-400/30' : '',
+										].join(' ')}
 										placeholder="Enter your recovery code here..."
 										value={recoveryCode}
 										onChange={e => {
@@ -546,19 +565,19 @@ export default function RestoreWalletUnifiedScreen({
 										rows={3}
 										autoComplete="off"
 									/>
-									{recoveryError && (
-										<div className="mt-1 flex shrink-0 items-start gap-1.5 text-red-600">
-											<AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-											<span className="text-[11px] font-semibold leading-snug">{recoveryError}</span>
+									{recoveryError ? (
+										<div className="flex items-center gap-2 px-4 text-orange-600">
+											<AlertCircle className="h-4 w-4 shrink-0" strokeWidth={2.5} aria-hidden />
+											<span className="text-[13px] font-semibold leading-snug">{recoveryError}</span>
 										</div>
-									)}
-									<div className="shrink-0 pt-2">
+									) : null}
+									<div className="shrink-0 pt-1">
 										<AppButton
 											type="submit"
 											fullWidth
 											disabled={recoveryLoading || !recoveryCode.trim()}
 											loading={recoveryLoading}
-											className={`h-12 rounded-full text-base font-bold transition active:!scale-[0.98] focus-visible:!ring-2 focus-visible:!ring-[#1562f0]/75 ${
+											className={`h-14 rounded-full text-base font-bold transition active:!scale-[0.98] focus-visible:!ring-2 focus-visible:!ring-[#004bc3]/40 ${
 												!recoveryCode.trim() && !recoveryLoading
 													? '!cursor-not-allowed !bg-slate-300 !text-slate-500 !shadow-none'
 													: '!bg-[#004bc3] !text-white shadow-[0_8px_30px_rgb(0,75,195,0.2)] hover:!bg-[#1562f0]'

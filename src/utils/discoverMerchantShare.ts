@@ -1,10 +1,11 @@
 import { ethers } from 'ethers'
 import { parseDiscoverReferrerFromParams } from '@/utils/beamioDeepLinkParams'
+import { appendAppDownloadShareCacheBust } from '@/utils/appDownloadShareCacheBust'
 
 /**
  * Discover merchant share URL — aligned with x402sdk `buildDiscoverMerchantAppDownloadUrl`.
  * Inner: `/app/?beamiocard=…&discover=open[&ref=referrerEOA]`
- * Outer: `/app-download?target=…`
+ * Outer: `/app-download?target=…&v=…` (`v` busts WhatsApp/Meta OG cache).
  * When `referrerEoa` is set (sharer wallet), openers record that address as referrer.
  */
 export function buildDiscoverMerchantShareUrl(
@@ -19,7 +20,8 @@ export function buildDiscoverMerchantShareUrl(
 	if (refRaw && ethers.isAddress(refRaw)) {
 		discoverUrl += `&ref=${encodeURIComponent(ethers.getAddress(refRaw))}`
 	}
-	return `https://beamio.app/app-download?target=${encodeURIComponent(discoverUrl)}`
+	const base = `https://beamio.app/app-download?target=${encodeURIComponent(discoverUrl)}`
+	return appendAppDownloadShareCacheBust(base)
 }
 
 export async function shareDiscoverMerchantUrl(

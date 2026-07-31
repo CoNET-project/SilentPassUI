@@ -1,9 +1,10 @@
 import { ethers } from 'ethers'
+import { appendAppDownloadShareCacheBust } from '@/utils/appDownloadShareCacheBust'
 
 /**
  * Open Claim Distribution share URL — aligned with biz `buildProgramsCouponOpenClaimShareUrl`.
  * Inner: `/app/?beamiocard=…&couponId=…&claim=open`
- * Outer: `/app-download?target=…` (social / universal-link wrapper).
+ * Outer: `/app-download?target=…&v=…` (`v` busts WhatsApp/Meta OG cache).
  */
 export function buildCouponOpenClaimDistributionShareUrl(
 	cardAddress: string,
@@ -20,7 +21,8 @@ export function buildCouponOpenClaimDistributionShareUrl(
 	if (refRaw && ethers.isAddress(refRaw)) {
 		claimUrl += `&ref=${encodeURIComponent(ethers.getAddress(refRaw))}`
 	}
-	return `https://beamio.app/app-download?target=${encodeURIComponent(claimUrl)}`
+	const base = `https://beamio.app/app-download?target=${encodeURIComponent(claimUrl)}`
+	return appendAppDownloadShareCacheBust(base)
 }
 
 export async function shareCouponOpenClaimDistributionUrl(

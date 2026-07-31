@@ -680,12 +680,14 @@ export function readCouponRequiresRedeemCode(meta: Record<string, unknown> | nul
 
 const openClaimCardReadContracts = new Map<string, ethers.Contract>()
 
-function openClaimCardReadContract(cardAddress: string): ethers.Contract {
+/** Merchant program cards live on CoNET — never use Base RPC for open-claim views. */
+async function openClaimCardReadContract(cardAddress: string): Promise<ethers.Contract> {
 	const cardNorm = ethers.getAddress(cardAddress)
 	const key = cardNorm.toLowerCase()
 	let c = openClaimCardReadContracts.get(key)
 	if (!c) {
-		c = new ethers.Contract(cardNorm, OPEN_CLAIM_ONCHAIN_READ_ABI, baseEndpoint)
+		const { provider } = await providerForBeamioUserCard(cardNorm)
+		c = new ethers.Contract(cardNorm, OPEN_CLAIM_ONCHAIN_READ_ABI, provider)
 		openClaimCardReadContracts.set(key, c)
 	}
 	return c
@@ -778,7 +780,7 @@ export async function resolveCouponOpenClaimEligibility(
 	)
 
 	try {
-		const cardRead = openClaimCardReadContract(row.cardAddress)
+		const cardRead = await openClaimCardReadContract(row.cardAddress)
 		const [priceInCurrency6, alreadyClaimed, maxSupply, mintedCount, holdsNft] = await Promise.all([
 			cardRead.issuedNftPriceInCurrency6(tokenIdN) as Promise<bigint>,
 			cardRead.issuedNftUserSigClaimUsed(userNorm, tokenIdN) as Promise<boolean>,
@@ -849,7 +851,7 @@ export async function refreshCouponOpenClaimChainStatus(params: {
 		const userNorm = ethers.getAddress(eoaRaw)
 		const cardNorm = ethers.getAddress(cardRaw)
 		const tokenIdStr = tokenIdN.toString()
-		const cardRead = openClaimCardReadContract(cardNorm)
+		const cardRead = await openClaimCardReadContract(cardNorm)
 		const [alreadyClaimed, holdsNft] = await Promise.all([
 			cardRead.issuedNftUserSigClaimUsed(userNorm, tokenIdN) as Promise<boolean>,
 			userHoldsIssuedCouponNft(cardNorm, userNorm, tokenIdN),
@@ -898,7 +900,7 @@ async function passesOpenClaimListFiltersForUser(
 	if (tokenIdN < ISSUED_NFT_START_ID_MEMBER) return false
 	if (!row.cardAddress || !ethers.isAddress(row.cardAddress)) return false
 	try {
-		const cardRead = openClaimCardReadContract(row.cardAddress)
+		const cardRead = await openClaimCardReadContract(row.cardAddress)
 		const userNorm = ethers.getAddress(userEOA)
 		const [priceInCurrency6, alreadyClaimed, maxSupply, mintedCount] = await Promise.all([
 			cardRead.issuedNftPriceInCurrency6(tokenIdN) as Promise<bigint>,

@@ -1439,6 +1439,7 @@ function DiscoverMerchantCouponOfferRow({
 					metadataBelowBackgroundImage
 					showOpenClaimShareButton
 					showUserLike
+					supplySummary={supplyLine}
 					socialMissionUser={showCouponSharePromotion ? null : socialMissionBlock?.user ?? null}
 					socialMissionReferrer={
 						showCouponSharePromotion ? null : socialMissionBlock?.referrer ?? null
@@ -1465,11 +1466,6 @@ function DiscoverMerchantCouponOfferRow({
 				{insufficientSocialPoints ? (
 					<p className="px-1 text-[11px] font-semibold text-amber-600 dark:text-amber-400">
 						Not enough social points for this exchange.
-					</p>
-				) : null}
-				{supplyLine ? (
-					<p className="line-clamp-1 px-1 text-[11px] font-semibold text-[#2c2f31] dark:text-slate-100">
-						{supplyLine}
 					</p>
 				) : null}
 			</div>
@@ -2581,10 +2577,14 @@ const PurchaseCreditsSheet = ({
     <div
       className={[
         "fixed inset-0",
-        // Closed: sit under Discover detail (z-100). Parent `pointer-events-none` alone is not
-        // enough on some WebKit builds — opacity-0 layers above the hero still swallow back taps.
+        // Closed: sit under Discover detail (z-100) and global Footer (z-200).
+        // Parent `pointer-events-none` alone is not enough on some WebKit builds —
+        // opacity-0 layers above the hero still swallow taps (back button / footer).
         open ? "z-[130] pointer-events-auto" : "z-[90] pointer-events-none",
       ].join(" ")}
+      // React 18: boolean `inert` via unknown attr; disables hit-testing when sheet is closed.
+      {...(!open ? ({ inert: '' } as Record<string, string>) : {})}
+      aria-hidden={!open}
     >
       <div
         className={[
@@ -2972,15 +2972,43 @@ function pickExactBeamioTagAddressFromSearch(
 	return ethers.getAddress(addr)
 }
 
+function ConetGenesisAboutPanel({ onExplore }: { onExplore: () => void }) {
+	return (
+		<div className="rounded-[22px] bg-white p-5 shadow-[0_8px_22px_rgba(15,23,42,0.06)] ring-1 ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800">
+			<div className="mb-3 flex items-center gap-2">
+				<span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[#1562f0]/10 text-[#1562f0]">
+					<Info className="h-[18px] w-[18px]" strokeWidth={2.25} aria-hidden />
+				</span>
+				<h2 className="text-[15px] font-bold leading-snug text-[#1f2328] dark:text-slate-100">About CoNET</h2>
+			</div>
+			<h3 className="text-[20px] font-bold leading-snug text-[#1f2328] dark:text-slate-100">
+				Reshaping Digital Infrastructure, Mastering Data Sovereignty
+			</h3>
+			<p className="mt-3 text-[14px] leading-relaxed text-slate-600 dark:text-slate-400">
+				CoNET is a Layer-1 blockchain based on a Decentralized Physical Infrastructure Network (DePIN).
+				Through our pioneering Layer Minus protocol, we discard IP addresses at the network transmission
+				layer, using asymmetric encrypted wallet addresses as the unique identifier, making privacy a
+				fundamental human right.
+			</p>
+			<button
+				type="button"
+				onClick={onExplore}
+				className="mt-4 inline-flex items-center gap-2 rounded-full bg-[#1562f0] px-5 py-3 text-[14px] font-bold text-white shadow-md shadow-blue-500/25 transition active:scale-[0.98] hover:bg-blue-600"
+			>
+				Explore Network
+				<ArrowRight className="h-[17px] w-[17px]" strokeWidth={2.5} aria-hidden />
+			</button>
+		</div>
+	)
+}
+
 function ConetGenesisNodeDiscoverSection({
-	onExplore,
 	onLockSeat,
 	purchasePhase,
 	eoaUsdcBalance6,
 	beneficiaryEoa,
 	initialReferrerEoa,
 }: {
-	onExplore: () => void
 	onLockSeat: (
 		quantity: number,
 		cloudNode: boolean,
@@ -3203,20 +3231,6 @@ function ConetGenesisNodeDiscoverSection({
 		}
 	}, [referralInputTag, searchRemoteAndIngest])
 
-	const selectedReferrerTagDisplay = useMemo(() => {
-		if (!selectedReferrerEoa) return ''
-		const fromDb = resolveTagPlain(selectedReferrerEoa).replace(/^@+/, '')
-		if (fromDb) return `@${fromDb}`
-		const fromList = candidates.find(
-			(c) => c.address.toLowerCase() === selectedReferrerEoa.toLowerCase(),
-		)?.accountName
-		if (fromList) return `@${fromList.replace(/^@+/, '')}`
-		if (isGenesisDefaultReferrerEoa(selectedReferrerEoa)) return `@${GENESIS_DEFAULT_REFERRER_TAG}`
-		const rec = lookupByAddress(selectedReferrerEoa)
-		const t = plainBeamioTagSeed(rec?.accountName ?? rec?.username)
-		return t ? `@${t}` : ''
-	}, [selectedReferrerEoa, resolveTagPlain, lookupByAddress, candidates])
-
 	const hasRequiredReferrer =
 		!!selectedReferrerEoa &&
 		ethers.isAddress(selectedReferrerEoa) &&
@@ -3327,43 +3341,35 @@ function ConetGenesisNodeDiscoverSection({
 					<p className="text-[14px] font-bold text-[#1f2328] dark:text-slate-100">
 						Referral @BeamioTag
 					</p>
-					<p className="mt-1 text-[12px] leading-relaxed text-slate-500 dark:text-slate-400">
-						A referral partner is required. Default is @{GENESIS_DEFAULT_REFERRER_TAG}. You can pick another
-						partner or enter a tag and verify their wallet is a valid Admin, L0, or L1 referrer on-chain.
-					</p>
 
-					<label className="mt-3 block" htmlFor="genesis-referral-select">
-						<span className="text-[12px] font-semibold text-slate-600 dark:text-slate-300">
-							Select from partners
-						</span>
-						<select
-							id="genesis-referral-select"
-							value={
-								hasRequiredReferrer
-									? selectedReferrerEoa
-									: pickRequiredGenesisReferrerEoa(candidates, initialReferrerEoa)
-							}
-							disabled={purchaseBusy || purchaseSuccess}
-							onChange={(e) => onSelectReferrerFromList(e.target.value)}
-							required
-							className="mt-1.5 w-full rounded-xl border border-[#dce2f0] bg-white px-3 py-2.5 text-[13px] font-medium text-[#1f2328] outline-none focus:border-[#1562f0] dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
-						>
-							{visiblePartnerCandidates.map((c) => {
-								const tag = resolveTagPlain(c.address).replace(/^@+/, '')
-								const short = shortGenesisReferrerAddress(c.address)
-								const displayTag =
-									tag ||
-									c.accountName?.replace(/^@+/, '') ||
-									(isGenesisDefaultReferrerEoa(c.address) ? GENESIS_DEFAULT_REFERRER_TAG : '')
-								const label = displayTag ? `@${displayTag} · ${short}` : short
-								return (
-									<option key={c.address} value={c.address}>
-										{label}
-									</option>
-								)
-							})}
-						</select>
-					</label>
+					<select
+						id="genesis-referral-select"
+						value={
+							hasRequiredReferrer
+								? selectedReferrerEoa
+								: pickRequiredGenesisReferrerEoa(candidates, initialReferrerEoa)
+						}
+						disabled={purchaseBusy || purchaseSuccess}
+						onChange={(e) => onSelectReferrerFromList(e.target.value)}
+						required
+						aria-label="Select referral partner"
+						className="mt-3 w-full rounded-xl border border-[#dce2f0] bg-white px-3 py-2.5 text-[13px] font-medium text-[#1f2328] outline-none focus:border-[#1562f0] dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+					>
+						{visiblePartnerCandidates.map((c) => {
+							const tag = resolveTagPlain(c.address).replace(/^@+/, '')
+							const short = shortGenesisReferrerAddress(c.address)
+							const displayTag =
+								tag ||
+								c.accountName?.replace(/^@+/, '') ||
+								(isGenesisDefaultReferrerEoa(c.address) ? GENESIS_DEFAULT_REFERRER_TAG : '')
+							const label = displayTag ? `@${displayTag} · ${short}` : short
+							return (
+								<option key={c.address} value={c.address}>
+									{label}
+								</option>
+							)
+						})}
+					</select>
 					{candidatesLoading ? (
 						<p className="mt-1.5 flex items-center gap-1.5 text-[11px] text-slate-400">
 							<Loader2 className="h-3 w-3 animate-spin" aria-hidden />
@@ -3434,20 +3440,11 @@ function ConetGenesisNodeDiscoverSection({
 						</p>
 					) : null}
 
-					{hasRequiredReferrer ? (
-						<p className="mt-2 text-[12px] font-semibold text-[#1f2328] dark:text-slate-200">
-							Selected:{' '}
-							<span className="text-[#1562f0]">
-								{selectedReferrerTagDisplay
-									? `${selectedReferrerTagDisplay} · ${shortGenesisReferrerAddress(selectedReferrerEoa)}`
-									: shortGenesisReferrerAddress(selectedReferrerEoa)}
-							</span>
-						</p>
-					) : (
+					{!hasRequiredReferrer ? (
 						<p className="mt-2 text-[12px] font-medium text-amber-600 dark:text-amber-400" role="alert">
 							Select a Referral partner to continue.
 						</p>
-					)}
+					) : null}
 				</div>
 
 				<div className="mt-4 rounded-[18px] bg-[#f4f6fa] py-4 text-center dark:bg-slate-800/50">
@@ -3700,33 +3697,6 @@ function ConetGenesisNodeDiscoverSection({
 						{purchasePhase.message}
 					</p>
 				) : null}
-			</div>
-
-			{/* About CoNET */}
-			<div className="rounded-[22px] bg-white p-5 shadow-[0_8px_22px_rgba(15,23,42,0.06)] ring-1 ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800">
-				<div className="mb-3 flex items-center gap-2">
-					<span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[#1562f0]/10 text-[#1562f0]">
-						<Info className="h-[18px] w-[18px]" strokeWidth={2.25} aria-hidden />
-					</span>
-					<h2 className="text-[15px] font-bold leading-snug text-[#1f2328] dark:text-slate-100">About CoNET</h2>
-				</div>
-				<h3 className="text-[20px] font-bold leading-snug text-[#1f2328] dark:text-slate-100">
-					Reshaping Digital Infrastructure, Mastering Data Sovereignty
-				</h3>
-				<p className="mt-3 text-[14px] leading-relaxed text-slate-600 dark:text-slate-400">
-					CoNET is a Layer-1 blockchain based on a Decentralized Physical Infrastructure Network (DePIN).
-					Through our pioneering Layer Minus protocol, we discard IP addresses at the network transmission
-					layer, using asymmetric encrypted wallet addresses as the unique identifier, making privacy a
-					fundamental human right.
-				</p>
-				<button
-					type="button"
-					onClick={onExplore}
-					className="mt-4 inline-flex items-center gap-2 rounded-full bg-[#1562f0] px-5 py-3 text-[14px] font-bold text-white shadow-md shadow-blue-500/25 transition active:scale-[0.98] hover:bg-blue-600"
-				>
-					Explore Network
-					<ArrowRight className="h-[17px] w-[17px]" strokeWidth={2.5} aria-hidden />
-				</button>
 			</div>
 		</>
 	)
@@ -5173,14 +5143,15 @@ function DiscoverMerchantDetailFullScreen({
 				<div className="mx-auto max-w-lg space-y-4">
 					{isConetGenesisCard ? (
 						<ConetGenesisNodeDiscoverSection
-							onExplore={openConetExplore}
 							onLockSeat={lockConetGenesisSeat}
 							purchasePhase={genesisSeatPurchase}
 							eoaUsdcBalance6={genesisEoaUsdcBalance6}
 							beneficiaryEoa={resolveUserEoa()}
 							initialReferrerEoa={genesisDeepLinkReferrerEoa}
 						/>
-					) : (
+					) : null}
+					{/* Genesis card still exposes Coupons below; membership chrome stays non-genesis. */}
+					{!isConetGenesisCard ? (
 					<>
 					{discoverWelcomePanel ? (
 						<DiscoverMerchantWelcomePanel
@@ -5411,6 +5382,8 @@ function DiscoverMerchantDetailFullScreen({
 							showTopUpBonus={!topupPromotionCapsule}
 						/>
 					) : null}
+					</>
+					) : null}
 
 					<div className="space-y-4">
 						<h2 className="text-lg font-bold text-[#1f2328] dark:text-slate-100">Available Offers</h2>
@@ -5430,7 +5403,7 @@ function DiscoverMerchantDetailFullScreen({
 							{merchantOffersLoading && merchantCoupons == null ? (
 								<div className="flex items-center justify-center gap-2 py-6 text-slate-500 dark:text-slate-400">
 									<Loader2 className="h-5 w-5 animate-spin" strokeWidth={2} aria-hidden />
-									<span className="text-[14px] font-medium">正在加载优惠券…</span>
+									<span className="text-[14px] font-medium">Loading coupons…</span>
 								</div>
 							) : merchantCoupons != null && merchantCoupons.length > 0 ? (
 								<div className="space-y-3">
@@ -5455,6 +5428,7 @@ function DiscoverMerchantDetailFullScreen({
 							)}
 						</div>
 
+						{!isConetGenesisCard ? (
 						<div className="rounded-[22px] bg-[#eef1f3] p-4 dark:bg-slate-900/80 sm:p-5">
 							<header className="mb-3 flex items-center justify-between gap-2">
 								<h3 className="text-base font-bold text-[#1f2328] dark:text-slate-100">Reward Tiers</h3>
@@ -5467,7 +5441,7 @@ function DiscoverMerchantDetailFullScreen({
 							{showRewardTiersLoading ? (
 								<div className="flex items-center justify-center gap-2 py-6 text-slate-500 dark:text-slate-400">
 									<Loader2 className="h-5 w-5 animate-spin" strokeWidth={2} aria-hidden />
-									<span className="text-[14px] font-medium">正在加载奖励等级…</span>
+									<span className="text-[14px] font-medium">Loading reward tiers…</span>
 								</div>
 							) : hasRewardTierContent ? (
 								<div className="space-y-2.5">
@@ -5493,8 +5467,9 @@ function DiscoverMerchantDetailFullScreen({
 								</div>
 							)}
 						</div>
+						) : null}
 
-						{wellnessPointsPanel ? (
+						{!isConetGenesisCard && wellnessPointsPanel ? (
 							<DiscoverMerchantWellnessPointsCard
 								config={wellnessPointsPanel}
 								points={wellnessPointsValue}
@@ -5502,11 +5477,12 @@ function DiscoverMerchantDetailFullScreen({
 						) : null}
 					</div>
 
-					{discoverAboutPanel ? (
+					{/* About always sits below Available Offers (Genesis About CoNET + merchant About). */}
+					{isConetGenesisCard ? (
+						<ConetGenesisAboutPanel onExplore={openConetExplore} />
+					) : discoverAboutPanel ? (
 						<DiscoverMerchantInfoPanelCard panel={discoverAboutPanel} />
 					) : null}
-					</>
-					)}
 
 				</div>
 			</div>
@@ -5762,7 +5738,7 @@ export default function Market() {
 			setShowFooter(true)
 			return
 		}
-		setShowFooter(true)
+		/** Footer restore deferred to AnimatePresence `onExitComplete` so exit layer cannot steal taps. */
 	}, [navigate, setShowFooter])
 
 	const discoverFeaturedCards = useMemo<DiscoverFeaturedCard[]>(() => {
@@ -6071,11 +6047,16 @@ export default function Market() {
 		</div>
 		</div>
 
-		<AnimatePresence>
+		<AnimatePresence
+			onExitComplete={() => {
+				/** Exit motion still mounts `fixed inset-0 z-[110]` briefly; restore Footer after it unmounts. */
+				setShowFooter(true)
+			}}
+		>
 			{discoverMerchantDetail ? (
 				<motion.div
 					key={`discover-merchant-${discoverMerchantDetail.id}`}
-					className="fixed inset-0 z-[100] flex flex-col bg-[#f5f7f9] dark:bg-slate-950"
+					className="fixed inset-0 z-[110] flex flex-col bg-[#f5f7f9] dark:bg-slate-950"
 					initial={discoverDetailEnterImmediate ? false : { x: '100%' }}
 					animate={{ x: 0 }}
 					exit={{ x: '100%' }}
@@ -6130,14 +6111,16 @@ export default function Market() {
 		)}
 
 			{/* Bottom Sheet：从底部向上，参考 Vouchers - PurchaseAccount / TopUpAccount.
-			    Closed: z under Discover detail (z-100) + pointer-events-none on parent/children.
+			    Closed: z under Discover detail (z-110) + Footer (z-200) + pointer-events-none + inert.
 			    Keeping closed sheets at z-120/130 above the detail caused intermittent dead taps on
-			    the hero back button (WebKit still hit-testing opacity-0 layers). */}
+			    the hero back button and global Footer (WebKit still hit-testing opacity-0 layers). */}
 			<div
 				className={[
 					"fixed inset-0",
 					settingsOpen ? "z-[120] pointer-events-auto" : "z-[90] pointer-events-none",
 				].join(" ")}
+				{...(!settingsOpen ? ({ inert: '' } as Record<string, string>) : {})}
+				aria-hidden={!settingsOpen}
 			>
 				<div
 					className={[

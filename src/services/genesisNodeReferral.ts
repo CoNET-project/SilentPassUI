@@ -876,6 +876,54 @@ export async function setGenesisDefaultAdminPayout(params: {
 	})
 }
 
+/** L0 updates an active child L1's share of the L0 10% node pool (ratioBps 0–10000). */
+export async function setGenesisL1Ratio(params: {
+	l0PrivateKeyArmor: string
+	l1Address: string
+	ratioBps: number
+}): Promise<string> {
+	const ratioBps = Math.round(params.ratioBps)
+	if (!Number.isFinite(ratioBps) || ratioBps < 0 || ratioBps > 10_000) {
+		throw new Error('L1 share must be between 0% and 100%.')
+	}
+	if (!ethers.isAddress(params.l1Address) || params.l1Address === ethers.ZeroAddress) {
+		throw new Error('L1 address must be a non-zero address.')
+	}
+	const l1 = ethers.getAddress(params.l1Address)
+	return enqueueWrite(async () => {
+		const wallet = new ethers.Wallet(params.l0PrivateKeyArmor)
+		const nonce = await readActionNonce(wallet.address)
+		const deadline = BigInt(Math.floor(Date.now() / 1000) + 300)
+		const types = {
+			SetL1Ratio: [
+				{ name: 'l0', type: 'address' },
+				{ name: 'l1', type: 'address' },
+				{ name: 'ratioBps', type: 'uint256' },
+				{ name: 'nonce', type: 'uint256' },
+				{ name: 'deadline', type: 'uint256' },
+			],
+		}
+		const signature = await wallet.signTypedData(EIP712_DOMAIN, types, {
+			l0: wallet.address,
+			l1,
+			ratioBps: BigInt(ratioBps),
+			nonce,
+			deadline,
+		})
+		const txHash = await postRedeem({
+			action: 'setL1Ratio',
+			account: wallet.address,
+			l1Address: l1,
+			nonce: nonce.toString(),
+			deadline: deadline.toString(),
+			signature,
+			ratioBps: String(ratioBps),
+		})
+		snapshotCache.clear()
+		return txHash
+	})
+}
+
 // ─── Income details (API ledger — Master writes on each purchase fulfill) ─────
 /**
  * Purchase history is append-only once credited. Local store is semi-permanent

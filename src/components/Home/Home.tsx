@@ -1849,8 +1849,8 @@ const Home = (_props: HomeProps) => {
 					onScroll={onCapsuleScroll}
 					className={
 						homeScrollUsesSingleFlexChain
-							? 'flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-y-contain pb-24'
-							: 'flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-y-contain pb-44'
+							? 'flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-y-contain pb-24 [overflow-anchor:none] [transform:translateZ(0)]'
+							: 'flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-y-contain pb-44 [overflow-anchor:none] [transform:translateZ(0)]'
 					}
 					style={
 						homeScrollUsesSingleFlexChain
@@ -1981,7 +1981,7 @@ const Home = (_props: HomeProps) => {
 											<ChevronRight size={16} strokeWidth={2.5} />
 										</button>
 									</div>
-									<div className="flex flex-col gap-2 rounded-lg bg-[#f3f4f5] p-2 dark:bg-slate-800/80">
+									<div className="flex flex-col gap-2 rounded-lg bg-[#f3f4f5] p-2 [transform:translateZ(0)] [-webkit-font-smoothing:antialiased] dark:bg-slate-800/80">
 										{myBrandCardsPreview.length === 0 ? (
 											<div className="rounded-lg p-3 text-sm font-medium text-[#424655] dark:text-slate-400">
 												{tu('no_merchant_brands_yet')}

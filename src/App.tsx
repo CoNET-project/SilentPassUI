@@ -56,11 +56,12 @@ import BountyBoard from '@/pages/BountyBoard'
 import CoNetMiningDetailPage from '@/pages/BountyBoard/CoNetMiningDetailPage'
 import GenesisNodeReferralPage from '@/pages/BountyBoard/GenesisNodeReferralPage'
 import GenesisL0RedeemManagePage from '@/pages/BountyBoard/GenesisL0RedeemManagePage'
+import GenesisL1EvangelistManagePage from '@/pages/BountyBoard/GenesisL1EvangelistManagePage'
 import RenderActionPage from '@/renderAction'
 import { getUserInfo } from "@/services/beamio"
 import { AppButton } from "@/components/button/AppButton"
 import { Check } from "lucide-react"
-import { postCardCouponOpenClaimWithCurrentWallet, postCardRedeem } from "@/services/BeamioCard"
+import { postCardCouponOpenClaimWithCurrentWallet, postCardRedeem, type CouponOpenClaimEligibility } from "@/services/BeamioCard"
 import CouponClaimTicketPreview from "@/components/Home/CouponClaimTicketPreview"
 import RedeemClaimTicketPreview from "@/components/Home/RedeemClaimTicketPreview"
 import type { ActiveCouponListItem } from "@/pages/Home/ActiveCouponsScreen"
@@ -144,6 +145,7 @@ function AppShell() {
     referrerEoa?: string | null
   } | null>(null)
   const [couponClaimPreviewRow, setCouponClaimPreviewRow] = useState<ActiveCouponListItem | null>(null)
+  const [couponClaimEligibility, setCouponClaimEligibility] = useState<CouponOpenClaimEligibility | null>(null)
   const [couponClaimSubmitting, setCouponClaimSubmitting] = useState(false)
   const [redeemClaimIntent, setRedeemClaimIntent] = useState<{ cardAddress?: string; redeemCode: string } | null>(null)
   const [redeemClaimSubmitting, setRedeemClaimSubmitting] = useState(false)
@@ -282,11 +284,13 @@ function AppShell() {
   useEffect(() => {
     if (!couponClaimIntent) {
       setCouponClaimPreviewRow(null)
+      setCouponClaimEligibility(null)
     }
   }, [couponClaimIntent])
 
   const closeCouponClaimPanel = () => {
     setCouponClaimIntent(null)
+    setCouponClaimEligibility(null)
     setShowFooter(true)
     navigate('/')
   }
@@ -299,6 +303,16 @@ function AppShell() {
 
   const handleConfirmCouponClaim = async () => {
     if (!couponClaimIntent || couponClaimSubmitting) return
+    if (
+      couponClaimEligibility === 'already_claimed' ||
+      couponClaimEligibility === 'already_redeemed' ||
+      couponClaimEligibility === 'sold_out' ||
+      couponClaimEligibility === 'expired' ||
+      couponClaimEligibility === 'not_open_claim' ||
+      couponClaimEligibility === 'insufficient_social_points'
+    ) {
+      return
+    }
     const privateKeyArmor = resolveSigningPrivateKeyArmor(profiles?.[0])
     if (!privateKeyArmor) {
       Toast.show({ content: tu('unlock_your_wallet_with_your_access_password_to_claim_coupons'), position: 'top' })
@@ -330,6 +344,7 @@ function AppShell() {
             source: 'optimistic',
           })
         }
+        setCouponClaimEligibility('already_claimed')
         // Cluster queue accept (`queued`) is success — close without waiting for chain confirm.
         closeCouponClaimPanel()
       }
@@ -649,7 +664,22 @@ function AppShell() {
 	useEffect(() => {
 		const lastTopMap = new WeakMap<EventTarget, number>()
 		let ticking = false
-		const threshold = 6
+		/** Larger than sub-pixel / overflow-anchor noise so /home mid-scroll does not flip footer every frame. */
+		const threshold = 12
+		let footerVisibleCommitTimer: ReturnType<typeof setTimeout> | undefined
+		let pendingFooterVisible: boolean | null = null
+
+		const commitFooterVisible = (next: boolean) => {
+			pendingFooterVisible = next
+			if (footerVisibleCommitTimer !== undefined) clearTimeout(footerVisibleCommitTimer)
+			footerVisibleCommitTimer = setTimeout(() => {
+				footerVisibleCommitTimer = undefined
+				if (pendingFooterVisible == null) return
+				const v = pendingFooterVisible
+				pendingFooterVisible = null
+				setFooterVisible(v)
+			}, 80)
+		}
 
 		const getScrollTop = (t: EventTarget) => {
 			if (t === window || t === document || t === document.documentElement || t === document.body) {
@@ -698,11 +728,11 @@ function AppShell() {
 				}
 
 				if (top <= 0) {
-					setFooterVisible(true)
+					commitFooterVisible(true)
 				} else if (Math.abs(delta) >= threshold) {
-					if (delta > 0) setFooterVisible(false)
+					if (delta > 0) commitFooterVisible(false)
 					else {
-						if (!nearBottom) setFooterVisible(true)
+						if (!nearBottom) commitFooterVisible(true)
 					}
 				}
 
@@ -715,6 +745,7 @@ function AppShell() {
 		document.addEventListener("scroll", onAnyScroll, { passive: true, capture: true })
 
 		return () => {
+			if (footerVisibleCommitTimer !== undefined) clearTimeout(footerVisibleCommitTimer)
 			window.removeEventListener("scroll", onAnyScroll)
 			document.removeEventListener("scroll", onAnyScroll, true)
 		}
@@ -1516,6 +1547,7 @@ function AppShell() {
 					<Route path="/BountyBoard/conet-mining" element={<CoNetMiningDetailPage />} />
 					<Route path="/BountyBoard/genesis-referral" element={<GenesisNodeReferralPage />} />
 					<Route path="/BountyBoard/genesis-referral/redeem" element={<GenesisL0RedeemManagePage />} />
+					<Route path="/BountyBoard/genesis-referral/l1" element={<GenesisL1EvangelistManagePage />} />
 					<Route path="/qr" element={<QrOperationPage />} />
 					<Route path="/Chat" element={<Chat />} />
 					<Route path="/chat/:id" element={<ChatDetail />} />
@@ -1546,7 +1578,7 @@ function AppShell() {
 			{/* 全局 Search：任意页面点击 footer 的 search 图标后，直接显示/隐藏（无滑动动画）
 				当 search 控件执行关闭（返回按钮/选择结果）后，父容器必须执行 setChatSearchOpen(false) 隐藏 search */}
 			{chatSearchOpen && createPortal(
-				<div className="fixed inset-0 z-[100]">
+				<div className="fixed inset-0 z-[210]">
 					{/* Full-screen dim — search bar sits above; avoids bright strip below the bar */}
 					<div
 						className="absolute inset-0 bg-black/45 backdrop-blur-[1px]"
@@ -1792,7 +1824,13 @@ function AppShell() {
 						<div className="flex items-center justify-between px-5 pt-[calc(env(safe-area-inset-top)+14px)] pb-3 border-b border-slate-200 dark:border-slate-800">
 							<div>
 								<h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">{tu('coupon_claim')}</h2>
-								<p className="text-xs text-slate-500 dark:text-slate-400">{tu('confirm_before_submitting_on_chain_claim')}</p>
+								<p className="text-xs text-slate-500 dark:text-slate-400">
+									{couponClaimEligibility === 'already_redeemed'
+										? 'You already used this coupon.'
+										: couponClaimEligibility === 'already_claimed'
+											? 'You already claimed this coupon.'
+											: tu('confirm_before_submitting_on_chain_claim')}
+								</p>
 							</div>
 							<button
 								type="button"
@@ -1813,20 +1851,48 @@ function AppShell() {
 								couponId={couponClaimIntent.couponId}
 								submitting={couponClaimSubmitting}
 								onResolved={setCouponClaimPreviewRow}
+								onEligibilityChange={setCouponClaimEligibility}
+								onClaim={() => void handleConfirmCouponClaim()}
+								referrerEoa={couponClaimIntent.referrerEoa ?? null}
+								userEoa={profiles?.[0]?.keyID ?? null}
 								getPrivateKeyArmor={() => resolveSigningPrivateKeyArmor(profiles?.[0]) || undefined}
 								onWalletUnlock={() => navigate('/settings')}
 							/>
 						</div>
 
 						<div className="px-5 pb-[calc(env(safe-area-inset-bottom)+16px)] pt-2 border-t border-slate-200 dark:border-slate-800">
-							<AppButton
-								fullWidth
-								onClick={handleConfirmCouponClaim}
-								disabled={couponClaimSubmitting}
-								className="rounded-xl"
-							>
-								{couponClaimSubmitting ? tu('claiming') : tu('claim')}
-							</AppButton>
+							{(() => {
+								const alreadyClaimed = couponClaimEligibility === 'already_claimed'
+								const alreadyRedeemed = couponClaimEligibility === 'already_redeemed'
+								const claimBlocked =
+									alreadyClaimed ||
+									alreadyRedeemed ||
+									couponClaimEligibility === 'sold_out' ||
+									couponClaimEligibility === 'expired' ||
+									couponClaimEligibility === 'not_open_claim' ||
+									couponClaimEligibility === 'insufficient_social_points'
+								const bottomLabel = alreadyRedeemed
+									? tu('redeemed')
+									: alreadyClaimed
+										? tu('claimed')
+										: couponClaimEligibility === 'sold_out'
+											? 'Sold out'
+											: couponClaimEligibility === 'expired'
+												? tu('expired')
+												: couponClaimSubmitting
+													? tu('claiming')
+													: tu('claim')
+								return (
+									<AppButton
+										fullWidth
+										onClick={handleConfirmCouponClaim}
+										disabled={couponClaimSubmitting || claimBlocked}
+										className="rounded-xl"
+									>
+										{bottomLabel}
+									</AppButton>
+								)
+							})()}
 						</div>
 					</motion.div>
 				)}

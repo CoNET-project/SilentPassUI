@@ -127,5 +127,7 @@ export function beamioBaseScanNftUrl(
 export function beamioBaseScanNftLabel(issuedTokenId: string | number | undefined): string {
 	const tid = normalizeIssuedNftTokenIdForBaseScan(issuedTokenId)
 	if (!tid) return 'NFT'
-	return beamioBaseScanNftLabelForToken(tid)
+	/** Compact capsule: last 3 digits of issued tokenId (e.g. …001 → NFT #001). */
+	const last3 = tid.length <= 3 ? tid : tid.slice(-3)
+	return `NFT #${last3}`
 }

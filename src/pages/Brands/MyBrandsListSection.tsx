@@ -132,12 +132,13 @@ export function MyBrandCardRow({
 
 	return (
 		<div
-			className="flex w-full items-center gap-4 rounded-lg border-l-[3px] border-transparent p-3 text-left"
+			className="flex w-full items-center gap-4 rounded-lg border-l-[3px] border-transparent p-3 text-left [transform:translateZ(0)]"
 			style={tierPres.accentColor ? { borderLeftColor: tierPres.accentColor } : undefined}
 		>
 			<MyBrandMerchantIcon title={title} iconUrl={iconUrl} />
 			<div className="min-w-0 flex-1">
-				<div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+				{/* nowrap: avoid title↔NFT capsule wrap thrash that vertically jitters the Home list */}
+				<div className="flex min-w-0 flex-nowrap items-center gap-x-2">
 					<p className="min-w-0 truncate text-sm font-bold text-[#191c1d] dark:text-slate-100">{title}</p>
 					{cardAddress ? (
 						<BeamioBaseScanNftCapsule cardAddress={cardAddress} pointsBalance className="!py-0.5" />

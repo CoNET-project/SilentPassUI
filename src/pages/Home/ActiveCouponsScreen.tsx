@@ -399,6 +399,8 @@ export function ActiveCouponTicketItem({
 	showUserLike = false,
 	socialMissionUser = null,
 	socialMissionReferrer = null,
+	/** Optional TOTAL/LEFT fallback when daemon supply is not ready yet. */
+	supplySummary = null,
 	referrerEoa,
 	getPrivateKeyArmor,
 	onWalletUnlock,
@@ -418,6 +420,7 @@ export function ActiveCouponTicketItem({
 	showUserLike?: boolean
 	socialMissionUser?: DiscoverSocialMissionMetrics | null
 	socialMissionReferrer?: DiscoverSocialMissionMetrics | null
+	supplySummary?: string | null
 	/** Sharer EOA from deep link `ref=` (coupon like #13 ref mint). */
 	referrerEoa?: string | null
 	getPrivateKeyArmor?: () => string | undefined
@@ -442,7 +445,9 @@ export function ActiveCouponTicketItem({
 		onWalletUnlock,
 	})
 	const { formatCouponSupplySummary } = useDaemonContext()
-	const supplySummaryFromDaemon = formatCouponSupplySummary(row.cardAddress, row.tokenId)
+	const supplySummaryResolved =
+		formatCouponSupplySummary(row.cardAddress, row.tokenId) ??
+		(typeof supplySummary === 'string' && supplySummary.trim() ? supplySummary.trim() : null)
 	const expires = formatCouponExpiryPill(row.validBeforeSec)
 	const showExpiryPill = shouldShowCouponExpiryPill(expires)
 	const expiryUrgent = couponExpiryUsesUrgentVariant(expires)
@@ -467,77 +472,83 @@ export function ActiveCouponTicketItem({
 	const showLikeCountPill = Boolean(showUserLike)
 	const showShareClickPill = Boolean(showUserLike && couponLike.shareClickCount != null)
 	const showSocialMission = Boolean(socialMissionUser || socialMissionReferrer)
-	const showSocialStatRow =
-		showLikeCountPill || showShareClickPill || showShareButton || showSocialMission || Boolean(supplySummaryFromDaemon)
+	const showShareControl = showShareButton || showShareClickPill
+	const showAddressMetaRow =
+		showBaseScanNftLink ||
+		showLikeCountPill ||
+		showShareControl ||
+		showSocialMission ||
+		Boolean(supplySummaryResolved)
 
-	/** Detail line only — never mix like/share capsules into this row. */
+	/** Subtitle text only — address / like / share / supply sit on the meta row below. */
 	const renderDetailSubtitle = (subtitleClassName: string, marginTopClass = 'mt-0.5') => {
-		if (!subtitle && !showBaseScanNftLink) return null
+		if (!subtitle) return null
 		return (
-			<div className={`min-w-0 ${marginTopClass}`.trim()}>
-				{subtitle ? (
-					<p className={`min-w-0 truncate font-manrope font-semibold ${subtitleClassName}`}>
-						{subtitle}
-					</p>
-				) : null}
-				{showBaseScanNftLink ? (
-					<div className={subtitle ? 'mt-1.5' : ''}>
-						<BeamioBaseScanNftCapsule
-							cardAddress={row.cardAddress}
-							tokenId={row.tokenId}
-							className="shrink-0"
-						/>
-					</div>
-				) : null}
-			</div>
+			<p className={`min-w-0 truncate font-manrope font-semibold ${marginTopClass} ${subtitleClassName}`.trim()}>
+				{subtitle}
+			</p>
 		)
 	}
 
-	/** Dedicated row under detail for like count + share action capsules. */
-	const renderSocialStatRow = (likeVariant: 'light' | 'onDark' = 'light') => {
-		if (!showSocialStatRow) return null
+	/**
+	 * Same row: NFT address capsule + like + share-click + share link + TOTAL/LEFT.
+	 */
+	const renderAddressMetaRow = (likeVariant: 'light' | 'onDark' = 'light') => {
+		if (!showAddressMetaRow) return null
+		const supplyChipClass =
+			likeVariant === 'onDark'
+				? 'border-white/25 bg-white/15 text-white'
+				: 'border-[#cbd5e1] bg-white text-[#334155] dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200'
 		return (
-			<div className="mt-2 flex w-full flex-col gap-1.5">
-				<div className="flex w-full flex-wrap items-center gap-2">
-					{showLikeCountPill ? (
-						<CouponUserLikeCountPill
-							count={couponLike.likeCount}
-							variant={likeVariant}
-							onClick={couponLike.onHeartClick}
-							disabled={couponLike.likeLoading || Boolean(couponLike.userLiked)}
-							loading={couponLike.likeLoading && couponLike.likeCount == null}
-							liked={Boolean(couponLike.userLiked)}
-						/>
-					) : null}
-					{showShareClickPill ? (
-						<CouponShareClickCountPill count={couponLike.shareClickCount} variant={likeVariant} />
-					) : null}
-					{showShareButton ? (
-						<CouponOpenClaimShareButton
-							cardAddress={row.cardAddress}
-							couponId={row.couponId}
-							couponTitle={row.title}
-							referrerEoa={shareReferrerEoa}
-							className="shrink-0"
-						/>
-					) : null}
-					{showSocialMission ? (
-						<DiscoverOfferSocialMissionTrigger
-							user={socialMissionUser}
-							referrer={socialMissionReferrer}
-						/>
-					) : null}
-				</div>
-				{supplySummaryFromDaemon ? (
-					<p
-						className={`line-clamp-1 px-0.5 text-[11px] font-semibold ${
-							likeVariant === 'onDark'
-								? 'text-white'
-								: 'text-[#2c2f31] dark:text-slate-100'
-						}`}
+			<div
+				className={[
+					'flex w-full min-w-0 flex-wrap items-center gap-2',
+					subtitle || title ? 'mt-1.5' : 'mt-0.5',
+				].join(' ')}
+			>
+				{showBaseScanNftLink ? (
+					<BeamioBaseScanNftCapsule
+						cardAddress={row.cardAddress}
+						tokenId={row.tokenId}
+						className="shrink-0"
+					/>
+				) : null}
+				{showLikeCountPill ? (
+					<CouponUserLikeCountPill
+						count={couponLike.likeCount}
+						variant={likeVariant}
+						onClick={couponLike.onHeartClick}
+						disabled={couponLike.likeLoading || Boolean(couponLike.userLiked)}
+						loading={couponLike.likeLoading && couponLike.likeCount == null}
+						liked={Boolean(couponLike.userLiked)}
+					/>
+				) : null}
+				{showShareButton ? (
+					<CouponOpenClaimShareButton
+						cardAddress={row.cardAddress}
+						couponId={row.couponId}
+						couponTitle={row.title}
+						referrerEoa={shareReferrerEoa}
+						count={couponLike.shareClickCount}
+						variant={likeVariant}
+						className="shrink-0"
+					/>
+				) : showShareClickPill ? (
+					<CouponShareClickCountPill count={couponLike.shareClickCount} variant={likeVariant} />
+				) : null}
+				{showSocialMission ? (
+					<DiscoverOfferSocialMissionTrigger
+						user={socialMissionUser}
+						referrer={socialMissionReferrer}
+					/>
+				) : null}
+				{supplySummaryResolved ? (
+					<span
+						className={`inline-flex max-w-full shrink-0 items-center rounded-full border px-2.5 py-1 text-[10px] font-bold tracking-tight ${supplyChipClass}`}
+						title={supplySummaryResolved}
 					>
-						{supplySummaryFromDaemon}
-					</p>
+						<span className="truncate">{supplySummaryResolved}</span>
+					</span>
 				) : null}
 			</div>
 		)
@@ -720,7 +731,7 @@ export function ActiveCouponTicketItem({
 							{showCardAddress && row.cardAddress ? (
 								<CouponCardAddressCapsule address={row.cardAddress} />
 							) : null}
-							{renderSocialStatRow('onDark')}
+							{renderAddressMetaRow('onDark')}
 							{showExpiryPill ? <div className="mt-2">{renderExpiryPill('inner')}</div> : null}
 						</div>
 					) : null}
@@ -748,11 +759,11 @@ export function ActiveCouponTicketItem({
 					'text-sm text-[#595c5e] dark:text-slate-400',
 					title ? 'mt-0.5' : ''
 				)}
-				{renderSocialStatRow('light')}
+				{renderAddressMetaRow('light')}
 				{showExpiryPill ? (
 					<div
 						className={
-							title || subtitle || showBaseScanNftLink || showSocialStatRow ? 'mt-2' : ''
+							title || subtitle || showAddressMetaRow ? 'mt-2' : ''
 						}
 					>
 						{renderExpiryPill('external')}

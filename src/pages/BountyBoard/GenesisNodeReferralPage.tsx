@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ethers } from 'ethers'
 import {
-	Ban,
 	Check,
 	ChevronRight,
 	Copy,
@@ -11,6 +10,7 @@ import {
 	Loader2,
 	Pencil,
 	TicketPlus,
+	UserPlus,
 	Users,
 	Wallet,
 	X,
@@ -25,25 +25,23 @@ import { CoNET_Data } from '@/utils/globals'
 import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
 import { formatReferralUsdcAmount6 } from '@/services/referralRegistryEarnings'
 import { formatBeamioTransactionTimeLabel } from '@/utils/beamioTransactionTimeLabel'
+import baseIcon from '@/components/assets/base-logo.png'
+import conetIcon from '@/components/Home/assets/conet-token.svg'
 import {
 	buildGenesisEvangelistShareUrl,
-	cancelGenesisL1RedeemCode,
 	claimGenesisL0RedeemCode,
 	claimGenesisL1RedeemCode,
 	fetchGenesisL0List,
 	fetchGenesisL1List,
-	fetchGenesisL1RedeemCodesForIssuer,
 	fetchGenesisMemberSnapshot,
-	issueGenesisL1RedeemCode,
-	ratioBpsToPercentLabel,
 	readCachedGenesisIncome,
 	setGenesisDefaultAdminPayout,
 	setGenesisFoundation,
+	setGenesisL1Ratio,
 	type GenesisDownstreamL0Item,
 	type GenesisDownstreamL1Item,
 	type GenesisIncomeItem,
 	type GenesisIncomeSnapshot,
-	type GenesisL1RedeemRecord,
 	type GenesisMemberSnapshot,
 } from '@/services/genesisNodeReferral'
 
@@ -51,8 +49,8 @@ const GENESIS_SLIDE_DURATION_MS = 300
 const BASE_TX_EXPLORER = 'https://basescan.org/tx/'
 const CONET_TX_EXPLORER = 'https://mainnet.conet.network/tx/'
 
-/** Partnership header capsule — CoNET explorer internal txs for this vault address. */
-const GENESIS_PARTNERSHIP_VAULT_CAPSULE_ADDRESS = '0xcC300E20Ec69a4cFd692C75A84882f6b4D0d1B39'
+/** Partnership header capsule — CoNET vault **proxy** (canonical; not impl). */
+const GENESIS_PARTNERSHIP_VAULT_CAPSULE_ADDRESS = '0x051b65E5711E6E74bC236Fe220dcA7021841855C'
 
 function useGenesisSlideOut(onClose: () => void) {
 	const [isClosing, setIsClosing] = useState(false)
@@ -83,12 +81,15 @@ function isTxHash(value: string | null | undefined): value is string {
 function GenesisTxHashCapsule({
 	transactionHash,
 	href,
-	label,
+	chainLabel,
+	chainIconSrc,
 	timestampMs,
 }: {
 	transactionHash: string
 	href: string
-	label: string
+	/** Accessible name only — visual identity is the chain icon. */
+	chainLabel: string
+	chainIconSrc: string
 	timestampMs?: number
 }) {
 	const timeLabel =
@@ -98,16 +99,19 @@ function GenesisTxHashCapsule({
 			href={href}
 			target="_blank"
 			rel="noopener noreferrer"
-			className="inline-flex max-w-full items-center gap-2 rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-left text-xs text-slate-200 transition hover:bg-white/10"
+			className="inline-flex max-w-full items-center gap-2 rounded-full border border-white/10 bg-white/[0.06] py-1.5 pl-2 pr-3 text-left text-xs text-slate-200 transition hover:bg-white/10"
 			aria-label={
 				timeLabel
-					? `Open ${label} ${transactionHash}, ${timeLabel}`
-					: `Open ${label} ${transactionHash}`
+					? `Open ${chainLabel} ${transactionHash}, ${timeLabel}`
+					: `Open ${chainLabel} ${transactionHash}`
 			}
 		>
-			<span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-				{label}
-			</span>
+			<img
+				src={chainIconSrc}
+				alt=""
+				className="h-4 w-4 shrink-0 rounded-full object-contain"
+				aria-hidden
+			/>
 			<span className="truncate font-mono">{shortTxHash(transactionHash)}</span>
 			{timeLabel ? <span className="shrink-0 text-slate-400">{timeLabel}</span> : null}
 			<ExternalLink className="h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden />
@@ -131,14 +135,16 @@ function GenesisPurchaseHashPair({
 			<GenesisTxHashCapsule
 				transactionHash={baseTxHash}
 				href={`${BASE_TX_EXPLORER}${baseTxHash}`}
-				label="Base"
+				chainLabel="Base"
+				chainIconSrc={baseIcon}
 				timestampMs={timestampMs}
 			/>
 			{conetHash ? (
 				<GenesisTxHashCapsule
 					transactionHash={conetHash}
 					href={`${CONET_TX_EXPLORER}${conetHash}`}
-					label="CoNET"
+					chainLabel="CoNET"
+					chainIconSrc={conetIcon}
 				/>
 			) : null}
 		</div>
@@ -320,9 +326,6 @@ function GenesisIncomeDetailPanel({
 									</p>
 								) : null}
 								<div className="mt-2.5">
-									<p className="mb-1 text-[10px] font-semibold uppercase tracking-widest text-slate-500">
-										Purchase hashes
-									</p>
 									<GenesisPurchaseHashPair
 										baseTxHash={item.transactionHash}
 										conetSplitTxHash={genesisIncomeConetSplitHash(item)}
@@ -400,10 +403,13 @@ function BeamioTagCapsule({
 	address,
 	rebatePercent,
 	onEdit,
+	onEditRebate,
 }: {
 	address: string
 	rebatePercent?: string
 	onEdit?: () => void
+	/** Edit icon on the share-ratio pill (Downstream L1). */
+	onEditRebate?: () => void
 }) {
 	const { resolveTagPlain, avatarImgUrl } = useBeamioTagDatabase()
 	const tag = resolveTagPlain(address)
@@ -426,8 +432,19 @@ function BeamioTagCapsule({
 			/>
 			<span className="min-w-0 truncate">@{displayTag}</span>
 			{rebatePercent != null ? (
-				<span className="shrink-0 rounded-full border border-indigo-200/25 bg-black/20 px-2 py-0.5 text-[11px] font-semibold text-indigo-100">
-					{rebatePercent}%
+				<span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-indigo-200/25 bg-black/20 py-0.5 pl-2 pr-0.5 text-[11px] font-semibold text-indigo-100">
+					<span className="pr-1">{rebatePercent}%</span>
+					{onEditRebate ? (
+						<button
+							type="button"
+							onClick={onEditRebate}
+							className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-indigo-200/30 bg-indigo-200/15 text-indigo-50 transition hover:bg-indigo-200/25"
+							aria-label={`Edit ${rebatePercent}% share for @${displayTag}`}
+							title="Edit share"
+						>
+							<Pencil className="h-2.5 w-2.5" aria-hidden />
+						</button>
+					) : null}
 				</span>
 			) : null}
 			{onEdit ? (
@@ -445,43 +462,6 @@ function BeamioTagCapsule({
 	)
 }
 
-function preventNumericStepKeys(e: React.KeyboardEvent<HTMLInputElement>): void {
-	if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End'].includes(e.key)) {
-		e.preventDefault()
-		e.stopPropagation()
-	}
-}
-
-function preventNumericWheelStep(e: React.WheelEvent<HTMLInputElement>): void {
-	e.preventDefault()
-	e.stopPropagation()
-}
-
-function shortAddr(addr: string): string {
-	if (!addr || addr.length < 12) return addr
-	return `${addr.slice(0, 6)}…${addr.slice(-4)}`
-}
-
-function statusChipClass(status: GenesisL1RedeemRecord['status']): string {
-	switch (status) {
-		case 'pending':
-			return 'bg-amber-400/10 text-amber-100 border-amber-300/20'
-		case 'claimed':
-			return 'bg-emerald-400/10 text-emerald-100 border-emerald-300/20'
-		case 'cancelled':
-			return 'bg-white/[0.06] text-slate-300 border-white/10'
-		default:
-			return 'bg-white/[0.06] text-slate-300 border-white/10'
-	}
-}
-
-/** percent 0–100 → ratioBps */
-function percentInputToBps(raw: string): number | null {
-	const n = Number(raw)
-	if (!Number.isFinite(n) || n < 0 || n > 100) return null
-	return Math.round(n * 100)
-}
-
 /**
  * Genesis Node referral — full-page secondary screen from Bounty Board Share.
  * Hides global Footer; circular back returns to /BountyBoard.
@@ -496,16 +476,11 @@ export default function GenesisNodeReferralPage() {
 	const [snapshot, setSnapshot] = useState<GenesisMemberSnapshot | null>(null)
 	const [l0List, setL0List] = useState<GenesisDownstreamL0Item[]>([])
 	const [l1List, setL1List] = useState<GenesisDownstreamL1Item[]>([])
-	const [l1Codes, setL1Codes] = useState<GenesisL1RedeemRecord[]>([])
 	const [loading, setLoading] = useState(false)
-	const [issuingL1, setIssuingL1] = useState(false)
-	const [cancellingHash, setCancellingHash] = useState<string | null>(null)
 	const [claimCode, setClaimCode] = useState('')
 	const [claiming, setClaiming] = useState(false)
-	const [l1SharePercent, setL1SharePercent] = useState('50')
 	const [copiedKey, setCopiedKey] = useState<string | null>(null)
 	const [error, setError] = useState('')
-	const [lastIssuedL1Secret, setLastIssuedL1Secret] = useState<string | null>(null)
 	const [foundationDraft, setFoundationDraft] = useState('')
 	const [adminPayoutDraft, setAdminPayoutDraft] = useState('')
 	const [editingPayout, setEditingPayout] = useState<'foundation' | 'adminPayout' | null>(null)
@@ -519,11 +494,19 @@ export default function GenesisNodeReferralPage() {
 		address: string
 		earnedUsdc6: string
 	} | null>(null)
+	const [l1RatioEdit, setL1RatioEdit] = useState<{
+		address: string
+		ratioBps: number
+	} | null>(null)
+	const [l1RatioDraftPercent, setL1RatioDraftPercent] = useState(50)
+	const [l1RatioDrawerClosing, setL1RatioDrawerClosing] = useState(false)
+	const [savingL1Ratio, setSavingL1Ratio] = useState(false)
 
-	const issueL1InFlightRef = useRef(false)
 	const claimInFlightRef = useRef(false)
 	const payoutInFlightRef = useRef(false)
+	const l1RatioInFlightRef = useRef(false)
 	const payoutDrawerCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+	const l1RatioDrawerCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
 	useEffect(() => {
 		setShowFooter(false)
@@ -540,7 +523,6 @@ export default function GenesisNodeReferralPage() {
 			setSnapshot(null)
 			setL0List([])
 			setL1List([])
-			setL1Codes([])
 			return
 		}
 		setLoading(true)
@@ -559,15 +541,10 @@ export default function GenesisNodeReferralPage() {
 				setL0List([])
 			}
 			if (snap?.isL0) {
-				const [children, issuedL1] = await Promise.all([
-					fetchGenesisL1List(eoa).catch(() => [] as GenesisDownstreamL1Item[]),
-					fetchGenesisL1RedeemCodesForIssuer(eoa).catch(() => [] as GenesisL1RedeemRecord[]),
-				])
+				const children = await fetchGenesisL1List(eoa).catch(() => [] as GenesisDownstreamL1Item[])
 				setL1List(children)
-				setL1Codes(issuedL1)
 			} else {
 				setL1List([])
-				setL1Codes([])
 			}
 		} catch (cause) {
 			setError(cause instanceof Error ? cause.message : 'Could not load Genesis referral data.')
@@ -624,51 +601,6 @@ export default function GenesisNodeReferralPage() {
 		if (!ethers.isAddress(address)) return
 		setPurchaseHistoryPartner({ address: ethers.getAddress(address), earnedUsdc6 })
 	}, [])
-
-	const handleIssueL1 = useCallback(async () => {
-		if (issueL1InFlightRef.current || !snapshot?.isL0) return
-		if (!armor) {
-			setError('Unlock your wallet to sign.')
-			return
-		}
-		const ratioBps = percentInputToBps(l1SharePercent)
-		if (ratioBps == null) {
-			setError('L1 share must be a number from 0 to 100.')
-			return
-		}
-		issueL1InFlightRef.current = true
-		setIssuingL1(true)
-		setError('')
-		try {
-			const issued = await issueGenesisL1RedeemCode({ issuerPrivateKeyArmor: armor, ratioBps })
-			setLastIssuedL1Secret(issued.secret)
-			Toast.show({ content: 'L1 Evangelist code created', position: 'center' })
-			await reload()
-		} catch (cause) {
-			setError(cause instanceof Error ? cause.message : 'Could not issue L1 redeem code.')
-		} finally {
-			issueL1InFlightRef.current = false
-			setIssuingL1(false)
-		}
-	}, [armor, l1SharePercent, reload, snapshot?.isL0])
-
-	const handleCancelL1 = useCallback(
-		async (hash: string) => {
-			if (!armor || cancellingHash) return
-			setCancellingHash(hash)
-			setError('')
-			try {
-				await cancelGenesisL1RedeemCode({ issuerPrivateKeyArmor: armor, hash })
-				Toast.show({ content: 'L1 code cancelled', position: 'center' })
-				await reload()
-			} catch (cause) {
-				setError(cause instanceof Error ? cause.message : 'Could not cancel L1 code.')
-			} finally {
-				setCancellingHash(null)
-			}
-		},
-		[armor, cancellingHash, reload],
-	)
 
 	const handleClaim = useCallback(async () => {
 		if (claimInFlightRef.current) return
@@ -787,9 +719,70 @@ export default function GenesisNodeReferralPage() {
 		setPayoutDrawerOpen(true)
 	}, [payoutDrawerClosing])
 
+	const closeL1RatioDrawer = useCallback(() => {
+		if (l1RatioDrawerClosing || !l1RatioEdit) return
+		if (savingL1Ratio) return
+		setL1RatioDrawerClosing(true)
+		if (l1RatioDrawerCloseTimerRef.current) clearTimeout(l1RatioDrawerCloseTimerRef.current)
+		l1RatioDrawerCloseTimerRef.current = setTimeout(() => {
+			setL1RatioEdit(null)
+			setL1RatioDrawerClosing(false)
+			l1RatioDrawerCloseTimerRef.current = null
+		}, 300)
+	}, [l1RatioDrawerClosing, l1RatioEdit, savingL1Ratio])
+
+	const openL1RatioDrawer = useCallback((address: string, ratioBps: number) => {
+		if (l1RatioDrawerClosing) return
+		if (l1RatioDrawerCloseTimerRef.current) {
+			clearTimeout(l1RatioDrawerCloseTimerRef.current)
+			l1RatioDrawerCloseTimerRef.current = null
+		}
+		setL1RatioDrawerClosing(false)
+		setL1RatioDraftPercent(Math.max(0, Math.min(100, Math.round(ratioBps / 100))))
+		setL1RatioEdit({ address: ethers.getAddress(address), ratioBps })
+	}, [l1RatioDrawerClosing])
+
+	const handleSaveL1Ratio = useCallback(async () => {
+		if (l1RatioInFlightRef.current || !l1RatioEdit || !snapshot?.isL0) return
+		if (!armor) {
+			setError('Unlock your wallet to sign.')
+			return
+		}
+		const ratioBps = Math.round(l1RatioDraftPercent) * 100
+		if (ratioBps === l1RatioEdit.ratioBps) {
+			closeL1RatioDrawer()
+			return
+		}
+		l1RatioInFlightRef.current = true
+		setSavingL1Ratio(true)
+		setError('')
+		try {
+			await setGenesisL1Ratio({
+				l0PrivateKeyArmor: armor,
+				l1Address: l1RatioEdit.address,
+				ratioBps,
+			})
+			Toast.show({ content: 'L1 share updated', position: 'center' })
+			setL1RatioDrawerClosing(true)
+			if (l1RatioDrawerCloseTimerRef.current) clearTimeout(l1RatioDrawerCloseTimerRef.current)
+			l1RatioDrawerCloseTimerRef.current = setTimeout(() => {
+				setL1RatioEdit(null)
+				setL1RatioDrawerClosing(false)
+				l1RatioDrawerCloseTimerRef.current = null
+			}, 300)
+			await reload()
+		} catch (cause) {
+			setError(cause instanceof Error ? cause.message : 'Could not update L1 share.')
+		} finally {
+			l1RatioInFlightRef.current = false
+			setSavingL1Ratio(false)
+		}
+	}, [armor, closeL1RatioDrawer, l1RatioDraftPercent, l1RatioEdit, reload, snapshot?.isL0])
+
 	useEffect(() => {
 		return () => {
 			if (payoutDrawerCloseTimerRef.current) clearTimeout(payoutDrawerCloseTimerRef.current)
+			if (l1RatioDrawerCloseTimerRef.current) clearTimeout(l1RatioDrawerCloseTimerRef.current)
 		}
 	}, [])
 
@@ -854,26 +847,41 @@ export default function GenesisNodeReferralPage() {
 					>
 						<div className="flex items-center justify-between">
 							<BeamioCircularBackButton onClick={() => navigate('/BountyBoard')} />
-							{snapshot?.isAdmin ? (
+							{snapshot?.isAdmin || snapshot?.isL0 ? (
 								<div className="flex items-center gap-2">
-									<button
-										type="button"
-										onClick={openPayoutDrawer}
-										className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-indigo-200/20 bg-indigo-300/10 text-indigo-200 transition hover:bg-indigo-300/20"
-										aria-label="Payout addresses"
-										title="Payout addresses"
-									>
-										<Wallet className="h-4 w-4" aria-hidden />
-									</button>
-									<button
-										type="button"
-										onClick={() => navigate('/BountyBoard/genesis-referral/redeem')}
-										className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-indigo-200/20 bg-indigo-300/10 text-indigo-200 transition hover:bg-indigo-300/20"
-										aria-label="Manage L0 redeem codes"
-										title="Manage L0 redeem codes"
-									>
-										<TicketPlus className="h-4 w-4" aria-hidden />
-									</button>
+									{snapshot?.isAdmin ? (
+										<>
+											<button
+												type="button"
+												onClick={openPayoutDrawer}
+												className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-indigo-200/20 bg-indigo-300/10 text-indigo-200 transition hover:bg-indigo-300/20"
+												aria-label="Payout addresses"
+												title="Payout addresses"
+											>
+												<Wallet className="h-4 w-4" aria-hidden />
+											</button>
+											<button
+												type="button"
+												onClick={() => navigate('/BountyBoard/genesis-referral/redeem')}
+												className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-indigo-200/20 bg-indigo-300/10 text-indigo-200 transition hover:bg-indigo-300/20"
+												aria-label="Manage L0 redeem codes"
+												title="Manage L0 redeem codes"
+											>
+												<TicketPlus className="h-4 w-4" aria-hidden />
+											</button>
+										</>
+									) : null}
+									{snapshot?.isL0 ? (
+										<button
+											type="button"
+											onClick={() => navigate('/BountyBoard/genesis-referral/l1')}
+											className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-purple-200/20 bg-purple-300/10 text-purple-200 transition hover:bg-purple-300/20"
+											aria-label="Issue L1 Evangelist"
+											title="Issue L1 Evangelist"
+										>
+											<UserPlus className="h-4 w-4" aria-hidden />
+										</button>
+									) : null}
 								</div>
 							) : null}
 						</div>
@@ -986,177 +994,52 @@ export default function GenesisNodeReferralPage() {
 							) : null}
 
 							{snapshot?.isL0 ? (
-								<>
-									<section className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-										<div className="flex items-center gap-2">
-											<TicketPlus className="h-4 w-4 text-purple-200" aria-hidden />
-											<h2 className="text-sm font-bold text-slate-50">Issue L1 Evangelist</h2>
-										</div>
-										<p className="mt-1 text-xs text-slate-400">
-											Set what percent of your 10% node pool (125 USDC/node) goes to this L1. Remainder stays
-											with you.
-										</p>
-										<label htmlFor="genesis-l1-share" className="mt-3 block text-xs font-semibold text-slate-300">
-											L1 share of your 10% pool (%)
-										</label>
-										<input
-											id="genesis-l1-share"
-											type="number"
-											inputMode="decimal"
-											autoComplete="off"
-											enterKeyHint="done"
-											min={0}
-											max={100}
-											step={1}
-											value={l1SharePercent}
-											onChange={(e) => setL1SharePercent(e.target.value)}
-											onKeyDown={preventNumericStepKeys}
-											onWheel={preventNumericWheelStep}
-											className="mt-1.5 w-full rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2.5 text-sm tabular-nums text-slate-50 placeholder:text-slate-500 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]"
-										/>
-										<button
-											type="button"
-											onClick={() => void handleIssueL1()}
-											disabled={issuingL1 || !armor}
-											aria-busy={issuingL1}
-											className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#8d3a8b] px-3 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
-										>
-											{issuingL1 ? (
-												<Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-											) : (
-												<TicketPlus className="h-4 w-4" aria-hidden />
-											)}
-											{issuingL1 ? 'Creating…' : 'Create L1 redeem code'}
-										</button>
-										{lastIssuedL1Secret ? (
-											<div className="mt-3 rounded-xl border border-emerald-300/20 bg-emerald-400/10 p-3">
-												<p className="text-[10px] font-bold uppercase tracking-widest text-emerald-200">
-													New L1 code
-												</p>
-												<p className="mt-1 break-all font-mono text-xs text-emerald-50">
-													{lastIssuedL1Secret}
-												</p>
-												<button
-													type="button"
-													onClick={() => void copyText('lastL1', lastIssuedL1Secret)}
-													className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-200"
-												>
-													{copiedKey === 'lastL1' ? (
-														<Check className="h-3.5 w-3.5 text-emerald-400" aria-hidden />
-													) : (
-														<Copy className="h-3.5 w-3.5" aria-hidden />
-													)}
-													Copy code
-												</button>
-											</div>
-										) : null}
-
-										<ul className="mt-4 space-y-2">
-											{l1Codes.length === 0 ? (
-												<li className="text-xs text-slate-500">No L1 codes yet.</li>
-											) : (
-												l1Codes.map((row) => (
-													<li
-														key={row.hash}
-														className="rounded-xl border border-white/10 bg-white/[0.03] p-3"
+								<section className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+									<div className="flex items-center gap-2">
+										<Users className="h-4 w-4 text-purple-200" aria-hidden />
+										<h2 className="text-sm font-bold text-slate-50">Downstream L1</h2>
+										<span className="ml-auto text-xs font-semibold tabular-nums text-slate-500">
+											{l1List.length} item{l1List.length === 1 ? '' : 's'}
+										</span>
+									</div>
+									{l1List.length === 0 ? (
+										<p className="mt-3 text-xs text-slate-500">No L1 Evangelists yet.</p>
+									) : (
+										<div className="mt-3 space-y-2">
+											{l1List.map((row) => {
+												const partnerItems = resolvePartnerIncomeItems(row.address)
+												return (
+													<div
+														key={row.address}
+														className="rounded-xl border border-white/10 bg-black/10 p-3"
 													>
-														<div className="flex items-start justify-between gap-2">
-															<div className="min-w-0">
-																<span
-																	className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase ${statusChipClass(row.status)}`}
-																>
-																	{row.status}
-																</span>
-																<span className="ml-2 text-[10px] font-semibold text-slate-400">
-																	{ratioBpsToPercentLabel(row.ratioBps)} of L0 pool
-																</span>
-																<p className="mt-1 break-all font-mono text-[11px] text-slate-300">
-																	{row.secret ?? `${shortAddr(row.hash)} (secret not on this device)`}
-																</p>
+														<div className="flex min-w-0 items-center justify-between gap-2">
+															<div className="min-w-0 flex-1">
+																<BeamioTagCapsule
+																	address={row.address}
+																	rebatePercent={String(Number((row.ratioBps / 100).toFixed(2)))}
+																	onEditRebate={() =>
+																		openL1RatioDrawer(row.address, row.ratioBps)
+																	}
+																/>
 															</div>
-															<div className="flex shrink-0 items-center gap-1">
-																{row.secret ? (
-																	<button
-																		type="button"
-																		onClick={() => void copyText(row.hash, row.secret!)}
-																		className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/15 bg-white/10 text-slate-200"
-																		aria-label="Copy redeem code"
-																	>
-																		{copiedKey === row.hash ? (
-																			<Check className="h-3.5 w-3.5 text-emerald-400" aria-hidden />
-																		) : (
-																			<Copy className="h-3.5 w-3.5" aria-hidden />
-																		)}
-																	</button>
-																) : null}
-																{row.status === 'pending' ? (
-																	<button
-																		type="button"
-																		onClick={() => void handleCancelL1(row.hash)}
-																		disabled={cancellingHash === row.hash}
-																		aria-busy={cancellingHash === row.hash}
-																		className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-red-300/20 bg-red-400/10 text-red-300"
-																		aria-label="Cancel redeem code"
-																	>
-																		{cancellingHash === row.hash ? (
-																			<Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-																		) : (
-																			<Ban className="h-3.5 w-3.5" aria-hidden />
-																		)}
-																	</button>
-																) : null}
-															</div>
+															<p className="shrink-0 text-right text-sm font-semibold tabular-nums text-emerald-200">
+																${formatReferralUsdcAmount6(row.earnedUsdc6)}
+															</p>
 														</div>
-													</li>
-												))
-											)}
-										</ul>
-									</section>
-
-									<section className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-										<div className="flex items-center gap-2">
-											<Users className="h-4 w-4 text-purple-200" aria-hidden />
-											<h2 className="text-sm font-bold text-slate-50">Downstream L1</h2>
-											<span className="ml-auto text-xs font-semibold tabular-nums text-slate-500">
-												{l1List.length} item{l1List.length === 1 ? '' : 's'}
-											</span>
+														<GenesisDownstreamIncomeSummary
+															earnedUsdc6={row.earnedUsdc6}
+															purchaseCount={partnerItems.length}
+															onOpen={() =>
+																openDownstreamPurchaseHistory(row.address, row.earnedUsdc6)
+															}
+														/>
+													</div>
+												)
+											})}
 										</div>
-										{l1List.length === 0 ? (
-											<p className="mt-3 text-xs text-slate-500">No L1 Evangelists yet.</p>
-										) : (
-											<div className="mt-3 space-y-2">
-												{l1List.map((row) => {
-													const partnerItems = resolvePartnerIncomeItems(row.address)
-													return (
-														<div
-															key={row.address}
-															className="rounded-xl border border-white/10 bg-black/10 p-3"
-														>
-															<div className="flex min-w-0 items-center justify-between gap-2">
-																<div className="min-w-0 flex-1">
-																	<BeamioTagCapsule
-																		address={row.address}
-																		rebatePercent={String(Number((row.ratioBps / 100).toFixed(2)))}
-																	/>
-																</div>
-																<p className="shrink-0 text-right text-sm font-semibold tabular-nums text-emerald-200">
-																	${formatReferralUsdcAmount6(row.earnedUsdc6)}
-																</p>
-															</div>
-															<GenesisDownstreamIncomeSummary
-																earnedUsdc6={row.earnedUsdc6}
-																purchaseCount={partnerItems.length}
-																onOpen={() =>
-																	openDownstreamPurchaseHistory(row.address, row.earnedUsdc6)
-																}
-															/>
-														</div>
-													)
-												})}
-											</div>
-										)}
-									</section>
-								</>
+									)}
+								</section>
 							) : null}
 
 							{snapshot?.isAdmin ? (
@@ -1414,6 +1297,115 @@ export default function GenesisNodeReferralPage() {
 												/>
 											</div>
 										)}
+									</div>
+								</div>
+							</div>
+						</div>
+					</div>
+				</div>
+			) : null}
+
+			{/* L0 → Downstream L1 share ratio editor */}
+			{l1RatioEdit ? (
+				<div
+					className={[
+						'fixed inset-0 z-[100]',
+						!l1RatioDrawerClosing ? 'pointer-events-auto' : 'pointer-events-none',
+					].join(' ')}
+				>
+					<div
+						className={[
+							'absolute inset-0 bg-black/50 transition-opacity duration-300 ease-out',
+							!l1RatioDrawerClosing ? 'opacity-100' : 'opacity-0 pointer-events-none',
+						].join(' ')}
+						onClick={closeL1RatioDrawer}
+						aria-hidden={l1RatioDrawerClosing}
+					/>
+					<div
+						className={[
+							'absolute inset-x-0 bottom-0 transition-transform duration-300 ease-out will-change-transform',
+							!l1RatioDrawerClosing ? 'translate-y-0' : 'translate-y-full pointer-events-none',
+						].join(' ')}
+						onTouchMove={(e) => e.stopPropagation()}
+						role="dialog"
+						aria-modal="true"
+						aria-label="Edit L1 share"
+					>
+						<div className="max-h-[calc(100dvh-env(safe-area-inset-top)-12px)] overflow-y-auto rounded-t-[22px] border border-white/10 bg-[#0b1224] pb-[env(safe-area-inset-bottom)] shadow-2xl">
+							<div className="flex justify-center pb-1 pt-2">
+								<div className="h-1 w-10 rounded-full bg-white/20" />
+							</div>
+							<div className="relative flex items-center justify-center px-4 pb-3 pt-1">
+								<button
+									type="button"
+									onClick={closeL1RatioDrawer}
+									disabled={savingL1Ratio}
+									tabIndex={-1}
+									className="absolute left-4 inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-slate-200 disabled:opacity-50"
+									aria-label="Cancel"
+								>
+									<X className="h-4 w-4" aria-hidden />
+								</button>
+								<h2 className="text-sm font-bold text-slate-50">Edit L1 share</h2>
+								<button
+									type="button"
+									onClick={() => void handleSaveL1Ratio()}
+									disabled={
+										savingL1Ratio ||
+										!armor ||
+										Math.round(l1RatioDraftPercent) * 100 === l1RatioEdit.ratioBps
+									}
+									aria-busy={savingL1Ratio}
+									tabIndex={-1}
+									className="absolute right-4 inline-flex h-9 w-9 items-center justify-center rounded-full bg-[#8d3a8b] text-white disabled:opacity-50"
+									aria-label="Save"
+								>
+									{savingL1Ratio ? (
+										<Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+									) : (
+										<Check className="h-4 w-4" aria-hidden />
+									)}
+								</button>
+							</div>
+							<div className="space-y-4 px-5 pb-6">
+								<BeamioTagCapsule address={l1RatioEdit.address} />
+								<p className="text-xs text-slate-400">
+									Set what percent of your 10% node pool (125 USDC/node) goes to this L1. Remainder stays
+									with you.
+								</p>
+								<div>
+									<div className="flex items-end justify-between gap-3">
+										<label
+											htmlFor="genesis-l1-ratio-edit"
+											className="text-xs font-semibold text-slate-300"
+										>
+											L1 share of your 10% pool
+										</label>
+										<span
+											className="text-sm font-semibold tabular-nums text-purple-100"
+											aria-live="polite"
+										>
+											{l1RatioDraftPercent}%
+										</span>
+									</div>
+									<input
+										id="genesis-l1-ratio-edit"
+										type="range"
+										min={0}
+										max={100}
+										step={1}
+										value={l1RatioDraftPercent}
+										onChange={(e) => setL1RatioDraftPercent(Number(e.target.value))}
+										aria-valuemin={0}
+										aria-valuemax={100}
+										aria-valuenow={l1RatioDraftPercent}
+										aria-valuetext={`${l1RatioDraftPercent} percent`}
+										className="mt-3 h-2 w-full cursor-pointer appearance-none rounded-lg bg-white/10 accent-[#8d3a8b] [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[#8d3a8b] [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-[#8d3a8b]"
+									/>
+									<div className="mt-1.5 flex items-center justify-between text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+										<span>0%</span>
+										<span>You keep {100 - l1RatioDraftPercent}%</span>
+										<span>100%</span>
 									</div>
 								</div>
 							</div>

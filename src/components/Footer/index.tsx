@@ -2,7 +2,6 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { motion, useAnimation } from 'framer-motion'
-import html2canvas from 'html2canvas'
 import { CoNET_Data, setCoNET_Data } from '../../utils/globals'
 import { ReactComponent as ShoppingIconGrey } from './assets/shopping-1-icon.grey.svg'
 import { ReactComponent as ShoppingBlueIcon } from './assets/shopping-1-icon.blue.svg'
@@ -39,8 +38,54 @@ const SLOT_H = 'h-6'
 
 
 
+/** Parse CSS rgb/rgba → perceived luminance; null if unreadable / transparent. */
+function luminanceFromCssColor(raw: string): number | null {
+	const s = String(raw || '').trim().toLowerCase()
+	if (!s || s === 'transparent' || s === 'inherit' || s === 'initial') return null
+	const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(s)
+	if (hex) {
+		let h = hex[1]
+		if (h.length === 3) h = h.split('').map((c) => c + c).join('')
+		const n = parseInt(h, 16)
+		const r = (n >> 16) & 255
+		const g = (n >> 8) & 255
+		const b = n & 255
+		return 0.299 * r + 0.587 * g + 0.114 * b
+	}
+	const m = /^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+))?\s*\)$/.exec(s)
+	if (!m) return null
+	const a = m[4] != null ? Number(m[4]) : 1
+	if (!(a > 0.08)) return null
+	return 0.299 * Number(m[1]) + 0.587 * Number(m[2]) + 0.114 * Number(m[3])
+}
+
+/**
+ * Lightweight under-footer luminance sample.
+ * Do NOT use html2canvas here — full-body raster on scroll/resize causes /home layout thrash (My Brands jitter).
+ */
+function sampleLuminanceUnderPoint(clientX: number, clientY: number): number | null {
+	if (typeof document === 'undefined') return null
+	const stack =
+		typeof document.elementsFromPoint === 'function'
+			? document.elementsFromPoint(clientX, clientY)
+			: (() => {
+					const one = document.elementFromPoint(clientX, clientY)
+					return one ? [one] : []
+				})()
+	for (const node of stack) {
+		if (!(node instanceof HTMLElement)) continue
+		if (node.hasAttribute('data-html2canvas-ignore')) continue
+		const style = window.getComputedStyle(node)
+		const lum = luminanceFromCssColor(style.backgroundColor)
+		if (lum != null) return lum
+	}
+	const bodyLum = luminanceFromCssColor(window.getComputedStyle(document.body).backgroundColor)
+	return bodyLum
+}
+
 const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 	const barControls = useAnimation()
+	const wasVisibleRef = useRef(visible)
 
 	useEffect(() => {
 	let cancelled = false
@@ -49,6 +94,8 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 		barControls.stop()
 
 		const HIDE_Y = 140 // ✅ 往下移出屏幕
+		const wasVisible = wasVisibleRef.current
+		wasVisibleRef.current = visible
 
 		if (!visible) {
 			await barControls.start({
@@ -56,6 +103,12 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 				opacity: 0,
 				transition: { duration: 0.24, ease: [0.2, 0.8, 0.2, 1] }
 			})
+			return
+		}
+
+		// Already showing — do not reset to HIDE_Y (re-entry anim causes perceived page jitter).
+		if (wasVisible) {
+			barControls.set({ y: 0, opacity: 1 })
 			return
 		}
 
@@ -85,8 +138,9 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 	const { pathname } = useLocation()
 	const footerRef = useRef<HTMLDivElement>(null)
 	const [isDarkUnderneath, setIsDarkUnderneath] = useState(true)
+	const lastDarkRef = useRef(true)
 
-	const sampleBackgroundColor = useCallback(async () => {
+	const sampleBackgroundColor = useCallback(() => {
 		const el = footerRef.current
 		if (!el || typeof document === 'undefined') return
 		const rect = el.getBoundingClientRect()
@@ -94,27 +148,12 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 		const centerX = rect.left + rect.width / 2
 		const centerY = rect.top + rect.height / 2
 		try {
-			const canvas = await html2canvas(document.body, {
-				scale: 1,
-				useCORS: true,
-				allowTaint: true,
-				scrollX: window.scrollX,
-				scrollY: window.scrollY,
-				width: window.innerWidth,
-				height: window.innerHeight,
-				x: window.scrollX,
-				y: window.scrollY,
-				ignoreElements: (elem: Element) => elem?.hasAttribute?.('data-html2canvas-ignore'),
-				logging: false
-			})
-			const ctx = canvas.getContext('2d')
-			if (!ctx) return
-			const px = Math.floor(centerX)
-			const py = Math.floor(centerY)
-			const imgData = ctx.getImageData(px, py, 1, 1)
-			const [r, g, b] = imgData.data
-			const luminance = 0.299 * r + 0.587 * g + 0.114 * b
-			setIsDarkUnderneath(luminance < 128)
+			const luminance = sampleLuminanceUnderPoint(centerX, centerY)
+			if (luminance == null) return
+			const nextDark = luminance < 128
+			if (nextDark === lastDarkRef.current) return
+			lastDarkRef.current = nextDark
+			setIsDarkUnderneath(nextDark)
 		} catch (err) {
 			console.warn('[Footer] Background sampling failed:', err)
 		}
@@ -131,7 +170,7 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 		let tm: ReturnType<typeof setTimeout>
 		const debouncedSample = () => {
 			clearTimeout(tm)
-			tm = setTimeout(sampleBackgroundColor, 150)
+			tm = setTimeout(sampleBackgroundColor, 400)
 		}
 		window.addEventListener('scroll', debouncedSample, { passive: true })
 		window.addEventListener('resize', debouncedSample)
@@ -511,7 +550,7 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 			ref={footerRef}
 			data-html2canvas-ignore
 			aria-hidden={!visible}
-			className="fixed left-0 right-0 z-[100] flex items-center justify-between pl-4 pr-4 overflow-visible"
+			className="fixed left-0 right-0 z-[200] flex items-center justify-between pl-4 pr-4 overflow-visible"
 			animate={barControls}
 			initial={false}
 			style={{

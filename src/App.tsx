@@ -63,6 +63,7 @@ import { AppButton } from "@/components/button/AppButton"
 import { Check } from "lucide-react"
 import { postCardCouponOpenClaimWithCurrentWallet, postCardRedeem, type CouponOpenClaimEligibility } from "@/services/BeamioCard"
 import CouponClaimTicketPreview from "@/components/Home/CouponClaimTicketPreview"
+import ShowPayCodeSheet from "@/components/Home/ShowPayCodeSheet"
 import RedeemClaimTicketPreview from "@/components/Home/RedeemClaimTicketPreview"
 import type { ActiveCouponListItem } from "@/pages/Home/ActiveCouponsScreen"
 import {
@@ -147,6 +148,8 @@ function AppShell() {
   const [couponClaimPreviewRow, setCouponClaimPreviewRow] = useState<ActiveCouponListItem | null>(null)
   const [couponClaimEligibility, setCouponClaimEligibility] = useState<CouponOpenClaimEligibility | null>(null)
   const [couponClaimSubmitting, setCouponClaimSubmitting] = useState(false)
+  /** Already-claimed open-claim → OpenContainer QR for POS 核销. */
+  const [couponClaimShowPayOpen, setCouponClaimShowPayOpen] = useState(false)
   const [redeemClaimIntent, setRedeemClaimIntent] = useState<{ cardAddress?: string; redeemCode: string } | null>(null)
   const [redeemClaimSubmitting, setRedeemClaimSubmitting] = useState(false)
   /** 扫码 beamio URL 中的 wallet 参数：{ beamioAccount, wallet }，PayScreen 优先使用此地址 */
@@ -285,12 +288,14 @@ function AppShell() {
     if (!couponClaimIntent) {
       setCouponClaimPreviewRow(null)
       setCouponClaimEligibility(null)
+      setCouponClaimShowPayOpen(false)
     }
   }, [couponClaimIntent])
 
   const closeCouponClaimPanel = () => {
     setCouponClaimIntent(null)
     setCouponClaimEligibility(null)
+    setCouponClaimShowPayOpen(false)
     setShowFooter(true)
     navigate('/')
   }
@@ -344,9 +349,8 @@ function AppShell() {
             source: 'optimistic',
           })
         }
+        // Keep panel open → Show Pay for POS redeem/burn (same as app-download landing).
         setCouponClaimEligibility('already_claimed')
-        // Cluster queue accept (`queued`) is success — close without waiting for chain confirm.
-        closeCouponClaimPanel()
       }
     } catch (e: any) {
       Toast.show({ content: mapServerError(e?.message), position: 'top' })
@@ -1850,7 +1854,7 @@ function AppShell() {
 									{couponClaimEligibility === 'already_redeemed'
 										? 'You already used this coupon.'
 										: couponClaimEligibility === 'already_claimed'
-											? 'You already claimed this coupon.'
+											? 'You already claimed this coupon. Show Pay at the merchant POS to redeem.'
 											: tu('confirm_before_submitting_on_chain_claim')}
 								</p>
 							</div>
@@ -1875,6 +1879,7 @@ function AppShell() {
 								onResolved={setCouponClaimPreviewRow}
 								onEligibilityChange={setCouponClaimEligibility}
 								onClaim={() => void handleConfirmCouponClaim()}
+								onShowPay={() => setCouponClaimShowPayOpen(true)}
 								referrerEoa={couponClaimIntent.referrerEoa ?? null}
 								userEoa={profiles?.[0]?.keyID ?? null}
 								getPrivateKeyArmor={() => resolveSigningPrivateKeyArmor(profiles?.[0]) || undefined}
@@ -1893,17 +1898,27 @@ function AppShell() {
 									couponClaimEligibility === 'expired' ||
 									couponClaimEligibility === 'not_open_claim' ||
 									couponClaimEligibility === 'insufficient_social_points'
+								if (alreadyClaimed) {
+									return (
+										<AppButton
+											fullWidth
+											onClick={() => setCouponClaimShowPayOpen(true)}
+											className="rounded-xl"
+											aria-label="Show Pay"
+										>
+											Show Pay
+										</AppButton>
+									)
+								}
 								const bottomLabel = alreadyRedeemed
 									? tu('redeemed')
-									: alreadyClaimed
-										? tu('claimed')
-										: couponClaimEligibility === 'sold_out'
-											? 'Sold out'
-											: couponClaimEligibility === 'expired'
-												? tu('expired')
-												: couponClaimSubmitting
-													? tu('claiming')
-													: tu('claim')
+									: couponClaimEligibility === 'sold_out'
+										? 'Sold out'
+										: couponClaimEligibility === 'expired'
+											? tu('expired')
+											: couponClaimSubmitting
+												? tu('claiming')
+												: tu('claim')
 								return (
 									<AppButton
 										fullWidth
@@ -1916,6 +1931,12 @@ function AppShell() {
 								)
 							})()}
 						</div>
+						<ShowPayCodeSheet
+							isOpen={couponClaimShowPayOpen}
+							onClose={() => setCouponClaimShowPayOpen(false)}
+							profile={profiles?.[0]}
+							setProfiles={setProfiles}
+						/>
 					</motion.div>
 				)}
 				{redeemResult && (

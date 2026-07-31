@@ -25,6 +25,8 @@ type Props = {
 	onEligibilityChange?: (eligibility: CouponOpenClaimEligibility | null) => void
 	/** Ticket-right Gift / bottom Claim — same handler. Only used when claimable. */
 	onClaim?: () => void
+	/** Already claimed (held NFT) → Show Pay for POS 核销. */
+	onShowPay?: () => void
 	/** Deep-link `ref=` for like #13 / share attribution. */
 	referrerEoa?: string | null
 	/** Current wallet EOA (preferred over deriving from private key). */
@@ -63,6 +65,7 @@ export default function CouponClaimTicketPreview({
 	onResolved,
 	onEligibilityChange,
 	onClaim,
+	onShowPay,
 	referrerEoa = null,
 	userEoa: userEoaProp = null,
 	getPrivateKeyArmor,
@@ -203,6 +206,7 @@ export default function CouponClaimTicketPreview({
 	const canClaim =
 		Boolean(onClaim) &&
 		(eligibility == null || eligibility === 'claimable' || eligibility === 'unknown')
+	const canShowPay = Boolean(onShowPay) && isAlreadyClaimed && !isAlreadyRedeemed
 	const showActionButton =
 		eligibility == null ||
 		eligibility === 'claimable' ||
@@ -215,36 +219,44 @@ export default function CouponClaimTicketPreview({
 
 	const ticketActionLabel = isAlreadyRedeemed
 		? tu('redeemed')
-		: isAlreadyClaimed
-			? tu('claimed')
-			: isExpired
-				? tu('expired')
-				: isSoldOut
-					? 'Sold out'
-					: insufficientSocialPoints
-						? tu('claim')
-						: tu('claim')
+		: canShowPay
+			? 'Show Pay'
+			: isAlreadyClaimed
+				? tu('claimed')
+				: isExpired
+					? tu('expired')
+					: isSoldOut
+						? 'Sold out'
+						: insufficientSocialPoints
+							? tu('claim')
+							: tu('claim')
 
 	const ticketActionStatus: 'idle' | 'loading' | 'success' | 'error' = submitting
 		? 'loading'
-		: isAlreadyClaimed || isAlreadyRedeemed
+		: isAlreadyRedeemed
 			? 'success'
-			: 'idle'
+			: canShowPay
+				? 'idle'
+				: isAlreadyClaimed
+					? 'success'
+					: 'idle'
 
 	return (
 		<div className="space-y-2">
 			<ActiveCouponTicketItem
 				row={row}
 				actionLabel={ticketActionLabel}
-				disabled={submitting || !canClaim}
+				disabled={submitting || (!canClaim && !canShowPay)}
 				actionStatus={ticketActionStatus}
-				onAction={canClaim ? onClaim : undefined}
+				onAction={canShowPay ? onShowPay : canClaim ? onClaim : undefined}
 				aria-label={
 					isAlreadyRedeemed
 						? `Coupon ${row.title} already redeemed`
-						: isAlreadyClaimed
-							? `Coupon ${row.title} already claimed`
-							: `Claim coupon ${row.title}`
+						: canShowPay
+							? `Show Pay for coupon ${row.title}`
+							: isAlreadyClaimed
+								? `Coupon ${row.title} already claimed`
+								: `Claim coupon ${row.title}`
 				}
 				punchBgClassName="bg-white dark:bg-slate-900"
 				metadataBelowBackgroundImage
@@ -263,7 +275,9 @@ export default function CouponClaimTicketPreview({
 			) : null}
 			{isAlreadyClaimed ? (
 				<p className="px-1 text-[12px] font-medium text-emerald-600 dark:text-emerald-400">
-					You already claimed this coupon. It is in your wallet.
+					{canShowPay
+						? 'You already claimed this coupon. Show Pay at the merchant POS to redeem.'
+						: 'You already claimed this coupon. It is in your wallet.'}
 				</p>
 			) : null}
 			{isAlreadyRedeemed ? (

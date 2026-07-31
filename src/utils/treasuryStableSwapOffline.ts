@@ -16,7 +16,7 @@ export const CANONICAL_BUINT_ERC20 = 3
 
 const BEAMIO_API = 'https://beamio.app'
 
-export const TREASURY_STABLE_SWAP_TYPES = {
+export const TREASURY_STABLE_SWAP_TYPES: Record<string, ethers.TypedDataField[]> = {
 	StableSwap: [
 		{ name: 'user', type: 'address' },
 		{ name: 'burnAssetKind', type: 'uint8' },
@@ -28,7 +28,7 @@ export const TREASURY_STABLE_SWAP_TYPES = {
 		{ name: 'nonce', type: 'uint256' },
 		{ name: 'deadline', type: 'uint256' },
 	],
-} as const
+}
 
 export function treasuryStableSwapEip712Domain() {
 	return {

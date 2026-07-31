@@ -3551,6 +3551,9 @@ function ConetGenesisNodeDiscoverSection({
 								end-to-end encrypted communication and earning compensation through physical bandwidth
 								contributions.
 							</p>
+							<p className="mt-3 font-bold text-[#1f2328] dark:text-slate-100">
+								3. Core Digital Rights &amp; Labor Compensation
+							</p>
 							<p className="mt-1.5">
 								<span className="font-semibold text-slate-700 dark:text-slate-200">Zero Dev Tax:</span>{' '}
 								Zero official commission; all underlying protocol inflationary block rewards and network
@@ -3639,7 +3642,7 @@ function ConetGenesisNodeDiscoverSection({
 							</span>
 						</label>
 						<p className="border-t border-[#e2e7f0] px-3.5 py-2.5 text-[11px] leading-snug text-slate-500 dark:border-slate-700 dark:text-slate-400">
-							(Issuer &amp; Confirming Party): CoNET Open-Source DAO / Multi-sig Smart Contract
+							Issuer &amp; Confirming Party: CoNET Open-Source DAO / Multi-sig Smart Contract
 						</p>
 					</div>
 				) : null}

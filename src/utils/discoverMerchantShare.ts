@@ -1,6 +1,6 @@
 import { ethers } from 'ethers'
 import { parseDiscoverReferrerFromParams } from '@/utils/beamioDeepLinkParams'
-import { appendAppDownloadShareCacheBust } from '@/utils/appDownloadShareCacheBust'
+import { appendAppDownloadShareCacheBust } from './appDownloadShareCacheBust'
 
 /**
  * Discover merchant share URL — aligned with x402sdk `buildDiscoverMerchantAppDownloadUrl`.

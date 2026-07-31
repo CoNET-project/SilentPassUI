@@ -1,5 +1,5 @@
 import { ethers } from 'ethers'
-import { appendAppDownloadShareCacheBust } from '@/utils/appDownloadShareCacheBust'
+import { appendAppDownloadShareCacheBust } from './appDownloadShareCacheBust'
 
 /**
  * Open Claim Distribution share URL — aligned with biz `buildProgramsCouponOpenClaimShareUrl`.

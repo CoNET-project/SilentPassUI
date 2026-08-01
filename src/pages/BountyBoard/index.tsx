@@ -258,7 +258,10 @@ export default function BountyBoard() {
 								</p>
 								<button
 									type="button"
-									className="mt-2 inline-flex items-center justify-center rounded-full border border-[#1562f0] px-3 py-1.5 text-xs font-bold text-[#1562f0] transition active:scale-[0.98]"
+									disabled
+									aria-disabled="true"
+									title="Claim USDC is not available yet"
+									className="mt-2 inline-flex items-center justify-center rounded-full border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-400 transition disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-600 dark:text-slate-500"
 								>
 									Claim USDC
 								</button>

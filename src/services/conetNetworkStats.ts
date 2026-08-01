@@ -17,6 +17,7 @@
 import { ethers } from 'ethers'
 import { conetDepinProvider } from '@/utils/constants'
 import { formatGbDisplayCompact } from '@/utils/formatGbDisplay'
+import { formatDigitalAssetDisplay } from '@/utils/formatDigitalAssetDisplay'
 
 const CONET_HOMEPAGE_METRICS_URL = 'https://mainnet.conet.network/api/conet/homepage-metrics'
 
@@ -89,7 +90,7 @@ export async function fetchConetNetworkStats(signal?: AbortSignal): Promise<Cone
 				supplyIncreaseCnet,
 				supplyIncreaseFormatted:
 					j.supply_increase_formatted?.trim() ||
-					`+${supplyIncreaseCnet.toLocaleString('en-US', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}`,
+					`+${formatDigitalAssetDisplay(supplyIncreaseCnet, { prefix: '' })}`,
 			},
 		}
 	} catch (e: unknown) {

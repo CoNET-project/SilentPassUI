@@ -39,6 +39,7 @@ import {
 	type ValidatorWalletNodeProfile,
 } from '@/services/validatorWalletNodeProfile'
 import { formatGbDisplay } from '@/utils/formatGbDisplay'
+import { formatDigitalAssetDisplay } from '@/utils/formatDigitalAssetDisplay'
 
 const VALIDATOR_REDEEM_ISSUED_SYNC_MS = 30_000
 
@@ -58,18 +59,12 @@ const cardChrome =
 	'rounded-2xl border border-slate-200/80 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900'
 
 function formatBalance(raw: string): string {
-	const n = Number(raw)
-	if (!Number.isFinite(n)) return raw
-	if (n === 0) return '0'
-	if (n >= 1) return n.toLocaleString(undefined, { maximumFractionDigits: 4 })
-	return n.toLocaleString(undefined, { maximumFractionDigits: 8 })
+	return formatDigitalAssetDisplay(raw)
 }
 
-/** CNET airdrop（vesting）展示：固定两位小数（如 100.00 CNET）。 */
+/** CNET airdrop（vesting）展示 — digital asset protocol (4 decimals, K/M). */
 function formatVestingCnet(value: string): string {
-	const n = Number(value)
-	if (!Number.isFinite(n)) return value
-	return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+	return formatDigitalAssetDisplay(value)
 }
 
 /** Genesis Loyalty 子行：有授予额即展示（含 claimableAt 未开、线性尚未解锁时 accrued>0 / claimable=0）。 */
@@ -84,11 +79,11 @@ function genesisLoyaltyPanelLine(airdrop: { accrued: string; claimable: string }
 	return `${formatVestingCnet(airdrop.accrued)} CNET (Genesis Loyalty)`
 }
 
-/** DePIN Routing GB → USDC 估值：1 GB = 0.1 USDC（GB 为 0 也显示 ≈ 0.00 USDC） */
+/** DePIN Routing GB → USDC 估值：1 GB = 0.1 USDC */
 function formatGbUsdcApprox(gbCumulative: string): string {
 	const gb = Number(gbCumulative)
 	const usdc = Number.isFinite(gb) && gb > 0 ? gb * 0.1 : 0
-	return `≈ ${usdc.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDC`
+	return `≈ ${formatDigitalAssetDisplay(usdc)} USDC`
 }
 
 function ValidatorNodeCountDisplay({ profile }: { profile: ValidatorWalletNodeProfile }) {

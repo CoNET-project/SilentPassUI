@@ -10,7 +10,7 @@ import {formatAmountReadable, formatWithThousands, getBalanceProcess, onWalletEv
 import base_icon from '@/components/assets/base-logo.png'
 import ScanBtn from '@/components/scanBtn/ScanButton'
 import { CoNET_Data, setCoNET_Data } from '../../utils/globals'
-import { detectDeviceNfcCapability, getCashTreesNativeNfcBridge } from '@/utils/cashTreesNativeNfc'
+import { detectDeviceNfcCapability, getCashTreesNativeNfcBridge, isCashTreesNativeWebView } from '@/utils/cashTreesNativeNfc'
 import { WALLET_READY_INTENT_KEY } from '@/pages/Home/walletReadyIntent'
 import type { LucideIcon } from "lucide-react"
 import { useNavigate } from "react-router-dom"
@@ -348,7 +348,7 @@ const Home = (_props: HomeProps) => {
 	const [activateGiftVoucherScreen, setActivateGiftVoucherScreen] = useState<'' | 'activeCoupons' | 'redeemVoucher'>('')
 	const [homeStoreCards, setHomeStoreCards] = useState<HomeStoreCardRow[]>(INITIAL_HOME_STORE_CARDS)
 	const [selectedHomeStoreCard, setSelectedHomeStoreCard] = useState<HomeStoreCardRow | null>(null)
-	const { opacity: capsuleOpacity, onScroll: onCapsuleScroll, setRef: setScrollRef } = useScrollCapsuleOpacity(!openSearch)
+	const { onScroll: onCapsuleScroll, setRef: setScrollRef, setLayerRef: setCapsuleLayerRef } = useScrollCapsuleOpacity(!openSearch)
 
 	/** 链上 / 本地已存在与 EOA 不同的 Smart Account 地址时视为已激活 AA */
 	const hasAAWallet = useMemo(() => {
@@ -1647,8 +1647,8 @@ const Home = (_props: HomeProps) => {
 		}
 	}, [showPayReceiveSheet, payReceiveQrMode, payRelayQRPayload, closePayReceiveSheet])
 
-	/** Android WebView：Activate 场景下外层 overflow-hidden + flex 常导致滚动视口高度塌成一条；改为单层 flex 链并写死 flex-basis */
-	const homeScrollUsesSingleFlexChain = false
+	/** Android WebView：Activate 场景下外层 overflow-hidden + flex 常导致滚动视口高度塌成一条；原生壳内改为单层 flex 链 */
+	const homeScrollUsesSingleFlexChain = isCashTreesNativeWebView()
 
 	/** 与 DaemonProvider「points」折 CAD 同源，用于 Hub 双列（USDC / Merchant） */
 	const homeHubWalletCad = useMemo(() => {
@@ -1742,18 +1742,19 @@ const Home = (_props: HomeProps) => {
 			{/* 顶部栏：左右胶囊同一行 items-center 上下对齐；中间不拦截触摸 */}
 			{!openSearch && (
 				<div
+					ref={setCapsuleLayerRef}
 					className="pointer-events-none fixed left-4 right-4 z-30 grid grid-cols-[1fr_auto_1fr] items-center gap-2 transition-opacity duration-300"
 					style={{
 						// 与下方主内容顶部占位一致；WebView 常返回 safe-area 0，需至少 1rem 与浏览器+PWA 视觉对齐
 						top: 'max(1rem, env(safe-area-inset-top, 0px))',
-						opacity: capsuleOpacity,
+						opacity: 1,
 					}}
 				>
 					<button
 						type="button"
 						onClick={() => navigate('/myWallet')}
 						className="flex items-center justify-self-start"
-						style={{ pointerEvents: capsuleOpacity < 0.05 ? 'none' : 'auto' }}
+						data-capsule-interactive
 						aria-label="Open wallet"
 					>
 						<div className="flex min-w-0 max-w-full items-center gap-2.5 rounded-full border border-slate-100/90 bg-white py-2 pl-2 pr-4 shadow-[0_4px_24px_rgba(15,23,42,0.08)] transition-transform group active:scale-[0.98] dark:border-slate-700/80 dark:bg-slate-800">
@@ -1775,10 +1776,11 @@ const Home = (_props: HomeProps) => {
 						aria-hidden
 					/>
 					<div className="flex min-w-0 items-center justify-self-end gap-1.5">
-						<HomeLanguageSelector capsuleOpacity={capsuleOpacity} />
+						<HomeLanguageSelector />
+						<div className="flex h-10 w-10 shrink-0 items-center justify-center">
 						{linkedNfcListLoading && linkedNfcCards.length === 0 ? (
 						<div
-							className="pointer-events-none flex items-center"
+							className="pointer-events-none flex h-10 w-10 items-center justify-center"
 							aria-busy
 							aria-label="Loading linked cards"
 						>
@@ -1795,7 +1797,7 @@ const Home = (_props: HomeProps) => {
 							type="button"
 							onClick={openCardManagement}
 							className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-slate-200/50 dark:hover:bg-slate-700/50"
-							style={{ pointerEvents: capsuleOpacity < 0.05 ? 'none' : 'auto' }}
+							data-capsule-interactive
 							aria-label="Physical keys"
 						>
 							{/* Match Vouchers/example/codingTemp.html header: material-symbols sensors */}
@@ -1817,7 +1819,7 @@ const Home = (_props: HomeProps) => {
 							type="button"
 							onClick={() => startCashTreesPhysicalCardBind()}
 							className="flex shrink-0 items-center"
-							style={{ pointerEvents: capsuleOpacity < 0.05 ? 'none' : 'auto' }}
+							data-capsule-interactive
 							aria-label="Link NFC card"
 						>
 							<div className="relative flex h-10 w-10 items-center justify-center rounded-full border border-slate-100/90 bg-white shadow-[0_4px_24px_rgba(15,23,42,0.08)] transition-transform group active:scale-[0.98] hover:bg-slate-200/50 dark:border-slate-700/80 dark:bg-slate-800 dark:hover:bg-slate-800/50">
@@ -1829,6 +1831,7 @@ const Home = (_props: HomeProps) => {
 							</div>
 						</button>
 					) : null}
+						</div>
 					</div>
 				</div>
 			)}
@@ -1849,8 +1852,8 @@ const Home = (_props: HomeProps) => {
 					onScroll={onCapsuleScroll}
 					className={
 						homeScrollUsesSingleFlexChain
-							? 'flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-y-contain pb-24 [overflow-anchor:none] [transform:translateZ(0)]'
-							: 'flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-y-contain pb-44 [overflow-anchor:none] [transform:translateZ(0)]'
+							? 'flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-y-contain pb-24 [overflow-anchor:none]'
+							: 'flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-y-contain pb-44 [overflow-anchor:none]'
 					}
 					style={
 						homeScrollUsesSingleFlexChain

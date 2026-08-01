@@ -6,16 +6,11 @@ import type { BeamioUiLocale } from '@/utils/beamioProfileLocaleCurrency'
 import { resolveSigningPrivateKeyArmor } from '@/utils/resolveSigningPrivateKeyArmor'
 import { BeamioLocalePicker } from '@/components/locale/BeamioLocalePicker'
 
-type HomeLanguageSelectorProps = {
-	capsuleOpacity: number
-}
-
 /** Home fixed capsule — same dropdown as onboarding (`BeamioLocalePicker`). */
-export function HomeLanguageSelector({ capsuleOpacity }: HomeLanguageSelectorProps) {
+export function HomeLanguageSelector() {
 	const { beamio, setBeamio, profiles } = useDaemonContext()
 	const [saving, setSaving] = useState(false)
 	const locale = getCurrentBeamioUiLocale()
-	const pointerEvents = capsuleOpacity < 0.05 ? 'none' : 'auto'
 
 	const selectLocale = async (next: BeamioUiLocale) => {
 		if (next === locale || saving) return
@@ -39,13 +34,14 @@ export function HomeLanguageSelector({ capsuleOpacity }: HomeLanguageSelectorPro
 	}
 
 	return (
-		<BeamioLocalePicker
-			variant="home"
-			menuAlign="right"
-			locale={locale}
-			saving={saving}
-			pointerEvents={pointerEvents}
-			onSelect={selectLocale}
-		/>
+		<div data-capsule-interactive>
+			<BeamioLocalePicker
+				variant="home"
+				menuAlign="right"
+				locale={locale}
+				saving={saving}
+				onSelect={selectLocale}
+			/>
+		</div>
 	)
 }

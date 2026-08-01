@@ -1142,7 +1142,6 @@ export function DaemonProvider({ children }: DaemonProps) {
         return null
       }
       setMyBrandsFeedLastConetBlock(conetBlockRef.current)
-      setCurrentBlock(conetBlockRef.current)
       const eoaSave = profile.keyID?.trim().toLowerCase() ?? ''
       const eoaForCoupons = profile.keyID?.trim()
       let aaForCoupons: string | null =

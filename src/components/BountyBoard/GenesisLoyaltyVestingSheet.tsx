@@ -6,6 +6,7 @@ import {
 	VALIDATOR_DEPOSIT_REDEEM_AIRDROP_VESTING_DURATION_SECONDS,
 } from '@/services/validatorDepositRedeemAirdrop'
 import { showBeamioToast, showBeamioToastError } from '@/locale/beamioToast'
+import { formatDigitalAssetDisplay } from '@/utils/formatDigitalAssetDisplay'
 
 type Props = {
 	open: boolean
@@ -17,11 +18,8 @@ type Props = {
 
 type ReleaseStatus = 'idle' | 'loading' | 'success' | 'error'
 
-/** CNET 数字展示：两位小数（如 100.00）。 */
 function formatCnet(value: string | number): string {
-	const n = typeof value === 'number' ? value : Number(value)
-	if (!Number.isFinite(n)) return String(value)
-	return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+	return formatDigitalAssetDisplay(value)
 }
 
 /** unix 秒 → UTC 日期（如 "Dec 1, 2026 UTC"）；0/无效返回 null。 */

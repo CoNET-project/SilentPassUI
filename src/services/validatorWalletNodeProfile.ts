@@ -1104,9 +1104,10 @@ async function readClRewardPaidByGuardian(
 ): Promise<Map<number, bigint>> {
 	if (!beneficiary) return new Map()
 	const key = beneficiary.toLowerCase()
-	const cached = guardianClRewardPaidCache.get(key)
-	if (!guardianClRewardPaidInFlight.has(key)) {
-		const task = (async () => {
+
+	let task = guardianClRewardPaidInFlight.get(key)
+	if (!task) {
+		task = (async () => {
 			try {
 				const filter = redeem.filters.NodeRewardSettled!(null, beneficiary)
 				const logs = await redeem.queryFilter(filter, 0, 'latest')
@@ -1139,7 +1140,9 @@ async function readClRewardPaidByGuardian(
 		})()
 		guardianClRewardPaidInFlight.set(key, task)
 	}
-	return cached ?? new Map()
+
+	await task
+	return guardianClRewardPaidCache.get(key) ?? new Map()
 }
 
 /**
@@ -1171,12 +1174,21 @@ function mergeClRewardPaidIntoNodes(stats: UnifiedIncomeStats, guardianClPaid: M
 function assignGuardianIdsToNodes(stats: UnifiedIncomeStats, bundle: BeneficiaryNodeBundle | null): void {
 	if (!bundle) return
 	const walletToGuardian = new Map<string, number>()
+	const ipToGuardian = new Map<string, number>()
 	for (const n of bundle.nodes) {
 		const key = String(n.nodeWallet ?? '').toLowerCase()
 		if (key && key !== ethers.ZeroAddress.toLowerCase()) walletToGuardian.set(key, n.nodeId)
+		const ip = normalizeDepinIp(n.ip)
+		if (ip) ipToGuardian.set(ip, n.nodeId)
 	}
 	for (const node of stats.nodes) {
 		if (node.guardianId !== undefined) continue
+		const ip = normalizeDepinIp(node.depinNodeIp)
+		const gidFromIp = ip ? ipToGuardian.get(ip) : undefined
+		if (gidFromIp !== undefined) {
+			node.guardianId = gidFromIp
+			continue
+		}
 		const gid = walletToGuardian.get(String(node.nodeWallet ?? '').toLowerCase())
 		if (gid !== undefined) node.guardianId = gid
 	}
@@ -1311,6 +1323,8 @@ async function assembleUnifiedIncomeStatsClientSide(
 	if (ben) {
 		const clPaid = await readClRewardPaidWei(redeem, ben)
 		mergeClRewardPaidIntoCnetBeneficiary(stats, clPaid)
+		const guardianClPaid = await readClRewardPaidByGuardian(redeem, ben)
+		mergeClRewardPaidIntoNodes(stats, guardianClPaid)
 		const guardianIds = stats.nodes.map((n) => n.guardianId).filter((id): id is number => id !== undefined)
 		const depinPaid = await readDepinPaidGbFromLedger(ben, guardianIds)
 		if (depinPaid.ok) {

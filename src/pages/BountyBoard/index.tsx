@@ -9,6 +9,7 @@ import { useDaemonContext } from '@/providers/DaemonProvider'
 import { formatWithThousands } from '@/services/beamio'
 import { formatConetChainTokenBalance, formatConetChainTokenBalanceCompact } from '@/services/conetUsdcBalance'
 import { formatGbDisplay } from '@/utils/formatGbDisplay'
+import { formatDigitalAssetDisplay } from '@/utils/formatDigitalAssetDisplay'
 import { fetchGenesisMemberSnapshot } from '@/services/genesisNodeReferral'
 import { gbBandwidthProvidedParts } from '@/services/validatorWalletNodeProfile'
 
@@ -65,7 +66,7 @@ function formatConetUsdcFiatApprox(usdcAmount: string, currency: ICurrency, curr
 }
 
 function formatConetUsdcDisplay(balance: string): string {
-	return formatWithThousands(Math.max(0, Number(balance) || 0), 2)
+	return formatDigitalAssetDisplay(Math.max(0, Number(balance) || 0))
 }
 
 export default function BountyBoard() {
@@ -93,10 +94,10 @@ export default function BountyBoard() {
 	const miningGbUsdcApprox = useMemo(() => {
 		const gb = bandwidthProvided.totalGb
 		const usdc = Number.isFinite(gb) && gb > 0 ? gb * 0.1 : 0
-		return `≈ ${usdc.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDC`
+		return `≈ ${formatDigitalAssetDisplay(usdc)} USDC`
 	}, [bandwidthProvided.totalGb])
 	const miningCnetDisplay = useMemo(
-		() => formatConetChainTokenBalanceCompact(incomeStats?.cnetBeneficiary.cumulative ?? '0', 8),
+		() => formatConetChainTokenBalanceCompact(incomeStats?.cnetBeneficiary.cumulative ?? '0'),
 		[incomeStats?.cnetBeneficiary.cumulative],
 	)
 	const miningCnetUnitLabel = useMemo(() => {

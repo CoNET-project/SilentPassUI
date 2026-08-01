@@ -1089,6 +1089,51 @@ function mergeClRewardPaidIntoCnetBeneficiary(stats: UnifiedIncomeStats, clPaidW
 const guardianClRewardPaidCache = new Map<string, Map<number, bigint>>()
 const guardianClRewardPaidInFlight = new Map<string, Promise<void>>()
 
+/** CoNET RPC caps eth_getLogs at 5000 blocks (rpc1.conet.network returns -32602 above that). */
+const NODE_REWARD_SETTLED_LOG_CHUNK = 4_999
+
+function accumulateNodeRewardSettledLogs(
+	redeem: ethers.Contract,
+	logs: ethers.Log[],
+	out: Map<number, bigint>,
+): void {
+	for (const log of logs) {
+		let args = (log as ethers.EventLog).args
+		if (!args) {
+			try {
+				const parsed = redeem.interface.parseLog({
+					topics: log.topics,
+					data: log.data,
+				})
+				if (parsed?.name === 'NodeRewardSettled') args = parsed.args
+			} catch {
+				/* Ignore malformed or provider-specific log records. */
+			}
+		}
+		if (!args) continue
+		const guardianId = Number(args.guardianId ?? args[0])
+		const amount = BigInt(String(args.amount ?? args[2] ?? 0))
+		if (!Number.isFinite(guardianId) || amount <= 0n) continue
+		out.set(guardianId, (out.get(guardianId) ?? 0n) + amount)
+	}
+}
+
+/** Scan NodeRewardSettled in RPC-sized chunks; a single 0..latest query exceeds CoNET eth_getLogs limits. */
+async function queryNodeRewardSettledByBeneficiary(
+	redeem: ethers.Contract,
+	beneficiary: string,
+): Promise<Map<number, bigint>> {
+	const filter = redeem.filters.NodeRewardSettled!(null, beneficiary)
+	const latest = await conetDepinProvider.getBlockNumber()
+	const out = new Map<number, bigint>()
+	for (let from = 0; from <= latest; from += NODE_REWARD_SETTLED_LOG_CHUNK) {
+		const to = Math.min(latest, from + NODE_REWARD_SETTLED_LOG_CHUNK - 1)
+		const logs = await redeem.queryFilter(filter, from, to)
+		accumulateNodeRewardSettledLogs(redeem, logs, out)
+	}
+	return out
+}
+
 /**
  * Load the per-guardian breakdown without blocking the aggregate income panel.
  *
@@ -1109,28 +1154,7 @@ async function readClRewardPaidByGuardian(
 	if (!task) {
 		task = (async () => {
 			try {
-				const filter = redeem.filters.NodeRewardSettled!(null, beneficiary)
-				const logs = await redeem.queryFilter(filter, 0, 'latest')
-				const out = new Map<number, bigint>()
-				for (const log of logs) {
-					let args = (log as ethers.EventLog).args
-					if (!args) {
-						try {
-							const parsed = redeem.interface.parseLog({
-								topics: log.topics,
-								data: log.data,
-							})
-							if (parsed?.name === 'NodeRewardSettled') args = parsed.args
-						} catch {
-							/* Ignore malformed or provider-specific log records. */
-						}
-					}
-					if (!args) continue
-					const guardianId = Number(args.guardianId ?? args[0])
-					const amount = BigInt(String(args.amount ?? args[2] ?? 0))
-					if (!Number.isFinite(guardianId) || amount <= 0n) continue
-					out.set(guardianId, (out.get(guardianId) ?? 0n) + amount)
-				}
+				const out = await queryNodeRewardSettledByBeneficiary(redeem, beneficiary)
 				guardianClRewardPaidCache.set(key, out)
 			} catch {
 				// Preserve the last trusted per-node cache on an untrusted read.
@@ -1337,6 +1361,79 @@ async function assembleUnifiedIncomeStatsClientSide(
 	return stats
 }
 
+function mergeIncomeTotalsIfHigher(local: IncomeTotals, remoteCumulative: string, decimals: number): IncomeTotals {
+	const localN = Number(local.cumulative) || 0
+	const remoteN = Number(remoteCumulative) || 0
+	if (remoteN <= localN) return local
+	let cumulativeRaw = local.cumulativeRaw
+	try {
+		cumulativeRaw = ethers.parseUnits(remoteCumulative, decimals).toString()
+	} catch {
+		/* keep prior raw */
+	}
+	return { ...local, cumulative: remoteCumulative, cumulativeRaw }
+}
+
+/** Merge beamio.app Blockscout daemon enrichment when API returns higher trusted totals. */
+async function mergeBeamioDaemonIncomeEnrichment(stats: UnifiedIncomeStats, beneficiary: string): Promise<void> {
+	try {
+		const res = await fetch(
+			`https://beamio.app/api/v2/conet/beneficiary-income/${ethers.getAddress(beneficiary)}`,
+			{ signal: AbortSignal.timeout(12_000) },
+		)
+		if (!res.ok) return
+		const payload = (await res.json()) as {
+			success?: boolean
+			stats?: {
+				cnetBeneficiary?: { cumulative?: string }
+				gbBeneficiary?: { cumulative?: string }
+				nodes?: Array<{
+					nodeWallet?: string
+					depinNodeIp?: string
+					cnet?: { cumulative?: string }
+					gb?: { cumulative?: string }
+				}>
+			}
+		}
+		if (!payload.success || !payload.stats) return
+		const remote = payload.stats
+		if (remote.cnetBeneficiary?.cumulative) {
+			stats.cnetBeneficiary = mergeIncomeTotalsIfHigher(
+				stats.cnetBeneficiary,
+				remote.cnetBeneficiary.cumulative,
+				18,
+			)
+		}
+		if (remote.gbBeneficiary?.cumulative) {
+			stats.gbBeneficiary = mergeIncomeTotalsIfHigher(
+				stats.gbBeneficiary,
+				remote.gbBeneficiary.cumulative,
+				GB_ERC20_DECIMALS,
+			)
+		}
+		if (Array.isArray(remote.nodes)) {
+			for (const remoteNode of remote.nodes) {
+				const ip = normalizeDepinIp(String(remoteNode.depinNodeIp ?? ''))
+				const wallet = String(remoteNode.nodeWallet ?? '').toLowerCase()
+				const localNode = stats.nodes.find(
+					(n) =>
+						(ip && normalizeDepinIp(n.depinNodeIp) === ip) ||
+						(wallet && String(n.nodeWallet ?? '').toLowerCase() === wallet),
+				)
+				if (!localNode) continue
+				if (remoteNode.cnet?.cumulative) {
+					localNode.cnet = mergeIncomeTotalsIfHigher(localNode.cnet, remoteNode.cnet.cumulative, 18)
+				}
+				if (remoteNode.gb?.cumulative) {
+					localNode.gb = mergeIncomeTotalsIfHigher(localNode.gb, remoteNode.gb.cumulative, GB_ERC20_DECIMALS)
+				}
+			}
+		}
+	} catch {
+		// Untrusted API failure: keep RPC + local Blockscout/RPC enrichment only.
+	}
+}
+
 /**
  * 单次 RPC：{resolveUnifiedIncomeStats} — 受益人 GB（ConetGB1155）+ CNET（ValidatorNodeRewardIndexer）
  * 收入统计；合约内部 staticcall gbToken + rewardIndexer，客户端不直连 GB/indexer API。
@@ -1472,6 +1569,9 @@ export async function fetchUnifiedIncomeStats(
 			} catch {
 				// keep income stats without validator-active join
 			}
+		}
+		if (incomeBeneficiary) {
+			await mergeBeamioDaemonIncomeEnrichment(stats, incomeBeneficiary)
 		}
 		return { ok: true, query: raw, stats }
 	} catch (e: unknown) {

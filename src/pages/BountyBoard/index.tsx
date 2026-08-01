@@ -8,6 +8,7 @@ import { useDaemonUnifiedIncomeStats } from '@/hooks/useDaemonUnifiedIncomeStats
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { formatWithThousands } from '@/services/beamio'
 import { formatConetChainTokenBalance, formatConetChainTokenBalanceCompact } from '@/services/conetUsdcBalance'
+import { formatGbDisplay } from '@/utils/formatGbDisplay'
 import { fetchGenesisMemberSnapshot } from '@/services/genesisNodeReferral'
 import { gbBandwidthProvidedParts } from '@/services/validatorWalletNodeProfile'
 
@@ -86,7 +87,7 @@ export default function BountyBoard() {
 	)
 	const bandwidthProvided = useMemo(() => gbBandwidthProvidedParts(incomeStats), [incomeStats])
 	const miningGbDisplay = useMemo(
-		() => formatConetChainTokenBalance(String(bandwidthProvided.totalGb)),
+		() => formatGbDisplay(String(bandwidthProvided.totalGb)),
 		[bandwidthProvided.totalGb],
 	)
 	const miningGbUsdcApprox = useMemo(() => {

@@ -20,6 +20,7 @@ import { useScrollCapsuleOpacity } from '@/hooks/useScrollCapsuleOpacity'
 import { useValidatorWalletNodeProfile } from '@/hooks/useValidatorWalletNodeProfile'
 import { fetchNodeBeneficiaryProfile, type NodeBeneficiaryProfileResult } from '@/services/validatorWalletNodeProfile'
 import { BeamioCircularBackButton, BEAMIO_CIRCULAR_BACK_ROW_CLASS } from '@/components/BeamioCircularBackButton'
+import { formatGbDisplay } from '@/utils/formatGbDisplay'
 
 type RefreshStatus = 'idle' | 'loading' | 'success' | 'error'
 
@@ -254,7 +255,7 @@ export default function ValidatorNodeProfilePage() {
 									<div className="flex items-center justify-between">
 										<dt className="text-sm text-slate-500 dark:text-slate-400">GB</dt>
 										<dd className="text-sm font-bold tabular-nums text-slate-900 dark:text-slate-50">
-											{profile ? formatBalance(profile.gbBalance) : '—'}
+											{profile ? formatGbDisplay(profile.gbBalance) : '—'}
 										</dd>
 									</div>
 									<div className="flex items-center justify-between">
@@ -460,7 +461,7 @@ export default function ValidatorNodeProfilePage() {
 														<div className="flex items-center justify-between">
 															<dt className="text-sm text-slate-500 dark:text-slate-400">GB</dt>
 															<dd className="text-sm font-bold tabular-nums text-slate-900 dark:text-slate-50">
-																{formatBalance(lookupResult.profile.gbBalance)}
+																{formatGbDisplay(lookupResult.profile.gbBalance)}
 															</dd>
 														</div>
 														<div className="flex items-center justify-between">

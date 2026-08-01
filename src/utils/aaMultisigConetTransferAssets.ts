@@ -3,6 +3,7 @@ import { CONET_BUINT, CONET_GB_ERC20, CONET_USDC } from '@/config/chainAddresses
 import { aaMultisigProvider } from '@/utils/aaMultisigUserOp'
 import { baseEndpoint, beamioApi } from '@/utils/constants'
 import type { AaMultisigTransferAssetId } from '@/utils/aaMultisigProtocol'
+import { formatGbDisplayFromWei } from '@/utils/formatGbDisplay'
 
 export type AaMultisigTransferChain = 'conet' | 'base'
 
@@ -84,7 +85,7 @@ async function fetchConetAaMultisigTransferAssetOptions(
 			label: 'Payment GB',
 			balanceRaw: gbPaid,
 			decimals: 9,
-			balanceDisplay: formatBalanceDisplay(gbPaid, 9),
+			balanceDisplay: formatGbDisplayFromWei(gbPaid, 9),
 		})
 	}
 	if (buintPaid > 0n) {
@@ -188,7 +189,7 @@ export function buildTransferTaskTitle(asset: AaMultisigTransferAssetId, amountR
 		case 'usdc':
 			return `Transfer $${formatBalanceDisplay(amountRaw, 6, 2)} CoNET-USDC`
 		case 'gb_paid':
-			return `Transfer ${formatBalanceDisplay(amountRaw, 9)} Payment GB`
+			return `Transfer ${formatGbDisplayFromWei(amountRaw, 9)} Payment GB`
 		case 'buint_paid':
 			return `Transfer ${formatBalanceDisplay(amountRaw, 6, 2)} Payment B-Unit`
 		case 'base_eth':
@@ -218,7 +219,7 @@ export function formatTransferTaskSummary(task: {
 		case 'usdc':
 			return `$${formatBalanceDisplay(raw, 6, 2)} CoNET-USDC → ${shortTo}`
 		case 'gb_paid':
-			return `${formatBalanceDisplay(raw, 9)} Payment GB → ${shortTo}`
+			return `${formatGbDisplayFromWei(raw, 9)} Payment GB → ${shortTo}`
 		case 'buint_paid':
 			return `${formatBalanceDisplay(raw, 6, 2)} Payment B-Unit → ${shortTo}`
 		case 'base_eth':

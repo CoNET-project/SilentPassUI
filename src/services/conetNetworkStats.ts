@@ -16,6 +16,7 @@
 
 import { ethers } from 'ethers'
 import { conetDepinProvider } from '@/utils/constants'
+import { formatGbDisplayCompact } from '@/utils/formatGbDisplay'
 
 const CONET_HOMEPAGE_METRICS_URL = 'https://mainnet.conet.network/api/conet/homepage-metrics'
 
@@ -105,21 +106,13 @@ export type ConetDepinStats = {
 	depinNodeCountFormatted: string
 	/** GB 代币全网总产量（CoNET GB Total.totalIssued，已按精度换算为 GB） */
 	totalGbIssued: number
-	/** 已格式化（千分位 + 2 位小数）的 GB 总产量 */
+	/** 已格式化（千分位 + 4 位小数）的 GB 总产量 */
 	totalGbIssuedFormatted: string
 }
 
 export type ConetDepinStatsResult =
 	| { ok: true; stats: ConetDepinStats }
 	| { ok: false; error: string }
-
-function formatGb(value: number): string {
-	const abs = Math.abs(value)
-	if (abs >= 1e9) return `${(value / 1e9).toLocaleString('en-US', { maximumFractionDigits: 2 })}B`
-	if (abs >= 1e6) return `${(value / 1e6).toLocaleString('en-US', { maximumFractionDigits: 2 })}M`
-	if (abs >= 1e3) return `${(value / 1e3).toLocaleString('en-US', { maximumFractionDigits: 2 })}K`
-	return value.toLocaleString('en-US', { maximumFractionDigits: 2 })
-}
 
 /**
  * 读取 CoNET DePIN 全网指标（节点数量 + GB 代币总产量），两项并行走 CoNET RPC。
@@ -148,7 +141,7 @@ export async function fetchConetDepinStats(): Promise<ConetDepinStatsResult> {
 				depinNodeCount,
 				depinNodeCountFormatted: depinNodeCount.toLocaleString('en-US'),
 				totalGbIssued,
-				totalGbIssuedFormatted: formatGb(totalGbIssued),
+				totalGbIssuedFormatted: formatGbDisplayCompact(totalGbIssued),
 			},
 		}
 	} catch (e: unknown) {

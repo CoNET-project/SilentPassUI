@@ -26,6 +26,7 @@ import {
 	BEAMIO_INDEXER_DIAMOND,
 	CONET_ADDRESS_PGP,
 	CONET_GB1155,
+	CONET_GB_ERC20,
 	CONET_GB_TOTAL,
 	CONET_GUARDIAN_NODES_INFO_V6,
 } from '../config/chainAddresses'
@@ -107,15 +108,26 @@ import {
 		network: 'CONET DePIN',
 		abi: Duplicate
 	},
+	/** @deprecated legacy ConetGB1155 — use GBToken (CONET_GB_ERC20) */
 	sGB: {
 		address: CONET_GB1155,
 		network: 'CONET DePIN',
 		abi: sGB
 	},
+	/** @deprecated legacy ConetGB_total dashboard */
 	sGB_Dashboard: {
 		address: CONET_GB_TOTAL,
 		network: 'CONET DePIN',
 		abi: sGB_Dashboard
+	},
+	GBToken: {
+		address: CONET_GB_ERC20,
+		network: 'CONET DePIN',
+		abi: [
+			'function balanceOf(address account) view returns (uint256)',
+			'function bridgeableBalanceOf(address account) view returns (uint256)',
+			'function decimals() view returns (uint8)',
+		],
 	},
 	constPgpManager: {
 		address: CONET_ADDRESS_PGP,

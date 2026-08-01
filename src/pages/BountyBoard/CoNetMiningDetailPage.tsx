@@ -33,7 +33,11 @@ import {
 	signAndSubmitValidatorDepositRedeemClaim,
 } from '@/services/validatorDepositRedeemClaim'
 import { syncValidatorDepositRedeemIssuedForAdmin } from '@/utils/syncValidatorDepositRedeemIssuedRecords'
-import type { ValidatorWalletNodeProfile } from '@/services/validatorWalletNodeProfile'
+import {
+	gbBandwidthNodeTotalGb,
+	gbBandwidthProvidedParts,
+	type ValidatorWalletNodeProfile,
+} from '@/services/validatorWalletNodeProfile'
 
 const VALIDATOR_REDEEM_ISSUED_SYNC_MS = 30_000
 
@@ -228,9 +232,10 @@ export default function CoNetMiningDetailPage() {
 	const { isRedeemAdmin } = useValidatorDepositRedeemAdmin(eoa)
 	const { profile } = useDaemonValidatorWalletNodeProfile()
 	const { stats: incomeStats } = useDaemonUnifiedIncomeStats()
+	const bandwidthProvided = useMemo(() => gbBandwidthProvidedParts(incomeStats), [incomeStats])
 	const gbUsdcApprox = useMemo(
-		() => formatGbUsdcApprox(incomeStats?.gbBeneficiary.cumulative ?? '0'),
-		[incomeStats?.gbBeneficiary.cumulative],
+		() => formatGbUsdcApprox(String(bandwidthProvided.totalGb)),
+		[bandwidthProvided.totalGb],
 	)
 	const genesisLoyaltyLine = useMemo(
 		() => genesisLoyaltyPanelLine(incomeStats?.airdrop ?? null),
@@ -453,13 +458,16 @@ export default function CoNetMiningDetailPage() {
 										<span className="text-[10px] font-semibold uppercase tracking-widest">BANDWIDTH PROVIDED</span>
 									</div>
 									<p className="mt-1.5 text-2xl font-extrabold leading-none tracking-tight tabular-nums">
-										{formatBalance(incomeStats.gbBeneficiary.cumulative)}{' '}
+										{formatBalance(String(bandwidthProvided.totalGb))}{' '}
 										<span className="text-sm font-bold text-white/80">GB</span>
 									</p>
-									<p className="mt-1 text-[11px] font-medium tabular-nums text-white/60">
-										{gbUsdcApprox}
-									</p>
-									
+									<p className="mt-1 text-[11px] font-medium tabular-nums text-white/60">{gbUsdcApprox}</p>
+									{bandwidthProvided.userFeeGb > 0 ? (
+										<p className="mt-1 text-[10px] leading-snug text-white/55">
+											Routing {formatBalance(String(bandwidthProvided.legacyRoutingGb))} GB · User fees{' '}
+											{formatBalance(String(bandwidthProvided.userFeeGb))} GB (beneficiary wallet)
+										</p>
+									) : null}
 								</div>
 							</div>
 							{profile ? (
@@ -640,7 +648,7 @@ export default function CoNetMiningDetailPage() {
 															{countryLabel ?? (ipKey ? '…' : 'Unavailable')}
 														</td>
 														<td className="py-3 align-top text-right tabular-nums font-semibold text-slate-900 dark:text-slate-50">
-															{formatBalance(row.gb.cumulative)}
+															{formatBalance(String(gbBandwidthNodeTotalGb(row)))}
 														</td>
 													</tr>
 													)

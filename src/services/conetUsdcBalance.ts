@@ -1,13 +1,11 @@
 import { ethers } from 'ethers'
-import { CONET_GB1155, CONET_GB_TOTAL_TOKEN_ID, CONET_USDC } from '@/config/chainAddresses'
+import { CONET_GB, CONET_GB_DECIMALS, CONET_USDC } from '@/config/chainAddresses'
 import { conetDepinProvider } from '@/utils/constants'
 
 const CONET_USDC_DECIMALS = 6
 const CONET_NATIVE_DECIMALS = 18
-const CONET_GB_DECIMALS = 18
 
 const ERC20_BALANCE_ABI = ['function balanceOf(address account) view returns (uint256)'] as const
-const ERC1155_BALANCE_ABI = ['function balanceOf(address account, uint256 id) view returns (uint256)'] as const
 
 export type ConetWalletBalances = {
 	usdc: string
@@ -33,7 +31,7 @@ export type FetchConetWalletBalancesOptions = {
 	bypassMemoryCache?: boolean
 }
 
-/** RPC-direct CoNET wallet balances (native CNET + GB1155 id=0 + CoNET-USDC); in-flight dedupe per EOA. */
+/** RPC-direct CoNET wallet balances (native CNET + GBToken ERC20 + CoNET-USDC); in-flight dedupe per EOA. */
 export async function fetchConetWalletBalances(
 	ownerAddress: string,
 	options?: FetchConetWalletBalancesOptions
@@ -58,10 +56,10 @@ export async function fetchConetWalletBalances(
 	const task = (async (): Promise<ConetWalletBalancesResult> => {
 		try {
 			const usdcToken = new ethers.Contract(CONET_USDC, ERC20_BALANCE_ABI, conetDepinProvider)
-			const gbToken = new ethers.Contract(CONET_GB1155, ERC1155_BALANCE_ABI, conetDepinProvider)
+			const gbToken = new ethers.Contract(CONET_GB, ERC20_BALANCE_ABI, conetDepinProvider)
 			const [cnetRaw, gbRaw, usdcRaw] = await Promise.all([
 				conetDepinProvider.getBalance(checksum),
-				gbToken.balanceOf!(checksum, BigInt(CONET_GB_TOTAL_TOKEN_ID)) as Promise<bigint>,
+				gbToken.balanceOf!(checksum) as Promise<bigint>,
 				usdcToken.balanceOf!(checksum) as Promise<bigint>,
 			])
 			const balances: ConetWalletBalances = {

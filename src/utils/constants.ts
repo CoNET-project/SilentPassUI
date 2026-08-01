@@ -52,12 +52,14 @@ const Solana_SP = 'Bzr4aEQEXrk7k8mbZffrQ9VzX6V3PAH4LvWKXkKppump'
 
 
 
+/** @deprecated legacy ConetGB1155 — wallet GB balance use GBToken via conetUsdcBalance / CONET_GB_ERC20 */
 const sGB_ReadOnly = new ethers.Contract(
 	contracts.sGB.address,
 	contracts.sGB.abi,
 	conetDepinProvider
 )
 
+/** @deprecated legacy ConetGB_total dashboard — network stats only; not user GB balance */
 const sGB_Dashboard_ReadOnly = new ethers.Contract(
 	contracts.sGB_Dashboard.address,
 	contracts.sGB_Dashboard.abi,

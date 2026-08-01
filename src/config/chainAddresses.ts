@@ -72,8 +72,14 @@ export const CONET_TREASURY_BRIDGE_V3 = CONET_TREASURY
 export const CONET_TREASURY_CREATE2 = '0xa311c8fBE7CafC611603Ee925465A62493B73B30'
 /** @deprecated 工厂版 USDC；停增发，仅存量 */
 export const CONET_USDC_FACTORY_LEGACY = '0xfD0D7B0706AaB5E4351bcED37bC3C77ed6813907'
-/** GBToken ERC20（Payment GB / paidPool）；与 deployments/conet-addresses.json GBTokenERC20 同步 */
+/**
+ * CoNET canonical GB — `GBToken` ERC20（9 decimals；free/paid 双池）。
+ * 全项目「GB」默认指此地址；见 `.cursor/rules/beamio-gb-erc20-canonical.mdc`。
+ */
 export const CONET_GB_ERC20 = '0xC3EF02DaE632b4C10abB66e07d92a387c10838D8'
+/** @alias CONET_GB_ERC20 */
+export const CONET_GB = CONET_GB_ERC20
+export const CONET_GB_DECIMALS = 9
 /** @deprecated minter=旧国库 0x6dC6… */
 export const CONET_USDC_LEGACY_UUPS_V1 = '0x84e55A7d82aEa1243cB88b20dDde9Ba5cea0E134'
 /** @deprecated legacy FactoryERC20 (non-UUPS) */
@@ -88,13 +94,18 @@ export const CONET_GUARDIAN_NODES_INFO_V6 = '0xBC6b53065b5647261396d002bDBA0d339
 export const CONET_ADDRESS_PGP = '0x684b0ac760cEE9c9b85de36d69746420648Cf9e2'
 /** CoNET AccountRegistry（Beamio 社交账户） */
 export const CONET_ACCOUNT_REGISTRY = '0xfFDc8d2021A41F4638Cb3eCf58B5155383EE9f6d'
-/** ConetGB1155（原 sGB） */
+/** @deprecated ConetGB1155 挖矿记账轨已弃用；勿在新 UI/API 当作用户 GB 余额来源 */
 export const CONET_GB1155 = '0x3Dc53e528d45225e8F38c391Cc6a72CDec435748'
-/** ConetGB_total（原 sGB_Dashboard） */
+/** @deprecated ConetGB_total（1155 全网聚合）已弃用 */
 export const CONET_GB_TOTAL = '0x949ed49faB0e999f685f16e09Cf5EaaF4090F290'
 /** ValidatorDepositRedeem（CoNET 224422）— resolveNodeBundle / resolveUnifiedIncomeStats RPC 直读 */
 export const CONET_VALIDATOR_DEPOSIT_REDEEM = '0xc71e246DD78B37C2fABc905D340932F28F503433'
-/** GB net-total token id on ConetGB1155（id=0 累计净 GB，18 decimals） */
+/**
+ * GBDepinAirdrop — DePIN 节点收费 GB（mintPaid → 受益人钱包）。
+ * 部署后由 sync / deployments/conet-GBDepinAirdrop.json 填入；未部署时空字符串（UI 仅展示 legacy routing GB）。
+ */
+export const CONET_GB_DEPIN_AIRDROP = '0xBBd504a88dB1EA143A1D3a83E331F979dD3A5e44'
+/** @deprecated ConetGB1155 token id=0；legacy 18-decimal 挖矿口径 */
 export const CONET_GB_TOTAL_TOKEN_ID = 0
 
 export const BASE_MAINNET_FACTORIES = {
@@ -130,7 +141,11 @@ export const CONTRACT_ADDRESSES = {
     guardianNodesInfoV6: CONET_GUARDIAN_NODES_INFO_V6,
     addressPgp: CONET_ADDRESS_PGP,
     accountRegistry: CONET_ACCOUNT_REGISTRY,
+    gbErc20: CONET_GB_ERC20,
+    gbDepinAirdrop: CONET_GB_DEPIN_AIRDROP,
+    /** @deprecated legacy ConetGB1155 */
     conetGb1155: CONET_GB1155,
+    /** @deprecated legacy ConetGB_total */
     conetGbTotal: CONET_GB_TOTAL,
   },
 } as const

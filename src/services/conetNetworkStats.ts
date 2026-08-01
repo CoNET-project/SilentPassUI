@@ -6,7 +6,8 @@
  *     区块浏览器后端 `/api/conet/homepage-metrics` 给出，是该指标的唯一权威来源。
  *  2) DePIN 层（节点数量 + GB 代币总产量）—— 直接走 CoNET RPC 读链上合约：
  *     - DePIN 节点数量：epoch_mining_info.currentInfo() 的 totalMiners
- *     - GB 代币总产量：CoNET GB Total.getDashboard() 的 totalIssued
+ *     - GB 代币总产量：**legacy** ConetGB_total.getDashboard() 的 totalIssued（1155 挖矿轨，已弃用；
+ *       canonical 用户 GB = GBToken ERC20 — 见 `.cursor/rules/beamio-gb-erc20-canonical.mdc`）
  *     （遵守 RPC-first：可链上直读的合约 view 一律走 RPC，不经中心化 API。）
  *
  * 读取失败为不可信结果：调用方应保留上一次可信值，不得把失败当作「0」覆盖展示
@@ -24,7 +25,7 @@ const EPOCH_MINING_INFO_ABI = [
 	'function currentInfo() view returns (uint256 epoch, uint256 totalMiners, uint256 minerRate, uint256 totalUsrs)',
 ] as const
 
-/** CoNET GB Total（全网 GB 代币发行统计仪表盘）。 */
+/** CoNET GB Total dashboard（@deprecated legacy ConetGB1155 全网发行统计；非 GBToken ERC20 余额）。 */
 const CONET_GB_TOTAL_ADDRESS = '0x96CF03e7ea65CE9954Fe206DA7bEC797427adD11'
 const GB_TOTAL_ABI = [
 	'function getDashboard() view returns (uint256 todayTotalIssued, uint256 yestodayTotalIssued, uint256 monthlyTotalIssued, uint256 lastMonthlyTotalIssued, uint256 yearlyTotalIssued, uint256 totalIssued)',

@@ -9,6 +9,7 @@ import { useDaemonContext } from '@/providers/DaemonProvider'
 import { formatWithThousands } from '@/services/beamio'
 import { formatConetChainTokenBalance, formatConetChainTokenBalanceCompact } from '@/services/conetUsdcBalance'
 import { fetchGenesisMemberSnapshot } from '@/services/genesisNodeReferral'
+import { gbBandwidthProvidedParts } from '@/services/validatorWalletNodeProfile'
 
 /**
  * Bounty Board — node rewards hub.
@@ -83,15 +84,16 @@ export default function BountyBoard() {
 		() => formatConetUsdcFiatApprox(conetWalletBalances.usdc, profileCurrency, currencyData as Record<string, number>),
 		[conetWalletBalances.usdc, profileCurrency, currencyData],
 	)
+	const bandwidthProvided = useMemo(() => gbBandwidthProvidedParts(incomeStats), [incomeStats])
 	const miningGbDisplay = useMemo(
-		() => formatConetChainTokenBalance(incomeStats?.gbBeneficiary.cumulative ?? '0'),
-		[incomeStats?.gbBeneficiary.cumulative],
+		() => formatConetChainTokenBalance(String(bandwidthProvided.totalGb)),
+		[bandwidthProvided.totalGb],
 	)
 	const miningGbUsdcApprox = useMemo(() => {
-		const gb = Number(incomeStats?.gbBeneficiary.cumulative ?? '0')
+		const gb = bandwidthProvided.totalGb
 		const usdc = Number.isFinite(gb) && gb > 0 ? gb * 0.1 : 0
 		return `≈ ${usdc.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDC`
-	}, [incomeStats?.gbBeneficiary.cumulative])
+	}, [bandwidthProvided.totalGb])
 	const miningCnetDisplay = useMemo(
 		() => formatConetChainTokenBalanceCompact(incomeStats?.cnetBeneficiary.cumulative ?? '0', 8),
 		[incomeStats?.cnetBeneficiary.cumulative],

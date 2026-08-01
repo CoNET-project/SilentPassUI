@@ -1700,10 +1700,13 @@ export function DaemonProvider({ children }: DaemonProps) {
       previous?.beneficiary &&
       res.stats.beneficiary &&
       previous.beneficiary.toLowerCase() === res.stats.beneficiary.toLowerCase()
-    const nextStats =
-      !res.stats.airdropReadOk && sameBeneficiary && previous?.airdrop
-        ? { ...res.stats, airdrop: previous.airdrop }
-        : res.stats
+    let nextStats = res.stats
+    if (!res.stats.airdropReadOk && sameBeneficiary && previous?.airdrop) {
+      nextStats = { ...nextStats, airdrop: previous.airdrop }
+    }
+    if (!res.stats.gbPaidDepinReadOk && sameBeneficiary && previous?.gbPaidDepinReceived) {
+      nextStats = { ...nextStats, gbPaidDepinReceived: previous.gbPaidDepinReceived }
+    }
     unifiedIncomeStatsRef.current = nextStats
     setUnifiedIncomeStats(nextStats)
     seedUnifiedIncomeStatsCache(eoaLower, nextStats)

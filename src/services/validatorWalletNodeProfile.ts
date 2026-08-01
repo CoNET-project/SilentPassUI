@@ -1,5 +1,10 @@
 import { ethers } from 'ethers'
-import { CONET_GUARDIAN_NODES_INFO_V6, CONET_VALIDATOR_DEPOSIT_REDEEM } from '@/config/chainAddresses'
+import {
+	CONET_GB_DECIMALS as GB_ERC20_DECIMALS,
+	CONET_GB_DEPIN_AIRDROP,
+	CONET_GUARDIAN_NODES_INFO_V6,
+	CONET_VALIDATOR_DEPOSIT_REDEEM,
+} from '@/config/chainAddresses'
 import { conetDepinProvider } from '@/utils/constants'
 
 /**
@@ -239,8 +244,9 @@ async function readBeneficiariesForIps(
 	return { beneficiary: beneficiaries[0] ?? null, beneficiaries }
 }
 
-/** CoNET 原生代币 / GB 精度 */
+/** CoNET 原生代币精度 */
 const CONET_NATIVE_DECIMALS = 18
+/** @deprecated Legacy ConetGB1155 income fields (18-dec); user wallet GB = GBToken ERC20 (9-dec). */
 const CONET_GB_DECIMALS = 18
 /** CoNET USDC 精度 */
 const CONET_USDC_DECIMALS = 6
@@ -810,6 +816,12 @@ export async function fetchBeneficiaryNodeBundle(ipOrWallet: string): Promise<Be
 	}
 }
 
+/** GBToken paidPool 经 GBDepinAirdrop 转入受益人钱包的累计 GB（9 位定点）。 */
+export type GbPaidDepinIncome = {
+	cumulativeRaw: string
+	cumulative: string
+}
+
 /** GB / CNET 收入桶（链上 18 位定点）。 */
 export type IncomeTotals = {
 	cumulativeRaw: string
@@ -840,6 +852,8 @@ export type NodeIncomeRow = {
 	validatorPubkey?: string
 	/** Guardian node id（来自 resolveNodeBundle，与 NodeRewardSettled 事件的 guardianId 对齐）。 */
 	guardianId?: number
+	/** 该 guardian 节点累计收到的收费 GB（GBDepinAirdrop → 受益人；9 decimals）。 */
+	gbPaidDepin?: GbPaidDepinIncome
 }
 
 /**
@@ -866,6 +880,13 @@ export type UnifiedIncomeStats = {
 	gbBeneficiary: IncomeTotals
 	cnetBeneficiary: IncomeTotals
 	nodes: NodeIncomeRow[]
+	/**
+	 * 收费 GB 累计（GBDepinAirdrop.beneficiaryPaidGbTotal — 协议 cron mint + 用户收费 mintPaid）。
+	 * 与 gbBeneficiary（legacy ConetGB1155 routing）相加为 BANDWIDTH PROVIDED 展示总量。
+	 */
+	gbPaidDepinReceived: GbPaidDepinIncome | null
+	/** 本轮 GBDepinAirdrop 链上账本 view 是否可信成功（未配置合约地址视为可信零）。 */
+	gbPaidDepinReadOk: boolean
 	/** CNET airdrop（vesting）账本；本轮未能可信读取时为 null（不覆盖 UI 上次可信值）。 */
 	airdrop: AirdropInfo | null
 	/** Whether airdropInfoOf was trusted in this refresh. */
@@ -931,7 +952,103 @@ function parseUnifiedIncomeStats(r: ethers.Result | Record<string, unknown> | un
 			cnet: parseIncomeTotals(nGet('cnet', 3) as ethers.Result),
 		}
 	})
-	return { beneficiary, gbBeneficiary, cnetBeneficiary, nodes, airdrop: null, airdropReadOk: true }
+	return {
+		beneficiary,
+		gbBeneficiary,
+		cnetBeneficiary,
+		nodes,
+		gbPaidDepinReceived: null,
+		gbPaidDepinReadOk: true,
+		airdrop: null,
+		airdropReadOk: true,
+	}
+}
+
+/** BANDWIDTH PROVIDED = legacy routing GB + 收费 GB（受益人钱包）。 */
+export function gbBandwidthProvidedParts(stats: UnifiedIncomeStats | null | undefined): {
+	totalGb: number
+	legacyRoutingGb: number
+	userFeeGb: number
+} {
+	if (!stats) return { totalGb: 0, legacyRoutingGb: 0, userFeeGb: 0 }
+	const legacyRoutingGb = Number(stats.gbBeneficiary.cumulative) || 0
+	const userFeeGb = Number(stats.gbPaidDepinReceived?.cumulative ?? '0') || 0
+	return { totalGb: legacyRoutingGb + userFeeGb, legacyRoutingGb, userFeeGb }
+}
+
+export function gbBandwidthNodeTotalGb(node: NodeIncomeRow): number {
+	const legacy = Number(node.gb.cumulative) || 0
+	const paid = Number(node.gbPaidDepin?.cumulative ?? '0') || 0
+	return legacy + paid
+}
+
+function resolveGbDepinAirdropAddress(): string | null {
+	const raw = String(CONET_GB_DEPIN_AIRDROP ?? '').trim()
+	if (!raw || !ethers.isAddress(raw)) return null
+	return ethers.getAddress(raw)
+}
+
+const GB_DEPIN_AIRDROP_LEDGER_ABI = [
+	'function paidGbReceivedOf(address beneficiary) view returns (uint256)',
+	'function paidGbReceivedOfGuardianNode(uint256 guardianNodeId) view returns (uint256)',
+] as const
+
+/**
+ * Read GBDepinAirdrop on-chain ledger (beneficiaryPaidGbTotal / guardianNodePaidGbTotal).
+ * Single RPC per beneficiary + one per guardian node id — no historical event scan.
+ */
+async function readDepinPaidGbFromLedger(
+	beneficiary: string | null,
+	guardianIds: number[]
+): Promise<{ total: bigint; byGuardian: Map<number, bigint>; ok: boolean }> {
+	const airdrop = resolveGbDepinAirdropAddress()
+	if (!airdrop || !beneficiary) return { total: 0n, byGuardian: new Map(), ok: true }
+	try {
+		const c = new ethers.Contract(airdrop, GB_DEPIN_AIRDROP_LEDGER_ABI, conetDepinProvider)
+		const total = BigInt(String(await c.paidGbReceivedOf!(beneficiary)))
+		const byGuardian = new Map<number, bigint>()
+		const uniqueIds = [...new Set(guardianIds.filter((id) => Number.isFinite(id) && id > 0))]
+		if (uniqueIds.length > 0) {
+			const rows = await Promise.all(
+				uniqueIds.map(async (id) => {
+					const v = BigInt(String(await c.paidGbReceivedOfGuardianNode!(id)))
+					return [id, v] as const
+				})
+			)
+			for (const [id, v] of rows) {
+				if (v > 0n) byGuardian.set(id, v)
+			}
+		}
+		return { total, byGuardian, ok: true }
+	} catch {
+		return { total: 0n, byGuardian: new Map(), ok: false }
+	}
+}
+
+function gbPaidDepinIncomeFromWei(amountWei: bigint): GbPaidDepinIncome {
+	return {
+		cumulativeRaw: amountWei.toString(),
+		cumulative: ethers.formatUnits(amountWei, GB_ERC20_DECIMALS),
+	}
+}
+
+function mergeDepinPaidGbIntoBeneficiary(stats: UnifiedIncomeStats, totalWei: bigint): void {
+	if (totalWei <= 0n) {
+		stats.gbPaidDepinReceived = { cumulativeRaw: '0', cumulative: '0' }
+		return
+	}
+	stats.gbPaidDepinReceived = gbPaidDepinIncomeFromWei(totalWei)
+}
+
+function mergeDepinPaidGbIntoNodes(stats: UnifiedIncomeStats, byGuardian: Map<number, bigint>): void {
+	if (byGuardian.size === 0) return
+	for (const node of stats.nodes) {
+		const guardianId = node.guardianId
+		if (guardianId === undefined) continue
+		const paidWei = byGuardian.get(guardianId)
+		if (paidWei === undefined || paidWei <= 0n) continue
+		node.gbPaidDepin = gbPaidDepinIncomeFromWei(paidWei)
+	}
 }
 
 /** CL skim rewards actually paid to beneficiary via {settleNodeRewards} (wei). Indexer cumulative may lag. */
@@ -1186,12 +1303,22 @@ async function assembleUnifiedIncomeStatsClientSide(
 		gbBeneficiary,
 		cnetBeneficiary,
 		nodes,
+		gbPaidDepinReceived: null,
+		gbPaidDepinReadOk: true,
 		airdrop: null,
 		airdropReadOk: true,
 	}
 	if (ben) {
 		const clPaid = await readClRewardPaidWei(redeem, ben)
 		mergeClRewardPaidIntoCnetBeneficiary(stats, clPaid)
+		const guardianIds = stats.nodes.map((n) => n.guardianId).filter((id): id is number => id !== undefined)
+		const depinPaid = await readDepinPaidGbFromLedger(ben, guardianIds)
+		if (depinPaid.ok) {
+			mergeDepinPaidGbIntoBeneficiary(stats, depinPaid.total)
+			mergeDepinPaidGbIntoNodes(stats, depinPaid.byGuardian)
+		} else {
+			stats.gbPaidDepinReadOk = false
+		}
 	}
 	return stats
 }
@@ -1285,6 +1412,20 @@ export async function fetchUnifiedIncomeStats(
 			// beneficiary-level airdrop read has completed.
 			const guardianClPaid = await readClRewardPaidByGuardian(redeem, incomeBeneficiary)
 			mergeClRewardPaidIntoNodes(stats, guardianClPaid)
+			if (resolveGbDepinAirdropAddress()) {
+				const guardianIds = stats.nodes.map((n) => n.guardianId).filter((id): id is number => id !== undefined)
+				const depinPaid = await readDepinPaidGbFromLedger(incomeBeneficiary, guardianIds)
+				if (depinPaid.ok) {
+					mergeDepinPaidGbIntoBeneficiary(stats, depinPaid.total)
+					mergeDepinPaidGbIntoNodes(stats, depinPaid.byGuardian)
+					stats.gbPaidDepinReadOk = true
+				} else {
+					stats.gbPaidDepinReadOk = false
+				}
+			} else {
+				stats.gbPaidDepinReceived = { cumulativeRaw: '0', cumulative: '0' }
+				stats.gbPaidDepinReadOk = true
+			}
 		}
 		if (parsedBundle) {
 			try {

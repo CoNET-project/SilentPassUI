@@ -247,10 +247,11 @@ export default function BountyBoard() {
 								<Settings2 className="h-4 w-4" strokeWidth={2.25} aria-hidden />
 							</button>
 						</div>
-						<div className="mt-4 grid grid-cols-3 gap-3">
-							<div className="min-w-0">
+						{/* Narrow (iPhone SE): DePIN full-width, then L1 | Nodes. sm+: three columns. */}
+						<div className="mt-4 grid grid-cols-2 gap-x-3 gap-y-4 sm:grid-cols-3">
+							<div className="col-span-2 min-w-0 sm:col-span-1">
 								<p className="text-xs font-medium text-slate-500 dark:text-slate-400">DePIN Routing</p>
-								<p className="mt-1 truncate text-xl font-extrabold tabular-nums leading-none text-slate-900 dark:text-slate-50">
+								<p className="mt-1 break-words text-lg font-extrabold tabular-nums leading-none text-slate-900 sm:text-xl dark:text-slate-50">
 									{miningGbDisplay}
 									<span className="ml-1 text-sm font-bold text-slate-400 dark:text-slate-500">GB</span>
 								</p>
@@ -262,15 +263,15 @@ export default function BountyBoard() {
 									disabled
 									aria-disabled="true"
 									title="Claim USDC is not available yet"
-									className="mt-2 inline-flex items-center justify-center rounded-full border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-400 transition disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-600 dark:text-slate-500"
+									className="mt-2 inline-flex max-w-full items-center justify-center rounded-full border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-400 transition disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-600 dark:text-slate-500"
 								>
 									Claim USDC
 								</button>
 							</div>
 
-							<div className="min-w-0 overflow-hidden border-l border-slate-100 pl-3 dark:border-slate-800">
+							<div className="min-w-0 border-t border-slate-100 pt-3 sm:border-l sm:border-t-0 sm:pl-3 sm:pt-0 dark:border-slate-800">
 								<p className="text-xs font-medium text-slate-500 dark:text-slate-400">L1 Network</p>
-								<p className="mt-1 truncate text-xl font-extrabold tabular-nums leading-none text-slate-900 dark:text-slate-50">
+								<p className="mt-1 break-words text-lg font-extrabold tabular-nums leading-none text-slate-900 sm:text-xl dark:text-slate-50">
 									{miningCnetDisplay}
 									{miningCnetUnitLabel ? (
 										<span className="ml-1 text-sm font-bold text-slate-400 dark:text-slate-500">
@@ -280,9 +281,9 @@ export default function BountyBoard() {
 								</p>
 							</div>
 
-							<div className="min-w-0 border-l border-slate-100 pl-3 dark:border-slate-800">
+							<div className="min-w-0 border-t border-l border-slate-100 pl-3 pt-3 sm:border-t-0 sm:pt-0 dark:border-slate-800">
 								<p className="text-xs font-medium text-slate-500 dark:text-slate-400">Total Nodes</p>
-								<p className="mt-1 truncate text-xl font-extrabold tabular-nums leading-none text-slate-900 dark:text-slate-50">
+								<p className="mt-1 break-words text-lg font-extrabold tabular-nums leading-none text-slate-900 sm:text-xl dark:text-slate-50">
 									{totalNodesDisplay}
 								</p>
 							</div>

@@ -250,23 +250,30 @@ export default function BountyBoard() {
 						{/* Narrow (iPhone SE): DePIN full-width, then L1 | Nodes. sm+: three columns. */}
 						<div className="mt-4 grid grid-cols-2 gap-x-3 gap-y-4 sm:grid-cols-3">
 							<div className="col-span-2 min-w-0 sm:col-span-1">
-								<p className="text-xs font-medium text-slate-500 dark:text-slate-400">DePIN Routing</p>
-								<p className="mt-1 break-words text-lg font-extrabold tabular-nums leading-none text-slate-900 sm:text-xl dark:text-slate-50">
-									{miningGbDisplay}
-									<span className="ml-1 text-sm font-bold text-slate-400 dark:text-slate-500">GB</span>
-								</p>
-								<p className="mt-0.5 text-[11px] font-medium tabular-nums text-slate-400 dark:text-slate-500">
-									{miningGbUsdcApprox}
-								</p>
-								<button
-									type="button"
-									disabled
-									aria-disabled="true"
-									title="Claim USDC is not available yet"
-									className="mt-2 inline-flex max-w-full items-center justify-center rounded-full border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-400 transition disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-600 dark:text-slate-500"
-								>
-									Claim USDC
-								</button>
+								{/* Full-width row: GB left, ≈ USDC + Claim right-aligned. sm+: stacked left. */}
+								<div className="flex flex-row items-start justify-between gap-3 sm:flex-col sm:items-stretch sm:justify-start sm:gap-0">
+									<div className="min-w-0">
+										<p className="text-xs font-medium text-slate-500 dark:text-slate-400">DePIN Routing</p>
+										<p className="mt-1 break-words text-lg font-extrabold tabular-nums leading-none text-slate-900 sm:text-xl dark:text-slate-50">
+											{miningGbDisplay}
+											<span className="ml-1 text-sm font-bold text-slate-400 dark:text-slate-500">GB</span>
+										</p>
+									</div>
+									<div className="flex shrink-0 flex-col items-end sm:mt-0.5 sm:items-start">
+										<p className="text-[11px] font-medium tabular-nums text-slate-400 dark:text-slate-500">
+											{miningGbUsdcApprox}
+										</p>
+										<button
+											type="button"
+											disabled
+											aria-disabled="true"
+											title="Claim USDC is not available yet"
+											className="mt-2 inline-flex max-w-full items-center justify-center rounded-full border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-400 transition disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-600 dark:text-slate-500"
+										>
+											Claim USDC
+										</button>
+									</div>
+								</div>
 							</div>
 
 							<div className="min-w-0 border-t border-slate-100 pt-3 sm:border-l sm:border-t-0 sm:pl-3 sm:pt-0 dark:border-slate-800">

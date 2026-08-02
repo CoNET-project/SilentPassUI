@@ -79,10 +79,10 @@ function genesisLoyaltyPanelLine(airdrop: { accrued: string; claimable: string }
 	return `${formatVestingCnet(airdrop.accrued)} CNET (Genesis Loyalty)`
 }
 
-/** DePIN Routing GB → USDC 估值：1 GB = 0.1 USDC */
+/** DePIN Routing GB → USDC 估值：对齐国库 StableSwap，1 GB = 0.01 USDC */
 function formatGbUsdcApprox(gbCumulative: string): string {
 	const gb = Number(gbCumulative)
-	const usdc = Number.isFinite(gb) && gb > 0 ? gb * 0.1 : 0
+	const usdc = Number.isFinite(gb) && gb > 0 ? gb * 0.01 : 0
 	return `≈ ${formatDigitalAssetDisplay(usdc)} USDC`
 }
 

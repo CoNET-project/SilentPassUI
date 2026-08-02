@@ -93,7 +93,7 @@ export default function BountyBoard() {
 	)
 	const miningGbUsdcApprox = useMemo(() => {
 		const gb = bandwidthProvided.totalGb
-		const usdc = Number.isFinite(gb) && gb > 0 ? gb * 0.1 : 0
+		const usdc = Number.isFinite(gb) && gb > 0 ? gb * 0.01 : 0
 		return `≈ ${formatDigitalAssetDisplay(usdc)} USDC`
 	}, [bandwidthProvided.totalGb])
 	const miningCnetDisplay = useMemo(
@@ -250,8 +250,9 @@ export default function BountyBoard() {
 						<div className="mt-4 grid grid-cols-3 gap-3">
 							<div className="min-w-0">
 								<p className="text-xs font-medium text-slate-500 dark:text-slate-400">DePIN Routing</p>
-								<p className="mt-1 text-xl font-extrabold tabular-nums text-slate-900 dark:text-slate-50">
-									{miningGbDisplay} GB
+								<p className="mt-1 truncate text-xl font-extrabold tabular-nums leading-none text-slate-900 dark:text-slate-50">
+									{miningGbDisplay}
+									<span className="ml-1 text-sm font-bold text-slate-400 dark:text-slate-500">GB</span>
 								</p>
 								<p className="mt-0.5 text-[11px] font-medium tabular-nums text-slate-400 dark:text-slate-500">
 									{miningGbUsdcApprox}
@@ -268,20 +269,20 @@ export default function BountyBoard() {
 							</div>
 
 							<div className="min-w-0 overflow-hidden border-l border-slate-100 pl-3 dark:border-slate-800">
-								<p className="text-xs font-medium text-slate-500 dark:text-slate-400">L1 Network Gas</p>
-								<p className="mt-1 truncate text-lg font-extrabold tabular-nums leading-tight text-slate-900 sm:text-xl dark:text-slate-50">
+								<p className="text-xs font-medium text-slate-500 dark:text-slate-400">L1 Network</p>
+								<p className="mt-1 truncate text-xl font-extrabold tabular-nums leading-none text-slate-900 dark:text-slate-50">
 									{miningCnetDisplay}
+									{miningCnetUnitLabel ? (
+										<span className="ml-1 text-sm font-bold text-slate-400 dark:text-slate-500">
+											{miningCnetUnitLabel}
+										</span>
+									) : null}
 								</p>
-								{miningCnetUnitLabel ? (
-									<p className="mt-0.5 text-[11px] font-medium text-slate-400 dark:text-slate-500">
-										{miningCnetUnitLabel}
-									</p>
-								) : null}
 							</div>
 
 							<div className="min-w-0 border-l border-slate-100 pl-3 dark:border-slate-800">
 								<p className="text-xs font-medium text-slate-500 dark:text-slate-400">Total Nodes</p>
-								<p className="mt-1 text-xl font-extrabold tabular-nums text-slate-900 dark:text-slate-50">
+								<p className="mt-1 truncate text-xl font-extrabold tabular-nums leading-none text-slate-900 dark:text-slate-50">
 									{totalNodesDisplay}
 								</p>
 							</div>

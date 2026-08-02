@@ -104,7 +104,7 @@ export const CONET_VALIDATOR_DEPOSIT_REDEEM = '0xc71e246DD78B37C2fABc905D340932F
  * GBDepinAirdrop — DePIN 节点收费 GB（mintPaid → 受益人钱包）。
  * 部署后由 sync / deployments/conet-GBDepinAirdrop.json 填入；未部署时空字符串（UI 仅展示 legacy routing GB）。
  */
-export const CONET_GB_DEPIN_AIRDROP = '0xBBd504a88dB1EA143A1D3a83E331F979dD3A5e44'
+export const CONET_GB_DEPIN_AIRDROP = '0x62bcc59cC36C737E8AfBb0914F840d12cd33025f'
 /** @deprecated ConetGB1155 token id=0；legacy 18-decimal 挖矿口径 */
 export const CONET_GB_TOTAL_TOKEN_ID = 0
 

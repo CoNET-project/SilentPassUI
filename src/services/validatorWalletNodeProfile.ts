@@ -32,7 +32,8 @@ const VALIDATOR_WALLET_NODE_PROFILE_ABI = [
 	`function getBeneficiaryNodeBundle(address beneficiary) view returns (${NODE_BUNDLE_TUPLE})`,
 	`function resolveNodeBundle(address maybeWallet, string conetDepinNodeIp) view returns (${NODE_BUNDLE_TUPLE})`,
 	`function resolveUnifiedIncomeStats(address maybeWallet, string conetDepinNodeIp, uint256 anchorTs) view returns (${UNIFIED_INCOME_STATS_TUPLE})`,
-	'function clRewardPaid(address beneficiary) view returns (uint256)',
+	// Note: storage mapping `clRewardPaid` on VDR is private — there is no public getter. CL totals
+	// must be recovered from `NodeRewardSettled` logs (indexer / resolveUnifiedIncomeStats CNET may stay 0).
 	'event NodeRewardSettled(uint256 indexed guardianId, address indexed beneficiary, uint256 amount, bytes32 indexed eventKey)',
 	'function airdropInfoOf(address beneficiary) view returns (uint256 accrued, uint256 claimed, uint256 claimable, uint64 claimableAt)',
 	'function referrerExtension() view returns (address)',
@@ -1051,19 +1052,10 @@ function mergeDepinPaidGbIntoNodes(stats: UnifiedIncomeStats, byGuardian: Map<nu
 	}
 }
 
-/** CL skim rewards actually paid to beneficiary via {settleNodeRewards} (wei). Indexer cumulative may lag. */
-async function readClRewardPaidWei(redeem: ethers.Contract, beneficiary: string | null): Promise<bigint> {
-	if (!beneficiary) return 0n
-	try {
-		return BigInt(String(await redeem.clRewardPaid!(beneficiary)))
-	} catch {
-		return 0n
-	}
-}
-
 /**
- * Merge on-chain {clRewardPaid} into beneficiary CNET cumulative when it exceeds indexer totals.
- * L1 gas panels must reflect settled CL payouts, not indexer-only ledger (may be 0 while wallet already received CNET).
+ * Merge settled CL skim CNET into beneficiary cumulative when it exceeds indexer totals.
+ * L1 Network Gas panel reads `cnetBeneficiary.cumulative` — must include NodeRewardSettled sums
+ * (ValidatorNodeRewardIndexer / resolveUnifiedIncomeStats CNET often stay 0 while settles already paid).
  */
 function mergeClRewardPaidIntoCnetBeneficiary(stats: UnifiedIncomeStats, clPaidWei: bigint): void {
 	if (clPaidWei <= 0n) return
@@ -1076,13 +1068,31 @@ function mergeClRewardPaidIntoCnetBeneficiary(stats: UnifiedIncomeStats, clPaidW
 	}
 }
 
+function sumGuardianClPaidWei(byGuardian: Map<number, bigint>): bigint {
+	let total = 0n
+	for (const v of byGuardian.values()) total += v
+	return total
+}
+
+/**
+ * Apply per-guardian + beneficiary CNET from NodeRewardSettled (authoritative CL settle ledger).
+ * VDR `clRewardPaid` storage is private — no eth_call getter; do not invent one.
+ */
+function mergeSettledClRewardsFromEvents(
+	stats: UnifiedIncomeStats,
+	guardianClPaid: Map<number, bigint>,
+): void {
+	mergeClRewardPaidIntoNodes(stats, guardianClPaid)
+	mergeClRewardPaidIntoCnetBeneficiary(stats, sumGuardianClPaidWei(guardianClPaid))
+}
+
 /**
  * Per-node CL skim reward actually paid, grouped by guardianId.
  *
- * {settleNodeRewards} only stores the **beneficiary aggregate** `clRewardPaid[beneficiary]`; there is no
- * per-node view. The per-guardian breakdown is recoverable only from `NodeRewardSettled(guardianId, beneficiary, amount, eventKey)`
- * logs. ValidatorNodeRewardIndexer.getNodeRewardSummary is a separate ledger that may stay 0 while CL payouts
- * already hit the wallet, so the L1-nodes panel must read settled CL logs, not the indexer-only per-node summary.
+ * {settleNodeRewards} only stores private `clRewardPaid[beneficiary]`; there is no public aggregate view.
+ * The per-guardian breakdown (and therefore the beneficiary total) is recovered from
+ * `NodeRewardSettled(guardianId, beneficiary, amount, eventKey)` logs.
+ * ValidatorNodeRewardIndexer.getNodeRewardSummary may stay 0 while CL payouts already hit the wallet.
  *
  * 返回 Map<guardianId, wei>；读取失败返回空 Map（不覆盖 UI 上次可信值，见 beamio-trusted-vs-untrusted-fetch.mdc）。
  */
@@ -1091,6 +1101,8 @@ const guardianClRewardPaidInFlight = new Map<string, Promise<void>>()
 
 /** CoNET RPC caps eth_getLogs at 5000 blocks (rpc1.conet.network returns -32602 above that). */
 const NODE_REWARD_SETTLED_LOG_CHUNK = 4_999
+/** Parallel chunk scans — sequential full-history scans take minutes and starve the BountyBoard daemon tick. */
+const NODE_REWARD_SETTLED_LOG_CONCURRENCY = 12
 
 function accumulateNodeRewardSettledLogs(
 	redeem: ethers.Contract,
@@ -1118,7 +1130,7 @@ function accumulateNodeRewardSettledLogs(
 	}
 }
 
-/** Scan NodeRewardSettled in RPC-sized chunks; a single 0..latest query exceeds CoNET eth_getLogs limits. */
+/** Scan NodeRewardSettled in RPC-sized chunks (parallel); a single 0..latest query exceeds CoNET eth_getLogs limits. */
 async function queryNodeRewardSettledByBeneficiary(
 	redeem: ethers.Contract,
 	beneficiary: string,
@@ -1126,22 +1138,23 @@ async function queryNodeRewardSettledByBeneficiary(
 	const filter = redeem.filters.NodeRewardSettled!(null, beneficiary)
 	const latest = await conetDepinProvider.getBlockNumber()
 	const out = new Map<number, bigint>()
+	const ranges: Array<{ from: number; to: number }> = []
 	for (let from = 0; from <= latest; from += NODE_REWARD_SETTLED_LOG_CHUNK) {
-		const to = Math.min(latest, from + NODE_REWARD_SETTLED_LOG_CHUNK - 1)
-		const logs = await redeem.queryFilter(filter, from, to)
-		accumulateNodeRewardSettledLogs(redeem, logs, out)
+		ranges.push({ from, to: Math.min(latest, from + NODE_REWARD_SETTLED_LOG_CHUNK - 1) })
+	}
+	for (let i = 0; i < ranges.length; i += NODE_REWARD_SETTLED_LOG_CONCURRENCY) {
+		const batch = ranges.slice(i, i + NODE_REWARD_SETTLED_LOG_CONCURRENCY)
+		const results = await Promise.all(
+			batch.map(({ from, to }) => redeem.queryFilter(filter, from, to)),
+		)
+		for (const logs of results) accumulateNodeRewardSettledLogs(redeem, logs, out)
 	}
 	return out
 }
 
 /**
- * Load the per-guardian breakdown without blocking the aggregate income panel.
- *
- * The historical event query can be slow for beneficiaries owning many nodes.
- * `clRewardPaid(beneficiary)` is the authoritative aggregate and is read
- * synchronously by the caller; this detail query is deliberately single-flight
- * and cached so it cannot turn a multi-node dashboard refresh into a 40+ second
- * request or start overlapping full-history scans every daemon tick.
+ * Load the per-guardian CL settle breakdown (and therefore beneficiary total via sum).
+ * Single-flight + cached so daemon ticks do not overlap full-history scans.
  */
 async function readClRewardPaidByGuardian(
 	redeem: ethers.Contract,
@@ -1149,6 +1162,25 @@ async function readClRewardPaidByGuardian(
 ): Promise<Map<number, bigint>> {
 	if (!beneficiary) return new Map()
 	const key = beneficiary.toLowerCase()
+
+	const cached = guardianClRewardPaidCache.get(key)
+	if (cached) {
+		// Refresh in background; return last trusted map immediately.
+		if (!guardianClRewardPaidInFlight.has(key)) {
+			const refresh = (async () => {
+				try {
+					const out = await queryNodeRewardSettledByBeneficiary(redeem, beneficiary)
+					guardianClRewardPaidCache.set(key, out)
+				} catch {
+					/* keep last trusted */
+				} finally {
+					guardianClRewardPaidInFlight.delete(key)
+				}
+			})()
+			guardianClRewardPaidInFlight.set(key, refresh)
+		}
+		return cached
+	}
 
 	let task = guardianClRewardPaidInFlight.get(key)
 	if (!task) {
@@ -1345,10 +1377,8 @@ async function assembleUnifiedIncomeStatsClientSide(
 		airdropReadOk: true,
 	}
 	if (ben) {
-		const clPaid = await readClRewardPaidWei(redeem, ben)
-		mergeClRewardPaidIntoCnetBeneficiary(stats, clPaid)
 		const guardianClPaid = await readClRewardPaidByGuardian(redeem, ben)
-		mergeClRewardPaidIntoNodes(stats, guardianClPaid)
+		mergeSettledClRewardsFromEvents(stats, guardianClPaid)
 		const guardianIds = stats.nodes.map((n) => n.guardianId).filter((id): id is number => id !== undefined)
 		const depinPaid = await readDepinPaidGbFromLedger(ben, guardianIds)
 		if (depinPaid.ok) {
@@ -1486,18 +1516,12 @@ export async function fetchUnifiedIncomeStats(
 			// 既无收益、又无可信节点：交由外层 catch 返回 ok:false（不覆盖 UI 上次可信值）。
 			return { ok: false, error: 'resolveUnifiedIncomeStats read failed' }
 		}
-		// L1 CL gas earned: indexer cumulative may be 0 while settleNodeRewards already paid (clRewardPaid).
-		// Beneficiary aggregate ← clRewardPaid; per-node ← NodeRewardSettled logs grouped by guardianId.
+		// L1 CL gas earned: indexer / resolveUnifiedIncomeStats CNET often 0 while settleNodeRewards already paid.
+		// Authoritative source = NodeRewardSettled logs (VDR clRewardPaid mapping is private — no getter).
 		// resolveUnifiedIncomeStats node tuples lack guardianId, so join it from the bundle by nodeWallet first.
 		assignGuardianIdsToNodes(stats, parsedBundle)
 		const incomeBeneficiary =
 			stats.beneficiary ?? parsedBundle?.beneficiary ?? (isAddr ? maybeWallet : null)
-		if (incomeBeneficiary) {
-			// Merge the authoritative aggregate first. Do not wait for the
-			// potentially slow historical per-guardian event scan.
-			const clPaid = await readClRewardPaidWei(redeem, incomeBeneficiary)
-			mergeClRewardPaidIntoCnetBeneficiary(stats, clPaid)
-		}
 		// airdrop（vesting）账本按 redeem **beneficiary** 查询（非 node operator 钱包）。
 		// 登录 EOA 可能是 nodeWallet；须用 resolve 出的 beneficiary，否则 accrued 恒为 0。
 		const airdropBeneficiary = stats.beneficiary ?? (isAddr ? maybeWallet : null)
@@ -1519,10 +1543,8 @@ export async function fetchUnifiedIncomeStats(
 			stats.airdropReadOk = true
 		}
 		if (incomeBeneficiary) {
-			// Start the slow per-guardian history scan only after the
-			// beneficiary-level airdrop read has completed.
 			const guardianClPaid = await readClRewardPaidByGuardian(redeem, incomeBeneficiary)
-			mergeClRewardPaidIntoNodes(stats, guardianClPaid)
+			mergeSettledClRewardsFromEvents(stats, guardianClPaid)
 			if (resolveGbDepinAirdropAddress()) {
 				const guardianIds = stats.nodes.map((n) => n.guardianId).filter((id): id is number => id !== undefined)
 				const depinPaid = await readDepinPaidGbFromLedger(incomeBeneficiary, guardianIds)

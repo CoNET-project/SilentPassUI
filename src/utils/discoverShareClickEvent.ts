@@ -14,6 +14,7 @@ const UC_TARGET_MERCHANT_CARD = 1
 const UC_TARGET_ISSUED_COUPON = 2
 const SESSION_CLICK_KEY_PREFIX = 'beamio:discover-share-click:v1:'
 const SESSION_REWARD_KEY_PREFIX = 'beamio:discover-share-reward13:v1:'
+const SESSION_BIND_KEY_PREFIX = 'beamio:discover-share-referee-bind:v1:'
 
 const REWARD_RULE_ABI = [
 	'function getRewardRule(uint256 ruleId) view returns (bool active, uint8 eventKind, uint8 targetKind, uint256 issuedParentId, uint256 actorMint13, uint256 refMint13)',
@@ -283,6 +284,102 @@ async function signDiscoverShareClickEip712(
 	return { deadline, nonce, userSignature }
 }
 
+function sessionBindDedupeKey(cardAddress: string, downlineEOA: string, refereeEOA: string): string {
+	return `${SESSION_BIND_KEY_PREFIX}${cardAddress.toLowerCase()}:${downlineEOA.toLowerCase()}:${refereeEOA.toLowerCase()}`
+}
+
+function wasShareRefereeBoundThisSession(cardAddress: string, downlineEOA: string, refereeEOA: string): boolean {
+	try {
+		return sessionStorage.getItem(sessionBindDedupeKey(cardAddress, downlineEOA, refereeEOA)) === '1'
+	} catch {
+		return false
+	}
+}
+
+function markShareRefereeBoundThisSession(cardAddress: string, downlineEOA: string, refereeEOA: string): void {
+	try {
+		sessionStorage.setItem(sessionBindDedupeKey(cardAddress, downlineEOA, refereeEOA), '1')
+	} catch {
+		/* ignore */
+	}
+}
+
+async function signBindShareRefereeEip712(
+	wallet: ethers.Wallet,
+	cardAddress: string,
+	refereeEOA: string,
+): Promise<{ deadline: number; nonce: string; userSignature: string }> {
+	const cardNorm = ethers.getAddress(cardAddress)
+	const downlineEOA = ethers.getAddress(wallet.address)
+	const verifyingContract = await getCardFactoryGatewayForEip712(cardNorm)
+	const chainId = await eip712ChainIdForBeamioUserCard(cardNorm)
+	const deadline = Math.floor(Date.now() / 1000) + 15 * 60
+	const nonce = ethers.hexlify(ethers.randomBytes(32))
+	const userSignature = await wallet.signTypedData(
+		{
+			name: 'BeamioUserCardFactory',
+			version: '1',
+			chainId,
+			verifyingContract,
+		},
+		{
+			BindShareReferee: [
+				{ name: 'cardAddress', type: 'address' },
+				{ name: 'downlineEOA', type: 'address' },
+				{ name: 'refereeEOA', type: 'address' },
+				{ name: 'deadline', type: 'uint256' },
+				{ name: 'nonce', type: 'bytes32' },
+			],
+		},
+		{
+			cardAddress: cardNorm,
+			downlineEOA,
+			refereeEOA: ethers.getAddress(refereeEOA),
+			deadline: BigInt(deadline),
+			nonce,
+		},
+	)
+	return { deadline, nonce, userSignature }
+}
+
+/** Bind opener EOA as downline of share-link refereeEOA (chain AA registry). Failures must not block share-click. */
+async function bindShareRefereeIfNeeded(params: {
+	cardAddress: string
+	wallet: ethers.Wallet
+	refereeEOA: string
+}): Promise<void> {
+	const card = ethers.getAddress(params.cardAddress)
+	const downlineEOA = ethers.getAddress(params.wallet.address)
+	const refereeEOA = ethers.getAddress(params.refereeEOA)
+	if (downlineEOA === refereeEOA) return
+	if (wasShareRefereeBoundThisSession(card, downlineEOA, refereeEOA)) return
+	try {
+		const { deadline, nonce, userSignature } = await signBindShareRefereeEip712(
+			params.wallet,
+			card,
+			refereeEOA,
+		)
+		const res = await fetch(`${beamioApi}/api/cardBindShareReferee`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				cardAddress: card,
+				downlineEOA,
+				refereeEOA,
+				deadline,
+				nonce,
+				userSignature,
+			}),
+		})
+		const json = (await res.json().catch(() => null)) as { success?: boolean } | null
+		if (res.ok && json?.success) {
+			markShareRefereeBoundThisSession(card, downlineEOA, refereeEOA)
+		}
+	} catch {
+		/* non-blocking */
+	}
+}
+
 export type DiscoverShareClickResult =
 	| {
 			ok: true
@@ -335,6 +432,10 @@ export async function recordDiscoverShareClickIfNeeded(params: {
 
 	const actorEOA = ethers.getAddress(wallet.address)
 	const refWallet = resolveShareClickRefWallet(actorEOA, params.referrerEoa)
+
+	if (refWallet) {
+		void bindShareRefereeIfNeeded({ cardAddress: card, wallet, refereeEOA: refWallet })
+	}
 
 	if (wasShareClickRecordedThisSession(card, actorEOA, targetKind, issuedParentId)) {
 		try {

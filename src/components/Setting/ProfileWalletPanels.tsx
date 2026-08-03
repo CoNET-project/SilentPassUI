@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react'
 import { Check, Copy, ExternalLink, Hexagon, Wallet } from 'lucide-react'
 import { beamioWalletAccent, type BeamioWalletKind } from '@/utils/beamioWalletAccent'
 import { tu } from '@/locale/beamioLocale'
+import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
 
 const fmtAddr = (a = '') => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '—')
 const basescanAddressUrl = (address: string) => `https://basescan.org/address/${address}`
@@ -56,16 +57,15 @@ function ProfileWalletBaseScanButton({
 	actionIconClass: string
 }) {
 	return (
-		<a
-			href={basescanAddressUrl(address)}
-			target="_blank"
-			rel="noopener noreferrer"
+		<button
+			type="button"
+			onClick={() => openExternalUrl(basescanAddressUrl(address))}
 			className={`inline-flex shrink-0 items-center justify-center active:opacity-70 ${actionIconClass}`}
 			aria-label={tu('view_on_basescan')}
 			title={tu('view_on_basescan')}
 		>
 			<ExternalLink className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />
-		</a>
+		</button>
 	)
 }
 

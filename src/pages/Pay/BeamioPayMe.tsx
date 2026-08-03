@@ -19,6 +19,7 @@ import { encodeOpenContainerRelayQrPayload, type OpenContainerRelayPayload } fro
 import { X } from 'lucide-react'
 import ShowPayQR from '@/pages/Vouchers/showPayQR'
 import { tu } from '@/locale/beamioLocale'
+import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
 
 const showPaylinkSite = 'https://beamio.app'
 /** B-Unit fee: 0.8% of amount in USDC, 100 B-Units = 1 USDC. Min 2, max 200 B-Units; >=5000 USDC → 500 B-Units */
@@ -548,15 +549,16 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 														<span className="text-amber-600 dark:text-amber-400 text-sm animate-pulse">{tu('recording')}</span>
 													)}
 													{accountingStatus === 'success' && accountingSyncTx && (
-														<a
-															href={`https://mainnet.conet.network/tx/${accountingSyncTx}`}
-															target="_blank"
-															rel="noopener noreferrer"
+														<button
+															type="button"
+															onClick={() =>
+																openExternalUrl(`https://mainnet.conet.network/tx/${accountingSyncTx}`)
+															}
 															className="text-blue-600 dark:text-blue-400 hover:underline text-sm font-medium truncate max-w-[180px] sm:max-w-[220px]"
 															title={accountingSyncTx}
 														>
 															{accountingSyncTx.slice(0, 10)}…{accountingSyncTx.slice(-8)}
-														</a>
+														</button>
 													)}
 													{accountingStatus === 'error' && (
 														<span className="text-slate-400 dark:text-slate-500 text-xs">{tu('failed_to_record')}</span>

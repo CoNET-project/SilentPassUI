@@ -95,10 +95,9 @@ function GenesisTxHashCapsule({
 	const timeLabel =
 		timestampMs != null && timestampMs > 0 ? formatBeamioTransactionTimeLabel(timestampMs) : null
 	return (
-		<a
-			href={href}
-			target="_blank"
-			rel="noopener noreferrer"
+		<button
+			type="button"
+			onClick={() => openExternalUrl(href)}
 			className="inline-flex max-w-full items-center gap-2 rounded-full border border-white/10 bg-white/[0.06] py-1.5 pl-2 pr-3 text-left text-xs text-slate-200 transition hover:bg-white/10"
 			aria-label={
 				timeLabel
@@ -115,7 +114,7 @@ function GenesisTxHashCapsule({
 			<span className="truncate font-mono">{shortTxHash(transactionHash)}</span>
 			{timeLabel ? <span className="shrink-0 text-slate-400">{timeLabel}</span> : null}
 			<ExternalLink className="h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden />
-		</a>
+		</button>
 	)
 }
 

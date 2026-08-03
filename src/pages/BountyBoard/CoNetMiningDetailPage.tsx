@@ -40,6 +40,7 @@ import {
 } from '@/services/validatorWalletNodeProfile'
 import { formatGbDisplay } from '@/utils/formatGbDisplay'
 import { formatDigitalAssetDisplay } from '@/utils/formatDigitalAssetDisplay'
+import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
 
 const VALIDATOR_REDEEM_ISSUED_SYNC_MS = 30_000
 
@@ -126,6 +127,8 @@ function NodeWalletAddressCapsule({ address }: { address: string }) {
 	const normalized = address.trim()
 	if (!normalized) return null
 
+	const explorerUrl = `https://mainnet.conet.network/address/${encodeURIComponent(normalized)}`
+
 	const copyAddress = async (event: React.MouseEvent<HTMLButtonElement>) => {
 		event.preventDefault()
 		event.stopPropagation()
@@ -140,16 +143,15 @@ function NodeWalletAddressCapsule({ address }: { address: string }) {
 
 	return (
 		<div className="inline-flex max-w-full items-center overflow-hidden rounded-full border border-[#dce2f7] bg-[#e9edff] text-[#424655]">
-			<a
-				href={`https://mainnet.conet.network/address/${encodeURIComponent(normalized)}`}
-				target="_blank"
-				rel="noopener noreferrer"
+			<button
+				type="button"
+				onClick={() => openExternalUrl(explorerUrl)}
 				className="inline-flex min-w-0 items-center gap-1.5 py-1.5 pl-2.5 text-xs font-medium transition hover:bg-[#dfe5ff]"
 				aria-label={`Open node wallet ${normalized} on CoNET Explorer`}
 			>
 				<span className="truncate font-mono">{shortAddress(normalized)}</span>
 				<ExternalLink className="h-3.5 w-3.5 shrink-0 text-[#0051d1]" strokeWidth={2.25} aria-hidden />
-			</a>
+			</button>
 			<button
 				type="button"
 				onClick={copyAddress}
@@ -173,6 +175,8 @@ function ValidatorPubkeyCapsule({ pubkey }: { pubkey: string | undefined }) {
 		return <span className="font-mono text-xs text-slate-400">Pending</span>
 	}
 
+	const explorerUrl = `https://mainnet.conet.network/validator/${encodeURIComponent(normalized)}`
+
 	const copyPubkey = async (event: React.MouseEvent<HTMLButtonElement>) => {
 		event.preventDefault()
 		event.stopPropagation()
@@ -187,16 +191,15 @@ function ValidatorPubkeyCapsule({ pubkey }: { pubkey: string | undefined }) {
 
 	return (
 		<div className="inline-flex max-w-full items-center overflow-hidden rounded-full border border-[#dce2f7] bg-[#e9edff] text-[#424655]">
-			<a
-				href={`https://mainnet.conet.network/validator/${encodeURIComponent(normalized)}`}
-				target="_blank"
-				rel="noopener noreferrer"
+			<button
+				type="button"
+				onClick={() => openExternalUrl(explorerUrl)}
 				className="inline-flex min-w-0 items-center gap-1.5 py-1.5 pl-2.5 text-xs font-medium transition hover:bg-[#dfe5ff]"
 				aria-label={`Open validator ${normalized} on CoNET Explorer`}
 			>
 				<span className="truncate font-mono">{shortValidatorPubkey(normalized)}</span>
 				<ExternalLink className="h-3.5 w-3.5 shrink-0 text-[#0051d1]" strokeWidth={2.25} aria-hidden />
-			</a>
+			</button>
 			<button
 				type="button"
 				onClick={copyPubkey}

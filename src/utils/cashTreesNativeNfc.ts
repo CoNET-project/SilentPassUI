@@ -97,15 +97,21 @@ export function detectDeviceNfcCapability(): boolean {
 }
 
 /**
- * Open a URL externally.
- * - Native WebView shell: `CashTreesIOS.openURL` / `CashTreesAndroid.openURL` bridge.
- * - Browser PWA: `window.open(..., '_blank', 'noopener,noreferrer')`.
+ * Open a URL externally — **single entry for browser + native shell**.
+ * - Native WebView (`CashTreesIOS` / `CashTreesAndroid`): prefer `openURL` bridge → system browser.
+ * - If shell is present but `openURL` is missing (older App build): fall back to `window.open`
+ *   (still better than top-level `<a target="_blank">` navigation inside WKWebView).
+ * - Plain browser / installable PWA: `window.open(..., '_blank', 'noopener,noreferrer')`.
+ *
+ * All user-initiated external http(s) / mailto / tel opens MUST go through this helper
+ * (see `.cursor/rules/beamio-native-external-url-bridge.mdc`).
  */
 export function openExternalUrl(rawUrl: string): boolean {
 	const url = typeof rawUrl === 'string' ? rawUrl.trim() : ''
 	if (!url || typeof window === 'undefined') return false
 
-	if (isCashTreesNativeWebView() && tryNativeOpenUrl(url)) {
+	// Prefer bridge whenever openURL exists (even if getNfcStatus probe differs).
+	if (tryNativeOpenUrl(url)) {
 		return true
 	}
 

@@ -262,14 +262,9 @@ function ConetExplorerAddressCapsule({
 
 	return (
 		<div className={`inline-flex max-w-full items-center overflow-hidden rounded-full border ${shell}`}>
-			<a
-				href={conetExplorerAddressUrl(fullAddress)}
-				target="_blank"
-				rel="noopener noreferrer"
-				onClick={(e) => {
-					e.preventDefault()
-					openExternalUrl(conetExplorerAddressUrl(fullAddress))
-				}}
+			<button
+				type="button"
+				onClick={() => openExternalUrl(conetExplorerAddressUrl(fullAddress))}
 				className={`inline-flex min-w-0 items-center gap-1.5 py-1 pl-2.5 pr-1.5 font-mono text-[11px] font-medium transition ${hover}`}
 				aria-label={
 					tagDisplay
@@ -289,7 +284,7 @@ function ConetExplorerAddressCapsule({
 				) : null}
 				<span className="truncate">{short}</span>
 				<ExternalLink className={`h-3 w-3 shrink-0 ${accent}`} strokeWidth={2.25} aria-hidden />
-			</a>
+			</button>
 			<button
 				type="button"
 				onClick={(e) => void copyAddress(e)}
@@ -332,14 +327,9 @@ function ConetExplorerTxHashCapsule({ txHash, label }: { txHash: string; label?:
 
 	return (
 		<div className="inline-flex max-w-full items-center overflow-hidden rounded-full border border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200">
-			<a
-				href={url}
-				target="_blank"
-				rel="noopener noreferrer"
-				onClick={(e) => {
-					e.preventDefault()
-					openExternalUrl(url)
-				}}
+			<button
+				type="button"
+				onClick={() => openExternalUrl(url)}
 				className="inline-flex min-w-0 items-center gap-1.5 py-1 pl-2.5 pr-1.5 font-mono text-[11px] font-medium transition hover:bg-slate-100 dark:hover:bg-slate-700"
 				aria-label={label ? `Open ${label} transaction on CoNET Explorer` : `Open transaction ${short}`}
 			>
@@ -350,7 +340,7 @@ function ConetExplorerTxHashCapsule({ txHash, label }: { txHash: string; label?:
 				) : null}
 				<span className="truncate">{short}</span>
 				<ExternalLink className="h-3 w-3 shrink-0 text-slate-500" strokeWidth={2.25} aria-hidden />
-			</a>
+			</button>
 			<button
 				type="button"
 				onClick={(e) => void copyHash(e)}

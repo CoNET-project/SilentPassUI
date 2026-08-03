@@ -18,6 +18,7 @@ import { VerraFloatingNavChrome } from "./VerraFloatingNavChrome"
 import { APP_FLOATING_CHROME_MAIN_TOP_PT, APP_TITLE_BLOCK_TO_FIRST_CONTROL_MB } from "@/ui/appContentSpacing"
 import { tu } from '@/locale/beamioLocale'
 import { getCurrentBeamioUiLocale } from '@/locale/i18n'
+import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
 
 const BEAMIO_TERMS_URL = "https://beamio.app/terms"
 const BEAMIO_PRIVACY_URL = "https://beamio.app/privacy"
@@ -687,23 +688,21 @@ const CreateUsernamePinScreen = forwardRef<
 						<div className="mt-4 flex max-w-md flex-col gap-1 px-4 text-center text-[13px] font-normal leading-snug text-[#424655] [@media(max-height:700px)]:mt-3 [@media(max-height:640px)]:mt-2 [@media(max-height:640px)]:text-[12px] [@media(max-height:560px)]:mt-1.5 [@media(max-height:560px)]:gap-0.5 [@media(max-height:560px)]:px-2 [@media(max-height:560px)]:text-[11px]">
 							<p>{tu('by_continuing_you_agree_to_our')}</p>
 							<p>
-								<a
-									href={BEAMIO_TERMS_URL}
-									target="_blank"
-									rel="noopener noreferrer"
+								<button
+									type="button"
+									onClick={() => openExternalUrl(BEAMIO_TERMS_URL)}
 									className="font-bold text-[#004bc3] hover:underline"
 								>
 									{tu('terms_of_service')}
-								</a>
+								</button>
 								{tu('and')}
-								<a
-									href={BEAMIO_PRIVACY_URL}
-									target="_blank"
-									rel="noopener noreferrer"
+								<button
+									type="button"
+									onClick={() => openExternalUrl(BEAMIO_PRIVACY_URL)}
 									className="font-bold text-[#004bc3] hover:underline"
 								>
 									{tu('privacy_policy')}
-								</a>
+								</button>
 								.
 							</p>
 						</div>

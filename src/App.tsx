@@ -15,7 +15,7 @@ import Chat from "./pages/chat"
 import ChatDetail from "./pages/chatDetail"
 import BeamioInstallOnboarding from "@/components/launchPage"
 import Browser from "@/pages/Browser"
-import { initChat, checkSign, createInboundChatSession, makeMessage, sendMessage } from "@/services/chat"
+import { initChat, checkSign, createInboundChatSession, makeMessage, sendMessage, resumeGossipListenOnForeground } from "@/services/chat"
 import { checkStorage, storeSystemData, runAutoBUnitFreeClaimIfEligible, handleNfcLinkAppDeepLinkScan, ensureProfilePrivateKeyArmorFromMnemonic, bootstrapProfileLocaleCurrencyIfUnset, mergeLocalLocaleLanguageOntoChainProfile } from "@/services/beamio"
 import { hasLocalPlaintextMnemonic } from "@/utils/consumerWalletGate"
 import { ensureEphemeralWalletForCouponClaim } from "@/utils/ephemeralCouponClaimWallet"
@@ -879,10 +879,40 @@ function AppShell() {
 		}
 		window.addEventListener(BEAMIO_WALLET_READY_EVENT, onWalletReady)
 
+		// iOS WKWebView: background freezes fetch SSE; offline flush needs a fresh listen handshake.
+		const onForegroundResume = () => {
+			if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
+			void resumeGossipListenOnForeground(
+				setProfiles,
+				setAllNodes,
+				setGossip,
+				message => {
+					setChartsRef.current((prev: string[]) => [...prev, message])
+				},
+			).catch(err => {
+				publishNativePwaLog(
+					'warn',
+					`[AppShell] gossip foreground resume failed: ${(err as Error)?.message ?? String(err)}`,
+				)
+			})
+		}
+		const onVisibility = () => {
+			if (document.visibilityState !== 'visible') return
+			onForegroundResume()
+		}
+		const onPageShow = (ev: PageTransitionEvent) => {
+			// bfcache restore or shell bring-to-front
+			if (ev.persisted || document.visibilityState === 'visible') onForegroundResume()
+		}
+		document.addEventListener('visibilitychange', onVisibility)
+		window.addEventListener('pageshow', onPageShow)
+
 		const t = setTimeout(() => setFooterVisible(true), 0)
 		return () => {
 			clearTimeout(t)
 			window.removeEventListener(BEAMIO_WALLET_READY_EVENT, onWalletReady)
+			document.removeEventListener('visibilitychange', onVisibility)
+			window.removeEventListener('pageshow', onPageShow)
 			// Do NOT abort gossip / setGossip(false) here.
 			// React StrictMode remount + LoadingPage/AppShell dual init previously killed the
 			// SSE, which made mailbox B call setUserOnlineOnMe true/false in a tight loop.

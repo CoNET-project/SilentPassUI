@@ -303,7 +303,18 @@ export const initChat = async (setProfiles: (val: profile[]) => void, setAllNode
 		}
 	
 		chatBootLog(`connectToGossipNode starting (router=${Boolean(chatManager.router)})`)
-		await connectToGossipNode(chatManager.router, profile.privateKeyArmor, allNodes, chatManager.pgpKey.privateKey, chatManager.pgpKey.publicKey ?? '', newMessage)
+		const started = await connectToGossipNode(
+			chatManager.router,
+			profile.privateKeyArmor,
+			allNodes,
+			chatManager.pgpKey.privateKey,
+			chatManager.pgpKey.publicKey ?? '',
+			newMessage,
+		)
+		if (!started) {
+			chatBootLog('initChat: gossip listen did not start — clearing gossip flag for retry', 'warn')
+			setGossip(false)
+		}
 	} catch (error) {
 		chatBootLog(`initChat error: ${(error as Error)?.message ?? String(error)}`, 'error')
 		setGossip(false)
@@ -411,7 +422,16 @@ const GOSSIP_STOP_REASONS = new Set([
   'replaced_by_new_connection',
   'component_unmount',
   'relaunching',
+  'connect_failed',
+  'foreground_resume',
 ])
+
+/** Last SSE byte / handshake time — used to detect frozen iOS WKWebView streams. */
+let lastGossipActivityAt = 0
+
+const noteGossipActivity = () => {
+	lastGossipActivityAt = Date.now()
+}
 
 function resolveGossipAbortReason(err: unknown, controller: AbortController, rootSignal?: AbortSignal): string {
   if (typeof err === 'string' && err) return err
@@ -514,6 +534,7 @@ function startGossip(
       const connectedLine = `[SSE] Connected [${node.ip_addr}]`
       console.log(connectedLine)
       chatBootLog(connectedLine)
+      noteGossipActivity()
       // Successful connect resets backoff for subsequent disconnects after a healthy session.
       reconnectAttempt = 0
       reader = res.body.getReader();
@@ -564,6 +585,7 @@ function startGossip(
 
         resetIdle();
         reconnectAttempt = 0
+        noteGossipActivity()
         const chunk = decoder.decode(value, { stream: true });
         buffer += chunk;
         
@@ -713,6 +735,58 @@ startGossip(nodeInfo, body, callback, {
 */
 export let currentGossipAbortController: AbortController | null = null;
 
+const clearGossipListenSession = (reason: string) => {
+	if (currentGossipAbortController) {
+		try {
+			currentGossipAbortController.abort(reason)
+		} catch {
+			/* ignore */
+		}
+		currentGossipAbortController = null
+	}
+}
+
+/**
+ * iOS WKWebView freezes long fetch streams in background; timers may not fire until foreground.
+ * When visible again, resume only if the stream is missing/aborted or idle longer than staleMs
+ * (offline mailbox flush requires a fresh listen handshake on B).
+ */
+export const shouldResumeGossipListen = (staleMs = 15_000): boolean => {
+	if (!currentGossipAbortController || currentGossipAbortController.signal.aborted) return true
+	if (!lastGossipActivityAt) return true
+	return Date.now() - lastGossipActivityAt > staleMs
+}
+
+/**
+ * Tear down a dead/stale listen so initChat can start a fresh entry-C → mailbox-B handshake
+ * (required to flush SI offline queue). Pass gossip=false into initChat after this.
+ */
+export const prepareGossipListenResume = (reason = 'foreground_resume'): void => {
+	chatBootLog(`prepareGossipListenResume: ${reason}`, 'info')
+	clearGossipListenSession(reason)
+	lastGossipActivityAt = 0
+}
+
+/**
+ * Foreground / pageshow resume: if listen looks dead, abort + re-initChat(gossip=false).
+ * Safe to call often; no-ops when the stream recently received bytes.
+ */
+export const resumeGossipListenOnForeground = async (
+	setProfiles: (val: profile[]) => void,
+	setAllNodes: (val: nodeInfo[]) => void,
+	setGossip: (val: boolean) => void,
+	newMessage: (val: string) => void,
+	staleMs = 15_000,
+): Promise<void> => {
+	if (!shouldResumeGossipListen(staleMs)) {
+		chatBootLog('foreground resume skipped: gossip stream still active', 'info')
+		return
+	}
+	prepareGossipListenResume('foreground_resume')
+	setGossip(false)
+	await initChat(setProfiles, setAllNodes, setGossip, false, newMessage)
+}
+
 export const connectToGossipNode = async (
 	nodeArmoredPublicKey: string,
 	privateKeyArmor: string,
@@ -720,12 +794,13 @@ export const connectToGossipNode = async (
 	pgpPrivateKey: string,
 	pgpPublicArmored: string,
 	newMessage: (val: string) => void
-) => {
+): Promise<boolean> => {
   // Already listening: do NOT tear down + reconnect (that flaps SI setUserOnlineOnMe).
-  // LoadingPage + AppShell both call initChat; second call must be a no-op.
+  // LoadingPage + AppShell both call initChat; second call must be a no-op — BUT only when
+  // the controller is truly live. Failed early-returns must clear the controller (see below).
   if (currentGossipAbortController && !currentGossipAbortController.signal.aborted) {
     chatBootLog('connectToGossipNode skipped: gossip SSE already live', 'info')
-    return
+    return true
   }
 
   // Stale aborted controller from a prior session — drop and create a fresh one.
@@ -738,13 +813,20 @@ export const connectToGossipNode = async (
   currentGossipAbortController = myController;
   const rootSignal = myController.signal;
 
+  const failConnect = (msg: string): false => {
+    chatBootLog(msg, 'error')
+    if (currentGossipAbortController === myController) {
+      clearGossipListenSession('connect_failed')
+    }
+    return false
+  }
+
   try {
       // Encrypt listen/mining to mailbox **B** (router armored key), but HTTP/SSE only via
       // random healthy **entry C ≠ B** — Tor-like: never reveal client IP to mailbox B.
       const routeNodes = pickRouteNodesByArmoredKey(nodes, nodeArmoredPublicKey)
       if (!routeNodes.length) {
-        chatBootLog('connectToGossipNode abort: no route node for router key', 'error')
-        return
+        return failConnect('connectToGossipNode abort: no route node for router key')
       }
       const mailboxDomains = new Set(routeNodes.map(n => n.domain))
 
@@ -776,8 +858,7 @@ export const connectToGossipNode = async (
         `Gossip healthy entry C: ${healthyNodes.length} (mailbox B domains excluded: ${[...mailboxDomains].join(',') || 'none'})`,
       )
       if (!healthyNodes.length) {
-        chatBootLog('connectToGossipNode abort: no healthy entry C for gossip listen', 'error')
-        return
+        return failConnect('connectToGossipNode abort: no healthy entry C for gossip listen')
       }
 
       // 启动递归循环，传入 entry C 数组，重连时随机换 entry（不直连 B）
@@ -790,6 +871,7 @@ export const connectToGossipNode = async (
 
             if (err) return console.error("Gossip Error:", err);
             if (!_data) return;
+            noteGossipActivity()
 
             try {
                 const data = JSON.parse(_data);
@@ -836,9 +918,11 @@ export const connectToGossipNode = async (
         },
         rootSignal // <--- 必须传入这个信号
       );
+      return true
 
   } catch (ex: any) {
       console.error("Init Error:", ex);
+      return failConnect(`connectToGossipNode Init Error: ${(ex as Error)?.message ?? String(ex)}`)
   }
 }
 

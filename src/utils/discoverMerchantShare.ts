@@ -1,5 +1,8 @@
 import { ethers } from 'ethers'
-import { parseDiscoverReferrerFromParams } from '@/utils/beamioDeepLinkParams'
+import {
+	collectDeepLinkSearchParams,
+	parseDiscoverReferrerFromParams,
+} from '@/utils/beamioDeepLinkParams'
 import { appendAppDownloadShareCacheBust } from './appDownloadShareCacheBust'
 
 /**
@@ -64,5 +67,50 @@ export function parseDiscoverMerchantFromParams(
 	return {
 		cardAddress: ethers.getAddress(cardAddress),
 		referrerEoa: parseDiscoverReferrerFromParams(sp),
+	}
+}
+
+const DISCOVER_MERCHANT_DEEP_LINK_KEYS = [
+	'beamiocard',
+	'Beamiocard',
+	'discover',
+	'ref',
+	'referrer',
+] as const
+
+/**
+ * Remove Discover merchant deep-link query from pathname search + hash query.
+ * Call after consuming `?beamiocard=&discover=open` into router state / detail —
+ * otherwise closing the detail leaves `hideDiscoverMainForDeepLink` true (invisible UI → black shell).
+ * No-op for coupon / redeem links (parse fails).
+ */
+export function stripDiscoverMerchantDeepLinkParams(href?: string): void {
+	if (typeof window === 'undefined') return
+	try {
+		const raw = href?.trim() || window.location.href
+		const parsed = parseDiscoverMerchantFromParams(collectDeepLinkSearchParams(raw))
+		if (!parsed) return
+
+		const url = new URL(window.location.href)
+		for (const key of DISCOVER_MERCHANT_DEEP_LINK_KEYS) {
+			url.searchParams.delete(key)
+		}
+		const hash = url.hash || ''
+		if (hash.includes('?')) {
+			const qIndex = hash.indexOf('?')
+			const hashPath = hash.slice(0, qIndex)
+			const hashParams = new URLSearchParams(hash.slice(qIndex + 1))
+			for (const key of DISCOVER_MERCHANT_DEEP_LINK_KEYS) {
+				hashParams.delete(key)
+			}
+			const qs = hashParams.toString()
+			url.hash = qs ? `${hashPath}?${qs}` : hashPath
+		}
+		const next = url.toString()
+		if (next !== window.location.href) {
+			window.history.replaceState(window.history.state, '', next)
+		}
+	} catch {
+		/* ignore */
 	}
 }

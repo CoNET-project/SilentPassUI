@@ -165,7 +165,7 @@ import { formatBeamioTagDisplayLine } from '@/utils/aaMultisigTaskUi'
 import { DiscoverTopupPromotionCapsule } from '@/components/discover/DiscoverTopupPromotionCapsule'
 import { tu } from '@/locale/beamioLocale'
 import { mapServerError } from '@/locale/mapServerError'
-import { parseDiscoverMerchantFromParams, buildDiscoverMerchantShareUrl, shareDiscoverMerchantUrl } from '@/utils/discoverMerchantShare'
+import { parseDiscoverMerchantFromParams, buildDiscoverMerchantShareUrl, shareDiscoverMerchantUrl, stripDiscoverMerchantDeepLinkParams } from '@/utils/discoverMerchantShare'
 import { recordDiscoverShareClickIfNeeded } from '@/utils/discoverShareClickEvent'
 import { collectDeepLinkSearchParams } from '@/utils/beamioDeepLinkParams'
 import {
@@ -5734,6 +5734,8 @@ export default function Market() {
 	const closeDiscoverMerchantDetail = useCallback(() => {
 		const returnTo = discoverDetailReturnToRef.current
 		discoverDetailReturnToRef.current = null
+		/** Ensure deep-link query cannot keep main Discover `invisible` after back. */
+		stripDiscoverMerchantDeepLinkParams()
 		setDiscoverMerchantDetail(null)
 		setDiscoverDetailEnterImmediate(false)
 		if (returnTo) {
@@ -5817,6 +5819,7 @@ export default function Market() {
 		if (match) {
 			discoverDeepLinkHandledForRef.current = cardNorm
 			openDiscoverMerchantDetail(match, { immediate: true })
+			stripDiscoverMerchantDeepLinkParams()
 			navigate('.', { replace: true, state: {} })
 			return
 		}
@@ -5833,6 +5836,7 @@ export default function Market() {
 			)
 			discoverDeepLinkHandledForRef.current = cardNorm
 			openDiscoverMerchantDetail(fallback, { immediate: true })
+			stripDiscoverMerchantDeepLinkParams()
 			navigate('.', { replace: true, state: {} })
 		}
 	}, [
@@ -5865,6 +5869,7 @@ export default function Market() {
 			)
 			discoverDeepLinkHandledForRef.current = cardNorm
 			openDiscoverMerchantDetail(fallback, { immediate: true })
+			stripDiscoverMerchantDeepLinkParams()
 			navigate('.', { replace: true, state: {} })
 		})()
 
@@ -5895,7 +5900,15 @@ export default function Market() {
 	)
 
 	const showDiscoverEmpty = !latestCardsLoading && filteredFeaturedCards.length === 0
-	const hideDiscoverMainForDeepLink = Boolean(discoverDeepLinkTarget) && discoverMerchantDetail == null
+	/**
+	 * Hide Featured Brands list only while a deep link is pending open.
+	 * After we have opened (handled ref) or while detail is showing, never keep `invisible`
+	 * — otherwise Back leaves a black App shell (`#000414`) with an empty Discover layer.
+	 */
+	const hideDiscoverMainForDeepLink =
+		Boolean(discoverDeepLinkTarget) &&
+		discoverMerchantDetail == null &&
+		discoverDeepLinkHandledForRef.current !== discoverDeepLinkTarget.toLowerCase()
 
 	const getOwnedInstances = (id: number): InventoryInstance[] => inventory[id] ?? []
 

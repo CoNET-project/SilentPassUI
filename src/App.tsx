@@ -73,7 +73,7 @@ import {
 	isRedeemDeepLink,
 	isCouponOpenClaimDeepLink,
 } from "@/utils/beamioDeepLinkParams"
-import { parseDiscoverMerchantFromParams } from "@/utils/discoverMerchantShare"
+import { parseDiscoverMerchantFromParams, stripDiscoverMerchantDeepLinkParams } from "@/utils/discoverMerchantShare"
 import { publishNativePwaLog } from "@/utils/cashTreesNativePwaLog"
 import { BEAMIO_WALLET_READY_EVENT } from "@/utils/beamioWalletReadyEvent"
 import { ensureConetAaForProfileAndPersist } from "@/utils/ensureConetAa"
@@ -233,6 +233,8 @@ function AppShell() {
         discoverShareReferrerEoa: parsed.referrerEoa,
       },
     })
+    /** Clear `?beamiocard=&discover=open` so Discover Back cannot leave main UI `invisible`. */
+    stripDiscoverMerchantDeepLinkParams()
   }, [isInitialLoading, navigate, setShowFooter])
 
   const couponShareClickRecordedRef = useRef(false)
@@ -1318,6 +1320,7 @@ function AppShell() {
           discoverShareReferrerEoa: parsedDiscover.referrerEoa,
         },
       })
+      stripDiscoverMerchantDeepLinkParams()
       return
     }
 

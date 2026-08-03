@@ -16,6 +16,7 @@ import ChatDetail from "./pages/chatDetail"
 import BeamioInstallOnboarding from "@/components/launchPage"
 import Browser from "@/pages/Browser"
 import { initChat, checkSign, createInboundChatSession, makeMessage, sendMessage, resumeGossipListenOnForeground, pauseGossipListenOnBackground } from "@/services/chat"
+import { bindNativePushIdentity, ensurePushDeviceTokenListener } from "@/utils/cashTreesPushBind"
 import { checkStorage, storeSystemData, runAutoBUnitFreeClaimIfEligible, handleNfcLinkAppDeepLinkScan, ensureProfilePrivateKeyArmorFromMnemonic, bootstrapProfileLocaleCurrencyIfUnset, mergeLocalLocaleLanguageOntoChainProfile } from "@/services/beamio"
 import { hasLocalPlaintextMnemonic } from "@/utils/consumerWalletGate"
 import { ensureEphemeralWalletForCouponClaim } from "@/utils/ephemeralCouponClaimWallet"
@@ -74,6 +75,7 @@ import {
 	isCouponOpenClaimDeepLink,
 } from "@/utils/beamioDeepLinkParams"
 import { parseDiscoverMerchantFromParams, stripDiscoverMerchantDeepLinkParams } from "@/utils/discoverMerchantShare"
+import { applyPendingConsumerDeepLinkIfNeeded } from "@/utils/pendingConsumerDeepLink"
 import { publishNativePwaLog } from "@/utils/cashTreesNativePwaLog"
 import { BEAMIO_WALLET_READY_EVENT } from "@/utils/beamioWalletReadyEvent"
 import { ensureConetAaForProfileAndPersist } from "@/utils/ensureConetAa"
@@ -170,6 +172,11 @@ function AppShell() {
 
   const navigate = useNavigate()
   const location = useLocation()
+
+  /** Restore merchant/coupon + `ref=` stashed on app-download before App Store install. */
+  useLayoutEffect(() => {
+    applyPendingConsumerDeepLinkIfNeeded()
+  }, [])
 
   /** 钱包解锁后静默 ensure CoNET AA（任意路由；深链 /discover 不再仅限 Home `/`）。 */
   useEffect(() => {
@@ -852,6 +859,15 @@ function AppShell() {
 		await initChat(setProfiles,setAllNodes, setGossip, gossipActiveRef.current, message => {
 			setChartsRef.current((prev: string[]) => [...prev, message])
 		})
+
+		ensurePushDeviceTokenListener()
+		{
+			const chatPgp = profiles[0]?.chatManager?.pgpKey?.keyID
+			bindNativePushIdentity({
+				eoa: profiles[0]?.keyID,
+				pgpKeyId: chatPgp ? String(chatPgp) : undefined,
+			})
+		}
 		
 		
 		bo.initialLoading = true

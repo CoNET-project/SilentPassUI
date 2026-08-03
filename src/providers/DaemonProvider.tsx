@@ -81,6 +81,7 @@ import {
 	type OwnedCatalogSummary,
 } from '@/utils/myBrandsOwnedCatalog'
 import { syncNativeFooterChatBadge } from '@/utils/cashTreesNativeAppStateBridge'
+import { syncChatBadgeToApi } from '@/utils/cashTreesPushBind'
 import { CONET_RPC_URL } from '@/config/chainAddresses'
 import {
 	fetchConetNetworkStats,
@@ -975,6 +976,7 @@ export function DaemonProvider({ children }: DaemonProps) {
 	/** Footer `/chat` 冒泡 → Native App 图标角标（WebView 壳内；浏览器 no-op）。 */
 	useEffect(() => {
 		syncNativeFooterChatBadge(messageCount)
+		void syncChatBadgeToApi(messageCount)
 	}, [messageCount])
 
 	const [scanData, setScanData] = useState('')

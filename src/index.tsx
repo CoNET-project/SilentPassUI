@@ -13,8 +13,10 @@ import { MerchantCardDatabaseProvider } from './providers/MerchantCardDatabasePr
 import { BeamioTagDatabaseProvider } from './providers/BeamioTagDatabaseProvider'
 import { IpfsImageLibraryProvider } from './providers/IpfsImageLibraryProvider'
 import { HashRouter as Router } from 'react-router-dom'
+import { applyPendingConsumerDeepLinkIfNeeded } from './utils/pendingConsumerDeepLink'
 
 void loadApiExcludedUserCards()
+applyPendingConsumerDeepLinkIfNeeded()
 
 const root = ReactDOM.createRoot(
   	document.getElementById('root') as HTMLElement

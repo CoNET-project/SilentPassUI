@@ -7,6 +7,7 @@ declare global {
       getEmbeddedPwaPendingVersion?: () => string
       applyEmbeddedPwaUpdate?: () => void
       publishAppState?: (state: Record<string, unknown>) => void
+      bindPushIdentity?: (payload: { eoa: string; pgpKeyId?: string }) => void
       debugLog?: (level: string, message: string) => void
     }
     CashTreesAndroid?: {
@@ -20,6 +21,8 @@ declare global {
       getEmbeddedPwaPendingVersion?: () => string
       applyEmbeddedPwaUpdate?: () => void
       publishAppState?: (json: string) => void
+      /** JSON string `{ eoa, pgpKeyId? }` — FCM bind */
+      bindPushIdentity?: (json: string) => void
       debugLog?: (level: string, message: string) => void
     }
   }

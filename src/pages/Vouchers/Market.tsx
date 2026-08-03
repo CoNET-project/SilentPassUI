@@ -5905,10 +5905,11 @@ export default function Market() {
 	 * After we have opened (handled ref) or while detail is showing, never keep `invisible`
 	 * — otherwise Back leaves a black App shell (`#000414`) with an empty Discover layer.
 	 */
+	const discoverDeepLinkTargetLower = discoverDeepLinkTarget?.toLowerCase() ?? null
 	const hideDiscoverMainForDeepLink =
-		Boolean(discoverDeepLinkTarget) &&
+		discoverDeepLinkTargetLower != null &&
 		discoverMerchantDetail == null &&
-		discoverDeepLinkHandledForRef.current !== discoverDeepLinkTarget.toLowerCase()
+		discoverDeepLinkHandledForRef.current !== discoverDeepLinkTargetLower
 
 	const getOwnedInstances = (id: number): InventoryInstance[] => inventory[id] ?? []
 

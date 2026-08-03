@@ -15,7 +15,7 @@ import Chat from "./pages/chat"
 import ChatDetail from "./pages/chatDetail"
 import BeamioInstallOnboarding from "@/components/launchPage"
 import Browser from "@/pages/Browser"
-import { initChat, checkSign, createInboundChatSession, makeMessage, sendMessage, resumeGossipListenOnForeground } from "@/services/chat"
+import { initChat, checkSign, createInboundChatSession, makeMessage, sendMessage, resumeGossipListenOnForeground, pauseGossipListenOnBackground } from "@/services/chat"
 import { checkStorage, storeSystemData, runAutoBUnitFreeClaimIfEligible, handleNfcLinkAppDeepLinkScan, ensureProfilePrivateKeyArmorFromMnemonic, bootstrapProfileLocaleCurrencyIfUnset, mergeLocalLocaleLanguageOntoChainProfile } from "@/services/beamio"
 import { hasLocalPlaintextMnemonic } from "@/utils/consumerWalletGate"
 import { ensureEphemeralWalletForCouponClaim } from "@/utils/ephemeralCouponClaimWallet"
@@ -881,9 +881,10 @@ function AppShell() {
 		}
 		window.addEventListener(BEAMIO_WALLET_READY_EVENT, onWalletReady)
 
-		// iOS WKWebView: background freezes fetch SSE; offline flush needs a fresh listen handshake.
+		// iOS WKWebView: background freezes fetch SSE but SI may still treat the user as online
+		// and "successfully" write chat into a dead stream (never saveLocal). Abort listen on
+		// hide so mailbox goes offline; resume on show to flush the offline queue.
 		const onForegroundResume = () => {
-			if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
 			void resumeGossipListenOnForeground(
 				setProfiles,
 				setAllNodes,
@@ -899,15 +900,24 @@ function AppShell() {
 			})
 		}
 		const onVisibility = () => {
-			if (document.visibilityState !== 'visible') return
-			onForegroundResume()
+			if (document.visibilityState === 'hidden') {
+				pauseGossipListenOnBackground(setGossip)
+				return
+			}
+			if (document.visibilityState === 'visible') {
+				onForegroundResume()
+			}
 		}
 		const onPageShow = (ev: PageTransitionEvent) => {
-			// bfcache restore or shell bring-to-front
+			// bfcache restore or shell bring-to-front — do not abort a connecting stream
 			if (ev.persisted || document.visibilityState === 'visible') onForegroundResume()
 		}
 		document.addEventListener('visibilitychange', onVisibility)
 		window.addEventListener('pageshow', onPageShow)
+		const onPageHide = () => {
+			pauseGossipListenOnBackground(setGossip)
+		}
+		window.addEventListener('pagehide', onPageHide)
 
 		const t = setTimeout(() => setFooterVisible(true), 0)
 		return () => {
@@ -915,6 +925,7 @@ function AppShell() {
 			window.removeEventListener(BEAMIO_WALLET_READY_EVENT, onWalletReady)
 			document.removeEventListener('visibilitychange', onVisibility)
 			window.removeEventListener('pageshow', onPageShow)
+			window.removeEventListener('pagehide', onPageHide)
 			// Do NOT abort gossip / setGossip(false) here.
 			// React StrictMode remount + LoadingPage/AppShell dual init previously killed the
 			// SSE, which made mailbox B call setUserOnlineOnMe true/false in a tight loop.

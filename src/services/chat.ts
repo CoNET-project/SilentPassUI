@@ -424,6 +424,7 @@ const GOSSIP_STOP_REASONS = new Set([
   'relaunching',
   'connect_failed',
   'foreground_resume',
+  'background_pause',
 ])
 
 /** Last SSE byte / handshake time — used to detect frozen iOS WKWebView streams. */
@@ -748,18 +749,20 @@ const clearGossipListenSession = (reason: string) => {
 
 /**
  * iOS WKWebView freezes long fetch streams in background; timers may not fire until foreground.
- * When visible again, resume only if the stream is missing/aborted or idle longer than staleMs
- * (offline mailbox flush requires a fresh listen handshake on B).
+ * Resume only when listen is truly dead/aborted, or idle longer than staleMs AFTER we have
+ * received bytes. Never tear down a connecting stream (lastGossipActivityAt===0) — that races
+ * SI offline flush and drops messages.
  */
-export const shouldResumeGossipListen = (staleMs = 15_000): boolean => {
+export const shouldResumeGossipListen = (staleMs = 45_000): boolean => {
 	if (!currentGossipAbortController || currentGossipAbortController.signal.aborted) return true
-	if (!lastGossipActivityAt) return true
+	// Connecting / draining offline — do not abort
+	if (!lastGossipActivityAt) return false
 	return Date.now() - lastGossipActivityAt > staleMs
 }
 
 /**
- * Tear down a dead/stale listen so initChat can start a fresh entry-C → mailbox-B handshake
- * (required to flush SI offline queue). Pass gossip=false into initChat after this.
+ * Tear down listen so mailbox B gets socket close → removes from online pool.
+ * Required on background: otherwise SI still "forwards" to a frozen WKWebView and never saveLocal.
  */
 export const prepareGossipListenResume = (reason = 'foreground_resume'): void => {
 	chatBootLog(`prepareGossipListenResume: ${reason}`, 'info')
@@ -768,18 +771,34 @@ export const prepareGossipListenResume = (reason = 'foreground_resume'): void =>
 }
 
 /**
+ * Pause listen when the app is backgrounded (native WebView / tab hidden).
+ * Forces SI offline path for subsequent inbound chat until foreground resume.
+ */
+export const pauseGossipListenOnBackground = (
+	setGossip: (val: boolean) => void,
+): void => {
+	if (!currentGossipAbortController || currentGossipAbortController.signal.aborted) {
+		setGossip(false)
+		return
+	}
+	chatBootLog('pauseGossipListenOnBackground: abort listen so mailbox treats user offline', 'info')
+	prepareGossipListenResume('background_pause')
+	setGossip(false)
+}
+
+/**
  * Foreground / pageshow resume: if listen looks dead, abort + re-initChat(gossip=false).
- * Safe to call often; no-ops when the stream recently received bytes.
+ * Safe to call often; no-ops when the stream recently received bytes or is still connecting.
  */
 export const resumeGossipListenOnForeground = async (
 	setProfiles: (val: profile[]) => void,
 	setAllNodes: (val: nodeInfo[]) => void,
 	setGossip: (val: boolean) => void,
 	newMessage: (val: string) => void,
-	staleMs = 15_000,
+	staleMs = 45_000,
 ): Promise<void> => {
 	if (!shouldResumeGossipListen(staleMs)) {
-		chatBootLog('foreground resume skipped: gossip stream still active', 'info')
+		chatBootLog('foreground resume skipped: gossip stream still active or connecting', 'info')
 		return
 	}
 	prepareGossipListenResume('foreground_resume')

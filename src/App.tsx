@@ -20,8 +20,7 @@ import {
 	parseChatDeliveryReceiptV1,
 	markMessageDeliveredBySendId,
 	extractInboundSendId,
-	postMailboxDeliveryAck,
-	sendDeliveryReceiptToSender,
+	emitDualChatDeliveryReceipts,
 } from "@/utils/chatDeliveryReceipt"
 import { ensureNativePushBoundForWallet, ensurePushDeviceTokenListener } from "@/utils/cashTreesPushBind"
 import { checkStorage, storeSystemData, runAutoBUnitFreeClaimIfEligible, handleNfcLinkAppDeepLinkScan, ensureProfilePrivateKeyArmorFromMnemonic, bootstrapProfileLocaleCurrencyIfUnset, mergeLocalLocaleLanguageOntoChainProfile } from "@/services/beamio"
@@ -1202,7 +1201,7 @@ function AppShell() {
 				else chats.unshift(nextChat)
 			}
 
-			// After successful ingest: mailbox ACK (encrypt to B) + sender Delivered receipt.
+			// After successful ingest: **must** dual-ack mailbox + sender (cancels SI 2-heartbeat APNs).
 			if (isNew) {
 				const armorHashRaw =
 					typeof (msg as { _beamioPgpArmorHash?: string })._beamioPgpArmorHash === 'string'
@@ -1212,24 +1211,21 @@ function AppShell() {
 				const inboundSendId = extractInboundSendId(displayText)
 				const ackCtx = getGossipDeliveryAckContext()
 				const pk = profile.privateKeyArmor
-				if (armorHash && ackCtx && pk) {
-					void postMailboxDeliveryAck({
+				const senderPgp = nextChat.chatData?.publicArmored || undefined
+				if (pk) {
+					void emitDualChatDeliveryReceipts({
 						armorHash,
 						sendId: inboundSendId,
-						routerArmoredPublicKey: ackCtx.routerArmoredPublicKey,
 						privateKeyArmor: pk,
-						entryNodes: ackCtx.entryNodes,
-						mailboxDomains: ackCtx.mailboxDomains,
-					})
-				}
-				const senderPgp = nextChat.chatData?.publicArmored
-				if (inboundSendId && senderPgp && pk && allNodes?.length) {
-					void sendDeliveryReceiptToSender({
+						entryNodes: allNodes?.length ? allNodes : ackCtx?.entryNodes || [],
+						mailboxAck: ackCtx
+							? {
+									routerArmoredPublicKey: ackCtx.routerArmoredPublicKey,
+									entryNodes: ackCtx.entryNodes,
+									mailboxDomains: ackCtx.mailboxDomains,
+								}
+							: null,
 						senderPublicArmored: senderPgp,
-						privateKeyArmor: pk,
-						entryNodes: allNodes,
-						sendId: inboundSendId,
-						armorHash,
 						sendMessage,
 					})
 				}

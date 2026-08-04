@@ -243,3 +243,90 @@ export async function sendDeliveryReceiptToSender(args: SendDeliveryReceiptArgs)
 		return false
 	}
 }
+
+export type DualDeliveryReceiptArgs = {
+	armorHash?: string
+	sendId?: string | null
+	privateKeyArmor: string
+	entryNodes: nodeInfo[]
+	/** Mailbox B route PGP + entry pool (from gossip listen context). */
+	mailboxAck?: {
+		routerArmoredPublicKey: string
+		entryNodes: nodeInfo[]
+		mailboxDomains: Set<string>
+	} | null
+	senderPublicArmored?: string | null
+	sendMessage: SendDeliveryReceiptArgs['sendMessage']
+}
+
+/**
+ * After UI ingests a chat message: **must** ACK mailbox + notify sender in parallel.
+ * Mailbox ACK cancels SI 2-heartbeat APNs; sender receipt drives Delivered UI.
+ */
+export async function emitDualChatDeliveryReceipts(args: DualDeliveryReceiptArgs): Promise<void> {
+	const {
+		armorHash,
+		sendId,
+		privateKeyArmor,
+		entryNodes,
+		mailboxAck,
+		senderPublicArmored,
+		sendMessage,
+	} = args
+	const hash = (armorHash || '').trim().toLowerCase()
+	const tasks: Promise<boolean>[] = []
+
+	if (hash && mailboxAck?.routerArmoredPublicKey && privateKeyArmor) {
+		const runMailbox = async (): Promise<boolean> => {
+			let ok = await postMailboxDeliveryAck({
+				armorHash: hash,
+				sendId,
+				routerArmoredPublicKey: mailboxAck.routerArmoredPublicKey,
+				privateKeyArmor,
+				entryNodes: mailboxAck.entryNodes.length ? mailboxAck.entryNodes : entryNodes,
+				mailboxDomains: mailboxAck.mailboxDomains,
+			})
+			if (!ok) {
+				await new Promise(r => setTimeout(r, 1500))
+				ok = await postMailboxDeliveryAck({
+					armorHash: hash,
+					sendId,
+					routerArmoredPublicKey: mailboxAck.routerArmoredPublicKey,
+					privateKeyArmor,
+					entryNodes: mailboxAck.entryNodes.length ? mailboxAck.entryNodes : entryNodes,
+					mailboxDomains: mailboxAck.mailboxDomains,
+				})
+			}
+			if (!ok) console.warn('[emitDualChatDeliveryReceipts] mailbox ACK failed', hash.slice(0, 12))
+			return ok
+		}
+		tasks.push(runMailbox())
+	} else if (!hash) {
+		console.warn('[emitDualChatDeliveryReceipts] skip mailbox ACK: missing armorHash')
+	} else if (!mailboxAck?.routerArmoredPublicKey) {
+		console.warn('[emitDualChatDeliveryReceipts] skip mailbox ACK: no listen/mailbox context')
+	}
+
+	if (sendId && senderPublicArmored?.trim() && privateKeyArmor && entryNodes?.length) {
+		tasks.push(
+			sendDeliveryReceiptToSender({
+				senderPublicArmored,
+				privateKeyArmor,
+				entryNodes,
+				sendId,
+				armorHash: hash || undefined,
+				sendMessage,
+			}).then(ok => {
+				if (!ok) console.warn('[emitDualChatDeliveryReceipts] sender receipt failed', sendId)
+				return ok
+			}),
+		)
+	} else if (sendId) {
+		console.warn('[emitDualChatDeliveryReceipts] skip sender receipt: missing sender PGP or nodes', {
+			hasPgp: !!senderPublicArmored?.trim(),
+			nodes: entryNodes?.length ?? 0,
+		})
+	}
+
+	if (tasks.length) await Promise.allSettled(tasks)
+}

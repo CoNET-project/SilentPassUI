@@ -2402,6 +2402,43 @@ const setChargeRewardRatioInterface = new ethers.Interface([
 export const encodeSetChargeRewardRatio = (ratioE6: string | number | bigint): string =>
 	setChargeRewardRatioInterface.encodeFunctionData('setChargeRewardRatio', [BigInt(ratioE6)])
 
+const referrerAmountRatioInterface = new ethers.Interface([
+	'function setReferrerChargeAmountRatio(uint256 ratioE6)',
+	'function setReferrerTopupAmountRatio(uint256 ratioE6)',
+	'function referrerChargeAmountRatioE6() view returns (uint256)',
+	'function referrerTopupAmountRatioE6() view returns (uint256)',
+])
+
+/** Owner/gateway: E6 % of charge amountFiat6 → referrer token #1 (0 = off). */
+export const encodeSetReferrerChargeAmountRatio = (ratioE6: string | number | bigint): string =>
+	referrerAmountRatioInterface.encodeFunctionData('setReferrerChargeAmountRatio', [BigInt(ratioE6)])
+
+/** Owner/gateway: E6 % of top-up amountFiat6 → referrer token #1 (0 = off). */
+export const encodeSetReferrerTopupAmountRatio = (ratioE6: string | number | bigint): string =>
+	referrerAmountRatioInterface.encodeFunctionData('setReferrerTopupAmountRatio', [BigInt(ratioE6)])
+
+export async function readReferrerAmountRatiosOnChain(cardAddress: string): Promise<{
+	chargeRatioE6: string
+	topupRatioE6: string
+} | null> {
+	try {
+		const cardAddrNorm = ethers.getAddress(cardAddress)
+		const { provider } = await providerForBeamioUserCard(cardAddrNorm)
+		const card = new ethers.Contract(cardAddrNorm, referrerAmountRatioInterface, provider)
+		const [chargeRaw, topupRaw] = await Promise.all([
+			card.referrerChargeAmountRatioE6().catch(() => null),
+			card.referrerTopupAmountRatioE6().catch(() => null),
+		])
+		if (chargeRaw == null && topupRaw == null) return null
+		return {
+			chargeRatioE6: chargeRaw != null ? BigInt(chargeRaw.toString()).toString() : '0',
+			topupRatioE6: topupRaw != null ? BigInt(topupRaw.toString()).toString() : '0',
+		}
+	} catch {
+		return null
+	}
+}
+
 const addAdminInterface = new ethers.Interface([
     'function addAdmin(address newAdmin, uint256 newThreshold)',
 ])

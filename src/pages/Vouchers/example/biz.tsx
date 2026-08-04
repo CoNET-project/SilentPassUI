@@ -85,6 +85,9 @@ import {
   updateBeamioCardTiers,
   encodeSetTiers,
   encodeSetChargeRewardRatio,
+  encodeSetReferrerChargeAmountRatio,
+  encodeSetReferrerTopupAmountRatio,
+  readReferrerAmountRatiosOnChain,
   postExecuteForOwner,
   fetchCardsByCategory,
   getCardOwner,
@@ -9067,13 +9070,14 @@ function formatReferrerPoints6Display(raw: string | null | undefined): string {
   }
 }
 
+/** Referrer registry lists login EOAs (API maps chain AA → owner EOA). */
 function ProgramReferrerAaCapsule({ address }: { address: string }) {
   return (
     <AddressCapsule
       address={address}
       explorerUrl={beamioConetBlockscoutAddressUrl(address)}
-      className="max-w-full border-[#eadcf7] bg-[#f5ecff] text-[#424655]"
-      leadingIcon={<Hexagon className="h-3.5 w-3.5 text-[#8d3a8b]" strokeWidth={2.25} aria-hidden />}
+      className="max-w-full border-[#dce2f7] bg-[#e9edff] text-[#424655]"
+      leadingIcon={<Wallet className="h-3.5 w-3.5 text-[#0051d1]" strokeWidth={2.25} aria-hidden />}
     />
   );
 }
@@ -10122,6 +10126,72 @@ async function syncChargeRewardRatioOnChain(opts: {
     return {
       success: false,
       error: (e as Error)?.message ?? 'Failed to update consumption point ratio on-chain.',
+    };
+  }
+}
+
+/** Human percent (e.g. "10" / "2.5") → E6 ratio (100% = 1_000_000). */
+function parseAmountPercentHumanToE6(raw: string): bigint | null {
+  const t = raw.trim();
+  if (!t) return null;
+  const n = Number(t);
+  if (!Number.isFinite(n) || n < 0 || n > 100) return null;
+  return BigInt(Math.round(n * 10_000));
+}
+
+function formatAmountPercentE6Display(ratioE6: string | null | undefined): string {
+  if (ratioE6 == null || !/^\d+$/.test(ratioE6)) return '0';
+  const v = Number(BigInt(ratioE6)) / 10_000;
+  if (!Number.isFinite(v)) return '0';
+  return Number.isInteger(v) ? String(v) : v.toFixed(2).replace(/\.?0+$/, '');
+}
+
+async function syncReferrerAmountRatioOnChain(opts: {
+  cardAddress: string;
+  ownerPrivateKey: string;
+  kind: 'charge' | 'topup';
+  targetRatioE6: string;
+}): Promise<{ success: boolean; error?: string }> {
+  try {
+    const cardAddrNorm = ethers.getAddress(opts.cardAddress);
+    const onChain = await readReferrerAmountRatiosOnChain(cardAddrNorm);
+    const current =
+      opts.kind === 'charge' ? onChain?.chargeRatioE6 : onChain?.topupRatioE6;
+    if (current === opts.targetRatioE6) return { success: true };
+
+    const signerAddr = ethers.getAddress(new ethers.Wallet(opts.ownerPrivateKey).address);
+    const chainOwner = await getCardOwner(cardAddrNorm);
+    if (ethers.getAddress(chainOwner) !== signerAddr) {
+      return {
+        success: false,
+        error:
+          'Referrer reward updates require the card owner wallet. Unlock owner wallet and retry.',
+      };
+    }
+    const data =
+      opts.kind === 'charge'
+        ? encodeSetReferrerChargeAmountRatio(opts.targetRatioE6)
+        : encodeSetReferrerTopupAmountRatio(opts.targetRatioE6);
+    const deadline = Math.floor(Date.now() / 1000) + 3600;
+    const nonce = ethers.hexlify(ethers.randomBytes(32));
+    const ownerSignature = await signExecuteForOwner(
+      opts.ownerPrivateKey,
+      cardAddrNorm,
+      data,
+      deadline,
+      nonce,
+    );
+    return postExecuteForOwner({
+      cardAddress: cardAddrNorm,
+      data,
+      deadline,
+      nonce,
+      ownerSignature,
+    });
+  } catch (e: unknown) {
+    return {
+      success: false,
+      error: (e as Error)?.message ?? 'Failed to update referrer reward ratio on-chain.',
     };
   }
 }
@@ -12517,6 +12587,22 @@ const [programReferrerDrawer, setProgramReferrerDrawer] = useState<'referrers' |
 const [programReferrerDetailAA, setProgramReferrerDetailAA] = useState<string | null>(null);
 const [programReferrerDetailList, setProgramReferrerDetailList] = useState<BeamioCardProgramReferrerRefereeRow[]>([]);
 const [programReferrerRefreshStatus, setProgramReferrerRefreshStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+const [programReferrerChargeEnabled, setProgramReferrerChargeEnabled] = useState(false);
+const [programReferrerTopupEnabled, setProgramReferrerTopupEnabled] = useState(false);
+const [programReferrerChargePercentInput, setProgramReferrerChargePercentInput] = useState('0');
+const [programReferrerTopupPercentInput, setProgramReferrerTopupPercentInput] = useState('0');
+const [programReferrerChargeRatioE6Baseline, setProgramReferrerChargeRatioE6Baseline] = useState('0');
+const [programReferrerTopupRatioE6Baseline, setProgramReferrerTopupRatioE6Baseline] = useState('0');
+/** Snapshot while Top-up / Consumption editors are open (for Discard). */
+const [programReferrerTopupEditorBaseline, setProgramReferrerTopupEditorBaseline] = useState<{
+  enabled: boolean;
+  percent: string;
+} | null>(null);
+const [programReferrerChargeEditorBaseline, setProgramReferrerChargeEditorBaseline] = useState<{
+  enabled: boolean;
+  percent: string;
+} | null>(null);
+const programReferrerRewardsSaveInFlightRef = useRef(false);
 const cardIssuanceCouponShareRow = useMemo(
   () => cardIssuanceCoupons.find((item) => item.id === cardIssuanceCouponShareOpenId) ?? null,
   [cardIssuanceCoupons, cardIssuanceCouponShareOpenId]
@@ -12729,6 +12815,21 @@ useEffect(() => {
      if (json.chainRegisteredRefereeTotalCount != null) {
        setProgramRegisteredRefereeTotalCount(json.chainRegisteredRefereeTotalCount);
      }
+     const ratios = await readReferrerAmountRatiosOnChain(addr);
+     if (ratios) {
+       setProgramReferrerChargeRatioE6Baseline(ratios.chargeRatioE6);
+       setProgramReferrerTopupRatioE6Baseline(ratios.topupRatioE6);
+       const chargeOn = BigInt(ratios.chargeRatioE6) > 0n;
+       const topupOn = BigInt(ratios.topupRatioE6) > 0n;
+       setProgramReferrerChargeEnabled(chargeOn);
+       setProgramReferrerTopupEnabled(topupOn);
+       setProgramReferrerChargePercentInput(
+         chargeOn ? formatAmountPercentE6Display(ratios.chargeRatioE6) : '0',
+       );
+       setProgramReferrerTopupPercentInput(
+         topupOn ? formatAmountPercentE6Display(ratios.topupRatioE6) : '0',
+       );
+     }
      if (!silent) {
        setProgramReferrerRefreshStatus('success');
        window.setTimeout(() => setProgramReferrerRefreshStatus('idle'), 3000);
@@ -12740,6 +12841,118 @@ useEffect(() => {
      }
    }
  }, [cardIssuanceExistingCard?.cardAddress]);
+
+ const programReferrerTopupDraftE6 = useMemo(() => {
+   if (!programReferrerTopupEnabled) return 0n;
+   return parseAmountPercentHumanToE6(programReferrerTopupPercentInput);
+ }, [programReferrerTopupEnabled, programReferrerTopupPercentInput]);
+
+ const programReferrerChargeDraftE6 = useMemo(() => {
+   if (!programReferrerChargeEnabled) return 0n;
+   return parseAmountPercentHumanToE6(programReferrerChargePercentInput);
+ }, [programReferrerChargeEnabled, programReferrerChargePercentInput]);
+
+ const programReferrerTopupEditorDirty = useMemo(() => {
+   if (!programReferrerTopupEditorBaseline) return false;
+   return (
+     programReferrerTopupEditorBaseline.enabled !== programReferrerTopupEnabled ||
+     programReferrerTopupEditorBaseline.percent !== programReferrerTopupPercentInput
+   );
+ }, [
+   programReferrerTopupEditorBaseline,
+   programReferrerTopupEnabled,
+   programReferrerTopupPercentInput,
+ ]);
+
+ const programReferrerChargeEditorDirty = useMemo(() => {
+   if (!programReferrerChargeEditorBaseline) return false;
+   return (
+     programReferrerChargeEditorBaseline.enabled !== programReferrerChargeEnabled ||
+     programReferrerChargeEditorBaseline.percent !== programReferrerChargePercentInput
+   );
+ }, [
+   programReferrerChargeEditorBaseline,
+   programReferrerChargeEnabled,
+   programReferrerChargePercentInput,
+ ]);
+
+ const programReferrerTopupValidationError = useMemo(() => {
+   if (!programReferrerTopupEnabled) return '';
+   if (programReferrerTopupDraftE6 == null) return tu('programs_overview_referrer_percent_invalid');
+   if (programReferrerTopupDraftE6 === 0n) return tu('programs_overview_referrer_percent_required');
+   return '';
+ }, [programReferrerTopupEnabled, programReferrerTopupDraftE6, tu]);
+
+ const programReferrerChargeValidationError = useMemo(() => {
+   if (!programReferrerChargeEnabled) return '';
+   if (programReferrerChargeDraftE6 == null) return tu('programs_overview_referrer_percent_invalid');
+   if (programReferrerChargeDraftE6 === 0n) return tu('programs_overview_referrer_percent_required');
+   return '';
+ }, [programReferrerChargeEnabled, programReferrerChargeDraftE6, tu]);
+
+ /** Persist one referrer amount-ratio kind. Returns error string or null on success / no-op. */
+ const syncProgramReferrerAmountRatioKind = useCallback(
+   async (kind: 'charge' | 'topup'): Promise<string | null> => {
+     const addr = cardIssuanceExistingCard?.cardAddress?.trim() ?? '';
+     if (!addr || !ethers.isAddress(addr)) return null;
+     const enabled = kind === 'charge' ? programReferrerChargeEnabled : programReferrerTopupEnabled;
+     const percent =
+       kind === 'charge' ? programReferrerChargePercentInput : programReferrerTopupPercentInput;
+     const baseline =
+       kind === 'charge' ? programReferrerChargeRatioE6Baseline : programReferrerTopupRatioE6Baseline;
+     const draftE6 = enabled ? parseAmountPercentHumanToE6(percent) : 0n;
+     if (draftE6 == null) return tu('programs_overview_referrer_percent_invalid');
+     if (enabled && draftE6 === 0n) return tu('programs_overview_referrer_percent_required');
+     const target = draftE6.toString();
+     if (target === baseline) return null;
+     const pk = getSessionPrivateKeyArmor() ?? profiles?.[0]?.privateKeyArmor;
+     if (!pk) return tu('programs_overview_referrer_rewards_error');
+     if (programReferrerRewardsSaveInFlightRef.current) {
+       return tu('programs_overview_referrer_rewards_error');
+     }
+     programReferrerRewardsSaveInFlightRef.current = true;
+     try {
+       const res = await syncReferrerAmountRatioOnChain({
+         cardAddress: addr,
+         ownerPrivateKey: pk,
+         kind,
+         targetRatioE6: target,
+       });
+       if (!res.success) {
+         return res.error ?? tu('programs_overview_referrer_rewards_error');
+       }
+       if (kind === 'charge') {
+         setProgramReferrerChargeRatioE6Baseline(target);
+         setProgramReferrerChargeEnabled(draftE6 > 0n);
+         setProgramReferrerChargePercentInput(
+           draftE6 > 0n ? formatAmountPercentE6Display(target) : '0',
+         );
+       } else {
+         setProgramReferrerTopupRatioE6Baseline(target);
+         setProgramReferrerTopupEnabled(draftE6 > 0n);
+         setProgramReferrerTopupPercentInput(
+           draftE6 > 0n ? formatAmountPercentE6Display(target) : '0',
+         );
+       }
+       return null;
+     } catch {
+       return tu('programs_overview_referrer_rewards_error');
+     } finally {
+       programReferrerRewardsSaveInFlightRef.current = false;
+     }
+   },
+   [
+     cardIssuanceExistingCard?.cardAddress,
+     programReferrerChargeEnabled,
+     programReferrerTopupEnabled,
+     programReferrerChargePercentInput,
+     programReferrerTopupPercentInput,
+     programReferrerChargeRatioE6Baseline,
+     programReferrerTopupRatioE6Baseline,
+     profiles,
+     tu,
+   ],
+ );
 
  const loadProgramReferrerList = useCallback(async () => {
    const addr = cardIssuanceExistingCard?.cardAddress?.trim() ?? '';
@@ -14691,11 +14904,16 @@ const cardIssuanceTopupPromotionEditorValidationError = useMemo(
 
 const cardIssuanceTopupPromotionEditorDirty = useMemo(() => {
   if (!cardIssuanceTopupPromotionEditorOpen || cardIssuanceTopupPromotionEditorBaseline == null) return false;
-  return !topupPromotionDraftsEqual(cardIssuanceTopupPromotion, cardIssuanceTopupPromotionEditorBaseline);
+  const promoDirty = !topupPromotionDraftsEqual(
+    cardIssuanceTopupPromotion,
+    cardIssuanceTopupPromotionEditorBaseline,
+  );
+  return promoDirty || programReferrerTopupEditorDirty;
 }, [
   cardIssuanceTopupPromotionEditorOpen,
   cardIssuanceTopupPromotionEditorBaseline,
   cardIssuanceTopupPromotion,
+  programReferrerTopupEditorDirty,
 ]);
 
 const cardIssuanceSocialPromotionPayload = useMemo(
@@ -14741,15 +14959,16 @@ const cardIssuanceConsumptionPointEditorDirty = useMemo(() => {
   if (!cardIssuanceConsumptionPointEditorOpen || cardIssuanceConsumptionPointEditorBaseline == null) {
     return false;
   }
-  return (
+  const pointDirty =
     cardIssuanceConsumptionPointEditorBaseline.enabled !== cardIssuancePointSystemEnabled ||
-    cardIssuanceConsumptionPointEditorBaseline.ratioInput !== cardIssuancePointRatioInput
-  );
+    cardIssuanceConsumptionPointEditorBaseline.ratioInput !== cardIssuancePointRatioInput;
+  return pointDirty || programReferrerChargeEditorDirty;
 }, [
   cardIssuanceConsumptionPointEditorOpen,
   cardIssuanceConsumptionPointEditorBaseline,
   cardIssuancePointSystemEnabled,
   cardIssuancePointRatioInput,
+  programReferrerChargeEditorDirty,
 ]);
 
 const cardIssuanceConsumptionPointDisplay = useMemo(() => {
@@ -17416,12 +17635,17 @@ const registerCardIssuanceProductionRedeemCodes = useCallback(
 const openCardIssuanceTopupPromotionEditor = useCallback(() => {
   setCardIssuanceTopupPromotionEditorServerError('');
   setCardIssuanceTopupPromotionEditorBaseline({ ...cardIssuanceTopupPromotion });
+  setProgramReferrerTopupEditorBaseline({
+    enabled: programReferrerTopupEnabled,
+    percent: programReferrerTopupPercentInput,
+  });
   setCardIssuanceTopupPromotionEditorOpen(true);
-}, [cardIssuanceTopupPromotion]);
+}, [cardIssuanceTopupPromotion, programReferrerTopupEnabled, programReferrerTopupPercentInput]);
 
 useEffect(() => {
   if (!cardIssuanceTopupPromotionEditorOpen) {
     setCardIssuanceTopupPromotionEditorBaseline(null);
+    setProgramReferrerTopupEditorBaseline(null);
   }
 }, [cardIssuanceTopupPromotionEditorOpen]);
 
@@ -17443,12 +17667,22 @@ const openCardIssuanceConsumptionPointEditor = useCallback(() => {
     enabled: cardIssuancePointSystemEnabled,
     ratioInput: cardIssuancePointRatioInput,
   });
+  setProgramReferrerChargeEditorBaseline({
+    enabled: programReferrerChargeEnabled,
+    percent: programReferrerChargePercentInput,
+  });
   setCardIssuanceConsumptionPointEditorOpen(true);
-}, [cardIssuancePointSystemEnabled, cardIssuancePointRatioInput]);
+}, [
+  cardIssuancePointSystemEnabled,
+  cardIssuancePointRatioInput,
+  programReferrerChargeEnabled,
+  programReferrerChargePercentInput,
+]);
 
 useEffect(() => {
   if (!cardIssuanceConsumptionPointEditorOpen) {
     setCardIssuanceConsumptionPointEditorBaseline(null);
+    setProgramReferrerChargeEditorBaseline(null);
   }
 }, [cardIssuanceConsumptionPointEditorOpen]);
 
@@ -19473,7 +19707,7 @@ useEffect(() => {
 }, [handlePublishCardIssuance]);
 
 const submitCardIssuanceTopupPromotionEditor = useCallback(async () => {
-  if (cardIssuanceTopupPromotionEditorValidationError) return;
+  if (cardIssuanceTopupPromotionEditorValidationError || programReferrerTopupValidationError) return;
   const nextPromotion = { ...cardIssuanceTopupPromotion, enabled: true };
   if (!cardIssuanceExistingCard?.cardAddress) {
     setCardIssuanceTopupPromotion(nextPromotion);
@@ -19485,12 +19719,24 @@ const submitCardIssuanceTopupPromotionEditor = useCallback(async () => {
   setCardIssuanceTopupPromotionEditorPublishing(true);
   try {
     const payload = topupPromotionDraftToPayload(nextPromotion);
-    const ok = await handlePublishCardIssuance({
-      topupPromotionOverride: nextPromotion,
-      loadingScope: 'bonusEditor',
-      skipOnChainRefresh: true,
-    });
-    if (ok) {
+    const promoDirty =
+      cardIssuanceTopupPromotionEditorBaseline == null ||
+      !topupPromotionDraftsEqual(nextPromotion, {
+        ...cardIssuanceTopupPromotionEditorBaseline,
+        enabled: true,
+      });
+    if (promoDirty) {
+      const ok = await handlePublishCardIssuance({
+        topupPromotionOverride: nextPromotion,
+        loadingScope: 'bonusEditor',
+        skipOnChainRefresh: true,
+      });
+      if (!ok) {
+        setCardIssuanceTopupPromotionEditorServerError(
+          'Could not save top-up promotion. Review the error below and try again.'
+        );
+        return;
+      }
       const legacyBonus = payload ? topupPromotionToLegacyBonusRule(payload) : null;
       setCardIssuanceTopupPromotion(nextPromotion);
       setCardIssuanceExistingCard((prev) => {
@@ -19505,19 +19751,20 @@ const submitCardIssuanceTopupPromotionEditor = useCallback(async () => {
         }
         return { ...prev, meta: nextMeta };
       });
-      if (cardIssuanceExistingCard?.cardAddress) {
-        invalidateBeamioCardMetadataCache(cardIssuanceExistingCard.cardAddress);
-      }
-      setCardIssuanceTopupPromotionEditorOpen(false);
-      setCardIssuanceOwnerAdminNotice({
-        kind: 'ok',
-        text: 'Top-up promotion saved. POS and apps will use it after a short cache refresh.',
-      });
-    } else {
-      setCardIssuanceTopupPromotionEditorServerError(
-        'Could not save top-up promotion. Review the error below and try again.'
-      );
+      invalidateBeamioCardMetadataCache(cardIssuanceExistingCard.cardAddress);
     }
+    if (programReferrerTopupEditorDirty) {
+      const referrerErr = await syncProgramReferrerAmountRatioKind('topup');
+      if (referrerErr) {
+        setCardIssuanceTopupPromotionEditorServerError(referrerErr);
+        return;
+      }
+    }
+    setCardIssuanceTopupPromotionEditorOpen(false);
+    setCardIssuanceOwnerAdminNotice({
+      kind: 'ok',
+      text: 'Top-up promotion saved. POS and apps will use it after a short cache refresh.',
+    });
   } catch {
     setCardIssuanceTopupPromotionEditorServerError('Could not save top-up promotion. Please try again.');
   } finally {
@@ -19526,16 +19773,24 @@ const submitCardIssuanceTopupPromotionEditor = useCallback(async () => {
 }, [
   cardIssuanceTopupPromotion,
   cardIssuanceTopupPromotionEditorValidationError,
+  programReferrerTopupValidationError,
+  programReferrerTopupEditorDirty,
+  cardIssuanceTopupPromotionEditorBaseline,
   cardIssuanceExistingCard?.cardAddress,
   handlePublishCardIssuance,
+  syncProgramReferrerAmountRatioKind,
 ]);
 
 const discardCardIssuanceTopupPromotionEditorChanges = useCallback(() => {
   if (cardIssuanceTopupPromotionEditorBaseline == null) return;
   setCardIssuanceTopupPromotion({ ...cardIssuanceTopupPromotionEditorBaseline });
+  if (programReferrerTopupEditorBaseline) {
+    setProgramReferrerTopupEnabled(programReferrerTopupEditorBaseline.enabled);
+    setProgramReferrerTopupPercentInput(programReferrerTopupEditorBaseline.percent);
+  }
   setCardIssuanceTopupPromotionEditorServerError('');
   setCardIssuanceCreateError('');
-}, [cardIssuanceTopupPromotionEditorBaseline]);
+}, [cardIssuanceTopupPromotionEditorBaseline, programReferrerTopupEditorBaseline]);
 
 const discardCardIssuanceSocialPromotionEditorChanges = useCallback(() => {
   if (cardIssuanceSocialPromotionEditorBaseline == null) return;
@@ -19548,9 +19803,13 @@ const discardCardIssuanceConsumptionPointEditorChanges = useCallback(() => {
   if (cardIssuanceConsumptionPointEditorBaseline == null) return;
   setCardIssuancePointSystemEnabled(cardIssuanceConsumptionPointEditorBaseline.enabled);
   setCardIssuancePointRatioInput(cardIssuanceConsumptionPointEditorBaseline.ratioInput);
+  if (programReferrerChargeEditorBaseline) {
+    setProgramReferrerChargeEnabled(programReferrerChargeEditorBaseline.enabled);
+    setProgramReferrerChargePercentInput(programReferrerChargeEditorBaseline.percent);
+  }
   setCardIssuanceConsumptionPointEditorServerError('');
   setCardIssuanceCreateError('');
-}, [cardIssuanceConsumptionPointEditorBaseline]);
+}, [cardIssuanceConsumptionPointEditorBaseline, programReferrerChargeEditorBaseline]);
 
 const clearCardIssuanceTopupPromotion = useCallback(async () => {
   if (cardIssuanceTopupPromotionClearInFlightRef.current) return;
@@ -19677,7 +19936,7 @@ const submitCardIssuanceSocialPromotionEditor = useCallback(async () => {
 ]);
 
 const submitCardIssuanceConsumptionPointEditor = useCallback(async () => {
-  if (cardIssuanceConsumptionPointEditorValidationError) return;
+  if (cardIssuanceConsumptionPointEditorValidationError || programReferrerChargeValidationError) return;
   const nextEnabled = cardIssuancePointSystemEnabled;
   const nextRatioInput = cardIssuancePointRatioInput;
   const pointSystemPayload = buildCardIssuancePointSystemMetadataFromDraft(
@@ -19703,41 +19962,54 @@ const submitCardIssuanceConsumptionPointEditor = useCallback(async () => {
       return;
     }
     const cardAddr = ethers.getAddress(cardIssuanceExistingCard.cardAddress);
-    const ok = await handlePublishCardIssuance({
-      pointSystemOverride: pointSystemPayload,
-      loadingScope: 'bonusEditor',
-      metadataOnly: true,
-      skipOnChainRefresh: true,
-    });
-    if (!ok) {
-      setCardIssuanceConsumptionPointEditorServerError(
-        'Could not save consumption point metadata. Review the error below and try again.'
-      );
-      return;
+    const pointDirty =
+      cardIssuanceConsumptionPointEditorBaseline == null ||
+      cardIssuanceConsumptionPointEditorBaseline.enabled !== nextEnabled ||
+      cardIssuanceConsumptionPointEditorBaseline.ratioInput !== nextRatioInput;
+    if (pointDirty) {
+      const ok = await handlePublishCardIssuance({
+        pointSystemOverride: pointSystemPayload,
+        loadingScope: 'bonusEditor',
+        metadataOnly: true,
+        skipOnChainRefresh: true,
+      });
+      if (!ok) {
+        setCardIssuanceConsumptionPointEditorServerError(
+          'Could not save consumption point metadata. Review the error below and try again.'
+        );
+        return;
+      }
+      const ratioRes = await syncChargeRewardRatioOnChain({
+        cardAddress: cardAddr,
+        ownerPrivateKey: pk,
+        targetRatioE6: pointSystemPayload.chargeRewardRatioE6,
+      });
+      if (!ratioRes.success) {
+        setCardIssuanceConsumptionPointEditorServerError(
+          ratioRes.error ?? 'On-chain consumption point ratio update failed. Try again.'
+        );
+        return;
+      }
+      setCardIssuancePointSystemEnabled(nextEnabled);
+      setCardIssuancePointRatioInput(nextRatioInput);
+      setCardIssuanceExistingCard((prev) => {
+        if (!prev) return prev;
+        const nextMeta = prev.meta ? { ...prev.meta, pointSystem: pointSystemPayload } : prev.meta;
+        return {
+          ...prev,
+          meta: nextMeta,
+          chargeRewardRatioE6: pointSystemPayload.chargeRewardRatioE6,
+        };
+      });
+      invalidateBeamioCardMetadataCache(cardAddr);
     }
-    const ratioRes = await syncChargeRewardRatioOnChain({
-      cardAddress: cardAddr,
-      ownerPrivateKey: pk,
-      targetRatioE6: pointSystemPayload.chargeRewardRatioE6,
-    });
-    if (!ratioRes.success) {
-      setCardIssuanceConsumptionPointEditorServerError(
-        ratioRes.error ?? 'On-chain consumption point ratio update failed. Try again.'
-      );
-      return;
+    if (programReferrerChargeEditorDirty) {
+      const referrerErr = await syncProgramReferrerAmountRatioKind('charge');
+      if (referrerErr) {
+        setCardIssuanceConsumptionPointEditorServerError(referrerErr);
+        return;
+      }
     }
-    setCardIssuancePointSystemEnabled(nextEnabled);
-    setCardIssuancePointRatioInput(nextRatioInput);
-    setCardIssuanceExistingCard((prev) => {
-      if (!prev) return prev;
-      const nextMeta = prev.meta ? { ...prev.meta, pointSystem: pointSystemPayload } : prev.meta;
-      return {
-        ...prev,
-        meta: nextMeta,
-        chargeRewardRatioE6: pointSystemPayload.chargeRewardRatioE6,
-      };
-    });
-    invalidateBeamioCardMetadataCache(cardAddr);
     setCardIssuanceConsumptionPointEditorOpen(false);
     setCardIssuanceOwnerAdminNotice({
       kind: 'ok',
@@ -19754,12 +20026,16 @@ const submitCardIssuanceConsumptionPointEditor = useCallback(async () => {
   }
 }, [
   cardIssuanceConsumptionPointEditorValidationError,
+  programReferrerChargeValidationError,
+  programReferrerChargeEditorDirty,
+  cardIssuanceConsumptionPointEditorBaseline,
   cardIssuancePointSystemEnabled,
   cardIssuancePointRatioInput,
   cardIssuanceExistingCard?.cardAddress,
   cardIssuanceExistingCard?.chargeRewardRatioE6,
   handlePublishCardIssuance,
   profiles,
+  syncProgramReferrerAmountRatioKind,
 ]);
 
 const clearCardIssuanceConsumptionPoints = useCallback(async () => {
@@ -39009,10 +39285,80 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                          </div>
                        </div>
 
-                       {cardIssuanceTopupPromotionEditorValidationError ? (
+                       <div className="rounded-2xl border border-[#eadcf7] bg-[#f5ecff]/60 px-4 py-4">
+                         <div className="flex items-center justify-between gap-4">
+                           <div className="min-w-0">
+                             <p className="text-xs font-bold uppercase tracking-widest text-[#8d3a8b]">
+                               {tu('programs_overview_referrer_reward_switch')}
+                             </p>
+                             <p className="mt-1 text-sm text-[#595c5e]">
+                               {tu('programs_overview_referrer_topup_hint')}
+                             </p>
+                           </div>
+                           <button
+                             type="button"
+                             role="switch"
+                             aria-checked={programReferrerTopupEnabled}
+                             aria-label={tu('programs_overview_referrer_reward_switch')}
+                             disabled={cardIssuanceTopupPromotionEditorPublishing}
+                             onClick={() => {
+                               const next = !programReferrerTopupEnabled;
+                               setProgramReferrerTopupEnabled(next);
+                               if (next && (programReferrerTopupPercentInput === '0' || !programReferrerTopupPercentInput.trim())) {
+                                 setProgramReferrerTopupPercentInput('1');
+                               }
+                             }}
+                             className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-60 ${bizFocusRingClass} ${
+                               programReferrerTopupEnabled ? 'bg-[#8d3a8b]' : 'bg-[#abadaf]/50'
+                             }`}
+                           >
+                             <span
+                               className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition ${
+                                 programReferrerTopupEnabled ? 'translate-x-6' : 'translate-x-1'
+                               }`}
+                             />
+                           </button>
+                         </div>
+                         {programReferrerTopupEnabled ? (
+                           <div className="mt-4 space-y-2">
+                             <label
+                               className="ml-2 block text-xs font-bold uppercase tracking-widest text-[#595c5e]"
+                               htmlFor="card-topup-referrer-reward-percent"
+                             >
+                               {tu('programs_overview_referrer_topup_percent')}
+                             </label>
+                             <div className="relative">
+                               <input
+                                 id="card-topup-referrer-reward-percent"
+                                 type="number"
+                                 inputMode="decimal"
+                                 autoComplete="off"
+                                 enterKeyHint="done"
+                                 min={0}
+                                 max={100}
+                                 step="any"
+                                 value={programReferrerTopupPercentInput}
+                                 disabled={cardIssuanceTopupPromotionEditorPublishing}
+                                 onKeyDown={preventNumericInputStepKeys}
+                                 onWheel={preventNumericInputWheelStep}
+                                 onChange={(e) => setProgramReferrerTopupPercentInput(e.target.value)}
+                                 className={`w-full rounded-full border-none bg-white py-4 pl-6 pr-12 text-xl font-bold text-[#2c2f31] focus:outline-none focus:ring-2 focus:ring-[#8d3a8b]/25 ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
+                               />
+                               <span className="pointer-events-none absolute inset-y-0 right-6 flex items-center font-manrope text-lg font-extrabold text-[#8d3a8b]">
+                                 %
+                               </span>
+                             </div>
+                           </div>
+                         ) : null}
+                       </div>
+
+                       {cardIssuanceTopupPromotionEditorValidationError || programReferrerTopupValidationError ? (
                          <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
                            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
-                           <p>{cardIssuanceTopupPromotionEditorValidationError}</p>
+                           <p>
+                             {cardIssuanceTopupPromotionEditorValidationError ||
+                               programReferrerTopupValidationError}
+                           </p>
                          </div>
                        ) : null}
                        {(cardIssuanceCreateError || cardIssuanceTopupPromotionEditorServerError) &&
@@ -39031,6 +39377,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                onClick={() => void submitCardIssuanceTopupPromotionEditor()}
                                disabled={
                                  Boolean(cardIssuanceTopupPromotionEditorValidationError) ||
+                                 Boolean(programReferrerTopupValidationError) ||
                                  cardIssuanceTopupPromotionEditorPublishing ||
                                  cardIssuanceTopupPromotionDeleting
                                }
@@ -39252,42 +39599,152 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                            />
                          </label>
 
-                         {cardIssuancePointSystemEnabled ? (
-                           <div>
-                             <label
-                               htmlFor="card-consumption-point-multiplier"
-                               className="mb-2 block font-manrope text-sm font-bold text-[#2c2f31]"
+                         <div className="rounded-2xl border border-[#eadcf7] bg-[#f5ecff]/60 px-4 py-4">
+                           <div className="flex items-center justify-between gap-4">
+                             <div className="min-w-0">
+                               <p className="text-xs font-bold uppercase tracking-widest text-[#8d3a8b]">
+                                 {tu('programs_overview_referrer_reward_switch')}
+                               </p>
+                               <p className="mt-1 text-sm text-[#595c5e]">
+                                 {tu('programs_overview_referrer_charge_hint')}
+                               </p>
+                             </div>
+                             <button
+                               type="button"
+                               role="switch"
+                               aria-checked={programReferrerChargeEnabled}
+                               aria-label={tu('programs_overview_referrer_reward_switch')}
+                               disabled={cardIssuanceConsumptionPointEditorPublishing}
+                               onClick={() => {
+                                 const next = !programReferrerChargeEnabled;
+                                 setProgramReferrerChargeEnabled(next);
+                                 if (
+                                   next &&
+                                   (programReferrerChargePercentInput === '0' ||
+                                     !programReferrerChargePercentInput.trim())
+                                 ) {
+                                   setProgramReferrerChargePercentInput('1');
+                                 }
+                               }}
+                               className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-60 ${bizFocusRingClass} ${
+                                 programReferrerChargeEnabled ? 'bg-[#8d3a8b]' : 'bg-[#abadaf]/50'
+                               }`}
                              >
-                               {tu('programs_consumption_points_multiplier_label')}
-                             </label>
-                             <input
-                               id="card-consumption-point-multiplier"
-                               type="number"
-                               inputMode="decimal"
-                               autoComplete="off"
-                               enterKeyHint="done"
-                               min={0}
-                               step="0.01"
-                               value={cardIssuancePointRatioInput}
-                               onChange={(e) => setCardIssuancePointRatioInput(e.target.value)}
-                               onKeyDown={preventNumericInputStepKeys}
-                               onWheel={preventNumericInputWheelStep}
-                               className={`w-full rounded-2xl border border-[#dfe3e6] bg-white px-4 py-3.5 font-manrope text-base font-semibold text-[#2c2f31] outline-none transition-colors focus:border-[#0051d1] focus:ring-2 focus:ring-[#0051d1]/15 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield] ${bizFocusRingClass}`}
-                               aria-describedby="card-consumption-point-multiplier-hint"
-                             />
-                             <p
-                               id="card-consumption-point-multiplier-hint"
-                               className="mt-2 text-xs leading-relaxed text-[#595c5e]"
-                             >
-                               {tu('programs_consumption_points_multiplier_hint')}
-                             </p>
+                               <span
+                                 className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition ${
+                                   programReferrerChargeEnabled ? 'translate-x-6' : 'translate-x-1'
+                                 }`}
+                               />
+                             </button>
                            </div>
-                         ) : null}
 
-                         {cardIssuanceConsumptionPointEditorValidationError ? (
+                           {programReferrerChargeEnabled ? (
+                             <div className="mt-4 space-y-4">
+                               <div>
+                                 <label
+                                   htmlFor="card-consumption-point-multiplier"
+                                   className="mb-2 block font-manrope text-sm font-bold text-[#2c2f31]"
+                                 >
+                                   {tu('programs_consumption_points_multiplier_label')}
+                                 </label>
+                                 <input
+                                   id="card-consumption-point-multiplier"
+                                   type="number"
+                                   inputMode="decimal"
+                                   autoComplete="off"
+                                   enterKeyHint="done"
+                                   min={0}
+                                   step="0.01"
+                                   value={cardIssuancePointRatioInput}
+                                   onChange={(e) => {
+                                     setCardIssuancePointRatioInput(e.target.value);
+                                     if (!cardIssuancePointSystemEnabled) {
+                                       setCardIssuancePointSystemEnabled(true);
+                                     }
+                                   }}
+                                   onKeyDown={preventNumericInputStepKeys}
+                                   onWheel={preventNumericInputWheelStep}
+                                   className={`w-full rounded-2xl border border-[#dfe3e6] bg-white px-4 py-3.5 font-manrope text-base font-semibold text-[#2c2f31] outline-none transition-colors focus:border-[#0051d1] focus:ring-2 focus:ring-[#0051d1]/15 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield] ${bizFocusRingClass}`}
+                                   aria-describedby="card-consumption-point-multiplier-hint"
+                                 />
+                                 <p
+                                   id="card-consumption-point-multiplier-hint"
+                                   className="mt-2 text-xs leading-relaxed text-[#595c5e]"
+                                 >
+                                   {tu('programs_consumption_points_multiplier_hint')}
+                                 </p>
+                               </div>
+                               <div>
+                                 <label
+                                   htmlFor="card-consumption-referrer-reward-percent"
+                                   className="mb-2 block font-manrope text-sm font-bold text-[#2c2f31]"
+                                 >
+                                   {tu('programs_overview_referrer_charge_percent')}
+                                 </label>
+                                 <div className="relative">
+                                   <input
+                                     id="card-consumption-referrer-reward-percent"
+                                     type="number"
+                                     inputMode="decimal"
+                                     autoComplete="off"
+                                     enterKeyHint="done"
+                                     min={0}
+                                     max={100}
+                                     step="any"
+                                     value={programReferrerChargePercentInput}
+                                     disabled={cardIssuanceConsumptionPointEditorPublishing}
+                                     onKeyDown={preventNumericInputStepKeys}
+                                     onWheel={preventNumericInputWheelStep}
+                                     onChange={(e) => setProgramReferrerChargePercentInput(e.target.value)}
+                                     className={`w-full rounded-2xl border border-[#dfe3e6] bg-white px-4 py-3.5 pr-12 font-manrope text-base font-semibold text-[#2c2f31] outline-none transition-colors focus:border-[#8d3a8b] focus:ring-2 focus:ring-[#8d3a8b]/15 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield] ${bizFocusRingClass}`}
+                                   />
+                                   <span className="pointer-events-none absolute inset-y-0 right-4 flex items-center font-manrope text-base font-extrabold text-[#8d3a8b]">
+                                     %
+                                   </span>
+                                 </div>
+                               </div>
+                             </div>
+                           ) : cardIssuancePointSystemEnabled ? (
+                             <div className="mt-4">
+                               <label
+                                 htmlFor="card-consumption-point-multiplier"
+                                 className="mb-2 block font-manrope text-sm font-bold text-[#2c2f31]"
+                               >
+                                 {tu('programs_consumption_points_multiplier_label')}
+                               </label>
+                               <input
+                                 id="card-consumption-point-multiplier"
+                                 type="number"
+                                 inputMode="decimal"
+                                 autoComplete="off"
+                                 enterKeyHint="done"
+                                 min={0}
+                                 step="0.01"
+                                 value={cardIssuancePointRatioInput}
+                                 onChange={(e) => setCardIssuancePointRatioInput(e.target.value)}
+                                 onKeyDown={preventNumericInputStepKeys}
+                                 onWheel={preventNumericInputWheelStep}
+                                 className={`w-full rounded-2xl border border-[#dfe3e6] bg-white px-4 py-3.5 font-manrope text-base font-semibold text-[#2c2f31] outline-none transition-colors focus:border-[#0051d1] focus:ring-2 focus:ring-[#0051d1]/15 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield] ${bizFocusRingClass}`}
+                                 aria-describedby="card-consumption-point-multiplier-hint"
+                               />
+                               <p
+                                 id="card-consumption-point-multiplier-hint"
+                                 className="mt-2 text-xs leading-relaxed text-[#595c5e]"
+                               >
+                                 {tu('programs_consumption_points_multiplier_hint')}
+                               </p>
+                             </div>
+                           ) : null}
+                         </div>
+
+                         {cardIssuanceConsumptionPointEditorValidationError ||
+                         programReferrerChargeValidationError ? (
                            <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
                              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
-                             <p>{cardIssuanceConsumptionPointEditorValidationError}</p>
+                             <p>
+                               {cardIssuanceConsumptionPointEditorValidationError ||
+                                 programReferrerChargeValidationError}
+                             </p>
                            </div>
                          ) : null}
                          {(cardIssuanceCreateError || cardIssuanceConsumptionPointEditorServerError) &&
@@ -39308,6 +39765,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                  onClick={() => void submitCardIssuanceConsumptionPointEditor()}
                                  disabled={
                                    Boolean(cardIssuanceConsumptionPointEditorValidationError) ||
+                                   Boolean(programReferrerChargeValidationError) ||
                                    cardIssuanceConsumptionPointEditorPublishing ||
                                    cardIssuanceConsumptionPointDeleting
                                  }

@@ -12,7 +12,7 @@ import {
 	AlertTriangle
 } from "lucide-react"
 import { useDaemonContext } from "@/providers/DaemonProvider"
-import { checkSign, getKeysFromCoNETPGPSC, makeMessage, dedupeChatsByAddress, refreshChatRoutes } from '@/services/chat' 
+import { dedupeChatsByAddress, refreshChatRoutes, refreshChatMailboxPresence } from '@/services/chat' 
 import {searchUsername, storeSystemData} from '@/services/beamio'
 import { tu } from '@/locale/beamioLocale'
 import { chatShareLinkListPreview } from '@/utils/chatShareLinkPreview'
@@ -86,7 +86,8 @@ function tagColor(tag: chatData["tag"]) {
 
 function Avatar({
 	address,
-	beamio: beamioProp
+	beamio: beamioProp,
+	online = false,
 }: {
 	address: string
 	beamio?: searchResult
@@ -95,7 +96,6 @@ function Avatar({
 	const {beamioUsers, setbBeamioUsers} = useDaemonContext()
 	const [fromBeamio, setfromBeamio] = useState<searchResult|undefined> (beamioProp)
 	const [userImg, setUserImg] = useState('')
-	const [online, setOnline] = useState(false)
 
 	const avatarSrc = useMemo(() => {
 		if (!fromBeamio) return ""
@@ -177,31 +177,13 @@ export default function ChatList({
 	onOpen
 }: ChatListProps) {
 	const { profiles, setProfiles } = useDaemonContext()
+	const presenceProbeAtRef = useRef(0)
+	const routeRefreshAtRef = useRef(0)
 
-	// 每次进入时刷新每个 chat 的链上路由信息
-	// ⚠️ 数据竞态修复：refreshChatRoutes 是 N 条 chat × RPC 的长耗时异步操作，
-	// 期间 App.tsx::addNewMessage 可能 mutation 写入新 messages（参考用户 22 Apr 故障：
-	// storage 有 4 条 messages 但 chat 窗口空白）。绝不能用 refreshChatRoutes 拍照
-	// 出来的 updated.chats 整体覆盖 profile.chats —— 那会把 messages/unreadCount 回滚。
-	// 正确做法：只提取 per-address 的 chatData patch，再用函数式 setProfiles 合并到最新 state。
-	useEffect(() => {
-		const p0 = profiles?.[0]
-		if (!p0?.chats?.length || !p0.privateKeyArmor) return
-		;(async () => {
-			const updated = await refreshChatRoutes({ ...p0 })
-			// changed=false（同引用）或 chats 异常缺失 → 直接退出
-			if (!updated?.chats || updated.chats === p0.chats) return
-
-			// 1) 收集 per-address 的 chatData patch
-			const patchByAddr = new Map<string, NonNullable<chatData["chatData"]>>()
-			for (const c of updated.chats) {
-				const addr = String(c?.address || "").toLowerCase()
-				if (!addr || !c?.chatData) continue
-				patchByAddr.set(addr, c.chatData)
-			}
+	const applyChatDataPatches = useCallback(
+		async (patchByAddr: Map<string, NonNullable<chatData["chatData"]>>) => {
 			if (patchByAddr.size === 0) return
 
-			// 2) 把 patch 应用到给定 chats 数组上（只改 chatData，保留 messages/unreadCount/tag/pin/...）
 			const applyPatch = (chats: chatData[]): { next: chatData[]; changed: boolean } => {
 				let changed = false
 				const next = chats.map(c => {
@@ -224,7 +206,6 @@ export default function ChatList({
 				return { next, changed }
 			}
 
-			// 3) ✅ React state：函数式 setProfiles，基于最新 prev 应用 patch
 			let appliedToReact = false
 			setProfiles(prev => {
 				if (!prev?.length) return prev
@@ -238,7 +219,6 @@ export default function ChatList({
 				return nextProfiles
 			})
 
-			// 4) ✅ CoNET_Data 快照：同样基于最新 base 应用 patch（storeSystemData 读这个）
 			const temp = CoNET_Data
 			if (temp?.profiles?.length) {
 				const cur = temp.profiles[0]
@@ -254,8 +234,67 @@ export default function ChatList({
 			} else if (appliedToReact) {
 				await storeSystemData()
 			}
+		},
+		[setProfiles],
+	)
+
+	// 进入 /chat：刷新链上路由 + 向各联系人 mailbox 咨询 listen 在线状态（非 chain routeOnline）。
+	// ⚠️ 数据竞态：只合并 chatData patch，不得用整表覆盖 messages/unreadCount。
+	useEffect(() => {
+		const p0 = profiles?.[0]
+		if (!p0?.chats?.length || !p0.privateKeyArmor) return
+		let cancelled = false
+		;(async () => {
+			const now = Date.now()
+			// Route RPC: throttle — profiles 更新会重入 effect
+			if (now - routeRefreshAtRef.current > 20_000) {
+				routeRefreshAtRef.current = now
+				const updated = await refreshChatRoutes({ ...p0 })
+				if (cancelled) return
+				if (updated?.chats && updated.chats !== p0.chats) {
+					const patchByAddr = new Map<string, NonNullable<chatData["chatData"]>>()
+					for (const c of updated.chats) {
+						const addr = String(c?.address || "").toLowerCase()
+						if (!addr || !c?.chatData) continue
+						patchByAddr.set(addr, c.chatData)
+					}
+					await applyChatDataPatches(patchByAddr)
+				}
+			}
+
+			if (cancelled) return
+			if (now - presenceProbeAtRef.current < 15_000) return
+			presenceProbeAtRef.current = Date.now()
+
+			const chatsForProbe: chatData[] = Array.isArray(CoNET_Data?.profiles?.[0]?.chats)
+				? (CoNET_Data!.profiles[0].chats as chatData[])
+				: Array.isArray(p0.chats)
+					? p0.chats
+					: []
+			const onlineByAddr = await refreshChatMailboxPresence(chatsForProbe, p0.privateKeyArmor)
+			if (cancelled || onlineByAddr.size === 0) return
+
+			const onlinePatch = new Map<string, NonNullable<chatData["chatData"]>>()
+			for (const c of chatsForProbe) {
+				const addr = String(c?.address || "").toLowerCase()
+				if (!addr || !onlineByAddr.has(addr)) continue
+				const online = onlineByAddr.get(addr)!
+				const cd = c.chatData
+				if ((cd?.online ?? false) === online) continue
+				onlinePatch.set(addr, {
+					privateArmored: cd?.privateArmored ?? '',
+					publicArmored: cd?.publicArmored ?? '',
+					routersArmoreds: cd?.routersArmoreds ?? '',
+					routePgpKeyID: cd?.routePgpKeyID ?? '',
+					online,
+				})
+			}
+			await applyChatDataPatches(onlinePatch)
 		})()
-	}, [profiles, setProfiles])
+		return () => {
+			cancelled = true
+		}
+	}, [profiles, setProfiles, applyChatDataPatches])
 
 	const items = useMemo(() => {
 		const profile: profile = profiles?.[0]
@@ -396,6 +435,7 @@ export default function ChatList({
                     <Avatar
 						address={it.address}
 						beamio={it.beamio}
+						online={!!it.chatData?.online}
 					/>
 
                     <div className="min-w-0 flex-1">

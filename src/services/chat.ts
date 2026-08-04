@@ -127,7 +127,9 @@ export const getKeysFromCoNETPGPSC = async (keyIDOrAddress: string, privateKeyAr
 		}
 		const routersArmoreds = info.routePublicKeyArmored ? fromBase64(info.routePublicKeyArmored) : ''
 
-		return {privateArmored, publicArmored, routersArmoreds, online: info.routeOnline, routePgpKeyID: info.routePgpKeyID, userPgpKeyID: info.userPgpKeyID}
+		// Presence is NOT chain routeOnline (SI abandoned setUserOnlineOnMe).
+		// UI online comes from mailbox `wallet_online_query` — see refreshChatMailboxPresence.
+		return {privateArmored, publicArmored, routersArmoreds, online: false, routePgpKeyID: info.routePgpKeyID, userPgpKeyID: info.userPgpKeyID}
 	} catch (ex) {
 		return null
 	}
@@ -1496,7 +1498,7 @@ export function dedupeChatsByAddress(chats: chatData[]): chatData[] {
 	})
 }
 
-/** 刷新每个 chat 的链上路由信息（routersArmoreds, routePgpKeyID, online），用于 ChatList 进入时更新 */
+/** 刷新每个 chat 的链上路由信息（routersArmoreds, routePgpKeyID）。不改 online（见 refreshChatMailboxPresence）。 */
 export const refreshChatRoutes = async (profile: profile): Promise<profile> => {
 	if (!profile?.chats?.length || !profile.privateKeyArmor) return profile
 	const chats = [...profile.chats]
@@ -1511,16 +1513,21 @@ export const refreshChatRoutes = async (profile: profile): Promise<profile> => {
 			const cd = c.chatData
 			const nextRouters = kk.routersArmoreds || cd?.routersArmoreds || ''
 			const nextRouteKeyID = kk.routePgpKeyID || cd?.routePgpKeyID || ''
-			const nextOnline = kk.online ?? cd?.online ?? false
-			if (nextRouters !== (cd?.routersArmoreds ?? '') || nextRouteKeyID !== (cd?.routePgpKeyID ?? '') || nextOnline !== (cd?.online ?? false)) {
+			const nextPublic = kk.publicArmored || cd?.publicArmored || ''
+			if (
+				nextRouters !== (cd?.routersArmoreds ?? '') ||
+				nextRouteKeyID !== (cd?.routePgpKeyID ?? '') ||
+				nextPublic !== (cd?.publicArmored ?? '')
+			) {
 				chats[i] = {
 					...c,
 					chatData: {
 						privateArmored: cd?.privateArmored ?? '',
-						publicArmored: kk.publicArmored || cd?.publicArmored || '',
+						publicArmored: nextPublic,
 						routersArmoreds: nextRouters,
 						routePgpKeyID: nextRouteKeyID,
-						online: nextOnline
+						// Preserve last mailbox-probe result; never import chain routeOnline.
+						online: cd?.online ?? false,
 					}
 				}
 				changed = true
@@ -1531,6 +1538,126 @@ export const refreshChatRoutes = async (profile: profile): Promise<profile> => {
 		profile.chats = dedupeChatsByAddress(chats)
 	}
 	return profile
+}
+
+/**
+ * Ask each contact's mailbox whether that wallet has an active listen SSE.
+ * Encrypt to mailbox B route PGP; HTTP via entry C ≠ B. Trusted ok:true only updates online.
+ */
+export const queryMailboxWalletOnline = async (opts: {
+	targetWallet: string
+	routerArmoredPublicKey: string
+	privateKeyArmor: string
+	entryNodes: nodeInfo[]
+	mailboxDomains: Set<string>
+}): Promise<{ online: boolean; ok: boolean } | null> => {
+	const { targetWallet, routerArmoredPublicKey, privateKeyArmor, entryNodes, mailboxDomains } = opts
+	if (!ethers.isAddress(targetWallet) || !routerArmoredPublicKey?.trim() || !privateKeyArmor?.trim()) {
+		return null
+	}
+	if (!entryNodes?.length) return null
+	try {
+		const wallet = new ethers.Wallet(privateKeyArmor)
+		const timestamp = Math.floor(Date.now() / 1000)
+		const command = {
+			command: 'wallet_online_query',
+			walletAddress: wallet.address,
+			targetWallet: ethers.getAddress(targetWallet),
+			timestamp,
+		}
+		const message = JSON.stringify(command)
+		const signMessage = await wallet.signMessage(message)
+		const encryptionKeys = await readKey({ armoredKey: routerArmoredPublicKey })
+		const pgpMsg = await createMessage({
+			text: Buffer.from(JSON.stringify({ message, signMessage })).toString('base64'),
+		})
+		const postData = await encrypt({
+			message: pgpMsg,
+			encryptionKeys,
+			config: { preferredCompressionAlgorithm: enums.compression.zlib },
+		})
+		const armored = typeof postData === 'string' ? postData : String((postData as any)?.data ?? postData)
+		const payload = JSON.stringify({ data: armored })
+		const candidates = entryNodes.filter(n => n?.domain && !mailboxDomains.has(n.domain))
+		const pool = candidates.length ? candidates : entryNodes.filter(n => n?.domain)
+		const entries = await pickGossipEntryNodesForSend(pool, 4, mailboxDomains)
+		const targets = entries.length ? entries : getRandomNodes(pool, Math.min(4, pool.length))
+		const results = await Promise.all(
+			targets.map(async node => {
+				const url = `https://${node.domain}.conet.network/post`
+				try {
+					const res = await postWithTimeout(
+						url,
+						{
+							method: 'POST',
+							headers: { 'Content-Type': 'application/json' },
+							body: payload,
+							referrerPolicy: 'no-referrer',
+						},
+						10_000,
+					)
+					const text = await res.text()
+					const trimmed = (text || '').trim()
+					if (!trimmed) return null
+					try {
+						return JSON.parse(trimmed)
+					} catch {
+						const m = trimmed.match(/\{[\s\S]*\}/)
+						if (m) {
+							try {
+								return JSON.parse(m[0])
+							} catch {
+								return null
+							}
+						}
+						return null
+					}
+				} catch {
+					return null
+				}
+			}),
+		)
+		for (const r of results) {
+			if (r && typeof r === 'object' && (r as { ok?: boolean }).ok === true) {
+				return { ok: true, online: !!(r as { online?: boolean }).online }
+			}
+		}
+		return null
+	} catch (e: any) {
+		console.warn('[queryMailboxWalletOnline]', e?.message ?? e)
+		return null
+	}
+}
+
+/**
+ * Probe all chats with a mailbox route. Returns address(lower) → online for trusted replies only.
+ */
+export const refreshChatMailboxPresence = async (
+	chats: chatData[],
+	privateKeyArmor: string,
+): Promise<Map<string, boolean>> => {
+	const out = new Map<string, boolean>()
+	if (!chats?.length || !privateKeyArmor) return out
+	const nodes = await getCoNETNodesForChat()
+	if (!nodes.length) return out
+	await Promise.all(
+		chats.map(async chat => {
+			const addr = (chat.address || '').trim().toLowerCase()
+			const route = chat.chatData?.routersArmoreds?.trim()
+			if (!addr || !ethers.isAddress(addr) || !route) return
+			const routeNodes = pickRouteNodesByArmoredKey(nodes, route)
+			const mailboxDomains = new Set(routeNodes.map(n => n.domain).filter(Boolean))
+			const r = await queryMailboxWalletOnline({
+				targetWallet: addr,
+				routerArmoredPublicKey: route,
+				privateKeyArmor,
+				entryNodes: nodes,
+				mailboxDomains,
+			})
+			if (r?.ok) out.set(addr, r.online)
+		}),
+	)
+	return out
 }
 
 export const initMessage = async (profile: profile, beamioer: searchResult): Promise<chatData|null> => {

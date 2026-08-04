@@ -26,6 +26,7 @@ import { getAAAccount, getRedeemDetailsForDisplay, postCardRedeem, getMyAssets }
 import { initChat}from '@/services/chat'
 import { dispatchBeamioWalletReady } from '@/utils/beamioWalletReadyEvent'
 import { ensureConetAaForProfileAndPersist } from '@/utils/ensureConetAa'
+import { ensureNativePushBoundForWallet } from '@/utils/cashTreesPushBind'
 
 import { getUsdcBalanceFromApi, formatWithThousands, isStandalone } from "@/services/beamio"
 import { ethers } from "ethers"
@@ -617,7 +618,6 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 		await initChat(setProfiles, setAllNodes, setGossip, gossip, message => {
 			setCharts((prev: string[]) => [...prev, message])
 		})
-		dispatchBeamioWalletReady('loading-page-init')
 
 		bo.initialLoading = true
 
@@ -635,6 +635,10 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 				/* 不可信失败：保留 EOA，AppShell / onboarding 会重试 */
 			})
 		}
+		// Bind push after CoNET_Data is in memory so API register can sign.
+		// Must not rely only on AppShell init — that path skips when gossip is already active.
+		ensureNativePushBoundForWallet(profiles[0])
+		dispatchBeamioWalletReady('loading-page-init')
 		SetLoading(false)
 		setIsInitialEntry(false)
 		setIsInitialLoading(false)

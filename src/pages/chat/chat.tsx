@@ -381,6 +381,10 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 
 	const scrollRef = useRef<HTMLDivElement | null>(null)
 	const inputRef = useRef<HTMLTextAreaElement | null>(null)
+	/** CJK / non-Latin IME: Enter confirms candidates — must not send while composing. */
+	const imeComposingRef = useRef(false)
+	/** After send, ignore compositionend / onChange echoes that re-fill the cleared textarea. */
+	const suppressImeEchoRef = useRef(false)
 
 	const toAddress = chatData.address
 	const walletEoa = (profiles[0]?.keyID ?? '').trim()
@@ -1029,15 +1033,33 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 	 
 
 
+	const clearChatInput = () => {
+		suppressImeEchoRef.current = true
+		imeComposingRef.current = false
+		flushSync(() => setText(""))
+		const el = inputRef.current
+		if (el) el.value = ""
+		// IME often fires compositionend / input after clear and re-inserts glyphs — scrub again.
+		queueMicrotask(() => {
+			flushSync(() => setText(""))
+			if (inputRef.current) inputRef.current.value = ""
+		})
+		window.setTimeout(() => {
+			flushSync(() => setText(""))
+			if (inputRef.current) inputRef.current.value = ""
+			suppressImeEchoRef.current = false
+		}, 80)
+	}
+
 	async function send() {
 		const temp = CoNET_Data
 		if (!canSend || !temp || !profiles?.length) return
 
-		const t = text.trim()
+		// Prefer DOM value so in-progress IME composition is included when user taps Send.
+		const t = (inputRef.current?.value ?? text).trim()
 		if (!t) return
 
-		// 立即清空输入：flushSync 确保同步更新，避免异步流程中其他 re-render 覆盖
-		flushSync(() => setText(""))
+		clearChatInput()
 
 		const mode = isUrl(t)
 		void mode
@@ -1250,10 +1272,27 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 	}
 
 	function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+		// keyCode 229 = IME processing (Android WebView / legacy); isComposing = modern browsers
+		const ne = e.nativeEvent
+		if (ne.isComposing || ne.keyCode === 229 || imeComposingRef.current) return
 		if (e.key === "Enter" && !e.shiftKey) {
 			e.preventDefault()
-			send()
+			void send()
 		}
+	}
+
+	function onCompositionStart() {
+		imeComposingRef.current = true
+	}
+
+	function onCompositionEnd(e: React.CompositionEvent<HTMLTextAreaElement>) {
+		imeComposingRef.current = false
+		if (suppressImeEchoRef.current) {
+			e.currentTarget.value = ""
+			flushSync(() => setText(""))
+			return
+		}
+		if (hasRoute) setText(e.currentTarget.value)
 	}
 
   // textarea 自适应高度（1~3行），超过3行时只显示最后3行
@@ -1975,8 +2014,17 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 									<textarea
 									ref={inputRef}
 									value={text}
-									onChange={e => hasRoute && setText(e.target.value)}
+									onChange={e => {
+										if (!hasRoute) return
+										if (suppressImeEchoRef.current) {
+											e.target.value = ""
+											return
+										}
+										setText(e.target.value)
+									}}
 									onKeyDown={hasRoute ? onKeyDown : undefined}
+									onCompositionStart={hasRoute ? onCompositionStart : undefined}
+									onCompositionEnd={hasRoute ? onCompositionEnd : undefined}
 									placeholder={hasRoute ? "iMessage…" : "No route – message may not be delivered"}
 									readOnly={!hasRoute}
 									rows={1}

@@ -973,7 +973,7 @@ export function DaemonProvider({ children }: DaemonProps) {
 	const msgCountLockRef = useRef(false) // 可选：避免同一帧重复统计
 	const [messageCount, setMessageCount] = useState(0)
 
-	/** Footer `/chat` 冒泡 → Native App 图标角标（WebView 壳内；浏览器 no-op）。 */
+	/** Footer `/chat` → native icon badge (no APNs alert). API unread sync is DB-only. */
 	useEffect(() => {
 		syncNativeFooterChatBadge(messageCount)
 		void syncChatBadgeToApi(messageCount)

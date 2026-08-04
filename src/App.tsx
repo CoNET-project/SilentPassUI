@@ -16,7 +16,7 @@ import ChatDetail from "./pages/chatDetail"
 import BeamioInstallOnboarding from "@/components/launchPage"
 import Browser from "@/pages/Browser"
 import { initChat, checkSign, createInboundChatSession, makeMessage, sendMessage, resumeGossipListenOnForeground, pauseGossipListenOnBackground } from "@/services/chat"
-import { bindNativePushIdentity, ensurePushDeviceTokenListener } from "@/utils/cashTreesPushBind"
+import { ensureNativePushBoundForWallet, ensurePushDeviceTokenListener } from "@/utils/cashTreesPushBind"
 import { checkStorage, storeSystemData, runAutoBUnitFreeClaimIfEligible, handleNfcLinkAppDeepLinkScan, ensureProfilePrivateKeyArmorFromMnemonic, bootstrapProfileLocaleCurrencyIfUnset, mergeLocalLocaleLanguageOntoChainProfile } from "@/services/beamio"
 import { hasLocalPlaintextMnemonic } from "@/utils/consumerWalletGate"
 import { ensureEphemeralWalletForCouponClaim } from "@/utils/ephemeralCouponClaimWallet"
@@ -823,7 +823,12 @@ function AppShell() {
 		}
 
 		if (gossipActiveRef.current) {
-			publishNativePwaLog('info', '[AppShell] init skip: gossip already active')
+			// Onboard LoadingPage may have already started gossip — still bind push here.
+			publishNativePwaLog('info', '[AppShell] init skip chat (gossip active); ensuring push bind')
+			setCoNET_Data(temp)
+			setProfiles(profiles)
+			ensurePushDeviceTokenListener()
+			ensureNativePushBoundForWallet(profiles[0])
 			setIsInitialLoading(false)
 			return
 		}
@@ -861,13 +866,7 @@ function AppShell() {
 		})
 
 		ensurePushDeviceTokenListener()
-		{
-			const chatPgp = profiles[0]?.chatManager?.pgpKey?.keyID
-			bindNativePushIdentity({
-				eoa: profiles[0]?.keyID,
-				pgpKeyId: chatPgp ? String(chatPgp) : undefined,
-			})
-		}
+		ensureNativePushBoundForWallet(profiles[0])
 		
 		
 		bo.initialLoading = true

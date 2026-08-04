@@ -201,7 +201,30 @@ export function bindNativePushIdentity(opts?: { eoa?: string; pgpKeyId?: string 
 	return false
 }
 
-/** Keep API unread + push badge aligned with PWA Footer chat badge. */
+/**
+ * Bind push from the current (or given) profile.
+ * Safe to call from LoadingPage onboard **and** AppShell even when gossip already started —
+ * AppShell used to skip the whole init (including push) when gossip was active after onboard.
+ */
+export function ensureNativePushBoundForWallet(profile?: {
+	keyID?: string
+	chatManager?: { pgpKey?: { keyID?: string } }
+} | null): boolean {
+	const p = profile || CoNET_Data?.profiles?.[0]
+	const eoa = (p?.keyID || '').trim()
+	if (!eoa || !ethers.isAddress(eoa)) return false
+	const chatPgp = p?.chatManager?.pgpKey?.keyID
+	return bindNativePushIdentity({
+		eoa,
+		pgpKeyId: chatPgp ? String(chatPgp) : undefined,
+	})
+}
+
+/**
+ * Persist unread on API for offline SI notify increments.
+ * Does **not** trigger iOS/Android alert banners (API syncChatBadge is DB-only).
+ * Live icon badge: `syncNativeFooterChatBadge` → native bridge.
+ */
 export async function syncChatBadgeToApi(unreadRaw: number): Promise<void> {
 	if (typeof window === 'undefined') return
 	if (!isCashTreesNativeWebView()) return

@@ -736,7 +736,7 @@ type ChatMessage = {
 	from: "me" | "them"
 	text: string
 	createdAt: number
-	status?: "sending" | "sent" | "failed"
+	status?: "sending" | "sent" | "delivered" | "failed"
 	paymentCard?: paymentCard
 	/** 本条为 reaction 时，messageId 为目标消息的 sendId */
 	reply?: ChatMessageReply

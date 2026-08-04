@@ -736,6 +736,29 @@ startGossip(nodeInfo, body, callback, {
 */
 export let currentGossipAbortController: AbortController | null = null;
 
+/** Last live gossip listen context — used for mailbox delivery ACK (encrypt to B). */
+let gossipDeliveryAckContext: {
+	routerArmoredPublicKey: string
+	privateKeyArmor: string
+	entryNodes: nodeInfo[]
+	mailboxDomains: string[]
+} | null = null
+
+export function getGossipDeliveryAckContext(): {
+	routerArmoredPublicKey: string
+	privateKeyArmor: string
+	entryNodes: nodeInfo[]
+	mailboxDomains: Set<string>
+} | null {
+	if (!gossipDeliveryAckContext) return null
+	return {
+		routerArmoredPublicKey: gossipDeliveryAckContext.routerArmoredPublicKey,
+		privateKeyArmor: gossipDeliveryAckContext.privateKeyArmor,
+		entryNodes: gossipDeliveryAckContext.entryNodes,
+		mailboxDomains: new Set(gossipDeliveryAckContext.mailboxDomains),
+	}
+}
+
 const clearGossipListenSession = (reason: string) => {
 	if (currentGossipAbortController) {
 		try {
@@ -882,6 +905,13 @@ export const connectToGossipNode = async (
         return failConnect('connectToGossipNode abort: no healthy entry C for gossip listen')
       }
 
+      gossipDeliveryAckContext = {
+        routerArmoredPublicKey: nodeArmoredPublicKey,
+        privateKeyArmor: privateKeyArmor,
+        entryNodes: healthyNodes,
+        mailboxDomains: [...mailboxDomains],
+      }
+
       // 启动递归循环，传入 entry C 数组，重连时随机换 entry（不直连 B）
       startGossip(
         healthyNodes, 
@@ -921,9 +951,19 @@ export const connectToGossipNode = async (
                     const { data: decrypted } = await decrypt({ message: msg, decryptionKeys: decryptedPrivateKey });
                     const decryptedString = typeof decrypted === 'string' ? decrypted : String(decrypted);
                     const kkk = fromBase64(decryptedString);
-                    
+                    // Attach armor hash for mailbox ACK (must match SI saveLocal hash).
+                    let inboundLine = kkk
+                    try {
+                      const env = JSON.parse(kkk)
+                      if (env && typeof env === 'object') {
+                        env._beamioPgpArmorHash = ethers.keccak256(ethers.toUtf8Bytes(armoredMessage))
+                        inboundLine = JSON.stringify(env)
+                      }
+                    } catch {
+                      /* keep raw */
+                    }
                     console.log(`✅ Message:`, kkk.slice(0, 50) + "..."); // 仅打印前50字符防止刷屏
-                    newMessage(kkk);
+                    newMessage(inboundLine);
                 } else if (data?.from && data?.text != null && data?.signMessage) {
                     // 非 PGP：明文信封格式 { timestamp, text, from, signMessage }，直接交给 newMessage
                     console.log(`✅ Plain envelope from ${data.from}`);
@@ -1260,7 +1300,7 @@ export const makeMessage = (
 	newChatText: string,
 	timestamp: number,
 	from: "me" | "them",
-	status?: "sending" | "sent" | "failed"
+	status?: "sending" | "sent" | "delivered" | "failed"
 ) => {
   // 1) 先把已有消息“规范化”：用 createdAt(=timestamp) 生成稳定唯一 id
 	const normalized = (data || []).map(m => {

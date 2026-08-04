@@ -15,7 +15,14 @@ import Chat from "./pages/chat"
 import ChatDetail from "./pages/chatDetail"
 import BeamioInstallOnboarding from "@/components/launchPage"
 import Browser from "@/pages/Browser"
-import { initChat, checkSign, createInboundChatSession, makeMessage, sendMessage, resumeGossipListenOnForeground, pauseGossipListenOnBackground } from "@/services/chat"
+import { initChat, checkSign, createInboundChatSession, makeMessage, sendMessage, resumeGossipListenOnForeground, pauseGossipListenOnBackground, getGossipDeliveryAckContext } from "@/services/chat"
+import {
+	parseChatDeliveryReceiptV1,
+	markMessageDeliveredBySendId,
+	extractInboundSendId,
+	postMailboxDeliveryAck,
+	sendDeliveryReceiptToSender,
+} from "@/utils/chatDeliveryReceipt"
 import { ensureNativePushBoundForWallet, ensurePushDeviceTokenListener } from "@/utils/cashTreesPushBind"
 import { checkStorage, storeSystemData, runAutoBUnitFreeClaimIfEligible, handleNfcLinkAppDeepLinkScan, ensureProfilePrivateKeyArmorFromMnemonic, bootstrapProfileLocaleCurrencyIfUnset, mergeLocalLocaleLanguageOntoChainProfile } from "@/services/beamio"
 import { hasLocalPlaintextMnemonic } from "@/utils/consumerWalletGate"
@@ -90,6 +97,8 @@ type message = {
   signMessage: string
   text: string
   timestamp: number
+  /** Attached by gossip decrypt — keccak256(utf8(PGP armor)) for mailbox ACK */
+  _beamioPgpArmorHash?: string
 }
 
 // 你原来的 addNewMessage 保持不动（略）
@@ -1097,6 +1106,16 @@ function AppShell() {
 			}
 			const signAddr = sign
 
+			// Delivery receipt → mark sender bubble Delivered; never a chat bubble / unread.
+			const deliveryReceipt = parseChatDeliveryReceiptV1(displayText)
+			if (deliveryReceipt) {
+				const applied = markMessageDeliveredBySendId(chats, deliveryReceipt.sendId)
+				if (applied.updated) {
+					for (let i = 0; i < chats.length; i++) chats[i] = applied.chats[i]
+				}
+				continue
+			}
+
 			const walletEoa = profile.keyID?.trim() ?? ''
 			if (walletEoa) {
 				try {
@@ -1181,6 +1200,39 @@ function AppShell() {
 				const realIdx = chats.findIndex(n => n.address.toLowerCase() === nextChat.address.toLowerCase())
 				if (realIdx >= 0) chats[realIdx] = nextChat
 				else chats.unshift(nextChat)
+			}
+
+			// After successful ingest: mailbox ACK (encrypt to B) + sender Delivered receipt.
+			if (isNew) {
+				const armorHashRaw =
+					typeof (msg as { _beamioPgpArmorHash?: string })._beamioPgpArmorHash === 'string'
+						? String((msg as { _beamioPgpArmorHash?: string })._beamioPgpArmorHash)
+						: ''
+				const armorHash = armorHashRaw || undefined
+				const inboundSendId = extractInboundSendId(displayText)
+				const ackCtx = getGossipDeliveryAckContext()
+				const pk = profile.privateKeyArmor
+				if (armorHash && ackCtx && pk) {
+					void postMailboxDeliveryAck({
+						armorHash,
+						sendId: inboundSendId,
+						routerArmoredPublicKey: ackCtx.routerArmoredPublicKey,
+						privateKeyArmor: pk,
+						entryNodes: ackCtx.entryNodes,
+						mailboxDomains: ackCtx.mailboxDomains,
+					})
+				}
+				const senderPgp = nextChat.chatData?.publicArmored
+				if (inboundSendId && senderPgp && pk && allNodes?.length) {
+					void sendDeliveryReceiptToSender({
+						senderPublicArmored: senderPgp,
+						privateKeyArmor: pk,
+						entryNodes: allNodes,
+						sendId: inboundSendId,
+						armorHash,
+						sendMessage,
+					})
+				}
 			}
 			} catch (ex) {
 			// 建议至少打印一次，方便你排查脏数据

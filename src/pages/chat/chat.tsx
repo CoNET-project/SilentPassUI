@@ -383,8 +383,13 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 	const inputRef = useRef<HTMLTextAreaElement | null>(null)
 	/** CJK / non-Latin IME: Enter confirms candidates — must not send while composing. */
 	const imeComposingRef = useRef(false)
-	/** After send, ignore compositionend / onChange echoes that re-fill the cleared textarea. */
+	/** After send, ignore compositionend / onChange / beforeinput echoes that re-fill the cleared textarea. */
 	const suppressImeEchoRef = useRef(false)
+	const suppressImeEchoTimerRef = useRef<number | null>(null)
+	/** Remount textarea after send so WebKit/IME cannot keep composing into a cleared controlled value. */
+	const [inputSession, setInputSession] = useState(0)
+	/** Guard rapid double-tap / IME echo re-send of the same body. */
+	const lastSentGuardRef = useRef<{ text: string; at: number }>({ text: '', at: 0 })
 
 	const toAddress = chatData.address
 	const walletEoa = (profiles[0]?.keyID ?? '').trim()
@@ -1036,28 +1041,48 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 	const clearChatInput = () => {
 		suppressImeEchoRef.current = true
 		imeComposingRef.current = false
-		flushSync(() => setText(""))
+		if (suppressImeEchoTimerRef.current != null) {
+			window.clearTimeout(suppressImeEchoTimerRef.current)
+			suppressImeEchoTimerRef.current = null
+		}
 		const el = inputRef.current
-		if (el) el.value = ""
-		// IME often fires compositionend / input after clear and re-inserts glyphs — scrub again.
+		if (el) {
+			try {
+				el.blur()
+			} catch {
+				/* ignore */
+			}
+			el.value = ""
+		}
+		flushSync(() => setText(""))
+		// Destroy the composing IME session: controlled value="" alone cannot undo DOM writes from compositionend.
+		flushSync(() => setInputSession(s => s + 1))
 		queueMicrotask(() => {
 			flushSync(() => setText(""))
 			if (inputRef.current) inputRef.current.value = ""
 		})
-		window.setTimeout(() => {
+		// CJK IME on iOS/Android WebView often emits late input/compositionend (100–300ms).
+		suppressImeEchoTimerRef.current = window.setTimeout(() => {
 			flushSync(() => setText(""))
 			if (inputRef.current) inputRef.current.value = ""
 			suppressImeEchoRef.current = false
-		}, 80)
+			suppressImeEchoTimerRef.current = null
+		}, 400)
 	}
 
 	async function send() {
 		const temp = CoNET_Data
-		if (!canSend || !temp || !profiles?.length) return
+		if (!temp || !profiles?.length) return
+		if (!toAddress || !hasRoute) return
 
 		// Prefer DOM value so in-progress IME composition is included when user taps Send.
 		const t = (inputRef.current?.value ?? text).trim()
 		if (!t) return
+
+		const nowGuard = Date.now()
+		const prev = lastSentGuardRef.current
+		if (prev.text === t && nowGuard - prev.at < 900) return
+		lastSentGuardRef.current = { text: t, at: nowGuard }
 
 		clearChatInput()
 
@@ -1293,6 +1318,14 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 			return
 		}
 		if (hasRoute) setText(e.currentTarget.value)
+	}
+
+	function onBeforeInput(e: React.FormEvent<HTMLTextAreaElement>) {
+		if (!suppressImeEchoRef.current) return
+		e.preventDefault()
+		const t = e.currentTarget
+		t.value = ""
+		if (text !== "") flushSync(() => setText(""))
 	}
 
   // textarea 自适应高度（1~3行），超过3行时只显示最后3行
@@ -2012,16 +2045,19 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 									].join(" ")}
 								>
 									<textarea
+									key={inputSession}
 									ref={inputRef}
 									value={text}
 									onChange={e => {
 										if (!hasRoute) return
 										if (suppressImeEchoRef.current) {
 											e.target.value = ""
+											if (text !== "") flushSync(() => setText(""))
 											return
 										}
 										setText(e.target.value)
 									}}
+									onBeforeInput={hasRoute ? onBeforeInput : undefined}
 									onKeyDown={hasRoute ? onKeyDown : undefined}
 									onCompositionStart={hasRoute ? onCompositionStart : undefined}
 									onCompositionEnd={hasRoute ? onCompositionEnd : undefined}
@@ -2052,8 +2088,18 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 									<button
 									type="button"
 									tabIndex={-1}
-									onClick={canSend ? send : undefined}
+									onClick={() => {
+										if (canSend || (hasRoute && (inputRef.current?.value ?? text).trim())) {
+											void send()
+										}
+									}}
 									disabled={false}
+									onPointerDown={e => {
+										// Keep focus until send() snapshots DOM value + remounts; avoids IME commit-on-blur refill.
+										if (canSend || (hasRoute && (inputRef.current?.value ?? "").trim())) {
+											e.preventDefault()
+										}
+									}}
 									onMouseDown={() => {
 										if (!canSend) {
 										console.log("start voice message")

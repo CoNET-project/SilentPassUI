@@ -12,11 +12,21 @@ export type NativeFooterBadges = {
 	settings?: number
 }
 
+/** Local system notification while shell is backgrounded but PWA still running. */
+export type NativeBackgroundChatNotify = {
+	title?: string
+	body?: string
+	/** default true */
+	present?: boolean
+}
+
 /** 可由 PWA 任意业务模块推送；Native 按字段解析。 */
 export type NativeAppState = {
 	footerBadges?: NativeFooterBadges
 	/** 桌面图标角标；省略时 Native 可回退 footerBadges.chat */
 	appIconBadge?: number
+	/** When set, native posts a local alert + badge (Home / background). */
+	backgroundChatNotify?: NativeBackgroundChatNotify
 }
 
 function clampBadgeCount(raw: number): number {
@@ -42,9 +52,23 @@ export function normalizeNativeAppState(state: NativeAppState): NativeAppState {
 			: footerBadges?.chat != null
 				? footerBadges.chat
 				: undefined
+	const backgroundChatNotify = state.backgroundChatNotify
+		? {
+				...(state.backgroundChatNotify.title != null
+					? { title: String(state.backgroundChatNotify.title) }
+					: {}),
+				...(state.backgroundChatNotify.body != null
+					? { body: String(state.backgroundChatNotify.body) }
+					: {}),
+				...(state.backgroundChatNotify.present != null
+					? { present: Boolean(state.backgroundChatNotify.present) }
+					: {}),
+			}
+		: undefined
 	return {
 		...(footerBadges ? { footerBadges } : {}),
 		...(appIconBadge != null ? { appIconBadge } : {}),
+		...(backgroundChatNotify ? { backgroundChatNotify } : {}),
 	}
 }
 
@@ -94,5 +118,59 @@ export function syncNativeFooterChatBadge(chatCount: number): boolean {
 	return publishNativeAppState({
 		footerBadges: { chat: chatCount },
 		appIconBadge: chatCount,
+	})
+}
+
+function chatNotifyBody(badge: number): string {
+	if (badge <= 0) return 'New message'
+	if (badge === 1) return '1 new message'
+	return `${badge} new messages`
+}
+
+/**
+ * While the shell is behind Home but the WebView is still alive, mailbox SI keeps
+ * the listen socket and will **not** call notifyOfflineChat / APNs. Ask native to
+ * post a local system notification + icon badge via the bridge.
+ */
+export function notifyNativeBackgroundChat(chatCount: number): boolean {
+	const badge = clampBadgeCount(chatCount)
+	const body = chatNotifyBody(badge)
+	const host = getCashTreesNativeNfcHost()
+	const w = typeof window !== 'undefined' ? (window as Window & {
+		CashTreesIOS?: { notifyBackgroundChat?: (p: Record<string, unknown>) => void }
+		CashTreesAndroid?: { notifyBackgroundChat?: (json: string) => void }
+	}) : null
+
+	if (host === 'ios' && typeof w?.CashTreesIOS?.notifyBackgroundChat === 'function') {
+		try {
+			w.CashTreesIOS.notifyBackgroundChat({
+				badge,
+				title: 'Beamio',
+				body,
+			})
+			return true
+		} catch {
+			/* fall through */
+		}
+	}
+	if (host === 'android' && typeof w?.CashTreesAndroid?.notifyBackgroundChat === 'function') {
+		try {
+			w.CashTreesAndroid.notifyBackgroundChat(
+				JSON.stringify({ badge, title: 'Beamio', body }),
+			)
+			return true
+		} catch {
+			/* fall through */
+		}
+	}
+
+	return publishNativeAppState({
+		footerBadges: { chat: badge },
+		appIconBadge: badge,
+		backgroundChatNotify: {
+			title: 'Beamio',
+			body,
+			present: true,
+		},
 	})
 }

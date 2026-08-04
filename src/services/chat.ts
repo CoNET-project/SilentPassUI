@@ -771,8 +771,10 @@ export const prepareGossipListenResume = (reason = 'foreground_resume'): void =>
 }
 
 /**
- * Pause listen when the app is backgrounded (native WebView / tab hidden).
- * Forces SI offline path for subsequent inbound chat until foreground resume.
+ * Tear down listen so mailbox treats the user offline (saveLocal + APNs).
+ * Prefer calling on true unload / pagehide — not on every Home press.
+ * While Home leaves the WebView alive, keep listen and use native
+ * `notifyBackgroundChat` local push instead (see DaemonProvider + cashTreesAppLifecycle).
  */
 export const pauseGossipListenOnBackground = (
 	setGossip: (val: boolean) => void,

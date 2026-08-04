@@ -896,9 +896,11 @@ function AppShell() {
 		}
 		window.addEventListener(BEAMIO_WALLET_READY_EVENT, onWalletReady)
 
-		// iOS WKWebView: background freezes fetch SSE but SI may still treat the user as online
-		// and "successfully" write chat into a dead stream (never saveLocal). Abort listen on
-		// hide so mailbox goes offline; resume on show to flush the offline queue.
+		// Home / app-switcher: keep gossip listen alive so the still-running PWA can receive
+		// chat and push a **local** system notification via the native bridge
+		// (`notifyBackgroundChat`). Aborting listen on every visibilitychange would force the
+		// SI offline path — but APNs often does not update the icon while the process is still
+		// "current". Only tear down listen on pagehide / bfcache (true unload).
 		const onForegroundResume = () => {
 			void resumeGossipListenOnForeground(
 				setProfiles,
@@ -915,10 +917,6 @@ function AppShell() {
 			})
 		}
 		const onVisibility = () => {
-			if (document.visibilityState === 'hidden') {
-				pauseGossipListenOnBackground(setGossip)
-				return
-			}
 			if (document.visibilityState === 'visible') {
 				onForegroundResume()
 			}
@@ -930,6 +928,7 @@ function AppShell() {
 		document.addEventListener('visibilitychange', onVisibility)
 		window.addEventListener('pageshow', onPageShow)
 		const onPageHide = () => {
+			// True unload / bfcache — drop listen so mailbox can saveLocal + APNs for killed app.
 			pauseGossipListenOnBackground(setGossip)
 		}
 		window.addEventListener('pagehide', onPageHide)

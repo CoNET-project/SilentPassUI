@@ -7,6 +7,13 @@ declare global {
       getEmbeddedPwaPendingVersion?: () => string
       applyEmbeddedPwaUpdate?: () => void
       publishAppState?: (state: Record<string, unknown>) => void
+      /** Local alert + badge while shell is behind Home */
+      notifyBackgroundChat?: (payload: {
+        badge?: number
+        appIconBadge?: number
+        title?: string
+        body?: string
+      }) => void
       bindPushIdentity?: (payload: { eoa: string; pgpKeyId?: string }) => void
       debugLog?: (level: string, message: string) => void
     }
@@ -21,6 +28,8 @@ declare global {
       getEmbeddedPwaPendingVersion?: () => string
       applyEmbeddedPwaUpdate?: () => void
       publishAppState?: (json: string) => void
+      /** JSON string `{ badge, title?, body? }` — local alert while backgrounded */
+      notifyBackgroundChat?: (json: string) => void
       /** JSON string `{ eoa, pgpKeyId? }` — FCM bind */
       bindPushIdentity?: (json: string) => void
       debugLog?: (level: string, message: string) => void

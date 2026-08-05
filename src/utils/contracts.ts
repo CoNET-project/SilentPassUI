@@ -22,8 +22,13 @@ import {
   
   const contracts = {
 	GuardianNodesInfoV6: {
-	  address: "0x2DF3302d0c9aC19BE01Ee08ce3DDA841BdcF6F03",
+	  // CoNET L1 224422 canonical — sync with x402sdk / SilentPassUI CONET_GUARDIAN_NODES_INFO_V6
+	  address: "0xBC6b53065b5647261396d002bDBA0d3396E0722f",
 	  abi: GuardianNodesInfoV6Abi,
+	  network: "CONET DePIN",
+	},
+	EpochMiningInfo: {
+	  address: "0x648f1a17269627C3d465fEa40b3C229f7CacE5cA",
 	  network: "CONET DePIN",
 	},
 	ClaimableConetPoint: {

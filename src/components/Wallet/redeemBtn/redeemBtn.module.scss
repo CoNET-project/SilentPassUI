@@ -1,5 +1,6 @@
 .btnWrap{
-    width: 31%;
+    flex: 1;
+    min-width: 0;
     :global(.adm-button:not(.adm-button-default)) {
         background: #28292e;
         border-color: #28292e;

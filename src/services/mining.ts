@@ -9,28 +9,138 @@ import {
   readPrivateKey,
 } from "openpgp"
 import contracts from "../utils/contracts";
-import { conetDepinProvider } from "../utils/constants";
+import { conetDepinProvider, conetDepinProviderFallback } from "../utils/constants";
 import { initProfileTokens, postToEndpoint, findAsync } from "../utils/utils";
 import {  } from "../providers/DaemonProvider"
 import {checkLocalStorageNodes, storageAllNodes} from './wallets'
-import nodes from '../pages/Home/assets/allnodes.json'
+import nodesSeed from '../pages/Home/assets/allnodes.json'
 
 let allNodes: nodes_info[] = []
 let allRegions: string[] = []
 
 let getAllNodesProcess = false
 
+const GUARDIAN_PAGE = 400
+
+/** Build GuardianNodesInfoV6 reader on a given CoNET L1 provider */
+const guardianContract = (provider: ethers.Provider) =>
+	new ethers.Contract(
+		contracts.GuardianNodesInfoV6.address,
+		contracts.GuardianNodesInfoV6.abi,
+		provider
+	)
+
+/**
+ * Paginate GuardianNodesInfoV6.getAllNodes(start, end) on one provider.
+ * Returns null on RPC/contract failure (untrusted) — never treat as empty list.
+ */
+const fetchAllNodesFromProvider = async (
+	provider: ethers.Provider
+): Promise<any[] | null> => {
+	const GuardianNodesContract = guardianContract(provider)
+	let i = 0
+	let nodes: any[] = []
+	try {
+		for (;;) {
+			const _nodes: any[] = await GuardianNodesContract.getAllNodes(i, i + GUARDIAN_PAGE)
+			if (!Array.isArray(_nodes)) {
+				return null
+			}
+			nodes = [...nodes, ..._nodes]
+			if (_nodes.length < GUARDIAN_PAGE) {
+				break
+			}
+			i += GUARDIAN_PAGE
+		}
+		return nodes
+	} catch (ex) {
+		console.warn('[DePIN] getAllNodes RPC failed:', (ex as Error)?.message || ex)
+		return null
+	}
+}
+
+/**
+ * Chain-first read of all DePIN nodes.
+ * Tries rpc1 then publicrpc. null = untrusted failure (do not clear local cache).
+ */
+const _getAllNodes = async (): Promise<any[] | null> => {
+	const primary = await fetchAllNodesFromProvider(conetDepinProvider)
+	if (primary !== null) {
+		return primary
+	}
+	console.warn('[DePIN] rpc1 failed, retrying publicrpc…')
+	return fetchAllNodesFromProvider(conetDepinProviderFallback)
+}
+
+const mapRawNodesToNodesInfo = (raw: any[]): nodes_info[] => {
+	const _allNodes: nodes_info[] = []
+	const _countryArray: Map<string, boolean> = new Map()
+	for (let i = 0; i < raw.length; i++) {
+		const node = raw[i]
+		const id = parseInt(node[0].toString())
+		const pgpString: string = Buffer.from(node[1], 'base64').toString()
+		const domain: string = node[2]
+		const ipAddr: string = node[3]
+		const region: string = node[4]
+		let country_item = region.split('.')[1]
+		if (/zh/i.test(region.split('.')[0])) {
+			country_item = 'zh'
+		}
+		const itemNode: nodes_info = {
+			country: country_item,
+			ip_addr: ipAddr,
+			armoredPublicKey: pgpString,
+			domain: domain,
+			last_online: true,
+			nftNumber: id,
+			region
+		}
+		_countryArray.set(country_item, true)
+		_allNodes.push(itemNode)
+	}
+	allRegions = Array.from(_countryArray.keys())
+	return _allNodes
+}
+
+/**
+ * Refresh allNodes from chain. On trusted success: update memory + PouchDB.
+ * On untrusted failure: keep previous allNodes / seed (do not clear).
+ */
+const getAllNodes = async (
+	callback: (allnodes: nodes_info[]) => void
+) => {
+	if (getAllNodesProcess) {
+		return
+	}
+	getAllNodesProcess = true
+
+	try {
+		const _nodes = await _getAllNodes()
+		if (_nodes === null) {
+			// Untrusted: keep last trusted / seed; still invoke callback with current list
+			callback(allNodes)
+			return
+		}
+		const _allNodes = mapRawNodesToNodesInfo(_nodes)
+		allNodes = _allNodes
+		await storageAllNodes(allNodes)
+		callback(_allNodes)
+	} finally {
+		getAllNodesProcess = false
+	}
+}
 
 let currentScanNodeNumber = 0
 let maxNodes = 0
-
-
 
 const getRandomNodeFromRegion: (region: string) => nodes_info = (
   region: string
 ) => {
   const allNodeInRegion = allNodes.filter((n) => n.region.endsWith(region));
-  const rendomIndex = Math.floor(Math.random() * (allNodeInRegion.length - 1));
+  if (!allNodeInRegion.length) {
+	return null as unknown as nodes_info
+  }
+  const rendomIndex = Math.floor(Math.random() * allNodeInRegion.length);
   const node = allNodeInRegion[rendomIndex]
   if (!node?.domain) {
 	return getRandomNodeFromRegion(region)
@@ -44,9 +154,7 @@ const deleteNodeFromList = (node: nodes_info) => {
 	if (index > -1 ) {
 		allNodes.splice(index, 1)
 	}
-	
 }
-
 
 const isAbortError = (e: unknown) =>
   e instanceof DOMException && e.name === 'AbortError';
@@ -163,82 +271,6 @@ export const exitNodes = (exitRegion: string, entryNodes: nodes_info[]) => {
 	return exitNodes
 }
 
-const _getAllNodes = (): Promise<any[]> => new Promise ( async executor => {
-	const GuardianNodesContract = new ethers.Contract(
-		contracts.GuardianNodesInfoV6.address,
-		contracts.GuardianNodesInfoV6.abi,
-		conetDepinProvider
-	)
-	let i = 0
-	let nodes: any [] = []
-	let loop = true
-	const length = 400
-	do {
-		try {
-			const _nodes: any[] = await GuardianNodesContract.getAllNodes(i, i + 400)
-			nodes = [...nodes, ..._nodes]
-			if (_nodes.length < 400) {
-				loop = false
-			}
-			i += length
-		} catch (ex) {
-			loop = false
-		}
-
-	} while (loop)
-
-	return executor(nodes)
-	
-})
-
-const getAllNodes = async (
-  	callback: (allnodes: nodes_info[]) => void
-) => {
-
-  if (getAllNodesProcess) {
-    return
-  }
-  getAllNodesProcess = true
-
-  const _nodes = await _getAllNodes()
-
-
-  const _allNodes:nodes_info[] = []
-  const _countryArray: Map<string, boolean> = new Map()
-  for (let i = 0; i < _nodes.length; i ++) {
-	const node = _nodes[i]
-	const id = parseInt(node[0].toString())
-	const pgpString: string = Buffer.from( node[1], 'base64').toString()
-	const domain: string = node[2]
-	const ipAddr: string = node[3]
-	const region: string = node[4]
-	let country_item = region.split('.')[1]
-	if (/zh/i.test(region.split('.')[0])) {
-		country_item = 'zh'
-	}
-	const itemNode: nodes_info = {
-		country: country_item,
-		ip_addr: ipAddr,
-		armoredPublicKey: pgpString,
-		domain: domain,
-		last_online: true,
-		nftNumber: id,
-		region
-	}
-
-	_countryArray.set(country_item, true)
-	_allNodes.push(itemNode)
-  }
-
-
-
-  	allRegions = Array.from(_countryArray.keys())
-	allNodes = _allNodes
-	await storageAllNodes(allNodes)
-	getAllNodesProcess = false
-	callback(_allNodes)
-}
-
 const getAllRegions = (nodes: nodes_info[]) => {
 	const country: Map<string, boolean> = new Map();
 	nodes.forEach(n => {
@@ -344,8 +376,6 @@ const afterALlNodes = async (setClosestRegion: (entryNodes: nodes_info[]) => voi
     // 直接抽 20 个
     const _entryNodes = await getEntryNodes(allNodes, 20, 20, true);
     setClosestRegion(_entryNodes)
-    // 若需要刷新全量 nodes（按你原本的占位）
-    await Promise.resolve(getAllNodes(() => {}));
 	afterALlNodesProcess = false
     return;
   }
@@ -368,24 +398,51 @@ const afterALlNodes = async (setClosestRegion: (entryNodes: nodes_info[]) => voi
   // 5) 在优先序列下并发挑 20 个
   const _entryNodes = await getEntryNodes(prioritized, 20, 20, /*shuffle*/ false)
   setClosestRegion(_entryNodes)
-
-  // 6) 可选：再做一次全量节点的异步刷新（保持你原来的占位写法）
-  Promise.resolve(getAllNodes(() => {}))
   afterALlNodesProcess = false
 }
 
+/**
+ * Boot path for DePIN nodes — local-first, chain as background refresh:
+ * 1) Hydrate from PouchDB, else bundled allnodes.json seed (never wait on RPC for first paint)
+ * 2) Run entry/exit selection on local list immediately
+ * 3) Background: GuardianNodesInfoV6 on rpc1 → publicrpc; trusted success only overwrites memory + PouchDB
+ * Untrusted RPC failure must not clear or empty the local list.
+ */
 const getAllNodesV2 = async (
 	setClosestRegion: (entryNodes: nodes_info[]) => void,
-	callback: (_allnodes: nodes_info[]) => void) => {
-	allNodes = nodes
-
-	if (allNodes?.length) {
-		return afterALlNodes(setClosestRegion, callback)
+	callback: (_allnodes: nodes_info[]) => void
+) => {
+	const cached = await checkLocalStorageNodes()
+	if (Array.isArray(cached) && cached.length > 0) {
+		allNodes = cached as nodes_info[]
+	} else if (Array.isArray(nodesSeed) && nodesSeed.length > 0) {
+		allNodes = nodesSeed as nodes_info[]
 	}
 
-	getAllNodes(() => {
-		afterALlNodes(setClosestRegion, callback)
-	})
+	const localBoot = afterALlNodes(setClosestRegion, callback)
+
+	void (async () => {
+		const raw = await _getAllNodes()
+		if (raw === null || raw.length === 0) {
+			// Untrusted failure or empty: keep local; do not wipe
+			return
+		}
+		allNodes = mapRawNodesToNodesInfo(raw)
+		await storageAllNodes(allNodes)
+		try {
+			callback(allNodes)
+		} catch {}
+		try {
+			const refreshed = await getEntryNodes(allNodes, 20, 20, true)
+			if (refreshed.length > 0) {
+				setClosestRegion(refreshed)
+			}
+		} catch (ex) {
+			console.warn('[DePIN] background entryNodes refresh failed:', (ex as Error)?.message || ex)
+		}
+	})()
+
+	return localBoot
 }
 
 

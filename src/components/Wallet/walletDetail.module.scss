@@ -1,22 +1,8 @@
 .wallet{
     padding: 26px 16px 20px;
     width: 100%;
-	.briefWrap {
-		display: flex;
-		justify-content: space-between;
-        .flowVal{
-            display: flex;
-            align-items: center;
-            flex:none;
-            padding:0 3vw;
-            margin:0 0 0 3vw;
-            white-space: nowrap;
-            font-size: 15px;
-            border-radius:14px;
-            background: linear-gradient(90deg, rgba(109,100,170,0.18), rgba(109,121,160,0.12));
-            border: 0.5px solid rgba(255,255,255,0.04);
-            box-shadow: 0 6px 18px rgba(0,0,0,0.45);
-        }
+	.dashboardWrap {
+		margin: 0 0 4px;
 	}
     .title{
         margin-bottom: 16px;
@@ -63,17 +49,8 @@
         display: flex;
         justify-content: space-between;
         align-items: center;
+        gap: 12px;
         margin: 20px 0 0;
-        .stakeBtn{
-            width: 31%;
-            :global(.adm-button:not(.adm-button-default)) {
-                background: #28292e;
-                border-color: #28292e;
-                font-weight: 600;
-                padding: 10px 2px;
-                font-size: 14px;
-            }
-        }
     }
 }
 .successModal{

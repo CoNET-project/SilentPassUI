@@ -312,27 +312,6 @@ const storageAllNodes = async (allNodes: any[]) => {
   await storageHashData('nodes', Buffer.from(JSON.stringify(allNodes)).toString('base64'))
 }
 
-const getAllPassports = async(profile: profile) => {
-
-  const key = profile.keyID
-  const provider = conetDepinProvider;
-  const contractAddress = contracts.Duplicate.address;
-  const contractAbi = contracts.Duplicate.abi;
-
-  const passportContract = new ethers.Contract(
-    contractAddress,
-    contractAbi,
-    provider
-  )
-  try {
-    const result = await passportContract.getUserInfo(key)
-    return result
-  } catch (ex) {
-    console.log(ex)
-  }
-
-}
-
 const getCurrentPassportInfoInChain = async () => {
   if (!CoNET_Data||!CoNET_Data?.profiles) {
     return;
@@ -573,64 +552,29 @@ const getVpnTimeUsed = async () => {
   setCoNET_Data(temp);
 }
 
+/** Refresh active passport only. Duplicate.getUserInfo passport list is deprecated — do not call. */
 const getPassportsInfoForProfile = async (profile: profile): Promise<void> => {
-//   const tmpCancunPassports = await getPassportsInfo(profile, "cancun");
-
-  const tmpMainnetPassports = await getAllPassports(profile)
-  const mainnetPassports: passportInfo[] = [];
-
-   const nowTime = new Date().getTime()
-  for (let i = 0; i < tmpMainnetPassports[0].length; i++) {
-    const expires = new Date (parseInt(tmpMainnetPassports[1][i].toString()+'000')).getTime()
-	if (expires > 0 && expires <= nowTime) {
-		continue
-	}
-
-    mainnetPassports.push({
-      walletAddress: profile.keyID,
-      nftID: parseInt(tmpMainnetPassports[0][i]),
-      expires: parseInt(tmpMainnetPassports[1][i].toString()),
-      expiresDays: parseInt(tmpMainnetPassports[2][i].toString()),
-      premium: tmpMainnetPassports[3][i],
-      network: "CONET DePIN",
-    });
-  }
-
-  let allPassports: passportInfo[] = JSON.parse(JSON.stringify(mainnetPassports))
-
-//   if (profile?.activePassport && profile.activePassport?.expiresDays !== "7") {
-// 	    allPassports = allPassports?.filter(
-// 			(passport) => passport.expiresDays !== 7
-// 		)
-//   }
-
   const _activePassport = await getCurrentPassportInfoInChain();
-  
-	const info = _activePassport ? {
-		nftID: _activePassport?.nftIDs?.toString(),
-		expires: _activePassport?.expires?.toString(),
-		expiresDays: _activePassport?.expiresDays?.toString(),
-		premium: _activePassport?.premium,
-	} : null
 
-  allPassports = allPassports.filter((passport) => passport.nftID !== 0)
+  const info = _activePassport
+    ? {
+        nftID: _activePassport?.nftIDs?.toString(),
+        expires: _activePassport?.expires?.toString(),
+        expiresDays: _activePassport?.expiresDays?.toString(),
+        premium: _activePassport?.premium,
+      }
+    : null;
 
-  allPassports?.sort((a, b) => {
-    return a.nftID - b.nftID;
-  });
-
-  profile.silentPassPassports = allPassports;
-
-  profile.activePassport = info||profile.activePassport
+  // Legacy silentPassPassports list came from Duplicate.getUserInfo — cleared.
+  profile.silentPassPassports = [];
+  profile.activePassport = info || profile.activePassport;
 
   const temp = CoNET_Data;
-
   if (!temp) {
     return;
   }
 
-  temp.profiles[0] = profile
-
+  temp.profiles[0] = profile;
   setCoNET_Data(temp);
 }
 
@@ -1524,7 +1468,6 @@ export {
   spRewardRequest,
   checkLocalStorageNodes,
   storageAllNodes,
-  getAllPassports,
   getProfileAssets,
   cleanCurrentWaitingTimeout
 }

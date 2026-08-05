@@ -4,7 +4,7 @@ import "./default.scss";
 import styles from './layout.module.scss';
 import {Route,Routes,useNavigate,useLocation,MemoryRouter as Router} from 'react-router-dom';
 import { useDaemonContext } from "./providers/DaemonProvider";
-import { createOrGetWallet, getCurrentPassportInfoInChain, getAllPassports } from "./services/wallets";
+import { createOrGetWallet, getCurrentPassportInfoInChain } from "./services/wallets";
 import { getAllNodesV2 } from "./services/mining";
 import { checkCurrentRate } from "./services/passportPurchase";
 import { CoNET_Data, setCoNET_Data, setGlobalAllNodes } from "./utils/globals";

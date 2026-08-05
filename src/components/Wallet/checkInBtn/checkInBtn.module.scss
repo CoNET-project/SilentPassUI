@@ -1,5 +1,6 @@
 .btnWrap{
-    width: 31%;
+    flex: 1;
+    min-width: 0;
     .warning{
         color: #ff0000;
         margin: 0 5px 0 0;

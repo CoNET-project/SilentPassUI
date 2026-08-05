@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import WalletDetail from '../../components/Wallet/WalletDetail';
 import { CoNET_Data, setCoNET_Data, setGlobalAllNodes } from "../../utils/globals";
 import { useDaemonContext } from "../../providers/DaemonProvider";
-import { createOrGetWallet, getCurrentPassportInfoInChain, getAllPassports } from "../../services/wallets";
+import { createOrGetWallet, getCurrentPassportInfoInChain } from "../../services/wallets";
 import { listenProfileVer } from "../../services/listeners";
 
 const Wallet = ({}) => {

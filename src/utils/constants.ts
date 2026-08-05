@@ -6,7 +6,9 @@ const apiv4_endpoint = `https://apiv4.conet.network/api/`;
 const payment_endpoint = `https://hooks.conet.network/api/`;
 const XMLHttpRequestTimeout = 90 * 1000;
 const conetRpc = "https://cancun-rpc.conet.network";
-const mainChain_rpc = "https://mainnet-rpc.conet.network";
+/** CoNET L1 (chainId 224422) — rpc1 主用；publicrpc 备用。勿用已弃用的 rpc.conet.network / mainnet-rpc.conet.network */
+const mainChain_rpc = "https://rpc1.conet.network";
+const mainChain_rpc_fallback = "https://publicrpc.conet.network";
 const paypal_endpoint = `https://centerapi.fx168api.com/`;
 const _ethRpc = [
   "http://rpc.ankr.com/eth",
@@ -24,7 +26,13 @@ const SilentPassOfficial = 'A8Vk2LsNqKktabs4xPY4YUmYxBoDqcTdxY5em4EQm8v1'
 
 const conetProvider = new ethers.JsonRpcProvider(conetRpc);
 let ethProvider = new ethers.JsonRpcProvider(ethRpc());
-const conetDepinProvider = new ethers.JsonRpcProvider(mainChain_rpc);
+const conetDepinProvider = new ethers.JsonRpcProvider(mainChain_rpc, undefined, {
+	staticNetwork: true,
+});
+/** Fallback provider for DePIN reads when rpc1 fails */
+const conetDepinProviderFallback = new ethers.JsonRpcProvider(mainChain_rpc_fallback, undefined, {
+	staticNetwork: true,
+});
 const Solana_USDT = 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB'
 const Solana_SOL = 'So11111111111111111111111111111111111111112'
 const Solana_SP = 'Bzr4aEQEXrk7k8mbZffrQ9VzX6V3PAH4LvWKXkKppump'
@@ -61,11 +69,14 @@ export {
   apiv3_endpoint,
   apiv4_endpoint,
   conetRpc,
+  mainChain_rpc,
+  mainChain_rpc_fallback,
   rewardWalletAddress,
   conetProvider,
   ethProvider,
   SilentPassOfficial,
   conetDepinProvider,
+  conetDepinProviderFallback,
   changeRPC,
   stripe_pay_monthly,
   stripe_pay_Annual,

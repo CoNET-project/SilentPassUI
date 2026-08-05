@@ -105,8 +105,10 @@ const sp_team = "2UbwygKpWguH6miUbDro8SNYKdA66qXGdqqvD6diuw3q"
   
 	return "";
   };
-  const epoch_mining_info_cancun_addr = '0xbC713Fef0c7Bb178151cE45eFF1FD17d020a9ecD'.toLocaleLowerCase()
-  const epoch_mining_infoSC = new ethers.Contract(epoch_mining_info_cancun_addr, epoch_info_ABI, conetDepinProvider)
+  // CoNET L1 EpochMiningInfo (same chain as GuardianNodesInfoV6); old 0xbC713… has no code on rpc1
+  const epoch_mining_info_addr = (contracts.EpochMiningInfo?.address
+	|| '0x648f1a17269627C3d465fEa40b3C229f7CacE5cA').toLowerCase()
+  const epoch_mining_infoSC = new ethers.Contract(epoch_mining_info_addr, epoch_info_ABI, conetDepinProvider)
 
 export const checkCurrentRate = async (setMiningData: (response: nodeResponse) => void) => {
 	let _epoch: BigInt

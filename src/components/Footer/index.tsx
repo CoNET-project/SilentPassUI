@@ -6,8 +6,6 @@ import { ReactComponent as WalletIconGrey } from "./assets/wallet-icon-grey.svg"
 import { ReactComponent as WalletBlueIcon } from "./assets/wallet-icon-blue.svg";
 import { ReactComponent as SettingsIconBlue } from "./assets/settings-icon-blue.svg";
 import { ReactComponent as SettingsIconGrey } from "./assets/settings-icon-grey.svg";
-import { ReactComponent as SwapBlueIcon } from "./assets/swap-icon-blue.svg";
-import { ReactComponent as SwapIconGrey } from "./assets/swap-icon-grey.svg";
 import { cleanCurrentWaitingTimeout } from './../../services/wallets'
 import { TabBar } from 'antd-mobile';
 import { useTranslation } from 'react-i18next';
@@ -98,11 +96,6 @@ const Footer = ({}) => {
             key: '/wallet',
             title: t('footer-nav-2'),
             icon: (pathname=='/wallet'?<WalletBlueIcon />:<WalletIconGrey />),
-        },
-        {
-            key: '/swap',
-            title: t('footer-nav-3'),
-            icon: (pathname=='/swap'?<SwapBlueIcon />:<SwapIconGrey />),
         },
         {
             key: '/settings',

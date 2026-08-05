@@ -1179,7 +1179,8 @@ export const sendMessage = async (
 	pgpPublic: string,
 	text: string,
 	privateKeyArmor: string,
-	entryNodes: nodeInfo[]
+	entryNodes: nodeInfo[],
+	opts?: { beamioNoPush?: boolean },
 ): Promise<boolean> => {
 	if (!entryNodes?.length) {
 		console.error('[sendMessage] no entry nodes')
@@ -1221,7 +1222,8 @@ export const sendMessage = async (
 		return false
 	}
 
-	const payload = { data: postData }
+	const payload: { data: string; beamioNoPush?: boolean } = { data: postData }
+	if (opts?.beamioNoPush) payload.beamioNoPush = true
 	const postOpts: RequestInit = {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },

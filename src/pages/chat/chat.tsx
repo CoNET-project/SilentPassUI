@@ -10,7 +10,7 @@ import {
   Info,
   Phone,
   Video,
-  Check,
+  CheckCheck,
   Plus,
   Mic,
   AlertTriangle,
@@ -315,7 +315,7 @@ function BubbleCornerStatus({
   if (status === "delivered") {
     return (
       <span className={shell} aria-label="Delivered">
-        <Check className="h-3 w-3 text-[#1652f0]" strokeWidth={3} />
+        <CheckCheck className="h-3 w-3 text-[#1652f0]" strokeWidth={2.8} />
       </span>
     )
   }
@@ -566,22 +566,26 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 			if (m?.sendId) localById.set(m.sendId, m)
 		}
 
-		// ✅ 1) 先以 remote 为基础，逐条 merge：如果 local 同 id 且 status 更“新”，用 local 覆盖
+		// ✅ 1) 先以 remote 为基础，逐条 merge：取双方更高 status；local tmp_ 字段补齐
 		const merged: ChatMessage[] = remote.map(rm => {
-			const lm = localById.get(rm.id ?? rm.sendId ?? '')
+			const lm =
+				localById.get(rm.sendId ?? '') ||
+				localById.get(rm.id ?? '') ||
+				null
 			if (!lm) return rm
 
-			// status 更“新” => 用 local
-			if (statusRank(lm.status) > statusRank(rm.status)) {
-			return { ...rm, ...lm }
+			const remoteRank = statusRank(rm.status)
+			const localRank = statusRank(lm.status)
+			if (localRank > remoteRank) {
+				return { ...rm, ...lm, status: lm.status }
 			}
-
-			// status 一样但 local 有 paymentCard / text 等更完整，也可以选择补齐
-			// 这里保守：remote 为主，只用 local 补 status（避免把落盘 text 覆盖错）
-			if (statusRank(lm.status) === statusRank(rm.status) && lm.status && lm.status !== rm.status) {
-			return { ...rm, status: lm.status }
+			if (remoteRank > localRank) {
+				return { ...rm, status: rm.status }
 			}
-
+			// equal rank: remote text/payload wins; keep local status if set
+			if (lm.status && lm.status !== rm.status) {
+				return { ...rm, status: lm.status }
+			}
 			return rm
 		})
 

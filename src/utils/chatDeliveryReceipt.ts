@@ -201,6 +201,7 @@ export type SendDeliveryReceiptArgs = {
 		text: string,
 		privateKeyArmor: string,
 		entryNodes: nodeInfo[],
+		opts?: { beamioNoPush?: boolean },
 	) => Promise<boolean>
 }
 
@@ -235,6 +236,7 @@ export async function sendDeliveryReceiptToSender(args: SendDeliveryReceiptArgs)
 			JSON.stringify(payload),
 			privateKeyArmor,
 			entryNodes,
+			{ beamioNoPush: true },
 		)
 		if (ok) receiptedSendIds.add(sendId)
 		return ok
@@ -262,6 +264,8 @@ export type DualDeliveryReceiptArgs = {
 /**
  * After UI ingests a chat message: **must** ACK mailbox + notify sender in parallel.
  * Mailbox ACK cancels SI 2-heartbeat APNs; sender receipt drives Delivered UI.
+ * Callers that ingest a `beamio_chat_delivery_receipt_v1` must only mailbox-ACK
+ * (never call this with a nested receipt sendId as the original message).
  */
 export async function emitDualChatDeliveryReceipts(args: DualDeliveryReceiptArgs): Promise<void> {
 	const {

@@ -15,12 +15,13 @@ import Chat from "./pages/chat"
 import ChatDetail from "./pages/chatDetail"
 import BeamioInstallOnboarding from "@/components/launchPage"
 import Browser from "@/pages/Browser"
-import { initChat, checkSign, createInboundChatSession, makeMessage, sendMessage, resumeGossipListenOnForeground, pauseGossipListenOnBackground, getGossipDeliveryAckContext } from "@/services/chat"
+import { initChat, checkSign, createInboundChatSession, makeMessage, sendMessage, resumeGossipListenOnForeground, pauseGossipListenOnBackground, getGossipDeliveryAckContext, getKeysFromCoNETPGPSC } from "@/services/chat"
 import {
 	parseChatDeliveryReceiptV1,
 	markMessageDeliveredBySendId,
 	extractInboundSendId,
 	emitDualChatDeliveryReceipts,
+	postMailboxDeliveryAck,
 } from "@/utils/chatDeliveryReceipt"
 import { ensureNativePushBoundForWallet, ensurePushDeviceTokenListener } from "@/utils/cashTreesPushBind"
 import { checkStorage, storeSystemData, runAutoBUnitFreeClaimIfEligible, handleNfcLinkAppDeepLinkScan, ensureProfilePrivateKeyArmorFromMnemonic, bootstrapProfileLocaleCurrencyIfUnset, mergeLocalLocaleLanguageOntoChainProfile } from "@/services/beamio"
@@ -1106,11 +1107,32 @@ function AppShell() {
 			const signAddr = sign
 
 			// Delivery receipt → mark sender bubble Delivered; never a chat bubble / unread.
+			// Still mailbox-ACK this armor (cancels offline APNs); do NOT emit another sender receipt.
 			const deliveryReceipt = parseChatDeliveryReceiptV1(displayText)
 			if (deliveryReceipt) {
 				const applied = markMessageDeliveredBySendId(chats, deliveryReceipt.sendId)
 				if (applied.updated) {
 					for (let i = 0; i < chats.length; i++) chats[i] = applied.chats[i]
+				}
+				const armorHashRaw =
+					typeof (msg as { _beamioPgpArmorHash?: string })._beamioPgpArmorHash === 'string'
+						? String((msg as { _beamioPgpArmorHash?: string })._beamioPgpArmorHash)
+						: ''
+				const ackCtx = getGossipDeliveryAckContext()
+				const pk = profile.privateKeyArmor
+				if (armorHashRaw && ackCtx?.routerArmoredPublicKey && pk) {
+					void postMailboxDeliveryAck({
+						armorHash: armorHashRaw,
+						sendId: deliveryReceipt.sendId,
+						routerArmoredPublicKey: ackCtx.routerArmoredPublicKey,
+						privateKeyArmor: pk,
+						entryNodes: ackCtx.entryNodes.length
+							? ackCtx.entryNodes
+							: allNodes?.length
+								? allNodes
+								: [],
+						mailboxDomains: ackCtx.mailboxDomains,
+					})
 				}
 				continue
 			}
@@ -1211,23 +1233,43 @@ function AppShell() {
 				const inboundSendId = extractInboundSendId(displayText)
 				const ackCtx = getGossipDeliveryAckContext()
 				const pk = profile.privateKeyArmor
-				const senderPgp = nextChat.chatData?.publicArmored || undefined
 				if (pk) {
-					void emitDualChatDeliveryReceipts({
-						armorHash,
-						sendId: inboundSendId,
-						privateKeyArmor: pk,
-						entryNodes: allNodes?.length ? allNodes : ackCtx?.entryNodes || [],
-						mailboxAck: ackCtx
-							? {
-									routerArmoredPublicKey: ackCtx.routerArmoredPublicKey,
-									entryNodes: ackCtx.entryNodes,
-									mailboxDomains: ackCtx.mailboxDomains,
+					void (async () => {
+						let senderPgp = nextChat.chatData?.publicArmored || ''
+						if (!senderPgp.trim()) {
+							try {
+								const keys = await getKeysFromCoNETPGPSC(signAddr, pk)
+								senderPgp = keys?.publicArmored || ''
+								if (senderPgp && nextChat.chatData) {
+									nextChat.chatData = {
+										...nextChat.chatData,
+										publicArmored: senderPgp,
+									}
+									const realIdx = chats.findIndex(
+										n => n.address.toLowerCase() === nextChat.address.toLowerCase(),
+									)
+									if (realIdx >= 0) chats[realIdx] = nextChat
 								}
-							: null,
-						senderPublicArmored: senderPgp,
-						sendMessage,
-					})
+							} catch {
+								/* sender receipt may skip if no PGP */
+							}
+						}
+						await emitDualChatDeliveryReceipts({
+							armorHash,
+							sendId: inboundSendId,
+							privateKeyArmor: pk,
+							entryNodes: allNodes?.length ? allNodes : ackCtx?.entryNodes || [],
+							mailboxAck: ackCtx
+								? {
+										routerArmoredPublicKey: ackCtx.routerArmoredPublicKey,
+										entryNodes: ackCtx.entryNodes,
+										mailboxDomains: ackCtx.mailboxDomains,
+									}
+								: null,
+							senderPublicArmored: senderPgp || null,
+							sendMessage,
+						})
+					})()
 				}
 			}
 			} catch (ex) {
@@ -1264,7 +1306,7 @@ function AppShell() {
 	}, [isInitialLoading, setShowFooter])
 
 
-	// ① 先统计（不要清 charts）
+	// ① 先统计（不要清 charts）— 排除 delivery receipt（不进 native icon badge）
 	useEffect(() => {
 		if (!Array.isArray(charts) || charts.length === 0) return
 
@@ -1275,6 +1317,17 @@ function AppShell() {
 			const key = getMsgKey(raw)
 			if (!key) continue
 			if (seen.has(key)) continue
+			// Protocol delivery receipt must not bump Footer / native icon badge.
+			try {
+				const obj = typeof raw === 'string' ? JSON.parse(raw) : raw
+				const text = obj?.text
+				if (text != null && parseChatDeliveryReceiptV1(text)) {
+					seen.add(key)
+					continue
+				}
+			} catch {
+				/* count as normal if unwrap fails */
+			}
 			seen.add(key)
 			delta += 1
 		}

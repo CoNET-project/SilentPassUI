@@ -879,7 +879,9 @@ export const connectToGossipNode = async (
       // ... (加密/准备逻辑保持不变) ...
       const wallet = new ethers.Wallet(privateKeyArmor);
       const key = Buffer.from(crypto.getRandomValues(new Uint8Array(16))).toString('base64');
-      const command = { command: 'mining', walletAddress: wallet.address, algorithm: 'aes-256-cbc', Securitykey: key };
+      // listenKind:'chat' tags this as a PWA presence/mailbox listen (vs LayerMinus mining gossip),
+      // so SI never applies chat-only session/zombie eviction to mining pipes.
+      const command = { command: 'mining', listenKind: 'chat', walletAddress: wallet.address, algorithm: 'aes-256-cbc', Securitykey: key };
       const message = JSON.stringify(command);
       const signMessage = await wallet.signMessage(message);
       

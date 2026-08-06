@@ -70,6 +70,15 @@ export function parseDiscoverMerchantFromParams(
 	}
 }
 
+/** True when raw URL / query is a Discover merchant share (incl. `/app-download?target=…`). */
+export function isDiscoverMerchantDeepLink(raw: string): boolean {
+	try {
+		return !!parseDiscoverMerchantFromParams(collectDeepLinkSearchParams(raw))
+	} catch {
+		return false
+	}
+}
+
 const DISCOVER_MERCHANT_DEEP_LINK_KEYS = [
 	'beamiocard',
 	'Beamiocard',

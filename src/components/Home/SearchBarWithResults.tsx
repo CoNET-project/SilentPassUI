@@ -12,6 +12,12 @@ import {ethers} from 'ethers'
 import { getDeprecatedBeamioConetLinkMemo } from '@/utils/deprecatedBeamioConet'
 import NavigateLeftButton from '@/components/navigate'
 import { collectDeepLinkSearchParams, isCouponOpenClaimDeepLink, isRedeemDeepLink } from '@/utils/beamioDeepLinkParams'
+import {
+	isDiscoverMerchantDeepLink,
+	parseDiscoverMerchantFromParams,
+	stripDiscoverMerchantDeepLinkParams,
+} from '@/utils/discoverMerchantShare'
+import { stashDiscoverShareReferrer } from '@/utils/discoverShareReferrerStash'
 import ScanButton, { type ScanButtonHandle } from '@/components/scanBtn/ScanButton'
 import { isCashTreesNativeWebView, scanQrViaCashTreesNative } from '@/utils/cashTreesIOSBridge'
 import { tu } from '@/locale/beamioLocale'
@@ -152,6 +158,26 @@ const SearchInputWithDropdown =
 				return
 			}
 
+			// Discover merchant share (incl. /app-download?target=…&beamiocard=&discover=open&ref=)
+			// → /discover detail + stash ref= so opener EOA binds as downline of referee EOA.
+			const parsedDiscover = parseDiscoverMerchantFromParams(searchParams)
+			if (parsedDiscover) {
+				stashDiscoverShareReferrer(parsedDiscover.cardAddress, parsedDiscover.referrerEoa)
+				setScanIntent('')
+				setShowFooter(true)
+				setLoading(false)
+				setShowDropdown(false)
+				closeWindow('/discover')
+				navigate('/discover', {
+					state: {
+						openDiscoverMerchantCard: parsedDiscover.cardAddress,
+						discoverShareReferrerEoa: parsedDiscover.referrerEoa,
+					},
+				})
+				stripDiscoverMerchantDeepLinkParams()
+				return
+			}
+
 			if (_beamio) {
 				// 输入自己时：直接进入我的钱包
 				if (beamio?.accountName && String(_beamio).trim().toLowerCase() === String(beamio.accountName).toLowerCase()) {
@@ -220,9 +246,23 @@ const SearchInputWithDropdown =
 			} catch {
 				// 智能对应：无协议时，尝试以 beamio.app 为 base 解析
 				if (
-					/nftRedeemcode=|redeemcode=|beamiocard=|couponid=|couponId=/i.test(qq)
+					/nftRedeemcode=|redeemcode=|beamiocard=|couponid=|couponId=|app-download/i.test(qq)
 				) {
-					url = new URL(qq.startsWith('/') || qq.startsWith('?') ? qq : qq.includes('?') ? qq : '/app/?' + qq, 'https://beamio.app')
+					let candidate = qq
+					if (!/^https?:\/\//i.test(candidate)) {
+						if (candidate.startsWith('/')) {
+							candidate = `https://beamio.app${candidate}`
+						} else if (/^beamio\.app/i.test(candidate)) {
+							candidate = `https://${candidate}`
+						} else if (/^app-download\?/i.test(candidate)) {
+							candidate = `https://beamio.app/${candidate}`
+						} else if (candidate.startsWith('?')) {
+							candidate = `https://beamio.app/app/${candidate}`
+						} else {
+							candidate = `https://beamio.app/app/?${candidate}`
+						}
+					}
+					url = new URL(candidate)
 				} else if ((/Amount=/i.test(qq) && /Vouchers|beamio\.app/i.test(qq)) && !/^https?:\/\//i.test(qq)) {
 					// Vouchers 支付 URL 无协议时补全（如 beamio.app/Vouchers?Amount=... 或 /Vouchers?Amount=...）
 					const withProto = qq.startsWith('/') ? 'https://beamio.app' + qq : 'https://' + qq
@@ -236,7 +276,8 @@ const SearchInputWithDropdown =
 				url.protocol === 'https:' ||
 				url.protocol === 'http:' ||
 				isRedeemDeepLink(url.href) ||
-				isCouponOpenClaimDeepLink(url.href)
+				isCouponOpenClaimDeepLink(url.href) ||
+				isDiscoverMerchantDeepLink(url.href)
 			) {
 				await requestUrl(url)
 				setLoading(false)

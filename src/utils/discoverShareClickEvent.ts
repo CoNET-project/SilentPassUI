@@ -8,6 +8,11 @@ import {
 } from '@/utils/beamioUserCardChain'
 import { getCardActiveIssuedCouponSeries, readCouponIdFromMetadata } from '@/services/BeamioCard'
 import { readCouponDisabledFromMetadata } from '@/utils/couponListedMetadata'
+import {
+	clearDiscoverShareReferrer,
+	listDiscoverShareReferrers,
+	readDiscoverShareReferrer,
+} from '@/utils/discoverShareReferrerStash'
 
 const UC_USER_CLICK = 3
 const UC_TARGET_MERCHANT_CARD = 1
@@ -342,7 +347,23 @@ async function signBindShareRefereeEip712(
 	return { deadline, nonce, userSignature }
 }
 
-/** Bind opener EOA as downline of share-link refereeEOA (chain AA registry). Failures must not block share-click. */
+/** Server errors that mean the relation can never be created — stop retrying and drop the stashed `ref=`. */
+function isTerminalBindShareRefereeError(error?: string | null): boolean {
+	const msg = (error ?? '').toLowerCase()
+	if (!msg) return false
+	return (
+		msg.includes('already bound to another referee') ||
+		msg.includes('refereereferreralreadyset') ||
+		msg.includes('signer mismatch') ||
+		msg.includes('cannot be self')
+	)
+}
+
+/**
+ * Bind opener EOA as downline of share-link refereeEOA (chain AA registry).
+ * Failures must not block share-click; the stashed `ref=` is kept so the next open retries
+ * (first open often fails because the opener's Beamio AA does not exist yet).
+ */
 async function bindShareRefereeIfNeeded(params: {
 	cardAddress: string
 	wallet: ethers.Wallet
@@ -351,7 +372,10 @@ async function bindShareRefereeIfNeeded(params: {
 	const card = ethers.getAddress(params.cardAddress)
 	const downlineEOA = ethers.getAddress(params.wallet.address)
 	const refereeEOA = ethers.getAddress(params.refereeEOA)
-	if (downlineEOA === refereeEOA) return
+	if (downlineEOA === refereeEOA) {
+		clearDiscoverShareReferrer(card)
+		return
+	}
 	if (wasShareRefereeBoundThisSession(card, downlineEOA, refereeEOA)) return
 	try {
 		const { deadline, nonce, userSignature } = await signBindShareRefereeEip712(
@@ -371,12 +395,36 @@ async function bindShareRefereeIfNeeded(params: {
 				userSignature,
 			}),
 		})
-		const json = (await res.json().catch(() => null)) as { success?: boolean } | null
+		const json = (await res.json().catch(() => null)) as { success?: boolean; error?: string } | null
 		if (res.ok && json?.success) {
 			markShareRefereeBoundThisSession(card, downlineEOA, refereeEOA)
+			clearDiscoverShareReferrer(card)
+			return
 		}
+		if (isTerminalBindShareRefereeError(json?.error)) clearDiscoverShareReferrer(card)
 	} catch {
-		/* non-blocking */
+		/* non-blocking — keep stash for the next attempt */
+	}
+}
+
+/**
+ * Retry every stashed share-link `ref=` once the wallet (and its Beamio AA) is ready.
+ * The very first open usually cannot bind — the opener has no AA yet — and the user may never
+ * reopen that merchant detail, so the app retries on wallet-ready instead of only on Discover.
+ */
+export async function bindStashedShareRefereesIfNeeded(privateKeyArmor: string): Promise<void> {
+	const armor = privateKeyArmor?.trim() ?? ''
+	if (!armor) return
+	const pending = listDiscoverShareReferrers()
+	if (pending.length === 0) return
+	let wallet: ethers.Wallet
+	try {
+		wallet = new ethers.Wallet(armor)
+	} catch {
+		return
+	}
+	for (const { cardAddress, referrerEoa } of pending) {
+		await bindShareRefereeIfNeeded({ cardAddress, wallet, refereeEOA: referrerEoa })
 	}
 }
 
@@ -431,7 +479,10 @@ export async function recordDiscoverShareClickIfNeeded(params: {
 	}
 
 	const actorEOA = ethers.getAddress(wallet.address)
-	const refWallet = resolveShareClickRefWallet(actorEOA, params.referrerEoa)
+	const refWallet = resolveShareClickRefWallet(
+		actorEOA,
+		params.referrerEoa ?? readDiscoverShareReferrer(card),
+	)
 
 	if (refWallet) {
 		void bindShareRefereeIfNeeded({ cardAddress: card, wallet, refereeEOA: refWallet })

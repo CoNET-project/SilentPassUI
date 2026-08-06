@@ -167,6 +167,7 @@ import { tu } from '@/locale/beamioLocale'
 import { mapServerError } from '@/locale/mapServerError'
 import { parseDiscoverMerchantFromParams, buildDiscoverMerchantShareUrl, shareDiscoverMerchantUrl, stripDiscoverMerchantDeepLinkParams } from '@/utils/discoverMerchantShare'
 import { recordDiscoverShareClickIfNeeded } from '@/utils/discoverShareClickEvent'
+import { readDiscoverShareReferrer, stashDiscoverShareReferrer } from '@/utils/discoverShareReferrerStash'
 import { collectDeepLinkSearchParams } from '@/utils/beamioDeepLinkParams'
 import {
 	buildDiscoverActivePromotionsPanelModel,
@@ -4003,9 +4004,9 @@ function DiscoverMerchantDetailFullScreen({
 			null
 		const state = location.state as { discoverShareReferrerEoa?: string | null } | null
 		const fromState = state?.discoverShareReferrerEoa ?? null
-		const refRaw = fromParams ?? fromState
+		const refRaw = fromParams ?? fromState ?? readDiscoverShareReferrer(item.cardAddress)
 		return refRaw && ethers.isAddress(refRaw) ? ethers.getAddress(refRaw) : null
-	}, [location.state, location.search])
+	}, [location.state, location.search, item.cardAddress])
 
 	const resolveUserEoa = useCallback((): string | null => {
 		const privateKeyArmor = resolveSigningPrivateKeyArmor(profile)
@@ -4212,10 +4213,11 @@ function DiscoverMerchantDetailFullScreen({
 			null
 		const state = location.state as { discoverShareReferrerEoa?: string | null } | null
 		const fromState = state?.discoverShareReferrerEoa ?? null
-		const raw = fromParams ?? fromState
+		/** Deep-link params are stripped and router state reset before detail mounts — stash is the survivor. */
+		const raw = fromParams ?? fromState ?? readDiscoverShareReferrer(item.cardAddress)
 		if (!raw || !ethers.isAddress(raw)) return null
 		return ethers.getAddress(raw)
-	}, [location.state])
+	}, [location.state, item.cardAddress])
 
 	const shareClickRecordedRef = useRef(false)
 	useEffect(() => {
@@ -5559,6 +5561,14 @@ export default function Market() {
 		() => resolveDiscoverMerchantDeepLinkTarget(location),
 		[location],
 	)
+	/** Persist `ref=` before the deep-link strip + `state: {}` reset below can drop it. */
+	useLayoutEffect(() => {
+		if (!discoverDeepLinkTarget) return
+		const state = location.state as { discoverShareReferrerEoa?: string | null } | null
+		const fromUrl =
+			parseDiscoverMerchantFromParams(collectDeepLinkSearchParams(window.location.href))?.referrerEoa ?? null
+		stashDiscoverShareReferrer(discoverDeepLinkTarget, fromUrl ?? state?.discoverShareReferrerEoa ?? null)
+	}, [discoverDeepLinkTarget, location.state])
 	const discoverCategoryTabsOrdered = useMemo<DiscoverCategoryOption[]>(() => {
 		if (discoverCategory === "all") return DISCOVER_CATEGORY_OPTIONS
 		const selected = DISCOVER_CATEGORY_OPTIONS.find((o) => o.id === discoverCategory)

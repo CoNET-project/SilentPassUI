@@ -29,7 +29,7 @@ import { hasLocalPlaintextMnemonic } from "@/utils/consumerWalletGate"
 import { ensureEphemeralWalletForCouponClaim } from "@/utils/ephemeralCouponClaimWallet"
 import { CoNET_Data, setCoNET_Data } from "@/utils/globals"
 import { resolveSigningPrivateKeyArmor } from "@/utils/resolveSigningPrivateKeyArmor"
-import { recordDiscoverShareClickIfNeeded } from '@/utils/discoverShareClickEvent'
+import { bindStashedShareRefereesIfNeeded, recordDiscoverShareClickIfNeeded } from '@/utils/discoverShareClickEvent'
 import { baseEndpoint, USDCContract_BASE } from "@/utils/constants"
 import usdc_abi from "@/services/ABI/usdc_abi.json"
 import Vouchers from "@/pages/Vouchers/index"
@@ -82,6 +82,7 @@ import {
 	isCouponOpenClaimDeepLink,
 } from "@/utils/beamioDeepLinkParams"
 import { parseDiscoverMerchantFromParams, stripDiscoverMerchantDeepLinkParams } from "@/utils/discoverMerchantShare"
+import { readDiscoverShareReferrer, stashDiscoverShareReferrer } from "@/utils/discoverShareReferrerStash"
 import { applyPendingConsumerDeepLinkIfNeeded } from "@/utils/pendingConsumerDeepLink"
 import { publishNativePwaLog } from "@/utils/cashTreesNativePwaLog"
 import { BEAMIO_WALLET_READY_EVENT } from "@/utils/beamioWalletReadyEvent"
@@ -203,6 +204,19 @@ function AppShell() {
     }
     void ensureConetAaForProfileAndPersist(profile, setProfiles)
   }, [isInitialLoading, profiles?.[0]?.keyID, profiles?.[0]?.aaAccount, setProfiles])
+
+  /** Share-link `ref=` binds need the opener's AA, which usually appears after the first open. */
+  useEffect(() => {
+    if (isInitialLoading) return
+    const profile = profiles?.[0]
+    const eoa = profile?.keyID?.trim()
+    const aa = profile?.aaAccount?.trim()
+    if (!eoa || !ethers.isAddress(eoa)) return
+    if (!aa || !ethers.isAddress(aa) || aa.toLowerCase() === eoa.toLowerCase()) return
+    const privateKeyArmor = resolveSigningPrivateKeyArmor(profile)
+    if (!privateKeyArmor) return
+    void bindStashedShareRefereesIfNeeded(privateKeyArmor)
+  }, [isInitialLoading, profiles?.[0]?.keyID, profiles?.[0]?.aaAccount])
   // 直接打开 redeem URL（如 https://beamio.app/app/?beamiocard=...&redeemcode=...）时先打开确认页
   useEffect(() => {
     if (isInitialLoading || initialRedeemUrlProcessedRef.current) return
@@ -225,6 +239,7 @@ function AppShell() {
     if (!parsed) return
 
     initialOpenClaimUrlProcessedRef.current = true
+    stashDiscoverShareReferrer(parsed.cardAddress, parsed.referrerEoa)
     setRedeemClaimIntent(null)
     setCouponClaimIntent(parsed)
     setShowFooter(false)
@@ -242,6 +257,7 @@ function AppShell() {
     if (!parsed) return
 
     initialDiscoverMerchantUrlProcessedRef.current = true
+    stashDiscoverShareReferrer(parsed.cardAddress, parsed.referrerEoa)
     setShowFooter(true)
     navigate('/discover', {
       state: {
@@ -262,7 +278,7 @@ function AppShell() {
     void recordDiscoverShareClickIfNeeded({
       cardAddress: couponClaimIntent.cardAddress,
       privateKeyArmor,
-      referrerEoa: couponClaimIntent.referrerEoa ?? null,
+      referrerEoa: couponClaimIntent.referrerEoa ?? readDiscoverShareReferrer(couponClaimIntent.cardAddress),
       couponId: couponClaimIntent.couponId,
     })
   }, [isInitialLoading, couponClaimIntent, profiles?.[0]])
@@ -1439,6 +1455,7 @@ function AppShell() {
     // Discover merchant URL → /discover detail panel
     const parsedDiscover = parseDiscoverMerchantFromParams(searchParams)
     if (parsedDiscover) {
+      stashDiscoverShareReferrer(parsedDiscover.cardAddress, parsedDiscover.referrerEoa)
       setShowFooter(true)
       navigate('/discover', {
         state: {
@@ -1458,6 +1475,7 @@ function AppShell() {
         navigate("/History")
         return
       }
+      stashDiscoverShareReferrer(parsedCoupon.cardAddress, parsedCoupon.referrerEoa)
       setCouponClaimIntent(parsedCoupon)
       setRedeemClaimIntent(null)
       setShowFooter(false)
@@ -1543,6 +1561,7 @@ function AppShell() {
         setScanData('')
         setScanIntent('')
         if (parsed) {
+          stashDiscoverShareReferrer(parsed.cardAddress, parsed.referrerEoa)
           setRedeemClaimIntent(null)
           setCouponClaimIntent(parsed)
           setShowFooter(false)

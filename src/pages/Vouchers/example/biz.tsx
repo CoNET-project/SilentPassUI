@@ -9954,7 +9954,6 @@ function queueExplorerRefreshForIssuedProgramNfts(
   }
 }
 const CARD_ISSUANCE_POINT_RATIO_DEFAULT_E6 = '1000000';
-const CARD_ISSUANCE_POINT_RATIO_MAX = 1000;
 /** Short Name (program points ticker): max length, derived from Card Unit Name unless edited. */
 const CARD_ISSUANCE_SHORT_NAME_MAX_LEN = 4;
 /** Card Configurator · Visual Identity: default Card Unit Name (program name on-chain / metadata). */
@@ -10006,16 +10005,6 @@ type CardIssuancePointSystemMetadata = {
   rewardTokenId: number;
 };
 
-function parsePointRatioHumanToE6(raw: string): bigint | null {
-  const t = raw.replace(/,/g, '').trim();
-  if (!/^\d*(?:\.\d*)?$/.test(t) || t === '' || t === '.') return null;
-  const [wholeRaw, fracRaw = ''] = t.split('.');
-  const whole = wholeRaw === '' ? '0' : wholeRaw;
-  if (!/^\d+$/.test(whole)) return null;
-  const frac = (fracRaw.slice(0, 6) + '000000').slice(0, 6);
-  return BigInt(whole) * 1_000_000n + BigInt(frac);
-}
-
 function formatPointRatioE6ToHuman(raw: string | number | bigint | undefined | null): string {
   try {
     const v =
@@ -10045,12 +10034,13 @@ type CardIssuanceConsumptionPointEditorBaseline = {
   ratioInput: string;
 };
 
+/** `ratioInput` is a whole percent 0–100 (same scale as referrer Percent of charge; 100% = 1.0×). */
 function buildCardIssuancePointSystemMetadataFromDraft(
   enabled: boolean,
   ratioInput: string,
   fallbackRatioE6?: string | null,
 ): CardIssuancePointSystemMetadata {
-  const parsed = parsePointRatioHumanToE6(ratioInput);
+  const parsed = parseAmountPercentHumanToE6(ratioInput);
   const ratioE6 = enabled
     ? (parsed?.toString() ?? fallbackRatioE6 ?? CARD_ISSUANCE_POINT_RATIO_DEFAULT_E6)
     : '0';
@@ -10063,18 +10053,15 @@ function buildCardIssuancePointSystemMetadataFromDraft(
 
 function validateCardIssuanceConsumptionPointRatioInput(enabled: boolean, ratioInput: string): string {
   if (!enabled) return '';
-  const e6 = parsePointRatioHumanToE6(ratioInput);
-  if (e6 == null || e6 <= 0n) return 'Enter a valid multiplier greater than zero.';
-  const human = Number(formatPointRatioE6ToHuman(e6));
-  if (!Number.isFinite(human) || human > CARD_ISSUANCE_POINT_RATIO_MAX) {
-    return `Multiplier must be at most ${CARD_ISSUANCE_POINT_RATIO_MAX.toLocaleString('en-US')}.`;
-  }
+  const e6 = parseAmountPercentHumanToE6(ratioInput);
+  if (e6 == null) return 'Choose a whole percent from 0% to 100%.';
+  if (e6 === 0n) return 'Consumption points are on — set a multiplier greater than 0%, or turn it off.';
   return '';
 }
 
 function formatConsumptionPointSystemDisplay(enabled: boolean, ratioInput: string): string {
   if (!enabled) return 'Consumption points disabled.';
-  const e6 = parsePointRatioHumanToE6(ratioInput);
+  const e6 = parseAmountPercentHumanToE6(ratioInput);
   if (e6 == null || e6 <= 0n) return 'Set consumption point multiplier.';
   return `${formatPointRatioE6Display(e6.toString())}× on qualifying charges`;
 }
@@ -12419,7 +12406,7 @@ const cardIssuanceEditingCouponRow = useMemo(
 );
 const cardIssuanceCouponEditingIssued = Boolean(cardIssuanceEditingCouponRow?.issued);
  const [cardIssuancePointSystemEnabled, setCardIssuancePointSystemEnabled] = useState(true);
- const [cardIssuancePointRatioInput, setCardIssuancePointRatioInput] = useState('1');
+ const [cardIssuancePointRatioInput, setCardIssuancePointRatioInput] = useState('100');
  const [cardIssuanceMerchantTextSaving, setCardIssuanceMerchantTextSaving] = useState(false);
  const [cardIssuanceMinTopup, setCardIssuanceMinTopup] = useState(String(CARD_ISSUANCE_MIN_TOPUP_DEFAULT));
  const [cardIssuanceMaxTopup, setCardIssuanceMaxTopup] = useState(String(CARD_ISSUANCE_MAX_TOPUP_DEFAULT));
@@ -13989,7 +13976,9 @@ useEffect(() => {
     enabled = false;
   }
   setCardIssuancePointSystemEnabled(enabled);
-  setCardIssuancePointRatioInput(formatPointRatioE6ToHuman(ratioE6 === '0' ? CARD_ISSUANCE_POINT_RATIO_DEFAULT_E6 : ratioE6));
+  setCardIssuancePointRatioInput(
+    formatAmountPercentE6Display(ratioE6 === '0' ? CARD_ISSUANCE_POINT_RATIO_DEFAULT_E6 : ratioE6),
+  );
 }, [
   cardIssuanceExistingCard?.cardAddress,
   cardIssuanceExistingCard?.meta?.pointSystem,
@@ -14982,12 +14971,12 @@ const cardIssuanceConsumptionPointEditorDirty = useMemo(() => {
 
 const cardIssuanceConsumptionPointDisplay = useMemo(() => {
   if (!cardIssuancePointSystemEnabled) return tu('programs_consumption_points_none');
-  const e6 = parsePointRatioHumanToE6(cardIssuancePointRatioInput);
+  const e6 = parseAmountPercentHumanToE6(cardIssuancePointRatioInput);
   if (e6 == null || e6 <= 0n) return tu('programs_consumption_points_none');
   return tu('programs_consumption_points_active', {
     ratio: formatPointRatioE6Display(e6.toString()),
   });
-}, [cardIssuancePointSystemEnabled, cardIssuancePointRatioInput]);
+}, [cardIssuancePointSystemEnabled, cardIssuancePointRatioInput, tu]);
 
 const cardIssuanceTopupPromotionEditorPreviewPay = useMemo(() => {
   const raw = cardIssuanceTopupPromotion.minimumTopupAmount.replace(/,/g, '').trim();
@@ -39599,23 +39588,84 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
 
                      <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-[max(1.5rem,env(safe-area-inset-bottom,0px))]">
                        <div className="space-y-6">
-                         <label className="flex cursor-pointer items-start justify-between gap-4 rounded-2xl border border-[#dfe3e6] bg-[#f8f9fa] px-4 py-4">
-                           <div className="min-w-0">
-                             <p className="font-manrope text-sm font-bold text-[#2c2f31]">
-                               {tu('programs_consumption_points_enable_label')}
-                             </p>
-                             <p className="mt-1 text-xs leading-relaxed text-[#595c5e]">
-                               {tu('programs_consumption_points_enable_hint')}
-                             </p>
-                           </div>
-                           <input
-                             type="checkbox"
-                             checked={cardIssuancePointSystemEnabled}
-                             onChange={(e) => setCardIssuancePointSystemEnabled(e.target.checked)}
-                             className="mt-1 h-5 w-5 shrink-0 rounded border-[#c5c9cc] text-[#0051d1] focus:ring-[#0051d1]"
-                             aria-label={tu('programs_consumption_points_enable_label')}
-                           />
-                         </label>
+                         <div className="rounded-2xl border border-[#dfe3e6] bg-[#f8f9fa] px-4 py-4">
+                           <label className="flex cursor-pointer items-start justify-between gap-4">
+                             <div className="min-w-0">
+                               <p className="font-manrope text-sm font-bold text-[#2c2f31]">
+                                 {tu('programs_consumption_points_enable_label')}
+                               </p>
+                               <p className="mt-1 text-xs leading-relaxed text-[#595c5e]">
+                                 {tu('programs_consumption_points_enable_hint')}
+                               </p>
+                             </div>
+                             <input
+                               type="checkbox"
+                               checked={cardIssuancePointSystemEnabled}
+                               onChange={(e) => {
+                                 const next = e.target.checked;
+                                 setCardIssuancePointSystemEnabled(next);
+                                 if (
+                                   next &&
+                                   (cardIssuancePointRatioInput === '0' || !cardIssuancePointRatioInput.trim())
+                                 ) {
+                                   setCardIssuancePointRatioInput('100');
+                                 }
+                               }}
+                               className="mt-1 h-5 w-5 shrink-0 rounded border-[#c5c9cc] text-[#0051d1] focus:ring-[#0051d1]"
+                               aria-label={tu('programs_consumption_points_enable_label')}
+                             />
+                           </label>
+
+                           {cardIssuancePointSystemEnabled ? (
+                             <div className="mt-4 space-y-3 border-t border-[#dfe3e6] pt-4">
+                               <div className="flex items-center justify-between gap-3">
+                                 <div className="min-w-0">
+                                   <label
+                                     htmlFor="card-consumption-point-multiplier"
+                                     className="font-manrope text-sm font-bold text-[#2c2f31]"
+                                   >
+                                     {tu('programs_consumption_points_multiplier_label')}
+                                   </label>
+                                   <p
+                                     id="card-consumption-point-multiplier-hint"
+                                     className="mt-1 text-xs leading-relaxed text-[#595c5e]"
+                                   >
+                                     {tu('programs_consumption_points_multiplier_hint')}
+                                   </p>
+                                 </div>
+                                 <div className="flex min-h-[2.25rem] shrink-0 items-center justify-center gap-1 rounded-lg border border-[#dce2f7] bg-[#e9edff] px-2.5 py-1.5">
+                                   <span className="text-center font-manrope text-[15px] font-bold tabular-nums text-[#0051d1]">
+                                     {amountPercentInputToSlider(cardIssuancePointRatioInput)}
+                                   </span>
+                                   <span className="shrink-0 text-[12px] font-bold text-[#0051d1]">%</span>
+                                 </div>
+                               </div>
+                               <input
+                                 id="card-consumption-point-multiplier"
+                                 type="range"
+                                 min={0}
+                                 max={100}
+                                 step={1}
+                                 value={amountPercentInputToSlider(cardIssuancePointRatioInput)}
+                                 disabled={cardIssuanceConsumptionPointEditorPublishing}
+                                 onChange={(e) =>
+                                   setCardIssuancePointRatioInput(String(parseInt(e.target.value, 10)))
+                                 }
+                                 aria-valuemin={0}
+                                 aria-valuemax={100}
+                                 aria-valuenow={amountPercentInputToSlider(cardIssuancePointRatioInput)}
+                                 aria-label={tu('programs_consumption_points_multiplier_label')}
+                                 aria-describedby="card-consumption-point-multiplier-hint"
+                                 className={`h-2 w-full cursor-pointer appearance-none rounded-lg bg-[#dce2f7] accent-[#0051d1] disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
+                               />
+                               <div className="flex justify-between px-0.5 text-[11px] font-medium text-[#0051d1]/70">
+                                 <span>0%</span>
+                                 <span>50%</span>
+                                 <span>100%</span>
+                               </div>
+                             </div>
+                           ) : null}
+                         </div>
 
                          <div className="rounded-2xl border border-[#eadcf7] bg-[#f5ecff]/60 px-4 py-4">
                            <div className="flex items-center justify-between gap-4">
@@ -39657,109 +39707,43 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                            </div>
 
                            {programReferrerChargeEnabled ? (
-                             <div className="mt-4 space-y-4">
-                               <div>
+                             <div className="mt-4 space-y-3">
+                               <div className="flex items-center justify-between gap-3">
                                  <label
-                                   htmlFor="card-consumption-point-multiplier"
-                                   className="mb-2 block font-manrope text-sm font-bold text-[#2c2f31]"
+                                   htmlFor="card-consumption-referrer-reward-percent"
+                                   className="min-w-0 font-manrope text-sm font-bold text-[#2c2f31]"
                                  >
-                                   {tu('programs_consumption_points_multiplier_label')}
+                                   {tu('programs_overview_referrer_charge_percent')}
                                  </label>
-                                 <input
-                                   id="card-consumption-point-multiplier"
-                                   type="number"
-                                   inputMode="decimal"
-                                   autoComplete="off"
-                                   enterKeyHint="done"
-                                   min={0}
-                                   step="0.01"
-                                   value={cardIssuancePointRatioInput}
-                                   onChange={(e) => {
-                                     setCardIssuancePointRatioInput(e.target.value);
-                                     if (!cardIssuancePointSystemEnabled) {
-                                       setCardIssuancePointSystemEnabled(true);
-                                     }
-                                   }}
-                                   onKeyDown={preventNumericInputStepKeys}
-                                   onWheel={preventNumericInputWheelStep}
-                                   className={`w-full rounded-2xl border border-[#dfe3e6] bg-white px-4 py-3.5 font-manrope text-base font-semibold text-[#2c2f31] outline-none transition-colors focus:border-[#0051d1] focus:ring-2 focus:ring-[#0051d1]/15 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield] ${bizFocusRingClass}`}
-                                   aria-describedby="card-consumption-point-multiplier-hint"
-                                 />
-                                 <p
-                                   id="card-consumption-point-multiplier-hint"
-                                   className="mt-2 text-xs leading-relaxed text-[#595c5e]"
-                                 >
-                                   {tu('programs_consumption_points_multiplier_hint')}
-                                 </p>
-                               </div>
-                               <div className="space-y-3">
-                                 <div className="flex items-center justify-between gap-3">
-                                   <label
-                                     htmlFor="card-consumption-referrer-reward-percent"
-                                     className="min-w-0 font-manrope text-sm font-bold text-[#2c2f31]"
-                                   >
-                                     {tu('programs_overview_referrer_charge_percent')}
-                                   </label>
-                                   <div className="flex min-h-[2.25rem] shrink-0 items-center justify-center gap-1 rounded-lg border border-[#eadcf7] bg-[#f5ecff] px-2.5 py-1.5">
-                                     <span className="text-center font-manrope text-[15px] font-bold tabular-nums text-[#8d3a8b]">
-                                       {amountPercentInputToSlider(programReferrerChargePercentInput)}
-                                     </span>
-                                     <span className="shrink-0 text-[12px] font-bold text-[#8d3a8b]">%</span>
-                                   </div>
-                                 </div>
-                                 <input
-                                   id="card-consumption-referrer-reward-percent"
-                                   type="range"
-                                   min={0}
-                                   max={100}
-                                   step={1}
-                                   value={amountPercentInputToSlider(programReferrerChargePercentInput)}
-                                   disabled={cardIssuanceConsumptionPointEditorPublishing}
-                                   onChange={(e) =>
-                                     setProgramReferrerChargePercentInput(String(parseInt(e.target.value, 10)))
-                                   }
-                                   aria-valuemin={0}
-                                   aria-valuemax={100}
-                                   aria-valuenow={amountPercentInputToSlider(programReferrerChargePercentInput)}
-                                   aria-label={tu('programs_overview_referrer_charge_percent')}
-                                   className={`h-2 w-full cursor-pointer appearance-none rounded-lg bg-[#eadcf7] accent-[#8d3a8b] disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
-                                 />
-                                 <div className="flex justify-between px-0.5 text-[11px] font-medium text-[#8d3a8b]/70">
-                                   <span>0%</span>
-                                   <span>50%</span>
-                                   <span>100%</span>
+                                 <div className="flex min-h-[2.25rem] shrink-0 items-center justify-center gap-1 rounded-lg border border-[#eadcf7] bg-[#f5ecff] px-2.5 py-1.5">
+                                   <span className="text-center font-manrope text-[15px] font-bold tabular-nums text-[#8d3a8b]">
+                                     {amountPercentInputToSlider(programReferrerChargePercentInput)}
+                                   </span>
+                                   <span className="shrink-0 text-[12px] font-bold text-[#8d3a8b]">%</span>
                                  </div>
                                </div>
-                             </div>
-                           ) : cardIssuancePointSystemEnabled ? (
-                             <div className="mt-4">
-                               <label
-                                 htmlFor="card-consumption-point-multiplier"
-                                 className="mb-2 block font-manrope text-sm font-bold text-[#2c2f31]"
-                               >
-                                 {tu('programs_consumption_points_multiplier_label')}
-                               </label>
                                <input
-                                 id="card-consumption-point-multiplier"
-                                 type="number"
-                                 inputMode="decimal"
-                                 autoComplete="off"
-                                 enterKeyHint="done"
+                                 id="card-consumption-referrer-reward-percent"
+                                 type="range"
                                  min={0}
-                                 step="0.01"
-                                 value={cardIssuancePointRatioInput}
-                                 onChange={(e) => setCardIssuancePointRatioInput(e.target.value)}
-                                 onKeyDown={preventNumericInputStepKeys}
-                                 onWheel={preventNumericInputWheelStep}
-                                 className={`w-full rounded-2xl border border-[#dfe3e6] bg-white px-4 py-3.5 font-manrope text-base font-semibold text-[#2c2f31] outline-none transition-colors focus:border-[#0051d1] focus:ring-2 focus:ring-[#0051d1]/15 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield] ${bizFocusRingClass}`}
-                                 aria-describedby="card-consumption-point-multiplier-hint"
+                                 max={100}
+                                 step={1}
+                                 value={amountPercentInputToSlider(programReferrerChargePercentInput)}
+                                 disabled={cardIssuanceConsumptionPointEditorPublishing}
+                                 onChange={(e) =>
+                                   setProgramReferrerChargePercentInput(String(parseInt(e.target.value, 10)))
+                                 }
+                                 aria-valuemin={0}
+                                 aria-valuemax={100}
+                                 aria-valuenow={amountPercentInputToSlider(programReferrerChargePercentInput)}
+                                 aria-label={tu('programs_overview_referrer_charge_percent')}
+                                 className={`h-2 w-full cursor-pointer appearance-none rounded-lg bg-[#eadcf7] accent-[#8d3a8b] disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
                                />
-                               <p
-                                 id="card-consumption-point-multiplier-hint"
-                                 className="mt-2 text-xs leading-relaxed text-[#595c5e]"
-                               >
-                                 {tu('programs_consumption_points_multiplier_hint')}
-                               </p>
+                               <div className="flex justify-between px-0.5 text-[11px] font-medium text-[#8d3a8b]/70">
+                                 <span>0%</span>
+                                 <span>50%</span>
+                                 <span>100%</span>
+                               </div>
                              </div>
                            ) : null}
                          </div>

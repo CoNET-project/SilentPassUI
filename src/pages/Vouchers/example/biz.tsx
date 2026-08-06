@@ -10130,20 +10130,29 @@ async function syncChargeRewardRatioOnChain(opts: {
   }
 }
 
-/** Human percent (e.g. "10" / "2.5") → E6 ratio (100% = 1_000_000). */
+/** Whole percent 0–100 (1% steps) → E6 ratio (100% = 1_000_000). */
 function parseAmountPercentHumanToE6(raw: string): bigint | null {
   const t = raw.trim();
   if (!t) return null;
   const n = Number(t);
   if (!Number.isFinite(n) || n < 0 || n > 100) return null;
-  return BigInt(Math.round(n * 10_000));
+  const whole = Math.round(n);
+  if (Math.abs(n - whole) > 1e-9) return null;
+  return BigInt(whole * 10_000);
 }
 
+/** Display / slider value: nearest whole percent in 0–100. */
 function formatAmountPercentE6Display(ratioE6: string | null | undefined): string {
   if (ratioE6 == null || !/^\d+$/.test(ratioE6)) return '0';
-  const v = Number(BigInt(ratioE6)) / 10_000;
+  const v = Math.round(Number(BigInt(ratioE6)) / 10_000);
   if (!Number.isFinite(v)) return '0';
-  return Number.isInteger(v) ? String(v) : v.toFixed(2).replace(/\.?0+$/, '');
+  return String(Math.min(100, Math.max(0, v)));
+}
+
+function amountPercentInputToSlider(raw: string): number {
+  const n = Math.round(Number(String(raw ?? '').trim()));
+  if (!Number.isFinite(n)) return 0;
+  return Math.min(100, Math.max(0, n));
 }
 
 async function syncReferrerAmountRatioOnChain(opts: {
@@ -39320,33 +39329,42 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                            </button>
                          </div>
                          {programReferrerTopupEnabled ? (
-                           <div className="mt-4 space-y-2">
-                             <label
-                               className="ml-2 block text-xs font-bold uppercase tracking-widest text-[#595c5e]"
-                               htmlFor="card-topup-referrer-reward-percent"
-                             >
-                               {tu('programs_overview_referrer_topup_percent')}
-                             </label>
-                             <div className="relative">
-                               <input
-                                 id="card-topup-referrer-reward-percent"
-                                 type="number"
-                                 inputMode="decimal"
-                                 autoComplete="off"
-                                 enterKeyHint="done"
-                                 min={0}
-                                 max={100}
-                                 step="any"
-                                 value={programReferrerTopupPercentInput}
-                                 disabled={cardIssuanceTopupPromotionEditorPublishing}
-                                 onKeyDown={preventNumericInputStepKeys}
-                                 onWheel={preventNumericInputWheelStep}
-                                 onChange={(e) => setProgramReferrerTopupPercentInput(e.target.value)}
-                                 className={`w-full rounded-full border-none bg-white py-4 pl-6 pr-12 text-xl font-bold text-[#2c2f31] focus:outline-none focus:ring-2 focus:ring-[#8d3a8b]/25 ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
-                               />
-                               <span className="pointer-events-none absolute inset-y-0 right-6 flex items-center font-manrope text-lg font-extrabold text-[#8d3a8b]">
-                                 %
-                               </span>
+                           <div className="mt-4 space-y-3">
+                             <div className="flex items-center justify-between gap-3">
+                               <label
+                                 className="min-w-0 text-xs font-bold uppercase tracking-widest text-[#595c5e]"
+                                 htmlFor="card-topup-referrer-reward-percent"
+                               >
+                                 {tu('programs_overview_referrer_topup_percent')}
+                               </label>
+                               <div className="flex min-h-[2.25rem] shrink-0 items-center justify-center gap-1 rounded-full border border-[#eadcf7] bg-white px-3 py-1.5">
+                                 <span className="text-center font-manrope text-base font-extrabold tabular-nums text-[#8d3a8b]">
+                                   {amountPercentInputToSlider(programReferrerTopupPercentInput)}
+                                 </span>
+                                 <span className="shrink-0 font-manrope text-sm font-bold text-[#8d3a8b]">%</span>
+                               </div>
+                             </div>
+                             <input
+                               id="card-topup-referrer-reward-percent"
+                               type="range"
+                               min={0}
+                               max={100}
+                               step={1}
+                               value={amountPercentInputToSlider(programReferrerTopupPercentInput)}
+                               disabled={cardIssuanceTopupPromotionEditorPublishing}
+                               onChange={(e) =>
+                                 setProgramReferrerTopupPercentInput(String(parseInt(e.target.value, 10)))
+                               }
+                               aria-valuemin={0}
+                               aria-valuemax={100}
+                               aria-valuenow={amountPercentInputToSlider(programReferrerTopupPercentInput)}
+                               aria-label={tu('programs_overview_referrer_topup_percent')}
+                               className={`h-2 w-full cursor-pointer appearance-none rounded-lg bg-[#eadcf7] accent-[#8d3a8b] disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
+                             />
+                             <div className="flex justify-between px-0.5 text-[11px] font-medium text-[#8d3a8b]/70">
+                               <span>0%</span>
+                               <span>50%</span>
+                               <span>100%</span>
                              </div>
                            </div>
                          ) : null}
@@ -39674,33 +39692,42 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                    {tu('programs_consumption_points_multiplier_hint')}
                                  </p>
                                </div>
-                               <div>
-                                 <label
-                                   htmlFor="card-consumption-referrer-reward-percent"
-                                   className="mb-2 block font-manrope text-sm font-bold text-[#2c2f31]"
-                                 >
-                                   {tu('programs_overview_referrer_charge_percent')}
-                                 </label>
-                                 <div className="relative">
-                                   <input
-                                     id="card-consumption-referrer-reward-percent"
-                                     type="number"
-                                     inputMode="decimal"
-                                     autoComplete="off"
-                                     enterKeyHint="done"
-                                     min={0}
-                                     max={100}
-                                     step="any"
-                                     value={programReferrerChargePercentInput}
-                                     disabled={cardIssuanceConsumptionPointEditorPublishing}
-                                     onKeyDown={preventNumericInputStepKeys}
-                                     onWheel={preventNumericInputWheelStep}
-                                     onChange={(e) => setProgramReferrerChargePercentInput(e.target.value)}
-                                     className={`w-full rounded-2xl border border-[#dfe3e6] bg-white px-4 py-3.5 pr-12 font-manrope text-base font-semibold text-[#2c2f31] outline-none transition-colors focus:border-[#8d3a8b] focus:ring-2 focus:ring-[#8d3a8b]/15 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield] ${bizFocusRingClass}`}
-                                   />
-                                   <span className="pointer-events-none absolute inset-y-0 right-4 flex items-center font-manrope text-base font-extrabold text-[#8d3a8b]">
-                                     %
-                                   </span>
+                               <div className="space-y-3">
+                                 <div className="flex items-center justify-between gap-3">
+                                   <label
+                                     htmlFor="card-consumption-referrer-reward-percent"
+                                     className="min-w-0 font-manrope text-sm font-bold text-[#2c2f31]"
+                                   >
+                                     {tu('programs_overview_referrer_charge_percent')}
+                                   </label>
+                                   <div className="flex min-h-[2.25rem] shrink-0 items-center justify-center gap-1 rounded-lg border border-[#eadcf7] bg-[#f5ecff] px-2.5 py-1.5">
+                                     <span className="text-center font-manrope text-[15px] font-bold tabular-nums text-[#8d3a8b]">
+                                       {amountPercentInputToSlider(programReferrerChargePercentInput)}
+                                     </span>
+                                     <span className="shrink-0 text-[12px] font-bold text-[#8d3a8b]">%</span>
+                                   </div>
+                                 </div>
+                                 <input
+                                   id="card-consumption-referrer-reward-percent"
+                                   type="range"
+                                   min={0}
+                                   max={100}
+                                   step={1}
+                                   value={amountPercentInputToSlider(programReferrerChargePercentInput)}
+                                   disabled={cardIssuanceConsumptionPointEditorPublishing}
+                                   onChange={(e) =>
+                                     setProgramReferrerChargePercentInput(String(parseInt(e.target.value, 10)))
+                                   }
+                                   aria-valuemin={0}
+                                   aria-valuemax={100}
+                                   aria-valuenow={amountPercentInputToSlider(programReferrerChargePercentInput)}
+                                   aria-label={tu('programs_overview_referrer_charge_percent')}
+                                   className={`h-2 w-full cursor-pointer appearance-none rounded-lg bg-[#eadcf7] accent-[#8d3a8b] disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
+                                 />
+                                 <div className="flex justify-between px-0.5 text-[11px] font-medium text-[#8d3a8b]/70">
+                                   <span>0%</span>
+                                   <span>50%</span>
+                                   <span>100%</span>
                                  </div>
                                </div>
                              </div>

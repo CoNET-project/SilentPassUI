@@ -86,7 +86,7 @@
   "programs_overview_referrer_charge_percent": "Percent of charge",
   "programs_overview_referrer_charge_hint": "When on, mint token #1 to the referrer’s Smart Wallet as this percent of each charge amount.",
   "programs_overview_referrer_rewards_error": "Could not update referrer reward ratios. Unlock the card owner wallet and try again.",
-  "programs_overview_referrer_percent_invalid": "Enter a valid percent between 0 and 100.",
+  "programs_overview_referrer_percent_invalid": "Choose a whole percent from 0% to 100%.",
   "programs_overview_referrer_percent_required": "Referrer reward is on — set a percent greater than 0, or turn it off.",
   "programs_overview_total_referrers": "Referrers",
   "programs_overview_registered_referees": "Registered referees",

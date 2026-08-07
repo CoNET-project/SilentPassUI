@@ -13,12 +13,19 @@ const CARD_REFERRER_READ_ABI = [
 	'function refereeReferrer(address referee) view returns (address)',
 	'function referrerChargeAmountRatioE6() view returns (uint256)',
 	'function referrerTopupAmountRatioE6() view returns (uint256)',
+	'function getRefereesByReferrerPage(address referrerAA, uint256 offset, uint256 pageSize) view returns (address[] referees, uint256[] refereeChargeTotals6, uint256 total, uint256 nextOffset)',
 ] as const
 
 const AA_FACTORY_ABI = [
 	'function isBeamioAccount(address) view returns (bool)',
 	'function beamioAccountOf(address) view returns (address)',
 ] as const
+
+const AA_OWNER_ABI = ['function owner() view returns (address)'] as const
+
+/** Max referees loaded for My referees downline page (paginated). */
+const MY_REFEREES_PAGE_SIZE = 50
+const MY_REFEREES_MAX_ROWS = 500
 
 export type CardProgramReferrerDashboardSnapshot = {
 	cardAddress: string
@@ -58,6 +65,115 @@ async function resolveUserAa(provider: ethers.Provider, eoa: string): Promise<st
 		/* no AA */
 	}
 	return null
+}
+
+/** Chain referrer index uses Beamio AA; accept EOA or AA. */
+async function resolveReferrerLookupAa(provider: ethers.Provider, eoaOrAa: string): Promise<string> {
+	if (!ethers.isAddress(eoaOrAa) || eoaOrAa === ethers.ZeroAddress) return eoaOrAa
+	const addr = ethers.getAddress(eoaOrAa)
+	try {
+		const fac = new ethers.Contract(CONET_AA_FACTORY, AA_FACTORY_ABI, provider)
+		if (await fac.isBeamioAccount(addr)) return addr
+		const aa = (await fac.beamioAccountOf(addr)) as string
+		if (aa && aa !== ethers.ZeroAddress) return ethers.getAddress(aa)
+	} catch {
+		/* fall through */
+	}
+	return addr
+}
+
+/** Product UI shows EOA; map AA → owner when possible. */
+async function resolveReferrerAaToEoa(provider: ethers.Provider, aaOrEoa: string): Promise<string> {
+	if (!ethers.isAddress(aaOrEoa) || aaOrEoa === ethers.ZeroAddress) return aaOrEoa
+	const addr = ethers.getAddress(aaOrEoa)
+	try {
+		const fac = new ethers.Contract(CONET_AA_FACTORY, AA_FACTORY_ABI, provider)
+		const isAa = Boolean(await fac.isBeamioAccount(addr))
+		if (!isAa) return addr
+		const acct = new ethers.Contract(addr, AA_OWNER_ABI, provider)
+		const owner = (await acct.owner()) as string
+		if (owner && owner !== ethers.ZeroAddress) return ethers.getAddress(owner)
+	} catch {
+		/* keep addr */
+	}
+	return addr
+}
+
+export type CardProgramMyRefereeRow = {
+	/** Referee EOA when resolvable (for BeamioTag / capsule). */
+	refereeEoa: string
+	/** Charge points attributed under this referee (6-decimals raw) — drives referrer reward. */
+	refereeChargePointsTotal6: string | null
+}
+
+export type CardProgramMyRefereesSnapshot = {
+	cardAddress: string
+	referrerEoa: string
+	rows: CardProgramMyRefereeRow[]
+	total: number
+}
+
+/**
+ * Paginate `getRefereesByReferrerPage` for the current user (EOA → AA lookup).
+ * Returns null only on invalid input; empty `rows` is trusted empty.
+ * Untrusted RPC failure → null (caller keeps last trusted).
+ */
+export async function fetchCardProgramMyReferees(
+	cardAddress: string,
+	userEoa: string,
+): Promise<CardProgramMyRefereesSnapshot | null> {
+	if (!cardAddress || !ethers.isAddress(cardAddress)) return null
+	if (!userEoa || !ethers.isAddress(userEoa)) return null
+
+	const cardAddr = ethers.getAddress(cardAddress)
+	const eoa = ethers.getAddress(userEoa)
+
+	try {
+		const { provider } = await providerForBeamioUserCard(cardAddr)
+		const card = new ethers.Contract(cardAddr, CARD_REFERRER_READ_ABI, provider)
+		const lookupAa = await resolveReferrerLookupAa(provider, eoa)
+
+		const rows: CardProgramMyRefereeRow[] = []
+		let offset = 0
+		let total = 0
+		let guard = 0
+
+		while (guard < 32 && rows.length < MY_REFEREES_MAX_ROWS) {
+			guard += 1
+			const [referees, chargeTotals, totalRaw, nextOffsetRaw] = (await card.getRefereesByReferrerPage(
+				lookupAa,
+				BigInt(offset),
+				BigInt(MY_REFEREES_PAGE_SIZE),
+			)) as [string[], bigint[], bigint, bigint]
+
+			total = bigintToCount(totalRaw) ?? total
+			const pageLen = referees.length
+			if (pageLen === 0) break
+
+			const eoaBatch = await Promise.all(referees.map((a) => resolveReferrerAaToEoa(provider, a)))
+			for (let i = 0; i < pageLen; i += 1) {
+				if (rows.length >= MY_REFEREES_MAX_ROWS) break
+				rows.push({
+					refereeEoa: eoaBatch[i] ?? ethers.getAddress(referees[i]!),
+					refereeChargePointsTotal6:
+						chargeTotals[i] != null ? chargeTotals[i]!.toString() : null,
+				})
+			}
+
+			const next = bigintToCount(nextOffsetRaw) ?? offset + pageLen
+			if (next <= offset || rows.length >= total) break
+			offset = next
+		}
+
+		return {
+			cardAddress: cardAddr,
+			referrerEoa: eoa,
+			rows,
+			total: Math.max(total, rows.length),
+		}
+	} catch {
+		return null
+	}
 }
 
 /**

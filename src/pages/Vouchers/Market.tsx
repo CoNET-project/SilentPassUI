@@ -61,12 +61,17 @@ import {
 	formatReferrerRewardPercent,
 	formatReferrerRewardPointsDisplay,
 	type CardProgramReferrerDashboardSnapshot,
+	type CardProgramReferrerDashboardSnapshot,
 } from "@/utils/cardProgramReferrerDashboard"
 import { beamioApi } from "@/utils/constants"
 import { openExternalUrl } from "@/utils/cashTreesNativeNfc"
 import { resolveSigningPrivateKeyArmor } from "@/utils/resolveSigningPrivateKeyArmor"
 import { checkStorage, searchUsername } from "@/services/beamio"
 import BeamioContactProfilePreview from "@/components/Home/BeamioContactProfilePreview"
+import {
+	DiscoverReferrerDownlineOpenButton,
+	DiscoverReferrerDownlinePage,
+} from "@/pages/Vouchers/DiscoverReferrerDownlinePage"
 import { fiatPrefix, formatAmount } from "@/services/currency"
 import { getMyAssetsAggregated, getMyAssets, getCardTiersFromContract, getCardUpgradeTypeFromContract, quoteUSDCToCAD, postUSDCUserCardTopup, safeUsdc6ToAmountString, currencyAmountToSafeUsdc6, fetchCardActiveIssuedCouponSeriesTrusted, postCardCouponOpenClaimWithCurrentWallet, postCardRecordUserLikeWithCurrentWallet, resolveCouponOpenClaimEligibility, merchantBackgroundImageFromMetadataRoot, merchantIconUrlFromMetadataRoot, getCardOwner, readUserSocialPoints13BalanceOnCard, type CardActiveIssuedCouponSeriesItem, type CardMetadataFromUri, type CouponOpenClaimEligibility, type USDCUserCardTopupIntent } from "@/services/BeamioCard"
 import {
@@ -1639,9 +1644,11 @@ function DiscoverMerchantLoyaltyPointsCard({
 function DiscoverMerchantReferrerDashboardCard({
 	snapshot,
 	loading,
+	onOpenMyReferees,
 }: {
 	snapshot: CardProgramReferrerDashboardSnapshot | null
 	loading: boolean
+	onOpenMyReferees?: () => void
 }) {
 	const rewardText = loading && !snapshot
 		? '—'
@@ -1662,6 +1669,8 @@ function DiscoverMerchantReferrerDashboardCard({
 		? '—'
 		: formatReferrerRewardPercent(snapshot?.topupRatioE6)
 
+	const canOpenDownline = Boolean(onOpenMyReferees)
+
 	return (
 		<div className="rounded-[22px] bg-white p-4 shadow-[0_8px_22px_rgba(15,23,42,0.06)] ring-1 ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800 sm:p-5">
 			<div className="flex items-start justify-between gap-3">
@@ -1677,18 +1686,39 @@ function DiscoverMerchantReferrerDashboardCard({
 						Your referrer reward balance (token #1)
 					</p>
 				</div>
-				<span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#8d3a8b] text-white shadow-sm">
-					<UserPlus className="h-6 w-6" strokeWidth={2} aria-hidden />
-				</span>
+				<div className="flex shrink-0 items-start gap-2">
+					{canOpenDownline ? (
+						<DiscoverReferrerDownlineOpenButton onClick={onOpenMyReferees} />
+					) : null}
+					<span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#8d3a8b] text-white shadow-sm">
+						<UserPlus className="h-6 w-6" strokeWidth={2} aria-hidden />
+					</span>
+				</div>
 			</div>
 
 			<div className="mt-4 grid grid-cols-2 gap-3">
-				<div className="rounded-2xl bg-[#f4f6f8] px-4 py-3 dark:bg-slate-800/60">
-					<p className="text-[13px] font-medium text-slate-500 dark:text-slate-400">My referees</p>
+				<button
+					type="button"
+					disabled={!canOpenDownline}
+					onClick={onOpenMyReferees}
+					className={[
+						'rounded-2xl bg-[#f4f6f8] px-4 py-3 text-left dark:bg-slate-800/60',
+						canOpenDownline
+							? 'cursor-pointer transition hover:bg-[#e8ecf0] active:scale-[0.99] dark:hover:bg-slate-800'
+							: '',
+					].join(' ')}
+					aria-label="View my referees"
+				>
+					<div className="flex items-center justify-between gap-2">
+						<p className="text-[13px] font-medium text-slate-500 dark:text-slate-400">My referees</p>
+						{canOpenDownline ? (
+							<ChevronRight className="h-4 w-4 shrink-0 text-slate-400" strokeWidth={2.25} aria-hidden />
+						) : null}
+					</div>
 					<p className="mt-1 text-[20px] font-bold leading-none tracking-tight text-[#1f2328] dark:text-slate-100">
 						{myRefereesText}
 					</p>
-				</div>
+				</button>
 				<div className="rounded-2xl bg-[#f4f6f8] px-4 py-3 dark:bg-slate-800/60">
 					<p className="text-[13px] font-medium text-slate-500 dark:text-slate-400">Referrers</p>
 					<p className="mt-1 text-[20px] font-bold leading-none tracking-tight text-[#1f2328] dark:text-slate-100">
@@ -4077,6 +4107,7 @@ function DiscoverMerchantDetailFullScreen({
 	const isConetGenesisCard = isConetGenesisDiscoverCard(item.cardAddress)
 	const [referrerDashboard, setReferrerDashboard] = useState<CardProgramReferrerDashboardSnapshot | null>(null)
 	const [referrerDashboardLoading, setReferrerDashboardLoading] = useState(false)
+	const [referrerDownlineOpen, setReferrerDownlineOpen] = useState(false)
 	const activePromotionsPanel = useMemo(
 		() =>
 			buildDiscoverActivePromotionsPanelModel({
@@ -5518,6 +5549,11 @@ function DiscoverMerchantDetailFullScreen({
 					<DiscoverMerchantReferrerDashboardCard
 						snapshot={referrerDashboard}
 						loading={referrerDashboardLoading}
+						onOpenMyReferees={
+							item.cardAddress && resolveUserEoa()
+								? () => setReferrerDownlineOpen(true)
+								: undefined
+						}
 					/>
 
 					<div className="space-y-4">
@@ -5651,6 +5687,14 @@ function DiscoverMerchantDetailFullScreen({
 				</AnimatePresence>,
 				document.body,
 			)}
+		{referrerDownlineOpen && item.cardAddress && resolveUserEoa() ? (
+			<DiscoverReferrerDownlinePage
+				cardAddress={item.cardAddress}
+				userEoa={resolveUserEoa()!}
+				merchantTitle={passTitle}
+				onClose={() => setReferrerDownlineOpen(false)}
+			/>
+		) : null}
 		</>
 	)
 }

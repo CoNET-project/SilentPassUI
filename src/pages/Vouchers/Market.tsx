@@ -55,6 +55,13 @@ import { motion, AnimatePresence } from "framer-motion"
 import { Toast } from "antd-mobile"
 import { ethers } from "ethers"
 import { useDaemonContext } from "@/providers/DaemonProvider"
+import {
+	fetchCardProgramReferrerDashboard,
+	formatReferrerCountDisplay,
+	formatReferrerRewardPercent,
+	formatReferrerRewardPointsDisplay,
+	type CardProgramReferrerDashboardSnapshot,
+} from "@/utils/cardProgramReferrerDashboard"
 import { beamioApi } from "@/utils/constants"
 import { openExternalUrl } from "@/utils/cashTreesNativeNfc"
 import { resolveSigningPrivateKeyArmor } from "@/utils/resolveSigningPrivateKeyArmor"
@@ -1618,6 +1625,89 @@ function DiscoverMerchantLoyaltyPointsCard({
 					<p className="text-[13px] font-medium text-slate-500 dark:text-slate-400">Social</p>
 					<p className="mt-1 text-[20px] font-bold leading-none tracking-tight text-[#1f2328] dark:text-slate-100">
 						{socialText}
+					</p>
+				</div>
+			</div>
+		</div>
+	)
+}
+
+/**
+ * Card program REFERRER dashboard (biz Referrer Reward / registry).
+ * All Discover merchant details — not Genesis-only.
+ */
+function DiscoverMerchantReferrerDashboardCard({
+	snapshot,
+	loading,
+}: {
+	snapshot: CardProgramReferrerDashboardSnapshot | null
+	loading: boolean
+}) {
+	const rewardText = loading && !snapshot
+		? '—'
+		: formatReferrerRewardPointsDisplay(snapshot?.rewardBalanceRaw)
+	const myRefereesText = loading && !snapshot
+		? '—'
+		: formatReferrerCountDisplay(snapshot?.myRefereeCount)
+	const referrersText = loading && !snapshot
+		? '—'
+		: formatReferrerCountDisplay(snapshot?.referrerTotalCount)
+	const registeredText = loading && !snapshot
+		? '—'
+		: formatReferrerCountDisplay(snapshot?.registeredRefereeTotalCount)
+	const chargeText = loading && !snapshot
+		? '—'
+		: formatReferrerRewardPercent(snapshot?.chargeRatioE6)
+	const topupText = loading && !snapshot
+		? '—'
+		: formatReferrerRewardPercent(snapshot?.topupRatioE6)
+
+	return (
+		<div className="rounded-[22px] bg-white p-4 shadow-[0_8px_22px_rgba(15,23,42,0.06)] ring-1 ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800 sm:p-5">
+			<div className="flex items-start justify-between gap-3">
+				<div className="min-w-0">
+					<p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">
+						Referrer
+					</p>
+					<p className="mt-1 text-[32px] font-extrabold leading-none tracking-tight text-[#1f2328] dark:text-slate-100 sm:text-[34px]">
+						{rewardText}
+						<span className="ml-1.5 text-[16px] font-bold text-slate-400 dark:text-slate-500">Pts</span>
+					</p>
+					<p className="mt-2 text-[12px] font-medium text-slate-500 dark:text-slate-400">
+						Your referrer reward balance (token #1)
+					</p>
+				</div>
+				<span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#8d3a8b] text-white shadow-sm">
+					<UserPlus className="h-6 w-6" strokeWidth={2} aria-hidden />
+				</span>
+			</div>
+
+			<div className="mt-4 grid grid-cols-2 gap-3">
+				<div className="rounded-2xl bg-[#f4f6f8] px-4 py-3 dark:bg-slate-800/60">
+					<p className="text-[13px] font-medium text-slate-500 dark:text-slate-400">My referees</p>
+					<p className="mt-1 text-[20px] font-bold leading-none tracking-tight text-[#1f2328] dark:text-slate-100">
+						{myRefereesText}
+					</p>
+				</div>
+				<div className="rounded-2xl bg-[#f4f6f8] px-4 py-3 dark:bg-slate-800/60">
+					<p className="text-[13px] font-medium text-slate-500 dark:text-slate-400">Referrers</p>
+					<p className="mt-1 text-[20px] font-bold leading-none tracking-tight text-[#1f2328] dark:text-slate-100">
+						{referrersText}
+					</p>
+					<p className="mt-1.5 text-[11px] font-medium text-slate-400 dark:text-slate-500">
+						Registered {registeredText}
+					</p>
+				</div>
+				<div className="rounded-2xl bg-[#f4f6f8] px-4 py-3 dark:bg-slate-800/60">
+					<p className="text-[13px] font-medium text-slate-500 dark:text-slate-400">Charge reward</p>
+					<p className="mt-1 text-[20px] font-bold leading-none tracking-tight text-[#1f2328] dark:text-slate-100">
+						{chargeText}
+					</p>
+				</div>
+				<div className="rounded-2xl bg-[#f4f6f8] px-4 py-3 dark:bg-slate-800/60">
+					<p className="text-[13px] font-medium text-slate-500 dark:text-slate-400">Top-up reward</p>
+					<p className="mt-1 text-[20px] font-bold leading-none tracking-tight text-[#1f2328] dark:text-slate-100">
+						{topupText}
 					</p>
 				</div>
 			</div>
@@ -3985,6 +4075,8 @@ function DiscoverMerchantDetailFullScreen({
 	)
 	const heroRechargeBonusPill = topupPromotionPresentation.heroSidePill
 	const isConetGenesisCard = isConetGenesisDiscoverCard(item.cardAddress)
+	const [referrerDashboard, setReferrerDashboard] = useState<CardProgramReferrerDashboardSnapshot | null>(null)
+	const [referrerDashboardLoading, setReferrerDashboardLoading] = useState(false)
 	const activePromotionsPanel = useMemo(
 		() =>
 			buildDiscoverActivePromotionsPanelModel({
@@ -4862,6 +4954,37 @@ function DiscoverMerchantDetailFullScreen({
 	}, [item.cardAddress, resolveUserEoa, profile?.keyID])
 
 	useEffect(() => {
+		if (!item.cardAddress) {
+			setReferrerDashboard(null)
+			setReferrerDashboardLoading(false)
+			return
+		}
+		const userEOA = resolveUserEoa()
+		if (!userEOA) {
+			setReferrerDashboard(null)
+			setReferrerDashboardLoading(false)
+			return
+		}
+		let cancelled = false
+		setReferrerDashboardLoading(true)
+		setReferrerDashboard(null)
+		void fetchCardProgramReferrerDashboard(item.cardAddress, userEOA)
+			.then((snap) => {
+				if (cancelled || !snap) return
+				setReferrerDashboard(snap)
+			})
+			.catch(() => {
+				/* untrusted — keep last trusted snapshot */
+			})
+			.finally(() => {
+				if (!cancelled) setReferrerDashboardLoading(false)
+			})
+		return () => {
+			cancelled = true
+		}
+	}, [item.cardAddress, resolveUserEoa, profile?.keyID])
+
+	useEffect(() => {
 		if (!merchantCoupons?.length) {
 			setCouponClaimEligibilityById({})
 			return
@@ -5389,6 +5512,12 @@ function DiscoverMerchantDetailFullScreen({
 						socialPoints={userSocialPoints13}
 						consumptionLoading={merchantAssetsLoading}
 						socialLoading={userSocialPointsLoading}
+					/>
+
+					{/* Card program REFERRER dashboard (biz Referrer Reward) — all merchant cards. */}
+					<DiscoverMerchantReferrerDashboardCard
+						snapshot={referrerDashboard}
+						loading={referrerDashboardLoading}
 					/>
 
 					<div className="space-y-4">

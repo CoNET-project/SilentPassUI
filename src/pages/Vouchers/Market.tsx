@@ -47,7 +47,6 @@ import {
   Star,
   Minus,
   Plus,
-  UserPlus,
   ImageIcon,
 } from "lucide-react"
 import { useNavigate, useLocation } from "react-router-dom"
@@ -67,10 +66,7 @@ import { openExternalUrl } from "@/utils/cashTreesNativeNfc"
 import { resolveSigningPrivateKeyArmor } from "@/utils/resolveSigningPrivateKeyArmor"
 import { checkStorage, searchUsername } from "@/services/beamio"
 import BeamioContactProfilePreview from "@/components/Home/BeamioContactProfilePreview"
-import {
-	DiscoverReferrerDownlineOpenButton,
-	DiscoverReferrerDownlinePage,
-} from "@/pages/Vouchers/DiscoverReferrerDownlinePage"
+import { DiscoverReferrerDownlinePage } from "@/pages/Vouchers/DiscoverReferrerDownlinePage"
 import { fiatPrefix, formatAmount } from "@/services/currency"
 import { getMyAssetsAggregated, getMyAssets, getCardTiersFromContract, getCardUpgradeTypeFromContract, quoteUSDCToCAD, postUSDCUserCardTopup, safeUsdc6ToAmountString, currencyAmountToSafeUsdc6, fetchCardActiveIssuedCouponSeriesTrusted, postCardCouponOpenClaimWithCurrentWallet, postCardRecordUserLikeWithCurrentWallet, resolveCouponOpenClaimEligibility, merchantBackgroundImageFromMetadataRoot, merchantIconUrlFromMetadataRoot, getCardOwner, readUserSocialPoints13BalanceOnCard, type CardActiveIssuedCouponSeriesItem, type CardMetadataFromUri, type CouponOpenClaimEligibility, type USDCUserCardTopupIntent } from "@/services/BeamioCard"
 import {
@@ -1669,30 +1665,25 @@ function DiscoverMerchantReferrerDashboardCard({
 		: formatReferrerRewardPercent(snapshot?.topupRatioE6)
 
 	const canOpenDownline = Boolean(onOpenMyReferees)
+	const cellClass = 'rounded-2xl bg-[#f4f6f8] px-4 py-3 dark:bg-slate-800/60'
+	const cellTitleClass = 'text-[13px] font-medium text-slate-500 dark:text-slate-400'
+	const cellValueClass =
+		'mt-1 text-[20px] font-bold leading-none tracking-tight text-[#1f2328] dark:text-slate-100'
+	const cellCaptionClass = 'mt-1.5 text-[11px] font-medium text-slate-400 dark:text-slate-500'
 
 	return (
 		<div className="rounded-[22px] bg-white p-4 shadow-[0_8px_22px_rgba(15,23,42,0.06)] ring-1 ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800 sm:p-5">
-			<div className="flex items-start justify-between gap-3">
-				<div className="min-w-0">
-					<p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">
-						Referrer
-					</p>
-					<p className="mt-1 text-[32px] font-extrabold leading-none tracking-tight text-[#1f2328] dark:text-slate-100 sm:text-[34px]">
-						{rewardText}
-						<span className="ml-1.5 text-[16px] font-bold text-slate-400 dark:text-slate-500">Pts</span>
-					</p>
-					<p className="mt-2 text-[12px] font-medium text-slate-500 dark:text-slate-400">
-						Your referrer reward balance (token #1)
-					</p>
-				</div>
-				<div className="flex shrink-0 items-start gap-2">
-					{canOpenDownline && onOpenMyReferees ? (
-						<DiscoverReferrerDownlineOpenButton onClick={onOpenMyReferees} />
-					) : null}
-					<span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#8d3a8b] text-white shadow-sm">
-						<UserPlus className="h-6 w-6" strokeWidth={2} aria-hidden />
-					</span>
-				</div>
+			<div className="min-w-0">
+				<p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">
+					Referrer
+				</p>
+				<p className="mt-1 text-[32px] font-extrabold leading-none tracking-tight text-[#1f2328] dark:text-slate-100 sm:text-[34px]">
+					{rewardText}
+					<span className="ml-1.5 text-[16px] font-bold text-slate-400 dark:text-slate-500">Pts</span>
+				</p>
+				<p className="mt-2 text-[12px] font-medium text-slate-500 dark:text-slate-400">
+					Your referrer reward balance (token #1)
+				</p>
 			</div>
 
 			<div className="mt-4 grid grid-cols-2 gap-3">
@@ -1701,43 +1692,33 @@ function DiscoverMerchantReferrerDashboardCard({
 					disabled={!canOpenDownline || !onOpenMyReferees}
 					onClick={() => onOpenMyReferees?.()}
 					className={[
-						'rounded-2xl bg-[#f4f6f8] px-4 py-3 text-left dark:bg-slate-800/60',
+						cellClass,
+						'text-left',
 						canOpenDownline
 							? 'cursor-pointer transition hover:bg-[#e8ecf0] active:scale-[0.99] dark:hover:bg-slate-800'
 							: '',
 					].join(' ')}
 					aria-label="View my referees"
 				>
-					<div className="flex items-center justify-between gap-2">
-						<p className="text-[13px] font-medium text-slate-500 dark:text-slate-400">My referees</p>
-						{canOpenDownline ? (
-							<ChevronRight className="h-4 w-4 shrink-0 text-slate-400" strokeWidth={2.25} aria-hidden />
-						) : null}
-					</div>
-					<p className="mt-1 text-[20px] font-bold leading-none tracking-tight text-[#1f2328] dark:text-slate-100">
-						{myRefereesText}
+					<p className={cellTitleClass}>My referees</p>
+					<p className={cellValueClass}>{myRefereesText}</p>
+					{/* Match Referrers cell height (caption line). */}
+					<p className={`${cellCaptionClass} invisible`} aria-hidden>
+						Registered 0
 					</p>
 				</button>
-				<div className="rounded-2xl bg-[#f4f6f8] px-4 py-3 dark:bg-slate-800/60">
-					<p className="text-[13px] font-medium text-slate-500 dark:text-slate-400">Referrers</p>
-					<p className="mt-1 text-[20px] font-bold leading-none tracking-tight text-[#1f2328] dark:text-slate-100">
-						{referrersText}
-					</p>
-					<p className="mt-1.5 text-[11px] font-medium text-slate-400 dark:text-slate-500">
-						Registered {registeredText}
-					</p>
+				<div className={cellClass}>
+					<p className={cellTitleClass}>Referrers</p>
+					<p className={cellValueClass}>{referrersText}</p>
+					<p className={cellCaptionClass}>Registered {registeredText}</p>
 				</div>
-				<div className="rounded-2xl bg-[#f4f6f8] px-4 py-3 dark:bg-slate-800/60">
-					<p className="text-[13px] font-medium text-slate-500 dark:text-slate-400">Charge reward</p>
-					<p className="mt-1 text-[20px] font-bold leading-none tracking-tight text-[#1f2328] dark:text-slate-100">
-						{chargeText}
-					</p>
+				<div className={cellClass}>
+					<p className={cellTitleClass}>Charge reward</p>
+					<p className={cellValueClass}>{chargeText}</p>
 				</div>
-				<div className="rounded-2xl bg-[#f4f6f8] px-4 py-3 dark:bg-slate-800/60">
-					<p className="text-[13px] font-medium text-slate-500 dark:text-slate-400">Top-up reward</p>
-					<p className="mt-1 text-[20px] font-bold leading-none tracking-tight text-[#1f2328] dark:text-slate-100">
-						{topupText}
-					</p>
+				<div className={cellClass}>
+					<p className={cellTitleClass}>Top-up reward</p>
+					<p className={cellValueClass}>{topupText}</p>
 				</div>
 			</div>
 		</div>

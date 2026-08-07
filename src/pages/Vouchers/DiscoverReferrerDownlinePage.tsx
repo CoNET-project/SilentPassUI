@@ -65,10 +65,7 @@ function DownlineRefereeRow({ row }: { row: CardProgramMyRefereeRow }) {
 	)
 }
 
-/**
- * Discover secondary page: list of my downline referees + referrer points from each.
- * Directional overlay (enter from right / exit to right).
- */
+/** Discover secondary page: list of my downline referees + referrer points from each. */
 export function DiscoverReferrerDownlinePage({
 	cardAddress,
 	userEoa,
@@ -189,25 +186,4 @@ export function DiscoverReferrerDownlinePage({
 	)
 
 	return createPortal(portal, document.body)
-}
-
-/** Icon CTA on Referrer dashboard — opens My referees downline page. */
-export function DiscoverReferrerDownlineOpenButton({
-	disabled,
-	onClick,
-}: {
-	disabled?: boolean
-	onClick: () => void
-}) {
-	return (
-		<button
-			type="button"
-			disabled={disabled}
-			onClick={onClick}
-			aria-label="View my referees"
-			className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-200/90 bg-[#f4f6f8] text-[#595c5e] transition hover:bg-[#e8ecf0] active:scale-[0.96] disabled:pointer-events-none disabled:opacity-40 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
-		>
-			<Users className="h-4 w-4" strokeWidth={2.25} aria-hidden />
-		</button>
-	)
 }

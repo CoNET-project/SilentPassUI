@@ -5346,14 +5346,6 @@ function DiscoverMerchantDetailFullScreen({
 						) : null}
 					</div>
 
-					<DiscoverMerchantLoyaltyPointsCard
-						consumptionEnabled={consumptionPointSystemEnabled}
-						consumptionPoints={userConsumptionPoints}
-						socialPoints={userSocialPoints13}
-						consumptionLoading={merchantAssetsLoading}
-						socialLoading={userSocialPointsLoading}
-					/>
-
 					{topupPromotionCapsule ? (
 						<DiscoverTopupPromotionCapsule
 							title={topupPromotionCapsule.title}
@@ -5389,6 +5381,15 @@ function DiscoverMerchantDetailFullScreen({
 					) : null}
 					</>
 					) : null}
+
+					{/* Total Points: all Discover merchant details, including CoNET Genesis. */}
+					<DiscoverMerchantLoyaltyPointsCard
+						consumptionEnabled={consumptionPointSystemEnabled}
+						consumptionPoints={userConsumptionPoints}
+						socialPoints={userSocialPoints13}
+						consumptionLoading={merchantAssetsLoading}
+						socialLoading={userSocialPointsLoading}
+					/>
 
 					<div className="space-y-4">
 						<h2 className="text-lg font-bold text-[#1f2328] dark:text-slate-100">Available Offers</h2>

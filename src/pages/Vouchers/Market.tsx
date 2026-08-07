@@ -61,7 +61,6 @@ import {
 	formatReferrerRewardPercent,
 	formatReferrerRewardPointsDisplay,
 	type CardProgramReferrerDashboardSnapshot,
-	type CardProgramReferrerDashboardSnapshot,
 } from "@/utils/cardProgramReferrerDashboard"
 import { beamioApi } from "@/utils/constants"
 import { openExternalUrl } from "@/utils/cashTreesNativeNfc"

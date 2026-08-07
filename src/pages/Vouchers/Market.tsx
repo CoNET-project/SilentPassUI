@@ -1686,7 +1686,7 @@ function DiscoverMerchantReferrerDashboardCard({
 					</p>
 				</div>
 				<div className="flex shrink-0 items-start gap-2">
-					{canOpenDownline ? (
+					{canOpenDownline && onOpenMyReferees ? (
 						<DiscoverReferrerDownlineOpenButton onClick={onOpenMyReferees} />
 					) : null}
 					<span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#8d3a8b] text-white shadow-sm">
@@ -1698,8 +1698,8 @@ function DiscoverMerchantReferrerDashboardCard({
 			<div className="mt-4 grid grid-cols-2 gap-3">
 				<button
 					type="button"
-					disabled={!canOpenDownline}
-					onClick={onOpenMyReferees}
+					disabled={!canOpenDownline || !onOpenMyReferees}
+					onClick={() => onOpenMyReferees?.()}
 					className={[
 						'rounded-2xl bg-[#f4f6f8] px-4 py-3 text-left dark:bg-slate-800/60',
 						canOpenDownline

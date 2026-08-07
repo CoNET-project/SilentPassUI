@@ -129,7 +129,7 @@ export function DiscoverReferrerDownlinePage({
 
 	const portal = (
 		<div
-			className="fixed inset-0 z-[102] flex flex-col bg-[#f4f6f8] transition-transform duration-300 ease-out dark:bg-slate-950"
+			className="fixed inset-0 z-[120] flex flex-col bg-[#f4f6f8] transition-transform duration-300 ease-out dark:bg-slate-950"
 			style={{ transform }}
 			role="dialog"
 			aria-modal="true"

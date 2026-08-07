@@ -67,22 +67,7 @@ async function resolveUserAa(provider: ethers.Provider, eoa: string): Promise<st
 	return null
 }
 
-/** Chain referrer index uses Beamio AA; accept EOA or AA. */
-async function resolveReferrerLookupAa(provider: ethers.Provider, eoaOrAa: string): Promise<string> {
-	if (!ethers.isAddress(eoaOrAa) || eoaOrAa === ethers.ZeroAddress) return eoaOrAa
-	const addr = ethers.getAddress(eoaOrAa)
-	try {
-		const fac = new ethers.Contract(CONET_AA_FACTORY, AA_FACTORY_ABI, provider)
-		if (await fac.isBeamioAccount(addr)) return addr
-		const aa = (await fac.beamioAccountOf(addr)) as string
-		if (aa && aa !== ethers.ZeroAddress) return ethers.getAddress(aa)
-	} catch {
-		/* fall through */
-	}
-	return addr
-}
-
-/** Product UI shows EOA; map AA → owner when possible. */
+/** Chain referrer index may store EOA or AA; product UI shows EOA when resolvable. */
 async function resolveReferrerAaToEoa(provider: ethers.Provider, aaOrEoa: string): Promise<string> {
 	if (!ethers.isAddress(aaOrEoa) || aaOrEoa === ethers.ZeroAddress) return aaOrEoa
 	const addr = ethers.getAddress(aaOrEoa)
@@ -114,7 +99,8 @@ export type CardProgramMyRefereesSnapshot = {
 }
 
 /**
- * Paginate `getRefereesByReferrerPage` for the current user (EOA → AA lookup).
+ * Paginate `getRefereesByReferrerPage` for the current user.
+ * Pass **EOA** — card module falls back EOA→AA; passing AA-only misses EOA-keyed index rows.
  * Returns null only on invalid input; empty `rows` is trusted empty.
  * Untrusted RPC failure → null (caller keeps last trusted).
  */
@@ -131,38 +117,52 @@ export async function fetchCardProgramMyReferees(
 	try {
 		const { provider } = await providerForBeamioUserCard(cardAddr)
 		const card = new ethers.Contract(cardAddr, CARD_REFERRER_READ_ABI, provider)
-		const lookupAa = await resolveReferrerLookupAa(provider, eoa)
+		// Prefer EOA (matches on-chain getRefereesByReferrerPage EOA→AA fallback).
+		// If EOA page is empty, also try AA (legacy indexes keyed only by AA).
+		const aa = await resolveUserAa(provider, eoa)
+		const lookupKeys = aa && aa.toLowerCase() !== eoa.toLowerCase() ? [eoa, aa] : [eoa]
 
-		const rows: CardProgramMyRefereeRow[] = []
-		let offset = 0
+		let rows: CardProgramMyRefereeRow[] = []
 		let total = 0
-		let guard = 0
 
-		while (guard < 32 && rows.length < MY_REFEREES_MAX_ROWS) {
-			guard += 1
-			const [referees, chargeTotals, totalRaw, nextOffsetRaw] = (await card.getRefereesByReferrerPage(
-				lookupAa,
-				BigInt(offset),
-				BigInt(MY_REFEREES_PAGE_SIZE),
-			)) as [string[], bigint[], bigint, bigint]
+		for (const lookup of lookupKeys) {
+			const pageRows: CardProgramMyRefereeRow[] = []
+			let offset = 0
+			let pageTotal = 0
+			let guard = 0
 
-			total = bigintToCount(totalRaw) ?? total
-			const pageLen = referees.length
-			if (pageLen === 0) break
+			while (guard < 32 && pageRows.length < MY_REFEREES_MAX_ROWS) {
+				guard += 1
+				const [referees, chargeTotals, totalRaw, nextOffsetRaw] = (await card.getRefereesByReferrerPage(
+					lookup,
+					BigInt(offset),
+					BigInt(MY_REFEREES_PAGE_SIZE),
+				)) as [string[], bigint[], bigint, bigint]
 
-			const eoaBatch = await Promise.all(referees.map((a) => resolveReferrerAaToEoa(provider, a)))
-			for (let i = 0; i < pageLen; i += 1) {
-				if (rows.length >= MY_REFEREES_MAX_ROWS) break
-				rows.push({
-					refereeEoa: eoaBatch[i] ?? ethers.getAddress(referees[i]!),
-					refereeChargePointsTotal6:
-						chargeTotals[i] != null ? chargeTotals[i]!.toString() : null,
-				})
+				pageTotal = bigintToCount(totalRaw) ?? pageTotal
+				const pageLen = referees.length
+				if (pageLen === 0) break
+
+				const eoaBatch = await Promise.all(referees.map((a) => resolveReferrerAaToEoa(provider, a)))
+				for (let i = 0; i < pageLen; i += 1) {
+					if (pageRows.length >= MY_REFEREES_MAX_ROWS) break
+					pageRows.push({
+						refereeEoa: eoaBatch[i] ?? ethers.getAddress(referees[i]!),
+						refereeChargePointsTotal6:
+							chargeTotals[i] != null ? chargeTotals[i]!.toString() : null,
+					})
+				}
+
+				const next = bigintToCount(nextOffsetRaw) ?? offset + pageLen
+				if (next <= offset || pageRows.length >= pageTotal) break
+				offset = next
 			}
 
-			const next = bigintToCount(nextOffsetRaw) ?? offset + pageLen
-			if (next <= offset || rows.length >= total) break
-			offset = next
+			if (pageRows.length > 0 || pageTotal > 0) {
+				rows = pageRows
+				total = Math.max(pageTotal, pageRows.length)
+				break
+			}
 		}
 
 		return {

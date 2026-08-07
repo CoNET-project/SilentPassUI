@@ -176,6 +176,7 @@ import { parseDiscoverMerchantFromParams, buildDiscoverMerchantShareUrl, shareDi
 import { recordDiscoverShareClickIfNeeded } from '@/utils/discoverShareClickEvent'
 import { readDiscoverShareReferrer, stashDiscoverShareReferrer } from '@/utils/discoverShareReferrerStash'
 import { collectDeepLinkSearchParams } from '@/utils/beamioDeepLinkParams'
+import { useReliableTapHandler, RELIABLE_TAP_BUTTON_CLASS } from '@/utils/reliableTap'
 import {
 	buildDiscoverActivePromotionsPanelModel,
 	formatSocialPoints13Display,
@@ -1645,6 +1646,9 @@ function DiscoverMerchantReferrerDashboardCard({
 	loading: boolean
 	onOpenMyReferees?: () => void
 }) {
+	const openMyRefereesTap = useReliableTapHandler(() => {
+		onOpenMyReferees?.()
+	})
 	const rewardText = loading && !snapshot
 		? '—'
 		: formatReferrerRewardPointsDisplay(snapshot?.rewardBalanceRaw)
@@ -1689,14 +1693,16 @@ function DiscoverMerchantReferrerDashboardCard({
 			<div className="mt-4 grid grid-cols-2 gap-3">
 				<button
 					type="button"
-					disabled={!canOpenDownline || !onOpenMyReferees}
-					onClick={() => onOpenMyReferees?.()}
+					disabled={!canOpenDownline}
+					{...(canOpenDownline ? openMyRefereesTap : {})}
+					data-touch-priority="1"
 					className={[
 						cellClass,
+						RELIABLE_TAP_BUTTON_CLASS,
 						'text-left',
 						canOpenDownline
-							? 'cursor-pointer transition hover:bg-[#e8ecf0] active:scale-[0.99] dark:hover:bg-slate-800'
-							: '',
+							? 'transition hover:bg-[#e8ecf0] active:scale-[0.99] dark:hover:bg-slate-800'
+							: 'cursor-not-allowed opacity-80',
 					].join(' ')}
 					aria-label="View my referees"
 				>
@@ -1704,13 +1710,15 @@ function DiscoverMerchantReferrerDashboardCard({
 					<p className={cellValueClass}>{myRefereesText}</p>
 					{/* Match Referrers cell height (caption line). */}
 					<p className={`${cellCaptionClass} invisible`} aria-hidden>
-						Registered 0
+						On this card
 					</p>
 				</button>
 				<div className={cellClass}>
 					<p className={cellTitleClass}>Referrers</p>
 					<p className={cellValueClass}>{referrersText}</p>
-					<p className={cellCaptionClass}>Registered {registeredText}</p>
+					<p className={cellCaptionClass}>
+						On this card · Registered {registeredText}
+					</p>
 				</div>
 				<div className={cellClass}>
 					<p className={cellTitleClass}>Charge reward</p>
@@ -4113,12 +4121,22 @@ function DiscoverMerchantDetailFullScreen({
 
 	const resolveUserEoa = useCallback((): string | null => {
 		const privateKeyArmor = resolveSigningPrivateKeyArmor(profile)
-		if (!privateKeyArmor) return null
-		try {
-			return ethers.getAddress(new ethers.Wallet(privateKeyArmor).address)
-		} catch {
-			return null
+		if (privateKeyArmor) {
+			try {
+				return ethers.getAddress(new ethers.Wallet(privateKeyArmor).address)
+			} catch {
+				/* fall through to keyID */
+			}
 		}
+		const keyId = profile?.keyID?.trim()
+		if (keyId && ethers.isAddress(keyId)) {
+			try {
+				return ethers.getAddress(keyId)
+			} catch {
+				return null
+			}
+		}
+		return null
 	}, [profile])
 
 	const [genesisEoaUsdcBalance6, setGenesisEoaUsdcBalance6] = useState<bigint | null>(null)

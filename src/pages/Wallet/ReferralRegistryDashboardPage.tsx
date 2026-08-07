@@ -507,7 +507,7 @@ function AdminL0ManagementPanel({
 			<div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 pb-10">
 				<div className="mx-auto w-full max-w-lg" style={{ paddingTop: 'max(1rem, env(safe-area-inset-top, 0px))' }}>
 					<div className="flex items-center justify-between">
-						<BeamioCircularBackButton onClick={onClose} />
+						<BeamioCircularBackButton variant="onDark" onClick={onClose} />
 						<span className="text-xs font-semibold uppercase tracking-[0.14em] text-indigo-200">L0 management</span>
 					</div>
 					<header className="pb-6 pt-8">
@@ -1345,7 +1345,7 @@ function L0RevenueSharePanel({
 				<div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 pb-10">
 					<div className="mx-auto w-full max-w-lg" style={{ paddingTop: 'max(1rem, env(safe-area-inset-top, 0px))' }}>
 						<div className="flex items-center justify-between">
-							<BeamioCircularBackButton onClick={close} />
+							<BeamioCircularBackButton variant="onDark" onClick={close} />
 							<SlidersHorizontal className="h-5 w-5 text-amber-200" aria-hidden />
 						</div>
 						<header className="pb-7 pt-8">
@@ -1510,7 +1510,7 @@ function ReferralGlobalSettingsDrawer({
 				<div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 pb-10">
 					<div className="mx-auto w-full max-w-lg" style={{ paddingTop: 'max(1rem, env(safe-area-inset-top, 0px))' }}>
 						<div className="flex items-center justify-between">
-							<BeamioCircularBackButton onClick={close} />
+							<BeamioCircularBackButton variant="onDark" onClick={close} />
 							<Settings2 className="h-5 w-5 text-indigo-200" aria-hidden />
 						</div>
 						<header className="pb-7 pt-8">
@@ -1721,7 +1721,7 @@ function ReferralIncomeDetailPanel({
 			<div className="relative z-10 flex min-h-0 flex-1 flex-col overflow-y-auto px-5 pb-10" style={{ WebkitOverflowScrolling: 'touch' }}>
 				<div className="mx-auto w-full max-w-2xl" style={{ paddingTop: 'max(1rem, env(safe-area-inset-top, 0px))' }}>
 					<div className="flex items-center justify-between">
-						<BeamioCircularBackButton onClick={close} />
+						<BeamioCircularBackButton variant="onDark" onClick={close} />
 						<p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-200">
 							{merchantScoped ? 'Accrual history' : 'Income'}
 						</p>
@@ -1921,7 +1921,7 @@ function ReferralRedeemManagementPanel({
 				<div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-y-contain px-5 pb-10" style={{ WebkitOverflowScrolling: 'touch' }}>
 					<div className="mx-auto w-full max-w-2xl" style={{ paddingTop: 'max(1rem, env(safe-area-inset-top, 0px))' }}>
 						<div className="flex items-center justify-between">
-							<BeamioCircularBackButton onClick={close} />
+							<BeamioCircularBackButton variant="onDark" onClick={close} />
 							<div className="flex h-9 w-9 items-center justify-center rounded-full border border-amber-200/20 bg-amber-300/10 text-amber-200" aria-hidden>
 								<Gift className="h-4 w-4" />
 							</div>
@@ -2183,7 +2183,7 @@ function AdminMerchantPackagePanel({
 				<div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-y-contain px-5 pb-10" style={{ WebkitOverflowScrolling: 'touch' }}>
 					<div className="mx-auto w-full max-w-2xl" style={{ paddingTop: 'max(1rem, env(safe-area-inset-top, 0px))' }}>
 						<div className="flex items-center justify-between">
-							<BeamioCircularBackButton onClick={close} />
+							<BeamioCircularBackButton variant="onDark" onClick={close} />
 							<div className="flex h-9 w-9 items-center justify-center rounded-full border border-emerald-200/20 bg-emerald-300/10 text-emerald-200" aria-hidden>
 								<Package className="h-4 w-4" />
 							</div>
@@ -2498,7 +2498,7 @@ export default function ReferralRegistryDashboardPage() {
 				<div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-y-contain px-5 pb-10" style={{ WebkitOverflowScrolling: 'touch' }}>
 					<div className="mx-auto w-full max-w-2xl" style={{ paddingTop: 'max(1rem, env(safe-area-inset-top, 0px))' }}>
 						<div className="flex items-center justify-between">
-									<BeamioCircularBackButton onClick={close} />
+									<BeamioCircularBackButton variant="onDark" onClick={close} />
 								<div className="flex items-center gap-2">
 									{snapshot?.isAdmin ? (
 										<button

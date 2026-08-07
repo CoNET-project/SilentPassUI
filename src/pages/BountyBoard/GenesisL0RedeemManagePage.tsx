@@ -162,6 +162,7 @@ export default function GenesisL0RedeemManagePage() {
 					>
 						<div className="flex items-center justify-between">
 							<BeamioCircularBackButton
+								variant="onDark"
 								onClick={() => navigate('/BountyBoard/genesis-referral')}
 							/>
 						</div>

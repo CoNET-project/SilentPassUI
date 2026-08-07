@@ -449,7 +449,7 @@ export default function BeamioContactProfilePreview({ item, close }: Props) {
 								shadow-[0_8px_24px_rgba(15,23,42,0.35)]
 							">
 							<div className={BEAMIO_HERO_FLOATING_BACK_ROW_CLASS} style={beamioHeroFloatingBackTopStyle}>
-								<BeamioCircularBackButton onClick={handleProfileBack} />
+								<BeamioCircularBackButton variant="onDark" onClick={handleProfileBack} />
 							</div>
 
 							{/* 头像 + 名字 + username + Add friend */}

@@ -257,7 +257,7 @@ function GenesisIncomeDetailPanel({
 					style={{ paddingTop: 'max(1rem, env(safe-area-inset-top, 0px))' }}
 				>
 					<div className="flex items-center justify-between">
-						<BeamioCircularBackButton onClick={close} />
+						<BeamioCircularBackButton variant="onDark" onClick={close} />
 						<p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-200">
 							{heading}
 						</p>
@@ -845,7 +845,7 @@ export default function GenesisNodeReferralPage() {
 						style={{ paddingTop: 'max(1rem, env(safe-area-inset-top, 0px))' }}
 					>
 						<div className="flex items-center justify-between">
-							<BeamioCircularBackButton onClick={() => navigate('/BountyBoard')} />
+							<BeamioCircularBackButton variant="onDark" onClick={() => navigate('/BountyBoard')} />
 							{snapshot?.isAdmin || snapshot?.isL0 ? (
 								<div className="flex items-center gap-2">
 									{snapshot?.isAdmin ? (

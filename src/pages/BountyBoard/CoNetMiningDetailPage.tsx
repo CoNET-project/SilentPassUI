@@ -350,7 +350,7 @@ export default function CoNetMiningDetailPage() {
 						className="flex items-start justify-between gap-2"
 						style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}
 					>
-						<BeamioCircularBackButton onClick={() => navigate('/BountyBoard')} />
+						<BeamioCircularBackButton variant="onDark" onClick={() => navigate('/BountyBoard')} />
 						<div className="ml-auto flex shrink-0 items-center gap-2">
 							<button
 								type="button"

@@ -141,7 +141,11 @@ export function DiscoverReferrerDownlinePage({
 				style={{ paddingTop: 'max(1rem, env(safe-area-inset-top, 0px))' }}
 			>
 				<div className={`flex items-center justify-between ${BEAMIO_CIRCULAR_BACK_ROW_CLASS}`}>
-					<BeamioCircularBackButton onClick={close} className="absolute left-0 top-0" />
+					<BeamioCircularBackButton
+						variant="onLight"
+						onClick={close}
+						className="absolute left-0 top-0"
+					/>
 				</div>
 
 				<header className="pb-6 pt-2">

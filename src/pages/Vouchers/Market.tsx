@@ -5264,7 +5264,7 @@ function DiscoverMerchantDetailFullScreen({
 				</div>
 				{/* Chrome outside overflow-hidden so safe-area / WebKit hit targets are not clipped. */}
 				<div className={BEAMIO_HERO_FLOATING_BACK_ROW_CLASS} style={beamioHeroFloatingBackTopStyle}>
-					<BeamioCircularBackButton onClick={onClose} />
+					<BeamioCircularBackButton variant="onDark" onClick={onClose} />
 					<div className="flex items-center gap-2">
 						{item.cardAddress ? (
 							<DiscoverMerchantShareButton

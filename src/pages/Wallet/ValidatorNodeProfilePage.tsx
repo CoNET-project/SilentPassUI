@@ -192,8 +192,9 @@ export default function ValidatorNodeProfilePage() {
 				<main className="mx-auto w-full max-w-2xl space-y-6 px-6 pt-2">
 					<div className={BEAMIO_CIRCULAR_BACK_ROW_CLASS}>
 						<BeamioCircularBackButton
+							variant="onLight"
 							onClick={() => navigate('/wallet')}
-							className="absolute left-0 top-0 border-slate-200/80 bg-white/80 text-slate-700 dark:border-slate-600 dark:bg-slate-800/80 dark:text-slate-200"
+							className="absolute left-0 top-0"
 						/>
 					</div>
 

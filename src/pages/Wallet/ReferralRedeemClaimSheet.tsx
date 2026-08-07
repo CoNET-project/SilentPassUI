@@ -52,7 +52,7 @@ export default function ReferralRedeemClaimSheet({
 			<section className="absolute inset-x-0 bottom-0 max-h-[88dvh] overflow-y-auto rounded-t-[2rem] bg-[#071126] px-5 pb-[max(1.25rem,env(safe-area-inset-bottom,0px))] pt-4 text-slate-50 shadow-[0_-16px_50px_rgba(2,6,23,0.35)] animate-in slide-in-from-bottom duration-300">
 				<div className="mx-auto w-full max-w-xl">
 					<div className="flex items-center justify-between">
-						<BeamioCircularBackButton onClick={onClose} />
+						<BeamioCircularBackButton variant="onDark" onClick={onClose} />
 						<div className="flex h-9 w-9 items-center justify-center rounded-full border border-indigo-200/20 bg-indigo-300/10 text-indigo-200" aria-hidden>
 							<Gift className="h-4 w-4" />
 						</div>

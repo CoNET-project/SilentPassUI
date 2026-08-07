@@ -3097,9 +3097,17 @@ export const postExecuteForOwner = async (payload: {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body),
         })
-        const data = await res.json()
-        if (!res.ok) return { success: false, error: data.error ?? 'executeForOwner failed' }
-        return { success: true, code: data.code }
+        const data = await res.json().catch(() => ({} as Record<string, unknown>))
+        if (!res.ok || data.success === false) {
+            return {
+                success: false,
+                error:
+                    (typeof data.error === 'string' && data.error) ||
+                    (typeof data.message === 'string' && data.message) ||
+                    'executeForOwner failed',
+            }
+        }
+        return { success: true, code: typeof data.code === 'string' ? data.code : undefined }
     } catch (e: any) {
         return { success: false, error: e?.message ?? String(e) }
     }

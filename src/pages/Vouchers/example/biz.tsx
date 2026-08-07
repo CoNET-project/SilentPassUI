@@ -346,6 +346,7 @@ import {
   validateTopupPromotionDraft,
   type TopupPromotionDraft,
 } from '@/utils/programTopupPromotion';
+import { BeamioPercentSlider } from '@/components/BeamioPercentSlider';
 import { CouponSocialPromotionEventsEditor } from '@/components/programs/CouponSocialPromotionEventsEditor';
 import { CardSocialPromotionEventsEditor } from '@/components/programs/CardSocialPromotionEventsEditor';
 import {
@@ -10177,13 +10178,33 @@ async function syncReferrerAmountRatioOnChain(opts: {
       deadline,
       nonce,
     );
-    return postExecuteForOwner({
+    const post = await postExecuteForOwner({
       cardAddress: cardAddrNorm,
       data,
       deadline,
       nonce,
       ownerSignature,
     });
+    if (!post.success) {
+      return { success: false, error: post.error ?? 'executeForOwner failed' };
+    }
+    // Confirm storage — do not trust HTTP alone (queued / false-success body).
+    for (let attempt = 0; attempt < 8; attempt++) {
+      if (attempt > 0) {
+        await new Promise((r) => setTimeout(r, 1200));
+      }
+      const verified = await readReferrerAmountRatiosOnChain(cardAddrNorm);
+      const verifiedRatio =
+        opts.kind === 'charge' ? verified?.chargeRatioE6 : verified?.topupRatioE6;
+      if (verifiedRatio === opts.targetRatioE6) {
+        return { success: true };
+      }
+    }
+    return {
+      success: false,
+      error:
+        'Referrer reward was accepted by the API but is not on-chain yet. Wait a moment and save again.',
+    };
   } catch (e: unknown) {
     return {
       success: false,
@@ -12585,8 +12606,9 @@ const [programReferrerDetailList, setProgramReferrerDetailList] = useState<Beami
 const [programReferrerRefreshStatus, setProgramReferrerRefreshStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
 const [programReferrerChargeEnabled, setProgramReferrerChargeEnabled] = useState(false);
 const [programReferrerTopupEnabled, setProgramReferrerTopupEnabled] = useState(false);
-const [programReferrerChargePercentInput, setProgramReferrerChargePercentInput] = useState('0');
-const [programReferrerTopupPercentInput, setProgramReferrerTopupPercentInput] = useState('0');
+/** Defaults match CoNET merchant card on-chain ratios (e.g. 0xafE482…): charge 100%, top-up 50%. */
+const [programReferrerChargePercentInput, setProgramReferrerChargePercentInput] = useState('100');
+const [programReferrerTopupPercentInput, setProgramReferrerTopupPercentInput] = useState('50');
 const [programReferrerChargeRatioE6Baseline, setProgramReferrerChargeRatioE6Baseline] = useState('0');
 const [programReferrerTopupRatioE6Baseline, setProgramReferrerTopupRatioE6Baseline] = useState('0');
 /** Snapshot while Top-up / Consumption editors are open (for Discard). */
@@ -12599,6 +12621,9 @@ const [programReferrerChargeEditorBaseline, setProgramReferrerChargeEditorBaseli
   percent: string;
 } | null>(null);
 const programReferrerRewardsSaveInFlightRef = useRef(false);
+/** Prevent silent referrer overview reloads from wiping in-editor drafts. */
+const cardIssuanceTopupPromotionEditorOpenRef = useRef(false);
+const cardIssuanceConsumptionPointEditorOpenRef = useRef(false);
 const cardIssuanceCouponShareRow = useMemo(
   () => cardIssuanceCoupons.find((item) => item.id === cardIssuanceCouponShareOpenId) ?? null,
   [cardIssuanceCoupons, cardIssuanceCouponShareOpenId]
@@ -12815,16 +12840,23 @@ useEffect(() => {
      if (ratios) {
        setProgramReferrerChargeRatioE6Baseline(ratios.chargeRatioE6);
        setProgramReferrerTopupRatioE6Baseline(ratios.topupRatioE6);
-       const chargeOn = BigInt(ratios.chargeRatioE6) > 0n;
-       const topupOn = BigInt(ratios.topupRatioE6) > 0n;
-       setProgramReferrerChargeEnabled(chargeOn);
-       setProgramReferrerTopupEnabled(topupOn);
-       setProgramReferrerChargePercentInput(
-         chargeOn ? formatAmountPercentE6Display(ratios.chargeRatioE6) : '0',
-       );
-       setProgramReferrerTopupPercentInput(
-         topupOn ? formatAmountPercentE6Display(ratios.topupRatioE6) : '0',
-       );
+       // While Top-up / Consumption editors are open, keep chain baselines only —
+       // do not overwrite the user's in-progress Referrer Reward draft.
+       const referrerDraftEditorsOpen =
+         cardIssuanceTopupPromotionEditorOpenRef.current ||
+         cardIssuanceConsumptionPointEditorOpenRef.current;
+       if (!referrerDraftEditorsOpen) {
+         const chargeOn = BigInt(ratios.chargeRatioE6) > 0n;
+         const topupOn = BigInt(ratios.topupRatioE6) > 0n;
+         setProgramReferrerChargeEnabled(chargeOn);
+         setProgramReferrerTopupEnabled(topupOn);
+         setProgramReferrerChargePercentInput(
+           chargeOn ? formatAmountPercentE6Display(ratios.chargeRatioE6) : '100',
+         );
+         setProgramReferrerTopupPercentInput(
+           topupOn ? formatAmountPercentE6Display(ratios.topupRatioE6) : '50',
+         );
+       }
      }
      if (!silent) {
        setProgramReferrerRefreshStatus('success');
@@ -12886,21 +12918,38 @@ useEffect(() => {
    return '';
  }, [programReferrerChargeEnabled, programReferrerChargeDraftE6, tu]);
 
- /** Persist one referrer amount-ratio kind. Returns error string or null on success / no-op. */
+ /** Persist one referrer amount-ratio kind. Returns error string or null on success / no-op.
+  * Optional `draft` snapshots the editor values at Save-click so a later silent overview reload
+  * (or point-system await) cannot drop a concurrent Referrer Reward change.
+  * Skip only when **on-chain** already matches the draft (local baseline alone can be stale).
+  */
  const syncProgramReferrerAmountRatioKind = useCallback(
-   async (kind: 'charge' | 'topup'): Promise<string | null> => {
+   async (
+     kind: 'charge' | 'topup',
+     draft?: { enabled: boolean; percent: string; baselineE6?: string },
+   ): Promise<string | null> => {
      const addr = cardIssuanceExistingCard?.cardAddress?.trim() ?? '';
      if (!addr || !ethers.isAddress(addr)) return null;
-     const enabled = kind === 'charge' ? programReferrerChargeEnabled : programReferrerTopupEnabled;
+     const enabled =
+       draft?.enabled ?? (kind === 'charge' ? programReferrerChargeEnabled : programReferrerTopupEnabled);
      const percent =
-       kind === 'charge' ? programReferrerChargePercentInput : programReferrerTopupPercentInput;
-     const baseline =
-       kind === 'charge' ? programReferrerChargeRatioE6Baseline : programReferrerTopupRatioE6Baseline;
+       draft?.percent ??
+       (kind === 'charge' ? programReferrerChargePercentInput : programReferrerTopupPercentInput);
      const draftE6 = enabled ? parseAmountPercentHumanToE6(percent) : 0n;
      if (draftE6 == null) return tu('programs_overview_referrer_percent_invalid');
      if (enabled && draftE6 === 0n) return tu('programs_overview_referrer_percent_required');
      const target = draftE6.toString();
-     if (target === baseline) return null;
+     const onChain = await readReferrerAmountRatiosOnChain(addr);
+     const chainCurrent =
+       kind === 'charge' ? onChain?.chargeRatioE6 : onChain?.topupRatioE6;
+     if (chainCurrent === target) {
+       if (kind === 'charge') {
+         setProgramReferrerChargeRatioE6Baseline(target);
+       } else {
+         setProgramReferrerTopupRatioE6Baseline(target);
+       }
+       return null;
+     }
      const pk = getSessionPrivateKeyArmor() ?? profiles?.[0]?.privateKeyArmor;
      if (!pk) return tu('programs_overview_referrer_rewards_error');
      if (programReferrerRewardsSaveInFlightRef.current) {
@@ -12921,13 +12970,13 @@ useEffect(() => {
          setProgramReferrerChargeRatioE6Baseline(target);
          setProgramReferrerChargeEnabled(draftE6 > 0n);
          setProgramReferrerChargePercentInput(
-           draftE6 > 0n ? formatAmountPercentE6Display(target) : '0',
+           draftE6 > 0n ? formatAmountPercentE6Display(target) : '100',
          );
        } else {
          setProgramReferrerTopupRatioE6Baseline(target);
          setProgramReferrerTopupEnabled(draftE6 > 0n);
          setProgramReferrerTopupPercentInput(
-           draftE6 > 0n ? formatAmountPercentE6Display(target) : '0',
+           draftE6 > 0n ? formatAmountPercentE6Display(target) : '50',
          );
        }
        return null;
@@ -12943,8 +12992,6 @@ useEffect(() => {
      programReferrerTopupEnabled,
      programReferrerChargePercentInput,
      programReferrerTopupPercentInput,
-     programReferrerChargeRatioE6Baseline,
-     programReferrerTopupRatioE6Baseline,
      profiles,
      tu,
    ],
@@ -14960,13 +15007,21 @@ const cardIssuanceConsumptionPointEditorDirty = useMemo(() => {
   const pointDirty =
     cardIssuanceConsumptionPointEditorBaseline.enabled !== cardIssuancePointSystemEnabled ||
     cardIssuanceConsumptionPointEditorBaseline.ratioInput !== cardIssuancePointRatioInput;
-  return pointDirty || programReferrerChargeEditorDirty;
+  const draftE6 = programReferrerChargeEnabled
+    ? parseAmountPercentHumanToE6(programReferrerChargePercentInput)
+    : 0n;
+  const referrerOutOfSyncWithChain =
+    draftE6 != null && draftE6.toString() !== programReferrerChargeRatioE6Baseline;
+  return pointDirty || programReferrerChargeEditorDirty || referrerOutOfSyncWithChain;
 }, [
   cardIssuanceConsumptionPointEditorOpen,
   cardIssuanceConsumptionPointEditorBaseline,
   cardIssuancePointSystemEnabled,
   cardIssuancePointRatioInput,
   programReferrerChargeEditorDirty,
+  programReferrerChargeEnabled,
+  programReferrerChargePercentInput,
+  programReferrerChargeRatioE6Baseline,
 ]);
 
 const cardIssuanceConsumptionPointDisplay = useMemo(() => {
@@ -17637,10 +17692,12 @@ const openCardIssuanceTopupPromotionEditor = useCallback(() => {
     enabled: programReferrerTopupEnabled,
     percent: programReferrerTopupPercentInput,
   });
+  cardIssuanceTopupPromotionEditorOpenRef.current = true;
   setCardIssuanceTopupPromotionEditorOpen(true);
 }, [cardIssuanceTopupPromotion, programReferrerTopupEnabled, programReferrerTopupPercentInput]);
 
 useEffect(() => {
+  cardIssuanceTopupPromotionEditorOpenRef.current = cardIssuanceTopupPromotionEditorOpen;
   if (!cardIssuanceTopupPromotionEditorOpen) {
     setCardIssuanceTopupPromotionEditorBaseline(null);
     setProgramReferrerTopupEditorBaseline(null);
@@ -17661,23 +17718,55 @@ useEffect(() => {
 
 const openCardIssuanceConsumptionPointEditor = useCallback(() => {
   setCardIssuanceConsumptionPointEditorServerError('');
-  setCardIssuanceConsumptionPointEditorBaseline({
-    enabled: cardIssuancePointSystemEnabled,
-    ratioInput: cardIssuancePointRatioInput,
-  });
-  setProgramReferrerChargeEditorBaseline({
-    enabled: programReferrerChargeEnabled,
-    percent: programReferrerChargePercentInput,
-  });
-  setCardIssuanceConsumptionPointEditorOpen(true);
+  const addr = cardIssuanceExistingCard?.cardAddress?.trim() ?? '';
+
+  const finishOpen = (chargeEnabled: boolean, chargePercent: string) => {
+    setCardIssuanceConsumptionPointEditorBaseline({
+      enabled: cardIssuancePointSystemEnabled,
+      ratioInput: cardIssuancePointRatioInput,
+    });
+    setProgramReferrerChargeEditorBaseline({
+      enabled: chargeEnabled,
+      percent: chargePercent,
+    });
+    cardIssuanceConsumptionPointEditorOpenRef.current = true;
+    setCardIssuanceConsumptionPointEditorOpen(true);
+  };
+
+  if (!addr || !ethers.isAddress(addr)) {
+    finishOpen(programReferrerChargeEnabled, programReferrerChargePercentInput);
+    return;
+  }
+
+  void (async () => {
+    const ratios = await readReferrerAmountRatiosOnChain(addr).catch(() => null);
+    if (ratios) {
+      const chargeOn = BigInt(ratios.chargeRatioE6) > 0n;
+      const nextEnabled = chargeOn;
+      const nextPercent = chargeOn
+        ? formatAmountPercentE6Display(ratios.chargeRatioE6)
+        : '100';
+      setProgramReferrerChargeRatioE6Baseline(ratios.chargeRatioE6);
+      setProgramReferrerChargeEnabled(nextEnabled);
+      setProgramReferrerChargePercentInput(nextPercent);
+      if (!cardIssuanceTopupPromotionEditorOpenRef.current) {
+        setProgramReferrerTopupRatioE6Baseline(ratios.topupRatioE6);
+      }
+      finishOpen(nextEnabled, nextPercent);
+      return;
+    }
+    finishOpen(programReferrerChargeEnabled, programReferrerChargePercentInput);
+  })();
 }, [
   cardIssuancePointSystemEnabled,
   cardIssuancePointRatioInput,
   programReferrerChargeEnabled,
   programReferrerChargePercentInput,
+  cardIssuanceExistingCard?.cardAddress,
 ]);
 
 useEffect(() => {
+  cardIssuanceConsumptionPointEditorOpenRef.current = cardIssuanceConsumptionPointEditorOpen;
   if (!cardIssuanceConsumptionPointEditorOpen) {
     setCardIssuanceConsumptionPointEditorBaseline(null);
     setProgramReferrerChargeEditorBaseline(null);
@@ -19706,7 +19795,12 @@ useEffect(() => {
 
 const submitCardIssuanceTopupPromotionEditor = useCallback(async () => {
   if (cardIssuanceTopupPromotionEditorValidationError || programReferrerTopupValidationError) return;
-  const nextPromotion = { ...cardIssuanceTopupPromotion, enabled: true };
+  const nextPromotion = { ...cardIssuanceTopupPromotion };
+  // Snapshot Referrer draft at Save click — concurrent overview reload must not drop it.
+  const referrerDraftAtStart = {
+    enabled: programReferrerTopupEnabled,
+    percent: programReferrerTopupPercentInput,
+  };
   if (!cardIssuanceExistingCard?.cardAddress) {
     setCardIssuanceTopupPromotion(nextPromotion);
     setCardIssuanceTopupPromotionEditorOpen(false);
@@ -19716,13 +19810,18 @@ const submitCardIssuanceTopupPromotionEditor = useCallback(async () => {
   setCardIssuanceCreateError('');
   setCardIssuanceTopupPromotionEditorPublishing(true);
   try {
+    // Write Top-up Referrer first against live chain, then promotion metadata.
+    {
+      const referrerErr = await syncProgramReferrerAmountRatioKind('topup', referrerDraftAtStart);
+      if (referrerErr) {
+        setCardIssuanceTopupPromotionEditorServerError(referrerErr);
+        return;
+      }
+    }
     const payload = topupPromotionDraftToPayload(nextPromotion);
     const promoDirty =
       cardIssuanceTopupPromotionEditorBaseline == null ||
-      !topupPromotionDraftsEqual(nextPromotion, {
-        ...cardIssuanceTopupPromotionEditorBaseline,
-        enabled: true,
-      });
+      !topupPromotionDraftsEqual(nextPromotion, cardIssuanceTopupPromotionEditorBaseline);
     if (promoDirty) {
       const ok = await handlePublishCardIssuance({
         topupPromotionOverride: nextPromotion,
@@ -19746,22 +19845,21 @@ const submitCardIssuanceTopupPromotionEditor = useCallback(async () => {
             nextMeta.bonusRule = legacyBonus;
             nextMeta.bonusRules = [legacyBonus];
           }
+        } else {
+          delete nextMeta.topupPromotion;
+          delete nextMeta.bonusRule;
+          delete nextMeta.bonusRules;
         }
         return { ...prev, meta: nextMeta };
       });
       invalidateBeamioCardMetadataCache(cardIssuanceExistingCard.cardAddress);
     }
-    if (programReferrerTopupEditorDirty) {
-      const referrerErr = await syncProgramReferrerAmountRatioKind('topup');
-      if (referrerErr) {
-        setCardIssuanceTopupPromotionEditorServerError(referrerErr);
-        return;
-      }
-    }
     setCardIssuanceTopupPromotionEditorOpen(false);
     setCardIssuanceOwnerAdminNotice({
       kind: 'ok',
-      text: 'Top-up promotion saved. POS and apps will use it after a short cache refresh.',
+      text: nextPromotion.enabled
+        ? 'Top-up promotion saved. POS and apps will use it after a short cache refresh.'
+        : 'Top-up promotion turned off. Referrer reward settings are unchanged.',
     });
   } catch {
     setCardIssuanceTopupPromotionEditorServerError('Could not save top-up promotion. Please try again.');
@@ -19772,7 +19870,8 @@ const submitCardIssuanceTopupPromotionEditor = useCallback(async () => {
   cardIssuanceTopupPromotion,
   cardIssuanceTopupPromotionEditorValidationError,
   programReferrerTopupValidationError,
-  programReferrerTopupEditorDirty,
+  programReferrerTopupEnabled,
+  programReferrerTopupPercentInput,
   cardIssuanceTopupPromotionEditorBaseline,
   cardIssuanceExistingCard?.cardAddress,
   handlePublishCardIssuance,
@@ -19790,12 +19889,58 @@ const discardCardIssuanceTopupPromotionEditorChanges = useCallback(() => {
   setCardIssuanceCreateError('');
 }, [cardIssuanceTopupPromotionEditorBaseline, programReferrerTopupEditorBaseline]);
 
+const closeCardIssuanceTopupPromotionEditor = useCallback(() => {
+  if (cardIssuanceTopupPromotionEditorPublishing) return;
+  discardCardIssuanceTopupPromotionEditorChanges();
+  setCardIssuanceTopupPromotionEditorOpen(false);
+}, [cardIssuanceTopupPromotionEditorPublishing, discardCardIssuanceTopupPromotionEditorChanges]);
+
+const cardIssuanceTopupPromotionEditorCanSave = useMemo(
+  () =>
+    cardIssuanceTopupPromotionEditorDirty &&
+    !cardIssuanceTopupPromotionEditorValidationError &&
+    !programReferrerTopupValidationError &&
+    !cardIssuanceTopupPromotionEditorPublishing &&
+    !cardIssuanceTopupPromotionDeleting,
+  [
+    cardIssuanceTopupPromotionEditorDirty,
+    cardIssuanceTopupPromotionEditorValidationError,
+    programReferrerTopupValidationError,
+    cardIssuanceTopupPromotionEditorPublishing,
+    cardIssuanceTopupPromotionDeleting,
+  ],
+);
+
 const discardCardIssuanceSocialPromotionEditorChanges = useCallback(() => {
   if (cardIssuanceSocialPromotionEditorBaseline == null) return;
   setCardIssuanceSocialPromotion(cloneSocialPromotionDraft(cardIssuanceSocialPromotionEditorBaseline));
   setCardIssuanceSocialPromotionEditorServerError('');
   setCardIssuanceCreateError('');
 }, [cardIssuanceSocialPromotionEditorBaseline]);
+
+const closeCardIssuanceSocialPromotionEditor = useCallback(() => {
+  if (cardIssuanceSocialPromotionEditorPublishing || cardIssuanceSocialPromotionDeleting) return;
+  discardCardIssuanceSocialPromotionEditorChanges();
+  setCardIssuanceSocialPromotionEditorOpen(false);
+}, [
+  cardIssuanceSocialPromotionEditorPublishing,
+  cardIssuanceSocialPromotionDeleting,
+  discardCardIssuanceSocialPromotionEditorChanges,
+]);
+
+const cardIssuanceSocialPromotionEditorCanSave = useMemo(
+  () =>
+    cardIssuanceSocialPromotionEditorDirty &&
+    !cardIssuanceSocialPromotionEditorValidationError &&
+    !cardIssuanceSocialPromotionEditorPublishing &&
+    !cardIssuanceSocialPromotionDeleting,
+  [
+    cardIssuanceSocialPromotionEditorDirty,
+    cardIssuanceSocialPromotionEditorValidationError,
+    cardIssuanceSocialPromotionEditorPublishing,
+    cardIssuanceSocialPromotionDeleting,
+  ],
+);
 
 const discardCardIssuanceConsumptionPointEditorChanges = useCallback(() => {
   if (cardIssuanceConsumptionPointEditorBaseline == null) return;
@@ -19808,6 +19953,32 @@ const discardCardIssuanceConsumptionPointEditorChanges = useCallback(() => {
   setCardIssuanceConsumptionPointEditorServerError('');
   setCardIssuanceCreateError('');
 }, [cardIssuanceConsumptionPointEditorBaseline, programReferrerChargeEditorBaseline]);
+
+const closeCardIssuanceConsumptionPointEditor = useCallback(() => {
+  if (cardIssuanceConsumptionPointEditorPublishing || cardIssuanceConsumptionPointDeleting) return;
+  discardCardIssuanceConsumptionPointEditorChanges();
+  setCardIssuanceConsumptionPointEditorOpen(false);
+}, [
+  cardIssuanceConsumptionPointEditorPublishing,
+  cardIssuanceConsumptionPointDeleting,
+  discardCardIssuanceConsumptionPointEditorChanges,
+]);
+
+const cardIssuanceConsumptionPointEditorCanSave = useMemo(
+  () =>
+    cardIssuanceConsumptionPointEditorDirty &&
+    !cardIssuanceConsumptionPointEditorValidationError &&
+    !programReferrerChargeValidationError &&
+    !cardIssuanceConsumptionPointEditorPublishing &&
+    !cardIssuanceConsumptionPointDeleting,
+  [
+    cardIssuanceConsumptionPointEditorDirty,
+    cardIssuanceConsumptionPointEditorValidationError,
+    programReferrerChargeValidationError,
+    cardIssuanceConsumptionPointEditorPublishing,
+    cardIssuanceConsumptionPointDeleting,
+  ],
+);
 
 const clearCardIssuanceTopupPromotion = useCallback(async () => {
   if (cardIssuanceTopupPromotionClearInFlightRef.current) return;
@@ -19937,6 +20108,11 @@ const submitCardIssuanceConsumptionPointEditor = useCallback(async () => {
   if (cardIssuanceConsumptionPointEditorValidationError || programReferrerChargeValidationError) return;
   const nextEnabled = cardIssuancePointSystemEnabled;
   const nextRatioInput = cardIssuancePointRatioInput;
+  // Snapshot Referrer draft at Save click — point-system await / overview reload must not drop it.
+  const referrerDraftAtStart = {
+    enabled: programReferrerChargeEnabled,
+    percent: programReferrerChargePercentInput,
+  };
   const pointSystemPayload = buildCardIssuancePointSystemMetadataFromDraft(
     nextEnabled,
     nextRatioInput,
@@ -19960,6 +20136,15 @@ const submitCardIssuanceConsumptionPointEditor = useCallback(async () => {
       return;
     }
     const cardAddr = ethers.getAddress(cardIssuanceExistingCard.cardAddress);
+    // Write Referrer Charge first — previously skipped when Point write ran first and
+    // local dirty/baseline falsely matched while chain stayed at an older ratio.
+    {
+      const referrerErr = await syncProgramReferrerAmountRatioKind('charge', referrerDraftAtStart);
+      if (referrerErr) {
+        setCardIssuanceConsumptionPointEditorServerError(referrerErr);
+        return;
+      }
+    }
     const pointDirty =
       cardIssuanceConsumptionPointEditorBaseline == null ||
       cardIssuanceConsumptionPointEditorBaseline.enabled !== nextEnabled ||
@@ -20001,13 +20186,6 @@ const submitCardIssuanceConsumptionPointEditor = useCallback(async () => {
       });
       invalidateBeamioCardMetadataCache(cardAddr);
     }
-    if (programReferrerChargeEditorDirty) {
-      const referrerErr = await syncProgramReferrerAmountRatioKind('charge');
-      if (referrerErr) {
-        setCardIssuanceConsumptionPointEditorServerError(referrerErr);
-        return;
-      }
-    }
     setCardIssuanceConsumptionPointEditorOpen(false);
     setCardIssuanceOwnerAdminNotice({
       kind: 'ok',
@@ -20025,7 +20203,8 @@ const submitCardIssuanceConsumptionPointEditor = useCallback(async () => {
 }, [
   cardIssuanceConsumptionPointEditorValidationError,
   programReferrerChargeValidationError,
-  programReferrerChargeEditorDirty,
+  programReferrerChargeEnabled,
+  programReferrerChargePercentInput,
   cardIssuanceConsumptionPointEditorBaseline,
   cardIssuancePointSystemEnabled,
   cardIssuancePointRatioInput,

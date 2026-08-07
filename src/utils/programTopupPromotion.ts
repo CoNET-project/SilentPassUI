@@ -19,9 +19,9 @@ export const EMPTY_TOPUP_PROMOTION_DRAFT: TopupPromotionDraft = {
 	validityPeriodEnabled: false,
 	validFrom: '',
 	validTo: '',
-	minimumTopupAmount: '',
+	minimumTopupAmount: '10',
 	rewardType: 'fixed',
-	rewardValue: '',
+	rewardValue: '10',
 }
 
 function parseAmount(raw: unknown): number | null {

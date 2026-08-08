@@ -34,7 +34,7 @@ export function HomeLanguageSelector() {
 	}
 
 	return (
-		<div data-capsule-interactive>
+		<div className="pointer-events-auto shrink-0" data-capsule-interactive data-touch-priority="1">
 			<BeamioLocalePicker
 				variant="home"
 				menuAlign="right"

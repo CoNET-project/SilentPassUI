@@ -86,6 +86,12 @@ export function useScrollCapsuleOpacity(enabled = true) {
 		[]
 	)
 
+	/** Remounted capsule controls (e.g. Home NFC +) need pointer-events re-synced. */
+	const resyncLayerPointerEvents = useCallback(() => {
+		const layer = layerRef.current
+		if (layer) syncCapsulePointerEvents(layer, opacityRef.current)
+	}, [])
+
 	useEffect(() => {
 		if (!enabled) {
 			commitOpacity(0)
@@ -94,6 +100,16 @@ export function useScrollCapsuleOpacity(enabled = true) {
 		const top = scrollRef.current?.scrollTop ?? 0
 		commitOpacity(computeOpacity(top))
 	}, [commitOpacity, enabled])
+
+	useEffect(() => {
+		const layer = layerRef.current
+		if (!layer || typeof MutationObserver === 'undefined') return
+		const mo = new MutationObserver(() => {
+			syncCapsulePointerEvents(layer, opacityRef.current)
+		})
+		mo.observe(layer, { childList: true, subtree: true })
+		return () => mo.disconnect()
+	}, [enabled])
 
 	// document capture 兜底：部分页面（Chat/Market）onScroll 可能不触发，用原生监听确保能捕获
 	useEffect(() => {
@@ -111,5 +127,5 @@ export function useScrollCapsuleOpacity(enabled = true) {
 		}
 	}, [enabled, scheduleOpacity])
 
-	return { opacity, onScroll, setRef, setLayerRef }
+	return { opacity, onScroll, setRef, setLayerRef, resyncLayerPointerEvents }
 }

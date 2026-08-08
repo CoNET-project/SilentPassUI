@@ -348,7 +348,12 @@ const Home = (_props: HomeProps) => {
 	const [activateGiftVoucherScreen, setActivateGiftVoucherScreen] = useState<'' | 'activeCoupons' | 'redeemVoucher'>('')
 	const [homeStoreCards, setHomeStoreCards] = useState<HomeStoreCardRow[]>(INITIAL_HOME_STORE_CARDS)
 	const [selectedHomeStoreCard, setSelectedHomeStoreCard] = useState<HomeStoreCardRow | null>(null)
-	const { onScroll: onCapsuleScroll, setRef: setScrollRef, setLayerRef: setCapsuleLayerRef } = useScrollCapsuleOpacity(!openSearch)
+	const {
+		onScroll: onCapsuleScroll,
+		setRef: setScrollRef,
+		setLayerRef: setCapsuleLayerRef,
+		resyncLayerPointerEvents,
+	} = useScrollCapsuleOpacity(!openSearch)
 
 	/** 链上 / 本地已存在与 EOA 不同的 Smart Account 地址时视为已激活 AA */
 	const hasAAWallet = useMemo(() => {
@@ -1399,6 +1404,18 @@ const Home = (_props: HomeProps) => {
 		void refreshLinkedNfcCards()
 	}
 
+	const linkNfcCardTap = useReliableTapHandler(() => startCashTreesPhysicalCardBind())
+	const openCardManagementTap = useReliableTapHandler(() => openCardManagement())
+
+	useEffect(() => {
+		resyncLayerPointerEvents()
+	}, [
+		resyncLayerPointerEvents,
+		linkedNfcListLoading,
+		linkedNfcCards.length,
+		hasNativeNfcReaderForLink,
+	])
+
 	const setLinkedNfcPrimaryById = (id: string) => {
 		setLinkedNfcCards((prev) => prev.map((c) => ({ ...c, isPrimaryUi: c.id === id })))
 	}
@@ -1739,22 +1756,23 @@ const Home = (_props: HomeProps) => {
 					</span>
 				</button>
 			</div> */}
-			{/* 顶部栏：左右胶囊同一行 items-center 上下对齐；中间不拦截触摸 */}
+			{/* 顶部栏：左右胶囊同一行；外层 pe-none，可点控件显式 pe-auto（防长 tag 溢出 / App z-40 抢点击） */}
 			{!openSearch && (
 				<div
 					ref={setCapsuleLayerRef}
-					className="pointer-events-none fixed left-4 right-4 z-30 grid grid-cols-[1fr_auto_1fr] items-center gap-2 transition-opacity duration-300"
+					className="pointer-events-none fixed left-4 right-4 z-30 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 transition-opacity duration-300"
 					style={{
 						// 与下方主内容顶部占位一致；WebView 常返回 safe-area 0，需至少 1rem 与浏览器+PWA 视觉对齐
 						top: 'max(1rem, env(safe-area-inset-top, 0px))',
-						opacity: 1,
+						// opacity 由 useScrollCapsuleOpacity 写 DOM，勿在此写死 opacity:1（会与 fade / pe 同步打架）
 					}}
 				>
 					<button
 						type="button"
 						onClick={() => navigate('/myWallet')}
-						className="flex items-center justify-self-start"
+						className="pointer-events-auto flex min-w-0 max-w-full items-center justify-self-start overflow-hidden"
 						data-capsule-interactive
+						data-touch-priority="1"
 						aria-label="Open wallet"
 					>
 						<div className="flex min-w-0 max-w-full items-center gap-2.5 rounded-full border border-slate-100/90 bg-white py-2 pl-2 pr-4 shadow-[0_4px_24px_rgba(15,23,42,0.08)] transition-transform group active:scale-[0.98] dark:border-slate-700/80 dark:bg-slate-800">
@@ -1775,12 +1793,12 @@ const Home = (_props: HomeProps) => {
 						className="pointer-events-none min-w-0 max-w-[28vw] justify-self-center min-[400px]:max-w-[min(40vw,10rem)]"
 						aria-hidden
 					/>
-					<div className="flex min-w-0 items-center justify-self-end gap-1.5">
+					<div className="relative z-10 flex shrink-0 items-center justify-self-end gap-1.5">
 						<HomeLanguageSelector />
-						<div className="flex h-10 w-10 shrink-0 items-center justify-center">
+						<div className="relative z-10 flex h-11 w-11 shrink-0 items-center justify-center">
 						{linkedNfcListLoading && linkedNfcCards.length === 0 ? (
 						<div
-							className="pointer-events-none flex h-10 w-10 items-center justify-center"
+							className="pointer-events-none flex h-11 w-11 items-center justify-center"
 							aria-busy
 							aria-label="Loading linked cards"
 						>
@@ -1795,14 +1813,16 @@ const Home = (_props: HomeProps) => {
 					) : linkedNfcCards.length > 0 ? (
 						<button
 							type="button"
-							onClick={openCardManagement}
-							className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-slate-200/50 dark:hover:bg-slate-700/50"
+							{...openCardManagementTap}
+							className={`relative isolate flex h-11 w-11 shrink-0 items-center justify-center rounded-full pointer-events-auto transition-colors hover:bg-slate-200/50 dark:hover:bg-slate-700/50 ${HOME_TOUCH_BUTTON_CLASS}`}
+							style={{ touchAction: 'manipulation' }}
 							data-capsule-interactive
+							data-touch-priority="1"
 							aria-label="Physical keys"
 						>
 							{/* Match Vouchers/example/codingTemp.html header: material-symbols sensors */}
 							<svg
-								className="h-6 w-6 shrink-0 text-blue-600 dark:text-blue-400"
+								className="pointer-events-none h-6 w-6 shrink-0 text-blue-600 dark:text-blue-400"
 								viewBox="0 0 24 24"
 								fill="currentColor"
 								aria-hidden
@@ -1817,18 +1837,23 @@ const Home = (_props: HomeProps) => {
 					) : hasNativeNfcReaderForLink ? (
 						<button
 							type="button"
-							onClick={() => startCashTreesPhysicalCardBind()}
-							className="flex shrink-0 items-center"
+							{...linkNfcCardTap}
+							className={`relative isolate flex h-11 w-11 shrink-0 items-center justify-center pointer-events-auto ${HOME_TOUCH_BUTTON_CLASS}`}
+							style={{ touchAction: 'manipulation' }}
 							data-capsule-interactive
+							data-touch-priority="1"
 							aria-label="Link NFC card"
 						>
-							<div className="relative flex h-10 w-10 items-center justify-center rounded-full border border-slate-100/90 bg-white shadow-[0_4px_24px_rgba(15,23,42,0.08)] transition-transform group active:scale-[0.98] hover:bg-slate-200/50 dark:border-slate-700/80 dark:bg-slate-800 dark:hover:bg-slate-800/50">
+							<span
+								className="pointer-events-none absolute inset-0.5 flex items-center justify-center rounded-full border border-slate-100/90 bg-white shadow-[0_4px_24px_rgba(15,23,42,0.08)] dark:border-slate-700/80 dark:bg-slate-800"
+								aria-hidden
+							>
 								<Plus
 									className="h-5 w-5 shrink-0 text-blue-600 dark:text-blue-400"
 									strokeWidth={2.2}
 									aria-hidden
 								/>
-							</div>
+							</span>
 						</button>
 					) : null}
 						</div>

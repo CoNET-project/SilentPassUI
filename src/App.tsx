@@ -1903,7 +1903,8 @@ function AppShell() {
 					].join(" ")}
 					onTouchMove={(e) => e.stopPropagation()}
 				>
-					{/* Sheet 本体：h-auto 自适应内容高度 */}
+					{/* Sheet 本体：h-auto 自适应内容高度。Closed: pe-none on body too —
+					    default auto on descendants would steal taps from Home top capsules (z-30 < z-40). */}
 					<div
 					className={[
 						"w-full",
@@ -1916,7 +1917,8 @@ function AppShell() {
 						"h-auto",
 
 						// ✅ 安全区：底部留出 Home indicator
-						"pb-[env(safe-area-inset-bottom)]"
+						"pb-[env(safe-area-inset-bottom)]",
+						showAlphaHowItWorks ? "" : "pointer-events-none",
 					].join(" ")}
 					>
 						{/* 顶部拖拽条（可选） */}

@@ -88,8 +88,11 @@ export async function fetchConetWalletBalances(
 }
 
 /** @deprecated Prefer fetchConetWalletBalances — kept for BountyBoard / single-token callers. */
-export async function fetchConetUsdcBalance(ownerAddress: string): Promise<ConetUsdcBalanceResult> {
-	const res = await fetchConetWalletBalances(ownerAddress)
+export async function fetchConetUsdcBalance(
+	ownerAddress: string,
+	options?: FetchConetWalletBalancesOptions,
+): Promise<ConetUsdcBalanceResult> {
+	const res = await fetchConetWalletBalances(ownerAddress, options)
 	if (!res.ok) return res
 	return { ok: true, balanceRaw: res.raw.usdc, balance: res.balances.usdc }
 }

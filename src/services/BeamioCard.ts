@@ -1,7 +1,7 @@
 import { ethers } from "ethers";
 import contracts from "../utils/contracts";
 import { baseEndpoint, USDCContract_BASE, beamioApi, BeamioCardFactorySC, conetDepinProvider, CCSA_Card_Address, ASSET_CARD_ADDRESSES } from "../utils/constants";
-import { BASE_MAINNET_FACTORIES, BASE_TREASURY, CONET_BUINT, CONET_BUNIT_AIRDROP_ADDRESS, BEAMIO_INDEXER_DIAMOND, CONET_AA_FACTORY } from "@/config/chainAddresses";
+import { BASE_MAINNET_FACTORIES, BASE_TREASURY, CONET_BUINT, CONET_BUNIT_AIRDROP_ADDRESS, BEAMIO_INDEXER_DIAMOND, CONET_AA_FACTORY, CONET_USDC } from "@/config/chainAddresses";
 import {
 	CONET_MAINNET_CHAIN_ID,
 	eip712ChainIdForBeamioUserCard,
@@ -271,7 +271,7 @@ export const postMerchantGiftAAtoEOA = async (opts: {
 }
 
 /**
- * 构造购卡请求：用户支付 usdcAmountHuman USDC（该 USDC 已由链上 currency→USD→USDC 得到）。
+ * 构造购卡请求：用户支付 usdcAmountHuman CoNET-USDC（钱包 conet-USDC → 商户卡 owner，再铸 NFT #0 / points）。
  * 后端用 quotePointsForUSDC(cardAddress, usdcAmount) 得到应铸造的 points。
  */
 export const USDC2Token = async (
@@ -282,28 +282,34 @@ export const USDC2Token = async (
 	const usdcAmount6 = ethers.parseUnits(usdcAmountHuman, 6)
 	if (usdcAmount6 <= 0n) throw new Error("usdcAmount must be > 0")
     try {
-        const userWallet = new ethers.Wallet(userPrivateKey, baseEndpoint);
-        const chainId = (await baseEndpoint.getNetwork()).chainId;
-      
+        const { provider: cardProvider } = await providerForBeamioUserCard(cardAddress)
+        const userWallet = new ethers.Wallet(userPrivateKey, cardProvider)
 
-        
-
-        // 1. 获取受益人 (Owner)
+        // 1. 获取受益人 (Owner) — 商户卡在 CoNET；付款代币为钱包 conet-USDC。
         const card = new ethers.Contract(
             cardAddress,
             [
                 "function owner() view returns (address)"
-            ],userWallet
+            ],
+            cardProvider,
         );
 
         const cardOwner = await card.owner();
+        const conetUsdc = new ethers.Contract(CONET_USDC, ['function name() view returns (string)'], cardProvider)
+        let tokenName = 'CoNET USD Coin'
+        try {
+            const n = await conetUsdc.name() as string
+            if (typeof n === 'string' && n.trim()) tokenName = n.trim()
+        } catch {
+            /* fallback */
+        }
 
-        // 2. 构造 ERC-3009 用户签名
+        // 2. 构造 ERC-3009 用户签名（conet-USDC domain version "1"）
         const validBefore = Math.floor(Date.now() / 1000) + 3600;
         const userNonce = ethers.hexlify(ethers.randomBytes(32));
 
         const userSignature = await userWallet.signTypedData(
-            { name: "USD Coin", version: "2", chainId, verifyingContract: USDCContract_BASE },
+            { name: tokenName, version: "1", chainId: CONET_MAINNET_CHAIN_ID, verifyingContract: CONET_USDC },
             {
                 TransferWithAuthorization: [
                     { name: "from", type: "address" },

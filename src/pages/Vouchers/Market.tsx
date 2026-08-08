@@ -81,6 +81,7 @@ import {
 	parseDiscoverTopupAmountInput,
 	pollEoaUsdcFundingThenTopup,
 	precheckDiscoverUsdcTopupUsdc6,
+	readEoaConetUsdcBalance6,
 	readEoaUsdcBalance6,
 	usdc6ToExactTransferAmount,
 } from "@/utils/discoverEoaUsdcTopup"
@@ -4356,7 +4357,7 @@ function DiscoverMerchantDetailFullScreen({
 		}
 		if (!profile?.keyID || !profile?.privateKeyArmor) {
 			Toast.show({
-				content: '请使用访问密码解锁钱包以充值。',
+				content: tu('unlock_your_wallet_with_your_access_password_to_top_up'),
 				position: 'top',
 			})
 			navigate('/settings')
@@ -4370,7 +4371,7 @@ function DiscoverMerchantDetailFullScreen({
 		const userEoa = resolveUserEoa()
 		if (!userEoa) {
 			Toast.show({
-				content: '请使用访问密码解锁钱包以充值。',
+				content: tu('unlock_your_wallet_with_your_access_password_to_top_up'),
 				position: 'top',
 			})
 			navigate('/settings')
@@ -4379,7 +4380,7 @@ function DiscoverMerchantDetailFullScreen({
 		setUsdcTopupSubmitting(true)
 		setUsdcTopupError('')
 		try {
-			const baselineUsdc6 = await readEoaUsdcBalance6(profile as profile)
+			const baselineUsdc6 = await readEoaConetUsdcBalance6(profile as profile)
 			const selfFundUsdc6 = await currencyAmountToSafeUsdc6(
 				cardAddress,
 				displayCurrency,
@@ -4515,12 +4516,12 @@ function DiscoverMerchantDetailFullScreen({
 		setUsdcTopupSubmitting(true)
 		setUsdcTopupError('')
 		try {
-			const current6 = await readEoaUsdcBalance6(profile as profile)
+			const current6 = await readEoaConetUsdcBalance6(profile as profile)
 			const funded =
 				eoaCanSelfFundDiscoverTopup(current6, usdcTopupRequiredUsdc6) ||
 				eoaMeetsExternalFundingTarget(current6, usdcTopupBaselineUsdc6, usdcTopupRequiredUsdc6)
 			if (!funded) {
-				setUsdcTopupError('USDC has not arrived yet. Ask the payer to complete the payment link.')
+				setUsdcTopupError('CoNET-USDC has not arrived yet. Ask the payer to complete the payment link.')
 				return
 			}
 			setUsdcTopupProgress('Completing top-up…')
@@ -5152,7 +5153,7 @@ function DiscoverMerchantDetailFullScreen({
 									}}
 									className="shrink-0 rounded-full border border-[#1562f0]/25 bg-[#1562f0]/10 px-3 py-1.5 text-[12px] font-bold uppercase tracking-wide text-[#1562f0] transition active:scale-[0.98] hover:bg-[#1562f0]/15"
 								>
-									USDC topup
+									CoNET-USDC topup
 								</button>
 							) : null}
 						</div>
@@ -5220,7 +5221,7 @@ function DiscoverMerchantDetailFullScreen({
 											<span className="inline-flex items-center justify-center gap-2">
 												<Loader2 className="h-4 w-4 animate-spin" aria-hidden />{tu('continue')}</span>
 										) : (
-											'继续'
+											tu('continue')
 										)}
 									</button>
 								</div>

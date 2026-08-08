@@ -199,14 +199,15 @@ export function buildDiscoverGenesisNodeSeatUrl(params: {
  */
 export function buildWalletUsdcDepositUrl(params: {
 	beneficiary: string
-	amount: string
+	amount?: string
 }): string {
 	const url = new URL(BEAMIO_USDC_TOPUP_URL)
 	url.searchParams.set('workflow', WALLET_USDC_DEPOSIT_WORKFLOW)
 	url.searchParams.set('beneficiary', ethers.getAddress(params.beneficiary))
-	url.searchParams.set('amount', params.amount)
 	url.searchParams.set('currency', 'USDC')
 	url.searchParams.set('paymentToken', 'USDC')
+	const amount = params.amount?.trim()
+	if (amount) url.searchParams.set('amount', amount)
 	return url.toString()
 }
 

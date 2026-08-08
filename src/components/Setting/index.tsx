@@ -14,7 +14,9 @@ import { getBalanceProcess, getMyFollowStatus, postBeamio } from '@/services/bea
 import { motion, AnimatePresence } from 'framer-motion'
 import FollowListContainer from './followList/FollowListContainer'
 import CoinbaseRamps from './CoinbaseRamps'
-import { ChevronRight, User, Globe, Shield, HelpCircle } from 'lucide-react'
+import { ChevronRight, User, Globe, Shield, HelpCircle, ArrowDownToLine } from 'lucide-react'
+import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
+import { buildWalletUsdcDepositUrl } from '@/utils/discoverUsdcTopupSession'
 import BeamioRegionCurrencyScreen from "./BeamioRegionCurrencyScreen"
 import NavigateLeftButton from '@/components/navigate'
 import BeamioAccountScreen from "./BeamioAccountScreen"
@@ -580,6 +582,21 @@ export default function BeamioMeMainScreen() {
 
 							{/* Settings list */}
 							<div className="mt-5 rounded-[26px] bg-white shadow-[0_14px_40px_rgba(15,23,42,0.08)] overflow-hidden">
+								<SettingRow
+								icon={
+									<RowIcon tone="blue">
+									<ArrowDownToLine className="w-5 h-5" />
+									</RowIcon>
+								}
+								title={tu('deposit_usdc')}
+								onClick={() => {
+									if (!eoaCapsuleAddress) return
+									openExternalUrl(buildWalletUsdcDepositUrl({ beneficiary: eoaCapsuleAddress }))
+								}}
+								/>
+
+								<div className="h-px bg-slate-100 mx-5" />
+
 								<SettingRow
 								icon={
 									<RowIcon>

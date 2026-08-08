@@ -24,8 +24,8 @@ export type ConetUsdcBalanceResult =
 
 const walletCache = new Map<string, { value: ConetWalletBalancesResult; fetchedAt: number }>()
 const inFlight = new Map<string, Promise<ConetWalletBalancesResult>>()
-/** 内存 TTL：daemon 每 6s 调度，但同一地址 30s 内复用可信结果 */
-const TTL_MS = 30_000
+/** 内存 TTL：daemon 每 6s 调度；TTL 设为 5s 以保证每个 6s tick 都能刷新钱包余额（Base+CoNET） */
+const TTL_MS = 5_000
 
 export type FetchConetWalletBalancesOptions = {
 	/** 仅在明确需要强制刷新时跳过内存 TTL；普通页面/daemon 不应使用 */

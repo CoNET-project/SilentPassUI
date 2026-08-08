@@ -135,7 +135,11 @@ export default function BeamioMeMainScreen() {
 	const { darkModle, setDarkModle, setProfiles, beamio, setBeamio, 
 		profiles, payTag, setPayTag, myAddress, 
 		setMyAddress, setListenningProcess, listenningProcess, setUsdcbalance, setUsdcToUSD, setShowFooter, setNavigateLeftButtonArray,
-		conetWalletBalances, conetAaWalletBalances } = useDaemonContext()
+		conetWalletBalances, conetAaWalletBalances, usdcbalance, aaAccountUsdcBalance } = useDaemonContext()
+
+	// /myWallet 主钱包余额与 /home 对齐：EOA = Base-USDC + CoNET-USDC；AA = Base-USDC + CoNET-USDC
+	const eoaTotalUsdc = Math.max(0, Number(usdcbalance) || 0) + Math.max(0, Number(conetWalletBalances?.usdc) || 0)
+	const aaTotalUsdc = Math.max(0, Number(aaAccountUsdcBalance) || 0) + Math.max(0, Number(conetAaWalletBalances?.usdc) || 0)
 
 	const [avatarSeed, setAvatarSeed] = useState('')
 	const [avatarName, setAvatarName] = useState('')
@@ -664,8 +668,8 @@ export default function BeamioMeMainScreen() {
 							<ProfileWalletPanels
 								eoaAddress={eoaCapsuleAddress}
 								aaAddress={aaCapsuleAddress}
-								eoaBalanceUsdc={conetWalletBalances.usdc}
-								aaBalanceUsdc={conetAaWalletBalances.usdc}
+								eoaBalanceUsdc={eoaTotalUsdc}
+								aaBalanceUsdc={aaTotalUsdc}
 							/>
 
 							{/* Settings list */}

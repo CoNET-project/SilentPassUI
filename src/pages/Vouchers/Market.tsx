@@ -3651,6 +3651,8 @@ function DiscoverMerchantDetailFullScreen({
 	const [merchantAssets, setMerchantAssets] = useState<Awaited<ReturnType<typeof getMyAssets>> | null>(null)
 	const [merchantAssetsLoading, setMerchantAssetsLoading] = useState(false)
 	const [cardTopupSuccessBalance, setCardTopupSuccessBalance] = useState<string | null>(null)
+	// Pre-top-up card points (6-dec) captured before the mint, so success only shows the increased balance.
+	const cardTopupBaselinePoints6Ref = useRef<bigint | null>(null)
 	const [merchantCoupons, setMerchantCoupons] = useState<DiscoverMerchantCouponOffer[] | null>(null)
 	const [merchantOfferTiers, setMerchantOfferTiers] = useState<DiscoverOfferTierRow[] | null>(null)
 	const [merchantOffersLoading, setMerchantOffersLoading] = useState(false)
@@ -4298,24 +4300,58 @@ function DiscoverMerchantDetailFullScreen({
 		setUsdcTopupIntent('topup')
 	}, [])
 
-	// Card top-up succeeded on-chain: read fresh card balance, show the success panel, close the flow.
+	// Read card points (6-dec, chain-direct, bypassing the getMyAssets TTL cache).
+	const readCardPoints6Fresh = useCallback(async (): Promise<bigint | null> => {
+		const cardAddress = item.cardAddress?.trim() ?? ''
+		if (!cardAddress || !profile?.keyID) return null
+		try {
+			const assets = await getMyAssets(profile as profile, cardAddress, { bypassCache: true })
+			if (assets == null) return null
+			return ethers.parseUnits(String(assets.points ?? '0'), 6)
+		} catch {
+			return null
+		}
+	}, [item.cardAddress, profile])
+
+	// Card top-up succeeded on-chain: poll fresh card balance until the mint lands (points grow past
+	// the pre-top-up baseline), then show the success panel with the *new* balance. getMyAssets caches
+	// for 15s, so we must bypass the cache and wait for the increase — otherwise we'd show the old value.
 	const finishCardTopupSuccess = useCallback(async () => {
 		const cardAddress = item.cardAddress?.trim() ?? ''
 		let balanceText = ''
 		if (cardAddress && profile?.keyID) {
-			try {
-				const assets = await getMyAssets(profile as profile, cardAddress)
-				if (assets != null) {
-					setMerchantAssets(assets)
-					const cur = (assets.cardCurrency || ccy).toUpperCase() as Parameters<typeof fiatPrefix>[0]
-					const prefix = fiatPrefix(cur)
-					const amt = formatAmount(Number(assets.points ?? 0), cur)
-					balanceText = prefix ? `${prefix} ${amt}` : amt
+			const baseline6 = cardTopupBaselinePoints6Ref.current
+			const deadline = Date.now() + 90_000
+			let assets: Awaited<ReturnType<typeof getMyAssets>> | null = null
+			// Serial setTimeout loop (never setInterval): fresh read → if grown past baseline, stop.
+			for (;;) {
+				try {
+					assets = await getMyAssets(profile as profile, cardAddress, { bypassCache: true })
+				} catch {
+					assets = null
 				}
-			} catch {
-				/* untrusted — keep last trusted */
+				if (assets != null) {
+					if (baseline6 == null) break
+					let cur6: bigint | null = null
+					try {
+						cur6 = ethers.parseUnits(String(assets.points ?? '0'), 6)
+					} catch {
+						cur6 = null
+					}
+					if (cur6 == null || cur6 > baseline6) break
+				}
+				if (Date.now() >= deadline) break
+				await new Promise((r) => setTimeout(r, 3000))
+			}
+			if (assets != null) {
+				setMerchantAssets(assets)
+				const cur = (assets.cardCurrency || ccy).toUpperCase() as Parameters<typeof fiatPrefix>[0]
+				const prefix = fiatPrefix(cur)
+				const amt = formatAmount(Number(assets.points ?? 0), cur)
+				balanceText = prefix ? `${prefix} ${amt}` : amt
 			}
 		}
+		cardTopupBaselinePoints6Ref.current = null
 		setCardTopupSuccessBalance(balanceText)
 		resetUsdcTopupFlow()
 	}, [ccy, item.cardAddress, profile, resetUsdcTopupFlow])
@@ -4332,6 +4368,8 @@ function DiscoverMerchantDetailFullScreen({
 			const usdcAmount =
 				transferAmountStr?.trim() ||
 				usdc6ToExactTransferAmount(requiredUsdc6)
+			// Capture the pre-top-up card points so the success panel only shows the increased balance.
+			cardTopupBaselinePoints6Ref.current = await readCardPoints6Fresh()
 			const ret = await postUSDCUserCardTopup({
 				profile: profile as profile,
 				cardAddress,
@@ -4346,7 +4384,7 @@ function DiscoverMerchantDetailFullScreen({
 			await finishCardTopupSuccess()
 			return true
 		},
-		[finishCardTopupSuccess, item.cardAddress, profile, usdcTopupIntent],
+		[finishCardTopupSuccess, item.cardAddress, profile, readCardPoints6Fresh, usdcTopupIntent],
 	)
 
 	useEffect(() => {
@@ -4688,6 +4726,9 @@ function DiscoverMerchantDetailFullScreen({
 		const cardAddress = item.cardAddress
 
 		void (async () => {
+			// Capture pre-top-up card points before the mint so success shows the increased balance.
+			cardTopupBaselinePoints6Ref.current = await readCardPoints6Fresh()
+			if (ac.signal.aborted) return
 			const outcome = await pollEoaUsdcFundingThenTopup({
 				profile: profile as profile,
 				cardAddress,
@@ -4719,6 +4760,7 @@ function DiscoverMerchantDetailFullScreen({
 		finishCardTopupSuccess,
 		item.cardAddress,
 		profile,
+		readCardPoints6Fresh,
 		usdcTopupBaselineUsdc6,
 		usdcTopupFiatAmount,
 		usdcTopupPhase,

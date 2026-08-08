@@ -128,8 +128,9 @@ const SettingRow = ({
 export default function BeamioMeMainScreen() {
 	const navigate = useNavigate()
 	const { darkModle, setDarkModle, setProfiles, beamio, setBeamio, 
-		profiles, payTag, setPayTag, usdcbalance, usdcToUSD, myAddress, 
-		setMyAddress, setListenningProcess, listenningProcess, setUsdcbalance, setUsdcToUSD, setShowFooter, setNavigateLeftButtonArray, aaAccountUsdcBalance } = useDaemonContext()
+		profiles, payTag, setPayTag, myAddress, 
+		setMyAddress, setListenningProcess, listenningProcess, setUsdcbalance, setUsdcToUSD, setShowFooter, setNavigateLeftButtonArray,
+		conetWalletBalances, conetAaWalletBalances } = useDaemonContext()
 
 	const [avatarSeed, setAvatarSeed] = useState('')
 	const [avatarName, setAvatarName] = useState('')
@@ -573,8 +574,8 @@ export default function BeamioMeMainScreen() {
 							<ProfileWalletPanels
 								eoaAddress={eoaCapsuleAddress}
 								aaAddress={aaCapsuleAddress}
-								eoaBalanceUsdc={usdcbalance}
-								aaBalanceUsdc={aaAccountUsdcBalance}
+								eoaBalanceUsdc={conetWalletBalances.usdc}
+								aaBalanceUsdc={conetAaWalletBalances.usdc}
 							/>
 
 							{/* Settings list */}

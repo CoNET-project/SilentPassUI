@@ -2990,7 +2990,7 @@ function genesisReferrerRoleLabel(role: GenesisReferrerRole): string {
 /** Hide deployer / settle admin EOA that has no real @BeamioTag (search-users → unknow). */
 const GENESIS_REFERRAL_HIDDEN_EOA = '0x87caed4e51c36a2c2ece3aaf4ddac9693d2405e1'
 /** Placeholder hint for Referral @BeamioTag input (not auto-selected). */
-const GENESIS_DEFAULT_REFERRER_TAG = 'Beamio_Manager'
+const GENESIS_REFERRAL_TAG_PLACEHOLDER = 'Beamio'
 
 function isHiddenGenesisReferrerEoa(address: string): boolean {
 	return address.trim().toLowerCase() === GENESIS_REFERRAL_HIDDEN_EOA
@@ -3298,7 +3298,7 @@ function ConetGenesisNodeDiscoverSection({
 								type="text"
 								autoComplete="off"
 								enterKeyHint="done"
-								placeholder={`@${GENESIS_DEFAULT_REFERRER_TAG}`}
+								placeholder={`@${GENESIS_REFERRAL_TAG_PLACEHOLDER}`}
 								value={referralInputTag}
 								disabled={purchaseBusy || purchaseSuccess}
 								onChange={(e) => {

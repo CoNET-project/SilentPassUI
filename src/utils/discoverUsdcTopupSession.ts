@@ -26,6 +26,9 @@ export const DISCOVER_USDC_TREASURY_BRIDGE_WORKFLOW = 'treasuryBridge'
 /** Genesis Node Seat: settle USDC → Beamio seat wallet; Master createRedeem + claim → listener deploys validators. */
 export const DISCOVER_GENESIS_NODE_SEAT_WORKFLOW = 'genesisNodeSeat'
 
+/** Wallet USDC deposit: settle Base USDC → treasury initiator; LockMint CoNET-USDC → beneficiary (EOA or AA). */
+export const WALLET_USDC_DEPOSIT_WORKFLOW = 'walletDeposit'
+
 const BEAMIO_USDC_TOPUP_URL = 'https://beamio.app/usdc-topup'
 
 /** Per-node entry (node price + mandatory Cloud Deployment OPEX), USDC human units. */
@@ -187,6 +190,23 @@ export function buildDiscoverGenesisNodeSeatUrl(params: {
 		url.searchParams.set('referrerL1', checksum)
 		url.searchParams.set('referrerL0', checksum)
 	}
+	return url.toString()
+}
+
+/**
+ * Reuse `/usdc-topup` for wallet CoNET-USDC deposit (no merchant card).
+ * `beneficiary` may be the user EOA now, or a Smart Wallet / multisig AA later.
+ */
+export function buildWalletUsdcDepositUrl(params: {
+	beneficiary: string
+	amount: string
+}): string {
+	const url = new URL(BEAMIO_USDC_TOPUP_URL)
+	url.searchParams.set('workflow', WALLET_USDC_DEPOSIT_WORKFLOW)
+	url.searchParams.set('beneficiary', ethers.getAddress(params.beneficiary))
+	url.searchParams.set('amount', params.amount)
+	url.searchParams.set('currency', 'USDC')
+	url.searchParams.set('paymentToken', 'USDC')
 	return url.toString()
 }
 

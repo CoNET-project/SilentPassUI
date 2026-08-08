@@ -1,5 +1,5 @@
 import { IpfsImg } from '@/components/IpfsImg';
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, type KeyboardEvent, type WheelEvent } from 'react'
 import { Camera, Check, Trash2,  } from 'lucide-react'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { CoNET_Data, setCoNET_Data } from '../../utils/globals'
@@ -9,8 +9,26 @@ import { ethers } from 'ethers'
 import { AppButton } from '@/components/button/AppButton'
 import GetPicture from '@/components/GetPicture/GetPicture'
 import { tu } from '@/locale/beamioLocale'
+import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
+import { buildWalletUsdcDepositUrl } from '@/utils/discoverUsdcTopupSession'
 const ipfsEndpoint = `https://ipfs.conet.network/api/getFragment?hash=`
 const defaultName = 'Beamio'
+
+const NUMERIC_SPINNER_HIDE =
+	'[&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]'
+
+function preventNumericInputStepKeys(e: KeyboardEvent<HTMLInputElement>): void {
+	const blocked = new Set(['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End'])
+	if (blocked.has(e.key)) {
+		e.preventDefault()
+		e.stopPropagation()
+	}
+}
+
+function preventNumericInputWheelStep(e: WheelEvent<HTMLInputElement>): void {
+	e.preventDefault()
+	e.stopPropagation()
+}
 
 type prof = {
   colse: (bo: beamio) => void
@@ -63,6 +81,8 @@ export default function BeamioAccountScreen({ colse }: prof) {
   const [openGetPicture, setOpenGetPicture] = useState(false)
   /** 上传完成后得到的 IPFS URL，保存账户时用此值作为 image，避免使用 blob/data URL */
   const [ipfsImageUrl, setIpfsImageUrl] = useState<string | null>(null)
+  const [depositAmount, setDepositAmount] = useState('')
+  const [depositError, setDepositError] = useState('')
 
   const avatarUrl = `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed).toString()}`
   const currentAvatarSrcTemp = avatarImageDataTemp || avatarUrl
@@ -223,6 +243,38 @@ export default function BeamioAccountScreen({ colse }: prof) {
 
     setLoading(false)
     colse(bo)
+  }
+
+  const depositBeneficiary = (() => {
+	const raw = profiles?.[0]?.keyID?.trim() ?? ''
+	if (!raw || !ethers.isAddress(raw)) return ''
+	try {
+		return ethers.getAddress(raw)
+	} catch {
+		return ''
+	}
+  })()
+
+  const handleDepositUsdc = () => {
+	setDepositError('')
+	if (!depositBeneficiary) {
+		setDepositError(tu('deposit_usdc_wallet_unavailable'))
+		return
+	}
+	const parsed = Number(depositAmount.trim())
+	if (!Number.isFinite(parsed) || parsed <= 0) {
+		setDepositError(tu('deposit_usdc_invalid_amount'))
+		return
+	}
+	const apiAmount = parsed.toFixed(2)
+	if (Number(apiAmount) < 0.01) {
+		setDepositError(tu('deposit_usdc_invalid_amount'))
+		return
+	}
+	openExternalUrl(buildWalletUsdcDepositUrl({
+		beneficiary: depositBeneficiary,
+		amount: apiAmount,
+	}))
   }
 
   return (
@@ -420,6 +472,55 @@ export default function BeamioAccountScreen({ colse }: prof) {
 					/>
 				</div>
 				</div>
+
+        <div className="mt-7">
+			<div className="text-[12px] font-semibold tracking-[0.12em] text-slate-400">{tu('deposit_usdc')}</div>
+			<p className="mt-2 text-[12px] leading-relaxed text-slate-500">{tu('deposit_usdc_hint')}</p>
+			<label htmlFor="account-deposit-usdc-amount" className="mt-3 block text-[12px] font-semibold tracking-[0.12em] text-slate-400">
+				{tu('deposit_usdc_amount')}
+			</label>
+			<input
+				id="account-deposit-usdc-amount"
+				type="number"
+				inputMode="decimal"
+				autoComplete="off"
+				enterKeyHint="done"
+				min={0.01}
+				step={0.01}
+				value={depositAmount}
+				onChange={(e) => {
+					setDepositAmount(e.target.value)
+					if (depositError) setDepositError('')
+				}}
+				onKeyDown={preventNumericInputStepKeys}
+				onWheel={preventNumericInputWheelStep}
+				placeholder="10.00"
+				className={`
+					mt-3 w-full
+					rounded-2xl bg-white
+					px-5 py-4
+					text-[18px] sm:text-[20px]
+					font-semibold text-slate-900
+					ring-1 ring-slate-200
+					outline-none
+					focus:ring-2 focus:ring-blue-200
+					${NUMERIC_SPINNER_HIDE}
+				`}
+			/>
+			{depositError ? (
+				<p className="mt-2 text-[12px] text-rose-600">{depositError}</p>
+			) : null}
+			<div className="mt-4">
+				<AppButton
+					type="button"
+					onClick={handleDepositUsdc}
+					fullWidth
+					disabled={!depositAmount.trim()}
+				>
+					{tu('deposit_usdc')}
+				</AppButton>
+			</div>
+		</div>
 
         {/* Bottom button */}
         <div className="mt-10">

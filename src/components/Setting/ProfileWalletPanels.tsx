@@ -3,13 +3,13 @@ import { Check, Copy, ExternalLink, Hexagon, Wallet } from 'lucide-react'
 import { beamioWalletAccent, type BeamioWalletKind } from '@/utils/beamioWalletAccent'
 import { tu } from '@/locale/beamioLocale'
 import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
+import { formatDigitalAssetDisplay } from '@/utils/formatDigitalAssetDisplay'
 
 const fmtAddr = (a = '') => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '—')
 const basescanAddressUrl = (address: string) => `https://basescan.org/address/${address}`
 
 function formatUsdcBalance(value: number | string): string {
-	const n = Math.max(0, Number(value) || 0)
-	return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+	return formatDigitalAssetDisplay(Math.max(0, Number(value) || 0))
 }
 
 function ProfileWalletAddressCopy({

@@ -134,6 +134,7 @@ import {
 	BEAMIO_HERO_FLOATING_BACK_ROW_CLASS,
 	beamioHeroFloatingBackTopStyle,
 } from "@/components/BeamioCircularBackButton"
+import { UsdcArrivalOverlay } from "@/components/UsdcArrivalOverlay"
 import {
 	BASE_MAINNET_CHAIN_ID,
 } from "@/config/chainAddresses"
@@ -3649,6 +3650,7 @@ function DiscoverMerchantDetailFullScreen({
 	const merchantShareClickCount = pickDiscoverMerchantRefClickCount(discoverMerchantStatByCard, item.cardAddress)
 	const [merchantAssets, setMerchantAssets] = useState<Awaited<ReturnType<typeof getMyAssets>> | null>(null)
 	const [merchantAssetsLoading, setMerchantAssetsLoading] = useState(false)
+	const [cardTopupSuccessBalance, setCardTopupSuccessBalance] = useState<string | null>(null)
 	const [merchantCoupons, setMerchantCoupons] = useState<DiscoverMerchantCouponOffer[] | null>(null)
 	const [merchantOfferTiers, setMerchantOfferTiers] = useState<DiscoverOfferTierRow[] | null>(null)
 	const [merchantOffersLoading, setMerchantOffersLoading] = useState(false)
@@ -4296,6 +4298,28 @@ function DiscoverMerchantDetailFullScreen({
 		setUsdcTopupIntent('topup')
 	}, [])
 
+	// Card top-up succeeded on-chain: read fresh card balance, show the success panel, close the flow.
+	const finishCardTopupSuccess = useCallback(async () => {
+		const cardAddress = item.cardAddress?.trim() ?? ''
+		let balanceText = ''
+		if (cardAddress && profile?.keyID) {
+			try {
+				const assets = await getMyAssets(profile as profile, cardAddress)
+				if (assets != null) {
+					setMerchantAssets(assets)
+					const cur = (assets.cardCurrency || ccy).toUpperCase() as Parameters<typeof fiatPrefix>[0]
+					const prefix = fiatPrefix(cur)
+					const amt = formatAmount(Number(assets.points ?? 0), cur)
+					balanceText = prefix ? `${prefix} ${amt}` : amt
+				}
+			} catch {
+				/* untrusted — keep last trusted */
+			}
+		}
+		setCardTopupSuccessBalance(balanceText)
+		resetUsdcTopupFlow()
+	}, [ccy, item.cardAddress, profile, resetUsdcTopupFlow])
+
 	const submitDiscoverEoaTopup = useCallback(
 		async (
 			requiredUsdc6: bigint,
@@ -4319,12 +4343,10 @@ function DiscoverMerchantDetailFullScreen({
 				return false
 			}
 			if (ret.assets) setMerchantAssets(ret.assets as Awaited<ReturnType<typeof getMyAssets>>)
-			else refreshMerchantAssets()
-			Toast.show({ content: tu('top_up_completed'), position: 'top' })
-			resetUsdcTopupFlow()
+			await finishCardTopupSuccess()
 			return true
 		},
-		[item.cardAddress, profile, refreshMerchantAssets, resetUsdcTopupFlow, usdcTopupIntent],
+		[finishCardTopupSuccess, item.cardAddress, profile, usdcTopupIntent],
 	)
 
 	useEffect(() => {
@@ -4678,9 +4700,7 @@ function DiscoverMerchantDetailFullScreen({
 			if (ac.signal.aborted) return
 
 			if (outcome.status === 'success') {
-				refreshMerchantAssets()
-				Toast.show({ content: tu('top_up_completed'), position: 'top' })
-				resetUsdcTopupFlow()
+				await finishCardTopupSuccess()
 				return
 			}
 			if (outcome.status === 'error') {
@@ -4696,10 +4716,9 @@ function DiscoverMerchantDetailFullScreen({
 			ac.abort()
 		}
 	}, [
+		finishCardTopupSuccess,
 		item.cardAddress,
 		profile,
-		refreshMerchantAssets,
-		resetUsdcTopupFlow,
 		usdcTopupBaselineUsdc6,
 		usdcTopupFiatAmount,
 		usdcTopupPhase,
@@ -5608,6 +5627,19 @@ function DiscoverMerchantDetailFullScreen({
 				onClose={() => setReferrerDownlineOpen(false)}
 			/>
 		) : null}
+		<UsdcArrivalOverlay
+			open={cardTopupSuccessBalance !== null}
+			phase="success"
+			variant="card"
+			listeningTitle={tu('card_topup_listening_title')}
+			listeningHint={tu('card_topup_listening_hint')}
+			successTitle={tu('card_topup_success_title')}
+			successSubtitle={tu('card_topup_success_subtitle')}
+			balanceLabel={tu('new_card_balance')}
+			balanceText={cardTopupSuccessBalance ?? ''}
+			onCancel={() => setCardTopupSuccessBalance(null)}
+			onDone={() => setCardTopupSuccessBalance(null)}
+		/>
 		</>
 	)
 }

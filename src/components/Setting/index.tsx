@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { ethers } from 'ethers'
 import { useNavigate } from 'react-router-dom'
 import { useDaemonContext } from '@/providers/DaemonProvider'
@@ -17,6 +17,9 @@ import CoinbaseRamps from './CoinbaseRamps'
 import { ChevronRight, User, Globe, Shield, HelpCircle, ArrowDownToLine } from 'lucide-react'
 import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
 import { buildWalletUsdcDepositUrl } from '@/utils/discoverUsdcTopupSession'
+import { UsdcArrivalOverlay } from '@/components/UsdcArrivalOverlay'
+import { waitForConetUsdcArrival } from '@/utils/conetUsdcArrivalWatch'
+import { fetchConetWalletBalances, invalidateConetUsdcBalanceCache } from '@/services/conetUsdcBalance'
 import BeamioRegionCurrencyScreen from "./BeamioRegionCurrencyScreen"
 import NavigateLeftButton from '@/components/navigate'
 import BeamioAccountScreen from "./BeamioAccountScreen"
@@ -181,6 +184,76 @@ export default function BeamioMeMainScreen() {
 			return ''
 		}
 	}, [profiles?.[0]?.aaAccount])
+
+	/** USDC deposit arrival listener (Base settle → TreasuryBridge → CoNET-USDC mint). */
+	const [depositWatch, setDepositWatch] = useState<null | {
+		phase: 'listening' | 'success'
+		progress: string
+		error: string
+		newBalanceText: string
+	}>(null)
+	const depositWatchAbortRef = useRef<AbortController | null>(null)
+
+	useEffect(() => () => {
+		depositWatchAbortRef.current?.abort()
+		depositWatchAbortRef.current = null
+	}, [])
+
+	const closeDepositWatch = useCallback(() => {
+		depositWatchAbortRef.current?.abort()
+		depositWatchAbortRef.current = null
+		setDepositWatch(null)
+	}, [])
+
+	const startWalletUsdcDeposit = useCallback(async () => {
+		if (!eoaCapsuleAddress) return
+		// Capture CoNET-USDC baseline BEFORE the user pays, so any increase is trusted arrival.
+		let baselineRaw = 0n
+		try {
+			const snapshot = await fetchConetWalletBalances(eoaCapsuleAddress, { bypassMemoryCache: true })
+			if (snapshot.ok) baselineRaw = snapshot.raw.usdc
+		} catch {
+			// baseline stays 0n; any positive balance still counts as arrival
+		}
+
+		openExternalUrl(buildWalletUsdcDepositUrl({ beneficiary: eoaCapsuleAddress }))
+
+		depositWatchAbortRef.current?.abort()
+		const ac = new AbortController()
+		depositWatchAbortRef.current = ac
+		setDepositWatch({
+			phase: 'listening',
+			progress: tu('deposit_usdc_listening_progress'),
+			error: '',
+			newBalanceText: '',
+		})
+
+		void (async () => {
+			const outcome = await waitForConetUsdcArrival({
+				eoa: eoaCapsuleAddress,
+				baselineRaw,
+				signal: ac.signal,
+			})
+			if (ac.signal.aborted) return
+			if (outcome.status === 'arrived') {
+				invalidateConetUsdcBalanceCache(eoaCapsuleAddress.toLowerCase())
+				setDepositWatch((prev) =>
+					prev
+						? {
+								...prev,
+								phase: 'success',
+								error: '',
+								newBalanceText: `${formatMoney(Number(outcome.balanceDisplay))} USDC`,
+							}
+						: prev,
+				)
+			} else if (outcome.status === 'timeout') {
+				setDepositWatch((prev) => (prev ? { ...prev, error: tu('deposit_usdc_timeout') } : prev))
+			} else if (outcome.status === 'error') {
+				setDepositWatch((prev) => (prev ? { ...prev, error: outcome.message } : prev))
+			}
+		})()
+	}, [eoaCapsuleAddress])
 
 	// 头像：优先使用 beamio.image（自定义/IPFS/DiceBear URL），否则用 accountName 生成 DiceBear
 	const displayAvatarSrc = beamio?.image?.trim()
@@ -566,6 +639,21 @@ export default function BeamioMeMainScreen() {
 
 		return (
 			<div className="w-full min-h-screen bg-white text-slate-900 dark:bg-white dark:text-slate-900">
+			<UsdcArrivalOverlay
+				open={!!depositWatch}
+				phase={depositWatch?.phase ?? 'listening'}
+				variant="wallet"
+				listeningTitle={tu('deposit_usdc_listening_title')}
+				listeningHint={tu('deposit_usdc_listening_hint')}
+				progressText={depositWatch?.progress}
+				errorText={depositWatch?.error}
+				successTitle={tu('deposit_usdc_success_title')}
+				successSubtitle={tu('deposit_usdc_success_subtitle')}
+				balanceLabel={tu('new_wallet_balance')}
+				balanceText={depositWatch?.newBalanceText ?? ''}
+				onCancel={closeDepositWatch}
+				onDone={closeDepositWatch}
+			/>
 			{
 				!settingsOpen && (
 					<>
@@ -590,8 +678,7 @@ export default function BeamioMeMainScreen() {
 								}
 								title={tu('deposit_usdc')}
 								onClick={() => {
-									if (!eoaCapsuleAddress) return
-									openExternalUrl(buildWalletUsdcDepositUrl({ beneficiary: eoaCapsuleAddress }))
+									void startWalletUsdcDeposit()
 								}}
 								/>
 

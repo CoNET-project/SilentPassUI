@@ -263,7 +263,7 @@ const Home = (_props: HomeProps) => {
 		setPayTag, setSendToMemo, setUsdcbalance, listenningProcess, setListenningProcess, setUsdcToUSD, usdcToUSD, usdcbalance, setPaymentLinkCode,
 		currencyData, setRedeemCode, setPayMePayment, setAllNodes, setGossip, gossip, setCharts, charts, setShowFooter, scanData, setScanData,
 		myBrandCards, myBrandCardDetails, homeTotalPowerCad,
-		aaAccountUsdcBalance, refreshRecentActivityNoAa,
+		aaAccountUsdcBalance, refreshRecentActivityNoAa, conetWalletBalances,
 	} = useDaemonContext()
 	const navigate = useNavigate()
 	  const [settingsOpen, setSettingsOpen] = useState<''|'BeamioBetaAccess'|'支付'>('')
@@ -601,12 +601,19 @@ const Home = (_props: HomeProps) => {
 		return rate > 0 ? rate : (FALLBACK_RATES[currency] ?? 1)
 	}
 
+	// /home 的 "Beamio Balance" 与 /myWallet 对齐：Base-USDC + CoNET-USDC（均为 EOA 主钱包）
+	const homeWalletUsdcTotal = useMemo(() => {
+		const baseUsdc = Math.max(0, Number(usdcbalance) || 0)
+		const conetUsdc = Math.max(0, Number(conetWalletBalances?.usdc) || 0)
+		return baseUsdc + conetUsdc
+	}, [usdcbalance, conetWalletBalances?.usdc])
+
 	function formatFiat() {
 		// 1 USDC ≈ X {currency}
 		const rate = fxRateUSDCToCurrency(currency)
 
 		// 目标币种金额
-		const v = currency === 'USDC' ? usdcbalance : usdcbalance * rate
+		const v = currency === 'USDC' ? homeWalletUsdcTotal : homeWalletUsdcTotal * rate
 
 		switch (currency) {
 			case 'EUR': {
@@ -640,7 +647,7 @@ const Home = (_props: HomeProps) => {
 
 			case 'USDC':
 				// USDC 是 token，不是法币
-				return `${formatWithThousands(usdcbalance)} USDC`
+				return `${formatWithThousands(homeWalletUsdcTotal)} USDC`
 
 			case 'USD':
 			default:
@@ -916,7 +923,7 @@ const Home = (_props: HomeProps) => {
 											/>
 										</div>
 										<span>
-											{usdcbalance.toFixed(4)}
+											{homeWalletUsdcTotal.toFixed(4)}
 										</span>
 									</div>
 								</div>

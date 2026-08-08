@@ -369,8 +369,8 @@ export type PayDiscoverTreasuryBridgeLocalResult =
 /**
  * When the local Verra EOA holds enough USDC on Base, sign EIP-3009 and POST
  * `/api/nfcUsdcTopup` with `workflow=treasuryBridge`:
- * Base USDC → Beamio treasury; Master mints merchant card #0 → user AA;
- * miners asynchronously mint CoNET-USDC → card.owner().
+ * Base USDC → bridge initiator; Master LockMint CoNET-USDC → card.owner(),
+ * then protocol gateway mint card #0 → user AA (no second user signature).
  *
  * Caller should fall back to CoNET-USDC self-fund or {@link buildDiscoverUsdcTreasuryBridgeQrUrl}
  * when `insufficientBalance` is true.

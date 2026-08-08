@@ -94,6 +94,7 @@ import {
 	GENESIS_NODE_SEAT_TEST_CODE,
 	genesisNodeSeatLocalRequiredUsdc6,
 	isGenesisNodeSeatPwaTestBuyer,
+	payDiscoverTreasuryBridgeWithLocalWallet,
 	payGenesisNodeSeatWithLocalWallet,
 } from "@/utils/discoverUsdcTopupSession"
 import {
@@ -4380,39 +4381,13 @@ function DiscoverMerchantDetailFullScreen({
 		setUsdcTopupSubmitting(true)
 		setUsdcTopupError('')
 		try {
-			const baselineUsdc6 = await readEoaConetUsdcBalance6(profile as profile)
-			const selfFundUsdc6 = await currencyAmountToSafeUsdc6(
-				cardAddress,
-				displayCurrency,
-				parsed.apiAmount,
-			)
-			if (selfFundUsdc6 <= 0n) {
-				setUsdcTopupError('Invalid top-up amount.')
-				return
-			}
-
-			const selfPrecheck = await precheckDiscoverUsdcTopupUsdc6({
-				cardAddress,
-				fromEoa: userEoa,
-				usdc6: selfFundUsdc6,
-			})
-			if (!selfPrecheck.ok) {
-				setUsdcTopupError(selfPrecheck.error)
-				return
-			}
-			setUsdcTopupIntent(selfPrecheck.intent)
-
-			if (eoaCanSelfFundDiscoverTopup(baselineUsdc6, selfFundUsdc6)) {
-				setUsdcTopupFiatAmount(parsed.apiAmount)
-				setUsdcTopupRequiredUsdc6(selfFundUsdc6)
-				setUsdcTopupBaselineUsdc6(baselineUsdc6)
-				setUsdcTopupUsdcDisplay(safeUsdc6ToAmountString(selfFundUsdc6))
-				setUsdcTopupProgress('Completing top-up…')
-				await submitDiscoverEoaTopup(
-					selfFundUsdc6,
-					safeUsdc6ToAmountString(selfFundUsdc6),
-					selfPrecheck.intent,
-				)
+			const privateKeyArmor = resolveSigningPrivateKeyArmor(profile)
+			if (!privateKeyArmor) {
+				Toast.show({
+					content: tu('unlock_your_wallet_with_your_access_password_to_top_up'),
+					position: 'top',
+				})
+				navigate('/settings')
 				return
 			}
 
@@ -4428,18 +4403,16 @@ function DiscoverMerchantDetailFullScreen({
 				return
 			}
 
-			const userAa = resolveUserAa()
-			if (!userAa) {
-				setUsdcTopupError('Smart Wallet (AA) is required for top-up. Open Wallet and finish setup, then retry.')
-				return
-			}
-
 			const quotedUsdc6 = await fetchDiscoverClientTopupQuotedUsdc6({
 				cardAddress,
 				cardOwner,
 				amount: parsed.apiAmount,
 				currency: displayCurrency,
 			})
+			if (quotedUsdc6 <= 0n) {
+				setUsdcTopupError('Invalid top-up amount.')
+				return
+			}
 			const quotePrecheck = await precheckDiscoverUsdcTopupUsdc6({
 				cardAddress,
 				fromEoa: userEoa,
@@ -4453,9 +4426,89 @@ function DiscoverMerchantDetailFullScreen({
 			const usdcDisplay = formatQuotedUsdc6ForDisplay(quotedUsdc6)
 			setUsdcTopupFiatAmount(parsed.apiAmount)
 			setUsdcTopupRequiredUsdc6(quotedUsdc6)
-			setUsdcTopupBaselineUsdc6(baselineUsdc6)
 			setUsdcTopupUsdcDisplay(usdcDisplay)
 
+			const userAa = resolveUserAa()
+
+			/** 1) Prefer Base USDC → treasury → card points (treasuryBridge). */
+			let baseUsdc6 = 0n
+			try {
+				baseUsdc6 = await readEoaUsdcBalance6(profile as profile)
+			} catch {
+				/* untrusted — treat as 0 for local Base path; may still use CoNET-USDC / QR */
+			}
+			if (eoaCanSelfFundDiscoverTopup(baseUsdc6, quotedUsdc6)) {
+				if (!userAa) {
+					setUsdcTopupError(
+						'Smart Wallet (AA) is required for Base USDC top-up. Open Wallet and finish setup, then retry.',
+					)
+					return
+				}
+				setUsdcTopupBaselineUsdc6(baseUsdc6)
+				setUsdcTopupProgress('Paying with Base USDC…')
+				const localPay = await payDiscoverTreasuryBridgeWithLocalWallet({
+					profile: profile as profile,
+					privateKeyArmor,
+					cardAddress,
+					cardOwner,
+					recipientAa: userAa,
+					amount: parsed.apiAmount,
+					currency: displayCurrency,
+					quotedUsdc6,
+				})
+				if (localPay.ok) {
+					refreshMerchantAssets()
+					Toast.show({
+						content: 'Top-up submitted. Smart Wallet card points update shortly.',
+						position: 'top',
+					})
+					resetUsdcTopupFlow()
+					return
+				}
+				if (!localPay.insufficientBalance) {
+					setUsdcTopupError(mapServerError(localPay.error))
+					return
+				}
+				/* Balance raced down — continue to CoNET-USDC / QR. */
+			}
+
+			/** 2) Wallet CoNET-USDC self-fund → `/api/usdcTopup`. */
+			const baselineUsdc6 = await readEoaConetUsdcBalance6(profile as profile)
+			setUsdcTopupBaselineUsdc6(baselineUsdc6)
+			const selfFundUsdc6 = await currencyAmountToSafeUsdc6(
+				cardAddress,
+				displayCurrency,
+				parsed.apiAmount,
+			)
+			if (selfFundUsdc6 > 0n && eoaCanSelfFundDiscoverTopup(baselineUsdc6, selfFundUsdc6)) {
+				const selfPrecheck = await precheckDiscoverUsdcTopupUsdc6({
+					cardAddress,
+					fromEoa: userEoa,
+					usdc6: selfFundUsdc6,
+				})
+				if (!selfPrecheck.ok) {
+					setUsdcTopupError(selfPrecheck.error)
+					return
+				}
+				setUsdcTopupIntent(selfPrecheck.intent)
+				setUsdcTopupRequiredUsdc6(selfFundUsdc6)
+				setUsdcTopupUsdcDisplay(safeUsdc6ToAmountString(selfFundUsdc6))
+				setUsdcTopupProgress('Completing top-up…')
+				await submitDiscoverEoaTopup(
+					selfFundUsdc6,
+					safeUsdc6ToAmountString(selfFundUsdc6),
+					selfPrecheck.intent,
+				)
+				return
+			}
+
+			/** 3) Insufficient local funds → third-party treasuryBridge QR. */
+			if (!userAa) {
+				setUsdcTopupError(
+					'Smart Wallet (AA) is required for top-up. Open Wallet and finish setup, then retry.',
+				)
+				return
+			}
 			const qrValue = buildDiscoverUsdcTreasuryBridgeQrUrl({
 				cardAddress,
 				cardOwner,
@@ -4474,7 +4527,18 @@ function DiscoverMerchantDetailFullScreen({
 		} finally {
 			setUsdcTopupSubmitting(false)
 		}
-	}, [displayCurrency, item.cardAddress, navigate, profile, resolveUserAa, resolveUserEoa, submitDiscoverEoaTopup, usdcTopupAmountText])
+	}, [
+		displayCurrency,
+		item.cardAddress,
+		navigate,
+		profile,
+		refreshMerchantAssets,
+		resetUsdcTopupFlow,
+		resolveUserAa,
+		resolveUserEoa,
+		submitDiscoverEoaTopup,
+		usdcTopupAmountText,
+	])
 
 	const copyUsdcTopupUrl = useCallback(async () => {
 		if (!usdcTopupQrValue) return
@@ -4500,6 +4564,48 @@ function DiscoverMerchantDetailFullScreen({
 			setUsdcTopupSubmitting(true)
 			setUsdcTopupError('')
 			try {
+				const privateKeyArmor = resolveSigningPrivateKeyArmor(profile)
+				const userAa = usdcTopupRecipientAa || resolveUserAa()
+				const userEoa = resolveUserEoa()
+				if (
+					privateKeyArmor &&
+					userAa &&
+					userEoa &&
+					usdcTopupRequiredUsdc6 > 0n &&
+					usdcTopupFiatAmount
+				) {
+					let cardOwner: string | null = null
+					try {
+						cardOwner = await getCardOwner(cardAddress)
+					} catch {
+						cardOwner = null
+					}
+					if (cardOwner && cardOwner !== ethers.ZeroAddress) {
+						const localPay = await payDiscoverTreasuryBridgeWithLocalWallet({
+							profile: profile as profile,
+							privateKeyArmor,
+							cardAddress,
+							cardOwner,
+							recipientAa: userAa,
+							amount: usdcTopupFiatAmount,
+							currency: displayCurrency,
+							quotedUsdc6: usdcTopupRequiredUsdc6,
+						})
+						if (localPay.ok) {
+							refreshMerchantAssets()
+							Toast.show({
+								content: 'Top-up submitted. Smart Wallet card points update shortly.',
+								position: 'top',
+							})
+							resetUsdcTopupFlow()
+							return
+						}
+						if (!localPay.insufficientBalance) {
+							setUsdcTopupError(mapServerError(localPay.error))
+							return
+						}
+					}
+				}
 				refreshMerchantAssets()
 				Toast.show({
 					content: 'If payment succeeded, Smart Wallet card points update shortly.',
@@ -4535,13 +4641,17 @@ function DiscoverMerchantDetailFullScreen({
 			setUsdcTopupSubmitting(false)
 		}
 	}, [
+		displayCurrency,
 		item.cardAddress,
 		profile,
 		refreshMerchantAssets,
 		resetUsdcTopupFlow,
+		resolveUserAa,
+		resolveUserEoa,
 		submitDiscoverEoaTopup,
 		usdcTopupBaselineUsdc6,
 		usdcTopupFiatAmount,
+		usdcTopupRecipientAa,
 		usdcTopupRequiredUsdc6,
 		usdcTopupWorkflow,
 	])
@@ -5153,7 +5263,7 @@ function DiscoverMerchantDetailFullScreen({
 									}}
 									className="shrink-0 rounded-full border border-[#1562f0]/25 bg-[#1562f0]/10 px-3 py-1.5 text-[12px] font-bold uppercase tracking-wide text-[#1562f0] transition active:scale-[0.98] hover:bg-[#1562f0]/15"
 								>
-									CoNET-USDC topup
+									Top up
 								</button>
 							) : null}
 						</div>

@@ -1,4 +1,5 @@
 import { ethers } from 'ethers'
+import { CONET_TREASURY_CREATE2 } from '@/config/chainAddresses'
 import { beamioApi, baseEndpoint } from '@/utils/constants'
 import { AuthorizationSign } from '@/services/beamio'
 import { resolveSigningPrivateKeyArmor } from '@/utils/resolveSigningPrivateKeyArmor'
@@ -13,6 +14,12 @@ import {
 	submitUsdcChargeTopupAuth,
 	type UsdcChargeSessionResult,
 } from '@/utils/usdcChargeSessionApi'
+
+/**
+ * Base USDC settle recipient for Discover `treasuryBridge` — must match x402sdk `BASE_TREASURY`
+ * (`CONET_TREASURY_CREATE2` same-address on Base).
+ */
+export const DISCOVER_TREASURY_BRIDGE_PAYTO = CONET_TREASURY_CREATE2
 
 const POLL_INTERVAL_MS = 2500
 const MAX_TICKS = 600
@@ -357,6 +364,142 @@ export async function payGenesisNodeSeatWithLocalWallet(params: {
 		return { ok: false, error: json.error ?? `Payment failed (HTTP ${secondRes.status})` }
 	}
 	return { ok: true, USDC_tx: json.USDC_tx, testMode }
+}
+
+export type PayDiscoverTreasuryBridgeLocalResult =
+	| { ok: true; USDC_tx?: string }
+	| { ok: false; error: string; insufficientBalance?: boolean }
+
+/**
+ * When the local Verra EOA holds enough USDC on Base, sign EIP-3009 and POST
+ * `/api/nfcUsdcTopup` with `workflow=treasuryBridge`:
+ * Base USDC → Beamio treasury; Master mints merchant card #0 → user AA;
+ * miners asynchronously mint CoNET-USDC → card.owner().
+ *
+ * Caller should fall back to CoNET-USDC self-fund or {@link buildDiscoverUsdcTreasuryBridgeQrUrl}
+ * when `insufficientBalance` is true.
+ */
+export async function payDiscoverTreasuryBridgeWithLocalWallet(params: {
+	profile: profile
+	privateKeyArmor: string
+	cardAddress: string
+	cardOwner: string
+	recipientAa: string
+	amount: string
+	currency: string
+	/** Quoted settle amount from `/api/nfcUsdcTopupQuote` (must match challenge). */
+	quotedUsdc6: bigint
+}): Promise<PayDiscoverTreasuryBridgeLocalResult> {
+	const required6 = params.quotedUsdc6
+	if (required6 <= 0n) {
+		return { ok: false, error: 'Invalid top-up amount.' }
+	}
+
+	let balance6: bigint
+	try {
+		balance6 = await readEoaUsdcBalance6(params.profile)
+	} catch (e: unknown) {
+		const msg = e instanceof Error ? e.message : 'Unable to read USDC balance on Base'
+		return { ok: false, error: msg }
+	}
+	if (!eoaCanSelfFundDiscoverTopup(balance6, required6)) {
+		return {
+			ok: false,
+			insufficientBalance: true,
+			error: `Insufficient USDC on Base. Need ${formatQuotedUsdc6ForDisplay(required6)} USDC.`,
+		}
+	}
+
+	const bodyObj: Record<string, string> = {
+		cardAddress: ethers.getAddress(params.cardAddress),
+		cardOwner: ethers.getAddress(params.cardOwner),
+		amount: params.amount,
+		currency: params.currency.toUpperCase(),
+		aa: ethers.getAddress(params.recipientAa),
+		workflow: DISCOVER_USDC_TREASURY_BRIDGE_WORKFLOW,
+		paymentToken: 'USDC',
+	}
+	const topupUrl = `${beamioApi}/api/nfcUsdcTopup`
+	const body = JSON.stringify(bodyObj)
+
+	const firstRes = await fetch(topupUrl, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body,
+	})
+
+	if (firstRes.status !== 402) {
+		const json = (await firstRes.json().catch(() => ({}))) as {
+			success?: boolean
+			error?: string
+			USDC_tx?: string
+		}
+		if (firstRes.ok && json.success !== false && json.USDC_tx) {
+			return { ok: true, USDC_tx: json.USDC_tx }
+		}
+		return {
+			ok: false,
+			error: json.error ?? `Payment challenge failed (HTTP ${firstRes.status})`,
+		}
+	}
+
+	const challenge = (await firstRes.json().catch(() => ({}))) as {
+		accepts?: Array<{
+			maxAmountRequired?: string | number
+			payTo?: string
+		}>
+	}
+	const message = Array.isArray(challenge.accepts) ? challenge.accepts[0] : null
+	if (!message?.payTo || message.maxAmountRequired == null) {
+		return { ok: false, error: 'Invalid payment challenge' }
+	}
+
+	let payTo: string
+	try {
+		payTo = ethers.getAddress(String(message.payTo))
+	} catch {
+		return { ok: false, error: 'Invalid payment recipient' }
+	}
+	if (payTo.toLowerCase() !== DISCOVER_TREASURY_BRIDGE_PAYTO.toLowerCase()) {
+		return { ok: false, error: 'Unexpected payment recipient' }
+	}
+
+	let payAmount: bigint
+	try {
+		payAmount = BigInt(String(message.maxAmountRequired).split('.')[0])
+	} catch {
+		return { ok: false, error: 'Invalid payment amount' }
+	}
+	if (payAmount !== required6) {
+		return {
+			ok: false,
+			error: `Payment amount mismatch: ${payAmount.toString()} != ${required6.toString()}`,
+		}
+	}
+
+	const paymentHeader = await AuthorizationSign(payAmount, payTo, params.privateKeyArmor)
+	if (!paymentHeader) {
+		return { ok: false, error: 'Wallet signature failed' }
+	}
+
+	const secondRes = await fetch(topupUrl, {
+		method: 'POST',
+		headers: {
+			'Content-Type': 'application/json',
+			'X-PAYMENT': paymentHeader,
+			'Access-Control-Expose-Headers': 'X-PAYMENT-RESPONSE',
+		},
+		body,
+	})
+	const json = (await secondRes.json().catch(() => ({}))) as {
+		success?: boolean
+		error?: string
+		USDC_tx?: string
+	}
+	if (!secondRes.ok || json.success === false) {
+		return { ok: false, error: json.error ?? `Payment failed (HTTP ${secondRes.status})` }
+	}
+	return { ok: true, USDC_tx: json.USDC_tx }
 }
 
 /** @deprecated Prefer {@link discoverTreasuryBridgePaymentHint}. */

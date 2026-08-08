@@ -1,5 +1,4 @@
 import { ethers } from 'ethers'
-import { CONET_TREASURY_CREATE2 } from '@/config/chainAddresses'
 import { beamioApi, baseEndpoint } from '@/utils/constants'
 import { AuthorizationSign } from '@/services/beamio'
 import { resolveSigningPrivateKeyArmor } from '@/utils/resolveSigningPrivateKeyArmor'
@@ -15,19 +14,13 @@ import {
 	type UsdcChargeSessionResult,
 } from '@/utils/usdcChargeSessionApi'
 
-/**
- * Base USDC settle recipient for Discover `treasuryBridge` — must match x402sdk `BASE_TREASURY`
- * (`CONET_TREASURY_CREATE2` same-address on Base).
- */
-export const DISCOVER_TREASURY_BRIDGE_PAYTO = CONET_TREASURY_CREATE2
-
 const POLL_INTERVAL_MS = 2500
 const MAX_TICKS = 600
 
 /** Non-admin consumer (legacy): payment page only settles USDC to beneficiary; card top-up is completed in-app. */
 export const DISCOVER_USDC_CLIENT_TOPUP_WORKFLOW = 'clientTopup'
 
-/** Discover full treasury bridge: settle USDC → Base treasury; Master mints card #0 → user AA; miners mint CONET-USDC → owner. */
+/** Discover treasuryBridge: settle USDC → initiator; Master LockMint → owner + protocol gateway mint → user. */
 export const DISCOVER_USDC_TREASURY_BRIDGE_WORKFLOW = 'treasuryBridge'
 
 /** Genesis Node Seat: settle USDC → Beamio seat wallet; Master createRedeem + claim → listener deploys validators. */
@@ -51,6 +44,9 @@ export const GENESIS_NODE_SEAT_USDC_PER_NODE6 = 1_370_000_000n
 export const GENESIS_NODE_BRIDGE_INITIATOR = '0x87cAeD4e51C36a2C2ece3Aaf4ddaC9693d2405E1'
 /** @deprecated alias of {@link GENESIS_NODE_BRIDGE_INITIATOR} */
 export const GENESIS_NODE_SEAT_PAYTO = GENESIS_NODE_BRIDGE_INITIATOR
+
+/** Must match x402sdk settle payTo for workflow=treasuryBridge. */
+export const DISCOVER_TREASURY_BRIDGE_PAYTO = GENESIS_NODE_BRIDGE_INITIATOR
 
 /** Must match x402sdk `GENESIS_NODE_SEAT_TEST_CODE` — settle 1.37 USDC then micro-split fulfill. */
 export const GENESIS_NODE_SEAT_TEST_CODE = '332266'

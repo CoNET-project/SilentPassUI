@@ -1,7 +1,4 @@
-import {
-	pgpCoNET
-} from '@/utils/constants'
-import {generateKey, readKey, createMessage, enums, encrypt, decryptKey, readPrivateKey, readMessage, decrypt, PrivateKey} from 'openpgp'
+import {generateKey, readKey, createMessage, enums, encrypt} from 'openpgp'
 import { CoNET_Data, setCoNET_Data } from "@/utils/globals"
 
 import {GuardianNodesMainnet, conetDepinProvider, beamioApi} from '@/utils/constants'
@@ -9,6 +6,7 @@ import contracts from '@/utils/contracts'
 import {ethers} from 'ethers'
 import {aesGcmEncrypt, aesGcmDecrypt, toBase64, fromBase64, storeSystemData } from '@/services/beamio'
 import { publishNativePwaLog } from '@/utils/cashTreesNativePwaLog'
+import { startWorkerGossipListen, stopWorkerGossip } from '@/services/chatWorkerBridge'
 
 function chatBootLog(message: string, level: 'info' | 'warn' | 'error' = 'info'): void {
 	publishNativePwaLog(level, `[Chat] ${message}`)
@@ -393,12 +391,6 @@ function extractGossipListingBlockHeight(payload: unknown): string | null {
   return null
 }
 
-function isGossipListingLivenessFrame(payload: unknown): boolean {
-  if (!payload || typeof payload !== 'object') return false
-  const row = payload as Record<string, unknown>
-  return typeof row.ipaddress === 'string' || 'nodeWallets' in row
-}
-
 function logGossipListingBlockHeight(
   kind: 'handshake' | 'listing',
   payload: unknown,
@@ -411,12 +403,6 @@ function logGossipListingBlockHeight(
   const line = `[Gossip] Listing ${kind} blockHeight=${blockHeight}${nodePart} streamActive=${!rootSignal?.aborted}`
   console.log(line)
   publishNativePwaLog('info', line)
-}
-
-interface SSEErrorType {
-  type: 'connect_timeout' | 'idle_timeout' | 'read_timeout' | 'network_error' | 'unknown'
-  message: string
-  retriable: boolean
 }
 
 const GOSSIP_STOP_REASONS = new Set([
@@ -446,6 +432,11 @@ function resolveGossipAbortReason(err: unknown, controller: AbortController, roo
   return 'unknown'
 }
 
+// NOTE: Superseded by the Beamio Chat SDK Web Worker (see services/chatWorkerBridge).
+// The inbound LISTEN loop + all openpgp decryption now run off the main thread, so
+// connectToGossipNode no longer calls startGossip. Kept here (self-contained SSE reader,
+// no openpgp) only as a reference / fallback; disable unused-var so CI=true builds pass.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function startGossip(
   nodes: nodeInfo[],
   body: string,
@@ -770,6 +761,9 @@ const clearGossipListenSession = (reason: string) => {
 		}
 		currentGossipAbortController = null
 	}
+	// Aborting the controller already triggers the worker teardown via its rootSignal
+	// listener; call stop explicitly too so the singleton is cleared even on races.
+	stopWorkerGossip()
 }
 
 /**
@@ -870,34 +864,18 @@ export const connectToGossipNode = async (
   try {
       // Encrypt listen/mining to mailbox **B** (router armored key), but HTTP/SSE only via
       // random healthy **entry C ≠ B** — Tor-like: never reveal client IP to mailbox B.
+      //
+      // NOTE: the SSE connect/reconnect loop AND all inbound openpgp decryption now run
+      // inside the Beamio Chat SDK Web Worker (see services/chatWorkerBridge) so the main
+      // thread never blocks — this is the fix for "app frozen ~10s after launch". We still
+      // resolve route + healthy entry nodes here so the main-thread delivery-ACK sender
+      // (gossipDeliveryAckContext) keeps working exactly as before.
       const routeNodes = pickRouteNodesByArmoredKey(nodes, nodeArmoredPublicKey)
       if (!routeNodes.length) {
         return failConnect('connectToGossipNode abort: no route node for router key')
       }
       const mailboxDomains = new Set(routeNodes.map(n => n.domain))
 
-      // ... (加密/准备逻辑保持不变) ...
-      const wallet = new ethers.Wallet(privateKeyArmor);
-      const key = Buffer.from(crypto.getRandomValues(new Uint8Array(16))).toString('base64');
-      // listenKind:'chat' tags this as a PWA presence/mailbox listen (vs LayerMinus mining gossip),
-      // so SI never applies chat-only session/zombie eviction to mining pipes.
-      const command = { command: 'mining', listenKind: 'chat', walletAddress: wallet.address, algorithm: 'aes-256-cbc', Securitykey: key };
-      const message = JSON.stringify(command);
-      const signMessage = await wallet.signMessage(message);
-      
-      const encryptionKeys = await readKey({ armoredKey: nodeArmoredPublicKey });
-      const pgpMsg = await createMessage({ text: Buffer.from(JSON.stringify({ message, signMessage })).toString('base64') });
-      const postData = await encrypt({ message: pgpMsg, encryptionKeys, config: { preferredCompressionAlgorithm: enums.compression.zlib }});
-
-      let decryptedPrivateKey: PrivateKey;
-      const pk = await readPrivateKey({ armoredKey: pgpPrivateKey });
-      decryptedPrivateKey = pk.isDecrypted() ? pk : await decryptKey({ privateKey: pk, passphrase: "" });
-
-      const userPgpKeyID = pgpPublicArmored ? await getPublicKeyArmoredKeyID(pgpPublicArmored) : '';
-
-      console.log("🚀 [Gossip] Starting new connection...");
-      chatBootLog('Gossip SSE connect starting…')
-      const gossipBody = JSON.stringify({ data: postData })
       const entryCandidates = nodes.filter(n => !mailboxDomains.has(n.domain))
       const healthyNodes = await pickHealthyGossipNodes(
         entryCandidates.length ? entryCandidates : nodes,
@@ -916,97 +894,42 @@ export const connectToGossipNode = async (
         mailboxDomains: [...mailboxDomains],
       }
 
-      // 启动递归循环，传入 entry C 数组，重连时随机换 entry（不直连 B）
-      startGossip(
-        healthyNodes, 
-        gossipBody, 
-        async (err, _data) => {
-            // 回调卫语句：如果总开关关了，不要处理任何数据
-            if (rootSignal.aborted) return;
+      console.log("🚀 [Gossip] Starting worker listen…");
+      chatBootLog('Gossip SSE connect starting (worker)…')
 
-            if (err) return console.error("Gossip Error:", err);
-            if (!_data) return;
-            noteGossipActivity()
-
-            try {
-                const data = JSON.parse(_data);
-                if (isGossipListingLivenessFrame(data) && extractGossipListingBlockHeight(data)) {
-                    const nodeHint =
-                      typeof data.nodeDomain === 'string'
-                        ? data.nodeDomain
-                        : typeof data.nodeIpAddr === 'string'
-                          ? data.nodeIpAddr
-                          : undefined
-                    logGossipListingBlockHeight('listing', data, rootSignal, nodeHint)
-                    return
-                }
-                if (data?.data && /^-----BEGIN PGP MESSAGE-----/i.test(data.data)) {
-                    const armoredMessage = data.data;
-                    const msg = await readMessage({ armoredMessage });
-                    const encrypKeyIDs = msg.getEncryptionKeyIDs?.();
-                    if (encrypKeyIDs?.length) {
-                        const customerKeyID = encrypKeyIDs[0].toHex().toUpperCase();
-                        const ourKeyIDs = decryptedPrivateKey.getKeyIDs?.()?.map(k => k.toHex().toUpperCase()) ?? [];
-                        const match = ourKeyIDs.includes(customerKeyID) || (userPgpKeyID && customerKeyID.endsWith(userPgpKeyID));
-                        console.debug(`[Gossip Debug] msgEncryptKeyID=${customerKeyID} | ourKeyIDs=[${ourKeyIDs.join(',')}] | userPgpKeyID=${userPgpKeyID} | match=${match}`);
-                    } else {
-                        console.debug(`[Gossip Debug] msg has no encryption key packets`);
-                    }
-                    const { data: decrypted } = await decrypt({ message: msg, decryptionKeys: decryptedPrivateKey });
-                    const decryptedString = typeof decrypted === 'string' ? decrypted : String(decrypted);
-                    const kkk = fromBase64(decryptedString);
-                    // Attach armor hash for mailbox ACK (must match SI saveLocal hash).
-                    let inboundLine = kkk
-                    try {
-                      const env = JSON.parse(kkk)
-                      if (env && typeof env === 'object') {
-                        env._beamioPgpArmorHash = ethers.keccak256(ethers.toUtf8Bytes(armoredMessage))
-                        inboundLine = JSON.stringify(env)
-                      }
-                    } catch {
-                      /* keep raw */
-                    }
-                    console.log(`✅ Message:`, kkk.slice(0, 50) + "..."); // 仅打印前50字符防止刷屏
-                    newMessage(inboundLine);
-                } else if (data?.from && data?.text != null && data?.signMessage) {
-                    // 非 PGP：明文信封格式 { timestamp, text, from, signMessage }，直接交给 newMessage
-                    console.log(`✅ Plain envelope from ${data.from}`);
-                    newMessage(JSON.stringify(data));
-                } else {
-                    console.log('[Gossip] Unknown format:', data);
-                }
-            } catch (ex: any) {
-                // "No decryption key packets found" = 消息不是发给我们的（gossip 广播了发给其他用户的消息），静默跳过
-                if (ex?.message?.includes?.("No decryption key packets found")) return;
-                console.warn("Parse Error:", ex?.message ?? ex);
-            }
+      // Hand the inbound LISTEN loop to the worker. Param naming here is historical:
+      //   privateKeyArmor  → raw EOA private key hex (EIP-191 listen signing)
+      //   pgpPrivateKey    → armored PGP private key (decrypts inbound in the worker)
+      // The worker owns entry rotation + reconnect + decryption; decrypted host-ready
+      // lines flow back through `newMessage` (App.tsx addNewMessage serial queue) unchanged,
+      // with `_beamioPgpArmorHash` already attached for mailbox delivery ACK.
+      const started = await startWorkerGossipListen({
+        ownRouteArmoredPublicKey: nodeArmoredPublicKey,
+        privateKeyHex: privateKeyArmor,
+        pgpPrivateKeyArmored: pgpPrivateKey,
+        pgpPublicKeyArmored: pgpPublicArmored,
+        nodes,
+        rootSignal,
+        onLine: (line) => {
+          if (rootSignal.aborted) return
+          newMessage(line)
         },
-        rootSignal // <--- 必须传入这个信号
-      );
+        onActivity: () => {
+          if (rootSignal.aborted) return
+          noteGossipActivity()
+        },
+        onLog: (level, message) => chatBootLog(message, level),
+      })
+
+      if (!started) {
+        return failConnect('connectToGossipNode abort: worker gossip listen failed to start')
+      }
       return true
 
   } catch (ex: any) {
       console.error("Init Error:", ex);
       return failConnect(`connectToGossipNode Init Error: ${(ex as Error)?.message ?? String(ex)}`)
   }
-}
-
-type NodePostResponse =
-  | { ok: true; [k: string]: any }
-  | { ok?: boolean; error?: string; message?: string; [k: string]: any }
-
-function normalizeArmored(postData: any) {
-  // openpgp encrypt() 通常直接返回 string（armored）
-  if (typeof postData === "string") return postData
-
-  // 有些版本可能返回 { data: "-----BEGIN PGP MESSAGE-----..." }
-  if (postData && typeof postData.data === "string") return postData.data
-
-  // 或者是 message 对象，需要 armored
-  if (postData && typeof postData.armor === "function") return postData.armor()
-
-  // 兜底
-  return String(postData ?? "")
 }
 
 async function postWithTimeout(url: string, init: RequestInit, timeoutMs = 12_000) {

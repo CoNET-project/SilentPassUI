@@ -633,7 +633,9 @@
     "loginRequired": "请先登录 Beamio 账户。",
     "addressRequired": "需要地址。",
     "invalidRedeemCode": "无效的兑换码。",
-    "rpcError": "RPC 错误。"
+    "rpcError": "RPC 错误。",
+    "merchantCardOwnerUnavailable": "无法读取 CoNET 商家卡，请重试。",
+    "merchantCardNotOnConet": "商家卡不在 CoNET 上。"
   },
   "time": {
     "minutesAgo": "{{count}} 分钟前",

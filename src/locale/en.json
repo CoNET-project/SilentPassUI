@@ -633,7 +633,9 @@
     "loginRequired": "Please sign in to your Beamio account first.",
     "addressRequired": "Address is required.",
     "invalidRedeemCode": "Invalid redeem code.",
-    "rpcError": "RPC error."
+    "rpcError": "RPC error.",
+    "merchantCardOwnerUnavailable": "Unable to read merchant card on CoNET. Please retry.",
+    "merchantCardNotOnConet": "Merchant card is not on CoNET."
   },
   "time": {
     "minutesAgo": "{{count}}m ago",

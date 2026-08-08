@@ -1,7 +1,7 @@
 import { ethers } from "ethers";
 import contracts from "../utils/contracts";
-import { baseEndpoint, USDCContract_BASE, beamioApi, BeamioCardFactorySC, conetDepinProvider, CCSA_Card_Address, ASSET_CARD_ADDRESSES } from "../utils/constants";
-import { BASE_MAINNET_FACTORIES, BASE_TREASURY, CONET_BUINT, CONET_BUNIT_AIRDROP_ADDRESS, BEAMIO_INDEXER_DIAMOND, CONET_AA_FACTORY, CONET_USDC } from "@/config/chainAddresses";
+import { baseEndpoint, USDCContract_BASE, beamioApi, ConetCardFactorySC, conetDepinProvider, CCSA_Card_Address, ASSET_CARD_ADDRESSES } from "../utils/constants";
+import { BASE_MAINNET_FACTORIES, BASE_TREASURY, CONET_BUINT, CONET_BUNIT_AIRDROP_ADDRESS, BEAMIO_INDEXER_DIAMOND, CONET_AA_FACTORY, CONET_CARD_FACTORY, CONET_USDC } from "@/config/chainAddresses";
 import {
 	CONET_MAINNET_CHAIN_ID,
 	eip712ChainIdForBeamioUserCard,
@@ -24,7 +24,6 @@ import {
 } from "@/utils/beamioCardUserCumulativeStatHoldings";
 import { CoNET_Data, setCoNET_Data } from "@/utils/globals";
 import { storeSystemData } from "./beamio";
-import { cardAbi } from "../utils/abis";
 import { searchUsername} from "./beamio"
 import usdc_abi from './ABI/usdc_abi.json'
 import { tu } from '@/locale/beamioLocale'
@@ -285,16 +284,8 @@ export const USDC2Token = async (
         const { provider: cardProvider } = await providerForBeamioUserCard(cardAddress)
         const userWallet = new ethers.Wallet(userPrivateKey, cardProvider)
 
-        // 1. 获取受益人 (Owner) — 商户卡在 CoNET；付款代币为钱包 conet-USDC。
-        const card = new ethers.Contract(
-            cardAddress,
-            [
-                "function owner() view returns (address)"
-            ],
-            cardProvider,
-        );
-
-        const cardOwner = await card.owner();
+        // 1. 获取受益人 (Owner) — 商户卡只在 CoNET；付款代币为钱包 conet-USDC。
+        const cardOwner = await getCardOwner(cardAddress)
         const conetUsdc = new ethers.Contract(CONET_USDC, ['function name() view returns (string)'], cardProvider)
         let tokenName = 'CoNET USD Coin'
         try {
@@ -405,14 +396,26 @@ export const signBUnitRefuel3009 = async (
 	}
 }
 
-/** 当前使用的 Card Factory 地址（与 config/chainAddresses CARD_FACTORY / contracts.BeamioCardFactory 一致） */
-const CARD_FACTORY_ADDRESS = contracts.BeamioCardFactory.address;
+/** Merchant UserCard Factory is CoNET-only (Base merchant cards abandoned). */
+const CARD_FACTORY_ADDRESS = CONET_CARD_FACTORY
+
+const isEmptyEthCallResult = (err: unknown): boolean => {
+	const msg = err instanceof Error ? err.message : String(err ?? '')
+	return /could not decode result data|BAD_DATA|value=["']0x["']/i.test(msg)
+}
+
+const sleepMs = (ms: number) => new Promise<void>((resolve) => {
+	window.setTimeout(resolve, ms)
+})
+
+/** Merchant card quotes always use CoNET UserCard Factory + CoNET RPC. */
+const merchantCardFactory = (): ethers.Contract => ConetCardFactorySC.connect(conetDepinProvider) as ethers.Contract
 
 export const quoteUSDCForPoints = async (
 	cardAddress: string,
 	pointsHuman: string   // ✅ 人类可读，例如 "10" / "1.5"
   ) => {
-	const factory = BeamioCardFactorySC;
+	const factory = merchantCardFactory();
 
 	if (!pointsHuman || Number(pointsHuman) <= 0) {
 	  throw new Error("points must be > 0 (human readable)");
@@ -435,7 +438,7 @@ export const quoteUSDCForPoints = async (
 	  const unitPriceUSDC6: bigint =
 	    await factory.quoteUnitPointInUSDC6(cardAddress);
 	  if (unitPriceUSDC6 === 0n) {
-	    throw new Error("quote=0 (oracle not configured or card invalid). Ensure BeamioOracle has CAD rate set (e.g. npm run set:oracle-cad:base).");
+	    throw new Error("quote=0 (oracle not configured or card invalid). Ensure BeamioOracle has CAD rate set on CoNET.");
 	  }
 
 	  // 3️⃣ 总价 USDC6 = points6 * unitPriceUSDC6 / 1e6
@@ -472,11 +475,11 @@ const CURRENCY_TO_ENUM: Record<string, number> = { CAD: 0, USD: 1, JPY: 2, CNY: 
  * 用于 payUSDCProcess：用户输入 X CAD/USD，用此函数得到应付 USDC 数量。
  */
 export const quoteCurrencyAmountInUSDC = async (
-	cardAddress: string,
+	_cardAddress: string,
 	currencyCode: string,
 	amountHuman: string
 ): Promise<{ usdc6: bigint; usdc: string }> => {
-	const factory = BeamioCardFactorySC
+	const factory = merchantCardFactory()
 	const cur = CURRENCY_TO_ENUM[currencyCode.toUpperCase()]
 	if (cur === undefined) throw new Error(`Unsupported currency: ${currencyCode}`)
 	const amount6 = ethers.parseUnits(amountHuman, 6)
@@ -529,7 +532,7 @@ export const quotePointsForUSDC = async (
 	cardAddress: string,
 	usdcAmountHuman: string
 ): Promise<{ points6: bigint; points: string; usdc6: bigint; unitPriceUSDC6: bigint }> => {
-	const factory = BeamioCardFactorySC
+	const factory = merchantCardFactory()
 	const amount = Number(usdcAmountHuman)
 	if (!usdcAmountHuman || Number.isNaN(amount) || amount <= 0) {
 		throw new Error("usdcAmountHuman must be a positive number string")
@@ -544,7 +547,7 @@ export const quotePointsForUSDC = async (
 
 	const unitPriceUSDC6: bigint = await factory.quoteUnitPointInUSDC6(cardAddress)
 	if (unitPriceUSDC6 === 0n) {
-		throw new Error("quote=0 (oracle not configured or card invalid). Ensure BeamioOracle has CAD rate set (e.g. npm run set:oracle-cad:base).")
+		throw new Error("quote=0 (oracle not configured or card invalid). Ensure BeamioOracle has CAD rate set on CoNET.")
 	}
 	// points6 = requiredUSDC6 * (1e6 points) / unitPriceUSDC6
 	const points6 = (usdc6 * POINTS_ONE) / unitPriceUSDC6
@@ -1978,11 +1981,12 @@ const cardAbiSlice = [
 
 async function fetchCardsForOwner(ownerAddress: string): Promise<UserCardInfo[]> {
 	if (!ownerAddress || !ethers.isAddress(ownerAddress)) return []
-	const cards: string[] = await BeamioCardFactorySC.cardsOfOwner(ownerAddress)
+	const factory = merchantCardFactory()
+	const cards: string[] = await factory.cardsOfOwner(ownerAddress)
 	if (!cards?.length) return []
 	const results: UserCardInfo[] = []
 	for (const addr of cards) {
-		const card = new ethers.Contract(addr, cardAbiSlice, baseEndpoint)
+		const card = new ethers.Contract(addr, cardAbiSlice, conetDepinProvider)
 		const [currencyNum, priceE6Raw] = await Promise.all([
 			card.currency(),
 			card.pointsUnitPriceInCurrencyE6(),
@@ -2749,9 +2753,21 @@ export const postUSDCUserCardTopup = async (params: {
 
 /** 获取卡的 owner 地址。executeForOwner 要求签名者必须等于 card.owner()，AA 为 owner 时需用 EOA 签会失败。 */
 export const getCardOwner = async (cardAddress: string): Promise<string> => {
-	const { provider } = await providerForBeamioUserCard(cardAddress)
-	const card = new ethers.Contract(cardAddress, ['function owner() view returns (address)'], provider)
-	return ethers.getAddress(await card.owner())
+	const addr = ethers.getAddress(cardAddress)
+	const { provider } = await providerForBeamioUserCard(addr)
+	const code = await provider.getCode(addr)
+	if (!code || code === '0x') {
+		throw new Error('Merchant card is not on CoNET.')
+	}
+	const card = new ethers.Contract(addr, ['function owner() view returns (address)'], provider)
+	const readOwner = async (): Promise<string> => ethers.getAddress(await card.owner())
+	try {
+		return await readOwner()
+	} catch (err) {
+		if (!isEmptyEthCallResult(err)) throw err
+		await sleepMs(250)
+		return await readOwner()
+	}
 }
 
 /** EIP-712 签名：Owner 授权 executeForOwner(cardAddr, data, deadline, nonce)。通用接口，支持 createRedeem、cancelRedeem 等。
@@ -3142,7 +3158,8 @@ export const getRedeemStatusFromChain = async (
 ): Promise<RedeemStatusChain> => {
     const hashBytes32 = hash.length === 66 && hash.startsWith('0x') ? hash as `0x${string}` : ethers.keccak256(ethers.toUtf8Bytes(hash))
     try {
-        const card = new ethers.Contract(cardAddress, getRedeemStatusAbi, baseEndpoint)
+        const { provider } = await providerForBeamioUserCard(cardAddress)
+        const card = new ethers.Contract(cardAddress, getRedeemStatusAbi, provider)
         const [active] = await card.getRedeemStatus(hashBytes32)
         return _decodeRedeemStatus(active)
     } catch (e) {
@@ -3174,7 +3191,8 @@ export async function fetchRedeemBundleTokenIdsFromChain(
 			ethers.AbiCoder.defaultAbiCoder().encode(['bytes32', 'bytes32'], [hash, REDEEM_STORAGE_LAYOUT_SLOT]),
 		)
 		const tokenIdsArrSlot = ethers.toBeHex(BigInt(baseSlot) + REDEEM_TOKEN_IDS_FIELD_OFFSET, 32)
-		const lenHex = await baseEndpoint.getStorage(cardNorm, tokenIdsArrSlot)
+		const { provider } = await providerForBeamioUserCard(cardNorm)
+		const lenHex = await provider.getStorage(cardNorm, tokenIdsArrSlot)
 		const len = BigInt(lenHex)
 		if (len <= 0n) return []
 		if (len > BigInt(REDEEM_BUNDLE_TOKEN_IDS_MAX)) return []
@@ -3182,7 +3200,7 @@ export async function fetchRedeemBundleTokenIdsFromChain(
 		const tokenIds: string[] = []
 		for (let i = 0n; i < len; i++) {
 			const slot = ethers.toBeHex(dataBase + i, 32)
-			const v = await baseEndpoint.getStorage(cardNorm, slot)
+			const v = await provider.getStorage(cardNorm, slot)
 			tokenIds.push(BigInt(v).toString())
 		}
 		return tokenIds
@@ -3241,7 +3259,7 @@ export const getRedeemDetailsForDisplay = async (
             'function pointsUnitPriceInCurrencyE6() view returns (uint256)',
         ]
 
-		const rpcEndpoint = baseEndpoint
+		const { provider: rpcEndpoint } = await providerForBeamioUserCard(cardAddress)
         const card = new ethers.Contract(cardAddress, cardAbiExtended, rpcEndpoint)
         const hashBytes32 = hash.length === 66 && hash.startsWith('0x') ? hash as `0x${string}` : hash as `0x${string}`
 
@@ -3338,7 +3356,7 @@ export const getRedeemDetailsForDisplay = async (
                 const cardLegacy = new ethers.Contract(
                     cardAddress,
                     ['function pointsUnitPriceInCurrencyE18() view returns (uint256)'],
-                    baseEndpoint
+                    rpcEndpoint
                 )
                 const priceE18 = await cardLegacy.pointsUnitPriceInCurrencyE18()
                 priceE6Raw = BigInt(Math.round(Number(priceE18) / 1e12))
@@ -3432,7 +3450,8 @@ export const getRedeemStatusBatchFromChain = async (
             byCard.set(it.cardAddress, arr)
         }
         for (const [cardAddress, cardItems] of byCard) {
-            const card = new ethers.Contract(cardAddress, getRedeemStatusAbi, baseEndpoint)
+            const { provider } = await providerForBeamioUserCard(cardAddress)
+            const card = new ethers.Contract(cardAddress, getRedeemStatusAbi, provider)
             const hashes = cardItems.map((i) =>
                 i.hash.length === 66 && i.hash.startsWith('0x') ? i.hash as `0x${string}` : ethers.keccak256(ethers.toUtf8Bytes(i.hash))
             )
@@ -3939,13 +3958,14 @@ function bonusFieldsFromMetadataRoot(raw: unknown): {
 /** 从 BeamioUserCard 合约读取 tiers（getTiersCount + getTierAt），用于根据 redeem 金额确定 tier */
 export const getCardTiersFromContract = async (cardAddress: string): Promise<{ minUsdc6: string; attr: number }[]> => {
 	try {
+		const { provider } = await providerForBeamioUserCard(cardAddress)
 		const card = new ethers.Contract(
 			cardAddress,
 			[
 				'function getTiersCount() view returns (uint256)',
 				'function getTierAt(uint256 idx) view returns (uint256 minUsdc6, uint256 attr, uint256 tierExpirySeconds)',
 			],
-			baseEndpoint
+			provider
 		)
 		const count = Number(await card.getTiersCount())
 		if (count === 0) return []
@@ -3962,7 +3982,8 @@ export const getCardTiersFromContract = async (cardAddress: string): Promise<{ m
 
 export const getCardUpgradeTypeFromContract = async (cardAddress: string): Promise<0 | 1 | 2> => {
 	try {
-		const card = new ethers.Contract(cardAddress, ['function upgradeType() view returns (uint8)'], baseEndpoint)
+		const { provider } = await providerForBeamioUserCard(cardAddress)
+		const card = new ethers.Contract(cardAddress, ['function upgradeType() view returns (uint8)'], provider)
 		const v = Number(await card.upgradeType())
 		if (v === 1 || v === 2) return v
 		return 0
@@ -4217,10 +4238,11 @@ export const getCardMetadataFromUri = async (
 		}
 	}
 	try {
+		const { provider } = await providerForBeamioUserCard(cardAddress)
 		const card = new ethers.Contract(
 			cardAddress,
 			['function uri(uint256) view returns (string)'],
-			baseEndpoint
+			provider
 		)
 		const baseUri = await card.uri(0)
 		if (!baseUri || typeof baseUri !== 'string') return null
@@ -4876,8 +4898,7 @@ function formatBUnitLedgerTime(ts: number): string {
 
 export const getCardOwnerByCardAddress = async (cardAddress: string): Promise<searchResult | null> => {
     try {
-        const card = new ethers.Contract(cardAddress, cardAbi, baseEndpoint)
-        const owner = await card.owner()
+        const owner = await getCardOwner(cardAddress)
 		if (owner === ethers.ZeroAddress) {
 			return null
 		}

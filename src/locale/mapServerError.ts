@@ -51,6 +51,9 @@ const ERROR_PATTERNS: Array<{ test: RegExp; key: ErrorKey }> = [
 	{ test: /copy failed/i, key: 'copyFailed' },
 	{ test: /invalid redeem code/i, key: 'invalidRedeemCode' },
 	{ test: /rpc error/i, key: 'rpcError' },
+	{ test: /merchant card is not on conet/i, key: 'merchantCardNotOnConet' },
+	{ test: /cannot resolve merchant card owner/i, key: 'merchantCardOwnerUnavailable' },
+	{ test: /could not decode result data|BAD_DATA|method["']?:\s*["']?owner\(?\)?["']?/i, key: 'merchantCardOwnerUnavailable' },
 ]
 
 /** Already-localized zh-CN error text → key (when API returns cached zh or client fallback) */

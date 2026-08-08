@@ -4314,7 +4314,7 @@ function DiscoverMerchantDetailFullScreen({
 				intent: intentOverride ?? usdcTopupIntent,
 			})
 			if (!ret.success) {
-				setUsdcTopupError(ret.error ?? 'Top-up failed')
+				setUsdcTopupError(mapServerError(ret.error ?? 'Top-up failed'))
 				return false
 			}
 			if (ret.assets) setMerchantAssets(ret.assets as Awaited<ReturnType<typeof getMyAssets>>)
@@ -4420,11 +4420,11 @@ function DiscoverMerchantDetailFullScreen({
 			try {
 				cardOwner = await getCardOwner(cardAddress)
 			} catch {
-				setUsdcTopupError('Cannot resolve merchant card owner. Please retry.')
+				setUsdcTopupError(mapServerError('Cannot resolve merchant card owner. Please retry.'))
 				return
 			}
 			if (!cardOwner || cardOwner === ethers.ZeroAddress) {
-				setUsdcTopupError('Cannot resolve merchant card owner. Please retry.')
+				setUsdcTopupError(mapServerError('Cannot resolve merchant card owner. Please retry.'))
 				return
 			}
 
@@ -4470,7 +4470,7 @@ function DiscoverMerchantDetailFullScreen({
 			setUsdcTopupProgress('Waiting for payment on beamio.app…')
 			setUsdcTopupPhase('receive')
 		} catch (e: unknown) {
-			setUsdcTopupError(e instanceof Error ? e.message : 'Failed to prepare receive QR')
+			setUsdcTopupError(mapServerError(e instanceof Error ? e.message : 'Failed to prepare receive QR'))
 		} finally {
 			setUsdcTopupSubmitting(false)
 		}
@@ -4530,7 +4530,7 @@ function DiscoverMerchantDetailFullScreen({
 				usdc6ToExactTransferAmount(usdcTopupRequiredUsdc6),
 			)
 		} catch (e: unknown) {
-			setUsdcTopupError(e instanceof Error ? e.message : 'Top-up failed')
+			setUsdcTopupError(mapServerError(e instanceof Error ? e.message : 'Top-up failed'))
 		} finally {
 			setUsdcTopupSubmitting(false)
 		}

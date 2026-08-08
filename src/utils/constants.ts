@@ -1,7 +1,7 @@
 import { ethers } from "ethers";
 import contracts from './contracts'
 import { baseEndpoint } from './baseRpc'
-import { BEAMIO_USER_CARD_ASSET_ADDRESS as BEAMIO_USER_CARD_ASSET, USDC_BASE } from '../config/chainAddresses'
+import { BEAMIO_USER_CARD_ASSET_ADDRESS as BEAMIO_USER_CARD_ASSET, CONET_CARD_FACTORY, CONET_MAINNET_CHAIN_ID, USDC_BASE } from '../config/chainAddresses'
 const localDatabaseName = "conet";
 const apiv3_endpoint = `https://apiv3.conet.network/api/`;
 const apiv4_endpoint = `https://apiv4.conet.network/api/`;
@@ -29,7 +29,6 @@ const BeamioCardFactorySC = new ethers.Contract(
 	baseEndpoint
 )
 
-
 const ethRpc = () => _ethRpc[Math.round(Math.random() * (_ethRpc.length - 1))];
 const rewardWalletAddress = "GUq7PhyAUZko2mPhv3CupmdJKQ61LH8VyrdsRL25q7zg";
 const stripe_pay_monthly = 'https://buy.stripe.com/test_9AQ16b6Du82p0Ja9AG?client_reference_id='
@@ -45,7 +44,18 @@ const CASH_TREES_CARD_ADDRESS = '0x82ceE96dB45933fE4b71D36fa8904508f929027C'.toL
 const ASSET_CARD_ADDRESSES = [CASH_TREES_CARD_ADDRESS]
 
 let ethProvider = new ethers.JsonRpcProvider(ethRpc());
-const conetDepinProvider = new ethers.JsonRpcProvider(mainChain_rpc);
+/** CoNET RPC: never batch eth_call. publicrpc batch mismatch returns empty `0x` and ethers BAD_DATA on owner(). */
+const conetDepinProvider = new ethers.JsonRpcProvider(mainChain_rpc, CONET_MAINNET_CHAIN_ID, {
+	staticNetwork: true,
+	batchMaxCount: 1,
+})
+
+/** CoNET UserCard Factory — merchant program cards are CoNET-only (Base merchant cards abandoned). */
+const ConetCardFactorySC = new ethers.Contract(
+	CONET_CARD_FACTORY,
+	contracts.BeamioCardFactory.abi,
+	conetDepinProvider,
+)
 const Solana_USDT = 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB'
 const Solana_SOL = 'So11111111111111111111111111111111111111112'
 const Solana_SP = 'Bzr4aEQEXrk7k8mbZffrQ9VzX6V3PAH4LvWKXkKppump'
@@ -115,7 +125,8 @@ export {
 	BEAMIO_USER_CARD_ASSET_ADDRESS,
 	CASH_TREES_CARD_ADDRESS,
 	ASSET_CARD_ADDRESSES,
-	BeamioCardFactorySC
+	BeamioCardFactorySC,
+	ConetCardFactorySC,
 };
 
 export { withBaseRpc, switchToNextBaseRpc, getCurrentBaseRpcUrl, resetBaseRpcIndex, setBaseRpcNodeProvider, setRpcDegradedGetter } from './baseRpc'

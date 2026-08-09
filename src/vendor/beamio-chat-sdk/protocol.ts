@@ -26,6 +26,10 @@ export interface WorkerInitPayload {
 	ipfsBaseUrl: string
 	ipfsWriteBaseUrl?: string
 	chainId: number
+	/** ChatIndexRegistry proxy (on-chain encrypted-history head pointer). */
+	chatIndexRegistryAddress: string
+	/** Cluster API base for the gasless index-pointer relay (optional). */
+	apiBaseUrl?: string
 	runtime: Required<ChatRuntimeOptions>
 	/** Initial node snapshot (worker requests refreshes via `nodesRequest`). */
 	nodes: NodeInfo[]

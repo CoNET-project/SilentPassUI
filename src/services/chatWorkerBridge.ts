@@ -19,11 +19,23 @@
  */
 
 import { createBeamioChatClient } from '../vendor/beamio-chat-sdk'
-import type { BeamioChatConfig, NodeInfo } from '../vendor/beamio-chat-sdk/types'
-import { CONET_ADDRESS_PGP } from '../config/chainAddresses'
+import type {
+	BeamioChatConfig,
+	HistoryBufferEvent,
+	HistoryEntry,
+	HistoryLoadOptions,
+	NodeInfo,
+} from '../vendor/beamio-chat-sdk/types'
+import { CONET_ADDRESS_PGP, CONET_CHAT_INDEX_REGISTRY } from '../config/chainAddresses'
 
 const CONET_RPC_URL = 'https://rpc1.conet.network'
 const IPFS_BASE_URL = 'https://ipfs.conet.network/api'
+/**
+ * Cluster API base for the gasless ChatIndexRegistry pointer relay. The SDK appends
+ * `/setChatIndexPointer` — matching the `x402sdk` router mounted at `/api` (see
+ * beamioServer). Keep in sync with `services/AAaccount.beamioApiBase`.
+ */
+const BEAMIO_API_BASE_URL = 'https://beamio.app/api'
 
 type ChatWorkerClient = ReturnType<typeof createBeamioChatClient>
 
@@ -31,10 +43,59 @@ type ChatWorkerClient = ReturnType<typeof createBeamioChatClient>
 let activeClient: ChatWorkerClient | null = null
 
 /**
- * Build the gossip Worker. Webpack 5 (CRA/Craco) statically detects the
- * `new Worker(new URL(..., import.meta.url))` pattern and emits a separate worker
- * chunk, transpiling the `.ts` entry via the same babel loaders (entry lives under
- * `src/` so CRA's ModuleScopePlugin allows it).
+ * Host subscribers to encrypted-history restore/append buffer batches. Registered
+ * independently of the worker session lifecycle so a page can `onHistoryBuffer(...)`
+ * before or after `startWorkerGossipListen()`; the active client fans batches here.
+ */
+const historyBufferListeners = new Set<(batch: HistoryBufferEvent) => void>()
+
+/**
+ * Subscribe to encrypted-history buffer batches (restore tail/backfill + live append
+ * mirror). Idempotent unsubscribe. Safe to call with no active worker client.
+ */
+export const onHistoryBuffer = (cb: (batch: HistoryBufferEvent) => void): (() => void) => {
+	historyBufferListeners.add(cb)
+	return () => {
+		historyBufferListeners.delete(cb)
+	}
+}
+
+/**
+ * Restore encrypted history from the on-chain head pointer (RPC `getPointer(eoa)`) →
+ * IPFS index → decrypt tail → backfill. Best-effort: resolves silently when no worker
+ * client is active (e.g. gossip not started yet).
+ */
+export const loadWorkerHistory = async (options?: HistoryLoadOptions): Promise<void> => {
+	if (!activeClient) return
+	try {
+		await activeClient.history.load(options)
+	} catch {
+		/* best-effort restore; never surface into the UI path */
+	}
+}
+
+/**
+ * Append a sent/received entry to encrypted history (local mirror + IPFS fragment +
+ * on-chain head pointer via the gasless relay). Best-effort: no-ops when no worker
+ * client is active. Never throws into the message-store path.
+ */
+export const appendWorkerHistory = async (
+	entry: Omit<HistoryEntry, 'seq'>,
+): Promise<void> => {
+	if (!activeClient) return
+	try {
+		await activeClient.history.append(entry)
+	} catch {
+		/* best-effort persist; the local profile.chats mirror is still authoritative */
+	}
+}
+
+/**
+ * Build the gossip Worker from the vendored Beamio Chat SDK source. Webpack 5
+ * (CRA/Craco) statically detects the `new Worker(new URL(specifier,
+ * import.meta.url))` pattern, resolves the relative worker entry and emits it as
+ * a separate worker chunk (side effects preserved because entry chunks are never
+ * tree-shaken).
  */
 function makeGossipWorker(): Worker {
 	return new Worker(new URL('../vendor/beamio-chat-sdk/worker/entry.ts', import.meta.url), {
@@ -104,6 +165,11 @@ export const startWorkerGossipListen = async (p: StartWorkerGossipParams): Promi
 		addressPgpContractAddress: CONET_ADDRESS_PGP,
 		getNodes: async () => nodeSnapshot as unknown as NodeInfo[],
 		ipfsBaseUrl: IPFS_BASE_URL,
+		// On-chain encrypted-history head pointer: read via RPC getPointer(eoa); write via
+		// EOA off-chain signature relayed (gasless) through the Cluster/Master. Enables
+		// fresh-device recovery of chat history after account delete/restore.
+		chatIndexRegistryAddress: CONET_CHAT_INDEX_REGISTRY,
+		apiBaseUrl: BEAMIO_API_BASE_URL,
 	}
 
 	const client = createBeamioChatClient(config, { workerFactory: makeGossipWorker })
@@ -129,6 +195,19 @@ export const startWorkerGossipListen = async (p: StartWorkerGossipParams): Promi
 	unsubs.push(
 		client.on('log', (l) => {
 			p.onLog?.(l.level, l.message)
+		}),
+	)
+	// Fan encrypted-history restore/append batches to host subscribers (ChatList / chat page).
+	unsubs.push(
+		client.history.onBuffer((batch) => {
+			if (p.rootSignal.aborted) return
+			for (const cb of historyBufferListeners) {
+				try {
+					cb(batch)
+				} catch {
+					/* ignore individual subscriber failure */
+				}
+			}
 		}),
 	)
 

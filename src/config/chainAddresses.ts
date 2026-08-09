@@ -92,6 +92,15 @@ export const BEAMIO_ORACLE_CONET = '0x77CB8358c5a37aB7190b0A2C7EaA7fEeDCF11008'
 export const CONET_GUARDIAN_NODES_INFO_V6 = '0xBC6b53065b5647261396d002bDBA0d3396E0722f'
 /** CoNET AddressPGP（Chat 路由公钥） */
 export const CONET_ADDRESS_PGP = '0x684b0ac760cEE9c9b85de36d69746420648Cf9e2'
+/**
+ * CoNET 224422 — ChatIndexRegistry (UUPS proxy). On-chain head pointer to the encrypted
+ * chat-history index (IPFS content hash). Read via RPC `getPointer(eoa)`; write via
+ * EOA off-chain EIP-712 signature relayed gaslessly through beamio.app/api. Enables
+ * fresh-device recovery of chat history after account delete/restore.
+ */
+export const CONET_CHAT_INDEX_REGISTRY = '0x1511Caa71081C84d8a591490D1b83879088EED72'
+/** @internal ChatIndexRegistry implementation behind {@link CONET_CHAT_INDEX_REGISTRY}. */
+export const CONET_CHAT_INDEX_REGISTRY_IMPL = '0xF94299760E07E62eC33A8e91fA585f0b40d137Ee'
 /** CoNET AccountRegistry（Beamio 社交账户） */
 export const CONET_ACCOUNT_REGISTRY = '0xfFDc8d2021A41F4638Cb3eCf58B5155383EE9f6d'
 /** @deprecated ConetGB1155 挖矿记账轨已弃用；勿在新 UI/API 当作用户 GB 余额来源 */

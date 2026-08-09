@@ -1,9 +1,19 @@
 /**
- * @beamio/chat-sdk — public entry (main thread), vendored into SilentPassUI.
+ * @conet.project/chat-sdk — public entry (main thread).
  *
  * Gossip messaging with all openpgp encrypt/decrypt + ethers signing running in a
  * Web Worker (zero main-thread crypto → no UI freeze) + encrypted fragmented IPFS
  * history. UI-agnostic; reusable across SilentPassUI / bizSite / Alliance / POS.
+ *
+ * Usage (host owns worker creation so the SDK stays bundler-agnostic):
+ * ```ts
+ * import { createBeamioChatClient } from '@conet.project/chat-sdk'
+ * const client = createBeamioChatClient(config, {
+ *   workerFactory: () => new Worker(new URL('@conet.project/chat-sdk/worker', import.meta.url), { type: 'module' }),
+ * })
+ * await client.init()
+ * client.on('message', (env) => addNewMessage(env.line)) // host serial queue + checkSign
+ * ```
  */
 
 export { createBeamioChatClient } from './client'

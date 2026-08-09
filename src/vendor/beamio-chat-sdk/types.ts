@@ -1,5 +1,5 @@
 /**
- * Beamio Chat SDK — public types (vendored into SilentPassUI).
+ * Beamio Chat SDK — public types.
  *
  * UI-agnostic. No React, no app-specific imports. Everything the SDK needs from
  * the host (private key material, RPC endpoints, node discovery, IPFS base URL,
@@ -183,6 +183,18 @@ export interface BeamioChatConfig {
 	runtime?: ChatRuntimeOptions
 	/** Chain id used in history master derivation domain string. Default 224422 (CoNET L1). */
 	chainId?: number
+	/**
+	 * ChatIndexRegistry proxy (CoNET 224422) — on-chain head pointer to the encrypted
+	 * history index (IPFS content hash). Read via RPC `getPointer(eoa)`; write via the
+	 * gasless relay ({@link apiBaseUrl}/setChatIndexPointer). Default = canonical proxy.
+	 */
+	chatIndexRegistryAddress?: string
+	/**
+	 * Cluster API base for the gasless index-pointer relay, e.g. `https://beamio.app`.
+	 * When absent, history still persists to IPFS + local mirror, but the on-chain head
+	 * pointer is not updated (fresh-device recovery would be unavailable).
+	 */
+	apiBaseUrl?: string
 }
 
 /** History load options. */
@@ -197,9 +209,9 @@ export interface HistoryLoadOptions {
 
 export interface BeamioChatHistory {
 	/**
-	 * Restore encrypted history: locate index (via point-${L} / IndexedDB) → decrypt →
-	 * eagerly decrypt the tail → backfill older entries in the background. Emits
-	 * `historyBuffer` increments as they become available.
+	 * Restore encrypted history: read the on-chain head pointer (RPC `getPointer(eoa)`) or the
+	 * local IndexedDB mirror → fetch + decrypt the index → eagerly decrypt the tail → backfill
+	 * older entries in the background. Emits `historyBuffer` increments as they become available.
 	 */
 	load(options?: HistoryLoadOptions): Promise<void>
 	/** Append (persist) a new sent/received entry to encrypted history + local mirror. */

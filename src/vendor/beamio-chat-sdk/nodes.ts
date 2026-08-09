@@ -56,7 +56,6 @@ async function postWithTimeout(url: string, init: RequestInit, timeoutMs = 12_00
 export { postWithTimeout }
 
 const probeGossipNode = async (node: NodeInfo, timeoutMs = 4_000): Promise<boolean> => {
-	// Runs in both main-thread and Worker contexts; `self` is the correct global (WorkerGlobalScope).
 	// eslint-disable-next-line no-restricted-globals
 	const origin = (self as unknown as { location?: { origin?: string } }).location?.origin || 'https://beamio.app'
 	const postUrl = `https://${node.domain}.conet.network/post`

@@ -3,7 +3,8 @@ import { flushSync } from "react-dom"
 import { useNavigate } from "react-router-dom"
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
 import { motion, AnimatePresence } from "framer-motion"
-import { checkSign, emitReactionAsNewMessage, createMembershipActivatedCard } from '@/services/chat' 
+import { checkSign, emitReactionAsNewMessage, createMembershipActivatedCard } from '@/services/chat'
+import { mirrorChatMessageToHistory } from '@/services/chatHistoryMirror' 
 import {
   ArrowUp,
   ChevronLeft,
@@ -1172,6 +1173,10 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 
 			chatData.messages = next
 			await storageData()
+
+			// Mirror the settled outbound message into encrypted history (fresh-device recovery).
+			const sentMsg = next.find(m => m.id === tempId)
+			mirrorChatMessageToHistory(chatData.address, sentMsg, 'out')
 		}
 	}
 

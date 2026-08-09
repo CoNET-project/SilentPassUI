@@ -1,10 +1,10 @@
 /**
  * Worker entry — side-effectful. Import ONLY inside a Worker context
- * (`new Worker(new URL('./worker/entry.ts', import.meta.url), { type: 'module' })`).
+ * (`new Worker(new URL('.../worker/entry.js', import.meta.url), { type: 'module' })`).
  *
- * All openpgp encrypt/decrypt + ethers signing hot paths live here so the main
- * thread stays responsive. Bridges {@link WorkerInbound} commands to
- * {@link WorkerOutbound} events via `postMessage`.
+ * All openpgp encrypt/decrypt + ethers signing/verify-free hot paths live here so the
+ * main thread stays responsive. Bridges {@link WorkerInbound} commands to {@link WorkerOutbound}
+ * events via `postMessage`.
  */
 
 import type { WorkerInbound, WorkerInitPayload, WorkerOutbound } from '../protocol'
@@ -12,7 +12,6 @@ import type { HistoryEntry, PresenceEvent, StatusEvent } from '../types'
 import { GossipCore } from './gossip-core'
 import { HistoryStore } from './history'
 
-// This module runs ONLY inside a Worker; `self` is the WorkerGlobalScope.
 // eslint-disable-next-line no-restricted-globals
 const ctx = self as unknown as {
 	postMessage: (msg: WorkerOutbound) => void
@@ -51,6 +50,9 @@ function makeHistory(payload: WorkerInitPayload): HistoryStore {
 			chainId: payload.chainId,
 			ipfsBaseUrl: payload.ipfsBaseUrl,
 			ipfsWriteBaseUrl: payload.ipfsWriteBaseUrl,
+			conetRpcUrl: payload.conetRpcUrl,
+			chatIndexRegistryAddress: payload.chatIndexRegistryAddress,
+			apiBaseUrl: payload.apiBaseUrl,
 			// PersistenceAdapter cannot cross the worker boundary (functions aren't
 			// clonable). The worker uses its own IndexedDB-backed adapter instead.
 			persistence: createWorkerPersistence(),

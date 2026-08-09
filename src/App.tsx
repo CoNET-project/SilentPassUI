@@ -24,6 +24,9 @@ import {
 	postMailboxDeliveryAck,
 } from "@/utils/chatDeliveryReceipt"
 import { ensureNativePushBoundForWallet, ensurePushDeviceTokenListener } from "@/utils/cashTreesPushBind"
+import { mirrorChatMessageToHistory, mergeHistoryEntriesIntoMessages } from "@/services/chatHistoryMirror"
+import { onHistoryBuffer, loadWorkerHistory } from "@/services/chatWorkerBridge"
+import type { HistoryEntry } from "./vendor/beamio-chat-sdk/types"
 import { checkStorage, storeSystemData, runAutoBUnitFreeClaimIfEligible, handleNfcLinkAppDeepLinkScan, ensureProfilePrivateKeyArmorFromMnemonic, bootstrapProfileLocaleCurrencyIfUnset, mergeLocalLocaleLanguageOntoChainProfile } from "@/services/beamio"
 import { hasLocalPlaintextMnemonic } from "@/utils/consumerWalletGate"
 import { ensureEphemeralWalletForCouponClaim } from "@/utils/ephemeralCouponClaimWallet"
@@ -972,6 +975,63 @@ function AppShell() {
 		}
 	}, [])
 
+	// Restore encrypted chat history on a fresh device (post account delete/restore):
+	// dedup-merge decrypted `historyBuffer` batches into `profile.chats[].messages`.
+	useEffect(() => {
+		const unsub = onHistoryBuffer((batch) => {
+			const entries = batch?.entries
+			if (!entries?.length) return
+			// Group entries by their own peer so a global ('all') batch maps to the right chat.
+			const byPeer = new Map<string, HistoryEntry[]>()
+			for (const e of entries) {
+				const p = (e?.peer || batch?.peer || '').toLowerCase()
+				if (!p || p === 'all') continue
+				const arr = byPeer.get(p) || []
+				arr.push(e)
+				byPeer.set(p, arr)
+			}
+			if (byPeer.size === 0) return
+			let changed = false
+			setProfiles((prev) => {
+				const list = Array.isArray(prev) ? prev : []
+				const profile = list[0]
+				if (!profile?.chats?.length) return prev
+				let chats = profile.chats
+				let localChanged = false
+				for (const [peer, es] of byPeer) {
+					const idx = chats.findIndex((c) => (c?.address || '').toLowerCase() === peer)
+					if (idx < 0) continue
+					const target = chats[idx]
+					const { messages, added } = mergeHistoryEntriesIntoMessages(target.messages, es)
+					if (added <= 0) continue
+					if (!localChanged) {
+						chats = [...chats]
+						localChanged = true
+					}
+					chats[idx] = { ...target, messages }
+				}
+				if (!localChanged) return prev
+				changed = true
+				const nextProfile = { ...profile, chats }
+				const nextList = [...list]
+				nextList[0] = nextProfile
+				// Keep the mutable global mirror in sync so send()/addNewMessage read merged data.
+				if (CoNET_Data?.profiles?.length) CoNET_Data.profiles[0].chats = chats
+				return nextList
+			})
+			if (changed) void storeSystemData()
+		})
+		return () => {
+			unsub()
+		}
+	}, [setProfiles])
+
+	// Kick a one-shot history restore once the gossip worker/client is live.
+	useEffect(() => {
+		if (!gossip) return
+		void loadWorkerHistory()
+	}, [gossip])
+
 	const autoReplayMessage = async (text: string, chatData: chatData) => {
 		const profile = profiles?.[0]
 		if (!profile?.chats || !chatData?.chatData?.publicArmored) return
@@ -1229,6 +1289,18 @@ function AppShell() {
 			}
 
 			if (isNew && isMembershipActivatedWithHash(displayText)) chatsToAutoReply.push(nextChat)
+
+			// Mirror the newly-ingested inbound message into encrypted history (fresh-device recovery).
+			if (isNew) {
+				const inboundSendIdForMirror = extractInboundSendId(displayText)
+				const addedInbound =
+					nextMessages.find(m =>
+						inboundSendIdForMirror
+							? m.sendId === inboundSendIdForMirror
+							: String(m.createdAt) === String(msg.timestamp),
+					) || null
+				mirrorChatMessageToHistory(nextChat.address, addedInbound || undefined, 'in')
+			}
 
 			// ✅ 放回 chats（不可变）
 			if (idx === 0 && chats[0].address.toLowerCase() === nextChat.address.toLowerCase()) {

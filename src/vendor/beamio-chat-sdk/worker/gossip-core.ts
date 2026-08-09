@@ -1,7 +1,13 @@
 /**
  * Gossip core — runs entirely inside the Worker. All `openpgp` encrypt/decrypt
  * happens here so the main thread never blocks (root cause of the multi-second
- * freeze in SilentPassUI `services/chat.ts` inbound decrypt).
+ * freeze in SilentPassUI `services/chat.ts` L945-955 inbound decrypt).
+ *
+ * Ported from SilentPassUI `services/chat.ts`:
+ *  - `startGossip` (SSE connect/reconnect, entry health, single in-flight read)
+ *  - inbound decrypt → emit host-ready line
+ *  - `sendMessage` (encrypt → POST to entry A ≠ B)
+ *  - `wallet_online_query` presence (encrypt to mailbox B route key, POST via C ≠ B)
  *
  * Routing rules preserved (repo `conet-p2p-mailbox-routing-protocol`,
  * `beamio-conet-chat-protocol`): listen encrypted to mailbox B route key via entry

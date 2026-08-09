@@ -114,6 +114,9 @@ class BeamioChatClientImpl implements BeamioChatClient {
 			ipfsBaseUrl: this.config.ipfsBaseUrl,
 			ipfsWriteBaseUrl: this.config.ipfsWriteBaseUrl,
 			chainId: this.config.chainId ?? 224422,
+			chatIndexRegistryAddress:
+				this.config.chatIndexRegistryAddress ?? '0x1511Caa71081C84d8a591490D1b83879088EED72',
+			apiBaseUrl: this.config.apiBaseUrl,
 			runtime: { ...DEFAULT_RUNTIME, ...(this.config.runtime ?? {}) },
 			nodes: this.nodes,
 			routes: this.routes,

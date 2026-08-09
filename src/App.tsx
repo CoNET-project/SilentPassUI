@@ -976,61 +976,113 @@ function AppShell() {
 	}, [])
 
 	// Restore encrypted chat history on a fresh device (post account delete/restore):
-	// dedup-merge decrypted `historyBuffer` batches into `profile.chats[].messages`.
+	// decrypt → create missing peer sessions → dedup-merge into `profile.chats[].messages`.
+	// Recover wipes local chats[]; history must be allowed to CREATE sessions (not only merge).
 	useEffect(() => {
 		const unsub = onHistoryBuffer((batch) => {
 			const entries = batch?.entries
 			if (!entries?.length) return
-			// Group entries by their own peer so a global ('all') batch maps to the right chat.
 			const byPeer = new Map<string, HistoryEntry[]>()
 			for (const e of entries) {
 				const p = (e?.peer || batch?.peer || '').toLowerCase()
-				if (!p || p === 'all') continue
+				if (!p || p === 'all' || !ethers.isAddress(p)) continue
 				const arr = byPeer.get(p) || []
 				arr.push(e)
 				byPeer.set(p, arr)
 			}
 			if (byPeer.size === 0) return
-			let changed = false
-			setProfiles((prev) => {
-				const list = Array.isArray(prev) ? prev : []
-				const profile = list[0]
-				if (!profile?.chats?.length) return prev
-				let chats = profile.chats
-				let localChanged = false
-				for (const [peer, es] of byPeer) {
-					const idx = chats.findIndex((c) => (c?.address || '').toLowerCase() === peer)
-					if (idx < 0) continue
-					const target = chats[idx]
-					const { messages, added } = mergeHistoryEntriesIntoMessages(target.messages, es)
-					if (added <= 0) continue
-					if (!localChanged) {
-						chats = [...chats]
-						localChanged = true
-					}
-					chats[idx] = { ...target, messages }
+
+			void (async () => {
+				const profile0 = CoNET_Data?.profiles?.[0]
+				const pk =
+					resolveSigningPrivateKeyArmor(profile0) ||
+					(typeof profile0?.privateKeyArmor === 'string' ? profile0.privateKeyArmor : '')
+				if (!pk) {
+					console.warn('[historyRestore] skip: no signing key yet')
+					return
 				}
-				if (!localChanged) return prev
-				changed = true
-				const nextProfile = { ...profile, chats }
-				const nextList = [...list]
-				nextList[0] = nextProfile
-				// Keep the mutable global mirror in sync so send()/addNewMessage read merged data.
-				if (CoNET_Data?.profiles?.length) CoNET_Data.profiles[0].chats = chats
-				return nextList
-			})
-			if (changed) void storeSystemData()
+
+				const existing = Array.isArray(profile0?.chats) ? profile0.chats : []
+				const created = new Map<string, chatData>()
+				for (const peer of byPeer.keys()) {
+					const has = existing.some((c) => (c?.address || '').toLowerCase() === peer)
+					if (has) continue
+					let acc: searchResult | null = resolvePeerSearchResult(peer)
+					if (!acc) {
+						const res = await searchRemoteAndIngest(peer)
+						let rows: searchResult[] = []
+						if (res && typeof res === 'object' && Array.isArray((res as { results?: unknown }).results)) {
+							rows = (res as { results: searchResult[] }).results
+						}
+						acc =
+							rows.find((r) => (r?.address ?? '').toLowerCase() === peer) ??
+							rows[0] ??
+							null
+					}
+					try {
+						created.set(peer, await createInboundChatSession(peer, pk, acc))
+					} catch (ex) {
+						console.warn('[historyRestore] createInboundChatSession failed', peer, ex)
+					}
+				}
+
+				let changed = false
+				setProfiles((prev) => {
+					const list = Array.isArray(prev) ? prev : []
+					const profile = list[0]
+					if (!profile) return prev
+					let chats = Array.isArray(profile.chats) ? [...profile.chats] : []
+					let localChanged = false
+					for (const [peer, es] of byPeer) {
+						let idx = chats.findIndex((c) => (c?.address || '').toLowerCase() === peer)
+						let sessionCreated = false
+						if (idx < 0) {
+							const stub = created.get(peer)
+							if (!stub) continue
+							chats.unshift(stub)
+							idx = 0
+							sessionCreated = true
+							localChanged = true
+						}
+						const { messages, added } = mergeHistoryEntriesIntoMessages(chats[idx].messages, es)
+						if (added <= 0 && !sessionCreated) continue
+						if (!sessionCreated) {
+							chats = [...chats]
+							localChanged = true
+							idx = chats.findIndex((c) => (c?.address || '').toLowerCase() === peer)
+							if (idx < 0) continue
+						}
+						const last = messages[messages.length - 1]
+						chats[idx] = {
+							...chats[idx],
+							messages,
+							// History restore is catch-up: do not inflate unread badges.
+							unreadCount: 0,
+							...(last?.createdAt != null ? { lastReadTs: Number(last.createdAt) } : {}),
+						}
+					}
+					if (!localChanged) return prev
+					changed = true
+					const nextProfile = { ...profile, chats }
+					const nextList = [...list]
+					nextList[0] = nextProfile
+					if (CoNET_Data?.profiles?.length) CoNET_Data.profiles[0].chats = chats
+					return nextList
+				})
+				if (changed) void storeSystemData()
+			})()
 		})
 		return () => {
 			unsub()
 		}
-	}, [setProfiles])
+	}, [setProfiles, resolvePeerSearchResult, searchRemoteAndIngest])
 
-	// Kick a one-shot history restore once the gossip worker/client is live.
+	// Kick history restore once gossip worker is live; re-run when EOA is ready after recover.
+	const historyEoa = (profiles?.[0]?.keyID || '').toLowerCase()
 	useEffect(() => {
-		if (!gossip) return
+		if (!gossip || !historyEoa) return
 		void loadWorkerHistory()
-	}, [gossip])
+	}, [gossip, historyEoa])
 
 	const autoReplayMessage = async (text: string, chatData: chatData) => {
 		const profile = profiles?.[0]

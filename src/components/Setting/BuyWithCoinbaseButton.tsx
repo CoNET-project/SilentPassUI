@@ -1,5 +1,4 @@
-import { initOnRamp } from '@coinbase/cbpay-js'
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { AppButton } from '../button/AppButton'
 import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
 const remote = 'https://api.settleonbase.xyz'
@@ -7,19 +6,13 @@ type Prof = {
   myAddress: string
 }
 
-// 自己定义一个 Coinbase 实例类型，包含 open / destroy
-type CBPayInstance = {
-	open: () => void
-	destroy: () => void
-}
-
+/**
+ * Coinbase Onramp via external URL only — do NOT use WalletLink / @coinbase/wallet-sdk
+ * (those write `-walletlink:…session:secret` into Local Storage; forbidden for APP signing).
+ * See `.cursor/rules/beamio-app-wallet-secret-storage.mdc`.
+ */
 export const BuyWithCoinbaseButton = ({ myAddress }: Prof) => {
-	const [onrampInstance, setOnrampInstance] = useState<CBPayInstance | null>(null)
 	const [loading, setLoading] = useState(false)
-
-	// 用 ref 保存实际的 instance，用于 cleanup
-	const instanceRef = useRef<CBPayInstance | null>(null)
-  
 
 	const handleClick = async () => {
 		if (!myAddress) return

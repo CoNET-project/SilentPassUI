@@ -4,6 +4,9 @@
  * (ChatIndexRegistry). This lets a fresh device (after account delete/restore) rebuild the
  * conversation timeline by reading the on-chain pointer → decrypting the IPFS index.
  *
+ * App restore must CREATE missing peer sessions when `profile.chats` is empty after recover;
+ * merging into existing rows alone leaves the Chat list blank.
+ *
  * Design: we persist the FULL rendered `ChatMessage` JSON as the history `body` and, on
  * restore, dedup-merge it back directly (never re-running `makeMessage`, which would flip a
  * JSON-with-sendId outbound message to `from:'them'`). `ChatMessage.from` already encodes the

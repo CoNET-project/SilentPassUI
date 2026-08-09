@@ -1002,7 +1002,8 @@ function AppShell() {
 					return
 				}
 
-				const existing = Array.isArray(profile0?.chats) ? profile0.chats : []
+				const existingChats = profile0?.chats
+				const existing: chatData[] = Array.isArray(existingChats) ? existingChats : []
 				const created = new Map<string, chatData>()
 				for (const peer of byPeer.keys()) {
 					const has = existing.some((c) => (c?.address || '').toLowerCase() === peer)

@@ -857,6 +857,9 @@ function AppShell() {
 			setProfiles(profiles)
 			ensurePushDeviceTokenListener()
 			ensureNativePushBoundForWallet(profiles[0])
+			// History restore is owned by the worker; re-kick in case the early gossip=true
+			// race queued a load before activeClient existed (or App effect ran too early).
+			void loadWorkerHistory()
 			setIsInitialLoading(false)
 			return
 		}
@@ -1001,6 +1004,11 @@ function AppShell() {
 					console.warn('[historyRestore] skip: no signing key yet')
 					return
 				}
+
+				publishNativePwaLog(
+					'info',
+					`[historyRestore] batch peers=${byPeer.size} entries=${entries.length}`,
+				)
 
 				const existingChats = profile0?.chats
 				const existing: chatData[] = Array.isArray(existingChats) ? existingChats : []

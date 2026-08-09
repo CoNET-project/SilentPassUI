@@ -187,8 +187,14 @@ export class HistoryStore {
 		// Network refresh (trusted-only overwrite): resolve on-chain head pointer → fetch index cipher.
 		const pointer = await this.readOnchainPointer()
 		if (pointer) {
+			this.emit.log(
+				'info',
+				`history pointer seq=${pointer.seq.toString()} hash=${pointer.indexHash.slice(0, 12)}…`,
+			)
 			const cipher = await this.fetchIndexCipherByHash(pointer.indexHash)
-			if (cipher && this.indexKey) {
+			if (!cipher) {
+				this.emit.log('warn', 'history index cipher fetch failed (IPFS)')
+			} else if (this.indexKey) {
 				try {
 					const json = await aesGcmDecryptString(this.indexKey, cipher)
 					const parsed = JSON.parse(json) as IndexManifest
@@ -199,12 +205,18 @@ export class HistoryStore {
 						if (netLen >= localLen) {
 							this.manifest = parsed
 							if (this.opts.persistence) await this.opts.persistence.set(this.localIndexKey(), cipher)
+							this.emit.log('info', `history index decrypted records=${netLen}`)
 						}
 					}
-				} catch {
-					/* untrusted parse — keep local */
+				} catch (ex) {
+					this.emit.log(
+						'warn',
+						`history index decrypt failed (wrong key?): ${(ex as Error)?.message ?? String(ex)}`,
+					)
 				}
 			}
+		} else {
+			this.emit.log('info', 'history pointer unset or RPC unavailable')
 		}
 		return this.manifest
 	}
@@ -325,12 +337,19 @@ export class HistoryStore {
 
 	private async decryptRecord(rec: IndexRecord): Promise<HistoryEntry | null> {
 		const cipher = await this.downloadFragment(rec.cid)
-		if (!cipher) return null
+		if (!cipher) {
+			this.emit.log('warn', `history fragment missing seq=${rec.seq} cid=${rec.cid.slice(0, 12)}…`)
+			return null
+		}
 		try {
 			const key = await this.fragmentKey(rec.seq, rec.prevCid)
 			const body = await aesGcmDecryptString(key, cipher)
 			return { seq: rec.seq, ts: rec.ts, peer: rec.peer, dir: rec.dir, sendId: rec.sendId, body }
-		} catch {
+		} catch (ex) {
+			this.emit.log(
+				'warn',
+				`history fragment decrypt failed seq=${rec.seq}: ${(ex as Error)?.message ?? String(ex)}`,
+			)
 			return null
 		}
 	}
@@ -344,6 +363,7 @@ export class HistoryStore {
 
 		const manifest = await this.loadManifest(localOnly)
 		if (!manifest?.records?.length) {
+			this.emit.log('info', 'history load: empty index (nothing to restore)')
 			this.emit.buffer(peerFilter ?? 'all', [], true)
 			return
 		}
@@ -360,6 +380,10 @@ export class HistoryStore {
 		// Eagerly decrypt the last ~2 screens in parallel.
 		const tailEntries = (await Promise.all(tail.map((r) => this.decryptRecord(r)))).filter(
 			(e): e is HistoryEntry => !!e,
+		)
+		this.emit.log(
+			'info',
+			`history load: decrypted ${tailEntries.length}/${tail.length} tail entries (index=${ordered.length})`,
 		)
 		this.emit.buffer(peerFilter ?? 'all', tailEntries, true)
 

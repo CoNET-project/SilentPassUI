@@ -50,6 +50,14 @@ let activeClient: ChatWorkerClient | null = null
 const historyBufferListeners = new Set<(batch: HistoryBufferEvent) => void>()
 
 /**
+ * Race fix: `initChat` sets React `gossip=true` *before* the worker client exists.
+ * App effects then call `loadWorkerHistory()` while `activeClient` is still null and
+ * never retry (deps unchanged). Queue the request and flush once the worker is ready.
+ */
+let pendingHistoryLoad: HistoryLoadOptions | true | null = null
+let historyLoadInFlight: Promise<void> | null = null
+
+/**
  * Subscribe to encrypted-history buffer batches (restore tail/backfill + live append
  * mirror). Idempotent unsubscribe. Safe to call with no active worker client.
  */
@@ -60,17 +68,41 @@ export const onHistoryBuffer = (cb: (batch: HistoryBufferEvent) => void): (() =>
 	}
 }
 
+const runHistoryLoad = async (options?: HistoryLoadOptions): Promise<void> => {
+	const client = activeClient
+	if (!client) return
+	try {
+		await client.history.load(options)
+	} catch (ex) {
+		console.warn(
+			'[chatHistory] history.load failed:',
+			(ex as Error)?.message ?? String(ex),
+		)
+	}
+}
+
 /**
  * Restore encrypted history from the on-chain head pointer (RPC `getPointer(eoa)`) →
- * IPFS index → decrypt tail → backfill. Best-effort: resolves silently when no worker
- * client is active (e.g. gossip not started yet).
+ * IPFS index → decrypt tail → backfill.
+ *
+ * If the gossip worker is not ready yet, queues the load and runs it automatically
+ * when {@link startWorkerGossipListen} finishes init (recover / LoadingPage race).
  */
 export const loadWorkerHistory = async (options?: HistoryLoadOptions): Promise<void> => {
-	if (!activeClient) return
+	if (!activeClient) {
+		pendingHistoryLoad = options ?? true
+		console.info('[chatHistory] load queued — worker not ready yet')
+		return
+	}
+	const queued = pendingHistoryLoad
+	pendingHistoryLoad = null
+	const opts = options ?? (queued && queued !== true ? queued : undefined)
+	const run = runHistoryLoad(opts)
+	historyLoadInFlight = run
 	try {
-		await activeClient.history.load(options)
-	} catch {
-		/* best-effort restore; never surface into the UI path */
+		await run
+	} finally {
+		if (historyLoadInFlight === run) historyLoadInFlight = null
 	}
 }
 
@@ -237,6 +269,11 @@ export const startWorkerGossipListen = async (p: StartWorkerGossipParams): Promi
 			teardown()
 			return false
 		}
+		// Always restore encrypted history once the worker identity/RPC is ready.
+		// Covers: (1) loads queued while `gossip=true` before activeClient existed,
+		// (2) recover with empty local chats (AppShell skips re-initChat).
+		p.onLog?.('info', 'chat history: worker ready — loading on-chain/IPFS index')
+		void loadWorkerHistory()
 		return true
 	} catch (ex) {
 		p.onLog?.('error', `worker gossip init failed: ${(ex as Error)?.message ?? String(ex)}`)

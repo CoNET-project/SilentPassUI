@@ -32,6 +32,7 @@ import { hasLocalPlaintextMnemonic } from "@/utils/consumerWalletGate"
 import { ensureEphemeralWalletForCouponClaim } from "@/utils/ephemeralCouponClaimWallet"
 import { CoNET_Data, setCoNET_Data } from "@/utils/globals"
 import { resolveSigningPrivateKeyArmor } from "@/utils/resolveSigningPrivateKeyArmor"
+import { searchResultFromProfileRecord } from "@/utils/beamioTagDatabase"
 import { bindStashedShareRefereesIfNeeded, recordDiscoverShareClickIfNeeded } from '@/utils/discoverShareClickEvent'
 import { baseEndpoint, USDCContract_BASE } from "@/utils/constants"
 import usdc_abi from "@/services/ABI/usdc_abi.json"
@@ -150,6 +151,7 @@ function AppShell() {
   const {
     searchRemoteAndIngest,
     resolvePeerSearchResult,
+    ensureProfilesForAddresses,
   } = useBeamioTagDatabase()
 
   const bodyRef = useRef<HTMLDivElement | null>(null)
@@ -1090,13 +1092,66 @@ function AppShell() {
 				// Let React paint before scheduling IndexedDB stringify.
 				await yieldToUi()
 				if (changed && !cancelled) void storeSystemData()
+
+				// Hydrate @beamioTag for peers restored as address-only stubs (local DB empty after recover).
+				const peersNeedingTag = [...byPeer.keys()].filter((peer) => {
+					const hit = resolvePeerSearchResult(peer)
+					return !hit?.username?.trim()
+				})
+				if (peersNeedingTag.length && !cancelled) {
+					void ensureProfilesForAddresses(peersNeedingTag, { maxPerTick: 28 })
+						.then((map) => {
+							if (cancelled || !map) return
+							startTransition(() => {
+								setProfiles((prev) => {
+									const list = Array.isArray(prev) ? prev : []
+									const profile = list[0]
+									if (!profile) return prev
+									const chats = Array.isArray(profile.chats) ? [...profile.chats] : []
+									let localChanged = false
+									for (const peer of peersNeedingTag) {
+										const key = peer.toLowerCase()
+										const rec = map[key]
+										if (!rec) continue
+										const enriched = searchResultFromProfileRecord(rec)
+										const username = (enriched.username || '').trim()
+										if (!username || username === '未知') continue
+										const idx = chats.findIndex(
+											(c) => (c?.address || '').toLowerCase() === key,
+										)
+										if (idx < 0) continue
+										const curU = (chats[idx].beamio?.username || '').trim()
+										if (curU === username) continue
+										chats[idx] = {
+											...chats[idx],
+											beamio: {
+												...(chats[idx].beamio || {}),
+												...enriched,
+												address: chats[idx].address || peer,
+												username,
+											},
+										}
+										localChanged = true
+									}
+									if (!localChanged) return prev
+									const nextProfile = { ...profile, chats }
+									const nextList = [...list]
+									nextList[0] = nextProfile
+									if (CoNET_Data?.profiles?.length) CoNET_Data.profiles[0].chats = chats
+									void storeSystemData()
+									return nextList
+								})
+							})
+						})
+						.catch(() => {})
+				}
 			})
 		})
 		return () => {
 			cancelled = true
 			unsub()
 		}
-	}, [setProfiles, resolvePeerSearchResult])
+	}, [setProfiles, resolvePeerSearchResult, ensureProfilesForAddresses])
 
 	// Kick history restore once gossip worker is live; re-run when EOA is ready after recover.
 	const historyEoa = (profiles?.[0]?.keyID || '').toLowerCase()

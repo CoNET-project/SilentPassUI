@@ -1,13 +1,10 @@
 /**
- * Merchant program card metadata — global local-first DB (SilentPassUI).
- * Background daemon refreshes on-chain URI metadata every 5 minutes.
+ * Merchant program card metadata — display helpers + local-first types (SilentPassUI).
+ * Network ensure / IDB truth live in BeamioTag Worker via beamioTagWorkerBridge.
  */
 
 import { ethers } from 'ethers';
-import { beamioApi } from '@/utils/constants';
 import {
-  getCardMetadataFromApi,
-  getCardMetadataFromUri,
   isCardExcludedFromDisplay,
   merchantProgramCardDisplayNameFromMetadataRoot,
   type CardMetadataFromUri,
@@ -16,14 +13,19 @@ import {
   peekCardBasicMetadata,
   rememberCardBasicMetadataTrusted,
 } from '@/utils/cardBasicMetadataGlobalCache';
-import { tu } from '@/locale/beamioLocale'
+import { tu } from '@/locale/beamioLocale';
 import {
   type MerchantCardRecord,
   loadMerchantCardMap,
   mergeMerchantCardMap,
   normalizeCardAddressKey,
-  saveMerchantCardMap,
+  lookupMerchantCardLocal,
 } from '@/utils/merchantCardRegistry';
+import {
+  ensureMerchantCards,
+  getMerchantCardMirrorMap,
+  mergeTrustedMerchantCards,
+} from '@/services/beamioTagWorkerBridge';
 
 export type { MerchantCardRecord } from '@/utils/merchantCardRegistry';
 export {
@@ -31,10 +33,15 @@ export {
   mergeMerchantCardMap,
   normalizeCardAddressKey,
   lookupMerchantCardLocal,
-  saveMerchantCardMap,
+  buildMerchantLegacyImportMap,
 } from '@/utils/merchantCardRegistry';
 
-/** Background tick interval — refresh stale card metadata from chain/API. */
+/** @deprecated LS is migration-only; Worker IDB is the write truth. No-op. */
+export function saveMerchantCardMap(_map: Record<string, MerchantCardRecord>): void {
+  /* intentional no-op — do not write parallel LS truth */
+}
+
+/** Background tick interval — Worker merchant tick (mirror constant for callers). */
 export const MERCHANT_CARD_BACKGROUND_TICK_MS = 5 * 60 * 1000;
 export const MERCHANT_CARD_STALE_MS = 5 * 60 * 1000;
 export const MERCHANT_CARD_FETCH_MAX_PER_TICK = 16;
@@ -84,7 +91,7 @@ export type MerchantChargeTitleOpts = {
   metadataName?: string;
 };
 
-/** Sync read from global card metadata cache (localStorage + memory). */
+/** Sync read from global card metadata cache (memory; Worker also mirrors here). */
 export function resolveMerchantCardMetadataName(cardAddress: string | undefined): string {
   const key = normalizeCardAddressKey(cardAddress);
   if (!key) return '';
@@ -156,59 +163,6 @@ export function merchantCardNeedsRemoteRefresh(
   return false;
 }
 
-const fetchInFlight = new Map<string, Promise<MerchantCardRecord | null>>();
-
-async function fetchMetadataRootFromApi(cardChecksum: string): Promise<Record<string, unknown> | null> {
-  try {
-    const res = await fetch(
-      `${beamioApi}/api/cardMetadata?cardAddress=${encodeURIComponent(cardChecksum)}`,
-    );
-    if (!res.ok) return null;
-    const data = (await res.json()) as { metadata?: Record<string, unknown> | null };
-    if (data?.metadata && typeof data.metadata === 'object') return data.metadata;
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-/** Trusted remote fetch: on-chain URI first, API fallback; merges into one record. */
-export async function fetchMerchantCardMetadataRemote(
-  cardAddress: string,
-): Promise<MerchantCardRecord | null> {
-  const key = normalizeCardAddressKey(cardAddress);
-  if (!key || isCardExcludedFromDisplay(key)) return null;
-
-  const inflight = fetchInFlight.get(key);
-  if (inflight) return inflight;
-
-  const task = (async () => {
-    const checksum = ethers.getAddress(key);
-    const [fromChain, fromApi, metadataRoot] = await Promise.all([
-      getCardMetadataFromUri(checksum, { bypassMemoryCache: true }),
-      getCardMetadataFromApi(checksum, { bypassMemoryCache: true }),
-      fetchMetadataRootFromApi(checksum),
-    ]);
-
-    const meta: CardMetadataFromUri = { ...(fromApi ?? {}), ...(fromChain ?? {}) };
-    if (!meta.name && !meta.image && !metadataRoot && !fromChain && !fromApi) return null;
-
-    return {
-      addressLower: key,
-      meta,
-      metadataRoot,
-      updatedAt: Date.now(),
-    } satisfies MerchantCardRecord;
-  })();
-
-  fetchInFlight.set(key, task);
-  try {
-    return await task;
-  } finally {
-    fetchInFlight.delete(key);
-  }
-}
-
 export function mirrorRecordToCardBasicMetadata(rec: MerchantCardRecord): void {
   if (!rec.meta || typeof rec.meta !== 'object') return;
   rememberCardBasicMetadataTrusted(rec.addressLower, rec.meta);
@@ -266,6 +220,7 @@ export function merchantCardRecordFromLatestCardsRaw(raw: unknown): MerchantCard
   };
 }
 
+/** Ensure via Worker; returns merged mirror map. */
 export async function ensureMerchantCardMetadata(
   addresses: string[],
   opts?: {
@@ -275,37 +230,18 @@ export async function ensureMerchantCardMetadata(
     forceRefresh?: boolean;
   },
 ): Promise<EnsureMerchantCardsResult> {
-  const maxPerTick = opts?.maxPerTick ?? MERCHANT_CARD_FETCH_MAX_PER_TICK;
-  const now = opts?.now ?? Date.now();
-  const disk = loadMerchantCardMap();
-  let map = { ...disk, ...(opts?.memMap ?? {}) };
+  const before = { ...getMerchantCardMirrorMap(), ...(opts?.memMap ?? {}) };
+  const map = await ensureMerchantCards(addresses, {
+    maxPerTick: opts?.maxPerTick ?? MERCHANT_CARD_FETCH_MAX_PER_TICK,
+    forceRefresh: opts?.forceRefresh,
+  });
+  const changed = Object.keys(map).some((k) => map[k]?.updatedAt !== before[k]?.updatedAt);
+  return { map, changed };
+}
 
-  const unique = new Set<string>();
-  for (const a of addresses) {
-    const k = normalizeCardAddressKey(a);
-    if (k && !isCardExcludedFromDisplay(k)) unique.add(k);
-  }
-
-  const need: string[] = [];
-  for (const lower of unique) {
-    if (opts?.forceRefresh || merchantCardNeedsRemoteRefresh(map[lower], now)) need.push(lower);
-  }
-
-  const chunk = need.slice(0, maxPerTick);
-  const incoming: Record<string, MerchantCardRecord> = {};
-  for (const lower of chunk) {
-    const rec = await fetchMerchantCardMetadataRemote(lower);
-    if (rec) incoming[lower] = rec;
-  }
-
-  if (Object.keys(incoming).length === 0) {
-    return { map, changed: false };
-  }
-
-  map = mergeMerchantCardMap(map, incoming);
-  saveMerchantCardMap(map);
-  for (const rec of Object.values(incoming)) {
-    mirrorRecordToCardBasicMetadata(rec);
-  }
-  return { map, changed: true };
+/** Fire-and-forget trusted merge into Worker IDB. */
+export async function mergeTrustedMerchantCardRecords(
+  incoming: Record<string, MerchantCardRecord | null | undefined>,
+): Promise<void> {
+  await mergeTrustedMerchantCards(incoming);
 }

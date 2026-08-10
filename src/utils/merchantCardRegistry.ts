@@ -91,3 +91,44 @@ export function lookupMerchantCardLocal(
   if (!key) return undefined;
   return map[key];
 }
+
+const CARD_BASIC_META_LS_PREFIX = 'beamio:cardBasicMeta:v1:';
+
+/**
+ * One-time Worker IDB seed: global merchant LS + optional per-card basicMeta LS entries.
+ * After import, LS is no longer the write truth (Worker IDB is).
+ */
+export function buildMerchantLegacyImportMap(): Record<string, MerchantCardRecord> {
+  const fromGlobal = loadMerchantCardMap();
+  const fromBasic: Record<string, MerchantCardRecord> = {};
+  if (typeof window === 'undefined') return fromGlobal;
+  try {
+    const keys: string[] = [];
+    for (let i = 0; i < window.localStorage.length; i++) {
+      const k = window.localStorage.key(i);
+      if (k && k.startsWith(CARD_BASIC_META_LS_PREFIX)) keys.push(k);
+    }
+    const now = Date.now();
+    for (const k of keys) {
+      const lower = k.slice(CARD_BASIC_META_LS_PREFIX.length).toLowerCase();
+      const cardKey = normalizeCardAddressKey(lower);
+      if (!cardKey) continue;
+      try {
+        const raw = window.localStorage.getItem(k);
+        if (!raw) continue;
+        const p = JSON.parse(raw) as { v?: number; meta?: CardMetadataFromUri; savedAt?: number };
+        if (p?.v !== 1 || !p.meta || typeof p.meta !== 'object') continue;
+        fromBasic[cardKey] = {
+          addressLower: cardKey,
+          meta: p.meta,
+          updatedAt: typeof p.savedAt === 'number' ? p.savedAt : now,
+        };
+      } catch {
+        /* skip bad entry */
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  return mergeMerchantCardMap(fromGlobal, fromBasic);
+}

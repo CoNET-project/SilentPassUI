@@ -12,6 +12,7 @@ import {
 	AlertTriangle
 } from "lucide-react"
 import { useDaemonContext } from "@/providers/DaemonProvider"
+import { useBeamioTagDatabase } from "@/providers/BeamioTagDatabaseProvider"
 import { dedupeChatsByAddress, refreshChatRoutes, refreshChatMailboxPresence } from '@/services/chat' 
 import {searchUsername, storeSystemData} from '@/services/beamio'
 import { tu } from '@/locale/beamioLocale'
@@ -60,6 +61,16 @@ const displayName = (item: searchResult) => {
 	const lastname = item?.last_name?.split('\r\n')||[]
 	const fullName = `${item?.first_name || ''} ${/^\{/.test(lastname[0]) ? '': lastname[0] || ''}`.trim()
 	return fullName || item.username || item.address
+}
+
+/** Prefer @beamioTag; never show a raw 42-char address as the primary chat title. */
+const formatChatListTitle = (beamio: searchResult | undefined | null, address: string): string => {
+	const u = (beamio?.username || '').trim()
+	if (u && u !== '未知') return u.startsWith('@') ? u : `@${u}`
+	const lastname = beamio?.last_name?.split('\r\n') || []
+	const fullName = `${beamio?.first_name || ''} ${/^\{/.test(lastname[0] || '') ? '' : lastname[0] || ''}`.trim()
+	if (fullName) return fullName
+	return fmtAddr(address)
 }
 
 const unknowAcc = (address: string):searchResult => {
@@ -177,8 +188,10 @@ export default function ChatList({
 	onOpen
 }: ChatListProps) {
 	const { profiles, setProfiles } = useDaemonContext()
+	const { resolvePeerSearchResult, ensureProfilesForAddresses, profileMap } = useBeamioTagDatabase()
 	const presenceProbeAtRef = useRef(0)
 	const routeRefreshAtRef = useRef(0)
+	const tagEnrichAtRef = useRef(0)
 
 	const applyChatDataPatches = useCallback(
 		async (patchByAddr: Map<string, NonNullable<chatData["chatData"]>>) => {
@@ -330,6 +343,73 @@ export default function ChatList({
 		return sorted
 	}, [profiles])
 
+	// After recover / history restore, chats often only have EOA stubs — hydrate @beamioTag from Tag DB + remote.
+	useEffect(() => {
+		if (!items.length) return
+		const addrs = items
+			.map(c => String(c.address || '').trim())
+			.filter(a => /^0x[a-fA-F0-9]{40}$/i.test(a))
+		if (!addrs.length) return
+		const needFetch = addrs.filter(a => {
+			const peer = resolvePeerSearchResult(a)
+			const u = (peer?.username || '').trim()
+			return !u || u === '未知'
+		})
+		if (!needFetch.length) return
+		const now = Date.now()
+		if (now - tagEnrichAtRef.current < 8_000) return
+		tagEnrichAtRef.current = now
+		void ensureProfilesForAddresses(needFetch, { maxPerTick: 28 }).catch(() => {})
+	}, [items, ensureProfilesForAddresses, resolvePeerSearchResult, profileMap])
+
+	// Sync Tag DB → chat.beamio so list titles / Avatars keep @tag after refresh.
+	useEffect(() => {
+		if (!items.length || !profileMap) return
+		setProfiles(prev => {
+			if (!prev?.length) return prev
+			const cur = prev[0]
+			const chats = Array.isArray(cur?.chats) ? cur.chats : []
+			if (!chats.length) return prev
+			let changed = false
+			const nextChats = chats.map(c => {
+				const addr = String(c?.address || '').trim()
+				if (!/^0x[a-fA-F0-9]{40}$/i.test(addr)) return c
+				const peer = resolvePeerSearchResult(addr)
+				const u = (peer?.username || '').trim()
+				if (!u || u === '未知') return c
+				const curU = (c.beamio?.username || '').trim()
+				if (curU === u || curU === `@${u}` || `@${curU}` === u) {
+					const needName =
+						(!(c.beamio?.first_name || '').trim() && (peer?.first_name || '').trim()) ||
+						(!(c.beamio?.last_name || '').trim() && (peer?.last_name || '').trim())
+					if (!needName && (c.beamio?.image || '') === (peer?.image || c.beamio?.image || '')) {
+						return c
+					}
+				}
+				changed = true
+				return {
+					...c,
+					beamio: {
+						...(c.beamio || {}),
+						...peer,
+						address: addr,
+						username: u.startsWith('@') ? u.slice(1) : u,
+					},
+				}
+			})
+			if (!changed) return prev
+			const nextProfiles = [...prev]
+			nextProfiles[0] = { ...cur, chats: nextChats }
+			const temp = CoNET_Data
+			if (temp) {
+				temp.profiles = nextProfiles
+				setCoNET_Data(temp)
+			}
+			void storeSystemData().catch(() => {})
+			return nextProfiles
+		})
+	}, [items, profileMap, resolvePeerSearchResult, setProfiles])
+
 	
 
 
@@ -372,7 +452,16 @@ export default function ChatList({
             const timeText = fmtListTime(
 				last?.createdAt || it.beamio?.created_at || 0
 			)
-            const name = it.beamio ? displayName(it.beamio) : `${it.address.slice(0, 6)}…${it.address.slice(-4)}`
+            const name = formatChatListTitle(
+				(() => {
+					const fromDb = resolvePeerSearchResult(it.address)
+					if (fromDb) return fromDb
+					return it.beamio
+				})(),
+				it.address,
+			)
+            const listBeamio =
+				resolvePeerSearchResult(it.address) || it.beamio || undefined
 
             const unread = Math.max(0, Number(it.unreadCount || 0))
             const muted = !!it.muted
@@ -434,7 +523,7 @@ export default function ChatList({
                   <div className="flex items-center gap-3 py-3.5">
                     <Avatar
 						address={it.address}
-						beamio={it.beamio}
+						beamio={listBeamio}
 						online={!!it.chatData?.online}
 					/>
 

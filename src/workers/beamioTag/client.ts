@@ -7,6 +7,7 @@ import type {
 	BeamioTagWorkerInbound,
 	BeamioTagWorkerInitPayload,
 	BeamioTagWorkerOutbound,
+	MerchantCardRecord,
 } from './protocol'
 
 type Pending = {
@@ -21,6 +22,11 @@ export type BeamioTagWorkerClientHandlers = {
 		snapshot: Record<string, BeamioAddressProfileRecord>
 	}) => void
 	onTickDone?: (ev: { fetched: number; remainingNeed: number }) => void
+	onMerchantCardsUpdated?: (ev: {
+		patch: Record<string, MerchantCardRecord>
+		snapshot: Record<string, MerchantCardRecord>
+	}) => void
+	onMerchantTickDone?: (ev: { fetched: number; remainingNeed: number }) => void
 	onLog?: (level: 'info' | 'warn' | 'error', message: string) => void
 	onReady?: () => void
 }
@@ -92,6 +98,18 @@ export class BeamioTagWorkerClient {
 				break
 			case 'event:tickDone':
 				this.handlers.onTickDone?.({ fetched: msg.fetched, remainingNeed: msg.remainingNeed })
+				break
+			case 'event:merchantCardsUpdated':
+				this.handlers.onMerchantCardsUpdated?.({
+					patch: msg.patch,
+					snapshot: msg.snapshot,
+				})
+				break
+			case 'event:merchantTickDone':
+				this.handlers.onMerchantTickDone?.({
+					fetched: msg.fetched,
+					remainingNeed: msg.remainingNeed,
+				})
 				break
 			case 'event:log':
 				this.handlers.onLog?.(msg.level, msg.message)
@@ -175,5 +193,58 @@ export class BeamioTagWorkerClient {
 
 	async getSnapshot(): Promise<Record<string, BeamioAddressProfileRecord>> {
 		return (await this.request({ type: 'getSnapshot' })) as Record<string, BeamioAddressProfileRecord>
+	}
+
+	async merchantInit(legacyMap?: Record<string, MerchantCardRecord>): Promise<unknown> {
+		this.start()
+		return this.request({ type: 'merchantInit', legacyMap })
+	}
+
+	async merchantLookup(cardAddress: string): Promise<MerchantCardRecord | null> {
+		return (await this.request({ type: 'merchantLookup', cardAddress })) as MerchantCardRecord | null
+	}
+
+	async merchantLookupMany(cardAddresses: string[]): Promise<Record<string, MerchantCardRecord>> {
+		return (await this.request({
+			type: 'merchantLookupMany',
+			cardAddresses,
+		})) as Record<string, MerchantCardRecord>
+	}
+
+	async merchantEnsure(
+		cardAddresses: string[],
+		opts?: { maxPerTick?: number; forceRefresh?: boolean },
+	): Promise<{
+		fetched: number
+		remainingNeed: number
+		patch: Record<string, MerchantCardRecord>
+	}> {
+		return (await this.request({
+			type: 'merchantEnsure',
+			cardAddresses,
+			maxPerTick: opts?.maxPerTick,
+			forceRefresh: opts?.forceRefresh,
+		})) as {
+			fetched: number
+			remainingNeed: number
+			patch: Record<string, MerchantCardRecord>
+		}
+	}
+
+	async merchantMergeTrusted(
+		incoming: Record<string, MerchantCardRecord | null | undefined>,
+	): Promise<Record<string, MerchantCardRecord>> {
+		return (await this.request({
+			type: 'merchantMergeTrusted',
+			incoming,
+		})) as Record<string, MerchantCardRecord>
+	}
+
+	async merchantSetWarmTargets(cardAddresses: string[]): Promise<unknown> {
+		return this.request({ type: 'merchantSetWarmTargets', cardAddresses })
+	}
+
+	async merchantGetSnapshot(): Promise<Record<string, MerchantCardRecord>> {
+		return (await this.request({ type: 'merchantGetSnapshot' })) as Record<string, MerchantCardRecord>
 	}
 }

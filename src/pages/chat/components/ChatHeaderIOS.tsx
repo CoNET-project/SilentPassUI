@@ -36,16 +36,12 @@ export function ChatHeaderIOS({
   online: boolean
   avatarSrc: string
 }) {
-  const isUnknown = !beamioer || beamioer.username === '未知'
-
-
-
-
   const tagText = useMemo(() => {
     if (!beamioer) return ""
-    if (!isUnknown && beamioer.username) return beamioer.username
+    const u = (beamioer.username || "").trim()
+    if (u && u !== "未知") return u.startsWith("@") ? u : `@${u}`
     return fmtAddr(beamioer.address)
-  }, [beamioer, isUnknown])
+  }, [beamioer])
 
   return (
     <div className="fixed top-0 left-0 right-0 z-[80] pointer-events-none">

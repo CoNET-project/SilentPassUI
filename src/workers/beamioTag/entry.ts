@@ -1,11 +1,16 @@
 /**
- * BeamioTag Worker entry — IndexedDB serverDB + 60s warm tick (setTimeout chain).
+ * BeamioTag Worker entry — IndexedDB serverDB + Tag 60s + Merchant 5min ticks.
  */
 
 import type { BeamioTagWorkerInbound, BeamioTagWorkerOutbound } from './protocol'
-import { BEAMIO_TAG_BACKGROUND_TICK_MS, BEAMIO_TAG_FETCH_MAX_PER_TICK } from './protocol'
+import {
+	BEAMIO_TAG_BACKGROUND_TICK_MS,
+	BEAMIO_TAG_FETCH_MAX_PER_TICK,
+	MERCHANT_CARD_BACKGROUND_TICK_MS,
+} from './protocol'
 import { TagServerDb } from './tagServerDb'
 import { searchLocalByTagPrefix } from './tagServerDb'
+import { MerchantCardServerDb } from './merchantCardServerDb'
 
 // eslint-disable-next-line no-restricted-globals
 const ctx = self as unknown as {
@@ -34,9 +39,20 @@ const db = new TagServerDb((patch, snapshot) => {
 	})
 })
 
+const merchantDb = new MerchantCardServerDb((patch, snapshot) => {
+	post({
+		type: 'event:merchantCardsUpdated',
+		patch,
+		snapshot,
+	})
+})
+
 let tickTimer: ReturnType<typeof setTimeout> | undefined
 let tickRunning = false
+let merchantTickTimer: ReturnType<typeof setTimeout> | undefined
+let merchantTickRunning = false
 let destroyed = false
+let merchantInitPromise: Promise<void> | null = null
 
 function scheduleTick(delay = BEAMIO_TAG_BACKGROUND_TICK_MS): void {
 	if (destroyed) return
@@ -44,6 +60,26 @@ function scheduleTick(delay = BEAMIO_TAG_BACKGROUND_TICK_MS): void {
 	tickTimer = setTimeout(() => {
 		void runTick()
 	}, delay)
+}
+
+function scheduleMerchantTick(delay = MERCHANT_CARD_BACKGROUND_TICK_MS): void {
+	if (destroyed) return
+	if (merchantTickTimer !== undefined) clearTimeout(merchantTickTimer)
+	merchantTickTimer = setTimeout(() => {
+		void runMerchantTick()
+	}, delay)
+}
+
+async function ensureMerchantReady(
+	legacyMap?: Parameters<MerchantCardServerDb['init']>[0],
+): Promise<void> {
+	if (merchantDb.isReady) return
+	if (!merchantInitPromise) {
+		merchantInitPromise = merchantDb.init(legacyMap).finally(() => {
+			merchantInitPromise = null
+		})
+	}
+	await merchantInitPromise
 }
 
 async function runTick(): Promise<void> {
@@ -71,6 +107,35 @@ async function runTick(): Promise<void> {
 	}
 }
 
+async function runMerchantTick(): Promise<void> {
+	if (destroyed || merchantTickRunning) {
+		scheduleMerchantTick()
+		return
+	}
+	if (!merchantDb.isReady || merchantDb.warmTargets.length === 0) {
+		scheduleMerchantTick()
+		return
+	}
+	merchantTickRunning = true
+	try {
+		const r = await merchantDb.tickWarm()
+		post({
+			type: 'event:merchantTickDone',
+			fetched: r.fetched,
+			remainingNeed: r.remainingNeed,
+		})
+	} catch (e) {
+		post({
+			type: 'event:log',
+			level: 'warn',
+			message: e instanceof Error ? e.message : String(e),
+		})
+	} finally {
+		merchantTickRunning = false
+		scheduleMerchantTick()
+	}
+}
+
 ctx.onmessage = (ev: MessageEvent<BeamioTagWorkerInbound>) => {
 	const msg = ev.data
 	if (!msg || typeof msg !== 'object' || !('type' in msg)) return
@@ -82,9 +147,15 @@ ctx.onmessage = (ev: MessageEvent<BeamioTagWorkerInbound>) => {
 					destroyed = false
 					if (msg.payload.searchUsersUrl) db.searchUsersUrl = msg.payload.searchUsersUrl
 					await db.loadPartition(msg.payload.partition, msg.payload.legacyMap)
+					await ensureMerchantReady(msg.payload.merchantLegacyMap)
 					post({ type: 'ready', reqId: 0 })
-					ackOk(msg.reqId, { partition: db.partition, size: Object.keys(db.map).length })
+					ackOk(msg.reqId, {
+						partition: db.partition,
+						size: Object.keys(db.map).length,
+						merchantSize: Object.keys(merchantDb.map).length,
+					})
 					scheduleTick(2_000)
+					scheduleMerchantTick(5_000)
 					break
 				}
 				case 'setPartition': {
@@ -142,10 +213,60 @@ ctx.onmessage = (ev: MessageEvent<BeamioTagWorkerInbound>) => {
 					ackOk(msg.reqId, { ...db.map })
 					break
 				}
+				case 'merchantInit': {
+					await ensureMerchantReady(msg.legacyMap)
+					post({
+						type: 'event:merchantCardsUpdated',
+						patch: {},
+						snapshot: { ...merchantDb.map },
+					})
+					ackOk(msg.reqId, { size: Object.keys(merchantDb.map).length })
+					scheduleMerchantTick(2_000)
+					break
+				}
+				case 'merchantLookup': {
+					await ensureMerchantReady()
+					ackOk(msg.reqId, merchantDb.lookup(msg.cardAddress) ?? null)
+					break
+				}
+				case 'merchantLookupMany': {
+					await ensureMerchantReady()
+					ackOk(msg.reqId, merchantDb.lookupMany(msg.cardAddresses))
+					break
+				}
+				case 'merchantEnsure': {
+					await ensureMerchantReady()
+					const r = await merchantDb.ensureCards(msg.cardAddresses, {
+						maxPerTick: msg.maxPerTick,
+						forceRefresh: msg.forceRefresh,
+					})
+					ackOk(msg.reqId, r)
+					break
+				}
+				case 'merchantMergeTrusted': {
+					await ensureMerchantReady()
+					const patch = merchantDb.applyTrusted(msg.incoming)
+					ackOk(msg.reqId, patch)
+					break
+				}
+				case 'merchantSetWarmTargets': {
+					await ensureMerchantReady()
+					merchantDb.setWarmTargets(msg.cardAddresses)
+					ackOk(msg.reqId, { count: merchantDb.warmTargets.length })
+					scheduleMerchantTick(500)
+					break
+				}
+				case 'merchantGetSnapshot': {
+					await ensureMerchantReady()
+					ackOk(msg.reqId, { ...merchantDb.map })
+					break
+				}
 				case 'destroy': {
 					destroyed = true
 					if (tickTimer !== undefined) clearTimeout(tickTimer)
 					tickTimer = undefined
+					if (merchantTickTimer !== undefined) clearTimeout(merchantTickTimer)
+					merchantTickTimer = undefined
 					ackOk(msg.reqId)
 					break
 				}

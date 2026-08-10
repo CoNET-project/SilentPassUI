@@ -7,10 +7,14 @@ import { BEAMIO_TAG_BACKGROUND_TICK_MS, BEAMIO_TAG_FETCH_MAX_PER_TICK } from './
 import { TagServerDb } from './tagServerDb'
 import { searchLocalByTagPrefix } from './tagServerDb'
 
-declare const self: DedicatedWorkerGlobalScope
+// eslint-disable-next-line no-restricted-globals
+const ctx = self as unknown as {
+	postMessage: (msg: BeamioTagWorkerOutbound) => void
+	onmessage: ((ev: MessageEvent<BeamioTagWorkerInbound>) => void) | null
+}
 
 function post(msg: BeamioTagWorkerOutbound): void {
-	self.postMessage(msg)
+	ctx.postMessage(msg)
 }
 
 function ackOk(reqId: number, result?: unknown): void {
@@ -67,7 +71,7 @@ async function runTick(): Promise<void> {
 	}
 }
 
-self.onmessage = (ev: MessageEvent<BeamioTagWorkerInbound>) => {
+ctx.onmessage = (ev: MessageEvent<BeamioTagWorkerInbound>) => {
 	const msg = ev.data
 	if (!msg || typeof msg !== 'object' || !('type' in msg)) return
 

@@ -4,7 +4,7 @@
  */
 
 import { ethers } from 'ethers'
-import { APP_DAEMON_CONET_RPC } from '../protocol'
+import { getAppDaemonConetProvider } from '../rpc'
 
 const HOMEPAGE_METRICS_URL = 'https://mainnet.conet.network/api/conet/homepage-metrics'
 const EPOCH_MINING = '0x648f1a17269627C3d465fEa40b3C229f7CacE5cA'
@@ -99,10 +99,7 @@ export async function fetchWorkerMiningDepinStats(): Promise<
 	{ ok: true; stats: WorkerConetDepinStats } | { ok: false }
 > {
 	try {
-		const provider = new ethers.JsonRpcProvider(APP_DAEMON_CONET_RPC, 224422, {
-			staticNetwork: true,
-			batchMaxCount: 1,
-		})
+		const provider = getAppDaemonConetProvider()
 		const epoch = new ethers.Contract(
 			EPOCH_MINING,
 			['function currentInfo() view returns (uint256,uint256,uint256,uint256)'],

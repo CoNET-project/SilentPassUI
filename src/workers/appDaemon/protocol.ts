@@ -5,13 +5,32 @@
  * No private keys / mnemonics in this protocol.
  */
 
+/** Light wallet tick: balances + profile / dashboard snapshot */
 export const APP_DAEMON_WALLET_FEED_MS = 6_000
 export const APP_DAEMON_AA_PENDING_FEED_MS = 15_000
+/** Side + heavy: Discover/Coupon + mining/L0/referrer (when no dashboard) */
 export const APP_DAEMON_SIDE_FEED_MS = 30_000
+/** Heaviest unified income — never on 6s cadence */
+export const APP_DAEMON_UNIFIED_FEED_MS = 90_000
 export const APP_DAEMON_ORACLE_FEED_MS = 5 * 60 * 1000
 
 export const APP_DAEMON_CONET_RPC = 'https://publicrpc.conet.network'
 export const APP_DAEMON_PUBLIC_RPC = 'https://publicrpc.conet.network'
+export const APP_DAEMON_BASE_RPC = 'https://base-rpc.conet.network'
+
+/**
+ * Multicall3 — Base uses canonical CREATE2; CoNET filled after deploy
+ * (see deployments/conet-Multicall3.json). Empty → Worker falls back to batched eth_call.
+ */
+export const APP_DAEMON_BASE_MULTICALL3 = '0xcA11bde05977b3631167028862bE2a173976CA11'
+/** CoNET Multicall3 — deployments/conet-Multicall3.json */
+export const APP_DAEMON_CONET_MULTICALL3 = '0x4e73d76E7fC6b6Aa471dca7238107246BF4c8145'
+
+/**
+ * BeamioConsumerWalletDashboard proxy — single eth_call snapshot for 6s tick.
+ * deployments/conet-BeamioConsumerWalletDashboard.json
+ */
+export const APP_DAEMON_WALLET_DASHBOARD = '0x28370397A2b0C504e93754288ABb4F47EAaf168f'
 
 /** Session identity only — never send privateKeyArmor / mnemonic. */
 export type AppDaemonSession = {

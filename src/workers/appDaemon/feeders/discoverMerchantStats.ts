@@ -1,14 +1,13 @@
 /**
- * Discover merchant like / ref-click aggregates — Worker RPC + API.
- * Main merges + writes discoverMerchantStatsLocalCache.
+ * Discover merchant like / ref-click — Multicall3 batched totalSupply.
  */
 
 import { ethers } from 'ethers'
-import { APP_DAEMON_CONET_RPC } from '../protocol'
+import { multicallAggregate3Conet, decodeUint256 } from '../multicall'
 
 const LIKE_TOKEN_ID = 19n
 const REF_CLICK_TOKEN_ID = 21n
-const READ_ABI = ['function totalSupply(uint256 id) view returns (uint256)'] as const
+const READ_IFACE = new ethers.Interface(['function totalSupply(uint256 id) view returns (uint256)'])
 const SOCIAL_API = 'https://beamio.app/api/cardProgramSocial'
 
 export type WorkerDiscoverMerchantStat = {
@@ -18,19 +17,10 @@ export type WorkerDiscoverMerchantStat = {
 	refClickDb: number | null
 }
 
-async function totalSupply(
-	provider: ethers.JsonRpcProvider,
-	card: string,
-	tokenId: bigint,
-): Promise<number | null> {
-	try {
-		const c = new ethers.Contract(card, READ_ABI, provider)
-		const raw = (await c.totalSupply(tokenId)) as bigint
-		const n = Number(raw)
-		return Number.isFinite(n) && n >= 0 ? Math.trunc(n) : 0
-	} catch {
-		return null
-	}
+function asCount(raw: bigint | null): number | null {
+	if (raw == null) return null
+	const n = Number(raw)
+	return Number.isFinite(n) && n >= 0 ? Math.trunc(n) : 0
 }
 
 async function dbShareClick(card: string): Promise<number | null> {
@@ -55,26 +45,43 @@ export async function fetchWorkerDiscoverMerchantStats(
 	cardAddresses: string[],
 ): Promise<WorkerDiscoverMerchantStat[]> {
 	if (!cardAddresses.length) return []
-	const provider = new ethers.JsonRpcProvider(APP_DAEMON_CONET_RPC, 224422, {
-		staticNetwork: true,
-		batchMaxCount: 1,
-	})
-	const out: WorkerDiscoverMerchantStat[] = []
+	const cards: string[] = []
 	for (const raw of cardAddresses) {
-		let card: string
 		try {
-			card = ethers.getAddress(raw)
+			cards.push(ethers.getAddress(raw))
 		} catch {
-			continue
+			/* skip */
 		}
-		const [likeCount, refClickChain, refClickDb] = await Promise.all([
-			totalSupply(provider, card, LIKE_TOKEN_ID),
-			totalSupply(provider, card, REF_CLICK_TOKEN_ID),
-			dbShareClick(card),
-		])
+	}
+	if (!cards.length) return []
+
+	const calls = cards.flatMap((card) => [
+		{
+			target: card,
+			allowFailure: true,
+			callData: READ_IFACE.encodeFunctionData('totalSupply', [LIKE_TOKEN_ID]),
+		},
+		{
+			target: card,
+			allowFailure: true,
+			callData: READ_IFACE.encodeFunctionData('totalSupply', [REF_CLICK_TOKEN_ID]),
+		},
+	])
+	const [mc, dbRows] = await Promise.all([
+		multicallAggregate3Conet(calls),
+		Promise.all(cards.map((c) => dbShareClick(c))),
+	])
+
+	const out: WorkerDiscoverMerchantStat[] = []
+	for (let i = 0; i < cards.length; i++) {
+		const likeRaw = mc[i * 2]?.success ? decodeUint256(mc[i * 2].returnData) : null
+		const refRaw = mc[i * 2 + 1]?.success ? decodeUint256(mc[i * 2 + 1].returnData) : null
+		const likeCount = asCount(likeRaw)
+		const refClickChain = asCount(refRaw)
+		const refClickDb = dbRows[i]
 		if (likeCount == null && refClickChain == null && refClickDb == null) continue
 		out.push({
-			cardAddress: card.toLowerCase(),
+			cardAddress: cards[i].toLowerCase(),
 			likeCount,
 			refClickChain,
 			refClickDb,

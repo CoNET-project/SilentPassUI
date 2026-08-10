@@ -1,6 +1,10 @@
 /**
- * App Daemon Worker entry — owns pure-read feeder schedules.
- * Worker-portable ticks run here; remaining kinds request main via needMainTick.
+ * App Daemon Worker entry — cadence-layered pure-read schedules.
+ *
+ * 6s  wallet: balances + light profile (or 1× dashboard snapshot)
+ * 30s side:   Discover/Coupon + mining + L0/referrer (if no dashboard) + main kinds
+ * 90s unified: resolveUnifiedIncomeStats only (no OOG assemble)
+ * 15s aa pending / 5min oracle
  */
 
 import type {
@@ -14,8 +18,9 @@ import {
 	APP_DAEMON_SIDE_FEED_MS,
 	APP_DAEMON_AA_PENDING_FEED_MS,
 	APP_DAEMON_WALLET_FEED_MS,
+	APP_DAEMON_UNIFIED_FEED_MS,
 } from './protocol'
-import { fetchWorkerConetBalances } from './feeders/conetBalances'
+import { fetchWorkerConetBalancesPair } from './feeders/conetBalances'
 import {
 	fetchWorkerMiningDepinStats,
 	fetchWorkerMiningNetworkStats,
@@ -28,6 +33,10 @@ import { fetchWorkerDiscoverMerchantStats } from './feeders/discoverMerchantStat
 import { fetchWorkerCouponSocialStats } from './feeders/couponSocial'
 import { fetchWorkerCouponOpenClaimStatuses } from './feeders/couponOpenClaim'
 import { fetchWorkerUnifiedIncomeStats } from './feeders/unifiedIncome'
+import {
+	fetchWorkerWalletDashboardSnapshot,
+	isWalletDashboardConfigured,
+} from './feeders/walletDashboard'
 
 // eslint-disable-next-line no-restricted-globals
 const ctx = self as unknown as {
@@ -54,10 +63,15 @@ let walletTimer: ReturnType<typeof setTimeout> | undefined
 let walletRunning = false
 let sideTimer: ReturnType<typeof setTimeout> | undefined
 let sideRunning = false
+let unifiedTimer: ReturnType<typeof setTimeout> | undefined
+let unifiedRunning = false
 let aaPendingTimer: ReturnType<typeof setTimeout> | undefined
 let aaPendingRunning = false
 let oracleTimer: ReturnType<typeof setTimeout> | undefined
 let oracleRunning = false
+
+/** When dashboard snapshot feeds L0/referrer on 6s, side tick skips those. */
+let dashboardCoversHeavy = false
 
 let nextMainTickId = 1
 const pendingMainTicks = new Map<
@@ -111,6 +125,14 @@ function scheduleSide(delay = APP_DAEMON_SIDE_FEED_MS): void {
 	}, delay)
 }
 
+function scheduleUnified(delay = APP_DAEMON_UNIFIED_FEED_MS): void {
+	if (destroyed) return
+	if (unifiedTimer !== undefined) clearTimeout(unifiedTimer)
+	unifiedTimer = setTimeout(() => {
+		void runUnifiedTick()
+	}, delay)
+}
+
 function scheduleAaPending(delay = APP_DAEMON_AA_PENDING_FEED_MS): void {
 	if (destroyed) return
 	if (aaPendingTimer !== undefined) clearTimeout(aaPendingTimer)
@@ -127,6 +149,10 @@ function scheduleOracle(delay = APP_DAEMON_ORACLE_FEED_MS): void {
 	}, delay)
 }
 
+/**
+ * 6s light tick: prefer 1× dashboard snapshot; else balances + resolveNodeBundle once.
+ * Does NOT run unified income or Discover/Coupon.
+ */
 async function runWalletTick(): Promise<void> {
 	if (destroyed || walletRunning) {
 		scheduleWallet()
@@ -138,63 +164,56 @@ async function runWalletTick(): Promise<void> {
 	}
 	walletRunning = true
 	const eoa = session.eoa
+	const aa = session.aaAccount ? normalizeAddr(session.aaAccount) : null
 	try {
-		const eoaBal = await fetchWorkerConetBalances(eoa)
-		if (eoaBal.ok) {
-			let aaBalances = null as typeof eoaBal.balances | null
-			const aa = session.aaAccount ? normalizeAddr(session.aaAccount) : null
-			if (aa) {
-				const aaBal = await fetchWorkerConetBalances(aa)
-				if (aaBal.ok) aaBalances = aaBal.balances
+		if (isWalletDashboardConfigured()) {
+			const dash = await fetchWorkerWalletDashboardSnapshot(eoa, aa)
+			if (dash.ok) {
+				dashboardCoversHeavy = true
+				post({
+					type: 'event:walletBalances',
+					eoa,
+					eoaBalances: dash.snap.eoaBalances,
+					aaBalances: dash.snap.aaBalances,
+				})
+				if (dash.snap.profile) {
+					post({ type: 'event:validatorProfile', eoa, profile: dash.snap.profile })
+				}
+				if (dash.snap.l0) {
+					post({
+						type: 'event:l0StartKit',
+						eoa,
+						isL0: dash.snap.l0.isL0,
+						quota: dash.snap.l0.isL0 ? dash.snap.l0.quota : null,
+					})
+				}
+				if (dash.snap.referrer) {
+					post({ type: 'event:referrerSummary', eoa, summary: dash.snap.referrer })
+				}
+				await requestMainTick(['myBrands', 'recentActivity'])
+				post({ type: 'event:walletTickDone', eoa })
+				return
 			}
+		}
+		dashboardCoversHeavy = false
+
+		const bal = await fetchWorkerConetBalancesPair(eoa, aa)
+		if (bal.ok) {
 			post({
 				type: 'event:walletBalances',
 				eoa,
-				eoaBalances: eoaBal.balances,
-				aaBalances,
+				eoaBalances: bal.eoaBalances,
+				aaBalances: bal.aaBalances,
 			})
 		}
 
-		const [net, depin] = await Promise.all([
-			fetchWorkerMiningNetworkStats(),
-			fetchWorkerMiningDepinStats(),
-		])
-		// Only emit trusted dimensions — never invent 0 for a failed half.
-		if (net.ok || depin.ok) {
-			post({
-				type: 'event:miningStats',
-				network: net.ok ? net.stats : null,
-				depin: depin.ok ? depin.stats : null,
-			})
-		}
-
-		const l0 = await fetchWorkerL0StartKitQuota(eoa)
-		if (l0.ok) {
-			post({
-				type: 'event:l0StartKit',
-				eoa,
-				isL0: l0.isL0,
-				quota: l0.isL0 ? l0.quota : null,
-			})
-		}
-
-		const [vProf, ref, unified] = await Promise.all([
-			fetchWorkerValidatorWalletNodeProfile(eoa),
-			fetchWorkerReferrerSummary(eoa),
-			fetchWorkerUnifiedIncomeStats(eoa),
-		])
+		// Single resolveNodeBundle for profile — unified tick must not re-fetch on this cadence.
+		const vProf = await fetchWorkerValidatorWalletNodeProfile(eoa)
 		if (vProf.ok) {
 			post({ type: 'event:validatorProfile', eoa, profile: vProf.profile })
 		}
-		if (ref.ok) {
-			post({ type: 'event:referrerSummary', eoa, summary: ref.summary })
-		}
-		if (unified.ok) {
-			post({ type: 'event:unifiedIncome', eoa, stats: unified.stats })
-		}
 
 		await requestMainTick(['myBrands', 'recentActivity'])
-
 		post({ type: 'event:walletTickDone', eoa })
 	} catch (e) {
 		post({
@@ -208,6 +227,9 @@ async function runWalletTick(): Promise<void> {
 	}
 }
 
+/**
+ * 30s side: Discover/Coupon + mining; L0/referrer only when dashboard not covering them.
+ */
 async function runSideTick(): Promise<void> {
 	if (destroyed || sideRunning) {
 		scheduleSide()
@@ -215,6 +237,37 @@ async function runSideTick(): Promise<void> {
 	}
 	sideRunning = true
 	try {
+		const [net, depin] = await Promise.all([
+			fetchWorkerMiningNetworkStats(),
+			fetchWorkerMiningDepinStats(),
+		])
+		if (net.ok || depin.ok) {
+			post({
+				type: 'event:miningStats',
+				network: net.ok ? net.stats : null,
+				depin: depin.ok ? depin.stats : null,
+			})
+		}
+
+		if (session?.eoa && !dashboardCoversHeavy) {
+			const eoa = session.eoa
+			const [l0, ref] = await Promise.all([
+				fetchWorkerL0StartKitQuota(eoa),
+				fetchWorkerReferrerSummary(eoa),
+			])
+			if (l0.ok) {
+				post({
+					type: 'event:l0StartKit',
+					eoa,
+					isL0: l0.isL0,
+					quota: l0.isL0 ? l0.quota : null,
+				})
+			}
+			if (ref.ok) {
+				post({ type: 'event:referrerSummary', eoa, summary: ref.summary })
+			}
+		}
+
 		if (discoverCards.size > 0) {
 			const stats = await fetchWorkerDiscoverMerchantStats([...discoverCards])
 			if (stats.length > 0) {
@@ -244,6 +297,35 @@ async function runSideTick(): Promise<void> {
 	} finally {
 		sideRunning = false
 		scheduleSide()
+	}
+}
+
+/** 90s unified income — never on 6s; OOG assemble disabled in feeder. */
+async function runUnifiedTick(): Promise<void> {
+	if (destroyed || unifiedRunning) {
+		scheduleUnified()
+		return
+	}
+	if (!session?.eoa) {
+		scheduleUnified()
+		return
+	}
+	unifiedRunning = true
+	const eoa = session.eoa
+	try {
+		const unified = await fetchWorkerUnifiedIncomeStats(eoa)
+		if (unified.ok) {
+			post({ type: 'event:unifiedIncome', eoa, stats: unified.stats })
+		}
+	} catch (e) {
+		post({
+			type: 'event:log',
+			level: 'warn',
+			message: e instanceof Error ? e.message : 'unified_tick_failed',
+		})
+	} finally {
+		unifiedRunning = false
+		scheduleUnified()
 	}
 }
 
@@ -283,6 +365,7 @@ async function runOracleTick(): Promise<void> {
 function startSchedulers(): void {
 	scheduleWallet(0)
 	scheduleSide(APP_DAEMON_SIDE_FEED_MS)
+	scheduleUnified(APP_DAEMON_UNIFIED_FEED_MS)
 	scheduleAaPending(APP_DAEMON_AA_PENDING_FEED_MS)
 	scheduleOracle(0)
 }
@@ -290,9 +373,10 @@ function startSchedulers(): void {
 function stopSchedulers(): void {
 	if (walletTimer !== undefined) clearTimeout(walletTimer)
 	if (sideTimer !== undefined) clearTimeout(sideTimer)
+	if (unifiedTimer !== undefined) clearTimeout(unifiedTimer)
 	if (aaPendingTimer !== undefined) clearTimeout(aaPendingTimer)
 	if (oracleTimer !== undefined) clearTimeout(oracleTimer)
-	walletTimer = sideTimer = aaPendingTimer = oracleTimer = undefined
+	walletTimer = sideTimer = unifiedTimer = aaPendingTimer = oracleTimer = undefined
 }
 
 ctx.onmessage = (ev: MessageEvent<AppDaemonWorkerInbound>) => {
@@ -327,8 +411,12 @@ ctx.onmessage = (ev: MessageEvent<AppDaemonWorkerInbound>) => {
 							}
 						: null
 					session = next && next.eoa ? next : null
+					dashboardCoversHeavy = false
 					ackOk(msg.reqId)
-					if (session) scheduleWallet(0)
+					if (session) {
+						scheduleWallet(0)
+						scheduleUnified(0)
+					}
 					break
 				}
 				case 'registerDiscoverCards': {
@@ -384,10 +472,12 @@ ctx.onmessage = (ev: MessageEvent<AppDaemonWorkerInbound>) => {
 					if (msg.scope === 'all') {
 						scheduleWallet(0)
 						scheduleSide(0)
+						scheduleUnified(0)
 						scheduleAaPending(0)
 						scheduleOracle(0)
 					} else {
 						scheduleWallet(0)
+						scheduleUnified(0)
 					}
 					break
 				}

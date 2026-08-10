@@ -4,7 +4,7 @@
  */
 
 import { ethers } from 'ethers'
-import { APP_DAEMON_CONET_RPC } from '../protocol'
+import { getAppDaemonConetProvider } from '../rpc'
 
 const VDR = '0xc71e246DD78B37C2fABc905D340932F28F503433'
 const NODE_BUNDLE_TUPLE =
@@ -33,10 +33,7 @@ export async function fetchWorkerValidatorWalletNodeProfile(
 ): Promise<{ ok: true; profile: WorkerValidatorWalletNodeProfile } | { ok: false }> {
 	if (!ethers.isAddress(walletAddress)) return { ok: false }
 	try {
-		const provider = new ethers.JsonRpcProvider(APP_DAEMON_CONET_RPC, 224422, {
-			staticNetwork: true,
-			batchMaxCount: 1,
-		})
+		const provider = getAppDaemonConetProvider()
 		const c = new ethers.Contract(VDR, ABI, provider)
 		const wallet = ethers.getAddress(walletAddress)
 		const r = await c.resolveNodeBundle(wallet, '')

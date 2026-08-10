@@ -3,7 +3,7 @@
  */
 
 import { ethers } from 'ethers'
-import { APP_DAEMON_CONET_RPC } from '../protocol'
+import { getAppDaemonConetProvider } from '../rpc'
 
 const VDR = '0xc71e246DD78B37C2fABc905D340932F28F503433'
 const EXT_ABI = [
@@ -26,10 +26,7 @@ export async function fetchWorkerReferrerSummary(
 ): Promise<{ ok: true; summary: WorkerReferrerSummary } | { ok: false }> {
 	if (!ethers.isAddress(referrerAddress)) return { ok: false }
 	try {
-		const provider = new ethers.JsonRpcProvider(APP_DAEMON_CONET_RPC, 224422, {
-			staticNetwork: true,
-			batchMaxCount: 1,
-		})
+		const provider = getAppDaemonConetProvider()
 		const vdr = new ethers.Contract(
 			VDR,
 			['function referrerExtension() view returns (address)'],

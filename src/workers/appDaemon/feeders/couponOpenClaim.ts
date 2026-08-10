@@ -1,15 +1,15 @@
 /**
- * Coupon open-claim chain read only — no localStorage (main writes LS).
+ * Coupon open-claim — Multicall3 batched claimUsed + balanceOf.
  */
 
 import { ethers } from 'ethers'
-import { APP_DAEMON_CONET_RPC } from '../protocol'
+import { multicallAggregate3Conet, decodeUint256, decodeBool } from '../multicall'
 
 const ISSUED_NFT_START = 100_000_000_000n
-const ABI = [
+const IFACE = new ethers.Interface([
 	'function issuedNftUserSigClaimUsed(address user, uint256 tokenId) view returns (bool)',
 	'function balanceOf(address account, uint256 id) view returns (uint256)',
-] as const
+])
 
 export type WorkerCouponOpenClaimResult = {
 	cardAddress: string
@@ -29,45 +29,56 @@ export async function fetchWorkerCouponOpenClaimStatuses(
 		return []
 	}
 	if (!targets.length) return []
-	const provider = new ethers.JsonRpcProvider(APP_DAEMON_CONET_RPC, 224422, {
-		staticNetwork: true,
-		batchMaxCount: 1,
-	})
-	const out: WorkerCouponOpenClaimResult[] = []
+
+	const rows: { card: string; tokenId: bigint; couponId?: string }[] = []
 	for (const t of targets) {
-		let card: string
-		let tokenId: bigint
 		try {
-			card = ethers.getAddress(t.cardAddress)
-			tokenId = BigInt(t.tokenId)
+			const tokenId = BigInt(t.tokenId)
+			if (tokenId < ISSUED_NFT_START) continue
+			rows.push({
+				card: ethers.getAddress(t.cardAddress),
+				tokenId,
+				couponId: t.couponId,
+			})
 		} catch {
-			continue
+			/* skip */
 		}
-		if (tokenId < ISSUED_NFT_START) continue
-		try {
-			const c = new ethers.Contract(card, ABI, provider)
-			const [alreadyClaimed, bal] = await Promise.all([
-				c.issuedNftUserSigClaimUsed(user, tokenId) as Promise<boolean>,
-				c.balanceOf(user, tokenId) as Promise<bigint>,
-			])
-			const holds = bal > 0n
-			if (holds) {
-				out.push({
-					cardAddress: card.toLowerCase(),
-					tokenId: tokenId.toString(),
-					couponId: t.couponId,
-					status: 'claimed',
-				})
-			} else if (alreadyClaimed) {
-				out.push({
-					cardAddress: card.toLowerCase(),
-					tokenId: tokenId.toString(),
-					couponId: t.couponId,
-					status: 'redeemed',
-				})
-			}
-		} catch {
-			/* untrusted — skip */
+	}
+	if (!rows.length) return []
+
+	const calls = rows.flatMap((r) => [
+		{
+			target: r.card,
+			allowFailure: true,
+			callData: IFACE.encodeFunctionData('issuedNftUserSigClaimUsed', [user, r.tokenId]),
+		},
+		{
+			target: r.card,
+			allowFailure: true,
+			callData: IFACE.encodeFunctionData('balanceOf', [user, r.tokenId]),
+		},
+	])
+	const mc = await multicallAggregate3Conet(calls)
+	const out: WorkerCouponOpenClaimResult[] = []
+	for (let i = 0; i < rows.length; i++) {
+		const claimed = mc[i * 2]?.success ? decodeBool(mc[i * 2].returnData) : null
+		const bal = mc[i * 2 + 1]?.success ? decodeUint256(mc[i * 2 + 1].returnData) : null
+		if (claimed == null && bal == null) continue
+		const holds = (bal ?? 0n) > 0n
+		if (holds) {
+			out.push({
+				cardAddress: rows[i].card.toLowerCase(),
+				tokenId: rows[i].tokenId.toString(),
+				couponId: rows[i].couponId,
+				status: 'claimed',
+			})
+		} else if (claimed) {
+			out.push({
+				cardAddress: rows[i].card.toLowerCase(),
+				tokenId: rows[i].tokenId.toString(),
+				couponId: rows[i].couponId,
+				status: 'redeemed',
+			})
 		}
 	}
 	return out

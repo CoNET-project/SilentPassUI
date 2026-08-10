@@ -3,7 +3,7 @@
  */
 
 import { ethers } from 'ethers'
-import { APP_DAEMON_CONET_RPC } from '../protocol'
+import { getAppDaemonConetProvider } from '../rpc'
 
 const REGISTRY = '0xD6252Cbf266B80231397Ac2a4f25ed2d9b01DEE6'
 const ROLE_L0 = 1
@@ -34,10 +34,7 @@ export async function fetchWorkerL0StartKitQuota(rawEoa: string): Promise<Worker
 		return { ok: false }
 	}
 	try {
-		const provider = new ethers.JsonRpcProvider(APP_DAEMON_CONET_RPC, 224422, {
-			staticNetwork: true,
-			batchMaxCount: 1,
-		})
+		const provider = getAppDaemonConetProvider()
 		const registry = new ethers.Contract(REGISTRY, ABI, provider)
 		const member = await registry.members(eoa)
 		if (Number(member.role) !== ROLE_L0) {

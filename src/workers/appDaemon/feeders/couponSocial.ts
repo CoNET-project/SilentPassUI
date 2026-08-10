@@ -1,9 +1,9 @@
 /**
- * Coupon social + supply stats — Worker RPC (no localStorage).
+ * Coupon social + supply — Multicall3 batched views.
  */
 
 import { ethers } from 'ethers'
-import { APP_DAEMON_CONET_RPC } from '../protocol'
+import { multicallAggregate3Conet, decodeUint256 } from '../multicall'
 
 const USER_LIKE_METRIC = 5
 const REF_CLICK_METRIC = 7
@@ -11,12 +11,12 @@ const TARGET_ISSUED_COUPON = 2
 const COUPON_USER_LIKE_OFFSET = 620_000_000_000n
 const COUPON_REF_CLICK_OFFSET = 200_000_000_000n
 
-const ABI = [
+const IFACE = new ethers.Interface([
 	'function totalSupply(uint256 id) view returns (uint256)',
 	'function issuedNftMaxSupply(uint256 tokenId) view returns (uint256)',
 	'function issuedNftMintedCount(uint256 tokenId) view returns (uint256)',
 	'function resolveUserCumulativeStatTokenId(uint8 metricKind, uint8 targetKind, uint256 issuedParentId) view returns (uint256 globalTokenId, uint256 scopedTokenId)',
-] as const
+])
 
 export type WorkerCouponSocialStat = {
 	cardAddress: string
@@ -27,30 +27,20 @@ export type WorkerCouponSocialStat = {
 	remainingSupply: string | null
 }
 
-async function resolveScoped(
-	reader: ethers.Contract,
-	metric: number,
-	parentId: bigint,
-	fallbackOffset: bigint,
-): Promise<bigint | null> {
-	try {
-		const [, scoped] = (await reader.resolveUserCumulativeStatTokenId(
-			metric,
-			TARGET_ISSUED_COUPON,
-			parentId,
-		)) as [bigint, bigint]
-		if (scoped != null && scoped > 0n) return scoped
-	} catch {
-		/* fallback */
-	}
-	return parentId + fallbackOffset
+function asCount(raw: bigint | null): number | null {
+	if (raw == null) return null
+	const n = Number(raw)
+	return Number.isFinite(n) && n >= 0 ? Math.trunc(n) : 0
 }
 
-async function supplyOf(reader: ethers.Contract, scoped: bigint): Promise<number | null> {
+function decodeScoped(returnData: string): bigint | null {
+	if (!returnData || returnData === '0x' || returnData.length < 130) return null
 	try {
-		const raw = (await reader.totalSupply(scoped)) as bigint
-		const n = Number(raw)
-		return Number.isFinite(n) && n >= 0 ? Math.trunc(n) : 0
+		const [, scoped] = ethers.AbiCoder.defaultAbiCoder().decode(
+			['uint256', 'uint256'],
+			returnData,
+		) as [bigint, bigint]
+		return scoped > 0n ? scoped : null
 	} catch {
 		return null
 	}
@@ -60,56 +50,110 @@ export async function fetchWorkerCouponSocialStats(
 	targets: { cardAddress: string; tokenId: string }[],
 ): Promise<WorkerCouponSocialStat[]> {
 	if (!targets.length) return []
-	const provider = new ethers.JsonRpcProvider(APP_DAEMON_CONET_RPC, 224422, {
-		staticNetwork: true,
-		batchMaxCount: 1,
-	})
-	const out: WorkerCouponSocialStat[] = []
+	const rows: { card: string; parentId: bigint }[] = []
 	for (const t of targets) {
-		let card: string
-		let parentId: bigint
 		try {
-			card = ethers.getAddress(t.cardAddress)
-			parentId = BigInt(t.tokenId)
+			rows.push({ card: ethers.getAddress(t.cardAddress), parentId: BigInt(t.tokenId) })
 		} catch {
-			continue
+			/* skip */
 		}
-		const reader = new ethers.Contract(card, ABI, provider)
-		try {
-			const [likeScoped, shareScoped] = await Promise.all([
-				resolveScoped(reader, USER_LIKE_METRIC, parentId, COUPON_USER_LIKE_OFFSET),
-				resolveScoped(reader, REF_CLICK_METRIC, parentId, COUPON_REF_CLICK_OFFSET),
-			])
-			const [likeCount, shareClickCount, maxRaw, mintedRaw] = await Promise.all([
-				likeScoped != null ? supplyOf(reader, likeScoped) : Promise.resolve(null),
-				shareScoped != null ? supplyOf(reader, shareScoped) : Promise.resolve(null),
-				reader.issuedNftMaxSupply(parentId).catch(() => null) as Promise<bigint | null>,
-				reader.issuedNftMintedCount(parentId).catch(() => null) as Promise<bigint | null>,
-			])
-			let maxSupply: string | null = null
-			let remainingSupply: string | null = null
-			if (maxRaw != null && mintedRaw != null) {
-				if (maxRaw === 0n) {
-					maxSupply = null
-					remainingSupply = null
-				} else {
-					maxSupply = maxRaw.toString()
-					const left = maxRaw > mintedRaw ? maxRaw - mintedRaw : 0n
-					remainingSupply = left.toString()
-				}
+	}
+	if (!rows.length) return []
+
+	// Pass 1: resolve scoped token ids (2 per target)
+	const resolveCalls = rows.flatMap((r) => [
+		{
+			target: r.card,
+			allowFailure: true,
+			callData: IFACE.encodeFunctionData('resolveUserCumulativeStatTokenId', [
+				USER_LIKE_METRIC,
+				TARGET_ISSUED_COUPON,
+				r.parentId,
+			]),
+		},
+		{
+			target: r.card,
+			allowFailure: true,
+			callData: IFACE.encodeFunctionData('resolveUserCumulativeStatTokenId', [
+				REF_CLICK_METRIC,
+				TARGET_ISSUED_COUPON,
+				r.parentId,
+			]),
+		},
+	])
+	const resolveMc = await multicallAggregate3Conet(resolveCalls)
+
+	const likeScoped = rows.map((r, i) => {
+		const decoded = resolveMc[i * 2]?.success ? decodeScoped(resolveMc[i * 2].returnData) : null
+		return decoded ?? r.parentId + COUPON_USER_LIKE_OFFSET
+	})
+	const shareScoped = rows.map((r, i) => {
+		const decoded = resolveMc[i * 2 + 1]?.success
+			? decodeScoped(resolveMc[i * 2 + 1].returnData)
+			: null
+		return decoded ?? r.parentId + COUPON_REF_CLICK_OFFSET
+	})
+
+	// Pass 2: totalSupply ×2 + max + minted
+	const supplyCalls = rows.flatMap((r, i) => [
+		{
+			target: r.card,
+			allowFailure: true,
+			callData: IFACE.encodeFunctionData('totalSupply', [likeScoped[i]]),
+		},
+		{
+			target: r.card,
+			allowFailure: true,
+			callData: IFACE.encodeFunctionData('totalSupply', [shareScoped[i]]),
+		},
+		{
+			target: r.card,
+			allowFailure: true,
+			callData: IFACE.encodeFunctionData('issuedNftMaxSupply', [r.parentId]),
+		},
+		{
+			target: r.card,
+			allowFailure: true,
+			callData: IFACE.encodeFunctionData('issuedNftMintedCount', [r.parentId]),
+		},
+	])
+	const supplyMc = await multicallAggregate3Conet(supplyCalls)
+
+	const out: WorkerCouponSocialStat[] = []
+	for (let i = 0; i < rows.length; i++) {
+		const base = i * 4
+		const likeCount = asCount(
+			supplyMc[base]?.success ? decodeUint256(supplyMc[base].returnData) : null,
+		)
+		const shareClickCount = asCount(
+			supplyMc[base + 1]?.success ? decodeUint256(supplyMc[base + 1].returnData) : null,
+		)
+		const maxRaw = supplyMc[base + 2]?.success
+			? decodeUint256(supplyMc[base + 2].returnData)
+			: null
+		const mintedRaw = supplyMc[base + 3]?.success
+			? decodeUint256(supplyMc[base + 3].returnData)
+			: null
+		let maxSupply: string | null = null
+		let remainingSupply: string | null = null
+		if (maxRaw != null && mintedRaw != null) {
+			if (maxRaw === 0n) {
+				maxSupply = null
+				remainingSupply = null
+			} else {
+				maxSupply = maxRaw.toString()
+				remainingSupply = (maxRaw > mintedRaw ? maxRaw - mintedRaw : 0n).toString()
 			}
-			if (likeCount == null && shareClickCount == null && maxRaw == null) continue
-			out.push({
-				cardAddress: card.toLowerCase(),
-				tokenId: parentId.toString(),
-				likeCount,
-				shareClickCount,
-				maxSupply,
-				remainingSupply,
-			})
-		} catch {
-			/* skip card */
 		}
+		if (likeCount == null && shareClickCount == null && maxRaw == null) continue
+		out.push({
+			cardAddress: rows[i].card.toLowerCase(),
+			tokenId: rows[i].parentId.toString(),
+			likeCount,
+			shareClickCount,
+			maxSupply,
+			remainingSupply,
+		})
 	}
 	return out
 }

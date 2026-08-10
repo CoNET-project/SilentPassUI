@@ -1474,9 +1474,18 @@ async function mergeBeamioDaemonIncomeEnrichment(stats: UnifiedIncomeStats, bene
  * @param ipOrWallet 受益人钱包 / 节点运营钱包 / DePIN IP（解析顺序同 resolveNodeBundle）
  * @param anchorTs CNET 周期锚点 unix 秒（0 = 链上 block.timestamp）
  */
+export type FetchUnifiedIncomeStatsOptions = {
+	/**
+	 * Daemon / background path: never run per-node OOG client assemble
+	 * (would explode RPC). Fail closed and keep last trusted UI value.
+	 */
+	skipClientSideAssemble?: boolean
+}
+
 export async function fetchUnifiedIncomeStats(
 	ipOrWallet: string,
-	anchorTs = 0
+	anchorTs = 0,
+	options?: FetchUnifiedIncomeStatsOptions,
 ): Promise<UnifiedIncomeStatsResult> {
 	const contract = resolveValidatorDepositRedeemAddress()
 	if (!contract) return { ok: false, error: 'ValidatorDepositRedeem address not configured' }
@@ -1486,6 +1495,7 @@ export async function fetchUnifiedIncomeStats(
 	const maybeWallet = isAddr ? ethers.getAddress(raw) : ethers.ZeroAddress
 	const ip = isAddr ? '' : normalizeDepinIp(raw)
 	const redeem = new ethers.Contract(contract, VALIDATOR_WALLET_NODE_PROFILE_ABI, conetDepinProvider)
+	const skipAssemble = Boolean(options?.skipClientSideAssemble)
 	try {
 		// 收益统计与节点 bundle 同源（resolveUnifiedIncomeStats 内部本就基于 resolveNodeBundle）。
 		// unified 单调用可能因把受益人+每节点的年度聚合合并进一次 eth_call 超过节点 gasCap 而 revert，
@@ -1509,11 +1519,16 @@ export async function fetchUnifiedIncomeStats(
 		if (r) {
 			// 单调用成功：直接解析。
 			stats = parseUnifiedIncomeStats(r as ethers.Result)
-		} else if (parsedBundle && (parsedBundle.beneficiary || parsedBundle.nodes.length > 0)) {
+		} else if (
+			!skipAssemble &&
+			parsedBundle &&
+			(parsedBundle.beneficiary || parsedBundle.nodes.length > 0)
+		) {
 			// 单调用因 gasCap OOG 失败，但 bundle 可信：逐个 subject 客户端拼装收益（节点仍可显示）。
+			// Daemon 路径禁止此分支（skipClientSideAssemble），避免每拍按节点爆炸 RPC。
 			stats = await assembleUnifiedIncomeStatsClientSide(redeem, parsedBundle, anchorTs)
 		} else {
-			// 既无收益、又无可信节点：交由外层 catch 返回 ok:false（不覆盖 UI 上次可信值）。
+			// 既无收益、又无可信节点（或 daemon 禁 assemble）：交由外层返回 ok:false（不覆盖 UI）。
 			return { ok: false, error: 'resolveUnifiedIncomeStats read failed' }
 		}
 		// L1 CL gas earned: indexer / resolveUnifiedIncomeStats CNET often 0 while settleNodeRewards already paid.

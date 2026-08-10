@@ -2436,15 +2436,11 @@ const Home = (_props: HomeProps) => {
 										<p className="text-sm text-amber-700 dark:text-amber-400 text-center font-semibold mb-2">
 											{cashTreesNfcOverlay.errorMsg ?? tu('something_went_wrong')}
 										</p>
-										{cashTreesNfcOverlay.ndefUri ? (
-											<p className="text-[10px] text-gray-400 text-center break-all line-clamp-3 mb-4" title={cashTreesNfcOverlay.ndefUri}>
-												{cashTreesNfcOverlay.ndefUri}
-											</p>
-										) : (
-											<p className="text-xs text-gray-500 dark:text-slate-400 text-center mb-4">
-												Check NFC is on, then retry or close.
-											</p>
-										)}
+										<p className="text-xs text-gray-500 dark:text-slate-400 text-center mb-4">
+											{cashTreesNfcOverlay.ndefUri
+												? 'NFC was read successfully. Tap Retry scan, or Close and try again.'
+												: 'Check NFC is on, then retry or close.'}
+										</p>
 										{getCashTreesNativeNfcBridge()?.startPhysicalCardBind ? (
 											<button
 												type="button"

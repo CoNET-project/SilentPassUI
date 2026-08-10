@@ -109,6 +109,11 @@ export const CONET_GB1155 = '0x3Dc53e528d45225e8F38c391Cc6a72CDec435748'
 export const CONET_GB_TOTAL = '0x949ed49faB0e999f685f16e09Cf5EaaF4090F290'
 /** ValidatorDepositRedeem（CoNET 224422）— resolveNodeBundle / resolveUnifiedIncomeStats RPC 直读 */
 export const CONET_VALIDATOR_DEPOSIT_REDEEM = '0xc71e246DD78B37C2fABc905D340932F28F503433'
+/** Multicall3 on CoNET — App Daemon / Discover / Coupon batch eth_call */
+export const CONET_MULTICALL3 = '0x4e73d76E7fC6b6Aa471dca7238107246BF4c8145'
+/** BeamioConsumerWalletDashboard UUPS proxy — App Daemon 6s snapshot */
+export const CONET_CONSUMER_WALLET_DASHBOARD = '0x28370397A2b0C504e93754288ABb4F47EAaf168f'
+export const CONET_CONSUMER_WALLET_DASHBOARD_IMPL = '0x7922B887dD5b7dEf0355e9537AB642E7eC5065F9'
 /**
  * GBDepinAirdrop — DePIN 节点收费 GB（mintPaid → 受益人钱包）。
  * 部署后由 sync / deployments/conet-GBDepinAirdrop.json 填入；未部署时空字符串（UI 仅展示 legacy routing GB）。

@@ -1,12 +1,13 @@
 /**
- * BeamioOracle rates on Base — Worker-portable (no beamio.ts).
+ * BeamioOracle rates on Base — Multicall3 batched getRate.
  */
 
 import { ethers } from 'ethers'
+import { APP_DAEMON_BASE_MULTICALL3 } from '../protocol'
+import { multicallAggregate3Base, decodeUint256 } from '../multicall'
 
 const BEAMIO_ORACLE_BASE = '0x77CB8358c5a37aB7190b0A2C7EaA7fEeDCF11008'
-const BASE_RPC = 'https://base-rpc.conet.network'
-const ABI = ['function getRate(uint8 c) view returns (uint256)'] as const
+const ABI_IFACE = new ethers.Interface(['function getRate(uint8 c) view returns (uint256)'])
 
 /** BeamioCurrency enum — CAD=0 … TWD=8 */
 const BEAMIO_CURRENCY = {
@@ -64,11 +65,6 @@ export async function fetchWorkerOracleRates(): Promise<
 	{ ok: true; rates: WorkerOracleRates; currencyData: WorkerCurrencyData } | { ok: false }
 > {
 	try {
-		const provider = new ethers.JsonRpcProvider(BASE_RPC, 8453, {
-			staticNetwork: true,
-			batchMaxCount: 1,
-		})
-		const oracle = new ethers.Contract(BEAMIO_ORACLE_BASE, ABI, provider)
 		const ids = [
 			BEAMIO_CURRENCY.CAD,
 			BEAMIO_CURRENCY.JPY,
@@ -79,8 +75,19 @@ export async function fetchWorkerOracleRates(): Promise<
 			BEAMIO_CURRENCY.SGD,
 			BEAMIO_CURRENCY.TWD,
 		] as const
-		const rates = await Promise.all(ids.map((c) => oracle.getRate(c) as Promise<bigint>))
-		const ratesNum = rates.map((r) => Number(ethers.formatUnits(r, 18)))
+		void APP_DAEMON_BASE_MULTICALL3 // documented constant; multicall helper uses it
+		const mc = await multicallAggregate3Base(
+			ids.map((c) => ({
+				target: BEAMIO_ORACLE_BASE,
+				allowFailure: true,
+				callData: ABI_IFACE.encodeFunctionData('getRate', [c]),
+			})),
+		)
+		const ratesNum = mc.map((r) => {
+			const raw = r.success ? decodeUint256(r.returnData) : null
+			return raw != null ? Number(ethers.formatUnits(raw, 18)) : 0
+		})
+		if (ratesNum.every((n) => !n)) return { ok: false }
 		const raw: WorkerOracleRates = {
 			usdcad: ratesNum[0] > 0 ? String(1 / ratesNum[0]) : undefined,
 			usdjpy: ratesNum[1] > 0 ? String(1 / ratesNum[1]) : undefined,

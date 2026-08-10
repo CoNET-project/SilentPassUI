@@ -203,7 +203,9 @@ const TRENDING_FETCH_TIMEOUT_MS = 12_000
  */
 const CONET_GENESIS_DISCOVER_CARD_ADDRESS = '0xafE482D2612327a0D723544B9fB713C514a793a2'
 const CONET_EXPLORE_NETWORK_URL = 'https://mainnet.conet.network/'
-const CONET_GENESIS_NODE_PRICE_USDC = 1250
+/** List price per node (USDC) — already includes Cloud OPEX {@link CONET_GENESIS_CLOUD_OPEX_USDC}. */
+const CONET_GENESIS_NODE_PRICE_USDC = 4000
+/** Included in {@link CONET_GENESIS_NODE_PRICE_USDC}; do not add again to total due. */
 const CONET_GENESIS_CLOUD_OPEX_USDC = 120
 const CONET_GENESIS_GLOBAL_CAP = 12000
 
@@ -3114,9 +3116,9 @@ function ConetGenesisNodeDiscoverSection({
 		}
 	}, [initialReferrerEoa, resolveTagPlain])
 
-	// Cloud Node Deployment Service is mandatory (always included in the entry package).
+	// List price already includes mandatory Cloud Node Deployment OPEX — do not double-count.
 	const totalThreshold = useMemo(
-		() => quantity * (CONET_GENESIS_NODE_PRICE_USDC + CONET_GENESIS_CLOUD_OPEX_USDC),
+		() => quantity * CONET_GENESIS_NODE_PRICE_USDC,
 		[quantity],
 	)
 
@@ -3375,7 +3377,7 @@ function ConetGenesisNodeDiscoverSection({
 						<p className="mt-2 text-[12px] font-medium text-slate-500 dark:text-slate-400">
 							{canPayLocally
 								? localTestEoa
-									? 'Your wallet has enough USDC — pay 1.37 USDC in-app'
+									? 'Your wallet has enough USDC — pay 4.00 USDC in-app'
 									: 'Your wallet has enough USDC — pay in-app'
 								: 'Pay with an external wallet on Base'}
 						</p>
@@ -3431,13 +3433,13 @@ function ConetGenesisNodeDiscoverSection({
 												{quantity} {quantity === 1 ? 'seat' : 'seats'}
 											</td>
 											<td className="border-b border-slate-100 px-2 py-1.5 tabular-nums dark:border-slate-700">
-												1,250 USDC
+												{CONET_GENESIS_NODE_PRICE_USDC.toLocaleString('en-US')} USDC
 											</td>
 											<td className="border-b border-slate-100 px-2 py-1.5 dark:border-slate-700">
-												120 USDC/year
+												{CONET_GENESIS_CLOUD_OPEX_USDC} USDC/year
 											</td>
 											<td className="border-b border-slate-100 px-2 py-1.5 font-semibold tabular-nums dark:border-slate-700">
-												1,370 USDC
+												{CONET_GENESIS_NODE_PRICE_USDC.toLocaleString('en-US')} USDC
 											</td>
 										</tr>
 									</tbody>
@@ -3523,7 +3525,8 @@ function ConetGenesisNodeDiscoverSection({
 								<span className="font-semibold text-slate-700 dark:text-slate-200">
 									Non-Investment Nature &amp; Risk Disclosure:
 								</span>{' '}
-								The allocation of 1,250 USDC under this agreement constitutes a{' '}
+								The allocation of {CONET_GENESIS_NODE_PRICE_USDC.toLocaleString('en-US')} USDC under this
+								agreement constitutes a{' '}
 								<span className="font-semibold">non-refundable technical grant</span> to the open-source
 								DePIN, not the purchase of securities, financial products, or equity investments. The
 								contributor assumes all risks of network technical failure due to code vulnerabilities,

@@ -1059,6 +1059,15 @@ export const emptySearchResultForAddress = (address: string): searchResult => ({
 	follower_count: '0',
 })
 
+export type CreateInboundChatSessionOpts = {
+	/**
+	 * Skip AddressPGP RPC + AES decrypt. Use for history restore / bulk catch-up so the
+	 * main thread is not blocked for seconds after launch; keys fill in when the user
+	 * opens the chat (or a later route refresh).
+	 */
+	skipKeyFetch?: boolean
+}
+
 /**
  * Open inbound chat for a verified sender EOA.
  * Do not refuse solely because profile search or on-chain PGP is missing.
@@ -1067,15 +1076,35 @@ export const createInboundChatSession = async (
 	signAddr: string,
 	privateKeyArmor: string,
 	peerProfile: searchResult | null | undefined,
+	opts?: CreateInboundChatSessionOpts,
 ): Promise<chatData> => {
 	const addr = ethers.isAddress(signAddr) ? ethers.getAddress(signAddr) : signAddr
 	const beamio = peerProfile?.address ? peerProfile : emptySearchResultForAddress(addr)
-	const kk = await getKeysFromCoNETPGPSC(addr, privateKeyArmor)
 	if (!peerProfile?.address) {
 		console.warn(
 			`[chat inbound] no Beamio profile for ${addr} — creating address-only session (message still shown)`,
 		)
 	}
+	if (opts?.skipKeyFetch) {
+		return {
+			address: addr,
+			beamio,
+			messages: [],
+			pin: false,
+			hide: false,
+			chatData: {
+				privateArmored: '',
+				publicArmored: '',
+				routersArmoreds: '',
+				online: false,
+				routePgpKeyID: '',
+			},
+			unreadCount: 0,
+			tag: 'grey',
+			muted: false,
+		}
+	}
+	const kk = await getKeysFromCoNETPGPSC(addr, privateKeyArmor)
 	if (!kk?.publicArmored) {
 		console.warn(
 			`[chat inbound] sender ${addr} has no on-chain PGP publicArmored — can display inbound, reply may fail until they register Chat`,

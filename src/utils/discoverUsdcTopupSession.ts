@@ -31,11 +31,11 @@ export const WALLET_USDC_DEPOSIT_WORKFLOW = 'walletDeposit'
 
 const BEAMIO_USDC_TOPUP_URL = 'https://beamio.app/usdc-topup'
 
-/** Per-node entry (node price + mandatory Cloud Deployment OPEX), USDC human units. */
-export const GENESIS_NODE_SEAT_USDC_PER_NODE = 1370
+/** Per-node list price (includes OPEX 120), USDC human units. */
+export const GENESIS_NODE_SEAT_USDC_PER_NODE = 4000
 
 /** Per-node entry in USDC atomic 6-decimals (must match x402sdk GENESIS_NODE_SEAT_USDC_PER_NODE6). */
-export const GENESIS_NODE_SEAT_USDC_PER_NODE6 = 1_370_000_000n
+export const GENESIS_NODE_SEAT_USDC_PER_NODE6 = 4_000_000_000n
 
 /**
  * Hard-coded Base USDC settle recipient before LockMint (must match x402sdk GENESIS_NODE_BRIDGE_INITIATOR).
@@ -48,14 +48,14 @@ export const GENESIS_NODE_SEAT_PAYTO = GENESIS_NODE_BRIDGE_INITIATOR
 /** Must match x402sdk settle payTo for workflow=treasuryBridge. */
 export const DISCOVER_TREASURY_BRIDGE_PAYTO = GENESIS_NODE_BRIDGE_INITIATOR
 
-/** Must match x402sdk `GENESIS_NODE_SEAT_TEST_CODE` — settle 1.37 USDC then micro-split fulfill. */
+/** Must match x402sdk `GENESIS_NODE_SEAT_TEST_CODE` — settle 4.00 USDC then micro-split fulfill. */
 export const GENESIS_NODE_SEAT_TEST_CODE = '332266'
 
-/** Must match x402sdk `GENESIS_NODE_SEAT_TEST_USDC6` (1.37 USDC = 1/1000 seat). */
-export const GENESIS_NODE_SEAT_TEST_USDC6 = 1_370_000n
+/** Must match x402sdk `GENESIS_NODE_SEAT_TEST_USDC6` (4.00 USDC = 1/1000 seat). */
+export const GENESIS_NODE_SEAT_TEST_USDC6 = 4_000_000n
 
 /**
- * PWA-only buyer allowlist for Genesis seat **testMode** (1.37 USDC + vault micro-split).
+ * PWA-only buyer allowlist for Genesis seat **testMode** (4.00 USDC + vault micro-split).
  *
  * - **Third-party** `/usdc-topup?...&test=332266`: still code-gated only (no buyer list).
  * - **PWA** in-app pay / PWA-built pay URL: attach `test=332266` **only** when `beneficiary`
@@ -74,7 +74,7 @@ const pwaTestBuyerSetLower = new Set(
 	GENESIS_NODE_SEAT_PWA_TEST_BUYER_WHITELIST.map((a) => a.toLowerCase()),
 )
 
-/** True when this buyer EOA may use PWA Genesis testMode (1.37 USDC). */
+/** True when this buyer EOA may use PWA Genesis testMode (4.00 USDC). */
 export function isGenesisNodeSeatPwaTestBuyer(eoa: string | null | undefined): boolean {
 	if (!eoa || !ethers.isAddress(eoa)) return false
 	try {
@@ -89,7 +89,7 @@ export function isGenesisNodeSeatLocalTestEoa(eoa: string | null | undefined): b
 	return isGenesisNodeSeatPwaTestBuyer(eoa)
 }
 
-/** Settle amount required for local/self-fund gate (PWA whitelist → 1.37 USDC @ qty 1). */
+/** Settle amount required for local/self-fund gate (PWA whitelist → 4.00 USDC @ qty 1). */
 export function genesisNodeSeatLocalRequiredUsdc6(params: {
 	beneficiaryEoa: string | null | undefined
 	quantity: number
@@ -169,7 +169,7 @@ export function buildDiscoverGenesisNodeSeatUrl(params: {
 	referrerL0?: string | null
 	/** Alias — purchase attribution: Admin (no L0 cut), L0 (no L1 cut), or L1 (ratio split). */
 	referrerL1?: string | null
-	/** When set to `332266`, third-party page settles 1.37 USDC (PWA should only pass this for whitelist buyers). */
+	/** When set to `332266`, third-party page settles 4.00 USDC (PWA should only pass this for whitelist buyers). */
 	testCode?: string
 }): string {
 	const testMode =
@@ -222,8 +222,8 @@ export type PayGenesisNodeSeatLocalResult =
  * When the local Verra EOA holds enough USDC on Base, sign EIP-3009 and POST
  * `/api/nfcUsdcTopup` with workflow=genesisNodeSeat (same settle path as homepage).
  *
- * Special: whitelisted PWA buyers ({@link isGenesisNodeSeatPwaTestBuyer}) may settle **1.37 USDC** via
- * `test=332266` when balance ≥ 1.37 USDC (qty forced to 1; vault micro-split).
+ * Special: whitelisted PWA buyers ({@link isGenesisNodeSeatPwaTestBuyer}) may settle **4.00 USDC** via
+ * `test=332266` when balance ≥ 4.00 USDC (qty forced to 1; vault micro-split).
  * Third-party pages still accept `test=332266` by code alone (no buyer whitelist).
  *
  * Caller should fall back to {@link buildDiscoverGenesisNodeSeatUrl} when
@@ -256,12 +256,12 @@ export async function payGenesisNodeSeatWithLocalWallet(params: {
 			ok: false,
 			insufficientBalance: true,
 			error: testMode
-				? 'Insufficient USDC on Base. Need 1.37 USDC for this test purchase.'
+				? 'Insufficient USDC on Base. Need 4.00 USDC for this test purchase.'
 				: `Insufficient USDC on Base. Need ${(qty * GENESIS_NODE_SEAT_USDC_PER_NODE).toLocaleString('en-US')} USDC.`,
 		}
 	}
 
-	const amountHuman = testMode ? '1.37' : String(qty * GENESIS_NODE_SEAT_USDC_PER_NODE)
+	const amountHuman = testMode ? '4.00' : String(qty * GENESIS_NODE_SEAT_USDC_PER_NODE)
 	const bodyObj: Record<string, string> = {
 		cardAddress: ethers.getAddress(params.cardAddress),
 		cardOwner: ethers.getAddress(params.cardOwner),

@@ -1398,17 +1398,23 @@ const ensureFlatProfiles = (p: any): profile[] => {
 }
 
 let storeSystemDataTimer: ReturnType<typeof setTimeout> | null = null
+/**
+ * Persist CoNET_Data. Heavy JSON.stringify + base64 MUST run inside the deferred
+ * timer — doing it synchronously froze the UI for seconds after chat history
+ * restore / large profile writes ("app frozen ~10s after launch").
+ */
 export const storeSystemData = async () => {
   if (!CoNET_Data) return
-  const temp = { ...CoNET_Data }
-  if (temp.profiles) temp.profiles = ensureFlatProfiles(temp.profiles)
-  if ((CoNET_Data as any)?.cardRedeems) (temp as any).cardRedeems = (CoNET_Data as any).cardRedeems
-  const dataB64 = Buffer.from(customJsonStringify(temp)).toString("base64")
-  cacheStorageBackup(dataB64)
   if (storeSystemDataTimer) clearTimeout(storeSystemDataTimer)
   storeSystemDataTimer = setTimeout(async () => {
     storeSystemDataTimer = null
+    if (!CoNET_Data) return
     try {
+      const temp = { ...CoNET_Data }
+      if (temp.profiles) temp.profiles = ensureFlatProfiles(temp.profiles)
+      if ((CoNET_Data as any)?.cardRedeems) (temp as any).cardRedeems = (CoNET_Data as any).cardRedeems
+      const dataB64 = Buffer.from(customJsonStringify(temp)).toString("base64")
+      cacheStorageBackup(dataB64)
       await storageHashData("init", dataB64)
     } catch (ex) {
       console.warn(`[storeSystemData] Error:`, ex)

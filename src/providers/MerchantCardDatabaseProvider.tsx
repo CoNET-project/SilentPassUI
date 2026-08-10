@@ -31,34 +31,43 @@ import {
   setMerchantWarmTargets,
 } from '@/services/beamioTagWorkerBridge'
 
+/**
+ * Merchant program card hook — mirrors BeamioTag Worker `merchantCards` store.
+ * Naming parallels `useBeamioTagDatabase` (ensure* / mergeTrusted* / resolve*).
+ */
 export type MerchantCardDatabaseContextValue = {
   cardMap: Record<string, MerchantCardRecord>
   cardMapRef: React.MutableRefObject<Record<string, MerchantCardRecord>>
+  /** Card contract address → record (parallel to Tag `lookupByAddress`). */
   lookupByAddress: (cardAddress: string | undefined) => MerchantCardRecord | undefined
-  peekMetadata: (cardAddress: string | undefined) => CardMetadataFromUri | null
-  resolveDisplayName: (cardAddress: string | undefined) => string
+  /** Sync merchant program display name (parallel to Tag `resolveTag`). */
+  resolveName: (cardAddress: string | undefined) => string
   resolveImage: (cardAddress: string | undefined) => string
+  peekMetadata: (cardAddress: string | undefined) => CardMetadataFromUri | null
+  /** Parallel to Tag `mergeTrustedProfiles`. */
   mergeTrustedCards: (incoming: Record<string, MerchantCardRecord | null | undefined>) => void
+  /** Register warm targets + kick ensure for stale rows. */
   registerCardAddresses: (addresses: string[]) => void
-  ensureCardMetadataForAddresses: (
+  /** Parallel to Tag `ensureProfilesForAddresses`. */
+  ensureCardsForAddresses: (
     addresses: string[],
     opts?: { maxPerTick?: number; forceRefresh?: boolean },
   ) => Promise<Record<string, MerchantCardRecord>>
-  /** Local-first read; refreshes stale/missing rows then returns metadata. */
-  fetchCardMetadata: (cardAddress: string) => Promise<CardMetadataFromUri | null>
+  /** Single-card local-first ensure → metadata (replaces legacy `fetchCardMetadata`). */
+  ensureCardMetadata: (cardAddress: string) => Promise<CardMetadataFromUri | null>
 }
 
 const defaultValue: MerchantCardDatabaseContextValue = {
   cardMap: {},
   cardMapRef: { current: {} },
   lookupByAddress: () => undefined,
-  peekMetadata: () => null,
-  resolveDisplayName: () => '',
+  resolveName: () => '',
   resolveImage: () => '',
+  peekMetadata: () => null,
   mergeTrustedCards: () => {},
   registerCardAddresses: () => {},
-  ensureCardMetadataForAddresses: async () => ({}),
-  fetchCardMetadata: async () => null,
+  ensureCardsForAddresses: async () => ({}),
+  ensureCardMetadata: async () => null,
 }
 
 const MerchantCardDatabaseContext = createContext<MerchantCardDatabaseContextValue>(defaultValue)
@@ -67,6 +76,10 @@ export function useMerchantCardDatabase(): MerchantCardDatabaseContextValue {
   return useContext(MerchantCardDatabaseContext)
 }
 
+/**
+ * Thin React mirror of BeamioTag Worker merchantCards store.
+ * Fetch / IDB / 5min warm tick live in the Worker — not on the main thread.
+ */
 export function MerchantCardDatabaseProvider({ children }: { children: ReactNode }) {
   const { myBrandCards, myBrandCardDetails, recentActivityNoAaItems } = useDaemonContext()
 
@@ -117,26 +130,29 @@ export function MerchantCardDatabaseProvider({ children }: { children: ReactNode
     [],
   )
 
-  const syncWarmTargets = useCallback((extra?: string[]) => {
-    const out = new Set<string>(registeredRef.current)
-    for (const c of myBrandCards) {
-      const k = normalizeCardAddressKey(c.cardAddress)
-      if (k && !isCardExcludedFromDisplay(k)) out.add(k)
-    }
-    for (const tx of recentActivityNoAaItems) {
-      for (const addr of [merchantChargeCardAddressFromTxView(tx), topupCardAddressFromTxView(tx)]) {
-        const k = normalizeCardAddressKey(addr)
-        if (k) out.add(k)
+  const syncWarmTargets = useCallback(
+    (extra?: string[]) => {
+      const out = new Set<string>(registeredRef.current)
+      for (const c of myBrandCards) {
+        const k = normalizeCardAddressKey(c.cardAddress)
+        if (k && !isCardExcludedFromDisplay(k)) out.add(k)
       }
-    }
-    if (extra) {
-      for (const a of extra) {
-        const k = normalizeCardAddressKey(a)
-        if (k) out.add(k)
+      for (const tx of recentActivityNoAaItems) {
+        for (const addr of [merchantChargeCardAddressFromTxView(tx), topupCardAddressFromTxView(tx)]) {
+          const k = normalizeCardAddressKey(addr)
+          if (k) out.add(k)
+        }
       }
-    }
-    void setMerchantWarmTargets([...out])
-  }, [myBrandCards, recentActivityNoAaItems])
+      if (extra) {
+        for (const a of extra) {
+          const k = normalizeCardAddressKey(a)
+          if (k) out.add(k)
+        }
+      }
+      void setMerchantWarmTargets([...out])
+    },
+    [myBrandCards, recentActivityNoAaItems],
+  )
 
   const registerCardAddresses = useCallback(
     (addresses: string[]) => {
@@ -158,7 +174,7 @@ export function MerchantCardDatabaseProvider({ children }: { children: ReactNode
     [syncWarmTargets],
   )
 
-  const ensureCardMetadataForAddresses = useCallback(
+  const ensureCardsForAddresses = useCallback(
     async (addresses: string[], opts?: { maxPerTick?: number; forceRefresh?: boolean }) => {
       const map = await ensureMerchantCards(addresses, {
         maxPerTick: opts?.maxPerTick ?? MERCHANT_CARD_FETCH_MAX_PER_TICK,
@@ -171,7 +187,7 @@ export function MerchantCardDatabaseProvider({ children }: { children: ReactNode
     [syncWarmTargets],
   )
 
-  const fetchCardMetadata = useCallback(
+  const ensureCardMetadata = useCallback(
     async (cardAddress: string): Promise<CardMetadataFromUri | null> => {
       const key = normalizeCardAddressKey(cardAddress)
       if (!key || isCardExcludedFromDisplay(key)) return null
@@ -180,10 +196,10 @@ export function MerchantCardDatabaseProvider({ children }: { children: ReactNode
       if (cached && !merchantCardNeedsRemoteRefresh(cardMapRef.current[key])) {
         return cached
       }
-      const map = await ensureCardMetadataForAddresses([key])
+      const map = await ensureCardsForAddresses([key])
       return map[key]?.meta ?? cached
     },
-    [ensureCardMetadataForAddresses, registerCardAddresses],
+    [ensureCardsForAddresses, registerCardAddresses],
   )
 
   const lookupByAddress = useCallback(
@@ -199,7 +215,7 @@ export function MerchantCardDatabaseProvider({ children }: { children: ReactNode
     [cardMap],
   )
 
-  const resolveDisplayName = useCallback(
+  const resolveName = useCallback(
     (cardAddress: string | undefined) =>
       merchantCardDisplayNameFromRecord(lookupMerchantCardLocal(cardMap, cardAddress)),
     [cardMap],
@@ -253,24 +269,24 @@ export function MerchantCardDatabaseProvider({ children }: { children: ReactNode
       cardMap,
       cardMapRef,
       lookupByAddress,
-      peekMetadata,
-      resolveDisplayName,
+      resolveName,
       resolveImage,
+      peekMetadata,
       mergeTrustedCards,
       registerCardAddresses,
-      ensureCardMetadataForAddresses,
-      fetchCardMetadata,
+      ensureCardsForAddresses,
+      ensureCardMetadata,
     }),
     [
       cardMap,
       lookupByAddress,
-      peekMetadata,
-      resolveDisplayName,
+      resolveName,
       resolveImage,
+      peekMetadata,
       mergeTrustedCards,
       registerCardAddresses,
-      ensureCardMetadataForAddresses,
-      fetchCardMetadata,
+      ensureCardsForAddresses,
+      ensureCardMetadata,
     ],
   )
 

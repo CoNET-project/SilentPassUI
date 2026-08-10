@@ -604,7 +604,7 @@ function RecentActivityTxItemRow({
 	iconForType,
 	colorForType,
 }: RecentActivityTxItemRowProps) {
-	const { resolveDisplayName, registerCardAddresses, fetchCardMetadata, cardMap, peekMetadata } =
+	const { resolveName, registerCardAddresses, ensureCardMetadata, cardMap, peekMetadata } =
 		useMerchantCardDatabase()
 	const isInternalTransfer = tx.type === 'internal_transfer' && !isMerchantChargeTxView(tx)
 	const isReqExpired = (tx.type === 'request_create' || tx.type === 'request_expired') && isRequestExpired(tx)
@@ -684,13 +684,13 @@ function RecentActivityTxItemRow({
 		const addr = merchantGiftCardAddr || merchantChargeCardAddr || topupCardAddr || claimCardAddr
 		if (!addr) return
 		registerCardAddresses([addr])
-		void fetchCardMetadata(addr)
-	}, [merchantGiftCardAddr, merchantChargeCardAddr, topupCardAddr, claimCardAddr, registerCardAddresses, fetchCardMetadata])
+		void ensureCardMetadata(addr)
+	}, [merchantGiftCardAddr, merchantChargeCardAddr, topupCardAddr, claimCardAddr, registerCardAddresses, ensureCardMetadata])
 	const claimMerchantName = useMemo(() => {
 		if (!isIssuedNftClaimTx || !claimCardAddr) return ''
 		const addrKey = claimCardAddr.toLowerCase()
 		return pickMerchantProgramDisplayName({
-			displayNameFromDb: resolveDisplayName(claimCardAddr),
+			displayNameFromDb: resolveName(claimCardAddr),
 			directoryName: recentActivityCardNameDirectory.get(addrKey),
 			displayJsonCardName: '',
 		})
@@ -698,7 +698,7 @@ function RecentActivityTxItemRow({
 		isIssuedNftClaimTx,
 		claimCardAddr,
 		tx.title,
-		resolveDisplayName,
+		resolveName,
 		cardMap,
 		recentActivityCardNameDirectory,
 	])
@@ -716,7 +716,7 @@ function RecentActivityTxItemRow({
 		const metaName = String(peekMetadata(merchantGiftCardAddr)?.name ?? '').trim()
 		if (metaName && !isGenericMerchantCardDisplayName(metaName)) return metaName
 		return pickMerchantProgramDisplayName({
-			displayNameFromDb: resolveDisplayName(merchantGiftCardAddr),
+			displayNameFromDb: resolveName(merchantGiftCardAddr),
 			directoryName: recentActivityCardNameDirectory.get(merchantGiftCardAddr.toLowerCase()),
 		})
 	}, [
@@ -724,7 +724,7 @@ function RecentActivityTxItemRow({
 		merchantGiftCardAddr,
 		peekMetadata,
 		cardMap,
-		resolveDisplayName,
+		resolveName,
 		recentActivityCardNameDirectory,
 	])
 	const merchantChargeProgramName = useMemo(() => {
@@ -735,7 +735,7 @@ function RecentActivityTxItemRow({
 		const metaName = String(peekMetadata(cardAddr)?.name ?? '').trim()
 		return merchantChargeProgramDisplayName({
 			cardAddress: cardAddr,
-			displayNameFromDb: resolveDisplayName(cardAddr),
+			displayNameFromDb: resolveName(cardAddr),
 			directoryName: recentActivityCardNameDirectory.get(addrKey),
 			displayJsonCardName: merchantChargeParsed?.cardName,
 			metadataName: metaName,
@@ -748,7 +748,7 @@ function RecentActivityTxItemRow({
 		merchantChargeParsed?.cardName,
 		peekMetadata,
 		cardMap,
-		resolveDisplayName,
+		resolveName,
 		recentActivityCardNameDirectory,
 	])
 	const merchantCardName = useMemo(() => {
@@ -771,7 +771,7 @@ function RecentActivityTxItemRow({
 		if (!isCardTopupLedgerTx) return ''
 		const addrKey = topupCardAddr.toLowerCase()
 		return pickMerchantTopupListTitle({
-			displayNameFromDb: topupCardAddr ? resolveDisplayName(topupCardAddr) : '',
+			displayNameFromDb: topupCardAddr ? resolveName(topupCardAddr) : '',
 			directoryName: topupCardAddr ? recentActivityCardNameDirectory.get(addrKey) : undefined,
 			displayJsonCardName: topupParsed?.cardName,
 			fallbackTitle: tx.title,
@@ -781,7 +781,7 @@ function RecentActivityTxItemRow({
 		topupCardAddr,
 		topupParsed?.cardName,
 		tx.title,
-		resolveDisplayName,
+		resolveName,
 		cardMap,
 		recentActivityCardNameDirectory,
 	])
@@ -1097,7 +1097,7 @@ const ActiveHistoryPannelNew = ({
 		recentActivityNoAaError,
 		refreshRecentActivityNoAa,
 	} = useDaemonContext()
-	const { resolveDisplayName, resolveImage, fetchCardMetadata, registerCardAddresses, peekMetadata, cardMap } = useMerchantCardDatabase()
+	const { resolveName, resolveImage, ensureCardMetadata, registerCardAddresses, peekMetadata, cardMap } = useMerchantCardDatabase()
 	const navigate = useNavigate()
 
 	const eoa = profiles?.[0]?.keyID?.trim()
@@ -1184,7 +1184,7 @@ const ActiveHistoryPannelNew = ({
 						: ''
 					const chargeTitle = pickMerchantChargeListTitle({
 						cardAddress: chargeAddr,
-						displayNameFromDb: chargeAddr ? resolveDisplayName(chargeAddr) : '',
+						displayNameFromDb: chargeAddr ? resolveName(chargeAddr) : '',
 						directoryName: chargeAddr
 							? recentActivityCardNameDirectory.get(chargeAddr.toLowerCase())
 							: undefined,
@@ -1199,7 +1199,7 @@ const ActiveHistoryPannelNew = ({
 					const topupParsed = parseRecentActivityTopupDisplayJson(selectedRaw?.displayJson ?? '')
 					return (
 						pickMerchantTopupListTitle({
-							displayNameFromDb: topupAddr ? resolveDisplayName(topupAddr) : '',
+							displayNameFromDb: topupAddr ? resolveName(topupAddr) : '',
 							directoryName: topupAddr
 								? recentActivityCardNameDirectory.get(topupAddr.toLowerCase())
 								: undefined,
@@ -1254,7 +1254,7 @@ const ActiveHistoryPannelNew = ({
 			const addr = merchantChargeCardAddressFromTxView(selectedTx)
 			if (addr) {
 				registerCardAddresses([addr])
-				void fetchCardMetadata(addr)
+				void ensureCardMetadata(addr)
 			}
 			return
 		}
@@ -1262,7 +1262,7 @@ const ActiveHistoryPannelNew = ({
 			const addr = merchantChargeCardAddressFromTxView(selectedTx)
 			if (addr) {
 				registerCardAddresses([addr])
-				void fetchCardMetadata(addr)
+				void ensureCardMetadata(addr)
 			}
 			return
 		}
@@ -1272,13 +1272,13 @@ const ActiveHistoryPannelNew = ({
 				selectedTx.merchantCardAddress ?? indexerRouteCardAddress(raw?.route) ?? ''
 			if (addr) {
 				registerCardAddresses([addr])
-				void fetchCardMetadata(addr)
+				void ensureCardMetadata(addr)
 			}
 		} else if (isRecentActivityCardTopupTxView(selectedTx)) {
 			const addr = topupCardAddressFromTxView(selectedTx)
 			if (addr) {
 				registerCardAddresses([addr])
-				void fetchCardMetadata(addr)
+				void ensureCardMetadata(addr)
 			}
 		}
 	}, [
@@ -1286,7 +1286,7 @@ const ActiveHistoryPannelNew = ({
 		selectedIsIssuedNftClaimKind,
 		selectedTxCategoryLower,
 		registerCardAddresses,
-		fetchCardMetadata,
+		ensureCardMetadata,
 	])
 	const selectedIsCardTopupKind =
 		selectedTx != null && !selectedIsIssuedNftClaimKind && isRecentActivityCardTopupTxView(selectedTx)
@@ -1306,7 +1306,7 @@ const ActiveHistoryPannelNew = ({
 		const metaName = String(peekMetadata(selectedGiftCardAddress)?.name ?? '').trim()
 		if (metaName && !isGenericMerchantCardDisplayName(metaName)) return metaName
 		return pickMerchantProgramDisplayName({
-			displayNameFromDb: resolveDisplayName(selectedGiftCardAddress),
+			displayNameFromDb: resolveName(selectedGiftCardAddress),
 			directoryName: recentActivityCardNameDirectory.get(selectedGiftCardAddress.toLowerCase()),
 		})
 	}, [
@@ -1314,7 +1314,7 @@ const ActiveHistoryPannelNew = ({
 		selectedGiftCardAddress,
 		peekMetadata,
 		cardMap,
-		resolveDisplayName,
+		resolveName,
 		recentActivityCardNameDirectory,
 	])
 	const selectedChargeRaw = selectedTx?.rawTransaction as RawTxRecord | undefined
@@ -1329,7 +1329,7 @@ const ActiveHistoryPannelNew = ({
 		return (
 			pickMerchantChargeListTitle({
 				cardAddress: chargeAddr,
-				displayNameFromDb: chargeAddr ? resolveDisplayName(chargeAddr) : '',
+				displayNameFromDb: chargeAddr ? resolveName(chargeAddr) : '',
 				directoryName: chargeAddr
 					? recentActivityCardNameDirectory.get(chargeAddr.toLowerCase())
 					: undefined,
@@ -1343,7 +1343,7 @@ const ActiveHistoryPannelNew = ({
 		selectedChargeParsed?.cardName,
 		peekMetadata,
 		cardMap,
-		resolveDisplayName,
+		resolveName,
 		recentActivityCardNameDirectory,
 	])
 	const selectedChargeCurrencyCode =
@@ -1404,7 +1404,7 @@ const ActiveHistoryPannelNew = ({
 			? selectedChargeParsed?.cardName
 			: parseRecentActivityTopupDisplayJson(displayJson).cardName
 		const fromDb = pickMerchantProgramDisplayName({
-			displayNameFromDb: addr ? resolveDisplayName(addr) : '',
+			displayNameFromDb: addr ? resolveName(addr) : '',
 			directoryName: addr ? recentActivityCardNameDirectory.get(addr.toLowerCase()) : undefined,
 			displayJsonCardName,
 		})
@@ -1417,7 +1417,7 @@ const ActiveHistoryPannelNew = ({
 		selectedIsMerchantChargeKind,
 		selectedChargeParsed?.cardName,
 		selectedChargeDetailProgramTitle,
-		resolveDisplayName,
+		resolveName,
 		cardMap,
 		recentActivityCardNameDirectory,
 	])
@@ -1529,7 +1529,7 @@ const ActiveHistoryPannelNew = ({
 		if (localMeta?.tiers?.length) {
 			applyTierColors(localMeta.tiers)
 		}
-		void fetchCardMetadata(selectedCardAddress).then((meta) => {
+		void ensureCardMetadata(selectedCardAddress).then((meta) => {
 			if (cancelled || !meta?.tiers?.length) return
 			applyTierColors(meta.tiers)
 		})
@@ -1541,7 +1541,7 @@ const ActiveHistoryPannelNew = ({
 		selectedCardAddress,
 		selectedCardMetaAmounts.requestAmountFiat6,
 		selectedCardMetaAmounts.discountAmountFiat6,
-		fetchCardMetadata,
+		ensureCardMetadata,
 		registerCardAddresses,
 		peekMetadata,
 	])
@@ -1636,14 +1636,14 @@ const ActiveHistoryPannelNew = ({
 			const parsed = parseRecentActivityTopupDisplayJson(selectedTopupDisplayJson)
 			return (
 				pickMerchantTopupListTitle({
-					displayNameFromDb: addr ? resolveDisplayName(addr) : '',
+					displayNameFromDb: addr ? resolveName(addr) : '',
 					directoryName: addr ? recentActivityCardNameDirectory.get(addr.toLowerCase()) : undefined,
 					displayJsonCardName: parsed.cardName,
 					fallbackTitle: selectedTx.title,
 				}) || ''
 			)
 		},
-		[selectedTx, selectedIsCardTopupKind, selectedTopupDisplayJson, resolveDisplayName, cardMap, recentActivityCardNameDirectory],
+		[selectedTx, selectedIsCardTopupKind, selectedTopupDisplayJson, resolveName, cardMap, recentActivityCardNameDirectory],
 	)
 	const selectedTopupDetailProgramTitle = selectedTopupDetailTitle.replace(/^Top-up:?\s*/i, '').trim()
 	const selectedProgramCardDetailTitle =

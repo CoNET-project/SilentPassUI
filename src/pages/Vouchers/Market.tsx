@@ -1083,12 +1083,12 @@ type DiscoverFeaturedCard = {
 function buildDiscoverFeaturedCardFromMerchantDb(
 	cardAddress: string,
 	meta: CardMetadataFromUri | null,
-	resolveDisplayName: (cardAddress: string | undefined) => string,
+	resolveName: (cardAddress: string | undefined) => string,
 	resolveImage: (cardAddress: string | undefined) => string,
 	metadataRoot?: Record<string, unknown> | null,
 ): DiscoverFeaturedCard {
 	const dbImage = resolveImage(cardAddress)?.trim() || ''
-	const programName = meta?.name?.trim() || resolveDisplayName(cardAddress) || 'Merchant'
+	const programName = meta?.name?.trim() || resolveName(cardAddress) || 'Merchant'
 	const category = classifyDiscoverMerchantCategory({
 		name: programName,
 		programDescription: meta?.programDescription ?? '',
@@ -2547,7 +2547,7 @@ const PurchaseCreditsSheet = ({
   onClose: () => void
   onSuccess?: (assets?: unknown) => void
 }) => {
-  const { fetchCardMetadata, registerCardAddresses } = useMerchantCardDatabase()
+  const { ensureCardMetadata, registerCardAddresses } = useMerchantCardDatabase()
   const [amountText, setAmountText] = useState("")
   const [upgradeCapsule, setUpgradeCapsule] = useState<{ amountNeededCad: number; nextTierName: string } | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -2581,7 +2581,7 @@ const PurchaseCreditsSheet = ({
       try {
         const [contractTiers, meta, assets, upgradeType] = await Promise.all([
           getCardTiersFromContract(cardAddress),
-          fetchCardMetadata(cardAddress),
+          ensureCardMetadata(cardAddress),
           getMyAssets(profile as Parameters<typeof getMyAssets>[0], cardAddress),
           getCardUpgradeTypeFromContract(cardAddress),
         ])
@@ -2632,7 +2632,7 @@ const PurchaseCreditsSheet = ({
     }
     run()
     return () => { cancelled = true }
-  }, [open, ownsCard, cardAddress, profile?.keyID, item, fetchCardMetadata, registerCardAddresses])
+  }, [open, ownsCard, cardAddress, profile?.keyID, item, ensureCardMetadata, registerCardAddresses])
 
   const handleConfirm = async () => {
     if (!profile?.privateKeyArmor || !cardAddress || !item) return
@@ -3634,7 +3634,7 @@ function DiscoverMerchantDetailFullScreen({
 	const navigate = useNavigate()
 	const location = useLocation()
 	const { profiles, setProfiles, discoverMerchantStatByCard, registerDiscoverMerchantStatFeedCards, applyDiscoverMerchantLikeCountDelta, couponOpenClaimStatusByKey, registerCouponOpenClaimFeedTargets, applyCouponOpenClaimStatus } = useDaemonContext()
-	const { registerCardAddresses, resolveDisplayName, lookupByAddress, ensureCardMetadataForAddresses } =
+	const { registerCardAddresses, resolveName, lookupByAddress, ensureCardsForAddresses } =
 		useMerchantCardDatabase()
 	const {
 		lookupByAddress: lookupProfileByAddress,
@@ -3698,7 +3698,7 @@ function DiscoverMerchantDetailFullScreen({
 	const usdcTopupPollAbortRef = useRef<AbortController | null>(null)
 	const usdcTopupUrlCopiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 	const ccy = (item.currency || "CAD").toUpperCase()
-	const passTitle = item.programName.trim() || resolveDisplayName(item.cardAddress ?? '') || item.title
+	const passTitle = item.programName.trim() || resolveName(item.cardAddress ?? '') || item.title
 
 	const openIssuerProfile = useCallback(async () => {
 		const ownerEoa = issuerOwnerEoa
@@ -5118,7 +5118,7 @@ function DiscoverMerchantDetailFullScreen({
 		registerCardAddresses([cardAddress])
 		Promise.all([
 			fetchCardActiveIssuedCouponSeriesTrusted(cardAddress, 50),
-			ensureCardMetadataForAddresses([cardAddress], { maxPerTick: 1 }),
+			ensureCardsForAddresses([cardAddress], { maxPerTick: 1 }),
 		])
 			.then(([couponRows, ensuredMap]) => {
 				if (cancelled) return
@@ -5185,7 +5185,7 @@ function DiscoverMerchantDetailFullScreen({
 		}
 		// Intentionally omit lookupByAddress: it changes whenever cardMap updates and would
 		// re-fetch/remount the Coupons panel (visible flash after claim / metadata warm).
-	}, [item.cardAddress, ccy, ensureCardMetadataForAddresses, registerCardAddresses])
+	}, [item.cardAddress, ccy, ensureCardsForAddresses, registerCardAddresses])
 
 	useEffect(() => {
 		const onKey = (e: KeyboardEvent) => {
@@ -5696,9 +5696,9 @@ export default function Market() {
 	const {
 		registerCardAddresses,
 		mergeTrustedCards,
-		resolveDisplayName,
+		resolveName,
 		resolveImage,
-		fetchCardMetadata,
+		ensureCardMetadata,
 		peekMetadata,
 		lookupByAddress,
 	} = useMerchantCardDatabase()
@@ -5922,7 +5922,7 @@ export default function Market() {
 
 	const discoverFeaturedCards = useMemo<DiscoverFeaturedCard[]>(() => {
 		const rows: DiscoverFeaturedCard[] = latestCardsRows.map((card, idx) => {
-			const dbDisplayName = resolveDisplayName(card.cardAddress)
+			const dbDisplayName = resolveName(card.cardAddress)
 			const dbImage = resolveImage(card.cardAddress)
 			const category = classifyDiscoverMerchantCategory({
 				name: card.name,
@@ -5971,7 +5971,7 @@ export default function Market() {
 		if (rows.length > 0) return [...rows].reverse()
 		// No placeholder brands when API list is empty (Discover is driven by real `latestCards` only).
 		return []
-	}, [latestCardsRows, resolveDisplayName, resolveImage])
+	}, [latestCardsRows, resolveName, resolveImage])
 
 	const discoverDeepLinkHandledForRef = useRef<string | null>(null)
 	const discoverDetailReturnToRef = useRef<string | null>(null)
@@ -5999,12 +5999,12 @@ export default function Market() {
 		}
 
 		const peeked = peekMetadata(discoverDeepLinkTarget)
-		const dbName = resolveDisplayName(discoverDeepLinkTarget)?.trim()
+		const dbName = resolveName(discoverDeepLinkTarget)?.trim()
 		if (peeked || dbName) {
 			const fallback = buildDiscoverFeaturedCardFromMerchantDb(
 				discoverDeepLinkTarget,
 				peeked,
-				resolveDisplayName,
+				resolveName,
 				resolveImage,
 				lookupByAddress(discoverDeepLinkTarget)?.metadataRoot,
 			)
@@ -6020,7 +6020,7 @@ export default function Market() {
 		navigate,
 		openDiscoverMerchantDetail,
 		peekMetadata,
-		resolveDisplayName,
+		resolveName,
 		resolveImage,
 	])
 
@@ -6032,12 +6032,12 @@ export default function Market() {
 
 		let cancelled = false
 		void (async () => {
-			await fetchCardMetadata(discoverDeepLinkTarget)
+			await ensureCardMetadata(discoverDeepLinkTarget)
 			if (cancelled || discoverDeepLinkHandledForRef.current === cardNorm) return
 			const fallback = buildDiscoverFeaturedCardFromMerchantDb(
 				discoverDeepLinkTarget,
 				peekMetadata(discoverDeepLinkTarget),
-				resolveDisplayName,
+				resolveName,
 				resolveImage,
 				lookupByAddress(discoverDeepLinkTarget)?.metadataRoot,
 			)
@@ -6052,13 +6052,13 @@ export default function Market() {
 		}
 	}, [
 		discoverDeepLinkTarget,
-		fetchCardMetadata,
+		ensureCardMetadata,
 		latestCardsLoading,
 		lookupByAddress,
 		navigate,
 		openDiscoverMerchantDetail,
 		peekMetadata,
-		resolveDisplayName,
+		resolveName,
 		resolveImage,
 	])
 

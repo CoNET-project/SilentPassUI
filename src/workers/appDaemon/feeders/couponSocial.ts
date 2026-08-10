@@ -39,7 +39,7 @@ function decodeScoped(returnData: string): bigint | null {
 		const [, scoped] = ethers.AbiCoder.defaultAbiCoder().decode(
 			['uint256', 'uint256'],
 			returnData,
-		) as [bigint, bigint]
+		) as unknown as [bigint, bigint]
 		return scoped > 0n ? scoped : null
 	} catch {
 		return null

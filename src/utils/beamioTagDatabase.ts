@@ -1,6 +1,6 @@
 /**
- * Beamio Tag local database — EOA/AA ↔ @beamioTag (SilentPassUI).
- * Local-first; remote searchUsername only for missing/stale rows.
+ * Beamio Tag helpers — types + pure display utils.
+ * Fetch / IDB persistence live in BeamioTag Worker (see beamioTagWorkerBridge).
  */
 
 import { ethers } from 'ethers';

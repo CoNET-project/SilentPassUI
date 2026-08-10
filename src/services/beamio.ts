@@ -46,6 +46,7 @@ import {
 	rememberBeamioTagBasicMetadata,
 	type BeamioTagBasicMetadata,
 } from '@/utils/beamioTagBasicMetadataGlobalCache'
+import { searchBeamioTagRemote } from '@/services/beamioTagWorkerBridge'
 
 export type x402Response = {
 	timestamp: string
@@ -140,7 +141,6 @@ const BEAMIO_ORACLE_BASE = '0x77CB8358c5a37aB7190b0A2C7EaA7fEeDCF11008'
 const BeamioOracleAbi = ['function getRate(uint8 c) view returns (uint256)'] as const
 
 const storageNewUser = `${beamioApi}/api/addUser`
-const searchUrl = `${beamioApi}/api/search-users`
 const followStatusUrl = `${beamioApi}/api/getFollowStatus`
 const removeFollowingUrl = `${beamioApi}/api/removeFollow`
 const addFollowingUrl = `${beamioApi}/api/addFollow`
@@ -2276,6 +2276,19 @@ export const restoreWithUserPin = async (username: string, pin: string, test = f
 	}
 }
 
+function workerHitToSearchResult(hit: Record<string, unknown>): searchResult {
+	return {
+		username: String(hit.username ?? hit.accountName ?? ''),
+		address: String(hit.address ?? ''),
+		image: String(hit.image ?? ''),
+		first_name: String(hit.first_name ?? hit.firstName ?? ''),
+		last_name: String(hit.last_name ?? hit.lastName ?? ''),
+		created_at: typeof hit.created_at === 'number' ? hit.created_at : Number(hit.created_at) || 0,
+		follow_count: String(hit.follow_count ?? ''),
+		follower_count: String(hit.follower_count ?? ''),
+	} as searchResult
+}
+
 function searchResultToBeamioTagBasicMetadata(r: searchResult): BeamioTagBasicMetadata {
 	return {
 		username: String(r.username ?? ''),
@@ -2302,6 +2315,9 @@ function beamioTagBasicMetadataToSearchResult(m: BeamioTagBasicMetadata): search
 	} as searchResult
 }
 
+/**
+ * @deprecated Prefer BeamioTag Worker IDB. Kept only for one-shot read of old LS during migration.
+ */
 function rememberSearchUsersIfTrustworthy(keyword: string, live: { results?: searchResult[] } | null) {
 	const q = keyword.trim()
 	if (!q || !live?.results?.length) return
@@ -2318,42 +2334,38 @@ function rememberSearchUsersIfTrustworthy(keyword: string, live: { results?: sea
 	}
 }
 
-async function searchUsernameNetworkOnly(keyward: string) {
-	const params = new URLSearchParams({ keyward }).toString()
-	const requestUrl = `${searchUrl}?${params}`
-	try {
-		const res = await fetch(requestUrl, { method: 'GET' })
-		if (res.status !== 200) {
-			return null
-		}
-		return await res.json()
-	} catch {
-		/* ignore */
-	}
-	return null
-}
-
 /**
- * search-users：全局 localStorage 命中则立即返回档案，并后台再请求刷新缓存。
- * 仅当查询与结果可信一致时才写入（整地址匹配、tag 精确匹配、或单条且 tag 一致）。
+ * search-users via BeamioTag Worker serverDB (IndexedDB local-first).
+ * All UI call sites keep `searchUsername` — network + IDB live in the Worker when ready.
  */
 export async function searchUsernameStaleWhileRevalidate(
 	keyward: string,
-	opts?: { forceNetwork?: boolean }
+	opts?: { forceNetwork?: boolean },
 ): Promise<{ results?: searchResult[] } | null> {
 	const raw = (keyward ?? '').trim()
-	if (!opts?.forceNetwork && raw) {
+	if (!raw) return { results: [] }
+
+	if (!opts?.forceNetwork) {
 		const cached = peekBeamioTagBasicMetadataForQuery(raw)
 		if (cached) {
-			void searchUsernameNetworkOnly(keyward).then((live) => {
-				rememberSearchUsersIfTrustworthy(raw, live)
+			void searchBeamioTagRemote(raw).then((live) => {
+				if (live?.results?.length) {
+					rememberSearchUsersIfTrustworthy(raw, {
+						results: live.results.map((h) => workerHitToSearchResult(h)),
+					})
+				}
 			})
 			return { results: [beamioTagBasicMetadataToSearchResult(cached)] }
 		}
 	}
-	const live = await searchUsernameNetworkOnly(keyward)
-	if (raw) rememberSearchUsersIfTrustworthy(raw, live)
-	return live
+
+	const viaWorker = await searchBeamioTagRemote(raw)
+	if (!viaWorker) return null
+	const results = (viaWorker.results ?? []).map((h) => workerHitToSearchResult(h))
+	if (raw && results.length) {
+		rememberSearchUsersIfTrustworthy(raw, { results })
+	}
+	return { results }
 }
 
 export const searchUsername = (keyward: string) => searchUsernameStaleWhileRevalidate(keyward)

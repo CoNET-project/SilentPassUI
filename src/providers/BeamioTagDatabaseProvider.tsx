@@ -8,31 +8,33 @@ import React, {
   useState,
   type ReactNode,
 } from 'react';
-import { searchUsername } from '@/services/beamio';
 import { useDaemonContext } from '@/providers/DaemonProvider';
 import {
   type BeamioAddressProfileRecord,
-  BEAMIO_TAG_BACKGROUND_TICK_MS,
-  BEAMIO_TAG_FETCH_MAX_PER_TICK,
   avatarImgUrlFromDb,
   beamioTagFromRecord,
-  ensureAddressProfiles,
-  ingestSearchUsernameResponse,
-  loadAddressProfileMap,
   lookupProfileLocal,
-  mergeProfileMap,
-  mirrorRecordToBeamioTagBasicMetadata,
   normalizeAddressKey,
   plainBeamioTagSeed,
   recordFromProfileFields,
   resolveAvatarSeedFromDb,
   resolveBeamioTagLocal,
-  saveAddressProfileMap,
   searchLocalProfilesByTagPrefix,
   searchResultFromProfileRecord,
   toBeamioCapsuleItem,
   walletStoragePartitionLower,
 } from '@/utils/beamioTagDatabase';
+import {
+  ensureBeamioTagProfiles,
+  getBeamioTagMirrorMap,
+  ingestBeamioTagSearchResponse,
+  initBeamioTagWorker,
+  mergeBeamioTagTrusted,
+  onBeamioTagProfilesUpdated,
+  searchBeamioTagLocalSync,
+  searchBeamioTagRemote,
+  setBeamioTagWarmTargets,
+} from '@/services/beamioTagWorkerBridge';
 
 export type BeamioTagDatabaseContextValue = {
   partition: string | null;
@@ -79,6 +81,10 @@ export function useBeamioTagDatabase(): BeamioTagDatabaseContextValue {
   return useContext(BeamioTagDatabaseContext);
 }
 
+/**
+ * Thin React mirror of BeamioTag Worker serverDB.
+ * Fetch / IDB / 60s warm tick live in the Worker — not on the main thread.
+ */
 export function BeamioTagDatabaseProvider({ children }: { children: ReactNode }) {
   const { profiles, myAddress } = useDaemonContext();
   const partition = useMemo(
@@ -93,24 +99,39 @@ export function BeamioTagDatabaseProvider({ children }: { children: ReactNode })
   }, [profileMap]);
 
   useEffect(() => {
+    return onBeamioTagProfilesUpdated((ev) => {
+      setProfileMap({ ...ev.snapshot });
+    });
+  }, []);
+
+  useEffect(() => {
     if (!partition) {
       setProfileMap({});
       return;
     }
-    setProfileMap(loadAddressProfileMap(partition));
+    let cancelled = false;
+    void (async () => {
+      await initBeamioTagWorker(partition);
+      if (cancelled) return;
+      setProfileMap({ ...getBeamioTagMirrorMap() });
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [partition]);
 
   const mergeTrustedProfiles = useCallback(
     (incoming: Record<string, BeamioAddressProfileRecord | null | undefined>) => {
       if (!partition || Object.keys(incoming).length === 0) return;
       setProfileMap((prev) => {
-        const next = mergeProfileMap(prev, incoming);
-        saveAddressProfileMap(partition, next);
-        for (const rec of Object.values(incoming)) {
-          if (rec) mirrorRecordToBeamioTagBasicMetadata(rec);
+        const next = { ...prev };
+        for (const [k, v] of Object.entries(incoming)) {
+          if (!v) continue;
+          next[k.toLowerCase()] = v;
         }
         return next;
       });
+      void mergeBeamioTagTrusted(incoming);
     },
     [partition],
   );
@@ -138,6 +159,23 @@ export function BeamioTagDatabaseProvider({ children }: { children: ReactNode })
     }
     mergeTrustedProfiles(incoming);
   }, [partition, profiles?.[0]?.keyID, (profiles?.[0] as { aaAccount?: string })?.aaAccount, mergeTrustedProfiles]);
+
+  /** Push warm targets to Worker daemon (Worker owns the 60s tick). */
+  useEffect(() => {
+    if (!partition) return;
+    const out = new Set<string>();
+    const p0 = profiles?.[0];
+    if (p0?.keyID && normalizeAddressKey(p0.keyID)) out.add(normalizeAddressKey(p0.keyID)!);
+    const aa = (p0 as { aaAccount?: string })?.aaAccount;
+    if (aa && normalizeAddressKey(aa)) out.add(normalizeAddressKey(aa)!);
+    if (myAddress && normalizeAddressKey(myAddress)) out.add(normalizeAddressKey(myAddress)!);
+    for (const chat of p0?.chats ?? []) {
+      if (chat?.address && normalizeAddressKey(chat.address)) {
+        out.add(normalizeAddressKey(chat.address)!);
+      }
+    }
+    void setBeamioTagWarmTargets([...out]);
+  }, [partition, profiles, myAddress]);
 
   const lookupByAddress = useCallback(
     (address: string | undefined) => lookupProfileLocal(profileMap, address),
@@ -183,88 +221,40 @@ export function BeamioTagDatabaseProvider({ children }: { children: ReactNode })
   const ingestSearchResponse = useCallback(
     (res: unknown, contextAddress?: string) => {
       if (!partition) return;
-      const merged = ingestSearchUsernameResponse(profileMapRef.current, res, {
-        contextAddress,
-      });
-      if (Object.keys(merged).length === 0) return;
-      mergeTrustedProfiles(merged);
+      void ingestBeamioTagSearchResponse(res, contextAddress);
     },
-    [partition, mergeTrustedProfiles],
+    [partition],
   );
 
-  const searchRemoteAndIngest = useCallback(
-    async (query: string) => {
-      const trimmed = query.trim().replace(/^@/, '');
-      if (!trimmed) return null;
-      try {
-        const res = await searchUsername(trimmed);
-        ingestSearchResponse(res, trimmed);
-        return res;
-      } catch {
-        return null;
-      }
-    },
-    [ingestSearchResponse],
-  );
+  const searchRemoteAndIngest = useCallback(async (query: string) => {
+    const trimmed = query.trim().replace(/^@/, '');
+    if (!trimmed) return null;
+    try {
+      const res = await searchBeamioTagRemote(trimmed);
+      return res;
+    } catch {
+      return null;
+    }
+  }, []);
 
   const ensureProfilesForAddresses = useCallback(
     async (addresses: string[], opts?: { maxPerTick?: number }) => {
       if (!partition) return profileMapRef.current;
-      const { map, changed } = await ensureAddressProfiles(partition, addresses, searchUsername, {
-        memMap: profileMapRef.current,
-        maxPerTick: opts?.maxPerTick ?? BEAMIO_TAG_FETCH_MAX_PER_TICK,
-      });
-      if (changed) setProfileMap(map);
+      const map = await ensureBeamioTagProfiles(addresses, opts);
+      setProfileMap({ ...getBeamioTagMirrorMap() });
       return map;
     },
     [partition],
   );
 
   const searchLocalByTagPrefix = useCallback(
-    (query: string, limit?: number) => searchLocalProfilesByTagPrefix(profileMap, query, limit),
+    (query: string, limit?: number) => {
+      const fromMirror = searchBeamioTagLocalSync(query, limit);
+      if (fromMirror.length > 0) return fromMirror;
+      return searchLocalProfilesByTagPrefix(profileMap, query, limit);
+    },
     [profileMap],
   );
-
-  /** Background: chat peers + wallet identities — missing/stale tags only (setTimeout chain). */
-  useEffect(() => {
-    if (!partition) return;
-    let stopped = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-
-    const collectCandidates = (): string[] => {
-      const out = new Set<string>();
-      const p0 = profiles?.[0];
-      if (p0?.keyID && normalizeAddressKey(p0.keyID)) out.add(normalizeAddressKey(p0.keyID)!);
-      const aa = (p0 as { aaAccount?: string })?.aaAccount;
-      if (aa && normalizeAddressKey(aa)) out.add(normalizeAddressKey(aa)!);
-      if (myAddress && normalizeAddressKey(myAddress)) out.add(normalizeAddressKey(myAddress)!);
-      for (const chat of p0?.chats ?? []) {
-        if (chat?.address && normalizeAddressKey(chat.address)) {
-          out.add(normalizeAddressKey(chat.address)!);
-        }
-      }
-      return [...out];
-    };
-
-    const tick = async () => {
-      if (stopped) return;
-      const candidates = collectCandidates();
-      if (candidates.length > 0) {
-        await ensureProfilesForAddresses(candidates);
-      }
-      if (!stopped) {
-        timer = setTimeout(() => {
-          void tick();
-        }, BEAMIO_TAG_BACKGROUND_TICK_MS);
-      }
-    };
-
-    void tick();
-    return () => {
-      stopped = true;
-      if (timer !== undefined) clearTimeout(timer);
-    };
-  }, [partition, profiles, myAddress, ensureProfilesForAddresses]);
 
   const value = useMemo(
     (): BeamioTagDatabaseContextValue => ({

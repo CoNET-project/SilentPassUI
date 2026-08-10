@@ -1,7 +1,6 @@
 import React, { createContext, useContext, ReactNode, useState, useEffect, useLayoutEffect, useRef, useCallback, Dispatch, SetStateAction } from "react";
 import packageData from '../../package.json'
 import ScanButton, { type  ScanButtonHandle } from "@/components/scanBtn/ScanButton"
-import { getOracle, parseOracleToCurrencyData, ORACLE_REFRESH_MS } from "@/services/beamio"
 import { applyBeamioUiLanguageFromProfile } from '@/locale/i18n'
 import { ethers } from 'ethers'
 import {
@@ -91,8 +90,26 @@ import {
 import { syncChatBadgeToApi } from '@/utils/cashTreesPushBind'
 import { CONET_RPC_URL } from '@/config/chainAddresses'
 import {
-	fetchConetNetworkStats,
-	fetchConetDepinStats,
+	initAppDaemonWorker,
+	onAppDaemonCouponOpenClaim,
+	onAppDaemonCouponSocial,
+	onAppDaemonDiscoverMerchantStats,
+	onAppDaemonL0StartKit,
+	onAppDaemonMiningStats,
+	onAppDaemonNeedMainTick,
+	onAppDaemonOracleRates,
+	onAppDaemonReferrerSummary,
+	onAppDaemonUnifiedIncome,
+	onAppDaemonValidatorProfile,
+	onAppDaemonWalletBalances,
+	registerAppDaemonCouponTargets,
+	registerAppDaemonDiscoverCards,
+	registerAppDaemonGenesisAccounts,
+	refreshAppDaemonNow,
+	setAppDaemonSession,
+} from '@/services/appDaemonWorkerBridge'
+import type { AppDaemonMainTickKind } from '@/workers/appDaemon/protocol'
+import {
 	type ConetNetworkStats,
 	type ConetDepinStats,
 } from '@/services/conetNetworkStats'
@@ -144,22 +161,21 @@ import {
 	EMPTY_CONET_WALLET_BALANCES,
 } from '@/utils/conetWalletBalancesLocalCache'
 import {
+	clearReferralL0StartKitQuotaLocalCache,
 	fetchReferralL0StartKitQuotaFeed,
 	loadReferralL0StartKitQuotaLocalCache,
+	saveReferralL0StartKitQuotaLocalCache,
 	type ReferralL0StartKitQuota,
 } from '@/services/referralL0StartKitQuotaFeed'
 import {
-	GENESIS_INCOME_FEED_INTERVAL_MS,
 	readCachedGenesisIncome,
 	runGenesisIncomeFeedForAccount,
 	type GenesisIncomeSnapshot,
 } from '@/services/genesisNodeReferral'
 import {
-	AA_V2_PENDING_TASKS_FEED_INTERVAL_MS,
 	runAaInstitutionalV2PendingTasksDaemonTick,
 } from '@/utils/aaInstitutionalV2PendingDaemon'
 import {
-	AA_MULTISIG_INSTITUTIONAL_ASSETS_FEED_INTERVAL_MS,
 	runAaMultisigInstitutionalAssetsDaemonTick,
 } from '@/utils/aaMultisigInstitutionalAssetsDaemon'
 import {
@@ -173,16 +189,6 @@ import { loadAllAaMultisigTasksForWallet } from '@/utils/aaMultisigLocalStore'
 const EMPTY_INSTITUTIONAL_AA_ASSETS: AaMultisigTransferAssetOption[] = []
 
 export type { MyBrandCardFeedDetailsMap }
-
-/** My Brands 全局喂料间隔（毫秒）；与 CoNET `block` 时钟并列用于「时间机」元数据 */
-const MY_BRANDS_FEED_INTERVAL_MS = 6_000
-/** Discover 商户点赞 / 转发点击：30s TTL 对齐 beamio-chain-fetch-protocol */
-const DISCOVER_MERCHANT_STATS_FEED_INTERVAL_MS = 30_000
-/** Coupons open-claim claimed/redeemed：EOA 本地库 + daemon 30s 链上刷新 */
-const COUPON_OPEN_CLAIM_STATUS_FEED_INTERVAL_MS = 30_000
-/** Institutional AA V2：共同签署者拉取链上 pending task（离线签字上链后本地投票） */
-const AA_V2_PENDING_TASKS_FEED_MS = AA_V2_PENDING_TASKS_FEED_INTERVAL_MS
-const AA_MULTISIG_INSTITUTIONAL_ASSETS_FEED_MS = AA_MULTISIG_INSTITUTIONAL_ASSETS_FEED_INTERVAL_MS
 
 type ClaimableCouponSummary = {
   count: number
@@ -1788,8 +1794,8 @@ export function DaemonProvider({ children }: DaemonProps) {
   }, [])
 
   const refreshReferralL0StartKitQuota = useCallback(async () => {
-    await runReferralL0StartKitQuotaFeedTick(true)
-  }, [runReferralL0StartKitQuotaFeedTick])
+    await refreshAppDaemonNow('wallet')
+  }, [])
 
   const genesisIncomeFeedAccountsRef = useRef<string[]>([])
   const genesisIncomeFeedInFlightRef = useRef(false)
@@ -1814,6 +1820,9 @@ export function DaemonProvider({ children }: DaemonProps) {
     const merged = [...new Set([...prev, ...incoming])]
     if (merged.length === prev.length && merged.every((a, i) => a === prev[i])) return
     genesisIncomeFeedAccountsRef.current = merged
+    if (incoming.length > 0) {
+      void registerAppDaemonGenesisAccounts(incoming)
+    }
     // Seed map from semi-permanent local store for newly registered EOAs.
     setGenesisIncomeByEoa((prevMap) => {
       const next = { ...prevMap }
@@ -1956,14 +1965,12 @@ export function DaemonProvider({ children }: DaemonProps) {
       ]
       const prev = discoverMerchantStatFeedAddressesRef.current
       const merged = [...new Set([...prev, ...incoming])]
-      const same =
-        merged.length === prev.length && merged.every((a) => prev.includes(a))
       discoverMerchantStatFeedAddressesRef.current = merged
-      if (!same && merged.length > 0) {
-        void runDiscoverMerchantStatsFeedTick()
+      if (incoming.length > 0) {
+        void registerAppDaemonDiscoverCards(incoming)
       }
     },
-    [runDiscoverMerchantStatsFeedTick],
+    [],
   )
 
   const applyDiscoverMerchantLikeCountDelta = useCallback((cardAddress: string, delta: number) => {
@@ -2089,33 +2096,22 @@ export function DaemonProvider({ children }: DaemonProps) {
       }
       if (!normalized.length) return
       const prev = couponOpenClaimFeedTargetsRef.current
-      const prevKeys = new Set(
-        prev
-          .map((p) => buildCouponOpenClaimStatusKey(p.cardAddress, p.tokenId))
-          .filter((x): x is string => Boolean(x)),
-      )
       const mergedMap = new Map<string, CouponOpenClaimFeedTarget>()
       for (const p of prev) {
         const k = buildCouponOpenClaimStatusKey(p.cardAddress, p.tokenId)
         if (k) mergedMap.set(k, p)
       }
-      let added = false
       for (const n of normalized) {
         const k = buildCouponOpenClaimStatusKey(n.cardAddress, n.tokenId)!
-        if (!prevKeys.has(k)) added = true
         mergedMap.set(k, n)
       }
       couponOpenClaimFeedTargetsRef.current = [...mergedMap.values()]
-      if (added) {
-        void runCouponOpenClaimStatusFeedTick()
-      }
-      // Social/supply feeder: kick on every register so ticket remounts get daemon data ASAP
-      // (fetch helpers still apply 30s TTL + in-flight merge).
+      // Worker side tick owns coupon social + open-claim RPC (register schedules immediately).
       if (normalized.length > 0) {
-        void runCouponSocialStatsFeedTickRef.current()
+        void registerAppDaemonCouponTargets(normalized)
       }
     },
-    [runCouponOpenClaimStatusFeedTick],
+    [],
   )
 
   registerCouponOpenClaimFeedTargetsRef.current = registerCouponOpenClaimFeedTargets
@@ -2203,8 +2199,8 @@ export function DaemonProvider({ children }: DaemonProps) {
   )
 
   const refreshCouponOpenClaimStatusFeed = useCallback(async () => {
-    await runCouponOpenClaimStatusFeedTick()
-  }, [runCouponOpenClaimStatusFeedTick])
+    await refreshAppDaemonNow('all')
+  }, [])
 
   /**
    * Coupons 社交 KPI + TOTAL·LEFT：与 open-claim 共用 targets ref；30s 链上刷新。
@@ -2315,8 +2311,8 @@ export function DaemonProvider({ children }: DaemonProps) {
   )
 
   const refreshCouponSocialStatsFeed = useCallback(async () => {
-    await runCouponSocialStatsFeedTick()
-  }, [runCouponSocialStatsFeedTick])
+    await refreshAppDaemonNow('all')
+  }, [])
 
   /**
    * Institutional AA V2 pending tasks：共同签署者本地优先 + 15s daemon 拉取链上 task。
@@ -2447,21 +2443,6 @@ export function DaemonProvider({ children }: DaemonProps) {
   const [conetDepinStats, setConetDepinStats] = useState<ConetDepinStats>(
     () => loadConetMiningStatsLocalCache().depin
   )
-
-  const runConetMiningStatsFeedTick = useCallback(async (): Promise<void> => {
-    const [net, depin] = await Promise.all([
-      fetchConetNetworkStats().catch(() => ({ ok: false }) as const),
-      fetchConetDepinStats().catch(() => ({ ok: false }) as const),
-    ])
-    if (net.ok) {
-      setConetNetworkStats(net.stats)
-      saveConetMiningStatsLocalCache({ network: net.stats })
-    }
-    if (depin.ok) {
-      setConetDepinStats(depin.stats)
-      saveConetMiningStatsLocalCache({ depin: depin.stats })
-    }
-  }, [])
 
   /** EOA 切换：从本地恢复 Recent Activity；无缓存则等首轮拉取 */
   useLayoutEffect(() => {
@@ -2675,63 +2656,251 @@ export function DaemonProvider({ children }: DaemonProps) {
   }, [currencyData])
 
   const globalWalletFeedInFlightRef = useRef<Promise<void> | null>(null)
-  const runGlobalWalletFeedTick = useCallback(async () => {
-    const current = globalWalletFeedInFlightRef.current
-    if (current) return current
-    const work = (async () => {
-      const cardDetails = await runMyBrandsFeedTick()
-      await runNoAaWalletFeedTick(cardDetails)
-      await Promise.all([
-        runConetWalletBalancesFeedTick(),
-        runConetMiningStatsFeedTick(),
-        runValidatorWalletNodeProfileFeedTick(),
-        runUnifiedIncomeStatsFeedTick(),
-        runReferrerSummaryFeedTick(),
-        runReferralL0StartKitQuotaFeedTick(),
-      ])
-    })()
-    globalWalletFeedInFlightRef.current = work
-    try {
-      await work
-    } finally {
-      if (globalWalletFeedInFlightRef.current === work) {
-        globalWalletFeedInFlightRef.current = null
+  /**
+   * Main-thread remainder of the 6s wallet chain.
+   * Worker owns schedule + balances / mining / L0 / validator / referrer / unifiedIncome;
+   * main still runs My Brands + Recent Activity (profile / LS / enrichment).
+   */
+  const runGlobalWalletFeedTick = useCallback(
+    async (kinds?: Set<AppDaemonMainTickKind>) => {
+      const current = globalWalletFeedInFlightRef.current
+      if (current) return current
+      const wantAll = !kinds || kinds.size === 0
+      const wantBrands = wantAll || kinds.has('myBrands') || kinds.has('recentActivity')
+      if (!wantBrands) return
+      const work = (async () => {
+        const cardDetails = await runMyBrandsFeedTick()
+        await runNoAaWalletFeedTick(cardDetails)
+      })()
+      globalWalletFeedInFlightRef.current = work
+      try {
+        await work
+      } finally {
+        if (globalWalletFeedInFlightRef.current === work) {
+          globalWalletFeedInFlightRef.current = null
+        }
       }
-    }
-  }, [
-    runMyBrandsFeedTick,
-    runNoAaWalletFeedTick,
-    runConetWalletBalancesFeedTick,
-    runConetMiningStatsFeedTick,
-    runValidatorWalletNodeProfileFeedTick,
-    runUnifiedIncomeStatsFeedTick,
-    runReferrerSummaryFeedTick,
-    runReferralL0StartKitQuotaFeedTick,
-  ])
+    },
+    [runMyBrandsFeedTick, runNoAaWalletFeedTick],
+  )
 
   const refreshRecentActivityNoAa = useCallback(async () => {
-    await runGlobalWalletFeedTick()
-  }, [runGlobalWalletFeedTick])
+    await refreshAppDaemonNow('wallet')
+  }, [])
 
-  /** My Brands + Recent Activity（EOA+AA 合并）：setTimeout 串行链，每轮 await 结束后再排 6s */
+  /** Push EOA/AA session to App Daemon Worker (no private keys). */
   useEffect(() => {
-    let cancelled = false
-    let timer: number | undefined
-    const runChain = () => {
-      if (cancelled) return
-      void (async () => {
-        await runGlobalWalletFeedTick()
-        if (!cancelled) {
-          timer = window.setTimeout(runChain, MY_BRANDS_FEED_INTERVAL_MS) as unknown as number
+    const eoa = profileWalletKeyId?.trim()
+    const aa = profiles?.[0]?.aaAccount?.trim()
+    void setAppDaemonSession(eoa, aa).catch(() => undefined)
+  }, [profileWalletKeyId, profiles?.[0]?.aaAccount])
+
+  /** Mirror Worker CoNET balances into React state (trusted-only). */
+  useEffect(() => {
+    void initAppDaemonWorker(null).catch(() => undefined)
+    return onAppDaemonWalletBalances((ev) => {
+      const currentEoa = profilesRef.current?.[0]?.keyID?.trim().toLowerCase() ?? ''
+      if (!currentEoa || ev.eoa.toLowerCase() !== currentEoa) return
+      setConetWalletBalances(ev.eoaBalances)
+      saveConetWalletBalancesLocalCache(ev.eoa, ev.eoaBalances)
+      if (ev.aaBalances) {
+        const aa = profilesRef.current?.[0]?.aaAccount?.trim().toLowerCase() ?? ''
+        if (aa) {
+          setConetAaWalletBalances(ev.aaBalances)
+          saveConetWalletBalancesLocalCache(aa, ev.aaBalances)
         }
-      })()
-    }
-    runChain()
+      }
+    })
+  }, [])
+
+  /** Worker mining / oracle / L0 / validator / referrer / discover / coupon mirrors. */
+  useEffect(() => {
+    const offs = [
+      onAppDaemonMiningStats((ev) => {
+        if (ev.network) {
+          setConetNetworkStats(ev.network)
+          saveConetMiningStatsLocalCache({ network: ev.network })
+        }
+        if (ev.depin) {
+          setConetDepinStats(ev.depin)
+          saveConetMiningStatsLocalCache({ depin: ev.depin })
+        }
+      }),
+      onAppDaemonOracleRates((ev) => {
+        setCurrencyData(ev.currencyData)
+      }),
+      onAppDaemonL0StartKit((ev) => {
+        const currentEoa = profilesRef.current?.[0]?.keyID?.trim().toLowerCase() ?? ''
+        if (!currentEoa || ev.eoa.toLowerCase() !== currentEoa) return
+        if (!ev.isL0) {
+          clearReferralL0StartKitQuotaLocalCache(ev.eoa)
+          setReferralL0StartKitQuota(null)
+          return
+        }
+        if (ev.quota) {
+          saveReferralL0StartKitQuotaLocalCache(ev.quota)
+          setReferralL0StartKitQuota(ev.quota)
+        }
+      }),
+      onAppDaemonValidatorProfile((ev) => {
+        const currentEoa = profilesRef.current?.[0]?.keyID?.trim().toLowerCase() ?? ''
+        if (!currentEoa || ev.eoa.toLowerCase() !== currentEoa) return
+        const profile = ev.profile as ValidatorWalletNodeProfile
+        if (!profile?.wallet) return
+        setValidatorWalletNodeProfile(profile)
+        seedValidatorWalletNodeProfileCache(ev.eoa.toLowerCase(), profile)
+      }),
+      onAppDaemonReferrerSummary((ev) => {
+        const currentEoa = profilesRef.current?.[0]?.keyID?.trim().toLowerCase() ?? ''
+        if (!currentEoa || ev.eoa.toLowerCase() !== currentEoa) return
+        const summary = ev.summary as ReferrerDashboardSummary
+        if (!summary?.referrer) return
+        setReferrerSummary(summary)
+        seedReferrerSummaryCache(ev.eoa.toLowerCase(), summary)
+      }),
+      onAppDaemonUnifiedIncome((ev) => {
+        const currentEoa = profilesRef.current?.[0]?.keyID?.trim().toLowerCase() ?? ''
+        if (!currentEoa || ev.eoa.toLowerCase() !== currentEoa) return
+        const stats = ev.stats as UnifiedIncomeStats
+        if (!stats || typeof stats !== 'object') return
+        const previous = unifiedIncomeStatsRef.current
+        const sameBeneficiary =
+          previous?.beneficiary &&
+          stats.beneficiary &&
+          previous.beneficiary.toLowerCase() === stats.beneficiary.toLowerCase()
+        let nextStats = stats
+        if (!stats.airdropReadOk && sameBeneficiary && previous?.airdrop) {
+          nextStats = { ...nextStats, airdrop: previous.airdrop }
+        }
+        if (!stats.gbPaidDepinReadOk && sameBeneficiary && previous?.gbPaidDepinReceived) {
+          nextStats = { ...nextStats, gbPaidDepinReceived: previous.gbPaidDepinReceived }
+        }
+        unifiedIncomeStatsRef.current = nextStats
+        setUnifiedIncomeStats(nextStats)
+        seedUnifiedIncomeStatsCache(ev.eoa.toLowerCase(), nextStats)
+      }),
+      onAppDaemonDiscoverMerchantStats((ev) => {
+        for (const row of ev.stats) {
+          const cardLower = row.cardAddress.toLowerCase()
+          setDiscoverMerchantStatByCard((prev) => {
+            const existing = prev[cardLower]
+            const mergedLike = mergeDiscoverMerchantLikeCount(
+              row.likeCount,
+              existing?.likeCount,
+              existing?.savedAt,
+            )
+            const mergedRef = mergeDiscoverMerchantRefClickCount(
+              row.refClickChain,
+              row.refClickDb,
+              existing?.refClickCount,
+            )
+            const nextEntry: DiscoverMerchantStatEntry = {
+              likeCount: mergedLike,
+              refClickCount: mergedRef,
+              savedAt: Date.now(),
+            }
+            if (
+              existing?.likeCount === nextEntry.likeCount &&
+              existing?.refClickCount === nextEntry.refClickCount
+            ) {
+              return prev
+            }
+            return { ...prev, [cardLower]: nextEntry }
+          })
+          const patch: { likeCount?: number; refClickCount?: number } = {}
+          if (row.likeCount != null) {
+            const merged = mergeDiscoverMerchantLikeCount(row.likeCount, undefined, undefined)
+            if (merged != null) patch.likeCount = merged
+          }
+          const mergedRef = mergeDiscoverMerchantRefClickCount(
+            row.refClickChain,
+            row.refClickDb,
+            undefined,
+          )
+          if (mergedRef != null) patch.refClickCount = mergedRef
+          if (Object.keys(patch).length > 0) {
+            saveDiscoverMerchantStatEntry(cardLower, patch)
+          }
+        }
+      }),
+      onAppDaemonCouponSocial((ev) => {
+        for (const row of ev.stats) {
+          const k = buildCouponSocialStatKey(row.cardAddress, row.tokenId)
+          if (!k) continue
+          setCouponSocialStatByKey((prev) => {
+            const existing = prev[k]
+            const mergedLike = mergeCouponSocialLikeCount(
+              row.likeCount,
+              existing?.likeCount,
+              existing?.savedAt,
+            )
+            const patch: {
+              likeCount?: number
+              shareClickCount?: number
+              maxSupply?: string | null
+              remainingSupply?: string | null
+            } = {}
+            if (mergedLike != null) patch.likeCount = mergedLike
+            if (row.shareClickCount != null) patch.shareClickCount = row.shareClickCount
+            if (row.maxSupply !== undefined) patch.maxSupply = row.maxSupply
+            if (row.remainingSupply !== undefined) patch.remainingSupply = row.remainingSupply
+            if (Object.keys(patch).length === 0) return prev
+            const saved = saveCouponSocialStatEntry(row.cardAddress, row.tokenId, patch)
+            if (!saved) return prev
+            if (
+              existing?.likeCount === saved.likeCount &&
+              existing?.shareClickCount === saved.shareClickCount &&
+              existing?.maxSupply === saved.maxSupply &&
+              existing?.remainingSupply === saved.remainingSupply
+            ) {
+              return prev
+            }
+            return { ...prev, [k]: saved }
+          })
+        }
+      }),
+      onAppDaemonCouponOpenClaim((ev) => {
+        const currentEoa = profilesRef.current?.[0]?.keyID?.trim().toLowerCase() ?? ''
+        if (!currentEoa || ev.eoa.toLowerCase() !== currentEoa) return
+        for (const row of ev.results) {
+          const entry = saveCouponOpenClaimLocalStatus({
+            eoaAddress: ev.eoa,
+            cardAddress: row.cardAddress,
+            tokenId: row.tokenId,
+            couponId: row.couponId,
+            status: row.status,
+            source: 'chain',
+          })
+          const k = buildCouponOpenClaimStatusKey(row.cardAddress, row.tokenId)
+          if (!entry || !k) continue
+          setCouponOpenClaimStatusByKey((prev) => {
+            const prevEntry = prev[k]
+            if (
+              prevEntry &&
+              prevEntry.status === entry.status &&
+              prevEntry.source === entry.source &&
+              prevEntry.savedAt === entry.savedAt
+            ) {
+              return prev
+            }
+            return { ...prev, [k]: entry }
+          })
+          if (row.status === 'redeemed') {
+            setMyBrandCardDetails((prev) => {
+              const pruned = pruneRedeemedOwnedCouponsFromDetails(prev, {
+                ...loadCouponOpenClaimStatusMapForEoa(ev.eoa),
+                [k]: entry,
+              })
+              return pruned
+            })
+          }
+        }
+      }),
+    ]
     return () => {
-      cancelled = true
-      if (timer !== undefined) window.clearTimeout(timer)
+      for (const off of offs) off()
     }
-  }, [runGlobalWalletFeedTick])
+  }, [])
 
   useEffect(() => {
     const pac = `http://${serverIpAddress}:${serverPort}/pac`
@@ -2777,184 +2946,42 @@ export function DaemonProvider({ children }: DaemonProps) {
     firstLoad2.current=false;
   },[quickLinksShow])
 
-  /** 全局 Oracle 喂料器：启动时拉取一次，之后每 5 分钟刷新，供应所有页面 */
+  /** 全局 Oracle：Worker 5min tick 镜像；手动 refresh 触发 Worker 立刻重拉 */
   const fetchOracle = useCallback(async () => {
-    const data = await getOracle()
-    setCurrencyData(parseOracleToCurrencyData(data))
+    await refreshAppDaemonNow('all')
   }, [])
 
   const refreshOracle = useCallback(() => {
-    fetchOracle()
+    void fetchOracle()
   }, [fetchOracle])
 
+  /**
+   * App Daemon Worker owns feeder schedules + portable pure reads (incl. unifiedIncome).
+   * Main only runs needMainTick for My Brands / Recent Activity / Genesis / AA pending+assets.
+   */
   useEffect(() => {
-    let cancelled = false
-    let timer: number | undefined
-    const runOracleChain = () => {
-      if (cancelled) return
-      void (async () => {
-        try {
-          await fetchOracle()
-        } finally {
-          if (!cancelled) {
-            timer = window.setTimeout(runOracleChain, ORACLE_REFRESH_MS) as unknown as number
-          }
-        }
-      })()
-    }
-    runOracleChain()
-    return () => {
-      cancelled = true
-      if (timer !== undefined) window.clearTimeout(timer)
-    }
-  }, [fetchOracle])
-
-  /** Discover 商户点赞 / 转发点击：setTimeout 串行链，30s 节拍；仅 trusted 成功写 state + localStorage */
-  useEffect(() => {
-    let cancelled = false
-    let timer: number | undefined
-    const runChain = () => {
-      if (cancelled) return
-      void (async () => {
-        try {
-          await runDiscoverMerchantStatsFeedTick()
-        } finally {
-          if (!cancelled) {
-            timer = window.setTimeout(runChain, DISCOVER_MERCHANT_STATS_FEED_INTERVAL_MS) as unknown as number
-          }
-        }
-      })()
-    }
-    runChain()
-    return () => {
-      cancelled = true
-      if (timer !== undefined) window.clearTimeout(timer)
-    }
-  }, [runDiscoverMerchantStatsFeedTick])
-
-  /** Genesis Partnership purchase history：30s 增量 sinceMs；半永久本地 merge */
-  useEffect(() => {
-    let cancelled = false
-    let timer: number | undefined
-    const runChain = () => {
-      if (cancelled) return
-      void (async () => {
-        try {
-          await runGenesisIncomeFeedTick()
-        } finally {
-          if (!cancelled) {
-            timer = window.setTimeout(runChain, GENESIS_INCOME_FEED_INTERVAL_MS) as unknown as number
-          }
-        }
-      })()
-    }
-    runChain()
-    return () => {
-      cancelled = true
-      if (timer !== undefined) window.clearTimeout(timer)
-    }
-  }, [runGenesisIncomeFeedTick, profileWalletKeyId])
-
-  /** Coupons open-claim claimed/redeemed：setTimeout 链 30s；仅 trusted 链上结果升级 map + localStorage */
-  useEffect(() => {
-    let cancelled = false
-    let timer: number | undefined
-    const runChain = () => {
-      if (cancelled) return
-      void (async () => {
-        try {
-          await runCouponOpenClaimStatusFeedTick()
-        } finally {
-          if (!cancelled) {
-            timer = window.setTimeout(
-              runChain,
-              COUPON_OPEN_CLAIM_STATUS_FEED_INTERVAL_MS,
-            ) as unknown as number
-          }
-        }
-      })()
-    }
-    runChain()
-    return () => {
-      cancelled = true
-      if (timer !== undefined) window.clearTimeout(timer)
-    }
-  }, [runCouponOpenClaimStatusFeedTick, profileWalletKeyId])
-
-  /** Coupons 社交 + TOTAL·LEFT：与 open-claim 共用 targets，30s setTimeout 链 */
-  useEffect(() => {
-    let cancelled = false
-    let timer: number | undefined
-    const runChain = () => {
-      if (cancelled) return
-      void (async () => {
-        try {
-          await runCouponSocialStatsFeedTick()
-        } finally {
-          if (!cancelled) {
-            timer = window.setTimeout(
-              runChain,
-              COUPON_OPEN_CLAIM_STATUS_FEED_INTERVAL_MS,
-            ) as unknown as number
-          }
-        }
-      })()
-    }
-    runChain()
-    return () => {
-      cancelled = true
-      if (timer !== undefined) window.clearTimeout(timer)
-    }
-  }, [runCouponSocialStatsFeedTick])
-
-  /** Institutional AA V2 pending：共同签署者 15s daemon 拉取链上 task → 本地投票列表 */
-  useEffect(() => {
-    let cancelled = false
-    let timer: number | undefined
-    const runChain = () => {
-      if (cancelled) return
-      void (async () => {
-        try {
-          await runAaV2PendingTasksFeedTick()
-        } finally {
-          if (!cancelled) {
-            timer = window.setTimeout(runChain, AA_V2_PENDING_TASKS_FEED_MS) as unknown as number
-          }
-        }
-      })()
-    }
-    runChain()
-    return () => {
-      cancelled = true
-      if (timer !== undefined) window.clearTimeout(timer)
-    }
-  }, [runAaV2PendingTasksFeedTick, profileWalletKeyId])
-
-  /** Institutional Multisig list-item balances：30s daemon */
-  useEffect(() => {
-    let cancelled = false
-    let timer: number | undefined
-    const runChain = () => {
-      if (cancelled) return
-      void (async () => {
-        try {
-          await runInstitutionalAaAssetsFeedTick()
-        } finally {
-          if (!cancelled) {
-            timer = window.setTimeout(
-              runChain,
-              AA_MULTISIG_INSTITUTIONAL_ASSETS_FEED_MS
-            ) as unknown as number
-          }
-        }
-      })()
-    }
-    runChain()
-    return () => {
-      cancelled = true
-      if (timer !== undefined) window.clearTimeout(timer)
-    }
-  }, [runInstitutionalAaAssetsFeedTick, profileWalletKeyId])
+    return onAppDaemonNeedMainTick(async (ev) => {
+      const kinds = new Set<AppDaemonMainTickKind>(ev.kinds)
+      const walletKinds: AppDaemonMainTickKind[] = ['myBrands', 'recentActivity']
+      if (walletKinds.some((k) => kinds.has(k))) {
+        await runGlobalWalletFeedTick(kinds)
+      }
+      if (kinds.has('genesisIncome')) {
+        await runGenesisIncomeFeedTick()
+      }
+      if (kinds.has('aaV2Pending')) {
+        await runAaV2PendingTasksFeedTick()
+      }
+      if (kinds.has('aaInstitutionalAssets')) {
+        await runInstitutionalAaAssetsFeedTick()
+      }
+    })
+  }, [
+    runGlobalWalletFeedTick,
+    runGenesisIncomeFeedTick,
+    runAaV2PendingTasksFeedTick,
+    runInstitutionalAaAssetsFeedTick,
+  ])
 
   return (
     <Daemon.Provider value={{ power, setPower, sRegion, setSRegion, allRegions, setAllRegions, setRuleVisible,hasNewVersion, setHasNewVersion, version, secureCode, setSecureCode,

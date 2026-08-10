@@ -106,11 +106,18 @@ export class BeamioTagWorkerClient {
 		this.worker!.postMessage(msg)
 	}
 
-	request(msg: Omit<BeamioTagWorkerInbound, 'reqId'> & { reqId?: number }): Promise<unknown> {
+	/** Distributive Omit so union members keep their payload fields (CRA tsc). */
+	request(
+		msg: (BeamioTagWorkerInbound extends infer U
+			? U extends BeamioTagWorkerInbound
+				? Omit<U, 'reqId'> & { reqId?: number }
+				: never
+			: never),
+	): Promise<unknown> {
 		const reqId = msg.reqId && msg.reqId > 0 ? msg.reqId : this.nextReqId++
 		return new Promise((resolve, reject) => {
 			this.pending.set(reqId, { resolve, reject })
-			this.post({ ...(msg as BeamioTagWorkerInbound), reqId } as BeamioTagWorkerInbound)
+			this.post({ ...(msg as object), reqId } as BeamioTagWorkerInbound)
 		})
 	}
 

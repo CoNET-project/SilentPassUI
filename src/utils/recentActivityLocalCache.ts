@@ -4,7 +4,7 @@
  */
 
 import { ethers } from 'ethers'
-import type { TxView } from '@/pages/History/recentActivityIndexerMerge'
+import { remapPosCouponSurrenderTxView, type TxView } from '@/pages/History/recentActivityIndexerMerge'
 
 /** 持久化不含 rawTransaction（避免 bigint / 体积）；保留 isMerchantCharge + merchantPayeeAddress + merchantCardAddress + merchantChargeInStore + merchantChargeRewardPoint6 供 Charge 标题与 NFT#2 副标题 */
 export type RecentActivityCacheRow = Omit<TxView, 'rawTransaction'>
@@ -60,5 +60,5 @@ export function saveRecentActivityLocalCache(eoaLower: string, items: TxView[]):
 
 /** 从本地缓存行恢复为 TxView（无 rawTransaction） */
 export function txViewsFromLocalCache(rows: RecentActivityCacheRow[]): TxView[] {
-	return rows.map((row) => ({ ...row }))
+	return rows.map((row) => remapPosCouponSurrenderTxView({ ...row }))
 }

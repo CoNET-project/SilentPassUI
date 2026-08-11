@@ -58,6 +58,8 @@ import {
 	parseRecentActivityTopupDisplayJson,
 	topupCardAddressFromTxView,
 	resolveIndexerPayeeAddress,
+	isRecentActivityPosCouponRedeemTxView,
+	recentActivityTxExplorerChain,
 	type TxView,
 	type RawTxRecord,
 	type RouteItemRecord,
@@ -606,7 +608,9 @@ function RecentActivityTxItemRow({
 }: RecentActivityTxItemRowProps) {
 	const { resolveName, registerCardAddresses, ensureCardMetadata, cardMap, peekMetadata } =
 		useMerchantCardDatabase()
-	const isInternalTransfer = tx.type === 'internal_transfer' && !isMerchantChargeTxView(tx)
+	const isPosCouponRedeemLedgerTx = isRecentActivityPosCouponRedeemTxView(tx)
+	const isInternalTransfer =
+		tx.type === 'internal_transfer' && !isMerchantChargeTxView(tx) && !isPosCouponRedeemLedgerTx
 	const isReqExpired = (tx.type === 'request_create' || tx.type === 'request_expired') && isRequestExpired(tx)
 	const isReqCanceled = tx.type === 'request_create' && canceledHashes.has(getOriginalPaymentHash(tx))
 	const rawTx = tx.rawTransaction as RawTxRecord | undefined
@@ -624,10 +628,10 @@ function RecentActivityTxItemRow({
 	const isAddToExpressPay = isInternalTransfer && payeeAddr.toLowerCase() === aaAddr
 	// 根据 payer/payee 判断我方使用的钱包类型：收款时看 payee，付款时看 payer（indexer 的 isAAAccount 可能不准确）
 	const mySideIsAA = tx.isInbound ? (payeeAddr.toLowerCase() === aaAddr) : (payerAddr.toLowerCase() === aaAddr)
-	const isEoaSent = !mySideIsAA && !tx.isInbound && !isInternalTransfer
-	const isAASent = mySideIsAA && !tx.isInbound && !isInternalTransfer
-	const isEoaReceived = !mySideIsAA && tx.isInbound && !isInternalTransfer
-	const isAAReceived = mySideIsAA && tx.isInbound && !isInternalTransfer
+	const isEoaSent = !mySideIsAA && !tx.isInbound && !isInternalTransfer && !isPosCouponRedeemLedgerTx
+	const isAASent = mySideIsAA && !tx.isInbound && !isInternalTransfer && !isPosCouponRedeemLedgerTx
+	const isEoaReceived = !mySideIsAA && tx.isInbound && !isInternalTransfer && !isPosCouponRedeemLedgerTx
+	const isAAReceived = mySideIsAA && tx.isInbound && !isInternalTransfer && !isPosCouponRedeemLedgerTx
 	const needsCounterparty =
 		tx.type !== 'topup' &&
 		(isEoaSent || isEoaReceived || tx.type === 'request_fulfilled' || tx.type === 'merchant_gift')
@@ -680,12 +684,30 @@ function RecentActivityTxItemRow({
 		if (!isIssuedNftClaimTx) return ''
 		return tx.merchantCardAddress ?? indexerRouteCardAddress(rawTx?.route) ?? ''
 	}, [isIssuedNftClaimTx, tx.merchantCardAddress, rawTx?.route])
+	const couponRedeemCardAddr = useMemo(() => {
+		if (!isPosCouponRedeemLedgerTx) return ''
+		return tx.merchantCardAddress ?? indexerRouteCardAddress(rawTx?.route) ?? ''
+	}, [isPosCouponRedeemLedgerTx, tx.merchantCardAddress, rawTx?.route])
 	useEffect(() => {
-		const addr = merchantGiftCardAddr || merchantChargeCardAddr || topupCardAddr || claimCardAddr
+		const addr = merchantGiftCardAddr || merchantChargeCardAddr || topupCardAddr || claimCardAddr || couponRedeemCardAddr
 		if (!addr) return
 		registerCardAddresses([addr])
 		void ensureCardMetadata(addr)
-	}, [merchantGiftCardAddr, merchantChargeCardAddr, topupCardAddr, claimCardAddr, registerCardAddresses, ensureCardMetadata])
+	}, [merchantGiftCardAddr, merchantChargeCardAddr, topupCardAddr, claimCardAddr, couponRedeemCardAddr, registerCardAddresses, ensureCardMetadata])
+	const couponRedeemMerchantName = useMemo(() => {
+		if (!isPosCouponRedeemLedgerTx || !couponRedeemCardAddr) return ''
+		return pickMerchantProgramDisplayName({
+			displayNameFromDb: resolveName(couponRedeemCardAddr),
+			directoryName: recentActivityCardNameDirectory.get(couponRedeemCardAddr.toLowerCase()),
+			displayJsonCardName: '',
+		})
+	}, [
+		isPosCouponRedeemLedgerTx,
+		couponRedeemCardAddr,
+		resolveName,
+		cardMap,
+		recentActivityCardNameDirectory,
+	])
 	const claimMerchantName = useMemo(() => {
 		if (!isIssuedNftClaimTx || !claimCardAddr) return ''
 		const addrKey = claimCardAddr.toLowerCase()
@@ -793,7 +815,9 @@ function RecentActivityTxItemRow({
 	const paidToAA = payeeIsOther && !!beamioTag
 	// 无 originalPaymentHash 且为付款方时：Title = "Send to [beamio first lastname]"，subtitle = beamioTag
 	const sendToNoOph = (isEoaSent || isAASent) && !getOriginalPaymentHash(tx) && (fullName || beamioTag)
-	const rawTitleText = isIssuedNftClaimTx
+	const rawTitleText = isPosCouponRedeemLedgerTx
+		? tx.title || 'In-Store Coupon Redeem'
+		: isIssuedNftClaimTx
 		? resolvedClaimSeriesTitle ?? tx.title
 		: isMerchantGiftLedgerTx
 		? merchantGiftListTitle(tx.isInbound, beamioTag, counterpartyLabel)
@@ -823,7 +847,9 @@ function RecentActivityTxItemRow({
 									? internalTitle
 									: tx.title
 	const titleText = useStableRecentActivityTitle(tx.id, rawTitleText)
-	const rowSubtitleLabel = isIssuedNftClaimTx
+	const rowSubtitleLabel = isPosCouponRedeemLedgerTx
+		? (couponRedeemMerchantName || 'In-store')
+		: isIssuedNftClaimTx
 		? (claimMerchantName || tu('claimed'))
 		: isMerchantGiftLedgerTx
 		? merchantGiftCardDisplayName
@@ -851,7 +877,9 @@ function RecentActivityTxItemRow({
 								? (fullName ? (beamioTag ?? '') : '')
 								: (safeHandle || (tx.isInbound ? 'Received' : 'Sent'))
 
-	const iconBg = isIssuedNftClaimTx
+	const iconBg = isPosCouponRedeemLedgerTx
+		? 'bg-[#AF52DE]/10 text-[#AF52DE] dark:bg-[#AF52DE]/20 dark:text-[#c77dff]'
+		: isIssuedNftClaimTx
 		? tx.type === 'claim_catalog'
 			? 'bg-violet-500/10 text-violet-600 dark:bg-violet-500/20 dark:text-violet-300'
 			: 'bg-fuchsia-500/10 text-fuchsia-600 dark:bg-fuchsia-500/20 dark:text-fuchsia-300'
@@ -930,6 +958,8 @@ function RecentActivityTxItemRow({
 							)
 						) : isCardTopupLedgerTx ? (
 							<Plus size={16} strokeWidth={2.5} />
+						) : isPosCouponRedeemLedgerTx ? (
+							<Ticket size={16} strokeWidth={2} />
 						) : isEoaReceived && tx.type !== 'request_fulfilled' ? (
 							<ArrowDownLeft size={16} strokeWidth={2} />
 						) : isEoaSent || isAASent ? (
@@ -953,7 +983,7 @@ function RecentActivityTxItemRow({
 							label={rowSubtitleLabel}
 							txHash={rowBaseScanTxHash}
 							timestampMs={tx.timestampMs}
-							txExplorerChain={isCardTopupLedgerTx || isMerchantChargeLedgerTx ? 'conet' : 'base'}
+							txExplorerChain={recentActivityTxExplorerChain(tx)}
 						/>
 						{tx.type === 'request_fulfilled' && (
 							<span className="text-[8px] font-semibold text-[#34C759] bg-[#34C759]/10 px-1 py-0 rounded-[4px]">{tu('request')}</span>
@@ -999,6 +1029,8 @@ function RecentActivityTxItemRow({
 						)
 					) : isMerchantChargeLedgerTx ? (
 						formatMerchantChargeListAmountNegative(merchantChargeFiatAmount, merchantChargeCurrencyCode)
+					) : isPosCouponRedeemLedgerTx ? (
+						'Redeemed'
 					) : (
 						formatCurrencySigned(
 							vouchersInternalAmount
@@ -1172,6 +1204,9 @@ const ActiveHistoryPannelNew = ({
 	const detailTitleText = selectedTx
 		? (() => {
 				if (selectedTx.type === 'fuel_yield') return tu('fuel_yield_1_100')
+				if (isRecentActivityPosCouponRedeemTxView(selectedTx)) {
+					return selectedTx.title || 'In-Store Coupon Redeem'
+				}
 				const selectedRaw = selectedTx.rawTransaction as RawTxRecord | undefined
 				const selectedCat = String(selectedRaw?.txCategory ?? '').toLowerCase()
 				if (isMerchantChargeTxView(selectedTx)) {
@@ -2384,7 +2419,7 @@ const ActiveHistoryPannelNew = ({
 											? formatTopupListAmountPositive(selectedTx.amountFiat, selectedTx.currencyCode)
 										: selectedIsMerchantChargeKind
 											? formatMerchantChargeListAmountNegative(selectedChargeFiatAmount, selectedChargeCurrencyCode)
-										: selectedTx.amountUSDC === 0
+										: isRecentActivityPosCouponRedeemTxView(selectedTx) || selectedTx.amountUSDC === 0
 											? 'Redeemed'
 											: formatCurrencySigned(detailAmt, selectedTx.currencyCode)}
 								</h2>
@@ -2404,7 +2439,11 @@ const ActiveHistoryPannelNew = ({
 											</span>
 										) : null}
 										{selectedGiftBaseScanTxHash ? (
-											<RecentActivityTxHashCapsule txHash={selectedGiftBaseScanTxHash} className="max-w-[120px]" />
+											<RecentActivityTxHashCapsule
+												txHash={selectedGiftBaseScanTxHash}
+												explorerChain="conet"
+												className="max-w-[120px]"
+											/>
 										) : null}
 										{(selectedGiftCardDisplayName || selectedGiftBaseScanTxHash) ? (
 											<span className="text-[14px] font-medium text-gray-400 dark:text-slate-500" aria-hidden>
@@ -2437,6 +2476,8 @@ const ActiveHistoryPannelNew = ({
 													? (selectedChargeCurrencyCode.toUpperCase() === 'USDC' && selectedTx.amountUSDC !== 0
 														? `Settled for ${formatAmount(Math.abs(selectedTx.amountUSDC), 'USDC')} USDC`
 														: null)
+													: isRecentActivityPosCouponRedeemTxView(selectedTx)
+														? null
 													: selectedTx.amountUSDC !== 0
 														? `Settled for ${formatAmount(Math.abs(selectedTx.amountUSDC), 'USDC')} USDC`
 														: null
@@ -2475,7 +2516,7 @@ const ActiveHistoryPannelNew = ({
 						</div>
 
 						{/* displayJson 附带的 title / forText 等文字信息：Fuel Yield / Top-up detail 中不显示旧 indexer title 卡片 */}
-						{selectedTx.type !== 'fuel_yield' && !selectedIsProgramCardLedgerKind && (selectedTx.forText ?? selectedTx.handle) && (
+						{selectedTx.type !== 'fuel_yield' && !selectedIsProgramCardLedgerKind && !isRecentActivityPosCouponRedeemTxView(selectedTx) && (selectedTx.forText ?? selectedTx.handle) && (
 							<div className="mb-6 rounded-2xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 px-4 py-3">
 								{selectedTx.title !== tu('transaction') && selectedTx.title !== tu('beamio_transfer') && (
 									<p className="text-sm font-semibold text-slate-800 dark:text-slate-200">{selectedTx.title}</p>
@@ -3066,7 +3107,7 @@ const ActiveHistoryPannelNew = ({
 						<div className="space-y-3 mb-8">
 							{(() => {
 								const settlementTxHash = resolveTxViewBaseScanTxHash(selectedTx)
-								const useConetExplorer = selectedIsProgramCardLedgerKind
+								const useConetExplorer = recentActivityTxExplorerChain(selectedTx) === 'conet'
 								return (
 									<>
 							<h4 className="text-[11px] font-bold text-gray-400 dark:text-slate-500 uppercase tracking-wider mb-2 pl-2">

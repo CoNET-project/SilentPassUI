@@ -89,7 +89,7 @@ export const TX_GIFT_CONFIRMED = ethers.keccak256(ethers.toUtf8Bytes('gift:confi
 export function isGiftDisplayJson(displayJson: string | undefined | null): boolean {
 	if (!displayJson || !String(displayJson).trim()) return false
 	try {
-		const d = JSON.parse(String(displayJson)) as { source?: string; handle?: string; forText?: string }
+		const d = JSON.parse(displayJson) as { source?: string; handle?: string; forText?: string }
 		const src = String(d.source ?? '').toLowerCase()
 		if (src === 'gift') return true
 		const handle = String(d.handle ?? d.forText ?? '')
@@ -99,6 +99,88 @@ export function isGiftDisplayJson(displayJson: string | undefined | null): boole
 	} catch {
 		return false
 	}
+}
+
+/** POS in-store coupon NFT surrender — indexer often stores qty `1` as USDC6=1 (1e-6 USDC). */
+export function isPosCouponSurrenderDisplayJson(displayJson: string | undefined | null): boolean {
+	if (!displayJson || !String(displayJson).trim()) return false
+	try {
+		const d = JSON.parse(String(displayJson)) as {
+			source?: string
+			handle?: string
+			forText?: string
+			title?: string
+		}
+		const src = String(d.source ?? '').trim().toLowerCase()
+		if (src === 'poscouponsurrender') return true
+		const handle = String(d.handle ?? d.forText ?? '')
+			.trim()
+			.toLowerCase()
+		if (handle === 'pos coupon surrender') return true
+		return String(d.title ?? '').trim().toLowerCase() === 'in-store coupon redeem'
+	} catch {
+		return false
+	}
+}
+
+export function isPosCouponSurrenderTxView(tx: {
+	title?: string
+	handle?: string
+	forText?: string
+	rawTransaction?: { displayJson?: string }
+}): boolean {
+	if (isPosCouponSurrenderDisplayJson(tx.rawTransaction?.displayJson)) return true
+	if (String(tx.title ?? '').trim().toLowerCase() === 'in-store coupon redeem') return true
+	return String(tx.handle ?? tx.forText ?? '')
+		.trim()
+		.toLowerCase() === 'pos coupon surrender'
+}
+
+/** Coupon NFT qty is not money — show voucher burn / Redeemed, never 2-dp USDC of 1e-6. */
+export function remapPosCouponSurrenderTxView<T extends {
+	type: string
+	title?: string
+	amountUSDC: number
+	amountFiat: number
+}>(tx: T): T {
+	if (!isPosCouponSurrenderTxView(tx)) return tx
+	return {
+		...tx,
+		type: 'voucher_burn',
+		title: String(tx.title ?? '').trim() || 'In-Store Coupon Redeem',
+		amountUSDC: 0,
+		amountFiat: 0,
+	}
+}
+
+export function isRecentActivityPosCouponRedeemTxView(tx: {
+	type?: string
+	title?: string
+	handle?: string
+	forText?: string
+	rawTransaction?: { displayJson?: string }
+}): boolean {
+	if (!tx) return false
+	if (tx.type === 'voucher_burn') return true
+	return isPosCouponSurrenderTxView(tx)
+}
+
+/** Coupon / catalog / charge / top-up / gift settle on CoNET L1 — never BaseScan. */
+export function recentActivityTxExplorerChain(tx: TxView | undefined): 'base' | 'conet' {
+	if (!tx) return 'base'
+	if (
+		tx.type === 'voucher_burn' ||
+		tx.type === 'claim_coupon' ||
+		tx.type === 'claim_catalog' ||
+		tx.type === 'merchant_gift' ||
+		isRecentActivityPosCouponRedeemTxView(tx) ||
+		isRecentActivityIssuedNftClaimTxView(tx) ||
+		isMerchantChargeTxView(tx) ||
+		isRecentActivityCardTopupTxView(tx)
+	) {
+		return 'conet'
+	}
+	return 'base'
 }
 
 /** User-to-user merchant program card points gift — not POS Charge / in-store payment. */
@@ -1334,11 +1416,14 @@ function appendIndexerPage(
 		}
 		const issuedNftClaim = mapIndexerIssuedNftConsumerClaimActivity(claimArgs)
 		const isIssuedNftRedeemRow = isIndexerIssuedNftCardRedeemTx(claimArgs)
+		const isPosCouponSurrender = isPosCouponSurrenderDisplayJson(tx.displayJson ?? '')
 
-		const type = issuedNftClaim?.type ?? txCategoryToType(tx.txCategory ?? '')
+		const type = isPosCouponSurrender
+			? 'voucher_burn'
+			: issuedNftClaim?.type ?? txCategoryToType(tx.txCategory ?? '')
 		const amPayee = normalized.some((a) => a.toLowerCase() === (tx.payee ?? '').toLowerCase())
 		let { title, handle, forText, card } = parseDisplayJson(tx.displayJson ?? '')
-		if (issuedNftClaim) {
+		if (issuedNftClaim && !isPosCouponSurrender) {
 			title = issuedNftClaim.title
 		}
 		if (String(tx.txCategory ?? '') === TX_BUINT_USDC && amPayee) {
@@ -1369,7 +1454,9 @@ function appendIndexerPage(
 				? issuedNftClaimRouteIdentity(rawRecord.route)
 				: { cardAddress: '', tokenId: '' }
 		const claimCardAddress = redeemRouteId.cardAddress
-		const amountUSDC = Number(ethers.formatUnits(tx.finalRequestAmountUSDC6 ?? 0n, 6))
+		const amountUSDC = isPosCouponSurrender
+			? 0
+			: Number(ethers.formatUnits(tx.finalRequestAmountUSDC6 ?? 0n, 6))
 		const metaRaw = (tx as RawTxRecord).meta
 		const req =
 			metaRaw && typeof metaRaw === 'object'
@@ -1390,7 +1477,7 @@ function appendIndexerPage(
 			: req
 				? req.requestAmountFiat6 - req.discountAmountFiat6 + req.taxAmountFiat6
 				: (tx.finalRequestAmountFiat6 ?? (metaRaw as RawTxRecord['meta'])?.requestAmountFiat6 ?? 0n)
-		const amountFiat = Number(amountFiat6) / 1e6
+		const amountFiat = isPosCouponSurrender ? 0 : Number(amountFiat6) / 1e6
 		const currencyFiatNum =
 			metaRaw && typeof metaRaw === 'object' && 'currencyFiat' in metaRaw
 				? (metaRaw as { currencyFiat?: number }).currencyFiat
@@ -1411,25 +1498,35 @@ function appendIndexerPage(
 		const giftCardAddress = isConsumerGift ? merchantChargeCardAddressFromRaw(rawRecord) : ''
 		const merchantCardAddress = isMerchantCharge ? merchantChargeCardAddressFromRaw(rawRecord) : ''
 		const isEoaAaInternal =
+			!isPosCouponSurrender &&
 			!isMerchantCharge &&
 			!isConsumerGift &&
 			normalized.length >= 2 &&
 			normalized.some((a) => a.toLowerCase() === payerAddr) &&
 			normalized.some((a) => a.toLowerCase() === payeeAddr) &&
 			payerAddr !== payeeAddr
-		const resolvedType = isConsumerGift
-			? 'merchant_gift'
-			: isMerchantCharge
-				? 'merchant_pay'
-				: isEoaAaInternal
-					? 'internal_transfer'
-					: type
+		const resolvedType = isPosCouponSurrender
+			? 'voucher_burn'
+			: isConsumerGift
+				? 'merchant_gift'
+				: isMerchantCharge
+					? 'merchant_pay'
+					: isEoaAaInternal
+						? 'internal_transfer'
+						: type
 		if (isConsumerGift) {
 			title = tu('merchant_gift')
 		}
 		if (isMerchantCharge) {
 			title = tu('merchant_payment')
 		}
+		if (isPosCouponSurrender) {
+			title = 'In-Store Coupon Redeem'
+		}
+		const surrenderCardAddress = isPosCouponSurrender
+			? parseDisplayJsonCardIdentity(tx.displayJson ?? '').cardAddress ||
+				indexerRouteCardAddress(rawRecord.route)
+			: ''
 		merged.push({
 			id,
 			type: resolvedType,
@@ -1462,7 +1559,9 @@ function appendIndexerPage(
 					? { merchantCardAddress: topupCardAddress }
 					: claimCardAddress
 						? { merchantCardAddress: claimCardAddress }
-						: {}),
+						: surrenderCardAddress
+							? { merchantCardAddress: surrenderCardAddress }
+							: {}),
 			...(redeemRouteId.tokenId ? { issuedNftClaimTokenId: redeemRouteId.tokenId } : {}),
 			rawTransaction: rawRecord,
 			card: card?.image ? card : undefined,

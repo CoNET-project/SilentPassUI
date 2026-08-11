@@ -6,13 +6,21 @@ import {
 	CONET_VALIDATOR_DEPOSIT_REDEEM,
 } from '@/config/chainAddresses'
 import { conetDepinProvider } from '@/utils/constants'
+import { fetchClRewardPaidByValidatorPubkeys } from '@/utils/conetValidatorDashboardApi'
+import {
+	loadNodeRewardSettledCursor,
+	saveNodeRewardSettledCursor,
+} from '@/utils/nodeRewardSettledLocalCache'
 
 /**
  * 直读 ValidatorDepositRedeem（CoNET RPC）：
  * - {resolveNodeBundle} — 节点档案（数量、IP 列表、CNET / GB / USDC 余额）
  * - {resolveUnifiedIncomeStats} — GB + CNET 收入统计（受益人总量 + 每节点明细）
  *
- * 单一事实来源为链上合约，不经过后端 API（beamio-rpc-first-no-centralized-api.mdc）。
+ * 链上 view 走 RPC（beamio-rpc-first-no-centralized-api.mdc）。CL skim（NodeRewardSettled /
+ * 私有 `clRewardPaid`）无 public getter：用 Cluster
+ * `GET https://beamio.app/api/v2/conet/validators/:pubkey`（与 Blockscout
+ * `/validator/:pubkey` 页同一 JSON）。禁止创世 `eth_getLogs`。
  */
 
 const NODE_BUNDLE_TUPLE =
@@ -32,9 +40,8 @@ const VALIDATOR_WALLET_NODE_PROFILE_ABI = [
 	`function getBeneficiaryNodeBundle(address beneficiary) view returns (${NODE_BUNDLE_TUPLE})`,
 	`function resolveNodeBundle(address maybeWallet, string conetDepinNodeIp) view returns (${NODE_BUNDLE_TUPLE})`,
 	`function resolveUnifiedIncomeStats(address maybeWallet, string conetDepinNodeIp, uint256 anchorTs) view returns (${UNIFIED_INCOME_STATS_TUPLE})`,
-	// Note: storage mapping `clRewardPaid` on VDR is private — there is no public getter. CL totals
-	// must be recovered from `NodeRewardSettled` logs (indexer / resolveUnifiedIncomeStats CNET may stay 0).
-	'event NodeRewardSettled(uint256 indexed guardianId, address indexed beneficiary, uint256 amount, bytes32 indexed eventKey)',
+	// `clRewardPaid` is private — no eth_call getter. CL totals come from Cluster
+	// `GET /api/v2/conet/validators/:pubkey` (same JSON as mainnet.conet.network/validator/:pubkey).
 	'function airdropInfoOf(address beneficiary) view returns (uint256 accrued, uint256 claimed, uint256 claimable, uint64 claimableAt)',
 	'function referrerExtension() view returns (address)',
 	'function gbToken() view returns (address)',
@@ -1089,9 +1096,8 @@ function mergeSettledClRewardsFromEvents(
 /**
  * Per-node CL skim reward actually paid, grouped by guardianId.
  *
- * {settleNodeRewards} only stores private `clRewardPaid[beneficiary]`; there is no public aggregate view.
- * The per-guardian breakdown (and therefore the beneficiary total) is recovered from
- * `NodeRewardSettled(guardianId, beneficiary, amount, eventKey)` logs.
+ * {settleNodeRewards} only stores private `clRewardPaid[beneficiary]`; there is no public getter.
+ * Authoritative aggregate = Cluster `GET /api/v2/conet/validators/:pubkey` (`chain.clRewardPaidWei`).
  * ValidatorNodeRewardIndexer.getNodeRewardSummary may stay 0 while CL payouts already hit the wallet.
  *
  * 返回 Map<guardianId, wei>；读取失败返回空 Map（不覆盖 UI 上次可信值，见 beamio-trusted-vs-untrusted-fetch.mdc）。
@@ -1099,78 +1105,41 @@ function mergeSettledClRewardsFromEvents(
 const guardianClRewardPaidCache = new Map<string, Map<number, bigint>>()
 const guardianClRewardPaidInFlight = new Map<string, Promise<void>>()
 
-/** CoNET RPC caps eth_getLogs at 5000 blocks (rpc1.conet.network returns -32602 above that). */
-const NODE_REWARD_SETTLED_LOG_CHUNK = 4_999
-/** Parallel chunk scans — sequential full-history scans take minutes and starve the BountyBoard daemon tick. */
-const NODE_REWARD_SETTLED_LOG_CONCURRENCY = 12
-
-function accumulateNodeRewardSettledLogs(
-	redeem: ethers.Contract,
-	logs: ethers.Log[],
-	out: Map<number, bigint>,
-): void {
-	for (const log of logs) {
-		let args = (log as ethers.EventLog).args
-		if (!args) {
-			try {
-				const parsed = redeem.interface.parseLog({
-					topics: log.topics,
-					data: log.data,
-				})
-				if (parsed?.name === 'NodeRewardSettled') args = parsed.args
-			} catch {
-				/* Ignore malformed or provider-specific log records. */
-			}
-		}
-		if (!args) continue
-		const guardianId = Number(args.guardianId ?? args[0])
-		const amount = BigInt(String(args.amount ?? args[2] ?? 0))
-		if (!Number.isFinite(guardianId) || amount <= 0n) continue
-		out.set(guardianId, (out.get(guardianId) ?? 0n) + amount)
-	}
+function cloneGuardianClMap(src: Map<number, bigint>): Map<number, bigint> {
+	return new Map(src)
 }
 
-/** Scan NodeRewardSettled in RPC-sized chunks (parallel); a single 0..latest query exceeds CoNET eth_getLogs limits. */
-async function queryNodeRewardSettledByBeneficiary(
-	redeem: ethers.Contract,
-	beneficiary: string,
-): Promise<Map<number, bigint>> {
-	const filter = redeem.filters.NodeRewardSettled!(null, beneficiary)
-	const latest = await conetDepinProvider.getBlockNumber()
-	const out = new Map<number, bigint>()
-	const ranges: Array<{ from: number; to: number }> = []
-	for (let from = 0; from <= latest; from += NODE_REWARD_SETTLED_LOG_CHUNK) {
-		ranges.push({ from, to: Math.min(latest, from + NODE_REWARD_SETTLED_LOG_CHUNK - 1) })
-	}
-	for (let i = 0; i < ranges.length; i += NODE_REWARD_SETTLED_LOG_CONCURRENCY) {
-		const batch = ranges.slice(i, i + NODE_REWARD_SETTLED_LOG_CONCURRENCY)
-		const results = await Promise.all(
-			batch.map(({ from, to }) => redeem.queryFilter(filter, from, to)),
-		)
-		for (const logs of results) accumulateNodeRewardSettledLogs(redeem, logs, out)
+function mergeGuardianClMaps(base: Map<number, bigint>, incoming: Map<number, bigint>): Map<number, bigint> {
+	const out = cloneGuardianClMap(base)
+	for (const [gid, wei] of incoming) {
+		if (wei > (out.get(gid) ?? 0n)) out.set(gid, wei)
 	}
 	return out
 }
 
 /**
- * Load the per-guardian CL settle breakdown (and therefore beneficiary total via sum).
- * Single-flight + cached so daemon ticks do not overlap full-history scans.
+ * Load the per-guardian CL settle breakdown from Cluster validator dashboard APIs.
+ * Local-first: persist last trusted map; untrusted HTTP does not clear it.
  */
 async function readClRewardPaidByGuardian(
-	redeem: ethers.Contract,
 	beneficiary: string | null,
+	nodes: ReadonlyArray<{ guardianId?: number; validatorPubkey?: string }>,
 ): Promise<Map<number, bigint>> {
 	if (!beneficiary) return new Map()
 	const key = beneficiary.toLowerCase()
 
+	const persistTrusted = (out: Map<number, bigint>) => {
+		guardianClRewardPaidCache.set(key, cloneGuardianClMap(out))
+		saveNodeRewardSettledCursor(key, { toBlock: 0, byGuardian: out })
+	}
+
 	const cached = guardianClRewardPaidCache.get(key)
 	if (cached) {
-		// Refresh in background; return last trusted map immediately.
 		if (!guardianClRewardPaidInFlight.has(key)) {
 			const refresh = (async () => {
 				try {
-					const out = await queryNodeRewardSettledByBeneficiary(redeem, beneficiary)
-					guardianClRewardPaidCache.set(key, out)
+					const remote = await fetchClRewardPaidByValidatorPubkeys(nodes)
+					if (remote) persistTrusted(mergeGuardianClMaps(cached, remote))
 				} catch {
 					/* keep last trusted */
 				} finally {
@@ -1179,17 +1148,24 @@ async function readClRewardPaidByGuardian(
 			})()
 			guardianClRewardPaidInFlight.set(key, refresh)
 		}
-		return cached
+		return cloneGuardianClMap(cached)
 	}
 
 	let task = guardianClRewardPaidInFlight.get(key)
 	if (!task) {
 		task = (async () => {
 			try {
-				const out = await queryNodeRewardSettledByBeneficiary(redeem, beneficiary)
-				guardianClRewardPaidCache.set(key, out)
+				const stored = await loadNodeRewardSettledCursor(key)
+				if (stored && stored.byGuardian.size > 0) {
+					guardianClRewardPaidCache.set(key, cloneGuardianClMap(stored.byGuardian))
+				}
+				const remote = await fetchClRewardPaidByValidatorPubkeys(nodes)
+				if (remote) {
+					const base = guardianClRewardPaidCache.get(key) ?? new Map<number, bigint>()
+					persistTrusted(mergeGuardianClMaps(base, remote))
+				}
 			} catch {
-				// Preserve the last trusted per-node cache on an untrusted read.
+				/* Preserve the last trusted per-node cache on an untrusted read. */
 			} finally {
 				guardianClRewardPaidInFlight.delete(key)
 			}
@@ -1198,7 +1174,7 @@ async function readClRewardPaidByGuardian(
 	}
 
 	await task
-	return guardianClRewardPaidCache.get(key) ?? new Map()
+	return cloneGuardianClMap(guardianClRewardPaidCache.get(key) ?? new Map())
 }
 
 /**
@@ -1248,6 +1224,34 @@ function assignGuardianIdsToNodes(stats: UnifiedIncomeStats, bundle: Beneficiary
 		const gid = walletToGuardian.get(String(node.nodeWallet ?? '').toLowerCase())
 		if (gid !== undefined) node.guardianId = gid
 	}
+}
+
+/**
+ * guardian-id 绑定后，validator pubkey / active 按「每个 guardian 节点」聚合。
+ * 同一 nodeWallet 可能拥有多个 guardian 节点（各自独立 validator）。
+ * join key 必须是单个 guardian 节点（DePIN IP）；IP 缺失时回退到下标对齐。
+ */
+function joinBundleValidatorFields(stats: UnifiedIncomeStats, bundle: BeneficiaryNodeBundle): void {
+	const activeByIp = new Map<string, boolean>()
+	const pubkeyByIp = new Map<string, string>()
+	bundle.nodes.forEach((n) => {
+		const ip = normalizeDepinIp(n.ip)
+		if (!ip) return
+		activeByIp.set(ip, n.validatorActive)
+		if (n.validatorPubkey) pubkeyByIp.set(ip, n.validatorPubkey)
+	})
+	stats.nodes = stats.nodes.map((rowNode, i) => {
+		const ip = normalizeDepinIp(rowNode.depinNodeIp)
+		const active = ip && activeByIp.has(ip)
+			? activeByIp.get(ip)!
+			: bundle.validatorActive[i] ?? false
+		const pubkey = (ip && pubkeyByIp.get(ip)) || bundle.validatorPubkeys[i] || ''
+		return {
+			...rowNode,
+			validatorActive: Boolean(active),
+			validatorPubkey: pubkey || undefined,
+		}
+	})
 }
 
 /** 解析 airdropInfoOf(beneficiary) → (accrued, claimed, claimable, claimableAt)。 */
@@ -1363,6 +1367,8 @@ async function assembleUnifiedIncomeStatsClientSide(
 			gb: gbNode,
 			cnet: cnetNode,
 			guardianId: n.nodeId,
+			validatorPubkey: n.validatorPubkey || undefined,
+			validatorActive: n.validatorActive,
 		})
 	}
 
@@ -1377,7 +1383,7 @@ async function assembleUnifiedIncomeStatsClientSide(
 		airdropReadOk: true,
 	}
 	if (ben) {
-		const guardianClPaid = await readClRewardPaidByGuardian(redeem, ben)
+		const guardianClPaid = await readClRewardPaidByGuardian(ben, stats.nodes)
 		mergeSettledClRewardsFromEvents(stats, guardianClPaid)
 		const guardianIds = stats.nodes.map((n) => n.guardianId).filter((id): id is number => id !== undefined)
 		const depinPaid = await readDepinPaidGbFromLedger(ben, guardianIds)
@@ -1532,9 +1538,16 @@ export async function fetchUnifiedIncomeStats(
 			return { ok: false, error: 'resolveUnifiedIncomeStats read failed' }
 		}
 		// L1 CL gas earned: indexer / resolveUnifiedIncomeStats CNET often 0 while settleNodeRewards already paid.
-		// Authoritative source = NodeRewardSettled logs (VDR clRewardPaid mapping is private — no getter).
+		// Authoritative source = Cluster /api/v2/conet/validators/:pubkey (same JSON as Blockscout validator page).
 		// resolveUnifiedIncomeStats node tuples lack guardianId, so join it from the bundle by nodeWallet first.
 		assignGuardianIdsToNodes(stats, parsedBundle)
+		if (parsedBundle) {
+			try {
+				joinBundleValidatorFields(stats, parsedBundle)
+			} catch {
+				/* keep income stats without validator-active join */
+			}
+		}
 		const incomeBeneficiary =
 			stats.beneficiary ?? parsedBundle?.beneficiary ?? (isAddr ? maybeWallet : null)
 		// airdrop（vesting）账本按 redeem **beneficiary** 查询（非 node operator 钱包）。
@@ -1558,7 +1571,7 @@ export async function fetchUnifiedIncomeStats(
 			stats.airdropReadOk = true
 		}
 		if (incomeBeneficiary) {
-			const guardianClPaid = await readClRewardPaidByGuardian(redeem, incomeBeneficiary)
+			const guardianClPaid = await readClRewardPaidByGuardian(incomeBeneficiary, stats.nodes)
 			mergeSettledClRewardsFromEvents(stats, guardianClPaid)
 			if (resolveGbDepinAirdropAddress()) {
 				const guardianIds = stats.nodes.map((n) => n.guardianId).filter((id): id is number => id !== undefined)
@@ -1573,38 +1586,6 @@ export async function fetchUnifiedIncomeStats(
 			} else {
 				stats.gbPaidDepinReceived = { cumulativeRaw: '0', cumulative: '0' }
 				stats.gbPaidDepinReadOk = true
-			}
-		}
-		if (parsedBundle) {
-			try {
-				const bundle = parsedBundle
-				// guardian-id 绑定后，validator pubkey / active 按「每个 guardian 节点」聚合，
-				// 同一 nodeWallet 可能拥有多个 guardian 节点（各自独立 validator）。
-				// 因此 join key 必须是 **单个 guardian 节点**（DePIN IP，全局唯一），不能用 nodeWallet
-				// （会把同钱包多个节点的 BLS pubkey 折叠成同一个）。IP 缺失时回退到下标对齐
-				// （income 与 bundle 同源于 resolveNodeBundle 的同序 guardian 遍历）。
-				const activeByIp = new Map<string, boolean>()
-				const pubkeyByIp = new Map<string, string>()
-				bundle.nodes.forEach((n) => {
-					const ip = normalizeDepinIp(n.ip)
-					if (!ip) return
-					activeByIp.set(ip, n.validatorActive)
-					if (n.validatorPubkey) pubkeyByIp.set(ip, n.validatorPubkey)
-				})
-				stats.nodes = stats.nodes.map((rowNode, i) => {
-					const ip = normalizeDepinIp(rowNode.depinNodeIp)
-					const active = ip && activeByIp.has(ip)
-						? activeByIp.get(ip)!
-						: bundle.validatorActive[i] ?? false
-					const pubkey = (ip && pubkeyByIp.get(ip)) || bundle.validatorPubkeys[i] || ''
-					return {
-						...rowNode,
-						validatorActive: Boolean(active),
-						validatorPubkey: pubkey || undefined,
-					}
-				})
-			} catch {
-				// keep income stats without validator-active join
 			}
 		}
 		if (incomeBeneficiary) {

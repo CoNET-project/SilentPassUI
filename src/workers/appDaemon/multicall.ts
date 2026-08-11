@@ -1,7 +1,7 @@
 /**
  * Multicall3 aggregate3 helper for App Daemon Worker.
- * Untrusted failure (unset / empty code / revert) returns unsuccessful placeholders —
- * never serial eth_call (CoNET provider is batchMaxCount:1).
+ * `aggregate3` is payable on-chain; Worker has no signer — always `staticCall` (eth_call).
+ * Untrusted failure returns unsuccessful placeholders.
  */
 
 import { ethers } from 'ethers'
@@ -49,13 +49,28 @@ async function aggregateViaContract(
 			allowFailure: c.allowFailure !== false,
 			callData: c.callData,
 		}))
-		const raw = (await mc.aggregate3(packed)) as { success: boolean; returnData: string }[]
+		/** payable ABI + provider-only runner → must staticCall, else ethers tries sendTransaction */
+		const raw = (await mc.aggregate3.staticCall(packed)) as Array<{
+			success?: boolean
+			returnData?: ethers.BytesLike
+			0?: boolean
+			1?: ethers.BytesLike
+		}>
 		return raw.map((r) => ({
-			success: Boolean(r.success),
-			returnData: String(r.returnData ?? '0x'),
+			success: Boolean(r.success ?? r[0]),
+			returnData: toHexBytes(r.returnData ?? r[1]),
 		}))
 	} catch {
 		return null
+	}
+}
+
+function toHexBytes(v: unknown): string {
+	if (v == null) return '0x'
+	try {
+		return ethers.hexlify(v as ethers.BytesLike)
+	} catch {
+		return typeof v === 'string' && v.startsWith('0x') ? v : '0x'
 	}
 }
 
@@ -72,27 +87,50 @@ export async function multicallAggregate3Conet(calls: MulticallCall[]): Promise<
 	return untrustedEmpty(calls)
 }
 
+async function aggregateFallback(
+	provider: ethers.JsonRpcProvider,
+	calls: MulticallCall[],
+): Promise<MulticallResult[]> {
+	const results = await Promise.all(
+		calls.map(async (c) => {
+			try {
+				const returnData = await provider.call({
+					to: ethers.getAddress(c.target),
+					data: c.callData,
+				})
+				return { success: true, returnData: toHexBytes(returnData) }
+			} catch {
+				return { success: false, returnData: '0x' }
+			}
+		}),
+	)
+	return results
+}
+
 export async function multicallAggregate3Base(calls: MulticallCall[]): Promise<MulticallResult[]> {
 	if (!calls.length) return []
 	const provider = getAppDaemonBaseProvider()
 	const via = await aggregateViaContract(provider, APP_DAEMON_BASE_MULTICALL3, calls)
 	if (via) return via
-	return untrustedEmpty(calls)
+	/** Base JsonRpcProvider batches; direct eth_call is a trusted fallback. */
+	return aggregateFallback(provider, calls)
 }
 
 export function decodeUint256(returnData: string): bigint | null {
-	if (!returnData || returnData === '0x' || returnData.length < 66) return null
+	const hex = toHexBytes(returnData)
+	if (!hex || hex === '0x' || hex.length < 66) return null
 	try {
-		return ethers.AbiCoder.defaultAbiCoder().decode(['uint256'], returnData)[0] as bigint
+		return ethers.AbiCoder.defaultAbiCoder().decode(['uint256'], hex)[0] as bigint
 	} catch {
 		return null
 	}
 }
 
 export function decodeBool(returnData: string): boolean | null {
-	if (!returnData || returnData === '0x' || returnData.length < 66) return null
+	const hex = toHexBytes(returnData)
+	if (!hex || hex === '0x' || hex.length < 66) return null
 	try {
-		return Boolean(ethers.AbiCoder.defaultAbiCoder().decode(['bool'], returnData)[0])
+		return Boolean(ethers.AbiCoder.defaultAbiCoder().decode(['bool'], hex)[0])
 	} catch {
 		return null
 	}

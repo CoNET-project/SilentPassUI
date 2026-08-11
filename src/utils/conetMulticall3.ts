@@ -52,10 +52,22 @@ export async function multicallAggregate3ConetMain(
 				allowFailure: c.allowFailure !== false,
 				callData: c.callData,
 			}))
-			const raw = (await mc.aggregate3(packed)) as { success: boolean; returnData: string }[]
+			const raw = (await mc.aggregate3.staticCall(packed)) as Array<{
+				success?: boolean
+				returnData?: ethers.BytesLike
+				0?: boolean
+				1?: ethers.BytesLike
+			}>
 			return raw.map((r) => ({
-				success: Boolean(r.success),
-				returnData: String(r.returnData ?? '0x'),
+				success: Boolean(r.success ?? r[0]),
+				returnData: (() => {
+					const v = r.returnData ?? r[1]
+					try {
+						return ethers.hexlify(v as ethers.BytesLike)
+					} catch {
+						return String(v ?? '0x')
+					}
+				})(),
 			}))
 		} catch {
 			/* fall through — never serial provider.call (batchMaxCount:1 storms RPC) */

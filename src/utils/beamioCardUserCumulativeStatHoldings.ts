@@ -1,5 +1,9 @@
 import { ethers } from 'ethers'
 import { providerForBeamioUserCard } from '@/utils/beamioUserCardChain'
+import {
+	decodeMulticallUint256,
+	multicallAggregate3ConetMain,
+} from '@/utils/conetMulticall3'
 
 /**
  * UserCumulativeStatLib.cardLevelStatTokenIds() — L0/L1 program stat ERC-1155 ids (3–30, plus #13).
@@ -11,6 +15,7 @@ export const CARD_LEVEL_USER_CUMUL_STAT_TOKEN_IDS: readonly number[] = [
 ]
 
 const BALANCE_OF_ABI = ['function balanceOf(address account, uint256 id) view returns (uint256)'] as const
+const BALANCE_OF_IFACE = new ethers.Interface(BALANCE_OF_ABI)
 
 const USER_HAS_ANY_PROGRAM_ASSET_ABI = [
 	'function userHasAnyProgramAsset(address userEOA) view returns (bool)',
@@ -65,24 +70,27 @@ export async function fetchCardLevelStatNftHoldings(
 
 	try {
 		const { provider } = await providerForBeamioUserCard(addr)
-		const card = new ethers.Contract(addr, BALANCE_OF_ABI, provider)
 		const heldIds = new Set<number>()
-
-		await Promise.all(
-			CARD_LEVEL_USER_CUMUL_STAT_TOKEN_IDS.map(async (tokenId) => {
-				for (const account of accounts) {
-					try {
-						const bal = (await card.balanceOf(account, BigInt(tokenId))) as bigint
-						if (bal > 0n) {
-							heldIds.add(tokenId)
-							return
-						}
-					} catch {
-						/* keep scanning */
-					}
-				}
-			})
+		/** One Multicall3 eth_call for all (account × tokenId) balanceOf — not N×M RPC. */
+		const calls = accounts.flatMap((account) =>
+			CARD_LEVEL_USER_CUMUL_STAT_TOKEN_IDS.map((tokenId) => ({
+				target: addr,
+				allowFailure: true,
+				callData: BALANCE_OF_IFACE.encodeFunctionData('balanceOf', [account, BigInt(tokenId)]),
+				tokenId,
+			})),
 		)
+		const results = await multicallAggregate3ConetMain(
+			calls.map(({ target, allowFailure, callData }) => ({ target, allowFailure, callData })),
+			provider,
+		)
+		for (let i = 0; i < results.length; i++) {
+			const r = results[i]
+			const tokenId = calls[i]?.tokenId
+			if (tokenId == null || !r?.success) continue
+			const bal = decodeMulticallUint256(r.returnData)
+			if (bal != null && bal > 0n) heldIds.add(tokenId)
+		}
 
 		return [...heldIds]
 			.sort((a, b) => a - b)

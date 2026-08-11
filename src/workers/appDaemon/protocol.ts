@@ -8,7 +8,7 @@
 /** Light wallet tick: balances + profile / dashboard snapshot */
 export const APP_DAEMON_WALLET_FEED_MS = 6_000
 export const APP_DAEMON_AA_PENDING_FEED_MS = 15_000
-/** Side + heavy: Discover/Coupon + mining/L0/referrer (when no dashboard) */
+/** Side + heavy: Discover/Coupon + mining/L0/referrer + My Brands / Recent Activity main tick */
 export const APP_DAEMON_SIDE_FEED_MS = 30_000
 /** Heaviest unified income — never on 6s cadence */
 export const APP_DAEMON_UNIFIED_FEED_MS = 90_000

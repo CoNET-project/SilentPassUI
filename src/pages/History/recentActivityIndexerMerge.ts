@@ -1288,6 +1288,8 @@ const INDEXER_PAGE_LIMIT_PER_MONTH = 30
  * periodOffset 0=当月，1=上月… 多个月合并后按时间取全局最近 N 条，避免仅查当月时 Recent Activity 为空。
  */
 const RECENT_ACTIVITY_MONTH_LOOKBACK = 24
+/** Daemon Home preview: fewer month pages than full History (cuts indexer eth_call × accounts). */
+export const RECENT_ACTIVITY_DAEMON_MONTH_LOOKBACK = 6
 
 export type FetchRecentActivityOptions = {
 	/** 全局排序后保留条数（默认 30，Home 紧凑区用 compactLimit 再截 5） */

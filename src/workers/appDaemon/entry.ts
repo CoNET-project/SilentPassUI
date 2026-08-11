@@ -190,7 +190,7 @@ async function runWalletTick(): Promise<void> {
 				if (dash.snap.referrer) {
 					post({ type: 'event:referrerSummary', eoa, summary: dash.snap.referrer })
 				}
-				await requestMainTick(['myBrands', 'recentActivity'])
+				/** My Brands / Recent Activity stay on 30s side tick — not every 6s. */
 				post({ type: 'event:walletTickDone', eoa })
 				return
 			}
@@ -213,7 +213,6 @@ async function runWalletTick(): Promise<void> {
 			post({ type: 'event:validatorProfile', eoa, profile: vProf.profile })
 		}
 
-		await requestMainTick(['myBrands', 'recentActivity'])
 		post({ type: 'event:walletTickDone', eoa })
 	} catch (e) {
 		post({
@@ -289,6 +288,9 @@ async function runSideTick(): Promise<void> {
 		}
 
 		const kinds: AppDaemonMainTickKind[] = []
+		if (session?.eoa) {
+			kinds.push('myBrands', 'recentActivity')
+		}
 		if (genesisAccounts.size > 0 || session?.eoa) kinds.push('genesisIncome')
 		kinds.push('aaInstitutionalAssets')
 		if (kinds.length && session?.eoa) {
@@ -364,7 +366,8 @@ async function runOracleTick(): Promise<void> {
 
 function startSchedulers(): void {
 	scheduleWallet(0)
-	scheduleSide(APP_DAEMON_SIDE_FEED_MS)
+	/** Side (My Brands / Recent Activity / Discover) starts immediately once, then every 30s. */
+	scheduleSide(0)
 	scheduleUnified(APP_DAEMON_UNIFIED_FEED_MS)
 	scheduleAaPending(APP_DAEMON_AA_PENDING_FEED_MS)
 	scheduleOracle(0)
@@ -476,7 +479,9 @@ ctx.onmessage = (ev: MessageEvent<AppDaemonWorkerInbound>) => {
 						scheduleAaPending(0)
 						scheduleOracle(0)
 					} else {
+						/** wallet refresh also kicks side so My Brands / Recent Activity update. */
 						scheduleWallet(0)
+						scheduleSide(0)
 						scheduleUnified(0)
 					}
 					break

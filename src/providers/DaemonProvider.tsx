@@ -54,6 +54,7 @@ import {
 	fetchMergedRecentActivityFromIndexer,
 	filterRecentActivityExcludedBunitRows,
 	mergeChargeRouteEnrichmentIntoTxViews,
+	RECENT_ACTIVITY_DAEMON_MONTH_LOOKBACK,
 	type TxView,
 } from '@/pages/History/recentActivityIndexerMerge'
 import {
@@ -1184,7 +1185,7 @@ export function DaemonProvider({ children }: DaemonProps) {
       ) {
         aaForCoupons = ethers.getAddress(walletResolvedAaAddress)
       }
-      if (eoaForCoupons && ethers.isAddress(eoaForCoupons)) {
+      if (!aaForCoupons && eoaForCoupons && ethers.isAddress(eoaForCoupons)) {
         const resolvedAa = await getAAAccount(profile).catch(() => null)
         if (resolvedAa && ethers.isAddress(resolvedAa)) {
           aaForCoupons = ethers.getAddress(resolvedAa)
@@ -2479,7 +2480,7 @@ export function DaemonProvider({ children }: DaemonProps) {
     }
   }, [profileWalletKeyId])
 
-  /** AA 检测 + indexer Recent Activity + EOA USDC + Total Power CAD；与 My Brands 同轨 6s setTimeout 链 */
+  /** AA 检测 + indexer Recent Activity + EOA USDC + Total Power CAD；与 My Brands 同轨 30s side tick */
   const runNoAaWalletFeedTick = useCallback(async (cardDetails: MyBrandCardFeedDetailsMap | null) => {
     if (noAaRecentActivityInFlight.current) return
     const profile = profilesRef.current?.[0]
@@ -2522,25 +2523,31 @@ export function DaemonProvider({ children }: DaemonProps) {
           : undefined
 
       try {
-        const chainAa = await getAAAccount(profile)
-        const nextAa = chainAa ?? undefined
-        const currentAaNorm = profile.aaAccount?.toLowerCase() ?? ''
-        const nextAaNorm = nextAa?.toLowerCase() ?? ''
-        if (currentAaNorm !== nextAaNorm) {
-          const cur = profilesRef.current
-          const temp = CoNET_Data
-          if (cur && temp) {
-            const nextProfiles = cur.map((p: profile, i: number) =>
-              i === 0 ? { ...p, aaAccount: nextAa } : p
-            )
-            setProfiles(nextProfiles)
-            if (temp.profiles) temp.profiles = nextProfiles
-            setCoNET_Data(temp)
-            await storeSystemData()
+        /**
+         * Prefer session AA — skip getAAAccount RPC every side tick when already known.
+         * Only resolve from chain when profile lacks a valid aaAccount.
+         */
+        if (!effectiveAa) {
+          const chainAa = await getAAAccount(profile)
+          const nextAa = chainAa ?? undefined
+          const currentAaNorm = profile.aaAccount?.toLowerCase() ?? ''
+          const nextAaNorm = nextAa?.toLowerCase() ?? ''
+          if (currentAaNorm !== nextAaNorm) {
+            const cur = profilesRef.current
+            const temp = CoNET_Data
+            if (cur && temp) {
+              const nextProfiles = cur.map((p: profile, i: number) =>
+                i === 0 ? { ...p, aaAccount: nextAa } : p
+              )
+              setProfiles(nextProfiles)
+              if (temp.profiles) temp.profiles = nextProfiles
+              setCoNET_Data(temp)
+              await storeSystemData()
+            }
           }
+          effectiveAa =
+            chainAa && ethers.isAddress(chainAa) ? ethers.getAddress(chainAa) : undefined
         }
-        effectiveAa =
-          chainAa && ethers.isAddress(chainAa) ? ethers.getAddress(chainAa) : undefined
       } catch (e: any) {
         console.warn(`[runNoAaWalletFeedTick] getAAAccount failed (retaining existing aaAccount): ${e?.message ?? e}`)
       }
@@ -2558,14 +2565,17 @@ export function DaemonProvider({ children }: DaemonProps) {
         }
       }
       const eoaSave = eoa.toLowerCase()
-      const { items, error, trusted } = await fetchMergedRecentActivityFromIndexer(accounts)
+      const { items, error, trusted } = await fetchMergedRecentActivityFromIndexer(accounts, {
+        monthLookback: RECENT_ACTIVITY_DAEMON_MONTH_LOOKBACK,
+        maxReturn: 30,
+      })
       if (trusted) {
         recentActivityNoAaSettledRef.current = true
         const prevItems = recentActivityNoAaItemsRef.current
         if (items.length === 0 && prevItems.length > 0) {
           /**
            * Recent Activity 是不可变历史。周期刷新中的空列表不能负向覆盖已有历史，
-           * 否则 /home 会每 6s 在 loading 与旧数据之间闪动。
+           * 否则 /home 会在 loading 与旧数据之间闪动。
            */
         } else if (shouldUpdateRecentActivityList(prevItems, items)) {
           setRecentActivityNoAaItems(items)
@@ -2657,9 +2667,9 @@ export function DaemonProvider({ children }: DaemonProps) {
 
   const globalWalletFeedInFlightRef = useRef<Promise<void> | null>(null)
   /**
-   * Main-thread remainder of the 6s wallet chain.
-   * Worker owns schedule + balances / mining / L0 / validator / referrer / unifiedIncome;
-   * main still runs My Brands + Recent Activity (profile / LS / enrichment).
+   * Main-thread remainder of the 30s side chain (not 6s wallet).
+   * Worker 6s owns balances / dashboard snapshot only;
+   * main runs My Brands + Recent Activity on side cadence.
    */
   const runGlobalWalletFeedTick = useCallback(
     async (kinds?: Set<AppDaemonMainTickKind>) => {

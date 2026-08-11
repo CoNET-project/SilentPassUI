@@ -58,22 +58,10 @@ export async function multicallAggregate3ConetMain(
 				returnData: String(r.returnData ?? '0x'),
 			}))
 		} catch {
-			/* fall through */
+			/* fall through — never serial provider.call (batchMaxCount:1 storms RPC) */
 		}
 	}
-	return Promise.all(
-		calls.map(async (c) => {
-			try {
-				const returnData = await provider.call({
-					to: ethers.getAddress(c.target),
-					data: c.callData,
-				})
-				return { success: true, returnData: returnData || '0x' }
-			} catch {
-				return { success: false, returnData: '0x' }
-			}
-		}),
-	)
+	return calls.map(() => ({ success: false, returnData: '0x' }))
 }
 
 export function decodeMulticallUint256(returnData: string): bigint | null {

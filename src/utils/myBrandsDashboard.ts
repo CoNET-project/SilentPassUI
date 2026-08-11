@@ -8,7 +8,7 @@ import {
 	CONET_MY_BRANDS_DASHBOARD_IMPL,
 } from '@/config/chainAddresses'
 import { conetDepinProvider } from '@/utils/constants'
-import { CARD_LEVEL_USER_CUMUL_STAT_TOKEN_IDS } from '@/utils/beamioCardUserCumulativeStatHoldings'
+import { CARD_LEVEL_USER_CUMUL_STAT_TOKEN_IDS } from '@/utils/cardLevelUserCumulStatTokenIds'
 import { peekCardBasicMetadata } from '@/utils/cardBasicMetadataGlobalCache'
 
 export { CONET_MY_BRANDS_DASHBOARD, CONET_MY_BRANDS_DASHBOARD_IMPL }
@@ -156,17 +156,12 @@ export function isMyBrandsDashboardConfigured(): boolean {
 	)
 }
 
-/**
- * Batch My Brands card assets via aggregator.
- * @returns Map cardLower → MyCardAssets for ok slices; **null** = untrusted failure (keep previous).
- */
-export async function fetchMyBrandsCardAssetsBatch(
-	cardAddresses: string[],
-	eoa: string,
-	aaOptional?: string | null,
-): Promise<Map<string, MyCardAssets> | null> {
-	if (!isMyBrandsDashboardConfigured()) return null
-	if (!eoa || !ethers.isAddress(eoa)) return null
+export type MyBrandsDashboardCardRow = {
+	assets: MyCardAssets
+	hasAnyProgramAsset: boolean
+}
+
+function uniqueCardAddresses(cardAddresses: string[]): string[] {
 	const unique: string[] = []
 	const seen = new Set<string>()
 	for (const raw of cardAddresses) {
@@ -180,6 +175,21 @@ export async function fetchMyBrandsCardAssetsBatch(
 			/* skip */
 		}
 	}
+	return unique
+}
+
+/**
+ * Batch My Brands slices via aggregator (assets + hasAnyProgramAsset).
+ * @returns Map cardLower → row for ok slices; **null** = untrusted failure (keep previous).
+ */
+export async function fetchMyBrandsDashboardCardRows(
+	cardAddresses: string[],
+	eoa: string,
+	aaOptional?: string | null,
+): Promise<Map<string, MyBrandsDashboardCardRow> | null> {
+	if (!isMyBrandsDashboardConfigured()) return null
+	if (!eoa || !ethers.isAddress(eoa)) return null
+	const unique = uniqueCardAddresses(cardAddresses)
 	if (!unique.length) return new Map()
 
 	const aa =
@@ -195,7 +205,7 @@ export async function fetchMyBrandsCardAssetsBatch(
 			SNAPSHOT_CARDS_ABI,
 			conetDepinProvider,
 		)
-		const out = new Map<string, MyCardAssets>()
+		const out = new Map<string, MyBrandsDashboardCardRow>()
 		for (let offset = 0; offset < unique.length; offset += MY_BRANDS_DASHBOARD_MAX_CARDS) {
 			const chunk = unique.slice(offset, offset + MY_BRANDS_DASHBOARD_MAX_CARDS)
 			const slices = (await c.snapshotCards(
@@ -208,13 +218,32 @@ export async function fetchMyBrandsCardAssetsBatch(
 			for (const slice of slices) {
 				const assets = sliceToMyCardAssets(slice, aa === ethers.ZeroAddress ? null : aa)
 				if (!assets) continue
-				out.set(assets.cardAddress.toLowerCase(), assets)
+				out.set(assets.cardAddress.toLowerCase(), {
+					assets,
+					hasAnyProgramAsset: Boolean(slice.hasAnyProgramAsset),
+				})
 			}
 		}
 		return out
 	} catch {
 		return null
 	}
+}
+
+/**
+ * Batch My Brands card assets via aggregator.
+ * @returns Map cardLower → MyCardAssets for ok slices; **null** = untrusted failure (keep previous).
+ */
+export async function fetchMyBrandsCardAssetsBatch(
+	cardAddresses: string[],
+	eoa: string,
+	aaOptional?: string | null,
+): Promise<Map<string, MyCardAssets> | null> {
+	const rows = await fetchMyBrandsDashboardCardRows(cardAddresses, eoa, aaOptional)
+	if (!rows) return null
+	const out = new Map<string, MyCardAssets>()
+	for (const [k, row] of rows) out.set(k, row.assets)
+	return out
 }
 
 /**

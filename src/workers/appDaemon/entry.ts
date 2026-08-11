@@ -1,7 +1,7 @@
 /**
  * App Daemon Worker entry — cadence-layered pure-read schedules.
  *
- * 6s  wallet: balances + light profile (or 1× dashboard snapshot)
+ * 6s  wallet: CoNET snapshot (or balances+bundle) + Base USDC EOA/AA
  * 30s side:   Discover/Coupon + mining + L0/referrer (if no dashboard) + main kinds
  * 90s unified: resolveUnifiedIncomeStats only (no OOG assemble)
  * 15s aa pending / 5min oracle
@@ -37,6 +37,7 @@ import {
 	fetchWorkerWalletDashboardSnapshot,
 	isWalletDashboardConfigured,
 } from './feeders/walletDashboard'
+import { fetchWorkerBaseUsdcPair } from './feeders/baseUsdc'
 
 // eslint-disable-next-line no-restricted-globals
 const ctx = self as unknown as {
@@ -151,6 +152,7 @@ function scheduleOracle(delay = APP_DAEMON_ORACLE_FEED_MS): void {
 
 /**
  * 6s light tick: prefer 1× dashboard snapshot; else balances + resolveNodeBundle once.
+ * Base USDC (EOA+AA) runs in parallel on Base Multicall3 — not CoNET eth_call budget.
  * Does NOT run unified income or Discover/Coupon.
  */
 async function runWalletTick(): Promise<void> {
@@ -165,6 +167,7 @@ async function runWalletTick(): Promise<void> {
 	walletRunning = true
 	const eoa = session.eoa
 	const aa = session.aaAccount ? normalizeAddr(session.aaAccount) : null
+	const baseUsdcP = fetchWorkerBaseUsdcPair(eoa, aa)
 	try {
 		if (isWalletDashboardConfigured()) {
 			const dash = await fetchWorkerWalletDashboardSnapshot(eoa, aa)
@@ -221,6 +224,19 @@ async function runWalletTick(): Promise<void> {
 			message: e instanceof Error ? e.message : 'wallet_tick_failed',
 		})
 	} finally {
+		try {
+			const base = await baseUsdcP
+			if (!destroyed && base.ok) {
+				post({
+					type: 'event:baseUsdcBalances',
+					eoa,
+					eoaUsdc: base.eoaUsdc,
+					...(base.aaUsdc !== undefined ? { aaUsdc: base.aaUsdc } : {}),
+				})
+			}
+		} catch {
+			/* Base USDC untrusted — keep last */
+		}
 		walletRunning = false
 		scheduleWallet()
 	}

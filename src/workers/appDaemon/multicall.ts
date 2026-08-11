@@ -1,6 +1,7 @@
 /**
  * Multicall3 aggregate3 helper for App Daemon Worker.
- * Falls back to Promise.all(eth_call) when Multicall3 address is unset / empty code.
+ * Untrusted failure (unset / empty code / revert) returns unsuccessful placeholders —
+ * never serial eth_call (CoNET provider is batchMaxCount:1).
  */
 
 import { ethers } from 'ethers'
@@ -58,25 +59,8 @@ async function aggregateViaContract(
 	}
 }
 
-/** Sequential eth_call fallback (still benefits from JSON-RPC batch via provider). */
-async function aggregateFallback(
-	provider: ethers.JsonRpcProvider,
-	calls: MulticallCall[],
-): Promise<MulticallResult[]> {
-	const results = await Promise.all(
-		calls.map(async (c) => {
-			try {
-				const returnData = await provider.call({
-					to: ethers.getAddress(c.target),
-					data: c.callData,
-				})
-				return { success: true, returnData: returnData || '0x' }
-			} catch {
-				return { success: false, returnData: '0x' }
-			}
-		}),
-	)
-	return results
+function untrustedEmpty(calls: MulticallCall[]): MulticallResult[] {
+	return calls.map(() => ({ success: false, returnData: '0x' }))
 }
 
 export async function multicallAggregate3Conet(calls: MulticallCall[]): Promise<MulticallResult[]> {
@@ -84,7 +68,8 @@ export async function multicallAggregate3Conet(calls: MulticallCall[]): Promise<
 	const provider = getAppDaemonConetProvider()
 	const via = await aggregateViaContract(provider, APP_DAEMON_CONET_MULTICALL3, calls)
 	if (via) return via
-	return aggregateFallback(provider, calls)
+	/** Never serial eth_call fallback — CoNET provider is batchMaxCount:1. */
+	return untrustedEmpty(calls)
 }
 
 export async function multicallAggregate3Base(calls: MulticallCall[]): Promise<MulticallResult[]> {
@@ -92,7 +77,7 @@ export async function multicallAggregate3Base(calls: MulticallCall[]): Promise<M
 	const provider = getAppDaemonBaseProvider()
 	const via = await aggregateViaContract(provider, APP_DAEMON_BASE_MULTICALL3, calls)
 	if (via) return via
-	return aggregateFallback(provider, calls)
+	return untrustedEmpty(calls)
 }
 
 export function decodeUint256(returnData: string): bigint | null {

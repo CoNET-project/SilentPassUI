@@ -46,10 +46,6 @@ import {
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
 import { storeSystemData } from '@/services/beamio'
 import { fetchMyBrandsCardAssetsBatch } from '@/utils/myBrandsDashboard'
-import { baseEndpoint, USDCContract_BASE } from '@/utils/constants'
-import usdc_abi from '@/services/ABI/usdc_abi.json'
-import { getUsdcBalanceFromApi } from '@/services/beamio'
-import { isRpcDegraded, reportRpcFailure, isRpcQuotaOrNetworkError } from '@/utils/rpcStatus'
 import {
 	enrichMerchantChargeItemsWithIndexerRoutes,
 	fetchMergedRecentActivityFromIndexer,
@@ -104,6 +100,7 @@ import {
 	onAppDaemonUnifiedIncome,
 	onAppDaemonValidatorProfile,
 	onAppDaemonWalletBalances,
+	onAppDaemonBaseUsdcBalances,
 	registerAppDaemonCouponTargets,
 	registerAppDaemonDiscoverCards,
 	registerAppDaemonGenesisAccounts,
@@ -162,6 +159,10 @@ import {
 	saveConetWalletBalancesLocalCache,
 	EMPTY_CONET_WALLET_BALANCES,
 } from '@/utils/conetWalletBalancesLocalCache'
+import {
+	loadBaseUsdcBalanceLocalCache,
+	saveBaseUsdcBalanceLocalCache,
+} from '@/utils/baseUsdcBalanceLocalCache'
 import {
 	clearReferralL0StartKitQuotaLocalCache,
 	fetchReferralL0StartKitQuotaFeed,
@@ -715,14 +716,15 @@ type DaemonContext = {
   setCurrentBlock: (val: number) => void
   beamio: beamio|null
   setBeamio : (val:beamio|null) => void
+  /** Base USDC (EOA); Worker 6s feeder + local cache. Local-first. */
   usdcbalance : number
 
   setUsdcbalance: (val: number) => void
 	usdcToUSD: number
 	setUsdcToUSD: (val: number) => void
-	/** Base 上 Beamio AA 的 USDC 余额（`ethers.formatUnits(..., 6)` 字符串）；由全局 wallet feed（与 Recent Activity 同轨 6s）更新 */
+	/** Base 上 Beamio AA 的 USDC 余额（`ethers.formatUnits(..., 6)` 字符串）；由 Worker 6s Base USDC feeder 更新 */
 	aaAccountUsdcBalance: string
-	/** /home Total Power：EOA+AA USDC + 全部 BeamioUserCard points，Oracle（currencyData）折 CAD；与 My Brands / 6s 喂料同轨 */
+	/** /home Total Power：EOA+AA Base USDC + 全部 BeamioUserCard points，Oracle（currencyData）折 CAD */
 	homeTotalPowerCad: HomeTotalPowerCad
 
   paymentLink: any
@@ -1652,6 +1654,27 @@ export function DaemonProvider({ children }: DaemonProps) {
     setConetWalletBalances(hit ?? EMPTY_CONET_WALLET_BALANCES)
   }, [profileWalletKeyId])
 
+  /** EOA 切换：从本地恢复 Base USDC（EOA+AA）；无缓存则零值首帧，等 Worker 6s 回填 */
+  useLayoutEffect(() => {
+    const raw = profileWalletKeyId?.trim() ?? ''
+    const eoaLower = raw.toLowerCase()
+    if (!eoaLower || !ethers.isAddress(eoaLower)) {
+      setUsdcbalance(0)
+      setAaAccountUsdcBalance('0')
+      lastEoaUsdcForPowerRef.current = '0'
+      lastAaUsdcForPowerRef.current = '0'
+      return
+    }
+    const hit = loadBaseUsdcBalanceLocalCache(eoaLower)
+    const eoaUsdc = hit?.eoaUsdc ?? '0'
+    const aaUsdc = hit?.aaUsdc ?? '0'
+    const eoaNum = parseFloat(eoaUsdc) || 0
+    setUsdcbalance((prev) => (prev === eoaNum ? prev : eoaNum))
+    setAaAccountUsdcBalance((prev) => (prev === aaUsdc ? prev : aaUsdc))
+    lastEoaUsdcForPowerRef.current = eoaUsdc
+    lastAaUsdcForPowerRef.current = aaUsdc
+  }, [profileWalletKeyId])
+
   /** AA 切换：从本地恢复 Smart Wallet 的 CoNET CNET / GB / USDC 余额。 */
   const profileAaAccount = profiles?.[0]?.aaAccount?.trim() ?? ''
   useLayoutEffect(() => {
@@ -2497,7 +2520,7 @@ export function DaemonProvider({ children }: DaemonProps) {
     }
   }, [profileWalletKeyId])
 
-  /** AA 检测 + indexer Recent Activity + EOA USDC + Total Power CAD；与 My Brands 同轨 30s side tick */
+  /** AA 检测 + indexer Recent Activity + Total Power CAD（Base USDC 用 Worker 6s 上次可信值）；30s side tick */
   const runNoAaWalletFeedTick = useCallback(async (cardDetails: MyBrandCardFeedDetailsMap | null) => {
     if (noAaRecentActivityInFlight.current) return
     const profile = profilesRef.current?.[0]
@@ -2506,10 +2529,7 @@ export function DaemonProvider({ children }: DaemonProps) {
       setRecentActivityNoAaItems([])
       setRecentActivityNoAaLoading(false)
       setRecentActivityNoAaError(null)
-      setAaAccountUsdcBalance('0')
       setHomeTotalPowerCad({ whole: '0', frac: '00' })
-      lastEoaUsdcForPowerRef.current = '0'
-      lastAaUsdcForPowerRef.current = '0'
       return
     }
     const eoa = profile.keyID.trim()
@@ -2518,10 +2538,7 @@ export function DaemonProvider({ children }: DaemonProps) {
       setRecentActivityNoAaItems([])
       setRecentActivityNoAaLoading(false)
       setRecentActivityNoAaError(null)
-      setAaAccountUsdcBalance('0')
       setHomeTotalPowerCad({ whole: '0', frac: '00' })
-      lastEoaUsdcForPowerRef.current = '0'
-      lastAaUsdcForPowerRef.current = '0'
       return
     }
 
@@ -2531,8 +2548,6 @@ export function DaemonProvider({ children }: DaemonProps) {
     if (!hasRenderableActivity) {
       setRecentActivityNoAaLoading(true)
     }
-    let eoaUsdcStr = '0'
-    let aaUsdcStr = '0'
     try {
       let effectiveAa: string | undefined =
         profile.aaAccount?.trim() && ethers.isAddress(profile.aaAccount.trim())
@@ -2605,51 +2620,10 @@ export function DaemonProvider({ children }: DaemonProps) {
         setRecentActivityNoAaError(error)
       }
 
-      try {
-        const usdcContract = new ethers.Contract(USDCContract_BASE, usdc_abi as ethers.InterfaceAbi, baseEndpoint)
-        const eoaRaw = await usdcContract.balanceOf(eoaAddr)
-        eoaUsdcStr = ethers.formatUnits(eoaRaw, 6)
-        const eoaNum = parseFloat(eoaUsdcStr) || 0
-        setUsdcbalance((prev) => (prev === eoaNum ? prev : eoaNum))
-      } catch (e) {
-        if (isRpcQuotaOrNetworkError(e)) reportRpcFailure()
-        if (!isRpcDegraded()) {
-          const bal = await getUsdcBalanceFromApi(eoaAddr)
-          if (bal != null) {
-            eoaUsdcStr = bal
-            const eoaNum = parseFloat(bal) || 0
-            setUsdcbalance((prev) => (prev === eoaNum ? prev : eoaNum))
-          }
-        }
-      }
-
-      if (!effectiveAa || effectiveAa.toLowerCase() === eoaAddr.toLowerCase()) {
-        aaUsdcStr = '0'
-        setAaAccountUsdcBalance((prev) => (prev === '0' ? prev : '0'))
-      } else {
-        try {
-          const usdcContract = new ethers.Contract(USDCContract_BASE, usdc_abi as ethers.InterfaceAbi, baseEndpoint)
-          const balanceRaw = await usdcContract.balanceOf(effectiveAa)
-          aaUsdcStr = ethers.formatUnits(balanceRaw, 6)
-          setAaAccountUsdcBalance((prev) => (prev === aaUsdcStr ? prev : aaUsdcStr))
-        } catch (e) {
-          if (isRpcQuotaOrNetworkError(e)) reportRpcFailure()
-          if (!isRpcDegraded()) {
-            const bal = await getUsdcBalanceFromApi(effectiveAa)
-            if (bal != null) {
-              aaUsdcStr = bal
-              setAaAccountUsdcBalance((prev) => (prev === bal ? prev : bal))
-            }
-          }
-        }
-      }
-
-      lastEoaUsdcForPowerRef.current = eoaUsdcStr
-      lastAaUsdcForPowerRef.current = aaUsdcStr
       const detailsForPower = cardDetails ?? myBrandCardDetailsRef.current
       const nextPower = computeHomeTotalPowerCad(
-        eoaUsdcStr,
-        aaUsdcStr,
+        lastEoaUsdcForPowerRef.current,
+        lastAaUsdcForPowerRef.current,
         detailsForPower,
         currencyDataRef.current
       )
@@ -2685,7 +2659,7 @@ export function DaemonProvider({ children }: DaemonProps) {
   const globalWalletFeedInFlightRef = useRef<Promise<void> | null>(null)
   /**
    * Main-thread remainder of the 30s side chain (not 6s wallet).
-   * Worker 6s owns balances / dashboard snapshot only;
+   * Worker 6s owns CoNET dashboard snapshot + Base USDC;
    * main runs My Brands + Recent Activity on side cadence.
    */
   const runGlobalWalletFeedTick = useCallback(
@@ -2737,6 +2711,38 @@ export function DaemonProvider({ children }: DaemonProps) {
           saveConetWalletBalancesLocalCache(aa, ev.aaBalances)
         }
       }
+    })
+  }, [])
+
+  /** Mirror Worker 6s Base USDC (EOA+AA) — trusted-only; never zero on RPC failure. */
+  useEffect(() => {
+    return onAppDaemonBaseUsdcBalances((ev) => {
+      const currentEoa = profilesRef.current?.[0]?.keyID?.trim().toLowerCase() ?? ''
+      if (!currentEoa || ev.eoa.toLowerCase() !== currentEoa) return
+      const eoaNum = parseFloat(ev.eoaUsdc) || 0
+      setUsdcbalance((prev) => (prev === eoaNum ? prev : eoaNum))
+      lastEoaUsdcForPowerRef.current = ev.eoaUsdc
+      if (ev.aaUsdc === null) {
+        setAaAccountUsdcBalance((prev) => (prev === '0' ? prev : '0'))
+        lastAaUsdcForPowerRef.current = '0'
+        saveBaseUsdcBalanceLocalCache(currentEoa, { eoaUsdc: ev.eoaUsdc, aaUsdc: '0' })
+      } else if (typeof ev.aaUsdc === 'string') {
+        const aaTrusted = ev.aaUsdc
+        setAaAccountUsdcBalance((prev) => (prev === aaTrusted ? prev : aaTrusted))
+        lastAaUsdcForPowerRef.current = aaTrusted
+        saveBaseUsdcBalanceLocalCache(currentEoa, { eoaUsdc: ev.eoaUsdc, aaUsdc: aaTrusted })
+      } else {
+        saveBaseUsdcBalanceLocalCache(currentEoa, { eoaUsdc: ev.eoaUsdc })
+      }
+      const nextPower = computeHomeTotalPowerCad(
+        lastEoaUsdcForPowerRef.current,
+        lastAaUsdcForPowerRef.current,
+        myBrandCardDetailsRef.current,
+        currencyDataRef.current,
+      )
+      setHomeTotalPowerCad((prev) =>
+        prev.whole === nextPower.whole && prev.frac === nextPower.frac ? prev : nextPower,
+      )
     })
   }, [])
 

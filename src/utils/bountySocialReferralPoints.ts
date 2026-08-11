@@ -1,6 +1,6 @@
 import { ethers } from 'ethers'
-import { providerForBeamioUserCard } from '@/utils/beamioUserCardChain'
 import { beamioApi } from '@/utils/constants'
+import { fetchMyBrandsBalanceBatch } from '@/utils/myBrandsDashboard'
 
 /**
  * UserCumulativeStatLib — personal referral balances on a merchant program card.
@@ -12,10 +12,6 @@ export const MERCHANT_CARD_REF_CLAIM_TOKEN_ID = 22n
 export const MERCHANT_CARD_REF_BURN_TOKEN_ID = 23n
 export const MERCHANT_CARD_REF_PURCHASE_TOKEN_ID = 26n
 export const MERCHANT_CARD_REF_INSTALL_TOKEN_ID = 30n
-
-const READ_ABI = [
-	'function balanceOf(address account, uint256 id) view returns (uint256)',
-] as const
 
 const CACHE_TTL_MS = 30_000
 
@@ -104,24 +100,14 @@ async function readBalances(
 	holder: string,
 	tokenIds: bigint[],
 ): Promise<(number | null)[]> {
-	try {
-		const { provider } = await providerForBeamioUserCard(cardAddress)
-		const c = new ethers.Contract(cardAddress, READ_ABI, provider)
-		const results = await Promise.all(
-			tokenIds.map(async (id) => {
-				try {
-					const raw = (await c.balanceOf(holder, id)) as bigint
-					const n = Number(raw)
-					return Number.isFinite(n) && n >= 0 ? Math.trunc(n) : 0
-				} catch {
-					return null
-				}
-			}),
-		)
-		return results
-	} catch {
+	const batch = await fetchMyBrandsBalanceBatch(cardAddress, [holder], tokenIds)
+	if (!batch || batch.length !== tokenIds.length) {
 		return tokenIds.map(() => null)
 	}
+	return batch.map((raw) => {
+		const n = Number(raw)
+		return Number.isFinite(n) && n >= 0 ? Math.trunc(n) : 0
+	})
 }
 
 function buildEventRows(counts: {

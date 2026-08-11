@@ -23,6 +23,12 @@ export type AppDaemonWalletBalancesListener = (ev: {
 	aaBalances?: AppDaemonConetBalances | null
 }) => void
 
+export type AppDaemonBaseUsdcBalancesListener = (ev: {
+	eoa: string
+	eoaUsdc: string
+	aaUsdc?: string | null
+}) => void
+
 export type AppDaemonMiningStatsListener = (ev: {
 	network: AppDaemonMiningNetworkStats | null
 	depin: AppDaemonMiningDepinStats | null
@@ -64,6 +70,7 @@ let initPromise: Promise<void> | null = null
 let activeSession: AppDaemonSession | null = null
 
 const walletBalancesListeners = new Set<AppDaemonWalletBalancesListener>()
+const baseUsdcBalancesListeners = new Set<AppDaemonBaseUsdcBalancesListener>()
 const miningStatsListeners = new Set<AppDaemonMiningStatsListener>()
 const oracleRatesListeners = new Set<AppDaemonOracleRatesListener>()
 const l0StartKitListeners = new Set<AppDaemonL0StartKitListener>()
@@ -98,6 +105,7 @@ function getClient(): AppDaemonWorkerClient {
 				mirrorAaBalances = ev.aaBalances ?? null
 				fanout(walletBalancesListeners, ev)
 			},
+			onBaseUsdcBalances: (ev) => fanout(baseUsdcBalancesListeners, ev),
 			onMiningStats: (ev) => {
 				if (ev.network) mirrorNetwork = ev.network
 				if (ev.depin) mirrorDepin = ev.depin
@@ -175,6 +183,11 @@ export async function setAppDaemonSession(
 export function onAppDaemonWalletBalances(cb: AppDaemonWalletBalancesListener): () => void {
 	walletBalancesListeners.add(cb)
 	return () => walletBalancesListeners.delete(cb)
+}
+
+export function onAppDaemonBaseUsdcBalances(cb: AppDaemonBaseUsdcBalancesListener): () => void {
+	baseUsdcBalancesListeners.add(cb)
+	return () => baseUsdcBalancesListeners.delete(cb)
 }
 
 export function onAppDaemonMiningStats(cb: AppDaemonMiningStatsListener): () => void {

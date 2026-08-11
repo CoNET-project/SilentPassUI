@@ -5,7 +5,7 @@
  * No private keys / mnemonics in this protocol.
  */
 
-/** Light wallet tick: balances + profile / dashboard snapshot */
+/** Light wallet tick: CoNET dashboard snapshot + Base USDC (EOA+AA) */
 export const APP_DAEMON_WALLET_FEED_MS = 6_000
 export const APP_DAEMON_AA_PENDING_FEED_MS = 15_000
 /** Side + heavy: Discover/Coupon + mining/L0/referrer + My Brands / Recent Activity main tick */
@@ -17,6 +17,8 @@ export const APP_DAEMON_ORACLE_FEED_MS = 5 * 60 * 1000
 export const APP_DAEMON_CONET_RPC = 'https://publicrpc.conet.network'
 export const APP_DAEMON_PUBLIC_RPC = 'https://publicrpc.conet.network'
 export const APP_DAEMON_BASE_RPC = 'https://base-rpc.conet.network'
+/** Native USDC on Base — 6s wallet tick (not CoNET dashboard snapshot). */
+export const APP_DAEMON_USDC_BASE = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
 
 /**
  * Multicall3 — Base uses canonical CREATE2; CoNET filled after deploy
@@ -136,6 +138,13 @@ export type AppDaemonWorkerOutbound =
 			eoa: string
 			eoaBalances: AppDaemonConetBalances
 			aaBalances?: AppDaemonConetBalances | null
+	  }
+	| {
+			type: 'event:baseUsdcBalances'
+			eoa: string
+			eoaUsdc: string
+			/** null = no separate AA (trusted 0); omit = AA read untrusted this tick */
+			aaUsdc?: string | null
 	  }
 	| {
 			type: 'event:miningStats'

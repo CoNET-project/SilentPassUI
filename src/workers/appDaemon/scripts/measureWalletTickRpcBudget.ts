@@ -52,7 +52,7 @@ async function main() {
 	)
 
 	console.log('\nCadence (Worker entry.ts):')
-	console.log('  6s  wallet: 1× snapshot (≤2 eth_call incl getCode gate) OR balances+bundle')
+	console.log('  6s  wallet: 1× snapshot (≤2 CoNET eth_call) + Base USDC Multicall3 (Base, not CoNET budget)')
 	console.log('  30s side:   mining + Discover/Coupon Multicall + L0/ref if no dashboard')
 	console.log('  90s unified: resolveUnifiedIncomeStats (skipClientSideAssemble)')
 	console.log('  5m  oracle: Base Multicall3 getRate×8')

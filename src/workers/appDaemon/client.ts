@@ -30,6 +30,11 @@ export type AppDaemonWorkerClientHandlers = {
 		eoaBalances: AppDaemonConetBalances
 		aaBalances?: AppDaemonConetBalances | null
 	}) => void
+	onBaseUsdcBalances?: (ev: {
+		eoa: string
+		eoaUsdc: string
+		aaUsdc?: string | null
+	}) => void
 	onMiningStats?: (ev: {
 		network: AppDaemonMiningNetworkStats | null
 		depin: AppDaemonMiningDepinStats | null
@@ -114,6 +119,9 @@ export class AppDaemonWorkerClient {
 			}
 			case 'event:walletBalances':
 				this.handlers.onWalletBalances?.(msg)
+				break
+			case 'event:baseUsdcBalances':
+				this.handlers.onBaseUsdcBalances?.(msg)
 				break
 			case 'event:miningStats':
 				this.handlers.onMiningStats?.(msg)

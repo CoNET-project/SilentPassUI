@@ -1,21 +1,9 @@
 import { ethers } from 'ethers'
 import { providerForBeamioUserCard } from '@/utils/beamioUserCardChain'
-import {
-	decodeMulticallUint256,
-	multicallAggregate3ConetMain,
-} from '@/utils/conetMulticall3'
+import { CARD_LEVEL_USER_CUMUL_STAT_TOKEN_IDS } from '@/utils/cardLevelUserCumulStatTokenIds'
+import { fetchMyBrandsBalanceBatch } from '@/utils/myBrandsDashboard'
 
-/**
- * UserCumulativeStatLib.cardLevelStatTokenIds() — L0/L1 program stat ERC-1155 ids (3–30, plus #13).
- * Minted to user EOA (social like/click/etc.); excluded from getOwnership / getOwnershipByEOA inventory.
- */
-export const CARD_LEVEL_USER_CUMUL_STAT_TOKEN_IDS: readonly number[] = [
-	3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
-	17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30,
-]
-
-const BALANCE_OF_ABI = ['function balanceOf(address account, uint256 id) view returns (uint256)'] as const
-const BALANCE_OF_IFACE = new ethers.Interface(BALANCE_OF_ABI)
+export { CARD_LEVEL_USER_CUMUL_STAT_TOKEN_IDS }
 
 const USER_HAS_ANY_PROGRAM_ASSET_ABI = [
 	'function userHasAnyProgramAsset(address userEOA) view returns (bool)',
@@ -41,7 +29,28 @@ function uniqueHolderAccounts(eoa: string, aa?: string | null): string[] {
 	return out
 }
 
-/** Any card-level stat token with balance > 0 on EOA and/or AA. */
+function holdingsFromFlatBalances(accounts: string[], balances: bigint[]): CardLevelStatNftHolding[] {
+	const n = CARD_LEVEL_USER_CUMUL_STAT_TOKEN_IDS.length
+	if (balances.length !== accounts.length * n) return []
+	const heldIds = new Set<number>()
+	for (let a = 0; a < accounts.length; a++) {
+		for (let t = 0; t < n; t++) {
+			const bal = balances[a * n + t] ?? 0n
+			if (bal > 0n) heldIds.add(CARD_LEVEL_USER_CUMUL_STAT_TOKEN_IDS[t]!)
+		}
+	}
+	return [...heldIds]
+		.sort((a, b) => a - b)
+		.map((tokenId) => ({
+			tokenId: String(tokenId),
+			attribute: '0',
+			tier: 'Stat',
+			expiry: 'Never',
+			isExpired: false,
+		}))
+}
+
+/** Any card-level stat token with balance > 0 on EOA and/or AA. Untrusted miss → false (caller must not treat as canonical empty). */
 export async function userHasAnyCardLevelStatBalance(
 	cardAddress: string,
 	eoa: string,
@@ -51,7 +60,11 @@ export async function userHasAnyCardLevelStatBalance(
 	return held.length > 0
 }
 
-/** Stat NFT rows for wallet / My Brands assets merge (tokenId 3–30). */
+/**
+ * Stat NFT rows for wallet / My Brands assets merge (tokenId 3–30).
+ * One Dashboard `balanceBatch` eth_call — never serial `balanceOf` (batchMaxCount:1 would storm RPC).
+ * Untrusted failure → [] (do not interpret as “no stats”; callers keep prior assets).
+ */
 export async function fetchCardLevelStatNftHoldings(
 	cardAddress: string,
 	eoa: string,
@@ -68,42 +81,13 @@ export async function fetchCardLevelStatNftHoldings(
 	const accounts = uniqueHolderAccounts(eoa, aa)
 	if (!accounts.length) return []
 
-	try {
-		const { provider } = await providerForBeamioUserCard(addr)
-		const heldIds = new Set<number>()
-		/** One Multicall3 eth_call for all (account × tokenId) balanceOf — not N×M RPC. */
-		const calls = accounts.flatMap((account) =>
-			CARD_LEVEL_USER_CUMUL_STAT_TOKEN_IDS.map((tokenId) => ({
-				target: addr,
-				allowFailure: true,
-				callData: BALANCE_OF_IFACE.encodeFunctionData('balanceOf', [account, BigInt(tokenId)]),
-				tokenId,
-			})),
-		)
-		const results = await multicallAggregate3ConetMain(
-			calls.map(({ target, allowFailure, callData }) => ({ target, allowFailure, callData })),
-			provider,
-		)
-		for (let i = 0; i < results.length; i++) {
-			const r = results[i]
-			const tokenId = calls[i]?.tokenId
-			if (tokenId == null || !r?.success) continue
-			const bal = decodeMulticallUint256(r.returnData)
-			if (bal != null && bal > 0n) heldIds.add(tokenId)
-		}
-
-		return [...heldIds]
-			.sort((a, b) => a - b)
-			.map((tokenId) => ({
-				tokenId: String(tokenId),
-				attribute: '0',
-				tier: 'Stat',
-				expiry: 'Never',
-				isExpired: false,
-			}))
-	} catch {
-		return []
-	}
+	const batch = await fetchMyBrandsBalanceBatch(
+		addr,
+		accounts,
+		CARD_LEVEL_USER_CUMUL_STAT_TOKEN_IDS,
+	)
+	if (!batch) return []
+	return holdingsFromFlatBalances(accounts, batch)
 }
 
 /** Chain view via AdminStatsQueryModuleV3 fallback; null = RPC/ABI unavailable (not false). */

@@ -6,7 +6,9 @@ import { useReliableTapHandler, RELIABLE_TAP_BUTTON_CLASS } from '@/utils/reliab
 import { createPortal } from 'react-dom';
 import { IpfsImg } from '@/components/IpfsImg';
 import { useDaemonContext } from "@/providers/DaemonProvider"
-import {formatAmountReadable, formatWithThousands, getBalanceProcess, onWalletEvent, getUserInfo, getOracle, parseOracleToCurrencyData} from '@/services/beamio'
+import {formatAmountReadable, formatWithThousands, onWalletEvent, getUserInfo, getOracle, parseOracleToCurrencyData} from '@/services/beamio'
+import { refreshAppDaemonNow } from '@/services/appDaemonWorkerBridge'
+import { formatDigitalAssetDisplay } from '@/utils/formatDigitalAssetDisplay'
 import base_icon from '@/components/assets/base-logo.png'
 import ScanBtn from '@/components/scanBtn/ScanButton'
 import { CoNET_Data, setCoNET_Data } from '../../utils/globals'
@@ -39,8 +41,7 @@ import { resolveSigningPrivateKeyArmor } from '@/utils/resolveSigningPrivateKeyA
 
 import { ethers } from 'ethers'
 import { QRCodeCanvas } from 'qrcode.react'
-import { baseEndpoint, conetDepinProvider, USDCContract_BASE } from '@/utils/constants'
-import usdc_abi from '@/services/ABI/usdc_abi.json'
+import { conetDepinProvider } from '@/utils/constants'
 import {
 	getMyAssets,
 	getMyAssetsAggregated,
@@ -218,38 +219,18 @@ const INITIAL_HOME_STORE_CARDS: HomeStoreCardRow[] = [
 	{ id: 'lumina', name: 'Lumina Roasters', type: 'Green Card', color: 'from-amber-900 to-stone-900', borderColor: 'border-amber-950/50', iconColor: 'text-amber-200', bgColor: 'bg-amber-950/30', icon: CreditCard, balanceCad: 10.0, backgroundImage: LUMINA_STORE_CARD_ART_URL },
 ]
 
-/** CashTrees 大卡：EOA / AA 两侧 USDC（链上 balanceOf）+ 程序卡 points（与 getMyAssetsAggregated 同源）；CAD 合计在 UI 内按 Oracle 折算 */
+/** CashTrees 大卡 points（程序卡）；Base USDC 读 Worker 6s daemon，勿在页面 balanceOf */
 const APP_LOGO_SRC = `${process.env.PUBLIC_URL ?? ''}/logo192.png`
 
-async function loadCashTreesWalletSnapshot(profile: Parameters<typeof getMyAssets>[0]): Promise<{
-	eoaUsdc: string
-	aaUsdc: string
+async function loadCashTreesPointsSnapshot(profile: Parameters<typeof getMyAssets>[0]): Promise<{
 	points0: string
 	pointsCurrency: string
 }> {
 	const res = await getMyAssetsAggregated(profile)
-	const points0 = res?.points ?? '0'
-	const pointsCurrency = res?.cardCurrency ?? 'CAD'
-	const eoa = profile.keyID
-	if (!eoa || !ethers.isAddress(eoa)) {
-		return { eoaUsdc: '0', aaUsdc: '0', points0, pointsCurrency }
+	return {
+		points0: res?.points ?? '0',
+		pointsCurrency: res?.cardCurrency ?? 'CAD',
 	}
-	const usdc = new ethers.Contract(USDCContract_BASE, usdc_abi, baseEndpoint)
-	const readBal = async (addr: string) => {
-		try {
-			return ethers.formatUnits(await usdc.balanceOf(addr), 6)
-		} catch {
-			return '0'
-		}
-	}
-	const aa = (profile.aaAccount ?? '').trim()
-	const hasDistinctAa = Boolean(aa && ethers.isAddress(aa) && aa.toLowerCase() !== eoa.toLowerCase())
-	if (!hasDistinctAa) {
-		const bal = await readBal(eoa)
-		return { eoaUsdc: bal, aaUsdc: '0', points0, pointsCurrency }
-	}
-	const [eoaBal, aaBal] = await Promise.all([readBal(eoa), readBal(aa)])
-	return { eoaUsdc: eoaBal, aaUsdc: aaBal, points0, pointsCurrency }
 }
 
 type AddCashSheetMode = 'methods' | 'store_qr' | 'coinbase' | 'topup_store'
@@ -260,7 +241,7 @@ type HomeProps = {
 const Home = (_props: HomeProps) => {
 	const { setDarkModle, profiles,
 		power, setProfiles, setBeamio, setPaymentLink, setSecureCode,  secureCode, ignoreUrl, setMyAddress, myAddress, beamio, setCurrencyData,
-		setPayTag, setSendToMemo, setUsdcbalance, listenningProcess, setListenningProcess, setUsdcToUSD, usdcToUSD, usdcbalance, setPaymentLinkCode,
+		setPayTag, setSendToMemo, listenningProcess, setListenningProcess, usdcbalance, setPaymentLinkCode,
 		currencyData, setRedeemCode, setPayMePayment, setAllNodes, setGossip, gossip, setCharts, charts, setShowFooter, scanData, setScanData,
 		myBrandCards, myBrandCardDetails, homeTotalPowerCad,
 		aaAccountUsdcBalance, refreshRecentActivityNoAa, conetWalletBalances,
@@ -319,10 +300,8 @@ const Home = (_props: HomeProps) => {
 	const [topUpRateRefreshStatus, setTopUpRateRefreshStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
 	const [showMyBrandsDrawer, setShowMyBrandsDrawer] = useState(false)
 	const [aaAddrCopied, setAaAddrCopied] = useState(false)
-	/** 首页 CashTrees 大卡：EOA+AA USDC（链上）+ 基础设施卡 points；合计 CAD 用 Oracle（与 Top Up 同源） */
+	/** 首页 CashTrees 大卡：程序卡 points；Base USDC 用 Worker 6s daemon */
 	const [cashTreesWalletSnapshot, setCashTreesWalletSnapshot] = useState<{
-		eoaUsdc: string
-		aaUsdc: string
 		points0: string
 		pointsCurrency: string
 	} | null>(null)
@@ -467,16 +446,14 @@ const Home = (_props: HomeProps) => {
 		if (!profile) return
 		setReflash(true)
 
-		await getBalanceProcess(profile.keyID, setUsdcbalance, setUsdcToUSD)
+		await refreshAppDaemonNow('wallet')
 		getMyAssetsAggregated(profile)
 			.then(setCcsaAssets)
 			.catch(() => setCcsaAssets(null))
-		loadCashTreesWalletSnapshot(profile)
+		loadCashTreesPointsSnapshot(profile)
 			.then(setCashTreesWalletSnapshot)
 			.catch(() =>
 				setCashTreesWalletSnapshot({
-					eoaUsdc: '0',
-					aaUsdc: '0',
 					points0: '0',
 					pointsCurrency: 'CAD',
 				})
@@ -679,11 +656,10 @@ const Home = (_props: HomeProps) => {
 	}, [activateWalletEoaQrValue, addCashDepositAddress])
 
 	const addCashVaultUsdc = useMemo(() => {
-		const a = Number(cashTreesWalletSnapshot?.eoaUsdc ?? '0')
-		const b = Number(cashTreesWalletSnapshot?.aaUsdc ?? '0')
-		const t = (Number.isFinite(a) ? Math.max(0, a) : 0) + (Number.isFinite(b) ? Math.max(0, b) : 0)
-		return t
-	}, [cashTreesWalletSnapshot?.eoaUsdc, cashTreesWalletSnapshot?.aaUsdc])
+		const a = Math.max(0, Number(usdcbalance) || 0)
+		const b = Math.max(0, Number(aaAccountUsdcBalance) || 0)
+		return a + b
+	}, [usdcbalance, aaAccountUsdcBalance])
 
 	/** 1 USDC → CAD；链上刷新成功后以 Oracle 为准，否则与全局 currencyData（同源 feeder）一致 */
 	const addCashTopUpCadPerUsdc = useMemo(() => {
@@ -1135,8 +1111,8 @@ const Home = (_props: HomeProps) => {
 			topUpOracleCadPerUsdc != null && topUpOracleCadPerUsdc > 0
 				? topUpOracleCadPerUsdc
 				: (Number(d?.CAD) || 1.35) * (Number(d?.USDC) || 1)
-		const eoaU = Number(cashTreesWalletSnapshot?.eoaUsdc ?? '0')
-		const aaU = Number(cashTreesWalletSnapshot?.aaUsdc ?? '0')
+		const eoaU = Math.max(0, Number(usdcbalance) || 0)
+		const aaU = Math.max(0, Number(aaAccountUsdcBalance) || 0)
 		const totalUsdc =
 			(Number.isFinite(eoaU) ? Math.max(0, eoaU) : 0) + (Number.isFinite(aaU) ? Math.max(0, aaU) : 0)
 		const cadFromUsdc = totalUsdc * cadPerUsdc
@@ -1163,6 +1139,8 @@ const Home = (_props: HomeProps) => {
 		profiles?.[0]?.aaAccount,
 		currencyData,
 		topUpOracleCadPerUsdc,
+		usdcbalance,
+		aaAccountUsdcBalance,
 		cashTreesWalletSnapshot,
 		linkedNfcCards.length,
 	])
@@ -1324,7 +1302,7 @@ const Home = (_props: HomeProps) => {
 					...base,
 				})
 				if (profile) {
-					void loadCashTreesWalletSnapshot(profile).then(setCashTreesWalletSnapshot).catch(() => {})
+					void loadCashTreesPointsSnapshot(profile).then(setCashTreesWalletSnapshot).catch(() => {})
 					void refreshLinkedNfcCards()
 				}
 			})()
@@ -1493,19 +1471,21 @@ const Home = (_props: HomeProps) => {
 	}
 
 	useEffect(() => {
+		if (!showCashTreesBalanceDetails) return
+		setCashTreesSheetEoaUsdc(String(usdcbalance))
+		setCashTreesSheetAaUsdc(aaAccountUsdcBalance)
+	}, [showCashTreesBalanceDetails, usdcbalance, aaAccountUsdcBalance])
+
+	useEffect(() => {
 		if (!showCashTreesBalanceDetails || !profiles?.[0]) return
 		const profile = profiles[0]
 		let cancelled = false
 		setCashTreesBalanceLoading(true)
 		setCashTreesBalanceError(null)
-		setCashTreesSheetEoaUsdc(null)
-		setCashTreesSheetAaUsdc(null)
 		setCashTreesSheetPoints0(null)
-		loadCashTreesWalletSnapshot(profile)
+		loadCashTreesPointsSnapshot(profile)
 			.then((snap) => {
 				if (cancelled) return
-				setCashTreesSheetEoaUsdc(snap.eoaUsdc)
-				setCashTreesSheetAaUsdc(snap.aaUsdc)
 				setCashTreesSheetPoints0(snap.points0)
 			})
 			.catch((e: unknown) => {
@@ -1674,14 +1654,12 @@ const Home = (_props: HomeProps) => {
 	/** Android WebView：Activate 场景下外层 overflow-hidden + flex 常导致滚动视口高度塌成一条；原生壳内改为单层 flex 链 */
 	const homeScrollUsesSingleFlexChain = isCashTreesNativeWebView()
 
-	/** 与 DaemonProvider「points」折 CAD 同源，用于 Hub 双列（USDC / Merchant） */
-	const homeHubWalletCad = useMemo(() => {
-		const d = currencyData as Record<string, number>
-		const cadPerUsdc = (Number(d.CAD) || 1.35) * (Number(d.USDC) || 1)
+	/** Hub「USDC Balance」：Base EOA + AA 链上 USDC，不折 CAD */
+	const homeHubWalletUsdcDisplay = useMemo(() => {
 		const eoaU = Math.max(0, Number(usdcbalance) || 0)
 		const aaU = Math.max(0, Number(aaAccountUsdcBalance) || 0)
-		return cadPartsFromNumber((eoaU + aaU) * cadPerUsdc)
-	}, [usdcbalance, aaAccountUsdcBalance, currencyData])
+		return formatDigitalAssetDisplay(eoaU + aaU, { prefix: '$' })
+	}, [usdcbalance, aaAccountUsdcBalance])
 
 	const homeHubMerchantCad = useMemo(() => {
 		const d = currencyData as Record<string, number>
@@ -1934,7 +1912,7 @@ const Home = (_props: HomeProps) => {
 															{tu('usdc_balance')}
 														</p>
 														<p className="text-lg font-bold tabular-nums">
-															CA$ {homeHubWalletCad.whole}.{homeHubWalletCad.frac}
+															{homeHubWalletUsdcDisplay}
 														</p>
 													</div>
 													<div className="space-y-1 text-right">

@@ -542,6 +542,11 @@ const DISCOVER_MERCHANT_INFO_PANELS: Record<string, DiscoverMerchantInfoPanel> =
 		contact: "+1 (604) 285-1818",
 		location: "8053 Alexandra Rd,\nRichmond, BC V6X 3A6",
 	},
+	[CONET_GENESIS_DISCOVER_CARD_ADDRESS.toLowerCase()]: {
+		welcomeTitle: "Welcome to CoNET Labs",
+		welcomeText:
+			"The NEW Internet with a New Generation of Transmission Protocols. It defines how data is encapsulated, addressed, routed, and received at the destination.",
+	},
 	"0xe8e146e7752906db36c2aaa5bf699284ee3582b4": {
 		welcomeTitle: "Welcome to STT Inner Circle",
 		welcomeText:
@@ -5277,6 +5282,12 @@ function DiscoverMerchantDetailFullScreen({
 
 			<div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-[calc(2rem+env(safe-area-inset-bottom))] pt-4">
 				<div className="mx-auto max-w-lg space-y-4">
+					{discoverWelcomePanel ? (
+						<DiscoverMerchantWelcomePanel
+							title={discoverWelcomePanel.title}
+							body={discoverWelcomePanel.body}
+						/>
+					) : null}
 					{isConetGenesisCard ? (
 						<ConetGenesisNodeDiscoverSection
 							onLockSeat={lockConetGenesisSeat}
@@ -5289,12 +5300,6 @@ function DiscoverMerchantDetailFullScreen({
 					{/* Genesis card still exposes Coupons below; membership chrome stays non-genesis. */}
 					{!isConetGenesisCard ? (
 					<>
-					{discoverWelcomePanel ? (
-						<DiscoverMerchantWelcomePanel
-							title={discoverWelcomePanel.title}
-							body={discoverWelcomePanel.body}
-						/>
-					) : null}
 
 					<div className="rounded-[22px] bg-white p-5 shadow-[0_8px_22px_rgba(15,23,42,0.06)] ring-1 ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800">
 						<div className="flex items-start justify-between gap-3">

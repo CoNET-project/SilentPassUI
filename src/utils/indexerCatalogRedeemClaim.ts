@@ -16,6 +16,9 @@ const REDEEM_LEDGER_CATEGORY_LOWER = new Set(
   ].map((name) => ethers.keccak256(ethers.toUtf8Bytes(name)).toLowerCase())
 );
 
+/** POS coupon NFT surrender — after API deploy, OpenContainer writes this instead of internal_transfer. */
+export const TX_VOUCHER_BURN = ethers.keccak256(ethers.toUtf8Bytes('voucher_burn:confirmed'));
+
 export type IndexerCardRedeemDisplayMeta = {
   source: string;
   topupCategory: string;
@@ -287,6 +290,59 @@ export function classifyIndexerIssuedNftRedeemChannel(args: {
   return 'in_store';
 }
 
+/** POS in-store coupon NFT surrender — indexer often stores qty `1` as USDC6=1 (1e-6 USDC). */
+export function isPosCouponSurrenderDisplayJson(displayJson: unknown): boolean {
+  if (typeof displayJson !== 'string' || !displayJson.trim()) return false;
+  try {
+    const d = JSON.parse(displayJson) as {
+      source?: string;
+      handle?: string;
+      forText?: string;
+      title?: string;
+    };
+    const src = String(d.source ?? '').trim().toLowerCase();
+    if (src === 'poscouponsurrender') return true;
+    const handle = String(d.handle ?? d.forText ?? '')
+      .trim()
+      .toLowerCase();
+    if (handle === 'pos coupon surrender') return true;
+    return String(d.title ?? '').trim().toLowerCase() === 'in-store coupon redeem';
+  } catch {
+    return false;
+  }
+}
+
+export function isIndexerPosCouponSurrenderTx(args: {
+  txCategory?: unknown;
+  displayJson?: unknown;
+}): boolean {
+  if (isPosCouponSurrenderDisplayJson(args.displayJson)) return true;
+  const cat = normalizeIndexerTxCategoryHex(args.txCategory);
+  return cat !== '' && cat === TX_VOUCHER_BURN.toLowerCase();
+}
+
+export function isCouponNftLedgerTxType(type: string): boolean {
+  return type === 'Claim Coupons' || type === 'Claim Catalogs' || type === 'In-Store Redeem';
+}
+
+/** User-visible headline (align SilentPassUI Recent Activity). */
+export function couponNftLedgerHeadline(tx: {
+  type: string;
+  raw?: Record<string, unknown>;
+}): string {
+  if (isIndexerPosCouponSurrenderTx({ txCategory: tx.raw?.txCategory, displayJson: tx.raw?.displayJson })) {
+    return 'In-Store Coupon Redeem';
+  }
+  if (tx.type === 'Claim Coupons') return 'Claim Coupon';
+  if (tx.type === 'Claim Catalogs') return 'Claim Catalog';
+  if (tx.type === 'In-Store Redeem') return 'In-Store Redeem';
+  return txDisplayRowLedgerTypeTitle(tx.type);
+}
+
+export function couponNftLedgerAmountLabel(type: string): string {
+  return type === 'Claim Coupons' || type === 'Claim Catalogs' ? 'Claimed' : 'Redeemed';
+}
+
 /** Merchant ledger / Transactions row type for issued-NFT `cardRedeem`. */
 export function mapIndexerIssuedNftRedeemBizActivityType(args: {
   txCategory?: unknown;
@@ -298,6 +354,7 @@ export function mapIndexerIssuedNftRedeemBizActivityType(args: {
   topAdmin?: unknown;
   seriesMetadata?: Record<string, unknown> | null;
 }): IndexerIssuedNftRedeemBizActivityType | null {
+  if (isIndexerPosCouponSurrenderTx(args)) return 'In-Store Redeem';
   const channel = classifyIndexerIssuedNftRedeemChannel(args);
   if (!channel) return null;
   const product = classifyIndexerIssuedNftRedeemProductKind({

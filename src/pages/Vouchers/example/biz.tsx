@@ -172,6 +172,9 @@ import {
   resolveCreateIssuedNftBuintLedgerBeamioTag,
   resolveCreateIssuedNftBuintOwnerAddressLower,
   TX_BUINT_CREATE_ISSUED_NFT_CATALOG_SERVICE,
+  isCouponNftLedgerTxType,
+  couponNftLedgerHeadline,
+  couponNftLedgerAmountLabel,
 } from '@/utils/indexerCatalogRedeemClaim';
 import { isYoutubeProductionVideoUrl, PRODUCTION_BACKGROUND_YOUTUBE_MIME, isProductionBackgroundYoutubeMedia, youtubeThumbnailUrlFromProductionUrl } from '@/utils/youtubeProductionVideo';
 import {
@@ -3030,6 +3033,12 @@ function walletMobileActivityRightColumn(tx: TxDisplayRow): { top: string; botto
     const usdc = tx.usdcAmount > 0 ? tx.usdcAmount : 0;
     if (usdc > 0) return { top: `${usdc.toFixed(2)} USDC`, bottom: `${label} · ${hash}` };
     return { top: '—', bottom: `${label} · ${hash}` };
+  }
+  if (isCouponNftLedgerTxType(tx.type)) {
+    return {
+      top: couponNftLedgerAmountLabel(tx.type),
+      bottom: couponNftLedgerHeadline(tx),
+    };
   }
   if (Number.isFinite(tx.usdcAmount) && Math.abs(tx.usdcAmount) >= 0.000001) {
     const sign = tx.usdcAmount > 0 ? '+ ' : '';
@@ -6854,6 +6863,11 @@ function mapIndexerFetchedRowsToDisplay(rows: IndexerFetchedTxRow[], cardCurrenc
       method = total > 0 ? '$CTree or USDC' : 'USDC'
       ctreeAmount = 0
       usdcAmount = total6 > 0 ? total6 : 0
+    } else if (issuedRedeemType) {
+      method = 'Coupon'
+      ctreeAmount = 0
+      usdcAmount = 0
+      total = 0
     } else if (isTip) {
       method = 'Tip'
       ctreeAmount = 0
@@ -6932,7 +6946,42 @@ function normalizeTxDisplayRowsForCardCurrency(rows: TxDisplayRow[], cardCurrenc
       method: total > 0 ? '$CTree or USDC' : 'USDC',
     }
   })
-  return remapLegacyCreateIssuedNftBuintDisplayRows(normalized)
+  return remapCouponNftNonMoneyDisplayRows(remapLegacyCreateIssuedNftBuintDisplayRows(normalized))
+}
+
+/** Cached Charge rows that are actually coupon claim/surrender must not show as Purchase / 0.00 USDC. */
+function remapCouponNftNonMoneyDisplayRows(rows: TxDisplayRow[]): TxDisplayRow[] {
+  return rows.map((row) => {
+    const raw = (row.raw ?? {}) as Record<string, unknown>
+    const mapped = mapIndexerIssuedNftRedeemBizActivityType({
+      txCategory: raw.txCategory,
+      displayJson: raw.displayJson,
+      route: raw.route,
+      payer: raw.payer,
+      payee: raw.payee,
+      subordinate: raw.subordinate,
+      topAdmin: raw.topAdmin,
+    })
+    if (!mapped) return row
+    if (
+      row.type === mapped &&
+      row.total === 0 &&
+      row.usdcAmount === 0 &&
+      row.subtotal === 0 &&
+      row.ctreeAmount === 0
+    ) {
+      return row
+    }
+    return {
+      ...row,
+      type: mapped,
+      method: 'Coupon',
+      total: 0,
+      usdcAmount: 0,
+      subtotal: 0,
+      ctreeAmount: 0,
+    }
+  })
 }
 
 /** Indexer `Transaction.timestamp`: seconds on wire; readme allows ms — normalize to unix seconds. */
@@ -21426,7 +21475,7 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
  const [txFilterTerminal, setTxFilterTerminal] = useState('全部');
  const [txFilterType] = useState('全部');
  /** Mobile Transactions ledger: kind + period pills (independent of desktop search/terminal filters). */
- const [mobileTransactionsKind, setMobileTransactionsKind] = useState<'all' | 'topup' | 'charge'>('all');
+ const [mobileTransactionsKind, setMobileTransactionsKind] = useState<'all' | 'topup' | 'charge' | 'coupons'>('all');
  const [mobileTransactionsPeriod, setMobileTransactionsPeriod] = useState<OverviewTimeFilter>('今天');
  const [buintRedeemCodeInput, setBuintRedeemCodeInput] = useState('');
  const [buintRedeemPrecheck, setBuintRedeemPrecheck] = useState<Awaited<ReturnType<typeof queryBusinessStartKetRedeemOnChain>> | null>(null);
@@ -23977,6 +24026,8 @@ const txQueryRootAddress = useMemo(() => {
      rows = rows.filter((tx) => tx.type === 'In-Store Top-Up')
    } else if (mobileTransactionsKind === 'charge') {
      rows = rows.filter((tx) => tx.type === 'Charge' || tx.type === 'Tip')
+   } else if (mobileTransactionsKind === 'coupons') {
+     rows = rows.filter((tx) => isCouponNftLedgerTxType(tx.type))
    }
    const endSec = Math.floor(Date.now() / 1000)
    const startSec = overviewPeriodStartUnixSec(mobileTransactionsPeriod, endSec)
@@ -30801,6 +30852,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
            const filteredTx = transactionsFilteredForTable;
            const cadOracle = oracleCadUsdc ?? ORACLE_CAD_USDC_FALLBACK;
            const calculateTxNetValueCAD = (tx: TxDisplayRow) => {
+             if (isCouponNftLedgerTxType(tx.type)) return 0;
              if (tx.type.includes('Top-Up')) return tx.ctreeAmount || 0;
              if (tx.type === 'Charge') return chargeTxDisplayRowApproxCad(tx, cadOracle);
              if (isCreateIssuedNftBuintLedgerRowType(tx.type)) {
@@ -30950,6 +31002,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                     { id: 'all' as const, label: '全部' },
                     { id: 'topup' as const, label: 'Top-up' },
                     { id: 'charge' as const, label: 'Charges' },
+                    { id: 'coupons' as const, label: 'Coupons' },
                   ]).map(({ id, label }) => (
                     <button
                       key={id}
@@ -31032,10 +31085,9 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                 : '');
                             let titleM = 'Purchase (-)';
                             if (isTopup) titleM = 'Top-up (+)';
-                            else if (isCouponClaim) titleM = 'Claim Coupons';
-                            else if (isCatalogClaim) titleM = 'Claim Catalogs';
-                            else if (isInStoreCatalogRedeem) titleM = 'In-Store Redeem';
-                            else if (isTip) titleM = 'Tip (-)';
+                            else if (isCouponClaim || isCatalogClaim || isInStoreCatalogRedeem) {
+                              titleM = couponNftLedgerHeadline(tx);
+                            } else if (isTip) titleM = 'Tip (-)';
                             const cadAmtM = calculateTxNetValueCAD(tx);
                             const tipCadM = isCharge ? mergedChargeTipCad(tx) : 0;
                             let subtitleM: string;
@@ -31071,20 +31123,28 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                               >
                                 <div
                                   className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${
-                                    isCatalogClaim
-                                      ? 'bg-violet-50 text-violet-600'
-                                      : isTopup
-                                        ? tx.source === 'NFC'
-                                          ? 'bg-sky-100 text-sky-600'
-                                          : 'bg-sky-100 text-[#1562f0]'
-                                        : isTip
-                                          ? 'bg-rose-50 text-rose-500'
-                                          : useNfcM
-                                            ? 'bg-sky-100 text-sky-600'
-                                            : 'bg-sky-100 text-slate-700'
+                                    isInStoreCatalogRedeem
+                                      ? 'bg-amber-50 text-amber-700'
+                                      : isCouponClaim
+                                        ? 'bg-fuchsia-50 text-fuchsia-600'
+                                        : isCatalogClaim
+                                          ? 'bg-violet-50 text-violet-600'
+                                          : isTopup
+                                            ? tx.source === 'NFC'
+                                              ? 'bg-sky-100 text-sky-600'
+                                              : 'bg-sky-100 text-[#1562f0]'
+                                            : isTip
+                                              ? 'bg-rose-50 text-rose-500'
+                                              : useNfcM
+                                                ? 'bg-sky-100 text-sky-600'
+                                                : 'bg-sky-100 text-slate-700'
                                   }`}
                                 >
-                                  {isCatalogClaim ? (
+                                  {isInStoreCatalogRedeem ? (
+                                    <Store size={20} strokeWidth={2} aria-hidden />
+                                  ) : isCouponClaim ? (
+                                    <Gift size={20} strokeWidth={2} aria-hidden />
+                                  ) : isCatalogClaim ? (
                                     <Package size={20} strokeWidth={2} aria-hidden />
                                   ) : isTopup ? (
                                     tx.source === 'NFC' ? (
@@ -31120,9 +31180,21 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                 </div>
                                 <div className="flex shrink-0 flex-col items-end text-right">
                                   <span
-                                    className={`text-base font-bold tabular-nums ${isTopup ? 'text-[#1562f0]' : 'text-slate-900'}`}
+                                    className={`text-base font-bold tabular-nums ${
+                                      isCouponClaim || isCatalogClaim || isInStoreCatalogRedeem
+                                        ? isInStoreCatalogRedeem
+                                          ? 'text-amber-700'
+                                          : isCatalogClaim
+                                            ? 'text-violet-600'
+                                            : 'text-fuchsia-600'
+                                        : isTopup
+                                          ? 'text-[#1562f0]'
+                                          : 'text-slate-900'
+                                    }`}
                                   >
-                                    {isTopup ? '+' : '-'}C${Math.abs(cadAmtM).toFixed(2)}
+                                    {isCouponClaim || isCatalogClaim || isInStoreCatalogRedeem
+                                      ? couponNftLedgerAmountLabel(tx.type)
+                                      : `${isTopup ? '+' : '-'}C$${Math.abs(cadAmtM).toFixed(2)}`}
                                   </span>
                                   {isTopup && tx.topupBonusFiat && tx.topupBonusFiat > 0 ? (
                                     <span className="mt-0.5 inline-flex items-center justify-end gap-1 text-[11px] font-bold leading-snug text-[#FF9500]">
@@ -31215,10 +31287,18 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                         const ledgerCardStatus =
                           tx.status === '待处理'
                             ? { label: '待处理', cls: 'bg-amber-50 text-amber-700' as const }
-                            : tx.type.includes('Top-Up')
-                              ? { label: '已确认', cls: 'bg-emerald-50 text-emerald-600' as const }
-                              : { label: 'Settled', cls: 'bg-blue-50 text-blue-600' as const }
-                        let ledgerTypeTitle: string = txDisplayRowLedgerTypeTitle(tx.type)
+                            : tx.type === 'Claim Coupons'
+                              ? { label: 'Claimed', cls: 'bg-fuchsia-50 text-fuchsia-600' as const }
+                              : tx.type === 'Claim Catalogs'
+                                ? { label: 'Claimed', cls: 'bg-violet-50 text-violet-600' as const }
+                                : tx.type === 'In-Store Redeem'
+                                  ? { label: 'Redeemed', cls: 'bg-amber-50 text-amber-700' as const }
+                                  : tx.type.includes('Top-Up')
+                                    ? { label: '已确认', cls: 'bg-emerald-50 text-emerald-600' as const }
+                                    : { label: 'Settled', cls: 'bg-blue-50 text-blue-600' as const }
+                        let ledgerTypeTitle: string = isCouponNftLedgerTxType(tx.type)
+                          ? couponNftLedgerHeadline(tx)
+                          : txDisplayRowLedgerTypeTitle(tx.type)
                         if (tx.type === 'Charge') {
                           const rawLt = tx.raw as Record<string, unknown>
                           const rteLt = rawLt.route
@@ -31254,19 +31334,27 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                      ? 'bg-emerald-50 text-emerald-600'
                                      : tx.type === 'Tip'
                                        ? 'bg-rose-50 text-rose-600'
-                                       : isVaultTerminal
-                                         ? 'bg-blue-50 text-blue-600'
-                                         : 'bg-[#1562f0]/10 text-[#1562f0]'
+                                       : tx.type === 'Claim Coupons'
+                                         ? 'bg-fuchsia-50 text-fuchsia-600'
+                                         : tx.type === 'Claim Catalogs'
+                                           ? 'bg-violet-50 text-violet-600'
+                                           : tx.type === 'In-Store Redeem'
+                                             ? 'bg-amber-50 text-amber-700'
+                                             : isVaultTerminal
+                                               ? 'bg-blue-50 text-blue-600'
+                                               : 'bg-[#1562f0]/10 text-[#1562f0]'
                                  }`}
                                >
                                  {tx.type === 'Tip' ? (
                                    <Heart size={20} className="fill-rose-100" strokeWidth={2} aria-hidden />
                                  ) : tx.type.includes('Top-Up') ? (
                                    <ArrowUpFromLine size={20} strokeWidth={2} aria-hidden />
-                                 ) : tx.type === 'Create Coupon' ? (
+                                 ) : tx.type === 'Create Coupon' || tx.type === 'Claim Coupons' ? (
                                    <Gift size={20} strokeWidth={2} aria-hidden />
-                                 ) : tx.type === 'Create Catalogs' ? (
+                                 ) : tx.type === 'Create Catalogs' || tx.type === 'Claim Catalogs' ? (
                                    <Package size={20} strokeWidth={2} aria-hidden />
+                                 ) : tx.type === 'In-Store Redeem' ? (
+                                   <Store size={20} strokeWidth={2} aria-hidden />
                                  ) : isVaultTerminal ? (
                                    <Shield size={20} strokeWidth={2} aria-hidden />
                                  ) : (
@@ -31450,6 +31538,27 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                              <div className="flex min-w-0 flex-1 flex-col gap-1.5">
                                {isCreateIssuedNftBuintLedgerRowType(tx.type) ? (
                                  createIssuedNftBunitAmountPreview(tx)
+                               ) : isCouponNftLedgerTxType(tx.type) ? (
+                                 <div className="flex items-center gap-2 text-[14px] font-semibold whitespace-nowrap">
+                                   {tx.type === 'In-Store Redeem' ? (
+                                     <Store size={15} className="text-amber-600 shrink-0" strokeWidth={2} aria-hidden />
+                                   ) : tx.type === 'Claim Catalogs' ? (
+                                     <Package size={15} className="text-violet-600 shrink-0" strokeWidth={2} aria-hidden />
+                                   ) : (
+                                     <Gift size={15} className="text-fuchsia-600 shrink-0" strokeWidth={2} aria-hidden />
+                                   )}
+                                   <span
+                                     className={
+                                       tx.type === 'In-Store Redeem'
+                                         ? 'text-amber-700'
+                                         : tx.type === 'Claim Catalogs'
+                                           ? 'text-violet-700'
+                                           : 'text-fuchsia-700'
+                                     }
+                                   >
+                                     {couponNftLedgerAmountLabel(tx.type)}
+                                   </span>
+                                 </div>
                                ) : tx.type === 'Charge' ? (() => {
                                  const raw = tx.raw as Record<string, unknown>
                                  const meta = parseIndexerMetaTuple(raw.meta)
@@ -31630,7 +31739,25 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                )}
                              </div>
                              <div className="flex shrink-0 flex-col items-start gap-2 sm:min-w-[140px]">
-                               {(tx.type === 'In-Store Top-Up' || tx.type === 'Charge') && baseScanTxHash ? (
+                               {isCouponNftLedgerTxType(tx.type) && baseScanTxHash ? (
+                                 <a
+                                   href={`https://mainnet.conet.network/tx/${baseScanTxHash}`}
+                                   target="_blank"
+                                   rel="noopener noreferrer"
+                                   onClick={(ev) => ev.stopPropagation()}
+                                   className="flex items-center gap-1.5 bg-slate-50 px-2 py-1 rounded-md border border-slate-100 hover:bg-slate-100 hover:border-slate-200 transition-colors cursor-pointer"
+                                   title="View transaction on CoNET"
+                                 >
+                                   {tx.status === '待处理' ? (
+                                     <div className="w-3 h-3 rounded-full border-2 border-amber-400 border-t-transparent animate-spin shrink-0" />
+                                   ) : (
+                                     <CheckCircle2 size={12} className="text-amber-600 shrink-0" />
+                                   )}
+                                   <span className="text-[12px] font-mono text-slate-500">
+                                     {baseScanTxHash.length >= 10 ? `${baseScanTxHash.slice(0, 6)}...${baseScanTxHash.slice(-4)}` : '—'}
+                                   </span>
+                                 </a>
+                               ) : (tx.type === 'In-Store Top-Up' || tx.type === 'Charge') && baseScanTxHash ? (
                                  <a
                                    href={`https://basescan.org/tx/${baseScanTxHash}`}
                                    target="_blank"
@@ -31670,7 +31797,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                    <Fuel size={12} className="text-orange-500 shrink-0" />
                                    <span className="text-[11px] font-bold text-orange-500">{tx.bUnits.toFixed(2)} B-Units</span>
                                  </div>
-                               ) : (
+                               ) : isCouponNftLedgerTxType(tx.type) ? null : (
                                  <div className="flex items-center gap-1.5 bg-slate-100 px-2 py-1 rounded-md border border-slate-200/50">
                                    <span className="text-[11px] font-bold text-slate-400">0 B-Units (Base Gas)</span>
                                  </div>
@@ -31680,7 +31807,24 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                            </div>
                            </div>
                            <div className="flex shrink-0 flex-col items-end gap-1 text-right">
-                             {tx.type === 'Charge' && chargeTxNetValueColumnShowBreakdown(tx) ? (() => {
+                             {isCouponNftLedgerTxType(tx.type) ? (
+                               <div className="flex flex-col items-end gap-1">
+                                 <span
+                                   className={`font-semibold text-[18px] tracking-tight whitespace-nowrap ${
+                                     tx.type === 'In-Store Redeem'
+                                       ? 'text-amber-700'
+                                       : tx.type === 'Claim Catalogs'
+                                         ? 'text-violet-700'
+                                         : 'text-fuchsia-700'
+                                   }`}
+                                 >
+                                   {couponNftLedgerAmountLabel(tx.type)}
+                                 </span>
+                                 <div className="text-[12px] font-medium whitespace-nowrap text-slate-400">
+                                   {couponNftLedgerHeadline(tx)}
+                                 </div>
+                               </div>
+                             ) : tx.type === 'Charge' && chargeTxNetValueColumnShowBreakdown(tx) ? (() => {
                                const tipCadCol = mergedChargeTipCad(tx)
                                /** Title row: pre-discount request + tip vs settled final + tip (CAD); subtitle still itemizes tip. */
                                const strikeCad = chargeMetaRequestAmountApproxCad(tx) + tipCadCol
@@ -31828,16 +31972,20 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                  ? isMixedSession
                    ? 'Mixed Payment Session'
                    : 'Charge'
-                 : tx.type.includes('Top-Up')
-                   ? 'Top-up'
-                   : 'Tip';
+                 : isCouponNftLedgerTxType(tx.type)
+                   ? couponNftLedgerHeadline(tx)
+                   : tx.type.includes('Top-Up')
+                     ? 'Top-up'
+                     : 'Tip';
              const routeLines = smartReceiptRouteLines(tx);
              const totalCad = calculateTxNetValueCAD(tx);
              const tipCad = mergedChargeTipCad(tx);
              const statusIsPending = tx.status === '待处理';
              const isVaultTerminalSr =
                tx.terminal?.toLowerCase().includes('vault') || tx.terminal === 'The Vault';
-             let ledgerTypeTitleSr: string = txDisplayRowLedgerTypeTitle(tx.type);
+             let ledgerTypeTitleSr: string = isCouponNftLedgerTxType(tx.type)
+               ? couponNftLedgerHeadline(tx)
+               : txDisplayRowLedgerTypeTitle(tx.type);
              if (tx.type === 'Charge') {
                const rawLt = tx.raw as Record<string, unknown>;
                const rteLt = rawLt.route;

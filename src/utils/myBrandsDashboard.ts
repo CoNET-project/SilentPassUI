@@ -254,7 +254,7 @@ export async function fetchMyBrandsCardAssetsBatch(
 export async function fetchMyBrandsBalanceBatch(
 	cardAddress: string,
 	accounts: string[],
-	tokenIds: Array<string | number | bigint>,
+	tokenIds: ReadonlyArray<string | number | bigint>,
 ): Promise<bigint[] | null> {
 	if (!isMyBrandsDashboardConfigured()) return null
 	let card: string

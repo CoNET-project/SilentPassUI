@@ -45,6 +45,7 @@ import {
 } from '@/utils/couponSocialStatsLocalCache'
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
 import { storeSystemData } from '@/services/beamio'
+import { fetchMyBrandsCardAssetsBatch } from '@/utils/myBrandsDashboard'
 import { baseEndpoint, USDCContract_BASE } from '@/utils/constants'
 import usdc_abi from '@/services/ABI/usdc_abi.json'
 import { getUsdcBalanceFromApi } from '@/services/beamio'
@@ -1403,14 +1404,30 @@ export function DaemonProvider({ children }: DaemonProps) {
         )
       }
 
+      /**
+       * Prefer My Brands aggregator (1 eth_call / ≤32 cards). null = untrusted → per-card getMyAssets.
+       * Do not clear prior assets on aggregator failure.
+       */
+      const dashboardAssetsByCard =
+        eoaNormForCoupons && ethers.isAddress(eoaNormForCoupons)
+          ? await fetchMyBrandsCardAssetsBatch(
+              displayCards.map((c) => c.cardAddress),
+              eoaNormForCoupons,
+              aaNormForCoupons
+            ).catch(() => null)
+          : null
+
       await Promise.all(
         displayCards.map(async (uc) => {
           const key = uc.cardAddress.toLowerCase()
           const prevRow = prevDetails[key]
           const claimableCoupons = claimableByCardKey.get(key) ?? null
           const ownedCatalogs = ownedCatalogByCardKey.get(key) ?? prevRow?.ownedCatalogs ?? null
+          const fromDashboard = dashboardAssetsByCard?.get(key) ?? null
           const [assetsFromMyAssets, meta] = await Promise.all([
-            getMyAssets(profile, uc.cardAddress).catch(() => null),
+            fromDashboard
+              ? Promise.resolve(fromDashboard)
+              : getMyAssets(profile, uc.cardAddress).catch(() => null),
             // awaitFresh: must not seed feed from stale local (tier.imageFit / image would stick).
             getCardBasicMetadataStaleWhileRevalidate(uc.cardAddress, { awaitFresh: true }).catch(
               () => prevRow?.meta ?? null

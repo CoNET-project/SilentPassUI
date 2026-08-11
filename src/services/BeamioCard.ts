@@ -22,6 +22,10 @@ import {
 	userHasAnyCardLevelStatBalance,
 	userHasAnyProgramAssetOnCard,
 } from "@/utils/beamioCardUserCumulativeStatHoldings";
+import {
+	fetchMyBrandsBalanceBatch,
+	MY_BRANDS_DASHBOARD_MAX_TOKEN_IDS,
+} from "@/utils/myBrandsDashboard";
 import { CoNET_Data, setCoNET_Data } from "@/utils/globals";
 import { storeSystemData } from "./beamio";
 import { searchUsername} from "./beamio"
@@ -1194,6 +1198,69 @@ function sortOwnedCouponSeriesRows(rows: CardActiveIssuedCouponSeriesItem[]): Ca
 	})
 }
 
+/**
+ * Prefer My Brands Dashboard balanceBatch (1 eth_call / card); fall back to serial balanceOf.
+ * Returns held tokenId keys; null = all RPC paths untrusted for this card.
+ */
+async function resolveHeldCouponTokenIdsForCard(
+	cardAddress: string,
+	tokenIds: bigint[],
+	userEOA?: string | null,
+	userAA?: string | null
+): Promise<{ held: Set<string>; trusted: boolean }> {
+	const held = new Set<string>()
+	if (!tokenIds.length) return { held, trusted: true }
+	const accounts = await resolveMyBrandsCouponHolderAccountsForCard(cardAddress, userEOA, userAA)
+	if (!accounts.length) return { held, trusted: true }
+
+	const uniqueIds: bigint[] = []
+	const seenId = new Set<string>()
+	for (const id of tokenIds) {
+		const k = id.toString()
+		if (seenId.has(k)) continue
+		seenId.add(k)
+		uniqueIds.push(id)
+	}
+
+	for (let offset = 0; offset < uniqueIds.length; offset += MY_BRANDS_DASHBOARD_MAX_TOKEN_IDS) {
+		const chunk = uniqueIds.slice(offset, offset + MY_BRANDS_DASHBOARD_MAX_TOKEN_IDS)
+		const batch = await fetchMyBrandsBalanceBatch(cardAddress, accounts, chunk).catch(() => null)
+		if (batch && batch.length === accounts.length * chunk.length) {
+			for (let a = 0; a < accounts.length; a++) {
+				for (let t = 0; t < chunk.length; t++) {
+					const bal = batch[a * chunk.length + t] ?? 0n
+					if (bal > 0n) held.add(chunk[t]!.toString())
+				}
+			}
+			continue
+		}
+		/** Fallback: serial balanceOf for this chunk */
+		try {
+			const { provider } = await providerForBeamioUserCard(cardAddress)
+			const contract = new ethers.Contract(cardAddress, MY_BRANDS_COUPON_BALANCE_ABI, provider)
+			let anyOk = false
+			for (const tokenId of chunk) {
+				for (const account of accounts) {
+					try {
+						const bal = (await contract.balanceOf(account, tokenId)) as bigint
+						anyOk = true
+						if (bal > 0n) {
+							held.add(tokenId.toString())
+							break
+						}
+					} catch {
+						/* try next account */
+					}
+				}
+			}
+			if (!anyOk) return { held, trusted: false }
+		} catch {
+			return { held, trusted: false }
+		}
+	}
+	return { held, trusted: true }
+}
+
 async function scanOwnedCouponSeriesWithBalanceCheck(
 	cardList: string[],
 	normalizedLimit: number,
@@ -1213,12 +1280,13 @@ async function scanOwnedCouponSeriesWithBalanceCheck(
 		row: CardActiveIssuedCouponSeriesItem
 		tokenId: bigint
 	}
-	const jobs: BalanceCheckJob[] = []
+	const jobsByCard = new Map<string, BalanceCheckJob[]>()
 	for (let i = 0; i < cardList.length; i++) {
 		const rows = responses[i]
 		if (!rows) continue
 		const cardLower = cardList[i]!
 		const cardAddress = ethers.getAddress(cardLower)
+		const list: BalanceCheckJob[] = []
 		for (const row of rows) {
 			let tokenId: bigint
 			try {
@@ -1226,43 +1294,35 @@ async function scanOwnedCouponSeriesWithBalanceCheck(
 			} catch {
 				continue
 			}
-			jobs.push({ cardLower, cardAddress, row: { ...row, cardAddress }, tokenId })
+			list.push({ cardLower, cardAddress, row: { ...row, cardAddress }, tokenId })
 		}
+		if (list.length) jobsByCard.set(cardLower, list)
 	}
-	if (!jobs.length) return []
+	if (!jobsByCard.size) return []
 
 	const merged = new Map<string, CardActiveIssuedCouponSeriesItem>()
-	let balanceCheckFailures = 0
-	let balanceCheckSuccesses = 0
-	const ctxByCard = new Map<string, { contract: ethers.Contract; accounts: string[] }>()
-	for (const job of jobs) {
-		let ctx = ctxByCard.get(job.cardLower)
-		if (!ctx) {
-			const { provider } = await providerForBeamioUserCard(job.cardAddress)
-			ctx = {
-				contract: new ethers.Contract(job.cardAddress, MY_BRANDS_COUPON_BALANCE_ABI, provider),
-				accounts: await resolveMyBrandsCouponHolderAccountsForCard(job.cardAddress, userEOA, userAA),
-			}
-			ctxByCard.set(job.cardLower, ctx)
-		}
-		if (!ctx.accounts.length) {
+	let anyTrusted = false
+	let anyFailure = false
+	for (const [cardLower, jobs] of jobsByCard) {
+		const { held, trusted } = await resolveHeldCouponTokenIdsForCard(
+			jobs[0]!.cardAddress,
+			jobs.map((j) => j.tokenId),
+			userEOA,
+			userAA
+		)
+		if (!trusted) {
+			anyFailure = true
 			continue
 		}
-		for (const account of ctx.accounts) {
-			try {
-				const bal = (await ctx.contract.balanceOf(account, job.tokenId)) as bigint
-				balanceCheckSuccesses++
-				if (bal > 0n) {
-					merged.set(`${job.cardLower}:${job.row.tokenId}`, job.row)
-					break
-				}
-			} catch {
-				balanceCheckFailures++
+		anyTrusted = true
+		for (const job of jobs) {
+			if (held.has(job.tokenId.toString())) {
+				merged.set(`${cardLower}:${job.row.tokenId}`, job.row)
 			}
 		}
 	}
 
-	if (merged.size === 0 && balanceCheckSuccesses === 0 && balanceCheckFailures > 0) return null
+	if (merged.size === 0 && !anyTrusted && anyFailure) return null
 
 	return sortOwnedCouponSeriesRows([...merged.values()])
 }
@@ -1273,10 +1333,10 @@ async function filterOwnedCouponRowsByBalance(
 	userAA?: string | null
 ): Promise<CardActiveIssuedCouponSeriesItem[] | null> {
 	if (!rows.length) return []
-	const merged = new Map<string, CardActiveIssuedCouponSeriesItem>()
-	let balanceCheckFailures = 0
-	let balanceCheckSuccesses = 0
-	const ctxByCard = new Map<string, { contract: ethers.Contract; accounts: string[] }>()
+	const byCard = new Map<
+		string,
+		{ cardAddress: string; rows: CardActiveIssuedCouponSeriesItem[]; tokenIds: bigint[] }
+	>()
 	for (const row of rows) {
 		const raw = row.cardAddress?.trim()
 		if (!raw || !ethers.isAddress(raw)) continue
@@ -1288,33 +1348,38 @@ async function filterOwnedCouponRowsByBalance(
 		} catch {
 			continue
 		}
-		let ctx = ctxByCard.get(cardLower)
-		if (!ctx) {
-			const { provider } = await providerForBeamioUserCard(cardAddress)
-			ctx = {
-				contract: new ethers.Contract(cardAddress, MY_BRANDS_COUPON_BALANCE_ABI, provider),
-				accounts: await resolveMyBrandsCouponHolderAccountsForCard(cardAddress, userEOA, userAA),
-			}
-			ctxByCard.set(cardLower, ctx)
+		let bucket = byCard.get(cardLower)
+		if (!bucket) {
+			bucket = { cardAddress, rows: [], tokenIds: [] }
+			byCard.set(cardLower, bucket)
 		}
-		if (!ctx.accounts.length) {
+		bucket.rows.push({ ...row, cardAddress })
+		bucket.tokenIds.push(tokenId)
+	}
+
+	const merged = new Map<string, CardActiveIssuedCouponSeriesItem>()
+	let anyTrusted = false
+	let anyFailure = false
+	for (const [cardLower, bucket] of byCard) {
+		const { held, trusted } = await resolveHeldCouponTokenIdsForCard(
+			bucket.cardAddress,
+			bucket.tokenIds,
+			userEOA,
+			userAA
+		)
+		if (!trusted) {
+			anyFailure = true
 			continue
 		}
-		for (const account of ctx.accounts) {
-			try {
-				const bal = (await ctx.contract.balanceOf(account, tokenId)) as bigint
-				balanceCheckSuccesses++
-				if (bal > 0n) {
-					merged.set(`${cardLower}:${row.tokenId}`, { ...row, cardAddress })
-					break
-				}
-			} catch {
-				balanceCheckFailures++
+		anyTrusted = true
+		for (const row of bucket.rows) {
+			if (held.has(String(row.tokenId))) {
+				merged.set(`${cardLower}:${row.tokenId}`, row)
 			}
 		}
 	}
 
-	if (merged.size === 0 && balanceCheckSuccesses === 0 && balanceCheckFailures > 0) return null
+	if (merged.size === 0 && !anyTrusted && anyFailure) return null
 
 	return sortOwnedCouponSeriesRows([...merged.values()])
 }

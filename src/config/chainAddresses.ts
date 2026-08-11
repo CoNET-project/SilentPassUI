@@ -114,6 +114,9 @@ export const CONET_MULTICALL3 = '0x4e73d76E7fC6b6Aa471dca7238107246BF4c8145'
 /** BeamioConsumerWalletDashboard UUPS proxy — App Daemon 6s snapshot */
 export const CONET_CONSUMER_WALLET_DASHBOARD = '0x28370397A2b0C504e93754288ABb4F47EAaf168f'
 export const CONET_CONSUMER_WALLET_DASHBOARD_IMPL = '0x7922B887dD5b7dEf0355e9537AB642E7eC5065F9'
+/** BeamioMyBrandsDashboard UUPS proxy — My Brands 30s card slice batch (deployments/conet-BeamioMyBrandsDashboard.json) */
+export const CONET_MY_BRANDS_DASHBOARD = '0x1e156e2aDaBce8f7a03445ee6A8939D3B90eb05D'
+export const CONET_MY_BRANDS_DASHBOARD_IMPL = '0x51a3C3D083271A27c02EE3EA854D3e93fB2Dd4e8'
 /**
  * GBDepinAirdrop — DePIN 节点收费 GB（mintPaid → 受益人钱包）。
  * 部署后由 sync / deployments/conet-GBDepinAirdrop.json 填入；未部署时空字符串（UI 仅展示 legacy routing GB）。

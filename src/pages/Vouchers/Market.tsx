@@ -998,7 +998,7 @@ function DiscoverMerchantCardAddressCapsule({ address }: { address: string }) {
 	)
 }
 
-/** Issuer @beamioTag on Discover merchant detail hero (glass pill on dark gradient). */
+/** Issuer @beamioTag on Discover merchant detail — top chrome, right of Back (glass pill on dark hero). */
 function DiscoverMerchantOwnerBeamioTagCapsule({
 	ownerEoa,
 	onOpenProfile,
@@ -1291,9 +1291,73 @@ type DiscoverOfferTierRow = {
 	minUsdc6: bigint
 	discountPct: number
 	backgroundColor: string | null
+	membershipFeeE6?: string
+	membershipFee?: string
+	membershipDurationKind?: number
+	index?: number
 }
 
 const DISCOVER_TIER_MEDALS = ["🥉", "🥈", "🥇"] as const
+
+const MEMBERSHIP_DURATION_LABELS: Record<number, string> = {
+	1: 'Day',
+	2: 'Week',
+	3: 'Month',
+	4: 'Quarter',
+	5: 'Year',
+	6: 'Forever',
+}
+
+function membershipFeeHumanToE6(raw: string | number | undefined | null): string {
+	if (raw == null || raw === '') return '0'
+	const s = String(raw).replace(/,/g, '').trim()
+	if (!s) return '0'
+	const n = Number(s)
+	if (!Number.isFinite(n) || n <= 0) return '0'
+	return String(Math.round(n * 1e6))
+}
+
+function membershipFeeE6ToHuman(e6: string | number | undefined | null): string {
+	if (e6 == null || e6 === '') return ''
+	try {
+		const bi = BigInt(String(e6).replace(/,/g, '').trim() || '0')
+		if (bi <= 0n) return ''
+		const whole = bi / 1000000n
+		const frac = bi % 1000000n
+		if (frac === 0n) return whole.toString()
+		const fracStr = frac.toString().padStart(6, '0').replace(/0+$/, '')
+		return `${whole}.${fracStr}`
+	} catch {
+		return ''
+	}
+}
+
+function discoverTierMembershipFeeE6(row: DiscoverOfferTierRow): string {
+	if (row.membershipFeeE6 && BigInt(row.membershipFeeE6) > 0n) return row.membershipFeeE6
+	return membershipFeeHumanToE6(row.membershipFee)
+}
+
+function discoverMetadataHasMembershipFee(meta: Record<string, unknown> | null): boolean {
+	if (meta == null) return false
+	const raw = meta.tiers
+	if (!Array.isArray(raw)) return false
+	for (const item of raw) {
+		if (item == null || typeof item !== 'object') continue
+		const o = item as Record<string, unknown>
+		let feeE6 = '0'
+		if (o.membershipFeeE6 != null && String(o.membershipFeeE6).trim() !== '') {
+			try {
+				feeE6 = BigInt(String(o.membershipFeeE6).replace(/,/g, '').trim()).toString()
+			} catch {
+				feeE6 = '0'
+			}
+		} else {
+			feeE6 = membershipFeeHumanToE6(o.membershipFee as string | number | undefined)
+		}
+		if (BigInt(feeE6) > 0n) return true
+	}
+	return false
+}
 
 function parseTierDiscountPct(description: string | null | undefined): number {
 	if (!description?.trim()) return 0
@@ -1338,17 +1402,91 @@ function parseDiscoverRewardTiersFromMeta(
 			nested?.backgroundColor
 		const backgroundColor =
 			typeof bgRaw === "string" && bgRaw.trim() ? discoverSafeCssColor(bgRaw) : null
+		let membershipFeeE6: string | undefined
+		if (o.membershipFeeE6 != null && String(o.membershipFeeE6).trim() !== '') {
+			try {
+				membershipFeeE6 = BigInt(String(o.membershipFeeE6).replace(/,/g, '').trim()).toString()
+			} catch {
+				membershipFeeE6 = undefined
+			}
+		}
+		const membershipFee =
+			o.membershipFee != null && String(o.membershipFee).trim() !== ''
+				? String(o.membershipFee).replace(/,/g, '').trim()
+				: undefined
+		const durationRaw =
+			o.membershipDurationKind != null ? Number(o.membershipDurationKind) : NaN
+		const membershipDurationKind =
+			Number.isFinite(durationRaw) && durationRaw >= 1 && durationRaw <= 6
+				? Math.trunc(durationRaw)
+				: undefined
+		const indexRaw = o.index != null ? Number(o.index) : NaN
+		const index = Number.isFinite(indexRaw) ? Math.trunc(indexRaw) : undefined
 		rows.push({
 			name: tierName,
 			minUsdc6,
 			discountPct: parseTierDiscountPct(description),
 			backgroundColor,
+			membershipFeeE6,
+			membershipFee,
+			membershipDurationKind,
+			index,
 		})
 	}
 	rows.sort((a, b) => (a.minUsdc6 < b.minUsdc6 ? -1 : a.minUsdc6 > b.minUsdc6 ? 1 : 0))
 	if (rows.length <= 1) return []
 	const baseMinUsdc6 = rows[0].minUsdc6
 	return rows.filter((row) => row.minUsdc6 > baseMinUsdc6)
+}
+
+/** All metadata tiers (including base) for membership fee display. */
+function parseDiscoverAllTiersFromMeta(meta: Record<string, unknown> | null): DiscoverOfferTierRow[] {
+	if (meta == null) return []
+	const raw = meta.tiers
+	if (!Array.isArray(raw) || raw.length === 0) return []
+	const rows: DiscoverOfferTierRow[] = []
+	for (const item of raw) {
+		if (item == null || typeof item !== 'object') continue
+		const o = item as Record<string, unknown>
+		const nested =
+			o.properties != null && typeof o.properties === 'object'
+				? (o.properties as Record<string, unknown>)
+				: null
+		const nameRaw = o.name ?? nested?.name
+		const tierName =
+			typeof nameRaw === 'string' && nameRaw.trim() ? nameRaw.trim() : 'Tier'
+		let membershipFeeE6: string | undefined
+		if (o.membershipFeeE6 != null && String(o.membershipFeeE6).trim() !== '') {
+			try {
+				membershipFeeE6 = BigInt(String(o.membershipFeeE6).replace(/,/g, '').trim()).toString()
+			} catch {
+				membershipFeeE6 = undefined
+			}
+		}
+		const membershipFee =
+			o.membershipFee != null && String(o.membershipFee).trim() !== ''
+				? String(o.membershipFee).replace(/,/g, '').trim()
+				: undefined
+		const durationRaw =
+			o.membershipDurationKind != null ? Number(o.membershipDurationKind) : NaN
+		const membershipDurationKind =
+			Number.isFinite(durationRaw) && durationRaw >= 1 && durationRaw <= 6
+				? Math.trunc(durationRaw)
+				: undefined
+		const indexRaw = o.index != null ? Number(o.index) : NaN
+		const index = Number.isFinite(indexRaw) ? Math.trunc(indexRaw) : undefined
+		rows.push({
+			name: tierName,
+			minUsdc6: 0n,
+			discountPct: 0,
+			backgroundColor: null,
+			membershipFeeE6,
+			membershipFee,
+			membershipDurationKind,
+			index,
+		})
+	}
+	return rows
 }
 
 type DiscoverMerchantCouponOffer = {
@@ -3863,6 +4001,53 @@ function DiscoverMerchantDetailFullScreen({
 	const hasActiveMembership =
 		merchantAssets != null &&
 		merchantAssets.nfts.some((n) => !n.isExpired && Number(n.tokenId) > 0)
+	const membershipFeeMode = discoverMetadataHasMembershipFee(merchantMetadataRoot)
+	const membershipFeeDisplay = useMemo(() => {
+		if (!membershipFeeMode) return null
+		const allTiers = parseDiscoverAllTiersFromMeta(merchantMetadataRoot)
+		const feeTiers = allTiers.filter((t) => BigInt(discoverTierMembershipFeeE6(t)) > 0n)
+		if (feeTiers.length === 0) return null
+		const activeNft = merchantAssets?.nfts.find((n) => !n.isExpired && Number(n.tokenId) > 0)
+		const activeTierIndex = activeNft != null ? Number(activeNft.tier) : NaN
+		const matched =
+			Number.isFinite(activeTierIndex) && activeTierIndex >= 0
+				? feeTiers.find((t) => t.index === activeTierIndex) ??
+					feeTiers[Math.min(activeTierIndex, feeTiers.length - 1)]
+				: feeTiers[0]
+		const feeE6 = discoverTierMembershipFeeE6(matched)
+		const feeHuman = membershipFeeE6ToHuman(feeE6)
+		if (!feeHuman) return null
+		const durationLabel =
+			matched.membershipDurationKind != null
+				? MEMBERSHIP_DURATION_LABELS[matched.membershipDurationKind] ?? ''
+				: ''
+		return {
+			feeHuman,
+			durationLabel,
+			tierName: matched.name,
+		}
+	}, [membershipFeeMode, merchantMetadataRoot, merchantAssets])
+	const membershipExpiryDisplay = useMemo(() => {
+		if (!hasActiveMembership || !merchantAssets) return null
+		const active = merchantAssets.nfts.find((n) => !n.isExpired && Number(n.tokenId) > 0)
+		const expiry = (active?.expiry ?? '').trim()
+		if (!expiry || /^0+$/.test(expiry) || expiry === 'Never') {
+			return expiry === 'Never' ? 'Never expires' : null
+		}
+		const asNum = Number(expiry)
+		if (Number.isFinite(asNum) && asNum > 1_000_000_000) {
+			try {
+				return new Date(asNum * 1000).toLocaleDateString(undefined, {
+					year: 'numeric',
+					month: 'short',
+					day: 'numeric',
+				})
+			} catch {
+				return expiry
+			}
+		}
+		return expiry
+	}, [hasActiveMembership, merchantAssets])
 	const promoRewardTier =
 		item.cardAddress != null
 			? DISCOVER_MERCHANT_PROMO_REWARD_TIERS[resolveDiscoverCardPanelKey(item.cardAddress)]
@@ -5228,15 +5413,6 @@ function DiscoverMerchantDetailFullScreen({
 						</div>
 						<div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
 							<h1 className="text-2xl font-bold leading-tight text-white drop-shadow-sm">{item.title}</h1>
-							{issuerOwnerEoa ? (
-								<span className="pointer-events-auto">
-									<DiscoverMerchantOwnerBeamioTagCapsule
-										ownerEoa={issuerOwnerEoa}
-										onOpenProfile={() => void openIssuerProfile()}
-										profileOpening={issuerProfileOpening}
-									/>
-								</span>
-							) : null}
 						</div>
 						<DiscoverHeroStatCapsules likeCount={merchantLikeCount} shareClickCount={merchantShareClickCount} />
 						{item.cardAddress ? (
@@ -5248,8 +5424,19 @@ function DiscoverMerchantDetailFullScreen({
 				</div>
 				{/* Chrome outside overflow-hidden so safe-area / WebKit hit targets are not clipped. */}
 				<div className={BEAMIO_HERO_FLOATING_BACK_ROW_CLASS} style={beamioHeroFloatingBackTopStyle}>
-					<BeamioCircularBackButton variant="onDark" onClick={onClose} />
-					<div className="flex items-center gap-2">
+					<div className="flex min-w-0 max-w-[min(100%,calc(100%-6.5rem))] items-center gap-2">
+						<BeamioCircularBackButton variant="onDark" onClick={onClose} />
+						{issuerOwnerEoa ? (
+							<span className="min-w-0 pointer-events-auto">
+								<DiscoverMerchantOwnerBeamioTagCapsule
+									ownerEoa={issuerOwnerEoa}
+									onOpenProfile={() => void openIssuerProfile()}
+									profileOpening={issuerProfileOpening}
+								/>
+							</span>
+						) : null}
+					</div>
+					<div className="flex shrink-0 items-center gap-2">
 						{item.cardAddress ? (
 							<DiscoverMerchantShareButton
 								cardAddress={item.cardAddress}
@@ -5297,10 +5484,8 @@ function DiscoverMerchantDetailFullScreen({
 							initialReferrerEoa={genesisDeepLinkReferrerEoa}
 						/>
 					) : null}
-					{/* Genesis card still exposes Coupons below; membership chrome stays non-genesis. */}
-					{!isConetGenesisCard ? (
-					<>
 
+					{/* Active Member / Available Balance — all Discover merchant details, including CoNET Genesis. */}
 					<div className="rounded-[22px] bg-white p-5 shadow-[0_8px_22px_rgba(15,23,42,0.06)] ring-1 ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800">
 						<div className="flex items-start justify-between gap-3">
 							<div className="min-w-0 flex-1">
@@ -5308,12 +5493,37 @@ function DiscoverMerchantDetailFullScreen({
 									{passTitle}
 								</h3>
 								{hasActiveMembership ? (
-									<div className="mt-1.5 flex items-center gap-1.5">
-										<span className="h-2 w-2 shrink-0 rounded-full bg-[#1562f0]" aria-hidden />
-										<span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500 dark:text-slate-400">
-											Active Member
-										</span>
+									<div className="mt-1.5 flex flex-col gap-1">
+										<div className="flex items-center gap-1.5">
+											<span className="h-2 w-2 shrink-0 rounded-full bg-[#1562f0]" aria-hidden />
+											<span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500 dark:text-slate-400">
+												Active Member
+											</span>
+										</div>
+										{membershipExpiryDisplay ? (
+											<p className="text-[12px] font-medium text-slate-500 dark:text-slate-400">
+												{membershipExpiryDisplay === 'Never expires'
+													? membershipExpiryDisplay
+													: `Expires ${membershipExpiryDisplay}`}
+											</p>
+										) : null}
 									</div>
+								) : null}
+								{membershipFeeDisplay ? (
+									<p className="mt-1.5 text-[12px] font-medium leading-snug text-slate-500 dark:text-slate-400">
+										Membership fee{' '}
+										<span className="font-semibold text-[#1f2328] dark:text-slate-200">
+											{balancePrefix
+												? `${balancePrefix}${membershipFeeDisplay.feeHuman}`
+												: membershipFeeDisplay.feeHuman}
+										</span>
+										{membershipFeeDisplay.durationLabel
+											? ` · ${membershipFeeDisplay.durationLabel}`
+											: ''}
+										{membershipFeeDisplay.tierName
+											? ` (${membershipFeeDisplay.tierName})`
+											: ''}
+									</p>
 								) : null}
 							</div>
 							<span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#1562f0] text-white shadow-sm">
@@ -5482,6 +5692,9 @@ function DiscoverMerchantDetailFullScreen({
 						) : null}
 					</div>
 
+					{/* Top-up promo / Active promotions / curated offers — non-Genesis merchant cards. */}
+					{!isConetGenesisCard ? (
+					<>
 					{topupPromotionCapsule ? (
 						<DiscoverTopupPromotionCapsule
 							title={topupPromotionCapsule.title}

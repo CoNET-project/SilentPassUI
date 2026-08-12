@@ -42,6 +42,16 @@ export function clearWorkspaceSessionUnlock(): void {
 	if (typeof window === 'undefined') return
 	wipeSessionSecrets()
 	try {
+		// Lazy require: chat.ts imports beamio.ts which imports this file.
+		// eslint-disable-next-line @typescript-eslint/no-require-imports
+		const { stopBizChatListen } = require('@/services/chat') as {
+			stopBizChatListen?: () => void
+		}
+		stopBizChatListen?.()
+	} catch {
+		/* ignore */
+	}
+	try {
 		sessionStorage.removeItem(WORKSPACE_SESSION_UNLOCK_KEY)
 	} catch {
 		// ignore quota / private mode

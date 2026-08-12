@@ -355,6 +355,13 @@ export function mapIndexerIssuedNftRedeemBizActivityType(args: {
   seriesMetadata?: Record<string, unknown> | null;
 }): IndexerIssuedNftRedeemBizActivityType | null {
   if (isIndexerPosCouponSurrenderTx(args)) return 'In-Store Redeem';
+  const redeem = parseIndexerCardRedeemDisplayJson(
+    typeof args.displayJson === 'string' ? args.displayJson : ''
+  );
+  const titleLc = String(redeem?.title ?? '').trim().toLowerCase();
+  // POS 代客户领取仍写 subordinate=POS，但产品语义是 Claim，不是核销。
+  if (titleLc === 'claim coupon' || titleLc.includes('claim coupon')) return 'Claim Coupons';
+  if (titleLc === 'claim catalog' || titleLc.includes('claim catalog')) return 'Claim Catalogs';
   const channel = classifyIndexerIssuedNftRedeemChannel(args);
   if (!channel) return null;
   const product = classifyIndexerIssuedNftRedeemProductKind({

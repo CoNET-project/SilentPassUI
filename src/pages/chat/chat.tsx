@@ -40,6 +40,7 @@ import {
 import { PlusActionMenu } from "./components/PlusActionMenu"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import { getCashcodeData, searchUsername, storeSystemData, AuthorizationSign } from '@/services/beamio'
+import { mirrorChatMessageToHistory } from '@/services/chatHistoryMirror'
 import { fiatPrefix } from '@/services/currency'
 import { MessageSendReceiveCard } from "./components/messageSendReceiveCard"
 import { tu } from '@/locale/beamioLocale'
@@ -575,6 +576,10 @@ export default function Chat({ onBack, chatData, privateKey, layout = 'fullscree
 		setMessages(next)
 		chatData.messages = next
 		await storageData()
+		if (ok) {
+			const sentMsg = next.find(m => m.id === tempId)
+			mirrorChatMessageToHistory(chatData.address, sentMsg, 'out')
+		}
 	}
 
 	/** 发送方取消 Payment Request：发送一条 reply 指向该卡片的 paymentRequestCancel 消息；完成后才把消息加入列表并显示 decline 信息 */
@@ -602,6 +607,7 @@ export default function Chat({ onBack, chatData, privateKey, layout = 'fullscree
 				setMessages(next)
 				chatData.messages = next
 				await storageData()
+				mirrorChatMessageToHistory(chatData.address, payload, 'out')
 			}
 		} finally {
 			setDeclineLoadingForSendId(null)
@@ -687,6 +693,7 @@ export default function Chat({ onBack, chatData, privateKey, layout = 'fullscree
 				} catch (_) {}
 			}
 			await storageData()
+			mirrorChatMessageToHistory(chatData.address, payload, 'out')
 			setPayConfirmForSendId(null)
 		} catch (e) {
 			setPayTransferError((e as Error)?.message || 'Transfer failed')
@@ -941,6 +948,9 @@ export default function Chat({ onBack, chatData, privateKey, layout = 'fullscree
 
 			chatData.messages = next
 			await storageData()
+
+			const sentMsg = next.find(m => m.id === tempId)
+			mirrorChatMessageToHistory(chatData.address, sentMsg, 'out')
 		}
 	}
 

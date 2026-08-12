@@ -1,5 +1,5 @@
 // App.tsx
-import { useEffect, useRef, useState, useLayoutEffect } from "react"
+import { useEffect, useRef, useState, useLayoutEffect, startTransition } from "react"
 import { Navigate, Route, Routes, useNavigate, useLocation } from "react-router-dom"
 import RequireUnlockedWallet from "@/components/RequireUnlockedWallet"
 import { useDaemonContext } from "./providers/DaemonProvider"
@@ -13,8 +13,16 @@ import Chat from "./pages/chat"
 import ChatDetail from "./pages/chatDetail"
 import BeamioInstallOnboarding from "@/components/launchPage"
 import Browser from "@/pages/Browser"
-import { initChat, checkSign, createInboundChatSession, makeMessage, sendMessage, getRandomNodes, currentGossipAbortController } from "@/services/chat"
+import { checkSign, createInboundChatSession, makeMessage, sendMessage, getRandomNodes } from "@/services/chat"
 import { checkStorage, searchUsername, storeSystemData } from "@/services/beamio"
+import { onHistoryBuffer, loadWorkerHistory } from "@/services/chatWorkerBridge"
+import {
+	mergeHistoryEntriesIntoMessages,
+	mirrorChatMessageToHistory,
+	extractInboundSendIdFromDisplayText,
+} from "@/services/chatHistoryMirror"
+import type { HistoryEntry } from "@/vendor/beamio-chat-sdk/types"
+import { getSessionPrivateKeyArmor } from "@/utils/beamioSessionSecrets"
 import { postCardCouponOpenClaimWithCurrentWallet } from "@/services/BeamioCard"
 import { CoNET_Data, setCoNET_Data } from "@/utils/globals"
 import { baseEndpoint, USDCContract_BASE, setBaseRpcNodeProvider, setRpcDegradedGetter } from "@/utils/constants"
@@ -394,14 +402,125 @@ function AppShell() {
 		const t = setTimeout(() => setFooterVisible(true), 0)
 		return () => {
 			clearTimeout(t)
-			console.log("🧹 Component unmounting, cleaning up gossip...")
-			if (currentGossipAbortController) {
-				currentGossipAbortController.abort("component_unmount")
-			}
-			// 必须重置 gossip 状态，否则重挂载时 initChat 会因 if (gossip) return 直接返回，无法恢复聆听
-			setGossip(false)
+			// Gossip is process-lifetime (worker). Do not abort on AppShell remount —
+			// that flaps mailbox presence and races history restore.
 		}
 	}, [])
+
+	useEffect(() => {
+		if (!gossip) return
+		void loadWorkerHistory()
+	}, [gossip])
+
+	useEffect(() => {
+		let cancelled = false
+		let chain: Promise<void> = Promise.resolve()
+		const yieldToUi = () => new Promise<void>((r) => window.setTimeout(r, 0))
+
+		const unsub = onHistoryBuffer((batch) => {
+			const entries = batch?.entries
+			if (!entries?.length) return
+			const byPeer = new Map<string, HistoryEntry[]>()
+			for (const e of entries) {
+				const p = (e?.peer || batch?.peer || '').toLowerCase()
+				if (!p || p === 'all' || !ethers.isAddress(p)) continue
+				const arr = byPeer.get(p) || []
+				arr.push(e)
+				byPeer.set(p, arr)
+			}
+			if (byPeer.size === 0) return
+
+			chain = chain.then(async () => {
+				if (cancelled) return
+				const profile0 = CoNET_Data?.profiles?.[0]
+				const pk =
+					getSessionPrivateKeyArmor()?.trim() ||
+					(typeof profile0?.privateKeyArmor === 'string' ? profile0.privateKeyArmor : '')
+				if (!pk) {
+					console.warn('[historyRestore] skip: no signing key yet')
+					return
+				}
+
+				console.info(
+					`[historyRestore] batch peers=${byPeer.size} entries=${entries.length}`,
+				)
+
+				const existingChats = profile0?.chats
+				const existing: chatData[] = Array.isArray(existingChats) ? existingChats : []
+				const created = new Map<string, chatData>()
+				let peerIdx = 0
+				for (const peer of byPeer.keys()) {
+					if (cancelled) return
+					const has = existing.some((c) => (c?.address || '').toLowerCase() === peer)
+					if (has) continue
+					try {
+						created.set(
+							peer,
+							await createInboundChatSession(peer, pk, null, { skipKeyFetch: true }),
+						)
+					} catch (ex) {
+						console.warn('[historyRestore] createInboundChatSession failed', peer, ex)
+					}
+					peerIdx += 1
+					if (peerIdx % 3 === 0) await yieldToUi()
+				}
+
+				if (cancelled) return
+				let changed = false
+				startTransition(() => {
+					setProfiles((prev) => {
+						const list = Array.isArray(prev) ? prev : []
+						const profile = list[0]
+						if (!profile) return prev
+						let chats = Array.isArray(profile.chats) ? [...profile.chats] : []
+						let localChanged = false
+						for (const [peer, es] of byPeer) {
+							let idx = chats.findIndex((c) => (c?.address || '').toLowerCase() === peer)
+							let sessionCreated = false
+							if (idx < 0) {
+								const stub = created.get(peer)
+								if (!stub) continue
+								chats.unshift(stub)
+								idx = 0
+								sessionCreated = true
+								localChanged = true
+							}
+							const { messages, added } = mergeHistoryEntriesIntoMessages(chats[idx].messages, es)
+							if (added <= 0 && !sessionCreated) continue
+							if (!sessionCreated) {
+								chats = [...chats]
+								localChanged = true
+								idx = chats.findIndex((c) => (c?.address || '').toLowerCase() === peer)
+								if (idx < 0) continue
+							}
+							const last = messages[messages.length - 1]
+							chats[idx] = {
+								...chats[idx],
+								messages,
+								unreadCount: 0,
+								...(last?.createdAt != null ? { lastReadTs: Number(last.createdAt) } : {}),
+							}
+						}
+						if (!localChanged) return prev
+						changed = true
+						const nextProfile = { ...profile, chats }
+						const nextList = [...list]
+						nextList[0] = nextProfile
+						if (CoNET_Data?.profiles?.length) CoNET_Data.profiles[0].chats = chats
+						return nextList
+					})
+				})
+				await yieldToUi()
+				if (changed && !cancelled) void storeSystemData()
+			})
+		})
+
+		void loadWorkerHistory()
+		return () => {
+			cancelled = true
+			unsub()
+		}
+	}, [setProfiles])
 
 	const autoReplayMessage = async (text: string, chatData: chatData) => {
 		const profile = profiles?.[0]
@@ -428,6 +547,8 @@ function AppShell() {
 		if (nodes.length) {
 			await sendMessage(chatData.chatData.publicArmored, text, profile.privateKeyArmor, nodes)
 		}
+		const sent = nextMessages[nextMessages.length - 1]
+		mirrorChatMessageToHistory(chatData.address, sent, 'out')
 	}
 
 
@@ -669,6 +790,14 @@ function AppShell() {
 				...chat,
 				messages: nextMessages,
 				unreadCount: unreadNext
+			}
+
+			if (isNew) {
+				const inboundSendId = extractInboundSendIdFromDisplayText(displayText)
+				const addedInbound = inboundSendId
+					? nextMessages.find((m) => m.sendId === inboundSendId)
+					: nextMessages[nextMessages.length - 1]
+				mirrorChatMessageToHistory(nextChat.address, addedInbound, 'in')
 			}
 
 			// Membership 自动回复：仅 `paymentCard.membershipActivated`+hash（非 POS 权限包）

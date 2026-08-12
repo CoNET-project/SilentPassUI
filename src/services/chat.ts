@@ -8,6 +8,7 @@ import {GuardianNodesMainnet, conetDepinProvider, beamioApi} from '@/utils/const
 import contracts from '@/utils/contracts'
 import {ethers} from 'ethers'
 import {aesGcmEncrypt, aesGcmDecrypt, toBase64, fromBase64, storeSystemData } from '@/services/beamio'
+import { startWorkerGossipListen, stopWorkerGossip } from '@/services/chatWorkerBridge'
 
 
 type GenerateKeyArg = Parameters<typeof generateKey>[0]
@@ -631,6 +632,30 @@ startGossip(nodeInfo, body, callback, {
 */
 export let currentGossipAbortController: AbortController | null = null;
 
+export const stopBizChatListen = (): void => {
+	if (currentGossipAbortController) {
+		try {
+			currentGossipAbortController.abort('workspace_lock')
+		} catch {
+			/* ignore */
+		}
+		currentGossipAbortController = null
+	}
+	stopWorkerGossip()
+}
+
+const clearGossipListenSession = (reason: string) => {
+	if (currentGossipAbortController) {
+		try {
+			currentGossipAbortController.abort(reason)
+		} catch {
+			/* ignore */
+		}
+		currentGossipAbortController = null
+	}
+	stopWorkerGossip()
+}
+
 const normalizeArmoredKey = (v?: string) => (v || '').replace(/\r/g, '').trim()
 
 const pickRouteNodesByArmoredKey = (nodes: nodeInfo[], routerArmoredPublicKey: string) => {
@@ -695,112 +720,78 @@ export const connectToGossipNode = async (
 	pgpPublicArmored: string,
 	newMessage: (val: string) => void
 ): Promise<boolean> => {
-  // ==========================================
-  // 2. 关键修复：清理旧连接
-  // ==========================================
-  // 无论是由 React 重复渲染还是用户手动点击触发，
-  // 只要进来，先无条件杀掉上一个进程。
-  if (currentGossipAbortController) {
-    console.log("🛑 [Gossip] Killing previous connection...");
-    currentGossipAbortController.abort("replaced_by_new_connection");
-    currentGossipAbortController = null;
+  // Already listening: do NOT tear down + reconnect (LoadingPage + bizHome + RequireUnlockedWallet
+  // all call initChat; second call must be a no-op when the controller is truly live).
+  if (currentGossipAbortController && !currentGossipAbortController.signal.aborted) {
+    console.info('[Gossip] connectToGossipNode skipped: gossip already live')
+    return true
   }
 
-  // 创建新的控制器，代表本次“会话”的生命周期
+  if (currentGossipAbortController) {
+    currentGossipAbortController = null
+  }
+
   const myController = new AbortController();
   currentGossipAbortController = myController;
   const rootSignal = myController.signal;
 
+  const failConnect = (msg: string): false => {
+    console.error('[Gossip]', msg)
+    if (currentGossipAbortController === myController) {
+      clearGossipListenSession('connect_failed')
+    }
+    return false
+  }
+
   try {
-      // Encrypt listen/mining to mailbox **B**, HTTP/SSE only via **entry C ≠ B** (Tor-like).
       const routeNodes = pickRouteNodesByArmoredKey(nodes, nodeArmoredPublicKey)
       if (!routeNodes.length) {
-        console.error('[Gossip] No route node matches router public key')
-        return false
+        return failConnect('connectToGossipNode abort: no route node for router key')
       }
       const mailboxDomains = new Set(routeNodes.map(n => n.domain))
-      // ... (加密/准备逻辑保持不变) ...
-      const wallet = new ethers.Wallet(privateKeyArmor);
-      const key = Buffer.from(crypto.getRandomValues(new Uint8Array(16))).toString('base64');
-      // listenKind:'chat' tags this as Merchant OS presence/mailbox listen (vs LayerMinus mining gossip),
-      // so SI labels livenessListeningPool.kind and never applies chat-only session policy to mining pipes.
-      const command = { command: 'mining', listenKind: 'chat', walletAddress: wallet.address, algorithm: 'aes-256-cbc', Securitykey: key };
-      const message = JSON.stringify(command);
-      const signMessage = await wallet.signMessage(message);
-      
-      const encryptionKeys = await readKey({ armoredKey: nodeArmoredPublicKey });
-      const pgpMsg = await createMessage({ text: Buffer.from(JSON.stringify({ message, signMessage })).toString('base64') });
-      const postData = await encrypt({ message: pgpMsg, encryptionKeys, config: { preferredCompressionAlgorithm: enums.compression.zlib }});
 
-      let decryptedPrivateKey: PrivateKey;
-      const pk = await readPrivateKey({ armoredKey: pgpPrivateKey });
-      decryptedPrivateKey = pk.isDecrypted() ? pk : await decryptKey({ privateKey: pk, passphrase: "" });
-
-      const userPgpKeyID = pgpPublicArmored ? await getPublicKeyArmoredKeyID(pgpPublicArmored) : '';
-      // Listen ciphertext targets B; HTTP host is entry C (forwards to B:80). Exclude B so client IP is hidden.
       const entryCandidates = nodes.filter(n => !mailboxDomains.has(n.domain))
-      const healthyEntryNodes = await pickHealthyGossipNodes(
+      const healthyNodes = await pickHealthyGossipNodes(
         entryCandidates.length ? entryCandidates : nodes,
       )
-      if (!healthyEntryNodes.length) {
-        console.error('[Gossip] No healthy entry C for gossip listen')
-        return false
+      console.info(
+        `[Gossip] healthy entry C: ${healthyNodes.length} (mailbox B excluded: ${[...mailboxDomains].join(',') || 'none'})`,
+      )
+      if (!healthyNodes.length) {
+        return failConnect('connectToGossipNode abort: no healthy entry C for gossip listen')
       }
 
-      console.log("🚀 [Gossip] Starting new connection...");
+      console.log("🚀 [Gossip] Starting worker listen…");
 
-      // 启动递归循环，传入 nodes 数组，重连时随机换 node
-      startGossip(
-        healthyEntryNodes, 
-        JSON.stringify({ data: postData }), 
-        async (err, _data) => {
-            // 回调卫语句：如果总开关关了，不要处理任何数据
-            if (rootSignal.aborted) return;
-
-            if (err) return console.error("Gossip Error:", err);
-            if (!_data) return;
-
-            try {
-                // ... (解析逻辑保持不变) ...
-                const data = JSON.parse(_data);
-                if (data?.data && /^-----BEGIN PGP MESSAGE-----/i.test(data.data)) {
-                    const armoredMessage = data.data;
-                    const msg = await readMessage({ armoredMessage });
-                    const encrypKeyIDs = msg.getEncryptionKeyIDs?.();
-                    if (encrypKeyIDs?.length) {
-                        const customerKeyID = encrypKeyIDs[0].toHex().toUpperCase();
-                        const ourKeyIDs = decryptedPrivateKey.getKeyIDs?.()?.map(k => k.toHex().toUpperCase()) ?? [];
-                        const match = ourKeyIDs.includes(customerKeyID) || (userPgpKeyID && customerKeyID.endsWith(userPgpKeyID));
-                        console.debug(`[Gossip Debug] msgEncryptKeyID=${customerKeyID} | ourKeyIDs=[${ourKeyIDs.join(',')}] | userPgpKeyID=${userPgpKeyID} | match=${match}`);
-                    } else {
-                        console.debug(`[Gossip Debug] msg has no encryption key packets`);
-                    }
-                    const { data: decrypted } = await decrypt({ message: msg, decryptionKeys: decryptedPrivateKey });
-                    const decryptedString = typeof decrypted === 'string' ? decrypted : String(decrypted);
-                    const kkk = fromBase64(decryptedString);
-                    
-                    console.log(`✅ Message:`, kkk.slice(0, 50) + "..."); // 仅打印前50字符防止刷屏
-                    newMessage(kkk);
-                } else if (data?.from && data?.text != null && data?.signMessage) {
-                    // 非 PGP：明文信封格式 { timestamp, text, from, signMessage }，直接交给 newMessage
-                    console.log(`✅ Plain envelope from ${data.from}`);
-                    newMessage(JSON.stringify(data));
-                } else {
-                    console.log('[Gossip] Unknown format:', data);
-                }
-            } catch (ex: any) {
-                // "No decryption key packets found" = 消息不是发给我们的（gossip 广播了发给其他用户的消息），静默跳过
-                if (ex?.message?.includes?.("No decryption key packets found")) return;
-                console.warn("Parse Error:", ex?.message ?? ex);
-            }
+      const started = await startWorkerGossipListen({
+        ownRouteArmoredPublicKey: nodeArmoredPublicKey,
+        privateKeyHex: privateKeyArmor,
+        pgpPrivateKeyArmored: pgpPrivateKey,
+        pgpPublicKeyArmored: pgpPublicArmored,
+        nodes,
+        rootSignal,
+        onLine: (line) => {
+          if (rootSignal.aborted) return
+          newMessage(line)
         },
-        rootSignal // <--- 必须传入这个信号
-      );
+        onActivity: () => {
+          /* worker liveness; Merchant OS has no native background resume timer */
+        },
+        onLog: (level, message) => {
+          if (level === 'error') console.error('[Gossip]', message)
+          else if (level === 'warn') console.warn('[Gossip]', message)
+          else console.info('[Gossip]', message)
+        },
+      })
+
+      if (!started) {
+        return failConnect('connectToGossipNode abort: worker gossip listen failed to start')
+      }
       return true
 
   } catch (ex: any) {
       console.error("Init Error:", ex);
-      return false
+      return failConnect(`connectToGossipNode Init Error: ${(ex as Error)?.message ?? String(ex)}`)
   }
 }
 
@@ -852,19 +843,47 @@ export const emptySearchResultForAddress = (address: string): searchResult => ({
  * Never refuses solely because profile search or on-chain PGP is missing —
  * those used to silently drop delivered gossip messages in the UI.
  */
+export type CreateInboundChatSessionOpts = {
+	/**
+	 * Skip AddressPGP RPC + AES decrypt. Use for history restore / bulk catch-up so the
+	 * main thread is not blocked; keys fill in when the user opens the chat.
+	 */
+	skipKeyFetch?: boolean
+}
+
 export const createInboundChatSession = async (
 	signAddr: string,
 	privateKeyArmor: string,
 	peerProfile: searchResult | null | undefined,
+	opts?: CreateInboundChatSessionOpts,
 ): Promise<chatData> => {
 	const addr = ethers.isAddress(signAddr) ? ethers.getAddress(signAddr) : signAddr
 	const beamio = peerProfile?.address ? peerProfile : emptySearchResultForAddress(addr)
-	const kk = await getKeysFromCoNETPGPSC(addr, privateKeyArmor)
 	if (!peerProfile?.address) {
 		console.warn(
 			`[chat inbound] no Beamio profile for ${addr} — creating address-only session (message still shown)`,
 		)
 	}
+	if (opts?.skipKeyFetch) {
+		return {
+			address: addr,
+			beamio,
+			messages: [],
+			pin: false,
+			hide: false,
+			chatData: {
+				privateArmored: '',
+				publicArmored: '',
+				routersArmoreds: '',
+				online: false,
+				routePgpKeyID: '',
+			},
+			unreadCount: 0,
+			tag: 'grey',
+			muted: false,
+		}
+	}
+	const kk = await getKeysFromCoNETPGPSC(addr, privateKeyArmor)
 	if (!kk?.publicArmored) {
 		console.warn(
 			`[chat inbound] sender ${addr} has no on-chain PGP publicArmored — can display inbound, reply may fail until they register Chat`,

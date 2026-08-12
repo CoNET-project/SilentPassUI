@@ -21349,6 +21349,8 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
        backgroundImage: typeof t.backgroundImage === 'string' ? t.backgroundImage : '',
        backgroundImageFit: normalizeCardIssuanceBackgroundImageFit(t.backgroundImageFit),
        logoDisplayScale: clampTierLogoDisplayScale(t.logoDisplayScale),
+       membershipFee: '',
+       membershipDurationKind: 0,
      });
      if (draft.tiersByLoyaltyRule && Object.keys(draft.tiersByLoyaltyRule).length > 0) {
        setTiersByLoyaltyRule((prev) => {

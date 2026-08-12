@@ -88,6 +88,7 @@ import {
   encodeSetReferrerChargeAmountRatio,
   encodeSetReferrerTopupAmountRatio,
   readReferrerAmountRatiosOnChain,
+  publishMembershipFeesViaExecuteForOwner,
   postExecuteForOwner,
   fetchCardsByCategory,
   getCardOwner,
@@ -5319,13 +5320,13 @@ const BUINT_SERVICE_MERGE_INTO_PARENT_CATEGORY_LOWER = new Set([
   TX_BUINT_USDC_TOPUP_SERVICE.toLowerCase(),
   TX_BUINT_CHARGE_SERVICE.toLowerCase(),
   TX_BUINT_CARD_REDEEM_SERVICE.toLowerCase(),
+  TX_BUINT_POS_COUPON_BURN_SERVICE.toLowerCase(),
 ])
 
 /** bizSite：无主业务时 B-Unit 行即 Transactions 主行（不合并） */
 const BUINT_SERVICE_PRIMARY_ONLY_CATEGORY_LOWER = new Set([
   TX_BUINT_CREATE_ISSUED_NFT_COUPON_SERVICE.toLowerCase(),
   TX_BUINT_CREATE_ISSUED_NFT_CATALOG_SERVICE.toLowerCase(),
-  TX_BUINT_POS_COUPON_BURN_SERVICE.toLowerCase(),
   TX_BUINT_SOCIAL_LIKE_SERVICE.toLowerCase(),
   TX_BUINT_SOCIAL_SHARE_CLICK_SERVICE.toLowerCase(),
   TX_BUINT_AA_MULTISIG_OFFLINE_SUBMIT_SERVICE.toLowerCase(),
@@ -7729,12 +7730,17 @@ function mergeChargeBunitFeeRowsIntoCharges(rows: TxDisplayRow[]): TxDisplayRow[
   )
 }
 
-/** Claim / In-Store Redeem 主行吸收 `cardRedeem:bunitService`；无父行时保留 B-Unit 行作主业务。 */
+/** Claim / In-Store Redeem 主行吸收 `cardRedeem` / `posCouponBurn` B-Unit；无父行时保留 B-Unit 行作主业务。 */
 function mergeRedeemBunitFeeRowsIntoIssuedRedeem(rows: TxDisplayRow[]): TxDisplayRow[] {
   return mergeBuintFeeRowsIntoParents(
     rows,
-    new Set([TX_BUINT_CARD_REDEEM_SERVICE.toLowerCase()]),
-    (r) => ISSUED_REDEEM_TX_DISPLAY_TYPES.has(r.type)
+    new Set([
+      TX_BUINT_CARD_REDEEM_SERVICE.toLowerCase(),
+      TX_BUINT_POS_COUPON_BURN_SERVICE.toLowerCase(),
+    ]),
+    (r) =>
+      ISSUED_REDEEM_TX_DISPLAY_TYPES.has(r.type) &&
+      !isStandaloneBuintServiceFeeCategory((r.raw as { txCategory?: unknown }).txCategory)
   )
 }
 
@@ -9845,8 +9851,8 @@ function renderSmartReceiptLedgerAlignedPrimaryCard(a: SmartReceiptLedgerAligned
 
 /** Fixed to `BeamioCurrency.CurrencyType.CAD` (enum index 0). See `src/BeamioUserCard/BeamioCurrency.sol`. */
 const CARD_ISSUANCE_BEAMIO_CURRENCY = 'CAD' as const;
-/** Minimum reload floor expressed in USDC; UI converts it to the card currency. */
-const CARD_ISSUANCE_MIN_TOPUP_USDC_MIN = 3;
+/** Minimum reload floor expressed in USDC; UI converts it to the card currency. `0` = no floor (min top-up may be 0). */
+const CARD_ISSUANCE_MIN_TOPUP_USDC_MIN = 0;
 /** Maximum reload cap expressed in USDC; UI converts it to the card currency. */
 const CARD_ISSUANCE_MAX_TOPUP_MAX = 50000;
 /** Default maximum top-up (whole dollars only, no decimals). */
@@ -10134,6 +10140,7 @@ function cardIssuanceMinTopupFloorForCurrency(
   currencyRaw: string | undefined | null,
   oracleUsdcPerCad: number | null | undefined
 ): number {
+  if (CARD_ISSUANCE_MIN_TOPUP_USDC_MIN <= 0) return 0;
   const c = (currencyRaw ?? CARD_ISSUANCE_BEAMIO_CURRENCY).trim().toUpperCase();
   if (c === 'CAD') {
     const rate =
@@ -11521,7 +11528,57 @@ type CardIssuanceTierRow = {
   backgroundImageFit: CardIssuanceBackgroundImageFit;
   /** Maps to `TierMetadata.logoDisplayScale` — top-left logo 2x/4x/6x/8x/hidden. */
   logoDisplayScale: TierLogoDisplayScale;
+  /** Membership fee in card currency units (human string). Empty or 0 = no fee. */
+  membershipFee: string;
+  /** 1=day … 6=forever; 0 when no fee. */
+  membershipDurationKind: number;
 };
+
+const MEMBERSHIP_DURATION_OPTIONS: Array<{ value: number; label: string }> = [
+  { value: 1, label: 'Day' },
+  { value: 2, label: 'Week' },
+  { value: 3, label: 'Month' },
+  { value: 4, label: 'Quarter' },
+  { value: 5, label: 'Year' },
+  { value: 6, label: 'Forever' },
+];
+
+function normalizeMembershipDurationKind(raw: unknown): number {
+  const n = typeof raw === 'number' ? raw : Number(raw);
+  if (!Number.isFinite(n)) return 0;
+  const i = Math.trunc(n);
+  return i >= 1 && i <= 6 ? i : 0;
+}
+
+function membershipFeeHumanToE6(raw: string | number | undefined | null): string {
+  if (raw == null || raw === '') return '0';
+  const s = String(raw).replace(/,/g, '').trim();
+  if (!s) return '0';
+  const n = Number(s);
+  if (!Number.isFinite(n) || n <= 0) return '0';
+  return String(Math.round(n * 1e6));
+}
+
+function membershipFeeE6ToHuman(e6: string | number | undefined | null): string {
+  if (e6 == null || e6 === '') return '';
+  try {
+    const bi = BigInt(String(e6).replace(/,/g, '').trim() || '0');
+    if (bi <= 0n) return '';
+    const whole = bi / 1000000n;
+    const frac = bi % 1000000n;
+    if (frac === 0n) return whole.toString();
+    const fracStr = frac.toString().padStart(6, '0').replace(/0+$/, '');
+    return `${whole}.${fracStr}`;
+  } catch {
+    const n = Number(e6);
+    if (!Number.isFinite(n) || n <= 0) return '';
+    return String(n / 1e6);
+  }
+}
+
+function cardIssuanceRowsHaveMembershipFee(rows: CardIssuanceTierRow[]): boolean {
+  return rows.some((t) => BigInt(membershipFeeHumanToE6(t.membershipFee)) > 0n);
+}
 
 const CARD_ISSUANCE_TIER_COLOR_PRESETS = ['#94a3b8', '#f59e0b', '#6366f1', '#0051d1', '#9333ea', '#059669', '#ec4899'];
 
@@ -11544,6 +11601,8 @@ function makeCardIssuanceTierRow(
     backgroundImage: overrides.backgroundImage ?? '',
     backgroundImageFit: normalizeCardIssuanceBackgroundImageFit(overrides.backgroundImageFit),
     logoDisplayScale: clampTierLogoDisplayScale(overrides.logoDisplayScale),
+    membershipFee: overrides.membershipFee ?? '',
+    membershipDurationKind: normalizeMembershipDurationKind(overrides.membershipDurationKind ?? 0),
   };
 }
 
@@ -11560,6 +11619,13 @@ function cardIssuanceTierRowsFromMetadata(tiers: CardTierMetadata[]): CardIssuan
       ? Math.max(1, Math.round(minRaw / 1e6))
       : CARD_ISSUANCE_MIN_TOPUP_DEFAULT + i;
     const discountPct = parseDiscountPctFromTierMetadataDescription(t.description);
+    const feeFromE6 = membershipFeeE6ToHuman(t.membershipFeeE6);
+    const feeFromHuman =
+      t.membershipFee != null && String(t.membershipFee).trim() !== ''
+        ? String(t.membershipFee).replace(/,/g, '').trim()
+        : '';
+    const feeHuman = feeFromE6 || feeFromHuman;
+    const durationKind = normalizeMembershipDurationKind(t.membershipDurationKind);
     return makeCardIssuanceTierRow({
       id: i === 0 ? CARD_ISSUANCE_SINGLE_TIER_ID : `tier-issued-${t.index ?? i}`,
       name: (t.name ?? '').trim() || (i === 0 ? 'Base' : `Tier ${i + 1}`),
@@ -11574,6 +11640,10 @@ function cardIssuanceTierRowsFromMetadata(tiers: CardTierMetadata[]): CardIssuan
         (t as { logoDisplayScale?: unknown }).logoDisplayScale ??
           (t as { logoScale?: unknown }).logoScale
       ),
+      membershipFee: feeHuman,
+      membershipDurationKind: BigInt(membershipFeeHumanToE6(feeHuman)) > 0n
+        ? durationKind || 3
+        : 0,
     });
   });
 }
@@ -11895,6 +11965,8 @@ const defaultCardIssuanceTiers = (): CardIssuanceTierRow[] => [
     backgroundImage: '',
     backgroundImageFit: 'width',
     logoDisplayScale: TIER_LOGO_DISPLAY_SCALE_DEFAULT,
+    membershipFee: '',
+    membershipDurationKind: 0,
   },
 ];
 
@@ -12595,6 +12667,15 @@ const cardIssuanceCouponEditingIssued = Boolean(cardIssuanceEditingCouponRow?.is
    () => tiersByLoyaltyRule[cardIssuanceTierRule],
    [tiersByLoyaltyRule, cardIssuanceTierRule]
  );
+ const cardIssuanceMembershipFeeMode = useMemo(
+   () => cardIssuanceRowsHaveMembershipFee(cardIssuanceTiers),
+   [cardIssuanceTiers]
+ );
+ useEffect(() => {
+   if (!cardIssuanceMembershipFeeMode) return;
+   setCardIssuanceMinTopup((prev) => (prev.trim() === '' ? prev : ''));
+   setCardIssuanceMaxTopup((prev) => (prev.trim() === '' ? prev : ''));
+ }, [cardIssuanceMembershipFeeMode]);
 const cardIssuanceNewCardMaxTopupCap = useMemo(
   () => cardIssuanceServerTopupLimitMaxForCurrency(CARD_ISSUANCE_BEAMIO_CURRENCY),
   []
@@ -12631,6 +12712,13 @@ const [cardIssuanceTierEditorThreshold, setCardIssuanceTierEditorThreshold] = us
 const [cardIssuanceTierEditorBackgroundColor, setCardIssuanceTierEditorBackgroundColor] = useState('#6366f1');
 const [cardIssuanceTierEditorDescription, setCardIssuanceTierEditorDescription] = useState('');
 const [cardIssuanceTierEditorPreset, setCardIssuanceTierEditorPreset] = useState<CardIssuanceTierPreset>('custom');
+const [cardIssuanceTierEditorMembershipFee, setCardIssuanceTierEditorMembershipFee] = useState('');
+const [cardIssuanceTierEditorMembershipDurationKind, setCardIssuanceTierEditorMembershipDurationKind] =
+  useState(0);
+const cardIssuanceTierEditorMembershipFeeWheelRef = useMemo(
+  () => createNumericInputWheelNonPassiveRefCallback(),
+  []
+);
 const handlePublishCardIssuanceRef = useRef<
   (opts?: {
     topupPromotionOverride?: TopupPromotionDraft;
@@ -13942,7 +14030,9 @@ const cardIssuancePreviewLiveLogoIconClass = useMemo(
  );
  const cardIssuanceMinTopupFloorLabel = useMemo(
    () =>
-     `${cardIssuanceDisplayMoneyPrefix}${cardIssuanceMinTopupCurrencyFloor.toLocaleString('en-US')} (${CARD_ISSUANCE_MIN_TOPUP_USDC_MIN.toLocaleString('en-US')} USDC equivalent)`,
+     cardIssuanceMinTopupCurrencyFloor <= 0
+       ? `${cardIssuanceDisplayMoneyPrefix}0`
+       : `${cardIssuanceDisplayMoneyPrefix}${cardIssuanceMinTopupCurrencyFloor.toLocaleString('en-US')} (${CARD_ISSUANCE_MIN_TOPUP_USDC_MIN.toLocaleString('en-US')} USDC equivalent)`,
    [cardIssuanceDisplayMoneyPrefix, cardIssuanceMinTopupCurrencyFloor]
  );
  const cardIssuanceMaxTopupCapLabel = useMemo(
@@ -15491,6 +15581,10 @@ const openCardIssuanceTierCreate = useCallback(() => {
   setCardIssuanceTierEditorBackgroundColor(template.backgroundColor);
   setCardIssuanceTierEditorDescription(template.tierDescription);
   setCardIssuanceTierEditorPreset(template.preset);
+  setCardIssuanceTierEditorMembershipFee(template.membershipFee ?? '');
+  setCardIssuanceTierEditorMembershipDurationKind(
+    normalizeMembershipDurationKind(template.membershipDurationKind)
+  );
   setCardIssuanceTierEditorOpen(true);
 }, [cardIssuanceMinTopup, cardIssuanceTiers]);
 
@@ -15506,6 +15600,10 @@ const openCardIssuanceTierEdit = useCallback((tierId: string) => {
   );
   setCardIssuanceTierEditorDescription(row.tierDescription);
   setCardIssuanceTierEditorPreset(row.preset);
+  setCardIssuanceTierEditorMembershipFee(row.membershipFee ?? '');
+  setCardIssuanceTierEditorMembershipDurationKind(
+    normalizeMembershipDurationKind(row.membershipDurationKind)
+  );
   setCardIssuanceTierEditorOpen(true);
 }, [cardIssuanceTiers]);
 
@@ -15544,6 +15642,11 @@ const applyCardIssuanceTierEditor = useCallback(async () => {
       (cardIssuanceEditingTierId
         ? cardIssuanceTiers.find((tier) => tier.id === cardIssuanceEditingTierId)?.logoDisplayScale
         : undefined) ?? TIER_LOGO_DISPLAY_SCALE_DEFAULT,
+    membershipFee: cardIssuanceTierEditorMembershipFee,
+    membershipDurationKind:
+      BigInt(membershipFeeHumanToE6(cardIssuanceTierEditorMembershipFee)) > 0n
+        ? normalizeMembershipDurationKind(cardIssuanceTierEditorMembershipDurationKind) || 3
+        : 0,
     tierDescriptionOpen: false,
   });
     const merged = cardIssuanceEditingTierId
@@ -15572,6 +15675,8 @@ const applyCardIssuanceTierEditor = useCallback(async () => {
   cardIssuanceTiers,
   cardIssuanceTierEditorBackgroundColor,
   cardIssuanceTierEditorDescription,
+  cardIssuanceTierEditorMembershipDurationKind,
+  cardIssuanceTierEditorMembershipFee,
   cardIssuanceTierEditorName,
   cardIssuanceTierEditorPreset,
   cardIssuanceTierEditorThresholdInt,
@@ -18004,32 +18109,43 @@ const disableCardIssuanceTopupPromotion = useCallback(() => {
            .trim();
          description = stripped || undefined;
        }
-       const backgroundColor = tierBackgroundColorForPayload(t.backgroundColor);
-       const image = (t.backgroundImage ?? '').trim();
-       const imageFit = normalizeCardIssuanceBackgroundImageFit(t.backgroundImageFit);
-       const logoDisplayScale = clampTierLogoDisplayScale(t.logoDisplayScale);
-       return {
-         minUsdc6: Math.round(minUnits * 1e6),
-         name: t.name.trim(),
-         logoDisplayScale,
-         ...(description ? { description } : {}),
-         ...(backgroundColor ? { backgroundColor } : {}),
-         ...(image ? { image, imageFit } : {}),
-       };
-     });
-   if (valid.length === 0) return undefined;
-   valid.sort((a, b) => b.minUsdc6 - a.minUsdc6);
-   return valid.map((t, idx) => ({
-     index: idx,
-     minUsdc6: String(t.minUsdc6),
-     attr: idx,
-     name: t.name,
-     logoDisplayScale: t.logoDisplayScale,
-     ...(t.description ? { description: t.description } : {}),
-     ...(t.backgroundColor ? { backgroundColor: t.backgroundColor } : {}),
-     ...(t.image ? { image: t.image, imageFit: t.imageFit } : {}),
-   }));
- }, []);
+      const backgroundColor = tierBackgroundColorForPayload(t.backgroundColor);
+      const image = (t.backgroundImage ?? '').trim();
+      const imageFit = normalizeCardIssuanceBackgroundImageFit(t.backgroundImageFit);
+      const logoDisplayScale = clampTierLogoDisplayScale(t.logoDisplayScale);
+      const membershipFeeE6 = membershipFeeHumanToE6(t.membershipFee);
+      const membershipDurationKind =
+        BigInt(membershipFeeE6) > 0n
+          ? normalizeMembershipDurationKind(t.membershipDurationKind) || 3
+          : 0;
+      return {
+        minUsdc6: Math.round(minUnits * 1e6),
+        name: t.name.trim(),
+        logoDisplayScale,
+        membershipFeeE6,
+        membershipFee: membershipFeeE6ToHuman(membershipFeeE6) || undefined,
+        membershipDurationKind,
+        ...(description ? { description } : {}),
+        ...(backgroundColor ? { backgroundColor } : {}),
+        ...(image ? { image, imageFit } : {}),
+      };
+    });
+  if (valid.length === 0) return undefined;
+  valid.sort((a, b) => b.minUsdc6 - a.minUsdc6);
+  return valid.map((t, idx) => ({
+    index: idx,
+    minUsdc6: String(t.minUsdc6),
+    attr: idx,
+    name: t.name,
+    logoDisplayScale: t.logoDisplayScale,
+    membershipFeeE6: t.membershipFeeE6,
+    ...(t.membershipFee ? { membershipFee: t.membershipFee } : {}),
+    membershipDurationKind: t.membershipDurationKind,
+    ...(t.description ? { description: t.description } : {}),
+    ...(t.backgroundColor ? { backgroundColor: t.backgroundColor } : {}),
+    ...(t.image ? { image: t.image, imageFit: t.imageFit } : {}),
+  }));
+}, []);
 
  const handleCardIssuanceIconPick: React.ChangeEventHandler<HTMLInputElement> = useCallback(
    async (e) => {
@@ -19495,6 +19611,7 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
    if (!metadataOnlyExistingCard && tiersRowsForPublish.length > 0 && (!tiersPayload || tiersPayload.length === 0)) {
      return publishFail('Each tier must have a name.');
    }
+   const membershipFeeModeForPublish = cardIssuanceRowsHaveMembershipFee(tiersRowsForPublish);
    if (!metadataOnlyExistingCard) {
    for (const row of tiersRowsForPublish) {
      const tierName = row.name.trim();
@@ -19514,6 +19631,15 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
          `Tier "${tierName}": background must be a valid CSS hex color (#RGB or #RRGGBB).`
        );
      }
+     const feeE6 = membershipFeeHumanToE6(row.membershipFee);
+     if (BigInt(feeE6) > 0n) {
+       const kind = normalizeMembershipDurationKind(row.membershipDurationKind);
+       if (kind < 1 || kind > 6) {
+         return publishFail(
+           `Tier "${tierName}": select a membership duration when a membership fee is set.`
+         );
+       }
+     }
    }
    }
    const minTopupRaw = (
@@ -19524,15 +19650,18 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
         ? String(cardIssuanceNewCardMinTopupFloor)
         : cardIssuanceMinTopup)
    ).replace(/,/g, '').trim();
-   if (minTopupRaw === '') {
+   if (!membershipFeeModeForPublish && minTopupRaw === '') {
      return publishFail('Minimum top-up is required.');
    }
-   const minTopupN = Number.parseInt(minTopupRaw, 10);
-   const minTopupAsFloat = parseFloat(minTopupRaw);
+   const minTopupN = membershipFeeModeForPublish
+     ? 0
+     : Number.parseInt(minTopupRaw, 10);
+   const minTopupAsFloat = membershipFeeModeForPublish ? 0 : parseFloat(minTopupRaw);
    if (
-     !Number.isFinite(minTopupAsFloat) ||
-     !Number.isFinite(minTopupN) ||
-     minTopupAsFloat !== minTopupN
+     !membershipFeeModeForPublish &&
+     (!Number.isFinite(minTopupAsFloat) ||
+       !Number.isFinite(minTopupN) ||
+       minTopupAsFloat !== minTopupN)
    ) {
      return publishFail('Minimum top-up must be a whole number (no decimals).');
    }
@@ -19543,38 +19672,43 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
         ? String(cardIssuanceNewCardMaxTopupCap)
         : cardIssuanceMaxTopup
    ).replace(/,/g, '').trim();
-   if (maxTopupRaw === '') {
+   if (!membershipFeeModeForPublish && maxTopupRaw === '') {
      return publishFail('Maximum top-up is required.');
    }
-   const maxTopupN = Number.parseInt(maxTopupRaw, 10);
-   const maxTopupAsFloat = parseFloat(maxTopupRaw);
-  if (minTopupN < publishTopupMinFloor) {
+   const maxTopupN = membershipFeeModeForPublish
+     ? 0
+     : Number.parseInt(maxTopupRaw, 10);
+   const maxTopupAsFloat = membershipFeeModeForPublish ? 0 : parseFloat(maxTopupRaw);
+  if (!membershipFeeModeForPublish && minTopupN < publishTopupMinFloor) {
      return publishFail(
-      `Minimum top-up must be at least ${cardIssuanceDisplayMoneyPrefix}${publishTopupMinFloor.toLocaleString('en-US')} (${CARD_ISSUANCE_MIN_TOPUP_USDC_MIN.toLocaleString('en-US')} USDC equivalent).`
+      publishTopupMinFloor <= 0
+        ? `Minimum top-up cannot be negative.`
+        : `Minimum top-up must be at least ${cardIssuanceDisplayMoneyPrefix}${publishTopupMinFloor.toLocaleString('en-US')} (${CARD_ISSUANCE_MIN_TOPUP_USDC_MIN.toLocaleString('en-US')} USDC equivalent).`
      );
    }
    if (
-     !Number.isFinite(maxTopupAsFloat) ||
-     !Number.isFinite(maxTopupN) ||
-     maxTopupAsFloat !== maxTopupN
+     !membershipFeeModeForPublish &&
+     (!Number.isFinite(maxTopupAsFloat) ||
+       !Number.isFinite(maxTopupN) ||
+       maxTopupAsFloat !== maxTopupN)
    ) {
      return publishFail('Maximum top-up must be a whole number (no decimals).');
    }
-  if (maxTopupN > publishTopupMaxCap) {
+  if (!membershipFeeModeForPublish && maxTopupN > publishTopupMaxCap) {
      return publishFail(
       cardIssuanceExistingCard
         ? `Maximum top-up must not exceed ${cardIssuanceMaxTopupCapLabel}.`
         : `Maximum top-up must not exceed ${cardIssuanceDisplayMoneyPrefix}${publishTopupMaxCap.toLocaleString('en-US')} (${CARD_ISSUANCE_MAX_TOPUP_MAX.toLocaleString('en-US')} USDC equivalent).`
      );
    }
-  if (minTopupN > publishTopupMaxCap) {
+  if (!membershipFeeModeForPublish && minTopupN > publishTopupMaxCap) {
     return publishFail(
       cardIssuanceExistingCard
         ? `Minimum top-up must not exceed ${cardIssuanceMaxTopupCapLabel}.`
         : `Minimum top-up must not exceed ${cardIssuanceDisplayMoneyPrefix}${publishTopupMaxCap.toLocaleString('en-US')} (${CARD_ISSUANCE_MAX_TOPUP_MAX.toLocaleString('en-US')} USDC equivalent).`
     );
   }
-   if (minTopupN > maxTopupN) {
+   if (!membershipFeeModeForPublish && minTopupN > maxTopupN) {
      return publishFail('Minimum top-up cannot be greater than maximum top-up.');
    }
    const tierRuleForPublish: CardIssuanceTierRule = useQuickDefaultRewardsNewCard
@@ -19769,6 +19903,28 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
          ? ethers.getAddress(cardIssuanceExistingCard.cardAddress)
          : undefined);
     if (res.success && resolvedPublishCardAddr) {
+      if (tiersPayload && tiersPayload.length > 0) {
+        const pkForFees = profiles?.[0]?.privateKeyArmor;
+        if (pkForFees) {
+          const feeSync = await publishMembershipFeesViaExecuteForOwner({
+            cardAddress: resolvedPublishCardAddr,
+            ownerPrivateKey: pkForFees,
+            feeE6: tiersPayload.map((t) => t.membershipFeeE6 ?? '0'),
+            durationKind: tiersPayload.map((t) =>
+              Number(t.membershipDurationKind ?? 0)
+            ),
+          });
+          if (!feeSync.success) {
+            return publishFail(
+              feeSync.error ?? 'Tiers published, but membership fees failed to update on-chain.'
+            );
+          }
+        }
+      }
+      if (membershipFeeModeForPublish) {
+        setCardIssuanceMinTopup('');
+        setCardIssuanceMaxTopup('');
+      }
       const categoryIdForIndex = normalizeCardIssuanceCategoryId(cardIssuanceCategoryId);
       if (categoryIdForIndex) {
         cardIssuanceCategoryCommittedRef.current = categoryIdForIndex;
@@ -36346,6 +36502,93 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                               />
                             </div>
                           </div>
+                          <div className="space-y-2">
+                            <label
+                              className="ml-2 block text-[10px] font-bold uppercase tracking-[0.15em] text-[#595c5e]"
+                              htmlFor="card-issuance-tier-membership-fee"
+                            >
+                              Membership fee
+                            </label>
+                            <div className="relative">
+                              <span className="pointer-events-none absolute left-6 top-1/2 -translate-y-1/2 font-medium text-[#595c5e]">
+                                {cardIssuanceDisplayMoneyPrefix}
+                              </span>
+                              <input
+                                id="card-issuance-tier-membership-fee"
+                                ref={cardIssuanceTierEditorMembershipFeeWheelRef}
+                                type="number"
+                                inputMode="decimal"
+                                autoComplete="off"
+                                enterKeyHint="done"
+                                min={0}
+                                step="any"
+                                value={cardIssuanceTierEditorMembershipFee}
+                                onKeyDown={preventNumericInputStepKeys}
+                                onKeyDownCapture={preventNumericInputStepKeys}
+                                onWheel={preventNumericInputWheelStep}
+                                onChange={(e) => {
+                                  const raw = e.target.value.replace(/,/g, '');
+                                  if (raw === '') {
+                                    setCardIssuanceTierEditorMembershipFee('');
+                                    setCardIssuanceTierEditorMembershipDurationKind(0);
+                                    return;
+                                  }
+                                  if (!/^\d*\.?\d*$/.test(raw)) return;
+                                  setCardIssuanceTierEditorMembershipFee(raw);
+                                  if (BigInt(membershipFeeHumanToE6(raw)) > 0n) {
+                                    setCardIssuanceTierEditorMembershipDurationKind((prev) =>
+                                      prev >= 1 && prev <= 6 ? prev : 3
+                                    );
+                                  } else {
+                                    setCardIssuanceTierEditorMembershipDurationKind(0);
+                                  }
+                                }}
+                                placeholder="0"
+                                className={`w-full rounded-2xl border-none bg-[#eef1f3] py-4 pl-14 pr-6 text-base font-medium text-[#2c2f31] placeholder:text-[#abadaf] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <label
+                            className="ml-2 block text-[10px] font-bold uppercase tracking-[0.15em] text-[#595c5e]"
+                            htmlFor="card-issuance-tier-membership-duration"
+                          >
+                            Membership duration
+                          </label>
+                          <select
+                            id="card-issuance-tier-membership-duration"
+                            value={
+                              BigInt(membershipFeeHumanToE6(cardIssuanceTierEditorMembershipFee)) > 0n
+                                ? String(
+                                    normalizeMembershipDurationKind(
+                                      cardIssuanceTierEditorMembershipDurationKind
+                                    ) || 3
+                                  )
+                                : ''
+                            }
+                            disabled={
+                              BigInt(membershipFeeHumanToE6(cardIssuanceTierEditorMembershipFee)) <= 0n
+                            }
+                            onChange={(e) => {
+                              const v = Number(e.target.value);
+                              setCardIssuanceTierEditorMembershipDurationKind(
+                                normalizeMembershipDurationKind(v) || 0
+                              );
+                            }}
+                            className={`w-full rounded-2xl border-none bg-[#eef1f3] px-6 py-4 text-base font-medium text-[#2c2f31] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
+                          >
+                            <option value="">No fee</option>
+                            {MEMBERSHIP_DURATION_OPTIONS.map((opt) => (
+                              <option key={opt.value} value={opt.value}>
+                                {opt.label}
+                              </option>
+                            ))}
+                          </select>
+                          <p className="ml-2 text-xs text-[#595c5e]">
+                            When any tier has a membership fee, Min Reload and Max Reload are disabled. The fee is
+                            the first-issue lower bound.
+                          </p>
                         </div>
 
                         <div className="space-y-3 pt-1">
@@ -38229,8 +38472,12 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                          value={cardIssuanceMinTopup}
                          onChange={(v) => setCardIssuanceMinTopup(v.replace(/[^\d,]/g, ''))}
                          inputMode="numeric"
-                         displayValue={programsOverviewReloadLimitsDisplay.minLine}
-                         disabled={cardIssuanceMerchantTextSaving}
+                         displayValue={
+                           cardIssuanceMembershipFeeMode
+                             ? 'Disabled (membership fee)'
+                             : programsOverviewReloadLimitsDisplay.minLine
+                         }
+                         disabled={cardIssuanceMerchantTextSaving || cardIssuanceMembershipFeeMode}
                          focusRingClass={bizFocusRingClass}
                          displayClassName="mt-2 break-words font-manrope text-lg font-extrabold tracking-tight text-[#2c2f31] sm:mt-3 sm:text-[1.5rem]"
                          className="rounded-lg px-0 py-0 hover:bg-black/[0.03]"
@@ -38242,8 +38489,12 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                          value={cardIssuanceMaxTopup}
                          onChange={(v) => setCardIssuanceMaxTopup(v.replace(/[^\d,]/g, ''))}
                          inputMode="numeric"
-                         displayValue={programsOverviewReloadLimitsDisplay.maxLine}
-                         disabled={cardIssuanceMerchantTextSaving}
+                         displayValue={
+                           cardIssuanceMembershipFeeMode
+                             ? 'Disabled (membership fee)'
+                             : programsOverviewReloadLimitsDisplay.maxLine
+                         }
+                         disabled={cardIssuanceMerchantTextSaving || cardIssuanceMembershipFeeMode}
                          focusRingClass={bizFocusRingClass}
                          displayClassName="mt-2 break-words font-manrope text-lg font-extrabold tracking-tight text-[#2c2f31] sm:mt-3 sm:text-[1.5rem]"
                          className="rounded-lg px-0 py-0 hover:bg-black/[0.03]"
@@ -39053,6 +39304,88 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                             />
                           </div>
                         </div>
+                        <div className="space-y-2">
+                          <label
+                            className="ml-2 block text-[10px] font-bold uppercase tracking-[0.15em] text-[#595c5e]"
+                            htmlFor="programs-overview-tier-membership-fee"
+                          >
+                            Membership fee
+                          </label>
+                          <div className="relative">
+                            <span className="pointer-events-none absolute left-5 top-1/2 -translate-y-1/2 font-medium text-[#595c5e]">
+                              {cardIssuanceDisplayMoneyPrefix}
+                            </span>
+                            <input
+                              id="programs-overview-tier-membership-fee"
+                              type="number"
+                              inputMode="decimal"
+                              autoComplete="off"
+                              enterKeyHint="done"
+                              min={0}
+                              step="any"
+                              value={cardIssuanceTierEditorMembershipFee}
+                              onKeyDown={preventNumericInputStepKeys}
+                              onKeyDownCapture={preventNumericInputStepKeys}
+                              onWheel={preventNumericInputWheelStep}
+                              onChange={(e) => {
+                                const raw = e.target.value.replace(/,/g, '');
+                                if (raw === '') {
+                                  setCardIssuanceTierEditorMembershipFee('');
+                                  setCardIssuanceTierEditorMembershipDurationKind(0);
+                                  return;
+                                }
+                                if (!/^\d*\.?\d*$/.test(raw)) return;
+                                setCardIssuanceTierEditorMembershipFee(raw);
+                                if (BigInt(membershipFeeHumanToE6(raw)) > 0n) {
+                                  setCardIssuanceTierEditorMembershipDurationKind((prev) =>
+                                    prev >= 1 && prev <= 6 ? prev : 3
+                                  );
+                                } else {
+                                  setCardIssuanceTierEditorMembershipDurationKind(0);
+                                }
+                              }}
+                              placeholder="0"
+                              className={`w-full rounded-2xl border-none bg-[#eef1f3] py-3.5 pl-12 pr-5 text-base font-medium text-[#2c2f31] placeholder:text-[#abadaf] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <label
+                          className="ml-2 block text-[10px] font-bold uppercase tracking-[0.15em] text-[#595c5e]"
+                          htmlFor="programs-overview-tier-membership-duration"
+                        >
+                          Membership duration
+                        </label>
+                        <select
+                          id="programs-overview-tier-membership-duration"
+                          value={
+                            BigInt(membershipFeeHumanToE6(cardIssuanceTierEditorMembershipFee)) > 0n
+                              ? String(
+                                  normalizeMembershipDurationKind(
+                                    cardIssuanceTierEditorMembershipDurationKind
+                                  ) || 3
+                                )
+                              : ''
+                          }
+                          disabled={
+                            BigInt(membershipFeeHumanToE6(cardIssuanceTierEditorMembershipFee)) <= 0n
+                          }
+                          onChange={(e) => {
+                            const v = Number(e.target.value);
+                            setCardIssuanceTierEditorMembershipDurationKind(
+                              normalizeMembershipDurationKind(v) || 0
+                            );
+                          }}
+                          className={`w-full rounded-2xl border-none bg-[#eef1f3] px-5 py-3.5 text-base font-medium text-[#2c2f31] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
+                        >
+                          <option value="">No fee</option>
+                          {MEMBERSHIP_DURATION_OPTIONS.map((opt) => (
+                            <option key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </option>
+                          ))}
+                        </select>
                       </div>
 
                       <div className="space-y-2">

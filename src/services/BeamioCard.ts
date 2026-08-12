@@ -1482,6 +1482,9 @@ export type ShareTokenMetadata = {
 	logoDisplayTier?: number
 }
 
+/** On-chain membership duration kinds (MembershipFeeStorage). 0 = none. */
+export type MembershipDurationKind = 0 | 1 | 2 | 3 | 4 | 5 | 6
+
 /** Tier 类型 metadata，存于 0x{owner}.json，回送 {NFT}.json 时包含；image 为 IPFS URL，backgroundColor 为 CSS 颜色（如 #hex）。升级模式由卡级 upgradeType（链上）决定。 */
 export type TierMetadata = {
 	index: number
@@ -1495,6 +1498,12 @@ export type TierMetadata = {
 	backgroundColor?: string
 	/** Pass card top-left logo scale: `2x` | `4x` | `6x` | `8x` | `hidden`. */
 	logoDisplayScale?: '2x' | '4x' | '6x' | '8x' | 'hidden'
+	/** Membership fee in card currency, 6-decimal fixed (string uint). 0 = no fee. */
+	membershipFeeE6?: string
+	/** Optional human-readable fee (card currency units) for editors / POS. */
+	membershipFee?: string | number
+	/** 1=day 2=week 3=month 4=quarter 5=year 6=forever; required when fee > 0. */
+	membershipDurationKind?: MembershipDurationKind | number
 }
 
 /** createCardCollectionWithInitCode 所需关键参数 */
@@ -2394,6 +2403,101 @@ export const encodeSetTiers = (
 		})),
 	])
 
+const setMembershipFeesInterface = new ethers.Interface([
+	'function setMembershipFees(uint256[] feeE6, uint8[] durationKind)',
+	'function membershipFees() view returns (uint256[] feeE6, uint8[] durationKind)',
+	'function membershipFeeMode() view returns (bool)',
+])
+
+/** Build calldata for owner-gateway `setMembershipFees` (arrays must match on-chain tiers length). */
+export const encodeSetMembershipFees = (
+	feeE6: Array<string | number | bigint>,
+	durationKind: Array<string | number | bigint>
+): string =>
+	setMembershipFeesInterface.encodeFunctionData('setMembershipFees', [
+		feeE6.map((v) => BigInt(v)),
+		durationKind.map((v) => BigInt(v)),
+	])
+
+export async function readMembershipFeesOnChain(cardAddress: string): Promise<{
+	feeE6: string[]
+	durationKind: number[]
+	membershipFeeMode: boolean
+} | null> {
+	try {
+		const cardAddrNorm = ethers.getAddress(cardAddress)
+		const { provider } = await providerForBeamioUserCard(cardAddrNorm)
+		const card = new ethers.Contract(cardAddrNorm, setMembershipFeesInterface, provider)
+		const [feesRaw, modeRaw] = await Promise.all([
+			card.membershipFees().catch(() => null),
+			card.membershipFeeMode().catch(() => null),
+		])
+		if (feesRaw == null) return null
+		const feeArr = feesRaw[0] as unknown[]
+		const kindArr = feesRaw[1] as unknown[]
+		const feeE6 = Array.isArray(feeArr) ? feeArr.map((v) => BigInt(v?.toString?.() ?? '0').toString()) : []
+		const durationKind = Array.isArray(kindArr)
+			? kindArr.map((v) => Number(BigInt(v?.toString?.() ?? '0')))
+			: []
+		return {
+			feeE6,
+			durationKind,
+			membershipFeeMode: Boolean(modeRaw),
+		}
+	} catch {
+		return null
+	}
+}
+
+/**
+ * After setTiers (or createCard), sync parallel membership fees via executeForOwner.
+ * Arrays must match on-chain tiers length.
+ */
+export async function publishMembershipFeesViaExecuteForOwner(params: {
+	cardAddress: string
+	ownerPrivateKey: string
+	feeE6: Array<string | number | bigint>
+	durationKind: Array<string | number | bigint>
+}): Promise<{ success: boolean; error?: string }> {
+	try {
+		const cardAddrNorm = ethers.getAddress(params.cardAddress)
+		if (params.feeE6.length !== params.durationKind.length) {
+			return { success: false, error: 'Membership fee and duration arrays must match.' }
+		}
+		const signerAddr = ethers.getAddress(new ethers.Wallet(params.ownerPrivateKey).address)
+		const chainOwner = await getCardOwner(cardAddrNorm)
+		if (ethers.getAddress(chainOwner) !== signerAddr) {
+			return {
+				success: false,
+				error:
+					'Membership fee updates require the card owner wallet. Unlock owner wallet and retry.',
+			}
+		}
+		const data = encodeSetMembershipFees(params.feeE6, params.durationKind)
+		const deadline = Math.floor(Date.now() / 1000) + 3600
+		const nonce = ethers.hexlify(ethers.randomBytes(32))
+		const ownerSignature = await signExecuteForOwner(
+			params.ownerPrivateKey,
+			cardAddrNorm,
+			data,
+			deadline,
+			nonce
+		)
+		return postExecuteForOwner({
+			cardAddress: cardAddrNorm,
+			data,
+			deadline,
+			nonce,
+			ownerSignature,
+		})
+	} catch (e: unknown) {
+		return {
+			success: false,
+			error: e instanceof Error ? e.message : 'Failed to update membership fees on-chain.',
+		}
+	}
+}
+
 const setChargeRewardRatioInterface = new ethers.Interface([
 	'function setChargeRewardRatio(uint256 ratioE6)',
 ])
@@ -3255,6 +3359,9 @@ export type CardTierMetadata = {
 	backgroundColor?: string
 	/** Pass card top-left logo scale: `2x` | `4x` | `6x` | `8x` | `hidden`. */
 	logoDisplayScale?: '2x' | '4x' | '6x' | '8x' | 'hidden'
+	membershipFeeE6?: string
+	membershipFee?: string | number
+	membershipDurationKind?: MembershipDurationKind | number
 }
 
 /** 从 BeamioUserCard 合约读取 tiers（getTiersCount + getTierAt），用于根据 redeem 金额确定 tier */
@@ -3393,19 +3500,19 @@ export function invalidateBeamioCardMetadataCache(cardAddress: string): void {
 	if (key) cardMetadataCache.delete(key)
 }
 
-/** Positive whole-number top-up limit from metadata shareTokenMetadata (CAD / card currency units). */
+/** Non-negative whole-number top-up limit from metadata shareTokenMetadata (CAD / card currency units). Min may be 0. */
 export function parseShareTokenMetadataTopupLimit(raw: unknown): number | undefined {
 	if (raw == null) return undefined
 	if (typeof raw === 'number' && Number.isFinite(raw)) {
 		const n = Math.trunc(raw)
-		if (n > 0 && n === raw) return n
+		if (n >= 0 && n === raw) return n
 	}
 	if (typeof raw === 'string') {
 		const t = raw.replace(/,/g, '').trim()
 		if (!t) return undefined
 		const n = Number.parseInt(t, 10)
 		const f = parseFloat(t)
-		if (Number.isFinite(n) && Number.isFinite(f) && f === n && n > 0) return n
+		if (Number.isFinite(n) && Number.isFinite(f) && f === n && n >= 0) return n
 	}
 	return undefined
 }

@@ -105,8 +105,12 @@ export function ValidatorDepositRedeemAdminSheet({ open, onClose, adminEoa, canC
 		return Number.isFinite(n) ? Math.floor(n) : 0
 	}, [validatorCountInput])
 
+	/** Institutional Pack: Referral vault admin (Admin Merchant Package) or Start Ket redeem admin. */
+	const canIssueInstitutionalPack =
+		isReferralVaultAdmin || isStartKetRedeemAdmin === true
+
 	const showInstitutionalPackSwitch =
-		canCreate && isStartKetRedeemAdmin === true && validatorCountParsed === 1
+		canCreate && canIssueInstitutionalPack && validatorCountParsed === 1
 
 	useEffect(() => {
 		if (!showInstitutionalPackSwitch && institutionalPack) {
@@ -182,7 +186,8 @@ export function ValidatorDepositRedeemAdminSheet({ open, onClose, adminEoa, canC
 			setFormError('Enter a valid validator count (positive integer).')
 			return
 		}
-		const wantInstitutionalPack = institutionalPack && validatorCount === 1 && isStartKetRedeemAdmin === true
+		const wantInstitutionalPack =
+			institutionalPack && validatorCount === 1 && canIssueInstitutionalPack
 		// GB mining node count is auto-set equal to validator count (API + claim allocation).
 		const gbMiningNodeCount = validatorCount
 		let allowedClaimer = ''
@@ -320,6 +325,7 @@ export function ValidatorDepositRedeemAdminSheet({ open, onClose, adminEoa, canC
 		airdrop,
 		allowedClaimerInput,
 		canCreate,
+		canIssueInstitutionalPack,
 		institutionalPack,
 		isReferralVaultAdmin,
 		isStartKetRedeemAdmin,

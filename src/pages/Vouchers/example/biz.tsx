@@ -102,6 +102,7 @@ import {
   queryReferralAdminMerchantPackageRedeemOnChain,
   postReferralMerchantStartKitClaim,
   postReferralAdminMerchantPackageClaim,
+  tryClaimLinkedValidatorDepositRedeem,
   queryValidatorDepositRedeemAdminOnChain,
   fetchPosTerminalMetadataFromApi,
   fetchCardActiveIssuedCouponSeries,
@@ -22818,6 +22819,13 @@ const [memberDirectoryUserTypeDb, setMemberDirectoryUserTypeDb] = useState<Recor
        setMerchantKitRedeemInput('');
        setOverviewRefreshTrigger((t) => t + 1);
        setCardIssuanceOnChainRefreshNonce((n) => n + 1);
+       if (!res.linkedValidatorQueued) {
+         void tryClaimLinkedValidatorDepositRedeem({ privateKeyArmor: pk, code }).then((v) => {
+           if (v.attempted && !v.success) {
+             console.warn('[submitMerchantKitBuintRedeem] linked validator claim:', v.error);
+           }
+         });
+       }
        return;
      }
      const isStartKit = isReferralMerchantStartKitCode(code);
@@ -22875,6 +22883,13 @@ const [memberDirectoryUserTypeDb, setMemberDirectoryUserTypeDb] = useState<Recor
        setMerchantKitRedeemInput('');
        setOverviewRefreshTrigger((t) => t + 1);
        setCardIssuanceOnChainRefreshNonce((n) => n + 1);
+       if (!res.linkedValidatorQueued) {
+         void tryClaimLinkedValidatorDepositRedeem({ privateKeyArmor: pk, code }).then((v) => {
+           if (v.attempted && !v.success) {
+             console.warn('[submitMerchantKitBuintRedeem] linked validator claim:', v.error);
+           }
+         });
+       }
        return;
      }
      const pre = await queryBusinessStartKetRedeemOnChain(code);
@@ -22895,7 +22910,13 @@ const [memberDirectoryUserTypeDb, setMemberDirectoryUserTypeDb] = useState<Recor
      }
      const ketN = Number(pre.ketAmount ?? '0');
      const tid = pre.tokenId ?? '0';
-     const res = await postBusinessStartKetRedeemRedeem(eoaRedeem, code);
+     const pkForValidatorPre =
+       getSessionPrivateKeyArmor()?.trim() ||
+       profiles?.[0]?.privateKeyArmor?.trim() ||
+       '';
+     const res = await postBusinessStartKetRedeemRedeem(eoaRedeem, code, {
+       privateKeyArmor: pkForValidatorPre || undefined,
+     });
      if (!res.success) {
        setMerchantKitRedeemFeedback({
          type: 'error',
@@ -22924,6 +22945,13 @@ const [memberDirectoryUserTypeDb, setMemberDirectoryUserTypeDb] = useState<Recor
      setMerchantKitRedeemInput('');
      setOverviewRefreshTrigger((t) => t + 1);
      setCardIssuanceOnChainRefreshNonce((n) => n + 1);
+     if (!res.linkedValidatorQueued && pkForValidatorPre) {
+       void tryClaimLinkedValidatorDepositRedeem({ privateKeyArmor: pkForValidatorPre, code }).then((v) => {
+         if (v.attempted && !v.success) {
+           console.warn('[submitMerchantKitBuintRedeem] linked validator claim:', v.error);
+         }
+       });
+     }
    } catch {
      setMerchantKitRedeemFeedback({
        type: 'error',

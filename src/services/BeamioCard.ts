@@ -4532,12 +4532,30 @@ export async function queryBusinessStartKetRedeemOnChain(code: string): Promise<
 /** Cluster → Master：admin 代付 BusinessStartKetRedeem.redeemWithCodeAsAdmin（Ket + B-Unit → 用户 Base AA） */
 export async function postBusinessStartKetRedeemRedeem(
 	eoa: string,
-	code: string
-): Promise<{ success: boolean; txHash?: string; recipient?: string; error?: string }> {
+	code: string,
+	opts?: { privateKeyArmor?: string }
+): Promise<{
+	success: boolean
+	txHash?: string
+	recipient?: string
+	error?: string
+	linkedValidatorQueued?: boolean
+}> {
+	const linkedValidatorClaim = opts?.privateKeyArmor
+		? await prepareLinkedValidatorDepositRedeemClaimBody({
+				privateKeyArmor: opts.privateKeyArmor,
+				code,
+				beneficiary: eoa,
+			})
+		: null
 	const res = await fetch(`${beamioApi}/api/businessStartKetRedeemRedeem`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify({ eoa: ethers.getAddress(eoa.trim()), code }),
+		body: JSON.stringify({
+			eoa: ethers.getAddress(eoa.trim()),
+			code,
+			...(linkedValidatorClaim ? { linkedValidatorClaim } : {}),
+		}),
 	})
 	const data = (await res.json().catch(() => ({}))) as {
 		success?: boolean
@@ -4545,12 +4563,20 @@ export async function postBusinessStartKetRedeemRedeem(
 		recipient?: string
 		aa?: string
 		error?: string
+		linkedValidatorQueued?: boolean
+		linkedValidatorRedeemable?: boolean
 	}
 	if (!res.ok) {
 		return { success: false, error: data?.error ?? res.statusText }
 	}
 	const recipient = data.recipient ?? data.aa
-	return { success: Boolean(data.success), txHash: data.txHash, recipient, error: data.error }
+	return {
+		success: Boolean(data.success),
+		txHash: data.txHash,
+		recipient,
+		error: data.error,
+		linkedValidatorQueued: Boolean(data.linkedValidatorQueued),
+	}
 }
 
 const REFERRAL_MERCHANT_CODE_ABI = [
@@ -4655,7 +4681,7 @@ export async function queryReferralAdminMerchantPackageRedeemOnChain(
 export async function postReferralAdminMerchantPackageClaim(params: {
 	privateKeyArmor: string
 	code: string
-}): Promise<{ success: boolean; txHash?: string; error?: string }> {
+}): Promise<{ success: boolean; txHash?: string; error?: string; linkedValidatorQueued?: boolean }> {
 	const secret = params.code.trim()
 	if (!secret) return { success: false, error: 'Enter a redeem code.' }
 	try {
@@ -4693,6 +4719,11 @@ export async function postReferralAdminMerchantPackageClaim(params: {
 			},
 			{ claimer: wallet.address, redeemHash, nonce, deadline }
 		)
+		const linkedValidatorClaim = await prepareLinkedValidatorDepositRedeemClaimBody({
+			privateKeyArmor: params.privateKeyArmor,
+			code: secret,
+			beneficiary: wallet.address,
+		})
 		const res = await fetch(`${beamioApi}/api/referralRegistryClaim`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
@@ -4704,17 +4735,23 @@ export async function postReferralAdminMerchantPackageClaim(params: {
 				nonce: nonce.toString(),
 				deadline: deadline.toString(),
 				signature,
+				...(linkedValidatorClaim ? { linkedValidatorClaim } : {}),
 			}),
 		})
 		const data = (await res.json().catch(() => ({}))) as {
 			success?: boolean
 			txHash?: string
 			error?: string
+			linkedValidatorQueued?: boolean
 		}
 		if (!res.ok || !data.success) {
 			return { success: false, error: data.error ?? res.statusText }
 		}
-		return { success: true, txHash: data.txHash }
+		return {
+			success: true,
+			txHash: data.txHash,
+			linkedValidatorQueued: Boolean(data.linkedValidatorQueued),
+		}
 	} catch (e: unknown) {
 		const err = e as { shortMessage?: string; message?: string }
 		return { success: false, error: err?.shortMessage ?? err?.message ?? 'Claim failed' }
@@ -4801,7 +4838,7 @@ export async function queryReferralMerchantStartKitRedeemOnChain(
 export async function postReferralMerchantStartKitClaim(params: {
 	privateKeyArmor: string
 	code: string
-}): Promise<{ success: boolean; txHash?: string; error?: string }> {
+}): Promise<{ success: boolean; txHash?: string; error?: string; linkedValidatorQueued?: boolean }> {
 	const secret = params.code.trim()
 	if (!secret) return { success: false, error: 'Enter a redeem code.' }
 	try {
@@ -4839,6 +4876,11 @@ export async function postReferralMerchantStartKitClaim(params: {
 			},
 			{ claimer: wallet.address, redeemHash, nonce, deadline }
 		)
+		const linkedValidatorClaim = await prepareLinkedValidatorDepositRedeemClaimBody({
+			privateKeyArmor: params.privateKeyArmor,
+			code: secret,
+			beneficiary: wallet.address,
+		})
 		const res = await fetch(`${beamioApi}/api/referralRegistryClaim`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
@@ -4850,17 +4892,23 @@ export async function postReferralMerchantStartKitClaim(params: {
 				nonce: nonce.toString(),
 				deadline: deadline.toString(),
 				signature,
+				...(linkedValidatorClaim ? { linkedValidatorClaim } : {}),
 			}),
 		})
 		const data = (await res.json().catch(() => ({}))) as {
 			success?: boolean
 			txHash?: string
 			error?: string
+			linkedValidatorQueued?: boolean
 		}
 		if (!res.ok || !data.success) {
 			return { success: false, error: data.error ?? res.statusText }
 		}
-		return { success: true, txHash: data.txHash }
+		return {
+			success: true,
+			txHash: data.txHash,
+			linkedValidatorQueued: Boolean(data.linkedValidatorQueued),
+		}
 	} catch (e: unknown) {
 		const err = e as { shortMessage?: string; message?: string }
 		return { success: false, error: err?.shortMessage ?? err?.message ?? 'Claim failed' }
@@ -5287,6 +5335,146 @@ export const validatorDepositRedeemCancelTypedDataTypes: Record<string, { name: 
 		{ name: 'nonce', type: 'uint256' },
 		{ name: 'deadline', type: 'uint256' },
 	],
+}
+
+export const validatorDepositRedeemClaimTypedDataTypes: Record<string, { name: string; type: string }[]> = {
+	ClaimRedeem: [
+		{ name: 'claimer', type: 'address' },
+		{ name: 'codeHash', type: 'bytes32' },
+		{ name: 'beneficiary', type: 'address' },
+		{ name: 'referrer', type: 'address' },
+		{ name: 'validatorCount', type: 'uint256' },
+		{ name: 'targetNodeIp', type: 'string' },
+		{ name: 'gbMiningNodeCount', type: 'uint256' },
+		{ name: 'deadline', type: 'uint256' },
+	],
+}
+
+/**
+ * After a bizSite merchant-kit / Institutional Pack claim: if the same secret is also an
+ * active ValidatorDepositRedeem, sign EIP-712 ClaimRedeem for Cluster dual-claim.
+ */
+export async function prepareLinkedValidatorDepositRedeemClaimBody(params: {
+	privateKeyArmor: string
+	code: string
+	beneficiary?: string
+}): Promise<
+	| null
+	| {
+			claimer: string
+			beneficiary: string
+			code: string
+			deadline: string
+			signature: string
+	  }
+> {
+	const code = params.code.trim()
+	if (!code) return null
+	const armor = params.privateKeyArmor.trim()
+	if (!armor) return null
+
+	const chain = await queryValidatorDepositRedeemOnChain(code, CONET_VALIDATOR_DEPOSIT_REDEEM)
+	if (!chain.valid || !chain.exists || !chain.active || chain.consumed) {
+		return null
+	}
+
+	let wallet: ethers.Wallet
+	try {
+		wallet = new ethers.Wallet(armor, conetDepinProvider)
+	} catch {
+		return null
+	}
+	const claimer = wallet.address
+	const beneficiary =
+		params.beneficiary && ethers.isAddress(params.beneficiary)
+			? ethers.getAddress(params.beneficiary)
+			: claimer
+	const allowed = chain.allowedClaimer
+	if (
+		allowed &&
+		allowed !== ethers.ZeroAddress &&
+		ethers.getAddress(allowed).toLowerCase() !== claimer.toLowerCase()
+	) {
+		return null
+	}
+	const referrer = chain.referrer ? ethers.getAddress(chain.referrer) : ethers.ZeroAddress
+	if (referrer !== ethers.ZeroAddress && referrer.toLowerCase() === beneficiary.toLowerCase()) {
+		return null
+	}
+
+	const codeHash = chain.codeHash
+	const deadline = BigInt(Math.floor(Date.now() / 1000) + 15 * 60)
+	const message = {
+		claimer,
+		codeHash: codeHash as `0x${string}`,
+		beneficiary,
+		referrer,
+		validatorCount: BigInt(chain.validatorCount),
+		targetNodeIp: chain.targetNodeIp.trim(),
+		gbMiningNodeCount: BigInt(chain.gbMiningNodeCount),
+		deadline,
+	}
+	try {
+		const signature = await wallet.signTypedData(
+			validatorDepositRedeemEip712Domain(CONET_VALIDATOR_DEPOSIT_REDEEM),
+			validatorDepositRedeemClaimTypedDataTypes,
+			message,
+		)
+		return {
+			claimer,
+			beneficiary,
+			code,
+			deadline: deadline.toString(),
+			signature,
+		}
+	} catch {
+		return null
+	}
+}
+
+/**
+ * Sign + POST /api/validatorDepositRedeemClaim when the same secret is an active VDR redeem.
+ * Prefer attaching `linkedValidatorClaim` on kit/package claim so Cluster/Master claim both;
+ * this remains a fallback for older API or when dual-claim was not queued.
+ */
+export async function tryClaimLinkedValidatorDepositRedeem(params: {
+	privateKeyArmor: string
+	code: string
+	beneficiary?: string
+}): Promise<
+	| { attempted: false; reason: 'not_eligible' | 'missing_key' | 'invalid_code' }
+	| { attempted: true; success: true; txHash?: string }
+	| { attempted: true; success: false; error: string }
+> {
+	const code = params.code.trim()
+	if (!code) return { attempted: false, reason: 'invalid_code' }
+	const armor = params.privateKeyArmor.trim()
+	if (!armor) return { attempted: false, reason: 'missing_key' }
+
+	const body = await prepareLinkedValidatorDepositRedeemClaimBody(params)
+	if (!body) {
+		const chain = await queryValidatorDepositRedeemOnChain(code, CONET_VALIDATOR_DEPOSIT_REDEEM)
+		if (!chain.valid || !chain.exists || !chain.active || chain.consumed) {
+			return { attempted: false, reason: 'not_eligible' }
+		}
+		return { attempted: true, success: false, error: 'Could not prepare validator claim signature.' }
+	}
+
+	try {
+		const res = await fetch(`${beamioApi}/api/validatorDepositRedeemClaim`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify(body),
+		})
+		const data = (await res.json().catch(() => ({}))) as { success?: boolean; txHash?: string; error?: string }
+		if (!res.ok || !data.success) {
+			return { attempted: true, success: false, error: data.error ?? res.statusText ?? 'Validator claim failed' }
+		}
+		return { attempted: true, success: true, txHash: data.txHash }
+	} catch (e: unknown) {
+		const err = e as { message?: string }
+		return { attempted: true, success: false, error: err?.message ?? 'Network error' }
+	}
 }
 
 export async function signValidatorDepositRedeemCreate(

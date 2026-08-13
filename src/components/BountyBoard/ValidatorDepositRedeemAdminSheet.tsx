@@ -118,6 +118,12 @@ export function ValidatorDepositRedeemAdminSheet({ open, onClose, adminEoa, canC
 		}
 	}, [showInstitutionalPackSwitch, institutionalPack])
 
+	useEffect(() => {
+		if (institutionalPack && airdrop) {
+			setAirdrop(false)
+		}
+	}, [institutionalPack, airdrop])
+
 	const reloadRows = useCallback(async () => {
 		if (!adminLower) {
 			setRows([])
@@ -188,6 +194,7 @@ export function ValidatorDepositRedeemAdminSheet({ open, onClose, adminEoa, canC
 		}
 		const wantInstitutionalPack =
 			institutionalPack && validatorCount === 1 && canIssueInstitutionalPack
+		const airdropForCreate = wantInstitutionalPack ? false : airdrop
 		// GB mining node count is auto-set equal to validator count (API + claim allocation).
 		const gbMiningNodeCount = validatorCount
 		let allowedClaimer = ''
@@ -232,7 +239,7 @@ export function ValidatorDepositRedeemAdminSheet({ open, onClose, adminEoa, canC
 			referrer: referrer || '0x0000000000000000000000000000000000000000',
 			validAfter: '0',
 			validBefore: '0',
-			airdrop,
+			airdrop: airdropForCreate,
 		})
 		createInFlightRef.current = true
 		setSubmitting(true)
@@ -248,7 +255,7 @@ export function ValidatorDepositRedeemAdminSheet({ open, onClose, adminEoa, canC
 				gbMiningNodeCount,
 				allowedClaimer: allowedClaimer || undefined,
 				referrer: referrer || undefined,
-				airdrop,
+				airdrop: airdropForCreate,
 				privateKeyArmor: armor,
 			})
 			if (!res.success) {
@@ -556,7 +563,7 @@ export function ValidatorDepositRedeemAdminSheet({ open, onClose, adminEoa, canC
 									role="switch"
 									aria-checked={airdrop}
 									onClick={() => setAirdrop((v) => !v)}
-									disabled={submitting || !canCreate}
+									disabled={submitting || !canCreate || institutionalPack}
 									className="flex w-full items-center justify-between gap-3 disabled:opacity-60"
 								>
 									<span className="flex items-center gap-2.5 text-left">
@@ -570,7 +577,9 @@ export function ValidatorDepositRedeemAdminSheet({ open, onClose, adminEoa, canC
 										<span className="flex flex-col">
 											<span className="text-sm font-semibold text-slate-800 dark:text-slate-100">Airdrop</span>
 											<span className="text-[11px] leading-snug text-slate-500 dark:text-slate-400">
-												Accrues 100 CNET per validator node on claim, claimable after the on-chain date.
+												{institutionalPack
+													? 'Unavailable while biz Institutional Pack is on.'
+													: 'Accrues 100 CNET per validator node on claim, claimable after the on-chain date.'}
 											</span>
 										</span>
 									</span>

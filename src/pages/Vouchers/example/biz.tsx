@@ -22774,6 +22774,23 @@ const [memberDirectoryUserTypeDb, setMemberDirectoryUserTypeDb] = useState<Recor
          });
          return;
        }
+       let signingAddress = '';
+       try {
+         signingAddress = new ethers.Wallet(pk).address;
+       } catch {
+         setMerchantKitRedeemFeedback({
+           type: 'error',
+           message: 'Unlock your wallet to redeem this package code.',
+         });
+         return;
+       }
+       if (signingAddress.toLowerCase() !== ethers.getAddress(eoaRedeem).toLowerCase()) {
+         setMerchantKitRedeemFeedback({
+           type: 'error',
+           message: 'Session wallet does not match the connected EOA. Unlock again and retry.',
+         });
+         return;
+       }
        const pre = await queryReferralAdminMerchantPackageRedeemOnChain(code);
        if (!pre.redeemable) {
          setMerchantKitRedeemFeedback({

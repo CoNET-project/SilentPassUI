@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { ethers } from 'ethers'
-import { checkStorage, bootstrapProfileLocaleCurrencyIfUnset } from '@/services/beamio'
+import { checkStorageWithTimeout, bootstrapProfileLocaleCurrencyIfUnset } from '@/services/beamio'
 import { initChat } from '@/services/chat'
 import { setCoNET_Data } from '@/utils/globals'
 import { useDaemonContext } from '@/providers/DaemonProvider'
@@ -56,7 +56,7 @@ export default function RequireUnlockedWallet() {
 				if (!cancelled) setGate('unauth')
 				return
 			}
-			const data = await checkStorage(false)
+			const data = await checkStorageWithTimeout(undefined, false)
 			if (cancelled) return
 			const flat = ensureFlatProfiles((data as { profiles?: unknown } | null)?.profiles)
 			if (!data || flat.length === 0 || !sessionKeyMatchesProfile(flat)) {

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { checkStorage } from '@/services/beamio'
+import { checkStorageWithTimeout } from '@/services/beamio'
 import BeamioOnboardingModal from '@/pages/Home/LoadingPage'
 import SplashScreen from '@/components/SplashScreen'
 import { useNavigate } from 'react-router-dom'
@@ -10,7 +10,7 @@ const BeamioInstallOnboarding: React.FC = () => {
 
 	useEffect(() => {
 		const run = async () => {
-			const CoNETData = await checkStorage()
+			const CoNETData = await checkStorageWithTimeout()
 			if (CoNETData && CoNETData?.beamio) {
 				setSplashVisible(false)
 				navigate('/')

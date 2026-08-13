@@ -17,7 +17,7 @@ import { ReactComponent as LightDrakModeBlue } from "@/components/Footer/assets/
 import styles from '@/components/Home/home.module.scss'
 import ScanBtn from '@/components/scanBtn/ScanButton'
 import { CoNET_Data, setCoNET_Data } from '../../utils/globals'
-import { checkStorage, restoreWithRedeem, fetchUserInfoWithRetry, flushStoreSystemData } from "@/services/beamio"
+import { checkStorageWithTimeout, restoreWithRedeem, fetchUserInfoWithRetry, flushStoreSystemData } from "@/services/beamio"
 import { ensureConetAaForProfileAndPersist } from "@/utils/ensureConetAa"
 import {AppButton} from '@/components/button/AppButton'
 import {motion, AnimatePresence } from "framer-motion"
@@ -96,9 +96,17 @@ function formatMemberNo(tokenId: string | number): string {
 type Props = {
 	home: () => void
 	onInitComplete?: () => void
+	/** Home gate already read local storage (incl. timeout fallback) — avoid a second IndexedDB hang in Safari Private. */
+	bootResolved?: boolean
+	bootCoNETData?: encrypt_keys_object | null
 }
 
-export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
+export default function BeamioOnboardingModal({
+	home,
+	onInitComplete,
+	bootResolved = false,
+	bootCoNETData = null,
+}: Props) {
 	const { tu } = useTu()
 	const { setDarkModle, darkModle, beamio, power, setProfiles, setBeamio, setPayTag, isInitialLoading,
 		setAllNodes, setGossip, gossip,
@@ -197,7 +205,10 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 			return
 		}
 
-		const isAcc = await checkStorage()
+		// Prefer gate snapshot; otherwise bounded read (Safari Private IndexedDB may hang forever).
+		const isAcc = bootResolved
+			? bootCoNETData
+			: await checkStorageWithTimeout()
 		temp = temp || isAcc || undefined
 
 		if (!temp?.profiles?.length) {
@@ -1195,7 +1206,7 @@ export default function BeamioOnboardingModal({home, onInitComplete}: Props) {
 											setSettingsOpen('')
 											setRestoreFromUrlMasterKey('')
 											try {
-												const hadLocalWallet = Boolean(await checkStorage())
+												const hadLocalWallet = Boolean(await checkStorageWithTimeout())
 												const recoveredDraft = (temp as { recoveredBusinessDraft?: unknown }).recoveredBusinessDraft
 												const recoveredEoa = temp?.profiles?.[0]?.keyID?.trim()
 												const hasLocalBusinessDraft =

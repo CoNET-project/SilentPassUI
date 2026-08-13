@@ -1141,6 +1141,22 @@ export const checkStorage = async (checkcacheStorage = true) => {
   }
 }
 
+/** Safari Private / blocked IndexedDB may hang forever on PouchDB open — race to null. */
+export const CHECK_STORAGE_TIMEOUT_MS = 8_000
+
+export async function checkStorageWithTimeout(
+  timeoutMs = CHECK_STORAGE_TIMEOUT_MS,
+  checkcacheStorage = true,
+): Promise<encrypt_keys_object | null> {
+  if (typeof window === 'undefined') return null
+  return Promise.race([
+    checkStorage(checkcacheStorage).catch(() => null),
+    new Promise<null>((resolve) => {
+      window.setTimeout(() => resolve(null), timeoutMs)
+    }),
+  ])
+}
+
 /** Cache 用的绝对 URL（Safari / PWA 路径不同，必须用 origin 级别 key 确保一致）
  * 注意：iOS 上 Cache API 与 IndexedDB 同样与 Safari 隔离，PWA 无法读取。仅对 Android 等平台可能有效。 */
 const CACHE_WALLET_URL = typeof window !== 'undefined'

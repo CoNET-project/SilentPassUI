@@ -435,8 +435,10 @@ export async function signAndSubmitValidatorDepositRedeemCreate(params: {
 	if (!Number.isFinite(params.validatorCount) || params.validatorCount <= 0) {
 		return { success: false, error: 'Validator count must be a positive integer.' }
 	}
-	if (!isValidTargetNodeIp(params.targetNodeIp)) {
-		return { success: false, error: 'Enter a valid target validator node IP.' }
+	// targetNodeIp is a deprecated create-time field (auto-allocation at claim); UI no longer collects it.
+	const targetNodeIp = params.targetNodeIp.trim() || '0.0.0.0'
+	if (!isValidTargetNodeIp(targetNodeIp)) {
+		return { success: false, error: 'Internal target node IP placeholder is invalid.' }
 	}
 
 	const nonceRes = await readValidatorDepositRedeemAdminNonceOnChain(admin)
@@ -466,7 +468,7 @@ export async function signAndSubmitValidatorDepositRedeemCreate(params: {
 		allowedClaimer,
 		referrer,
 		validatorCount,
-		targetNodeIp: params.targetNodeIp.trim(),
+		targetNodeIp,
 		gbMiningNodeCount,
 		airdrop,
 		validAfter,
@@ -489,7 +491,7 @@ export async function signAndSubmitValidatorDepositRedeemCreate(params: {
 		allowedClaimer,
 		referrer,
 		validatorCount: validatorCount.toString(),
-		targetNodeIp: params.targetNodeIp.trim(),
+		targetNodeIp,
 		gbMiningNodeCount: gbMiningNodeCount.toString(),
 		airdrop: airdrop ? 'true' : 'false',
 		validAfter: validAfter.toString(),

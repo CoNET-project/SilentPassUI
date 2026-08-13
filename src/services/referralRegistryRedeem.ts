@@ -762,8 +762,13 @@ export async function issueAdminMerchantPackageCode(params: {
 	includeStartKet: boolean
 	paymentMethod: PackagePaymentMethod
 	description: string
+	/** When set, register this exact secret (same redeem as Validator Deposit Redeem Institutional Pack). */
+	secret?: string
 }): Promise<IssuedAdminMerchantPackage> {
-	const secret = generateAdminMerchantPackageSecret()
+	const secret = (params.secret?.trim() || generateAdminMerchantPackageSecret()).trim()
+	if (!secret.toLowerCase().startsWith('beamio-admin-pkg-')) {
+		throw new Error('Admin package code must start with beamio-admin-pkg-.')
+	}
 	const hash = referralRedeemHash(secret)
 	return enqueueWrite(async () => {
 		const wallet = new ethers.Wallet(params.adminPrivateKeyArmor)

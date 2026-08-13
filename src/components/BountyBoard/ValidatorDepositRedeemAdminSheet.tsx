@@ -1,18 +1,25 @@
-import React, { useCallback, useEffect, useRef, useState, type KeyboardEvent, type WheelEvent } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type WheelEvent } from 'react'
 import { ethers } from 'ethers'
-import { X, Copy, Check, Loader2, AlertTriangle, Ban, TicketPlus, Gift } from 'lucide-react'
+import { X, Copy, Check, Loader2, AlertTriangle, Ban, TicketPlus, Gift, Building2 } from 'lucide-react'
 import { Toast } from 'antd-mobile'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { resolveSigningPrivateKeyArmor } from '@/utils/resolveSigningPrivateKeyArmor'
 import { CoNET_Data } from '@/utils/globals'
 import {
 	generateValidatorDepositRedeemSecretCode,
-	isValidTargetNodeIp,
-	resolveValidatorDepositRedeemDisplayStatus,
 	signAndSubmitValidatorDepositRedeemCancel,
 	signAndSubmitValidatorDepositRedeemCreate,
+	validatorDepositRedeemCodeHashFromSecret,
+	resolveValidatorDepositRedeemDisplayStatus,
 	validatorDepositRedeemStatusLabel,
 } from '@/services/validatorDepositRedeemAdmin'
+import {
+	generateAdminMerchantPackageSecret,
+	issueAdminMerchantPackageCode,
+} from '@/services/referralRegistryRedeem'
+import { signAndSubmitBusinessStartKetRedeemCreate } from '@/services/businessStartKetRedeem'
+import { useBusinessStartKetRedeemAdmin } from '@/hooks/useBusinessStartKetRedeemAdmin'
+import { useReferralRegistryRole } from '@/hooks/useReferralRegistryRole'
 import {
 	deleteValidatorDepositRedeemIssued,
 	listValidatorDepositRedeemIssuedForAdmin,
@@ -23,6 +30,13 @@ import {
 	type ValidatorDepositRedeemIssuedStatus,
 } from '@/utils/validatorDepositRedeemIssuedDb'
 import { syncValidatorDepositRedeemIssuedForAdmin } from '@/utils/syncValidatorDepositRedeemIssuedRecords'
+
+/** Deprecated create-time field; claim auto-allocates Guardian nodes. Must be non-empty for on-chain validation. */
+const LEGACY_TARGET_NODE_IP_PLACEHOLDER = '0.0.0.0'
+
+/** biz Institutional Pack: free B-Units (human units) + Business Start Ket NFT via Admin Merchant Package. */
+const INSTITUTIONAL_PACK_FREE_BUNIT = '500000'
+const INSTITUTIONAL_PACK_DESCRIPTION = 'biz Institutional Pack (Validator Redeem)'
 
 const NUMERIC_SPINNER_HIDE =
 	'[&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]'
@@ -69,11 +83,14 @@ type Props = {
 export function ValidatorDepositRedeemAdminSheet({ open, onClose, adminEoa, canCreate }: Props) {
 	const { profiles } = useDaemonContext()
 	const adminLower = adminEoa.trim().toLowerCase()
+	const { isRedeemAdmin: isStartKetRedeemAdmin } = useBusinessStartKetRedeemAdmin(adminEoa)
+	const { snapshot: referralSnapshot } = useReferralRegistryRole(adminEoa)
+	const isReferralVaultAdmin = referralSnapshot?.isAdmin === true
 	const [validatorCountInput, setValidatorCountInput] = useState('1')
-	const [targetNodeIp, setTargetNodeIp] = useState('38.102.85.33')
 	const [allowedClaimerInput, setAllowedClaimerInput] = useState('')
 	const [referrerInput, setReferrerInput] = useState('')
 	const [airdrop, setAirdrop] = useState(false)
+	const [institutionalPack, setInstitutionalPack] = useState(false)
 	const [submitting, setSubmitting] = useState(false)
 	const [formError, setFormError] = useState('')
 	const [rows, setRows] = useState<ValidatorDepositRedeemIssuedRecord[]>([])
@@ -82,6 +99,20 @@ export function ValidatorDepositRedeemAdminSheet({ open, onClose, adminEoa, canC
 	const [cancellingId, setCancellingId] = useState<string | null>(null)
 	const syncTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 	const syncRunningRef = useRef(false)
+
+	const validatorCountParsed = useMemo(() => {
+		const n = Number(validatorCountInput)
+		return Number.isFinite(n) ? Math.floor(n) : 0
+	}, [validatorCountInput])
+
+	const showInstitutionalPackSwitch =
+		canCreate && isStartKetRedeemAdmin === true && validatorCountParsed === 1
+
+	useEffect(() => {
+		if (!showInstitutionalPackSwitch && institutionalPack) {
+			setInstitutionalPack(false)
+		}
+	}, [showInstitutionalPackSwitch, institutionalPack])
 
 	const reloadRows = useCallback(async () => {
 		if (!adminLower) {
@@ -151,10 +182,7 @@ export function ValidatorDepositRedeemAdminSheet({ open, onClose, adminEoa, canC
 			setFormError('Enter a valid validator count (positive integer).')
 			return
 		}
-		if (!isValidTargetNodeIp(targetNodeIp)) {
-			setFormError('Enter a valid target validator node IP.')
-			return
-		}
+		const wantInstitutionalPack = institutionalPack && validatorCount === 1 && isStartKetRedeemAdmin === true
 		// GB mining node count is auto-set equal to validator count (API + claim allocation).
 		const gbMiningNodeCount = validatorCount
 		let allowedClaimer = ''
@@ -180,13 +208,20 @@ export function ValidatorDepositRedeemAdminSheet({ open, onClose, adminEoa, canC
 			return
 		}
 
-		const { code, codeHash } = generateValidatorDepositRedeemSecretCode()
+		let code: string
+		let codeHash: string
+		if (wantInstitutionalPack) {
+			code = generateAdminMerchantPackageSecret()
+			codeHash = validatorDepositRedeemCodeHashFromSecret(code)
+		} else {
+			;({ code, codeHash } = generateValidatorDepositRedeemSecretCode())
+		}
 		const draft = newValidatorDepositRedeemIssuedDraft({
 			adminEoa: adminEoa,
 			secretCode: code,
 			codeHash,
 			validatorCount: String(validatorCount),
-			targetNodeIp: targetNodeIp.trim(),
+			targetNodeIp: LEGACY_TARGET_NODE_IP_PLACEHOLDER,
 			gbMiningNodeCount: String(gbMiningNodeCount),
 			allowedClaimer: allowedClaimer || '0x0000000000000000000000000000000000000000',
 			referrer: referrer || '0x0000000000000000000000000000000000000000',
@@ -204,7 +239,7 @@ export function ValidatorDepositRedeemAdminSheet({ open, onClose, adminEoa, canC
 				adminEoa,
 				codeHash,
 				validatorCount,
-				targetNodeIp: targetNodeIp.trim(),
+				targetNodeIp: LEGACY_TARGET_NODE_IP_PLACEHOLDER,
 				gbMiningNodeCount,
 				allowedClaimer: allowedClaimer || undefined,
 				referrer: referrer || undefined,
@@ -223,8 +258,54 @@ export function ValidatorDepositRedeemAdminSheet({ open, onClose, adminEoa, canC
 				chainActive: true,
 				chainConsumed: false,
 			})
+
+			if (wantInstitutionalPack) {
+				let packOk = false
+				let packError = ''
+				if (isReferralVaultAdmin) {
+					try {
+						await issueAdminMerchantPackageCode({
+							adminPrivateKeyArmor: armor,
+							bunitAmount: INSTITUTIONAL_PACK_FREE_BUNIT,
+							isPaid: false,
+							includeStartKet: true,
+							paymentMethod: 0,
+							description: INSTITUTIONAL_PACK_DESCRIPTION,
+							secret: code,
+						})
+						packOk = true
+					} catch (cause) {
+						packError = cause instanceof Error ? cause.message : 'Could not register Admin Merchant Package.'
+					}
+				}
+				if (!packOk) {
+					const ketRes = await signAndSubmitBusinessStartKetRedeemCreate({
+						adminEoa,
+						codeHash,
+						buintAmount6: ethers.parseUnits(INSTITUTIONAL_PACK_FREE_BUNIT, 6),
+						privateKeyArmor: armor,
+					})
+					if (ketRes.success) {
+						packOk = true
+					} else {
+						packError = packError || ketRes.error || 'Could not register Start Ket Institutional Pack.'
+					}
+				}
+				await reloadRows()
+				if (!packOk) {
+					setFormError(
+						`Validator redeem was created, but biz Institutional Pack failed: ${packError}`,
+					)
+					Toast.show({ content: 'Validator redeem created; Institutional Pack failed', position: 'top' })
+					return
+				}
+			}
+
 			await reloadRows()
-			Toast.show({ content: 'Redeem code created', position: 'top' })
+			Toast.show({
+				content: wantInstitutionalPack ? 'Redeem + Institutional Pack created' : 'Redeem code created',
+				position: 'top',
+			})
 		} catch (e: unknown) {
 			await deleteValidatorDepositRedeemIssued(codeHash)
 			const err = e as { message?: string }
@@ -239,10 +320,12 @@ export function ValidatorDepositRedeemAdminSheet({ open, onClose, adminEoa, canC
 		airdrop,
 		allowedClaimerInput,
 		canCreate,
+		institutionalPack,
+		isReferralVaultAdmin,
+		isStartKetRedeemAdmin,
 		profiles,
 		referrerInput,
 		reloadRows,
-		targetNodeIp,
 		validatorCountInput,
 	])
 
@@ -375,22 +458,49 @@ export function ValidatorDepositRedeemAdminSheet({ open, onClose, adminEoa, canC
 								/>
 							</div>
 
-							<div>
-								<label htmlFor="vdr-target-ip" className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-									Target validator node IP
-								</label>
-								<input
-									id="vdr-target-ip"
-									type="text"
-									autoComplete="off"
-									enterKeyHint="next"
-									value={targetNodeIp}
-									onChange={(e) => setTargetNodeIp(e.target.value)}
-									disabled={submitting || !canCreate}
-									className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 font-mono text-sm dark:border-slate-600 dark:bg-slate-800"
-									placeholder="38.102.85.33"
-								/>
-							</div>
+							{showInstitutionalPackSwitch ? (
+								<div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 dark:border-slate-600 dark:bg-slate-800">
+									<button
+										type="button"
+										role="switch"
+										aria-checked={institutionalPack}
+										onClick={() => setInstitutionalPack((v) => !v)}
+										disabled={submitting || !canCreate}
+										className="flex w-full items-center justify-between gap-3 disabled:opacity-60"
+									>
+										<span className="flex items-center gap-2.5 text-left">
+											<span
+												className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
+													institutionalPack
+														? 'bg-[#1562f0] text-white'
+														: 'bg-slate-200 text-slate-500 dark:bg-slate-700 dark:text-slate-300'
+												}`}
+											>
+												<Building2 className="h-4.5 w-4.5" aria-hidden />
+											</span>
+											<span className="flex flex-col">
+												<span className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+													biz Institutional Pack
+												</span>
+												<span className="text-[11px] leading-snug text-slate-500 dark:text-slate-400">
+													Also register the same redeem as free 500,000 B-Units with Business Start Ket NFT.
+												</span>
+											</span>
+										</span>
+										<span
+											className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
+												institutionalPack ? 'bg-[#1562f0]' : 'bg-slate-300 dark:bg-slate-600'
+											}`}
+										>
+											<span
+												className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+													institutionalPack ? 'translate-x-[22px]' : 'translate-x-0.5'
+												}`}
+											/>
+										</span>
+									</button>
+								</div>
+							) : null}
 
 							<div>
 								<label htmlFor="vdr-referrer" className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">
@@ -549,7 +659,7 @@ export function ValidatorDepositRedeemAdminSheet({ open, onClose, adminEoa, canC
 														{validatorDepositRedeemStatusLabel(displayStatus)}
 													</span>
 													<span className="text-xs text-slate-500">
-														{row.validatorCount} validator{row.validatorCount === '1' ? '' : 's'} · IP {row.targetNodeIp}
+														{row.validatorCount} validator{row.validatorCount === '1' ? '' : 's'}
 													</span>
 													{row.airdrop ? (
 														<span className="inline-flex items-center gap-1 rounded-full border border-[#1562f0]/30 bg-[#1562f0]/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#1562f0]">

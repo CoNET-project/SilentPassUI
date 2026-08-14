@@ -384,8 +384,10 @@ import {
 } from '@/utils/programSocialExchange';
 import { applyCouponSocialPromotionOnChainRules, applySocialPromotionOnChainRules } from '@/utils/beamioCardSocialPromotionRules';
 import { readCardSocialPromotionFromChain } from '@/utils/beamioCardSocialPromotionChain';
+import { openExternalUrl } from '@/utils/openExternalUrl';
+import { buildFuelPackUsdcTopupUrl } from '@/utils/fuelPackUsdcTopupUrl';
 import {
-  registerPOSApi,
+  registerPOSApi;
   signRegisterPOS,
   signRemovePOS,
   removePOSApi,
@@ -24656,6 +24658,39 @@ const overviewCustomerBalanceFromActivity = useMemo(() => {
 
  handleRefreshAARef.current = handleRefreshAA;
 
+ const openCustomFuelThirdPartyUsdcPay = useCallback((): boolean => {
+   const account = (profiles?.[0]?.keyID ?? myAddress)?.trim();
+   if (!account || !ethers.isAddress(account)) {
+     setMarketRefuelError('Wallet not ready. Please unlock or sign in.');
+     return false;
+   }
+   const pack = selectedCustomFuelPackage;
+   const amount =
+     pack?.usdcAmount ??
+     (Number.isFinite(marketCustomFuelUsdc) && marketCustomFuelUsdc >= 1
+       ? String(marketCustomFuelUsdc)
+       : '');
+   if (!amount) {
+     setMarketRefuelError('Select a refill package or enter a valid USDC amount.');
+     return false;
+   }
+   const opened = openExternalUrl(
+     buildFuelPackUsdcTopupUrl({
+       beneficiary: account,
+       amount,
+       packId: pack?.id,
+     }),
+   );
+   if (!opened) {
+     setMarketRefuelError('Could not open the USDC payment page. Allow pop-ups and try again.');
+     return false;
+   }
+   setMarketRefuelError(null);
+   setMarketRefuelSuccess('external-usdc-topup');
+   setOverviewRefreshTrigger((t) => t + 1);
+   return true;
+ }, [profiles, myAddress, marketCustomFuelUsdc, selectedCustomFuelPackage]);
+
  const handleMarketPurchase = useCallback(async () => {
    if (selectedProduct === 'starter' || selectedProduct === 'custom_fuel') {
      const pk = profiles?.[0]?.privateKeyArmor;
@@ -24690,14 +24725,20 @@ const overviewCustomerBalanceFromActivity = useMemo(() => {
        return;
      }
      const bal = await getBalance(account);
-     if (!bal?.usdc) {
-       setMarketRefuelError('Unable to verify USDC balance. Please try again.');
+     const cannotReadBalance = !bal?.usdc;
+     let avail6: bigint | null = null;
+     if (!cannotReadBalance) {
+       try {
+         avail6 = ethers.parseUnits(String(bal.usdc).trim(), 6);
+       } catch {
+         avail6 = null;
+       }
+     }
+     if (selectedProduct === 'custom_fuel' && (cannotReadBalance || avail6 == null || avail6 < need6)) {
+       openCustomFuelThirdPartyUsdcPay();
        return;
      }
-     let avail6: bigint;
-     try {
-       avail6 = ethers.parseUnits(String(bal.usdc).trim(), 6);
-     } catch {
+     if (cannotReadBalance || avail6 == null) {
        setMarketRefuelError('Unable to verify USDC balance. Please try again.');
        return;
      }
@@ -24751,7 +24792,7 @@ const overviewCustomerBalanceFromActivity = useMemo(() => {
      return null;
    });
    setActiveTab('Wallets');
-}, [marketCustomFuelUsdc, selectedProduct, selectedCustomFuelPackage, profiles, myAddress, customFuelAmount]);
+}, [marketCustomFuelUsdc, selectedProduct, selectedCustomFuelPackage, profiles, myAddress, customFuelAmount, openCustomFuelThirdPartyUsdcPay]);
 
  const runMerchantKitStripeCheckout = useCallback(
    async (packageType: MerchantKitCheckoutPlanId) => {
@@ -44115,6 +44156,12 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                       <Check size={32} strokeWidth={3} className="text-green-500" />
                     </div>
                     <p className="text-[18px] font-black text-green-400">Success</p>
+                    {marketRefuelSuccess === 'external-usdc-topup' ? (
+                      <p className="max-w-sm text-center text-[13px] font-medium leading-relaxed text-slate-300">
+                        Complete USDC payment in the new tab. After it confirms, this pack&apos;s B-Units
+                        {selectedCustomFuelPackage?.firstTimeOnly ? ' and Genesis merchant-card NFT' : ''} credit this merchant account.
+                      </p>
+                    ) : null}
                     {marketRefuelSuccess != null && marketRefuelSuccess.startsWith('0x') && (
                       <a
                         href={`https://basescan.org/tx/${marketRefuelSuccess}`}
@@ -44168,7 +44215,9 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
               <>
             <div
               className={`flex-1 overflow-y-auto p-8 pt-4 scrollbar-hide space-y-8 ${
-                selectedProduct === 'custom_fuel' || isMerchantKitStripeProduct ? 'pb-44' : 'pb-32'
+                selectedProduct === 'custom_fuel' || isMerchantKitStripeProduct
+                  ? 'pb-44'
+                  : 'pb-32'
               }`}
             >
               <div className="flex gap-4">

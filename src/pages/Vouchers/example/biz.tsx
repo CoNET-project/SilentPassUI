@@ -13376,6 +13376,10 @@ useEffect(() => {
  /** Primary BeamioUserCard owned by profile (factory / cardsOfOwner); Staff terminals + registration use this instead of infra when set. */
  const [merchantOwnCardAddress, setMerchantOwnCardAddress] = useState<string | null>(null);
  /** Ket #0 + no factory card, issuer/Ket reads done — hand off to Programs without flashing Dashboard */
+ const programAreaGateReady =
+   profileOwnsIssuedBeamioCardFetched && ownsBusinessStartKetToken0Fetched;
+ /** Programs routes require an issued card or Ket #0. Direct /Program/Basic URLs must not bypass this. */
+ const canEnterProgramArea = profileOwnsIssuedBeamioCard || ownsBusinessStartKetToken0;
  const ketNoCardProgramsEligible = useMemo(
    () =>
      profileOwnsIssuedBeamioCardFetched &&
@@ -13718,9 +13722,23 @@ useEffect(() => {
  useEffect(() => {
    const tabFromPath = programTabFromPath(location.pathname);
    if (!tabFromPath) return;
+   if (
+     programAreaGateReady &&
+     !canEnterProgramArea
+   ) {
+     navigate('/native-pos', { replace: true });
+     setActiveTab('Overview');
+     setCardIssuanceProductionsPanelOpen(false);
+     return;
+   }
    setActiveTab(tabFromPath);
    setCardIssuanceProductionsPanelOpen(tabFromPath === PROGRAM_TAB_BUSINESS);
- }, [location.pathname]);
+ }, [
+   location.pathname,
+   programAreaGateReady,
+   canEnterProgramArea,
+   navigate,
+ ]);
 
  useEffect(() => {
    if (!isProgramAreaTab(activeTab) && !ketNoCardProgramsEligible) {
@@ -19570,6 +19588,9 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
    const publishFail = (message: string): false => {
      setCardIssuanceCreateError(message);
      opts?.publishErrorSink?.(message);
+     if (!cardIssuanceExistingCard) {
+       setCardIssuanceOnChainRefreshNonce((n) => n + 1);
+     }
      return false;
    };
    setCardIssuanceCreateError('');
@@ -23413,6 +23434,7 @@ const [memberDirectoryUserTypeDb, setMemberDirectoryUserTypeDb] = useState<Recor
 
  const handleProgramTabChange = useCallback(
    (tab: ProgramTabId) => {
+    if (programAreaGateReady && !canEnterProgramArea) return;
     if (!confirmLeavingProgramBasic(tab)) return;
      if (isTerminalsMarketRoute) {
        navigate('/native-pos');
@@ -23422,7 +23444,13 @@ const [memberDirectoryUserTypeDb, setMemberDirectoryUserTypeDb] = useState<Recor
      setCardIssuanceProductionsPanelOpen(tab === PROGRAM_TAB_BUSINESS);
      setIsMobileMenuOpen(false);
    },
-   [confirmLeavingProgramBasic, isTerminalsMarketRoute, navigate]
+   [
+     programAreaGateReady,
+     canEnterProgramArea,
+     confirmLeavingProgramBasic,
+     isTerminalsMarketRoute,
+     navigate,
+   ]
  );
 
  const handleTabChange = useCallback((tab: string, opts?: { transactionsSidebar?: 'transactions' | 'insights' }) => {
@@ -29723,6 +29751,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
          <NavSectionLabel collapsed={isSidebarCollapsed && !isMobileMenuOpen}>
            {tu('assets')}
          </NavSectionLabel>
+         {(!programAreaGateReady || canEnterProgramArea) ? (
          <NavProgramMenu
            activeTab={navChromeTab}
            collapsed={isSidebarCollapsed && !isMobileMenuOpen}
@@ -29730,6 +29759,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
            onSelect={handleProgramTabChange}
            focusRingClass={bizFocusRingClass}
          />
+         ) : null}
          <NavItem icon={ShoppingBag} label={tu('market')} isActive={activeTab === 'Market'} onClick={() => handleTabChange('Market')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
          {isValidatorDepositRedeemAdminFetched && isValidatorDepositRedeemAdmin ? (
            <NavItem icon={Shield} label={tu('validator_management')} isActive={activeTab === 'Validator Management'} onClick={() => handleTabChange('Validator Management')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
@@ -30214,8 +30244,12 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                     <div className="flex w-full shrink-0 flex-col items-stretch gap-3 sm:flex-row md:w-auto">
                       <button
                         type="button"
-                        onClick={() => handleTabChange(PROGRAM_TAB_BASIC)}
-                        className={`flex-1 rounded-xl bg-[#1562f0] px-6 py-3 text-xs font-extrabold text-white shadow-lg shadow-[#1562f0]/20 transition-all hover:scale-[1.02] active:scale-95 sm:text-sm md:flex-none ${bizFocusRingClass}`}
+                        onClick={() => {
+                          if (!canEnterProgramArea) return;
+                          handleTabChange(PROGRAM_TAB_BASIC);
+                        }}
+                        disabled={programAreaGateReady && !canEnterProgramArea}
+                        className={`flex-1 rounded-xl bg-[#1562f0] px-6 py-3 text-xs font-extrabold text-white shadow-lg shadow-[#1562f0]/20 transition-all hover:scale-[1.02] active:scale-95 sm:text-sm md:flex-none ${bizFocusRingClass} disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100`}
                       >
                         {tu('overview_setup_first_program_cta')}
                       </button>

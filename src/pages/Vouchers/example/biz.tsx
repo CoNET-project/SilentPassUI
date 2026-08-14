@@ -387,7 +387,7 @@ import { readCardSocialPromotionFromChain } from '@/utils/beamioCardSocialPromot
 import { openExternalUrl } from '@/utils/openExternalUrl';
 import { buildFuelPackUsdcTopupUrl } from '@/utils/fuelPackUsdcTopupUrl';
 import {
-  registerPOSApi;
+  registerPOSApi,
   signRegisterPOS,
   signRemovePOS,
   removePOSApi,

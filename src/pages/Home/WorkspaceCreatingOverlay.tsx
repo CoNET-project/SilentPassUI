@@ -185,14 +185,22 @@ export default function WorkspaceCreatingOverlay({ creatingStep = 0 }: Workspace
 	)
 }
 
-/** Let loading UI paint and start compositor animations before heavy createRecover / argon2 work. */
+/** Let loading UI paint before heavy createRecover / argon2 work.
+ * Safari Private may never fire rAF while a full-screen overlay is up — always fall back to setTimeout. */
 export function awaitWorkspaceCreatingPaint(
 	leadMs: number = WORKSPACE_CREATING_LEAD_MS
 ): Promise<void> {
 	return new Promise((resolve) => {
+		let done = false
+		const finish = () => {
+			if (done) return
+			done = true
+			resolve()
+		}
+		window.setTimeout(finish, leadMs + 50)
 		window.requestAnimationFrame(() => {
 			window.requestAnimationFrame(() => {
-				window.setTimeout(resolve, leadMs)
+				window.setTimeout(finish, leadMs)
 			})
 		})
 	})

@@ -1041,7 +1041,7 @@ const duplicateAPI = `${apiv4_endpoint}duplicate`
 // }
 
 export const createOrGetWallet = async (secretPhrase: string | null, initAccount = false, referrals = '', ChannelPartners = '' ) => {
-	await checkStorage()
+	await checkStorageWithTimeout()
 
   if (secretPhrase|| initAccount ) setCoNET_Data(null)
 
@@ -1144,17 +1144,33 @@ export const checkStorage = async (checkcacheStorage = true) => {
 /** Safari Private / blocked IndexedDB may hang forever on PouchDB open — race to null. */
 export const CHECK_STORAGE_TIMEOUT_MS = 8_000
 
+export function raceWithTimeout<T>(
+  work: Promise<T>,
+  timeoutMs: number,
+  fallback: T,
+): Promise<T> {
+  if (typeof window === 'undefined') return work
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => resolve(fallback), timeoutMs)
+    work.then(
+      (value) => {
+        window.clearTimeout(timer)
+        resolve(value)
+      },
+      (err) => {
+        window.clearTimeout(timer)
+        reject(err)
+      },
+    )
+  })
+}
+
 export async function checkStorageWithTimeout(
   timeoutMs = CHECK_STORAGE_TIMEOUT_MS,
   checkcacheStorage = true,
 ): Promise<encrypt_keys_object | null> {
   if (typeof window === 'undefined') return null
-  return Promise.race([
-    checkStorage(checkcacheStorage).catch(() => null),
-    new Promise<null>((resolve) => {
-      window.setTimeout(() => resolve(null), timeoutMs)
-    }),
-  ])
+  return raceWithTimeout(checkStorage(checkcacheStorage).catch(() => null), timeoutMs, null)
 }
 
 /** Cache 用的绝对 URL（Safari / PWA 路径不同，必须用 origin 级别 key 确保一致）
@@ -1167,9 +1183,11 @@ const CACHE_WALLET_URL = typeof window !== 'undefined'
 const cacheStorageBackup = async (data: string) => {
   try {
     if (typeof caches === 'undefined' || !CACHE_WALLET_URL) return
-    const cache = await caches.open('beamio-wallet-v1')
-    const req = new Request(CACHE_WALLET_URL, { method: 'GET' })
-    await cache.put(req, new Response(data, { headers: { 'Content-Type': 'text/plain' } }))
+    await raceWithTimeout((async () => {
+      const cache = await caches.open('beamio-wallet-v1')
+      const req = new Request(CACHE_WALLET_URL, { method: 'GET' })
+      await cache.put(req, new Response(data, { headers: { 'Content-Type': 'text/plain' } }))
+    })(), CHECK_STORAGE_TIMEOUT_MS, undefined)
   } catch (_) {}
 }
 
@@ -1177,17 +1195,19 @@ const cacheStorageBackup = async (data: string) => {
 const cacheStorageRestore = async (): Promise<string | null> => {
   try {
     if (typeof caches === 'undefined' || !CACHE_WALLET_URL) return null
-    const cache = await caches.open('beamio-wallet-v1')
-    const req = new Request(CACHE_WALLET_URL, { method: 'GET' })
-    const res = await cache.match(req)
-    if (!res) return null
-    return await res.text()
+    return await raceWithTimeout((async () => {
+      const cache = await caches.open('beamio-wallet-v1')
+      const req = new Request(CACHE_WALLET_URL, { method: 'GET' })
+      const res = await cache.match(req)
+      if (!res) return null
+      return await res.text()
+    })(), CHECK_STORAGE_TIMEOUT_MS, null)
   } catch {
     return null
   }
 }
 
-const storageHashData = async (docId: string, data: string) => {
+const storageHashDataInner = async (docId: string, data: string) => {
   const database = PouchDB(localDatabaseName, { auto_compaction: true });
   const putWithRev = (rev: string) => database.put({ _id: docId, title: data, _rev: rev });
 
@@ -1195,7 +1215,7 @@ const storageHashData = async (docId: string, data: string) => {
     try {
       const doc = await database.get(docId, { latest: true });
       await putWithRev(doc._rev);
-      await cacheStorageBackup(data)
+      void cacheStorageBackup(data)
       return;
     } catch (ex: any) {
       if (ex?.status === 409 || ex?.name === 'conflict') {
@@ -1205,7 +1225,7 @@ const storageHashData = async (docId: string, data: string) => {
       if (/^not_found/.test(ex?.name ?? '')) {
         try {
           await database.post({ _id: docId, title: data });
-          await cacheStorageBackup(data)
+          void cacheStorageBackup(data)
           return;
         } catch (postEx: any) {
           if (postEx?.status === 409 || postEx?.name === 'conflict') {
@@ -1219,6 +1239,14 @@ const storageHashData = async (docId: string, data: string) => {
       console.warn(`[storageHashData] Error:`, ex?.message ?? ex);
       return;
     }
+  }
+}
+
+const storageHashData = async (docId: string, data: string) => {
+  try {
+    await raceWithTimeout(storageHashDataInner(docId, data), CHECK_STORAGE_TIMEOUT_MS, undefined)
+  } catch (ex) {
+    console.warn(`[storageHashData] timed out or failed (Safari Private IndexedDB often hangs):`, ex)
   }
 }
 
@@ -1724,6 +1752,8 @@ const newUser = async (BeamioName: string, recoverData:IAccountRecover[], privat
 	const signWallet = new ethers.Wallet(privateKey)
 	const signMessage = await signWallet.signMessage(signWallet.address)
 	const Url = storageNewUser
+	const ctrl = new AbortController()
+	const abortTimer = typeof window !== 'undefined' ? window.setTimeout(() => ctrl.abort(), 30_000) : undefined
 	try {
 		const body = {
 			accountName: BeamioName,
@@ -1737,17 +1767,20 @@ const newUser = async (BeamioName: string, recoverData:IAccountRecover[], privat
 			headers: {
 				"Content-Type": "application/json"
 			},
-			body: JSON.stringify(body)
+			body: JSON.stringify(body),
+			signal: ctrl.signal,
 		})
 
 		if (!resp.ok) {
 			return false
 		}
 
-		const json = await resp.json()
+		await resp.json().catch(() => null)
 		return true
 	} catch (err) {
 		console.error("newUser error:", err)
+	} finally {
+		if (abortTimer !== undefined) window.clearTimeout(abortTimer)
 	}
 	return false
 }
@@ -1954,8 +1987,10 @@ export const createRecover = async (
 	const stored = hashPasswordBrowser(pin)
 	
 	const phraseBase64 = toBase64(temp.mnemonicPhrase)
-	
+
+	await new Promise<void>((resolve) => window.setTimeout(resolve, 0))
 	const img = await aesGcmEncryptWithStored (phraseBase64, recoverCode.code, stored)
+	await new Promise<void>((resolve) => window.setTimeout(resolve, 0))
 	const img1 = await aesGcmEncryptWithStored (phraseBase64, pin, stored)
 
 	const storageEncryptedImg = encodeRecoverStoragePayload(stored, img, recoverData)

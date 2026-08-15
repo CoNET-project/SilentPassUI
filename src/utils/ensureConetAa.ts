@@ -5,16 +5,40 @@ import { conetDepinProvider } from '@/utils/constants'
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
 import { storeSystemData } from '@/services/beamio'
 const conetEnsureInFlight = new Map<string, Promise<string | null>>()
+const ENSURE_AA_TIMEOUT_MS = 12_000
+
+function raceWithTimeout<T>(work: Promise<T>, timeoutMs: number, fallback: T): Promise<T> {
+	if (typeof window === 'undefined') return work
+	return new Promise<T>((resolve, reject) => {
+		const timer = window.setTimeout(() => resolve(fallback), timeoutMs)
+		work.then(
+			(value) => {
+				window.clearTimeout(timer)
+				resolve(value)
+			},
+			(err) => {
+				window.clearTimeout(timer)
+				reject(err)
+			},
+		)
+	})
+}
 
 async function fetchEnsureConetAaFromApi(eoa: string): Promise<string | null> {
+	const ctrl = new AbortController()
+	const abortTimer = typeof window !== 'undefined' ? window.setTimeout(() => ctrl.abort(), ENSURE_AA_TIMEOUT_MS) : undefined
 	try {
-		const res = await fetch(`${beamioApi}/api/ensureAAForEOA?eoa=${encodeURIComponent(eoa)}`)
+		const res = await fetch(`${beamioApi}/api/ensureAAForEOA?eoa=${encodeURIComponent(eoa)}`, {
+			signal: ctrl.signal,
+		})
 		if (!res.ok) return null
 		const data = await res.json().catch(() => ({}))
 		const aa = typeof data?.aa === 'string' ? data.aa.trim() : ''
 		return aa && ethers.isAddress(aa) ? ethers.getAddress(aa) : null
 	} catch {
 		return null
+	} finally {
+		if (abortTimer !== undefined) window.clearTimeout(abortTimer)
 	}
 }
 
@@ -26,20 +50,28 @@ export async function ensureConetAaForEoa(eoa: string): Promise<string | null> {
 	if (inflight) return inflight
 
 	const task = (async (): Promise<string | null> => {
-		const existing = await resolveBeamioAaOnConet(conetDepinProvider, norm).catch(() => null)
+		const existing = await raceWithTimeout(
+			resolveBeamioAaOnConet(conetDepinProvider, norm).catch(() => null),
+			ENSURE_AA_TIMEOUT_MS,
+			null,
+		)
 		if (existing) return existing
 
 		const created = await fetchEnsureConetAaFromApi(norm)
 		if (!created) return null
 
-		const code = await conetDepinProvider.getCode(created).catch(() => '0x')
+		const code = await raceWithTimeout(
+			conetDepinProvider.getCode(created).catch(() => '0x'),
+			ENSURE_AA_TIMEOUT_MS,
+			'0x',
+		)
 		if (!code || code === '0x') return null
 		return created
 	})()
 
 	conetEnsureInFlight.set(key, task)
 	try {
-		return await task
+		return await raceWithTimeout(task, ENSURE_AA_TIMEOUT_MS * 2, null)
 	} finally {
 		conetEnsureInFlight.delete(key)
 	}

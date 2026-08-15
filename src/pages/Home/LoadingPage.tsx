@@ -1032,12 +1032,8 @@ export default function BeamioOnboardingModal({
 							}
 							setWorkspaceCreating(true)
 							setSettingsOpen('RecoveryQRScreen')
-							// Recovery 挂载并绘制后再撤遮罩，避免 Identity / 空白壳闪一下
-							window.requestAnimationFrame(() => {
-								window.requestAnimationFrame(() => {
-									window.setTimeout(() => setWorkspaceCreating(false), 340)
-								})
-							})
+							// Recovery 挂载后再撤遮罩。Safari Private 可能永不触发 rAF，只用 setTimeout。
+							window.setTimeout(() => setWorkspaceCreating(false), 340)
 						}}
 					/>
 				</div>

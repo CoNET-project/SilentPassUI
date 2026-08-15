@@ -1336,7 +1336,8 @@ const ACTIVE_CARDS_LOOKBACK_DAYS = 90
 
 /**
  * Market → Refill / Unit Provisioning packages.
- * Pricing is USDC on Base; paid B-Units = priceUsdc × 100; free = volume bonus on paid.
+ * User-facing merchandising: USDC price + total B-Units only (no Paid/Free split).
+ * paidBUnits / freeBUnits / bonusBps stay for checkout allocation — do not render.
  */
 type MarketFuelPackage = {
   id: string
@@ -1344,11 +1345,12 @@ type MarketFuelPackage = {
   desc: string
   /** Checkout USDC (Base). */
   priceUsdc: number
-  /** Total B-Units (paid + free volume bonus). */
+  /** Total B-Units credited (user-visible amount). */
   bUnits: number
+  /** Checkout allocation only — never show Paid/Free in pack UI. */
   paidBUnits: number
   freeBUnits: number
-  /** Volume bonus on paid pool (0–2000 = 0%–20%). */
+  /** Checkout allocation only — never show bonus/subsidy % in pack UI. */
   bonusBps: number
   /** USDC amount string for custom fuel checkout (`priceUsdc`). */
   usdcAmount: string
@@ -1358,7 +1360,7 @@ type MarketFuelPackage = {
   badge?: string
 }
 
-/** Global SaaS Hashrate Prepayment Matrix (USDC; dual-pool paid + free). */
+/** Global SaaS Hashrate Prepayment Matrix (USDC). Dual-pool fields are checkout-only. */
 const MARKET_FUEL_PACKAGES: MarketFuelPackage[] = [
   {
     id: 'genesis_starter',
@@ -1467,17 +1469,6 @@ function formatMarketFuelBUnits(pkg: MarketFuelPackage): string {
 
 function formatMarketFuelPriceUsdc(pkg: MarketFuelPackage): string {
   return `$${pkg.priceUsdc.toLocaleString('en-US')}`
-}
-
-function formatMarketFuelPoolBreakdown(pkg: MarketFuelPackage): string {
-  const bonusPct =
-    pkg.bonusBps >= 1000
-      ? `${Math.round(pkg.bonusBps / 100)}%`
-      : `${(pkg.bonusBps / 100).toFixed(pkg.bonusBps % 100 === 0 ? 0 : 1)}%`
-  if (pkg.firstTimeOnly) {
-    return `${pkg.paidBUnits.toLocaleString('en-US')} Paid + ${pkg.freeBUnits.toLocaleString('en-US')} Free · ~${bonusPct} subsidy`
-  }
-  return `${pkg.paidBUnits.toLocaleString('en-US')} Paid + ${pkg.freeBUnits.toLocaleString('en-US')} Free · ${bonusPct} bonus`
 }
 
 function formatMarketFuelOrdersHint(pkg: MarketFuelPackage): string {
@@ -2637,7 +2628,6 @@ function MobileNoAaLiteMemberSelectionPage(props: {
                   <div>
                     <h3 className="font-manrope text-xl font-bold">{pkg.name}</h3>
                     <p className="mt-1 text-xs font-medium text-[#0051d1]">{pkg.desc}</p>
-                    <p className="mt-1 text-[11px] font-medium text-slate-400">{formatMarketFuelPoolBreakdown(pkg)}</p>
                   </div>
                   <div className="shrink-0 text-right">
                     <span className="text-2xl font-extrabold text-[#2c2f31]">{formatMarketFuelPriceUsdc(pkg)}</span>
@@ -32743,7 +32733,6 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                        </div>
                        <h3 className="mb-1 text-xl font-bold text-[#2c2f31]">{pkg.name}</h3>
                        <p className="mb-2 text-sm text-[#595c5e]">{pkg.desc}</p>
-                       <p className="mb-6 text-[11px] font-medium text-slate-400">{formatMarketFuelPoolBreakdown(pkg)}</p>
                        <div className="mb-6">
                          <span
                            className={`text-3xl font-extrabold ${pkg.highlighted ? 'text-[#0051d1]' : 'text-[#2c2f31]'}`}
@@ -32868,7 +32857,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                      <h3 className="font-sans text-2xl font-extrabold text-[#2c2f31]">Refill Packages</h3>
                      <p className="mt-1 text-sm text-slate-500">Select a fuel package to recharge your merchant wallet.</p>
                      <p className="mt-2 text-[11px] font-medium text-slate-500">
-                       Prices in USDC on Base. Paid B-Units = USDC × 100; volume bonus adds free B-Units (5%–20%). Newcomer Genesis (~33% subsidy) is only for merchants with no program card and no create-card NFT.
+                       Prices in USDC on Base. Newcomer Genesis is only for merchants with no program card and no create-card NFT.
                      </p>
                    </div>
                  </div>
@@ -32900,7 +32889,6 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                              {pkg.name}
                            </h4>
                            <p className="mt-1 text-[12px] text-[#595c5e]">{pkg.desc}</p>
-                           <p className="mt-1 text-[11px] font-medium text-slate-400">{formatMarketFuelPoolBreakdown(pkg)}</p>
                            <p className="mt-1 text-[11px] font-medium text-slate-400">{formatMarketFuelOrdersHint(pkg)}</p>
                          </div>
                          <div className="shrink-0 text-right">
@@ -32984,7 +32972,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                      <div className="flex items-center gap-3">
                        <Info className="size-[18px] shrink-0 text-[#0051d1]" strokeWidth={2} aria-hidden />
                        <p className="text-xs font-medium leading-tight text-[#595c5e]">
-                         Packages settle in USDC on Base (100 paid B-Units per $1 USDC). Volume bonus adds free B-Units on paid packs. Each Charge uses 5 B-Units.
+                         Packages settle in USDC on Base. Each Charge uses 5 B-Units.
                        </p>
                      </div>
                    </div>
@@ -34124,7 +34112,6 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                              {pkg.name}
                            </h2>
                            <p className="mt-1.5 text-sm font-normal leading-snug text-slate-600">{pkg.desc}</p>
-                           <p className="mt-1 text-[11px] font-medium text-slate-400">{formatMarketFuelPoolBreakdown(pkg)}</p>
                          </div>
                          <div className="flex shrink-0 flex-col items-start gap-0.5 sm:items-end sm:text-right">
                            <span
@@ -43748,7 +43735,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                <div className="flex-1 text-center md:text-left">
                  <h4 className="mb-2 text-lg font-bold text-[#2c2f31]">What does a Growth Pack mean for you?</h4>
                  <p className="text-sm leading-relaxed text-[#595c5e]">
-                   The <span className="font-bold text-[#2c2f31]">$199 USDC Growth Pack</span> includes 21,890 B-Units (19,900 paid + 1,990 free at 10% volume bonus). This is enough fuel to
+                   The <span className="font-bold text-[#2c2f31]">$199 USDC Growth Pack</span> includes 21,890 B-Units. This is enough fuel to
                    automatically process over <span className="font-bold text-[#0051d1]">10,000 customer transactions</span>, or secure substantial
                    customer top-ups—without traditional POS fees.
                  </p>
@@ -44281,7 +44268,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                   ) : selectedProduct === 'custom_fuel' ? (
                     <div className="flex gap-4">
                       <Zap size={20} className="text-emerald-500 shrink-0 mt-0.5" />
-                      <div><h4 className="text-[15px] font-bold text-white mb-1">{customFuelVolumeBUnits.toLocaleString('en-US')} B-Units Pre-load</h4><p className="text-[13px] font-medium text-slate-400 leading-relaxed">{selectedCustomFuelPackage ? `${formatMarketFuelPoolBreakdown(selectedCustomFuelPackage)}. ` : ''}Checkout {Number.isFinite(marketCustomFuelUsdc) ? `${marketCustomFuelUsdc.toFixed(2)} USDC` : '—'} on Base. Instant clearing fuel for daily retail volume.</p></div>
+                      <div><h4 className="text-[15px] font-bold text-white mb-1">{customFuelVolumeBUnits.toLocaleString('en-US')} B-Units Pre-load</h4><p className="text-[13px] font-medium text-slate-400 leading-relaxed">Checkout {Number.isFinite(marketCustomFuelUsdc) ? `${marketCustomFuelUsdc.toFixed(2)} USDC` : '—'} on Base. Instant clearing fuel for daily retail volume.</p></div>
                     </div>
                   ) : (
                     <div className="flex gap-4">

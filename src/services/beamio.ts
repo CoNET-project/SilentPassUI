@@ -1826,20 +1826,26 @@ export const postBeamio = async (beamio: beamio, privateKey: string) => {
 			signMessage
 		}
 
-		const resp = await fetch(Url, {
-			method: "POST",
-			headers: {
-				"Content-Type": "application/json"
-			},
-			body: JSON.stringify(body)
-		})
+		const ctrl = new AbortController()
+		const abortTimer = typeof window !== 'undefined' ? window.setTimeout(() => ctrl.abort(), 15_000) : undefined
+		try {
+			const resp = await fetch(Url, {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json"
+				},
+				body: JSON.stringify(body),
+				signal: ctrl.signal,
+			})
 
-		if (!resp.ok) {
-			return false
+			if (!resp.ok) {
+				return false
+			}
+
+			return true
+		} finally {
+			if (abortTimer !== undefined) window.clearTimeout(abortTimer)
 		}
-
-		
-		return true
 	} catch (err) {
 		console.error("newUser error:", err)
 	}
@@ -1908,7 +1914,7 @@ export async function bootstrapProfileLocaleCurrencyIfUnset(
 ): Promise<beamio> {
 	if (beamio.localeCurrencyConfigured) {
 		writeBeamioUiLanguageBootstrap(normalizeBeamioUiLocale(beamio.language))
-		await applyBeamioUiLanguageFromProfile(beamio.language)
+		await raceWithTimeout(applyBeamioUiLanguageFromProfile(beamio.language), 3_000, undefined)
 		return beamio
 	}
 	const localLang = CoNET_Data?.beamio?.language ?? readBeamioUiLanguageBootstrap()
@@ -1918,7 +1924,11 @@ export async function bootstrapProfileLocaleCurrencyIfUnset(
 				language: normalizeBeamioUiLocale(localLang),
 			}
 		: buildBrowserLocaleCurrencyDefaults()
-	const next = await persistBeamioProfileLocaleCurrency(beamio, privateKeyArmor, defaults)
+	const next = await raceWithTimeout(
+		persistBeamioProfileLocaleCurrency(beamio, privateKeyArmor, defaults),
+		12_000,
+		null,
+	)
 	if (next) return next
 	const fallback: beamio = {
 		...beamio,
@@ -1930,8 +1940,8 @@ export async function bootstrapProfileLocaleCurrencyIfUnset(
 		setCoNET_Data(CoNET_Data)
 	}
 	writeBeamioUiLanguageBootstrap(normalizeBeamioUiLocale(fallback.language))
-	await flushStoreSystemData()
-	await applyBeamioUiLanguageFromProfile(fallback.language)
+	await raceWithTimeout(flushStoreSystemData(), CHECK_STORAGE_TIMEOUT_MS, undefined)
+	await raceWithTimeout(applyBeamioUiLanguageFromProfile(fallback.language), 3_000, undefined)
 	return fallback
 }
 

@@ -10,6 +10,8 @@ const setCoNET_Data = (data: encrypt_keys_object | null) => {
   CoNET_Data = data;
 };
 
+const getCoNET_Data = (): encrypt_keys_object | null => CoNET_Data;
+
 const setProcessingBlock = (value: boolean) => {
   processingBlock = value;
 }
@@ -24,6 +26,7 @@ const setGlobalAllNodes = (_nodes: nodes_info[]) => {
 
 export {
   CoNET_Data,
+  getCoNET_Data,
   setCoNET_Data,
   processingBlock,
   setProcessingBlock,

@@ -35,6 +35,8 @@ export const CONET_GENESIS_NODE_REFERRAL_VAULT = '0x051b65E5711E6E74bC236Fe220dc
 export const CONET_GENESIS_NODE_REFERRAL_VAULT_DEPLOY_BLOCK = 594820
 /** Base USDC settle recipient before LockMint (must match Master settle_contractAdmin walletBase). */
 export const GENESIS_NODE_BRIDGE_INITIATOR = '0x87cAeD4e51C36a2C2ece3Aaf4ddaC9693d2405E1'
+/** CoNET ReferralPurchaseSplitV1 proxy — Fuel Pack 60% immediate / 40% deferred. */
+export const CONET_REFERRAL_PURCHASE_SPLIT_V1 = '0x7Be303160Dd23DE0B6D420827441a8AaA1Fb0f87'
 /** CoNET ReferralMerchantShareModuleV1 proxy — L0 merchant→L1 rebate share config. */
 export const CONET_REFERRAL_MERCHANT_SHARE_MODULE = '0xe3e06f47D89159713d67ec8530E4FE97D31Bb708'
 /**

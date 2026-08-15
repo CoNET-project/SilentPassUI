@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ethers } from 'ethers'
-import { AlertTriangle, Check, ChevronRight, Clipboard, Copy, ExternalLink, Gift, Loader2, Package, Pencil, RefreshCw, Settings2, ShieldCheck, SlidersHorizontal, Trash2, Wallet, XCircle } from 'lucide-react'
+import { AlertTriangle, Check, ChevronRight, Clipboard, Copy, ExternalLink, Gift, Loader2, Package, Pencil, Plus, RefreshCw, Settings2, ShieldCheck, SlidersHorizontal, Trash2, Wallet, XCircle } from 'lucide-react'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { useBeamioTagDatabase } from '@/providers/BeamioTagDatabaseProvider'
 import { BeamioCircularBackButton } from '@/components/BeamioCircularBackButton'
@@ -69,6 +69,17 @@ import {
 	type ReferralRedeemCodeRecord,
 	type ReferralRedeemKind,
 } from '@/services/referralRegistryRedeem'
+import {
+	bpsToPurchasePercent,
+	fetchReferralPurchaseSplit,
+	isReferralPurchaseSplitConfigured,
+	purchasePercentToBps,
+	PURCHASE_SPLIT_DEFERRED_BPS,
+	PURCHASE_SPLIT_IMMEDIATE_BPS,
+	PURCHASE_SPLIT_MAX_WALLETS,
+	readCachedReferralPurchaseSplit,
+	setReferralPurchaseSplit,
+} from '@/services/referralPurchaseSplit'
 import {
 	merchantBackgroundImageFromMetadataRoot,
 	merchantIconUrlFromMetadataRoot,
@@ -1464,15 +1475,41 @@ function ReferralGlobalSettingsDrawer({
 	const [amount, setAmount] = useState('')
 	const [loading, setLoading] = useState(true)
 	const [saving, setSaving] = useState(false)
+	const [splitSaving, setSplitSaving] = useState(false)
 	const [error, setError] = useState('')
 	const [success, setSuccess] = useState('')
+	const [adminPayout, setAdminPayout] = useState('')
+	const [adminPercent, setAdminPercent] = useState('60')
+	const [projectRows, setProjectRows] = useState<Array<{ wallet: string; percent: string }>>([])
 	const { close, slideStyle } = useReferralSlideOut(onClose)
+	const splitConfigured = isReferralPurchaseSplitConfigured()
 
 	useEffect(() => {
 		let cancelled = false
-		void fetchMerchantRedeemBunitAirdrop()
-			.then((value) => {
-				if (!cancelled) setAmount(value)
+		const cachedSplit = readCachedReferralPurchaseSplit()
+		if (cachedSplit) {
+			setAdminPayout(cachedSplit.adminPayout)
+			setAdminPercent(bpsToPurchasePercent(cachedSplit.adminBps))
+			setProjectRows(cachedSplit.wallets.map((wallet, index) => ({
+				wallet,
+				percent: bpsToPurchasePercent(cachedSplit.bps[index] ?? 0n),
+			})))
+		}
+		void Promise.all([
+			fetchMerchantRedeemBunitAirdrop(),
+			splitConfigured ? fetchReferralPurchaseSplit().catch(() => cachedSplit) : Promise.resolve(null),
+		])
+			.then(([airdropAmount, split]) => {
+				if (cancelled) return
+				setAmount(airdropAmount)
+				if (split) {
+					setAdminPayout(split.adminPayout)
+					setAdminPercent(bpsToPurchasePercent(split.adminBps))
+					setProjectRows(split.wallets.map((wallet, index) => ({
+						wallet,
+						percent: bpsToPurchasePercent(split.bps[index] ?? 0n),
+					})))
+				}
 			})
 			.catch((cause) => {
 				if (!cancelled) setError(cause instanceof Error ? cause.message : 'Could not load global settings.')
@@ -1483,7 +1520,7 @@ function ReferralGlobalSettingsDrawer({
 		return () => {
 			cancelled = true
 		}
-	}, [])
+	}, [splitConfigured])
 
 	const save = useCallback(async () => {
 		if (saving) return
@@ -1503,6 +1540,46 @@ function ReferralGlobalSettingsDrawer({
 		}
 	}, [amount, privateKeyArmor, saving])
 
+	const saveSplit = useCallback(async () => {
+		if (splitSaving) return
+		setSplitSaving(true)
+		setError('')
+		setSuccess('')
+		try {
+			if (!ethers.isAddress(adminPayout.trim())) throw new Error('Admin payout must be a valid address.')
+			const adminBps = purchasePercentToBps(adminPercent)
+			const wallets: string[] = []
+			const bps: bigint[] = []
+			for (const row of projectRows) {
+				if (!row.wallet.trim() && !row.percent.trim()) continue
+				if (!ethers.isAddress(row.wallet.trim())) throw new Error('Each project wallet must be a valid address.')
+				const share = purchasePercentToBps(row.percent)
+				if (share <= 0n) throw new Error('Each project wallet percent must be greater than 0.')
+				wallets.push(ethers.getAddress(row.wallet.trim()))
+				bps.push(share)
+			}
+			if (wallets.length > PURCHASE_SPLIT_MAX_WALLETS) {
+				throw new Error(`At most ${PURCHASE_SPLIT_MAX_WALLETS} project wallets.`)
+			}
+			const total = adminBps + bps.reduce((sum, value) => sum + value, 0n)
+			if (total !== BigInt(PURCHASE_SPLIT_IMMEDIATE_BPS)) {
+				throw new Error('Admin + project wallets must total 60% of each Fuel Pack purchase.')
+			}
+			await setReferralPurchaseSplit({
+				adminPrivateKeyArmor: privateKeyArmor,
+				adminPayout: adminPayout.trim(),
+				adminBps,
+				wallets,
+				bps,
+			})
+			setSuccess('Fuel Pack purchase split updated. Later purchases use the new split.')
+		} catch (cause) {
+			setError(cause instanceof Error ? cause.message : 'Could not update purchase split.')
+		} finally {
+			setSplitSaving(false)
+		}
+	}, [adminPercent, adminPayout, privateKeyArmor, projectRows, splitSaving])
+
 	return (
 		<>
 			<div className="fixed inset-0 z-[119] bg-slate-950/60 backdrop-blur-[2px]" aria-hidden />
@@ -1516,7 +1593,7 @@ function ReferralGlobalSettingsDrawer({
 						<header className="pb-7 pt-8">
 							<p className="text-xs font-semibold uppercase tracking-[0.18em] text-indigo-200">Admin controls</p>
 							<h2 className="mt-2 text-3xl font-semibold tracking-tight">Global referral settings</h2>
-							<p className="mt-2 text-sm leading-6 text-slate-400">These values apply to all newly issued Start Kit redeem codes. Existing codes keep their original amount.</p>
+							<p className="mt-2 text-sm leading-6 text-slate-400">Start Kit amounts apply to newly issued codes. Fuel Pack purchase split applies only to later purchases. Charge and unbacked paid burns keep the original L0/L1 airdrop path.</p>
 						</header>
 						<section className="rounded-2xl border border-amber-200/20 bg-amber-300/[0.08] p-5">
 							<h3 className="font-semibold text-white">Start Kit airdrop</h3>
@@ -1527,7 +1604,7 @@ function ReferralGlobalSettingsDrawer({
 									inputMode="decimal"
 									value={amount}
 									onChange={(event) => setAmount(event.target.value)}
-									disabled={loading || saving}
+									disabled={loading || saving || splitSaving}
 									className="mt-1.5 w-full rounded-xl border border-white/15 bg-black/20 px-3 py-2.5 text-sm text-white outline-none focus:border-amber-300/70 disabled:opacity-60"
 									aria-label="Paid B-Units per Start Kit code"
 								/>
@@ -1535,14 +1612,122 @@ function ReferralGlobalSettingsDrawer({
 							<button
 								type="button"
 								onClick={() => void save()}
-								disabled={loading || saving}
+								disabled={loading || saving || splitSaving}
 								aria-busy={saving}
 								className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-amber-400 px-4 py-3 text-sm font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
 							>
 								{saving ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
-								{saving ? 'Saving…' : 'Save global setting'}
+								{saving ? 'Saving…' : 'Save Start Kit setting'}
 							</button>
 						</section>
+						{splitConfigured ? (
+							<section className="mt-4 rounded-2xl border border-indigo-200/20 bg-indigo-400/[0.08] p-5">
+								<h3 className="font-semibold text-white">Fuel Pack purchase split</h3>
+								<p className="mt-2 text-xs leading-5 text-slate-400">
+									40% is reserved for L0/L1 rebate (capped at 40% of the purchase). Admin payout plus project wallets must total the remaining 60%.
+								</p>
+								<div className="mt-3 rounded-xl border border-white/10 bg-black/20 px-3 py-2.5 text-sm text-slate-200">
+									Deferred rebate pool
+									<span className="ml-2 font-semibold tabular-nums text-white">{bpsToPurchasePercent(BigInt(PURCHASE_SPLIT_DEFERRED_BPS))}%</span>
+									<span className="ml-2 text-xs text-slate-500">locked</span>
+								</div>
+								<label className="mt-3 block text-xs text-slate-400">
+									Admin payout address
+									<input
+										type="text"
+										value={adminPayout}
+										onChange={(event) => setAdminPayout(event.target.value)}
+										disabled={loading || saving || splitSaving}
+										className="mt-1.5 w-full rounded-xl border border-white/15 bg-black/20 px-3 py-2.5 font-mono text-sm text-white outline-none focus:border-indigo-300/70 disabled:opacity-60"
+										aria-label="Admin payout address"
+										autoComplete="off"
+									/>
+								</label>
+								<label className="mt-3 block text-xs text-slate-400">
+									Admin share of purchase (%)
+									<input
+										type="text"
+										inputMode="decimal"
+										value={adminPercent}
+										onChange={(event) => setAdminPercent(event.target.value)}
+										disabled={loading || saving || splitSaving}
+										className="mt-1.5 w-full rounded-xl border border-white/15 bg-black/20 px-3 py-2.5 text-sm text-white outline-none focus:border-indigo-300/70 disabled:opacity-60"
+										aria-label="Admin share of purchase percent"
+										autoComplete="off"
+									/>
+								</label>
+								<div className="mt-4">
+									<div className="flex items-center justify-between">
+										<p className="text-xs font-semibold uppercase tracking-[0.14em] text-indigo-200">Project wallets</p>
+										<button
+											type="button"
+											onClick={() => setProjectRows((rows) => [...rows, { wallet: '', percent: '' }])}
+											disabled={loading || saving || splitSaving || projectRows.length >= PURCHASE_SPLIT_MAX_WALLETS}
+											className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/15 bg-white/5 text-indigo-100 disabled:opacity-40"
+											aria-label="Add project wallet"
+										>
+											<Plus className="h-4 w-4" aria-hidden />
+										</button>
+									</div>
+									{projectRows.length === 0 ? (
+										<p className="mt-2 text-xs text-slate-500">No project wallets. Admin can take the full 60%.</p>
+									) : (
+										<div className="mt-2 space-y-2">
+											{projectRows.map((row, index) => (
+												<div key={`project-wallet-${index}`} className="flex items-start gap-2">
+													<input
+														type="text"
+														value={row.wallet}
+														onChange={(event) => {
+															const value = event.target.value
+															setProjectRows((rows) => rows.map((item, i) => (i === index ? { ...item, wallet: value } : item)))
+														}}
+														disabled={loading || saving || splitSaving}
+														className="min-w-0 flex-1 rounded-xl border border-white/15 bg-black/20 px-3 py-2 font-mono text-xs text-white outline-none focus:border-indigo-300/70 disabled:opacity-60"
+														aria-label={`Project wallet ${index + 1}`}
+														placeholder="0x…"
+														autoComplete="off"
+													/>
+													<input
+														type="text"
+														inputMode="decimal"
+														value={row.percent}
+														onChange={(event) => {
+															const value = event.target.value
+															setProjectRows((rows) => rows.map((item, i) => (i === index ? { ...item, percent: value } : item)))
+														}}
+														disabled={loading || saving || splitSaving}
+														className="w-20 shrink-0 rounded-xl border border-white/15 bg-black/20 px-2 py-2 text-sm text-white outline-none focus:border-indigo-300/70 disabled:opacity-60"
+														aria-label={`Project wallet ${index + 1} percent`}
+														placeholder="%"
+														autoComplete="off"
+													/>
+													<button
+														type="button"
+														onClick={() => setProjectRows((rows) => rows.filter((_, i) => i !== index))}
+														disabled={loading || saving || splitSaving}
+														className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 text-rose-200"
+														aria-label={`Remove project wallet ${index + 1}`}
+													>
+														<Trash2 className="h-4 w-4" aria-hidden />
+													</button>
+												</div>
+											))}
+										</div>
+									)}
+								</div>
+								<button
+									type="button"
+									onClick={() => void saveSplit()}
+									disabled={loading || saving || splitSaving}
+									aria-busy={splitSaving}
+									className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-400 px-4 py-3 text-sm font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
+								>
+									{splitSaving ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Check className="h-4 w-4" aria-hidden />}
+									{splitSaving ? 'Saving…' : 'Save purchase split'}
+								</button>
+							</section>
+						) : null}
 						{error ? <div className="mt-4 rounded-xl border border-rose-300/20 bg-rose-400/10 p-3 text-sm text-rose-100">{error}</div> : null}
 						{success ? <div className="mt-4 rounded-xl border border-emerald-300/20 bg-emerald-400/10 p-3 text-sm text-emerald-100">{success}</div> : null}
 					</div>

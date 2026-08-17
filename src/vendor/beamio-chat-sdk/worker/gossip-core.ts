@@ -314,7 +314,6 @@ export class GossipCore {
 				reader = res.body.getReader()
 				const decoder = new TextDecoder('utf-8')
 				let buffer = ''
-				let first = true
 				resetIdle()
 
 				while (true) {
@@ -360,10 +359,6 @@ export class GossipCore {
 						const dataLines = lines.filter((l) => l.startsWith('data:')).map((l) => l.slice(5).trimStart())
 						const payload = (dataLines.length ? dataLines.join('\n') : block).trim()
 						if (!payload) continue
-						if (first) {
-							first = false
-							continue
-						}
 						await this.handleInbound(payload, node.domain, rootSignal)
 					}
 				}
@@ -445,8 +440,12 @@ export class GossipCore {
 				this.emit.message(JSON.stringify(data), undefined, true, viaDomain)
 			}
 		} catch (ex: unknown) {
-			if ((ex as Error)?.message?.includes?.('No decryption key packets found')) return
-			this.emit.log('warn', `inbound parse error: ${(ex as Error)?.message ?? String(ex)}`)
+			const msg = (ex as Error)?.message ?? String(ex)
+			if (msg.includes('No decryption key packets found')) {
+				this.emit.log('warn', 'inbound PGP is not for this listen key (stale contact publicArmored or wrong recipient)')
+				return
+			}
+			this.emit.log('warn', `inbound parse error: ${msg}`)
 		}
 	}
 

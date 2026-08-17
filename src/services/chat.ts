@@ -421,8 +421,9 @@ function startGossip(
     setTimeout(() => {
         // 【第三道防线】在定时器触发时，最后检查一次
         if (rootSignal?.aborted) return;
-        console.log("🔄 [Gossip] Reconnecting... (random node)");
-        startGossip(nodes, body, callback, rootSignal, timeoutConfig);
+        console.log("🔄 [Gossip] Reconnecting... (skip last failed entry C)");
+        const remaining = nodes.filter((n) => n.domain !== node.domain);
+        startGossip(remaining.length ? remaining : nodes, body, callback, rootSignal, timeoutConfig);
     }, config.retryDelay);
   };
 
@@ -520,9 +521,8 @@ function startGossip(
                 if (first) {
                     first = false;
                     try { console.log("[SSE] Handshake:", JSON.parse(payload)); } catch {}
-                } else {
-                    callback?.("", payload);
                 }
+                callback?.("", payload);
             }
         }
       }

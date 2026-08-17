@@ -38,7 +38,7 @@ import {
 	markGossipNodeBad,
 	markGossipNodeHealthy,
 	pickGossipEntryNodesForSend,
-	pickHealthyGossipNodes,
+	pickListenEntryNodes,
 	pickRouteNodesByArmoredKey,
 	postUrl,
 	postWithTimeout,
@@ -213,10 +213,9 @@ export class GossipCore {
 				ownRouteKey,
 			)
 
-			const entryCandidates = this.nodes.filter((n) => !mailboxDomains.has(n.domain))
-			const healthyNodes = await pickHealthyGossipNodes(entryCandidates.length ? entryCandidates : this.nodes)
-			if (!healthyNodes.length) {
-				this.emit.log('warn', 'listen: no healthy entry C; retry')
+			const listenEntries = pickListenEntryNodes(this.nodes, mailboxDomains)
+			if (!listenEntries.length) {
+				this.emit.log('warn', 'listen: empty node pool; retry')
 				this.emit.status('reconnecting', 'no_entry_c')
 				this.clearListen('connect_failed')
 				setTimeout(() => void this.startListen(), 6_000)
@@ -224,11 +223,12 @@ export class GossipCore {
 			}
 			this.ackContext = {
 				routerArmoredPublicKey: ownRouteKey,
-				entryNodes: healthyNodes,
+				entryNodes: listenEntries,
 				mailboxDomains: [...mailboxDomains],
 			}
 
-			this.spawnGossip(healthyNodes, innerArmor, rootSignal)
+			this.emit.log('info', `listen starting via POST /post entries=${listenEntries.length}`)
+			this.spawnGossip(listenEntries, innerArmor, rootSignal)
 			this.emit.status('listening')
 		} catch (ex) {
 			this.emit.log('error', `startListen error: ${(ex as Error)?.message ?? String(ex)}`)
@@ -311,6 +311,7 @@ export class GossipCore {
 				markGossipNodeHealthy(node.domain)
 				this.lastActivityAt = Date.now()
 				reconnectAttempt = 0
+				this.emit.log('info', `listen SSE open entry=${node.domain}`)
 				reader = res.body.getReader()
 				const decoder = new TextDecoder('utf-8')
 				let buffer = ''
@@ -419,7 +420,9 @@ export class GossipCore {
 			// own foreground/background staleness timer fresh (parity with the old
 			// main-thread noteGossipActivity() that fired on every frame).
 			this.lastActivityAt = Date.now()
+			const height = extractGossipListingBlockHeight(data)
 			this.emit.status('listening', 'heartbeat')
+			this.emit.log('info', height ? `heartbeat epoch=${height}` : 'heartbeat')
 			return
 		}
 		try {

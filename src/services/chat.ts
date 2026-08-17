@@ -740,7 +740,7 @@ const pickHealthyGossipNodes = async (nodes: nodeInfo[]): Promise<nodeInfo[]> =>
 
 const pickReachableGossipNode = async (nodes: nodeInfo[]): Promise<nodeInfo | null> => {
 	const healthy = await pickHealthyGossipNodes(nodes)
-	return getRandomNode(healthy)
+	return getRandomNode(healthy.length ? healthy : nodes)
 }
 
 export const connectToGossipNode = async (
@@ -782,20 +782,18 @@ export const connectToGossipNode = async (
       const mailboxDomains = new Set(routeNodes.map(n => n.domain))
 
       const entryCandidates = nodes.filter(n => !mailboxDomains.has(n.domain))
-      const healthyNodes = await pickHealthyGossipNodes(
-        entryCandidates.length ? entryCandidates : nodes,
-      )
+      const listenEntries = entryCandidates.length ? entryCandidates : nodes
       console.info(
-        `[Gossip] healthy entry C: ${healthyNodes.length} (mailbox B excluded: ${[...mailboxDomains].join(',') || 'none'})`,
+        `[Gossip] listen entries: ${listenEntries.length} (mailbox B excluded: ${[...mailboxDomains].join(',') || 'none'})`,
       )
-      if (!healthyNodes.length) {
-        return failConnect('connectToGossipNode abort: no healthy entry C for gossip listen')
+      if (!listenEntries.length) {
+        return failConnect('connectToGossipNode abort: empty gossip node pool')
       }
 
       gossipDeliveryAckContext = {
         routerArmoredPublicKey: nodeArmoredPublicKey,
         privateKeyArmor: privateKeyArmor,
-        entryNodes: healthyNodes,
+        entryNodes: listenEntries,
         mailboxDomains: [...mailboxDomains],
       }
 

@@ -63,9 +63,9 @@ async function postWithTimeout(url: string, init: RequestInit, timeoutMs = 12_00
 export { postWithTimeout }
 
 const probeGossipNode = async (node: NodeInfo, timeoutMs = 4_000): Promise<boolean> => {
-	// GET / only — never OPTIONS /post. Init samples up to 10 entries; SI 404 on a
-	// partial first record used to paint Chrome red even when the node was fine.
-	// Listen POST still does the real CORS preflight.
+	// Optional hint only. SI GET / is forwarded to silentpass.io and often has no
+	// ACAO for biz.beamio.app — a CORS failure here is NOT "node down".
+	// Listen must use pickListenEntryNodes (POST /post), never this probe as a gate.
 	try {
 		const res = await postWithTimeout(
 			`https://${node.domain}.conet.network/`,
@@ -81,6 +81,12 @@ const probeGossipNode = async (node: NodeInfo, timeoutMs = 4_000): Promise<boole
 	}
 	markGossipNodeBad(node.domain)
 	return false
+}
+
+/** Entry C pool for listen. Never require GET / health — that homepage has no CORS. */
+export function pickListenEntryNodes(pool: NodeInfo[], excludeDomains?: Set<string>): NodeInfo[] {
+	const filtered = excludeDomains?.size ? pool.filter((n) => !excludeDomains.has(n.domain)) : pool
+	return filtered.length ? filtered : pool
 }
 
 export const pickHealthyGossipNodes = async (nodes: NodeInfo[]): Promise<NodeInfo[]> => {

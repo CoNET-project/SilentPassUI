@@ -13,7 +13,7 @@ import Chat from "./pages/chat"
 import ChatDetail from "./pages/chatDetail"
 import BeamioInstallOnboarding from "@/components/launchPage"
 import Browser from "@/pages/Browser"
-import { checkSign, createInboundChatSession, makeMessage, sendMessage, getRandomNodes, getGossipDeliveryAckContext, getKeysFromCoNETPGPSC } from "@/services/chat"
+import { checkSign, createInboundChatSession, initChat, makeMessage, sendMessage, getRandomNodes, getGossipDeliveryAckContext, getKeysFromCoNETPGPSC } from "@/services/chat"
 import {
 	parseChatDeliveryReceiptV1,
 	markMessageDeliveredBySendId,
@@ -22,14 +22,15 @@ import {
 	postMailboxDeliveryAck,
 } from "@/utils/chatDeliveryReceipt"
 import { checkStorage, searchUsername, storeSystemData } from "@/services/beamio"
-import { onHistoryBuffer, loadWorkerHistory } from "@/services/chatWorkerBridge"
+import { onHistoryBuffer, loadWorkerHistory, isWorkerGossipActive } from "@/services/chatWorkerBridge"
 import {
 	mergeHistoryEntriesIntoMessages,
 	mirrorChatMessageToHistory,
 	extractInboundSendIdFromDisplayText,
 } from "@/services/chatHistoryMirror"
 import type { HistoryEntry } from "@/vendor/beamio-chat-sdk/types"
-import { getSessionPrivateKeyArmor } from "@/utils/beamioSessionSecrets"
+import { getSessionPrivateKeyArmor, hasSessionPrivateKeyArmor } from "@/utils/beamioSessionSecrets"
+import { gossipLog } from "@/utils/gossipLog"
 import { postCardCouponOpenClaimWithCurrentWallet } from "@/services/BeamioCard"
 import { CoNET_Data, setCoNET_Data } from "@/utils/globals"
 import { baseEndpoint, USDCContract_BASE, setBaseRpcNodeProvider, setRpcDegradedGetter } from "@/utils/constants"
@@ -418,6 +419,34 @@ function AppShell() {
 		if (!gossip) return
 		void loadWorkerHistory()
 	}, [gossip])
+
+	useEffect(() => {
+		let cancelled = false
+		let timer: ReturnType<typeof setTimeout> | undefined
+		const kick = () => {
+			if (cancelled) return
+			if (!hasSessionPrivateKeyArmor()) {
+				timer = window.setTimeout(kick, 8_000)
+				return
+			}
+			if (isWorkerGossipActive()) {
+				timer = window.setTimeout(kick, 30_000)
+				return
+			}
+			gossipLog('info', 'AppShell retrying initChat — worker not running')
+			void initChat(setProfiles, setAllNodes, setGossip, false, (message) => {
+				setCharts((prev) => [...prev, message])
+			}).finally(() => {
+				if (cancelled) return
+				timer = window.setTimeout(kick, isWorkerGossipActive() ? 30_000 : 8_000)
+			})
+		}
+		kick()
+		return () => {
+			cancelled = true
+			if (timer !== undefined) window.clearTimeout(timer)
+		}
+	}, [setProfiles, setAllNodes, setGossip, setCharts])
 
 	useEffect(() => {
 		let cancelled = false

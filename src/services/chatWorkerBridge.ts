@@ -33,6 +33,7 @@ const BEAMIO_API_BASE_URL = 'https://beamio.app/api'
 type ChatWorkerClient = ReturnType<typeof createBeamioChatClient>
 
 let activeClient: ChatWorkerClient | null = null
+let lastGossipStatus: string | null = null
 
 const historyBufferListeners = new Set<(batch: HistoryBufferEvent) => void>()
 
@@ -116,9 +117,13 @@ export const stopWorkerGossip = (): void => {
 		}
 		activeClient = null
 	}
+	lastGossipStatus = null
 }
 
 export const isWorkerGossipActive = (): boolean => activeClient !== null
+
+export const isWorkerGossipListening = (): boolean =>
+	activeClient !== null && lastGossipStatus === 'listening'
 
 export const startWorkerGossipListen = async (p: StartWorkerGossipParams): Promise<boolean> => {
 	stopWorkerGossip()
@@ -157,6 +162,7 @@ export const startWorkerGossipListen = async (p: StartWorkerGossipParams): Promi
 	)
 	unsubs.push(
 		client.on('status', (st) => {
+			lastGossipStatus = st.status
 			if (st.status === 'listening') p.onActivity()
 			p.onLog?.('info', `gossip status: ${st.status}${st.detail ? ` (${st.detail})` : ''}`)
 		}),
@@ -194,6 +200,7 @@ export const startWorkerGossipListen = async (p: StartWorkerGossipParams): Promi
 				/* ignore */
 			}
 			activeClient = null
+			lastGossipStatus = null
 		}
 		p.rootSignal.removeEventListener('abort', teardown)
 	}

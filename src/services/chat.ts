@@ -10,6 +10,7 @@ import contracts from '@/utils/contracts'
 import {ethers} from 'ethers'
 import {aesGcmEncrypt, aesGcmDecrypt, toBase64, fromBase64, storeSystemData } from '@/services/beamio'
 import { isWorkerGossipActive, startWorkerGossipListen, stopWorkerGossip } from '@/services/chatWorkerBridge'
+import { gossipLog } from '@/utils/gossipLog'
 import { wrapArmorToMailboxWork } from '@/vendor/beamio-chat-sdk/envelope'
 
 
@@ -180,10 +181,11 @@ let initChatInProgress = false
 
 export const initChat = async (setProfiles: (val: profile[]) => void, setAllNodes: (val: nodeInfo[]) => void, setGossip: (val: boolean) => void, _gossip: boolean, newMessage: (val: string) => void) => {
 	if (isWorkerGossipActive()) {
+		gossipLog('info', 'initChat skipped: worker already running')
 		return
 	}
 	if (initChatInProgress) {
-		console.debug('[initChat] Skipped: already in progress')
+		gossipLog('info', 'initChat skipped: already in progress')
 		return
 	}
 	initChatInProgress = true
@@ -206,7 +208,7 @@ export const initChat = async (setProfiles: (val: profile[]) => void, setAllNode
 	}
 	const signingKey = getSessionPrivateKeyArmor()?.trim() || profile.privateKeyArmor?.trim()
 	if (!signingKey || !isValidEthersPrivateKey(signingKey)) {
-		console.warn('[initChat] session/profile privateKeyArmor invalid or missing, cannot init')
+		gossipLog('warn', 'initChat: session/profile privateKeyArmor invalid or missing, cannot init')
 		setGossip(false)
 		return
 	}
@@ -295,16 +297,18 @@ export const initChat = async (setProfiles: (val: profile[]) => void, setAllNode
 	storeSystemData()
 
 	if (!allNodes?.length) {
+		gossipLog('warn', 'initChat: empty Guardian node pool, will retry')
 		setGossip(false)
 		return
 	}
 	
 		const started = await connectToGossipNode(chatManager.router, profile.privateKeyArmor, allNodes, chatManager.pgpKey.privateKey, chatManager.pgpKey.publicKey ?? '', newMessage)
 		if (!started) setGossip(false)
+		gossipLog('info', started ? 'initChat worker listen started' : 'initChat worker listen did not start')
 	} catch (ex: unknown) {
 		setGossip(false)
 		const msg = ex instanceof Error ? ex.message : String(ex)
-		console.warn('[initChat] failed (login may continue without gossip):', msg)
+		gossipLog('warn', `initChat failed (login may continue without gossip): ${msg}`)
 	} finally {
 		initChatInProgress = false
 	}
@@ -754,7 +758,7 @@ export const connectToGossipNode = async (
   // Already listening: do NOT tear down + reconnect (LoadingPage + bizHome + RequireUnlockedWallet
   // all call initChat; second call must be a no-op when the controller is truly live).
   if (currentGossipAbortController && !currentGossipAbortController.signal.aborted) {
-    console.info('[Gossip] connectToGossipNode skipped: gossip already live')
+    gossipLog('info', 'connectToGossipNode skipped: gossip already live')
     return true
   }
 
@@ -767,7 +771,7 @@ export const connectToGossipNode = async (
   const rootSignal = myController.signal;
 
   const failConnect = (msg: string): false => {
-    console.error('[Gossip]', msg)
+    gossipLog('error', msg)
     if (currentGossipAbortController === myController) {
       clearGossipListenSession('connect_failed')
     }
@@ -775,16 +779,20 @@ export const connectToGossipNode = async (
   }
 
   try {
+      if (!normalizeArmoredKey(nodeArmoredPublicKey)) {
+        return failConnect('connectToGossipNode abort: empty mailbox route key')
+      }
       const routeNodes = pickRouteNodesByArmoredKey(nodes, nodeArmoredPublicKey)
       if (!routeNodes.length) {
-        return failConnect('connectToGossipNode abort: no route node for router key')
+        gossipLog('warn', 'mailbox B not in Guardian list; listen will still POST /post via any entry')
       }
       const mailboxDomains = new Set(routeNodes.map(n => n.domain))
 
       const entryCandidates = nodes.filter(n => !mailboxDomains.has(n.domain))
       const listenEntries = entryCandidates.length ? entryCandidates : nodes
-      console.info(
-        `[Gossip] listen entries: ${listenEntries.length} (mailbox B excluded: ${[...mailboxDomains].join(',') || 'none'})`,
+      gossipLog(
+        'info',
+        `listen entries: ${listenEntries.length} (mailbox B excluded: ${[...mailboxDomains].join(',') || 'none'})`,
       )
       if (!listenEntries.length) {
         return failConnect('connectToGossipNode abort: empty gossip node pool')
@@ -797,7 +805,7 @@ export const connectToGossipNode = async (
         mailboxDomains: [...mailboxDomains],
       }
 
-      console.log("🚀 [Gossip] Starting worker listen…");
+      gossipLog('info', 'Starting worker listen…')
 
       const started = await startWorkerGossipListen({
         ownRouteArmoredPublicKey: nodeArmoredPublicKey,
@@ -814,9 +822,7 @@ export const connectToGossipNode = async (
           /* worker liveness; Merchant OS has no native background resume timer */
         },
         onLog: (level, message) => {
-          if (level === 'error') console.error('[Gossip]', message)
-          else if (level === 'warn') console.warn('[Gossip]', message)
-          else console.info('[Gossip]', message)
+          gossipLog(level, message)
         },
       })
 
@@ -826,7 +832,7 @@ export const connectToGossipNode = async (
       return true
 
   } catch (ex: any) {
-      console.error("Init Error:", ex);
+      gossipLog('error', 'Init Error:', ex)
       return failConnect(`connectToGossipNode Init Error: ${(ex as Error)?.message ?? String(ex)}`)
   }
 }

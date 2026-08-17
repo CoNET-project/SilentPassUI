@@ -84,7 +84,8 @@ function extractGossipListingBlockHeight(payload: unknown): string | null {
 function isGossipListingLivenessFrame(payload: unknown): boolean {
 	if (!payload || typeof payload !== 'object') return false
 	const row = payload as Record<string, unknown>
-	return typeof row.ipaddress === 'string' || 'nodeWallets' in row
+	if (typeof row.ipaddress === 'string' || 'nodeWallets' in row) return true
+	return row.status != null && row.epoch != null
 }
 
 export class GossipCore {
@@ -183,13 +184,15 @@ export class GossipCore {
 
 		// Resolve mailbox B route from the identity's own route (host injects own route key).
 		const ownRouteKey = this.cfg.identity.ownRouteArmoredPublicKey || ''
-		const routeNodes = pickRouteNodesByArmoredKey(this.nodes, ownRouteKey)
-		if (!ownRouteKey || !routeNodes.length) {
-			// Ask host to refresh nodes; retry shortly.
-			this.emit.log('warn', 'listen: no route node for own mailbox key; awaiting nodes')
-			this.emit.status('reconnecting', 'awaiting_route_nodes')
+		if (!ownRouteKey) {
+			this.emit.log('warn', 'listen: empty mailbox route key; awaiting identity')
+			this.emit.status('reconnecting', 'awaiting_route_key')
 			setTimeout(() => void this.startListen(), 6_000)
 			return
+		}
+		const routeNodes = pickRouteNodesByArmoredKey(this.nodes, ownRouteKey)
+		if (!routeNodes.length) {
+			this.emit.log('warn', 'listen: mailbox B not in Guardian list; posting via any entry')
 		}
 		const mailboxDomains = new Set(routeNodes.map((n) => n.domain))
 
@@ -315,7 +318,6 @@ export class GossipCore {
 				reader = res.body.getReader()
 				const decoder = new TextDecoder('utf-8')
 				let buffer = ''
-				let first = true
 				resetIdle()
 
 				while (true) {
@@ -361,10 +363,6 @@ export class GossipCore {
 						const dataLines = lines.filter((l) => l.startsWith('data:')).map((l) => l.slice(5).trimStart())
 						const payload = (dataLines.length ? dataLines.join('\n') : block).trim()
 						if (!payload) continue
-						if (first) {
-							first = false
-							continue
-						}
 						await this.handleInbound(payload, node.domain, rootSignal)
 					}
 				}

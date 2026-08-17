@@ -52,6 +52,8 @@ module.exports = {
                     new TerserPlugin({
                         terserOptions: {
                             compress: {
+                                // Gossip listen logs must use gossipLog() (bracket+apply).
+                                // Direct console.* CallExpressions are stripped here.
                                 drop_console: true, // 去除 console
                                 drop_debugger: true // 去除 debugger
                             }

@@ -2,13 +2,14 @@ import {
 	pgpCoNET
 } from '@/utils/constants'
 import {generateKey, readKey, createMessage, enums, encrypt, decryptKey, readPrivateKey, readMessage, decrypt, PrivateKey} from 'openpgp'
-import { CoNET_Data, setCoNET_Data } from "@/utils/globals"
+import { getCoNET_Data, setCoNET_Data } from "@/utils/globals"
+import { getSessionPrivateKeyArmor, hydrateProfilesWithSessionSecrets } from '@/utils/beamioSessionSecrets'
 
 import {GuardianNodesMainnet, conetDepinProvider, beamioApi} from '@/utils/constants'
 import contracts from '@/utils/contracts'
 import {ethers} from 'ethers'
 import {aesGcmEncrypt, aesGcmDecrypt, toBase64, fromBase64, storeSystemData } from '@/services/beamio'
-import { startWorkerGossipListen, stopWorkerGossip } from '@/services/chatWorkerBridge'
+import { isWorkerGossipActive, startWorkerGossipListen, stopWorkerGossip } from '@/services/chatWorkerBridge'
 import { wrapArmorToMailboxWork } from '@/vendor/beamio-chat-sdk/envelope'
 
 
@@ -177,8 +178,10 @@ const isPgpKeyComplete = (pgp: initBeamioPGPKeysRet | undefined): boolean => {
 /** 互斥：确保同一时刻只有一个 initChat 在执行 */
 let initChatInProgress = false
 
-export const initChat = async (setProfiles: (val: profile[]) => void, setAllNodes: (val: nodeInfo[]) => void, setGossip: (val: boolean) => void, gossip: boolean, newMessage: (val: string) => void) => {
-	if (gossip) return
+export const initChat = async (setProfiles: (val: profile[]) => void, setAllNodes: (val: nodeInfo[]) => void, setGossip: (val: boolean) => void, _gossip: boolean, newMessage: (val: string) => void) => {
+	if (isWorkerGossipActive()) {
+		return
+	}
 	if (initChatInProgress) {
 		console.debug('[initChat] Skipped: already in progress')
 		return
@@ -188,22 +191,26 @@ export const initChat = async (setProfiles: (val: profile[]) => void, setAllNode
 	try {
 		const allNodes = await getAllNodes()
 		setAllNodes(allNodes)
-	const temp = CoNET_Data
+	const temp = getCoNET_Data()
 	if (!temp || !temp?.profiles?.length) {
 		setGossip(false)
 		return
 	}
+	temp.profiles = hydrateProfilesWithSessionSecrets(temp.profiles)
+	setCoNET_Data(temp)
 	const profiles: profile[] =  temp.profiles
 	let profile = profiles[0]
 	if (!profile) {
 		setGossip(false)
 		return
 	}
-	if (!profile.privateKeyArmor || !isValidEthersPrivateKey(profile.privateKeyArmor)) {
-		console.warn('[initChat] profile.privateKeyArmor invalid or missing, cannot init')
+	const signingKey = getSessionPrivateKeyArmor()?.trim() || profile.privateKeyArmor?.trim()
+	if (!signingKey || !isValidEthersPrivateKey(signingKey)) {
+		console.warn('[initChat] session/profile privateKeyArmor invalid or missing, cannot init')
 		setGossip(false)
 		return
 	}
+	profile.privateKeyArmor = signingKey
 	let chatManager: IChat|undefined = profile?.chatManager
 	let routes: string = chatManager?.router||''
 	//		本地非初始化 或 pgpKey 不完整则重新生成

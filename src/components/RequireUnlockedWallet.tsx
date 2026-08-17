@@ -11,7 +11,11 @@ import { getCoNET_Data, setCoNET_Data } from '@/utils/globals'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import SplashScreen from '@/components/SplashScreen'
 import { isWorkspaceAccessGranted } from '@/utils/beamioWorkspaceLock'
-import { getSessionPrivateKeyArmor, hasSessionPrivateKeyArmor } from '@/utils/beamioSessionSecrets'
+import {
+	getSessionPrivateKeyArmor,
+	hasSessionPrivateKeyArmor,
+	hydrateProfilesWithSessionSecrets,
+} from '@/utils/beamioSessionSecrets'
 
 /** Safari Private: never leave the centered logo splash waiting on IndexedDB / postBeamio. */
 const GATE_HARD_TIMEOUT_MS = 12_000
@@ -94,9 +98,10 @@ export default function RequireUnlockedWallet() {
 
 		const hydrateOk = (data: encrypt_keys_object, flat: profile[]) => {
 			if (cancelled || settled) return
-			const merged = { ...(data as object), profiles: flat } as encrypt_keys_object
+			const hydratedFlat = hydrateProfilesWithSessionSecrets(flat)
+			const merged = { ...(data as object), profiles: hydratedFlat } as encrypt_keys_object
 			setCoNET_Data(merged)
-			setProfiles(flat)
+			setProfiles(hydratedFlat)
 			const p0 = flat[0] as { keyID?: string }
 			const eoa = p0?.keyID?.trim()
 			if (!eoa || !ethers.isAddress(eoa)) {

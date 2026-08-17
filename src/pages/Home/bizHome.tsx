@@ -196,11 +196,14 @@ const BizHome = () => {
 	} = useDaemonContext()
 
 	useEffect(() => {
+		// Mid-login `setProfiles` (AA hydrate) must not bounce to /native-pos before
+		// assembleEncryptKeysObject finishes initChat — that race drops gossip listen.
+		if (isLoading) return
 		if (!isWorkspaceAccessGranted() || !hasSessionPrivateKeyArmor()) return
 		const p0 = profiles?.[0]
 		if (!p0?.keyID?.trim() || !ethers.isAddress(p0.keyID)) return
 		navigate('/native-pos', { replace: true })
-	}, [profiles, navigate])
+	}, [profiles, navigate, isLoading])
 
 	const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
 		e.preventDefault()

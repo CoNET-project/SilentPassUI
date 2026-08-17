@@ -1066,7 +1066,7 @@ export const makeMessage = (
 	newChatText: string,
 	timestamp: number,
 	from: "me" | "them",
-	status?: "sending" | "sent" | "failed"
+	status?: "sending" | "sent" | "delivered" | "failed"
 ) => {
   // 1) 先把已有消息“规范化”：用 createdAt(=timestamp) 生成稳定唯一 id
 	const normalized = (data || []).map(m => {

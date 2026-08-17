@@ -224,7 +224,7 @@ function BubbleCornerStatus({
   status,
   onRetry
 }: {
-  status?: "sending" | "sent" | "failed"
+  status?: "sending" | "sent" | "delivered" | "failed"
   onRetry?: () => void
 }) {
   if (!status) return null
@@ -291,7 +291,7 @@ type ChatListProps = {
 	openReactionBarForElement: (id: string, el: HTMLElement) => void
 	setText: (t: string) => void
 	setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>
-	BubbleCornerStatus: React.FC<{ status?: "sending" | "sent" | "failed"; onRetry: () => void }>
+	BubbleCornerStatus: React.FC<{ status?: "sending" | "sent" | "delivered" | "failed"; onRetry: () => void }>
 }
 
 
@@ -1608,13 +1608,8 @@ export default function Chat({ onBack, chatData, privateKey, layout = 'fullscree
 												{isMe && (
 												<span className="text-[11px]">
 													{m.status === "sending" && <span className="text-slate-400">Sending…</span>}
-													{
-														m.status === "sent" && (
-															<>
-															<span className="text-slate-400">Delivered</span>
-															</>
-														)
-													}
+													{m.status === "sent" && <span className="text-slate-400">Sent</span>}
+													{m.status === "delivered" && <span className="text-slate-400">Delivered</span>}
 													{m.status === "failed" && (
 													<button
 														type="button"

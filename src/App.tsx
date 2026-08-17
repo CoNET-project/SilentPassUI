@@ -422,7 +422,7 @@ function AppShell() {
 
 	useEffect(() => {
 		let cancelled = false
-		let timer: ReturnType<typeof setTimeout> | undefined
+		let timer: number | undefined
 		const kick = () => {
 			if (cancelled) return
 			if (!hasSessionPrivateKeyArmor()) {

@@ -13,7 +13,14 @@ import Chat from "./pages/chat"
 import ChatDetail from "./pages/chatDetail"
 import BeamioInstallOnboarding from "@/components/launchPage"
 import Browser from "@/pages/Browser"
-import { checkSign, createInboundChatSession, makeMessage, sendMessage, getRandomNodes } from "@/services/chat"
+import { checkSign, createInboundChatSession, makeMessage, sendMessage, getRandomNodes, getGossipDeliveryAckContext, getKeysFromCoNETPGPSC } from "@/services/chat"
+import {
+	parseChatDeliveryReceiptV1,
+	markMessageDeliveredBySendId,
+	extractInboundSendId,
+	emitDualChatDeliveryReceipts,
+	postMailboxDeliveryAck,
+} from "@/utils/chatDeliveryReceipt"
 import { checkStorage, searchUsername, storeSystemData } from "@/services/beamio"
 import { onHistoryBuffer, loadWorkerHistory } from "@/services/chatWorkerBridge"
 import {
@@ -712,6 +719,40 @@ function AppShell() {
 				textPreview: String(displayText).slice(0, 80),
 			})
 
+			const signingKey =
+				getSessionPrivateKeyArmor()?.trim() ||
+				(typeof profile.privateKeyArmor === 'string' ? profile.privateKeyArmor : '')
+
+			// Delivery receipt → mark sender bubble Delivered; never a chat bubble / unread.
+			// Still mailbox-ACK this armor (cancels offline APNs); do NOT emit another sender receipt.
+			const deliveryReceipt = parseChatDeliveryReceiptV1(displayText)
+			if (deliveryReceipt) {
+				const applied = markMessageDeliveredBySendId(chats, deliveryReceipt.sendId)
+				if (applied.updated) {
+					for (let i = 0; i < chats.length; i++) chats[i] = applied.chats[i]
+				}
+				const armorHashRaw =
+					typeof (msg as { _beamioPgpArmorHash?: string })._beamioPgpArmorHash === 'string'
+						? String((msg as { _beamioPgpArmorHash?: string })._beamioPgpArmorHash)
+						: ''
+				const ackCtx = getGossipDeliveryAckContext()
+				if (armorHashRaw && ackCtx?.routerArmoredPublicKey && signingKey) {
+					void postMailboxDeliveryAck({
+						armorHash: armorHashRaw,
+						sendId: deliveryReceipt.sendId,
+						routerArmoredPublicKey: ackCtx.routerArmoredPublicKey,
+						privateKeyArmor: signingKey,
+						entryNodes: ackCtx.entryNodes.length
+							? ackCtx.entryNodes
+							: allNodes?.length
+								? allNodes
+								: [],
+						mailboxDomains: ackCtx.mailboxDomains,
+					})
+				}
+				continue
+			}
+
 			// POS 终端权限申请：只进 MerchantOS Staff pending（localStorage），不写入 Messages 会话列表
 			const posTerminalPerm = parsePosTerminalPermissionV1FromChatDisplayText(displayText)
 			if (posTerminalPerm) {
@@ -750,7 +791,7 @@ function AppShell() {
 					? (_account.results.find((r: searchResult) => (r?.address ?? '').toLowerCase() === signAddr.toLowerCase()) ??
 						_account.results[0])
 					: null
-				chat = await createInboundChatSession(signAddr, profile.privateKeyArmor, acc)
+				chat = await createInboundChatSession(signAddr, signingKey || profile.privateKeyArmor, acc)
 				chats.unshift(chat)
 				idx = 0
 				Toast.show({
@@ -793,7 +834,7 @@ function AppShell() {
 			}
 
 			if (isNew) {
-				const inboundSendId = extractInboundSendIdFromDisplayText(displayText)
+				const inboundSendId = extractInboundSendId(displayText) || extractInboundSendIdFromDisplayText(displayText)
 				const addedInbound = inboundSendId
 					? nextMessages.find((m) => m.sendId === inboundSendId)
 					: nextMessages[nextMessages.length - 1]
@@ -812,6 +853,55 @@ function AppShell() {
 				const realIdx = chats.findIndex(n => n.address.toLowerCase() === nextChat.address.toLowerCase())
 				if (realIdx >= 0) chats[realIdx] = nextChat
 				else chats.unshift(nextChat)
+			}
+
+			if (isNew && signingKey) {
+				const armorHashRaw =
+					typeof (msg as { _beamioPgpArmorHash?: string })._beamioPgpArmorHash === 'string'
+						? String((msg as { _beamioPgpArmorHash?: string })._beamioPgpArmorHash)
+						: ''
+				const inboundSendId = extractInboundSendId(displayText)
+				const ackCtx = getGossipDeliveryAckContext()
+				void (async () => {
+					let senderPgp = nextChat.chatData?.publicArmored || ''
+					let senderMailboxRoute = nextChat.chatData?.routersArmoreds || ''
+					if (!senderPgp.trim() || !senderMailboxRoute.trim()) {
+						try {
+							const keys = await getKeysFromCoNETPGPSC(signAddr, signingKey)
+							senderPgp = senderPgp || keys?.publicArmored || ''
+							senderMailboxRoute = senderMailboxRoute || keys?.routersArmoreds || ''
+							if ((senderPgp || senderMailboxRoute) && nextChat.chatData) {
+								nextChat.chatData = {
+									...nextChat.chatData,
+									publicArmored: senderPgp || nextChat.chatData.publicArmored,
+									routersArmoreds: senderMailboxRoute || nextChat.chatData.routersArmoreds,
+								}
+								const realIdx = chats.findIndex(
+									n => n.address.toLowerCase() === nextChat.address.toLowerCase(),
+								)
+								if (realIdx >= 0) chats[realIdx] = nextChat
+							}
+						} catch {
+							/* sender receipt may skip if no PGP */
+						}
+					}
+					await emitDualChatDeliveryReceipts({
+						armorHash: armorHashRaw || undefined,
+						sendId: inboundSendId,
+						privateKeyArmor: signingKey,
+						entryNodes: allNodes?.length ? allNodes : ackCtx?.entryNodes || [],
+						mailboxAck: ackCtx
+							? {
+									routerArmoredPublicKey: ackCtx.routerArmoredPublicKey,
+									entryNodes: ackCtx.entryNodes,
+									mailboxDomains: ackCtx.mailboxDomains,
+								}
+							: null,
+						senderPublicArmored: senderPgp || null,
+						senderMailboxRoutePublicKey: senderMailboxRoute || null,
+						sendMessage,
+					})
+				})()
 			}
 			} catch (ex) {
 			// 建议至少打印一次，方便你排查脏数据

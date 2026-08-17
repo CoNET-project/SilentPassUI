@@ -9,6 +9,7 @@ import contracts from '@/utils/contracts'
 import {ethers} from 'ethers'
 import {aesGcmEncrypt, aesGcmDecrypt, toBase64, fromBase64, storeSystemData } from '@/services/beamio'
 import { startWorkerGossipListen, stopWorkerGossip } from '@/services/chatWorkerBridge'
+import { wrapArmorToMailboxWork } from '@/vendor/beamio-chat-sdk/envelope'
 
 
 type GenerateKeyArg = Parameters<typeof generateKey>[0]
@@ -632,6 +633,29 @@ startGossip(nodeInfo, body, callback, {
 */
 export let currentGossipAbortController: AbortController | null = null;
 
+/** Last live gossip listen context — used for mailbox delivery ACK (encrypt to B). */
+let gossipDeliveryAckContext: {
+	routerArmoredPublicKey: string
+	privateKeyArmor: string
+	entryNodes: nodeInfo[]
+	mailboxDomains: string[]
+} | null = null
+
+export function getGossipDeliveryAckContext(): {
+	routerArmoredPublicKey: string
+	privateKeyArmor: string
+	entryNodes: nodeInfo[]
+	mailboxDomains: Set<string>
+} | null {
+	if (!gossipDeliveryAckContext) return null
+	return {
+		routerArmoredPublicKey: gossipDeliveryAckContext.routerArmoredPublicKey,
+		privateKeyArmor: gossipDeliveryAckContext.privateKeyArmor,
+		entryNodes: gossipDeliveryAckContext.entryNodes,
+		mailboxDomains: new Set(gossipDeliveryAckContext.mailboxDomains),
+	}
+}
+
 export const stopBizChatListen = (): void => {
 	if (currentGossipAbortController) {
 		try {
@@ -759,6 +783,13 @@ export const connectToGossipNode = async (
       )
       if (!healthyNodes.length) {
         return failConnect('connectToGossipNode abort: no healthy entry C for gossip listen')
+      }
+
+      gossipDeliveryAckContext = {
+        routerArmoredPublicKey: nodeArmoredPublicKey,
+        privateKeyArmor: privateKeyArmor,
+        entryNodes: healthyNodes,
+        mailboxDomains: [...mailboxDomains],
       }
 
       console.log("🚀 [Gossip] Starting worker listen…");
@@ -912,7 +943,8 @@ export const sendMessage = async (
 	pgpPublic: string,
 	text: string,
 	privateKeyArmor: string,
-	entryNodes: nodeInfo[]
+	entryNodes: nodeInfo[],
+	opts?: { beamioNoPush?: boolean; mailboxRoutePublicKey?: string },
 ): Promise<boolean> => {
 	if (!entryNodes?.length) {
 		console.error('[sendMessage] no entry nodes')
@@ -954,11 +986,26 @@ export const sendMessage = async (
 		return false
 	}
 
+	if (opts?.beamioNoPush) {
+		const mailboxKey = opts.mailboxRoutePublicKey?.trim()
+		if (!mailboxKey) {
+			console.error('[sendMessage] NoPush requires recipient mailbox route public key')
+			return false
+		}
+		try {
+			postData = await wrapArmorToMailboxWork(postData, mailboxKey, { NoPush: true })
+		} catch (ex: any) {
+			console.error(`[sendMessage] mailbox wrap Error! ${ex?.message || ex}`)
+			return false
+		}
+	}
+
 	const payload = { data: postData }
-	const postOpts = {
-		method: "POST" as const,
+	const postOpts: RequestInit = {
+		method: "POST",
 		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify(payload)
+		body: JSON.stringify(payload),
+		referrerPolicy: "no-referrer",
 	}
 
 	const results = await Promise.all(

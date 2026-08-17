@@ -12,7 +12,6 @@ import type { HistoryEntry, PresenceEvent, StatusEvent } from '../types'
 import { GossipCore } from './gossip-core'
 import { HistoryStore } from './history'
 
-// eslint-disable-next-line no-restricted-globals
 const ctx = self as unknown as {
 	postMessage: (msg: WorkerOutbound) => void
 	onmessage: ((ev: MessageEvent<WorkerInbound>) => void) | null
@@ -134,7 +133,7 @@ async function handle(cmd: WorkerInbound): Promise<void> {
 			return
 		case 'send': {
 			try {
-				const ok = await gossip!.send(cmd.to, cmd.payload)
+				const ok = await gossip!.send(cmd.to, cmd.payload, { beamioNoPush: cmd.beamioNoPush })
 				post({ type: 'ack', reqId: cmd.reqId, ok: true, result: { sent: ok, sendId: cmd.sendId } })
 			} catch (ex) {
 				post({ type: 'ack', reqId: cmd.reqId, ok: false, error: (ex as Error)?.message ?? String(ex) })

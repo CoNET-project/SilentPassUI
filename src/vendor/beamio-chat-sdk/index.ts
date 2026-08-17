@@ -19,6 +19,17 @@
 export { createBeamioChatClient } from './client'
 export type { BeamioChatClientOptions } from './client'
 
+export {
+	armorToString,
+	buildPostBody,
+	encryptRouteCommand,
+	wrapArmorToEntryRoute,
+	wrapArmorToMailboxWork,
+	wrapWouldHitSameNode,
+} from './envelope'
+export type { MailboxWorkEnvelope } from './envelope'
+export { postUrl } from './nodes'
+
 export type {
 	BeamioChatClient,
 	BeamioChatConfig,
@@ -39,6 +50,7 @@ export type {
 	NodeInfo,
 	PersistenceAdapter,
 	PresenceEvent,
+	SendMessageOptions,
 	StatusEvent,
 	Unsubscribe,
 } from './types'

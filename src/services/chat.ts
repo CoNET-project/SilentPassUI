@@ -970,34 +970,10 @@ const pickRouteNodesByArmoredKey = (nodes: nodeInfo[], routerArmoredPublicKey: s
 }
 
 const probeGossipNode = async (node: nodeInfo, timeoutMs = 4_000) => {
-	// Prefer OPTIONS /post — matches browser preflight and proves CoNET-SI is answering CORS.
-	// GET / alone can be a static nginx 200 while POST /post error paths lack ACAO (browser CORS).
-	const origin =
-		typeof window !== 'undefined' && window.location?.origin
-			? window.location.origin
-			: 'https://beamio.app'
-	const postUrl = `https://${node.domain}.conet.network/post`
-	try {
-		const res = await postWithTimeout(
-			postUrl,
-			{
-				method: 'OPTIONS',
-				headers: {
-					Origin: origin,
-					'Access-Control-Request-Method': 'POST',
-					'Access-Control-Request-Headers': 'content-type',
-				},
-			},
-			timeoutMs,
-		)
-		const acao = (res.headers.get('access-control-allow-origin') || '').trim()
-		if (res.status > 0 && res.status < 500 && (acao === '*' || acao.length > 0)) {
-			markGossipNodeHealthy(node.domain)
-			return true
-		}
-	} catch {
-		// fall through to GET /
-	}
+	// GET / only. Do not OPTIONS /post here: cold init samples ~10 random entries in
+	// parallel (main + worker), and SI used to 404 incomplete first TLS records.
+	// Chrome logs every OPTIONS 404 in red even when ACAO=* and we then fall through.
+	// Real listen POST already sends the browser CORS preflight; that is the CORS proof.
 	const url = `https://${node.domain}.conet.network/`
 	try {
 		const res = await postWithTimeout(
@@ -1008,12 +984,12 @@ const probeGossipNode = async (node: nodeInfo, timeoutMs = 4_000) => {
 			},
 			timeoutMs,
 		)
-		if (res.status > 0 && res.status < 500) {
+		if (res.status >= 200 && res.status < 400) {
 			markGossipNodeHealthy(node.domain)
 			return true
 		}
 	} catch {
-		// ignore probe errors
+		// Network/TLS timeout means the browser cannot reach this node.
 	}
 	markGossipNodeBad(node.domain)
 	return false

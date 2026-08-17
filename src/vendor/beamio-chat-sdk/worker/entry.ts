@@ -12,7 +12,7 @@ import type { HistoryEntry, PresenceEvent, StatusEvent } from '../types'
 import { GossipCore } from './gossip-core'
 import { HistoryStore } from './history'
 
-const ctx = self as unknown as {
+const ctx = globalThis as unknown as {
 	postMessage: (msg: WorkerOutbound) => void
 	onmessage: ((ev: MessageEvent<WorkerInbound>) => void) | null
 	addEventListener: (t: string, cb: (ev: MessageEvent<WorkerInbound>) => void) => void

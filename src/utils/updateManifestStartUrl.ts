@@ -1,13 +1,14 @@
 /**
  * 动态更新 PWA manifest 的 start_url，使「添加到主屏幕」时能携带当前 URL 参数（如 beamioTag、MasterKey）。
- * 方案：将 manifest link 指向 API /app/manifest.json?start_url=xxx，由服务端返回动态 manifest。
+ * Merchant OS 挂在 /biz/；勿指向 Consumer PWA 的 /app/manifest.json（biz.beamio.app 上会 404）。
  * 使用 cache-busting (_v) 并预取 manifest，避免浏览器使用旧缓存导致 Add to Home Screen 显示错误 URL。
  */
 export function updateManifestStartUrl(startUrl: string): void {
 	if (typeof window === 'undefined') return
 	try {
 		const ts = Date.now()
-		const manifestUrl = `${window.location.origin}/app/manifest.json?start_url=${encodeURIComponent(startUrl)}&_v=${ts}`
+		const publicUrl = (process.env.PUBLIC_URL || '/biz').replace(/\/$/, '')
+		const manifestUrl = `${window.location.origin}${publicUrl}/manifest.json?start_url=${encodeURIComponent(startUrl)}&_v=${ts}`
 		const existing = document.querySelector('link[rel="manifest"]')
 		if (existing) {
 			existing.remove()

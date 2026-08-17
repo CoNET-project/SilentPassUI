@@ -1452,14 +1452,17 @@ function AppShell() {
 				if (pk) {
 					void (async () => {
 						let senderPgp = nextChat.chatData?.publicArmored || ''
-						if (!senderPgp.trim()) {
+						let senderMailboxRoute = nextChat.chatData?.routersArmoreds || ''
+						if (!senderPgp.trim() || !senderMailboxRoute.trim()) {
 							try {
 								const keys = await getKeysFromCoNETPGPSC(signAddr, pk)
-								senderPgp = keys?.publicArmored || ''
-								if (senderPgp && nextChat.chatData) {
+								senderPgp = senderPgp || keys?.publicArmored || ''
+								senderMailboxRoute = senderMailboxRoute || keys?.routersArmoreds || ''
+								if ((senderPgp || senderMailboxRoute) && nextChat.chatData) {
 									nextChat.chatData = {
 										...nextChat.chatData,
-										publicArmored: senderPgp,
+										publicArmored: senderPgp || nextChat.chatData.publicArmored,
+										routersArmoreds: senderMailboxRoute || nextChat.chatData.routersArmoreds,
 									}
 									const realIdx = chats.findIndex(
 										n => n.address.toLowerCase() === nextChat.address.toLowerCase(),
@@ -1483,6 +1486,7 @@ function AppShell() {
 									}
 								: null,
 							senderPublicArmored: senderPgp || null,
+							senderMailboxRoutePublicKey: senderMailboxRoute || null,
 							sendMessage,
 						})
 					})()

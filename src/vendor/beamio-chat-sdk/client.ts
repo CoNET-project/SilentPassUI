@@ -15,6 +15,7 @@ import type {
 	ChatEventListener,
 	ChatEventName,
 	ChatRoute,
+	SendMessageOptions,
 	HistoryBufferEvent,
 	HistoryEntry,
 	HistoryLoadOptions,
@@ -35,6 +36,7 @@ const DEFAULT_RUNTIME = {
 	sendFanout: 3,
 	reconnectBaseMs: 4_000,
 	reconnectMaxMs: 30_000,
+	outerWrap: true,
 } as const
 
 type Emitter = {
@@ -136,9 +138,16 @@ class BeamioChatClientImpl implements BeamioChatClient {
 		this.postCommand({ type: 'setNodes', nodes })
 	}
 
-	async sendMessage(to: ChatRoute, payload: string, opts?: { sendId?: string }): Promise<{ sendId: string }> {
+	async sendMessage(to: ChatRoute, payload: string, opts?: SendMessageOptions): Promise<{ sendId: string }> {
 		const sendId = opts?.sendId || `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
-		await this.request<unknown>({ type: 'send', reqId: 0, to, payload, sendId })
+		await this.request<unknown>({
+			type: 'send',
+			reqId: 0,
+			to,
+			payload,
+			sendId,
+			beamioNoPush: opts?.beamioNoPush,
+		})
 		return { sendId }
 	}
 
@@ -147,7 +156,10 @@ class BeamioChatClientImpl implements BeamioChatClient {
 	}
 
 	/** Encrypt & POST an arbitrary mailbox command (e.g. gossip_delivery_ack) to route B via entry C ≠ B. */
-	async postMailboxCommand(routerArmoredPublicKey: string, command: Record<string, unknown>): Promise<boolean> {
+	async postMailboxCommand(
+		routerArmoredPublicKey: string,
+		command: Record<string, unknown>,
+	): Promise<boolean> {
 		const r = await this.request<{ sent: boolean }>({
 			type: 'mailboxCommand',
 			reqId: 0,
@@ -269,7 +281,10 @@ export function createBeamioChatClient(
 	options: BeamioChatClientOptions,
 ): BeamioChatClient & {
 	setNodes(nodes: NodeInfo[]): void
-	postMailboxCommand(routerArmoredPublicKey: string, command: Record<string, unknown>): Promise<boolean>
+	postMailboxCommand(
+		routerArmoredPublicKey: string,
+		command: Record<string, unknown>,
+	): Promise<boolean>
 } {
 	return new BeamioChatClientImpl(config, options)
 }

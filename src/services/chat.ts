@@ -7,6 +7,7 @@ import {ethers} from 'ethers'
 import {aesGcmEncrypt, aesGcmDecrypt, toBase64, fromBase64, storeSystemData } from '@/services/beamio'
 import { publishNativePwaLog } from '@/utils/cashTreesNativePwaLog'
 import { startWorkerGossipListen, stopWorkerGossip } from '@/services/chatWorkerBridge'
+import { wrapArmorToMailboxWork } from '@/vendor/beamio-chat-sdk/envelope'
 
 function chatBootLog(message: string, level: 'info' | 'warn' | 'error' = 'info'): void {
 	publishNativePwaLog(level, `[Chat] ${message}`)
@@ -1134,7 +1135,7 @@ export const sendMessage = async (
 	text: string,
 	privateKeyArmor: string,
 	entryNodes: nodeInfo[],
-	opts?: { beamioNoPush?: boolean },
+	opts?: { beamioNoPush?: boolean; mailboxRoutePublicKey?: string },
 ): Promise<boolean> => {
 	if (!entryNodes?.length) {
 		console.error('[sendMessage] no entry nodes')
@@ -1176,8 +1177,21 @@ export const sendMessage = async (
 		return false
 	}
 
-	const payload: { data: string; beamioNoPush?: boolean } = { data: postData }
-	if (opts?.beamioNoPush) payload.beamioNoPush = true
+	if (opts?.beamioNoPush) {
+		const mailboxKey = opts.mailboxRoutePublicKey?.trim()
+		if (!mailboxKey) {
+			console.error('[sendMessage] NoPush requires recipient mailbox route public key')
+			return false
+		}
+		try {
+			postData = await wrapArmorToMailboxWork(postData, mailboxKey, { NoPush: true })
+		} catch (ex: any) {
+			console.error(`[sendMessage] mailbox wrap Error! ${ex?.message || ex}`)
+			return false
+		}
+	}
+
+	const payload = { data: postData }
 	const postOpts: RequestInit = {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },

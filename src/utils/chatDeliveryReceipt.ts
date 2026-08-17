@@ -201,14 +201,20 @@ export type SendDeliveryReceiptArgs = {
 		text: string,
 		privateKeyArmor: string,
 		entryNodes: nodeInfo[],
-		opts?: { beamioNoPush?: boolean },
+		opts?: { beamioNoPush?: boolean; mailboxRoutePublicKey?: string },
 	) => Promise<boolean>
+	/** Original sender mailbox B route PGP — required for NoPush mailbox work wrap. */
+	senderMailboxRoutePublicKey?: string | null
 }
 
 /** Notify original sender; UI must treat as protocol, not a chat bubble. */
 export async function sendDeliveryReceiptToSender(args: SendDeliveryReceiptArgs): Promise<boolean> {
-	const { senderPublicArmored, privateKeyArmor, entryNodes, sendId, armorHash, sendMessage } = args
+	const { senderPublicArmored, privateKeyArmor, entryNodes, sendId, armorHash, sendMessage, senderMailboxRoutePublicKey } = args
 	if (!sendId || !senderPublicArmored?.trim() || !privateKeyArmor?.trim() || !entryNodes?.length) {
+		return false
+	}
+	if (!senderMailboxRoutePublicKey?.trim()) {
+		console.warn('[sendDeliveryReceiptToSender] skip: missing sender mailbox route key')
 		return false
 	}
 	if (receiptedSendIds.has(sendId)) return true
@@ -236,7 +242,7 @@ export async function sendDeliveryReceiptToSender(args: SendDeliveryReceiptArgs)
 			JSON.stringify(payload),
 			privateKeyArmor,
 			entryNodes,
-			{ beamioNoPush: true },
+			{ beamioNoPush: true, mailboxRoutePublicKey: senderMailboxRoutePublicKey },
 		)
 		if (ok) receiptedSendIds.add(sendId)
 		return ok
@@ -258,6 +264,7 @@ export type DualDeliveryReceiptArgs = {
 		mailboxDomains: Set<string>
 	} | null
 	senderPublicArmored?: string | null
+	senderMailboxRoutePublicKey?: string | null
 	sendMessage: SendDeliveryReceiptArgs['sendMessage']
 }
 
@@ -275,6 +282,7 @@ export async function emitDualChatDeliveryReceipts(args: DualDeliveryReceiptArgs
 		entryNodes,
 		mailboxAck,
 		senderPublicArmored,
+		senderMailboxRoutePublicKey,
 		sendMessage,
 	} = args
 	const hash = (armorHash || '').trim().toLowerCase()
@@ -319,6 +327,7 @@ export async function emitDualChatDeliveryReceipts(args: DualDeliveryReceiptArgs
 				entryNodes,
 				sendId,
 				armorHash: hash || undefined,
+				senderMailboxRoutePublicKey,
 				sendMessage,
 			}).then(ok => {
 				if (!ok) console.warn('[emitDualChatDeliveryReceipts] sender receipt failed', sendId)

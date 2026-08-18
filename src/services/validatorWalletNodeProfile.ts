@@ -1501,7 +1501,8 @@ async function mergeBeamioDaemonIncomeEnrichment(stats: UnifiedIncomeStats, bene
 					localNode.cnet = mergeIncomeTotalsIfHigher(localNode.cnet, remoteNode.cnet.cumulative, 18)
 				}
 				if (!stats.gbPaidDepinReadOk && remoteNode.gb?.cumulative) {
-					localNode.gbPaidDepin = applyRemotePaidGbFallback(localNode.gbPaidDepin, remoteNode.gb.cumulative)
+					const nextPaid = applyRemotePaidGbFallback(localNode.gbPaidDepin, remoteNode.gb.cumulative)
+					if (nextPaid) localNode.gbPaidDepin = nextPaid
 				}
 			}
 		}

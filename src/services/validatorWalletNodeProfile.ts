@@ -889,8 +889,8 @@ export type UnifiedIncomeStats = {
 	cnetBeneficiary: IncomeTotals
 	nodes: NodeIncomeRow[]
 	/**
-	 * 收费 GB 累计（GBDepinAirdrop.beneficiaryPaidGbTotal — 协议 cron mint + 用户收费 mintPaid）。
-	 * 与 gbBeneficiary（legacy ConetGB1155 routing）相加为 BANDWIDTH PROVIDED 展示总量。
+	 * 收费 GB 累计（GBDepinAirdrop.paidGbReceivedOf — 协议 cron mint + 用户收费 mintPaid）。
+	 * BANDWIDTH PROVIDED 用此字段；仅当 leftover ConetGB1155 与 paid overlay 不是同一笔时才再加 gbBeneficiary。
 	 */
 	gbPaidDepinReceived: GbPaidDepinIncome | null
 	/** 本轮 GBDepinAirdrop 链上账本 view 是否可信成功（未配置合约地址视为可信零）。 */
@@ -972,21 +972,40 @@ function parseUnifiedIncomeStats(r: ethers.Result | Record<string, unknown> | un
 	}
 }
 
-/** BANDWIDTH PROVIDED = legacy routing GB + 收费 GB（受益人钱包）。 */
+function gbIncomeUnits(raw: string | undefined): number {
+	return Number(raw ?? '0') || 0
+}
+
+/**
+ * Cluster Blockscout overlay copies `paidGbReceivedOf` into `gbBeneficiary` / `node.gb`.
+ * Treat near-equal positives as the same paid-GB credit, not two ledgers.
+ */
+function isDuplicateGbOverlay(a: number, b: number): boolean {
+	if (!(a > 0) || !(b > 0)) return false
+	const hi = Math.max(a, b)
+	const lo = Math.min(a, b)
+	return hi - lo <= Math.max(0.05, hi * 0.002)
+}
+
+/** BANDWIDTH PROVIDED = leftover ConetGB1155 routing GB + paid user-fee GB, without double-counting the paid overlay. */
 export function gbBandwidthProvidedParts(stats: UnifiedIncomeStats | null | undefined): {
 	totalGb: number
 	legacyRoutingGb: number
 	userFeeGb: number
 } {
 	if (!stats) return { totalGb: 0, legacyRoutingGb: 0, userFeeGb: 0 }
-	const legacyRoutingGb = Number(stats.gbBeneficiary.cumulative) || 0
-	const userFeeGb = Number(stats.gbPaidDepinReceived?.cumulative ?? '0') || 0
+	const legacyRoutingGb = gbIncomeUnits(stats.gbBeneficiary.cumulative)
+	const userFeeGb = gbIncomeUnits(stats.gbPaidDepinReceived?.cumulative)
+	if (isDuplicateGbOverlay(legacyRoutingGb, userFeeGb)) {
+		return { totalGb: userFeeGb, legacyRoutingGb: 0, userFeeGb }
+	}
 	return { totalGb: legacyRoutingGb + userFeeGb, legacyRoutingGb, userFeeGb }
 }
 
 export function gbBandwidthNodeTotalGb(node: NodeIncomeRow): number {
-	const legacy = Number(node.gb.cumulative) || 0
-	const paid = Number(node.gbPaidDepin?.cumulative ?? '0') || 0
+	const legacy = gbIncomeUnits(node.gb.cumulative)
+	const paid = gbIncomeUnits(node.gbPaidDepin?.cumulative)
+	if (isDuplicateGbOverlay(legacy, paid)) return paid
 	return legacy + paid
 }
 
@@ -1410,7 +1429,29 @@ function mergeIncomeTotalsIfHigher(local: IncomeTotals, remoteCumulative: string
 	return { ...local, cumulative: remoteCumulative, cumulativeRaw }
 }
 
-/** Merge beamio.app Blockscout daemon enrichment when API returns higher trusted totals. */
+function applyRemotePaidGbFallback(
+	current: GbPaidDepinIncome | null | undefined,
+	remoteCumulative: string | undefined,
+): GbPaidDepinIncome | null | undefined {
+	const remote = String(remoteCumulative ?? '').trim()
+	const remoteN = Number(remote) || 0
+	if (remoteN <= 0) return current
+	const localN = Number(current?.cumulative ?? '0') || 0
+	if (remoteN <= localN) return current
+	try {
+		return gbPaidDepinIncomeFromWei(ethers.parseUnits(remote, GB_ERC20_DECIMALS))
+	} catch {
+		return current
+	}
+}
+
+/**
+ * Merge Cluster `GET /api/v2/conet/beneficiary-income/:wallet` into RPC stats.
+ * CNET: take the higher of RPC vs Cluster (CL skim lives on Cluster).
+ * GB: Cluster copies `paidGbReceivedOf` into `gbBeneficiary` / `node.gb` for Blockscout —
+ * do **not** merge those into leftover ConetGB1155 fields or BANDWIDTH PROVIDED doubles the same paid credit.
+ * If the GBDepinAirdrop RPC read failed, use Cluster GB as a paid-GB fallback only.
+ */
 async function mergeBeamioDaemonIncomeEnrichment(stats: UnifiedIncomeStats, beneficiary: string): Promise<void> {
 	try {
 		const res = await fetch(
@@ -1440,12 +1481,11 @@ async function mergeBeamioDaemonIncomeEnrichment(stats: UnifiedIncomeStats, bene
 				18,
 			)
 		}
-		if (remote.gbBeneficiary?.cumulative) {
-			stats.gbBeneficiary = mergeIncomeTotalsIfHigher(
-				stats.gbBeneficiary,
-				remote.gbBeneficiary.cumulative,
-				GB_ERC20_DECIMALS,
-			)
+		if (!stats.gbPaidDepinReadOk) {
+			stats.gbPaidDepinReceived = applyRemotePaidGbFallback(
+				stats.gbPaidDepinReceived,
+				remote.gbBeneficiary?.cumulative,
+			) ?? stats.gbPaidDepinReceived
 		}
 		if (Array.isArray(remote.nodes)) {
 			for (const remoteNode of remote.nodes) {
@@ -1460,8 +1500,8 @@ async function mergeBeamioDaemonIncomeEnrichment(stats: UnifiedIncomeStats, bene
 				if (remoteNode.cnet?.cumulative) {
 					localNode.cnet = mergeIncomeTotalsIfHigher(localNode.cnet, remoteNode.cnet.cumulative, 18)
 				}
-				if (remoteNode.gb?.cumulative) {
-					localNode.gb = mergeIncomeTotalsIfHigher(localNode.gb, remoteNode.gb.cumulative, GB_ERC20_DECIMALS)
+				if (!stats.gbPaidDepinReadOk && remoteNode.gb?.cumulative) {
+					localNode.gbPaidDepin = applyRemotePaidGbFallback(localNode.gbPaidDepin, remoteNode.gb.cumulative)
 				}
 			}
 		}

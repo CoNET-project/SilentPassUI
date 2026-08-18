@@ -461,7 +461,7 @@ export default function CoNetMiningDetailPage() {
 										<span className="text-sm font-bold text-white/80">GB</span>
 									</p>
 									<p className="mt-1 text-[11px] font-medium tabular-nums text-white/60">{gbUsdcApprox}</p>
-									{bandwidthProvided.userFeeGb > 0 ? (
+									{bandwidthProvided.legacyRoutingGb > 0 && bandwidthProvided.userFeeGb > 0 ? (
 										<p className="mt-1 text-[10px] leading-snug text-white/55">
 											Routing {formatGbDisplay(String(bandwidthProvided.legacyRoutingGb))} GB · User fees{' '}
 											{formatGbDisplay(String(bandwidthProvided.userFeeGb))} GB (beneficiary wallet)

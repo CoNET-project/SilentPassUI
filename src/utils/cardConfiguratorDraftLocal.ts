@@ -69,8 +69,12 @@ export type CardConfiguratorDraftV1 = {
   mobileStep?: number
   configuratorPreviewMode?: 'app' | 'physical'
   previewTierId?: string | null
-  /** New issuance only: quick default rewards vs full wizard. */
+  /** New issuance only: legacy quick default vs full wizard (UI removed; kept for draft compat). */
   rewardsPreset?: CardConfiguratorDraftRewardsPresetV1
+  /** Rewards setup: membership-fee mode switch. */
+  rewardsMembershipFeeEnabled?: boolean
+  /** Rewards setup: membership fee or tier-qualify amount (card currency human string). */
+  rewardsSetupAmount?: string
   updatedAt?: number
 }
 
@@ -235,6 +239,9 @@ export function loadCardConfiguratorDraftForEoa(eoaLower: string): CardConfigura
       configuratorPreviewMode: previewMode,
       previewTierId,
       rewardsPreset: normalizeRewardsPreset(p.rewardsPreset),
+      rewardsMembershipFeeEnabled:
+        typeof p.rewardsMembershipFeeEnabled === 'boolean' ? p.rewardsMembershipFeeEnabled : undefined,
+      rewardsSetupAmount: typeof p.rewardsSetupAmount === 'string' ? p.rewardsSetupAmount : undefined,
     }
     return draft
   } catch {

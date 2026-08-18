@@ -1,4 +1,4 @@
-import React from "react"
+import React, { useState } from "react"
 import {
 	ArrowRight,
 	BadgeCheck,
@@ -13,6 +13,8 @@ import { bizBrandFocusRingClass } from "@/pages/Home/brandUi"
 import { BizOnboardingLocalePicker } from "@/pages/Home/BizOnboardingLocalePicker"
 import { ONBOARDING_REGIONS_BY_COUNTRY } from "@/pages/Home/onboardingRegions"
 import { useTu } from '@/locale/beamioLocale'
+import { MerchantLegalDocumentOverlay } from '@/pages/Vouchers/example/MerchantLegalDocumentOverlay'
+import type { BeamioLegalDocId } from '@/utils/beamioLegalDocuments'
 
 const HEADLINE_FONT = { fontFamily: "Manrope, ui-sans-serif, system-ui, sans-serif" } as const
 
@@ -57,6 +59,7 @@ export function OnboardingBusinessDetailsScreen({
 }: OnboardingBusinessDetailsScreenProps): React.ReactElement {
 	const { tu } = useTu()
 	const canContinue = detailBusinessName.trim().length > 0 && detailCategory.trim().length > 0
+	const [legalDocId, setLegalDocId] = useState<BeamioLegalDocId | null>(null)
 
 	return (
 		<div
@@ -292,12 +295,20 @@ export function OnboardingBusinessDetailsScreen({
 			<footer className="mt-auto flex flex-col items-center justify-between gap-6 border-t border-[#abadaf]/10 bg-[#eef1f3] px-8 py-8 pb-24 text-[10px] font-bold uppercase tracking-[0.2em] text-[#595c5e] md:flex-row md:px-16 md:pb-8">
 				<div className="text-center tracking-[0.2em] md:text-left">{tu('onb_footer_hosted')}</div>
 				<div className="flex flex-wrap justify-center gap-8 text-[11px] font-bold tracking-widest">
-					<a className="transition-colors hover:text-[#1562f0]" href="https://beamio.app/privacy" target="_blank" rel="noopener noreferrer">
+					<button
+						type="button"
+						className="transition-colors hover:text-[#1562f0]"
+						onClick={() => setLegalDocId('privacy')}
+					>
 						{tu('onb_privacy_policy')}
-					</a>
-					<a className="transition-colors hover:text-[#1562f0]" href="https://beamio.app/terms" target="_blank" rel="noopener noreferrer">
+					</button>
+					<button
+						type="button"
+						className="transition-colors hover:text-[#1562f0]"
+						onClick={() => setLegalDocId('terms')}
+					>
 						{tu('onb_terms_of_service')}
-					</a>
+					</button>
 					<a className="transition-colors hover:text-[#1562f0]" href="mailto:support@beamio.app?subject=Beamio%20Business%20help">
 						{tu('onb_help_center')}
 					</a>
@@ -327,6 +338,11 @@ export function OnboardingBusinessDetailsScreen({
 					</span>
 				</div>
 			</nav>
+			<MerchantLegalDocumentOverlay
+				open={legalDocId != null}
+				docId={legalDocId ?? 'privacy'}
+				onClose={() => setLegalDocId(null)}
+			/>
 		</div>
 	)
 }

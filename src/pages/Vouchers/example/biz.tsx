@@ -40,7 +40,9 @@ import BeamioMeMainScreen from '@/components/Setting';
 import { BizAccountHubLanguageCard } from '@/components/Setting/BizAccountHubLanguageCard';
 import { BizSidebarLanguageNav } from '@/components/locale/BizSidebarLanguageNav';
 import { MerchantLegalDocumentPanel } from '@/pages/Vouchers/example/MerchantLegalDocumentPanel';
+import { MerchantLegalDocumentOverlay } from '@/pages/Vouchers/example/MerchantLegalDocumentOverlay';
 import { MerchantEulaDocumentOverlay } from '@/pages/Vouchers/example/MerchantEulaDocumentOverlay';
+import type { BeamioLegalDocId } from '@/utils/beamioLegalDocuments';
 import { resolveBeamioEulaVariant } from '@/utils/beamioEulaDocuments';
 import PrivateKeyReveal from '@/components/Setting/PrivateKey/PrivateKey';
 import VscodeJsonBlock from '@/components/VscodeJsonBlock';
@@ -631,6 +633,7 @@ function CardIssuanceKetWelcomeCoverPanel(props: {
   const { protocolFuelReserveBalance, onStartDesigning } = props
   const { tu } = useTu()
   const startDesigningTap = useReliableTapHandler(onStartDesigning)
+  const [welcomeLegalDocId, setWelcomeLegalDocId] = useState<BeamioLegalDocId | null>(null)
   const bUnitsLine =
     protocolFuelReserveBalance != null && Number.isFinite(protocolFuelReserveBalance)
       ? `${Number(protocolFuelReserveBalance).toFixed(2)} B-Units`
@@ -721,7 +724,23 @@ function CardIssuanceKetWelcomeCoverPanel(props: {
         </div>
       </main>
       <CardConfiguratorMobileFixedFooterPortal className="border-t border-[#abadaf]/20 bg-white/80 p-4 backdrop-blur-md sm:left-[var(--biz-sidebar-offset,0px)]">
-        <div className="mx-auto w-full max-w-5xl">
+        <div className="mx-auto w-full max-w-5xl space-y-3">
+          <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-[11px] font-bold uppercase tracking-widest text-[#595c5e]">
+            <button
+              type="button"
+              className="transition-colors hover:text-[#0051d1]"
+              onClick={() => setWelcomeLegalDocId('privacy')}
+            >
+              {tu('programs_welcome_legal_privacy')}
+            </button>
+            <button
+              type="button"
+              className="transition-colors hover:text-[#0051d1]"
+              onClick={() => setWelcomeLegalDocId('terms')}
+            >
+              {tu('programs_welcome_legal_terms')}
+            </button>
+          </div>
           <button
             type="button"
             data-touch-priority="1"
@@ -733,6 +752,11 @@ function CardIssuanceKetWelcomeCoverPanel(props: {
           </button>
         </div>
       </CardConfiguratorMobileFixedFooterPortal>
+      <MerchantLegalDocumentOverlay
+        open={welcomeLegalDocId != null}
+        docId={welcomeLegalDocId ?? 'privacy'}
+        onClose={() => setWelcomeLegalDocId(null)}
+      />
     </div>
   )
 }
@@ -9855,6 +9879,8 @@ const CARD_ISSUANCE_MAX_TOPUP_MAX = 50000;
 const CARD_ISSUANCE_MAX_TOPUP_DEFAULT = 100;
 /** Default minimum top-up (whole dollars only, no decimals). */
 const CARD_ISSUANCE_MIN_TOPUP_DEFAULT = 5;
+/** Rewards setup panel default amount (membership fee or tier qualify) in card currency units. */
+const CARD_ISSUANCE_REWARDS_SETUP_AMOUNT_DEFAULT = '1';
 /** Older saved configurator drafts used 10 as the default; upgrade only that untouched legacy default. */
 const CARD_ISSUANCE_LEGACY_MIN_TOPUP_DEFAULT = 10;
 /** Max length for Card Issuance configuration text (card description, tier description, etc.). */
@@ -11953,7 +11979,7 @@ const defaultCardIssuanceTiers = (): CardIssuanceTierRow[] => [
     id: CARD_ISSUANCE_SINGLE_TIER_ID,
     name: 'Base',
     preset: 'silver',
-    threshold: String(CARD_ISSUANCE_MIN_TOPUP_DEFAULT),
+    threshold: CARD_ISSUANCE_REWARDS_SETUP_AMOUNT_DEFAULT,
     discountPercent: '0',
     tierDescription: '',
     tierDescriptionOpen: false,
@@ -12642,7 +12668,7 @@ const cardIssuanceCouponEditingIssued = Boolean(cardIssuanceEditingCouponRow?.is
  const [cardIssuancePointSystemEnabled, setCardIssuancePointSystemEnabled] = useState(true);
  const [cardIssuancePointRatioInput, setCardIssuancePointRatioInput] = useState('100');
  const [cardIssuanceMerchantTextSaving, setCardIssuanceMerchantTextSaving] = useState(false);
- const [cardIssuanceMinTopup, setCardIssuanceMinTopup] = useState(String(CARD_ISSUANCE_MIN_TOPUP_DEFAULT));
+ const [cardIssuanceMinTopup, setCardIssuanceMinTopup] = useState(CARD_ISSUANCE_REWARDS_SETUP_AMOUNT_DEFAULT);
  const [cardIssuanceMaxTopup, setCardIssuanceMaxTopup] = useState(String(CARD_ISSUANCE_MAX_TOPUP_DEFAULT));
  /** `{ passive: false }` wheel listeners — React `onWheel` alone may not block number input step (Chromium). */
  const cardIssuanceReloadMinTopupWheelRefMobile = useMemo(() => createNumericInputWheelNonPassiveRefCallback(), []);
@@ -12690,17 +12716,6 @@ const cardIssuanceNewCardMinTopupFloor = useMemo(
      return { ...prev, [rule]: next };
    });
  }, []);
- const applyCardIssuanceQuickDefaultRewardsProgram = useCallback(() => {
-  const minS = String(cardIssuanceNewCardMinTopupFloor);
-  const maxS = String(cardIssuanceNewCardMaxTopupCap);
-   setCardIssuanceMinTopup(minS);
-   setCardIssuanceMaxTopup(maxS);
-   setCardIssuanceTierRule('single');
-   setTiersByLoyaltyRule((prev) => ({
-     ...prev,
-     single: reconcileTierThresholdsWithMinTopup(defaultCardIssuanceTiers(), minS),
-   }));
- }, [cardIssuanceNewCardMinTopupFloor, cardIssuanceNewCardMaxTopupCap]);
 const [cardIssuanceTierEditorOpen, setCardIssuanceTierEditorOpen] = useState(false);
 const [cardIssuanceEditingTierId, setCardIssuanceEditingTierId] = useState<string | null>(null);
 const [cardIssuanceTierEditorName, setCardIssuanceTierEditorName] = useState('');
@@ -12947,11 +12962,86 @@ useEffect(() => {
  );
  /** Wizard step for Card Configurator on viewports ≤1023px (`marketExample.html` pattern). */
  const [cardIssuanceMobileStep, setCardIssuanceMobileStep] = useState(1);
- /** New issuance only: quick default operational limits + Single top-up, or full Steps 2–3 wizard. */
+ /** New issuance only: legacy quick default vs full wizard (Rewards setup UI no longer exposes Default/Custom). */
  const [cardIssuanceRewardsPreset, setCardIssuanceRewardsPreset] = useState<
    'default' | 'custom' | 'salesManagement'
->('default');
- /** Skip Steps 2–3 on mobile/new issuance when preset is Default. */
+ >('custom');
+ /** Rewards setup: membership fee mode (on) vs top-up/charge/balance tier rule (off). */
+ const [cardIssuanceRewardsMembershipFeeEnabled, setCardIssuanceRewardsMembershipFeeEnabled] =
+   useState(false);
+ /** Rewards setup amount: membership fee or tier-qualify amount (default 1 CAD). */
+ const [cardIssuanceRewardsSetupAmount, setCardIssuanceRewardsSetupAmount] = useState(
+   CARD_ISSUANCE_REWARDS_SETUP_AMOUNT_DEFAULT
+ );
+ const cardIssuanceRewardsSetupAmountWheelRef = useMemo(
+   () => createNumericInputWheelNonPassiveRefCallback(),
+   []
+ );
+ /** Apply Rewards setup (membership fee XOR top-up/charge/balance) into tiers + reload limits. */
+ const applyCardIssuanceRewardsSetup = useCallback(
+   (opts: {
+     membershipFeeEnabled: boolean;
+     amount: string;
+     tierRule?: CardIssuanceTierRule;
+   }) => {
+     const amountRaw = opts.amount.replace(/,/g, '').trim();
+     const amount =
+       amountRaw && Number.isFinite(Number(amountRaw)) && Number(amountRaw) > 0
+         ? amountRaw
+         : CARD_ISSUANCE_REWARDS_SETUP_AMOUNT_DEFAULT;
+     const rule = opts.tierRule ?? cardIssuanceTierRuleRef.current;
+     setCardIssuanceRewardsPreset('custom');
+     setCardIssuanceRewardsSetupAmount(amount);
+     setCardIssuanceRewardsMembershipFeeEnabled(opts.membershipFeeEnabled);
+     if (opts.membershipFeeEnabled) {
+       setTiersByLoyaltyRule((prev) => {
+         const next = { ...prev } as Record<CardIssuanceTierRule, CardIssuanceTierRow[]>;
+         for (const key of CARD_ISSUANCE_TIER_RULE_KEYS) {
+           const rows = prev[key] ?? defaultCardIssuanceTiers();
+           next[key] = rows.map((t, i) => {
+             const isBase = t.id === CARD_ISSUANCE_SINGLE_TIER_ID || i === 0;
+             if (!isBase) {
+               return { ...t, membershipFee: '', membershipDurationKind: 0 };
+             }
+             return {
+               ...t,
+               membershipFee: amount,
+               membershipDurationKind:
+                 normalizeMembershipDurationKind(t.membershipDurationKind) || 3,
+             };
+           });
+         }
+         return next;
+       });
+       return;
+     }
+     setCardIssuanceTierRule(rule);
+     setCardIssuanceMinTopup(amount);
+     setCardIssuanceMaxTopup((prev) => {
+       const maxN = Number.parseInt(String(prev).replace(/,/g, ''), 10);
+       const amtN = Number.parseInt(amount, 10);
+       if (!Number.isFinite(maxN) || (Number.isFinite(amtN) && maxN < amtN)) {
+         return String(cardIssuanceNewCardMaxTopupCap);
+       }
+       return prev;
+     });
+     setTiersByLoyaltyRule((prev) => {
+       const next = { ...prev } as Record<CardIssuanceTierRule, CardIssuanceTierRow[]>;
+       for (const key of CARD_ISSUANCE_TIER_RULE_KEYS) {
+         const cleared = (prev[key] ?? defaultCardIssuanceTiers()).map((t) => ({
+           ...t,
+           membershipFee: '',
+           membershipDurationKind: 0,
+         }));
+         next[key] =
+           key === rule ? reconcileTierThresholdsWithMinTopup(cleared, amount) : cleared;
+       }
+       return next;
+     });
+   },
+   [cardIssuanceNewCardMaxTopupCap]
+ );
+ /** Skip Steps 2–3 on mobile/new issuance when preset is Default (legacy; unused by current Rewards setup UI). */
  const cardIssuanceQuickDefaultRewardsFlow =
    !cardIssuanceExistingCard && cardIssuanceRewardsPreset === 'default';
  /** Hero logo scale 0–3: draft + shareTokenMetadata.logoDisplayTier; Step 2 tap cycles. */
@@ -21416,23 +21506,48 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
        });
      }
     if (draft.rewardsPreset === 'default') {
-       setCardIssuanceRewardsPreset('default');
-       setCardIssuanceMinTopup(String(cardIssuanceNewCardMinTopupFloor));
-      setCardIssuanceMaxTopup(String(cardIssuanceNewCardMaxTopupCap));
-       setCardIssuanceTierRule('single');
-       setTiersByLoyaltyRule((prev) => ({
-         ...prev,
-         single: reconcileTierThresholdsWithMinTopup(
-           defaultCardIssuanceTiers(),
-          String(cardIssuanceNewCardMinTopupFloor)
-         ),
-       }));
-       setCardIssuanceMobileStep(1);
-    } else if (draft.rewardsPreset === 'custom') {
+       // Legacy Default preset → treat as custom; Rewards setup no longer offers Default/Custom.
        setCardIssuanceRewardsPreset('custom');
-    } else if (draft.rewardsPreset === 'salesManagement') {
-      setCardIssuanceRewardsPreset('salesManagement');
+       setCardIssuanceMobileStep(1);
+    } else if (draft.rewardsPreset === 'custom' || draft.rewardsPreset === 'salesManagement') {
+       setCardIssuanceRewardsPreset('custom');
      }
+    const draftRewardsAmount =
+      typeof draft.rewardsSetupAmount === 'string' && draft.rewardsSetupAmount.trim()
+        ? draft.rewardsSetupAmount.trim()
+        : undefined;
+    if (draftRewardsAmount) {
+      setCardIssuanceRewardsSetupAmount(draftRewardsAmount);
+    }
+    if (typeof draft.rewardsMembershipFeeEnabled === 'boolean') {
+      setCardIssuanceRewardsMembershipFeeEnabled(draft.rewardsMembershipFeeEnabled);
+    } else {
+      const ruleForFee =
+        draft.tierRule === 'single' || draft.tierRule === 'cumulative' || draft.tierRule === 'balance'
+          ? draft.tierRule
+          : 'single';
+      const rowsFromDraft =
+        draft.tiersByLoyaltyRule?.[ruleForFee] ??
+        draft.tiers ??
+        undefined;
+      if (Array.isArray(rowsFromDraft)) {
+        const feeOn = rowsFromDraft.some((t) => {
+          const fee =
+            typeof (t as { membershipFee?: string }).membershipFee === 'string'
+              ? (t as { membershipFee?: string }).membershipFee
+              : '';
+          return BigInt(membershipFeeHumanToE6(fee)) > 0n;
+        });
+        setCardIssuanceRewardsMembershipFeeEnabled(feeOn);
+        if (feeOn && !draftRewardsAmount) {
+          const base = rowsFromDraft.find(
+            (t) => (t as { id?: string }).id === CARD_ISSUANCE_SINGLE_TIER_ID
+          ) as { membershipFee?: string } | undefined;
+          const feeHuman = base?.membershipFee?.trim();
+          if (feeHuman) setCardIssuanceRewardsSetupAmount(feeHuman);
+        }
+      }
+    }
    }
    setCardConfiguratorDraftLoaded(true);
  }, [
@@ -21530,6 +21645,8 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
      configuratorPreviewMode: cardIssuanceConfiguratorPreviewMode,
      previewTierId: cardIssuancePreviewTierId,
      rewardsPreset: cardIssuanceRewardsPreset,
+     rewardsMembershipFeeEnabled: cardIssuanceRewardsMembershipFeeEnabled,
+     rewardsSetupAmount: cardIssuanceRewardsSetupAmount,
    });
  }, [
    cardConfiguratorDraftEoaKey,
@@ -21551,6 +21668,8 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
    cardIssuanceConfiguratorPreviewMode,
    cardIssuancePreviewTierId,
    cardIssuanceRewardsPreset,
+   cardIssuanceRewardsMembershipFeeEnabled,
+   cardIssuanceRewardsSetupAmount,
  ]);
 
  useEffect(() => {
@@ -34807,60 +34926,172 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                          ) : null}
                        </div>
                        {!cardIssuanceExistingCard ? (
-                         <div className="col-span-full mt-4 w-full min-w-0 space-y-2 border-t border-[#abadaf]/15 pt-4">
+                         <div className="col-span-full mt-4 w-full min-w-0 space-y-3 border-t border-[#abadaf]/15 pt-4">
                            <span className="ml-1 block text-[10px] font-black uppercase tracking-widest text-[#747779]">
                              {tu('programs_config_rewards_setup')}
                            </span>
-                           <div
-                            className="grid grid-cols-1 gap-2 sm:grid-cols-3"
-                             role="radiogroup"
-                             aria-label={tu('programs_config_rewards_setup')}
-                           >
+                           <div className="flex items-center justify-between gap-4 rounded-2xl bg-[#eef1f3] px-4 py-4">
+                             <div className="min-w-0">
+                               <p className="text-xs font-bold uppercase tracking-widest text-[#2c2f31]">
+                                 {tu('programs_config_rewards_membership_fee')}
+                               </p>
+                               <p className="mt-1 text-xs font-medium leading-relaxed text-[#595c5e]">
+                                 {tu('programs_config_rewards_membership_fee_hint')}
+                               </p>
+                             </div>
                              <button
                                type="button"
-                               role="radio"
-                               aria-checked={cardIssuanceRewardsPreset === 'default'}
-                               onClick={() => {
-                                 setCardIssuanceRewardsPreset('default');
-                                 applyCardIssuanceQuickDefaultRewardsProgram();
-                               }}
-                               className={`rounded-2xl border px-3 py-3 text-left transition-colors ${bizFocusRingClass} ${
-                                 cardIssuanceRewardsPreset === 'default'
-                                   ? 'border-[#1562f0] bg-blue-50/50 ring-2 ring-inset ring-[#1562f0]'
-                                   : 'border-[#abadaf]/35 bg-white hover:bg-[#eef1f3]/80'
+                               role="switch"
+                               aria-checked={cardIssuanceRewardsMembershipFeeEnabled}
+                               aria-label={tu('programs_config_rewards_membership_fee')}
+                               onClick={() =>
+                                 applyCardIssuanceRewardsSetup({
+                                   membershipFeeEnabled: !cardIssuanceRewardsMembershipFeeEnabled,
+                                   amount: cardIssuanceRewardsSetupAmount,
+                                   tierRule: cardIssuanceTierRule,
+                                 })
+                               }
+                               className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${bizFocusRingClass} ${
+                                 cardIssuanceRewardsMembershipFeeEnabled
+                                   ? 'bg-[#0051d1]'
+                                   : 'bg-[#abadaf]/50'
                                }`}
                              >
-                               <span className="font-manrope text-sm font-bold text-[#2c2f31]">{tu('programs_config_rewards_default')}</span>
-                             </button>
-                             <button
-                               type="button"
-                               role="radio"
-                               aria-checked={cardIssuanceRewardsPreset === 'custom'}
-                               onClick={() => setCardIssuanceRewardsPreset('custom')}
-                               className={`rounded-2xl border px-3 py-3 text-left transition-colors ${bizFocusRingClass} ${
-                                 cardIssuanceRewardsPreset === 'custom'
-                                   ? 'border-[#1562f0] bg-blue-50/50 ring-2 ring-inset ring-[#1562f0]'
-                                   : 'border-[#abadaf]/35 bg-white hover:bg-[#eef1f3]/80'
-                               }`}
-                             >
-                               <span className="font-manrope text-sm font-bold text-[#2c2f31]">{tu('programs_config_rewards_custom')}</span>
-                               <span className="mt-1 block text-[11px] font-medium leading-snug text-[#595c5e]">
-                                 Set operational limits, loyalty rule, and tiers in the next steps
-                               </span>
+                               <span
+                                 className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition ${
+                                   cardIssuanceRewardsMembershipFeeEnabled
+                                     ? 'translate-x-6'
+                                     : 'translate-x-1'
+                                 }`}
+                               />
                              </button>
                            </div>
-                           {cardIssuanceRewardsPreset === 'default' ? (
-                             <p className="ml-1 text-xs font-medium leading-relaxed text-[#595c5e]">
-                               Default uses standard limits and Single top-up. Publish from this screen on mobile, or
-                               use Publish below on desktop.
-                             </p>
-                           ) : null}
-                          {cardIssuanceRewardsPreset === 'salesManagement' ? (
-                            <p className="ml-1 text-xs font-medium leading-relaxed text-[#595c5e]">
-                              Sales Management is designed for product-driven teams where staff earn points from sales
-                              records.
-                            </p>
-                          ) : null}
+                           {cardIssuanceRewardsMembershipFeeEnabled ? (
+                             <div className="space-y-2">
+                               <label
+                                 className="ml-1 block text-[10px] font-bold uppercase tracking-[0.15em] text-[#595c5e]"
+                                 htmlFor="card-issuance-rewards-membership-fee-amount"
+                               >
+                                 {tu('programs_config_rewards_membership_fee_amount')}
+                               </label>
+                               <div className="relative">
+                                 <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-[#595c5e]">
+                                   {cardIssuanceDisplayMoneyPrefix}
+                                 </span>
+                                 <input
+                                   ref={cardIssuanceRewardsSetupAmountWheelRef}
+                                   id="card-issuance-rewards-membership-fee-amount"
+                                   type="number"
+                                   inputMode="decimal"
+                                   autoComplete="off"
+                                   enterKeyHint="done"
+                                   min={0}
+                                   step="any"
+                                   value={cardIssuanceRewardsSetupAmount}
+                                   onKeyDown={preventNumericInputStepKeys}
+                                   onKeyDownCapture={preventNumericInputStepKeys}
+                                   onWheel={preventNumericInputWheelStep}
+                                   onChange={(e) => {
+                                     const raw = e.target.value.replace(/,/g, '');
+                                     if (raw !== '' && !/^\d*\.?\d*$/.test(raw)) return;
+                                     setCardIssuanceRewardsSetupAmount(raw);
+                                   }}
+                                   onBlur={() =>
+                                     applyCardIssuanceRewardsSetup({
+                                       membershipFeeEnabled: true,
+                                       amount: cardIssuanceRewardsSetupAmount,
+                                     })
+                                   }
+                                   className={`w-full rounded-2xl border-none bg-[#eef1f3] py-4 pl-14 pr-6 text-base font-medium text-[#2c2f31] placeholder:text-[#abadaf] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
+                                 />
+                               </div>
+                             </div>
+                           ) : (
+                             <div className="space-y-3">
+                               <span className="ml-1 block text-[10px] font-bold uppercase tracking-[0.15em] text-[#595c5e]">
+                                 {tu('programs_config_rewards_tier_by')}
+                               </span>
+                               <div
+                                 className="grid grid-cols-1 gap-2 sm:grid-cols-3"
+                                 role="radiogroup"
+                                 aria-label={tu('programs_config_rewards_tier_by')}
+                               >
+                                 {(
+                                   [
+                                     { key: 'single' as const, labelKey: 'programs_config_rewards_topup' },
+                                     { key: 'cumulative' as const, labelKey: 'programs_config_rewards_charge' },
+                                     { key: 'balance' as const, labelKey: 'programs_config_rewards_balance' },
+                                   ] as const
+                                 ).map(({ key, labelKey }) => {
+                                   const selected = cardIssuanceTierRule === key;
+                                   return (
+                                     <button
+                                       key={key}
+                                       type="button"
+                                       role="radio"
+                                       aria-checked={selected}
+                                       onClick={() =>
+                                         applyCardIssuanceRewardsSetup({
+                                           membershipFeeEnabled: false,
+                                           amount: cardIssuanceRewardsSetupAmount,
+                                           tierRule: key,
+                                         })
+                                       }
+                                       className={`rounded-2xl border px-3 py-3 text-left transition-colors ${bizFocusRingClass} ${
+                                         selected
+                                           ? 'border-[#1562f0] bg-blue-50/50 ring-2 ring-inset ring-[#1562f0]'
+                                           : 'border-[#abadaf]/35 bg-white hover:bg-[#eef1f3]/80'
+                                       }`}
+                                     >
+                                       <span className="font-manrope text-sm font-bold text-[#2c2f31]">
+                                         {tu(labelKey)}
+                                       </span>
+                                     </button>
+                                   );
+                                 })}
+                               </div>
+                               <div className="space-y-2">
+                                 <label
+                                   className="ml-1 block text-[10px] font-bold uppercase tracking-[0.15em] text-[#595c5e]"
+                                   htmlFor="card-issuance-rewards-tier-amount"
+                                 >
+                                   {tu('programs_config_rewards_tier_amount')}
+                                 </label>
+                                 <div className="relative">
+                                   <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-[#595c5e]">
+                                     {cardIssuanceDisplayMoneyPrefix}
+                                   </span>
+                                   <input
+                                     ref={cardIssuanceRewardsSetupAmountWheelRef}
+                                     id="card-issuance-rewards-tier-amount"
+                                     type="number"
+                                     inputMode="decimal"
+                                     autoComplete="off"
+                                     enterKeyHint="done"
+                                     min={0}
+                                     step="any"
+                                     value={cardIssuanceRewardsSetupAmount}
+                                     onKeyDown={preventNumericInputStepKeys}
+                                     onKeyDownCapture={preventNumericInputStepKeys}
+                                     onWheel={preventNumericInputWheelStep}
+                                     onChange={(e) => {
+                                       const raw = e.target.value.replace(/,/g, '');
+                                       if (raw !== '' && !/^\d*\.?\d*$/.test(raw)) return;
+                                       setCardIssuanceRewardsSetupAmount(raw);
+                                     }}
+                                     onBlur={() =>
+                                       applyCardIssuanceRewardsSetup({
+                                         membershipFeeEnabled: false,
+                                         amount: cardIssuanceRewardsSetupAmount,
+                                         tierRule: cardIssuanceTierRule,
+                                       })
+                                     }
+                                     className={`w-full rounded-2xl border-none bg-[#eef1f3] py-4 pl-14 pr-6 text-base font-medium text-[#2c2f31] placeholder:text-[#abadaf] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
+                                   />
+                                 </div>
+                               </div>
+                             </div>
+                           )}
                           {cardIssuanceCreateError && cardIssuanceQuickDefaultRewardsFlow ? (
                             <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">
                               {cardIssuanceCreateError}

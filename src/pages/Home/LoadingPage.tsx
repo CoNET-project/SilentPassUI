@@ -30,6 +30,8 @@ import packageJson from '../../../package.json'
 import { parseRedeemAdminFromUrl } from '@/utils/parseRedeemAdminFromUrl'
 import { BIZ_PUBLIC_LOGO512, bizBrandFocusRingClass } from '@/pages/Home/brandUi'
 import { OnboardingBusinessDetailsScreen } from '@/pages/Home/OnboardingBusinessDetailsScreen'
+import { MerchantLegalDocumentOverlay } from '@/pages/Vouchers/example/MerchantLegalDocumentOverlay'
+import type { BeamioLegalDocId } from '@/utils/beamioLegalDocuments'
 import {
 	clearSessionOnboardingBusinessDraft,
 	clearLiteBusinessChainAck,
@@ -128,6 +130,7 @@ export default function BeamioOnboardingModal({
 	const [coverTermsAccepted, setCoverTermsAccepted] = useState(() =>
 		Boolean(loadSessionOnboardingBusinessDraft()?.onboardingTermsAccepted)
 	)
+	const [onboardingLegalDocId, setOnboardingLegalDocId] = useState<BeamioLegalDocId | null>(null)
 	/** Mobile: entry → Lite 登记页（Continue 即 solo + 进入 Identity，无 Select business type） */
 	const [onboardingCoverMobilePhase, setOnboardingCoverMobilePhase] = useState<OnboardingCoverMobilePhase>('entry')
 	/** Select Type → Details（单列业务资料）→ Identity（InitialEntryScreen） */
@@ -326,6 +329,31 @@ export default function BeamioOnboardingModal({
 
 	const onboardingCoverMobileCanSubmitRegistration =
 		detailBusinessName.trim().length > 0 && detailCategory.trim().length > 0
+
+	const openOnboardingLegalDoc = (docId: BeamioLegalDocId) => (e: React.MouseEvent) => {
+		e.preventDefault()
+		e.stopPropagation()
+		setOnboardingLegalDocId(docId)
+	}
+
+	const onboardingLegalFooterLinks = (
+		<>
+			<button
+				type="button"
+				className="transition-colors hover:text-[#1562f0]"
+				onClick={() => setOnboardingLegalDocId('privacy')}
+			>
+				{tu('onb_privacy_policy')}
+			</button>
+			<button
+				type="button"
+				className="transition-colors hover:text-[#1562f0]"
+				onClick={() => setOnboardingLegalDocId('terms')}
+			>
+				{tu('onb_terms_of_service')}
+			</button>
+		</>
+	)
 
 	/** Mobile cover 已填登记页：完成后跳过 OnboardingBusinessDetailsScreen，直达 Identity */
 	const onboardingCoverContinue = (skipBusinessDetailsScreen: boolean) => {
@@ -705,15 +733,22 @@ export default function BeamioOnboardingModal({
 															/>
 														</div>
 														<p className="text-[11px] font-semibold uppercase leading-relaxed tracking-wider text-[#595c5e]">
-															{tu('onb_terms_prefix')}{" "}
-															<a
+															{tu('onb_terms_prefix')}
+															<button
+																type="button"
 																className="text-[#1562f0] underline-offset-2 hover:underline"
-																href="https://beamio.app/terms"
-																target="_blank"
-																rel="noopener noreferrer"
+																onClick={openOnboardingLegalDoc('privacy')}
+															>
+																{tu('onb_terms_privacy_link')}
+															</button>
+															{tu('onb_terms_and')}
+															<button
+																type="button"
+																className="text-[#1562f0] underline-offset-2 hover:underline"
+																onClick={openOnboardingLegalDoc('terms')}
 															>
 																{tu('onb_terms_link')}
-															</a>
+															</button>
 															{tu('onb_terms_suffix')}
 														</p>
 													</label>
@@ -896,15 +931,22 @@ export default function BeamioOnboardingModal({
 									/>
 								</div>
 								<p className="text-[11px] font-semibold uppercase leading-relaxed tracking-wider text-[#595c5e]">
-									{tu('onb_terms_prefix')}{" "}
-									<a
+									{tu('onb_terms_prefix')}
+									<button
+										type="button"
 										className="text-[#1562f0] underline-offset-2 hover:underline"
-										href="https://beamio.app/terms"
-										target="_blank"
-										rel="noopener noreferrer"
+										onClick={openOnboardingLegalDoc('privacy')}
+									>
+										{tu('onb_terms_privacy_link')}
+									</button>
+									{tu('onb_terms_and')}
+									<button
+										type="button"
+										className="text-[#1562f0] underline-offset-2 hover:underline"
+										onClick={openOnboardingLegalDoc('terms')}
 									>
 										{tu('onb_terms_link')}
-									</a>
+									</button>
 									{tu('onb_terms_suffix')}
 								</p>
 							</label>
@@ -929,17 +971,17 @@ export default function BeamioOnboardingModal({
 			<footer className="mt-auto hidden flex-col items-center justify-between gap-4 border-t border-[#abadaf]/10 bg-[#eef1f3] px-5 py-6 text-[10px] font-bold uppercase tracking-[0.2em] text-[#595c5e] md:flex md:flex-row md:px-10">
 				<div className="text-center tracking-[0.2em] md:text-left">{tu('onb_footer_hosted')}</div>
 				<div className="flex flex-wrap justify-center gap-8 text-[11px] font-bold tracking-widest">
-					<a className="transition-colors hover:text-[#1562f0]" href="https://beamio.app/privacy" target="_blank" rel="noopener noreferrer">
-						{tu('onb_privacy_policy')}
-					</a>
-					<a className="transition-colors hover:text-[#1562f0]" href="https://beamio.app/terms" target="_blank" rel="noopener noreferrer">
-						{tu('onb_terms_of_service')}
-					</a>
+					{onboardingLegalFooterLinks}
 					<a className="transition-colors hover:text-[#1562f0]" href="mailto:support@beamio.app?subject=Beamio%20Business%20help">
 						{tu('onb_help_center')}
 					</a>
 				</div>
 			</footer>
+			<MerchantLegalDocumentOverlay
+				open={onboardingLegalDocId != null}
+				docId={onboardingLegalDocId ?? 'privacy'}
+				onClose={() => setOnboardingLegalDocId(null)}
+			/>
 		</div>
 	)
 
@@ -1045,18 +1087,18 @@ export default function BeamioOnboardingModal({
 					<span>{tu('onb_footer_hosted')}</span>
 				</div>
 				<div className="flex flex-wrap justify-center gap-8 md:gap-8">
-					<a className="transition-colors hover:text-[#1562F0]" href="https://beamio.app/privacy" target="_blank" rel="noopener noreferrer">
-						{tu('onb_privacy_policy')}
-					</a>
-					<a className="transition-colors hover:text-[#1562F0]" href="https://beamio.app/terms" target="_blank" rel="noopener noreferrer">
-						{tu('onb_terms_of_service')}
-					</a>
+					{onboardingLegalFooterLinks}
 					<a className="transition-colors hover:text-[#1562F0]" href="mailto:support@beamio.app?subject=Beamio%20Business%20help">
 						{tu('onb_help_center')}
 					</a>
 				</div>
 			</footer>
 			{workspaceCreating ? <WorkspaceCreatingOverlay /> : null}
+			<MerchantLegalDocumentOverlay
+				open={onboardingLegalDocId != null}
+				docId={onboardingLegalDocId ?? 'privacy'}
+				onClose={() => setOnboardingLegalDocId(null)}
+			/>
 		</div>
 	)
 

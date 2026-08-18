@@ -39,6 +39,9 @@ import { CATALOG_VIDEO_OG_BELOW_BANNER_ROW_UNPADDED_CLASSNAME } from '@/utils/ca
 import BeamioMeMainScreen from '@/components/Setting';
 import { BizAccountHubLanguageCard } from '@/components/Setting/BizAccountHubLanguageCard';
 import { BizSidebarLanguageNav } from '@/components/locale/BizSidebarLanguageNav';
+import { MerchantLegalDocumentPanel } from '@/pages/Vouchers/example/MerchantLegalDocumentPanel';
+import { MerchantEulaDocumentOverlay } from '@/pages/Vouchers/example/MerchantEulaDocumentOverlay';
+import { resolveBeamioEulaVariant } from '@/utils/beamioEulaDocuments';
 import PrivateKeyReveal from '@/components/Setting/PrivateKey/PrivateKey';
 import VscodeJsonBlock from '@/components/VscodeJsonBlock';
 import { getOracleCadUsdcFromConet, AuthorizationSign } from '@/services/beamio';
@@ -22452,6 +22455,8 @@ const [chainResolvedStatsAdminAddress, setChainResolvedStatsAdminAddress] = useS
  const [routingRulesDeployError, setRoutingRulesDeployError] = useState<string | null>(null);
  const [applyingAlliance, setApplyingAlliance] = useState<AllianceId | null>(null);
  const [selectedProduct, setSelectedProduct] = useState<string | null>(null);
+ const [customFuelEulaAccepted, setCustomFuelEulaAccepted] = useState(false);
+ const [customFuelEulaOpen, setCustomFuelEulaOpen] = useState(false);
  const [customFuelAmount, setCustomFuelAmount] = useState('');
  /** Market UI: Auto-Refill card only (not wired to payments). */
  const [marketAutoRefillOn, setMarketAutoRefillOn] = useState(false);
@@ -22474,6 +22479,21 @@ const marketCustomFuelUsdc = useMemo(() => {
   const v = Number(String(customFuelAmount).replace(/,/g, '.'));
   return Number.isFinite(v) ? v : NaN;
 }, [customFuelAmount, selectedCustomFuelPackage]);
+
+const customFuelEulaVariant = useMemo(() => {
+  const fromForm = (businessProfileForm.country ?? '').trim();
+  const fromDraft = businessProfileEoaResolved
+    ? (loadBusinessProfileDraftForEoa(businessProfileEoaResolved)?.country ?? '').trim()
+    : '';
+  return resolveBeamioEulaVariant(fromForm || fromDraft);
+}, [businessProfileForm.country, businessProfileEoaResolved]);
+
+useEffect(() => {
+  if (selectedProduct !== 'custom_fuel') {
+    setCustomFuelEulaAccepted(false);
+    setCustomFuelEulaOpen(false);
+  }
+}, [selectedProduct]);
 
 const marketFuelPackagesForWallet = useMemo(
   () =>
@@ -22754,6 +22774,8 @@ const [memberDirectoryUserTypeDb, setMemberDirectoryUserTypeDb] = useState<Recor
    setMerchantKitStripeSessionId(null);
    setMerchantKitStripeMessage(null);
    setSelectedProduct(null);
+   setCustomFuelEulaAccepted(false);
+   setCustomFuelEulaOpen(false);
    setMarketRefuelProcessing(false);
    setMarketRefuelSuccess(null);
    setMarketRefuelError(null);
@@ -24683,6 +24705,10 @@ const overviewCustomerBalanceFromActivity = useMemo(() => {
 
  const handleMarketPurchase = useCallback(async () => {
    if (selectedProduct === 'starter' || selectedProduct === 'custom_fuel') {
+     if (selectedProduct === 'custom_fuel' && !customFuelEulaAccepted) {
+       setMarketRefuelError(tu('eula_must_agree'));
+       return;
+     }
      const pk = profiles?.[0]?.privateKeyArmor;
      const account = (profiles?.[0]?.keyID ?? myAddress)?.trim();
      if (!pk || !account) {
@@ -24782,7 +24808,7 @@ const overviewCustomerBalanceFromActivity = useMemo(() => {
      return null;
    });
    setActiveTab('Wallets');
-}, [marketCustomFuelUsdc, selectedProduct, selectedCustomFuelPackage, profiles, myAddress, customFuelAmount, openCustomFuelThirdPartyUsdcPay]);
+}, [marketCustomFuelUsdc, selectedProduct, selectedCustomFuelPackage, profiles, myAddress, customFuelAmount, openCustomFuelThirdPartyUsdcPay, customFuelEulaAccepted, tu]);
 
  const runMerchantKitStripeCheckout = useCallback(
    async (packageType: MerchantKitCheckoutPlanId) => {
@@ -29844,6 +29870,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
            collapsed={isSidebarCollapsed && !isMobileMenuOpen}
          />
          <NavItem icon={Settings} label={tu('settings')} isActive={activeTab === 'Settings'} onClick={() => handleTabChange('Settings')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
+         <NavItem icon={Lock} label={tu('privacy')} isActive={activeTab === 'Privacy'} onClick={() => handleTabChange('Privacy')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
+         <NavItem icon={FileText} label={tu('terms_of_use')} isActive={activeTab === 'TermsOfUse'} onClick={() => handleTabChange('TermsOfUse')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
          <BizSidebarLanguageNav collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
        </nav>
 
@@ -29950,6 +29978,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                       activeTab === 'Validator Management' ||
                       navChromeTab === 'Transactions' ||
                       navChromeTab === 'Settings' ||
+                      navChromeTab === 'Privacy' ||
+                      navChromeTab === 'TermsOfUse' ||
                       isProgramAreaTab(navChromeTab)
                     ? 'font-extrabold tracking-tight text-[#0051d1] normal-case'
                     : 'font-extrabold tracking-tighter text-slate-900 normal-case'
@@ -29971,7 +30001,11 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                       ? tu('transactions')
                       : activeTab === 'Settings'
                         ? tu('settings')
-                        : activeTab}
+                        : activeTab === 'Privacy'
+                          ? tu('privacy')
+                          : activeTab === 'TermsOfUse'
+                            ? tu('terms_of_use')
+                            : activeTab}
           </h2>
         </div>
         <div className="flex items-center gap-3 sm:gap-6">
@@ -41453,6 +41487,10 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
            )
          )}
 
+         {(activeTab === 'Privacy' || activeTab === 'TermsOfUse') && (
+           <MerchantLegalDocumentPanel docId={activeTab === 'Privacy' ? 'privacy' : 'terms'} />
+         )}
+
          {activeTab === 'Settings' && (
            <div
              id="biz-settings-root"
@@ -44203,7 +44241,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
             <div
               className={`flex-1 overflow-y-auto p-8 pt-4 scrollbar-hide space-y-8 ${
                 selectedProduct === 'custom_fuel' || isMerchantKitStripeProduct
-                  ? 'pb-44'
+                  ? 'pb-64'
                   : 'pb-32'
               }`}
             >
@@ -44305,6 +44343,30 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                     </div>
                   </div>
                 </div>
+                <label className="flex items-start gap-3 text-[13px] font-medium leading-relaxed text-slate-300">
+                  <input
+                    type="checkbox"
+                    checked={customFuelEulaAccepted}
+                    onChange={(e) => setCustomFuelEulaAccepted(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 shrink-0 rounded border-white/20 bg-white/5 accent-orange-500"
+                  />
+                  <span>
+                    {tu('eula_agree_lead')}{' '}
+                    <button
+                      type="button"
+                      className="font-semibold text-orange-400 underline-offset-2 hover:underline"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setCustomFuelEulaOpen(true);
+                      }}
+                    >
+                      {tu('eula_full')}
+                    </button>
+                    {' '}
+                    ({customFuelEulaVariant === 'us' ? tu('eula_variant_us') : tu('eula_variant_row')})
+                  </span>
+                </label>
                 <button
                   type="button"
                   onClick={() => void handleMarketPurchase()}
@@ -44312,7 +44374,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                     marketRefuelProcessing ||
                     !Number.isFinite(marketCustomFuelUsdc) ||
                     marketCustomFuelUsdc < 1 ||
-                    !hasAaAccount
+                    !hasAaAccount ||
+                    !customFuelEulaAccepted
                   }
                   className="w-full bg-orange-500 hover:bg-orange-600 py-4 rounded-[1.2rem] text-white font-black text-[15px] uppercase tracking-wide shadow-[0_8px_20px_rgba(249,115,22,0.3)] active:scale-[0.98] disabled:bg-slate-600 disabled:text-slate-400 disabled:shadow-none transition-all flex items-center justify-center gap-2"
                 >
@@ -44400,6 +44463,12 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
          </div>
        </div>
      )}
+
+     <MerchantEulaDocumentOverlay
+       open={customFuelEulaOpen}
+       variant={customFuelEulaVariant}
+       onClose={() => setCustomFuelEulaOpen(false)}
+     />
 
      {/* --- Issue brand asset / membership (Members & Loyalty) --- */}
      {isIssueCardModalOpen && (

@@ -21,6 +21,8 @@ type ProgramLivePreviewInlineFieldProps = {
   emptyDisplay?: string;
   /** Called when edit mode closes (blur or Escape). */
   onCommit?: () => void;
+  /** Called immediately before entering edit mode (e.g. sync draft from displayed tier). */
+  onEditStart?: () => void;
 };
 
 export function ProgramLivePreviewInlineField({
@@ -41,6 +43,7 @@ export function ProgramLivePreviewInlineField({
   displayClassName = '',
   emptyDisplay = 'Empty',
   onCommit,
+  onEditStart,
 }: ProgramLivePreviewInlineFieldProps) {
   const fieldId = useId();
   const [editing, setEditing] = useState(false);
@@ -115,7 +118,10 @@ export function ProgramLivePreviewInlineField({
     <button
       type="button"
       disabled={disabled}
-      onClick={() => setEditing(true)}
+      onClick={() => {
+        onEditStart?.();
+        setEditing(true);
+      }}
       className={`group w-full rounded-lg text-left transition-colors hover:bg-[#1562f0]/[0.04] disabled:cursor-not-allowed disabled:opacity-60 ${className} ${focusRingClass}`}
       aria-label={`Edit ${label}`}
     >

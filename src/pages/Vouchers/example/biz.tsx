@@ -11994,6 +11994,31 @@ function cardIssuanceTierGradientTheme(backgroundColorRaw: string): CardIssuance
 /** Base membership tier in Card Configurator; its Min keeps Min. Reload Amount in sync. */
 const CARD_ISSUANCE_SINGLE_TIER_ID = 'tier-base';
 
+/** Membership-fee cards publish min/max top-up metadata as 1 (credit floor), not 0. */
+function mapCardIssuanceRowsForMembershipFeeSetup(
+  rows: CardIssuanceTierRow[],
+  amount: string,
+  durationKind?: number
+): CardIssuanceTierRow[] {
+  const durationFromOpts = normalizeMembershipDurationKind(durationKind);
+  return rows.map((t, i) => {
+    const isBase = t.id === CARD_ISSUANCE_SINGLE_TIER_ID || i === 0;
+    if (!isBase) {
+      return { ...t, membershipFee: '', membershipDurationKind: 0, threshold: t.threshold };
+    }
+    const duration =
+      durationFromOpts ||
+      normalizeMembershipDurationKind(t.membershipDurationKind) ||
+      3;
+    return {
+      ...t,
+      threshold: '0',
+      membershipFee: amount,
+      membershipDurationKind: duration,
+    };
+  });
+}
+
 const defaultCardIssuanceTiers = (): CardIssuanceTierRow[] => [
   {
     id: CARD_ISSUANCE_SINGLE_TIER_ID,
@@ -12715,8 +12740,8 @@ const cardIssuanceCouponEditingIssued = Boolean(cardIssuanceEditingCouponRow?.is
  );
  useEffect(() => {
    if (!cardIssuanceMembershipFeeMode) return;
-   setCardIssuanceMinTopup((prev) => (prev.trim() === '' ? prev : ''));
-   setCardIssuanceMaxTopup((prev) => (prev.trim() === '' ? prev : ''));
+   setCardIssuanceMinTopup(CARD_ISSUANCE_REWARDS_SETUP_AMOUNT_DEFAULT);
+   setCardIssuanceMaxTopup(CARD_ISSUANCE_REWARDS_SETUP_AMOUNT_DEFAULT);
  }, [cardIssuanceMembershipFeeMode]);
 const cardIssuanceNewCardMaxTopupCap = useMemo(
   () => cardIssuanceServerTopupLimitMaxForCurrency(CARD_ISSUANCE_BEAMIO_CURRENCY),
@@ -12759,6 +12784,7 @@ const handlePublishCardIssuanceRef = useRef<
     itemCategoryOverride?: ProductionServiceCategoryOption[];
     tiersOverride?: CardIssuanceTierRow[];
     minTopupOverride?: string;
+    maxTopupOverride?: string;
     pointSystemOverride?: CardIssuancePointSystemMetadata;
     metadataOnly?: boolean;
     loadingScope?: 'default' | 'bonusEditor';
@@ -13020,26 +13046,13 @@ useEffect(() => {
        // Membership-fee cards use top-up (single) qualify on-chain; loyalty threshold is 0.
        // Chain minUsdc6 = 1, 2, 3… by tier order (see buildCardIssuanceTiersPayloadFromRows).
        setCardIssuanceTierRule('single');
+       setCardIssuanceMinTopup(CARD_ISSUANCE_REWARDS_SETUP_AMOUNT_DEFAULT);
+       setCardIssuanceMaxTopup(CARD_ISSUANCE_REWARDS_SETUP_AMOUNT_DEFAULT);
        setTiersByLoyaltyRule((prev) => {
          const next = { ...prev } as Record<CardIssuanceTierRule, CardIssuanceTierRow[]>;
          for (const key of CARD_ISSUANCE_TIER_RULE_KEYS) {
            const rows = prev[key] ?? defaultCardIssuanceTiers();
-           next[key] = rows.map((t, i) => {
-             const isBase = t.id === CARD_ISSUANCE_SINGLE_TIER_ID || i === 0;
-             if (!isBase) {
-               return { ...t, membershipFee: '', membershipDurationKind: 0, threshold: t.threshold };
-             }
-             const duration =
-               durationFromOpts ||
-               normalizeMembershipDurationKind(t.membershipDurationKind) ||
-               3;
-             return {
-               ...t,
-               threshold: '0',
-               membershipFee: amount,
-               membershipDurationKind: duration,
-             };
-           });
+           next[key] = mapCardIssuanceRowsForMembershipFeeSetup(rows, amount, durationFromOpts);
          }
          return next;
        });
@@ -14308,20 +14321,59 @@ useEffect(() => {
   cardIssuanceTierRule,
 ]);
 
+/** Existing membership-fee cards: keep Rewards setup amount aligned with base tier metadata (default is $1). */
+useEffect(() => {
+  if (!cardIssuanceExistingCard?.cardAddress) return;
+  if (!cardIssuanceMembershipFeeMode || !cardIssuanceBaseTier) return;
+  const feeRaw = cardIssuanceBaseTier.membershipFee.replace(/,/g, '').trim();
+  if (!feeRaw || !Number.isFinite(Number(feeRaw)) || Number(feeRaw) <= 0) return;
+  setCardIssuanceRewardsMembershipFeeEnabled(true);
+  setCardIssuanceRewardsSetupAmount((prev) => {
+    const prevNorm = prev.replace(/,/g, '').trim();
+    if (prevNorm === feeRaw) return prev;
+    if (prevNorm === CARD_ISSUANCE_REWARDS_SETUP_AMOUNT_DEFAULT) return feeRaw;
+    return prev;
+  });
+}, [
+  cardIssuanceExistingCard?.cardAddress,
+  cardIssuanceMembershipFeeMode,
+  cardIssuanceBaseTier?.membershipFee,
+]);
+
 useEffect(() => {
   if (!cardIssuanceExistingCard?.cardAddress || !cardIssuanceExistingCard.meta) return;
+  const metaTiers = cardIssuanceExistingCard.meta.tiers;
+  const membershipFromMeta =
+    Array.isArray(metaTiers) &&
+    metaTiers.length > 0 &&
+    cardIssuanceRowsHaveMembershipFee(cardIssuanceTierRowsFromMetadata(metaTiers));
+  const topupDefault = CARD_ISSUANCE_REWARDS_SETUP_AMOUNT_DEFAULT;
+  const topupDefaultN = Number.parseInt(topupDefault, 10);
   const metaMin = cardIssuanceExistingCard.meta.minimumTopupCad;
   if (metaMin != null && Number.isFinite(metaMin)) {
-    setCardIssuanceMinTopup(String(Math.max(Math.round(Number(metaMin)), cardIssuanceMinTopupCurrencyFloor)));
+    let minVal = Math.round(Number(metaMin));
+    if (membershipFromMeta && minVal <= 0) minVal = topupDefaultN;
+    setCardIssuanceMinTopup(
+      String(Math.max(minVal, membershipFromMeta ? topupDefaultN : cardIssuanceMinTopupCurrencyFloor))
+    );
+  } else if (membershipFromMeta) {
+    setCardIssuanceMinTopup(topupDefault);
   }
   const metaMax = cardIssuanceExistingCard.meta.maximumTopupCad;
   if (metaMax != null && Number.isFinite(metaMax)) {
-    setCardIssuanceMaxTopup(String(Math.min(Math.round(Number(metaMax)), cardIssuanceMaxTopupCurrencyCap)));
+    let maxVal = Math.round(Number(metaMax));
+    if (membershipFromMeta && maxVal <= 0) maxVal = topupDefaultN;
+    setCardIssuanceMaxTopup(
+      String(Math.min(Math.max(maxVal, membershipFromMeta ? topupDefaultN : 0), cardIssuanceMaxTopupCurrencyCap))
+    );
+  } else if (membershipFromMeta) {
+    setCardIssuanceMaxTopup(topupDefault);
   }
 }, [
   cardIssuanceExistingCard?.cardAddress,
   cardIssuanceExistingCard?.meta?.minimumTopupCad,
   cardIssuanceExistingCard?.meta?.maximumTopupCad,
+  cardIssuanceExistingCard?.meta?.tiers,
   cardIssuanceMinTopupCurrencyFloor,
   cardIssuanceMaxTopupCurrencyCap,
 ]);
@@ -15218,9 +15270,16 @@ const cardIssuanceEffectiveMerchantLogo = useMemo(() => {
 
  const commitProgramsOverviewMembershipFeeSetup = useCallback(
    (opts?: { amount?: string; durationKind?: number }) => {
+     const tierFeeRaw = cardIssuanceBaseTier?.membershipFee.replace(/,/g, '').trim() ?? '';
+     const amountDraft = opts?.amount ?? cardIssuanceRewardsSetupAmount;
+     const amountNorm = amountDraft.replace(/,/g, '').trim();
+     const resolvedAmount =
+       amountNorm === CARD_ISSUANCE_REWARDS_SETUP_AMOUNT_DEFAULT && tierFeeRaw
+         ? tierFeeRaw
+         : amountDraft;
      applyCardIssuanceRewardsSetup({
        membershipFeeEnabled: true,
-       amount: opts?.amount ?? cardIssuanceRewardsSetupAmount,
+       amount: resolvedAmount,
       durationKind:
         opts?.durationKind ??
         (normalizeMembershipDurationKind(cardIssuanceBaseTier?.membershipDurationKind) || 3),
@@ -15229,9 +15288,18 @@ const cardIssuanceEffectiveMerchantLogo = useMemo(() => {
    [
      applyCardIssuanceRewardsSetup,
      cardIssuanceBaseTier?.membershipDurationKind,
+     cardIssuanceBaseTier?.membershipFee,
      cardIssuanceRewardsSetupAmount,
    ]
  );
+
+ const syncMembershipFeeRewardsSetupAmountFromTier = useCallback(() => {
+   if (!cardIssuanceMembershipFeeMode || !cardIssuanceBaseTier) return;
+   const feeRaw = cardIssuanceBaseTier.membershipFee.replace(/,/g, '').trim();
+   if (!feeRaw || !Number.isFinite(Number(feeRaw)) || Number(feeRaw) <= 0) return;
+   setCardIssuanceRewardsMembershipFeeEnabled(true);
+   setCardIssuanceRewardsSetupAmount(feeRaw);
+ }, [cardIssuanceMembershipFeeMode, cardIssuanceBaseTier]);
 
  useEffect(() => {
    if (!programsCardLoyaltyTierRuleCacheKey) return;
@@ -15325,6 +15393,13 @@ const cardIssuanceEffectiveMerchantLogo = useMemo(() => {
 
  /** Inline validation: tier / min top-up must not exceed metadata maximum (existing program) or form maximum top-up. */
  const cardIssuanceRechargeLimitError = useMemo(() => {
+  if (
+    cardIssuanceMembershipFeeMode ||
+    cardIssuanceRewardsMembershipFeeEnabled ||
+    cardIssuanceRowsHaveMembershipFee(cardIssuanceTiers)
+  ) {
+    return '';
+  }
   const tierThresholdBoundedByMaxTopup = cardIssuanceTierRule !== 'cumulative';
    const metaCap = cardIssuanceExistingCard?.meta?.maximumTopupCad;
    const maxRaw = cardIssuanceMaxTopup.replace(/,/g, '').trim();
@@ -15370,6 +15445,8 @@ const cardIssuanceEffectiveMerchantLogo = useMemo(() => {
    cardIssuanceExistingCard?.meta?.maximumTopupCad,
    cardIssuanceMaxTopup,
    cardIssuanceMinTopup,
+  cardIssuanceMembershipFeeMode,
+  cardIssuanceRewardsMembershipFeeEnabled,
   cardIssuanceMinTopupCurrencyFloor,
   cardIssuanceMinTopupFloorLabel,
   cardIssuanceMaxTopupCapLabel,
@@ -19814,6 +19891,7 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
       itemCategoryOverride?: ProductionServiceCategoryOption[];
       tiersOverride?: CardIssuanceTierRow[];
       minTopupOverride?: string;
+      maxTopupOverride?: string;
       pointSystemOverride?: CardIssuancePointSystemMetadata;
       metadataOnly?: boolean;
        loadingScope?: 'default' | 'bonusEditor';
@@ -19903,6 +19981,17 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
      }
    }
    }
+   const membershipFeeTopupDefaultN = Number.parseInt(CARD_ISSUANCE_REWARDS_SETUP_AMOUNT_DEFAULT, 10);
+   const resolvedMembershipFeeTopupRaw = (
+     opts?.minTopupOverride ??
+     opts?.maxTopupOverride ??
+     CARD_ISSUANCE_REWARDS_SETUP_AMOUNT_DEFAULT
+   ).replace(/,/g, '').trim();
+   const resolvedMembershipFeeTopupParsed = Number.parseInt(resolvedMembershipFeeTopupRaw, 10);
+   const resolvedMembershipFeeTopupN =
+     Number.isFinite(resolvedMembershipFeeTopupParsed) && resolvedMembershipFeeTopupParsed > 0
+       ? resolvedMembershipFeeTopupParsed
+       : membershipFeeTopupDefaultN;
    const minTopupRaw = (
     opts?.minTopupOverride ??
     (metadataOnlyExistingCard && cardIssuanceExistingCard?.meta?.minimumTopupCad != null
@@ -19915,9 +20004,11 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
      return publishFail('Minimum top-up is required.');
    }
    const minTopupN = membershipFeeModeForPublish
-     ? 0
+     ? resolvedMembershipFeeTopupN
      : Number.parseInt(minTopupRaw, 10);
-   const minTopupAsFloat = membershipFeeModeForPublish ? 0 : parseFloat(minTopupRaw);
+   const minTopupAsFloat = membershipFeeModeForPublish
+     ? resolvedMembershipFeeTopupN
+     : parseFloat(minTopupRaw);
    if (
      !membershipFeeModeForPublish &&
      (!Number.isFinite(minTopupAsFloat) ||
@@ -19927,19 +20018,22 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
      return publishFail('Minimum top-up must be a whole number (no decimals).');
    }
    const maxTopupRaw = (
-    metadataOnlyExistingCard && cardIssuanceExistingCard?.meta?.maximumTopupCad != null
+    opts?.maxTopupOverride ??
+    (metadataOnlyExistingCard && cardIssuanceExistingCard?.meta?.maximumTopupCad != null
       ? String(Math.round(Number(cardIssuanceExistingCard.meta.maximumTopupCad)))
       : useQuickDefaultRewardsNewCard
         ? String(cardIssuanceNewCardMaxTopupCap)
-        : cardIssuanceMaxTopup
+        : cardIssuanceMaxTopup)
    ).replace(/,/g, '').trim();
    if (!membershipFeeModeForPublish && maxTopupRaw === '') {
      return publishFail('Maximum top-up is required.');
    }
    const maxTopupN = membershipFeeModeForPublish
-     ? 0
+     ? resolvedMembershipFeeTopupN
      : Number.parseInt(maxTopupRaw, 10);
-   const maxTopupAsFloat = membershipFeeModeForPublish ? 0 : parseFloat(maxTopupRaw);
+   const maxTopupAsFloat = membershipFeeModeForPublish
+     ? resolvedMembershipFeeTopupN
+     : parseFloat(maxTopupRaw);
   if (!membershipFeeModeForPublish && minTopupN < publishTopupMinFloor) {
      return publishFail(
       publishTopupMinFloor <= 0
@@ -20193,8 +20287,8 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
         }
       }
       if (membershipFeeModeForPublish) {
-        setCardIssuanceMinTopup('');
-        setCardIssuanceMaxTopup('');
+        setCardIssuanceMinTopup(CARD_ISSUANCE_REWARDS_SETUP_AMOUNT_DEFAULT);
+        setCardIssuanceMaxTopup(CARD_ISSUANCE_REWARDS_SETUP_AMOUNT_DEFAULT);
       }
       const categoryIdForIndex = normalizeCardIssuanceCategoryId(cardIssuanceCategoryId);
       if (categoryIdForIndex) {
@@ -21292,9 +21386,34 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
    setCardIssuanceOwnerAdminNotice(null);
    setCardIssuanceMerchantTextSaving(true);
    try {
+    const membershipFeePublishCtx =
+      cardIssuanceMembershipFeeMode ||
+      cardIssuanceRewardsMembershipFeeEnabled ||
+      cardIssuanceRowsHaveMembershipFee(cardIssuanceTiers);
+    const membershipFeeAmountRaw = (() => {
+      const tierFee = cardIssuanceBaseTier?.membershipFee.replace(/,/g, '').trim() ?? '';
+      const draft = cardIssuanceRewardsSetupAmount.replace(/,/g, '').trim();
+      if (draft && draft !== CARD_ISSUANCE_REWARDS_SETUP_AMOUNT_DEFAULT) return draft;
+      if (tierFee) return tierFee;
+      return CARD_ISSUANCE_REWARDS_SETUP_AMOUNT_DEFAULT;
+    })();
+    const tiersOverrideForMembershipFee = membershipFeePublishCtx
+      ? mapCardIssuanceRowsForMembershipFeeSetup(
+          cardIssuanceTiers,
+          membershipFeeAmountRaw,
+          normalizeMembershipDurationKind(cardIssuanceBaseTier?.membershipDurationKind) || 3
+        )
+      : undefined;
     const metadataOk = await handlePublishCardIssuanceRef.current({
       metadataOnly: !programBasicReloadDirty && !programBasicTiersDirty,
        loadingScope: 'bonusEditor',
+      ...(membershipFeePublishCtx
+        ? {
+            minTopupOverride: CARD_ISSUANCE_REWARDS_SETUP_AMOUNT_DEFAULT,
+            maxTopupOverride: CARD_ISSUANCE_REWARDS_SETUP_AMOUNT_DEFAULT,
+            tiersOverride: tiersOverrideForMembershipFee,
+          }
+        : {}),
      });
      if (!metadataOk) return;
      const trimmedName = cardIssuanceProgramName.trim();
@@ -21382,6 +21501,10 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
    cardIssuanceMinTopup,
    cardIssuanceMaxTopup,
   cardIssuanceTiers,
+  cardIssuanceMembershipFeeMode,
+  cardIssuanceRewardsMembershipFeeEnabled,
+  cardIssuanceBaseTier,
+  cardIssuanceRewardsSetupAmount,
  ]);
 
  useEffect(() => {
@@ -37370,6 +37493,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                  if (raw !== '' && !/^\d*\.?\d*$/.test(raw)) return;
                                  setCardIssuanceRewardsSetupAmount(raw);
                                }}
+                               onEditStart={syncMembershipFeeRewardsSetupAmountFromTier}
                                onCommit={() => commitProgramsOverviewMembershipFeeSetup()}
                                inputMode="decimal"
                                displayValue={programsOverviewMembershipFeeDisplay.feeDisplay}
@@ -38804,6 +38928,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                              if (raw !== '' && !/^\d*\.?\d*$/.test(raw)) return;
                              setCardIssuanceRewardsSetupAmount(raw);
                            }}
+                           onEditStart={syncMembershipFeeRewardsSetupAmountFromTier}
                            onCommit={() => commitProgramsOverviewMembershipFeeSetup()}
                            inputMode="decimal"
                            displayValue={programsOverviewMembershipFeeDisplay?.feeDisplay}

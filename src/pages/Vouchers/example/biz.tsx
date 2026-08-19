@@ -37447,18 +37447,6 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                            placeholder={tu('programs_config_program_description_ph')}
                            displayValue={merchantPanelDiscoverSubtitle}
                            displayClassName="line-clamp-2 text-[15px] font-medium leading-tight text-[#4b5361]"
-                           className="mb-3 rounded-none px-0 py-0 hover:bg-[#1562f0]/[0.06]"
-                           disabled={cardIssuanceMerchantTextSaving}
-                           focusRingClass={bizFocusRingClass}
-                           emptyDisplay={programsLivePreviewEmptyLabel}
-                         />
-                         <ProgramLivePreviewInlineField
-                           hideLabel
-                           label={tu('programs_config_unit_name')}
-                           value={cardIssuanceProgramName}
-                           onChange={setCardIssuanceProgramName}
-                           placeholder={tu('programs_config_unit_name_ph')}
-                           displayClassName="text-[12px] font-semibold text-[#595c5e]"
                            className="mb-4 rounded-none px-0 py-0 hover:bg-[#1562f0]/[0.06]"
                            disabled={cardIssuanceMerchantTextSaving}
                            focusRingClass={bizFocusRingClass}

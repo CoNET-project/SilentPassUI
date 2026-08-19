@@ -277,6 +277,7 @@ import {
 } from './programMenuNav';
 import {
   ProgramLivePreviewInlineField,
+  ProgramLivePreviewInlineSelect,
 } from './programLivePreviewInlineField';
 import { ValidatorDepositRedeemManagementPanel } from './validatorDepositRedeemManagementPanel';
 import {
@@ -15198,6 +15199,40 @@ const cardIssuanceEffectiveMerchantLogo = useMemo(() => {
    tu,
  ]);
 
+ const programsMembershipDurationSelectOptions = useMemo(
+   () =>
+     ([1, 2, 3, 4, 5, 6] as const).map((kind) => ({
+       value: String(kind),
+       label: tu(membershipDurationTuKey(kind) ?? 'programs_config_rewards_membership_duration_month'),
+     })),
+   [tu]
+ );
+
+ const programsOverviewMembershipDurationValue = useMemo(
+   () =>
+     String(
+       normalizeMembershipDurationKind(cardIssuanceBaseTier?.membershipDurationKind) || 3
+     ),
+   [cardIssuanceBaseTier?.membershipDurationKind]
+ );
+
+ const commitProgramsOverviewMembershipFeeSetup = useCallback(
+   (opts?: { amount?: string; durationKind?: number }) => {
+     applyCardIssuanceRewardsSetup({
+       membershipFeeEnabled: true,
+       amount: opts?.amount ?? cardIssuanceRewardsSetupAmount,
+      durationKind:
+        opts?.durationKind ??
+        (normalizeMembershipDurationKind(cardIssuanceBaseTier?.membershipDurationKind) || 3),
+     });
+   },
+   [
+     applyCardIssuanceRewardsSetup,
+     cardIssuanceBaseTier?.membershipDurationKind,
+     cardIssuanceRewardsSetupAmount,
+   ]
+ );
+
  useEffect(() => {
    if (!programsCardLoyaltyTierRuleCacheKey) return;
    const card = cardIssuanceExistingCard;
@@ -15555,6 +15590,10 @@ const programBasicTiersDirty = useMemo(() => {
       row.name.trim() !== base.name.trim() ||
       cardIssuanceTierThresholdToInt(row.threshold) !== cardIssuanceTierThresholdToInt(base.threshold) ||
       Math.round(Number(row.discountPercent) || 0) !== Math.round(Number(base.discountPercent) || 0) ||
+      (row.membershipFee ?? '').replace(/,/g, '').trim() !==
+        (base.membershipFee ?? '').replace(/,/g, '').trim() ||
+      normalizeMembershipDurationKind(row.membershipDurationKind) !==
+        normalizeMembershipDurationKind(base.membershipDurationKind) ||
       (tierBackgroundColorForPayload(row.backgroundColor) ?? '') !==
         (tierBackgroundColorForPayload(base.backgroundColor) ?? '') ||
       (row.backgroundImage ?? '').trim() !== (base.backgroundImage ?? '').trim() ||
@@ -37322,21 +37361,40 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                {tu('programs_config_rewards_membership_fee')}
                              </p>
                            </div>
-                           <div>
-                             <span className="block text-[9px] font-bold uppercase tracking-widest text-[#595c5e]">
-                               {tu('programs_overview_membership_fee_amount')}
-                             </span>
-                             <p className="font-manrope text-xs font-bold text-[#1562f0]">
-                               {programsOverviewMembershipFeeDisplay.feeDisplay}
-                             </p>
+                           <div className="min-w-0">
+                             <ProgramLivePreviewInlineField
+                               label={tu('programs_overview_membership_fee_amount')}
+                               value={cardIssuanceRewardsSetupAmount}
+                               onChange={(v) => {
+                                 const raw = v.replace(/,/g, '');
+                                 if (raw !== '' && !/^\d*\.?\d*$/.test(raw)) return;
+                                 setCardIssuanceRewardsSetupAmount(raw);
+                               }}
+                               onCommit={() => commitProgramsOverviewMembershipFeeSetup()}
+                               inputMode="decimal"
+                               displayValue={programsOverviewMembershipFeeDisplay.feeDisplay}
+                               displayClassName="!text-xs !font-bold !leading-tight text-[#1562f0] sm:!text-xs"
+                               className="rounded-lg px-0 py-0 hover:bg-[#1562f0]/[0.06]"
+                               disabled={cardIssuanceMerchantTextSaving}
+                               focusRingClass={bizFocusRingClass}
+                               emptyDisplay="—"
+                             />
                            </div>
-                           <div>
-                             <span className="block text-[9px] font-bold uppercase tracking-widest text-[#595c5e]">
-                               {tu('programs_overview_membership_valid_for')}
-                             </span>
-                             <p className="font-manrope text-xs font-bold text-[#2c2f31]">
-                               {programsOverviewMembershipFeeDisplay.durationLabel}
-                             </p>
+                           <div className="min-w-0">
+                             <ProgramLivePreviewInlineSelect
+                               label={tu('programs_overview_membership_valid_for')}
+                               value={programsOverviewMembershipDurationValue}
+                               options={programsMembershipDurationSelectOptions}
+                               onChange={(v) =>
+                                 commitProgramsOverviewMembershipFeeSetup({
+                                   durationKind: normalizeMembershipDurationKind(Number(v)) || 3,
+                                 })
+                               }
+                               displayClassName="!text-xs !font-bold !leading-tight text-[#2c2f31] sm:!text-xs"
+                               className="rounded-lg px-0 py-0 hover:bg-[#1562f0]/[0.06]"
+                               disabled={cardIssuanceMerchantTextSaving}
+                               focusRingClass={bizFocusRingClass}
+                             />
                            </div>
                            {programsOverviewMembershipFeeDisplay.minCreditDisplay ? (
                              <div>
@@ -38735,6 +38793,45 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
 
                    {cardIssuanceProgramSection === 'basic' ? (
                    <>
+                   {cardIssuanceMembershipFeeMode ? (
+                     <div className="grid grid-cols-2 gap-2 sm:gap-3">
+                       <div className="min-w-0 rounded-xl bg-[#e8eaed] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] ring-1 ring-black/[0.05] sm:rounded-2xl sm:p-4">
+                         <ProgramLivePreviewInlineField
+                           label={tu('programs_overview_membership_fee_amount')}
+                           value={cardIssuanceRewardsSetupAmount}
+                           onChange={(v) => {
+                             const raw = v.replace(/,/g, '');
+                             if (raw !== '' && !/^\d*\.?\d*$/.test(raw)) return;
+                             setCardIssuanceRewardsSetupAmount(raw);
+                           }}
+                           onCommit={() => commitProgramsOverviewMembershipFeeSetup()}
+                           inputMode="decimal"
+                           displayValue={programsOverviewMembershipFeeDisplay?.feeDisplay}
+                           disabled={cardIssuanceMerchantTextSaving}
+                           focusRingClass={bizFocusRingClass}
+                           displayClassName="mt-2 break-words font-manrope text-lg font-extrabold tracking-tight text-[#1562f0] sm:mt-3 sm:text-[1.5rem]"
+                           className="rounded-lg px-0 py-0 hover:bg-black/[0.03]"
+                           emptyDisplay="—"
+                         />
+                       </div>
+                       <div className="min-w-0 rounded-xl bg-[#e8eaed] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] ring-1 ring-black/[0.05] sm:rounded-2xl sm:p-4">
+                         <ProgramLivePreviewInlineSelect
+                           label={tu('programs_overview_membership_valid_for')}
+                           value={programsOverviewMembershipDurationValue}
+                           options={programsMembershipDurationSelectOptions}
+                           onChange={(v) =>
+                             commitProgramsOverviewMembershipFeeSetup({
+                               durationKind: normalizeMembershipDurationKind(Number(v)) || 3,
+                             })
+                           }
+                           disabled={cardIssuanceMerchantTextSaving}
+                           focusRingClass={bizFocusRingClass}
+                           displayClassName="mt-2 break-words font-manrope text-lg font-extrabold tracking-tight text-[#2c2f31] sm:mt-3 sm:text-[1.5rem]"
+                           className="rounded-lg px-0 py-0 hover:bg-black/[0.03]"
+                         />
+                       </div>
+                     </div>
+                   ) : (
                    <div className="grid grid-cols-2 gap-2 sm:gap-3">
                      <div className="min-w-0 rounded-xl bg-[#e8eaed] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] ring-1 ring-black/[0.05] sm:rounded-2xl sm:p-4">
                        <ProgramLivePreviewInlineField
@@ -38742,12 +38839,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                          value={cardIssuanceMinTopup}
                          onChange={(v) => setCardIssuanceMinTopup(v.replace(/[^\d,]/g, ''))}
                          inputMode="numeric"
-                         displayValue={
-                           cardIssuanceMembershipFeeMode
-                             ? 'Disabled (membership fee)'
-                             : programsOverviewReloadLimitsDisplay.minLine
-                         }
-                         disabled={cardIssuanceMerchantTextSaving || cardIssuanceMembershipFeeMode}
+                         displayValue={programsOverviewReloadLimitsDisplay.minLine}
+                         disabled={cardIssuanceMerchantTextSaving}
                          focusRingClass={bizFocusRingClass}
                          displayClassName="mt-2 break-words font-manrope text-lg font-extrabold tracking-tight text-[#2c2f31] sm:mt-3 sm:text-[1.5rem]"
                          className="rounded-lg px-0 py-0 hover:bg-black/[0.03]"
@@ -38759,18 +38852,15 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                          value={cardIssuanceMaxTopup}
                          onChange={(v) => setCardIssuanceMaxTopup(v.replace(/[^\d,]/g, ''))}
                          inputMode="numeric"
-                         displayValue={
-                           cardIssuanceMembershipFeeMode
-                             ? 'Disabled (membership fee)'
-                             : programsOverviewReloadLimitsDisplay.maxLine
-                         }
-                         disabled={cardIssuanceMerchantTextSaving || cardIssuanceMembershipFeeMode}
+                         displayValue={programsOverviewReloadLimitsDisplay.maxLine}
+                         disabled={cardIssuanceMerchantTextSaving}
                          focusRingClass={bizFocusRingClass}
                          displayClassName="mt-2 break-words font-manrope text-lg font-extrabold tracking-tight text-[#2c2f31] sm:mt-3 sm:text-[1.5rem]"
                          className="rounded-lg px-0 py-0 hover:bg-black/[0.03]"
                        />
                      </div>
                    </div>
+                   )}
                    </>
                    ) : null}
                  </section>

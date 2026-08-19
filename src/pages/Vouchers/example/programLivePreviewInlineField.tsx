@@ -19,6 +19,8 @@ type ProgramLivePreviewInlineFieldProps = {
   displayClassName?: string;
   /** View-mode label when value is blank (never shows input placeholder publicly). */
   emptyDisplay?: string;
+  /** Called when edit mode closes (blur or Escape). */
+  onCommit?: () => void;
 };
 
 export function ProgramLivePreviewInlineField({
@@ -38,11 +40,17 @@ export function ProgramLivePreviewInlineField({
   hideLabel = false,
   displayClassName = '',
   emptyDisplay = 'Empty',
+  onCommit,
 }: ProgramLivePreviewInlineFieldProps) {
   const fieldId = useId();
   const [editing, setEditing] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  const closeEditing = () => {
+    setEditing(false);
+    onCommit?.();
+  };
 
   useEffect(() => {
     if (!editing) return;
@@ -73,9 +81,9 @@ export function ProgramLivePreviewInlineField({
             placeholder={placeholder}
             disabled={disabled}
             onChange={(e) => onChange(maxLength != null ? e.target.value.slice(0, maxLength) : e.target.value)}
-            onBlur={() => setEditing(false)}
+            onBlur={closeEditing}
             onKeyDown={(e) => {
-              if (e.key === 'Escape') setEditing(false);
+              if (e.key === 'Escape') closeEditing();
             }}
             className={inputClass}
           />
@@ -91,9 +99,9 @@ export function ProgramLivePreviewInlineField({
             placeholder={placeholder}
             disabled={disabled}
             onChange={(e) => onChange(maxLength != null ? e.target.value.slice(0, maxLength) : e.target.value)}
-            onBlur={() => setEditing(false)}
+            onBlur={closeEditing}
             onKeyDown={(e) => {
-              if (e.key === 'Escape') setEditing(false);
+              if (e.key === 'Escape') closeEditing();
             }}
             className={inputClass}
           />
@@ -142,6 +150,10 @@ type ProgramLivePreviewInlineSelectProps<T extends string> = {
   disabled?: boolean;
   focusRingClass?: string;
   className?: string;
+  hideLabel?: boolean;
+  displayClassName?: string;
+  /** Called when edit mode closes (blur or Escape). */
+  onCommit?: () => void;
 };
 
 export function ProgramLivePreviewInlineSelect<T extends string>({
@@ -152,11 +164,19 @@ export function ProgramLivePreviewInlineSelect<T extends string>({
   disabled = false,
   focusRingClass = '',
   className = '',
+  hideLabel = false,
+  displayClassName = '',
+  onCommit,
 }: ProgramLivePreviewInlineSelectProps<T>) {
   const fieldId = useId();
   const [editing, setEditing] = useState(false);
   const selectRef = useRef<HTMLSelectElement | null>(null);
   const active = options.find((o) => o.value === value);
+
+  const closeEditing = () => {
+    setEditing(false);
+    onCommit?.();
+  };
 
   useEffect(() => {
     if (editing) selectRef.current?.focus();
@@ -174,7 +194,10 @@ export function ProgramLivePreviewInlineSelect<T extends string>({
           value={value}
           disabled={disabled}
           onChange={(e) => onChange(e.target.value as T)}
-          onBlur={() => setEditing(false)}
+          onBlur={closeEditing}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') closeEditing();
+          }}
           className={`w-full rounded-lg border border-[#1562f0]/30 bg-white px-3 py-2 text-sm font-semibold text-[#2c2f31] outline-none focus:border-[#1562f0] ${focusRingClass}`}
         >
           {options.map((opt) => (
@@ -198,10 +221,14 @@ export function ProgramLivePreviewInlineSelect<T extends string>({
       className={`group w-full rounded-lg text-left transition-colors hover:bg-[#1562f0]/[0.04] disabled:cursor-not-allowed disabled:opacity-60 ${className} ${focusRingClass}`}
       aria-label={`Edit ${label}`}
     >
-      <span className="mb-0.5 block text-[9px] font-bold uppercase tracking-widest text-[#595c5e]">{label}</span>
+      {!hideLabel ? (
+        <span className="mb-0.5 block text-[9px] font-bold uppercase tracking-widest text-[#595c5e]">{label}</span>
+      ) : null}
       <span className="flex items-start justify-between gap-2">
         <span className="min-w-0 flex-1">
-          <span className="block font-manrope text-sm font-bold leading-snug text-[#2c2f31] sm:text-base">
+          <span
+            className={`block font-manrope text-sm font-bold leading-snug text-[#2c2f31] sm:text-base ${displayClassName}`}
+          >
             {active?.label ?? '—'}
           </span>
           {active?.description ? (

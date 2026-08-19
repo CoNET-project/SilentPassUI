@@ -12983,6 +12983,8 @@ useEffect(() => {
      membershipFeeEnabled: boolean;
      amount: string;
      tierRule?: CardIssuanceTierRule;
+     /** 1=day … 6=forever; used when membership fee is on (default Month). */
+     durationKind?: number;
    }) => {
      const amountRaw = opts.amount.replace(/,/g, '').trim();
      const amount =
@@ -12994,6 +12996,7 @@ useEffect(() => {
      setCardIssuanceRewardsSetupAmount(amount);
      setCardIssuanceRewardsMembershipFeeEnabled(opts.membershipFeeEnabled);
      if (opts.membershipFeeEnabled) {
+       const durationFromOpts = normalizeMembershipDurationKind(opts.durationKind);
        setTiersByLoyaltyRule((prev) => {
          const next = { ...prev } as Record<CardIssuanceTierRule, CardIssuanceTierRow[]>;
          for (const key of CARD_ISSUANCE_TIER_RULE_KEYS) {
@@ -13003,11 +13006,14 @@ useEffect(() => {
              if (!isBase) {
                return { ...t, membershipFee: '', membershipDurationKind: 0 };
              }
+             const duration =
+               durationFromOpts ||
+               normalizeMembershipDurationKind(t.membershipDurationKind) ||
+               3;
              return {
                ...t,
                membershipFee: amount,
-               membershipDurationKind:
-                 normalizeMembershipDurationKind(t.membershipDurationKind) || 3,
+               membershipDurationKind: duration,
              };
            });
          }
@@ -13041,9 +13047,8 @@ useEffect(() => {
    },
    [cardIssuanceNewCardMaxTopupCap]
  );
- /** Skip Steps 2–3 on mobile/new issuance when preset is Default (legacy; unused by current Rewards setup UI). */
- const cardIssuanceQuickDefaultRewardsFlow =
-   !cardIssuanceExistingCard && cardIssuanceRewardsPreset === 'default';
+ /** Skip Steps 2–3 on mobile/new issuance — Publish & issue from step 1 (Membership fee on or off). */
+ const cardIssuanceQuickDefaultRewardsFlow = !cardIssuanceExistingCard;
  /** Hero logo scale 0–3: draft + shareTokenMetadata.logoDisplayTier; Step 2 tap cycles. */
  const [cardIssuanceLogoDisplayTier, setCardIssuanceLogoDisplayTier] = useState<CardPreviewLogoDisplayTier>(0);
  const [isCardConfiguratorMobileViewport, setIsCardConfiguratorMobileViewport] = useState(false);
@@ -34944,13 +34949,21 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                role="switch"
                                aria-checked={cardIssuanceRewardsMembershipFeeEnabled}
                                aria-label={tu('programs_config_rewards_membership_fee')}
-                               onClick={() =>
+                               onClick={() => {
+                                 const nextEnabled = !cardIssuanceRewardsMembershipFeeEnabled;
                                  applyCardIssuanceRewardsSetup({
-                                   membershipFeeEnabled: !cardIssuanceRewardsMembershipFeeEnabled,
-                                   amount: cardIssuanceRewardsSetupAmount,
+                                   membershipFeeEnabled: nextEnabled,
+                                   amount: nextEnabled
+                                     ? cardIssuanceRewardsSetupAmount
+                                     : CARD_ISSUANCE_REWARDS_SETUP_AMOUNT_DEFAULT,
                                    tierRule: cardIssuanceTierRule,
-                                 })
-                               }
+                                   durationKind: nextEnabled
+                                     ? normalizeMembershipDurationKind(
+                                         cardIssuanceBaseTier?.membershipDurationKind
+                                       ) || 3
+                                     : undefined,
+                                 });
+                               }}
                                className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${bizFocusRingClass} ${
                                  cardIssuanceRewardsMembershipFeeEnabled
                                    ? 'bg-[#0051d1]'
@@ -34967,43 +34980,84 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                              </button>
                            </div>
                            {cardIssuanceRewardsMembershipFeeEnabled ? (
-                             <div className="space-y-2">
-                               <label
-                                 className="ml-1 block text-[10px] font-bold uppercase tracking-[0.15em] text-[#595c5e]"
-                                 htmlFor="card-issuance-rewards-membership-fee-amount"
-                               >
-                                 {tu('programs_config_rewards_membership_fee_amount')}
-                               </label>
-                               <div className="relative">
-                                 <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-[#595c5e]">
-                                   {cardIssuanceDisplayMoneyPrefix}
-                                 </span>
-                                 <input
-                                   ref={cardIssuanceRewardsSetupAmountWheelRef}
-                                   id="card-issuance-rewards-membership-fee-amount"
-                                   type="number"
-                                   inputMode="decimal"
-                                   autoComplete="off"
-                                   enterKeyHint="done"
-                                   min={0}
-                                   step="any"
-                                   value={cardIssuanceRewardsSetupAmount}
-                                   onKeyDown={preventNumericInputStepKeys}
-                                   onKeyDownCapture={preventNumericInputStepKeys}
-                                   onWheel={preventNumericInputWheelStep}
-                                   onChange={(e) => {
-                                     const raw = e.target.value.replace(/,/g, '');
-                                     if (raw !== '' && !/^\d*\.?\d*$/.test(raw)) return;
-                                     setCardIssuanceRewardsSetupAmount(raw);
-                                   }}
-                                   onBlur={() =>
+                             <div className="space-y-3">
+                               <div className="space-y-2">
+                                 <label
+                                   className="ml-1 block text-[10px] font-bold uppercase tracking-[0.15em] text-[#595c5e]"
+                                   htmlFor="card-issuance-rewards-membership-fee-amount"
+                                 >
+                                   {tu('programs_config_rewards_membership_fee_amount')}
+                                 </label>
+                                 <div className="relative">
+                                   <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-[#595c5e]">
+                                     {cardIssuanceDisplayMoneyPrefix}
+                                   </span>
+                                   <input
+                                     ref={cardIssuanceRewardsSetupAmountWheelRef}
+                                     id="card-issuance-rewards-membership-fee-amount"
+                                     type="number"
+                                     inputMode="decimal"
+                                     autoComplete="off"
+                                     enterKeyHint="done"
+                                     min={0}
+                                     step="any"
+                                     value={cardIssuanceRewardsSetupAmount}
+                                     onKeyDown={preventNumericInputStepKeys}
+                                     onKeyDownCapture={preventNumericInputStepKeys}
+                                     onWheel={preventNumericInputWheelStep}
+                                     onChange={(e) => {
+                                       const raw = e.target.value.replace(/,/g, '');
+                                       if (raw !== '' && !/^\d*\.?\d*$/.test(raw)) return;
+                                       setCardIssuanceRewardsSetupAmount(raw);
+                                     }}
+                                     onBlur={() =>
+                                       applyCardIssuanceRewardsSetup({
+                                         membershipFeeEnabled: true,
+                                         amount: cardIssuanceRewardsSetupAmount,
+                                         durationKind:
+                                           normalizeMembershipDurationKind(
+                                             cardIssuanceBaseTier?.membershipDurationKind
+                                           ) || 3,
+                                       })
+                                     }
+                                     className={`w-full rounded-2xl border-none bg-[#eef1f3] py-4 pl-14 pr-6 text-base font-medium text-[#2c2f31] placeholder:text-[#abadaf] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
+                                   />
+                                 </div>
+                               </div>
+                               <div className="space-y-2">
+                                 <label
+                                   className="ml-1 block text-[10px] font-bold uppercase tracking-[0.15em] text-[#595c5e]"
+                                   htmlFor="card-issuance-rewards-membership-duration"
+                                 >
+                                   {tu('programs_config_rewards_membership_duration')}
+                                 </label>
+                                 <select
+                                   id="card-issuance-rewards-membership-duration"
+                                   value={String(
+                                     normalizeMembershipDurationKind(
+                                       cardIssuanceBaseTier?.membershipDurationKind
+                                     ) || 3
+                                   )}
+                                   onChange={(e) =>
                                      applyCardIssuanceRewardsSetup({
                                        membershipFeeEnabled: true,
                                        amount: cardIssuanceRewardsSetupAmount,
+                                       durationKind: normalizeMembershipDurationKind(e.target.value) || 3,
                                      })
                                    }
-                                   className={`w-full rounded-2xl border-none bg-[#eef1f3] py-4 pl-14 pr-6 text-base font-medium text-[#2c2f31] placeholder:text-[#abadaf] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
-                                 />
+                                   className={`w-full rounded-2xl border-none bg-[#eef1f3] px-6 py-4 text-base font-medium text-[#2c2f31] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass}`}
+                                 >
+                                   <option value={1}>{tu('programs_config_rewards_membership_duration_day')}</option>
+                                   <option value={2}>{tu('programs_config_rewards_membership_duration_week')}</option>
+                                   <option value={3}>{tu('programs_config_rewards_membership_duration_month')}</option>
+                                   <option value={4}>
+                                     {tu('programs_config_rewards_membership_duration_quarter')}
+                                   </option>
+                                   <option value={5}>{tu('programs_config_rewards_membership_duration_year')}</option>
+                                   <option value={6}>
+                                     {tu('programs_config_rewards_membership_duration_forever')}
+                                   </option>
+                                 </select>
                                </div>
                              </div>
                            ) : (
@@ -35033,7 +35087,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                        onClick={() =>
                                          applyCardIssuanceRewardsSetup({
                                            membershipFeeEnabled: false,
-                                           amount: cardIssuanceRewardsSetupAmount,
+                                           amount: CARD_ISSUANCE_REWARDS_SETUP_AMOUNT_DEFAULT,
                                            tierRule: key,
                                          })
                                        }
@@ -35049,46 +35103,6 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                      </button>
                                    );
                                  })}
-                               </div>
-                               <div className="space-y-2">
-                                 <label
-                                   className="ml-1 block text-[10px] font-bold uppercase tracking-[0.15em] text-[#595c5e]"
-                                   htmlFor="card-issuance-rewards-tier-amount"
-                                 >
-                                   {tu('programs_config_rewards_tier_amount')}
-                                 </label>
-                                 <div className="relative">
-                                   <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-[#595c5e]">
-                                     {cardIssuanceDisplayMoneyPrefix}
-                                   </span>
-                                   <input
-                                     ref={cardIssuanceRewardsSetupAmountWheelRef}
-                                     id="card-issuance-rewards-tier-amount"
-                                     type="number"
-                                     inputMode="decimal"
-                                     autoComplete="off"
-                                     enterKeyHint="done"
-                                     min={0}
-                                     step="any"
-                                     value={cardIssuanceRewardsSetupAmount}
-                                     onKeyDown={preventNumericInputStepKeys}
-                                     onKeyDownCapture={preventNumericInputStepKeys}
-                                     onWheel={preventNumericInputWheelStep}
-                                     onChange={(e) => {
-                                       const raw = e.target.value.replace(/,/g, '');
-                                       if (raw !== '' && !/^\d*\.?\d*$/.test(raw)) return;
-                                       setCardIssuanceRewardsSetupAmount(raw);
-                                     }}
-                                     onBlur={() =>
-                                       applyCardIssuanceRewardsSetup({
-                                         membershipFeeEnabled: false,
-                                         amount: cardIssuanceRewardsSetupAmount,
-                                         tierRule: cardIssuanceTierRule,
-                                       })
-                                     }
-                                     className={`w-full rounded-2xl border-none bg-[#eef1f3] py-4 pl-14 pr-6 text-base font-medium text-[#2c2f31] placeholder:text-[#abadaf] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
-                                   />
-                                 </div>
                                </div>
                              </div>
                            )}

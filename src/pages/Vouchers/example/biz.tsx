@@ -27897,10 +27897,6 @@ const isCardConfiguratorMobileShell = useMemo(
     ketNoCardProgramsEligible,
   ]
 );
-/** Mobile Card Setup before first issue: Discover · Featured Brands preview only (no brand/rewards forms). */
-const cardIssuanceMobilePreviewOnlyCreate =
-  isCardConfiguratorMobileShell && !cardIssuanceExistingCard;
-
 /** Programs mobile top chrome and the global mobile bar are mutually exclusive. */
 const mediumMenuPageUsesGlobalOnly = isMediumMerchantViewport && activeTab !== 'Overview';
 /** On tablet (701–1023px, below `lg`), `mediumMenuPageUsesGlobalOnly` hides Programs chrome but previously left the global floating bar visible; Card Configurator / Ket welcome already provide a fixed top bar — hide the duplicate global menu+search+tag strip. */
@@ -34615,7 +34611,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
              <div
                className={`grid min-w-0 grid-cols-1 gap-6 min-[1440px]:grid-cols-12 ${
                  isCardConfiguratorMobileShell
-                   ? cardIssuanceMobilePreviewOnlyCreate || cardIssuanceMobileStep < 2
+                   ? cardIssuanceMobileStep < 2
                      ? CARD_CONFIGURATOR_MOBILE_MAIN_PAD
                      : CARD_CONFIGURATOR_MOBILE_MAIN_PAD_MARKET_HEADER
                    : ''
@@ -34623,9 +34619,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
              >
                <div className="min-w-0 space-y-6 min-[1440px]:col-span-7">
                  <section
-                   className={`rounded-lg bg-white shadow-sm ${
-                     cardIssuanceMobilePreviewOnlyCreate ? 'p-4 sm:p-5' : 'p-6 sm:p-8'
-                   } ${
+                   className={`rounded-lg bg-white p-6 shadow-sm sm:p-8 ${
                      isCardConfiguratorMobileShell && cardIssuanceMobileStep !== 1 ? 'hidden' : ''
                    }`}
                  >
@@ -34698,13 +34692,6 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                        </div>
                      </div>
                    </div>
-                   {cardIssuanceMobilePreviewOnlyCreate && cardIssuanceCreateError ? (
-                     <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">
-                       {cardIssuanceCreateError}
-                     </p>
-                   ) : null}
-                   {!cardIssuanceMobilePreviewOnlyCreate ? (
-                   <>
                    {isCardConfiguratorMobileShell && cardIssuanceMobileStep === 1 ? (
                      <header className="mb-8 space-y-2 border-b border-[#abadaf]/20 pb-6">
                        <span className="block text-[10px] font-bold uppercase tracking-widest text-[#0051d1]">
@@ -35147,9 +35134,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                </div>
                              </div>
                            )}
-                          {cardIssuanceCreateError &&
-                          cardIssuanceQuickDefaultRewardsFlow &&
-                          !cardIssuanceMobilePreviewOnlyCreate ? (
+                          {cardIssuanceCreateError && cardIssuanceQuickDefaultRewardsFlow ? (
                             <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">
                               {cardIssuanceCreateError}
                             </p>
@@ -35158,8 +35143,6 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                        ) : null}
                      </div>
                  </div>
-                 </>
-                 ) : null}
                  </section>
 
                  <section

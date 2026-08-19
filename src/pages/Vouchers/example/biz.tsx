@@ -21406,7 +21406,8 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
       : undefined;
     const metadataOk = await handlePublishCardIssuanceRef.current({
       metadataOnly: !programBasicReloadDirty && !programBasicTiersDirty,
-       loadingScope: 'bonusEditor',
+      loadingScope: 'bonusEditor',
+      skipOnChainRefresh: true,
       ...(membershipFeePublishCtx
         ? {
             minTopupOverride: CARD_ISSUANCE_REWARDS_SETUP_AMOUNT_DEFAULT,
@@ -21414,7 +21415,7 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
             tiersOverride: tiersOverrideForMembershipFee,
           }
         : {}),
-     });
+    });
      if (!metadataOk) return;
      const trimmedName = cardIssuanceProgramName.trim();
      const trimmedDesc = cardIssuanceDescription.trim();

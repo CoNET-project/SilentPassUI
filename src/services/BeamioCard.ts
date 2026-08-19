@@ -1896,7 +1896,9 @@ export const createBeamioCard = async (params: CreateBeamioCardParams): Promise<
 			...(typeof params.transferWhitelistEnabled === 'boolean' && {
 				transferWhitelistEnabled: params.transferWhitelistEnabled,
 			}),
-			...(params.upgradeType === 1 || params.upgradeType === 2 ? { upgradeType: params.upgradeType } : {}),
+			...(params.upgradeType === 0 || params.upgradeType === 1 || params.upgradeType === 2
+				? { upgradeType: params.upgradeType }
+				: {}),
 			...(params.shareTokenMetadata && { shareTokenMetadata: params.shareTokenMetadata }),
 			...(params.tiers && params.tiers.length > 0 && { tiers: params.tiers }),
 		})

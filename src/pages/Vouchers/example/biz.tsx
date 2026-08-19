@@ -13051,7 +13051,7 @@ useEffect(() => {
    },
    [cardIssuanceNewCardMaxTopupCap]
  );
- /** Skip Steps 2–3 on mobile/new issuance — Publish & issue from step 1 (Membership fee on or off). */
+ /** New issuance: mobile Card Setup is one step — Discover preview + Publish & issue (no Rewards wizard). */
  const cardIssuanceQuickDefaultRewardsFlow = !cardIssuanceExistingCard;
  /** Hero logo scale 0–3: draft + shareTokenMetadata.logoDisplayTier; Step 2 tap cycles. */
  const [cardIssuanceLogoDisplayTier, setCardIssuanceLogoDisplayTier] = useState<CardPreviewLogoDisplayTier>(0);
@@ -13093,11 +13093,11 @@ useEffect(() => {
    setCardIssuanceMobileStep((s) => (s > 1 ? 1 : s));
  }, [cardIssuanceQuickDefaultRewardsFlow, isCardConfiguratorMobileViewport]);
 
- useEffect(() => {
-   if (!cardIssuanceExistingCard) {
-     setCardIssuanceActiveProgramView('overview');
-   }
- }, [cardIssuanceExistingCard]);
+useEffect(() => {
+  if (cardIssuanceExistingCard?.cardAddress) {
+    setCardIssuanceActiveProgramView('overview');
+  }
+}, [cardIssuanceExistingCard?.cardAddress]);
 
  useEffect(() => {
    if (!cardIssuanceExistingCard?.cardAddress) return;
@@ -13469,11 +13469,11 @@ useEffect(() => {
  } | null>(null);
  /** Primary BeamioUserCard owned by profile (factory / cardsOfOwner); Staff terminals + registration use this instead of infra when set. */
  const [merchantOwnCardAddress, setMerchantOwnCardAddress] = useState<string | null>(null);
- /** Ket #0 + no factory card, issuer/Ket reads done — hand off to Programs without flashing Dashboard */
+ /** Ket #0 + no factory card, issuer/Ket reads done — Card Setup on Overview until card is issued */
  const programAreaGateReady =
    profileOwnsIssuedBeamioCardFetched && ownsBusinessStartKetToken0Fetched;
- /** Programs routes require an issued card or Ket #0. Direct /Program/Basic URLs must not bypass this. */
- const canEnterProgramArea = profileOwnsIssuedBeamioCard || ownsBusinessStartKetToken0;
+ /** Programs routes require a factory-issued merchant card. Ket #0 alone stays on Overview Card Setup. */
+ const canEnterProgramArea = profileOwnsIssuedBeamioCard;
  const ketNoCardProgramsEligible = useMemo(
    () =>
      profileOwnsIssuedBeamioCardFetched &&
@@ -13496,6 +13496,23 @@ useEffect(() => {
  const cardIssuanceProgramsOrBusinessActive =
    isProgramAreaTab(activeTab) ||
    (activeTab === 'Overview' && ketNoCardProgramsEligible);
+
+ /** Card Setup / Discover preview — Ket Overview pre-issue, or legacy configure; never Program after first issue. */
+ const cardIssuanceShowConfiguratorStudio = useMemo(() => {
+   if (isProgramAreaTab(activeTab) && profileOwnsIssuedBeamioCard) return false;
+   return !cardIssuanceExistingCard || cardIssuanceActiveProgramView === 'configure';
+ }, [
+   activeTab,
+   profileOwnsIssuedBeamioCard,
+   cardIssuanceExistingCard,
+   cardIssuanceActiveProgramView,
+ ]);
+
+ useEffect(() => {
+   if (isProgramAreaTab(activeTab) && profileOwnsIssuedBeamioCard) {
+     setCardIssuanceActiveProgramView('overview');
+   }
+ }, [activeTab, profileOwnsIssuedBeamioCard]);
 
 const cardIssuanceRedeemCouponIdsKey = useMemo(
   () =>
@@ -13804,13 +13821,13 @@ useEffect(() => {
    profileOwnsIssuedBeamioCardFetched,
    ownsBusinessStartKetToken0Fetched,
  ]);
- /** Sidebar / header: while Overview+Ket handoff, show Programs as active to match main panel */
- const navChromeTab =
-   activeTab === 'Overview' && ketNoCardProgramsEligible ? PROGRAM_TAB_BASIC : activeTab;
+ const navChromeTab = activeTab;
 
  const cardIssuanceProgramSection = useMemo(
-   () => programSectionFromTab(activeTab),
-   [activeTab]
+   () =>
+     programSectionFromTab(activeTab) ??
+     (ketNoCardProgramsEligible && activeTab === 'Overview' ? 'basic' : null),
+   [activeTab, ketNoCardProgramsEligible]
  );
 
  useEffect(() => {
@@ -16843,8 +16860,8 @@ const discardDraftCardIssuanceServiceCategory = useCallback((categoryId: string)
 
 const closeCardIssuanceProductionsCatalog = useCallback(() => {
   if (normalizeProgramTab(activeTab) === PROGRAM_TAB_BUSINESS || isBusinessRoute) {
-    navigate('/Program/Basic');
-    setActiveTab(PROGRAM_TAB_BASIC);
+    navigate('/native-pos');
+    setActiveTab('Overview');
   }
   setCardIssuanceProductionsPanelOpen(false);
   setCardIssuanceProductionEditorOpen(false);
@@ -20053,7 +20070,7 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
          ? ethers.getAddress(cardIssuanceExistingCard.cardAddress)
          : undefined);
     if (res.success && resolvedPublishCardAddr) {
-      if (tiersPayload && tiersPayload.length > 0) {
+      if (tiersPayload && tiersPayload.length > 0 && !membershipFeeModeForPublish) {
         const pkForFees = profiles?.[0]?.privateKeyArmor;
         if (pkForFees) {
           const feeSync = await publishMembershipFeesViaExecuteForOwner({
@@ -20107,6 +20124,7 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
            cardAddress: resolvedPublishCardAddr,
            hash: typeof txHashFromRes === 'string' ? txHashFromRes : '',
          });
+         setCardIssuanceActiveProgramView('overview');
        }
 
        const profileForPost = profiles?.[0];
@@ -21534,7 +21552,7 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
        setCardIssuanceDescription(draft.description);
      }
      if (draft.mobileStep != null) {
-       setCardIssuanceMobileStep(draft.mobileStep);
+       setCardIssuanceMobileStep(cardIssuanceExistingCard ? draft.mobileStep : 1);
      }
      if (draft.configuratorPreviewMode === 'app' || draft.configuratorPreviewMode === 'physical') {
        setCardIssuanceConfiguratorPreviewMode(draft.configuratorPreviewMode);
@@ -23631,6 +23649,10 @@ const [memberDirectoryUserTypeDb, setMemberDirectoryUserTypeDb] = useState<Recor
 
  const handleTabChange = useCallback((tab: string, opts?: { transactionsSidebar?: 'transactions' | 'insights' }) => {
   if (!confirmLeavingProgramBasic(tab)) return;
+  if (ketNoCardProgramsEligibleRef.current) {
+    const programTab = normalizeProgramTab(tab);
+    if (programTab || tab !== 'Overview') return;
+  }
   if (isTerminalsMarketRoute && tab !== 'Staff') {
     navigate('/native-pos');
   }
@@ -23707,15 +23729,11 @@ const setMobileScrollContainerNode = useCallback((node: HTMLDivElement | null) =
    }, 320);
  }, [activeTab, handleTabChange]);
 
- /** After kit Stripe / redeem thank-you: avoid Overview shell hidden (ket+no card) without Programs tab yet — go straight to Programs when eligible. */
+ /** After kit Stripe / redeem thank-you: Ket + no card stays on Overview Card Setup. */
  const finishMerchantKitThankYouAndEnterDashboard = useCallback((closeOverlay: () => void) => {
    closeOverlay();
    setCardIssuanceMobileStep(1);
-   if (ketNoCardProgramsEligibleRef.current) {
-     handleTabChange(PROGRAM_TAB_BASIC);
-   } else {
-     handleTabChange('Overview');
-   }
+   handleTabChange('Overview');
    requestAnimationFrame(() => {
      mobileScrollContainerRef.current?.scrollTo({ top: 0, left: 0, behavior: 'auto' });
      window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
@@ -27859,26 +27877,29 @@ useEffect(() => {
    cardIssuanceKetWelcomeCoverDismissed,
  ]);
 
-/** Card Configurator: phone layout (fixed header/footer; steps 1–3) per `marketExample.html`.
- * Must only apply on Programs / Card Issuance Setup. Otherwise mobile Dashboard can accidentally
- * hide its floating top bar merely because issuance metadata was not fetched on the Overview tab.
+/** Card Configurator: phone layout (fixed header/footer) per `marketExample.html`.
+ * New issuance: one step (Discover preview + Publish). Overview when Ket #0 + no factory card yet.
+ * Issued cards edit via Live Preview / Issued Program Asset — not this mobile Card Setup shell.
  */
 const isCardConfiguratorMobileShell = useMemo(
   () =>
-    isProgramAreaTab(activeTab) &&
+    (isProgramAreaTab(activeTab) || (activeTab === 'Overview' && ketNoCardProgramsEligible)) &&
     cardIssuanceProgramSection === 'basic' &&
     isCardConfiguratorMobileViewport &&
-    (!cardIssuanceExistingCard || cardIssuanceActiveProgramView === 'configure') &&
+    cardIssuanceShowConfiguratorStudio &&
     cardIssuanceOnchainFetch !== 'loading',
   [
     activeTab,
     cardIssuanceProgramSection,
     isCardConfiguratorMobileViewport,
-    cardIssuanceExistingCard,
-    cardIssuanceActiveProgramView,
+    cardIssuanceShowConfiguratorStudio,
     cardIssuanceOnchainFetch,
+    ketNoCardProgramsEligible,
   ]
 );
+/** Mobile Card Setup before first issue: Discover · Featured Brands preview only (no brand/rewards forms). */
+const cardIssuanceMobilePreviewOnlyCreate =
+  isCardConfiguratorMobileShell && !cardIssuanceExistingCard;
 
 /** Programs mobile top chrome and the global mobile bar are mutually exclusive. */
 const mediumMenuPageUsesGlobalOnly = isMediumMerchantViewport && activeTab !== 'Overview';
@@ -27904,17 +27925,6 @@ const programsMobileTopNavVisible =
    if (!showCardIssuanceKetWelcomeCover) return;
    setCardIssuanceActiveProgramView('overview');
  }, [showCardIssuanceKetWelcomeCover]);
-
- /** After verification / landing on Dashboard (Overview): Ket #0 + no factory-issued card → open Programs Basic so “Your network is ready” can show. */
- useLayoutEffect(() => {
-   if (activeTab !== 'Overview') return;
-   if (!ketNoCardProgramsEligible) return;
-   handleProgramTabChange(PROGRAM_TAB_BASIC);
- }, [
-   activeTab,
-   ketNoCardProgramsEligible,
-   handleProgramTabChange,
- ]);
 
  const liteChainMigrationTriedRef = useRef(false);
  useEffect(() => {
@@ -30327,9 +30337,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
       <div
         ref={setMobileScrollContainerNode}
         onScroll={handleMobileContentScroll}
-        className={`flex-1 min-h-0 relative overflow-y-auto overscroll-y-contain p-2 sm:p-4 ${
-          isCardConfiguratorMobileShell && cardIssuanceMobileStep === 3 ? 'bg-transparent' : ''
-        }`}
+        className={`flex-1 min-h-0 relative overflow-y-auto overscroll-y-contain p-2 sm:p-4`}
       >
         {!hideMobileFloatingBar && !programsMobileTopNavVisible ? (
           <div
@@ -32808,7 +32816,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                      handleTabChange('Transactions', { transactionsSidebar: 'transactions' });
                    }}
                    onGoToPrograms={() => {
-                     handleTabChange(PROGRAM_TAB_BASIC);
+                     handleTabChange(canEnterProgramArea ? PROGRAM_TAB_BASIC : 'Overview');
                    }}
                  />
                )}
@@ -33314,7 +33322,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                  <div className="hidden lg:block">
                    <MembersLoyaltyNoAaEditorial
                      onSetUpFirstProgram={() => {
-                       handleTabChange(PROGRAM_TAB_BASIC);
+                       handleTabChange(canEnterProgramArea ? PROGRAM_TAB_BASIC : 'Overview');
                      }}
                    />
                  </div>
@@ -34259,7 +34267,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
            )
          )}
 
-         {(isProgramAreaTab(activeTab) || ketNoCardProgramsEligible) && (
+         {((isProgramAreaTab(activeTab) && profileOwnsIssuedBeamioCard) ||
+           (ketNoCardProgramsEligible && activeTab === 'Overview')) && (
            showBizFirstMembershipOnboarding ? (
              <div className="mx-auto w-full max-w-5xl animate-in fade-in duration-300 bg-[#f5f7f9] px-4 pb-20 pt-4 font-sans antialiased text-slate-800 sm:px-6 lg:px-0 md:pt-6">
                <header className="mb-8 mt-2 space-y-4 md:mt-6 md:space-y-5">
@@ -34443,7 +34452,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
            ) : (
            <div
              className={`relative mx-auto w-full max-w-[1280px] animate-in fade-in duration-300 px-3 pb-8 pt-2 font-sans antialiased text-[#2c2f31] sm:px-5 lg:px-8 ${
-               cardIssuanceExistingCard && cardIssuanceActiveProgramView === 'overview'
+               !cardIssuanceShowConfiguratorStudio && cardIssuanceExistingCard
                  ? 'bg-transparent'
                  : CARD_CONFIGURATOR_REVIEW_SURFACE_CLASS
              }`}
@@ -34451,7 +34460,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
              {isCardConfiguratorMobileShell ? (
                <CardConfiguratorMobileChrome
                  step={cardIssuanceQuickDefaultRewardsFlow ? 1 : cardIssuanceMobileStep}
-                 totalSteps={cardIssuanceQuickDefaultRewardsFlow ? 1 : 3}
+                 totalSteps={cardIssuanceQuickDefaultRewardsFlow ? 1 : 2}
                  headerLayout={
                    cardIssuanceQuickDefaultRewardsFlow
                      ? 'default'
@@ -34482,22 +34491,19 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                        : tu('programs_config_publish_issue')
                      : cardIssuanceMobileStep === 1
                        ? tu('programs_config_next_rewards')
-                       : cardIssuanceMobileStep === 2
-                         ? tu('programs_config_next_review')
-                         : cardIssuanceCreateLoading
-                           ? tu('programs_config_creating')
-                           : cardIssuanceExistingCard
-                             ? tu('programs_config_publish_changes')
-                             : tu('programs_config_publish_issue')
+                       : cardIssuanceCreateLoading
+                         ? tu('programs_config_creating')
+                         : cardIssuanceExistingCard
+                           ? tu('programs_config_publish_changes')
+                           : tu('programs_config_publish_issue')
                  }
                  primaryDisabled={
                    cardIssuanceCreateLoading &&
-                   (cardIssuanceMobileStep === 3 ||
+                   (cardIssuanceMobileStep === 2 ||
                      (cardIssuanceQuickDefaultRewardsFlow && cardIssuanceMobileStep === 1))
                  }
                  showPrimaryChevron={
-                   (cardIssuanceMobileStep === 1 && !cardIssuanceQuickDefaultRewardsFlow) ||
-                   cardIssuanceMobileStep === 2
+                   cardIssuanceMobileStep === 1 && !cardIssuanceQuickDefaultRewardsFlow
                  }
                  onPrimary={() => {
                    if (
@@ -34518,16 +34524,6 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                      });
                      return;
                    }
-                   if (cardIssuanceMobileStep === 2) {
-                     setCardIssuanceMobileStep(3);
-                     requestAnimationFrame(() => {
-                       requestAnimationFrame(() => {
-                         mobileScrollContainerRef.current?.scrollTo({ top: 0, left: 0, behavior: 'auto' });
-                         window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
-                       });
-                     });
-                     return;
-                   }
                    void handlePublishCardIssuance();
                  }}
                />
@@ -34536,20 +34532,20 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                className={`mb-6 flex flex-col gap-3 border-b border-[#abadaf]/25 pb-4 sm:flex-row sm:items-center sm:justify-between ${
                  isCardConfiguratorMobileShell ? 'hidden' : ''
                } ${
-                 cardIssuanceExistingCard && cardIssuanceActiveProgramView === 'overview' ? 'hidden' : ''
+                 cardIssuanceShowConfiguratorStudio ? '' : 'hidden'
                } ${
                  isCardConfiguratorMobileViewport ? 'md:hidden' : ''
                }`}
              >
                <div className="min-w-0">
                  <h2 className="font-manrope text-2xl font-extrabold tracking-tight text-[#1562f0] sm:text-[1.65rem]">
-                   {cardIssuanceExistingCard && cardIssuanceActiveProgramView === 'overview'
-                     ? tu('programs_config_title')
-                     : tu('programs_configurator_title')}
+                   {cardIssuanceShowConfiguratorStudio
+                     ? tu('programs_configurator_title')
+                     : tu('programs_config_title')}
                  </h2>
                 <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.2em] text-[#747779]">{tu('programs_config_studio_kicker')}</p>
                </div>
-               {(!cardIssuanceExistingCard || cardIssuanceActiveProgramView === 'configure') &&
+               {cardIssuanceShowConfiguratorStudio &&
                cardIssuanceOnchainFetch !== 'loading' ? (
                  <div className="flex flex-wrap items-center gap-3">
                    {cardIssuanceExistingCard && cardIssuanceActiveProgramView === 'configure' ? (
@@ -34588,9 +34584,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
 
              <div
                className={`mb-6 ${isCardConfiguratorMobileShell ? 'hidden' : ''} ${
-                 cardIssuanceExistingCard &&
-                 cardIssuanceActiveProgramView === 'overview' &&
-                 cardIssuanceOnchainFetch !== 'loading'
+                 !cardIssuanceShowConfiguratorStudio && cardIssuanceOnchainFetch !== 'loading'
                    ? 'hidden'
                    : ''
                }`}
@@ -34603,11 +34597,11 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                  <p className="max-w-2xl text-sm font-medium leading-relaxed text-[#595c5e] sm:text-base">
                    {tu('programs_config_define_new_desc')}
                  </p>
-               ) : cardIssuanceActiveProgramView === 'overview' ? null : (
+               ) : cardIssuanceShowConfiguratorStudio ? (
                  <p className="max-w-2xl text-sm font-medium leading-relaxed text-[#595c5e] sm:text-base">
                    {tu('programs_config_edit_existing_desc')}
                  </p>
-               )}
+               ) : null}
              </div>
 
              {cardIssuanceOnchainFetch === 'loading' ? (
@@ -34617,19 +34611,21 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                </div>
              ) : (
              <>
-             {(!cardIssuanceExistingCard || cardIssuanceActiveProgramView === 'configure') ? (
+             {cardIssuanceShowConfiguratorStudio ? (
              <div
                className={`grid min-w-0 grid-cols-1 gap-6 min-[1440px]:grid-cols-12 ${
                  isCardConfiguratorMobileShell
-                   ? cardIssuanceMobileStep >= 2
-                     ? CARD_CONFIGURATOR_MOBILE_MAIN_PAD_MARKET_HEADER
-                     : CARD_CONFIGURATOR_MOBILE_MAIN_PAD
+                   ? cardIssuanceMobilePreviewOnlyCreate || cardIssuanceMobileStep < 2
+                     ? CARD_CONFIGURATOR_MOBILE_MAIN_PAD
+                     : CARD_CONFIGURATOR_MOBILE_MAIN_PAD_MARKET_HEADER
                    : ''
-               } ${isCardConfiguratorMobileShell && cardIssuanceMobileStep === 3 ? 'bg-transparent' : ''}`}
+               }`}
              >
                <div className="min-w-0 space-y-6 min-[1440px]:col-span-7">
                  <section
-                   className={`rounded-lg bg-white p-6 shadow-sm sm:p-8 ${
+                   className={`rounded-lg bg-white shadow-sm ${
+                     cardIssuanceMobilePreviewOnlyCreate ? 'p-4 sm:p-5' : 'p-6 sm:p-8'
+                   } ${
                      isCardConfiguratorMobileShell && cardIssuanceMobileStep !== 1 ? 'hidden' : ''
                    }`}
                  >
@@ -34702,6 +34698,13 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                        </div>
                      </div>
                    </div>
+                   {cardIssuanceMobilePreviewOnlyCreate && cardIssuanceCreateError ? (
+                     <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">
+                       {cardIssuanceCreateError}
+                     </p>
+                   ) : null}
+                   {!cardIssuanceMobilePreviewOnlyCreate ? (
+                   <>
                    {isCardConfiguratorMobileShell && cardIssuanceMobileStep === 1 ? (
                      <header className="mb-8 space-y-2 border-b border-[#abadaf]/20 pb-6">
                        <span className="block text-[10px] font-bold uppercase tracking-widest text-[#0051d1]">
@@ -35144,7 +35147,9 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                </div>
                              </div>
                            )}
-                          {cardIssuanceCreateError && cardIssuanceQuickDefaultRewardsFlow ? (
+                          {cardIssuanceCreateError &&
+                          cardIssuanceQuickDefaultRewardsFlow &&
+                          !cardIssuanceMobilePreviewOnlyCreate ? (
                             <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">
                               {cardIssuanceCreateError}
                             </p>
@@ -35153,264 +35158,9 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                        ) : null}
                      </div>
                  </div>
-                 </section>
-
-                 {isCardConfiguratorMobileShell && cardIssuanceMobileStep === 3 ? (
-                   <div className="space-y-5 bg-transparent px-2 pb-4 pt-1 sm:px-3">
-                     <div
-                       className={`sticky z-40 mx-auto w-full max-w-lg bg-transparent px-3 pb-4 sm:px-4 sm:pb-5 ${CARD_CONFIGURATOR_MOBILE_STICKY_BELOW_HEADER_CLASS}`}
-                     >
-                       <section aria-label={tu('programs_config_card_preview_aria')}>
-                         <div className="px-1 pb-1 sm:px-2 sm:pb-2">
-                           <div className="relative mx-auto w-full max-w-[440px] group/preview-review">
-                             <div
-                               className="absolute -inset-1 rounded-xl bg-primary/20 blur-2xl transition duration-500 group-hover/preview-review:bg-primary/30"
-                               aria-hidden
-                             />
-                             <div className="relative rounded-2xl shadow-xl shadow-black/20">
-                               <div
-                                 className="relative flex aspect-[408/260] w-full flex-col justify-between overflow-hidden rounded-2xl border p-4"
-                                 style={{
-                                   background: cardIssuancePreviewCardGradientCss,
-                                   color: cardIssuancePreviewPassHeroTheme.primary,
-                                   borderColor: cardIssuancePreviewPassHeroTheme.cardBorder,
-                                 }}
-                               >
-                                 <div
-                                   className="pointer-events-none absolute inset-0 bg-white/5 backdrop-blur-[1px]"
-                                   aria-hidden
-                                 />
-                                 <div
-                                   className="pointer-events-none absolute -right-12 -top-12 h-48 w-48 rounded-full blur-3xl"
-                                   style={{
-                                     backgroundColor: cardIssuancePreviewPassHeroTheme.isDarkStart
-                                       ? 'rgba(255,255,255,0.05)'
-                                       : 'rgba(0,0,0,0.06)',
-                                   }}
-                                   aria-hidden
-                                 />
-                                 <div className="relative z-[1] flex items-start justify-between gap-2">
-                                 <div className="shrink-0">
-                                   {cardIssuanceShareImageUrl ? (
-                                     <IpfsImg
-                                       src={cardIssuanceShareImageUrl}
-                                       alt=""
-                                       className={`object-contain ${
-                                         CARD_PREVIEW_LOGO_IMG_TIER_CLASSES[cardIssuanceLogoDisplayTier]
-                                       }`}
-                                     />
-                                   ) : (
-                                     <Sparkles
-                                       className={CARD_PREVIEW_LOGO_ICON_TIER_CLASSES[cardIssuanceLogoDisplayTier]}
-                                       strokeWidth={2}
-                                       aria-hidden
-                                       style={{ color: cardIssuancePreviewPassHeroTheme.primary }}
-                                     />
-                                   )}
-                                 </div>
-                                 {cardIssuanceTiers.length > 0 ? (
-                                   <div className="text-right">
-                                     <p
-                                       className="text-[9px] font-bold uppercase tracking-widest"
-                                       style={{ color: cardIssuancePreviewPassHeroTheme.secondary }}
-                                     >
-                                       Up to
-                                     </p>
-                                     <p className="font-manrope text-base font-black">
-                                       {cardIssuancePreviewMaxDiscountPct > 0
-                                         ? `${Math.round(cardIssuancePreviewMaxDiscountPct)}% DISCOUNT`
-                                         : tu('programs_config_member_pricing')}
-                                     </p>
-                                   </div>
-                                 ) : null}
-                               </div>
-                               <div className="relative z-[1] flex items-end justify-between gap-2">
-                                 <div className="min-w-0">
-                                   <h3 className="font-manrope text-xl font-bold tracking-tight">
-                                     {cardIssuancePreviewProgram}
-                                   </h3>
-                                 </div>
-                                 <div className="shrink-0 text-right">
-                                   <p
-                                     className="text-[9px] font-bold uppercase leading-tight tracking-widest"
-                                     style={{ color: cardIssuancePreviewPassHeroTheme.tertiary }}
-                                   >
-                                     {tu('programs_overview_starting_from_label')} {cardIssuanceDisplayMoneyPrefix}{' '}
-                                     {cardIssuanceMinTopup.trim() || String(cardIssuanceMinTopupCurrencyFloor)}
-                                   </p>
-                                   {cardIssuanceTopupPromotionPayload ? (
-                                     <p
-                                       className="mt-1.5 text-[9px] font-bold uppercase tracking-[0.14em]"
-                                       style={{ color: cardIssuancePreviewPassHeroTheme.tertiary }}
-                                     >
-                                       {formatTopupPromotionDisplay(
-                                         cardIssuanceTopupPromotionPayload,
-                                         cardIssuanceDisplayMoneyPrefix
-                                       )}
-                                     </p>
-                                   ) : (
-                                     <p
-                                       className="mt-1.5 text-[9px] font-bold uppercase tracking-[0.14em]"
-                                       style={{ color: cardIssuancePreviewPassHeroTheme.tertiary }}
-                                     >
-                                       Bonus rules can be added later
-                                     </p>
-                                   )}
-                                 </div>
-                               </div>
-                             </div>
-                             </div>
-                           </div>
-                         </div>
-                       </section>
-                     </div>
-
-                     <div className="mx-auto w-full max-w-lg space-y-4">
-                       <div
-                         className={`rounded-lg bg-white p-5 sm:p-6 ${CARD_CONFIGURATOR_REVIEW_EDITORIAL_SHADOW_CLASS}`}
-                       >
-                         <div className="mb-4 flex items-start justify-between gap-3">
-                           <span className="font-manrope text-[10px] font-bold uppercase tracking-[0.12em] text-[#8c8c8c]">
-                             Brand identity
-                           </span>
-                           <button
-                             type="button"
-                             onClick={() => {
-                               setCardIssuanceMobileStep(1);
-                               requestAnimationFrame(() => {
-                                 requestAnimationFrame(() => {
-                                   mobileScrollContainerRef.current?.scrollTo({ top: 0, left: 0, behavior: 'auto' });
-                                   window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
-                                 });
-                               });
-                             }}
-                             className="shrink-0 font-manrope text-xs font-bold text-[#0051d1] transition-opacity hover:opacity-80"
-                             aria-label={tu('programs_config_edit_brand_aria')}
-                           >{tu('edit')}</button>
-                         </div>
-                         <div className="flex items-center gap-4">
-                           <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#1a1a1a] ring-1 ring-black/5">
-                             {cardIssuanceShareImageUrl ? (
-                               <IpfsImg src={cardIssuanceShareImageUrl} alt="" className="h-full w-full object-cover" />
-                             ) : (
-                               <Sparkles className="h-6 w-6 text-white" strokeWidth={2} aria-hidden />
-                             )}
-                           </div>
-                           <div className="min-w-0 flex-1">
-                             <p className="font-manrope text-lg font-bold leading-tight text-[#1a1a1a]">
-                               {cardIssuanceStoreDisplayName.trim() || cardIssuancePreviewProgram || '—'}
-                             </p>
-                             <p className="mt-1 font-manrope text-xs font-semibold uppercase tracking-wide text-[#8c8c8c]">
-                               {(cardIssuanceProgramName.trim() || cardIssuanceCurrencySymbol.trim() || 'Program').toUpperCase()}
-                             </p>
-                           </div>
-                         </div>
-                       </div>
-
-                       <div
-                         className={`rounded-lg bg-white p-5 sm:p-6 ${CARD_CONFIGURATOR_REVIEW_EDITORIAL_SHADOW_CLASS}`}
-                       >
-                         <div className="mb-4 flex items-start justify-between gap-3">
-                           <div className="min-w-0 pr-2">
-                             <span className="font-manrope text-[10px] font-bold uppercase tracking-[0.12em] text-[#8c8c8c]">
-                               Reward Engine
-                             </span>
-                             <p className="mt-1 font-manrope text-xs font-bold leading-snug text-[#2c2f31]">
-                               {tu('programs_config_recharge_bonuses')}
-                             </p>
-                             <p className="mt-0.5 font-manrope text-[11px] leading-snug text-[#595c5e]">
-                               Customize how your customers earn bonuses and climb membership tiers.
-                             </p>
-                           </div>
-                           <button
-                             type="button"
-                             onClick={() => {
-                               setCardIssuanceMobileStep(2);
-                               requestAnimationFrame(() => {
-                                 requestAnimationFrame(() => {
-                                   mobileScrollContainerRef.current?.scrollTo({ top: 0, left: 0, behavior: 'auto' });
-                                   window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
-                                 });
-                               });
-                             }}
-                             className="shrink-0 font-manrope text-xs font-bold text-[#0051d1] transition-opacity hover:opacity-80"
-                             aria-label={tu('programs_config_edit_rewards_aria')}
-                           >{tu('edit')}</button>
-                         </div>
-                         {cardIssuanceTopupPromotionPayload ? (
-                           <p className="font-manrope text-sm leading-relaxed text-[#595c5e]">
-                             {formatTopupPromotionDisplay(
-                               cardIssuanceTopupPromotionPayload,
-                               cardIssuanceDisplayMoneyPrefix
-                             )}
-                           </p>
-                         ) : (
-                           <p className="font-manrope text-sm leading-relaxed text-[#595c5e]">
-                             No top-up promotion configured. Tap Edit to configure in Step 2.
-                           </p>
-                         )}
-                       </div>
-
-                       <div
-                         className={`rounded-lg bg-white p-5 sm:p-6 ${CARD_CONFIGURATOR_REVIEW_EDITORIAL_SHADOW_CLASS}`}
-                       >
-                         <div className="mb-4 flex items-start justify-between gap-3">
-                           <span className="font-manrope text-[10px] font-bold uppercase tracking-[0.12em] text-[#8c8c8c]">
-                             Operational limits
-                           </span>
-                           <button
-                             type="button"
-                             onClick={() => {
-                               setCardIssuanceMobileStep(2);
-                               requestAnimationFrame(() => {
-                                 requestAnimationFrame(() => {
-                                   mobileScrollContainerRef.current?.scrollTo({ top: 0, left: 0, behavior: 'auto' });
-                                   window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
-                                 });
-                               });
-                             }}
-                             className="shrink-0 font-manrope text-xs font-bold text-[#0051d1] transition-opacity hover:opacity-80"
-                             aria-label={tu('programs_config_edit_limits_aria')}
-                           >{tu('edit')}</button>
-                         </div>
-                         <div className="flex items-stretch gap-0">
-                           <div className="min-w-0 flex-1 pr-4">
-                             <p className="font-manrope text-[10px] font-bold uppercase tracking-[0.12em] text-[#8c8c8c]">
-                               Min reload
-                             </p>
-                             <p className="mt-2 font-manrope text-xl font-bold text-[#1a1a1a]">
-                              {cardIssuanceDisplayMoneyPrefix}
-                              {cardIssuanceMinTopup.trim() || String(cardIssuanceMinTopupCurrencyFloor)}
-                             </p>
-                           </div>
-                           <div className="h-10 w-px shrink-0 self-center bg-[#dfe3e6]" aria-hidden />
-                           <div className="min-w-0 flex-1 pl-4 text-right">
-                             <p className="font-manrope text-[10px] font-bold uppercase tracking-[0.12em] text-[#8c8c8c]">
-                               Max reload
-                             </p>
-                             <p className="mt-2 font-manrope text-xl font-bold text-[#1a1a1a]">
-                               C$
-                               {cardIssuanceMaxTopup.trim() || String(CARD_ISSUANCE_MAX_TOPUP_DEFAULT)}
-                             </p>
-                           </div>
-                         </div>
-                       </div>
-                     </div>
-
-                     {cardIssuanceCreateError ? (
-                       <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">
-                         {cardIssuanceCreateError}
-                       </p>
-                     ) : null}
-
-                     <div className="mx-auto flex max-w-lg gap-4 rounded-md bg-[#eef1f3]/50 p-4 shadow-[0_12px_28px_rgba(21,98,240,0.05)]">
-                       <Info className="h-5 w-5 shrink-0 text-[#0051d1]" strokeWidth={2} aria-hidden />
-                       <p className="text-xs font-medium leading-relaxed text-[#595c5e]">
-                         Once published, your digital network will be live and your starter kit shipment will be initiated.
-                       </p>
-                     </div>
-                   </div>
+                 </>
                  ) : null}
+                 </section>
 
                  <section
                    className={`${
@@ -37135,7 +36885,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                 ) : null}
               </AnimatePresence>
              </div>
-             ) : cardIssuanceExistingCard && cardIssuanceProgramSection !== 'business' ? (
+             ) : !cardIssuanceShowConfiguratorStudio && cardIssuanceExistingCard && cardIssuanceProgramSection !== 'business' ? (
                <div className="max-w-7xl space-y-5 pb-5">
                 <section className="flex flex-col gap-5">
                   {cardIssuanceProgramSection === 'basic' ? (
@@ -42377,7 +42127,9 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                <div className="pt-4">
                  <button
                    type="button"
-                   onClick={() => handleTabChange(PROGRAM_TAB_BASIC)}
+                   onClick={() =>
+                     handleTabChange(canEnterProgramArea ? PROGRAM_TAB_BASIC : 'Overview')
+                   }
                    className="group relative w-full overflow-hidden rounded-full bg-[#0051d1] py-5 font-manrope text-lg font-bold text-white shadow-[0_20px_40px_rgba(21,98,240,0.2)] transition-all hover:scale-[1.02] active:scale-[0.98]"
                  >
                    <div className="absolute inset-0 bg-white/10 opacity-0 transition-opacity group-hover:opacity-100" aria-hidden />

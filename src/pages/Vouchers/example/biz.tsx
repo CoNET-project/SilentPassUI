@@ -11572,6 +11572,25 @@ function normalizeMembershipDurationKind(raw: unknown): number {
   return i >= 1 && i <= 6 ? i : 0;
 }
 
+function membershipDurationTuKey(kind: number): string {
+  switch (normalizeMembershipDurationKind(kind)) {
+    case 1:
+      return 'programs_config_rewards_membership_duration_day';
+    case 2:
+      return 'programs_config_rewards_membership_duration_week';
+    case 3:
+      return 'programs_config_rewards_membership_duration_month';
+    case 4:
+      return 'programs_config_rewards_membership_duration_quarter';
+    case 5:
+      return 'programs_config_rewards_membership_duration_year';
+    case 6:
+      return 'programs_config_rewards_membership_duration_forever';
+    default:
+      return '';
+  }
+}
+
 function membershipFeeHumanToE6(raw: string | number | undefined | null): string {
   if (raw == null || raw === '') return '0';
   const s = String(raw).replace(/,/g, '').trim();
@@ -15152,6 +15171,33 @@ const cardIssuanceEffectiveMerchantLogo = useMemo(() => {
    [programsOverviewTierRuleOption, cardIssuanceTierRule]
  );
 
+ const programsOverviewMembershipFeeDisplay = useMemo(() => {
+   if (!cardIssuanceMembershipFeeMode || !cardIssuanceBaseTier) return null;
+   const feeRaw = cardIssuanceBaseTier.membershipFee.replace(/,/g, '').trim();
+   const feeNum = Number(feeRaw);
+   const feeDisplay =
+     feeRaw && Number.isFinite(feeNum) && feeNum > 0
+       ? `${cardIssuanceDisplayMoneyPrefix}${feeNum.toLocaleString('en-US', {
+           minimumFractionDigits: 0,
+           maximumFractionDigits: 2,
+         })}`
+       : '—';
+   const durationKind = normalizeMembershipDurationKind(cardIssuanceBaseTier.membershipDurationKind);
+   const durationTuKey = membershipDurationTuKey(durationKind);
+   const durationLabel = durationTuKey ? tu(durationTuKey) : '—';
+   const threshold = cardIssuanceTierThresholdToInt(cardIssuanceBaseTier.threshold);
+   const minCreditDisplay =
+     threshold > 0
+       ? `${cardIssuanceDisplayMoneyPrefix}${threshold.toLocaleString('en-US')}`
+       : null;
+   return { feeDisplay, durationLabel, minCreditDisplay, durationKind };
+ }, [
+   cardIssuanceMembershipFeeMode,
+   cardIssuanceBaseTier,
+   cardIssuanceDisplayMoneyPrefix,
+   tu,
+ ]);
+
  useEffect(() => {
    if (!programsCardLoyaltyTierRuleCacheKey) return;
    const card = cardIssuanceExistingCard;
@@ -15616,6 +15662,18 @@ const merchantPanelAboutPreviewRows = useMemo(
 );
 
 const merchantPanelDiscoverAssetLabel = useMemo(() => {
+  if (cardIssuanceMembershipFeeMode && cardIssuanceBaseTier) {
+    const feeRaw = cardIssuanceBaseTier.membershipFee.replace(/,/g, '').trim();
+    const feeNum = Number(feeRaw);
+    const feeStr =
+      feeRaw && Number.isFinite(feeNum) && feeNum > 0
+        ? `${cardIssuanceDisplayMoneyPrefix}${feeNum.toLocaleString('en-US')}`
+        : '';
+    const durationTuKey = membershipDurationTuKey(cardIssuanceBaseTier.membershipDurationKind);
+    const duration = durationTuKey ? tu(durationTuKey) : '';
+    if (feeStr && duration) return `${feeStr} / ${duration}`;
+    if (feeStr) return feeStr;
+  }
   const metaTiers = programsOverviewTiersSortedAscending;
   if (metaTiers.length > 0) {
     const top = metaTiers[metaTiers.length - 1];
@@ -15637,7 +15695,14 @@ const merchantPanelDiscoverAssetLabel = useMemo(() => {
     return formatTopupPromotionDisplay(cardIssuanceTopupPromotionPayload, cardIssuanceDisplayMoneyPrefix);
   }
   return tu('member_benefits');
-}, [programsOverviewTiersSortedAscending, cardIssuanceDisplayMoneyPrefix, cardIssuanceTopupPromotionPayload]);
+}, [
+  cardIssuanceMembershipFeeMode,
+  cardIssuanceBaseTier,
+  programsOverviewTiersSortedAscending,
+  cardIssuanceDisplayMoneyPrefix,
+  cardIssuanceTopupPromotionPayload,
+  tu,
+]);
 
 useEffect(() => {
   if (
@@ -37247,14 +37312,53 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                      </div>
 
                      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-1 pt-1">
-                       <div className="min-w-0">
-                         <span className="block text-[9px] font-bold uppercase tracking-widest text-[#595c5e]">
-                           {tu('programs_overview_loyalty_rule_type')}
-                         </span>
-                         <p className="font-manrope text-xs font-bold text-[#2c2f31]">
-                           {programsOverviewTierRuleOption?.title ?? '—'}
-                         </p>
-                       </div>
+                       {cardIssuanceMembershipFeeMode && programsOverviewMembershipFeeDisplay ? (
+                         <>
+                           <div className="min-w-0">
+                             <span className="block text-[9px] font-bold uppercase tracking-widest text-[#595c5e]">
+                               {tu('programs_overview_loyalty_rule_type')}
+                             </span>
+                             <p className="font-manrope text-xs font-bold text-[#2c2f31]">
+                               {tu('programs_config_rewards_membership_fee')}
+                             </p>
+                           </div>
+                           <div>
+                             <span className="block text-[9px] font-bold uppercase tracking-widest text-[#595c5e]">
+                               {tu('programs_overview_membership_fee_amount')}
+                             </span>
+                             <p className="font-manrope text-xs font-bold text-[#1562f0]">
+                               {programsOverviewMembershipFeeDisplay.feeDisplay}
+                             </p>
+                           </div>
+                           <div>
+                             <span className="block text-[9px] font-bold uppercase tracking-widest text-[#595c5e]">
+                               {tu('programs_overview_membership_valid_for')}
+                             </span>
+                             <p className="font-manrope text-xs font-bold text-[#2c2f31]">
+                               {programsOverviewMembershipFeeDisplay.durationLabel}
+                             </p>
+                           </div>
+                           {programsOverviewMembershipFeeDisplay.minCreditDisplay ? (
+                             <div>
+                               <span className="block text-[9px] font-bold uppercase tracking-widest text-[#595c5e]">
+                                 {tu('programs_overview_membership_min_credit')}
+                               </span>
+                               <p className="font-manrope text-xs font-bold text-[#2c2f31]">
+                                 {programsOverviewMembershipFeeDisplay.minCreditDisplay}
+                               </p>
+                             </div>
+                           ) : null}
+                         </>
+                       ) : (
+                         <div className="min-w-0">
+                           <span className="block text-[9px] font-bold uppercase tracking-widest text-[#595c5e]">
+                             {tu('programs_overview_loyalty_rule_type')}
+                           </span>
+                           <p className="font-manrope text-xs font-bold text-[#2c2f31]">
+                             {programsOverviewTierRuleOption?.title ?? '—'}
+                           </p>
+                         </div>
+                       )}
                        <div>
                          <span className="block text-[9px] font-bold uppercase tracking-widest text-[#595c5e]">
                            {tu('programs_overview_symbol')}
@@ -38390,11 +38494,18 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                              </div>
                              <div className="min-w-0">
                                <p className="font-manrope text-sm font-bold text-[#2c2f31]">
-                                 {programsOverviewTierRuleOption?.title ?? tu('programs_config_loyalty_rule')}
+                                 {cardIssuanceMembershipFeeMode && programsOverviewMembershipFeeDisplay
+                                   ? tu('programs_config_rewards_membership_fee')
+                                   : (programsOverviewTierRuleOption?.title ?? tu('programs_config_loyalty_rule'))}
                                </p>
                                <p className="text-[10px] text-[#595c5e]">
-                                 {programsOverviewTierRuleOption?.mobileDesc ??
-                                   'Configure how members qualify for tiers.'}
+                                 {cardIssuanceMembershipFeeMode && programsOverviewMembershipFeeDisplay
+                                   ? tu('programs_overview_membership_fee_rule_desc', {
+                                       fee: programsOverviewMembershipFeeDisplay.feeDisplay,
+                                       duration: programsOverviewMembershipFeeDisplay.durationLabel,
+                                     })
+                                   : (programsOverviewTierRuleOption?.mobileDesc ??
+                                     'Configure how members qualify for tiers.')}
                                </p>
                              </div>
                            </div>

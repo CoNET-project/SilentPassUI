@@ -12997,6 +12997,9 @@ useEffect(() => {
      setCardIssuanceRewardsMembershipFeeEnabled(opts.membershipFeeEnabled);
      if (opts.membershipFeeEnabled) {
        const durationFromOpts = normalizeMembershipDurationKind(opts.durationKind);
+       // Membership-fee cards use top-up (single) qualify on-chain; loyalty threshold is 0.
+       // Chain minUsdc6 = 1, 2, 3… by tier order (see buildCardIssuanceTiersPayloadFromRows).
+       setCardIssuanceTierRule('single');
        setTiersByLoyaltyRule((prev) => {
          const next = { ...prev } as Record<CardIssuanceTierRule, CardIssuanceTierRow[]>;
          for (const key of CARD_ISSUANCE_TIER_RULE_KEYS) {
@@ -13004,7 +13007,7 @@ useEffect(() => {
            next[key] = rows.map((t, i) => {
              const isBase = t.id === CARD_ISSUANCE_SINGLE_TIER_ID || i === 0;
              if (!isBase) {
-               return { ...t, membershipFee: '', membershipDurationKind: 0 };
+               return { ...t, membershipFee: '', membershipDurationKind: 0, threshold: t.threshold };
              }
              const duration =
                durationFromOpts ||
@@ -13012,6 +13015,7 @@ useEffect(() => {
                3;
              return {
                ...t,
+               threshold: '0',
                membershipFee: amount,
                membershipDurationKind: duration,
              };
@@ -18184,62 +18188,85 @@ const disableCardIssuanceTopupPromotion = useCallback(() => {
 
  const buildCardIssuanceTiersPayloadFromRows = useCallback((rows: CardIssuanceTierRow[]): TierMetadata[] | undefined => {
    if (rows.length === 0) return undefined;
-   const valid = rows
-     .filter((t) => t.name.trim() !== '')
-     .map((t, idx) => {
-       const raw = t.threshold.replace(/,/g, '').trim();
-       const minInt = Number.parseInt(raw, 10);
-       const minFloat = parseFloat(raw);
-       const minUnits =
-         Number.isFinite(minInt) && Number.isFinite(minFloat) && minFloat === minInt ? minInt : idx + 1;
-       const customDesc = t.tierDescription.trim();
-       const discountPct = Number.parseInt(
-         String(t.discountPercent ?? '')
-           .replace(/,/g, '')
-           .replace(/\D/g, '')
-           .trim(),
-         10
-       );
-       const hasDiscount = Number.isFinite(discountPct) && discountPct > 0;
-       let description: string | undefined;
-       if (hasDiscount) {
-         const discountLine = `${discountPct}% discount`;
-         if (customDesc) {
-           description = /\d+(?:\.\d+)?\s*%/.test(customDesc)
-             ? customDesc.replace(/(\d+(?:\.\d+)?)\s*%/, `${discountPct}%`)
-             : `${discountLine}\n${customDesc}`;
-         } else {
-           description = discountLine;
-         }
-       } else if (customDesc) {
-         const stripped = customDesc
-           .replace(/\d+(?:\.\d+)?\s*%(?:\s*discount)?/gi, '')
-           .replace(/\n{2,}/g, '\n')
-           .trim();
-         description = stripped || undefined;
+   const anyMembershipFee = rows.some((t) => BigInt(membershipFeeHumanToE6(t.membershipFee)) > 0n);
+   const namedRows = rows.filter((t) => t.name.trim() !== '');
+   if (namedRows.length === 0) return undefined;
+
+   const buildTierMetaFields = (t: CardIssuanceTierRow) => {
+     const membershipFeeE6 = membershipFeeHumanToE6(t.membershipFee);
+     const hasMembershipFee = BigInt(membershipFeeE6) > 0n;
+     const customDesc = t.tierDescription.trim();
+     const discountPct = Number.parseInt(
+       String(t.discountPercent ?? '')
+         .replace(/,/g, '')
+         .replace(/\D/g, '')
+         .trim(),
+       10
+     );
+     const hasDiscount = Number.isFinite(discountPct) && discountPct > 0;
+     let description: string | undefined;
+     if (hasDiscount) {
+       const discountLine = `${discountPct}% discount`;
+       if (customDesc) {
+         description = /\d+(?:\.\d+)?\s*%/.test(customDesc)
+           ? customDesc.replace(/(\d+(?:\.\d+)?)\s*%/, `${discountPct}%`)
+           : `${discountLine}\n${customDesc}`;
+       } else {
+         description = discountLine;
        }
-      const backgroundColor = tierBackgroundColorForPayload(t.backgroundColor);
-      const image = (t.backgroundImage ?? '').trim();
-      const imageFit = normalizeCardIssuanceBackgroundImageFit(t.backgroundImageFit);
-      const logoDisplayScale = clampTierLogoDisplayScale(t.logoDisplayScale);
-      const membershipFeeE6 = membershipFeeHumanToE6(t.membershipFee);
-      const membershipDurationKind =
-        BigInt(membershipFeeE6) > 0n
-          ? normalizeMembershipDurationKind(t.membershipDurationKind) || 3
-          : 0;
-      return {
-        minUsdc6: Math.round(minUnits * 1e6),
-        name: t.name.trim(),
-        logoDisplayScale,
-        membershipFeeE6,
-        membershipFee: membershipFeeE6ToHuman(membershipFeeE6) || undefined,
-        membershipDurationKind,
-        ...(description ? { description } : {}),
-        ...(backgroundColor ? { backgroundColor } : {}),
-        ...(image ? { image, imageFit } : {}),
-      };
-    });
-  if (valid.length === 0) return undefined;
+     } else if (customDesc) {
+       const stripped = customDesc
+         .replace(/\d+(?:\.\d+)?\s*%(?:\s*discount)?/gi, '')
+         .replace(/\n{2,}/g, '\n')
+         .trim();
+       description = stripped || undefined;
+     }
+     const backgroundColor = tierBackgroundColorForPayload(t.backgroundColor);
+     const image = (t.backgroundImage ?? '').trim();
+     const imageFit = normalizeCardIssuanceBackgroundImageFit(t.backgroundImageFit);
+     const logoDisplayScale = clampTierLogoDisplayScale(t.logoDisplayScale);
+     const membershipDurationKind = hasMembershipFee
+       ? normalizeMembershipDurationKind(t.membershipDurationKind) || 3
+       : 0;
+     return {
+       name: t.name.trim(),
+       logoDisplayScale,
+       // Membership-fee / top-up cards: per-tier upgradeByBalance=false (top-up qualify).
+       upgradeByBalance: false as const,
+       membershipFeeE6,
+       membershipFee: membershipFeeE6ToHuman(membershipFeeE6) || undefined,
+       membershipDurationKind,
+       ...(description ? { description } : {}),
+       ...(backgroundColor ? { backgroundColor } : {}),
+       ...(image ? { image, imageFit } : {}),
+     };
+   };
+
+   // Membership-fee mode: UI threshold stays 0; on-chain minUsdc6 = 1, 2, 3… (UC_TierMinZero forbids 0).
+   // Preserve editor row order so tier1→1e0, tier2→2e0. Fee mint top-ups that floor after fee payment.
+   if (anyMembershipFee) {
+     return namedRows.map((t, idx) => {
+       const fields = buildTierMetaFields(t);
+       return {
+         index: idx,
+         minUsdc6: String(idx + 1),
+         attr: idx,
+         ...fields,
+       };
+     });
+   }
+
+   const valid = namedRows.map((t, idx) => {
+     const raw = t.threshold.replace(/,/g, '').trim();
+     const minInt = Number.parseInt(raw, 10);
+     const minFloat = parseFloat(raw);
+     const minUnits =
+       Number.isFinite(minInt) && Number.isFinite(minFloat) && minFloat === minInt ? minInt : idx + 1;
+     return {
+       minUsdc6: Math.round(Math.max(1, minUnits) * 1e6),
+       ...buildTierMetaFields(t),
+     };
+   });
   valid.sort((a, b) => b.minUsdc6 - a.minUsdc6);
   return valid.map((t, idx) => ({
     index: idx,
@@ -18247,6 +18274,7 @@ const disableCardIssuanceTopupPromotion = useCallback(() => {
     attr: idx,
     name: t.name,
     logoDisplayScale: t.logoDisplayScale,
+    upgradeByBalance: t.upgradeByBalance,
     membershipFeeE6: t.membershipFeeE6,
     ...(t.membershipFee ? { membershipFee: t.membershipFee } : {}),
     membershipDurationKind: t.membershipDurationKind,
@@ -19823,12 +19851,20 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
    if (!membershipFeeModeForPublish && minTopupN > maxTopupN) {
      return publishFail('Minimum top-up cannot be greater than maximum top-up.');
    }
-   const tierRuleForPublish: CardIssuanceTierRule = useQuickDefaultRewardsNewCard
+   const tierRuleForPublish: CardIssuanceTierRule = membershipFeeModeForPublish
      ? 'single'
-     : cardIssuanceTierRule;
-   const tierThresholdBoundedByMaxTopup = tierRuleForPublish !== 'cumulative';
+     : useQuickDefaultRewardsNewCard
+       ? 'single'
+       : cardIssuanceTierRule;
+   const tierThresholdBoundedByMaxTopup =
+     !membershipFeeModeForPublish && tierRuleForPublish !== 'cumulative';
    const metadataMaxTopupCap = cardIssuanceExistingCard?.meta?.maximumTopupCad;
-   if (!metadataOnlyExistingCard && metadataMaxTopupCap != null && Number.isFinite(metadataMaxTopupCap)) {
+   if (
+     !membershipFeeModeForPublish &&
+     !metadataOnlyExistingCard &&
+     metadataMaxTopupCap != null &&
+     Number.isFinite(metadataMaxTopupCap)
+   ) {
      if (maxTopupN > metadataMaxTopupCap) {
        return publishFail(
          `Maximum top-up cannot exceed ${metadataMaxTopupCap} ${CARD_ISSUANCE_BEAMIO_CURRENCY} (program limit from card metadata).`
@@ -19950,12 +19986,13 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
        ...(cardIssuanceDescription.trim() ? { description: cardIssuanceDescription.trim() } : {}),
        ...(discoverAboutForPublish ? { discoverAbout: discoverAboutForPublish } : {}),
      };
-     const tierRuleUpgradeForPublish =
-       tierRuleForPublish === 'balance'
-         ? (1 as const)
+     const tierRuleUpgradeForPublish: 0 | 1 | 2 | undefined = membershipFeeModeForPublish
+       ? 0
+       : tierRuleForPublish === 'balance'
+         ? 1
          : tierRuleForPublish === 'cumulative'
-           ? (2 as const)
-           : undefined;
+           ? 2
+           : 0;
 
      let res: { success: boolean; cardAddress?: string; hash?: string; error?: string };
      if (cardIssuanceExistingCard?.cardAddress) {
@@ -19974,6 +20011,7 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
            minUsdc6: t.minUsdc6,
            attr: t.attr,
            tierExpirySeconds: 0,
+           upgradeByBalance: Boolean(t.upgradeByBalance),
          }));
          const data = encodeSetTiers(chainTiers);
          const deadline = Math.floor(Date.now() / 1000) + 3600;

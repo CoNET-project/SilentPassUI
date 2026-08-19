@@ -1485,7 +1485,7 @@ export type ShareTokenMetadata = {
 /** On-chain membership duration kinds (MembershipFeeStorage). 0 = none. */
 export type MembershipDurationKind = 0 | 1 | 2 | 3 | 4 | 5 | 6
 
-/** Tier 类型 metadata，存于 0x{owner}.json，回送 {NFT}.json 时包含；image 为 IPFS URL，backgroundColor 为 CSS 颜色（如 #hex）。升级模式由卡级 upgradeType（链上）决定。 */
+/** Tier 类型 metadata，存于 0x{owner}.json，回送 {NFT}.json 时包含；image 为 IPFS URL，backgroundColor 为 CSS 颜色（如 #hex）。升级模式由卡级 upgradeType（链上）决定；per-tier 另有 upgradeByBalance。 */
 export type TierMetadata = {
 	index: number
 	minUsdc6: string
@@ -1498,6 +1498,11 @@ export type TierMetadata = {
 	backgroundColor?: string
 	/** Pass card top-left logo scale: `2x` | `4x` | `6x` | `8x` | `hidden`. */
 	logoDisplayScale?: '2x' | '4x' | '6x' | '8x' | 'hidden'
+	/**
+	 * Per-tier on-chain qualify flag (BeamioUserCard.Tier.upgradeByBalance).
+	 * false = top-up / single-payment (default for membership-fee cards).
+	 */
+	upgradeByBalance?: boolean
 	/** Membership fee in card currency, 6-decimal fixed (string uint). 0 = no fee. */
 	membershipFeeE6?: string
 	/** Optional human-readable fee (card currency units) for editors / POS. */
@@ -2388,18 +2393,24 @@ export const encodeCancelRedeem = (code: string): string =>
     cancelRedeemInterface.encodeFunctionData('cancelRedeem', [code])
 
 const setTiersInterface = new ethers.Interface([
-	'function setTiers(tuple(uint256 minUsdc6,uint256 attr,uint256 tierExpirySeconds)[] newTiers)',
+	'function setTiers(tuple(uint256 minUsdc6,uint256 attr,uint256 tierExpirySeconds,bool upgradeByBalance)[] newTiers)',
 ])
 
 /** 构建 setTiers 的 calldata（供 executeForOwner 使用），会整体替换 BeamioUserCard 链上 tiers。 */
 export const encodeSetTiers = (
-	tiers: Array<{ minUsdc6: string | bigint; attr: number | bigint; tierExpirySeconds?: number | bigint }>
+	tiers: Array<{
+		minUsdc6: string | bigint
+		attr: number | bigint
+		tierExpirySeconds?: number | bigint
+		upgradeByBalance?: boolean
+	}>
 ): string =>
 	setTiersInterface.encodeFunctionData('setTiers', [
 		tiers.map((t) => ({
 			minUsdc6: BigInt(t.minUsdc6),
 			attr: BigInt(t.attr),
 			tierExpirySeconds: BigInt(t.tierExpirySeconds ?? 0),
+			upgradeByBalance: Boolean(t.upgradeByBalance),
 		})),
 	])
 

@@ -1089,6 +1089,8 @@ type TxDisplayRowCore = {
   type:
     | 'Charge'
     | 'In-Store Top-Up'
+    | 'Issue New User Card'
+    | 'Upgrade Membership Card'
     | 'Claim Coupons'
     | 'Claim Catalogs'
     | 'In-Store Redeem'
@@ -3007,6 +3009,11 @@ function StaffSoftPosHero(props: { onLinkNew: () => void }) {
 
 function walletMobileActivityIconFrame(tx: TxDisplayRow): { Icon: LucideIcon; wrap: string } {
   if (tx.type === 'Charge') return { Icon: ShoppingBag, wrap: 'bg-blue-500/10 text-blue-600' };
+  if (isMembershipIssueTxDisplayType(tx.type)) {
+    return tx.type === 'Upgrade Membership Card'
+      ? { Icon: CreditCard, wrap: 'bg-indigo-500/10 text-indigo-600' }
+      : { Icon: CreditCard, wrap: 'bg-teal-500/10 text-teal-600' };
+  }
   if (tx.type === 'In-Store Top-Up') return { Icon: Landmark, wrap: 'bg-emerald-500/10 text-emerald-600' };
   if (tx.type === 'Claim Coupons') return { Icon: Gift, wrap: 'bg-fuchsia-500/10 text-fuchsia-600' };
   if (tx.type === 'Claim Catalogs') return { Icon: Package, wrap: 'bg-violet-500/10 text-violet-600' };
@@ -3060,6 +3067,16 @@ function walletMobileActivityRightColumn(tx: TxDisplayRow): { top: string; botto
     return {
       top: couponNftLedgerAmountLabel(tx.type),
       bottom: couponNftLedgerHeadline(tx),
+    };
+  }
+  if (isMembershipIssueTxDisplayType(tx.type)) {
+    const fee = membershipIssueTxDisplayFeeHuman(tx);
+    const cur = topupTxDisplayRowCurrencyCode(tx);
+    const sign = fee > 0 ? '+ ' : '';
+    const label = tx.type === 'Upgrade Membership Card' ? 'Membership upgrade' : 'New membership card';
+    return {
+      top: fee > 0 ? `${sign}${fee.toFixed(2)} ${cur}` : '—',
+      bottom: `${label} · ${hash}`,
     };
   }
   if (Number.isFinite(tx.usdcAmount) && Math.abs(tx.usdcAmount) >= 0.000001) {
@@ -3522,19 +3539,22 @@ function WalletsTreasuryShell(props: {
               {recentWalletActivity.map((tx) => {
                 const { Icon, wrap } = walletMobileActivityIconFrame(tx);
                 const { top, bottom } = walletMobileActivityRightColumn(tx);
-                const isPositive = tx.type === 'In-Store Top-Up';
+                const isPositive =
+                  tx.type === 'In-Store Top-Up' || isMembershipIssueTxDisplayType(tx.type);
                 const activityTitle =
                   tx.type === 'In-Store Top-Up'
                     ? 'New Deposit'
-                    : isCreateIssuedNftBuintLedgerRowType(tx.type)
+                    : isMembershipIssueTxDisplayType(tx.type)
                       ? txDisplayRowLedgerTypeTitle(tx.type)
-                      : tx.type === 'Claim Coupons'
-                        ? 'Claim Coupons'
-                        : tx.type === 'Claim Catalogs'
-                          ? 'Claim Catalogs'
-                          : tx.type === 'In-Store Redeem'
-                            ? 'In-Store Redeem'
-                            : tx.type;
+                      : isCreateIssuedNftBuintLedgerRowType(tx.type)
+                        ? txDisplayRowLedgerTypeTitle(tx.type)
+                        : tx.type === 'Claim Coupons'
+                          ? 'Claim Coupons'
+                          : tx.type === 'Claim Catalogs'
+                            ? 'Claim Catalogs'
+                            : tx.type === 'In-Store Redeem'
+                              ? 'In-Store Redeem'
+                              : tx.type;
                 const normalizedTop = top.replace(/^\+\s*/, '').trim();
                 const displayTop =
                   top === '—'
@@ -5293,6 +5313,149 @@ const INDEXER_TX_TOPUP_CATEGORIES = new Set([
   NFC_TOPUP_TX_BONUS_CARD as `0x${string}`,
 ] as const)
 
+const NFC_TOPUP_TX_USDC_NEW_CARD = ethers.keccak256(ethers.toUtf8Bytes('usdcNewCard')).toLowerCase()
+const NFC_TOPUP_TX_USDC_UPGRADE_NEW_CARD = ethers.keccak256(ethers.toUtf8Bytes('usdcUpgradeNewCard')).toLowerCase()
+
+/** POS membership fee issue/upgrade (not merchant Top-Up KPI). */
+const INDEXER_TX_MEMBERSHIP_ISSUE_NFC_CATEGORIES = new Set<string>([
+  NFC_TOPUP_TX_CASH_NEW_CARD,
+  NFC_TOPUP_TX_CREDIT_NEW_CARD,
+  NFC_TOPUP_TX_CASH_UPGRADE_NEW_CARD,
+  NFC_TOPUP_TX_CREDIT_UPGRADE_NEW_CARD,
+  NFC_TOPUP_TX_USDC_NEW_CARD,
+  NFC_TOPUP_TX_USDC_UPGRADE_NEW_CARD,
+])
+
+type MembershipIssueTxDisplayType = 'Issue New User Card' | 'Upgrade Membership Card'
+
+function parseMembershipIssueFromDisplayJson(displayJson?: string): {
+  isMembershipIssue: boolean
+  displayType: MembershipIssueTxDisplayType | null
+  membershipFeeFiat6: bigint
+} {
+  if (!displayJson?.trim()) {
+    return { isMembershipIssue: false, displayType: null, membershipFeeFiat6: 0n }
+  }
+  try {
+    const o = JSON.parse(displayJson) as {
+      membershipIssueLedger?: unknown
+      membershipIssueKind?: unknown
+      membershipFeeFiat6?: unknown
+      title?: unknown
+    }
+    const title = typeof o.title === 'string' ? o.title.trim() : ''
+    const kindRaw = o.membershipIssueKind
+    const flagged =
+      o.membershipIssueLedger === true ||
+      kindRaw === 'issue' ||
+      kindRaw === 'upgrade' ||
+      title === 'Issue New User Card' ||
+      title === 'Upgrade Membership Card'
+    if (!flagged) {
+      return { isMembershipIssue: false, displayType: null, membershipFeeFiat6: 0n }
+    }
+    const displayType: MembershipIssueTxDisplayType =
+      kindRaw === 'upgrade' || title === 'Upgrade Membership Card'
+        ? 'Upgrade Membership Card'
+        : 'Issue New User Card'
+    let membershipFeeFiat6 = 0n
+    try {
+      if (o.membershipFeeFiat6 != null && String(o.membershipFeeFiat6).trim() !== '') {
+        membershipFeeFiat6 = BigInt(String(o.membershipFeeFiat6))
+      }
+    } catch {
+      membershipFeeFiat6 = 0n
+    }
+    return { isMembershipIssue: true, displayType, membershipFeeFiat6 }
+  } catch {
+    return { isMembershipIssue: false, displayType: null, membershipFeeFiat6: 0n }
+  }
+}
+
+function membershipIssueDisplayTypeFromNfcCategory(catNorm: string): MembershipIssueTxDisplayType | null {
+  if (!INDEXER_TX_MEMBERSHIP_ISSUE_NFC_CATEGORIES.has(catNorm)) return null
+  if (
+    catNorm === NFC_TOPUP_TX_CASH_UPGRADE_NEW_CARD ||
+    catNorm === NFC_TOPUP_TX_CREDIT_UPGRADE_NEW_CARD ||
+    catNorm === NFC_TOPUP_TX_USDC_UPGRADE_NEW_CARD
+  ) {
+    return 'Upgrade Membership Card'
+  }
+  return 'Issue New User Card'
+}
+
+function resolveMembershipIssueDisplayType(
+  displayJson?: string,
+  catNorm?: string
+): {
+  isMembershipIssue: boolean
+  displayType: MembershipIssueTxDisplayType | null
+  membershipFeeFiat6: bigint
+} {
+  const parsed = parseMembershipIssueFromDisplayJson(displayJson)
+  if (parsed.isMembershipIssue && parsed.displayType) return parsed
+  const cat = (catNorm ?? '').toLowerCase()
+  if (!cat) return { isMembershipIssue: false, displayType: null, membershipFeeFiat6: 0n }
+  const fromCat = membershipIssueDisplayTypeFromNfcCategory(cat)
+  if (!fromCat) return { isMembershipIssue: false, displayType: null, membershipFeeFiat6: 0n }
+  return { isMembershipIssue: true, displayType: fromCat, membershipFeeFiat6: 0n }
+}
+
+function isMembershipIssueTxDisplayType(type: string): type is MembershipIssueTxDisplayType {
+  return type === 'Issue New User Card' || type === 'Upgrade Membership Card'
+}
+
+function txDisplayRowDisplayJson(tx: TxDisplayRow): string | undefined {
+  const raw = tx.raw as Record<string, unknown>
+  return typeof raw.displayJson === 'string' ? raw.displayJson : undefined
+}
+
+function membershipIssueTxDisplayFeeHuman(tx: TxDisplayRow): number {
+  const parsed = parseMembershipIssueFromDisplayJson(txDisplayRowDisplayJson(tx))
+  if (parsed.membershipFeeFiat6 > 0n) return Number(parsed.membershipFeeFiat6) / 1_000_000
+  if (Number.isFinite(tx.total) && Math.abs(tx.total) >= 0.000001) return Math.abs(tx.total)
+  const raw = tx.raw as Record<string, unknown>
+  const meta = parseIndexerMetaTuple(raw.meta)
+  const req = parseIndexerUintE6Field(meta.requestAmountFiat6)
+  return req > 0 ? req : 0
+}
+
+function membershipIssueTxDisplayAmountBlock(
+  tx: TxDisplayRow,
+  cadOracle: number,
+  pointsCurrencySymbol: string,
+): React.ReactNode {
+  const feeFiat = membershipIssueTxDisplayFeeHuman(tx)
+  const curLabel = topupTxDisplayRowCurrencyCode(tx)
+  const cadApprox =
+    curLabel === 'CAD' || curLabel === 'USD' || curLabel === 'USDC'
+      ? feeFiat
+      : feeFiat / cadOracle
+  const isUpgrade = tx.type === 'Upgrade Membership Card'
+  return (
+    <div className="flex items-start gap-2">
+      <CreditCard
+        size={15}
+        className={`${isUpgrade ? 'text-indigo-600' : 'text-teal-600'} shrink-0 mt-0.5`}
+        strokeWidth={2}
+        aria-hidden
+      />
+      <div className="flex flex-col min-w-0">
+        <div className="flex items-center gap-2 text-[14px] font-semibold text-slate-900 whitespace-nowrap">
+          {feeFiat.toFixed(2)}{' '}
+          <span className="text-[12px] text-slate-400 font-medium">{pointsCurrencySymbol}</span>
+        </div>
+        <span className="text-[11px] text-slate-400 font-medium mt-0.5">≈ ${cadApprox.toFixed(2)} CAD</span>
+      </div>
+    </div>
+  )
+}
+
+function mobileTransactionsMembershipIssueSubtitle(tx: TxDisplayRow, timeStr: string): string {
+  const method = (tx.method ?? 'Cash').trim() || 'Cash'
+  return `${method} • ${timeStr || '—'}`
+}
+
 /** B-Unit Airdrop ↔ indexer rows (readme 2.3 + MemberCard consume kinds) — not merchant Charge/Top-Up. */
 const TX_BUINT_CLAIM = ethers.keccak256(ethers.toUtf8Bytes('buintClaim'))
 const TX_BUINT_USDC = ethers.keccak256(ethers.toUtf8Bytes('buintUSDC'))
@@ -5462,7 +5625,7 @@ function dashboardActivityTypeFromIndexerRow(tx: {
   payer?: string
   subordinate?: string
   topAdmin?: string
-}): 'Charge' | 'In-Store Top-Up' | 'Claim Coupons' | 'Claim Catalogs' | 'In-Store Redeem' | 'Tip' | null {
+}): 'Charge' | 'In-Store Top-Up' | 'Issue New User Card' | 'Upgrade Membership Card' | 'Claim Coupons' | 'Claim Catalogs' | 'In-Store Redeem' | 'Tip' | null {
   if (shouldSkipIndexerRowForMerchantTxTable(tx)) return null
   if (indexerTxCategoryIsTerminalSettlementReset(tx.txCategory)) return null
   const cat = normalizeIndexerTxCategoryHex(tx.txCategory)
@@ -5478,6 +5641,8 @@ function dashboardActivityTypeFromIndexerRow(tx: {
     topAdmin: tx.topAdmin,
   })
   if (issuedRedeemType) return issuedRedeemType
+  const membershipIssue = resolveMembershipIssueDisplayType(tx.displayJson, cat)
+  if (membershipIssue.isMembershipIssue && membershipIssue.displayType) return membershipIssue.displayType
   if (INDEXER_TX_TOPUP_CATEGORIES.has(cat as `0x${string}`)) return 'In-Store Top-Up'
   return 'Charge'
 }
@@ -6289,7 +6454,9 @@ function bizTxMatchesTransactionTableFilters(tx: TxDisplayRow, ctx: BizTxTableFi
   const matchType = ctx.txFilterType === '全部' || tx.type === ctx.txFilterType
   /** App / android NFC top-ups often have no `displayJson.terminal` → row.terminal is "—"; must not vanish when a Staff POS is selected. */
   const terminalTrim = (tx.terminal ?? '').trim()
-  const topUpTerminalUnbound = tx.type === 'In-Store Top-Up' && (terminalTrim === '' || terminalTrim === '—')
+  const topUpTerminalUnbound =
+    (tx.type === 'In-Store Top-Up' || isMembershipIssueTxDisplayType(tx.type)) &&
+    (terminalTrim === '' || terminalTrim === '—')
   const matchTerminal =
     ctx.txFilterTerminal === '全部' ||
     tx.terminal === ctx.txFilterTerminal ||
@@ -6805,17 +6972,23 @@ function mapIndexerFetchedRowsToDisplay(rows: IndexerFetchedTxRow[], cardCurrenc
       subordinate: tx.subordinate ?? tx.raw.subordinate,
       topAdmin: tx.topAdmin ?? tx.raw.topAdmin,
     })
+    const membershipIssue = resolveMembershipIssueDisplayType(tx.displayJson, catNorm)
+    const isMembershipIssueRow =
+      membershipIssue.isMembershipIssue && membershipIssue.displayType != null
     const isTopUp =
       !issuedRedeemType &&
+      !isMembershipIssueRow &&
       catNorm !== '' &&
       INDEXER_TX_TOPUP_CATEGORIES.has(catNorm as `0x${string}`)
     const type: TxDisplayRow['type'] = isTip
       ? 'Tip'
       : issuedRedeemType
         ? issuedRedeemType
-        : isTopUp
-          ? 'In-Store Top-Up'
-          : 'Charge'
+        : isMembershipIssueRow && membershipIssue.displayType
+          ? membershipIssue.displayType
+          : isTopUp
+            ? 'In-Store Top-Up'
+            : 'Charge'
     const total6 = Number(tx.finalRequestAmountUSDC6 ?? '0') / 1_000_000
     const totalFiat = Number(tx.finalRequestAmountFiat6 ?? '0') / 1_000_000
     let total: number
@@ -6854,7 +7027,30 @@ function mapIndexerFetchedRowsToDisplay(rows: IndexerFetchedTxRow[], cardCurrenc
     let method = 'USDC'
     let ctreeAmount = 0
     let usdcAmount = total
-    if (isTopUp) {
+    if (isMembershipIssueRow) {
+      if (
+        catNorm === NFC_TOPUP_TX_USDC_NEW_CARD ||
+        catNorm === NFC_TOPUP_TX_USDC_UPGRADE_NEW_CARD
+      ) {
+        method = 'USDC'
+      } else if (
+        catNorm === NFC_TOPUP_TX_CREDIT_NEW_CARD ||
+        catNorm === NFC_TOPUP_TX_CREDIT_UPGRADE_NEW_CARD
+      ) {
+        method = 'Card'
+      } else {
+        method = 'Cash'
+      }
+      ctreeAmount = 0
+      const feeFiatHuman =
+        membershipIssue.membershipFeeFiat6 > 0n
+          ? Number(membershipIssue.membershipFeeFiat6) / 1_000_000
+          : totalFiat > 0
+            ? totalFiat
+            : total6
+      total = feeFiatHuman
+      usdcAmount = total6 > 0 ? total6 : 0
+    } else if (isTopUp) {
       if (INDEXER_NFC_TOPUP_LEGACY_LUMP_LOWER.has(catNorm)) {
         method = 'Cash'
       } else if (catNorm === NFC_TOPUP_TX_BONUS_CARD) {
@@ -7738,7 +7934,10 @@ function mergeTopupBunitFeeRowsIntoTopups(rows: TxDisplayRow[]): TxDisplayRow[] 
   return mergeBuintFeeRowsIntoParents(
     rows,
     BUINT_TOPUP_SERVICE_CATEGORY_LOWER,
-    (r) => r.type === 'In-Store Top-Up'
+    (r) =>
+      r.type === 'In-Store Top-Up' ||
+      r.type === 'Issue New User Card' ||
+      r.type === 'Upgrade Membership Card'
   )
 }
 
@@ -8234,11 +8433,15 @@ function summarizeTopupsFromIndexerPage(page: readonly {
   finalRequestAmountFiat6?: unknown
   finalRequestAmountUSDC6?: unknown
   meta?: unknown
+  displayJson?: unknown
 }[]): { count: number; total: number } {
   let count = 0
   let total = 0
   for (const tx of page) {
+    const dj = typeof tx.displayJson === 'string' ? tx.displayJson : undefined
+    if (parseMembershipIssueFromDisplayJson(dj).isMembershipIssue) continue
     const cat = normalizeIndexerTxCategoryHex(tx.txCategory)
+    if (INDEXER_TX_MEMBERSHIP_ISSUE_NFC_CATEGORIES.has(cat)) continue
     if (!INDEXER_TX_TOPUP_CATEGORIES.has(cat as `0x${string}`)) continue
     const metaIssued = parseIndexerUintE6Field(parseIndexerMetaTuple(tx.meta).requestAmountFiat6)
     const finalFiat = parseIndexerUintE6Field(tx.finalRequestAmountFiat6)
@@ -9158,7 +9361,14 @@ async function fetchRecentActiveAccountKeysForDashboard(
           subordinate: tx.subordinate,
           topAdmin: tx.topAdmin,
         });
-        if (kind !== 'Charge' && kind !== 'In-Store Top-Up') continue;
+        if (
+          kind !== 'Charge' &&
+          kind !== 'In-Store Top-Up' &&
+          kind !== 'Issue New User Card' &&
+          kind !== 'Upgrade Membership Card'
+        ) {
+          continue;
+        }
         if (typeof tx.payer === 'string' && ethers.isAddress(tx.payer) && tx.payer !== ethers.ZeroAddress) {
           activeAccounts.add(ethers.getAddress(tx.payer).toLowerCase());
         }
@@ -9409,6 +9619,9 @@ function smartReceiptLedgerAmountPreviewColumn(
         ) : null}
       </div>
     );
+  }
+  if (isMembershipIssueTxDisplayType(tx.type)) {
+    return membershipIssueTxDisplayAmountBlock(tx, cadOracle, pointsCurrencySymbol);
   }
   if (tx.type === 'In-Store Top-Up') {
     const meta = parseIndexerMetaTuple(tx.raw.meta);
@@ -29658,13 +29871,17 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                      {recentTxs.map((tx) => {
                                        const { Icon, wrap } = walletMobileActivityIconFrame(tx);
                                        const { top } = walletMobileActivityRightColumn(tx);
-                                       const isPositive = tx.type === 'In-Store Top-Up';
+                                       const isPositive =
+                                         tx.type === 'In-Store Top-Up' ||
+                                         isMembershipIssueTxDisplayType(tx.type);
                                        const activityTitle =
                                          tx.type === 'In-Store Top-Up'
                                            ? 'New Deposit'
-                                           : isCreateIssuedNftBuintLedgerRowType(tx.type)
+                                           : isMembershipIssueTxDisplayType(tx.type)
                                              ? txDisplayRowLedgerTypeTitle(tx.type)
-                                             : tx.type;
+                                             : isCreateIssuedNftBuintLedgerRowType(tx.type)
+                                               ? txDisplayRowLedgerTypeTitle(tx.type)
+                                               : tx.type;
                                        const normalizedTop = top.replace(/^\+\s*/, '').trim();
                                        const displayTop =
                                          top === '—'
@@ -31549,6 +31766,9 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
            const cadOracle = oracleCadUsdc ?? ORACLE_CAD_USDC_FALLBACK;
            const calculateTxNetValueCAD = (tx: TxDisplayRow) => {
              if (isCouponNftLedgerTxType(tx.type)) return 0;
+             if (isMembershipIssueTxDisplayType(tx.type)) {
+               return membershipIssueTxDisplayFeeHuman(tx);
+             }
              if (tx.type.includes('Top-Up')) return tx.ctreeAmount || 0;
              if (tx.type === 'Charge') return chargeTxDisplayRowApproxCad(tx, cadOracle);
              if (isCreateIssuedNftBuintLedgerRowType(tx.type)) {
@@ -31759,6 +31979,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                         <div className="space-y-2">
                           {g.items.map((tx, idx) => {
                             const isTopup = tx.type === 'In-Store Top-Up';
+                            const isMembershipIssue = isMembershipIssueTxDisplayType(tx.type);
+                            const isMembershipUpgrade = tx.type === 'Upgrade Membership Card';
                             const isCouponClaim = tx.type === 'Claim Coupons';
                             const isCatalogClaim = tx.type === 'Claim Catalogs';
                             const isInStoreCatalogRedeem = tx.type === 'In-Store Redeem';
@@ -31781,7 +32003,9 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                 : '');
                             let titleM = 'Purchase (-)';
                             if (isTopup) titleM = 'Top-up (+)';
-                            else if (isCouponClaim || isCatalogClaim || isInStoreCatalogRedeem) {
+                            else if (isMembershipIssue) {
+                              titleM = `${txDisplayRowLedgerTypeTitle(tx.type)} (+)`;
+                            } else if (isCouponClaim || isCatalogClaim || isInStoreCatalogRedeem) {
                               titleM = couponNftLedgerHeadline(tx);
                             } else if (isTip) titleM = 'Tip (-)';
                             const cadAmtM = calculateTxNetValueCAD(tx);
@@ -31789,6 +32013,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                             let subtitleM: string;
                             if (isTopup) {
                               subtitleM = mobileTransactionsTopupSubtitle(tx, timeStrM);
+                            } else if (isMembershipIssue) {
+                              subtitleM = mobileTransactionsMembershipIssueSubtitle(tx, timeStrM);
                             } else if (isCouponClaim) {
                               subtitleM = `Coupon redeem (APP) • ${timeStrM || '—'}`;
                             } else if (isCatalogClaim) {
@@ -31825,6 +32051,10 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                         ? 'bg-fuchsia-50 text-fuchsia-600'
                                         : isCatalogClaim
                                           ? 'bg-violet-50 text-violet-600'
+                                          : isMembershipIssue
+                                            ? isMembershipUpgrade
+                                              ? 'bg-indigo-50 text-indigo-600'
+                                              : 'bg-teal-50 text-teal-600'
                                           : isTopup
                                             ? tx.source === 'NFC'
                                               ? 'bg-sky-100 text-sky-600'
@@ -31842,6 +32072,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                     <Gift size={20} strokeWidth={2} aria-hidden />
                                   ) : isCatalogClaim ? (
                                     <Package size={20} strokeWidth={2} aria-hidden />
+                                  ) : isMembershipIssue ? (
+                                    <CreditCard size={20} strokeWidth={2} aria-hidden />
                                   ) : isTopup ? (
                                     tx.source === 'NFC' ? (
                                       <Nfc size={20} strokeWidth={2} aria-hidden />
@@ -31883,14 +32115,18 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                           : isCatalogClaim
                                             ? 'text-violet-600'
                                             : 'text-fuchsia-600'
-                                        : isTopup
-                                          ? 'text-[#1562f0]'
+                                        : isTopup || isMembershipIssue
+                                          ? isMembershipIssue
+                                            ? isMembershipUpgrade
+                                              ? 'text-indigo-600'
+                                              : 'text-teal-600'
+                                            : 'text-[#1562f0]'
                                           : 'text-slate-900'
                                     }`}
                                   >
                                     {isCouponClaim || isCatalogClaim || isInStoreCatalogRedeem
                                       ? couponNftLedgerAmountLabel(tx.type)
-                                      : `${isTopup ? '+' : '-'}C$${Math.abs(cadAmtM).toFixed(2)}`}
+                                      : `${isTopup || isMembershipIssue ? '+' : '-'}C$${Math.abs(cadAmtM).toFixed(2)}`}
                                   </span>
                                   {isTopup && tx.topupBonusFiat && tx.topupBonusFiat > 0 ? (
                                     <span className="mt-0.5 inline-flex items-center justify-end gap-1 text-[11px] font-bold leading-snug text-[#FF9500]">
@@ -32340,7 +32576,13 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                      ) : null}
                                    </div>
                                  )
-                               })() : tx.type === 'In-Store Top-Up' ? (
+                               })() : isMembershipIssueTxDisplayType(tx.type) ? (
+                                 membershipIssueTxDisplayAmountBlock(
+                                   tx,
+                                   cadOracle,
+                                   dashboardPointsCurrencySymbol,
+                                 )
+                               ) : tx.type === 'In-Store Top-Up' ? (
                                  (() => {
                                    const meta = parseIndexerMetaTuple(tx.raw.meta)
                                    const reqFiat = tx.topupBonusFiat && tx.topupBonusFiat > 0

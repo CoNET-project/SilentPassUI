@@ -34,6 +34,7 @@ import { CoNET_Data, setCoNET_Data } from "@/utils/globals"
 import { resolveSigningPrivateKeyArmor } from "@/utils/resolveSigningPrivateKeyArmor"
 import { searchResultFromProfileRecord } from "@/utils/beamioTagDatabase"
 import { bindStashedShareRefereesIfNeeded, recordDiscoverShareClickIfNeeded } from '@/utils/discoverShareClickEvent'
+import { DISCOVER_SHARE_REFERRER_STASHED_EVENT } from '@/utils/discoverShareReferrerStash'
 import { baseEndpoint, USDCContract_BASE } from "@/utils/constants"
 import usdc_abi from "@/services/ABI/usdc_abi.json"
 import Vouchers from "@/pages/Vouchers/index"
@@ -222,6 +223,22 @@ function AppShell() {
     if (!privateKeyArmor) return
     void bindStashedShareRefereesIfNeeded(privateKeyArmor)
   }, [isInitialLoading, profiles?.[0]?.keyID, profiles?.[0]?.aaAccount])
+
+  useEffect(() => {
+    if (isInitialLoading) return
+    const retryBind = () => {
+      const profile = profiles?.[0]
+      const eoa = profile?.keyID?.trim()
+      const aa = profile?.aaAccount?.trim()
+      if (!eoa || !ethers.isAddress(eoa)) return
+      if (!aa || !ethers.isAddress(aa) || aa.toLowerCase() === eoa.toLowerCase()) return
+      const privateKeyArmor = resolveSigningPrivateKeyArmor(profile)
+      if (!privateKeyArmor) return
+      void bindStashedShareRefereesIfNeeded(privateKeyArmor)
+    }
+    window.addEventListener(DISCOVER_SHARE_REFERRER_STASHED_EVENT, retryBind)
+    return () => window.removeEventListener(DISCOVER_SHARE_REFERRER_STASHED_EVENT, retryBind)
+  }, [isInitialLoading, profiles?.[0]?.keyID, profiles?.[0]?.aaAccount])
   // 直接打开 redeem URL（如 https://beamio.app/app/?beamiocard=...&redeemcode=...）时先打开确认页
   useEffect(() => {
     if (isInitialLoading || initialRedeemUrlProcessedRef.current) return
@@ -263,7 +280,11 @@ function AppShell() {
 
     initialDiscoverMerchantUrlProcessedRef.current = true
     stashDiscoverShareReferrer(parsed.cardAddress, parsed.referrerEoa)
-    setShowFooter(true)
+    const privateKeyArmor = resolveSigningPrivateKeyArmor(profiles?.[0])
+    if (privateKeyArmor) {
+      void bindStashedShareRefereesIfNeeded(privateKeyArmor)
+    }
+    setShowFooter(false)
     navigate('/discover', {
       state: {
         openDiscoverMerchantCard: parsed.cardAddress,
@@ -272,7 +293,7 @@ function AppShell() {
     })
     /** Clear `?beamiocard=&discover=open` so Discover Back cannot leave main UI `invisible`. */
     stripDiscoverMerchantDeepLinkParams()
-  }, [isInitialLoading, navigate, setShowFooter])
+  }, [isInitialLoading, navigate, profiles?.[0], setShowFooter])
 
   const couponShareClickRecordedRef = useRef(false)
   useEffect(() => {
@@ -2010,6 +2031,8 @@ function AppShell() {
 								if (item && typeof item !== 'string') {
 									setUserPreviewItem(item)
 									setShowAlphaHowItWorks('BeamioContactProfilePreview')
+									setShowFooter(false)
+								} else if (typeof item === 'string' && item === '/discover') {
 									setShowFooter(false)
 								} else {
 									setShowFooter(true)

@@ -18,6 +18,8 @@ import {
 	stripDiscoverMerchantDeepLinkParams,
 } from '@/utils/discoverMerchantShare'
 import { stashDiscoverShareReferrer } from '@/utils/discoverShareReferrerStash'
+import { bindStashedShareRefereesIfNeeded } from '@/utils/discoverShareClickEvent'
+import { resolveSigningPrivateKeyArmor } from '@/utils/resolveSigningPrivateKeyArmor'
 import ScanButton, { type ScanButtonHandle } from '@/components/scanBtn/ScanButton'
 import { isCashTreesNativeWebView, scanQrViaCashTreesNative } from '@/utils/cashTreesIOSBridge'
 import { tu } from '@/locale/beamioLocale'
@@ -163,8 +165,12 @@ const SearchInputWithDropdown =
 			const parsedDiscover = parseDiscoverMerchantFromParams(searchParams)
 			if (parsedDiscover) {
 				stashDiscoverShareReferrer(parsedDiscover.cardAddress, parsedDiscover.referrerEoa)
+				const privateKeyArmor = resolveSigningPrivateKeyArmor(profiles?.[0])
+				if (privateKeyArmor) {
+					void bindStashedShareRefereesIfNeeded(privateKeyArmor)
+				}
 				setScanIntent('')
-				setShowFooter(true)
+				setShowFooter(false)
 				setLoading(false)
 				setShowDropdown(false)
 				closeWindow('/discover')

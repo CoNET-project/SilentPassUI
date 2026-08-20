@@ -6401,6 +6401,15 @@ export default function Market() {
 		setShowFooter(false)
 	}, [discoverDeepLinkTarget, location.state, setShowFooter])
 
+	/** Fresh router state from Search / cold URL — allow reopen even if this card was handled before. */
+	useLayoutEffect(() => {
+		const state = location.state as { openDiscoverMerchantCard?: string } | null
+		const fromState = state?.openDiscoverMerchantCard?.trim()
+		if (fromState && ethers.isAddress(fromState)) {
+			discoverDeepLinkHandledForRef.current = null
+		}
+	}, [location.state])
+
 	useLayoutEffect(() => {
 		if (!discoverDeepLinkTarget) return
 		const cardNorm = discoverDeepLinkTarget.toLowerCase()
@@ -6415,21 +6424,17 @@ export default function Market() {
 			return
 		}
 
-		const peeked = peekMetadata(discoverDeepLinkTarget)
-		const dbName = resolveName(discoverDeepLinkTarget)?.trim()
-		if (peeked || dbName) {
-			const fallback = buildDiscoverFeaturedCardFromMerchantDb(
-				discoverDeepLinkTarget,
-				peeked,
-				resolveName,
-				resolveImage,
-				lookupByAddress(discoverDeepLinkTarget)?.metadataRoot,
-			)
-			discoverDeepLinkHandledForRef.current = cardNorm
-			openDiscoverMerchantDetail(fallback, { immediate: true })
-			stripDiscoverMerchantDeepLinkParams()
-			navigate('.', { replace: true, state: {} })
-		}
+		const fallback = buildDiscoverFeaturedCardFromMerchantDb(
+			discoverDeepLinkTarget,
+			peekMetadata(discoverDeepLinkTarget),
+			resolveName,
+			resolveImage,
+			lookupByAddress(discoverDeepLinkTarget)?.metadataRoot,
+		)
+		discoverDeepLinkHandledForRef.current = cardNorm
+		openDiscoverMerchantDetail(fallback, { immediate: true })
+		stripDiscoverMerchantDeepLinkParams()
+		navigate('.', { replace: true, state: {} })
 	}, [
 		discoverDeepLinkTarget,
 		discoverFeaturedCards,

@@ -12,6 +12,18 @@ import { ethers } from 'ethers'
 const STORAGE_KEY = 'beamio:discoverShareReferrer:v1'
 const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
 
+/** Fired after a new share-link referrer is stashed (wallet bind may retry on this). */
+export const DISCOVER_SHARE_REFERRER_STASHED_EVENT = 'beamio:discoverShareReferrerStashed'
+
+function notifyDiscoverShareReferrerStashed(): void {
+	if (typeof window === 'undefined') return
+	try {
+		window.dispatchEvent(new CustomEvent(DISCOVER_SHARE_REFERRER_STASHED_EVENT))
+	} catch {
+		/* ignore */
+	}
+}
+
 type StoredEntry = { referrerEoa: string; savedAt: number }
 type StoredMap = Record<string, StoredEntry>
 
@@ -68,6 +80,7 @@ export function stashDiscoverShareReferrer(cardAddress?: string | null, referrer
 	if (map[key]?.referrerEoa) return
 	map[key] = { referrerEoa: referrer, savedAt: Date.now() }
 	writeAll(map)
+	notifyDiscoverShareReferrerStashed()
 }
 
 /** All pending card → referrer pairs, for retrying binds once the wallet/AA is ready. */

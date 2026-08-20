@@ -1,0 +1,154 @@
+---
+description: bizSite Top-up Promotion 总开关 vs Reward PT vs Referrer；Overview 展示摘要单一来源与 Trash 语义
+globs: src/**/*.{ts,tsx}
+alwaysApply: true
+---
+
+# bizSite：Top-up Promotion 与 Reward PT（Programs）
+
+Merchant OS **Programs → Top-up Promotion** 编辑器内同时存在 **三类独立配置**，不得混为一谈。与链上 **#13 统一积分** 见 monorepo **`beamio-merchant-card-unified-reward-points-v13.mdc`**；本守则只管 **bizSite UI / metadata 草稿 / 预览文案**。
+
+---
+
+## 1. 三类开关（语义）
+
+| 配置 | 状态字段 | metadata 路径 | 作用 |
+|---|---|---|---|
+| **Top-up Promotion 总开关** | `cardIssuanceTopupPromotion.enabled` | `topupPromotion` / 迁移 `bonusRule` | ON：Validity、Minimum、Reward type（percent/fixed）等 **bonus 规则**；OFF：**隐藏** bonus 字段 |
+| **Reward PT（用户 Top-up 积分 %）** | `programRewardPtTopupEnabled` | `shareTokenMetadata.unifiedRewardPoints.topup` | 独立于总开关；OFF/ON 控制 **actor** 向充值用户 mint **#13** 的比例（`actorPercentBps`） |
+| **Referrer reward（Top-up）** | `programReferrerTopupEnabled` | 同上 `referrerPercentBps` | 独立于总开关；Referrer 分成 **#13** |
+
+**铁律：总开关 OFF ≠ Reward PT / Referrer 关闭。** 总开关只控制 **bonus promotion** 块；Reward PT 与 Referrer 在总开关 OFF 时 **仍可见、可编辑、可 Publish**。
+
+---
+
+## 2. metadata 形状（Publish）
+
+| 块 | 写入时机 | 工具 |
+|---|---|---|
+| `topupPromotion` | 总开关 ON 且校验通过 | `topupPromotionDraftToPayload` → Publish |
+| `unifiedRewardPoints.topup` | Reward PT / Referrer 变更 | `mergeUnifiedRewardPointsTopup` + referrer 字段（`src/utils/unifiedRewardPoints.ts`） |
+
+类型：`ShareTokenMetadata.unifiedRewardPoints` — `src/services/BeamioCard.ts`。
+
+- **bps**：`actorPercentBps` / `referrerPercentBps`，0–10000（10000 = 100%）。
+- UI 整数 % ↔ bps：`percentWholeToActorBps` / `actorBpsToPercentWhole`。
+- Publish 时 **不得**因总开关 OFF 而 strip 已启用的 `unifiedRewardPoints.topup`。
+
+---
+
+## 3. Overview 展示摘要（单一事实来源）
+
+**所有** Top-up 相关预览副文案须读 **`cardIssuanceTopupPromotionOverviewSummary`**（`biz.tsx`），**禁止**各面单独拼 bonus 或只读 `topupPromotion.enabled`。
+
+```typescript
+// bonus 段（仅 payload 存在时）+ Reward PT 段（programRewardPtTopupEnabled）
+cardIssuanceTopupPromotionOverviewSummary = useMemo(() => [
+  cardIssuanceTopupPromotionPayload ? formatTopupPromotionDisplay(...) : '',
+  programRewardPtTopupEnabled
+    ? tu('programs_topup_reward_pt_overview', { percent: ... })
+    : '',
+].filter(Boolean).join(' · '), [...]);
+```
+
+### 必须接入 `cardIssuanceTopupPromotionOverviewSummary` 的面
+
+| 面 | 说明 |
+|---|---|
+| `merchantPanelDiscoverAssetLabel` | Discover 资产标签 |
+| Reward Engine / Live Preview | 奖励引擎预览 |
+| Card Setup pass hero | 发卡 pass 英雄区 |
+| Programs Overview pass hero | Overview 列表 pass 预览 |
+| Program detail 侧栏 | 程序详情 |
+| NFC preview | NFC 预览条 |
+| Programs Overview 列表行副文案 | 与 hero 一致 |
+
+**验收：** 总开关 OFF、**仅 Reward PT ON** 时，上述各面均须显示 `Reward PT N% of top-up`（locale：`programs_topup_reward_pt_overview`），与 Overview 列表行一致。
+
+### Configure / Edit 按钮
+
+- 文案：`cardIssuanceTopupPromotionOverviewSummary || programRewardPtTopupEnabled` → **Edit**；否则 **Configure**。
+- **不得**仅用 `cardIssuanceTopupPromotionPayload` 或总开关判断。
+
+---
+
+## 4. Trash（清除 bonus）
+
+- **Trash** 仅清 **Top-up Promotion bonus**（`topupPromotion` / `bonusRule`），调用 `clearCardIssuanceTopupPromotion` → `topupPromotionOverride: EMPTY_TOPUP_PROMOTION_DRAFT`。
+- **不得**清除 `unifiedRewardPoints.topup`（Reward PT / Referrer）。
+- Trash 按钮 **仅**在 `cardIssuanceTopupPromotionPayload` 存在时显示（有 bonus 可删时）。
+
+关闭总开关（toggle OFF）**不**等价 Trash；关闭后 Reward PT / Referrer 草稿与 metadata 保持不变。
+
+---
+
+## 5. 编辑器 UX
+
+| 总开关 | UI |
+|---|---|
+| **ON** | Validity、Minimum、Reward type、percent/fixed 等 bonus 字段 |
+| **OFF** | 上述 bonus 字段 **隐藏**；**仍显示** Reward PT 与 Referrer Top-up 区块 |
+
+校验：`cardIssuanceTopupPromotionEditorValidationError` **仅**在总开关 ON 时跑 `validateTopupPromotionDraft`；Reward PT 用 `programRewardPtTopupValidationError`（独立）。
+
+保存成功提示：仅关总开关时文案须说明 **Reward PT / Referrer 未变**（见 `handlePublishCardIssuance` 相关 copy）。
+
+---
+
+## 6. Locale
+
+| Key | 用途 |
+|---|---|
+| `programs_topup_promotion_enable_label` / `_hint` | 总开关 |
+| `programs_topup_reward_pt_*` | Reward PT 编辑器与摘要 |
+| `programs_topup_reward_pt_overview` | Overview 摘要中的 PT 段（`{{percent}}`） |
+
+用户可见文案：**英语**（`ui-english.mdc`）；`programsLocale.*.json` 提供 i18n。
+
+---
+
+## 7. 草稿与缓存
+
+- 本地发卡草稿：`cardConfiguratorDraftLocal.ts` 须持久化 `unifiedRewardPoints` / Reward PT 字段（与 Publish 一致）。
+- 读 metadata 回填：`parseUnifiedRewardTopupDraft`（`unifiedRewardPoints.ts`）。
+- 失败不得清空已有 Reward PT 展示（`beamio-trusted-vs-untrusted-fetch.mdc`）。
+
+---
+
+## 8. AI 检查清单
+
+- [ ] 新预览面是否用 **`cardIssuanceTopupPromotionOverviewSummary`**，而非只读 bonus？
+- [ ] 总开关 OFF 时 Reward PT / Referrer 是否仍可编辑且 Publish 写入 `unifiedRewardPoints`？
+- [ ] Trash 是否只清 bonus、不动 Reward PT？
+- [ ] Configure/Edit 是否考虑 **`programRewardPtTopupEnabled`**？
+- [ ] bps 转换是否走 **`unifiedRewardPoints.ts`**？
+- [ ] 是否未跨项目 `import`（`src-subprojects-are-independent.mdc`）？
+
+---
+
+## 9. 严禁
+
+- ❌ 总开关 OFF 时隐藏或丢弃 Reward PT / Referrer 配置
+- ❌ Trash 清除 `unifiedRewardPoints.topup`
+- ❌ 某预览面只显示 bonus、在「仅 Reward PT ON」时留空
+- ❌ 多处手写 `formatTopupPromotionDisplay` 而不经 overview summary
+- ❌ 把 `topupPromotion.enabled` 当作 Reward PT 开关
+
+---
+
+## 10. 参考实现
+
+| 模块 | 路径 |
+|---|---|
+| Overview summary | `src/pages/Vouchers/example/biz.tsx` — `cardIssuanceTopupPromotionOverviewSummary` |
+| Reward PT 状态 | 同文件 — `programRewardPtTopupEnabled`, `programRewardPtTopupPercentInput` |
+| Publish 合并 | 同文件 — `mergeUnifiedRewardPointsTopup` |
+| 工具 / 类型 | `src/utils/unifiedRewardPoints.ts`, `src/services/BeamioCard.ts` |
+| Locale | `src/locale/programsLocale.en.json` |
+
+## 相关守则
+
+- **`beamio-merchant-card-unified-reward-points-v13.mdc`** — #13 mint 与 Programs 三类设定
+- **`beamio-merchant-card-global-metadata-protocol.mdc`** — card0 / shareTokenMetadata
+- **`beamio-drawer-form-chrome.mdc`** — Top-up 编辑器顶栏
+- **`beamio-async-action-button-loading.mdc`** — Trash / Save loading

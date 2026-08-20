@@ -184,8 +184,6 @@ import { useReliableTapHandler, RELIABLE_TAP_BUTTON_CLASS } from '@/utils/reliab
 import {
 	buildDiscoverActivePromotionsPanelModel,
 	formatSocialPoints13Display,
-	consumptionPointSystemEnabledFromMetadata,
-	parseLoyaltyPointsDisplay,
 	resolveCouponSocialMissionBlockForSeries,
 	resolveDiscoverTopupPromotionPresentation,
 	type DiscoverTopupPromotionPresentation,
@@ -1740,62 +1738,37 @@ function DiscoverMerchantPromoRewardTierCard({
 	)
 }
 
+/**
+ * Merchant detail Points = NFT #13 Reward Voucher (PT) only.
+ * Do not mix #0 program points or #2 consumption into this balance.
+ */
 function DiscoverMerchantLoyaltyPointsCard({
-	consumptionEnabled,
-	consumptionPoints,
-	socialPoints,
-	consumptionLoading,
-	socialLoading,
+	points,
+	loading,
 }: {
-	consumptionEnabled: boolean
-	consumptionPoints: number | null
-	socialPoints: number | null
-	consumptionLoading: boolean
-	socialLoading: boolean
+	points: number | null
+	loading: boolean
 }) {
-	const consumptionDisplay = consumptionLoading ? null : consumptionPoints
-	const socialDisplay = socialLoading ? null : socialPoints
-	const consumptionVal = consumptionEnabled ? (consumptionDisplay ?? 0) : 0
-	const socialVal = socialDisplay ?? 0
-	const totalVal = consumptionEnabled ? consumptionVal + socialVal : socialVal
-	const totalLoading = consumptionEnabled ? consumptionLoading || socialLoading : socialLoading
-	const totalText = totalLoading ? '—' : formatSocialPoints13Display(totalVal)
-	const consumptionText = consumptionLoading ? '—' : formatSocialPoints13Display(consumptionDisplay)
-	const socialText = socialLoading ? '—' : formatSocialPoints13Display(socialDisplay)
+	const totalText = loading ? '—' : formatSocialPoints13Display(points)
 
 	return (
 		<div className="rounded-[22px] bg-white p-4 shadow-[0_8px_22px_rgba(15,23,42,0.06)] ring-1 ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800 sm:p-5">
 			<div className="flex items-start justify-between gap-3">
 				<div className="min-w-0">
 					<p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">
-						Total Points
+						Points
 					</p>
 					<p className="mt-1 text-[32px] font-extrabold leading-none tracking-tight text-[#1f2328] dark:text-slate-100 sm:text-[34px]">
 						{totalText}
-						<span className="ml-1.5 text-[16px] font-bold text-slate-400 dark:text-slate-500">Pts</span>
+						<span className="ml-1.5 text-[16px] font-bold text-slate-400 dark:text-slate-500">PT</span>
+					</p>
+					<p className="mt-2 text-[12px] font-medium text-slate-500 dark:text-slate-400">
+						Reward voucher · NFT #13
 					</p>
 				</div>
 				<span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#1562f0] text-white shadow-sm">
 					<Star className="h-6 w-6" strokeWidth={2} aria-hidden />
 				</span>
-			</div>
-			<div
-				className={`mt-4 grid gap-3 ${consumptionEnabled ? 'grid-cols-2' : 'grid-cols-1'}`}
-			>
-				{consumptionEnabled ? (
-					<div className="rounded-2xl bg-[#f4f6f8] px-4 py-3 dark:bg-slate-800/60">
-						<p className="text-[13px] font-medium text-slate-500 dark:text-slate-400">Consumption</p>
-						<p className="mt-1 text-[20px] font-bold leading-none tracking-tight text-[#1f2328] dark:text-slate-100">
-							{consumptionText}
-						</p>
-					</div>
-				) : null}
-				<div className="rounded-2xl bg-[#f4f6f8] px-4 py-3 dark:bg-slate-800/60">
-					<p className="text-[13px] font-medium text-slate-500 dark:text-slate-400">Social</p>
-					<p className="mt-1 text-[20px] font-bold leading-none tracking-tight text-[#1f2328] dark:text-slate-100">
-						{socialText}
-					</p>
-				</div>
 			</div>
 		</div>
 	)
@@ -1935,7 +1908,7 @@ function DiscoverMerchantWellnessPointsCard({
 						</div>
 						<p className="shrink-0 text-[28px] font-extrabold leading-none tracking-tight text-[#1562f0]">
 							{ptsDisplay}
-							<span className="ml-1 text-[14px] font-bold">pts</span>
+							<span className="ml-1 text-[14px] font-bold">PT</span>
 						</p>
 					</div>
 				</div>
@@ -4111,18 +4084,7 @@ function DiscoverMerchantDetailFullScreen({
 		item.cardAddress != null
 			? DISCOVER_MERCHANT_WELLNESS_POINTS_PANELS[resolveDiscoverCardPanelKey(item.cardAddress)]
 			: undefined
-	const wellnessPointsValue = merchantAssetsLoading
-		? null
-		: Number(merchantAssets?.points ?? 0)
-	const consumptionPointSystemEnabled = useMemo(() => {
-		const fromMeta = consumptionPointSystemEnabledFromMetadata(merchantMetadataRoot)
-		if (fromMeta != null) return fromMeta
-		return false
-	}, [merchantMetadataRoot])
-	const userConsumptionPoints = useMemo(
-		() => parseLoyaltyPointsDisplay(merchantAssets?.chargeRewardPoints),
-		[merchantAssets?.chargeRewardPoints],
-	)
+	const wellnessPointsValue = userSocialPointsLoading ? null : userSocialPoints13
 	const MerchantCategoryIcon = discoverCategoryIconForTab(item.category)
 	const topupPromotionPresentation = useMemo(
 		() =>
@@ -5954,13 +5916,10 @@ function DiscoverMerchantDetailFullScreen({
 					</>
 					) : null}
 
-					{/* Total Points: all Discover merchant details, including CoNET Genesis. */}
+					{/* Points: NFT #13 PT — all Discover merchant details, including CoNET Genesis. */}
 					<DiscoverMerchantLoyaltyPointsCard
-						consumptionEnabled={consumptionPointSystemEnabled}
-						consumptionPoints={userConsumptionPoints}
-						socialPoints={userSocialPoints13}
-						consumptionLoading={merchantAssetsLoading}
-						socialLoading={userSocialPointsLoading}
+						points={userSocialPoints13}
+						loading={userSocialPointsLoading}
 					/>
 
 					{/* Card program REFERRER dashboard (biz Referrer Reward) — all merchant cards. */}

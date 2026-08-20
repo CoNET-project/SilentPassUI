@@ -70,6 +70,7 @@
 	"scripts": {
 		"start": "craco start",
 		"build:react": "CI=false env=production node node_modules/.bin/craco build",
+		"build:embedded": "PUBLIC_URL=/ npm run build:react",
 		"test": "craco test",
 		"eject": "react-scripts eject",
 		"build:loader": "node scripts/build-loader.js",

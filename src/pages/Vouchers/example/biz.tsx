@@ -9801,6 +9801,12 @@ function renderSmartReceiptLedgerAlignedPrimaryCard(a: SmartReceiptLedgerAligned
   const baseScanTxHash = resolveTxDisplayRowBaseScanTxHash(tx);
   const payerHandle = payerTag ? payerTag.replace(/^@/, '') : '';
   const useNfcSubtitle = isLedgerNfcBeamioTagHandle(payerHandle);
+  const raw = tx.raw as Record<string, unknown>;
+  const subordinateAddr =
+    typeof raw.subordinate === 'string' && ethers.isAddress(raw.subordinate) ? ethers.getAddress(raw.subordinate) : '';
+  const subordinateTag = subordinateAddr
+    ? resolveReportingBeamioTag(subordinateAddr.toLowerCase())
+    : '';
   const tierPres =
     tierCap != null && tierCap.name ? infraTierCapsulePresentation(tierCap.backgroundColor) : null;
 
@@ -9855,7 +9861,9 @@ function renderSmartReceiptLedgerAlignedPrimaryCard(a: SmartReceiptLedgerAligned
             </span>
           </div>
           <div className="flex flex-col gap-1.5">
-            {tx.type.includes('Top-Up') || ((tx.type === 'Charge' || tx.type === 'Tip') && !isVaultTerminalSr) ? (
+            {tx.type.includes('Top-Up') ||
+            isMembershipIssueTxDisplayType(tx.type) ||
+            ((tx.type === 'Charge' || tx.type === 'Tip') && !isVaultTerminalSr) ? (
               <>
                 <div className="flex items-center gap-2 flex-wrap min-w-0">
                   {payerTag ? (
@@ -9884,7 +9892,12 @@ function renderSmartReceiptLedgerAlignedPrimaryCard(a: SmartReceiptLedgerAligned
                   ) : null}
                 </div>
                 <div className="flex items-center gap-1.5 text-[13px] text-slate-500 font-medium flex-wrap">
-                  {useNfcSubtitle ? (
+                  {isMembershipIssueTxDisplayType(tx.type) ? (
+                    <>
+                      <Nfc size={14} className="text-slate-400 shrink-0" />
+                      <span className="whitespace-nowrap">POS •</span>
+                    </>
+                  ) : useNfcSubtitle ? (
                     <>
                       <Nfc size={14} className="text-slate-400 shrink-0" />
                       <span className="whitespace-nowrap">NFC •</span>
@@ -9895,7 +9908,18 @@ function renderSmartReceiptLedgerAlignedPrimaryCard(a: SmartReceiptLedgerAligned
                       <span className="whitespace-nowrap">App •</span>
                     </>
                   )}
-                  {payeeTag ? (
+                  {isMembershipIssueTxDisplayType(tx.type) ? (
+                    subordinateTag ? (
+                      <span className="whitespace-nowrap">{subordinateTag}</span>
+                    ) : subordinateAddr ? (
+                      <AddressCapsule
+                        address={subordinateAddr}
+                        className="bg-slate-50 border-slate-200 text-slate-600 text-[12px]"
+                      />
+                    ) : (
+                      <span className="text-slate-400">POS terminal</span>
+                    )
+                  ) : payeeTag ? (
                     <span className="whitespace-nowrap">{payeeTag}</span>
                   ) : payeeAddr ? (
                     <AddressCapsule address={payeeAddr} className="bg-slate-50 border-slate-200 text-slate-600 text-[12px]" />
@@ -24533,7 +24557,8 @@ useEffect(() => {
        const raw = tx.raw as Record<string, unknown>;
        const payer = typeof raw.payer === 'string' ? raw.payer : '';
        const payee = typeof raw.payee === 'string' ? raw.payee : '';
-       for (const a of [payer, payee]) {
+      const subordinate = typeof raw.subordinate === 'string' ? raw.subordinate : '';
+      for (const a of [payer, payee, subordinate]) {
          const k = normalizeAddressKey(a);
          if (k) candidates.add(k);
        }
@@ -32145,6 +32170,13 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                             const payerLowerM = payerAddrM.toLowerCase();
                             const payerTagM = payerLowerM ? resolveReportingBeamioTagLower(payerLowerM) : '';
                             const payerHandleM = payerTagM ? payerTagM.replace(/^@/, '') : '';
+                            const subordinateAddrM =
+                              typeof rawM.subordinate === 'string' && ethers.isAddress(rawM.subordinate)
+                                ? ethers.getAddress(rawM.subordinate)
+                                : '';
+                            const subordinateTagM = subordinateAddrM
+                              ? resolveReportingBeamioTagLower(subordinateAddrM.toLowerCase())
+                              : '';
                             const useNfcM = isCharge && isLedgerNfcBeamioTagHandle(payerHandleM);
                             const tsM = txDisplayRowTimestampSec(tx);
                             const timeStrM =
@@ -32165,7 +32197,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                             if (isTopup) {
                               subtitleM = mobileTransactionsTopupSubtitle(tx, timeStrM);
                             } else if (isMembershipIssue) {
-                              subtitleM = mobileTransactionsMembershipIssueSubtitle(tx, timeStrM);
+                              subtitleM = `${payerTagM || 'Customer'} • POS${subordinateTagM ? ` • ${subordinateTagM}` : ''} • ${timeStrM || '—'}`;
                             } else if (isCouponClaim) {
                               subtitleM = `Coupon redeem (APP) • ${timeStrM || '—'}`;
                             } else if (isCatalogClaim) {
@@ -32471,7 +32503,9 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                    </button>
                                  </div>
                              <div className="flex flex-col gap-1.5">
-                               {tx.type.includes('Top-Up') || ((tx.type === 'Charge' || tx.type === 'Tip') && !isVaultTerminal) ? (
+                              {tx.type.includes('Top-Up') ||
+                              isMembershipIssueTxDisplayType(tx.type) ||
+                              ((tx.type === 'Charge' || tx.type === 'Tip') && !isVaultTerminal) ? (
                                  (() => {
                                    const raw = tx.raw as Record<string, unknown>;
                                    const payerAddr =
@@ -32486,6 +32520,14 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                    const payeeLower = payeeAddr.toLowerCase();
                                    const payerTag = payerLower ? resolveReportingBeamioTagLower(payerLower) : '';
                                    const payeeTag = payeeLower ? resolveReportingBeamioTagLower(payeeLower) : '';
+                                  const subordinateAddr =
+                                    typeof raw.subordinate === 'string' && ethers.isAddress(raw.subordinate)
+                                      ? ethers.getAddress(raw.subordinate)
+                                      : '';
+                                  const subordinateLower = subordinateAddr.toLowerCase();
+                                  const subordinateTag = subordinateLower
+                                    ? resolveReportingBeamioTagLower(subordinateLower)
+                                    : '';
                                    const payerHandle = payerTag ? payerTag.replace(/^@/, '') : '';
                                    const tierCap =
                                      tx.type === 'Charge' && payerLower
@@ -32524,7 +32566,12 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                          ) : null}
                                        </div>
                                        <div className="flex items-center gap-1.5 text-[13px] text-slate-500 font-medium flex-wrap">
-                                         {useNfcSubtitle ? (
+                                         {isMembershipIssueTxDisplayType(tx.type) ? (
+                                           <>
+                                             <Nfc size={14} className="text-slate-400 shrink-0" />
+                                             <span className="whitespace-nowrap">POS •</span>
+                                           </>
+                                         ) : useNfcSubtitle ? (
                                            <>
                                              <Nfc size={14} className="text-slate-400 shrink-0" />
                                              <span className="whitespace-nowrap">NFC •</span>
@@ -32535,7 +32582,20 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                              <span className="whitespace-nowrap">App •</span>
                                            </>
                                          )}
-                                         {payeeTag ? (
+                                         {isMembershipIssueTxDisplayType(tx.type) ? (
+                                           subordinateTag ? (
+                                             <span className="whitespace-nowrap">{subordinateTag}</span>
+                                           ) : subordinateAddr ? (
+                                             <AddressCapsule
+                                               address={subordinateAddr}
+                                               className="bg-slate-50 border-slate-200 text-slate-600 text-[12px]"
+                                             />
+                                           ) : tx.terminal && tx.terminal !== '—' ? (
+                                             <span className="whitespace-nowrap">{tx.terminal}</span>
+                                           ) : (
+                                             <span className="text-slate-400">POS terminal</span>
+                                           )
+                                         ) : payeeTag ? (
                                            <span className="whitespace-nowrap">{payeeTag}</span>
                                          ) : payeeAddr ? (
                                            <AddressCapsule address={payeeAddr} className="bg-slate-50 border-slate-200 text-slate-600 text-[12px]" />

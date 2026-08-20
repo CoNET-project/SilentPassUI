@@ -13772,6 +13772,8 @@ useEffect(() => {
  const [ownsBusinessStartKetToken0Fetched, setOwnsBusinessStartKetToken0Fetched] = useState(false);
  /** Ket welcome cover (`marketExample.html`); persisted per EOA + session; cleared from UI when user taps Start Designing */
  const [cardIssuanceKetWelcomeCoverDismissed, setCardIssuanceKetWelcomeCoverDismissed] = useState(false);
+/** Desktop no-card gate: keep the desktop Overview shell until the merchant opens the shared Lite onboarding flow. */
+const [desktopNoAaLiteFlowOpen, setDesktopNoAaLiteFlowOpen] = useState(false);
  /** After Publish & issue card succeeds — same shell as kit thank-you; headline “Your program is live!” */
  const [cardIssuancePublishCelebration, setCardIssuancePublishCelebration] = useState<{
    cardAddress: string
@@ -28576,6 +28578,10 @@ const programsMobileTopNavVisible =
    setActiveTab('Overview');
 }, [showBizFirstMembershipOnboarding, isTerminalsMarketRoute]);
 
+useEffect(() => {
+  if (!showBizFirstMembershipOnboarding) setDesktopNoAaLiteFlowOpen(false);
+}, [showBizFirstMembershipOnboarding]);
+
  useEffect(() => {
    if (isTerminalsMarketRoute) setActiveTab('Staff');
  }, [isTerminalsMarketRoute]);
@@ -31060,8 +31066,37 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                     voucherRedeemFeedback={merchantKitRedeemFeedback}
                   />
                 </div>
+                {desktopNoAaLiteFlowOpen ? (
+                <div className="hidden lg:block mx-auto w-full max-w-[1180px]">
+                  <MobileNoAaLiteMemberSelectionPage
+                    merchantEoa={merchantEoaForLiteForm}
+                    beamio={beamio ?? null}
+                    privateKeyArmor={profiles?.[0]?.privateKeyArmor}
+                    onBusinessDraftUpdated={() => setLiteBusinessFormRevision((n) => n + 1)}
+                    onBack={() => setDesktopNoAaLiteFlowOpen(false)}
+                    onLiteBusinessSavedToChain={() => {
+                      if (merchantEoaForLiteForm) setLiteBusinessChainAck(merchantEoaForLiteForm);
+                      setLiteChainAckRevision((n) => n + 1);
+                    }}
+                    onSelectFuelPack={(usdcAmount) => {
+                      setCustomFuelAmount(usdcAmount);
+                      setSelectedProduct('custom_fuel');
+                    }}
+                    onOpenUnderstandingBUnits={() => setIsBUnitsExplainerOpen(true)}
+                    redeemAdminInProgress={redeemAdminInProgress}
+                    voucherRedeemInput={merchantKitRedeemInput}
+                    onVoucherRedeemInputChange={(value) => {
+                      setMerchantKitRedeemInput(value);
+                      if (merchantKitRedeemFeedback) setMerchantKitRedeemFeedback(null);
+                    }}
+                    onVoucherRedeemActivate={() => void submitMerchantKitBuintRedeem()}
+                    voucherRedeemBusy={merchantKitBuintRedeemBusy}
+                    voucherRedeemFeedback={merchantKitRedeemFeedback}
+                  />
+                </div>
+                ) : null}
                 {/* No AA — `newOnloading.html` Business OS onboarding dashboard (tablet / desktop, or mobile once Lite fields are complete) */}
-                <div className="relative hidden px-1 pb-5 sm:px-2 lg:block">
+                <div className={`${desktopNoAaLiteFlowOpen ? 'hidden lg:hidden' : 'relative lg:block'} px-1 pb-5 sm:px-2`}>
                   {redeemAdminInProgress && (
                     <div className="absolute right-3 top-3 z-20 flex items-center gap-2 rounded-full border border-[#1562f0]/20 bg-white/90 px-2.5 py-1 text-xs font-medium text-slate-800 shadow-sm backdrop-blur-sm sm:right-4 sm:top-4 sm:px-3 sm:py-1.5 sm:text-[13px]">
                       <span className="h-4 w-4 animate-spin rounded-full border-2 border-[#1562f0]/30 border-t-[#1562f0]" />
@@ -31097,10 +31132,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                       <button
                         type="button"
                         onClick={() => {
-                          if (!canEnterProgramArea) return;
-                          handleTabChange(PROGRAM_TAB_BASIC);
+                          setDesktopNoAaLiteFlowOpen(true);
                         }}
-                        disabled={programAreaGateReady && !canEnterProgramArea}
                         className={`flex-1 rounded-xl bg-[#1562f0] px-6 py-3 text-xs font-extrabold text-white shadow-lg shadow-[#1562f0]/20 transition-all hover:scale-[1.02] active:scale-95 sm:text-sm md:flex-none ${bizFocusRingClass} disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100`}
                       >
                         {tu('overview_setup_first_program_cta')}

@@ -95,6 +95,7 @@ import { ensureConetAaForProfileAndPersist } from "@/utils/ensureConetAa"
 import { ingestAaMultisigFromChat } from '@/utils/aaMultisigIngest'
 import { tu } from '@/locale/beamioLocale'
 import { mapServerError } from '@/locale/mapServerError'
+import { installPwaLifecycleRecovery } from '@/utils/pwaLifecycleRecovery'
 
 global.Buffer = require("buffer").Buffer
 
@@ -944,6 +945,7 @@ function AppShell() {
 	// 首次进入 + 钱包恢复后重试 gossip（冷启动时 AppShell 往往早于 recover 完成）
 	useEffect(() => {
 		void init('mount')
+    const removePwaLifecycleRecovery = installPwaLifecycleRecovery()
 
 		const onWalletReady = () => {
 			void init('wallet-ready')
@@ -994,6 +996,7 @@ function AppShell() {
 			document.removeEventListener('visibilitychange', onVisibility)
 			window.removeEventListener('pageshow', onPageShow)
 			window.removeEventListener('pagehide', onPageHide)
+			removePwaLifecycleRecovery()
 			// Do NOT abort gossip / setGossip(false) here.
 			// React StrictMode remount + LoadingPage/AppShell dual init previously killed the
 			// SSE, which made mailbox B call setUserOnlineOnMe true/false in a tight loop.

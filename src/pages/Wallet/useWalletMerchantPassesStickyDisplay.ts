@@ -14,6 +14,8 @@ import {
 	saveWalletMerchantPassStackOrder,
 } from '@/utils/walletMerchantPassStackCache'
 import { clearWalletMerchantPassStackDisplayCache } from '@/pages/Wallet/walletMerchantPassDisplayCache'
+import { recentActivityMerchantProgramCardAddress } from '@/pages/History/recentActivityIndexerMerge'
+import type { TxView } from '@/pages/History/recentActivityIndexerMerge'
 
 export type WalletMerchantPassesStickyView = {
 	stackCards: UserCardInfo[]
@@ -49,19 +51,20 @@ function mergeDetailsTrusted(
 
 function buildStackCards(
 	cards: UserCardInfo[],
-	stackOrder: string[]
+	stackOrder: string[],
+	latestEventMsByCard: ReadonlyMap<string, number>
 ): UserCardInfo[] {
-	const byAddr = new Map(cards.map((c) => [c.cardAddress.toLowerCase(), c]))
-	const order =
-		stackOrder.length > 0 ? stackOrder : cards.map((c) => c.cardAddress.toLowerCase())
-	const out: UserCardInfo[] = []
-	for (const addr of order) {
-		const c = byAddr.get(addr)
-		if (!c) continue
-		out.push(c)
-		if (out.length >= 3) break
-	}
-	return out
+	const stackRank = new Map(stackOrder.map((address, index) => [address, index]))
+	return [...cards]
+		.sort((a, b) => {
+			const eventDelta =
+				(latestEventMsByCard.get(b.cardAddress.toLowerCase()) ?? 0) -
+				(latestEventMsByCard.get(a.cardAddress.toLowerCase()) ?? 0)
+			if (eventDelta !== 0) return eventDelta
+			return (stackRank.get(a.cardAddress.toLowerCase()) ?? Number.MAX_SAFE_INTEGER) -
+				(stackRank.get(b.cardAddress.toLowerCase()) ?? Number.MAX_SAFE_INTEGER)
+		})
+		.slice(0, 5)
 }
 
 function hasPositivePoints(pointsRaw: unknown): boolean {
@@ -111,7 +114,10 @@ export function useWalletMerchantPassesStickyDisplay(
 	eoaLower: string,
 	liveCards: UserCardInfo[],
 	liveDetails: MyBrandCardFeedDetailsMap,
-	feedLoading: boolean
+	feedLoading: boolean,
+	recentActivityItems: TxView[],
+	recentActivitySettled: boolean,
+	recentActivityLoading: boolean
 ): WalletMerchantPassesStickyView {
 	const [stickyCards, setStickyCards] = useState<UserCardInfo[]>([])
 	const [stickyDetails, setStickyDetails] = useState<MyBrandCardFeedDetailsMap>({})
@@ -227,10 +233,23 @@ export function useWalletMerchantPassesStickyDisplay(
 	return useMemo(() => {
 		const safeStickyCards = filterDisplayUserCards(stickyCards)
 		const safeStickyDetails = filterExcludedCardDetailKeys(stickyDetails)
-		const displayableCards = safeStickyCards.filter((c) =>
+		const latestEventMsByCard = new Map<string, number>()
+		for (const tx of recentActivityItems) {
+			const cardAddress = recentActivityMerchantProgramCardAddress(tx)
+			if (!cardAddress) continue
+			const key = cardAddress.toLowerCase()
+			const timestampMs = Number(tx.timestampMs)
+			if (!Number.isFinite(timestampMs)) continue
+			latestEventMsByCard.set(key, Math.max(latestEventMsByCard.get(key) ?? 0, timestampMs))
+		}
+		const holdingsCards = safeStickyCards.filter((c) =>
 			isDisplayableMerchantPass(c, safeStickyDetails)
 		)
-		const stackCards = buildStackCards(displayableCards, stackOrder)
+		const displayableCards =
+			recentActivitySettled && !recentActivityLoading
+				? holdingsCards.filter((c) => latestEventMsByCard.has(c.cardAddress.toLowerCase()))
+				: []
+		const stackCards = buildStackCards(displayableCards, stackOrder, latestEventMsByCard)
 		const allStickyDetailsKnown =
 			safeStickyCards.length > 0 &&
 			safeStickyCards.every((c) => safeStickyDetails[c.cardAddress.toLowerCase()] !== undefined)
@@ -243,6 +262,8 @@ export function useWalletMerchantPassesStickyDisplay(
 		 */
 		const hasRememberedStack = stackOrder.length > 0
 		const knownNoPass =
+			recentActivitySettled &&
+			!recentActivityLoading &&
 			safeStickyCards.length > 0 &&
 			displayableCards.length === 0 &&
 			allStickyDetailsKnown
@@ -252,19 +273,32 @@ export function useWalletMerchantPassesStickyDisplay(
 				!hasRememberedStack &&
 				feedSettled &&
 				!feedLoading &&
+				recentActivitySettled &&
+				!recentActivityLoading &&
 				!hasEverHadCards)
 		const showSkeleton =
 			(displayableCards.length > 0 && !detailsReady) ||
-			(displayableCards.length === 0 && hasRememberedStack && safeStickyCards.length === 0)
+			!recentActivitySettled ||
+			recentActivityLoading
 		const showStack = detailsReady
 
 		return {
 			stackCards,
 			details: safeStickyDetails,
-			badgeCount: displayableCards.length,
+			badgeCount: stackCards.length,
 			showEmpty,
 			showSkeleton,
 			showStack,
 		}
-	}, [stickyCards, stickyDetails, stackOrder, feedLoading, feedSettled, hasEverHadCards])
+	}, [
+		stickyCards,
+		stickyDetails,
+		stackOrder,
+		feedLoading,
+		feedSettled,
+		hasEverHadCards,
+		recentActivityItems,
+		recentActivitySettled,
+		recentActivityLoading,
+	])
 }

@@ -505,6 +505,17 @@ export function topupCardAddressFromTxView(tx: TxView | undefined): string {
 	return parseDisplayJsonCardIdentity(tx.rawTransaction?.displayJson ?? '').cardAddress
 }
 
+/** Merchant program card associated with a Recent Activity event, if the event identifies one. */
+export function recentActivityMerchantProgramCardAddress(tx: TxView | undefined): string {
+	if (!tx) return ''
+	const persisted = String(tx.merchantCardAddress ?? '').trim()
+	if (persisted && ethers.isAddress(persisted)) return ethers.getAddress(persisted)
+	if (isRecentActivityCardTopupTxView(tx)) return topupCardAddressFromTxView(tx)
+	if (isMerchantChargeTxView(tx)) return merchantChargeCardAddressFromTxView(tx)
+	const routeCard = indexerRouteCardAddress(tx.rawTransaction?.route)
+	return routeCard && ethers.isAddress(routeCard) ? ethers.getAddress(routeCard) : ''
+}
+
 /** Top-up / issue rows embed cardAddress + cardName in displayJson; Charge historically did not. */
 export function parseDisplayJsonCardIdentity(displayJson: string): { cardAddress: string; cardName: string } {
 	try {

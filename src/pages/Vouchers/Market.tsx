@@ -101,6 +101,7 @@ import {
 	customerHasValidMembershipFromAssets,
 	membershipPurchaseApiAmountHuman,
 	membershipPurchasePointsCreditE6,
+	pickActiveDiscoverMembershipNft,
 	resolveDiscoverMembershipUiState,
 	type DiscoverMembershipFeeTier,
 } from "@/utils/discoverMembershipFee"
@@ -844,6 +845,8 @@ type DiscoverLatestCardRow = {
 	primaryRechargeBonus: DiscoverRechargeBonusRule | null
 	/** From shareTokenMetadata.discoverAbout — Discover detail About block */
 	discoverAbout: ShareTokenMetadataDiscoverAbout | null
+	/** Full card0 metadata from `/api/latestCards` (tiers / membershipFeeE6). */
+	metadataRoot: Record<string, unknown> | null
 }
 
 /** Discover filter chip: category tab or show all merchants. */
@@ -1089,6 +1092,8 @@ type DiscoverFeaturedCard = {
 	rechargeBonusSidePill: string | null
 	rechargeBonusDisplay: string | null
 	discoverAbout: ShareTokenMetadataDiscoverAbout | null
+	/** Seed Discover membership / Programs metadata before `/api/cardMetadata` returns. */
+	metadataRoot: Record<string, unknown> | null
 }
 
 /** Wallet / deep-link: held merchant card may be absent from `/api/latestCards`. */
@@ -1141,6 +1146,7 @@ function buildDiscoverFeaturedCardFromMerchantDb(
 			readDiscoverNestedObject(metadataRoot ?? null, "shareTokenMetadata") ??
 				readDiscoverNestedObject(metaRecord, "shareTokenMetadata"),
 		),
+		metadataRoot: asDiscoverMetadataRoot(metadataRoot) ?? asDiscoverMetadataRoot(metaRecord),
 	}
 }
 
@@ -1337,6 +1343,11 @@ function membershipFeeE6ToHuman(e6: string | number | undefined | null): string 
 	} catch {
 		return ''
 	}
+}
+
+function asDiscoverMetadataRoot(raw: unknown): Record<string, unknown> | null {
+	if (raw == null || typeof raw !== "object" || Array.isArray(raw)) return null
+	return raw as Record<string, unknown>
 }
 
 function discoverTierMembershipFeeE6(row: DiscoverOfferTierRow): string {
@@ -2125,6 +2136,7 @@ function parseDiscoverLatestCardItem(raw: unknown): DiscoverLatestCardRow | null
 		merchantImage,
 		primaryRechargeBonus,
 		discoverAbout,
+		metadataRoot: meta,
 	}
 }
 
@@ -3793,7 +3805,7 @@ function DiscoverMerchantDetailFullScreen({
 	const navigate = useNavigate()
 	const location = useLocation()
 	const { profiles, setProfiles, discoverMerchantStatByCard, registerDiscoverMerchantStatFeedCards, applyDiscoverMerchantLikeCountDelta, couponOpenClaimStatusByKey, registerCouponOpenClaimFeedTargets, applyCouponOpenClaimStatus } = useDaemonContext()
-	const { registerCardAddresses, resolveName, lookupByAddress, ensureCardsForAddresses } =
+	const { registerCardAddresses, resolveName, lookupByAddress, ensureCardsForAddresses, peekMetadata } =
 		useMerchantCardDatabase()
 	const {
 		lookupByAddress: lookupProfileByAddress,
@@ -3820,7 +3832,9 @@ function DiscoverMerchantDetailFullScreen({
 	const [merchantOffersLoading, setMerchantOffersLoading] = useState(false)
 	const [userSocialPoints13, setUserSocialPoints13] = useState<number | null>(null)
 	const [userSocialPointsLoading, setUserSocialPointsLoading] = useState(false)
-	const [merchantMetadataRoot, setMerchantMetadataRoot] = useState<Record<string, unknown> | null>(null)
+	const [merchantMetadataRoot, setMerchantMetadataRoot] = useState<Record<string, unknown> | null>(
+		() => item.metadataRoot,
+	)
 	const [issuerOwnerEoa, setIssuerOwnerEoa] = useState<string | null>(item.cardOwner ?? null)
 	const [issuerProfileItem, setIssuerProfileItem] = useState<searchResult | null>(null)
 	const [issuerProfileOpening, setIssuerProfileOpening] = useState(false)
@@ -3928,7 +3942,11 @@ function DiscoverMerchantDetailFullScreen({
 
 	useEffect(() => {
 		if (!item.cardAddress) return
-		setMerchantMetadataRoot(null)
+		const seed =
+			asDiscoverMetadataRoot(item.metadataRoot) ??
+			asDiscoverMetadataRoot(lookupByAddress(item.cardAddress)?.metadataRoot) ??
+			asDiscoverMetadataRoot(peekMetadata(item.cardAddress))
+		setMerchantMetadataRoot(seed)
 		let cancelled = false
 		const cardAddress = item.cardAddress
 		void fetch(`${beamioApi}/api/cardMetadata?cardAddress=${encodeURIComponent(cardAddress)}`)
@@ -3950,12 +3968,12 @@ function DiscoverMerchantDetailFullScreen({
 				if (about) setResolvedDiscoverAbout(about)
 			})
 			.catch(() => {
-				/* untrusted — keep item.discoverAbout / cache */
+				/* untrusted — keep seeded metadata / item.discoverAbout */
 			})
 		return () => {
 			cancelled = true
 		}
-	}, [item.cardAddress])
+	}, [item.cardAddress, item.metadataRoot])
 
 	useEffect(() => {
 		if (!item.cardAddress || issuerOwnerEoa) return
@@ -4027,7 +4045,7 @@ function DiscoverMerchantDetailFullScreen({
 		const allTiers = parseDiscoverAllTiersFromMeta(merchantMetadataRoot)
 		const feeTiers = allTiers.filter((t) => BigInt(discoverTierMembershipFeeE6(t)) > 0n)
 		if (feeTiers.length === 0) return null
-		const activeNft = merchantAssets?.nfts.find((n) => !n.isExpired && Number(n.tokenId) > 0)
+		const activeNft = pickActiveDiscoverMembershipNft(merchantAssets?.nfts)
 		const activeTierIndex = activeNft != null ? Number(activeNft.tier) : NaN
 		const matched =
 			Number.isFinite(activeTierIndex) && activeTierIndex >= 0
@@ -4049,7 +4067,7 @@ function DiscoverMerchantDetailFullScreen({
 	}, [membershipFeeMode, merchantMetadataRoot, merchantAssets])
 	const membershipExpiryDisplay = useMemo(() => {
 		if (!hasActiveMembership || !merchantAssets) return null
-		const active = merchantAssets.nfts.find((n) => !n.isExpired && Number(n.tokenId) > 0)
+		const active = pickActiveDiscoverMembershipNft(merchantAssets.nfts)
 		const expiry = (active?.expiry ?? '').trim()
 		if (!expiry || /^0+$/.test(expiry) || expiry === 'Never') {
 			return expiry === 'Never' ? 'Never expires' : null
@@ -5652,6 +5670,13 @@ function DiscoverMerchantDetailFullScreen({
 											</p>
 										) : null}
 									</div>
+								) : membershipFeeMode ? (
+									<div className="mt-1.5 flex items-center gap-1.5">
+										<span className="h-2 w-2 shrink-0 rounded-full bg-slate-300 dark:bg-slate-600" aria-hidden />
+										<span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500 dark:text-slate-400">
+											Not a member
+										</span>
+									</div>
 								) : null}
 								{membershipFeeDisplay ? (
 									<p className="mt-1.5 text-[12px] font-medium leading-snug text-slate-500 dark:text-slate-400">
@@ -5696,7 +5721,6 @@ function DiscoverMerchantDetailFullScreen({
 						</p>
 
 						{usdcTopupPhase === 'idle' &&
-						!merchantAssetsLoading &&
 						membershipUi.mode === 'need_member' &&
 						membershipUi.joinTier ? (
 							<div className="mt-4 space-y-3 border-t border-slate-100 pt-4 dark:border-slate-800">
@@ -6383,6 +6407,7 @@ export default function Market() {
 				rechargeBonusSidePill: topupPresentation.heroSidePill,
 				rechargeBonusDisplay: topupPresentation.displayString,
 				discoverAbout: card.discoverAbout,
+				metadataRoot: card.metadataRoot,
 			}
 		})
 		if (rows.length > 0) return [...rows].reverse()

@@ -65,14 +65,39 @@ export function membershipPurchaseApiAmountHuman(
 	}
 }
 
+/** Membership NFTs live in [100, 1e11). Exclude #0 points, #1–#30 stats, and issued coupons. */
+export const DISCOVER_MEMBERSHIP_NFT_MIN_ID = 100n
+export const DISCOVER_ISSUED_NFT_START_ID = 100_000_000_000n
+
+export function parseDiscoverNftTokenId(raw: unknown): bigint | null {
+	try {
+		const s = String(raw ?? '').replace(/,/g, '').trim()
+		if (!s || s === 'Default/Max') return null
+		return BigInt(s)
+	} catch {
+		return null
+	}
+}
+
+export function isDiscoverMembershipNftTokenId(raw: unknown): boolean {
+	const id = parseDiscoverNftTokenId(raw)
+	if (id == null) return false
+	return id >= DISCOVER_MEMBERSHIP_NFT_MIN_ID && id < DISCOVER_ISSUED_NFT_START_ID
+}
+
+export function pickActiveDiscoverMembershipNft<T extends DiscoverMembershipNftLike>(
+	nfts?: T[] | null,
+): T | undefined {
+	return (nfts ?? []).find((n) => !n.isExpired && isDiscoverMembershipNftTokenId(n.tokenId))
+}
+
 export function customerHasValidMembershipFromAssets(params: {
 	primaryMemberTokenId?: string | number | null
 	nfts?: DiscoverMembershipNftLike[] | null
 }): boolean {
 	const primary = String(params.primaryMemberTokenId ?? '').trim()
-	if (primary && primary !== '0') return true
-	const nfts = params.nfts ?? []
-	return nfts.some((n) => !n.isExpired && Number(n.tokenId) > 0)
+	if (primary && primary !== '0' && isDiscoverMembershipNftTokenId(primary)) return true
+	return pickActiveDiscoverMembershipNft(params.nfts) != null
 }
 
 export function pickLowestMembershipFeeTier(
@@ -131,7 +156,7 @@ export function resolveCurrentMembershipFeeE6(
 	tiers: DiscoverMembershipFeeTier[],
 	nfts?: DiscoverMembershipNftLike[] | null,
 ): bigint | null {
-	const active = (nfts ?? []).find((n) => !n.isExpired && Number(n.tokenId) > 0)
+	const active = pickActiveDiscoverMembershipNft(nfts)
 	if (!active) return null
 	const idx = Number(active.tier)
 	if (Number.isFinite(idx) && idx >= 0) {

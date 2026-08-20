@@ -32,6 +32,9 @@ export default function WalletOverview() {
 		myBrandCards,
 		myBrandCardDetails,
 		myBrandsFeedLoading,
+		recentActivityNoAaItems,
+		recentActivityNoAaSettled,
+		recentActivityNoAaLoading,
 		setShowFooter,
 	} = useDaemonContext()
 
@@ -52,7 +55,10 @@ export default function WalletOverview() {
 		eoaLower,
 		myBrandCards,
 		myBrandCardDetails,
-		myBrandsFeedLoading
+		myBrandsFeedLoading,
+		recentActivityNoAaItems,
+		recentActivityNoAaSettled,
+		recentActivityNoAaLoading
 	)
 
 	const [showMyBrandsDrawer, setShowMyBrandsDrawer] = useState(false)

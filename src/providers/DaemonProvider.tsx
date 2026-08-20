@@ -507,6 +507,7 @@ type DaemonContext = {
 	myBrandsFeedLastConetBlock: number
 	/** 全局喂料写入：EOA + 独立 AA（若存在）合并拉取、按时间倒序；overrideAddress 调试场景外均由面板读此数据 */
 	recentActivityNoAaItems: TxView[]
+	recentActivityNoAaSettled: boolean
 	recentActivityNoAaLoading: boolean
 	recentActivityNoAaError: string | null
 	refreshRecentActivityNoAa: () => Promise<void>
@@ -806,6 +807,7 @@ const defaultContextValue: DaemonContext = {
 	myBrandsFeedLoading: false,
 	myBrandsFeedLastConetBlock: 0,
 	recentActivityNoAaItems: [],
+	recentActivityNoAaSettled: false,
 	recentActivityNoAaLoading: false,
 	recentActivityNoAaError: null,
 	refreshRecentActivityNoAa: async () => {},
@@ -1627,6 +1629,7 @@ export function DaemonProvider({ children }: DaemonProps) {
 
   const noAaRecentActivityInFlight = useRef(false)
   const [recentActivityNoAaItems, setRecentActivityNoAaItems] = useState<TxView[]>([])
+  const [recentActivityNoAaSettled, setRecentActivityNoAaSettled] = useState(false)
   const recentActivityNoAaItemsRef = useRef<TxView[]>([])
   const recentActivityNoAaSettledRef = useRef(false)
   const [recentActivityNoAaLoading, setRecentActivityNoAaLoading] = useState(false)
@@ -2491,6 +2494,7 @@ export function DaemonProvider({ children }: DaemonProps) {
     const eoaLower = raw.toLowerCase()
     if (!eoaLower || !ethers.isAddress(eoaLower)) {
       recentActivityNoAaSettledRef.current = false
+      setRecentActivityNoAaSettled(false)
       setRecentActivityNoAaItems([])
       setRecentActivityNoAaError(null)
       setRecentActivityNoAaLoading(false)
@@ -2500,6 +2504,7 @@ export function DaemonProvider({ children }: DaemonProps) {
     if (hit?.length) {
       const restored = filterRecentActivityExcludedBunitRows(txViewsFromLocalCache(hit))
       recentActivityNoAaSettledRef.current = true
+      setRecentActivityNoAaSettled(true)
       setRecentActivityNoAaItems(restored)
       setRecentActivityNoAaError(null)
       setRecentActivityNoAaLoading(false)
@@ -2515,6 +2520,7 @@ export function DaemonProvider({ children }: DaemonProps) {
       })
     } else {
       recentActivityNoAaSettledRef.current = false
+      setRecentActivityNoAaSettled(false)
       setRecentActivityNoAaItems([])
       setRecentActivityNoAaError(null)
     }
@@ -2526,6 +2532,7 @@ export function DaemonProvider({ children }: DaemonProps) {
     const profile = profilesRef.current?.[0]
     if (!profile?.keyID?.trim()) {
       recentActivityNoAaSettledRef.current = false
+      setRecentActivityNoAaSettled(false)
       setRecentActivityNoAaItems([])
       setRecentActivityNoAaLoading(false)
       setRecentActivityNoAaError(null)
@@ -2535,6 +2542,7 @@ export function DaemonProvider({ children }: DaemonProps) {
     const eoa = profile.keyID.trim()
     if (!ethers.isAddress(eoa)) {
       recentActivityNoAaSettledRef.current = false
+      setRecentActivityNoAaSettled(false)
       setRecentActivityNoAaItems([])
       setRecentActivityNoAaLoading(false)
       setRecentActivityNoAaError(null)
@@ -2603,6 +2611,7 @@ export function DaemonProvider({ children }: DaemonProps) {
       })
       if (trusted) {
         recentActivityNoAaSettledRef.current = true
+        setRecentActivityNoAaSettled(true)
         const prevItems = recentActivityNoAaItemsRef.current
         if (items.length === 0 && prevItems.length > 0) {
           /**
@@ -3027,7 +3036,7 @@ export function DaemonProvider({ children }: DaemonProps) {
 				paymentKind, setPaymentKind, successNFTID, setSuccessNFTID, selectedPlan, setSelectedPlan, airdropProcess, setAirdropProcess,sendToMemo, setSendToMemo, charts, setCharts,
 				airdropSuccess, setAirdropSuccess, airdropTokens, setAirdropTokens, airdropProcessReff, setAirdropProcessReff, getWebFilter, listenningProcess, setListenningProcess,
 				myBrandCards, myBrandCardDetails, myBrandsFeedLoading, myBrandsFeedLastConetBlock,
-				recentActivityNoAaItems, recentActivityNoAaLoading, recentActivityNoAaError, refreshRecentActivityNoAa,
+				recentActivityNoAaItems, recentActivityNoAaSettled, recentActivityNoAaLoading, recentActivityNoAaError, refreshRecentActivityNoAa,
 				conetNetworkStats, conetDepinStats, conetWalletBalances, conetAaWalletBalances, validatorWalletNodeProfile, unifiedIncomeStats, referrerSummary,
 				referralL0StartKitQuota, refreshReferralL0StartKitQuota,
 				genesisIncomeByEoa, registerGenesisIncomeFeedAccounts, refreshGenesisIncomeFeed,

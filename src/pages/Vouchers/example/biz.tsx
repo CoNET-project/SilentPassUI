@@ -4922,6 +4922,15 @@ function memberDirectoryProfileDrawerMotionLayers(props: MemberDirectoryProfileD
               {headlineTag}
             </h3>
             <p className="mt-1 text-center text-sm font-medium text-[#595c5e]">{displayTitle}</p>
+            <div className="mt-3 flex w-full flex-col items-center gap-1.5">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-[#595c5e]/80">EOA Wallet</span>
+              <AddressCapsule
+                address={row.memberAddress}
+                explorerUrl={beamioConetBlockscoutAddressUrl(row.memberAddress)}
+                className="max-w-full border-[#dce2f7] bg-[#e9edff] text-[#424655]"
+                leadingIcon={<Wallet className="h-3.5 w-3.5 text-[#0051d1]" strokeWidth={2.25} aria-hidden />}
+              />
+            </div>
             {hasRewardTier && tierBadgeLabel ? (
             <div
                 className="mt-3 inline-flex items-center rounded-full border border-[#0051d1]/20 bg-[#0051d1]/10 px-3 py-1 text-[#0047b8]"

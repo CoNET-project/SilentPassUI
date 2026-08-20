@@ -53,6 +53,7 @@ import {
 	postNfcCardLinkStateSigned,
 } from '@/services/BeamioCard'
 import ActiveHistoryPannelNew from '@/pages/History/components/activeHistoryPannelNew'
+import { isRecentActivityCardTopupTxView } from '@/pages/History/recentActivityIndexerMerge'
 import { MyBrandsFullScreenDrawer } from '@/pages/Brands/MyBrandsFullScreenDrawer'
 import {
 	MyBrandListEntries,
@@ -244,7 +245,7 @@ const Home = (_props: HomeProps) => {
 		setPayTag, setSendToMemo, listenningProcess, setListenningProcess, usdcbalance, setPaymentLinkCode,
 		currencyData, setRedeemCode, setPayMePayment, setAllNodes, setGossip, gossip, setCharts, charts, setShowFooter, scanData, setScanData,
 		myBrandCards, myBrandCardDetails, homeTotalPowerCad,
-		aaAccountUsdcBalance, refreshRecentActivityNoAa, conetWalletBalances,
+		aaAccountUsdcBalance, recentActivityNoAaItems, refreshRecentActivityNoAa, conetWalletBalances,
 	} = useDaemonContext()
 	const navigate = useNavigate()
 	  const [settingsOpen, setSettingsOpen] = useState<''|'BeamioBetaAccess'|'支付'>('')
@@ -278,6 +279,7 @@ const Home = (_props: HomeProps) => {
 	/** Home Pay/Receive 底栏（对齐 renderAction Pay|Receive 交互） */
 	const [showPayReceiveSheet, setShowPayReceiveSheet] = useState(false)
 	const [payReceiveQrMode, setPayReceiveQrMode] = useState<'pay' | 'receive'>('receive')
+	const incomingTopupBaselineIdsRef = useRef<Set<string>>(new Set())
 	/** Pay 模式：与 MyWalletDashboardNew AA relay QR 同源（OpenContainer relay 签名 JSON） */
 	const [payRelayQRPayload, setPayRelayQRPayload] = useState<OpenContainerRelayPayload | null>(null)
 	const [payRelayQRLoading, setPayRelayQRLoading] = useState(false)
@@ -1508,6 +1510,54 @@ const Home = (_props: HomeProps) => {
 	}, [setShowFooter])
 
 	const closePayReceiveSheetTap = useReliableTapHandler(closePayReceiveSheet)
+
+	/**
+	 * Add Funds at Store: listen for a new inbound top-up accounting row.
+	 * Existing rows are excluded so opening the panel never closes it immediately.
+	 * The short-lived refresh chain is scoped to this panel and is serialized.
+	 */
+	useEffect(() => {
+		if (!showPayReceiveSheet || payReceiveQrMode !== 'receive') return
+		incomingTopupBaselineIdsRef.current = new Set(
+			recentActivityNoAaItems.map((tx) => `${tx.id}|${tx.txHash}`),
+		)
+	}, [showPayReceiveSheet, payReceiveQrMode])
+
+	useEffect(() => {
+		if (!showPayReceiveSheet || payReceiveQrMode !== 'receive') return
+		const hasNewInboundTopup = recentActivityNoAaItems.some((tx) => {
+			const id = `${tx.id}|${tx.txHash}`
+			return (
+				!incomingTopupBaselineIdsRef.current.has(id) &&
+				tx.isInbound &&
+				isRecentActivityCardTopupTxView(tx)
+			)
+		})
+		if (hasNewInboundTopup) closePayReceiveSheet()
+	}, [
+		showPayReceiveSheet,
+		payReceiveQrMode,
+		recentActivityNoAaItems,
+		closePayReceiveSheet,
+	])
+
+	useEffect(() => {
+		if (!showPayReceiveSheet || payReceiveQrMode !== 'receive') return
+		let cancelled = false
+		let timer: ReturnType<typeof setTimeout> | undefined
+
+		const refresh = async () => {
+			if (cancelled) return
+			await refreshRecentActivityNoAa().catch(() => undefined)
+			if (!cancelled) timer = setTimeout(refresh, 4000)
+		}
+
+		void refresh()
+		return () => {
+			cancelled = true
+			if (timer !== undefined) clearTimeout(timer)
+		}
+	}, [showPayReceiveSheet, payReceiveQrMode, refreshRecentActivityNoAa])
 
 	const payRelayDeadlineUnix = useMemo(() => {
 		if (!payRelayQRPayload?.deadline) return NaN

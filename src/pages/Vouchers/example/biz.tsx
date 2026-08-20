@@ -4922,8 +4922,7 @@ function memberDirectoryProfileDrawerMotionLayers(props: MemberDirectoryProfileD
               {headlineTag}
             </h3>
             <p className="mt-1 text-center text-sm font-medium text-[#595c5e]">{displayTitle}</p>
-            <div className="mt-3 flex w-full flex-col items-center gap-1.5">
-              <span className="text-[10px] font-bold uppercase tracking-widest text-[#595c5e]/80">EOA Wallet</span>
+            <div className="mt-3 flex w-full justify-center">
               <AddressCapsule
                 address={row.memberAddress}
                 explorerUrl={beamioConetBlockscoutAddressUrl(row.memberAddress)}

@@ -357,6 +357,11 @@ import {
   validateTopupPromotionDraft,
   type TopupPromotionDraft,
 } from '@/utils/programTopupPromotion';
+import {
+  mergeUnifiedRewardPointsTopup,
+  parseUnifiedRewardTopupDraft,
+  percentWholeToActorBps,
+} from '@/utils/unifiedRewardPoints';
 import { BeamioPercentSlider } from '@/components/BeamioPercentSlider';
 import { CouponSocialPromotionEventsEditor } from '@/components/programs/CouponSocialPromotionEventsEditor';
 import { CardSocialPromotionEventsEditor } from '@/components/programs/CardSocialPromotionEventsEditor';
@@ -12999,6 +13004,7 @@ const handlePublishCardIssuanceRef = useRef<
     minTopupOverride?: string;
     maxTopupOverride?: string;
     pointSystemOverride?: CardIssuancePointSystemMetadata;
+    rewardPtTopupOverride?: { enabled: boolean; percent: string };
     metadataOnly?: boolean;
     loadingScope?: 'default' | 'bonusEditor';
     skipOnChainRefresh?: boolean;
@@ -13116,6 +13122,12 @@ const [programReferrerChargeRatioE6Baseline, setProgramReferrerChargeRatioE6Base
 const [programReferrerTopupRatioE6Baseline, setProgramReferrerTopupRatioE6Baseline] = useState('0');
 /** Snapshot while Top-up / Consumption editors are open (for Discard). */
 const [programReferrerTopupEditorBaseline, setProgramReferrerTopupEditorBaseline] = useState<{
+  enabled: boolean;
+  percent: string;
+} | null>(null);
+const [programRewardPtTopupEnabled, setProgramRewardPtTopupEnabled] = useState(false);
+const [programRewardPtTopupPercentInput, setProgramRewardPtTopupPercentInput] = useState('1');
+const [programRewardPtTopupEditorBaseline, setProgramRewardPtTopupEditorBaseline] = useState<{
   enabled: boolean;
   percent: string;
 } | null>(null);
@@ -13491,6 +13503,26 @@ useEffect(() => {
    if (programReferrerChargeDraftE6 === 0n) return tu('programs_overview_referrer_percent_required');
    return '';
  }, [programReferrerChargeEnabled, programReferrerChargeDraftE6, tu]);
+
+ const programRewardPtTopupEditorDirty = useMemo(() => {
+   if (!programRewardPtTopupEditorBaseline) return false;
+   return (
+     programRewardPtTopupEditorBaseline.enabled !== programRewardPtTopupEnabled ||
+     programRewardPtTopupEditorBaseline.percent !== programRewardPtTopupPercentInput
+   );
+ }, [
+   programRewardPtTopupEditorBaseline,
+   programRewardPtTopupEnabled,
+   programRewardPtTopupPercentInput,
+ ]);
+
+ const programRewardPtTopupValidationError = useMemo(() => {
+   if (!programRewardPtTopupEnabled) return '';
+   if (amountPercentInputToSlider(programRewardPtTopupPercentInput) <= 0) {
+     return tu('programs_topup_reward_pt_percent_required');
+   }
+   return '';
+ }, [programRewardPtTopupEnabled, programRewardPtTopupPercentInput, tu]);
 
  /** Persist one referrer amount-ratio kind. Returns error string or null on success / no-op.
   * Optional `draft` snapshots the editor values at Save-click so a later silent overview reload
@@ -14614,6 +14646,11 @@ useEffect(() => {
     parseTopupPromotionFromMetadata(cardIssuanceExistingCard.meta as Record<string, unknown>),
   );
   setCardIssuanceTopupPromotion(promo);
+  const rewardPt = parseUnifiedRewardTopupDraft(
+    (cardIssuanceExistingCard.meta as { unifiedRewardPoints?: unknown }).unifiedRewardPoints,
+  );
+  setProgramRewardPtTopupEnabled(rewardPt.enabled);
+  setProgramRewardPtTopupPercentInput(rewardPt.percent);
 }, [
   cardIssuanceExistingCard?.cardAddress,
   cardIssuanceExistingCard?.meta?.bonusRules,
@@ -15673,6 +15710,31 @@ const cardIssuanceTopupPromotionPayload = useMemo(
   [cardIssuanceTopupPromotion]
 );
 
+/** Top-up Promotion + Reward PT summary for Overview / pass hero / live preview (bonus optional). */
+const cardIssuanceTopupPromotionOverviewSummary = useMemo(() => {
+  return [
+    cardIssuanceTopupPromotionPayload
+      ? formatTopupPromotionDisplay(
+          cardIssuanceTopupPromotionPayload,
+          cardIssuanceDisplayMoneyPrefix
+        )
+      : '',
+    programRewardPtTopupEnabled
+      ? tu('programs_topup_reward_pt_overview', {
+          percent: String(amountPercentInputToSlider(programRewardPtTopupPercentInput)),
+        })
+      : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}, [
+  cardIssuanceTopupPromotionPayload,
+  cardIssuanceDisplayMoneyPrefix,
+  programRewardPtTopupEnabled,
+  programRewardPtTopupPercentInput,
+  tu,
+]);
+
 const cardIssuanceTopupPromotionLegacyBonus = useMemo(() => {
   if (!cardIssuanceTopupPromotionPayload) return undefined;
   return topupPromotionToLegacyBonusRule(cardIssuanceTopupPromotionPayload) ?? undefined;
@@ -15689,12 +15751,13 @@ const cardIssuanceTopupPromotionEditorDirty = useMemo(() => {
     cardIssuanceTopupPromotion,
     cardIssuanceTopupPromotionEditorBaseline,
   );
-  return promoDirty || programReferrerTopupEditorDirty;
+  return promoDirty || programReferrerTopupEditorDirty || programRewardPtTopupEditorDirty;
 }, [
   cardIssuanceTopupPromotionEditorOpen,
   cardIssuanceTopupPromotionEditorBaseline,
   cardIssuanceTopupPromotion,
   programReferrerTopupEditorDirty,
+  programRewardPtTopupEditorDirty,
 ]);
 
 const cardIssuanceSocialPromotionPayload = useMemo(
@@ -16020,16 +16083,15 @@ const merchantPanelDiscoverAssetLabel = useMemo(() => {
     if (name) return name;
     if (minDisplay) return minDisplay;
   }
-  if (cardIssuanceTopupPromotionPayload) {
-    return formatTopupPromotionDisplay(cardIssuanceTopupPromotionPayload, cardIssuanceDisplayMoneyPrefix);
+  if (cardIssuanceTopupPromotionOverviewSummary) {
+    return cardIssuanceTopupPromotionOverviewSummary;
   }
   return tu('member_benefits');
 }, [
   cardIssuanceMembershipFeeMode,
   cardIssuanceBaseTier,
   programsOverviewTiersSortedAscending,
-  cardIssuanceDisplayMoneyPrefix,
-  cardIssuanceTopupPromotionPayload,
+  cardIssuanceTopupPromotionOverviewSummary,
   tu,
 ]);
 
@@ -18466,15 +18528,26 @@ const openCardIssuanceTopupPromotionEditor = useCallback(() => {
     enabled: programReferrerTopupEnabled,
     percent: programReferrerTopupPercentInput,
   });
+  setProgramRewardPtTopupEditorBaseline({
+    enabled: programRewardPtTopupEnabled,
+    percent: programRewardPtTopupPercentInput,
+  });
   cardIssuanceTopupPromotionEditorOpenRef.current = true;
   setCardIssuanceTopupPromotionEditorOpen(true);
-}, [cardIssuanceTopupPromotion, programReferrerTopupEnabled, programReferrerTopupPercentInput]);
+}, [
+  cardIssuanceTopupPromotion,
+  programReferrerTopupEnabled,
+  programReferrerTopupPercentInput,
+  programRewardPtTopupEnabled,
+  programRewardPtTopupPercentInput,
+]);
 
 useEffect(() => {
   cardIssuanceTopupPromotionEditorOpenRef.current = cardIssuanceTopupPromotionEditorOpen;
   if (!cardIssuanceTopupPromotionEditorOpen) {
     setCardIssuanceTopupPromotionEditorBaseline(null);
     setProgramReferrerTopupEditorBaseline(null);
+    setProgramRewardPtTopupEditorBaseline(null);
   }
 }, [cardIssuanceTopupPromotionEditorOpen]);
 
@@ -20106,6 +20179,7 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
       minTopupOverride?: string;
       maxTopupOverride?: string;
       pointSystemOverride?: CardIssuancePointSystemMetadata;
+      rewardPtTopupOverride?: { enabled: boolean; percent: string };
       metadataOnly?: boolean;
        loadingScope?: 'default' | 'bonusEditor';
       /** Metadata-only publish that already patches local card meta (e.g. itemCategory chips). */
@@ -20348,6 +20422,17 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
            ? [topupPromotionToLegacyBonusRule(topupPromotionPayloadForPublish)!]
            : [])
        : [];
+     const rewardPtForPublish = opts?.rewardPtTopupOverride ?? {
+       enabled: programRewardPtTopupEnabled,
+       percent: programRewardPtTopupPercentInput,
+     };
+     const unifiedRewardPointsForPublish = mergeUnifiedRewardPointsTopup(
+       cardIssuanceExistingCard?.meta?.unifiedRewardPoints,
+       {
+         enabled: rewardPtForPublish.enabled,
+         actorPercent: amountPercentInputToSlider(rewardPtForPublish.percent),
+       },
+     );
     const couponsRowsForPublish = opts?.couponsOverride ?? cardIssuanceCoupons;
     const couponsPayloadForPublish = buildCardIssuanceCouponMetadataPayload(couponsRowsForPublish);
     const productionsRowsForPublish = opts?.productionsOverride ?? cardIssuanceProductions;
@@ -20413,6 +20498,7 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
        ...(cardIssuanceCategoryId.trim() ? { categories: [cardIssuanceCategoryId.trim()] } : {}),
        ...(cardIssuanceDescription.trim() ? { description: cardIssuanceDescription.trim() } : {}),
        ...(discoverAboutForPublish ? { discoverAbout: discoverAboutForPublish } : {}),
+       unifiedRewardPoints: unifiedRewardPointsForPublish,
      };
      const tierRuleUpgradeForPublish: 0 | 1 | 2 | undefined = membershipFeeModeForPublish
        ? 0
@@ -20636,6 +20722,8 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
    cardIssuanceCurrencySymbol,
    cardIssuanceStoreDisplayName,
   cardIssuanceTopupPromotion,
+  programRewardPtTopupEnabled,
+  programRewardPtTopupPercentInput,
   cardIssuanceCoupons,
   cardIssuanceProductions,
   cardIssuanceServiceCategories,
@@ -20674,15 +20762,26 @@ useEffect(() => {
 }, [handlePublishCardIssuance]);
 
 const submitCardIssuanceTopupPromotionEditor = useCallback(async () => {
-  if (cardIssuanceTopupPromotionEditorValidationError || programReferrerTopupValidationError) return;
+  if (
+    cardIssuanceTopupPromotionEditorValidationError ||
+    programReferrerTopupValidationError ||
+    programRewardPtTopupValidationError
+  ) {
+    return;
+  }
   const nextPromotion = { ...cardIssuanceTopupPromotion };
-  // Snapshot Referrer draft at Save click — concurrent overview reload must not drop it.
   const referrerDraftAtStart = {
     enabled: programReferrerTopupEnabled,
     percent: programReferrerTopupPercentInput,
   };
+  const rewardPtDraftAtStart = {
+    enabled: programRewardPtTopupEnabled,
+    percent: programRewardPtTopupPercentInput,
+  };
   if (!cardIssuanceExistingCard?.cardAddress) {
     setCardIssuanceTopupPromotion(nextPromotion);
+    setProgramRewardPtTopupEnabled(rewardPtDraftAtStart.enabled);
+    setProgramRewardPtTopupPercentInput(rewardPtDraftAtStart.percent);
     setCardIssuanceTopupPromotionEditorOpen(false);
     return;
   }
@@ -20690,7 +20789,6 @@ const submitCardIssuanceTopupPromotionEditor = useCallback(async () => {
   setCardIssuanceCreateError('');
   setCardIssuanceTopupPromotionEditorPublishing(true);
   try {
-    // Write Top-up Referrer first against live chain, then promotion metadata.
     {
       const referrerErr = await syncProgramReferrerAmountRatioKind('topup', referrerDraftAtStart);
       if (referrerErr) {
@@ -20702,9 +20800,14 @@ const submitCardIssuanceTopupPromotionEditor = useCallback(async () => {
     const promoDirty =
       cardIssuanceTopupPromotionEditorBaseline == null ||
       !topupPromotionDraftsEqual(nextPromotion, cardIssuanceTopupPromotionEditorBaseline);
-    if (promoDirty) {
+    const rewardPtDirty =
+      programRewardPtTopupEditorBaseline == null ||
+      programRewardPtTopupEditorBaseline.enabled !== rewardPtDraftAtStart.enabled ||
+      programRewardPtTopupEditorBaseline.percent !== rewardPtDraftAtStart.percent;
+    if (promoDirty || rewardPtDirty) {
       const ok = await handlePublishCardIssuance({
-        topupPromotionOverride: nextPromotion,
+        ...(promoDirty ? { topupPromotionOverride: nextPromotion } : {}),
+        rewardPtTopupOverride: rewardPtDraftAtStart,
         loadingScope: 'bonusEditor',
         skipOnChainRefresh: true,
       });
@@ -20716,20 +20819,28 @@ const submitCardIssuanceTopupPromotionEditor = useCallback(async () => {
       }
       const legacyBonus = payload ? topupPromotionToLegacyBonusRule(payload) : null;
       setCardIssuanceTopupPromotion(nextPromotion);
+      setProgramRewardPtTopupEnabled(rewardPtDraftAtStart.enabled);
+      setProgramRewardPtTopupPercentInput(rewardPtDraftAtStart.percent);
       setCardIssuanceExistingCard((prev) => {
         if (!prev?.meta) return prev;
         const nextMeta = { ...prev.meta };
-        if (payload) {
-          nextMeta.topupPromotion = payload;
-          if (legacyBonus) {
-            nextMeta.bonusRule = legacyBonus;
-            nextMeta.bonusRules = [legacyBonus];
+        if (promoDirty) {
+          if (payload) {
+            nextMeta.topupPromotion = payload;
+            if (legacyBonus) {
+              nextMeta.bonusRule = legacyBonus;
+              nextMeta.bonusRules = [legacyBonus];
+            }
+          } else {
+            delete nextMeta.topupPromotion;
+            delete nextMeta.bonusRule;
+            delete nextMeta.bonusRules;
           }
-        } else {
-          delete nextMeta.topupPromotion;
-          delete nextMeta.bonusRule;
-          delete nextMeta.bonusRules;
         }
+        nextMeta.unifiedRewardPoints = mergeUnifiedRewardPointsTopup(prev.meta.unifiedRewardPoints, {
+          enabled: rewardPtDraftAtStart.enabled,
+          actorPercent: amountPercentInputToSlider(rewardPtDraftAtStart.percent),
+        });
         return { ...prev, meta: nextMeta };
       });
       invalidateBeamioCardMetadataCache(cardIssuanceExistingCard.cardAddress);
@@ -20739,7 +20850,7 @@ const submitCardIssuanceTopupPromotionEditor = useCallback(async () => {
       kind: 'ok',
       text: nextPromotion.enabled
         ? 'Top-up promotion saved. POS and apps will use it after a short cache refresh.'
-        : 'Top-up promotion turned off. Referrer reward settings are unchanged.',
+        : 'Top-up promotion turned off. Reward PT and Referrer reward settings are unchanged.',
     });
   } catch {
     setCardIssuanceTopupPromotionEditorServerError('Could not save top-up promotion. Please try again.');
@@ -20750,9 +20861,13 @@ const submitCardIssuanceTopupPromotionEditor = useCallback(async () => {
   cardIssuanceTopupPromotion,
   cardIssuanceTopupPromotionEditorValidationError,
   programReferrerTopupValidationError,
+  programRewardPtTopupValidationError,
   programReferrerTopupEnabled,
   programReferrerTopupPercentInput,
+  programRewardPtTopupEnabled,
+  programRewardPtTopupPercentInput,
   cardIssuanceTopupPromotionEditorBaseline,
+  programRewardPtTopupEditorBaseline,
   cardIssuanceExistingCard?.cardAddress,
   handlePublishCardIssuance,
   syncProgramReferrerAmountRatioKind,
@@ -20765,9 +20880,17 @@ const discardCardIssuanceTopupPromotionEditorChanges = useCallback(() => {
     setProgramReferrerTopupEnabled(programReferrerTopupEditorBaseline.enabled);
     setProgramReferrerTopupPercentInput(programReferrerTopupEditorBaseline.percent);
   }
+  if (programRewardPtTopupEditorBaseline) {
+    setProgramRewardPtTopupEnabled(programRewardPtTopupEditorBaseline.enabled);
+    setProgramRewardPtTopupPercentInput(programRewardPtTopupEditorBaseline.percent);
+  }
   setCardIssuanceTopupPromotionEditorServerError('');
   setCardIssuanceCreateError('');
-}, [cardIssuanceTopupPromotionEditorBaseline, programReferrerTopupEditorBaseline]);
+}, [
+  cardIssuanceTopupPromotionEditorBaseline,
+  programReferrerTopupEditorBaseline,
+  programRewardPtTopupEditorBaseline,
+]);
 
 const closeCardIssuanceTopupPromotionEditor = useCallback(() => {
   if (cardIssuanceTopupPromotionEditorPublishing) return;
@@ -20780,12 +20903,14 @@ const cardIssuanceTopupPromotionEditorCanSave = useMemo(
     cardIssuanceTopupPromotionEditorDirty &&
     !cardIssuanceTopupPromotionEditorValidationError &&
     !programReferrerTopupValidationError &&
+    !programRewardPtTopupValidationError &&
     !cardIssuanceTopupPromotionEditorPublishing &&
     !cardIssuanceTopupPromotionDeleting,
   [
     cardIssuanceTopupPromotionEditorDirty,
     cardIssuanceTopupPromotionEditorValidationError,
     programReferrerTopupValidationError,
+    programRewardPtTopupValidationError,
     cardIssuanceTopupPromotionEditorPublishing,
     cardIssuanceTopupPromotionDeleting,
   ],
@@ -21912,6 +22037,18 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
          rewardValue: typeof draft.bonusRuleBonusValue === 'string' ? draft.bonusRuleBonusValue : '',
        });
      }
+    if (draft.unifiedRewardTopup) {
+      const ur = parseUnifiedRewardTopupDraft({
+        topup: {
+          enabled: draft.unifiedRewardTopup.enabled === true,
+          actorPercentBps: percentWholeToActorBps(
+            amountPercentInputToSlider(draft.unifiedRewardTopup.percent ?? '1'),
+          ),
+        },
+      });
+      setProgramRewardPtTopupEnabled(ur.enabled);
+      setProgramRewardPtTopupPercentInput(ur.percent);
+    }
     const draftMinTopupRaw =
       typeof draft.minTopup === 'string' && draft.minTopup.trim()
         ? draft.minTopup.trim()
@@ -22081,6 +22218,10 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
            rewardValue: cardIssuanceTopupPromotion.rewardValue,
          }
        : undefined,
+     unifiedRewardTopup: {
+       enabled: programRewardPtTopupEnabled,
+       percent: programRewardPtTopupPercentInput,
+     },
      minTopup: cardIssuanceMinTopup,
      maxTopup: cardIssuanceMaxTopup,
      tierRule: cardIssuanceTierRule,
@@ -22157,6 +22298,8 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
    cardIssuanceCurrencySymbol,
    cardIssuanceStoreDisplayName,
    cardIssuanceTopupPromotion,
+   programRewardPtTopupEnabled,
+   programRewardPtTopupPercentInput,
    cardIssuanceMinTopup,
    cardIssuanceMaxTopup,
    cardIssuanceTierRule,
@@ -35721,24 +35864,21 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                    Starting from {cardIssuanceDisplayMoneyPrefix}{' '}
                                    {cardIssuanceMinTopup.trim() || String(cardIssuanceMinTopupCurrencyFloor)}
                                  </p>
-                                 {cardIssuanceTopupPromotionPayload ? (
-                                   <p
-                                     className="mt-1.5 text-[9px] font-bold uppercase tracking-[0.14em]"
-                                     style={{ color: cardIssuancePreviewPassHeroTheme.tertiary }}
-                                   >
-                                     {formatTopupPromotionDisplay(
-                                       cardIssuanceTopupPromotionPayload,
-                                       cardIssuanceDisplayMoneyPrefix
-                                     )}
-                                   </p>
-                                 ) : (
-                                   <p
-                                     className="mt-1.5 text-[9px] font-bold uppercase tracking-[0.14em]"
-                                     style={{ color: cardIssuancePreviewPassHeroTheme.tertiary }}
-                                   >
-                                     Bonus rules can be added later
-                                   </p>
-                                 )}
+                                {cardIssuanceTopupPromotionOverviewSummary ? (
+                                  <p
+                                    className="mt-1.5 text-[9px] font-bold uppercase tracking-[0.14em]"
+                                    style={{ color: cardIssuancePreviewPassHeroTheme.tertiary }}
+                                  >
+                                    {cardIssuanceTopupPromotionOverviewSummary}
+                                  </p>
+                                ) : (
+                                  <p
+                                    className="mt-1.5 text-[9px] font-bold uppercase tracking-[0.14em]"
+                                    style={{ color: cardIssuancePreviewPassHeroTheme.tertiary }}
+                                  >
+                                    Bonus rules can be added later
+                                  </p>
+                                )}
                                </div>
                              </div>
                                    </div>
@@ -35944,6 +36084,10 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                   </h4>
                                 </div>
                               </div>
+                            ) : cardIssuanceTopupPromotionOverviewSummary ? (
+                              <p className="text-center text-sm font-medium text-[#2c2f31]">
+                                {cardIssuanceTopupPromotionOverviewSummary}
+                              </p>
                             ) : (
                               <p className="text-center text-sm font-medium text-[#747779]">
                                 No top-up promotion configured
@@ -35954,13 +36098,10 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                             <p className="px-2 text-center text-[9px] font-black uppercase tracking-[0.22em] text-[#595c5e]">
                               Live Preview
                             </p>
-                            {cardIssuanceTopupPromotionPayload ? (
+                            {cardIssuanceTopupPromotionOverviewSummary ? (
                               <div className="rounded-[1.5rem] border border-[#7a9dff]/20 bg-white px-4 py-4 text-center shadow-[0_12px_28px_rgba(21,98,240,0.06)]">
                                 <p className="text-sm font-semibold text-[#2c2f31]">
-                                  {formatTopupPromotionDisplay(
-                                    cardIssuanceTopupPromotionPayload,
-                                    cardIssuanceDisplayMoneyPrefix
-                                  )}
+                                  {cardIssuanceTopupPromotionOverviewSummary}
                                 </p>
                               </div>
                             ) : (
@@ -35975,7 +36116,9 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                             className={`mt-4 flex w-full items-center justify-center gap-2 rounded-full border-2 border-dashed border-[#d7dce1] bg-white/35 py-4 text-sm font-semibold text-[#595c5e] transition-colors hover:bg-white/60 ${bizFocusRingClass}`}
                           >
                             <Pencil className="h-5 w-5 shrink-0" strokeWidth={2.25} aria-hidden />
-                            {cardIssuanceTopupPromotionPayload ? 'Edit Top-up Promotion' : 'Configure Top-up Promotion'}
+                            {cardIssuanceTopupPromotionOverviewSummary || programRewardPtTopupEnabled
+                              ? 'Edit Top-up Promotion'
+                              : 'Configure Top-up Promotion'}
                           </button>
                          </div>
                        </section>
@@ -36795,15 +36938,12 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                            </p>
                          </div>
 
-                        {cardIssuanceTopupPromotionPayload ? (
+                        {cardIssuanceTopupPromotionOverviewSummary ? (
                           <div className="mt-6 shrink-0 space-y-3">
                             <p className="text-[10px] font-black uppercase tracking-widest text-[#1562f0]">Top-up Promotion</p>
                             <div className="rounded-2xl border border-[#1562f0]/10 bg-[#1562f0]/5 p-4">
                               <p className="text-sm font-bold text-[#2c2f31]">
-                                {formatTopupPromotionDisplay(
-                                  cardIssuanceTopupPromotionPayload,
-                                  cardIssuanceDisplayMoneyPrefix
-                                )}
+                                {cardIssuanceTopupPromotionOverviewSummary}
                               </p>
                             </div>
                           </div>
@@ -36923,24 +37063,21 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                 #100
                               </p>
                             </div>
-                            {cardIssuanceTopupPromotionPayload ? (
-                              <p
-                                className="mt-3 text-[9px] font-bold uppercase tracking-[0.16em]"
-                                style={{ color: cardIssuancePreviewPassHeroTheme.tertiary }}
-                              >
-                                {formatTopupPromotionDisplay(
-                                  cardIssuanceTopupPromotionPayload,
-                                  cardIssuanceDisplayMoneyPrefix
-                                )}
-                              </p>
-                            ) : (
-                              <p
-                                className="mt-3 text-[9px] font-bold uppercase tracking-[0.16em]"
-                                style={{ color: cardIssuancePreviewPassHeroTheme.tertiary }}
-                              >
-                                Bonus rules can be added later
-                              </p>
-                            )}
+                                 {cardIssuanceTopupPromotionOverviewSummary ? (
+                                   <p
+                                     className="mt-3 text-[9px] font-bold uppercase tracking-[0.16em]"
+                                     style={{ color: cardIssuancePreviewPassHeroTheme.tertiary }}
+                                   >
+                                     {cardIssuanceTopupPromotionOverviewSummary}
+                                   </p>
+                                 ) : (
+                                   <p
+                                     className="mt-3 text-[9px] font-bold uppercase tracking-[0.16em]"
+                                     style={{ color: cardIssuancePreviewPassHeroTheme.tertiary }}
+                                   >
+                                     Bonus rules can be added later
+                                   </p>
+                                 )}
                            </div>
                          </div>
                        </div>
@@ -37531,19 +37668,14 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                        cardIssuancePreviewLiveThreshold || programsOverviewCardMinTopupDisplay
                                      }`}
                                    </div>
-                                   {cardIssuanceTopupPromotionPayload ? (
-                                     <p
-                                       className="mt-0.5 font-manrope text-base font-bold leading-tight sm:text-lg"
-                                       style={{ color: programsOverviewPassHeroTheme.tertiary }}
-                                     >
-                                       {formatTopupPromotionDisplay(
-                                         cardIssuanceTopupPromotionPayload,
-                                         cardIssuanceDisplayMoneyPrefix
-                                       )}
-                                     </p>
-                                   ) : (
-                                     <></>
-                                   )}
+                                  {cardIssuanceTopupPromotionOverviewSummary ? (
+                                    <p
+                                      className="mt-0.5 font-manrope text-base font-bold leading-tight sm:text-lg"
+                                      style={{ color: programsOverviewPassHeroTheme.tertiary }}
+                                    >
+                                      {cardIssuanceTopupPromotionOverviewSummary}
+                                    </p>
+                                  ) : null}
                                  </div>
                                </div>
                              </div>
@@ -38944,12 +39076,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                              <div className="min-w-0">
                                <p className="font-manrope text-sm font-bold text-[#2c2f31]">Top-up Promotion</p>
                                <p className="text-[10px] text-[#595c5e]">
-                                 {cardIssuanceTopupPromotionPayload
-                                   ? formatTopupPromotionDisplay(
-                                       cardIssuanceTopupPromotionPayload,
-                                       cardIssuanceDisplayMoneyPrefix
-                                     )
-                                   : tu('programs_bonus_none_configured')}
+                                 {cardIssuanceTopupPromotionOverviewSummary ||
+                                   tu('programs_bonus_none_configured')}
                                </p>
                              </div>
                            </div>
@@ -38995,12 +39123,12 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                              ) : null}
                              <span
                                className={`shrink-0 rounded px-2 py-0.5 text-[9px] font-black uppercase tracking-tighter ${
-                                 cardIssuanceTopupPromotionPayload
+                                 cardIssuanceTopupPromotionPayload || programRewardPtTopupEnabled
                                    ? 'bg-[#1562f0] text-white'
                                    : 'bg-slate-200 text-slate-600'
                                }`}
                              >
-                               {cardIssuanceTopupPromotionPayload ? 'ACTIVE' : 'OFF'}
+                               {cardIssuanceTopupPromotionPayload || programRewardPtTopupEnabled ? 'ACTIVE' : 'OFF'}
                              </span>
                            </div>
                          </div>
@@ -40648,7 +40776,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                      initial={{ opacity: 0 }}
                      animate={{ opacity: 1 }}
                      exit={{ opacity: 0 }}
-                     onClick={() => setCardIssuanceTopupPromotionEditorOpen(false)}
+                     onClick={closeCardIssuanceTopupPromotionEditor}
                    />
                   <motion.div
                     role="dialog"
@@ -40679,7 +40807,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                         </div>
                         <button
                           type="button"
-                          onClick={() => setCardIssuanceTopupPromotionEditorOpen(false)}
+                          onClick={closeCardIssuanceTopupPromotionEditor}
                           className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#eef1f3] text-[#595c5e] transition-colors hover:bg-[#dfe3e6] ${bizFocusRingClass}`}
                           aria-label="Close top-up promotion editor"
                         >
@@ -40690,6 +40818,41 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
 
                     <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-[max(1.5rem,env(safe-area-inset-bottom,0px))]">
                     <div className="space-y-6">
+                       <div className="flex items-center justify-between gap-4 rounded-2xl bg-[#eef1f3] px-4 py-4">
+                         <div className="min-w-0">
+                           <p className="text-xs font-bold uppercase tracking-widest text-[#595c5e]">
+                             {tu('programs_topup_promotion_enable_label')}
+                           </p>
+                           <p className="mt-1 text-sm text-[#595c5e]">
+                             {tu('programs_topup_promotion_enable_hint')}
+                           </p>
+                         </div>
+                         <button
+                           type="button"
+                           role="switch"
+                           aria-checked={cardIssuanceTopupPromotion.enabled}
+                           aria-label={tu('programs_topup_promotion_enable_label')}
+                           disabled={cardIssuanceTopupPromotionEditorPublishing}
+                           onClick={() =>
+                             setCardIssuanceTopupPromotion((p) => ({
+                               ...p,
+                               enabled: !p.enabled,
+                             }))
+                           }
+                           className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-60 ${bizFocusRingClass} ${
+                             cardIssuanceTopupPromotion.enabled ? 'bg-[#0051d1]' : 'bg-[#abadaf]/50'
+                           }`}
+                         >
+                           <span
+                             className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition ${
+                               cardIssuanceTopupPromotion.enabled ? 'translate-x-6' : 'translate-x-1'
+                             }`}
+                           />
+                         </button>
+                       </div>
+
+                       {cardIssuanceTopupPromotion.enabled ? (
+                       <>
                        <div className="flex items-center justify-between gap-4 rounded-2xl bg-[#eef1f3] px-4 py-4">
                          <div className="min-w-0">
                            <p className="text-xs font-bold uppercase tracking-widest text-[#595c5e]">Validity period</p>
@@ -40873,6 +41036,57 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                            </p>
                          </div>
                        </div>
+                       </>
+                       ) : null}
+
+                       <div className="rounded-2xl border border-[#dce2f7] bg-[#e9edff]/60 px-4 py-4">
+                         <div className="flex items-center justify-between gap-4">
+                           <div className="min-w-0">
+                             <p className="text-xs font-bold uppercase tracking-widest text-[#0051d1]">
+                               {tu('programs_topup_reward_pt_switch')}
+                             </p>
+                             <p className="mt-1 text-sm text-[#595c5e]">
+                               {tu('programs_topup_reward_pt_hint')}
+                             </p>
+                           </div>
+                           <button
+                             type="button"
+                             role="switch"
+                             aria-checked={programRewardPtTopupEnabled}
+                             aria-label={tu('programs_topup_reward_pt_switch')}
+                             disabled={cardIssuanceTopupPromotionEditorPublishing}
+                             onClick={() => {
+                               const next = !programRewardPtTopupEnabled;
+                               setProgramRewardPtTopupEnabled(next);
+                               if (next && (programRewardPtTopupPercentInput === '0' || !programRewardPtTopupPercentInput.trim())) {
+                                 setProgramRewardPtTopupPercentInput('1');
+                               }
+                             }}
+                             className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-60 ${bizFocusRingClass} ${
+                               programRewardPtTopupEnabled ? 'bg-[#0051d1]' : 'bg-[#abadaf]/50'
+                             }`}
+                           >
+                             <span
+                               className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition ${
+                                 programRewardPtTopupEnabled ? 'translate-x-6' : 'translate-x-1'
+                               }`}
+                             />
+                           </button>
+                         </div>
+                         {programRewardPtTopupEnabled ? (
+                           <div className="mt-4">
+                             <BeamioPercentSlider
+                               id="card-topup-reward-pt-percent"
+                               label={tu('programs_topup_reward_pt_percent')}
+                               accent="blue"
+                               value={amountPercentInputToSlider(programRewardPtTopupPercentInput)}
+                               onChange={(n) => setProgramRewardPtTopupPercentInput(String(n))}
+                               disabled={cardIssuanceTopupPromotionEditorPublishing}
+                               focusRingClassName={bizFocusRingClass}
+                             />
+                           </div>
+                         ) : null}
+                       </div>
 
                        <div className="rounded-2xl border border-[#eadcf7] bg-[#f5ecff]/60 px-4 py-4">
                          <div className="flex items-center justify-between gap-4">
@@ -40950,12 +41164,15 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                          ) : null}
                        </div>
 
-                       {cardIssuanceTopupPromotionEditorValidationError || programReferrerTopupValidationError ? (
+                       {cardIssuanceTopupPromotionEditorValidationError ||
+                       programReferrerTopupValidationError ||
+                       programRewardPtTopupValidationError ? (
                          <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
                            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
                            <p>
                              {cardIssuanceTopupPromotionEditorValidationError ||
-                               programReferrerTopupValidationError}
+                               programReferrerTopupValidationError ||
+                               programRewardPtTopupValidationError}
                            </p>
                          </div>
                        ) : null}
@@ -40976,6 +41193,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                disabled={
                                  Boolean(cardIssuanceTopupPromotionEditorValidationError) ||
                                  Boolean(programReferrerTopupValidationError) ||
+                                 Boolean(programRewardPtTopupValidationError) ||
                                  cardIssuanceTopupPromotionEditorPublishing ||
                                  cardIssuanceTopupPromotionDeleting
                                }

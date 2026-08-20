@@ -42,6 +42,11 @@ export type CardConfiguratorDraftTopupPromotionV1 = {
   rewardValue: string
 }
 
+export type CardConfiguratorDraftUnifiedRewardTopupV1 = {
+  enabled?: boolean
+  percent?: string
+}
+
 export type CardConfiguratorDraftV1 = {
   version: 1
   programName?: string
@@ -53,6 +58,8 @@ export type CardConfiguratorDraftV1 = {
   bonusRuleBonusValue?: string
   /** Global top-up promotion (single). */
   topupPromotion?: CardConfiguratorDraftTopupPromotionV1
+  /** Unified #13 Reward PT for top-up (percent of top-up). */
+  unifiedRewardTopup?: CardConfiguratorDraftUnifiedRewardTopupV1
   minTopup?: string
   maxTopup?: string
    tierRule?: CardConfiguratorDraftTierRuleV1
@@ -99,6 +106,18 @@ function normalizeTierPreset(raw: unknown): CardConfiguratorDraftTierPresetV1 {
   return typeof raw === 'string' && (TIER_PRESETS as string[]).includes(raw)
     ? (raw as CardConfiguratorDraftTierPresetV1)
     : 'custom'
+}
+
+function normalizeUnifiedRewardTopup(raw: unknown): CardConfiguratorDraftUnifiedRewardTopupV1 | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const r = raw as Record<string, unknown>
+  const percent =
+    typeof r.percent === 'string' ? r.percent : r.percent != null ? String(r.percent) : undefined
+  if (r.enabled !== true && r.enabled !== false && !percent?.trim()) return undefined
+  return {
+    enabled: r.enabled === true,
+    ...(percent != null ? { percent } : {}),
+  }
 }
 
 function normalizeTopupPromotion(raw: unknown): CardConfiguratorDraftTopupPromotionV1 | undefined {
@@ -226,6 +245,7 @@ export function loadCardConfiguratorDraftForEoa(eoaLower: string): CardConfigura
       bonusRulePaymentAmount: typeof p.bonusRulePaymentAmount === 'string' ? p.bonusRulePaymentAmount : undefined,
       bonusRuleBonusValue: typeof p.bonusRuleBonusValue === 'string' ? p.bonusRuleBonusValue : undefined,
       topupPromotion: normalizeTopupPromotion(p.topupPromotion),
+      unifiedRewardTopup: normalizeUnifiedRewardTopup(p.unifiedRewardTopup),
       minTopup: typeof p.minTopup === 'string' ? p.minTopup : undefined,
       maxTopup: typeof p.maxTopup === 'string' ? p.maxTopup : undefined,
       tierRule: normalizeTierRule(p.tierRule),

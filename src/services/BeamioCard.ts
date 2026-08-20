@@ -25,6 +25,7 @@ import {
 } from "@/utils/cardPreviewLogoDisplayTier";
 import { isApiExcludedUserCard, loadApiExcludedUserCards } from "@/utils/apiExcludedUserCards";
 import { parseTopupPromotionFromMetadata } from "@/utils/programTopupPromotion";
+import { parseUnifiedRewardPoints } from "@/utils/unifiedRewardPoints";
 import {
 	CONET_MAINNET_CHAIN_ID,
 	DEFAULT_MERCHANT_CARD_FACTORY,
@@ -1307,6 +1308,20 @@ export type ShareTokenMetadataBonusRule = {
 	bonusProportional?: boolean
 }
 
+/** Unified #13 reward percents (bps). @see beamio-merchant-card-unified-reward-points-v13.mdc */
+export type ShareTokenMetadataUnifiedRewardFlow = {
+	enabled?: boolean
+	actorPercentBps?: number
+	referrerPercentBps?: number
+}
+
+export type ShareTokenMetadataUnifiedRewardPoints = {
+	enabled?: boolean
+	topup?: ShareTokenMetadataUnifiedRewardFlow
+	charge?: ShareTokenMetadataUnifiedRewardFlow
+	social?: ShareTokenMetadataUnifiedRewardFlow
+}
+
 /** Global top-up promotion (single optional rule); canonical for POS recharge bonus. */
 export type ShareTokenMetadataTopupPromotion = {
 	enabled?: boolean
@@ -1462,6 +1477,8 @@ export type ShareTokenMetadata = {
 	maximumTopup?: number
 	/** Global top-up promotion (single); preferred over legacy bonusRules. */
 	topupPromotion?: ShareTokenMetadataTopupPromotion
+	/** Unified #13 actor/referrer percents (bps). */
+	unifiedRewardPoints?: ShareTokenMetadataUnifiedRewardPoints
 	/** Social #13 rewards — link click / like / top-up (user + referrer). */
 	socialPromotion?: ShareTokenMetadataSocialPromotion
 	/** @deprecated Legacy single rule — derived from topupPromotion on publish; read compat only. */
@@ -3459,6 +3476,7 @@ export type CardMetadataFromUri = {
 	cardOwner?: string
 	categories?: string[]
 	topupPromotion?: ShareTokenMetadataTopupPromotion
+	unifiedRewardPoints?: ShareTokenMetadataUnifiedRewardPoints
 	socialPromotion?: ShareTokenMetadataSocialPromotion
 	bonusRule?: ShareTokenMetadataBonusRule
 	bonusRules?: ShareTokenMetadataBonusRule[]
@@ -3494,6 +3512,8 @@ const cardMetadataCache = new Map<
 		categories?: string[]
 		bonusRule?: ShareTokenMetadataBonusRule
 		bonusRules?: ShareTokenMetadataBonusRule[]
+		topupPromotion?: ShareTokenMetadataTopupPromotion
+		unifiedRewardPoints?: ShareTokenMetadataUnifiedRewardPoints
 		pointSystem?: ShareTokenMetadataPointSystem
 		coupons?: ShareTokenMetadataCoupon[]
 		productions?: ShareTokenMetadataProduction[]
@@ -3975,6 +3995,7 @@ export const getCardMetadataFrom1155Json = async (cardAddress: string): Promise<
 		const bonusRule = shareTokenBonusRuleFromUnknown(share)
 		const bonusRules = shareTokenBonusRulesFromUnknown(share)
 		const topupPromotion = shareTokenTopupPromotionFromShare(share, bonusRule, bonusRules)
+		const unifiedRewardPoints = parseUnifiedRewardPoints(share?.unifiedRewardPoints)
 		const pointSystem = shareTokenPointSystemFromUnknown(share)
 		const coupons = shareTokenCouponsFromUnknown(share)
 		const productions = shareTokenProductionsFromUnknown(share)
@@ -3993,6 +4014,7 @@ export const getCardMetadataFrom1155Json = async (cardAddress: string): Promise<
 			...(bonusRule && { bonusRule }),
 			...(bonusRules && { bonusRules }),
 			...(topupPromotion && { topupPromotion }),
+			...(unifiedRewardPoints && { unifiedRewardPoints }),
 			...(pointSystem && { pointSystem }),
 			...(coupons && { coupons }),
 			...(productions && { productions }),
@@ -4032,6 +4054,7 @@ export const getCardMetadataFromApi = async (cardAddress: string): Promise<CardM
 		const bonusRule = shareTokenBonusRuleFromUnknown(share)
 		const bonusRules = shareTokenBonusRulesFromUnknown(share)
 		const topupPromotion = shareTokenTopupPromotionFromShare(share, bonusRule, bonusRules)
+		const unifiedRewardPoints = parseUnifiedRewardPoints(share?.unifiedRewardPoints)
 		const pointSystem = shareTokenPointSystemFromUnknown(share)
 		const coupons = shareTokenCouponsFromUnknown(share)
 		const productions = shareTokenProductionsFromUnknown(share)
@@ -4053,6 +4076,7 @@ export const getCardMetadataFromApi = async (cardAddress: string): Promise<CardM
 			...(bonusRule && { bonusRule }),
 			...(bonusRules && { bonusRules }),
 			...(topupPromotion && { topupPromotion }),
+			...(unifiedRewardPoints && { unifiedRewardPoints }),
 			...(pointSystem && { pointSystem }),
 			...(coupons && { coupons }),
 			...(productions && { productions }),
@@ -4181,6 +4205,7 @@ export const getCardMetadataFromUri = async (cardAddress: string): Promise<CardM
 		const bonusRule = shareTokenBonusRuleFromUnknown(shareObj)
 		const bonusRules = shareTokenBonusRulesFromUnknown(shareObj)
 		const topupPromotion = shareTokenTopupPromotionFromShare(shareObj, bonusRule, bonusRules)
+		const unifiedRewardPoints = parseUnifiedRewardPoints(shareObj?.unifiedRewardPoints)
 		const pointSystem = shareTokenPointSystemFromUnknown(shareObj)
 		const coupons = shareTokenCouponsFromUnknown(shareObj)
 		const productions = shareTokenProductionsFromUnknown(shareObj)
@@ -4199,6 +4224,7 @@ export const getCardMetadataFromUri = async (cardAddress: string): Promise<CardM
 			...(bonusRule && { bonusRule }),
 			...(bonusRules && { bonusRules }),
 			...(topupPromotion && { topupPromotion }),
+			...(unifiedRewardPoints && { unifiedRewardPoints }),
 			...(pointSystem && { pointSystem }),
 			...(coupons && { coupons }),
 			...(productions && { productions }),

@@ -98,6 +98,13 @@ import {
 	payGenesisNodeSeatWithLocalWallet,
 } from "@/utils/discoverUsdcTopupSession"
 import {
+	customerHasValidMembershipFromAssets,
+	membershipPurchaseApiAmountHuman,
+	membershipPurchasePointsCreditE6,
+	resolveDiscoverMembershipUiState,
+	type DiscoverMembershipFeeTier,
+} from "@/utils/discoverMembershipFee"
+import {
 	resolveGenesisReferrerRole,
 	type GenesisReferrerRole,
 } from "@/services/genesisNodeReferral"
@@ -1448,6 +1455,15 @@ function parseDiscoverAllTiersFromMeta(meta: Record<string, unknown> | null): Di
 	for (const item of raw) {
 		if (item == null || typeof item !== 'object') continue
 		const o = item as Record<string, unknown>
+		const minRaw = o.minUsdc6 ?? o.min_usdc6
+		let minUsdc6 = 0n
+		try {
+			if (typeof minRaw === 'bigint') minUsdc6 = minRaw
+			else if (typeof minRaw === 'number' && Number.isFinite(minRaw)) minUsdc6 = BigInt(Math.trunc(minRaw))
+			else if (typeof minRaw === 'string' && minRaw.trim()) minUsdc6 = BigInt(minRaw.trim())
+		} catch {
+			minUsdc6 = 0n
+		}
 		const nested =
 			o.properties != null && typeof o.properties === 'object'
 				? (o.properties as Record<string, unknown>)
@@ -1477,7 +1493,7 @@ function parseDiscoverAllTiersFromMeta(meta: Record<string, unknown> | null): Di
 		const index = Number.isFinite(indexRaw) ? Math.trunc(indexRaw) : undefined
 		rows.push({
 			name: tierName,
-			minUsdc6: 0n,
+			minUsdc6,
 			discountPct: 0,
 			backgroundColor: null,
 			membershipFeeE6,
@@ -3837,6 +3853,10 @@ function DiscoverMerchantDetailFullScreen({
 	const [usdcTopupError, setUsdcTopupError] = useState('')
 	const [usdcTopupRulesHint, setUsdcTopupRulesHint] = useState('')
 	const [usdcTopupIntent, setUsdcTopupIntent] = useState<USDCUserCardTopupIntent>('topup')
+	const [usdcTopupIntentLocked, setUsdcTopupIntentLocked] = useState(false)
+	const [membershipPurchaseTierIndex, setMembershipPurchaseTierIndex] = useState<number | null>(null)
+	const [membershipPurchaseFeeFiat6, setMembershipPurchaseFeeFiat6] = useState('')
+	const [membershipPurchaseMinUsdc6, setMembershipPurchaseMinUsdc6] = useState('')
 	const [usdcTopupUrlCopied, setUsdcTopupUrlCopied] = useState(false)
 	const usdcTopupPollAbortRef = useRef<AbortController | null>(null)
 	const usdcTopupUrlCopiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -3998,9 +4018,9 @@ function DiscoverMerchantDetailFullScreen({
 		: balancePrefix
 			? `${balancePrefix} ${balanceAmount}`
 			: balanceAmount
-	const hasActiveMembership =
-		merchantAssets != null &&
-		merchantAssets.nfts.some((n) => !n.isExpired && Number(n.tokenId) > 0)
+	const hasActiveMembership = customerHasValidMembershipFromAssets({
+		nfts: merchantAssets?.nfts,
+	})
 	const membershipFeeMode = discoverMetadataHasMembershipFee(merchantMetadataRoot)
 	const membershipFeeDisplay = useMemo(() => {
 		if (!membershipFeeMode) return null
@@ -4096,6 +4116,36 @@ function DiscoverMerchantDetailFullScreen({
 	)
 	const heroRechargeBonusPill = topupPromotionPresentation.heroSidePill
 	const isConetGenesisCard = isConetGenesisDiscoverCard(item.cardAddress)
+	const membershipFeeTiers = useMemo((): DiscoverMembershipFeeTier[] => {
+		if (isConetGenesisCard || !membershipFeeMode) return []
+		const allTiers = parseDiscoverAllTiersFromMeta(merchantMetadataRoot)
+		const mapped: DiscoverMembershipFeeTier[] = []
+		allTiers.forEach((t, i) => {
+			const feeE6 = discoverTierMembershipFeeE6(t)
+			try {
+				if (BigInt(feeE6) <= 0n) return
+			} catch {
+				return
+			}
+			mapped.push({
+				tierIndex: t.index != null && Number.isFinite(t.index) ? t.index : i,
+				name: t.name,
+				feeE6,
+				minUsdc6: t.minUsdc6.toString(),
+				durationKind: t.membershipDurationKind,
+			})
+		})
+		return mapped
+	}, [isConetGenesisCard, membershipFeeMode, merchantMetadataRoot])
+	const membershipUi = useMemo(
+		() =>
+			resolveDiscoverMembershipUiState({
+				feeTiers: membershipFeeTiers,
+				hasValidMembership: hasActiveMembership,
+				nfts: merchantAssets?.nfts,
+			}),
+		[hasActiveMembership, membershipFeeTiers, merchantAssets?.nfts],
+	)
 	const [referrerDashboard, setReferrerDashboard] = useState<CardProgramReferrerDashboardSnapshot | null>(null)
 	const [referrerDashboardLoading, setReferrerDashboardLoading] = useState(false)
 	const [referrerDownlineOpen, setReferrerDownlineOpen] = useState(false)
@@ -4491,6 +4541,10 @@ function DiscoverMerchantDetailFullScreen({
 		setUsdcTopupError('')
 		setUsdcTopupRulesHint('')
 		setUsdcTopupIntent('topup')
+		setUsdcTopupIntentLocked(false)
+		setMembershipPurchaseTierIndex(null)
+		setMembershipPurchaseFeeFiat6('')
+		setMembershipPurchaseMinUsdc6('')
 	}, [])
 
 	// Read card points (6-dec, chain-direct, bypassing the getMyAssets TTL cache).
@@ -4582,6 +4636,7 @@ function DiscoverMerchantDetailFullScreen({
 
 	useEffect(() => {
 		if (usdcTopupPhase !== 'amount' || !item.cardAddress) return
+		if (usdcTopupIntentLocked) return
 		const userEoa = resolveUserEoa()
 		if (!userEoa) return
 		let cancelled = false
@@ -4601,7 +4656,45 @@ function DiscoverMerchantDetailFullScreen({
 		return () => {
 			cancelled = true
 		}
-	}, [item.cardAddress, resolveUserEoa, usdcTopupPhase])
+	}, [item.cardAddress, resolveUserEoa, usdcTopupIntentLocked, usdcTopupPhase])
+
+	const openDiscoverTopupAmount = useCallback(() => {
+		setUsdcTopupError('')
+		setUsdcTopupAmountText('')
+		setUsdcTopupIntent('topup')
+		setUsdcTopupIntentLocked(true)
+		setMembershipPurchaseTierIndex(null)
+		setMembershipPurchaseFeeFiat6('')
+		setMembershipPurchaseMinUsdc6('')
+		setUsdcTopupRulesHint('')
+		setUsdcTopupPhase('amount')
+	}, [])
+
+	const openDiscoverMembershipPay = useCallback((kind: 'join' | 'upgrade') => {
+		const tier = kind === 'join' ? membershipUi.joinTier : membershipUi.upgradeTier
+		if (!tier) return
+		const prefill = membershipPurchaseApiAmountHuman(tier.feeE6, tier.minUsdc6)
+		setUsdcTopupError('')
+		setUsdcTopupAmountText(prefill)
+		setUsdcTopupIntent(kind === 'join' ? 'first_purchase' : 'upgrade')
+		setUsdcTopupIntentLocked(true)
+		setMembershipPurchaseTierIndex(tier.tierIndex)
+		setMembershipPurchaseFeeFiat6(tier.feeE6)
+		setMembershipPurchaseMinUsdc6(tier.minUsdc6)
+		const feeHuman = membershipFeeE6ToHuman(tier.feeE6)
+		const creditHuman = membershipFeeE6ToHuman(membershipPurchasePointsCreditE6(tier.minUsdc6).toString())
+		const durationLabel =
+			tier.durationKind != null ? MEMBERSHIP_DURATION_LABELS[tier.durationKind] ?? '' : ''
+		const prefix = balancePrefix || ''
+		const feePart = feeHuman ? `${prefix}${feeHuman}` : ''
+		const creditPart = creditHuman ? `${prefix}${creditHuman}` : ''
+		setUsdcTopupRulesHint(
+			kind === 'join'
+				? `First purchase includes membership fee ${feePart}${durationLabel ? ` · ${durationLabel}` : ''}${creditPart ? `. Card credit ${creditPart} is included.` : '.'}`
+				: `Upgrade to ${tier.name} includes membership fee ${feePart}${durationLabel ? ` · ${durationLabel}` : ''}${creditPart ? `. Card credit ${creditPart} is included.` : '.'}`,
+		)
+		setUsdcTopupPhase('amount')
+	}, [balancePrefix, membershipUi.joinTier, membershipUi.upgradeTier])
 
 	const handleUsdcTopupContinue = useCallback(async () => {
 		const cardAddress = item.cardAddress?.trim() ?? ''
@@ -4621,6 +4714,29 @@ function DiscoverMerchantDetailFullScreen({
 		if (!parsed.ok) {
 			setUsdcTopupError(parsed.error)
 			return
+		}
+		const isMembershipPay =
+			membershipPurchaseTierIndex != null &&
+			membershipPurchaseFeeFiat6.trim() !== '' &&
+			(usdcTopupIntent === 'first_purchase' || usdcTopupIntent === 'upgrade')
+		if (isMembershipPay) {
+			try {
+				const minE6 =
+					BigInt(membershipPurchaseFeeFiat6) +
+					membershipPurchasePointsCreditE6(membershipPurchaseMinUsdc6)
+				const amtE6 = BigInt(membershipFeeHumanToE6(parsed.apiAmount))
+				if (amtE6 < minE6) {
+					const minHuman = membershipPurchaseApiAmountHuman(
+						membershipPurchaseFeeFiat6,
+						membershipPurchaseMinUsdc6,
+					)
+					setUsdcTopupError(`Amount must be at least ${minHuman} ${displayCurrency}.`)
+					return
+				}
+			} catch {
+				setUsdcTopupError('Invalid membership amount.')
+				return
+			}
 		}
 		const userEoa = resolveUserEoa()
 		if (!userEoa) {
@@ -4666,16 +4782,18 @@ function DiscoverMerchantDetailFullScreen({
 				setUsdcTopupError('Invalid top-up amount.')
 				return
 			}
-			const quotePrecheck = await precheckDiscoverUsdcTopupUsdc6({
-				cardAddress,
-				fromEoa: userEoa,
-				usdc6: quotedUsdc6,
-			})
-			if (!quotePrecheck.ok) {
-				setUsdcTopupError(quotePrecheck.error)
-				return
+			if (!isMembershipPay) {
+				const quotePrecheck = await precheckDiscoverUsdcTopupUsdc6({
+					cardAddress,
+					fromEoa: userEoa,
+					usdc6: quotedUsdc6,
+				})
+				if (!quotePrecheck.ok) {
+					setUsdcTopupError(quotePrecheck.error)
+					return
+				}
+				setUsdcTopupIntent(quotePrecheck.intent)
 			}
-			setUsdcTopupIntent(quotePrecheck.intent)
 			const usdcDisplay = formatQuotedUsdc6ForDisplay(quotedUsdc6)
 			setUsdcTopupFiatAmount(parsed.apiAmount)
 			setUsdcTopupRequiredUsdc6(quotedUsdc6)
@@ -4708,6 +4826,12 @@ function DiscoverMerchantDetailFullScreen({
 					amount: parsed.apiAmount,
 					currency: displayCurrency,
 					quotedUsdc6,
+					...(isMembershipPay
+						? {
+								membershipTierIndex: membershipPurchaseTierIndex,
+								membershipFeeFiat6: membershipPurchaseFeeFiat6,
+							}
+						: {}),
 				})
 				if (localPay.ok) {
 					refreshMerchantAssets()
@@ -4725,7 +4849,8 @@ function DiscoverMerchantDetailFullScreen({
 				/* Balance raced down — continue to CoNET-USDC / QR. */
 			}
 
-			/** 2) Wallet CoNET-USDC self-fund → `/api/usdcTopup`. */
+			/** 2) Wallet CoNET-USDC self-fund → `/api/usdcTopup` (plain top-up only). */
+			if (!isMembershipPay) {
 			const baselineUsdc6 = await readEoaConetUsdcBalance6(profile as profile)
 			setUsdcTopupBaselineUsdc6(baselineUsdc6)
 			const selfFundUsdc6 = await currencyAmountToSafeUsdc6(
@@ -4754,6 +4879,7 @@ function DiscoverMerchantDetailFullScreen({
 				)
 				return
 			}
+			}
 
 			/** 3) Insufficient local funds → third-party treasuryBridge QR. */
 			if (!userAa) {
@@ -4768,6 +4894,12 @@ function DiscoverMerchantDetailFullScreen({
 				amount: parsed.apiAmount,
 				currency: displayCurrency,
 				recipientAa: userAa,
+				...(isMembershipPay
+					? {
+							membershipTierIndex: membershipPurchaseTierIndex,
+							membershipFeeFiat6: membershipPurchaseFeeFiat6,
+						}
+					: {}),
 			})
 			setUsdcTopupUserEoa(userEoa)
 			setUsdcTopupRecipientAa(userAa)
@@ -4783,6 +4915,9 @@ function DiscoverMerchantDetailFullScreen({
 	}, [
 		displayCurrency,
 		item.cardAddress,
+		membershipPurchaseFeeFiat6,
+		membershipPurchaseMinUsdc6,
+		membershipPurchaseTierIndex,
 		navigate,
 		profile,
 		refreshMerchantAssets,
@@ -4791,6 +4926,7 @@ function DiscoverMerchantDetailFullScreen({
 		resolveUserEoa,
 		submitDiscoverEoaTopup,
 		usdcTopupAmountText,
+		usdcTopupIntent,
 	])
 
 	const copyUsdcTopupUrl = useCallback(async () => {
@@ -4843,6 +4979,12 @@ function DiscoverMerchantDetailFullScreen({
 							amount: usdcTopupFiatAmount,
 							currency: displayCurrency,
 							quotedUsdc6: usdcTopupRequiredUsdc6,
+							...(membershipPurchaseTierIndex != null && membershipPurchaseFeeFiat6
+								? {
+										membershipTierIndex: membershipPurchaseTierIndex,
+										membershipFeeFiat6: membershipPurchaseFeeFiat6,
+									}
+								: {}),
 						})
 						if (localPay.ok) {
 							refreshMerchantAssets()
@@ -4904,6 +5046,8 @@ function DiscoverMerchantDetailFullScreen({
 		submitDiscoverEoaTopup,
 		usdcTopupBaselineUsdc6,
 		usdcTopupFiatAmount,
+		membershipPurchaseFeeFiat6,
+		membershipPurchaseTierIndex,
 		usdcTopupRecipientAa,
 		usdcTopupRequiredUsdc6,
 		usdcTopupWorkflow,
@@ -5532,14 +5676,15 @@ function DiscoverMerchantDetailFullScreen({
 						</div>
 						<div className="mt-5 flex items-end justify-between gap-3">
 							<p className="text-[14px] font-medium text-slate-500 dark:text-slate-400">Available Balance</p>
-							{item.cardAddress && usdcTopupPhase === 'idle' ? (
+							{item.cardAddress &&
+							usdcTopupPhase === 'idle' &&
+							!merchantAssetsLoading &&
+							(membershipUi.mode === 'no_fee' ||
+								membershipUi.mode === 'member_topup_only' ||
+								membershipUi.mode === 'can_upgrade') ? (
 								<button
 									type="button"
-									onClick={() => {
-										setUsdcTopupError('')
-										setUsdcTopupAmountText('')
-										setUsdcTopupPhase('amount')
-									}}
+									onClick={openDiscoverTopupAmount}
 									className="shrink-0 rounded-full border border-[#1562f0]/25 bg-[#1562f0]/10 px-3 py-1.5 text-[12px] font-bold uppercase tracking-wide text-[#1562f0] transition active:scale-[0.98] hover:bg-[#1562f0]/15"
 								>
 									Top up
@@ -5550,10 +5695,64 @@ function DiscoverMerchantDetailFullScreen({
 							{balanceDisplay}
 						</p>
 
+						{usdcTopupPhase === 'idle' &&
+						!merchantAssetsLoading &&
+						membershipUi.mode === 'need_member' &&
+						membershipUi.joinTier ? (
+							<div className="mt-4 space-y-3 border-t border-slate-100 pt-4 dark:border-slate-800">
+								<p className="text-[13px] leading-relaxed text-slate-600 dark:text-slate-400">
+									Become a member to use this merchant program
+									{membershipFeeDisplay
+										? ` · ${balancePrefix ? `${balancePrefix}${membershipFeeDisplay.feeHuman}` : membershipFeeDisplay.feeHuman}${membershipFeeDisplay.durationLabel ? ` / ${membershipFeeDisplay.durationLabel}` : ''}`
+										: ''}
+									.
+								</p>
+								<button
+									type="button"
+									onClick={() => openDiscoverMembershipPay('join')}
+									className="w-full rounded-full bg-[#1562f0] px-4 py-2.5 text-[14px] font-bold text-white shadow-sm transition active:scale-[0.98]"
+								>
+									Become a member
+								</button>
+							</div>
+						) : null}
+
+						{usdcTopupPhase === 'idle' &&
+						!merchantAssetsLoading &&
+						membershipUi.mode === 'can_upgrade' &&
+						membershipUi.upgradeTier ? (
+							<div className="mt-4 space-y-3 border-t border-slate-100 pt-4 dark:border-slate-800">
+								<p className="text-[13px] leading-relaxed text-slate-600 dark:text-slate-400">
+									Upgrade membership to {membershipUi.upgradeTier.name}
+									{(() => {
+										const feeHuman = membershipFeeE6ToHuman(membershipUi.upgradeTier.feeE6)
+										const durationLabel =
+											membershipUi.upgradeTier.durationKind != null
+												? MEMBERSHIP_DURATION_LABELS[membershipUi.upgradeTier.durationKind] ?? ''
+												: ''
+										if (!feeHuman) return ''
+										return ` · ${balancePrefix ? `${balancePrefix}${feeHuman}` : feeHuman}${durationLabel ? ` / ${durationLabel}` : ''}`
+									})()}
+									.
+								</p>
+								<button
+									type="button"
+									onClick={() => openDiscoverMembershipPay('upgrade')}
+									className="w-full rounded-full border border-[#1562f0]/30 bg-[#1562f0]/10 px-4 py-2.5 text-[14px] font-bold text-[#1562f0] transition active:scale-[0.98] hover:bg-[#1562f0]/15"
+								>
+									Upgrade membership
+								</button>
+							</div>
+						) : null}
+
 						{usdcTopupPhase === 'amount' ? (
 							<div className="mt-4 space-y-3 border-t border-slate-100 pt-4 dark:border-slate-800">
 								<label htmlFor="discover-usdc-topup-amount" className="block text-[13px] font-semibold text-slate-600 dark:text-slate-400">
-									Top-up amount ({displayCurrency})
+									{usdcTopupIntent === 'first_purchase'
+										? `Membership amount (${displayCurrency})`
+										: usdcTopupIntent === 'upgrade'
+											? `Upgrade amount (${displayCurrency})`
+											: `Top-up amount (${displayCurrency})`}
 								</label>
 								{usdcTopupRulesHint ? (
 									<p className="text-[12px] leading-relaxed text-slate-500 dark:text-slate-400">

@@ -141,12 +141,36 @@ export function buildDiscoverUsdcClientTopupQrUrl(params: {
 }
 
 /** Discover insufficient-balance path: third-party pays on beamio.app; settle → treasury; points → AA. */
+export type DiscoverMembershipPayFields = {
+	membershipTierIndex?: number | null
+	membershipFeeFiat6?: string | null
+}
+
+function applyDiscoverMembershipPayFields(
+	target: { set: (key: string, value: string) => void } | Record<string, string>,
+	fields?: DiscoverMembershipPayFields | null,
+): void {
+	if (fields?.membershipTierIndex == null || fields.membershipTierIndex < 0) return
+	const fee = String(fields.membershipFeeFiat6 ?? '').trim()
+	if (!fee || !/^\d+$/.test(fee) || BigInt(fee) <= 0n) return
+	if ('set' in target && typeof target.set === 'function') {
+		target.set('membershipTierIndex', String(fields.membershipTierIndex))
+		target.set('membershipFeeFiat6', fee)
+		return
+	}
+	const rec = target as Record<string, string>
+	rec.membershipTierIndex = String(fields.membershipTierIndex)
+	rec.membershipFeeFiat6 = fee
+}
+
 export function buildDiscoverUsdcTreasuryBridgeQrUrl(params: {
 	cardAddress: string
 	cardOwner: string
 	amount: string
 	currency: string
 	recipientAa: string
+	membershipTierIndex?: number | null
+	membershipFeeFiat6?: string | null
 }): string {
 	const url = new URL(BEAMIO_USDC_TOPUP_URL)
 	url.searchParams.set('card', params.cardAddress)
@@ -156,6 +180,7 @@ export function buildDiscoverUsdcTreasuryBridgeQrUrl(params: {
 	url.searchParams.set('aa', params.recipientAa)
 	url.searchParams.set('workflow', DISCOVER_USDC_TREASURY_BRIDGE_WORKFLOW)
 	url.searchParams.set('paymentToken', 'USDC')
+	applyDiscoverMembershipPayFields(url.searchParams, params)
 	return url.toString()
 }
 
@@ -385,6 +410,8 @@ export async function payDiscoverTreasuryBridgeWithLocalWallet(params: {
 	currency: string
 	/** Quoted settle amount from `/api/nfcUsdcTopupQuote` (must match challenge). */
 	quotedUsdc6: bigint
+	membershipTierIndex?: number | null
+	membershipFeeFiat6?: string | null
 }): Promise<PayDiscoverTreasuryBridgeLocalResult> {
 	const required6 = params.quotedUsdc6
 	if (required6 <= 0n) {
@@ -415,6 +442,7 @@ export async function payDiscoverTreasuryBridgeWithLocalWallet(params: {
 		workflow: DISCOVER_USDC_TREASURY_BRIDGE_WORKFLOW,
 		paymentToken: 'USDC',
 	}
+	applyDiscoverMembershipPayFields(bodyObj, params)
 	const topupUrl = `${beamioApi}/api/nfcUsdcTopup`
 	const body = JSON.stringify(bodyObj)
 

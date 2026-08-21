@@ -8956,11 +8956,31 @@ type BeamioCardProgramReferrerListRow = {
 type BeamioCardProgramReferrerRefereeRow = {
   refereeAa: string;
   referrerAa: string | null;
+  /** Present on DB rows; chain page may omit (no event timestamp in view). */
   registeredAt: string;
   updatedAt: string;
   txHash: string | null;
   refereeChargePointsTotal6?: string | null;
 };
+
+/** Chain registeredReferees / refereesByReferrer may omit DB-only fields. */
+function normalizeProgramReferrerRefereeRow(
+  row: Partial<BeamioCardProgramReferrerRefereeRow> & { refereeAa: string },
+): BeamioCardProgramReferrerRefereeRow {
+  return {
+    refereeAa: row.refereeAa,
+    referrerAa: row.referrerAa ?? null,
+    registeredAt: typeof row.registeredAt === 'string' ? row.registeredAt : '',
+    updatedAt:
+      typeof row.updatedAt === 'string' && row.updatedAt
+        ? row.updatedAt
+        : typeof row.registeredAt === 'string'
+          ? row.registeredAt
+          : '',
+    txHash: row.txHash ?? null,
+    refereeChargePointsTotal6: row.refereeChargePointsTotal6 ?? null,
+  };
+}
 
 type BeamioCardProgramReferrersReferrersResponse = {
   mode: 'referrers';
@@ -13651,6 +13671,9 @@ useEffect(() => {
    try {
      const page = await fetchBeamioCardProgramReferrersPage(addr, 50, 0);
      if (Array.isArray(page.referrers)) setProgramReferrerList(page.referrers);
+     if (typeof page.total === 'number' && Number.isFinite(page.total)) {
+       setProgramReferrerTotalCount(page.total);
+     }
    } catch {
      /* trusted-fetch: keep prior list */
    }
@@ -13661,7 +13684,12 @@ useEffect(() => {
    if (!addr || !ethers.isAddress(addr)) return;
    try {
      const page = await fetchBeamioCardProgramRegisteredRefereesPage(addr, 50, 0);
-     if (Array.isArray(page.referees)) setProgramRegisteredRefereeList(page.referees);
+     if (Array.isArray(page.referees)) {
+       setProgramRegisteredRefereeList(page.referees.map(normalizeProgramReferrerRefereeRow));
+     }
+     if (typeof page.total === 'number' && Number.isFinite(page.total)) {
+       setProgramRegisteredRefereeTotalCount(page.total);
+     }
    } catch {
      /* trusted-fetch: keep prior list */
    }
@@ -13674,7 +13702,7 @@ useEffect(() => {
      try {
        const page = await fetchBeamioCardProgramRefereesByReferrerPage(addr, referrerAA, 50, 0);
        if (Array.isArray(page.referees)) {
-         setProgramReferrerDetailList(page.referees);
+         setProgramReferrerDetailList(page.referees.map(normalizeProgramReferrerRefereeRow));
          setProgramReferrerDetailAA(ethers.getAddress(referrerAA));
        }
      } catch {
@@ -13697,6 +13725,18 @@ useEffect(() => {
 
  const loadProgramSocialOverviewRef = useRef(loadProgramSocialOverview);
  loadProgramSocialOverviewRef.current = loadProgramSocialOverview;
+ const loadProgramReferrerOverviewRef = useRef(loadProgramReferrerOverview);
+ loadProgramReferrerOverviewRef.current = loadProgramReferrerOverview;
+ const loadProgramReferrerListRef = useRef(loadProgramReferrerList);
+ loadProgramReferrerListRef.current = loadProgramReferrerList;
+ const loadProgramRegisteredRefereeListRef = useRef(loadProgramRegisteredRefereeList);
+ loadProgramRegisteredRefereeListRef.current = loadProgramRegisteredRefereeList;
+ const loadProgramReferrerDetailRef = useRef(loadProgramReferrerDetail);
+ loadProgramReferrerDetailRef.current = loadProgramReferrerDetail;
+ const programReferrerDrawerRef = useRef(programReferrerDrawer);
+ programReferrerDrawerRef.current = programReferrerDrawer;
+ const programReferrerDetailAARef = useRef(programReferrerDetailAA);
+ programReferrerDetailAARef.current = programReferrerDetailAA;
 
  useEffect(() => {
    void loadProgramSocialOverview();
@@ -27234,6 +27274,19 @@ useEffect(() => {
          await loadProgramSocialOverviewRef.current({ silent: true });
        }
 
+       // Program Referrer Registry: counts every tick; open drawer list stays fresh (chain-first API).
+       if (!feederCancelledRef.current && programAddr && ethers.isAddress(programAddr)) {
+         await loadProgramReferrerOverviewRef.current({ silent: true });
+         const drawer = programReferrerDrawerRef.current;
+         if (drawer === 'referrers') {
+           await loadProgramReferrerListRef.current();
+         } else if (drawer === 'registeredReferees') {
+           const detailAa = programReferrerDetailAARef.current;
+           if (detailAa) await loadProgramReferrerDetailRef.current(detailAa);
+           else await loadProgramRegisteredRefereeListRef.current();
+         }
+       }
+
        // 0b. Active Cards KPI: server directory hint when Members daemon has not merged rows yet (same90d rule on `lastTopupAt`; no holder balance RPC).
        const activeCardsHintProgramAddr =
          programAddr && ethers.isAddress(programAddr)
@@ -38252,13 +38305,17 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                                <ProgramReferrerAaCapsule address={row.referrerAa} />
                                              </p>
                                            ) : null}
-                                           <p className="mt-1 text-[10px] text-[#595c5e]">
-                                             {new Date(row.registeredAt).toLocaleString()}
-                                           </p>
-                                           <p className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-[#595c5e]">
-                                             <span>{tu('programs_overview_social_tx_label')}:</span>
-                                             <ProgramSocialOnChainTxLink txHash={row.txHash} />
-                                           </p>
+                                           {row.registeredAt ? (
+                                             <p className="mt-1 text-[10px] text-[#595c5e]">
+                                               {new Date(row.registeredAt).toLocaleString()}
+                                             </p>
+                                           ) : null}
+                                           {row.txHash ? (
+                                             <p className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-[#595c5e]">
+                                               <span>{tu('programs_overview_social_tx_label')}:</span>
+                                               <ProgramSocialOnChainTxLink txHash={row.txHash} />
+                                             </p>
+                                           ) : null}
                                          </li>
                                        ))}
                                      </ul>

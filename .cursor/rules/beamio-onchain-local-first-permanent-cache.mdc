@@ -1,0 +1,63 @@
+---
+description: 链上信息本地优先、可永久缓存；仅可信成功写盘；失败不清空已有展示
+alwaysApply: true
+---
+
+# 链上信息：本地优先 + 可永久缓存
+
+## 核心规则
+
+**凡业务 UI 依赖的链上信息（程序卡地址、终端列表、KPI、metadata、持有资产摘要等），必须以本地可信缓存为主要展示依据，链上 / RPC / API 拉取为辅。** 缓存可长期保留（无强制 TTL 到期清空）；仅在 **本次拉取可信成功** 时写盘或覆盖内存。
+
+与 `beamio-trusted-vs-untrusted-fetch.mdc`、`beamio-ai-onchain-fetch.mdc`、`beamio-chain-fetch-protocol.mdc` 并存；本守则强调 **首屏 hydrate** 与 **失败不得抹掉本地**。
+
+## 强制语义
+
+| 阶段 | 行为 |
+|---|---|
+| **首屏 / 冷开** | 同步读本地 trusted cache（或 seed）渲染；**禁止**先清空再等网络 |
+| **后台拉取** | RPC / API 刷新；与 UI 展示解耦 |
+| **可信成功** | 更新 UI + `saveTrustedCache`（或等价持久化） |
+| **不可信失败** | **保留**上次可信值；**禁止** `setState(null / [] / 0)` 覆盖已有展示 |
+| **可信空** | 仅当协议明确「成功且空」时，才允许写入空态 |
+
+## Cache key
+
+- **用户级**数据必须含 **EOA**（或等价钱包分区），切换账号不得串数据。
+- **卡级**数据须含 **卡合约地址**（或稳定 program bucket）；hydrate 主卡地址后再拼 terminals / KPI / catalog 键。
+- 写盘键与 fallback 读键 **必须完全一致**（含版本后缀，如 `:v3-conet-provider`）。
+
+## bizSite 参考（`#/native-pos` / Merchant OS）
+
+| 维度 | 键 / 行为 |
+|---|---|
+| 主程序卡 | `eoa:{eoa}:biz:last-staff-program-card:v1` — 首屏 hydrate `merchantOwnCardAddress` |
+| 终端列表 | `eoa:{eoa}:linked-terminals:{cardLower}:v3-conet-provider` |
+| 失败 | `getCardsOfOwner` catch / `trusted === false` → **不清**主卡 / terminals |
+
+实现：`src/bizSite/src/pages/Vouchers/example/biz.tsx` — `loadLastStaffProgramCardFromTrustedCache`、`linkedTerminalsTrustedCacheKey`。
+
+## 允许 vs 禁止
+
+| 允许 | 禁止 |
+|---|---|
+| 本地命中即展示，后台静默刷新 | 打开页先 `setX(null)` 再等 RPC |
+| 永久保留上次可信条目 | 失败当「无卡 / 无终端」清空 |
+| 仅可信成功写 localStorage / IndexedDB | fallback 键漏后缀导致永远 miss |
+| EOA + card 隔离 | 无 EOA 的全局用户级缓存键 |
+
+## AI 检查清单
+
+- [ ] 首屏是否从本地 hydrate，而非等网络才填主卡 / 列表？
+- [ ] 不可信失败是否 **未** 清空已有可信 state？
+- [ ] 写盘键与读盘 / fallback 键是否含相同后缀与维度？
+- [ ] 用户级 key 是否含 EOA？
+- [ ] 是否未把「请求失败」解释为「链上为空」？
+
+## 相关守则
+
+- `beamio-trusted-vs-untrusted-fetch.mdc` — 可信 vs 不可信写盘边界
+- `beamio-ai-onchain-fetch.mdc` — 链上拉取与 Trusted Cache Protocol
+- `beamio-chain-fetch-protocol.mdc` — 30s TTL + 串行（节流；**不**等于失败可清空）
+- `beamio-untrusted-empty-result-discard.mdc` — 不可信空列表不得覆盖
+- `beamio-app-dashboard-daemon-local-first.mdc` — SilentPassUI dashboard 本地优先

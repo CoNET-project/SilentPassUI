@@ -8675,6 +8675,23 @@ function saveTrustedCache<T>(key: string, value: T) {
   }
 }
 
+/** EOA → last trusted merchant program card (Overview / Staff / terminals cache bucket). */
+function lastStaffProgramCardTrustedCacheKey(eoa: string): string {
+  return `eoa:${ethers.getAddress(eoa)}:biz:last-staff-program-card:v1`;
+}
+
+function loadLastStaffProgramCardFromTrustedCache(eoa: string | null | undefined): string | null {
+  if (!eoa || !ethers.isAddress(eoa)) return null;
+  const last = loadTrustedCache<string>(lastStaffProgramCardTrustedCacheKey(eoa));
+  if (!last || !ethers.isAddress(last)) return null;
+  return ethers.getAddress(last);
+}
+
+/** Must match `linkedTerminalsCacheKey` in MerchantOS (suffix is part of the key). */
+function linkedTerminalsTrustedCacheKey(eoa: string, cardBucketLower: string): string {
+  return `eoa:${eoa}:linked-terminals:${cardBucketLower}:v3-conet-provider`;
+}
+
 /** Business / Catalog — local-first per wallet partition + program card. */
 function bizCatalogProductionsCacheKey(partitionLower: string, cardAddressLower: string): string {
   return `eoa:${partitionLower}:biz:catalog-productions:v1:${cardAddressLower}`;
@@ -13815,7 +13832,9 @@ useEffect(() => {
  );
 
  /** Profile is owner of ≥1 BeamioUserCard (via factory / cardsOfOwner); Staff tab hides «Smart Terminal Locked» for issuers. */
- const [profileOwnsIssuedBeamioCard, setProfileOwnsIssuedBeamioCard] = useState(false);
+ const [profileOwnsIssuedBeamioCard, setProfileOwnsIssuedBeamioCard] = useState(() =>
+   Boolean(loadLastStaffProgramCardFromTrustedCache(profiles?.[0]?.keyID ?? myAddress))
+ );
  const [profileOwnsIssuedBeamioCardFetched, setProfileOwnsIssuedBeamioCardFetched] = useState(false);
  /** CoNET BusinessStartKetRedeem ERC1155 #0（Ket）余额 >0 */
  const [ownsBusinessStartKetToken0, setOwnsBusinessStartKetToken0] = useState(false);
@@ -13829,7 +13848,9 @@ useEffect(() => {
    hash?: string
  } | null>(null);
  /** Primary BeamioUserCard owned by profile (factory / cardsOfOwner); Staff terminals + registration use this instead of infra when set. */
- const [merchantOwnCardAddress, setMerchantOwnCardAddress] = useState<string | null>(null);
+ const [merchantOwnCardAddress, setMerchantOwnCardAddress] = useState<string | null>(() =>
+   loadLastStaffProgramCardFromTrustedCache(profiles?.[0]?.keyID ?? myAddress)
+ );
  /** Ket #0 + no factory card, issuer/Ket reads done — Card Setup on Overview until card is issued */
  const programAreaGateReady =
    profileOwnsIssuedBeamioCardFetched && ownsBusinessStartKetToken0Fetched;
@@ -21946,14 +21967,21 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
      try {
        const { cards, trusted } = await getCardsOfOwnerWithDetailsForProfile(p0);
        if (cancelled) return;
-       if (!trusted || cards.length === 0) {
+       /** Untrusted failure ≠ no card — keep last trusted issuance row (local-first). */
+       if (!trusted) {
+         setCardIssuanceOnchainFetch('done');
+         return;
+       }
+       if (cards.length === 0) {
          setCardIssuanceExistingCard(null);
+         setCardIssuanceOnchainFetch('done');
          return;
        }
        const primary = await pickPrimaryIssuedCardAddressForBiz(p0, cards);
        if (cancelled) return;
        if (!primary) {
          setCardIssuanceExistingCard(null);
+         setCardIssuanceOnchainFetch('done');
          return;
        }
        const userCard =
@@ -22409,12 +22437,27 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
 
  useEffect(() => {
    const p0 = profiles?.[0];
+   const eoaRaw = (p0?.keyID ?? myAddress ?? '').trim();
+   const eoaForCache =
+     eoaRaw && ethers.isAddress(eoaRaw) ? ethers.getAddress(eoaRaw) : null;
+   const cachedProgram = loadLastStaffProgramCardFromTrustedCache(eoaForCache);
+
+   /** Incomplete profile: still hydrate last trusted program so Overview / terminals stay local-first. */
    if (!p0 || (!p0.keyID?.trim() && !p0.aaAccount?.trim() && !p0.privateKeyArmor)) {
-     setProfileOwnsIssuedBeamioCard(false);
+     if (cachedProgram) {
+       setMerchantOwnCardAddress(cachedProgram);
+       setProfileOwnsIssuedBeamioCard(true);
+     }
      setProfileOwnsIssuedBeamioCardFetched(true);
-     setMerchantOwnCardAddress(null);
      return;
    }
+
+   /** Optimistic hydrate before network — prevents empty terminals / KPI flash on cold open. */
+   if (cachedProgram) {
+     setMerchantOwnCardAddress((prev) => prev ?? cachedProgram);
+     setProfileOwnsIssuedBeamioCard(true);
+   }
+
    let cancelled = false;
    setProfileOwnsIssuedBeamioCardFetched(false);
    void (async () => {
@@ -22423,24 +22466,43 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
        await loadApiExcludedUserCards();
        const { cards, trusted } = await getCardsOfOwnerWithDetailsForProfile(p0);
        if (cancelled) return;
-       /** Still pick primary when `trusted === false` (RPC/API degraded but profile or cache returned cards); otherwise Overview `staffProgram` stays null and Total Members hint never runs. */
+       /** Still pick primary when `trusted === false` (RPC/API degraded but profile or cache returned cards). */
        const primary = await pickPrimaryIssuedCardAddressForBiz(p0, cards);
        if (cancelled) return;
-       setProfileOwnsIssuedBeamioCard(cards.length > 0 || Boolean(primary));
+       if (primary) {
+         const addr = ethers.getAddress(primary);
+         setProfileOwnsIssuedBeamioCard(true);
+         setMerchantOwnCardAddress(addr);
+         setProfileOwnsIssuedBeamioCardFetched(true);
+         return;
+       }
+       if (trusted) {
+         /** Trusted empty from factory — merchant has no issued program card. */
+         setProfileOwnsIssuedBeamioCard(false);
+         setMerchantOwnCardAddress(null);
+         setProfileOwnsIssuedBeamioCardFetched(true);
+         return;
+       }
+       /** Untrusted empty: keep last trusted local program (do not clear). */
+       if (cachedProgram) {
+         setMerchantOwnCardAddress(cachedProgram);
+         setProfileOwnsIssuedBeamioCard(true);
+       }
        setProfileOwnsIssuedBeamioCardFetched(true);
-       setMerchantOwnCardAddress(primary ? ethers.getAddress(primary) : null);
      } catch {
        if (!cancelled) {
-         setProfileOwnsIssuedBeamioCard(false);
+         if (cachedProgram) {
+           setMerchantOwnCardAddress(cachedProgram);
+           setProfileOwnsIssuedBeamioCard(true);
+         }
          setProfileOwnsIssuedBeamioCardFetched(true);
-         setMerchantOwnCardAddress(null);
        }
      }
    })();
    return () => {
      cancelled = true;
    };
- }, [profiles?.[0]?.keyID, profiles?.[0]?.aaAccount, profiles?.[0]?.privateKeyArmor, cardIssuanceOnChainRefreshNonce]);
+ }, [profiles?.[0]?.keyID, profiles?.[0]?.aaAccount, profiles?.[0]?.privateKeyArmor, myAddress, cardIssuanceOnChainRefreshNonce]);
 
  useEffect(() => {
    const p0 = profiles?.[0];
@@ -22635,8 +22697,9 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
    if (merchantOwnCardAddress && ethers.isAddress(merchantOwnCardAddress)) {
      return ethers.getAddress(merchantOwnCardAddress);
    }
-   return null;
- }, [merchantOwnCardAddress]);
+   const cached = loadLastStaffProgramCardFromTrustedCache(currentEoa);
+   return cached;
+ }, [merchantOwnCardAddress, currentEoa]);
  /** Cache-key segment when no on-chain program card yet (EOA-scoped; not a contract address). */
  const staffProgramCardCacheBucket = useMemo(() => {
    if (staffProgramBeamioCardAddress) return staffProgramBeamioCardAddress.toLowerCase();
@@ -22652,7 +22715,7 @@ const retainedCapitalTrustedCacheKey =
     : '';
 const lastResolvedStaffProgramCacheKey =
   currentEoa && ethers.isAddress(currentEoa)
-    ? `eoa:${currentEoa}:biz:last-staff-program-card:v1`
+    ? lastStaffProgramCardTrustedCacheKey(currentEoa)
     : '';
 const dashboardMembersDirectoryHintTrustedCacheKey =
   currentEoa && ethers.isAddress(currentEoa)
@@ -22669,7 +22732,10 @@ const overviewNetworkSummaryCacheKey =
     : `eoa:${currentEoa}:card:${staffProgramCardCacheBucket}:network-summary:global:p${overviewPeriodType}`;
 const overviewNetworkSummaryLifetimeCacheKey =
   `eoa:${currentEoa}:card:${staffProgramCardCacheBucket}:network-summary:global:lifetime`;
- const linkedTerminalsCacheKey = `eoa:${currentEoa}:linked-terminals:${staffProgramCardCacheBucket}:v3-conet-provider`;
+ const linkedTerminalsCacheKey =
+   currentEoa && ethers.isAddress(currentEoa)
+     ? linkedTerminalsTrustedCacheKey(currentEoa, staffProgramCardCacheBucket)
+     : `eoa::linked-terminals:${staffProgramCardCacheBucket}:v3-conet-provider`;
  /** Per-terminal `getAdminStatsFull` / limit snapshot — local-first for Active Devices KPIs (feeder merges + persists). */
  const staffTerminalChainStatsCacheKey = `eoa:${currentEoa}:staff-terminal-chain-stats:${staffProgramCardCacheBucket}`;
  const [fixedCardAdmins, setFixedCardAdmins] = useState<string[]>(() => loadTrustedCache<string[]>(fixedCardAdminsCacheKey) ?? []);
@@ -22947,8 +23013,7 @@ useEffect(() => {
   if (cachedLifetime != null) setAdminNetworkSummaryLifetime(cachedLifetime);
 
   if (!programAddr || !ethers.isAddress(programAddr)) {
-    setAdminNetworkSummaryToday(null);
-    setAdminNetworkSummaryLifetime(null);
+    /** No program yet — keep any local-first summary already hydrated; do not wipe to empty. */
     return () => { cancelled = true; };
   }
 
@@ -24556,10 +24621,12 @@ useEffect(() => {
   // During first-login hydration, `staffProgramCardCacheBucket` may briefly be unresolved.
   // Reuse last resolved program bucket for this EOA before allowing an empty overwrite.
   if (currentEoa && ethers.isAddress(currentEoa)) {
-    const lastProgram = lastResolvedStaffProgramCacheKey ? loadTrustedCache<string>(lastResolvedStaffProgramCacheKey) : null;
+    const lastProgram =
+      loadLastStaffProgramCardFromTrustedCache(currentEoa) ??
+      (lastResolvedStaffProgramCacheKey ? loadTrustedCache<string>(lastResolvedStaffProgramCacheKey) : null);
     if (lastProgram && ethers.isAddress(lastProgram)) {
       const lastCardLower = ethers.getAddress(lastProgram).toLowerCase();
-      const fallbackKey = `eoa:${currentEoa}:linked-terminals:${lastCardLower}`;
+      const fallbackKey = linkedTerminalsTrustedCacheKey(currentEoa, lastCardLower);
       const fallback = loadTrustedCache<TerminalRecord[]>(fallbackKey) ?? [];
       if (fallback.length > 0) {
         setTerminals(fallback);
@@ -24964,10 +25031,16 @@ useEffect(() => {
    if (merchantOwnCardAddress && ethers.isAddress(merchantOwnCardAddress)) {
      return ethers.getAddress(merchantOwnCardAddress);
    }
+   const cached = loadLastStaffProgramCardFromTrustedCache(currentEoa);
+   if (cached) return cached;
    const p0 = profiles?.[0];
    if (p0) {
      const { cards, trusted } = await getCardsOfOwnerWithDetailsForProfile(p0);
      if (trusted && cards.length > 0) {
+       const primary = await pickPrimaryIssuedCardAddressForBiz(p0, cards);
+       if (primary) return ethers.getAddress(primary);
+     }
+     if (!trusted && cards.length > 0) {
        const primary = await pickPrimaryIssuedCardAddressForBiz(p0, cards);
        if (primary) return ethers.getAddress(primary);
      }
@@ -24979,7 +25052,7 @@ useEffect(() => {
    throw new Error(
      'No merchant-issued card found. Create your program card in Card Issuance Setup before registering a terminal.',
    );
- }, [merchantOwnCardAddress, profiles, cardIssuanceExistingCard, cardIssuanceCreateResult]);
+ }, [merchantOwnCardAddress, currentEoa, profiles, cardIssuanceExistingCard, cardIssuanceCreateResult]);
 
  useEffect(() => {
    let cancelled = false;

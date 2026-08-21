@@ -9503,14 +9503,36 @@ function formatReferrerPoints6Display(raw: string | null | undefined): string {
   }
 }
 
-/** Referrer registry lists login EOAs (API maps chain AA → owner EOA). */
+/**
+ * Referrer registry lists login EOAs (API maps chain AA → owner EOA).
+ * BeamioTag capsule + wallet AddressCapsule (same pattern as terminal verified identity).
+ */
 function ProgramReferrerAaCapsule({ address }: { address: string }) {
-  return (
+  const { toCapsuleItem } = useBeamioTagDatabase();
+  const addr = address?.trim() ?? '';
+  if (!addr || addr.length < 10) {
+    return <span className="text-[13px] text-[#595c5e]">Unavailable</span>;
+  }
+  const walletCapsule = (
     <AddressCapsule
-      address={address}
-      explorerUrl={beamioConetBlockscoutAddressUrl(address)}
-      className="max-w-full border-[#dce2f7] bg-[#e9edff] text-[#424655]"
+      address={addr}
+      explorerUrl={beamioConetBlockscoutAddressUrl(addr)}
+      className="border-[#dce2f7] bg-[#e9edff] text-[#424655]"
       leadingIcon={<Wallet className="h-3.5 w-3.5 text-[#0051d1]" strokeWidth={2.25} aria-hidden />}
+    />
+  );
+  const item = toCapsuleItem(addr);
+  const tag = item
+    ? ((item as { accountName?: string }).accountName ?? (item as { username?: string }).username)
+    : undefined;
+  const hasProfile = !!(item && (displayName(item) || tag));
+  if (!hasProfile) return walletCapsule;
+  return (
+    <BeamioCapsule
+      item={item}
+      tone="onLight"
+      className="min-w-0 max-w-full bg-transparent pl-0"
+      afterAvatar={walletCapsule}
     />
   );
 }
@@ -13687,14 +13709,23 @@ useEffect(() => {
    if (!addr || !ethers.isAddress(addr)) return;
    try {
      const page = await fetchBeamioCardProgramReferrersPage(addr, 50, 0);
-     if (Array.isArray(page.referrers)) setProgramReferrerList(page.referrers);
+     if (Array.isArray(page.referrers)) {
+       setProgramReferrerList(page.referrers);
+       const profileAddrs = new Set<string>();
+       for (const row of page.referrers) {
+         if (row.referrerAa && ethers.isAddress(row.referrerAa)) {
+           profileAddrs.add(ethers.getAddress(row.referrerAa));
+         }
+       }
+       if (profileAddrs.size > 0) void ensureProfilesForAddresses([...profileAddrs]);
+     }
      if (typeof page.total === 'number' && Number.isFinite(page.total)) {
        setProgramReferrerTotalCount(page.total);
      }
    } catch {
      /* trusted-fetch: keep prior list */
    }
- }, [cardIssuanceExistingCard?.cardAddress]);
+ }, [cardIssuanceExistingCard?.cardAddress, ensureProfilesForAddresses]);
 
  const loadProgramRegisteredRefereeList = useCallback(async () => {
    const addr = cardIssuanceExistingCard?.cardAddress?.trim() ?? '';
@@ -13702,7 +13733,18 @@ useEffect(() => {
    try {
      const page = await fetchBeamioCardProgramRegisteredRefereesPage(addr, 50, 0);
      if (Array.isArray(page.referees)) {
-       setProgramRegisteredRefereeList(page.referees.map(normalizeProgramReferrerRefereeRow));
+       const rows = page.referees.map(normalizeProgramReferrerRefereeRow);
+       setProgramRegisteredRefereeList(rows);
+       const profileAddrs = new Set<string>();
+       for (const row of rows) {
+         if (row.refereeAa && ethers.isAddress(row.refereeAa)) {
+           profileAddrs.add(ethers.getAddress(row.refereeAa));
+         }
+         if (row.referrerAa && ethers.isAddress(row.referrerAa)) {
+           profileAddrs.add(ethers.getAddress(row.referrerAa));
+         }
+       }
+       if (profileAddrs.size > 0) void ensureProfilesForAddresses([...profileAddrs]);
      }
      if (typeof page.total === 'number' && Number.isFinite(page.total)) {
        setProgramRegisteredRefereeTotalCount(page.total);
@@ -13710,7 +13752,7 @@ useEffect(() => {
    } catch {
      /* trusted-fetch: keep prior list */
    }
- }, [cardIssuanceExistingCard?.cardAddress]);
+ }, [cardIssuanceExistingCard?.cardAddress, ensureProfilesForAddresses]);
 
  const loadProgramReferrerDetail = useCallback(
    async (referrerAA: string) => {
@@ -13719,14 +13761,22 @@ useEffect(() => {
      try {
        const page = await fetchBeamioCardProgramRefereesByReferrerPage(addr, referrerAA, 50, 0);
        if (Array.isArray(page.referees)) {
-         setProgramReferrerDetailList(page.referees.map(normalizeProgramReferrerRefereeRow));
+         const rows = page.referees.map(normalizeProgramReferrerRefereeRow);
+         setProgramReferrerDetailList(rows);
          setProgramReferrerDetailAA(ethers.getAddress(referrerAA));
+         const profileAddrs = new Set<string>([ethers.getAddress(referrerAA)]);
+         for (const row of rows) {
+           if (row.refereeAa && ethers.isAddress(row.refereeAa)) {
+             profileAddrs.add(ethers.getAddress(row.refereeAa));
+           }
+         }
+         void ensureProfilesForAddresses([...profileAddrs]);
        }
      } catch {
        /* keep prior detail list */
      }
    },
-   [cardIssuanceExistingCard?.cardAddress],
+   [cardIssuanceExistingCard?.cardAddress, ensureProfilesForAddresses],
  );
 
  const openProgramReferrerDrawer = useCallback(
@@ -31020,7 +31070,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                    }, 280);
                  }}
                  className="rounded-xl p-2.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/40 focus-visible:ring-offset-2"
-                 title="搜索会员"
+                 title={tu('search_members')}
+                 aria-label={tu('search_members')}
                >
                  <Search size={20} strokeWidth={2} aria-hidden />
                </button>
@@ -33842,7 +33893,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
 
                <main className="mx-auto max-w-2xl space-y-6">
                  <section className="mt-2 space-y-1">
-                   <h1 className="text-3xl font-extrabold tracking-tight text-[#2c2f31]">会员</h1>
+                   <h1 className="text-3xl font-extrabold tracking-tight text-[#2c2f31]">{tu('members')}</h1>
                    <div className="flex items-center gap-2">
                      <span className="size-2 shrink-0 animate-pulse rounded-full bg-[#0051d1]" aria-hidden />
                      <p className="text-sm font-semibold uppercase tracking-wide text-[#515c70]/70">
@@ -34367,10 +34418,10 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                  <div className="flex gap-2 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                    {(
                      [
-                       { id: 'all' as const, label: 'All Chats' },
-                       { id: 'members' as const, label: '会员' },
-                       { id: 'partners' as const, label: 'Partners' },
-                       { id: 'support' as const, label: 'Support' },
+                       { id: 'all' as const, label: tu('all_chats') },
+                       { id: 'members' as const, label: tu('members') },
+                       { id: 'partners' as const, label: tu('partners') },
+                       { id: 'support' as const, label: tu('support') },
                      ] as const
                    ).map(({ id, label }) => (
                      <button

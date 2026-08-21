@@ -1,7 +1,7 @@
-/** Overview dashboard copy — internal time-filter values stay English/中文 literal for logic. */
+/** Overview dashboard copy — internal time-filter values are English literals for logic. */
 
 export type OverviewTimeFilterInternal =
-  | '今天'
+  | 'Today'
   | 'This Week'
   | 'This Month'
   | 'This Quarter'
@@ -17,7 +17,7 @@ export function overviewTimeFilterLabel(
   dateString?: string,
 ): string {
   switch (tf) {
-    case '今天':
+    case 'Today':
       return dateString
         ? tu('overview_filter_today_with_date', { date: dateString })
         : tu('overview_filter_today')

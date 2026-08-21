@@ -5168,13 +5168,13 @@ const PERIOD_MONTH = 3
 const PERIOD_QUARTER = 4
 const PERIOD_YEAR = 5
 
-type OverviewTimeFilter = '今天' | 'This Week' | 'This Month' | 'This Quarter' | 'This Year'
+type OverviewTimeFilter = 'Today' | 'This Week' | 'This Month' | 'This Quarter' | 'This Year'
 
-const OVERVIEW_TIME_FILTERS: readonly OverviewTimeFilter[] = ['今天', 'This Week', 'This Month', 'This Quarter', 'This Year'] as const
+const OVERVIEW_TIME_FILTERS: readonly OverviewTimeFilter[] = ['Today', 'This Week', 'This Month', 'This Quarter', 'This Year'] as const
 
 /** Mobile Transactions time pills (design mock; no Quarter). */
 const MOBILE_TRANSACTIONS_TIME_PILLS: readonly OverviewTimeFilter[] = [
-  '今天',
+  'Today',
   'This Week',
   'This Month',
   'This Year',
@@ -5190,7 +5190,7 @@ function overviewTimeFilterToPeriodType(tf: string): number {
       return PERIOD_QUARTER
     case 'This Year':
       return PERIOD_YEAR
-    case '今天':
+    case 'Today':
     default:
       return PERIOD_DAY
   }
@@ -5212,10 +5212,10 @@ function getLocalCalendarDayStartUnixSec(reference: Date): number {
 
 /**
  * Inclusive period start (unix seconds) for Overview time filter.
- * `今天` = client local midnight (matches gross sales). Other ranges = UTC-aligned like indexer `StatsFacet` / `PERIOD_*`.
+ * `Today` = client local midnight (matches gross sales). Other ranges = UTC-aligned like indexer `StatsFacet` / `PERIOD_*`.
  */
 function overviewPeriodStartUnixSec(timeFilter: OverviewTimeFilter, anchorSec: number): number {
-  if (timeFilter === '今天') {
+  if (timeFilter === 'Today') {
     return getLocalCalendarDayStartUnixSec(new Date(anchorSec * 1000))
   }
   if (timeFilter === 'This Week') {
@@ -5244,7 +5244,7 @@ type BizNetworkSummaryRow = {
   txCount: number
   usdc: number
   vouchers: number
-  /** Present when `timeFilter === '今天'`: must match `formatLocalYmd(new Date())` for trusted cache */
+  /** Present when `timeFilter === 'Today'`: must match `formatLocalYmd(new Date())` for trusted cache */
   localDayKey?: string
 }
 
@@ -5847,7 +5847,7 @@ async function callGetGlobalStatsFullParsed(
 }
 
 /**
- * Overview "今天": sum `getAdminStatsFull(..., PERIOD_HOUR, anchor in hour h)` for each UTC hour index
+ * Overview "Today": sum `getAdminStatsFull(..., PERIOD_HOUR, anchor in hour h)` for each UTC hour index
  * overlapping the client-local calendar day [local midnight, now]. Each hourly call already aggregates
  * the admin subtree on the staff program BeamioUserCard (same as `getAdminStatsFull` period stats).
  */
@@ -5896,7 +5896,7 @@ async function aggregateAdminNetworkSummaryLocalTodayFromHourlyBuckets(
 }
 
 /**
- * Overview "今天" (global / full card): sum `getGlobalStatsFull(..., PERIOD_HOUR, ...)` over local-calendar-day hours.
+ * Overview "Today" (global / full card): sum `getGlobalStatsFull(..., PERIOD_HOUR, ...)` over local-calendar-day hours.
  */
 async function aggregateGlobalNetworkSummaryLocalTodayFromHourlyBuckets(
   cardAddress: string,
@@ -22552,7 +22552,7 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
    };
  }, [profiles?.[0]?.keyID, profiles?.[0]?.aaAccount, myAddress, profiles?.[0]?.privateKeyArmor, cardIssuanceOnChainRefreshNonce]);
 
- const [timeFilter, setTimeFilter] = useState<OverviewTimeFilter>('今天');
+ const [timeFilter, setTimeFilter] = useState<OverviewTimeFilter>('Today');
  /** Ledger scope toggle removed from Transactions UI; table always uses combined ledger (was `全部`). */
  const activeLedger = '全部' as const;
  const [txSearchTerm, setTxSearchTerm] = useState('');
@@ -22560,7 +22560,7 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
  const [txFilterType] = useState('全部');
  /** Mobile Transactions ledger: kind + period pills (independent of desktop search/terminal filters). */
  const [mobileTransactionsKind, setMobileTransactionsKind] = useState<'all' | 'topup' | 'charge' | 'coupons'>('all');
- const [mobileTransactionsPeriod, setMobileTransactionsPeriod] = useState<OverviewTimeFilter>('今天');
+ const [mobileTransactionsPeriod, setMobileTransactionsPeriod] = useState<OverviewTimeFilter>('Today');
  const [buintRedeemCodeInput, setBuintRedeemCodeInput] = useState('');
  const [buintRedeemPrecheck, setBuintRedeemPrecheck] = useState<Awaited<ReturnType<typeof queryBusinessStartKetRedeemOnChain>> | null>(null);
  const [buintRedeemPrecheckLoading, setBuintRedeemPrecheckLoading] = useState(false);
@@ -22727,7 +22727,7 @@ const activeCardsTrustedCacheKey =
     : '';
  const overviewPeriodType = useMemo(() => overviewTimeFilterToPeriodType(timeFilter), [timeFilter]);
 const overviewNetworkSummaryCacheKey =
-  timeFilter === '今天'
+  timeFilter === 'Today'
     ? `eoa:${currentEoa}:card:${staffProgramCardCacheBucket}:network-summary:global:ptoday-local`
     : `eoa:${currentEoa}:card:${staffProgramCardCacheBucket}:network-summary:global:p${overviewPeriodType}`;
 const overviewNetworkSummaryLifetimeCacheKey =
@@ -23000,7 +23000,7 @@ useEffect(() => {
   const cachedTodayRaw = loadTrustedCache<BizNetworkSummaryRow>(overviewNetworkSummaryCacheKey);
   const todayYmdForCache = formatLocalYmd(new Date());
   const cachedToday =
-    timeFilter === '今天' &&
+    timeFilter === 'Today' &&
     cachedTodayRaw &&
     cachedTodayRaw.localDayKey !== todayYmdForCache
       ? null
@@ -23019,7 +23019,7 @@ useEffect(() => {
 
   void fetchWithCache(overviewNetworkSummaryCacheKey, async () => {
     const cardProv = await bizProgramCardReadProvider(programAddr);
-    if (timeFilter === '今天') {
+    if (timeFilter === 'Today') {
       const [periodLocalToday, parsedLifetime] = await Promise.all([
         aggregateGlobalNetworkSummaryLocalTodayFromHourlyBuckets(programAddr, cardProv),
         callGetGlobalStatsFullParsed(programAddr, PERIOD_DAY, cardProv, 0n, 0n),
@@ -23113,7 +23113,7 @@ useEffect(() => {
      txFilterTerminal,
      hasAaAccount: Boolean(profiles?.[0]?.aaAccount?.trim()),
    }
-   if (timeFilter === '今天') {
+   if (timeFilter === 'Today') {
      return sumChargeLedgerBUnitsForLocalCalendarDay(chargeBUnitLedgerRef.current, ctx, overviewLocalCalendarDayKey)
    }
    const startSec = overviewPeriodStartUnixSec(timeFilter, endSec)
@@ -23143,7 +23143,7 @@ useEffect(() => {
    const merged = indexerTransactions
    const include = (entry: TipsCollectedLedgerEntry) => tipsLedgerEntryMatchesTableFilters(entry, ctx, merged)
    const map = tipsCollectedLedgerRef.current
-   if (timeFilter === '今天') {
+   if (timeFilter === 'Today') {
      return {
        cadTotal: sumTipsCollectedLedgerValuesForLocalCalendarDay(
          map,
@@ -27189,7 +27189,7 @@ useEffect(() => {
    // Load trusted cache for immediate display
    const cachedMetadata = loadTrustedCache<FixedUserCardMetadata>(fixedCardMetadataCacheKey);
   const networkSummaryCacheKey =
-    timeFilter === '今天'
+    timeFilter === 'Today'
       ? `eoa:${currentEoa}:card:${staffProgramCardCacheBucket}:network-summary:global:ptoday-local`
       : `eoa:${currentEoa}:card:${staffProgramCardCacheBucket}:network-summary:global:p${overviewPeriodType}`;
   const networkSummaryLifetimeCacheKey =
@@ -27224,7 +27224,7 @@ useEffect(() => {
    const cachedNetworkSummaryRaw = loadTrustedCache<BizNetworkSummaryRow>(networkSummaryCacheKey);
    const todayYmdForCache = formatLocalYmd(new Date());
    const cachedNetworkSummary =
-     timeFilter === '今天' &&
+     timeFilter === 'Today' &&
      cachedNetworkSummaryRaw &&
      cachedNetworkSummaryRaw.localDayKey !== todayYmdForCache
        ? null
@@ -27399,13 +27399,13 @@ useEffect(() => {
          }
        }
 
-       // 1. Daily Dashboard network summary: card-level `getGlobalStatsFull` (all admins). "今天" = local day via summed PERIOD_HOUR buckets.
+       // 1. Daily Dashboard network summary: card-level `getGlobalStatsFull` (all admins). "Today" = local day via summed PERIOD_HOUR buckets.
       if (
         programAddr &&
         !feederCancelledRef.current
       ) {
          try {
-           if (timeFilter === '今天') {
+           if (timeFilter === 'Today') {
              const [periodLocalToday, parsedLifetime] = await Promise.all([
                aggregateGlobalNetworkSummaryLocalTodayFromHourlyBuckets(
                  programAddr,
@@ -28391,7 +28391,7 @@ useEffect(() => {
 
 /** Today's Activity top-up amount: local-calendar-day hourly rollup, with current hour refreshed every 6s. */
 useEffect(() => {
-  if (timeFilter !== '今天') return;
+  if (timeFilter !== 'Today') return;
   if (!staffProgramBeamioCardAddress || !ethers.isAddress(staffProgramBeamioCardAddress)) {
     todayTopupHourlyRollupRef.current = null;
     setTodayTopupHourlyRollup(null);
@@ -29436,7 +29436,7 @@ useEffect(() => {
 
 // --- Financial Data: Overview network summary uses `getGlobalStatsFull` on the staff/program BeamioUserCard (full card).
 // Do not gate these global values on `effectiveAdminAddress`: the active session may resolve to AA first, while the card activity still exists on-chain.
-// "今天" = local calendar day via summed PERIOD_HOUR global buckets; other ranges = global period slice. Tips / tx list may still be admin-scoped. ---
+// "Today" = local calendar day via summed PERIOD_HOUR global buckets; other ranges = global period slice. Tips / tx list may still be admin-scoped. ---
  const adminToday = adminNetworkSummaryToday;
 const totalSales = adminToday ? adminToday.cadVol : 0;
  /** Tips Collected (CAD Base): sum of CAD-equivalent from `finalRequestAmountFiat6` + `currencyFiat` (and USDC6→CAD when fiat leg is zero). */
@@ -30955,7 +30955,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
              >
                {OVERVIEW_TIME_FILTERS.map((tf) => (
                  <option key={tf} value={tf}>
-                   {overviewTimeFilterLabel(tf, tu, tf === '今天' ? dateString : undefined)}
+                   {overviewTimeFilterLabel(tf, tu, tf === 'Today' ? dateString : undefined)}
                  </option>
                ))}
              </select>
@@ -31272,7 +31272,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
               <div className="rounded-2xl bg-[#f5f7f9] px-3 pb-4 pt-2 sm:px-4">
                 <section className="mb-3 flex justify-start">
                   <div className="relative inline-flex cursor-pointer items-center gap-2 rounded-full border border-[#abadaf]/15 bg-white px-4 py-2 shadow-sm active:scale-[0.98] sm:px-5 sm:py-3">
-                    <span className="font-manrope text-xs font-bold tracking-tight text-[#2c2f31] sm:text-sm">{overviewTimeFilterLabel(timeFilter, tu, timeFilter === '今天' ? dateString : undefined)}</span>
+                    <span className="font-manrope text-xs font-bold tracking-tight text-[#2c2f31] sm:text-sm">{overviewTimeFilterLabel(timeFilter, tu, timeFilter === 'Today' ? dateString : undefined)}</span>
                     <ChevronDown className="size-4 shrink-0 text-[#0051d1]" strokeWidth={2} aria-hidden />
                     <select
                       value={timeFilter}
@@ -31285,7 +31285,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                     >
                       {OVERVIEW_TIME_FILTERS.map((tf) => (
                         <option key={tf} value={tf}>
-                          {overviewTimeFilterLabel(tf, tu, tf === '今天' ? dateString : undefined)}
+                          {overviewTimeFilterLabel(tf, tu, tf === 'Today' ? dateString : undefined)}
                         </option>
                       ))}
                     </select>

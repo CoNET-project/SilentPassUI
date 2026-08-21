@@ -217,7 +217,7 @@ export default function MerchantOS() {
  // ==========================================
  // GLOBAL TIME FILTER STATE
  // ==========================================
- const [timeFilter, setTimeFilter] = useState('今天');
+ const [timeFilter, setTimeFilter] = useState('Today');
 
  // ==========================================
  // CORE ONBOARDING & ALLIANCE STATE
@@ -793,7 +793,7 @@ export default function MerchantOS() {
                className="bg-transparent text-[14px] font-medium text-slate-700 focus:outline-none cursor-pointer appearance-none pl-1 pr-6"
                style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2364748b'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`, backgroundPosition: 'right 0.25rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1em 1em' }}
              >
-               <option value="今天">Today, {dateString}</option>
+               <option value="Today">Today, {dateString}</option>
                <option value="This Week">This Week</option>
                <option value="This Month">This Month</option>
                <option value="This Quarter">This Quarter</option>

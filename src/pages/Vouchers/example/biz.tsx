@@ -13450,9 +13450,19 @@ useEffect(() => {
    if (!silent) setProgramReferrerRefreshStatus('loading');
    try {
      const json = await fetchBeamioCardProgramReferrerSummary(addr);
-     if (json.chainReferrerTotalCount != null) setProgramReferrerTotalCount(json.chainReferrerTotalCount);
+     // Chain counts preferred; when AdminStats registry views fail (null), use DB mirror.
+     if (json.chainReferrerTotalCount != null) {
+       setProgramReferrerTotalCount(json.chainReferrerTotalCount);
+     } else if (typeof json.dbReferrerTotal === 'number' && Number.isFinite(json.dbReferrerTotal)) {
+       setProgramReferrerTotalCount(json.dbReferrerTotal);
+     }
      if (json.chainRegisteredRefereeTotalCount != null) {
        setProgramRegisteredRefereeTotalCount(json.chainRegisteredRefereeTotalCount);
+     } else if (
+       typeof json.dbRegisteredRefereeTotal === 'number' &&
+       Number.isFinite(json.dbRegisteredRefereeTotal)
+     ) {
+       setProgramRegisteredRefereeTotalCount(json.dbRegisteredRefereeTotal);
      }
      const ratios = await readReferrerAmountRatiosOnChain(addr);
      if (ratios) {

@@ -20,6 +20,7 @@ const UC_TARGET_ISSUED_COUPON = 2
 const SESSION_CLICK_KEY_PREFIX = 'beamio:discover-share-click:v1:'
 const SESSION_REWARD_KEY_PREFIX = 'beamio:discover-share-reward13:v1:'
 const SESSION_BIND_KEY_PREFIX = 'beamio:discover-share-referee-bind:v1:'
+const shareRefereeBindInFlight = new Map<string, Promise<void>>()
 
 const REWARD_RULE_ABI = [
 	'function getRewardRule(uint256 ruleId) view returns (bool active, uint8 eventKind, uint8 targetKind, uint256 issuedParentId, uint256 actorMint13, uint256 refMint13)',
@@ -377,33 +378,50 @@ async function bindShareRefereeIfNeeded(params: {
 		return
 	}
 	if (wasShareRefereeBoundThisSession(card, downlineEOA, refereeEOA)) return
-	try {
-		const { deadline, nonce, userSignature } = await signBindShareRefereeEip712(
-			params.wallet,
-			card,
-			refereeEOA,
-		)
-		const res = await fetch(`${beamioApi}/api/cardBindShareReferee`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({
-				cardAddress: card,
-				downlineEOA,
+	const key = `${card.toLowerCase()}:${downlineEOA.toLowerCase()}:${refereeEOA.toLowerCase()}`
+	const existing = shareRefereeBindInFlight.get(key)
+	if (existing) return existing
+
+	const work = (async () => {
+		try {
+			const { deadline, nonce, userSignature } = await signBindShareRefereeEip712(
+				params.wallet,
+				card,
 				refereeEOA,
-				deadline,
-				nonce,
-				userSignature,
-			}),
-		})
-		const json = (await res.json().catch(() => null)) as { success?: boolean; error?: string } | null
-		if (res.ok && json?.success) {
-			markShareRefereeBoundThisSession(card, downlineEOA, refereeEOA)
-			clearDiscoverShareReferrer(card)
-			return
+			)
+			const res = await fetch(`${beamioApi}/api/cardBindShareReferee`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					cardAddress: card,
+					downlineEOA,
+					refereeEOA,
+					deadline,
+					nonce,
+					userSignature,
+				}),
+			})
+			const json = (await res.json().catch(() => null)) as { success?: boolean; error?: string } | null
+			if (res.ok && json?.success) {
+				markShareRefereeBoundThisSession(card, downlineEOA, refereeEOA)
+				clearDiscoverShareReferrer(card)
+				return
+			}
+			if (isTerminalBindShareRefereeError(json?.error)) {
+				clearDiscoverShareReferrer(card)
+			}
+			console.warn('[Discover] Share referee bind was not accepted:', json?.error ?? `HTTP ${res.status}`)
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error)
+			console.warn('[Discover] Share referee bind request failed:', message)
+			/* Keep the stash so a later wallet-ready/open event can retry. */
 		}
-		if (isTerminalBindShareRefereeError(json?.error)) clearDiscoverShareReferrer(card)
-	} catch {
-		/* non-blocking — keep stash for the next attempt */
+	})()
+	shareRefereeBindInFlight.set(key, work)
+	try {
+		await work
+	} finally {
+		if (shareRefereeBindInFlight.get(key) === work) shareRefereeBindInFlight.delete(key)
 	}
 }
 

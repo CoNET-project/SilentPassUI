@@ -70,14 +70,13 @@ function writeAll(map: StoredMap): void {
 	}
 }
 
-/** Remember the share-link referrer for this card (first writer wins — binding is immutable). */
+/** Remember the latest share-link referrer for this card until its bind is confirmed. */
 export function stashDiscoverShareReferrer(cardAddress?: string | null, referrerEoa?: string | null): void {
 	const card = normalizeAddress(cardAddress)
 	const referrer = normalizeAddress(referrerEoa)
 	if (!card || !referrer) return
 	const map = readAll()
 	const key = card.toLowerCase()
-	if (map[key]?.referrerEoa) return
 	map[key] = { referrerEoa: referrer, savedAt: Date.now() }
 	writeAll(map)
 	notifyDiscoverShareReferrerStashed()

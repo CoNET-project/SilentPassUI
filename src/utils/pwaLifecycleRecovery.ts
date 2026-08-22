@@ -12,6 +12,12 @@ export function installPwaLifecycleRecovery(): () => void {
 		if (frame != null) cancelAnimationFrame(frame)
 		frame = requestAnimationFrame(() => {
 			frame = undefined
+			// Wake a restored compositor without touching overlay overflow locks.
+			const root = document.documentElement
+			const prevTransform = root.style.transform
+			root.style.transform = 'translateZ(0)'
+			void root.offsetHeight
+			root.style.transform = prevTransform
 			window.dispatchEvent(new CustomEvent(PWA_RESUMED_EVENT))
 			// Force WebKit to recalculate viewport-dependent layout after restore.
 			window.dispatchEvent(new Event('resize'))

@@ -4,6 +4,7 @@ import { AlertTriangle, Check, Loader2, X } from 'lucide-react'
 import { refreshAppDaemonNow } from '@/services/appDaemonWorkerBridge'
 import {
 	clearPersistedEoaUsdcStripeSessionId,
+	isEoaUsdcStripePollOk,
 	parseEoaUsdcStripeReturn,
 	pollEoaUsdcStripeSession,
 	readPersistedEoaUsdcStripeSessionId,
@@ -62,7 +63,7 @@ export default function EoaUsdcStripeReturnHost() {
 		const started = Date.now()
 		const tick = async () => {
 			const out = await pollEoaUsdcStripeSession(sessionId)
-			if ('error' in out && !('status' in out)) {
+			if (!isEoaUsdcStripePollOk(out)) {
 				if (Date.now() - started > POLL_MAX_MS) {
 					setView('error')
 					setMessage(out.error)
@@ -71,7 +72,6 @@ export default function EoaUsdcStripeReturnHost() {
 				timerRef.current = setTimeout(() => void tick(), POLL_MS)
 				return
 			}
-			if (!('status' in out)) return
 			if (out.status === 'failed') {
 				setView('error')
 				setMessage(out.chainFulfillment?.lastError?.trim() || 'Payment was not completed')

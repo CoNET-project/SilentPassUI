@@ -18,11 +18,24 @@ export type EoaUsdcStripeChainFulfillment = {
 }
 
 export type EoaUsdcStripePollResult = {
+	ok: true
 	status: EoaUsdcStripeStatus
 	walletAddress: string
 	amountUsdc6: string
 	lastEvent?: string
 	chainFulfillment: EoaUsdcStripeChainFulfillment | null
+}
+
+export type EoaUsdcStripePollError = {
+	ok: false
+	error: string
+	httpStatus?: number
+}
+
+export type EoaUsdcStripePollOutcome = EoaUsdcStripePollResult | EoaUsdcStripePollError
+
+export function isEoaUsdcStripePollOk(out: EoaUsdcStripePollOutcome): out is EoaUsdcStripePollResult {
+	return out.ok === true
 }
 
 export type EoaUsdcStripeReturnKind = 'success' | 'cancel'
@@ -136,25 +149,29 @@ export async function createEoaUsdcStripeSession(
 export async function pollEoaUsdcStripeSession(
 	sessionId: string,
 	userClosedCheckout = false
-): Promise<EoaUsdcStripePollResult | { error: string; httpStatus?: number }> {
+): Promise<EoaUsdcStripePollOutcome> {
 	try {
 		const res = await fetch(`${beamioApi}/api/eoaUsdcStripe/poll`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({ sessionId, userClosedCheckout }),
 		})
-		const body = (await res.json().catch(() => ({}))) as EoaUsdcStripePollResult & { error?: string }
+		const body = (await res.json().catch(() => ({}))) as Partial<EoaUsdcStripePollResult> & { error?: string }
 		if (!res.ok) {
-			return { error: body.error?.trim() || 'Could not check payment status', httpStatus: res.status }
+			return { ok: false, error: body.error?.trim() || 'Could not check payment status', httpStatus: res.status }
+		}
+		if (body.status !== 'pending' && body.status !== 'succeeded' && body.status !== 'failed') {
+			return { ok: false, error: body.error?.trim() || 'Could not check payment status', httpStatus: res.status }
 		}
 		return {
+			ok: true,
 			status: body.status,
-			walletAddress: body.walletAddress,
-			amountUsdc6: body.amountUsdc6,
+			walletAddress: body.walletAddress ?? '',
+			amountUsdc6: body.amountUsdc6 ?? '',
 			lastEvent: body.lastEvent,
 			chainFulfillment: body.chainFulfillment ?? null,
 		}
 	} catch {
-		return { error: 'Could not check payment status' }
+		return { ok: false, error: 'Could not check payment status' }
 	}
 }

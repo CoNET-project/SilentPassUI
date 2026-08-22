@@ -7,6 +7,7 @@ import {
 	EOA_USDC_STRIPE_PRESETS,
 	createEoaUsdcStripeSession,
 	dollarsToAmountUsdc6,
+	isEoaUsdcStripePollOk,
 	parseStripeDollarInput,
 	persistEoaUsdcStripeSessionId,
 	pollEoaUsdcStripeSession,
@@ -86,7 +87,7 @@ export default function EoaUsdcStripePanel({ walletAddress, onSuccess }: EoaUsdc
 		pollStartedAtRef.current = Date.now()
 		const tick = async () => {
 			const out = await pollEoaUsdcStripeSession(sessionId)
-			if ('error' in out && !('status' in out)) {
+			if (!isEoaUsdcStripePollOk(out)) {
 				if (Date.now() - pollStartedAtRef.current > POLL_MAX_MS) {
 					setPhase('error')
 					setErrorText(out.error)
@@ -95,7 +96,6 @@ export default function EoaUsdcStripePanel({ walletAddress, onSuccess }: EoaUsdc
 				pollTimerRef.current = setTimeout(() => void tick(), POLL_MS)
 				return
 			}
-			if (!('status' in out)) return
 			if (out.status === 'failed') {
 				setPhase('error')
 				setErrorText(out.chainFulfillment?.lastError?.trim() || 'Payment was not completed')

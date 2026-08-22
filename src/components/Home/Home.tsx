@@ -289,6 +289,7 @@ const Home = (_props: HomeProps) => {
 	/** Scan to Pay：按可视高度收缩 QR，面板高度随内容收紧，避免内部滚动条 / 整块上下拖动感 */
 	const [paySheetQrSize, setPaySheetQrSize] = useState(256)
 	const [showAddCashSheet, setShowAddCashSheet] = useState(false)
+	const [addCashOpenedAsStripe, setAddCashOpenedAsStripe] = useState(false)
 	const [showFuelView, setShowFuelView] = useState(false)
 	/** Coinbase：methods 内进入后展示 BeamioAddUSDCFlow */
 	const [showAddUsdcInSheet, setShowAddUsdcInSheet] = useState(false)
@@ -717,6 +718,7 @@ const Home = (_props: HomeProps) => {
 	const closeAddCashSheet = useCallback(() => {
 		setShowAddCashSheet(false)
 		setShowAddUsdcInSheet(false)
+		setAddCashOpenedAsStripe(false)
 		setAddCashMode('methods')
 		setIsSelectingTopUpStore(false)
 		setAddCashAmountCad('')
@@ -758,7 +760,15 @@ const Home = (_props: HomeProps) => {
 		setShowFooter(false)
 	}
 
+	const handleStripeUsdcTopup = useCallback(() => {
+		setAddCashOpenedAsStripe(true)
+		setAddCashMode('stripe')
+		setShowAddCashSheet(true)
+		setShowFooter(false)
+	}, [setShowFooter])
+
 	const openReceiveSheetTap = useReliableTapHandler(handleAddFunds)
+	const openStripeUsdcTopupTap = useReliableTapHandler(handleStripeUsdcTopup)
 	const openPayCodeSheetTap = useReliableTapHandler(() => {
 		setPayReceiveQrMode('pay')
 		setShowPayReceiveSheet(true)
@@ -2002,14 +2012,16 @@ const Home = (_props: HomeProps) => {
 									<button
 										type="button"
 										data-touch-priority="1"
-										{...openReceiveSheetTap}
+										{...openStripeUsdcTopupTap}
 										className={`flex flex-1 flex-col items-start gap-2 rounded-lg bg-[#f3f4f5] p-3 text-left transition-transform active:scale-95 active:bg-[#e7e8e9] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/50 focus-visible:ring-offset-2 min-[480px]:gap-3 min-[480px]:p-4 dark:bg-slate-800/90 dark:active:bg-slate-800 dark:focus-visible:ring-offset-slate-900 [@media(max-height:700px)]:gap-1.5 [@media(max-height:700px)]:p-2.5 ${HOME_TOUCH_BUTTON_CLASS}`}
+										aria-label="Buy USDC with card"
 									>
 									<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-[#b3c5ff]/30 text-[#004bc3] dark:bg-[#1562f0]/25 dark:text-[#6ba3ff]">
-										<Wallet size={22} strokeWidth={2} aria-hidden />
+										<CreditCard size={22} strokeWidth={2} aria-hidden />
 									</div>
 									<div>
 										<p className="text-sm font-bold text-[#191c1d] dark:text-slate-100">{tu('top_up')}</p>
+										<p className="mt-0.5 text-[11px] font-medium text-[#424655] dark:text-slate-400">USDC on Base</p>
 									</div>
 									</button>
 									<button
@@ -3130,7 +3142,13 @@ const Home = (_props: HomeProps) => {
 											<div className="flex items-center mb-6 w-full relative">
 												<button
 													type="button"
-													onClick={() => setAddCashMode('methods')}
+													onClick={() => {
+														if (addCashOpenedAsStripe) {
+															closeAddCashSheet()
+															return
+														}
+														setAddCashMode('methods')
+													}}
 													className="text-[#1562f0] dark:text-[#6ba3ff] font-bold flex items-center text-sm absolute left-0"
 												>
 													<ChevronRight className="rotate-180 mr-1" size={16} /> Back

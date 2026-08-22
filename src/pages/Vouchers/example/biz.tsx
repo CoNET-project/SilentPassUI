@@ -393,7 +393,7 @@ import {
   validateSocialExchangeDraft,
   type SocialExchangeDraft,
 } from '@/utils/programSocialExchange';
-import { applyCouponSocialPromotionOnChainRules, applySocialPromotionOnChainRules } from '@/utils/beamioCardSocialPromotionRules';
+import { applyCouponSocialPromotionOnChainRules, applySocialPromotionOnChainRules, applyTopupRewardPtOnChainRule } from '@/utils/beamioCardSocialPromotionRules';
 import { readCardSocialPromotionFromChain } from '@/utils/beamioCardSocialPromotionChain';
 import { openExternalUrl } from '@/utils/openExternalUrl';
 import { buildFuelPackUsdcTopupUrl } from '@/utils/fuelPackUsdcTopupUrl';
@@ -20958,6 +20958,10 @@ const submitCardIssuanceTopupPromotionEditor = useCallback(async () => {
       programRewardPtTopupEditorBaseline == null ||
       programRewardPtTopupEditorBaseline.enabled !== rewardPtDraftAtStart.enabled ||
       programRewardPtTopupEditorBaseline.percent !== rewardPtDraftAtStart.percent;
+    const referrerDirty =
+      programReferrerTopupEditorBaseline == null ||
+      programReferrerTopupEditorBaseline.enabled !== referrerDraftAtStart.enabled ||
+      programReferrerTopupEditorBaseline.percent !== referrerDraftAtStart.percent;
     if (promoDirty || rewardPtDirty) {
       const ok = await handlePublishCardIssuance({
         ...(promoDirty ? { topupPromotionOverride: nextPromotion } : {}),
@@ -20998,13 +21002,67 @@ const submitCardIssuanceTopupPromotionEditor = useCallback(async () => {
         return { ...prev, meta: nextMeta };
       });
       invalidateBeamioCardMetadataCache(cardIssuanceExistingCard.cardAddress);
+    } else {
+      setProgramRewardPtTopupEnabled(rewardPtDraftAtStart.enabled);
+      setProgramRewardPtTopupPercentInput(rewardPtDraftAtStart.percent);
     }
+
+    // Social Promotion Top-up slot (ruleId=2): same path as Programs → Social Promotion → Top-up.
+    // Reward PT / Referrer percent wholes → fixed actorMint13 / refMint13.
+    const wantsRule2 = rewardPtDraftAtStart.enabled || referrerDraftAtStart.enabled;
+    if (wantsRule2 || rewardPtDirty || referrerDirty) {
+      const pk = getSessionPrivateKeyArmor() ?? profiles?.[0]?.privateKeyArmor;
+      if (!pk) {
+        setCardIssuanceTopupPromotionEditorServerError(
+          'Unlock your wallet before saving Reward PT / Referrer on-chain rules.'
+        );
+        return;
+      }
+      const cardAddr = ethers.getAddress(cardIssuanceExistingCard.cardAddress);
+      const ruleRes = await applyTopupRewardPtOnChainRule({
+        cardAddress: cardAddr,
+        ownerPrivateKey: pk,
+        actorEnabled: rewardPtDraftAtStart.enabled,
+        actorPercentWhole: amountPercentInputToSlider(rewardPtDraftAtStart.percent),
+        referrerEnabled: referrerDraftAtStart.enabled,
+        referrerPercentWhole: amountPercentInputToSlider(referrerDraftAtStart.percent),
+      });
+      if (!ruleRes.success) {
+        setCardIssuanceTopupPromotionEditorServerError(
+          ruleRes.error ??
+            'On-chain top-up reward rule (ruleId=2) update failed. Try saving again.'
+        );
+        return;
+      }
+      setCardIssuanceSocialPromotion((prev) => {
+        const next = cloneSocialPromotionDraft(prev);
+        const actorPts = amountPercentInputToSlider(rewardPtDraftAtStart.percent);
+        const refPts = amountPercentInputToSlider(referrerDraftAtStart.percent);
+        next.events = {
+          ...next.events,
+          topup: {
+            user: rewardPtDraftAtStart.enabled
+              ? { enabled: true, points13: String(Math.max(1, actorPts)) }
+              : { enabled: false, points13: '1' },
+            ref: referrerDraftAtStart.enabled
+              ? { enabled: true, points13: String(Math.max(1, refPts)) }
+              : { enabled: false, points13: '1' },
+          },
+        };
+        next.enabled = socialPromotionDraftHasAnyReward(next);
+        return next;
+      });
+      await refreshCardIssuanceSocialPromotionFromChain(cardAddr);
+    }
+
     setCardIssuanceTopupPromotionEditorOpen(false);
     setCardIssuanceOwnerAdminNotice({
       kind: 'ok',
-      text: nextPromotion.enabled
-        ? 'Top-up promotion saved. POS and apps will use it after a short cache refresh.'
-        : 'Top-up promotion turned off. Reward PT and Referrer reward settings are unchanged.',
+      text: wantsRule2
+        ? 'Top-up promotion saved. Reward PT / Referrer written on-chain (ruleId=2), same as Social Promotion Top-up.'
+        : nextPromotion.enabled
+          ? 'Top-up promotion saved. POS and apps will use it after a short cache refresh.'
+          : 'Top-up promotion turned off. Reward PT and Referrer reward settings are unchanged.',
     });
   } catch {
     setCardIssuanceTopupPromotionEditorServerError('Could not save top-up promotion. Please try again.');
@@ -21022,9 +21080,12 @@ const submitCardIssuanceTopupPromotionEditor = useCallback(async () => {
   programRewardPtTopupPercentInput,
   cardIssuanceTopupPromotionEditorBaseline,
   programRewardPtTopupEditorBaseline,
+  programReferrerTopupEditorBaseline,
   cardIssuanceExistingCard?.cardAddress,
   handlePublishCardIssuance,
   syncProgramReferrerAmountRatioKind,
+  profiles,
+  refreshCardIssuanceSocialPromotionFromChain,
 ]);
 
 const discardCardIssuanceTopupPromotionEditorChanges = useCallback(() => {

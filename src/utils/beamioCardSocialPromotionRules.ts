@@ -8,6 +8,7 @@ import { signExecuteForOwner } from '@/services/BeamioCard'
 import { readCardUserCumulativeStatInitialized } from '@/utils/beamioCardUserCumulativeStatBootstrap'
 import {
 	buildSocialPromotionRuleIntents,
+	buildTopupRewardPtRuleIntent,
 	type SocialPromotionRuleIntent,
 } from '@/utils/beamioCardSocialPromotionChain'
 import {
@@ -178,6 +179,53 @@ async function postConfigureRulesBatchGateway(params: {
 	} catch {
 		return { success: false, error: 'Network error while configuring on-chain reward rules (batch).' }
 	}
+}
+
+/**
+ * Sync **only** Top-up Promotion Reward PT / Referrer → on-chain `ruleId=2`
+ * (same slot as Social Promotion → Top-up). Does **not** rewrite ruleIds 1 / 3.
+ * Percent wholes map to fixed `actorMint13` / `refMint13` (Social Promotion `points13` semantics).
+ */
+export async function applyTopupRewardPtOnChainRule(params: {
+	cardAddress: string
+	actorEnabled: boolean
+	actorPercentWhole: number
+	referrerEnabled: boolean
+	referrerPercentWhole: number
+	ownerPrivateKey: string
+}): Promise<{ success: boolean; error?: string }> {
+	const card = ethers.getAddress(params.cardAddress)
+	const ownerKey = params.ownerPrivateKey?.trim()
+	if (!ownerKey) {
+		return {
+			success: false,
+			error: 'Unlock your wallet before saving Reward PT / Referrer on-chain rules.',
+		}
+	}
+
+	await ensureCardCumulativeStatReadyViaGateway(card)
+
+	const intent = buildTopupRewardPtRuleIntent({
+		actorEnabled: params.actorEnabled,
+		actorPercentWhole: params.actorPercentWhole,
+		referrerEnabled: params.referrerEnabled,
+		referrerPercentWhole: params.referrerPercentWhole,
+	})
+
+	const batchRes = await postConfigureRulesBatchOwnerSigned({
+		cardAddress: card,
+		ownerPrivateKey: ownerKey,
+		intents: [intent],
+	})
+	if (!batchRes.success) {
+		return {
+			success: false,
+			error:
+				batchRes.error ??
+				'On-chain top-up reward rule (ruleId=2) update failed. Try saving again.',
+		}
+	}
+	return { success: true }
 }
 
 /**

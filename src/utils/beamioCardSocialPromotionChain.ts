@@ -132,6 +132,37 @@ export type SocialPromotionRuleIntent = {
 	refMint13: bigint
 }
 
+/**
+ * Build a single intent for Social Promotion Top-up slot (`ruleId=2`).
+ * Percent wholes (0–100) map to fixed `actorMint13` / `refMint13` the same way
+ * Social Promotion editor maps `points13` — Master mints that fixed #13 amount per top-up event.
+ */
+export function buildTopupRewardPtRuleIntent(params: {
+	actorEnabled: boolean
+	actorPercentWhole: number
+	referrerEnabled: boolean
+	referrerPercentWhole: number
+}): SocialPromotionRuleIntent {
+	const actorMint13 =
+		params.actorEnabled && params.actorPercentWhole > 0
+			? BigInt(Math.min(100, Math.max(0, Math.floor(params.actorPercentWhole))))
+			: 0n
+	const refMint13 =
+		params.referrerEnabled && params.referrerPercentWhole > 0
+			? BigInt(Math.min(100, Math.max(0, Math.floor(params.referrerPercentWhole))))
+			: 0n
+	const active = actorMint13 > 0n || refMint13 > 0n
+	return {
+		ruleId: SOCIAL_PROMOTION_TOPUP_RULE_ID,
+		active,
+		eventKind: UC_METRIC_TOPUP,
+		targetKind: UC_TARGET_GLOBAL_ONLY,
+		issuedParentId: 0n,
+		actorMint13: active ? actorMint13 : 0n,
+		refMint13: active ? refMint13 : 0n,
+	}
+}
+
 export function buildSocialPromotionRuleIntents(
 	promo: ShareTokenMetadataSocialPromotion | null,
 ): SocialPromotionRuleIntent[] {

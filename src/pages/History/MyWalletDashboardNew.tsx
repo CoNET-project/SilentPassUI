@@ -91,6 +91,8 @@ import USDCUserCardTopupControl from '@/pages/Vouchers/USDCUserCardTopupControl'
 import AddAdminBottomSheet from './AddAdminBottomSheet'
 import RedeemListScreen from '@/pages/Vouchers/RedeemListScreen'
 import BeamioAddUSDCFlow from '@/components/addUSDC/BeamioAddUSDCFlow'
+import EoaUsdcStripePanel from '@/components/addUSDC/EoaUsdcStripePanel'
+import { resolveStripeDepositEoa } from '@/utils/eoaUsdcStripe'
 import { useNfcRead } from '@/hooks/useNfcRead'
 import { tu } from '@/locale/beamioLocale'
 
@@ -735,7 +737,7 @@ export default function MyWalletDashboardNew() {
 	/** Add Cash 后：父容器内显示 BeamioAddUSDCFlow 的 Coinbase 确认画面（204-221） */
 	const [eoaAddUsdcOpen, setEoaAddUsdcOpen] = useState(false)
 	/** CashTrees Add Cash 全屏底栏（对齐 renderAction Wallet Add Cash） */
-	type AddCashSheetMode = 'methods' | 'store_qr' | 'coinbase' | 'convert'
+	type AddCashSheetMode = 'methods' | 'store_qr' | 'stripe' | 'coinbase' | 'convert'
 	const [showAddCashModal, setShowAddCashModal] = useState(false)
 	const [addCashMode, setAddCashMode] = useState<AddCashSheetMode>('methods')
 	const [addAmount, setAddAmount] = useState('')
@@ -3103,6 +3105,22 @@ export default function MyWalletDashboardNew() {
 											</button>
 											<button
 												type="button"
+												onClick={() => setAddCashMode('stripe')}
+												className="w-full text-left bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-2xl p-4 flex items-center justify-between shadow-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700/50 active:scale-[0.98] transition-all mt-4"
+											>
+												<div className="flex items-center min-w-0">
+													<div className="w-10 h-10 bg-[#0051d1] rounded-xl flex items-center justify-center mr-3 shadow-sm shrink-0">
+														<CreditCard className="text-white" size={20} />
+													</div>
+													<div className="min-w-0">
+														<p className="font-bold text-gray-900 dark:text-slate-100">Buy USDC with card</p>
+														<p className="text-xs text-gray-500 dark:text-slate-400">Card checkout. USDC sent to your EOA Wallet on Base.</p>
+													</div>
+												</div>
+												<ChevronRight className="text-gray-400 shrink-0" size={20} />
+											</button>
+											<button
+												type="button"
 												onClick={() => setAddCashMode('coinbase')}
 												className="w-full text-left bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-2xl p-4 flex items-center justify-between shadow-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700/50 active:scale-[0.98] transition-all mt-4"
 											>
@@ -3160,6 +3178,16 @@ export default function MyWalletDashboardNew() {
 												<span className="text-xs font-bold text-gray-600 dark:text-slate-300 tracking-wide uppercase">{tu('waiting_for_cashier_scan')}</span>
 											</div>
 										</div>
+									</>
+								) : addCashMode === 'stripe' ? (
+									<>
+										<div className="flex items-center mb-6 w-full relative">
+											<button type="button" onClick={() => setAddCashMode('methods')} className="text-[#65A30D] font-bold flex items-center text-sm absolute left-0">
+												<ChevronRight className="rotate-180 mr-1" size={16} /> Back
+											</button>
+											<h3 className="text-xl font-bold text-gray-900 dark:text-slate-100 tracking-tight mx-auto">Buy USDC with card</h3>
+										</div>
+										<EoaUsdcStripePanel walletAddress={resolveStripeDepositEoa(profiles)} />
 									</>
 								) : addCashMode === 'coinbase' ? (
 									<>

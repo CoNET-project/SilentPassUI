@@ -4,6 +4,7 @@ import { Route, Routes, useNavigate, useLocation } from "react-router-dom"
 import { useDaemonContext } from "./providers/DaemonProvider"
 import { useBeamioTagDatabase } from "./providers/BeamioTagDatabaseProvider"
 import Footer from "@/components/Footer"
+import EoaUsdcStripeReturnHost from "@/components/addUSDC/EoaUsdcStripeReturnHost"
 import { openExternalUrl } from "@/utils/cashTreesNativeNfc"
 import SearchInputWithDropdown from "@/components/Home/SearchBarWithResults"
 import AppEntryGate from "@/components/AppEntryGate"
@@ -2006,6 +2007,7 @@ function AppShell() {
 				<Footer visible={showFooter && footerVisible} peek={false} />,
 				document.body
 			)}
+			<EoaUsdcStripeReturnHost />
 
 			{/* 全局 Search：任意页面点击 footer 的 search 图标后，直接显示/隐藏（无滑动动画）
 				当 search 控件执行关闭（返回按钮/选择结果）后，父容器必须执行 setChatSearchOpen(false) 隐藏 search */}

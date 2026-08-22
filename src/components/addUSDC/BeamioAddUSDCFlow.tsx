@@ -12,10 +12,13 @@ import {
 	User,
 	Wallet,
 	Building2,
+	CreditCard,
 	DollarSign,
 	XCircle
 } from "lucide-react";
 import { useDaemonContext } from "@/providers/DaemonProvider"
+import EoaUsdcStripePanel from '@/components/addUSDC/EoaUsdcStripePanel'
+import { resolveStripeDepositEoa } from '@/utils/eoaUsdcStripe'
 import { QRCodeCanvas } from "qrcode.react"
 import bIcon from '@/components/assets/32x32.svg'
 import StepAmount, { type RampMode } from './StepAmount'
@@ -24,7 +27,7 @@ import { tu } from '@/locale/beamioLocale'
 const remote = 'https://beamio.app'
 
 
-type Screen = "hub" | "coinbase" | "coinbase_error" | "transfer" | "receive" | "profile_qr" | 'coinbase_next'
+type Screen = "hub" | "stripe" | "coinbase" | "coinbase_error" | "transfer" | "receive" | "profile_qr" | 'coinbase_next'
 
 const fmtAddr = (a = '') => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '—')
 
@@ -65,6 +68,7 @@ export default function BeamioAddUSDCFlow({
 
 	const title = useMemo(() => {
 		if (screen === "hub") return "Add USDC";
+		if (screen === "stripe") return "Buy USDC with card";
 		if (screen === "coinbase") return "Finish via Coinbase";
 		if (screen === "coinbase_error") return tu('something_went_wrong');
 		if (screen === "transfer") return "Transfer to Beamio";
@@ -229,6 +233,14 @@ export default function BeamioAddUSDCFlow({
 
                 <div className="mt-3 space-y-2">
                   <OptionRow
+                    icon={<CreditCard className="h-5 w-5" />}
+                    title="Buy USDC with card"
+                    desc="Card checkout · USDC sent to your EOA Wallet on Base"
+                    tag="Card"
+                    onClick={() => setScreen("stripe")}
+                  />
+
+                  <OptionRow
                     icon={<Building2 className="h-5 w-5" />}
                     title="Transfer from another wallet / exchange"
                     desc="Withdraw or send USDC on Base to your address"
@@ -255,6 +267,12 @@ export default function BeamioAddUSDCFlow({
               </div>
             </div>
           </div>
+        )}
+
+        {screen === "stripe" && (
+			<div className="px-4 pt-4">
+				<EoaUsdcStripePanel walletAddress={resolveStripeDepositEoa(profiles)} />
+			</div>
         )}
 
         {screen === "coinbase" && (

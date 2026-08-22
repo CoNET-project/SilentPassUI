@@ -29,6 +29,8 @@ import OnrampOfframpGuide from './OnrampOfframpGuide'
 import BeamioSearch from './BeamioSearch'
 import CoinbaseRamps from '@/components/Setting/CoinbaseRamps'
 import BeamioAddUSDCFlow from '@/components/addUSDC/BeamioAddUSDCFlow'
+import EoaUsdcStripePanel from '@/components/addUSDC/EoaUsdcStripePanel'
+import { resolveStripeDepositEoa } from '@/utils/eoaUsdcStripe'
 import usdcIcon from '@/components/assets/usdc.png'
 import baseIcon from '@/components/assets/base-logo.png'
 import senPhoCafeStoreCardBg from '@/components/assets/senPhoCafeStoreCardBg.png'
@@ -234,7 +236,7 @@ async function loadCashTreesPointsSnapshot(profile: Parameters<typeof getMyAsset
 	}
 }
 
-type AddCashSheetMode = 'methods' | 'store_qr' | 'coinbase' | 'topup_store'
+type AddCashSheetMode = 'methods' | 'store_qr' | 'stripe' | 'coinbase' | 'topup_store'
 
 type HomeProps = {
 }
@@ -3042,6 +3044,22 @@ const Home = (_props: HomeProps) => {
 												</button>
 												<button
 													type="button"
+													onClick={() => setAddCashMode('stripe')}
+													className="w-full text-left bg-white dark:bg-slate-800/80 border border-gray-200 dark:border-slate-600 rounded-2xl p-4 flex items-center justify-between shadow-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700/50 active:scale-[0.98] transition-all mt-4"
+												>
+													<div className="flex items-center">
+														<div className="w-10 h-10 bg-[#0051d1] rounded-xl flex items-center justify-center mr-3 shadow-sm">
+															<CreditCard className="text-white" size={20} />
+														</div>
+														<div>
+															<p className="font-bold text-gray-900 dark:text-slate-100">Buy USDC with card</p>
+															<p className="text-xs text-gray-500 dark:text-slate-400">Card checkout. USDC sent to your EOA Wallet on Base.</p>
+														</div>
+													</div>
+													<ChevronRight className="text-gray-400" size={20} />
+												</button>
+												<button
+													type="button"
 													onClick={() => setAddCashMode('coinbase')}
 													className="w-full text-left bg-white dark:bg-slate-800/80 border border-gray-200 dark:border-slate-600 rounded-2xl p-4 flex items-center justify-between shadow-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700/50 active:scale-[0.98] transition-all mt-4"
 												>
@@ -3106,6 +3124,20 @@ const Home = (_props: HomeProps) => {
 													</div>
 												</div>
 											</div>
+										</>
+									) : addCashMode === 'stripe' ? (
+										<>
+											<div className="flex items-center mb-6 w-full relative">
+												<button
+													type="button"
+													onClick={() => setAddCashMode('methods')}
+													className="text-[#1562f0] dark:text-[#6ba3ff] font-bold flex items-center text-sm absolute left-0"
+												>
+													<ChevronRight className="rotate-180 mr-1" size={16} /> Back
+												</button>
+												<h3 className="text-xl font-bold text-gray-900 dark:text-slate-100 tracking-tight mx-auto">Buy USDC with card</h3>
+											</div>
+											<EoaUsdcStripePanel walletAddress={resolveStripeDepositEoa(profiles)} />
 										</>
 									) : addCashMode === 'coinbase' ? (
 										<>

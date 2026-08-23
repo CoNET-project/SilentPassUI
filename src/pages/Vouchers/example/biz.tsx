@@ -90,8 +90,10 @@ import {
   updateBeamioCardTiers,
   encodeSetTiers,
   encodeSetChargeRewardRatio,
+  encodeSetTopupActorRewardRatio,
   encodeSetReferrerChargeAmountRatio,
   encodeSetReferrerTopupAmountRatio,
+  readTopupActorRewardRatioOnChain,
   readReferrerAmountRatiosOnChain,
   publishMembershipFeesViaExecuteForOwner,
   postExecuteForOwner,
@@ -364,6 +366,7 @@ import {
   type TopupPromotionDraft,
 } from '@/utils/programTopupPromotion';
 import {
+  mergeUnifiedRewardPointsCharge,
   mergeUnifiedRewardPointsTopup,
   parseUnifiedRewardTopupDraft,
   percentWholeToActorBps,
@@ -399,7 +402,7 @@ import {
   validateSocialExchangeDraft,
   type SocialExchangeDraft,
 } from '@/utils/programSocialExchange';
-import { applyCouponSocialPromotionOnChainRules, applySocialPromotionOnChainRules, applyTopupRewardPtOnChainRule } from '@/utils/beamioCardSocialPromotionRules';
+import { applyCouponSocialPromotionOnChainRules, applySocialPromotionOnChainRules } from '@/utils/beamioCardSocialPromotionRules';
 import { readCardSocialPromotionFromChain } from '@/utils/beamioCardSocialPromotionChain';
 import { openExternalUrl } from '@/utils/openExternalUrl';
 import { buildFuelPackUsdcTopupUrl } from '@/utils/fuelPackUsdcTopupUrl';
@@ -10478,7 +10481,8 @@ function parseCouponDisabledFromHydration(meta: CardIssuanceCouponMetaHydrationS
 const CARD_ISSUANCE_STORE_DISPLAY_NAME_MAX = 20;
 const CARD_ISSUANCE_BONUS_RULE_PAYMENT_DEFAULT = 100;
 const CARD_ISSUANCE_BONUS_RULE_BONUS_DEFAULT = 10;
-const CARD_ISSUANCE_POINT_REWARD_TOKEN_ID = 2;
+/** Unified consumption / charge Reward PT = #13 (not legacy #2). */
+const CARD_ISSUANCE_POINT_REWARD_TOKEN_ID = 13;
 
 /** After biz publish/edit, warm Coupon Preview OG + optional OpenSea refresh for issued series NFTs. */
 function queueExplorerRefreshForIssuedProgramNfts(
@@ -10660,6 +10664,51 @@ async function syncChargeRewardRatioOnChain(opts: {
     return {
       success: false,
       error: (e as Error)?.message ?? 'Failed to update consumption point ratio on-chain.',
+    };
+  }
+}
+
+/** Top-up actor #13 ratio (Programs → Reward PT). Mirror of syncChargeRewardRatioOnChain. */
+async function syncTopupActorRewardRatioOnChain(opts: {
+  cardAddress: string;
+  ownerPrivateKey: string;
+  targetRatioE6: string;
+}): Promise<{ success: boolean; error?: string }> {
+  try {
+    const cardAddrNorm = ethers.getAddress(opts.cardAddress);
+    const chainE6 = await readTopupActorRewardRatioOnChain(cardAddrNorm);
+    if (chainE6 === opts.targetRatioE6) return { success: true };
+
+    const signerAddr = ethers.getAddress(new ethers.Wallet(opts.ownerPrivateKey).address);
+    const chainOwner = await getCardOwner(cardAddrNorm);
+    if (ethers.getAddress(chainOwner) !== signerAddr) {
+      return {
+        success: false,
+        error:
+          'Reward PT ratio updates require the card owner wallet. Unlock owner wallet and retry.',
+      };
+    }
+    const data = encodeSetTopupActorRewardRatio(opts.targetRatioE6);
+    const deadline = Math.floor(Date.now() / 1000) + 3600;
+    const nonce = ethers.hexlify(ethers.randomBytes(32));
+    const ownerSignature = await signExecuteForOwner(
+      opts.ownerPrivateKey,
+      cardAddrNorm,
+      data,
+      deadline,
+      nonce,
+    );
+    return postExecuteForOwner({
+      cardAddress: cardAddrNorm,
+      data,
+      deadline,
+      nonce,
+      ownerSignature,
+    });
+  } catch (e: unknown) {
+    return {
+      success: false,
+      error: (e as Error)?.message ?? 'Failed to update top-up Reward PT ratio on-chain.',
     };
   }
 }
@@ -20763,13 +20812,14 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
        enabled: programRewardPtTopupEnabled,
        percent: programRewardPtTopupPercentInput,
      };
-     const unifiedRewardPointsForPublish = mergeUnifiedRewardPointsTopup(
-       cardIssuanceExistingCard?.meta?.unifiedRewardPoints,
-       {
-         enabled: rewardPtForPublish.enabled,
-         actorPercent: amountPercentInputToSlider(rewardPtForPublish.percent),
-       },
-     );
+     const referrerTopupForPublish = {
+       enabled: programReferrerTopupEnabled,
+       percent: programReferrerTopupPercentInput,
+     };
+     const referrerChargeForPublish = {
+       enabled: programReferrerChargeEnabled,
+       percent: programReferrerChargePercentInput,
+     };
     const couponsRowsForPublish = opts?.couponsOverride ?? cardIssuanceCoupons;
     const couponsPayloadForPublish = buildCardIssuanceCouponMetadataPayload(couponsRowsForPublish);
     const productionsRowsForPublish = opts?.productionsOverride ?? cardIssuanceProductions;
@@ -20793,6 +20843,22 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
         cardIssuancePointRatioInput,
         cardIssuanceExistingCard?.chargeRewardRatioE6 ?? CARD_ISSUANCE_POINT_RATIO_DEFAULT_E6,
       );
+     const unifiedRewardPointsForPublish = mergeUnifiedRewardPointsCharge(
+       mergeUnifiedRewardPointsTopup(cardIssuanceExistingCard?.meta?.unifiedRewardPoints, {
+         enabled: rewardPtForPublish.enabled,
+         actorPercent: amountPercentInputToSlider(rewardPtForPublish.percent),
+         referrerEnabled: referrerTopupForPublish.enabled,
+         referrerPercent: amountPercentInputToSlider(referrerTopupForPublish.percent),
+       }),
+       {
+         enabled: pointSystemForPublish.enabled === true,
+         actorPercent: amountPercentInputToSlider(
+           formatAmountPercentE6Display(pointSystemForPublish.chargeRewardRatioE6),
+         ),
+         referrerEnabled: referrerChargeForPublish.enabled,
+         referrerPercent: amountPercentInputToSlider(referrerChargeForPublish.percent),
+       },
+     );
      const discoverAboutForPublish = buildDiscoverAboutMetadataPayload({
        detail: cardIssuanceDiscoverAboutDetail,
        openingHours: cardIssuanceDiscoverAboutOpeningHours,
@@ -21145,7 +21211,7 @@ const submitCardIssuanceTopupPromotionEditor = useCallback(async () => {
       programReferrerTopupEditorBaseline == null ||
       programReferrerTopupEditorBaseline.enabled !== referrerDraftAtStart.enabled ||
       programReferrerTopupEditorBaseline.percent !== referrerDraftAtStart.percent;
-    if (promoDirty || rewardPtDirty) {
+    if (promoDirty || rewardPtDirty || referrerDirty) {
       const ok = await handlePublishCardIssuance({
         ...(promoDirty ? { topupPromotionOverride: nextPromotion } : {}),
         rewardPtTopupOverride: rewardPtDraftAtStart,
@@ -21181,6 +21247,8 @@ const submitCardIssuanceTopupPromotionEditor = useCallback(async () => {
         nextMeta.unifiedRewardPoints = mergeUnifiedRewardPointsTopup(prev.meta.unifiedRewardPoints, {
           enabled: rewardPtDraftAtStart.enabled,
           actorPercent: amountPercentInputToSlider(rewardPtDraftAtStart.percent),
+          referrerEnabled: referrerDraftAtStart.enabled,
+          referrerPercent: amountPercentInputToSlider(referrerDraftAtStart.percent),
         });
         return { ...prev, meta: nextMeta };
       });
@@ -21190,62 +21258,42 @@ const submitCardIssuanceTopupPromotionEditor = useCallback(async () => {
       setProgramRewardPtTopupPercentInput(rewardPtDraftAtStart.percent);
     }
 
-    // Social Promotion Top-up slot (ruleId=2): same path as Programs → Social Promotion → Top-up.
-    // Reward PT / Referrer percent wholes → fixed actorMint13 / refMint13.
-    const wantsRule2 = rewardPtDraftAtStart.enabled || referrerDraftAtStart.enabled;
-    if (wantsRule2 || rewardPtDirty || referrerDirty) {
+    // Reward PT → setTopupActorRewardRatio (percent of actual payment → #13). Referrer already synced above.
+    // Do not write Social Promotion ruleId=2 fixed mint (would dual-mint with ratios).
+    if (rewardPtDirty) {
       const pk = getSessionPrivateKeyArmor() ?? profiles?.[0]?.privateKeyArmor;
       if (!pk) {
         setCardIssuanceTopupPromotionEditorServerError(
-          'Unlock your wallet before saving Reward PT / Referrer on-chain rules.'
+          'Unlock your wallet before saving Reward PT on-chain ratio.'
         );
         return;
       }
       const cardAddr = ethers.getAddress(cardIssuanceExistingCard.cardAddress);
-      const ruleRes = await applyTopupRewardPtOnChainRule({
+      const targetRatioE6 = rewardPtDraftAtStart.enabled
+        ? (parseAmountPercentHumanToE6(rewardPtDraftAtStart.percent)?.toString() ?? '0')
+        : '0';
+      const ratioRes = await syncTopupActorRewardRatioOnChain({
         cardAddress: cardAddr,
         ownerPrivateKey: pk,
-        actorEnabled: rewardPtDraftAtStart.enabled,
-        actorPercentWhole: amountPercentInputToSlider(rewardPtDraftAtStart.percent),
-        referrerEnabled: referrerDraftAtStart.enabled,
-        referrerPercentWhole: amountPercentInputToSlider(referrerDraftAtStart.percent),
+        targetRatioE6,
       });
-      if (!ruleRes.success) {
+      if (!ratioRes.success) {
         setCardIssuanceTopupPromotionEditorServerError(
-          ruleRes.error ??
-            'On-chain top-up reward rule (ruleId=2) update failed. Try saving again.'
+          ratioRes.error ?? 'On-chain top-up Reward PT ratio update failed. Try saving again.'
         );
         return;
       }
-      setCardIssuanceSocialPromotion((prev) => {
-        const next = cloneSocialPromotionDraft(prev);
-        const actorPts = amountPercentInputToSlider(rewardPtDraftAtStart.percent);
-        const refPts = amountPercentInputToSlider(referrerDraftAtStart.percent);
-        next.events = {
-          ...next.events,
-          topup: {
-            user: rewardPtDraftAtStart.enabled
-              ? { enabled: true, points13: String(Math.max(1, actorPts)) }
-              : { enabled: false, points13: '1' },
-            ref: referrerDraftAtStart.enabled
-              ? { enabled: true, points13: String(Math.max(1, refPts)) }
-              : { enabled: false, points13: '1' },
-          },
-        };
-        next.enabled = socialPromotionDraftHasAnyReward(next);
-        return next;
-      });
-      await refreshCardIssuanceSocialPromotionFromChain(cardAddr);
     }
 
     setCardIssuanceTopupPromotionEditorOpen(false);
     setCardIssuanceOwnerAdminNotice({
       kind: 'ok',
-      text: wantsRule2
-        ? 'Top-up promotion saved. Reward PT / Referrer written on-chain (ruleId=2), same as Social Promotion Top-up.'
-        : nextPromotion.enabled
-          ? 'Top-up promotion saved. POS and apps will use it after a short cache refresh.'
-          : 'Top-up promotion turned off. Reward PT and Referrer reward settings are unchanged.',
+      text:
+        rewardPtDraftAtStart.enabled || referrerDraftAtStart.enabled
+          ? 'Top-up promotion saved. Reward PT / Referrer ratios mint #13 on qualifying top-ups.'
+          : nextPromotion.enabled
+            ? 'Top-up promotion saved. POS and apps will use it after a short cache refresh.'
+            : 'Top-up promotion turned off. Reward PT and Referrer reward settings are unchanged.',
     });
   } catch {
     setCardIssuanceTopupPromotionEditorServerError('Could not save top-up promotion. Please try again.');
@@ -21268,7 +21316,6 @@ const submitCardIssuanceTopupPromotionEditor = useCallback(async () => {
   handlePublishCardIssuance,
   syncProgramReferrerAmountRatioKind,
   profiles,
-  refreshCardIssuanceSocialPromotionFromChain,
 ]);
 
 const discardCardIssuanceTopupPromotionEditorChanges = useCallback(() => {
@@ -21552,9 +21599,13 @@ const submitCardIssuanceConsumptionPointEditor = useCallback(async () => {
       cardIssuanceConsumptionPointEditorBaseline == null ||
       cardIssuanceConsumptionPointEditorBaseline.enabled !== nextEnabled ||
       cardIssuanceConsumptionPointEditorBaseline.ratioInput !== nextRatioInput;
-    if (pointDirty) {
+    const referrerDirty =
+      programReferrerChargeEditorBaseline == null ||
+      programReferrerChargeEditorBaseline.enabled !== referrerDraftAtStart.enabled ||
+      programReferrerChargeEditorBaseline.percent !== referrerDraftAtStart.percent;
+    if (pointDirty || referrerDirty) {
       const ok = await handlePublishCardIssuance({
-        pointSystemOverride: pointSystemPayload,
+        ...(pointDirty ? { pointSystemOverride: pointSystemPayload } : {}),
         loadingScope: 'bonusEditor',
         metadataOnly: true,
         skipOnChainRefresh: true,
@@ -21565,26 +21616,39 @@ const submitCardIssuanceConsumptionPointEditor = useCallback(async () => {
         );
         return;
       }
-      const ratioRes = await syncChargeRewardRatioOnChain({
-        cardAddress: cardAddr,
-        ownerPrivateKey: pk,
-        targetRatioE6: pointSystemPayload.chargeRewardRatioE6,
-      });
-      if (!ratioRes.success) {
-        setCardIssuanceConsumptionPointEditorServerError(
-          ratioRes.error ?? 'On-chain consumption point ratio update failed. Try again.'
-        );
-        return;
+      if (pointDirty) {
+        const ratioRes = await syncChargeRewardRatioOnChain({
+          cardAddress: cardAddr,
+          ownerPrivateKey: pk,
+          targetRatioE6: pointSystemPayload.chargeRewardRatioE6,
+        });
+        if (!ratioRes.success) {
+          setCardIssuanceConsumptionPointEditorServerError(
+            ratioRes.error ?? 'On-chain consumption point ratio update failed. Try again.'
+          );
+          return;
+        }
       }
       setCardIssuancePointSystemEnabled(nextEnabled);
       setCardIssuancePointRatioInput(nextRatioInput);
       setCardIssuanceExistingCard((prev) => {
         if (!prev) return prev;
-        const nextMeta = prev.meta ? { ...prev.meta, pointSystem: pointSystemPayload } : prev.meta;
+        const nextMeta = prev.meta
+          ? {
+              ...prev.meta,
+              ...(pointDirty ? { pointSystem: pointSystemPayload } : {}),
+              unifiedRewardPoints: mergeUnifiedRewardPointsCharge(prev.meta.unifiedRewardPoints, {
+                enabled: nextEnabled,
+                actorPercent: amountPercentInputToSlider(nextRatioInput),
+                referrerEnabled: referrerDraftAtStart.enabled,
+                referrerPercent: amountPercentInputToSlider(referrerDraftAtStart.percent),
+              }),
+            }
+          : prev.meta;
         return {
           ...prev,
           meta: nextMeta,
-          chargeRewardRatioE6: pointSystemPayload.chargeRewardRatioE6,
+          ...(pointDirty ? { chargeRewardRatioE6: pointSystemPayload.chargeRewardRatioE6 } : {}),
         };
       });
       invalidateBeamioCardMetadataCache(cardAddr);
@@ -21593,8 +21657,8 @@ const submitCardIssuanceConsumptionPointEditor = useCallback(async () => {
     setCardIssuanceOwnerAdminNotice({
       kind: 'ok',
       text: nextEnabled
-        ? 'Consumption points saved. Members earn reward points on qualifying charges.'
-        : 'Consumption points disabled. Members only earn social reward points on this card.',
+        ? 'Consumption points saved. Members and referrers earn #13 reward points on qualifying charges.'
+        : 'Consumption points disabled. Referrer charge reward settings are unchanged unless you cleared them.',
     });
   } catch {
     setCardIssuanceConsumptionPointEditorServerError(
@@ -21608,6 +21672,7 @@ const submitCardIssuanceConsumptionPointEditor = useCallback(async () => {
   programReferrerChargeValidationError,
   programReferrerChargeEnabled,
   programReferrerChargePercentInput,
+  programReferrerChargeEditorBaseline,
   cardIssuanceConsumptionPointEditorBaseline,
   cardIssuancePointSystemEnabled,
   cardIssuancePointRatioInput,
@@ -41415,40 +41480,86 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                          </div>
                        ) : null}
 
+                       {/* Always reserve footer height so Save appearing does not jump the sheet content up. */}
                        <div className="space-y-3 pt-2">
-                         {cardIssuanceTopupPromotionEditorDirty || cardIssuanceTopupPromotionEditorPublishing ? (
-                           <div className="flex items-stretch gap-3">
-                             <button
-                               type="button"
-                               onClick={() => void submitCardIssuanceTopupPromotionEditor()}
-                               disabled={
-                                 Boolean(cardIssuanceTopupPromotionEditorValidationError) ||
-                                 Boolean(programReferrerTopupValidationError) ||
-                                 Boolean(programRewardPtTopupValidationError) ||
-                                 cardIssuanceTopupPromotionEditorPublishing ||
-                                 cardIssuanceTopupPromotionDeleting
-                               }
-                               className={`flex min-w-0 flex-1 items-center justify-center gap-2 rounded-full bg-[#0051d1] py-5 font-manrope text-base font-bold text-white shadow-lg shadow-[#0051d1]/20 transition-transform active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 ${CARD_SETUP_MOBILE_CTA_TOUCH_CLASS} ${bizFocusRingClass}`}
-                             >
-                               {cardIssuanceTopupPromotionEditorPublishing ? (
-                                 <Loader2 className="h-5 w-5 animate-spin" strokeWidth={2} aria-hidden />
-                               ) : (
-                                 <PlusCircle className="h-5 w-5" strokeWidth={2} aria-hidden />
-                               )}
-                               <span>{cardIssuanceTopupPromotionEditorPublishing ? 'Saving...' : 'Save Promotion'}</span>
-                             </button>
-                             {cardIssuanceTopupPromotionEditorDirty && !cardIssuanceTopupPromotionEditorPublishing ? (
-                               <button
-                                 type="button"
-                                 onClick={discardCardIssuanceTopupPromotionEditorChanges}
-                                 disabled={cardIssuanceTopupPromotionDeleting}
-                                 className={`shrink-0 rounded-full border border-[#dfe3e6] bg-white px-5 py-5 font-manrope text-sm font-bold text-[#595c5e] transition-colors hover:bg-[#eef1f3] disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
-                               >
-                                 Discard changes
-                               </button>
-                             ) : null}
-                           </div>
-                         ) : null}
+                         <div
+                           className={`flex items-stretch gap-3 ${
+                             cardIssuanceTopupPromotionEditorDirty ||
+                             cardIssuanceTopupPromotionEditorPublishing
+                               ? ''
+                               : 'invisible pointer-events-none'
+                           }`}
+                           aria-hidden={
+                             !(
+                               cardIssuanceTopupPromotionEditorDirty ||
+                               cardIssuanceTopupPromotionEditorPublishing
+                             )
+                           }
+                         >
+                           <button
+                             type="button"
+                             onClick={() => void submitCardIssuanceTopupPromotionEditor()}
+                             tabIndex={
+                               cardIssuanceTopupPromotionEditorDirty ||
+                               cardIssuanceTopupPromotionEditorPublishing
+                                 ? 0
+                                 : -1
+                             }
+                             disabled={
+                               !(
+                                 cardIssuanceTopupPromotionEditorDirty ||
+                                 cardIssuanceTopupPromotionEditorPublishing
+                               ) ||
+                               Boolean(cardIssuanceTopupPromotionEditorValidationError) ||
+                               Boolean(programReferrerTopupValidationError) ||
+                               Boolean(programRewardPtTopupValidationError) ||
+                               cardIssuanceTopupPromotionEditorPublishing ||
+                               cardIssuanceTopupPromotionDeleting
+                             }
+                             className={`flex min-w-0 flex-1 items-center justify-center gap-2 rounded-full bg-[#0051d1] py-5 font-manrope text-base font-bold text-white shadow-lg shadow-[#0051d1]/20 transition-transform active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 ${CARD_SETUP_MOBILE_CTA_TOUCH_CLASS} ${bizFocusRingClass}`}
+                           >
+                             {cardIssuanceTopupPromotionEditorPublishing ? (
+                               <Loader2 className="h-5 w-5 animate-spin" strokeWidth={2} aria-hidden />
+                             ) : (
+                               <PlusCircle className="h-5 w-5" strokeWidth={2} aria-hidden />
+                             )}
+                             <span>
+                               {cardIssuanceTopupPromotionEditorPublishing
+                                 ? 'Saving...'
+                                 : 'Save Promotion'}
+                             </span>
+                           </button>
+                           <button
+                             type="button"
+                             onClick={discardCardIssuanceTopupPromotionEditorChanges}
+                             tabIndex={
+                               cardIssuanceTopupPromotionEditorDirty &&
+                               !cardIssuanceTopupPromotionEditorPublishing
+                                 ? 0
+                                 : -1
+                             }
+                             disabled={
+                               !(
+                                 cardIssuanceTopupPromotionEditorDirty &&
+                                 !cardIssuanceTopupPromotionEditorPublishing
+                               ) || cardIssuanceTopupPromotionDeleting
+                             }
+                             className={`shrink-0 rounded-full border border-[#dfe3e6] bg-white px-5 py-5 font-manrope text-sm font-bold text-[#595c5e] transition-colors hover:bg-[#eef1f3] disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass} ${
+                               cardIssuanceTopupPromotionEditorDirty &&
+                               !cardIssuanceTopupPromotionEditorPublishing
+                                 ? ''
+                                 : 'invisible pointer-events-none'
+                             }`}
+                             aria-hidden={
+                               !(
+                                 cardIssuanceTopupPromotionEditorDirty &&
+                                 !cardIssuanceTopupPromotionEditorPublishing
+                               )
+                             }
+                           >
+                             Discard changes
+                           </button>
+                         </div>
                       </div>
                     </div>
                     </div>
@@ -41628,21 +41739,24 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
 
                      <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-[max(1.5rem,env(safe-area-inset-bottom,0px))]">
                        <div className="space-y-6">
-                         <div className="rounded-2xl border border-[#dfe3e6] bg-[#f8f9fa] px-4 py-4">
-                           <label className="flex cursor-pointer items-start justify-between gap-4">
+                         <div className="rounded-2xl border border-[#dce2f7] bg-[#e9edff]/60 px-4 py-4">
+                           <div className="flex items-center justify-between gap-4">
                              <div className="min-w-0">
-                               <p className="font-manrope text-sm font-bold text-[#2c2f31]">
+                               <p className="text-xs font-bold uppercase tracking-widest text-[#0051d1]">
                                  {tu('programs_consumption_points_enable_label')}
                                </p>
-                               <p className="mt-1 text-xs leading-relaxed text-[#595c5e]">
+                               <p className="mt-1 text-sm text-[#595c5e]">
                                  {tu('programs_consumption_points_enable_hint')}
                                </p>
                              </div>
-                             <input
-                               type="checkbox"
-                               checked={cardIssuancePointSystemEnabled}
-                               onChange={(e) => {
-                                 const next = e.target.checked;
+                             <button
+                               type="button"
+                               role="switch"
+                               aria-checked={cardIssuancePointSystemEnabled}
+                               aria-label={tu('programs_consumption_points_enable_label')}
+                               disabled={cardIssuanceConsumptionPointEditorPublishing}
+                               onClick={() => {
+                                 const next = !cardIssuancePointSystemEnabled;
                                  setCardIssuancePointSystemEnabled(next);
                                  if (
                                    next &&
@@ -41651,58 +41765,28 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                    setCardIssuancePointRatioInput('100');
                                  }
                                }}
-                               className="mt-1 h-5 w-5 shrink-0 rounded border-[#c5c9cc] text-[#0051d1] focus:ring-[#0051d1]"
-                               aria-label={tu('programs_consumption_points_enable_label')}
-                             />
-                           </label>
-
-                           {cardIssuancePointSystemEnabled ? (
-                             <div className="mt-4 space-y-3 border-t border-[#dfe3e6] pt-4">
-                               <div className="flex items-center justify-between gap-3">
-                                 <div className="min-w-0">
-                                   <label
-                                     htmlFor="card-consumption-point-multiplier"
-                                     className="font-manrope text-sm font-bold text-[#2c2f31]"
-                                   >
-                                     {tu('programs_consumption_points_multiplier_label')}
-                                   </label>
-                                   <p
-                                     id="card-consumption-point-multiplier-hint"
-                                     className="mt-1 text-xs leading-relaxed text-[#595c5e]"
-                                   >
-                                     {tu('programs_consumption_points_multiplier_hint')}
-                                   </p>
-                                 </div>
-                                 <div className="flex min-h-[2.25rem] shrink-0 items-center justify-center gap-1 rounded-lg border border-[#dce2f7] bg-[#e9edff] px-2.5 py-1.5">
-                                   <span className="text-center font-manrope text-[15px] font-bold tabular-nums text-[#0051d1]">
-                                     {amountPercentInputToSlider(cardIssuancePointRatioInput)}
-                                   </span>
-                                   <span className="shrink-0 text-[12px] font-bold text-[#0051d1]">%</span>
-                                 </div>
-                               </div>
-                               <input
-                                 id="card-consumption-point-multiplier"
-                                 type="range"
-                                 min={0}
-                                 max={100}
-                                 step={1}
-                                 value={amountPercentInputToSlider(cardIssuancePointRatioInput)}
-                                 disabled={cardIssuanceConsumptionPointEditorPublishing}
-                                 onChange={(e) =>
-                                   setCardIssuancePointRatioInput(String(parseInt(e.target.value, 10)))
-                                 }
-                                 aria-valuemin={0}
-                                 aria-valuemax={100}
-                                 aria-valuenow={amountPercentInputToSlider(cardIssuancePointRatioInput)}
-                                 aria-label={tu('programs_consumption_points_multiplier_label')}
-                                 aria-describedby="card-consumption-point-multiplier-hint"
-                                 className={`h-2 w-full cursor-pointer appearance-none rounded-lg bg-[#dce2f7] accent-[#0051d1] disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
+                               className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-60 ${bizFocusRingClass} ${
+                                 cardIssuancePointSystemEnabled ? 'bg-[#0051d1]' : 'bg-[#abadaf]/50'
+                               }`}
+                             >
+                               <span
+                                 className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition ${
+                                   cardIssuancePointSystemEnabled ? 'translate-x-6' : 'translate-x-1'
+                                 }`}
                                />
-                               <div className="flex justify-between px-0.5 text-[11px] font-medium text-[#0051d1]/70">
-                                 <span>0%</span>
-                                 <span>50%</span>
-                                 <span>100%</span>
-                               </div>
+                             </button>
+                           </div>
+                           {cardIssuancePointSystemEnabled ? (
+                             <div className="mt-4">
+                               <BeamioPercentSlider
+                                 id="card-consumption-point-multiplier"
+                                 label={tu('programs_consumption_points_multiplier_label')}
+                                 accent="blue"
+                                 value={amountPercentInputToSlider(cardIssuancePointRatioInput)}
+                                 onChange={(n) => setCardIssuancePointRatioInput(String(n))}
+                                 disabled={cardIssuanceConsumptionPointEditorPublishing}
+                                 focusRingClassName={bizFocusRingClass}
+                               />
                              </div>
                            ) : null}
                          </div>

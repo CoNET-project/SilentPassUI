@@ -41,7 +41,8 @@ function parseFlow(raw: unknown): UnifiedRewardFlow | undefined {
 	const referrerPercentBps =
 		o.referrerPercentBps != null ? clampRewardPercentBps(o.referrerPercentBps) : undefined
 	const enabled =
-		o.enabled === true || (o.enabled !== false && actorPercentBps > 0)
+		o.enabled === true ||
+		(o.enabled !== false && (actorPercentBps > 0 || (referrerPercentBps != null && referrerPercentBps > 0)))
 	return {
 		enabled,
 		actorPercentBps,
@@ -63,32 +64,93 @@ export function parseUnifiedRewardPoints(raw: unknown): UnifiedRewardPoints | un
 	return Object.keys(out).length > 0 ? out : undefined
 }
 
-export function parseUnifiedRewardTopupDraft(raw: unknown): {
+function parseUnifiedRewardFlowDraft(flow: UnifiedRewardFlow | undefined): {
 	enabled: boolean
 	percent: string
+	referrerEnabled: boolean
+	referrerPercent: string
 } {
-	const flow = parseUnifiedRewardPoints(raw)?.topup
-	const enabled = flow?.enabled === true
+	const enabled = flow?.enabled === true && (flow.actorPercentBps ?? 0) > 0
 	const pct = actorBpsToPercentWhole(flow?.actorPercentBps ?? 0)
+	const refBps = flow?.referrerPercentBps ?? 0
+	const referrerEnabled = refBps > 0
+	const refPct = actorBpsToPercentWhole(refBps)
 	return {
 		enabled,
 		percent: String(pct > 0 ? pct : 1),
+		referrerEnabled,
+		referrerPercent: String(refPct > 0 ? refPct : 1),
 	}
 }
 
-/** Merge current top-up actor % into existing unifiedRewardPoints (preserve charge/social). */
+export function parseUnifiedRewardTopupDraft(raw: unknown): {
+	enabled: boolean
+	percent: string
+	referrerEnabled: boolean
+	referrerPercent: string
+} {
+	return parseUnifiedRewardFlowDraft(parseUnifiedRewardPoints(raw)?.topup)
+}
+
+export function parseUnifiedRewardChargeDraft(raw: unknown): {
+	enabled: boolean
+	percent: string
+	referrerEnabled: boolean
+	referrerPercent: string
+} {
+	return parseUnifiedRewardFlowDraft(parseUnifiedRewardPoints(raw)?.charge)
+}
+
+/** Merge top-up actor + referrer % into existing unifiedRewardPoints (preserve charge/social). */
 export function mergeUnifiedRewardPointsTopup(
 	existing: unknown,
-	topup: { enabled: boolean; actorPercent: number },
+	topup: {
+		enabled: boolean
+		actorPercent: number
+		referrerEnabled?: boolean
+		referrerPercent?: number
+	},
 ): UnifiedRewardPoints {
 	const prev = parseUnifiedRewardPoints(existing) ?? {}
 	const actorPercentBps = topup.enabled ? percentWholeToActorBps(topup.actorPercent) : 0
+	const referrerEnabled = topup.referrerEnabled === true
+	const referrerPercentBps = referrerEnabled
+		? percentWholeToActorBps(topup.referrerPercent ?? 0)
+		: 0
 	return {
 		...prev,
 		topup: {
 			...(prev.topup ?? {}),
-			enabled: topup.enabled,
+			enabled: topup.enabled || referrerEnabled,
 			actorPercentBps,
+			referrerPercentBps,
+		},
+	}
+}
+
+/** Merge charge actor + referrer % into existing unifiedRewardPoints (preserve topup/social). */
+export function mergeUnifiedRewardPointsCharge(
+	existing: unknown,
+	charge: {
+		enabled: boolean
+		actorPercent: number
+		referrerEnabled?: boolean
+		referrerPercent?: number
+	},
+): UnifiedRewardPoints {
+	const prev = parseUnifiedRewardPoints(existing) ?? {}
+	const actorPercentBps = charge.enabled ? percentWholeToActorBps(charge.actorPercent) : 0
+	const referrerEnabled = charge.referrerEnabled === true
+	const referrerPercentBps = referrerEnabled
+		? percentWholeToActorBps(charge.referrerPercent ?? 0)
+		: 0
+	return {
+		...prev,
+		charge: {
+			...(prev.charge ?? {}),
+			enabled: charge.enabled || referrerEnabled,
+			actorPercentBps,
+			referrerPercentBps,
 		},
 	}
 }

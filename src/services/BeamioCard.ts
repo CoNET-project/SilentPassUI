@@ -2532,9 +2532,31 @@ const setChargeRewardRatioInterface = new ethers.Interface([
 	'function setChargeRewardRatio(uint256 ratioE6)',
 ])
 
-/** Build calldata for owner-gateway updates to token #2 charge reward ratio. */
+/** Build calldata for owner-gateway updates to charge actor #13 reward ratio (E6). */
 export const encodeSetChargeRewardRatio = (ratioE6: string | number | bigint): string =>
 	setChargeRewardRatioInterface.encodeFunctionData('setChargeRewardRatio', [BigInt(ratioE6)])
+
+const setTopupActorRewardRatioInterface = new ethers.Interface([
+	'function setTopupActorRewardRatio(uint256 ratioE6)',
+	'function topupActorRewardRatioE6() view returns (uint256)',
+])
+
+/** Owner/gateway: E6 % of top-up actual payment → actor #13 (0 = off). */
+export const encodeSetTopupActorRewardRatio = (ratioE6: string | number | bigint): string =>
+	setTopupActorRewardRatioInterface.encodeFunctionData('setTopupActorRewardRatio', [BigInt(ratioE6)])
+
+export async function readTopupActorRewardRatioOnChain(cardAddress: string): Promise<string | null> {
+	try {
+		const cardAddrNorm = ethers.getAddress(cardAddress)
+		const { provider } = await providerForBeamioUserCard(cardAddrNorm)
+		const card = new ethers.Contract(cardAddrNorm, setTopupActorRewardRatioInterface, provider)
+		const raw = await card.topupActorRewardRatioE6().catch(() => null)
+		if (raw == null) return null
+		return BigInt(raw.toString()).toString()
+	} catch {
+		return null
+	}
+}
 
 const referrerAmountRatioInterface = new ethers.Interface([
 	'function setReferrerChargeAmountRatio(uint256 ratioE6)',
@@ -2543,11 +2565,11 @@ const referrerAmountRatioInterface = new ethers.Interface([
 	'function referrerTopupAmountRatioE6() view returns (uint256)',
 ])
 
-/** Owner/gateway: E6 % of charge amountFiat6 → referrer token #1 (0 = off). */
+/** Owner/gateway: E6 % of charge amountFiat6 → referrer #13 (0 = off). */
 export const encodeSetReferrerChargeAmountRatio = (ratioE6: string | number | bigint): string =>
 	referrerAmountRatioInterface.encodeFunctionData('setReferrerChargeAmountRatio', [BigInt(ratioE6)])
 
-/** Owner/gateway: E6 % of top-up amountFiat6 → referrer token #1 (0 = off). */
+/** Owner/gateway: E6 % of top-up amountFiat6 → referrer #13 (0 = off). */
 export const encodeSetReferrerTopupAmountRatio = (ratioE6: string | number | bigint): string =>
 	referrerAmountRatioInterface.encodeFunctionData('setReferrerTopupAmountRatio', [BigInt(ratioE6)])
 

@@ -140,6 +140,12 @@ import {
   CONET_USDC,
 } from '@/config/chainAddresses';
 import { CONET_MAINNET_CHAIN_ID, providerForBeamioUserCard, isMerchantUserCardOnConet } from '@/utils/beamioUserCardChain';
+import {
+  readCardProgramReferrerChainSummary,
+  readReferrersPageFromChain,
+  readRegisteredRefereesPageFromChain,
+  readRefereesByReferrerPageFromChain,
+} from '@/utils/cardProgramReferrerChain';
 import { resolveBeamioAaForEoaWithFallback } from '@/utils/resolveBeamioAaFromCardFactory';
 import { ensureConetAaForEoa } from '@/utils/ensureConetAa';
 import { parseRedeemAdminFromUrl } from '@/utils/parseRedeemAdminFromUrl';
@@ -8692,6 +8698,22 @@ function linkedTerminalsTrustedCacheKey(eoa: string, cardBucketLower: string): s
   return `eoa:${eoa}:linked-terminals:${cardBucketLower}:v3-conet-provider`;
 }
 
+/** Issuance card first, else Staff / last-trusted program card. */
+function resolveProgramReferrerCardAddressFromParts(
+  issuance?: string | null,
+  staff?: string | null,
+): string | null {
+  const a = issuance?.trim();
+  if (a && ethers.isAddress(a)) return ethers.getAddress(a);
+  const b = staff?.trim();
+  if (b && ethers.isAddress(b)) return ethers.getAddress(b);
+  return null;
+}
+
+function programReferrerOverviewTrustedCacheKey(eoa: string, cardLower: string): string {
+  return `eoa:${ethers.getAddress(eoa)}:card:${cardLower}:program-referrers-overview:v1`;
+}
+
 /** Business / Catalog — local-first per wallet partition + program card. */
 function bizCatalogProductionsCacheKey(partitionLower: string, cardAddressLower: string): string {
   return `eoa:${partitionLower}:biz:catalog-productions:v1:${cardAddressLower}`;
@@ -8953,7 +8975,7 @@ async function fetchBeamioCardProgramSocialSummary(
   return res.json() as Promise<BeamioCardProgramSocialSummaryResponse>;
 }
 
-/** AA referrer registry (v28+：分页走 indexer，KPI 总数仍来自链上 count view via API summary)。 */
+/** Referrer registry: KPI / first page come from CoNET RPC; HTTP is fallback only. */
 type BeamioCardProgramReferrerSummaryResponse = {
   mode: 'summary';
   cardAddress: string;
@@ -9026,6 +9048,46 @@ type BeamioCardProgramRegisteredRefereesResponse = {
   offset: number;
   referees: BeamioCardProgramReferrerRefereeRow[];
 };
+
+type ProgramReferrerOverviewTrusted = {
+  referrerTotalCount: number;
+  registeredRefereeTotalCount: number;
+  referrers?: BeamioCardProgramReferrerListRow[];
+  registeredReferees?: BeamioCardProgramReferrerRefereeRow[];
+};
+
+function persistProgramReferrerOverviewTrusted(
+  eoa: string | null | undefined,
+  cardAddress: string,
+  patch: Partial<ProgramReferrerOverviewTrusted>,
+) {
+  if (!eoa || !ethers.isAddress(eoa) || !ethers.isAddress(cardAddress)) return;
+  const key = programReferrerOverviewTrustedCacheKey(eoa, ethers.getAddress(cardAddress).toLowerCase());
+  const prev = loadTrustedCache<ProgramReferrerOverviewTrusted>(key);
+  saveTrustedCache(key, {
+    referrerTotalCount: patch.referrerTotalCount ?? prev?.referrerTotalCount ?? 0,
+    registeredRefereeTotalCount:
+      patch.registeredRefereeTotalCount ?? prev?.registeredRefereeTotalCount ?? 0,
+    referrers: patch.referrers ?? prev?.referrers,
+    registeredReferees: patch.registeredReferees ?? prev?.registeredReferees,
+  });
+}
+
+function mapChainReferrerListRows(
+  items: Array<{ referrerAa: string; refereeCount: number | null; referrerRewardBalance: string | null }>,
+): BeamioCardProgramReferrerListRow[] {
+  return items.map((row) => ({
+    referrerAa: row.referrerAa,
+    refereeCount: row.refereeCount ?? 0,
+    chainRefereeCount: row.refereeCount,
+    referrerRewardBalance: row.referrerRewardBalance,
+  }));
+}
+
+function applyHttpCountIfTrusted(prev: number | null, incoming: number): number {
+  if (prev != null && incoming === 0) return prev;
+  return incoming;
+}
 
 async function fetchBeamioCardProgramReferrersBase(
   cardAddress: string,
@@ -13204,6 +13266,9 @@ const [programReferrerDrawer, setProgramReferrerDrawer] = useState<'referrers' |
 const [programReferrerDetailAA, setProgramReferrerDetailAA] = useState<string | null>(null);
 const [programReferrerDetailList, setProgramReferrerDetailList] = useState<BeamioCardProgramReferrerRefereeRow[]>([]);
 const [programReferrerRefreshStatus, setProgramReferrerRefreshStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+/** Staff program card is declared later; daemon/loaders resolve via this ref (issuance ?? staff). */
+const staffProgramBeamioCardAddressRef = useRef<string | null>(null);
+const programReferrerEoaRef = useRef<string>('');
 const [programReferrerChargeEnabled, setProgramReferrerChargeEnabled] = useState(false);
 const [programReferrerTopupEnabled, setProgramReferrerTopupEnabled] = useState(false);
 /** Defaults match CoNET merchant card on-chain ratios (e.g. 0xafE482…): charge 100%, top-up 50%. */
@@ -13502,27 +13567,71 @@ useEffect(() => {
    }
  }, [cardIssuanceExistingCard?.cardAddress, ensureProfilesForAddresses]);
 
+ const resolveProgramReferrerCardAddress = useCallback((): string | null => {
+   return resolveProgramReferrerCardAddressFromParts(
+     cardIssuanceExistingCard?.cardAddress,
+     staffProgramBeamioCardAddressRef.current,
+   );
+ }, [cardIssuanceExistingCard?.cardAddress]);
+
  const loadProgramReferrerOverview = useCallback(async (opts?: { silent?: boolean }) => {
    const silent = opts?.silent === true;
-   const addr = cardIssuanceExistingCard?.cardAddress?.trim() ?? '';
-   if (!addr || !ethers.isAddress(addr)) return;
+   const addr = resolveProgramReferrerCardAddress();
+   if (!addr) return;
+   const eoa = programReferrerEoaRef.current;
    if (!silent) setProgramReferrerRefreshStatus('loading');
    try {
-     const json = await fetchBeamioCardProgramReferrerSummary(addr);
-     // Chain counts preferred; when AdminStats registry views fail (null), use DB mirror.
-     if (json.chainReferrerTotalCount != null) {
-       setProgramReferrerTotalCount(json.chainReferrerTotalCount);
-     } else if (typeof json.dbReferrerTotal === 'number' && Number.isFinite(json.dbReferrerTotal)) {
-       setProgramReferrerTotalCount(json.dbReferrerTotal);
+     // RPC-first (CoNET); HTTP summary is fallback only.
+     const chainSummary = await readCardProgramReferrerChainSummary(addr);
+     let referrerTotal: number | null = chainSummary.referrerTotalCount;
+     let registeredTotal: number | null = chainSummary.registeredRefereeTotalCount;
+
+     if (referrerTotal == null || registeredTotal == null) {
+       try {
+         const json = await fetchBeamioCardProgramReferrerSummary(addr);
+         if (referrerTotal == null) {
+           if (json.chainReferrerTotalCount != null) {
+             referrerTotal = json.chainReferrerTotalCount;
+           } else if (typeof json.dbReferrerTotal === 'number' && Number.isFinite(json.dbReferrerTotal)) {
+             referrerTotal = json.dbReferrerTotal;
+           }
+         }
+         if (registeredTotal == null) {
+           if (json.chainRegisteredRefereeTotalCount != null) {
+             registeredTotal = json.chainRegisteredRefereeTotalCount;
+           } else if (
+             typeof json.dbRegisteredRefereeTotal === 'number' &&
+             Number.isFinite(json.dbRegisteredRefereeTotal)
+           ) {
+             registeredTotal = json.dbRegisteredRefereeTotal;
+           }
+         }
+       } catch {
+         /* keep chain / prior */
+       }
      }
-     if (json.chainRegisteredRefereeTotalCount != null) {
-       setProgramRegisteredRefereeTotalCount(json.chainRegisteredRefereeTotalCount);
-     } else if (
-       typeof json.dbRegisteredRefereeTotal === 'number' &&
-       Number.isFinite(json.dbRegisteredRefereeTotal)
-     ) {
-       setProgramRegisteredRefereeTotalCount(json.dbRegisteredRefereeTotal);
+
+     if (referrerTotal != null) {
+       setProgramReferrerTotalCount((prev) =>
+         chainSummary.referrerTotalCount != null
+           ? referrerTotal!
+           : applyHttpCountIfTrusted(prev, referrerTotal!),
+       );
      }
+     if (registeredTotal != null) {
+       setProgramRegisteredRefereeTotalCount((prev) =>
+         chainSummary.registeredRefereeTotalCount != null
+           ? registeredTotal!
+           : applyHttpCountIfTrusted(prev, registeredTotal!),
+       );
+     }
+     if (referrerTotal != null || registeredTotal != null) {
+       persistProgramReferrerOverviewTrusted(eoa, addr, {
+         ...(referrerTotal != null ? { referrerTotalCount: referrerTotal } : {}),
+         ...(registeredTotal != null ? { registeredRefereeTotalCount: registeredTotal } : {}),
+       });
+     }
+
      const ratios = await readReferrerAmountRatiosOnChain(addr);
      if (ratios) {
        setProgramReferrerChargeRatioE6Baseline(ratios.chargeRatioE6);
@@ -13555,7 +13664,7 @@ useEffect(() => {
        window.setTimeout(() => setProgramReferrerRefreshStatus('idle'), 3000);
      }
    }
- }, [cardIssuanceExistingCard?.cardAddress]);
+ }, [resolveProgramReferrerCardAddress]);
 
  const programReferrerTopupDraftE6 = useMemo(() => {
    if (!programReferrerTopupEnabled) return 0n;
@@ -13705,9 +13814,28 @@ useEffect(() => {
  );
 
  const loadProgramReferrerList = useCallback(async () => {
-   const addr = cardIssuanceExistingCard?.cardAddress?.trim() ?? '';
-   if (!addr || !ethers.isAddress(addr)) return;
+   const addr = resolveProgramReferrerCardAddress();
+   if (!addr) return;
+   const eoa = programReferrerEoaRef.current;
    try {
+     const chainPage = await readReferrersPageFromChain(addr, 0, 50);
+     if (chainPage.ok) {
+       const rows = mapChainReferrerListRows(chainPage.referrers);
+       setProgramReferrerList(rows);
+       setProgramReferrerTotalCount(chainPage.total);
+       persistProgramReferrerOverviewTrusted(eoa, addr, {
+         referrerTotalCount: chainPage.total,
+         referrers: rows,
+       });
+       const profileAddrs = new Set<string>();
+       for (const row of rows) {
+         if (row.referrerAa && ethers.isAddress(row.referrerAa)) {
+           profileAddrs.add(ethers.getAddress(row.referrerAa));
+         }
+       }
+       if (profileAddrs.size > 0) void ensureProfilesForAddresses([...profileAddrs]);
+       return;
+     }
      const page = await fetchBeamioCardProgramReferrersPage(addr, 50, 0);
      if (Array.isArray(page.referrers)) {
        setProgramReferrerList(page.referrers);
@@ -13718,19 +13846,50 @@ useEffect(() => {
          }
        }
        if (profileAddrs.size > 0) void ensureProfilesForAddresses([...profileAddrs]);
+       persistProgramReferrerOverviewTrusted(eoa, addr, { referrers: page.referrers });
      }
      if (typeof page.total === 'number' && Number.isFinite(page.total)) {
-       setProgramReferrerTotalCount(page.total);
+       setProgramReferrerTotalCount((prev) => applyHttpCountIfTrusted(prev, page.total));
+       persistProgramReferrerOverviewTrusted(eoa, addr, { referrerTotalCount: page.total });
      }
    } catch {
      /* trusted-fetch: keep prior list */
    }
- }, [cardIssuanceExistingCard?.cardAddress, ensureProfilesForAddresses]);
+ }, [resolveProgramReferrerCardAddress, ensureProfilesForAddresses]);
 
  const loadProgramRegisteredRefereeList = useCallback(async () => {
-   const addr = cardIssuanceExistingCard?.cardAddress?.trim() ?? '';
-   if (!addr || !ethers.isAddress(addr)) return;
+   const addr = resolveProgramReferrerCardAddress();
+   if (!addr) return;
+   const eoa = programReferrerEoaRef.current;
    try {
+     const chainPage = await readRegisteredRefereesPageFromChain(addr, 0, 50);
+     if (chainPage.ok) {
+       const rows = chainPage.referees
+         .filter((r) => r.refereeAa && ethers.isAddress(r.refereeAa))
+         .map((r) =>
+           normalizeProgramReferrerRefereeRow({
+             refereeAa: r.refereeAa,
+             referrerAa: r.referrerAa,
+           }),
+         );
+       setProgramRegisteredRefereeList(rows);
+       setProgramRegisteredRefereeTotalCount(chainPage.total);
+       persistProgramReferrerOverviewTrusted(eoa, addr, {
+         registeredRefereeTotalCount: chainPage.total,
+         registeredReferees: rows,
+       });
+       const profileAddrs = new Set<string>();
+       for (const row of rows) {
+         if (row.refereeAa && ethers.isAddress(row.refereeAa)) {
+           profileAddrs.add(ethers.getAddress(row.refereeAa));
+         }
+         if (row.referrerAa && ethers.isAddress(row.referrerAa)) {
+           profileAddrs.add(ethers.getAddress(row.referrerAa));
+         }
+       }
+       if (profileAddrs.size > 0) void ensureProfilesForAddresses([...profileAddrs]);
+       return;
+     }
      const page = await fetchBeamioCardProgramRegisteredRefereesPage(addr, 50, 0);
      if (Array.isArray(page.referees)) {
        const rows = page.referees.map(normalizeProgramReferrerRefereeRow);
@@ -13745,20 +13904,44 @@ useEffect(() => {
          }
        }
        if (profileAddrs.size > 0) void ensureProfilesForAddresses([...profileAddrs]);
+       persistProgramReferrerOverviewTrusted(eoa, addr, { registeredReferees: rows });
      }
      if (typeof page.total === 'number' && Number.isFinite(page.total)) {
-       setProgramRegisteredRefereeTotalCount(page.total);
+       setProgramRegisteredRefereeTotalCount((prev) => applyHttpCountIfTrusted(prev, page.total));
+       persistProgramReferrerOverviewTrusted(eoa, addr, { registeredRefereeTotalCount: page.total });
      }
    } catch {
      /* trusted-fetch: keep prior list */
    }
- }, [cardIssuanceExistingCard?.cardAddress, ensureProfilesForAddresses]);
+ }, [resolveProgramReferrerCardAddress, ensureProfilesForAddresses]);
 
  const loadProgramReferrerDetail = useCallback(
    async (referrerAA: string) => {
-     const addr = cardIssuanceExistingCard?.cardAddress?.trim() ?? '';
-     if (!addr || !ethers.isAddress(addr) || !ethers.isAddress(referrerAA)) return;
+     const addr = resolveProgramReferrerCardAddress();
+     if (!addr || !ethers.isAddress(referrerAA)) return;
      try {
+       const chainPage = await readRefereesByReferrerPageFromChain(addr, referrerAA, 0, 50);
+       if (chainPage.ok) {
+         const rows = chainPage.referees
+           .filter((r) => r.refereeAa && ethers.isAddress(r.refereeAa))
+           .map((r) =>
+             normalizeProgramReferrerRefereeRow({
+               refereeAa: r.refereeAa,
+               referrerAa: r.referrerAa,
+               refereeChargePointsTotal6: r.refereeChargePointsTotal6,
+             }),
+           );
+         setProgramReferrerDetailList(rows);
+         setProgramReferrerDetailAA(ethers.getAddress(referrerAA));
+         const profileAddrs = new Set<string>([ethers.getAddress(referrerAA)]);
+         for (const row of rows) {
+           if (row.refereeAa && ethers.isAddress(row.refereeAa)) {
+             profileAddrs.add(ethers.getAddress(row.refereeAa));
+           }
+         }
+         void ensureProfilesForAddresses([...profileAddrs]);
+         return;
+       }
        const page = await fetchBeamioCardProgramRefereesByReferrerPage(addr, referrerAA, 50, 0);
        if (Array.isArray(page.referees)) {
          const rows = page.referees.map(normalizeProgramReferrerRefereeRow);
@@ -13776,7 +13959,7 @@ useEffect(() => {
        /* keep prior detail list */
      }
    },
-   [cardIssuanceExistingCard?.cardAddress, ensureProfilesForAddresses],
+   [resolveProgramReferrerCardAddress, ensureProfilesForAddresses],
  );
 
  const openProgramReferrerDrawer = useCallback(
@@ -22811,6 +22994,33 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
    const cached = loadLastStaffProgramCardFromTrustedCache(currentEoa);
    return cached;
  }, [merchantOwnCardAddress, currentEoa]);
+ staffProgramBeamioCardAddressRef.current = staffProgramBeamioCardAddress;
+ programReferrerEoaRef.current = currentEoa;
+
+ /** Hydrate trusted REFERRERS KPI + kick silent load when program card identity is ready. */
+ useEffect(() => {
+   const addr = resolveProgramReferrerCardAddressFromParts(
+     cardIssuanceExistingCard?.cardAddress,
+     staffProgramBeamioCardAddress,
+   );
+   if (!addr) return;
+   if (currentEoa && ethers.isAddress(currentEoa)) {
+     const cached = loadTrustedCache<ProgramReferrerOverviewTrusted>(
+       programReferrerOverviewTrustedCacheKey(currentEoa, addr.toLowerCase()),
+     );
+     if (cached) {
+       setProgramReferrerTotalCount((prev) => prev ?? cached.referrerTotalCount);
+       setProgramRegisteredRefereeTotalCount((prev) => prev ?? cached.registeredRefereeTotalCount);
+       if (cached.referrers?.length) {
+         setProgramReferrerList((prev) => (prev.length ? prev : cached.referrers!));
+       }
+       if (cached.registeredReferees?.length) {
+         setProgramRegisteredRefereeList((prev) => (prev.length ? prev : cached.registeredReferees!));
+       }
+     }
+   }
+   void loadProgramReferrerOverviewRef.current({ silent: true });
+ }, [cardIssuanceExistingCard?.cardAddress, staffProgramBeamioCardAddress, currentEoa]);
  /** Cache-key segment when no on-chain program card yet (EOA-scoped; not a contract address). */
  const staffProgramCardCacheBucket = useMemo(() => {
    if (staffProgramBeamioCardAddress) return staffProgramBeamioCardAddress.toLowerCase();
@@ -27458,18 +27668,23 @@ useEffect(() => {
          await loadProgramSocialOverviewRef.current({ silent: true });
        }
 
-       // Program Referrer Registry: counts every tick; open drawer list stays fresh (chain-first API).
-       if (!feederCancelledRef.current && programAddr && ethers.isAddress(programAddr)) {
-         await loadProgramReferrerOverviewRef.current({ silent: true });
-         const drawer = programReferrerDrawerRef.current;
-         if (drawer === 'referrers') {
-           await loadProgramReferrerListRef.current();
-         } else if (drawer === 'registeredReferees') {
-           const detailAa = programReferrerDetailAARef.current;
-           if (detailAa) await loadProgramReferrerDetailRef.current(detailAa);
-           else await loadProgramRegisteredRefereeListRef.current();
-         }
-       }
+      // Program Referrer Registry: counts every 6s tick; open drawer list stays fresh (RPC-first).
+      // Prefer live refs so issuance/staff card identity is not stale from feeder effect closure.
+      const referrerProgramAddr = resolveProgramReferrerCardAddressFromParts(
+        cardIssuanceExistingCard?.cardAddress,
+        staffProgramBeamioCardAddressRef.current ?? programAddr,
+      );
+      if (!feederCancelledRef.current && referrerProgramAddr) {
+        await loadProgramReferrerOverviewRef.current({ silent: true });
+        const drawer = programReferrerDrawerRef.current;
+        if (drawer === 'referrers') {
+          await loadProgramReferrerListRef.current();
+        } else if (drawer === 'registeredReferees') {
+          const detailAa = programReferrerDetailAARef.current;
+          if (detailAa) await loadProgramReferrerDetailRef.current(detailAa);
+          else await loadProgramRegisteredRefereeListRef.current();
+        }
+      }
 
        // 0b. Active Cards KPI: server directory hint when Members daemon has not merged rows yet (same90d rule on `lastTopupAt`; no holder balance RPC).
        const activeCardsHintProgramAddr =
@@ -27852,13 +28067,14 @@ useEffect(() => {
    profiles?.[0]?.privateKeyArmor,
    myAddress,
    timeFilter,
-   staffProgramBeamioCardAddress,
-   linkedTerminalsCacheKey,
-   staffTerminalChainStatsCacheKey,
-   merchantOwnCardAddress,
-   retainedCapitalTrustedCacheKey,
-   walletStoragePartitionLower,
- ]);
+  staffProgramBeamioCardAddress,
+  cardIssuanceExistingCard?.cardAddress,
+  linkedTerminalsCacheKey,
+  staffTerminalChainStatsCacheKey,
+  merchantOwnCardAddress,
+  retainedCapitalTrustedCacheKey,
+  walletStoragePartitionLower,
+]);
 
  /** Dashboard B-Units (Protocol Fuel Reserve): CoNET L1 `block` tick via DaemonProvider; decoupled from 6s Overview feeder. */
  useEffect(() => {

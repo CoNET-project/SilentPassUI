@@ -235,7 +235,7 @@ export default function BeamioAddUSDCFlow({
                   <OptionRow
                     icon={<CreditCard className="h-5 w-5" />}
                     title="Buy USDC with card"
-                    desc="Card checkout · USDC sent to your EOA Wallet on Base"
+                    desc="Stripe sends USDC on Base to your EOA"
                     tag="Card"
                     onClick={() => setScreen("stripe")}
                   />

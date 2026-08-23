@@ -4,6 +4,7 @@ import { AlertTriangle, Check, Loader2, X } from 'lucide-react'
 import { refreshAppDaemonNow } from '@/services/appDaemonWorkerBridge'
 import {
 	clearPersistedEoaUsdcStripeSessionId,
+	isEoaUsdcStripeFulfillmentProcessing,
 	isEoaUsdcStripePollOk,
 	parseEoaUsdcStripeReturn,
 	pollEoaUsdcStripeSession,
@@ -44,7 +45,7 @@ export default function EoaUsdcStripeReturnHost() {
 
 		if (parsed.kind === 'cancel') {
 			setView('cancel')
-			setMessage('Checkout closed. No USDC was sent.')
+			setMessage('Onramp closed. No USDC was sent.')
 			if (sessionId) {
 				void pollEoaUsdcStripeSession(sessionId, true)
 			}
@@ -58,7 +59,7 @@ export default function EoaUsdcStripeReturnHost() {
 		}
 
 		setView('waiting')
-		setMessage('Confirming card payment…')
+		setMessage('Confirming Stripe Onramp…')
 		setTxHash('')
 		const started = Date.now()
 		const tick = async () => {
@@ -78,23 +79,19 @@ export default function EoaUsdcStripeReturnHost() {
 				return
 			}
 			if (out.status === 'succeeded') {
-				const hash = out.chainFulfillment?.usdcTxHash?.trim() ?? ''
-				const chainErr = out.chainFulfillment?.lastError?.trim() ?? ''
-				if (hash) {
-					setTxHash(hash)
-					setView('success')
-					setMessage('USDC sent to your EOA Wallet')
-					clearPersistedEoaUsdcStripeSessionId()
-					void refreshAppDaemonNow('wallet')
-					return
-				}
-				if (chainErr) {
-					setView('error')
-					setMessage(chainErr)
-					return
-				}
+				setTxHash(out.chainFulfillment?.usdcTxHash?.trim() ?? '')
+				setView('success')
+				setMessage('USDC sent to your EOA Wallet')
+				clearPersistedEoaUsdcStripeSessionId()
+				void refreshAppDaemonNow('wallet')
+				return
+			}
+			if (isEoaUsdcStripeFulfillmentProcessing(out.lastEvent)) {
 				setView('transferring')
-				setMessage('Payment received. Sending USDC on Base…')
+				setMessage('Stripe is sending USDC to your EOA…')
+			} else {
+				setView('waiting')
+				setMessage('Complete Stripe Onramp. Stripe sends USDC on Base to your EOA.')
 			}
 			if (Date.now() - started > POLL_MAX_MS) {
 				setView('error')
@@ -140,6 +137,9 @@ export default function EoaUsdcStripeReturnHost() {
 						<Check className="h-5 w-5 mt-0.5 shrink-0" aria-hidden />
 						<div>
 							<div className="font-semibold">{message}</div>
+							<p className="mt-1 text-xs text-emerald-700/80 dark:text-emerald-300/80">
+								Wallet balance updates when Base is current.
+							</p>
 							{txHash ? <div className="mt-1 text-xs font-mono break-all text-slate-500">{txHash}</div> : null}
 						</div>
 					</div>

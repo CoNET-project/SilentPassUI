@@ -22,44 +22,32 @@ export type DiscoverMembershipUiState = {
 	currentFeeE6: bigint | null
 }
 
-/** Cluster requires points credit after fee: amount must strictly exceed membershipFeeFiat6. */
-export function membershipPurchasePointsCreditE6(minUsdc6?: string | number | bigint | null): bigint {
-	if (minUsdc6 != null && String(minUsdc6).trim() !== '') {
-		try {
-			const m = BigInt(String(minUsdc6).replace(/,/g, '').trim())
-			if (m > 0n) return m
-		} catch {
-			/* fall through */
-		}
-	}
-	return 1_000_000n
-}
-
+/**
+ * User-facing membership amounts use two decimal places (CA$0.50, not 0.500001).
+ * Extra E6 dust is truncated toward zero — join pays the locked fee only.
+ */
 export function membershipFeeE6ToHuman(e6: string | number | undefined | null): string {
 	if (e6 == null || e6 === '') return ''
 	try {
 		const bi = BigInt(String(e6).replace(/,/g, '').trim() || '0')
 		if (bi <= 0n) return ''
-		const whole = bi / 1000000n
-		const frac = bi % 1000000n
-		if (frac === 0n) return whole.toString()
-		const fracStr = frac.toString().padStart(6, '0').replace(/0+$/, '')
-		return `${whole}.${fracStr}`
+		const whole = bi / 1_000_000n
+		const cents = (bi % 1_000_000n) / 10_000n
+		return `${whole}.${cents.toString().padStart(2, '0')}`
 	} catch {
 		return ''
 	}
 }
 
+/** Charge / API amount = locked membership fee only (two decimals). `minUsdc6` is unused. */
 export function membershipPurchaseApiAmountHuman(
 	feeFiat6: string,
-	minUsdc6?: string | number | bigint | null,
+	_minUsdc6?: string | number | bigint | null,
 ): string {
 	try {
 		const fee = BigInt(String(feeFiat6).replace(/,/g, '').trim() || '0')
 		if (fee <= 0n) return '0'
-		const credit = membershipPurchasePointsCreditE6(minUsdc6)
-		const total = fee + credit
-		return membershipFeeE6ToHuman(total.toString()) || '0'
+		return membershipFeeE6ToHuman(fee.toString()) || '0'
 	} catch {
 		return '0'
 	}

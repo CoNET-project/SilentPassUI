@@ -99,8 +99,8 @@ import {
 } from "@/utils/discoverUsdcTopupSession"
 import {
 	customerHasValidMembershipFromAssets,
+	membershipFeeE6ToHuman,
 	membershipPurchaseApiAmountHuman,
-	membershipPurchasePointsCreditE6,
 	pickActiveDiscoverMembershipNft,
 	resolveDiscoverMembershipUiState,
 	type DiscoverMembershipFeeTier,
@@ -1326,21 +1326,6 @@ function membershipFeeHumanToE6(raw: string | number | undefined | null): string
 	const n = Number(s)
 	if (!Number.isFinite(n) || n <= 0) return '0'
 	return String(Math.round(n * 1e6))
-}
-
-function membershipFeeE6ToHuman(e6: string | number | undefined | null): string {
-	if (e6 == null || e6 === '') return ''
-	try {
-		const bi = BigInt(String(e6).replace(/,/g, '').trim() || '0')
-		if (bi <= 0n) return ''
-		const whole = bi / 1000000n
-		const frac = bi % 1000000n
-		if (frac === 0n) return whole.toString()
-		const fracStr = frac.toString().padStart(6, '0').replace(/0+$/, '')
-		return `${whole}.${fracStr}`
-	} catch {
-		return ''
-	}
 }
 
 function asDiscoverMetadataRoot(raw: unknown): Record<string, unknown> | null {
@@ -4653,7 +4638,7 @@ function DiscoverMerchantDetailFullScreen({
 	const openDiscoverMembershipPay = useCallback((kind: 'join' | 'upgrade') => {
 		const tier = kind === 'join' ? membershipUi.joinTier : membershipUi.upgradeTier
 		if (!tier) return
-		const prefill = membershipPurchaseApiAmountHuman(tier.feeE6, tier.minUsdc6)
+		const prefill = membershipPurchaseApiAmountHuman(tier.feeE6)
 		setUsdcTopupError('')
 		setUsdcTopupAmountText(prefill)
 		setUsdcTopupIntent(kind === 'join' ? 'first_purchase' : 'upgrade')
@@ -4662,16 +4647,14 @@ function DiscoverMerchantDetailFullScreen({
 		setMembershipPurchaseFeeFiat6(tier.feeE6)
 		setMembershipPurchaseMinUsdc6(tier.minUsdc6)
 		const feeHuman = membershipFeeE6ToHuman(tier.feeE6)
-		const creditHuman = membershipFeeE6ToHuman(membershipPurchasePointsCreditE6(tier.minUsdc6).toString())
 		const durationLabel =
 			tier.durationKind != null ? MEMBERSHIP_DURATION_LABELS[tier.durationKind] ?? '' : ''
 		const prefix = balancePrefix || ''
 		const feePart = feeHuman ? `${prefix}${feeHuman}` : ''
-		const creditPart = creditHuman ? `${prefix}${creditHuman}` : ''
 		setUsdcTopupRulesHint(
 			kind === 'join'
-				? `First purchase includes membership fee ${feePart}${durationLabel ? ` · ${durationLabel}` : ''}${creditPart ? `. Card credit ${creditPart} is included.` : '.'}`
-				: `Upgrade to ${tier.name} includes membership fee ${feePart}${durationLabel ? ` · ${durationLabel}` : ''}${creditPart ? `. Card credit ${creditPart} is included.` : '.'}`,
+				? `First purchase includes membership fee ${feePart}${durationLabel ? ` · ${durationLabel}` : ''}.`
+				: `Upgrade to ${tier.name} includes membership fee ${feePart}${durationLabel ? ` · ${durationLabel}` : ''}.`,
 		)
 		setUsdcTopupPhase('amount')
 	}, [balancePrefix, membershipUi.joinTier, membershipUi.upgradeTier])
@@ -4701,15 +4684,10 @@ function DiscoverMerchantDetailFullScreen({
 			(usdcTopupIntent === 'first_purchase' || usdcTopupIntent === 'upgrade')
 		if (isMembershipPay) {
 			try {
-				const minE6 =
-					BigInt(membershipPurchaseFeeFiat6) +
-					membershipPurchasePointsCreditE6(membershipPurchaseMinUsdc6)
+				const minE6 = BigInt(membershipPurchaseFeeFiat6)
 				const amtE6 = BigInt(membershipFeeHumanToE6(parsed.apiAmount))
 				if (amtE6 < minE6) {
-					const minHuman = membershipPurchaseApiAmountHuman(
-						membershipPurchaseFeeFiat6,
-						membershipPurchaseMinUsdc6,
-					)
+					const minHuman = membershipPurchaseApiAmountHuman(membershipPurchaseFeeFiat6)
 					setUsdcTopupError(`Amount must be at least ${minHuman} ${displayCurrency}.`)
 					return
 				}

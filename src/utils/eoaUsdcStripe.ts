@@ -38,6 +38,10 @@ export function isEoaUsdcStripePollOk(out: EoaUsdcStripePollOutcome): out is Eoa
 	return out.ok === true
 }
 
+export function isEoaUsdcStripeFulfillmentProcessing(lastEvent?: string): boolean {
+	return (lastEvent ?? '').toLowerCase().includes('fulfillment_processing')
+}
+
 export type EoaUsdcStripeReturnKind = 'success' | 'cancel'
 
 export function resolveStripeDepositEoa(profiles: Array<{ keyID?: string }> | undefined | null): string {
@@ -137,12 +141,12 @@ export async function createEoaUsdcStripeSession(
 		})
 		const body = (await res.json().catch(() => ({}))) as { sessionId?: string; url?: string; error?: string }
 		if (!res.ok || !body.sessionId || !body.url) {
-			return { error: body.error?.trim() || 'Could not start checkout' }
+			return { error: body.error?.trim() || 'Could not start Stripe USDC deposit' }
 		}
 		persistEoaUsdcStripeSessionId(body.sessionId)
 		return { sessionId: body.sessionId, url: body.url }
 	} catch {
-		return { error: 'Could not start checkout' }
+		return { error: 'Could not start Stripe USDC deposit' }
 	}
 }
 

@@ -2793,10 +2793,10 @@ const Home = (_props: HomeProps) => {
 										<div className="mx-auto flex w-full max-w-md flex-col gap-4 px-0 pb-2 pt-0 sm:px-2">
 											<div className="shrink-0 space-y-2 text-center">
 												<h2 className="text-2xl font-extrabold tracking-tight text-[#191c1d] dark:text-slate-100">
-													Scan to Pay
+													{tu('my_beamio_code')}
 												</h2>
 												<p className="mx-auto max-w-[280px] text-sm leading-snug text-[#424655] dark:text-slate-400">
-													Position the QR code within the frame to authorize the transaction.
+													{tu('present_this_to_the_merchant_to_seamlessly_pay_or_top_up')}
 												</p>
 											</div>
 

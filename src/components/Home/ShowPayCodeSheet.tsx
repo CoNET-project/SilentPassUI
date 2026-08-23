@@ -225,7 +225,7 @@ export default function ShowPayCodeSheet({
 					<motion.div
 						role="dialog"
 						aria-modal="true"
-						aria-label="Scan to Pay"
+						aria-label={tu('my_beamio_code')}
 						className="fixed bottom-0 left-0 right-0 z-[10051] flex max-h-[92dvh] flex-col items-center overflow-hidden overscroll-contain rounded-t-xl bg-[#f3f4f5] pb-[calc(env(safe-area-inset-bottom)+1.5rem)] shadow-[0_-20px_60px_rgba(0,0,0,0.1)] dark:bg-slate-900"
 						initial={{ y: '100%' }}
 						animate={{ y: 0 }}
@@ -250,7 +250,7 @@ export default function ShowPayCodeSheet({
 							<div className="mx-auto flex w-full max-w-md flex-col gap-4 px-0 pb-2 pt-0 sm:px-2">
 								<div className="shrink-0 space-y-2 text-center">
 									<h2 className="text-2xl font-extrabold tracking-tight text-[#191c1d] dark:text-slate-100">
-										Scan to Pay
+										{tu('my_beamio_code')}
 									</h2>
 									<p className="mx-auto max-w-[280px] text-sm leading-snug text-[#424655] dark:text-slate-400">
 										Show this code at the merchant POS to redeem your coupon.

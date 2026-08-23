@@ -7,6 +7,7 @@ import {
 	EOA_USDC_STRIPE_PRESETS,
 	createEoaUsdcStripeSession,
 	dollarsToAmountUsdc6,
+	isEoaUsdcStripeFulfillmentProcessing,
 	isEoaUsdcStripePollOk,
 	parseStripeDollarInput,
 	persistEoaUsdcStripeSessionId,
@@ -102,19 +103,12 @@ export default function EoaUsdcStripePanel({ walletAddress, onSuccess }: EoaUsdc
 				return
 			}
 			if (out.status === 'succeeded') {
-				const hash = out.chainFulfillment?.usdcTxHash?.trim() ?? ''
-				const chainErr = out.chainFulfillment?.lastError?.trim() ?? ''
-				if (hash) {
-					setTxHash(hash)
-					setPhase('success')
-					onSuccess?.()
-					return
-				}
-				if (chainErr) {
-					setPhase('error')
-					setErrorText(chainErr)
-					return
-				}
+				setTxHash(out.chainFulfillment?.usdcTxHash?.trim() ?? '')
+				setPhase('success')
+				onSuccess?.()
+				return
+			}
+			if (isEoaUsdcStripeFulfillmentProcessing(out.lastEvent)) {
 				setPhase('transferring')
 			} else {
 				setPhase('waiting')
@@ -156,7 +150,7 @@ export default function EoaUsdcStripePanel({ walletAddress, onSuccess }: EoaUsdc
 				</div>
 				<div className="min-w-0">
 					<h4 className="text-base font-bold text-slate-900 dark:text-slate-100">Buy USDC with card</h4>
-					<p className="text-xs text-slate-500 dark:text-slate-400">USDC on Base · deposited to your EOA Wallet</p>
+					<p className="text-xs text-slate-500 dark:text-slate-400">Stripe sends USDC on Base to your EOA</p>
 				</div>
 			</div>
 
@@ -215,16 +209,19 @@ export default function EoaUsdcStripePanel({ walletAddress, onSuccess }: EoaUsdc
 			</div>
 
 			{phase === 'waiting' && (
-				<p className="mb-3 text-xs text-slate-500 dark:text-slate-400">Complete card payment in Stripe. This screen updates when USDC is sent.</p>
+				<p className="mb-3 text-xs text-slate-500 dark:text-slate-400">Complete Stripe Onramp. Stripe sends USDC on Base to your EOA.</p>
 			)}
 			{phase === 'transferring' && (
-				<p className="mb-3 text-xs text-slate-500 dark:text-slate-400">Payment received. Sending USDC on Base…</p>
+				<p className="mb-3 text-xs text-slate-500 dark:text-slate-400">Stripe is sending USDC to your EOA…</p>
 			)}
 			{phase === 'success' && (
 				<div className="mb-3 flex items-start gap-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 px-3 py-2.5 text-sm text-emerald-800 dark:text-emerald-200">
 					<Check className="h-4 w-4 mt-0.5 shrink-0" aria-hidden />
 					<div>
 						<div className="font-semibold">USDC sent to your EOA Wallet</div>
+						<p className="mt-0.5 text-xs text-emerald-700/80 dark:text-emerald-300/80">
+							Wallet balance updates when Base is current.
+						</p>
 						{txHash ? <div className="mt-0.5 text-xs font-mono break-all">{txHash.slice(0, 10)}…{txHash.slice(-8)}</div> : null}
 					</div>
 				</div>
@@ -249,11 +246,11 @@ export default function EoaUsdcStripePanel({ walletAddress, onSuccess }: EoaUsdc
 			>
 				{busy ? <Loader2 className="h-5 w-5 animate-spin" aria-hidden /> : null}
 				{phase === 'opening'
-					? 'Opening checkout…'
+					? 'Opening Stripe…'
 					: phase === 'waiting'
-						? 'Waiting for payment…'
+						? 'Waiting for Stripe…'
 						: phase === 'transferring'
-							? 'Sending USDC…'
+							? 'Stripe is sending USDC…'
 							: phase === 'success'
 								? 'Done'
 								: 'Continue'}

@@ -78,13 +78,9 @@ import {
 	type OwnedCatalogSummary,
 } from '@/utils/myBrandsOwnedCatalog'
 import {
-	notifyNativeBackgroundChat,
 	syncNativeFooterChatBadge,
 } from '@/utils/cashTreesNativeAppStateBridge'
-import {
-	ensureCashTreesAppLifecycleTracking,
-	isCashTreesAppBackgrounded,
-} from '@/utils/cashTreesAppLifecycle'
+import { ensureCashTreesAppLifecycleTracking } from '@/utils/cashTreesAppLifecycle'
 import { syncChatBadgeToApi } from '@/utils/cashTreesPushBind'
 import { CONET_RPC_URL } from '@/config/chainAddresses'
 import {
@@ -991,25 +987,19 @@ export function DaemonProvider({ children }: DaemonProps) {
 	const seenMsgRef = useRef<Set<string>>(new Set())
 	const msgCountLockRef = useRef(false) // 可选：避免同一帧重复统计
 	const [messageCount, setMessageCount] = useState(0)
-	const prevMessageCountRef = useRef(0)
 
 	useEffect(() => {
 		ensureCashTreesAppLifecycleTracking()
 	}, [])
 
 	/**
-	 * Footer `/chat` → native icon badge. API unread sync is DB-only (no APNs alert).
-	 * When the shell is behind Home but PWA is still receiving gossip, also ask native
-	 * for a local system notification — remote APNs will not fire while SI sees listen online.
+	 * Footer `/chat` → native icon badge. API unread sync is DB-only (no alert).
+	 * System push is SI mailbox → APNs/FCM only — do not also ask native for a local
+	 * `notifyBackgroundChat` (that caused double notifications while listen was alive).
 	 */
 	useEffect(() => {
-		const prev = prevMessageCountRef.current
-		prevMessageCountRef.current = messageCount
 		syncNativeFooterChatBadge(messageCount)
 		void syncChatBadgeToApi(messageCount)
-		if (messageCount > prev && isCashTreesAppBackgrounded()) {
-			notifyNativeBackgroundChat(messageCount)
-		}
 	}, [messageCount])
 
 	const [scanData, setScanData] = useState('')

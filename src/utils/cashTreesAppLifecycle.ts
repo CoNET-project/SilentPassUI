@@ -1,7 +1,6 @@
 /**
- * Track whether the native shell / WebView is behind Home (background) while PWA JS may still run.
- * Used to emit local system chat push via the native bridge (APNs/FCM offline path will not fire
- * while the mailbox SI still sees an active listen socket).
+ * Track whether the native shell / WebView is behind Home while PWA JS may still run.
+ * Used for UI (e.g. unread while viewing a thread). System chat push is SI mailbox only.
  */
 
 type LifecyclePhase = 'active' | 'inactive' | 'background'

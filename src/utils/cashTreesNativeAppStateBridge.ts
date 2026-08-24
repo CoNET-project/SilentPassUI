@@ -128,9 +128,9 @@ function chatNotifyBody(badge: number): string {
 }
 
 /**
- * While the shell is behind Home but the WebView is still alive, mailbox SI keeps
- * the listen socket and will **not** call notifyOfflineChat / APNs. Ask native to
- * post a local system notification + icon badge via the bridge.
+ * @deprecated Prefer SI mailbox APNs/FCM (`notifyOfflineChat`). PWA must not also present a
+ * local system notification on inbound chat — that caused double alerts while listen was alive.
+ * Kept for shell bridge compatibility; do not call from chat unread effects.
  */
 export function notifyNativeBackgroundChat(chatCount: number): boolean {
 	const badge = clampBadgeCount(chatCount)

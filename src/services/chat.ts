@@ -793,8 +793,8 @@ export const prepareGossipListenResume = (reason = 'foreground_resume'): void =>
 /**
  * Tear down listen so mailbox treats the user offline (saveLocal + APNs).
  * Prefer calling on true unload / pagehide — not on every Home press.
- * While Home leaves the WebView alive, keep listen and use native
- * `notifyBackgroundChat` local push instead (see DaemonProvider + cashTreesAppLifecycle).
+ * While Home leaves the WebView alive, keep listen for UI ingest; system push is
+ * SI mailbox → APNs/FCM only (do not also bridge PWA `notifyBackgroundChat`).
  */
 export const pauseGossipListenOnBackground = (
 	setGossip: (val: boolean) => void,

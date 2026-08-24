@@ -11,7 +11,7 @@ export type CashTreesNativeNfcBridge = {
 	openURL?: (payload: { url: string }) => void
 	/** PWA → Native 通用状态（Footer 角标、App 图标 badge 等） */
 	publishAppState?: (state: Record<string, unknown>) => void
-	/** Background chat local notification + badge (shell behind Home, PWA still running) */
+	/** @deprecated Shell may still expose; PWA must not call for inbound chat (SI push only). */
 	notifyBackgroundChat?: (payload: Record<string, unknown> | string) => void
 }
 

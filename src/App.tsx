@@ -954,10 +954,8 @@ function AppShell() {
 		window.addEventListener(BEAMIO_WALLET_READY_EVENT, onWalletReady)
 
 		// Home / app-switcher: keep gossip listen alive so the still-running PWA can receive
-		// chat and push a **local** system notification via the native bridge
-		// (`notifyBackgroundChat`). Aborting listen on every visibilitychange would force the
-		// SI offline path — but APNs often does not update the icon while the process is still
-		// "current". Only tear down listen on pagehide / bfcache (true unload).
+		// chat into UI. System push is SI mailbox → APNs/FCM (do not also bridge local notify).
+		// Only tear down listen on pagehide / bfcache (true unload) so offline saveLocal works.
 		const onForegroundResume = () => {
 			void resumeGossipListenOnForeground(
 				setProfiles,

@@ -91,14 +91,18 @@ function PassCardFace({ display }: { display: WalletMerchantPassStackDisplay }) 
 							)
 						) : null}
 					</div>
-					<div className="min-w-0 text-right">
-						<p
-							className="text-lg font-black leading-tight tracking-tight"
-							style={{ color: tierTheme.primary }}
-						>
-							{discountHeadline}
-						</p>
-					</div>
+					{discountHeadline ? (
+						<div className="min-w-0 text-right">
+							<p
+								className="text-lg font-black leading-tight tracking-tight"
+								style={{ color: tierTheme.primary }}
+							>
+								{discountHeadline}
+							</p>
+						</div>
+					) : (
+						<div className="min-w-0" aria-hidden />
+					)}
 				</div>
 				<div className="flex w-full items-end justify-between gap-3">
 					<div className="min-w-0">

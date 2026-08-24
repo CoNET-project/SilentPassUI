@@ -26,7 +26,14 @@ type Props = {
 }
 
 /** Pass face chrome aligned with bizSite Programs card preview. */
-function PassCardFace({ display }: { display: WalletMerchantPassStackDisplay }) {
+function PassCardFace({
+	display,
+	padTopLeftForDetail = false,
+}: {
+	display: WalletMerchantPassStackDisplay
+	/** Reserve space so the floating merchant-detail (i) control does not cover the logo. */
+	padTopLeftForDetail?: boolean
+}) {
 	const {
 		tierTheme,
 		tierGradient,
@@ -70,7 +77,7 @@ function PassCardFace({ display }: { display: WalletMerchantPassStackDisplay }) 
 			{/* Own compositor layer so text is not re-rasterized with background blur fills */}
 			<div className="relative z-[1] flex h-full w-full flex-col justify-between [transform:translateZ(0)] [-webkit-font-smoothing:antialiased]">
 				<div className="flex w-full items-start justify-between gap-3">
-					<div className="shrink-0">
+					<div className={`shrink-0 ${padTopLeftForDetail ? 'pl-11' : ''}`}>
 						{logoImgClass ? (
 							logoUrl ? (
 								<IpfsImg
@@ -188,7 +195,7 @@ function WalletMerchantPassStackCardInner({
 				style={cardShellStyle}
 				aria-hidden
 			>
-				<PassCardFace display={display} />
+				<PassCardFace display={display} padTopLeftForDetail={showMerchantDetailControl} />
 			</div>
 
 			{showMerchantDetailControl ? (
@@ -201,7 +208,7 @@ function WalletMerchantPassStackCardInner({
 					className="absolute flex h-9 w-9 items-center justify-center rounded-full border border-white/30 bg-white/15 text-white/90 backdrop-blur-sm transition active:scale-[0.96] hover:bg-white/25 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/80"
 					style={{
 						top: top + 12,
-						right: 12,
+						left: 12,
 						zIndex: zIndex + 2,
 						transition: 'top 300ms ease-out',
 					}}

@@ -6,6 +6,7 @@ import { useBeamioTagDatabase } from "./providers/BeamioTagDatabaseProvider"
 import Footer from "@/components/Footer"
 import EoaUsdcStripeReturnHost from "@/components/addUSDC/EoaUsdcStripeReturnHost"
 import { openExternalUrl } from "@/utils/cashTreesNativeNfc"
+import { clearOfflineChatAlertsViaBridge } from "@/utils/cashTreesNativeAppStateBridge"
 import SearchInputWithDropdown from "@/components/Home/SearchBarWithResults"
 import AppEntryGate from "@/components/AppEntryGate"
 import Home from "@/components/Home/Home"
@@ -546,6 +547,17 @@ function AppShell() {
 	useEffect(() => {
 		if (isGlobalBarPinRoute) setFooterVisible(true)
 	}, [isGlobalBarPinRoute])
+
+	/** Enter Chat (list or thread): tray only. Icon badge stays unread via syncNativeFooterChatBadge. */
+	const onChatRoute = useMemo(() => {
+		const p = (pathname || '/').toLowerCase()
+		return p === '/chat' || p.startsWith('/chat/') || p.startsWith('/chat?')
+	}, [pathname])
+
+	useEffect(() => {
+		if (!onChatRoute) return
+		clearOfflineChatAlertsViaBridge()
+	}, [onChatRoute])
 
 	/** 消息唯一键：优先 sendId，否则 from_timestamp，用于去重与角标 */
 	const getMsgKey = (raw: any) => {

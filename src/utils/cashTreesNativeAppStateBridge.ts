@@ -113,6 +113,41 @@ export function publishNativeAppState(state: NativeAppState): boolean {
 	return false
 }
 
+/**
+ * Clear offline chat tray notifications (FCM / local). Does not reset icon badge —
+ * call {@link syncNativeFooterChatBadge} afterward with current unread.
+ * Native shell also clears tray on resume; this is for entering Chat while already foreground.
+ */
+export function clearOfflineChatAlertsViaBridge(): boolean {
+	if (!isCashTreesNativeWebView()) return false
+	const host = getCashTreesNativeNfcHost()
+	const w = typeof window !== 'undefined'
+		? (window as Window & {
+				CashTreesIOS?: { clearOfflineChatAlerts?: () => void }
+				CashTreesAndroid?: { clearOfflineChatAlerts?: () => void }
+			})
+		: null
+
+	if (host === 'ios' && typeof w?.CashTreesIOS?.clearOfflineChatAlerts === 'function') {
+		try {
+			w.CashTreesIOS.clearOfflineChatAlerts()
+			return true
+		} catch {
+			return false
+		}
+	}
+	if (host === 'android' && typeof w?.CashTreesAndroid?.clearOfflineChatAlerts === 'function') {
+		try {
+			w.CashTreesAndroid.clearOfflineChatAlerts()
+			return true
+		} catch {
+			return false
+		}
+	}
+
+	return false
+}
+
 /** Footer `/chat` tab 冒泡数 → Native App 图标角标（与 Footer badge 同源）。 */
 export function syncNativeFooterChatBadge(chatCount: number): boolean {
 	return publishNativeAppState({

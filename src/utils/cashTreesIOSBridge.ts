@@ -7,6 +7,8 @@ declare global {
       getEmbeddedPwaPendingVersion?: () => string
       applyEmbeddedPwaUpdate?: () => void
       publishAppState?: (state: Record<string, unknown>) => void
+      /** Tray only; icon badge stays unread via publishAppState */
+      clearOfflineChatAlerts?: () => void
       /** Local alert + badge while shell is behind Home */
       notifyBackgroundChat?: (payload: {
         badge?: number
@@ -28,6 +30,8 @@ declare global {
       getEmbeddedPwaPendingVersion?: () => string
       applyEmbeddedPwaUpdate?: () => void
       publishAppState?: (json: string) => void
+      /** Tray only; icon badge stays unread via publishAppState */
+      clearOfflineChatAlerts?: () => void
       /** JSON string `{ badge, title?, body? }` — local alert while backgrounded */
       notifyBackgroundChat?: (json: string) => void
       /** JSON string `{ eoa, pgpKeyId? }` — FCM bind */

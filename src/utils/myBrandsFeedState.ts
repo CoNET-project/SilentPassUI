@@ -9,7 +9,7 @@ export type { MyBrandsOwnedCatalogSnapshot }
 
 export type MyBrandCardFeedDetailsMap = MyBrandsFeedDetailsSnapshot
 
-/** Sum charge-reward (#2) + social-reward (#13) for wallet / My Brands point subtitles. */
+/** V16+: unified Reward PT (#13). Prefer chargeRewardPoints; do not add social (same balance). */
 function rewardPointsTotal(
 	assets?: { chargeRewardPoints?: string; socialRewardPoints?: string } | null
 ): number {
@@ -17,10 +17,11 @@ function rewardPointsTotal(
 	const social = Number(assets?.socialRewardPoints ?? 0)
 	const c = Number.isFinite(charge) ? charge : 0
 	const s = Number.isFinite(social) ? social : 0
-	return c + s
+	if (c > 0) return c
+	return s
 }
 
-/** My Brands 右栏金额副标题：charge-reward (#2) + social-reward (#13) 合计 pts。 */
+/** My Brands 右栏金额副标题：Reward PT (#13) pts. */
 export function formatMyBrandNft2PointsSubtitle(
 	detail: {
 		assets?: { chargeRewardPoints?: string; socialRewardPoints?: string } | null

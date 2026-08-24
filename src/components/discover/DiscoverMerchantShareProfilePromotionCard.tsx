@@ -52,7 +52,9 @@ function buildYouEarnLines(metrics: DiscoverSocialMissionMetrics | null): EarnLi
 		lines.push({
 			key: 'topup',
 			Icon: Banknote,
-			label: `${metrics.topup.toLocaleString('en-US')} pts / spend`,
+			label: metrics.topupAsPercent
+				? `${metrics.topup}% of top-up`
+				: `${metrics.topup.toLocaleString('en-US')} pts / spend`,
 		})
 	}
 	if (metrics.claim != null) {

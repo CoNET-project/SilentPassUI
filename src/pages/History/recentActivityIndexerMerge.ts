@@ -1051,7 +1051,7 @@ export type ChargeRewardAfterNoteParsed = {
 	chargeRewardRatioE6?: bigint
 }
 
-/** Charge reward (NFT#2 tokenId=2) from indexer meta.afterNotePayer JSON — point + optional post-charge balance. */
+/** Charge reward (Reward PT #13) from indexer meta.afterNotePayer JSON — point + optional post-charge balance. */
 export function parseChargeRewardAfterNotePayer(afterNotePayer: unknown): ChargeRewardAfterNoteParsed | null {
 	if (typeof afterNotePayer !== 'string' || !afterNotePayer.trim()) return null
 	try {
@@ -1364,7 +1364,7 @@ export interface TxView {
 	merchantChargeTipCurrencyCode?: string
 	/** Charge channel: indexer subordinate valid ⇒ In-store; persisted for cache rows without rawTransaction. */
 	merchantChargeInStore?: boolean
-	/** Merged main + TX_TIP charge-reward points (E6 string) for NFT#2 subtitle. */
+	/** Merged main + TX_TIP charge-reward points (E6 string) for Reward PT #13 subtitle. */
 	merchantChargeRewardPoint6?: string
 	rawTransaction?: RawTxRecord
 	card?: { title?: string; detail?: string; image?: string }

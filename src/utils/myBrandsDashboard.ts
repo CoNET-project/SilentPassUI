@@ -9,7 +9,6 @@ import {
 } from '@/config/chainAddresses'
 import { conetDepinProvider } from '@/utils/constants'
 import { CARD_LEVEL_USER_CUMUL_STAT_TOKEN_IDS } from '@/utils/cardLevelUserCumulStatTokenIds'
-import { peekCardBasicMetadata } from '@/utils/cardBasicMetadataGlobalCache'
 import { isDiscoverMembershipNftTokenId } from '@/utils/discoverMembershipFee'
 import { discoverOrphanMembershipNfts } from '@/utils/membershipNftDiscovery'
 
@@ -192,11 +191,9 @@ function sliceToMyCardAssets(
 	}
 }
 
-function resolveRewardTokenId(cardAddress: string): number {
-	const metaPeek = peekCardBasicMetadata(cardAddress)
-	const rid = metaPeek?.pointSystem?.rewardTokenId
-	if (typeof rid === 'number' && Number.isFinite(rid) && rid >= 0) return Math.trunc(rid)
-	return 2
+/** V16+: Charge/social Reward PT is always #13 (legacy metadata may still say 2). */
+function resolveRewardTokenId(_cardAddress: string): number {
+	return 13
 }
 
 export function isMyBrandsDashboardConfigured(): boolean {
@@ -245,7 +242,7 @@ export async function fetchMyBrandsDashboardCardRows(
 
 	const aa =
 		aaOptional && ethers.isAddress(aaOptional) ? ethers.getAddress(aaOptional) : ethers.ZeroAddress
-	/** Prefer first card's rewardTokenId; default 2 (most cards share charge reward id). */
+	/** V16+: Reward PT = #13 (ignore legacy metadata rewardTokenId: 2). */
 	const rewardTokenId = resolveRewardTokenId(unique[0]!)
 
 	try {

@@ -3540,12 +3540,14 @@ export const getMyAssets = async (
         const usdcContract = new ethers.Contract(USDCContract_BASE, usdc_abi, baseEndpoint);
         const balanceAddress = profile.aaAccount ?? eoa;
         const metaPeek = peekCardBasicMetadata(cardAddress)
-        const rewardTokenId =
+        const rawRewardTokenId =
             typeof metaPeek?.pointSystem?.rewardTokenId === 'number' &&
             Number.isFinite(metaPeek.pointSystem.rewardTokenId) &&
             metaPeek.pointSystem.rewardTokenId >= 0
                 ? Math.trunc(metaPeek.pointSystem.rewardTokenId)
-                : 2
+                : 13
+        /** V16+: Reward PT = #13; remap legacy metadata rewardTokenId: 2. */
+        const rewardTokenId = rawRewardTokenId === 2 ? 13 : rawRewardTokenId
         const [usdcBalanceRaw, chargeRewardBalance] = await Promise.all([
             usdcContract.balanceOf(balanceAddress),
             cardContract.balanceOf(balanceAddress, rewardTokenId),
@@ -3875,6 +3877,8 @@ function normalizeCardPointSystemMetadata(raw: unknown): CardPointSystemMetadata
 	} else if (typeof tokenRaw === 'string' && /^\d+$/.test(tokenRaw.trim())) {
 		rewardTokenId = Number.parseInt(tokenRaw.trim(), 10)
 	}
+	/** Beacon V16+: Charge Reward PT is #13; remap legacy metadata rewardTokenId: 2. */
+	if (rewardTokenId === 2) rewardTokenId = 13
 	if (enabled == null && chargeRewardRatioE6 == null && rewardTokenId == null) return undefined
 	return {
 		enabled: enabled ?? (chargeRewardRatioE6 != null ? BigInt(chargeRewardRatioE6) > 0n : true),

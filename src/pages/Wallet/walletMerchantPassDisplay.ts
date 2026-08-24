@@ -127,9 +127,10 @@ export function buildWalletMerchantPassStackDisplay(
 			? '…'
 			: '—'
 	const pointSystemOn = detail?.meta?.pointSystem?.enabled === true
-	const rewardTotal =
-		(Number(detail?.assets?.chargeRewardPoints ?? 0) || 0) +
-		(Number(detail?.assets?.socialRewardPoints ?? 0) || 0)
+	const chargeR = Number(detail?.assets?.chargeRewardPoints ?? 0) || 0
+	const socialR = Number(detail?.assets?.socialRewardPoints ?? 0) || 0
+	/** V16+: charge + social fields are the same #13 balance — do not add. */
+	const rewardTotal = chargeR > 0 ? chargeR : socialR
 	const balanceSubtitle = pointSystemOn && rewardTotal > 0 ? formatPointSubtitle(rewardTotal) : ''
 	const balanceSig = Number.isFinite(ptsNum) ? ptsNum.toFixed(2) : balanceLine
 	const tierGradient = cardTierGradientCss(tierPres.accentColor)

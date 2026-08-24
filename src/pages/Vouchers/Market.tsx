@@ -1765,7 +1765,7 @@ function DiscoverMerchantPromoRewardTierCard({
 
 /**
  * Merchant detail Points = NFT #13 Reward Voucher (PT) only.
- * Do not mix #0 program points or #2 consumption into this balance.
+ * Do not mix #0 program points or legacy #2 consumption into this balance.
  */
 function DiscoverMerchantLoyaltyPointsCard({
 	points,
@@ -3836,7 +3836,7 @@ function DiscoverMerchantDetailFullScreen({
 	const [issuerOwnerEoa, setIssuerOwnerEoa] = useState<string | null>(item.cardOwner ?? null)
 	const [issuerProfileItem, setIssuerProfileItem] = useState<searchResult | null>(null)
 	const [issuerProfileOpening, setIssuerProfileOpening] = useState(false)
-	/** Card social missions from getRewardRule(1/2/3); undefined = loading, null = none active on-chain. */
+	/** Card social missions from getRewardRule(1/3) + top-up ratio E6; undefined = loading, null = none. */
 	const [chainCardSocialPromotion, setChainCardSocialPromotion] = useState<
 		Awaited<ReturnType<typeof readCardSocialPromotionFromChain>> | undefined
 	>(undefined)

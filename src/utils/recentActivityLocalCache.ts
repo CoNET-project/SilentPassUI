@@ -6,7 +6,7 @@
 import { ethers } from 'ethers'
 import { remapPosCouponSurrenderTxView, type TxView } from '@/pages/History/recentActivityIndexerMerge'
 
-/** 持久化不含 rawTransaction（避免 bigint / 体积）；保留 isMerchantCharge + merchantPayeeAddress + merchantCardAddress + merchantChargeInStore + merchantChargeRewardPoint6 供 Charge 标题与 NFT#2 副标题 */
+/** 持久化不含 rawTransaction（避免 bigint / 体积）；保留 isMerchantCharge + merchantPayeeAddress + merchantCardAddress + merchantChargeInStore + merchantChargeRewardPoint6 供 Charge 标题与 Reward PT #13 副标题 */
 export type RecentActivityCacheRow = Omit<TxView, 'rawTransaction'>
 
 type StoredPayload = {

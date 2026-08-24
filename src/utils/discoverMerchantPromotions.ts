@@ -24,6 +24,8 @@ export type DiscoverMerchantPromotionRow = {
 type SocialPromotionReward = {
 	enabled?: boolean
 	points13: number
+	/** Whole % of top-up (ratio E6); Discover labels as `N% of top-up`. */
+	asPercent?: boolean
 }
 
 type SocialPromotionEvent = {
@@ -131,7 +133,7 @@ function rewardFromPayload(raw: SocialPromotionReward | undefined): SocialPromot
 	if (!raw || raw.enabled === false) return null
 	const points = parsePositiveInt(raw.points13)
 	if (points == null) return null
-	return { enabled: true, points13: points }
+	return { enabled: true, points13: points, asPercent: raw.asPercent === true }
 }
 
 function eventHasReward(ev: SocialPromotionEvent | undefined): boolean {
@@ -143,6 +145,9 @@ function formatRewardLine(role: 'User' | 'Referrer', reward: SocialPromotionRewa
 	const normalized = rewardFromPayload(reward)
 	if (!normalized) return null
 	const points = normalized.points13
+	if (normalized.asPercent) {
+		return `${role}: ${points}% of top-up`
+	}
 	return `${role}: ${points} pt${points === 1 ? '' : 's'}`
 }
 
@@ -176,8 +181,22 @@ function couponSocialPromotionEventLabel(key: (typeof COUPON_SOCIAL_EVENT_KEYS)[
 
 function eventDraftFromPayload(raw: SocialPromotionEvent | undefined): SocialPromotionEvent {
 	return {
-		user: raw?.user && raw.user.enabled !== false ? { enabled: true, points13: raw.user.points13 } : undefined,
-		ref: raw?.ref && raw.ref.enabled !== false ? { enabled: true, points13: raw.ref.points13 } : undefined,
+		user:
+			raw?.user && raw.user.enabled !== false
+				? {
+						enabled: true,
+						points13: raw.user.points13,
+						...(raw.user.asPercent === true ? { asPercent: true as const } : {}),
+					}
+				: undefined,
+		ref:
+			raw?.ref && raw.ref.enabled !== false
+				? {
+						enabled: true,
+						points13: raw.ref.points13,
+						...(raw.ref.asPercent === true ? { asPercent: true as const } : {}),
+					}
+				: undefined,
 	}
 }
 
@@ -671,6 +690,8 @@ export type DiscoverSocialMissionMetrics = {
 	linkClick: number | null
 	like: number | null
 	topup: number | null
+	/** When true, `topup` is whole % of top-up (ratio E6), not fixed pts. */
+	topupAsPercent?: boolean
 	claim: number | null
 	burn: number | null
 }
@@ -700,7 +721,7 @@ export type DiscoverActivePromotionsPanelModel = {
 }
 
 function emptySocialMissionMetrics(): DiscoverSocialMissionMetrics {
-	return { linkClick: null, like: null, topup: null, claim: null, burn: null }
+	return { linkClick: null, like: null, topup: null, topupAsPercent: false, claim: null, burn: null }
 }
 
 function socialMissionMetricsHasValues(metrics: DiscoverSocialMissionMetrics): boolean {
@@ -717,6 +738,7 @@ function applySocialEventMetrics(
 	metrics: DiscoverSocialMissionMetrics,
 	key: (typeof CARD_SOCIAL_EVENT_KEYS)[number] | (typeof COUPON_SOCIAL_EVENT_KEYS)[number],
 	points13: number,
+	asPercent?: boolean,
 ): void {
 	switch (key) {
 		case 'linkClick':
@@ -727,6 +749,7 @@ function applySocialEventMetrics(
 			break
 		case 'topup':
 			metrics.topup = points13
+			if (asPercent) metrics.topupAsPercent = true
 			break
 		case 'claim':
 			metrics.claim = points13
@@ -756,13 +779,15 @@ function buildCardSocialMissionMetrics(cardSocial: ShareTokenMetadataSocialPromo
 		const userReward = rewardFromPayload(ev.user)
 		const refReward = rewardFromPayload(ev.ref)
 		if (userReward) {
-			applySocialEventMetrics(user, key, userReward.points13)
+			applySocialEventMetrics(user, key, userReward.points13, userReward.asPercent)
 			userDetailLines.push(
-				`${cardSocialPromotionEventLabel(key)}: earn ${userReward.points13} social reward point${userReward.points13 === 1 ? '' : 's'}.`,
+				userReward.asPercent
+					? `${cardSocialPromotionEventLabel(key)}: earn ${userReward.points13}% of top-up as Reward PT.`
+					: `${cardSocialPromotionEventLabel(key)}: earn ${userReward.points13} social reward point${userReward.points13 === 1 ? '' : 's'}.`,
 			)
 		}
 		if (refReward) {
-			applySocialEventMetrics(referrer, key, refReward.points13)
+			applySocialEventMetrics(referrer, key, refReward.points13, refReward.asPercent)
 		}
 	}
 	return {

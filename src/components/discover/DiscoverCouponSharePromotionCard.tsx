@@ -60,7 +60,9 @@ function buildSharerEarnLines(metrics: DiscoverSocialMissionMetrics | null): Ear
 		lines.push({
 			key: 'topup',
 			Icon: Check,
-			label: `${metrics.topup.toLocaleString('en-US')} pts / spend`,
+			label: metrics.topupAsPercent
+				? `${metrics.topup}% of top-up`
+				: `${metrics.topup.toLocaleString('en-US')} pts / spend`,
 			tone: 'blue',
 		})
 	}

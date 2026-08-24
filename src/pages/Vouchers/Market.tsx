@@ -1340,6 +1340,21 @@ function discoverTierMembershipFeeE6(row: DiscoverOfferTierRow): string {
 
 function discoverMetadataHasMembershipFee(meta: Record<string, unknown> | null): boolean {
 	if (meta == null) return false
+	const baseRaw = meta.baseMembership
+	if (baseRaw != null && typeof baseRaw === 'object' && !Array.isArray(baseRaw)) {
+		const o = baseRaw as Record<string, unknown>
+		let feeE6 = '0'
+		if (o.membershipFeeE6 != null && String(o.membershipFeeE6).trim() !== '') {
+			try {
+				feeE6 = BigInt(String(o.membershipFeeE6).replace(/,/g, '').trim()).toString()
+			} catch {
+				feeE6 = '0'
+			}
+		} else {
+			feeE6 = membershipFeeHumanToE6(o.membershipFee as string | number | undefined)
+		}
+		if (BigInt(feeE6) > 0n) return true
+	}
 	const raw = meta.tiers
 	if (!Array.isArray(raw)) return false
 	for (const item of raw) {
@@ -1440,14 +1455,16 @@ function parseDiscoverRewardTiersFromMeta(
 	return rows.filter((row) => row.minUsdc6 > baseMinUsdc6)
 }
 
-/** All metadata tiers (including base) for membership fee display. */
+/** All membership rows: `baseMembership` (index 0) + higher `tiers[]` (index 1+). Legacy: fee rows in `tiers` only. */
 function parseDiscoverAllTiersFromMeta(meta: Record<string, unknown> | null): DiscoverOfferTierRow[] {
 	if (meta == null) return []
-	const raw = meta.tiers
-	if (!Array.isArray(raw) || raw.length === 0) return []
-	const rows: DiscoverOfferTierRow[] = []
-	for (const item of raw) {
-		if (item == null || typeof item !== 'object') continue
+
+	const parseOne = (
+		item: unknown,
+		fallbackIndex: number,
+		fallbackName: string,
+	): DiscoverOfferTierRow | null => {
+		if (item == null || typeof item !== 'object') return null
 		const o = item as Record<string, unknown>
 		const minRaw = o.minUsdc6 ?? o.min_usdc6
 		let minUsdc6 = 0n
@@ -1464,7 +1481,7 @@ function parseDiscoverAllTiersFromMeta(meta: Record<string, unknown> | null): Di
 				: null
 		const nameRaw = o.name ?? nested?.name
 		const tierName =
-			typeof nameRaw === 'string' && nameRaw.trim() ? nameRaw.trim() : 'Tier'
+			typeof nameRaw === 'string' && nameRaw.trim() ? nameRaw.trim() : fallbackName
 		let membershipFeeE6: string | undefined
 		if (o.membershipFeeE6 != null && String(o.membershipFeeE6).trim() !== '') {
 			try {
@@ -1484,18 +1501,41 @@ function parseDiscoverAllTiersFromMeta(meta: Record<string, unknown> | null): Di
 				? Math.trunc(durationRaw)
 				: undefined
 		const indexRaw = o.index != null ? Number(o.index) : NaN
-		const index = Number.isFinite(indexRaw) ? Math.trunc(indexRaw) : undefined
-		rows.push({
+		const index = Number.isFinite(indexRaw) ? Math.trunc(indexRaw) : fallbackIndex
+		return {
 			name: tierName,
-			minUsdc6,
+			minUsdc6: minUsdc6 > 0n ? minUsdc6 : BigInt(fallbackIndex + 1),
 			discountPct: 0,
 			backgroundColor: null,
 			membershipFeeE6,
 			membershipFee,
 			membershipDurationKind,
 			index,
-		})
+		}
 	}
+
+	const baseRaw = meta.baseMembership
+	const hasBaseObject = baseRaw != null && typeof baseRaw === 'object' && !Array.isArray(baseRaw)
+	const tiersRaw = Array.isArray(meta.tiers) ? meta.tiers : []
+
+	if (hasBaseObject) {
+		const base = parseOne(baseRaw, 0, 'Membership')
+		const higher: DiscoverOfferTierRow[] = []
+		tiersRaw.forEach((item, i) => {
+			const row = parseOne(item, i + 1, `Tier ${i + 1}`)
+			if (row) higher.push({ ...row, index: row.index ?? i + 1 })
+		})
+		if (base && BigInt(discoverTierMembershipFeeE6(base)) > 0n) {
+			return [{ ...base, index: 0, name: base.name || 'Membership', minUsdc6: base.minUsdc6 > 0n ? base.minUsdc6 : 1n }, ...higher]
+		}
+		return higher
+	}
+
+	const rows: DiscoverOfferTierRow[] = []
+	tiersRaw.forEach((item, i) => {
+		const row = parseOne(item, i, i === 0 ? 'Membership' : `Tier ${i}`)
+		if (row) rows.push(row)
+	})
 	return rows
 }
 
@@ -3995,6 +4035,7 @@ function DiscoverMerchantDetailFullScreen({
 			? `${balancePrefix} ${balanceAmount}`
 			: balanceAmount
 	const hasActiveMembership = customerHasValidMembershipFromAssets({
+		primaryMemberTokenId: pickActiveDiscoverMembershipNft(merchantAssets?.nfts)?.tokenId,
 		nfts: merchantAssets?.nfts,
 	})
 	const membershipFeeMode = discoverMetadataHasMembershipFee(merchantMetadataRoot)

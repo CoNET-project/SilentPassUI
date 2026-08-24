@@ -182,9 +182,10 @@ async function postConfigureRulesBatchGateway(params: {
 }
 
 /**
- * Sync **only** Top-up Promotion Reward PT / Referrer → on-chain `ruleId=2`
- * (same slot as Social Promotion → Top-up). Does **not** rewrite ruleIds 1 / 3.
- * Percent wholes map to fixed `actorMint13` / `refMint13` (Social Promotion `points13` semantics).
+ * @deprecated Do not use for Programs → Reward PT Save.
+ * Reward PT / Referrer Top-up % → `setTopupActorRewardRatio` + `setReferrerTopupAmountRatio`
+ * (see `syncTopupActorRewardRatioOnChain` / `syncProgramReferrerAmountRatioKind` in `biz.tsx`).
+ * Mapping % → fixed `ruleId=2` mint is incorrect and must not dual-mint with ratios.
  */
 export async function applyTopupRewardPtOnChainRule(params: {
 	cardAddress: string
@@ -229,9 +230,10 @@ export async function applyTopupRewardPtOnChainRule(params: {
 }
 
 /**
- * Sync **merchant card-level** social promotion (global L1 slots: linkClick / like / top-up).
- * RuleIds 1 / 2 / 3, targetKind merchant card or global — **not** per-issued-coupon.
- * Owner signs once; all three slots are written via configureEventRewardRulesBatch (no per-slot chain diff skip).
+ * Sync **merchant card-level** social promotion fixed-mint slots (linkClick / like).
+ * Always deactivates legacy `ruleId=2` (top-up fixed mint). Reward PT / Referrer Top-up
+ * use ratio E6 setters — not this batch.
+ * Owner signs once; slots written via configureEventRewardRulesBatch.
  * For per-coupon rules use {@link applyCouponSocialPromotionOnChainRules}.
  */
 export async function applySocialPromotionOnChainRules(params: {

@@ -5,7 +5,7 @@ import type {
 } from '@/services/BeamioCard'
 import { providerForBeamioUserCard } from '@/utils/beamioUserCardChain'
 import {
-	CARD_SOCIAL_PROMOTION_EVENT_KEYS,
+	CARD_SOCIAL_PROMOTION_EDITABLE_EVENT_KEYS,
 	SOCIAL_PROMOTION_LIKE_RULE_ID,
 	SOCIAL_PROMOTION_LINK_CLICK_RULE_ID,
 	SOCIAL_PROMOTION_TOPUP_RULE_ID,
@@ -92,16 +92,17 @@ function expectedChainParamsForEventKey(eventKey: CardSocialPromotionEventKey): 
 	}
 }
 
-/** Build card social promotion display model from on-chain reward rule slots (1/2/3). */
+/**
+ * Card Social Promotion display from on-chain fixed-mint slots **1 + 3** only.
+ * Top-up Reward PT / Referrer % live on ratio storage — not `getRewardRule(2)`.
+ */
 export async function readCardSocialPromotionFromChain(
 	cardAddress: string,
 ): Promise<ShareTokenMetadataSocialPromotion | null> {
 	const rules = await Promise.all(
-		[
-			SOCIAL_PROMOTION_LINK_CLICK_RULE_ID,
-			SOCIAL_PROMOTION_TOPUP_RULE_ID,
-			SOCIAL_PROMOTION_LIKE_RULE_ID,
-		].map((ruleId) => readCardRewardRuleFromChain(cardAddress, ruleId)),
+		[SOCIAL_PROMOTION_LINK_CLICK_RULE_ID, SOCIAL_PROMOTION_LIKE_RULE_ID].map((ruleId) =>
+			readCardRewardRuleFromChain(cardAddress, ruleId),
+		),
 	)
 	const byRuleId = new Map<number, OnChainRewardRuleRow>()
 	for (const row of rules) {
@@ -110,7 +111,7 @@ export async function readCardSocialPromotionFromChain(
 
 	const events: NonNullable<ShareTokenMetadataSocialPromotion['events']> = {}
 	let any = false
-	for (const eventKey of CARD_SOCIAL_PROMOTION_EVENT_KEYS) {
+	for (const eventKey of CARD_SOCIAL_PROMOTION_EDITABLE_EVENT_KEYS) {
 		const ruleId = cardSocialPromotionRuleIdForEventKey(eventKey)
 		const ev = eventFromChainRule(byRuleId.get(ruleId) ?? null)
 		if (ev) {
@@ -133,9 +134,10 @@ export type SocialPromotionRuleIntent = {
 }
 
 /**
- * Build a single intent for Social Promotion Top-up slot (`ruleId=2`).
- * Percent wholes (0–100) map to fixed `actorMint13` / `refMint13` the same way
- * Social Promotion editor maps `points13` — Master mints that fixed #13 amount per top-up event.
+ * @deprecated Programs → Top-up **Reward PT** writes `setTopupActorRewardRatio` /
+ * `setReferrerTopupAmountRatio` (true % of 实付 fiat6 → #13). Do **not** map % to fixed
+ * `actorMint13` / `refMint13` on `ruleId=2` (that was the dual-mint / wrong-semantics bug).
+ * Kept only for type/export stability; callers should not use this for Reward PT Save.
  */
 export function buildTopupRewardPtRuleIntent(params: {
 	actorEnabled: boolean
@@ -214,7 +216,7 @@ export function buildSocialPromotionRuleIntents(
 	}
 
 	const intents: SocialPromotionRuleIntent[] = []
-	for (const eventKey of CARD_SOCIAL_PROMOTION_EVENT_KEYS) {
+	for (const eventKey of CARD_SOCIAL_PROMOTION_EDITABLE_EVENT_KEYS) {
 		const ev = promo.events?.[eventKey]
 		const actorMint13 = mintFromReward(ev?.user)
 		const refMint13 = mintFromReward(ev?.ref)
@@ -230,6 +232,16 @@ export function buildSocialPromotionRuleIntents(
 			refMint13: active ? refMint13 : 0n,
 		})
 	}
+	// Always clear legacy fixed-mint topup slot; Reward PT uses ratio E6 storage.
+	intents.push({
+		ruleId: SOCIAL_PROMOTION_TOPUP_RULE_ID,
+		active: false,
+		eventKind: UC_METRIC_TOPUP,
+		targetKind: UC_TARGET_GLOBAL_ONLY,
+		issuedParentId: 0n,
+		actorMint13: 0n,
+		refMint13: 0n,
+	})
 	return intents
 }
 

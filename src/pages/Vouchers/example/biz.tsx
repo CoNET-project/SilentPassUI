@@ -13298,7 +13298,7 @@ const handlePublishCardIssuanceRef = useRef<
    meta: CardMetadataFromUri | null;
    /** On-chain `upgradeType`: 0 | 1 | 2 */
    upgradeType: number;
-   /** On-chain token #2 charge reward ratio; 1_000_000 = 1 point per 1 card-currency unit spent. */
+   /** On-chain Charge Reward PT (#13) ratio; 1_000_000 = 1 point per 1 card-currency unit spent. */
    chargeRewardRatioE6: string | null;
  } | null>(null);
 const [programSocialLikeCount, setProgramSocialLikeCount] = useState<number | null>(null);
@@ -18909,18 +18909,73 @@ const registerCardIssuanceProductionRedeemCodes = useCallback(
 
 const openCardIssuanceTopupPromotionEditor = useCallback(() => {
   setCardIssuanceTopupPromotionEditorServerError('');
-  setCardIssuanceTopupPromotionEditorBaseline({ ...cardIssuanceTopupPromotion });
-  setProgramReferrerTopupEditorBaseline({
-    enabled: programReferrerTopupEnabled,
-    percent: programReferrerTopupPercentInput,
-  });
-  setProgramRewardPtTopupEditorBaseline({
-    enabled: programRewardPtTopupEnabled,
-    percent: programRewardPtTopupPercentInput,
-  });
-  cardIssuanceTopupPromotionEditorOpenRef.current = true;
-  setCardIssuanceTopupPromotionEditorOpen(true);
+  const addr = cardIssuanceExistingCard?.cardAddress?.trim() ?? '';
+
+  const finishOpen = (opts: {
+    rewardPtEnabled: boolean;
+    rewardPtPercent: string;
+    referrerEnabled: boolean;
+    referrerPercent: string;
+  }) => {
+    setCardIssuanceTopupPromotionEditorBaseline({ ...cardIssuanceTopupPromotion });
+    setProgramReferrerTopupEditorBaseline({
+      enabled: opts.referrerEnabled,
+      percent: opts.referrerPercent,
+    });
+    setProgramRewardPtTopupEditorBaseline({
+      enabled: opts.rewardPtEnabled,
+      percent: opts.rewardPtPercent,
+    });
+    cardIssuanceTopupPromotionEditorOpenRef.current = true;
+    setCardIssuanceTopupPromotionEditorOpen(true);
+  };
+
+  if (!addr || !ethers.isAddress(addr)) {
+    finishOpen({
+      rewardPtEnabled: programRewardPtTopupEnabled,
+      rewardPtPercent: programRewardPtTopupPercentInput,
+      referrerEnabled: programReferrerTopupEnabled,
+      referrerPercent: programReferrerTopupPercentInput,
+    });
+    return;
+  }
+
+  void (async () => {
+    const [actorE6, ratios] = await Promise.all([
+      readTopupActorRewardRatioOnChain(addr).catch(() => null),
+      readReferrerAmountRatiosOnChain(addr).catch(() => null),
+    ]);
+    let rewardPtEnabled = programRewardPtTopupEnabled;
+    let rewardPtPercent = programRewardPtTopupPercentInput;
+    let referrerEnabled = programReferrerTopupEnabled;
+    let referrerPercent = programReferrerTopupPercentInput;
+
+    if (actorE6 != null && /^\d+$/.test(actorE6)) {
+      const on = BigInt(actorE6) > 0n;
+      rewardPtEnabled = on;
+      rewardPtPercent = on ? formatAmountPercentE6Display(actorE6) : '1';
+      setProgramRewardPtTopupEnabled(rewardPtEnabled);
+      setProgramRewardPtTopupPercentInput(rewardPtPercent);
+    }
+    if (ratios) {
+      const topupOn = BigInt(ratios.topupRatioE6) > 0n;
+      referrerEnabled = topupOn;
+      referrerPercent = topupOn
+        ? formatAmountPercentE6Display(ratios.topupRatioE6)
+        : '100';
+      setProgramReferrerTopupRatioE6Baseline(ratios.topupRatioE6);
+      setProgramReferrerTopupEnabled(referrerEnabled);
+      setProgramReferrerTopupPercentInput(referrerPercent);
+    }
+    finishOpen({
+      rewardPtEnabled,
+      rewardPtPercent,
+      referrerEnabled,
+      referrerPercent,
+    });
+  })();
 }, [
+  cardIssuanceExistingCard?.cardAddress,
   cardIssuanceTopupPromotion,
   programReferrerTopupEnabled,
   programReferrerTopupPercentInput,
@@ -21559,10 +21614,16 @@ const submitCardIssuanceConsumptionPointEditor = useCallback(async () => {
   const nextEnabled = cardIssuancePointSystemEnabled;
   const nextRatioInput = cardIssuancePointRatioInput;
   // Snapshot Referrer draft at Save click — point-system await / overview reload must not drop it.
-  const referrerDraftAtStart = {
-    enabled: programReferrerChargeEnabled,
-    percent: programReferrerChargePercentInput,
-  };
+  // Consumption Points OFF → force Referrer Charge OFF (stop both actor + referrer #13).
+  const referrerDraftAtStart = nextEnabled
+    ? {
+        enabled: programReferrerChargeEnabled,
+        percent: programReferrerChargePercentInput,
+      }
+    : {
+        enabled: false,
+        percent: programReferrerChargePercentInput,
+      };
   const pointSystemPayload = buildCardIssuancePointSystemMetadataFromDraft(
     nextEnabled,
     nextRatioInput,
@@ -21658,7 +21719,7 @@ const submitCardIssuanceConsumptionPointEditor = useCallback(async () => {
       kind: 'ok',
       text: nextEnabled
         ? 'Consumption points saved. Members and referrers earn #13 reward points on qualifying charges.'
-        : 'Consumption points disabled. Referrer charge reward settings are unchanged unless you cleared them.',
+        : 'Consumption points disabled. Charge #13 rewards for members and referrers are stopped.',
     });
   } catch {
     setCardIssuanceConsumptionPointEditorServerError(
@@ -21687,6 +21748,7 @@ const clearCardIssuanceConsumptionPoints = useCallback(async () => {
   if (cardIssuanceConsumptionPointClearInFlightRef.current) return;
   if (!cardIssuanceExistingCard?.cardAddress) {
     setCardIssuancePointSystemEnabled(false);
+    setProgramReferrerChargeEnabled(false);
     return;
   }
   cardIssuanceConsumptionPointClearInFlightRef.current = true;
@@ -21707,6 +21769,17 @@ const clearCardIssuanceConsumptionPoints = useCallback(async () => {
       return;
     }
     const cardAddr = ethers.getAddress(cardIssuanceExistingCard.cardAddress);
+    const referrerErr = await syncProgramReferrerAmountRatioKind('charge', {
+      enabled: false,
+      percent: programReferrerChargePercentInput,
+    });
+    if (referrerErr) {
+      setCardIssuanceOwnerAdminNotice({
+        kind: 'warn',
+        text: referrerErr,
+      });
+      return;
+    }
     const ok = await handlePublishCardIssuance({
       pointSystemOverride: pointSystemPayload,
       loadingScope: 'bonusEditor',
@@ -21733,15 +21806,27 @@ const clearCardIssuanceConsumptionPoints = useCallback(async () => {
       return;
     }
     setCardIssuancePointSystemEnabled(false);
+    setProgramReferrerChargeEnabled(false);
     setCardIssuanceExistingCard((prev) => {
       if (!prev) return prev;
-      const nextMeta = prev.meta ? { ...prev.meta, pointSystem: pointSystemPayload } : prev.meta;
+      const nextMeta = prev.meta
+        ? {
+            ...prev.meta,
+            pointSystem: pointSystemPayload,
+            unifiedRewardPoints: mergeUnifiedRewardPointsCharge(prev.meta.unifiedRewardPoints, {
+              enabled: false,
+              actorPercent: amountPercentInputToSlider(cardIssuancePointRatioInput),
+              referrerEnabled: false,
+              referrerPercent: amountPercentInputToSlider(programReferrerChargePercentInput),
+            }),
+          }
+        : prev.meta;
       return { ...prev, meta: nextMeta, chargeRewardRatioE6: '0' };
     });
     invalidateBeamioCardMetadataCache(cardAddr);
     setCardIssuanceOwnerAdminNotice({
       kind: 'ok',
-      text: 'Consumption points disabled.',
+      text: 'Consumption points disabled. Charge #13 rewards for members and referrers are stopped.',
     });
   } finally {
     cardIssuanceConsumptionPointClearInFlightRef.current = false;
@@ -21751,8 +21836,10 @@ const clearCardIssuanceConsumptionPoints = useCallback(async () => {
   cardIssuanceExistingCard?.cardAddress,
   cardIssuanceExistingCard?.chargeRewardRatioE6,
   cardIssuancePointRatioInput,
+  programReferrerChargePercentInput,
   handlePublishCardIssuance,
   profiles,
+  syncProgramReferrerAmountRatioKind,
 ]);
 
 const submitCardIssuanceCouponSocialPromotionEditor = useCallback(async () => {

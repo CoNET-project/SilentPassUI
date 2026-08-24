@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import {
-	CARD_SOCIAL_PROMOTION_EVENT_KEYS,
+	CARD_SOCIAL_PROMOTION_EDITABLE_EVENT_KEYS,
 	cardSocialPromotionEventLabel,
 	type CardSocialPromotionEventKey,
 	type SocialPromotionDraft,
@@ -161,7 +161,7 @@ export function CardSocialPromotionEventsEditor({ draft, onChange, validationErr
 				role="tablist"
 				aria-label={tu('programs_social_promotion_title')}
 			>
-				{CARD_SOCIAL_PROMOTION_EVENT_KEYS.map((eventKey) => {
+				{CARD_SOCIAL_PROMOTION_EDITABLE_EVENT_KEYS.map((eventKey) => {
 					const eventDraft = draft.events[eventKey]
 					const configured = socialPromotionEventIsConfigured(
 						eventDraft.user.enabled,

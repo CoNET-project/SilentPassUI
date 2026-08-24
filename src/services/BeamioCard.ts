@@ -1386,8 +1386,9 @@ export type ShareTokenMetadataSocialExchange = {
 
 export type ShareTokenMetadataPointSystem = {
 	enabled: boolean
-	/** E6 ratio: 1_000_000 means 1 reward point per 1 card-currency unit spent. */
+	/** E6 ratio: 1_000_000 means 1 Reward PT (#13) per 1 card-currency unit spent. */
 	chargeRewardRatioE6?: string
+	/** V16+: always #13 (Reward Voucher). Legacy metadata may still say 2 — clients remap. */
 	rewardTokenId?: number
 }
 
@@ -1485,7 +1486,7 @@ export type ShareTokenMetadata = {
 	bonusRule?: ShareTokenMetadataBonusRule
 	/** @deprecated Legacy rules array — POS reads topupPromotion first; read compat only. */
 	bonusRules?: ShareTokenMetadataBonusRule[]
-	/** Client-facing switch for displaying charge reward points (ERC-1155 token #2). */
+	/** Client-facing switch for displaying charge reward points (ERC-1155 token #13 Reward PT). */
 	pointSystem?: ShareTokenMetadataPointSystem
 	/** Program coupons metadata (icon can be an IPFS URL). */
 	coupons?: ShareTokenMetadataCoupon[]
@@ -3713,6 +3714,8 @@ function shareTokenPointSystemFromUnknown(
 	} else if (typeof tokenRaw === 'string' && /^\d+$/.test(tokenRaw.trim())) {
 		rewardTokenId = Number.parseInt(tokenRaw.trim(), 10)
 	}
+	/** Beacon V16+: Charge Reward PT is #13; remap legacy metadata rewardTokenId: 2. */
+	if (rewardTokenId === 2) rewardTokenId = 13
 	if (enabled == null && chargeRewardRatioE6 == null && rewardTokenId == null) return undefined
 	return {
 		enabled: enabled ?? (chargeRewardRatioE6 != null ? BigInt(chargeRewardRatioE6) > 0n : true),

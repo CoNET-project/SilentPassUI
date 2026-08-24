@@ -40,6 +40,15 @@ export const CARD_SOCIAL_PROMOTION_EVENT_KEYS: CardSocialPromotionEventKey[] = [
 	'topup',
 ]
 
+/**
+ * Card Social Promotion editor / metadata / on-chain fixed-mint rules.
+ * Top-up (#13 %) lives on Programs → Top-up Promotion (ratio E6), not Social ruleId=2.
+ */
+export const CARD_SOCIAL_PROMOTION_EDITABLE_EVENT_KEYS: CardSocialPromotionEventKey[] = [
+	'linkClick',
+	'like',
+]
+
 export const COUPON_SOCIAL_PROMOTION_EVENT_KEYS: CouponSocialPromotionEventKey[] = [
 	'linkClick',
 	'like',
@@ -121,7 +130,7 @@ function eventsPayloadFromRaw(
 ): NonNullable<ShareTokenMetadataSocialPromotion['events']> {
 	const events: NonNullable<ShareTokenMetadataSocialPromotion['events']> = {}
 	if (!eventsRaw || typeof eventsRaw !== 'object') return events
-	for (const key of CARD_SOCIAL_PROMOTION_EVENT_KEYS) {
+	for (const key of CARD_SOCIAL_PROMOTION_EDITABLE_EVENT_KEYS) {
 		const ev = eventsRaw[key]
 		if (ev && typeof ev === 'object') {
 			const normalized = eventPayloadFromDraft(eventDraftFromPayload(ev as ShareTokenMetadataSocialPromotionEvent))
@@ -187,7 +196,7 @@ function eventPayloadFromDraft(
 }
 
 export function socialPromotionDraftHasAnyReward(draft: SocialPromotionDraft): boolean {
-	return CARD_SOCIAL_PROMOTION_EVENT_KEYS.some((key) => eventHasReward(draft.events[key]))
+	return CARD_SOCIAL_PROMOTION_EDITABLE_EVENT_KEYS.some((key) => eventHasReward(draft.events[key]))
 }
 
 export function couponSocialPromotionDraftHasAnyReward(draft: CouponSocialPromotionDraft): boolean {
@@ -237,7 +246,7 @@ export function socialPromotionDraftFromMetadata(
 ): SocialPromotionDraft {
 	const draft = socialPromotionDraftEmpty()
 	if (!promo?.events) return draft
-	for (const key of CARD_SOCIAL_PROMOTION_EVENT_KEYS) {
+	for (const key of CARD_SOCIAL_PROMOTION_EDITABLE_EVENT_KEYS) {
 		const ev = promo.events[key]
 		if (ev) draft.events[key] = eventDraftFromPayload(ev)
 	}
@@ -277,7 +286,7 @@ function normalizeEventDraftForCompare(draft: SocialPromotionEventDraft): Social
 
 export function normalizeSocialPromotionDraftForCompare(draft: SocialPromotionDraft): SocialPromotionDraft {
 	const events = emptyCardSocialPromotionEvents()
-	for (const key of CARD_SOCIAL_PROMOTION_EVENT_KEYS) {
+	for (const key of CARD_SOCIAL_PROMOTION_EDITABLE_EVENT_KEYS) {
 		events[key] = normalizeEventDraftForCompare(draft.events[key])
 	}
 	return { enabled: draft.enabled, events }
@@ -285,7 +294,7 @@ export function normalizeSocialPromotionDraftForCompare(draft: SocialPromotionDr
 
 export function cloneSocialPromotionDraft(draft: SocialPromotionDraft): SocialPromotionDraft {
 	const events = emptyCardSocialPromotionEvents()
-	for (const key of CARD_SOCIAL_PROMOTION_EVENT_KEYS) {
+	for (const key of CARD_SOCIAL_PROMOTION_EDITABLE_EVENT_KEYS) {
 		events[key] = {
 			user: { ...draft.events[key].user },
 			ref: { ...draft.events[key].ref },
@@ -298,7 +307,7 @@ export function socialPromotionDraftsEqual(a: SocialPromotionDraft, b: SocialPro
 	const na = normalizeSocialPromotionDraftForCompare(a)
 	const nb = normalizeSocialPromotionDraftForCompare(b)
 	if (na.enabled !== nb.enabled) return false
-	for (const key of CARD_SOCIAL_PROMOTION_EVENT_KEYS) {
+	for (const key of CARD_SOCIAL_PROMOTION_EDITABLE_EVENT_KEYS) {
 		const ea = na.events[key]
 		const eb = nb.events[key]
 		if (
@@ -324,7 +333,7 @@ function validateRewardDraft(draft: SocialPromotionRewardDraft, label: string): 
 export function validateSocialPromotionDraft(draft: SocialPromotionDraft): string {
 	if (!draft.enabled && !socialPromotionDraftHasAnyReward(draft)) return ''
 	let anyEvent = false
-	for (const key of CARD_SOCIAL_PROMOTION_EVENT_KEYS) {
+	for (const key of CARD_SOCIAL_PROMOTION_EDITABLE_EVENT_KEYS) {
 		const ev = draft.events[key]
 		if (!eventHasReward(ev)) continue
 		anyEvent = true
@@ -362,7 +371,7 @@ export function socialPromotionDraftToPayload(
 	const err = validateSocialPromotionDraft({ ...draft, enabled: true })
 	if (err) return null
 	const events: NonNullable<ShareTokenMetadataSocialPromotion['events']> = {}
-	for (const key of CARD_SOCIAL_PROMOTION_EVENT_KEYS) {
+	for (const key of CARD_SOCIAL_PROMOTION_EDITABLE_EVENT_KEYS) {
 		const normalized = eventPayloadFromDraft(draft.events[key])
 		if (normalized) events[key] = normalized
 	}
@@ -436,7 +445,7 @@ export function formatSocialPromotionDisplay(
 ): string {
 	if (!promo || promo.enabled === false || !promo.events) return 'No social promotion configured.'
 	const lines: string[] = []
-	for (const key of CARD_SOCIAL_PROMOTION_EVENT_KEYS) {
+	for (const key of CARD_SOCIAL_PROMOTION_EDITABLE_EVENT_KEYS) {
 		const ev = promo.events[key]
 		if (!ev) continue
 		const parts = [

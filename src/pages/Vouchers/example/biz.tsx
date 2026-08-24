@@ -10119,12 +10119,12 @@ function renderSmartReceiptLedgerAlignedPrimaryCard(a: SmartReceiptLedgerAligned
             <div className="flex shrink-0 flex-col items-start gap-2 sm:min-w-[140px]">
               {(tx.type.includes('Top-Up') || tx.type === 'Charge') && baseScanTxHash ? (
                 <a
-                  href={`https://basescan.org/tx/${baseScanTxHash}`}
+                  href={`https://mainnet.conet.network/tx/${baseScanTxHash}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={(ev) => ev.stopPropagation()}
                   className="flex items-center gap-1.5 bg-slate-50 px-2 py-1 rounded-md border border-slate-100 hover:bg-slate-100 hover:border-slate-200 transition-colors cursor-pointer"
-                  title="View transaction on BaseScan"
+                  title="View transaction on CoNET"
                 >
                   {tx.status === '待处理' ? (
                     <div className="w-3 h-3 rounded-full border-2 border-amber-400 border-t-transparent animate-spin shrink-0" />
@@ -33604,12 +33604,12 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
 
                      {baseScanTxHash ? (
                        <a
-                         href={`https://basescan.org/tx/${baseScanTxHash}`}
+                         href={`https://mainnet.conet.network/tx/${baseScanTxHash}`}
                          target="_blank"
                          rel="noopener noreferrer"
                          className="mb-6 flex items-center justify-center gap-2 rounded-full border border-[#abadaf]/40 py-3 text-sm font-bold text-[#595c5e] transition-colors hover:bg-[#eef1f3]"
                        >
-                         <ExternalLink size={16} aria-hidden />{tu('view_on_basescan')}</a>
+                         <ExternalLink size={16} aria-hidden />{tu('view_on_conet')}</a>
                      ) : null}
 
                      <div className="space-y-3">

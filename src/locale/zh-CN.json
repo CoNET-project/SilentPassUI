@@ -231,6 +231,7 @@
     "sending_transaction": "发送交易",
     "waiting_for_transaction": "等待交易确认",
     "view_on_basescan": "在 BaseScan 查看",
+    "view_on_conet": "在 CoNET 查看",
     "base_explorer": "Base 浏览器",
     "base_mainnet": "Base 主网",
     "bill_amount": "账单金额",

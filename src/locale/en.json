@@ -231,6 +231,7 @@
     "sending_transaction": "Sending transaction",
     "waiting_for_transaction": "Waiting for transaction",
     "view_on_basescan": "View on BaseScan",
+    "view_on_conet": "View on CoNET",
     "base_explorer": "Base Explorer",
     "base_mainnet": "Base Mainnet",
     "bill_amount": "Bill Amount",

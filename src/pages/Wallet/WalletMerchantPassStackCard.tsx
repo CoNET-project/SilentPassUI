@@ -39,7 +39,6 @@ function PassCardFace({ display }: { display: WalletMerchantPassStackDisplay }) 
 		backgroundImageFit,
 		logoDisplayScale,
 		discountHeadline,
-		startingFromLine,
 	} = display
 	const logoImgClass = tierLogoImgClassForScale(logoDisplayScale)
 	const logoIconClass = tierLogoIconClassForScale(logoDisplayScale)
@@ -104,7 +103,7 @@ function PassCardFace({ display }: { display: WalletMerchantPassStackDisplay }) 
 						<div className="min-w-0" aria-hidden />
 					)}
 				</div>
-				<div className="flex w-full items-end justify-between gap-3">
+				<div className="flex w-full items-baseline justify-between gap-3">
 					<div className="min-w-0">
 						<p
 							className="max-w-full truncate whitespace-nowrap font-extrabold leading-tight tracking-tight"
@@ -121,37 +120,21 @@ function PassCardFace({ display }: { display: WalletMerchantPassStackDisplay }) 
 							</p>
 						) : null}
 					</div>
-					<div className="flex min-h-[4.25rem] shrink-0 flex-col justify-end text-right">
-						{startingFromLine ? (
-							<p
-								className="text-[10px] font-bold uppercase tracking-wider opacity-80"
-								style={{ color: tierTheme.tertiary }}
-							>
-								{startingFromLine}
-							</p>
-						) : null}
+					<div className="min-w-0 shrink-0 text-right">
 						<p
-							className={`text-[10px] font-bold tracking-widest ${startingFromLine ? 'mt-1' : ''}`}
-							style={{ color: tierTheme.tertiary }}
-						>
-							BALANCE
-						</p>
-						<p
-							className="text-base font-bold tabular-nums leading-tight"
-							style={{ color: tierTheme.primary, minWidth: '4.5rem' }}
+							className="whitespace-nowrap font-extrabold tabular-nums leading-tight tracking-tight"
+							style={{ color: tierTheme.primary, fontSize: '1.125rem', minWidth: '4.5rem' }}
 						>
 							{balanceLine}
 						</p>
 						{balanceSubtitle ? (
 							<p
-								className="text-[11px] font-semibold tabular-nums"
+								className="mt-1 text-[11px] font-semibold tabular-nums"
 								style={{ color: tierTheme.secondary }}
 							>
 								{balanceSubtitle}
 							</p>
-						) : (
-							<p className="h-[1.125rem]" aria-hidden />
-						)}
+						) : null}
 					</div>
 				</div>
 			</div>

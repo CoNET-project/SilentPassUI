@@ -10,7 +10,6 @@ import {
 	type TierLogoDisplayScale,
 } from '@/utils/tierLogoDisplayScale'
 import type { CardPassBackgroundImageFit } from '@/components/card/CardPassBackgroundImage'
-import { fiatPrefix } from '@/services/currency'
 import {
 	isDiscoverMembershipNftTokenId,
 	parseDiscoverNftTokenId,
@@ -34,8 +33,6 @@ export type WalletMerchantPassStackDisplay = {
 	 * Replaces former “Member pricing” / “Up to N%”.
 	 */
 	discountHeadline: string
-	/** Bottom-right: "Starting from CA$ 10" or empty */
-	startingFromLine: string
 	tierGradient: string
 	tierTheme: ReturnType<typeof cardTierGradientTheme>
 }
@@ -106,27 +103,6 @@ function resolveValidMembershipMemberNo(
 	return best?.tokenId != null ? formatWalletMembershipMemberNo(best.tokenId) : ''
 }
 
-/** Human threshold from on-chain/metadata minUsdc6 (6-decimal fixed). */
-function formatStartingFromLine(minUsdc6: string | undefined, currencyCode: string): string {
-	if (!minUsdc6?.trim()) return ''
-	let human = NaN
-	try {
-		const head = minUsdc6.trim().split(/[.\s]/)[0] ?? '0'
-		const bi = BigInt(head || '0')
-		human = Number(bi) / 1e6
-	} catch {
-		human = Number(minUsdc6)
-	}
-	if (!Number.isFinite(human) || human < 0) return ''
-	const prefix = fiatPrefix((currencyCode as 'CAD' | 'USD' | 'EUR' | 'JPY' | 'CNY' | 'HKD' | 'SGD' | 'TWD' | 'USDC') || 'CAD') || `${currencyCode} `
-	const glue = /[$€¥]$/.test(prefix.trim()) ? '' : ' '
-	const amount =
-		human % 1 === 0
-			? human.toLocaleString('en-US')
-			: human.toLocaleString('en-US', { maximumFractionDigits: 2, minimumFractionDigits: 0 })
-	return `Starting from ${prefix}${glue}${amount}`
-}
-
 export function buildWalletMerchantPassStackDisplay(
 	uc: UserCardInfo,
 	detail: MyBrandCardFeedDetailsMap[string] | undefined
@@ -155,7 +131,6 @@ export function buildWalletMerchantPassStackDisplay(
 		(Number(detail?.assets?.chargeRewardPoints ?? 0) || 0) +
 		(Number(detail?.assets?.socialRewardPoints ?? 0) || 0)
 	const balanceSubtitle = pointSystemOn && rewardTotal > 0 ? formatPointSubtitle(rewardTotal) : ''
-	const startingFromLine = formatStartingFromLine(tierPres.minUsdc6, cardGlobalCurrency)
 	const balanceSig = Number.isFinite(ptsNum) ? ptsNum.toFixed(2) : balanceLine
 	const tierGradient = cardTierGradientCss(tierPres.accentColor)
 	const tierTheme = cardTierGradientTheme(tierPres.accentColor)
@@ -169,7 +144,6 @@ export function buildWalletMerchantPassStackDisplay(
 		backgroundImageFit,
 		logoDisplayScale,
 		discountHeadline,
-		startingFromLine,
 		accent: tierPres.accentColor ?? '',
 		border: tierTheme.cardBorder,
 	})
@@ -184,7 +158,6 @@ export function buildWalletMerchantPassStackDisplay(
 		backgroundImageFit,
 		logoDisplayScale,
 		discountHeadline,
-		startingFromLine,
 		tierGradient,
 		tierTheme,
 	}

@@ -10,6 +10,8 @@ import {
 import { conetDepinProvider } from '@/utils/constants'
 import { CARD_LEVEL_USER_CUMUL_STAT_TOKEN_IDS } from '@/utils/cardLevelUserCumulStatTokenIds'
 import { peekCardBasicMetadata } from '@/utils/cardBasicMetadataGlobalCache'
+import { isDiscoverMembershipNftTokenId } from '@/utils/discoverMembershipFee'
+import { discoverOrphanMembershipNfts } from '@/utils/membershipNftDiscovery'
 
 export { CONET_MY_BRANDS_DASHBOARD, CONET_MY_BRANDS_DASHBOARD_IMPL }
 
@@ -70,6 +72,55 @@ function formatMembershipExpiry(expiry: bigint): string {
 
 function formatTier(tierIndexOrMax: bigint): string {
 	return tierIndexOrMax === ethers.MaxUint256 ? 'Default/Max' : tierIndexOrMax.toString()
+}
+
+function assetsHaveValidMembershipNft(assets: MyCardAssets): boolean {
+	return (assets.nfts ?? []).some(
+		(n) => !n.isExpired && isDiscoverMembershipNftTokenId(n.tokenId),
+	)
+}
+
+/**
+ * Dashboard / getOwnership only read inventory (`_userOwnedNfts`). When the AA
+ * holds a membership NFT (#100+) but inventory was never appended (orphan
+ * ledger), enrich assets via balanceOf probe.
+ */
+export async function enrichMyCardAssetsWithOrphanMembershipNfts(
+	assets: MyCardAssets,
+	eoa: string,
+	aaOptional: string | null,
+): Promise<MyCardAssets> {
+	if (assetsHaveValidMembershipNft(assets)) return assets
+	const holders = [eoa, aaOptional].filter(
+		(h): h is string => Boolean(h && ethers.isAddress(h)),
+	)
+	if (!holders.length) return assets
+	try {
+		const orphans = await discoverOrphanMembershipNfts({
+			provider: conetDepinProvider,
+			cardAddress: assets.cardAddress,
+			holders,
+			existingTokenIds: (assets.nfts ?? []).map((n) => n.tokenId),
+		})
+		if (!orphans.length) return assets
+		const existing = new Set((assets.nfts ?? []).map((n) => n.tokenId))
+		const merged = [...(assets.nfts ?? [])]
+		for (const row of orphans) {
+			const tid = row.tokenId.toString()
+			if (existing.has(tid)) continue
+			existing.add(tid)
+			merged.push({
+				tokenId: tid,
+				attribute: row.attribute.toString(),
+				tier: formatTier(row.tierIndexOrMax),
+				expiry: formatMembershipExpiry(row.expiry),
+				isExpired: Boolean(row.isExpired),
+			})
+		}
+		return { ...assets, nfts: merged }
+	} catch {
+		return assets
+	}
 }
 
 type RawCardSlice = {
@@ -215,13 +266,26 @@ export async function fetchMyBrandsDashboardCardRows(
 				BigInt(rewardTokenId),
 			)) as RawCardSlice[]
 			if (!Array.isArray(slices)) return null
-			for (const slice of slices) {
-				const assets = sliceToMyCardAssets(slice, aa === ethers.ZeroAddress ? null : aa)
-				if (!assets) continue
-				out.set(assets.cardAddress.toLowerCase(), {
-					assets,
-					hasAnyProgramAsset: Boolean(slice.hasAnyProgramAsset),
-				})
+			const aaForAssets = aa === ethers.ZeroAddress ? null : aa
+			const enriched = await Promise.all(
+				slices.map(async (slice) => {
+					const assets = sliceToMyCardAssets(slice, aaForAssets)
+					if (!assets) return null
+					const next = await enrichMyCardAssetsWithOrphanMembershipNfts(
+						assets,
+						ethers.getAddress(eoa),
+						aaForAssets,
+					)
+					return {
+						assets: next,
+						hasAnyProgramAsset:
+							Boolean(slice.hasAnyProgramAsset) || assetsHaveValidMembershipNft(next),
+					}
+				}),
+			)
+			for (const row of enriched) {
+				if (!row) continue
+				out.set(row.assets.cardAddress.toLowerCase(), row)
 			}
 		}
 		return out

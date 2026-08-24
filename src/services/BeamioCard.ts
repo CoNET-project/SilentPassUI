@@ -19,6 +19,7 @@ import { discoverCategoryFieldsFromMetadataRoot } from "@/utils/discoverMerchant
 import { isApiExcludedUserCard, loadApiExcludedUserCards } from "@/utils/apiExcludedUserCards";
 import { fetchCardLevelStatNftHoldings } from "@/utils/beamioCardUserCumulativeStatHoldings";
 import {
+	enrichMyCardAssetsWithOrphanMembershipNfts,
 	fetchMyBrandsBalanceBatch,
 	fetchMyBrandsDashboardCardRows,
 	MY_BRANDS_DASHBOARD_MAX_TOKEN_IDS,
@@ -3573,13 +3574,18 @@ export const getMyAssets = async (
 			usdcBalance: usdcBalance
         }
 
-			const enriched = await enrichMyCardAssetsWithProgramStatHoldings(
+			const withStats = await enrichMyCardAssetsWithProgramStatHoldings(
 				result,
 				cardAddress,
 				eoa,
 				profile.aaAccount
 			)
-			const finalResult = enriched ?? result
+			const withOrphans = await enrichMyCardAssetsWithOrphanMembershipNfts(
+				withStats ?? result,
+				eoa,
+				profile.aaAccount ?? null,
+			)
+			const finalResult = withOrphans
 
 			// 打印结果
 			console.table(finalResult.nfts)

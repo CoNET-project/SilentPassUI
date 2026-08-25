@@ -488,6 +488,40 @@ export function resolveDiscoverTopupPromotionHeroSidePill(params: {
 	return null
 }
 
+/**
+ * Compact green badge under Store Credits (#0) on Discover membership wallet card.
+ * Example: `Get +5% bonus on CA$ 50+`
+ */
+export function resolveDiscoverTopupPromotionStoreCreditsBadge(params: {
+	metadataRoot: Record<string, unknown> | null | undefined
+	currency: string
+}): string | null {
+	const unified = resolveDiscoverUnifiedTopupPromotion(params)
+	if (!unified?.active) return null
+	const moneyPrefix = moneyPrefixForCurrency(params.currency)
+	if (unified.source === 'topupPromotion' && unified.topupPromo) {
+		const promo = unified.topupPromo
+		const min = parseAmount(promo.minimumTopupAmount)
+		const reward = parseAmount(promo.rewardValue)
+		if (min == null || reward == null) return null
+		const minLabel = formatPromoMoneyLabel(moneyPrefix, min)
+		if (promo.rewardType === 'percent') {
+			return `Get +${formatBonusRuleAmount(reward)}% bonus on ${minLabel}+`
+		}
+		return `Get +${formatPromoMoneyLabel(moneyPrefix, reward)} on ${minLabel}+`
+	}
+	if (unified.bonusRule) {
+		const rule = unified.bonusRule
+		const minLabel = formatPromoMoneyLabel(moneyPrefix, rule.paymentAmount)
+		if (rule.bonusProportional) {
+			const pct = (rule.bonusValue / rule.paymentAmount) * 100
+			return `Get +${formatBonusRuleAmount(pct)}% bonus on ${minLabel}+`
+		}
+		return `Get +${formatPromoMoneyLabel(moneyPrefix, rule.bonusValue)} on ${minLabel}+`
+	}
+	return null
+}
+
 /** Long-form top-up copy (list cards / detail subcopy). */
 export function resolveDiscoverTopupPromotionDisplayString(params: {
 	metadataRoot: Record<string, unknown> | null | undefined

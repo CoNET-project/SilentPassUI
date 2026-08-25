@@ -186,6 +186,7 @@ import {
 	formatSocialPoints13Display,
 	resolveCouponSocialMissionBlockForSeries,
 	resolveDiscoverTopupPromotionPresentation,
+	resolveDiscoverTopupPromotionStoreCreditsBadge,
 	type DiscoverTopupPromotionPresentation,
 } from '@/utils/discoverMerchantPromotions'
 import { readCardSocialPromotionFromChain } from '@/utils/discoverMerchantSocialPromotionChain'
@@ -1832,42 +1833,6 @@ function DiscoverMerchantPromoRewardTierCard({
 				<p className="mt-3 text-[14px] font-medium leading-relaxed text-white drop-shadow-[0_1px_6px_rgba(0,0,0,0.68)] sm:text-[15px]">
 					{config.description}
 				</p>
-			</div>
-		</div>
-	)
-}
-
-/**
- * Merchant detail Points = NFT #13 Reward Voucher (PT) only.
- * Do not mix #0 program points or legacy #2 consumption into this balance.
- */
-function DiscoverMerchantLoyaltyPointsCard({
-	points,
-	loading,
-}: {
-	points: number | null
-	loading: boolean
-}) {
-	const totalText = loading ? '—' : formatSocialPoints13Display(points)
-
-	return (
-		<div className="rounded-[22px] bg-white p-4 shadow-[0_8px_22px_rgba(15,23,42,0.06)] ring-1 ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800 sm:p-5">
-			<div className="flex items-start justify-between gap-3">
-				<div className="min-w-0">
-					<p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">
-						Points
-					</p>
-					<p className="mt-1 text-[32px] font-extrabold leading-none tracking-tight text-[#1f2328] dark:text-slate-100 sm:text-[34px]">
-						{totalText}
-						<span className="ml-1.5 text-[16px] font-bold text-slate-400 dark:text-slate-500">PT</span>
-					</p>
-					<p className="mt-2 text-[12px] font-medium text-slate-500 dark:text-slate-400">
-						Reward voucher · NFT #13
-					</p>
-				</div>
-				<span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#1562f0] text-white shadow-sm">
-					<Star className="h-6 w-6" strokeWidth={2} aria-hidden />
-				</span>
 			</div>
 		</div>
 	)
@@ -4108,6 +4073,24 @@ function DiscoverMerchantDetailFullScreen({
 		: balancePrefix
 			? `${balancePrefix} ${balanceAmount}`
 			: balanceAmount
+	/**
+	 * #13 My Points: prefer getMyAssets `chargeRewardPoints` (already formatUnits 6),
+	 * else RPC `userSocialPoints13` (human units after formatUnits).
+	 */
+	const myPoints13Num = (() => {
+		const fromAssets = Number(merchantAssets?.chargeRewardPoints)
+		if (Number.isFinite(fromAssets) && fromAssets >= 0) return fromAssets
+		if (userSocialPoints13 != null && Number.isFinite(userSocialPoints13) && userSocialPoints13 >= 0) {
+			return userSocialPoints13
+		}
+		return 0
+	})()
+	const myPoints13Loading =
+		userSocialPointsLoading &&
+		!(
+			merchantAssets?.chargeRewardPoints != null &&
+			Number.isFinite(Number(merchantAssets.chargeRewardPoints))
+		)
 	const hasActiveMembership = customerHasValidMembershipFromAssets({
 		primaryMemberTokenId: pickActiveDiscoverMembershipNft(merchantAssets?.nfts)?.tokenId,
 		nfts: merchantAssets?.nfts,
@@ -4184,7 +4167,7 @@ function DiscoverMerchantDetailFullScreen({
 		item.cardAddress != null
 			? DISCOVER_MERCHANT_WELLNESS_POINTS_PANELS[resolveDiscoverCardPanelKey(item.cardAddress)]
 			: undefined
-	const wellnessPointsValue = userSocialPointsLoading ? null : userSocialPoints13
+	const wellnessPointsValue = myPoints13Loading ? null : myPoints13Num
 	const MerchantCategoryIcon = discoverCategoryIconForTab(item.category)
 	const topupPromotionPresentation = useMemo(
 		() =>
@@ -4225,6 +4208,21 @@ function DiscoverMerchantDetailFullScreen({
 				nfts: merchantAssets?.nfts,
 			}),
 		[hasActiveMembership, membershipFeeTiers, merchantAssets?.nfts],
+	)
+	const canDiscoverTopUp =
+		Boolean(item.cardAddress) &&
+		usdcTopupPhase === 'idle' &&
+		!merchantAssetsLoading &&
+		(membershipUi.mode === 'no_fee' ||
+			membershipUi.mode === 'member_topup_only' ||
+			membershipUi.mode === 'can_upgrade')
+	const storeCreditsPromoBadge = useMemo(
+		() =>
+			resolveDiscoverTopupPromotionStoreCreditsBadge({
+				metadataRoot: merchantMetadataRoot,
+				currency: displayCurrency,
+			}),
+		[merchantMetadataRoot, displayCurrency],
 	)
 	const [referrerDashboard, setReferrerDashboard] = useState<CardProgramReferrerDashboardSnapshot | null>(null)
 	const [referrerDashboardLoading, setReferrerDashboardLoading] = useState(false)
@@ -5369,8 +5367,12 @@ function DiscoverMerchantDetailFullScreen({
 		void readUserSocialPoints13BalanceOnCard(item.cardAddress, userEOA)
 			.then((bal) => {
 				if (cancelled || bal == null) return
-				const n = Number(bal)
-				if (Number.isFinite(n) && n >= 0) setUserSocialPoints13(Math.trunc(n))
+				try {
+					const human = Number(ethers.formatUnits(bal, 6))
+					if (Number.isFinite(human) && human >= 0) setUserSocialPoints13(human)
+				} catch {
+					/* untrusted parse — keep last */
+				}
 			})
 			.catch(() => {
 				/* untrusted — keep last trusted */
@@ -5717,7 +5719,7 @@ function DiscoverMerchantDetailFullScreen({
 						/>
 					) : null}
 
-					{/* Active Member / Available Balance — all Discover merchant details, including CoNET Genesis. */}
+					{/* Membership + Store Credits (#0) + My Points (#13) — single card. */}
 					<div className="rounded-[22px] bg-white p-5 shadow-[0_8px_22px_rgba(15,23,42,0.06)] ring-1 ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800">
 						<div className="flex items-start justify-between gap-3">
 							<div className="min-w-0 flex-1">
@@ -5769,26 +5771,52 @@ function DiscoverMerchantDetailFullScreen({
 								<Radio className="h-5 w-5" strokeWidth={2} aria-hidden />
 							</span>
 						</div>
-						<div className="mt-5 flex items-end justify-between gap-3">
-							<p className="text-[14px] font-medium text-slate-500 dark:text-slate-400">Available Balance</p>
-							{item.cardAddress &&
-							usdcTopupPhase === 'idle' &&
-							!merchantAssetsLoading &&
-							(membershipUi.mode === 'no_fee' ||
-								membershipUi.mode === 'member_topup_only' ||
-								membershipUi.mode === 'can_upgrade') ? (
-								<button
-									type="button"
-									onClick={() => openDiscoverTopupAmount()}
-									className="shrink-0 rounded-full border border-[#1562f0]/25 bg-[#1562f0]/10 px-3 py-1.5 text-[12px] font-bold uppercase tracking-wide text-[#1562f0] transition active:scale-[0.98] hover:bg-[#1562f0]/15"
-								>
-									Top up
-								</button>
-							) : null}
+						<div className="mt-5 grid grid-cols-2 gap-0 border-t border-slate-100 pt-4 dark:border-slate-800">
+							<div className="min-w-0 pr-3 sm:pr-4">
+								<p className="text-[12px] font-medium text-slate-500 dark:text-slate-400">Store Credits</p>
+								<p className="mt-1.5 text-[26px] font-bold leading-none tracking-tight text-[#1f2328] dark:text-slate-100 sm:text-[28px]">
+									{balanceDisplay}
+								</p>
+								{storeCreditsPromoBadge ? (
+									<span className="mt-2 inline-flex max-w-full items-center rounded-full bg-[#e8f8ef] px-2.5 py-1 text-[11px] font-semibold leading-snug text-[#0d7a3f] dark:bg-emerald-950/50 dark:text-emerald-300">
+										<span className="truncate">{storeCreditsPromoBadge}</span>
+									</span>
+								) : null}
+								{canDiscoverTopUp ? (
+									<button
+										type="button"
+										onClick={() => openDiscoverTopupAmount()}
+										className="mt-3 inline-flex items-center justify-center rounded-full bg-[#1562f0] px-4 py-2 text-[13px] font-bold text-white shadow-sm transition active:scale-[0.98] hover:bg-[#1256d4]"
+									>
+										Top Up
+									</button>
+								) : null}
+							</div>
+							<div className="min-w-0 border-l border-slate-100 pl-3 dark:border-slate-800 sm:pl-4">
+								<p className="text-[12px] font-medium text-slate-500 dark:text-slate-400">My Points</p>
+								<p className="mt-1.5 text-[26px] font-bold leading-none tracking-tight text-[#1f2328] dark:text-slate-100 sm:text-[28px]">
+									{myPoints13Loading ? (
+										'—'
+									) : (
+										<>
+											{formatSocialPoints13Display(myPoints13Num)}
+											<span className="ml-1 text-[14px] font-bold text-slate-400 dark:text-slate-500">
+												Pts
+											</span>
+										</>
+									)}
+								</p>
+								{!myPoints13Loading && myPoints13Num > 0 ? (
+									<button
+										type="button"
+										onClick={scrollToCouponsSection}
+										className="mt-3 inline-flex items-center justify-center rounded-full border border-[#c9b8e8] bg-[#f3ecff] px-4 py-2 text-[13px] font-bold text-[#6b4ea8] transition active:scale-[0.98] hover:bg-[#ebe0ff] dark:border-violet-800 dark:bg-violet-950/40 dark:text-violet-300"
+									>
+										Redeem
+									</button>
+								) : null}
+							</div>
 						</div>
-						<p className="mt-1 text-right text-[32px] font-bold leading-none tracking-tight text-[#1f2328] dark:text-slate-100">
-							{balanceDisplay}
-						</p>
 
 						{usdcTopupPhase === 'idle' &&
 						membershipUi.mode === 'need_member' &&
@@ -6034,12 +6062,6 @@ function DiscoverMerchantDetailFullScreen({
 					) : null}
 					</>
 					) : null}
-
-					{/* Points: NFT #13 PT — all Discover merchant details, including CoNET Genesis. */}
-					<DiscoverMerchantLoyaltyPointsCard
-						points={userSocialPoints13}
-						loading={userSocialPointsLoading}
-					/>
 
 					{/* Card program REFERRER dashboard (biz Referrer Reward) — all merchant cards. */}
 					<DiscoverMerchantReferrerDashboardCard

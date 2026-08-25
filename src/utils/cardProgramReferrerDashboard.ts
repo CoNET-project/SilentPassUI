@@ -262,6 +262,52 @@ export function formatReferrerRewardPercent(ratioE6: string | null | undefined):
 	}
 }
 
+/** E6 ratio → whole percent 0–100 (100% = 1_000_000). Invalid / missing → 0. */
+export function referrerRatioE6ToWholePercent(ratioE6: string | null | undefined): number {
+	if (ratioE6 == null || String(ratioE6).trim() === '') return 0
+	try {
+		const v = Math.round(Number(BigInt(ratioE6)) / 10_000)
+		if (!Number.isFinite(v)) return 0
+		return Math.min(100, Math.max(0, v))
+	} catch {
+		return 0
+	}
+}
+
+export type CardReferrerAmountRatioPercents = {
+	chargePercent: number
+	topupPercent: number
+}
+
+/**
+ * Card-level referrer Top-up / Charge % (no wallet). RPC failure → null (caller keeps last trusted).
+ */
+export async function fetchCardReferrerAmountRatioPercents(
+	cardAddress: string,
+): Promise<CardReferrerAmountRatioPercents | null> {
+	if (!cardAddress || !ethers.isAddress(cardAddress)) return null
+	try {
+		const cardAddr = ethers.getAddress(cardAddress)
+		const { provider } = await providerForBeamioUserCard(cardAddr)
+		const card = new ethers.Contract(cardAddr, CARD_REFERRER_READ_ABI, provider)
+		const [chargeRatioRaw, topupRatioRaw] = await Promise.all([
+			card.referrerChargeAmountRatioE6().catch(() => null) as Promise<bigint | null>,
+			card.referrerTopupAmountRatioE6().catch(() => null) as Promise<bigint | null>,
+		])
+		if (chargeRatioRaw == null && topupRatioRaw == null) return null
+		return {
+			chargePercent: referrerRatioE6ToWholePercent(
+				chargeRatioRaw != null ? chargeRatioRaw.toString() : null,
+			),
+			topupPercent: referrerRatioE6ToWholePercent(
+				topupRatioRaw != null ? topupRatioRaw.toString() : null,
+			),
+		}
+	} catch {
+		return null
+	}
+}
+
 export function formatReferrerCountDisplay(n: number | null | undefined): string {
 	if (n == null || !Number.isFinite(n) || n < 0) return '—'
 	return Math.trunc(n).toLocaleString('en-US')

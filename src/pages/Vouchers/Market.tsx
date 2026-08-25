@@ -169,11 +169,11 @@ import longdhangStoreCardBg from "@/components/assets/longdhangStoreCardBg.png"
 import longdhangRewardTierPromo from "@/components/assets/longdhangRewardTierPromo.png"
 import { isIpfsFragmentImageUrl } from "@/utils/ipfsImageLibrary"
 import DiscoverMerchantShareButton from '@/components/DiscoverMerchantShareButton'
-import { DiscoverMerchantActivePromotionsPanel } from '@/components/discover/DiscoverMerchantActivePromotionsPanel'
 import { DiscoverCouponSharePromotionCard } from '@/components/discover/DiscoverCouponSharePromotionCard'
 import { useBeamioTagDatabase } from '@/providers/BeamioTagDatabaseProvider'
 import { formatBeamioTagDisplayLine } from '@/utils/aaMultisigTaskUi'
 import { DiscoverTopupPromotionCapsule } from '@/components/discover/DiscoverTopupPromotionCapsule'
+import { DiscoverMerchantInviteFriendsPanel } from '@/components/discover/DiscoverMerchantInviteFriendsPanel'
 import { tu } from '@/locale/beamioLocale'
 import { mapServerError } from '@/locale/mapServerError'
 import { parseDiscoverMerchantFromParams, buildDiscoverMerchantShareUrl, shareDiscoverMerchantUrl, stripDiscoverMerchantDeepLinkParams } from '@/utils/discoverMerchantShare'
@@ -182,7 +182,6 @@ import { readDiscoverShareReferrer, stashDiscoverShareReferrer } from '@/utils/d
 import { collectDeepLinkSearchParams } from '@/utils/beamioDeepLinkParams'
 import { useReliableTapHandler, RELIABLE_TAP_BUTTON_CLASS } from '@/utils/reliableTap'
 import {
-	buildDiscoverActivePromotionsPanelModel,
 	formatSocialPoints13Display,
 	resolveCouponSocialMissionBlockForSeries,
 	resolveDiscoverTopupPromotionPresentation,
@@ -4227,14 +4226,6 @@ function DiscoverMerchantDetailFullScreen({
 	const [referrerDashboard, setReferrerDashboard] = useState<CardProgramReferrerDashboardSnapshot | null>(null)
 	const [referrerDashboardLoading, setReferrerDashboardLoading] = useState(false)
 	const [referrerDownlineOpen, setReferrerDownlineOpen] = useState(false)
-	const activePromotionsPanel = useMemo(
-		() =>
-			buildDiscoverActivePromotionsPanelModel({
-				metadataRoot: merchantMetadataRoot,
-				chainCardSocialPromotion,
-			}),
-		[merchantMetadataRoot, chainCardSocialPromotion],
-	)
 	const topupPromotionCapsule = topupPromotionPresentation.capsuleCopy
 	// New Customer Bonus is a membership-state panel. A top-up promotion only
 	// changes its copy; it must not control whether the panel is shown.
@@ -6024,7 +6015,7 @@ function DiscoverMerchantDetailFullScreen({
 						) : null}
 					</div>
 
-					{/* Top-up promo / Active promotions / curated offers — non-Genesis merchant cards. */}
+					{/* Top-up promo / curated offers — non-Genesis merchant cards. */}
 					{!isConetGenesisCard ? (
 					<>
 					{showDiscoverNewCustomerBonus ? (
@@ -6041,24 +6032,6 @@ function DiscoverMerchantDetailFullScreen({
 					<DiscoverMerchantVipPerksPreview
 						tiers={parseDiscoverAllTiersFromMeta(merchantMetadataRoot)}
 					/>
-
-					{(() => {
-						const promotionsLoaded =
-							merchantMetadataRoot != null || merchantCoupons != null
-						const showActivePromotionsPanel =
-							(promotionsLoaded && activePromotionsPanel != null) ||
-							(merchantOffersLoading && !promotionsLoaded)
-						if (!showActivePromotionsPanel) return null
-						return (
-							<DiscoverMerchantActivePromotionsPanel
-								model={promotionsLoaded ? activePromotionsPanel : null}
-								loading={merchantOffersLoading && !promotionsLoaded}
-								merchantName={item.title}
-								cardAddress={item.cardAddress ?? ''}
-								getPrivateKeyArmor={getPrivateKeyArmorForLike}
-							/>
-						)
-					})()}
 
 					{curatedOffersPanel ? (
 						<DiscoverMerchantCuratedOffersStack
@@ -6086,6 +6059,14 @@ function DiscoverMerchantDetailFullScreen({
 					/>
 
 					<div className="space-y-4">
+						{item.cardAddress ? (
+							<DiscoverMerchantInviteFriendsPanel
+								cardAddress={item.cardAddress}
+								merchantTitle={passTitle}
+								referrerEoa={resolveUserEoa()}
+								chainCardSocialPromotion={chainCardSocialPromotion}
+							/>
+						) : null}
 						<h2 className="text-lg font-bold text-[#1f2328] dark:text-slate-100">Available Offers</h2>
 
 						<div

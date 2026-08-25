@@ -12794,6 +12794,8 @@ export default function MerchantOS() {
    registerMerchantOsOverviewBackgroundWork,
    registerMerchantOsBuintBalanceBackgroundWork,
    registerAddressMetadataMinuteWork,
+  merchantCardRewardReserveByKey,
+  registerMerchantCardRewardReserveTarget,
  } = useDaemonContext();
  const {
    profileMap: addressProfileByLower,
@@ -23149,6 +23151,24 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
  staffProgramBeamioCardAddressRef.current = staffProgramBeamioCardAddress;
  programReferrerEoaRef.current = currentEoa;
 
+ useEffect(() => {
+   if (!currentEoa || !staffProgramBeamioCardAddress || !ethers.isAddress(currentEoa) || !ethers.isAddress(staffProgramBeamioCardAddress)) {
+     return;
+   }
+   registerMerchantCardRewardReserveTarget({
+     eoa: currentEoa,
+     cardAddress: staffProgramBeamioCardAddress,
+   });
+ }, [currentEoa, staffProgramBeamioCardAddress, registerMerchantCardRewardReserveTarget]);
+
+ const merchantCardRewardReserveKey =
+   currentEoa && staffProgramBeamioCardAddress && ethers.isAddress(currentEoa) && ethers.isAddress(staffProgramBeamioCardAddress)
+     ? `eoa:${ethers.getAddress(currentEoa).toLowerCase()}:card:${ethers.getAddress(staffProgramBeamioCardAddress).toLowerCase()}:reward-reserve:v1`
+     : '';
+ const merchantCardRewardReserve = merchantCardRewardReserveKey
+   ? merchantCardRewardReserveByKey[merchantCardRewardReserveKey]
+   : undefined;
+
  /** Hydrate trusted REFERRERS KPI + kick silent load when program card identity is ready. */
  useEffect(() => {
    const addr = resolveProgramReferrerCardAddressFromParts(
@@ -29927,6 +29947,29 @@ const topUpsQuota = adminMintLimitQuota ?? 0; // denominator: mint limit from ch
 const topUpsUsedFromClear = adminMintCounterFromClear ?? 0; // numerator: mintCounterFromClear from chain
 
 const protocolFuelReserve = protocolFuelReserveBalance ?? 0; // B-Units: CoNET BUint.balanceOf(EOA)+balanceOf(AA) from 6s Overview feeder
+const formatTrustedE6Amount = (raw: string | undefined): string => {
+  if (raw == null) return 'Not available';
+  try {
+    const n = Number(BigInt(raw)) / 1_000_000;
+    return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  } catch {
+    return 'Not available';
+  }
+};
+const formatTrustedUsdcSigned = (raw: string | undefined): string => {
+  if (raw == null) return 'Not available';
+  try {
+    const n = Number(BigInt(raw)) / 1_000_000;
+    const abs = Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    if (n < 0) return `-$${abs}`;
+    return `$${abs}`;
+  } catch {
+    return 'Not available';
+  }
+};
+const merchantCardMintedReward13Display = formatTrustedE6Amount(merchantCardRewardReserve?.totalMinted13);
+const merchantCardUsdcReserveDisplay = formatTrustedUsdcSigned(merchantCardRewardReserve?.usdcReserve);
+const merchantCardReserveDifferenceDisplay = formatTrustedUsdcSigned(merchantCardRewardReserve?.reserveDifference);
 /** Charge-only sum of `fees.bServiceUnits6` from `transactionsFilteredForTable`, windowed by header `timeFilter`. */
 const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
 /** Today's Charge B-Unit burn (local calendar day); used for Market runway estimate only. */
@@ -31743,6 +31786,48 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                     <dd className="font-semibold tabular-nums text-[#2c2f31]">{walletConetUsdcAaDisplay}</dd>
                   </div>
                 </dl>
+              </div>
+            </section>
+
+            <section className="grid grid-cols-1 gap-3 sm:grid-cols-3" aria-label="Reward points reserve">
+              <div className="rounded-xl border border-[#eadcf7] bg-white p-4 shadow-sm">
+                <div className="flex items-center gap-3">
+                  <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[#f5ecff] text-[#8d3a8b]">
+                    <Coins className="size-5" strokeWidth={2} aria-hidden />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#747779]">Minted Reward PT #13</p>
+                    <p className="mt-1 font-manrope text-xl font-extrabold tracking-tight text-[#2c2f31] tabular-nums">
+                      {merchantCardMintedReward13Display}
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="rounded-xl border border-[#dce2f7] bg-white p-4 shadow-sm">
+                <div className="flex items-center gap-3">
+                  <UsdcConetCompositeIcon size={24} badgeSize={12} />
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#747779]">USDC Reserve</p>
+                    <p className="mt-1 font-manrope text-xl font-extrabold tracking-tight text-[#2c2f31] tabular-nums">
+                      {merchantCardUsdcReserveDisplay}
+                    </p>
+                    <p className="mt-0.5 text-[10px] text-[#747779]">CONET-USDC on program card</p>
+                  </div>
+                </div>
+              </div>
+              <div className="rounded-xl border border-[#dce2f7] bg-white p-4 shadow-sm">
+                <div className="flex items-center gap-3">
+                  <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[#e9edff] text-[#0051d1]">
+                    <TrendingUp className="size-5" strokeWidth={2} aria-hidden />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#747779]">Reserve Difference</p>
+                    <p className="mt-1 font-manrope text-xl font-extrabold tracking-tight text-[#2c2f31] tabular-nums">
+                      {merchantCardReserveDifferenceDisplay}
+                    </p>
+                    <p className="mt-0.5 text-[10px] text-[#747779]">Card balance minus reward escrow</p>
+                  </div>
+                </div>
               </div>
             </section>
 

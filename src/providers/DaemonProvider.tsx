@@ -9,6 +9,7 @@ import { conetDepinProvider } from '@/utils/constants'
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
 import { loadApiExcludedUserCards } from '@/utils/apiExcludedUserCards'
 import { syncBeamioUiLocaleFromProfileLanguage } from '@/locale/i18n'
+import { CONET_USDC } from '@/config/chainAddresses'
 
 /**
  * AA “steady poll” path arms **after the next CoNET L1 block** (same metronome as `biz.tsx` overview feeder), not `setTimeout(6000)`.
@@ -197,7 +198,26 @@ type DaemonContext = {
 	registerMerchantOsBuintBalanceBackgroundWork: (fn: (() => Promise<void>) | null) => void
 	/** Merchant OS：EOA/AA Beamio 胶囊 metadata 远程刷新（setTimeout 链，首帧约 3s，之后每 60s；本地 LS 由业务侧 hydrate）。 */
 	registerAddressMetadataMinuteWork: (fn: (() => Promise<void>) | null) => void
+	merchantCardRewardReserveByKey: Record<string, MerchantCardRewardReserveSnapshot>
+	registerMerchantCardRewardReserveTarget: (target: MerchantCardRewardReserveTarget | null) => void
 };
+
+export type MerchantCardRewardReserveTarget = {
+	eoa: string
+	cardAddress: string
+}
+
+export type MerchantCardRewardReserveSnapshot = {
+	/** ERC-1155 `totalSupply(13)` on the merchant program card. */
+	totalMinted13: string
+	/** Canonical CONET-USDC `balanceOf(card)` — USDC sitting on the merchant card. */
+	usdcReserve: string
+	/** `rewardEscrowUsdc6()` when readable; omitted / empty when the view is unavailable. */
+	escrowUsdc6?: string
+	/** `usdcReserve - escrowUsdc6` (escrow treated as 0 when unread). */
+	reserveDifference: string
+	fetchedAt: number
+}
 
 type DaemonProps = {
   children: ReactNode;
@@ -283,6 +303,8 @@ const defaultContextValue: DaemonContext = {
 	registerMerchantOsOverviewBackgroundWork: () => {},
 	registerMerchantOsBuintBalanceBackgroundWork: () => {},
 	registerAddressMetadataMinuteWork: () => {},
+	merchantCardRewardReserveByKey: {},
+	registerMerchantCardRewardReserveTarget: () => {},
 	setSecureCode: (val: string) => {},
 	secureCode: '',
 	  setBeamioAppInstalled: () => {},
@@ -414,6 +436,26 @@ export function DaemonProvider({ children }: DaemonProps) {
 	const addressMetadataMinuteWorkRef = useRef<(() => Promise<void>) | null>(null)
 	const registerAddressMetadataMinuteWork = useCallback((fn: (() => Promise<void>) | null) => {
 		addressMetadataMinuteWorkRef.current = fn
+	}, [])
+	const merchantCardRewardReserveTargetsRef = useRef(new Map<string, MerchantCardRewardReserveTarget>())
+	const [merchantCardRewardReserveByKey, setMerchantCardRewardReserveByKey] = useState<Record<string, MerchantCardRewardReserveSnapshot>>({})
+	const registerMerchantCardRewardReserveTarget = useCallback((target: MerchantCardRewardReserveTarget | null) => {
+		if (!target || !ethers.isAddress(target.eoa) || !ethers.isAddress(target.cardAddress)) return
+		const eoa = ethers.getAddress(target.eoa).toLowerCase()
+		const cardAddress = ethers.getAddress(target.cardAddress).toLowerCase()
+		const key = `eoa:${eoa}:card:${cardAddress}:reward-reserve:v1`
+		merchantCardRewardReserveTargetsRef.current.set(key, { eoa, cardAddress })
+		try {
+			const cached = window.localStorage.getItem(key)
+			if (cached) {
+				const parsed = JSON.parse(cached) as MerchantCardRewardReserveSnapshot
+				if (parsed && typeof parsed.totalMinted13 === 'string' && typeof parsed.usdcReserve === 'string') {
+					setMerchantCardRewardReserveByKey((prev) => ({ ...prev, [key]: parsed }))
+				}
+			}
+		} catch {
+			/* trusted cache is optional */
+		}
 	}, [])
 
 	const [historyPayData, setHistoryPayData] = useState<searchResult | null>(null)
@@ -597,9 +639,94 @@ export function DaemonProvider({ children }: DaemonProps) {
   }, [fetchOracle])
 
   useEffect(() => {
-    fetchOracle()
-    const id = setInterval(fetchOracle, ORACLE_REFRESH_MS)
-    return () => clearInterval(id)
+    let cancelled = false
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let inFlight = false
+
+    const runRewardReserveTick = async () => {
+      if (cancelled || inFlight) return
+      inFlight = true
+      try {
+        for (const [key, target] of merchantCardRewardReserveTargetsRef.current) {
+          if (cancelled) return
+          try {
+            const card = new ethers.Contract(target.cardAddress, [
+              'function totalSupply(uint256 id) view returns (uint256)',
+              'function rewardEscrowUsdc6() view returns (uint256)',
+            ], conetDepinProvider)
+            const usdc = new ethers.Contract(CONET_USDC, [
+              'function balanceOf(address account) view returns (uint256)',
+            ], conetDepinProvider)
+            // Sequential RPC (global serialize): minted + wallet first; escrow is best-effort.
+            const minted13 = await card.totalSupply(13n) as bigint
+            const reserve = await usdc.balanceOf(target.cardAddress) as bigint
+            let escrow = 0n
+            let escrowReadable = false
+            try {
+              escrow = await card.rewardEscrowUsdc6() as bigint
+              escrowReadable = true
+            } catch {
+              /* Older cards / unbound modules may lack rewardEscrowUsdc6. */
+            }
+            const snapshot: MerchantCardRewardReserveSnapshot = {
+              totalMinted13: minted13.toString(),
+              usdcReserve: reserve.toString(),
+              ...(escrowReadable ? { escrowUsdc6: escrow.toString() } : {}),
+              reserveDifference: (reserve - escrow).toString(),
+              fetchedAt: Date.now(),
+            }
+            if (!cancelled) {
+              setMerchantCardRewardReserveByKey((prev) => ({ ...prev, [key]: snapshot }))
+              try {
+                window.localStorage.setItem(key, JSON.stringify(snapshot))
+              } catch {
+                /* trusted cache persistence is best-effort */
+              }
+            }
+          } catch {
+            /* Untrusted read: preserve the previous mirror and cache. */
+          }
+        }
+      } finally {
+        inFlight = false
+        if (!cancelled) {
+          timer = setTimeout(() => { void runRewardReserveTick() }, 30_000)
+        }
+      }
+    }
+
+    void runRewardReserveTick()
+    return () => {
+      cancelled = true
+      if (timer) clearTimeout(timer)
+    }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    let timeoutId: ReturnType<typeof setTimeout> | undefined
+    let inFlight = false
+
+    const runOracleTick = async () => {
+      if (cancelled || inFlight) return
+      inFlight = true
+      try {
+        await fetchOracle()
+      } finally {
+        inFlight = false
+        if (!cancelled) {
+          timeoutId = setTimeout(() => {
+            void runOracleTick()
+          }, ORACLE_REFRESH_MS)
+        }
+      }
+    }
+
+    void runOracleTick()
+    return () => {
+      cancelled = true
+      if (timeoutId) clearTimeout(timeoutId)
+    }
   }, [fetchOracle])
 
   /**
@@ -887,7 +1014,7 @@ export function DaemonProvider({ children }: DaemonProps) {
 				airdropSuccess, setAirdropSuccess, airdropTokens, setAirdropTokens, airdropProcessReff, setAirdropProcessReff, getWebFilter, listenningProcess, setListenningProcess,
 				setGetWebFilter,switchValue, setSwitchValue, webFilterRef, quickLinksShow, setQuickLinksShow, duplicateAccount, checkinBalanceUP, setCheckinBalanceUP, gossip, setGossip,
 				beamioUsers, setbBeamioUsers, showFooter, setShowFooter, chatSearchOpen, setChatSearchOpen, payMePayment, setPayMePayment, navigateLeftButtonArray, setNavigateLeftButtonArray, allNodes, setAllNodes,
-				chatHomeItem,setChatHomeItem,scanData, setScanData, scanIntent, setScanIntent, voucherPayAmount, setVoucherPayAmount, voucherPayToAA, setVoucherPayToAA, voucherPayError, setVoucherPayError, messageCount, setMessageCount, msgCountLockRef, seenMsgRef, scanRef, historyPayData, setHistoryPayData, registerMembersLoyaltyBackgroundWork, registerMerchantOsOverviewBackgroundWork, registerMerchantOsBuintBalanceBackgroundWork, registerAddressMetadataMinuteWork,
+				chatHomeItem,setChatHomeItem,scanData, setScanData, scanIntent, setScanIntent, voucherPayAmount, setVoucherPayAmount, voucherPayToAA, setVoucherPayToAA, voucherPayError, setVoucherPayError, messageCount, setMessageCount, msgCountLockRef, seenMsgRef, scanRef, historyPayData, setHistoryPayData, registerMembersLoyaltyBackgroundWork, registerMerchantOsOverviewBackgroundWork, registerMerchantOsBuintBalanceBackgroundWork, registerAddressMetadataMinuteWork, merchantCardRewardReserveByKey, registerMerchantCardRewardReserveTarget,
         		setDuplicateAccount,subscriptionVisible, setSubscriptionVisible, airdropVisible, setAirdropVisible, referralsVisible, setReferralsVisible, passportVisible, 
 				setPassportVisible, checkInVisible, setCheckInVisible, genesisVisible, setGenesisVisible, isInitialLoading, setIsInitialLoading, statusVisible, setStatusVisible, ruleVisible }}>
 			{/* ✅ 常驻隐藏扫码组件：不占布局，但随时可 start */}

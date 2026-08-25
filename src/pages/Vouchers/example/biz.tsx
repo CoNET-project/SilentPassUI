@@ -29967,9 +29967,32 @@ const formatTrustedUsdcSigned = (raw: string | undefined): string => {
     return 'Not available';
   }
 };
+const formatTrustedE6Signed = (raw: string | undefined): string => {
+  if (raw == null) return 'Not available';
+  try {
+    const n = Number(BigInt(raw)) / 1_000_000;
+    const abs = Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    if (n < 0) return `-${abs}`;
+    return abs;
+  } catch {
+    return 'Not available';
+  }
+};
 const merchantCardMintedReward13Display = formatTrustedE6Amount(merchantCardRewardReserve?.totalMinted13);
 const merchantCardUsdcReserveDisplay = formatTrustedUsdcSigned(merchantCardRewardReserve?.usdcReserve);
-const merchantCardReserveDifferenceDisplay = formatTrustedUsdcSigned(merchantCardRewardReserve?.reserveDifference);
+const merchantCardReserveDifferenceDisplay = formatTrustedE6Signed(merchantCardRewardReserve?.reserveDifference);
+const merchantCardReserveDifferenceIsNegative = (() => {
+  const raw = merchantCardRewardReserve?.reserveDifference;
+  if (raw == null) return false;
+  try {
+    return BigInt(raw) < 0n;
+  } catch {
+    return false;
+  }
+})();
+const merchantCardReserveDifferenceClassName = merchantCardReserveDifferenceIsNegative
+  ? 'text-[#dc2626]'
+  : 'text-[#747779]';
 /** Charge-only sum of `fees.bServiceUnits6` from `transactionsFilteredForTable`, windowed by header `timeFilter`. */
 const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
 /** Today's Charge B-Unit burn (local calendar day); used for Market runway estimate only. */
@@ -31898,7 +31921,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                           <p className="mt-0.5 font-manrope text-xl font-extrabold tracking-tight text-[#2c2f31] tabular-nums sm:mt-1 sm:text-2xl">
                             {merchantCardUsdcReserveDisplay}
                           </p>
-                          <p className="mt-0.5 text-[10px] font-medium text-[#747779]">
+                          <p className={`mt-0.5 text-[10px] font-medium ${merchantCardReserveDifferenceClassName}`}>
                             Diff {merchantCardReserveDifferenceDisplay}
                           </p>
                         </div>
@@ -32154,7 +32177,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                     <h3 className="font-manrope text-lg font-extrabold tabular-nums text-[#2c2f31] sm:text-xl">
                       {merchantCardUsdcReserveDisplay}
                     </h3>
-                    <p className="mt-1 text-[10px] font-medium uppercase text-slate-400">
+                    <p className={`mt-1 text-[10px] font-medium uppercase ${merchantCardReserveDifferenceIsNegative ? 'text-[#dc2626]' : 'text-slate-400'}`}>
                       Diff {merchantCardReserveDifferenceDisplay}
                     </p>
                   </div>

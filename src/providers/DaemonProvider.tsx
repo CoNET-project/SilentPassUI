@@ -214,7 +214,7 @@ export type MerchantCardRewardReserveSnapshot = {
 	usdcReserve: string
 	/** `rewardEscrowUsdc6()` when readable; omitted / empty when the view is unavailable. */
 	escrowUsdc6?: string
-	/** `usdcReserve - escrowUsdc6` (escrow treated as 0 when unread). */
+	/** CONET-USDC.balanceOf(card) − totalSupply(#13). Negative when issued #13 exceeds on-card USDC. */
 	reserveDifference: string
 	fetchedAt: number
 }
@@ -672,7 +672,7 @@ export function DaemonProvider({ children }: DaemonProps) {
               totalMinted13: minted13.toString(),
               usdcReserve: reserve.toString(),
               ...(escrowReadable ? { escrowUsdc6: escrow.toString() } : {}),
-              reserveDifference: (reserve - escrow).toString(),
+              reserveDifference: (reserve - minted13).toString(),
               fetchedAt: Date.now(),
             }
             if (!cancelled) {

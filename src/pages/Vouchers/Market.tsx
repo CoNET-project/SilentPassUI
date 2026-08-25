@@ -5684,7 +5684,7 @@ function DiscoverMerchantDetailFullScreen({
 							ctaLabel={
 								membershipUi.mode === 'need_member' && membershipUi.joinTier
 									? 'Claim Offer & Become a Member'
-									: newCustomerBonusCopy.ctaLabel
+									: newCustomerBonusCopy.ctaLabel ?? 'Claim Offer & Top Up'
 							}
 							onClaim={
 								usdcTopupPhase === 'idle' ? claimDiscoverTopupPromotion : undefined

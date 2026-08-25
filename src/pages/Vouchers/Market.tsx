@@ -4236,6 +4236,17 @@ function DiscoverMerchantDetailFullScreen({
 		[merchantMetadataRoot, chainCardSocialPromotion],
 	)
 	const topupPromotionCapsule = topupPromotionPresentation.capsuleCopy
+	// New Customer Bonus is a membership-state panel. A top-up promotion only
+	// changes its copy; it must not control whether the panel is shown.
+	const showDiscoverNewCustomerBonus =
+		merchantAssets != null && !merchantAssetsLoading && !hasActiveMembership
+	const newCustomerBonusCopy =
+		topupPromotionCapsule ??
+		{
+			title: 'New Customer Bonus',
+			description: 'Join this merchant program to unlock member benefits.',
+			ctaLabel: 'Claim & Top Up',
+		}
 	const openConetExplore = useCallback(() => {
 		void openExternalUrl(CONET_EXPLORE_NETWORK_URL)
 	}, [])
@@ -6016,11 +6027,11 @@ function DiscoverMerchantDetailFullScreen({
 					{/* Top-up promo / Active promotions / curated offers — non-Genesis merchant cards. */}
 					{!isConetGenesisCard ? (
 					<>
-					{topupPromotionCapsule ? (
+					{showDiscoverNewCustomerBonus ? (
 						<DiscoverTopupPromotionCapsule
-							title={topupPromotionCapsule.title}
-							description={topupPromotionCapsule.description}
-							ctaLabel={topupPromotionCapsule.ctaLabel}
+							title={newCustomerBonusCopy.title}
+							description={newCustomerBonusCopy.description}
+							ctaLabel={newCustomerBonusCopy.ctaLabel}
 							onClaimTopUp={
 								usdcTopupPhase === 'idle' ? claimDiscoverTopupPromotion : undefined
 							}
@@ -6054,7 +6065,7 @@ function DiscoverMerchantDetailFullScreen({
 							config={curatedOffersPanel}
 							onPointsMallClick={scrollToCouponsSection}
 							onCollectOffer={scrollToCouponsSection}
-							showTopUpBonus={!topupPromotionCapsule}
+							showTopUpBonus={false}
 							onClaimTopUp={
 								usdcTopupPhase === 'idle' ? claimDiscoverTopupPromotion : undefined
 							}

@@ -366,8 +366,9 @@ export default function RestoreWalletUnifiedScreen({
 	/** Match Create your Beamio ID field chrome (`CreateUsernamePinScreen`). */
 	const fieldLabelClass =
 		'block px-4 text-xs font-bold uppercase tracking-widest text-[#424655]'
+	/** `ring-inset`: outer focus ring is clipped by parent `overflow-x-hidden` (left/right only). */
 	const fieldInputClass =
-		'w-full rounded-lg border-none bg-[#e2e2e7] text-base font-semibold text-[#1a1c1f] outline-none transition-all placeholder:text-[#737687]/50 focus:ring-2 focus:ring-[#004bc3]/20 disabled:opacity-70'
+		'w-full rounded-lg border-none bg-[#e2e2e7] text-base font-semibold text-[#1a1c1f] outline-none transition-all placeholder:text-[#737687]/50 focus:ring-2 focus:ring-inset focus:ring-[#004bc3]/40 disabled:opacity-70'
 	const fieldInputPadClass =
 		'py-5 [@media(max-height:780px)]:py-4 [@media(max-height:700px)]:py-3.5 [@media(max-height:640px)]:py-3 [@media(max-height:640px)]:text-[15px] [@media(max-height:560px)]:rounded-[14px] [@media(max-height:560px)]:py-2.5 [@media(max-height:560px)]:text-[14px]'
 
@@ -448,7 +449,9 @@ export default function RestoreWalletUnifiedScreen({
 												fieldInputClass,
 												fieldInputPadClass,
 												'pl-12 pr-5 [@media(max-height:560px)]:pl-10 [@media(max-height:560px)]:pr-4',
-												loginError && !username.trim() ? 'ring-2 ring-orange-400/80 focus:ring-orange-400/30' : '',
+												loginError && !username.trim()
+													? 'ring-2 ring-inset ring-orange-400/80 focus:ring-orange-400/40'
+													: '',
 											].join(' ')}
 											placeholder="Username"
 											value={username}
@@ -476,7 +479,9 @@ export default function RestoreWalletUnifiedScreen({
 												fieldInputClass,
 												fieldInputPadClass,
 												'pl-5 pr-14 [@media(max-height:560px)]:pl-4 [@media(max-height:560px)]:pr-12',
-												loginError && !pin.trim() ? 'ring-2 ring-orange-400/80 focus:ring-orange-400/30' : '',
+												loginError && !pin.trim()
+													? 'ring-2 ring-inset ring-orange-400/80 focus:ring-orange-400/40'
+													: '',
 											].join(' ')}
 											placeholder="••••••••••••"
 											value={pin}
@@ -554,7 +559,9 @@ export default function RestoreWalletUnifiedScreen({
 										className={[
 											fieldInputClass,
 											'min-h-[5.5rem] resize-none px-5 py-4 leading-relaxed [@media(max-height:560px)]:px-4 [@media(max-height:560px)]:py-3 [@media(max-height:560px)]:text-[14px]',
-											recoveryError ? 'ring-2 ring-orange-400/80 focus:ring-orange-400/30' : '',
+											recoveryError
+												? 'ring-2 ring-inset ring-orange-400/80 focus:ring-orange-400/40'
+												: '',
 										].join(' ')}
 										placeholder="Enter your recovery code here..."
 										value={recoveryCode}

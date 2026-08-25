@@ -176,14 +176,12 @@ import { collectDeepLinkSearchParams } from '@/utils/beamioDeepLinkParams'
 import { useReliableTapHandler, RELIABLE_TAP_BUTTON_CLASS } from '@/utils/reliableTap'
 import {
 	formatSocialPoints13Display,
-	parseDiscoverActorRewardPercentsFromMetadata,
 	resolveCouponSocialMissionBlockForSeries,
 	resolveDiscoverTopupPromotionPresentation,
 	resolveDiscoverTopupPromotionStoreCreditsBadge,
 	type DiscoverTopupPromotionPresentation,
 } from '@/utils/discoverMerchantPromotions'
 import {
-	actorPercentFromSocialEvent,
 	readCardSocialPromotionFromChain,
 } from '@/utils/discoverMerchantSocialPromotionChain'
 import { normalizeCardAddressKey } from '@/utils/merchantCardDatabase'
@@ -530,82 +528,41 @@ function discoverMerchantAboutPanelForDisplay(
 	return hasDiscoverMerchantAboutPanel(next) ? next : null
 }
 
-function formatDiscoverRewardPercent(percent: number | null): string {
-	if (percent == null || !Number.isFinite(percent) || percent <= 0) return '—'
-	return `${Math.min(100, Math.round(percent))}%`
-}
-
 function DiscoverMerchantProspectJoinPanel({
-	welcomeTitle,
-	welcomeBody,
-	chargePercent,
-	topupPercent,
 	offerTitle,
 	offerDescription,
 	ctaLabel,
 	onClaim,
 }: {
-	welcomeTitle: string
-	welcomeBody: string
-	chargePercent: number | null
-	topupPercent: number | null
 	offerTitle: string
 	offerDescription: string
 	ctaLabel: string
 	onClaim?: () => void
 }) {
 	return (
-		<div className="rounded-[22px] bg-white p-4 shadow-[0_8px_22px_rgba(15,23,42,0.06)] ring-1 ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800 sm:p-5">
-			<p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400 dark:text-slate-500">
-				Membership
-			</p>
-			<h2 className="mt-1 text-[22px] font-bold leading-snug tracking-tight text-[#1f2328] dark:text-slate-100">
-				{welcomeTitle}
-			</h2>
-			{welcomeBody ? <DiscoverAboutDetailBody text={welcomeBody} className=" mt-2" /> : null}
-			<div className="mt-4 grid grid-cols-2 gap-2">
-				<div className="rounded-2xl bg-[#f4f6f9] px-3 py-3 dark:bg-slate-800/80">
-					<p className="text-[12px] font-medium text-slate-500 dark:text-slate-400">Charge reward</p>
-					<p className="mt-1.5 text-[26px] font-bold leading-none tracking-tight text-[#1f2328] dark:text-slate-100">
-						{formatDiscoverRewardPercent(chargePercent)}
-					</p>
-				</div>
-				<div className="rounded-2xl bg-[#f4f6f9] px-3 py-3 dark:bg-slate-800/80">
-					<p className="text-[12px] font-medium text-slate-500 dark:text-slate-400">Top-up reward</p>
-					<p className="mt-1.5 text-[26px] font-bold leading-none tracking-tight text-[#1f2328] dark:text-slate-100">
-						{formatDiscoverRewardPercent(topupPercent)}
-					</p>
-				</div>
-			</div>
-			<section
-				className="mt-4 overflow-hidden rounded-[18px] bg-[#1562f0] p-4 text-white sm:p-5"
-				aria-label={offerTitle}
-			>
-				<span className="inline-flex items-center gap-1.5 rounded-full bg-white/20 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.06em] text-white backdrop-blur-[2px]">
-					<Gift className="h-3.5 w-3.5 shrink-0" strokeWidth={2.25} aria-hidden />
-					Exclusive Welcome Offer
-				</span>
-				<h3 className="mt-3 text-[20px] font-bold leading-snug tracking-tight text-white sm:text-[22px]">
-					{offerTitle}
-				</h3>
-				<p className="mt-2 text-[14px] leading-relaxed text-white/90">{offerDescription}</p>
-				{chargePercent != null && chargePercent > 0 ? (
-					<p className="mt-3 text-[12px] font-medium text-white/85">
-						Earn {formatDiscoverRewardPercent(chargePercent)} back in points on every future purchase.
-					</p>
-				) : null}
-				{onClaim ? (
-					<button
-						type="button"
-						onClick={onClaim}
-						className="mt-4 flex w-full items-center justify-center gap-2 rounded-full bg-white px-4 py-3 text-[15px] font-bold text-[#1562f0] shadow-sm transition active:scale-[0.98] hover:bg-white/95"
-					>
-						{ctaLabel}
-						<ArrowRight className="h-4 w-4 shrink-0" strokeWidth={2.5} aria-hidden />
-					</button>
-				) : null}
-			</section>
-		</div>
+		<section
+			className="overflow-hidden rounded-[22px] bg-[#1562f0] p-4 text-white shadow-[0_8px_22px_rgba(15,23,42,0.06)] sm:p-5"
+			aria-label={offerTitle}
+		>
+			<span className="inline-flex items-center gap-1.5 rounded-full bg-white/20 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.06em] text-white backdrop-blur-[2px]">
+				<Gift className="h-3.5 w-3.5 shrink-0" strokeWidth={2.25} aria-hidden />
+				Exclusive Welcome Offer
+			</span>
+			<h3 className="mt-3 text-[20px] font-bold leading-snug tracking-tight text-white sm:text-[22px]">
+				{offerTitle}
+			</h3>
+			<p className="mt-2 text-[14px] leading-relaxed text-white/90">{offerDescription}</p>
+			{onClaim ? (
+				<button
+					type="button"
+					onClick={onClaim}
+					className="mt-4 flex w-full items-center justify-center gap-2 rounded-full bg-white px-4 py-3 text-[15px] font-bold text-[#1562f0] shadow-sm transition active:scale-[0.98] hover:bg-white/95"
+				>
+					{ctaLabel}
+					<ArrowRight className="h-4 w-4 shrink-0" strokeWidth={2.5} aria-hidden />
+				</button>
+			) : null}
+		</section>
 	)
 }
 
@@ -4219,16 +4176,6 @@ function DiscoverMerchantDetailFullScreen({
 			description: 'Join this merchant program to unlock member benefits.',
 			ctaLabel: 'Claim Offer & Top Up',
 		}
-	const metadataActorRewardPercents = useMemo(
-		() => parseDiscoverActorRewardPercentsFromMetadata(merchantMetadataRoot),
-		[merchantMetadataRoot],
-	)
-	const prospectChargeRewardPercent =
-		actorPercentFromSocialEvent(chainCardSocialPromotion?.events?.charge) ??
-		metadataActorRewardPercents.chargePercent
-	const prospectTopupRewardPercent =
-		actorPercentFromSocialEvent(chainCardSocialPromotion?.events?.topup) ??
-		metadataActorRewardPercents.topupPercent
 	const showProspectJoinPanel =
 		!isConetGenesisCard &&
 		!hasActiveMembership &&
@@ -5672,13 +5619,6 @@ function DiscoverMerchantDetailFullScreen({
 				<div className="mx-auto flex max-w-lg flex-col gap-4">
 					{showProspectJoinPanel ? (
 						<DiscoverMerchantProspectJoinPanel
-							welcomeTitle={
-								discoverWelcomePanel?.title ||
-								resolveDiscoverWelcomeTitle({ passTitle, merchantInfoPanel })
-							}
-							welcomeBody={discoverWelcomePanel?.body ?? ''}
-							chargePercent={prospectChargeRewardPercent}
-							topupPercent={prospectTopupRewardPercent}
 							offerTitle={newCustomerBonusCopy.title}
 							offerDescription={newCustomerBonusCopy.description}
 							ctaLabel={

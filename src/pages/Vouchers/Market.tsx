@@ -658,9 +658,8 @@ type DiscoverMerchantCuratedOffersPanel = {
 const DISCOVER_MERCHANT_CURATED_OFFERS: Record<string, DiscoverMerchantCuratedOffersPanel> = {
 	[LONGDHANG_DISCOVER_CARD_ADDRESS.toLowerCase()]: {
 		topUpBonus: {
-			title: "10% Bonus on every Top-Up!",
-			description:
-				"Top up $100 CAD or more to instantly unlock a 10% bonus balance. Value that never expires.",
+			title: 'New Customer Bonus',
+			description: 'Top up CA$ 100 or more, Get 10% bonus instantly!',
 		},
 		beamioPoints: {
 			title: "Beamio Points",
@@ -784,11 +783,13 @@ function DiscoverMerchantCuratedOffersStack({
 	onCollectOffer,
 	onPointsMallClick,
 	showTopUpBonus = true,
+	onClaimTopUp,
 }: {
 	config: DiscoverMerchantCuratedOffersPanel
 	onCollectOffer?: (offerId: string) => void
 	onPointsMallClick?: () => void
 	showTopUpBonus?: boolean
+	onClaimTopUp?: () => void
 }) {
 	return (
 		<div className="space-y-3">
@@ -796,6 +797,7 @@ function DiscoverMerchantCuratedOffersStack({
 				<DiscoverTopupPromotionCapsule
 					title={config.topUpBonus.title}
 					description={config.topUpBonus.description}
+					onClaimTopUp={onClaimTopUp}
 				/>
 			) : null}
 			<DiscoverCuratedBeamioPointsCard config={config.beamioPoints} onPointsMallClick={onPointsMallClick} />
@@ -1733,6 +1735,78 @@ function DiscoverMerchantTierOfferRow({
 				{tier.discountPct > 0 ? `${Math.round(tier.discountPct)}% DISCOUNT` : "Member pricing"}
 			</p>
 		</div>
+	)
+}
+
+/** Horizontal VIP perks preview. The base membership is intentionally excluded. */
+function DiscoverMerchantVipPerksPreview({
+	tiers,
+}: {
+	tiers: DiscoverOfferTierRow[]
+}) {
+	const higherTiers = tiers.filter((tier) => (tier.index ?? 0) > 0)
+	if (higherTiers.length === 0) return null
+
+	const palettes = [
+		{
+			border: 'border-slate-200',
+			accent: 'text-slate-500',
+			icon: 'bg-slate-100 text-slate-500',
+			corner: 'bg-slate-50',
+		},
+		{
+			border: 'border-amber-200',
+			accent: 'text-amber-500',
+			icon: 'bg-amber-50 text-amber-500',
+			corner: 'bg-amber-50/70',
+		},
+		{
+			border: 'border-[#cbd9ff]',
+			accent: 'text-[#1562f0]',
+			icon: 'bg-[#e9edff] text-[#1562f0]',
+			corner: 'bg-[#f4f7ff]',
+		},
+	]
+
+	return (
+		<section aria-label="VIP Perks Preview" className="space-y-3">
+			<div>
+				<h3 className="text-[20px] font-bold tracking-tight text-[#1f2328] dark:text-slate-100">
+					VIP Perks Preview
+				</h3>
+				<p className="mt-1 text-[14px] leading-relaxed text-slate-500 dark:text-slate-400">
+					Level up through top-ups or spending to unlock exclusive discounts.
+				</p>
+			</div>
+			<div className="-mx-1 flex snap-x snap-mandatory gap-3 overflow-x-auto px-1 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+				{higherTiers.map((tier, index) => {
+					const palette = palettes[Math.min(index, palettes.length - 1)]
+					const discount =
+						tier.discountPct > 0 ? `${Math.round(tier.discountPct)}% Off` : 'Member Perks'
+					return (
+						<article
+							key={`${tier.index ?? index}-${tier.name}`}
+							className={`relative w-[296px] shrink-0 snap-start overflow-hidden rounded-[22px] border bg-white p-6 dark:bg-slate-800/90 ${palette.border}`}
+						>
+							<div
+								className={`absolute -right-10 -top-14 h-36 w-36 rounded-full ${palette.corner}`}
+								aria-hidden
+							/>
+							<div className={`relative flex h-12 w-12 items-center justify-center rounded-full ${palette.icon}`}>
+								<Medal className="h-6 w-6" strokeWidth={1.8} aria-hidden />
+							</div>
+							<p className={`relative mt-7 text-[13px] font-medium uppercase tracking-[0.18em] ${palette.accent}`}>
+								{tier.name}
+							</p>
+							<p className="relative mt-2 text-[28px] font-extrabold leading-tight tracking-tight text-[#1f2328] dark:text-slate-100">
+								{discount}
+							</p>
+							<p className="relative mt-2 text-[15px] text-slate-500 dark:text-slate-300">All Purchases</p>
+						</article>
+					)
+				})}
+			</div>
+		</section>
 	)
 }
 
@@ -4664,9 +4738,9 @@ function DiscoverMerchantDetailFullScreen({
 		}
 	}, [item.cardAddress, resolveUserEoa, usdcTopupIntentLocked, usdcTopupPhase])
 
-	const openDiscoverTopupAmount = useCallback(() => {
+	const openDiscoverTopupAmount = useCallback((prefillAmount?: string) => {
 		setUsdcTopupError('')
-		setUsdcTopupAmountText('')
+		setUsdcTopupAmountText(prefillAmount?.trim() ? prefillAmount.trim() : '')
 		setUsdcTopupIntent('topup')
 		setUsdcTopupIntentLocked(true)
 		setMembershipPurchaseTierIndex(null)
@@ -4699,6 +4773,21 @@ function DiscoverMerchantDetailFullScreen({
 		)
 		setUsdcTopupPhase('amount')
 	}, [balancePrefix, membershipUi.joinTier, membershipUi.upgradeTier])
+
+	/** New Customer Bonus CTA — top-up with suggested min, or join membership when required. */
+	const claimDiscoverTopupPromotion = useCallback(() => {
+		if (membershipUi.mode === 'need_member' && membershipUi.joinTier) {
+			openDiscoverMembershipPay('join')
+			return
+		}
+		openDiscoverTopupAmount(topupPromotionCapsule?.suggestedAmount)
+	}, [
+		membershipUi.joinTier,
+		membershipUi.mode,
+		openDiscoverMembershipPay,
+		openDiscoverTopupAmount,
+		topupPromotionCapsule?.suggestedAmount,
+	])
 
 	const handleUsdcTopupContinue = useCallback(async () => {
 		const cardAddress = item.cardAddress?.trim() ?? ''
@@ -5690,7 +5779,7 @@ function DiscoverMerchantDetailFullScreen({
 								membershipUi.mode === 'can_upgrade') ? (
 								<button
 									type="button"
-									onClick={openDiscoverTopupAmount}
+									onClick={() => openDiscoverTopupAmount()}
 									className="shrink-0 rounded-full border border-[#1562f0]/25 bg-[#1562f0]/10 px-3 py-1.5 text-[12px] font-bold uppercase tracking-wide text-[#1562f0] transition active:scale-[0.98] hover:bg-[#1562f0]/15"
 								>
 									Top up
@@ -5903,8 +5992,16 @@ function DiscoverMerchantDetailFullScreen({
 						<DiscoverTopupPromotionCapsule
 							title={topupPromotionCapsule.title}
 							description={topupPromotionCapsule.description}
+							ctaLabel={topupPromotionCapsule.ctaLabel}
+							onClaimTopUp={
+								usdcTopupPhase === 'idle' ? claimDiscoverTopupPromotion : undefined
+							}
 						/>
 					) : null}
+
+					<DiscoverMerchantVipPerksPreview
+						tiers={parseDiscoverAllTiersFromMeta(merchantMetadataRoot)}
+					/>
 
 					{(() => {
 						const promotionsLoaded =
@@ -5930,6 +6027,9 @@ function DiscoverMerchantDetailFullScreen({
 							onPointsMallClick={scrollToCouponsSection}
 							onCollectOffer={scrollToCouponsSection}
 							showTopUpBonus={!topupPromotionCapsule}
+							onClaimTopUp={
+								usdcTopupPhase === 'idle' ? claimDiscoverTopupPromotion : undefined
+							}
 						/>
 					) : null}
 					</>

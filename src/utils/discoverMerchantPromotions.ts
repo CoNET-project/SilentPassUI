@@ -62,8 +62,12 @@ type ShareTokenMetadataTopupPromotion = {
 }
 
 export type DiscoverTopupPromotionCapsuleCopy = {
+	/** Fixed product headline for Discover New Customer Bonus panel. */
 	title: string
 	description: string
+	/** Prefill Discover top-up amount field (human number, no currency prefix). */
+	suggestedAmount?: string
+	ctaLabel?: string
 }
 
 const CARD_SOCIAL_EVENT_KEYS = ['linkClick', 'like', 'topup'] as const
@@ -346,30 +350,46 @@ function formatBonusRuleAmount(value: number): string {
 		: value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
+const NEW_CUSTOMER_BONUS_TITLE = 'New Customer Bonus'
+const NEW_CUSTOMER_BONUS_CTA = 'Claim & Top Up'
+
+/** Marketing money label — match design: `CA$ 100` (space after prefix). */
+function formatPromoMoneyLabel(moneyPrefix: string, amount: number): string {
+	return `${moneyPrefix} ${formatBonusRuleAmount(amount)}`
+}
+
 function formatTopupPromotionCapsuleCopy(
 	promo: ShareTokenMetadataTopupPromotion,
 	currencyCode: string,
 ): DiscoverTopupPromotionCapsuleCopy {
 	const moneyPrefix = moneyPrefixForCurrency(currencyCode)
-	const ccy = (currencyCode || 'CAD').toUpperCase()
 	const min = parseAmount(promo.minimumTopupAmount)
 	const reward = parseAmount(promo.rewardValue)
-	const minLabel =
-		min != null
-			? `${moneyPrefix}${formatBonusRuleAmount(min)} ${ccy}`
-			: `${moneyPrefix}— ${ccy}`
+	const suggestedAmount = min != null ? String(min) : undefined
 	if (promo.rewardType === 'percent' && reward != null) {
 		const pctLabel = formatBonusRuleAmount(reward)
+		const minLabel = min != null ? formatPromoMoneyLabel(moneyPrefix, min) : `${moneyPrefix} —`
 		return {
-			title: `${pctLabel}% Bonus on every Top-Up!`,
-			description: `Top up ${minLabel} or more to instantly unlock a ${pctLabel}% bonus balance. Value that never expires.`,
+			title: NEW_CUSTOMER_BONUS_TITLE,
+			description: `Top up ${minLabel} or more, Get ${pctLabel}% bonus instantly!`,
+			suggestedAmount,
+			ctaLabel: NEW_CUSTOMER_BONUS_CTA,
 		}
 	}
-	const rewardLabel =
-		reward != null ? `${moneyPrefix}${formatBonusRuleAmount(reward)}` : `${moneyPrefix}—`
+	if (min != null && reward != null) {
+		const totalReceive = Number((min + reward).toFixed(2))
+		return {
+			title: NEW_CUSTOMER_BONUS_TITLE,
+			description: `Top up ${formatPromoMoneyLabel(moneyPrefix, min)}, Get ${formatPromoMoneyLabel(moneyPrefix, totalReceive)} instantly!`,
+			suggestedAmount,
+			ctaLabel: NEW_CUSTOMER_BONUS_CTA,
+		}
+	}
 	return {
-		title: `${rewardLabel} Bonus on every Top-Up!`,
-		description: `Top up ${minLabel} or more to instantly unlock a ${rewardLabel} bonus balance. Value that never expires.`,
+		title: NEW_CUSTOMER_BONUS_TITLE,
+		description: 'Top up to unlock an instant bonus balance.',
+		suggestedAmount,
+		ctaLabel: NEW_CUSTOMER_BONUS_CTA,
 	}
 }
 
@@ -378,20 +398,23 @@ function formatRechargeBonusCapsuleCopy(
 	currencyCode: string,
 ): DiscoverTopupPromotionCapsuleCopy {
 	const moneyPrefix = moneyPrefixForCurrency(currencyCode)
-	const ccy = (currencyCode || 'CAD').toUpperCase()
-	const minLabel = `${moneyPrefix}${formatBonusRuleAmount(rule.paymentAmount)} ${ccy}`
+	const suggestedAmount = String(rule.paymentAmount)
 	if (rule.bonusProportional) {
 		const pct = (rule.bonusValue / rule.paymentAmount) * 100
 		const pctLabel = formatBonusRuleAmount(pct)
 		return {
-			title: `${pctLabel}% Bonus on every Top-Up!`,
-			description: `Top up ${minLabel} or more to instantly unlock a ${pctLabel}% bonus balance. Value that never expires.`,
+			title: NEW_CUSTOMER_BONUS_TITLE,
+			description: `Top up ${formatPromoMoneyLabel(moneyPrefix, rule.paymentAmount)} or more, Get ${pctLabel}% bonus instantly!`,
+			suggestedAmount,
+			ctaLabel: NEW_CUSTOMER_BONUS_CTA,
 		}
 	}
-	const bonusLabel = `${moneyPrefix}${formatBonusRuleAmount(rule.bonusValue)}`
+	const totalReceive = Number((rule.paymentAmount + rule.bonusValue).toFixed(2))
 	return {
-		title: `${bonusLabel} Bonus on every Top-Up!`,
-		description: `Top up ${minLabel} or more to instantly unlock a ${bonusLabel} bonus balance. Value that never expires.`,
+		title: NEW_CUSTOMER_BONUS_TITLE,
+		description: `Top up ${formatPromoMoneyLabel(moneyPrefix, rule.paymentAmount)}, Get ${formatPromoMoneyLabel(moneyPrefix, totalReceive)} instantly!`,
+		suggestedAmount,
+		ctaLabel: NEW_CUSTOMER_BONUS_CTA,
 	}
 }
 

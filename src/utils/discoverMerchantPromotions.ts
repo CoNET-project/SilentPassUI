@@ -713,6 +713,48 @@ function metadataRecord(raw: unknown): Record<string, unknown> | null {
 	return raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : null
 }
 
+function wholePercentFromRatioE6Raw(raw: unknown): number | null {
+	if (raw == null) return null
+	try {
+		const e6 = BigInt(String(raw).trim())
+		if (e6 <= 0n) return null
+		const v = Math.round(Number(e6) / 10_000)
+		if (!Number.isFinite(v) || v <= 0) return null
+		return Math.min(100, v)
+	} catch {
+		return null
+	}
+}
+
+function wholePercentFromBpsRaw(raw: unknown): number | null {
+	if (raw == null) return null
+	const n = typeof raw === 'number' ? raw : Number(String(raw).trim())
+	if (!Number.isFinite(n) || n <= 0) return null
+	return Math.min(100, Math.max(1, Math.round(n / 100)))
+}
+
+/** Local-first Charge / Top-up actor % from card0 metadata (until chain ratios succeed). */
+export function parseDiscoverActorRewardPercentsFromMetadata(
+	metadataRoot: Record<string, unknown> | null | undefined,
+): { chargePercent: number | null; topupPercent: number | null } {
+	const root = metadataRecord(metadataRoot)
+	if (!root) return { chargePercent: null, topupPercent: null }
+	const share = metadataRecord(root.shareTokenMetadata)
+	const unified = metadataRecord(share?.unifiedRewardPoints) ?? metadataRecord(root.unifiedRewardPoints)
+	const chargeBlock = metadataRecord(unified?.charge)
+	const topupBlock = metadataRecord(unified?.topup)
+	const ps = metadataRecord(share?.pointSystem) ?? metadataRecord(root.pointSystem)
+	const chargePercent =
+		wholePercentFromBpsRaw(chargeBlock?.actorPercentBps) ??
+		wholePercentFromRatioE6Raw(
+			ps?.chargeRewardRatioE6 ?? ps?.pointRewardRatioE6 ?? ps?.consumptionRewardRatioE6,
+		)
+	const topupPercent =
+		wholePercentFromBpsRaw(topupBlock?.actorPercentBps) ??
+		wholePercentFromRatioE6Raw(share?.topupActorRewardRatioE6 ?? root.topupActorRewardRatioE6)
+	return { chargePercent, topupPercent }
+}
+
 /** null = metadata not ready; boolean = consumption point system enabled flag from shareTokenMetadata.pointSystem. */
 export function consumptionPointSystemEnabledFromMetadata(
 	metadataRoot: Record<string, unknown> | null | undefined,

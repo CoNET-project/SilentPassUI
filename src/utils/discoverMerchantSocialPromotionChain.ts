@@ -5,6 +5,7 @@ const REWARD_RULE_READ_ABI = [
 	'function getRewardRule(uint256 ruleId) view returns (bool active, uint8 eventKind, uint8 targetKind, uint256 issuedParentId, uint256 actorMint13, uint256 refMint13)',
 	'function topupActorRewardRatioE6() view returns (uint256)',
 	'function referrerTopupAmountRatioE6() view returns (uint256)',
+	'function chargeRewardRatioE6() view returns (uint256)',
 ]
 
 const SOCIAL_PROMOTION_LINK_CLICK_RULE_ID = 1
@@ -28,6 +29,7 @@ export type ChainCardSocialPromotion = {
 		linkClick?: SocialPromotionEvent
 		like?: SocialPromotionEvent
 		topup?: SocialPromotionEvent
+		charge?: SocialPromotionEvent
 	}
 }
 
@@ -102,6 +104,19 @@ async function readTopupRatioPercentsFromChain(
 	}
 }
 
+async function readChargeActorPercentFromChain(cardAddress: string): Promise<number | null> {
+	try {
+		const card = ethers.getAddress(cardAddress)
+		const { provider } = await providerForBeamioUserCard(card)
+		const reader = new ethers.Contract(card, REWARD_RULE_READ_ABI, provider)
+		const raw = await reader.chargeRewardRatioE6()
+		if (raw == null) return null
+		return wholePercentFromRatioE6(BigInt(raw.toString()))
+	} catch {
+		return null
+	}
+}
+
 function rewardFromMint13(mint13: bigint): SocialPromotionReward | undefined {
 	if (mint13 <= 0n) return { enabled: false, points13: 0 }
 	return { enabled: true, points13: Number(mint13) }
@@ -126,10 +141,11 @@ function eventFromChainRule(row: OnChainRewardRuleRow | null): SocialPromotionEv
 export async function readCardSocialPromotionFromChain(
 	cardAddress: string,
 ): Promise<ChainCardSocialPromotion | null> {
-	const [linkRule, likeRule, ratios] = await Promise.all([
+	const [linkRule, likeRule, ratios, chargePercent] = await Promise.all([
 		readCardRewardRuleFromChain(cardAddress, SOCIAL_PROMOTION_LINK_CLICK_RULE_ID),
 		readCardRewardRuleFromChain(cardAddress, SOCIAL_PROMOTION_LIKE_RULE_ID),
 		readTopupRatioPercentsFromChain(cardAddress),
+		readChargeActorPercentFromChain(cardAddress),
 	])
 	const byRuleId = new Map<number, OnChainRewardRuleRow>()
 	if (linkRule) byRuleId.set(linkRule.ruleId, linkRule)
@@ -152,6 +168,18 @@ export async function readCardSocialPromotionFromChain(
 		}
 		any = true
 	}
+	if (chargePercent != null && chargePercent > 0) {
+		events.charge = { user: rewardFromPercentWhole(chargePercent) }
+		any = true
+	}
 	if (!any) return null
 	return { enabled: true, events }
+}
+
+export function actorPercentFromSocialEvent(
+	ev: SocialPromotionEvent | undefined,
+): number | null {
+	const n = ev?.user?.asPercent ? ev.user.points13 : null
+	if (n == null || !Number.isFinite(n) || n <= 0) return null
+	return n
 }

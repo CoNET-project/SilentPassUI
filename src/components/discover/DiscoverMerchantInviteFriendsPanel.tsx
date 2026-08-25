@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Check, ChevronDown, ChevronUp, Loader2, Share2 } from 'lucide-react'
+import { BarChart3, Check, ChevronDown, ChevronUp, Loader2, Share2 } from 'lucide-react'
 import { Toast } from 'antd-mobile'
 import { tu } from '@/locale/beamioLocale'
 import {
@@ -7,7 +7,11 @@ import {
 	shareDiscoverMerchantUrl,
 } from '@/utils/discoverMerchantShare'
 import {
+	fetchCardProgramReferrerDashboard,
 	fetchCardReferrerAmountRatioPercents,
+	formatNetworkPtsWhole,
+	pickNetworkEarningsRaw,
+	type CardProgramReferrerDashboardSnapshot,
 	type CardReferrerAmountRatioPercents,
 } from '@/utils/cardProgramReferrerDashboard'
 import type { ChainCardSocialPromotion } from '@/utils/discoverMerchantSocialPromotionChain'
@@ -47,9 +51,19 @@ export function DiscoverMerchantInviteFriendsPanel(props: {
 	merchantTitle: string
 	referrerEoa: string | null
 	chainCardSocialPromotion?: ChainCardSocialPromotion | null
+	isMember?: boolean
+	onOpenMyNetwork?: () => void
 }) {
-	const { cardAddress, merchantTitle, referrerEoa, chainCardSocialPromotion } = props
+	const {
+		cardAddress,
+		merchantTitle,
+		referrerEoa,
+		chainCardSocialPromotion,
+		isMember = false,
+		onOpenMyNetwork,
+	} = props
 	const [ratios, setRatios] = useState<CardReferrerAmountRatioPercents | null>(null)
+	const [dashboard, setDashboard] = useState<CardProgramReferrerDashboardSnapshot | null>(null)
 	const [detailsOpen, setDetailsOpen] = useState(false)
 	const [sharing, setSharing] = useState(false)
 	const [shared, setShared] = useState(false)
@@ -66,11 +80,28 @@ export function DiscoverMerchantInviteFriendsPanel(props: {
 		}
 	}, [cardAddress])
 
+	useEffect(() => {
+		if (!isMember || !cardAddress || !referrerEoa) return
+		let cancelled = false
+		void fetchCardProgramReferrerDashboard(cardAddress, referrerEoa).then((next) => {
+			if (cancelled || !next) return
+			setDashboard(next)
+		})
+		return () => {
+			cancelled = true
+		}
+	}, [isMember, cardAddress, referrerEoa])
+
 	const headlinePercent = ratios ? buildHeadlinePercent(ratios) : 0
 	const visible = Boolean(ratios && headlinePercent > 0)
 
 	const shareUrl = buildDiscoverMerchantShareUrl(cardAddress, referrerEoa)
 	const displayName = merchantTitle.trim() || 'this store'
+
+	const earnedPtsLabel = useMemo(() => {
+		const raw = pickNetworkEarningsRaw(dashboard?.rewardVoucher13Raw, dashboard?.rewardBalanceRaw)
+		return formatNetworkPtsWhole(raw)
+	}, [dashboard])
 
 	const detailRows = useMemo((): RewardDetailRow[] => {
 		if (!ratios) return []
@@ -133,6 +164,8 @@ export function DiscoverMerchantInviteFriendsPanel(props: {
 
 	if (!visible || !ratios) return null
 
+	const showMemberDetailsChrome = isMember && detailsOpen
+
 	return (
 		<section
 			className="overflow-hidden rounded-[22px] border border-[#dce8f7] bg-gradient-to-b from-[#eef5ff] to-white p-5 shadow-[0_8px_22px_rgba(15,23,42,0.06)] dark:border-slate-700 dark:from-slate-900 dark:to-slate-900 sm:p-6"
@@ -163,37 +196,70 @@ export function DiscoverMerchantInviteFriendsPanel(props: {
 				{shared ? 'Link shared' : 'Share Store Link'}
 			</button>
 			{detailsOpen && detailRows.length > 0 ? (
-				<ul className="mt-5 space-y-3 border-t border-slate-200/80 pt-4 dark:border-slate-700">
-					{detailRows.map((row) => (
-						<li key={row.key} className="flex items-baseline justify-between gap-3">
-							<span className="shrink-0 text-[11px] font-bold uppercase tracking-wide text-slate-400 dark:text-slate-500">
-								{row.label}
-							</span>
-							<span
-								className={[
-									'text-right text-[13px] font-bold leading-snug',
-									row.tone === 'friend' ? 'text-emerald-600 dark:text-emerald-400' : 'text-[#1562f0]',
-								].join(' ')}
-							>
-								{row.value}
-							</span>
-						</li>
-					))}
-				</ul>
+				<div className="mt-5 space-y-4">
+					{isMember ? (
+						<div className="rounded-xl bg-[#e8f1ff] px-3 py-2.5 text-center text-[13px] font-medium text-[#1f2328] dark:bg-[#1562f0]/20 dark:text-slate-100">
+							🎉 You&apos;ve earned{' '}
+							<span className="font-bold text-[#1562f0] dark:text-blue-300">{earnedPtsLabel} Pts</span>{' '}
+							from your network!
+						</div>
+					) : null}
+					<ul className="space-y-3">
+						{detailRows.map((row) => (
+							<li key={row.key} className="flex items-baseline justify-between gap-3">
+								<span className="shrink-0 text-[11px] font-bold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+									{row.label}
+								</span>
+								<span
+									className={[
+										'text-right text-[13px] font-bold leading-snug',
+										row.tone === 'friend' ? 'text-emerald-600 dark:text-emerald-400' : 'text-[#1562f0]',
+									].join(' ')}
+								>
+									{row.value}
+								</span>
+							</li>
+						))}
+					</ul>
+				</div>
 			) : null}
-			<button
-				type="button"
-				onClick={() => setDetailsOpen((open) => !open)}
-				className="mt-4 flex w-full items-center justify-center gap-1 text-[13px] font-semibold text-[#1562f0]"
-				aria-expanded={detailsOpen}
-			>
-				View Reward Details
-				{detailsOpen ? (
-					<ChevronUp className="h-4 w-4" strokeWidth={2.25} aria-hidden />
-				) : (
-					<ChevronDown className="h-4 w-4" strokeWidth={2.25} aria-hidden />
-				)}
-			</button>
+			{showMemberDetailsChrome ? (
+				<div className="mt-4 flex items-center justify-between gap-3">
+					<button
+						type="button"
+						onClick={() => setDetailsOpen(false)}
+						className="inline-flex items-center gap-1 text-[13px] font-semibold text-[#1562f0]"
+						aria-expanded
+					>
+						Hide Details
+						<ChevronUp className="h-4 w-4" strokeWidth={2.25} aria-hidden />
+					</button>
+					<button
+						type="button"
+						onClick={() => onOpenMyNetwork?.()}
+						disabled={!onOpenMyNetwork}
+						className="inline-flex items-center gap-1.5 rounded-lg border border-[#1562f0]/35 bg-[#eef5ff] px-3 py-1.5 text-[13px] font-bold text-[#1562f0] transition active:scale-[0.98] disabled:opacity-50 dark:border-blue-400/40 dark:bg-slate-800 dark:text-blue-300"
+						aria-label="My Network"
+					>
+						<BarChart3 className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />
+						My Network
+					</button>
+				</div>
+			) : (
+				<button
+					type="button"
+					onClick={() => setDetailsOpen((open) => !open)}
+					className="mt-4 flex w-full items-center justify-center gap-1 text-[13px] font-semibold text-[#1562f0]"
+					aria-expanded={detailsOpen}
+				>
+					{detailsOpen ? 'Hide Details' : 'View Reward Details'}
+					{detailsOpen ? (
+						<ChevronUp className="h-4 w-4" strokeWidth={2.25} aria-hidden />
+					) : (
+						<ChevronDown className="h-4 w-4" strokeWidth={2.25} aria-hidden />
+					)}
+				</button>
+			)}
 		</section>
 	)
 }

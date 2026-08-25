@@ -31858,6 +31858,19 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                         </div>
                       </div>
                     </div>
+                    <div className="h-full rounded-lg border border-[#abadaf]/10 bg-white p-4 shadow-sm">
+                      <div className="flex flex-col gap-2">
+                        <div className="flex size-9 items-center justify-center rounded-full bg-[#0051d1]/5 text-[#0051d1] sm:size-10">
+                          <Coins className="size-[18px] sm:size-5" strokeWidth={1.75} aria-hidden />
+                        </div>
+                        <div>
+                          <p className="text-[9px] font-bold uppercase tracking-widest text-[#747779] sm:text-[10px]">{tu('overview_b_units_label')}</p>
+                          <p className="mt-0.5 font-manrope text-xl font-extrabold tracking-tight text-[#2c2f31] sm:mt-1 sm:text-2xl">
+                            {protocolFuelReserve.toFixed(2)}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
                     <div className="h-full rounded-lg border border-[#eadcf7] bg-white p-4 shadow-sm">
                       <div className="flex flex-col gap-2">
                         <div className="flex size-9 items-center justify-center rounded-full bg-[#f5ecff] text-[#8d3a8b] sm:size-10">
@@ -31869,19 +31882,6 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                           </p>
                           <p className="mt-0.5 font-manrope text-xl font-extrabold tracking-tight text-[#2c2f31] tabular-nums sm:mt-1 sm:text-2xl">
                             {merchantCardMintedReward13Display}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="h-full rounded-lg border border-[#abadaf]/10 bg-white p-4 shadow-sm">
-                      <div className="flex flex-col gap-2">
-                        <div className="flex size-9 items-center justify-center rounded-full bg-[#0051d1]/5 text-[#0051d1] sm:size-10">
-                          <Coins className="size-[18px] sm:size-5" strokeWidth={1.75} aria-hidden />
-                        </div>
-                        <div>
-                          <p className="text-[9px] font-bold uppercase tracking-widest text-[#747779] sm:text-[10px]">{tu('overview_b_units_label')}</p>
-                          <p className="mt-0.5 font-manrope text-xl font-extrabold tracking-tight text-[#2c2f31] sm:mt-1 sm:text-2xl">
-                            {protocolFuelReserve.toFixed(2)}
                           </p>
                         </div>
                       </div>

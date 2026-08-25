@@ -31789,48 +31789,6 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
               </div>
             </section>
 
-            <section className="grid grid-cols-1 gap-3 sm:grid-cols-3" aria-label="Reward points reserve">
-              <div className="rounded-xl border border-[#eadcf7] bg-white p-4 shadow-sm">
-                <div className="flex items-center gap-3">
-                  <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[#f5ecff] text-[#8d3a8b]">
-                    <Coins className="size-5" strokeWidth={2} aria-hidden />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#747779]">Minted Reward PT #13</p>
-                    <p className="mt-1 font-manrope text-xl font-extrabold tracking-tight text-[#2c2f31] tabular-nums">
-                      {merchantCardMintedReward13Display}
-                    </p>
-                  </div>
-                </div>
-              </div>
-              <div className="rounded-xl border border-[#dce2f7] bg-white p-4 shadow-sm">
-                <div className="flex items-center gap-3">
-                  <UsdcConetCompositeIcon size={24} badgeSize={12} />
-                  <div className="min-w-0">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#747779]">USDC Reserve</p>
-                    <p className="mt-1 font-manrope text-xl font-extrabold tracking-tight text-[#2c2f31] tabular-nums">
-                      {merchantCardUsdcReserveDisplay}
-                    </p>
-                    <p className="mt-0.5 text-[10px] text-[#747779]">CONET-USDC on program card</p>
-                  </div>
-                </div>
-              </div>
-              <div className="rounded-xl border border-[#dce2f7] bg-white p-4 shadow-sm">
-                <div className="flex items-center gap-3">
-                  <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[#e9edff] text-[#0051d1]">
-                    <TrendingUp className="size-5" strokeWidth={2} aria-hidden />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#747779]">Reserve Difference</p>
-                    <p className="mt-1 font-manrope text-xl font-extrabold tracking-tight text-[#2c2f31] tabular-nums">
-                      {merchantCardReserveDifferenceDisplay}
-                    </p>
-                    <p className="mt-0.5 text-[10px] text-[#747779]">Card balance minus reward escrow</p>
-                  </div>
-                </div>
-              </div>
-            </section>
-
             {/* Phone Dashboard — layout aligned with `marketExample.html` (bento + SoftPOS hero).
                 Top inset matches Programs tab: scroll `p-2` + content `pt-2` (avoid extra `py-6` pushing date pill down). */}
             <div className="mx-auto w-full max-w-2xl md:hidden">
@@ -31912,6 +31870,39 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                           <p className="text-[9px] font-bold uppercase tracking-widest text-[#747779] sm:text-[10px]">{tu('top_ups')}</p>
                           <p className="mt-0.5 font-manrope text-xl font-extrabold tracking-tight text-[#2c2f31] sm:mt-1 sm:text-2xl">
                             C${overviewActivityTopupDisplayTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="rounded-lg border border-[#eadcf7] bg-white p-4 shadow-sm">
+                      <div className="flex flex-col gap-2">
+                        <div className="flex size-9 items-center justify-center rounded-full bg-[#f5ecff] text-[#8d3a8b] sm:size-10">
+                          <Coins className="size-[18px] sm:size-5" strokeWidth={1.75} aria-hidden />
+                        </div>
+                        <div>
+                          <p className="text-[9px] font-bold uppercase tracking-widest text-[#747779] sm:text-[10px]">
+                            Minted Reward PT #13
+                          </p>
+                          <p className="mt-0.5 font-manrope text-xl font-extrabold tracking-tight text-[#2c2f31] tabular-nums sm:mt-1 sm:text-2xl">
+                            {merchantCardMintedReward13Display}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="rounded-lg border border-[#dce2f7] bg-white p-4 shadow-sm">
+                      <div className="flex flex-col gap-2">
+                        <div className="flex size-9 items-center justify-center sm:size-10">
+                          <UsdcConetCompositeIcon size={22} badgeSize={11} />
+                        </div>
+                        <div>
+                          <p className="text-[9px] font-bold uppercase tracking-widest text-[#747779] sm:text-[10px]">
+                            USDC Reserve
+                          </p>
+                          <p className="mt-0.5 font-manrope text-xl font-extrabold tracking-tight text-[#2c2f31] tabular-nums sm:mt-1 sm:text-2xl">
+                            {merchantCardUsdcReserveDisplay}
+                          </p>
+                          <p className="mt-0.5 text-[10px] font-medium text-[#747779]">
+                            Diff {merchantCardReserveDifferenceDisplay}
                           </p>
                         </div>
                       </div>
@@ -32144,6 +32135,31 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                     <h3 className="font-manrope text-lg font-extrabold text-[#2c2f31] sm:text-xl">{`C$${overviewActivityTopupDisplayTotal.toFixed(2)}`}</h3>
                     <p className="mt-1 text-[10px] font-medium uppercase text-slate-400">
                       {tu('overview_activity_transactions', { count: overviewActivityTopupDisplayCount.toLocaleString() })}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <div className="flex-shrink-0 rounded-xl bg-[#f5ecff] p-2.5 text-[#8d3a8b] shadow-sm sm:rounded-2xl sm:p-3">
+                    <Coins className="size-6 sm:size-7" strokeWidth={1.75} aria-hidden />
+                  </div>
+                  <div>
+                    <p className="mb-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">Minted Reward PT #13</p>
+                    <h3 className="font-manrope text-lg font-extrabold tabular-nums text-[#2c2f31] sm:text-xl">
+                      {merchantCardMintedReward13Display}
+                    </h3>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <div className="flex-shrink-0 rounded-xl bg-white p-2.5 shadow-sm sm:rounded-2xl sm:p-3">
+                    <UsdcConetCompositeIcon size={28} badgeSize={14} />
+                  </div>
+                  <div>
+                    <p className="mb-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">USDC Reserve</p>
+                    <h3 className="font-manrope text-lg font-extrabold tabular-nums text-[#2c2f31] sm:text-xl">
+                      {merchantCardUsdcReserveDisplay}
+                    </h3>
+                    <p className="mt-1 text-[10px] font-medium uppercase text-slate-400">
+                      Diff {merchantCardReserveDifferenceDisplay}
                     </p>
                   </div>
                 </div>

@@ -1021,13 +1021,37 @@ const UsdcConetCompositeIcon = ({ size = 16, badgeSize }: { size?: number; badge
   );
 };
 
-/** Format trusted USDC balance string for UI (2 dp); null/invalid → em dash. */
-const formatUsdcBalanceDisplay = (raw: string | null | undefined): string => {
-  if (raw == null || raw === '') return '—';
+/** Parse a trusted USDC balance string; null/invalid → null (do not treat as 0). */
+const parseTrustedUsdcNumber = (raw: string | null | undefined): number | null => {
+  if (raw == null || raw === '') return null;
   const n = Number(String(raw).replace(/,/g, ''));
-  if (!Number.isFinite(n) || n < 0) return '—';
+  if (!Number.isFinite(n) || n < 0) return null;
+  return n;
+};
+
+/** Sum trusted USDC parts; missing legs count as 0 only when at least one leg is trusted. */
+const sumTrustedUsdcParts = (...parts: Array<number | null>): number | null => {
+  if (parts.every((p) => p == null)) return null;
+  return parts.reduce((s, p) => s + (p ?? 0), 0);
+};
+
+/** Format trusted USDC number for UI (2 dp); null/invalid → em dash. */
+const formatUsdcNumberDisplay = (n: number | null | undefined): string => {
+  if (n == null || !Number.isFinite(n) || n < 0) return '—';
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
+
+/** Format trusted USDC balance string for UI (2 dp); null/invalid → em dash. */
+const formatUsdcBalanceDisplay = (raw: string | null | undefined): string => {
+  return formatUsdcNumberDisplay(parseTrustedUsdcNumber(raw));
+};
+
+/** Official USDC mark without Base / CoNET chain badge (merchant combined wallet USDC). */
+const UsdcPlainIcon = ({ size = 16 }: { size?: number }) => (
+  <div className="relative flex-shrink-0" style={{ width: size, height: size, minWidth: size, minHeight: size }}>
+    <IpfsImg src={USDC_ICON_URL} alt="USDC" className="block w-full h-full rounded-full object-contain" />
+  </div>
+);
 
 /** beamio 表示 name 的 protocol，与 Home displayName 一致；兼容 first_name/last_name 与 firstName/lastName */
 const displayName = (item: { firstName?: string; lastName?: string; first_name?: string; last_name?: string; accountName?: string } | null | undefined) => {
@@ -3135,15 +3159,11 @@ function WalletsTreasuryShell(props: {
   /** CoNET oracle: USDC per 1 CAD (same units as header ORACLE line). */
   oracleUsdcPerCad: number;
   onOracleRefresh: () => void;
-  /** Main vault Base USDC total line, e.g. `1,234.56`. */
+  /** Combined merchant USDC (Base + CoNET) total line, e.g. `1,234.56`. */
   vaultUsdcBold: string;
-  /** Base USDC — EOA / AA / total (display numbers, already formatted). */
-  baseUsdcEoaDisplay: string;
-  baseUsdcAaDisplay: string;
-  /** CONET-USDC — EOA / AA / total (display numbers, already formatted). */
-  conetUsdcEoaDisplay: string;
-  conetUsdcAaDisplay: string;
-  conetUsdcTotalDisplay: string;
+  /** Combined merchant USDC — EOA / AA (display numbers, already formatted). */
+  merchantUsdcEoaDisplay: string;
+  merchantUsdcAaDisplay: string;
   /** Display handle including @ */
   merchantTagAt: string;
   merchantAvatarSrc: string;
@@ -3170,11 +3190,8 @@ function WalletsTreasuryShell(props: {
     oracleUsdcPerCad,
     onOracleRefresh,
     vaultUsdcBold,
-    baseUsdcEoaDisplay,
-    baseUsdcAaDisplay,
-    conetUsdcEoaDisplay,
-    conetUsdcAaDisplay,
-    conetUsdcTotalDisplay,
+    merchantUsdcEoaDisplay,
+    merchantUsdcAaDisplay,
     merchantTagAt,
     merchantAvatarSrc,
     onBuyViaCoinbase,
@@ -3377,12 +3394,12 @@ function WalletsTreasuryShell(props: {
           </div>
         </section>
 
-        <section className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <section>
           <div className="rounded-2xl border border-[#dce2f7] bg-white p-5 shadow-[0_4px_24px_-4px_rgba(0,0,0,0.03)]">
             <div className="flex items-center gap-3">
-              <UsdcBaseCompositeIcon size={28} badgeSize={14} />
+              <UsdcPlainIcon size={28} />
               <div className="min-w-0">
-                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#424655]/70">Base USDC</p>
+                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#424655]/70">USDC</p>
                 <p className="mt-0.5 font-manrope text-2xl font-semibold tracking-tight text-[#141b2b] tabular-nums">
                   {vaultUsdcBold}
                 </p>
@@ -3391,32 +3408,11 @@ function WalletsTreasuryShell(props: {
             <dl className="mt-4 space-y-2 border-t border-[#dce2f7]/80 pt-3 text-sm">
               <div className="flex items-center justify-between gap-3">
                 <dt className="text-[#424655]">Main Wallet (EOA)</dt>
-                <dd className="font-semibold tabular-nums text-[#141b2b]">{baseUsdcEoaDisplay}</dd>
+                <dd className="font-semibold tabular-nums text-[#141b2b]">{merchantUsdcEoaDisplay}</dd>
               </div>
               <div className="flex items-center justify-between gap-3">
                 <dt className="text-[#424655]">Smart Wallet</dt>
-                <dd className="font-semibold tabular-nums text-[#141b2b]">{baseUsdcAaDisplay}</dd>
-              </div>
-            </dl>
-          </div>
-          <div className="rounded-2xl border border-[#dce2f7] bg-white p-5 shadow-[0_4px_24px_-4px_rgba(0,0,0,0.03)]">
-            <div className="flex items-center gap-3">
-              <UsdcConetCompositeIcon size={28} badgeSize={14} />
-              <div className="min-w-0">
-                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#424655]/70">CONET-USDC</p>
-                <p className="mt-0.5 font-manrope text-2xl font-semibold tracking-tight text-[#141b2b] tabular-nums">
-                  {conetUsdcTotalDisplay}
-                </p>
-              </div>
-            </div>
-            <dl className="mt-4 space-y-2 border-t border-[#dce2f7]/80 pt-3 text-sm">
-              <div className="flex items-center justify-between gap-3">
-                <dt className="text-[#424655]">Main Wallet (EOA)</dt>
-                <dd className="font-semibold tabular-nums text-[#141b2b]">{conetUsdcEoaDisplay}</dd>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <dt className="text-[#424655]">Smart Wallet</dt>
-                <dd className="font-semibold tabular-nums text-[#141b2b]">{conetUsdcAaDisplay}</dd>
+                <dd className="font-semibold tabular-nums text-[#141b2b]">{merchantUsdcAaDisplay}</dd>
               </div>
             </dl>
           </div>
@@ -29234,20 +29230,18 @@ const programsMobileTopNavVisible =
  (!mediumMenuPageUsesGlobalOnly && useTerminalsMarketLayout && activeTab === 'Staff');
  /** The mobile/tablet global search floating bar (menu + search + @tag, rendered below `lg`) is showing. When it is, the desktop sticky header must not also appear in the medium (md) range, otherwise the header stacks directly under the global search control. */
  const mobileGlobalSearchBarVisible = !hideMobileFloatingBar && !programsMobileTopNavVisible;
-/** Wallet tab Total Estimated Value: sum trusted EOA + AA USDC balance, then display by card currency (USDC keeps native; others use CAD oracle). */
+/** Wallet tab Total Estimated Value: sum trusted Base + CoNET USDC (EOA + AA), then display by card currency. */
 const walletTreasuryCombinedUsdc = useMemo(() => {
-  const parseUsdc = (raw: string | null): number | null => {
-    if (raw == null) return null;
-    const n = Number(raw);
-    if (!Number.isFinite(n) || n < 0) return null;
-    return n;
-  };
-  const eoa = parseUsdc(eoaUsdcBalance);
-  const aa = parseUsdc(aaUsdcBalance);
-  if (eoa != null || aa != null) return (eoa ?? 0) + (aa ?? 0);
+  const summed = sumTrustedUsdcParts(
+    parseTrustedUsdcNumber(eoaUsdcBalance),
+    parseTrustedUsdcNumber(aaUsdcBalance),
+    parseTrustedUsdcNumber(eoaConetUsdcBalance),
+    parseTrustedUsdcNumber(aaConetUsdcBalance),
+  );
+  if (summed != null) return summed;
   const fallback = Number(usdcbalance);
   return Number.isFinite(fallback) && fallback >= 0 ? fallback : null;
-}, [aaUsdcBalance, eoaUsdcBalance, usdcbalance]);
+}, [aaConetUsdcBalance, aaUsdcBalance, eoaConetUsdcBalance, eoaUsdcBalance, usdcbalance]);
 const walletTreasuryDisplayCurrency = useMemo((): ICurrency => {
   const code = beamioFiatCurrencyLabel(programCardBeamioCurrencyType ?? 0).toUpperCase();
   switch (code) {
@@ -29280,34 +29274,28 @@ const walletTreasuryCadPrimary = useMemo(() => {
 }, [oracleCadUsdc, walletTreasuryCombinedUsdc, walletTreasuryDisplayCurrency]);
 const walletTreasuryUsdcSecondary = useMemo(() => {
   const usdc = walletTreasuryCombinedUsdc;
-  if (usdc == null || !Number.isFinite(usdc)) return '— Base USDC';
-  return `${usdc.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Base USDC`;
+  if (usdc == null || !Number.isFinite(usdc)) return '— USDC';
+  return `${usdc.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDC`;
 }, [walletTreasuryCombinedUsdc]);
 const walletVaultUsdcBoldLine = useMemo(() => {
   const usdc = walletTreasuryCombinedUsdc;
   if (usdc == null || !Number.isFinite(usdc)) return '—';
   return usdc.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }, [walletTreasuryCombinedUsdc]);
-const walletBaseUsdcEoaDisplay = useMemo(() => formatUsdcBalanceDisplay(eoaUsdcBalance), [eoaUsdcBalance]);
-const walletBaseUsdcAaDisplay = useMemo(() => formatUsdcBalanceDisplay(aaUsdcBalance), [aaUsdcBalance]);
-const walletConetUsdcCombined = useMemo(() => {
-  const parseUsdc = (raw: string | null): number | null => {
-    if (raw == null) return null;
-    const n = Number(raw);
-    if (!Number.isFinite(n) || n < 0) return null;
-    return n;
-  };
-  const eoa = parseUsdc(eoaConetUsdcBalance);
-  const aa = parseUsdc(aaConetUsdcBalance);
-  if (eoa == null && aa == null) return null;
-  return (eoa ?? 0) + (aa ?? 0);
-}, [aaConetUsdcBalance, eoaConetUsdcBalance]);
-const walletConetUsdcEoaDisplay = useMemo(() => formatUsdcBalanceDisplay(eoaConetUsdcBalance), [eoaConetUsdcBalance]);
-const walletConetUsdcAaDisplay = useMemo(() => formatUsdcBalanceDisplay(aaConetUsdcBalance), [aaConetUsdcBalance]);
-const walletConetUsdcTotalDisplay = useMemo(() => {
-  if (walletConetUsdcCombined == null) return '—';
-  return walletConetUsdcCombined.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}, [walletConetUsdcCombined]);
+const walletMerchantUsdcEoaDisplay = useMemo(
+  () =>
+    formatUsdcNumberDisplay(
+      sumTrustedUsdcParts(parseTrustedUsdcNumber(eoaUsdcBalance), parseTrustedUsdcNumber(eoaConetUsdcBalance)),
+    ),
+  [eoaConetUsdcBalance, eoaUsdcBalance],
+);
+const walletMerchantUsdcAaDisplay = useMemo(
+  () =>
+    formatUsdcNumberDisplay(
+      sumTrustedUsdcParts(parseTrustedUsdcNumber(aaUsdcBalance), parseTrustedUsdcNumber(aaConetUsdcBalance)),
+    ),
+  [aaConetUsdcBalance, aaUsdcBalance],
+);
  const walletMerchantTagAt = useMemo(() => {
    const t = merchantOwnerProfile?.username?.trim() || merchantOwnerProfile?.accountName?.trim() || '';
    const base = t.replace(/^@/, '');
@@ -31752,13 +31740,13 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
               aria-hidden
             />
 
-            {/* Wallet balances: Base USDC (L2) + CONET-USDC (CoNET L1) */}
-            <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {/* Wallet USDC: Base + CoNET combined as merchant-owned USDC */}
+            <section>
               <div className="rounded-xl border border-[#dce2f7] bg-white p-4 shadow-sm">
                 <div className="flex items-center gap-3">
-                  <UsdcBaseCompositeIcon size={24} badgeSize={12} />
+                  <UsdcPlainIcon size={24} />
                   <div className="min-w-0 flex-1">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#747779]">Base USDC</p>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#747779]">USDC</p>
                     <p className="mt-0.5 font-manrope text-xl font-extrabold tracking-tight text-[#2c2f31] tabular-nums">
                       {walletVaultUsdcBoldLine}
                     </p>
@@ -31774,39 +31762,11 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                 <dl className="mt-3 grid grid-cols-2 gap-2 border-t border-[#eef1f3] pt-3 text-xs">
                   <div>
                     <dt className="text-[#747779]">EOA</dt>
-                    <dd className="font-semibold tabular-nums text-[#2c2f31]">{walletBaseUsdcEoaDisplay}</dd>
+                    <dd className="font-semibold tabular-nums text-[#2c2f31]">{walletMerchantUsdcEoaDisplay}</dd>
                   </div>
                   <div>
                     <dt className="text-[#747779]">Smart Wallet</dt>
-                    <dd className="font-semibold tabular-nums text-[#2c2f31]">{walletBaseUsdcAaDisplay}</dd>
-                  </div>
-                </dl>
-              </div>
-              <div className="rounded-xl border border-[#dce2f7] bg-white p-4 shadow-sm">
-                <div className="flex items-center gap-3">
-                  <UsdcConetCompositeIcon size={24} badgeSize={12} />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#747779]">CONET-USDC</p>
-                    <p className="mt-0.5 font-manrope text-xl font-extrabold tracking-tight text-[#2c2f31] tabular-nums">
-                      {walletConetUsdcTotalDisplay}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => handleTabChange('Wallets')}
-                    className={`shrink-0 rounded-full px-3 py-1.5 text-[11px] font-bold text-[#0051d1] hover:bg-[#e9edff] ${bizFocusRingClass}`}
-                  >
-                    Details
-                  </button>
-                </div>
-                <dl className="mt-3 grid grid-cols-2 gap-2 border-t border-[#eef1f3] pt-3 text-xs">
-                  <div>
-                    <dt className="text-[#747779]">EOA</dt>
-                    <dd className="font-semibold tabular-nums text-[#2c2f31]">{walletConetUsdcEoaDisplay}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-[#747779]">Smart Wallet</dt>
-                    <dd className="font-semibold tabular-nums text-[#2c2f31]">{walletConetUsdcAaDisplay}</dd>
+                    <dd className="font-semibold tabular-nums text-[#2c2f31]">{walletMerchantUsdcAaDisplay}</dd>
                   </div>
                 </dl>
               </div>
@@ -33893,11 +33853,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                      oracleUsdcPerCad={oracleCadUsdc ?? ORACLE_CAD_USDC_FALLBACK}
                      onOracleRefresh={refreshOracleCadUsdcNow}
                      vaultUsdcBold={walletVaultUsdcBoldLine}
-                     baseUsdcEoaDisplay={walletBaseUsdcEoaDisplay}
-                     baseUsdcAaDisplay={walletBaseUsdcAaDisplay}
-                     conetUsdcEoaDisplay={walletConetUsdcEoaDisplay}
-                     conetUsdcAaDisplay={walletConetUsdcAaDisplay}
-                     conetUsdcTotalDisplay={walletConetUsdcTotalDisplay}
+                     merchantUsdcEoaDisplay={walletMerchantUsdcEoaDisplay}
+                     merchantUsdcAaDisplay={walletMerchantUsdcAaDisplay}
                      merchantTagAt={walletMerchantTagAt}
                      merchantAvatarSrc={walletMerchantAvatarSrc}
                      onMobileMenuOpen={() => setIsMobileMenuOpen(true)}
@@ -45335,20 +45292,11 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                        <div className="space-y-3 rounded-lg bg-[#1562f0]/5 p-4">
                          <p className="text-xs font-medium uppercase tracking-tighter text-[#455064]">Current Balance</p>
                          <div className="flex items-center gap-3">
-                           <UsdcBaseCompositeIcon size={18} badgeSize={11} />
+                           <UsdcPlainIcon size={18} />
                            <div className="min-w-0">
-                             <p className="text-[10px] font-bold uppercase tracking-wider text-[#455064]/80">Base USDC</p>
+                             <p className="text-[10px] font-bold uppercase tracking-wider text-[#455064]/80">USDC</p>
                              <p className="truncate font-sans text-lg font-extrabold tabular-nums text-[#2c2f31]">
-                               {formatUsdcBalanceDisplay(eoaUsdcBalance)}
-                             </p>
-                           </div>
-                         </div>
-                         <div className="flex items-center gap-3">
-                           <UsdcConetCompositeIcon size={18} badgeSize={11} />
-                           <div className="min-w-0">
-                             <p className="text-[10px] font-bold uppercase tracking-wider text-[#455064]/80">CONET-USDC</p>
-                             <p className="truncate font-sans text-lg font-extrabold tabular-nums text-[#2c2f31]">
-                               {formatUsdcBalanceDisplay(eoaConetUsdcBalance)}
+                               {walletMerchantUsdcEoaDisplay}
                              </p>
                            </div>
                          </div>

@@ -54,19 +54,11 @@ import { motion, AnimatePresence } from "framer-motion"
 import { Toast } from "antd-mobile"
 import { ethers } from "ethers"
 import { useDaemonContext } from "@/providers/DaemonProvider"
-import {
-	fetchCardProgramReferrerDashboard,
-	formatReferrerCountDisplay,
-	formatReferrerRewardPercent,
-	formatReferrerRewardPointsDisplay,
-	type CardProgramReferrerDashboardSnapshot,
-} from "@/utils/cardProgramReferrerDashboard"
 import { beamioApi } from "@/utils/constants"
 import { openExternalUrl } from "@/utils/cashTreesNativeNfc"
 import { resolveSigningPrivateKeyArmor } from "@/utils/resolveSigningPrivateKeyArmor"
 import { checkStorage, searchUsername } from "@/services/beamio"
 import BeamioContactProfilePreview from "@/components/Home/BeamioContactProfilePreview"
-import { DiscoverReferrerDownlinePage } from "@/pages/Vouchers/DiscoverReferrerDownlinePage"
 import { fiatPrefix, formatAmount } from "@/services/currency"
 import { getMyAssetsAggregated, getMyAssets, getCardTiersFromContract, getCardUpgradeTypeFromContract, quoteUSDCToCAD, postUSDCUserCardTopup, safeUsdc6ToAmountString, currencyAmountToSafeUsdc6, fetchCardActiveIssuedCouponSeriesTrusted, postCardCouponOpenClaimWithCurrentWallet, postCardRecordUserLikeWithCurrentWallet, resolveCouponOpenClaimEligibility, merchantBackgroundImageFromMetadataRoot, merchantIconUrlFromMetadataRoot, getCardOwner, readUserSocialPoints13BalanceOnCard, type CardActiveIssuedCouponSeriesItem, type CardMetadataFromUri, type CouponOpenClaimEligibility, type USDCUserCardTopupIntent } from "@/services/BeamioCard"
 import {
@@ -1832,106 +1824,6 @@ function DiscoverMerchantPromoRewardTierCard({
 				<p className="mt-3 text-[14px] font-medium leading-relaxed text-white drop-shadow-[0_1px_6px_rgba(0,0,0,0.68)] sm:text-[15px]">
 					{config.description}
 				</p>
-			</div>
-		</div>
-	)
-}
-
-/**
- * Card program REFERRER dashboard (biz Referrer Reward / registry).
- * All Discover merchant details — not Genesis-only.
- */
-function DiscoverMerchantReferrerDashboardCard({
-	snapshot,
-	loading,
-	onOpenMyReferees,
-}: {
-	snapshot: CardProgramReferrerDashboardSnapshot | null
-	loading: boolean
-	onOpenMyReferees?: () => void
-}) {
-	const openMyRefereesTap = useReliableTapHandler(() => {
-		onOpenMyReferees?.()
-	})
-	const rewardText = loading && !snapshot
-		? '—'
-		: formatReferrerRewardPointsDisplay(snapshot?.rewardBalanceRaw)
-	const myRefereesText = loading && !snapshot
-		? '—'
-		: formatReferrerCountDisplay(snapshot?.myRefereeCount)
-	const referrersText = loading && !snapshot
-		? '—'
-		: formatReferrerCountDisplay(snapshot?.referrerTotalCount)
-	const registeredText = loading && !snapshot
-		? '—'
-		: formatReferrerCountDisplay(snapshot?.registeredRefereeTotalCount)
-	const chargeText = loading && !snapshot
-		? '—'
-		: formatReferrerRewardPercent(snapshot?.chargeRatioE6)
-	const topupText = loading && !snapshot
-		? '—'
-		: formatReferrerRewardPercent(snapshot?.topupRatioE6)
-
-	const canOpenDownline = Boolean(onOpenMyReferees)
-	const cellClass = 'rounded-2xl bg-[#f4f6f8] px-4 py-3 dark:bg-slate-800/60'
-	const cellTitleClass = 'text-[13px] font-medium text-slate-500 dark:text-slate-400'
-	const cellValueClass =
-		'mt-1 text-[20px] font-bold leading-none tracking-tight text-[#1f2328] dark:text-slate-100'
-	const cellCaptionClass = 'mt-1.5 text-[11px] font-medium text-slate-400 dark:text-slate-500'
-
-	return (
-		<div className="rounded-[22px] bg-white p-4 shadow-[0_8px_22px_rgba(15,23,42,0.06)] ring-1 ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800 sm:p-5">
-			<div className="min-w-0">
-				<p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">
-					Referrer
-				</p>
-				<p className="mt-1 text-[32px] font-extrabold leading-none tracking-tight text-[#1f2328] dark:text-slate-100 sm:text-[34px]">
-					{rewardText}
-					<span className="ml-1.5 text-[16px] font-bold text-slate-400 dark:text-slate-500">Pts</span>
-				</p>
-				<p className="mt-2 text-[12px] font-medium text-slate-500 dark:text-slate-400">
-					Your referrer reward balance (token #1)
-				</p>
-			</div>
-
-			<div className="mt-4 grid grid-cols-2 gap-3">
-				<button
-					type="button"
-					disabled={!canOpenDownline}
-					{...(canOpenDownline ? openMyRefereesTap : {})}
-					data-touch-priority="1"
-					className={[
-						cellClass,
-						RELIABLE_TAP_BUTTON_CLASS,
-						'text-left',
-						canOpenDownline
-							? 'transition hover:bg-[#e8ecf0] active:scale-[0.99] dark:hover:bg-slate-800'
-							: 'cursor-not-allowed opacity-80',
-					].join(' ')}
-					aria-label="View my referees"
-				>
-					<p className={cellTitleClass}>My referees</p>
-					<p className={cellValueClass}>{myRefereesText}</p>
-					{/* Match Referrers cell height (caption line). */}
-					<p className={`${cellCaptionClass} invisible`} aria-hidden>
-						On this card
-					</p>
-				</button>
-				<div className={cellClass}>
-					<p className={cellTitleClass}>Referrers</p>
-					<p className={cellValueClass}>{referrersText}</p>
-					<p className={cellCaptionClass}>
-						On this card · Registered {registeredText}
-					</p>
-				</div>
-				<div className={cellClass}>
-					<p className={cellTitleClass}>Charge reward</p>
-					<p className={cellValueClass}>{chargeText}</p>
-				</div>
-				<div className={cellClass}>
-					<p className={cellTitleClass}>Top-up reward</p>
-					<p className={cellValueClass}>{topupText}</p>
-				</div>
 			</div>
 		</div>
 	)
@@ -4223,9 +4115,6 @@ function DiscoverMerchantDetailFullScreen({
 			}),
 		[merchantMetadataRoot, displayCurrency],
 	)
-	const [referrerDashboard, setReferrerDashboard] = useState<CardProgramReferrerDashboardSnapshot | null>(null)
-	const [referrerDashboardLoading, setReferrerDashboardLoading] = useState(false)
-	const [referrerDownlineOpen, setReferrerDownlineOpen] = useState(false)
 	const topupPromotionCapsule = topupPromotionPresentation.capsuleCopy
 	// New Customer Bonus is a membership-state panel. A top-up promotion only
 	// changes its copy; it must not control whether the panel is shown.
@@ -5388,37 +5277,6 @@ function DiscoverMerchantDetailFullScreen({
 	}, [item.cardAddress, resolveUserEoa, profile?.keyID])
 
 	useEffect(() => {
-		if (!item.cardAddress) {
-			setReferrerDashboard(null)
-			setReferrerDashboardLoading(false)
-			return
-		}
-		const userEOA = resolveUserEoa()
-		if (!userEOA) {
-			setReferrerDashboard(null)
-			setReferrerDashboardLoading(false)
-			return
-		}
-		let cancelled = false
-		setReferrerDashboardLoading(true)
-		setReferrerDashboard(null)
-		void fetchCardProgramReferrerDashboard(item.cardAddress, userEOA)
-			.then((snap) => {
-				if (cancelled || !snap) return
-				setReferrerDashboard(snap)
-			})
-			.catch(() => {
-				/* untrusted — keep last trusted snapshot */
-			})
-			.finally(() => {
-				if (!cancelled) setReferrerDashboardLoading(false)
-			})
-		return () => {
-			cancelled = true
-		}
-	}, [item.cardAddress, resolveUserEoa, profile?.keyID])
-
-	useEffect(() => {
 		if (!merchantCoupons?.length) {
 			setCouponClaimEligibilityById({})
 			return
@@ -6047,17 +5905,6 @@ function DiscoverMerchantDetailFullScreen({
 					</>
 					) : null}
 
-					{/* Card program REFERRER dashboard (biz Referrer Reward) — all merchant cards. */}
-					<DiscoverMerchantReferrerDashboardCard
-						snapshot={referrerDashboard}
-						loading={referrerDashboardLoading}
-						onOpenMyReferees={
-							item.cardAddress && resolveUserEoa()
-								? () => setReferrerDownlineOpen(true)
-								: undefined
-						}
-					/>
-
 					<div className="space-y-4">
 						{item.cardAddress ? (
 							<DiscoverMerchantInviteFriendsPanel
@@ -6197,14 +6044,6 @@ function DiscoverMerchantDetailFullScreen({
 				</AnimatePresence>,
 				document.body,
 			)}
-		{referrerDownlineOpen && item.cardAddress && resolveUserEoa() ? (
-			<DiscoverReferrerDownlinePage
-				cardAddress={item.cardAddress}
-				userEoa={resolveUserEoa()!}
-				merchantTitle={passTitle}
-				onClose={() => setReferrerDownlineOpen(false)}
-			/>
-		) : null}
 		<UsdcArrivalOverlay
 			open={cardTopupSuccessBalance !== null}
 			phase="success"

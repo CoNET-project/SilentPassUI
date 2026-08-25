@@ -134,34 +134,23 @@ export type SocialPromotionRuleIntent = {
 }
 
 /**
- * @deprecated Programs → Top-up **Reward PT** writes `setTopupActorRewardRatio` /
- * `setReferrerTopupAmountRatio` (true % of 实付 fiat6 → #13). Do **not** map % to fixed
- * `actorMint13` / `refMint13` on `ruleId=2` (that was the dual-mint / wrong-semantics bug).
- * Kept only for type/export stability; callers should not use this for Reward PT Save.
+ * @deprecated Top-up Reward PT / Referrer use **ratio E6** setters — never fixed `ruleId=2` mint.
+ * Always returns an **inactive** slot-2 config (deactivate legacy). Ignores percent args.
  */
-export function buildTopupRewardPtRuleIntent(params: {
-	actorEnabled: boolean
-	actorPercentWhole: number
-	referrerEnabled: boolean
-	referrerPercentWhole: number
+export function buildTopupRewardPtRuleIntent(_params?: {
+	actorEnabled?: boolean
+	actorPercentWhole?: number
+	referrerEnabled?: boolean
+	referrerPercentWhole?: number
 }): SocialPromotionRuleIntent {
-	const actorMint13 =
-		params.actorEnabled && params.actorPercentWhole > 0
-			? BigInt(Math.min(100, Math.max(0, Math.floor(params.actorPercentWhole))))
-			: 0n
-	const refMint13 =
-		params.referrerEnabled && params.referrerPercentWhole > 0
-			? BigInt(Math.min(100, Math.max(0, Math.floor(params.referrerPercentWhole))))
-			: 0n
-	const active = actorMint13 > 0n || refMint13 > 0n
 	return {
 		ruleId: SOCIAL_PROMOTION_TOPUP_RULE_ID,
-		active,
+		active: false,
 		eventKind: UC_METRIC_TOPUP,
 		targetKind: UC_TARGET_GLOBAL_ONLY,
 		issuedParentId: 0n,
-		actorMint13: active ? actorMint13 : 0n,
-		refMint13: active ? refMint13 : 0n,
+		actorMint13: 0n,
+		refMint13: 0n,
 	}
 }
 

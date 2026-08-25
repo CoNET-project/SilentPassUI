@@ -31,6 +31,9 @@ export type CouponSocialPromotionDraft = {
 }
 
 export const SOCIAL_PROMOTION_LINK_CLICK_RULE_ID = 1
+/** @deprecated Legacy Social slot only — Top-up Reward PT uses ratio E6, not this ruleId.
+ * Social Save still deactivates slot 2 so it cannot dual-mint with ratios.
+ */
 export const SOCIAL_PROMOTION_TOPUP_RULE_ID = 2
 export const SOCIAL_PROMOTION_LIKE_RULE_ID = 3
 

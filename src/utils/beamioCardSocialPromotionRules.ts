@@ -182,17 +182,15 @@ async function postConfigureRulesBatchGateway(params: {
 }
 
 /**
- * @deprecated Do not use for Programs → Reward PT Save.
- * Reward PT / Referrer Top-up % → `setTopupActorRewardRatio` + `setReferrerTopupAmountRatio`
- * (see `syncTopupActorRewardRatioOnChain` / `syncProgramReferrerAmountRatioKind` in `biz.tsx`).
- * Mapping % → fixed `ruleId=2` mint is incorrect and must not dual-mint with ratios.
+ * @deprecated Reward PT Save must use `setTopupActorRewardRatio` / `setReferrerTopupAmountRatio`.
+ * This helper **only deactivates** legacy `getRewardRule(2)` — it never writes fixed mint from %.
  */
 export async function applyTopupRewardPtOnChainRule(params: {
 	cardAddress: string
-	actorEnabled: boolean
-	actorPercentWhole: number
-	referrerEnabled: boolean
-	referrerPercentWhole: number
+	actorEnabled?: boolean
+	actorPercentWhole?: number
+	referrerEnabled?: boolean
+	referrerPercentWhole?: number
 	ownerPrivateKey: string
 }): Promise<{ success: boolean; error?: string }> {
 	const card = ethers.getAddress(params.cardAddress)
@@ -200,18 +198,13 @@ export async function applyTopupRewardPtOnChainRule(params: {
 	if (!ownerKey) {
 		return {
 			success: false,
-			error: 'Unlock your wallet before saving Reward PT / Referrer on-chain rules.',
+			error: 'Unlock your wallet before deactivating legacy on-chain reward rule slot 2.',
 		}
 	}
 
 	await ensureCardCumulativeStatReadyViaGateway(card)
 
-	const intent = buildTopupRewardPtRuleIntent({
-		actorEnabled: params.actorEnabled,
-		actorPercentWhole: params.actorPercentWhole,
-		referrerEnabled: params.referrerEnabled,
-		referrerPercentWhole: params.referrerPercentWhole,
-	})
+	const intent = buildTopupRewardPtRuleIntent()
 
 	const batchRes = await postConfigureRulesBatchOwnerSigned({
 		cardAddress: card,
@@ -223,7 +216,7 @@ export async function applyTopupRewardPtOnChainRule(params: {
 			success: false,
 			error:
 				batchRes.error ??
-				'On-chain top-up reward rule (ruleId=2) update failed. Try saving again.',
+				'Failed to deactivate legacy on-chain reward rule (ruleId=2). Try saving again.',
 		}
 	}
 	return { success: true }

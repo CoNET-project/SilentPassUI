@@ -33,8 +33,8 @@ Merchant OS **Programs → Top-up Promotion** 编辑器内同时存在 **三类�
 - Helper：`syncTopupActorRewardRatioOnChain` / `syncProgramReferrerAmountRatioKind('topup', …)`（`biz.tsx`）。
 - UI 整数 % → E6：`parseAmountPercentHumanToE6`（`N%` → `N * 10_000`；100% = `1_000_000`）。
 - 同周期 mint：`ChargeRewardModuleV2.recordTopupCumulativeStat` → `amountFiat6 × ratioE6 / 1e6` → **#13**（基数 = 实付，不含 bonus #0）。
-- **禁止**把 % 写成 Social Promotion **`ruleId=2`** 固定 `actorMint13` / `refMint13`（`applyTopupRewardPtOnChainRule` 已 **@deprecated**）。
-- **禁止**为此调用会重写 1/2/3 的全量 `applySocialPromotionOnChainRules`，除非用户在 Social Promotion 编辑器 Save。
+- **`getRewardRule(2)` ≠ Top-up。** Reward PT / Referrer **不得**读写该槽；遗留固定 mint 仅由 Social Save **deactivate**。`applyTopupRewardPtOnChainRule` **@deprecated**，若被调用 **只 deactivate**，禁止再写 active 固定 mint。
+- **禁止**为此调用会重写 1/2/3 的全量 `applySocialPromotionOnChainRules`，除非用户在 Social Promotion 编辑器 Save（该 Save 仍须关掉 slot 2）。
 
 ---
 

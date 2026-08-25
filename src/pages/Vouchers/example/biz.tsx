@@ -1032,7 +1032,7 @@ const parseTrustedUsdcNumber = (raw: string | null | undefined): number | null =
 /** Sum trusted USDC parts; missing legs count as 0 only when at least one leg is trusted. */
 const sumTrustedUsdcParts = (...parts: Array<number | null>): number | null => {
   if (parts.every((p) => p == null)) return null;
-  return parts.reduce((s, p) => s + (p ?? 0), 0);
+  return parts.reduce<number>((s, p) => s + (p ?? 0), 0);
 };
 
 /** Format trusted USDC number for UI (2 dp); null/invalid → em dash. */

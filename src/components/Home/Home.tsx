@@ -1966,41 +1966,43 @@ const Home = (_props: HomeProps) => {
 							<div className="mb-10 flex flex-col gap-6 min-[480px]:gap-8">
 								{/* Premium Universal Pay Hub — signature gradient */}
 								<section className="shrink-0">
-									<div className="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-[#3b9eff] to-[#1d4ed8] text-white shadow-2xl">
+									<div className="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-[#1562f0] to-[#4c1d95] text-white shadow-2xl">
 										<div
 											aria-hidden
 											className="pointer-events-none absolute inset-0 opacity-[0.12] bg-[radial-gradient(ellipse_at_80%_0%,rgba(255,255,255,0.45),transparent_55%)]"
 										/>
 										<div className="relative z-10">
 											<div className="p-8 pb-6 pt-7 min-[480px]:p-8">
-												<div className="mb-6 text-center">
-													<p className="text-[10px] font-bold uppercase tracking-widest text-white/70">
-														{tu('universal_cash')}
-													</p>
-													{/* Own compositor layer: avoid subpixel text shake when parent re-rasterizes */}
-													<h2 className="mt-1 flex items-baseline justify-center gap-2 [transform:translateZ(0)] [-webkit-font-smoothing:antialiased]">
-														<span className="text-4xl font-extrabold tabular-nums tracking-tight">
-															{homeHubWalletUsdcDisplay}
-														</span>
-														<span className="text-xl font-bold tracking-tight text-white/90">
-															USDC
-														</span>
-													</h2>
+												<div className="mb-6 flex items-start justify-between">
+													<div className="space-y-1">
+														<p className="text-[10px] font-bold uppercase tracking-widest text-white/60">
+															{tu('universal_cash')}
+														</p>
+														{/* Own compositor layer: avoid subpixel text shake when parent re-rasterizes */}
+														<h2 className="flex items-baseline gap-2 [transform:translateZ(0)] [-webkit-font-smoothing:antialiased]">
+															<span className="text-4xl font-extrabold tabular-nums tracking-tight">
+																{homeHubWalletUsdcDisplay}
+															</span>
+															<span className="text-xl font-bold tracking-tight text-white/90">
+																USDC
+															</span>
+														</h2>
+													</div>
 												</div>
-												<div className="grid grid-cols-2 gap-3 [transform:translateZ(0)] [-webkit-font-smoothing:antialiased]">
-													<div className="rounded-2xl border border-white/20 bg-white/10 px-4 py-3.5 text-left">
-														<p className="text-[10px] font-bold uppercase tracking-widest text-white/70">
+												<div className="grid grid-cols-2 gap-4 [transform:translateZ(0)] [-webkit-font-smoothing:antialiased]">
+													<div className="space-y-1 text-left">
+														<p className="text-[10px] font-bold uppercase tracking-widest text-white/50">
 															{tu('merchant_assets')}
 														</p>
-														<p className="mt-1 text-xl font-extrabold tabular-nums">
+														<p className="text-lg font-bold tabular-nums">
 															CA$ {homeHubMerchantCad.whole}.{homeHubMerchantCad.frac}
 														</p>
 													</div>
-													<div className="rounded-2xl border border-white/20 bg-white/10 px-4 py-3.5 text-left">
-														<p className="text-[10px] font-bold uppercase tracking-widest text-white/70">
+													<div className="space-y-1 text-right">
+														<p className="text-[10px] font-bold uppercase tracking-widest text-white/50">
 															{tu('my_points')}
 														</p>
-														<p className="mt-1 text-xl font-extrabold tabular-nums">
+														<p className="text-lg font-bold tabular-nums">
 															{homeHubRewardPtsDisplay}
 														</p>
 													</div>

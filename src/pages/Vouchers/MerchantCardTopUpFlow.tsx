@@ -246,7 +246,7 @@ export default function MerchantCardTopUpFlow({
 			}
 			setMintedLabel(Number(fiatHuman).toFixed(2))
 			setStep('success')
-			onSuccess?.(buy.assets)
+			onSuccess?.(buy.assets ?? undefined)
 		} catch (e: unknown) {
 			setPayError(e instanceof Error ? e.message : String(e))
 		} finally {

@@ -249,6 +249,7 @@ const Home = (_props: HomeProps) => {
 		currencyData, setRedeemCode, setPayMePayment, setAllNodes, setGossip, gossip, setCharts, charts, setShowFooter, scanData, setScanData,
 		myBrandCards, myBrandCardDetails,
 		aaAccountUsdcBalance, recentActivityNoAaItems, refreshRecentActivityNoAa, conetWalletBalances,
+		conetAaWalletBalances,
 	} = useDaemonContext()
 	const navigate = useNavigate()
 	  const [settingsOpen, setSettingsOpen] = useState<''|'BeamioBetaAccess'|'支付'>('')
@@ -1717,12 +1718,13 @@ const Home = (_props: HomeProps) => {
 	/** Android WebView：Activate 场景下外层 overflow-hidden + flex 常导致滚动视口高度塌成一条；原生壳内改为单层 flex 链 */
 	const homeScrollUsesSingleFlexChain = isCashTreesNativeWebView()
 
-	/** Hub「USDC Balance」：Base EOA + AA 链上 USDC，不折 CAD */
+	/** Hub Universal Cash：EOA = Base-USDC + CoNET-USDC；AA 仅 CoNET-USDC（Base Consumer AA 已弃用，不计入） */
 	const homeHubWalletUsdcDisplay = useMemo(() => {
-		const eoaU = Math.max(0, Number(usdcbalance) || 0)
-		const aaU = Math.max(0, Number(aaAccountUsdcBalance) || 0)
-		return formatDigitalAssetDisplay(eoaU + aaU, { prefix: '$' })
-	}, [usdcbalance, aaAccountUsdcBalance])
+		const baseEoa = Math.max(0, Number(usdcbalance) || 0)
+		const conetEoa = Math.max(0, Number(conetWalletBalances?.usdc) || 0)
+		const conetAa = Math.max(0, Number(conetAaWalletBalances?.usdc) || 0)
+		return formatDigitalAssetDisplay(baseEoa + conetEoa + conetAa, { prefix: '$' })
+	}, [usdcbalance, conetWalletBalances?.usdc, conetAaWalletBalances?.usdc])
 
 	const homeHubMerchantCad = useMemo(() => {
 		const d = currencyData as Record<string, number>

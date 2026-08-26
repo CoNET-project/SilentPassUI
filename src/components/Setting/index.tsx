@@ -135,11 +135,11 @@ export default function BeamioMeMainScreen() {
 	const { darkModle, setDarkModle, setProfiles, beamio, setBeamio, 
 		profiles, payTag, setPayTag, myAddress, 
 		setMyAddress, setListenningProcess, listenningProcess, setUsdcbalance, setUsdcToUSD, setShowFooter, setNavigateLeftButtonArray,
-		conetWalletBalances, conetAaWalletBalances, usdcbalance, aaAccountUsdcBalance } = useDaemonContext()
+		conetWalletBalances, conetAaWalletBalances, usdcbalance } = useDaemonContext()
 
-	// /myWallet 主钱包余额与 /home 对齐：EOA = Base-USDC + CoNET-USDC；AA = Base-USDC + CoNET-USDC
+	// /myWallet 与 /home Universal Cash 对齐：EOA = Base-USDC + CoNET-USDC；AA 仅 CoNET-USDC（Base Consumer AA 已弃用）
 	const eoaTotalUsdc = Math.max(0, Number(usdcbalance) || 0) + Math.max(0, Number(conetWalletBalances?.usdc) || 0)
-	const aaTotalUsdc = Math.max(0, Number(aaAccountUsdcBalance) || 0) + Math.max(0, Number(conetAaWalletBalances?.usdc) || 0)
+	const aaTotalUsdc = Math.max(0, Number(conetAaWalletBalances?.usdc) || 0)
 
 	const [avatarSeed, setAvatarSeed] = useState('')
 	const [avatarName, setAvatarName] = useState('')

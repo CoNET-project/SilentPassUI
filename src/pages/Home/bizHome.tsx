@@ -1,17 +1,17 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Shield, ArrowRight, Eye, EyeOff, Network, Briefcase, Info, HelpCircle, Fingerprint } from 'lucide-react'
+import { Shield, ArrowRight, Eye, EyeOff, Info, HelpCircle, Fingerprint, QrCode, Check } from 'lucide-react'
 import { APP_VERSION } from '@/version'
 import { ethers } from 'ethers'
-import { restoreWithRedeem, restoreWithUserPin, getUserInfo, storeSystemData, bootstrapProfileLocaleCurrencyIfUnset, mergeLocalLocaleLanguageOntoChainProfile } from '@/services/beamio'
-import { setCoNET_Data } from '@/utils/globals'
+import { restoreWithRedeem, restoreWithUserPin, getUserInfo, storeSystemData, bootstrapProfileLocaleCurrencyIfUnset, mergeLocalLocaleLanguageOntoChainProfile, checkStorageWithTimeout } from '@/services/beamio'
+import { getCoNET_Data, setCoNET_Data } from '@/utils/globals'
 import { initChat } from '@/services/chat'
 import { fetchTrustedCanonicalAaFromRpc } from '@/services/BeamioCard'
 import { ensureConetAaForProfileAndPersist } from '@/utils/ensureConetAa'
 import { conetDepinProvider } from '@/utils/constants'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import NewMerchantOS from '@/pages/Vouchers/example/newBiz'
-import { BIZ_BRAND_HEX, bizBrandFocusRingClass } from '@/pages/Home/brandUi'
+import { BIZ_BRAND_HEX, bizBrandFocusRingClass, bizBrandPrimarySolidClass } from '@/pages/Home/brandUi'
 import { BEAMIO_TAG_ALLOWED_RE, normalizeBeamioTagInput } from '@/utils/beamioTagRules'
 import RestoreAccessPage from '@/pages/Home/RestoreAccessPage'
 import { BizOnboardingLocalePicker } from '@/pages/Home/BizOnboardingLocalePicker'
@@ -28,7 +28,7 @@ import { isWorkspaceAccessGranted } from '@/utils/beamioWorkspaceLock'
 /** Data attribute + selection tint — matches `biz.tsx` Merchant OS */
 const BIZ_UI_PRIMARY = BIZ_BRAND_HEX
 
-/** Login shell (Access your business workspace) */
+/** Login shell (Initialize your commerce node) */
 const headlineFont = "font-['Manrope',ui-sans-serif,system-ui,sans-serif]"
 
 /** Assemble encrypt_keys_object after login (mirror App.tsx init): load beamio, initChat, persist */
@@ -183,6 +183,7 @@ const BizHome = () => {
 	const [loginError, setLoginError] = useState('')
 	const [showNewBiz, setShowNewBiz] = useState(false)
 	const [showRestoreAccess, setShowRestoreAccess] = useState(false)
+	const [cachedAccountName, setCachedAccountName] = useState('')
 
 	const {
 		profiles,
@@ -190,10 +191,46 @@ const BizHome = () => {
 		setAllNodes,
 		setGossip,
 		gossip,
+		beamio,
 		setBeamio,
 		setCharts,
 		setMyAddress,
 	} = useDaemonContext()
+
+	useEffect(() => {
+		const fromDaemon = beamio?.accountName?.trim()
+		const fromMem = getCoNET_Data()?.beamio?.accountName?.trim()
+		const hit = fromDaemon || fromMem
+		if (hit) {
+			const norm = normalizeBeamioTagInput(hit)
+			setCachedAccountName(norm)
+			setMerchantTag((prev) => (prev.trim() ? prev : norm))
+			return
+		}
+		let cancelled = false
+		void checkStorageWithTimeout().then((data) => {
+			if (cancelled) return
+			const name = data?.beamio?.accountName?.trim()
+			if (!name) return
+			const norm = normalizeBeamioTagInput(name)
+			setCachedAccountName(norm)
+			setMerchantTag((prev) => (prev.trim() ? prev : norm))
+		})
+		return () => {
+			cancelled = true
+		}
+	}, [beamio?.accountName])
+
+	const normalizedMerchantTag = useMemo(
+		() => normalizeBeamioTagInput(merchantTag),
+		[merchantTag],
+	)
+	const tagLooksValid = BEAMIO_TAG_ALLOWED_RE.test(normalizedMerchantTag)
+	const localCacheAuthenticated = Boolean(
+		cachedAccountName &&
+			normalizedMerchantTag &&
+			cachedAccountName.toLowerCase() === normalizedMerchantTag.toLowerCase(),
+	)
 
 	useEffect(() => {
 		// Mid-login `setProfiles` (AA hydrate) must not bounce to /native-pos before
@@ -356,91 +393,107 @@ const BizHome = () => {
 			style={{
 				backgroundImage: `
 					radial-gradient(at 0% 0%, rgba(21, 98, 240, 0.03) 0px, transparent 50%),
-					radial-gradient(at 100% 100%, rgba(122, 157, 255, 0.05) 0px, transparent 50%)`,
+					radial-gradient(at 100% 10%, rgba(122, 157, 255, 0.05) 0px, transparent 50%)`,
 			}}
 		>
 			<header
-				className="sticky top-0 z-50 border-b border-[#747779]/20 shadow-[0_20px_40px_rgba(21,98,240,0.06)]"
-				style={{
-					background: 'rgba(255, 255, 255, 0.7)',
-					backdropFilter: 'blur(20px)',
-					WebkitBackdropFilter: 'blur(20px)',
-					paddingTop: 'env(safe-area-inset-top)',
-				}}
+				className="z-50"
+				style={{ paddingTop: 'max(1rem, env(safe-area-inset-top, 0px))' }}
 			>
-				<div className="mx-auto flex w-full max-w-screen-2xl items-center justify-between px-6 py-4">
-					<div className="flex items-center gap-2">
-						<Fingerprint className="h-5 w-5 text-[#0051d1]" strokeWidth={2} aria-hidden />
-						<span className={`${headlineFont} text-lg font-black tracking-tighter text-[#0051d1]`}>{tu('beamio_gateway')}</span>
+				<div className="mx-auto flex w-full max-w-screen-2xl items-center justify-between px-6 py-3">
+					<div className="flex items-center gap-2.5">
+						<span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#1562f0]/10">
+							<Fingerprint className="h-5 w-5 text-[#1562f0]" strokeWidth={2} aria-hidden />
+						</span>
+						<span className={`${headlineFont} text-[17px] font-black tracking-tighter text-[#1562f0]`}>{tu('beamio_os')}</span>
 					</div>
 					<BizOnboardingLocalePicker />
 				</div>
 			</header>
 
-			<main className="mx-auto flex w-full max-w-md flex-grow flex-col px-6 pb-24 pt-12">
-				<section className="mb-12">
-					<h1 className={`${headlineFont} mb-3 text-2xl font-extrabold leading-tight tracking-tight text-[#2c2f31] sm:text-3xl`}>{tu('access_your_business_workspace')}</h1>
-					<p className="text-base leading-relaxed text-[#595c5e]">{tu('use_your_beamiotag_and_password_to_continue_to_beamio_business_os')}</p>
+			<main className="mx-auto flex w-full max-w-md flex-grow flex-col items-center px-6 pb-24 pt-10 text-center">
+				<section className="mb-6 w-full">
+					<h1 className={`${headlineFont} mb-4 text-[28px] font-extrabold leading-tight tracking-tight text-[#2c2f31] sm:text-3xl`}>
+						{tu('initialize_your_commerce_node')}
+					</h1>
+					<p className="mb-3 text-3xl leading-none" aria-hidden>
+						🚀
+					</p>
+					<p className="text-base font-medium leading-relaxed text-[#424655]">
+						{tu('decrypt_your_local_eoa_aa_wallets_to_route_your_omnichannel_assets')}
+					</p>
 				</section>
 
-				<div className="mb-12 h-1 w-24 shrink-0 rounded-full bg-[#0051d1] opacity-20" aria-hidden />
+				<div className="mb-10 h-1.5 w-16 shrink-0 rounded-full bg-[#1562f0]" aria-hidden />
 
-				<section className="rounded-xl bg-white p-8 shadow-[0_20px_40px_rgba(21,98,240,0.04)]">
-					<div className="mb-8">
-						<h2 className={`${headlineFont} mb-2 text-xl font-bold text-[#2c2f31]`}>{tu('continue_with_your_business_identity')}</h2>
-						<p className="text-sm leading-snug text-[#595c5e]">{tu('enter_the_business_identity_you_just_created_to_access_your_beamio_works')}</p>
-					</div>
-
+				<section className="w-full rounded-2xl border border-[#e8eaed] bg-white p-8 text-left shadow-[0_20px_40px_rgba(21,98,240,0.06)]">
 					<form onSubmit={handleLogin} className="space-y-6">
 						<div className="space-y-2">
 							<label
 								htmlFor="biz-gateway-beamiotag"
-								className={`${headlineFont} ml-1 block text-[10px] font-bold uppercase tracking-[0.15em] text-[#0051d1]`}
+								className={`${headlineFont} ml-1 block text-[10px] font-bold uppercase tracking-[0.15em] text-[#1562f0]`}
 							>
 								{tu('home_beamiotag_label')}
 							</label>
-							<input
-								id="biz-gateway-beamiotag"
-								type="text"
-								autoCapitalize="none"
-								autoCorrect="off"
-								autoComplete="username"
-								inputMode="text"
-								placeholder={tu('gateway_beamiotag_ph')}
-								value={merchantTag}
-								onChange={(e) => setMerchantTag(normalizeBeamioTagInput(e.target.value))}
-								className={`w-full rounded-lg border-none bg-[#eef1f3] px-5 py-4 font-medium text-[#2c2f31] transition-all duration-200 placeholder:text-[#abadaf]/70 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#0051d1]/20 ${bizBrandFocusRingClass}`}
-								required
-								disabled={isLoading}
-							/>
-							<div className="mt-2 flex items-start gap-2 px-1">
-								<Info className="mt-0.5 h-4 w-4 shrink-0 text-[#0051d1]" strokeWidth={2} aria-hidden />
-								<p className="text-[11px] leading-normal text-[#595c5e]">{tu('your_beamiotag_is_your_business_identity_on_beamio')}</p>
+							<div className="relative">
+								<input
+									id="biz-gateway-beamiotag"
+									type="text"
+									tabIndex={1}
+									autoCapitalize="none"
+									autoCorrect="off"
+									autoComplete="username"
+									inputMode="text"
+									enterKeyHint="next"
+									placeholder={tu('gateway_beamiotag_ph')}
+									value={merchantTag ? `@${merchantTag}` : ''}
+									onChange={(e) => setMerchantTag(normalizeBeamioTagInput(e.target.value))}
+									className={`w-full rounded-xl border border-[#e5e7eb] bg-[#f0f2f5] px-5 py-4 font-medium text-[#2c2f31] transition-all duration-200 placeholder:text-[#abadaf]/70 focus:border-[#1562f0]/30 focus:bg-white ${tagLooksValid ? 'pr-12' : ''} ${bizBrandFocusRingClass}`}
+									required
+									disabled={isLoading}
+								/>
+								{tagLooksValid ? (
+									<span
+										className="pointer-events-none absolute right-3 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full bg-[#1562f0]"
+										aria-hidden
+									>
+										<Check className="h-3.5 w-3.5 text-white" strokeWidth={3} />
+									</span>
+								) : null}
 							</div>
+							{localCacheAuthenticated ? (
+								<div className="mt-2 flex items-start gap-2 px-1">
+									<Info className="mt-0.5 h-4 w-4 shrink-0 text-[#747779]" strokeWidth={2} aria-hidden />
+									<p className="text-[11px] leading-normal text-[#595c5e]">{tu('local_cache_authenticated')}</p>
+								</div>
+							) : null}
 						</div>
 
 						<div className="space-y-2">
 							<label
 								htmlFor="biz-gateway-password"
-								className={`${headlineFont} ml-1 block text-[10px] font-bold uppercase tracking-[0.15em] text-[#0051d1]`}
-							>{tu('access_password')}</label>
+								className={`${headlineFont} ml-1 block text-[10px] font-bold uppercase tracking-[0.15em] text-[#1562f0]`}
+							>
+								{tu('master_decryption_key')}
+							</label>
 							<div className="relative">
 								<input
 									id="biz-gateway-password"
 									type={showPassword ? 'text' : 'password'}
+									tabIndex={2}
 									autoComplete="current-password"
 									enterKeyHint="done"
 									placeholder="••••••••"
 									value={password}
 									onChange={(e) => setPassword(e.target.value)}
-									className={`w-full rounded-lg border-none bg-[#eef1f3] px-5 py-4 pr-12 font-medium text-[#2c2f31] transition-all duration-200 placeholder:text-[#abadaf]/70 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#0051d1]/20 ${bizBrandFocusRingClass}`}
+									className={`w-full rounded-xl border border-[#e5e7eb] bg-[#f0f2f5] px-5 py-4 pr-12 font-medium text-[#2c2f31] transition-all duration-200 placeholder:text-[#abadaf]/70 focus:border-[#1562f0]/30 focus:bg-white ${bizBrandFocusRingClass}`}
 									required
 									disabled={isLoading}
 								/>
 								<button
 									type="button"
 									tabIndex={-1}
-									className="absolute right-4 top-1/2 -translate-y-1/2 text-[#595c5e] transition-colors hover:text-[#0051d1]"
+									className="absolute right-4 top-1/2 -translate-y-1/2 text-[#595c5e] transition-colors hover:text-[#1562f0]"
 									onClick={() => setShowPassword((s) => !s)}
 									aria-label={showPassword ? tu('hide_password') : tu('show_password')}
 								>
@@ -450,54 +503,60 @@ const BizHome = () => {
 						</div>
 
 						{loginError ? (
-							<div className="rounded-xl border border-rose-100 bg-rose-50 px-4 py-3 text-[13px] font-medium text-rose-600">
+							<div role="alert" className="rounded-xl border border-rose-100 bg-rose-50 px-4 py-3 text-[13px] font-medium text-rose-600">
 								{loginError}
 							</div>
 						) : null}
 
-						<div className="pt-4">
+						<div className="pt-2">
 							<button
 								type="submit"
+								tabIndex={3}
 								disabled={isLoading}
-								className={`${headlineFont} flex w-full items-center justify-center gap-2 rounded-full bg-[#0051d1] py-4 text-base font-bold text-white shadow-[0_10px_20px_rgba(0,81,209,0.15)] transition-all duration-200 hover:scale-[1.02] hover:opacity-95 active:scale-95 disabled:opacity-60 sm:text-lg ${bizBrandFocusRingClass}`}
+								className={`${headlineFont} ${bizBrandPrimarySolidClass} flex w-full items-center justify-center gap-2 rounded-xl py-4 text-base font-bold transition-all duration-200 hover:scale-[1.01] active:scale-[0.99] disabled:opacity-60 sm:text-lg ${bizBrandFocusRingClass}`}
 							>
 								{isLoading ? (
 									<>
-										<span className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-white/30 border-t-white" />{tu('signing_in')}</>
+										<span className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+										{tu('signing_in')}
+									</>
 								) : (
-									<>{tu('continue_to_beamio_business_os')}<ArrowRight className="h-5 w-5 shrink-0" aria-hidden />
+									<>
+										{tu('decrypt_and_enter_os')}
+										<ArrowRight className="h-5 w-5 shrink-0" aria-hidden />
 									</>
 								)}
 							</button>
 						</div>
-
-						<div className="pt-1 text-center">
-							<button
-								type="button"
-								onClick={() => setShowRestoreAccess(true)}
-								className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-[#0051d1] transition-colors hover:text-[#0047b8]"
-							>
-								<Briefcase className="h-[18px] w-[18px] shrink-0" strokeWidth={2} aria-hidden />{tu('already_have_a_workspace_restore_account')}</button>
-						</div>
 					</form>
 				</section>
 
-				<footer className="mt-12 text-center">
+				<footer className="mt-10 w-full text-center">
+					<button
+						type="button"
+						tabIndex={4}
+						onClick={() => setShowRestoreAccess(true)}
+						className={`${headlineFont} mx-auto mb-5 inline-flex items-center justify-center gap-2 text-[11px] font-bold uppercase tracking-[0.08em] text-[#1562f0] transition-colors hover:text-[#0d4ec4]`}
+					>
+						<QrCode className="h-[18px] w-[18px] shrink-0" strokeWidth={2} aria-hidden />
+						{tu('new_device_or_lost_keys_import_recovery_qr')}
+					</button>
 					<a
 						href="mailto:support@beamio.app?subject=Beamio%20Business%20workspace"
-						className={`${headlineFont} mx-auto inline-flex items-center justify-center gap-2 text-sm font-semibold text-[#0051d1] transition-colors hover:text-[#0047b8]`}
+						tabIndex={5}
+						className={`${headlineFont} mx-auto inline-flex items-center justify-center gap-2 text-sm font-medium text-[#747779] transition-colors hover:text-[#2c2f31]`}
 					>
-						<HelpCircle className="h-5 w-5 shrink-0" strokeWidth={2} aria-hidden />{tu('need_help_accessing_your_workspace')}</a>
-					<div className="mt-4 flex flex-col items-center gap-2 border-t border-[#abadaf]/20 pt-4">
-						<p className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#747779]">{tu('securely_hosted_by_beamio_infrastructure_2026')}</p>
+						<HelpCircle className="h-5 w-5 shrink-0" strokeWidth={2} aria-hidden />
+						{tu('need_help_accessing_your_workspace')}
+					</a>
+					<div className="mt-6 flex flex-col items-center gap-2">
+						<p className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#595c5e]">
+							{tu('securely_hosted_by_beamio_infrastructure_2026')}
+						</p>
 						<span className="text-[10px] font-medium text-[#abadaf]">v{APP_VERSION}</span>
 					</div>
 				</footer>
 			</main>
-
-			<div className="pointer-events-none fixed bottom-0 right-0 -z-10 p-12 opacity-10" aria-hidden>
-				<Network className="rotate-12 text-[#0051d1]" strokeWidth={1} size={240} />
-			</div>
 		</div>
 	)
 }

@@ -49,10 +49,10 @@ import {
   Minus,
   Plus,
   ImageIcon,
+  AlertTriangle,
 } from "lucide-react"
 import { useNavigate, useLocation } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
-import { Toast } from "antd-mobile"
 import { ethers } from "ethers"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import { beamioApi } from "@/utils/constants"
@@ -95,6 +95,7 @@ import {
 	membershipFeeE6ToHuman,
 	membershipPurchaseApiAmountHuman,
 	pickActiveDiscoverMembershipNft,
+	resolveCurrentMembershipFeeE6,
 	resolveDiscoverMembershipUiState,
 	type DiscoverMembershipFeeTier,
 } from "@/utils/discoverMembershipFee"
@@ -1719,6 +1720,7 @@ function DiscoverMerchantCouponOfferRow({
 									: `Claim coupon ${row.coupon.title}`
 					}
 				/>
+				{claimError ? <DiscoverPayPanelError message={claimError} /> : null}
 				{insufficientSocialPoints ? (
 					<p className="px-1 text-[11px] font-semibold text-amber-600 dark:text-amber-400">
 						Not enough social points for this exchange.
@@ -3806,6 +3808,18 @@ function hydrateDiscoverMerchantCardAssets(
 	return null
 }
 
+function DiscoverPayPanelError({ message }: { message: string }) {
+	return (
+		<div
+			role="alert"
+			className="flex gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-3 text-[13px] font-medium leading-relaxed text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200"
+		>
+			<AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2.25} aria-hidden />
+			<p className="min-w-0">{message}</p>
+		</div>
+	)
+}
+
 function DiscoverMerchantDetailFullScreen({
 	item,
 	onClose,
@@ -3831,6 +3845,7 @@ function DiscoverMerchantDetailFullScreen({
 	)
 	const [userLiked, setUserLiked] = useState<boolean | null>(null)
 	const [likeLoading, setLikeLoading] = useState(false)
+	const [likeError, setLikeError] = useState('')
 	const merchantLikeCount = pickDiscoverMerchantLikeCount(discoverMerchantStatByCard, item.cardAddress)
 	const merchantShareClickCount = pickDiscoverMerchantRefClickCount(discoverMerchantStatByCard, item.cardAddress)
 	const [merchantAssets, setMerchantAssets] = useState<Awaited<ReturnType<typeof getMyAssets>> | null>(() =>
@@ -3842,8 +3857,12 @@ function DiscoverMerchantDetailFullScreen({
 			hydrateDiscoverMerchantCardAssets(profiles?.[0] as Parameters<typeof getMyAssets>[0] | undefined, item.cardAddress ?? undefined, myBrandCardDetails) == null,
 	)
 	const [cardTopupSuccessBalance, setCardTopupSuccessBalance] = useState<string | null>(null)
+	const [cardTopupOverlayPhase, setCardTopupOverlayPhase] = useState<'idle' | 'listening' | 'success'>('idle')
+	const [cardTopupSuccessKind, setCardTopupSuccessKind] = useState<USDCUserCardTopupIntent>('topup')
 	// Pre-top-up card points (6-dec) captured before the mint, so success only shows the increased balance.
 	const cardTopupBaselinePoints6Ref = useRef<bigint | null>(null)
+	const cardTopupBaselineMembershipRef = useRef<{ tokenId: string; feeE6: bigint | null } | null>(null)
+	const cardTopupSuccessPollAbortRef = useRef<AbortController | null>(null)
 	const [merchantCoupons, setMerchantCoupons] = useState<DiscoverMerchantCouponOffer[] | null>(null)
 	const [merchantOfferTiers, setMerchantOfferTiers] = useState<DiscoverOfferTierRow[] | null>(null)
 	const [merchantOffersLoading, setMerchantOffersLoading] = useState(false)
@@ -4487,6 +4506,7 @@ function DiscoverMerchantDetailFullScreen({
 		const card = item.cardAddress?.trim()
 		if (!card) {
 			setUserLiked(null)
+			setLikeError('')
 			return
 		}
 		const eoa = resolveUserEoa()
@@ -4526,14 +4546,11 @@ function DiscoverMerchantDetailFullScreen({
 			}
 		}
 		if (!privateKeyArmor) {
-			Toast.show({
-				content: tu('unlock_your_wallet_with_your_access_password_to_claim_coupons'),
-				position: 'top',
-			})
-			navigate('/settings')
+			setLikeError(tu('unlock_your_wallet_with_your_access_password_to_continue'))
 			return
 		}
 		setLikeLoading(true)
+		setLikeError('')
 		try {
 			const cardNorm = ethers.getAddress(card)
 			const ret = await postCardRecordUserLikeWithCurrentWallet({
@@ -4545,7 +4562,7 @@ function DiscoverMerchantDetailFullScreen({
 				referrerEoa: shareReferrerFromUrl,
 			})
 			if (!ret.success) {
-				Toast.show({ content: ret.error ?? 'Like update failed', position: 'top' })
+				setLikeError(ret.error ?? 'Like update failed')
 				return
 			}
 			const eoa = resolveUserEoa()
@@ -4557,7 +4574,6 @@ function DiscoverMerchantDetailFullScreen({
 			invalidateDiscoverMerchantStatCache(cardNorm)
 			applyDiscoverMerchantLikeCountDelta(cardNorm, 1)
 			registerDiscoverMerchantStatFeedCards([cardNorm])
-			Toast.show({ content: 'Liked', position: 'top' })
 		} finally {
 			setLikeLoading(false)
 		}
@@ -4567,7 +4583,6 @@ function DiscoverMerchantDetailFullScreen({
 		userLiked,
 		profile,
 		setProfiles,
-		navigate,
 		resolveUserEoa,
 		registerDiscoverMerchantStatFeedCards,
 		applyDiscoverMerchantLikeCountDelta,
@@ -4636,48 +4651,123 @@ function DiscoverMerchantDetailFullScreen({
 		}
 	}, [item.cardAddress, profile])
 
-	// Card top-up succeeded on-chain: poll fresh card balance until the mint lands (points grow past
-	// the pre-top-up baseline), then show the success panel with the *new* balance. getMyAssets caches
-	// for 15s, so we must bypass the cache and wait for the increase — otherwise we'd show the old value.
-	const finishCardTopupSuccess = useCallback(async () => {
-		const cardAddress = item.cardAddress?.trim() ?? ''
-		let balanceText = ''
-		if (cardAddress && profile?.keyID) {
-			const baseline6 = cardTopupBaselinePoints6Ref.current
-			const deadline = Date.now() + 90_000
-			let assets: Awaited<ReturnType<typeof getMyAssets>> | null = null
-			// Serial setTimeout loop (never setInterval): fresh read → if grown past baseline, stop.
-			for (;;) {
-				try {
-					assets = await getMyAssets(profile as profile, cardAddress, { bypassCache: true })
-				} catch {
-					assets = null
-				}
-				if (assets != null) {
-					if (baseline6 == null) break
-					let cur6: bigint | null = null
-					try {
-						cur6 = ethers.parseUnits(String(assets.points ?? '0'), 6)
-					} catch {
-						cur6 = null
-					}
-					if (cur6 == null || cur6 > baseline6) break
-				}
-				if (Date.now() >= deadline) break
-				await new Promise((r) => setTimeout(r, 3000))
+	const captureCardTopupBaselines = useCallback(
+		(kind: USDCUserCardTopupIntent) => {
+			if (kind !== 'first_purchase' && kind !== 'upgrade') return
+			const nft = pickActiveDiscoverMembershipNft(merchantAssets?.nfts)
+			cardTopupBaselineMembershipRef.current = {
+				tokenId: nft ? String(nft.tokenId ?? '') : '',
+				feeE6: resolveCurrentMembershipFeeE6(membershipFeeTiers, merchantAssets?.nfts),
 			}
-			if (assets != null) {
-				setMerchantAssets(assets)
-				const cur = (assets.cardCurrency || ccy).toUpperCase() as Parameters<typeof fiatPrefix>[0]
-				const prefix = fiatPrefix(cur)
-				const amt = formatAmount(Number(assets.points ?? 0), cur)
-				balanceText = prefix ? `${prefix} ${amt}` : amt
-			}
-		}
+		},
+		[membershipFeeTiers, merchantAssets?.nfts],
+	)
+
+	const dismissCardTopupOverlay = useCallback(() => {
+		cardTopupSuccessPollAbortRef.current?.abort()
+		cardTopupSuccessPollAbortRef.current = null
+		setCardTopupOverlayPhase('idle')
+		setCardTopupSuccessBalance(null)
 		cardTopupBaselinePoints6Ref.current = null
-		setCardTopupSuccessBalance(balanceText)
-		resetUsdcTopupFlow()
-	}, [ccy, item.cardAddress, profile, resetUsdcTopupFlow])
+		cardTopupBaselineMembershipRef.current = null
+	}, [])
+
+	const setDiscoverPayPanelError = useCallback((message: string) => {
+		dismissCardTopupOverlay()
+		setUsdcTopupError(message)
+	}, [dismissCardTopupOverlay])
+
+	// Payment already succeeded. Poll until membership NFT / card points land, then show success.
+	// getMyAssets caches for 15s — must bypass cache. Never treat a failed read as empty.
+	const finishCardTopupSuccess = useCallback(
+		async (opts?: { successKind?: USDCUserCardTopupIntent; overlayAlreadyOpen?: boolean }) => {
+			const successKind = opts?.successKind ?? 'topup'
+			cardTopupSuccessPollAbortRef.current?.abort()
+			const ac = new AbortController()
+			cardTopupSuccessPollAbortRef.current = ac
+
+			setCardTopupSuccessKind(successKind)
+			if (!opts?.overlayAlreadyOpen) {
+				setCardTopupOverlayPhase('listening')
+				resetUsdcTopupFlow()
+			}
+
+			const cardAddress = item.cardAddress?.trim() ?? ''
+			let balanceText = ''
+			const waitMembership = successKind === 'first_purchase' || successKind === 'upgrade'
+			const baselineMembership = cardTopupBaselineMembershipRef.current
+
+			if (cardAddress && profile?.keyID) {
+				const baseline6 = cardTopupBaselinePoints6Ref.current
+				const deadline = Date.now() + 90_000
+				let assets: Awaited<ReturnType<typeof getMyAssets>> | null = null
+				for (;;) {
+					if (ac.signal.aborted) return
+					try {
+						assets = await getMyAssets(profile as profile, cardAddress, { bypassCache: true })
+					} catch {
+						assets = null
+					}
+					if (assets != null) {
+						if (waitMembership) {
+							const hasMember = customerHasValidMembershipFromAssets({
+								primaryMemberTokenId: pickActiveDiscoverMembershipNft(assets.nfts)?.tokenId,
+								nfts: assets.nfts,
+							})
+							if (successKind === 'first_purchase' && hasMember) break
+							if (successKind === 'upgrade') {
+								const nowNft = pickActiveDiscoverMembershipNft(assets.nfts)
+								const nowToken = nowNft ? String(nowNft.tokenId ?? '') : ''
+								const nowFee = resolveCurrentMembershipFeeE6(membershipFeeTiers, assets.nfts)
+								const tokenChanged = Boolean(nowToken && nowToken !== (baselineMembership?.tokenId ?? ''))
+								const feeUp =
+									nowFee != null &&
+									baselineMembership?.feeE6 != null &&
+									nowFee > baselineMembership.feeE6
+								if (tokenChanged || feeUp) break
+							}
+						} else if (baseline6 == null) {
+							break
+						} else {
+							let cur6: bigint | null = null
+							try {
+								cur6 = ethers.parseUnits(String(assets.points ?? '0'), 6)
+							} catch {
+								cur6 = null
+							}
+							if (cur6 == null || cur6 > baseline6) break
+						}
+					}
+					if (Date.now() >= deadline) break
+					await new Promise((r) => setTimeout(r, 3000))
+				}
+				if (ac.signal.aborted) return
+				if (assets != null) {
+					setMerchantAssets(assets)
+					const cur = (assets.cardCurrency || ccy).toUpperCase() as Parameters<typeof fiatPrefix>[0]
+					const prefix = fiatPrefix(cur)
+					const amt = formatAmount(Number(assets.points ?? 0), cur)
+					balanceText = prefix ? `${prefix} ${amt}` : amt
+				}
+			}
+			if (ac.signal.aborted) return
+			cardTopupBaselinePoints6Ref.current = null
+			cardTopupBaselineMembershipRef.current = null
+			setCardTopupSuccessBalance(balanceText)
+			setCardTopupOverlayPhase('success')
+		},
+		[ccy, item.cardAddress, membershipFeeTiers, profile, resetUsdcTopupFlow],
+	)
+
+	const startCardTopupSuccessAfterPay = useCallback(
+		(successKind: USDCUserCardTopupIntent) => {
+			setCardTopupSuccessKind(successKind)
+			setCardTopupOverlayPhase('listening')
+			resetUsdcTopupFlow()
+			void finishCardTopupSuccess({ successKind, overlayAlreadyOpen: true })
+		},
+		[finishCardTopupSuccess, resetUsdcTopupFlow],
+	)
 
 	const submitDiscoverEoaTopup = useCallback(
 		async (
@@ -4691,23 +4781,32 @@ function DiscoverMerchantDetailFullScreen({
 			const usdcAmount =
 				transferAmountStr?.trim() ||
 				usdc6ToExactTransferAmount(requiredUsdc6)
-			// Capture the pre-top-up card points so the success panel only shows the increased balance.
+			const kind = intentOverride ?? usdcTopupIntent
 			cardTopupBaselinePoints6Ref.current = await readCardPoints6Fresh()
+			captureCardTopupBaselines(kind)
 			const ret = await postUSDCUserCardTopup({
 				profile: profile as profile,
 				cardAddress,
 				usdcAmount,
-				intent: intentOverride ?? usdcTopupIntent,
+				intent: kind,
 			})
 			if (!ret.success) {
-				setUsdcTopupError(mapServerError(ret.error ?? 'Top-up failed'))
+				setDiscoverPayPanelError(mapServerError(ret.error ?? 'Top-up failed'))
 				return false
 			}
 			if (ret.assets) setMerchantAssets(ret.assets as Awaited<ReturnType<typeof getMyAssets>>)
-			await finishCardTopupSuccess()
+			startCardTopupSuccessAfterPay(kind)
 			return true
 		},
-		[finishCardTopupSuccess, item.cardAddress, profile, readCardPoints6Fresh, usdcTopupIntent],
+		[
+			captureCardTopupBaselines,
+			item.cardAddress,
+			profile,
+			readCardPoints6Fresh,
+			setDiscoverPayPanelError,
+			startCardTopupSuccessAfterPay,
+			usdcTopupIntent,
+		],
 	)
 
 	useEffect(() => {
@@ -4788,20 +4887,16 @@ function DiscoverMerchantDetailFullScreen({
 	const handleUsdcTopupContinue = useCallback(async () => {
 		const cardAddress = item.cardAddress?.trim() ?? ''
 		if (!cardAddress || !ethers.isAddress(cardAddress)) {
-			setUsdcTopupError('Merchant card is unavailable.')
+			setDiscoverPayPanelError('Merchant card is unavailable.')
 			return
 		}
 		if (!profile?.keyID || !profile?.privateKeyArmor) {
-			Toast.show({
-				content: tu('unlock_your_wallet_with_your_access_password_to_top_up'),
-				position: 'top',
-			})
-			navigate('/settings')
+			setDiscoverPayPanelError(tu('unlock_your_wallet_with_your_access_password_to_top_up'))
 			return
 		}
 		const parsed = parseDiscoverTopupAmountInput(usdcTopupAmountText, displayCurrency)
 		if (!parsed.ok) {
-			setUsdcTopupError(parsed.error)
+			setDiscoverPayPanelError(parsed.error)
 			return
 		}
 		const isMembershipPay =
@@ -4814,21 +4909,17 @@ function DiscoverMerchantDetailFullScreen({
 				const amtE6 = BigInt(membershipFeeHumanToE6(parsed.apiAmount))
 				if (amtE6 < minE6) {
 					const minHuman = membershipPurchaseApiAmountHuman(membershipPurchaseFeeFiat6)
-					setUsdcTopupError(`Amount must be at least ${minHuman} ${displayCurrency}.`)
+					setDiscoverPayPanelError(`Amount must be at least ${minHuman} ${displayCurrency}.`)
 					return
 				}
 			} catch {
-				setUsdcTopupError('Invalid membership amount.')
+				setDiscoverPayPanelError('Invalid membership amount.')
 				return
 			}
 		}
 		const userEoa = resolveUserEoa()
 		if (!userEoa) {
-			Toast.show({
-				content: tu('unlock_your_wallet_with_your_access_password_to_top_up'),
-				position: 'top',
-			})
-			navigate('/settings')
+			setDiscoverPayPanelError(tu('unlock_your_wallet_with_your_access_password_to_top_up'))
 			return
 		}
 		setUsdcTopupSubmitting(true)
@@ -4836,11 +4927,7 @@ function DiscoverMerchantDetailFullScreen({
 		try {
 			const privateKeyArmor = resolveSigningPrivateKeyArmor(profile)
 			if (!privateKeyArmor) {
-				Toast.show({
-					content: tu('unlock_your_wallet_with_your_access_password_to_top_up'),
-					position: 'top',
-				})
-				navigate('/settings')
+				setDiscoverPayPanelError(tu('unlock_your_wallet_with_your_access_password_to_top_up'))
 				return
 			}
 
@@ -4848,11 +4935,11 @@ function DiscoverMerchantDetailFullScreen({
 			try {
 				cardOwner = await getCardOwner(cardAddress)
 			} catch {
-				setUsdcTopupError(mapServerError('Cannot resolve merchant card owner. Please retry.'))
+				setDiscoverPayPanelError(mapServerError('Cannot resolve merchant card owner. Please retry.'))
 				return
 			}
 			if (!cardOwner || cardOwner === ethers.ZeroAddress) {
-				setUsdcTopupError(mapServerError('Cannot resolve merchant card owner. Please retry.'))
+				setDiscoverPayPanelError(mapServerError('Cannot resolve merchant card owner. Please retry.'))
 				return
 			}
 
@@ -4863,7 +4950,7 @@ function DiscoverMerchantDetailFullScreen({
 				currency: displayCurrency,
 			})
 			if (quotedUsdc6 <= 0n) {
-				setUsdcTopupError('Invalid top-up amount.')
+				setDiscoverPayPanelError('Invalid top-up amount.')
 				return
 			}
 			if (!isMembershipPay) {
@@ -4873,7 +4960,7 @@ function DiscoverMerchantDetailFullScreen({
 					usdc6: quotedUsdc6,
 				})
 				if (!quotePrecheck.ok) {
-					setUsdcTopupError(quotePrecheck.error)
+					setDiscoverPayPanelError(quotePrecheck.error)
 					return
 				}
 				setUsdcTopupIntent(quotePrecheck.intent)
@@ -4894,13 +4981,15 @@ function DiscoverMerchantDetailFullScreen({
 			}
 			if (eoaCanSelfFundDiscoverTopup(baseUsdc6, quotedUsdc6)) {
 				if (!userAa) {
-					setUsdcTopupError(
+					setDiscoverPayPanelError(
 						'Smart Wallet (AA) is required for Base USDC top-up. Open Wallet and finish setup, then retry.',
 					)
 					return
 				}
 				setUsdcTopupBaselineUsdc6(baseUsdc6)
 				setUsdcTopupProgress('Paying with Base USDC…')
+				cardTopupBaselinePoints6Ref.current = await readCardPoints6Fresh()
+				captureCardTopupBaselines(isMembershipPay ? usdcTopupIntent : 'topup')
 				const localPay = await payDiscoverTreasuryBridgeWithLocalWallet({
 					profile: profile as profile,
 					privateKeyArmor,
@@ -4918,16 +5007,11 @@ function DiscoverMerchantDetailFullScreen({
 						: {}),
 				})
 				if (localPay.ok) {
-					refreshMerchantAssets()
-					Toast.show({
-						content: 'Top-up submitted. Smart Wallet card points update shortly.',
-						position: 'top',
-					})
-					resetUsdcTopupFlow()
+					startCardTopupSuccessAfterPay(isMembershipPay ? usdcTopupIntent : 'topup')
 					return
 				}
 				if (!localPay.insufficientBalance) {
-					setUsdcTopupError(mapServerError(localPay.error))
+					setDiscoverPayPanelError(mapServerError(localPay.error))
 					return
 				}
 				/* Balance raced down — continue to CoNET-USDC / QR. */
@@ -4949,7 +5033,7 @@ function DiscoverMerchantDetailFullScreen({
 					usdc6: selfFundUsdc6,
 				})
 				if (!selfPrecheck.ok) {
-					setUsdcTopupError(selfPrecheck.error)
+					setDiscoverPayPanelError(selfPrecheck.error)
 					return
 				}
 				setUsdcTopupIntent(selfPrecheck.intent)
@@ -4967,7 +5051,7 @@ function DiscoverMerchantDetailFullScreen({
 
 			/** 3) Insufficient local funds → third-party treasuryBridge QR. */
 			if (!userAa) {
-				setUsdcTopupError(
+				setDiscoverPayPanelError(
 					'Smart Wallet (AA) is required for top-up. Open Wallet and finish setup, then retry.',
 				)
 				return
@@ -4992,22 +5076,25 @@ function DiscoverMerchantDetailFullScreen({
 			setUsdcTopupProgress('Waiting for payment on beamio.app…')
 			setUsdcTopupPhase('receive')
 		} catch (e: unknown) {
-			setUsdcTopupError(mapServerError(e instanceof Error ? e.message : 'Failed to prepare receive QR'))
+			setDiscoverPayPanelError(mapServerError(e instanceof Error ? e.message : 'Failed to prepare receive QR'))
 		} finally {
 			setUsdcTopupSubmitting(false)
 		}
 	}, [
+		captureCardTopupBaselines,
 		displayCurrency,
 		item.cardAddress,
 		membershipPurchaseFeeFiat6,
 		membershipPurchaseMinUsdc6,
 		membershipPurchaseTierIndex,
-		navigate,
 		profile,
+		readCardPoints6Fresh,
 		refreshMerchantAssets,
 		resetUsdcTopupFlow,
 		resolveUserAa,
 		resolveUserEoa,
+		setDiscoverPayPanelError,
+		startCardTopupSuccessAfterPay,
 		submitDiscoverEoaTopup,
 		usdcTopupAmountText,
 		usdcTopupIntent,
@@ -5026,9 +5113,9 @@ function DiscoverMerchantDetailFullScreen({
 				usdcTopupUrlCopiedTimerRef.current = null
 			}, 2000)
 		} catch {
-			Toast.show({ content: tu('failed_to_copy_url'), position: 'top' })
+			setDiscoverPayPanelError(tu('failed_to_copy_url'))
 		}
-	}, [usdcTopupQrValue])
+	}, [setDiscoverPayPanelError, usdcTopupQrValue])
 
 	const runDiscoverEoaTopupNow = useCallback(async () => {
 		const cardAddress = item.cardAddress?.trim() ?? ''
@@ -5054,6 +5141,14 @@ function DiscoverMerchantDetailFullScreen({
 						cardOwner = null
 					}
 					if (cardOwner && cardOwner !== ethers.ZeroAddress) {
+						const kind: USDCUserCardTopupIntent =
+							usdcTopupIntent === 'first_purchase' || usdcTopupIntent === 'upgrade'
+								? usdcTopupIntent
+								: 'topup'
+						if (cardTopupBaselinePoints6Ref.current == null) {
+							cardTopupBaselinePoints6Ref.current = await readCardPoints6Fresh()
+						}
+						captureCardTopupBaselines(kind)
 						const localPay = await payDiscoverTreasuryBridgeWithLocalWallet({
 							profile: profile as profile,
 							privateKeyArmor,
@@ -5071,26 +5166,24 @@ function DiscoverMerchantDetailFullScreen({
 								: {}),
 						})
 						if (localPay.ok) {
-							refreshMerchantAssets()
-							Toast.show({
-								content: 'Top-up submitted. Smart Wallet card points update shortly.',
-								position: 'top',
-							})
-							resetUsdcTopupFlow()
+							startCardTopupSuccessAfterPay(kind)
 							return
 						}
 						if (!localPay.insufficientBalance) {
-							setUsdcTopupError(mapServerError(localPay.error))
+							setDiscoverPayPanelError(mapServerError(localPay.error))
 							return
 						}
 					}
 				}
-				refreshMerchantAssets()
-				Toast.show({
-					content: 'If payment succeeded, Smart Wallet card points update shortly.',
-					position: 'top',
-				})
-				resetUsdcTopupFlow()
+				const fallbackKind: USDCUserCardTopupIntent =
+					usdcTopupIntent === 'first_purchase' || usdcTopupIntent === 'upgrade'
+						? usdcTopupIntent
+						: 'topup'
+				if (cardTopupBaselinePoints6Ref.current == null) {
+					cardTopupBaselinePoints6Ref.current = await readCardPoints6Fresh()
+				}
+				captureCardTopupBaselines(fallbackKind)
+				startCardTopupSuccessAfterPay(fallbackKind)
 			} finally {
 				setUsdcTopupSubmitting(false)
 			}
@@ -5106,7 +5199,7 @@ function DiscoverMerchantDetailFullScreen({
 				eoaCanSelfFundDiscoverTopup(current6, usdcTopupRequiredUsdc6) ||
 				eoaMeetsExternalFundingTarget(current6, usdcTopupBaselineUsdc6, usdcTopupRequiredUsdc6)
 			if (!funded) {
-				setUsdcTopupError('CoNET-USDC has not arrived yet. Ask the payer to complete the payment link.')
+				setDiscoverPayPanelError('CoNET-USDC has not arrived yet. Ask the payer to complete the payment link.')
 				return
 			}
 			setUsdcTopupProgress('Completing top-up…')
@@ -5115,24 +5208,29 @@ function DiscoverMerchantDetailFullScreen({
 				usdc6ToExactTransferAmount(usdcTopupRequiredUsdc6),
 			)
 		} catch (e: unknown) {
-			setUsdcTopupError(mapServerError(e instanceof Error ? e.message : 'Top-up failed'))
+			setDiscoverPayPanelError(mapServerError(e instanceof Error ? e.message : 'Top-up failed'))
 		} finally {
 			setUsdcTopupSubmitting(false)
 		}
 	}, [
+		captureCardTopupBaselines,
 		displayCurrency,
 		item.cardAddress,
 		profile,
+		readCardPoints6Fresh,
 		refreshMerchantAssets,
 		resetUsdcTopupFlow,
 		resolveUserAa,
 		resolveUserEoa,
+		setDiscoverPayPanelError,
+		startCardTopupSuccessAfterPay,
 		submitDiscoverEoaTopup,
 		usdcTopupBaselineUsdc6,
 		usdcTopupFiatAmount,
 		membershipPurchaseFeeFiat6,
 		membershipPurchaseTierIndex,
 		usdcTopupRecipientAa,
+		usdcTopupIntent,
 		usdcTopupRequiredUsdc6,
 		usdcTopupWorkflow,
 	])
@@ -5149,6 +5247,7 @@ function DiscoverMerchantDetailFullScreen({
 		void (async () => {
 			// Capture pre-top-up card points before the mint so success shows the increased balance.
 			cardTopupBaselinePoints6Ref.current = await readCardPoints6Fresh()
+			captureCardTopupBaselines(usdcTopupIntent)
 			if (ac.signal.aborted) return
 			const outcome = await pollEoaUsdcFundingThenTopup({
 				profile: profile as profile,
@@ -5162,15 +5261,15 @@ function DiscoverMerchantDetailFullScreen({
 			if (ac.signal.aborted) return
 
 			if (outcome.status === 'success') {
-				await finishCardTopupSuccess()
+				startCardTopupSuccessAfterPay(usdcTopupIntent)
 				return
 			}
 			if (outcome.status === 'error') {
-				setUsdcTopupError(outcome.message)
+				setDiscoverPayPanelError(outcome.message)
 				return
 			}
 			if (outcome.status === 'timeout') {
-				setUsdcTopupError('Timed out waiting for USDC. You can retry after the transfer completes.')
+				setDiscoverPayPanelError('Timed out waiting for USDC. You can retry after the transfer completes.')
 			}
 		})()
 
@@ -5178,10 +5277,12 @@ function DiscoverMerchantDetailFullScreen({
 			ac.abort()
 		}
 	}, [
-		finishCardTopupSuccess,
+		captureCardTopupBaselines,
 		item.cardAddress,
 		profile,
 		readCardPoints6Fresh,
+		setDiscoverPayPanelError,
+		startCardTopupSuccessAfterPay,
 		usdcTopupBaselineUsdc6,
 		usdcTopupFiatAmount,
 		usdcTopupPhase,
@@ -5193,6 +5294,7 @@ function DiscoverMerchantDetailFullScreen({
 	useEffect(
 		() => () => {
 			usdcTopupPollAbortRef.current?.abort()
+			cardTopupSuccessPollAbortRef.current?.abort()
 		},
 		[],
 	)
@@ -5202,12 +5304,6 @@ function DiscoverMerchantDetailFullScreen({
 		if (prev) clearTimeout(prev)
 		const timer = setTimeout(() => {
 			setCouponClaimStatusById((s) => {
-				if (!s[rowId]) return s
-				const next = { ...s }
-				delete next[rowId]
-				return next
-			})
-			setCouponClaimErrorById((s) => {
 				if (!s[rowId]) return s
 				const next = { ...s }
 				delete next[rowId]
@@ -5232,18 +5328,20 @@ function DiscoverMerchantDetailFullScreen({
 				}
 			}
 			if (!privateKeyArmor) {
-				Toast.show({
-					content: tu('unlock_your_wallet_with_your_access_password_to_claim_coupons'),
-					position: 'top',
-				})
-				navigate('/settings')
+				setCouponClaimErrorById((s) => ({
+					...s,
+					[row.id]: tu('unlock_your_wallet_with_your_access_password_to_claim_coupons'),
+				}))
 				return
 			}
 			const cardAddress = row.cardAddress?.trim() ?? ''
 			const couponId = row.couponId?.trim() ?? ''
 			const tokenId = row.tokenId?.trim() ?? ''
 			if (!cardAddress || !couponId || !tokenId || !ethers.isAddress(cardAddress)) {
-				Toast.show({ content: tu('coupon_claim_parameters_are_invalid'), position: 'top' })
+				setCouponClaimErrorById((s) => ({
+					...s,
+					[row.id]: tu('coupon_claim_parameters_are_invalid'),
+				}))
 				return
 			}
 			setCouponClaimStatusById((s) => ({ ...s, [row.id]: 'loading' }))
@@ -5273,7 +5371,7 @@ function DiscoverMerchantDetailFullScreen({
 					setCouponClaimEligibilityById((s) => ({ ...s, [row.id]: 'already_claimed' }))
 					setCouponClaimStatusById((s) => ({ ...s, [row.id]: 'success' }))
 					scheduleCouponClaimStatusReset(row.id)
-					// No Toast here: Toast remount/scroll often refreshes the Coupons panel on mobile.
+					// Claim success stays on the ticket (claimed state). Do not use auto-dismiss Toast.
 				} else {
 					const err = ret.error ?? 'Coupon claim failed'
 					let claimerEoa: string | null = null
@@ -5307,21 +5405,17 @@ function DiscoverMerchantDetailFullScreen({
 						setCouponClaimEligibilityById((s) => ({ ...s, [row.id]: 'already_redeemed' }))
 						setCouponClaimStatusById((s) => ({ ...s, [row.id]: 'idle' }))
 					} else {
-						setCouponClaimStatusById((s) => ({ ...s, [row.id]: 'error' }))
-						setCouponClaimErrorById((s) => ({ ...s, [row.id]: err }))
-						scheduleCouponClaimStatusReset(row.id)
+						setCouponClaimStatusById((s) => ({ ...s, [row.id]: 'idle' }))
+						setCouponClaimErrorById((s) => ({ ...s, [row.id]: mapServerError(err) }))
 					}
-					Toast.show({ content: mapServerError(err), position: 'top' })
 				}
 			} catch (e: unknown) {
 				const err = e instanceof Error ? e.message : 'Coupon claim failed'
-				setCouponClaimStatusById((s) => ({ ...s, [row.id]: 'error' }))
-				setCouponClaimErrorById((s) => ({ ...s, [row.id]: err }))
-				scheduleCouponClaimStatusReset(row.id)
-				Toast.show({ content: mapServerError(err), position: 'top' })
+				setCouponClaimStatusById((s) => ({ ...s, [row.id]: 'idle' }))
+				setCouponClaimErrorById((s) => ({ ...s, [row.id]: mapServerError(err) }))
 			}
 		},
-		[couponClaimStatusById, profile, navigate, scheduleCouponClaimStatusReset, setProfiles, shareReferrerFromUrl, applyCouponOpenClaimStatus],
+		[couponClaimStatusById, profile, scheduleCouponClaimStatusReset, setProfiles, shareReferrerFromUrl, applyCouponOpenClaimStatus],
 	)
 
 	useEffect(() => {
@@ -5672,6 +5766,7 @@ function DiscoverMerchantDetailFullScreen({
 
 			<div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-[calc(2rem+env(safe-area-inset-bottom))] pt-4">
 				<div className="mx-auto flex max-w-lg flex-col gap-4">
+					{likeError ? <DiscoverPayPanelError message={likeError} /> : null}
 					{showProspectJoinPanel ? (
 						<DiscoverMerchantProspectJoinPanel
 							heading={prospectJoinPanelCopy.heading}
@@ -5864,9 +5959,7 @@ function DiscoverMerchantDetailFullScreen({
 									placeholder="0.00"
 									className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-right text-[18px] font-semibold text-[#1f2328] outline-none ring-[#1562f0]/30 focus:border-[#1562f0] focus:ring-2 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]"
 								/>
-								{usdcTopupError ? (
-									<p className="text-[13px] font-medium text-amber-600 dark:text-amber-400">{usdcTopupError}</p>
-								) : null}
+								{usdcTopupError ? <DiscoverPayPanelError message={usdcTopupError} /> : null}
 								<div className="flex gap-2">
 									<button
 										type="button"
@@ -5904,9 +5997,7 @@ function DiscoverMerchantDetailFullScreen({
 								{usdcTopupProgress ? (
 									<p className="text-[13px] font-medium text-[#1562f0]">{usdcTopupProgress}</p>
 								) : null}
-								{usdcTopupError ? (
-									<p className="text-[13px] font-medium text-amber-600 dark:text-amber-400">{usdcTopupError}</p>
-								) : null}
+								{usdcTopupError ? <DiscoverPayPanelError message={usdcTopupError} /> : null}
 								<ShowPayQR
 									successUrl={usdcTopupQrValue}
 									beamio={null}
@@ -6138,19 +6229,59 @@ function DiscoverMerchantDetailFullScreen({
 				onClose={() => setShowMyNetwork(false)}
 			/>
 		) : null}
-		<UsdcArrivalOverlay
-			open={cardTopupSuccessBalance !== null}
-			phase="success"
-			variant="card"
-			listeningTitle={tu('card_topup_listening_title')}
-			listeningHint={tu('card_topup_listening_hint')}
-			successTitle={tu('card_topup_success_title')}
-			successSubtitle={tu('card_topup_success_subtitle')}
-			balanceLabel={tu('new_card_balance')}
-			balanceText={cardTopupSuccessBalance ?? ''}
-			onCancel={() => setCardTopupSuccessBalance(null)}
-			onDone={() => setCardTopupSuccessBalance(null)}
-		/>
+		{typeof document !== 'undefined'
+			? createPortal(
+					<UsdcArrivalOverlay
+						open={cardTopupOverlayPhase !== 'idle'}
+						phase={cardTopupOverlayPhase === 'success' ? 'success' : 'listening'}
+						variant="card"
+						zClassName="z-[120]"
+						listeningTitle={
+							cardTopupSuccessKind === 'first_purchase'
+								? tu('membership_join_listening_title')
+								: cardTopupSuccessKind === 'upgrade'
+									? tu('membership_upgrade_listening_title')
+									: tu('card_topup_listening_title')
+						}
+						listeningHint={
+							cardTopupSuccessKind === 'first_purchase'
+								? tu('membership_join_listening_hint')
+								: cardTopupSuccessKind === 'upgrade'
+									? tu('membership_upgrade_listening_hint')
+									: tu('card_topup_listening_hint')
+						}
+						progressText={
+							cardTopupSuccessKind === 'first_purchase'
+								? tu('membership_join_listening_progress')
+								: cardTopupSuccessKind === 'upgrade'
+									? tu('membership_upgrade_listening_progress')
+									: tu('card_topup_listening_progress')
+						}
+						successTitle={
+							cardTopupSuccessKind === 'first_purchase'
+								? tu('membership_join_success_title')
+								: cardTopupSuccessKind === 'upgrade'
+									? tu('membership_upgrade_success_title')
+									: tu('card_topup_success_title')
+						}
+						successSubtitle={
+							cardTopupSuccessKind === 'first_purchase'
+								? tu('membership_join_success_subtitle')
+								: cardTopupSuccessKind === 'upgrade'
+									? tu('membership_upgrade_success_subtitle')
+									: tu('card_topup_success_subtitle')
+						}
+						balanceLabel={tu('new_card_balance')}
+						balanceText={cardTopupSuccessBalance ?? ''}
+						onCancel={() => {
+							dismissCardTopupOverlay()
+							void refreshMerchantAssets()
+						}}
+						onDone={() => dismissCardTopupOverlay()}
+					/>,
+					document.body,
+				)
+			: null}
 		{typeof document !== 'undefined' && profiles?.[0] && item.cardAddress
 			? createPortal(
 					<MerchantCardTopUpFlow

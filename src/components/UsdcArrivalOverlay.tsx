@@ -22,6 +22,8 @@ type UsdcArrivalOverlayProps = {
 	onCancel: () => void
 	/** Dismiss the success panel. */
 	onDone: () => void
+	/** Stacking class. Discover merchant sheet is z-[110]; card success must sit above it. */
+	zClassName?: string
 }
 
 /**
@@ -45,6 +47,7 @@ export function UsdcArrivalOverlay({
 	balanceText,
 	onCancel,
 	onDone,
+	zClassName = 'z-[70]',
 }: UsdcArrivalOverlayProps) {
 	const [isEntered, setIsEntered] = useState(false)
 	const [isClosing, setIsClosing] = useState(false)
@@ -75,7 +78,7 @@ export function UsdcArrivalOverlay({
 
 	return (
 		<div
-			className="fixed inset-0 z-[70] flex flex-col bg-[#f4f6f8] transition-transform duration-300 ease-out dark:bg-slate-950"
+			className={`fixed inset-0 ${zClassName} flex flex-col bg-[#f4f6f8] transition-transform duration-300 ease-out dark:bg-slate-950`}
 			style={{
 				transform: isClosing || !isEntered ? 'translateX(100%)' : 'translateX(0)',
 				paddingTop: 'max(1rem, env(safe-area-inset-top, 0px))',

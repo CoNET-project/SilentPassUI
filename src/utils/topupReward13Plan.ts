@@ -7,7 +7,7 @@ import {
 import { CONET_USDC } from '@/config/chainAddresses'
 import { conetDepinProvider } from '@/utils/constants'
 
-export const REDEEM_REWARD13_EIP712_TYPES = {
+export const REDEEM_REWARD13_EIP712_TYPES: Record<string, Array<{ name: string; type: string }>> = {
 	RedeemReward13ForUsdc: [
 		{ name: 'card', type: 'address' },
 		{ name: 'userEOA', type: 'address' },
@@ -16,7 +16,7 @@ export const REDEEM_REWARD13_EIP712_TYPES = {
 		{ name: 'deadline', type: 'uint256' },
 		{ name: 'nonce', type: 'bytes32' },
 	],
-} as const
+}
 
 const CARD_IFACE = new ethers.Interface([
 	'function balanceOf(address account, uint256 id) view returns (uint256)',

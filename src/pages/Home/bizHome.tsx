@@ -155,23 +155,166 @@ const assembleEncryptKeysObject = async (
 	return true
 }
 
-/** Post-login signing-in screen — `marketExample.html` (Beamio Business OS - Signing In) */
-const SIGNING_IN_STYLE = `
-@keyframes biz-signing-spin {
+/** Decrypt → Activating Node loading (Gateway submit). Status rotation: setTimeout chain only. */
+const ACTIVATING_NODE_STATUS_MS = 4000
+const ACTIVATING_NODE_STATUS_KEYS = [
+	'gateway_status_syncing_base_conet',
+	'gateway_status_verifying_zk',
+	'gateway_status_establishing_tunnel',
+	'gateway_status_routing_omnichannel',
+] as const
+
+const ACTIVATING_NODE_STYLE = `
+@keyframes biz-activate-spin {
+	from { transform: rotate(0deg); }
 	to { transform: rotate(360deg); }
 }
-.biz-signing-loader-ring {
-	animation: biz-signing-spin 1.5s linear infinite;
-	border-top-color: #0051d1;
-}
-@keyframes biz-signing-pulse-soft {
+@keyframes biz-activate-pulse {
 	0%, 100% { opacity: 1; }
-	50% { opacity: 0.6; }
+	50% { opacity: 0.7; }
 }
-.biz-signing-pulse-soft {
-	animation: biz-signing-pulse-soft 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+@keyframes biz-activate-breathe {
+	0%, 100% { transform: scale(1); opacity: 0.9; }
+	50% { transform: scale(1.02); opacity: 1; }
+}
+@keyframes biz-activate-flicker {
+	0%, 19.999%, 22%, 62.999%, 64%, 64.999%, 70%, 100% { opacity: 0.9; }
+	20%, 21.999%, 63%, 63.999%, 65%, 69.999% { opacity: 0.4; }
+}
+.biz-activate-spin-slow {
+	animation: biz-activate-spin 3s linear infinite;
+}
+.biz-activate-spin-conic {
+	animation: biz-activate-spin 2s linear infinite;
+}
+.biz-activate-pulse {
+	animation: biz-activate-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+.biz-activate-breathe {
+	animation: biz-activate-breathe 4s ease-in-out infinite;
+	display: inline-block;
+}
+.biz-activate-flicker {
+	animation: biz-activate-flicker 4s infinite;
+}
+.biz-activate-glow {
+	box-shadow: 0 0 20px rgba(21, 98, 240, 0.2), inset 0 0 20px rgba(21, 98, 240, 0.1);
 }
 `
+
+function GatewayActivatingNodeScreen() {
+	const { tu } = useTu()
+	const [statusIndex, setStatusIndex] = useState(0)
+
+	useEffect(() => {
+		let timer: ReturnType<typeof setTimeout> | undefined
+		const schedule = () => {
+			timer = setTimeout(() => {
+				setStatusIndex((i) => (i + 1) % ACTIVATING_NODE_STATUS_KEYS.length)
+				schedule()
+			}, ACTIVATING_NODE_STATUS_MS)
+		}
+		schedule()
+		return () => {
+			if (timer !== undefined) clearTimeout(timer)
+		}
+	}, [])
+
+	const statusKey = ACTIVATING_NODE_STATUS_KEYS[statusIndex]
+
+	return (
+		<>
+			<style>{ACTIVATING_NODE_STYLE}</style>
+			<div
+				data-biz-ui-primary={BIZ_UI_PRIMARY}
+				className={`flex min-h-[max(100dvh,884px)] flex-col items-center overflow-hidden bg-[#faf9fe] text-[#2c2f31] selection:bg-[#1562f0]/20 ${headlineFont}`}
+				role="status"
+				aria-live="polite"
+				aria-busy="true"
+			>
+				<div className="w-full flex-1" />
+				<main className="relative z-10 flex w-full max-w-[600px] flex-col items-center justify-center px-6 text-center">
+					<div className="relative mb-10 flex h-32 w-32 items-center justify-center">
+						<svg
+							className="biz-activate-spin-slow absolute inset-0 h-full w-full text-[#1562f0] opacity-80"
+							viewBox="0 0 100 100"
+							aria-hidden
+						>
+							<circle
+								cx="50"
+								cy="50"
+								fill="none"
+								r="45"
+								stroke="currentColor"
+								strokeDasharray="70 200"
+								strokeLinecap="round"
+								strokeWidth="2"
+							/>
+							<circle
+								cx="50"
+								cy="50"
+								fill="none"
+								r="45"
+								stroke="currentColor"
+								strokeDasharray="20 200"
+								strokeDashoffset="100"
+								strokeLinecap="round"
+								strokeWidth="1"
+							/>
+						</svg>
+						<div className="biz-activate-glow absolute inset-2 overflow-hidden rounded-full">
+							<div
+								className="biz-activate-spin-conic absolute inset-[-100%]"
+								style={{
+									background:
+										'conic-gradient(from 90deg, transparent 0 75%, rgba(21, 98, 240, 0.5) 100%)',
+								}}
+								aria-hidden
+							/>
+							<div className="absolute inset-[1.5px] rounded-full border border-[#1562f0]/20 bg-white/80 backdrop-blur-md" />
+						</div>
+						<Shield
+							className="biz-activate-pulse relative z-10 h-9 w-9 text-[#1562f0]"
+							strokeWidth={1.25}
+							aria-hidden
+						/>
+					</div>
+					<div className="space-y-2">
+						<h1 className="biz-activate-breathe px-2 text-2xl font-semibold leading-8 tracking-tight text-[#111827] md:text-[32px] md:leading-10">
+							{tu('activating_commerce_node')}
+						</h1>
+						<p className="mx-auto mt-2 max-w-md text-lg font-normal leading-7 text-[#4b5563]">
+							{tu('decrypting_eoa_aa_routing_omnichannel')}
+						</p>
+					</div>
+					<div className="mt-6">
+						<span className="inline-flex items-center rounded-full border border-[#1562f0]/20 bg-[#1562f0]/10 px-4 py-2 text-[12px] font-medium uppercase tracking-[0.05em] text-[#1562f0] backdrop-blur-sm">
+							{tu('securing_your_keys_on_conet_l1')}
+						</span>
+					</div>
+				</main>
+				<div className="w-full flex-1" />
+				<footer
+					className="relative z-10 w-full px-6 py-10 text-center"
+					style={{ paddingBottom: 'max(2.5rem, calc(env(safe-area-inset-bottom, 0px) + 1.5rem))' }}
+				>
+					<div className="inline-flex items-center justify-center gap-2 font-mono text-sm leading-5 text-[#6b7280]">
+						<span
+							className="biz-activate-pulse h-2 w-2 rounded-full bg-[#1562f0] shadow-[0_0_8px_rgba(21,98,240,0.4)]"
+							aria-hidden
+						/>
+						<span
+							key={statusKey}
+							className="biz-activate-flicker uppercase tracking-widest"
+						>
+							{tu(statusKey)}
+						</span>
+					</div>
+				</footer>
+			</div>
+		</>
+	)
+}
 
 const BizHome = () => {
 	const { tu } = useTu()
@@ -326,64 +469,7 @@ const BizHome = () => {
 		)
 	}
 	if (isLoading) {
-		return (
-			<>
-				<style>{SIGNING_IN_STYLE}</style>
-				<div
-					data-biz-ui-primary={BIZ_UI_PRIMARY}
-					className={`relative flex min-h-[max(100dvh,884px)] flex-col items-center justify-center overflow-hidden bg-[#f5f7f9] p-8 pb-32 text-[#2c2f31] selection:bg-[#7a9dff]/30 ${headlineFont}`}
-				>
-					<div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
-						<div className="absolute -left-[10%] -top-[10%] h-[50%] w-[50%] rounded-full bg-[#7a9dff]/5 blur-[120px]" />
-						<div className="absolute -bottom-[10%] -right-[10%] h-[50%] w-[50%] rounded-full bg-[#d8e3fb]/10 blur-[120px]" />
-					</div>
-
-					<main className="flex w-full max-w-md flex-col items-center text-center">
-						<div className="relative mb-16">
-							<div className="absolute inset-0 scale-150 rounded-full bg-[#0051d1]/10 blur-3xl" aria-hidden />
-							<div className="relative flex h-24 w-24 items-center justify-center">
-								<div className="absolute inset-0 rounded-full border-4 border-[#d9dde0]" aria-hidden />
-								<div
-									className="biz-signing-loader-ring absolute inset-0 rounded-full border-4 border-transparent"
-									aria-hidden
-								/>
-								<Shield className="relative z-10 h-9 w-9 text-[#0051d1]" strokeWidth={1.75} aria-hidden />
-							</div>
-						</div>
-
-						<div className="space-y-6">
-							<h1 className="px-4 text-3xl font-extrabold leading-tight tracking-tight text-[#2c2f31]">{tu('preparing_your_business_workspace')}</h1>
-							<p className="px-6 text-lg font-medium leading-relaxed text-[#595c5e]">
-								{tu('gateway_verifying_access')}
-							</p>
-							<div className="pt-8">
-								<span className="biz-signing-pulse-soft inline-block rounded-full bg-[#eef1f3] px-4 py-2 text-xs font-semibold uppercase tracking-[0.1em] text-[#515c70]">{tu('this_usually_takes_a_few_seconds')}</span>
-							</div>
-						</div>
-					</main>
-
-					<footer
-						className="fixed left-0 right-0 z-10 flex justify-center px-4 text-center"
-						style={{ bottom: 'calc(3rem + env(safe-area-inset-bottom, 0px))' }}
-					>
-						<div className="flex max-w-lg flex-col items-center gap-4">
-							<div className="flex items-center gap-2">
-								<span className={`${headlineFont} text-xl font-black tracking-tighter text-[#0051d1]`}>{tu('beamio_identity')}</span>
-							</div>
-							<div className="flex items-start gap-3 sm:items-center">
-								<div className="relative mt-1 flex h-2 w-2 shrink-0 sm:mt-0">
-									<span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#0051d1] opacity-60" />
-									<span className="relative inline-flex h-2 w-2 rounded-full bg-[#0051d1]" />
-								</div>
-								<p className="text-left text-xs font-semibold uppercase leading-snug tracking-wide text-[#595c5e] sm:text-center sm:text-sm">
-									{tu('gateway_verifying_access')}
-								</p>
-							</div>
-						</div>
-					</footer>
-				</div>
-			</>
-		)
+		return <GatewayActivatingNodeScreen />
 	}
 
 	return (

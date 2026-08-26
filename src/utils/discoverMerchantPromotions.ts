@@ -393,6 +393,148 @@ function formatTopupPromotionCapsuleCopy(
 	}
 }
 
+export type DiscoverProspectJoinPanelCopy = {
+	heading: string
+	body: string
+	/** Green pill, e.g. `Get 50% Bonus Points`. Null when no top-up bonus to show. */
+	bonusBadge: string | null
+	/** Charge Reward PT footer, e.g. `Earn 40% back in points on every future purchase.` */
+	chargeFooter: string | null
+	hasTopupPromotion: boolean
+	hasChargePromotion: boolean
+	ctaLabel: string
+}
+
+function joinCircleSubject(welcomeTitle?: string, passTitle?: string): string | null {
+	const welcome = welcomeTitle?.trim() ?? ''
+	if (/inner\s+circle/i.test(welcome) || /inner\s+circle/i.test(passTitle ?? '')) {
+		return 'the Inner Circle'
+	}
+	const stripped = welcome.replace(/^welcome\s+to\s+/i, '').trim()
+	if (stripped) return stripped
+	const pass = passTitle?.trim() ?? ''
+	return pass || null
+}
+
+function readActiveTopupPromotionAmounts(params: {
+	metadataRoot: Record<string, unknown> | null | undefined
+	currency: string
+}): {
+	minLabel: string | null
+	percent: number | null
+	receiveLabel: string | null
+} | null {
+	const unified = resolveDiscoverUnifiedTopupPromotion(params)
+	if (!unified?.active) return null
+	const moneyPrefix = moneyPrefixForCurrency(params.currency)
+	if (unified.source === 'topupPromotion' && unified.topupPromo) {
+		const promo = unified.topupPromo
+		const min = parseAmount(promo.minimumTopupAmount)
+		const reward = parseAmount(promo.rewardValue)
+		if (min == null || reward == null) return null
+		const minLabel = formatPromoMoneyLabel(moneyPrefix, min)
+		if (promo.rewardType === 'percent') {
+			const totalReceive = Number((min * (1 + reward / 100)).toFixed(2))
+			return {
+				minLabel,
+				percent: reward,
+				receiveLabel: formatPromoMoneyLabel(moneyPrefix, totalReceive),
+			}
+		}
+		const totalReceive = Number((min + reward).toFixed(2))
+		return {
+			minLabel,
+			percent: null,
+			receiveLabel: formatPromoMoneyLabel(moneyPrefix, totalReceive),
+		}
+	}
+	if (unified.bonusRule) {
+		const rule = unified.bonusRule
+		const minLabel = formatPromoMoneyLabel(moneyPrefix, rule.paymentAmount)
+		if (rule.bonusProportional) {
+			const pct = (rule.bonusValue / rule.paymentAmount) * 100
+			const totalReceive = Number((rule.paymentAmount + rule.bonusValue).toFixed(2))
+			return {
+				minLabel,
+				percent: pct,
+				receiveLabel: formatPromoMoneyLabel(moneyPrefix, totalReceive),
+			}
+		}
+		const totalReceive = Number((rule.paymentAmount + rule.bonusValue).toFixed(2))
+		return {
+			minLabel,
+			percent: null,
+			receiveLabel: formatPromoMoneyLabel(moneyPrefix, totalReceive),
+		}
+	}
+	return null
+}
+
+/**
+ * Discover prospect blue panel: merchant welcome + this card's active
+ * top-up / charge promotion. Never invents amounts when metadata has none.
+ */
+export function resolveDiscoverProspectJoinPanelCopy(params: {
+	metadataRoot: Record<string, unknown> | null | undefined
+	currency: string
+	welcomeTitle?: string
+	welcomeBody?: string
+	passTitle?: string
+}): DiscoverProspectJoinPanelCopy {
+	const welcomeTitle = params.welcomeTitle?.trim() ?? ''
+	const welcomeBody = params.welcomeBody?.trim() ?? ''
+	const amounts = readActiveTopupPromotionAmounts(params)
+	const actor = parseDiscoverActorRewardPercentsFromMetadata(params.metadataRoot)
+	const chargePercent = actor.chargePercent
+	const bonusPercent = amounts?.percent ?? actor.topupPercent
+	const hasTopupPromotion = amounts != null || (actor.topupPercent != null && actor.topupPercent > 0)
+	const hasChargePromotion = chargePercent != null && chargePercent > 0
+	const subject = joinCircleSubject(welcomeTitle, params.passTitle)
+
+	let heading = welcomeTitle || (params.passTitle?.trim() ? `Welcome to ${params.passTitle.trim()}` : 'Exclusive Welcome Offer')
+	if (amounts?.receiveLabel) {
+		heading = subject
+			? `Join ${subject} & Get ${amounts.receiveLabel}!`
+			: `Join & Get ${amounts.receiveLabel}!`
+	} else if (hasTopupPromotion && subject && !welcomeTitle) {
+		heading = `Welcome to ${subject}`
+	}
+
+	const privilegePhrase = /dining/i.test(welcomeBody)
+		? 'seamless dining'
+		: 'exclusive digital privileges'
+	let body = welcomeBody
+	if (amounts?.minLabel && bonusPercent != null && bonusPercent > 0) {
+		body = `Top up ${amounts.minLabel} today to unlock ${privilegePhrase} and an instant ${formatBonusRuleAmount(bonusPercent)}% bonus points match.`
+	} else if (amounts?.minLabel && amounts.receiveLabel) {
+		body = `Top up ${amounts.minLabel} today to unlock ${privilegePhrase} and get ${amounts.receiveLabel} instantly.`
+	} else if (!body && hasTopupPromotion) {
+		body = 'Top up this merchant Pass to enjoy instant bonus rewards.'
+	}
+
+	const bonusBadge =
+		bonusPercent != null && bonusPercent > 0
+			? `Get ${formatBonusRuleAmount(bonusPercent)}% Bonus Points`
+			: amounts?.receiveLabel
+				? `Get ${amounts.receiveLabel}`
+				: null
+
+	const chargeFooter =
+		hasChargePromotion && chargePercent != null
+			? `Earn ${formatBonusRuleAmount(chargePercent)}% back in points on every future purchase.`
+			: null
+
+	return {
+		heading,
+		body,
+		bonusBadge,
+		chargeFooter,
+		hasTopupPromotion,
+		hasChargePromotion,
+		ctaLabel: 'Claim Offer & Top Up',
+	}
+}
+
 function formatRechargeBonusCapsuleCopy(
 	rule: DiscoverRechargeBonusRule,
 	currencyCode: string,

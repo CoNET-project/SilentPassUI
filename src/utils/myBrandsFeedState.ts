@@ -10,7 +10,7 @@ export type { MyBrandsOwnedCatalogSnapshot }
 export type MyBrandCardFeedDetailsMap = MyBrandsFeedDetailsSnapshot
 
 /** V16+: unified Reward PT (#13). Prefer chargeRewardPoints; do not add social (same balance). */
-function rewardPointsTotal(
+export function rewardPointsTotal(
 	assets?: { chargeRewardPoints?: string; socialRewardPoints?: string } | null
 ): number {
 	const charge = Number(assets?.chargeRewardPoints ?? 0)

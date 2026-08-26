@@ -62,6 +62,7 @@ import {
 	sortMyBrandCardsForList,
 } from '@/pages/Brands/MyBrandsListSection'
 import { RECENT_ACTIVITY_PREVIEW_COUNT } from '@/pages/History/recentActivityIndexerMerge'
+import { rewardPointsTotal } from '@/utils/myBrandsFeedState'
 import BeamioContactProfilePreview from './BeamioContactProfilePreview'
 import {BeamioBetaAccess} from './components/BeamioBetaAccess'
 import {TransactionsItemDetail} from '@/pages/History/TransactionsItemDetail'
@@ -246,7 +247,7 @@ const Home = (_props: HomeProps) => {
 		power, setProfiles, setBeamio, setPaymentLink, setSecureCode,  secureCode, ignoreUrl, setMyAddress, myAddress, beamio, setCurrencyData,
 		setPayTag, setSendToMemo, listenningProcess, setListenningProcess, usdcbalance, setPaymentLinkCode,
 		currencyData, setRedeemCode, setPayMePayment, setAllNodes, setGossip, gossip, setCharts, charts, setShowFooter, scanData, setScanData,
-		myBrandCards, myBrandCardDetails, homeTotalPowerCad,
+		myBrandCards, myBrandCardDetails,
 		aaAccountUsdcBalance, recentActivityNoAaItems, refreshRecentActivityNoAa, conetWalletBalances,
 	} = useDaemonContext()
 	const navigate = useNavigate()
@@ -1748,6 +1749,19 @@ const Home = (_props: HomeProps) => {
 		return cadPartsFromNumber(pointsCad)
 	}, [myBrandCardDetails, currencyData])
 
+	const homeHubRewardPtsDisplay = useMemo(() => {
+		let total = 0
+		for (const [cardKey, entry] of Object.entries(myBrandCardDetails)) {
+			if (isCardExcludedFromDisplay(cardKey)) continue
+			total += rewardPointsTotal(entry?.assets)
+		}
+		const formatted = total.toLocaleString('en-US', {
+			maximumFractionDigits: 2,
+			minimumFractionDigits: 0,
+		})
+		return `${formatted} ${tu('pts_unit')}`
+	}, [myBrandCardDetails])
+
 	const merchantGiftCardOptions = useMemo((): MerchantGiftCardOption[] => {
 		const out: MerchantGiftCardOption[] = []
 		for (const uc of myBrandCards) {
@@ -1950,39 +1964,42 @@ const Home = (_props: HomeProps) => {
 							<div className="mb-10 flex flex-col gap-6 min-[480px]:gap-8">
 								{/* Premium Universal Pay Hub — signature gradient */}
 								<section className="shrink-0">
-									<div className="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-[#1562f0] to-[#4c1d95] text-white shadow-2xl">
+									<div className="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-[#3b9eff] to-[#1d4ed8] text-white shadow-2xl">
 										<div
 											aria-hidden
 											className="pointer-events-none absolute inset-0 opacity-[0.12] bg-[radial-gradient(ellipse_at_80%_0%,rgba(255,255,255,0.45),transparent_55%)]"
 										/>
 										<div className="relative z-10">
 											<div className="p-8 pb-6 pt-7 min-[480px]:p-8">
-												<div className="mb-6 flex items-start justify-between">
-													<div className="space-y-1">
-														<p className="text-[10px] font-bold uppercase tracking-widest text-white/60">
-															{tu('total_purchasing_power')}
-														</p>
-														{/* Own compositor layer: avoid subpixel text shake when parent re-rasterizes */}
-														<h2 className="text-4xl font-extrabold tabular-nums tracking-tight [transform:translateZ(0)] [-webkit-font-smoothing:antialiased]">
-															CA$ {homeTotalPowerCad.whole}.{homeTotalPowerCad.frac}
-														</h2>
-													</div>
-												</div>
-												<div className="grid grid-cols-2 gap-4 [transform:translateZ(0)] [-webkit-font-smoothing:antialiased]">
-													<div className="space-y-1 text-left">
-														<p className="text-[10px] font-bold uppercase tracking-widest text-white/50">
-															{tu('usdc_balance')}
-														</p>
-														<p className="text-lg font-bold tabular-nums">
+												<div className="mb-6 text-center">
+													<p className="text-[10px] font-bold uppercase tracking-widest text-white/70">
+														{tu('universal_cash')}
+													</p>
+													{/* Own compositor layer: avoid subpixel text shake when parent re-rasterizes */}
+													<h2 className="mt-1 flex items-baseline justify-center gap-2 [transform:translateZ(0)] [-webkit-font-smoothing:antialiased]">
+														<span className="text-4xl font-extrabold tabular-nums tracking-tight">
 															{homeHubWalletUsdcDisplay}
-														</p>
-													</div>
-													<div className="space-y-1 text-right">
-														<p className="text-[10px] font-bold uppercase tracking-widest text-white/50">
+														</span>
+														<span className="text-xl font-bold tracking-tight text-white/90">
+															USDC
+														</span>
+													</h2>
+												</div>
+												<div className="grid grid-cols-2 gap-3 [transform:translateZ(0)] [-webkit-font-smoothing:antialiased]">
+													<div className="rounded-2xl border border-white/20 bg-white/10 px-4 py-3.5 text-left">
+														<p className="text-[10px] font-bold uppercase tracking-widest text-white/70">
 															{tu('merchant_assets')}
 														</p>
-														<p className="text-lg font-bold tabular-nums">
+														<p className="mt-1 text-xl font-extrabold tabular-nums">
 															CA$ {homeHubMerchantCad.whole}.{homeHubMerchantCad.frac}
+														</p>
+													</div>
+													<div className="rounded-2xl border border-white/20 bg-white/10 px-4 py-3.5 text-left">
+														<p className="text-[10px] font-bold uppercase tracking-widest text-white/70">
+															{tu('my_points')}
+														</p>
+														<p className="mt-1 text-xl font-extrabold tabular-nums">
+															{homeHubRewardPtsDisplay}
 														</p>
 													</div>
 												</div>
@@ -2013,15 +2030,15 @@ const Home = (_props: HomeProps) => {
 										type="button"
 										data-touch-priority="1"
 										{...openStripeUsdcTopupTap}
-										className={`flex flex-1 flex-col items-start gap-2 rounded-lg bg-[#f3f4f5] p-3 text-left transition-transform active:scale-95 active:bg-[#e7e8e9] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/50 focus-visible:ring-offset-2 min-[480px]:gap-3 min-[480px]:p-4 dark:bg-slate-800/90 dark:active:bg-slate-800 dark:focus-visible:ring-offset-slate-900 [@media(max-height:700px)]:gap-1.5 [@media(max-height:700px)]:p-2.5 ${HOME_TOUCH_BUTTON_CLASS}`}
-										aria-label="Buy USDC with card"
+										className={`flex flex-1 flex-col items-start gap-2 rounded-2xl bg-[#f3f4f5] p-3 text-left transition-transform active:scale-95 active:bg-[#e7e8e9] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/50 focus-visible:ring-offset-2 min-[480px]:gap-3 min-[480px]:p-4 dark:bg-slate-800/90 dark:active:bg-slate-800 dark:focus-visible:ring-offset-slate-900 [@media(max-height:700px)]:gap-1.5 [@media(max-height:700px)]:p-2.5 ${HOME_TOUCH_BUTTON_CLASS}`}
+										aria-label={tu('fund_wallet')}
 									>
 									<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-[#b3c5ff]/30 text-[#004bc3] dark:bg-[#1562f0]/25 dark:text-[#6ba3ff]">
-										<CreditCard size={22} strokeWidth={2} aria-hidden />
+										<Wallet size={22} strokeWidth={2} aria-hidden />
 									</div>
 									<div>
-										<p className="text-sm font-bold text-[#191c1d] dark:text-slate-100">{tu('top_up')}</p>
-										<p className="mt-0.5 text-[11px] font-medium text-[#424655] dark:text-slate-400">USDC on Base</p>
+										<p className="text-sm font-bold text-[#191c1d] dark:text-slate-100">{tu('fund_wallet')}</p>
+										<p className="mt-0.5 text-[11px] font-medium text-[#424655] dark:text-slate-400">{tu('add_cash_balance')}</p>
 									</div>
 									</button>
 									<button
@@ -2029,7 +2046,7 @@ const Home = (_props: HomeProps) => {
 										data-touch-priority="1"
 										{...openMerchantGiftSheetTap}
 										disabled={!merchantGiftEnabled || merchantGiftCardOptions.length === 0}
-										className={`flex flex-1 flex-col items-start gap-2 rounded-lg bg-[#f3f4f5] p-3 text-left transition-transform focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/50 focus-visible:ring-offset-2 min-[480px]:gap-3 min-[480px]:p-4 dark:bg-slate-800/90 dark:focus-visible:ring-offset-slate-900 [@media(max-height:700px)]:gap-1.5 [@media(max-height:700px)]:p-2.5 ${HOME_TOUCH_BUTTON_CLASS} ${
+										className={`flex flex-1 flex-col items-start gap-2 rounded-2xl bg-[#f3f4f5] p-3 text-left transition-transform focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/50 focus-visible:ring-offset-2 min-[480px]:gap-3 min-[480px]:p-4 dark:bg-slate-800/90 dark:active:bg-slate-800 dark:focus-visible:ring-offset-slate-900 [@media(max-height:700px)]:gap-1.5 [@media(max-height:700px)]:p-2.5 ${HOME_TOUCH_BUTTON_CLASS} ${
 											merchantGiftEnabled && merchantGiftCardOptions.length > 0
 												? 'active:scale-95 active:bg-[#e7e8e9] dark:active:bg-slate-800'
 												: 'cursor-not-allowed opacity-45'
@@ -2041,6 +2058,7 @@ const Home = (_props: HomeProps) => {
 										</div>
 										<div>
 											<p className="text-sm font-bold text-[#191c1d] dark:text-slate-100">{tu('gift')}</p>
+											<p className="mt-0.5 text-[11px] font-medium text-[#424655] dark:text-slate-400">{tu('share_with_friends')}</p>
 										</div>
 									</button>
 								</section>

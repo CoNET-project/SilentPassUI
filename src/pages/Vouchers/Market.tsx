@@ -43,6 +43,7 @@ import {
 	Medal,
   ExternalLink,
   Gift,
+  Crown,
   Copy,
   Star,
   Minus,
@@ -180,6 +181,7 @@ import { useReliableTapHandler, RELIABLE_TAP_BUTTON_CLASS } from '@/utils/reliab
 import {
 	formatSocialPoints13Display,
 	resolveCouponSocialMissionBlockForSeries,
+	resolveDiscoverProspectJoinPanelCopy,
 	resolveDiscoverTopupPromotionPresentation,
 	resolveDiscoverTopupPromotionStoreCreditsBadge,
 	type DiscoverTopupPromotionPresentation,
@@ -532,31 +534,27 @@ function discoverMerchantAboutPanelForDisplay(
 }
 
 function DiscoverMerchantProspectJoinPanel({
-	offerTitle,
-	offerDescription,
-	welcomeTitle,
-	welcomeText,
+	heading,
+	body,
+	bonusBadge,
+	chargeFooter,
 	ctaLabel,
 	onClaim,
 }: {
-	offerTitle: string
-	offerDescription: string
-	welcomeTitle?: string
-	welcomeText?: string
+	heading: string
+	body: string
+	bonusBadge?: string | null
+	chargeFooter?: string | null
 	ctaLabel: string
 	onClaim?: () => void
 }) {
-	const heading = welcomeTitle?.trim() || offerTitle
-	const welcomeBody = welcomeText?.trim() ?? ""
-	const offerBody = offerDescription.trim()
-	const body = welcomeBody || offerBody
 	return (
 		<section
 			className="overflow-hidden rounded-[22px] bg-[#1562f0] p-4 text-white shadow-[0_8px_22px_rgba(15,23,42,0.06)] sm:p-5"
 			aria-label={heading}
 		>
-			<span className="inline-flex items-center gap-1.5 rounded-full bg-white/20 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.06em] text-white backdrop-blur-[2px]">
-				<Gift className="h-3.5 w-3.5 shrink-0" strokeWidth={2.25} aria-hidden />
+			<span className="inline-flex items-center gap-1.5 rounded-full bg-[#e4e9ff] px-3 py-1 text-[11px] font-bold uppercase tracking-[0.06em] text-[#0c2a6b]">
+				<Crown className="h-3.5 w-3.5 shrink-0" strokeWidth={2.25} aria-hidden />
 				Exclusive Welcome Offer
 			</span>
 			<h3 className="mt-3 text-[20px] font-bold leading-snug tracking-tight text-white sm:text-[22px]">
@@ -564,6 +562,12 @@ function DiscoverMerchantProspectJoinPanel({
 			</h3>
 			{body ? (
 				<p className="mt-2 text-[14px] leading-relaxed text-white/90">{body}</p>
+			) : null}
+			{bonusBadge ? (
+				<span className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-[#14532d] px-3 py-1 text-[12px] font-semibold text-[#bbf7d0]">
+					<Flame className="h-3.5 w-3.5 shrink-0" strokeWidth={2.25} aria-hidden />
+					{bonusBadge}
+				</span>
 			) : null}
 			{onClaim ? (
 				<button
@@ -574,6 +578,12 @@ function DiscoverMerchantProspectJoinPanel({
 					{ctaLabel}
 					<ArrowRight className="h-4 w-4 shrink-0" strokeWidth={2.5} aria-hidden />
 				</button>
+			) : null}
+			{chargeFooter ? (
+				<p className="mt-3 flex items-center justify-center gap-1.5 text-center text-[12px] leading-snug text-white/75">
+					<span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#4ade80]" aria-hidden />
+					{chargeFooter}
+				</p>
 			) : null}
 		</section>
 	)
@@ -4212,13 +4222,17 @@ function DiscoverMerchantDetailFullScreen({
 		[merchantMetadataRoot, displayCurrency],
 	)
 	const topupPromotionCapsule = topupPromotionPresentation.capsuleCopy
-	const newCustomerBonusCopy =
-		topupPromotionCapsule ??
-		{
-			title: 'New Customer Bonus',
-			description: 'Join this merchant program to unlock member benefits.',
-			ctaLabel: 'Claim Offer & Top Up',
-		}
+	const prospectJoinPanelCopy = useMemo(
+		() =>
+			resolveDiscoverProspectJoinPanelCopy({
+				metadataRoot: merchantMetadataRoot,
+				currency: displayCurrency,
+				welcomeTitle: discoverWelcomePanel?.title,
+				welcomeBody: discoverWelcomePanel?.body,
+				passTitle,
+			}),
+		[merchantMetadataRoot, displayCurrency, discoverWelcomePanel?.title, discoverWelcomePanel?.body, passTitle],
+	)
 	const showProspectJoinPanel = !isConetGenesisCard && !hasActiveMembership
 	const openConetExplore = useCallback(() => {
 		void openExternalUrl(CONET_EXPLORE_NETWORK_URL)
@@ -5660,14 +5674,14 @@ function DiscoverMerchantDetailFullScreen({
 				<div className="mx-auto flex max-w-lg flex-col gap-4">
 					{showProspectJoinPanel ? (
 						<DiscoverMerchantProspectJoinPanel
-							offerTitle={newCustomerBonusCopy.title}
-							offerDescription={newCustomerBonusCopy.description}
-							welcomeTitle={discoverWelcomePanel?.title}
-							welcomeText={discoverWelcomePanel?.body}
+							heading={prospectJoinPanelCopy.heading}
+							body={prospectJoinPanelCopy.body}
+							bonusBadge={prospectJoinPanelCopy.bonusBadge}
+							chargeFooter={prospectJoinPanelCopy.chargeFooter}
 							ctaLabel={
 								membershipUi.mode === 'need_member' && membershipUi.joinTier
 									? 'Claim Offer & Become a Member'
-									: newCustomerBonusCopy.ctaLabel ?? 'Claim Offer & Top Up'
+									: prospectJoinPanelCopy.ctaLabel
 							}
 							onClaim={
 								usdcTopupPhase === 'idle' && !discoverTopUpOpen
@@ -5686,74 +5700,43 @@ function DiscoverMerchantDetailFullScreen({
 						/>
 					) : null}
 
-					{/* Membership + Store Credits (#0) + My Points (#13) — member portal (top when active). */}
+					{/* Membership wallet — only when the user already holds this merchant membership. */}
+					{hasActiveMembership || usdcTopupPhase !== 'idle' ? (
 					<div
-						className={`rounded-[22px] bg-white p-5 shadow-[0_8px_22px_rgba(15,23,42,0.06)] ring-1 ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800${hasActiveMembership ? ' order-first' : ''}`}
+						className="rounded-[22px] bg-white p-5 shadow-[0_8px_22px_rgba(15,23,42,0.06)] ring-1 ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800"
 					>
+						{hasActiveMembership ? (
+						<>
 						<div className="flex items-start justify-between gap-3">
 							<div className="min-w-0 flex-1">
-								{hasActiveMembership ? (
-									<>
-										<h2 className="text-[18px] font-bold leading-snug text-[#1f2328] dark:text-slate-100">
-											{discoverWelcomePanel?.title ||
-												resolveDiscoverWelcomeTitle({ passTitle, merchantInfoPanel })}
-										</h2>
-										<div className="mt-2 flex flex-wrap items-center gap-2">
-											<span className="inline-flex max-w-full items-center rounded-full bg-[#e9edff] px-2.5 py-1 text-[12px] font-bold text-[#0051d1] dark:bg-[#1e2a4a] dark:text-[#8eb4ff]">
-												<span className="truncate">{activeMembershipTierName}</span>
-											</span>
-											<span className="inline-flex items-center gap-1.5">
-												<span className="h-2 w-2 shrink-0 rounded-full bg-[#1562f0]" aria-hidden />
-												<span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500 dark:text-slate-400">
-													Active Member
-												</span>
-											</span>
-										</div>
-										{(discoverWelcomePanel?.body ?? '').trim() ? (
-											<DiscoverAboutDetailBody
-												text={(discoverWelcomePanel?.body ?? '').trim()}
-												className=" mt-2"
-											/>
-										) : null}
-										{membershipExpiryDisplay ? (
-											<p className="mt-1.5 text-[12px] font-medium text-slate-500 dark:text-slate-400">
-												{membershipExpiryDisplay === 'Never expires'
-													? membershipExpiryDisplay
-													: `Expires ${membershipExpiryDisplay}`}
-											</p>
-										) : null}
-									</>
-								) : (
-									<>
-										<h3 className="truncate text-[17px] font-semibold leading-snug text-[#1f2328] dark:text-slate-100">
-											{passTitle}
-										</h3>
-										{membershipFeeMode ? (
-											<div className="mt-1.5 flex items-center gap-1.5">
-												<span className="h-2 w-2 shrink-0 rounded-full bg-slate-300 dark:bg-slate-600" aria-hidden />
-												<span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500 dark:text-slate-400">
-													Not a member
-												</span>
-											</div>
-										) : null}
-										{membershipFeeDisplay ? (
-											<p className="mt-1.5 text-[12px] font-medium leading-snug text-slate-500 dark:text-slate-400">
-												Membership fee{' '}
-												<span className="font-semibold text-[#1f2328] dark:text-slate-200">
-													{balancePrefix
-														? `${balancePrefix}${membershipFeeDisplay.feeHuman}`
-														: membershipFeeDisplay.feeHuman}
-												</span>
-												{membershipFeeDisplay.durationLabel
-													? ` · ${membershipFeeDisplay.durationLabel}`
-													: ''}
-												{membershipFeeDisplay.tierName
-													? ` (${membershipFeeDisplay.tierName})`
-													: ''}
-											</p>
-										) : null}
-									</>
-								)}
+								<h2 className="text-[18px] font-bold leading-snug text-[#1f2328] dark:text-slate-100">
+									{discoverWelcomePanel?.title ||
+										resolveDiscoverWelcomeTitle({ passTitle, merchantInfoPanel })}
+								</h2>
+								<div className="mt-2 flex flex-wrap items-center gap-2">
+									<span className="inline-flex max-w-full items-center rounded-full bg-[#e9edff] px-2.5 py-1 text-[12px] font-bold text-[#0051d1] dark:bg-[#1e2a4a] dark:text-[#8eb4ff]">
+										<span className="truncate">{activeMembershipTierName}</span>
+									</span>
+									<span className="inline-flex items-center gap-1.5">
+										<span className="h-2 w-2 shrink-0 rounded-full bg-[#1562f0]" aria-hidden />
+										<span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500 dark:text-slate-400">
+											Active Member
+										</span>
+									</span>
+								</div>
+								{(discoverWelcomePanel?.body ?? '').trim() ? (
+									<DiscoverAboutDetailBody
+										text={(discoverWelcomePanel?.body ?? '').trim()}
+										className=" mt-2"
+									/>
+								) : null}
+								{membershipExpiryDisplay ? (
+									<p className="mt-1.5 text-[12px] font-medium text-slate-500 dark:text-slate-400">
+										{membershipExpiryDisplay === 'Never expires'
+											? membershipExpiryDisplay
+											: `Expires ${membershipExpiryDisplay}`}
+									</p>
+								) : null}
 							</div>
 							<span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#1562f0] text-white shadow-sm">
 								<Radio className="h-5 w-5" strokeWidth={2} aria-hidden />
@@ -5833,9 +5816,11 @@ function DiscoverMerchantDetailFullScreen({
 								</button>
 							</div>
 						) : null}
+						</>
+						) : null}
 
 						{usdcTopupPhase === 'amount' ? (
-							<div className="mt-4 space-y-3 border-t border-slate-100 pt-4 dark:border-slate-800">
+							<div className={`space-y-3 ${hasActiveMembership ? 'mt-4 border-t border-slate-100 pt-4 dark:border-slate-800' : ''}`}>
 								<label htmlFor="discover-usdc-topup-amount" className="block text-[13px] font-semibold text-slate-600 dark:text-slate-400">
 									{usdcTopupIntent === 'first_purchase'
 										? `Membership amount (${displayCurrency})`
@@ -5906,7 +5891,7 @@ function DiscoverMerchantDetailFullScreen({
 						) : null}
 
 						{usdcTopupPhase === 'receive' && usdcTopupQrValue ? (
-							<div className="mt-4 space-y-3 border-t border-slate-100 pt-4 dark:border-slate-800">
+							<div className={`space-y-3 ${hasActiveMembership ? 'mt-4 border-t border-slate-100 pt-4 dark:border-slate-800' : ''}`}>
 								<p className="text-[13px] leading-relaxed text-slate-600 dark:text-slate-400">
 									{discoverTreasuryBridgePaymentHint()}
 								</p>
@@ -5979,6 +5964,7 @@ function DiscoverMerchantDetailFullScreen({
 							</div>
 						) : null}
 					</div>
+					) : null}
 
 					{/* Top-up promo / curated offers — non-Genesis merchant cards. */}
 					{!isConetGenesisCard ? (

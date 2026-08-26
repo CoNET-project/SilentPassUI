@@ -3,7 +3,7 @@ import { IpfsImg } from '@/components/IpfsImg';
 import beamio_icon from '@/components/assets/32x32.svg'
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import {onWalletEvent} from '@/services/beamio'
-import { Check, Loader, ArrowRight, ArrowLeft, AlertTriangle, X, Cloud, History, Smartphone } from "lucide-react"
+import { Check, Loader, ArrowRight, ArrowLeft, AlertTriangle, X, Cloud, History, Home, Smartphone } from "lucide-react"
 import { getAAAccount, getRedeemDetailsForDisplay, postCardRedeem, postCardRedeemAdmin, getMyAssets, checkRedeemAdminCodeValid, isCardAdmin } from "@/services/BeamioCard"
 import { initChat}from '@/services/chat'
 

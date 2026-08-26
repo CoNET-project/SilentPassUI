@@ -11,7 +11,7 @@ import { AnimatePresence } from "framer-motion"
 import CardDetail from "./CardDetail"
 import CCSACardVisual from "./CardVisual"
 import { getMyAssetsAggregated, signOfflineTransferERC3009 } from "@/services/BeamioCard"
-import TopUpAccount from "@/pages/Vouchers/TopUpAccount"
+import MerchantCardTopUpFlow from "@/pages/Vouchers/MerchantCardTopUpFlow"
 import ShowPayQR from "@/pages/Vouchers/showPayQR"
 import ActiveList from "./ActiveList"
 import ActionItemDetail from "./ActionItemDetail"
@@ -117,10 +117,6 @@ export default function CardItem({cardItem}: {cardItem: MyCardAssets}) {
   const [hasMembershipPass, setHasMembershipPass] = useState(false)
   const [ccsaBalance, setCcsaBalance] = useState(100)
 
-  // demo modal states
-  const [showQR, setShowQR] = useState(false)
-  const [showTopUp, setShowTopUp] = useState(false)
-
   const topRight = useMemo(() => {
     return (
       <div className="flex items-center gap-1 bg-black/[0.04] px-2.5 py-1.5 rounded-full">
@@ -200,7 +196,8 @@ export default function CardItem({cardItem}: {cardItem: MyCardAssets}) {
           balance={Number(myAssets?.points || 0)}
           hasPass={isMember}
           onTopUp={() => {
-			setShowTopUp(true)
+			setShowFooter(false)
+			setSettingsOpen('TopUP')
 		  }}
           onQR={async () => {
 			setShowFooter(false)
@@ -353,11 +350,31 @@ export default function CardItem({cardItem}: {cardItem: MyCardAssets}) {
 			</AnimatePresence>
 		)}
 
-		{/* TopUp Modal (demo) */}
+		{typeof document !== 'undefined' && profiles?.[0] && myAssets?.cardAddress
+			? createPortal(
+				<MerchantCardTopUpFlow
+					open={settingsOpen === 'TopUP'}
+					cardAddress={myAssets.cardAddress}
+					storeCreditsPoints={String(myAssets.points ?? 0)}
+					cardCurrency={String(myAssets.cardCurrency ?? 'USD')}
+					profile={profiles[0]}
+					onClose={() => {
+						setSettingsOpen('')
+						setShowFooter(true)
+					}}
+					onSuccess={(assets) => {
+						if (assets) setMyAssets({ ...assets })
+					}}
+				/>,
+				document.body,
+			)
+			: null}
+
+		{/* Purchase / Pay QR bottom sheet */}
 		<div
 			className={[
 				"fixed inset-0 z-[120]",
-				settingsOpen ? "pointer-events-auto" : "pointer-events-none"
+				(settingsOpen === 'PurchaseAccount' || settingsOpen === 'showPayQR') ? "pointer-events-auto" : "pointer-events-none"
 			].join(" ")}
 		>
 			{/* 灰色遮罩：父页面不可用 */}
@@ -365,7 +382,7 @@ export default function CardItem({cardItem}: {cardItem: MyCardAssets}) {
 				className={[
 				"absolute inset-0",
 				"bg-black/50 transition-opacity duration-300 ease-out",
-				settingsOpen ? "opacity-100" : "opacity-0"
+				(settingsOpen === 'PurchaseAccount' || settingsOpen === 'showPayQR') ? "opacity-100" : "opacity-0"
 				].join(" ")}
 				onClick={() => {
 					setShowFooter(true)
@@ -386,7 +403,7 @@ export default function CardItem({cardItem}: {cardItem: MyCardAssets}) {
 				"absolute inset-x-0 bottom-0 z-[121]",
 				
 				"transition-transform duration-300 ease-out",
-				settingsOpen ? "translate-y-0" : "translate-y-full"
+				(settingsOpen === 'PurchaseAccount' || settingsOpen === 'showPayQR') ? "translate-y-0" : "translate-y-full"
 				].join(" ")}
 				onTouchMove={(e) => e.stopPropagation()}
 			>
@@ -439,25 +456,6 @@ export default function CardItem({cardItem}: {cardItem: MyCardAssets}) {
 									}}
 								/>
 							
-						}
-						{
-							settingsOpen === 'TopUP' && 
-								<TopUpAccount
-									beamioBalanceText={`Balance: ${usdcbalance.toFixed(4)} USDC`}
-									myAssets={myAssets}
-									onClose={(val) => {
-										if (val) {
-											setMyAssets({...val})
-										}
-										setShowAlphaHowItWorks('')
-									setSettingsOpen('')
-										setShowFooter(true)
-										setTimeout(() => {
-											flash()
-										}, 5000);
-
-									}}
-								/>
 						}
 						{
 							settingsOpen === "showPayQR" && (

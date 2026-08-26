@@ -31,6 +31,15 @@ export const fiatPrefix = (ccy: ICurrency) => {
   	// return CURRENCY_META[ccy].symbol
 }
 
+export const displayFiatPrefixFromCode = (raw: unknown, fallback: ICurrency = 'USD'): string => {
+	const code = typeof raw === 'string' ? raw.trim().toUpperCase() : ''
+	if (code === 'USDC' || code === 'USD') return fiatPrefix('USD')
+	if (code === 'CAD' || code === 'EUR' || code === 'JPY' || code === 'CNY' || code === 'HKD' || code === 'TWD' || code === 'SGD') {
+		return fiatPrefix(code as ICurrency)
+	}
+	return fiatPrefix(fallback)
+}
+
 export const getDecimals = (c: ICurrency) => {
 	const decimals =
 		c === 'USDC' ? 2 :

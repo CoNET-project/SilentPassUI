@@ -3468,6 +3468,12 @@ const getMyAssetsInflight = new Map<string, Promise<MyCardAssets | null>>()
 const getMyAssetsCacheKey = (profile: profile, cardAddress: string) =>
 	`${profile.keyID ?? ''}-${cardAddress.toLowerCase()}`
 
+/** Sync peek for first paint (includes stale TTL entries). Does not start a fetch. */
+export function peekGetMyAssetsCache(profile: profile, cardAddress: string): MyCardAssets | null {
+	if (!cardAddress || isApiExcludedUserCard(cardAddress)) return null
+	return getMyAssetsCache.get(getMyAssetsCacheKey(profile, cardAddress))?.result ?? null
+}
+
 export const getEOAUSDCBalance = async (profile: profile): Promise<string> => {
 	const eoa = profile?.keyID?.trim()
 	if (!eoa || !ethers.isAddress(eoa)) {

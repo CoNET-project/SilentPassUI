@@ -60,7 +60,7 @@ import { resolveSigningPrivateKeyArmor } from "@/utils/resolveSigningPrivateKeyA
 import { checkStorage, searchUsername } from "@/services/beamio"
 import BeamioContactProfilePreview from "@/components/Home/BeamioContactProfilePreview"
 import { fiatPrefix, formatAmount } from "@/services/currency"
-import { getMyAssetsAggregated, getMyAssets, getCardTiersFromContract, getCardUpgradeTypeFromContract, quoteUSDCToCAD, postUSDCUserCardTopup, safeUsdc6ToAmountString, currencyAmountToSafeUsdc6, fetchCardActiveIssuedCouponSeriesTrusted, postCardCouponOpenClaimWithCurrentWallet, postCardRecordUserLikeWithCurrentWallet, resolveCouponOpenClaimEligibility, merchantBackgroundImageFromMetadataRoot, merchantIconUrlFromMetadataRoot, getCardOwner, readUserSocialPoints13BalanceOnCard, type CardActiveIssuedCouponSeriesItem, type CardMetadataFromUri, type CouponOpenClaimEligibility, type USDCUserCardTopupIntent } from "@/services/BeamioCard"
+import { getMyAssetsAggregated, getMyAssets, peekGetMyAssetsCache, getCardTiersFromContract, getCardUpgradeTypeFromContract, quoteUSDCToCAD, postUSDCUserCardTopup, safeUsdc6ToAmountString, currencyAmountToSafeUsdc6, fetchCardActiveIssuedCouponSeriesTrusted, postCardCouponOpenClaimWithCurrentWallet, postCardRecordUserLikeWithCurrentWallet, resolveCouponOpenClaimEligibility, merchantBackgroundImageFromMetadataRoot, merchantIconUrlFromMetadataRoot, getCardOwner, readUserSocialPoints13BalanceOnCard, type CardActiveIssuedCouponSeriesItem, type CardMetadataFromUri, type CouponOpenClaimEligibility, type USDCUserCardTopupIntent } from "@/services/BeamioCard"
 import {
 	couponOpenClaimEligibilityFromLocal,
 	pickCouponOpenClaimStatusFromMap,
@@ -97,6 +97,8 @@ import {
 	resolveDiscoverMembershipUiState,
 	type DiscoverMembershipFeeTier,
 } from "@/utils/discoverMembershipFee"
+import { loadMyBrandsFeedLocalCache } from "@/utils/myBrandsFeedLocalCache"
+import type { MyBrandCardFeedDetailsMap } from "@/utils/myBrandsFeedState"
 import {
 	resolveGenesisReferrerRole,
 	type GenesisReferrerRole,
@@ -152,6 +154,7 @@ import {
 import { mapActiveCouponRow, ActiveCouponTicketItem, type ActiveCouponListItem } from "@/pages/Home/ActiveCouponsScreen"
 import { BEAMIO_USER_CARD_ASSET_ADDRESS } from "@/config/chainAddresses"
 import CardItem from "./CardItem"
+import MerchantCardTopUpFlow from "./MerchantCardTopUpFlow"
 import CardDetail from "./CardDetail"
 import USDCUserCardTopupControl from "./USDCUserCardTopupControl"
 import ShowPayQR from "./showPayQR"
@@ -531,27 +534,37 @@ function discoverMerchantAboutPanelForDisplay(
 function DiscoverMerchantProspectJoinPanel({
 	offerTitle,
 	offerDescription,
+	welcomeTitle,
+	welcomeText,
 	ctaLabel,
 	onClaim,
 }: {
 	offerTitle: string
 	offerDescription: string
+	welcomeTitle?: string
+	welcomeText?: string
 	ctaLabel: string
 	onClaim?: () => void
 }) {
+	const heading = welcomeTitle?.trim() || offerTitle
+	const welcomeBody = welcomeText?.trim() ?? ""
+	const offerBody = offerDescription.trim()
+	const body = welcomeBody || offerBody
 	return (
 		<section
 			className="overflow-hidden rounded-[22px] bg-[#1562f0] p-4 text-white shadow-[0_8px_22px_rgba(15,23,42,0.06)] sm:p-5"
-			aria-label={offerTitle}
+			aria-label={heading}
 		>
 			<span className="inline-flex items-center gap-1.5 rounded-full bg-white/20 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.06em] text-white backdrop-blur-[2px]">
 				<Gift className="h-3.5 w-3.5 shrink-0" strokeWidth={2.25} aria-hidden />
 				Exclusive Welcome Offer
 			</span>
 			<h3 className="mt-3 text-[20px] font-bold leading-snug tracking-tight text-white sm:text-[22px]">
-				{offerTitle}
+				{heading}
 			</h3>
-			<p className="mt-2 text-[14px] leading-relaxed text-white/90">{offerDescription}</p>
+			{body ? (
+				<p className="mt-2 text-[14px] leading-relaxed text-white/90">{body}</p>
+			) : null}
 			{onClaim ? (
 				<button
 					type="button"
@@ -3762,6 +3775,27 @@ function ConetGenesisNodeDiscoverSection({
 	)
 }
 
+function hydrateDiscoverMerchantCardAssets(
+	profile: Parameters<typeof getMyAssets>[0] | undefined,
+	cardAddress: string | undefined,
+	daemonDetails: MyBrandCardFeedDetailsMap | undefined,
+): Awaited<ReturnType<typeof getMyAssets>> | null {
+	if (!cardAddress) return null
+	if (profile?.keyID) {
+		const fromMem = peekGetMyAssetsCache(profile, cardAddress)
+		if (fromMem) return fromMem
+	}
+	const cardLower = cardAddress.toLowerCase()
+	const fromDaemon = daemonDetails?.[cardLower]?.assets
+	if (fromDaemon) return fromDaemon
+	const eoa = profile?.keyID?.trim().toLowerCase()
+	if (eoa) {
+		const fromLocal = loadMyBrandsFeedLocalCache(eoa)?.details?.[cardLower]?.assets
+		if (fromLocal) return fromLocal
+	}
+	return null
+}
+
 function DiscoverMerchantDetailFullScreen({
 	item,
 	onClose,
@@ -3771,7 +3805,7 @@ function DiscoverMerchantDetailFullScreen({
 }) {
 	const navigate = useNavigate()
 	const location = useLocation()
-	const { profiles, setProfiles, discoverMerchantStatByCard, registerDiscoverMerchantStatFeedCards, applyDiscoverMerchantLikeCountDelta, couponOpenClaimStatusByKey, registerCouponOpenClaimFeedTargets, applyCouponOpenClaimStatus } = useDaemonContext()
+	const { profiles, setProfiles, discoverMerchantStatByCard, registerDiscoverMerchantStatFeedCards, applyDiscoverMerchantLikeCountDelta, couponOpenClaimStatusByKey, registerCouponOpenClaimFeedTargets, applyCouponOpenClaimStatus, myBrandCardDetails } = useDaemonContext()
 	const { registerCardAddresses, resolveName, lookupByAddress, ensureCardsForAddresses, peekMetadata } =
 		useMerchantCardDatabase()
 	const {
@@ -3789,8 +3823,14 @@ function DiscoverMerchantDetailFullScreen({
 	const [likeLoading, setLikeLoading] = useState(false)
 	const merchantLikeCount = pickDiscoverMerchantLikeCount(discoverMerchantStatByCard, item.cardAddress)
 	const merchantShareClickCount = pickDiscoverMerchantRefClickCount(discoverMerchantStatByCard, item.cardAddress)
-	const [merchantAssets, setMerchantAssets] = useState<Awaited<ReturnType<typeof getMyAssets>> | null>(null)
-	const [merchantAssetsLoading, setMerchantAssetsLoading] = useState(false)
+	const [merchantAssets, setMerchantAssets] = useState<Awaited<ReturnType<typeof getMyAssets>> | null>(() =>
+		hydrateDiscoverMerchantCardAssets(profiles?.[0] as Parameters<typeof getMyAssets>[0] | undefined, item.cardAddress, myBrandCardDetails),
+	)
+	const [merchantAssetsLoading, setMerchantAssetsLoading] = useState(
+		() =>
+			Boolean(profiles?.[0]?.keyID && item.cardAddress) &&
+			hydrateDiscoverMerchantCardAssets(profiles?.[0] as Parameters<typeof getMyAssets>[0] | undefined, item.cardAddress, myBrandCardDetails) == null,
+	)
 	const [cardTopupSuccessBalance, setCardTopupSuccessBalance] = useState<string | null>(null)
 	// Pre-top-up card points (6-dec) captured before the mint, so success only shows the increased balance.
 	const cardTopupBaselinePoints6Ref = useRef<bigint | null>(null)
@@ -3819,6 +3859,8 @@ function DiscoverMerchantDetailFullScreen({
 	const couponClaimStatusTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
 	const merchantCouponsRef = useRef<DiscoverMerchantCouponOffer[] | null>(null)
 	merchantCouponsRef.current = merchantCoupons
+	const [discoverTopUpOpen, setDiscoverTopUpOpen] = useState(false)
+	const [discoverTopUpPrefill, setDiscoverTopUpPrefill] = useState<string | undefined>()
 	const [usdcTopupPhase, setUsdcTopupPhase] = useState<'idle' | 'amount' | 'receive'>('idle')
 	const [usdcTopupAmountText, setUsdcTopupAmountText] = useState('')
 	const [usdcTopupFiatAmount, setUsdcTopupFiatAmount] = useState('')
@@ -4156,6 +4198,7 @@ function DiscoverMerchantDetailFullScreen({
 	const canDiscoverTopUp =
 		Boolean(item.cardAddress) &&
 		usdcTopupPhase === 'idle' &&
+		!discoverTopUpOpen &&
 		!merchantAssetsLoading &&
 		(membershipUi.mode === 'no_fee' ||
 			membershipUi.mode === 'member_topup_only' ||
@@ -4176,11 +4219,7 @@ function DiscoverMerchantDetailFullScreen({
 			description: 'Join this merchant program to unlock member benefits.',
 			ctaLabel: 'Claim Offer & Top Up',
 		}
-	const showProspectJoinPanel =
-		!isConetGenesisCard &&
-		!hasActiveMembership &&
-		merchantAssets != null &&
-		!merchantAssetsLoading
+	const showProspectJoinPanel = !isConetGenesisCard && !hasActiveMembership
 	const openConetExplore = useCallback(() => {
 		void openExternalUrl(CONET_EXPLORE_NETWORK_URL)
 	}, [])
@@ -4683,14 +4722,14 @@ function DiscoverMerchantDetailFullScreen({
 
 	const openDiscoverTopupAmount = useCallback((prefillAmount?: string) => {
 		setUsdcTopupError('')
-		setUsdcTopupAmountText(prefillAmount?.trim() ? prefillAmount.trim() : '')
 		setUsdcTopupIntent('topup')
-		setUsdcTopupIntentLocked(true)
+		setUsdcTopupIntentLocked(false)
 		setMembershipPurchaseTierIndex(null)
 		setMembershipPurchaseFeeFiat6('')
 		setMembershipPurchaseMinUsdc6('')
 		setUsdcTopupRulesHint('')
-		setUsdcTopupPhase('amount')
+		setDiscoverTopUpPrefill(prefillAmount?.trim() || undefined)
+		setDiscoverTopUpOpen(true)
 	}, [])
 
 	const openDiscoverMembershipPay = useCallback((kind: 'join' | 'upgrade') => {
@@ -5273,15 +5312,17 @@ function DiscoverMerchantDetailFullScreen({
 
 	useEffect(() => {
 		if (!profile?.keyID || !item.cardAddress) {
-			setMerchantAssets(null)
 			setMerchantAssetsLoading(false)
 			return
 		}
+		const seeded = hydrateDiscoverMerchantCardAssets(profile, item.cardAddress, myBrandCardDetails)
+		if (seeded) setMerchantAssets(seeded)
 		let cancelled = false
-		setMerchantAssetsLoading(true)
+		if (!seeded) setMerchantAssetsLoading(true)
 		getMyAssets(profile, item.cardAddress)
 			.then((res) => {
-				if (!cancelled) setMerchantAssets(res ?? null)
+				if (cancelled || res == null) return
+				setMerchantAssets(res)
 			})
 			.catch(() => {
 				// Untrusted fetch — keep panel visible; do not overwrite with synthetic zero.
@@ -5621,13 +5662,17 @@ function DiscoverMerchantDetailFullScreen({
 						<DiscoverMerchantProspectJoinPanel
 							offerTitle={newCustomerBonusCopy.title}
 							offerDescription={newCustomerBonusCopy.description}
+							welcomeTitle={discoverWelcomePanel?.title}
+							welcomeText={discoverWelcomePanel?.body}
 							ctaLabel={
 								membershipUi.mode === 'need_member' && membershipUi.joinTier
 									? 'Claim Offer & Become a Member'
 									: newCustomerBonusCopy.ctaLabel ?? 'Claim Offer & Top Up'
 							}
 							onClaim={
-								usdcTopupPhase === 'idle' ? claimDiscoverTopupPromotion : undefined
+								usdcTopupPhase === 'idle' && !discoverTopUpOpen
+									? claimDiscoverTopupPromotion
+									: undefined
 							}
 						/>
 					) : null}
@@ -5949,7 +5994,9 @@ function DiscoverMerchantDetailFullScreen({
 							onCollectOffer={scrollToCouponsSection}
 							showTopUpBonus={false}
 							onClaimTopUp={
-								usdcTopupPhase === 'idle' ? claimDiscoverTopupPromotion : undefined
+								usdcTopupPhase === 'idle' && !discoverTopUpOpen
+									? claimDiscoverTopupPromotion
+									: undefined
 							}
 						/>
 					) : null}
@@ -6118,6 +6165,26 @@ function DiscoverMerchantDetailFullScreen({
 			onCancel={() => setCardTopupSuccessBalance(null)}
 			onDone={() => setCardTopupSuccessBalance(null)}
 		/>
+		{typeof document !== 'undefined' && profiles?.[0] && item.cardAddress
+			? createPortal(
+					<MerchantCardTopUpFlow
+						open={discoverTopUpOpen}
+						cardAddress={item.cardAddress}
+						storeCreditsPoints={String(merchantAssets?.points ?? 0)}
+						cardCurrency={String(merchantAssets?.cardCurrency ?? displayCurrency ?? 'USD')}
+						profile={profiles[0]}
+						initialAmount={discoverTopUpPrefill}
+						onClose={() => {
+							setDiscoverTopUpOpen(false)
+							setDiscoverTopUpPrefill(undefined)
+						}}
+						onSuccess={(assets) => {
+							if (assets) setMerchantAssets(assets)
+						}}
+					/>,
+					document.body,
+				)
+			: null}
 		</>
 	)
 }
@@ -6139,6 +6206,7 @@ export default function Market() {
 	const [showCardDetail, setShowCardDetail] = useState(false)
 	const [overlayMode, setOverlayMode] = useState<"cardItem" | "cardDetail">("cardItem")
 	const [settingsOpen, setSettingsOpen] = useState<"" | "USDCTopup" | "showPayQR">("")
+	const [merchantTopUpOpen, setMerchantTopUpOpen] = useState(false)
 	const [topupContentReady, setTopupContentReady] = useState(false)
 	const [topupCardAddress, setTopupCardAddress] = useState<string>(USDC_TOPUP_CARD_ADDRESS)
 	/** Item id when opening topup from ProductDetailModal (201/202) - used for quick amount buttons */
@@ -6729,6 +6797,10 @@ export default function Market() {
 						beamio={myAssets?.cardOwner ?? null}
 						onPurchase={() => {
 							setShowFooter(false)
+							if (isMember && myAssets?.cardAddress) {
+								setMerchantTopUpOpen(true)
+								return
+							}
 							setTopupCardAddress(USDC_TOPUP_CARD_ADDRESS)
 							setSettingsOpen("USDCTopup")
 						}}
@@ -6865,6 +6937,26 @@ export default function Market() {
 				onConfirm={finalizeGenesis}
 			/>
 		)}
+
+		{typeof document !== 'undefined' && profiles?.[0] && myAssets?.cardAddress
+			? createPortal(
+				<MerchantCardTopUpFlow
+					open={merchantTopUpOpen}
+					cardAddress={myAssets.cardAddress}
+					storeCreditsPoints={String(myAssets.points ?? 0)}
+					cardCurrency={String(myAssets.cardCurrency ?? 'USD')}
+					profile={profiles[0]}
+					onClose={() => {
+						setMerchantTopUpOpen(false)
+						setShowFooter(true)
+					}}
+					onSuccess={(assets) => {
+						if (assets) setMyAssets((prev) => (prev ? { ...prev, ...assets } : assets))
+					}}
+				/>,
+				document.body,
+			)
+			: null}
 
 		<PurchaseCreditsSheet
 			open={purchaseSheetOpen}

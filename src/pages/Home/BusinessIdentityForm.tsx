@@ -3,7 +3,7 @@ import { AppButton } from "@/components/button/AppButton"
 import { ethers } from "ethers"
 import { checkBeamioAccountAPI, createRecover } from "@/services/beamio"
 import { ensureConetAaForEoa } from "@/utils/ensureConetAa"
-import { Eye, EyeOff, AlertTriangle, Check, ArrowRight, ShieldCheck, Loader2 } from "lucide-react"
+import { ArrowRight, Eye, EyeOff, AlertTriangle, Check, ShieldCheck, Loader2 } from "lucide-react"
 import {
 	bizBrandFocusRingClass,
 	bizBrandInvalidFieldRingClass,
@@ -299,16 +299,13 @@ export default function BusinessIdentityForm({
 	return (
 		<>
 			{showIntroHeader && (
-				<div className="mb-10">
-					<div className="mb-6 flex flex-wrap items-center justify-between gap-2">
-						<span className="rounded-full bg-[#1562F0]/5 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.2em] text-[#1562F0]">
-							{tu('onb_identity_step_badge')}
-						</span>
-						<span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#666666]/70">{tu('onb_identity_step_label')}</span>
-					</div>
-					<h2 className="biz-identity-headline mb-4 text-3xl font-extrabold tracking-tight text-[#121212]">
+				<div className="mb-10 text-center">
+					<h2 className="biz-identity-headline mb-2 text-3xl font-extrabold tracking-tight text-[#121212]">
 						{tu('onb_identity_title')}
 					</h2>
+					<p className="mb-4 text-2xl leading-none" aria-hidden>
+						✨
+					</p>
 					<p className="leading-relaxed text-[#666666]">
 						{tu('onb_identity_sub')}
 					</p>
@@ -344,7 +341,7 @@ export default function BusinessIdentityForm({
 							inputMode="text"
 							onKeyDown={onHandleKeyDown}
 							className={`
-								w-full rounded-xl border border-[#E5E7EB] bg-white py-4 pl-10 pr-12 text-lg font-medium
+								w-full rounded-2xl border border-[#E5E7EB] bg-white py-4 pl-10 pr-12 text-lg font-medium
 								text-[#121212] placeholder:text-[#666666]/40
 								focus:border-[#1562F0] focus:outline-none focus:ring-2 focus:ring-[#1562F0]/10
 								${tagStatus === "invalid" ? bizBrandInvalidFieldRingClass : ""}
@@ -449,7 +446,7 @@ export default function BusinessIdentityForm({
 									enterKeyHint="next"
 									onKeyDown={onPasswordKeyDown}
 									className={[
-										"w-full rounded-xl border border-[#E5E7EB] bg-white py-4 pl-5 pr-12 text-lg font-medium outline-none transition-all",
+										"w-full rounded-2xl border border-[#E5E7EB] bg-white py-4 pl-5 pr-12 text-lg font-medium outline-none transition-all",
 										"text-[#121212] placeholder:text-[#666666]/40",
 										"focus:border-[#1562F0] focus:ring-2 focus:ring-[#1562F0]/10 disabled:opacity-70",
 										bizBrandFocusRingClass,
@@ -468,6 +465,9 @@ export default function BusinessIdentityForm({
 									{showPassword ? <EyeOff className="h-5 w-5" strokeWidth={2} /> : <Eye className="h-5 w-5" strokeWidth={2} />}
 								</button>
 							</div>
+							<p className="px-1 text-[12px] leading-snug text-[#666666]/80">
+								{tu('onb_identity_password_hint')}
+							</p>
 						</div>
 						<div className="space-y-2">
 							<label
@@ -485,7 +485,7 @@ export default function BusinessIdentityForm({
 								enterKeyHint="done"
 								onKeyDown={onConfirmKeyDown}
 								className={[
-									"w-full rounded-xl border border-[#E5E7EB] bg-white px-5 py-4 text-lg font-medium outline-none transition-all",
+									"w-full rounded-2xl border border-[#E5E7EB] bg-white px-5 py-4 text-lg font-medium outline-none transition-all",
 									"text-[#121212] placeholder:text-[#666666]/40",
 									"disabled:opacity-70",
 									confirmMismatch
@@ -525,12 +525,14 @@ export default function BusinessIdentityForm({
 					</ul>
 				</div>
 
-				<div className="flex items-start gap-4 pt-2">
-					<ShieldCheck
-						className="mt-0.5 h-6 w-6 shrink-0 text-[#666666]/40"
-						strokeWidth={1.75}
-						aria-hidden
-					/>
+				<div className="flex items-start gap-3 rounded-2xl border border-[#E5E7EB] bg-[#F8F9FB] px-4 py-4 sm:gap-4 sm:px-5">
+					<div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#1562F0]/10">
+						<ShieldCheck
+							className="h-5 w-5 text-[#1562F0]"
+							strokeWidth={2}
+							aria-hidden
+						/>
+					</div>
 					<div className="min-w-0 space-y-1">
 						<p className="text-[11px] font-bold uppercase tracking-wider text-[#121212]">
 							{tu('onb_identity_encryption_title')}
@@ -552,12 +554,11 @@ export default function BusinessIdentityForm({
 						type="submit"
 						fullWidth
 						disabled={!canSubmit}
-						rightIcon={<ArrowRight className="h-6 w-6 shrink-0" strokeWidth={2.25} aria-hidden />}
 						className={`
 							rounded-xl py-5 text-lg font-extrabold
-							shadow-lg shadow-[#1562F0]/10
-							${canSubmit ? `${bizBrandOnboardingPrimaryBtnClass} ${bizBrandFocusRingClass}` : "cursor-not-allowed bg-slate-200 text-slate-400 shadow-none"}
+							${canSubmit ? `${bizBrandOnboardingPrimaryBtnClass} ${bizBrandFocusRingClass}` : "cursor-not-allowed bg-[#c5d4f5] text-white/90 shadow-none"}
 						`}
+						rightIcon={<ArrowRight className="h-5 w-5 shrink-0" strokeWidth={2.25} aria-hidden />}
 					>{tu('continue')}</AppButton>
 					{trailingAfterSubmit}
 				</div>

@@ -544,7 +544,9 @@ import {
   Calendar,
   MapPin,
   Phone,
+  ClipboardPaste,
 } from 'lucide-react';
+import jsQR from 'jsqr';
 import { QRCodeCanvas } from 'qrcode.react';
 import cardIssuanceFaceTextureUrl from './assets/cardFaceTexture.png';
 import { tu, useTu } from '@/locale/beamioLocale'
@@ -1317,6 +1319,11 @@ type BizTopupMemberTableRow = {
   beamioTag: string
   /** Current card NFT #0 balance (display units), read from chain for AA/EOA holder */
   currentCardToken0Balance?: number | null
+  /**
+   * Active membership NFT tokenId on the member's balance account (AA preferred).
+   * Valid range: `[100, 1e11)` — leftover `#0` / dirty `[1,99]` are not membership NFTs.
+   */
+  membershipNftTokenId?: string | null
   /** Server `beamio_member_topup_events`：该会员在此卡是否曾 NFC / App top-up */
   usedNfcTopup?: boolean
   usedAppTopup?: boolean
@@ -1357,6 +1364,12 @@ function coerceBizTopupMemberRowsFromTrustedCache(rows: BizTopupMemberTableRow[]
       usedNfcTopup: raw.usedNfcTopup === true || leg.usedNfc === true,
       usedAppTopup: raw.usedAppTopup === true || leg.usedApp === true,
       firstTopupSource: raw.firstTopupSource ?? null,
+      membershipNftTokenId:
+        raw.membershipNftTokenId != null && String(raw.membershipNftTokenId).trim() !== ''
+          ? String(raw.membershipNftTokenId).trim()
+          : raw.membershipNftTokenId === null
+            ? null
+            : undefined,
     }
   })
 }
@@ -1544,6 +1557,321 @@ function formatMarketFuelOrdersHint(pkg: MarketFuelPackage): string {
   return `Supports ~${orders.toLocaleString('en-US')} orders`
 }
 
+function extractMarketVoucherRedeemCodeFromScan(raw: string): string {
+  const text = raw.trim()
+  if (!text) return ''
+  try {
+    if (/^https?:\/\//i.test(text)) {
+      const url = new URL(text)
+      const fromQuery =
+        url.searchParams.get('code') ||
+        url.searchParams.get('redeem') ||
+        url.searchParams.get('redeemCode')
+      if (fromQuery?.trim()) return fromQuery.trim()
+      const last = url.pathname.split('/').filter(Boolean).pop()
+      if (last) return decodeURIComponent(last)
+    }
+  } catch {
+    /* use raw text */
+  }
+  return text
+}
+
+function MarketVoucherRedeemScanOverlay(props: {
+  open: boolean
+  onClose: () => void
+  onDecoded: (text: string) => void
+}) {
+  const { open, onClose, onDecoded } = props
+  const [isEntered, setIsEntered] = useState(false)
+  const [isClosing, setIsClosing] = useState(false)
+  const [error, setError] = useState('')
+  const [cameraBusy, setCameraBusy] = useState(false)
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const streamRef = useRef<MediaStream | null>(null)
+  const rafRef = useRef<number | undefined>(undefined)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const decodedRef = useRef(false)
+
+  const stopCamera = useCallback(() => {
+    if (rafRef.current !== undefined) {
+      cancelAnimationFrame(rafRef.current)
+      rafRef.current = undefined
+    }
+    streamRef.current?.getTracks().forEach((track) => track.stop())
+    streamRef.current = null
+    if (videoRef.current) videoRef.current.srcObject = null
+  }, [])
+
+  const close = useCallback(() => {
+    if (isClosing) return
+    setIsClosing(true)
+    stopCamera()
+    window.setTimeout(onClose, 300)
+  }, [isClosing, onClose, stopCamera])
+
+  useEffect(() => {
+    if (!open) {
+      setIsEntered(false)
+      setIsClosing(false)
+      setError('')
+      decodedRef.current = false
+      stopCamera()
+      return
+    }
+    setIsClosing(false)
+    const frame = requestAnimationFrame(() => setIsEntered(true))
+    return () => cancelAnimationFrame(frame)
+  }, [open, stopCamera])
+
+  useEffect(() => {
+    if (!open || isClosing) return
+    let cancelled = false
+    decodedRef.current = false
+    setCameraBusy(true)
+    setError('')
+    void (async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'environment' },
+        })
+        if (cancelled) {
+          stream.getTracks().forEach((track) => track.stop())
+          return
+        }
+        streamRef.current = stream
+        const video = videoRef.current
+        if (!video) return
+        video.srcObject = stream
+        await video.play()
+        setCameraBusy(false)
+        const canvas = document.createElement('canvas')
+        const ctx = canvas.getContext('2d')
+        const tick = () => {
+          if (cancelled || decodedRef.current) return
+          if (video.readyState >= 2 && ctx && video.videoWidth > 0) {
+            canvas.width = video.videoWidth
+            canvas.height = video.videoHeight
+            ctx.drawImage(video, 0, 0)
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+            const result = jsQR(imageData.data, imageData.width, imageData.height)
+            const text = result?.data?.trim()
+            if (text) {
+              const code = extractMarketVoucherRedeemCodeFromScan(text)
+              if (code) {
+                decodedRef.current = true
+                onDecoded(code)
+                close()
+                return
+              }
+            }
+          }
+          rafRef.current = requestAnimationFrame(tick)
+        }
+        rafRef.current = requestAnimationFrame(tick)
+      } catch {
+        if (!cancelled) {
+          setCameraBusy(false)
+          setError('Camera is unavailable. Choose a QR image instead.')
+        }
+      }
+    })()
+    return () => {
+      cancelled = true
+      stopCamera()
+    }
+  }, [open, isClosing, close, onDecoded, stopCamera])
+
+  const handleFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.currentTarget.value = ''
+    if (!file) return
+    setError('')
+    const objectUrl = URL.createObjectURL(file)
+    try {
+      const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const img = new Image()
+        img.onload = () => resolve(img)
+        img.onerror = () => reject(new Error('read'))
+        img.src = objectUrl
+      })
+      const canvas = document.createElement('canvas')
+      canvas.width = image.naturalWidth
+      canvas.height = image.naturalHeight
+      const ctx = canvas.getContext('2d')
+      if (!ctx) throw new Error('ctx')
+      ctx.drawImage(image, 0, 0)
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+      const result = jsQR(imageData.data, imageData.width, imageData.height)
+      const text = result?.data?.trim()
+      if (!text) {
+        setError('No QR code found in that image.')
+        return
+      }
+      const code = extractMarketVoucherRedeemCodeFromScan(text)
+      if (!code) {
+        setError('Could not read a redeem code from that QR.')
+        return
+      }
+      onDecoded(code)
+      close()
+    } catch {
+      setError('Could not read that image.')
+    } finally {
+      URL.revokeObjectURL(objectUrl)
+    }
+  }
+
+  if (!open) return null
+
+  return (
+    <div className="fixed inset-0 z-[90] font-sans">
+      <button
+        type="button"
+        aria-label="Close"
+        tabIndex={-1}
+        className={`absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity duration-300 ${
+          isClosing || !isEntered ? 'opacity-0' : 'opacity-100'
+        }`}
+        onClick={close}
+      />
+      <div
+        className="absolute inset-y-0 right-0 flex h-full w-full max-w-md flex-col bg-[#f5f7f9] shadow-2xl transition-transform duration-300 ease-out"
+        style={{
+          transform: isClosing || !isEntered ? 'translateX(100%)' : 'translateX(0)',
+        }}
+      >
+        <div
+          className="relative flex shrink-0 items-center justify-between px-4 py-3"
+          style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top, 0px))' }}
+        >
+          <button
+            type="button"
+            tabIndex={-1}
+            aria-label="Back"
+            onClick={close}
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-black/[0.08] bg-white/90 text-[#2c2f31] shadow-[0_2px_10px_rgba(0,0,0,0.16),0_1px_3px_rgba(0,0,0,0.12)] backdrop-blur-md transition hover:bg-white active:scale-[0.96]"
+          >
+            <ChevronLeft className="h-[17px] w-[17px] stroke-[2.5]" aria-hidden />
+          </button>
+          <p className="pointer-events-none absolute inset-x-12 truncate text-center text-sm font-semibold text-[#2c2f31]">
+            Scan voucher
+          </p>
+          <span className="h-9 w-9 shrink-0" aria-hidden />
+        </div>
+        <div className="flex min-h-0 flex-1 flex-col gap-4 px-5 pb-8">
+          <div className="relative overflow-hidden rounded-xl bg-black">
+            <video ref={videoRef} className="aspect-square w-full object-cover" muted playsInline />
+            {cameraBusy ? (
+              <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+                <Loader2 className="h-8 w-8 animate-spin text-white" aria-hidden />
+              </div>
+            ) : null}
+          </div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => void handleFile(e)}
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className={`inline-flex items-center justify-center gap-2 rounded-lg border border-[#c3c6d8] bg-white py-3 text-sm font-semibold text-[#004bc3] ${bizFocusRingClass}`}
+          >
+            <QrCode className="h-4 w-4" aria-hidden />
+            Choose QR image
+          </button>
+          {error ? (
+            <div role="alert" className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+              <p>{error}</p>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function MarketBUnitFeeScheduleOverlay(props: { open: boolean; onClose: () => void }) {
+  const { open, onClose } = props
+  const [isEntered, setIsEntered] = useState(false)
+  const [isClosing, setIsClosing] = useState(false)
+
+  useEffect(() => {
+    if (!open) {
+      setIsEntered(false)
+      setIsClosing(false)
+      return
+    }
+    setIsClosing(false)
+    const frame = requestAnimationFrame(() => setIsEntered(true))
+    return () => cancelAnimationFrame(frame)
+  }, [open])
+
+  const close = useCallback(() => {
+    if (isClosing) return
+    setIsClosing(true)
+    window.setTimeout(onClose, 300)
+  }, [isClosing, onClose])
+
+  if (!open) return null
+
+  return (
+    <div className="fixed inset-0 z-[90] font-sans">
+      <button
+        type="button"
+        aria-label="Close"
+        tabIndex={-1}
+        className={`absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity duration-300 ${
+          isClosing || !isEntered ? 'opacity-0' : 'opacity-100'
+        }`}
+        onClick={close}
+      />
+      <div
+        className="absolute inset-y-0 right-0 flex h-full w-full max-w-md flex-col bg-[#faf9fe] shadow-2xl transition-transform duration-300 ease-out"
+        style={{
+          transform: isClosing || !isEntered ? 'translateX(100%)' : 'translateX(0)',
+        }}
+      >
+        <div
+          className="relative flex shrink-0 items-center justify-between px-4 py-3"
+          style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top, 0px))' }}
+        >
+          <button
+            type="button"
+            tabIndex={-1}
+            aria-label="Back"
+            onClick={close}
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-black/[0.08] bg-white/90 text-[#2c2f31] shadow-[0_2px_10px_rgba(0,0,0,0.16),0_1px_3px_rgba(0,0,0,0.12)] backdrop-blur-md transition hover:bg-white active:scale-[0.96]"
+          >
+            <ChevronLeft className="h-[17px] w-[17px] stroke-[2.5]" aria-hidden />
+          </button>
+          <p className="pointer-events-none absolute inset-x-12 truncate text-center text-sm font-semibold text-[#2c2f31]">
+            B-Unit Fee Schedule
+          </p>
+          <span className="h-9 w-9 shrink-0" aria-hidden />
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-8">
+          <p className="mb-4 text-sm leading-relaxed text-[#424655]">
+            Network fees paid in B-Units (1 B-Unit = 0.01 USDC).
+          </p>
+          <ul className="divide-y divide-[#c3c6d8]/30 overflow-hidden rounded-xl border border-[#c3c6d8]/40 bg-white">
+            {MARKET_BUNIT_FEE_SCHEDULE_ROWS.map((row) => (
+              <li key={row.label} className="flex items-start justify-between gap-4 px-4 py-3">
+                <span className="text-sm text-[#424655]">{row.label}</span>
+                <span className="shrink-0 text-right text-sm font-bold text-[#1a1b1f]">{row.bUnits}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 /** Market / Start Kit shared voucher redeem panel (BusinessStartKet redeem codes). */
 function MarketHaveAVoucherPanel(props: {
   redeemInput: string
@@ -1556,18 +1884,120 @@ function MarketHaveAVoucherPanel(props: {
 }) {
   const { redeemInput, onRedeemInputChange, onActivate, busy, feedback, variant = 'market' } = props
   const stacked = variant === 'stacked'
-  return (
-    <section
-      className={
-        stacked
-          ? 'rounded-[2rem] border-2 border-dashed border-[#abadaf]/40 bg-[#e5e9eb] p-8 text-center shadow-[0_10px_30px_rgba(0,0,0,0.02)]'
-          : 'rounded-xl border-2 border-dashed border-[#abadaf]/30 bg-[#e5e9eb] p-8 text-center'
+  const [scanOpen, setScanOpen] = useState(false)
+  const [pasteError, setPasteError] = useState('')
+
+  const handlePaste = async () => {
+    try {
+      const text = await navigator.clipboard.readText()
+      const next = text.trim()
+      if (!next) {
+        setPasteError('Clipboard is empty.')
+        return
       }
-    >
-      <h4 className={`mb-2 font-bold text-[#2c2f31] ${stacked ? 'font-manrope text-xl' : 'text-lg'}`}>
-        Have a Voucher?
-      </h4>
-      <p className={`mx-auto mb-6 max-w-sm text-[#595c5e] ${stacked ? 'text-sm leading-relaxed' : 'text-sm'}`}>
+      setPasteError('')
+      onRedeemInputChange(next)
+    } catch {
+      setPasteError('Could not read the clipboard. Paste the code into the field.')
+    }
+  }
+
+  if (stacked) {
+    return (
+      <>
+        <section className="space-y-4 rounded-xl border border-[#c3c6d8]/50 bg-[#f4f3f8] p-6 shadow-[0px_10px_20px_rgba(0,0,0,0.05)]">
+          <h4 className="text-center font-manrope text-[22px] font-semibold leading-7 tracking-[-0.01em] text-[#1a1b1f]">
+            Have a Voucher?
+          </h4>
+          <div className="relative">
+            <input
+              id="lite-fuel-voucher-code"
+              className="w-full rounded-lg border border-[#c3c6d8] bg-white py-4 pl-4 pr-24 text-center font-mono text-[15px] tracking-wider text-[#1a1b1f] placeholder:text-slate-400 focus:border-[#004bc3] focus:outline-none focus:ring-2 focus:ring-[#004bc3]/20"
+              placeholder="e.g., 1XmOO0lQkwkYmRA3A5Zj33"
+              type="text"
+              value={redeemInput}
+              onChange={(e) => {
+                setPasteError('')
+                onRedeemInputChange(e.target.value)
+              }}
+              autoComplete="off"
+              enterKeyHint="done"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && redeemInput.trim() && !busy) {
+                  e.preventDefault()
+                  onActivate()
+                }
+              }}
+            />
+            <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-0.5">
+              <button
+                type="button"
+                tabIndex={-1}
+                title="Paste"
+                aria-label="Paste"
+                onClick={() => void handlePaste()}
+                className="p-2 text-[#5d5e63] transition-colors hover:text-[#004bc3]"
+              >
+                <ClipboardPaste className="h-5 w-5" aria-hidden />
+              </button>
+              <button
+                type="button"
+                tabIndex={-1}
+                title="Scan QR"
+                aria-label="Scan QR"
+                onClick={() => {
+                  setPasteError('')
+                  setScanOpen(true)
+                }}
+                className="p-2 text-[#5d5e63] transition-colors hover:text-[#004bc3]"
+              >
+                <QrCode className="h-5 w-5" aria-hidden />
+              </button>
+            </div>
+          </div>
+          <button
+            type="button"
+            disabled={busy || !redeemInput.trim()}
+            aria-busy={busy}
+            aria-label="Activate Code"
+            onClick={onActivate}
+            className="flex w-full items-center justify-center rounded-lg bg-[#5d5e63] py-4 text-[17px] font-semibold text-white transition-colors hover:bg-[#45474b] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {busy ? <Loader2 className="h-5 w-5 animate-spin" aria-hidden /> : 'Activate Code'}
+          </button>
+          {pasteError ? (
+            <div role="alert" className="flex items-start gap-2 text-sm text-amber-800">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+              <p>{pasteError}</p>
+            </div>
+          ) : null}
+          {feedback ? (
+            <p
+              role={feedback.type === 'error' ? 'alert' : undefined}
+              className={`text-sm font-medium ${
+                feedback.type === 'success' ? 'text-emerald-700' : 'text-amber-800'
+              }`}
+            >
+              {feedback.message}
+            </p>
+          ) : null}
+        </section>
+        <MarketVoucherRedeemScanOverlay
+          open={scanOpen}
+          onClose={() => setScanOpen(false)}
+          onDecoded={(code) => {
+            setPasteError('')
+            onRedeemInputChange(code)
+          }}
+        />
+      </>
+    )
+  }
+
+  return (
+    <section className="rounded-xl border-2 border-dashed border-[#abadaf]/30 bg-[#e5e9eb] p-8 text-center">
+      <h4 className="mb-2 text-lg font-bold text-[#2c2f31]">Have a Voucher?</h4>
+      <p className="mx-auto mb-6 max-w-sm text-sm text-[#595c5e]">
         Enter your expansion code below to instantly credit your business account.
       </p>
       <div className="mx-auto flex max-w-md flex-col gap-2 sm:flex-row">
@@ -2537,6 +2967,7 @@ function MobileNoAaLiteMemberSelectionPage(props: {
   const [pushBusy, setPushBusy] = useState(false);
   const [pushError, setPushError] = useState('');
   const [showCover, setShowCover] = useState(true);
+  const [feeScheduleOpen, setFeeScheduleOpen] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [storeName, setStoreName] = useState('');
   const [category, setCategory] = useState('');
@@ -2628,46 +3059,50 @@ function MobileNoAaLiteMemberSelectionPage(props: {
 
   if (showCover) {
     return (
-      <div className="relative min-h-[max(884px,100dvh)] bg-[#f5f7f9] text-[#2c2f31] antialiased">
-        <header className="fixed top-0 z-30 flex w-full items-center justify-between bg-[#f5f7f9]/70 px-6 py-4 shadow-[0_20px_40px_rgba(21,98,240,0.06)] backdrop-blur-xl">
+      <div className="relative min-h-[max(884px,100dvh)] bg-gradient-to-b from-[#eef4ff] to-[#f5f7f9] text-[#2c2f31] antialiased">
+        <header className="fixed top-0 z-30 flex w-full items-center justify-between bg-white/90 px-6 py-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)] backdrop-blur-xl">
           <div className="flex min-w-0 items-center gap-2">
             <button
               type="button"
               onClick={onBack}
-              className={`flex shrink-0 items-center justify-center rounded-full p-1 text-[#0051d1] transition-opacity hover:opacity-80 ${bizFocusRingClass}`}
+              className={`flex shrink-0 items-center justify-center rounded-full p-1 text-[#004bc3] transition-opacity hover:opacity-80 ${bizFocusRingClass}`}
               aria-label="Back to home"
             >
               <ArrowLeft className="size-5" strokeWidth={2.2} aria-hidden />
             </button>
-            <h1 className="truncate font-manrope text-lg font-bold tracking-tight text-[#0051d1]">
+            <h1 className="truncate font-manrope text-lg font-bold tracking-tight text-[#004bc3]">
               Beamio Business Lite
             </h1>
           </div>
           <button
             type="button"
             onClick={() => onOpenUnderstandingBUnits?.()}
-            className={`flex shrink-0 items-center justify-center rounded-full p-1 text-slate-500 transition-opacity hover:opacity-80 ${bizFocusRingClass}`}
+            className={`flex shrink-0 items-center justify-center rounded-full p-1 text-[#004bc3] transition-opacity hover:opacity-80 ${bizFocusRingClass}`}
             aria-label="Learn about B-Units"
           >
             <HelpCircle className="size-5" strokeWidth={2} aria-hidden />
           </button>
         </header>
 
-        <main className="min-h-screen px-6 pb-32 pt-24">
-          <section className="mb-12">
-            <span className="mb-3 block text-[10px] font-semibold uppercase tracking-[0.15em] text-[#0051d1]">
-              Fuel Packages
-            </span>
-            <h2 className="mb-4 font-manrope text-3xl font-extrabold leading-tight tracking-tight text-[#2c2f31]">
-              Choose a B-Unit pack
+        <main className="min-h-screen px-5 pb-32 pt-24 sm:px-6">
+          <section className="mb-8 space-y-4">
+            <h2 className="font-manrope text-[28px] font-bold leading-[34px] tracking-[-0.02em] text-[#1a1b1f] sm:text-[34px] sm:leading-[41px]">
+              Fuel Your Omnichannel Network
             </h2>
-            <p className="max-w-[90%] text-base leading-relaxed text-[#595c5e]">
-              Select a SaaS fuel package to power digital transactions on your merchant network.
+            <p className="text-[17px] font-medium leading-[22px] tracking-[-0.01em] text-[#424655]">
+              Select a SaaS fuel package to power your digital transactions, or enter a BD redeem code.
             </p>
+            <button
+              type="button"
+              onClick={() => setFeeScheduleOpen(true)}
+              className={`inline-flex items-center rounded-full bg-[#1562f0]/15 px-3 py-1 text-[12px] font-semibold uppercase tracking-[0.05em] text-[#004bc3] transition-colors hover:bg-[#1562f0]/20 ${bizFocusRingClass}`}
+            >
+              <Info className="mr-1 h-4 w-4" strokeWidth={2} aria-hidden />
+              100 B-Units = 1.00 USDC
+            </button>
           </section>
 
-          <div className="flex flex-col gap-6">
-            <MarketBUnitFeeSchedulePanel variant="stacked" />
+          <div className="flex flex-col gap-4">
             <MarketHaveAVoucherPanel
               variant="stacked"
               redeemInput={voucherRedeemInput}
@@ -2680,33 +3115,41 @@ function MobileNoAaLiteMemberSelectionPage(props: {
               <div
                 key={pkg.id}
                 className={
-                  pkg.highlighted
-                    ? 'relative overflow-hidden rounded-[2rem] border-2 border-[#0051d1]/10 bg-white p-8 shadow-[0_30px_60px_rgba(21,98,240,0.12)]'
-                    : 'rounded-[2rem] border border-white bg-white p-8 shadow-[0_10px_30px_rgba(0,0,0,0.02)]'
+                  pkg.firstTimeOnly
+                    ? 'relative overflow-hidden rounded-3xl border-2 border-[#004bc3] bg-white p-6 shadow-[0_8px_24px_rgba(0,75,195,0.08)]'
+                    : pkg.highlighted
+                      ? 'relative overflow-hidden rounded-3xl border border-white bg-white p-6 shadow-[0_10px_30px_rgba(21,98,240,0.10)]'
+                      : 'relative overflow-hidden rounded-3xl border border-white bg-white p-6 shadow-[0_8px_24px_rgba(15,23,42,0.06)]'
                 }
               >
                 {pkg.badge ? (
                   <div className="absolute right-0 top-0">
-                    <div className="rounded-bl-2xl bg-[#0051d1] px-4 py-1.5 text-[10px] font-bold uppercase tracking-widest text-white shadow-sm">
+                    <div className="rounded-bl-lg bg-[#004bc3] px-4 py-1 text-[12px] font-semibold uppercase tracking-[0.05em] text-white">
                       {pkg.badge}
                     </div>
                   </div>
                 ) : null}
-                <div className={`mb-6 flex items-start justify-between gap-4 ${pkg.badge ? 'pt-2' : ''}`}>
-                  <div>
-                    <h3 className="font-manrope text-xl font-bold">{pkg.name}</h3>
-                    <p className="mt-1 text-xs font-medium text-[#0051d1]">{pkg.desc}</p>
-                  </div>
+                <div className={`mb-3 flex items-start justify-between gap-4 ${pkg.badge ? 'mt-5' : ''}`}>
+                  <h3 className="min-w-0 font-manrope text-[22px] font-semibold leading-7 tracking-[-0.01em] text-[#004bc3]">
+                    {pkg.name}
+                  </h3>
                   <div className="shrink-0 text-right">
-                    <span className="text-2xl font-extrabold text-[#2c2f31]">{formatMarketFuelPriceUsdc(pkg)}</span>
-                    <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">USDC</p>
-                    <p className="mt-1 text-[11px] font-bold text-[#0051d1]">{formatMarketFuelBUnits(pkg)}</p>
+                    <div className="font-manrope text-[34px] font-bold leading-[41px] tracking-[-0.02em] text-[#1a1b1f]">
+                      {formatMarketFuelPriceUsdc(pkg)}
+                    </div>
+                    <div className="text-[12px] font-semibold uppercase tracking-[0.05em] text-[#737687]">USDC</div>
                   </div>
+                </div>
+                <div className="mb-6 flex items-start justify-between gap-4">
+                  <p className="min-w-0 flex-1 text-[15px] leading-5 text-[#1562f0]">{pkg.desc}</p>
+                  <p className="shrink-0 text-right text-[17px] font-bold leading-6 text-[#004bc3]">
+                    {formatMarketFuelBUnits(pkg)}
+                  </p>
                 </div>
                 <button
                   type="button"
                   onClick={() => onSelectFuelPack(pkg.usdcAmount)}
-                  className={`w-full rounded-full bg-[#0051d1] py-4 text-sm font-bold text-white shadow-[0_10px_20px_rgba(0,81,209,0.2)] transition-all active:scale-95 hover:bg-[#0047b8] ${bizFocusRingClass}`}
+                  className={`w-full rounded-xl bg-[#004bc3] py-4 text-[17px] font-semibold text-white shadow-[0px_4px_10px_rgba(0,75,195,0.2)] transition-opacity hover:opacity-90 ${bizFocusRingClass}`}
                 >
                   Select {pkg.name}
                 </button>
@@ -2714,18 +3157,18 @@ function MobileNoAaLiteMemberSelectionPage(props: {
             ))}
           </div>
 
-          <section className="mt-16 rounded-[2rem] border border-white/20 bg-white/50 p-8">
+          <section className="mt-10 rounded-3xl border border-[#c3c6d8]/20 bg-[#e9edff]/70 p-6">
             <div className="flex flex-col gap-4">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-[#0051d1]">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#1562f0]/10 text-[#004bc3]">
                 <Zap className="size-6" strokeWidth={2.2} aria-hidden />
               </div>
-              <h4 className="font-manrope text-lg font-bold">What are B-Units?</h4>
-              <p className="text-sm leading-relaxed text-[#595c5e]">
+              <h4 className="font-manrope text-[22px] font-semibold leading-7 text-[#1a1b1f]">What are B-Units?</h4>
+              <p className="text-[15px] leading-5 text-[#424655]">
                 B-Units serve as{' '}
                 <button
                   type="button"
                   onClick={() => onOpenUnderstandingBUnits?.()}
-                  className={`inline border-0 bg-transparent p-0 font-semibold text-[#0051d1] underline decoration-transparent underline-offset-2 hover:underline ${bizFocusRingClass}`}
+                  className={`inline border-0 bg-transparent p-0 font-semibold text-[#004bc3] underline decoration-transparent underline-offset-2 hover:underline ${bizFocusRingClass}`}
                 >
                   microscopic fuel
                 </button>{' '}
@@ -2739,12 +3182,13 @@ function MobileNoAaLiteMemberSelectionPage(props: {
             <button
               type="button"
               onClick={() => setShowCover(false)}
-              className={`text-sm font-semibold text-[#0051d1] underline-offset-4 hover:underline ${bizFocusRingClass}`}
+              className={`text-[15px] font-semibold text-[#004bc3] underline-offset-4 hover:underline ${bizFocusRingClass}`}
             >
               Already purchased? Complete business setup
             </button>
           </div>
         </main>
+        <MarketBUnitFeeScheduleOverlay open={feeScheduleOpen} onClose={() => setFeeScheduleOpen(false)} />
       </div>
     );
   }
@@ -4910,7 +5354,7 @@ function memberDirectoryProfileDrawerMotionLayers(props: MemberDirectoryProfileD
             type="button"
             onClick={onClose}
             className={`flex size-10 items-center justify-center rounded-full text-[#9a9d9f] transition-colors hover:bg-[#eef1f3] ${bizFocusRingClass}`}
-            aria-label="关闭"
+            aria-label="Close"
           >
             <X className="size-5" strokeWidth={2} aria-hidden />
           </button>
@@ -4935,6 +5379,11 @@ function memberDirectoryProfileDrawerMotionLayers(props: MemberDirectoryProfileD
                 leadingIcon={<Wallet className="h-3.5 w-3.5 text-[#0051d1]" strokeWidth={2.25} aria-hidden />}
               />
             </div>
+            {formatMembershipNftMemberNo(row.membershipNftTokenId) ? (
+              <p className="mt-2 font-mono text-xs font-semibold tracking-widest text-[#595c5e]">
+                {formatMembershipNftMemberNo(row.membershipNftTokenId)}
+              </p>
+            ) : null}
             {hasRewardTier && tierBadgeLabel ? (
             <div
                 className="mt-3 inline-flex items-center rounded-full border border-[#0051d1]/20 bg-[#0051d1]/10 px-3 py-1 text-[#0047b8]"
@@ -4967,6 +5416,15 @@ function memberDirectoryProfileDrawerMotionLayers(props: MemberDirectoryProfileD
               <div className="my-4 h-px bg-[#abadaf]/30" />
               <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">Program</p>
               <p className="truncate font-sans text-sm font-bold text-[#2c2f31]">{row.programName}</p>
+              {formatMembershipNftMemberNo(row.membershipNftTokenId) ? (
+                <>
+                  <div className="my-4 h-px bg-[#abadaf]/30" />
+                  <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">Membership NFT</p>
+                  <p className="font-mono text-sm font-bold tracking-widest text-[#2c2f31]">
+                    {formatMembershipNftMemberNo(row.membershipNftTokenId)}
+                  </p>
+                </>
+              ) : null}
               <div className="my-4 h-px bg-[#abadaf]/30" />
               <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">Recorded top-ups</p>
               <p className="font-sans text-lg font-bold text-[#2c2f31]">{row.topupCount.toLocaleString()}</p>
@@ -9273,6 +9731,7 @@ function mapDirectoryApiMembersToBizTopupRows(
       lastSeenTs: lastTs,
       beamioTag: '',
       currentCardToken0Balance: null,
+      membershipNftTokenId: null,
       usedNfcTopup: Boolean(dirM.usedNfc),
       usedAppTopup: Boolean(dirM.usedApp),
       firstTopupSource: dirM.firstTopupSource ?? null,
@@ -9402,6 +9861,86 @@ async function fetchMemberDirectoryHolderBalanceDisplay(
     ),
     rejectMembersBalanceFetchAfter(MEMBERS_BALANCE_FETCH_TIMEOUT_MS),
   ]).catch(() => null as number | null);
+}
+
+/** Membership NFT tokenId ∈ `[100, 1e11)` — not leftover `#0` or dirty `[1,99]`. */
+const MEMBERSHIP_NFT_TOKEN_ID_MIN = 100n
+const MEMBERSHIP_NFT_TOKEN_ID_MAX_EXCLUSIVE = 100_000_000_000n
+
+function isValidMembershipNftTokenId(raw: unknown): boolean {
+  try {
+    const tid = typeof raw === 'bigint' ? raw : BigInt(String(raw ?? '').trim())
+    return tid >= MEMBERSHIP_NFT_TOKEN_ID_MIN && tid < MEMBERSHIP_NFT_TOKEN_ID_MAX_EXCLUSIVE
+  } catch {
+    return false
+  }
+}
+
+/** User-facing membership card number, e.g. `M-000100`. Returns null when missing/invalid. */
+function formatMembershipNftMemberNo(tokenId: string | null | undefined): string | null {
+  if (tokenId == null || String(tokenId).trim() === '') return null
+  if (!isValidMembershipNftTokenId(tokenId)) return null
+  try {
+    return `M-${BigInt(String(tokenId).trim()).toString().padStart(6, '0')}`
+  } catch {
+    return null
+  }
+}
+
+function memberHolderMembershipNftCacheKey(
+  partition: string,
+  cardLower: string,
+  chainId: number,
+  holderLower: string,
+): string {
+  return `eoa:${partition}:card:${cardLower}:chain:${chainId}:holder:${holderLower}:membershipNft:v1`
+}
+
+async function fetchBeamioUserCardActiveMembershipNftTokenId(
+  cardAddress: string,
+  account: string,
+  provider: ethers.Provider,
+): Promise<string | null> {
+  const card = new ethers.Contract(cardAddress, BEAMIO_USER_CARD_OWNERSHIP_ABI, provider)
+  const raw = await card.activeMembershipId(ethers.getAddress(account))
+  const tid = BigInt(String(raw))
+  if (!isValidMembershipNftTokenId(tid)) return null
+  return tid.toString()
+}
+
+/**
+ * Trusted success: `string` (valid NFT id) or `null` (no membership).
+ * Untrusted failure: `undefined` — caller must keep the previous trusted value.
+ */
+async function fetchMemberDirectoryMembershipNftTokenId(
+  membersFetchPartition: string,
+  cardLower: string,
+  cardBalanceChainId: number,
+  cardAddress: string,
+  balanceAccount: string,
+  cardBalanceProvider: ethers.Provider,
+): Promise<string | null | undefined> {
+  const cacheKey = memberHolderMembershipNftCacheKey(
+    membersFetchPartition,
+    cardLower,
+    cardBalanceChainId,
+    balanceAccount.toLowerCase(),
+  )
+  try {
+    return await Promise.race<string | null>([
+      fetchWithCache(
+        cacheKey,
+        () => fetchBeamioUserCardActiveMembershipNftTokenId(cardAddress, balanceAccount, cardBalanceProvider),
+        FETCH_TTL_MS,
+        true,
+      ),
+      rejectMembersBalanceFetchAfter(MEMBERS_BALANCE_FETCH_TIMEOUT_MS).then(() => {
+        throw new Error('members membership nft fetch timeout')
+      }),
+    ])
+  } catch {
+    return undefined
+  }
 }
 
 async function fetchConetBUnitBalanceDisplay(
@@ -27299,18 +27838,30 @@ const membersOwnerCardsRefreshInFlightRef = useRef<Promise<void> | null>(null);
          }
          const merged: BizTopupMemberTableRow[] = [];
          const trustedBalanceByScopedKey = new Map<string, number>();
-         for (const row of membersLoyaltyTopupRowsRef.current) {
+         const trustedMembershipNftByScopedKey = new Map<string, string | null>();
+         const hydrateTrustedMemberDirectoryCaches = (row: BizTopupMemberTableRow, onlyIfMissing: boolean) => {
            const member = row.memberAddress && ethers.isAddress(row.memberAddress) ? ethers.getAddress(row.memberAddress) : '';
-           if (!member) continue;
+           if (!member) return;
            const aa =
              row.aaAddress && ethers.isAddress(row.aaAddress) && row.aaAddress.toLowerCase() !== ethers.ZeroAddress.toLowerCase()
                ? ethers.getAddress(row.aaAddress)
                : '';
            const scoped = `${row.cardLower}:${(aa || member).toLowerCase()}`;
            const bal = row.currentCardToken0Balance;
-           if (bal != null && Number.isFinite(bal)) {
+           if (bal != null && Number.isFinite(bal) && (!onlyIfMissing || !trustedBalanceByScopedKey.has(scoped))) {
              trustedBalanceByScopedKey.set(scoped, bal);
            }
+           if (row.membershipNftTokenId !== undefined && (!onlyIfMissing || !trustedMembershipNftByScopedKey.has(scoped))) {
+             trustedMembershipNftByScopedKey.set(
+               scoped,
+               row.membershipNftTokenId != null && String(row.membershipNftTokenId).trim() !== ''
+                 ? String(row.membershipNftTokenId).trim()
+                 : null,
+             );
+           }
+         };
+         for (const row of membersLoyaltyTopupRowsRef.current) {
+           hydrateTrustedMemberDirectoryCaches(row, false);
          }
          if (walletPartition && account && ethers.isAddress(account)) {
            const cachedBundle = loadTrustedCache<MembersLoyaltyDirectoryTrustedBundleV1>(
@@ -27318,17 +27869,7 @@ const membersOwnerCardsRefreshInFlightRef = useRef<Promise<void> | null>(null);
            );
            const cachedRows = coerceBizTopupMemberRowsFromTrustedCache(cachedBundle?.topupRows);
            for (const row of cachedRows) {
-             const member = row.memberAddress && ethers.isAddress(row.memberAddress) ? ethers.getAddress(row.memberAddress) : '';
-             if (!member) continue;
-             const aa =
-               row.aaAddress && ethers.isAddress(row.aaAddress) && row.aaAddress.toLowerCase() !== ethers.ZeroAddress.toLowerCase()
-                 ? ethers.getAddress(row.aaAddress)
-                 : '';
-             const scoped = `${row.cardLower}:${(aa || member).toLowerCase()}`;
-             const bal = row.currentCardToken0Balance;
-             if (bal != null && Number.isFinite(bal) && !trustedBalanceByScopedKey.has(scoped)) {
-               trustedBalanceByScopedKey.set(scoped, bal);
-             }
+             hydrateTrustedMemberDirectoryCaches(row, true);
            }
          }
          let sumTopupEvents = 0;
@@ -27394,6 +27935,7 @@ const membersOwnerCardsRefreshInFlightRef = useRef<Promise<void> | null>(null);
                firstTopupAt?: string;
              };
              currentBalance: number | null;
+             membershipNftTokenId?: string | null;
            };
            const rowDrafts: MemberDirectoryRowDraft[] = [];
            for (const m of members) {
@@ -27446,31 +27988,51 @@ const membersOwnerCardsRefreshInFlightRef = useRef<Promise<void> | null>(null);
                firstTs,
                dirM,
                currentBalance: trustedBalanceByScopedKey.get(scopedKey) ?? null,
+               membershipNftTokenId: trustedMembershipNftByScopedKey.has(scopedKey)
+                 ? trustedMembershipNftByScopedKey.get(scopedKey) ?? null
+                 : undefined,
              });
            }
            if (activeTab === 'MembersLoyalty' && rowDrafts.length > 0) {
-             const fetchedBalances = await Promise.all(
+             await Promise.all(
                rowDrafts.map(async (draft) => {
-                 const cached = draft.currentBalance;
-                 if (cached != null && Number.isFinite(cached) && cached > 0) return cached;
-                 const bal = await fetchMemberDirectoryHolderBalanceDisplay(
-                   membersFetchPartition,
-                   cardLower,
-                   cardBalanceChainId,
-                   addr,
-                   draft.balanceAccount,
-                   cardBalanceProvider,
-                 );
+                 const cachedBal = draft.currentBalance;
+                 const needBalance = !(cachedBal != null && Number.isFinite(cachedBal) && cachedBal > 0);
+                 const needNft = draft.membershipNftTokenId === undefined;
+                 const [bal, nftId] = await Promise.all([
+                   needBalance
+                     ? fetchMemberDirectoryHolderBalanceDisplay(
+                         membersFetchPartition,
+                         cardLower,
+                         cardBalanceChainId,
+                         addr,
+                         draft.balanceAccount,
+                         cardBalanceProvider,
+                       )
+                     : Promise.resolve(cachedBal),
+                   needNft
+                     ? fetchMemberDirectoryMembershipNftTokenId(
+                         membersFetchPartition,
+                         cardLower,
+                         cardBalanceChainId,
+                         addr,
+                         draft.balanceAccount,
+                         cardBalanceProvider,
+                       )
+                     : Promise.resolve(draft.membershipNftTokenId),
+                 ]);
                  if (bal != null && Number.isFinite(bal)) {
                    trustedBalanceByScopedKey.set(draft.scopedKey, bal);
-                   return bal;
+                   draft.currentBalance = bal;
+                 } else if (needBalance) {
+                   draft.currentBalance = cachedBal;
                  }
-                 return cached;
+                 if (nftId !== undefined) {
+                   trustedMembershipNftByScopedKey.set(draft.scopedKey, nftId);
+                   draft.membershipNftTokenId = nftId;
+                 }
                }),
              );
-             rowDrafts.forEach((draft, idx) => {
-               draft.currentBalance = fetchedBalances[idx] ?? draft.currentBalance;
-             });
            }
            for (const draft of rowDrafts) {
              const currentBalance = draft.currentBalance;
@@ -27496,6 +28058,7 @@ const membersOwnerCardsRefreshInFlightRef = useRef<Promise<void> | null>(null);
                lastSeenTs: draft.lastTs,
                beamioTag: '',
                currentCardToken0Balance: currentBalance,
+               membershipNftTokenId: draft.membershipNftTokenId,
                usedNfcTopup: Boolean(draft.dirM.usedNfc),
                usedAppTopup: Boolean(draft.dirM.usedApp),
                firstTopupSource: draft.dirM.firstTopupSource ?? null,
@@ -29750,6 +30313,17 @@ useEffect(() => {
           row.currentCardToken0Balance = await fetchWithCache(cacheKeyBalance, () =>
             fetchBeamioUserCardToken0BalanceDisplay(program.cardAddress, balanceAccount, cardBalanceProvider)
           , FETCH_TTL_MS, true).catch(() => null as number | null);
+          const nftId = await fetchMemberDirectoryMembershipNftTokenId(
+            walletStoragePartitionLower || 'unknown',
+            cardLower,
+            cardBalanceChainId,
+            program.cardAddress,
+            balanceAccount,
+            cardBalanceProvider,
+          );
+          if (nftId !== undefined) {
+            row.membershipNftTokenId = nftId;
+          }
           if (row.aaAddress !== balanceAccount && balanceAccount.toLowerCase() !== row.memberAddress.toLowerCase()) {
             row.aaAddress = balanceAccount;
           }
@@ -34472,6 +35046,15 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                              </div>
                              <div className="min-w-0">
                              <h3 className={`truncate font-manrope text-lg font-bold ${isHighestRewardTier ? 'text-white' : 'text-[#2c2f31]'}`}>@{displayName}</h3>
+                              {formatMembershipNftMemberNo(row.membershipNftTokenId) ? (
+                                <p
+                                  className={`mt-0.5 font-mono text-xs font-semibold tracking-widest ${
+                                    isHighestRewardTier ? 'text-white/80' : 'text-[#595c5e]'
+                                  }`}
+                                >
+                                  {formatMembershipNftMemberNo(row.membershipNftTokenId)}
+                                </p>
+                              ) : null}
                               {inferMemberDirectoryUserTypeFromBeamioTag(row.beamioTag) === 'nfc' ? (
                                 <div className="mt-1 flex min-w-0 items-center gap-1.5">
                                   <Nfc className={`size-4 shrink-0 ${isHighestRewardTier ? 'text-white' : 'text-[#515c70]/70'}`} strokeWidth={2} aria-hidden />
@@ -34791,6 +35374,11 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                              >
                                {tagRaw ? `@${tagRaw}` : shortAddr}
                              </p>
+                             {formatMembershipNftMemberNo(row.membershipNftTokenId) ? (
+                               <p className="mt-0.5 font-mono text-xs font-semibold tracking-widest text-[#595c5e]">
+                                 {formatMembershipNftMemberNo(row.membershipNftTokenId)}
+                               </p>
+                             ) : null}
                              <p className="mt-0.5 truncate text-[10px] font-medium text-[#595c5e]">{row.programName}</p>
                              <div className="mt-1 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-tight text-[#7a9dff]">
                                {userType === 'both' ? (

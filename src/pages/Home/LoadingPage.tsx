@@ -736,22 +736,21 @@ export default function BeamioOnboardingModal({
 	const initialEntryScreen = (
 		<div
 			className="
-				relative flex min-h-[100dvh] w-full flex-col overflow-x-hidden bg-white font-[Inter,ui-sans-serif,system-ui,sans-serif] text-[#121212]
+				relative flex min-h-[100dvh] w-full flex-col overflow-x-hidden bg-[#F5F6F8] font-[Inter,ui-sans-serif,system-ui,sans-serif] text-[#121212]
 				pt-[env(safe-area-inset-top)]
 				pb-[env(safe-area-inset-bottom)]
 				pl-[env(safe-area-inset-left)]
 				pr-[env(safe-area-inset-right)]
 			"
+			style={{
+				backgroundImage: 'radial-gradient(circle, rgba(148,163,184,0.35) 0.7px, transparent 0.7px)',
+				backgroundSize: '18px 18px',
+			}}
 		>
 			<div
-				className="pointer-events-none absolute -top-24 -right-24 h-96 w-96 rounded-full bg-[radial-gradient(circle_at_center,rgba(21,98,240,0.04)_0%,transparent_70%)]"
+				className="pointer-events-none absolute inset-x-0 top-0 h-48 bg-gradient-to-b from-[#E8EEF9]/90 to-transparent"
 				aria-hidden
 			/>
-			<div
-				className="pointer-events-none absolute -bottom-24 -left-24 h-96 w-96 rounded-full bg-[radial-gradient(circle_at_center,rgba(21,98,240,0.04)_0%,transparent_70%)] opacity-50"
-				aria-hidden
-			/>
-
 			{APP_VERSION && (
 				<div className="pointer-events-none absolute top-[calc(env(safe-area-inset-top)+0.5rem)] left-6 z-[5] text-[11px] font-medium text-[#abadaf] lg:left-8">
 					v{APP_VERSION}
@@ -759,25 +758,28 @@ export default function BeamioOnboardingModal({
 			)}
 
 			<header className="relative z-30 flex shrink-0 items-center justify-between gap-3 overflow-visible px-5 pt-5 lg:px-8">
-				<div className="flex items-center justify-center gap-0 lg:justify-start">
+				<div className="flex items-center justify-center gap-1.5 lg:justify-start">
 					<IpfsImg
 						src={BIZ_PUBLIC_LOGO512}
 						alt=""
-						className="h-8 w-8 shrink-0 rounded-lg object-contain"
+						className="h-8 w-8 shrink-0 rounded-full object-contain"
 					/>
 					<span className="text-xl font-extrabold tracking-tighter text-[#1562F0]" style={headlineFont}>
-						{tu('onb_beamio_business')}
+						{tu('onb_beamio_business_lite')}
 					</span>
 				</div>
 				<BizOnboardingLocalePicker />
 			</header>
 
 			<main className="relative z-0 flex min-h-0 flex-1 flex-grow items-start justify-center px-4 pb-8 pt-6 sm:pt-10">
-				<div className="w-full max-w-md">
-					<div className="mb-6 text-center lg:text-left">
-						<h2 className="mb-3 text-2xl font-extrabold tracking-tight text-[#121212] sm:text-3xl" style={headlineFont}>
+				<div className="w-full max-w-md rounded-3xl border border-white/80 bg-white p-5 shadow-[0_8px_40px_rgba(15,23,42,0.06)] sm:p-8">
+					<div className="mb-8 text-center">
+						<h2 className="mb-2 text-2xl font-extrabold tracking-tight text-[#121212] sm:text-3xl" style={headlineFont}>
 							{tu('onb_identity_title')}
 						</h2>
+						<p className="mb-3 text-xl leading-none sm:text-2xl" aria-hidden>
+							✨
+						</p>
 						<p className="leading-relaxed text-[#666666]">
 							{tu('onb_identity_sub')}
 						</p>
@@ -836,7 +838,10 @@ export default function BeamioOnboardingModal({
 				</div>
 				<div className="flex flex-wrap justify-center gap-8 md:gap-8">
 					{onboardingLegalFooterLinks}
-					<a className="transition-colors hover:text-[#1562F0]" href="mailto:support@beamio.app?subject=Beamio%20Business%20help">
+					<a
+						className="text-[#1562F0] transition-colors hover:text-[#0d4fc4]"
+						href="mailto:support@beamio.app?subject=Beamio%20OS%20help"
+					>
 						{tu('onb_help_center')}
 					</a>
 				</div>
@@ -850,11 +855,26 @@ export default function BeamioOnboardingModal({
 		</div>
 	)
 
+	if (typeof window !== 'undefined' && window.location.hash === '#preview-recovery-key') {
+		return (
+			<div className="fixed inset-0 z-[9998] flex flex-col bg-[#f4f6f8]">
+				<div className="flex-1 min-h-0 overflow-y-auto">
+					<RecoveryQRScreen
+						qrDataUrl="beamio-recovery:5XCX-JZHI-DAZG-JRGM-4D5S-WX"
+						recoveryCode="5XCX-JZHI-DAZG-JRGM-4D5S-WX"
+						showButton
+						beamioTag="conet"
+						close={() => undefined}
+					/>
+				</div>
+			</div>
+		)
+	}
+
 	if (showBizLogin) {
 		return <BizHome />
 	}
 
-	
 	// 首次进入（无钱包）：Select Type → Details（单列）→ Identity（Create/Restore）
 	if (isInitialEntry && !settingsOpen && showOnboardingCover) {
 		return onboardingCoverScreen
@@ -905,7 +925,9 @@ export default function BeamioOnboardingModal({
 							"fixed inset-0 z-[9998] flex flex-col " +
 							(settingsOpen === "RestoreEntryScreen"
 								? "bg-[#f5f7f9]"
-								: "bg-white dark:bg-slate-900")
+								: settingsOpen === "RecoveryQRScreen"
+									? "bg-[#f4f6f8]"
+									: "bg-white dark:bg-slate-900")
 						}
 						initial={settingsOpen === "RecoveryQRScreen" ? { x: 0 } : { x: "100%" }}
 						animate={{ x: 0 }}

@@ -10,6 +10,9 @@ const STORAGE_PREFIX = 'verra_business_profile_draft_v1:'
 
 export type VerraBusinessProfileBusinessType = 'solo' | 'chain' | 'ngo'
 
+/** Discover onboarding channel (Physical / Digital / App). */
+export type VerraBusinessChannelKind = 'physical' | 'digital' | 'app'
+
 export type VerraBusinessProfileDraft = {
   businessType?: VerraBusinessProfileBusinessType
   /** Cover checkbox state while onboarding */
@@ -19,6 +22,8 @@ export type VerraBusinessProfileDraft = {
   country?: string
   city?: string
   province?: string
+  /** Business channel from discovery form (physical / digital / app). */
+  channelKind?: VerraBusinessChannelKind
   publicBio?: string
   legalBusinessName?: string
   taxId?: string
@@ -196,6 +201,9 @@ export function pickVerraBusinessFieldsFromRecover(recovered: unknown): Partial<
   }
   for (const k of ['storeName', 'category', 'country', 'city', 'province'] as const) {
     pull(k)
+  }
+  if (r.channelKind === 'physical' || r.channelKind === 'digital' || r.channelKind === 'app') {
+    next.channelKind = r.channelKind
   }
 
   const formJson = r.onboardingFormJson

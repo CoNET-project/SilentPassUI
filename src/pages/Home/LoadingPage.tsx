@@ -3,7 +3,7 @@ import { IpfsImg } from '@/components/IpfsImg';
 import beamio_icon from '@/components/assets/32x32.svg'
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import {onWalletEvent} from '@/services/beamio'
-import { Zap, ChevronRight, Fingerprint, Gift, Check, Loader, Globe, ArrowRight, ArrowLeft, AlertTriangle, X, Building2, Cloud, Store, Heart, LayoutDashboard, Briefcase, History, ChevronDown, LayoutGrid, Hexagon, ShieldCheck } from "lucide-react"
+import { Check, Loader, ArrowRight, ArrowLeft, AlertTriangle, X, Cloud, History, Smartphone } from "lucide-react"
 import { getAAAccount, getRedeemDetailsForDisplay, postCardRedeem, postCardRedeemAdmin, getMyAssets, checkRedeemAdminCodeValid, isCardAdmin } from "@/services/BeamioCard"
 import { initChat}from '@/services/chat'
 
@@ -30,6 +30,12 @@ import packageJson from '../../../package.json'
 import { parseRedeemAdminFromUrl } from '@/utils/parseRedeemAdminFromUrl'
 import { BIZ_PUBLIC_LOGO512, bizBrandFocusRingClass } from '@/pages/Home/brandUi'
 import { OnboardingBusinessDetailsScreen } from '@/pages/Home/OnboardingBusinessDetailsScreen'
+import {
+	OnboardingBusinessDiscoveryForm,
+	businessTypeToOrgType,
+	orgTypeToBusinessType,
+	type OrgTypeSelect,
+} from '@/pages/Home/OnboardingBusinessDiscoveryForm'
 import { MerchantLegalDocumentOverlay } from '@/pages/Vouchers/example/MerchantLegalDocumentOverlay'
 import type { BeamioLegalDocId } from '@/utils/beamioLegalDocuments'
 import {
@@ -43,6 +49,7 @@ import {
 	pickVerraBusinessFieldsFromRecover,
 	saveSessionOnboardingBusinessDraft,
 	setLiteBusinessChainAck,
+	type VerraBusinessChannelKind,
 	type VerraBusinessProfileDraft,
 } from '@/utils/verraBusinessProfileLocal'
 import type { VerraBusinessProfileBusinessType } from '@/utils/verraBusinessProfileLocal'
@@ -51,7 +58,6 @@ import {
 	markWorkspaceSessionUnlocked,
 } from '@/utils/beamioWorkspaceLock'
 import { hasSessionPrivateKeyArmor, ingestSessionPrivateKeyFromProfiles, hydrateProfilesWithSessionSecrets } from '@/utils/beamioSessionSecrets'
-import { ONBOARDING_REGIONS_BY_COUNTRY } from '@/pages/Home/onboardingRegions'
 import { useTu } from '@/locale/beamioLocale'
 import WorkspaceCreatingOverlay from '@/pages/Home/WorkspaceCreatingOverlay'
 import { BizOnboardingLocalePicker } from '@/pages/Home/BizOnboardingLocalePicker'
@@ -60,18 +66,11 @@ const APP_VERSION = (packageJson as { version?: string }).version ?? ''
 
 /** Onboarding business details：无草稿时默认国家（Canada） */
 const DEFAULT_ONBOARDING_DETAIL_COUNTRY = "CA"
-/** 无草稿时默认经营类目 */
-const DEFAULT_ONBOARDING_DETAIL_CATEGORY = "local-services"
 
 type OnboardingCoverMobilePhase = 'entry' | 'businessForm'
 
-function LoadingPageOnboardingDetailsSelectChevron(): React.ReactElement {
-	return (
-		<ChevronDown
-			className="pointer-events-none absolute right-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#747779]"
-			aria-hidden
-		/>
-	)
+function parseDraftChannelKind(raw: unknown): VerraBusinessChannelKind | '' {
+	return raw === 'physical' || raw === 'digital' || raw === 'app' ? raw : ''
 }
 const ISSUED_NFT_START_ID = 100_000_000_000
 
@@ -138,8 +137,14 @@ export default function BeamioOnboardingModal({
 	const [detailBusinessName, setDetailBusinessName] = useState(
 		() => loadSessionOnboardingBusinessDraft()?.storeName ?? ''
 	)
+	const [detailChannelKind, setDetailChannelKind] = useState<VerraBusinessChannelKind | ''>(() =>
+		parseDraftChannelKind(loadSessionOnboardingBusinessDraft()?.channelKind),
+	)
+	const [detailOrgType, setDetailOrgType] = useState<OrgTypeSelect>(() =>
+		businessTypeToOrgType(loadSessionOnboardingBusinessDraft()?.businessType),
+	)
 	const [detailCategory, setDetailCategory] = useState(
-		() => loadSessionOnboardingBusinessDraft()?.category || DEFAULT_ONBOARDING_DETAIL_CATEGORY,
+		() => loadSessionOnboardingBusinessDraft()?.category?.trim() ?? '',
 	)
 	const [detailCountry, setDetailCountry] = useState(
 		() => loadSessionOnboardingBusinessDraft()?.country || DEFAULT_ONBOARDING_DETAIL_COUNTRY,
@@ -184,6 +189,7 @@ export default function BeamioOnboardingModal({
 			country: detailCountry,
 			city: detailCity,
 			province: detailProvince,
+			channelKind: detailChannelKind || undefined,
 		})
 	}, [
 		isInitialEntry,
@@ -194,6 +200,7 @@ export default function BeamioOnboardingModal({
 		detailCountry,
 		detailCity,
 		detailProvince,
+		detailChannelKind,
 	])
 
 
@@ -224,7 +231,9 @@ export default function BeamioOnboardingModal({
 			setCoverTermsAccepted(false)
 			setOnboardingCoverMobilePhase('entry')
 			setDetailBusinessName("")
-			setDetailCategory(DEFAULT_ONBOARDING_DETAIL_CATEGORY)
+			setDetailChannelKind('')
+			setDetailOrgType('')
+			setDetailCategory('')
 			setDetailCountry(DEFAULT_ONBOARDING_DETAIL_COUNTRY)
 			setDetailCity("")
 			setDetailProvince("")
@@ -297,27 +306,6 @@ export default function BeamioOnboardingModal({
 
 	const headlineFont = { fontFamily: "Manrope, ui-sans-serif, system-ui, sans-serif" } as const
 
-	const coverBusinessTypeChoices = [
-		{
-			id: "solo" as const,
-			title: tu('onb_type_solo_title'),
-			desc: tu('onb_type_solo_desc'),
-			Icon: Store,
-		},
-		{
-			id: "chain" as const,
-			title: tu('onb_type_chain_title'),
-			desc: tu('onb_type_chain_desc'),
-			Icon: Building2,
-		},
-		{
-			id: "ngo" as const,
-			title: tu('onb_type_ngo_title'),
-			desc: tu('onb_type_ngo_desc'),
-			Icon: Heart,
-		},
-	] as const
-
 	const mobileCoverMeshStyle: React.CSSProperties = {
 		backgroundImage: [
 			"radial-gradient(at 0% 0%, #f5f7f9 0%, transparent 50%)",
@@ -327,13 +315,36 @@ export default function BeamioOnboardingModal({
 		].join(", "),
 	}
 
-	const onboardingCoverMobileCanSubmitRegistration =
-		detailBusinessName.trim().length > 0 && detailCategory.trim().length > 0
-
 	const openOnboardingLegalDoc = (docId: BeamioLegalDocId) => (e: React.MouseEvent) => {
 		e.preventDefault()
 		e.stopPropagation()
 		setOnboardingLegalDocId(docId)
+	}
+
+	const setDetailOrgTypeAndSync = (org: OrgTypeSelect) => {
+		setDetailOrgType(org)
+		const bt = orgTypeToBusinessType(org)
+		if (bt) setCoverBusinessType(bt)
+	}
+
+	const discoveryFormSharedProps = {
+		storeName: detailBusinessName,
+		setStoreName: setDetailBusinessName,
+		channelKind: detailChannelKind,
+		setChannelKind: (v: VerraBusinessChannelKind) => setDetailChannelKind(v),
+		category: detailCategory,
+		setCategory: setDetailCategory,
+		orgType: detailOrgType,
+		setOrgType: setDetailOrgTypeAndSync,
+		country: detailCountry,
+		setCountry: setDetailCountry,
+		city: detailCity,
+		setCity: setDetailCity,
+		province: detailProvince,
+		setProvince: setDetailProvince,
+		termsAccepted: coverTermsAccepted,
+		setTermsAccepted: setCoverTermsAccepted,
+		onOpenLegalDoc: openOnboardingLegalDoc,
 	}
 
 	const onboardingLegalFooterLinks = (
@@ -355,12 +366,30 @@ export default function BeamioOnboardingModal({
 		</>
 	)
 
-	/** Mobile cover 已填登记页：完成后跳过 OnboardingBusinessDetailsScreen，直达 Identity */
-	const onboardingCoverContinue = (skipBusinessDetailsScreen: boolean) => {
-		if (!coverTermsAccepted) return
+	/** Discovery 表单完成后跳过 OnboardingBusinessDetailsScreen，直达 Identity */
+	const onboardingCoverContinue = (skipBusinessDetailsScreen: boolean, termsOverride?: boolean) => {
+		const termsOk = termsOverride ?? coverTermsAccepted
+		if (!termsOk) return
 		setOnboardingCoverMobilePhase('entry')
 		setShowOnboardingCover(false)
 		setShowOnboardingBusinessDetails(!skipBusinessDetailsScreen)
+	}
+
+	const submitOnboardingDiscovery = () => {
+		const bt = orgTypeToBusinessType(detailOrgType) ?? coverBusinessType
+		setCoverBusinessType(bt)
+		setCoverTermsAccepted(true)
+		saveSessionOnboardingBusinessDraft({
+			businessType: bt,
+			onboardingTermsAccepted: true,
+			storeName: detailBusinessName,
+			category: detailCategory,
+			country: detailCountry,
+			city: detailCity,
+			province: detailProvince,
+			channelKind: detailChannelKind || undefined,
+		})
+		onboardingCoverContinue(true, true)
 	}
 
 	/** Desktop: 顶栏步骤 + 40/60 双栏。Mobile: Vouchers/example/marketExample.html 风格入口 + 展开后业务类型与条款。
@@ -405,8 +434,8 @@ export default function BeamioOnboardingModal({
 								style={{ paddingTop: "max(1.5rem, env(safe-area-inset-top))" }}
 							>
 								<div className="flex min-w-0 flex-1 items-center gap-3">
-									<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#1562f0] shadow-lg shadow-[#1562f0]/20">
-										<Briefcase className="h-5 w-5 text-white" strokeWidth={2.25} aria-hidden />
+									<div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#1562f0] shadow-md shadow-[#1562f0]/25">
+										<Smartphone className="h-[18px] w-[18px] text-white" strokeWidth={2.25} aria-hidden />
 									</div>
 									<h1
 										className="truncate text-xl font-extrabold leading-none tracking-tighter text-[#1562f0]"
@@ -427,38 +456,39 @@ export default function BeamioOnboardingModal({
 										{tu('onb_lite_eyebrow')}
 									</span>
 									<h2
-										className="text-4xl font-extrabold leading-[1.1] tracking-tight text-[#2c2f31]"
+										className="text-4xl font-extrabold leading-[1.15] tracking-tight text-[#2c2f31]"
 										style={headlineFont}
 									>
-										{tu('onb_lite_hero_prefix')}
-										<span className="text-[#1562f0]">{tu('onb_lite_hero_accent')}</span>
-										{tu('onb_lite_hero_suffix')}
+										{tu('onb_lite_hero_prefix')}{' '}
+										<span className="text-[#1562f0]">
+											{tu('onb_lite_hero_accent')}
+											{tu('onb_lite_hero_suffix')}
+										</span>
 									</h2>
-									<p className="text-lg font-medium leading-relaxed text-[#595c5e]/80">
+									<p className="text-base font-medium leading-relaxed text-[#595c5e]">
 										{tu('onb_lite_hero_sub')}
 									</p>
 								</div>
 
-								<div className="grid gap-6">
+								<div className="grid gap-4">
 									<button
 										type="button"
 										onClick={() => setOnboardingCoverMobilePhase('businessForm')}
-										className={`group relative w-full overflow-hidden rounded-2xl bg-white p-8 text-left shadow-[0_20px_40px_rgba(21,98,240,0.04)] transition-all duration-500 hover:shadow-[0_30px_60px_rgba(21,98,240,0.1)] active:scale-[0.98] ${bizBrandFocusRingClass}`}
+										className={`group relative w-full overflow-hidden rounded-2xl bg-white p-6 text-left shadow-[0_8px_28px_rgba(15,23,42,0.06)] transition-all duration-300 hover:shadow-[0_16px_40px_rgba(21,98,240,0.12)] active:scale-[0.98] ${bizBrandFocusRingClass}`}
 									>
-										<div className="absolute -right-12 -top-12 h-32 w-32 rounded-full bg-[#1562f0]/5 transition-transform duration-700 group-hover:scale-110" aria-hidden />
 										<div className="relative z-10">
-											<div className="mb-6 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#1562f0] shadow-xl shadow-[#1562f0]/25 transition-transform group-hover:rotate-3">
-												<Store className="h-8 w-8 text-white" strokeWidth={2} aria-hidden />
+											<div className="mb-5 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#1562f0] shadow-lg shadow-[#1562f0]/25">
+												<Home className="h-6 w-6 text-white" strokeWidth={2} aria-hidden />
 											</div>
-											<h3 className="mb-2 text-2xl font-bold tracking-tight text-[#2c2f31]" style={headlineFont}>
+											<h3 className="mb-2 text-xl font-bold tracking-tight text-[#2c2f31]" style={headlineFont}>
 												{tu('onb_lite_new_setup_title')}
 											</h3>
-											<p className="mb-6 text-sm font-medium leading-relaxed text-[#595c5e]">
+											<p className="mb-5 text-sm font-medium leading-relaxed text-[#595c5e]">
 												{tu('onb_lite_new_setup_desc')}
 											</p>
-											<div className="flex items-center gap-2 text-sm font-bold tracking-wide text-[#1562f0]">
+											<div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-[#1562f0]">
 												<span>{tu('onb_lite_get_started')}</span>
-												<ArrowRight className="h-4 w-4 shrink-0" strokeWidth={2.25} aria-hidden />
+												<ArrowRight className="h-3.5 w-3.5 shrink-0" strokeWidth={2.5} aria-hidden />
 											</div>
 										</div>
 									</button>
@@ -466,45 +496,67 @@ export default function BeamioOnboardingModal({
 									<button
 										type="button"
 										onClick={() => setShowBizLogin(true)}
-										className={`group relative w-full rounded-2xl border border-white/40 bg-[#eef1f3]/50 p-8 text-left backdrop-blur-md transition-all duration-300 hover:bg-[#eef1f3] active:scale-[0.98] ${bizBrandFocusRingClass}`}
+										className={`group relative w-full overflow-hidden rounded-2xl bg-white p-6 text-left shadow-[0_8px_28px_rgba(15,23,42,0.06)] transition-all duration-300 hover:shadow-[0_16px_40px_rgba(15,23,42,0.1)] active:scale-[0.98] ${bizBrandFocusRingClass}`}
 									>
-										<div className="flex items-start gap-6">
-											<div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#d9dde0] transition-colors duration-300 group-hover:bg-white">
-												<History className="h-6 w-6 text-[#595c5e]" strokeWidth={2} aria-hidden />
+										<div className="relative z-10">
+											<div className="mb-5 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#e8eaed]">
+												<History className="h-6 w-6 text-[#747779]" strokeWidth={2} aria-hidden />
 											</div>
-											<div className="min-w-0 space-y-1">
-												<h3 className="text-xl font-bold tracking-tight text-[#2c2f31]" style={headlineFont}>
-													{tu('onb_lite_restore_title')}
-												</h3>
-												<p className="text-xs font-medium leading-relaxed text-[#595c5e]">
-													{tu('onb_lite_restore_desc')}
-												</p>
-												<div className="mt-4 flex items-center gap-2 text-sm font-bold tracking-wide text-[#1562f0]">
-													<span>{tu('onb_lite_restore_cta')}</span>
-													<ArrowRight className="h-4 w-4 shrink-0" strokeWidth={2.25} aria-hidden />
-												</div>
+											<h3 className="mb-2 text-xl font-bold tracking-tight text-[#2c2f31]" style={headlineFont}>
+												{tu('onb_lite_restore_title')}
+											</h3>
+											<p className="mb-5 text-sm font-medium leading-relaxed text-[#595c5e]">
+												{tu('onb_lite_restore_desc')}
+											</p>
+											<div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-[#1562f0]">
+												<span>{tu('onb_lite_restore_cta')}</span>
+												<ArrowRight className="h-3.5 w-3.5 shrink-0" strokeWidth={2.5} aria-hidden />
 											</div>
 										</div>
 									</button>
 								</div>
 
-								<div className="relative mt-14">
-									<div className="aspect-[16/10] overflow-hidden rounded-lg opacity-40 mix-blend-multiply grayscale">
-										<IpfsImg
-											alt=""
-											className="h-full w-full object-cover"
-											src="https://lh3.googleusercontent.com/aida-public/AB6AXuB-lOOZSffTjg2F90jGhQQCV5JGl0HYwdJshlRF7JS-vuz6_xwBwr1DWrZN8TusbAKh2gifA-EbWTl0uyfIBnIaVZuhtQYmayWamMPuKyc3VwTkgy2RdHO93Ux5rP3j1R7vMz2zLssVdWgYWRPm0Pjh-9Cs4kW29OllrPYDwm-9i0yPcqdl-lNiEiOUAzmGD2VitahYc35dG883pISfBCRCI7wFQnZb2RtWSksGm6GfpyZKe5Jr-84-RleF5YP4gtWIO9C_d8lZgm0"
+								<div className="relative mt-12">
+									<div className="relative aspect-[16/10] overflow-hidden rounded-2xl bg-[#050b1d]">
+										<div
+											className="absolute inset-0 opacity-90"
+											aria-hidden
+											style={{
+												backgroundImage: [
+													'radial-gradient(ellipse 80% 60% at 50% 55%, rgba(34,211,238,0.22) 0%, transparent 55%)',
+													'radial-gradient(circle at 22% 38%, rgba(251,146,60,0.55) 0 2px, transparent 3px)',
+													'radial-gradient(circle at 48% 28%, rgba(34,211,238,0.7) 0 2.5px, transparent 3.5px)',
+													'radial-gradient(circle at 72% 42%, rgba(251,146,60,0.5) 0 2px, transparent 3px)',
+													'radial-gradient(circle at 35% 62%, rgba(34,211,238,0.55) 0 2px, transparent 3px)',
+													'radial-gradient(circle at 62% 68%, rgba(251,146,60,0.45) 0 1.5px, transparent 2.5px)',
+													'radial-gradient(circle at 80% 58%, rgba(34,211,238,0.45) 0 2px, transparent 3px)',
+													'linear-gradient(135deg, rgba(21,98,240,0.12) 0%, transparent 40%, rgba(141,58,139,0.1) 100%)',
+												].join(', '),
+												backgroundColor: '#071126',
+											}}
 										/>
+										<svg className="absolute inset-0 h-full w-full opacity-70" viewBox="0 0 400 250" fill="none" aria-hidden>
+											<path d="M88 95 L192 70 L288 105 L248 170 L140 155 Z" stroke="rgba(34,211,238,0.35)" strokeWidth="1.2" />
+											<path d="M192 70 L248 170" stroke="rgba(251,146,60,0.35)" strokeWidth="1" />
+											<path d="M88 95 L140 155 L288 105" stroke="rgba(34,211,238,0.25)" strokeWidth="1" />
+											<circle cx="88" cy="95" r="3.5" fill="#f97316" />
+											<circle cx="192" cy="70" r="4" fill="#22d3ee" />
+											<circle cx="288" cy="105" r="3.5" fill="#f97316" />
+											<circle cx="248" cy="170" r="3" fill="#22d3ee" />
+											<circle cx="140" cy="155" r="3" fill="#22d3ee" />
+											<circle cx="320" cy="145" r="2.5" fill="#22d3ee" opacity="0.8" />
+											<path d="M288 105 L320 145" stroke="rgba(34,211,238,0.3)" strokeWidth="1" />
+										</svg>
 									</div>
-									<div className="absolute -bottom-6 -right-2 max-w-[200px] rounded-2xl border border-white/20 bg-white/70 p-5 shadow-xl backdrop-blur-xl">
-										<p className="mb-1 text-[10px] font-bold uppercase tracking-[0.2em] text-[#1562f0]">{tu('onb_lite_secure_eyebrow')}</p>
-										<p className="text-[11px] font-medium leading-tight text-[#595c5e]">
+									<div className="absolute bottom-3 right-3 max-w-[190px] rounded-xl bg-white/95 px-3.5 py-3 shadow-[0_8px_24px_rgba(15,23,42,0.16)] backdrop-blur-sm">
+										<p className="mb-1 text-[10px] font-bold uppercase tracking-[0.18em] text-[#1562f0]">{tu('onb_lite_secure_eyebrow')}</p>
+										<p className="text-[11px] font-medium leading-snug text-[#595c5e]">
 											{tu('onb_lite_secure_body')}
 										</p>
 									</div>
 								</div>
 
-								<p className="mx-auto mt-16 max-w-sm text-center text-[10px] font-bold uppercase tracking-[0.2em] text-[#595c5e]/80">
+								<p className="mx-auto mt-12 max-w-sm text-center text-[10px] font-bold uppercase tracking-[0.2em] text-[#abadaf]">
 									{tu('onb_lite_footer')}
 								</p>
 							</div>
@@ -529,312 +581,106 @@ export default function BeamioOnboardingModal({
 								<BizOnboardingLocalePicker />
 							</header>
 
-							<div className="flex-1 overflow-y-auto overflow-x-hidden pt-[calc(4rem+env(safe-area-inset-top))] pb-28">
-								<>
-										<section className="overflow-hidden bg-[#f5f7f9] px-6 pb-12 pt-10">
-											<div className="mx-auto w-full max-w-md">
-												<h1
-													className="mb-4 text-[2.5rem] font-extrabold leading-[1.1] tracking-tight text-[#2c2f31]"
-													style={headlineFont}
-												>
-													{tu('onb_lite_form_hero_prefix')}
-													<span className="text-[#1562f0]">{tu('onb_lite_form_hero_accent')}</span>
-													{tu('onb_lite_form_hero_suffix')}
-												</h1>
-												<p className="mb-10 max-w-[85%] text-lg leading-relaxed text-[#595c5e]">
-													{tu('onb_lite_form_sub')}
-												</p>
-												<div className="grid grid-cols-2 gap-4">
-													<div className="translate-y-4 rounded-lg bg-white p-6 shadow-[0_10px_30px_rgba(21,98,240,0.04)]">
-														<div className="mb-4 flex h-10 w-10 items-center justify-center rounded-full bg-[#d8e3fb]">
-															<LayoutGrid className="h-5 w-5 text-[#1562f0]" strokeWidth={2} aria-hidden />
-														</div>
-														<h3 className="mb-1 text-sm font-bold text-[#2c2f31]" style={headlineFont}>
-															{tu('onb_business_control_title')}
-														</h3>
-														<p className="text-[11px] leading-tight text-[#595c5e]">
-															{tu('onb_business_control_desc')}
-														</p>
-													</div>
-													<div className="-translate-y-2 rounded-lg bg-white p-6 shadow-[0_10px_30px_rgba(21,98,240,0.04)]">
-														<div className="mb-4 flex h-10 w-10 items-center justify-center rounded-full bg-[#f797ef]/20">
-															<Hexagon className="h-5 w-5 text-[#8d3a8b]" strokeWidth={2} aria-hidden />
-														</div>
-														<h3 className="mb-1 text-sm font-bold text-[#2c2f31]" style={headlineFont}>
-															{tu('onb_brand_identity_title')}
-														</h3>
-														<p className="text-[11px] leading-tight text-[#595c5e]">
-															{tu('onb_brand_identity_desc')}
-														</p>
-													</div>
-												</div>
-											</div>
-										</section>
-
-										<section className="-mt-4 rounded-t-xl bg-white px-6 py-12 shadow-[0_-20px_40px_rgba(0,0,0,0.02)]">
-											<div className="mx-auto w-full max-w-md">
-												<div className="mb-10">
-													<h2 className="mb-2 text-2xl font-bold tracking-tight text-[#2c2f31]" style={headlineFont}>
-														{tu('onb_tell_business_title')}
-													</h2>
-													<p className="text-sm text-[#595c5e]">{tu('onb_tell_business_sub')}</p>
-												</div>
-
-												<div className="space-y-8">
-													<div className="space-y-2">
-														<label className="ml-2 block text-[10px] font-bold uppercase tracking-[0.1em] text-[#595c5e]" htmlFor="onb-mobile-cover-name">
-															{tu('onb_business_name')}
-														</label>
-														<input
-															id="onb-mobile-cover-name"
-															type="text"
-															value={detailBusinessName}
-															onChange={(e) => setDetailBusinessName(e.target.value)}
-															placeholder={tu('onb_business_name_ph')}
-															autoComplete="organization"
-															className={`
-																w-full rounded-lg border-0 bg-[#eef1f3] px-5 py-4 text-base text-[#2c2f31] placeholder:text-[#abadaf]
-																transition-all focus:bg-white focus:ring-2 focus:ring-[#1562f0]/20
-																${bizBrandFocusRingClass}
-															`}
-														/>
-													</div>
-
-													<div className="space-y-2">
-														<label className="ml-2 block text-[10px] font-bold uppercase tracking-[0.1em] text-[#595c5e]" htmlFor="onb-mobile-cover-category">
-															{tu('onb_business_category')}
-														</label>
-														<div className="relative">
-															<select
-																id="onb-mobile-cover-category"
-																value={detailCategory}
-																onChange={(e) => setDetailCategory(e.target.value)}
-																className={`
-																	w-full appearance-none rounded-lg border-0 bg-[#eef1f3] px-5 py-4 text-base text-[#2c2f31] transition-all
-																	focus:bg-white focus:ring-2 focus:ring-[#1562f0]/20
-																	${bizBrandFocusRingClass}
-																`}
-															>
-																<option value="">{tu('onb_select_category')}</option>
-																<option value="food-beverage">{tu('onb_cat_food_beverage')}</option>
-																<option value="grocery-convenience">{tu('onb_cat_grocery')}</option>
-																<option value="retail-shopping">{tu('onb_cat_retail')}</option>
-																<option value="education-training">{tu('onb_cat_education')}</option>
-																<option value="health-beauty">{tu('onb_cat_health_beauty')}</option>
-																<option value="fitness-wellness">{tu('onb_cat_fitness')}</option>
-																<option value="entertainment-leisure">{tu('onb_cat_entertainment')}</option>
-																<option value="local-services">{tu('onb_cat_local_services')}</option>
-															</select>
-															<LoadingPageOnboardingDetailsSelectChevron />
-														</div>
-													</div>
-
-													<div className="space-y-2">
-														<label className="ml-2 block text-[10px] font-bold uppercase tracking-[0.1em] text-[#595c5e]" htmlFor="onb-mobile-cover-country">
-															{tu('onb_country')}
-														</label>
-														<div className="relative">
-															<select
-																id="onb-mobile-cover-country"
-																value={detailCountry}
-																onChange={(e) => {
-																	setDetailCountry(e.target.value)
-																	setDetailProvince("")
-																}}
-																className={`
-																	w-full appearance-none rounded-lg border-0 bg-[#eef1f3] px-5 py-4 text-base text-[#2c2f31] transition-all
-																	focus:bg-white focus:ring-2 focus:ring-[#1562f0]/20
-																	${bizBrandFocusRingClass}
-																`}
-															>
-																<option value="">{tu('onb_select_country')}</option>
-																<option value="CA">{tu('onb_country_ca')}</option>
-																<option value="US">{tu('onb_country_us')}</option>
-																<option value="GB">{tu('onb_country_gb')}</option>
-																<option value="AU">{tu('onb_country_au')}</option>
-																<option value="DE">{tu('onb_country_de')}</option>
-															</select>
-															<LoadingPageOnboardingDetailsSelectChevron />
-														</div>
-													</div>
-
-													<div className="grid grid-cols-2 gap-4">
-														<div className="space-y-2">
-															<label className="ml-2 block text-[10px] font-bold uppercase tracking-[0.1em] text-[#595c5e]" htmlFor="onb-mobile-cover-city">
-																{tu('onb_city')}
-															</label>
-															<input
-																id="onb-mobile-cover-city"
-																type="text"
-																value={detailCity}
-																onChange={(e) => setDetailCity(e.target.value)}
-																placeholder={tu('onb_city_ph')}
-																autoComplete="address-level2"
-																className={`
-																	w-full rounded-lg border-0 bg-[#eef1f3] px-5 py-4 text-base text-[#2c2f31] placeholder:text-[#abadaf]
-																	transition-all focus:bg-white focus:ring-2 focus:ring-[#1562f0]/20
-																	${bizBrandFocusRingClass}
-																`}
-															/>
-														</div>
-														<div className="space-y-2">
-															<label className="ml-2 block text-[10px] font-bold uppercase tracking-[0.1em] text-[#595c5e]" htmlFor="onb-mobile-cover-province">
-																{tu('onb_province')}
-															</label>
-															<div className="relative">
-																<select
-																	id="onb-mobile-cover-province"
-																	value={detailProvince}
-																	disabled={!detailCountry}
-																	onChange={(e) => setDetailProvince(e.target.value)}
-																	className={`
-																		w-full appearance-none rounded-lg border-0 bg-[#eef1f3] px-5 py-4 text-base text-[#2c2f31] transition-all
-																		focus:bg-white focus:ring-2 focus:ring-[#1562f0]/20
-																		disabled:cursor-not-allowed disabled:opacity-60
-																		${bizBrandFocusRingClass}
-																	`}
-																>
-																	<option value="">
-																		{detailCountry ? tu('onb_select') : tu('onb_select_country_first')}
-																	</option>
-																	{(detailCountry ? ONBOARDING_REGIONS_BY_COUNTRY[detailCountry] ?? [] : []).map(({ value, label }) => (
-																		<option key={value} value={value}>
-																			{label}
-																		</option>
-																	))}
-																</select>
-																<LoadingPageOnboardingDetailsSelectChevron />
-															</div>
-														</div>
-													</div>
-												</div>
-
-												<div className="mt-12 flex items-start gap-4 rounded-lg bg-[#1562f0]/5 p-6">
-													<ShieldCheck className="mt-0.5 h-6 w-6 shrink-0 text-[#1562f0]" strokeWidth={2} aria-hidden />
-													<div>
-														<p className="mb-1 text-xs font-semibold text-[#1562f0]">{tu('onb_encrypted_title')}</p>
-														<p className="text-[11px] leading-relaxed text-[#595c5e]">
-															{tu('onb_encrypted_body')}
-														</p>
-													</div>
-												</div>
-
-												<div className="mt-10 space-y-5 border-t border-[#abadaf]/20 pt-6">
-													<label className="flex cursor-pointer gap-4">
-														<div className="mt-0.5 shrink-0">
-															<input
-																type="checkbox"
-																className={`
-																	h-5 w-5 rounded border-[#abadaf] text-[#1562f0] focus:ring-[#1562f0]
-																	${bizBrandFocusRingClass}
-																`}
-																checked={coverTermsAccepted}
-																onChange={(e) => setCoverTermsAccepted(e.target.checked)}
-															/>
-														</div>
-														<p className="text-[11px] font-semibold uppercase leading-relaxed tracking-wider text-[#595c5e]">
-															{tu('onb_terms_prefix')}
-															<button
-																type="button"
-																className="text-[#1562f0] underline-offset-2 hover:underline"
-																onClick={openOnboardingLegalDoc('privacy')}
-															>
-																{tu('onb_terms_privacy_link')}
-															</button>
-															{tu('onb_terms_and')}
-															<button
-																type="button"
-																className="text-[#1562f0] underline-offset-2 hover:underline"
-																onClick={openOnboardingLegalDoc('terms')}
-															>
-																{tu('onb_terms_link')}
-															</button>
-															{tu('onb_terms_suffix')}
-														</p>
-													</label>
-												</div>
-
-												<button
-													type="button"
-													disabled={!onboardingCoverMobileCanSubmitRegistration || !coverTermsAccepted}
-													className={`
-														mt-6 flex w-full items-center justify-center gap-2 rounded-full bg-[#1562f0] px-8 py-5 text-base font-bold text-white
-														shadow-[0_20px_40px_rgba(21,98,240,0.15)] transition-all hover:shadow-[0_20px_40px_rgba(21,98,240,0.25)] active:scale-[0.98]
-														disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none
-														${bizBrandFocusRingClass}
-													`}
-													onClick={() => {
-														if (!onboardingCoverMobileCanSubmitRegistration || !coverTermsAccepted) return
-														setCoverBusinessType('solo')
-														saveSessionOnboardingBusinessDraft({
-															businessType: 'solo',
-															onboardingTermsAccepted: coverTermsAccepted,
-															storeName: detailBusinessName,
-															category: detailCategory,
-															country: detailCountry,
-															city: detailCity,
-															province: detailProvince,
-														})
-														onboardingCoverContinue(true)
-													}}
-												>{tu('continue')}<ArrowRight className="h-5 w-5 shrink-0" strokeWidth={2.25} aria-hidden />
-												</button>
-											</div>
-										</section>
-								</>
+							<div className="flex-1 overflow-y-auto overflow-x-hidden pt-[calc(4rem+env(safe-area-inset-top))] pb-[calc(11rem+env(safe-area-inset-bottom))]">
+								<div className="mx-auto w-full max-w-2xl px-5 pt-6">
+									<div className="mb-2 rounded-xl border border-[#c3c6d8]/60 bg-[#eeedf3]/80 px-4 py-3 sm:flex sm:items-center sm:justify-between sm:gap-4">
+										<p className="text-sm text-[#424655]">
+											<span className="font-semibold text-[#2c2f31]">{tu('onb_returning_title')}</span>{' '}
+											{tu('onb_returning_sub')}
+										</p>
+										<button
+											type="button"
+											onClick={() => setShowBizLogin(true)}
+											className={`mt-3 inline-flex shrink-0 items-center justify-center rounded-full border border-[#1562f0]/40 bg-white px-4 py-2 text-sm font-bold text-[#1562f0] transition hover:bg-[#1562f0]/5 sm:mt-0 ${bizBrandFocusRingClass}`}
+										>
+											{tu('onb_restore_account')}
+											<span className="ml-1" aria-hidden>
+												→
+											</span>
+										</button>
+									</div>
+									<OnboardingBusinessDiscoveryForm
+										{...discoveryFormSharedProps}
+										layout="sheet"
+										idPrefix="onb-mobile"
+										onSubmit={submitOnboardingDiscovery}
+									/>
+								</div>
 							</div>
 						</>
 					)}
 				</div>
 
-				{/* —— Desktop: 原有双栏 —— */}
-				<section className="hidden w-full flex-col justify-center bg-[#eef1f3] p-5 md:flex md:w-[40%] md:p-10 lg:p-12">
+				{/* —— Desktop: left splash (Beamio OS) —— */}
+				<section className="hidden w-full flex-col justify-center bg-[#f5f7f9] p-5 md:flex md:w-[40%] md:p-10 lg:p-12">
 					<div className="mx-auto w-full max-w-md md:mx-0">
-						<div className="mb-6 flex items-center gap-0 md:mb-8">
-							<IpfsImg src={BIZ_PUBLIC_LOGO512} alt="" className="h-9 w-9 shrink-0 rounded-lg object-contain" />
-							<div className="text-2xl font-black tracking-tighter text-[#1562f0]" style={headlineFont}>
-								{tu('onb_beamio_business')}
+						<div className="mb-8 flex items-center gap-3">
+							<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#1562f0] shadow-md shadow-[#1562f0]/25">
+								<Smartphone className="h-5 w-5 text-white" strokeWidth={2.25} aria-hidden />
+							</div>
+							<div className="text-2xl font-extrabold tracking-tighter text-[#1562f0]" style={headlineFont}>
+								{tu('onb_beamio_business_lite')}
 							</div>
 						</div>
-						<h1
-							className="mb-4 text-3xl font-extrabold leading-[1.1] tracking-tight text-[#2c2f31] md:text-4xl lg:text-5xl"
+						<span
+							className="mb-3 block text-[11px] font-bold uppercase tracking-[0.15em] text-[#1562f0]"
 							style={headlineFont}
 						>
-							{tu('onb_desktop_hero_prefix')}
-							<span className="text-[#1562f0]">{tu('onb_desktop_hero_accent')}</span>
-							{tu('onb_desktop_hero_suffix')}
+							{tu('onb_lite_eyebrow')}
+						</span>
+						<h1
+							className="mb-4 text-3xl font-extrabold leading-[1.15] tracking-tight text-[#2c2f31] md:text-4xl lg:text-[2.75rem]"
+							style={headlineFont}
+						>
+							{tu('onb_lite_hero_prefix')}{' '}
+							<span className="text-[#1562f0]">
+								{tu('onb_lite_hero_accent')}
+								{tu('onb_lite_hero_suffix')}
+							</span>
 						</h1>
-						<p className="mb-6 text-base leading-relaxed text-[#595c5e] md:mb-8 md:text-lg">
-							{tu('onb_desktop_hero_sub')}
+						<p className="mb-10 text-base font-medium leading-relaxed text-[#595c5e] md:text-lg">
+							{tu('onb_lite_hero_sub')}
 						</p>
-						<div className="space-y-4">
-							<div className="rounded-2xl bg-white p-4 shadow-sm transition-transform hover:-translate-y-0.5 md:p-5">
-								<div className="flex items-start gap-4">
-									<div className="rounded-full bg-[#7a9dff]/20 p-2">
-										<LayoutDashboard className="h-6 w-6 text-[#1562f0]" strokeWidth={2} aria-hidden />
-									</div>
-									<div>
-										<h3 className="mb-1 font-bold text-[#2c2f31]">{tu('onb_business_control_title')}</h3>
-										<p className="text-sm leading-relaxed text-[#595c5e]">
-											{tu('onb_business_control_desc_desktop')}
-										</p>
-									</div>
-								</div>
+						<div className="relative">
+							<div className="relative aspect-[16/10] overflow-hidden rounded-2xl bg-[#050b1d]">
+								<div
+									className="absolute inset-0 opacity-90"
+									aria-hidden
+									style={{
+										backgroundImage: [
+											'radial-gradient(ellipse 80% 60% at 50% 55%, rgba(34,211,238,0.22) 0%, transparent 55%)',
+											'radial-gradient(circle at 22% 38%, rgba(251,146,60,0.55) 0 2px, transparent 3px)',
+											'radial-gradient(circle at 48% 28%, rgba(34,211,238,0.7) 0 2.5px, transparent 3.5px)',
+											'radial-gradient(circle at 72% 42%, rgba(251,146,60,0.5) 0 2px, transparent 3px)',
+											'radial-gradient(circle at 35% 62%, rgba(34,211,238,0.55) 0 2px, transparent 3px)',
+											'radial-gradient(circle at 62% 68%, rgba(251,146,60,0.45) 0 1.5px, transparent 2.5px)',
+											'radial-gradient(circle at 80% 58%, rgba(34,211,238,0.45) 0 2px, transparent 3px)',
+											'linear-gradient(135deg, rgba(21,98,240,0.12) 0%, transparent 40%, rgba(141,58,139,0.1) 100%)',
+										].join(', '),
+										backgroundColor: '#071126',
+									}}
+								/>
+								<svg className="absolute inset-0 h-full w-full opacity-70" viewBox="0 0 400 250" fill="none" aria-hidden>
+									<path d="M88 95 L192 70 L288 105 L248 170 L140 155 Z" stroke="rgba(34,211,238,0.35)" strokeWidth="1.2" />
+									<path d="M192 70 L248 170" stroke="rgba(251,146,60,0.35)" strokeWidth="1" />
+									<path d="M88 95 L140 155 L288 105" stroke="rgba(34,211,238,0.25)" strokeWidth="1" />
+									<circle cx="88" cy="95" r="3.5" fill="#f97316" />
+									<circle cx="192" cy="70" r="4" fill="#22d3ee" />
+									<circle cx="288" cy="105" r="3.5" fill="#f97316" />
+									<circle cx="248" cy="170" r="3" fill="#22d3ee" />
+									<circle cx="140" cy="155" r="3" fill="#22d3ee" />
+									<circle cx="320" cy="145" r="2.5" fill="#22d3ee" opacity="0.8" />
+									<path d="M288 105 L320 145" stroke="rgba(34,211,238,0.3)" strokeWidth="1" />
+								</svg>
 							</div>
-							<div className="rounded-2xl bg-white p-4 shadow-sm transition-transform hover:-translate-y-0.5 md:p-5">
-								<div className="flex items-start gap-4">
-									<div className="rounded-full bg-[#7a9dff]/20 p-2">
-										<Fingerprint className="h-6 w-6 text-[#1562f0]" strokeWidth={2} aria-hidden />
-									</div>
-									<div>
-										<h3 className="mb-1 font-bold text-[#2c2f31]">{tu('onb_brand_identity_title')}</h3>
-										<p className="text-sm leading-relaxed text-[#595c5e]">
-											{tu('onb_brand_identity_desc_desktop')}
-										</p>
-									</div>
-								</div>
+							<div className="absolute bottom-3 right-3 max-w-[200px] rounded-xl bg-white/95 px-3.5 py-3 shadow-[0_8px_24px_rgba(15,23,42,0.16)] backdrop-blur-sm">
+								<p className="mb-1 text-[10px] font-bold uppercase tracking-[0.18em] text-[#1562f0]">{tu('onb_lite_secure_eyebrow')}</p>
+								<p className="text-[11px] font-medium leading-snug text-[#595c5e]">{tu('onb_lite_secure_body')}</p>
 							</div>
 						</div>
+						<p className="mt-10 text-center text-[10px] font-bold uppercase tracking-[0.2em] text-[#abadaf] md:text-left">
+							{tu('onb_lite_footer')}
+						</p>
 					</div>
 				</section>
 
@@ -859,111 +705,12 @@ export default function BeamioOnboardingModal({
 							</button>
 						</div>
 
-						<header className="mb-6 md:mb-8">
-							<h2 className="mb-2 text-2xl font-bold text-[#2c2f31] md:text-[1.75rem]" style={headlineFont}>
-								{tu('onb_select_business_type')}
-							</h2>
-							<p className="leading-relaxed text-[#595c5e]">
-								{tu('onb_select_business_type_sub')}
-							</p>
-						</header>
-
-						<div className="space-y-4">
-							{coverBusinessTypeChoices.map(({ id, title, desc, Icon }) => (
-								<label
-									key={id}
-									className={`
-										group relative flex cursor-pointer items-center rounded-2xl border-2 border-transparent bg-[#eef1f3] p-4 md:p-5
-										transition-all hover:bg-[#e5e9eb] hover:shadow-md
-										${coverBusinessType === id ? "border-[#1562f0] bg-[#7a9dff]/5" : ""}
-									`}
-								>
-									<input
-										type="radio"
-										name="cover_business_type"
-										className="peer sr-only"
-										checked={coverBusinessType === id}
-										onChange={() => setCoverBusinessType(id)}
-									/>
-									<div
-										className={`
-											flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white text-[#595c5e] transition-colors
-											group-hover:text-[#1562f0] ${coverBusinessType === id ? "text-[#1562f0]" : ""}
-										`}
-									>
-										<Icon className="h-6 w-6" strokeWidth={2} aria-hidden />
-									</div>
-									<div className="ml-6 min-w-0 flex-grow">
-										<div className="flex items-center justify-between gap-3">
-											<span
-												className={`block font-bold transition-colors ${
-													coverBusinessType === id ? "text-[#1562f0]" : "text-[#2c2f31] group-hover:text-[#1562f0]"
-												}`}
-											>
-												{title}
-											</span>
-											<div
-												className={`
-													flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-[#abadaf] transition-colors
-													${coverBusinessType === id ? "border-[#1562f0] bg-[#1562f0]" : ""}
-												`}
-											>
-												{coverBusinessType === id ? <div className="h-2 w-2 rounded-full bg-white" aria-hidden /> : null}
-											</div>
-										</div>
-										<span className="mt-1 block text-sm text-[#595c5e]">{desc}</span>
-									</div>
-								</label>
-							))}
-						</div>
-
-						<div className="mt-6 space-y-5 border-t border-[#abadaf]/10 pt-6">
-							<label className="flex cursor-pointer gap-4">
-								<div className="mt-0.5 shrink-0">
-									<input
-										type="checkbox"
-										className={`
-											h-5 w-5 rounded border-[#abadaf] text-[#1562f0] focus:ring-[#1562f0]
-											${bizBrandFocusRingClass}
-										`}
-										checked={coverTermsAccepted}
-										onChange={(e) => setCoverTermsAccepted(e.target.checked)}
-									/>
-								</div>
-								<p className="text-[11px] font-semibold uppercase leading-relaxed tracking-wider text-[#595c5e]">
-									{tu('onb_terms_prefix')}
-									<button
-										type="button"
-										className="text-[#1562f0] underline-offset-2 hover:underline"
-										onClick={openOnboardingLegalDoc('privacy')}
-									>
-										{tu('onb_terms_privacy_link')}
-									</button>
-									{tu('onb_terms_and')}
-									<button
-										type="button"
-										className="text-[#1562f0] underline-offset-2 hover:underline"
-										onClick={openOnboardingLegalDoc('terms')}
-									>
-										{tu('onb_terms_link')}
-									</button>
-									{tu('onb_terms_suffix')}
-								</p>
-							</label>
-
-							<button
-								type="button"
-								disabled={!coverTermsAccepted}
-								className={`
-									flex w-full items-center justify-center gap-2 rounded-full bg-[#1562f0] px-6 py-4 text-sm font-bold text-white md:text-base
-									shadow-[0_20px_40px_rgba(21,98,240,0.15)] transition-all hover:shadow-[0_20px_40px_rgba(21,98,240,0.25)] active:scale-[0.98]
-									disabled:pointer-events-none disabled:opacity-40
-									${bizBrandFocusRingClass}
-								`}
-								onClick={() => onboardingCoverContinue(false)}
-							>{tu('continue')}<ArrowRight className="h-5 w-5 shrink-0" strokeWidth={2.25} aria-hidden />
-							</button>
-						</div>
+						<OnboardingBusinessDiscoveryForm
+							{...discoveryFormSharedProps}
+							layout="embedded"
+							idPrefix="onb-desktop"
+							onSubmit={submitOnboardingDiscovery}
+						/>
 					</div>
 				</section>
 			</main>
@@ -1055,6 +802,7 @@ export default function BeamioOnboardingModal({
 							country: detailCountry,
 							city: detailCity,
 							province: detailProvince,
+							channelKind: detailChannelKind || undefined,
 						}}
 						isRedeemFlow={!!redeemFromUrl}
 						showIntroHeader={false}

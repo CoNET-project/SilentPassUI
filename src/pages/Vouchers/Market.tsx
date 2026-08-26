@@ -3824,12 +3824,12 @@ function DiscoverMerchantDetailFullScreen({
 	const merchantLikeCount = pickDiscoverMerchantLikeCount(discoverMerchantStatByCard, item.cardAddress)
 	const merchantShareClickCount = pickDiscoverMerchantRefClickCount(discoverMerchantStatByCard, item.cardAddress)
 	const [merchantAssets, setMerchantAssets] = useState<Awaited<ReturnType<typeof getMyAssets>> | null>(() =>
-		hydrateDiscoverMerchantCardAssets(profiles?.[0] as Parameters<typeof getMyAssets>[0] | undefined, item.cardAddress, myBrandCardDetails),
+		hydrateDiscoverMerchantCardAssets(profiles?.[0] as Parameters<typeof getMyAssets>[0] | undefined, item.cardAddress ?? undefined, myBrandCardDetails),
 	)
 	const [merchantAssetsLoading, setMerchantAssetsLoading] = useState(
 		() =>
 			Boolean(profiles?.[0]?.keyID && item.cardAddress) &&
-			hydrateDiscoverMerchantCardAssets(profiles?.[0] as Parameters<typeof getMyAssets>[0] | undefined, item.cardAddress, myBrandCardDetails) == null,
+			hydrateDiscoverMerchantCardAssets(profiles?.[0] as Parameters<typeof getMyAssets>[0] | undefined, item.cardAddress ?? undefined, myBrandCardDetails) == null,
 	)
 	const [cardTopupSuccessBalance, setCardTopupSuccessBalance] = useState<string | null>(null)
 	// Pre-top-up card points (6-dec) captured before the mint, so success only shows the increased balance.
@@ -5315,7 +5315,7 @@ function DiscoverMerchantDetailFullScreen({
 			setMerchantAssetsLoading(false)
 			return
 		}
-		const seeded = hydrateDiscoverMerchantCardAssets(profile, item.cardAddress, myBrandCardDetails)
+		const seeded = hydrateDiscoverMerchantCardAssets(profile, item.cardAddress ?? undefined, myBrandCardDetails)
 		if (seeded) setMerchantAssets(seeded)
 		let cancelled = false
 		if (!seeded) setMerchantAssetsLoading(true)

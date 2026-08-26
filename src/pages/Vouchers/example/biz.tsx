@@ -1439,6 +1439,12 @@ type MarketFuelPackage = {
   firstTimeOnly?: boolean
   highlighted?: boolean
   badge?: string
+  /** Short line under the pack name (cover merchandising). */
+  tagline?: string
+  /** Dark gold Genesis Partner treatment. */
+  theme?: 'standard' | 'partner' | 'muted'
+  /** Only the Lite fuel cover — not Market refill grids. */
+  coverOnly?: boolean
 }
 
 /** Global SaaS Hashrate Prepayment Matrix (USDC). Dual-pool fields are checkout-only. */
@@ -1454,7 +1460,7 @@ const MARKET_FUEL_PACKAGES: MarketFuelPackage[] = [
     bonusBps: 3333,
     usdcAmount: '15',
     firstTimeOnly: true,
-    badge: 'First-time only',
+    tagline: 'Ultimate Ice-Breaker',
   },
   {
     id: 'testing_waters',
@@ -1477,8 +1483,6 @@ const MARKET_FUEL_PACKAGES: MarketFuelPackage[] = [
     freeBUnits: 1990,
     bonusBps: 1000,
     usdcAmount: '199',
-    highlighted: true,
-    badge: 'Best Value',
   },
   {
     id: 'enterprise',
@@ -1490,6 +1494,21 @@ const MARKET_FUEL_PACKAGES: MarketFuelPackage[] = [
     freeBUnits: 14985,
     bonusBps: 1500,
     usdcAmount: '999',
+    badge: 'BEST VALUE',
+  },
+  {
+    id: 'genesis_partner',
+    name: 'Genesis Partner Pack',
+    desc: 'Lock in 3+ years of clearing fuel. Stop paying SaaS fees. Start earning.',
+    priceUsdc: 4000,
+    bUnits: 500000,
+    paidBUnits: 400000,
+    freeBUnits: 100000,
+    bonusBps: 2500,
+    usdcAmount: '4000',
+    theme: 'partner',
+    coverOnly: true,
+    tagline: 'Lock in 3+ years of clearing fuel. Stop paying SaaS fees. Start earning.',
   },
   {
     id: 'institutional',
@@ -1501,6 +1520,7 @@ const MARKET_FUEL_PACKAGES: MarketFuelPackage[] = [
     freeBUnits: 99980,
     bonusBps: 2000,
     usdcAmount: '4999',
+    theme: 'muted',
   },
 ]
 
@@ -1537,15 +1557,23 @@ function markGenesisFuelPackPurchased(eoa: string | null | undefined): void {
  */
 function visibleMarketFuelPackages(
   eoa: string | null | undefined,
-  opts?: { hasMerchantCardOrCreateNft?: boolean },
+  opts?: { hasMerchantCardOrCreateNft?: boolean; includeCoverOnly?: boolean },
 ): MarketFuelPackage[] {
   const hideGenesis =
     hasPurchasedGenesisFuelPack(eoa) || Boolean(opts?.hasMerchantCardOrCreateNft)
-  return MARKET_FUEL_PACKAGES.filter((pkg) => !(pkg.firstTimeOnly && hideGenesis))
+  return MARKET_FUEL_PACKAGES.filter((pkg) => {
+    if (pkg.coverOnly && !opts?.includeCoverOnly) return false
+    if (pkg.firstTimeOnly && hideGenesis) return false
+    return true
+  })
 }
 
 function formatMarketFuelBUnits(pkg: MarketFuelPackage): string {
   return `${pkg.bUnits.toLocaleString('en-US')} B-Units`
+}
+
+function formatMarketFuelBUnitsTotal(pkg: MarketFuelPackage): string {
+  return `${pkg.bUnits.toLocaleString('en-US')} B-Units Total`
 }
 
 function formatMarketFuelPriceUsdc(pkg: MarketFuelPackage): string {
@@ -1556,6 +1584,27 @@ function formatMarketFuelOrdersHint(pkg: MarketFuelPackage): string {
   const orders = Math.floor(pkg.bUnits / 2)
   return `Supports ~${orders.toLocaleString('en-US')} orders`
 }
+
+/** Charge = 5 B-Units; social = 0.1 B-Units. Truncate (do not round up). */
+function formatMarketFuelUsageHint(pkg: MarketFuelPackage): string | null {
+  if (pkg.id !== 'growth' && pkg.id !== 'enterprise') return null
+  const txs = Math.floor(pkg.bUnits / 5 / 100) * 100
+  const social = pkg.bUnits / 0.1
+  const socialLabel =
+    social >= 1_000_000
+      ? `${(Math.floor(social / 10_000) / 100).toFixed(2)}M+`
+      : `${Math.floor(social / 1000).toLocaleString('en-US')}K+`
+  return `≈ ${txs.toLocaleString('en-US')}+ clearing txs or ${socialLabel} social actions`
+}
+
+/** Cover fee drawer only — do not change Understanding B-Units (`MARKET_BUNIT_FEE_SCHEDULE_ROWS`). */
+const COVER_BUNIT_FEE_SCHEDULE_ROWS: ReadonlyArray<{ label: string; bUnits: string }> = [
+  { label: 'Social action', bUnits: '0.1 B-Units' },
+  { label: 'Coupon redeem-code issuance', bUnits: '10 B-Units' },
+  { label: 'Charge / points redeem / coupon claim', bUnits: '5 B-Units' },
+  { label: 'Stored-value / membership top-up (Minting)', bUnits: '20 B-Units' },
+  { label: 'USDC direct settlement', bUnits: '25 B-Units' },
+]
 
 function extractMarketVoucherRedeemCodeFromScan(raw: string): string {
   const text = raw.trim()
@@ -1850,22 +1899,63 @@ function MarketBUnitFeeScheduleOverlay(props: { open: boolean; onClose: () => vo
             <ChevronLeft className="h-[17px] w-[17px] stroke-[2.5]" aria-hidden />
           </button>
           <p className="pointer-events-none absolute inset-x-12 truncate text-center text-sm font-semibold text-[#2c2f31]">
-            B-Unit Fee Schedule
+            What are B-Units?
           </p>
           <span className="h-9 w-9 shrink-0" aria-hidden />
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-8">
-          <p className="mb-4 text-sm leading-relaxed text-[#424655]">
-            Network fees paid in B-Units (1 B-Unit = 0.01 USDC).
-          </p>
-          <ul className="divide-y divide-[#c3c6d8]/30 overflow-hidden rounded-xl border border-[#c3c6d8]/40 bg-white">
-            {MARKET_BUNIT_FEE_SCHEDULE_ROWS.map((row) => (
-              <li key={row.label} className="flex items-start justify-between gap-4 px-4 py-3">
-                <span className="text-sm text-[#424655]">{row.label}</span>
-                <span className="shrink-0 text-right text-sm font-bold text-[#1a1b1f]">{row.bUnits}</span>
+          <div className="mb-4 flex justify-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#004bc3]/10 text-[#004bc3]">
+              <Zap className="h-8 w-8" strokeWidth={1.75} aria-hidden />
+            </div>
+          </div>
+          <div className="mb-6 text-center">
+            <h2 className="mb-2 font-manrope text-[22px] font-semibold leading-7 tracking-[-0.01em] text-[#1a1b1f]">
+              What are B-Units?
+            </h2>
+            <p className="px-4 text-[15px] leading-5 text-[#424655]">
+              B-Units serve as microscopic fuel for the Beamio network. By using these internal units to process
+              transactions and upgrades, your business can scale with near-zero merchant overhead.
+            </p>
+          </div>
+          <div className="mb-8 rounded-xl border border-[#c3c6d8]/20 bg-[#f4f3f8] p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex-1 text-center">
+                <div className="font-manrope text-[34px] font-bold leading-[41px] tracking-[-0.02em] text-[#004bc3]">
+                  100
+                </div>
+                <div className="text-[12px] font-semibold uppercase tracking-[0.05em] text-[#5d5e63]">B-UNITS</div>
+              </div>
+              <RefreshCw className="h-6 w-6 shrink-0 text-[#c3c6d8]" strokeWidth={2} aria-hidden />
+              <div className="flex-1 text-center">
+                <div className="font-manrope text-[34px] font-bold leading-[41px] tracking-[-0.02em] text-[#1a1b1f]">
+                  1.00
+                </div>
+                <div className="text-[12px] font-semibold uppercase tracking-[0.05em] text-[#5d5e63]">USDC</div>
+              </div>
+            </div>
+          </div>
+          <h3 className="mb-4 font-manrope text-[18px] font-semibold text-[#1a1b1f]">B-Unit Fee Schedule</h3>
+          <ul className="mb-8">
+            {COVER_BUNIT_FEE_SCHEDULE_ROWS.map((row, index) => (
+              <li
+                key={row.label}
+                className={`flex items-center justify-between gap-4 py-3 ${
+                  index < COVER_BUNIT_FEE_SCHEDULE_ROWS.length - 1 ? 'border-b border-[#c3c6d8]/10' : ''
+                }`}
+              >
+                <span className="text-[15px] leading-5 text-[#424655]">{row.label}</span>
+                <span className="shrink-0 text-right text-[15px] font-bold text-[#1a1b1f]">{row.bUnits}</span>
               </li>
             ))}
           </ul>
+          <button
+            type="button"
+            onClick={close}
+            className="w-full rounded-lg bg-[#004bc3] py-4 text-[17px] font-semibold text-white shadow-sm transition-transform active:scale-95"
+          >
+            Got it
+          </button>
         </div>
       </div>
     </div>
@@ -2925,6 +3015,124 @@ function translateBizCategoryOption(
   return key ? translate(key) : fallback;
 }
 
+function LiteFuelCoverPackCard(props: {
+  pkg: MarketFuelPackage
+  selecting: boolean
+  disabled: boolean
+  onSelect: () => void
+}) {
+  const { pkg, selecting, disabled, onSelect } = props
+  const usageHint = formatMarketFuelUsageHint(pkg)
+  const selectLabel = `Select ${pkg.name}`
+  const busy = selecting || disabled
+
+  if (pkg.theme === 'partner') {
+    return (
+      <div className="rounded-xl border border-gray-800 bg-gradient-to-br from-gray-900 to-black p-6 shadow-[0px_10px_30px_rgba(0,0,0,0.5)]">
+        <div className="mb-2 flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <h3 className="flex items-center gap-2 font-manrope text-[22px] font-semibold leading-7 tracking-[-0.01em] text-white">
+              <Star className="h-5 w-5 shrink-0 fill-yellow-500 text-yellow-500" aria-hidden />
+              <span>Genesis Partner Pack</span>
+              <Crown className="h-5 w-5 shrink-0 text-yellow-500" aria-hidden />
+            </h3>
+            <p className="mt-2 max-w-[80%] text-[15px] leading-5 text-gray-400">
+              Lock in 3+ years of clearing fuel. Stop paying SaaS fees. Start earning.
+            </p>
+          </div>
+          <div className="shrink-0 text-right">
+            <div className="font-manrope text-[34px] font-bold leading-[41px] tracking-[-0.02em] text-yellow-500">
+              {formatMarketFuelPriceUsdc(pkg)}
+            </div>
+            <div className="text-[12px] font-semibold uppercase tracking-[0.05em] text-gray-500">USDC</div>
+          </div>
+        </div>
+        <div className="mb-6 mt-4 space-y-3">
+          <div className="flex items-center gap-2 text-[15px] font-bold text-yellow-500">
+            <AlertTriangle className="h-[18px] w-[18px] shrink-0" strokeWidth={2.25} aria-hidden />
+            <span>Limited to 3,000 benchmark merchants globally.</span>
+          </div>
+          <div className="flex items-center gap-2 text-[15px] text-gray-300">
+            <CheckCircle2 className="h-[18px] w-[18px] shrink-0 text-yellow-500" strokeWidth={2.25} aria-hidden />
+            <span>Includes 1 CoNET Genesis Node to earn lifetime USDC dividends.</span>
+          </div>
+          <div className="flex items-center gap-2 text-[15px] text-gray-300">
+            <CheckCircle2 className="h-[18px] w-[18px] shrink-0 text-yellow-500" strokeWidth={2.25} aria-hidden />
+            <span>Bonus: 500 premium NFC DNA physical cards for your VIPs.</span>
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <span className="rounded-full bg-gray-800 px-2 py-1 text-[12px] font-semibold uppercase tracking-[0.05em] text-gray-300">
+              {formatMarketFuelBUnitsTotal(pkg)}
+            </span>
+          </div>
+        </div>
+        <button
+          type="button"
+          disabled={busy}
+          aria-busy={selecting}
+          aria-label={selectLabel}
+          onClick={onSelect}
+          className={`flex w-full items-center justify-center rounded-lg bg-gradient-to-r from-yellow-600 to-yellow-500 py-4 text-[17px] font-semibold text-black transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
+        >
+          {selecting ? <Loader2 className="h-5 w-5 animate-spin" aria-hidden /> : selectLabel}
+        </button>
+      </div>
+    )
+  }
+
+  const cardClass = pkg.firstTimeOnly
+    ? 'relative overflow-hidden rounded-xl border-2 border-[#004bc3] bg-white p-6 shadow-[0px_4px_12px_rgba(0,75,195,0.08)]'
+    : pkg.theme === 'muted'
+      ? 'relative overflow-hidden rounded-xl border border-[#c3c6d8]/20 bg-[#f4f3f8] p-6 shadow-sm'
+      : 'relative overflow-hidden rounded-xl border border-[#c3c6d8]/30 bg-white p-6 shadow-sm'
+
+  return (
+    <div className={cardClass}>
+      {pkg.badge ? (
+        <div className="absolute right-0 top-0 rounded-bl-lg bg-[#004bc3] px-4 py-1 text-[12px] font-semibold uppercase tracking-[0.05em] text-white">
+          {pkg.badge}
+        </div>
+      ) : null}
+      <div className={`mb-2 flex items-start justify-between gap-4 ${pkg.badge ? 'mt-4' : ''}`}>
+        <div className="min-w-0">
+          <h3 className="font-manrope text-[22px] font-semibold leading-7 tracking-[-0.01em] text-[#1a1b1f]">
+            {pkg.name}
+          </h3>
+          {pkg.tagline ? (
+            <p className="mt-1 text-[15px] leading-5 text-[#004bc3]">{pkg.tagline}</p>
+          ) : null}
+        </div>
+        <div className="shrink-0 text-right">
+          <div className="font-manrope text-[34px] font-bold leading-[41px] tracking-[-0.02em] text-[#1a1b1f]">
+            {formatMarketFuelPriceUsdc(pkg)}
+          </div>
+          <div className="text-[12px] font-semibold uppercase tracking-[0.05em] text-[#737687]">USDC</div>
+        </div>
+      </div>
+      <div className="mb-6 flex flex-wrap gap-2">
+        <span className="rounded-full bg-[#e3e2e7] px-2 py-1 text-[12px] font-semibold uppercase tracking-[0.05em] text-[#424655]">
+          {formatMarketFuelBUnitsTotal(pkg)}
+        </span>
+        {usageHint ? (
+          <span className="mt-2 block w-full text-[11px] font-semibold uppercase tracking-[0.05em] text-gray-500">
+            {usageHint}
+          </span>
+        ) : null}
+      </div>
+      <button
+        type="button"
+        disabled={busy}
+        aria-busy={selecting}
+        aria-label={selectLabel}
+        onClick={onSelect}
+        className={`flex w-full items-center justify-center rounded-lg bg-[#004bc3] py-4 text-[17px] font-semibold text-white shadow-[0px_4px_10px_rgba(0,75,195,0.2)] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
+      >
+        {selecting ? <Loader2 className="h-5 w-5 animate-spin" aria-hidden /> : selectLabel}
+      </button>
+    </div>
+  )
+}
+
 /**
  * Mobile-only day-0 shell when the merchant profile has no AA yet — matches
  * `marketExample.html` (narrative + business fields + Programs CTA).
@@ -2938,6 +3146,8 @@ function MobileNoAaLiteMemberSelectionPage(props: {
   onLiteBusinessSavedToChain: () => void;
   /** Cover pack CTA → custom fuel USDC checkout (`MARKET_FUEL_PACKAGES.usdcAmount`). */
   onSelectFuelPack: (usdcAmount: string) => void;
+  /** True while custom-fuel checkout is the selected product. */
+  fuelSelectBusy?: boolean;
   /** Opens the full-screen Understanding B-Units explainer (same as Programs “Learn about B-Units”). */
   onOpenUnderstandingBUnits?: () => void;
   redeemAdminInProgress?: boolean;
@@ -2956,6 +3166,7 @@ function MobileNoAaLiteMemberSelectionPage(props: {
     onBack,
     onLiteBusinessSavedToChain,
     onSelectFuelPack,
+    fuelSelectBusy = false,
     onOpenUnderstandingBUnits,
     redeemAdminInProgress,
     voucherRedeemInput,
@@ -2967,6 +3178,7 @@ function MobileNoAaLiteMemberSelectionPage(props: {
   const [pushBusy, setPushBusy] = useState(false);
   const [pushError, setPushError] = useState('');
   const [showCover, setShowCover] = useState(true);
+  const [pendingPackId, setPendingPackId] = useState<string | null>(null);
   const [feeScheduleOpen, setFeeScheduleOpen] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [storeName, setStoreName] = useState('');
@@ -2998,6 +3210,10 @@ function MobileNoAaLiteMemberSelectionPage(props: {
   useEffect(() => {
     setShowCover(true);
   }, [merchantEoa]);
+
+  useEffect(() => {
+    if (!fuelSelectBusy) setPendingPackId(null);
+  }, [fuelSelectBusy]);
 
   const persist = useCallback(
     (patch: Partial<VerraBusinessProfileDraft>) => {
@@ -3058,51 +3274,53 @@ function MobileNoAaLiteMemberSelectionPage(props: {
   };
 
   if (showCover) {
+    const coverPacks = visibleMarketFuelPackages(merchantEoa, { includeCoverOnly: true })
+    const packSelectBusy = Boolean(pendingPackId) || fuelSelectBusy
     return (
-      <div className="relative min-h-[max(884px,100dvh)] bg-gradient-to-b from-[#eef4ff] to-[#f5f7f9] text-[#2c2f31] antialiased">
-        <header className="fixed top-0 z-30 flex w-full items-center justify-between bg-white/90 px-6 py-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)] backdrop-blur-xl">
-          <div className="flex min-w-0 items-center gap-2">
+      <div className="relative min-h-[max(884px,100dvh)] bg-[#F2F2F7] text-[#1a1b1f] antialiased">
+        <header className="fixed top-0 z-30 flex h-14 w-full items-center justify-between border-b border-[#dfdfe4]/30 bg-[#faf9fe]/80 px-5 backdrop-blur-xl">
+          <div className="flex min-w-0 items-center gap-4 text-[#004bc3]">
             <button
               type="button"
               onClick={onBack}
-              className={`flex shrink-0 items-center justify-center rounded-full p-1 text-[#004bc3] transition-opacity hover:opacity-80 ${bizFocusRingClass}`}
+              className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#004bc3] transition-colors hover:bg-[#e3e2e7] ${bizFocusRingClass}`}
               aria-label="Back to home"
             >
               <ArrowLeft className="size-5" strokeWidth={2.2} aria-hidden />
             </button>
-            <h1 className="truncate font-manrope text-lg font-bold tracking-tight text-[#004bc3]">
-              Beamio Business Lite
+            <h1 className="truncate font-manrope text-[22px] font-semibold leading-7 tracking-[-0.01em] text-[#004bc3]">
+              Beamio OS
             </h1>
           </div>
           <button
             type="button"
             onClick={() => onOpenUnderstandingBUnits?.()}
-            className={`flex shrink-0 items-center justify-center rounded-full p-1 text-[#004bc3] transition-opacity hover:opacity-80 ${bizFocusRingClass}`}
+            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#424655] transition-colors hover:bg-[#e3e2e7] ${bizFocusRingClass}`}
             aria-label="Learn about B-Units"
           >
             <HelpCircle className="size-5" strokeWidth={2} aria-hidden />
           </button>
         </header>
 
-        <main className="min-h-screen px-5 pb-32 pt-24 sm:px-6">
-          <section className="mb-8 space-y-4">
+        <main className="mx-auto min-h-screen max-w-3xl space-y-8 px-5 pb-32 pt-20">
+          <section className="space-y-4">
             <h2 className="font-manrope text-[28px] font-bold leading-[34px] tracking-[-0.02em] text-[#1a1b1f] sm:text-[34px] sm:leading-[41px]">
               Fuel Your Omnichannel Network
             </h2>
-            <p className="text-[17px] font-medium leading-[22px] tracking-[-0.01em] text-[#424655]">
+            <p className="text-[17px] leading-[22px] tracking-[-0.01em] text-[#424655]">
               Select a SaaS fuel package to power your digital transactions, or enter a BD redeem code.
             </p>
             <button
               type="button"
               onClick={() => setFeeScheduleOpen(true)}
-              className={`inline-flex items-center rounded-full bg-[#1562f0]/15 px-3 py-1 text-[12px] font-semibold uppercase tracking-[0.05em] text-[#004bc3] transition-colors hover:bg-[#1562f0]/20 ${bizFocusRingClass}`}
+              className={`inline-flex items-center rounded-full bg-[#1562f0]/20 px-3 py-1 text-[12px] font-semibold uppercase tracking-[0.05em] text-[#004bc3] transition-colors hover:bg-[#004bc3]/10 ${bizFocusRingClass}`}
             >
               <Info className="mr-1 h-4 w-4" strokeWidth={2} aria-hidden />
-              100 B-Units = 1.00 USDC
+              100 B-Units = 1.00 USDC ›
             </button>
           </section>
 
-          <div className="flex flex-col gap-4">
+          <div className="space-y-4">
             <MarketHaveAVoucherPanel
               variant="stacked"
               redeemInput={voucherRedeemInput}
@@ -3111,78 +3329,26 @@ function MobileNoAaLiteMemberSelectionPage(props: {
               busy={voucherRedeemBusy}
               feedback={voucherRedeemFeedback}
             />
-            {visibleMarketFuelPackages(merchantEoa).map((pkg) => (
-              <div
+            {coverPacks.map((pkg) => (
+              <LiteFuelCoverPackCard
                 key={pkg.id}
-                className={
-                  pkg.firstTimeOnly
-                    ? 'relative overflow-hidden rounded-3xl border-2 border-[#004bc3] bg-white p-6 shadow-[0_8px_24px_rgba(0,75,195,0.08)]'
-                    : pkg.highlighted
-                      ? 'relative overflow-hidden rounded-3xl border border-white bg-white p-6 shadow-[0_10px_30px_rgba(21,98,240,0.10)]'
-                      : 'relative overflow-hidden rounded-3xl border border-white bg-white p-6 shadow-[0_8px_24px_rgba(15,23,42,0.06)]'
-                }
-              >
-                {pkg.badge ? (
-                  <div className="absolute right-0 top-0">
-                    <div className="rounded-bl-lg bg-[#004bc3] px-4 py-1 text-[12px] font-semibold uppercase tracking-[0.05em] text-white">
-                      {pkg.badge}
-                    </div>
-                  </div>
-                ) : null}
-                <div className={`mb-3 flex items-start justify-between gap-4 ${pkg.badge ? 'mt-5' : ''}`}>
-                  <h3 className="min-w-0 font-manrope text-[22px] font-semibold leading-7 tracking-[-0.01em] text-[#004bc3]">
-                    {pkg.name}
-                  </h3>
-                  <div className="shrink-0 text-right">
-                    <div className="font-manrope text-[34px] font-bold leading-[41px] tracking-[-0.02em] text-[#1a1b1f]">
-                      {formatMarketFuelPriceUsdc(pkg)}
-                    </div>
-                    <div className="text-[12px] font-semibold uppercase tracking-[0.05em] text-[#737687]">USDC</div>
-                  </div>
-                </div>
-                <div className="mb-6 flex items-start justify-between gap-4">
-                  <p className="min-w-0 flex-1 text-[15px] leading-5 text-[#1562f0]">{pkg.desc}</p>
-                  <p className="shrink-0 text-right text-[17px] font-bold leading-6 text-[#004bc3]">
-                    {formatMarketFuelBUnits(pkg)}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => onSelectFuelPack(pkg.usdcAmount)}
-                  className={`w-full rounded-xl bg-[#004bc3] py-4 text-[17px] font-semibold text-white shadow-[0px_4px_10px_rgba(0,75,195,0.2)] transition-opacity hover:opacity-90 ${bizFocusRingClass}`}
-                >
-                  Select {pkg.name}
-                </button>
-              </div>
+                pkg={pkg}
+                selecting={pendingPackId === pkg.id}
+                disabled={packSelectBusy && pendingPackId !== pkg.id}
+                onSelect={() => {
+                  if (packSelectBusy) return
+                  setPendingPackId(pkg.id)
+                  onSelectFuelPack(pkg.usdcAmount)
+                }}
+              />
             ))}
           </div>
 
-          <section className="mt-10 rounded-3xl border border-[#c3c6d8]/20 bg-[#e9edff]/70 p-6">
-            <div className="flex flex-col gap-4">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#1562f0]/10 text-[#004bc3]">
-                <Zap className="size-6" strokeWidth={2.2} aria-hidden />
-              </div>
-              <h4 className="font-manrope text-[22px] font-semibold leading-7 text-[#1a1b1f]">What are B-Units?</h4>
-              <p className="text-[15px] leading-5 text-[#424655]">
-                B-Units serve as{' '}
-                <button
-                  type="button"
-                  onClick={() => onOpenUnderstandingBUnits?.()}
-                  className={`inline border-0 bg-transparent p-0 font-semibold text-[#004bc3] underline decoration-transparent underline-offset-2 hover:underline ${bizFocusRingClass}`}
-                >
-                  microscopic fuel
-                </button>{' '}
-                for your Beamio network. By using these internal units to process transactions and upgrades, your business can scale with
-                near-zero merchant overhead.
-              </p>
-            </div>
-          </section>
-
-          <div className="mt-10 pb-8 text-center">
+          <div className="pb-8 pt-4 text-center">
             <button
               type="button"
               onClick={() => setShowCover(false)}
-              className={`text-[15px] font-semibold text-[#004bc3] underline-offset-4 hover:underline ${bizFocusRingClass}`}
+              className={`text-[15px] font-semibold text-[#004bc3] hover:underline ${bizFocusRingClass}`}
             >
               Already purchased? Complete business setup
             </button>
@@ -32294,6 +32460,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                       setCustomFuelAmount(usdcAmount);
                       setSelectedProduct('custom_fuel');
                     }}
+                    fuelSelectBusy={selectedProduct === 'custom_fuel'}
                     onOpenUnderstandingBUnits={() => setIsBUnitsExplainerOpen(true)}
                     redeemAdminInProgress={redeemAdminInProgress}
                     voucherRedeemInput={merchantKitRedeemInput}
@@ -34946,6 +35113,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                       setCustomFuelAmount(usdcAmount);
                       setSelectedProduct('custom_fuel');
                     }}
+                    fuelSelectBusy={selectedProduct === 'custom_fuel'}
                     onOpenUnderstandingBUnits={() => setIsBUnitsExplainerOpen(true)}
                     redeemAdminInProgress={redeemAdminInProgress}
                     voucherRedeemInput={merchantKitRedeemInput}

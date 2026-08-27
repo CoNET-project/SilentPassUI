@@ -29,6 +29,7 @@ import { fiatPrefix } from '@/services/currency'
 import type { UserCardInfo } from '@/services/BeamioCard'
 import { tu } from '@/locale/beamioLocale'
 import { pickCouponOpenClaimStatusFromMap } from '@/utils/couponOpenClaimStatusLocalCache'
+import { isFactoryDefaultMerchantAssetUrl } from '@/utils/isFactoryDefaultMerchantAssetUrl'
 
 export function resolveCardImageUrl(url: string | undefined): string | undefined {
 	if (!url?.trim()) return undefined
@@ -42,8 +43,10 @@ export function resolveMyBrandCardIconUrl(
 	meta: { icon?: string; image?: string } | null | undefined
 ): string | undefined {
 	const icon = resolveCardImageUrl(meta?.icon)
-	if (icon) return icon
-	return resolveCardImageUrl(meta?.image)
+	if (icon && !isFactoryDefaultMerchantAssetUrl(icon)) return icon
+	const image = resolveCardImageUrl(meta?.image)
+	if (image && !isFactoryDefaultMerchantAssetUrl(image)) return image
+	return undefined
 }
 
 function merchantInitialLetter(title: string): string {
@@ -703,7 +706,9 @@ function resolvePrimaryBonusRule(
 
 function resolveTierBackgroundImageUrl(row: MyBrandTierMetaRow | undefined): string | undefined {
 	if (!row) return undefined
-	return resolveCardImageUrl(row.image) ?? resolveCardImageUrl(row.backgroundImage)
+	const url = resolveCardImageUrl(row.image) ?? resolveCardImageUrl(row.backgroundImage)
+	if (url && !isFactoryDefaultMerchantAssetUrl(url)) return url
+	return undefined
 }
 
 function resolveTierBackgroundImageFit(row: MyBrandTierMetaRow | undefined): 'width' | 'height' {

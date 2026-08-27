@@ -18,6 +18,9 @@ import {
 	idbSetMeta,
 	merchantLegacyMigratedMetaKey,
 } from './idbStore'
+import { isGenericMerchantCardDisplayName } from '../../utils/isGenericMerchantCardDisplayName'
+import { pickNonFactoryMerchantAssetUrl } from '../../utils/isFactoryDefaultMerchantAssetUrl'
+import { mergeRicherMerchantCardMeta } from '../../utils/mergeRicherMerchantCardMeta'
 
 type CardMeta = MerchantCardRecord['meta']
 
@@ -47,13 +50,27 @@ function pickString(obj: Record<string, unknown> | null | undefined, keys: strin
 function iconFromRoot(metaJson: Record<string, unknown> | null | undefined): string | undefined {
 	if (!metaJson) return undefined
 	const share = recordFromUnknown(metaJson.shareTokenMetadata)
-	const icon =
-		pickString(metaJson, ['icon', 'iconUrl', 'logoUrl', 'logo']) ||
-		pickString(share, ['icon', 'iconUrl', 'logoUrl', 'logo'])
-	if (icon) return icon
-	return (
-		pickString(metaJson, ['image']) || pickString(share, ['image']) || undefined
+	return pickNonFactoryMerchantAssetUrl(
+		pickString(share, ['icon', 'iconUrl', 'logoUrl', 'logo']),
+		pickString(metaJson, ['icon', 'iconUrl', 'logoUrl', 'logo']),
+		pickString(share, ['image']),
+		pickString(metaJson, ['image']),
 	)
+}
+
+function displayNameFromRoot(metadataRoot: Record<string, unknown>): string {
+	const share = recordFromUnknown(metadataRoot.shareTokenMetadata)
+	const business =
+		pickString(recordFromUnknown(metadataRoot.businessMetadata), ['storeName', 'businessName']) ||
+		pickString(recordFromUnknown(metadataRoot.businessProfile), ['storeName', 'businessName']) ||
+		pickString(share, ['storeName', 'businessName', 'merchantName', 'brandName', 'displayName']) ||
+		pickString(metadataRoot, ['storeName', 'businessName'])
+	if (business && !isGenericMerchantCardDisplayName(business)) return business
+	const shareName = pickString(share, ['name'])
+	if (shareName && !isGenericMerchantCardDisplayName(shareName)) return shareName
+	const top = pickString(metadataRoot, ['name'])
+	if (top && !isGenericMerchantCardDisplayName(top)) return top
+	return ''
 }
 
 function metaFromRoot(
@@ -63,10 +80,15 @@ function metaFromRoot(
 	if (!metadataRoot || typeof metadataRoot !== 'object') return null
 	const share = recordFromUnknown(metadataRoot.shareTokenMetadata)
 	const icon = iconFromRoot(metadataRoot)
+	const name = displayNameFromRoot(metadataRoot)
+	const image = pickNonFactoryMerchantAssetUrl(
+		pickString(share, ['image']),
+		pickString(metadataRoot, ['image']),
+	)
 	return {
-		name: (share?.name ?? metadataRoot.name) as string | undefined,
+		...(name ? { name } : {}),
 		...(icon ? { icon } : {}),
-		image: (share?.image ?? metadataRoot.image) as string | undefined,
+		...(image ? { image } : {}),
 		...(Array.isArray(metadataRoot.tiers) &&
 			metadataRoot.tiers.length > 0 && { tiers: metadataRoot.tiers as CardMeta['tiers'] }),
 		...(cardOwner ? { cardOwner } : {}),
@@ -76,18 +98,10 @@ function metaFromRoot(
 function hasDisplayName(rec: MerchantCardRecord | undefined | null): boolean {
 	if (!rec) return false
 	if (rec.metadataRoot) {
-		const share = recordFromUnknown(rec.metadataRoot.shareTokenMetadata)
-		const business =
-			pickString(recordFromUnknown(rec.metadataRoot.businessMetadata), ['storeName', 'businessName']) ||
-			pickString(recordFromUnknown(rec.metadataRoot.businessProfile), ['storeName', 'businessName']) ||
-			pickString(share, ['storeName', 'businessName', 'merchantName', 'brandName']) ||
-			pickString(rec.metadataRoot, ['storeName', 'businessName'])
-		if (business) return true
-		const n = String(share?.name ?? rec.metadataRoot.name ?? '').trim()
-		if (n) return true
+		if (displayNameFromRoot(rec.metadataRoot)) return true
 	}
 	const name = String(rec.meta?.name ?? '').trim()
-	return Boolean(name)
+	return Boolean(name) && !isGenericMerchantCardDisplayName(name)
 }
 
 export function merchantCardNeedsRemoteRefresh(
@@ -96,7 +110,7 @@ export function merchantCardNeedsRemoteRefresh(
 ): boolean {
 	if (!record) return true
 	if (!record.updatedAt || now - record.updatedAt > MERCHANT_CARD_STALE_MS) return true
-	if (!hasDisplayName(record) && !record.meta?.image && !record.meta?.icon) return true
+	if (!hasDisplayName(record)) return true
 	return false
 }
 
@@ -113,7 +127,7 @@ export function mergeMerchantCardMap(
 		if (prevRec && rec.updatedAt <= prevRec.updatedAt && !rec.metadataRoot && prevRec.metadataRoot) {
 			const merged: MerchantCardRecord = {
 				...prevRec,
-				meta: { ...prevRec.meta, ...rec.meta },
+				meta: mergeRicherMerchantCardMeta(prevRec.meta, rec.meta) ?? rec.meta ?? prevRec.meta,
 				updatedAt: Math.max(prevRec.updatedAt, rec.updatedAt),
 			}
 			next[key] = merged
@@ -122,7 +136,7 @@ export function mergeMerchantCardMap(
 		}
 		const merged: MerchantCardRecord = {
 			addressLower: key,
-			meta: { ...(prevRec?.meta ?? {}), ...rec.meta },
+			meta: mergeRicherMerchantCardMeta(prevRec?.meta, rec.meta) ?? rec.meta ?? prevRec?.meta ?? {},
 			metadataRoot: rec.metadataRoot ?? prevRec?.metadataRoot,
 			updatedAt: Math.max(prevRec?.updatedAt ?? 0, rec.updatedAt),
 		}
@@ -332,14 +346,17 @@ export class MerchantCardServerDb {
 				fetchCardMetadataFromUri(checksum),
 				fetchCardMetadataFromApi(checksum),
 			])
-			const meta: CardMeta = { ...(fromApi.meta ?? {}), ...(fromUri ?? {}) }
-			const metadataRoot = fromApi.metadataRoot
-			if (!meta.name && !meta.image && !meta.icon && !metadataRoot && !fromUri && !fromApi.meta) {
+			const mergedRemote =
+				mergeRicherMerchantCardMeta(fromUri, fromApi.meta) ?? fromApi.meta ?? fromUri
+			const meta =
+				mergeRicherMerchantCardMeta(this.map[key]?.meta, mergedRemote) ?? mergedRemote
+			const metadataRoot = fromApi.metadataRoot ?? this.map[key]?.metadataRoot
+			if (!meta?.name && !meta?.image && !meta?.icon && !metadataRoot && !fromUri && !fromApi.meta) {
 				return null
 			}
 			return {
 				addressLower: key,
-				meta,
+				meta: meta ?? {},
 				metadataRoot,
 				updatedAt: Date.now(),
 			} satisfies MerchantCardRecord

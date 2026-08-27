@@ -4,7 +4,6 @@ import { getStableWalletMerchantPassStackDisplay } from '@/pages/Wallet/walletMe
 import { buildWalletMerchantPassStackDisplay } from '@/pages/Wallet/walletMerchantPassDisplay'
 import type { WalletMerchantPassesStickyView } from '@/pages/Wallet/useWalletMerchantPassesStickyDisplay'
 import {
-	STACK_CARD_H,
 	STACK_STEP_PX,
 	stackCardExpandOffsetY,
 	stackLayoutHeight,
@@ -87,8 +86,10 @@ function WalletMerchantPassStackInner({ view, onSeeAll, onOpenMerchantDetail }: 
 				<PassStackSkeleton cardCount={Math.max(stackCards.length, badgeCount, 1)} />
 			) : showStack ? (
 				<div
-					className={`wallet-merchant-pass-stack relative w-full transition-[height] duration-300 ease-out ${
-						expandedIdx !== null ? 'overflow-visible z-20' : 'overflow-hidden'
+					className={`wallet-merchant-pass-stack relative w-full ${
+						expandedIdx !== null
+							? 'z-20 overflow-visible transition-[height] duration-300 ease-out'
+							: 'overflow-hidden'
 					}`}
 					style={{
 						height: stackHeight,

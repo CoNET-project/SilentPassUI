@@ -16,6 +16,7 @@ import {
 import { clearWalletMerchantPassStackDisplayCache } from '@/pages/Wallet/walletMerchantPassDisplayCache'
 import { recentActivityMerchantProgramCardAddress } from '@/pages/History/recentActivityIndexerMerge'
 import type { TxView } from '@/pages/History/recentActivityIndexerMerge'
+import { mergeRicherMerchantCardMeta } from '@/utils/mergeRicherMerchantCardMeta'
 
 export type WalletMerchantPassesStickyView = {
 	stackCards: UserCardInfo[]
@@ -39,12 +40,13 @@ function mergeDetailsTrusted(
 		const inc = incoming[k]
 		if (inc === undefined) continue
 		const prevRow = prev[k]
+		const mergedMeta = mergeRicherMerchantCardMeta(prevRow?.meta, inc.meta) ?? inc.meta
 		// 不可信/未就绪的 assets:null 不得覆盖上次可信持仓，避免叠卡被误隐藏。
 		if (prevRow?.assets != null && inc.assets == null) {
-			next[k] = { ...inc, assets: prevRow.assets }
+			next[k] = { ...inc, assets: prevRow.assets, meta: mergedMeta ?? inc.meta }
 			continue
 		}
-		next[k] = inc
+		next[k] = { ...inc, meta: mergedMeta ?? inc.meta }
 	}
 	return next
 }
@@ -125,6 +127,7 @@ export function useWalletMerchantPassesStickyDisplay(
 	const [hasEverHadCards, setHasEverHadCards] = useState(false)
 	const [feedSettled, setFeedSettled] = useState(false)
 	const lastEoaRef = useRef('')
+	const lastEventMsRef = useRef<Map<string, number>>(new Map())
 
 	/** 黑名单加载后重滤 sticky / stackOrder（本地缓存可能在 exclude 就绪前 hydrate）。 */
 	useEffect(() => {
@@ -138,6 +141,7 @@ export function useWalletMerchantPassesStickyDisplay(
 	useLayoutEffect(() => {
 		if (!eoaLower || !ethers.isAddress(eoaLower)) {
 			lastEoaRef.current = ''
+			lastEventMsRef.current = new Map()
 			setHasEverHadCards(false)
 			setFeedSettled(false)
 			setStickyCards([])
@@ -148,6 +152,7 @@ export function useWalletMerchantPassesStickyDisplay(
 		}
 		if (lastEoaRef.current !== eoaLower) {
 			lastEoaRef.current = eoaLower
+			lastEventMsRef.current = new Map()
 			setHasEverHadCards(false)
 			setFeedSettled(false)
 			clearWalletMerchantPassStackDisplayCache()
@@ -245,11 +250,24 @@ export function useWalletMerchantPassesStickyDisplay(
 		const holdingsCards = safeStickyCards.filter((c) =>
 			isDisplayableMerchantPass(c, safeStickyDetails)
 		)
-		const displayableCards =
+		if (recentActivitySettled && !recentActivityLoading) {
+			lastEventMsRef.current = latestEventMsByCard
+		}
+		const eventFilter =
 			recentActivitySettled && !recentActivityLoading
-				? holdingsCards.filter((c) => latestEventMsByCard.has(c.cardAddress.toLowerCase()))
-				: []
-		const stackCards = buildStackCards(displayableCards, stackOrder, latestEventMsByCard)
+				? latestEventMsByCard
+				: lastEventMsRef.current.size > 0
+					? lastEventMsRef.current
+					: latestEventMsByCard
+		const displayableCards =
+			eventFilter.size > 0
+				? holdingsCards.filter((c) => eventFilter.has(c.cardAddress.toLowerCase()))
+				: stackOrder.length > 0
+					? holdingsCards.filter((c) =>
+							stackOrder.some((k) => k.toLowerCase() === c.cardAddress.toLowerCase()),
+						)
+					: []
+		const stackCards = buildStackCards(displayableCards, stackOrder, eventFilter)
 		const allStickyDetailsKnown =
 			safeStickyCards.length > 0 &&
 			safeStickyCards.every((c) => safeStickyDetails[c.cardAddress.toLowerCase()] !== undefined)
@@ -276,10 +294,7 @@ export function useWalletMerchantPassesStickyDisplay(
 				recentActivitySettled &&
 				!recentActivityLoading &&
 				!hasEverHadCards)
-		const showSkeleton =
-			(displayableCards.length > 0 && !detailsReady) ||
-			!recentActivitySettled ||
-			recentActivityLoading
+		const showSkeleton = displayableCards.length > 0 && !detailsReady
 		const showStack = detailsReady
 
 		return {

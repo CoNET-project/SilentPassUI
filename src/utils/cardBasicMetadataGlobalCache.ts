@@ -5,6 +5,7 @@
 
 import { ethers } from 'ethers'
 import type { CardMetadataFromUri } from '@/services/BeamioCard'
+import { mergeRicherMerchantCardMeta } from '@/utils/mergeRicherMerchantCardMeta'
 
 const ENTRY_PREFIX = 'beamio:cardBasicMeta:v1:'
 const MAX_ENTRY_JSON_CHARS = 120_000
@@ -76,18 +77,23 @@ function cardBasicMetaContentSig(meta: CardMetadataFromUri | null | undefined): 
 	}
 }
 
-/** 一次可信拉取成功后写入（内存 + 磁盘） */
-export function rememberCardBasicMetadataTrusted(cardAddress: string, meta: CardMetadataFromUri): void {
+/** 一次可信拉取成功后写入（内存 + 磁盘）。默认 card0 不得覆盖上次商户 branding。 */
+export function rememberCardBasicMetadataTrusted(
+	cardAddress: string,
+	meta: CardMetadataFromUri,
+): CardMetadataFromUri | null {
 	const lower = (cardAddress || '').trim().toLowerCase()
-	if (!lower || !ethers.isAddress(lower)) return
-	const prev = memory.get(lower)
-	const changed = cardBasicMetaContentSig(prev) !== cardBasicMetaContentSig(meta)
-	memory.set(lower, meta)
-	if (typeof window === 'undefined') return
+	if (!lower || !ethers.isAddress(lower)) return null
+	const prev = peekCardBasicMetadata(lower)
+	const merged = mergeRicherMerchantCardMeta(prev, meta)
+	if (!merged) return null
+	const changed = cardBasicMetaContentSig(prev) !== cardBasicMetaContentSig(merged)
+	memory.set(lower, merged)
+	if (typeof window === 'undefined') return merged
 	try {
-		const payload: StoredEntry = { v: 1, savedAt: Date.now(), meta }
+		const payload: StoredEntry = { v: 1, savedAt: Date.now(), meta: merged }
 		const raw = JSON.stringify(payload)
-		if (raw.length > MAX_ENTRY_JSON_CHARS) return
+		if (raw.length > MAX_ENTRY_JSON_CHARS) return merged
 		localStorage.setItem(entryKey(lower), raw)
 		trimOldestEntriesIfNeeded()
 	} catch {
@@ -96,12 +102,13 @@ export function rememberCardBasicMetadataTrusted(cardAddress: string, meta: Card
 	if (changed) {
 		for (const listener of listeners) {
 			try {
-				listener(lower, meta)
+				listener(lower, merged)
 			} catch {
 				/* ignore subscriber errors */
 			}
 		}
 	}
+	return merged
 }
 
 function trimOldestEntriesIfNeeded(): void {

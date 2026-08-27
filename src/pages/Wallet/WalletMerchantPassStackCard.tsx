@@ -173,6 +173,7 @@ function WalletMerchantPassStackCardInner({
 		Boolean(onOpenMerchantDetail) && cardAddress.length > 0 && ethers.isAddress(cardAddress)
 	const showMerchantDetailControl =
 		canOpenMerchantDetail && (isExpanded || (isFrontmost && !isStackExpanded))
+	const topTransition = isStackExpanded ? 'top 300ms ease-out' : 'none'
 
 	const cardShellStyle: React.CSSProperties = {
 		top,
@@ -180,7 +181,9 @@ function WalletMerchantPassStackCardInner({
 		height: STACK_CARD_H,
 		borderColor: tierTheme.cardBorder,
 		color: tierTheme.primary,
-		transition: 'top 300ms ease-out, box-shadow 300ms ease-out',
+		transition: isStackExpanded
+			? 'top 300ms ease-out, box-shadow 300ms ease-out'
+			: 'box-shadow 300ms ease-out',
 		boxShadow: isExpanded
 			? '0 12px 40px rgba(0,0,0,0.22)'
 			: isStackExpanded
@@ -210,7 +213,7 @@ function WalletMerchantPassStackCardInner({
 						top: top + 12,
 						left: 12,
 						zIndex: zIndex + 2,
-						transition: 'top 300ms ease-out',
+						transition: topTransition,
 					}}
 					aria-label={`View ${title} merchant details`}
 				>
@@ -229,7 +232,7 @@ function WalletMerchantPassStackCardInner({
 						top,
 						zIndex: zIndex + 1,
 						height: peekHitHeight,
-						transition: 'top 300ms ease-out',
+						transition: topTransition,
 					}}
 				/>
 			) : null}
@@ -245,7 +248,7 @@ function WalletMerchantPassStackCardInner({
 						top,
 						zIndex: zIndex + 1,
 						height: STACK_CARD_H,
-						transition: 'top 300ms ease-out',
+						transition: topTransition,
 					}}
 				/>
 			) : null}
@@ -258,7 +261,6 @@ function WalletMerchantPassStackCardInner({
 						zIndex: zIndex + 1,
 						height: STACK_CARD_H,
 						pointerEvents: 'auto',
-						transition: 'top 300ms ease-out',
 					}}
 					aria-hidden
 				/>

@@ -6,7 +6,9 @@
 import { ethers } from 'ethers';
 import {
   isCardExcludedFromDisplay,
+  merchantIconUrlFromMetadataRoot,
   merchantProgramCardDisplayNameFromMetadataRoot,
+  merchantProgramImageUrlFromMetadataRoot,
   type CardMetadataFromUri,
 } from '@/services/BeamioCard';
 import {
@@ -14,12 +16,10 @@ import {
   rememberCardBasicMetadataTrusted,
 } from '@/utils/cardBasicMetadataGlobalCache';
 import { tu } from '@/locale/beamioLocale';
+import { isGenericMerchantCardDisplayName } from '@/utils/isGenericMerchantCardDisplayName';
 import {
   type MerchantCardRecord,
-  loadMerchantCardMap,
-  mergeMerchantCardMap,
   normalizeCardAddressKey,
-  lookupMerchantCardLocal,
 } from '@/utils/merchantCardRegistry';
 import {
   ensureMerchantCards,
@@ -27,6 +27,7 @@ import {
   mergeTrustedMerchantCards,
 } from '@/services/beamioTagWorkerBridge';
 
+export { isGenericMerchantCardDisplayName };
 export type { MerchantCardRecord } from '@/utils/merchantCardRegistry';
 export {
   loadMerchantCardMap,
@@ -58,14 +59,6 @@ export function merchantCardDisplayNameFromRecord(rec: MerchantCardRecord | unde
 }
 
 /** Placeholder titles — not merchant program display names. */
-export function isGenericMerchantCardDisplayName(name: string | undefined | null): boolean {
-  const t = String(name ?? '').trim();
-  if (!t) return true;
-  if (/^beamio$/i.test(t)) return true;
-  if (/^(?:qr\s+)?merchant\s+payment$/i.test(t)) return true;
-  if (/^user\s+card$/i.test(t)) return true;
-  return false;
-}
 
 /** Merchant program display name: DB → directory → displayJson cardName (Charge / Top-up shared). */
 export function pickMerchantProgramDisplayName(opts: {
@@ -159,7 +152,7 @@ export function merchantCardNeedsRemoteRefresh(
 ): boolean {
   if (!record) return true;
   if (!record.updatedAt || now - record.updatedAt > MERCHANT_CARD_STALE_MS) return true;
-  if (!merchantCardDisplayNameFromRecord(record) && !record.meta?.image) return true;
+  if (!merchantCardDisplayNameFromRecord(record)) return true;
   return false;
 }
 
@@ -178,13 +171,13 @@ function cardMetadataFromRoot(
   cardOwner?: string | null,
 ): CardMetadataFromUri | null {
   if (!metadataRoot || typeof metadataRoot !== 'object') return null;
-  const share =
-    metadataRoot.shareTokenMetadata != null && typeof metadataRoot.shareTokenMetadata === 'object'
-      ? (metadataRoot.shareTokenMetadata as Record<string, unknown>)
-      : null;
+  const name = merchantProgramCardDisplayNameFromMetadataRoot(metadataRoot);
+  const icon = merchantIconUrlFromMetadataRoot(metadataRoot);
+  const image = merchantProgramImageUrlFromMetadataRoot(metadataRoot);
   return {
-    name: (share?.name ?? metadataRoot.name) as string | undefined,
-    image: (share?.image ?? metadataRoot.image) as string | undefined,
+    ...(name ? { name } : {}),
+    ...(icon ? { icon } : {}),
+    ...(image ? { image } : {}),
     ...(Array.isArray(metadataRoot.tiers) &&
       metadataRoot.tiers.length > 0 && { tiers: metadataRoot.tiers as CardMetadataFromUri['tiers'] }),
     ...(cardOwner && { cardOwner }),

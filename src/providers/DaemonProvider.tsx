@@ -72,6 +72,7 @@ import {
 	type MyBrandCardFeedDetailsMap,
 } from '@/utils/myBrandsFeedState'
 import { subscribeCardBasicMetadataUpdates } from '@/utils/cardBasicMetadataGlobalCache'
+import { mergeRicherMerchantCardMeta } from '@/utils/mergeRicherMerchantCardMeta'
 import { clearWalletMerchantPassStackDisplayCache } from '@/pages/Wallet/walletMerchantPassDisplayCache'
 import {
 	summarizeOwnedCatalogCards,
@@ -1079,9 +1080,10 @@ export function DaemonProvider({ children }: DaemonProps) {
       setMyBrandCardDetails((prev) => {
         const row = prev[cardLower]
         if (!row) return prev
+        const mergedMeta = mergeRicherMerchantCardMeta(row.meta, meta) ?? meta
         const next: MyBrandCardFeedDetailsMap = {
           ...prev,
-          [cardLower]: { ...row, meta },
+          [cardLower]: { ...row, meta: mergedMeta },
         }
         if (areMyBrandDetailsMapsEqual(prev, next)) return prev
         myBrandCardDetailsRef.current = next

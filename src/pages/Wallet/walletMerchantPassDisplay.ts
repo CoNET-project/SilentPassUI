@@ -1,4 +1,5 @@
 import type { UserCardInfo } from '@/services/BeamioCard'
+import { isGenericMerchantCardDisplayName } from '@/utils/isGenericMerchantCardDisplayName'
 import {
 	resolveHeldTierPresentation,
 	resolveMyBrandCardIconUrl,
@@ -107,7 +108,12 @@ export function buildWalletMerchantPassStackDisplay(
 	uc: UserCardInfo,
 	detail: MyBrandCardFeedDetailsMap[string] | undefined
 ): WalletMerchantPassStackDisplay {
-	const title = (detail?.meta?.name && detail.meta.name.trim()) || uc.name || 'Merchant Pass'
+	const metaName = detail?.meta?.name?.trim()
+	const ucName = uc.name?.trim()
+	const title =
+		(metaName && !isGenericMerchantCardDisplayName(metaName) ? metaName : '') ||
+		(ucName && !isGenericMerchantCardDisplayName(ucName) ? ucName : '') ||
+		'Merchant Pass'
 	const tierPres = resolveHeldTierPresentation(detail)
 	// Default merchant tier is named "Base" in Programs; do not show that label on the wallet pass.
 	const rawTierName = tierPres.tierName.trim()

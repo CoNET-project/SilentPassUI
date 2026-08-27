@@ -5,6 +5,7 @@
 
 import { ethers } from 'ethers';
 import type { CardMetadataFromUri } from '@/services/BeamioCard';
+import { mergeRicherMerchantCardMeta } from '@/utils/mergeRicherMerchantCardMeta';
 
 export type MerchantCardRecord = {
   addressLower: string;
@@ -68,14 +69,14 @@ export function mergeMerchantCardMap(
     if (prevRec && rec.updatedAt <= prevRec.updatedAt && !rec.metadataRoot && prevRec.metadataRoot) {
       next[key] = {
         ...prevRec,
-        meta: { ...prevRec.meta, ...rec.meta },
+        meta: mergeRicherMerchantCardMeta(prevRec.meta, rec.meta) ?? rec.meta ?? prevRec.meta,
         updatedAt: Math.max(prevRec.updatedAt, rec.updatedAt),
       };
       continue;
     }
     next[key] = {
       addressLower: key,
-      meta: { ...(prevRec?.meta ?? {}), ...rec.meta },
+      meta: mergeRicherMerchantCardMeta(prevRec?.meta, rec.meta) ?? rec.meta ?? prevRec?.meta ?? {},
       metadataRoot: rec.metadataRoot ?? prevRec?.metadataRoot,
       updatedAt: Math.max(prevRec?.updatedAt ?? 0, rec.updatedAt),
     };

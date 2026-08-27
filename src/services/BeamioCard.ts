@@ -16,6 +16,8 @@ import {
 	rememberCardBasicMetadataTrusted,
 } from "@/utils/cardBasicMetadataGlobalCache";
 import { discoverCategoryFieldsFromMetadataRoot } from "@/utils/discoverMerchantCategory";
+import { isGenericMerchantCardDisplayName } from "@/utils/isGenericMerchantCardDisplayName";
+import { isFactoryDefaultMerchantAssetUrl } from "@/utils/isFactoryDefaultMerchantAssetUrl";
 import { isApiExcludedUserCard, loadApiExcludedUserCards } from "@/utils/apiExcludedUserCards";
 import { fetchCardLevelStatNftHoldings } from "@/utils/beamioCardUserCumulativeStatHoldings";
 import {
@@ -3753,6 +3755,13 @@ function merchantMetadataImageUrl(raw: string): string | undefined {
 	return undefined
 }
 
+function acceptMerchantAssetUrl(raw: string | undefined | null): string | undefined {
+	if (typeof raw !== 'string' || !raw.trim()) return undefined
+	const url = merchantMetadataImageUrl(raw)
+	if (!url || isFactoryDefaultMerchantAssetUrl(url)) return undefined
+	return url
+}
+
 /** Program-level icon missing: first coupon / production row `icon` only (not coupon banner / couponImage). */
 function merchantFallbackIconFromShareCatalog(share: Record<string, unknown> | null): string | undefined {
 	if (!share) return undefined
@@ -3761,7 +3770,7 @@ function merchantFallbackIconFromShareCatalog(share: Record<string, unknown> | n
 		for (const row of coupons) {
 			const o = recordFromUnknown(row)
 			if (!o) continue
-			const url = merchantMetadataImageUrl(
+			const url = acceptMerchantAssetUrl(
 				readCardMetadataStringField(o, ['icon', 'iconUrl', 'logoUrl', 'logo', 'image'])
 			)
 			if (url) return url
@@ -3772,7 +3781,7 @@ function merchantFallbackIconFromShareCatalog(share: Record<string, unknown> | n
 		for (const row of productions) {
 			const o = recordFromUnknown(row)
 			if (!o) continue
-			const url = merchantMetadataImageUrl(
+			const url = acceptMerchantAssetUrl(
 				readCardMetadataStringField(o, ['icon', 'iconUrl', 'logoUrl', 'logo', 'image'])
 			)
 			if (url) return url
@@ -3781,25 +3790,35 @@ function merchantFallbackIconFromShareCatalog(share: Record<string, unknown> | n
 	return undefined
 }
 
-/** Merchant program icon — metadata `icon` first; legacy `image`; then first catalog row icon (not coupon background). */
+/** Merchant program icon — share first, then top-level; skip factory default swirl. */
 export function merchantIconUrlFromMetadataRoot(
 	metaJson: Record<string, unknown> | null | undefined
 ): string | undefined {
 	if (!metaJson || typeof metaJson !== 'object') return undefined
 	const share = recordFromUnknown(metaJson.shareTokenMetadata)
-	const icon =
-		readCardMetadataStringField(metaJson, ['icon', 'iconUrl', 'logoUrl', 'logo']) ||
-		readCardMetadataStringField(share, ['icon', 'iconUrl', 'logoUrl', 'logo'])
-	if (icon) {
-		const url = merchantMetadataImageUrl(icon)
+	const candidates = [
+		readCardMetadataStringField(share, ['icon', 'iconUrl', 'logoUrl', 'logo']),
+		readCardMetadataStringField(metaJson, ['icon', 'iconUrl', 'logoUrl', 'logo']),
+		readCardMetadataStringField(share, ['image']),
+		readCardMetadataStringField(metaJson, ['image']),
+	]
+	for (const raw of candidates) {
+		const url = acceptMerchantAssetUrl(raw)
 		if (url) return url
 	}
-	const image =
-		readCardMetadataStringField(metaJson, ['image']) ||
-		readCardMetadataStringField(share, ['image'])
-	const programImage = image ? merchantMetadataImageUrl(image) : undefined
-	if (programImage) return programImage
 	return merchantFallbackIconFromShareCatalog(share)
+}
+
+/** Wide program image — share first; skip factory default swirl. */
+export function merchantProgramImageUrlFromMetadataRoot(
+	metaJson: Record<string, unknown> | null | undefined
+): string | undefined {
+	if (!metaJson || typeof metaJson !== 'object') return undefined
+	const share = recordFromUnknown(metaJson.shareTokenMetadata)
+	return (
+		acceptMerchantAssetUrl(readCardMetadataStringField(share, ['image'])) ??
+		acceptMerchantAssetUrl(readCardMetadataStringField(metaJson, ['image']))
+	)
 }
 
 /** Wide Discover / pass hero — program `background*` only (not coupon images); `merchantImage` is resolved separately in Discover. */
@@ -3813,7 +3832,7 @@ export function merchantBackgroundImageFromMetadataRoot(
 		for (const key of MERCHANT_BACKGROUND_IMAGE_KEYS) {
 			const v = src[key]
 			if (typeof v === 'string') {
-				const url = merchantMetadataImageUrl(v)
+				const url = acceptMerchantAssetUrl(v)
 				if (url) return url
 			}
 		}
@@ -3847,9 +3866,13 @@ export function merchantProgramCardDisplayNameFromMetadataRoot(
 ): string {
 	if (!metaJson || typeof metaJson !== 'object') return ''
 	const business = merchantBusinessNameFromMetadataRoot(metaJson)
-	if (business) return business
+	if (business && !isGenericMerchantCardDisplayName(business)) return business
 	const share = recordFromUnknown(metaJson.shareTokenMetadata)
-	return String(share?.name ?? metaJson.name ?? '').trim()
+	const shareName = String(share?.name ?? '').trim()
+	if (shareName && !isGenericMerchantCardDisplayName(shareName)) return shareName
+	const top = String(metaJson.name ?? '').trim()
+	if (top && !isGenericMerchantCardDisplayName(top)) return top
+	return ''
 }
 
 function normalizeCardPointSystemMetadata(raw: unknown): CardPointSystemMetadata | undefined {
@@ -4028,12 +4051,12 @@ export const getCardMetadataFrom1155Json = async (cardAddress: string): Promise<
 			bonusRules?: unknown
 		}
 		const bonusFields = bonusFieldsFromMetadataRoot(json)
-		const share = json?.shareTokenMetadata
 		const iconUrl = merchantIconUrlFromMetadataRoot(json)
+		const imageUrl = merchantProgramImageUrlFromMetadataRoot(json)
 		const meta: CardMetadataFromUri = {
-			name: (share?.name ?? json?.name) as string | undefined,
+			name: merchantProgramCardDisplayNameFromMetadataRoot(json) || undefined,
 			...(iconUrl ? { icon: iconUrl } : {}),
-			image: (share?.image ?? json?.image) as string | undefined,
+			...(imageUrl ? { image: imageUrl } : {}),
 			...(Array.isArray(json?.tiers) && json.tiers.length > 0 && { tiers: json.tiers }),
 			...bonusFields,
 		}
@@ -4114,15 +4137,15 @@ export const getCardMetadataFromApi = async (
 		const data = (await res.json()) as { cardOwner?: string; metadata?: Record<string, unknown> | null }
 		const metaJson = data?.metadata
 		if (!metaJson || typeof metaJson !== 'object') return null
-		const share = recordFromUnknown(metaJson.shareTokenMetadata)
 		const cardOwner = data?.cardOwner && typeof data.cardOwner === 'string' ? data.cardOwner : undefined
 		const bonusFields = bonusFieldsFromMetadataRoot(metaJson)
 		const categoryFields = discoverCategoryFieldsFromMetadataRoot(metaJson)
 		const iconUrl = merchantIconUrlFromMetadataRoot(metaJson)
+		const imageUrl = merchantProgramImageUrlFromMetadataRoot(metaJson)
 		const meta: CardMetadataFromUri = {
-			name: (share?.name ?? metaJson.name) as string | undefined,
+			name: merchantProgramCardDisplayNameFromMetadataRoot(metaJson) || undefined,
 			...(iconUrl ? { icon: iconUrl } : {}),
-			image: (share?.image ?? metaJson.image) as string | undefined,
+			...(imageUrl ? { image: imageUrl } : {}),
 			...(Array.isArray(metaJson.tiers) && metaJson.tiers.length > 0 && { tiers: metaJson.tiers as CardTierMetadata[] }),
 			...(cardOwner && { cardOwner }),
 			...bonusFields,
@@ -4226,12 +4249,12 @@ export const getCardMetadataFromUri = async (
 		// 兼容顶层 ERC1155 与服务器写入的 shareTokenMetadata 嵌套结构；API 返回 shared 时带 tiers
 		const bonusFields = bonusFieldsFromMetadataRoot(json)
 		const categoryFields = discoverCategoryFieldsFromMetadataRoot(json)
-		const share = recordFromUnknown(json.shareTokenMetadata)
 		const iconUrl = merchantIconUrlFromMetadataRoot(json)
+		const imageUrl = merchantProgramImageUrlFromMetadataRoot(json)
 		const meta: CardMetadataFromUri = {
-			name: (json?.name ?? share?.name) as string | undefined,
+			name: merchantProgramCardDisplayNameFromMetadataRoot(json) || undefined,
 			...(iconUrl ? { icon: iconUrl } : {}),
-			image: (json?.image ?? share?.image) as string | undefined,
+			...(imageUrl ? { image: imageUrl } : {}),
 			...(Array.isArray(json?.tiers) && json.tiers.length > 0 && { tiers: json.tiers as CardTierMetadata[] }),
 			...bonusFields,
 			...(categoryFields.categoryId != null && { categoryId: categoryFields.categoryId }),
@@ -4259,10 +4282,11 @@ async function fetchAndRememberCardBasicMetadata(raw: string): Promise<CardMetad
 		(await getCardMetadataFromApi(raw, { bypassMemoryCache: true })) ??
 		(await getCardMetadataFromUri(raw, { bypassMemoryCache: true }))
 	if (fresh) {
-		rememberCardBasicMetadataTrusted(raw, fresh)
+		const stored = rememberCardBasicMetadataTrusted(raw, fresh) ?? fresh
 		const k = raw.toLowerCase()
-		cardMetadataCache.set(`api:${k}`, { ...fresh, timestamp: Date.now() })
-		cardMetadataCache.set(`uri:${k}`, { ...fresh, timestamp: Date.now() })
+		cardMetadataCache.set(`api:${k}`, { ...stored, timestamp: Date.now() })
+		cardMetadataCache.set(`uri:${k}`, { ...stored, timestamp: Date.now() })
+		return stored
 	}
 	return fresh
 }

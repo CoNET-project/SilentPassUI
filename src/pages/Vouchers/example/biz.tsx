@@ -368,6 +368,7 @@ import {
 import {
   mergeUnifiedRewardPointsCharge,
   mergeUnifiedRewardPointsTopup,
+  parseUnifiedRewardChargeDraft,
   parseUnifiedRewardTopupDraft,
   percentWholeToActorBps,
 } from '@/utils/unifiedRewardPoints';
@@ -14394,16 +14395,15 @@ useEffect(() => {
          cardIssuanceTopupPromotionEditorOpenRef.current ||
          cardIssuanceConsumptionPointEditorOpenRef.current;
        if (!referrerDraftEditorsOpen) {
-         const chargeOn = BigInt(ratios.chargeRatioE6) > 0n;
-         const topupOn = BigInt(ratios.topupRatioE6) > 0n;
-         setProgramReferrerChargeEnabled(chargeOn);
-         setProgramReferrerTopupEnabled(topupOn);
-         setProgramReferrerChargePercentInput(
-           chargeOn ? formatAmountPercentE6Display(ratios.chargeRatioE6) : '100',
-         );
-         setProgramReferrerTopupPercentInput(
-           topupOn ? formatAmountPercentE6Display(ratios.topupRatioE6) : '50',
-         );
+         // Chain 0 = not written yet. Do not treat as OFF and wipe metadata / last draft.
+         if (BigInt(ratios.chargeRatioE6) > 0n) {
+           setProgramReferrerChargeEnabled(true);
+           setProgramReferrerChargePercentInput(formatAmountPercentE6Display(ratios.chargeRatioE6));
+         }
+         if (BigInt(ratios.topupRatioE6) > 0n) {
+           setProgramReferrerTopupEnabled(true);
+           setProgramReferrerTopupPercentInput(formatAmountPercentE6Display(ratios.topupRatioE6));
+         }
        }
      }
      if (!silent) {
@@ -15740,6 +15740,8 @@ useEffect(() => {
   );
   setProgramRewardPtTopupEnabled(rewardPt.enabled);
   setProgramRewardPtTopupPercentInput(rewardPt.percent);
+  setProgramReferrerTopupEnabled(rewardPt.referrerEnabled);
+  setProgramReferrerTopupPercentInput(rewardPt.referrerPercent);
 }, [
   cardIssuanceExistingCard?.cardAddress,
   cardIssuanceExistingCard?.meta?.bonusRules,
@@ -15777,34 +15779,43 @@ useEffect(() => {
 useEffect(() => {
   if (!cardIssuanceExistingCard?.cardAddress) return;
   if (cardIssuanceConsumptionPointEditorOpen) return;
+  const chargeDraft = parseUnifiedRewardChargeDraft(
+    (cardIssuanceExistingCard.meta as { unifiedRewardPoints?: unknown } | undefined)
+      ?.unifiedRewardPoints,
+  );
   const metaPointSystem = cardIssuanceExistingCard.meta?.pointSystem;
   const chainRatio = cardIssuanceExistingCard.chargeRewardRatioE6;
-  const ratioE6 =
-    metaPointSystem?.chargeRewardRatioE6 && /^\d+$/.test(metaPointSystem.chargeRewardRatioE6)
+  const metaRatioE6 =
+    metaPointSystem?.chargeRewardRatioE6 &&
+    /^\d+$/.test(metaPointSystem.chargeRewardRatioE6) &&
+    BigInt(metaPointSystem.chargeRewardRatioE6) > 0n
       ? metaPointSystem.chargeRewardRatioE6
-      : chainRatio && /^\d+$/.test(chainRatio)
-        ? chainRatio
-        : CARD_ISSUANCE_POINT_RATIO_DEFAULT_E6;
-  let enabled =
-    typeof metaPointSystem?.enabled === 'boolean'
+      : chargeDraft.enabled
+        ? (parseAmountPercentHumanToE6(chargeDraft.percent)?.toString() ?? null)
+        : null;
+  // unifiedRewardPoints.charge ON wins over a stale pointSystem.enabled=false
+  // (legacy field that never received the #13 percent).
+  let enabled = chargeDraft.enabled
+    ? true
+    : typeof metaPointSystem?.enabled === 'boolean'
       ? metaPointSystem.enabled
-      : (() => {
-          try {
-            return BigInt(ratioE6) > 0n;
-          } catch {
-            return true;
-          }
-        })();
-  if (chainRatio && /^\d+$/.test(chainRatio) && BigInt(chainRatio) === 0n) {
-    enabled = false;
+      : false;
+  let ratioE6 = metaRatioE6 ?? CARD_ISSUANCE_POINT_RATIO_DEFAULT_E6;
+  // Chain 0 means "ratio not written yet", not "merchant turned Consumption Points off".
+  if (chainRatio && /^\d+$/.test(chainRatio) && BigInt(chainRatio) > 0n) {
+    enabled = true;
+    ratioE6 = chainRatio;
   }
   setCardIssuancePointSystemEnabled(enabled);
   setCardIssuancePointRatioInput(
     formatAmountPercentE6Display(ratioE6 === '0' ? CARD_ISSUANCE_POINT_RATIO_DEFAULT_E6 : ratioE6),
   );
+  setProgramReferrerChargeEnabled(chargeDraft.referrerEnabled);
+  setProgramReferrerChargePercentInput(chargeDraft.referrerPercent);
 }, [
   cardIssuanceExistingCard?.cardAddress,
   cardIssuanceExistingCard?.meta?.pointSystem,
+  cardIssuanceExistingCard?.meta,
   cardIssuanceExistingCard?.chargeRewardRatioE6,
   cardIssuanceConsumptionPointEditorOpen,
 ]);
@@ -19653,22 +19664,22 @@ const openCardIssuanceTopupPromotionEditor = useCallback(() => {
     let referrerEnabled = programReferrerTopupEnabled;
     let referrerPercent = programReferrerTopupPercentInput;
 
-    if (actorE6 != null && /^\d+$/.test(actorE6)) {
-      const on = BigInt(actorE6) > 0n;
-      rewardPtEnabled = on;
-      rewardPtPercent = on ? formatAmountPercentE6Display(actorE6) : '1';
-      setProgramRewardPtTopupEnabled(rewardPtEnabled);
+    // Chain 0 means "ratio not written yet", not "merchant turned Reward PT off".
+    // Overlay only a live non-zero ratio; keep metadata / last draft when storage is 0.
+    if (actorE6 != null && /^\d+$/.test(actorE6) && BigInt(actorE6) > 0n) {
+      rewardPtEnabled = true;
+      rewardPtPercent = formatAmountPercentE6Display(actorE6);
+      setProgramRewardPtTopupEnabled(true);
       setProgramRewardPtTopupPercentInput(rewardPtPercent);
     }
     if (ratios) {
-      const topupOn = BigInt(ratios.topupRatioE6) > 0n;
-      referrerEnabled = topupOn;
-      referrerPercent = topupOn
-        ? formatAmountPercentE6Display(ratios.topupRatioE6)
-        : '100';
       setProgramReferrerTopupRatioE6Baseline(ratios.topupRatioE6);
-      setProgramReferrerTopupEnabled(referrerEnabled);
-      setProgramReferrerTopupPercentInput(referrerPercent);
+      if (BigInt(ratios.topupRatioE6) > 0n) {
+        referrerEnabled = true;
+        referrerPercent = formatAmountPercentE6Display(ratios.topupRatioE6);
+        setProgramReferrerTopupEnabled(true);
+        setProgramReferrerTopupPercentInput(referrerPercent);
+      }
     }
     finishOpen({
       rewardPtEnabled,
@@ -19731,22 +19742,22 @@ const openCardIssuanceConsumptionPointEditor = useCallback(() => {
 
   void (async () => {
     const ratios = await readReferrerAmountRatiosOnChain(addr).catch(() => null);
+    let chargeEnabled = programReferrerChargeEnabled;
+    let chargePercent = programReferrerChargePercentInput;
     if (ratios) {
-      const chargeOn = BigInt(ratios.chargeRatioE6) > 0n;
-      const nextEnabled = chargeOn;
-      const nextPercent = chargeOn
-        ? formatAmountPercentE6Display(ratios.chargeRatioE6)
-        : '100';
       setProgramReferrerChargeRatioE6Baseline(ratios.chargeRatioE6);
-      setProgramReferrerChargeEnabled(nextEnabled);
-      setProgramReferrerChargePercentInput(nextPercent);
       if (!cardIssuanceTopupPromotionEditorOpenRef.current) {
         setProgramReferrerTopupRatioE6Baseline(ratios.topupRatioE6);
       }
-      finishOpen(nextEnabled, nextPercent);
-      return;
+      // Chain 0 = not written yet. Overlay only a live non-zero Charge Referrer ratio.
+      if (BigInt(ratios.chargeRatioE6) > 0n) {
+        chargeEnabled = true;
+        chargePercent = formatAmountPercentE6Display(ratios.chargeRatioE6);
+        setProgramReferrerChargeEnabled(true);
+        setProgramReferrerChargePercentInput(chargePercent);
+      }
     }
-    finishOpen(programReferrerChargeEnabled, programReferrerChargePercentInput);
+    finishOpen(chargeEnabled, chargePercent);
   })();
 }, [
   cardIssuancePointSystemEnabled,
@@ -22016,30 +22027,34 @@ const submitCardIssuanceTopupPromotionEditor = useCallback(async () => {
       setProgramRewardPtTopupPercentInput(rewardPtDraftAtStart.percent);
     }
 
-    // Reward PT → setTopupActorRewardRatio (percent of actual payment → #13). Referrer already synced above.
+    // Reward PT → setTopupActorRewardRatio (actual-payment % → #13). Always sync like Referrer
+    // (do not gate on editor dirty — metadata can already match while chain is still 0).
     // Do not write Social Promotion ruleId=2 fixed mint (would dual-mint with ratios).
-    if (rewardPtDirty) {
-      const pk = getSessionPrivateKeyArmor() ?? profiles?.[0]?.privateKeyArmor;
-      if (!pk) {
-        setCardIssuanceTopupPromotionEditorServerError(
-          'Unlock your wallet before saving Reward PT on-chain ratio.'
-        );
-        return;
-      }
+    {
       const cardAddr = ethers.getAddress(cardIssuanceExistingCard.cardAddress);
       const targetRatioE6 = rewardPtDraftAtStart.enabled
         ? (parseAmountPercentHumanToE6(rewardPtDraftAtStart.percent)?.toString() ?? '0')
         : '0';
-      const ratioRes = await syncTopupActorRewardRatioOnChain({
-        cardAddress: cardAddr,
-        ownerPrivateKey: pk,
-        targetRatioE6,
-      });
-      if (!ratioRes.success) {
-        setCardIssuanceTopupPromotionEditorServerError(
-          ratioRes.error ?? 'On-chain top-up Reward PT ratio update failed. Try saving again.'
-        );
-        return;
+      const chainNow = await readTopupActorRewardRatioOnChain(cardAddr);
+      if (chainNow !== targetRatioE6) {
+        const pk = getSessionPrivateKeyArmor() ?? profiles?.[0]?.privateKeyArmor;
+        if (!pk) {
+          setCardIssuanceTopupPromotionEditorServerError(
+            'Unlock your wallet before saving Reward PT on-chain ratio.'
+          );
+          return;
+        }
+        const ratioRes = await syncTopupActorRewardRatioOnChain({
+          cardAddress: cardAddr,
+          ownerPrivateKey: pk,
+          targetRatioE6,
+        });
+        if (!ratioRes.success) {
+          setCardIssuanceTopupPromotionEditorServerError(
+            ratioRes.error ?? 'On-chain top-up Reward PT ratio update failed. Try saving again.'
+          );
+          return;
+        }
       }
     }
 
@@ -22380,43 +22395,45 @@ const submitCardIssuanceConsumptionPointEditor = useCallback(async () => {
         );
         return;
       }
-      if (pointDirty) {
-        const ratioRes = await syncChargeRewardRatioOnChain({
-          cardAddress: cardAddr,
-          ownerPrivateKey: pk,
-          targetRatioE6: pointSystemPayload.chargeRewardRatioE6,
-        });
-        if (!ratioRes.success) {
-          setCardIssuanceConsumptionPointEditorServerError(
-            ratioRes.error ?? 'On-chain consumption point ratio update failed. Try again.'
-          );
-          return;
-        }
-      }
-      setCardIssuancePointSystemEnabled(nextEnabled);
-      setCardIssuancePointRatioInput(nextRatioInput);
-      setCardIssuanceExistingCard((prev) => {
-        if (!prev) return prev;
-        const nextMeta = prev.meta
-          ? {
-              ...prev.meta,
-              ...(pointDirty ? { pointSystem: pointSystemPayload } : {}),
-              unifiedRewardPoints: mergeUnifiedRewardPointsCharge(prev.meta.unifiedRewardPoints, {
-                enabled: nextEnabled,
-                actorPercent: amountPercentInputToSlider(nextRatioInput),
-                referrerEnabled: referrerDraftAtStart.enabled,
-                referrerPercent: amountPercentInputToSlider(referrerDraftAtStart.percent),
-              }),
-            }
-          : prev.meta;
-        return {
-          ...prev,
-          meta: nextMeta,
-          ...(pointDirty ? { chargeRewardRatioE6: pointSystemPayload.chargeRewardRatioE6 } : {}),
-        };
-      });
-      invalidateBeamioCardMetadataCache(cardAddr);
     }
+    // Actor Charge % → setChargeRewardRatio. Always sync like Referrer Charge
+    // (do not gate on editor dirty — metadata can already match while chain is still 0).
+    {
+      const ratioRes = await syncChargeRewardRatioOnChain({
+        cardAddress: cardAddr,
+        ownerPrivateKey: pk,
+        targetRatioE6: pointSystemPayload.chargeRewardRatioE6,
+      });
+      if (!ratioRes.success) {
+        setCardIssuanceConsumptionPointEditorServerError(
+          ratioRes.error ?? 'On-chain consumption point ratio update failed. Try again.'
+        );
+        return;
+      }
+    }
+    setCardIssuancePointSystemEnabled(nextEnabled);
+    setCardIssuancePointRatioInput(nextRatioInput);
+    setCardIssuanceExistingCard((prev) => {
+      if (!prev) return prev;
+      const nextMeta = prev.meta
+        ? {
+            ...prev.meta,
+            ...(pointDirty ? { pointSystem: pointSystemPayload } : {}),
+            unifiedRewardPoints: mergeUnifiedRewardPointsCharge(prev.meta.unifiedRewardPoints, {
+              enabled: nextEnabled,
+              actorPercent: amountPercentInputToSlider(nextRatioInput),
+              referrerEnabled: referrerDraftAtStart.enabled,
+              referrerPercent: amountPercentInputToSlider(referrerDraftAtStart.percent),
+            }),
+          }
+        : prev.meta;
+      return {
+        ...prev,
+        meta: nextMeta,
+        chargeRewardRatioE6: pointSystemPayload.chargeRewardRatioE6,
+      };
+    });
+    invalidateBeamioCardMetadataCache(cardAddr);
     setCardIssuanceConsumptionPointEditorOpen(false);
     setCardIssuanceOwnerAdminNotice({
       kind: 'ok',

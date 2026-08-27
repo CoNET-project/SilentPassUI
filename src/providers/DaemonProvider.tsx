@@ -1461,7 +1461,7 @@ export function DaemonProvider({ children }: DaemonProps) {
               prevRow?.assets ?? null
             )
           next[key] = {
-            meta: meta ?? prevRow?.meta ?? null,
+            meta: mergeRicherMerchantCardMeta(prevRow?.meta, meta ?? undefined) ?? prevRow?.meta ?? null,
             assets: mergedAssets,
             claimableCoupons: couponsForRow,
             ownedCatalogs,

@@ -30,6 +30,11 @@ import type { UserCardInfo } from '@/services/BeamioCard'
 import { tu } from '@/locale/beamioLocale'
 import { pickCouponOpenClaimStatusFromMap } from '@/utils/couponOpenClaimStatusLocalCache'
 import { isFactoryDefaultMerchantAssetUrl } from '@/utils/isFactoryDefaultMerchantAssetUrl'
+import { useMerchantCardDatabase } from '@/providers/MerchantCardDatabaseProvider'
+import {
+	pickMerchantCardListIconUrl,
+	pickMerchantCardListTitle,
+} from '@/utils/merchantCardDatabase'
 
 export function resolveCardImageUrl(url: string | undefined): string | undefined {
 	if (!url?.trim()) return undefined
@@ -127,8 +132,12 @@ export function MyBrandCardRow({
 	detail: MyBrandCardDetailLike | undefined
 	currencyFallback?: string
 }) {
+	const { resolveImage } = useMerchantCardDatabase()
 	const tierPres = resolveHeldTierPresentation(detail)
-	const iconUrl = resolveMyBrandCardIconUrl(detail?.meta)
+	const iconUrl = pickMerchantCardListIconUrl({
+		workerImage: resolveImage(cardAddress),
+		meta: detail?.meta,
+	})
 	const categorySubtitle = resolveMyBrandMerchantCategoryLabel(detail, title)
 	const balanceLine = formatMyBrandBalanceLine(detail, currencyFallback)
 	const secondary = resolveMyBrandSecondarySubtitle(detail)
@@ -222,7 +231,13 @@ export function MyBrandListEntries({
 		couponOpenClaimStatusByKey,
 		registerCouponOpenClaimFeedTargets,
 	} = useDaemonContext()
+	const { resolveName, registerCardAddresses } = useMerchantCardDatabase()
 	const navigate = useNavigate()
+
+	useEffect(() => {
+		const addrs = cards.map((c) => c.cardAddress).filter(Boolean)
+		if (addrs.length) registerCardAddresses(addrs)
+	}, [cards, registerCardAddresses])
 	const getPrivateKeyArmor = useCallback(
 		(): string | undefined => resolveSigningPrivateKeyArmor(profiles?.[0]) || undefined,
 		[profiles],
@@ -292,8 +307,11 @@ export function MyBrandListEntries({
 			{cards.map((uc) => {
 				const addrKey = uc.cardAddress.toLowerCase()
 				const detail = details[addrKey]
-				const title =
-					(detail?.meta?.name && detail.meta.name.trim()) || uc.name || tu('merchant_card')
+				const title = pickMerchantCardListTitle({
+					workerName: resolveName(uc.cardAddress),
+					metaName: detail?.meta?.name,
+					chainName: uc.name,
+				})
 				return (
 					<MyBrandCardRow
 						key={uc.cardAddress}

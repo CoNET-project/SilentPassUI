@@ -17,6 +17,7 @@ import {
 } from '@/utils/cardBasicMetadataGlobalCache';
 import { tu } from '@/locale/beamioLocale';
 import { isGenericMerchantCardDisplayName } from '@/utils/isGenericMerchantCardDisplayName';
+import { pickNonFactoryMerchantAssetUrl } from '@/utils/isFactoryDefaultMerchantAssetUrl';
 import {
   type MerchantCardRecord,
   normalizeCardAddressKey,
@@ -58,7 +59,31 @@ export function merchantCardDisplayNameFromRecord(rec: MerchantCardRecord | unde
   return '';
 }
 
-/** Placeholder titles — not merchant program display names. */
+/** Home / My Brands list title: Worker → feed meta → chain ERC-1155 name. Skip factory placeholders. */
+export function pickMerchantCardListTitle(opts: {
+  workerName?: string;
+  metaName?: string;
+  chainName?: string;
+  fallback?: string;
+}): string {
+  for (const raw of [opts.workerName, opts.metaName, opts.chainName]) {
+    const t = String(raw ?? '').trim();
+    if (t && !isGenericMerchantCardDisplayName(t)) return t;
+  }
+  return opts.fallback ?? tu('merchant_card');
+}
+
+/** List / pass icon: skip factory swirl. Prefer Worker, then meta.icon, then meta.image. */
+export function pickMerchantCardListIconUrl(opts: {
+  workerImage?: string;
+  meta?: { icon?: string; image?: string } | null;
+}): string | undefined {
+  return pickNonFactoryMerchantAssetUrl(
+    opts.workerImage,
+    opts.meta?.icon,
+    opts.meta?.image,
+  );
+}
 
 /** Merchant program display name: DB → directory → displayJson cardName (Charge / Top-up shared). */
 export function pickMerchantProgramDisplayName(opts: {

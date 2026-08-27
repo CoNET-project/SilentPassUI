@@ -127,7 +127,7 @@ export function resolveMyBrandMerchantCategoryLabel(
 ): string {
 	const meta = detail?.meta
 	const category = classifyDiscoverMerchantCategory({
-		name: (meta?.name && meta.name.trim()) || fallbackName.trim() || '商户卡',
+		name: (meta?.name && meta.name.trim()) || fallbackName.trim() || 'Merchant card',
 		programDescription: meta?.programDescription ?? '',
 		categoryId: meta?.categoryId ?? null,
 	})

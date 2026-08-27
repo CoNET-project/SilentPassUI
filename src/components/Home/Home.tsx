@@ -73,6 +73,8 @@ import { encodeOpenContainerRelayQrPayload, readContainerNonceFromAAStorage, sig
 import { ensureConetAaForProfileAndPersist } from '@/utils/ensureConetAa'
 import { tu } from '@/locale/beamioLocale'
 import { HomeLanguageSelector } from './HomeLanguageSelector'
+import { useMerchantCardDatabase } from '@/providers/MerchantCardDatabaseProvider'
+import { pickMerchantCardListTitle } from '@/utils/merchantCardDatabase'
 
 const getImg = (avatarSeed: string|undefined) => `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed||'@Beamio').toString()}`
 const fmtAddr = (a = '') => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '—')
@@ -251,7 +253,14 @@ const Home = (_props: HomeProps) => {
 		aaAccountUsdcBalance, recentActivityNoAaItems, refreshRecentActivityNoAa, conetWalletBalances,
 		conetAaWalletBalances,
 	} = useDaemonContext()
+	const { resolveName, registerCardAddresses } = useMerchantCardDatabase()
 	const navigate = useNavigate()
+
+	useEffect(() => {
+		const addrs = myBrandCards.map((c) => c.cardAddress).filter(Boolean)
+		if (addrs.length) registerCardAddresses(addrs)
+	}, [myBrandCards, registerCardAddresses])
+
 	  const [settingsOpen, setSettingsOpen] = useState<''|'BeamioBetaAccess'|'支付'>('')
 	
 	const [avatarName, setAvatarName] = useState('')
@@ -398,6 +407,11 @@ const Home = (_props: HomeProps) => {
 		() => sortMyBrandCardsForList(myBrandCards.filter((c) => !isCardExcludedFromDisplay(c.cardAddress))).slice(0, 5),
 		[myBrandCards]
 	)
+
+	useEffect(() => {
+		const addrs = myBrandCards.map((c) => c.cardAddress).filter(Boolean)
+		if (addrs.length) registerCardAddresses(addrs)
+	}, [myBrandCards, registerCardAddresses])
 
 	const eoaAddressShort = profiles?.[0]?.keyID ? fmtAddr(profiles[0].keyID) : '—'
 
@@ -1772,8 +1786,11 @@ const Home = (_props: HomeProps) => {
 			const detail = myBrandCardDetails[addrKey]
 			const pts = Number(detail?.assets?.points ?? 0)
 			if (!Number.isFinite(pts) || pts <= 0) continue
-			const title =
-				(detail?.meta?.name && detail.meta.name.trim()) || uc.name || '商户卡'
+			const title = pickMerchantCardListTitle({
+				workerName: resolveName(uc.cardAddress),
+				metaName: detail?.meta?.name,
+				chainName: uc.name,
+			})
 			out.push({
 				cardAddress: uc.cardAddress,
 				title,
@@ -1782,7 +1799,7 @@ const Home = (_props: HomeProps) => {
 			})
 		}
 		return out.sort((a, b) => b.points - a.points)
-	}, [myBrandCards, myBrandCardDetails])
+	}, [myBrandCards, myBrandCardDetails, resolveName])
 
 	const merchantGiftEnabled = useMemo(() => {
 		if (merchantGiftCardOptions.length > 0) return true

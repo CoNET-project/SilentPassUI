@@ -22,6 +22,7 @@ import {
   normalizeCardAddressKey,
   lookupMerchantCardLocal,
 } from '@/utils/merchantCardDatabase'
+import { pickNonFactoryMerchantAssetUrl } from '@/utils/isFactoryDefaultMerchantAssetUrl'
 import {
   ensureMerchantCards,
   getMerchantCardMirrorMap,
@@ -224,8 +225,7 @@ export function MerchantCardDatabaseProvider({ children }: { children: ReactNode
   const resolveImage = useCallback(
     (cardAddress: string | undefined) => {
       const rec = lookupMerchantCardLocal(cardMap, cardAddress)
-      const img = rec?.meta?.image ?? rec?.meta?.icon
-      return typeof img === 'string' ? img.trim() : ''
+      return pickNonFactoryMerchantAssetUrl(rec?.meta?.icon, rec?.meta?.image) ?? ''
     },
     [cardMap],
   )

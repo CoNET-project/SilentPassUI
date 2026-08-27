@@ -2596,6 +2596,176 @@ export async function readReferrerAmountRatiosOnChain(cardAddress: string): Prom
 	}
 }
 
+const chargeRewardRatioReadInterface = new ethers.Interface([
+	'function chargeRewardRatioE6() view returns (uint256)',
+])
+
+export async function readChargeRewardRatioOnChain(cardAddress: string): Promise<string | null> {
+	try {
+		const cardAddrNorm = ethers.getAddress(cardAddress)
+		const { provider } = await providerForBeamioUserCard(cardAddrNorm)
+		const card = new ethers.Contract(cardAddrNorm, chargeRewardRatioReadInterface, provider)
+		const raw = await card.chargeRewardRatioE6().catch(() => null)
+		if (raw == null) return null
+		return BigInt(raw.toString()).toString()
+	} catch {
+		return null
+	}
+}
+
+const combinedRewardRatioInterface = new ethers.Interface([
+	'function topupReward(uint256 actorRatioE6, uint256 referrerRatioE6)',
+	'function chargeReward(uint256 actorRatioE6, uint256 referrerRatioE6)',
+])
+
+/** Atomic actor + referrer top-up #13 ratios (single executeForOwner). */
+export const encodeTopupReward = (
+	actorRatioE6: string | number | bigint,
+	referrerRatioE6: string | number | bigint,
+): string =>
+	combinedRewardRatioInterface.encodeFunctionData('topupReward', [
+		BigInt(actorRatioE6),
+		BigInt(referrerRatioE6),
+	])
+
+/** Atomic actor + referrer charge #13 ratios (single executeForOwner). */
+export const encodeChargeReward = (
+	actorRatioE6: string | number | bigint,
+	referrerRatioE6: string | number | bigint,
+): string =>
+	combinedRewardRatioInterface.encodeFunctionData('chargeReward', [
+		BigInt(actorRatioE6),
+		BigInt(referrerRatioE6),
+	])
+
+async function rewardRatiosMatchOnChain(
+	cardAddress: string,
+	kind: 'topup' | 'charge',
+	actorRatioE6: string,
+	referrerRatioE6: string,
+): Promise<boolean> {
+	const [actorOnChain, referrerOnChain] = await Promise.all([
+		kind === 'topup'
+			? readTopupActorRewardRatioOnChain(cardAddress)
+			: readChargeRewardRatioOnChain(cardAddress),
+		readReferrerAmountRatiosOnChain(cardAddress),
+	])
+	const referrerTarget =
+		kind === 'topup' ? referrerOnChain?.topupRatioE6 : referrerOnChain?.chargeRatioE6
+	return actorOnChain === actorRatioE6 && referrerTarget === referrerRatioE6
+}
+
+async function syncCombinedRewardRatiosOnChain(opts: {
+	cardAddress: string
+	ownerPrivateKey: string
+	kind: 'topup' | 'charge'
+	actorRatioE6: string
+	referrerRatioE6: string
+}): Promise<{ success: boolean; error?: string }> {
+	try {
+		const cardAddrNorm = ethers.getAddress(opts.cardAddress)
+		if (
+			await rewardRatiosMatchOnChain(
+				cardAddrNorm,
+				opts.kind,
+				opts.actorRatioE6,
+				opts.referrerRatioE6,
+			)
+		) {
+			return { success: true }
+		}
+
+		const signerAddr = ethers.getAddress(new ethers.Wallet(opts.ownerPrivateKey).address)
+		const chainOwner = await getCardOwner(cardAddrNorm)
+		if (ethers.getAddress(chainOwner) !== signerAddr) {
+			return {
+				success: false,
+				error:
+					opts.kind === 'topup'
+						? 'Top-up reward ratio updates require the card owner wallet. Unlock owner wallet and retry.'
+						: 'Consumption point ratio updates require the card owner wallet. Unlock owner wallet and retry.',
+			}
+		}
+
+		const data =
+			opts.kind === 'topup'
+				? encodeTopupReward(opts.actorRatioE6, opts.referrerRatioE6)
+				: encodeChargeReward(opts.actorRatioE6, opts.referrerRatioE6)
+		const deadline = Math.floor(Date.now() / 1000) + 3600
+		const nonce = ethers.hexlify(ethers.randomBytes(32))
+		const ownerSignature = await signExecuteForOwner(
+			opts.ownerPrivateKey,
+			cardAddrNorm,
+			data,
+			deadline,
+			nonce,
+		)
+		const post = await postExecuteForOwner({
+			cardAddress: cardAddrNorm,
+			data,
+			deadline,
+			nonce,
+			ownerSignature,
+		})
+		if (!post.success) {
+			return { success: false, error: post.error ?? 'executeForOwner failed' }
+		}
+
+		for (let attempt = 0; attempt < 8; attempt++) {
+			if (attempt > 0) {
+				await new Promise((r) => setTimeout(r, 1200))
+			}
+			if (
+				await rewardRatiosMatchOnChain(
+					cardAddrNorm,
+					opts.kind,
+					opts.actorRatioE6,
+					opts.referrerRatioE6,
+				)
+			) {
+				return { success: true }
+			}
+		}
+		return {
+			success: false,
+			error:
+				opts.kind === 'topup'
+					? 'Top-up reward ratios were accepted by the API but are not on-chain yet. Wait a moment and save again.'
+					: 'Consumption point ratios were accepted by the API but are not on-chain yet. Wait a moment and save again.',
+		}
+	} catch (e: unknown) {
+		return {
+			success: false,
+			error:
+				e instanceof Error
+					? e.message
+					: opts.kind === 'topup'
+						? 'Failed to update top-up reward ratios on-chain.'
+						: 'Failed to update consumption point ratios on-chain.',
+		}
+	}
+}
+
+/** Single UserOp: topup actor + referrer #13 E6 ratios. */
+export async function syncTopupRewardRatiosOnChain(opts: {
+	cardAddress: string
+	ownerPrivateKey: string
+	actorRatioE6: string
+	referrerRatioE6: string
+}): Promise<{ success: boolean; error?: string }> {
+	return syncCombinedRewardRatiosOnChain({ ...opts, kind: 'topup' })
+}
+
+/** Single UserOp: charge actor + referrer #13 E6 ratios. */
+export async function syncChargeRewardRatiosOnChain(opts: {
+	cardAddress: string
+	ownerPrivateKey: string
+	actorRatioE6: string
+	referrerRatioE6: string
+}): Promise<{ success: boolean; error?: string }> {
+	return syncCombinedRewardRatiosOnChain({ ...opts, kind: 'charge' })
+}
+
 const addAdminInterface = new ethers.Interface([
     'function addAdmin(address newAdmin, uint256 newThreshold)',
 ])

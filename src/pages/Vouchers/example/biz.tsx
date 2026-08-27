@@ -89,12 +89,11 @@ import {
   updateIssuedCouponSocialPromotion,
   updateBeamioCardTiers,
   encodeSetTiers,
-  encodeSetChargeRewardRatio,
-  encodeSetTopupActorRewardRatio,
-  encodeSetReferrerChargeAmountRatio,
-  encodeSetReferrerTopupAmountRatio,
   readTopupActorRewardRatioOnChain,
+  readChargeRewardRatioOnChain,
   readReferrerAmountRatiosOnChain,
+  syncTopupRewardRatiosOnChain,
+  syncChargeRewardRatiosOnChain,
   publishMembershipFeesViaExecuteForOwner,
   postExecuteForOwner,
   fetchCardsByCategory,
@@ -11319,102 +11318,6 @@ function formatConsumptionPointSystemDisplay(enabled: boolean, ratioInput: strin
   return `${formatPointRatioE6Display(e6.toString())}× on qualifying charges`;
 }
 
-async function syncChargeRewardRatioOnChain(opts: {
-  cardAddress: string;
-  ownerPrivateKey: string;
-  targetRatioE6: string;
-}): Promise<{ success: boolean; error?: string }> {
-  try {
-    const cardAddrNorm = ethers.getAddress(opts.cardAddress);
-    const { provider } = await providerForBeamioUserCard(cardAddrNorm);
-    const card = new ethers.Contract(
-      cardAddrNorm,
-      ['function chargeRewardRatioE6() view returns (uint256)'],
-      provider,
-    );
-    const chainRaw = await card.chargeRewardRatioE6().catch(() => null);
-    const chainE6 = chainRaw != null ? BigInt(chainRaw.toString()).toString() : null;
-    if (chainE6 === opts.targetRatioE6) return { success: true };
-
-    const signerAddr = ethers.getAddress(new ethers.Wallet(opts.ownerPrivateKey).address);
-    const chainOwner = await getCardOwner(cardAddrNorm);
-    if (ethers.getAddress(chainOwner) !== signerAddr) {
-      return {
-        success: false,
-        error:
-          'Consumption point ratio updates require the card owner wallet. Unlock owner wallet and retry.',
-      };
-    }
-    const data = encodeSetChargeRewardRatio(opts.targetRatioE6);
-    const deadline = Math.floor(Date.now() / 1000) + 3600;
-    const nonce = ethers.hexlify(ethers.randomBytes(32));
-    const ownerSignature = await signExecuteForOwner(
-      opts.ownerPrivateKey,
-      cardAddrNorm,
-      data,
-      deadline,
-      nonce,
-    );
-    return postExecuteForOwner({
-      cardAddress: cardAddrNorm,
-      data,
-      deadline,
-      nonce,
-      ownerSignature,
-    });
-  } catch (e: unknown) {
-    return {
-      success: false,
-      error: (e as Error)?.message ?? 'Failed to update consumption point ratio on-chain.',
-    };
-  }
-}
-
-/** Top-up actor #13 ratio (Programs → Reward PT). Mirror of syncChargeRewardRatioOnChain. */
-async function syncTopupActorRewardRatioOnChain(opts: {
-  cardAddress: string;
-  ownerPrivateKey: string;
-  targetRatioE6: string;
-}): Promise<{ success: boolean; error?: string }> {
-  try {
-    const cardAddrNorm = ethers.getAddress(opts.cardAddress);
-    const chainE6 = await readTopupActorRewardRatioOnChain(cardAddrNorm);
-    if (chainE6 === opts.targetRatioE6) return { success: true };
-
-    const signerAddr = ethers.getAddress(new ethers.Wallet(opts.ownerPrivateKey).address);
-    const chainOwner = await getCardOwner(cardAddrNorm);
-    if (ethers.getAddress(chainOwner) !== signerAddr) {
-      return {
-        success: false,
-        error:
-          'Reward PT ratio updates require the card owner wallet. Unlock owner wallet and retry.',
-      };
-    }
-    const data = encodeSetTopupActorRewardRatio(opts.targetRatioE6);
-    const deadline = Math.floor(Date.now() / 1000) + 3600;
-    const nonce = ethers.hexlify(ethers.randomBytes(32));
-    const ownerSignature = await signExecuteForOwner(
-      opts.ownerPrivateKey,
-      cardAddrNorm,
-      data,
-      deadline,
-      nonce,
-    );
-    return postExecuteForOwner({
-      cardAddress: cardAddrNorm,
-      data,
-      deadline,
-      nonce,
-      ownerSignature,
-    });
-  } catch (e: unknown) {
-    return {
-      success: false,
-      error: (e as Error)?.message ?? 'Failed to update top-up Reward PT ratio on-chain.',
-    };
-  }
-}
-
 /** Whole percent 0–100 (1% steps) → E6 ratio (100% = 1_000_000). */
 function parseAmountPercentHumanToE6(raw: string): bigint | null {
   const t = raw.trim();
@@ -11438,76 +11341,6 @@ function amountPercentInputToSlider(raw: string): number {
   const n = Math.round(Number(String(raw ?? '').trim()));
   if (!Number.isFinite(n)) return 0;
   return Math.min(100, Math.max(0, n));
-}
-
-async function syncReferrerAmountRatioOnChain(opts: {
-  cardAddress: string;
-  ownerPrivateKey: string;
-  kind: 'charge' | 'topup';
-  targetRatioE6: string;
-}): Promise<{ success: boolean; error?: string }> {
-  try {
-    const cardAddrNorm = ethers.getAddress(opts.cardAddress);
-    const onChain = await readReferrerAmountRatiosOnChain(cardAddrNorm);
-    const current =
-      opts.kind === 'charge' ? onChain?.chargeRatioE6 : onChain?.topupRatioE6;
-    if (current === opts.targetRatioE6) return { success: true };
-
-    const signerAddr = ethers.getAddress(new ethers.Wallet(opts.ownerPrivateKey).address);
-    const chainOwner = await getCardOwner(cardAddrNorm);
-    if (ethers.getAddress(chainOwner) !== signerAddr) {
-      return {
-        success: false,
-        error:
-          'Referrer reward updates require the card owner wallet. Unlock owner wallet and retry.',
-      };
-    }
-    const data =
-      opts.kind === 'charge'
-        ? encodeSetReferrerChargeAmountRatio(opts.targetRatioE6)
-        : encodeSetReferrerTopupAmountRatio(opts.targetRatioE6);
-    const deadline = Math.floor(Date.now() / 1000) + 3600;
-    const nonce = ethers.hexlify(ethers.randomBytes(32));
-    const ownerSignature = await signExecuteForOwner(
-      opts.ownerPrivateKey,
-      cardAddrNorm,
-      data,
-      deadline,
-      nonce,
-    );
-    const post = await postExecuteForOwner({
-      cardAddress: cardAddrNorm,
-      data,
-      deadline,
-      nonce,
-      ownerSignature,
-    });
-    if (!post.success) {
-      return { success: false, error: post.error ?? 'executeForOwner failed' };
-    }
-    // Confirm storage — do not trust HTTP alone (queued / false-success body).
-    for (let attempt = 0; attempt < 8; attempt++) {
-      if (attempt > 0) {
-        await new Promise((r) => setTimeout(r, 1200));
-      }
-      const verified = await readReferrerAmountRatiosOnChain(cardAddrNorm);
-      const verifiedRatio =
-        opts.kind === 'charge' ? verified?.chargeRatioE6 : verified?.topupRatioE6;
-      if (verifiedRatio === opts.targetRatioE6) {
-        return { success: true };
-      }
-    }
-    return {
-      success: false,
-      error:
-        'Referrer reward was accepted by the API but is not on-chain yet. Wait a moment and save again.',
-    };
-  } catch (e: unknown) {
-    return {
-      success: false,
-      error: (e as Error)?.message ?? 'Failed to update referrer reward ratio on-chain.',
-    };
-  }
 }
 
 type CardIssuanceBonusRuleRow = {
@@ -14044,7 +13877,6 @@ const [programReferrerChargeEditorBaseline, setProgramReferrerChargeEditorBaseli
   enabled: boolean;
   percent: string;
 } | null>(null);
-const programReferrerRewardsSaveInFlightRef = useRef(false);
 /** Prevent silent referrer overview reloads from wiping in-editor drafts. */
 const cardIssuanceTopupPromotionEditorOpenRef = useRef(false);
 const cardIssuanceConsumptionPointEditorOpenRef = useRef(false);
@@ -14486,86 +14318,7 @@ useEffect(() => {
    return '';
  }, [programRewardPtTopupEnabled, programRewardPtTopupPercentInput, tu]);
 
- /** Persist one referrer amount-ratio kind. Returns error string or null on success / no-op.
-  * Optional `draft` snapshots the editor values at Save-click so a later silent overview reload
-  * (or point-system await) cannot drop a concurrent Referrer Reward change.
-  * Skip only when **on-chain** already matches the draft (local baseline alone can be stale).
-  */
- const syncProgramReferrerAmountRatioKind = useCallback(
-   async (
-     kind: 'charge' | 'topup',
-     draft?: { enabled: boolean; percent: string; baselineE6?: string },
-   ): Promise<string | null> => {
-     const addr = cardIssuanceExistingCard?.cardAddress?.trim() ?? '';
-     if (!addr || !ethers.isAddress(addr)) return null;
-     const enabled =
-       draft?.enabled ?? (kind === 'charge' ? programReferrerChargeEnabled : programReferrerTopupEnabled);
-     const percent =
-       draft?.percent ??
-       (kind === 'charge' ? programReferrerChargePercentInput : programReferrerTopupPercentInput);
-     const draftE6 = enabled ? parseAmountPercentHumanToE6(percent) : 0n;
-     if (draftE6 == null) return tu('programs_overview_referrer_percent_invalid');
-     if (enabled && draftE6 === 0n) return tu('programs_overview_referrer_percent_required');
-     const target = draftE6.toString();
-     const onChain = await readReferrerAmountRatiosOnChain(addr);
-     const chainCurrent =
-       kind === 'charge' ? onChain?.chargeRatioE6 : onChain?.topupRatioE6;
-     if (chainCurrent === target) {
-       if (kind === 'charge') {
-         setProgramReferrerChargeRatioE6Baseline(target);
-       } else {
-         setProgramReferrerTopupRatioE6Baseline(target);
-       }
-       return null;
-     }
-     const pk = getSessionPrivateKeyArmor() ?? profiles?.[0]?.privateKeyArmor;
-     if (!pk) return tu('programs_overview_referrer_rewards_error');
-     if (programReferrerRewardsSaveInFlightRef.current) {
-       return tu('programs_overview_referrer_rewards_error');
-     }
-     programReferrerRewardsSaveInFlightRef.current = true;
-     try {
-       const res = await syncReferrerAmountRatioOnChain({
-         cardAddress: addr,
-         ownerPrivateKey: pk,
-         kind,
-         targetRatioE6: target,
-       });
-       if (!res.success) {
-         return res.error ?? tu('programs_overview_referrer_rewards_error');
-       }
-       if (kind === 'charge') {
-         setProgramReferrerChargeRatioE6Baseline(target);
-         setProgramReferrerChargeEnabled(draftE6 > 0n);
-         setProgramReferrerChargePercentInput(
-           draftE6 > 0n ? formatAmountPercentE6Display(target) : '100',
-         );
-       } else {
-         setProgramReferrerTopupRatioE6Baseline(target);
-         setProgramReferrerTopupEnabled(draftE6 > 0n);
-         setProgramReferrerTopupPercentInput(
-           draftE6 > 0n ? formatAmountPercentE6Display(target) : '50',
-         );
-       }
-       return null;
-     } catch {
-       return tu('programs_overview_referrer_rewards_error');
-     } finally {
-       programReferrerRewardsSaveInFlightRef.current = false;
-     }
-   },
-   [
-     cardIssuanceExistingCard?.cardAddress,
-     programReferrerChargeEnabled,
-     programReferrerTopupEnabled,
-     programReferrerChargePercentInput,
-     programReferrerTopupPercentInput,
-     profiles,
-     tu,
-   ],
- );
-
- const loadProgramReferrerList = useCallback(async () => {
+const loadProgramReferrerList = useCallback(async () => {
    const addr = resolveProgramReferrerCardAddress();
    if (!addr) return;
    const eoa = programReferrerEoaRef.current;
@@ -21961,13 +21714,6 @@ const submitCardIssuanceTopupPromotionEditor = useCallback(async () => {
   setCardIssuanceCreateError('');
   setCardIssuanceTopupPromotionEditorPublishing(true);
   try {
-    {
-      const referrerErr = await syncProgramReferrerAmountRatioKind('topup', referrerDraftAtStart);
-      if (referrerErr) {
-        setCardIssuanceTopupPromotionEditorServerError(referrerErr);
-        return;
-      }
-    }
     const payload = topupPromotionDraftToPayload(nextPromotion);
     const promoDirty =
       cardIssuanceTopupPromotionEditorBaseline == null ||
@@ -22027,47 +21773,60 @@ const submitCardIssuanceTopupPromotionEditor = useCallback(async () => {
       setProgramRewardPtTopupPercentInput(rewardPtDraftAtStart.percent);
     }
 
-    // Reward PT → setTopupActorRewardRatio (actual-payment % → #13). Always sync like Referrer
-    // (do not gate on editor dirty — metadata can already match while chain is still 0).
-    // Do not write Social Promotion ruleId=2 fixed mint (would dual-mint with ratios).
+    // Reward PT + Referrer → single topupReward(actor, referrer). Do not write Social ruleId=2.
     {
       const cardAddr = ethers.getAddress(cardIssuanceExistingCard.cardAddress);
-      const targetRatioE6 = rewardPtDraftAtStart.enabled
+      const actorRatioE6 = rewardPtDraftAtStart.enabled
         ? (parseAmountPercentHumanToE6(rewardPtDraftAtStart.percent)?.toString() ?? '0')
         : '0';
-      const chainNow = await readTopupActorRewardRatioOnChain(cardAddr);
-      if (chainNow !== targetRatioE6) {
-        const pk = getSessionPrivateKeyArmor() ?? profiles?.[0]?.privateKeyArmor;
-        if (!pk) {
-          setCardIssuanceTopupPromotionEditorServerError(
-            'Unlock your wallet before saving Reward PT on-chain ratio.'
-          );
-          return;
-        }
-        const ratioRes = await syncTopupActorRewardRatioOnChain({
-          cardAddress: cardAddr,
-          ownerPrivateKey: pk,
-          targetRatioE6,
-        });
-        if (!ratioRes.success) {
-          setCardIssuanceTopupPromotionEditorServerError(
-            ratioRes.error ?? 'On-chain top-up Reward PT ratio update failed. Try saving again.'
-          );
-          return;
-        }
+      const referrerRatioE6 = referrerDraftAtStart.enabled
+        ? (parseAmountPercentHumanToE6(referrerDraftAtStart.percent)?.toString() ?? '0')
+        : '0';
+      const pk = getSessionPrivateKeyArmor() ?? profiles?.[0]?.privateKeyArmor;
+      if (!pk) {
+        setCardIssuanceTopupPromotionEditorServerError(
+          'Unlock your wallet before saving Reward PT / Referrer on-chain ratios.'
+        );
+        return;
+      }
+      const ratioRes = await syncTopupRewardRatiosOnChain({
+        cardAddress: cardAddr,
+        ownerPrivateKey: pk,
+        actorRatioE6,
+        referrerRatioE6,
+      });
+      if (!ratioRes.success) {
+        setCardIssuanceTopupPromotionEditorServerError(
+          ratioRes.error ?? 'On-chain top-up reward ratio update failed. Try saving again.'
+        );
+        return;
+      }
+      setProgramReferrerTopupRatioE6Baseline(referrerRatioE6);
+      setProgramReferrerTopupEnabled(referrerDraftAtStart.enabled && BigInt(referrerRatioE6) > 0n);
+      if (BigInt(referrerRatioE6) > 0n) {
+        setProgramReferrerTopupPercentInput(formatAmountPercentE6Display(referrerRatioE6));
       }
     }
 
     setCardIssuanceTopupPromotionEditorOpen(false);
-    setCardIssuanceOwnerAdminNotice({
-      kind: 'ok',
-      text:
-        rewardPtDraftAtStart.enabled || referrerDraftAtStart.enabled
-          ? 'Top-up promotion saved. Reward PT / Referrer ratios mint #13 on qualifying top-ups.'
-          : nextPromotion.enabled
-            ? 'Top-up promotion saved. POS and apps will use it after a short cache refresh.'
-            : 'Top-up promotion turned off. Reward PT and Referrer reward settings are unchanged.',
-    });
+    {
+      const ratioOn = rewardPtDraftAtStart.enabled || referrerDraftAtStart.enabled;
+      let noticeText = '';
+      if (ratioOn) {
+        noticeText = promoDirty
+          ? nextPromotion.enabled
+            ? 'Top-up promotion saved. Reward PT / Referrer ratios updated on-chain (#13 on qualifying top-ups).'
+            : 'Top-up promotion turned off. Reward PT / Referrer ratios updated on-chain (#13 on qualifying top-ups).'
+          : 'Reward PT / Referrer on-chain ratios saved (#13 on qualifying top-ups).';
+      } else if (promoDirty) {
+        noticeText = nextPromotion.enabled
+          ? 'Top-up promotion saved. POS and apps will use it after a short cache refresh.'
+          : 'Top-up promotion turned off.';
+      } else {
+        noticeText = 'Top-up promotion settings saved.';
+      }
+      setCardIssuanceOwnerAdminNotice({ kind: 'ok', text: noticeText });
+    }
   } catch {
     setCardIssuanceTopupPromotionEditorServerError('Could not save top-up promotion. Please try again.');
   } finally {
@@ -22087,7 +21846,6 @@ const submitCardIssuanceTopupPromotionEditor = useCallback(async () => {
   programReferrerTopupEditorBaseline,
   cardIssuanceExistingCard?.cardAddress,
   handlePublishCardIssuance,
-  syncProgramReferrerAmountRatioKind,
   profiles,
 ]);
 
@@ -22365,15 +22123,6 @@ const submitCardIssuanceConsumptionPointEditor = useCallback(async () => {
       return;
     }
     const cardAddr = ethers.getAddress(cardIssuanceExistingCard.cardAddress);
-    // Write Referrer Charge first — previously skipped when Point write ran first and
-    // local dirty/baseline falsely matched while chain stayed at an older ratio.
-    {
-      const referrerErr = await syncProgramReferrerAmountRatioKind('charge', referrerDraftAtStart);
-      if (referrerErr) {
-        setCardIssuanceConsumptionPointEditorServerError(referrerErr);
-        return;
-      }
-    }
     const pointDirty =
       cardIssuanceConsumptionPointEditorBaseline == null ||
       cardIssuanceConsumptionPointEditorBaseline.enabled !== nextEnabled ||
@@ -22396,19 +22145,28 @@ const submitCardIssuanceConsumptionPointEditor = useCallback(async () => {
         return;
       }
     }
-    // Actor Charge % → setChargeRewardRatio. Always sync like Referrer Charge
-    // (do not gate on editor dirty — metadata can already match while chain is still 0).
+    // Actor + Referrer Charge % → single chargeReward(actor, referrer).
     {
-      const ratioRes = await syncChargeRewardRatioOnChain({
+      const actorRatioE6 = nextEnabled ? pointSystemPayload.chargeRewardRatioE6 : '0';
+      const referrerRatioE6 = referrerDraftAtStart.enabled
+        ? (parseAmountPercentHumanToE6(referrerDraftAtStart.percent)?.toString() ?? '0')
+        : '0';
+      const ratioRes = await syncChargeRewardRatiosOnChain({
         cardAddress: cardAddr,
         ownerPrivateKey: pk,
-        targetRatioE6: pointSystemPayload.chargeRewardRatioE6,
+        actorRatioE6,
+        referrerRatioE6,
       });
       if (!ratioRes.success) {
         setCardIssuanceConsumptionPointEditorServerError(
           ratioRes.error ?? 'On-chain consumption point ratio update failed. Try again.'
         );
         return;
+      }
+      setProgramReferrerChargeRatioE6Baseline(referrerRatioE6);
+      setProgramReferrerChargeEnabled(referrerDraftAtStart.enabled && BigInt(referrerRatioE6) > 0n);
+      if (BigInt(referrerRatioE6) > 0n) {
+        setProgramReferrerChargePercentInput(formatAmountPercentE6Display(referrerRatioE6));
       }
     }
     setCardIssuancePointSystemEnabled(nextEnabled);
@@ -22461,7 +22219,6 @@ const submitCardIssuanceConsumptionPointEditor = useCallback(async () => {
   cardIssuanceExistingCard?.chargeRewardRatioE6,
   handlePublishCardIssuance,
   profiles,
-  syncProgramReferrerAmountRatioKind,
 ]);
 
 const clearCardIssuanceConsumptionPoints = useCallback(async () => {
@@ -22489,17 +22246,6 @@ const clearCardIssuanceConsumptionPoints = useCallback(async () => {
       return;
     }
     const cardAddr = ethers.getAddress(cardIssuanceExistingCard.cardAddress);
-    const referrerErr = await syncProgramReferrerAmountRatioKind('charge', {
-      enabled: false,
-      percent: programReferrerChargePercentInput,
-    });
-    if (referrerErr) {
-      setCardIssuanceOwnerAdminNotice({
-        kind: 'warn',
-        text: referrerErr,
-      });
-      return;
-    }
     const ok = await handlePublishCardIssuance({
       pointSystemOverride: pointSystemPayload,
       loadingScope: 'bonusEditor',
@@ -22513,10 +22259,11 @@ const clearCardIssuanceConsumptionPoints = useCallback(async () => {
       });
       return;
     }
-    const ratioRes = await syncChargeRewardRatioOnChain({
+    const ratioRes = await syncChargeRewardRatiosOnChain({
       cardAddress: cardAddr,
       ownerPrivateKey: pk,
-      targetRatioE6: '0',
+      actorRatioE6: '0',
+      referrerRatioE6: '0',
     });
     if (!ratioRes.success) {
       setCardIssuanceOwnerAdminNotice({
@@ -22527,6 +22274,7 @@ const clearCardIssuanceConsumptionPoints = useCallback(async () => {
     }
     setCardIssuancePointSystemEnabled(false);
     setProgramReferrerChargeEnabled(false);
+    setProgramReferrerChargeRatioE6Baseline('0');
     setCardIssuanceExistingCard((prev) => {
       if (!prev) return prev;
       const nextMeta = prev.meta
@@ -22559,7 +22307,6 @@ const clearCardIssuanceConsumptionPoints = useCallback(async () => {
   programReferrerChargePercentInput,
   handlePublishCardIssuance,
   profiles,
-  syncProgramReferrerAmountRatioKind,
 ]);
 
 const submitCardIssuanceCouponSocialPromotionEditor = useCallback(async () => {

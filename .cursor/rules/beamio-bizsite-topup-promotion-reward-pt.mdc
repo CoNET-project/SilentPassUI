@@ -26,11 +26,11 @@ Merchant OS **Programs → Top-up Promotion** 编辑器内同时存在 **三类�
 
 | 条件 | 链上行为 |
 |---|---|
-| Referrer Top-up 变更 | Owner 签 `setReferrerTopupAmountRatio`（`referrerRewardFromTopupAmountRatioE6`） |
-| Reward PT 变更 | Owner 签 `setTopupActorRewardRatio`（`topupActorRewardRatioE6`） |
-| 对应 OFF | 写 **ratio = 0** |
+| Top-up Reward PT + Referrer 变更 | Owner 单笔 `executeForOwner` → `topupReward(actorRatioE6, referrerRatioE6)`（`0x43130eed`） |
+| Charge Reward PT + Referrer 变更 | Owner 单笔 `executeForOwner` → `chargeReward(actorRatioE6, referrerRatioE6)`（`0xd83cea96`） |
+| 对应 OFF | 写 **ratio = 0**（仍走 combined 调用，两参均为 0） |
 
-- Helper：`syncTopupActorRewardRatioOnChain` / `syncProgramReferrerAmountRatioKind('topup', …)`（`biz.tsx`）。
+- Helper：`syncTopupRewardRatiosOnChain` / `syncChargeRewardRatiosOnChain`（单笔 UserOp `topupReward` / `chargeReward`；`biz.tsx` + `BeamioCard.ts`）。
 - UI 整数 % → E6：`parseAmountPercentHumanToE6`（`N%` → `N * 10_000`；100% = `1_000_000`）。
 - 同周期 mint：`ChargeRewardModuleV2.recordTopupCumulativeStat` → `amountFiat6 × ratioE6 / 1e6` → **#13**（基数 = 实付，不含 bonus #0）。
 - **`getRewardRule(2)` ≠ Top-up。** Reward PT / Referrer **不得**读写该槽；遗留固定 mint 仅由 Social Save **deactivate**。`applyTopupRewardPtOnChainRule` **@deprecated**，若被调用 **只 deactivate**，禁止再写 active 固定 mint。
@@ -161,7 +161,7 @@ cardIssuanceTopupPromotionOverviewSummary = useMemo(() => [
 | Overview summary | `src/pages/Vouchers/example/biz.tsx` — `cardIssuanceTopupPromotionOverviewSummary` |
 | Reward PT 状态 | 同文件 — `programRewardPtTopupEnabled`, `programRewardPtTopupPercentInput` |
 | Publish 合并 | 同文件 — `mergeUnifiedRewardPointsTopup` |
-| 写链 ratio | 同文件 — `syncTopupActorRewardRatioOnChain`、`syncProgramReferrerAmountRatioKind` |
+| 写链 ratio | 同文件 — `syncTopupRewardRatiosOnChain`、`syncChargeRewardRatiosOnChain`（`BeamioCard.ts`） |
 | 工具 / 类型 | `src/utils/unifiedRewardPoints.ts`, `src/services/BeamioCard.ts` |
 | Locale | `src/locale/programsLocale.en.json` |
 

@@ -77,6 +77,7 @@ import {
   getCardMetadataFromApi,
   getCardMetadataFrom1155Json,
   getCardMetadataFromUri,
+  parseLoyaltyUpgradeTypeFromCardMetadata,
   getNftMetadataFromApi,
   getCardsOfOwnerWithDetailsForProfile,
   fetchLatestMerchantProgramCardAddressForProfile,
@@ -564,6 +565,7 @@ import {
   CardConfiguratorMobileFixedFooterPortal,
   CARD_CONFIGURATOR_MOBILE_MAIN_PAD,
   CARD_CONFIGURATOR_MOBILE_MAIN_PAD_MARKET_HEADER,
+  CARD_CONFIGURATOR_MOBILE_STICKY_BELOW_DEFAULT_HEADER_CLASS,
   CARD_CONFIGURATOR_MOBILE_STICKY_BELOW_HEADER_CLASS,
   CARD_CONFIGURATOR_REVIEW_EDITORIAL_SHADOW_CLASS,
   CARD_CONFIGURATOR_REVIEW_SURFACE_CLASS,
@@ -642,7 +644,7 @@ function persistCardIssuanceKetWelcomeDismissedForEoa(eoa: string): void {
   }
 }
 
-/** Cover after Ket #0 + no issued card — aligns with `marketExample.html`; then “Start Designing” → Card Configurator. */
+/** Cover after Ket #0 + no issued card — then “Start Configuring” → Card Configurator. */
 function CardIssuanceKetWelcomeCoverPanel(props: {
   protocolFuelReserveBalance: number | null
   onStartDesigning: () => void
@@ -651,108 +653,108 @@ function CardIssuanceKetWelcomeCoverPanel(props: {
   const { tu } = useTu()
   const startDesigningTap = useReliableTapHandler(onStartDesigning)
   const [welcomeLegalDocId, setWelcomeLegalDocId] = useState<BeamioLegalDocId | null>(null)
-  const bUnitsLine =
+  const formattedBUnits =
     protocolFuelReserveBalance != null && Number.isFinite(protocolFuelReserveBalance)
-      ? `${Number(protocolFuelReserveBalance).toFixed(2)} B-Units`
+      ? Number(protocolFuelReserveBalance).toLocaleString('en-US', {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        })
       : null
 
   return (
-    <div className="relative mx-auto w-full max-w-2xl animate-in fade-in duration-300 font-sans antialiased">
+    <div className="relative mx-auto flex w-full max-w-xl flex-col items-center font-sans antialiased">
+      <style>{`
+        @keyframes beamio-welcome-pulse-halo {
+          0% { box-shadow: 0 0 0 0 rgba(21, 98, 240, 0.4); }
+          70% { box-shadow: 0 0 0 20px rgba(21, 98, 240, 0); }
+          100% { box-shadow: 0 0 0 0 rgba(21, 98, 240, 0); }
+        }
+        .beamio-welcome-pulse-halo {
+          animation: beamio-welcome-pulse-halo 2s infinite;
+        }
+      `}</style>
       <div
-        className="pointer-events-none absolute inset-0 -z-10 min-h-full bg-[#f5f7f9] [background-image:radial-gradient(at_0%_0%,#7a9dff_0%,transparent_50%),radial-gradient(at_100%_0%,#eef1f3_0%,transparent_50%),radial-gradient(at_100%_100%,#d8e3fb_0%,transparent_50%),radial-gradient(at_0%_100%,#ffffff_0%,transparent_50%)]"
+        className="pointer-events-none absolute inset-x-0 top-0 h-[300px] bg-[radial-gradient(circle_at_50%_0%,rgba(21,98,240,0.1)_0%,rgba(250,249,254,0)_70%)]"
         aria-hidden
       />
-      <main className="relative px-4 pb-36 pt-4 sm:px-6 md:pt-6">
-        <header className="mb-2 flex items-center justify-between border-b border-[#abadaf]/25 pb-4">
-          <h1 className="font-manrope text-xl font-bold tracking-tight text-[#0051d1]">{tu('programs_welcome_title')}</h1>
-        </header>
-        <section className="mb-10 mt-6 flex flex-col items-center text-center">
-          <div className="relative mb-8 h-32 w-32">
-            <div className="absolute inset-0 scale-125 animate-pulse rounded-full bg-[#0051d1]/10" aria-hidden />
-            <div className="relative flex h-full w-full items-center justify-center rounded-full bg-[#0051d1] shadow-[0_15px_35px_rgba(0,81,209,0.25)]">
-              <Check className="size-14 text-white" strokeWidth={2.25} aria-hidden />
+      <header className="relative z-10 mb-12 flex max-w-lg flex-col items-center text-center">
+        <div className="relative mb-6">
+          <div className="beamio-welcome-pulse-halo relative z-10 flex h-20 w-20 items-center justify-center rounded-full bg-[#1562f0] shadow-lg">
+            <Check className="h-10 w-10 text-white" strokeWidth={3} aria-hidden />
+          </div>
+          <div className="absolute inset-0 -z-10 scale-125 rounded-full bg-[#1562f0] opacity-20" aria-hidden />
+        </div>
+        <h1 className="mb-3 text-3xl font-bold tracking-tight text-gray-900">
+          {tu('programs_welcome_headline')}
+        </h1>
+        <p className="text-base leading-relaxed text-gray-600">
+          {formattedBUnits ? (
+            <>
+              {tu('programs_welcome_body_lead')}{' '}
+              <strong className="font-semibold text-gray-900">
+                {formattedBUnits} {tu('programs_welcome_body_units')}
+              </strong>
+              . {tu('programs_welcome_body_trail')}
+            </>
+          ) : (
+            tu('programs_welcome_body_generic')
+          )}
+        </p>
+      </header>
+      <main className="relative z-10 mx-auto flex w-full flex-grow flex-col gap-6 pb-36">
+        <div className="relative flex items-start gap-4 rounded-2xl border border-white/50 border-l-4 border-l-[#1562f0] bg-white/70 p-6 shadow-[0_4px_6px_-1px_rgba(0,0,0,0.05),0_2px_4px_-1px_rgba(0,0,0,0.03)] backdrop-blur-[10px] transition-transform duration-200 hover:-translate-y-1">
+          <div className="relative z-10 flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-blue-200 bg-blue-100 shadow-sm">
+            <Palette className="size-6 text-[#1562f0]" strokeWidth={2} aria-hidden />
+          </div>
+          <div className="pt-1">
+            <h3 className="mb-1 text-lg font-bold text-gray-900">{tu('programs_welcome_step1_title')}</h3>
+            <p className="text-sm leading-snug text-gray-600">{tu('programs_welcome_step1_desc')}</p>
+          </div>
+        </div>
+        <div className="relative flex items-start gap-4 rounded-2xl border border-transparent bg-[#f4f3f8]/50 p-6 opacity-75">
+          <div className="relative z-10 flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#e9e7ec] text-[#777680]">
+            <Settings className="size-6" strokeWidth={2} aria-hidden />
+          </div>
+          <div className="pt-1">
+            <h3 className="mb-1 text-lg font-medium text-gray-700">{tu('programs_welcome_step2_title')}</h3>
+            <p className="text-sm leading-snug text-gray-500">{tu('programs_welcome_step2_desc')}</p>
+          </div>
+        </div>
+        <div className="relative flex items-start gap-4 rounded-2xl border border-transparent bg-[#f4f3f8]/50 p-6 opacity-75">
+          <div className="relative z-10 flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#e9e7ec] text-[#777680]">
+            <Rocket className="size-6" strokeWidth={2} aria-hidden />
+          </div>
+          <div className="pt-1">
+            <h3 className="mb-1 text-lg font-medium text-gray-700">{tu('programs_welcome_step3_title')}</h3>
+            <p className="text-sm leading-snug text-gray-500">{tu('programs_welcome_step3_desc')}</p>
+          </div>
+        </div>
+        <div
+          aria-hidden
+          className="relative mx-auto mt-8 flex h-32 w-full max-w-xs items-end justify-center overflow-hidden opacity-40 mix-blend-multiply"
+        >
+          <div className="relative h-64 w-48 rounded-t-3xl border-4 border-b-0 border-gray-300 bg-white/50 shadow-inner">
+            <div className="absolute left-1/2 top-4 h-1.5 w-16 -translate-x-1/2 rounded-full bg-gray-300" />
+            <div className="mt-10 flex w-full flex-col gap-3 px-4">
+              <div className="h-20 w-full rounded-lg bg-gray-100" />
+              <div className="h-8 w-full rounded-lg bg-gray-100" />
             </div>
           </div>
-          <h2 className="mb-4 font-manrope text-3xl font-extrabold tracking-tight text-[#2c2f31] sm:text-4xl">
-            {tu('programs_welcome_headline')}
-          </h2>
-          <p className="max-w-lg px-2 text-base leading-relaxed text-[#595c5e]">
-            {tu('programs_welcome_body_prefix')}
-            {bUnitsLine ? (
-              <> {tu('programs_welcome_body_bunits', { amount: bUnitsLine })}</>
-            ) : (
-              <> {tu('programs_welcome_body_generic')}</>
-            )}
-          </p>
-        </section>
-        <section className="space-y-6">
-          <div className="flex items-center justify-between px-1">
-            <h3 className="font-manrope text-lg font-bold text-[#2c2f31]">{tu('programs_welcome_process_title')}</h3>
-            <span className="rounded-full bg-[#0051d1]/10 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-[#0047b8]">
-              {tu('programs_welcome_steps_total')}
-            </span>
-          </div>
-          <div className="grid gap-4">
-            <div className="flex items-start gap-5 rounded-lg border border-white/50 bg-white/70 p-6 shadow-sm backdrop-blur-xl">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#7a9dff]/20">
-                <Palette className="size-6 text-[#0051d1]" strokeWidth={2} aria-hidden />
-              </div>
-              <div className="flex min-w-0 flex-col text-left">
-                <span className="mb-1 text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">{tu('programs_welcome_step_n', { n: '1' })}</span>
-                <h4 className="font-manrope text-lg font-bold text-[#2c2f31]">{tu('programs_welcome_step1_title')}</h4>
-                <p className="mt-1 text-sm leading-snug text-[#595c5e]">
-                  {tu('programs_welcome_step1_desc')}
-                </p>
-              </div>
-            </div>
-            <div className="flex items-start gap-5 rounded-lg border border-white/50 bg-white/70 p-6 shadow-sm backdrop-blur-xl">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#d8e3fb]/80">
-                <Medal className="size-6 text-[#515c70]" strokeWidth={2} aria-hidden />
-              </div>
-              <div className="flex min-w-0 flex-col text-left">
-                <span className="mb-1 text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">{tu('programs_welcome_step_n', { n: '2' })}</span>
-                <h4 className="font-manrope text-lg font-bold text-[#2c2f31]">{tu('programs_welcome_step2_title')}</h4>
-                <p className="mt-1 text-sm leading-snug text-[#595c5e]">
-                  {tu('programs_welcome_step2_desc')}
-                </p>
-              </div>
-            </div>
-            <div className="flex items-start gap-5 rounded-lg border border-white/50 bg-white/70 p-6 shadow-sm backdrop-blur-xl">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#f797ef]/20">
-                <Rocket className="size-6 text-[#8d3a8b]" strokeWidth={2} aria-hidden />
-              </div>
-              <div className="flex min-w-0 flex-col text-left">
-                <span className="mb-1 text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">{tu('programs_welcome_step_n', { n: '3' })}</span>
-                <h4 className="font-manrope text-lg font-bold text-[#2c2f31]">{tu('programs_welcome_step3_title')}</h4>
-                <p className="mt-1 text-sm leading-snug text-[#595c5e]">
-                  {tu('programs_welcome_step3_desc')}
-                </p>
-              </div>
-            </div>
-          </div>
-        </section>
-        <div className="mt-10 flex items-center gap-4 rounded-xl border border-white/50 bg-white/40 p-4">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#0051d1]/10 text-[#0051d1]">
-            <Nfc className="size-7" strokeWidth={2} aria-hidden />
-          </div>
-          <p className="text-xs font-medium leading-snug text-[#595c5e]">
-            {tu('programs_welcome_nfc_hint')}
-          </p>
         </div>
       </main>
-      <CardConfiguratorMobileFixedFooterPortal className="border-t border-[#abadaf]/20 bg-white/80 p-4 backdrop-blur-md sm:left-[var(--biz-sidebar-offset,0px)]">
-        <div className="mx-auto w-full max-w-5xl space-y-3">
-          <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-[11px] font-bold uppercase tracking-widest text-[#595c5e]">
+      <CardConfiguratorMobileFixedFooterPortal className="border-t border-gray-200 bg-white/90 p-4 backdrop-blur-md sm:p-6 sm:left-[var(--biz-sidebar-offset,0px)]">
+        <div className="mx-auto flex w-full max-w-xl flex-col items-center gap-3">
+          <div className="mb-2 flex gap-4 text-xs font-medium text-gray-500">
             <button
               type="button"
-              className="transition-colors hover:text-[#0051d1]"
+              className="transition-colors hover:text-gray-900"
               onClick={() => setWelcomeLegalDocId('privacy')}
             >
               {tu('programs_welcome_legal_privacy')}
             </button>
             <button
               type="button"
-              className="transition-colors hover:text-[#0051d1]"
+              className="transition-colors hover:text-gray-900"
               onClick={() => setWelcomeLegalDocId('terms')}
             >
               {tu('programs_welcome_legal_terms')}
@@ -762,7 +764,7 @@ function CardIssuanceKetWelcomeCoverPanel(props: {
             type="button"
             data-touch-priority="1"
             {...startDesigningTap}
-            className={`flex w-full items-center justify-center gap-3 rounded-full bg-[#0051d1] py-5 font-manrope text-base font-bold text-white shadow-[0_20px_40px_rgba(0,81,209,0.2)] transition-transform active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-white ${CARD_SETUP_MOBILE_CTA_TOUCH_CLASS}`}
+            className={`flex w-full items-center justify-center gap-2 rounded-xl bg-[#1562f0] px-6 py-4 text-lg font-semibold text-white shadow-lg transition-all hover:bg-blue-700 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-white ${CARD_SETUP_MOBILE_CTA_TOUCH_CLASS}`}
           >
             {tu('programs_welcome_start_designing')}
             <ArrowRight className="size-5" strokeWidth={2} aria-hidden />
@@ -10956,7 +10958,7 @@ const CARD_ISSUANCE_NEW_NON_MEMBERSHIP_SILENT_MIN_TOPUP = 1;
 /** New non-membership cards: silent max top-up written to metadata (not shown on issue UI). */
 const CARD_ISSUANCE_NEW_NON_MEMBERSHIP_SILENT_MAX_TOPUP = CARD_ISSUANCE_MAX_TOPUP_MAX;
 /** Default maximum top-up (whole dollars only, no decimals). */
-const CARD_ISSUANCE_MAX_TOPUP_DEFAULT = 100;
+const CARD_ISSUANCE_MAX_TOPUP_DEFAULT = CARD_ISSUANCE_MAX_TOPUP_MAX;
 /** Default minimum top-up (whole dollars only, no decimals). */
 const CARD_ISSUANCE_MIN_TOPUP_DEFAULT = 5;
 /** Rewards setup panel default amount (membership fee or tier qualify) in card currency units. */
@@ -12362,14 +12364,14 @@ type CardIssuanceCategoryOption = {
 
 /** Same `value` / label order as `LITE_MOBILE_ONBOARDING_CATEGORY_OPTIONS` (lite commerce Business Category). */
 const CARD_ISSUANCE_CATEGORY_VISUALS: Record<string, { Icon: LucideIcon; circleClass: string }> = {
-  'food-beverage': { Icon: UtensilsCrossed, circleClass: 'bg-red-50 text-red-600' },
-  'grocery-convenience': { Icon: ShoppingCart, circleClass: 'bg-amber-50 text-amber-700' },
-  'retail-shopping': { Icon: ShoppingBag, circleClass: 'bg-orange-50 text-orange-600' },
-  'education-training': { Icon: GraduationCap, circleClass: 'bg-indigo-50 text-indigo-700' },
-  'health-beauty': { Icon: HeartPulse, circleClass: 'bg-pink-50 text-pink-600' },
-  'fitness-wellness': { Icon: Dumbbell, circleClass: 'bg-lime-50 text-lime-800' },
-  'entertainment-leisure': { Icon: Clapperboard, circleClass: 'bg-emerald-50 text-emerald-600' },
-  'local-services': { Icon: Building2, circleClass: 'bg-sky-50 text-sky-700' },
+  'local-services': { Icon: Building2, circleClass: 'bg-[#E3EFFF] text-[#004bc3]' },
+  'food-beverage': { Icon: UtensilsCrossed, circleClass: 'bg-[#FFF1F1] text-[#E57373]' },
+  'grocery-convenience': { Icon: ShoppingCart, circleClass: 'bg-[#FFF8E1] text-[#FFB74D]' },
+  'retail-shopping': { Icon: ShoppingBag, circleClass: 'bg-[#FFF3E0] text-[#FB8C00]' },
+  'education-training': { Icon: GraduationCap, circleClass: 'bg-[#EDE7F6] text-[#7986CB]' },
+  'health-beauty': { Icon: HeartPulse, circleClass: 'bg-[#FCE4EC] text-[#F06292]' },
+  'fitness-wellness': { Icon: Dumbbell, circleClass: 'bg-[#F1F8E9] text-[#8BC34A]' },
+  'entertainment-leisure': { Icon: Clapperboard, circleClass: 'bg-[#E0F2F1] text-[#4DB6AC]' },
 };
 
 const CARD_ISSUANCE_DEFAULT_CATEGORY_ID = VERRA_LITE_DEFAULT_CATEGORY_VALUE;
@@ -12383,6 +12385,44 @@ const CARD_ISSUANCE_CATEGORY_OPTIONS: CardIssuanceCategoryOption[] = LITE_MOBILE
     return { id: o.value, label: o.label, Icon: v.Icon, circleClass: v.circleClass };
   }
 );
+
+/** Card Setup category rail — Local Services first; do not move the selected chip to the front. */
+const CARD_ISSUANCE_CATEGORY_SETUP_IDS = [
+  'local-services',
+  'food-beverage',
+  'grocery-convenience',
+  'retail-shopping',
+  'education-training',
+  'health-beauty',
+  'fitness-wellness',
+  'entertainment-leisure',
+] as const;
+
+const CARD_ISSUANCE_CATEGORY_OPTIONS_SETUP: CardIssuanceCategoryOption[] =
+  CARD_ISSUANCE_CATEGORY_SETUP_IDS.map((id) => {
+    const opt = CARD_ISSUANCE_CATEGORY_OPTIONS.find((o) => o.id === id);
+    return (
+      opt ?? {
+        id,
+        label: id,
+        Icon: Sparkles,
+        circleClass: 'bg-slate-50 text-slate-600',
+      }
+    );
+  });
+
+const CARD_SETUP_INPUT_CLASS =
+  'w-full rounded-lg border border-[#c3c6d8]/30 bg-white px-4 py-3 text-[17px] leading-[22px] tracking-[-0.01em] text-[#1a1b1f] outline-none transition-colors placeholder:text-[#424655]/50 focus:border-[#004bc3]';
+const CARD_SETUP_LABEL_CLASS =
+  'block text-[12px] font-semibold uppercase tracking-[0.05em] leading-4 text-[#424655]';
+const CARD_SETUP_SECTION_CLASS =
+  'rounded-2xl border border-[#c3c6d8]/30 bg-white p-6 shadow-[0px_10px_20px_rgba(0,0,0,0.05)]';
+const CARD_SETUP_DROPZONE_CLASS =
+  'flex min-h-[160px] w-full cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-[#c3c6d8] bg-white transition-colors hover:bg-[#f4f3f8] disabled:cursor-not-allowed disabled:opacity-60';
+const CARD_SETUP_TIER_CARD_SELECTED_CLASS =
+  'flex h-full flex-col gap-2 rounded-xl border border-[#004bc3] bg-[#f4f3f8] p-4 transition-colors';
+const CARD_SETUP_TIER_CARD_IDLE_CLASS =
+  'flex h-full flex-col gap-2 rounded-xl border border-[#c3c6d8] bg-white p-4 transition-colors hover:bg-[#faf9fe]';
 
 const CARD_ISSUANCE_CATEGORY_IDS = new Set(CARD_ISSUANCE_CATEGORY_OPTIONS.map((o) => o.id));
 
@@ -12456,12 +12496,36 @@ function cardIssuanceTierRuleFromUpgradeType(upgradeType: number): CardIssuanceT
   return null;
 }
 
+/** Merchant loyalty flags: Balance → upgradeByBalance; Charge → upgradeByCharge (metadata only). */
+function cardIssuanceLoyaltyUpgradeFlags(
+  membershipFee: boolean,
+  rule: CardIssuanceTierRule,
+): { upgradeByBalance: boolean; upgradeByCharge: boolean } {
+  if (membershipFee) return { upgradeByBalance: false, upgradeByCharge: false };
+  return {
+    upgradeByBalance: rule === 'balance',
+    upgradeByCharge: rule === 'cumulative',
+  };
+}
+
 /** Loyalty `setTiers` 4th arg: only balance-rule non-membership cards set `upgradeByBalance`. */
 function cardIssuanceLoyaltyUpgradeByBalance(
   membershipFee: boolean,
   rule: CardIssuanceTierRule,
 ): boolean {
-  return !membershipFee && rule === 'balance';
+  return cardIssuanceLoyaltyUpgradeFlags(membershipFee, rule).upgradeByBalance;
+}
+
+/** Beacon `upgradeType()` often stays 0; Charge/Balance must overlay from card0 metadata. */
+function cardIssuanceLoyaltyUpgradeTypeFromSources(
+  chainUpgradeType: number,
+  meta: { upgradeType?: number; tiers?: Array<{ upgradeByBalance?: boolean; upgradeByCharge?: boolean }> } | null,
+): number {
+  if (chainUpgradeType === 1 || chainUpgradeType === 2) return chainUpgradeType
+  const parsed = parseLoyaltyUpgradeTypeFromCardMetadata(meta)
+  if (parsed === 1 || parsed === 2) return parsed
+  if (chainUpgradeType === 0 || parsed === 0) return 0
+  return chainUpgradeType
 }
 
 /** Persisted per EOA + program card (`saveTrustedCache`). `upgradeType` / tier rule are fixed after card deploy. */
@@ -14564,14 +14628,6 @@ const loadProgramReferrerList = useCallback(async () => {
    setCardIssuanceCurrencySymbol(deriveCardIssuanceShortNameFromUnitName(cardIssuanceProgramName));
  }, [cardIssuanceProgramName]);
 
- /** Program category chips: selected id first; saved in card-level shareTokenMetadata.categories on Publish. */
- const cardIssuanceProgramCategoryOptionsOrdered = useMemo((): CardIssuanceCategoryOption[] => {
-   const sel = cardIssuanceCategoryId.trim();
-   if (!sel) return CARD_ISSUANCE_CATEGORY_OPTIONS;
-   const selected = CARD_ISSUANCE_CATEGORY_OPTIONS.find((o) => o.id === sel);
-   if (!selected) return CARD_ISSUANCE_CATEGORY_OPTIONS;
-   return [selected, ...CARD_ISSUANCE_CATEGORY_OPTIONS.filter((o) => o.id !== sel)];
- }, [cardIssuanceCategoryId]);
  const selectCardIssuanceCategory = useCallback(
    (categoryId: string) => {
      const next = normalizeCardIssuanceCategoryId(categoryId);
@@ -16330,7 +16386,7 @@ const cardIssuanceEffectiveMerchantLogo = useMemo(() => {
    }
    const ut = cardIssuanceExistingCard?.upgradeType;
    const fromChain = ut != null && ut >= 0 && ut <= 2 ? cardIssuanceTierRuleFromUpgradeType(ut) : null;
-   const effectiveKey = fromCache ?? fromChain ?? cardIssuanceTierRule;
+   const effectiveKey = fromChain ?? fromCache ?? cardIssuanceTierRule;
    return getCardIssuanceTierRuleOptions().find((o) => o.key === effectiveKey);
  }, [programsCardLoyaltyTierRuleCacheKey, cardIssuanceExistingCard?.upgradeType, cardIssuanceTierRule]);
 
@@ -16438,12 +16494,18 @@ const cardIssuanceEffectiveMerchantLogo = useMemo(() => {
 
  useEffect(() => {
    if (!programsCardLoyaltyTierRuleCacheKey || !cardIssuanceExistingCard?.cardAddress) return;
+   const ut = cardIssuanceExistingCard.upgradeType;
+   if (ut === 0 || ut === 1 || ut === 2) return;
    const raw = loadTrustedCache<ProgramCardLoyaltyTierRuleTrustedV1>(programsCardLoyaltyTierRuleCacheKey);
    if (!raw || raw.v !== 1 || typeof raw.tierRuleKey !== 'string') return;
    if (!CARD_ISSUANCE_TIER_RULE_KEYS.includes(raw.tierRuleKey as CardIssuanceTierRule)) return;
    const next = raw.tierRuleKey as CardIssuanceTierRule;
    setCardIssuanceTierRule((prev) => (prev === next ? prev : next));
- }, [programsCardLoyaltyTierRuleCacheKey, cardIssuanceExistingCard?.cardAddress]);
+ }, [
+   programsCardLoyaltyTierRuleCacheKey,
+   cardIssuanceExistingCard?.cardAddress,
+   cardIssuanceExistingCard?.upgradeType,
+ ]);
 
  /** Issued Program overview: tier rows + publish must use the same bucket as on-chain `upgradeType`. Local cache / default state can otherwise point at `single` while metadata hydrates `balance`/`cumulative`. */
  useEffect(() => {
@@ -19612,13 +19674,14 @@ const disableCardIssuanceTopupPromotion = useCallback(() => {
 
  const buildCardIssuanceTiersPayloadFromRows = useCallback((
    rows: CardIssuanceTierRow[],
-   loyaltyOpts?: { upgradeByBalance?: boolean },
+   loyaltyOpts?: { upgradeByBalance?: boolean; upgradeByCharge?: boolean },
  ): TierMetadata[] | undefined => {
    if (rows.length === 0) return undefined;
    const anyMembershipFee = rows.some((t) => BigInt(membershipFeeHumanToE6(t.membershipFee)) > 0n);
    const namedRows = rows.filter((t) => t.name.trim() !== '');
    if (namedRows.length === 0) return undefined;
    const loyaltyUpgradeByBalance = !anyMembershipFee && Boolean(loyaltyOpts?.upgradeByBalance);
+   const loyaltyUpgradeByCharge = !anyMembershipFee && Boolean(loyaltyOpts?.upgradeByCharge);
 
    const buildTierMetaFields = (t: CardIssuanceTierRow) => {
      const membershipFeeE6 = membershipFeeHumanToE6(t.membershipFee);
@@ -19660,6 +19723,7 @@ const disableCardIssuanceTopupPromotion = useCallback(() => {
        name: t.name.trim(),
        logoDisplayScale,
        upgradeByBalance: anyMembershipFee ? false : loyaltyUpgradeByBalance,
+       upgradeByCharge: anyMembershipFee ? false : loyaltyUpgradeByCharge,
        membershipFeeE6,
        membershipFee: membershipFeeE6ToHuman(membershipFeeE6) || undefined,
        membershipDurationKind,
@@ -19702,6 +19766,7 @@ const disableCardIssuanceTopupPromotion = useCallback(() => {
     name: t.name,
     logoDisplayScale: t.logoDisplayScale,
     upgradeByBalance: t.upgradeByBalance,
+    upgradeByCharge: t.upgradeByCharge,
     membershipFeeE6: t.membershipFeeE6,
     ...(t.membershipFee ? { membershipFee: t.membershipFee } : {}),
     membershipDurationKind: t.membershipDurationKind,
@@ -20390,13 +20455,11 @@ const saveCardIssuanceCardBackground = useCallback(async () => {
     if (pendingId) {
       setCardIssuanceCardBackgroundPendingNewTierId(null);
     }
-    const loyaltyUpgradeByBalance = cardIssuanceLoyaltyUpgradeByBalance(
+    const loyaltyFlags = cardIssuanceLoyaltyUpgradeFlags(
       cardIssuanceRowsHaveMembershipFee(nextTiers),
       cardIssuanceTierRule,
     );
-    const tiersPayload = buildCardIssuanceTiersPayloadFromRows(nextTiers, {
-      upgradeByBalance: loyaltyUpgradeByBalance,
-    });
+    const tiersPayload = buildCardIssuanceTiersPayloadFromRows(nextTiers, loyaltyFlags);
     if (tiersPayload?.length) {
       setCardIssuanceExistingCard((prev) => {
         if (!prev?.meta) return prev;
@@ -20405,12 +20468,13 @@ const saveCardIssuanceCardBackground = useCallback(async () => {
     }
     if (cardIssuanceExistingCard?.cardAddress) {
       /** Image/color/fit/name chrome can update off-chain; only threshold/count/upgradeByBalance changes need setTiers. */
-      const prevChainSig = (buildCardIssuanceTiersPayloadFromRows(cardIssuanceTiers, {
-        upgradeByBalance: cardIssuanceLoyaltyUpgradeByBalance(
+      const prevChainSig = (buildCardIssuanceTiersPayloadFromRows(
+        cardIssuanceTiers,
+        cardIssuanceLoyaltyUpgradeFlags(
           cardIssuanceRowsHaveMembershipFee(cardIssuanceTiers),
           cardIssuanceTierRule,
         ),
-      }) ?? [])
+      ) ?? [])
         .map((t) => `${t.minUsdc6}:${t.upgradeByBalance ? 1 : 0}`)
         .join('|');
       const nextChainSig = (tiersPayload ?? [])
@@ -21198,12 +21262,11 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
      opts?.maxTopupOverride == null;
    const tierRuleForPublish: CardIssuanceTierRule = membershipFeeModeForPublish
      ? 'single'
-     : useQuickDefaultRewardsNewCard
-       ? 'single'
-       : cardIssuanceTierRule;
-   const tiersPayload = buildCardIssuanceTiersPayloadFromRows(tiersRowsForPublish, {
-     upgradeByBalance: cardIssuanceLoyaltyUpgradeByBalance(membershipFeeModeForPublish, tierRuleForPublish),
-   });
+     : cardIssuanceTierRule;
+   const tiersPayload = buildCardIssuanceTiersPayloadFromRows(
+     tiersRowsForPublish,
+     cardIssuanceLoyaltyUpgradeFlags(membershipFeeModeForPublish, tierRuleForPublish),
+   );
    if (!metadataOnlyExistingCard && tiersRowsForPublish.length > 0 && (!tiersPayload || tiersPayload.length === 0)) {
      return publishFail('Each tier must have a name.');
    }
@@ -22914,12 +22977,13 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
                      : {}),
                    ...(programBasicTiersDirty
                      ? {
-                         tiers: buildCardIssuanceTiersPayloadFromRows(cardIssuanceTiers, {
-                           upgradeByBalance: cardIssuanceLoyaltyUpgradeByBalance(
+                         tiers: buildCardIssuanceTiersPayloadFromRows(
+                           cardIssuanceTiers,
+                           cardIssuanceLoyaltyUpgradeFlags(
                              cardIssuanceRowsHaveMembershipFee(cardIssuanceTiers),
                              cardIssuanceTierRule,
                            ),
-                         }),
+                         ),
                        }
                      : {}),
                  }
@@ -22936,12 +23000,13 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
                      : {}),
                    ...(programBasicTiersDirty
                      ? {
-                         tiers: buildCardIssuanceTiersPayloadFromRows(cardIssuanceTiers, {
-                           upgradeByBalance: cardIssuanceLoyaltyUpgradeByBalance(
+                         tiers: buildCardIssuanceTiersPayloadFromRows(
+                           cardIssuanceTiers,
+                           cardIssuanceLoyaltyUpgradeFlags(
                              cardIssuanceRowsHaveMembershipFee(cardIssuanceTiers),
                              cardIssuanceTierRule,
                            ),
-                         }),
+                         ),
                        }
                      : {}),
                  } as CardMetadataFromUri),
@@ -23047,6 +23112,7 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
          upgradeType = -1;
        }
        if (cancelled) return;
+       upgradeType = cardIssuanceLoyaltyUpgradeTypeFromSources(upgradeType, meta);
       setCardIssuanceExistingCard((prev) => {
         const committedCategories = cardIssuanceServiceCategoriesCommittedRef.current;
         const committedProgramCategory = cardIssuanceCategoryCommittedRef.current;
@@ -36147,7 +36213,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                <p className="text-sm font-medium text-[#595c5e]">{tu('programs_config_preparing')}</p>
              </div>
            ) : showCardIssuanceKetWelcomeCover ? (
-             <div className="relative mx-auto min-h-[min(884px,100dvh)] w-full bg-[#f5f7f9] px-3 pb-8 pt-2 sm:px-5">
+             <div className="relative mx-auto min-h-[min(884px,100dvh)] w-full bg-[#faf9fe] px-4 pb-8 pt-12 sm:px-6">
                <CardIssuanceKetWelcomeCoverPanel
                  protocolFuelReserveBalance={protocolFuelReserveBalance}
                  onStartDesigning={handleCardIssuanceKetWelcomeStartDesigning}
@@ -36325,533 +36391,547 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                    : ''
                }`}
              >
-               <div className="min-w-0 space-y-6 min-[1440px]:col-span-7">
+               <div className="min-w-0 space-y-8 pb-8 min-[1440px]:col-span-7">
                  <section
-                   className={`rounded-lg bg-white p-6 shadow-sm sm:p-8 ${
-                     isCardConfiguratorMobileShell && cardIssuanceMobileStep !== 1 ? 'hidden' : ''
-                   }`}
+                   className={`sticky z-40 rounded-2xl border border-[#c3c6d8]/30 bg-[#faf9fe]/90 p-4 shadow-[0px_10px_20px_rgba(0,0,0,0.05)] backdrop-blur-md min-[1440px]:hidden ${
+                     isCardConfiguratorMobileShell
+                       ? CARD_CONFIGURATOR_MOBILE_STICKY_BELOW_DEFAULT_HEADER_CLASS
+                       : 'top-0'
+                   } ${isCardConfiguratorMobileShell && cardIssuanceMobileStep !== 1 ? 'hidden' : ''}`}
                  >
                    <div
-                     className={`sticky top-0 z-30 -mx-6 mb-6 border-b border-[#abadaf]/15 bg-white/95 px-6 pb-5 pt-0 backdrop-blur-md supports-[backdrop-filter]:bg-white/80 sm:-mx-8 sm:px-8 ${
+                     className="pointer-events-none mx-auto w-full max-w-md select-none"
+                     aria-label={tu('programs_config_discover_preview_aria')}
+                   >
+                     <div className="relative overflow-hidden rounded-[24px] border border-[#c3c6d8]/20 bg-white shadow-[0px_10px_20px_rgba(0,0,0,0.05)]">
+                       <div className="relative h-48 bg-[#E3E7ED]">
+                         {cardIssuanceEffectiveMerchantImage ? (
+                           <IpfsImg
+                             src={cardIssuanceEffectiveMerchantImage}
+                             alt=""
+                             className="h-full w-full object-cover"
+                             draggable={false}
+                           />
+                         ) : null}
+                         <div className="absolute right-4 top-4 inline-flex items-center gap-1 rounded-full bg-white/90 px-3 py-1 shadow-sm backdrop-blur-md">
+                           <Star className="h-[18px] w-[18px] text-[#F9A825]" fill="currentColor" aria-hidden />
+                           <span className="text-[15px] font-bold leading-5 text-[#1a1b1f]">4.8</span>
+                         </div>
+                       </div>
+                       <div className="relative px-6 pb-6 pt-10">
+                         <div className="absolute -top-10 left-6 flex h-20 w-20 items-center justify-center rounded-2xl border border-[#c3c6d8]/10 bg-white shadow-[0px_10px_20px_rgba(0,0,0,0.05)]">
+                           {cardIssuanceEffectiveMerchantLogo ? (
+                             <IpfsImg
+                               src={cardIssuanceEffectiveMerchantLogo}
+                               alt=""
+                               className="h-16 w-16 rounded-xl object-cover"
+                             />
+                           ) : (
+                             <span className="text-3xl font-bold text-[#004bc3]">
+                               {cardConfiguratorDiscoverPreviewTitle.charAt(0).toUpperCase()}
+                             </span>
+                           )}
+                         </div>
+                         <div className="mb-1 flex items-start justify-between gap-3">
+                           <h4 className="line-clamp-1 min-w-0 text-[22px] font-semibold leading-7 tracking-[-0.01em] text-[#1a1b1f]">
+                             {cardConfiguratorDiscoverPreviewTitle}
+                           </h4>
+                           <p className="shrink-0 pt-1 text-[12px] font-semibold uppercase tracking-[0.05em] text-[#004bc3]">
+                             {tu('programs_config_your_assets')}
+                           </p>
+                         </div>
+                         <p className="mb-4 line-clamp-2 text-[15px] leading-5 text-[#424655]">
+                           {cardConfiguratorDiscoverPreviewSubtitle}
+                         </p>
+                         <div className="inline-flex max-w-full items-center gap-2 rounded-xl bg-[#eeedf3] px-4 py-2">
+                           <Gift className="h-5 w-5 shrink-0 text-[#004bc3]" aria-hidden />
+                           <span className="line-clamp-2 text-[15px] font-semibold leading-5 text-[#1a1b1f]">
+                             {cardConfiguratorDiscoverPreviewAssetLabel}
+                           </span>
+                         </div>
+                       </div>
+                     </div>
+                   </div>
+                 </section>
+
+                 <section
+                   className={`${CARD_SETUP_SECTION_CLASS} flex flex-col gap-4 ${
+                     cardIssuanceExistingCard ? 'mb-8' : ''
+                   } ${isCardConfiguratorMobileShell && cardIssuanceMobileStep !== 1 ? 'hidden' : ''}`}
+                 >
+                   <h2 className="mb-2 text-[22px] font-semibold leading-7 tracking-[-0.01em] text-[#1a1b1f]">
+                     {tu('programs_config_brand_assets')}
+                   </h2>
+                   <div className="flex flex-col gap-2">
+                     <label htmlFor="card-issuance-program-name" className={CARD_SETUP_LABEL_CLASS}>
+                       {tu('programs_config_unit_name')}
+                     </label>
+                     <input
+                       id="card-issuance-program-name"
+                       type="text"
+                       value={cardIssuanceProgramName}
+                       onChange={(e) => setCardIssuanceProgramName(e.target.value)}
+                       placeholder={tu('programs_config_unit_name_ph')}
+                       className={`${CARD_SETUP_INPUT_CLASS} ${bizFocusRingClass}`}
+                     />
+                   </div>
+                   <div className="flex flex-col gap-2">
+                     <label htmlFor="card-issuance-currency" className={CARD_SETUP_LABEL_CLASS}>
+                       {tu('programs_config_symbol')}
+                     </label>
+                     <input
+                       id="card-issuance-currency"
+                       type="text"
+                       value={cardIssuanceCurrencySymbol}
+                       onChange={(e) =>
+                         setCardIssuanceCurrencySymbol(normalizeCardIssuanceCurrencySymbolInput(e.target.value))
+                       }
+                       placeholder={tu('programs_config_symbol_ph')}
+                       maxLength={CARD_ISSUANCE_SHORT_NAME_MAX_LEN}
+                       spellCheck={false}
+                       autoComplete="off"
+                       className={`${CARD_SETUP_INPUT_CLASS} ${bizFocusRingClass}`}
+                     />
+                   </div>
+                   <div className="flex flex-col gap-2">
+                     <div className="flex items-center justify-between gap-3">
+                       <label htmlFor="card-issuance-store-display-name" className={CARD_SETUP_LABEL_CLASS}>
+                         {tu('programs_config_store_display_name')}
+                       </label>
+                       <span className={`${CARD_SETUP_LABEL_CLASS} font-medium`}>
+                         {tu('programs_config_store_display_max', {
+                           max: String(CARD_ISSUANCE_STORE_DISPLAY_NAME_MAX),
+                         })}
+                       </span>
+                     </div>
+                     <input
+                       id="card-issuance-store-display-name"
+                       type="text"
+                       value={cardIssuanceStoreDisplayName}
+                       onChange={(e) =>
+                         setCardIssuanceStoreDisplayName(
+                           e.target.value.slice(0, CARD_ISSUANCE_STORE_DISPLAY_NAME_MAX)
+                         )
+                       }
+                       placeholder={tu('programs_config_store_display_name_ph')}
+                       maxLength={CARD_ISSUANCE_STORE_DISPLAY_NAME_MAX}
+                       autoComplete="off"
+                       className={`${CARD_SETUP_INPUT_CLASS} ${bizFocusRingClass}`}
+                     />
+                     <p className="text-[15px] italic leading-5 text-[#424655]">
+                       {tu('programs_config_store_display_hint')}
+                     </p>
+                   </div>
+                   <div className="mt-4 flex flex-col gap-2">
+                     <span className={CARD_SETUP_LABEL_CLASS}>{tu('programs_config_settlement_currency')}</span>
+                     <div
+                       className="w-full rounded-lg border border-[#c3c6d8]/30 bg-white px-4 py-3 text-[17px] font-semibold leading-[22px] text-[#1a1b1f]"
+                       aria-label={tu('programs_config_program_currency_aria')}
+                     >
+                       {CARD_ISSUANCE_BEAMIO_CURRENCY}
+                     </div>
+                   </div>
+                   <div className="mt-4 flex flex-col gap-2">
+                     <label htmlFor="card-issuance-description" className={CARD_SETUP_LABEL_CLASS}>
+                       {tu('programs_config_program_description_label', {
+                         max: String(CARD_ISSUANCE_CONFIGURATION_MAX_CHARS),
+                       })}
+                     </label>
+                     <textarea
+                       id="card-issuance-description"
+                       value={cardIssuanceDescription}
+                       onChange={(e) =>
+                         setCardIssuanceDescription(e.target.value.slice(0, CARD_ISSUANCE_CONFIGURATION_MAX_CHARS))
+                       }
+                       placeholder={tu('programs_config_program_description_ph')}
+                       rows={3}
+                       maxLength={CARD_ISSUANCE_CONFIGURATION_MAX_CHARS}
+                       spellCheck={true}
+                       className={`${CARD_SETUP_INPUT_CLASS} min-h-[120px] resize-none ${bizFocusRingClass}`}
+                     />
+                     <p className="text-[15px] leading-5 text-[#424655]">
+                       {tu('programs_config_chars_count', {
+                         current: String(cardIssuanceDescription.length),
+                         max: String(CARD_ISSUANCE_CONFIGURATION_MAX_CHARS),
+                       })}
+                     </p>
+                   </div>
+                   <div className="mt-4 flex flex-col gap-2">
+                     <span className={CARD_SETUP_LABEL_CLASS}>{tu('programs_config_merchant_logo')}</span>
+                     <input
+                       ref={cardIssuanceIconFileRef}
+                       type="file"
+                       accept="image/*"
+                       className="hidden"
+                       onChange={handleCardIssuanceIconPick}
+                     />
+                     {!cardIssuanceEffectiveMerchantLogo ? (
+                       <button
+                         type="button"
+                         onClick={() => cardIssuanceIconFileRef.current?.click()}
+                         disabled={cardIssuanceShareImageUploading}
+                         className={CARD_SETUP_DROPZONE_CLASS}
+                       >
+                         {cardIssuanceShareImageUploading ? (
+                           <Loader2 className="h-8 w-8 animate-spin text-[#737687]" strokeWidth={2} aria-hidden />
+                         ) : (
+                           <ImagePlus className="h-8 w-8 text-[#737687]" strokeWidth={2} aria-hidden />
+                         )}
+                         <span className="text-[15px] leading-5 text-[#424655]">
+                           {cardIssuanceShareImageUploading
+                             ? tu('programs_config_uploading')
+                             : tu('programs_config_upload_image')}
+                         </span>
+                       </button>
+                     ) : (
+                       <div className="relative min-h-[160px] w-full overflow-hidden rounded-xl border-2 border-dashed border-[#c3c6d8] bg-white">
+                         <IpfsImg
+                           src={cardIssuanceEffectiveMerchantLogo}
+                           alt=""
+                           className="h-full min-h-[160px] w-full object-contain"
+                         />
+                         {cardIssuanceShareImageUrl ? (
+                           <button
+                             type="button"
+                             aria-label={tu('programs_config_remove_merchant_logo')}
+                             onClick={() => {
+                               setCardIssuanceShareImageUrl('');
+                               if (cardIssuanceIconFileRef.current) cardIssuanceIconFileRef.current.value = '';
+                             }}
+                             className="absolute bottom-2 right-2 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#2c2f31]/45 text-white shadow-md backdrop-blur-[2px] ring-1 ring-white/35 transition hover:bg-[#2c2f31]/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0] focus-visible:ring-offset-2"
+                           >
+                             <Trash2 className="h-4 w-4" strokeWidth={2} aria-hidden />
+                           </button>
+                         ) : null}
+                       </div>
+                     )}
+                   </div>
+                   <div className="mt-4 flex flex-col gap-4">
+                     <span className={CARD_SETUP_LABEL_CLASS}>{tu('programs_config_program_category')}</span>
+                     <div
+                       role="radiogroup"
+                       aria-label={tu('programs_config_program_category_aria')}
+                       className="flex gap-6 overflow-x-auto pb-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                     >
+                       {CARD_ISSUANCE_CATEGORY_OPTIONS_SETUP.map((opt) => {
+                         const selected = cardIssuanceCategoryId === opt.id;
+                         const Icon = opt.Icon;
+                         return (
+                           <button
+                             key={opt.id}
+                             type="button"
+                             role="radio"
+                             aria-checked={selected}
+                             onClick={() => selectCardIssuanceCategory(opt.id)}
+                             className={`flex min-w-[100px] flex-col items-center gap-3 ${bizFocusRingClass}`}
+                           >
+                             <div
+                               className={`flex h-20 w-20 items-center justify-center rounded-[24px] ${
+                                 selected ? 'border-2 border-[#004bc3] bg-[#f4f3f8]' : ''
+                               }`}
+                             >
+                               <div
+                                 className={`flex h-14 w-14 items-center justify-center rounded-full ${opt.circleClass}`}
+                               >
+                                 <Icon className="h-8 w-8" strokeWidth={2} aria-hidden />
+                               </div>
+                             </div>
+                             <span className="text-center text-[15px] font-bold leading-tight text-[#424655]">
+                               {translateBizCategoryOption(opt.id, opt.label, tu)}
+                             </span>
+                           </button>
+                         );
+                       })}
+                     </div>
+                   </div>
+                   <div className="mt-4 flex flex-col gap-2">
+                     <span className={CARD_SETUP_LABEL_CLASS}>{tu('programs_config_merchant_image')}</span>
+                     <p className="text-[15px] leading-5 text-[#424655]">
+                       {tu('programs_config_merchant_image_hint')}
+                     </p>
+                     <input
+                       ref={cardIssuanceMerchantImageFileRef}
+                       type="file"
+                       accept="image/*"
+                       className="hidden"
+                       onChange={handleCardIssuanceMerchantImagePick}
+                     />
+                     {!cardIssuanceEffectiveMerchantImage ? (
+                       <button
+                         type="button"
+                         onClick={() => cardIssuanceMerchantImageFileRef.current?.click()}
+                         disabled={cardIssuanceMerchantImageUploading}
+                         className={CARD_SETUP_DROPZONE_CLASS}
+                       >
+                         {cardIssuanceMerchantImageUploading ? (
+                           <Loader2 className="h-8 w-8 animate-spin text-[#737687]" strokeWidth={2} aria-hidden />
+                         ) : (
+                           <ImagePlus className="h-8 w-8 text-[#737687]" strokeWidth={2} aria-hidden />
+                         )}
+                         <span className="text-[15px] leading-5 text-[#424655]">
+                           {cardIssuanceMerchantImageUploading
+                             ? tu('programs_config_uploading')
+                             : tu('programs_config_upload_image')}
+                         </span>
+                       </button>
+                     ) : (
+                       <div className="relative min-h-[160px] w-full overflow-hidden rounded-xl border-2 border-dashed border-[#c3c6d8] bg-white">
+                         <IpfsImg
+                           src={cardIssuanceEffectiveMerchantImage}
+                           alt=""
+                           className="h-full min-h-[160px] w-full object-cover"
+                         />
+                         <button
+                           type="button"
+                           aria-label={tu('programs_config_remove_merchant_image')}
+                           disabled={cardIssuanceMerchantImageUploading}
+                           onClick={() => void removeIssuedProgramMerchantImage()}
+                           className="absolute bottom-2 right-2 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#2c2f31]/45 text-white shadow-md backdrop-blur-[2px] ring-1 ring-white/35 transition hover:bg-[#2c2f31]/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                         >
+                           <Trash2 className="h-4 w-4" strokeWidth={2} aria-hidden />
+                         </button>
+                       </div>
+                     )}
+                   </div>
+                 </section>
+
+                 {!cardIssuanceExistingCard ? (
+                   <section
+                     className={`${CARD_SETUP_SECTION_CLASS} mb-8 flex flex-col gap-4 ${
                        isCardConfiguratorMobileShell && cardIssuanceMobileStep !== 1 ? 'hidden' : ''
                      }`}
                    >
-                     <p className="mb-3 text-[10px] font-black uppercase tracking-widest text-[#0051d1]">
-                       {tu('programs_config_discover_preview')}
-                     </p>
+                     <h2 className="mb-2 text-[22px] font-semibold leading-7 tracking-[-0.01em] text-[#1a1b1f]">
+                       {tu('programs_config_rewards_tier_by')}
+                     </h2>
                      <div
-                       className="pointer-events-none mx-auto w-full max-w-md select-none"
-                       aria-label={tu('programs_config_discover_preview_aria')}
+                       className="grid grid-cols-1 gap-4 md:grid-cols-2"
+                       role="radiogroup"
+                       aria-label={tu('programs_config_rewards_tier_by')}
                      >
-                       <div className="w-full text-left bg-white dark:bg-slate-900 rounded-[30px] shadow-[0_8px_22px_rgba(15,23,42,0.06)] border border-[#e8ecf0] dark:border-slate-800 overflow-hidden">
-                         <div className="relative">
-                           {cardIssuanceEffectiveMerchantImage ? (
-                             <IpfsImg
-                               src={cardIssuanceEffectiveMerchantImage}
-                               alt=""
-                               className="w-full aspect-[16/9] object-cover"
-                               draggable={false}
-                             />
-                           ) : (
-                             <div
-                               className="w-full aspect-[16/9] bg-gradient-to-br from-[#dfe6ee] via-[#e8edf2] to-[#ccd6e0] dark:from-slate-700 dark:via-slate-800 dark:to-slate-900"
-                               aria-hidden
-                             />
-                           )}
-                           <div className="absolute top-3 right-3 bg-white/90 text-[#2c2f31] rounded-full px-3 py-1.5 inline-flex items-center gap-1.5 shadow-sm dark:bg-slate-900/90 dark:text-slate-100">
-                             <Star className="w-3.5 h-3.5 text-amber-500" fill="currentColor" aria-hidden />
-                             <span className="text-[12px] font-bold leading-none">4.8</span>
-                           </div>
-                           <div className="absolute -bottom-8 left-6">
-                             <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-slate-100 bg-white shadow-[0_10px_20px_rgba(15,23,42,0.12)] dark:border-slate-700 dark:bg-slate-900">
-                               {cardIssuanceEffectiveMerchantLogo ? (
-                                 <IpfsImg
-                                   src={cardIssuanceEffectiveMerchantLogo}
-                                   alt=""
-                                   className="h-11 w-11 rounded-xl object-cover"
-                                 />
-                               ) : (
-                                 <span className="text-[20px] font-semibold leading-none text-[#94afff]">
-                                   {cardConfiguratorDiscoverPreviewTitle.charAt(0).toUpperCase()}
-                                 </span>
-                               )}
-                             </div>
-                           </div>
-                         </div>
-                         <div className="px-6 pb-6 pt-11">
-                           <div className="mb-1 flex items-start justify-between gap-3">
-                             <h4 className="line-clamp-1 min-w-0 text-[19px] font-bold leading-none tracking-tight text-[#1f2328] dark:text-slate-100">
-                               {cardConfiguratorDiscoverPreviewTitle}
-                             </h4>
-                             <p className="shrink-0 pt-1 text-[10px] font-semibold uppercase tracking-wide whitespace-nowrap text-[#2f5fcf]">
-                               {tu('programs_config_your_assets')}
-                             </p>
-                           </div>
-                           <p className="mb-4 line-clamp-2 text-[15px] leading-tight text-[#4b5361] dark:text-slate-300">
-                             {cardConfiguratorDiscoverPreviewSubtitle}
-                           </p>
-                           <div className="inline-flex max-w-full items-center gap-2 rounded-2xl bg-[#f0f2f4] px-4 py-3 dark:bg-slate-800">
-                             <Gift className="h-5 w-5 shrink-0 text-[#2f5fcf]" aria-hidden />
-                             <span className="line-clamp-2 text-[14px] font-semibold leading-tight text-[#232a34] dark:text-slate-100">
-                               {cardConfiguratorDiscoverPreviewAssetLabel}
-                             </span>
-                           </div>
-                         </div>
-                       </div>
-                     </div>
-                   </div>
-                   {isCardConfiguratorMobileShell && cardIssuanceMobileStep === 1 ? (
-                     <header className="mb-8 space-y-2 border-b border-[#abadaf]/20 pb-6">
-                       <span className="block text-[10px] font-bold uppercase tracking-widest text-[#0051d1]">
-                         {tu('programs_config_visual_identity')}
-                       </span>
-                       <h2 className="font-manrope text-3xl font-black leading-tight text-[#2c2f31]">
-                         {tu('programs_config_define_brand_title')}
-                       </h2>
-                       <p className="max-w-md text-sm font-medium leading-relaxed text-[#595c5e]">
-                         {tu('programs_config_brand_wallet_hint')}
-                       </p>
-                     </header>
-                   ) : null}
-                   <div className={`mb-5 flex items-center gap-3 ${isCardConfiguratorMobileShell ? 'hidden' : ''}`}>
-                     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#1562f0]/10">
-                       <Palette className="h-5 w-5 text-[#1562f0]" strokeWidth={2} aria-hidden />
-                     </div>
-                     <h3 className="text-xl font-bold tracking-tight text-[#2c2f31]">{tu('programs_config_brand_content')}</h3>
-                   </div>
-                   <div className="grid grid-cols-2 gap-5">
-                     <div className="col-span-2 space-y-2 md:col-span-1">
-                       <label
-                         htmlFor="card-issuance-program-name"
-                         className="ml-1 block text-[10px] font-black uppercase tracking-widest text-[#747779]"
-                       >
-                         {tu('programs_config_unit_name')}
-                       </label>
-                       <input
-                         id="card-issuance-program-name"
-                         type="text"
-                         value={cardIssuanceProgramName}
-                        onChange={(e) => setCardIssuanceProgramName(e.target.value)}
-                         placeholder={tu('programs_config_unit_name_ph')}
-                         className={`w-full rounded-md border-none bg-[#eef1f3] px-5 py-4 text-[15px] font-medium text-[#2c2f31] placeholder:text-[#595c5e]/70 transition-all focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass}`}
-                       />
-                     </div>
-
-                     <div className="col-span-2 space-y-2 md:col-span-1">
-                       <label
-                         htmlFor="card-issuance-currency"
-                         className="ml-1 block text-[10px] font-black uppercase tracking-widest text-[#747779]"
-                       >
-                         SYMBOL
-                       </label>
-                       <input
-                         id="card-issuance-currency"
-                         type="text"
-                         value={cardIssuanceCurrencySymbol}
-                        onChange={(e) => setCardIssuanceCurrencySymbol(normalizeCardIssuanceCurrencySymbolInput(e.target.value))}
-                         placeholder={tu('programs_config_symbol_ph')}
-                         maxLength={CARD_ISSUANCE_SHORT_NAME_MAX_LEN}
-                         spellCheck={false}
-                         autoComplete="off"
-                         className={`w-full rounded-md border-none bg-[#eef1f3] px-5 py-4 text-[15px] font-medium text-[#2c2f31] placeholder:text-[#595c5e]/70 transition-all focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass}`}
-                       />
-                     </div>
-                     <div className="col-span-2 space-y-2">
-                       <div className="ml-1 flex items-baseline justify-between gap-3">
-                         <label
-                           htmlFor="card-issuance-store-display-name"
-                           className="block text-[10px] font-black uppercase tracking-widest text-[#747779]"
-                         >
-                           {tu('programs_config_store_display_name')}
-                         </label>
-                         <span className="shrink-0 text-[10px] font-medium text-[#747779]">
-                           {tu('programs_config_store_display_max', { max: String(CARD_ISSUANCE_STORE_DISPLAY_NAME_MAX) })}
-                         </span>
-                       </div>
-                       <input
-                         id="card-issuance-store-display-name"
-                         type="text"
-                         value={cardIssuanceStoreDisplayName}
-                         onChange={(e) =>
-                           setCardIssuanceStoreDisplayName(
-                             e.target.value.slice(0, CARD_ISSUANCE_STORE_DISPLAY_NAME_MAX)
-                           )
-                         }
-                         placeholder={tu('programs_config_store_display_name_ph')}
-                         maxLength={CARD_ISSUANCE_STORE_DISPLAY_NAME_MAX}
-                         autoComplete="off"
-                         className={`w-full rounded-2xl border-none bg-[#eef1f3] px-5 py-4 text-[15px] font-medium text-[#2c2f31] placeholder:text-[#595c5e]/70 transition-all focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass}`}
-                       />
-                       <p className="ml-1 text-[11px] font-medium italic leading-relaxed text-[#595c5e]">
-                         {tu('programs_config_store_display_hint')}
-                       </p>
-                     </div>
-                     <div className="col-span-2 space-y-2">
-                       <span className="ml-1 block text-[10px] font-black uppercase tracking-widest text-[#747779]">
-                         {tu('programs_config_settlement_currency')}
-                       </span>
                        <div
-                         className="w-full rounded-md bg-[#eef1f3] px-5 py-4 text-[15px] font-semibold text-[#2c2f31]"
-                         aria-label={tu('programs_config_program_currency_aria')}
-                       >
-                         {CARD_ISSUANCE_BEAMIO_CURRENCY}
-                       </div>
-                     </div>
-                     <div className="col-span-2 space-y-2">
-                       <div className="ml-1 flex items-end justify-between gap-3">
-                         <label
-                           htmlFor="card-issuance-description"
-                           className="block text-[10px] font-black uppercase tracking-widest text-[#747779]"
-                         >
-                           {tu('programs_config_program_description_label', { max: String(CARD_ISSUANCE_CONFIGURATION_MAX_CHARS) })}
-                         </label>
-                       </div>
-                       <textarea
-                         id="card-issuance-description"
-                         value={cardIssuanceDescription}
-                         onChange={(e) =>
-                           setCardIssuanceDescription(e.target.value.slice(0, CARD_ISSUANCE_CONFIGURATION_MAX_CHARS))
+                         className={
+                           cardIssuanceRewardsMembershipFeeEnabled
+                             ? CARD_SETUP_TIER_CARD_SELECTED_CLASS
+                             : CARD_SETUP_TIER_CARD_IDLE_CLASS
                          }
-                         placeholder={tu('programs_config_program_description_ph')}
-                         rows={3}
-                         maxLength={CARD_ISSUANCE_CONFIGURATION_MAX_CHARS}
-                         spellCheck={true}
-                         className={`min-h-[96px] w-full resize-none rounded-md border-none bg-[#eef1f3] px-5 py-4 text-[15px] font-medium text-[#2c2f31] placeholder:text-[#595c5e]/70 transition-all focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass}`}
-                       />
-                       <p className="ml-1 text-[11px] font-medium text-[#747779]">
-                         {tu('programs_config_chars_count', { current: String(cardIssuanceDescription.length), max: String(CARD_ISSUANCE_CONFIGURATION_MAX_CHARS) })}
-                       </p>
-                     </div>
-                     <div className="col-span-2 grid grid-cols-1 gap-8 md:grid-cols-2 md:items-center">
-                       <div className="min-w-0 space-y-2">
-                         <span className="ml-1 block text-[10px] font-black uppercase tracking-widest text-[#747779]">
-                           {tu('programs_config_merchant_logo')}
-                         </span>
-                         <input
-                           ref={cardIssuanceIconFileRef}
-                           type="file"
-                           accept="image/*"
-                           className="hidden"
-                           onChange={handleCardIssuanceIconPick}
-                         />
-                        {!cardIssuanceEffectiveMerchantLogo ? (
-                           <button
-                             type="button"
-                             onClick={() => cardIssuanceIconFileRef.current?.click()}
-                             disabled={cardIssuanceShareImageUploading}
-                             className="flex min-h-[140px] w-full cursor-pointer flex-col items-center justify-center rounded-md border-2 border-dashed border-[#abadaf]/40 bg-[#eef1f3] transition-colors hover:bg-[#dfe3e6] disabled:cursor-not-allowed disabled:opacity-60"
-                           >
-                             {cardIssuanceShareImageUploading ? (
-                               <Loader2 className="h-8 w-8 animate-spin text-[#747779]" strokeWidth={2} aria-hidden />
-                             ) : (
-                               <ImagePlus className="h-8 w-8 text-[#747779]" strokeWidth={2} aria-hidden />
-                             )}
-                             <span className="mt-2 text-[11px] font-bold text-[#747779]">
-                               {cardIssuanceShareImageUploading ? tu('programs_config_uploading') : tu('programs_config_upload_image')}
-                             </span>
-                           </button>
-                         ) : null}
-                        {cardIssuanceEffectiveMerchantLogo ? (
-                           <div className="relative h-[140px] w-full shrink-0 overflow-hidden rounded-md border-2 border-dashed border-[#abadaf]/40 bg-[#eef1f3]">
-                             <IpfsImg
-                              src={cardIssuanceEffectiveMerchantLogo}
-                               alt=""
-                               className="h-full w-full object-contain"
-                             />
-                            {cardIssuanceShareImageUrl ? (
-                              <button
-                                type="button"
-                                aria-label={tu('programs_config_remove_merchant_logo')}
-                                onClick={() => {
-                                  setCardIssuanceShareImageUrl('');
-                                  if (cardIssuanceIconFileRef.current) cardIssuanceIconFileRef.current.value = '';
-                                }}
-                                className="absolute bottom-2 right-2 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#2c2f31]/45 text-white shadow-md backdrop-blur-[2px] ring-1 ring-white/35 transition hover:bg-[#2c2f31]/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0] focus-visible:ring-offset-2"
-                              >
-                                <Trash2 className="h-4 w-4" strokeWidth={2} aria-hidden />
-                              </button>
-                            ) : null}
-                           </div>
-                         ) : null}
-                       </div>
-                       <div className="min-w-0 space-y-2">
-                         <span className="ml-1 block text-[10px] font-black uppercase tracking-widest text-[#747779]">
-                           {tu('programs_config_program_category')}
-                         </span>
-                         <div
-                           role="radiogroup"
-                           aria-label={tu('programs_config_program_category_aria')}
-                           className="flex overflow-x-auto gap-3 py-1 pl-1 -mx-1 px-1 scrollbar-hide"
+                       >
+                         <button
+                           type="button"
+                           role="radio"
+                           aria-checked={cardIssuanceRewardsMembershipFeeEnabled}
+                           onClick={() =>
+                             applyCardIssuanceRewardsSetup({
+                               membershipFeeEnabled: true,
+                               amount: cardIssuanceRewardsSetupAmount,
+                               durationKind:
+                                 normalizeMembershipDurationKind(
+                                   cardIssuanceBaseTier?.membershipDurationKind
+                                 ) || 3,
+                             })
+                           }
+                           className={`flex w-full items-start justify-between gap-2 text-left ${bizFocusRingClass}`}
                          >
-                           {cardIssuanceProgramCategoryOptionsOrdered.map((opt) => {
-                             const selected = cardIssuanceCategoryId === opt.id;
-                             const Icon = opt.Icon;
-                             return (
-                               <button
-                                 key={opt.id}
-                                 type="button"
-                                 role="radio"
-                                 aria-checked={selected}
-                                 onClick={() => selectCardIssuanceCategory(opt.id)}
-                                 className={`flex flex-shrink-0 flex-col items-center gap-2 min-w-[4.5rem] rounded-2xl p-1.5 transition ${bizFocusRingClass} ${
-                                   selected
-                                     ? 'ring-2 ring-inset ring-[#1562f0] bg-blue-50/50 shadow-sm'
-                                     : 'opacity-80 hover:bg-[#eef1f3]/80 hover:opacity-100'
-                                 }`}
-                               >
-                                 <div
-                                   className={`flex h-16 w-16 items-center justify-center rounded-full shadow-sm ${opt.circleClass} ${
-                                     selected ? 'shadow-md' : ''
-                                   }`}
-                                 >
-                                   <Icon className="h-7 w-7" strokeWidth={2} aria-hidden />
-                                 </div>
-                                 <span className="max-w-[5rem] text-center text-[11px] font-bold leading-tight tracking-tight text-slate-600">
-                                   {translateBizCategoryOption(opt.id, opt.label, tu)}
-                                 </span>
-                               </button>
-                             );
-                           })}
-                         </div>
-                       </div>
-                       <div className="col-span-full space-y-2 border-t border-[#abadaf]/15 pt-6">
-                         <span className="ml-1 block text-[10px] font-black uppercase tracking-widest text-[#747779]">
-                           {tu('programs_overview_merchant_image')}
-                         </span>
-                         <p className="ml-1 text-[11px] font-medium leading-relaxed text-[#595c5e]">
-                           Optional banner or storefront photo. Resized if needed, uploaded to IPFS, then saved on
-                           publish under program metadata key merchantImage (alongside the square {tu('programs_config_merchant_logo')} in
-                           image).
-                         </p>
-                         <input
-                           ref={cardIssuanceMerchantImageFileRef}
-                           type="file"
-                           accept="image/*"
-                           className="hidden"
-                           onChange={handleCardIssuanceMerchantImagePick}
-                         />
-                         {!cardIssuanceEffectiveMerchantImage ? (
-                           <button
-                             type="button"
-                             onClick={() => cardIssuanceMerchantImageFileRef.current?.click()}
-                             disabled={cardIssuanceMerchantImageUploading}
-                             className="flex min-h-[160px] w-full cursor-pointer flex-col items-center justify-center rounded-md border-2 border-dashed border-[#abadaf]/40 bg-[#eef1f3] transition-colors hover:bg-[#dfe3e6] disabled:cursor-not-allowed disabled:opacity-60"
-                           >
-                             {cardIssuanceMerchantImageUploading ? (
-                               <Loader2 className="h-8 w-8 animate-spin text-[#747779]" strokeWidth={2} aria-hidden />
-                             ) : (
-                               <ImagePlus className="h-8 w-8 text-[#747779]" strokeWidth={2} aria-hidden />
-                             )}
-                             <span className="mt-2 text-[11px] font-bold text-[#747779]">
-                               {cardIssuanceMerchantImageUploading ? tu('programs_config_uploading') : tu('programs_config_upload_image')}
-                             </span>
-                           </button>
-                         ) : null}
-                         {cardIssuanceEffectiveMerchantImage ? (
-                           <div className="relative min-h-[160px] w-full shrink-0 overflow-hidden rounded-md border-2 border-dashed border-[#abadaf]/40 bg-[#eef1f3]">
-                             <IpfsImg
-                               src={cardIssuanceEffectiveMerchantImage}
-                               alt=""
-                               className="h-full min-h-[160px] w-full object-cover"
-                             />
-                             <button
-                               type="button"
-                               aria-label={tu('programs_config_remove_merchant_image')}
-                               disabled={cardIssuanceMerchantImageUploading}
-                               onClick={() => void removeIssuedProgramMerchantImage()}
-                               className="absolute bottom-2 right-2 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#2c2f31]/45 text-white shadow-md backdrop-blur-[2px] ring-1 ring-white/35 transition hover:bg-[#2c2f31]/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                             >
-                               <Trash2 className="h-4 w-4" strokeWidth={2} aria-hidden />
-                             </button>
-                           </div>
-                         ) : null}
-                       </div>
-                       {!cardIssuanceExistingCard ? (
-                         <div className="col-span-full mt-4 w-full min-w-0 space-y-3 border-t border-[#abadaf]/15 pt-4">
-                           <span className="ml-1 block text-[10px] font-black uppercase tracking-widest text-[#747779]">
-                             {tu('programs_config_rewards_setup')}
+                           <span className="text-[17px] font-semibold leading-[22px] tracking-[-0.01em] text-[#1a1b1f]">
+                             {tu('programs_config_rewards_membership_fee')}
                            </span>
-                           <div className="flex items-center justify-between gap-4 rounded-2xl bg-[#eef1f3] px-4 py-4">
-                             <div className="min-w-0">
-                               <p className="text-xs font-bold uppercase tracking-widest text-[#2c2f31]">
-                                 {tu('programs_config_rewards_membership_fee')}
-                               </p>
-                               <p className="mt-1 text-xs font-medium leading-relaxed text-[#595c5e]">
-                                 {tu('programs_config_rewards_membership_fee_hint')}
-                               </p>
-                             </div>
-                             <button
-                               type="button"
-                               role="switch"
-                               aria-checked={cardIssuanceRewardsMembershipFeeEnabled}
-                               aria-label={tu('programs_config_rewards_membership_fee')}
-                               onClick={() => {
-                                 const nextEnabled = !cardIssuanceRewardsMembershipFeeEnabled;
-                                 applyCardIssuanceRewardsSetup({
-                                   membershipFeeEnabled: nextEnabled,
-                                   amount: nextEnabled
-                                     ? cardIssuanceRewardsSetupAmount
-                                     : CARD_ISSUANCE_REWARDS_SETUP_AMOUNT_DEFAULT,
-                                   tierRule: cardIssuanceTierRule,
-                                   durationKind: nextEnabled
-                                     ? normalizeMembershipDurationKind(
-                                         cardIssuanceBaseTier?.membershipDurationKind
-                                       ) || 3
-                                     : undefined,
-                                 });
-                               }}
-                               className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${bizFocusRingClass} ${
-                                 cardIssuanceRewardsMembershipFeeEnabled
-                                   ? 'bg-[#0051d1]'
-                                   : 'bg-[#abadaf]/50'
-                               }`}
-                             >
-                               <span
-                                 className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition ${
-                                   cardIssuanceRewardsMembershipFeeEnabled
-                                     ? 'translate-x-6'
-                                     : 'translate-x-1'
-                                 }`}
-                               />
-                             </button>
-                           </div>
                            {cardIssuanceRewardsMembershipFeeEnabled ? (
-                             <div className="space-y-3">
-                               <div className="space-y-2">
-                                 <label
-                                   className="ml-1 block text-[10px] font-bold uppercase tracking-[0.15em] text-[#595c5e]"
-                                   htmlFor="card-issuance-rewards-membership-fee-amount"
-                                 >
-                                   {tu('programs_config_rewards_membership_fee_amount')}
-                                 </label>
-                                 <div className="relative">
-                                   <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-[#595c5e]">
-                                     {cardIssuanceDisplayMoneyPrefix}
-                                   </span>
-                                   <input
-                                     ref={cardIssuanceRewardsSetupAmountWheelRef}
-                                     id="card-issuance-rewards-membership-fee-amount"
-                                     type="number"
-                                     inputMode="decimal"
-                                     autoComplete="off"
-                                     enterKeyHint="done"
-                                     min={0}
-                                     step="any"
-                                     value={cardIssuanceRewardsSetupAmount}
-                                     onKeyDown={preventNumericInputStepKeys}
-                                     onKeyDownCapture={preventNumericInputStepKeys}
-                                     onWheel={preventNumericInputWheelStep}
-                                     onChange={(e) => {
-                                       const raw = e.target.value.replace(/,/g, '');
-                                       if (raw !== '' && !/^\d*\.?\d*$/.test(raw)) return;
-                                       setCardIssuanceRewardsSetupAmount(raw);
-                                     }}
-                                     onBlur={() =>
-                                       applyCardIssuanceRewardsSetup({
-                                         membershipFeeEnabled: true,
-                                         amount: cardIssuanceRewardsSetupAmount,
-                                         durationKind:
-                                           normalizeMembershipDurationKind(
-                                             cardIssuanceBaseTier?.membershipDurationKind
-                                           ) || 3,
-                                       })
-                                     }
-                                     className={`w-full rounded-2xl border-none bg-[#eef1f3] py-4 pl-14 pr-6 text-base font-medium text-[#2c2f31] placeholder:text-[#abadaf] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
-                                   />
-                                 </div>
-                               </div>
-                               <div className="space-y-2">
-                                 <label
-                                   className="ml-1 block text-[10px] font-bold uppercase tracking-[0.15em] text-[#595c5e]"
-                                   htmlFor="card-issuance-rewards-membership-duration"
-                                 >
-                                   {tu('programs_config_rewards_membership_duration')}
-                                 </label>
-                                 <select
-                                   id="card-issuance-rewards-membership-duration"
-                                   value={String(
-                                     normalizeMembershipDurationKind(
-                                       cardIssuanceBaseTier?.membershipDurationKind
-                                     ) || 3
-                                   )}
-                                   onChange={(e) =>
+                             <CheckCircle2 className="h-5 w-5 shrink-0 text-[#004bc3]" strokeWidth={2} aria-hidden />
+                           ) : null}
+                         </button>
+                         <p className="text-[15px] leading-5 text-[#424655]">
+                           {tu('programs_config_rewards_membership_fee_detail')}
+                         </p>
+                         <div
+                           className="mt-auto space-y-4 pt-2"
+                           onClick={(e) => e.stopPropagation()}
+                           onMouseDown={(e) => e.stopPropagation()}
+                         >
+                           <div>
+                             <label
+                               className={`${CARD_SETUP_LABEL_CLASS} mb-1 block`}
+                               htmlFor="card-issuance-rewards-membership-fee-amount"
+                             >
+                               {tu('programs_config_rewards_membership_fee_amount')}
+                             </label>
+                             <div className="relative">
+                               <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-[#424655]">
+                                 {cardIssuanceDisplayMoneyPrefix}
+                               </span>
+                               <input
+                                 ref={cardIssuanceRewardsSetupAmountWheelRef}
+                                 id="card-issuance-rewards-membership-fee-amount"
+                                 type="number"
+                                 inputMode="decimal"
+                                 autoComplete="off"
+                                 enterKeyHint="done"
+                                 min={0}
+                                 step="any"
+                                 value={cardIssuanceRewardsSetupAmount}
+                                 onKeyDown={preventNumericInputStepKeys}
+                                 onKeyDownCapture={preventNumericInputStepKeys}
+                                 onWheel={preventNumericInputWheelStep}
+                                 onChange={(e) => {
+                                   const raw = e.target.value.replace(/,/g, '');
+                                   if (raw !== '' && !/^\d*\.?\d*$/.test(raw)) return;
+                                   setCardIssuanceRewardsSetupAmount(raw);
+                                 }}
+                                 onFocus={() => {
+                                   if (!cardIssuanceRewardsMembershipFeeEnabled) {
                                      applyCardIssuanceRewardsSetup({
                                        membershipFeeEnabled: true,
                                        amount: cardIssuanceRewardsSetupAmount,
-                                       durationKind: normalizeMembershipDurationKind(e.target.value) || 3,
-                                     })
+                                       durationKind:
+                                         normalizeMembershipDurationKind(
+                                           cardIssuanceBaseTier?.membershipDurationKind
+                                         ) || 3,
+                                     });
                                    }
-                                   className={`w-full rounded-2xl border-none bg-[#eef1f3] px-6 py-4 text-base font-medium text-[#2c2f31] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass}`}
-                                 >
-                                   <option value={1}>{tu('programs_config_rewards_membership_duration_day')}</option>
-                                   <option value={2}>{tu('programs_config_rewards_membership_duration_week')}</option>
-                                   <option value={3}>{tu('programs_config_rewards_membership_duration_month')}</option>
-                                   <option value={4}>
-                                     {tu('programs_config_rewards_membership_duration_quarter')}
-                                   </option>
-                                   <option value={5}>{tu('programs_config_rewards_membership_duration_year')}</option>
-                                   <option value={6}>
-                                     {tu('programs_config_rewards_membership_duration_forever')}
-                                   </option>
-                                 </select>
-                               </div>
+                                 }}
+                                 onBlur={() =>
+                                   applyCardIssuanceRewardsSetup({
+                                     membershipFeeEnabled: true,
+                                     amount: cardIssuanceRewardsSetupAmount,
+                                     durationKind:
+                                       normalizeMembershipDurationKind(
+                                         cardIssuanceBaseTier?.membershipDurationKind
+                                       ) || 3,
+                                   })
+                                 }
+                                 className={`w-full rounded-lg border border-transparent bg-[#eeedf3] py-2 pl-12 pr-3 text-[15px] leading-5 text-[#1a1b1f] outline-none transition-colors focus:border-[#004bc3] ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
+                               />
                              </div>
-                           ) : (
-                             <div className="space-y-3">
-                               <span className="ml-1 block text-[10px] font-bold uppercase tracking-[0.15em] text-[#595c5e]">
-                                 {tu('programs_config_rewards_tier_by')}
-                               </span>
-                               <div
-                                 className="grid grid-cols-1 gap-2 sm:grid-cols-3"
-                                 role="radiogroup"
-                                 aria-label={tu('programs_config_rewards_tier_by')}
+                           </div>
+                           <div className="flex flex-col gap-2">
+                             <label
+                               className={CARD_SETUP_LABEL_CLASS}
+                               htmlFor="card-issuance-rewards-membership-duration"
+                             >
+                               {tu('programs_config_rewards_membership_duration')}
+                             </label>
+                             <div className="relative w-full">
+                               <select
+                                 id="card-issuance-rewards-membership-duration"
+                                 value={String(
+                                   normalizeMembershipDurationKind(
+                                     cardIssuanceBaseTier?.membershipDurationKind
+                                   ) || 3
+                                 )}
+                                 onFocus={() => {
+                                   if (!cardIssuanceRewardsMembershipFeeEnabled) {
+                                     applyCardIssuanceRewardsSetup({
+                                       membershipFeeEnabled: true,
+                                       amount: cardIssuanceRewardsSetupAmount,
+                                       durationKind:
+                                         normalizeMembershipDurationKind(
+                                           cardIssuanceBaseTier?.membershipDurationKind
+                                         ) || 3,
+                                     });
+                                   }
+                                 }}
+                                 onChange={(e) =>
+                                   applyCardIssuanceRewardsSetup({
+                                     membershipFeeEnabled: true,
+                                     amount: cardIssuanceRewardsSetupAmount,
+                                     durationKind: normalizeMembershipDurationKind(e.target.value) || 3,
+                                   })
+                                 }
+                                 className={`w-full appearance-none rounded-lg border border-[#c3c6d8]/30 bg-[#eeedf3] px-3 py-2 text-[15px] leading-5 text-[#1a1b1f] outline-none transition-colors focus:border-[#004bc3] ${bizFocusRingClass}`}
                                >
-                                 {(
-                                   [
-                                     { key: 'single' as const, labelKey: 'programs_config_rewards_topup' },
-                                     { key: 'cumulative' as const, labelKey: 'programs_config_rewards_charge' },
-                                     { key: 'balance' as const, labelKey: 'programs_config_rewards_balance' },
-                                   ] as const
-                                 ).map(({ key, labelKey }) => {
-                                   const selected = cardIssuanceTierRule === key;
-                                   return (
-                                     <button
-                                       key={key}
-                                       type="button"
-                                       role="radio"
-                                       aria-checked={selected}
-                                       onClick={() =>
-                                         applyCardIssuanceRewardsSetup({
-                                           membershipFeeEnabled: false,
-                                           amount: CARD_ISSUANCE_REWARDS_SETUP_AMOUNT_DEFAULT,
-                                           tierRule: key,
-                                         })
-                                       }
-                                       className={`rounded-2xl border px-3 py-3 text-left transition-colors ${bizFocusRingClass} ${
-                                         selected
-                                           ? 'border-[#1562f0] bg-blue-50/50 ring-2 ring-inset ring-[#1562f0]'
-                                           : 'border-[#abadaf]/35 bg-white hover:bg-[#eef1f3]/80'
-                                       }`}
-                                     >
-                                       <span className="font-manrope text-sm font-bold text-[#2c2f31]">
-                                         {tu(labelKey)}
-                                       </span>
-                                     </button>
-                                   );
-                                 })}
-                               </div>
+                                 <option value={1}>
+                                   {tu('programs_config_rewards_membership_duration_day')}
+                                 </option>
+                                 <option value={2}>
+                                   {tu('programs_config_rewards_membership_duration_week')}
+                                 </option>
+                                 <option value={3}>
+                                   {tu('programs_config_rewards_membership_duration_month')}
+                                 </option>
+                                 <option value={4}>
+                                   {tu('programs_config_rewards_membership_duration_quarter')}
+                                 </option>
+                                 <option value={5}>
+                                   {tu('programs_config_rewards_membership_duration_year')}
+                                 </option>
+                                 <option value={6}>
+                                   {tu('programs_config_rewards_membership_duration_forever')}
+                                 </option>
+                               </select>
+                               <ChevronDown
+                                 className="pointer-events-none absolute right-3 top-1/2 h-5 w-5 -translate-y-1/2 text-[#424655]"
+                                 strokeWidth={2}
+                                 aria-hidden
+                               />
                              </div>
-                           )}
-                          {cardIssuanceCreateError && cardIssuanceQuickDefaultRewardsFlow ? (
-                            <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">
-                              {cardIssuanceCreateError}
-                            </p>
-                          ) : null}
+                           </div>
                          </div>
-                       ) : null}
+                       </div>
+                       {(
+                         [
+                           {
+                             key: 'single' as const,
+                             labelKey: 'programs_config_rewards_topup',
+                             detailKey: 'programs_config_rewards_topup_detail',
+                           },
+                           {
+                             key: 'cumulative' as const,
+                             labelKey: 'programs_config_rewards_charge',
+                             detailKey: 'programs_config_rewards_charge_detail',
+                           },
+                           {
+                             key: 'balance' as const,
+                             labelKey: 'programs_config_rewards_balance',
+                             detailKey: 'programs_config_rewards_balance_detail',
+                           },
+                         ] as const
+                       ).map(({ key, labelKey, detailKey }) => {
+                         const selected =
+                           !cardIssuanceRewardsMembershipFeeEnabled && cardIssuanceTierRule === key;
+                         return (
+                           <button
+                             key={key}
+                             type="button"
+                             role="radio"
+                             aria-checked={selected}
+                             onClick={() =>
+                               applyCardIssuanceRewardsSetup({
+                                 membershipFeeEnabled: false,
+                                 amount: CARD_ISSUANCE_REWARDS_SETUP_AMOUNT_DEFAULT,
+                                 tierRule: key,
+                               })
+                             }
+                             className={`text-left ${bizFocusRingClass} ${
+                               selected ? CARD_SETUP_TIER_CARD_SELECTED_CLASS : CARD_SETUP_TIER_CARD_IDLE_CLASS
+                             }`}
+                           >
+                             <div className="flex items-start justify-between gap-2">
+                               <span className="text-[17px] font-semibold leading-[22px] tracking-[-0.01em] text-[#1a1b1f]">
+                                 {tu(labelKey)}
+                               </span>
+                               {selected ? (
+                                 <CheckCircle2
+                                   className="h-5 w-5 shrink-0 text-[#004bc3]"
+                                   strokeWidth={2}
+                                   aria-hidden
+                                 />
+                               ) : null}
+                             </div>
+                             <p className="text-[15px] leading-5 text-[#424655]">{tu(detailKey)}</p>
+                           </button>
+                         );
+                       })}
                      </div>
-                 </div>
-                 </section>
+                     {cardIssuanceCreateError && cardIssuanceQuickDefaultRewardsFlow ? (
+                       <div
+                         role="alert"
+                         className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900"
+                       >
+                         <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" aria-hidden />
+                         <p>{cardIssuanceCreateError}</p>
+                       </div>
+                     ) : null}
+                   </section>
+                 ) : null}
 
                  <section
                    className={`${

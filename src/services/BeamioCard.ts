@@ -1518,9 +1518,14 @@ export type TierMetadata = {
 	logoDisplayScale?: '2x' | '4x' | '6x' | '8x' | 'hidden'
 	/**
 	 * Per-tier on-chain qualify flag (BeamioUserCard.Tier.upgradeByBalance).
-	 * false = top-up / single-payment (default for membership-fee cards).
+	 * true = Balance; false = Top-up or Charge (chain cannot tell Charge vs Top-up).
 	 */
 	upgradeByBalance?: boolean
+	/**
+	 * Metadata-only Charge qualify flag (`upgradeType === 2`).
+	 * Not in the live 4-tuple `setTiers` ABI; Charge vs Top-up both use upgradeByBalance=false on-chain.
+	 */
+	upgradeByCharge?: boolean
 	/** Membership fee in card currency, 6-decimal fixed (string uint). 0 = no fee. */
 	membershipFeeE6?: string
 	/** Optional human-readable fee (card currency units) for editors / POS. */
@@ -3582,6 +3587,10 @@ export type CardTierMetadata = {
 	backgroundColor?: string
 	/** Pass card top-left logo scale: `2x` | `4x` | `6x` | `8x` | `hidden`. */
 	logoDisplayScale?: '2x' | '4x' | '6x' | '8x' | 'hidden'
+	/** Per-tier on-chain qualify flag; true = Balance. */
+	upgradeByBalance?: boolean
+	/** Metadata-only Charge qualify flag (`upgradeType === 2`). */
+	upgradeByCharge?: boolean
 	membershipFeeE6?: string
 	membershipFee?: string | number
 	membershipDurationKind?: MembershipDurationKind | number
@@ -3685,6 +3694,40 @@ export type CardMetadataFromUri = {
 	maximumTopupCad?: number
 	/** 0–3 from shareTokenMetadata.logoDisplayTier — hero logo size on card previews */
 	logoDisplayTier?: CardPreviewLogoDisplayTier
+	/** Card-level loyalty: 0 Top-up, 1 Balance, 2 Charge. Beacon `upgradeType()` may stay 0. */
+	upgradeType?: 0 | 1 | 2
+}
+
+/** Prefer explicit card0 `upgradeType`; otherwise infer Charge/Balance from per-tier flags. */
+export function parseLoyaltyUpgradeTypeFromCardMetadata(
+	json: { upgradeType?: unknown; tiers?: unknown } | null | undefined,
+): 0 | 1 | 2 | undefined {
+	if (!json || typeof json !== 'object') return undefined
+	const n = Number((json as { upgradeType?: unknown }).upgradeType)
+	if (n === 1 || n === 2) return n
+	const tiers = Array.isArray(json.tiers) ? json.tiers : []
+	if (
+		tiers.some(
+			(t) =>
+				t &&
+				typeof t === 'object' &&
+				(t as { upgradeByCharge?: unknown }).upgradeByCharge === true,
+		)
+	) {
+		return 2
+	}
+	if (
+		tiers.some(
+			(t) =>
+				t &&
+				typeof t === 'object' &&
+				(t as { upgradeByBalance?: unknown }).upgradeByBalance === true,
+		)
+	) {
+		return 1
+	}
+	if (n === 0) return 0
+	return undefined
 }
 
 /** 单张成员 NFT 的 tier metadata（GET /metadata/0x{owner}{NFT#}.json） */
@@ -3715,6 +3758,7 @@ const cardMetadataCache = new Map<
 		minimumTopupCad?: number
 		maximumTopupCad?: number
 		logoDisplayTier?: CardPreviewLogoDisplayTier
+		upgradeType?: 0 | 1 | 2
 		timestamp: number
 	}
 >()
@@ -4199,6 +4243,7 @@ export const getCardMetadataFrom1155Json = async (cardAddress: string): Promise<
 		const merchantImage =
 			shareTokenMerchantImageFromUnknown(share) ??
 			(typeof json.merchantImage === 'string' && json.merchantImage.trim() ? json.merchantImage.trim() : undefined)
+		const parsedUpgradeType = parseLoyaltyUpgradeTypeFromCardMetadata(json)
 		const meta: CardMetadataFromUri = {
 			name: (share?.name ?? json?.name) as string | undefined,
 			image: (share?.image ?? json?.image) as string | undefined,
@@ -4218,6 +4263,7 @@ export const getCardMetadataFrom1155Json = async (cardAddress: string): Promise<
 			...(categories && { categories }),
 			...limits,
 			...(logoDisplayTier !== undefined && { logoDisplayTier }),
+			...(parsedUpgradeType !== undefined && { upgradeType: parsedUpgradeType }),
 		}
 		cardMetadataCache.set(cacheKey, { ...meta, timestamp: Date.now() })
 		return meta
@@ -4261,6 +4307,7 @@ export const getCardMetadataFromApi = async (cardAddress: string): Promise<CardM
 			(typeof metaJson.merchantImage === 'string' && metaJson.merchantImage.trim()
 				? metaJson.merchantImage.trim()
 				: undefined)
+		const parsedUpgradeType = parseLoyaltyUpgradeTypeFromCardMetadata(metaJson)
 		const meta: CardMetadataFromUri = {
 			name: (share?.name ?? metaJson.name) as string | undefined,
 			image: (share?.image ?? metaJson.image) as string | undefined,
@@ -4281,6 +4328,7 @@ export const getCardMetadataFromApi = async (cardAddress: string): Promise<CardM
 			...(categories && { categories }),
 			...limits,
 			...(logoDisplayTier !== undefined && { logoDisplayTier }),
+			...(parsedUpgradeType !== undefined && { upgradeType: parsedUpgradeType }),
 		}
 		cardMetadataCache.set(key, { ...meta, timestamp: Date.now() })
 		return meta
@@ -4409,6 +4457,7 @@ export const getCardMetadataFromUri = async (cardAddress: string): Promise<CardM
 		const merchantImage =
 			shareTokenMerchantImageFromUnknown(shareObj) ??
 			(typeof json.merchantImage === 'string' && json.merchantImage.trim() ? json.merchantImage.trim() : undefined)
+		const parsedUpgradeType = parseLoyaltyUpgradeTypeFromCardMetadata(json)
 		const meta: CardMetadataFromUri = {
 			name: json?.name ?? json?.shareTokenMetadata?.name,
 			image: json?.image ?? json?.shareTokenMetadata?.image,
@@ -4428,6 +4477,7 @@ export const getCardMetadataFromUri = async (cardAddress: string): Promise<CardM
 			...(categories && { categories }),
 			...limits,
 			...(logoDisplayTier !== undefined && { logoDisplayTier }),
+			...(parsedUpgradeType !== undefined && { upgradeType: parsedUpgradeType }),
 		}
 		cardMetadataCache.set(key, { ...meta, timestamp: Date.now() })
 		return meta

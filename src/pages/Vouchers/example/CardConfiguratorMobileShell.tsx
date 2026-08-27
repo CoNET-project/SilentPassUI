@@ -189,3 +189,7 @@ export const CARD_CONFIGURATOR_MOBILE_MAIN_PAD_MARKET_HEADER =
  */
 export const CARD_CONFIGURATOR_MOBILE_STICKY_BELOW_HEADER_CLASS =
   'top-[calc(78px+env(safe-area-inset-top,0px))]';
+
+/** Sticky offset below the default Card Setup header (keep in sync with MAIN_PAD). */
+export const CARD_CONFIGURATOR_MOBILE_STICKY_BELOW_DEFAULT_HEADER_CLASS =
+  'top-[calc(88px+env(safe-area-inset-top,0px))]';

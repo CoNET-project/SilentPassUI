@@ -133,7 +133,7 @@ cardIssuanceTopupPromotionOverviewSummary = useMemo(() => [
 
 ## 8. AI 检查清单
 
-- [ ] Save 时若 Reward PT / Referrer 变更，是否写链 **`setTopupActorRewardRatio` / `setReferrerTopupAmountRatio`**（真正 % → E6），**未**写 `ruleId=2` 固定 mint？
+- [ ] Save 时若 Reward PT / Referrer 变更，是否单笔 UserOp 写链 **`topupReward` / `chargeReward`**（E6 ratio），**未**写 `ruleId=2` 固定 mint？
 - [ ] 新预览面是否用 **`cardIssuanceTopupPromotionOverviewSummary`**，而非只读 bonus？
 - [ ] 总开关 OFF 时 Reward PT / Referrer 是否仍可编辑且 Publish 写入 `unifiedRewardPoints`？
 - [ ] Trash 是否只清 bonus、不动 Reward PT？

@@ -10951,6 +10951,10 @@ const CARD_ISSUANCE_BEAMIO_CURRENCY = 'CAD' as const;
 const CARD_ISSUANCE_MIN_TOPUP_USDC_MIN = 0;
 /** Maximum reload cap expressed in USDC; UI converts it to the card currency. */
 const CARD_ISSUANCE_MAX_TOPUP_MAX = 50000;
+/** New non-membership cards: silent min top-up written to metadata (not shown on issue UI). */
+const CARD_ISSUANCE_NEW_NON_MEMBERSHIP_SILENT_MIN_TOPUP = 1;
+/** New non-membership cards: silent max top-up written to metadata (not shown on issue UI). */
+const CARD_ISSUANCE_NEW_NON_MEMBERSHIP_SILENT_MAX_TOPUP = CARD_ISSUANCE_MAX_TOPUP_MAX;
 /** Default maximum top-up (whole dollars only, no decimals). */
 const CARD_ISSUANCE_MAX_TOPUP_DEFAULT = 100;
 /** Default minimum top-up (whole dollars only, no decimals). */
@@ -12450,6 +12454,14 @@ function cardIssuanceTierRuleFromUpgradeType(upgradeType: number): CardIssuanceT
   if (upgradeType === 1) return 'balance';
   if (upgradeType === 2) return 'cumulative';
   return null;
+}
+
+/** Loyalty `setTiers` 4th arg: only balance-rule non-membership cards set `upgradeByBalance`. */
+function cardIssuanceLoyaltyUpgradeByBalance(
+  membershipFee: boolean,
+  rule: CardIssuanceTierRule,
+): boolean {
+  return !membershipFee && rule === 'balance';
 }
 
 /** Persisted per EOA + program card (`saveTrustedCache`). `upgradeType` / tier rule are fixed after card deploy. */
@@ -16503,6 +16515,25 @@ const cardIssuanceEffectiveMerchantLogo = useMemo(() => {
   ) {
     return '';
   }
+  if (!cardIssuanceExistingCard) {
+    const silentMax = CARD_ISSUANCE_NEW_NON_MEMBERSHIP_SILENT_MAX_TOPUP;
+    const tierThresholdBoundedByMaxTopup = cardIssuanceTierRule !== 'cumulative';
+    if (tierThresholdBoundedByMaxTopup) {
+      for (const row of cardIssuanceTiers) {
+        const tierName = row.name.trim();
+        if (!tierName) continue;
+        const tr = row.threshold.replace(/,/g, '').trim();
+        if (tr === '') continue;
+        const tInt = Number.parseInt(tr, 10);
+        const tFloat = parseFloat(tr);
+        if (!Number.isFinite(tInt) || !Number.isFinite(tFloat) || tFloat !== tInt) continue;
+        if (tInt > silentMax) {
+          return `Tier "${tierName}": threshold cannot exceed maximum top-up (${silentMax} ${CARD_ISSUANCE_BEAMIO_CURRENCY}).`;
+        }
+      }
+    }
+    return '';
+  }
   const tierThresholdBoundedByMaxTopup = cardIssuanceTierRule !== 'cumulative';
    const metaCap = cardIssuanceExistingCard?.meta?.maximumTopupCad;
    const maxRaw = cardIssuanceMaxTopup.replace(/,/g, '').trim();
@@ -16545,6 +16576,7 @@ const cardIssuanceEffectiveMerchantLogo = useMemo(() => {
    }
    return '';
  }, [
+   cardIssuanceExistingCard,
    cardIssuanceExistingCard?.meta?.maximumTopupCad,
    cardIssuanceMaxTopup,
    cardIssuanceMinTopup,
@@ -19578,11 +19610,15 @@ const disableCardIssuanceTopupPromotion = useCallback(() => {
   setCardIssuanceTopupPromotionEditorOpen(false);
 }, []);
 
- const buildCardIssuanceTiersPayloadFromRows = useCallback((rows: CardIssuanceTierRow[]): TierMetadata[] | undefined => {
+ const buildCardIssuanceTiersPayloadFromRows = useCallback((
+   rows: CardIssuanceTierRow[],
+   loyaltyOpts?: { upgradeByBalance?: boolean },
+ ): TierMetadata[] | undefined => {
    if (rows.length === 0) return undefined;
    const anyMembershipFee = rows.some((t) => BigInt(membershipFeeHumanToE6(t.membershipFee)) > 0n);
    const namedRows = rows.filter((t) => t.name.trim() !== '');
    if (namedRows.length === 0) return undefined;
+   const loyaltyUpgradeByBalance = !anyMembershipFee && Boolean(loyaltyOpts?.upgradeByBalance);
 
    const buildTierMetaFields = (t: CardIssuanceTierRow) => {
      const membershipFeeE6 = membershipFeeHumanToE6(t.membershipFee);
@@ -19623,8 +19659,7 @@ const disableCardIssuanceTopupPromotion = useCallback(() => {
      return {
        name: t.name.trim(),
        logoDisplayScale,
-       // Membership-fee / top-up cards: per-tier upgradeByBalance=false (top-up qualify).
-       upgradeByBalance: false as const,
+       upgradeByBalance: anyMembershipFee ? false : loyaltyUpgradeByBalance,
        membershipFeeE6,
        membershipFee: membershipFeeE6ToHuman(membershipFeeE6) || undefined,
        membershipDurationKind,
@@ -20355,7 +20390,13 @@ const saveCardIssuanceCardBackground = useCallback(async () => {
     if (pendingId) {
       setCardIssuanceCardBackgroundPendingNewTierId(null);
     }
-    const tiersPayload = buildCardIssuanceTiersPayloadFromRows(nextTiers);
+    const loyaltyUpgradeByBalance = cardIssuanceLoyaltyUpgradeByBalance(
+      cardIssuanceRowsHaveMembershipFee(nextTiers),
+      cardIssuanceTierRule,
+    );
+    const tiersPayload = buildCardIssuanceTiersPayloadFromRows(nextTiers, {
+      upgradeByBalance: loyaltyUpgradeByBalance,
+    });
     if (tiersPayload?.length) {
       setCardIssuanceExistingCard((prev) => {
         if (!prev?.meta) return prev;
@@ -20363,11 +20404,18 @@ const saveCardIssuanceCardBackground = useCallback(async () => {
       });
     }
     if (cardIssuanceExistingCard?.cardAddress) {
-      /** Image/color/fit/name chrome can update off-chain; only threshold/count changes need setTiers. */
-      const prevChainSig = (buildCardIssuanceTiersPayloadFromRows(cardIssuanceTiers) ?? [])
-        .map((t) => String(t.minUsdc6))
+      /** Image/color/fit/name chrome can update off-chain; only threshold/count/upgradeByBalance changes need setTiers. */
+      const prevChainSig = (buildCardIssuanceTiersPayloadFromRows(cardIssuanceTiers, {
+        upgradeByBalance: cardIssuanceLoyaltyUpgradeByBalance(
+          cardIssuanceRowsHaveMembershipFee(cardIssuanceTiers),
+          cardIssuanceTierRule,
+        ),
+      }) ?? [])
+        .map((t) => `${t.minUsdc6}:${t.upgradeByBalance ? 1 : 0}`)
         .join('|');
-      const nextChainSig = (tiersPayload ?? []).map((t) => String(t.minUsdc6)).join('|');
+      const nextChainSig = (tiersPayload ?? [])
+        .map((t) => `${t.minUsdc6}:${t.upgradeByBalance ? 1 : 0}`)
+        .join('|');
       const chainTierUnchanged = prevChainSig === nextChainSig && prevChainSig.length > 0;
       const ok = await handlePublishCardIssuanceRef.current({
         tiersOverride: nextTiers,
@@ -20430,6 +20478,7 @@ const saveCardIssuanceCardBackground = useCallback(async () => {
   cardIssuancePreviewEditTier?.id,
   cardIssuanceTiers,
   revokeCardIssuanceCardBackgroundDraftBlob,
+  cardIssuanceTierRule,
 ]);
 
 /** Ingest a picked or dropped image into draft only — blob preview until Save; IPFS URL stored pending. */
@@ -21141,11 +21190,23 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
     (useQuickDefaultRewardsNewCard
      ? reconcileTierThresholdsWithMinTopup(defaultCardIssuanceTiers(), String(cardIssuanceNewCardMinTopupFloor))
       : cardIssuanceTiers);
-   const tiersPayload = buildCardIssuanceTiersPayloadFromRows(tiersRowsForPublish);
+   const membershipFeeModeForPublish = cardIssuanceRowsHaveMembershipFee(tiersRowsForPublish);
+   const silentNewNonMembershipTopup =
+     !cardIssuanceExistingCard &&
+     !membershipFeeModeForPublish &&
+     opts?.minTopupOverride == null &&
+     opts?.maxTopupOverride == null;
+   const tierRuleForPublish: CardIssuanceTierRule = membershipFeeModeForPublish
+     ? 'single'
+     : useQuickDefaultRewardsNewCard
+       ? 'single'
+       : cardIssuanceTierRule;
+   const tiersPayload = buildCardIssuanceTiersPayloadFromRows(tiersRowsForPublish, {
+     upgradeByBalance: cardIssuanceLoyaltyUpgradeByBalance(membershipFeeModeForPublish, tierRuleForPublish),
+   });
    if (!metadataOnlyExistingCard && tiersRowsForPublish.length > 0 && (!tiersPayload || tiersPayload.length === 0)) {
      return publishFail('Each tier must have a name.');
    }
-   const membershipFeeModeForPublish = cardIssuanceRowsHaveMembershipFee(tiersRowsForPublish);
    if (!metadataOnlyExistingCard) {
    for (const row of tiersRowsForPublish) {
      const tierName = row.name.trim();
@@ -21187,7 +21248,9 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
      Number.isFinite(resolvedMembershipFeeTopupParsed) && resolvedMembershipFeeTopupParsed > 0
        ? resolvedMembershipFeeTopupParsed
        : membershipFeeTopupDefaultN;
-   const minTopupRaw = (
+   const minTopupRaw = silentNewNonMembershipTopup
+     ? String(CARD_ISSUANCE_NEW_NON_MEMBERSHIP_SILENT_MIN_TOPUP)
+     : (
     opts?.minTopupOverride ??
     (metadataOnlyExistingCard && cardIssuanceExistingCard?.meta?.minimumTopupCad != null
       ? String(Math.round(Number(cardIssuanceExistingCard.meta.minimumTopupCad)))
@@ -21195,24 +21258,31 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
         ? String(cardIssuanceNewCardMinTopupFloor)
         : cardIssuanceMinTopup)
    ).replace(/,/g, '').trim();
-   if (!membershipFeeModeForPublish && minTopupRaw === '') {
+   if (!membershipFeeModeForPublish && !silentNewNonMembershipTopup && minTopupRaw === '') {
      return publishFail('Minimum top-up is required.');
    }
    const minTopupN = membershipFeeModeForPublish
      ? resolvedMembershipFeeTopupN
-     : Number.parseInt(minTopupRaw, 10);
+     : silentNewNonMembershipTopup
+       ? CARD_ISSUANCE_NEW_NON_MEMBERSHIP_SILENT_MIN_TOPUP
+       : Number.parseInt(minTopupRaw, 10);
    const minTopupAsFloat = membershipFeeModeForPublish
      ? resolvedMembershipFeeTopupN
-     : parseFloat(minTopupRaw);
+     : silentNewNonMembershipTopup
+       ? CARD_ISSUANCE_NEW_NON_MEMBERSHIP_SILENT_MIN_TOPUP
+       : parseFloat(minTopupRaw);
    if (
      !membershipFeeModeForPublish &&
+     !silentNewNonMembershipTopup &&
      (!Number.isFinite(minTopupAsFloat) ||
        !Number.isFinite(minTopupN) ||
        minTopupAsFloat !== minTopupN)
    ) {
      return publishFail('Minimum top-up must be a whole number (no decimals).');
    }
-   const maxTopupRaw = (
+   const maxTopupRaw = silentNewNonMembershipTopup
+     ? String(CARD_ISSUANCE_NEW_NON_MEMBERSHIP_SILENT_MAX_TOPUP)
+     : (
     opts?.maxTopupOverride ??
     (metadataOnlyExistingCard && cardIssuanceExistingCard?.meta?.maximumTopupCad != null
       ? String(Math.round(Number(cardIssuanceExistingCard.meta.maximumTopupCad)))
@@ -21220,15 +21290,19 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
         ? String(cardIssuanceNewCardMaxTopupCap)
         : cardIssuanceMaxTopup)
    ).replace(/,/g, '').trim();
-   if (!membershipFeeModeForPublish && maxTopupRaw === '') {
+   if (!membershipFeeModeForPublish && !silentNewNonMembershipTopup && maxTopupRaw === '') {
      return publishFail('Maximum top-up is required.');
    }
    const maxTopupN = membershipFeeModeForPublish
      ? resolvedMembershipFeeTopupN
-     : Number.parseInt(maxTopupRaw, 10);
+     : silentNewNonMembershipTopup
+       ? CARD_ISSUANCE_NEW_NON_MEMBERSHIP_SILENT_MAX_TOPUP
+       : Number.parseInt(maxTopupRaw, 10);
    const maxTopupAsFloat = membershipFeeModeForPublish
      ? resolvedMembershipFeeTopupN
-     : parseFloat(maxTopupRaw);
+     : silentNewNonMembershipTopup
+       ? CARD_ISSUANCE_NEW_NON_MEMBERSHIP_SILENT_MAX_TOPUP
+       : parseFloat(maxTopupRaw);
   if (!membershipFeeModeForPublish && minTopupN < publishTopupMinFloor) {
      return publishFail(
       publishTopupMinFloor <= 0
@@ -21261,11 +21335,6 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
    if (!membershipFeeModeForPublish && minTopupN > maxTopupN) {
      return publishFail('Minimum top-up cannot be greater than maximum top-up.');
    }
-   const tierRuleForPublish: CardIssuanceTierRule = membershipFeeModeForPublish
-     ? 'single'
-     : useQuickDefaultRewardsNewCard
-       ? 'single'
-       : cardIssuanceTierRule;
    const tierThresholdBoundedByMaxTopup =
      !membershipFeeModeForPublish && tierRuleForPublish !== 'cumulative';
    const metadataMaxTopupCap = cardIssuanceExistingCard?.meta?.maximumTopupCad;
@@ -21436,7 +21505,7 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
      let res: { success: boolean; cardAddress?: string; hash?: string; error?: string };
      if (cardIssuanceExistingCard?.cardAddress) {
       if (!opts?.metadataOnly && tiersPayload && tiersPayload.length > 0) {
-         const pk = profiles?.[0]?.privateKeyArmor;
+         const pk = getSessionPrivateKeyArmor() ?? profiles?.[0]?.privateKeyArmor;
          if (!pk) {
            return publishFail('Wallet key not available. Unlock your wallet to update tiers on-chain.');
          }
@@ -21484,6 +21553,55 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
            shareTokenMetadata: shareTokenMetadataForPublish as ShareTokenMetadata,
            ...(tiersPayload && tiersPayload.length > 0 ? { tiers: tiersPayload } : {}),
          });
+       if (
+         res.success &&
+         res.cardAddress &&
+         !membershipFeeModeForPublish &&
+         tiersPayload &&
+         tiersPayload.length > 0 &&
+         !opts?.metadataOnly
+       ) {
+         const pk = getSessionPrivateKeyArmor() ?? profiles?.[0]?.privateKeyArmor;
+         if (!pk) {
+           return publishFail(
+             'Card was created, but on-chain tiers failed to apply. Unlock your wallet, open the program, and save tiers again.'
+           );
+         }
+         const cardAddrNorm = ethers.getAddress(res.cardAddress);
+         const signerAddr = ethers.getAddress(new ethers.Wallet(pk).address);
+         const chainOwner = await getCardOwner(cardAddrNorm);
+         if (ethers.getAddress(chainOwner) !== signerAddr) {
+           return publishFail(
+             'Card was created, but on-chain tiers failed to apply. Switch to the owner wallet, open the program, and save tiers again.'
+           );
+         }
+         const chainTiers = tiersPayload.map((t) => ({
+           minUsdc6: t.minUsdc6,
+           attr: t.attr,
+           tierExpirySeconds: 0,
+           upgradeByBalance: Boolean(t.upgradeByBalance),
+         }));
+         const data = encodeSetTiers(chainTiers);
+         const deadline = Math.floor(Date.now() / 1000) + 3600;
+         const nonce = ethers.hexlify(ethers.randomBytes(32));
+         const ownerSignature = await signExecuteForOwner(pk, cardAddrNorm, data, deadline, nonce);
+         const tierRes = await updateBeamioCardTiers({
+           cardAddress: cardAddrNorm,
+           data,
+           deadline,
+           nonce,
+           ownerSignature,
+           shareTokenMetadata: shareTokenMetadataForPublish as ShareTokenMetadata,
+           tiers: tiersPayload,
+           ...(tierRuleUpgradeForPublish != null ? { upgradeType: tierRuleUpgradeForPublish } : {}),
+         });
+         if (!tierRes.success) {
+           return publishFail(
+             tierRes.error ??
+               'Card was created, but on-chain tiers failed to apply. Open the program and save tiers again.'
+           );
+         }
+       }
      }
 
      const resolvedPublishCardAddr =
@@ -21492,27 +21610,12 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
          ? ethers.getAddress(cardIssuanceExistingCard.cardAddress)
          : undefined);
     if (res.success && resolvedPublishCardAddr) {
-      if (tiersPayload && tiersPayload.length > 0 && !membershipFeeModeForPublish) {
-        const pkForFees = profiles?.[0]?.privateKeyArmor;
-        if (pkForFees) {
-          const feeSync = await publishMembershipFeesViaExecuteForOwner({
-            cardAddress: resolvedPublishCardAddr,
-            ownerPrivateKey: pkForFees,
-            feeE6: tiersPayload.map((t) => t.membershipFeeE6 ?? '0'),
-            durationKind: tiersPayload.map((t) =>
-              Number(t.membershipDurationKind ?? 0)
-            ),
-          });
-          if (!feeSync.success) {
-            return publishFail(
-              feeSync.error ?? 'Tiers published, but membership fees failed to update on-chain.'
-            );
-          }
-        }
-      }
       if (membershipFeeModeForPublish) {
         setCardIssuanceMinTopup(CARD_ISSUANCE_REWARDS_SETUP_AMOUNT_DEFAULT);
         setCardIssuanceMaxTopup(CARD_ISSUANCE_REWARDS_SETUP_AMOUNT_DEFAULT);
+      } else if (silentNewNonMembershipTopup) {
+        setCardIssuanceMinTopup(String(CARD_ISSUANCE_NEW_NON_MEMBERSHIP_SILENT_MIN_TOPUP));
+        setCardIssuanceMaxTopup(String(CARD_ISSUANCE_NEW_NON_MEMBERSHIP_SILENT_MAX_TOPUP));
       }
       const categoryIdForIndex = normalizeCardIssuanceCategoryId(cardIssuanceCategoryId);
       if (categoryIdForIndex) {
@@ -22810,7 +22913,14 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
                      ? { maximumTopupCad: parsedMax }
                      : {}),
                    ...(programBasicTiersDirty
-                     ? { tiers: buildCardIssuanceTiersPayloadFromRows(cardIssuanceTiers) }
+                     ? {
+                         tiers: buildCardIssuanceTiersPayloadFromRows(cardIssuanceTiers, {
+                           upgradeByBalance: cardIssuanceLoyaltyUpgradeByBalance(
+                             cardIssuanceRowsHaveMembershipFee(cardIssuanceTiers),
+                             cardIssuanceTierRule,
+                           ),
+                         }),
+                       }
                      : {}),
                  }
                : ({
@@ -22825,7 +22935,14 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
                      ? { maximumTopupCad: parsedMax }
                      : {}),
                    ...(programBasicTiersDirty
-                     ? { tiers: buildCardIssuanceTiersPayloadFromRows(cardIssuanceTiers) }
+                     ? {
+                         tiers: buildCardIssuanceTiersPayloadFromRows(cardIssuanceTiers, {
+                           upgradeByBalance: cardIssuanceLoyaltyUpgradeByBalance(
+                             cardIssuanceRowsHaveMembershipFee(cardIssuanceTiers),
+                             cardIssuanceTierRule,
+                           ),
+                         }),
+                       }
                      : {}),
                  } as CardMetadataFromUri),
            }
@@ -22861,6 +22978,8 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
   cardIssuanceRewardsMembershipFeeEnabled,
   cardIssuanceBaseTier,
   cardIssuanceRewardsSetupAmount,
+  cardIssuanceTierRule,
+  buildCardIssuanceTiersPayloadFromRows,
  ]);
 
  useEffect(() => {
@@ -36864,6 +36983,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                          </section>
                        </div>
 
+                       {cardIssuanceExistingCard ? (
                        <section>
                          <div className="mb-3 flex items-center gap-2.5">
                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#0051d1]/10">
@@ -36986,6 +37106,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                            </div>
                          </div>
                        </section>
+                       ) : null}
 
                        <section>
                          <span className="font-manrope mb-1 block text-[9px] font-extrabold uppercase tracking-widest text-[#0051d1]">
@@ -37099,7 +37220,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                          </div>
                        </section>
                      </div>
-                   ) : (
+                   ) : cardIssuanceExistingCard ? (
                      <>
                        <div
                          className={`mb-2 flex items-center gap-3 ${isCardConfiguratorMobileShell ? 'hidden' : ''}`}
@@ -37218,7 +37339,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                      </div>
                    </div>
                      </>
-                   )}
+                   ) : null}
                    {cardIssuanceRechargeLimitError ? (
                      <p className="mt-3 text-sm font-medium text-amber-700" role="alert">
                        {cardIssuanceRechargeLimitError}

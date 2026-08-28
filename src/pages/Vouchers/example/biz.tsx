@@ -25671,10 +25671,23 @@ const [cardSetupDiscoverPreviewScale, setCardSetupDiscoverPreviewScale] = useSta
 const [cardSetupDiscoverPreviewNaturalHeight, setCardSetupDiscoverPreviewNaturalHeight] = useState(0);
 const mobileScrollContainerRef = useRef<HTMLDivElement | null>(null);
 const cardSetupDiscoverPreviewInnerRef = useRef<HTMLDivElement | null>(null);
+const cardSetupDiscoverPreviewScaleRef = useRef(1);
+const cardSetupDiscoverPreviewRafRef = useRef<number | null>(null);
+const cardSetupDiscoverPreviewNaturalHeightRef = useRef(0);
 
 const syncMobileScrollDerivedUi = useCallback((scrollTop: number) => {
   setMobileFloatingBarOpacity(computeMobileFloatingBarOpacity(scrollTop));
-  setCardSetupDiscoverPreviewScale(computeCardSetupDiscoverPreviewScale(scrollTop));
+  const nextScale = computeCardSetupDiscoverPreviewScale(scrollTop);
+  // Skip tiny deltas — avoids subpixel flicker while sticky is pinned.
+  if (Math.abs(nextScale - cardSetupDiscoverPreviewScaleRef.current) < 0.002) return;
+  cardSetupDiscoverPreviewScaleRef.current = nextScale;
+  if (cardSetupDiscoverPreviewRafRef.current != null) {
+    cancelAnimationFrame(cardSetupDiscoverPreviewRafRef.current);
+  }
+  cardSetupDiscoverPreviewRafRef.current = requestAnimationFrame(() => {
+    cardSetupDiscoverPreviewRafRef.current = null;
+    setCardSetupDiscoverPreviewScale(cardSetupDiscoverPreviewScaleRef.current);
+  });
 }, []);
 
 const handleMobileContentScroll = useCallback(
@@ -25746,19 +25759,30 @@ useEffect(() => {
 useLayoutEffect(() => {
   const el = cardSetupDiscoverPreviewInnerRef.current;
   if (!el) {
+    cardSetupDiscoverPreviewNaturalHeightRef.current = 0;
     setCardSetupDiscoverPreviewNaturalHeight(0);
     return;
   }
   const measure = () => {
     // offsetHeight ignores CSS transform — always the full (unscaled) layout height.
     const h = el.offsetHeight;
-    if (h > 0) setCardSetupDiscoverPreviewNaturalHeight(h);
+    if (h <= 0) return;
+    // Ignore 1px churn from font/image subpixels (was feeding sticky height jitter).
+    if (Math.abs(h - cardSetupDiscoverPreviewNaturalHeightRef.current) < 2) return;
+    cardSetupDiscoverPreviewNaturalHeightRef.current = h;
+    setCardSetupDiscoverPreviewNaturalHeight(h);
   };
   measure();
   if (typeof ResizeObserver === 'undefined') return;
   const ro = new ResizeObserver(measure);
   ro.observe(el);
-  return () => ro.disconnect();
+  return () => {
+    ro.disconnect();
+    if (cardSetupDiscoverPreviewRafRef.current != null) {
+      cancelAnimationFrame(cardSetupDiscoverPreviewRafRef.current);
+      cardSetupDiscoverPreviewRafRef.current = null;
+    }
+  };
 }, [
   activeTab,
   cardIssuanceMobileStep,
@@ -36530,12 +36554,27 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                }`}
              >
                <div className="min-w-0 space-y-8 pb-8 min-[1440px]:col-span-7">
+                 {/*
+                   In-flow height stays at the full (unscaled) preview size so shrink never
+                   rewrites scrollHeight / scrollTop (that feedback was the sticky jitter).
+                   Only the sticky chrome height + transform scale change while pinned.
+                 */}
+                 <div
+                  className={`min-[1440px]:hidden ${
+                    isCardConfiguratorMobileShell && cardIssuanceMobileStep !== 1 ? 'hidden' : ''
+                  }`}
+                  style={
+                    cardSetupDiscoverPreviewNaturalHeight > 0
+                      ? { height: cardSetupDiscoverPreviewNaturalHeight }
+                      : undefined
+                  }
+                >
                  <section
-                  className={`sticky z-40 overflow-hidden min-[1440px]:hidden ${
+                  className={`sticky z-40 overflow-hidden ${
                     isCardConfiguratorMobileShell
                       ? CARD_CONFIGURATOR_MOBILE_STICKY_BELOW_DEFAULT_HEADER_CLASS
                       : 'top-0'
-                  } ${isCardConfiguratorMobileShell && cardIssuanceMobileStep !== 1 ? 'hidden' : ''}`}
+                  }`}
                   style={
                     cardSetupDiscoverPreviewNaturalHeight > 0
                       ? {
@@ -36549,7 +36588,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                 >
                   <div
                     ref={cardSetupDiscoverPreviewInnerRef}
-                    className="rounded-2xl border border-[#c3c6d8]/30 bg-[#faf9fe]/20 p-4 shadow-[0px_10px_20px_rgba(0,0,0,0.05)] backdrop-blur-md"
+                    className="rounded-2xl border border-[#c3c6d8]/30 bg-[#faf9fe]/20 p-4 shadow-[0px_10px_20px_rgba(0,0,0,0.05)] backdrop-blur-md will-change-transform"
                     style={{
                       transform: `scale(${cardSetupDiscoverPreviewScale})`,
                       transformOrigin: 'top center',
@@ -36569,10 +36608,6 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                              draggable={false}
                            />
                          ) : null}
-                         <div className="absolute right-4 top-4 inline-flex items-center gap-1 rounded-full bg-white/90 px-3 py-1 shadow-sm backdrop-blur-md">
-                           <Star className="h-[18px] w-[18px] text-[#F9A825]" fill="currentColor" aria-hidden />
-                           <span className="text-[15px] font-bold leading-5 text-[#1a1b1f]">4.8</span>
-                         </div>
                        </div>
                        <div className="relative px-6 pb-6 pt-10">
                          <div className="absolute -top-10 left-6 flex h-20 w-20 items-center justify-center rounded-2xl border border-[#c3c6d8]/10 bg-white shadow-[0px_10px_20px_rgba(0,0,0,0.05)]">
@@ -36610,6 +36645,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                    </div>
                   </div>
                  </section>
+                </div>
 
                  <section
                    className={`${CARD_SETUP_SECTION_CLASS} flex flex-col gap-4 ${

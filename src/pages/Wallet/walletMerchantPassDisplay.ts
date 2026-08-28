@@ -1,9 +1,7 @@
 import type { UserCardInfo } from '@/services/BeamioCard'
 import { isGenericMerchantCardDisplayName } from '@/utils/isGenericMerchantCardDisplayName'
-import {
-	resolveHeldTierPresentation,
-	resolveMyBrandCardIconUrl,
-} from '@/pages/Brands/MyBrandsListSection'
+import { resolveHeldTierPresentation } from '@/pages/Brands/MyBrandsListSection'
+import { pickMerchantCardListIconUrl } from '@/utils/merchantCardDatabase'
 import { cardTierGradientCss, cardTierGradientTheme } from '@/utils/cardTierGradient'
 import type { MyBrandCardFeedDetailsMap } from '@/utils/myBrandsFeedState'
 import {
@@ -42,7 +40,23 @@ function formatPointSubtitle(raw: unknown): string {
 	if (raw == null || String(raw).trim() === '') return ''
 	const n = Number(raw)
 	if (!Number.isFinite(n)) return ''
-	return `${n.toLocaleString('en-US', { maximumFractionDigits: 2, minimumFractionDigits: 0 })} Point`
+	return `${Math.max(0, n).toLocaleString('en-US', { maximumFractionDigits: 2, minimumFractionDigits: 0 })} Point`
+}
+
+/**
+ * #13 Reward PT — always shown on the wallet pass.
+ * Independent of Top-up / Charge Promotion (`pointSystem.enabled`).
+ * V16+: chargeRewardPoints and socialRewardPoints are the same #13 balance — do not add.
+ */
+function pickRewardPoints13(detail: MyBrandCardFeedDetailsMap[string] | undefined): number | null {
+	if (detail === undefined) return null
+	const chargeRaw = detail.assets?.chargeRewardPoints
+	const socialRaw = detail.assets?.socialRewardPoints
+	const chargeN = chargeRaw != null && String(chargeRaw).trim() !== '' ? Number(chargeRaw) : NaN
+	const socialN = socialRaw != null && String(socialRaw).trim() !== '' ? Number(socialRaw) : NaN
+	if (Number.isFinite(chargeN) && chargeN >= 0) return chargeN
+	if (Number.isFinite(socialN) && socialN >= 0) return socialN
+	return 0
 }
 
 /** Display form for membership NFT tokenId ∈ [100, 1e11), e.g. `M-000100`. */
@@ -119,7 +133,7 @@ export function buildWalletMerchantPassStackDisplay(
 	const rawTierName = tierPres.tierName.trim()
 	const tierLbl =
 		rawTierName && rawTierName.toLowerCase() !== 'base' ? rawTierName : ''
-	const logoUrl = resolveMyBrandCardIconUrl(detail?.meta) ?? ''
+	const logoUrl = pickMerchantCardListIconUrl({ meta: detail?.meta }) ?? ''
 	const backgroundImageUrl = tierPres.backgroundImageUrl ?? ''
 	const backgroundImageFit = tierPres.backgroundImageFit
 	const logoDisplayScale = clampTierLogoDisplayScale(tierPres.logoDisplayScale)
@@ -132,12 +146,8 @@ export function buildWalletMerchantPassStackDisplay(
 		: detail === undefined
 			? '…'
 			: '—'
-	const pointSystemOn = detail?.meta?.pointSystem?.enabled === true
-	const chargeR = Number(detail?.assets?.chargeRewardPoints ?? 0) || 0
-	const socialR = Number(detail?.assets?.socialRewardPoints ?? 0) || 0
-	/** V16+: charge + social fields are the same #13 balance — do not add. */
-	const rewardTotal = chargeR > 0 ? chargeR : socialR
-	const balanceSubtitle = pointSystemOn && rewardTotal > 0 ? formatPointSubtitle(rewardTotal) : ''
+	const reward13 = pickRewardPoints13(detail)
+	const balanceSubtitle = reward13 == null ? '…' : formatPointSubtitle(reward13)
 	const balanceSig = Number.isFinite(ptsNum) ? ptsNum.toFixed(2) : balanceLine
 	const tierGradient = cardTierGradientCss(tierPres.accentColor)
 	const tierTheme = cardTierGradientTheme(tierPres.accentColor)

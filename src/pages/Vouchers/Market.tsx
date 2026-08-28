@@ -534,6 +534,44 @@ function discoverMerchantAboutPanelForDisplay(
 	return hasDiscoverMerchantAboutPanel(next) ? next : null
 }
 
+/** #13 Reward PT — always shown; not gated by Top-up / Charge Promotion. */
+function DiscoverMerchantMyPointsBlock({
+	loading,
+	points,
+	onRedeem,
+}: {
+	loading: boolean
+	points: number
+	onRedeem?: () => void
+}) {
+	return (
+		<div className="min-w-0">
+			<p className="text-[12px] font-medium text-slate-500 dark:text-slate-400">My Points</p>
+			<p className="mt-1.5 text-[26px] font-bold leading-none tracking-tight text-[#1f2328] dark:text-slate-100 sm:text-[28px]">
+				{loading ? (
+					'—'
+				) : (
+					<>
+						{formatSocialPoints13Display(points)}
+						<span className="ml-1 text-[14px] font-bold text-slate-400 dark:text-slate-500">
+							Pts
+						</span>
+					</>
+				)}
+			</p>
+			{!loading && points > 0 && onRedeem ? (
+				<button
+					type="button"
+					onClick={onRedeem}
+					className="mt-3 inline-flex items-center justify-center rounded-full border border-[#c9b8e8] bg-[#f3ecff] px-4 py-2 text-[13px] font-bold text-[#6b4ea8] transition active:scale-[0.98] hover:bg-[#ebe0ff] dark:border-violet-800 dark:bg-violet-950/40 dark:text-violet-300"
+				>
+					Redeem
+				</button>
+			) : null}
+		</div>
+	)
+}
+
 function DiscoverMerchantProspectJoinPanel({
 	heading,
 	body,
@@ -5785,6 +5823,18 @@ function DiscoverMerchantDetailFullScreen({
 							}
 						/>
 					) : null}
+					{!isConetGenesisCard && !hasActiveMembership ? (
+						<div
+							className="rounded-[22px] bg-white p-5 shadow-[0_8px_22px_rgba(15,23,42,0.06)] ring-1 ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800"
+							aria-label="My Points"
+						>
+							<DiscoverMerchantMyPointsBlock
+								loading={myPoints13Loading}
+								points={myPoints13Num}
+								onRedeem={scrollToCouponsSection}
+							/>
+						</div>
+					) : null}
 					{isConetGenesisCard ? (
 						<ConetGenesisNodeDiscoverSection
 							onLockSeat={lockConetGenesisSeat}
@@ -5859,28 +5909,11 @@ function DiscoverMerchantDetailFullScreen({
 								) : null}
 							</div>
 							<div className="min-w-0 border-l border-slate-100 pl-3 dark:border-slate-800 sm:pl-4">
-								<p className="text-[12px] font-medium text-slate-500 dark:text-slate-400">My Points</p>
-								<p className="mt-1.5 text-[26px] font-bold leading-none tracking-tight text-[#1f2328] dark:text-slate-100 sm:text-[28px]">
-									{myPoints13Loading ? (
-										'—'
-									) : (
-										<>
-											{formatSocialPoints13Display(myPoints13Num)}
-											<span className="ml-1 text-[14px] font-bold text-slate-400 dark:text-slate-500">
-												Pts
-											</span>
-										</>
-									)}
-								</p>
-								{!myPoints13Loading && myPoints13Num > 0 ? (
-									<button
-										type="button"
-										onClick={scrollToCouponsSection}
-										className="mt-3 inline-flex items-center justify-center rounded-full border border-[#c9b8e8] bg-[#f3ecff] px-4 py-2 text-[13px] font-bold text-[#6b4ea8] transition active:scale-[0.98] hover:bg-[#ebe0ff] dark:border-violet-800 dark:bg-violet-950/40 dark:text-violet-300"
-									>
-										Redeem
-									</button>
-								) : null}
+								<DiscoverMerchantMyPointsBlock
+									loading={myPoints13Loading}
+									points={myPoints13Num}
+									onRedeem={scrollToCouponsSection}
+								/>
 							</div>
 						</div>
 

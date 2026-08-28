@@ -15461,9 +15461,13 @@ useEffect(() => {
 useEffect(() => {
   if (!cardIssuanceExistingCard?.cardAddress || !cardIssuanceExistingCard.meta?.tiers?.length) return;
   const rows = cardIssuanceTierRowsFromMetadata(cardIssuanceExistingCard.meta.tiers);
-  const ut = cardIssuanceExistingCard.upgradeType;
-  const ruleKeyFromChain = ut != null && ut >= 0 && ut <= 2 ? cardIssuanceTierRuleFromUpgradeType(ut) : null;
-  const ruleKey = ruleKeyFromChain ?? cardIssuanceTierRule;
+  const resolvedUt = cardIssuanceLoyaltyUpgradeTypeFromSources(
+    cardIssuanceExistingCard.upgradeType,
+    cardIssuanceExistingCard.meta,
+  );
+  const ruleKeyFromSources =
+    resolvedUt >= 0 && resolvedUt <= 2 ? cardIssuanceTierRuleFromUpgradeType(resolvedUt) : null;
+  const ruleKey = ruleKeyFromSources ?? cardIssuanceTierRule;
   setTiersByLoyaltyRule((prev) => ({
     ...prev,
     [ruleKey]: reconcileTierThresholdsWithMinTopup(rows, String(rows[0]?.threshold ?? CARD_ISSUANCE_MIN_TOPUP_DEFAULT)),
@@ -15472,6 +15476,7 @@ useEffect(() => {
 }, [
   cardIssuanceExistingCard?.cardAddress,
   cardIssuanceExistingCard?.meta?.tiers,
+  cardIssuanceExistingCard?.meta,
   cardIssuanceExistingCard?.upgradeType,
   cardIssuanceTierRule,
 ]);
@@ -16384,11 +16389,31 @@ const cardIssuanceEffectiveMerchantLogo = useMemo(() => {
        fromCache = raw.tierRuleKey as CardIssuanceTierRule;
      }
    }
-   const ut = cardIssuanceExistingCard?.upgradeType;
-   const fromChain = ut != null && ut >= 0 && ut <= 2 ? cardIssuanceTierRuleFromUpgradeType(ut) : null;
-   const effectiveKey = fromChain ?? fromCache ?? cardIssuanceTierRule;
+   // Beacon upgradeType() often stays 0; Charge/Balance must overlay from card0 metadata.
+   const resolvedUt = cardIssuanceLoyaltyUpgradeTypeFromSources(
+     cardIssuanceExistingCard?.upgradeType ?? -1,
+     cardIssuanceExistingCard?.meta ?? null,
+   );
+   let fromResolved =
+     resolvedUt >= 0 && resolvedUt <= 2 ? cardIssuanceTierRuleFromUpgradeType(resolvedUt) : null;
+   // Legacy recovery: chain/meta look like Top-up but trusted cache still has Charge/Balance.
+   const metaParsed = parseLoyaltyUpgradeTypeFromCardMetadata(cardIssuanceExistingCard?.meta ?? null);
+   if (
+     fromResolved === 'single' &&
+     fromCache &&
+     fromCache !== 'single' &&
+     metaParsed !== 0
+   ) {
+     fromResolved = fromCache;
+   }
+   const effectiveKey = fromResolved ?? fromCache ?? cardIssuanceTierRule;
    return getCardIssuanceTierRuleOptions().find((o) => o.key === effectiveKey);
- }, [programsCardLoyaltyTierRuleCacheKey, cardIssuanceExistingCard?.upgradeType, cardIssuanceTierRule]);
+ }, [
+   programsCardLoyaltyTierRuleCacheKey,
+   cardIssuanceExistingCard?.upgradeType,
+   cardIssuanceExistingCard?.meta,
+   cardIssuanceTierRule,
+ ]);
 
  const programsOverviewTierRuleKey = useMemo(
    (): CardIssuanceTierRule => programsOverviewTierRuleOption?.key ?? cardIssuanceTierRule,
@@ -16476,14 +16501,24 @@ const cardIssuanceEffectiveMerchantLogo = useMemo(() => {
    if (!programsCardLoyaltyTierRuleCacheKey) return;
    const card = cardIssuanceExistingCard;
    if (!card?.cardAddress || !card.meta) return;
-   const ut = card.upgradeType;
-   if (ut == null || ut < 0 || ut > 2) return;
-   const tierKey = cardIssuanceTierRuleFromUpgradeType(ut);
+   const metaParsed = parseLoyaltyUpgradeTypeFromCardMetadata(card.meta);
+   // Only write cache when we have a confident Charge/Balance/Top-up signal (not bare beacon 0).
+   if (card.upgradeType !== 1 && card.upgradeType !== 2 && metaParsed == null) return;
+   const resolvedUt = cardIssuanceLoyaltyUpgradeTypeFromSources(card.upgradeType, card.meta);
+   if (resolvedUt < 0 || resolvedUt > 2) return;
+   const tierKey = cardIssuanceTierRuleFromUpgradeType(resolvedUt);
    if (!tierKey) return;
+   // Never poison a non-single cache with Top-up unless metadata explicitly says upgradeType 0.
+   if (tierKey === 'single' && metaParsed !== 0) {
+     const prev = loadTrustedCache<ProgramCardLoyaltyTierRuleTrustedV1>(
+       programsCardLoyaltyTierRuleCacheKey,
+     );
+     if (prev?.v === 1 && prev.tierRuleKey && prev.tierRuleKey !== 'single') return;
+   }
    saveTrustedCache<ProgramCardLoyaltyTierRuleTrustedV1>(programsCardLoyaltyTierRuleCacheKey, {
      v: 1,
      tierRuleKey: tierKey,
-     upgradeType: ut,
+     upgradeType: resolvedUt,
    });
  }, [
    programsCardLoyaltyTierRuleCacheKey,
@@ -16494,8 +16529,11 @@ const cardIssuanceEffectiveMerchantLogo = useMemo(() => {
 
  useEffect(() => {
    if (!programsCardLoyaltyTierRuleCacheKey || !cardIssuanceExistingCard?.cardAddress) return;
-   const ut = cardIssuanceExistingCard.upgradeType;
-   if (ut === 0 || ut === 1 || ut === 2) return;
+   const resolvedUt = cardIssuanceLoyaltyUpgradeTypeFromSources(
+     cardIssuanceExistingCard.upgradeType,
+     cardIssuanceExistingCard.meta ?? null,
+   );
+   if (resolvedUt === 0 || resolvedUt === 1 || resolvedUt === 2) return;
    const raw = loadTrustedCache<ProgramCardLoyaltyTierRuleTrustedV1>(programsCardLoyaltyTierRuleCacheKey);
    if (!raw || raw.v !== 1 || typeof raw.tierRuleKey !== 'string') return;
    if (!CARD_ISSUANCE_TIER_RULE_KEYS.includes(raw.tierRuleKey as CardIssuanceTierRule)) return;
@@ -16505,20 +16543,26 @@ const cardIssuanceEffectiveMerchantLogo = useMemo(() => {
    programsCardLoyaltyTierRuleCacheKey,
    cardIssuanceExistingCard?.cardAddress,
    cardIssuanceExistingCard?.upgradeType,
+   cardIssuanceExistingCard?.meta,
  ]);
 
- /** Issued Program overview: tier rows + publish must use the same bucket as on-chain `upgradeType`. Local cache / default state can otherwise point at `single` while metadata hydrates `balance`/`cumulative`. */
+ /** Issued Program overview: sync draft Loyalty Rule from metadata overlay (Charge/Balance), not bare beacon 0. */
  useEffect(() => {
    if (!cardIssuanceExistingCard?.cardAddress) return;
    if (cardIssuanceActiveProgramView !== 'overview') return;
-   const ut = cardIssuanceExistingCard.upgradeType;
-   if (ut < 0 || ut > 2) return;
-   const k = cardIssuanceTierRuleFromUpgradeType(ut);
+   const resolvedUt = cardIssuanceLoyaltyUpgradeTypeFromSources(
+     cardIssuanceExistingCard.upgradeType,
+     cardIssuanceExistingCard.meta ?? null,
+   );
+   // Only push Balance/Charge into draft; do not force Top-up over a Charge draft while meta is still loading.
+   if (resolvedUt !== 1 && resolvedUt !== 2) return;
+   const k = cardIssuanceTierRuleFromUpgradeType(resolvedUt);
    if (!k) return;
    setCardIssuanceTierRule((prev) => (prev === k ? prev : k));
  }, [
    cardIssuanceExistingCard?.cardAddress,
    cardIssuanceExistingCard?.upgradeType,
+   cardIssuanceExistingCard?.meta,
    cardIssuanceActiveProgramView,
  ]);
 
@@ -21673,6 +21717,47 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
          ? ethers.getAddress(cardIssuanceExistingCard.cardAddress)
          : undefined);
     if (res.success && resolvedPublishCardAddr) {
+      // Persist Loyalty Rule Type immediately so Overview does not fall back to Single Top-up
+      // while beacon upgradeType() is still 0 and cardMetadata is refreshing.
+      if (
+        !membershipFeeModeForPublish &&
+        tierRuleUpgradeForPublish != null &&
+        (tierRuleUpgradeForPublish === 0 ||
+          tierRuleUpgradeForPublish === 1 ||
+          tierRuleUpgradeForPublish === 2)
+      ) {
+        const eoaLower = (cardConfiguratorDraftEoaKey ?? '').trim().toLowerCase();
+        const loyaltyCacheKey = programCardLoyaltyTierRuleTrustedCacheKey(
+          eoaLower,
+          resolvedPublishCardAddr,
+        );
+        const tierKey = cardIssuanceTierRuleFromUpgradeType(tierRuleUpgradeForPublish);
+        if (loyaltyCacheKey && tierKey) {
+          saveTrustedCache<ProgramCardLoyaltyTierRuleTrustedV1>(loyaltyCacheKey, {
+            v: 1,
+            tierRuleKey: tierKey,
+            upgradeType: tierRuleUpgradeForPublish,
+          });
+        }
+        setCardIssuanceTierRule(tierKey ?? 'single');
+        setCardIssuanceExistingCard((prev) => {
+          if (!prev) return prev;
+          const prevAddr = prev.cardAddress?.trim();
+          if (
+            !prevAddr ||
+            ethers.getAddress(prevAddr) !== ethers.getAddress(resolvedPublishCardAddr)
+          ) {
+            return prev;
+          }
+          return {
+            ...prev,
+            upgradeType: tierRuleUpgradeForPublish,
+            meta: prev.meta
+              ? { ...prev.meta, upgradeType: tierRuleUpgradeForPublish }
+              : { upgradeType: tierRuleUpgradeForPublish },
+          };
+        });
+      }
       if (membershipFeeModeForPublish) {
         setCardIssuanceMinTopup(CARD_ISSUANCE_REWARDS_SETUP_AMOUNT_DEFAULT);
         setCardIssuanceMaxTopup(CARD_ISSUANCE_REWARDS_SETUP_AMOUNT_DEFAULT);

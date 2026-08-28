@@ -622,6 +622,11 @@ const getImg = (avatarSeed: string | undefined) => getAvatarImgUrl(avatarSeed);
 const MOBILE_FLOATING_BAR_THRESHOLD = 40;
 const MOBILE_FLOATING_BAR_FADE_RANGE = 100;
 
+/** Card Setup sticky Discover preview: shrink toward 1/3 as the main pane scrolls down. */
+const CARD_SETUP_DISCOVER_PREVIEW_SHRINK_THRESHOLD = 0;
+const CARD_SETUP_DISCOVER_PREVIEW_SHRINK_RANGE = 160;
+const CARD_SETUP_DISCOVER_PREVIEW_MIN_SCALE = 1 / 3;
+
 function cardIssuanceKetWelcomeDismissStorageKey(eoa: string): string {
   return `beamio:biz:ket-welcome-dismissed:v1:${eoa.toLowerCase()}`;
 }
@@ -784,6 +789,16 @@ function computeMobileFloatingBarOpacity(scrollTop: number): number {
   return scrollTop <= MOBILE_FLOATING_BAR_THRESHOLD
     ? 1
     : Math.max(0, 1 - (scrollTop - MOBILE_FLOATING_BAR_THRESHOLD) / MOBILE_FLOATING_BAR_FADE_RANGE);
+}
+
+/** 1 at top → CARD_SETUP_DISCOVER_PREVIEW_MIN_SCALE after SHRINK_RANGE px of scroll. */
+function computeCardSetupDiscoverPreviewScale(scrollTop: number): number {
+  if (scrollTop <= CARD_SETUP_DISCOVER_PREVIEW_SHRINK_THRESHOLD) return 1;
+  const t = Math.min(
+    1,
+    (scrollTop - CARD_SETUP_DISCOVER_PREVIEW_SHRINK_THRESHOLD) / CARD_SETUP_DISCOVER_PREVIEW_SHRINK_RANGE
+  );
+  return 1 - t * (1 - CARD_SETUP_DISCOVER_PREVIEW_MIN_SCALE);
 }
 
 /** verra NDEF / SoftPOS — cluster short link (UA redirect on server). */
@@ -25652,18 +25667,30 @@ const [memberDirectoryUserTypeDb, setMemberDirectoryUserTypeDb] = useState<Recor
  }, [beamio?.image, mobileHeaderBeamioTag, profiles?.[0]?.keyID, myAddress, beamioAvatarImgUrl]);
 
 const [mobileFloatingBarOpacity, setMobileFloatingBarOpacity] = useState(1);
+const [cardSetupDiscoverPreviewScale, setCardSetupDiscoverPreviewScale] = useState(1);
+const [cardSetupDiscoverPreviewNaturalHeight, setCardSetupDiscoverPreviewNaturalHeight] = useState(0);
 const mobileScrollContainerRef = useRef<HTMLDivElement | null>(null);
+const cardSetupDiscoverPreviewInnerRef = useRef<HTMLDivElement | null>(null);
 
-const handleMobileContentScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
-  setMobileFloatingBarOpacity(computeMobileFloatingBarOpacity(e.currentTarget.scrollTop));
+const syncMobileScrollDerivedUi = useCallback((scrollTop: number) => {
+  setMobileFloatingBarOpacity(computeMobileFloatingBarOpacity(scrollTop));
+  setCardSetupDiscoverPreviewScale(computeCardSetupDiscoverPreviewScale(scrollTop));
 }, []);
 
-const setMobileScrollContainerNode = useCallback((node: HTMLDivElement | null) => {
-  mobileScrollContainerRef.current = node;
-  if (node) {
-    setMobileFloatingBarOpacity(computeMobileFloatingBarOpacity(node.scrollTop));
-  }
-}, []);
+const handleMobileContentScroll = useCallback(
+  (e: React.UIEvent<HTMLDivElement>) => {
+    syncMobileScrollDerivedUi(e.currentTarget.scrollTop);
+  },
+  [syncMobileScrollDerivedUi]
+);
+
+const setMobileScrollContainerNode = useCallback(
+  (node: HTMLDivElement | null) => {
+    mobileScrollContainerRef.current = node;
+    if (node) syncMobileScrollDerivedUi(node.scrollTop);
+  },
+  [syncMobileScrollDerivedUi]
+);
 
  const openMobileGlobalSearch = useCallback(() => {
    if (activeTab === 'Transactions') {
@@ -25702,19 +25729,45 @@ const setMobileScrollContainerNode = useCallback((node: HTMLDivElement | null) =
 
 useEffect(() => {
   if (!mobileScrollContainerRef.current) return;
-  setMobileFloatingBarOpacity(computeMobileFloatingBarOpacity(mobileScrollContainerRef.current.scrollTop));
-}, [activeTab]);
+  syncMobileScrollDerivedUi(mobileScrollContainerRef.current.scrollTop);
+}, [activeTab, syncMobileScrollDerivedUi]);
 
 useEffect(() => {
   const handler = (e: Event) => {
     const target = e.target as HTMLElement | null;
     if (!target || target !== mobileScrollContainerRef.current) return;
     const top = typeof target.scrollTop === 'number' ? target.scrollTop : 0;
-    setMobileFloatingBarOpacity(computeMobileFloatingBarOpacity(top));
+    syncMobileScrollDerivedUi(top);
   };
   document.addEventListener('scroll', handler, { passive: true, capture: true });
   return () => document.removeEventListener('scroll', handler, true);
-}, []);
+}, [syncMobileScrollDerivedUi]);
+
+useLayoutEffect(() => {
+  const el = cardSetupDiscoverPreviewInnerRef.current;
+  if (!el) {
+    setCardSetupDiscoverPreviewNaturalHeight(0);
+    return;
+  }
+  const measure = () => {
+    // offsetHeight ignores CSS transform — always the full (unscaled) layout height.
+    const h = el.offsetHeight;
+    if (h > 0) setCardSetupDiscoverPreviewNaturalHeight(h);
+  };
+  measure();
+  if (typeof ResizeObserver === 'undefined') return;
+  const ro = new ResizeObserver(measure);
+  ro.observe(el);
+  return () => ro.disconnect();
+}, [
+  activeTab,
+  cardIssuanceMobileStep,
+  cardIssuanceEffectiveMerchantImage,
+  cardIssuanceEffectiveMerchantLogo,
+  cardConfiguratorDiscoverPreviewTitle,
+  cardConfiguratorDiscoverPreviewSubtitle,
+  cardConfiguratorDiscoverPreviewAssetLabel,
+]);
 
  useEffect(() => {
    if (activeTab !== 'Messages') {
@@ -36478,12 +36531,30 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
              >
                <div className="min-w-0 space-y-8 pb-8 min-[1440px]:col-span-7">
                  <section
-                   className={`sticky z-40 rounded-2xl border border-[#c3c6d8]/30 bg-[#faf9fe]/90 p-4 shadow-[0px_10px_20px_rgba(0,0,0,0.05)] backdrop-blur-md min-[1440px]:hidden ${
-                     isCardConfiguratorMobileShell
-                       ? CARD_CONFIGURATOR_MOBILE_STICKY_BELOW_DEFAULT_HEADER_CLASS
-                       : 'top-0'
-                   } ${isCardConfiguratorMobileShell && cardIssuanceMobileStep !== 1 ? 'hidden' : ''}`}
-                 >
+                  className={`sticky z-40 overflow-hidden min-[1440px]:hidden ${
+                    isCardConfiguratorMobileShell
+                      ? CARD_CONFIGURATOR_MOBILE_STICKY_BELOW_DEFAULT_HEADER_CLASS
+                      : 'top-0'
+                  } ${isCardConfiguratorMobileShell && cardIssuanceMobileStep !== 1 ? 'hidden' : ''}`}
+                  style={
+                    cardSetupDiscoverPreviewNaturalHeight > 0
+                      ? {
+                          height: Math.max(
+                            1,
+                            cardSetupDiscoverPreviewNaturalHeight * cardSetupDiscoverPreviewScale
+                          ),
+                        }
+                      : undefined
+                  }
+                >
+                  <div
+                    ref={cardSetupDiscoverPreviewInnerRef}
+                    className="rounded-2xl border border-[#c3c6d8]/30 bg-[#faf9fe]/20 p-4 shadow-[0px_10px_20px_rgba(0,0,0,0.05)] backdrop-blur-md"
+                    style={{
+                      transform: `scale(${cardSetupDiscoverPreviewScale})`,
+                      transformOrigin: 'top center',
+                    }}
+                  >
                    <div
                      className="pointer-events-none mx-auto w-full max-w-md select-none"
                      aria-label={tu('programs_config_discover_preview_aria')}
@@ -36537,6 +36608,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                        </div>
                      </div>
                    </div>
+                  </div>
                  </section>
 
                  <section

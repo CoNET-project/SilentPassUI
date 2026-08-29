@@ -208,36 +208,67 @@ export function subscribeReceiveWalletApps(
 	}
 }
 
-function receiveEip681UsdcTransfer(eoa: string): string {
-	return `ethereum:${USDC_BASE}@${BASE_MAINNET_CHAIN_ID}/transfer?address=${eoa}`
+const USDC_TRANSFER_IFACE = new ethers.Interface([
+	'function transfer(address to, uint256 amount)',
+])
+
+const BASE_CHAIN_HEX = '0x2105'
+
+export function parseReceiveUsdcAmount6(
+	raw: string,
+): { ok: true; amount6: bigint } | { ok: false; error: string } {
+	const trimmed = raw.trim().replace(/,/g, '')
+	if (!trimmed) return { ok: false, error: 'Enter a USDC amount' }
+	if (!/^\d+(\.\d{1,6})?$/.test(trimmed)) {
+		return { ok: false, error: 'Enter a valid USDC amount' }
+	}
+	try {
+		const amount6 = ethers.parseUnits(trimmed, 6)
+		if (amount6 <= 0n) return { ok: false, error: 'Enter a USDC amount' }
+		return { ok: true, amount6 }
+	} catch {
+		return { ok: false, error: 'Enter a valid USDC amount' }
+	}
 }
 
-function metamaskSendUsdcUrl(eoa: string): string {
-	return `https://metamask.app.link/send/${USDC_BASE}@${BASE_MAINNET_CHAIN_ID}/transfer?address=${eoa}`
+function eip681Uint256Suffix(amount6?: bigint): string {
+	return amount6 != null && amount6 > 0n ? `&uint256=${amount6.toString()}` : ''
 }
 
-function coinbaseWalletDappUrl(eoa: string): string {
-	return `https://go.cb-w.com/dapp?cb_url=${encodeURIComponent(receiveEip681UsdcTransfer(eoa))}`
+function receiveEip681UsdcTransfer(eoa: string, amount6?: bigint): string {
+	return `ethereum:${USDC_BASE}@${BASE_MAINNET_CHAIN_ID}/transfer?address=${eoa}${eip681Uint256Suffix(amount6)}`
 }
 
-function okxWalletDownloadUrl(eoa: string): string {
-	return `https://web3.okx.com/download?deeplink=${encodeURIComponent(receiveWalletNativeSchemeUrlByBrand('okx', eoa))}`
+function metamaskSendUsdcUrl(eoa: string, amount6?: bigint): string {
+	return `https://metamask.app.link/send/${USDC_BASE}@${BASE_MAINNET_CHAIN_ID}/transfer?address=${eoa}${eip681Uint256Suffix(amount6)}`
+}
+
+function coinbaseWalletDappUrl(eoa: string, amount6?: bigint): string {
+	return `https://go.cb-w.com/dapp?cb_url=${encodeURIComponent(receiveEip681UsdcTransfer(eoa, amount6))}`
+}
+
+function okxWalletDownloadUrl(eoa: string, amount6?: bigint): string {
+	return `https://web3.okx.com/download?deeplink=${encodeURIComponent(receiveWalletNativeSchemeUrlByBrand('okx', eoa, amount6))}`
 }
 
 function tokenPocketHttpsFallback(): string {
 	return 'https://www.tokenpocket.pro/'
 }
 
-function phantomBrowseUrl(eoa: string): string {
-	return `https://phantom.app/ul/browse/${encodeURIComponent(receiveEip681UsdcTransfer(eoa))}`
+function phantomBrowseUrl(eoa: string, amount6?: bigint): string {
+	return `https://phantom.app/ul/browse/${encodeURIComponent(receiveEip681UsdcTransfer(eoa, amount6))}`
 }
 
 /** PWA-owned deep link. Native must open this URL as-is (do not invent package/scheme URLs). */
-function receiveWalletNativeSchemeUrlByBrand(brandId: InjectedWalletChoiceId, eoa: string): string {
-	const eip681 = receiveEip681UsdcTransfer(eoa)
+function receiveWalletNativeSchemeUrlByBrand(
+	brandId: InjectedWalletChoiceId,
+	eoa: string,
+	amount6?: bigint,
+): string {
+	const eip681 = receiveEip681UsdcTransfer(eoa, amount6)
 	switch (brandId) {
 		case 'metamask':
-			return `metamask://send/${USDC_BASE}@${BASE_MAINNET_CHAIN_ID}/transfer?address=${eoa}`
+			return `metamask://send/${USDC_BASE}@${BASE_MAINNET_CHAIN_ID}/transfer?address=${eoa}${eip681Uint256Suffix(amount6)}`
 		case 'base':
 			return `cbwallet://dapp?url=${encodeURIComponent(eip681)}`
 		case 'okx':
@@ -255,44 +286,120 @@ function receiveWalletNativeSchemeUrlByBrand(brandId: InjectedWalletChoiceId, eo
 	}
 }
 
-function receiveWalletNativeSchemeUrl(row: ReceiveWalletAppRow, eoa: string): string {
-	return receiveWalletNativeSchemeUrlByBrand(row.brandId, eoa)
+function receiveWalletNativeSchemeUrl(
+	row: ReceiveWalletAppRow,
+	eoa: string,
+	amount6?: bigint,
+): string {
+	return receiveWalletNativeSchemeUrlByBrand(row.brandId, eoa, amount6)
 }
 
-export function receiveWalletHttpsOpenUrl(row: ReceiveWalletAppRow, eoa: string): string {
+export function receiveWalletHttpsOpenUrl(
+	row: ReceiveWalletAppRow,
+	eoa: string,
+	amount6?: bigint,
+): string {
 	switch (row.brandId) {
 		case 'metamask':
-			return metamaskSendUsdcUrl(eoa)
+			return metamaskSendUsdcUrl(eoa, amount6)
 		case 'base':
-			return coinbaseWalletDappUrl(eoa)
+			return coinbaseWalletDappUrl(eoa, amount6)
 		case 'okx':
-			return okxWalletDownloadUrl(eoa)
+			return okxWalletDownloadUrl(eoa, amount6)
 		case 'tp':
 			return tokenPocketHttpsFallback()
 		case 'phantom':
-			return phantomBrowseUrl(eoa)
+			return phantomBrowseUrl(eoa, amount6)
 		default:
-			return metamaskSendUsdcUrl(eoa)
+			return metamaskSendUsdcUrl(eoa, amount6)
 	}
 }
 
-async function requestBaseChainOnInjected(
+function injectedWalletErrorMessage(err: unknown): string {
+	const rec = err as { code?: number | string; message?: string } | null
+	const code = rec?.code
+	const msg = typeof rec?.message === 'string' ? rec.message : ''
+	if (code === 4001 || /user rejected|user denied|rejected the request/i.test(msg)) {
+		return 'Request rejected in wallet'
+	}
+	if (code === -32002 || /already pending/i.test(msg)) {
+		return 'Check your wallet extension — a request is already pending'
+	}
+	return 'Could not open this wallet'
+}
+
+function firstAccountFromRequest(accounts: unknown): string {
+	if (!Array.isArray(accounts) || typeof accounts[0] !== 'string' || !ethers.isAddress(accounts[0])) {
+		return ''
+	}
+	return ethers.getAddress(accounts[0])
+}
+
+async function connectAndSwitchBaseOnInjected(
 	provider: InjectedWalletChoice['provider'],
+): Promise<string> {
+	const accounts = await provider.request({ method: 'eth_requestAccounts' })
+	const from = firstAccountFromRequest(accounts)
+	if (!from) {
+		throw new Error('Could not open this wallet')
+	}
+
+	let chainId = ''
+	try {
+		const raw = await provider.request({ method: 'eth_chainId' })
+		chainId = typeof raw === 'string' ? raw.toLowerCase() : ''
+	} catch {
+		chainId = ''
+	}
+
+	if (chainId !== BASE_CHAIN_HEX) {
+		try {
+			await provider.request({
+				method: 'wallet_switchEthereumChain',
+				params: [{ chainId: BASE_CHAIN_HEX }],
+			})
+		} catch (err) {
+			const code = (err as { code?: number })?.code
+			if (code === 4902) {
+				await provider.request({
+					method: 'wallet_addEthereumChain',
+					params: [
+						{
+							chainId: BASE_CHAIN_HEX,
+							chainName: 'Base',
+							nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+							rpcUrls: ['https://base-rpc.conet.network'],
+							blockExplorerUrls: ['https://basescan.org'],
+						},
+					],
+				})
+			} else {
+				throw err
+			}
+		}
+	}
+
+	return from
+}
+
+async function sendUsdcFromInjected(
+	provider: InjectedWalletChoice['provider'],
+	from: string,
+	to: string,
+	amount6: bigint,
 ): Promise<void> {
-	const chainHex = '0x2105'
-	try {
-		await provider.request({ method: 'eth_requestAccounts' })
-	} catch {
-		/* user rejected — still try switch */
-	}
-	try {
-		await provider.request({
-			method: 'wallet_switchEthereumChain',
-			params: [{ chainId: chainHex }],
-		})
-	} catch {
-		/* wallet may already be on Base or user rejected */
-	}
+	const data = USDC_TRANSFER_IFACE.encodeFunctionData('transfer', [ethers.getAddress(to), amount6])
+	await provider.request({
+		method: 'eth_sendTransaction',
+		params: [
+			{
+				from,
+				to: USDC_BASE,
+				data,
+				value: '0x0',
+			},
+		],
+	})
 }
 
 /** EIP-681 receive URI for MetaMask / Coinbase Wallet scanners (checksum EOA on Base). */
@@ -309,29 +416,40 @@ export function buildReceiveEoaQrUri(eoa: string): string {
 export async function openReceiveWalletApp(
 	row: ReceiveWalletAppRow,
 	eoa: string,
+	opts?: { amount6?: bigint },
 ): Promise<{ ok: true } | { ok: false; error: string }> {
 	const address = eoa?.trim()
 	if (!address) {
 		return { ok: false, error: 'Wallet address unavailable' }
 	}
 
-	if (row.provider && typeof row.provider.request === 'function' && !isMobileDeviceForWalletApps()) {
+	const amount6 = opts?.amount6
+	const desktopInjected =
+		Boolean(row.provider && typeof row.provider.request === 'function') &&
+		!isMobileDeviceForWalletApps() &&
+		!isCashTreesNativeWebView()
+
+	if (desktopInjected && row.provider) {
+		if (amount6 == null || amount6 <= 0n) {
+			return { ok: false, error: 'Enter a USDC amount' }
+		}
 		try {
-			await requestBaseChainOnInjected(row.provider)
+			const from = await connectAndSwitchBaseOnInjected(row.provider)
+			await sendUsdcFromInjected(row.provider, from, address, amount6)
 			return { ok: true }
-		} catch {
-			/* fall through to https */
+		} catch (err) {
+			return { ok: false, error: injectedWalletErrorMessage(err) }
 		}
 	}
 
 	if (isCashTreesNativeWebView() && hasNativeWalletListApi()) {
-		const scheme = receiveWalletNativeSchemeUrl(row, address)
+		const scheme = receiveWalletNativeSchemeUrl(row, address, amount6)
 		if (scheme && openExternalUrl(scheme)) {
 			return { ok: true }
 		}
 	}
 
-	const opened = openExternalUrl(receiveWalletHttpsOpenUrl(row, address))
+	const opened = openExternalUrl(receiveWalletHttpsOpenUrl(row, address, amount6))
 	if (!opened) {
 		return { ok: false, error: 'Could not open this wallet' }
 	}

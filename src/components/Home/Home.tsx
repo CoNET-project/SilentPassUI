@@ -1,6 +1,6 @@
 // Home.tsx
 
-import { useEffect, useRef, useState, useMemo, useCallback } from "react"
+import { useEffect, useRef, useState, useMemo, useCallback, type KeyboardEvent, type WheelEvent } from "react"
 import { useScrollCapsuleOpacity } from "@/hooks/useScrollCapsuleOpacity"
 import { useReliableTapHandler, RELIABLE_TAP_BUTTON_CLASS } from '@/utils/reliableTap'
 import { createPortal } from 'react-dom';
@@ -81,8 +81,10 @@ import {
 	type ReceiveWalletAppRow,
 	buildReceiveEoaQrUri,
 	openReceiveWalletApp,
+	parseReceiveUsdcAmount6,
 	subscribeReceiveWalletApps,
 } from '@/utils/receiveFromWalletApps'
+import { isMobileDeviceForWalletApps } from '@/utils/mobileWalletApps'
 import {
 	BeamioCircularBackButton,
 	BEAMIO_CIRCULAR_BACK_ROW_CLASS,
@@ -93,6 +95,25 @@ const fmtAddr = (a = '') => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '—')
 
 /** Mobile home CTAs: single-tap reliability (pairs with App.tsx touch-gesture guard). */
 const HOME_TOUCH_BUTTON_CLASS = RELIABLE_TAP_BUTTON_CLASS
+
+function preventNumericInputStepKeys(e: KeyboardEvent<HTMLInputElement>): void {
+	if (
+		e.key === 'ArrowUp' ||
+		e.key === 'ArrowDown' ||
+		e.key === 'PageUp' ||
+		e.key === 'PageDown' ||
+		e.key === 'Home' ||
+		e.key === 'End'
+	) {
+		e.preventDefault()
+		e.stopPropagation()
+	}
+}
+
+function preventNumericInputWheelStep(e: WheelEvent<HTMLInputElement>): void {
+	e.preventDefault()
+	e.stopPropagation()
+}
 
 const formatMoney = (n: number) =>
 		n.toLocaleString("en-US", { minimumFractionDigits: 3, maximumFractionDigits: 3 })
@@ -310,6 +331,7 @@ const Home = (_props: HomeProps) => {
 	const [receiveWalletsLooking, setReceiveWalletsLooking] = useState(false)
 	const [openingReceiveWalletId, setOpeningReceiveWalletId] = useState<string | null>(null)
 	const [receiveWalletOpenError, setReceiveWalletOpenError] = useState('')
+	const [receiveWalletUsdcAmount, setReceiveWalletUsdcAmount] = useState('')
 	const homeScanBtnRef = useRef<ScanButtonHandle>(null)
 	/** Pay 模式：与 MyWalletDashboardNew AA relay QR 同源（OpenContainer relay 签名 JSON） */
 	const [payRelayQRPayload, setPayRelayQRPayload] = useState<OpenContainerRelayPayload | null>(null)
@@ -811,6 +833,7 @@ const Home = (_props: HomeProps) => {
 		setOpeningReceiveWalletId(null)
 		setReceiveWalletOpenError('')
 		setReceiveWalletsLooking(false)
+		setReceiveWalletUsdcAmount('')
 	}, [])
 
 	const handleAddFunds = () => {
@@ -853,15 +876,30 @@ const Home = (_props: HomeProps) => {
 
 	const openInstalledReceiveWallet = useCallback(async (row: ReceiveWalletAppRow) => {
 		if (openingReceiveWalletId) return
+		const desktopInjected = Boolean(
+			row.provider &&
+				typeof row.provider.request === 'function' &&
+				!isMobileDeviceForWalletApps() &&
+				!isCashTreesNativeWebView(),
+		)
+		let amount6: bigint | undefined
+		if (desktopInjected || receiveWalletUsdcAmount.trim()) {
+			const parsed = parseReceiveUsdcAmount6(receiveWalletUsdcAmount)
+			if (!parsed.ok) {
+				setReceiveWalletOpenError(parsed.error)
+				return
+			}
+			amount6 = parsed.amount6
+		}
 		setOpeningReceiveWalletId(row.id)
 		setReceiveWalletOpenError('')
 		try {
-			const result = await openReceiveWalletApp(row, receiveWalletEoa)
+			const result = await openReceiveWalletApp(row, receiveWalletEoa, { amount6 })
 			if (!result.ok) setReceiveWalletOpenError(result.error)
 		} finally {
 			setOpeningReceiveWalletId(null)
 		}
-	}, [openingReceiveWalletId, receiveWalletEoa])
+	}, [openingReceiveWalletId, receiveWalletEoa, receiveWalletUsdcAmount])
 
 	const openReceiveSheetTap = useReliableTapHandler(handleAddFunds)
 	const openReceiveQrTap = useReliableTapHandler(openReceiveQr)
@@ -3045,6 +3083,48 @@ const Home = (_props: HomeProps) => {
 												{tu('transfer_crypto')}
 											</p>
 										</header>
+										<label htmlFor="receive-wallet-usdc-amount" className="mb-4 block">
+											<span className="mb-1.5 flex items-center gap-2 text-sm font-semibold text-[#191c1d] dark:text-slate-100">
+												<span className="relative h-4 w-4 min-h-[16px] min-w-[16px] shrink-0">
+													<img src={usdcIcon} alt="" className="block h-4 w-4 rounded-full object-contain" />
+													<img
+														src={baseIcon}
+														alt=""
+														className="absolute -bottom-0.5 -right-0.5 block h-2.5 w-2.5 rounded-full border border-white bg-white dark:border-slate-900"
+													/>
+												</span>
+												{tu('receive_wallet_usdc_amount_label')}
+											</span>
+											<div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2.5 dark:border-slate-600 dark:bg-slate-800">
+												<span className="text-sm font-semibold text-[#737687] dark:text-slate-400" aria-hidden>
+													$
+												</span>
+												<input
+													id="receive-wallet-usdc-amount"
+													type="number"
+													inputMode="decimal"
+													autoComplete="off"
+													enterKeyHint="done"
+													min={0}
+													step="any"
+													tabIndex={1}
+													disabled={!!openingReceiveWalletId}
+													placeholder={tu('receive_wallet_usdc_amount_placeholder')}
+													aria-label={tu('receive_wallet_usdc_amount_label')}
+													value={receiveWalletUsdcAmount}
+													onChange={(e) => {
+														setReceiveWalletUsdcAmount(e.target.value)
+														if (receiveWalletOpenError) setReceiveWalletOpenError('')
+													}}
+													onKeyDown={preventNumericInputStepKeys}
+													onWheel={preventNumericInputWheelStep}
+													className="w-full bg-transparent text-base text-[#191c1d] outline-none dark:text-slate-100 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]"
+												/>
+											</div>
+											<p className="mt-1.5 text-xs leading-snug text-[#737687] dark:text-slate-400">
+												{tu('receive_wallet_usdc_amount_hint')}
+											</p>
+										</label>
 										{receiveWalletOpenError ? (
 											<div
 												role="alert"

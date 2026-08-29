@@ -5984,7 +5984,7 @@ const INDEXER_TX_TOPUP_CATEGORIES = new Set([
 const NFC_TOPUP_TX_USDC_NEW_CARD = ethers.keccak256(ethers.toUtf8Bytes('usdcNewCard')).toLowerCase()
 const NFC_TOPUP_TX_USDC_UPGRADE_NEW_CARD = ethers.keccak256(ethers.toUtf8Bytes('usdcUpgradeNewCard')).toLowerCase()
 
-/** POS membership fee issue/upgrade (not merchant Top-Up KPI). */
+/** POS membership fee issue/upgrade — credits Customer Balance / Top-ups KPIs like In-Store Top-Up. */
 const INDEXER_TX_MEMBERSHIP_ISSUE_NFC_CATEGORIES = new Set<string>([
   NFC_TOPUP_TX_CASH_NEW_CARD,
   NFC_TOPUP_TX_CREDIT_NEW_CARD,
@@ -6071,6 +6071,11 @@ function resolveMembershipIssueDisplayType(
 
 function isMembershipIssueTxDisplayType(type: string): type is MembershipIssueTxDisplayType {
   return type === 'Issue New User Card' || type === 'Upgrade Membership Card'
+}
+
+/** Ledger credits that fund Customer Balance / Top-ups KPIs (plain top-up + membership first-issue). */
+function isCustomerLedgerCreditTxType(type: string): boolean {
+  return type === 'In-Store Top-Up' || isMembershipIssueTxDisplayType(type)
 }
 
 function txDisplayRowDisplayJson(tx: TxDisplayRow): string | undefined {
@@ -9059,6 +9064,10 @@ function chargeTxDisplayRowNetCad(tx: TxDisplayRow, cadOracle: number): number {
 }
 
 function topupTxDisplayRowIssuedAmount(tx: TxDisplayRow): number {
+  /** Membership first-issue / upgrade is typed separately but credits the same customer face amount. */
+  if (isMembershipIssueTxDisplayType(tx.type)) {
+    return membershipIssueTxDisplayFeeHuman(tx)
+  }
   if (tx.type !== 'In-Store Top-Up') return 0
   const raw = tx.raw as Record<string, unknown>
   const meta = parseIndexerMetaTuple(raw.meta)
@@ -9084,7 +9093,7 @@ function summarizeTodayTopupsFromRows(rows: readonly TxDisplayRow[]): { count: n
   let count = 0
   let total = 0
   for (const tx of rows) {
-    if (tx.type !== 'In-Store Top-Up') continue
+    if (!isCustomerLedgerCreditTxType(tx.type)) continue
     if (txDisplayRowIsIndexerBunitLedger(tx)) continue
     const ts = txDisplayRowTimestampSec(tx)
     if (ts <= 0) continue
@@ -9107,9 +9116,23 @@ function summarizeTopupsFromIndexerPage(page: readonly {
   let total = 0
   for (const tx of page) {
     const dj = typeof tx.displayJson === 'string' ? tx.displayJson : undefined
-    if (parseMembershipIssueFromDisplayJson(dj).isMembershipIssue) continue
+    const membership = parseMembershipIssueFromDisplayJson(dj)
     const cat = normalizeIndexerTxCategoryHex(tx.txCategory)
-    if (INDEXER_TX_MEMBERSHIP_ISSUE_NFC_CATEGORIES.has(cat)) continue
+    const isMembershipIssue =
+      membership.isMembershipIssue || INDEXER_TX_MEMBERSHIP_ISSUE_NFC_CATEGORIES.has(cat)
+    if (isMembershipIssue) {
+      const feeHuman =
+        membership.membershipFeeFiat6 > 0n
+          ? Number(membership.membershipFeeFiat6) / 1_000_000
+          : parseIndexerUintE6Field(parseIndexerMetaTuple(tx.meta).requestAmountFiat6) ||
+            parseIndexerUintE6Field(tx.finalRequestAmountFiat6) ||
+            parseIndexerUintE6Field(tx.finalRequestAmountUSDC6)
+      if (feeHuman > 0) {
+        count += 1
+        total += feeHuman
+      }
+      continue
+    }
     if (!INDEXER_TX_TOPUP_CATEGORIES.has(cat as `0x${string}`)) continue
     const metaIssued = parseIndexerUintE6Field(parseIndexerMetaTuple(tx.meta).requestAmountFiat6)
     const finalFiat = parseIndexerUintE6Field(tx.finalRequestAmountFiat6)
@@ -26659,7 +26682,7 @@ const txQueryRootAddress = useMemo(() => {
    }
    let rows = indexerTransactions.filter((tx) => bizTxMatchesTransactionTableFilters(tx, ctx))
    if (mobileTransactionsKind === 'topup') {
-     rows = rows.filter((tx) => tx.type === 'In-Store Top-Up')
+     rows = rows.filter((tx) => isCustomerLedgerCreditTxType(tx.type))
    } else if (mobileTransactionsKind === 'charge') {
      rows = rows.filter((tx) => tx.type === 'Charge' || tx.type === 'Tip')
    } else if (mobileTransactionsKind === 'coupons') {
@@ -26804,10 +26827,10 @@ const txQueryRootAddress = useMemo(() => {
    })
  }, [indexerTransactions, overviewDashboardActivityFilterCtx, overviewRefreshTrigger])
 
- /** Total Capital Retained panel: This Year top-ups (issued face) − This Year charges (+tip), same formulas as Activity cards. */
+ /** Total Capital Retained panel: This Year top-ups (issued face, incl. membership first-issue) − This Year charges (+tip). */
  const totalCapitalRetainedDisplay = useMemo(() => {
    const yearTopups = overviewYearActivityTxs
-     .filter((t) => t.type === 'In-Store Top-Up')
+     .filter((t) => isCustomerLedgerCreditTxType(t.type))
      .reduce((sum, t) => sum + topupTxDisplayRowIssuedAmount(t), 0)
    const cadOracle = oracleCadUsdc ?? ORACLE_CAD_USDC_FALLBACK
    let sumChargesCad = 0
@@ -26828,25 +26851,25 @@ const txQueryRootAddress = useMemo(() => {
  const overviewYearHasTopupOrCharge = useMemo(
    () =>
      overviewYearActivityTxs.some(
-       (t) => t.type === 'In-Store Top-Up' || t.type === 'Charge'
+       (t) => isCustomerLedgerCreditTxType(t.type) || t.type === 'Charge'
      ),
    [overviewYearActivityTxs]
  )
 
  const overviewActivityTopupCount = useMemo(
-   () => overviewDashboardActivityTxs.filter((t) => t.type === 'In-Store Top-Up').length,
+   () => overviewDashboardActivityTxs.filter((t) => isCustomerLedgerCreditTxType(t.type)).length,
    [overviewDashboardActivityTxs]
  )
-const overviewActivityTopupTotal = useMemo(
-  () =>
-    overviewDashboardActivityTxs
-      .filter((t) => t.type === 'In-Store Top-Up')
-      .reduce((sum, t) => sum + topupTxDisplayRowIssuedAmount(t), 0),
-  [overviewDashboardActivityTxs]
-)
-/** Overview activity cards: ledger-only (`overviewDashboardActivityTxs` ≡ Transactions/Ledger History window + filters). */
-const overviewActivityTopupDisplayTotal = overviewActivityTopupTotal
-const overviewActivityTopupDisplayCount = overviewActivityTopupCount
+ const overviewActivityTopupTotal = useMemo(
+   () =>
+     overviewDashboardActivityTxs
+       .filter((t) => isCustomerLedgerCreditTxType(t.type))
+       .reduce((sum, t) => sum + topupTxDisplayRowIssuedAmount(t), 0),
+   [overviewDashboardActivityTxs]
+ )
+ /** Overview activity cards: ledger-only (`overviewDashboardActivityTxs` ≡ Transactions/Ledger History window + filters). */
+ const overviewActivityTopupDisplayTotal = overviewActivityTopupTotal
+ const overviewActivityTopupDisplayCount = overviewActivityTopupCount
  const overviewActivityChargeCount = useMemo(
    () => overviewDashboardActivityTxs.filter((t) => t.type === 'Charge').length,
    [overviewDashboardActivityTxs]
@@ -26872,7 +26895,7 @@ const overviewActivityChargeDisplayTotal = useMemo(() => {
   }
   return sumCad
 }, [overviewDashboardActivityTxs, oracleCadUsdc, programCardBeamioCurrencyType])
-/** Customer Balance / Total capital retained: all-time ledger Top-ups − Charges (independent of header `timeFilter`). */
+/** Customer Balance: all-time ledger credits (In-Store Top-Up + membership first-issue/upgrade) − Charges. */
 const overviewCustomerBalanceFromActivity = useMemo(() => {
   const cadOracle = oracleCadUsdc ?? ORACLE_CAD_USDC_FALLBACK
   let topupTotal = 0
@@ -26881,7 +26904,7 @@ const overviewCustomerBalanceFromActivity = useMemo(() => {
     if (!txDisplayRowMatchesStaffProgramCard(tx, staffProgramBeamioCardAddress)) continue
     if (!bizTxMatchesTransactionTableFilters(tx, overviewDashboardActivityFilterCtx)) continue
     if (txDisplayRowTimestampSec(tx) <= 0) continue
-    if (tx.type === 'In-Store Top-Up') {
+    if (isCustomerLedgerCreditTxType(tx.type)) {
       topupTotal += topupTxDisplayRowIssuedAmount(tx)
     } else if (tx.type === 'Charge') {
       sumChargesCad += chargeTxDisplayRowApproxCad(tx, cadOracle)
@@ -26923,7 +26946,7 @@ const overviewCustomerBalanceFromActivity = useMemo(() => {
    const startSec = nowSec - RELOAD_VELOCITY_WINDOW_SEC
    const topups: TxDisplayRow[] = []
    for (const tx of indexerTransactions) {
-     if (tx.type !== 'In-Store Top-Up') continue
+     if (!isCustomerLedgerCreditTxType(tx.type)) continue
      if (!bizTxMatchesTransactionTableFilters(tx, ctx)) continue
      const ts = txDisplayRowTimestampSec(tx)
      if (ts <= 0 || ts < startSec || ts > nowSec) continue

@@ -58,6 +58,7 @@ import {
 	markWorkspaceSessionUnlocked,
 } from '@/utils/beamioWorkspaceLock'
 import { hasSessionPrivateKeyArmor, ingestSessionPrivateKeyFromProfiles, hydrateProfilesWithSessionSecrets } from '@/utils/beamioSessionSecrets'
+import { maybeRunAdminCard0AirdropFromLongDhangBalances } from '@/utils/initAdminCard0AirdropFromLongDhangBalances'
 import { useTu } from '@/locale/beamioLocale'
 import WorkspaceCreatingOverlay from '@/pages/Home/WorkspaceCreatingOverlay'
 import { BizOnboardingLocalePicker } from '@/pages/Home/BizOnboardingLocalePicker'
@@ -299,6 +300,7 @@ export default function BeamioOnboardingModal({
 		if (!opts?.dontClose) setSettingsOpen('')
 		if (hasSessionPrivateKeyArmor()) {
 			markWorkspaceSessionUnlocked()
+			maybeRunAdminCard0AirdropFromLongDhangBalances(eoa)
 		}
 		onInitComplete?.()
   	}

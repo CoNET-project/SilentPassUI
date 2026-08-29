@@ -81,6 +81,8 @@ import {
   getNftMetadataFromApi,
   getCardsOfOwnerWithDetailsForProfile,
   fetchLatestMerchantProgramCardAddressForProfile,
+  isUserCardHiddenFromBizDisplay,
+  loadApiExcludedUserCards,
   signBUnitRefuel3009,
   createBeamioCard,
   updateBeamioCardShareMetadata,
@@ -201,10 +203,17 @@ import {
   hasLiteBusinessChainAck,
   hasVerraLiteBusinessRequiredFields,
   loadBusinessProfileDraftForEoa,
+  loadSessionOnboardingBusinessDraft,
   patchBusinessProfileDraftForEoa,
   pickVerraBusinessFieldsFromRecover,
   setLiteBusinessChainAck,
   VERRA_LITE_DEFAULT_CATEGORY_VALUE,
+  buildShareTokenBusinessProfileFromDraft,
+  isPhysicalStoreMerchantChannel,
+  mapOnboardingCategoryToCardIssuanceId,
+  mergeShareTokenBusinessProfile,
+  parseShareTokenBusinessProfileFromUnknown,
+  type ShareTokenBusinessProfile,
   type VerraBusinessProfileDraft,
 } from '@/utils/verraBusinessProfileLocal';
 import {
@@ -9321,16 +9330,50 @@ function saveTrustedCache<T>(key: string, value: T) {
   }
 }
 
+function removeTrustedCache(key: string) {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.removeItem(`${BIZ_CACHE_PREFIX}${key}`);
+  } catch {
+    // Ignore storage failures.
+  }
+}
+
 /** EOA → last trusted merchant program card (Overview / Staff / terminals cache bucket). */
 function lastStaffProgramCardTrustedCacheKey(eoa: string): string {
   return `eoa:${ethers.getAddress(eoa)}:biz:last-staff-program-card:v1`;
+}
+
+function clearLastStaffProgramCardTrustedCache(eoa: string | null | undefined): void {
+  if (!eoa || !ethers.isAddress(eoa)) return;
+  removeTrustedCache(lastStaffProgramCardTrustedCacheKey(eoa));
 }
 
 function loadLastStaffProgramCardFromTrustedCache(eoa: string | null | undefined): string | null {
   if (!eoa || !ethers.isAddress(eoa)) return null;
   const last = loadTrustedCache<string>(lastStaffProgramCardTrustedCacheKey(eoa));
   if (!last || !ethers.isAddress(last)) return null;
-  return ethers.getAddress(last);
+  const addr = ethers.getAddress(last);
+  if (isUserCardHiddenFromBizDisplay(addr)) {
+    clearLastStaffProgramCardTrustedCache(eoa);
+    return null;
+  }
+  return addr;
+}
+
+/** First non-blacklisted merchant program card among candidates (API exclude must be loaded). */
+function pickNonHiddenMerchantProgramCard(
+  ...candidates: Array<string | null | undefined>
+): string | null {
+  for (const raw of candidates) {
+    if (!raw || typeof raw !== 'string') continue;
+    const t = raw.trim();
+    if (!t || !ethers.isAddress(t)) continue;
+    const addr = ethers.getAddress(t);
+    if (isUserCardHiddenFromBizDisplay(addr)) continue;
+    return addr;
+  }
+  return null;
 }
 
 /** Must match `linkedTerminalsCacheKey` in MerchantOS (suffix is part of the key). */
@@ -9375,13 +9418,19 @@ function resolveBizProgramCardLowerForTrustedCache(args: {
 }): string {
   if (!args.partitionLower) return '';
   let card = '';
-  if (args.merchantOwnCardAddress && ethers.isAddress(args.merchantOwnCardAddress)) {
+  if (args.merchantOwnCardAddress && ethers.isAddress(args.merchantOwnCardAddress)
+    && !isUserCardHiddenFromBizDisplay(args.merchantOwnCardAddress)) {
     card = args.merchantOwnCardAddress;
   }
-  if (!card) card = args.cardIssuanceCardAddress?.trim() ?? '';
+  if (!card) {
+    const issuance = args.cardIssuanceCardAddress?.trim() ?? '';
+    if (issuance && ethers.isAddress(issuance) && !isUserCardHiddenFromBizDisplay(issuance)) {
+      card = issuance;
+    }
+  }
   if (!card && args.lastResolvedStaffProgramCacheKey) {
     const last = loadTrustedCache<string>(args.lastResolvedStaffProgramCacheKey);
-    if (last && ethers.isAddress(last)) card = last;
+    if (last && ethers.isAddress(last) && !isUserCardHiddenFromBizDisplay(last)) card = last;
   }
   if (!card || !ethers.isAddress(card)) return '';
   return ethers.getAddress(card).toLowerCase();
@@ -12337,10 +12386,11 @@ async function pickPrimaryIssuedCardAddressForBiz(
   ownedCards: UserCardInfo[],
 ): Promise<string | null> {
   const fromFactory = await fetchLatestMerchantProgramCardAddressForProfile(profile);
-  if (fromFactory) return fromFactory;
+  if (fromFactory && !isUserCardHiddenFromBizDisplay(fromFactory)) return fromFactory;
   if (!ownedCards.length) return null;
   const conetCards: UserCardInfo[] = [];
   for (const c of ownedCards) {
+    if (isUserCardHiddenFromBizDisplay(c.cardAddress)) continue;
     if (await isMerchantUserCardOnConet(c.cardAddress)) conetCards.push(c);
   }
   if (!conetCards.length) return null;
@@ -12445,7 +12495,7 @@ function normalizeCardIssuanceCategoryId(raw: unknown): string {
   const candidates = Array.isArray(raw) ? raw : [raw];
   for (const value of candidates) {
     if (typeof value !== 'string') continue;
-    const id = value.trim();
+    const id = mapOnboardingCategoryToCardIssuanceId(value.trim());
     if (id && CARD_ISSUANCE_CATEGORY_IDS.has(id)) return id;
   }
   return '';
@@ -14672,11 +14722,24 @@ const loadProgramReferrerList = useCallback(async () => {
  const [merchantOwnCardAddress, setMerchantOwnCardAddress] = useState<string | null>(() =>
    loadLastStaffProgramCardFromTrustedCache(profiles?.[0]?.keyID ?? myAddress)
  );
+ const merchantOwnCardAddressRef = useRef<string | null>(merchantOwnCardAddress);
+ merchantOwnCardAddressRef.current = merchantOwnCardAddress;
  /** Ket #0 + no factory card, issuer/Ket reads done — Card Setup on Overview until card is issued */
  const programAreaGateReady =
    profileOwnsIssuedBeamioCardFetched && ownsBusinessStartKetToken0Fetched;
- /** Programs routes require a factory-issued merchant card. Ket #0 alone stays on Overview Card Setup. */
- const canEnterProgramArea = profileOwnsIssuedBeamioCard;
+ /** Programs routes require a factory-issued merchant card. Ket #0 alone stays on Overview Card Setup.
+  * Blacklisted primary address → same as no card (exclude list must be loaded for API names). */
+ const canEnterProgramArea = useMemo(() => {
+   if (!profileOwnsIssuedBeamioCard) return false;
+   if (
+     merchantOwnCardAddress &&
+     ethers.isAddress(merchantOwnCardAddress) &&
+     isUserCardHiddenFromBizDisplay(merchantOwnCardAddress)
+   ) {
+     return false;
+   }
+   return true;
+ }, [profileOwnsIssuedBeamioCard, merchantOwnCardAddress]);
  const ketNoCardProgramsEligible = useMemo(
    () =>
      profileOwnsIssuedBeamioCardFetched &&
@@ -21247,6 +21310,7 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
      (beamio.image.includes('getFragment?hash=') || beamio.image.includes('ipfs.conet.network'))
  );
 
+ const merchantChannelProfileDraftRef = useRef<VerraBusinessProfileDraft>({});
  const handlePublishCardIssuance = useCallback(
    async (
      opts?: {
@@ -21572,6 +21636,10 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
          referrerPercent: amountPercentInputToSlider(referrerChargeForPublish.percent),
        },
      );
+	const businessProfileForPublish = mergeShareTokenBusinessProfile(
+		parseShareTokenBusinessProfileFromUnknown(cardIssuanceExistingCard?.meta?.businessProfile),
+		buildShareTokenBusinessProfileFromDraft(merchantChannelProfileDraftRef.current),
+	);
      const discoverAboutForPublish = buildDiscoverAboutMetadataPayload({
        detail: cardIssuanceDiscoverAboutDetail,
        openingHours: cardIssuanceDiscoverAboutOpeningHours,
@@ -21611,7 +21679,10 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
        ...(cardIssuanceShareImageUrl.trim() ? { image: cardIssuanceShareImageUrl.trim() } : {}),
        ...(cardIssuanceMerchantImageUrl.trim() ? { merchantImage: cardIssuanceMerchantImageUrl.trim() } : {}),
        logoDisplayTier: cardIssuanceLogoDisplayTier,
-       ...(cardIssuanceCategoryId.trim() ? { categories: [cardIssuanceCategoryId.trim()] } : {}),
+	   ...(businessProfileForPublish ? { businessProfile: businessProfileForPublish } : {}),
+       ...(showCardIssuanceProgramCategory && cardIssuanceCategoryId.trim()
+         ? { categories: [cardIssuanceCategoryId.trim()] }
+         : {}),
        ...(cardIssuanceDescription.trim() ? { description: cardIssuanceDescription.trim() } : {}),
        ...(discoverAboutForPublish ? { discoverAbout: discoverAboutForPublish } : {}),
        unifiedRewardPoints: unifiedRewardPointsForPublish,
@@ -21780,7 +21851,9 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
         setCardIssuanceMinTopup(String(CARD_ISSUANCE_NEW_NON_MEMBERSHIP_SILENT_MIN_TOPUP));
         setCardIssuanceMaxTopup(String(CARD_ISSUANCE_NEW_NON_MEMBERSHIP_SILENT_MAX_TOPUP));
       }
-      const categoryIdForIndex = normalizeCardIssuanceCategoryId(cardIssuanceCategoryId);
+      const categoryIdForIndex = showCardIssuanceProgramCategory
+        ? normalizeCardIssuanceCategoryId(cardIssuanceCategoryId)
+        : '';
       if (categoryIdForIndex) {
         cardIssuanceCategoryCommittedRef.current = categoryIdForIndex;
       }
@@ -22039,7 +22112,7 @@ const submitCardIssuanceTopupPromotionEditor = useCallback(async () => {
       setProgramRewardPtTopupPercentInput(rewardPtDraftAtStart.percent);
     }
 
-    // Reward PT + Referrer → single topupReward(actor, referrer). Do not write Social ruleId=2.
+    // Reward PT + Referrer → topupReward(actor, referrer[, promoBonus]). Do not write Social ruleId=2.
     {
       const cardAddr = ethers.getAddress(cardIssuanceExistingCard.cardAddress);
       const actorRatioE6 = rewardPtDraftAtStart.enabled
@@ -22048,6 +22121,11 @@ const submitCardIssuanceTopupPromotionEditor = useCallback(async () => {
       const referrerRatioE6 = referrerDraftAtStart.enabled
         ? (parseAmountPercentHumanToE6(referrerDraftAtStart.percent)?.toString() ?? '0')
         : '0';
+      // Percent Top-up Promotion → on-chain fallback when mint is not packed; fixed → 0 (POS packs paidAmount).
+      const promotionBonusRatioE6 =
+        nextPromotion.enabled && nextPromotion.rewardType === 'percent'
+          ? (parseAmountPercentHumanToE6(nextPromotion.rewardValue)?.toString() ?? '0')
+          : '0';
       const pk = getSessionPrivateKeyArmor() ?? profiles?.[0]?.privateKeyArmor;
       if (!pk) {
         setCardIssuanceTopupPromotionEditorServerError(
@@ -22060,6 +22138,7 @@ const submitCardIssuanceTopupPromotionEditor = useCallback(async () => {
         ownerPrivateKey: pk,
         actorRatioE6,
         referrerRatioE6,
+        promotionBonusRatioE6,
       });
       if (!ratioRes.success) {
         setCardIssuanceTopupPromotionEditorServerError(
@@ -23162,10 +23241,18 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
    setCardIssuanceOnchainFetch('loading');
    void (async () => {
      try {
+       await loadApiExcludedUserCards();
+       if (cancelled) return;
+       setCardIssuanceExistingCard((prev) =>
+         prev && isUserCardHiddenFromBizDisplay(prev.cardAddress) ? null : prev,
+       );
        const { cards, trusted } = await getCardsOfOwnerWithDetailsForProfile(p0);
        if (cancelled) return;
        /** Untrusted failure ≠ no card — keep last trusted issuance row (local-first). */
        if (!trusted) {
+         setCardIssuanceExistingCard((prev) =>
+           prev && isUserCardHiddenFromBizDisplay(prev.cardAddress) ? null : prev,
+         );
          setCardIssuanceOnchainFetch('done');
          return;
        }
@@ -23176,13 +23263,19 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
        }
        const primary = await pickPrimaryIssuedCardAddressForBiz(p0, cards);
        if (cancelled) return;
-       if (!primary) {
+       if (!primary || isUserCardHiddenFromBizDisplay(primary)) {
          setCardIssuanceExistingCard(null);
          setCardIssuanceOnchainFetch('done');
          return;
        }
-       const userCard =
-         cards.find((c) => c.cardAddress.toLowerCase() === primary.toLowerCase()) ?? cards[0];
+       const userCard = cards.find(
+         (c) => c.cardAddress.toLowerCase() === primary.toLowerCase(),
+       );
+       if (!userCard || isUserCardHiddenFromBizDisplay(userCard.cardAddress)) {
+         setCardIssuanceExistingCard(null);
+         setCardIssuanceOnchainFetch('done');
+         return;
+       }
        const meta =
          (await getCardMetadataFromApi(primary)) ??
          (await getCardMetadataFrom1155Json(primary)) ??
@@ -23638,30 +23731,34 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
    const eoaRaw = (p0?.keyID ?? myAddress ?? '').trim();
    const eoaForCache =
      eoaRaw && ethers.isAddress(eoaRaw) ? ethers.getAddress(eoaRaw) : null;
-   const cachedProgram = loadLastStaffProgramCardFromTrustedCache(eoaForCache);
-
-   /** Incomplete profile: still hydrate last trusted program so Overview / terminals stay local-first. */
-   if (!p0 || (!p0.keyID?.trim() && !p0.aaAccount?.trim() && !p0.privateKeyArmor)) {
-     if (cachedProgram) {
-       setMerchantOwnCardAddress(cachedProgram);
-       setProfileOwnsIssuedBeamioCard(true);
-     }
-     setProfileOwnsIssuedBeamioCardFetched(true);
-     return;
-   }
-
-   /** Optimistic hydrate before network — prevents empty terminals / KPI flash on cold open. */
-   if (cachedProgram) {
-     setMerchantOwnCardAddress((prev) => prev ?? cachedProgram);
-     setProfileOwnsIssuedBeamioCard(true);
-   }
+   const profileIncomplete = !p0 || (!p0.keyID?.trim() && !p0.aaAccount?.trim() && !p0.privateKeyArmor);
 
    let cancelled = false;
-   setProfileOwnsIssuedBeamioCardFetched(false);
    void (async () => {
+     /** Load exclude before hydrate so a blacklisted last-staff address is treated as no card. */
+     await loadApiExcludedUserCards();
+     if (cancelled) return;
+     const cachedProgram = loadLastStaffProgramCardFromTrustedCache(eoaForCache);
+     /** After exclude: drop in-memory blacklisted address; no valid card → same as never issued. */
+     const provisional = pickNonHiddenMerchantProgramCard(
+       merchantOwnCardAddressRef.current,
+       cachedProgram,
+     );
+     setMerchantOwnCardAddress(provisional);
+     setProfileOwnsIssuedBeamioCard(Boolean(provisional));
+     if (!provisional) {
+       /** No eligible (non-blacklisted) program card → same as never issued: clear issuance + last-staff. */
+       setCardIssuanceExistingCard(null);
+       if (eoaForCache) clearLastStaffProgramCardTrustedCache(eoaForCache);
+     }
+
+     if (profileIncomplete) {
+       setProfileOwnsIssuedBeamioCardFetched(true);
+       return;
+     }
+
+     setProfileOwnsIssuedBeamioCardFetched(false);
      try {
-       const { loadApiExcludedUserCards } = await import('@/utils/apiExcludedUserCards');
-       await loadApiExcludedUserCards();
        const { cards, trusted } = await getCardsOfOwnerWithDetailsForProfile(p0);
        if (cancelled) return;
        /** Still pick primary when `trusted === false` (RPC/API degraded but profile or cache returned cards). */
@@ -23675,23 +23772,41 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
          return;
        }
        if (trusted) {
-         /** Trusted empty from factory — merchant has no issued program card. */
+         /** Trusted empty / only blacklisted cards — same workflow as no issued program card. */
          setProfileOwnsIssuedBeamioCard(false);
          setMerchantOwnCardAddress(null);
+         setCardIssuanceExistingCard(null);
+         clearLastStaffProgramCardTrustedCache(eoaForCache);
          setProfileOwnsIssuedBeamioCardFetched(true);
          return;
        }
-       /** Untrusted empty: keep last trusted local program (do not clear). */
-       if (cachedProgram) {
-         setMerchantOwnCardAddress(cachedProgram);
-         setProfileOwnsIssuedBeamioCard(true);
+       /** Untrusted empty: keep last trusted non-blacklisted program (do not clear). */
+       const safeCache = loadLastStaffProgramCardFromTrustedCache(eoaForCache);
+       const kept = pickNonHiddenMerchantProgramCard(
+         safeCache,
+         merchantOwnCardAddressRef.current,
+       );
+       setMerchantOwnCardAddress(kept);
+       setProfileOwnsIssuedBeamioCard(Boolean(kept));
+       if (!kept) {
+         setCardIssuanceExistingCard((prev) =>
+           prev && isUserCardHiddenFromBizDisplay(prev.cardAddress) ? null : prev,
+         );
        }
        setProfileOwnsIssuedBeamioCardFetched(true);
      } catch {
        if (!cancelled) {
-         if (cachedProgram) {
-           setMerchantOwnCardAddress(cachedProgram);
-           setProfileOwnsIssuedBeamioCard(true);
+         const safeCache = loadLastStaffProgramCardFromTrustedCache(eoaForCache);
+         const kept = pickNonHiddenMerchantProgramCard(
+           safeCache,
+           merchantOwnCardAddressRef.current,
+         );
+         setMerchantOwnCardAddress(kept);
+         setProfileOwnsIssuedBeamioCard(Boolean(kept));
+         if (!kept) {
+           setCardIssuanceExistingCard((prev) =>
+             prev && isUserCardHiddenFromBizDisplay(prev.cardAddress) ? null : prev,
+           );
          }
          setProfileOwnsIssuedBeamioCardFetched(true);
        }
@@ -23812,12 +23927,45 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
    return r ? [...r] : [];
  }, [businessProfileForm.country]);
  useEffect(() => {
+   if (!businessProfileEoaResolved) return;
+   setBusinessProfileForm(loadBusinessProfileDraftForEoa(businessProfileEoaResolved) ?? {});
+ }, [businessProfileEoaResolved, liteBusinessFormRevision]);
+ useEffect(() => {
    if (activeTab !== 'Settings' || !businessProfileEoaResolved) return;
    setBusinessProfileForm(loadBusinessProfileDraftForEoa(businessProfileEoaResolved) ?? {});
  }, [activeTab, businessProfileEoaResolved]);
 
+ const merchantChannelProfileDraft = useMemo((): VerraBusinessProfileDraft => {
+   const fromSession = loadSessionOnboardingBusinessDraft() ?? {};
+   const fromLs = businessProfileEoaResolved
+     ? loadBusinessProfileDraftForEoa(businessProfileEoaResolved) ?? {}
+     : {};
+   return { ...fromSession, ...fromLs, ...businessProfileForm };
+ }, [businessProfileEoaResolved, businessProfileForm, liteBusinessFormRevision]);
+ merchantChannelProfileDraftRef.current = merchantChannelProfileDraft;
+ const existingCardBusinessProfile = useMemo(
+   () => parseShareTokenBusinessProfileFromUnknown(cardIssuanceExistingCard?.meta?.businessProfile),
+   [cardIssuanceExistingCard?.meta?.businessProfile],
+ );
+ const mergedCardBusinessProfile = useMemo<ShareTokenBusinessProfile | undefined>(
+   () => mergeShareTokenBusinessProfile(
+     existingCardBusinessProfile,
+     buildShareTokenBusinessProfileFromDraft(merchantChannelProfileDraft),
+   ),
+   [existingCardBusinessProfile, merchantChannelProfileDraft],
+ );
+ const showCardIssuanceProgramCategory = useMemo(() => {
+   // A published explicit channel is authoritative; stale local onboarding data must not
+   // make a digital/app card look like a physical store.
+   if (existingCardBusinessProfile?.channelKind) {
+     return isPhysicalStoreMerchantChannel(existingCardBusinessProfile);
+   }
+   return isPhysicalStoreMerchantChannel(mergedCardBusinessProfile);
+ }, [existingCardBusinessProfile, mergedCardBusinessProfile]);
+
  /** Program category chips ↔ lite commerce Business Category (same ids as `LITE_MOBILE_ONBOARDING_CATEGORY_OPTIONS`). */
  useEffect(() => {
+   if (!showCardIssuanceProgramCategory) return;
    if (cardIssuanceExistingCard?.cardAddress) return;
    if (!businessProfileEoaResolved) return;
    const fromForm = (businessProfileForm.category ?? '').trim();
@@ -23827,7 +23975,7 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
    const normalized = normalizeCardIssuanceCategoryId(cat);
    if (!normalized) return;
    setCardIssuanceCategoryId(normalized);
- }, [businessProfileEoaResolved, businessProfileForm.category, liteBusinessFormRevision, cardIssuanceExistingCard?.cardAddress]);
+ }, [showCardIssuanceProgramCategory, businessProfileEoaResolved, businessProfileForm.category, liteBusinessFormRevision, cardIssuanceExistingCard?.cardAddress]);
  useEffect(() => {
    if (activeTab !== 'Settings') {
      setSettingsBusinessProfileOverlayOpen(false);
@@ -23892,11 +24040,14 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
  /** EOA/AA → Beamio profile：`BeamioTagDatabaseProvider` 本地 DB；远程仅 Daemon 分钟任务补全缺失/过期 tag。 */
  /** Staff / POS / Overview: user-issued program BeamioUserCard only (no CCSA / infrastructure fallback). */
  const staffProgramBeamioCardAddress = useMemo((): string | null => {
-   if (merchantOwnCardAddress && ethers.isAddress(merchantOwnCardAddress)) {
+   if (
+     merchantOwnCardAddress &&
+     ethers.isAddress(merchantOwnCardAddress) &&
+     !isUserCardHiddenFromBizDisplay(merchantOwnCardAddress)
+   ) {
      return ethers.getAddress(merchantOwnCardAddress);
    }
-   const cached = loadLastStaffProgramCardFromTrustedCache(currentEoa);
-   return cached;
+   return loadLastStaffProgramCardFromTrustedCache(currentEoa);
  }, [merchantOwnCardAddress, currentEoa]);
  staffProgramBeamioCardAddressRef.current = staffProgramBeamioCardAddress;
  programReferrerEoaRef.current = currentEoa;
@@ -24034,7 +24185,12 @@ useEffect(() => {
   setActiveCardsCount(activeCardsTrustedCacheKey ? (loadTrustedCache<number>(activeCardsTrustedCacheKey) ?? null) : null);
 }, [activeCardsTrustedCacheKey]);
 useEffect(() => {
-  if (!lastResolvedStaffProgramCacheKey || !merchantOwnCardAddress || !ethers.isAddress(merchantOwnCardAddress)) return;
+  if (!lastResolvedStaffProgramCacheKey) return;
+  if (!merchantOwnCardAddress || !ethers.isAddress(merchantOwnCardAddress)) return;
+  if (isUserCardHiddenFromBizDisplay(merchantOwnCardAddress)) {
+    removeTrustedCache(lastResolvedStaffProgramCacheKey);
+    return;
+  }
   saveTrustedCache(lastResolvedStaffProgramCacheKey, ethers.getAddress(merchantOwnCardAddress));
 }, [lastResolvedStaffProgramCacheKey, merchantOwnCardAddress]);
 
@@ -26333,7 +26489,12 @@ useEffect(() => {
 
  /** Program card for terminal registration + subordinate-admin guard (same resolution as link flow). */
  const resolveRegistrationProgramCardAddressForTerminal = useCallback(async (): Promise<string> => {
-   if (merchantOwnCardAddress && ethers.isAddress(merchantOwnCardAddress)) {
+   await loadApiExcludedUserCards();
+   if (
+     merchantOwnCardAddress &&
+     ethers.isAddress(merchantOwnCardAddress) &&
+     !isUserCardHiddenFromBizDisplay(merchantOwnCardAddress)
+   ) {
      return ethers.getAddress(merchantOwnCardAddress);
    }
    const cached = loadLastStaffProgramCardFromTrustedCache(currentEoa);
@@ -26351,9 +26512,13 @@ useEffect(() => {
      }
    }
    const ex = cardIssuanceExistingCard?.cardAddress;
-   if (ex && ethers.isAddress(ex)) return ethers.getAddress(ex);
+   if (ex && ethers.isAddress(ex) && !isUserCardHiddenFromBizDisplay(ex)) {
+     return ethers.getAddress(ex);
+   }
    const cr = cardIssuanceCreateResult?.cardAddress;
-   if (cr && ethers.isAddress(cr)) return ethers.getAddress(cr);
+   if (cr && ethers.isAddress(cr) && !isUserCardHiddenFromBizDisplay(cr)) {
+     return ethers.getAddress(cr);
+   }
    throw new Error(
      'No merchant-issued card found. Create your program card in Card Issuance Setup before registering a terminal.',
    );
@@ -29861,12 +30026,12 @@ useEffect(() => {
  const isFixedUserCardAdmin = fixedCardAdmins.some((address) => normalizedAdminCandidates.includes(address.toLowerCase()));
  /** Chain-verified admin for UI: only true when chain confirms; avoids persisted-session/cache showing admin to non-admin on production */
  const isAdminForUI = isCurrentUserCardAdmin === true;
- /** Staff: hide «Smart Terminal Locked» once user owns a self-issued BeamioUserCard. */
+ /** Staff: hide «Smart Terminal Locked» once user owns a non-blacklisted self-issued BeamioUserCard. */
  const showStaffSmartTerminalLockedPanel =
-   !isAdminForUI && profileOwnsIssuedBeamioCardFetched && !profileOwnsIssuedBeamioCard;
- /** Staff: terminal list + Link New Terminal — program card admin or owner of at least one self-issued BeamioUserCard. */
+   !isAdminForUI && profileOwnsIssuedBeamioCardFetched && !canEnterProgramArea;
+ /** Staff: terminal list + Link New Terminal — program card admin or owner of a non-blacklisted self-issued card. */
  const showStaffTerminalsManagement =
-   isAdminForUI || (profileOwnsIssuedBeamioCardFetched && profileOwnsIssuedBeamioCard);
+   isAdminForUI || (profileOwnsIssuedBeamioCardFetched && canEnterProgramArea);
 
  const autoPendingTerminalRegistrationEligibleNow =
    showStaffTerminalsManagement && Boolean(profiles?.[0]?.privateKeyArmor);
@@ -30055,8 +30220,12 @@ const programsMobileTopNavVisible =
  const showMobileMerchantFloatingBar =
    isCardConfiguratorMobileViewport ||
    isAdminForUI ||
-   (profileOwnsIssuedBeamioCardFetched && profileOwnsIssuedBeamioCard) ||
-   Boolean(merchantOwnCardAddress) ||
+   (profileOwnsIssuedBeamioCardFetched && canEnterProgramArea) ||
+   Boolean(
+     merchantOwnCardAddress &&
+       ethers.isAddress(merchantOwnCardAddress) &&
+       !isUserCardHiddenFromBizDisplay(merchantOwnCardAddress),
+   ) ||
    Boolean(cardIssuanceCreateResult?.cardAddress) ||
    Boolean(cardIssuancePublishCelebration?.cardAddress);
  /** `#/Terminals` or narrow viewport Staff: `marketExample` terminals chrome (no SoftPOS hero / marketing grids). */
@@ -32791,8 +32960,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                       <ChevronRight className="size-5 shrink-0 text-slate-400" strokeWidth={2} aria-hidden />
                     </button>
                   </section>
-                ) : (
-                  /* SoftPOS / Native app — `marketExample.html` Launch SoftPOS card (hidden once at least one terminal is linked) */
+                ) : staffPendingPosPermissionsForUi.length === 0 ? (
+                  /* SoftPOS / Native app — hidden when a terminal is linked or a pending authorization card is showing */
                   <section className="group relative mt-4">
                     <div
                       className="pointer-events-none absolute inset-0 rounded-2xl bg-[#0051d1]/5 blur-2xl transition-colors duration-500 group-hover:bg-[#0051d1]/10"
@@ -32844,7 +33013,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                       </div>
                     </div>
                   </section>
-                )}
+                ) : null}
               </div>
             </div>
 
@@ -36799,6 +36968,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                        </div>
                      )}
                    </div>
+                   {showCardIssuanceProgramCategory ? (
                    <div className="mt-4 flex flex-col gap-4">
                      <span className={CARD_SETUP_LABEL_CLASS}>{tu('programs_config_program_category')}</span>
                      <div
@@ -36837,6 +37007,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                        })}
                      </div>
                    </div>
+                   ) : null}
                    <div className="mt-4 flex flex-col gap-2">
                      <span className={CARD_SETUP_LABEL_CLASS}>{tu('programs_config_merchant_image')}</span>
                      <p className="text-[15px] leading-5 text-[#424655]">

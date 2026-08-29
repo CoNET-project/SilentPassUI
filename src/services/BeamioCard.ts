@@ -23,9 +23,13 @@ import {
 	normalizeCardPreviewLogoDisplayTier,
 	type CardPreviewLogoDisplayTier,
 } from "@/utils/cardPreviewLogoDisplayTier";
-import { isApiExcludedUserCard, loadApiExcludedUserCards } from "@/utils/apiExcludedUserCards";
+import { isApiExcludedUserCard, loadApiExcludedUserCards, registerLocalApiExcludedUserCard } from "@/utils/apiExcludedUserCards";
 import { parseTopupPromotionFromMetadata } from "@/utils/programTopupPromotion";
 import { parseUnifiedRewardPoints } from "@/utils/unifiedRewardPoints";
+import {
+	parseShareTokenBusinessProfileFromUnknown,
+	type ShareTokenBusinessProfile,
+} from "@/utils/verraBusinessProfileLocal";
 import {
 	CONET_MAINNET_CHAIN_ID,
 	DEFAULT_MERCHANT_CARD_FACTORY,
@@ -63,11 +67,16 @@ const USER_CARD_DISPLAY_EXCLUDED = new Set([
 ])
 
 const filterExcludedUserCards = (cards: UserCardInfo[]): UserCardInfo[] =>
-	cards.filter(
-		(c) =>
-			!USER_CARD_DISPLAY_EXCLUDED.has(c.cardAddress.toLowerCase()) &&
-			!isApiExcludedUserCard(c.cardAddress)
-	)
+	cards.filter((c) => !isUserCardHiddenFromBizDisplay(c.cardAddress))
+
+/** Static display exclude ∪ server blacklist. Load `loadApiExcludedUserCards` first for API names. */
+export function isUserCardHiddenFromBizDisplay(raw: unknown): boolean {
+	if (raw == null || typeof raw !== 'string') return false
+	const t = raw.trim()
+	if (!t || !ethers.isAddress(t)) return false
+	const lower = ethers.getAddress(t).toLowerCase()
+	return USER_CARD_DISPLAY_EXCLUDED.has(lower) || isApiExcludedUserCard(t)
+}
 
 export { loadApiExcludedUserCards, registerLocalApiExcludedUserCard } from '@/utils/apiExcludedUserCards'
 
@@ -515,6 +524,7 @@ export const postExcludeUserCard = async (params: {
 		})
 		const data = await response.json().catch(() => ({}))
 		if (response.ok && data.success) {
+			registerLocalApiExcludedUserCard(params.cardAddress)
 			await loadApiExcludedUserCards(true)
 			return { success: true, cardAddress: data.cardAddress as string | undefined }
 		}
@@ -1157,6 +1167,7 @@ export const getCardsOfOwnerWithDetailsForProfile = async (
 	if (eoa && ethers.isAddress(eoa)) owners.push(ethers.getAddress(eoa))
 	// 去重：aa 与 eoa 可能相同（罕见）
 	const uniqueOwners = [...new Set(owners)]
+	await loadApiExcludedUserCards()
 	if (uniqueOwners.length === 0) {
 		if (typeof console !== 'undefined' && console.warn) {
 			console.warn('[getCardsOfOwnerWithDetailsForProfile] 无有效 owner（keyID/aaAccount 均空）')
@@ -1283,12 +1294,14 @@ export async function fetchLatestMerchantProgramCardAddressForProfile(profile: {
 	const { eoa, aa } = profileOwnerAddressesForLatestCard(profile)
 	const owners = [eoa, aa].filter((a): a is string => Boolean(a))
 	if (owners.length === 0) return null
+	await loadApiExcludedUserCards()
 	const factory = new ethers.Contract(CONET_CARD_FACTORY, FACTORY_LATEST_CARD_OF_OWNER_ABI, conetDepinProvider)
 	for (const owner of owners) {
 		try {
 			const latest = (await factory.latestCardOfOwner(owner)) as string
 			if (!latest || latest === ethers.ZeroAddress) continue
 			const normalized = ethers.getAddress(latest)
+			if (isUserCardHiddenFromBizDisplay(normalized)) continue
 			if (await isMerchantUserCardOnConet(normalized)) return normalized
 		} catch {
 			continue
@@ -1478,6 +1491,8 @@ export type ShareTokenMetadata = {
 	maximumTopup?: number
 	/** Global top-up promotion (single); preferred over legacy bonusRules. */
 	topupPromotion?: ShareTokenMetadataTopupPromotion
+	/** Onboarding business identity and channel, persisted in global card metadata. */
+	businessProfile?: ShareTokenBusinessProfile
 	/** Unified #13 actor/referrer percents (bps). */
 	unifiedRewardPoints?: ShareTokenMetadataUnifiedRewardPoints
 	/** Social #13 rewards — link click / like / top-up (user + referrer). */
@@ -2545,6 +2560,7 @@ export const encodeSetChargeRewardRatio = (ratioE6: string | number | bigint): s
 const setTopupActorRewardRatioInterface = new ethers.Interface([
 	'function setTopupActorRewardRatio(uint256 ratioE6)',
 	'function topupActorRewardRatioE6() view returns (uint256)',
+	'function topupPromotionBonusRatioE6() view returns (uint256)',
 ])
 
 /** Owner/gateway: E6 % of top-up actual payment → actor #13 (0 = off). */
@@ -2620,18 +2636,27 @@ export async function readChargeRewardRatioOnChain(cardAddress: string): Promise
 
 const combinedRewardRatioInterface = new ethers.Interface([
 	'function topupReward(uint256 actorRatioE6, uint256 referrerRatioE6)',
+	'function topupReward(uint256 actorRatioE6, uint256 referrerRatioE6, uint256 promotionBonusRatioE6)',
 	'function chargeReward(uint256 actorRatioE6, uint256 referrerRatioE6)',
 ])
 
-/** Atomic actor + referrer top-up #13 ratios (single executeForOwner). */
+/** Atomic actor + referrer top-up #13 ratios (single executeForOwner). Optional promotion bonus % E6 (3-arg). */
 export const encodeTopupReward = (
 	actorRatioE6: string | number | bigint,
 	referrerRatioE6: string | number | bigint,
-): string =>
-	combinedRewardRatioInterface.encodeFunctionData('topupReward', [
+	promotionBonusRatioE6?: string | number | bigint,
+): string => {
+	if (promotionBonusRatioE6 != null) {
+		return combinedRewardRatioInterface.encodeFunctionData(
+			'topupReward(uint256,uint256,uint256)',
+			[BigInt(actorRatioE6), BigInt(referrerRatioE6), BigInt(promotionBonusRatioE6)],
+		)
+	}
+	return combinedRewardRatioInterface.encodeFunctionData('topupReward(uint256,uint256)', [
 		BigInt(actorRatioE6),
 		BigInt(referrerRatioE6),
 	])
+}
 
 /** Atomic actor + referrer charge #13 ratios (single executeForOwner). */
 export const encodeChargeReward = (
@@ -2648,6 +2673,7 @@ async function rewardRatiosMatchOnChain(
 	kind: 'topup' | 'charge',
 	actorRatioE6: string,
 	referrerRatioE6: string,
+	promotionBonusRatioE6?: string,
 ): Promise<boolean> {
 	const [actorOnChain, referrerOnChain] = await Promise.all([
 		kind === 'topup'
@@ -2657,7 +2683,20 @@ async function rewardRatiosMatchOnChain(
 	])
 	const referrerTarget =
 		kind === 'topup' ? referrerOnChain?.topupRatioE6 : referrerOnChain?.chargeRatioE6
-	return actorOnChain === actorRatioE6 && referrerTarget === referrerRatioE6
+	if (actorOnChain !== actorRatioE6 || referrerTarget !== referrerRatioE6) return false
+	if (kind === 'topup' && promotionBonusRatioE6 != null) {
+		try {
+			const cardAddrNorm = ethers.getAddress(cardAddress)
+			const { provider } = await providerForBeamioUserCard(cardAddrNorm)
+			const card = new ethers.Contract(cardAddrNorm, setTopupActorRewardRatioInterface, provider)
+			const raw = await card.topupPromotionBonusRatioE6().catch(() => null)
+			if (raw == null) return false
+			return BigInt(raw.toString()) === BigInt(promotionBonusRatioE6)
+		} catch {
+			return false
+		}
+	}
+	return true
 }
 
 async function syncCombinedRewardRatiosOnChain(opts: {
@@ -2666,6 +2705,8 @@ async function syncCombinedRewardRatiosOnChain(opts: {
 	kind: 'topup' | 'charge'
 	actorRatioE6: string
 	referrerRatioE6: string
+	/** Top-up only: percent promotion bonus E6 (0 when off / fixed). Writes 3-arg topupReward. */
+	promotionBonusRatioE6?: string
 }): Promise<{ success: boolean; error?: string }> {
 	try {
 		const cardAddrNorm = ethers.getAddress(opts.cardAddress)
@@ -2675,6 +2716,7 @@ async function syncCombinedRewardRatiosOnChain(opts: {
 				opts.kind,
 				opts.actorRatioE6,
 				opts.referrerRatioE6,
+				opts.kind === 'topup' ? opts.promotionBonusRatioE6 : undefined,
 			)
 		) {
 			return { success: true }
@@ -2694,7 +2736,11 @@ async function syncCombinedRewardRatiosOnChain(opts: {
 
 		const data =
 			opts.kind === 'topup'
-				? encodeTopupReward(opts.actorRatioE6, opts.referrerRatioE6)
+				? encodeTopupReward(
+						opts.actorRatioE6,
+						opts.referrerRatioE6,
+						opts.promotionBonusRatioE6,
+					)
 				: encodeChargeReward(opts.actorRatioE6, opts.referrerRatioE6)
 		const deadline = Math.floor(Date.now() / 1000) + 3600
 		const nonce = ethers.hexlify(ethers.randomBytes(32))
@@ -2751,12 +2797,13 @@ async function syncCombinedRewardRatiosOnChain(opts: {
 	}
 }
 
-/** Single UserOp: topup actor + referrer #13 E6 ratios. */
+/** Single UserOp: topup actor + referrer #13 E6 ratios. Optional percent promotion bonus E6. */
 export async function syncTopupRewardRatiosOnChain(opts: {
 	cardAddress: string
 	ownerPrivateKey: string
 	actorRatioE6: string
 	referrerRatioE6: string
+	promotionBonusRatioE6?: string
 }): Promise<{ success: boolean; error?: string }> {
 	return syncCombinedRewardRatiosOnChain({ ...opts, kind: 'topup' })
 }
@@ -3678,6 +3725,7 @@ export type CardMetadataFromUri = {
 	cardOwner?: string
 	categories?: string[]
 	topupPromotion?: ShareTokenMetadataTopupPromotion
+	businessProfile?: ShareTokenBusinessProfile
 	unifiedRewardPoints?: ShareTokenMetadataUnifiedRewardPoints
 	socialPromotion?: ShareTokenMetadataSocialPromotion
 	bonusRule?: ShareTokenMetadataBonusRule
@@ -3750,6 +3798,7 @@ const cardMetadataCache = new Map<
 		bonusRules?: ShareTokenMetadataBonusRule[]
 		topupPromotion?: ShareTokenMetadataTopupPromotion
 		unifiedRewardPoints?: ShareTokenMetadataUnifiedRewardPoints
+		businessProfile?: ShareTokenBusinessProfile
 		pointSystem?: ShareTokenMetadataPointSystem
 		coupons?: ShareTokenMetadataCoupon[]
 		productions?: ShareTokenMetadataProduction[]
@@ -3809,6 +3858,12 @@ function shareTokenCategoriesFromUnknown(share: Record<string, unknown> | undefi
 		.filter((c): c is string => typeof c === 'string' && c.trim() !== '')
 		.map((c) => c.trim().toLowerCase())
 	return out.length > 0 ? Array.from(new Set(out)) : undefined
+}
+
+function shareTokenBusinessProfileFromUnknown(
+	share: Record<string, unknown> | undefined | null,
+): ShareTokenBusinessProfile | undefined {
+	return parseShareTokenBusinessProfileFromUnknown(share?.businessProfile)
 }
 
 function shareTokenDisplayNameFromUnknown(share: Record<string, unknown> | undefined | null): string | undefined {
@@ -4234,6 +4289,7 @@ export const getCardMetadataFrom1155Json = async (cardAddress: string): Promise<
 		const bonusRule = shareTokenBonusRuleFromUnknown(share)
 		const bonusRules = shareTokenBonusRulesFromUnknown(share)
 		const topupPromotion = shareTokenTopupPromotionFromShare(share, bonusRule, bonusRules)
+		const businessProfile = shareTokenBusinessProfileFromUnknown(share)
 		const unifiedRewardPoints = parseUnifiedRewardPoints(share?.unifiedRewardPoints)
 		const pointSystem = shareTokenPointSystemFromUnknown(share)
 		const coupons = shareTokenCouponsFromUnknown(share)
@@ -4254,6 +4310,7 @@ export const getCardMetadataFrom1155Json = async (cardAddress: string): Promise<
 			...(bonusRule && { bonusRule }),
 			...(bonusRules && { bonusRules }),
 			...(topupPromotion && { topupPromotion }),
+			...(businessProfile && { businessProfile }),
 			...(unifiedRewardPoints && { unifiedRewardPoints }),
 			...(pointSystem && { pointSystem }),
 			...(coupons && { coupons }),
@@ -4295,6 +4352,7 @@ export const getCardMetadataFromApi = async (cardAddress: string): Promise<CardM
 		const bonusRule = shareTokenBonusRuleFromUnknown(share)
 		const bonusRules = shareTokenBonusRulesFromUnknown(share)
 		const topupPromotion = shareTokenTopupPromotionFromShare(share, bonusRule, bonusRules)
+		const businessProfile = shareTokenBusinessProfileFromUnknown(share)
 		const unifiedRewardPoints = parseUnifiedRewardPoints(share?.unifiedRewardPoints)
 		const pointSystem = shareTokenPointSystemFromUnknown(share)
 		const coupons = shareTokenCouponsFromUnknown(share)
@@ -4318,6 +4376,7 @@ export const getCardMetadataFromApi = async (cardAddress: string): Promise<CardM
 			...(bonusRule && { bonusRule }),
 			...(bonusRules && { bonusRules }),
 			...(topupPromotion && { topupPromotion }),
+			...(businessProfile && { businessProfile }),
 			...(unifiedRewardPoints && { unifiedRewardPoints }),
 			...(pointSystem && { pointSystem }),
 			...(coupons && { coupons }),
@@ -4448,6 +4507,7 @@ export const getCardMetadataFromUri = async (cardAddress: string): Promise<CardM
 		const bonusRule = shareTokenBonusRuleFromUnknown(shareObj)
 		const bonusRules = shareTokenBonusRulesFromUnknown(shareObj)
 		const topupPromotion = shareTokenTopupPromotionFromShare(shareObj, bonusRule, bonusRules)
+		const businessProfile = shareTokenBusinessProfileFromUnknown(shareObj)
 		const unifiedRewardPoints = parseUnifiedRewardPoints(shareObj?.unifiedRewardPoints)
 		const pointSystem = shareTokenPointSystemFromUnknown(shareObj)
 		const coupons = shareTokenCouponsFromUnknown(shareObj)
@@ -4468,6 +4528,7 @@ export const getCardMetadataFromUri = async (cardAddress: string): Promise<CardM
 			...(bonusRule && { bonusRule }),
 			...(bonusRules && { bonusRules }),
 			...(topupPromotion && { topupPromotion }),
+			...(businessProfile && { businessProfile }),
 			...(unifiedRewardPoints && { unifiedRewardPoints }),
 			...(pointSystem && { pointSystem }),
 			...(coupons && { coupons }),

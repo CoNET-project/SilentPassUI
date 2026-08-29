@@ -139,6 +139,127 @@ export function mergeSessionOnboardingDraftIntoEoa(eoa: string): void {
 /** Default Business Category on mobile Lite onboarding (“Local business” → `local-services`). */
 export const VERRA_LITE_DEFAULT_CATEGORY_VALUE = 'local-services'
 
+/** Card Setup PROGRAM CATEGORY rail (Physical Store only). */
+export const CARD_ISSUANCE_PHYSICAL_CATEGORY_IDS = [
+  'local-services',
+  'food-beverage',
+  'grocery-convenience',
+  'retail-shopping',
+  'education-training',
+  'health-beauty',
+  'fitness-wellness',
+  'entertainment-leisure',
+] as const
+
+/** Onboarding discovery used `education-consulting`; Card Setup / Discover use `education-training`. */
+export const ONBOARDING_TO_CARD_ISSUANCE_CATEGORY_ALIASES: Record<string, string> = {
+  'education-consulting': 'education-training',
+}
+
+/** Onboarding fields persisted on `shareTokenMetadata.businessProfile` at card create / publish. */
+export type ShareTokenBusinessProfile = {
+  channelKind?: VerraBusinessChannelKind
+  category?: string
+  storeName?: string
+  country?: string
+  city?: string
+  province?: string
+  businessType?: VerraBusinessProfileBusinessType
+}
+
+export function normalizeVerraBusinessChannelKind(raw: unknown): VerraBusinessChannelKind | undefined {
+  if (raw === 'physical' || raw === 'digital' || raw === 'app') return raw
+  return undefined
+}
+
+export function mapOnboardingCategoryToCardIssuanceId(raw: unknown): string {
+  if (typeof raw !== 'string') return ''
+  const t = raw.trim().toLowerCase()
+  if (!t) return ''
+  return ONBOARDING_TO_CARD_ISSUANCE_CATEGORY_ALIASES[t] ?? t
+}
+
+/** Physical Store → show PROGRAM CATEGORY. Digital / App never count as a storefront. */
+export function isPhysicalStoreMerchantChannel(
+  p: { channelKind?: unknown; category?: unknown } | null | undefined,
+): boolean {
+  const ck = normalizeVerraBusinessChannelKind(p?.channelKind)
+  if (ck === 'physical') return true
+  if (ck === 'digital' || ck === 'app') return false
+  const aliased = mapOnboardingCategoryToCardIssuanceId(p?.category)
+  if (!aliased) return false
+  return (CARD_ISSUANCE_PHYSICAL_CATEGORY_IDS as readonly string[]).includes(aliased)
+}
+
+const BUSINESS_PROFILE_STR_MAX = 128
+
+function trimBusinessProfileStr(raw: unknown, max = BUSINESS_PROFILE_STR_MAX): string | undefined {
+  if (typeof raw !== 'string') return undefined
+  const t = raw.trim()
+  if (!t) return undefined
+  return t.slice(0, max)
+}
+
+export function parseShareTokenBusinessProfileFromUnknown(raw: unknown): ShareTokenBusinessProfile | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined
+  const o = raw as Record<string, unknown>
+  const next: ShareTokenBusinessProfile = {}
+  const ck = normalizeVerraBusinessChannelKind(o.channelKind)
+  if (ck) next.channelKind = ck
+  const category = trimBusinessProfileStr(o.category)
+  if (category) next.category = category
+  const storeName = trimBusinessProfileStr(o.storeName)
+  if (storeName) next.storeName = storeName
+  const country = trimBusinessProfileStr(o.country, 64)
+  if (country) next.country = country
+  const city = trimBusinessProfileStr(o.city, 64)
+  if (city) next.city = city
+  const province = trimBusinessProfileStr(o.province, 64)
+  if (province) next.province = province
+  if (o.businessType === 'solo' || o.businessType === 'chain' || o.businessType === 'ngo') {
+    next.businessType = o.businessType
+  }
+  return Object.keys(next).length > 0 ? next : undefined
+}
+
+export function buildShareTokenBusinessProfileFromDraft(
+  draft:
+    | Pick<
+        VerraBusinessProfileDraft,
+        'channelKind' | 'category' | 'storeName' | 'country' | 'city' | 'province' | 'businessType'
+      >
+    | null
+    | undefined,
+): ShareTokenBusinessProfile | undefined {
+  if (!draft) return undefined
+  return parseShareTokenBusinessProfileFromUnknown({
+    channelKind: draft.channelKind,
+    category: draft.category,
+    storeName: draft.storeName,
+    country: draft.country,
+    city: draft.city,
+    province: draft.province,
+    businessType: draft.businessType,
+  })
+}
+
+export function mergeShareTokenBusinessProfile(
+  base: ShareTokenBusinessProfile | undefined,
+  overlay: ShareTokenBusinessProfile | undefined,
+): ShareTokenBusinessProfile | undefined {
+  const out: ShareTokenBusinessProfile = { ...(base ?? {}) }
+  if (overlay) {
+    if (overlay.channelKind) out.channelKind = overlay.channelKind
+    if (overlay.category) out.category = overlay.category
+    if (overlay.storeName) out.storeName = overlay.storeName
+    if (overlay.country) out.country = overlay.country
+    if (overlay.city) out.city = overlay.city
+    if (overlay.province) out.province = overlay.province
+    if (overlay.businessType) out.businessType = overlay.businessType
+  }
+  return Object.keys(out).length > 0 ? out : undefined
+}
+
 const LITE_CHAIN_ACK_PREFIX = 'verra_lite_business_chain_ack_v1:'
 
 export function liteBusinessChainAckStorageKey(eoa: string): string {
@@ -217,6 +338,10 @@ export function pickVerraBusinessFieldsFromRecover(recovered: unknown): Partial<
       }
       for (const k of ['storeName', 'category', 'country', 'city', 'province'] as const) {
         fillMissing(k)
+      }
+      if (!next.channelKind) {
+        const ck = normalizeVerraBusinessChannelKind(j.channelKind)
+        if (ck) next.channelKind = ck
       }
       if (!next.businessType && (j.businessType === 'solo' || j.businessType === 'chain' || j.businessType === 'ngo')) {
         next.businessType = j.businessType

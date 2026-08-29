@@ -13,7 +13,8 @@ export function normalizeUserCardAddressLower(raw: unknown): string | null {
 }
 
 /**
- * Fetch server filter list. On failure keep last trusted cache; do not write empty set.
+ * Fetch server filter list. Trusted success writes the set (including empty).
+ * On failure keep last trusted cache; do not treat failure as “no exclusions”.
  */
 export async function loadApiExcludedUserCards(force = false): Promise<ReadonlySet<string>> {
 	if (!force && cachedExcluded) return cachedExcluded
@@ -35,7 +36,8 @@ export async function loadApiExcludedUserCards(force = false): Promise<ReadonlyS
 				const lower = normalizeUserCardAddressLower(raw)
 				if (lower) next.add(lower)
 			}
-			if (next.size > 0) cachedExcluded = next
+			/** Trusted success writes even empty — distinguish "loaded, none excluded" from "not loaded yet". */
+			cachedExcluded = next
 		} catch {
 			/* untrusted: do not overwrite cachedExcluded */
 		} finally {

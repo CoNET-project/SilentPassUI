@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Check, Loader2 } from 'lucide-react'
+import { AlertTriangle, Check, ChevronRight, Loader2, SlidersHorizontal, Sparkles } from 'lucide-react'
 import { ethers } from 'ethers'
 import {
 	BeamioCircularBackButton,
@@ -56,6 +56,29 @@ function preventStepKeys(e: React.KeyboardEvent<HTMLInputElement>) {
 
 function formatUsdc(usdc6: bigint): string {
 	return Number(ethers.formatUnits(usdc6, 6)).toFixed(2)
+}
+
+function merchantInitials(name: string): string {
+	const parts = name.trim().split(/\s+/).filter(Boolean)
+	if (parts.length >= 2) {
+		return `${parts[0][0] ?? ''}${parts[1][0] ?? ''}`.toUpperCase()
+	}
+	const alnum = name.replace(/[^a-zA-Z0-9]/g, '')
+	return (alnum.slice(0, 2) || 'M').toUpperCase()
+}
+
+function formatFiatHero(n: number): string {
+	if (!Number.isFinite(n)) return '0'
+	return Number.isInteger(n) ? String(n) : n.toFixed(2)
+}
+
+function formatPrefixedFiat(prefix: string, amount: string): string {
+	return `${prefix} ${amount}`
+}
+
+function formatPtsShort(points6: bigint): string {
+	const s = formatPtsHuman(points6)
+	return s.endsWith('.00') ? s.slice(0, -3) : s
 }
 
 export default function MerchantCardTopUpFlow({
@@ -179,6 +202,12 @@ export default function MerchantCardTopUpFlow({
 	const coveredUsdc6 = sumUsdc6(legs)
 	const cashUsdc6 = quotedUsdc6 > coveredUsdc6 ? quotedUsdc6 - coveredUsdc6 : 0n
 	const usableRows = rows.filter((r) => r.redeemableUsdc6 > 0n)
+	const fiatN = Number(fiatHuman)
+	const coveredFiat =
+		quotedUsdc6 > 0n ? (fiatN * Number(coveredUsdc6)) / Number(quotedUsdc6) : 0
+	const cashFiat = Math.max(0, fiatN - coveredFiat)
+	const availablePts6 = usableRows.reduce((sum, row) => sum + row.pointsBalance6, 0n)
+	const merchantCount = usableRows.length
 
 	const goPay = () => {
 		if (Number(fiatHuman) <= 0) return
@@ -313,7 +342,7 @@ export default function MerchantCardTopUpFlow({
 				<div className={`${BEAMIO_CIRCULAR_BACK_ROW_CLASS} px-4`}>
 					<BeamioCircularBackButton variant="onLight" onClick={back} className="absolute left-4 top-0" />
 				</div>
-				{step !== 'amount' ? (
+				{step !== 'amount' && step !== 'pay' ? (
 					<header className="px-5 pb-6 pt-2">
 						<p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Store credits</p>
 						<h1 className="mt-1 text-3xl font-semibold text-[#0F172A] dark:text-slate-100">{title}</h1>
@@ -405,60 +434,151 @@ export default function MerchantCardTopUpFlow({
 					)}
 
 					{step === 'pay' && (
-						<>
-							<div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-4">
-								<div>
-									<p className="text-sm font-semibold">Smart Pay</p>
-									<p className="text-xs text-slate-500">Use Reward PT (#13) plus CONET-USDC</p>
-								</div>
-								<button
-									type="button"
-									role="switch"
-									aria-checked={smartPay}
-									onClick={() => {
-										setSmartPay((v) => !v)
-										setUsedManual(false)
-									}}
-									className={`relative h-8 w-14 rounded-full ${smartPay ? 'bg-[#8d3a8b]' : 'bg-slate-300'}`}
-								>
-									<span
-										className={`absolute top-1 h-6 w-6 rounded-full bg-white transition ${
-											smartPay ? 'left-7' : 'left-1'
-										}`}
+						<div className="flex min-h-0 flex-1 flex-col">
+							<div className="flex flex-col items-center pt-2">
+								{displayMerchantIcon ? (
+									<IpfsImg
+										src={displayMerchantIcon}
+										alt=""
+										className="h-16 w-16 rounded-full object-cover"
 									/>
-								</button>
+								) : (
+									<div
+										className="flex h-16 w-16 items-center justify-center rounded-full bg-[#eceef2] text-[20px] font-bold text-[#3B66F5]"
+										aria-hidden
+									>
+										{merchantInitials(displayMerchantName)}
+									</div>
+								)}
+								<p className="mt-3 text-[17px] font-semibold text-[#4b5563]">{displayMerchantName}</p>
+								<p className="mt-1 text-[34px] font-bold tracking-tight text-[#111827]">
+									{formatPrefixedFiat(prefix, formatFiatHero(fiatN))}
+								</p>
 							</div>
-							<div className="mt-4 space-y-2 rounded-2xl border border-slate-200 bg-white p-4 text-sm">
-								<div className="flex justify-between">
-									<span className="text-slate-500">Points Covered</span>
-									<span className="font-semibold">${formatUsdc(coveredUsdc6)}</span>
+
+							<p className="mt-8 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#9aa3b2]">
+								Payment Method
+							</p>
+
+							<div className="mt-3 overflow-hidden rounded-[22px] bg-gradient-to-b from-[#3B82F6] to-[#1D4ED8] p-4 text-white shadow-[0_12px_28px_rgba(29,78,216,0.28)]">
+								<div className="flex items-center justify-between">
+									<div className="flex items-center gap-2">
+										<Sparkles className="h-4 w-4 text-[#86efac]" strokeWidth={2.25} aria-hidden />
+										<p className="text-[16px] font-bold">Smart Pay</p>
+									</div>
+									<span className="inline-flex items-center gap-1 rounded-full bg-white/20 px-2.5 py-1 text-[11px] font-semibold">
+										<Check className="h-3 w-3" strokeWidth={2.75} aria-hidden />
+										Active
+									</span>
 								</div>
-								<div className="flex justify-between">
-									<span className="text-slate-500">Cash Required</span>
-									<span className="font-semibold">${formatUsdc(cashUsdc6)}</span>
+
+								<div className="mt-4 flex items-center justify-between rounded-2xl border border-white/20 bg-black/15 px-3.5 py-3">
+									<div>
+										<p className="text-[15px] font-bold">Use Points</p>
+										<p className="mt-0.5 text-[12px] text-white/75">
+											{smartPay ? 'Toggle off for pure USDC' : 'Toggle on to use Reward PT'}
+										</p>
+									</div>
+									<button
+										type="button"
+										role="switch"
+										aria-checked={smartPay}
+										aria-label="Use Points"
+										disabled={payBusy}
+										onClick={() => {
+											setSmartPay((v) => !v)
+											setUsedManual(false)
+										}}
+										className={`relative h-8 w-14 shrink-0 rounded-full transition ${
+											smartPay ? 'bg-[#34C759]' : 'bg-white/30'
+										}`}
+									>
+										<span
+											className={`absolute top-1 h-6 w-6 rounded-full bg-white shadow transition ${
+												smartPay ? 'left-7' : 'left-1'
+											}`}
+										/>
+									</button>
+								</div>
+
+								<p className="mt-3 text-[13px] leading-relaxed text-white/90">
+									{smartPay
+										? 'Points + USDC. Use available points, cover the rest with cash.'
+										: 'Pay the full amount with USDC.'}
+								</p>
+
+								<div className="mt-4 grid grid-cols-2 gap-3 rounded-2xl bg-black/20 px-4 py-3">
+									<div>
+										<p className="text-[12px] text-white/70">Points Covered</p>
+										<p className="mt-1 text-[18px] font-bold">
+											{formatPrefixedFiat(prefix, coveredFiat.toFixed(2))}
+										</p>
+									</div>
+									<div className="border-l border-white/15 pl-3">
+										<p className="text-[12px] text-white/70">Cash Required</p>
+										<p className="mt-1 text-[18px] font-bold">
+											{formatPrefixedFiat(prefix, cashFiat.toFixed(2))}
+										</p>
+									</div>
 								</div>
 							</div>
-							{smartPay && (
+
+							{smartPay ? (
 								<button
 									type="button"
 									onClick={() => {
 										setUsedManual(true)
 										setStep('select')
 									}}
-									disabled={rowsLoading || usableRows.length === 0}
-									className="mt-4 w-full rounded-full border border-slate-200 bg-white py-3 text-sm font-semibold text-slate-800 disabled:opacity-40"
+									disabled={payBusy || rowsLoading || usableRows.length === 0}
+									className="mt-3 flex w-full items-center gap-3 rounded-[18px] border border-slate-200 bg-white px-3.5 py-3.5 text-left disabled:opacity-40"
 								>
-									Choose Points Manually
+									<span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#e8eeff] text-[#3B66F5]">
+										<SlidersHorizontal className="h-5 w-5" strokeWidth={2.2} aria-hidden />
+									</span>
+									<span className="min-w-0 flex-1">
+										<span className="block text-[15px] font-bold text-[#111827]">
+											Choose Points Manually
+										</span>
+										<span className="mt-0.5 block text-[13px] text-[#8b919c]">
+											{rowsLoading
+												? 'Loading available points…'
+												: `Available: ${formatPtsShort(availablePts6)} Pts (from ${merchantCount} merchant${
+														merchantCount === 1 ? '' : 's'
+													})`}
+										</span>
+									</span>
+									<ChevronRight className="h-5 w-5 shrink-0 text-slate-300" aria-hidden />
 								</button>
-							)}
+							) : null}
+
+							{payError ? (
+								<div
+									role="alert"
+									className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] text-amber-800"
+								>
+									<AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" aria-hidden />
+									<p>{payError}</p>
+								</div>
+							) : null}
+
 							<button
 								type="button"
-								onClick={() => setStep('confirm')}
-								className="mt-6 w-full rounded-full bg-[#0051d1] py-3.5 text-base font-semibold text-white"
+								disabled={payBusy || quotedUsdc6 <= 0n}
+								aria-busy={payBusy}
+								onClick={() => void redeemLegsThenBuy()}
+								className="mt-auto w-full rounded-2xl bg-[#3B66F5] py-4 text-[17px] font-bold text-white disabled:opacity-40"
 							>
-								Next
+								{payBusy ? (
+									<span className="inline-flex items-center justify-center gap-2">
+										<Loader2 className="h-5 w-5 animate-spin" aria-hidden />
+										Confirm Top Up
+									</span>
+								) : (
+									'Confirm Top Up'
+								)}
 							</button>
-						</>
+						</div>
 					)}
 
 					{step === 'select' && (
@@ -503,7 +623,7 @@ export default function MerchantCardTopUpFlow({
 								type="button"
 								onClick={() => {
 									setUsedManual(true)
-									setStep('confirm')
+									setStep('pay')
 								}}
 								className="mt-6 w-full rounded-full bg-[#0051d1] py-3.5 text-base font-semibold text-white"
 							>

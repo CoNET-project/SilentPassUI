@@ -543,11 +543,9 @@ function discoverMerchantAboutPanelForDisplay(
 function DiscoverMerchantMyPointsBlock({
 	loading,
 	points,
-	onRedeem,
 }: {
 	loading: boolean
 	points: number
-	onRedeem?: () => void
 }) {
 	return (
 		<div className="min-w-0">
@@ -564,15 +562,6 @@ function DiscoverMerchantMyPointsBlock({
 					</>
 				)}
 			</p>
-			{!loading && points > 0 && onRedeem ? (
-				<button
-					type="button"
-					onClick={onRedeem}
-					className="mt-3 inline-flex items-center justify-center rounded-full border border-[#c9b8e8] bg-[#f3ecff] px-4 py-2 text-[13px] font-bold text-[#6b4ea8] transition active:scale-[0.98] hover:bg-[#ebe0ff] dark:border-violet-800 dark:bg-violet-950/40 dark:text-violet-300"
-				>
-					Redeem
-				</button>
-			) : null}
 		</div>
 	)
 }
@@ -5852,7 +5841,6 @@ function DiscoverMerchantDetailFullScreen({
 							<DiscoverMerchantMyPointsBlock
 								loading={myPoints13Loading}
 								points={myPoints13Num}
-								onRedeem={scrollToCouponsSection}
 							/>
 						</div>
 					) : null}
@@ -5925,7 +5913,6 @@ function DiscoverMerchantDetailFullScreen({
 								<DiscoverMerchantMyPointsBlock
 									loading={myPoints13Loading}
 									points={myPoints13Num}
-									onRedeem={scrollToCouponsSection}
 								/>
 							</div>
 						</div>

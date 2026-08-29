@@ -2914,15 +2914,17 @@ async function executeOwnerCalldataOnCard(opts: {
 }
 
 /**
- * Write #13 convert enable latches + merchant oracle spread via owner executeForOwner.
+ * Write #13 convert enable latches via owner executeForOwner.
  * Dirty fields only (one UserOp each). ratioE6 = 1e6 when ON, 0 when OFF.
+ * When `oracleSpreadBps` is omitted, merchant oracle FX spread is left unchanged.
  */
 export async function syncConvertReward13SettingsOnChain(opts: {
 	cardAddress: string
 	ownerPrivateKey: string
 	toPointsEnabled: boolean
 	toUsdcEnabled: boolean
-	oracleSpreadBps: number
+	/** When set, also sync merchant oracle spread (0–1000 bps). Prefer {@link syncMerchantOracleSpreadBpsOnChain}. */
+	oracleSpreadBps?: number
 }): Promise<{ success: boolean; error?: string }> {
 	try {
 		const cardAddrNorm = ethers.getAddress(opts.cardAddress)
@@ -2938,15 +2940,20 @@ export async function syncConvertReward13SettingsOnChain(opts: {
 
 		const wantPoints = opts.toPointsEnabled ? CONVERT_REWARD13_ENABLED_E6 : 0n
 		const wantUsdc = opts.toUsdcEnabled ? CONVERT_REWARD13_ENABLED_E6 : 0n
-		let wantSpread = BigInt(Math.max(0, Math.round(opts.oracleSpreadBps)))
-		if (wantSpread > MERCHANT_ORACLE_SPREAD_BPS_MAX_ONCHAIN) {
-			wantSpread = MERCHANT_ORACLE_SPREAD_BPS_MAX_ONCHAIN
+		const syncSpread = opts.oracleSpreadBps != null
+		let wantSpread = 0n
+		if (syncSpread) {
+			wantSpread = BigInt(Math.max(0, Math.round(opts.oracleSpreadBps!)))
+			if (wantSpread > MERCHANT_ORACLE_SPREAD_BPS_MAX_ONCHAIN) {
+				wantSpread = MERCHANT_ORACLE_SPREAD_BPS_MAX_ONCHAIN
+			}
 		}
 
 		const onChain = await readConvertReward13SettingsOnChain(cardAddrNorm)
 		const pointsDirty = !onChain || BigInt(onChain.toPointsRatioE6) !== wantPoints
 		const usdcDirty = !onChain || BigInt(onChain.toUsdcRatioE6) !== wantUsdc
-		const spreadDirty = !onChain || BigInt(onChain.oracleSpreadBps) !== wantSpread
+		const spreadDirty =
+			syncSpread && (!onChain || BigInt(onChain.oracleSpreadBps) !== wantSpread)
 
 		if (!pointsDirty && !usdcDirty && !spreadDirty) {
 			return { success: true }
@@ -3001,7 +3008,7 @@ export async function syncConvertReward13SettingsOnChain(opts: {
 				after &&
 				BigInt(after.toPointsRatioE6) === wantPoints &&
 				BigInt(after.toUsdcRatioE6) === wantUsdc &&
-				BigInt(after.oracleSpreadBps) === wantSpread
+				(!syncSpread || BigInt(after.oracleSpreadBps) === wantSpread)
 			) {
 				return { success: true }
 			}
@@ -3016,6 +3023,71 @@ export async function syncConvertReward13SettingsOnChain(opts: {
 			success: false,
 			error:
 				e instanceof Error ? e.message : 'Failed to update Reward PT conversion settings on-chain.',
+		}
+	}
+}
+
+/**
+ * Write merchant-favorable oracle FX spread (0–1000 bps) via owner executeForOwner.
+ * Program Basic — Exchange rate panel.
+ */
+export async function syncMerchantOracleSpreadBpsOnChain(opts: {
+	cardAddress: string
+	ownerPrivateKey: string
+	oracleSpreadBps: number
+}): Promise<{ success: boolean; error?: string }> {
+	try {
+		const cardAddrNorm = ethers.getAddress(opts.cardAddress)
+		const signerAddr = ethers.getAddress(new ethers.Wallet(opts.ownerPrivateKey).address)
+		const chainOwner = await getCardOwner(cardAddrNorm)
+		if (ethers.getAddress(chainOwner) !== signerAddr) {
+			return {
+				success: false,
+				error:
+					'Exchange rate updates require the card owner wallet. Unlock owner wallet and retry.',
+			}
+		}
+
+		let wantSpread = BigInt(Math.max(0, Math.round(opts.oracleSpreadBps)))
+		if (wantSpread > MERCHANT_ORACLE_SPREAD_BPS_MAX_ONCHAIN) {
+			wantSpread = MERCHANT_ORACLE_SPREAD_BPS_MAX_ONCHAIN
+		}
+
+		const onChain = await readConvertReward13SettingsOnChain(cardAddrNorm)
+		if (onChain && BigInt(onChain.oracleSpreadBps) === wantSpread) {
+			return { success: true }
+		}
+
+		const res = await executeOwnerCalldataOnCard({
+			cardAddress: cardAddrNorm,
+			ownerPrivateKey: opts.ownerPrivateKey,
+			data: encodeSetMerchantOracleSpreadBps(wantSpread),
+		})
+		if (!res.success) {
+			return {
+				success: false,
+				error: res.error ?? 'Failed to update exchange rate on-chain.',
+			}
+		}
+
+		for (let attempt = 0; attempt < 8; attempt++) {
+			if (attempt > 0) {
+				await new Promise((r) => setTimeout(r, 1200))
+			}
+			const after = await readConvertReward13SettingsOnChain(cardAddrNorm)
+			if (after && BigInt(after.oracleSpreadBps) === wantSpread) {
+				return { success: true }
+			}
+		}
+		return {
+			success: false,
+			error:
+				'Exchange rate was accepted by the API but is not on-chain yet. Wait a moment and save again.',
+		}
+	} catch (e: unknown) {
+		return {
+			success: false,
+			error: e instanceof Error ? e.message : 'Failed to update exchange rate on-chain.',
 		}
 	}
 }

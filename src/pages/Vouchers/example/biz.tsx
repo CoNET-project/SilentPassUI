@@ -98,6 +98,7 @@ import {
   syncTopupRewardRatiosOnChain,
   syncChargeRewardRatiosOnChain,
   syncConvertReward13SettingsOnChain,
+  syncMerchantOracleSpreadBpsOnChain,
   publishMembershipFeesViaExecuteForOwner,
   postExecuteForOwner,
   fetchCardsByCategory,
@@ -285,6 +286,7 @@ import {
   Reward13ConvertProgramEditor,
   type Reward13ConvertDraft,
 } from './Reward13ConvertProgramEditor';
+import { MerchantOracleSpreadProgramEditor } from './MerchantOracleSpreadProgramEditor';
 import {
   NavProgramMenu,
   PROGRAM_TAB_BASIC,
@@ -383,11 +385,13 @@ import {
 import {
   mergeUnifiedRewardPointsCharge,
   mergeUnifiedRewardPointsConvert,
+  mergeUnifiedRewardPointsOracleSpread,
   mergeUnifiedRewardPointsTopup,
   parseReward13ConvertDraft,
   parseUnifiedRewardChargeDraft,
   parseUnifiedRewardTopupDraft,
   percentWholeToActorBps,
+  formatMerchantOracleSpreadOverview,
   formatReward13ConvertOverviewSummary,
 } from '@/utils/unifiedRewardPoints';
 import { BeamioPercentSlider } from '@/components/BeamioPercentSlider';
@@ -13581,6 +13585,18 @@ const [reward13ConvertEditorPublishing, setReward13ConvertEditorPublishing] = us
 const [reward13ConvertDeleting, setReward13ConvertDeleting] = useState(false);
 const reward13ConvertClearInFlightRef = useRef(false);
 const [reward13ConvertEditorServerError, setReward13ConvertEditorServerError] = useState('');
+const [merchantOracleSpreadEditorOpen, setMerchantOracleSpreadEditorOpen] = useState(false);
+const merchantOracleSpreadEditorOpenRef = useRef(false);
+const [merchantOracleSpreadEditorDraftBps, setMerchantOracleSpreadEditorDraftBps] = useState(0);
+const [merchantOracleSpreadEditorBaselineBps, setMerchantOracleSpreadEditorBaselineBps] = useState<
+  number | null
+>(null);
+const [merchantOracleSpreadEditorPublishing, setMerchantOracleSpreadEditorPublishing] =
+  useState(false);
+const [merchantOracleSpreadDeleting, setMerchantOracleSpreadDeleting] = useState(false);
+const merchantOracleSpreadClearInFlightRef = useRef(false);
+const [merchantOracleSpreadEditorServerError, setMerchantOracleSpreadEditorServerError] =
+  useState('');
 /** On-chain getRewardRule(1/2/3) — UI display source of truth; undefined = not loaded yet. */
 const [cardIssuanceSocialPromotionChainPromo, setCardIssuanceSocialPromotionChainPromo] = useState<
   ShareTokenMetadataSocialPromotion | null | undefined
@@ -13937,6 +13953,7 @@ const handlePublishCardIssuanceRef = useRef<
     pointSystemOverride?: CardIssuancePointSystemMetadata;
     rewardPtTopupOverride?: { enabled: boolean; percent: string };
     reward13ConvertOverride?: Reward13ConvertDraft;
+    merchantOracleSpreadOverride?: number;
     metadataOnly?: boolean;
     loadingScope?: 'default' | 'bonusEditor';
     skipOnChainRefresh?: boolean;
@@ -15778,14 +15795,14 @@ useEffect(() => {
 
 useEffect(() => {
   if (!cardIssuanceExistingCard?.cardAddress) {
-    if (!reward13ConvertEditorOpenRef.current) {
+    if (!reward13ConvertEditorOpenRef.current && !merchantOracleSpreadEditorOpenRef.current) {
       setReward13ConvertToPointsEnabled(false);
       setReward13ConvertToUsdcEnabled(false);
       setReward13ConvertOracleSpreadBps(0);
     }
     return;
   }
-  if (reward13ConvertEditorOpen) return;
+  if (reward13ConvertEditorOpen || merchantOracleSpreadEditorOpen) return;
   const convertDraft = parseReward13ConvertDraft(
     (cardIssuanceExistingCard.meta as { unifiedRewardPoints?: unknown } | undefined)
       ?.unifiedRewardPoints,
@@ -15797,6 +15814,7 @@ useEffect(() => {
   cardIssuanceExistingCard?.cardAddress,
   cardIssuanceExistingCard?.meta,
   reward13ConvertEditorOpen,
+  merchantOracleSpreadEditorOpen,
 ]);
 
 useEffect(() => {
@@ -16981,15 +16999,19 @@ const reward13ConvertOverviewSummary = useMemo(
     formatReward13ConvertOverviewSummary({
       toPointsEnabled: reward13ConvertToPointsEnabled,
       toUsdcEnabled: reward13ConvertToUsdcEnabled,
-      oracleSpreadBps: reward13ConvertOracleSpreadBps,
     }),
-  [reward13ConvertToPointsEnabled, reward13ConvertToUsdcEnabled, reward13ConvertOracleSpreadBps],
+  [reward13ConvertToPointsEnabled, reward13ConvertToUsdcEnabled],
 );
 
 const reward13ConvertIsConfigured =
-  reward13ConvertToPointsEnabled ||
-  reward13ConvertToUsdcEnabled ||
-  reward13ConvertOracleSpreadBps > 0;
+  reward13ConvertToPointsEnabled || reward13ConvertToUsdcEnabled;
+
+const merchantOracleSpreadOverviewSummary = useMemo(
+  () => formatMerchantOracleSpreadOverview(reward13ConvertOracleSpreadBps),
+  [reward13ConvertOracleSpreadBps],
+);
+
+const merchantOracleSpreadIsConfigured = reward13ConvertOracleSpreadBps > 0;
 
 const cardIssuanceTopupPromotionEditorPreviewPay = useMemo(() => {
   const raw = cardIssuanceTopupPromotion.minimumTopupAmount.replace(/,/g, '').trim();
@@ -21415,6 +21437,8 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
       pointSystemOverride?: CardIssuancePointSystemMetadata;
       rewardPtTopupOverride?: { enabled: boolean; percent: string };
       reward13ConvertOverride?: Reward13ConvertDraft;
+      /** Merchant oracle FX spread bps (0–1000). When omitted, keeps current UI state. */
+      merchantOracleSpreadOverride?: number;
       metadataOnly?: boolean;
        loadingScope?: 'default' | 'bonusEditor';
       /** Metadata-only publish that already patches local card meta (e.g. itemCategory chips). */
@@ -21717,24 +21741,32 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
          toUsdcEnabled: reward13ConvertToUsdcEnabled,
          oracleSpreadBps: reward13ConvertOracleSpreadBps,
        };
-     const unifiedRewardPointsForPublish = mergeUnifiedRewardPointsConvert(
-       mergeUnifiedRewardPointsCharge(
-         mergeUnifiedRewardPointsTopup(cardIssuanceExistingCard?.meta?.unifiedRewardPoints, {
-           enabled: rewardPtForPublish.enabled,
-           actorPercent: amountPercentInputToSlider(rewardPtForPublish.percent),
-           referrerEnabled: referrerTopupForPublish.enabled,
-           referrerPercent: amountPercentInputToSlider(referrerTopupForPublish.percent),
-         }),
+     const oracleSpreadForPublish =
+       opts?.merchantOracleSpreadOverride ?? reward13ConvertOracleSpreadBps;
+     const unifiedRewardPointsForPublish = mergeUnifiedRewardPointsOracleSpread(
+       mergeUnifiedRewardPointsConvert(
+         mergeUnifiedRewardPointsCharge(
+           mergeUnifiedRewardPointsTopup(cardIssuanceExistingCard?.meta?.unifiedRewardPoints, {
+             enabled: rewardPtForPublish.enabled,
+             actorPercent: amountPercentInputToSlider(rewardPtForPublish.percent),
+             referrerEnabled: referrerTopupForPublish.enabled,
+             referrerPercent: amountPercentInputToSlider(referrerTopupForPublish.percent),
+           }),
+           {
+             enabled: pointSystemForPublish.enabled === true,
+             actorPercent: amountPercentInputToSlider(
+               formatAmountPercentE6Display(pointSystemForPublish.chargeRewardRatioE6),
+             ),
+             referrerEnabled: referrerChargeForPublish.enabled,
+             referrerPercent: amountPercentInputToSlider(referrerChargeForPublish.percent),
+           },
+         ),
          {
-           enabled: pointSystemForPublish.enabled === true,
-           actorPercent: amountPercentInputToSlider(
-             formatAmountPercentE6Display(pointSystemForPublish.chargeRewardRatioE6),
-           ),
-           referrerEnabled: referrerChargeForPublish.enabled,
-           referrerPercent: amountPercentInputToSlider(referrerChargeForPublish.percent),
+           toPointsEnabled: convertForPublish.toPointsEnabled,
+           toUsdcEnabled: convertForPublish.toUsdcEnabled,
          },
        ),
-       convertForPublish,
+       oracleSpreadForPublish,
      );
 	const businessProfileForPublish = mergeShareTokenBusinessProfile(
 		parseShareTokenBusinessProfileFromUnknown(cardIssuanceExistingCard?.meta?.businessProfile),
@@ -22789,11 +22821,15 @@ useEffect(() => {
 }, [reward13ConvertEditorOpen]);
 
 const submitReward13ConvertEditor = useCallback(async () => {
-  const next = reward13ConvertEditorDraft;
+  const next: Reward13ConvertDraft = {
+    toPointsEnabled: reward13ConvertEditorDraft.toPointsEnabled,
+    toUsdcEnabled: reward13ConvertEditorDraft.toUsdcEnabled,
+    // Preserve merchant oracle FX — Program Basic owns Exchange rate.
+    oracleSpreadBps: reward13ConvertOracleSpreadBps,
+  };
   if (!cardIssuanceExistingCard?.cardAddress) {
     setReward13ConvertToPointsEnabled(next.toPointsEnabled);
     setReward13ConvertToUsdcEnabled(next.toUsdcEnabled);
-    setReward13ConvertOracleSpreadBps(next.oracleSpreadBps);
     closeReward13ConvertEditor();
     return;
   }
@@ -22812,8 +22848,7 @@ const submitReward13ConvertEditor = useCallback(async () => {
     const dirty =
       reward13ConvertEditorBaseline == null ||
       reward13ConvertEditorBaseline.toPointsEnabled !== next.toPointsEnabled ||
-      reward13ConvertEditorBaseline.toUsdcEnabled !== next.toUsdcEnabled ||
-      reward13ConvertEditorBaseline.oracleSpreadBps !== next.oracleSpreadBps;
+      reward13ConvertEditorBaseline.toUsdcEnabled !== next.toUsdcEnabled;
     if (dirty) {
       const ok = await handlePublishCardIssuance({
         reward13ConvertOverride: next,
@@ -22832,7 +22867,6 @@ const submitReward13ConvertEditor = useCallback(async () => {
         ownerPrivateKey: pk,
         toPointsEnabled: next.toPointsEnabled,
         toUsdcEnabled: next.toUsdcEnabled,
-        oracleSpreadBps: next.oracleSpreadBps,
       });
       if (!chainRes.success) {
         setReward13ConvertEditorServerError(
@@ -22843,14 +22877,16 @@ const submitReward13ConvertEditor = useCallback(async () => {
     }
     setReward13ConvertToPointsEnabled(next.toPointsEnabled);
     setReward13ConvertToUsdcEnabled(next.toUsdcEnabled);
-    setReward13ConvertOracleSpreadBps(next.oracleSpreadBps);
     setCardIssuanceExistingCard((prev) => {
       if (!prev?.meta) return prev;
       return {
         ...prev,
         meta: {
           ...prev.meta,
-          unifiedRewardPoints: mergeUnifiedRewardPointsConvert(prev.meta.unifiedRewardPoints, next),
+          unifiedRewardPoints: mergeUnifiedRewardPointsConvert(prev.meta.unifiedRewardPoints, {
+            toPointsEnabled: next.toPointsEnabled,
+            toUsdcEnabled: next.toUsdcEnabled,
+          }),
         },
       };
     });
@@ -22873,6 +22909,7 @@ const submitReward13ConvertEditor = useCallback(async () => {
 }, [
   reward13ConvertEditorDraft,
   reward13ConvertEditorBaseline,
+  reward13ConvertOracleSpreadBps,
   cardIssuanceExistingCard?.cardAddress,
   handlePublishCardIssuance,
   closeReward13ConvertEditor,
@@ -22884,12 +22921,12 @@ const clearReward13ConvertSettings = useCallback(async () => {
   const cleared: Reward13ConvertDraft = {
     toPointsEnabled: false,
     toUsdcEnabled: false,
-    oracleSpreadBps: 0,
+    // Keep merchant oracle FX spread.
+    oracleSpreadBps: reward13ConvertOracleSpreadBps,
   };
   if (!cardIssuanceExistingCard?.cardAddress) {
     setReward13ConvertToPointsEnabled(false);
     setReward13ConvertToUsdcEnabled(false);
-    setReward13ConvertOracleSpreadBps(0);
     return;
   }
   reward13ConvertClearInFlightRef.current = true;
@@ -22923,7 +22960,6 @@ const clearReward13ConvertSettings = useCallback(async () => {
       ownerPrivateKey: pk,
       toPointsEnabled: false,
       toUsdcEnabled: false,
-      oracleSpreadBps: 0,
     });
     if (!chainRes.success) {
       setCardIssuanceOwnerAdminNotice({
@@ -22934,14 +22970,16 @@ const clearReward13ConvertSettings = useCallback(async () => {
     }
     setReward13ConvertToPointsEnabled(false);
     setReward13ConvertToUsdcEnabled(false);
-    setReward13ConvertOracleSpreadBps(0);
     setCardIssuanceExistingCard((prev) => {
       if (!prev?.meta) return prev;
       return {
         ...prev,
         meta: {
           ...prev.meta,
-          unifiedRewardPoints: mergeUnifiedRewardPointsConvert(prev.meta.unifiedRewardPoints, cleared),
+          unifiedRewardPoints: mergeUnifiedRewardPointsConvert(prev.meta.unifiedRewardPoints, {
+            toPointsEnabled: false,
+            toUsdcEnabled: false,
+          }),
         },
       };
     });
@@ -22954,7 +22992,197 @@ const clearReward13ConvertSettings = useCallback(async () => {
     reward13ConvertClearInFlightRef.current = false;
     setReward13ConvertDeleting(false);
   }
-}, [cardIssuanceExistingCard?.cardAddress, handlePublishCardIssuance, profiles]);
+}, [
+  cardIssuanceExistingCard?.cardAddress,
+  handlePublishCardIssuance,
+  profiles,
+  reward13ConvertOracleSpreadBps,
+]);
+
+const openMerchantOracleSpreadEditor = useCallback(() => {
+  if (merchantOracleSpreadEditorPublishing || merchantOracleSpreadDeleting) return;
+  setMerchantOracleSpreadEditorServerError('');
+  setMerchantOracleSpreadEditorDraftBps(reward13ConvertOracleSpreadBps);
+  setMerchantOracleSpreadEditorBaselineBps(reward13ConvertOracleSpreadBps);
+  merchantOracleSpreadEditorOpenRef.current = true;
+  setMerchantOracleSpreadEditorOpen(true);
+}, [
+  merchantOracleSpreadEditorPublishing,
+  merchantOracleSpreadDeleting,
+  reward13ConvertOracleSpreadBps,
+]);
+
+const closeMerchantOracleSpreadEditor = useCallback(() => {
+  if (merchantOracleSpreadEditorPublishing) return;
+  merchantOracleSpreadEditorOpenRef.current = false;
+  setMerchantOracleSpreadEditorOpen(false);
+  setMerchantOracleSpreadEditorBaselineBps(null);
+  setMerchantOracleSpreadEditorServerError('');
+}, [merchantOracleSpreadEditorPublishing]);
+
+useEffect(() => {
+  if (!merchantOracleSpreadEditorOpen) {
+    setMerchantOracleSpreadEditorBaselineBps(null);
+  }
+}, [merchantOracleSpreadEditorOpen]);
+
+const submitMerchantOracleSpreadEditor = useCallback(async () => {
+  const nextBps = Math.max(0, Math.min(1000, Math.round(Number(merchantOracleSpreadEditorDraftBps) || 0)));
+  if (!cardIssuanceExistingCard?.cardAddress) {
+    setReward13ConvertOracleSpreadBps(nextBps);
+    closeMerchantOracleSpreadEditor();
+    return;
+  }
+  setMerchantOracleSpreadEditorServerError('');
+  setCardIssuanceCreateError('');
+  setMerchantOracleSpreadEditorPublishing(true);
+  try {
+    const pk = getSessionPrivateKeyArmor() ?? profiles?.[0]?.privateKeyArmor;
+    if (!pk) {
+      setMerchantOracleSpreadEditorServerError(
+        'Unlock your wallet before saving exchange rate settings.',
+      );
+      return;
+    }
+    const cardAddr = ethers.getAddress(cardIssuanceExistingCard.cardAddress);
+    const dirty =
+      merchantOracleSpreadEditorBaselineBps == null ||
+      merchantOracleSpreadEditorBaselineBps !== nextBps;
+    if (dirty) {
+      const ok = await handlePublishCardIssuance({
+        merchantOracleSpreadOverride: nextBps,
+        loadingScope: 'bonusEditor',
+        metadataOnly: true,
+        skipOnChainRefresh: true,
+      });
+      if (!ok) {
+        setMerchantOracleSpreadEditorServerError(
+          'Could not save exchange rate metadata. Review the error below and try again.',
+        );
+        return;
+      }
+      const chainRes = await syncMerchantOracleSpreadBpsOnChain({
+        cardAddress: cardAddr,
+        ownerPrivateKey: pk,
+        oracleSpreadBps: nextBps,
+      });
+      if (!chainRes.success) {
+        setMerchantOracleSpreadEditorServerError(
+          chainRes.error ?? 'On-chain exchange rate update failed. Try again.',
+        );
+        return;
+      }
+    }
+    setReward13ConvertOracleSpreadBps(nextBps);
+    setCardIssuanceExistingCard((prev) => {
+      if (!prev?.meta) return prev;
+      return {
+        ...prev,
+        meta: {
+          ...prev.meta,
+          unifiedRewardPoints: mergeUnifiedRewardPointsOracleSpread(
+            prev.meta.unifiedRewardPoints,
+            nextBps,
+          ),
+        },
+      };
+    });
+    invalidateBeamioCardMetadataCache(cardAddr);
+    merchantOracleSpreadEditorOpenRef.current = false;
+    setMerchantOracleSpreadEditorOpen(false);
+    setMerchantOracleSpreadEditorBaselineBps(null);
+    setCardIssuanceOwnerAdminNotice({
+      kind: 'ok',
+      text:
+        nextBps > 0
+          ? `Exchange rate saved. Deposit quotes use +${(nextBps / 100).toFixed(nextBps % 100 === 0 ? 0 : 2)}% vs oracle; withdraw −${(nextBps / 100).toFixed(nextBps % 100 === 0 ? 0 : 2)}%.`
+          : 'Exchange rate reset to oracle (0% adjustment).',
+    });
+  } catch {
+    setMerchantOracleSpreadEditorServerError('Could not save exchange rate. Please try again.');
+  } finally {
+    setMerchantOracleSpreadEditorPublishing(false);
+  }
+}, [
+  merchantOracleSpreadEditorDraftBps,
+  merchantOracleSpreadEditorBaselineBps,
+  cardIssuanceExistingCard?.cardAddress,
+  handlePublishCardIssuance,
+  closeMerchantOracleSpreadEditor,
+  profiles,
+]);
+
+const clearMerchantOracleSpreadSettings = useCallback(async () => {
+  if (merchantOracleSpreadClearInFlightRef.current) return;
+  if (!merchantOracleSpreadIsConfigured) return;
+  if (!cardIssuanceExistingCard?.cardAddress) {
+    setReward13ConvertOracleSpreadBps(0);
+    return;
+  }
+  merchantOracleSpreadClearInFlightRef.current = true;
+  setMerchantOracleSpreadDeleting(true);
+  setMerchantOracleSpreadEditorServerError('');
+  setCardIssuanceCreateError('');
+  try {
+    const pk = getSessionPrivateKeyArmor() ?? profiles?.[0]?.privateKeyArmor;
+    if (!pk) {
+      setMerchantOracleSpreadEditorServerError(
+        'Unlock your wallet before clearing exchange rate settings.',
+      );
+      return;
+    }
+    const cardAddr = ethers.getAddress(cardIssuanceExistingCard.cardAddress);
+    const ok = await handlePublishCardIssuance({
+      merchantOracleSpreadOverride: 0,
+      loadingScope: 'bonusEditor',
+      metadataOnly: true,
+      skipOnChainRefresh: true,
+    });
+    if (!ok) {
+      setCardIssuanceOwnerAdminNotice({
+        kind: 'warn',
+        text: 'Could not clear exchange rate. Please try again.',
+      });
+      return;
+    }
+    const chainRes = await syncMerchantOracleSpreadBpsOnChain({
+      cardAddress: cardAddr,
+      ownerPrivateKey: pk,
+      oracleSpreadBps: 0,
+    });
+    if (!chainRes.success) {
+      setCardIssuanceOwnerAdminNotice({
+        kind: 'warn',
+        text: chainRes.error ?? 'Could not update exchange rate on-chain.',
+      });
+      return;
+    }
+    setReward13ConvertOracleSpreadBps(0);
+    setCardIssuanceExistingCard((prev) => {
+      if (!prev?.meta) return prev;
+      return {
+        ...prev,
+        meta: {
+          ...prev.meta,
+          unifiedRewardPoints: mergeUnifiedRewardPointsOracleSpread(prev.meta.unifiedRewardPoints, 0),
+        },
+      };
+    });
+    invalidateBeamioCardMetadataCache(cardAddr);
+    setCardIssuanceOwnerAdminNotice({
+      kind: 'ok',
+      text: 'Exchange rate reset to oracle (0% adjustment).',
+    });
+  } finally {
+    merchantOracleSpreadClearInFlightRef.current = false;
+    setMerchantOracleSpreadDeleting(false);
+  }
+}, [
+  merchantOracleSpreadIsConfigured,
+  cardIssuanceExistingCard?.cardAddress,
+  handlePublishCardIssuance,
+  profiles,
+]);
 
 const submitCardIssuanceCouponSocialPromotionEditor = useCallback(async () => {
   const couponId = cardIssuanceCouponSocialPromotionEditorOpenId;
@@ -41303,6 +41531,81 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                      </div>
                    </div>
                    )}
+                   <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-[#1562f0]/10 bg-white p-3 sm:mt-4 sm:gap-4 sm:rounded-xl sm:p-4">
+                     <div className="flex min-w-0 items-center gap-3 sm:gap-4">
+                       <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#0051d1]/10 text-[#0051d1] sm:h-9 sm:w-9">
+                         <Percent
+                           className="h-4 w-4 sm:h-[1.15rem] sm:w-[1.15rem]"
+                           strokeWidth={2}
+                           aria-hidden
+                         />
+                       </div>
+                       <div className="min-w-0">
+                         <p className="font-manrope text-sm font-bold text-[#2c2f31]">
+                           {tu('programs_oracle_fx_title')}
+                         </p>
+                         <p className="text-[10px] text-[#595c5e]">
+                           {merchantOracleSpreadOverviewSummary || tu('programs_oracle_fx_none')}
+                         </p>
+                       </div>
+                     </div>
+                     <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+                       <button
+                         type="button"
+                         onClick={openMerchantOracleSpreadEditor}
+                         disabled={
+                           merchantOracleSpreadEditorPublishing || merchantOracleSpreadDeleting
+                         }
+                         className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-[#0051d1] transition-colors hover:bg-[#0051d1]/10 disabled:cursor-not-allowed disabled:opacity-50 ${bizFocusRingClass}`}
+                         aria-label={
+                           merchantOracleSpreadIsConfigured
+                             ? tu('programs_oracle_fx_edit_aria')
+                             : tu('programs_oracle_fx_configure_aria')
+                         }
+                       >
+                         <Pencil
+                           className="h-4 w-4 sm:h-[1.05rem] sm:w-[1.05rem]"
+                           strokeWidth={2}
+                           aria-hidden
+                         />
+                       </button>
+                       {merchantOracleSpreadIsConfigured ? (
+                         <button
+                           type="button"
+                           onClick={() => void clearMerchantOracleSpreadSettings()}
+                           disabled={
+                             merchantOracleSpreadDeleting || merchantOracleSpreadEditorPublishing
+                           }
+                           className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-[#595c5e] transition-colors hover:bg-rose-50 hover:text-[#b31b25] disabled:cursor-not-allowed disabled:opacity-50 ${bizFocusRingClass}`}
+                           aria-label={tu('programs_oracle_fx_clear_aria')}
+                           aria-busy={merchantOracleSpreadDeleting}
+                         >
+                           {merchantOracleSpreadDeleting ? (
+                             <Loader2
+                               className="h-4 w-4 animate-spin sm:h-[1.05rem] sm:w-[1.05rem]"
+                               strokeWidth={2}
+                               aria-hidden
+                             />
+                           ) : (
+                             <Trash2
+                               className="h-4 w-4 sm:h-[1.05rem] sm:w-[1.05rem]"
+                               strokeWidth={2}
+                               aria-hidden
+                             />
+                           )}
+                         </button>
+                       ) : null}
+                       <span
+                         className={`shrink-0 rounded px-2 py-0.5 text-[9px] font-black uppercase tracking-tighter ${
+                           merchantOracleSpreadIsConfigured
+                             ? 'bg-[#0051d1] text-white'
+                             : 'bg-slate-200 text-slate-600'
+                         }`}
+                       >
+                         {merchantOracleSpreadIsConfigured ? 'ACTIVE' : 'OFF'}
+                       </span>
+                     </div>
+                   </div>
                    </>
                    ) : null}
                  </section>
@@ -43608,6 +43911,17 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                  onDraftChange={setReward13ConvertEditorDraft}
                  onClose={closeReward13ConvertEditor}
                  onSave={() => void submitReward13ConvertEditor()}
+               />
+               <MerchantOracleSpreadProgramEditor
+                 open={merchantOracleSpreadEditorOpen}
+                 draftBps={merchantOracleSpreadEditorDraftBps}
+                 baselineBps={merchantOracleSpreadEditorBaselineBps}
+                 publishing={merchantOracleSpreadEditorPublishing}
+                 serverError={merchantOracleSpreadEditorServerError}
+                 focusRingClassName={bizFocusRingClass}
+                 onDraftBpsChange={setMerchantOracleSpreadEditorDraftBps}
+                 onClose={closeMerchantOracleSpreadEditor}
+                 onSave={() => void submitMerchantOracleSpreadEditor()}
                />
                {cardIssuanceCouponSocialPromotionEditorOpenId ? (
                  <>

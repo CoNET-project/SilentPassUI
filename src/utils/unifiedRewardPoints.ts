@@ -212,18 +212,22 @@ export function mergeUnifiedRewardPointsCharge(
 	}
 }
 
-/** Merge #13 convert toggles + oracle spread into unifiedRewardPoints. */
+/**
+ * Merge #13 convert toggles into unifiedRewardPoints.
+ * Preserves existing `merchantOracleSpreadBps` unless `oracleSpreadBps` is passed
+ * (legacy callers may still pass it; Prefer {@link mergeUnifiedRewardPointsOracleSpread}).
+ */
 export function mergeUnifiedRewardPointsConvert(
 	existing: unknown,
 	opts: {
 		toPointsEnabled: boolean
 		toUsdcEnabled: boolean
-		oracleSpreadBps: number
+		/** @deprecated Prefer mergeUnifiedRewardPointsOracleSpread; when omitted, spread is preserved. */
+		oracleSpreadBps?: number
 	},
 ): UnifiedRewardPoints {
 	const prev = parseUnifiedRewardPoints(existing) ?? {}
-	const spread = clampMerchantOracleSpreadBps(opts.oracleSpreadBps)
-	return {
+	const next: UnifiedRewardPoints = {
 		...prev,
 		reward13ToPoints: {
 			enabled: opts.toPointsEnabled,
@@ -233,21 +237,39 @@ export function mergeUnifiedRewardPointsConvert(
 			enabled: opts.toUsdcEnabled,
 			ratioE6: opts.toUsdcEnabled ? CONVERT_REWARD13_RATIO_ENABLED_E6 : 0,
 		},
-		merchantOracleSpreadBps: spread,
+	}
+	if (opts.oracleSpreadBps != null) {
+		next.merchantOracleSpreadBps = clampMerchantOracleSpreadBps(opts.oracleSpreadBps)
+	}
+	return next
+}
+
+/** Merge merchant-favorable oracle FX spread only (0–1000 bps); preserve convert toggles. */
+export function mergeUnifiedRewardPointsOracleSpread(
+	existing: unknown,
+	oracleSpreadBps: number,
+): UnifiedRewardPoints {
+	const prev = parseUnifiedRewardPoints(existing) ?? {}
+	return {
+		...prev,
+		merchantOracleSpreadBps: clampMerchantOracleSpreadBps(oracleSpreadBps),
 	}
 }
 
 export function formatReward13ConvertOverviewSummary(draft: {
 	toPointsEnabled: boolean
 	toUsdcEnabled: boolean
-	oracleSpreadBps: number
 }): string {
 	const parts: string[] = []
 	if (draft.toPointsEnabled) parts.push('Reward PT → Points ON')
 	if (draft.toUsdcEnabled) parts.push('Reward PT → USDC ON')
-	if (draft.oracleSpreadBps > 0) {
-		const pct = (draft.oracleSpreadBps / 100).toFixed(draft.oracleSpreadBps % 100 === 0 ? 0 : 2)
-		parts.push(`Oracle spread ${pct}%`)
-	}
 	return parts.join(' · ')
+}
+
+/** Program Basic overview line for merchant oracle FX adjustment. */
+export function formatMerchantOracleSpreadOverview(oracleSpreadBps: number): string {
+	const bps = clampMerchantOracleSpreadBps(oracleSpreadBps)
+	if (bps <= 0) return ''
+	const pct = (bps / 100).toFixed(bps % 100 === 0 ? 0 : 2)
+	return `FX +${pct}% deposit / −${pct}% withdraw`
 }

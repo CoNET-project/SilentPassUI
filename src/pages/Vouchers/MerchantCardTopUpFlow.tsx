@@ -7,7 +7,10 @@ import {
 } from '@/components/BeamioCircularBackButton'
 import { IpfsImg } from '@/components/IpfsImg'
 import { useDaemonContext } from '@/providers/DaemonProvider'
+import { useMerchantCardDatabase } from '@/providers/MerchantCardDatabaseProvider'
 import { getCardMetadataFromApi, postBuyCardPoints } from '@/services/BeamioCard'
+import { isGenericMerchantCardDisplayName } from '@/utils/isGenericMerchantCardDisplayName'
+import { pickNonFactoryMerchantAssetUrl } from '@/utils/isFactoryDefaultMerchantAssetUrl'
 import { CONET_MAINNET_CHAIN_ID } from '@/config/chainAddresses'
 import { beamioApi } from '@/utils/constants'
 import { getCardFactoryGatewayForEip712 } from '@/utils/beamioUserCardChain'
@@ -66,10 +69,11 @@ export default function MerchantCardTopUpFlow({
 	onSuccess,
 }: Props) {
 	const { setShowFooter } = useDaemonContext()
+	const { resolveName, resolveImage, registerCardAddresses } = useMerchantCardDatabase()
 	const [isEntered, setIsEntered] = useState(false)
 	const [isClosing, setIsClosing] = useState(false)
 	const [step, setStep] = useState<Step>('amount')
-	const [amountInput, setAmountInput] = useState('20')
+	const [amountInput, setAmountInput] = useState('50.00')
 	const [smartPay, setSmartPay] = useState(true)
 	const [rows, setRows] = useState<Reward13Row[]>([])
 	const [rowsLoading, setRowsLoading] = useState(false)
@@ -101,7 +105,7 @@ export default function MerchantCardTopUpFlow({
 		setIsEntered(false)
 		setIsClosing(false)
 		setStep('amount')
-		setAmountInput(initialAmount?.trim() || '20')
+		setAmountInput(initialAmount?.trim() || '50.00')
 		setSmartPay(true)
 		setUsedManual(false)
 		setSelected(new Set())
@@ -117,13 +121,16 @@ export default function MerchantCardTopUpFlow({
 
 	useEffect(() => {
 		if (!open || !cardAddress) return
+		registerCardAddresses([cardAddress])
 		void getCardMetadataFromApi(cardAddress)
 			.then((meta) => {
-				if (meta?.name) setMerchantName(meta.name)
-				setMerchantIcon(meta?.icon || meta?.image)
+				if (meta?.name && !isGenericMerchantCardDisplayName(meta.name)) {
+					setMerchantName(meta.name)
+				}
+				setMerchantIcon(pickNonFactoryMerchantAssetUrl(meta?.icon, meta?.image))
 			})
 			.catch(() => undefined)
-	}, [open, cardAddress])
+	}, [open, cardAddress, registerCardAddresses])
 
 	const loadQuoteAndRows = useCallback(async () => {
 		if (!cardAddress || Number(fiatHuman) <= 0) {
@@ -256,6 +263,18 @@ export default function MerchantCardTopUpFlow({
 
 	if (!open) return null
 
+	const dbName = resolveName(cardAddress)
+	const displayMerchantName =
+		dbName && !isGenericMerchantCardDisplayName(dbName) ? dbName : merchantName
+	const displayMerchantIcon =
+		resolveImage(cardAddress) || pickNonFactoryMerchantAssetUrl(merchantIcon) || ''
+	const amountMatchesQuick = (q: string) => {
+		const n = Number(amountInput.replace(/,/g, '').trim())
+		return Number.isFinite(n) && n === Number(q)
+	}
+	const storeCreditsLabel = `${prefix}${Number(storeCreditsPoints || 0).toFixed(2)}`
+	const heroDigitsWidth = Math.max(amountInput.replace(/,/g, '').trim().length, 4)
+
 	const back = () => {
 		if (payBusy) return
 		if (step === 'amount') close()
@@ -281,7 +300,7 @@ export default function MerchantCardTopUpFlow({
 
 	return (
 		<div
-			className="fixed inset-0 z-[130] bg-[#f4f6f8] dark:bg-slate-950"
+			className="fixed inset-0 z-[130] bg-[#F9F9FB] dark:bg-slate-950"
 			style={{
 				transform: isClosing || !isEntered ? 'translateX(100%)' : 'translateX(0)',
 				transition: 'transform 300ms ease-out',
@@ -294,80 +313,95 @@ export default function MerchantCardTopUpFlow({
 				<div className={`${BEAMIO_CIRCULAR_BACK_ROW_CLASS} px-4`}>
 					<BeamioCircularBackButton variant="onLight" onClick={back} className="absolute left-4 top-0" />
 				</div>
-				<header className="px-5 pb-6 pt-2">
-					<p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Store credits</p>
-					<h1 className="mt-1 text-3xl font-semibold text-[#0F172A] dark:text-slate-100">{title}</h1>
-				</header>
+				{step !== 'amount' ? (
+					<header className="px-5 pb-6 pt-2">
+						<p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Store credits</p>
+						<h1 className="mt-1 text-3xl font-semibold text-[#0F172A] dark:text-slate-100">{title}</h1>
+					</header>
+				) : null}
 
-				<div className="flex flex-1 flex-col px-5 pb-8">
+				<div className="flex flex-1 flex-col px-5 pb-[max(1.25rem,env(safe-area-inset-bottom,0px))]">
 					{step === 'amount' && (
-						<>
-							<div className="flex items-center gap-3">
-								{merchantIcon ? (
-									<IpfsImg src={merchantIcon} alt="" className="h-12 w-12 rounded-full object-cover" />
+						<div className="flex min-h-0 flex-1 flex-col">
+							<div className="flex flex-1 flex-col items-center pt-8">
+								{displayMerchantIcon ? (
+									<IpfsImg
+										src={displayMerchantIcon}
+										alt=""
+										className="h-20 w-20 rounded-full object-cover"
+									/>
 								) : (
-									<div className="h-12 w-12 rounded-full bg-slate-200" />
-								)}
-								<div>
-									<p className="text-base font-semibold">{merchantName}</p>
-									<p className="text-sm text-slate-500">
-										Store Credits {Number(storeCreditsPoints || 0).toFixed(2)}
-									</p>
-								</div>
-							</div>
-							<p className="mt-10 text-center text-5xl font-semibold tracking-tight">
-								{prefix}
-								{Number(fiatHuman || 0).toFixed(2)}
-							</p>
-							<label htmlFor="merchant-topup-amount" className="sr-only">
-								Amount
-							</label>
-							<input
-								id="merchant-topup-amount"
-								type="number"
-								inputMode="decimal"
-								autoComplete="off"
-								enterKeyHint="done"
-								min={0}
-								step="0.01"
-								value={amountInput}
-								onChange={(e) => setAmountInput(e.target.value)}
-								onKeyDown={preventStepKeys}
-								onWheel={(e) => {
-									e.preventDefault()
-									e.stopPropagation()
-								}}
-								className={`mt-4 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-center text-lg ${SPINNER_CLASS}`}
-							/>
-							<p className="mt-6 text-center text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-								Quick amount
-							</p>
-							<div className="mt-3 grid grid-cols-4 gap-2">
-								{QUICK.map((q) => (
-									<button
-										key={q}
-										type="button"
-										onClick={() => setAmountInput(q)}
-										className={`rounded-full border py-2 text-sm font-semibold ${
-											amountInput === q
-												? 'border-[#0051d1] bg-[#e9edff] text-[#0051d1]'
-												: 'border-slate-200 bg-white text-slate-700'
-										}`}
+									<div
+										className="flex h-20 w-20 items-center justify-center rounded-full bg-[#eceef2] text-2xl font-bold text-slate-500"
+										aria-hidden
 									>
-										{prefix}
-										{q}
-									</button>
-								))}
+										{(displayMerchantName || 'M').trim().slice(0, 1).toUpperCase()}
+									</div>
+								)}
+								<p className="mt-4 text-[22px] font-bold leading-tight text-[#111827] dark:text-slate-100">
+									{displayMerchantName}
+								</p>
+								<p className="mt-1.5 text-[15px] font-medium text-[#8b919c]">
+									Store Credits: {storeCreditsLabel}
+								</p>
+								<label htmlFor="merchant-topup-amount" className="sr-only">
+									Amount
+								</label>
+								<div className="mt-12 inline-flex items-baseline justify-center border-b-2 border-[#9ec0ff] pb-1.5">
+									<span className="shrink-0 text-[34px] font-bold text-[#9aa3b2]">{prefix}</span>
+									<input
+										id="merchant-topup-amount"
+										type="number"
+										inputMode="decimal"
+										autoComplete="off"
+										enterKeyHint="done"
+										min={0}
+										step="0.01"
+										value={amountInput}
+										onChange={(e) => setAmountInput(e.target.value)}
+										onKeyDown={preventStepKeys}
+										onWheel={(e) => {
+											e.preventDefault()
+											e.stopPropagation()
+										}}
+										className={`ml-1.5 bg-transparent p-0 text-[40px] font-bold leading-none tracking-tight text-[#111827] outline-none dark:text-slate-100 ${SPINNER_CLASS}`}
+										style={{ width: `${heroDigitsWidth}ch` }}
+									/>
+								</div>
+								<div className="mt-12 w-full max-w-md">
+									<p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#9aa3b2]">
+										Quick amount
+									</p>
+									<div className="mt-3 grid grid-cols-2 gap-3">
+										{QUICK.map((q) => {
+											const selected = amountMatchesQuick(q)
+											return (
+												<button
+													key={q}
+													type="button"
+													onClick={() => setAmountInput(Number(q).toFixed(2))}
+													className={`rounded-2xl py-3.5 text-[16px] font-semibold transition ${
+														selected
+															? 'border border-[#3B66F5] bg-[#e8eeff] text-[#3B66F5]'
+															: 'border border-transparent bg-[#f0f1f3] text-[#111827]'
+													}`}
+												>
+													${q}
+												</button>
+											)
+										})}
+									</div>
+								</div>
 							</div>
 							<button
 								type="button"
 								disabled={Number(fiatHuman) <= 0}
 								onClick={goPay}
-								className="mt-10 w-full rounded-full bg-[#0051d1] py-3.5 text-base font-semibold text-white disabled:opacity-40"
+								className="mt-auto w-full rounded-2xl bg-[#3B66F5] py-4 text-[17px] font-bold text-white disabled:opacity-40"
 							>
 								Next
 							</button>
-						</>
+						</div>
 					)}
 
 					{step === 'pay' && (

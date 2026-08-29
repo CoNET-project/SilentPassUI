@@ -446,13 +446,12 @@ const Home = (_props: HomeProps) => {
 	useEffect(() => {
 		if (!showPayReceiveSheet || payReceiveView !== 'wallets') return
 		setReceiveWalletsLooking(true)
-		let publishes = 0
+		const inShell = isCashTreesNativeWebView()
 		const unsub = subscribeReceiveWalletApps((rows) => {
 			setInstalledReceiveWallets(rows)
-			publishes += 1
-			if (publishes >= 2 || isCashTreesNativeWebView()) setReceiveWalletsLooking(false)
+			if (rows.length > 0 || inShell) setReceiveWalletsLooking(false)
 		})
-		const settleTimer = window.setTimeout(() => setReceiveWalletsLooking(false), 2500)
+		const settleTimer = window.setTimeout(() => setReceiveWalletsLooking(false), inShell ? 2600 : 1800)
 		return () => {
 			unsub()
 			window.clearTimeout(settleTimer)

@@ -154,6 +154,88 @@ function collectLegacyNamespaceProviders(win: WindowWithWalletNamespaces): Injec
 	return out
 }
 
+/**
+ * Read `window[key]` only when it is a data property.
+ * Skip accessors: Phantom / some MetaMask builds use getters that open login UI.
+ */
+function readWindowDataProperty(win: object, key: string): unknown {
+	try {
+		const desc = Object.getOwnPropertyDescriptor(win, key)
+		if (!desc || typeof desc.get === 'function') return undefined
+		return desc.value
+	} catch {
+		return undefined
+	}
+}
+
+/** Ordinary browser: never touch Phantom getter; only data properties + EIP-6963. */
+function collectSafeBrowserExtensionProviders(win: WindowWithWalletNamespaces): InjectedWalletChoice[] {
+	const out: InjectedWalletChoice[] = []
+	const push = (choice: InjectedWalletChoice) => {
+		out.push(choice)
+	}
+
+	const okxRaw = readWindowDataProperty(win, 'okxwallet') as { ethereum?: unknown } | undefined
+	const okx = asProvider(okxRaw?.ethereum) ?? asProvider(okxRaw)
+	if (okx) {
+		push({ id: 'okx', label: 'OKX Wallet', provider: okx, rdns: 'com.okx.wallet' })
+	}
+
+	const coinbaseExt = asProvider(readWindowDataProperty(win, 'coinbaseWalletExtension'))
+	if (coinbaseExt) {
+		push({ id: 'base', label: 'Coinbase Wallet', provider: coinbaseExt, rdns: 'com.coinbase.wallet' })
+	}
+
+	const tp =
+		asProvider(readWindowDataProperty(win, 'tokenpocket')) ?? asProvider(readWindowDataProperty(win, 'tp'))
+	if (tp) {
+		push({ id: 'tp', label: 'TokenPocket', provider: tp, rdns: 'pro.tokenpocket' })
+	}
+
+	const ethereum = asProvider(readWindowDataProperty(win, 'ethereum'))
+	if (ethereum) {
+		const multi = Array.isArray(ethereum.providers)
+			? ethereum.providers.map((item) => asProvider(item)).filter((item): item is Eip1193Provider => item != null)
+			: []
+		const list = multi.length > 0 ? multi : [ethereum]
+		for (const provider of list) {
+			push(classifyByFlags(provider))
+		}
+	}
+
+	return out
+}
+
+const announcedEip6963ByRdns = new Map<string, InjectedWalletChoice>()
+let eip6963WarmStarted = false
+
+function rememberEip6963Announcement(detail: Eip6963AnnounceDetail | undefined): InjectedWalletChoice | null {
+	if (!detail?.info?.rdns || !detail.provider) return null
+	const choice = classifyByRdns(detail.info.rdns, detail.info.name, detail.provider, detail.info.icon)
+	announcedEip6963ByRdns.set(detail.info.rdns.trim().toLowerCase(), choice)
+	return choice
+}
+
+function collectBrowserInjectedWallets(win: WindowWithWalletNamespaces): InjectedWalletChoice[] {
+	const legacy = isLikelyWalletInAppBrowser()
+		? collectLegacyNamespaceProviders(win)
+		: collectSafeBrowserExtensionProviders(win)
+	return mergeWalletChoices([...announcedEip6963ByRdns.values(), ...legacy])
+}
+
+function ensureEip6963Warm(): void {
+	if (typeof window === 'undefined' || eip6963WarmStarted) return
+	eip6963WarmStarted = true
+	window.addEventListener('eip6963:announceProvider', ((event: Event) => {
+		rememberEip6963Announcement((event as CustomEvent<Eip6963AnnounceDetail>).detail)
+	}) as EventListener)
+	try {
+		window.dispatchEvent(new Event('eip6963:requestProvider'))
+	} catch {
+		/* ignore */
+	}
+}
+
 function preferWalletChoice(a: InjectedWalletChoice, b: InjectedWalletChoice): InjectedWalletChoice {
 	// Prefer EIP-6963 (icon / rdns) over bare legacy flags.
 	if (!a.iconUrl && b.iconUrl) return b
@@ -202,19 +284,19 @@ export function isLikelyWalletInAppBrowser(): boolean {
 }
 
 /**
- * Snapshot of installed EVM wallets.
- * Desktop: EIP-6963 only (do not touch `window.ethereum` / `window.phantom` — Phantom login).
- * Wallet in-app UA: may include legacy namespaces for the host wallet.
+ * Snapshot of installed EVM wallets in an ordinary browser (not the native shell).
+ * EIP-6963 cache + safe data-property namespaces. Never reads Phantom getters.
+ * Wallet in-app UA may include full legacy namespaces for the host wallet.
  */
 export function listInstalledInjectedWallets(): InjectedWalletChoice[] {
 	if (typeof window === 'undefined') return []
-	if (!isLikelyWalletInAppBrowser()) return []
-	return mergeWalletChoices(collectLegacyNamespaceProviders(window as WindowWithWalletNamespaces))
+	ensureEip6963Warm()
+	return collectBrowserInjectedWallets(window as WindowWithWalletNamespaces)
 }
 
 /**
- * Live discovery via EIP-6963 only (desktop). Never auto-requests accounts.
- * Legacy `window.ethereum` / `window.phantom` are read only inside a wallet in-app browser.
+ * Live discovery for ordinary browsers. Never auto-requests accounts.
+ * EIP-6963 + safe extension properties; full legacy namespaces only in a wallet in-app UA.
  */
 export function subscribeInstalledInjectedWallets(
 	onChange: (wallets: InjectedWalletChoice[]) => void
@@ -224,24 +306,32 @@ export function subscribeInstalledInjectedWallets(
 		return () => undefined
 	}
 
+	ensureEip6963Warm()
 	const win = window as WindowWithWalletNamespaces
-	const from6963 = new Map<string, InjectedWalletChoice>()
+	const from6963 = new Map<string, InjectedWalletChoice>(announcedEip6963ByRdns)
 
 	const publish = () => {
-		const legacy = isLikelyWalletInAppBrowser() ? collectLegacyNamespaceProviders(win) : []
-		onChange(mergeWalletChoices([...from6963.values(), ...legacy]))
+		onChange(
+			mergeWalletChoices([
+				...from6963.values(),
+				...announcedEip6963ByRdns.values(),
+				...(isLikelyWalletInAppBrowser()
+					? collectLegacyNamespaceProviders(win)
+					: collectSafeBrowserExtensionProviders(win)),
+			]),
+		)
 	}
 
 	const onAnnounce = (event: Event) => {
 		const detail = (event as CustomEvent<Eip6963AnnounceDetail>).detail
-		if (!detail?.info?.rdns || !detail.provider) return
-		const choice = classifyByRdns(detail.info.rdns, detail.info.name, detail.provider, detail.info.icon)
-		from6963.set(detail.info.rdns.toLowerCase(), choice)
+		const choice = rememberEip6963Announcement(detail)
+		const rdns = detail?.info?.rdns?.trim().toLowerCase()
+		if (!choice || !rdns) return
+		from6963.set(rdns, choice)
 		publish()
 	}
 
 	window.addEventListener('eip6963:announceProvider', onAnnounce as EventListener)
-	// Ask already-injected wallets to re-announce (EIP-6963). Do not touch window.ethereum.
 	try {
 		window.dispatchEvent(new Event('eip6963:requestProvider'))
 	} catch {
@@ -249,8 +339,14 @@ export function subscribeInstalledInjectedWallets(
 	}
 	publish()
 
-	const t1 = window.setTimeout(publish, 400)
-	const t2 = window.setTimeout(() => {
+	const earlyRetry = window.setTimeout(() => {
+		try {
+			window.dispatchEvent(new Event('eip6963:requestProvider'))
+		} catch {
+			/* ignore */
+		}
+	}, 200)
+	const retryTimer = window.setTimeout(() => {
 		try {
 			window.dispatchEvent(new Event('eip6963:requestProvider'))
 		} catch {
@@ -261,8 +357,8 @@ export function subscribeInstalledInjectedWallets(
 
 	return () => {
 		window.removeEventListener('eip6963:announceProvider', onAnnounce as EventListener)
-		window.clearTimeout(t1)
-		window.clearTimeout(t2)
+		window.clearTimeout(earlyRetry)
+		window.clearTimeout(retryTimer)
 	}
 }
 

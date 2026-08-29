@@ -14,6 +14,7 @@ import {
 	type InjectedWalletChoice,
 	type InjectedWalletChoiceId,
 	type MobileWalletId,
+	isLikelyWalletInAppBrowser,
 	isMobileDeviceForWalletApps,
 	listInstalledInjectedWallets,
 	probeMobileWalletInstallations,
@@ -145,6 +146,11 @@ export function defaultInstalledMobileWalletIds(): MobileWalletId[] {
 	return [...MOBILE_PROBE_ORDER]
 }
 
+/**
+ * Shell vs browser — pick one path, never mix.
+ * 1. Native WebView (`isCashTreesNativeWebView`) → queryInstalledApps / listInstalledWalletApps only.
+ * 2. Ordinary browser → EIP-6963 + safe extension namespaces. Desktop never runs custom-scheme probes.
+ */
 export function subscribeReceiveWalletApps(
 	onRows: (rows: ReceiveWalletAppRow[]) => void,
 ): () => void {
@@ -158,40 +164,43 @@ export function subscribeReceiveWalletApps(
 		onRows(mergeReceiveWalletAppRows(lastInjected, lastMobile))
 	}
 
-	if (!isCashTreesNativeWebView()) {
-		lastInjected = listInstalledInjectedWallets()
-		unsubInjected = subscribeInstalledInjectedWallets((choices) => {
-			lastInjected = choices
-			publish()
-		})
-	}
-
-	void (async () => {
-		if (isCashTreesNativeWebView()) {
+	if (isCashTreesNativeWebView()) {
+		void (async () => {
 			const nativeIds = await listInstalledWalletAppsFromNative(RECEIVE_WALLET_NATIVE_QUERIES)
 			if (cancelled) return
 			lastMobile = (nativeIds ?? []).filter(
 				(id): id is InjectedWalletChoiceId => RECEIVE_WALLET_CATALOG_IDS.has(id),
 			)
 			publish()
-			return
+		})()
+		return () => {
+			cancelled = true
 		}
-		try {
-			const probed = await probeMobileWalletInstallations()
-			if (cancelled) return
-			const ids = installedIdsFromProbe(probed)
-			lastMobile = ids.length > 0
-				? ids
-				: (isMobileDeviceForWalletApps() ? defaultInstalledMobileWalletIds() : [])
-			publish()
-		} catch {
-			if (cancelled) return
-			if (isMobileDeviceForWalletApps()) {
+	}
+
+	lastInjected = listInstalledInjectedWallets()
+	unsubInjected = subscribeInstalledInjectedWallets((choices) => {
+		lastInjected = choices
+		publish()
+	})
+
+	if (isMobileDeviceForWalletApps() && !isLikelyWalletInAppBrowser()) {
+		void (async () => {
+			try {
+				const probed = await probeMobileWalletInstallations()
+				if (cancelled) return
+				const ids = installedIdsFromProbe(probed)
+				lastMobile = ids.length > 0 ? ids : defaultInstalledMobileWalletIds()
+				publish()
+			} catch {
+				if (cancelled) return
 				lastMobile = defaultInstalledMobileWalletIds()
 				publish()
 			}
-		}
-	})()
+		})()
+	} else {
+		publish()
+	}
 
 	return () => {
 		cancelled = true

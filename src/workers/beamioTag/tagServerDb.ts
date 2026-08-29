@@ -111,20 +111,27 @@ export function ingestSearchUsersResponse(
 	return out
 }
 
-function normalizeTagForCompare(raw: unknown): string {
+function stripTagForCompare(raw: unknown): string {
 	return String(raw || '')
 		.trim()
 		.replace(/^@+/, '')
-		.toLowerCase()
 }
 
-/** 0 = exact (case-insensitive), 1 = prefix, 2 = contains, 9 = no match. */
-export function rankTagQueryHit(tag: unknown, queryLower: string): number {
-	const t = normalizeTagForCompare(tag)
-	if (!queryLower || !t) return 9
-	if (t === queryLower) return 0
-	if (t.startsWith(queryLower)) return 1
-	if (t.includes(queryLower)) return 2
+function normalizeTagForCompare(raw: unknown): string {
+	return stripTagForCompare(raw).toLowerCase()
+}
+
+/** -1 = case-sensitive exact, 0 = case-insensitive exact, 1 = prefix, 2 = contains, 9 = no match. */
+export function rankTagQueryHit(tag: unknown, query: string): number {
+	const rawQ = stripTagForCompare(query)
+	const qLower = rawQ.toLowerCase()
+	const rawT = stripTagForCompare(tag)
+	const t = rawT.toLowerCase()
+	if (!qLower || !t) return 9
+	if (rawT === rawQ) return -1
+	if (t === qLower) return 0
+	if (t.startsWith(qLower)) return 1
+	if (t.includes(qLower)) return 2
 	return 9
 }
 
@@ -155,7 +162,7 @@ export function recordToSearchHit(local: BeamioAddressProfileRecord): SearchUser
 
 /**
  * Merge local Worker hits with `search-users` by **address** (never by lowercase username).
- * Case-insensitive exact tags rank first so LongDHANG / LONGDHANG / LongDhang stay distinct.
+ * Case-sensitive exact tag ranks first, then case-insensitive exact (LongDHANG vs LONGDHANG).
  */
 export function mergeSearchHitsByAddress(
 	localHits: SearchUsersHit[],
@@ -190,9 +197,9 @@ export function mergeSearchHitsByAddress(
 	}
 	for (const hit of localHits) put(hit, false)
 	for (const hit of remoteHits) put(hit, true)
-	const q = normalizeTagForCompare(query)
 	return [...byAddr.values()].sort(
-		(a, b) => rankTagQueryHit(pickDisplayTag(a), q) - rankTagQueryHit(pickDisplayTag(b), q),
+		(a, b) =>
+			rankTagQueryHit(pickDisplayTag(a), query) - rankTagQueryHit(pickDisplayTag(b), query),
 	)
 }
 
@@ -211,7 +218,8 @@ export function searchLocalByTagPrefix(
 	}
 	hits.sort(
 		(a, b) =>
-			rankTagQueryHit(a.accountName || a.username, q) - rankTagQueryHit(b.accountName || b.username, q),
+			rankTagQueryHit(a.accountName || a.username, query) -
+			rankTagQueryHit(b.accountName || b.username, query),
 	)
 	return hits.slice(0, limit)
 }

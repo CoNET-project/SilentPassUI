@@ -29,6 +29,7 @@ import {
 	beamioSearchDisplayName,
 	beamioSearchShortAddress,
 	makeBeamioSearchAddressOnlyResult,
+	sortSearchResultsExactFirst,
 } from '@/components/Home/beamioSearchResultPresentation'
 import { IpfsImg } from '@/components/IpfsImg'
 import { useScrollCapsuleOpacity } from '@/hooks/useScrollCapsuleOpacity'
@@ -931,7 +932,7 @@ export default function AaMultisigPage() {
 				}
 			}
 			if (id !== cosignerSearchRequestId.current) return
-			setCosignerSearchResults(filtered)
+			setCosignerSearchResults(sortSearchResultsExactFirst(filtered, normalizedCosignerQuery))
 			setCosignerSearchLoading(false)
 			setShowCosignerDropdown(true)
 		}, 350)
@@ -3447,6 +3448,7 @@ export default function AaMultisigPage() {
 																	<BeamioSearchResultRow
 																		key={item.address}
 																		item={item}
+																		query={normalizedCosignerQuery}
 																		onSelect={(row) => void handleSelectCosigner(row)}
 																	/>
 																))}

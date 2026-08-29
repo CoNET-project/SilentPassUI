@@ -44,17 +44,56 @@ export function makeBeamioSearchAddressOnlyResult(address: string): searchResult
 	}
 }
 
+export function beamioSearchTag(item: searchResult): string {
+	return String(item.username || '')
+		.trim()
+		.replace(/^@+/, '')
+}
+
+export function isExactBeamioTagMatch(item: searchResult, query: string): boolean {
+	const q = String(query || '')
+		.trim()
+		.replace(/^@+/, '')
+	if (!q) return false
+	return beamioSearchTag(item) === q
+}
+
+export function sortSearchResultsExactFirst(results: searchResult[], query: string): searchResult[] {
+	const q = String(query || '')
+		.trim()
+		.replace(/^@+/, '')
+	if (!q) return results
+	const qLower = q.toLowerCase()
+	return [...results].sort((a, b) => {
+		const aTag = beamioSearchTag(a)
+		const bTag = beamioSearchTag(b)
+		const aExact = aTag === q ? 0 : 1
+		const bExact = bTag === q ? 0 : 1
+		if (aExact !== bExact) return aExact - bExact
+		const aCi = aTag.toLowerCase() === qLower ? 0 : 1
+		const bCi = bTag.toLowerCase() === qLower ? 0 : 1
+		return aCi - bCi
+	})
+}
+
 export function BeamioSearchResultRow({
 	item,
 	onSelect,
+	query,
 }: {
 	item: searchResult
 	onSelect: (item: searchResult) => void
+	query?: string
 }) {
+	const exact = query ? isExactBeamioTagMatch(item, query) : false
 	return (
 		<button
 			type="button"
-			className="flex w-full items-center px-3 py-2.5 text-left hover:bg-slate-50 dark:hover:bg-slate-800"
+			className={
+				exact
+					? 'flex w-full items-center bg-[#faf5ff] px-3 py-2.5 text-left hover:bg-[#f3e8ff] dark:bg-[#2a2233] dark:hover:bg-[#352844]'
+					: 'flex w-full items-center px-3 py-2.5 text-left hover:bg-slate-50 dark:hover:bg-slate-800'
+			}
 			onClick={() => onSelect(item)}
 		>
 			<IpfsImg

@@ -30,6 +30,7 @@ import {
 	beamioSearchShortAddress,
 	formatBeamioSearchUserDate,
 	makeBeamioSearchAddressOnlyResult,
+	sortSearchResultsExactFirst,
 } from '@/components/Home/beamioSearchResultPresentation'
 
 const getImg = beamioSearchAvatarUrl
@@ -317,7 +318,7 @@ const SearchInputWithDropdown =
 			}
 		}
 
-		setResults(filted)
+		setResults(sortSearchResultsExactFirst(filted, qq))
 		setLoading(false)
 
 		// ✅ 只有 >=2 才打开 dropdown
@@ -835,6 +836,7 @@ const SearchInputWithDropdown =
 										<BeamioSearchResultRow
 											key={item.address}
 											item={item}
+											query={query}
 											onSelect={handleSelect}
 										/>
 									))}

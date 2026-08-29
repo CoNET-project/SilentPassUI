@@ -13,6 +13,7 @@ import {
 	beamioSearchDisplayName,
 	beamioSearchShortAddress,
 	makeBeamioSearchAddressOnlyResult,
+	sortSearchResultsExactFirst,
 } from '@/components/Home/beamioSearchResultPresentation'
 import type { KeyboardEvent, WheelEvent } from 'react'
 import { tu } from '@/locale/beamioLocale'
@@ -149,7 +150,7 @@ export default function MerchantAssetGiftSheet({ onClose, cards, profile, onSucc
 				filtered.push(makeBeamioSearchAddressOnlyResult(normalizedQuery))
 			}
 			if (id !== requestId.current) return
-			setResults(filtered)
+			setResults(sortSearchResultsExactFirst(filtered, normalizedQuery))
 			setLoading(false)
 			setShowDropdown(true)
 		}, 350)
@@ -318,6 +319,7 @@ export default function MerchantAssetGiftSheet({ onClose, cards, profile, onSucc
 												<BeamioSearchResultRow
 													key={item.address}
 													item={item}
+													query={normalizedQuery}
 													onSelect={handleSelectRecipient}
 												/>
 											))}

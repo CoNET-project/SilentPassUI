@@ -1328,11 +1328,24 @@ export type ShareTokenMetadataUnifiedRewardFlow = {
 	referrerPercentBps?: number
 }
 
+/** Toggle for atomic #13 → #0 / #13 → Conet-USDC (AA). ratioE6 > 0 enables. */
+export type ShareTokenMetadataUnifiedReward13Convert = {
+	enabled?: boolean
+	/** E6 enable latch (typically 1_000_000 when ON, 0 when OFF). */
+	ratioE6?: number
+}
+
 export type ShareTokenMetadataUnifiedRewardPoints = {
 	enabled?: boolean
 	topup?: ShareTokenMetadataUnifiedRewardFlow
 	charge?: ShareTokenMetadataUnifiedRewardFlow
 	social?: ShareTokenMetadataUnifiedRewardFlow
+	/** Programs: burn #13 → mint #0 program points. */
+	reward13ToPoints?: ShareTokenMetadataUnifiedReward13Convert
+	/** Programs: burn #13 → Conet-USDC to customer AA. */
+	reward13ToUsdc?: ShareTokenMetadataUnifiedReward13Convert
+	/** 0–1000 bps merchant oracle spread (deposit up / withdraw down). */
+	merchantOracleSpreadBps?: number
 }
 
 /** Global top-up promotion (single optional rule); canonical for POS recharge bonus. */
@@ -2816,6 +2829,195 @@ export async function syncChargeRewardRatiosOnChain(opts: {
 	referrerRatioE6: string
 }): Promise<{ success: boolean; error?: string }> {
 	return syncCombinedRewardRatiosOnChain({ ...opts, kind: 'charge' })
+}
+
+const convertReward13SettingsInterface = new ethers.Interface([
+	'function setConvertReward13ToPointsRatio(uint256 ratioE6)',
+	'function setConvertReward13ToUsdcRatio(uint256 ratioE6)',
+	'function setMerchantOracleSpreadBps(uint256 spreadBps)',
+	'function convertReward13ToPointsRatioE6() view returns (uint256)',
+	'function convertReward13ToUsdcRatioE6() view returns (uint256)',
+	'function merchantOracleSpreadBps() view returns (uint256)',
+])
+
+const CONVERT_REWARD13_ENABLED_E6 = 1_000_000n
+const MERCHANT_ORACLE_SPREAD_BPS_MAX_ONCHAIN = 1_000n
+
+export function encodeSetConvertReward13ToPointsRatio(ratioE6: string | number | bigint): string {
+	return convertReward13SettingsInterface.encodeFunctionData('setConvertReward13ToPointsRatio', [
+		BigInt(ratioE6),
+	])
+}
+
+export function encodeSetConvertReward13ToUsdcRatio(ratioE6: string | number | bigint): string {
+	return convertReward13SettingsInterface.encodeFunctionData('setConvertReward13ToUsdcRatio', [
+		BigInt(ratioE6),
+	])
+}
+
+export function encodeSetMerchantOracleSpreadBps(spreadBps: string | number | bigint): string {
+	return convertReward13SettingsInterface.encodeFunctionData('setMerchantOracleSpreadBps', [
+		BigInt(spreadBps),
+	])
+}
+
+export async function readConvertReward13SettingsOnChain(cardAddress: string): Promise<{
+	toPointsRatioE6: string
+	toUsdcRatioE6: string
+	oracleSpreadBps: string
+} | null> {
+	try {
+		const cardAddrNorm = ethers.getAddress(cardAddress)
+		const { provider } = await providerForBeamioUserCard(cardAddrNorm)
+		const card = new ethers.Contract(cardAddrNorm, convertReward13SettingsInterface, provider)
+		const [pointsRaw, usdcRaw, spreadRaw] = await Promise.all([
+			card.convertReward13ToPointsRatioE6().catch(() => null),
+			card.convertReward13ToUsdcRatioE6().catch(() => null),
+			card.merchantOracleSpreadBps().catch(() => null),
+		])
+		if (pointsRaw == null && usdcRaw == null && spreadRaw == null) return null
+		return {
+			toPointsRatioE6: pointsRaw != null ? BigInt(pointsRaw.toString()).toString() : '0',
+			toUsdcRatioE6: usdcRaw != null ? BigInt(usdcRaw.toString()).toString() : '0',
+			oracleSpreadBps: spreadRaw != null ? BigInt(spreadRaw.toString()).toString() : '0',
+		}
+	} catch {
+		return null
+	}
+}
+
+async function executeOwnerCalldataOnCard(opts: {
+	cardAddress: string
+	ownerPrivateKey: string
+	data: string
+}): Promise<{ success: boolean; error?: string }> {
+	const deadline = Math.floor(Date.now() / 1000) + 3600
+	const nonce = ethers.hexlify(ethers.randomBytes(32))
+	const ownerSignature = await signExecuteForOwner(
+		opts.ownerPrivateKey,
+		opts.cardAddress,
+		opts.data,
+		deadline,
+		nonce,
+	)
+	const post = await postExecuteForOwner({
+		cardAddress: opts.cardAddress,
+		data: opts.data,
+		deadline,
+		nonce,
+		ownerSignature,
+	})
+	if (!post.success) {
+		return { success: false, error: post.error ?? 'executeForOwner failed' }
+	}
+	return { success: true }
+}
+
+/**
+ * Write #13 convert enable latches + merchant oracle spread via owner executeForOwner.
+ * Dirty fields only (one UserOp each). ratioE6 = 1e6 when ON, 0 when OFF.
+ */
+export async function syncConvertReward13SettingsOnChain(opts: {
+	cardAddress: string
+	ownerPrivateKey: string
+	toPointsEnabled: boolean
+	toUsdcEnabled: boolean
+	oracleSpreadBps: number
+}): Promise<{ success: boolean; error?: string }> {
+	try {
+		const cardAddrNorm = ethers.getAddress(opts.cardAddress)
+		const signerAddr = ethers.getAddress(new ethers.Wallet(opts.ownerPrivateKey).address)
+		const chainOwner = await getCardOwner(cardAddrNorm)
+		if (ethers.getAddress(chainOwner) !== signerAddr) {
+			return {
+				success: false,
+				error:
+					'Reward PT conversion updates require the card owner wallet. Unlock owner wallet and retry.',
+			}
+		}
+
+		const wantPoints = opts.toPointsEnabled ? CONVERT_REWARD13_ENABLED_E6 : 0n
+		const wantUsdc = opts.toUsdcEnabled ? CONVERT_REWARD13_ENABLED_E6 : 0n
+		let wantSpread = BigInt(Math.max(0, Math.round(opts.oracleSpreadBps)))
+		if (wantSpread > MERCHANT_ORACLE_SPREAD_BPS_MAX_ONCHAIN) {
+			wantSpread = MERCHANT_ORACLE_SPREAD_BPS_MAX_ONCHAIN
+		}
+
+		const onChain = await readConvertReward13SettingsOnChain(cardAddrNorm)
+		const pointsDirty = !onChain || BigInt(onChain.toPointsRatioE6) !== wantPoints
+		const usdcDirty = !onChain || BigInt(onChain.toUsdcRatioE6) !== wantUsdc
+		const spreadDirty = !onChain || BigInt(onChain.oracleSpreadBps) !== wantSpread
+
+		if (!pointsDirty && !usdcDirty && !spreadDirty) {
+			return { success: true }
+		}
+
+		if (pointsDirty) {
+			const res = await executeOwnerCalldataOnCard({
+				cardAddress: cardAddrNorm,
+				ownerPrivateKey: opts.ownerPrivateKey,
+				data: encodeSetConvertReward13ToPointsRatio(wantPoints),
+			})
+			if (!res.success) {
+				return {
+					success: false,
+					error: res.error ?? 'Failed to update #13 → Points conversion on-chain.',
+				}
+			}
+		}
+		if (usdcDirty) {
+			const res = await executeOwnerCalldataOnCard({
+				cardAddress: cardAddrNorm,
+				ownerPrivateKey: opts.ownerPrivateKey,
+				data: encodeSetConvertReward13ToUsdcRatio(wantUsdc),
+			})
+			if (!res.success) {
+				return {
+					success: false,
+					error: res.error ?? 'Failed to update #13 → USDC conversion on-chain.',
+				}
+			}
+		}
+		if (spreadDirty) {
+			const res = await executeOwnerCalldataOnCard({
+				cardAddress: cardAddrNorm,
+				ownerPrivateKey: opts.ownerPrivateKey,
+				data: encodeSetMerchantOracleSpreadBps(wantSpread),
+			})
+			if (!res.success) {
+				return {
+					success: false,
+					error: res.error ?? 'Failed to update merchant oracle spread on-chain.',
+				}
+			}
+		}
+
+		for (let attempt = 0; attempt < 8; attempt++) {
+			if (attempt > 0) {
+				await new Promise((r) => setTimeout(r, 1200))
+			}
+			const after = await readConvertReward13SettingsOnChain(cardAddrNorm)
+			if (
+				after &&
+				BigInt(after.toPointsRatioE6) === wantPoints &&
+				BigInt(after.toUsdcRatioE6) === wantUsdc &&
+				BigInt(after.oracleSpreadBps) === wantSpread
+			) {
+				return { success: true }
+			}
+		}
+		return {
+			success: false,
+			error:
+				'Reward PT conversion settings were accepted by the API but are not on-chain yet. Wait a moment and save again.',
+		}
+	} catch (e: unknown) {
+		return {
+			success: false,
+			error:
+				e instanceof Error ? e.message : 'Failed to update Reward PT conversion settings on-chain.',
+		}
+	}
 }
 
 const addAdminInterface = new ethers.Interface([

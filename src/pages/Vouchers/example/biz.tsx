@@ -97,6 +97,7 @@ import {
   readReferrerAmountRatiosOnChain,
   syncTopupRewardRatiosOnChain,
   syncChargeRewardRatiosOnChain,
+  syncConvertReward13SettingsOnChain,
   publishMembershipFeesViaExecuteForOwner,
   postExecuteForOwner,
   fetchCardsByCategory,
@@ -281,6 +282,10 @@ import {
 } from './cardIssuanceProductions';
 import { ProgramsProductionsPanel } from './programsProductionsPanel';
 import {
+  Reward13ConvertProgramEditor,
+  type Reward13ConvertDraft,
+} from './Reward13ConvertProgramEditor';
+import {
   NavProgramMenu,
   PROGRAM_TAB_BASIC,
   PROGRAM_TAB_BUSINESS,
@@ -377,10 +382,13 @@ import {
 } from '@/utils/programTopupPromotion';
 import {
   mergeUnifiedRewardPointsCharge,
+  mergeUnifiedRewardPointsConvert,
   mergeUnifiedRewardPointsTopup,
+  parseReward13ConvertDraft,
   parseUnifiedRewardChargeDraft,
   parseUnifiedRewardTopupDraft,
   percentWholeToActorBps,
+  formatReward13ConvertOverviewSummary,
 } from '@/utils/unifiedRewardPoints';
 import { BeamioPercentSlider } from '@/components/BeamioPercentSlider';
 import { CouponSocialPromotionEventsEditor } from '@/components/programs/CouponSocialPromotionEventsEditor';
@@ -13556,6 +13564,23 @@ const [cardIssuanceConsumptionPointDeleting, setCardIssuanceConsumptionPointDele
 const cardIssuanceConsumptionPointClearInFlightRef = useRef(false);
 const [cardIssuanceConsumptionPointEditorServerError, setCardIssuanceConsumptionPointEditorServerError] =
   useState('');
+/** Programs — #13 → #0 / #13 → Conet-USDC + oracle spread (independent of Consumption Points). */
+const [reward13ConvertToPointsEnabled, setReward13ConvertToPointsEnabled] = useState(false);
+const [reward13ConvertToUsdcEnabled, setReward13ConvertToUsdcEnabled] = useState(false);
+const [reward13ConvertOracleSpreadBps, setReward13ConvertOracleSpreadBps] = useState(0);
+const [reward13ConvertEditorOpen, setReward13ConvertEditorOpen] = useState(false);
+const reward13ConvertEditorOpenRef = useRef(false);
+const [reward13ConvertEditorDraft, setReward13ConvertEditorDraft] = useState<Reward13ConvertDraft>({
+  toPointsEnabled: false,
+  toUsdcEnabled: false,
+  oracleSpreadBps: 0,
+});
+const [reward13ConvertEditorBaseline, setReward13ConvertEditorBaseline] =
+  useState<Reward13ConvertDraft | null>(null);
+const [reward13ConvertEditorPublishing, setReward13ConvertEditorPublishing] = useState(false);
+const [reward13ConvertDeleting, setReward13ConvertDeleting] = useState(false);
+const reward13ConvertClearInFlightRef = useRef(false);
+const [reward13ConvertEditorServerError, setReward13ConvertEditorServerError] = useState('');
 /** On-chain getRewardRule(1/2/3) — UI display source of truth; undefined = not loaded yet. */
 const [cardIssuanceSocialPromotionChainPromo, setCardIssuanceSocialPromotionChainPromo] = useState<
   ShareTokenMetadataSocialPromotion | null | undefined
@@ -13911,6 +13936,7 @@ const handlePublishCardIssuanceRef = useRef<
     maxTopupOverride?: string;
     pointSystemOverride?: CardIssuancePointSystemMetadata;
     rewardPtTopupOverride?: { enabled: boolean; percent: string };
+    reward13ConvertOverride?: Reward13ConvertDraft;
     metadataOnly?: boolean;
     loadingScope?: 'default' | 'bonusEditor';
     skipOnChainRefresh?: boolean;
@@ -15751,6 +15777,29 @@ useEffect(() => {
 ]);
 
 useEffect(() => {
+  if (!cardIssuanceExistingCard?.cardAddress) {
+    if (!reward13ConvertEditorOpenRef.current) {
+      setReward13ConvertToPointsEnabled(false);
+      setReward13ConvertToUsdcEnabled(false);
+      setReward13ConvertOracleSpreadBps(0);
+    }
+    return;
+  }
+  if (reward13ConvertEditorOpen) return;
+  const convertDraft = parseReward13ConvertDraft(
+    (cardIssuanceExistingCard.meta as { unifiedRewardPoints?: unknown } | undefined)
+      ?.unifiedRewardPoints,
+  );
+  setReward13ConvertToPointsEnabled(convertDraft.toPointsEnabled);
+  setReward13ConvertToUsdcEnabled(convertDraft.toUsdcEnabled);
+  setReward13ConvertOracleSpreadBps(convertDraft.oracleSpreadBps);
+}, [
+  cardIssuanceExistingCard?.cardAddress,
+  cardIssuanceExistingCard?.meta,
+  reward13ConvertEditorOpen,
+]);
+
+useEffect(() => {
   if (!cardIssuanceExistingCard?.cardAddress || !cardIssuanceExistingCard.meta) return;
   let cancelled = false;
   const cardAddressForCoupons = cardIssuanceExistingCard.cardAddress;
@@ -16926,6 +16975,21 @@ const cardIssuanceConsumptionPointDisplay = useMemo(() => {
     ratio: formatPointRatioE6Display(e6.toString()),
   });
 }, [cardIssuancePointSystemEnabled, cardIssuancePointRatioInput, tu]);
+
+const reward13ConvertOverviewSummary = useMemo(
+  () =>
+    formatReward13ConvertOverviewSummary({
+      toPointsEnabled: reward13ConvertToPointsEnabled,
+      toUsdcEnabled: reward13ConvertToUsdcEnabled,
+      oracleSpreadBps: reward13ConvertOracleSpreadBps,
+    }),
+  [reward13ConvertToPointsEnabled, reward13ConvertToUsdcEnabled, reward13ConvertOracleSpreadBps],
+);
+
+const reward13ConvertIsConfigured =
+  reward13ConvertToPointsEnabled ||
+  reward13ConvertToUsdcEnabled ||
+  reward13ConvertOracleSpreadBps > 0;
 
 const cardIssuanceTopupPromotionEditorPreviewPay = useMemo(() => {
   const raw = cardIssuanceTopupPromotion.minimumTopupAmount.replace(/,/g, '').trim();
@@ -21350,6 +21414,7 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
       maxTopupOverride?: string;
       pointSystemOverride?: CardIssuancePointSystemMetadata;
       rewardPtTopupOverride?: { enabled: boolean; percent: string };
+      reward13ConvertOverride?: Reward13ConvertDraft;
       metadataOnly?: boolean;
        loadingScope?: 'default' | 'bonusEditor';
       /** Metadata-only publish that already patches local card meta (e.g. itemCategory chips). */
@@ -21646,21 +21711,30 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
         cardIssuancePointRatioInput,
         cardIssuanceExistingCard?.chargeRewardRatioE6 ?? CARD_ISSUANCE_POINT_RATIO_DEFAULT_E6,
       );
-     const unifiedRewardPointsForPublish = mergeUnifiedRewardPointsCharge(
-       mergeUnifiedRewardPointsTopup(cardIssuanceExistingCard?.meta?.unifiedRewardPoints, {
-         enabled: rewardPtForPublish.enabled,
-         actorPercent: amountPercentInputToSlider(rewardPtForPublish.percent),
-         referrerEnabled: referrerTopupForPublish.enabled,
-         referrerPercent: amountPercentInputToSlider(referrerTopupForPublish.percent),
-       }),
-       {
-         enabled: pointSystemForPublish.enabled === true,
-         actorPercent: amountPercentInputToSlider(
-           formatAmountPercentE6Display(pointSystemForPublish.chargeRewardRatioE6),
-         ),
-         referrerEnabled: referrerChargeForPublish.enabled,
-         referrerPercent: amountPercentInputToSlider(referrerChargeForPublish.percent),
-       },
+     const convertForPublish: Reward13ConvertDraft =
+       opts?.reward13ConvertOverride ?? {
+         toPointsEnabled: reward13ConvertToPointsEnabled,
+         toUsdcEnabled: reward13ConvertToUsdcEnabled,
+         oracleSpreadBps: reward13ConvertOracleSpreadBps,
+       };
+     const unifiedRewardPointsForPublish = mergeUnifiedRewardPointsConvert(
+       mergeUnifiedRewardPointsCharge(
+         mergeUnifiedRewardPointsTopup(cardIssuanceExistingCard?.meta?.unifiedRewardPoints, {
+           enabled: rewardPtForPublish.enabled,
+           actorPercent: amountPercentInputToSlider(rewardPtForPublish.percent),
+           referrerEnabled: referrerTopupForPublish.enabled,
+           referrerPercent: amountPercentInputToSlider(referrerTopupForPublish.percent),
+         }),
+         {
+           enabled: pointSystemForPublish.enabled === true,
+           actorPercent: amountPercentInputToSlider(
+             formatAmountPercentE6Display(pointSystemForPublish.chargeRewardRatioE6),
+           ),
+           referrerEnabled: referrerChargeForPublish.enabled,
+           referrerPercent: amountPercentInputToSlider(referrerChargeForPublish.percent),
+         },
+       ),
+       convertForPublish,
      );
 	const businessProfileForPublish = mergeShareTokenBusinessProfile(
 		parseShareTokenBusinessProfileFromUnknown(cardIssuanceExistingCard?.meta?.businessProfile),
@@ -22014,6 +22088,9 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
   cardIssuanceTopupPromotion,
   programRewardPtTopupEnabled,
   programRewardPtTopupPercentInput,
+  reward13ConvertToPointsEnabled,
+  reward13ConvertToUsdcEnabled,
+  reward13ConvertOracleSpreadBps,
   cardIssuanceCoupons,
   cardIssuanceProductions,
   cardIssuanceServiceCategories,
@@ -22679,6 +22756,205 @@ const clearCardIssuanceConsumptionPoints = useCallback(async () => {
   handlePublishCardIssuance,
   profiles,
 ]);
+
+const openReward13ConvertEditor = useCallback(() => {
+  setReward13ConvertEditorServerError('');
+  const draft: Reward13ConvertDraft = {
+    toPointsEnabled: reward13ConvertToPointsEnabled,
+    toUsdcEnabled: reward13ConvertToUsdcEnabled,
+    oracleSpreadBps: reward13ConvertOracleSpreadBps,
+  };
+  setReward13ConvertEditorDraft(draft);
+  setReward13ConvertEditorBaseline(draft);
+  reward13ConvertEditorOpenRef.current = true;
+  setReward13ConvertEditorOpen(true);
+}, [
+  reward13ConvertToPointsEnabled,
+  reward13ConvertToUsdcEnabled,
+  reward13ConvertOracleSpreadBps,
+]);
+
+const closeReward13ConvertEditor = useCallback(() => {
+  if (reward13ConvertEditorPublishing) return;
+  reward13ConvertEditorOpenRef.current = false;
+  setReward13ConvertEditorOpen(false);
+  setReward13ConvertEditorBaseline(null);
+  setReward13ConvertEditorServerError('');
+}, [reward13ConvertEditorPublishing]);
+
+useEffect(() => {
+  if (!reward13ConvertEditorOpen) {
+    setReward13ConvertEditorBaseline(null);
+  }
+}, [reward13ConvertEditorOpen]);
+
+const submitReward13ConvertEditor = useCallback(async () => {
+  const next = reward13ConvertEditorDraft;
+  if (!cardIssuanceExistingCard?.cardAddress) {
+    setReward13ConvertToPointsEnabled(next.toPointsEnabled);
+    setReward13ConvertToUsdcEnabled(next.toUsdcEnabled);
+    setReward13ConvertOracleSpreadBps(next.oracleSpreadBps);
+    closeReward13ConvertEditor();
+    return;
+  }
+  setReward13ConvertEditorServerError('');
+  setCardIssuanceCreateError('');
+  setReward13ConvertEditorPublishing(true);
+  try {
+    const pk = getSessionPrivateKeyArmor() ?? profiles?.[0]?.privateKeyArmor;
+    if (!pk) {
+      setReward13ConvertEditorServerError(
+        'Unlock your wallet before saving Reward PT conversion settings.',
+      );
+      return;
+    }
+    const cardAddr = ethers.getAddress(cardIssuanceExistingCard.cardAddress);
+    const dirty =
+      reward13ConvertEditorBaseline == null ||
+      reward13ConvertEditorBaseline.toPointsEnabled !== next.toPointsEnabled ||
+      reward13ConvertEditorBaseline.toUsdcEnabled !== next.toUsdcEnabled ||
+      reward13ConvertEditorBaseline.oracleSpreadBps !== next.oracleSpreadBps;
+    if (dirty) {
+      const ok = await handlePublishCardIssuance({
+        reward13ConvertOverride: next,
+        loadingScope: 'bonusEditor',
+        metadataOnly: true,
+        skipOnChainRefresh: true,
+      });
+      if (!ok) {
+        setReward13ConvertEditorServerError(
+          'Could not save Reward PT conversion metadata. Review the error below and try again.',
+        );
+        return;
+      }
+      const chainRes = await syncConvertReward13SettingsOnChain({
+        cardAddress: cardAddr,
+        ownerPrivateKey: pk,
+        toPointsEnabled: next.toPointsEnabled,
+        toUsdcEnabled: next.toUsdcEnabled,
+        oracleSpreadBps: next.oracleSpreadBps,
+      });
+      if (!chainRes.success) {
+        setReward13ConvertEditorServerError(
+          chainRes.error ?? 'On-chain Reward PT conversion update failed. Try again.',
+        );
+        return;
+      }
+    }
+    setReward13ConvertToPointsEnabled(next.toPointsEnabled);
+    setReward13ConvertToUsdcEnabled(next.toUsdcEnabled);
+    setReward13ConvertOracleSpreadBps(next.oracleSpreadBps);
+    setCardIssuanceExistingCard((prev) => {
+      if (!prev?.meta) return prev;
+      return {
+        ...prev,
+        meta: {
+          ...prev.meta,
+          unifiedRewardPoints: mergeUnifiedRewardPointsConvert(prev.meta.unifiedRewardPoints, next),
+        },
+      };
+    });
+    invalidateBeamioCardMetadataCache(cardAddr);
+    reward13ConvertEditorOpenRef.current = false;
+    setReward13ConvertEditorOpen(false);
+    setReward13ConvertEditorBaseline(null);
+    setCardIssuanceOwnerAdminNotice({
+      kind: 'ok',
+      text:
+        next.toPointsEnabled || next.toUsdcEnabled
+          ? 'Reward PT conversion saved. Members can convert #13 on your program card.'
+          : 'Reward PT conversion disabled.',
+    });
+  } catch {
+    setReward13ConvertEditorServerError('Could not save Reward PT conversion. Please try again.');
+  } finally {
+    setReward13ConvertEditorPublishing(false);
+  }
+}, [
+  reward13ConvertEditorDraft,
+  reward13ConvertEditorBaseline,
+  cardIssuanceExistingCard?.cardAddress,
+  handlePublishCardIssuance,
+  closeReward13ConvertEditor,
+  profiles,
+]);
+
+const clearReward13ConvertSettings = useCallback(async () => {
+  if (reward13ConvertClearInFlightRef.current) return;
+  const cleared: Reward13ConvertDraft = {
+    toPointsEnabled: false,
+    toUsdcEnabled: false,
+    oracleSpreadBps: 0,
+  };
+  if (!cardIssuanceExistingCard?.cardAddress) {
+    setReward13ConvertToPointsEnabled(false);
+    setReward13ConvertToUsdcEnabled(false);
+    setReward13ConvertOracleSpreadBps(0);
+    return;
+  }
+  reward13ConvertClearInFlightRef.current = true;
+  setReward13ConvertDeleting(true);
+  setReward13ConvertEditorServerError('');
+  setCardIssuanceCreateError('');
+  try {
+    const pk = getSessionPrivateKeyArmor() ?? profiles?.[0]?.privateKeyArmor;
+    if (!pk) {
+      setReward13ConvertEditorServerError(
+        'Unlock your wallet before disabling Reward PT conversion.',
+      );
+      return;
+    }
+    const cardAddr = ethers.getAddress(cardIssuanceExistingCard.cardAddress);
+    const ok = await handlePublishCardIssuance({
+      reward13ConvertOverride: cleared,
+      loadingScope: 'bonusEditor',
+      metadataOnly: true,
+      skipOnChainRefresh: true,
+    });
+    if (!ok) {
+      setCardIssuanceOwnerAdminNotice({
+        kind: 'warn',
+        text: 'Could not disable Reward PT conversion. Please try again.',
+      });
+      return;
+    }
+    const chainRes = await syncConvertReward13SettingsOnChain({
+      cardAddress: cardAddr,
+      ownerPrivateKey: pk,
+      toPointsEnabled: false,
+      toUsdcEnabled: false,
+      oracleSpreadBps: 0,
+    });
+    if (!chainRes.success) {
+      setCardIssuanceOwnerAdminNotice({
+        kind: 'warn',
+        text: chainRes.error ?? 'Could not update Reward PT conversion on-chain.',
+      });
+      return;
+    }
+    setReward13ConvertToPointsEnabled(false);
+    setReward13ConvertToUsdcEnabled(false);
+    setReward13ConvertOracleSpreadBps(0);
+    setCardIssuanceExistingCard((prev) => {
+      if (!prev?.meta) return prev;
+      return {
+        ...prev,
+        meta: {
+          ...prev.meta,
+          unifiedRewardPoints: mergeUnifiedRewardPointsConvert(prev.meta.unifiedRewardPoints, cleared),
+        },
+      };
+    });
+    invalidateBeamioCardMetadataCache(cardAddr);
+    setCardIssuanceOwnerAdminNotice({
+      kind: 'ok',
+      text: 'Reward PT conversion disabled.',
+    });
+  } finally {
+    reward13ConvertClearInFlightRef.current = false;
+    setReward13ConvertDeleting(false);
+  }
+}, [cardIssuanceExistingCard?.cardAddress, handlePublishCardIssuance, profiles]);
 
 const submitCardIssuanceCouponSocialPromotionEditor = useCallback(async () => {
   const couponId = cardIssuanceCouponSocialPromotionEditorOpenId;
@@ -40879,6 +41155,79 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                              </span>
                            </div>
                          </div>
+                         <div className="flex items-center justify-between gap-3 rounded-lg border border-[#1562f0]/10 bg-white p-3 sm:gap-4 sm:rounded-xl sm:p-4">
+                           <div className="flex min-w-0 items-center gap-3 sm:gap-4">
+                             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#8d3a8b]/10 text-[#8d3a8b] sm:h-9 sm:w-9">
+                               <ArrowRightLeft
+                                 className="h-4 w-4 sm:h-[1.15rem] sm:w-[1.15rem]"
+                                 strokeWidth={2}
+                                 aria-hidden
+                               />
+                             </div>
+                             <div className="min-w-0">
+                               <p className="font-manrope text-sm font-bold text-[#2c2f31]">
+                                 {tu('programs_reward13_convert_title')}
+                               </p>
+                               <p className="text-[10px] text-[#595c5e]">
+                                 {reward13ConvertOverviewSummary ||
+                                   tu('programs_reward13_convert_none')}
+                               </p>
+                             </div>
+                           </div>
+                           <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+                             <button
+                               type="button"
+                               onClick={openReward13ConvertEditor}
+                               className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-[#8d3a8b] transition-colors hover:bg-[#8d3a8b]/10 ${bizFocusRingClass}`}
+                               aria-label={
+                                 reward13ConvertIsConfigured
+                                   ? tu('programs_reward13_convert_edit_aria')
+                                   : tu('programs_reward13_convert_configure_aria')
+                               }
+                             >
+                               <Pencil
+                                 className="h-4 w-4 sm:h-[1.05rem] sm:w-[1.05rem]"
+                                 strokeWidth={2}
+                                 aria-hidden
+                               />
+                             </button>
+                             {reward13ConvertIsConfigured ? (
+                               <button
+                                 type="button"
+                                 onClick={() => void clearReward13ConvertSettings()}
+                                 disabled={
+                                   reward13ConvertDeleting || reward13ConvertEditorPublishing
+                                 }
+                                 className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-[#595c5e] transition-colors hover:bg-rose-50 hover:text-[#b31b25] disabled:cursor-not-allowed disabled:opacity-50 ${bizFocusRingClass}`}
+                                 aria-label={tu('programs_reward13_convert_clear_aria')}
+                                 aria-busy={reward13ConvertDeleting}
+                               >
+                                 {reward13ConvertDeleting ? (
+                                   <Loader2
+                                     className="h-4 w-4 animate-spin sm:h-[1.05rem] sm:w-[1.05rem]"
+                                     strokeWidth={2}
+                                     aria-hidden
+                                   />
+                                 ) : (
+                                   <Trash2
+                                     className="h-4 w-4 sm:h-[1.05rem] sm:w-[1.05rem]"
+                                     strokeWidth={2}
+                                     aria-hidden
+                                   />
+                                 )}
+                               </button>
+                             ) : null}
+                             <span
+                               className={`shrink-0 rounded px-2 py-0.5 text-[9px] font-black uppercase tracking-tighter ${
+                                 reward13ConvertIsConfigured
+                                   ? 'bg-[#8d3a8b] text-white'
+                                   : 'bg-slate-200 text-slate-600'
+                               }`}
+                             >
+                               {reward13ConvertIsConfigured ? 'ACTIVE' : 'OFF'}
+                             </span>
+                           </div>
+                         </div>
                        </div>
                      </div>
                      ) : null}
@@ -43250,6 +43599,16 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                    </motion.div>
                  </>
                ) : null}
+               <Reward13ConvertProgramEditor
+                 open={reward13ConvertEditorOpen}
+                 draft={reward13ConvertEditorDraft}
+                 baseline={reward13ConvertEditorBaseline}
+                 publishing={reward13ConvertEditorPublishing}
+                 serverError={reward13ConvertEditorServerError}
+                 onDraftChange={setReward13ConvertEditorDraft}
+                 onClose={closeReward13ConvertEditor}
+                 onSave={() => void submitReward13ConvertEditor()}
+               />
                {cardIssuanceCouponSocialPromotionEditorOpenId ? (
                  <>
                    <motion.button

@@ -35,7 +35,6 @@ import {
 	Search,
 	Mic,
 	Heart,
-	Radio,
 	Clock,
 	Phone,
 	LayoutGrid,
@@ -578,6 +577,8 @@ function DiscoverMerchantProspectJoinPanel({
 	bonusBadge,
 	chargeFooter,
 	ctaLabel,
+	membershipPrice,
+	membershipDuration,
 	onClaim,
 }: {
 	heading: string
@@ -585,17 +586,38 @@ function DiscoverMerchantProspectJoinPanel({
 	bonusBadge?: string | null
 	chargeFooter?: string | null
 	ctaLabel: string
+	membershipPrice?: string | null
+	membershipDuration?: string | null
 	onClaim?: () => void
 }) {
+	const price = (membershipPrice ?? '').trim()
+	const duration = (membershipDuration ?? '').trim()
 	return (
 		<section
 			className="overflow-hidden rounded-[22px] bg-[#1562f0] p-4 text-white shadow-[0_8px_22px_rgba(15,23,42,0.06)] sm:p-5"
 			aria-label={heading}
 		>
+			<div className="flex items-start justify-between gap-3">
 			<span className="inline-flex items-center gap-1.5 rounded-full bg-[#e4e9ff] px-3 py-1 text-[11px] font-bold uppercase tracking-[0.06em] text-[#0c2a6b]">
 				<Crown className="h-3.5 w-3.5 shrink-0" strokeWidth={2.25} aria-hidden />
 				Exclusive Welcome Offer
 			</span>
+			{price ? (
+				<span
+					className="shrink-0 rounded-full bg-white/15 px-3 py-1 text-right leading-tight ring-1 ring-white/20"
+					aria-label={`Membership ${price}${duration ? ` · ${duration}` : ''}`}
+				>
+					<span className="block text-[15px] font-bold tabular-nums tracking-tight text-white">
+						{price}
+					</span>
+					{duration ? (
+						<span className="mt-0.5 block text-[10px] font-semibold uppercase tracking-[0.06em] text-white/75">
+							{duration}
+						</span>
+					) : null}
+				</span>
+			) : null}
+			</div>
 			<h3 className="mt-3 text-[20px] font-bold leading-snug tracking-tight text-white sm:text-[22px]">
 				{heading}
 			</h3>
@@ -4174,27 +4196,6 @@ function DiscoverMerchantDetailFullScreen({
 		if (fromMeta && fromMeta.toLowerCase() !== 'tier') return fromMeta
 		return membershipFeeDisplay?.tierName?.trim() || `Tier ${activeTierIndex}`
 	}, [hasActiveMembership, merchantMetadataRoot, merchantAssets, membershipFeeDisplay])
-	const membershipExpiryDisplay = useMemo(() => {
-		if (!hasActiveMembership || !merchantAssets) return null
-		const active = pickActiveDiscoverMembershipNft(merchantAssets.nfts)
-		const expiry = (active?.expiry ?? '').trim()
-		if (!expiry || expiry === 'Never' || /^0+$/.test(expiry)) {
-			return 'Never expires'
-		}
-		const asNum = Number(expiry)
-		if (Number.isFinite(asNum) && asNum > 1_000_000_000) {
-			try {
-				return new Date(asNum * 1000).toLocaleDateString(undefined, {
-					year: 'numeric',
-					month: 'short',
-					day: 'numeric',
-				})
-			} catch {
-				return expiry
-			}
-		}
-		return expiry
-	}, [hasActiveMembership, merchantAssets])
 	const promoRewardTier =
 		item.cardAddress != null
 			? DISCOVER_MERCHANT_PROMO_REWARD_TIERS[resolveDiscoverCardPanelKey(item.cardAddress)]
@@ -4291,6 +4292,18 @@ function DiscoverMerchantDetailFullScreen({
 		[merchantMetadataRoot, displayCurrency, discoverWelcomePanel?.title, discoverWelcomePanel?.body, passTitle],
 	)
 	const showProspectJoinPanel = !isConetGenesisCard && !hasActiveMembership
+	const prospectJoinMembershipPrice = useMemo(() => {
+		const joinTier = membershipUi.joinTier
+		if (!joinTier) return { price: null as string | null, duration: null as string | null }
+		const feeHuman = membershipFeeE6ToHuman(joinTier.feeE6)
+		if (!feeHuman) return { price: null, duration: null }
+		const prefix = balancePrefix || ''
+		const duration =
+			joinTier.durationKind != null
+				? MEMBERSHIP_DURATION_LABELS[joinTier.durationKind] ?? ''
+				: ''
+		return { price: `${prefix}${feeHuman}`, duration: duration || null }
+	}, [balancePrefix, membershipUi.joinTier])
 	const openConetExplore = useCallback(() => {
 		void openExternalUrl(CONET_EXPLORE_NETWORK_URL)
 	}, [])
@@ -5811,6 +5824,8 @@ function DiscoverMerchantDetailFullScreen({
 							body={prospectJoinPanelCopy.body}
 							bonusBadge={prospectJoinPanelCopy.bonusBadge}
 							chargeFooter={prospectJoinPanelCopy.chargeFooter}
+							membershipPrice={prospectJoinMembershipPrice.price}
+							membershipDuration={prospectJoinMembershipPrice.duration}
 							ctaLabel={
 								membershipUi.mode === 'need_member' && membershipUi.joinTier
 									? 'Claim Offer & Become a Member'
@@ -5852,40 +5867,32 @@ function DiscoverMerchantDetailFullScreen({
 					>
 						{hasActiveMembership ? (
 						<>
-						<div className="flex items-start justify-between gap-3">
-							<div className="min-w-0 flex-1">
-								<h2 className="text-[18px] font-bold leading-snug text-[#1f2328] dark:text-slate-100">
-									{discoverWelcomePanel?.title ||
-										resolveDiscoverWelcomeTitle({ passTitle, merchantInfoPanel })}
-								</h2>
-								<div className="mt-2 flex flex-wrap items-center gap-2">
-									<span className="inline-flex max-w-full items-center rounded-full bg-[#e9edff] px-2.5 py-1 text-[12px] font-bold text-[#0051d1] dark:bg-[#1e2a4a] dark:text-[#8eb4ff]">
-										<span className="truncate">{activeMembershipTierName}</span>
-									</span>
-									<span className="inline-flex items-center gap-1.5">
-										<span className="h-2 w-2 shrink-0 rounded-full bg-[#1562f0]" aria-hidden />
-										<span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500 dark:text-slate-400">
-											Active Member
-										</span>
-									</span>
-								</div>
-								{(discoverWelcomePanel?.body ?? '').trim() ? (
-									<DiscoverAboutDetailBody
-										text={(discoverWelcomePanel?.body ?? '').trim()}
-										className=" mt-2"
-									/>
-								) : null}
-								{membershipExpiryDisplay ? (
-									<p className="mt-1.5 text-[12px] font-medium text-slate-500 dark:text-slate-400">
-										{membershipExpiryDisplay === 'Never expires'
-											? membershipExpiryDisplay
-											: `Expires ${membershipExpiryDisplay}`}
-									</p>
-								) : null}
+						<div className="min-w-0">
+							<h2 className="text-[18px] font-bold leading-snug text-[#1f2328] dark:text-slate-100">
+								{discoverWelcomePanel?.title ||
+									resolveDiscoverWelcomeTitle({ passTitle, merchantInfoPanel })}
+							</h2>
+							<div className="mt-2 flex flex-wrap items-center gap-2">
+								<span className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-[#e9edff] px-2.5 py-1 text-[12px] font-bold text-[#0051d1] dark:bg-[#1e2a4a] dark:text-[#8eb4ff]">
+									<span className="truncate">{activeMembershipTierName}</span>
+									{(membershipFeeDisplay?.durationLabel ?? '').trim() ? (
+										<>
+											<span className="font-semibold text-[#0051d1]/40 dark:text-[#8eb4ff]/45" aria-hidden>
+												/
+											</span>
+											<span className="shrink-0 font-semibold">
+												{(membershipFeeDisplay?.durationLabel ?? '').trim()}
+											</span>
+										</>
+									) : null}
+								</span>
 							</div>
-							<span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#1562f0] text-white shadow-sm">
-								<Radio className="h-5 w-5" strokeWidth={2} aria-hidden />
-							</span>
+							{(discoverWelcomePanel?.body ?? '').trim() ? (
+								<DiscoverAboutDetailBody
+									text={(discoverWelcomePanel?.body ?? '').trim()}
+									className=" mt-2"
+								/>
+							) : null}
 						</div>
 						<div className="mt-5 grid grid-cols-2 gap-0 border-t border-slate-100 pt-4 dark:border-slate-800">
 							<div className="min-w-0 pr-3 sm:pr-4">

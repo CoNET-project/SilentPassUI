@@ -358,14 +358,15 @@ export function MerchantCardUsdcReserveDepositSheet({
 				aria-modal="true"
 				aria-labelledby="merchant-card-usdc-reserve-deposit-title"
 			>
-				<div className="relative flex shrink-0 items-center px-4 pb-2 pt-[max(0.75rem,env(safe-area-inset-top,0px))]">
+				{/* Editor chrome: Back left · Title center · Check right (`beamio-drawer-form-chrome`) */}
+				<div className="relative flex shrink-0 items-center justify-between gap-3 px-4 pb-2 pt-[max(0.75rem,env(safe-area-inset-top,0px))]">
 					<button
 						type="button"
 						tabIndex={-1}
 						aria-label="Cancel"
 						disabled={busy}
 						onClick={closeSheet}
-						className={`inline-flex h-9 w-9 items-center justify-center rounded-full border border-black/[0.08] bg-white text-[#2c2f31] shadow-sm disabled:opacity-50 ${bizFocusRingClass}`}
+						className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-black/[0.08] bg-white text-[#2c2f31] shadow-sm disabled:opacity-50 ${bizFocusRingClass}`}
 					>
 						<ChevronLeft className="h-5 w-5" strokeWidth={2.25} aria-hidden />
 					</button>
@@ -382,7 +383,7 @@ export function MerchantCardUsdcReserveDepositSheet({
 						aria-busy={busy}
 						disabled={!canSubmit}
 						onClick={() => void handleSubmit()}
-						className={`inline-flex h-9 w-9 items-center justify-center rounded-full text-white shadow-sm disabled:opacity-40 ${bizFocusRingClass} ${
+						className={`ml-auto inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white shadow-sm disabled:opacity-40 ${bizFocusRingClass} ${
 							canSubmit ? 'bg-[#0051d1]' : 'bg-slate-300'
 						}`}
 					>

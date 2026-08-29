@@ -27103,13 +27103,16 @@ const overviewCustomerBalanceFromActivity = useMemo(() => {
      setMarketRefuelError('Select a refill package or enter a valid USDC amount.');
      return false;
    }
-   const opened = openExternalUrl(
-     buildFuelPackUsdcTopupUrl({
-       beneficiary: account,
-       amount,
-       packId: pack?.id,
-     }),
-   );
+   const topupUrl = buildFuelPackUsdcTopupUrl({
+     beneficiary: account,
+     amount,
+     packId: pack?.id,
+   });
+   if (!topupUrl) {
+     setMarketRefuelError('Invalid wallet address for USDC payment.');
+     return false;
+   }
+   const opened = openExternalUrl(topupUrl);
    if (!opened) {
      setMarketRefuelError('Could not open the USDC payment page. Allow pop-ups and try again.');
      return false;

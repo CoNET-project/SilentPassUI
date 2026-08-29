@@ -243,8 +243,19 @@ function metamaskSendUsdcUrl(eoa: string, amount6?: bigint): string {
 	return `https://metamask.app.link/send/${USDC_BASE}@${BASE_MAINNET_CHAIN_ID}/transfer?address=${eoa}${eip681Uint256Suffix(amount6)}`
 }
 
-function coinbaseWalletDappUrl(eoa: string, amount6?: bigint): string {
-	return `https://go.cb-w.com/dapp?cb_url=${encodeURIComponent(receiveEip681UsdcTransfer(eoa, amount6))}`
+/**
+ * Coinbase Wallet send URI.
+ *
+ * Do **not** wrap EIP-681 in `https://go.cb-w.com/dapp?cb_url=` or `cbwallet://dapp?url=` —
+ * those endpoints only load **https** dapp pages. Passing `ethereum:…/transfer?…` makes the
+ * in-app browser spin forever on a non-web URL (MetaMask uses a dedicated `metamask://send/…`
+ * path and does not hit this bug).
+ *
+ * Opening the raw EIP-681 URI lets iOS/Android hand off to Coinbase Wallet (or the system
+ * wallet picker). Native shells must allow the `ethereum` scheme in `openURL`.
+ */
+function coinbaseWalletSendUrl(eoa: string, amount6?: bigint): string {
+	return receiveEip681UsdcTransfer(eoa, amount6)
 }
 
 function okxWalletDownloadUrl(eoa: string, amount6?: bigint): string {
@@ -270,7 +281,8 @@ function receiveWalletNativeSchemeUrlByBrand(
 		case 'metamask':
 			return `metamask://send/${USDC_BASE}@${BASE_MAINNET_CHAIN_ID}/transfer?address=${eoa}${eip681Uint256Suffix(amount6)}`
 		case 'base':
-			return `cbwallet://dapp?url=${encodeURIComponent(eip681)}`
+			// Raw EIP-681 — never `cbwallet://dapp?url=` (that only loads https pages).
+			return eip681
 		case 'okx':
 			return `okx://wallet/dapp/url?dappUrl=${encodeURIComponent(eip681)}`
 		case 'tp':
@@ -303,7 +315,7 @@ export function receiveWalletHttpsOpenUrl(
 		case 'metamask':
 			return metamaskSendUsdcUrl(eoa, amount6)
 		case 'base':
-			return coinbaseWalletDappUrl(eoa, amount6)
+			return coinbaseWalletSendUrl(eoa, amount6)
 		case 'okx':
 			return okxWalletDownloadUrl(eoa, amount6)
 		case 'tp':

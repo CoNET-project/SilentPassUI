@@ -28,6 +28,11 @@ export const BASE_TREASURY_LEGACY = '0x5c64a8b0935DA72d60933bBD8cD10579E1C40c58'
 export const CONET_TREASURY = '0xa208982212978550594A7FEEB70a61665d129003'
 export const BEAMIO_USER_CARD_ASSET_ADDRESS = '0xA756F2E27a332d6Be2d399dA543E3Ce4C8455F14'
 export const USDC_BASE = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
+/**
+ * Base USDC x402 settle payTo for walletDeposit / treasuryBridge / genesis seat / fuelPack.
+ * Master LockMint gas is sponsored from Settle_BasePool; bridge fee comes from initiator USDC.
+ */
+export const GENESIS_NODE_BRIDGE_INITIATOR = '0x87cAeD4e51C36a2C2ece3Aaf4ddaC9693d2405E1'
 export const BEAMIO_INDEXER_DIAMOND = '0x6113fE738489c0aB64B4606Ce333aD29b44ED0C4'
 /** CoNET BUint ERC20（balanceOf / balanceOfAll）；与 deployments/conet-addresses.json `BUint` 同步 */
 export const CONET_BUINT = '0x54ac4672cE75EC5ACebaeF1a7aFC6F49E77Ae9Ae'

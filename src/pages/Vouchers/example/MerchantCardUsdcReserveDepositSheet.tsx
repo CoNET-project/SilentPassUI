@@ -4,7 +4,7 @@
  * Sources (when available):
  * - Third-party wallet → walletDeposit URL (Base USDC → LockMint → card)
  * - Merchant EOA CONET-USDC → transfer on CoNET
- * - Merchant EOA Base USDC → initiateLockMint on Base
+ * - Merchant EOA Base USDC → x402 EIP-3009 walletDeposit (gas sponsored)
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, ArrowDownToLine, Check, ChevronLeft, Loader2, Wallet } from 'lucide-react'
@@ -17,9 +17,7 @@ import { ethers } from 'ethers'
 import {
 	depositBaseUsdcFromEoaViaLockMintToCard,
 	depositConetUsdcFromEoaToCard,
-	maxLockMintAmount6FromBalance,
 	parseUsdcHumanToAmount6,
-	readBaseUsdcLockMintFeeBps,
 } from '@/utils/merchantCardUsdcReserveEoaDeposit'
 import {
 	formatMerchantCardConetUsdcBalanceDisplay,
@@ -98,7 +96,6 @@ export function MerchantCardUsdcReserveDepositSheet({
 	const [error, setError] = useState<string | null>(null)
 	const [arrivedBalance, setArrivedBalance] = useState<string | null>(null)
 	const [baselineBalance, setBaselineBalance] = useState<string | null>(null)
-	const [lockMintFeeBps, setLockMintFeeBps] = useState<bigint>(0n)
 	const abortRef = useRef<AbortController | null>(null)
 	const amountInputWheelRef = useMemo(
 		() => createNumericInputWheelNonPassiveRefCallback(),
@@ -129,14 +126,8 @@ export function MerchantCardUsdcReserveDepositSheet({
 		if (source === 'eoa_conet_usdc' && eoaConetBal6 != null && amount6 > eoaConetBal6) {
 			return `Amount exceeds your CONET-USDC balance ($${formatUsdcBalanceLabel(eoaConetUsdcBalance)}).`
 		}
-		if (source === 'eoa_base_usdc' && eoaBaseBal6 != null) {
-			const fee6 = (amount6 * lockMintFeeBps) / 10_000n
-			const need6 = amount6 + fee6
-			if (need6 > eoaBaseBal6) {
-				return fee6 > 0n
-					? `Amount plus bridge fee ($${ethers.formatUnits(need6, 6)}) exceeds your Base USDC balance ($${formatUsdcBalanceLabel(eoaBaseUsdcBalance)}).`
-					: `Amount exceeds your Base USDC balance ($${formatUsdcBalanceLabel(eoaBaseUsdcBalance)}).`
-			}
+		if (source === 'eoa_base_usdc' && eoaBaseBal6 != null && amount6 > eoaBaseBal6) {
+			return `Amount exceeds your Base USDC balance ($${formatUsdcBalanceLabel(eoaBaseUsdcBalance)}).`
 		}
 		return null
 	}, [
@@ -145,7 +136,6 @@ export function MerchantCardUsdcReserveDepositSheet({
 		source,
 		eoaConetBal6,
 		eoaBaseBal6,
-		lockMintFeeBps,
 		eoaConetUsdcBalance,
 		eoaBaseUsdcBalance,
 	])
@@ -188,24 +178,6 @@ export function MerchantCardUsdcReserveDepositSheet({
 		}
 	}, [open, availableSources, source])
 
-	useEffect(() => {
-		if (!open || !showEoaBase) {
-			setLockMintFeeBps(0n)
-			return
-		}
-		let cancelled = false
-		void readBaseUsdcLockMintFeeBps()
-			.then((bps) => {
-				if (!cancelled) setLockMintFeeBps(bps)
-			})
-			.catch(() => {
-				if (!cancelled) setLockMintFeeBps(0n)
-			})
-		return () => {
-			cancelled = true
-		}
-	}, [open, showEoaBase])
-
 	const closeSheet = useCallback(() => {
 		if (isClosing || phase === 'submitting') return
 		abortRef.current?.abort()
@@ -223,15 +195,10 @@ export function MerchantCardUsdcReserveDepositSheet({
 			return
 		}
 		if (source === 'eoa_base_usdc' && eoaBaseBal6 != null && eoaBaseBal6 > 0n) {
-			const maxPrincipal = maxLockMintAmount6FromBalance(eoaBaseBal6, lockMintFeeBps)
-			if (maxPrincipal <= 0n) {
-				setError('Balance is too low to cover the bridge fee.')
-				return
-			}
-			setAmountInput(formatAmount6Input(maxPrincipal))
+			setAmountInput(formatAmount6Input(eoaBaseBal6))
 			setError(null)
 		}
-	}, [source, eoaConetBal6, eoaBaseBal6, lockMintFeeBps])
+	}, [source, eoaConetBal6, eoaBaseBal6])
 
 	const startArrivalWatch = useCallback(
 		async (card: string, baseline: string) => {
@@ -587,8 +554,8 @@ export function MerchantCardUsdcReserveDepositSheet({
 								</p>
 							) : (
 								<p className="mt-3 text-xs leading-relaxed text-slate-500">
-									Approves and locks Base USDC in TreasuryBridgeV3, then mints CONET-USDC to this card.
-									Requires ETH on Base for gas.
+									Signs a Base USDC payment (EIP-3009). Beamio settles USDC and mints CONET-USDC to this
+									card — gas is sponsored; you do not need ETH on Base.
 								</p>
 							)}
 

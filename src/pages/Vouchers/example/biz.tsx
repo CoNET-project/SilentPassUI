@@ -34970,19 +34970,21 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                setVoucherPayFromScan={setVoucherPayFromScan}
                navigate={navigate}
              />
-             <MerchantCardUsdcReserveDepositSheet
-               open={usdcReserveDepositOpen}
-               cardAddress={staffProgramBeamioCardAddress}
-               eoaBaseUsdcBalance={eoaUsdcBalance}
-               eoaConetUsdcBalance={eoaConetUsdcBalance}
-               onClose={() => setUsdcReserveDepositOpen(false)}
-               onArrived={() => {
-                 refreshMerchantCardRewardReserveNow()
-                 setOverviewRefreshTrigger((n) => n + 1)
-               }}
-             />
            </div>
          )}
+
+         {/* USDC Reserve deposit — opened from Overview (not Wallets); must stay outside tab gates. */}
+         <MerchantCardUsdcReserveDepositSheet
+           open={usdcReserveDepositOpen}
+           cardAddress={staffProgramBeamioCardAddress}
+           eoaBaseUsdcBalance={eoaUsdcBalance}
+           eoaConetUsdcBalance={eoaConetUsdcBalance}
+           onClose={() => setUsdcReserveDepositOpen(false)}
+           onArrived={() => {
+             refreshMerchantCardRewardReserveNow()
+             setOverviewRefreshTrigger((n) => n + 1)
+           }}
+         />
 
          {/* --- MARKET TAB (`newOnloading.html`: balance, refill packages, redeem) --- */}
          {activeTab === 'Validator Management' && isValidatorDepositRedeemAdmin ? (

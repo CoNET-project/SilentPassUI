@@ -1344,7 +1344,7 @@ export type ShareTokenMetadataUnifiedRewardPoints = {
 	reward13ToPoints?: ShareTokenMetadataUnifiedReward13Convert
 	/** Programs: burn #13 → Conet-USDC to customer AA. */
 	reward13ToUsdc?: ShareTokenMetadataUnifiedReward13Convert
-	/** 0–1000 bps merchant oracle spread (deposit up / withdraw down). */
+	/** 0–500 bps merchant oracle spread UI max (0.25% steps); chain allows up to 1000. */
 	merchantOracleSpreadBps?: number
 }
 

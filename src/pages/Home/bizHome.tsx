@@ -24,7 +24,6 @@ import {
 	getSessionPrivateKeyArmor,
 } from '@/utils/beamioSessionSecrets'
 import { isWorkspaceAccessGranted } from '@/utils/beamioWorkspaceLock'
-import { maybeRunAdminCard0AirdropFromLongDhangBalances } from '@/utils/initAdminCard0AirdropFromLongDhangBalances'
 
 /** Data attribute + selection tint — matches `biz.tsx` Merchant OS */
 const BIZ_UI_PRIMARY = BIZ_BRAND_HEX
@@ -153,7 +152,6 @@ const assembleEncryptKeysObject = async (
 		setMyAddress(eoa)
 	}
 	setProfiles(finalProfiles)
-	maybeRunAdminCard0AirdropFromLongDhangBalances(eoa)
 	return true
 }
 

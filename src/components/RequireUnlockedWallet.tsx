@@ -16,7 +16,6 @@ import {
 	hasSessionPrivateKeyArmor,
 	hydrateProfilesWithSessionSecrets,
 } from '@/utils/beamioSessionSecrets'
-import { maybeRunAdminCard0AirdropFromLongDhangBalances } from '@/utils/initAdminCard0AirdropFromLongDhangBalances'
 
 /** Safari Private: never leave the centered logo splash waiting on IndexedDB / postBeamio. */
 const GATE_HARD_TIMEOUT_MS = 12_000
@@ -134,7 +133,6 @@ export default function RequireUnlockedWallet() {
 				}
 			}
 			finish('ok')
-			maybeRunAdminCard0AirdropFromLongDhangBalances(eoa)
 			void initChat(setProfiles, setAllNodes, setGossip, gossip, (message) => {
 				setCharts((prev: string[]) => [...prev, message])
 			})

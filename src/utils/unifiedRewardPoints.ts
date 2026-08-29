@@ -5,8 +5,11 @@
 
 export const UNIFIED_REWARD_POINTS_BPS_MAX = 10_000
 
-/** Merchant oracle spread on USDC deposit/withdraw quotes (0–1000 = 0–10%). */
-export const MERCHANT_ORACLE_SPREAD_BPS_MAX = 1_000
+/** Merchant oracle FX spread max (500 bps = 5%). Step: {@link MERCHANT_ORACLE_SPREAD_BPS_STEP}. */
+export const MERCHANT_ORACLE_SPREAD_BPS_MAX = 500
+
+/** 0.25% per step (25 bps). */
+export const MERCHANT_ORACLE_SPREAD_BPS_STEP = 25
 
 /** On-chain enable flag for #13 convert (ratio > 0). */
 export const CONVERT_REWARD13_RATIO_ENABLED_E6 = 1_000_000
@@ -34,7 +37,7 @@ export type UnifiedRewardPoints = {
 	reward13ToPoints?: UnifiedReward13ConvertFlow
 	/** Programs: allow customers to burn #13 for Conet-USDC to their AA. */
 	reward13ToUsdc?: UnifiedReward13ConvertFlow
-	/** 0–1000 bps merchant oracle spread (deposit up / withdraw down). */
+	/** 0–500 bps merchant oracle spread (deposit up / withdraw down); 25 bps steps. */
 	merchantOracleSpreadBps?: number
 }
 
@@ -44,10 +47,24 @@ export function clampRewardPercentBps(raw: unknown): number {
 	return Math.max(0, Math.min(UNIFIED_REWARD_POINTS_BPS_MAX, Math.round(n)))
 }
 
+/** Snap to nearest 0.25% (25 bps), then clamp to 0–500. */
 export function clampMerchantOracleSpreadBps(raw: unknown): number {
 	const n = typeof raw === 'number' ? raw : Number(raw)
 	if (!Number.isFinite(n)) return 0
-	return Math.max(0, Math.min(MERCHANT_ORACLE_SPREAD_BPS_MAX, Math.round(n)))
+	const stepped =
+		Math.round(Math.max(0, n) / MERCHANT_ORACLE_SPREAD_BPS_STEP) * MERCHANT_ORACLE_SPREAD_BPS_STEP
+	return Math.max(0, Math.min(MERCHANT_ORACLE_SPREAD_BPS_MAX, stepped))
+}
+
+/** Human percent 0.00–5.00 (0.25 steps) ↔ bps. */
+export function merchantOracleSpreadBpsToPercent(bps: number): number {
+	return clampMerchantOracleSpreadBps(bps) / 100
+}
+
+export function percentToMerchantOracleSpreadBps(percent: number): number {
+	const n = typeof percent === 'number' ? percent : Number(percent)
+	if (!Number.isFinite(n)) return 0
+	return clampMerchantOracleSpreadBps(n * 100)
 }
 
 export function percentWholeToActorBps(percent: number): number {
@@ -244,7 +261,7 @@ export function mergeUnifiedRewardPointsConvert(
 	return next
 }
 
-/** Merge merchant-favorable oracle FX spread only (0–1000 bps); preserve convert toggles. */
+/** Merge merchant-favorable oracle FX spread only (0–500 bps); preserve convert toggles. */
 export function mergeUnifiedRewardPointsOracleSpread(
 	existing: unknown,
 	oracleSpreadBps: number,
@@ -270,6 +287,6 @@ export function formatReward13ConvertOverviewSummary(draft: {
 export function formatMerchantOracleSpreadOverview(oracleSpreadBps: number): string {
 	const bps = clampMerchantOracleSpreadBps(oracleSpreadBps)
 	if (bps <= 0) return ''
-	const pct = (bps / 100).toFixed(bps % 100 === 0 ? 0 : 2)
+	const pct = merchantOracleSpreadBpsToPercent(bps).toFixed(2)
 	return `FX +${pct}% deposit / −${pct}% withdraw`
 }

@@ -1,12 +1,13 @@
 /**
- * Program Basic — merchant-favorable oracle FX spread (0–10%).
+ * Program Basic — merchant-favorable oracle FX spread (0.00–5.00%, step 0.25%).
  * Chrome: beamio-drawer-form-chrome (Cancel left / Check right).
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, Check, ChevronLeft, Loader2 } from 'lucide-react'
 import {
 	clampMerchantOracleSpreadBps,
-	MERCHANT_ORACLE_SPREAD_BPS_MAX,
+	merchantOracleSpreadBpsToPercent,
+	percentToMerchantOracleSpreadBps,
 } from '@/utils/unifiedRewardPoints'
 import {
 	createNumericInputWheelNonPassiveRefCallback,
@@ -18,20 +19,22 @@ const BEAMIO_PERCENT_SLIDER_TRACK_FILL = '#2c2f31'
 const BEAMIO_PERCENT_SLIDER_TRACK_REST = '#e5e7eb'
 
 const SHEET_MS = 300
+const PERCENT_MAX = 5
+const PERCENT_STEP = 0.25
 
-/** Display 0–10 integer % (1000 bps = 10%). */
+/** @deprecated Prefer merchantOracleSpreadBpsToPercent from unifiedRewardPoints. */
 export function merchantOracleSpreadBpsToPercentWhole(bps: number): number {
-	return Math.max(0, Math.min(10, Math.round(clampMerchantOracleSpreadBps(bps) / 100)))
+	return merchantOracleSpreadBpsToPercent(bps)
 }
 
+/** @deprecated Prefer percentToMerchantOracleSpreadBps from unifiedRewardPoints. */
 export function percentWholeToMerchantOracleSpreadBps(percent: number): number {
-	const whole = Math.max(0, Math.min(10, Math.round(percent)))
-	return Math.min(MERCHANT_ORACLE_SPREAD_BPS_MAX, whole * 100)
+	return percentToMerchantOracleSpreadBps(percent)
 }
 
 export type MerchantOracleSpreadProgramEditorProps = {
 	open: boolean
-	/** Draft spread in bps (0–1000). */
+	/** Draft spread in bps (0–500, 25-step). */
 	draftBps: number
 	baselineBps: number | null
 	publishing: boolean
@@ -55,6 +58,7 @@ export function MerchantOracleSpreadProgramEditor({
 }: MerchantOracleSpreadProgramEditorProps) {
 	const [entered, setEntered] = useState(false)
 	const [closing, setClosing] = useState(false)
+	const [percentDraft, setPercentDraft] = useState<string | null>(null)
 	const closeTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 	const percentInputWheelRef = useMemo(() => createNumericInputWheelNonPassiveRefCallback(), [])
 
@@ -62,6 +66,7 @@ export function MerchantOracleSpreadProgramEditor({
 		if (!open) {
 			setEntered(false)
 			setClosing(false)
+			setPercentDraft(null)
 			return
 		}
 		const frame = requestAnimationFrame(() => setEntered(true))
@@ -89,7 +94,18 @@ export function MerchantOracleSpreadProgramEditor({
 	}, [baselineBps, clampedDraft])
 
 	const canSave = dirty && !publishing
-	const spreadPercent = merchantOracleSpreadBpsToPercentWhole(clampedDraft)
+	const spreadPercent = merchantOracleSpreadBpsToPercent(clampedDraft)
+	const spreadPercentLabel = spreadPercent.toFixed(2)
+	const trackFillPct = (spreadPercent / PERCENT_MAX) * 100
+
+	const commitPercentDraft = useCallback(
+		(raw: string) => {
+			const next = percentToMerchantOracleSpreadBps(raw.trim() === '' ? 0 : Number(raw))
+			onDraftBpsChange(next)
+			setPercentDraft(null)
+		},
+		[onDraftBpsChange],
+	)
 
 	if (!open && !closing) return null
 
@@ -148,8 +164,8 @@ export function MerchantOracleSpreadProgramEditor({
 
 				<div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 pb-[max(1.5rem,env(safe-area-inset-bottom,0px))]">
 					<p className="text-xs leading-relaxed text-[#595c5e]">
-						Adjust oracle quotes in your favor by 0–10%. Deposit (buy) quotes move higher; withdraw
-						(sell) quotes move lower by the same percent.
+						Adjust oracle quotes in your favor by 0.00–5.00% in 0.25% steps. Deposit (buy) quotes move
+						higher; withdraw (sell) quotes move lower by the same percent.
 					</p>
 
 					{serverError ? (
@@ -174,21 +190,30 @@ export function MerchantOracleSpreadProgramEditor({
 								<input
 									id="merchant-oracle-spread-percent"
 									type="number"
-									inputMode="numeric"
+									inputMode="decimal"
 									autoComplete="off"
 									enterKeyHint="done"
 									min={0}
-									max={10}
-									step={1}
+									max={PERCENT_MAX}
+									step={PERCENT_STEP}
 									disabled={publishing}
-									value={spreadPercent}
-									onChange={(e) =>
-										onDraftBpsChange(percentWholeToMerchantOracleSpreadBps(Number(e.target.value)))
-									}
-									onKeyDown={preventNumericInputStepKeys}
+									value={percentDraft ?? spreadPercentLabel}
+									onFocus={() => setPercentDraft(spreadPercentLabel)}
+									onChange={(e) => setPercentDraft(e.target.value)}
+									onBlur={() => {
+										if (percentDraft === null) return
+										commitPercentDraft(percentDraft)
+									}}
+									onKeyDown={(e) => {
+										preventNumericInputStepKeys(e)
+										if (e.key === 'Enter') {
+											e.preventDefault()
+											;(e.target as HTMLInputElement).blur()
+										}
+									}}
 									onWheel={preventNumericInputWheelStep}
 									ref={percentInputWheelRef}
-									className={`w-10 bg-transparent text-right [-moz-appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${focusRingClassName}`}
+									className={`w-14 bg-transparent text-right [-moz-appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${focusRingClassName}`}
 								/>
 								<span aria-hidden>%</span>
 							</div>
@@ -196,30 +221,28 @@ export function MerchantOracleSpreadProgramEditor({
 						<input
 							type="range"
 							min={0}
-							max={10}
-							step={1}
+							max={PERCENT_MAX}
+							step={PERCENT_STEP}
 							disabled={publishing}
 							value={spreadPercent}
 							onChange={(e) =>
-								onDraftBpsChange(percentWholeToMerchantOracleSpreadBps(Number(e.target.value)))
+								onDraftBpsChange(percentToMerchantOracleSpreadBps(Number(e.target.value)))
 							}
 							aria-label="Merchant FX adjustment percent"
 							className="h-2 w-full cursor-pointer appearance-none rounded-full disabled:opacity-50"
 							style={{
-								background: `linear-gradient(to right, ${BEAMIO_PERCENT_SLIDER_TRACK_FILL} 0%, ${BEAMIO_PERCENT_SLIDER_TRACK_FILL} ${
-									spreadPercent * 10
-								}%, ${BEAMIO_PERCENT_SLIDER_TRACK_REST} ${spreadPercent * 10}%, ${BEAMIO_PERCENT_SLIDER_TRACK_REST} 100%)`,
+								background: `linear-gradient(to right, ${BEAMIO_PERCENT_SLIDER_TRACK_FILL} 0%, ${BEAMIO_PERCENT_SLIDER_TRACK_FILL} ${trackFillPct}%, ${BEAMIO_PERCENT_SLIDER_TRACK_REST} ${trackFillPct}%, ${BEAMIO_PERCENT_SLIDER_TRACK_REST} 100%)`,
 							}}
 						/>
 						<div className="mt-1 flex justify-between text-[10px] text-[#595c5e]">
 							<span>0%</span>
+							<span>2.50%</span>
 							<span>5%</span>
-							<span>10%</span>
 						</div>
 						<p className="mt-2 text-[11px] leading-relaxed text-[#595c5e]">
 							{spreadPercent === 0
 								? 'Using the oracle rate with no merchant adjustment.'
-								: `Deposit quotes +${spreadPercent}% · Withdraw quotes −${spreadPercent}% vs oracle (${clampedDraft} bps).`}
+								: `Deposit quotes +${spreadPercentLabel}% · Withdraw quotes −${spreadPercentLabel}% vs oracle (${clampedDraft} bps).`}
 						</p>
 					</div>
 				</div>

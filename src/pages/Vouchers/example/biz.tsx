@@ -383,6 +383,7 @@ import {
   type TopupPromotionDraft,
 } from '@/utils/programTopupPromotion';
 import {
+  clampMerchantOracleSpreadBps,
   mergeUnifiedRewardPointsCharge,
   mergeUnifiedRewardPointsConvert,
   mergeUnifiedRewardPointsOracleSpread,
@@ -21437,7 +21438,7 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
       pointSystemOverride?: CardIssuancePointSystemMetadata;
       rewardPtTopupOverride?: { enabled: boolean; percent: string };
       reward13ConvertOverride?: Reward13ConvertDraft;
-      /** Merchant oracle FX spread bps (0–1000). When omitted, keeps current UI state. */
+      /** Merchant oracle FX spread bps (0–500, 25-step). When omitted, keeps current UI state. */
       merchantOracleSpreadOverride?: number;
       metadataOnly?: boolean;
        loadingScope?: 'default' | 'bonusEditor';
@@ -23027,7 +23028,7 @@ useEffect(() => {
 }, [merchantOracleSpreadEditorOpen]);
 
 const submitMerchantOracleSpreadEditor = useCallback(async () => {
-  const nextBps = Math.max(0, Math.min(1000, Math.round(Number(merchantOracleSpreadEditorDraftBps) || 0)));
+  const nextBps = clampMerchantOracleSpreadBps(merchantOracleSpreadEditorDraftBps);
   if (!cardIssuanceExistingCard?.cardAddress) {
     setReward13ConvertOracleSpreadBps(nextBps);
     closeMerchantOracleSpreadEditor();

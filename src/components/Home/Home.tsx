@@ -2972,18 +2972,8 @@ const Home = (_props: HomeProps) => {
 										<div className="flex justify-center pb-3 pt-2">
 											<div className="h-1.5 w-12 rounded-full bg-gray-200 dark:bg-slate-600" />
 										</div>
-										<div className="flex items-center justify-between">
+										<div className="flex items-center">
 											<BeamioCircularBackButton variant="onLight" onClick={backToFundView} />
-											<button
-												type="button"
-												tabIndex={-1}
-												data-touch-priority="1"
-												{...closePayReceiveSheetTap}
-												className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-[#191c1d] shadow-[0_1px_2px_rgba(15,23,42,0.06)] transition-colors active:bg-gray-100 dark:bg-slate-700 dark:text-slate-100 dark:active:bg-slate-600 ${HOME_TOUCH_BUTTON_CLASS}`}
-												aria-label={tu('close')}
-											>
-												<X className="h-4 w-4" aria-hidden />
-											</button>
 										</div>
 										<header className="pb-5 pt-6">
 											<p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#737687] dark:text-slate-400">
@@ -3055,22 +3045,12 @@ const Home = (_props: HomeProps) => {
 										<div className="flex justify-center pb-3 pt-2">
 											<div className="h-1.5 w-12 rounded-full bg-gray-200 dark:bg-slate-600" />
 										</div>
-										<div className="flex items-center justify-between">
+										<div className="flex items-center">
 											<BeamioCircularBackButton
 												variant="onLight"
 												onClick={backToFundView}
 												disabled={!!openingReceiveWalletId}
 											/>
-											<button
-												type="button"
-												tabIndex={-1}
-												data-touch-priority="1"
-												{...closePayReceiveSheetTap}
-												className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-[#191c1d] shadow-[0_1px_2px_rgba(15,23,42,0.06)] transition-colors active:bg-gray-100 dark:bg-slate-700 dark:text-slate-100 dark:active:bg-slate-600 ${HOME_TOUCH_BUTTON_CLASS}`}
-												aria-label={tu('close')}
-											>
-												<X className="h-4 w-4" aria-hidden />
-											</button>
 										</div>
 										<header className="pb-5 pt-6">
 											<p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#737687] dark:text-slate-400">

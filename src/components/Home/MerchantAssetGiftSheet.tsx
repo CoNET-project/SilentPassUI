@@ -142,12 +142,11 @@ export default function MerchantAssetGiftSheet({ onClose, cards, profile, onSucc
 		const id = ++requestId.current
 		const timer = window.setTimeout(async () => {
 			setLoading(true)
-			const lower = normalizedQuery.toLowerCase()
-			const data = await searchUsername(lower)
+			const data = await searchUsername(normalizedQuery)
 			const rows: searchResult[] = data?.results ?? []
 			const filtered = rows.filter((n) => n.address.toLowerCase() !== myAddress)
-			if (!filtered.length && ethers.isAddress(lower)) {
-				filtered.push(makeBeamioSearchAddressOnlyResult(lower))
+			if (!filtered.length && ethers.isAddress(normalizedQuery)) {
+				filtered.push(makeBeamioSearchAddressOnlyResult(normalizedQuery))
 			}
 			if (id !== requestId.current) return
 			setResults(filtered)

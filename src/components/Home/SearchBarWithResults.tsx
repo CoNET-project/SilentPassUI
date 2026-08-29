@@ -300,7 +300,7 @@ const SearchInputWithDropdown =
 
 		const lower = qq.toLowerCase()
 
-		const data = await searchUsername(lower)
+		const data = await searchUsername(qq)
 		const result: searchResult[] = data?.results || []
 		const filted = result.filter(n => n.address.toLowerCase() !== myAddress)
 

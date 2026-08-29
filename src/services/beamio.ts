@@ -2321,15 +2321,11 @@ function beamioTagBasicMetadataToSearchResult(m: BeamioTagBasicMetadata): search
 function rememberSearchUsersIfTrustworthy(keyword: string, live: { results?: searchResult[] } | null) {
 	const q = keyword.trim()
 	if (!q || !live?.results?.length) return
+	if (!ethers.isAddress(q)) return
 	const first = live.results[0]
 	if (!first?.address) return
-	const qAddrNorm = ethers.isAddress(q) ? ethers.getAddress(q).toLowerCase() : null
-	const qTag = q.replace(/^@+/, '').toLowerCase()
-	const u = (first.username || '').trim().toLowerCase()
-	const a = first.address.toLowerCase()
-	const exactAddr = qAddrNorm !== null && a === qAddrNorm
-	const exactTag = u !== '' && u !== 'unknow' && qTag === u
-	if (exactAddr || exactTag) {
+	const qAddrNorm = ethers.getAddress(q).toLowerCase()
+	if (first.address.toLowerCase() === qAddrNorm) {
 		rememberBeamioTagBasicMetadata(searchResultToBeamioTagBasicMetadata(first))
 	}
 }
@@ -2345,7 +2341,7 @@ export async function searchUsernameStaleWhileRevalidate(
 	const raw = (keyward ?? '').trim()
 	if (!raw) return { results: [] }
 
-	if (!opts?.forceNetwork) {
+	if (!opts?.forceNetwork && ethers.isAddress(raw)) {
 		const cached = peekBeamioTagBasicMetadataForQuery(raw)
 		if (cached) {
 			void searchBeamioTagRemote(raw).then((live) => {

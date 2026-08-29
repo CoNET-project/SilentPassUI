@@ -26,6 +26,9 @@ export type SearchUsersHit = {
 	last_name?: string
 	firstName?: string
 	lastName?: string
+	created_at?: number | string
+	follow_count?: string | number
+	follower_count?: string | number
 }
 
 function normalizeAddressKey(raw: string | null | undefined): string | null {
@@ -36,11 +39,6 @@ function normalizeAddressKey(raw: string | null | undefined): string | null {
 	} catch {
 		return null
 	}
-}
-
-function pickDisplayTag(hit: SearchUsersHit): string {
-	const u = String(hit.username || hit.accountName || '').trim().replace(/^@+/, '')
-	return u
 }
 
 export function profileFromSearchHit(hit: SearchUsersHit, now = Date.now()): BeamioAddressProfileRecord | null {
@@ -113,29 +111,109 @@ export function ingestSearchUsersResponse(
 	return out
 }
 
+function normalizeTagForCompare(raw: unknown): string {
+	return String(raw || '')
+		.trim()
+		.replace(/^@+/, '')
+		.toLowerCase()
+}
+
+/** 0 = exact (case-insensitive), 1 = prefix, 2 = contains, 9 = no match. */
+export function rankTagQueryHit(tag: unknown, queryLower: string): number {
+	const t = normalizeTagForCompare(tag)
+	if (!queryLower || !t) return 9
+	if (t === queryLower) return 0
+	if (t.startsWith(queryLower)) return 1
+	if (t.includes(queryLower)) return 2
+	return 9
+}
+
+export function pickDisplayTag(hit: SearchUsersHit | BeamioAddressProfileRecord | null | undefined): string {
+	if (!hit) return ''
+	return String(
+		(hit as SearchUsersHit).username ||
+			(hit as SearchUsersHit).accountName ||
+			(hit as BeamioAddressProfileRecord).accountName ||
+			(hit as BeamioAddressProfileRecord).username ||
+			'',
+	)
+		.trim()
+		.replace(/^@+/, '')
+}
+
+export function recordToSearchHit(local: BeamioAddressProfileRecord): SearchUsersHit {
+	const tag = String(local.accountName || local.username || '').trim()
+	return {
+		username: tag,
+		accountName: tag,
+		address: local.addressLower,
+		image: local.image,
+		first_name: local.first_name,
+		last_name: local.last_name,
+	}
+}
+
+/**
+ * Merge local Worker hits with `search-users` by **address** (never by lowercase username).
+ * Case-insensitive exact tags rank first so LongDHANG / LONGDHANG / LongDhang stay distinct.
+ */
+export function mergeSearchHitsByAddress(
+	localHits: SearchUsersHit[],
+	remoteHits: SearchUsersHit[],
+	query: string,
+): SearchUsersHit[] {
+	const byAddr = new Map<string, SearchUsersHit>()
+	const put = (hit: SearchUsersHit, preferIncoming: boolean) => {
+		const key = normalizeAddressKey(hit.address)
+		if (!key) return
+		const next: SearchUsersHit = { ...hit, address: key }
+		const prev = byAddr.get(key)
+		if (!prev) {
+			byAddr.set(key, next)
+			return
+		}
+		const prevTag = pickDisplayTag(prev)
+		const nextTag = pickDisplayTag(next)
+		if (!prevTag && nextTag) {
+			byAddr.set(key, next)
+			return
+		}
+		if (prevTag && !nextTag) return
+		if (preferIncoming) {
+			byAddr.set(key, {
+				...prev,
+				...next,
+				username: nextTag || prevTag,
+				accountName: nextTag || prevTag,
+			})
+		}
+	}
+	for (const hit of localHits) put(hit, false)
+	for (const hit of remoteHits) put(hit, true)
+	const q = normalizeTagForCompare(query)
+	return [...byAddr.values()].sort(
+		(a, b) => rankTagQueryHit(pickDisplayTag(a), q) - rankTagQueryHit(pickDisplayTag(b), q),
+	)
+}
+
 export function searchLocalByTagPrefix(
 	map: Record<string, BeamioAddressProfileRecord>,
 	query: string,
 	limit = 20,
 ): BeamioAddressProfileRecord[] {
-	const q = String(query || '')
-		.trim()
-		.replace(/^@+/, '')
-		.toLowerCase()
+	const q = normalizeTagForCompare(query)
 	if (!q) return []
 	const hits: BeamioAddressProfileRecord[] = []
 	for (const rec of Object.values(map)) {
-		const tag = String(rec.accountName || rec.username || '')
-			.trim()
-			.replace(/^@+/, '')
-			.toLowerCase()
+		const tag = normalizeTagForCompare(rec.accountName || rec.username)
 		if (!tag) continue
-		if (tag.startsWith(q) || tag.includes(q)) {
-			hits.push(rec)
-			if (hits.length >= limit) break
-		}
+		if (tag.startsWith(q) || tag.includes(q)) hits.push(rec)
 	}
-	return hits
+	hits.sort(
+		(a, b) =>
+			rankTagQueryHit(a.accountName || a.username, q) - rankTagQueryHit(b.accountName || b.username, q),
+	)
+	return hits.slice(0, limit)
 }
 
 export class TagServerDb {
@@ -246,43 +324,40 @@ export class TagServerDb {
 			const local = this.map[asAddr]
 			if (local && !isProfileStale(local)) {
 				return {
-					results: [
-						{
-							username: local.accountName || local.username,
-							accountName: local.accountName || local.username,
-							address: local.addressLower,
-							image: local.image,
-							first_name: local.first_name,
-							last_name: local.last_name,
-						},
-					],
+					results: [recordToSearchHit(local)],
 					ingested: { [asAddr]: local },
 				}
 			}
-		} else {
-			const localHits = searchLocalByTagPrefix(this.map, q, 20)
-			const fresh = localHits.filter((r) => !isProfileStale(r))
-			if (fresh.length > 0) {
-				return {
-					results: fresh.map((local) => ({
-						username: local.accountName || local.username,
-						accountName: local.accountName || local.username,
-						address: local.addressLower,
-						image: local.image,
-						first_name: local.first_name,
-						last_name: local.last_name,
-					})),
-					ingested: Object.fromEntries(fresh.map((r) => [r.addressLower, r])),
-				}
-			}
+			const json = await this.fetchSearchUsers(q)
+			const results = Array.isArray((json as { results?: unknown })?.results)
+				? ((json as { results: SearchUsersHit[] }).results)
+				: Array.isArray(json)
+					? (json as SearchUsersHit[])
+					: []
+			const ingested = this.ingest(json, asAddr)
+			return { results, ingested }
 		}
 
-		const json = await this.fetchSearchUsers(q)
-		const results = Array.isArray((json as { results?: unknown })?.results)
-			? ((json as { results: SearchUsersHit[] }).results)
-			: []
-		const ingested = this.ingest(json, asAddr || undefined)
-		return { results, ingested }
+		const localHits = searchLocalByTagPrefix(this.map, q, 20)
+		const localAsHits = localHits.map(recordToSearchHit)
+		try {
+			const json = await this.fetchSearchUsers(q)
+			const remote = Array.isArray((json as { results?: unknown })?.results)
+				? ((json as { results: SearchUsersHit[] }).results)
+				: Array.isArray(json)
+					? (json as SearchUsersHit[])
+					: []
+			const ingested = this.ingest(json)
+			return {
+				results: mergeSearchHitsByAddress(localAsHits, remote, q),
+				ingested,
+			}
+		} catch {
+			return {
+				results: mergeSearchHitsByAddress(localAsHits, [], q),
+				ingested: Object.fromEntries(localHits.map((h) => [h.addressLower, h])),
+			}
+		}
 	}
 
 	private async fetchOneAddress(addressLower: string): Promise<BeamioAddressProfileRecord | null> {

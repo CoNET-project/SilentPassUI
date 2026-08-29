@@ -18,6 +18,8 @@ declare global {
       }) => void
       bindPushIdentity?: (payload: { eoa: string; pgpKeyId?: string }) => void
       debugLog?: (level: string, message: string) => void
+      openURL?: (payload: { url: string }) => void
+      listInstalledWalletApps?: (payload: { requestId: string }) => void
     }
     CashTreesAndroid?: {
       getNfcStatus?: () => string
@@ -37,6 +39,7 @@ declare global {
       /** JSON string `{ eoa, pgpKeyId? }` — FCM bind */
       bindPushIdentity?: (json: string) => void
       debugLog?: (level: string, message: string) => void
+      listInstalledWalletApps?: () => string
     }
   }
 }

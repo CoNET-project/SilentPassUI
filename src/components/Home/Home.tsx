@@ -6,11 +6,13 @@ import { useReliableTapHandler, RELIABLE_TAP_BUTTON_CLASS } from '@/utils/reliab
 import { createPortal } from 'react-dom';
 import { IpfsImg } from '@/components/IpfsImg';
 import { useDaemonContext } from "@/providers/DaemonProvider"
-import {formatAmountReadable, formatWithThousands, onWalletEvent, getUserInfo, getOracle, parseOracleToCurrencyData} from '@/services/beamio'
+import {formatAmountReadable, formatWithThousands, onWalletEvent, emitWalletEvent, getUserInfo, getOracle, parseOracleToCurrencyData} from '@/services/beamio'
 import { refreshAppDaemonNow } from '@/services/appDaemonWorkerBridge'
 import { formatDigitalAssetDisplay } from '@/utils/formatDigitalAssetDisplay'
 import base_icon from '@/components/assets/base-logo.png'
-import ScanBtn from '@/components/scanBtn/ScanButton'
+import ScanBtn, { type ScanButtonHandle } from '@/components/scanBtn/ScanButton'
+import { scanQrViaCashTreesNative } from '@/utils/cashTreesIOSBridge'
+import { beamioWalletAccent } from '@/utils/beamioWalletAccent'
 import { CoNET_Data, setCoNET_Data } from '../../utils/globals'
 import { detectDeviceNfcCapability, getCashTreesNativeNfcBridge, isCashTreesNativeWebView } from '@/utils/cashTreesNativeNfc'
 import { WALLET_READY_INTENT_KEY } from '@/pages/Home/walletReadyIntent'
@@ -33,6 +35,7 @@ import EoaUsdcStripePanel from '@/components/addUSDC/EoaUsdcStripePanel'
 import { resolveStripeDepositEoa } from '@/utils/eoaUsdcStripe'
 import usdcIcon from '@/components/assets/usdc.png'
 import baseIcon from '@/components/assets/base-logo.png'
+import conetTokenIcon from './assets/conet-token.svg'
 import senPhoCafeStoreCardBg from '@/components/assets/senPhoCafeStoreCardBg.png'
 import luminaRoastersStoreCardBg from '@/components/assets/luminaRoastersStoreCardBg.png'
 import PayScreen from '@/pages/Pay/send'
@@ -55,7 +58,6 @@ import {
 	postNfcCardLinkStateSigned,
 } from '@/services/BeamioCard'
 import ActiveHistoryPannelNew from '@/pages/History/components/activeHistoryPannelNew'
-import { isRecentActivityCardTopupTxView } from '@/pages/History/recentActivityIndexerMerge'
 import { MyBrandsFullScreenDrawer } from '@/pages/Brands/MyBrandsFullScreenDrawer'
 import {
 	MyBrandListEntries,
@@ -75,6 +77,16 @@ import { tu } from '@/locale/beamioLocale'
 import { HomeLanguageSelector } from './HomeLanguageSelector'
 import { useMerchantCardDatabase } from '@/providers/MerchantCardDatabaseProvider'
 import { pickMerchantCardListTitle } from '@/utils/merchantCardDatabase'
+import {
+	type ReceiveWalletAppRow,
+	buildReceiveEoaQrUri,
+	openReceiveWalletApp,
+	subscribeReceiveWalletApps,
+} from '@/utils/receiveFromWalletApps'
+import {
+	BeamioCircularBackButton,
+	BEAMIO_CIRCULAR_BACK_ROW_CLASS,
+} from '@/components/BeamioCircularBackButton'
 
 const getImg = (avatarSeed: string|undefined) => `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed||'@Beamio').toString()}`
 const fmtAddr = (a = '') => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '—')
@@ -250,7 +262,7 @@ const Home = (_props: HomeProps) => {
 		setPayTag, setSendToMemo, listenningProcess, setListenningProcess, usdcbalance, setPaymentLinkCode,
 		currencyData, setRedeemCode, setPayMePayment, setAllNodes, setGossip, gossip, setCharts, charts, setShowFooter, scanData, setScanData,
 		myBrandCards, myBrandCardDetails,
-		aaAccountUsdcBalance, recentActivityNoAaItems, refreshRecentActivityNoAa, conetWalletBalances,
+		aaAccountUsdcBalance, refreshRecentActivityNoAa, conetWalletBalances,
 		conetAaWalletBalances,
 	} = useDaemonContext()
 	const { resolveName, registerCardAddresses } = useMerchantCardDatabase()
@@ -291,8 +303,14 @@ const Home = (_props: HomeProps) => {
 	const [showMerchantGiftSheet, setShowMerchantGiftSheet] = useState(false)
 	/** Home Pay/Receive 底栏（对齐 renderAction Pay|Receive 交互） */
 	const [showPayReceiveSheet, setShowPayReceiveSheet] = useState(false)
+	const [payReceiveView, setPayReceiveView] = useState<'fund' | 'tabs' | 'qr' | 'wallets'>('fund')
 	const [payReceiveQrMode, setPayReceiveQrMode] = useState<'pay' | 'receive'>('receive')
-	const incomingTopupBaselineIdsRef = useRef<Set<string>>(new Set())
+	const [receiveWalletCopied, setReceiveWalletCopied] = useState(false)
+	const [installedReceiveWallets, setInstalledReceiveWallets] = useState<ReceiveWalletAppRow[]>([])
+	const [receiveWalletsLooking, setReceiveWalletsLooking] = useState(false)
+	const [openingReceiveWalletId, setOpeningReceiveWalletId] = useState<string | null>(null)
+	const [receiveWalletOpenError, setReceiveWalletOpenError] = useState('')
+	const homeScanBtnRef = useRef<ScanButtonHandle>(null)
 	/** Pay 模式：与 MyWalletDashboardNew AA relay QR 同源（OpenContainer relay 签名 JSON） */
 	const [payRelayQRPayload, setPayRelayQRPayload] = useState<OpenContainerRelayPayload | null>(null)
 	const [payRelayQRLoading, setPayRelayQRLoading] = useState(false)
@@ -413,21 +431,34 @@ const Home = (_props: HomeProps) => {
 		if (addrs.length) registerCardAddresses(addrs)
 	}, [myBrandCards, registerCardAddresses])
 
-	const eoaAddressShort = profiles?.[0]?.keyID ? fmtAddr(profiles[0].keyID) : '—'
+	const receiveWalletEoa = useMemo(() => {
+		const raw = profiles?.[0]?.keyID?.trim() ?? ''
+		if (!raw || !ethers.isAddress(raw)) return ''
+		try {
+			return ethers.getAddress(raw)
+		} catch {
+			return ''
+		}
+	}, [profiles?.[0]?.keyID])
+	const receiveWalletEoaAccent = beamioWalletAccent('eoa')
+	const receiveQrUri = useMemo(() => buildReceiveEoaQrUri(receiveWalletEoa), [receiveWalletEoa])
 
-	/** 与 BeamioPayMe `successUrl` 在 EOA 模式下一致：任意金额收款链接，wallet=EOA */
-	const activateWalletEoaQrValue = useMemo(() => {
-		if (!beamio?.accountName) return ''
-		const params = new URLSearchParams({ beamio: beamio.accountName })
-		const walletAddr =
-			myAddress && ethers.isAddress(myAddress)
-				? myAddress
-				: profiles?.[0]?.keyID && ethers.isAddress(profiles[0].keyID)
-					? profiles[0].keyID
-					: null
-		if (walletAddr) params.set('wallet', walletAddr)
-		return `https://beamio.app?${params.toString()}`
-	}, [beamio?.accountName, myAddress, profiles?.[0]?.keyID])
+	useEffect(() => {
+		if (!showPayReceiveSheet || payReceiveView !== 'wallets') return
+		setReceiveWalletsLooking(true)
+		let publishes = 0
+		const unsub = subscribeReceiveWalletApps((rows) => {
+			setInstalledReceiveWallets(rows)
+			publishes += 1
+			if (publishes >= 2 || isCashTreesNativeWebView()) setReceiveWalletsLooking(false)
+		})
+		const settleTimer = window.setTimeout(() => setReceiveWalletsLooking(false), 2500)
+		return () => {
+			unsub()
+			window.clearTimeout(settleTimer)
+			setReceiveWalletsLooking(false)
+		}
+	}, [showPayReceiveSheet, payReceiveView])
 
 	useEffect(() => {
 		if (!activateGiftVoucherScreen) return
@@ -669,13 +700,6 @@ const Home = (_props: HomeProps) => {
 		return ''
 	}, [hasAAWallet, profiles?.[0]?.aaAccount, profiles?.[0]?.keyID])
 
-	/** Top Up → Receive：优先 Beamio 深链，否则 EOA/AA 地址（与 Add Cash Store QR 一致） */
-	const topUpReceiveQrValue = useMemo(() => {
-		const v = activateWalletEoaQrValue?.trim()
-		if (v) return v
-		return addCashDepositAddress
-	}, [activateWalletEoaQrValue, addCashDepositAddress])
-
 	const addCashVaultUsdc = useMemo(() => {
 		const a = Math.max(0, Number(usdcbalance) || 0)
 		const b = Math.max(0, Number(aaAccountUsdcBalance) || 0)
@@ -757,6 +781,17 @@ const Home = (_props: HomeProps) => {
 		}
 	}, [addCashDepositAddress])
 
+	const copyReceiveWalletAddress = useCallback(async () => {
+		if (!receiveWalletEoa) return
+		try {
+			await navigator.clipboard.writeText(receiveWalletEoa)
+			setReceiveWalletCopied(true)
+			window.setTimeout(() => setReceiveWalletCopied(false), 2000)
+		} catch {
+			/* ignore */
+		}
+	}, [receiveWalletEoa])
+
 	const handleConfirmHomeTopUp = useCallback(() => {
 		const cadToAdd = parseFloat(addCashAmountCad)
 		if (!cadToAdd || cadToAdd <= 0) return
@@ -770,32 +805,74 @@ const Home = (_props: HomeProps) => {
 		closeAddCashSheet()
 	}, [addCashAmountCad, addCashTopUpCadPerUsdc, addCashVaultUsdc, closeAddCashSheet, topUpStore.id])
 
+	const resetPayReceiveAuxState = useCallback(() => {
+		setReceiveWalletCopied(false)
+		setPayRelayQRPayload(null)
+		setPayRelayQRLoading(false)
+		setOpeningReceiveWalletId(null)
+		setReceiveWalletOpenError('')
+		setReceiveWalletsLooking(false)
+	}, [])
+
 	const handleAddFunds = () => {
+		setPayReceiveView('fund')
 		setPayReceiveQrMode('receive')
+		resetPayReceiveAuxState()
 		setShowPayReceiveSheet(true)
 		setShowFooter(false)
 	}
 
-	const handleStripeUsdcTopup = useCallback(() => {
+	const dismissPayReceiveThenOpenAddCash = useCallback((mode: 'stripe' | 'coinbase') => {
+		setShowPayReceiveSheet(false)
+		setPayReceiveView('fund')
+		setPayReceiveQrMode('receive')
+		resetPayReceiveAuxState()
 		setAddCashOpenedAsStripe(true)
-		setAddCashMode('stripe')
+		setAddCashMode(mode)
+		if (mode === 'coinbase') setShowAddUsdcInSheet(false)
 		setShowAddCashSheet(true)
 		setShowFooter(false)
-	}, [setShowFooter])
+	}, [resetPayReceiveAuxState, setShowFooter])
+
+	const backToFundView = useCallback(() => {
+		if (openingReceiveWalletId) return
+		setPayReceiveView('fund')
+		setPayReceiveQrMode('receive')
+		setReceiveWalletOpenError('')
+		setOpeningReceiveWalletId(null)
+	}, [openingReceiveWalletId])
+
+	const openReceiveQr = useCallback(() => {
+		setReceiveWalletOpenError('')
+		setPayReceiveView('qr')
+	}, [])
+
+	const openReceiveFromWallet = useCallback(() => {
+		setReceiveWalletOpenError('')
+		setPayReceiveView('wallets')
+	}, [])
+
+	const openInstalledReceiveWallet = useCallback(async (row: ReceiveWalletAppRow) => {
+		if (openingReceiveWalletId) return
+		setOpeningReceiveWalletId(row.id)
+		setReceiveWalletOpenError('')
+		try {
+			const result = await openReceiveWalletApp(row, receiveWalletEoa)
+			if (!result.ok) setReceiveWalletOpenError(result.error)
+		} finally {
+			setOpeningReceiveWalletId(null)
+		}
+	}, [openingReceiveWalletId, receiveWalletEoa])
 
 	const openReceiveSheetTap = useReliableTapHandler(handleAddFunds)
-	const openStripeUsdcTopupTap = useReliableTapHandler(handleStripeUsdcTopup)
+	const openReceiveQrTap = useReliableTapHandler(openReceiveQr)
+	const openReceiveFromWalletTap = useReliableTapHandler(openReceiveFromWallet)
 	const openPayCodeSheetTap = useReliableTapHandler(() => {
+		setPayReceiveView('tabs')
 		setPayReceiveQrMode('pay')
 		setShowPayReceiveSheet(true)
 		setShowFooter(false)
 	})
-
-	const topUpReceiveDisplayTag = useMemo(() => {
-		const tag = (beamio?.accountName ?? '').trim()
-		if (tag) return `@${tag}`
-		return eoaAddressShort !== '—' ? eoaAddressShort : '—'
-	}, [beamio?.accountName, eoaAddressShort])
 
 	/** 余额卡：白底 + 渐变描边 */
 	function BalanceCard() {
@@ -1531,61 +1608,38 @@ const Home = (_props: HomeProps) => {
 
 	const closePayReceiveSheet = useCallback(() => {
 		setShowPayReceiveSheet(false)
+		setPayReceiveView('fund')
 		setPayReceiveQrMode('receive')
-		setPayRelayQRPayload(null)
-		setPayRelayQRLoading(false)
+		resetPayReceiveAuxState()
 		setShowFooter(true)
-	}, [setShowFooter])
+	}, [resetPayReceiveAuxState, setShowFooter])
+
+	const startHomeQrScan = useCallback(async () => {
+		closePayReceiveSheet()
+		if (isCashTreesNativeWebView()) {
+			try {
+				const result = await scanQrViaCashTreesNative()
+				if (result.ok) {
+					setScanData(result.text)
+					emitWalletEvent('scan:url', result.text)
+				}
+			} catch {
+				/* camera / cancel — keep last trusted UI, no toast */
+			}
+			return
+		}
+		homeScanBtnRef.current?.start({ hideModeSwitcher: true })
+	}, [closePayReceiveSheet, setScanData])
 
 	const closePayReceiveSheetTap = useReliableTapHandler(closePayReceiveSheet)
-
-	/**
-	 * Add Funds at Store: listen for a new inbound top-up accounting row.
-	 * Existing rows are excluded so opening the panel never closes it immediately.
-	 * The short-lived refresh chain is scoped to this panel and is serialized.
-	 */
-	useEffect(() => {
-		if (!showPayReceiveSheet || payReceiveQrMode !== 'receive') return
-		incomingTopupBaselineIdsRef.current = new Set(
-			recentActivityNoAaItems.map((tx) => `${tx.id}|${tx.txHash}`),
-		)
-	}, [showPayReceiveSheet, payReceiveQrMode])
-
-	useEffect(() => {
-		if (!showPayReceiveSheet || payReceiveQrMode !== 'receive') return
-		const hasNewInboundTopup = recentActivityNoAaItems.some((tx) => {
-			const id = `${tx.id}|${tx.txHash}`
-			return (
-				!incomingTopupBaselineIdsRef.current.has(id) &&
-				tx.isInbound &&
-				isRecentActivityCardTopupTxView(tx)
-			)
-		})
-		if (hasNewInboundTopup) closePayReceiveSheet()
-	}, [
-		showPayReceiveSheet,
-		payReceiveQrMode,
-		recentActivityNoAaItems,
-		closePayReceiveSheet,
-	])
-
-	useEffect(() => {
-		if (!showPayReceiveSheet || payReceiveQrMode !== 'receive') return
-		let cancelled = false
-		let timer: ReturnType<typeof setTimeout> | undefined
-
-		const refresh = async () => {
-			if (cancelled) return
-			await refreshRecentActivityNoAa().catch(() => undefined)
-			if (!cancelled) timer = setTimeout(refresh, 4000)
-		}
-
-		void refresh()
-		return () => {
-			cancelled = true
-			if (timer !== undefined) clearTimeout(timer)
-		}
-	}, [showPayReceiveSheet, payReceiveQrMode, refreshRecentActivityNoAa])
+	const payReceiveUsesPayChrome = payReceiveView === 'tabs' && payReceiveQrMode === 'pay'
+	const payReceiveUsesFundChrome =
+		payReceiveView === 'fund' || payReceiveView === 'qr' || payReceiveView === 'wallets'
+	const fundWalletOptionClass = `flex w-full items-center justify-between gap-4 rounded-2xl border border-[#e8eaed] bg-white px-4 py-4 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition active:scale-[0.99] active:bg-gray-50 dark:border-slate-700 dark:bg-slate-800 dark:active:bg-slate-700 ${HOME_TOUCH_BUTTON_CLASS}`
+	const payReceiveTabClass = (active: boolean) =>
+		active
+			? 'flex-1 rounded-full bg-white py-2 text-center text-sm font-semibold text-[#191c1d] shadow-sm dark:bg-slate-700 dark:text-slate-100'
+			: 'flex-1 rounded-full py-2 text-center text-sm font-medium text-[#737687] dark:text-slate-400'
 
 	const payRelayDeadlineUnix = useMemo(() => {
 		if (!payRelayQRPayload?.deadline) return NaN
@@ -1603,7 +1657,7 @@ const Home = (_props: HomeProps) => {
 
 	/** Pay tab：Open Relay QR 剩余有效期（与 payTemp1 顶部倒计时一致） */
 	useEffect(() => {
-		if (!showPayReceiveSheet || payReceiveQrMode !== 'pay' || !Number.isFinite(payRelayDeadlineUnix)) {
+		if (!showPayReceiveSheet || payReceiveView !== 'tabs' || payReceiveQrMode !== 'pay' || !Number.isFinite(payRelayDeadlineUnix)) {
 			return
 		}
 		let cancelled = false
@@ -1618,10 +1672,10 @@ const Home = (_props: HomeProps) => {
 			cancelled = true
 			if (timer !== undefined) window.clearTimeout(timer)
 		}
-	}, [showPayReceiveSheet, payReceiveQrMode, payRelayDeadlineUnix])
+	}, [showPayReceiveSheet, payReceiveView, payReceiveQrMode, payRelayDeadlineUnix])
 
 	useEffect(() => {
-		if (!showPayReceiveSheet || payReceiveQrMode !== 'pay') return
+		if (!showPayReceiveSheet || payReceiveView !== 'tabs' || payReceiveQrMode !== 'pay') return
 		const compute = () => {
 			const vh = window.innerHeight
 			const vw = window.innerWidth
@@ -1636,11 +1690,11 @@ const Home = (_props: HomeProps) => {
 		onResize()
 		window.addEventListener('resize', onResize)
 		return () => window.removeEventListener('resize', onResize)
-	}, [showPayReceiveSheet, payReceiveQrMode])
+	}, [showPayReceiveSheet, payReceiveView, payReceiveQrMode])
 
 	/** Pay tab：打开时签署一次 Open Relay QR（5 分钟有效，不自动重签） */
 	useEffect(() => {
-		if (!showPayReceiveSheet || payReceiveQrMode !== 'pay') {
+		if (!showPayReceiveSheet || payReceiveView !== 'tabs' || payReceiveQrMode !== 'pay') {
 			setPayRelaySecondsLeft(0)
 			return
 		}
@@ -1678,11 +1732,11 @@ const Home = (_props: HomeProps) => {
 			setPayRelayQRPayload(null)
 			setPayRelayQRLoading(false)
 		}
-	}, [showPayReceiveSheet, payReceiveQrMode, profiles?.[0]?.privateKeyArmor, profiles?.[0]?.aaAccount, setProfiles])
+	}, [showPayReceiveSheet, payReceiveView, payReceiveQrMode, profiles?.[0]?.privateKeyArmor, profiles?.[0]?.aaAccount, setProfiles])
 
 	/** Scan to Pay：轮询 CoNET AA openRelayedNonce；商户 relay 消耗本 QR 签名 nonce 后自动关闭 */
 	useEffect(() => {
-		if (!showPayReceiveSheet || payReceiveQrMode !== 'pay' || !payRelayQRPayload) return
+		if (!showPayReceiveSheet || payReceiveView !== 'tabs' || payReceiveQrMode !== 'pay' || !payRelayQRPayload) return
 
 		const aaAccount = payRelayQRPayload.account
 		if (!aaAccount || !ethers.isAddress(aaAccount) || !payRelayQRPayload.nonce) return
@@ -1727,7 +1781,7 @@ const Home = (_props: HomeProps) => {
 			cancelled = true
 			if (timer !== undefined) clearTimeout(timer)
 		}
-	}, [showPayReceiveSheet, payReceiveQrMode, payRelayQRPayload, closePayReceiveSheet])
+	}, [showPayReceiveSheet, payReceiveView, payReceiveQrMode, payRelayQRPayload, closePayReceiveSheet])
 
 	/** Android WebView：Activate 场景下外层 overflow-hidden + flex 常导致滚动视口高度塌成一条；原生壳内改为单层 flex 链 */
 	const homeScrollUsesSingleFlexChain = isCashTreesNativeWebView()
@@ -2050,7 +2104,7 @@ const Home = (_props: HomeProps) => {
 									<button
 										type="button"
 										data-touch-priority="1"
-										{...openStripeUsdcTopupTap}
+										{...openReceiveSheetTap}
 										className={`flex flex-1 flex-col items-start gap-2 rounded-2xl bg-[#f3f4f5] p-3 text-left transition-transform active:scale-95 active:bg-[#e7e8e9] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/50 focus-visible:ring-offset-2 min-[480px]:gap-3 min-[480px]:p-4 dark:bg-slate-800/90 dark:active:bg-slate-800 dark:focus-visible:ring-offset-slate-900 [@media(max-height:700px)]:gap-1.5 [@media(max-height:700px)]:p-2.5 ${HOME_TOUCH_BUTTON_CLASS}`}
 										aria-label={tu('fund_wallet')}
 									>
@@ -2770,7 +2824,7 @@ const Home = (_props: HomeProps) => {
 						<>
 							<motion.div
 								className={
-									payReceiveQrMode === 'pay'
+									payReceiveUsesPayChrome
 										? 'fixed inset-0 z-[10020] bg-[#191c1d]/10 backdrop-blur-md'
 										: 'fixed inset-0 z-[10020] bg-black/40 backdrop-blur-md dark:bg-black/50'
 								}
@@ -2786,9 +2840,11 @@ const Home = (_props: HomeProps) => {
 							/>
 							<motion.div
 								className={
-									payReceiveQrMode === 'pay'
+									payReceiveUsesFundChrome
+										? 'fixed bottom-0 left-0 right-0 z-[10021] flex max-h-[92dvh] flex-col items-center overflow-hidden overscroll-contain rounded-t-2xl bg-[#f3f4f5] pb-[calc(env(safe-area-inset-bottom)+1.25rem)] shadow-[0_-20px_50px_rgba(0,0,0,0.1)] dark:bg-slate-900'
+										: payReceiveUsesPayChrome
 										? 'fixed bottom-0 left-0 right-0 z-[10021] flex max-h-[92dvh] flex-col items-center overflow-hidden overscroll-contain rounded-t-xl bg-[#f3f4f5] pb-[calc(env(safe-area-inset-bottom)+1.5rem)] shadow-[0_-20px_60px_rgba(0,0,0,0.1)] dark:bg-slate-900'
-										: 'fixed bottom-0 left-0 right-0 z-[10021] flex flex-col items-center overflow-hidden overscroll-contain rounded-t-2xl bg-white pb-[calc(env(safe-area-inset-bottom)+1rem)] shadow-[0_-20px_50px_rgba(0,0,0,0.1)] dark:bg-slate-900'
+										: 'fixed bottom-0 left-0 right-0 z-[10021] flex flex-col items-center overflow-hidden overscroll-contain rounded-t-2xl bg-white pb-[calc(env(safe-area-inset-bottom)+1.25rem)] shadow-[0_-20px_50px_rgba(0,0,0,0.1)] dark:bg-slate-900'
 								}
 								initial={{ y: '100%' }}
 								animate={{ y: 0 }}
@@ -2796,38 +2852,336 @@ const Home = (_props: HomeProps) => {
 								transition={{ type: 'spring', damping: 32, stiffness: 320 }}
 								onClick={(e) => e.stopPropagation()}
 							>
-								<div
-									className={
-										payReceiveQrMode === 'pay'
-											? 'flex w-full shrink-0 items-center justify-between px-4 pb-2 pt-3'
-											: 'flex w-full shrink-0 items-center justify-between px-4 pb-1 pt-2'
-									}
-								>
-									<span className="w-10 shrink-0" aria-hidden />
-									<div
-										className={
-											payReceiveQrMode === 'pay'
-												? 'h-1.5 w-12 shrink-0 rounded-full bg-[#e1e3e4] dark:bg-slate-600'
-												: 'h-1.5 w-12 shrink-0 rounded-full bg-gray-200 dark:bg-slate-600'
-										}
-									/>
-									<button
-										type="button"
-										data-touch-priority="1"
-										{...closePayReceiveSheetTap}
-										className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-gray-500 transition-colors active:bg-gray-100 dark:text-slate-400 dark:active:bg-slate-700 ${HOME_TOUCH_BUTTON_CLASS}`}
-										aria-label={tu('close')}
-									>
-										<X className="h-5 w-5 text-[#191c1d] dark:text-slate-100" aria-hidden />
-									</button>
-								</div>
-								<div
-									className={
-										payReceiveQrMode === 'pay'
-											? 'mx-auto w-full max-w-lg shrink-0 overflow-hidden overscroll-none px-6 pb-4'
-											: 'mx-auto w-full max-w-lg shrink-0 overflow-hidden overscroll-none px-5 pb-3'
-									}
-								>
+								{payReceiveView === 'fund' ? (
+									<div className="mx-auto w-full max-w-lg px-5 pb-1">
+										<div className="flex justify-center pb-3 pt-2">
+											<div className="h-1.5 w-12 rounded-full bg-gray-200 dark:bg-slate-600" />
+										</div>
+										<div className="mb-5 flex items-center justify-between gap-3">
+											<h2 className="text-[1.375rem] font-bold tracking-tight text-[#191c1d] dark:text-slate-100">
+												{tu('fund_your_wallet')}
+											</h2>
+											<button
+												type="button"
+												tabIndex={-1}
+												data-touch-priority="1"
+												{...closePayReceiveSheetTap}
+												className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-[#191c1d] shadow-[0_1px_2px_rgba(15,23,42,0.06)] transition-colors active:bg-gray-100 dark:bg-slate-700 dark:text-slate-100 dark:active:bg-slate-600 ${HOME_TOUCH_BUTTON_CLASS}`}
+												aria-label={tu('close')}
+											>
+												<X className="h-4 w-4" aria-hidden />
+											</button>
+										</div>
+										<div className="flex flex-col gap-3">
+											<button
+												type="button"
+												className={fundWalletOptionClass}
+												onClick={() => dismissPayReceiveThenOpenAddCash('stripe')}
+											>
+												<span className="min-w-0">
+													<span className="block text-base font-semibold text-[#191c1d] dark:text-slate-100">
+														{tu('debit_card')}
+													</span>
+													<span className="mt-0.5 block text-sm text-[#737687] dark:text-slate-400">
+														{tu('pay_with_your_debit_card')}
+													</span>
+												</span>
+												<CreditCard className="h-7 w-7 shrink-0 text-[#191c1d] dark:text-slate-100" strokeWidth={1.75} aria-hidden />
+											</button>
+											<button
+												type="button"
+												className={fundWalletOptionClass}
+												{...openReceiveQrTap}
+											>
+												<span className="min-w-0">
+													<span className="block text-base font-semibold text-[#191c1d] dark:text-slate-100">
+														{tu('receive_via_qr')}
+													</span>
+													<span className="mt-0.5 block text-sm text-[#737687] dark:text-slate-400">
+														{tu('scan_to_send_to_this_wallet')}
+													</span>
+												</span>
+												<QrCode className="h-7 w-7 shrink-0 text-[#0051d1]" strokeWidth={1.75} aria-hidden />
+											</button>
+											<button
+												type="button"
+												className={fundWalletOptionClass}
+												{...openReceiveFromWalletTap}
+											>
+												<span className="min-w-0">
+													<span className="block text-base font-semibold text-[#191c1d] dark:text-slate-100">
+														{tu('receive_from_a_wallet')}
+													</span>
+													<span className="mt-0.5 block text-sm text-[#737687] dark:text-slate-400">
+														{tu('transfer_crypto')}
+													</span>
+												</span>
+												<span className="relative h-10 w-[4.25rem] shrink-0" aria-hidden>
+													<span className="absolute left-0 top-1/2 h-8 w-8 -translate-y-1/2 overflow-hidden rounded-full border-2 border-white bg-white dark:border-slate-800">
+														<img src={usdcIcon} alt="" className="h-full w-full object-contain" />
+													</span>
+													<span className="absolute left-4 top-1/2 h-8 w-8 -translate-y-1/2 overflow-hidden rounded-full border-2 border-white bg-white dark:border-slate-800">
+														<img src={baseIcon} alt="" className="h-full w-full object-contain" />
+													</span>
+													<span className="absolute left-8 top-1/2 h-8 w-8 -translate-y-1/2 overflow-hidden rounded-full border-2 border-white bg-white dark:border-slate-800">
+														<img src={conetTokenIcon} alt="" className="h-full w-full object-contain" />
+													</span>
+												</span>
+											</button>
+										</div>
+									</div>
+								) : payReceiveView === 'qr' ? (
+									<div className="mx-auto flex w-full max-w-lg flex-col overflow-y-auto px-5 pb-1">
+										<div className="flex justify-center pb-3 pt-2">
+											<div className="h-1.5 w-12 rounded-full bg-gray-200 dark:bg-slate-600" />
+										</div>
+										<div className="flex items-center justify-between">
+											<BeamioCircularBackButton variant="onLight" onClick={backToFundView} />
+											<button
+												type="button"
+												tabIndex={-1}
+												data-touch-priority="1"
+												{...closePayReceiveSheetTap}
+												className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-[#191c1d] shadow-[0_1px_2px_rgba(15,23,42,0.06)] transition-colors active:bg-gray-100 dark:bg-slate-700 dark:text-slate-100 dark:active:bg-slate-600 ${HOME_TOUCH_BUTTON_CLASS}`}
+												aria-label={tu('close')}
+											>
+												<X className="h-4 w-4" aria-hidden />
+											</button>
+										</div>
+										<header className="pb-5 pt-6">
+											<p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#737687] dark:text-slate-400">
+												{tu('fund_your_wallet')}
+											</p>
+											<h2 className="mt-1 text-[1.375rem] font-bold tracking-tight text-[#191c1d] dark:text-slate-100">
+												{tu('receive_via_qr')}
+											</h2>
+											<p className="mt-1 text-sm leading-snug text-[#737687] dark:text-slate-400">
+												{tu('scan_to_send_to_this_wallet')}
+											</p>
+										</header>
+										{!receiveWalletEoa || !receiveQrUri ? (
+											<div
+												role="alert"
+												className="flex items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-200"
+											>
+												<AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+												<p>{tu('wallet_address_unavailable')}</p>
+											</div>
+										) : (
+											<>
+												<div className="flex justify-center">
+													<div className="rounded-xl border border-[#e8eaed] bg-white p-3 shadow-sm dark:border-slate-700 dark:bg-slate-800">
+														<QRCodeCanvas
+															value={receiveQrUri}
+															size={200}
+															level="M"
+															includeMargin={false}
+															bgColor="#ffffff"
+															fgColor="#000000"
+															className="block rounded-sm"
+														/>
+													</div>
+												</div>
+												<button
+													type="button"
+													onClick={() => void copyReceiveWalletAddress()}
+													className={`mt-5 flex w-full items-center gap-2 rounded-full border px-3 py-2.5 text-left ${HOME_TOUCH_BUTTON_CLASS}`}
+													style={{
+														borderColor: receiveWalletEoaAccent.border,
+														backgroundColor: receiveWalletEoaAccent.surfaceBg,
+														color: receiveWalletEoaAccent.bodyText,
+													}}
+													aria-label={tu('copy_wallet_address')}
+												>
+													<Wallet
+														className="h-3.5 w-3.5 shrink-0 text-[#0051d1]"
+														strokeWidth={2.25}
+														aria-hidden
+													/>
+													<span className="min-w-0 flex-1 truncate font-mono text-sm font-semibold">
+														{fmtAddr(receiveWalletEoa)}
+													</span>
+													{receiveWalletCopied ? (
+														<Check className="h-4 w-4 shrink-0 text-emerald-500" aria-hidden />
+													) : (
+														<Copy className="h-4 w-4 shrink-0 text-[#0051d1]" aria-hidden />
+													)}
+												</button>
+												<p className="mt-4 text-center text-sm leading-snug text-[#737687] dark:text-slate-400">
+													{tu('receive_qr_hint')}
+												</p>
+											</>
+										)}
+									</div>
+								) : payReceiveView === 'wallets' ? (
+									<div className="mx-auto flex min-h-0 w-full max-w-lg flex-1 flex-col overflow-y-auto px-5 pb-1">
+										<div className="flex justify-center pb-3 pt-2">
+											<div className="h-1.5 w-12 rounded-full bg-gray-200 dark:bg-slate-600" />
+										</div>
+										<div className="flex items-center justify-between">
+											<BeamioCircularBackButton
+												variant="onLight"
+												onClick={backToFundView}
+												disabled={!!openingReceiveWalletId}
+											/>
+											<button
+												type="button"
+												tabIndex={-1}
+												data-touch-priority="1"
+												{...closePayReceiveSheetTap}
+												className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-[#191c1d] shadow-[0_1px_2px_rgba(15,23,42,0.06)] transition-colors active:bg-gray-100 dark:bg-slate-700 dark:text-slate-100 dark:active:bg-slate-600 ${HOME_TOUCH_BUTTON_CLASS}`}
+												aria-label={tu('close')}
+											>
+												<X className="h-4 w-4" aria-hidden />
+											</button>
+										</div>
+										<header className="pb-5 pt-6">
+											<p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#737687] dark:text-slate-400">
+												{tu('fund_your_wallet')}
+											</p>
+											<h2 className="mt-1 text-[1.375rem] font-bold tracking-tight text-[#191c1d] dark:text-slate-100">
+												{tu('receive_from_a_wallet')}
+											</h2>
+											<p className="mt-1 text-sm leading-snug text-[#737687] dark:text-slate-400">
+												{tu('transfer_crypto')}
+											</p>
+										</header>
+										{receiveWalletOpenError ? (
+											<div
+												role="alert"
+												className="mb-3 flex items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-200"
+											>
+												<AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+												<p>{receiveWalletOpenError}</p>
+											</div>
+										) : null}
+										{!receiveWalletEoa ? (
+											<div
+												role="alert"
+												className="flex items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-200"
+											>
+												<AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+												<p>{tu('wallet_address_unavailable')}</p>
+											</div>
+										) : receiveWalletsLooking && installedReceiveWallets.length === 0 ? (
+											<div className="flex flex-col items-center gap-3 py-10">
+												<Loader2 className="h-8 w-8 animate-spin text-[#0051d1]" aria-hidden />
+												<p className="text-sm text-[#737687] dark:text-slate-400">{tu('looking_for_wallets')}</p>
+											</div>
+										) : !receiveWalletsLooking && installedReceiveWallets.length === 0 ? (
+											<div
+												role="alert"
+												className="flex items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-200"
+											>
+												<AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+												<p>{tu('no_wallets_found')}</p>
+											</div>
+										) : (
+											<div className="flex flex-col gap-3">
+												{installedReceiveWallets.map((row) => {
+													const opening = openingReceiveWalletId === row.id
+													return (
+														<button
+															key={row.id}
+															type="button"
+															disabled={!!openingReceiveWalletId}
+															aria-busy={opening}
+															aria-label={row.label}
+															onClick={() => void openInstalledReceiveWallet(row)}
+															className={`${fundWalletOptionClass} disabled:cursor-not-allowed disabled:opacity-60`}
+														>
+															<span className="min-w-0">
+																<span className="block text-base font-semibold text-[#191c1d] dark:text-slate-100">
+																	{row.label}
+																</span>
+															</span>
+															{opening ? (
+																<Loader2 className="h-7 w-7 shrink-0 animate-spin text-[#0051d1]" aria-hidden />
+															) : row.iconUrl ? (
+																<span className="h-10 w-10 shrink-0 overflow-hidden rounded-full bg-white">
+																	<img src={row.iconUrl} alt="" className="h-full w-full object-contain" />
+																</span>
+															) : (
+																<span
+																	className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold"
+																	style={{ backgroundColor: row.brandBg, color: row.brandFg }}
+																	aria-hidden
+																>
+																	{row.brandLetter}
+																</span>
+															)}
+														</button>
+													)
+												})}
+											</div>
+										)}
+									</div>
+								) : (
+									<>
+										<div
+											className={
+												payReceiveUsesPayChrome
+													? 'flex w-full shrink-0 items-center justify-between px-4 pb-2 pt-3'
+													: 'flex w-full shrink-0 items-center justify-between px-4 pb-1 pt-2'
+											}
+										>
+											<span className="w-10 shrink-0" aria-hidden />
+											<div
+												className={
+													payReceiveUsesPayChrome
+														? 'h-1.5 w-12 shrink-0 rounded-full bg-[#e1e3e4] dark:bg-slate-600'
+														: 'h-1.5 w-12 shrink-0 rounded-full bg-gray-200 dark:bg-slate-600'
+												}
+											/>
+											<button
+												type="button"
+												tabIndex={-1}
+												data-touch-priority="1"
+												{...closePayReceiveSheetTap}
+												className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#f3f4f5] text-[#191c1d] transition-colors active:bg-gray-200 dark:bg-slate-700 dark:text-slate-100 dark:active:bg-slate-600 ${HOME_TOUCH_BUTTON_CLASS}`}
+												aria-label={tu('close')}
+											>
+												<X className="h-4 w-4" aria-hidden />
+											</button>
+										</div>
+										<div className="mx-auto w-full max-w-lg shrink-0 px-5 pb-3">
+											<div className="flex rounded-full bg-[#edeeef] p-1 dark:bg-slate-800" role="tablist" aria-label="Wallet receive">
+												<button
+													type="button"
+													role="tab"
+													aria-selected={payReceiveQrMode === 'receive'}
+													className={payReceiveTabClass(payReceiveQrMode === 'receive')}
+													onClick={() => setPayReceiveQrMode('receive')}
+												>
+													{tu('receive')}
+												</button>
+												<button
+													type="button"
+													role="tab"
+													aria-selected={payReceiveQrMode === 'pay'}
+													className={payReceiveTabClass(payReceiveQrMode === 'pay')}
+													onClick={() => setPayReceiveQrMode('pay')}
+												>
+													{tu('show_to_pay')}
+												</button>
+												<button
+													type="button"
+													role="tab"
+													aria-selected={false}
+													className={payReceiveTabClass(false)}
+													onClick={() => void startHomeQrScan()}
+												>
+													{tu('scan')}
+												</button>
+											</div>
+										</div>
+										<div
+											className={
+												payReceiveUsesPayChrome
+													? 'mx-auto w-full max-w-lg shrink-0 overflow-hidden overscroll-none px-6 pb-4'
+													: 'mx-auto w-full max-w-lg shrink-0 overflow-hidden overscroll-none px-5 pb-3'
+											}
+										>
 									{payReceiveQrMode === 'pay' ? (
 										<div className="mx-auto flex w-full max-w-md flex-col gap-4 px-0 pb-2 pt-0 sm:px-2">
 											<div className="shrink-0 space-y-2 text-center">
@@ -2957,62 +3311,87 @@ const Home = (_props: HomeProps) => {
 											className="flex w-full flex-col items-center overflow-hidden overscroll-none"
 											style={{ touchAction: 'manipulation' }}
 										>
-											{/* Receive：topupExample1.html — Add Funds at Store（可扫描 QR，不在码心叠加遮挡） */}
-											<div className="mb-3 w-full space-y-1 text-center">
-												<h3 className="text-lg font-bold tracking-tight text-[#191c1d] dark:text-slate-100">
-													Add Funds at Store
-												</h3>
-												<p className="mx-auto max-w-md px-2 text-sm leading-snug text-[#424655] dark:text-slate-400">
-													Show this code to the cashier to top up your balance.
-												</p>
-											</div>
-											<div className="relative flex w-full max-w-full justify-center overflow-hidden px-1">
-												<div
+											<button
+												type="button"
+												disabled={!receiveWalletEoa}
+												onClick={() => void copyReceiveWalletAddress()}
+												className={`mb-3 flex w-full max-w-sm items-center gap-2 rounded-full border px-3 py-2 text-left ${HOME_TOUCH_BUTTON_CLASS}`}
+												style={{
+													borderColor: receiveWalletEoaAccent.border,
+													backgroundColor: receiveWalletEoaAccent.surfaceBg,
+													color: receiveWalletEoaAccent.bodyText,
+												}}
+												aria-label={tu('copy_wallet_address')}
+											>
+												<Wallet
+													className="h-3.5 w-3.5 shrink-0"
+													style={{ color: receiveWalletEoaAccent.accent }}
+													strokeWidth={2.25}
 													aria-hidden
-													className="pointer-events-none absolute inset-0 rounded-xl opacity-90"
-													style={{
-														background:
-															'radial-gradient(circle, rgba(21, 98, 240, 0.1) 0%, rgba(21, 98, 240, 0) 70%)',
-													}}
 												/>
-												<div className="relative flex w-64 max-w-full flex-col items-center rounded-xl border-2 border-dashed border-[#c3c6d8] bg-[#f3f4f5] p-4 dark:border-slate-600 dark:bg-slate-800/90">
-													<div className="relative rounded-md bg-white p-2 shadow-sm dark:bg-slate-900">
-														{topUpReceiveQrValue ? (
-															<div className="relative h-40 w-40">
-																<QRCodeCanvas
-																	value={topUpReceiveQrValue}
-																	size={160}
-																	level="H"
-																	includeMargin={false}
-																	bgColor="#ffffff"
-																	fgColor="#000000"
-																	className="block rounded-sm"
-																/>
-																<div className="pointer-events-none absolute left-1/2 top-1/2 flex h-14 w-14 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-[16px] bg-white p-1.5 shadow-[0_4px_14px_rgba(0,0,0,0.12)]">
-																	<IpfsImg
-																		src={APP_LOGO_SRC}
-																		alt="Beamio"
-																		className="h-full w-full rounded-[12px] object-contain"
-																		draggable={false}
-																	/>
-																</div>
-															</div>
-														) : (
-															<div className="flex h-40 w-40 items-center justify-center text-center text-sm text-[#424655] dark:text-slate-400">
-																Loading code…
-															</div>
-														)}
-													</div>
-													<div className="mt-3 flex items-center gap-2 rounded-full border border-[#c3c6d8]/40 bg-white px-3 py-1 shadow-sm dark:border-slate-600 dark:bg-slate-900">
-														<span className="text-sm font-semibold tracking-wide text-[#004bc3] dark:text-[#6ba3ff]">
-															{topUpReceiveDisplayTag}
-														</span>
-													</div>
-												</div>
+												<span className="min-w-0 flex-1 truncate font-mono text-sm font-semibold">
+													{receiveWalletEoa ? fmtAddr(receiveWalletEoa) : 'EOA unavailable'}
+												</span>
+												{receiveWalletCopied ? (
+													<Check className="h-4 w-4 shrink-0 text-emerald-500" aria-hidden />
+												) : (
+													<Copy
+														className="h-4 w-4 shrink-0"
+														style={{ color: receiveWalletEoaAccent.accent }}
+														aria-hidden
+													/>
+												)}
+											</button>
+											<div className="mb-4 flex items-center justify-center gap-2">
+												<span className="inline-flex items-center gap-1.5 rounded-full border border-[#dce2f7] bg-[#e9edff] px-2.5 py-1 text-xs font-semibold text-[#424655]">
+													<img src={baseIcon} alt="" className="h-3.5 w-3.5 rounded-full" />
+													Base
+												</span>
+												<span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-[#424655] dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300">
+													<img src={conetTokenIcon} alt="" className="h-3.5 w-3.5 rounded-full" />
+													CoNET
+												</span>
 											</div>
+											<div className="relative flex justify-center">
+												{receiveQrUri ? (
+													<div className="rounded-xl border border-[#e8eaed] bg-white p-3 shadow-sm dark:border-slate-700 dark:bg-slate-800">
+														<QRCodeCanvas
+															value={receiveQrUri}
+															size={176}
+															level="M"
+															includeMargin={false}
+															bgColor="#ffffff"
+															fgColor="#000000"
+															className="block rounded-sm"
+														/>
+													</div>
+												) : (
+													<div
+														role="alert"
+														className="flex h-44 w-44 items-center justify-center text-center text-sm text-[#424655] dark:text-slate-400"
+													>
+														{tu('wallet_address_unavailable')}
+													</div>
+												)}
+											</div>
+											<button
+												type="button"
+												disabled={!receiveWalletEoa}
+												onClick={() => void copyReceiveWalletAddress()}
+												className={`mt-5 flex w-full max-w-sm items-center justify-center gap-2 rounded-full bg-[#1562f0] py-3.5 text-sm font-semibold text-white disabled:opacity-50 ${HOME_TOUCH_BUTTON_CLASS}`}
+											>
+												{receiveWalletCopied ? (
+													<Check className="h-4 w-4 text-emerald-300" aria-hidden />
+												) : (
+													<Copy className="h-4 w-4" aria-hidden />
+												)}
+												{tu('copy_wallet_address')}
+											</button>
 										</div>
 									)}
-								</div>
+										</div>
+									</>
+								)}
 							</motion.div>
 						</>
 					)}
@@ -3050,7 +3429,7 @@ const Home = (_props: HomeProps) => {
 										className="w-10 h-10 rounded-full flex items-center justify-center text-gray-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
 										aria-label={tu('close')}
 									>
-										
+										<X className="h-5 w-5 text-[#191c1d] dark:text-slate-100" aria-hidden />
 									</button>
 								</div>
 								<div className="flex-1 overflow-y-auto min-h-0 overscroll-contain px-6 pb-4 flex flex-col">
@@ -3201,7 +3580,13 @@ const Home = (_props: HomeProps) => {
 											<div className="flex items-center mb-6 w-full relative">
 												<button
 													type="button"
-													onClick={() => setAddCashMode('methods')}
+													onClick={() => {
+														if (addCashOpenedAsStripe) {
+															closeAddCashSheet()
+															return
+														}
+														setAddCashMode('methods')
+													}}
 													className="text-[#1562f0] dark:text-[#6ba3ff] font-bold flex items-center text-sm absolute left-0"
 												>
 													<ChevronRight className="rotate-180 mr-1" size={16} /> Back
@@ -3585,6 +3970,8 @@ const Home = (_props: HomeProps) => {
 				</div>,
 				document.body
 			)}
+
+			<ScanBtn ref={homeScanBtnRef} hidden />
 
 			{/* 底部向上弹出窗口 */}
 			{settingsOpen ? (

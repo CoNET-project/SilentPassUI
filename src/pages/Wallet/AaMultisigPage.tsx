@@ -908,8 +908,7 @@ export default function AaMultisigPage() {
 		const id = ++cosignerSearchRequestId.current
 		const timer = window.setTimeout(async () => {
 			setCosignerSearchLoading(true)
-			const lower = normalizedCosignerQuery.toLowerCase()
-			const data = await searchUsername(lower)
+			const data = await searchUsername(normalizedCosignerQuery)
 			const rows: searchResult[] = data?.results ?? []
 			const managerSet = new Set((policy?.managers ?? []).map((m) => m.toLowerCase()))
 			const filtered = rows.filter((row) => {

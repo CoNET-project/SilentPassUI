@@ -200,6 +200,8 @@ type DaemonContext = {
 	registerAddressMetadataMinuteWork: (fn: (() => Promise<void>) | null) => void
 	merchantCardRewardReserveByKey: Record<string, MerchantCardRewardReserveSnapshot>
 	registerMerchantCardRewardReserveTarget: (target: MerchantCardRewardReserveTarget | null) => void
+	/** Kick the reward-reserve tick immediately (e.g. after USDC Reserve deposit arrives). */
+	refreshMerchantCardRewardReserveNow: () => void
 };
 
 export type MerchantCardRewardReserveTarget = {
@@ -305,6 +307,7 @@ const defaultContextValue: DaemonContext = {
 	registerAddressMetadataMinuteWork: () => {},
 	merchantCardRewardReserveByKey: {},
 	registerMerchantCardRewardReserveTarget: () => {},
+	refreshMerchantCardRewardReserveNow: () => {},
 	setSecureCode: (val: string) => {},
 	secureCode: '',
 	  setBeamioAppInstalled: () => {},
@@ -638,13 +641,20 @@ export function DaemonProvider({ children }: DaemonProps) {
     fetchOracle()
   }, [fetchOracle])
 
+  const rewardReserveKickRef = useRef<(() => void) | null>(null)
+
   useEffect(() => {
     let cancelled = false
     let timer: ReturnType<typeof setTimeout> | undefined
     let inFlight = false
+    let pendingKick = false
 
     const runRewardReserveTick = async () => {
-      if (cancelled || inFlight) return
+      if (cancelled) return
+      if (inFlight) {
+        pendingKick = true
+        return
+      }
       inFlight = true
       try {
         for (const [key, target] of merchantCardRewardReserveTargetsRef.current) {
@@ -689,17 +699,35 @@ export function DaemonProvider({ children }: DaemonProps) {
         }
       } finally {
         inFlight = false
-        if (!cancelled) {
-          timer = setTimeout(() => { void runRewardReserveTick() }, 30_000)
+        if (cancelled) return
+        if (pendingKick) {
+          pendingKick = false
+          void runRewardReserveTick()
+          return
         }
+        timer = setTimeout(() => { void runRewardReserveTick() }, 30_000)
       }
+    }
+
+    rewardReserveKickRef.current = () => {
+      if (cancelled) return
+      if (timer) {
+        clearTimeout(timer)
+        timer = undefined
+      }
+      void runRewardReserveTick()
     }
 
     void runRewardReserveTick()
     return () => {
       cancelled = true
+      rewardReserveKickRef.current = null
       if (timer) clearTimeout(timer)
     }
+  }, [])
+
+  const refreshMerchantCardRewardReserveNow = useCallback(() => {
+    rewardReserveKickRef.current?.()
   }, [])
 
   useEffect(() => {
@@ -1014,7 +1042,7 @@ export function DaemonProvider({ children }: DaemonProps) {
 				airdropSuccess, setAirdropSuccess, airdropTokens, setAirdropTokens, airdropProcessReff, setAirdropProcessReff, getWebFilter, listenningProcess, setListenningProcess,
 				setGetWebFilter,switchValue, setSwitchValue, webFilterRef, quickLinksShow, setQuickLinksShow, duplicateAccount, checkinBalanceUP, setCheckinBalanceUP, gossip, setGossip,
 				beamioUsers, setbBeamioUsers, showFooter, setShowFooter, chatSearchOpen, setChatSearchOpen, payMePayment, setPayMePayment, navigateLeftButtonArray, setNavigateLeftButtonArray, allNodes, setAllNodes,
-				chatHomeItem,setChatHomeItem,scanData, setScanData, scanIntent, setScanIntent, voucherPayAmount, setVoucherPayAmount, voucherPayToAA, setVoucherPayToAA, voucherPayError, setVoucherPayError, messageCount, setMessageCount, msgCountLockRef, seenMsgRef, scanRef, historyPayData, setHistoryPayData, registerMembersLoyaltyBackgroundWork, registerMerchantOsOverviewBackgroundWork, registerMerchantOsBuintBalanceBackgroundWork, registerAddressMetadataMinuteWork, merchantCardRewardReserveByKey, registerMerchantCardRewardReserveTarget,
+				chatHomeItem,setChatHomeItem,scanData, setScanData, scanIntent, setScanIntent, voucherPayAmount, setVoucherPayAmount, voucherPayToAA, setVoucherPayToAA, voucherPayError, setVoucherPayError, messageCount, setMessageCount, msgCountLockRef, seenMsgRef, scanRef, historyPayData, setHistoryPayData, registerMembersLoyaltyBackgroundWork, registerMerchantOsOverviewBackgroundWork, registerMerchantOsBuintBalanceBackgroundWork, registerAddressMetadataMinuteWork, merchantCardRewardReserveByKey, registerMerchantCardRewardReserveTarget, refreshMerchantCardRewardReserveNow,
         		setDuplicateAccount,subscriptionVisible, setSubscriptionVisible, airdropVisible, setAirdropVisible, referralsVisible, setReferralsVisible, passportVisible, 
 				setPassportVisible, checkInVisible, setCheckInVisible, genesisVisible, setGenesisVisible, isInitialLoading, setIsInitialLoading, statusVisible, setStatusVisible, ruleVisible }}>
 			{/* ✅ 常驻隐藏扫码组件：不占布局，但随时可 start */}

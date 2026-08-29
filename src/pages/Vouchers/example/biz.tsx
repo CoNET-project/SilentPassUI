@@ -297,6 +297,7 @@ import {
   ProgramLivePreviewInlineSelect,
 } from './programLivePreviewInlineField';
 import { ValidatorDepositRedeemManagementPanel } from './validatorDepositRedeemManagementPanel';
+import { MerchantCardUsdcReserveDepositSheet } from './MerchantCardUsdcReserveDepositSheet';
 import {
   ProgramsIssuedItemClaimWalletsSection,
   type ProgramsIssuedItemClaimWalletsView,
@@ -13495,6 +13496,7 @@ export default function MerchantOS() {
    registerAddressMetadataMinuteWork,
   merchantCardRewardReserveByKey,
   registerMerchantCardRewardReserveTarget,
+  refreshMerchantCardRewardReserveNow,
  } = useDaemonContext();
  const {
    profileMap: addressProfileByLower,
@@ -13507,6 +13509,7 @@ export default function MerchantOS() {
    avatarImgUrl: beamioAvatarImgUrl,
  } = useBeamioTagDatabase();
  const [walletSendUsdcOpen, setWalletSendUsdcOpen] = useState(false);
+ const [usdcReserveDepositOpen, setUsdcReserveDepositOpen] = useState(false);
  const [activeTab, setActiveTab] = useState('Overview');
  const [oracleCadUsdc, setOracleCadUsdc] = useState<number | null>(null);
  /** Bumps when Lite onboarding form saves so `hasVerraLiteBusinessRequiredFields` is re-evaluated. */
@@ -32913,8 +32916,19 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                         </div>
                       </div>
                     </div>
-                    <div className="h-full rounded-lg border border-[#dce2f7] bg-white p-4 shadow-sm">
-                      <div className="flex flex-col gap-2">
+                    <div className="relative h-full rounded-lg border border-[#dce2f7] bg-white p-4 shadow-sm">
+                      <button
+                        type="button"
+                        tabIndex={-1}
+                        disabled={!staffProgramBeamioCardAddress}
+                        onClick={() => setUsdcReserveDepositOpen(true)}
+                        aria-label="Deposit USDC Reserve"
+                        title="Deposit USDC Reserve"
+                        className="absolute right-2 top-2 inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#dce2f7] bg-[#e9edff] text-[#0051d1] shadow-sm transition hover:bg-[#dce2f7] disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        <ArrowDownToLine className="h-4 w-4" strokeWidth={2.25} aria-hidden />
+                      </button>
+                      <div className="flex flex-col gap-2 pr-8">
                         <div className="flex size-9 items-center justify-center sm:size-10">
                           <UsdcConetCompositeIcon size={22} badgeSize={11} />
                         </div>
@@ -33172,11 +33186,11 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                     </h3>
                   </div>
                 </div>
-                <div className="flex items-start gap-3">
+                <div className="relative flex items-start gap-3">
                   <div className="flex-shrink-0 rounded-xl bg-white p-2.5 shadow-sm sm:rounded-2xl sm:p-3">
                     <UsdcConetCompositeIcon size={28} badgeSize={14} />
                   </div>
-                  <div>
+                  <div className="min-w-0 flex-1 pr-10">
                     <p className="mb-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">USDC Reserve</p>
                     <h3 className="font-manrope text-lg font-extrabold tabular-nums text-[#2c2f31] sm:text-xl">
                       {merchantCardUsdcReserveDisplay}
@@ -33185,6 +33199,17 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                       Diff {merchantCardReserveDifferenceDisplay}
                     </p>
                   </div>
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    disabled={!staffProgramBeamioCardAddress}
+                    onClick={() => setUsdcReserveDepositOpen(true)}
+                    aria-label="Deposit USDC Reserve"
+                    title="Deposit USDC Reserve"
+                    className="absolute right-0 top-0 inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#dce2f7] bg-[#e9edff] text-[#0051d1] shadow-sm transition hover:bg-[#dce2f7] disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <ArrowDownToLine className="h-4 w-4" strokeWidth={2.25} aria-hidden />
+                  </button>
                 </div>
                 <div className="flex items-start gap-3">
                   <div className="flex-shrink-0 rounded-xl bg-white p-2.5 text-[#8d3a8b] shadow-sm sm:rounded-2xl sm:p-3">
@@ -34941,6 +34966,17 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                setVoucherPayToAA={setVoucherPayToAA}
                setVoucherPayFromScan={setVoucherPayFromScan}
                navigate={navigate}
+             />
+             <MerchantCardUsdcReserveDepositSheet
+               open={usdcReserveDepositOpen}
+               cardAddress={staffProgramBeamioCardAddress}
+               eoaBaseUsdcBalance={eoaUsdcBalance}
+               eoaConetUsdcBalance={eoaConetUsdcBalance}
+               onClose={() => setUsdcReserveDepositOpen(false)}
+               onArrived={() => {
+                 refreshMerchantCardRewardReserveNow()
+                 setOverviewRefreshTrigger((n) => n + 1)
+               }}
              />
            </div>
          )}

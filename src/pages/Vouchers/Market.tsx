@@ -197,7 +197,7 @@ const USDC_TOPUP_CARD_ADDRESS = BEAMIO_USER_CARD_ASSET_ADDRESS
 
 const DISCOVER_LATEST_CARDS_LIMIT = 20
 /** 进入 Market 页面立即展示已 cache 的 Trending Now，避免 API 504 / 超时时永远 loading */
-const TRENDING_CACHE_VERSION = 10
+const TRENDING_CACHE_VERSION = 11
 const TRENDING_CACHE_KEY = `beamio:trending:latestCards:v${TRENDING_CACHE_VERSION}:limit${DISCOVER_LATEST_CARDS_LIMIT}`
 /** /api/latestCards 实测可能 504 / 60s+ 挂起，给出明确超时；超时按 untrusted 处理，不清空已显示的 trusted rows */
 const TRENDING_FETCH_TIMEOUT_MS = 12_000
@@ -222,12 +222,17 @@ function isConetGenesisDiscoverCard(cardAddress: string | null | undefined): boo
 
 /** LongDhang CoNET program card (post Base→CoNET migration). Discover detail panels keyed here. */
 const LONGDHANG_DISCOVER_CARD_ADDRESS = '0xc06055AEEd896F832e602a5876D2Dbe1CB365A8A'
+/** Current LongDhang VIP merchant card — Featured Brands first item. */
+const LONGDHANG_VIP_DISCOVER_CARD_ADDRESS = '0x6e600DfaEa5eD006A97aF2AD080518c1d06C0A74'
 /** Blacklisted Base legacy card — panel / hero lookups alias to {@link LONGDHANG_DISCOVER_CARD_ADDRESS}. */
 const LONGDHANG_LEGACY_BASE_CARD_ADDRESS = '0x30d80cD71Fd1FFD346737b387dA11C7412363EFF'
 
 function resolveDiscoverCardPanelKey(cardAddress: string): string {
 	const lc = cardAddress.trim().toLowerCase()
-	if (lc === LONGDHANG_LEGACY_BASE_CARD_ADDRESS.toLowerCase()) {
+	if (
+		lc === LONGDHANG_LEGACY_BASE_CARD_ADDRESS.toLowerCase() ||
+		lc === LONGDHANG_VIP_DISCOVER_CARD_ADDRESS.toLowerCase()
+	) {
 		return LONGDHANG_DISCOVER_CARD_ADDRESS.toLowerCase()
 	}
 	return lc
@@ -324,6 +329,7 @@ function DiscoverFeaturedBrandLogoImage({
 
 /** All-filter list: pinned to top first (in array order). */
 const DISCOVER_ALL_TOP_CARD_ADDRESSES = [
+	LONGDHANG_VIP_DISCOVER_CARD_ADDRESS,
 	LONGDHANG_DISCOVER_CARD_ADDRESS,
 	"0xe8e146e7752906db36c2aaa5bf699284ee3582b4",
 ] as const

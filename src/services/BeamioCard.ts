@@ -2603,13 +2603,21 @@ export const postBuyCardPoints = async (
                 body
             })
             const data: {
-				error: string, USDC_tx: string, success: boolean
+				error?: string
+				message?: string
+				USDC_tx?: string
+				success?: boolean
 			} = await response.json()
+			/** Cluster `purchasingCard` balance fail returns `{ message }`; preCheck returns `{ error }`. */
+			const apiError =
+				(typeof data.error === 'string' && data.error.trim()) ||
+				(typeof data.message === 'string' && data.message.trim()) ||
+				(!response.ok ? `Purchase failed (HTTP ${response.status})` : '')
             if (response.ok) {
                 const assets = await getMyAssets(profile, cardAddress)
 				return { success: true, assets: assets, txHash: data.USDC_tx }
             } else {
-                return { success: false, error: data.error, txHash: data.USDC_tx }
+                return { success: false, error: apiError, txHash: data.USDC_tx ?? null }
             }
 
         } catch (error: any) {
@@ -2693,7 +2701,11 @@ export const postUSDCUserCardTopup = async (params: {
 		})
 		const data = await response.json().catch(() => ({}))
 		if (!response.ok) {
-			return { success: false, error: data?.error ?? 'USDC topup failed' }
+			const apiError =
+				(typeof data?.error === 'string' && data.error.trim()) ||
+				(typeof data?.message === 'string' && data.message.trim()) ||
+				'USDC topup failed'
+			return { success: false, error: apiError }
 		}
 		const assets = await getMyAssets(profile, cardAddress)
 		return { success: true, txHash: data?.USDC_tx, assets }

@@ -8,7 +8,7 @@ import {
 import { IpfsImg } from '@/components/IpfsImg'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { useMerchantCardDatabase } from '@/providers/MerchantCardDatabaseProvider'
-import { getCardMetadataFromApi, getMyAssets, postBuyCardPoints } from '@/services/BeamioCard'
+import { getCardMetadataFromApi, getCardOwner, getMyAssets, postBuyCardPoints } from '@/services/BeamioCard'
 import { isGenericMerchantCardDisplayName } from '@/utils/isGenericMerchantCardDisplayName'
 import { pickNonFactoryMerchantAssetUrl } from '@/utils/isFactoryDefaultMerchantAssetUrl'
 import { resolveSigningPrivateKeyArmor } from '@/utils/resolveSigningPrivateKeyArmor'
@@ -25,15 +25,13 @@ import {
 	Reward13Row,
 	sumUsdc6,
 } from '@/utils/topupReward13Plan'
+import { buildDiscoverUsdcTreasuryBridgeQrUrl } from '@/utils/discoverUsdcTopupSession'
 import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
 
 const SPINNER_CLASS =
 	'[&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]'
 
 const QUICK = ['10', '20', '50', '100'] as const
-
-/** Third-party wallet channel when EOA USDC and Reward PT (#13) cannot cover the quote. */
-const BEAMIO_USDC_TOPUP_URL = 'https://beamio.app/usdc-topup'
 
 type Step = 'amount' | 'pay' | 'select' | 'confirm' | 'success'
 
@@ -239,8 +237,9 @@ export default function MerchantCardTopUpFlow({
 	const redeemLegsThenBuy = async () => {
 		if (payBusy || quotedUsdc6 <= 0n) return
 
-		// Gate: if neither USDC nor available #13 (alone or combined) can cover the quote,
-		// open the third-party USDC top-up channel instead of starting a failing pay.
+		// Gate on *this attempt* cash (legs already respect Use Points OFF → cashUsdc6 = full quote).
+		// Do not credit unused #13 when smartPay is off — that caused purchasingCard balance fails
+		// while the UI still showed generic "Store credit purchase failed".
 		let usdcBal = eoaUsdc6
 		if (usdcBal === null && profile.keyID) {
 			const refreshed = await readEoaConetUsdc6(profile.keyID)
@@ -249,15 +248,34 @@ export default function MerchantCardTopUpFlow({
 				setEoaUsdc6(refreshed)
 			}
 		}
-		const maxReward13Usdc6 = usableRows.reduce((sum, row) => sum + row.redeemableUsdc6, 0n)
-		const bestReward13Cover =
-			maxReward13Usdc6 >= quotedUsdc6 ? quotedUsdc6 : maxReward13Usdc6
-		const cashAfterBestReward13 = quotedUsdc6 - bestReward13Cover
-		const canCompleteWithUsdcOrReward13 =
-			cashAfterBestReward13 === 0n ||
-			(usdcBal !== null && usdcBal >= cashAfterBestReward13)
-		if (!canCompleteWithUsdcOrReward13) {
-			openExternalUrl(BEAMIO_USDC_TOPUP_URL)
+		const knownInsufficientCash =
+			cashUsdc6 > 0n && usdcBal !== null && usdcBal < cashUsdc6
+		if (knownInsufficientCash) {
+			/** Third-party `/usdc-topup` must match Discover treasuryBridge query shape (never bare URL). */
+			const userAa = profile.aaAccount?.trim()
+			if (!userAa || !ethers.isAddress(userAa)) {
+				setPayError(
+					'Smart Wallet (AA) is required for third-party top-up. Open Wallet and finish setup, then retry.',
+				)
+				return
+			}
+			try {
+				const cardOwner = await getCardOwner(cardAddress)
+				if (!cardOwner || cardOwner === ethers.ZeroAddress) {
+					setPayError('Cannot resolve merchant card owner. Please retry.')
+					return
+				}
+				const payUrl = buildDiscoverUsdcTreasuryBridgeQrUrl({
+					cardAddress,
+					cardOwner,
+					amount: fiatHuman,
+					currency: String(cardCurrency || 'USD'),
+					recipientAa: userAa,
+				})
+				openExternalUrl(payUrl)
+			} catch {
+				setPayError('Cannot open payment page. Please retry.')
+			}
 			return
 		}
 
@@ -293,7 +311,10 @@ export default function MerchantCardTopUpFlow({
 					cardAddress,
 				)
 				if (!buy?.success) {
-					throw new Error(buy?.error || 'Store credit purchase failed')
+					throw new Error(
+						buy?.error ||
+							'Store credit purchase failed. Check CoNET-USDC balance and try again.',
+					)
 				}
 				assets = buy.assets ?? undefined
 			} else {

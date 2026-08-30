@@ -10,7 +10,6 @@ import {
 	Check,
 	Eye,
 	EyeOff,
-	KeyRound,
 	QrCode,
 	RefreshCw,
 	ShieldCheck,
@@ -21,10 +20,12 @@ import { tu } from '@/locale/beamioLocale'
 
 type RestoreTab = 'login' | 'recovery'
 const APP_LOGO_SRC = `${process.env.PUBLIC_URL ?? ''}/logo192.png`
+/** Align step chrome with CreateUsernamePinScreen passport loading. */
 const RESTORE_LOADING_STEPS = [
-	{ id: 0, title: 'Restoring Wallet', desc: 'Decrypting your secure vault', icon: KeyRound },
-	{ id: 1, title: 'Preparing Security Backup', desc: 'Creating your local recovery package', icon: RefreshCw },
+	{ id: 0, title: 'Restoring Wallet', desc: 'Decrypting your secure vault' },
+	{ id: 1, title: 'Preparing Security Backup', desc: 'Creating your local recovery package' },
 ] as const
+const RESTORE_STEP_DURATION_MS = 2000
 
 function scanRecoveryQrWithIosBridge() {
 	const native = getCashTreesNativeNfcBridge()
@@ -109,6 +110,7 @@ export default function RestoreWalletUnifiedScreen({
 	const [peekPin, setPeekPin] = useState(false)
 	const [loginLoading, setLoginLoading] = useState(false)
 	const [loginError, setLoginError] = useState('')
+	const [restoreStep, setRestoreStep] = useState(0)
 
 	useEffect(() => {
 		if (initialRecoveryCode) {
@@ -116,6 +118,17 @@ export default function RestoreWalletUnifiedScreen({
 			setTab('recovery')
 		}
 	}, [initialRecoveryCode])
+
+	useEffect(() => {
+		if (!loginLoading) {
+			setRestoreStep(0)
+			return
+		}
+		setRestoreStep(0)
+		const advance = () => setRestoreStep((prev) => Math.min(prev + 1, RESTORE_LOADING_STEPS.length - 1))
+		const timer = window.setTimeout(advance, RESTORE_STEP_DURATION_MS)
+		return () => window.clearTimeout(timer)
+	}, [loginLoading])
 
 	useEffect(() => {
 		const tag = normalizeBeamioTagInput(initialBeamioTag)
@@ -268,97 +281,132 @@ export default function RestoreWalletUnifiedScreen({
 
 	if (loginLoading) {
 		return (
-			<div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-[#f9f9fe]">
-				<div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
-					<div className="absolute -left-[10%] -top-[10%] h-[60%] w-[60%] rounded-full bg-[#004bc3]/5 blur-[120px]" />
-					<div className="absolute -bottom-[5%] -right-[5%] h-[50%] w-[50%] rounded-full bg-[#a7bcff]/10 blur-[100px]" />
-					<div className="absolute right-[10%] top-[20%] h-[30%] w-[30%] rounded-full bg-[#b3c5ff]/10 blur-[80px]" />
-				</div>
+			<div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-[#f9f9ff] font-[Inter,system-ui,sans-serif] text-[#151c27]">
+				<style>{`
+					@keyframes beamio-passport-ripple {
+						0% { transform: translateZ(0) scale(0.5); opacity: 0; }
+						50% { opacity: 1; }
+						100% { transform: translateZ(0) scale(1.2); opacity: 0; }
+					}
+					@keyframes beamio-passport-orbit {
+						from { transform: translateZ(0) rotate(0deg); }
+						to { transform: translateZ(0) rotate(360deg); }
+					}
+				`}</style>
 
-				<main className="flex min-h-0 w-full max-w-lg flex-1 flex-col items-center justify-center self-center overflow-hidden px-6 pt-[max(1rem,env(safe-area-inset-top))] text-center">
-					<div className="relative mb-10 flex h-72 w-72 shrink-0 items-center justify-center [@media(max-height:700px)]:mb-6 [@media(max-height:700px)]:h-56 [@media(max-height:700px)]:w-56 [@media(max-height:640px)]:mb-4 [@media(max-height:640px)]:h-44 [@media(max-height:640px)]:w-44">
-						<div
-							className="absolute h-48 w-48 rounded-full bg-[#004bc3]/10 blur-3xl [@media(max-height:700px)]:h-36 [@media(max-height:700px)]:w-36 [@media(max-height:640px)]:h-28 [@media(max-height:640px)]:w-28"
-							style={{ animation: 'verra-breath 4s ease-in-out infinite' }}
-							aria-hidden
-						/>
-						<div
-							className="absolute inset-0 rounded-full border-[1.5px] border-[#c3c6d8]/30"
-							style={{ animation: 'verra-spin-slow 12s linear infinite' }}
-							aria-hidden
-						/>
-						<div
-							className="absolute inset-4 rounded-full border-[1px] border-[#004bc3]/20 [@media(max-height:640px)]:inset-3"
-							style={{ animation: 'verra-spin-slow 8s linear infinite reverse' }}
-							aria-hidden
-						/>
-						<div
-							className="absolute inset-10 rounded-full border-[2px] border-[#1562f0]/10 [@media(max-height:700px)]:inset-8 [@media(max-height:640px)]:inset-6"
-							style={{ animation: 'verra-spin-slow 15s linear infinite' }}
-							aria-hidden
-						/>
-						<div
-							className="relative z-10 flex h-32 w-32 items-center justify-center rounded-full border border-white/40 shadow-[0_8px_32px_rgba(0,0,0,0.06)] [@media(max-height:700px)]:h-24 [@media(max-height:700px)]:w-24 [@media(max-height:640px)]:h-20 [@media(max-height:640px)]:w-20"
-							style={{ backdropFilter: 'blur(20px)', background: 'rgba(255, 255, 255, 0.7)' }}
-						>
-							<IpfsImg
-								src={APP_LOGO_SRC}
-								alt="Beamio"
-								className="h-14 w-14 rounded-[14px] object-contain [@media(max-height:700px)]:h-11 [@media(max-height:700px)]:w-11 [@media(max-height:700px)]:rounded-[12px] [@media(max-height:640px)]:h-9 [@media(max-height:640px)]:w-9 [@media(max-height:640px)]:rounded-[10px]"
-								style={{ animation: 'verra-pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite' }}
-								draggable={false}
-							/>
-						</div>
-						<div
-							className="absolute inset-0"
-							style={{ animation: 'verra-spin-slow 12s linear infinite' }}
-							aria-hidden
-						>
-							<div className="absolute left-1/2 top-0 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#1562f0] shadow-[0_0_12px_rgba(21,98,240,0.6)] [@media(max-height:640px)]:h-2.5 [@media(max-height:640px)]:w-2.5" />
+				<main className="flex min-h-0 w-full max-w-lg flex-1 flex-col items-center justify-center self-center overflow-hidden px-6 pt-[max(1rem,env(safe-area-inset-top))] py-12 text-center [@media(max-height:700px)]:py-8 [@media(max-height:640px)]:py-6">
+					<div
+						className="relative mb-12 flex w-full max-w-[320px] aspect-square shrink-0 items-center justify-center
+							[@media(max-height:700px)]:mb-8 [@media(max-height:700px)]:max-w-[260px]
+							[@media(max-height:640px)]:mb-6 [@media(max-height:640px)]:max-w-[220px]"
+					>
+						<div className="absolute inset-0 -z-10 rounded-full bg-[#004bc3]/5 blur-3xl" aria-hidden />
+						<div className="relative flex h-[240px] w-[240px] items-center justify-center [@media(max-height:700px)]:h-[200px] [@media(max-height:700px)]:w-[200px] [@media(max-height:640px)]:h-[168px] [@media(max-height:640px)]:w-[168px]">
+							{[0, 1, 2].map((i) => (
+								<div
+									key={i}
+									className="absolute rounded-full border border-[rgba(21,98,240,0.1)]"
+									style={{
+										width: `${100 - i * 20}%`,
+										height: `${100 - i * 20}%`,
+										animation: `beamio-passport-ripple 3s linear infinite`,
+										animationDelay: `${i}s`,
+										opacity: 0,
+										willChange: 'transform, opacity',
+										transform: 'translateZ(0)',
+									}}
+									aria-hidden
+								/>
+							))}
+							<div
+								className="absolute inset-0"
+								style={{
+									animation: 'beamio-passport-orbit 4s linear infinite',
+									willChange: 'transform',
+									transform: 'translateZ(0)',
+								}}
+								aria-hidden
+							>
+								<div className="absolute left-1/2 top-0 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#1562f0]" />
+							</div>
+							<div
+								className="relative z-10 flex h-24 w-24 items-center justify-center overflow-hidden rounded-full bg-white shadow-lg [@media(max-height:640px)]:h-20 [@media(max-height:640px)]:w-20"
+								style={{ transform: 'translateZ(0)' }}
+							>
+								<IpfsImg
+									src={APP_LOGO_SRC}
+									alt="Beamio"
+									className="h-16 w-16 rounded-xl object-contain shadow-[0_4px_20px_rgba(0,75,195,0.15)] [@media(max-height:640px)]:h-12 [@media(max-height:640px)]:w-12 [@media(max-height:640px)]:rounded-lg"
+									draggable={false}
+								/>
+							</div>
 						</div>
 					</div>
 
-					<div className="w-full space-y-8 [@media(max-height:700px)]:space-y-5 [@media(max-height:640px)]:space-y-3">
-						<h1 className="text-3xl font-extrabold tracking-tight text-[#1a1c1f] [@media(max-height:700px)]:text-2xl [@media(max-height:640px)]:text-xl">
-							Securing your identity...
-						</h1>
-						<div className="mx-auto max-w-sm space-y-5 text-left [@media(max-height:700px)]:space-y-3 [@media(max-height:640px)]:space-y-2">
-							{RESTORE_LOADING_STEPS.map((step, idx) => {
-								const isCompleted = idx === 0
-								const isActive = idx === 1
-								const Icon = step.icon
-								return (
-									<div key={step.id} className="flex items-center space-x-4 transition-opacity">
-										<div className="relative flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-[#004bc3]/10 [@media(max-height:640px)]:h-7 [@media(max-height:640px)]:w-7">
-											{isCompleted ? (
-												<Check className="h-4 w-4 text-emerald-600" strokeWidth={3} aria-hidden />
-											) : isActive ? (
-												<>
-													<div className="absolute inset-0 animate-spin rounded-full border-2 border-[#004bc3] border-t-transparent" aria-hidden />
-													<Icon className="h-4 w-4 text-[#004bc3]" strokeWidth={2.5} aria-hidden />
-												</>
-											) : null}
-										</div>
-										<div className="min-w-0 flex-grow">
-											<p className="text-base font-semibold leading-none text-[#1a1c1f] [@media(max-height:640px)]:text-sm">
-												{step.title}
-											</p>
-											<p className="mt-1 text-xs text-[#424655] [@media(max-height:640px)]:mt-0.5 [@media(max-height:640px)]:text-[11px]">
-												{step.desc}
-											</p>
-										</div>
+					<h1 className="mb-8 max-w-md text-center text-[32px] font-bold leading-10 tracking-[-0.02em] text-[#151c27] [@media(max-height:700px)]:mb-6 [@media(max-height:700px)]:text-[28px] [@media(max-height:700px)]:leading-9 [@media(max-height:640px)]:mb-4 [@media(max-height:640px)]:text-[22px] [@media(max-height:640px)]:leading-7">
+						{tu('securing_your_identity')}
+					</h1>
+
+					<div className="w-full max-w-md space-y-4 px-4 text-left [@media(max-height:700px)]:space-y-3 [@media(max-height:640px)]:space-y-2.5 [@media(max-height:640px)]:px-2">
+						{RESTORE_LOADING_STEPS.map((s, idx) => {
+							const isCompleted = idx < restoreStep
+							const isActive = idx === restoreStep
+							const isPending = !isCompleted && !isActive
+							return (
+								<div
+									key={s.id}
+									className={[
+										'flex items-start space-x-4 transition-opacity',
+										isActive ? 'opacity-70' : '',
+										isPending ? 'opacity-40' : '',
+									]
+										.filter(Boolean)
+										.join(' ')}
+								>
+									<div
+										className={[
+											'flex h-8 w-8 shrink-0 items-center justify-center rounded-full border shadow-[0_4px_10px_rgba(0,0,0,0.03)]',
+											isCompleted
+												? 'border-[#dce2f3] bg-[#e2e8f8]'
+												: isActive
+													? 'border-[#1562f0] bg-white text-[#1562f0] shadow-[0_4px_20px_rgba(21,98,240,0.1)]'
+													: 'border-[#dce2f3] bg-white',
+										].join(' ')}
+									>
+										{isCompleted ? (
+											<Check className="h-5 w-5 text-[#22c55e]" strokeWidth={3} aria-hidden />
+										) : isActive ? (
+											<RefreshCw className="h-5 w-5 animate-spin text-[#1562f0]" strokeWidth={2.25} aria-hidden />
+										) : (
+											<span className="h-2 w-2 rounded-full bg-[#c3c6d8]" aria-hidden />
+										)}
 									</div>
-								)
-							})}
-						</div>
+									<div className="flex min-w-0 flex-col pt-1">
+										<span className="text-lg font-semibold leading-7 text-[#151c27] [@media(max-height:640px)]:text-base [@media(max-height:640px)]:leading-6">
+											{s.title}
+										</span>
+										{s.desc ? (
+											<span className="mt-0.5 text-xs text-[#424655] [@media(max-height:640px)]:text-[11px]">
+												{s.desc}
+											</span>
+										) : null}
+									</div>
+								</div>
+							)
+						})}
 					</div>
 				</main>
 
-				<style>{`
-					@keyframes verra-spin-slow { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-					@keyframes verra-pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.6; transform: scale(0.95); } }
-					@keyframes verra-breath { 0%, 100% { box-shadow: 0 0 20px rgba(21, 98, 240, 0.1); } 50% { box-shadow: 0 0 60px rgba(21, 98, 240, 0.3); } }
-				`}</style>
+				<footer className="flex shrink-0 flex-col items-center px-6 pb-[max(1.25rem,calc(env(safe-area-inset-bottom)+0.5rem))] pt-3 [@media(max-height:700px)]:pt-2 [@media(max-height:640px)]:pt-1.5">
+					<p className="mb-2 text-center text-xs font-semibold uppercase leading-4 tracking-[0.05em] text-[#737687]">
+						{tu('do_not_close_the_app_during_this_process')}
+					</p>
+					<div className="flex space-x-1.5" aria-hidden>
+						<div className="h-1.5 w-1.5 rounded-full bg-[#1562f0]/40" />
+						<div className="h-1.5 w-1.5 rounded-full bg-[#1562f0]" />
+						<div className="h-1.5 w-1.5 rounded-full bg-[#1562f0]/40" />
+					</div>
+				</footer>
 			</div>
 		)
 	}

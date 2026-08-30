@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { AlertTriangle, Check, ChevronRight, Loader2, SlidersHorizontal, Sparkles } from 'lucide-react'
 import { ethers } from 'ethers'
 import {
@@ -8,12 +8,9 @@ import {
 import { IpfsImg } from '@/components/IpfsImg'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { useMerchantCardDatabase } from '@/providers/MerchantCardDatabaseProvider'
-import { getCardMetadataFromApi, postBuyCardPoints } from '@/services/BeamioCard'
+import { getCardMetadataFromApi, getMyAssets, postBuyCardPoints } from '@/services/BeamioCard'
 import { isGenericMerchantCardDisplayName } from '@/utils/isGenericMerchantCardDisplayName'
 import { pickNonFactoryMerchantAssetUrl } from '@/utils/isFactoryDefaultMerchantAssetUrl'
-import { CONET_MAINNET_CHAIN_ID } from '@/config/chainAddresses'
-import { beamioApi } from '@/utils/constants'
-import { getCardFactoryGatewayForEip712 } from '@/utils/beamioUserCardChain'
 import { resolveSigningPrivateKeyArmor } from '@/utils/resolveSigningPrivateKeyArmor'
 import { displayFiatPrefixFromCode } from '@/services/currency'
 import {
@@ -22,9 +19,9 @@ import {
 	loadReward13RowsForAa,
 	planAutoCoverUsdc,
 	planManualCoverUsdc,
+	postTopupWithReward13Container,
 	quoteFiat6ToUsdc6,
 	readEoaConetUsdc6,
-	REDEEM_REWARD13_EIP712_TYPES,
 	Reward13Row,
 	sumUsdc6,
 } from '@/utils/topupReward13Plan'
@@ -109,7 +106,9 @@ export default function MerchantCardTopUpFlow({
 	const [payError, setPayError] = useState('')
 	const [mintedLabel, setMintedLabel] = useState('0.00')
 	const [usedManual, setUsedManual] = useState(false)
+	const [legs, setLegs] = useState<CoverLeg[]>([])
 	const closeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+	const legsPlanGen = useRef(0)
 
 	const prefix = displayFiatPrefixFromCode(cardCurrency, 'USD')
 	const fiatHuman = amountInput.replace(/,/g, '').trim() || '0'
@@ -173,7 +172,7 @@ export default function MerchantCardTopUpFlow({
 		}
 		setRowsLoading(true)
 		try {
-			const list = await loadReward13RowsForAa(profile, profile.aaAccount)
+			const list = await loadReward13RowsForAa(profile, profile.aaAccount, cardAddress)
 			setRows(list)
 		} catch {
 			/* keep last trusted rows */
@@ -190,15 +189,24 @@ export default function MerchantCardTopUpFlow({
 		// eslint-disable-next-line react-hooks/exhaustive-deps -- reload on step enter only
 	}, [open, step])
 
-	const autoLegs = useMemo(
-		() => (smartPay ? planAutoCoverUsdc(rows, quotedUsdc6) : []),
-		[smartPay, rows, quotedUsdc6],
-	)
-	const manualLegs = useMemo(
-		() => (smartPay ? planManualCoverUsdc(rows, selected, quotedUsdc6) : []),
-		[smartPay, rows, selected, quotedUsdc6],
-	)
-	const legs: CoverLeg[] = !smartPay ? [] : usedManual ? manualLegs : autoLegs
+	useEffect(() => {
+		if (!smartPay || quotedUsdc6 <= 0n) {
+			setLegs([])
+			return
+		}
+		const gen = ++legsPlanGen.current
+		void (async () => {
+			try {
+				const planned = usedManual
+					? await planManualCoverUsdc(rows, selected, quotedUsdc6)
+					: await planAutoCoverUsdc(rows, quotedUsdc6)
+				if (gen === legsPlanGen.current) setLegs(planned)
+			} catch {
+				if (gen === legsPlanGen.current) setLegs([])
+			}
+		})()
+	}, [smartPay, rows, selected, quotedUsdc6, usedManual])
+
 	const coveredUsdc6 = sumUsdc6(legs)
 	const cashUsdc6 = quotedUsdc6 > coveredUsdc6 ? quotedUsdc6 - coveredUsdc6 : 0n
 	const usableRows = rows.filter((r) => r.redeemableUsdc6 > 0n)
@@ -233,56 +241,41 @@ export default function MerchantCardTopUpFlow({
 			if (!armor) throw new Error('Wallet key is required')
 			const wallet = new ethers.Wallet(armor)
 			const userEOA = wallet.address
-			for (const leg of legs) {
-				const verifying = await getCardFactoryGatewayForEip712(leg.cardAddress)
-				const deadline = Math.floor(Date.now() / 1000) + 600
-				const nonce = ethers.hexlify(ethers.randomBytes(32))
-				const userSignature = await wallet.signTypedData(
-					{
-						name: 'BeamioUserCard',
-						version: '1',
-						chainId: CONET_MAINNET_CHAIN_ID,
-						verifyingContract: verifying,
-					},
-					REDEEM_REWARD13_EIP712_TYPES,
-					{
-						card: ethers.getAddress(leg.cardAddress),
-						userEOA,
-						pointsCost: leg.pointsCost,
-						usdcReward6: leg.usdcReward6,
-						deadline: BigInt(deadline),
-						nonce,
-					},
-				)
-				const res = await fetch(`${beamioApi}/api/redeemReward13ForUsdc`, {
-					method: 'POST',
-					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify({
-						cardAddress: ethers.getAddress(leg.cardAddress),
-						userEOA,
-						pointsCost: leg.pointsCost.toString(),
-						usdcReward6: leg.usdcReward6.toString(),
-						deadline,
-						nonce,
-						userSignature,
-					}),
+			let assets: MyCardAssets | undefined
+
+			if (legs.length > 0) {
+				// Atomic multi-source: same-store #13 + peer #13→USDC + optional cash in one UserOp.
+				const container = await postTopupWithReward13Container({
+					targetCard: cardAddress,
+					userEOA,
+					legs,
+					cashUsdc6,
+					privateKeyArmor: armor,
+					wallet,
 				})
-				const data = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string }
-				if (!res.ok || data.success === false) {
-					throw new Error(data.error || 'Reward PT redemption failed')
+				if (!container.success) {
+					throw new Error(container.error || 'Atomic top-up failed')
 				}
+				const refreshed = await getMyAssets(profile, cardAddress, { bypassCache: true })
+				assets = refreshed ?? undefined
+			} else if (cashUsdc6 > 0n) {
+				// Cash-only: keep purchasingCard path (container rejects zero #13 / peer legs).
+				const buy = await postBuyCardPoints(
+					ethers.formatUnits(cashUsdc6, 6),
+					{ ...profile, privateKeyArmor: armor },
+					cardAddress,
+				)
+				if (!buy?.success) {
+					throw new Error(buy?.error || 'Store credit purchase failed')
+				}
+				assets = buy.assets ?? undefined
+			} else {
+				throw new Error('Nothing to top up')
 			}
-			const buy = await postBuyCardPoints(
-				ethers.formatUnits(quotedUsdc6, 6),
-				{ ...profile, privateKeyArmor: armor },
-				cardAddress,
-			)
-			if (!buy?.success) {
-				throw new Error(buy?.error || 'Store credit purchase failed')
-			}
+
 			setMintedLabel(Number(fiatHuman).toFixed(2))
 			setStep('success')
-			onSuccess?.(buy.assets ?? undefined)
+			onSuccess?.(assets)
 		} catch (e: unknown) {
 			setPayError(e instanceof Error ? e.message : String(e))
 		} finally {
@@ -584,7 +577,8 @@ export default function MerchantCardTopUpFlow({
 					{step === 'select' && (
 						<>
 							<p className="mb-3 text-sm text-slate-500">
-								Only Reward PT that this program can pay out in CONET-USDC is listed.
+								Reward PT from this store converts to store credit (#0). Points from other stores can
+								cover cash only if that program can pay CONET-USDC.
 							</p>
 							<div className="space-y-2">
 								{usableRows.map((row) => {
@@ -609,14 +603,18 @@ export default function MerchantCardTopUpFlow({
 											<div className="min-w-0 flex-1">
 												<p className="truncate font-semibold">{row.name}</p>
 												<p className="text-xs text-slate-500">
-													{formatPtsHuman(row.pointsBalance6)} PT · up to ${formatUsdc(row.redeemableUsdc6)}
+													{row.coverKind === 'toProgramPoints'
+														? `${formatPtsHuman(row.pointsBalance6)} PT · converts to this store's credit`
+														: `${formatPtsHuman(row.pointsBalance6)} PT · up to $${formatUsdc(row.redeemableUsdc6)}`}
 												</p>
 											</div>
 										</label>
 									)
 								})}
 								{usableRows.length === 0 && (
-									<p className="text-sm text-slate-500">No redeemable Reward PT is available yet.</p>
+									<p className="text-sm text-slate-500">
+										No Reward PT is available to cover this top-up yet.
+									</p>
 								)}
 							</div>
 							<button
@@ -657,7 +655,15 @@ export default function MerchantCardTopUpFlow({
 									</div>
 								)}
 							</div>
-							{payError ? <p className="mt-3 text-sm text-red-600">{payError}</p> : null}
+							{payError ? (
+								<div
+									role="alert"
+									className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] text-amber-800"
+								>
+									<AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" aria-hidden />
+									<p>{payError}</p>
+								</div>
+							) : null}
 							<button
 								type="button"
 								disabled={payBusy || quotedUsdc6 <= 0n}

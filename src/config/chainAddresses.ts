@@ -86,8 +86,15 @@ export const CONET_GB_DECIMALS = 9
 export const CONET_USDC_LEGACY_UUPS_V1 = '0x84e55A7d82aEa1243cB88b20dDde9Ba5cea0E134'
 /** @deprecated legacy FactoryERC20 (non-UUPS) */
 export const CONET_USDC_LEGACY = '0x2975c85D8Cc8F5d263492E332A6dAa7ad11aDBdC'
-export const CONET_BEAMIO_USER_CARD_FORMATTING_LIB = '0x9727136BC5DAA5540e7397C9086e9980EBDD0e48'
-export const CONET_BEAMIO_USER_CARD_TRANSFER_LIB = '0xBcf3f8C5994B02B89fB743e1dee6AFDD5a49a664'
+/** UserCard linked libs — keep in sync with x402sdk / deployments/conet-UserCardBeacon.json (V19+) */
+export const CONET_BEAMIO_USER_CARD_FORMATTING_LIB = '0x62F18eeC53B423bb36246856Fe2216A7Df270873'
+export const CONET_BEAMIO_USER_CARD_TRANSFER_LIB = '0x8F8e3AF75FD3bF3f72897e3c5F3AE8458A1cC0a3'
+export const CONET_BEAMIO_USER_CARD_UPDATE_LIB = '0xD94157Ce226E5519C6925280fa435578f1a1a585'
+export const CONET_BEAMIO_USER_CARD_REFERRER_LIB = '0x45317F44A0f071e5B397A7F095B5e40b9b50cE1e'
+/** CoNET UserCard UpgradeableBeacon (P2) — new cards use beacon proxy initCode */
+export const CONET_USER_CARD_BEACON = '0x01716C6b755a0FBfCF4e548A6d6B7af19ADf6698'
+/** Logic impl the beacon points at (V19+; diagnostic / verify) */
+export const CONET_USER_CARD_BEACON_IMPL = '0xc8A7a11bd74a52826dA564EE1Ec42f59b496C862'
 /** BeamioOracle on CoNET mainnet */
 export const BEAMIO_ORACLE_CONET = '0x77CB8358c5a37aB7190b0A2C7EaA7fEeDCF11008'
 /** CoNET 224422 — GuardianNodesInfoV6 */

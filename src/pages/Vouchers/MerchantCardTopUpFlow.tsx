@@ -25,11 +25,15 @@ import {
 	Reward13Row,
 	sumUsdc6,
 } from '@/utils/topupReward13Plan'
+import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
 
 const SPINNER_CLASS =
 	'[&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]'
 
 const QUICK = ['10', '20', '50', '100'] as const
+
+/** Third-party wallet channel when EOA USDC and Reward PT (#13) cannot cover the quote. */
+const BEAMIO_USDC_TOPUP_URL = 'https://beamio.app/usdc-topup'
 
 type Step = 'amount' | 'pay' | 'select' | 'confirm' | 'success'
 
@@ -233,7 +237,30 @@ export default function MerchantCardTopUpFlow({
 	}
 
 	const redeemLegsThenBuy = async () => {
-		if (payBusy) return
+		if (payBusy || quotedUsdc6 <= 0n) return
+
+		// Gate: if neither USDC nor available #13 (alone or combined) can cover the quote,
+		// open the third-party USDC top-up channel instead of starting a failing pay.
+		let usdcBal = eoaUsdc6
+		if (usdcBal === null && profile.keyID) {
+			const refreshed = await readEoaConetUsdc6(profile.keyID)
+			if (refreshed !== null) {
+				usdcBal = refreshed
+				setEoaUsdc6(refreshed)
+			}
+		}
+		const maxReward13Usdc6 = usableRows.reduce((sum, row) => sum + row.redeemableUsdc6, 0n)
+		const bestReward13Cover =
+			maxReward13Usdc6 >= quotedUsdc6 ? quotedUsdc6 : maxReward13Usdc6
+		const cashAfterBestReward13 = quotedUsdc6 - bestReward13Cover
+		const canCompleteWithUsdcOrReward13 =
+			cashAfterBestReward13 === 0n ||
+			(usdcBal !== null && usdcBal >= cashAfterBestReward13)
+		if (!canCompleteWithUsdcOrReward13) {
+			openExternalUrl(BEAMIO_USDC_TOPUP_URL)
+			return
+		}
+
 		setPayBusy(true)
 		setPayError('')
 		try {

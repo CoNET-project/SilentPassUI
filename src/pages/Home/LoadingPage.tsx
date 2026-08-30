@@ -20,7 +20,6 @@ import {
 	Coffee,
 	Bike,
 	Utensils,
-	User,
 } from "lucide-react"
 import { getAAAccount, getRedeemDetailsForDisplay, postCardRedeem, getMyAssets } from "@/services/BeamioCard"
 import { initChat}from '@/services/chat'
@@ -318,22 +317,16 @@ function InitialEntrySplash({
 							<div className="absolute -bottom-1 right-3 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/20 backdrop-blur-md sm:-bottom-2 sm:right-4 sm:h-12 sm:w-12">
 								<Utensils className="h-4 w-4 shrink-0 text-white sm:h-5 sm:w-5" strokeWidth={2} aria-hidden />
 							</div>
-							<div className="absolute -bottom-6 left-4 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/20 backdrop-blur-md sm:-bottom-8 sm:left-6 sm:h-12 sm:w-12">
-								<User className="h-4 w-4 shrink-0 text-white sm:h-5 sm:w-5" strokeWidth={2} aria-hidden />
-							</div>
 						</div>
 					</div>
 
 					<div className={['relative z-20 max-w-2xl shrink-0', INITIAL_HEADLINE_TO_BODY_SPACE_Y].join(' ')}>
-						<h1 className="font-extrabold leading-tight tracking-tight text-[#fef9c3] text-[1.5rem] sm:text-3xl md:text-4xl [@media(max-height:720px)]:text-[1.35rem] [@media(max-height:720px)]:leading-snug">
-							<span className="block">{tu('your_communitys_heartbeat')}</span>
-							<span className="block">{tu('found_in_your_phone')}</span>
+						<h1 className="font-extrabold leading-tight tracking-tight text-white drop-shadow-lg text-[1.75rem] sm:text-[2rem] md:text-[2rem] [@media(max-height:720px)]:text-[1.5rem] [@media(max-height:720px)]:leading-snug">
+							{tu('your_global_spending_passport')}
 						</h1>
-						<div className="mx-auto max-w-xl space-y-0 text-sm font-light leading-tight tracking-wide text-white/90 sm:text-base md:text-lg [&_p+p]:-mt-1 sm:[&_p+p]:-mt-1.5 [@media(max-height:720px)]:text-[13px] [@media(max-height:720px)]:leading-snug">
-							<p>{tu('discover_and_connect_with_independent')}</p>
-							<p>{tu('businesses_you_love')}</p>
-							<p>{tu('every_tap_tells_a_local_story')}</p>
-						</div>
+						<p className="mx-auto mt-2 max-w-[280px] text-[16px] font-normal leading-relaxed text-white/90 drop-shadow-md sm:text-lg [@media(max-height:720px)]:mt-1.5 [@media(max-height:720px)]:text-[14px] [@media(max-height:720px)]:leading-snug">
+							{tu('one_app_limitless_rewards')}
+						</p>
 					</div>
 
 					{isStandalone ? (
@@ -360,12 +353,12 @@ function InitialEntrySplash({
 						<AppButton
 							fullWidth
 							className="
-              group relative overflow-hidden rounded-full !h-auto min-h-[52px] px-8 py-4 text-base font-bold tracking-wide
-              sm:min-h-[56px] sm:px-10 sm:py-5 sm:text-lg
+              group relative overflow-hidden !rounded-xl !h-auto min-h-[52px] px-8 py-4 text-sm font-bold tracking-wide
+              sm:min-h-[56px] sm:px-10 sm:py-5 sm:text-base
               [@media(max-height:720px)]:min-h-[48px] [@media(max-height:720px)]:py-3.5 [@media(max-height:720px)]:text-[15px]
-              !bg-[#1562f0] hover:!opacity-[0.94] active:!scale-[0.98]
+              !bg-[#1562f0] hover:!bg-[#003fa5] active:!scale-95
               !text-white
-              !shadow-xl
+              !shadow-[0_8px_30px_rgba(21,98,240,0.3)]
               focus-visible:!ring-2 focus-visible:!ring-white/60 focus-visible:!ring-offset-2 focus-visible:!ring-offset-[#0e4cbb]/40
             "
 							onClick={onGetStarted}
@@ -378,10 +371,10 @@ function InitialEntrySplash({
 						<button
 							type="button"
 							onClick={onRestoreWallet}
-							className="text-sm font-medium tracking-wide text-white/75 transition-colors hover:text-white focus:outline-none focus-visible:underline"
+							className="inline-flex items-center gap-1 border-b border-white/30 pb-0.5 text-sm font-medium tracking-wide text-white/80 transition-colors hover:border-white hover:text-white focus:outline-none focus-visible:border-white"
 						>
 							{tu('already_have_a_beamio_id')}{' '}
-							<span className="underline underline-offset-4">{tu('restore_wallet')}</span>
+							<span>{tu('restore_wallet')}</span>
 						</button>
 					</div>
 				</div>

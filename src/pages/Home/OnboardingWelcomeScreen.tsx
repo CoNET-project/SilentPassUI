@@ -1,13 +1,6 @@
 import React, { useState } from 'react'
 import { tu } from '@/locale/beamioLocale'
-import {
-  CheckCircle2,
-  ShieldCheck,
-  Wallet,
-  Shield,
-  ArrowRight,
-  Loader2,
-} from 'lucide-react'
+import { Check, ShieldCheck, BookMarked, ArrowRight, Loader2 } from 'lucide-react'
 
 export type OnboardingWelcomeScreenProps = {
   beamioTag?: string
@@ -15,7 +8,7 @@ export type OnboardingWelcomeScreenProps = {
 }
 
 /**
- * Post Security Backup — welcomrPage.html style success / welcome.
+ * Post Security Backup — welcome / passport-active success (Beamio Welcome mockup).
  */
 export default function OnboardingWelcomeScreen({ beamioTag, onEnterHome }: OnboardingWelcomeScreenProps) {
   const [entering, setEntering] = useState(false)
@@ -31,100 +24,128 @@ export default function OnboardingWelcomeScreen({ beamioTag, onEnterHome }: Onbo
   }
 
   return (
-    <div className="relative flex h-full min-h-0 w-full max-h-full flex-col overflow-x-hidden overflow-y-hidden overscroll-none bg-[#f9f9fe] text-[#1a1c1f]">
-      {/* Ambient background (absolute: clipped to panel, avoids extra document scroll) */}
+    <div className="relative flex h-full min-h-0 w-full max-h-full flex-col overflow-x-hidden overflow-y-hidden overscroll-none bg-[#f9f9ff] text-[#151c27] antialiased">
+      <style>{`
+        @keyframes onboardingWelcomeFloat {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-10px); }
+        }
+        @keyframes onboardingWelcomeFloatRot12 {
+          0%, 100% { transform: translateY(0) rotate(12deg); }
+          50% { transform: translateY(-10px) rotate(12deg); }
+        }
+        @keyframes onboardingWelcomeFloatRotNeg12 {
+          0%, 100% { transform: translateY(0) rotate(-12deg); }
+          50% { transform: translateY(-10px) rotate(-12deg); }
+        }
+        .onboarding-welcome-float {
+          animation: onboardingWelcomeFloat 6s ease-in-out infinite;
+        }
+        .onboarding-welcome-float-rot12 {
+          animation: onboardingWelcomeFloatRot12 6s ease-in-out infinite;
+          animation-delay: -1s;
+        }
+        .onboarding-welcome-float-rot-neg12 {
+          animation: onboardingWelcomeFloatRotNeg12 6s ease-in-out infinite;
+          animation-delay: -2s;
+        }
+      `}</style>
+
       <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
-        <div className="absolute left-[-10%] top-[-10%] h-[40%] w-[40%] rounded-full bg-[#004bc3]/5 blur-[120px]" />
-        <div className="absolute bottom-[-10%] right-[-10%] h-[40%] w-[40%] rounded-full bg-[#465c99]/5 blur-[120px]" />
         <div
           className="absolute inset-0"
           style={{
             background:
-              'radial-gradient(circle at 50% 50%, rgba(21, 98, 240, 0.08) 0%, rgba(249, 249, 254, 0) 70%)',
+              'radial-gradient(circle at center, rgba(226, 232, 248, 0.5) 0%, transparent 70%)',
           }}
         />
       </div>
 
-      <main className="relative z-10 mx-auto flex min-h-0 min-w-0 w-full max-w-lg flex-1 flex-col items-center justify-center gap-3 overflow-x-hidden overflow-y-hidden px-5 py-2 text-center sm:gap-4 sm:px-6 md:gap-5 pb-[max(2.75rem,env(safe-area-inset-bottom)+1.5rem)] pt-[max(0.5rem,env(safe-area-inset-top))]">
-        <div className="relative shrink-0">
+      <main className="relative z-10 mx-auto flex min-h-0 min-w-0 w-full max-w-md flex-1 flex-col items-center justify-center overflow-x-hidden overflow-y-hidden px-6 py-2 text-center pb-[max(4.5rem,env(safe-area-inset-bottom)+3rem)] pt-[max(0.5rem,env(safe-area-inset-top))]">
+        {/* Central celebration graphic */}
+        <div className="onboarding-welcome-float relative mb-8 flex shrink-0 items-center justify-center sm:mb-10">
           <div
-            className="relative flex h-36 w-36 items-center justify-center overflow-hidden rounded-full bg-white/40 shadow-[0_8px_32px_rgba(21,98,240,0.1)] backdrop-blur-xl sm:h-44 sm:w-44 md:h-52 md:w-52"
-            style={{ WebkitBackdropFilter: 'blur(20px)' }}
-          >
-            <div className="absolute inset-0 bg-gradient-to-br from-[#004bc3]/10 to-transparent" />
-            <div className="relative flex h-[5.25rem] w-[5.25rem] items-center justify-center rounded-full bg-gradient-to-br from-[#004bc3] to-[#1562f0] text-white shadow-xl sm:h-28 sm:w-28 md:h-[7.5rem] md:w-[7.5rem]">
-              <CheckCircle2 className="h-10 w-10 sm:h-12 sm:w-12 md:h-14 md:w-14" strokeWidth={2.25} aria-hidden />
-            </div>
-            <div className="absolute left-8 top-4 h-2 w-2 rounded-full bg-[#dbe1ff] opacity-60" />
-            <div className="absolute bottom-10 right-4 h-3 w-3 rounded-full bg-[#dbe1ff] opacity-40" />
-            <div className="absolute left-4 top-1/2 h-1.5 w-1.5 -translate-y-1/2 rounded-full bg-[#ffdbce] opacity-50" />
+            className="absolute h-48 w-48 animate-ping rounded-full bg-[#004bc3]/5"
+            style={{ animationDuration: '3s' }}
+            aria-hidden
+          />
+          <div
+            className="absolute h-32 w-32 rounded-full bg-[#004bc3]/10"
+            style={{ boxShadow: '0 0 60px 20px rgba(0, 75, 195, 0.15)' }}
+            aria-hidden
+          />
+          <div className="relative z-10 flex h-20 w-20 items-center justify-center rounded-full bg-[#004bc3]/55 shadow-lg shadow-[#004bc3]/25 backdrop-blur-[2px]">
+            <Check className="h-10 w-10 text-white drop-shadow-sm" strokeWidth={3} aria-hidden />
           </div>
-          <div
-            className="absolute -right-6 -top-6 flex h-12 w-12 rotate-12 items-center justify-center rounded-lg bg-white/80 shadow-sm backdrop-blur-xl"
-            style={{ WebkitBackdropFilter: 'blur(20px)' }}
-          >
-            <ShieldCheck className="h-7 w-7 text-[#004bc3]" strokeWidth={2} />
+          <div className="onboarding-welcome-float-rot12 absolute -top-4 right-4 z-0 rounded-xl bg-white p-2 shadow-[0_4px_20px_rgba(0,0,0,0.05)]">
+            <ShieldCheck className="h-6 w-6 text-[#004bc3]" strokeWidth={2} aria-hidden />
           </div>
-          <div
-            className="absolute -bottom-2 -left-8 flex h-14 w-14 -rotate-12 items-center justify-center rounded-full bg-white/80 shadow-sm backdrop-blur-xl"
-            style={{ WebkitBackdropFilter: 'blur(20px)' }}
-          >
-            <Wallet className="h-7 w-7 text-[#465c99]" strokeWidth={2} />
+          <div className="onboarding-welcome-float-rot-neg12 absolute -bottom-2 left-0 z-0 rounded-xl bg-white p-2 shadow-[0_4px_20px_rgba(0,0,0,0.05)]">
+            <BookMarked className="h-6 w-6 text-[#004bc3]" strokeWidth={2} aria-hidden />
           </div>
         </div>
 
-        <div className="max-w-2xl shrink-0 space-y-2 sm:space-y-3">
-          <h1 className="text-[clamp(1.75rem,7vw,2.75rem)] font-extrabold leading-[1.12] tracking-tighter text-[#1a1c1f] sm:text-4xl md:text-5xl">
-            Welcome, <span className="break-all text-[#004bc3]">{displayHandle}</span>
+        {/* Welcome typography */}
+        <div className="mb-8 w-full shrink-0 space-y-2 sm:mb-10">
+          <h1 className="text-[clamp(1.5rem,6vw,2rem)] font-bold leading-10 tracking-tight text-[#151c27]">
+            {tu('welcome_aboard')}{' '}
+            <span className="break-all text-[#004bc3]">{displayHandle}</span>
           </h1>
-          <p className="mx-auto max-w-md text-sm font-medium leading-snug text-[#424655] sm:text-base md:text-lg md:leading-relaxed">
-            Your high-security digital perimeter is now active and ready for your first transaction.
+          <p className="mx-auto max-w-[280px] text-base font-normal leading-6 text-[#424655]">
+            {tu('onboarding_welcome_passport_body')}
           </p>
         </div>
 
-        <div className="grid w-full max-w-md shrink-0 grid-cols-1">
-          <div className="flex flex-col gap-2 rounded-lg bg-[#f3f3f8] p-4 text-left sm:p-5">
-            <Shield className="h-6 w-6 text-[#004bc3]" strokeWidth={2} aria-hidden />
-            <div>
-              <p className="text-[11px] font-bold uppercase tracking-widest text-[#424655]">{tu('security_status')}</p>
-              <p className="font-semibold text-[#1a1c1f]">{tu('fortified')}</p>
-            </div>
+        {/* Status card */}
+        <div className="mb-8 flex w-full shrink-0 items-center gap-4 rounded-2xl bg-white p-4 shadow-[0_4px_20px_rgba(0,0,0,0.03)] sm:mb-10">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#e7eefe]">
+            <ShieldCheck className="h-6 w-6 text-[#004bc3]" strokeWidth={2} aria-hidden />
           </div>
-
+          <div className="min-w-0 flex-1 text-left">
+            <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-[#737687]">
+              {tu('status')}
+            </p>
+            <p className="flex items-center gap-2 text-sm font-semibold text-[#151c27]">
+              {tu('passport_active')}
+              <span className="h-2 w-2 shrink-0 rounded-full bg-green-500" aria-hidden />
+            </p>
+          </div>
         </div>
 
-        <div className="w-full max-w-sm shrink-0 space-y-2 sm:space-y-3">
+        {/* Primary action */}
+        <div className="w-full shrink-0 space-y-4">
           <button
             type="button"
             onClick={handleEnterHome}
             disabled={entering}
             aria-busy={entering}
-            className="flex h-14 w-full items-center justify-center gap-2 rounded-full bg-gradient-to-br from-[#004bc3] to-[#1562f0] text-base font-bold text-white shadow-[0_8px_24px_rgba(21,98,240,0.25)] transition-all hover:opacity-90 active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#004bc3]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[#f9f9fe] disabled:cursor-not-allowed disabled:opacity-80 sm:h-16 sm:gap-3 sm:text-lg"
+            className="flex h-14 w-full items-center justify-center gap-2 rounded-full bg-[#004bc3] text-sm font-semibold text-white shadow-lg shadow-[#004bc3]/20 transition-all hover:bg-[#004bc3]/90 active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#004bc3]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[#f9f9ff] disabled:cursor-not-allowed disabled:opacity-80"
           >
             {entering ? (
               <>
-                <Loader2 className="h-5 w-5 animate-spin sm:h-6 sm:w-6" strokeWidth={2.25} aria-hidden />
-                Entering Home…
+                <Loader2 className="h-5 w-5 animate-spin" strokeWidth={2.25} aria-hidden />
+                {tu('entering_home')}
               </>
             ) : (
               <>
-                Enter Home
-                <ArrowRight className="h-5 w-5 sm:h-6 sm:w-6" strokeWidth={2.25} aria-hidden />
+                {tu('enter_home')}
+                <ArrowRight className="h-5 w-5" strokeWidth={2.25} aria-hidden />
               </>
             )}
           </button>
-          <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-[#424655] sm:text-xs sm:tracking-[0.2em]">{tu('next_secure_account_activation')}</p>
+          <p className="text-center text-xs font-semibold uppercase tracking-widest text-[#737687]">
+            {tu('next_secure_account_activation')}
+          </p>
         </div>
       </main>
 
-      {/* Bottom activation peek */}
-      <div className="pointer-events-none absolute bottom-0 left-0 z-30 h-2 w-full shrink-0 bg-[#e8e8ed] shadow-[0_-4px_24px_rgba(0,0,0,0.04)]">
-        <div
-          className="absolute left-1/2 top-0 flex -translate-x-1/2 -translate-y-full items-center gap-2 rounded-t-xl bg-white px-4 py-1.5 shadow-sm backdrop-blur-xl"
-          style={{ WebkitBackdropFilter: 'blur(20px)' }}
-        >
-          <div className="h-2 w-2 rounded-full bg-[#004bc3]" />
-          <span className="text-[10px] font-bold uppercase tracking-widest text-[#424655]">{tu('activation_pending')}</span>
+      {/* Bottom indicator */}
+      <div className="pointer-events-none absolute bottom-0 left-0 right-0 z-30 flex justify-center pb-[max(1rem,env(safe-area-inset-bottom))]">
+        <div className="flex items-center gap-2 rounded-full bg-white px-4 py-2 shadow-md">
+          <div className="h-2 w-2 animate-pulse rounded-full bg-[#004bc3]" />
+          <span className="text-xs font-semibold uppercase tracking-wider text-[#424655]">
+            {tu('activation_pending')}
+          </span>
         </div>
       </div>
     </div>

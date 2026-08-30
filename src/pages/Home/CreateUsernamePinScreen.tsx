@@ -2,18 +2,17 @@ import { IpfsImg } from '@/components/IpfsImg';
 import React, { useEffect, useRef, useState, forwardRef, useImperativeHandle } from "react"
 import { AppButton } from "@/components/button/AppButton"
 import { checkBeamioAccountAPI, createRecover } from "@/services/beamio"
+import { warmArgon2Worker } from "@/services/argon2WorkerBridge"
 import {
 	Eye,
 	EyeOff,
 	AlertTriangle,
 	Check,
-	Fingerprint,
-	KeyRound,
 	RefreshCw,
 	Shield,
 	ArrowRight,
 } from "lucide-react"
-import { ACTIVATING_STEP_DEFS, getActivatingSteps } from "./RecoveryQRScreen"
+import { getActivatingSteps } from "./RecoveryQRScreen"
 import { VerraFloatingNavChrome } from "./VerraFloatingNavChrome"
 import { APP_FLOATING_CHROME_MAIN_TOP_PT, APP_TITLE_BLOCK_TO_FIRST_CONTROL_MB } from "@/ui/appContentSpacing"
 import { tu } from '@/locale/beamioLocale'
@@ -40,15 +39,27 @@ function CreateIdentityDecorativeBg() {
 }
 
 const CREATING_STEP_DEFS = [
-	{ id: 0, titleKey: 'generating_secure_id', descKey: 'creating_cryptographic_keys', icon: KeyRound },
-	{ id: 1, titleKey: 'finalizing_terminal', descKey: 'preparing_user_interface', icon: RefreshCw },
+	{ id: 0, titleKey: 'configuring_global_network', icon: Shield },
+	{ id: 1, titleKey: 'preparing_your_smart_wallet', icon: RefreshCw },
 ] as const
 const STEP_DURATION_MS = 2000
 const ACTIVATING_STEP_DURATION_MS = 5000
 
 export type CreateUsernamePinScreenRef = { goBack: () => boolean }
 
-const CREATE_RECOVER_START_DELAY_MS = 300
+/** Brief pause so React can commit the loading tree before crypto starts. */
+const CREATE_RECOVER_START_DELAY_MS = 100
+
+/** Double rAF + micro-delay so CSS animations paint before async crypto work. */
+function waitForLoadingPaint(): Promise<void> {
+	return new Promise((resolve) => {
+		requestAnimationFrame(() => {
+			requestAnimationFrame(() => {
+				window.setTimeout(resolve, CREATE_RECOVER_START_DELAY_MS)
+			})
+		})
+	})
+}
 
 /** IME / paste: fullwidth digits (e.g. １００) → ASCII, strip zero-width chars, trim, remove @. */
 function normalizeBeamioTagInput(raw: string): string {
@@ -97,10 +108,17 @@ const CreateUsernamePinScreen = forwardRef<
 			: Math.round(window.visualViewport?.height ?? window.innerHeight)
 	)
 
-	const steps = isRedeemFlow ? getActivatingSteps() : CREATING_STEP_DEFS.map((s) => ({
+	// Prefetch Argon2 Worker while the user fills the form (avoids cold-start on Next)
+	useEffect(() => {
+		warmArgon2Worker()
+	}, [])
+
+	const steps = isRedeemFlow
+		? getActivatingSteps()
+		: CREATING_STEP_DEFS.map((s) => ({
 				...s,
 				title: tu(s.titleKey),
-				desc: tu(s.descKey),
+				desc: '',
 			}))
 	const stepDuration = isRedeemFlow ? ACTIVATING_STEP_DURATION_MS : STEP_DURATION_MS
 	const isCompactHeight = viewportHeight > 0 && viewportHeight <= 760
@@ -228,8 +246,7 @@ const CreateUsernamePinScreen = forwardRef<
 		}
 		const advance = () => setCreatingStep((prev) => Math.min(prev + 1, steps.length - 1))
 		const timers: ReturnType<typeof setTimeout>[] = []
-		// 与 CREATE_RECOVER_START_DELAY_MS 对齐：先留出首帧与 Step1，再与加密运算并行计时
-		const lead = CREATE_RECOVER_START_DELAY_MS
+		const lead = CREATE_RECOVER_START_DELAY_MS + 50
 		for (let i = 1; i < steps.length; i++) {
 			timers.push(setTimeout(advance, lead + i * stepDuration))
 		}
@@ -254,10 +271,8 @@ const CreateUsernamePinScreen = forwardRef<
 
 		setLoading(true)
 		setCreateError("")
-		// 先让浏览器提交 loading UI 并跑几步动画，再进入会长时间占用主线程的加密运算
-		await new Promise<void>((resolve) => {
-			window.setTimeout(resolve, CREATE_RECOVER_START_DELAY_MS)
-		})
+		// Argon2 runs in a Worker; still wait one paint so ripple/orbit start before network/crypto
+		await waitForLoadingPaint()
 
 		let kks: Awaited<ReturnType<typeof createRecover>> = null
 		try {
@@ -294,171 +309,131 @@ const CreateUsernamePinScreen = forwardRef<
 
 	if (loading) {
 		return (
-			<div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-[#f9f9fe]">
-				{/* 内联 keyframes：与 createBeamioTag.html 一致；scope 到本组件，避免污染全局 */}
+			<div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-[#f9f9ff] font-[Inter,system-ui,sans-serif] text-[#151c27]">
 				<style>{`
-					@keyframes verra-spin-slow { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-					@keyframes verra-pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.6; transform: scale(0.95); } }
-					@keyframes verra-breath { 0%, 100% { box-shadow: 0 0 20px rgba(21, 98, 240, 0.1); } 50% { box-shadow: 0 0 60px rgba(21, 98, 240, 0.3); } }
+					@keyframes beamio-passport-ripple {
+						0% { transform: translateZ(0) scale(0.5); opacity: 0; }
+						50% { opacity: 1; }
+						100% { transform: translateZ(0) scale(1.2); opacity: 0; }
+					}
+					@keyframes beamio-passport-orbit {
+						from { transform: translateZ(0) rotate(0deg); }
+						to { transform: translateZ(0) rotate(360deg); }
+					}
 				`}</style>
 
-				{/* Ambient Glass Background Shapes */}
-				<div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
-					<div className="absolute -left-[10%] -top-[10%] h-[60%] w-[60%] rounded-full bg-[#004bc3]/5 blur-[120px]" />
-					<div className="absolute -bottom-[5%] -right-[5%] h-[50%] w-[50%] rounded-full bg-[#a7bcff]/10 blur-[100px]" />
-					<div className="absolute right-[10%] top-[20%] h-[30%] w-[30%] rounded-full bg-[#b3c5ff]/10 blur-[80px]" />
-				</div>
-
-				{/* main：flex-1 占满除 footer 外的全部高度，内部 justify-center 把内容垂直居中。
-				    动画/字号/间距对 max-height ≤ 700 / 640 做两档收缩，避免 iPhone SE 内容被挤出。 */}
-				<main className="flex min-h-0 w-full max-w-lg flex-1 flex-col items-center justify-center self-center overflow-hidden px-6 pt-[max(1rem,env(safe-area-inset-top))] text-center">
-					{/* 1. Central Visual: Dynamic 3D Loading Animation
-					    h-72/w-72(288) → max-h:700 时 h-56/w-56(224) → max-h:640 时 h-44/w-44(176) */}
+				<main className="flex min-h-0 w-full max-w-lg flex-1 flex-col items-center justify-center self-center overflow-hidden px-6 pt-[max(1rem,env(safe-area-inset-top))] py-12 text-center [@media(max-height:700px)]:py-8 [@media(max-height:640px)]:py-6">
+					{/* Ripple + orbit + logo */}
 					<div
-						className="relative mb-10 flex h-72 w-72 shrink-0 items-center justify-center
-							[@media(max-height:700px)]:mb-6 [@media(max-height:700px)]:h-56 [@media(max-height:700px)]:w-56
-							[@media(max-height:640px)]:mb-4 [@media(max-height:640px)]:h-44 [@media(max-height:640px)]:w-44"
+						className="relative mb-12 flex w-full max-w-[320px] aspect-square shrink-0 items-center justify-center
+							[@media(max-height:700px)]:mb-8 [@media(max-height:700px)]:max-w-[260px]
+							[@media(max-height:640px)]:mb-6 [@media(max-height:640px)]:max-w-[220px]"
 					>
-						{/* Background Glow */}
-						<div
-							className="absolute h-48 w-48 rounded-full bg-[#004bc3]/10 blur-3xl
-								[@media(max-height:700px)]:h-36 [@media(max-height:700px)]:w-36
-								[@media(max-height:640px)]:h-28 [@media(max-height:640px)]:w-28"
-							style={{ animation: "verra-breath 4s ease-in-out infinite" }}
-							aria-hidden
-						/>
-						{/* Concentric Rings */}
-						<div
-							className="absolute inset-0 rounded-full border-[1.5px] border-[#c3c6d8]/30"
-							style={{ animation: "verra-spin-slow 12s linear infinite" }}
-							aria-hidden
-						/>
-						<div
-							className="absolute inset-4 rounded-full border-[1px] border-[#004bc3]/20 [@media(max-height:640px)]:inset-3"
-							style={{ animation: "verra-spin-slow 8s linear infinite reverse" }}
-							aria-hidden
-						/>
-						<div
-							className="absolute inset-10 rounded-full border-[2px] border-[#1562f0]/10 [@media(max-height:700px)]:inset-8 [@media(max-height:640px)]:inset-6"
-							style={{ animation: "verra-spin-slow 15s linear infinite" }}
-							aria-hidden
-						/>
-						{/* Core Loading Element：玻璃态白圆 + 品牌 app icon */}
-						<div
-							className="relative z-10 flex h-32 w-32 items-center justify-center rounded-full border border-white/40 shadow-[0_8px_32px_rgba(0,0,0,0.06)]
-								[@media(max-height:700px)]:h-24 [@media(max-height:700px)]:w-24
-								[@media(max-height:640px)]:h-20 [@media(max-height:640px)]:w-20"
-							style={{ backdropFilter: "blur(20px)", background: "rgba(255, 255, 255, 0.7)" }}
-						>
-							<IpfsImg
-								src={APP_LOGO_SRC}
-								alt="Beamio"
-								className="h-14 w-14 rounded-[14px] object-contain [@media(max-height:700px)]:h-11 [@media(max-height:700px)]:w-11 [@media(max-height:700px)]:rounded-[12px] [@media(max-height:640px)]:h-9 [@media(max-height:640px)]:w-9 [@media(max-height:640px)]:rounded-[10px]"
-								style={{ animation: "verra-pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite" }}
-								draggable={false}
-							/>
-						</div>
-						{/* Orbiting Particle */}
-						<div
-							className="absolute inset-0"
-							style={{ animation: "verra-spin-slow 12s linear infinite" }}
-							aria-hidden
-						>
-							<div className="absolute left-1/2 top-0 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#1562f0] shadow-[0_0_12px_rgba(21,98,240,0.6)] [@media(max-height:640px)]:h-2.5 [@media(max-height:640px)]:w-2.5" />
+						<div className="absolute inset-0 -z-10 rounded-full bg-[#004bc3]/5 blur-3xl" aria-hidden />
+						<div className="relative flex h-[240px] w-[240px] items-center justify-center [@media(max-height:700px)]:h-[200px] [@media(max-height:700px)]:w-[200px] [@media(max-height:640px)]:h-[168px] [@media(max-height:640px)]:w-[168px]">
+							{[0, 1, 2].map((i) => (
+								<div
+									key={i}
+									className="absolute rounded-full border border-[rgba(21,98,240,0.1)]"
+									style={{
+										width: `${100 - i * 20}%`,
+										height: `${100 - i * 20}%`,
+										animation: `beamio-passport-ripple 3s linear infinite`,
+										animationDelay: `${i}s`,
+										opacity: 0,
+										willChange: 'transform, opacity',
+										transform: 'translateZ(0)',
+									}}
+									aria-hidden
+								/>
+							))}
+							<div
+								className="absolute inset-0"
+								style={{
+									animation: 'beamio-passport-orbit 4s linear infinite',
+									willChange: 'transform',
+									transform: 'translateZ(0)',
+								}}
+								aria-hidden
+							>
+								<div className="absolute left-1/2 top-0 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#1562f0]" />
+							</div>
+							<div
+								className="relative z-10 flex h-24 w-24 items-center justify-center overflow-hidden rounded-full bg-white shadow-lg [@media(max-height:640px)]:h-20 [@media(max-height:640px)]:w-20"
+								style={{ transform: 'translateZ(0)' }}
+							>
+								<IpfsImg
+									src={APP_LOGO_SRC}
+									alt="Beamio"
+									className="h-16 w-16 rounded-xl object-contain shadow-[0_4px_20px_rgba(0,75,195,0.15)] [@media(max-height:640px)]:h-12 [@media(max-height:640px)]:w-12 [@media(max-height:640px)]:rounded-lg"
+									draggable={false}
+								/>
+							</div>
 						</div>
 					</div>
 
-					{/* 2. Status Updates
-					    space-y-10 → 小屏 space-y-6 → 极小屏 space-y-4；步骤间距同步收缩 */}
-					<div className="w-full space-y-8 [@media(max-height:700px)]:space-y-5 [@media(max-height:640px)]:space-y-3">
-						<h1 className="text-3xl font-extrabold tracking-tight text-[#1a1c1f] [@media(max-height:700px)]:text-2xl [@media(max-height:640px)]:text-xl">
-							{tu('securing_your_identity')}
-						</h1>
-						<div className="mx-auto max-w-sm space-y-5 text-left [@media(max-height:700px)]:space-y-3 [@media(max-height:640px)]:space-y-2">
-							{steps.map((s, idx) => {
-								const isCompleted = idx < creatingStep
-								const isActive = idx === creatingStep
-								const Icon = s.icon
-								return (
+					<h1 className="mb-8 max-w-md text-center text-[32px] font-bold leading-10 tracking-[-0.02em] text-[#151c27] [@media(max-height:700px)]:mb-6 [@media(max-height:700px)]:text-[28px] [@media(max-height:700px)]:leading-9 [@media(max-height:640px)]:mb-4 [@media(max-height:640px)]:text-[22px] [@media(max-height:640px)]:leading-7">
+						{isRedeemFlow ? tu('securing_your_identity') : tu('issuing_your_digital_passport')}
+					</h1>
+
+					<div className="w-full max-w-md space-y-4 px-4 text-left [@media(max-height:700px)]:space-y-3 [@media(max-height:640px)]:space-y-2.5 [@media(max-height:640px)]:px-2">
+						{steps.map((s, idx) => {
+							const isCompleted = idx < creatingStep
+							const isActive = idx === creatingStep
+							const isPending = !isCompleted && !isActive
+							return (
+								<div
+									key={s.id}
+									className={[
+										'flex items-start space-x-4 transition-opacity',
+										isActive ? 'opacity-70' : '',
+										isPending ? 'opacity-40' : '',
+									]
+										.filter(Boolean)
+										.join(' ')}
+								>
 									<div
-										key={s.id}
 										className={[
-											"flex items-center space-x-4 transition-opacity",
-											!isCompleted && !isActive ? "opacity-40" : "",
-										]
-											.filter(Boolean)
-											.join(" ")}
+											'flex h-8 w-8 shrink-0 items-center justify-center rounded-full border shadow-[0_4px_10px_rgba(0,0,0,0.03)]',
+											isCompleted
+												? 'border-[#dce2f3] bg-[#e2e8f8]'
+												: isActive
+													? 'border-[#1562f0] bg-white text-[#1562f0] shadow-[0_4px_20px_rgba(21,98,240,0.1)]'
+													: 'border-[#dce2f3] bg-white',
+										].join(' ')}
 									>
-										<div
-											className={[
-												"relative flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full [@media(max-height:640px)]:h-7 [@media(max-height:640px)]:w-7",
-												isCompleted ? "bg-emerald-50" : "",
-												isActive ? "bg-[#004bc3]/10" : "",
-												!isCompleted && !isActive ? "bg-[#e8e8ed]" : "",
-											]
-												.filter(Boolean)
-												.join(" ")}
-										>
-											{isActive && (
-												<div
-													className="absolute inset-0 animate-spin rounded-full border-2 border-[#004bc3] border-t-transparent"
-													aria-hidden
-												/>
-											)}
-											{isCompleted ? (
-												<Check className="h-4 w-4 text-emerald-600" strokeWidth={3} aria-hidden />
-											) : isActive ? (
-												<Icon className="h-4 w-4 text-[#004bc3]" strokeWidth={2.5} aria-hidden />
-											) : (
-												<Icon className="h-4 w-4 text-[#424655]" strokeWidth={2.5} aria-hidden />
-											)}
-										</div>
-										<div className="min-w-0 flex-grow">
-											<p
-												className={[
-													"text-base font-semibold leading-none [@media(max-height:640px)]:text-sm",
-													isActive ? "text-[#1a1c1f]" : "",
-													isCompleted ? "text-[#1a1c1f]" : "",
-													!isCompleted && !isActive ? "text-[#1a1c1f]/90" : "",
-												]
-													.filter(Boolean)
-													.join(" ")}
-											>
-												{s.title}
-											</p>
-											{s.desc ? (
-												<p className="mt-1 text-xs text-[#424655] [@media(max-height:640px)]:mt-0.5 [@media(max-height:640px)]:text-[11px]">
-													{s.desc}
-												</p>
-											) : null}
-										</div>
+										{isCompleted ? (
+											<Check className="h-5 w-5 text-[#22c55e]" strokeWidth={3} aria-hidden />
+										) : isActive ? (
+											<RefreshCw className="h-5 w-5 animate-spin text-[#1562f0]" strokeWidth={2.25} aria-hidden />
+										) : (
+											<span className="h-2 w-2 rounded-full bg-[#c3c6d8]" aria-hidden />
+										)}
 									</div>
-								)
-							})}
-						</div>
+									<div className="flex min-w-0 flex-col pt-1">
+										<span className="text-lg font-semibold leading-7 text-[#151c27] [@media(max-height:640px)]:text-base [@media(max-height:640px)]:leading-6">
+											{s.title}
+										</span>
+										{s.desc ? (
+											<span className="mt-0.5 text-xs text-[#424655] [@media(max-height:640px)]:text-[11px]">
+												{s.desc}
+											</span>
+										) : null}
+									</div>
+								</div>
+							)
+						})}
 					</div>
 				</main>
 
-				{/* 3. Footer Note：作为 flex 项参与布局，绝不会和 main 重叠；自带 safe-area 内边距 */}
-				<footer className="shrink-0 px-6 pb-[max(1.25rem,calc(env(safe-area-inset-bottom)+0.5rem))] pt-3 text-center [@media(max-height:700px)]:pt-2 [@media(max-height:640px)]:pt-1.5">
-					<div className="mx-auto max-w-xs">
-						<p className="text-[10px] font-bold uppercase tracking-[0.1em] text-[#424655]/60">
-							{tu('do_not_close_the_app_during_this_process')}
-						</p>
-						<div className="mt-3 flex justify-center space-x-1 [@media(max-height:640px)]:mt-2" aria-hidden>
-							<div
-								className="h-1 w-1 animate-bounce rounded-full bg-[#004bc3]/20"
-								style={{ animationDelay: "0s" }}
-							/>
-							<div
-								className="h-1 w-1 animate-bounce rounded-full bg-[#004bc3]/20"
-								style={{ animationDelay: "0.2s" }}
-							/>
-							<div
-								className="h-1 w-1 animate-bounce rounded-full bg-[#004bc3]/20"
-								style={{ animationDelay: "0.4s" }}
-							/>
-						</div>
+				<footer className="flex shrink-0 flex-col items-center px-6 pb-[max(1.25rem,calc(env(safe-area-inset-bottom)+0.5rem))] pt-3 [@media(max-height:700px)]:pt-2 [@media(max-height:640px)]:pt-1.5">
+					<p className="mb-2 text-center text-xs font-semibold uppercase leading-4 tracking-[0.05em] text-[#737687]">
+						{tu('do_not_close_the_app_during_this_process')}
+					</p>
+					<div className="flex space-x-1.5" aria-hidden>
+						<div className="h-1.5 w-1.5 rounded-full bg-[#1562f0]/40" />
+						<div className="h-1.5 w-1.5 rounded-full bg-[#1562f0]" />
+						<div className="h-1.5 w-1.5 rounded-full bg-[#1562f0]/40" />
 					</div>
 				</footer>
 			</div>
@@ -466,7 +441,7 @@ const CreateUsernamePinScreen = forwardRef<
 	}
 
 	return (
-		<div className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-[#f3f3f8] font-[Inter,system-ui,sans-serif] text-[#1a1c1f]">
+		<div className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-[#f9f9ff] font-[Inter,system-ui,sans-serif] text-[#151c27]">
 			<CreateIdentityDecorativeBg />
 			<VerraFloatingNavChrome onBack={() => onRequestClose?.()} tone="create" />
 			<main
@@ -478,10 +453,10 @@ const CreateUsernamePinScreen = forwardRef<
 					<div
 						className={`shrink-0 text-center ${APP_TITLE_BLOCK_TO_FIRST_CONTROL_MB} [@media(max-height:780px)]:mb-8 [@media(max-height:700px)]:mb-6 [@media(max-height:640px)]:mb-4 [@media(max-height:560px)]:mb-3`}
 					>
-						<h1 className="mb-3 text-3xl font-extrabold tracking-tight text-[#1a1c1f] md:text-5xl [@media(max-height:780px)]:text-[2rem] [@media(max-height:700px)]:text-[1.75rem] [@media(max-height:640px)]:mb-2 [@media(max-height:640px)]:text-[1.5rem] [@media(max-height:560px)]:mb-1.5 [@media(max-height:560px)]:text-[1.3rem]">
+						<h1 className="mb-2 text-[32px] font-bold leading-10 tracking-[-0.02em] text-[#151c27] [@media(max-height:780px)]:text-[28px] [@media(max-height:780px)]:leading-9 [@media(max-height:700px)]:text-[24px] [@media(max-height:700px)]:leading-8 [@media(max-height:640px)]:mb-1.5 [@media(max-height:640px)]:text-[22px] [@media(max-height:640px)]:leading-7 [@media(max-height:560px)]:mb-1 [@media(max-height:560px)]:text-[20px]">
 							{tu('create_your_beamio_id')}
 						</h1>
-						<p className="text-lg font-medium leading-relaxed text-[#424655] [@media(max-height:780px)]:text-base [@media(max-height:700px)]:text-[15px] [@media(max-height:640px)]:text-sm [@media(max-height:640px)]:leading-snug [@media(max-height:560px)]:text-[12px] [@media(max-height:560px)]:leading-[1.25]">
+						<p className="px-4 text-base font-normal leading-6 text-[#424655] [@media(max-height:700px)]:text-[15px] [@media(max-height:640px)]:px-2 [@media(max-height:640px)]:text-sm [@media(max-height:640px)]:leading-snug [@media(max-height:560px)]:text-[12px] [@media(max-height:560px)]:leading-[1.25]">
 							{tu('your_unique_identity_in_the_beamio_network_use_it_to_connect_with_friend')}
 						</p>
 					</div>
@@ -489,12 +464,12 @@ const CreateUsernamePinScreen = forwardRef<
 					<div className="flex min-h-0 flex-1 flex-col justify-between gap-5 [@media(max-height:780px)]:gap-4 [@media(max-height:700px)]:gap-3 [@media(max-height:640px)]:gap-2.5 [@media(max-height:560px)]:gap-2">
 						<div className="space-y-5 [@media(max-height:780px)]:space-y-4 [@media(max-height:700px)]:space-y-3 [@media(max-height:640px)]:space-y-2.5 [@media(max-height:560px)]:space-y-2">
 						<div className="space-y-2 [@media(max-height:640px)]:space-y-1.5 [@media(max-height:560px)]:space-y-1">
-							<label htmlFor="create-beamio-tag-input" className="block px-4 text-xs font-bold uppercase tracking-widest text-[#424655] [@media(max-height:560px)]:px-3 [@media(max-height:560px)]:text-[11px]">
+							<label htmlFor="create-beamio-tag-input" className="block text-xs font-semibold uppercase tracking-[0.05em] text-[#424655] [@media(max-height:560px)]:text-[11px]">
 								{tu('beamiotag')}
 							</label>
 							<div className="relative">
-								<div className="pointer-events-none absolute inset-y-0 left-5 flex items-center [@media(max-height:560px)]:left-4">
-									<span className="text-lg font-bold text-[#004bc3] [@media(max-height:560px)]:text-base">@</span>
+								<div className="pointer-events-none absolute inset-y-0 left-4 flex items-center">
+									<span className="mr-1 text-lg font-normal text-[#004bc3] [@media(max-height:560px)]:text-base">@</span>
 								</div>
 								<input
 									id="create-beamio-tag-input"
@@ -508,16 +483,15 @@ const CreateUsernamePinScreen = forwardRef<
 									autoCorrect="off"
 									spellCheck={false}
 									enterKeyHint="next"
-									autoComplete="用户名"
+									autoComplete="username"
 									inputMode="text"
 									className={[
-										"w-full rounded-lg border-none bg-[#e2e2e7] py-5 pl-12 pr-12 text-base font-semibold text-[#1a1c1f] outline-none transition-all placeholder:text-[#737687]/50 [@media(max-height:780px)]:py-4 [@media(max-height:700px)]:py-3.5 [@media(max-height:640px)]:py-3 [@media(max-height:640px)]:text-[15px] [@media(max-height:560px)]:rounded-[14px] [@media(max-height:560px)]:py-2.5 [@media(max-height:560px)]:pl-10 [@media(max-height:560px)]:pr-10 [@media(max-height:560px)]:text-[14px]",
-										"focus:ring-2 focus:ring-[#004bc3]/20",
+										"w-full rounded-lg border-none bg-[#dce2f3] py-3 pl-10 pr-12 text-lg font-normal text-[#151c27] outline-none transition-all placeholder:text-[#737687] focus:bg-white focus:ring-1 focus:ring-[#004bc3] [@media(max-height:780px)]:py-3 [@media(max-height:700px)]:py-2.5 [@media(max-height:640px)]:py-2.5 [@media(max-height:640px)]:text-base [@media(max-height:560px)]:rounded-lg [@media(max-height:560px)]:py-2 [@media(max-height:560px)]:pl-9 [@media(max-height:560px)]:pr-10 [@media(max-height:560px)]:text-[15px]",
 										"disabled:opacity-70",
 										tagStatus === "invalid" ? "ring-2 ring-orange-400/80 focus:ring-orange-400/30" : "",
 									].join(" ")}
 									value={beamioName}
-									placeholder="Username"
+									placeholder={tu('username')}
 									onChange={(e) => {
 										if (tagChecking) return
 										const next = normalizeBeamioTagInput(e.currentTarget.value)
@@ -561,13 +535,13 @@ const CreateUsernamePinScreen = forwardRef<
 							) : tagValid ? (
 								<p className="px-4 text-[13px] font-medium text-emerald-600 [@media(max-height:560px)]:px-3 [@media(max-height:560px)]:text-[11px]">{tu('this_tag_is_available')}</p>
 							) : (
-								<p className="px-4 text-[13px] font-medium text-[#424655] [@media(max-height:560px)]:px-3 [@media(max-height:560px)]:text-[11px]">{tu('permanent_cannot_be_changed_later')}</p>
+								<p className="text-sm font-medium leading-5 text-[#737687] [@media(max-height:560px)]:text-[12px]">{tu('permanent_cannot_be_changed_later')}</p>
 							)}
 						</div>
 
-						<div className="space-y-3.5 [@media(max-height:700px)]:space-y-3 [@media(max-height:640px)]:space-y-2.5 [@media(max-height:560px)]:space-y-2">
+						<div className="mt-4 space-y-3.5 [@media(max-height:700px)]:mt-3 [@media(max-height:700px)]:space-y-3 [@media(max-height:640px)]:space-y-2.5 [@media(max-height:560px)]:mt-2 [@media(max-height:560px)]:space-y-2">
 							<div className="space-y-2 [@media(max-height:640px)]:space-y-1.5 [@media(max-height:560px)]:space-y-1">
-								<label htmlFor="create-wallet-password" className="block px-4 text-xs font-bold uppercase tracking-widest text-[#424655] [@media(max-height:560px)]:px-3 [@media(max-height:560px)]:text-[11px]">
+								<label htmlFor="create-wallet-password" className="block text-xs font-semibold uppercase tracking-[0.05em] text-[#424655] [@media(max-height:560px)]:text-[11px]">
 									{tu('secure_password')}
 								</label>
 								<div className="relative">
@@ -578,7 +552,7 @@ const CreateUsernamePinScreen = forwardRef<
 										type={showPassword ? "text" : "password"}
 										autoComplete="new-password"
 										enterKeyHint="next"
-										className="w-full rounded-lg border-none bg-[#e2e2e7] py-5 pl-5 pr-14 text-base font-semibold text-[#1a1c1f] outline-none transition-all placeholder:text-[#737687]/50 focus:ring-2 focus:ring-[#004bc3]/20 disabled:opacity-70 [@media(max-height:780px)]:py-4 [@media(max-height:700px)]:py-3.5 [@media(max-height:640px)]:py-3 [@media(max-height:640px)]:text-[15px] [@media(max-height:560px)]:rounded-[14px] [@media(max-height:560px)]:py-2.5 [@media(max-height:560px)]:pl-4 [@media(max-height:560px)]:pr-12 [@media(max-height:560px)]:text-[14px]"
+										className="w-full rounded-lg border-none bg-[#dce2f3] py-3 pl-4 pr-12 text-lg font-normal tracking-widest text-[#151c27] outline-none transition-all placeholder:text-[#737687] focus:bg-white focus:ring-1 focus:ring-[#004bc3] disabled:opacity-70 [@media(max-height:700px)]:py-2.5 [@media(max-height:640px)]:text-base [@media(max-height:560px)]:py-2 [@media(max-height:560px)]:pr-11 [@media(max-height:560px)]:text-[15px]"
 										value={password}
 										placeholder="••••••••••••"
 										onChange={(e) => setPassword(e.currentTarget.value)}
@@ -594,32 +568,32 @@ const CreateUsernamePinScreen = forwardRef<
 									<button
 										type="button"
 										tabIndex={-1}
-										className="absolute inset-y-0 right-5 flex items-center rounded-lg p-1 text-[#424655] transition-colors hover:text-[#1a1c1f] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#004bc3]/30 [@media(max-height:560px)]:right-4"
+										className="absolute inset-y-0 right-3 flex items-center rounded-lg p-1 text-[#737687] transition-colors hover:text-[#424655] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#004bc3]/30"
 										onClick={() => setShowPassword(!showPassword)}
 										aria-label={showPassword ? tu('hide_password') : tu('show_password')}
 									>
-										{showPassword ? <EyeOff className="h-6 w-6 [@media(max-height:560px)]:h-5 [@media(max-height:560px)]:w-5" strokeWidth={2} /> : <Eye className="h-6 w-6 [@media(max-height:560px)]:h-5 [@media(max-height:560px)]:w-5" strokeWidth={2} />}
+										{showPassword ? <EyeOff className="h-5 w-5" strokeWidth={2} /> : <Eye className="h-5 w-5" strokeWidth={2} />}
 									</button>
 								</div>
 							</div>
 
-							<div className="space-y-3 px-2 [@media(max-height:700px)]:space-y-2.5 [@media(max-height:560px)]:space-y-2">
-								<div className="flex h-1 gap-1.5" aria-hidden>
+							<div className="mt-2 space-y-1 [@media(max-height:560px)]:space-y-1">
+								<div className="flex h-1 gap-1" aria-hidden>
 									{[0, 1, 2, 3].map((idx) => (
 										<div
 											key={idx}
 											className={[
 												"flex-1 rounded-full transition-colors",
-												idx < passwordStrengthCount ? "bg-[#004bc3]" : "bg-[#e2e2e7]",
+												idx < passwordStrengthCount ? "bg-[#004bc3]" : "bg-[#dce2f3]",
 											].join(" ")}
 										/>
 									))}
 								</div>
-								<div className="flex items-center justify-between">
-									<span className="text-[13px] font-semibold text-[#1a1c1f] [@media(max-height:560px)]:text-[12px]">
+								<div className="mt-1 flex items-center justify-between">
+									<span className="text-sm font-medium leading-5 text-[#424655] [@media(max-height:560px)]:text-[12px]">
 										{passwordStrengthLabel}
 									</span>
-									<span className="text-[13px] font-medium text-[#424655] [@media(max-height:560px)]:text-[12px]">
+									<span className="text-sm font-medium leading-5 text-[#737687] [@media(max-height:560px)]:text-[12px]">
 										{passwordStrengthPercent}%
 									</span>
 								</div>
@@ -640,26 +614,30 @@ const CreateUsernamePinScreen = forwardRef<
 						</div>
 
 						{!shouldHideInfoCards ? (
-						<div className="grid grid-cols-2 gap-4 pt-8 [@media(max-height:780px)]:pt-4 [@media(max-height:700px)]:gap-2.5 [@media(max-height:700px)]:pt-2 [@media(max-height:640px)]:gap-2 [@media(max-height:640px)]:pt-1 [@media(max-height:560px)]:hidden">
-							<div className="flex flex-col gap-3 rounded-lg bg-white p-6 shadow-[0_4px_24px_rgba(0,0,0,0.02)] [@media(max-height:780px)]:p-4 [@media(max-height:700px)]:gap-2 [@media(max-height:700px)]:p-3.5 [@media(max-height:640px)]:p-3">
-								<Shield className="h-6 w-6 shrink-0 text-[#004bc3] [@media(max-height:640px)]:h-5 [@media(max-height:640px)]:w-5" fill="currentColor" strokeWidth={2} aria-hidden />
-								<div className="space-y-1">
-									<p className="text-xs font-bold uppercase tracking-widest text-[#424655]">{tu('vault')}</p>
-									<p className="text-sm font-semibold leading-snug text-[#1a1c1f] [@media(max-height:640px)]:text-[13px]">{tu('encrypted_local_storage')}</p>
+						<div className="mt-2 grid grid-cols-2 gap-4 pt-2 [@media(max-height:780px)]:pt-1 [@media(max-height:700px)]:gap-3 [@media(max-height:640px)]:gap-2 [@media(max-height:560px)]:hidden">
+							<div className="flex flex-col gap-3 rounded-xl bg-white p-4 shadow-[0_4px_20px_rgba(0,0,0,0.05)] [@media(max-height:700px)]:gap-2 [@media(max-height:700px)]:p-3.5 [@media(max-height:640px)]:p-3">
+								<div className="flex h-8 w-8 items-center justify-center text-[#004bc3]">
+									<Shield className="h-6 w-6 shrink-0" fill="currentColor" strokeWidth={0} aria-hidden />
+								</div>
+								<div className="flex flex-col gap-1">
+									<p className="text-xs font-semibold uppercase tracking-[0.05em] text-[#424655]">{tu('vault')}</p>
+									<p className="text-sm font-medium leading-5 text-[#151c27] [@media(max-height:640px)]:text-[13px]">{tu('encrypted_local_storage')}</p>
 								</div>
 							</div>
-							<div className="flex flex-col gap-3 rounded-lg bg-white p-6 shadow-[0_4px_24px_rgba(0,0,0,0.02)] [@media(max-height:780px)]:p-4 [@media(max-height:700px)]:gap-2 [@media(max-height:700px)]:p-3.5 [@media(max-height:640px)]:p-3">
-								<RefreshCw className="h-6 w-6 shrink-0 text-[#004bc3] [@media(max-height:640px)]:h-5 [@media(max-height:640px)]:w-5" fill="currentColor" strokeWidth={2} aria-hidden />
-								<div className="space-y-1">
-									<p className="text-xs font-bold uppercase tracking-widest text-[#424655]">{tu('sync')}</p>
-									<p className="text-sm font-semibold leading-snug text-[#1a1c1f] [@media(max-height:640px)]:text-[13px]">{tu('multi_device_continuity')}</p>
+							<div className="flex flex-col gap-3 rounded-xl bg-white p-4 shadow-[0_4px_20px_rgba(0,0,0,0.05)] [@media(max-height:700px)]:gap-2 [@media(max-height:700px)]:p-3.5 [@media(max-height:640px)]:p-3">
+								<div className="flex h-8 w-8 items-center justify-center text-[#004bc3]">
+									<RefreshCw className="h-6 w-6 shrink-0" strokeWidth={2.25} aria-hidden />
+								</div>
+								<div className="flex flex-col gap-1">
+									<p className="text-xs font-semibold uppercase tracking-[0.05em] text-[#424655]">{tu('sync')}</p>
+									<p className="text-sm font-medium leading-5 text-[#151c27] [@media(max-height:640px)]:text-[13px]">{tu('multi_device_continuity')}</p>
 								</div>
 							</div>
 						</div>
 						) : null}
 
 						{!shouldHideNonCustodialNote ? (
-						<p className="px-1 text-center text-[13px] leading-snug text-[#424655] [@media(max-height:640px)]:text-[12px] [@media(max-height:560px)]:text-[11px] [@media(max-height:520px)]:hidden">
+						<p className="px-4 text-center text-sm font-medium leading-5 text-[#737687] [@media(max-height:640px)]:px-2 [@media(max-height:640px)]:text-[12px] [@media(max-height:560px)]:text-[11px] [@media(max-height:520px)]:hidden">
 							{tu('beamio_is_non_custodial_we_cannot_reset_this_password_for_you')}
 						</p>
 						) : null}
@@ -676,30 +654,33 @@ const CreateUsernamePinScreen = forwardRef<
 							fullWidth
 							loading={loading}
 							disabled={!canSubmit}
-							rightIcon={!loading ? <ArrowRight className="h-5 w-5" strokeWidth={2.5} aria-hidden /> : undefined}
+							rightIcon={!loading ? <ArrowRight className="h-4 w-4" strokeWidth={2.5} aria-hidden /> : undefined}
 							className={[
-								"!rounded-full !py-5 !text-lg !font-bold !shadow-[0_8px_30px_rgba(21,98,240,0.3)] !transition-transform active:scale-[0.98] [@media(max-height:780px)]:!py-4 [@media(max-height:780px)]:!text-[17px] [@media(max-height:700px)]:!py-3.5 [@media(max-height:700px)]:!text-base [@media(max-height:640px)]:!py-3 [@media(max-height:640px)]:!text-[15px] [@media(max-height:560px)]:!py-2.5 [@media(max-height:560px)]:!text-[14px]",
+								"!rounded-full !py-4 !text-sm !font-medium !transition-transform active:scale-95 [@media(max-height:700px)]:!py-3.5 [@media(max-height:640px)]:!py-3 [@media(max-height:560px)]:!py-2.5",
 								canSubmit
-									? "!inline-flex !items-center !justify-center !gap-2 !bg-gradient-to-br !from-[#004bc3] !to-[#1562f0] hover:!opacity-[0.96] !text-white focus-visible:!ring-2 focus-visible:!ring-[#004bc3]/50 focus-visible:!ring-offset-2 focus-visible:!ring-offset-[#f3f3f8]"
+									? "!inline-flex !items-center !justify-center !gap-2 !bg-[#004bc3] !text-white !shadow-[0_8px_30px_rgba(0,75,195,0.1)] hover:!bg-[#004bc3]/90 focus-visible:!ring-2 focus-visible:!ring-[#004bc3]/50 focus-visible:!ring-offset-2 focus-visible:!ring-offset-[#f9f9ff]"
 									: "!cursor-not-allowed !bg-[#c3c6d8] !text-[#737687] !shadow-none",
 							].join(" ")}
 							onClick={() => void onSubmitPress()}
 						>{tu('next')}</AppButton>
-						<div className="mt-4 flex max-w-md flex-col gap-1 px-4 text-center text-[13px] font-normal leading-snug text-[#424655] [@media(max-height:700px)]:mt-3 [@media(max-height:640px)]:mt-2 [@media(max-height:640px)]:text-[12px] [@media(max-height:560px)]:mt-1.5 [@media(max-height:560px)]:gap-0.5 [@media(max-height:560px)]:px-2 [@media(max-height:560px)]:text-[11px]">
-							<p>{tu('by_continuing_you_agree_to_our')}</p>
+						<div className="mt-4 flex max-w-md flex-col gap-1 px-2 text-center text-xs font-semibold uppercase tracking-[0.05em] leading-4 text-[#737687] [@media(max-height:700px)]:mt-3 [@media(max-height:640px)]:mt-2 [@media(max-height:560px)]:mt-1.5 [@media(max-height:560px)]:text-[11px]">
 							<p>
+								{tu('by_continuing_you_agree_to_our')}
+								<br />
 								<button
 									type="button"
 									onClick={() => openExternalUrl(BEAMIO_TERMS_URL)}
-									className="font-bold text-[#004bc3] hover:underline"
+									className="text-[#004bc3] hover:underline"
 								>
 									{tu('terms_of_service')}
 								</button>
+								{' '}
 								{tu('and')}
+								{' '}
 								<button
 									type="button"
 									onClick={() => openExternalUrl(BEAMIO_PRIVACY_URL)}
-									className="font-bold text-[#004bc3] hover:underline"
+									className="text-[#004bc3] hover:underline"
 								>
 									{tu('privacy_policy')}
 								</button>

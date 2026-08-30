@@ -33,8 +33,8 @@ import {
 import beamioAccountABI from '@/services/ABI/beamio-AccountRegistry.json'
 import { randomBytes } from '@noble/hashes/utils.js'
 import contracts from "../utils/contracts"
-import { argon2id } from '@noble/hashes/argon2.js'
 import { encode as cborEncode, decode as cborDecode } from 'cbor-x'
+import { argon2idAsync } from '@/services/argon2WorkerBridge'
 import { baseEndpoint, USDCContract_BASE } from '../utils/constants'
 import { BASE_MAINNET_FACTORIES, CONET_ACCOUNT_REGISTRY, CONET_BUNIT_AIRDROP_ADDRESS, CONET_MAINNET_CHAIN_ID, CONET_RPC_URL } from '@/config/chainAddresses'
 import { eip712ChainIdForBeamioUserCard, getCardFactoryGatewayForEip712 } from '@/utils/beamioUserCardChain'
@@ -1517,28 +1517,24 @@ export const aesGcmDecrypt= async (ciphertext: string, password: string) => {
 	}
 }
 
-const deriveAesKeyFromPassword = (
+const deriveAesKeyFromPassword = async (
 	password: string,
 	stored: Argon2idHash
 ): Promise<CryptoKey> => {
 	const passwordBytes = enc.encode(password)
 	const salt = b64ToBytes(stored.salt)
 
-	// 🔧 关键改动：把 noble 返回的 Uint8Array<ArrayBufferLike>
-	//            转成标准 Uint8Array（buffer 类型为 ArrayBuffer）
-	const keyBytes = Uint8Array.from(
-		argon2id(passwordBytes, salt, {
+	// Argon2id runs in a Web Worker so Create-ID loading CSS keeps animating
+	const keyBytes = await argon2idAsync(passwordBytes, salt, {
 		m: stored.m,
 		t: stored.t,
 		p: stored.p,
-		dkLen: 32
-		})
-	)
+		dkLen: 32,
+	})
 
-	// 导入为 WebCrypto AES-GCM 密钥
 	return crypto.subtle.importKey(
 		'raw',
-		keyBytes,                // 现在是合法的 BufferSource
+		keyBytes,
 		{ name: 'AES-GCM' },
 		false,
 		['encrypt', 'decrypt']
@@ -1748,22 +1744,18 @@ const defaultBrowserParams: Argon2idParams = {
 
 
 
-const hashPasswordBrowser = (
+const hashPasswordBrowser = async (
 	password: string,
 	params: Argon2idParams = defaultBrowserParams
-): Argon2idHash => {
+): Promise<Argon2idHash> => {
 	const salt = randomBytes(16)
 
-	const hash = argon2id(
-		enc.encode(password),
-		salt,
-		{
-			m: params.memoryKB,
-			t: params.iterations,
-			p: params.parallelism,
-			dkLen: params.hashLen
-		}
-	)
+	const hash = await argon2idAsync(enc.encode(password), salt, {
+		m: params.memoryKB,
+		t: params.iterations,
+		p: params.parallelism,
+		dkLen: params.hashLen,
+	})
 
 	return {
 		algo: 'argon2id',
@@ -1772,7 +1764,7 @@ const hashPasswordBrowser = (
 		t: params.iterations,
 		p: params.parallelism,
 		salt: b64encode(salt),
-		hash: b64encode(hash)
+		hash: b64encode(hash),
 	}
 }
 
@@ -2097,12 +2089,12 @@ export const createRecover = async (BeamioName: string, pin: string) => {
 	}
 	const wallet = temp.profiles[0].privateKeyArmor
 	const recoverCode =  generateCODE('')
-	const stored = hashPasswordBrowser(pin)
-	
+	const stored = await hashPasswordBrowser(pin)
+
 	const phraseBase64 = toBase64(temp.mnemonicPhrase)
-	
-	const img = await aesGcmEncryptWithStored (phraseBase64, recoverCode.code, stored)
-	const img1 = await aesGcmEncryptWithStored (phraseBase64, pin, stored)
+
+	const img = await aesGcmEncryptWithStored(phraseBase64, recoverCode.code, stored)
+	const img1 = await aesGcmEncryptWithStored(phraseBase64, pin, stored)
 
 	const storageEncryptedImg = toBase64(JSON.stringify({stored, img}))
 	temp.encryptedString = recoverCode.code
@@ -2136,7 +2128,7 @@ export const provisionTempCouponClaimWallet = async (): Promise<encrypt_keys_obj
 	const beamioTag = `temp_${uuid62.v4()}`
 	const recoverCode = generateCODE('')
 	const pin = uuid62.v4()
-	const stored = hashPasswordBrowser(pin)
+	const stored = await hashPasswordBrowser(pin)
 	const phraseBase64 = toBase64(temp.mnemonicPhrase)
 	const img = await aesGcmEncryptWithStored(phraseBase64, recoverCode.code, stored)
 	const img1 = await aesGcmEncryptWithStored(phraseBase64, pin, stored)
@@ -2511,7 +2503,7 @@ const RegenerateUser = async (beamio: beamio, recoverData:IAccountRecover[], pri
 export const RegenerateRecover = async (mnemonicPhrase: string, beamio: beamio, pin: string, privateKey: string) => {
 	await new Promise(executor => setTimeout(() => executor(true), 1000))
 	const recoverCode =  generateCODE('')
-	const stored = hashPasswordBrowser(pin)
+	const stored = await hashPasswordBrowser(pin)
 	const phraseBase64 = toBase64(mnemonicPhrase)
 	const img = await aesGcmEncryptWithStored (phraseBase64, recoverCode.code, stored)
 	const img1 = await aesGcmEncryptWithStored (phraseBase64, pin, stored)

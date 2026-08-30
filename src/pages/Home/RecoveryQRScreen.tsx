@@ -256,14 +256,14 @@ const RecoveryQRScreen = ({
   const canUseTopBack = showTopAppBar && typeof onBack === 'function'
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-white text-[#1a1c1f]">
-      {showTopAppBar && (
-        <header className="flex w-full shrink-0 items-center justify-between border-b border-[#e8e8ed]/90 bg-white px-5 pt-[max(0.5rem,env(safe-area-inset-top))] pb-3">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[#f9f9ff] text-[#171c26]">
+      {showTopAppBar ? (
+        <header className="flex w-full shrink-0 items-center justify-between border-b border-[#e1e7f6] bg-white px-5 pt-[max(0.5rem,env(safe-area-inset-top))] pb-3">
           <button
             type="button"
             onClick={() => canUseTopBack && onBack?.()}
             disabled={!canUseTopBack}
-            className="flex h-10 w-10 items-center justify-center rounded-full transition-colors hover:bg-[#e8e8ed] active:scale-95 disabled:pointer-events-none disabled:opacity-40"
+            className="flex h-10 w-10 items-center justify-center rounded-full transition-colors hover:bg-[#e9edfb] active:scale-95 disabled:pointer-events-none disabled:opacity-40"
             aria-label={tu('back')}
           >
             <ArrowLeft className="h-6 w-6 text-[#1562f0]" strokeWidth={2.25} />
@@ -272,108 +272,115 @@ const RecoveryQRScreen = ({
             {topBarBrand === 'Beamio' ? (
               <VerraBrandLockup variant="onLight" size="compact" />
             ) : (
-              <span className="text-lg font-bold tracking-tighter text-[#1a1c1f]">{topBarBrand}</span>
+              <span className="text-lg font-bold tracking-tighter text-[#171c26]">{topBarBrand}</span>
             )}
           </div>
           <div className="h-10 w-10" aria-hidden />
         </header>
-      )}
+      ) : null}
 
-      <main
-        className={[
-          'mx-auto flex min-h-0 w-full max-w-lg flex-1 flex-col overflow-hidden px-5 pb-[max(0.5rem,env(safe-area-inset-bottom))] [@media(max-height:640px)]:px-4 [@media(max-height:560px)]:pb-[max(0.25rem,env(safe-area-inset-bottom))]',
-          showTopAppBar
-            ? 'pt-3 [@media(max-height:700px)]:pt-2 [@media(max-height:560px)]:pt-1'
-            : 'pt-[calc(env(safe-area-inset-top)+3.75rem)] [@media(max-height:760px)]:pt-[calc(env(safe-area-inset-top)+2.75rem)] [@media(max-height:700px)]:pt-[calc(env(safe-area-inset-top)+2rem)] [@media(max-height:640px)]:pt-[calc(env(safe-area-inset-top)+1.25rem)] [@media(max-height:560px)]:pt-[calc(env(safe-area-inset-top)+0.75rem)]',
-        ].join(' ')}
-      >
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <div className="mb-5 shrink-0 text-center md:text-left [@media(max-height:760px)]:mb-4 [@media(max-height:700px)]:mb-3 [@media(max-height:640px)]:mb-2 [@media(max-height:560px)]:mb-1.5">
-            <h1 className="mb-1 text-3xl font-extrabold tracking-tight text-[#1a1c1f] [@media(max-height:700px)]:text-[22px] [@media(max-height:640px)]:text-xl [@media(max-height:560px)]:text-lg">
+      <main className="mx-auto flex min-h-0 w-full max-w-[400px] flex-1 flex-col overflow-hidden bg-transparent">
+        {/* Scrollable content */}
+        <div
+          className={[
+            'flex min-h-0 flex-1 flex-col items-center overflow-y-auto overscroll-contain px-6 pb-4',
+            showTopAppBar
+              ? 'pt-6 [@media(max-height:700px)]:pt-4 [@media(max-height:560px)]:pt-3'
+              : [
+                  'pt-[calc(env(safe-area-inset-top)+2.5rem)]',
+                  '[@media(max-height:700px)]:pt-[calc(env(safe-area-inset-top)+1.5rem)]',
+                  '[@media(max-height:560px)]:pt-[calc(env(safe-area-inset-top)+0.75rem)]',
+                ].join(' '),
+          ].join(' ')}
+        >
+          <header className="mb-8 w-full shrink-0 text-center [@media(max-height:700px)]:mb-5 [@media(max-height:560px)]:mb-3">
+            <h1 className="mb-3 text-3xl font-bold tracking-tight text-[#171c26] [@media(max-height:700px)]:mb-2 [@media(max-height:700px)]:text-[1.65rem] [@media(max-height:560px)]:text-2xl">
               {tu('security_backup')}
             </h1>
-            <div className="space-y-0.5 text-sm font-medium leading-snug text-[#424655] [@media(max-height:700px)]:text-[13px] [@media(max-height:640px)]:text-[12px] [@media(max-height:560px)]:hidden">
-              <p>{tu('your_recovery_code_is_your_master_key')}</p>
-              <p>{tu('if_you_lose_your_phone')}</p>
-              <p>{tu('this_is_the_only_way_to_get_your_funds_back')}</p>
+            <p className="px-2 text-sm leading-relaxed text-[#414754] [@media(max-height:560px)]:text-[13px]">
+              {tu('account_recovery_key_description')}
+            </p>
+          </header>
+
+          {/* QR card */}
+          <div className="mb-6 flex w-full shrink-0 flex-col items-center rounded-2xl border border-[#c1c6d6] bg-white p-5 shadow-[0_4px_20px_-2px_rgba(0,0,0,0.05)] [@media(max-height:700px)]:mb-4 [@media(max-height:700px)]:p-4 [@media(max-height:560px)]:mb-3 [@media(max-height:560px)]:p-3.5">
+            <div
+              className={[
+                'relative mb-5 flex aspect-square w-48 max-w-full items-center justify-center overflow-hidden rounded-xl border border-[#d9e0f3] p-4 shadow-sm',
+                '[@media(max-height:700px)]:mb-4 [@media(max-height:700px)]:w-40 [@media(max-height:560px)]:mb-3 [@media(max-height:560px)]:w-36 [@media(max-height:560px)]:p-3',
+              ].join(' ')}
+              style={{ background: 'linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%)' }}
+            >
+              {qrDataUrl ? (
+                <div className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-md bg-white">
+                  <QRCodeCanvas
+                    ref={qrCanvasRef}
+                    value={qrDataUrl}
+                    size={176}
+                    level="H"
+                    includeMargin
+                    bgColor="#ffffff"
+                    fgColor="#000000"
+                    className="block h-full w-full rounded-md mix-blend-multiply"
+                  />
+                  <div className="pointer-events-none absolute left-1/2 top-1/2 flex h-10 w-10 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 border-white bg-white shadow-md [@media(max-height:560px)]:h-8 [@media(max-height:560px)]:w-8">
+                    <IpfsImg
+                      src={APP_LOGO_SRC}
+                      alt="Beamio"
+                      className="h-full w-full rounded-full object-contain"
+                      draggable={false}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="flex h-full w-full items-center justify-center">
+                  <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#1562f0] border-t-transparent" />
+                </div>
+              )}
+            </div>
+
+            <div className="flex w-full items-center justify-between gap-3 rounded-xl border border-[#e1e7f6] bg-[#f0f3ff] px-4 py-3 [@media(max-height:560px)]:px-3 [@media(max-height:560px)]:py-2.5">
+              <span className="min-w-0 flex-1 select-all break-all font-mono text-xs font-semibold tracking-widest text-[#171c26] uppercase [@media(max-height:560px)]:text-[11px]">
+                {recoveryCode || '—'}
+              </span>
+              <Lock className="h-[18px] w-[18px] shrink-0 text-[#1562f0]" strokeWidth={2.25} aria-hidden />
             </div>
           </div>
 
-          <section className="min-h-0 shrink py-1 [@media(max-height:700px)]:py-0.5 [@media(max-height:560px)]:py-0">
-            <div className="relative mx-auto w-full max-w-[272px] shrink [@media(max-height:700px)]:max-w-[220px] [@media(max-height:640px)]:max-w-[180px] [@media(max-height:560px)]:max-w-[156px]">
-              <div className="absolute inset-0 rounded-full bg-[#1562f0] opacity-[0.06] blur-2xl [@media(max-height:700px)]:blur-xl" />
-              <div className="relative flex flex-col items-center rounded-2xl border border-[#e8e8ed]/80 bg-white/95 p-4 shadow-sm backdrop-blur-sm [@media(max-height:700px)]:p-3 [@media(max-height:640px)]:p-2 [@media(max-height:560px)]:rounded-xl [@media(max-height:560px)]:p-1.5">
-                <div className="relative mb-3 flex h-[208px] w-[208px] shrink-0 items-center justify-center overflow-hidden rounded-lg bg-[#e2e2e7] p-2 [@media(max-height:700px)]:mb-2 [@media(max-height:700px)]:h-[160px] [@media(max-height:700px)]:w-[160px] [@media(max-height:640px)]:mb-1.5 [@media(max-height:640px)]:h-[128px] [@media(max-height:640px)]:w-[128px] [@media(max-height:640px)]:p-1 [@media(max-height:560px)]:mb-1 [@media(max-height:560px)]:h-[108px] [@media(max-height:560px)]:w-[108px]">
-                  {qrDataUrl ? (
-                    <div className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-md bg-white">
-                      <QRCodeCanvas
-                        ref={qrCanvasRef}
-                        value={qrDataUrl}
-                        size={176}
-                        level="H"
-                        includeMargin
-                        bgColor="#ffffff"
-                        fgColor="#000000"
-                        className="block h-full w-full rounded-md"
-                      />
-                      <div className="pointer-events-none absolute left-1/2 top-1/2 flex h-12 w-12 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-[14px] bg-white p-1 shadow-[0_4px_12px_rgba(0,0,0,0.12)] [@media(max-height:700px)]:h-10 [@media(max-height:700px)]:w-10 [@media(max-height:700px)]:rounded-[12px] [@media(max-height:640px)]:h-8 [@media(max-height:640px)]:w-8 [@media(max-height:640px)]:rounded-[10px]">
-                        <IpfsImg
-                          src={APP_LOGO_SRC}
-                          alt="Beamio"
-                          className="h-full w-full rounded-[10px] object-contain [@media(max-height:700px)]:rounded-[9px] [@media(max-height:640px)]:rounded-[8px]"
-                          draggable={false}
-                        />
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="h-full w-full min-h-[120px] animate-pulse rounded-md bg-slate-200/90" />
-                  )}
-                </div>
-                <div className="relative z-10 flex min-w-0 w-full items-center justify-between gap-2 rounded-md bg-[#f3f3f8] px-3 py-2.5 [@media(max-height:700px)]:py-2 [@media(max-height:640px)]:px-2 [@media(max-height:640px)]:py-1.5 [@media(max-height:560px)]:py-1">
-                  <span className="select-all break-all font-mono text-xs font-medium tracking-widest text-[#1a1c1f] uppercase [@media(max-height:640px)]:text-[11px] [@media(max-height:560px)]:text-[10px]">
-                    {recoveryCode || '—'}
-                  </span>
-                  <Lock className="h-4 w-4 shrink-0 text-[#1562f0]" strokeWidth={2} aria-hidden />
-                </div>
-              </div>
-            </div>
-          </section>
-
-          {/* Save / Copy 两个按钮：勾选 "I have securely saved..." 后保留可见但 disable，
-              只允许通过下方 Next/Continue 推进，避免确认后又被误触备份操作 */}
-          <div className="flex shrink-0 flex-col gap-2 pt-1 [@media(max-height:700px)]:gap-1.5 [@media(max-height:700px)]:pt-0.5 [@media(max-height:560px)]:gap-1">
+          {/* Actions: disable after confirm so only Next advances */}
+          <div className="mb-2 flex w-full shrink-0 flex-col gap-3 [@media(max-height:700px)]:gap-2.5 [@media(max-height:560px)]:gap-2">
             <button
               type="button"
-              onClick={handleSaveImage}
-              disabled={isConfirmed}
-              aria-disabled={isConfirmed}
-              className="flex items-center justify-center gap-2 rounded-full bg-gradient-to-br from-[#004bc3] to-[#1562f0] px-6 py-3 text-base font-bold text-white shadow-md transition-transform hover:opacity-[0.96] active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/55 focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none disabled:from-[#737687] disabled:to-[#737687] [@media(max-height:700px)]:py-2.5 [@media(max-height:700px)]:text-[15px] [@media(max-height:640px)]:py-2 [@media(max-height:640px)]:text-sm [@media(max-height:560px)]:py-1.5 [@media(max-height:560px)]:text-[13px]"
+              onClick={() => void handleSaveImage()}
+              disabled={isConfirmed || !qrDataUrl}
+              aria-disabled={isConfirmed || !qrDataUrl}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#1562f0] py-4 text-[15px] font-semibold text-white shadow-md transition-colors hover:bg-[#0f52d4] active:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 [@media(max-height:700px)]:py-3.5 [@media(max-height:560px)]:py-3 [@media(max-height:560px)]:text-sm"
             >
-              <Download className="h-5 w-5 [@media(max-height:640px)]:h-4 [@media(max-height:640px)]:w-4" strokeWidth={2.5} />
+              <Download className="h-5 w-5 shrink-0" strokeWidth={2.25} aria-hidden />
               {tu('save_to_photos')}
             </button>
 
             {saveError ? (
-              <p className="px-2 text-center text-[12px] font-semibold leading-snug text-[#ba1a1a]">
+              <p className="px-2 text-center text-sm font-medium leading-snug text-[#ba1a1a]" role="alert">
                 {saveError}
               </p>
             ) : null}
 
             <button
               type="button"
-              onClick={handleCopyCode}
+              onClick={() => void handleCopyCode()}
               disabled={!recoveryCode || isConfirmed}
               aria-disabled={!recoveryCode || isConfirmed}
-              className="flex items-center justify-center gap-2 rounded-full bg-[#e8e8ed] px-6 py-3 text-base font-bold text-[#1a1c1f] transition-colors hover:bg-[#e2e2e7] active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/55 focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 [@media(max-height:700px)]:py-2.5 [@media(max-height:700px)]:text-[15px] [@media(max-height:640px)]:py-2 [@media(max-height:640px)]:text-sm [@media(max-height:560px)]:py-1.5 [@media(max-height:560px)]:text-[13px]"
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#e9edfb] py-4 text-[15px] font-semibold text-[#171c26] transition-colors hover:bg-[#e1e7f6] active:bg-[#d9e0f3] disabled:cursor-not-allowed disabled:opacity-50 [@media(max-height:700px)]:py-3.5 [@media(max-height:560px)]:py-3 [@media(max-height:560px)]:text-sm"
             >
               {copied ? (
                 <>
-                  <Check className="h-5 w-5 text-[#1562f0] [@media(max-height:640px)]:h-4 [@media(max-height:640px)]:w-4" strokeWidth={2.5} />
+                  <Check className="h-5 w-5 shrink-0 text-emerald-600" strokeWidth={2.5} aria-hidden />
                   {tu('copied')}
                 </>
               ) : (
                 <>
-                  <Copy className="h-5 w-5 [@media(max-height:640px)]:h-4 [@media(max-height:640px)]:w-4" strokeWidth={2.5} />
+                  <Copy className="h-5 w-5 shrink-0 text-[#414754]" strokeWidth={2.25} aria-hidden />
                   {tu('copy_recovery_code')}
                 </>
               )}
@@ -381,63 +388,75 @@ const RecoveryQRScreen = ({
           </div>
         </div>
 
-        {/* 固定底栏：confirm 复选框 + Next 按钮，永远可见，不进入滚动区。
-            shrink-0 + 主轴外，确保 iPhone SE 等小屏不会把它顶出可视区。 */}
-        <div className="shrink-0 pt-2 [@media(max-height:700px)]:pt-1.5 [@media(max-height:560px)]:pt-1">
-          <div
+        {/* Sticky footer — same page tint as shell (no white panel) */}
+        <footer
+          className={[
+            'shrink-0 border-t border-[#e9edfb] bg-[#f9f9ff] px-6 pt-5',
+            'pb-[max(1.5rem,env(safe-area-inset-bottom))]',
+            '[@media(max-height:700px)]:pt-4',
+            '[@media(max-height:560px)]:px-5 [@media(max-height:560px)]:pt-3',
+          ].join(' ')}
+        >
+          <label
             className={[
-              'rounded-lg border border-[#e8e8ed] bg-[#fafafa] p-3 transition-opacity duration-300 [@media(max-height:700px)]:p-2.5 [@media(max-height:640px)]:p-2 [@media(max-height:560px)]:p-1.5',
-              hasBackedUp ? 'opacity-100' : 'cursor-not-allowed opacity-40',
+              'mb-4 flex cursor-pointer items-center justify-center gap-3 rounded-xl border border-[#d9e0f3] bg-[#f0f3ff] px-4 py-3 transition select-none',
+              '[@media(max-height:700px)]:mb-3 [@media(max-height:560px)]:mb-2.5 [@media(max-height:560px)]:gap-2.5 [@media(max-height:560px)]:py-2.5',
+              hasBackedUp ? 'text-[#414754]' : 'cursor-not-allowed opacity-60',
             ].join(' ')}
+            onClick={(e) => {
+              e.preventDefault()
+              if (hasBackedUp) setIsConfirmed((v) => !v)
+            }}
           >
-            <label
-              className={`flex items-center gap-3 ${hasBackedUp ? 'cursor-pointer' : 'cursor-not-allowed'}`}
-              onClick={(e) => {
-                e.preventDefault()
-                if (hasBackedUp) setIsConfirmed((v) => !v)
-              }}
+            <input
+              type="checkbox"
+              className="peer sr-only"
+              checked={isConfirmed}
+              readOnly
+              disabled={!hasBackedUp}
+              tabIndex={-1}
+            />
+            <span
+              className={[
+                'flex h-5 w-5 shrink-0 items-center justify-center rounded border-2 transition',
+                isConfirmed
+                  ? 'border-[#1562f0] bg-[#1562f0] text-white'
+                  : hasBackedUp
+                    ? 'border-[#c1c6d6] bg-white'
+                    : 'border-[#d9e0f3] bg-[#e9edfb]',
+              ].join(' ')}
+              aria-hidden
             >
-              <div className="pointer-events-none relative flex shrink-0 items-center justify-center">
-                <input type="checkbox" className="peer sr-only" checked={isConfirmed} readOnly disabled={!hasBackedUp} />
-                <div
-                  className={[
-                    'flex h-5 w-5 items-center justify-center rounded-md transition-colors',
-                    isConfirmed ? 'bg-[#004bc3]' : 'bg-[#e2e2e7]',
-                  ].join(' ')}
-                >
-                  {isConfirmed && <Check className="h-3.5 w-3.5 text-white" strokeWidth={3} />}
-                </div>
-              </div>
-              <span className="select-none text-sm font-medium text-[#1a1c1f] leading-snug [@media(max-height:700px)]:text-[13px] [@media(max-height:640px)]:text-[12px] [@media(max-height:560px)]:text-[11px]">
-                {tu('i_have_securely_saved_my_recovery_code')}
-              </span>
-            </label>
-          </div>
+              {isConfirmed ? <Check className="h-3.5 w-3.5" strokeWidth={3} /> : null}
+            </span>
+            <span className="text-sm font-medium leading-snug [@media(max-height:560px)]:text-[13px]">
+              {tu('i_have_securely_saved_my_recovery_code')}
+            </span>
+          </label>
 
-          {showButton && (
-            <div className="mt-2 pt-1 pb-2 [@media(max-height:700px)]:mt-1.5 [@media(max-height:700px)]:pb-1 [@media(max-height:640px)]:mt-1 [@media(max-height:640px)]:pb-0 [@media(max-height:560px)]:mt-0.5 [@media(max-height:560px)]:pt-0">
-              <AppButton
-                fullWidth
-                rightIcon={<ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" strokeWidth={2.5} />}
-                onClick={async () => {
-                  setLoading(true)
-                  await Promise.resolve(close?.())
-                }}
-                loading={loading && !isRedeemFlow}
-                disabled={!isConfirmed}
-                className={`
-                  group !h-auto min-h-[52px] rounded-full !py-3 !text-base !font-bold !shadow-none [@media(max-height:700px)]:!min-h-[46px] [@media(max-height:700px)]:!py-2.5 [@media(max-height:700px)]:!text-[15px] [@media(max-height:640px)]:!min-h-[42px] [@media(max-height:640px)]:!py-2 [@media(max-height:640px)]:!text-sm [@media(max-height:560px)]:!min-h-[36px] [@media(max-height:560px)]:!py-1.5 [@media(max-height:560px)]:!text-[13px]
-                  transition-all duration-200
-                  ${isConfirmed
-                    ? '!bg-[#004bc3] hover:!bg-[#003fa5] active:!scale-[0.98] !text-white !shadow-lg focus-visible:!ring-2 focus-visible:!ring-[#1562f0]/75 focus-visible:!ring-offset-2 focus-visible:!ring-offset-white'
-                    : '!cursor-not-allowed !bg-[#d9dade] !text-[#737687]'}
-                `}
-              >
-                {isRedeemFlow ? tu('continue') : tu('next')}
-              </AppButton>
-            </div>
-          )}
-        </div>
+          {showButton ? (
+            <AppButton
+              fullWidth
+              rightIcon={<ArrowRight className="h-5 w-5" strokeWidth={2.25} aria-hidden />}
+              onClick={async () => {
+                setLoading(true)
+                await Promise.resolve(close?.())
+              }}
+              loading={loading && !isRedeemFlow}
+              disabled={!isConfirmed}
+              className={[
+                'group !h-auto !min-h-0 !rounded-xl !py-4 !text-[15px] !font-semibold !shadow-none',
+                '[@media(max-height:700px)]:!py-3.5 [@media(max-height:560px)]:!py-3 [@media(max-height:560px)]:!text-sm',
+                'transition-colors',
+                isConfirmed
+                  ? '!bg-[#1562f0] !text-white !shadow-md hover:!bg-[#0f52d4] active:!bg-blue-700 focus-visible:!ring-2 focus-visible:!ring-[#1562f0]/55 focus-visible:!ring-offset-2'
+                  : '!cursor-not-allowed !bg-[#d9e0f3] !text-[#727786]',
+              ].join(' ')}
+            >
+              {isRedeemFlow ? tu('continue') : tu('next')}
+            </AppButton>
+          ) : null}
+        </footer>
       </main>
     </div>
   )

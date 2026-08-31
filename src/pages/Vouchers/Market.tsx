@@ -175,6 +175,7 @@ import { tu } from '@/locale/beamioLocale'
 import { mapServerError } from '@/locale/mapServerError'
 import { parseDiscoverMerchantFromParams, buildDiscoverMerchantShareUrl, shareDiscoverMerchantUrl, stripDiscoverMerchantDeepLinkParams } from '@/utils/discoverMerchantShare'
 import { recordDiscoverShareClickIfNeeded } from '@/utils/discoverShareClickEvent'
+import { loadReward13RowsForAa, sameStoreHasPositiveCover } from '@/utils/topupReward13Plan'
 import { readDiscoverShareReferrer, stashDiscoverShareReferrer } from '@/utils/discoverShareReferrerStash'
 import { collectDeepLinkSearchParams } from '@/utils/beamioDeepLinkParams'
 import { useReliableTapHandler, RELIABLE_TAP_BUTTON_CLASS } from '@/utils/reliableTap'
@@ -3921,7 +3922,16 @@ function DiscoverMerchantDetailFullScreen({
 	const [merchantCoupons, setMerchantCoupons] = useState<DiscoverMerchantCouponOffer[] | null>(null)
 	const [merchantOfferTiers, setMerchantOfferTiers] = useState<DiscoverOfferTierRow[] | null>(null)
 	const [merchantOffersLoading, setMerchantOffersLoading] = useState(false)
-	const [userSocialPoints13, setUserSocialPoints13] = useState<number | null>(null)
+	const [userSocialPoints13, setUserSocialPoints13] = useState<number | null>(() => {
+		const pts = Number(
+			hydrateDiscoverMerchantCardAssets(
+				profiles?.[0] as Parameters<typeof getMyAssets>[0] | undefined,
+				item.cardAddress ?? undefined,
+				myBrandCardDetails,
+			)?.chargeRewardPoints,
+		)
+		return Number.isFinite(pts) && pts > 0 ? pts : null
+	})
 	const [userSocialPointsLoading, setUserSocialPointsLoading] = useState(false)
 	const [merchantMetadataRoot, setMerchantMetadataRoot] = useState<Record<string, unknown> | null>(
 		() => item.metadataRoot,
@@ -3944,6 +3954,7 @@ function DiscoverMerchantDetailFullScreen({
 	const merchantCouponsRef = useRef<DiscoverMerchantCouponOffer[] | null>(null)
 	merchantCouponsRef.current = merchantCoupons
 	const [discoverTopUpOpen, setDiscoverTopUpOpen] = useState(false)
+	const [smartPayPrefetchDone, setSmartPayPrefetchDone] = useState(false)
 	const [discoverTopUpPrefill, setDiscoverTopUpPrefill] = useState<string | undefined>()
 	const [usdcTopupPhase, setUsdcTopupPhase] = useState<'idle' | 'amount' | 'receive'>('idle')
 	const [usdcTopupAmountText, setUsdcTopupAmountText] = useState('')
@@ -4071,6 +4082,7 @@ function DiscoverMerchantDetailFullScreen({
 
 	useEffect(() => {
 		if (!item.cardAddress || issuerOwnerEoa) return
+		if (!smartPayPrefetchDone || discoverTopUpOpen) return
 		let cancelled = false
 		void getCardOwner(item.cardAddress)
 			.then((owner) => {
@@ -4083,13 +4095,14 @@ function DiscoverMerchantDetailFullScreen({
 		return () => {
 			cancelled = true
 		}
-	}, [item.cardAddress, issuerOwnerEoa])
+	}, [item.cardAddress, issuerOwnerEoa, smartPayPrefetchDone, discoverTopUpOpen])
 
 	useEffect(() => {
 		if (!item.cardAddress) {
 			setChainCardSocialPromotion(undefined)
 			return
 		}
+		if (!smartPayPrefetchDone || discoverTopUpOpen) return
 		let cancelled = false
 		setChainCardSocialPromotion(undefined)
 		void readCardSocialPromotionFromChain(item.cardAddress).then((promo) => {
@@ -4099,7 +4112,7 @@ function DiscoverMerchantDetailFullScreen({
 		return () => {
 			cancelled = true
 		}
-	}, [item.cardAddress])
+	}, [item.cardAddress, smartPayPrefetchDone, discoverTopUpOpen])
 
 	const merchantInfoPanel =
 		item.cardAddress != null
@@ -4137,10 +4150,11 @@ function DiscoverMerchantDetailFullScreen({
 	 */
 	const myPoints13Num = (() => {
 		const fromAssets = Number(merchantAssets?.chargeRewardPoints)
-		if (Number.isFinite(fromAssets) && fromAssets >= 0) return fromAssets
+		if (Number.isFinite(fromAssets) && fromAssets > 0) return fromAssets
 		if (userSocialPoints13 != null && Number.isFinite(userSocialPoints13) && userSocialPoints13 >= 0) {
 			return userSocialPoints13
 		}
+		if (Number.isFinite(fromAssets) && fromAssets === 0) return 0
 		return 0
 	})()
 	const myPoints13Loading =
@@ -4331,7 +4345,7 @@ function DiscoverMerchantDetailFullScreen({
 			}
 		}
 		return null
-	}, [profile])
+	}, [profile?.keyID])
 
 	const [genesisEoaUsdcBalance6, setGenesisEoaUsdcBalance6] = useState<bigint | null>(null)
 	const [genesisSeatPurchase, setGenesisSeatPurchase] = useState<GenesisSeatPurchasePhase>({ kind: 'idle' })
@@ -4515,7 +4529,7 @@ function DiscoverMerchantDetailFullScreen({
 			}
 		}
 		return null
-	}, [profile])
+	}, [profile?.aaAccount])
 
 	const shareReferrerEoa = useMemo(() => {
 		const keyId = profile?.keyID?.trim() ?? ''
@@ -4535,9 +4549,49 @@ function DiscoverMerchantDetailFullScreen({
 	}, [location.state, item.cardAddress])
 
 	const shareClickRecordedRef = useRef(false)
+
+	useEffect(() => {
+		const card = item.cardAddress?.trim()
+		if (!card || !ethers.isAddress(card)) {
+			setSmartPayPrefetchDone(true)
+			return
+		}
+		const aa = profile?.aaAccount
+		if (!profile || !aa || !ethers.isAddress(aa)) {
+			const t = window.setTimeout(() => setSmartPayPrefetchDone(true), 800)
+			return () => clearTimeout(t)
+		}
+		setSmartPayPrefetchDone(false)
+		let cancelled = false
+		void loadReward13RowsForAa(
+			profile as Parameters<typeof loadReward13RowsForAa>[0],
+			aa,
+			card,
+			{
+				onPartial: (rows) => {
+					if (!cancelled && sameStoreHasPositiveCover(rows)) {
+						setSmartPayPrefetchDone(true)
+					}
+				},
+			},
+		)
+			.then((rows) => {
+				if (!cancelled && rows.some((r) => r.coverKind === 'toProgramPoints')) {
+					setSmartPayPrefetchDone(true)
+				}
+			})
+			.finally(() => {
+				if (!cancelled) setSmartPayPrefetchDone(true)
+			})
+		return () => {
+			cancelled = true
+		}
+	}, [item.cardAddress, profile?.aaAccount, profile?.keyID])
+
 	useEffect(() => {
 		const card = item.cardAddress?.trim()
 		if (shareClickRecordedRef.current || !card || !ethers.isAddress(card)) return
+		if (!smartPayPrefetchDone || discoverTopUpOpen) return
 		const privateKeyArmor = resolveSigningPrivateKeyArmor(profile)
 		if (!privateKeyArmor) return
 		shareClickRecordedRef.current = true
@@ -4546,7 +4600,7 @@ function DiscoverMerchantDetailFullScreen({
 			privateKeyArmor,
 			referrerEoa: shareReferrerFromUrl,
 		})
-	}, [item.cardAddress, profile, shareReferrerFromUrl])
+	}, [item.cardAddress, profile?.keyID, shareReferrerFromUrl, smartPayPrefetchDone, discoverTopUpOpen])
 
 	useEffect(() => {
 		const card = item.cardAddress?.trim()
@@ -4555,6 +4609,7 @@ function DiscoverMerchantDetailFullScreen({
 			setLikeError('')
 			return
 		}
+		if (!smartPayPrefetchDone || discoverTopUpOpen) return
 		const eoa = resolveUserEoa()
 		if (!eoa) {
 			setUserLiked(null)
@@ -4578,7 +4633,7 @@ function DiscoverMerchantDetailFullScreen({
 		return () => {
 			cancelled = true
 		}
-	}, [item.cardAddress, resolveUserEoa, profile?.keyID])
+	}, [item.cardAddress, resolveUserEoa, profile?.keyID, smartPayPrefetchDone, discoverTopUpOpen])
 
 	const submitMerchantUserLike = useCallback(async () => {
 		const card = item.cardAddress?.trim()
@@ -5464,66 +5519,71 @@ function DiscoverMerchantDetailFullScreen({
 		[couponClaimStatusById, profile, scheduleCouponClaimStatusReset, setProfiles, shareReferrerFromUrl, applyCouponOpenClaimStatus],
 	)
 
+	const daemonCardAssets = item.cardAddress
+		? myBrandCardDetails[item.cardAddress.toLowerCase()]?.assets
+		: undefined
+
 	useEffect(() => {
 		if (!profile?.keyID || !item.cardAddress) {
 			setMerchantAssetsLoading(false)
+			setUserSocialPointsLoading(false)
 			return
 		}
-		const seeded = hydrateDiscoverMerchantCardAssets(profile, item.cardAddress ?? undefined, myBrandCardDetails)
-		if (seeded) setMerchantAssets(seeded)
-		let cancelled = false
-		if (!seeded) setMerchantAssetsLoading(true)
-		getMyAssets(profile, item.cardAddress)
-			.then((res) => {
-				if (cancelled || res == null) return
-				setMerchantAssets(res)
-			})
-			.catch(() => {
-				// Untrusted fetch — keep panel visible; do not overwrite with synthetic zero.
-				if (!cancelled) setMerchantAssets((prev) => prev)
-			})
-			.finally(() => {
-				if (!cancelled) setMerchantAssetsLoading(false)
-			})
-		return () => {
-			cancelled = true
+		const seeded = hydrateDiscoverMerchantCardAssets(
+			profile,
+			item.cardAddress,
+			myBrandCardDetails,
+		)
+		const seededPts = Number(seeded?.chargeRewardPoints)
+		const hasSeededPts = Number.isFinite(seededPts) && seededPts > 0
+		if (seeded) {
+			setMerchantAssets(seeded)
+			setMerchantAssetsLoading(false)
 		}
-	}, [profile?.keyID, item.cardAddress])
+		if (hasSeededPts) {
+			setUserSocialPoints13(seededPts)
+			setUserSocialPointsLoading(false)
+		}
 
-	useEffect(() => {
-		if (!item.cardAddress) {
-			setUserSocialPoints13(null)
-			setUserSocialPointsLoading(false)
-			return
-		}
 		const userEOA = resolveUserEoa()
-		if (!userEOA) {
-			setUserSocialPoints13(null)
-			setUserSocialPointsLoading(false)
-			return
-		}
+		const needSocial = !hasSeededPts && !!userEOA
+		const needAssets = !seeded
+		if (!needSocial && !needAssets) return
+		if (!smartPayPrefetchDone || discoverTopUpOpen) return
+
 		let cancelled = false
-		setUserSocialPointsLoading(true)
-		void readUserSocialPoints13BalanceOnCard(item.cardAddress, userEOA)
-			.then((bal) => {
-				if (cancelled || bal == null) return
+		void (async () => {
+			// Serial: CoNET RPC is batchMaxCount:1. A parallel getMyAssets storm
+			// starves Smart Pay's same-store #13 preview (Points Covered stays 0.00).
+			if (needSocial) {
+				setUserSocialPointsLoading(true)
 				try {
-					const human = Number(ethers.formatUnits(bal, 6))
-					if (Number.isFinite(human) && human >= 0) setUserSocialPoints13(human)
+					const bal = await readUserSocialPoints13BalanceOnCard(item.cardAddress, userEOA)
+					if (!cancelled && bal != null) {
+						const human = Number(ethers.formatUnits(bal, 6))
+						if (Number.isFinite(human) && human >= 0) setUserSocialPoints13(human)
+					}
 				} catch {
-					/* untrusted parse — keep last */
+					/* untrusted — keep last */
 				}
-			})
-			.catch(() => {
-				/* untrusted — keep last trusted */
-			})
-			.finally(() => {
 				if (!cancelled) setUserSocialPointsLoading(false)
-			})
+			}
+			if (needAssets && !cancelled) {
+				setMerchantAssetsLoading(true)
+				try {
+					const res = await getMyAssets(profile, item.cardAddress)
+					if (!cancelled && res != null) setMerchantAssets(res)
+				} catch {
+					if (!cancelled) setMerchantAssets((prev) => prev)
+				}
+				if (!cancelled) setMerchantAssetsLoading(false)
+			}
+		})()
+
 		return () => {
 			cancelled = true
 		}
-	}, [item.cardAddress, resolveUserEoa, profile?.keyID])
+	}, [daemonCardAssets, item.cardAddress, profile?.keyID, profile?.aaAccount, resolveUserEoa, smartPayPrefetchDone, discoverTopUpOpen])
 
 	useEffect(() => {
 		if (!merchantCoupons?.length) {
@@ -6324,6 +6384,8 @@ function DiscoverMerchantDetailFullScreen({
 						cardCurrency={String(merchantAssets?.cardCurrency ?? displayCurrency ?? 'USD')}
 						profile={profiles[0]}
 						initialAmount={discoverTopUpPrefill}
+						seedAssets={merchantAssets}
+						seedPoints13={myPoints13Num > 0 ? myPoints13Num : userSocialPoints13}
 						onClose={() => {
 							setDiscoverTopUpOpen(false)
 							setDiscoverTopUpPrefill(undefined)
@@ -7096,6 +7158,12 @@ export default function Market() {
 					storeCreditsPoints={String(myAssets.points ?? 0)}
 					cardCurrency={String(myAssets.cardCurrency ?? 'USD')}
 					profile={profiles[0]}
+					seedAssets={myAssets}
+					seedPoints13={
+						Number(myAssets.chargeRewardPoints) > 0
+							? Number(myAssets.chargeRewardPoints)
+							: undefined
+					}
 					onClose={() => {
 						setMerchantTopUpOpen(false)
 						setShowFooter(true)

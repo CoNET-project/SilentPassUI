@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, Check, ChevronRight, Loader2, SlidersHorizontal, Sparkles } from 'lucide-react'
 import { ethers } from 'ethers'
 import {
@@ -8,15 +8,29 @@ import {
 import { IpfsImg } from '@/components/IpfsImg'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { useMerchantCardDatabase } from '@/providers/MerchantCardDatabaseProvider'
-import { getCardMetadataFromApi, getCardOwner, getMyAssets, postBuyCardPoints } from '@/services/BeamioCard'
+import {
+	getCardMetadataFromApi,
+	getCardOwner,
+	getMyAssets,
+	peekGetMyAssetsCache,
+	postBuyCardPoints,
+} from '@/services/BeamioCard'
 import { isGenericMerchantCardDisplayName } from '@/utils/isGenericMerchantCardDisplayName'
 import { pickNonFactoryMerchantAssetUrl } from '@/utils/isFactoryDefaultMerchantAssetUrl'
 import { resolveSigningPrivateKeyArmor } from '@/utils/resolveSigningPrivateKeyArmor'
 import { displayFiatPrefixFromCode } from '@/services/currency'
 import {
 	CoverLeg,
+	estimateCoverUsdc6,
+	estimateSameStoreCoverFiat,
 	formatPtsHuman,
+	hydrateSameStoreRowFromAssets,
 	loadReward13RowsForAa,
+	mergeReward13Rows,
+	peekReward13RowsCache,
+	pickRichestReward13Seed,
+	sameStoreHasPositiveCover,
+	seedAssetsFromPoints13Human,
 	planAutoCoverUsdc,
 	planManualCoverUsdc,
 	postTopupWithReward13Container,
@@ -35,6 +49,7 @@ import {
 	readEoaUsdcBalance6,
 } from '@/utils/discoverEoaUsdcTopup'
 import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
+import { loadMyBrandsFeedLocalCache } from '@/utils/myBrandsFeedLocalCache'
 
 const SPINNER_CLASS =
 	'[&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]'
@@ -42,6 +57,32 @@ const SPINNER_CLASS =
 const QUICK = ['10', '20', '50', '100'] as const
 
 type Step = 'amount' | 'pay' | 'select' | 'confirm' | 'success'
+
+type SeedReward13Assets = {
+	chargeRewardPoints?: string
+	chargeRewardPoints6?: string
+}
+
+function collectSmartPaySeedAssets(opts: {
+	cardAddress: string
+	profile: profile
+	seedAssets?: SeedReward13Assets | null
+	seedPoints13?: number | null
+	daemonAssets?: SeedReward13Assets | null
+}): SeedReward13Assets | null {
+	const eoa = opts.profile?.keyID?.trim().toLowerCase()
+	const cardLower = opts.cardAddress.toLowerCase()
+	const fromLocal = eoa
+		? loadMyBrandsFeedLocalCache(eoa)?.details?.[cardLower]?.assets ?? null
+		: null
+	return pickRichestReward13Seed(
+		opts.seedAssets,
+		seedAssetsFromPoints13Human(opts.seedPoints13),
+		peekGetMyAssetsCache(opts.profile, opts.cardAddress),
+		opts.daemonAssets,
+		fromLocal,
+	)
+}
 
 type Props = {
 	open: boolean
@@ -51,6 +92,10 @@ type Props = {
 	cardCurrency: string
 	profile: profile
 	initialAmount?: string
+	/** Discover / My Brands already-loaded #13. First-paint Smart Pay cover — do not wait for planner RPC. */
+	seedAssets?: SeedReward13Assets | null
+	/** Discover My Points #13 (human). Used when `seedAssets` still lacks chargeRewardPoints. */
+	seedPoints13?: number | null
 	onSuccess?: (assets?: MyCardAssets) => void
 }
 
@@ -106,6 +151,35 @@ function formatInsufficientConetUsdcAlert(have6: bigint, need6: bigint): string 
 	return `This payment uses CONET-USDC on CoNET, not Base USDC. You have $${formatUsdc(have6)} CONET-USDC; this top-up needs $${formatUsdc(need6)}.`
 }
 
+function resolveSmartPayCoveredFiat(opts: {
+	smartPay: boolean
+	fiatN: number
+	fiatHuman: string
+	quotedUsdc6: bigint
+	quotedForFiat: string
+	coveredUsdc6: bigint
+	rows: Reward13Row[]
+	rowsReady: boolean
+}): number {
+	if (!opts.smartPay || !Number.isFinite(opts.fiatN) || opts.fiatN <= 0) return 0
+	const quoteMatches = opts.quotedUsdc6 > 0n && opts.quotedForFiat === opts.fiatHuman
+	if (quoteMatches) {
+		if (opts.coveredUsdc6 > 0n) {
+			return Math.min(opts.fiatN, (opts.fiatN * Number(opts.coveredUsdc6)) / Number(opts.quotedUsdc6))
+		}
+		const estUsdc = estimateCoverUsdc6(opts.rows, opts.quotedUsdc6)
+		if (estUsdc > 0n) {
+			return Math.min(opts.fiatN, (opts.fiatN * Number(estUsdc)) / Number(opts.quotedUsdc6))
+		}
+	}
+	const sameStore = estimateSameStoreCoverFiat(opts.rows, opts.fiatN)
+	if (sameStore > 0) return sameStore
+	// Quote can arrive before #13 rows. Do not paint a final 0.00 until the
+	// planner (or seed) has a same-store answer.
+	if (!opts.rowsReady) return sameStore
+	return 0
+}
+
 function composeDualPayFailure(
 	pointsOk: boolean,
 	cashOk: boolean,
@@ -138,9 +212,11 @@ export default function MerchantCardTopUpFlow({
 	cardCurrency,
 	profile,
 	initialAmount,
+	seedAssets,
+	seedPoints13,
 	onSuccess,
 }: Props) {
-	const { setShowFooter } = useDaemonContext()
+	const { setShowFooter, myBrandCardDetails } = useDaemonContext()
 	const { resolveName, resolveImage, registerCardAddresses } = useMerchantCardDatabase()
 	const [isEntered, setIsEntered] = useState(false)
 	const [isClosing, setIsClosing] = useState(false)
@@ -149,8 +225,11 @@ export default function MerchantCardTopUpFlow({
 	const [smartPay, setSmartPay] = useState(true)
 	const [rows, setRows] = useState<Reward13Row[]>([])
 	const [rowsLoading, setRowsLoading] = useState(false)
+	const [rowsReady, setRowsReady] = useState(false)
+	const [sameStoreReady, setSameStoreReady] = useState(false)
 	const [selected, setSelected] = useState<Set<string>>(new Set())
 	const [quotedUsdc6, setQuotedUsdc6] = useState(0n)
+	const [quotedForFiat, setQuotedForFiat] = useState('')
 	const [eoaUsdc6, setEoaUsdc6] = useState<bigint | null>(null)
 	const [baseUsdc6, setBaseUsdc6] = useState<bigint | null>(null)
 	const [merchantName, setMerchantName] = useState('Store')
@@ -163,9 +242,14 @@ export default function MerchantCardTopUpFlow({
 	const [legs, setLegs] = useState<CoverLeg[]>([])
 	const closeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 	const legsPlanGen = useRef(0)
+	const rowsReadyRef = useRef(false)
 
 	const prefix = displayFiatPrefixFromCode(cardCurrency, 'USD')
 	const fiatHuman = amountInput.replace(/,/g, '').trim() || '0'
+	const profileAa =
+		profile.aaAccount && ethers.isAddress(profile.aaAccount)
+			? ethers.getAddress(profile.aaAccount)
+			: ''
 
 	const close = useCallback(() => {
 		if (isClosing || payBusy) return
@@ -209,16 +293,16 @@ export default function MerchantCardTopUpFlow({
 			.catch(() => undefined)
 	}, [open, cardAddress, registerCardAddresses])
 
-	const loadQuoteAndRows = useCallback(async () => {
-		if (!cardAddress || Number(fiatHuman) <= 0) {
-			setQuotedUsdc6(0n)
-			return
-		}
+	const loadQuoteAndBalances = useCallback(async () => {
+		if (!cardAddress || Number(fiatHuman) <= 0) return
 		try {
 			const q = await quoteFiat6ToUsdc6(cardAddress, String(cardCurrency || 'USD'), fiatHuman)
-			setQuotedUsdc6(q.usdc6)
+			if (q.usdc6 > 0n) {
+				setQuotedUsdc6(q.usdc6)
+				setQuotedForFiat(fiatHuman)
+			}
 		} catch {
-			setQuotedUsdc6(0n)
+			/* keep last trusted quote */
 		}
 		const eoa = profile.keyID
 		if (eoa) {
@@ -231,30 +315,124 @@ export default function MerchantCardTopUpFlow({
 		} catch {
 			/* untrusted — leave previous Base balance */
 		}
+	}, [cardAddress, cardCurrency, fiatHuman, profile?.keyID, profile?.aaAccount])
+
+	const daemonSeedAssets = myBrandCardDetails[cardAddress.toLowerCase()]?.assets ?? null
+
+	const applyHydratedSameStore = useCallback(
+		(assets: SeedReward13Assets | null | undefined) => {
+			const hydrated = hydrateSameStoreRowFromAssets(cardAddress, assets, merchantName)
+			if (!hydrated) return false
+			setRows((prev) => {
+				const existing = prev.find(
+					(r) =>
+						r.coverKind === 'toProgramPoints' &&
+						r.cardAddress.toLowerCase() === hydrated.cardAddress.toLowerCase(),
+				)
+				if (existing && existing.pointsBalance6 >= hydrated.pointsBalance6) return prev
+				return mergeReward13Rows(prev, [hydrated])
+			})
+			setSameStoreReady(true)
+			return true
+		},
+		[cardAddress, merchantName],
+	)
+
+	const loadRewardRows = useCallback(async () => {
+		if (!cardAddress || !profileAa) return
 		setRowsLoading(true)
 		try {
-			const list = await loadReward13RowsForAa(profile, profile.aaAccount, cardAddress)
-			setRows(list)
+			const list = await loadReward13RowsForAa(profile, profileAa, cardAddress, {
+				onPartial: (partial) => {
+					setRows((prev) => mergeReward13Rows(prev, partial))
+					if (sameStoreHasPositiveCover(partial)) {
+						setSameStoreReady(true)
+					}
+				},
+			})
+			setRows((prev) => mergeReward13Rows(prev, list))
+			setSameStoreReady(true)
+			rowsReadyRef.current = true
+			setRowsReady(true)
 		} catch {
 			/* keep last trusted rows */
 		} finally {
 			setRowsLoading(false)
 		}
-	}, [cardAddress, cardCurrency, fiatHuman, profile])
+	}, [cardAddress, profile?.keyID, profile?.aaAccount, profileAa])
 
 	useEffect(() => {
-		if (!open) return
-		if (step === 'pay' || step === 'select' || step === 'confirm') {
-			void loadQuoteAndRows()
+		if (!open || !cardAddress) return
+		rowsReadyRef.current = false
+		setQuotedUsdc6(0n)
+		setQuotedForFiat('')
+		setLegs([])
+		setRowsReady(false)
+		setSameStoreReady(false)
+		const cached = peekReward13RowsCache(profileAa || profile.aaAccount, cardAddress)
+		const seed = collectSmartPaySeedAssets({
+			cardAddress,
+			profile,
+			seedAssets,
+			seedPoints13,
+			daemonAssets: daemonSeedAssets,
+		})
+		const hydrated = hydrateSameStoreRowFromAssets(cardAddress, seed, merchantName)
+		const merged = mergeReward13Rows(cached ?? [], hydrated ? [hydrated] : [])
+		if (merged.length > 0) {
+			setRows(merged)
+			setSameStoreReady(!!hydrated || sameStoreHasPositiveCover(merged))
+			setRowsLoading(false)
+		} else {
+			setRowsLoading(true)
 		}
-		// eslint-disable-next-line react-hooks/exhaustive-deps -- reload on step enter only
-	}, [open, step])
+		// Do not fire getMyAssets / extra #13 reads here. CoNET RPC is serial
+		// (batchMaxCount:1); those storms starve the same-store preview and
+		// leave Points Covered at 0.00. Seed + planner preview-first is enough.
+		void loadRewardRows()
+		// eslint-disable-next-line react-hooks/exhaustive-deps -- open / card change only; amount quote reloads below
+	}, [open, cardAddress])
 
 	useEffect(() => {
-		if (!smartPay || quotedUsdc6 <= 0n) {
+		if (!open || !cardAddress || !profileAa || rowsReadyRef.current) return
+		void loadRewardRows()
+	}, [open, cardAddress, profileAa, loadRewardRows])
+
+	useEffect(() => {
+		if (!open || !cardAddress) return
+		const seed = collectSmartPaySeedAssets({
+			cardAddress,
+			profile,
+			seedAssets,
+			seedPoints13,
+			daemonAssets: daemonSeedAssets,
+		})
+		applyHydratedSameStore(seed)
+	}, [
+		applyHydratedSameStore,
+		cardAddress,
+		daemonSeedAssets,
+		open,
+		profile,
+		seedAssets,
+		seedPoints13,
+	])
+
+	useEffect(() => {
+		if (!open || !cardAddress) return
+		// Estimate same-store cover without a quote. Wait until the #13 row
+		// exists so quote cannot paint Points Covered as 0.00 first.
+		if (smartPay && !sameStoreReady) return
+		void loadQuoteAndBalances()
+	}, [open, cardAddress, fiatHuman, loadQuoteAndBalances, smartPay, sameStoreReady])
+
+	useEffect(() => {
+		if (!smartPay) {
 			setLegs([])
 			return
 		}
+		if (quotedUsdc6 <= 0n || quotedForFiat !== fiatHuman) return
+		if (rows.length === 0 && !sameStoreReady) return
 		const gen = ++legsPlanGen.current
 		void (async () => {
 			try {
@@ -263,10 +441,10 @@ export default function MerchantCardTopUpFlow({
 					: await planAutoCoverUsdc(rows, quotedUsdc6)
 				if (gen === legsPlanGen.current) setLegs(planned)
 			} catch {
-				if (gen === legsPlanGen.current) setLegs([])
+				/* keep last trusted legs */
 			}
 		})()
-	}, [smartPay, rows, selected, quotedUsdc6, usedManual])
+	}, [smartPay, rows, selected, quotedUsdc6, quotedForFiat, fiatHuman, usedManual, sameStoreReady])
 
 	const coveredUsdc6 = sumUsdc6(legs)
 	const cashUsdc6 = quotedUsdc6 > coveredUsdc6 ? quotedUsdc6 - coveredUsdc6 : 0n
@@ -284,11 +462,51 @@ export default function MerchantCardTopUpFlow({
 		: legs.length > 0
 			? 'Applying points…'
 			: 'Paying with USDC…'
-	const usableRows = rows.filter((r) => r.redeemableUsdc6 > 0n)
+	const displayRows = useMemo(() => {
+		const seed = collectSmartPaySeedAssets({
+			cardAddress,
+			profile,
+			seedAssets,
+			seedPoints13,
+			daemonAssets: daemonSeedAssets,
+		})
+		const hydrated = hydrateSameStoreRowFromAssets(cardAddress, seed, merchantName)
+		return mergeReward13Rows(hydrated ? [hydrated] : [], rows)
+	}, [
+		cardAddress,
+		daemonSeedAssets,
+		merchantName,
+		profile,
+		rows,
+		rowsReady,
+		seedAssets,
+		seedPoints13,
+	])
+	const usableRows = displayRows.filter((r) => r.redeemableUsdc6 > 0n)
 	const fiatN = Number(fiatHuman)
-	const coveredFiat =
-		quotedUsdc6 > 0n ? (fiatN * Number(coveredUsdc6)) / Number(quotedUsdc6) : 0
+	const coveredFiat = resolveSmartPayCoveredFiat({
+		smartPay,
+		fiatN,
+		fiatHuman,
+		quotedUsdc6,
+		quotedForFiat,
+		coveredUsdc6,
+		rows: displayRows,
+		rowsReady,
+	})
 	const cashFiat = Math.max(0, fiatN - coveredFiat)
+	const coverEstimatePending =
+		smartPay &&
+		coveredFiat <= 0 &&
+		!sameStoreReady &&
+		!(rowsReady && Boolean(profileAa))
+	const quoteReady = quotedUsdc6 > 0n && quotedForFiat === fiatHuman
+	const pointsPlanReady =
+		!smartPay ||
+		sameStoreReady ||
+		legs.length > 0 ||
+		(rowsReady && Boolean(profileAa) && usableRows.length === 0)
+	const confirmDisabled = payBusy || !quoteReady || baseUsdcShort || !pointsPlanReady
 	const availablePts6 = usableRows.reduce((sum, row) => sum + row.pointsBalance6, 0n)
 	const merchantCount = usableRows.length
 
@@ -308,7 +526,7 @@ export default function MerchantCardTopUpFlow({
 	}
 
 	const redeemLegsThenBuy = async () => {
-		if (payBusy || quotedUsdc6 <= 0n || baseUsdcShort) return
+		if (confirmDisabled) return
 
 		setPayBusy(true)
 		setPayError('')
@@ -788,17 +1006,34 @@ export default function MerchantCardTopUpFlow({
 										: 'Pay the full amount with USDC.'}
 								</p>
 
-								<div className="mt-4 grid grid-cols-2 gap-3 rounded-2xl bg-black/20 px-4 py-3">
+								<div
+									className="mt-4 grid grid-cols-2 gap-3 rounded-2xl bg-black/20 px-4 py-3"
+									aria-busy={coverEstimatePending}
+								>
 									<div>
 										<p className="text-[12px] text-white/70">Points Covered</p>
 										<p className="mt-1 text-[18px] font-bold">
-											{formatPrefixedFiat(prefix, coveredFiat.toFixed(2))}
+											{coverEstimatePending ? (
+												<Loader2
+													className="h-5 w-5 animate-spin text-white/80"
+													aria-hidden
+												/>
+											) : (
+												formatPrefixedFiat(prefix, coveredFiat.toFixed(2))
+											)}
 										</p>
 									</div>
 									<div className="border-l border-white/15 pl-3">
 										<p className="text-[12px] text-white/70">Cash Required</p>
 										<p className="mt-1 text-[18px] font-bold">
-											{formatPrefixedFiat(prefix, cashFiat.toFixed(2))}
+											{coverEstimatePending ? (
+												<Loader2
+													className="h-5 w-5 animate-spin text-white/80"
+													aria-hidden
+												/>
+											) : (
+												formatPrefixedFiat(prefix, cashFiat.toFixed(2))
+											)}
 										</p>
 									</div>
 								</div>
@@ -850,7 +1085,7 @@ export default function MerchantCardTopUpFlow({
 
 							<button
 								type="button"
-								disabled={payBusy || quotedUsdc6 <= 0n || baseUsdcShort}
+								disabled={confirmDisabled}
 								aria-busy={payBusy}
 								onClick={() => void redeemLegsThenBuy()}
 								className="mt-auto w-full rounded-2xl bg-[#3B66F5] py-4 text-[17px] font-bold text-white disabled:opacity-40"
@@ -965,7 +1200,7 @@ export default function MerchantCardTopUpFlow({
 							) : null}
 							<button
 								type="button"
-								disabled={payBusy || quotedUsdc6 <= 0n || baseUsdcShort}
+								disabled={confirmDisabled}
 								aria-busy={payBusy}
 								onClick={() => void redeemLegsThenBuy()}
 								className="mt-8 flex w-full items-center justify-center gap-2 rounded-full bg-[#0051d1] py-3.5 text-base font-semibold text-white disabled:opacity-40"

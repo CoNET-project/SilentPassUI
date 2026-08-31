@@ -143,11 +143,179 @@ export function hashTopupPeers(
 	return ethers.keccak256(ethers.concat(chunks))
 }
 
+const REWARD13_ROWS_CACHE_TTL_MS = 15_000
+const reward13RowsCache = new Map<string, { rows: Reward13Row[]; ts: number }>()
+const reward13RowsInflight = new Map<string, Promise<Reward13Row[]>>()
+const reward13RowsInflightSubs = new Map<string, Set<(rows: Reward13Row[]) => void>>()
+const peerSupportCache = new Map<string, boolean>()
+
+function reward13CacheKey(aa: string, target: string | null): string {
+	return `${aa.toLowerCase()}:${(target ?? '').toLowerCase()}`
+}
+
+export function peekReward13RowsCache(
+	aa: string | null | undefined,
+	target: string | null | undefined,
+): Reward13Row[] | null {
+	if (!aa || !ethers.isAddress(aa)) return null
+	const t = target && ethers.isAddress(target) ? ethers.getAddress(target) : null
+	return reward13RowsCache.get(reward13CacheKey(ethers.getAddress(aa), t))?.rows ?? null
+}
+
+export function mergeReward13Rows(prev: Reward13Row[], incoming: Reward13Row[]): Reward13Row[] {
+	const map = new Map(prev.map((r) => [r.cardAddress.toLowerCase(), r]))
+	for (const row of incoming) {
+		const key = row.cardAddress.toLowerCase()
+		const existing = map.get(key)
+		// Never let a same-store refine with 0 redeemable wipe a trusted preview.
+		if (
+			existing &&
+			existing.coverKind === 'toProgramPoints' &&
+			existing.pointsBalance6 > 0n &&
+			existing.redeemableUsdc6 > 0n &&
+			row.coverKind === 'toProgramPoints' &&
+			row.redeemableUsdc6 <= 0n
+		) {
+			map.set(key, {
+				...row,
+				quotedUsdc6: existing.quotedUsdc6,
+				redeemableUsdc6: existing.redeemableUsdc6,
+				redeemablePoints6: existing.redeemablePoints6,
+				pointsBalance6: existing.pointsBalance6 > row.pointsBalance6 ? existing.pointsBalance6 : row.pointsBalance6,
+			})
+			continue
+		}
+		map.set(key, row)
+	}
+	return [...map.values()]
+}
+
+export type Reward13SeedAssets = {
+	chargeRewardPoints?: string
+	chargeRewardPoints6?: string
+}
+
+export function parseReward13Balance6(assets: Reward13SeedAssets | null | undefined): bigint {
+	if (!assets) return 0n
+	const raw6 = assets.chargeRewardPoints6?.trim()
+	if (raw6 && /^\d+$/.test(raw6)) {
+		try {
+			const bal = BigInt(raw6)
+			if (bal > 0n) return bal
+		} catch {
+			/* fall through to human */
+		}
+	}
+	const human = Number(assets.chargeRewardPoints ?? Number.NaN)
+	if (Number.isFinite(human) && human > 0) {
+		try {
+			return ethers.parseUnits(String(human), 6)
+		} catch {
+			return 0n
+		}
+	}
+	return 0n
+}
+
+/** Prefer the largest trusted #13 among Discover / daemon / cache seeds. Zero is not richest. */
+export function pickRichestReward13Seed(
+	...sources: Array<Reward13SeedAssets | null | undefined>
+): Reward13SeedAssets | null {
+	let best6 = 0n
+	for (const source of sources) {
+		const bal = parseReward13Balance6(source)
+		if (bal > best6) best6 = bal
+	}
+	if (best6 <= 0n) return null
+	return { chargeRewardPoints6: best6.toString() }
+}
+
+export function seedAssetsFromPoints13Human(
+	human: number | null | undefined,
+): Reward13SeedAssets | null {
+	if (human == null || !Number.isFinite(human) || human <= 0) return null
+	return { chargeRewardPoints: String(human) }
+}
+
+function previewSameStoreRow(cardAddress: string, bal13: bigint, name?: string): Reward13Row {
+	return {
+		cardAddress,
+		name: name?.trim() || `Program ${cardAddress.slice(0, 6)}…${cardAddress.slice(-4)}`,
+		pointsBalance6: bal13,
+		escrowUsdc6: 0n,
+		quotedUsdc6: bal13,
+		redeemableUsdc6: bal13,
+		redeemablePoints6: bal13,
+		supportsRedeem: false,
+		coverKind: 'toProgramPoints',
+	}
+}
+
+/** Sync first-paint row from Discover `getMyAssets` cache. Same-store #13 only. */
+export function hydrateSameStoreRowFromAssets(
+	cardAddress: string,
+	assets: Reward13SeedAssets | null | undefined,
+	name?: string,
+): Reward13Row | null {
+	if (!assets || !ethers.isAddress(cardAddress)) return null
+	const bal = parseReward13Balance6(assets)
+	if (bal <= 0n) return null
+	return previewSameStoreRow(ethers.getAddress(cardAddress), bal, name)
+}
+
+/** Sync greedy cover in USDC-6. Same-store first. No extra RPC. */
+export function estimateCoverUsdc6(rows: Reward13Row[], needUsdc6: bigint): bigint {
+	if (needUsdc6 <= 0n) return 0n
+	const same = rows
+		.filter((r) => r.coverKind === 'toProgramPoints' && r.redeemableUsdc6 > 0n)
+		.slice()
+		.sort(sortByBalance)
+	const other = rows
+		.filter((r) => r.coverKind !== 'toProgramPoints' && r.redeemableUsdc6 > 0n)
+		.slice()
+		.sort(sortByBalance)
+	let remaining = needUsdc6
+	let covered = 0n
+	for (const row of [...same, ...other]) {
+		if (remaining <= 0n) break
+		const take = row.redeemableUsdc6 < remaining ? row.redeemableUsdc6 : remaining
+		covered += take
+		remaining -= take
+	}
+	return covered
+}
+
+/** Same-store #13 in card fiat: min(amount, points). Used before the USDC quote arrives. */
+export function estimateSameStoreCoverFiat(rows: Reward13Row[], fiatN: number): number {
+	if (!Number.isFinite(fiatN) || fiatN <= 0) return 0
+	const same = rows.find((r) => r.coverKind === 'toProgramPoints' && r.pointsBalance6 > 0n)
+	if (!same) return 0
+	const pts = Number(ethers.formatUnits(same.pointsBalance6, 6))
+	if (!Number.isFinite(pts) || pts <= 0) return 0
+	return Math.min(fiatN, pts)
+}
+
+export function sameStoreHasPositiveCover(rows: Reward13Row[]): boolean {
+	return rows.some((r) => r.coverKind === 'toProgramPoints' && r.pointsBalance6 > 0n)
+}
+
+function hasSameStoreRow(rows: Reward13Row[]): boolean {
+	return rows.some((r) => r.coverKind === 'toProgramPoints')
+}
+
 async function cardSupportsPeerContainerRedeem(cardAddress: string): Promise<boolean> {
+	const key = cardAddress.toLowerCase()
+	const hit = peerSupportCache.get(key)
+	if (hit !== undefined) return hit
 	try {
 		const code = await conetDepinProvider.getCode(cardAddress)
-		if (!code || code === '0x') return false
-		return code.toLowerCase().includes(PEER_REDEEM_SEL.slice(2).toLowerCase())
+		if (!code || code === '0x') {
+			peerSupportCache.set(key, false)
+			return false
+		}
+		const ok = code.toLowerCase().includes(PEER_REDEEM_SEL.slice(2).toLowerCase())
+		peerSupportCache.set(key, ok)
+		return ok
 	} catch {
 		return false
 	}
@@ -202,137 +370,231 @@ function fallbackQuotedUsdc6(currencyCode: string, fiat6: bigint, quotedUsdc6: b
 	return 0n
 }
 
+async function buildReward13RowForCard(
+	aa: string,
+	cardAddress: string,
+	target: string | null,
+): Promise<Reward13Row | null> {
+	const contract = new ethers.Contract(cardAddress, CARD_IFACE, conetDepinProvider)
+	const usdc = new ethers.Contract(CONET_USDC, ERC20_IFACE, conetDepinProvider)
+	const [bal13, escrow, currency, priceE6] = await Promise.all([
+		contract.balanceOf(aa, 13n) as Promise<bigint>,
+		contract.rewardEscrowUsdc6() as Promise<bigint>,
+		contract.currency() as Promise<bigint>,
+		contract.pointsUnitPriceInCurrencyE6() as Promise<bigint>,
+	])
+	if (bal13 <= 0n) return null
+	const isSameStore = target !== null && cardAddress === target
+	const fiat6 = priceE6 > 0n ? (bal13 * priceE6) / 1_000_000n : 0n
+	let quotedUsdc6 = 0n
+	const currencyCode = ENUM_TO_CURRENCY[Number(currency)] ?? 'USD'
+
+	let redeemableUsdc6 = 0n
+	let redeemablePoints6 = 0n
+	let supportsRedeem = false
+	let coverKind: Reward13CoverKind = 'toUsdc'
+
+	if (isSameStore) {
+		// Same-store cover is 1:1 card fiat. priceE6==0 must not fall through to the
+		// peer path (redeemableUsdc6=0 would wipe a trusted preview).
+		coverKind = 'toProgramPoints'
+		if (priceE6 > 0n) {
+			quotedUsdc6 = fallbackQuotedUsdc6(currencyCode, fiat6, 0n)
+			if (quotedUsdc6 === 0n && fiat6 > 0n) quotedUsdc6 = fiat6
+		} else {
+			quotedUsdc6 = bal13
+		}
+		redeemableUsdc6 = quotedUsdc6
+		redeemablePoints6 = bal13
+	} else {
+		supportsRedeem = await cardSupportsPeerContainerRedeem(cardAddress)
+		let ratio = 0n
+		try {
+			ratio = (await contract.convertReward13ToUsdcRatioE6()) as bigint
+		} catch {
+			ratio = 0n
+		}
+		if (supportsRedeem && ratio > 0n) {
+			try {
+				quotedUsdc6 = (await contract.quoteUsdcWithdrawForFiat6(bal13)) as bigint
+			} catch {
+				quotedUsdc6 = 0n
+			}
+			let tokenBal = 0n
+			try {
+				tokenBal = (await usdc.balanceOf(cardAddress)) as bigint
+			} catch {
+				tokenBal = 0n
+			}
+			const maxUsdc =
+				quotedUsdc6 < escrow
+					? quotedUsdc6 < tokenBal
+						? quotedUsdc6
+						: tokenBal
+					: escrow < tokenBal
+						? escrow
+						: tokenBal
+			if (maxUsdc > 0n && quotedUsdc6 > 0n) {
+				if (maxUsdc === quotedUsdc6) {
+					redeemableUsdc6 = quotedUsdc6
+					redeemablePoints6 = bal13
+				} else {
+					const sized = await findBurn13ForUsdcTarget(cardAddress, bal13, maxUsdc)
+					if (sized) {
+						redeemableUsdc6 = sized.usdcOut6
+						redeemablePoints6 = sized.burn13
+					}
+				}
+			}
+		}
+	}
+
+	const meta = await getCardMetadataFromApi(cardAddress).catch(() => null)
+	return {
+		cardAddress,
+		name: meta?.name?.trim() || `Program ${cardAddress.slice(0, 6)}…${cardAddress.slice(-4)}`,
+		icon: meta?.icon || meta?.image,
+		pointsBalance6: bal13,
+		escrowUsdc6: escrow,
+		quotedUsdc6,
+		redeemableUsdc6,
+		redeemablePoints6,
+		supportsRedeem,
+		coverKind,
+	}
+}
+
+async function loadReward13RowsForAaUncached(
+	profile: profile,
+	aa: string,
+	target: string | null,
+	onPartial?: (rows: Reward13Row[]) => void,
+): Promise<Reward13Row[]> {
+	const collected = new Map<string, Reward13Row>()
+	const emit = () => onPartial?.([...collected.values()])
+
+	// Preview-first: one same-store balanceOf, then emit. CoNET provider is
+	// serial (batchMaxCount:1) — starting getCardsOfOwner / refine in parallel
+	// starves this call and leaves Smart Pay at 0.00 until the full scan ends.
+	if (target) {
+		try {
+			const contract = new ethers.Contract(target, CARD_IFACE, conetDepinProvider)
+			const bal13 = (await contract.balanceOf(aa, 13n)) as bigint
+			collected.set(target.toLowerCase(), previewSameStoreRow(target, bal13))
+			emit()
+		} catch {
+			/* untrusted — keep seed / last preview; do not emit empty */
+		}
+	}
+
+	const sameStoreP = target
+		? buildReward13RowForCard(aa, target, target)
+				.then((row) => {
+					if (row) collected.set(row.cardAddress.toLowerCase(), row)
+					emit()
+				})
+				.catch(() => {
+					/* keep last same-store preview */
+				})
+		: Promise.resolve()
+
+	const cardsP = getCardsOfOwnerWithDetailsForProfile(profile).catch(() => null)
+	await sameStoreP
+
+	const result = await cardsP
+	const addresses = new Set<string>()
+	if (target) addresses.add(target)
+	if (result) {
+		for (const key of Object.keys(result.walletAssetsByCardKey ?? {})) {
+			if (ethers.isAddress(key)) addresses.add(ethers.getAddress(key))
+		}
+		for (const card of result.holderCards ?? []) {
+			if (card.cardAddress && ethers.isAddress(card.cardAddress)) {
+				addresses.add(ethers.getAddress(card.cardAddress))
+			}
+		}
+	}
+
+	const others = [...addresses].filter((addr) => {
+		if (!target) return true
+		if (addr.toLowerCase() !== target.toLowerCase()) return true
+		return !collected.has(addr.toLowerCase())
+	})
+
+	const concurrency = 4
+	for (let i = 0; i < others.length; i += concurrency) {
+		const batch = others.slice(i, i + concurrency)
+		await Promise.all(
+			batch.map(async (cardAddress) => {
+				const row = await buildReward13RowForCard(aa, cardAddress, target).catch(() => null)
+				if (row) collected.set(row.cardAddress.toLowerCase(), row)
+			}),
+		)
+		emit()
+	}
+
+	return [...collected.values()]
+}
+
 export async function loadReward13RowsForAa(
 	profile: profile,
 	aaAddress?: string | null,
 	targetCardAddress?: string | null,
+	opts?: { onPartial?: (rows: Reward13Row[]) => void },
 ): Promise<Reward13Row[]> {
-	const result = await getCardsOfOwnerWithDetailsForProfile(profile)
 	const aa =
 		(aaAddress && ethers.isAddress(aaAddress) ? ethers.getAddress(aaAddress) : null) ||
-		result.walletResolvedAaAddress ||
-		(profile.aaAccount && ethers.isAddress(profile.aaAccount) ? ethers.getAddress(profile.aaAccount) : null)
+		(profile.aaAccount && ethers.isAddress(profile.aaAccount)
+			? ethers.getAddress(profile.aaAccount)
+			: null)
 	if (!aa) return []
 
 	const target =
 		targetCardAddress && ethers.isAddress(targetCardAddress)
 			? ethers.getAddress(targetCardAddress)
 			: null
-
-	const byKey = result.walletAssetsByCardKey ?? {}
-	const addresses = new Set<string>()
-	if (target) addresses.add(target)
-	for (const key of Object.keys(byKey)) {
-		if (ethers.isAddress(key)) addresses.add(ethers.getAddress(key))
-	}
-	for (const card of result.holderCards ?? []) {
-		if (card.cardAddress && ethers.isAddress(card.cardAddress)) {
-			addresses.add(ethers.getAddress(card.cardAddress))
-		}
+	const key = reward13CacheKey(aa, target)
+	const cached = reward13RowsCache.get(key)
+	if (
+		cached &&
+		Date.now() - cached.ts < REWARD13_ROWS_CACHE_TTL_MS &&
+		hasSameStoreRow(cached.rows)
+	) {
+		opts?.onPartial?.(cached.rows)
+		return cached.rows
 	}
 
-	const usdc = new ethers.Contract(CONET_USDC, ERC20_IFACE, conetDepinProvider)
-	const rows: Reward13Row[] = []
-	for (const cardAddress of addresses) {
-		try {
-			const contract = new ethers.Contract(cardAddress, CARD_IFACE, conetDepinProvider)
-			const [bal13, escrow, currency, priceE6] = await Promise.all([
-				contract.balanceOf(aa, 13n) as Promise<bigint>,
-				contract.rewardEscrowUsdc6() as Promise<bigint>,
-				contract.currency() as Promise<bigint>,
-				contract.pointsUnitPriceInCurrencyE6() as Promise<bigint>,
-			])
-			if (bal13 <= 0n) continue
-			const isSameStore = target !== null && cardAddress === target
-			const fiat6 = priceE6 > 0n ? (bal13 * priceE6) / 1_000_000n : 0n
-			let quotedUsdc6 = 0n
-			const currencyCode = ENUM_TO_CURRENCY[Number(currency)] ?? 'USD'
-
-			let redeemableUsdc6 = 0n
-			let redeemablePoints6 = 0n
-			let supportsRedeem = false
-			let coverKind: Reward13CoverKind = 'toUsdc'
-
-			if (isSameStore && priceE6 > 0n) {
-				coverKind = 'toProgramPoints'
-				if (fiat6 > 0n) {
-					try {
-						const { usdc6 } = await quoteCurrencyAmountInUSDC(
-							cardAddress,
-							currencyCode,
-							ethers.formatUnits(fiat6, 6),
-						)
-						quotedUsdc6 = usdc6
-					} catch {
-						quotedUsdc6 = 0n
-					}
-				}
-				quotedUsdc6 = fallbackQuotedUsdc6(currencyCode, fiat6, quotedUsdc6)
-				if (quotedUsdc6 === 0n && fiat6 > 0n) quotedUsdc6 = fiat6
-				redeemableUsdc6 = quotedUsdc6
-				redeemablePoints6 = bal13
-			} else {
-				supportsRedeem = await cardSupportsPeerContainerRedeem(cardAddress)
-				let ratio = 0n
-				try {
-					ratio = (await contract.convertReward13ToUsdcRatioE6()) as bigint
-				} catch {
-					ratio = 0n
-				}
-				if (supportsRedeem && ratio > 0n) {
-					try {
-						quotedUsdc6 = (await contract.quoteUsdcWithdrawForFiat6(bal13)) as bigint
-					} catch {
-						quotedUsdc6 = 0n
-					}
-					let tokenBal = 0n
-					try {
-						tokenBal = (await usdc.balanceOf(cardAddress)) as bigint
-					} catch {
-						tokenBal = 0n
-					}
-					// Fail-closed liquidity: escrow AND ERC20; no silent cap past either.
-					const maxUsdc =
-						quotedUsdc6 < escrow
-							? quotedUsdc6 < tokenBal
-								? quotedUsdc6
-								: tokenBal
-							: escrow < tokenBal
-								? escrow
-								: tokenBal
-					if (maxUsdc > 0n && quotedUsdc6 > 0n) {
-						if (maxUsdc === quotedUsdc6) {
-							redeemableUsdc6 = quotedUsdc6
-							redeemablePoints6 = bal13
-						} else {
-							const sized = await findBurn13ForUsdcTarget(cardAddress, bal13, maxUsdc)
-							if (sized) {
-								redeemableUsdc6 = sized.usdcOut6
-								redeemablePoints6 = sized.burn13
-							}
-						}
-					}
-				}
+	const existing = reward13RowsInflight.get(key)
+	if (existing) {
+		if (opts?.onPartial) {
+			let subs = reward13RowsInflightSubs.get(key)
+			if (!subs) {
+				subs = new Set()
+				reward13RowsInflightSubs.set(key, subs)
 			}
-
-			const meta = await getCardMetadataFromApi(cardAddress).catch(() => null)
-			rows.push({
-				cardAddress,
-				name: meta?.name?.trim() || `Program ${cardAddress.slice(0, 6)}…${cardAddress.slice(-4)}`,
-				icon: meta?.icon || meta?.image,
-				pointsBalance6: bal13,
-				escrowUsdc6: escrow,
-				quotedUsdc6,
-				redeemableUsdc6,
-				redeemablePoints6,
-				supportsRedeem,
-				coverKind,
-			})
-		} catch {
-			continue
+			subs.add(opts.onPartial)
 		}
+		const rows = await existing
+		opts?.onPartial?.(rows)
+		return rows
 	}
-	return rows
+
+	const notifyPartial = (partial: Reward13Row[]) => {
+		opts?.onPartial?.(partial)
+		reward13RowsInflightSubs.get(key)?.forEach((fn) => fn(partial))
+	}
+	const promise = loadReward13RowsForAaUncached(profile, aa, target, notifyPartial)
+	reward13RowsInflight.set(key, promise)
+	try {
+		const rows = await promise
+		if (hasSameStoreRow(rows)) {
+			reward13RowsCache.set(key, { rows, ts: Date.now() })
+		}
+		return rows
+	} finally {
+		reward13RowsInflight.delete(key)
+		reward13RowsInflightSubs.delete(key)
+	}
 }
 
 function sortByBalance(a: Reward13Row, b: Reward13Row): number {

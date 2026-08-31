@@ -358,6 +358,12 @@ export default function CardItem({cardItem}: {cardItem: MyCardAssets}) {
 					storeCreditsPoints={String(myAssets.points ?? 0)}
 					cardCurrency={String(myAssets.cardCurrency ?? 'USD')}
 					profile={profiles[0]}
+					seedAssets={myAssets}
+					seedPoints13={
+						Number(myAssets.chargeRewardPoints) > 0
+							? Number(myAssets.chargeRewardPoints)
+							: undefined
+					}
 					onClose={() => {
 						setSettingsOpen('')
 						setShowFooter(true)

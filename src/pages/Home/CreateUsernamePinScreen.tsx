@@ -70,12 +70,14 @@ function normalizeBeamioTagInput(raw: string): string {
 		.replace(/[\u200B-\u200D\uFEFF]/g, "")
 }
 
-/** Same rules as bizSite `BusinessIdentityForm` — wallet password must pass before createRecover. */
+/** Same persist rules as bizSite `BusinessIdentityForm` — wallet password must pass before createRecover. */
 function passwordRuleChecks(password: string) {
 	const len8 = password.length >= 8
-	const mixed = /[a-z]/.test(password) && /[A-Z]/.test(password)
+	const hasLower = /[a-z]/.test(password)
+	const hasUpper = /[A-Z]/.test(password)
+	const mixed = hasLower && hasUpper
 	const numbers = /[0-9]/.test(password)
-	return { len8, mixed, numbers }
+	return { len8, mixed, numbers, hasLower, hasUpper }
 }
 
 const CreateUsernamePinScreen = forwardRef<
@@ -215,13 +217,15 @@ const CreateUsernamePinScreen = forwardRef<
 		}
 	}, [])
 
-	const { len8, mixed, numbers } = passwordRuleChecks(password)
+	const { len8, mixed, numbers, hasLower, hasUpper } = passwordRuleChecks(password)
 	const pwdRulesOk = len8 && mixed && numbers
 	const canSubmit = tagValid && pwdRulesOk && !loading && !tagChecking
-	const passwordStrengthCount = [len8, mixed, numbers].filter(Boolean).length
+	// Four meter segments map 1:1 to length / lowercase / uppercase / digit.
+	// Persist is still the original 3 rules (mixed = both cases); all persist → 4/4 = 100%.
+	const passwordStrengthCount = [len8, hasLower, hasUpper, numbers].filter(Boolean).length
 	const passwordStrengthPercent = passwordStrengthCount * 25
 	const passwordStrengthLabel =
-		passwordStrengthCount >= 3
+		passwordStrengthCount >= 4
 			? tu('strong_security')
 			: passwordStrengthCount >= 2
 				? tu('building_security')

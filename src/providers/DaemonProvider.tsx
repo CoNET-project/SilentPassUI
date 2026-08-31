@@ -212,11 +212,14 @@ export type MerchantCardRewardReserveTarget = {
 export type MerchantCardRewardReserveSnapshot = {
 	/** ERC-1155 `totalSupply(13)` on the merchant program card. */
 	totalMinted13: string
-	/** Canonical CONET-USDC `balanceOf(card)` — USDC sitting on the merchant card. */
+	/** Redeemable pool: `min(rewardEscrowUsdc6, CONET-USDC.balanceOf(card))`. */
 	usdcReserve: string
-	/** `rewardEscrowUsdc6()` when readable; omitted / empty when the view is unavailable. */
+	/** `rewardEscrowUsdc6()` (trusted only when this snapshot was written). */
 	escrowUsdc6?: string
-	/** CONET-USDC.balanceOf(card) − totalSupply(#13). Negative when issued #13 exceeds on-card USDC. */
+	/**
+	 * Pool − `quoteUsdcWithdrawForFiat6(totalSupply(13))` (0 when minted #13 is 0).
+	 * Negative when escrow cannot cover a full #13 redeem.
+	 */
 	reserveDifference: string
 	fetchedAt: number
 }
@@ -446,7 +449,7 @@ export function DaemonProvider({ children }: DaemonProps) {
 		if (!target || !ethers.isAddress(target.eoa) || !ethers.isAddress(target.cardAddress)) return
 		const eoa = ethers.getAddress(target.eoa).toLowerCase()
 		const cardAddress = ethers.getAddress(target.cardAddress).toLowerCase()
-		const key = `eoa:${eoa}:card:${cardAddress}:reward-reserve:v1`
+		const key = `eoa:${eoa}:card:${cardAddress}:reward-reserve:v2`
 		merchantCardRewardReserveTargetsRef.current.set(key, { eoa, cardAddress })
 		try {
 			const cached = window.localStorage.getItem(key)
@@ -663,26 +666,36 @@ export function DaemonProvider({ children }: DaemonProps) {
             const card = new ethers.Contract(target.cardAddress, [
               'function totalSupply(uint256 id) view returns (uint256)',
               'function rewardEscrowUsdc6() view returns (uint256)',
+              'function quoteUsdcWithdrawForFiat6(uint256 fiatAmount6) view returns (uint256)',
             ], conetDepinProvider)
             const usdc = new ethers.Contract(CONET_USDC, [
               'function balanceOf(address account) view returns (uint256)',
             ], conetDepinProvider)
-            // Sequential RPC (global serialize): minted + wallet first; escrow is best-effort.
+            // Sequential RPC (global serialize). Escrow + quote are required for a trusted snapshot.
             const minted13 = await card.totalSupply(13n) as bigint
-            const reserve = await usdc.balanceOf(target.cardAddress) as bigint
-            let escrow = 0n
-            let escrowReadable = false
+            const tokenBal = await usdc.balanceOf(target.cardAddress) as bigint
+            let escrow: bigint
             try {
               escrow = await card.rewardEscrowUsdc6() as bigint
-              escrowReadable = true
             } catch {
-              /* Older cards / unbound modules may lack rewardEscrowUsdc6. */
+              /* Untrusted: do not treat a raw card balance as the redeemable pool. */
+              continue
+            }
+            const pool = escrow < tokenBal ? escrow : tokenBal
+            let needed = 0n
+            if (minted13 > 0n) {
+              try {
+                needed = await card.quoteUsdcWithdrawForFiat6(minted13) as bigint
+              } catch {
+                /* Untrusted: no 1:1 fallback when minted #13 needs a withdraw quote. */
+                continue
+              }
             }
             const snapshot: MerchantCardRewardReserveSnapshot = {
               totalMinted13: minted13.toString(),
-              usdcReserve: reserve.toString(),
-              ...(escrowReadable ? { escrowUsdc6: escrow.toString() } : {}),
-              reserveDifference: (reserve - minted13).toString(),
+              usdcReserve: pool.toString(),
+              escrowUsdc6: escrow.toString(),
+              reserveDifference: (pool - needed).toString(),
               fetchedAt: Date.now(),
             }
             if (!cancelled) {

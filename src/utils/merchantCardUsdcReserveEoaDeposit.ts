@@ -1,15 +1,20 @@
 /**
- * Merchant OS — deposit USDC Reserve from the merchant EOA onto the program card.
+ * Merchant OS — fund the program-card #13 redeem pool (USDC Reserve).
  *
- * - CONET-USDC (CoNET L1): ERC-20 transfer → card (EOA pays CNET gas)
- * - Base USDC: EIP-3009 + x402 `workflow=walletDeposit` → settle to bridge initiator;
- *   Master LockMint CONET-USDC → card (Settle_BasePool sponsors Base gas)
+ * `fundSocialExchangeUsdcEscrow` pulls CONET-USDC from the **owner EOA**
+ * (requires prior ERC-20 `approve`). A raw transfer to the card address does
+ * not increase escrow / Reserve.
+ *
+ * - CONET-USDC (CoNET L1): approve + fund escrow (EOA pays CNET gas)
+ * - Base USDC: EIP-3009 + x402 `workflow=walletDeposit` → LockMint CONET-USDC
+ *   to the **EOA** (Settle_BasePool sponsors Base gas); then approve + fund
  *
  * Signing material: session memory only (`getSessionPrivateKeyArmor`).
  */
 import { ethers } from 'ethers'
 import { CONET_USDC, GENESIS_NODE_BRIDGE_INITIATOR, USDC_BASE } from '@/config/chainAddresses'
 import { AuthorizationSign } from '@/services/beamio'
+import { postCardFundSocialExchangeUsdcEscrow } from '@/services/BeamioCard'
 import { getSessionPrivateKeyArmor } from '@/utils/beamioSessionSecrets'
 import { conetDepinProvider } from '@/utils/constants'
 import { withBaseRpc } from '@/utils/baseRpc'
@@ -19,6 +24,8 @@ const BEAMIO_API = 'https://beamio.app'
 
 const ERC20_ABI = [
 	'function balanceOf(address account) view returns (uint256)',
+	'function allowance(address owner, address spender) view returns (uint256)',
+	'function approve(address spender, uint256 amount) returns (bool)',
 	'function transfer(address to, uint256 amount) returns (bool)',
 ] as const
 
@@ -67,8 +74,11 @@ export type EoaConetUsdcDepositResult = {
 	to: string
 }
 
-/** Transfer CONET-USDC from merchant EOA → program card (CoNET L1). */
-export async function depositConetUsdcFromEoaToCard(params: {
+/**
+ * Approve CONET-USDC (if needed) then `fundSocialExchangeUsdcEscrow`.
+ * Only the card owner EOA can fund; session wallet must be that owner.
+ */
+export async function fundProgramCardUsdcEscrowFromEoa(params: {
 	cardAddress: string
 	amountHuman: string
 }): Promise<EoaConetUsdcDepositResult> {
@@ -93,17 +103,44 @@ export async function depositConetUsdcFromEoaToCard(params: {
 		)
 	}
 
-	const tx = await usdc.transfer(to, amount6)
-	const receipt = await tx.wait()
-	if (receipt?.status !== 1) {
-		throw new Error('CONET-USDC transfer failed on CoNET.')
+	const allowance = (await usdc.allowance(from, to)) as bigint
+	if (allowance < amount6) {
+		const approveTx = await usdc.approve(to, amount6)
+		const approveReceipt = await approveTx.wait()
+		if (approveReceipt?.status !== 1) {
+			throw new Error('CONET-USDC approve failed on CoNET.')
+		}
 	}
+
+	const fundRes = await postCardFundSocialExchangeUsdcEscrow({
+		cardAddress: to,
+		payerEOA: from,
+		amount6: amount6.toString(),
+	})
+	if (!fundRes.success) {
+		throw new Error(
+			fundRes.error ??
+				'Could not fund the #13 redeem pool. Approve CONET-USDC for this program card and try again.',
+		)
+	}
+
 	return {
-		txHash: String(tx.hash),
+		txHash: String(fundRes.hash ?? ''),
 		amount6,
 		from,
 		to,
 	}
+}
+
+/**
+ * @deprecated Raw transfer to the card does not raise Reserve. Use
+ * {@link fundProgramCardUsdcEscrowFromEoa}.
+ */
+export async function depositConetUsdcFromEoaToCard(params: {
+	cardAddress: string
+	amountHuman: string
+}): Promise<EoaConetUsdcDepositResult> {
+	return fundProgramCardUsdcEscrowFromEoa(params)
 }
 
 export type EoaBaseUsdcLockMintResult = {
@@ -117,12 +154,12 @@ export type EoaBaseUsdcLockMintResult = {
 }
 
 /**
- * Deposit Base USDC from merchant EOA onto the program card via Beamio x402
+ * Deposit Base USDC from merchant EOA via Beamio x402
  * (`POST /api/nfcUsdcTopup`, workflow=walletDeposit).
  *
  * User signs EIP-3009 TransferWithAuthorization only — no Base ETH gas on the client.
  * Cluster settles USDC to {@link GENESIS_NODE_BRIDGE_INITIATOR}; Master LockMints CONET-USDC
- * to the card with Settle_BasePool gas sponsorship.
+ * to the **EOA** (not the card). The sheet then approve + funds escrow.
  */
 export async function depositBaseUsdcFromEoaViaLockMintToCard(params: {
 	cardAddress: string
@@ -155,7 +192,7 @@ export async function depositBaseUsdcFromEoaViaLockMintToCard(params: {
 	})
 
 	const bodyObj: Record<string, string> = {
-		beneficiary: cardAddr,
+		beneficiary: from,
 		amount: amountHuman,
 		currency: 'USDC',
 		paymentToken: 'USDC',

@@ -44,8 +44,9 @@ export function buildFuelPackUsdcTopupUrl(params: {
 
 /**
  * Top up CONET-USDC on a beneficiary via third-party Base USDC payment
- * (`workflow=walletDeposit`). Merchant OS uses the program card address as beneficiary
- * so LockMint credits the card's USDC Reserve.
+ * (`workflow=walletDeposit`). Merchant OS USDC Reserve uses the **owner EOA**
+ * as beneficiary, then approve + `fundSocialExchangeUsdcEscrow` (a card
+ * beneficiary does not raise the #13 redeem pool).
  */
 export function buildWalletUsdcDepositUrl(params: {
 	beneficiary: string

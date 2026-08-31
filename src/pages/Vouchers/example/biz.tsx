@@ -24604,7 +24604,7 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
 
  const merchantCardRewardReserveKey =
    currentEoa && staffProgramBeamioCardAddress && ethers.isAddress(currentEoa) && ethers.isAddress(staffProgramBeamioCardAddress)
-     ? `eoa:${ethers.getAddress(currentEoa).toLowerCase()}:card:${ethers.getAddress(staffProgramBeamioCardAddress).toLowerCase()}:reward-reserve:v1`
+     ? `eoa:${ethers.getAddress(currentEoa).toLowerCase()}:card:${ethers.getAddress(staffProgramBeamioCardAddress).toLowerCase()}:reward-reserve:v2`
      : '';
  const merchantCardRewardReserve = merchantCardRewardReserveKey
    ? merchantCardRewardReserveByKey[merchantCardRewardReserveKey]
@@ -31554,18 +31554,24 @@ const formatTrustedE6Signed = (raw: string | undefined): string => {
 const merchantCardMintedReward13Display = formatTrustedE6Amount(merchantCardRewardReserve?.totalMinted13);
 const merchantCardUsdcReserveDisplay = formatTrustedUsdcSigned(merchantCardRewardReserve?.usdcReserve);
 const merchantCardReserveDifferenceDisplay = formatTrustedE6Signed(merchantCardRewardReserve?.reserveDifference);
-const merchantCardReserveDifferenceIsNegative = (() => {
+const merchantCardReserveDifferenceSign = (() => {
   const raw = merchantCardRewardReserve?.reserveDifference;
-  if (raw == null) return false;
+  if (raw == null) return 0;
   try {
-    return BigInt(raw) < 0n;
+    const v = BigInt(raw);
+    if (v > 0n) return 1;
+    if (v < 0n) return -1;
+    return 0;
   } catch {
-    return false;
+    return 0;
   }
 })();
-const merchantCardReserveDifferenceClassName = merchantCardReserveDifferenceIsNegative
-  ? 'text-[#dc2626]'
-  : 'text-[#747779]';
+const merchantCardReserveDifferenceClassName =
+  merchantCardReserveDifferenceSign > 0
+    ? 'text-[#0051d1]'
+    : merchantCardReserveDifferenceSign < 0
+      ? 'text-[#dc2626]'
+      : 'text-[#747779]';
 /** Charge-only sum of `fees.bServiceUnits6` from `transactionsFilteredForTable`, windowed by header `timeFilter`. */
 const protocolFuelConsumptionDisplayVal = protocolFuelConsumptionDisplayUnits;
 /** Today's Charge B-Unit burn (local calendar day); used for Market runway estimate only. */
@@ -33734,7 +33740,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                     <h3 className="font-manrope text-lg font-extrabold tabular-nums text-[#2c2f31] sm:text-xl">
                       {merchantCardUsdcReserveDisplay}
                     </h3>
-                    <p className={`mt-1 text-[10px] font-medium uppercase ${merchantCardReserveDifferenceIsNegative ? 'text-[#dc2626]' : 'text-slate-400'}`}>
+                    <p className={`mt-1 text-[10px] font-medium uppercase ${merchantCardReserveDifferenceClassName}`}>
                       Diff {merchantCardReserveDifferenceDisplay}
                     </p>
                   </div>
@@ -35513,6 +35519,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
          <MerchantCardUsdcReserveDepositSheet
            open={usdcReserveDepositOpen}
            cardAddress={staffProgramBeamioCardAddress}
+           merchantEoa={currentEoa}
            eoaBaseUsdcBalance={eoaUsdcBalance}
            eoaConetUsdcBalance={eoaConetUsdcBalance}
            onClose={() => setUsdcReserveDepositOpen(false)}

@@ -243,11 +243,32 @@ function previewSameStoreRow(cardAddress: string, bal13: bigint, name?: string):
 		name: name?.trim() || `Program ${cardAddress.slice(0, 6)}…${cardAddress.slice(-4)}`,
 		pointsBalance6: bal13,
 		escrowUsdc6: 0n,
+		// Same-store #13 is 1:1 with card fiat, not USDC. These USDC-6 slots
+		// are placeholders so row merge / empty checks stay non-zero. Planner
+		// and display must convert via bill fiat6, never treat PT as USDC
+		// (CAD/USD ≈ 1.387 would show 10 PT as 13.87).
 		quotedUsdc6: bal13,
 		redeemableUsdc6: bal13,
 		redeemablePoints6: bal13,
 		supportsRedeem: false,
 		coverKind: 'toProgramPoints',
+	}
+}
+
+/** Card-fiat human amount → 6-decimal integer. Empty / invalid → 0n. */
+export function parseFiatHumanTo6(fiatHuman: string): bigint {
+	const trimmed = fiatHuman.trim()
+	if (!trimmed) return 0n
+	try {
+		return ethers.parseUnits(trimmed, 6)
+	} catch {
+		const n = Number(trimmed)
+		if (!Number.isFinite(n) || n <= 0) return 0n
+		try {
+			return ethers.parseUnits(n.toFixed(6), 6)
+		} catch {
+			return 0n
+		}
 	}
 }
 
@@ -263,11 +284,11 @@ export function hydrateSameStoreRowFromAssets(
 	return previewSameStoreRow(ethers.getAddress(cardAddress), bal, name)
 }
 
-/** Sync greedy cover in USDC-6. Same-store first. No extra RPC. */
-export function estimateCoverUsdc6(rows: Reward13Row[], needUsdc6: bigint): bigint {
+/** Sync greedy cover in USDC-6. Same-store first (fiat 1:1 → proportional USDC). No extra RPC. */
+export function estimateCoverUsdc6(rows: Reward13Row[], needUsdc6: bigint, fiat6 = 0n): bigint {
 	if (needUsdc6 <= 0n) return 0n
 	const same = rows
-		.filter((r) => r.coverKind === 'toProgramPoints' && r.redeemableUsdc6 > 0n)
+		.filter((r) => r.coverKind === 'toProgramPoints' && r.pointsBalance6 > 0n)
 		.slice()
 		.sort(sortByBalance)
 	const other = rows
@@ -276,7 +297,19 @@ export function estimateCoverUsdc6(rows: Reward13Row[], needUsdc6: bigint): bigi
 		.sort(sortByBalance)
 	let remaining = needUsdc6
 	let covered = 0n
-	for (const row of [...same, ...other]) {
+	if (fiat6 > 0n) {
+		for (const row of same) {
+			if (remaining <= 0n) break
+			const takePts = row.pointsBalance6 < fiat6 ? row.pointsBalance6 : fiat6
+			if (takePts <= 0n) continue
+			const takeUsdc = (needUsdc6 * takePts) / fiat6
+			const take = takeUsdc < remaining ? takeUsdc : remaining
+			if (take <= 0n) continue
+			covered += take
+			remaining -= take
+		}
+	}
+	for (const row of other) {
 		if (remaining <= 0n) break
 		const take = row.redeemableUsdc6 < remaining ? row.redeemableUsdc6 : remaining
 		covered += take
@@ -603,35 +636,40 @@ function sortByBalance(a: Reward13Row, b: Reward13Row): number {
 	return 0
 }
 
-async function coverLegsFromRows(usable: Reward13Row[], needUsdc6: bigint): Promise<CoverLeg[]> {
+async function coverLegsFromRows(
+	usable: Reward13Row[],
+	needUsdc6: bigint,
+	fiat6: bigint,
+): Promise<CoverLeg[]> {
 	const same = usable.filter((r) => r.coverKind === 'toProgramPoints').slice().sort(sortByBalance)
 	const other = usable.filter((r) => r.coverKind !== 'toProgramPoints').slice().sort(sortByBalance)
 	const ordered = [...same, ...other]
 	const legs: CoverLeg[] = []
 	let remaining = needUsdc6
+	let remainingFiat6 = fiat6
 	for (const row of ordered) {
 		if (remaining <= 0n) break
-		if (row.redeemableUsdc6 <= 0n || row.redeemablePoints6 <= 0n) continue
 
 		if (row.coverKind === 'toProgramPoints') {
-			const takeUsdc = row.redeemableUsdc6 < remaining ? row.redeemableUsdc6 : remaining
-			if (takeUsdc <= 0n) continue
-			const takePts =
-				row.quotedUsdc6 > 0n
-					? (row.pointsBalance6 * takeUsdc) / row.quotedUsdc6
-					: row.redeemablePoints6
-			const pointsCost = takePts > row.pointsBalance6 ? row.pointsBalance6 : takePts
-			if (pointsCost <= 0n) continue
+			if (row.pointsBalance6 <= 0n || remainingFiat6 <= 0n || fiat6 <= 0n) continue
+			const takePts = row.pointsBalance6 < remainingFiat6 ? row.pointsBalance6 : remainingFiat6
+			if (takePts <= 0n) continue
+			const takeUsdc = (needUsdc6 * takePts) / fiat6
+			const credit = takeUsdc < remaining ? takeUsdc : remaining
+			if (credit <= 0n) continue
 			legs.push({
 				cardAddress: row.cardAddress,
-				pointsCost,
-				usdcReward6: takeUsdc,
+				pointsCost: takePts,
+				usdcReward6: credit,
 				name: row.name,
 				kind: 'toProgramPoints',
 			})
-			remaining -= takeUsdc
+			remaining -= credit
+			remainingFiat6 -= takePts
 			continue
 		}
+
+		if (row.redeemableUsdc6 <= 0n || row.redeemablePoints6 <= 0n) continue
 
 		// Peer: usdcOut6 must equal on-chain quote(burn13). Size burn for remaining need.
 		const targetUsdc = row.redeemableUsdc6 < remaining ? row.redeemableUsdc6 : remaining
@@ -659,20 +697,36 @@ async function coverLegsFromRows(usable: Reward13Row[], needUsdc6: bigint): Prom
 	return legs
 }
 
-export async function planAutoCoverUsdc(rows: Reward13Row[], needUsdc6: bigint): Promise<CoverLeg[]> {
+export async function planAutoCoverUsdc(
+	rows: Reward13Row[],
+	needUsdc6: bigint,
+	fiat6 = 0n,
+): Promise<CoverLeg[]> {
 	if (needUsdc6 <= 0n) return []
-	const usable = rows.filter((r) => r.redeemableUsdc6 > 0n && r.redeemablePoints6 > 0n)
-	return coverLegsFromRows(usable, needUsdc6)
+	const usable = rows.filter((r) => {
+		if (r.coverKind === 'toProgramPoints') {
+			return r.pointsBalance6 > 0n || r.redeemablePoints6 > 0n
+		}
+		return r.redeemableUsdc6 > 0n && r.redeemablePoints6 > 0n
+	})
+	return coverLegsFromRows(usable, needUsdc6, fiat6)
 }
 
 export async function planManualCoverUsdc(
 	rows: Reward13Row[],
 	selected: Set<string>,
 	needUsdc6: bigint,
+	fiat6 = 0n,
 ): Promise<CoverLeg[]> {
 	if (needUsdc6 <= 0n) return []
-	const chosen = rows.filter((r) => selected.has(r.cardAddress.toLowerCase()) && r.redeemableUsdc6 > 0n)
-	return coverLegsFromRows(chosen, needUsdc6)
+	const chosen = rows.filter((r) => {
+		if (!selected.has(r.cardAddress.toLowerCase())) return false
+		if (r.coverKind === 'toProgramPoints') {
+			return r.pointsBalance6 > 0n || r.redeemablePoints6 > 0n
+		}
+		return r.redeemableUsdc6 > 0n
+	})
+	return coverLegsFromRows(chosen, needUsdc6, fiat6)
 }
 
 /** @deprecated Prefer postTopupWithReward13Container for multi-source top-up. */

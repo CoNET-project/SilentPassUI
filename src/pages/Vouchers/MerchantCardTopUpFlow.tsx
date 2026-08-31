@@ -27,6 +27,7 @@ import {
 	hydrateSameStoreRowFromAssets,
 	loadReward13RowsForAa,
 	mergeReward13Rows,
+	parseFiatHumanTo6,
 	peekReward13RowsCache,
 	pickRichestReward13Seed,
 	sameStoreHasPositiveCover,
@@ -162,22 +163,39 @@ function resolveSmartPayCoveredFiat(opts: {
 	rowsReady: boolean
 }): number {
 	if (!opts.smartPay || !Number.isFinite(opts.fiatN) || opts.fiatN <= 0) return 0
+	// Same-store #13 is 1:1 with card fiat. Never fold PT into coveredUsdc6 /
+	// quotedUsdc6 (10 PT vs a CAD→USDC quote ≈ 36 would paint 13.87).
+	const sameStore = estimateSameStoreCoverFiat(opts.rows, opts.fiatN)
 	const quoteMatches = opts.quotedUsdc6 > 0n && opts.quotedForFiat === opts.fiatHuman
-	if (quoteMatches) {
-		if (opts.coveredUsdc6 > 0n) {
-			return Math.min(opts.fiatN, (opts.fiatN * Number(opts.coveredUsdc6)) / Number(opts.quotedUsdc6))
-		}
-		const estUsdc = estimateCoverUsdc6(opts.rows, opts.quotedUsdc6)
-		if (estUsdc > 0n) {
-			return Math.min(opts.fiatN, (opts.fiatN * Number(estUsdc)) / Number(opts.quotedUsdc6))
+	if (!quoteMatches) {
+		if (sameStore > 0) return sameStore
+		if (!opts.rowsReady) return sameStore
+		return 0
+	}
+
+	const fiat6 = parseFiatHumanTo6(opts.fiatHuman)
+	const sameStore6 = parseFiatHumanTo6(sameStore.toFixed(6))
+	const sameStoreUsdc = fiat6 > 0n ? (opts.quotedUsdc6 * sameStore6) / fiat6 : 0n
+	const remainingFiat = Math.max(0, opts.fiatN - sameStore)
+	const remainingUsdc = opts.quotedUsdc6 > sameStoreUsdc ? opts.quotedUsdc6 - sameStoreUsdc : 0n
+
+	let peerUsdc = 0n
+	if (opts.coveredUsdc6 > sameStoreUsdc) {
+		peerUsdc = opts.coveredUsdc6 - sameStoreUsdc
+	} else {
+		const peerRows = opts.rows.filter((r) => r.coverKind === 'toUsdc')
+		if (peerRows.length > 0 && remainingUsdc > 0n) {
+			peerUsdc = estimateCoverUsdc6(peerRows, remainingUsdc, 0n)
 		}
 	}
-	const sameStore = estimateSameStoreCoverFiat(opts.rows, opts.fiatN)
-	if (sameStore > 0) return sameStore
-	// Quote can arrive before #13 rows. Do not paint a final 0.00 until the
-	// planner (or seed) has a same-store answer.
-	if (!opts.rowsReady) return sameStore
-	return 0
+
+	if (peerUsdc <= 0n || remainingFiat <= 0 || remainingUsdc <= 0n) {
+		if (sameStore > 0) return sameStore
+		if (!opts.rowsReady) return sameStore
+		return 0
+	}
+	const peerFiat = (remainingFiat * Number(peerUsdc)) / Number(remainingUsdc)
+	return Math.min(opts.fiatN, sameStore + peerFiat)
 }
 
 function composeDualPayFailure(
@@ -436,9 +454,10 @@ export default function MerchantCardTopUpFlow({
 		const gen = ++legsPlanGen.current
 		void (async () => {
 			try {
+				const fiat6 = parseFiatHumanTo6(fiatHuman)
 				const planned = usedManual
-					? await planManualCoverUsdc(rows, selected, quotedUsdc6)
-					: await planAutoCoverUsdc(rows, quotedUsdc6)
+					? await planManualCoverUsdc(rows, selected, quotedUsdc6, fiat6)
+					: await planAutoCoverUsdc(rows, quotedUsdc6, fiat6)
 				if (gen === legsPlanGen.current) setLegs(planned)
 			} catch {
 				/* keep last trusted legs */

@@ -5524,14 +5524,15 @@ function DiscoverMerchantDetailFullScreen({
 		: undefined
 
 	useEffect(() => {
-		if (!profile?.keyID || !item.cardAddress) {
+		const cardAddress = item.cardAddress
+		if (!profile?.keyID || !cardAddress) {
 			setMerchantAssetsLoading(false)
 			setUserSocialPointsLoading(false)
 			return
 		}
 		const seeded = hydrateDiscoverMerchantCardAssets(
 			profile,
-			item.cardAddress,
+			cardAddress,
 			myBrandCardDetails,
 		)
 		const seededPts = Number(seeded?.chargeRewardPoints)
@@ -5546,7 +5547,8 @@ function DiscoverMerchantDetailFullScreen({
 		}
 
 		const userEOA = resolveUserEoa()
-		const needSocial = !hasSeededPts && !!userEOA
+		const socialEoa = userEOA ?? ''
+		const needSocial = !hasSeededPts && socialEoa.length > 0
 		const needAssets = !seeded
 		if (!needSocial && !needAssets) return
 		if (!smartPayPrefetchDone || discoverTopUpOpen) return
@@ -5555,10 +5557,10 @@ function DiscoverMerchantDetailFullScreen({
 		void (async () => {
 			// Serial: CoNET RPC is batchMaxCount:1. A parallel getMyAssets storm
 			// starves Smart Pay's same-store #13 preview (Points Covered stays 0.00).
-			if (needSocial && userEOA) {
+			if (needSocial) {
 				setUserSocialPointsLoading(true)
 				try {
-					const bal = await readUserSocialPoints13BalanceOnCard(item.cardAddress, userEOA)
+					const bal = await readUserSocialPoints13BalanceOnCard(cardAddress, socialEoa)
 					if (!cancelled && bal != null) {
 						const human = Number(ethers.formatUnits(bal, 6))
 						if (Number.isFinite(human) && human >= 0) setUserSocialPoints13(human)
@@ -5571,7 +5573,7 @@ function DiscoverMerchantDetailFullScreen({
 			if (needAssets && !cancelled) {
 				setMerchantAssetsLoading(true)
 				try {
-					const res = await getMyAssets(profile, item.cardAddress)
+					const res = await getMyAssets(profile, cardAddress)
 					if (!cancelled && res != null) setMerchantAssets(res)
 				} catch {
 					if (!cancelled) setMerchantAssets((prev) => prev)

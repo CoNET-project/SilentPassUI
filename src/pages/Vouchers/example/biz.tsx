@@ -46,7 +46,7 @@ import type { BeamioLegalDocId } from '@/utils/beamioLegalDocuments';
 import { resolveBeamioEulaVariant } from '@/utils/beamioEulaDocuments';
 import PrivateKeyReveal from '@/components/Setting/PrivateKey/PrivateKey';
 import VscodeJsonBlock from '@/components/VscodeJsonBlock';
-import { getOracleCadUsdcFromConet, AuthorizationSign } from '@/services/beamio';
+import { getOracleCadUsdcFromConet, getOracleUsdcFromConet, AuthorizationSign } from '@/services/beamio';
 import { formatAmount, displayFiatPrefixFromCode, type ICurrency } from '@/services/currency';
 import contracts from '@/utils/contracts';
 import {
@@ -13525,6 +13525,8 @@ export default function MerchantOS() {
  const [usdcReserveDepositOpen, setUsdcReserveDepositOpen] = useState(false);
  const [activeTab, setActiveTab] = useState('Overview');
  const [oracleCadUsdc, setOracleCadUsdc] = useState<number | null>(null);
+ /** CoNET oracle: 1 unit of card currency = N USDC. Isolated by ISO code; failure must not overwrite. */
+ const [oracleUsdcByCardCurrency, setOracleUsdcByCardCurrency] = useState<Record<string, number>>({});
  /** Bumps when Lite onboarding form saves so `hasVerraLiteBusinessRequiredFields` is re-evaluated. */
  const [liteBusinessFormRevision, setLiteBusinessFormRevision] = useState(0);
  const [liteChainAckRevision, setLiteChainAckRevision] = useState(0);
@@ -15486,6 +15488,13 @@ const cardIssuancePreviewLiveLogoIconClass = useMemo(
    () => (cardIssuanceExistingCard?.userCard?.currency ?? CARD_ISSUANCE_BEAMIO_CURRENCY).trim().toUpperCase(),
    [cardIssuanceExistingCard?.userCard?.currency]
  );
+ const merchantCardOracleUsdcPerUnit = useMemo(() => {
+   const c = cardIssuanceCurrencyCode;
+   if (c === 'USD' || c === 'USDC') return 1;
+   if (c === 'CAD') return oracleCadUsdc;
+   const cached = oracleUsdcByCardCurrency[c];
+   return cached != null && Number.isFinite(cached) && cached > 0 ? cached : null;
+ }, [cardIssuanceCurrencyCode, oracleCadUsdc, oracleUsdcByCardCurrency]);
  const cardIssuanceMaxTopupCurrencyCap = useMemo(
    () => cardIssuanceMaxTopupCapForCurrency(cardIssuanceCurrencyCode, oracleCadUsdc),
    [cardIssuanceCurrencyCode, oracleCadUsdc]
@@ -26234,6 +26243,28 @@ const [memberDirectoryUserTypeDb, setMemberDirectoryUserTypeDb] = useState<Recor
      if (rate != null) setOracleCadUsdc(rate);
    });
  }, []);
+
+ /** Refresh CoNET oracle for the current merchant card currency when Exchange rate opens. */
+ useEffect(() => {
+   if (!merchantOracleSpreadEditorOpen) return;
+   const c = cardIssuanceCurrencyCode;
+   if (c === 'USD' || c === 'USDC') return;
+   if (c === 'CAD') {
+     void getOracleCadUsdcFromConet().then((rate) => {
+       if (rate != null) setOracleCadUsdc(rate);
+     });
+     return;
+   }
+   let cancelled = false;
+   void getOracleUsdcFromConet(c).then((rate) => {
+     if (!cancelled && rate != null) {
+       setOracleUsdcByCardCurrency((prev) => ({ ...prev, [c]: rate }));
+     }
+   });
+   return () => {
+     cancelled = true;
+   };
+ }, [merchantOracleSpreadEditorOpen, cardIssuanceCurrencyCode]);
 
  /** Reset metrics state when EOA changes: avoid showing previous EOA's cached data (beamio-ai-onchain-fetch: cache key must include EOA, invalidate on switch) */
  const prevEoaRef = React.useRef<string | null>(null);
@@ -43920,6 +43951,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                  publishing={merchantOracleSpreadEditorPublishing}
                  serverError={merchantOracleSpreadEditorServerError}
                  focusRingClassName={bizFocusRingClass}
+                 cardCurrency={cardIssuanceCurrencyCode}
+                 oracleUsdcPerUnit={merchantCardOracleUsdcPerUnit}
                  onDraftBpsChange={setMerchantOracleSpreadEditorDraftBps}
                  onClose={closeMerchantOracleSpreadEditor}
                  onSave={() => void submitMerchantOracleSpreadEditor()}

@@ -32,6 +32,13 @@ export function percentWholeToMerchantOracleSpreadBps(percent: number): number {
 	return percentToMerchantOracleSpreadBps(percent)
 }
 
+function formatOraclePairRate(n: number): string {
+	if (!Number.isFinite(n) || n <= 0) return ''
+	const abs = Math.abs(n)
+	const maxFrac = abs >= 100 ? 2 : abs >= 1 ? 4 : 6
+	return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: maxFrac })
+}
+
 export type MerchantOracleSpreadProgramEditorProps = {
 	open: boolean
 	/** Draft spread in bps (0–500, 25-step). */
@@ -40,6 +47,13 @@ export type MerchantOracleSpreadProgramEditorProps = {
 	publishing: boolean
 	serverError: string
 	focusRingClassName?: string
+	/** Current merchant card ISO currency (e.g. CAD). */
+	cardCurrency: string
+	/**
+	 * CoNET oracle: 1 card-currency unit = this many USDC.
+	 * `null` = no trusted rate yet (do not treat as 0).
+	 */
+	oracleUsdcPerUnit: number | null
 	onDraftBpsChange: (nextBps: number) => void
 	onClose: () => void
 	onSave: () => void
@@ -52,6 +66,8 @@ export function MerchantOracleSpreadProgramEditor({
 	publishing,
 	serverError,
 	focusRingClassName = '',
+	cardCurrency,
+	oracleUsdcPerUnit,
 	onDraftBpsChange,
 	onClose,
 	onSave,
@@ -97,6 +113,19 @@ export function MerchantOracleSpreadProgramEditor({
 	const spreadPercent = merchantOracleSpreadBpsToPercent(clampedDraft)
 	const spreadPercentLabel = spreadPercent.toFixed(2)
 	const trackFillPct = (spreadPercent / PERCENT_MAX) * 100
+	const cardCcy = (cardCurrency || 'CAD').trim().toUpperCase() || 'CAD'
+	const hasOracleRate =
+		oracleUsdcPerUnit != null && Number.isFinite(oracleUsdcPerUnit) && oracleUsdcPerUnit > 0
+	const isUsdPeg = cardCcy === 'USD' || cardCcy === 'USDC'
+	const inversePerUsdc = hasOracleRate ? 1 / (oracleUsdcPerUnit as number) : null
+	const depositUsdcPerUnit =
+		hasOracleRate && spreadPercent > 0
+			? (oracleUsdcPerUnit as number) * (1 + spreadPercent / 100)
+			: null
+	const withdrawUsdcPerUnit =
+		hasOracleRate && spreadPercent > 0
+			? (oracleUsdcPerUnit as number) * (1 - spreadPercent / 100)
+			: null
 
 	const commitPercentDraft = useCallback(
 		(raw: string) => {
@@ -167,6 +196,57 @@ export function MerchantOracleSpreadProgramEditor({
 						Adjust oracle quotes in your favor by 0.00–5.00% in 0.25% steps. Deposit (buy) quotes move
 						higher; withdraw (sell) quotes move lower by the same percent.
 					</p>
+
+					<div className="rounded-xl border border-slate-200/80 bg-white p-4">
+						<p className="text-sm font-semibold text-[#2c2f31]">Oracle rate</p>
+						<dl className="mt-3 space-y-2 text-sm">
+							<div className="flex items-baseline justify-between gap-3">
+								<dt className="text-[#595c5e]">Card currency</dt>
+								<dd className="font-semibold tabular-nums text-[#2c2f31]">{cardCcy}</dd>
+							</div>
+							{hasOracleRate ? (
+								<>
+									<div className="flex items-baseline justify-between gap-3">
+										<dt className="text-[#595c5e]">{`1 ${cardCcy}`}</dt>
+										<dd className="font-semibold tabular-nums text-[#2c2f31]">
+											{`${formatOraclePairRate(oracleUsdcPerUnit as number)} USDC`}
+										</dd>
+									</div>
+									{!isUsdPeg && inversePerUsdc != null ? (
+										<div className="flex items-baseline justify-between gap-3">
+											<dt className="text-[#595c5e]">1 USDC</dt>
+											<dd className="font-semibold tabular-nums text-[#2c2f31]">
+												{`${formatOraclePairRate(inversePerUsdc)} ${cardCcy}`}
+											</dd>
+										</div>
+									) : null}
+								</>
+							) : (
+								<p className="text-sm text-[#595c5e]" role="status">
+									Oracle rate unavailable
+								</p>
+							)}
+						</dl>
+						{depositUsdcPerUnit != null && withdrawUsdcPerUnit != null ? (
+							<div className="mt-3 space-y-2 border-t border-slate-100 pt-3 text-sm">
+								<p className="text-[11px] font-medium uppercase tracking-wide text-[#595c5e]">
+									{`After adjustment (+${spreadPercentLabel}%)`}
+								</p>
+								<div className="flex items-baseline justify-between gap-3">
+									<span className="text-[#595c5e]">{`Deposit · 1 ${cardCcy}`}</span>
+									<span className="tabular-nums text-[#2c2f31]">
+										{`${formatOraclePairRate(depositUsdcPerUnit)} USDC`}
+									</span>
+								</div>
+								<div className="flex items-baseline justify-between gap-3">
+									<span className="text-[#595c5e]">{`Withdraw · 1 ${cardCcy}`}</span>
+									<span className="tabular-nums text-[#2c2f31]">
+										{`${formatOraclePairRate(withdrawUsdcPerUnit)} USDC`}
+									</span>
+								</div>
+							</div>
+						) : null}
+					</div>
 
 					{serverError ? (
 						<div

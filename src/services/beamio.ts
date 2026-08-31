@@ -550,18 +550,29 @@ export const parseOracleToCurrencyData = (data: { usdcad?: string | number; usdj
 export const ORACLE_REFRESH_MS = 5 * 60 * 1000
 
 const BEAMIO_ORACLE_ABI = ['function getRate(uint8 c) view returns (uint256)'] as const
-const BEAMIO_CURRENCY_CAD = 0
 
-/** 从 CoNET 链上 BeamioOracle 读取 CAD 汇率。getRate(CAD) 返回「1 CAD = X USD」E18。用于顶部 bar 显示 1 CAD ≈ X USDC */
-export const getOracleCadUsdcFromConet = async (): Promise<number | null> => {
+/**
+ * CoNET BeamioOracle `getRate(c)` → 「1 单位该币 = X USDC」E18。
+ * USD / USDC 为 1:1，不打 RPC。失败返回 null（不可信，调用方不得写成 0）。
+ */
+export const getOracleUsdcFromConet = async (currencyCode: string): Promise<number | null> => {
+	const code = currencyCode.trim().toUpperCase()
+	if (code === 'USD' || code === 'USDC') return 1
+	const id = BEAMIO_CURRENCY[code as keyof typeof BEAMIO_CURRENCY]
+	if (id === undefined) return null
 	try {
 		const oracle = new ethers.Contract(BEAMIO_ORACLE_CONET, BEAMIO_ORACLE_ABI, conetDepinProvider)
-		const rateRaw = await oracle.getRate(BEAMIO_CURRENCY_CAD) as bigint
+		const rateRaw = await oracle.getRate(id) as bigint
 		const rate = Number(ethers.formatUnits(rateRaw, 18))
 		return rate > 0 ? rate : null
 	} catch {
 		return null
 	}
+}
+
+/** CAD 专用：1 CAD = X USDC。顶部 bar / Overview 仍读此 helper。 */
+export const getOracleCadUsdcFromConet = async (): Promise<number | null> => {
+	return getOracleUsdcFromConet('CAD')
 }
 
 

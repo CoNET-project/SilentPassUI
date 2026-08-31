@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, Check, ChevronRight, Loader2, SlidersHorizontal, Sparkles } from 'lucide-react'
+import { AlertTriangle, Check, ChevronRight, Info, Loader2, Lock, SlidersHorizontal, Sparkles, Tag } from 'lucide-react'
+import usdcIcon from '@/components/assets/usdc.png'
+import baseIcon from '@/components/assets/base-logo.png'
 import { ethers } from 'ethers'
 import {
 	BeamioCircularBackButton,
@@ -127,6 +129,25 @@ function formatFiatHero(n: number): string {
 
 function formatPrefixedFiat(prefix: string, amount: string): string {
 	return `${prefix} ${amount}`
+}
+
+function formatUsdcDue(usdc6: bigint): string {
+	return `$${formatUsdc(usdc6)}`
+}
+
+function UsdcBaseMark({ size = 16 }: { size?: number }) {
+	const badge = Math.max(10, Math.round(size * 0.625))
+	return (
+		<span className="relative inline-flex shrink-0" style={{ width: size, height: size }}>
+			<img src={usdcIcon} alt="USDC" className="block h-full w-full rounded-full object-contain" />
+			<img
+				src={baseIcon}
+				alt="Base"
+				className="absolute -bottom-0.5 -right-0.5 rounded-full border border-white bg-white object-contain dark:border-slate-900"
+				style={{ width: badge, height: badge }}
+			/>
+		</span>
+	)
 }
 
 function formatPtsShort(points6: bigint): string {
@@ -526,12 +547,20 @@ export default function MerchantCardTopUpFlow({
 		legs.length > 0 ||
 		(rowsReady && Boolean(profileAa) && usableRows.length === 0)
 	const confirmDisabled = payBusy || !quoteReady || baseUsdcShort || !pointsPlanReady
+	const canOpenConfirm =
+		!payBusy && quoteReady && pointsPlanReady && Number.isFinite(fiatN) && fiatN > 0
 	const availablePts6 = usableRows.reduce((sum, row) => sum + row.pointsBalance6, 0n)
 	const merchantCount = usableRows.length
 
 	const goPay = () => {
 		if (Number(fiatHuman) <= 0) return
 		setStep('pay')
+	}
+
+	const goConfirm = () => {
+		if (!canOpenConfirm) return
+		setPayError('')
+		setStep('confirm')
 	}
 
 	const toggleSelect = (addr: string) => {
@@ -820,6 +849,24 @@ export default function MerchantCardTopUpFlow({
 	}
 	const storeCreditsLabel = `${prefix}${Number(storeCreditsPoints || 0).toFixed(2)}`
 	const heroDigitsWidth = Math.max(amountInput.replace(/,/g, '').trim().length, 4)
+	const pointsCoverLeg =
+		legs.find((leg) => leg.kind === 'toProgramPoints') ?? (legs.length > 0 ? legs[0] : null)
+	const pointsRowTitle = (() => {
+		const raw = (pointsCoverLeg?.name || displayMerchantName || 'Merchant').trim()
+		return /points$/i.test(raw) ? raw.replace(/\s+points$/i, '').trim() || raw : raw
+	})()
+	const amountDueLabel =
+		cashUsdc6 > 0n
+			? `${formatUsdcDue(cashUsdc6)} USDC`
+			: coveredFiat > 0
+				? 'Covered'
+				: `${formatUsdcDue(quotedUsdc6)} USDC`
+	const confirmPayLabel =
+		cashUsdc6 > 0n
+			? `Pay ${formatUsdcDue(cashUsdc6)} USDC`
+			: coveredFiat > 0
+				? 'Apply Points'
+				: `Pay ${formatUsdcDue(quotedUsdc6)} USDC`
 
 	const back = () => {
 		if (payBusy) return
@@ -829,7 +876,7 @@ export default function MerchantCardTopUpFlow({
 			setStep('amount')
 		}
 		else if (step === 'select') setStep('pay')
-		else if (step === 'confirm') setStep(usedManual ? 'select' : 'pay')
+		else if (step === 'confirm') setStep('pay')
 		else close()
 	}
 
@@ -859,7 +906,12 @@ export default function MerchantCardTopUpFlow({
 				<div className={`${BEAMIO_CIRCULAR_BACK_ROW_CLASS} px-4`}>
 					<BeamioCircularBackButton variant="onLight" onClick={back} className="absolute left-4 top-0" />
 				</div>
-				{step !== 'amount' && step !== 'pay' ? (
+				{step === 'confirm' ? (
+					<header className="px-5 pb-6 pt-2">
+						<p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Review</p>
+						<h1 className="mt-1 text-3xl font-semibold text-[#0F172A] dark:text-slate-100">{title}</h1>
+					</header>
+				) : step !== 'amount' && step !== 'pay' ? (
 					<header className="px-5 pb-6 pt-2">
 						<p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Store credits</p>
 						<h1 className="mt-1 text-3xl font-semibold text-[#0F172A] dark:text-slate-100">{title}</h1>
@@ -1092,31 +1144,13 @@ export default function MerchantCardTopUpFlow({
 								</button>
 							) : null}
 
-							{payPanelAlert ? (
-								<div
-									role="alert"
-									className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] text-amber-800"
-								>
-									<AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" aria-hidden />
-									<p>{payPanelAlert}</p>
-								</div>
-							) : null}
-
 							<button
 								type="button"
-								disabled={confirmDisabled}
-								aria-busy={payBusy}
-								onClick={() => void redeemLegsThenBuy()}
+								disabled={!canOpenConfirm}
+								onClick={goConfirm}
 								className="mt-auto w-full rounded-2xl bg-[#3B66F5] py-4 text-[17px] font-bold text-white disabled:opacity-40"
 							>
-								{payBusy ? (
-									<span className="inline-flex items-center justify-center gap-2">
-										<Loader2 className="h-5 w-5 animate-spin" aria-hidden />
-										{payBusyLabel}
-									</span>
-								) : (
-									'Confirm Top Up'
-								)}
+								Confirm Top Up
 							</button>
 						</div>
 					)}
@@ -1178,56 +1212,93 @@ export default function MerchantCardTopUpFlow({
 					)}
 
 					{step === 'confirm' && (
-						<>
-							<div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 text-sm">
-								<div className="flex justify-between">
-									<span className="text-slate-500">Top-Up Value</span>
-									<span className="font-semibold">
-										{prefix}
-										{Number(fiatHuman).toFixed(2)}
+						<div className="flex min-h-0 flex-1 flex-col">
+							<div className="pt-2 text-center">
+								<p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#9aa3b2]">
+									Amount due
+								</p>
+								<p className="mt-2 flex items-center justify-center gap-2 text-[34px] font-bold tracking-tight text-[#111827] dark:text-slate-100">
+									{cashUsdc6 > 0n || coveredFiat <= 0 ? <UsdcBaseMark size={28} /> : null}
+									{amountDueLabel}
+								</p>
+							</div>
+
+							<div className="mt-8 rounded-[22px] border border-slate-200 bg-white p-4 shadow-[0_4px_24px_rgba(15,23,42,0.06)] dark:border-slate-700 dark:bg-slate-900">
+								<p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#9aa3b2]">
+									Transaction Summary
+								</p>
+								<div className="mt-4 flex items-center justify-between gap-3 text-[15px]">
+									<span className="text-[#6b7280]">Top-Up Value</span>
+									<span className="font-semibold text-[#111827] dark:text-slate-100">
+										{formatPrefixedFiat(prefix, Number(fiatHuman).toFixed(2))}
 									</span>
 								</div>
-								<div className="flex justify-between">
-									<span className="text-slate-500">Selected Points</span>
-									<span className="font-semibold">${formatUsdc(coveredUsdc6)}</span>
-								</div>
-								<div className="flex justify-between">
-									<span className="text-slate-500">USDC Required</span>
-									<span className="font-semibold">${formatUsdc(cashUsdc6)}</span>
-								</div>
-								{baseUsdc6 !== null && (
-									<div className="flex justify-between text-xs text-slate-400">
-										<span>EOA Base USDC</span>
-										<span>${formatUsdc(baseUsdc6)}</span>
+								{smartPay && coveredFiat > 0 ? (
+									<div className="mt-3 flex items-start justify-between gap-3">
+										<div className="flex min-w-0 items-start gap-2">
+											<Tag className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" aria-hidden />
+											<div className="min-w-0">
+												<p className="truncate text-[15px] font-medium text-[#111827] dark:text-slate-100">
+													{pointsRowTitle} Points
+												</p>
+												{usedManual ? (
+													<p className="text-[12px] text-[#9aa3b2]">(Manual)</p>
+												) : null}
+											</div>
+										</div>
+										<span className="shrink-0 font-semibold text-emerald-600">
+											− {formatPrefixedFiat(prefix, coveredFiat.toFixed(2))}
+										</span>
 									</div>
-								)}
-								{eoaUsdc6 !== null && (
-									<div className="flex justify-between text-xs text-slate-400">
-										<span>EOA CONET-USDC</span>
-										<span>${formatUsdc(eoaUsdc6)}</span>
-									</div>
-								)}
+								) : null}
+								<div className="mt-4 flex items-center justify-between gap-3 border-t border-slate-100 pt-3 text-[15px] font-bold text-[#111827] dark:border-slate-700 dark:text-slate-100">
+									<span>USDC Required</span>
+									<span className="inline-flex items-center gap-1.5">
+										<UsdcBaseMark size={16} />
+										{formatUsdcDue(cashUsdc6)} USDC
+									</span>
+								</div>
 							</div>
+
 							{payPanelAlert ? (
 								<div
 									role="alert"
-									className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] text-amber-800"
+									className="mt-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-[13px] text-amber-800"
 								>
 									<AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" aria-hidden />
 									<p>{payPanelAlert}</p>
 								</div>
+							) : usedManual ? (
+								<div className="mt-4 flex items-start gap-2 rounded-xl border border-sky-100 bg-sky-50 px-3 py-2.5 text-[13px] text-sky-800">
+									<Info className="mt-0.5 h-4 w-4 shrink-0 text-sky-500" aria-hidden />
+									<p>
+										This final amount reflects your specific choices made in the manual points
+										selection flow.
+									</p>
+								</div>
 							) : null}
+
 							<button
 								type="button"
 								disabled={confirmDisabled}
 								aria-busy={payBusy}
+								aria-label={payBusy ? payBusyLabel : confirmPayLabel}
 								onClick={() => void redeemLegsThenBuy()}
-								className="mt-8 flex w-full items-center justify-center gap-2 rounded-full bg-[#0051d1] py-3.5 text-base font-semibold text-white disabled:opacity-40"
+								className="mt-auto flex w-full items-center justify-center gap-2 rounded-2xl bg-[#3B66F5] py-4 text-[17px] font-bold text-white disabled:opacity-40"
 							>
-								{payBusy ? <Loader2 className="h-5 w-5 animate-spin" aria-hidden /> : null}
-								{payBusy ? payBusyLabel : 'Pay'}
+								{payBusy ? (
+									<>
+										<Loader2 className="h-5 w-5 animate-spin" aria-hidden />
+										{payBusyLabel}
+									</>
+								) : (
+									<>
+										<Lock className="h-4 w-4" aria-hidden />
+										{confirmPayLabel}
+									</>
+								)}
 							</button>
-						</>
+						</div>
 					)}
 
 					{step === 'success' && (

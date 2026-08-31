@@ -5555,7 +5555,7 @@ function DiscoverMerchantDetailFullScreen({
 		void (async () => {
 			// Serial: CoNET RPC is batchMaxCount:1. A parallel getMyAssets storm
 			// starves Smart Pay's same-store #13 preview (Points Covered stays 0.00).
-			if (needSocial) {
+			if (needSocial && userEOA) {
 				setUserSocialPointsLoading(true)
 				try {
 					const bal = await readUserSocialPoints13BalanceOnCard(item.cardAddress, userEOA)

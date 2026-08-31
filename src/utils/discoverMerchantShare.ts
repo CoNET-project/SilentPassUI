@@ -30,7 +30,7 @@ export function buildDiscoverMerchantShareUrl(
 export async function shareDiscoverMerchantUrl(
 	shareUrl: string,
 	opts?: { title?: string }
-): Promise<'shared' | 'copied' | 'failed'> {
+): Promise<'shared' | 'copied' | 'failed' | 'aborted'> {
 	const url = shareUrl?.trim() ?? ''
 	if (!url || typeof window === 'undefined') return 'failed'
 
@@ -41,7 +41,7 @@ export async function shareDiscoverMerchantUrl(
 			await navigator.share({ title, url })
 			return 'shared'
 		} catch (e: unknown) {
-			if (e instanceof DOMException && e.name === 'AbortError') return 'failed'
+			if (e instanceof DOMException && e.name === 'AbortError') return 'aborted'
 		}
 	}
 

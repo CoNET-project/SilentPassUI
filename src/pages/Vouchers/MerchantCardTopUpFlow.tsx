@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, Check, ChevronRight, Info, Loader2, Lock, SlidersHorizontal, Sparkles, Tag } from 'lucide-react'
+import { AlertTriangle, Check, ChevronRight, Info, Loader2, Lock, Share, Share2, SlidersHorizontal, Sparkles, Tag } from 'lucide-react'
 import usdcIcon from '@/components/assets/usdc.png'
 import baseIcon from '@/components/assets/base-logo.png'
 import { ethers } from 'ethers'
@@ -53,6 +53,10 @@ import {
 } from '@/utils/discoverEoaUsdcTopup'
 import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
 import { loadMyBrandsFeedLocalCache } from '@/utils/myBrandsFeedLocalCache'
+import {
+	buildDiscoverMerchantShareUrl,
+	shareDiscoverMerchantUrl,
+} from '@/utils/discoverMerchantShare'
 
 const SPINNER_CLASS =
 	'[&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]'
@@ -279,9 +283,17 @@ export default function MerchantCardTopUpFlow({
 	const [successNote, setSuccessNote] = useState('')
 	const [usedManual, setUsedManual] = useState(false)
 	const [legs, setLegs] = useState<CoverLeg[]>([])
+	const [sharing, setSharing] = useState(false)
+	const [shareCopied, setShareCopied] = useState(false)
+	const [shareAlert, setShareAlert] = useState('')
 	const closeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+	const shareResetTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 	const legsPlanGen = useRef(0)
 	const rowsReadyRef = useRef(false)
+	const shareUrl = useMemo(
+		() => buildDiscoverMerchantShareUrl(cardAddress, profile.keyID),
+		[cardAddress, profile.keyID],
+	)
 
 	const prefix = displayFiatPrefixFromCode(cardCurrency, 'USD')
 	const fiatHuman = amountInput.replace(/,/g, '').trim() || '0'
@@ -298,6 +310,43 @@ export default function MerchantCardTopUpFlow({
 		}, 300)
 	}, [isClosing, onClose, payBusy])
 
+	const handleShareEarn = useCallback(async () => {
+		if (sharing) return
+		setShareAlert('')
+		if (!shareUrl) {
+			setShareAlert('Share link is unavailable.')
+			return
+		}
+		setSharing(true)
+		try {
+			const dbName = resolveName(cardAddress)
+			const titleName =
+				dbName && !isGenericMerchantCardDisplayName(dbName) ? dbName : merchantName
+			const outcome = await shareDiscoverMerchantUrl(shareUrl, {
+				title: titleName?.trim()
+					? `Discover ${titleName.trim()} on Beamio`
+					: 'Discover this brand on Beamio',
+			})
+			if (outcome === 'copied') {
+				setShareCopied(true)
+				setShareAlert('Link copied. Paste it to invite friends.')
+				if (shareResetTimer.current) clearTimeout(shareResetTimer.current)
+				shareResetTimer.current = setTimeout(() => {
+					setShareCopied(false)
+					setShareAlert('')
+				}, 3000)
+			} else if (outcome === 'shared') {
+				setShareCopied(true)
+				if (shareResetTimer.current) clearTimeout(shareResetTimer.current)
+				shareResetTimer.current = setTimeout(() => setShareCopied(false), 2000)
+			} else if (outcome === 'failed') {
+				setShareAlert('Could not share this store. Try again.')
+			}
+		} finally {
+			setSharing(false)
+		}
+	}, [sharing, shareUrl, cardAddress, merchantName, resolveName])
+
 	useEffect(() => {
 		if (!open) return
 		setShowFooter(false)
@@ -311,11 +360,15 @@ export default function MerchantCardTopUpFlow({
 		setPayError('')
 		setPayBusy(false)
 		setSuccessNote('')
+		setSharing(false)
+		setShareCopied(false)
+		setShareAlert('')
 		const frame = requestAnimationFrame(() => setIsEntered(true))
 		return () => {
 			cancelAnimationFrame(frame)
 			setShowFooter(true)
 			if (closeTimer.current) clearTimeout(closeTimer.current)
+			if (shareResetTimer.current) clearTimeout(shareResetTimer.current)
 		}
 	}, [open, initialAmount, setShowFooter])
 
@@ -893,7 +946,11 @@ export default function MerchantCardTopUpFlow({
 
 	return (
 		<div
-			className="fixed inset-0 z-[130] bg-[#F9F9FB] dark:bg-slate-950"
+			className={`fixed inset-0 z-[130] dark:bg-slate-950 ${
+				step === 'success'
+					? 'bg-[radial-gradient(120%_90%_at_50%_8%,#d9f5e4_0%,#f3eef8_38%,#eef4fb_68%,#F9F9FB_100%)]'
+					: 'bg-[#F9F9FB]'
+			}`}
 			style={{
 				transform: isClosing || !isEntered ? 'translateX(100%)' : 'translateX(0)',
 				transition: 'transform 300ms ease-out',
@@ -903,15 +960,17 @@ export default function MerchantCardTopUpFlow({
 				className="flex h-full flex-col overflow-y-auto"
 				style={{ paddingTop: 'max(1rem, env(safe-area-inset-top, 0px))' }}
 			>
-				<div className={`${BEAMIO_CIRCULAR_BACK_ROW_CLASS} px-4`}>
-					<BeamioCircularBackButton variant="onLight" onClick={back} className="absolute left-4 top-0" />
-				</div>
+				{step !== 'success' ? (
+					<div className={`${BEAMIO_CIRCULAR_BACK_ROW_CLASS} px-4`}>
+						<BeamioCircularBackButton variant="onLight" onClick={back} className="absolute left-4 top-0" />
+					</div>
+				) : null}
 				{step === 'confirm' ? (
 					<header className="px-5 pb-6 pt-2">
 						<p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Review</p>
 						<h1 className="mt-1 text-3xl font-semibold text-[#0F172A] dark:text-slate-100">{title}</h1>
 					</header>
-				) : step !== 'amount' && step !== 'pay' ? (
+				) : step === 'select' ? (
 					<header className="px-5 pb-6 pt-2">
 						<p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Store credits</p>
 						<h1 className="mt-1 text-3xl font-semibold text-[#0F172A] dark:text-slate-100">{title}</h1>
@@ -1302,31 +1361,68 @@ export default function MerchantCardTopUpFlow({
 					)}
 
 					{step === 'success' && (
-						<div className="flex flex-1 flex-col items-center pt-8 text-center">
-							<div className="flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
-								<Check className="h-8 w-8" strokeWidth={2.5} />
+						<div className="flex flex-1 flex-col items-center px-1 pt-10 text-center">
+							<div className="relative flex h-28 w-28 items-center justify-center">
+								<div
+									className="absolute inset-0 rounded-full bg-emerald-400/25 blur-md"
+									aria-hidden
+								/>
+								<div className="relative flex h-[4.5rem] w-[4.5rem] items-center justify-center rounded-full bg-[#22c55e] shadow-[0_0_0_14px_rgba(34,197,94,0.16)]">
+									<Check className="h-10 w-10 text-white" strokeWidth={2.75} aria-hidden />
+								</div>
 							</div>
-							<p className="mt-6 text-2xl font-semibold">Top-Up Successful</p>
-							<p className="mt-2 text-slate-600">
-								+{mintedLabel} Store Credits Minted
+							<h1 className="mt-7 text-[1.75rem] font-bold tracking-tight text-[#0F172A] dark:text-slate-100">
+								Top-Up Successful!
+							</h1>
+							<p className="mt-2 text-base font-semibold text-[#16a34a]">
+								+{formatPrefixedFiat(prefix, mintedLabel)} Store Credits Minted
 							</p>
 							{successNote ? (
-								<p className="mt-2 text-sm text-slate-500">{successNote}</p>
+								<p className="mt-2 max-w-sm text-sm text-slate-500">{successNote}</p>
 							) : null}
-							<div className="mt-auto w-full space-y-3 pb-4">
+
+							<div className="mt-10 w-full max-w-sm rounded-[28px] bg-white px-5 py-7 text-center shadow-[0_12px_40px_rgba(15,23,42,0.08)] dark:bg-slate-900 dark:shadow-none">
+								<div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[#e8f0ff]">
+									<Share2 className="h-5 w-5 text-[#0051d1]" strokeWidth={2.25} aria-hidden />
+								</div>
+								<h2 className="mt-4 text-lg font-bold text-[#0F172A] dark:text-slate-100">
+									Share &amp; Earn Points
+								</h2>
+								<p className="mt-2 text-[14px] leading-relaxed text-slate-500 dark:text-slate-400">
+									Share this with friends to earn bonus points for both of you!
+								</p>
+								{shareAlert ? (
+									<p
+										role="alert"
+										className={`mt-3 text-[13px] ${
+											shareCopied ? 'text-emerald-600' : 'text-amber-700'
+										}`}
+									>
+										{shareAlert}
+									</p>
+								) : null}
 								<button
 									type="button"
-									className="w-full rounded-full border border-slate-200 bg-white py-3.5 text-base font-semibold"
-									onClick={() => {
-										void navigator.share?.({ title: 'Beamio', text: 'Share & Earn' }).catch(() => undefined)
-									}}
+									disabled={sharing || !shareUrl}
+									aria-busy={sharing}
+									aria-label="Share & Earn"
+									onClick={() => void handleShareEarn()}
+									className="mt-6 flex w-full items-center justify-center gap-2 rounded-2xl bg-[#3B66F5] py-4 text-[17px] font-bold text-white disabled:opacity-40"
 								>
-									Share & Earn
+									{sharing ? (
+										<Loader2 className="h-5 w-5 animate-spin" aria-hidden />
+									) : shareCopied ? (
+										<Check className="h-5 w-5 text-emerald-300" strokeWidth={2.5} aria-hidden />
+									) : (
+										<Share className="h-5 w-5" strokeWidth={2.25} aria-hidden />
+									)}
+									Share &amp; Earn
 								</button>
 								<button
 									type="button"
+									disabled={sharing}
 									onClick={close}
-									className="w-full rounded-full bg-[#0051d1] py-3.5 text-base font-semibold text-white"
+									className="mt-3 w-full rounded-2xl bg-[#eef1f6] py-4 text-[17px] font-semibold text-[#3B66F5] disabled:opacity-40 dark:bg-slate-800 dark:text-[#8eb0ff]"
 								>
 									Done
 								</button>

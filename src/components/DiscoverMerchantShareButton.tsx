@@ -45,7 +45,9 @@ export default function DiscoverMerchantShareButton({
 				setTimeout(() => setShared(false), 2000)
 				return
 			}
-			Toast.show({ content: tu('could_not_share_claim_url'), position: 'top' })
+			if (outcome === 'failed') {
+				Toast.show({ content: tu('could_not_share_claim_url'), position: 'top' })
+			}
 		},
 		[shareUrl, merchantTitle, referrerEoa]
 	)

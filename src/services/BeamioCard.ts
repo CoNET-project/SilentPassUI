@@ -474,12 +474,21 @@ const POINTS_ONE = 1_000_000n
 /** 链上货币 id（与 BeamioCurrency 一致）：全部汇率经 USD，再经 USD-USDC 换算。 */
 const CURRENCY_TO_ENUM: Record<string, number> = { CAD: 0, USD: 1, JPY: 2, CNY: 3, USDC: 4, HKD: 5, EUR: 6, SGD: 7, TWD: 8 }
 
+/** Merchant card deposit quote (+ Programs → Exchange rate merchantOracleSpreadBps). */
+const MERCHANT_DEPOSIT_QUOTE_ABI = [
+	'function currency() view returns (uint8)',
+	'function quoteUsdcDepositForFiat6(uint256 fiatAmount6) view returns (uint256)',
+	'function applyDepositSpreadUsdc6(uint256 fairUsdc6) view returns (uint256)',
+	'function applyWithdrawSpreadUsdc6(uint256 fairUsdc6) view returns (uint256)',
+] as const
+
 /**
- * 链上报价：显示货币金额 → USDC（设计：currency → USD → USDC，与 Oracle/QuoteHelper 一致）。
- * 用于 payUSDCProcess：用户输入 X CAD/USD，用此函数得到应付 USDC 数量。
+ * 链上报价：显示货币金额 → 用户应付 USDC（deposit）。
+ * 有商户卡地址时优先 `quoteUsdcDepositForFiat6`（factory fair + merchantOracleSpreadBps，
+ * 与 Merchant OS Programs → Exchange rate 一致）；失败再回退 factory fair ± spread helper。
  */
 export const quoteCurrencyAmountInUSDC = async (
-	_cardAddress: string,
+	cardAddress: string,
 	currencyCode: string,
 	amountHuman: string
 ): Promise<{ usdc6: bigint; usdc: string }> => {
@@ -488,8 +497,71 @@ export const quoteCurrencyAmountInUSDC = async (
 	if (cur === undefined) throw new Error(`Unsupported currency: ${currencyCode}`)
 	const amount6 = ethers.parseUnits(amountHuman, 6)
 	if (amount6 <= 0n) throw new Error("amount must be > 0")
-	const usdc6 = await factory.quoteCurrencyAmountInUSDC6(cur, amount6)
+
+	if (cardAddress && ethers.isAddress(cardAddress)) {
+		const card = new ethers.Contract(
+			ethers.getAddress(cardAddress),
+			MERCHANT_DEPOSIT_QUOTE_ABI,
+			conetDepinProvider,
+		)
+		try {
+			const cardCur = Number(await card.currency())
+			if (cardCur === cur) {
+				const deposit = (await card.quoteUsdcDepositForFiat6(amount6)) as bigint
+				if (deposit > 0n) {
+					return { usdc6: deposit, usdc: ethers.formatUnits(deposit, 6) }
+				}
+			}
+		} catch {
+			/* fall through to fair + applyDepositSpread */
+		}
+		try {
+			const fair = (await factory.quoteCurrencyAmountInUSDC6(cur, amount6)) as bigint
+			if (fair > 0n) {
+				try {
+					const withSpread = (await card.applyDepositSpreadUsdc6(fair)) as bigint
+					if (withSpread > 0n) {
+						return { usdc6: withSpread, usdc: ethers.formatUnits(withSpread, 6) }
+					}
+				} catch {
+					/* use fair */
+				}
+				return { usdc6: fair, usdc: ethers.formatUnits(fair, 6) }
+			}
+		} catch {
+			/* fall through */
+		}
+	}
+
+	const usdc6 = (await factory.quoteCurrencyAmountInUSDC6(cur, amount6)) as bigint
 	return { usdc6, usdc: ethers.formatUnits(usdc6, 6) }
+}
+
+/**
+ * Map deposit-spread USDC (cash leg) → program points using fair USDC
+ * (applyWithdrawSpreadUsdc6 undoes deposit markup so mint matches remaining fiat).
+ */
+export const quotePointsFromDepositUsdc6 = async (
+	cardAddress: string,
+	depositUsdc6: bigint,
+): Promise<bigint> => {
+	if (depositUsdc6 <= 0n) return 0n
+	let fairUsdc6 = depositUsdc6
+	if (cardAddress && ethers.isAddress(cardAddress)) {
+		try {
+			const card = new ethers.Contract(
+				ethers.getAddress(cardAddress),
+				MERCHANT_DEPOSIT_QUOTE_ABI,
+				conetDepinProvider,
+			)
+			const fair = (await card.applyWithdrawSpreadUsdc6(depositUsdc6)) as bigint
+			if (fair > 0n) fairUsdc6 = fair
+		} catch {
+			/* keep deposit as fair */
+		}
+	}
+	const pq = await quotePointsForUSDC(cardAddress, ethers.formatUnits(fairUsdc6, 6))
+	return pq.points6
 }
 
 /** 唯一规则：原始 currency amount 按排价转 USDC → +0.0002 USDC → 三位小数四舍五入。用于 Confirm 签名。 */

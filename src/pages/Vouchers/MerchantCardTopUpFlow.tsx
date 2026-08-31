@@ -25,7 +25,15 @@ import {
 	Reward13Row,
 	sumUsdc6,
 } from '@/utils/topupReward13Plan'
-import { buildDiscoverUsdcTreasuryBridgeQrUrl } from '@/utils/discoverUsdcTopupSession'
+import {
+	buildDiscoverUsdcTreasuryBridgeQrUrl,
+	fetchDiscoverClientTopupQuotedUsdc6,
+	payDiscoverTreasuryBridgeWithLocalWallet,
+} from '@/utils/discoverUsdcTopupSession'
+import {
+	eoaCanSelfFundDiscoverTopup,
+	readEoaUsdcBalance6,
+} from '@/utils/discoverEoaUsdcTopup'
 import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
 
 const SPINNER_CLASS =
@@ -102,6 +110,7 @@ export default function MerchantCardTopUpFlow({
 	const [selected, setSelected] = useState<Set<string>>(new Set())
 	const [quotedUsdc6, setQuotedUsdc6] = useState(0n)
 	const [eoaUsdc6, setEoaUsdc6] = useState<bigint | null>(null)
+	const [baseUsdc6, setBaseUsdc6] = useState<bigint | null>(null)
 	const [merchantName, setMerchantName] = useState('Store')
 	const [merchantIcon, setMerchantIcon] = useState<string | undefined>()
 	const [payBusy, setPayBusy] = useState(false)
@@ -172,6 +181,12 @@ export default function MerchantCardTopUpFlow({
 			const bal = await readEoaConetUsdc6(eoa)
 			if (bal !== null) setEoaUsdc6(bal)
 		}
+		try {
+			const baseBal = await readEoaUsdcBalance6(profile)
+			setBaseUsdc6(baseBal)
+		} catch {
+			/* untrusted — leave previous Base balance */
+		}
 		setRowsLoading(true)
 		try {
 			const list = await loadReward13RowsForAa(profile, profile.aaAccount, cardAddress)
@@ -237,48 +252,6 @@ export default function MerchantCardTopUpFlow({
 	const redeemLegsThenBuy = async () => {
 		if (payBusy || quotedUsdc6 <= 0n) return
 
-		// Gate on *this attempt* cash (legs already respect Use Points OFF → cashUsdc6 = full quote).
-		// Do not credit unused #13 when smartPay is off — that caused purchasingCard balance fails
-		// while the UI still showed generic "Store credit purchase failed".
-		let usdcBal = eoaUsdc6
-		if (usdcBal === null && profile.keyID) {
-			const refreshed = await readEoaConetUsdc6(profile.keyID)
-			if (refreshed !== null) {
-				usdcBal = refreshed
-				setEoaUsdc6(refreshed)
-			}
-		}
-		const knownInsufficientCash =
-			cashUsdc6 > 0n && usdcBal !== null && usdcBal < cashUsdc6
-		if (knownInsufficientCash) {
-			/** Third-party `/usdc-topup` must match Discover treasuryBridge query shape (never bare URL). */
-			const userAa = profile.aaAccount?.trim()
-			if (!userAa || !ethers.isAddress(userAa)) {
-				setPayError(
-					'Smart Wallet (AA) is required for third-party top-up. Open Wallet and finish setup, then retry.',
-				)
-				return
-			}
-			try {
-				const cardOwner = await getCardOwner(cardAddress)
-				if (!cardOwner || cardOwner === ethers.ZeroAddress) {
-					setPayError('Cannot resolve merchant card owner. Please retry.')
-					return
-				}
-				const payUrl = buildDiscoverUsdcTreasuryBridgeQrUrl({
-					cardAddress,
-					cardOwner,
-					amount: fiatHuman,
-					currency: String(cardCurrency || 'USD'),
-					recipientAa: userAa,
-				})
-				openExternalUrl(payUrl)
-			} catch {
-				setPayError('Cannot open payment page. Please retry.')
-			}
-			return
-		}
-
 		setPayBusy(true)
 		setPayError('')
 		try {
@@ -290,6 +263,7 @@ export default function MerchantCardTopUpFlow({
 
 			if (legs.length > 0) {
 				// Atomic multi-source: same-store #13 + peer #13→USDC + optional cash in one UserOp.
+				// Cash leg still requires CoNET-USDC in-container (not Base).
 				const container = await postTopupWithReward13Container({
 					targetCard: cardAddress,
 					userEOA,
@@ -304,19 +278,113 @@ export default function MerchantCardTopUpFlow({
 				const refreshed = await getMyAssets(profile, cardAddress, { bypassCache: true })
 				assets = refreshed ?? undefined
 			} else if (cashUsdc6 > 0n) {
-				// Cash-only: keep purchasingCard path (container rejects zero #13 / peer legs).
-				const buy = await postBuyCardPoints(
-					ethers.formatUnits(cashUsdc6, 6),
-					{ ...profile, privateKeyArmor: armor },
-					cardAddress,
-				)
-				if (!buy?.success) {
-					throw new Error(
-						buy?.error ||
-							'Store credit purchase failed. Check CoNET-USDC balance and try again.',
-					)
+				/**
+				 * Cash-only — same priority as Discover Market top-up:
+				 * 1) Base USDC → treasuryBridge (in-app, local wallet)
+				 * 2) CoNET-USDC → purchasingCard
+				 * 3) Third-party `/usdc-topup` only when both local balances are short
+				 */
+				const userAa = profile.aaAccount?.trim()
+				let baseBal = baseUsdc6
+				try {
+					baseBal = await readEoaUsdcBalance6(profile)
+					setBaseUsdc6(baseBal)
+				} catch {
+					/* keep previous */
 				}
-				assets = buy.assets ?? undefined
+				let settleQuotedUsdc6 = cashUsdc6
+				let cardOwnerForCash: string | null = null
+				try {
+					cardOwnerForCash = await getCardOwner(cardAddress)
+					if (cardOwnerForCash && cardOwnerForCash !== ethers.ZeroAddress) {
+						settleQuotedUsdc6 = await fetchDiscoverClientTopupQuotedUsdc6({
+							cardAddress,
+							cardOwner: cardOwnerForCash,
+							amount: fiatHuman,
+							currency: String(cardCurrency || 'USD'),
+						})
+					}
+				} catch {
+					/* keep chain quote; payDiscoverTreasuryBridgeWithLocalWallet also re-quotes */
+				}
+				if (baseBal !== null && eoaCanSelfFundDiscoverTopup(baseBal, settleQuotedUsdc6)) {
+					if (!userAa || !ethers.isAddress(userAa)) {
+						throw new Error(
+							'Smart Wallet (AA) is required for Base USDC top-up. Open Wallet and finish setup, then retry.',
+						)
+					}
+					if (!cardOwnerForCash || cardOwnerForCash === ethers.ZeroAddress) {
+						throw new Error('Cannot resolve merchant card owner. Please retry.')
+					}
+					const localPay = await payDiscoverTreasuryBridgeWithLocalWallet({
+						profile,
+						privateKeyArmor: armor,
+						cardAddress,
+						cardOwner: cardOwnerForCash,
+						recipientAa: userAa,
+						amount: fiatHuman,
+						currency: String(cardCurrency || 'USD'),
+						quotedUsdc6: settleQuotedUsdc6,
+					})
+					if (localPay.ok) {
+						const refreshed = await getMyAssets(profile, cardAddress, { bypassCache: true })
+						assets = refreshed ?? undefined
+						setMintedLabel(Number(fiatHuman).toFixed(2))
+						setStep('success')
+						onSuccess?.(assets)
+						return
+					}
+					if (!localPay.insufficientBalance) {
+						throw new Error(localPay.error || 'Base USDC top-up failed')
+					}
+					/* Balance raced down — fall through to CoNET-USDC / third-party. */
+				}
+
+				let conetBal = eoaUsdc6
+				if (profile.keyID) {
+					const refreshedConet = await readEoaConetUsdc6(profile.keyID)
+					if (refreshedConet !== null) {
+						conetBal = refreshedConet
+						setEoaUsdc6(refreshedConet)
+					}
+				}
+				if (conetBal !== null && conetBal >= cashUsdc6) {
+					const buy = await postBuyCardPoints(
+						ethers.formatUnits(cashUsdc6, 6),
+						{ ...profile, privateKeyArmor: armor },
+						cardAddress,
+					)
+					if (!buy?.success) {
+						throw new Error(
+							buy?.error ||
+								'Store credit purchase failed. Check CoNET-USDC balance and try again.',
+						)
+					}
+					assets = buy.assets ?? undefined
+				} else {
+					/** Neither Base nor CoNET-USDC covers cash — third-party treasuryBridge. */
+					if (!userAa || !ethers.isAddress(userAa)) {
+						throw new Error(
+							'Smart Wallet (AA) is required for third-party top-up. Open Wallet and finish setup, then retry.',
+						)
+					}
+					const cardOwner =
+						cardOwnerForCash && cardOwnerForCash !== ethers.ZeroAddress
+							? cardOwnerForCash
+							: await getCardOwner(cardAddress)
+					if (!cardOwner || cardOwner === ethers.ZeroAddress) {
+						throw new Error('Cannot resolve merchant card owner. Please retry.')
+					}
+					const payUrl = buildDiscoverUsdcTreasuryBridgeQrUrl({
+						cardAddress,
+						cardOwner,
+						amount: fiatHuman,
+						currency: String(cardCurrency || 'USD'),
+						recipientAa: userAa,
+					})
+					openExternalUrl(payUrl)
+					return
+				}
 			} else {
 				throw new Error('Nothing to top up')
 			}
@@ -527,6 +595,7 @@ export default function MerchantCardTopUpFlow({
 										aria-label="Use Points"
 										disabled={payBusy}
 										onClick={() => {
+											setPayError('')
 											setSmartPay((v) => !v)
 											setUsedManual(false)
 										}}
@@ -696,6 +765,12 @@ export default function MerchantCardTopUpFlow({
 									<span className="text-slate-500">USDC Required</span>
 									<span className="font-semibold">${formatUsdc(cashUsdc6)}</span>
 								</div>
+								{baseUsdc6 !== null && (
+									<div className="flex justify-between text-xs text-slate-400">
+										<span>EOA Base USDC</span>
+										<span>${formatUsdc(baseUsdc6)}</span>
+									</div>
+								)}
 								{eoaUsdc6 !== null && (
 									<div className="flex justify-between text-xs text-slate-400">
 										<span>EOA CONET-USDC</span>

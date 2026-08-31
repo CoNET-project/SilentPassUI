@@ -392,10 +392,57 @@ export type PayDiscoverTreasuryBridgeLocalResult =
 	| { ok: false; error: string; insufficientBalance?: boolean }
 
 /**
+ * Absolute USDC(6) drift allowed between `/api/nfcUsdcTopupQuote` and the 402
+ * challenge (oracle tick race). ~$0.02.
+ */
+const DISCOVER_TREASURY_BRIDGE_QUOTE_DRIFT_USDC6 = 20_000n
+
+/**
+ * Prefer live `/api/nfcUsdcTopupQuote` (same source as Market / settle challenge).
+ * Fall back to caller quote when the quote API is unavailable.
+ */
+async function resolveDiscoverTreasuryBridgeQuotedUsdc6(params: {
+	cardAddress: string
+	cardOwner: string
+	amount: string
+	currency: string
+	fallbackQuotedUsdc6: bigint
+}): Promise<bigint> {
+	try {
+		const live = await fetchDiscoverClientTopupQuotedUsdc6({
+			cardAddress: params.cardAddress,
+			cardOwner: params.cardOwner,
+			amount: params.amount,
+			currency: params.currency,
+		})
+		if (live > 0n) return live
+	} catch {
+		/* keep fallback */
+	}
+	return params.fallbackQuotedUsdc6 > 0n ? params.fallbackQuotedUsdc6 : 0n
+}
+
+function discoverTreasuryBridgeAmountsCompatible(quoted6: bigint, challenge6: bigint): boolean {
+	if (quoted6 === challenge6) return true
+	if (quoted6 <= 0n || challenge6 <= 0n) return false
+	const drift = quoted6 > challenge6 ? quoted6 - challenge6 : challenge6 - quoted6
+	const pctCap = quoted6 / 50n // 2%
+	const maxDrift =
+		pctCap > DISCOVER_TREASURY_BRIDGE_QUOTE_DRIFT_USDC6
+			? pctCap
+			: DISCOVER_TREASURY_BRIDGE_QUOTE_DRIFT_USDC6
+	return drift <= maxDrift
+}
+
+/**
  * When the local Verra EOA holds enough USDC on Base, sign EIP-3009 and POST
  * `/api/nfcUsdcTopup` with `workflow=treasuryBridge`:
  * Base USDC → bridge initiator; Master LockMint CoNET-USDC → card.owner(),
  * then protocol gateway mint card #0 → user AA (no second user signature).
+ *
+ * Always re-quotes via {@link fetchDiscoverClientTopupQuotedUsdc6} so callers that only
+ * have on-chain `quoteFiat6ToUsdc6` (e.g. MerchantCardTopUpFlow) do not trip
+ * `Payment amount mismatch` against the settle challenge.
  *
  * Caller should fall back to CoNET-USDC self-fund or {@link buildDiscoverUsdcTreasuryBridgeQrUrl}
  * when `insufficientBalance` is true.
@@ -408,12 +455,18 @@ export async function payDiscoverTreasuryBridgeWithLocalWallet(params: {
 	recipientAa: string
 	amount: string
 	currency: string
-	/** Quoted settle amount from `/api/nfcUsdcTopupQuote` (must match challenge). */
+	/** Prefer settle quote from `/api/nfcUsdcTopupQuote`; on-chain fiat→USDC is fallback only. */
 	quotedUsdc6: bigint
 	membershipTierIndex?: number | null
 	membershipFeeFiat6?: string | null
 }): Promise<PayDiscoverTreasuryBridgeLocalResult> {
-	const required6 = params.quotedUsdc6
+	const required6 = await resolveDiscoverTreasuryBridgeQuotedUsdc6({
+		cardAddress: params.cardAddress,
+		cardOwner: params.cardOwner,
+		amount: params.amount,
+		currency: params.currency,
+		fallbackQuotedUsdc6: params.quotedUsdc6,
+	})
 	if (required6 <= 0n) {
 		return { ok: false, error: 'Invalid top-up amount.' }
 	}
@@ -494,10 +547,18 @@ export async function payDiscoverTreasuryBridgeWithLocalWallet(params: {
 	} catch {
 		return { ok: false, error: 'Invalid payment amount' }
 	}
-	if (payAmount !== required6) {
+	// Challenge is settle truth; allow small oracle drift vs quote GET (Market uses same API).
+	if (!discoverTreasuryBridgeAmountsCompatible(required6, payAmount)) {
 		return {
 			ok: false,
 			error: `Payment amount mismatch: ${payAmount.toString()} != ${required6.toString()}`,
+		}
+	}
+	if (payAmount > required6 && !eoaCanSelfFundDiscoverTopup(balance6, payAmount)) {
+		return {
+			ok: false,
+			insufficientBalance: true,
+			error: `Insufficient USDC on Base. Need ${formatQuotedUsdc6ForDisplay(payAmount)} USDC.`,
 		}
 	}
 

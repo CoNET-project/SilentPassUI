@@ -5,6 +5,7 @@ import {
 	getCardsOfOwnerWithDetailsForProfile,
 	quoteCurrencyAmountInUSDC,
 	quotePointsForUSDC,
+	quotePointsFromDepositUsdc6,
 	USDC2Token,
 } from '@/services/BeamioCard'
 import { CONET_MAINNET_CHAIN_ID, CONET_USDC } from '@/config/chainAddresses'
@@ -533,8 +534,8 @@ export async function postTopupWithReward13Container(params: {
 		const owner = await getCardOwner(targetCard)
 		let cashPoints6 = 0n
 		try {
-			const pq = await quotePointsForUSDC(targetCard, ethers.formatUnits(cashUsdc6, 6))
-			cashPoints6 = pq.points6
+			// cashUsdc6 is deposit-spread USDC; mint points from fair USDC (undo merchant FX markup)
+			cashPoints6 = await quotePointsFromDepositUsdc6(targetCard, cashUsdc6)
 		} catch {
 			cashPoints6 = 0n
 		}

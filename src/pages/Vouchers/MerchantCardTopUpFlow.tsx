@@ -88,6 +88,48 @@ function formatPtsShort(points6: bigint): string {
 	return s.endsWith('.00') ? s.slice(0, -3) : s
 }
 
+type DualLegResult = { ok: true } | { ok: false; error: string }
+
+function formatCashFiatApiAmount(cashFiat: number, currency: string): string {
+	const code = (currency || 'USD').toUpperCase()
+	const decimals = code === 'JPY' || code === 'TWD' ? 0 : 2
+	const min = decimals === 0 ? 1 : 0.01
+	const n = Math.max(Number.isFinite(cashFiat) ? cashFiat : 0, min)
+	return n.toFixed(decimals)
+}
+
+function formatInsufficientBaseUsdcAlert(have6: bigint, need6: bigint): string {
+	return `This remainder is paid with USDC on Base. You have $${formatUsdc(have6)} Base USDC; this cash portion needs $${formatUsdc(need6)}. Add Base USDC, or turn off Use Points to pay the full amount after funding.`
+}
+
+function formatInsufficientConetUsdcAlert(have6: bigint, need6: bigint): string {
+	return `This payment uses CONET-USDC on CoNET, not Base USDC. You have $${formatUsdc(have6)} CONET-USDC; this top-up needs $${formatUsdc(need6)}.`
+}
+
+function composeDualPayFailure(
+	pointsOk: boolean,
+	cashOk: boolean,
+	pointsErr: string,
+	cashErr: string,
+): string {
+	if (!pointsOk && !cashOk) {
+		return `Both payments failed. Points: ${pointsErr} Base USDC: ${cashErr}`
+	}
+	if (pointsOk && !cashOk) {
+		return `Reward PT was applied. Base USDC payment failed: ${cashErr}`
+	}
+	if (!pointsOk && cashOk) {
+		return `Base USDC payment succeeded. Points top-up failed: ${pointsErr}`
+	}
+	return 'Top-up failed'
+}
+
+function friendlyTopupContainerError(raw: string): string {
+	const m = raw.match(/Insufficient CONET-USDC \(have=(\d+), need=(\d+)\)/)
+	if (m) return formatInsufficientConetUsdcAlert(BigInt(m[1]), BigInt(m[2]))
+	return raw
+}
+
 export default function MerchantCardTopUpFlow({
 	open,
 	onClose,
@@ -116,6 +158,7 @@ export default function MerchantCardTopUpFlow({
 	const [payBusy, setPayBusy] = useState(false)
 	const [payError, setPayError] = useState('')
 	const [mintedLabel, setMintedLabel] = useState('0.00')
+	const [successNote, setSuccessNote] = useState('')
 	const [usedManual, setUsedManual] = useState(false)
 	const [legs, setLegs] = useState<CoverLeg[]>([])
 	const closeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
@@ -144,6 +187,7 @@ export default function MerchantCardTopUpFlow({
 		setSelected(new Set())
 		setPayError('')
 		setPayBusy(false)
+		setSuccessNote('')
 		const frame = requestAnimationFrame(() => setIsEntered(true))
 		return () => {
 			cancelAnimationFrame(frame)
@@ -226,6 +270,20 @@ export default function MerchantCardTopUpFlow({
 
 	const coveredUsdc6 = sumUsdc6(legs)
 	const cashUsdc6 = quotedUsdc6 > coveredUsdc6 ? quotedUsdc6 - coveredUsdc6 : 0n
+	const dualSmartPay = smartPay && legs.length > 0 && cashUsdc6 > 0n
+	const cashNeedsBaseUsdc = dualSmartPay
+	const baseUsdcShort =
+		cashNeedsBaseUsdc && baseUsdc6 !== null && !eoaCanSelfFundDiscoverTopup(baseUsdc6, cashUsdc6)
+	const baseUsdcShortAlert =
+		baseUsdcShort && baseUsdc6 !== null
+			? formatInsufficientBaseUsdcAlert(baseUsdc6, cashUsdc6)
+			: ''
+	const payPanelAlert = payError || baseUsdcShortAlert
+	const payBusyLabel = dualSmartPay
+		? 'Paying with Points and Base USDC…'
+		: legs.length > 0
+			? 'Applying points…'
+			: 'Paying with USDC…'
 	const usableRows = rows.filter((r) => r.redeemableUsdc6 > 0n)
 	const fiatN = Number(fiatHuman)
 	const coveredFiat =
@@ -250,7 +308,7 @@ export default function MerchantCardTopUpFlow({
 	}
 
 	const redeemLegsThenBuy = async () => {
-		if (payBusy || quotedUsdc6 <= 0n) return
+		if (payBusy || quotedUsdc6 <= 0n || baseUsdcShort) return
 
 		setPayBusy(true)
 		setPayError('')
@@ -261,22 +319,135 @@ export default function MerchantCardTopUpFlow({
 			const userEOA = wallet.address
 			let assets: MyCardAssets | undefined
 
-			if (legs.length > 0) {
-				// Atomic multi-source: same-store #13 + peer #13→USDC + optional cash in one UserOp.
-				// Cash leg still requires CoNET-USDC in-container (not Base).
+			if (legs.length > 0 && cashUsdc6 > 0n) {
+				const cashAmount = formatCashFiatApiAmount(cashFiat, String(cardCurrency || 'USD'))
+				const runPoints = async (): Promise<DualLegResult> => {
+					try {
+						const container = await postTopupWithReward13Container({
+							targetCard: cardAddress,
+							userEOA,
+							legs,
+							cashUsdc6: 0n,
+							privateKeyArmor: armor,
+							wallet,
+						})
+						if (!container.success) {
+							return {
+								ok: false,
+								error: friendlyTopupContainerError(container.error || 'Points top-up failed'),
+							}
+						}
+						return { ok: true }
+					} catch (e: unknown) {
+						return {
+							ok: false,
+							error: friendlyTopupContainerError(e instanceof Error ? e.message : String(e)),
+						}
+					}
+				}
+				const runCashBase = async (): Promise<DualLegResult> => {
+					try {
+						const userAa = profile.aaAccount?.trim()
+						if (!userAa || !ethers.isAddress(userAa)) {
+							return {
+								ok: false,
+								error:
+									'Smart Wallet (AA) is required for Base USDC top-up. Open Wallet and finish setup, then retry.',
+							}
+						}
+						let cardOwnerForCash: string | null = null
+						let settleQuotedUsdc6 = cashUsdc6
+						try {
+							cardOwnerForCash = await getCardOwner(cardAddress)
+							if (cardOwnerForCash && cardOwnerForCash !== ethers.ZeroAddress) {
+								settleQuotedUsdc6 = await fetchDiscoverClientTopupQuotedUsdc6({
+									cardAddress,
+									cardOwner: cardOwnerForCash,
+									amount: cashAmount,
+									currency: String(cardCurrency || 'USD'),
+								})
+							}
+						} catch {
+							/* keep plan quote; payDiscoverTreasuryBridgeWithLocalWallet also re-quotes */
+						}
+						if (!cardOwnerForCash || cardOwnerForCash === ethers.ZeroAddress) {
+							return { ok: false, error: 'Cannot resolve merchant card owner. Please retry.' }
+						}
+						let baseBal = baseUsdc6
+						try {
+							baseBal = await readEoaUsdcBalance6(profile)
+							setBaseUsdc6(baseBal)
+						} catch {
+							/* untrusted — leave previous Base balance */
+						}
+						if (baseBal !== null && !eoaCanSelfFundDiscoverTopup(baseBal, settleQuotedUsdc6)) {
+							return {
+								ok: false,
+								error: formatInsufficientBaseUsdcAlert(baseBal, settleQuotedUsdc6),
+							}
+						}
+						const localPay = await payDiscoverTreasuryBridgeWithLocalWallet({
+							profile,
+							privateKeyArmor: armor,
+							cardAddress,
+							cardOwner: cardOwnerForCash,
+							recipientAa: userAa,
+							amount: cashAmount,
+							currency: String(cardCurrency || 'USD'),
+							quotedUsdc6: settleQuotedUsdc6,
+						})
+						if (!localPay.ok) {
+							return { ok: false, error: localPay.error || 'Base USDC top-up failed' }
+						}
+						return { ok: true }
+					} catch (e: unknown) {
+						return { ok: false, error: e instanceof Error ? e.message : String(e) }
+					}
+				}
+				const [pointsSettled, cashSettled] = await Promise.allSettled([runPoints(), runCashBase()])
+				const pointsRes: DualLegResult =
+					pointsSettled.status === 'fulfilled'
+						? pointsSettled.value
+						: {
+								ok: false,
+								error: friendlyTopupContainerError(String(pointsSettled.reason)),
+							}
+				const cashRes: DualLegResult =
+					cashSettled.status === 'fulfilled'
+						? cashSettled.value
+						: { ok: false, error: String(cashSettled.reason) }
+				if (!pointsRes.ok || !cashRes.ok) {
+					throw new Error(
+						composeDualPayFailure(
+							pointsRes.ok,
+							cashRes.ok,
+							pointsRes.ok ? '' : pointsRes.error,
+							cashRes.ok ? '' : cashRes.error,
+						),
+					)
+				}
+				try {
+					const refreshed = await getMyAssets(profile, cardAddress, { bypassCache: true })
+					assets = refreshed ?? undefined
+				} catch {
+					/* payments already succeeded — untrusted asset refresh must not hide success */
+				}
+				setSuccessNote('Points and Base USDC both completed.')
+			} else if (legs.length > 0) {
 				const container = await postTopupWithReward13Container({
 					targetCard: cardAddress,
 					userEOA,
 					legs,
-					cashUsdc6,
+					cashUsdc6: 0n,
 					privateKeyArmor: armor,
 					wallet,
 				})
 				if (!container.success) {
-					throw new Error(container.error || 'Atomic top-up failed')
+					throw new Error(friendlyTopupContainerError(container.error || 'Points top-up failed'))
 				}
 				const refreshed = await getMyAssets(profile, cardAddress, { bypassCache: true })
 				assets = refreshed ?? undefined
+				setSuccessNote('')
 			} else if (cashUsdc6 > 0n) {
 				/**
 				 * Cash-only — same priority as Discover Market top-up:
@@ -393,7 +564,7 @@ export default function MerchantCardTopUpFlow({
 			setStep('success')
 			onSuccess?.(assets)
 		} catch (e: unknown) {
-			setPayError(e instanceof Error ? e.message : String(e))
+			setPayError(friendlyTopupContainerError(e instanceof Error ? e.message : String(e)))
 		} finally {
 			setPayBusy(false)
 		}
@@ -613,7 +784,7 @@ export default function MerchantCardTopUpFlow({
 
 								<p className="mt-3 text-[13px] leading-relaxed text-white/90">
 									{smartPay
-										? 'Points + USDC. Use available points, cover the rest with cash.'
+										? 'Points + Base USDC. Use available points, cover the rest with USDC on Base.'
 										: 'Pay the full amount with USDC.'}
 								</p>
 
@@ -631,6 +802,11 @@ export default function MerchantCardTopUpFlow({
 										</p>
 									</div>
 								</div>
+								{cashNeedsBaseUsdc && baseUsdc6 !== null ? (
+									<p className="mt-2 text-[12px] text-white/75">
+										Base USDC ${formatUsdc(baseUsdc6)} · need ${formatUsdc(cashUsdc6)}
+									</p>
+								) : null}
 							</div>
 
 							{smartPay ? (
@@ -662,19 +838,19 @@ export default function MerchantCardTopUpFlow({
 								</button>
 							) : null}
 
-							{payError ? (
+							{payPanelAlert ? (
 								<div
 									role="alert"
 									className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] text-amber-800"
 								>
 									<AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" aria-hidden />
-									<p>{payError}</p>
+									<p>{payPanelAlert}</p>
 								</div>
 							) : null}
 
 							<button
 								type="button"
-								disabled={payBusy || quotedUsdc6 <= 0n}
+								disabled={payBusy || quotedUsdc6 <= 0n || baseUsdcShort}
 								aria-busy={payBusy}
 								onClick={() => void redeemLegsThenBuy()}
 								className="mt-auto w-full rounded-2xl bg-[#3B66F5] py-4 text-[17px] font-bold text-white disabled:opacity-40"
@@ -682,7 +858,7 @@ export default function MerchantCardTopUpFlow({
 								{payBusy ? (
 									<span className="inline-flex items-center justify-center gap-2">
 										<Loader2 className="h-5 w-5 animate-spin" aria-hidden />
-										Confirm Top Up
+										{payBusyLabel}
 									</span>
 								) : (
 									'Confirm Top Up'
@@ -778,24 +954,24 @@ export default function MerchantCardTopUpFlow({
 									</div>
 								)}
 							</div>
-							{payError ? (
+							{payPanelAlert ? (
 								<div
 									role="alert"
 									className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] text-amber-800"
 								>
 									<AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" aria-hidden />
-									<p>{payError}</p>
+									<p>{payPanelAlert}</p>
 								</div>
 							) : null}
 							<button
 								type="button"
-								disabled={payBusy || quotedUsdc6 <= 0n}
+								disabled={payBusy || quotedUsdc6 <= 0n || baseUsdcShort}
 								aria-busy={payBusy}
 								onClick={() => void redeemLegsThenBuy()}
 								className="mt-8 flex w-full items-center justify-center gap-2 rounded-full bg-[#0051d1] py-3.5 text-base font-semibold text-white disabled:opacity-40"
 							>
 								{payBusy ? <Loader2 className="h-5 w-5 animate-spin" aria-hidden /> : null}
-								Pay
+								{payBusy ? payBusyLabel : 'Pay'}
 							</button>
 						</>
 					)}
@@ -809,6 +985,9 @@ export default function MerchantCardTopUpFlow({
 							<p className="mt-2 text-slate-600">
 								+{mintedLabel} Store Credits Minted
 							</p>
+							{successNote ? (
+								<p className="mt-2 text-sm text-slate-500">{successNote}</p>
+							) : null}
 							<div className="mt-auto w-full space-y-3 pb-4">
 								<button
 									type="button"

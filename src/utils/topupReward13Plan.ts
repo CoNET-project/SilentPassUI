@@ -11,6 +11,41 @@ import {
 import { CONET_MAINNET_CHAIN_ID, CONET_USDC } from '@/config/chainAddresses'
 import { beamioApi, conetDepinProvider } from '@/utils/constants'
 import { getCardFactoryGatewayForEip712 } from '@/utils/beamioUserCardChain'
+import { resolveBeamioAaOnConet } from '@/utils/resolveBeamioAaFromCardFactory'
+
+/**
+ * #13 Reward PT is held on the deployed Consumer AA (factory + getCode), not EOA.
+ * Prefer chain-resolved AA over `profile.aaAccount` (may be missing or a V2 CREATE2
+ * prediction with no code while balances sit on the V1 AA).
+ * Never return an address without bytecode — balanceOf(empty) is 0 and paints CA$ 0.00.
+ */
+export async function resolveAaHoldingReward13(
+	profile: profile,
+	aaHint?: string | null,
+): Promise<string | null> {
+	const hintRaw =
+		(aaHint && ethers.isAddress(aaHint) ? aaHint : null) ||
+		(profile?.aaAccount && ethers.isAddress(profile.aaAccount) ? profile.aaAccount : null)
+	const hint = hintRaw ? ethers.getAddress(hintRaw) : null
+
+	const eoaRaw = typeof profile?.keyID === 'string' ? profile.keyID.trim() : ''
+	if (eoaRaw && ethers.isAddress(eoaRaw)) {
+		try {
+			const factoryAa = await resolveBeamioAaOnConet(conetDepinProvider, ethers.getAddress(eoaRaw))
+			if (factoryAa) return factoryAa
+		} catch {
+			/* fall through to hint */
+		}
+	}
+	if (!hint) return null
+	try {
+		const code = await conetDepinProvider.getCode(hint)
+		if (code && code !== '0x' && code.length > 2) return hint
+	} catch {
+		/* untrusted — do not use unverified hint */
+	}
+	return null
+}
 
 /** @deprecated Legacy two-step redeem; atomic container uses TOPUP_WITH_REWARD13_CONTAINER_EIP712_TYPES. */
 export const REDEEM_REWARD13_EIP712_TYPES: Record<string, Array<{ name: string; type: string }>> = {
@@ -64,9 +99,6 @@ const CARD_IFACE = new ethers.Interface([
 
 const ERC20_IFACE = new ethers.Interface(['function balanceOf(address) view returns (uint256)'])
 
-/** peerRedeem13ForContainerTopup(address,uint256,uint256,address) */
-const PEER_REDEEM_SEL = ethers.id('peerRedeem13ForContainerTopup(address,uint256,uint256,address)').slice(0, 10)
-
 const ENUM_TO_CURRENCY = ['CAD', 'USD', 'JPY', 'CNY', 'USDC', 'HKD', 'EUR', 'SGD', 'TWD'] as const
 
 export type Reward13CoverKind = 'toProgramPoints' | 'toUsdc'
@@ -75,16 +107,25 @@ export type Reward13Row = {
 	cardAddress: string
 	name: string
 	icon?: string
+	/** Full AA #13 balance (not escrow-capped). */
 	pointsBalance6: bigint
 	escrowUsdc6: bigint
-	/** Full-balance on-chain USDC quote (peer) or fiat≈USDC cover (same-store). */
+	/** Full-balance on-chain USDC quote (peer) or escrow-capped quote (same-store). */
 	quotedUsdc6: bigint
 	/** Fail-closed max USDC this row can pay: min(quote, escrow, ERC20). */
 	redeemableUsdc6: bigint
-	/** Burn #13 that quotes exactly to redeemableUsdc6 (peer) or full bal (same-store). */
+	/**
+	 * Usable burn #13 after escrow + card USDC liquidity.
+	 * Same-store and peer both size via findBurn13ForUsdcTarget when capped.
+	 */
 	redeemablePoints6: bigint
 	supportsRedeem: boolean
 	coverKind: Reward13CoverKind
+	/**
+	 * Same-store: true after on-chain escrow+liquidity sized redeemable (incl. 0).
+	 * Preview/hydrate rows stay false so UI does not treat escrow-unknown as settled.
+	 */
+	escrowSized?: boolean
 }
 
 export type CoverLeg = {
@@ -147,10 +188,22 @@ const REWARD13_ROWS_CACHE_TTL_MS = 15_000
 const reward13RowsCache = new Map<string, { rows: Reward13Row[]; ts: number }>()
 const reward13RowsInflight = new Map<string, Promise<Reward13Row[]>>()
 const reward13RowsInflightSubs = new Map<string, Set<(rows: Reward13Row[]) => void>>()
-const peerSupportCache = new Map<string, boolean>()
+/** Successful same-store balanceOf === 0 (not RPC failure / wrong-AA guess). */
+const trustedSameStoreZeroKeys = new Set<string>()
 
 function reward13CacheKey(aa: string, target: string | null): string {
 	return `${aa.toLowerCase()}:${(target ?? '').toLowerCase()}`
+}
+
+/** True when chain confirmed same-store #13 is 0 for this AA+card (settle cover as 0.00). */
+export function isTrustedSameStoreZero(
+	aa: string | null | undefined,
+	target: string | null | undefined,
+): boolean {
+	if (!aa || !ethers.isAddress(aa) || !target || !ethers.isAddress(target)) return false
+	return trustedSameStoreZeroKeys.has(
+		reward13CacheKey(ethers.getAddress(aa), ethers.getAddress(target)),
+	)
 }
 
 export function peekReward13RowsCache(
@@ -167,21 +220,38 @@ export function mergeReward13Rows(prev: Reward13Row[], incoming: Reward13Row[]):
 	for (const row of incoming) {
 		const key = row.cardAddress.toLowerCase()
 		const existing = map.get(key)
-		// Never let a same-store refine with 0 redeemable wipe a trusted preview.
+		// Escrow-sized same-store (incl. usable = 0) always replaces optimistic preview.
+		if (row.escrowSized) {
+			map.set(key, row)
+			continue
+		}
+		// Never let seed / preview (escrowSized=false) wipe a trusted escrow-sized row.
+		if (existing?.escrowSized && !row.escrowSized) {
+			if (
+				row.coverKind === 'toProgramPoints' &&
+				row.pointsBalance6 > existing.pointsBalance6
+			) {
+				map.set(key, { ...existing, pointsBalance6: row.pointsBalance6 })
+			}
+			continue
+		}
+		// Never let a transient empty / failed read wipe a trusted positive #13 balance
+		// when the incoming row is not escrow-sized yet.
 		if (
 			existing &&
 			existing.coverKind === 'toProgramPoints' &&
 			existing.pointsBalance6 > 0n &&
-			existing.redeemableUsdc6 > 0n &&
 			row.coverKind === 'toProgramPoints' &&
-			row.redeemableUsdc6 <= 0n
+			row.pointsBalance6 <= 0n
 		) {
 			map.set(key, {
 				...row,
-				quotedUsdc6: existing.quotedUsdc6,
+				pointsBalance6: existing.pointsBalance6,
+				quotedUsdc6: existing.quotedUsdc6 > row.quotedUsdc6 ? existing.quotedUsdc6 : row.quotedUsdc6,
 				redeemableUsdc6: existing.redeemableUsdc6,
 				redeemablePoints6: existing.redeemablePoints6,
-				pointsBalance6: existing.pointsBalance6 > row.pointsBalance6 ? existing.pointsBalance6 : row.pointsBalance6,
+				escrowUsdc6: existing.escrowUsdc6 > row.escrowUsdc6 ? existing.escrowUsdc6 : row.escrowUsdc6,
+				escrowSized: existing.escrowSized,
 			})
 			continue
 		}
@@ -237,21 +307,22 @@ export function seedAssetsFromPoints13Human(
 	return { chargeRewardPoints: String(human) }
 }
 
+/**
+ * Optimistic same-store row before escrow + liquidity sizing.
+ * redeemable stays 0 so Cover / settle do not treat escrow-unknown as full PT.
+ */
 function previewSameStoreRow(cardAddress: string, bal13: bigint, name?: string): Reward13Row {
 	return {
 		cardAddress,
 		name: name?.trim() || `Program ${cardAddress.slice(0, 6)}…${cardAddress.slice(-4)}`,
 		pointsBalance6: bal13,
 		escrowUsdc6: 0n,
-		// Same-store #13 is 1:1 with card fiat, not USDC. These USDC-6 slots
-		// are placeholders so row merge / empty checks stay non-zero. Planner
-		// and display must convert via bill fiat6, never treat PT as USDC
-		// (CAD/USD ≈ 1.387 would show 10 PT as 13.87).
-		quotedUsdc6: bal13,
-		redeemableUsdc6: bal13,
-		redeemablePoints6: bal13,
+		quotedUsdc6: 0n,
+		redeemableUsdc6: 0n,
+		redeemablePoints6: 0n,
 		supportsRedeem: false,
 		coverKind: 'toProgramPoints',
+		escrowSized: false,
 	}
 }
 
@@ -284,23 +355,23 @@ export function hydrateSameStoreRowFromAssets(
 	return previewSameStoreRow(ethers.getAddress(cardAddress), bal, name)
 }
 
-/** Sync greedy cover in USDC-6. Same-store first (fiat 1:1 → proportional USDC). No extra RPC. */
+/** Sync greedy cover in USDC-6. Same-store first (escrow-capped PT → proportional USDC). */
 export function estimateCoverUsdc6(rows: Reward13Row[], needUsdc6: bigint, fiat6 = 0n): bigint {
 	if (needUsdc6 <= 0n) return 0n
 	const same = rows
-		.filter((r) => r.coverKind === 'toProgramPoints' && r.pointsBalance6 > 0n)
+		.filter((r) => r.coverKind === 'toProgramPoints' && r.redeemablePoints6 > 0n)
 		.slice()
-		.sort(sortByBalance)
+		.sort(sortByRedeemable)
 	const other = rows
 		.filter((r) => r.coverKind !== 'toProgramPoints' && r.redeemableUsdc6 > 0n)
 		.slice()
-		.sort(sortByBalance)
+		.sort(sortByRedeemable)
 	let remaining = needUsdc6
 	let covered = 0n
 	if (fiat6 > 0n) {
 		for (const row of same) {
 			if (remaining <= 0n) break
-			const takePts = row.pointsBalance6 < fiat6 ? row.pointsBalance6 : fiat6
+			const takePts = row.redeemablePoints6 < fiat6 ? row.redeemablePoints6 : fiat6
 			if (takePts <= 0n) continue
 			const takeUsdc = (needUsdc6 * takePts) / fiat6
 			const take = takeUsdc < remaining ? takeUsdc : remaining
@@ -318,40 +389,29 @@ export function estimateCoverUsdc6(rows: Reward13Row[], needUsdc6: bigint, fiat6
 	return covered
 }
 
-/** Same-store #13 in card fiat: min(amount, points). Used before the USDC quote arrives. */
+/** Same-store escrow-capped #13 in card fiat: min(amount, redeemablePoints). */
 export function estimateSameStoreCoverFiat(rows: Reward13Row[], fiatN: number): number {
 	if (!Number.isFinite(fiatN) || fiatN <= 0) return 0
-	const same = rows.find((r) => r.coverKind === 'toProgramPoints' && r.pointsBalance6 > 0n)
+	const same = rows.find((r) => r.coverKind === 'toProgramPoints' && r.redeemablePoints6 > 0n)
 	if (!same) return 0
-	const pts = Number(ethers.formatUnits(same.pointsBalance6, 6))
+	const pts = Number(ethers.formatUnits(same.redeemablePoints6, 6))
 	if (!Number.isFinite(pts) || pts <= 0) return 0
 	return Math.min(fiatN, pts)
 }
 
+/** Same-store usable burn #13 > 0 after escrow + card USDC liquidity. */
 export function sameStoreHasPositiveCover(rows: Reward13Row[]): boolean {
-	return rows.some((r) => r.coverKind === 'toProgramPoints' && r.pointsBalance6 > 0n)
+	return rows.some((r) => r.coverKind === 'toProgramPoints' && r.redeemablePoints6 > 0n)
 }
 
-function hasSameStoreRow(rows: Reward13Row[]): boolean {
+/** Same-store #13 was sized against rewardEscrow + card USDC (settle even if usable = 0). */
+export function sameStoreEscrowSized(rows: Reward13Row[]): boolean {
+	return rows.some((r) => r.coverKind === 'toProgramPoints' && r.escrowSized === true)
+}
+
+/** Same-store #13 row present (balance may be 0). Smart Pay cover is settled. */
+export function hasSameStoreRow(rows: Reward13Row[]): boolean {
 	return rows.some((r) => r.coverKind === 'toProgramPoints')
-}
-
-async function cardSupportsPeerContainerRedeem(cardAddress: string): Promise<boolean> {
-	const key = cardAddress.toLowerCase()
-	const hit = peerSupportCache.get(key)
-	if (hit !== undefined) return hit
-	try {
-		const code = await conetDepinProvider.getCode(cardAddress)
-		if (!code || code === '0x') {
-			peerSupportCache.set(key, false)
-			return false
-		}
-		const ok = code.toLowerCase().includes(PEER_REDEEM_SEL.slice(2).toLowerCase())
-		peerSupportCache.set(key, ok)
-		return ok
-	} catch {
-		return false
-	}
 }
 
 async function quotePeerUsdcForBurn(cardAddress: string, burn13: bigint): Promise<bigint> {
@@ -361,20 +421,38 @@ async function quotePeerUsdcForBurn(cardAddress: string, burn13: bigint): Promis
 }
 
 /**
- * Largest burn13 in [1, maxBurn] whose on-chain quote is ≤ targetUsdc and as close as possible.
- * Fail-closed: never return a burn whose quote exceeds target or liquidity.
+ * Cap burn13 so quote(burn) ≤ targetUsdc.
+ * Seed with proportional guess from fullBalanceQuote (O(1) RPC), then ≤8 binary
+ * steps — never scan full [1, maxBurn] on serial CoNET RPC (hangs Smart Pay spinner).
  */
 async function findBurn13ForUsdcTarget(
 	cardAddress: string,
 	maxBurn: bigint,
 	targetUsdc: bigint,
+	fullBalanceQuoteUsdc?: bigint,
 ): Promise<{ burn13: bigint; usdcOut6: bigint } | null> {
 	if (maxBurn <= 0n || targetUsdc <= 0n) return null
+	const fullQ =
+		fullBalanceQuoteUsdc !== undefined && fullBalanceQuoteUsdc > 0n
+			? fullBalanceQuoteUsdc
+			: await quotePeerUsdcForBurn(cardAddress, maxBurn)
+	if (fullQ <= 0n) return null
+	if (fullQ <= targetUsdc) return { burn13: maxBurn, usdcOut6: fullQ }
+
 	let lo = 1n
-	let hi = maxBurn
+	let hi = (maxBurn * targetUsdc) / fullQ
+	if (hi < 1n) hi = 1n
+	if (hi > maxBurn) hi = maxBurn
+	// Widen hi slightly in case quote is sub-linear.
+	const wide = hi + hi / 10n + 1n
+	hi = wide < maxBurn ? wide : maxBurn
+
 	let bestBurn = 0n
 	let bestUsdc = 0n
-	while (lo <= hi) {
+	let steps = 0
+	const MAX_STEPS = 8
+	while (lo <= hi && steps < MAX_STEPS) {
+		steps += 1
 		const mid = (lo + hi) / 2n
 		const q = await quotePeerUsdcForBurn(cardAddress, mid)
 		if (q === 0n) {
@@ -389,11 +467,34 @@ async function findBurn13ForUsdcTarget(
 			hi = mid - 1n
 		}
 	}
-	if (bestBurn <= 0n || bestUsdc <= 0n) return null
-	// Re-quote to confirm (Cluster requires usdcOut6 === quote(burn13)).
+	if (bestBurn <= 0n || bestUsdc <= 0n) {
+		// Proportional fail-closed estimate (no more RPC) — good enough for cover UI.
+		const approx = (maxBurn * targetUsdc) / fullQ
+		if (approx <= 0n) return null
+		return { burn13: approx < maxBurn ? approx : maxBurn, usdcOut6: targetUsdc }
+	}
 	const confirm = await quotePeerUsdcForBurn(cardAddress, bestBurn)
-	if (confirm !== bestUsdc || confirm > targetUsdc) return null
+	if (confirm <= 0n || confirm > targetUsdc) {
+		return { burn13: bestBurn, usdcOut6: bestUsdc <= targetUsdc ? bestUsdc : targetUsdc }
+	}
 	return { burn13: bestBurn, usdcOut6: confirm }
+}
+
+/** Same-store: map USDC escrow/liquidity cap → usable #13 without binary search. */
+function sameStoreRedeemableFromUsdcCap(
+	bal13: bigint,
+	quotedUsdc6: bigint,
+	maxUsdc: bigint,
+): { redeemablePoints6: bigint; redeemableUsdc6: bigint } {
+	if (bal13 <= 0n || quotedUsdc6 <= 0n || maxUsdc <= 0n) {
+		return { redeemablePoints6: 0n, redeemableUsdc6: 0n }
+	}
+	if (maxUsdc >= quotedUsdc6) {
+		return { redeemablePoints6: bal13, redeemableUsdc6: quotedUsdc6 }
+	}
+	let pts = (bal13 * maxUsdc) / quotedUsdc6
+	if (pts > bal13) pts = bal13
+	return { redeemablePoints6: pts, redeemableUsdc6: maxUsdc }
 }
 
 function fallbackQuotedUsdc6(currencyCode: string, fiat6: bigint, quotedUsdc6: bigint): bigint {
@@ -410,14 +511,18 @@ async function buildReward13RowForCard(
 ): Promise<Reward13Row | null> {
 	const contract = new ethers.Contract(cardAddress, CARD_IFACE, conetDepinProvider)
 	const usdc = new ethers.Contract(CONET_USDC, ERC20_IFACE, conetDepinProvider)
-	const [bal13, escrow, currency, priceE6] = await Promise.all([
-		contract.balanceOf(aa, 13n) as Promise<bigint>,
-		contract.rewardEscrowUsdc6() as Promise<bigint>,
-		contract.currency() as Promise<bigint>,
-		contract.pointsUnitPriceInCurrencyE6() as Promise<bigint>,
-	])
-	if (bal13 <= 0n) return null
 	const isSameStore = target !== null && cardAddress === target
+
+	// Same-store: never catch balance/escrow/tokenBal → 0. That painted Covered CA$ 0.00
+	// while AA still held #13 (fail-closed + escrowSized poison cache). Throw so caller
+	// keeps unsized preview and retries instead of settling usable=0.
+	const bal13 = isSameStore
+		? ((await contract.balanceOf(aa, 13n)) as bigint)
+		: ((await contract.balanceOf(aa, 13n).catch(() => 0n)) as bigint)
+	if (bal13 <= 0n) return null
+
+	const currency = (await contract.currency().catch(() => 0n)) as bigint
+	const priceE6 = (await contract.pointsUnitPriceInCurrencyE6().catch(() => 0n)) as bigint
 	const fiat6 = priceE6 > 0n ? (bal13 * priceE6) / 1_000_000n : 0n
 	let quotedUsdc6 = 0n
 	const currencyCode = ENUM_TO_CURRENCY[Number(currency)] ?? 'USD'
@@ -426,57 +531,78 @@ async function buildReward13RowForCard(
 	let redeemablePoints6 = 0n
 	let supportsRedeem = false
 	let coverKind: Reward13CoverKind = 'toUsdc'
+	let escrow = 0n
 
 	if (isSameStore) {
-		// Same-store cover is 1:1 card fiat. priceE6==0 must not fall through to the
-		// peer path (redeemableUsdc6=0 would wipe a trusted preview).
+		// Same-store burn #13 → #0 is 1:1 card fiat, but usable PT is capped by
+		// merchant rewardEscrowUsdc6 + card CONET-USDC liquidity. Use O(1)
+		// proportional map — binary search hung Smart Pay on serial RPC.
 		coverKind = 'toProgramPoints'
-		if (priceE6 > 0n) {
+		supportsRedeem = false
+		escrow = (await contract.rewardEscrowUsdc6()) as bigint
+		try {
+			quotedUsdc6 = (await contract.quoteUsdcWithdrawForFiat6(bal13)) as bigint
+		} catch {
+			quotedUsdc6 = 0n
+		}
+		if (quotedUsdc6 === 0n && priceE6 > 0n) {
 			quotedUsdc6 = fallbackQuotedUsdc6(currencyCode, fiat6, 0n)
 			if (quotedUsdc6 === 0n && fiat6 > 0n) quotedUsdc6 = fiat6
-		} else {
-			quotedUsdc6 = bal13
 		}
-		redeemableUsdc6 = quotedUsdc6
-		redeemablePoints6 = bal13
+		const tokenBal = (await usdc.balanceOf(cardAddress)) as bigint
+		const maxUsdc =
+			quotedUsdc6 < escrow
+				? quotedUsdc6 < tokenBal
+					? quotedUsdc6
+					: tokenBal
+				: escrow < tokenBal
+					? escrow
+					: tokenBal
+		const sized = sameStoreRedeemableFromUsdcCap(bal13, quotedUsdc6, maxUsdc)
+		redeemableUsdc6 = sized.redeemableUsdc6
+		redeemablePoints6 = sized.redeemablePoints6
 	} else {
-		supportsRedeem = await cardSupportsPeerContainerRedeem(cardAddress)
-		let ratio = 0n
+		escrow = (await contract.rewardEscrowUsdc6().catch(() => 0n)) as bigint
+		// Do not gate peer redemption on runtime bytecode inspection or the
+		// legacy ratio getter. Module/fallback cards can expose the actual
+		// redemption route without either value being present in the proxy
+		// runtime bytecode. The quote call below is the capability probe and
+		// also gives us the full-balance USDC amount.
 		try {
-			ratio = (await contract.convertReward13ToUsdcRatioE6()) as bigint
+			quotedUsdc6 = (await contract.quoteUsdcWithdrawForFiat6(bal13)) as bigint
+			supportsRedeem = quotedUsdc6 > 0n
 		} catch {
-			ratio = 0n
+			quotedUsdc6 = 0n
+			supportsRedeem = false
 		}
-		if (supportsRedeem && ratio > 0n) {
-			try {
-				quotedUsdc6 = (await contract.quoteUsdcWithdrawForFiat6(bal13)) as bigint
-			} catch {
-				quotedUsdc6 = 0n
-			}
-			let tokenBal = 0n
-			try {
-				tokenBal = (await usdc.balanceOf(cardAddress)) as bigint
-			} catch {
-				tokenBal = 0n
-			}
-			const maxUsdc =
-				quotedUsdc6 < escrow
-					? quotedUsdc6 < tokenBal
-						? quotedUsdc6
-						: tokenBal
-					: escrow < tokenBal
-						? escrow
-						: tokenBal
-			if (maxUsdc > 0n && quotedUsdc6 > 0n) {
-				if (maxUsdc === quotedUsdc6) {
-					redeemableUsdc6 = quotedUsdc6
-					redeemablePoints6 = bal13
-				} else {
-					const sized = await findBurn13ForUsdcTarget(cardAddress, bal13, maxUsdc)
-					if (sized) {
-						redeemableUsdc6 = sized.usdcOut6
-						redeemablePoints6 = sized.burn13
-					}
+		let tokenBal = 0n
+		try {
+			tokenBal = (await usdc.balanceOf(cardAddress)) as bigint
+		} catch {
+			tokenBal = 0n
+		}
+		const maxUsdc =
+			quotedUsdc6 < escrow
+				? quotedUsdc6 < tokenBal
+					? quotedUsdc6
+					: tokenBal
+				: escrow < tokenBal
+					? escrow
+					: tokenBal
+		if (supportsRedeem && maxUsdc > 0n && quotedUsdc6 > 0n) {
+			if (maxUsdc >= quotedUsdc6) {
+				redeemableUsdc6 = quotedUsdc6
+				redeemablePoints6 = bal13
+			} else {
+				const sized = await findBurn13ForUsdcTarget(
+					cardAddress,
+					bal13,
+					maxUsdc,
+					quotedUsdc6,
+				)
+				if (sized) {
+					redeemableUsdc6 = sized.usdcOut6
+					redeemablePoints6 = sized.burn13
 				}
 			}
 		}
@@ -494,6 +620,7 @@ async function buildReward13RowForCard(
 		redeemablePoints6,
 		supportsRedeem,
 		coverKind,
+		escrowSized: isSameStore ? true : undefined,
 	}
 }
 
@@ -507,34 +634,56 @@ async function loadReward13RowsForAaUncached(
 	const emit = () => onPartial?.([...collected.values()])
 
 	// Preview-first: one same-store balanceOf, then emit. CoNET provider is
-	// serial (batchMaxCount:1) — starting getCardsOfOwner / refine in parallel
-	// starves this call and leaves Smart Pay at 0.00 until the full scan ends.
+	// serial (batchMaxCount:1) — never start getCardsOfOwner until same-store
+	// preview (+ refine) finish, or Smart Pay stays at CA$ 0.00.
+	const zeroKey = target ? reward13CacheKey(aa, target) : null
 	if (target) {
 		try {
 			const contract = new ethers.Contract(target, CARD_IFACE, conetDepinProvider)
 			const bal13 = (await contract.balanceOf(aa, 13n)) as bigint
-			collected.set(target.toLowerCase(), previewSameStoreRow(target, bal13))
-			emit()
+			if (bal13 > 0n) {
+				if (zeroKey) trustedSameStoreZeroKeys.delete(zeroKey)
+				collected.set(target.toLowerCase(), previewSameStoreRow(target, bal13))
+				emit()
+			} else if (zeroKey) {
+				// Trusted empty — do NOT emit a 0-PT row (that painted CA$ 0.00 via
+				// hasSameStoreRow before AA was verified). Caller settles via
+				// isTrustedSameStoreZero.
+				trustedSameStoreZeroKeys.add(zeroKey)
+			}
 		} catch {
 			/* untrusted — keep seed / last preview; do not emit empty */
 		}
+
+		const refineSameStore = async (): Promise<void> => {
+			const row = await buildReward13RowForCard(aa, target, target)
+			if (row) {
+				if (zeroKey) trustedSameStoreZeroKeys.delete(zeroKey)
+				collected.set(row.cardAddress.toLowerCase(), row)
+				emit()
+				return
+			}
+			// Trusted empty refine (balanceOf === 0) — drop preview; do NOT mark
+			// escrowSized with redeemable=0 while preview still had pointsBalance>0.
+			collected.delete(target.toLowerCase())
+			if (zeroKey) trustedSameStoreZeroKeys.add(zeroKey)
+			emit()
+		}
+		try {
+			await refineSameStore()
+		} catch {
+			// One retry: serial CoNET RPC often fails the first escrow/tokenBal after preview.
+			try {
+				await refineSameStore()
+			} catch {
+				// Keep unsized preview (escrowSized=false). Settling usable=0 here was the
+				// Covered CA$ 0.00 bug when escrow/tokenBal RPC failed under serial RPC.
+			}
+		}
 	}
 
-	const sameStoreP = target
-		? buildReward13RowForCard(aa, target, target)
-				.then((row) => {
-					if (row) collected.set(row.cardAddress.toLowerCase(), row)
-					emit()
-				})
-				.catch(() => {
-					/* keep last same-store preview */
-				})
-		: Promise.resolve()
-
-	const cardsP = getCardsOfOwnerWithDetailsForProfile(profile).catch(() => null)
-	await sameStoreP
-
-	const result = await cardsP
+	// Peer scan only after same-store is settled on this serial RPC.
+	const result = await getCardsOfOwnerWithDetailsForProfile(profile).catch(() => null)
 	const addresses = new Set<string>()
 	if (target) addresses.add(target)
 	if (result) {
@@ -575,11 +724,15 @@ export async function loadReward13RowsForAa(
 	targetCardAddress?: string | null,
 	opts?: { onPartial?: (rows: Reward13Row[]) => void },
 ): Promise<Reward13Row[]> {
-	const aa =
-		(aaAddress && ethers.isAddress(aaAddress) ? ethers.getAddress(aaAddress) : null) ||
-		(profile.aaAccount && ethers.isAddress(profile.aaAccount)
-			? ethers.getAddress(profile.aaAccount)
-			: null)
+	// Callers (Top-up flow / Discover prefetch) already ran resolveAaHoldingReward13.
+	// Trust a checksummed aaAddress — re-resolve under batchMaxCount:1 can fail and
+	// return [] while the caller still settles cover as CA$ 0.00.
+	let aa: string | null = null
+	if (aaAddress && ethers.isAddress(aaAddress)) {
+		aa = ethers.getAddress(aaAddress)
+	} else {
+		aa = await resolveAaHoldingReward13(profile, aaAddress)
+	}
 	if (!aa) return []
 
 	const target =
@@ -588,13 +741,19 @@ export async function loadReward13RowsForAa(
 			: null
 	const key = reward13CacheKey(aa, target)
 	const cached = reward13RowsCache.get(key)
+	// Only short-circuit on positive usable cover. Sized redeemable=0 with leftover
+	// pointsBalance (fail-closed poison / escrow drained) must re-fetch — otherwise
+	// Smart Pay sticks at Covered CA$ 0.00 for the TTL window.
 	if (
 		cached &&
 		Date.now() - cached.ts < REWARD13_ROWS_CACHE_TTL_MS &&
-		hasSameStoreRow(cached.rows)
+		sameStoreHasPositiveCover(cached.rows)
 	) {
 		opts?.onPartial?.(cached.rows)
 		return cached.rows
+	}
+	if (cached && !sameStoreHasPositiveCover(cached.rows)) {
+		reward13RowsCache.delete(key)
 	}
 
 	const existing = reward13RowsInflight.get(key)
@@ -620,8 +779,11 @@ export async function loadReward13RowsForAa(
 	reward13RowsInflight.set(key, promise)
 	try {
 		const rows = await promise
-		if (hasSameStoreRow(rows)) {
+		if (sameStoreHasPositiveCover(rows)) {
 			reward13RowsCache.set(key, { rows, ts: Date.now() })
+		} else {
+			// Do not cache escrowSized usable=0 (poisoned fail-closed or drained escrow).
+			reward13RowsCache.delete(key)
 		}
 		return rows
 	} finally {
@@ -636,13 +798,22 @@ function sortByBalance(a: Reward13Row, b: Reward13Row): number {
 	return 0
 }
 
+/** Prefer larger escrow-capped redeemable capacity when ordering cover legs. */
+function sortByRedeemable(a: Reward13Row, b: Reward13Row): number {
+	const aPts = a.coverKind === 'toProgramPoints' ? a.redeemablePoints6 : a.redeemableUsdc6
+	const bPts = b.coverKind === 'toProgramPoints' ? b.redeemablePoints6 : b.redeemableUsdc6
+	if (aPts < bPts) return -1
+	if (aPts > bPts) return 1
+	return sortByBalance(a, b)
+}
+
 async function coverLegsFromRows(
 	usable: Reward13Row[],
 	needUsdc6: bigint,
 	fiat6: bigint,
 ): Promise<CoverLeg[]> {
-	const same = usable.filter((r) => r.coverKind === 'toProgramPoints').slice().sort(sortByBalance)
-	const other = usable.filter((r) => r.coverKind !== 'toProgramPoints').slice().sort(sortByBalance)
+	const same = usable.filter((r) => r.coverKind === 'toProgramPoints').slice().sort(sortByRedeemable)
+	const other = usable.filter((r) => r.coverKind !== 'toProgramPoints').slice().sort(sortByRedeemable)
 	const ordered = [...same, ...other]
 	const legs: CoverLeg[] = []
 	let remaining = needUsdc6
@@ -651,8 +822,9 @@ async function coverLegsFromRows(
 		if (remaining <= 0n) break
 
 		if (row.coverKind === 'toProgramPoints') {
-			if (row.pointsBalance6 <= 0n || remainingFiat6 <= 0n || fiat6 <= 0n) continue
-			const takePts = row.pointsBalance6 < remainingFiat6 ? row.pointsBalance6 : remainingFiat6
+			if (row.redeemablePoints6 <= 0n || remainingFiat6 <= 0n || fiat6 <= 0n) continue
+			const takePts =
+				row.redeemablePoints6 < remainingFiat6 ? row.redeemablePoints6 : remainingFiat6
 			if (takePts <= 0n) continue
 			const takeUsdc = (needUsdc6 * takePts) / fiat6
 			const credit = takeUsdc < remaining ? takeUsdc : remaining
@@ -704,9 +876,7 @@ export async function planAutoCoverUsdc(
 ): Promise<CoverLeg[]> {
 	if (needUsdc6 <= 0n) return []
 	const usable = rows.filter((r) => {
-		if (r.coverKind === 'toProgramPoints') {
-			return r.pointsBalance6 > 0n || r.redeemablePoints6 > 0n
-		}
+		if (r.coverKind === 'toProgramPoints') return r.redeemablePoints6 > 0n
 		return r.redeemableUsdc6 > 0n && r.redeemablePoints6 > 0n
 	})
 	return coverLegsFromRows(usable, needUsdc6, fiat6)
@@ -721,10 +891,8 @@ export async function planManualCoverUsdc(
 	if (needUsdc6 <= 0n) return []
 	const chosen = rows.filter((r) => {
 		if (!selected.has(r.cardAddress.toLowerCase())) return false
-		if (r.coverKind === 'toProgramPoints') {
-			return r.pointsBalance6 > 0n || r.redeemablePoints6 > 0n
-		}
-		return r.redeemableUsdc6 > 0n
+		if (r.coverKind === 'toProgramPoints') return r.redeemablePoints6 > 0n
+		return r.redeemableUsdc6 > 0n && r.redeemablePoints6 > 0n
 	})
 	return coverLegsFromRows(chosen, needUsdc6, fiat6)
 }

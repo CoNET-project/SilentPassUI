@@ -27,11 +27,14 @@ import {
 	estimateSameStoreCoverFiat,
 	formatPtsHuman,
 	hydrateSameStoreRowFromAssets,
+	isTrustedSameStoreZero,
 	loadReward13RowsForAa,
 	mergeReward13Rows,
 	parseFiatHumanTo6,
 	peekReward13RowsCache,
 	pickRichestReward13Seed,
+	resolveAaHoldingReward13,
+	sameStoreEscrowSized,
 	sameStoreHasPositiveCover,
 	seedAssetsFromPoints13Human,
 	planAutoCoverUsdc,
@@ -139,6 +142,17 @@ function formatUsdcDue(usdc6: bigint): string {
 	return `$${formatUsdc(usdc6)}`
 }
 
+function UsdcMark({ size = 16 }: { size?: number }) {
+	return (
+		<img
+			src={usdcIcon}
+			alt="USDC"
+			className="inline-block shrink-0 rounded-full object-contain"
+			style={{ width: size, height: size }}
+		/>
+	)
+}
+
 function UsdcBaseMark({ size = 16 }: { size?: number }) {
 	const badge = Math.max(10, Math.round(size * 0.625))
 	return (
@@ -152,6 +166,10 @@ function UsdcBaseMark({ size = 16 }: { size?: number }) {
 			/>
 		</span>
 	)
+}
+
+function CashUsdcMark({ needsBase, size = 16 }: { needsBase: boolean; size?: number }) {
+	return needsBase ? <UsdcBaseMark size={size} /> : <UsdcMark size={size} />
 }
 
 function formatPtsShort(points6: bigint): string {
@@ -204,15 +222,17 @@ function resolveSmartPayCoveredFiat(opts: {
 	const remainingFiat = Math.max(0, opts.fiatN - sameStore)
 	const remainingUsdc = opts.quotedUsdc6 > sameStoreUsdc ? opts.quotedUsdc6 - sameStoreUsdc : 0n
 
-	let peerUsdc = 0n
-	if (opts.coveredUsdc6 > sameStoreUsdc) {
-		peerUsdc = opts.coveredUsdc6 - sameStoreUsdc
-	} else {
-		const peerRows = opts.rows.filter((r) => r.coverKind === 'toUsdc')
-		if (peerRows.length > 0 && remainingUsdc > 0n) {
-			peerUsdc = estimateCoverUsdc6(peerRows, remainingUsdc, 0n)
-		}
-	}
+	// Points Covered is the aggregate usable capacity: same-store #13 first,
+	// then every other card's redeemable USDC. Do not depend solely on `legs`;
+	// the async planner can still be empty while the rows already contain
+	// trusted redeemable capacity.
+	const peerRows = opts.rows.filter((r) => r.coverKind === 'toUsdc')
+	const rowPeerUsdc =
+		peerRows.length > 0 && remainingUsdc > 0n
+			? estimateCoverUsdc6(peerRows, remainingUsdc, 0n)
+			: 0n
+	const plannedPeerUsdc = opts.coveredUsdc6 > sameStoreUsdc ? opts.coveredUsdc6 - sameStoreUsdc : 0n
+	const peerUsdc = plannedPeerUsdc > rowPeerUsdc ? plannedPeerUsdc : rowPeerUsdc
 
 	if (peerUsdc <= 0n || remainingFiat <= 0 || remainingUsdc <= 0n) {
 		if (sameStore > 0) return sameStore
@@ -245,6 +265,14 @@ function friendlyTopupContainerError(raw: string): string {
 	const m = raw.match(/Insufficient CONET-USDC \(have=(\d+), need=(\d+)\)/)
 	if (m) return formatInsufficientConetUsdcAlert(BigInt(m[1]), BigInt(m[2]))
 	return raw
+}
+
+function isInsufficientConetUsdcError(raw: string): boolean {
+	return /Insufficient CONET-USDC/i.test(raw) || /CONET-USDC on CoNET/i.test(raw)
+}
+
+function formatUnfundableDualCashAlert(conetHave6: bigint, baseHave6: bigint, need6: bigint): string {
+	return `You have $${formatUsdc(conetHave6)} CONET-USDC and $${formatUsdc(baseHave6)} Base USDC; the remaining cash needs $${formatUsdc(need6)}. Add CONET-USDC for one CoNET payment, or add Base USDC to pay the remainder after points.`
 }
 
 export default function MerchantCardTopUpFlow({
@@ -301,6 +329,8 @@ export default function MerchantCardTopUpFlow({
 		profile.aaAccount && ethers.isAddress(profile.aaAccount)
 			? ethers.getAddress(profile.aaAccount)
 			: ''
+	/** Chain-resolved Consumer AA that holds #13 (may differ from profile.aaAccount). */
+	const [resolvedAa, setResolvedAa] = useState('')
 
 	const close = useCallback(() => {
 		if (isClosing || payBusy) return
@@ -424,34 +454,74 @@ export default function MerchantCardTopUpFlow({
 				if (existing && existing.pointsBalance6 >= hydrated.pointsBalance6) return prev
 				return mergeReward13Rows(prev, [hydrated])
 			})
-			setSameStoreReady(true)
+			// Preview seed has redeemable=0 until escrow sizing; do not settle cover yet.
 			return true
 		},
 		[cardAddress, merchantName],
 	)
 
 	const loadRewardRows = useCallback(async () => {
-		if (!cardAddress || !profileAa) return
+		if (!cardAddress || !profile) return
 		setRowsLoading(true)
+		// Safety: never leave Points Covered / Cash Required spinning if RPC hangs.
+		const settleWatchdog = window.setTimeout(() => {
+			setSameStoreReady(true)
+			rowsReadyRef.current = true
+			setRowsReady(true)
+		}, 12_000)
 		try {
-			const list = await loadReward13RowsForAa(profile, profileAa, cardAddress, {
+			// #13 is on deployed Consumer AA — resolve on-chain when profile.aaAccount is
+			// missing or points at a CREATE2 prediction with no code.
+			const aa = await resolveAaHoldingReward13(profile, profileAa || profile.aaAccount)
+			if (!aa) {
+				// Fail-closed: cannot size #13 — unlock cover as cash-only (0 points).
+				setSameStoreReady(true)
+				rowsReadyRef.current = true
+				setRowsReady(true)
+				return
+			}
+			setResolvedAa(aa)
+			// Prefetch / prior ticks write under resolved AA; open-time peek often used
+			// profile.aaAccount and missed the positive cache.
+			const peeked = peekReward13RowsCache(aa, cardAddress)
+			if (sameStoreHasPositiveCover(peeked ?? [])) {
+				setRows((prev) => mergeReward13Rows(prev, peeked!))
+				setSameStoreReady(true)
+			}
+			const list = await loadReward13RowsForAa(profile, aa, cardAddress, {
 				onPartial: (partial) => {
 					setRows((prev) => mergeReward13Rows(prev, partial))
-					if (sameStoreHasPositiveCover(partial)) {
+					// Settle only on positive usable cover, trusted empty AA, or a real
+					// escrow-sized row (never on unsized preview redeemable=0 alone).
+					if (
+						sameStoreHasPositiveCover(partial) ||
+						sameStoreEscrowSized(partial) ||
+						isTrustedSameStoreZero(aa, cardAddress)
+					) {
 						setSameStoreReady(true)
 					}
 				},
 			})
 			setRows((prev) => mergeReward13Rows(prev, list))
-			setSameStoreReady(true)
+			if (
+				sameStoreHasPositiveCover(list) ||
+				sameStoreEscrowSized(list) ||
+				isTrustedSameStoreZero(aa, cardAddress)
+			) {
+				setSameStoreReady(true)
+			}
 			rowsReadyRef.current = true
 			setRowsReady(true)
 		} catch {
-			/* keep last trusted rows */
+			/* keep last trusted rows; still unlock cover so UI is not stuck loading */
+			setSameStoreReady(true)
+			rowsReadyRef.current = true
+			setRowsReady(true)
 		} finally {
+			window.clearTimeout(settleWatchdog)
 			setRowsLoading(false)
 		}
-	}, [cardAddress, profile?.keyID, profile?.aaAccount, profileAa])
+	}, [cardAddress, profile, profileAa])
 
 	useEffect(() => {
 		if (!open || !cardAddress) return
@@ -461,6 +531,7 @@ export default function MerchantCardTopUpFlow({
 		setLegs([])
 		setRowsReady(false)
 		setSameStoreReady(false)
+		setResolvedAa('')
 		const cached = peekReward13RowsCache(profileAa || profile.aaAccount, cardAddress)
 		const seed = collectSmartPaySeedAssets({
 			cardAddress,
@@ -473,9 +544,15 @@ export default function MerchantCardTopUpFlow({
 		const merged = mergeReward13Rows(cached ?? [], hydrated ? [hydrated] : [])
 		if (merged.length > 0) {
 			setRows(merged)
-			setSameStoreReady(!!hydrated || sameStoreHasPositiveCover(merged))
-			setRowsLoading(false)
+			// Open-time: only unlock on positive usable cover. escrowSized+redeemable=0
+			// may be poison from fail-closed RPC — keep spinner until loadRewardRows
+			// re-sizes (or trustedSameStoreZero).
+			const settled = sameStoreHasPositiveCover(merged)
+			setSameStoreReady(settled)
+			setRowsLoading(!settled)
 		} else {
+			// Keep loading until chain AA resolve + #13 preview — do not cash-only
+			// settle just because profile.aaAccount is briefly empty.
 			setRowsLoading(true)
 		}
 		// Do not fire getMyAssets / extra #13 reads here. CoNET RPC is serial
@@ -486,9 +563,10 @@ export default function MerchantCardTopUpFlow({
 	}, [open, cardAddress])
 
 	useEffect(() => {
-		if (!open || !cardAddress || !profileAa || rowsReadyRef.current) return
+		if (!open || !cardAddress || rowsReadyRef.current) return
+		if (!profileAa && !profile?.keyID) return
 		void loadRewardRows()
-	}, [open, cardAddress, profileAa, loadRewardRows])
+	}, [open, cardAddress, profileAa, profile?.keyID, loadRewardRows])
 
 	useEffect(() => {
 		if (!open || !cardAddress) return
@@ -542,16 +620,23 @@ export default function MerchantCardTopUpFlow({
 	const coveredUsdc6 = sumUsdc6(legs)
 	const cashUsdc6 = quotedUsdc6 > coveredUsdc6 ? quotedUsdc6 - coveredUsdc6 : 0n
 	const dualSmartPay = smartPay && legs.length > 0 && cashUsdc6 > 0n
-	const cashNeedsBaseUsdc = dualSmartPay
-	const baseUsdcShort =
-		cashNeedsBaseUsdc && baseUsdc6 !== null && !eoaCanSelfFundDiscoverTopup(baseUsdc6, cashUsdc6)
-	const baseUsdcShortAlert =
-		baseUsdcShort && baseUsdc6 !== null
-			? formatInsufficientBaseUsdcAlert(baseUsdc6, cashUsdc6)
+	const conetCoversCash = dualSmartPay && eoaUsdc6 !== null && eoaUsdc6 >= cashUsdc6
+	const cashNeedsBaseUsdc = dualSmartPay && !conetCoversCash
+	const cashUnfundable =
+		dualSmartPay &&
+		eoaUsdc6 !== null &&
+		!conetCoversCash &&
+		baseUsdc6 !== null &&
+		!eoaCanSelfFundDiscoverTopup(baseUsdc6, cashUsdc6)
+	const cashUnfundableAlert =
+		cashUnfundable && eoaUsdc6 !== null && baseUsdc6 !== null
+			? formatUnfundableDualCashAlert(eoaUsdc6, baseUsdc6, cashUsdc6)
 			: ''
-	const payPanelAlert = payError || baseUsdcShortAlert
+	const payPanelAlert = payError || cashUnfundableAlert
 	const payBusyLabel = dualSmartPay
-		? 'Paying with Points and Base USDC…'
+		? cashNeedsBaseUsdc
+			? 'Paying with Points and Base USDC…'
+			: 'Paying with Points and CONET-USDC…'
 		: legs.length > 0
 			? 'Applying points…'
 			: 'Paying with USDC…'
@@ -575,7 +660,18 @@ export default function MerchantCardTopUpFlow({
 		seedAssets,
 		seedPoints13,
 	])
-	const usableRows = displayRows.filter((r) => r.redeemableUsdc6 > 0n)
+	const usableRows = displayRows.filter((r) =>
+		r.coverKind === 'toProgramPoints'
+			? r.redeemablePoints6 > 0n
+			: r.redeemableUsdc6 > 0n && r.redeemablePoints6 > 0n,
+	)
+	// In manual mode, a deselected merchant must be excluded from every
+	// downstream cover calculation, not only from the generated burn legs.
+	// Otherwise Review/Confirm can re-estimate against all displayRows and
+	// silently re-add the deselected merchant's PT.
+	const coverageRows = usedManual
+		? displayRows.filter((row) => selected.has(row.cardAddress.toLowerCase()))
+		: displayRows
 	const fiatN = Number(fiatHuman)
 	const coveredFiat = resolveSmartPayCoveredFiat({
 		smartPay,
@@ -584,25 +680,28 @@ export default function MerchantCardTopUpFlow({
 		quotedUsdc6,
 		quotedForFiat,
 		coveredUsdc6,
-		rows: displayRows,
+		rows: coverageRows,
 		rowsReady,
 	})
 	const cashFiat = Math.max(0, fiatN - coveredFiat)
+	const coverAa = resolvedAa || profileAa
+	// Spinner until same-store cover is ready. Do not treat a 0-PT same-store row
+	// (or rowsReady alone) as settled — that painted CA$ 0.00 while #13 still loading.
 	const coverEstimatePending =
 		smartPay &&
+		Number.isFinite(fiatN) &&
+		fiatN > 0 &&
 		coveredFiat <= 0 &&
-		!sameStoreReady &&
-		!(rowsReady && Boolean(profileAa))
+		!sameStoreReady
 	const quoteReady = quotedUsdc6 > 0n && quotedForFiat === fiatHuman
-	const pointsPlanReady =
-		!smartPay ||
-		sameStoreReady ||
-		legs.length > 0 ||
-		(rowsReady && Boolean(profileAa) && usableRows.length === 0)
-	const confirmDisabled = payBusy || !quoteReady || baseUsdcShort || !pointsPlanReady
+	// Require same-store settle (or planned legs). Do not treat empty rowsReady as
+	// cash-only ready — that unlocked Confirm while Points Covered still spun / showed 0.
+	const pointsPlanReady = !smartPay || sameStoreReady || legs.length > 0
+	const confirmDisabled = payBusy || !quoteReady || cashUnfundable || !pointsPlanReady
 	const canOpenConfirm =
 		!payBusy && quoteReady && pointsPlanReady && Number.isFinite(fiatN) && fiatN > 0
-	const availablePts6 = usableRows.reduce((sum, row) => sum + row.pointsBalance6, 0n)
+	// Usable PT = escrow + liquidity capped redeemable (not full wallet #13 balance).
+	const availablePts6 = usableRows.reduce((sum, row) => sum + row.redeemablePoints6, 0n)
 	const merchantCount = usableRows.length
 
 	const goPay = () => {
@@ -640,110 +739,128 @@ export default function MerchantCardTopUpFlow({
 
 			if (legs.length > 0 && cashUsdc6 > 0n) {
 				const cashAmount = formatCashFiatApiAmount(cashFiat, String(cardCurrency || 'USD'))
-				const runPoints = async (): Promise<DualLegResult> => {
-					try {
-						const container = await postTopupWithReward13Container({
-							targetCard: cardAddress,
-							userEOA,
-							legs,
-							cashUsdc6: 0n,
-							privateKeyArmor: armor,
-							wallet,
-						})
-						if (!container.success) {
-							return {
-								ok: false,
-								error: friendlyTopupContainerError(container.error || 'Points top-up failed'),
-							}
-						}
-						return { ok: true }
-					} catch (e: unknown) {
-						return {
-							ok: false,
-							error: friendlyTopupContainerError(e instanceof Error ? e.message : String(e)),
+				let conetBal = eoaUsdc6
+				try {
+					conetBal = await readEoaConetUsdc6(userEOA)
+					setEoaUsdc6(conetBal)
+				} catch {
+					/* untrusted — leave previous CONET-USDC */
+				}
+				const conetCovers = conetBal !== null && conetBal >= cashUsdc6
+				const tryOneShot = conetCovers || conetBal === null
+				let oneShotDone = false
+				if (tryOneShot) {
+					const container = await postTopupWithReward13Container({
+						targetCard: cardAddress,
+						userEOA,
+						legs,
+						cashUsdc6,
+						privateKeyArmor: armor,
+						wallet,
+					})
+					if (container.success) {
+						oneShotDone = true
+					} else {
+						const raw = container.error || 'Points top-up failed'
+						if (!conetCovers && isInsufficientConetUsdcError(raw)) {
+							/* fall through to Reward PT then Base USDC remainder */
+						} else {
+							throw new Error(friendlyTopupContainerError(raw))
 						}
 					}
 				}
-				const runCashBase = async (): Promise<DualLegResult> => {
-					try {
-						const userAa = profile.aaAccount?.trim()
-						if (!userAa || !ethers.isAddress(userAa)) {
+				if (!oneShotDone) {
+					const runPoints = async (): Promise<DualLegResult> => {
+						try {
+							const container = await postTopupWithReward13Container({
+								targetCard: cardAddress,
+								userEOA,
+								legs,
+								cashUsdc6: 0n,
+								privateKeyArmor: armor,
+								wallet,
+							})
+							if (!container.success) {
+								return {
+									ok: false,
+									error: friendlyTopupContainerError(container.error || 'Points top-up failed'),
+								}
+							}
+							return { ok: true }
+						} catch (e: unknown) {
 							return {
 								ok: false,
-								error:
-									'Smart Wallet (AA) is required for Base USDC top-up. Open Wallet and finish setup, then retry.',
+								error: friendlyTopupContainerError(e instanceof Error ? e.message : String(e)),
 							}
 						}
-						let cardOwnerForCash: string | null = null
-						let settleQuotedUsdc6 = cashUsdc6
-						try {
-							cardOwnerForCash = await getCardOwner(cardAddress)
-							if (cardOwnerForCash && cardOwnerForCash !== ethers.ZeroAddress) {
-								settleQuotedUsdc6 = await fetchDiscoverClientTopupQuotedUsdc6({
-									cardAddress,
-									cardOwner: cardOwnerForCash,
-									amount: cashAmount,
-									currency: String(cardCurrency || 'USD'),
-								})
-							}
-						} catch {
-							/* keep plan quote; payDiscoverTreasuryBridgeWithLocalWallet also re-quotes */
-						}
-						if (!cardOwnerForCash || cardOwnerForCash === ethers.ZeroAddress) {
-							return { ok: false, error: 'Cannot resolve merchant card owner. Please retry.' }
-						}
-						let baseBal = baseUsdc6
-						try {
-							baseBal = await readEoaUsdcBalance6(profile)
-							setBaseUsdc6(baseBal)
-						} catch {
-							/* untrusted — leave previous Base balance */
-						}
-						if (baseBal !== null && !eoaCanSelfFundDiscoverTopup(baseBal, settleQuotedUsdc6)) {
-							return {
-								ok: false,
-								error: formatInsufficientBaseUsdcAlert(baseBal, settleQuotedUsdc6),
-							}
-						}
-						const localPay = await payDiscoverTreasuryBridgeWithLocalWallet({
-							profile,
-							privateKeyArmor: armor,
-							cardAddress,
-							cardOwner: cardOwnerForCash,
-							recipientAa: userAa,
-							amount: cashAmount,
-							currency: String(cardCurrency || 'USD'),
-							quotedUsdc6: settleQuotedUsdc6,
-						})
-						if (!localPay.ok) {
-							return { ok: false, error: localPay.error || 'Base USDC top-up failed' }
-						}
-						return { ok: true }
-					} catch (e: unknown) {
-						return { ok: false, error: e instanceof Error ? e.message : String(e) }
 					}
-				}
-				const [pointsSettled, cashSettled] = await Promise.allSettled([runPoints(), runCashBase()])
-				const pointsRes: DualLegResult =
-					pointsSettled.status === 'fulfilled'
-						? pointsSettled.value
-						: {
-								ok: false,
-								error: friendlyTopupContainerError(String(pointsSettled.reason)),
+					const runCashBase = async (): Promise<DualLegResult> => {
+						try {
+							const userAa = profile.aaAccount?.trim()
+							if (!userAa || !ethers.isAddress(userAa)) {
+								return {
+									ok: false,
+									error:
+										'Smart Wallet (AA) is required for Base USDC top-up. Open Wallet and finish setup, then retry.',
+								}
 							}
-				const cashRes: DualLegResult =
-					cashSettled.status === 'fulfilled'
-						? cashSettled.value
-						: { ok: false, error: String(cashSettled.reason) }
-				if (!pointsRes.ok || !cashRes.ok) {
-					throw new Error(
-						composeDualPayFailure(
-							pointsRes.ok,
-							cashRes.ok,
-							pointsRes.ok ? '' : pointsRes.error,
-							cashRes.ok ? '' : cashRes.error,
-						),
-					)
+							let cardOwnerForCash: string | null = null
+							let settleQuotedUsdc6 = cashUsdc6
+							try {
+								cardOwnerForCash = await getCardOwner(cardAddress)
+								if (cardOwnerForCash && cardOwnerForCash !== ethers.ZeroAddress) {
+									settleQuotedUsdc6 = await fetchDiscoverClientTopupQuotedUsdc6({
+										cardAddress,
+										cardOwner: cardOwnerForCash,
+										amount: cashAmount,
+										currency: String(cardCurrency || 'USD'),
+									})
+								}
+							} catch {
+								/* keep plan quote; payDiscoverTreasuryBridgeWithLocalWallet also re-quotes */
+							}
+							if (!cardOwnerForCash || cardOwnerForCash === ethers.ZeroAddress) {
+								return { ok: false, error: 'Cannot resolve merchant card owner. Please retry.' }
+							}
+							let baseBal = baseUsdc6
+							try {
+								baseBal = await readEoaUsdcBalance6(profile)
+								setBaseUsdc6(baseBal)
+							} catch {
+								/* untrusted — leave previous Base balance */
+							}
+							if (baseBal !== null && !eoaCanSelfFundDiscoverTopup(baseBal, settleQuotedUsdc6)) {
+								return {
+									ok: false,
+									error: formatInsufficientBaseUsdcAlert(baseBal, settleQuotedUsdc6),
+								}
+							}
+							const localPay = await payDiscoverTreasuryBridgeWithLocalWallet({
+								profile,
+								privateKeyArmor: armor,
+								cardAddress,
+								cardOwner: cardOwnerForCash,
+								recipientAa: userAa,
+								amount: cashAmount,
+								currency: String(cardCurrency || 'USD'),
+								quotedUsdc6: settleQuotedUsdc6,
+							})
+							if (!localPay.ok) {
+								return { ok: false, error: localPay.error || 'Base USDC top-up failed' }
+							}
+							return { ok: true }
+						} catch (e: unknown) {
+							return { ok: false, error: e instanceof Error ? e.message : String(e) }
+						}
+					}
+					const pointsRes = await runPoints()
+					if (!pointsRes.ok) {
+						throw new Error(`Reward PT payment failed: ${pointsRes.error}`)
+					}
+					const cashRes = await runCashBase()
+					if (!cashRes.ok) {
+						throw new Error(`Base USDC payment failed: ${cashRes.error}`)
+					}
 				}
 				try {
 					const refreshed = await getMyAssets(profile, cardAddress, { bypassCache: true })
@@ -751,7 +868,11 @@ export default function MerchantCardTopUpFlow({
 				} catch {
 					/* payments already succeeded — untrusted asset refresh must not hide success */
 				}
-				setSuccessNote('Points and Base USDC both completed.')
+				setSuccessNote(
+					oneShotDone
+						? 'Points and CONET-USDC completed in one CoNET payment.'
+						: 'Points and Base USDC both completed.',
+				)
 			} else if (legs.length > 0) {
 				const container = await postTopupWithReward13Container({
 					targetCard: cardAddress,
@@ -916,7 +1037,9 @@ export default function MerchantCardTopUpFlow({
 				: `${formatUsdcDue(quotedUsdc6)} USDC`
 	const confirmPayLabel =
 		cashUsdc6 > 0n
-			? `Pay ${formatUsdcDue(cashUsdc6)} USDC`
+			? cashNeedsBaseUsdc
+				? `Pay ${formatUsdcDue(cashUsdc6)} Base USDC`
+				: `Pay ${formatUsdcDue(cashUsdc6)} CONET-USDC`
 			: coveredFiat > 0
 				? 'Apply Points'
 				: `Pay ${formatUsdcDue(quotedUsdc6)} USDC`
@@ -1132,7 +1255,11 @@ export default function MerchantCardTopUpFlow({
 
 								<p className="mt-3 text-[13px] leading-relaxed text-white/90">
 									{smartPay
-										? 'Points + Base USDC. Use available points, cover the rest with USDC on Base.'
+										? cashUsdc6 > 0n
+											? cashNeedsBaseUsdc
+												? 'Points + Base USDC. Use available points, then cover the rest with USDC on Base.'
+												: 'Points + CONET-USDC. Use available points and pay the rest in one CoNET payment.'
+											: 'Use available points to cover this top-up.'
 										: 'Pay the full amount with USDC.'}
 								</p>
 
@@ -1169,7 +1296,13 @@ export default function MerchantCardTopUpFlow({
 								</div>
 								{cashNeedsBaseUsdc && baseUsdc6 !== null ? (
 									<p className="mt-2 text-[12px] text-white/75">
+										CONET-USDC is short. Remaining cash uses USDC on Base after Reward PT.
+										{' '}
 										Base USDC ${formatUsdc(baseUsdc6)} · need ${formatUsdc(cashUsdc6)}
+									</p>
+								) : dualSmartPay && eoaUsdc6 !== null ? (
+									<p className="mt-2 text-[12px] text-white/75">
+										CONET-USDC ${formatUsdc(eoaUsdc6)} · need ${formatUsdc(cashUsdc6)}
 									</p>
 								) : null}
 							</div>
@@ -1179,6 +1312,9 @@ export default function MerchantCardTopUpFlow({
 									type="button"
 									onClick={() => {
 										setUsedManual(true)
+										// Manual selection starts with every currently usable
+										// merchant selected; the user can opt out explicitly.
+										setSelected(new Set(usableRows.map((row) => row.cardAddress.toLowerCase())))
 										setStep('select')
 									}}
 									disabled={payBusy || rowsLoading || usableRows.length === 0}
@@ -1244,8 +1380,10 @@ export default function MerchantCardTopUpFlow({
 												<p className="truncate font-semibold">{row.name}</p>
 												<p className="text-xs text-slate-500">
 													{row.coverKind === 'toProgramPoints'
-														? `${formatPtsHuman(row.pointsBalance6)} PT · converts to this store's credit`
-														: `${formatPtsHuman(row.pointsBalance6)} PT · up to $${formatUsdc(row.redeemableUsdc6)}`}
+														? row.redeemablePoints6 < row.pointsBalance6
+															? `${formatPtsHuman(row.redeemablePoints6)} of ${formatPtsHuman(row.pointsBalance6)} PT usable · store credit`
+															: `${formatPtsHuman(row.redeemablePoints6)} PT · converts to this store's credit`
+														: `${formatPtsHuman(row.redeemablePoints6)} of ${formatPtsHuman(row.pointsBalance6)} PT · up to $${formatUsdc(row.redeemableUsdc6)}`}
 												</p>
 											</div>
 										</label>
@@ -1277,7 +1415,9 @@ export default function MerchantCardTopUpFlow({
 									Amount due
 								</p>
 								<p className="mt-2 flex items-center justify-center gap-2 text-[34px] font-bold tracking-tight text-[#111827] dark:text-slate-100">
-									{cashUsdc6 > 0n || coveredFiat <= 0 ? <UsdcBaseMark size={28} /> : null}
+									{cashUsdc6 > 0n || coveredFiat <= 0 ? (
+										<CashUsdcMark needsBase={cashNeedsBaseUsdc} size={28} />
+									) : null}
 									{amountDueLabel}
 								</p>
 							</div>
@@ -1313,8 +1453,8 @@ export default function MerchantCardTopUpFlow({
 								<div className="mt-4 flex items-center justify-between gap-3 border-t border-slate-100 pt-3 text-[15px] font-bold text-[#111827] dark:border-slate-700 dark:text-slate-100">
 									<span>USDC Required</span>
 									<span className="inline-flex items-center gap-1.5">
-										<UsdcBaseMark size={16} />
-										{formatUsdcDue(cashUsdc6)} USDC
+										<CashUsdcMark needsBase={cashNeedsBaseUsdc} size={16} />
+										{formatUsdcDue(cashUsdc6)} {cashNeedsBaseUsdc ? 'Base USDC' : 'CONET-USDC'}
 									</span>
 								</div>
 							</div>

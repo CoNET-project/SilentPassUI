@@ -175,7 +175,7 @@ import { tu } from '@/locale/beamioLocale'
 import { mapServerError } from '@/locale/mapServerError'
 import { parseDiscoverMerchantFromParams, buildDiscoverMerchantShareUrl, shareDiscoverMerchantUrl, stripDiscoverMerchantDeepLinkParams } from '@/utils/discoverMerchantShare'
 import { recordDiscoverShareClickIfNeeded } from '@/utils/discoverShareClickEvent'
-import { loadReward13RowsForAa, sameStoreHasPositiveCover } from '@/utils/topupReward13Plan'
+import { loadReward13RowsForAa, resolveAaHoldingReward13, sameStoreHasPositiveCover } from '@/utils/topupReward13Plan'
 import { readDiscoverShareReferrer, stashDiscoverShareReferrer } from '@/utils/discoverShareReferrerStash'
 import { collectDeepLinkSearchParams } from '@/utils/beamioDeepLinkParams'
 import { useReliableTapHandler, RELIABLE_TAP_BUTTON_CLASS } from '@/utils/reliableTap'
@@ -4556,33 +4556,42 @@ function DiscoverMerchantDetailFullScreen({
 			setSmartPayPrefetchDone(true)
 			return
 		}
-		const aa = profile?.aaAccount
-		if (!profile || !aa || !ethers.isAddress(aa)) {
+		if (!profile?.keyID) {
 			const t = window.setTimeout(() => setSmartPayPrefetchDone(true), 800)
 			return () => clearTimeout(t)
 		}
 		setSmartPayPrefetchDone(false)
 		let cancelled = false
-		void loadReward13RowsForAa(
-			profile as Parameters<typeof loadReward13RowsForAa>[0],
-			aa,
-			card,
-			{
-				onPartial: (rows) => {
-					if (!cancelled && sameStoreHasPositiveCover(rows)) {
-						setSmartPayPrefetchDone(true)
-					}
-				},
-			},
-		)
-			.then((rows) => {
+		void (async () => {
+			const aa = await resolveAaHoldingReward13(
+				profile as Parameters<typeof loadReward13RowsForAa>[0],
+				profile?.aaAccount,
+			)
+			if (cancelled) return
+			if (!aa) {
+				setSmartPayPrefetchDone(true)
+				return
+			}
+			try {
+				const rows = await loadReward13RowsForAa(
+					profile as Parameters<typeof loadReward13RowsForAa>[0],
+					aa,
+					card,
+					{
+						onPartial: (partial) => {
+							if (!cancelled && sameStoreHasPositiveCover(partial)) {
+								setSmartPayPrefetchDone(true)
+							}
+						},
+					},
+				)
 				if (!cancelled && rows.some((r) => r.coverKind === 'toProgramPoints')) {
 					setSmartPayPrefetchDone(true)
 				}
-			})
-			.finally(() => {
+			} finally {
 				if (!cancelled) setSmartPayPrefetchDone(true)
-			})
+			}
+		})()
 		return () => {
 			cancelled = true
 		}
@@ -5551,7 +5560,9 @@ function DiscoverMerchantDetailFullScreen({
 		const needSocial = !hasSeededPts && socialEoa.length > 0
 		const needAssets = !seeded
 		if (!needSocial && !needAssets) return
-		if (!smartPayPrefetchDone || discoverTopUpOpen) return
+		if (!smartPayPrefetchDone) return
+		// Top-up open: still refresh #13 for Smart Pay seed; skip getMyAssets storm.
+		if (discoverTopUpOpen && !needSocial) return
 
 		let cancelled = false
 		void (async () => {
@@ -5570,7 +5581,7 @@ function DiscoverMerchantDetailFullScreen({
 				}
 				if (!cancelled) setUserSocialPointsLoading(false)
 			}
-			if (needAssets && !cancelled) {
+			if (needAssets && !discoverTopUpOpen && !cancelled) {
 				setMerchantAssetsLoading(true)
 				try {
 					const res = await getMyAssets(profile, cardAddress)

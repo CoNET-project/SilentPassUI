@@ -9,6 +9,7 @@ import {
 	providerForBeamioUserCard,
 } from "@/utils/beamioUserCardChain";
 import { resolveBeamioAaForEoaWithFallback, resolveBeamioAaOnConet } from "@/utils/resolveBeamioAaFromCardFactory";
+import { resolveAaHoldingReward13 } from "@/utils/topupReward13Plan";
 import { CONET_RPC_URL } from "@/config/chainAddresses";
 import { isRpcDegraded, reportRpcFailure, isRpcQuotaOrNetworkError } from "@/utils/rpcStatus";
 import {
@@ -3640,9 +3641,13 @@ export const getMyAssets = async (
                 : 13
         /** V16+: Reward PT = #13; remap legacy metadata rewardTokenId: 2. */
         const rewardTokenId = rawRewardTokenId === 2 ? 13 : rawRewardTokenId
+        // #13 lives on deployed Consumer AA (factory+getCode), not EOA / stale profile.aaAccount.
+        const rewardAa =
+            (await resolveAaHoldingReward13(profile, profile.aaAccount).catch(() => null)) ||
+            balanceAddress
         const [usdcBalanceRaw, chargeRewardBalance] = await Promise.all([
             usdcContract.balanceOf(balanceAddress),
-            cardContract.balanceOf(balanceAddress, rewardTokenId),
+            cardContract.balanceOf(rewardAa, rewardTokenId),
         ]);
         const usdcBalance = ethers.formatUnits(usdcBalanceRaw, 6);
 

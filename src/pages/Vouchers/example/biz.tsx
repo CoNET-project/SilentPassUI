@@ -133,10 +133,8 @@ import {
   type ShareTokenMetadataSocialPromotion,
   type ShareTokenMetadataCouponSocialPromotion,
   type ShareTokenMetadataSocialExchange,
-  postCardFundSocialExchangeUsdcEscrow,
 } from '@/services/BeamioCard';
 import { initMessage } from '@/services/chat';
-import usdc_abi from '@/services/ABI/usdc_abi.json';
 import { conetDepinProvider, baseEndpoint } from '@/utils/constants';
 import {
   BEAMIO_INDEXER_DIAMOND,
@@ -145,6 +143,10 @@ import {
   CONET_CARD_FACTORY,
   CONET_USDC,
 } from '@/config/chainAddresses';
+import {
+  fundProgramCardUsdcEscrowFromEoa,
+  sanitizeUsdcReserveDepositError,
+} from '@/utils/merchantCardUsdcReserveEoaDeposit';
 import { CONET_MAINNET_CHAIN_ID, providerForBeamioUserCard, isMerchantUserCardOnConet } from '@/utils/beamioUserCardChain';
 import {
   readCardProgramReferrerChainSummary,
@@ -23538,21 +23540,16 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
     if (socialPayload.kind === 'usdc' && socialPayload.usdcReward6 != null && socialPayload.usdcReward6 > 0) {
       const usdcReward6 = BigInt(socialPayload.usdcReward6);
       const escrowTotal = usdcReward6 * BigInt(issueTotalN);
-      const usdc = new ethers.Contract(CONET_USDC, usdc_abi, wallet.connect(conetDepinProvider));
-      const allowance = (await usdc.allowance(wallet.address, cardAddr)) as bigint;
-      if (allowance < escrowTotal) {
-        const approveTx = await usdc.approve(cardAddr, escrowTotal);
-        await approveTx.wait();
-      }
-      const fundRes = await postCardFundSocialExchangeUsdcEscrow({
-        cardAddress: cardAddr,
-        payerEOA: wallet.address,
-        amount6: escrowTotal.toString(),
-      });
-      if (!fundRes.success) {
+      try {
+        await fundProgramCardUsdcEscrowFromEoa({
+          cardAddress: cardAddr,
+          amountHuman: ethers.formatUnits(escrowTotal, 6),
+          privateKeyArmor: p0.privateKeyArmor.trim(),
+        });
+      } catch (fundErr: unknown) {
         setCardIssuanceSocialExchangeEditorError(
-          fundRes.error ??
-            'Activity created, but USDC escrow funding failed. Approve CONET-USDC for the card and fund escrow from Programs.'
+          sanitizeUsdcReserveDepositError(fundErr) ||
+            'Activity created, but USDC escrow funding failed. Deposit USDC Reserve from Overview, then retry.'
         );
         return;
       }

@@ -1,21 +1,26 @@
 /**
  * Merchant OS — fund the program-card #13 redeem pool (USDC Reserve).
  *
- * `fundSocialExchangeUsdcEscrow` pulls CONET-USDC from the **owner EOA**
- * (requires prior ERC-20 `approve`). A raw transfer to the card address does
- * not increase escrow / Reserve.
+ * `fundSocialExchangeUsdcEscrow` pulls CONET-USDC from the **owner EOA**.
+ * When allowance is insufficient, the client signs EIP-2612 `permit`
+ * (`bytes signature`); Master Settle_Conet sponsors CNET gas for permit + fund.
+ * Merchant EOA does **not** need CNET.
  *
- * - CONET-USDC (CoNET L1): approve + fund escrow (EOA pays CNET gas)
+ * - CONET-USDC (CoNET L1): optional permit + fund escrow (gas sponsored)
  * - Base USDC: EIP-3009 + x402 `workflow=walletDeposit` → LockMint CONET-USDC
- *   to the **EOA** (Settle_BasePool sponsors Base gas); then approve + fund
+ *   to the **EOA** (Settle_BasePool sponsors Base gas); then permit + fund
  *
  * Signing material: session memory only (`getSessionPrivateKeyArmor`).
  */
 import { ethers } from 'ethers'
 import { CONET_USDC, GENESIS_NODE_BRIDGE_INITIATOR, USDC_BASE } from '@/config/chainAddresses'
 import { AuthorizationSign } from '@/services/beamio'
-import { postCardFundSocialExchangeUsdcEscrow } from '@/services/BeamioCard'
+import {
+	postCardFundSocialExchangeUsdcEscrow,
+	type ConetUsdcPermitPayload,
+} from '@/services/BeamioCard'
 import { getSessionPrivateKeyArmor } from '@/utils/beamioSessionSecrets'
+import { CONET_MAINNET_CHAIN_ID } from '@/utils/beamioUserCardChain'
 import { conetDepinProvider } from '@/utils/constants'
 import { withBaseRpc } from '@/utils/baseRpc'
 import { WALLET_USDC_DEPOSIT_WORKFLOW } from '@/utils/fuelPackUsdcTopupUrl'
@@ -25,9 +30,42 @@ const BEAMIO_API = 'https://beamio.app'
 const ERC20_ABI = [
 	'function balanceOf(address account) view returns (uint256)',
 	'function allowance(address owner, address spender) view returns (uint256)',
-	'function approve(address spender, uint256 amount) returns (bool)',
 	'function transfer(address to, uint256 amount) returns (bool)',
 ] as const
+
+/** TreasuryCanonicalERC20V3 — read name/nonces for EIP-2612; permit uses `bytes signature`. */
+const CONET_USDC_PERMIT_READ_ABI = [
+	'function name() view returns (string)',
+	'function nonces(address owner) view returns (uint256)',
+	'function balanceOf(address account) view returns (uint256)',
+	'function allowance(address owner, address spender) view returns (uint256)',
+] as const
+
+const CONET_USDC_PERMIT_TYPES: Record<string, ethers.TypedDataField[]> = {
+	Permit: [
+		{ name: 'owner', type: 'address' },
+		{ name: 'spender', type: 'address' },
+		{ name: 'value', type: 'uint256' },
+		{ name: 'nonce', type: 'uint256' },
+		{ name: 'deadline', type: 'uint256' },
+	],
+}
+
+/** Strip raw RPC / JSON blobs from user-facing deposit errors. */
+export function sanitizeUsdcReserveDepositError(raw: unknown): string {
+	const msg = (raw instanceof Error ? raw.message : String(raw ?? '')).trim()
+	if (!msg) return 'Could not fund the #13 redeem pool. Please try again.'
+	if (/insufficient funds for intrinsic/i.test(msg)) {
+		return 'Could not complete the deposit. Please try again.'
+	}
+	if (/user rejected|denied|ACTION_REJECTED/i.test(msg)) {
+		return 'Signature cancelled. Try again when ready.'
+	}
+	if (/\{[\s\S]*"code"\s*:/.test(msg) || /eth_sendTransaction|eth_call|RPC Error/i.test(msg)) {
+		return 'Could not fund the #13 redeem pool. Please try again.'
+	}
+	return msg
+}
 
 export function parseUsdcHumanToAmount6(raw: string): bigint | null {
 	const t = raw.trim().replace(/,/g, '')
@@ -55,16 +93,16 @@ export async function readBaseUsdcLockMintFeeBps(): Promise<bigint> {
 	return 0n
 }
 
-function requireSessionPrivateKey(): string {
-	const pk = getSessionPrivateKeyArmor()?.trim()
+function requireSessionPrivateKey(override?: string | null): string {
+	const pk = (override?.trim() || getSessionPrivateKeyArmor()?.trim() || '')
 	if (!pk) {
 		throw new Error('Wallet is locked. Unlock Merchant OS with your Access Password, then try again.')
 	}
 	return pk
 }
 
-function requireSessionWallet(provider: ethers.Provider): ethers.Wallet {
-	return new ethers.Wallet(requireSessionPrivateKey(), provider)
+function requireSessionWallet(provider: ethers.Provider, override?: string | null): ethers.Wallet {
+	return new ethers.Wallet(requireSessionPrivateKey(override), provider)
 }
 
 export type EoaConetUsdcDepositResult = {
@@ -75,12 +113,57 @@ export type EoaConetUsdcDepositResult = {
 }
 
 /**
- * Approve CONET-USDC (if needed) then `fundSocialExchangeUsdcEscrow`.
+ * Sign EIP-2612 permit for CONET-USDC when allowance is insufficient.
+ * Domain `name` and `nonces(owner)` are read on-chain (never hardcoded).
+ */
+async function maybeSignConetUsdcPermit(params: {
+	wallet: ethers.Wallet
+	owner: string
+	spender: string
+	amount6: bigint
+}): Promise<ConetUsdcPermitPayload | undefined> {
+	const usdc = new ethers.Contract(CONET_USDC, CONET_USDC_PERMIT_READ_ABI, conetDepinProvider)
+	const allowance = (await usdc.allowance(params.owner, params.spender)) as bigint
+	if (allowance >= params.amount6) return undefined
+
+	const [tokenName, nonce] = await Promise.all([
+		usdc.name() as Promise<string>,
+		usdc.nonces(params.owner) as Promise<bigint>,
+	])
+	const deadline = BigInt(Math.floor(Date.now() / 1000) + 30 * 60)
+	const domain = {
+		name: String(tokenName),
+		version: '1',
+		chainId: CONET_MAINNET_CHAIN_ID,
+		verifyingContract: CONET_USDC,
+	}
+	const message = {
+		owner: params.owner,
+		spender: params.spender,
+		value: params.amount6,
+		nonce,
+		deadline,
+	}
+	const signature = await params.wallet.signTypedData(domain, CONET_USDC_PERMIT_TYPES, message)
+	return {
+		owner: params.owner,
+		spender: params.spender,
+		value: params.amount6.toString(),
+		deadline: deadline.toString(),
+		nonce: nonce.toString(),
+		signature,
+	}
+}
+
+/**
+ * Optional EIP-2612 permit + `fundSocialExchangeUsdcEscrow` (Master sponsors CNET gas).
  * Only the card owner EOA can fund; session wallet must be that owner.
  */
 export async function fundProgramCardUsdcEscrowFromEoa(params: {
 	cardAddress: string
 	amountHuman: string
+	/** Optional when caller already holds session-equivalent key in memory (e.g. profiles[0]). */
+	privateKeyArmor?: string | null
 }): Promise<EoaConetUsdcDepositResult> {
 	const card = String(params.cardAddress ?? '').trim()
 	if (!card || !ethers.isAddress(card)) {
@@ -91,10 +174,10 @@ export async function fundProgramCardUsdcEscrowFromEoa(params: {
 		throw new Error('Enter a valid USDC amount greater than zero.')
 	}
 
-	const wallet = requireSessionWallet(conetDepinProvider)
+	const wallet = requireSessionWallet(conetDepinProvider, params.privateKeyArmor)
 	const from = ethers.getAddress(wallet.address)
 	const to = ethers.getAddress(card)
-	const usdc = new ethers.Contract(CONET_USDC, ERC20_ABI, wallet)
+	const usdc = new ethers.Contract(CONET_USDC, CONET_USDC_PERMIT_READ_ABI, conetDepinProvider)
 
 	const bal = (await usdc.balanceOf(from)) as bigint
 	if (bal < amount6) {
@@ -103,24 +186,24 @@ export async function fundProgramCardUsdcEscrowFromEoa(params: {
 		)
 	}
 
-	const allowance = (await usdc.allowance(from, to)) as bigint
-	if (allowance < amount6) {
-		const approveTx = await usdc.approve(to, amount6)
-		const approveReceipt = await approveTx.wait()
-		if (approveReceipt?.status !== 1) {
-			throw new Error('CONET-USDC approve failed on CoNET.')
-		}
+	let permit: ConetUsdcPermitPayload | undefined
+	try {
+		permit = await maybeSignConetUsdcPermit({ wallet, owner: from, spender: to, amount6 })
+	} catch (e) {
+		throw new Error(sanitizeUsdcReserveDepositError(e))
 	}
 
 	const fundRes = await postCardFundSocialExchangeUsdcEscrow({
 		cardAddress: to,
 		payerEOA: from,
 		amount6: amount6.toString(),
+		...(permit ? { permit } : {}),
 	})
 	if (!fundRes.success) {
 		throw new Error(
-			fundRes.error ??
-				'Could not fund the #13 redeem pool. Approve CONET-USDC for this program card and try again.',
+			sanitizeUsdcReserveDepositError(
+				fundRes.error ?? 'Could not fund the #13 redeem pool. Please try again.',
+			),
 		)
 	}
 
@@ -159,7 +242,7 @@ export type EoaBaseUsdcLockMintResult = {
  *
  * User signs EIP-3009 TransferWithAuthorization only — no Base ETH gas on the client.
  * Cluster settles USDC to {@link GENESIS_NODE_BRIDGE_INITIATOR}; Master LockMints CONET-USDC
- * to the **EOA** (not the card). The sheet then approve + funds escrow.
+ * to the **EOA** (not the card). The sheet then permit + funds escrow.
  */
 export async function depositBaseUsdcFromEoaViaLockMintToCard(params: {
 	cardAddress: string

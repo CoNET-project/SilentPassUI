@@ -1,12 +1,13 @@
 /**
  * Merchant OS Overview — fund the program-card #13 redeem pool (USDC Reserve).
  *
- * All sources end in owner EOA `approve` + `fundSocialExchangeUsdcEscrow`.
+ * All sources end in owner EOA EIP-2612 `permit` (when needed) + `fundSocialExchangeUsdcEscrow`.
+ * Master Settle_Conet sponsors CNET gas — merchant EOA does not need CNET.
  * A raw transfer / LockMint to the card address does not raise Reserve.
  *
- * - EOA CONET-USDC → approve + fund escrow
- * - EOA Base USDC → LockMint CONET-USDC to the EOA, then approve + fund
- * - Third-party → walletDeposit URL (beneficiary = owner EOA), then approve + fund
+ * - EOA CONET-USDC → permit (if needed) + fund escrow
+ * - EOA Base USDC → LockMint CONET-USDC to the EOA, then permit + fund
+ * - Third-party → walletDeposit URL (beneficiary = owner EOA), then permit + fund
  *
  * Retry: if the EOA already holds enough CONET-USDC, skip LockMint / checkout.
  */
@@ -22,6 +23,7 @@ import {
 	depositBaseUsdcFromEoaViaLockMintToCard,
 	fundProgramCardUsdcEscrowFromEoa,
 	parseUsdcHumanToAmount6,
+	sanitizeUsdcReserveDepositError,
 } from '@/utils/merchantCardUsdcReserveEoaDeposit'
 import {
 	formatMerchantCardConetUsdcBalanceDisplay,
@@ -239,8 +241,7 @@ export function MerchantCardUsdcReserveDepositSheet({
 			return false
 		} catch (e) {
 			if (ac.signal.aborted) return false
-			const msg = e instanceof Error ? e.message : String(e)
-			setError(msg || 'Could not confirm CONET-USDC on your EOA.')
+			setError(sanitizeUsdcReserveDepositError(e) || 'Could not confirm CONET-USDC on your EOA.')
 			setPhase('idle')
 			setListenKind('idle')
 			return false
@@ -288,8 +289,7 @@ export function MerchantCardUsdcReserveDepositSheet({
 				setListenKind('idle')
 			} catch (e) {
 				if (ac.signal.aborted) return
-				const msg = e instanceof Error ? e.message : String(e)
-				setError(msg || 'Could not confirm the #13 redeem pool.')
+				setError(sanitizeUsdcReserveDepositError(e) || 'Could not confirm the #13 redeem pool.')
 				setPhase('idle')
 				setListenKind('idle')
 			} finally {
@@ -341,8 +341,7 @@ export function MerchantCardUsdcReserveDepositSheet({
 
 			await fundEscrowAndWatch(card)
 		} catch (e) {
-			const msg = e instanceof Error ? e.message : String(e)
-			setError(msg || 'Could not fund USDC Reserve.')
+			setError(sanitizeUsdcReserveDepositError(e) || 'Could not fund USDC Reserve.')
 			setPhase('idle')
 			setListenKind('idle')
 		}
@@ -365,7 +364,7 @@ export function MerchantCardUsdcReserveDepositSheet({
 		listenKind === 'eoa'
 			? 'Waiting for CONET-USDC on your EOA…'
 			: listenKind === 'funding'
-				? 'Approving and funding the #13 redeem pool…'
+				? 'Signing and funding the #13 redeem pool…'
 				: listenKind === 'escrow'
 					? 'Confirming USDC Reserve (#13 redeem pool)…'
 					: phase === 'submitting'
@@ -493,7 +492,7 @@ export function MerchantCardUsdcReserveDepositSheet({
 									className="mt-4 flex gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-950"
 								>
 									<AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-									<p>Unlock Merchant OS so your EOA can approve and fund the redeem pool.</p>
+									<p>Unlock Merchant OS so your EOA can sign and fund the redeem pool.</p>
 								</div>
 							) : null}
 
@@ -524,7 +523,7 @@ export function MerchantCardUsdcReserveDepositSheet({
 												EOA · CONET-USDC
 											</span>
 											<span className="mt-0.5 block text-xs text-slate-500">
-												Approve and fund #13 redeem pool · available $
+												Sign and fund #13 redeem pool · available $
 												{formatUsdcBalanceLabel(eoaConetUsdcBalance)}
 											</span>
 										</span>
@@ -640,8 +639,8 @@ export function MerchantCardUsdcReserveDepositSheet({
 								</p>
 							) : source === 'eoa_conet_usdc' ? (
 								<p className="mt-3 text-xs leading-relaxed text-slate-500">
-									Approves CONET-USDC for this program card, then funds the #13 redeem pool. Requires a
-									small amount of CNET for gas.
+									Signs an EIP-2612 permit when needed, then funds the #13 redeem pool. Beamio sponsors
+									CNET gas — your EOA does not need CNET.
 								</p>
 							) : (
 								<p className="mt-3 text-xs leading-relaxed text-slate-500">

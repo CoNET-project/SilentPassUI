@@ -3274,11 +3274,27 @@ export const postCardCreateIssuedNft = async (payload: {
     }
 }
 
-/** Merchant owner funds CONET-USDC escrow for social exchange USDC activities (requires prior ERC-20 approve to card). */
+/** EIP-2612 permit for TreasuryCanonicalERC20V3 (`bytes signature`, not v/r/s). */
+export type ConetUsdcPermitPayload = {
+	owner: string
+	spender: string
+	value: string
+	deadline: string
+	nonce: string
+	/** `0x` + 65-byte hex from `signTypedData`. */
+	signature: string
+}
+
+/**
+ * Merchant owner funds CONET-USDC escrow for #13 redeem / social exchange.
+ * When allowance is insufficient, pass Cluster-verified EIP-2612 `permit`;
+ * Master Settle_Conet sponsors CNET gas (merchant EOA needs no CNET).
+ */
 export const postCardFundSocialExchangeUsdcEscrow = async (params: {
 	cardAddress: string
 	payerEOA: string
 	amount6: string
+	permit?: ConetUsdcPermitPayload
 }): Promise<{ success: boolean; hash?: string; error?: string }> => {
 	try {
 		const res = await fetch(cardFundSocialExchangeUsdcEscrowEndpoint, {
@@ -3288,6 +3304,7 @@ export const postCardFundSocialExchangeUsdcEscrow = async (params: {
 				cardAddress: ethers.getAddress(params.cardAddress),
 				payerEOA: ethers.getAddress(params.payerEOA),
 				amount6: String(params.amount6),
+				...(params.permit ? { permit: params.permit } : {}),
 			}),
 		})
 		const data = (await res.json().catch(() => ({}))) as { success?: boolean; hash?: string; error?: string }

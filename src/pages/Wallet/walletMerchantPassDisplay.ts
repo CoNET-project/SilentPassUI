@@ -40,7 +40,7 @@ function formatPointSubtitle(raw: unknown): string {
 	if (raw == null || String(raw).trim() === '') return ''
 	const n = Number(raw)
 	if (!Number.isFinite(n)) return ''
-	return `${Math.max(0, n).toLocaleString('en-US', { maximumFractionDigits: 2, minimumFractionDigits: 0 })} Point`
+	return `${Math.max(0, n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Point`
 }
 
 /**

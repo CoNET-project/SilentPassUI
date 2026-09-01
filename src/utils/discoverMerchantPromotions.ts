@@ -845,10 +845,11 @@ export function collectActiveDiscoverMerchantPromotions(params: {
 	return rows
 }
 
+/** User-visible #13 Reward PT — exactly 2 decimal places (presentation only). */
 export function formatSocialPoints13Display(value: number | null | undefined): string {
 	if (value == null || !Number.isFinite(value)) return '—'
-	const n = Math.max(0, Math.floor(value))
-	return n.toLocaleString('en-US')
+	const n = Math.max(0, value)
+	return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 function metadataRecord(raw: unknown): Record<string, unknown> | null {

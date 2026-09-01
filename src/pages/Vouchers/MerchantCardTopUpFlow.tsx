@@ -177,6 +177,115 @@ function formatPtsShort(points6: bigint): string {
 	return s.endsWith('.00') ? s.slice(0, -3) : s
 }
 
+function stripPointsSuffix(name: string): string {
+	const raw = (name || 'Merchant').trim()
+	return /points$/i.test(raw) ? raw.replace(/\s+points$/i, '').trim() || raw : raw
+}
+
+type ConfirmCoverLine = {
+	key: string
+	title: string
+	fiat: number
+	kind: CoverLeg['kind']
+}
+
+function coverLegFiat(leg: CoverLeg, quotedUsdc6: bigint, fiatN: number): number {
+	if (leg.kind === 'toProgramPoints') {
+		const n = Number(ethers.formatUnits(leg.pointsCost, 6))
+		return Number.isFinite(n) && n > 0 ? n : 0
+	}
+	if (quotedUsdc6 <= 0n || !Number.isFinite(fiatN) || fiatN <= 0) return 0
+	const n = (fiatN * Number(leg.usdcReward6)) / Number(quotedUsdc6)
+	return Number.isFinite(n) && n > 0 ? n : 0
+}
+
+function reconcileCoverLineFiat(lines: ConfirmCoverLine[], coveredFiat: number): ConfirmCoverLine[] {
+	if (lines.length === 0 || !Number.isFinite(coveredFiat) || coveredFiat <= 0) return lines
+	const sum = lines.reduce((acc, line) => acc + line.fiat, 0)
+	const delta = coveredFiat - sum
+	if (!Number.isFinite(delta) || Math.abs(delta) < 0.0005 || Math.abs(delta) > 0.05) return lines
+	const last = lines[lines.length - 1]
+	const next = last.fiat + delta
+	if (!(next > 0)) return lines
+	return [...lines.slice(0, -1), { ...last, fiat: next }]
+}
+
+function estimateConfirmCoverLinesFromRows(
+	rows: Reward13Row[],
+	fiatN: number,
+	quotedUsdc6: bigint,
+): ConfirmCoverLine[] {
+	if (!Number.isFinite(fiatN) || fiatN <= 0) return []
+	const same = rows.filter((r) => r.coverKind === 'toProgramPoints' && r.redeemablePoints6 > 0n)
+	const peers = rows.filter(
+		(r) => r.coverKind === 'toUsdc' && r.redeemableUsdc6 > 0n && r.redeemablePoints6 > 0n,
+	)
+	const lines: ConfirmCoverLine[] = []
+	let remainingFiat = fiatN
+	const fiat6 = parseFiatHumanTo6(fiatN.toFixed(6))
+	let remainingUsdc = quotedUsdc6
+
+	for (const row of same) {
+		if (remainingFiat <= 0) break
+		const pts = Number(ethers.formatUnits(row.redeemablePoints6, 6))
+		if (!Number.isFinite(pts) || pts <= 0) continue
+		const take = Math.min(remainingFiat, pts)
+		if (take <= 0) continue
+		const takeUsdc = fiat6 > 0n ? (quotedUsdc6 * parseFiatHumanTo6(take.toFixed(6))) / fiat6 : 0n
+		lines.push({
+			key: `${row.cardAddress.toLowerCase()}:toProgramPoints`,
+			title: `${stripPointsSuffix(row.name)} Points`,
+			fiat: take,
+			kind: 'toProgramPoints',
+		})
+		remainingFiat -= take
+		remainingUsdc = remainingUsdc > takeUsdc ? remainingUsdc - takeUsdc : 0n
+	}
+
+	for (const row of peers) {
+		if (remainingFiat <= 0 || remainingUsdc <= 0n) break
+		const takeUsdc = row.redeemableUsdc6 < remainingUsdc ? row.redeemableUsdc6 : remainingUsdc
+		if (takeUsdc <= 0n) continue
+		const takeFiat = (remainingFiat * Number(takeUsdc)) / Number(remainingUsdc)
+		if (!(takeFiat > 0)) continue
+		lines.push({
+			key: `${row.cardAddress.toLowerCase()}:toUsdc`,
+			title: `${stripPointsSuffix(row.name)} Points`,
+			fiat: takeFiat,
+			kind: 'toUsdc',
+		})
+		remainingFiat -= takeFiat
+		remainingUsdc -= takeUsdc
+	}
+	return lines
+}
+
+function buildConfirmCoverLines(opts: {
+	legs: CoverLeg[]
+	coverageRows: Reward13Row[]
+	coveredFiat: number
+	quotedUsdc6: bigint
+	fiatN: number
+	fallbackName: string
+}): ConfirmCoverLine[] {
+	if (!opts.coveredFiat || opts.coveredFiat <= 0) return []
+	if (opts.legs.length > 0) {
+		const fromLegs = opts.legs
+			.map((leg) => ({
+				key: `${leg.cardAddress.toLowerCase()}:${leg.kind}`,
+				title: `${stripPointsSuffix(leg.name || opts.fallbackName)} Points`,
+				fiat: coverLegFiat(leg, opts.quotedUsdc6, opts.fiatN),
+				kind: leg.kind,
+			}))
+			.filter((line) => line.fiat > 0)
+		return reconcileCoverLineFiat(fromLegs, opts.coveredFiat)
+	}
+	return reconcileCoverLineFiat(
+		estimateConfirmCoverLinesFromRows(opts.coverageRows, opts.fiatN, opts.quotedUsdc6),
+		opts.coveredFiat,
+	)
+}
+
 type DualLegResult = { ok: true } | { ok: false; error: string }
 
 function formatCashFiatApiAmount(cashFiat: number, currency: string): string {
@@ -684,6 +793,18 @@ export default function MerchantCardTopUpFlow({
 		rowsReady,
 	})
 	const cashFiat = Math.max(0, fiatN - coveredFiat)
+	const confirmCoverLines = useMemo(
+		() =>
+			buildConfirmCoverLines({
+				legs,
+				coverageRows,
+				coveredFiat,
+				quotedUsdc6,
+				fiatN,
+				fallbackName: merchantName,
+			}),
+		[legs, coverageRows, coveredFiat, quotedUsdc6, fiatN, merchantName],
+	)
 	const coverAa = resolvedAa || profileAa
 	// Spinner until same-store cover is ready. Do not treat a 0-PT same-store row
 	// (or rowsReady alone) as settled — that painted CA$ 0.00 while #13 still loading.
@@ -1023,12 +1144,6 @@ export default function MerchantCardTopUpFlow({
 	}
 	const storeCreditsLabel = `${prefix}${Number(storeCreditsPoints || 0).toFixed(2)}`
 	const heroDigitsWidth = Math.max(amountInput.replace(/,/g, '').trim().length, 4)
-	const pointsCoverLeg =
-		legs.find((leg) => leg.kind === 'toProgramPoints') ?? (legs.length > 0 ? legs[0] : null)
-	const pointsRowTitle = (() => {
-		const raw = (pointsCoverLeg?.name || displayMerchantName || 'Merchant').trim()
-		return /points$/i.test(raw) ? raw.replace(/\s+points$/i, '').trim() || raw : raw
-	})()
 	const amountDueLabel =
 		cashUsdc6 > 0n
 			? `${formatUsdcDue(cashUsdc6)} USDC`
@@ -1432,24 +1547,32 @@ export default function MerchantCardTopUpFlow({
 										{formatPrefixedFiat(prefix, Number(fiatHuman).toFixed(2))}
 									</span>
 								</div>
-								{smartPay && coveredFiat > 0 ? (
-									<div className="mt-3 flex items-start justify-between gap-3">
-										<div className="flex min-w-0 items-start gap-2">
-											<Tag className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" aria-hidden />
-											<div className="min-w-0">
-												<p className="truncate text-[15px] font-medium text-[#111827] dark:text-slate-100">
-													{pointsRowTitle} Points
-												</p>
-												{usedManual ? (
-													<p className="text-[12px] text-[#9aa3b2]">(Manual)</p>
-												) : null}
+								{smartPay && confirmCoverLines.length > 0
+									? confirmCoverLines.map((line) => (
+											<div
+												key={line.key}
+												className="mt-3 flex items-start justify-between gap-3"
+											>
+												<div className="flex min-w-0 items-start gap-2">
+													<Tag
+														className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600"
+														aria-hidden
+													/>
+													<div className="min-w-0">
+														<p className="truncate text-[15px] font-medium text-[#111827] dark:text-slate-100">
+															{line.title}
+														</p>
+														{usedManual ? (
+															<p className="text-[12px] text-[#9aa3b2]">(Manual)</p>
+														) : null}
+													</div>
+												</div>
+												<span className="shrink-0 font-semibold text-emerald-600">
+													− {formatPrefixedFiat(prefix, line.fiat.toFixed(2))}
+												</span>
 											</div>
-										</div>
-										<span className="shrink-0 font-semibold text-emerald-600">
-											− {formatPrefixedFiat(prefix, coveredFiat.toFixed(2))}
-										</span>
-									</div>
-								) : null}
+										))
+									: null}
 								<div className="mt-4 flex items-center justify-between gap-3 border-t border-slate-100 pt-3 text-[15px] font-bold text-[#111827] dark:border-slate-700 dark:text-slate-100">
 									<span>USDC Required</span>
 									<span className="inline-flex items-center gap-1.5">

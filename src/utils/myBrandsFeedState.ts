@@ -31,7 +31,7 @@ export function formatMyBrandNft2PointsSubtitle(
 	if (detail.assets == null) return '—'
 	const total = rewardPointsTotal(detail.assets)
 	if (total <= 0) return '—'
-	return `${total.toLocaleString('en-US', { maximumFractionDigits: 2, minimumFractionDigits: 0 })} pts`
+	return `${total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} pts`
 }
 
 export type MyBrandSecondarySubtitle = {
@@ -51,7 +51,7 @@ export function resolveMyBrandSecondarySubtitle(
 	}
 	const n = rewardPointsTotal(detail?.assets)
 	if (n > 0) {
-		const formatted = n.toLocaleString('en-US', { maximumFractionDigits: 2, minimumFractionDigits: 0 })
+		const formatted = n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 		return { text: `+${formatted} pts`, tone: 'reward' }
 	}
 	return { text: base, tone: 'muted' }

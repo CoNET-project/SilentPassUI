@@ -544,25 +544,55 @@ function discoverMerchantAboutPanelForDisplay(
 function DiscoverMerchantMyPointsBlock({
 	loading,
 	points,
+	storeCreditsDisplay,
+	storeCreditsVisible,
 }: {
 	loading: boolean
 	points: number
+	storeCreditsDisplay?: string
+	storeCreditsVisible?: boolean
 }) {
+	const showStoreCredits = Boolean(storeCreditsVisible && storeCreditsDisplay)
+	const showRewardPoints = !loading && Number.isFinite(points) && points > 0
+	const showSeparateBalances = showStoreCredits || showRewardPoints
+
 	return (
 		<div className="min-w-0">
 			<p className="text-[12px] font-medium text-slate-500 dark:text-slate-400">My Points</p>
-			<p className="mt-1.5 text-[26px] font-bold leading-none tracking-tight text-[#1f2328] dark:text-slate-100 sm:text-[28px]">
-				{loading ? (
-					'—'
-				) : (
-					<>
-						{formatSocialPoints13Display(points)}
-						<span className="ml-1 text-[14px] font-bold text-slate-400 dark:text-slate-500">
-							Pts
-						</span>
-					</>
-				)}
-			</p>
+			{showSeparateBalances ? (
+				<div className="mt-2 grid grid-cols-2 gap-3">
+					{showStoreCredits ? (
+						<div className="min-w-0">
+							<p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Store Credits</p>
+							<p className="mt-1 text-[22px] font-bold leading-none tracking-tight text-[#1f2328] dark:text-slate-100 sm:text-[24px]">
+								{storeCreditsDisplay}
+							</p>
+						</div>
+					) : null}
+					{showRewardPoints ? (
+						<div className={showStoreCredits ? 'min-w-0 border-l border-slate-100 pl-3 dark:border-slate-800' : 'min-w-0'}>
+							<p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Reward Points</p>
+							<p className="mt-1 text-[22px] font-bold leading-none tracking-tight text-[#1f2328] dark:text-slate-100 sm:text-[24px]">
+								{formatSocialPoints13Display(points)}
+								<span className="ml-1 text-[13px] font-bold text-slate-400 dark:text-slate-500">Pts</span>
+							</p>
+						</div>
+					) : null}
+				</div>
+			) : (
+				<p className="mt-1.5 text-[26px] font-bold leading-none tracking-tight text-[#1f2328] dark:text-slate-100 sm:text-[28px]">
+					{loading ? (
+						'—'
+					) : (
+						<>
+							{formatSocialPoints13Display(points)}
+							<span className="ml-1 text-[14px] font-bold text-slate-400 dark:text-slate-500">
+								Pts
+							</span>
+						</>
+					)}
+				</p>
+			)}
 		</div>
 	)
 }
@@ -5914,6 +5944,12 @@ function DiscoverMerchantDetailFullScreen({
 							<DiscoverMerchantMyPointsBlock
 								loading={myPoints13Loading}
 								points={myPoints13Num}
+								storeCreditsDisplay={balanceDisplay}
+								storeCreditsVisible={
+									!merchantAssetsLoading &&
+									Number.isFinite(Number(merchantAssets?.points)) &&
+									Number(merchantAssets?.points ?? 0) > 0
+								}
 							/>
 						</div>
 					) : null}

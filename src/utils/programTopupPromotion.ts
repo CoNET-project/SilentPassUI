@@ -284,7 +284,8 @@ export function topupPromotionDraftToPayload(
 	if (!d.enabled) return null
 	if (validateTopupPromotionDraft(d)) return null
 
-	const base: ShareTokenMetadataTopupPromotion = {
+	const base: Pick<ShareTokenMetadataTopupPromotion, 'enabled' | 'rewardType'> &
+		Pick<ShareTokenMetadataTopupPromotion, 'validFrom' | 'validTo'> = {
 		enabled: true,
 		rewardType: d.rewardType,
 	}

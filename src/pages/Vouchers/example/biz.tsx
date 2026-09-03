@@ -13892,6 +13892,9 @@ const cardIssuanceCouponEditingIssued = Boolean(cardIssuanceEditingCouponRow?.is
  const cardIssuanceReloadMaxTopupWheelRefDesktop = useMemo(() => createNumericInputWheelNonPassiveRefCallback(), []);
  const cardIssuanceTopupPromotionMinWheelRef = useMemo(() => createNumericInputWheelNonPassiveRefCallback(), []);
  const cardIssuanceTopupPromotionRewardWheelRef = useMemo(() => createNumericInputWheelNonPassiveRefCallback(), []);
+ const cardIssuanceTopupPromotionSimulateWheelRef = useMemo(() => createNumericInputWheelNonPassiveRefCallback(), []);
+ const [cardIssuanceTopupPromotionSimulateAmount, setCardIssuanceTopupPromotionSimulateAmount] =
+   useState(String(CARD_ISSUANCE_BONUS_RULE_PAYMENT_DEFAULT));
  const cardIssuanceTierEditorThresholdWheelRef = useMemo(() => createNumericInputWheelNonPassiveRefCallback(), []);
  const cardIssuanceCouponIssueTotalWheelRef = useMemo(() => createNumericInputWheelNonPassiveRefCallback(), []);
  const [cardIssuanceTierRule, setCardIssuanceTierRule] = useState<CardIssuanceTierRule>('single');
@@ -17049,6 +17052,51 @@ const cardIssuanceTopupPromotionEditorPreviewReceive = Number(
   (cardIssuanceTopupPromotionEditorPreviewPay + cardIssuanceTopupPromotionEditorPreviewBonus).toFixed(2)
 );
 
+/** Live Simulate Top-up footer (editor) — principal + optional bonus store credits + #13 pts. */
+const cardIssuanceTopupPromotionSimulateLive = useMemo(() => {
+  const raw = cardIssuanceTopupPromotionSimulateAmount.replace(/,/g, '').trim();
+  const payParsed = Number.parseFloat(raw);
+  const pay =
+    Number.isFinite(payParsed) && payParsed > 0
+      ? payParsed
+      : CARD_ISSUANCE_BONUS_RULE_PAYMENT_DEFAULT;
+  let bonus = 0;
+  if (cardIssuanceTopupPromotion.enabled) {
+    const minRaw = cardIssuanceTopupPromotion.minimumTopupAmount.replace(/,/g, '').trim();
+    const minN = Number.parseFloat(minRaw);
+    const minOk = !Number.isFinite(minN) || minN <= 0 || pay >= minN;
+    const rewardRaw = cardIssuanceTopupPromotion.rewardValue.replace(/,/g, '').trim();
+    const rewardN = Number.parseFloat(rewardRaw);
+    if (minOk && Number.isFinite(rewardN) && rewardN > 0) {
+      if (cardIssuanceTopupPromotion.rewardType === 'percent') {
+        bonus = Number(((pay * rewardN) / 100).toFixed(2));
+      } else {
+        bonus = rewardN;
+      }
+    }
+  }
+  const storeCredits = Number((pay + bonus).toFixed(2));
+  const loyaltyPct = programRewardPtTopupEnabled
+    ? amountPercentInputToSlider(programRewardPtTopupPercentInput)
+    : 0;
+  const referrerPct = programReferrerTopupEnabled
+    ? amountPercentInputToSlider(programReferrerTopupPercentInput)
+    : 0;
+  const customerPoints = Number(((pay * loyaltyPct) / 100).toFixed(2));
+  const referrerPoints = Number(((pay * referrerPct) / 100).toFixed(2));
+  return { pay, bonus, storeCredits, customerPoints, referrerPoints };
+}, [
+  cardIssuanceTopupPromotionSimulateAmount,
+  cardIssuanceTopupPromotion.enabled,
+  cardIssuanceTopupPromotion.rewardType,
+  cardIssuanceTopupPromotion.rewardValue,
+  cardIssuanceTopupPromotion.minimumTopupAmount,
+  programRewardPtTopupEnabled,
+  programRewardPtTopupPercentInput,
+  programReferrerTopupEnabled,
+  programReferrerTopupPercentInput,
+]);
+
 const cardIssuancePrimaryBonusRule = cardIssuanceTopupPromotionLegacyBonus;
 
 const cardIssuanceRechargeBonusPreviewPay = cardIssuanceTopupPromotionEditorPreviewPay;
@@ -19733,6 +19781,7 @@ const openCardIssuanceTopupPromotionEditor = useCallback(() => {
       enabled: opts.rewardPtEnabled,
       percent: opts.rewardPtPercent,
     });
+    setCardIssuanceTopupPromotionSimulateAmount(String(CARD_ISSUANCE_BONUS_RULE_PAYMENT_DEFAULT));
     cardIssuanceTopupPromotionEditorOpenRef.current = true;
     setCardIssuanceTopupPromotionEditorOpen(true);
   };
@@ -43065,504 +43114,551 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
             </AnimatePresence>
              <AnimatePresence>
                {cardIssuanceTopupPromotionEditorOpen ? (
-                 <>
-                   <motion.button
-                     type="button"
-                     aria-label="Close top-up promotion editor"
-                     className="fixed inset-0 z-[90] bg-[#2c2f31]/35 backdrop-blur-[2px]"
-                     initial={{ opacity: 0 }}
-                     animate={{ opacity: 1 }}
-                     exit={{ opacity: 0 }}
-                     onClick={closeCardIssuanceTopupPromotionEditor}
-                   />
+                <>
+                  <motion.button
+                    key="card-issuance-topup-promo-backdrop"
+                    type="button"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="fixed inset-0 z-[90] bg-black/40"
+                    aria-label="Cancel"
+                    disabled={cardIssuanceTopupPromotionEditorPublishing}
+                    onClick={() => {
+                      if (!cardIssuanceTopupPromotionEditorPublishing) closeCardIssuanceTopupPromotionEditor();
+                    }}
+                  />
                   <motion.div
+                    key="card-issuance-topup-promo-sheet"
                     role="dialog"
                     aria-modal="true"
-                    aria-labelledby="card-topup-promo-editor-title"
-                    className="fixed inset-x-0 bottom-0 z-[91] mx-auto flex max-h-[calc(100dvh-1rem)] w-full max-w-2xl flex-col rounded-t-[2rem] bg-white shadow-[0_-24px_64px_rgba(0,0,0,0.12)]"
+                    aria-labelledby="card-issuance-topup-promo-title"
                     initial={{ y: '100%' }}
                     animate={{ y: 0 }}
                     exit={{ y: '100%' }}
-                    transition={{ type: 'spring', stiffness: 320, damping: 30 }}
+                    transition={{ type: 'spring', damping: 28, stiffness: 320 }}
+                    className="fixed inset-x-0 bottom-0 z-[91] mx-auto flex max-h-[calc(100dvh-1rem)] w-full max-w-2xl flex-col overflow-hidden rounded-t-[2rem] bg-white shadow-[0_-24px_64px_rgba(0,0,0,0.12)]"
                   >
-                    <div className="shrink-0 px-6 pt-6">
-                      <div className="mx-auto mb-4 h-1.5 w-14 rounded-full bg-[#d9dde0]" aria-hidden />
-                      <div className="mb-4 flex items-start justify-between gap-4">
-                        <div className="min-w-0">
-                          <span className="rounded-full bg-[#0051d1]/10 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-[#0051d1]">
-                            Promotion
-                          </span>
-                          <h3
-                            id="card-topup-promo-editor-title"
-                            className="mt-3 font-manrope text-2xl font-extrabold tracking-tight text-[#2c2f31] sm:text-3xl"
-                          >
-                            Top-up Promotion
-                          </h3>
-                          <p className="mt-3 max-w-lg text-sm leading-relaxed text-[#595c5e]">
-                            Set one global top-up reward for your program. Optional date range and minimum top-up amount apply.
+                    <div className="flex justify-center pb-1 pt-3">
+                      <div className="h-1.5 w-12 rounded-full bg-slate-200" aria-hidden />
+                    </div>
+                    <div className="relative flex shrink-0 items-center justify-between px-4 pb-3 pt-1">
+                      <button
+                        type="button"
+                        tabIndex={-1}
+                        disabled={cardIssuanceTopupPromotionEditorPublishing}
+                        onClick={() => {
+                          if (!cardIssuanceTopupPromotionEditorPublishing) closeCardIssuanceTopupPromotionEditor();
+                        }}
+                        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-black/[0.08] bg-white/90 text-[#2c2f31] shadow-[0_2px_10px_rgba(0,0,0,0.16),0_1px_3px_rgba(0,0,0,0.12)] transition active:scale-[0.96] hover:bg-white disabled:opacity-50"
+                        aria-label="Cancel"
+                      >
+                        <ChevronLeft className="h-[17px] w-[17px] stroke-[2.5]" aria-hidden />
+                      </button>
+                      <h2
+                        id="card-issuance-topup-promo-title"
+                        className="pointer-events-none absolute inset-x-12 truncate text-center text-[17px] font-semibold tracking-tight text-[#1a1b1f]"
+                      >
+                        {tu('programs_topup_promotion_editor_title')}
+                      </h2>
+                      <button
+                        type="button"
+                        tabIndex={-1}
+                        disabled={!cardIssuanceTopupPromotionEditorCanSave}
+                        aria-busy={cardIssuanceTopupPromotionEditorPublishing}
+                        aria-label="Save"
+                        onClick={() => {
+                          void submitCardIssuanceTopupPromotionEditor();
+                        }}
+                        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#1562f0] text-white shadow-[0_2px_10px_rgba(21,98,240,0.35)] transition active:scale-[0.96] hover:bg-[#0f52d4] disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        {cardIssuanceTopupPromotionEditorPublishing ? (
+                          <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                        ) : (
+                          <Check className="h-4 w-4" strokeWidth={2.5} aria-hidden />
+                        )}
+                      </button>
+                    </div>
+
+                    <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-3 sm:px-6">
+                      <p className="mb-4 text-[15px] leading-5 text-[#424655]">
+                        {tu('programs_topup_promotion_editor_intro')}
+                      </p>
+
+                      <div className="flex flex-col gap-4">
+                        <section className="rounded-3xl border border-[#c3c6d8]/30 bg-white p-5 shadow-[0px_10px_20px_rgba(0,0,0,0.05)]">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="flex min-w-0 items-center gap-3">
+                              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#1562f0]/10 text-[#1562f0]">
+                                <ListTodo className="h-5 w-5" strokeWidth={2} aria-hidden />
+                              </div>
+                              <h3 className="text-[18px] font-semibold tracking-tight text-[#1a1b1f]">
+                                {tu('programs_topup_store_credit_title')}
+                              </h3>
+                            </div>
+                            <button
+                              type="button"
+                              role="switch"
+                              aria-checked={cardIssuanceTopupPromotion.enabled}
+                              aria-label={tu('programs_topup_store_credit_title')}
+                              disabled={cardIssuanceTopupPromotionEditorPublishing}
+                              onClick={() => {
+                                setCardIssuanceTopupPromotion((p) => ({
+                                  ...p,
+                                  enabled: !p.enabled,
+                                }));
+                                setCardIssuanceTopupPromotionEditorServerError('');
+                              }}
+                              className={`relative h-7 w-12 shrink-0 rounded-full transition-colors ${
+                                cardIssuanceTopupPromotion.enabled ? 'bg-[#1562f0]' : 'bg-[#dfdfe4]'
+                              } disabled:opacity-50 ${bizFocusRingClass}`}
+                            >
+                              <span
+                                className={`absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-transform ${
+                                  cardIssuanceTopupPromotion.enabled ? 'left-[1.35rem]' : 'left-0.5'
+                                }`}
+                              />
+                            </button>
+                          </div>
+                          <p className="mt-3 text-[15px] leading-5 text-[#424655]">
+                            {tu('programs_topup_store_credit_hint')}
+                          </p>
+
+                          {cardIssuanceTopupPromotion.enabled ? (
+                            <div className="mt-5 space-y-4 border-t border-[#e3e2e7] pt-4">
+                              <div className="flex items-center justify-between gap-4 rounded-2xl bg-[#f4f3f8] px-4 py-3">
+                                <div className="min-w-0">
+                                  <p className="text-xs font-bold uppercase tracking-widest text-[#595c5e]">
+                                    {tu('programs_topup_promotion_validity_label')}
+                                  </p>
+                                  <p className="mt-1 text-sm text-[#595c5e]">
+                                    {tu('programs_topup_promotion_validity_hint')}
+                                  </p>
+                                </div>
+                                <button
+                                  type="button"
+                                  role="switch"
+                                  aria-checked={cardIssuanceTopupPromotion.validityPeriodEnabled}
+                                  aria-label={tu('programs_topup_promotion_validity_label')}
+                                  disabled={cardIssuanceTopupPromotionEditorPublishing}
+                                  onClick={() =>
+                                    setCardIssuanceTopupPromotion((p) => ({
+                                      ...p,
+                                      validityPeriodEnabled: !p.validityPeriodEnabled,
+                                      ...(p.validityPeriodEnabled ? { validFrom: '', validTo: '' } : {}),
+                                      enabled: true,
+                                    }))
+                                  }
+                                  className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-60 ${bizFocusRingClass} ${
+                                    cardIssuanceTopupPromotion.validityPeriodEnabled
+                                      ? 'bg-[#1562f0]'
+                                      : 'bg-[#abadaf]/50'
+                                  }`}
+                                >
+                                  <span
+                                    className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition ${
+                                      cardIssuanceTopupPromotion.validityPeriodEnabled
+                                        ? 'translate-x-6'
+                                        : 'translate-x-1'
+                                    }`}
+                                  />
+                                </button>
+                              </div>
+
+                              {cardIssuanceTopupPromotion.validityPeriodEnabled ? (
+                                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                  <div className="space-y-2">
+                                    <label
+                                      className="ml-1 block text-xs font-bold uppercase tracking-widest text-[#595c5e]"
+                                      htmlFor="card-topup-promo-valid-from"
+                                    >
+                                      {tu('programs_topup_promotion_valid_from')}
+                                    </label>
+                                    <input
+                                      id="card-topup-promo-valid-from"
+                                      type="date"
+                                      value={cardIssuanceTopupPromotion.validFrom}
+                                      disabled={cardIssuanceTopupPromotionEditorPublishing}
+                                      onChange={(e) =>
+                                        setCardIssuanceTopupPromotion((p) => ({
+                                          ...p,
+                                          validFrom: e.target.value,
+                                          enabled: true,
+                                        }))
+                                      }
+                                      className={`w-full rounded-2xl border-none bg-[#eef1f3] px-4 py-3.5 text-sm font-medium text-[#2c2f31] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass}`}
+                                    />
+                                  </div>
+                                  <div className="space-y-2">
+                                    <label
+                                      className="ml-1 block text-xs font-bold uppercase tracking-widest text-[#595c5e]"
+                                      htmlFor="card-topup-promo-valid-to"
+                                    >
+                                      {tu('programs_topup_promotion_valid_to')}
+                                    </label>
+                                    <input
+                                      id="card-topup-promo-valid-to"
+                                      type="date"
+                                      value={cardIssuanceTopupPromotion.validTo}
+                                      disabled={cardIssuanceTopupPromotionEditorPublishing}
+                                      onChange={(e) =>
+                                        setCardIssuanceTopupPromotion((p) => ({
+                                          ...p,
+                                          validTo: e.target.value,
+                                          enabled: true,
+                                        }))
+                                      }
+                                      className={`w-full rounded-2xl border-none bg-[#eef1f3] px-4 py-3.5 text-sm font-medium text-[#2c2f31] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass}`}
+                                    />
+                                  </div>
+                                </div>
+                              ) : null}
+
+                              <div className="space-y-2">
+                                <label
+                                  className="ml-1 block text-xs font-bold uppercase tracking-widest text-[#595c5e]"
+                                  htmlFor="card-topup-promo-minimum"
+                                >
+                                  {tu('programs_topup_promotion_min_label')}
+                                </label>
+                                <div className="relative">
+                                  <div className="pointer-events-none absolute inset-y-0 left-4 flex items-center">
+                                    <span className="text-sm font-bold text-[#1562f0]">
+                                      {cardIssuanceDisplayMoneyPrefix}
+                                    </span>
+                                  </div>
+                                  <input
+                                    id="card-topup-promo-minimum"
+                                    ref={cardIssuanceTopupPromotionMinWheelRef}
+                                    type="number"
+                                    inputMode="decimal"
+                                    autoComplete="off"
+                                    enterKeyHint="done"
+                                    placeholder="50.00"
+                                    value={cardIssuanceTopupPromotion.minimumTopupAmount}
+                                    disabled={cardIssuanceTopupPromotionEditorPublishing}
+                                    onKeyDown={preventNumericInputStepKeys}
+                                    onWheel={preventNumericInputWheelStep}
+                                    onChange={(e) =>
+                                      setCardIssuanceTopupPromotion((p) => ({
+                                        ...p,
+                                        minimumTopupAmount: normalizeCardIssuanceBonusRuleInput(e.target.value),
+                                        enabled: true,
+                                      }))
+                                    }
+                                    className={`w-full rounded-2xl border-none bg-[#eef1f3] py-3.5 pl-14 pr-4 text-base font-bold text-[#2c2f31] placeholder:text-[#abadaf] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
+                                  />
+                                </div>
+                              </div>
+
+                              <div className="space-y-3">
+                                <p className="ml-1 text-xs font-bold uppercase tracking-widest text-[#595c5e]">
+                                  {tu('programs_topup_promotion_reward_type_label')}
+                                </p>
+                                <div className="flex gap-2">
+                                  <button
+                                    type="button"
+                                    disabled={cardIssuanceTopupPromotionEditorPublishing}
+                                    onClick={() =>
+                                      setCardIssuanceTopupPromotion((p) => ({
+                                        ...p,
+                                        rewardType: 'percent',
+                                        enabled: true,
+                                      }))
+                                    }
+                                    className={`flex-1 rounded-full py-3 text-sm font-bold transition-colors disabled:opacity-50 ${bizFocusRingClass} ${
+                                      cardIssuanceTopupPromotion.rewardType === 'percent'
+                                        ? 'bg-[#1562f0] text-white'
+                                        : 'bg-[#eef1f3] text-[#595c5e]'
+                                    }`}
+                                  >
+                                    {tu('programs_topup_promotion_type_percent')}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={cardIssuanceTopupPromotionEditorPublishing}
+                                    onClick={() =>
+                                      setCardIssuanceTopupPromotion((p) => ({
+                                        ...p,
+                                        rewardType: 'fixed',
+                                        enabled: true,
+                                      }))
+                                    }
+                                    className={`flex-1 rounded-full py-3 text-sm font-bold transition-colors disabled:opacity-50 ${bizFocusRingClass} ${
+                                      cardIssuanceTopupPromotion.rewardType === 'fixed'
+                                        ? 'bg-[#1562f0] text-white'
+                                        : 'bg-[#eef1f3] text-[#595c5e]'
+                                    }`}
+                                  >
+                                    {tu('programs_topup_promotion_type_fixed')}
+                                  </button>
+                                </div>
+                              </div>
+
+                              <div className="space-y-2">
+                                <label
+                                  className="ml-1 block text-xs font-bold uppercase tracking-widest text-[#595c5e]"
+                                  htmlFor="card-topup-promo-reward"
+                                >
+                                  {cardIssuanceTopupPromotion.rewardType === 'percent'
+                                    ? tu('programs_topup_promotion_percent_label')
+                                    : tu('programs_topup_promotion_fixed_label')}
+                                </label>
+                                <div className="relative">
+                                  <div className="pointer-events-none absolute inset-y-0 left-4 flex items-center">
+                                    <span className="text-sm font-bold text-[#8d3a8b]">
+                                      {cardIssuanceTopupPromotion.rewardType === 'percent' ? '%' : '+'}
+                                    </span>
+                                  </div>
+                                  <input
+                                    id="card-topup-promo-reward"
+                                    ref={cardIssuanceTopupPromotionRewardWheelRef}
+                                    type="number"
+                                    inputMode="decimal"
+                                    autoComplete="off"
+                                    enterKeyHint="done"
+                                    placeholder={
+                                      cardIssuanceTopupPromotion.rewardType === 'percent' ? '10' : '5.00'
+                                    }
+                                    value={cardIssuanceTopupPromotion.rewardValue}
+                                    disabled={cardIssuanceTopupPromotionEditorPublishing}
+                                    onKeyDown={preventNumericInputStepKeys}
+                                    onWheel={preventNumericInputWheelStep}
+                                    onChange={(e) =>
+                                      setCardIssuanceTopupPromotion((p) => ({
+                                        ...p,
+                                        rewardValue: normalizeCardIssuanceBonusRuleInput(e.target.value),
+                                        enabled: true,
+                                      }))
+                                    }
+                                    className={`w-full rounded-2xl border-none bg-[#eef1f3] py-3.5 pl-12 pr-4 text-base font-bold text-[#2c2f31] placeholder:text-[#abadaf] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          ) : null}
+                        </section>
+
+                        <section className="rounded-3xl border border-[#c3c6d8]/30 bg-white p-5 shadow-[0px_10px_20px_rgba(0,0,0,0.05)]">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="flex min-w-0 items-center gap-3">
+                              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#1562f0]/10 text-[#1562f0]">
+                                <Award className="h-5 w-5" strokeWidth={2} aria-hidden />
+                              </div>
+                              <h3 className="text-[18px] font-semibold tracking-tight text-[#1a1b1f]">
+                                {tu('programs_topup_loyalty_points_title')}
+                              </h3>
+                            </div>
+                            <button
+                              type="button"
+                              role="switch"
+                              aria-checked={programRewardPtTopupEnabled}
+                              aria-label={tu('programs_topup_loyalty_points_title')}
+                              disabled={cardIssuanceTopupPromotionEditorPublishing}
+                              onClick={() => {
+                                const next = !programRewardPtTopupEnabled;
+                                setProgramRewardPtTopupEnabled(next);
+                                if (
+                                  next &&
+                                  (programRewardPtTopupPercentInput === '0' ||
+                                    !programRewardPtTopupPercentInput.trim())
+                                ) {
+                                  setProgramRewardPtTopupPercentInput('1');
+                                }
+                                setCardIssuanceTopupPromotionEditorServerError('');
+                              }}
+                              className={`relative h-7 w-12 shrink-0 rounded-full transition-colors ${
+                                programRewardPtTopupEnabled ? 'bg-[#1562f0]' : 'bg-[#dfdfe4]'
+                              } disabled:opacity-50 ${bizFocusRingClass}`}
+                            >
+                              <span
+                                className={`absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-transform ${
+                                  programRewardPtTopupEnabled ? 'left-[1.35rem]' : 'left-0.5'
+                                }`}
+                              />
+                            </button>
+                          </div>
+                          <p className="mt-3 text-[15px] leading-5 text-[#424655]">
+                            {tu('programs_topup_loyalty_points_hint')}
+                          </p>
+                          {programRewardPtTopupEnabled ? (
+                            <div className="mt-5 border-t border-[#e3e2e7] pt-4">
+                              <BeamioPercentSlider
+                                id="card-topup-reward-pt-percent"
+                                label={tu('programs_topup_reward_pt_percent')}
+                                accent="blue"
+                                value={amountPercentInputToSlider(programRewardPtTopupPercentInput)}
+                                onChange={(n) => {
+                                  setProgramRewardPtTopupPercentInput(String(n));
+                                  setCardIssuanceTopupPromotionEditorServerError('');
+                                }}
+                                disabled={cardIssuanceTopupPromotionEditorPublishing}
+                                focusRingClassName={bizFocusRingClass}
+                              />
+                            </div>
+                          ) : null}
+                        </section>
+
+                        <section className="rounded-3xl border border-[#c3c6d8]/30 bg-white p-5 shadow-[0px_10px_20px_rgba(0,0,0,0.05)]">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="flex min-w-0 items-center gap-3">
+                              <div
+                                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
+                                  programReferrerTopupEnabled
+                                    ? 'bg-[#8d3a8b]/10 text-[#8d3a8b]'
+                                    : 'bg-[#dfdfe4] text-[#5d5e63]'
+                                }`}
+                              >
+                                <UserPlus className="h-5 w-5" strokeWidth={2} aria-hidden />
+                              </div>
+                              <h3 className="text-[18px] font-semibold tracking-tight text-[#1a1b1f]">
+                                {tu('programs_topup_social_fission_title')}
+                              </h3>
+                            </div>
+                            <button
+                              type="button"
+                              role="switch"
+                              aria-checked={programReferrerTopupEnabled}
+                              aria-label={tu('programs_topup_social_fission_title')}
+                              disabled={cardIssuanceTopupPromotionEditorPublishing}
+                              onClick={() => {
+                                const next = !programReferrerTopupEnabled;
+                                setProgramReferrerTopupEnabled(next);
+                                if (
+                                  next &&
+                                  (programReferrerTopupPercentInput === '0' ||
+                                    !programReferrerTopupPercentInput.trim())
+                                ) {
+                                  setProgramReferrerTopupPercentInput('1');
+                                }
+                                setCardIssuanceTopupPromotionEditorServerError('');
+                              }}
+                              className={`relative h-7 w-12 shrink-0 rounded-full transition-colors ${
+                                programReferrerTopupEnabled ? 'bg-[#8d3a8b]' : 'bg-[#dfdfe4]'
+                              } disabled:opacity-50 ${bizFocusRingClass}`}
+                            >
+                              <span
+                                className={`absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-transform ${
+                                  programReferrerTopupEnabled ? 'left-[1.35rem]' : 'left-0.5'
+                                }`}
+                              />
+                            </button>
+                          </div>
+                          <p className="mt-3 text-[15px] leading-5 text-[#424655]">
+                            {tu('programs_topup_social_fission_hint')}
+                          </p>
+                          {programReferrerTopupEnabled ? (
+                            <div className="mt-5 border-t border-[#e3e2e7] pt-4">
+                              <BeamioPercentSlider
+                                id="card-topup-referrer-reward-percent"
+                                label={tu('programs_overview_referrer_topup_percent')}
+                                accent="purple"
+                                value={amountPercentInputToSlider(programReferrerTopupPercentInput)}
+                                onChange={(n) => {
+                                  setProgramReferrerTopupPercentInput(String(n));
+                                  setCardIssuanceTopupPromotionEditorServerError('');
+                                }}
+                                disabled={cardIssuanceTopupPromotionEditorPublishing}
+                                focusRingClassName={bizFocusRingClass}
+                              />
+                            </div>
+                          ) : null}
+                        </section>
+                      </div>
+
+                      {cardIssuanceTopupPromotionEditorValidationError ||
+                      programReferrerTopupValidationError ||
+                      programRewardPtTopupValidationError ? (
+                        <div
+                          role="alert"
+                          className="mt-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-[13px] text-amber-900"
+                        >
+                          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+                          <p>
+                            {cardIssuanceTopupPromotionEditorValidationError ||
+                              programReferrerTopupValidationError ||
+                              programRewardPtTopupValidationError}
                           </p>
                         </div>
-                        <button
-                          type="button"
-                          onClick={closeCardIssuanceTopupPromotionEditor}
-                          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#eef1f3] text-[#595c5e] transition-colors hover:bg-[#dfe3e6] ${bizFocusRingClass}`}
-                          aria-label="Close top-up promotion editor"
+                      ) : null}
+                      {(cardIssuanceCreateError || cardIssuanceTopupPromotionEditorServerError) &&
+                      !cardIssuanceTopupPromotionEditorPublishing ? (
+                        <div
+                          role="alert"
+                          className="mt-4 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-[13px] text-red-900"
                         >
-                          <X className="h-5 w-5" strokeWidth={2} aria-hidden />
-                        </button>
-                      </div>
+                          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+                          <p>{cardIssuanceCreateError || cardIssuanceTopupPromotionEditorServerError}</p>
+                        </div>
+                      ) : null}
                     </div>
 
-                    <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-[max(1.5rem,env(safe-area-inset-bottom,0px))]">
-                    <div className="space-y-6">
-                       <div className="flex items-center justify-between gap-4 rounded-2xl bg-[#eef1f3] px-4 py-4">
-                         <div className="min-w-0">
-                           <p className="text-xs font-bold uppercase tracking-widest text-[#595c5e]">
-                             {tu('programs_topup_promotion_enable_label')}
-                           </p>
-                           <p className="mt-1 text-sm text-[#595c5e]">
-                             {tu('programs_topup_promotion_enable_hint')}
-                           </p>
-                         </div>
-                         <button
-                           type="button"
-                           role="switch"
-                           aria-checked={cardIssuanceTopupPromotion.enabled}
-                           aria-label={tu('programs_topup_promotion_enable_label')}
-                           disabled={cardIssuanceTopupPromotionEditorPublishing}
-                           onClick={() =>
-                             setCardIssuanceTopupPromotion((p) => ({
-                               ...p,
-                               enabled: !p.enabled,
-                             }))
-                           }
-                           className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-60 ${bizFocusRingClass} ${
-                             cardIssuanceTopupPromotion.enabled ? 'bg-[#0051d1]' : 'bg-[#abadaf]/50'
-                           }`}
-                         >
-                           <span
-                             className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition ${
-                               cardIssuanceTopupPromotion.enabled ? 'translate-x-6' : 'translate-x-1'
-                             }`}
-                           />
-                         </button>
-                       </div>
-
-                       {cardIssuanceTopupPromotion.enabled ? (
-                       <>
-                       <div className="flex items-center justify-between gap-4 rounded-2xl bg-[#eef1f3] px-4 py-4">
-                         <div className="min-w-0">
-                           <p className="text-xs font-bold uppercase tracking-widest text-[#595c5e]">Validity period</p>
-                           <p className="mt-1 text-sm text-[#595c5e]">Limit when this promotion is active.</p>
-                         </div>
-                         <button
-                           type="button"
-                           role="switch"
-                           aria-checked={cardIssuanceTopupPromotion.validityPeriodEnabled}
-                           aria-label="Validity period"
-                           onClick={() =>
-                             setCardIssuanceTopupPromotion((p) => ({
-                               ...p,
-                               validityPeriodEnabled: !p.validityPeriodEnabled,
-                               ...(p.validityPeriodEnabled ? { validFrom: '', validTo: '' } : {}),
-                               enabled: true,
-                             }))
-                           }
-                           className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${bizFocusRingClass} ${
-                             cardIssuanceTopupPromotion.validityPeriodEnabled ? 'bg-[#0051d1]' : 'bg-[#abadaf]/50'
-                           }`}
-                         >
-                           <span
-                             className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition ${
-                               cardIssuanceTopupPromotion.validityPeriodEnabled ? 'translate-x-6' : 'translate-x-1'
-                             }`}
-                           />
-                         </button>
-                       </div>
-
-                       {cardIssuanceTopupPromotion.validityPeriodEnabled ? (
-                       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                         <div className="space-y-2">
-                           <label className="ml-2 block text-xs font-bold uppercase tracking-widest text-[#595c5e]" htmlFor="card-topup-promo-valid-from">
-                             Valid from (optional)
-                           </label>
-                           <input
-                             id="card-topup-promo-valid-from"
-                             type="date"
-                             value={cardIssuanceTopupPromotion.validFrom}
-                             onChange={(e) =>
-                               setCardIssuanceTopupPromotion((p) => ({ ...p, validFrom: e.target.value, enabled: true }))
-                             }
-                             className={`w-full rounded-2xl border-none bg-[#eef1f3] px-4 py-3.5 text-sm font-medium text-[#2c2f31] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass}`}
-                           />
-                         </div>
-                         <div className="space-y-2">
-                           <label className="ml-2 block text-xs font-bold uppercase tracking-widest text-[#595c5e]" htmlFor="card-topup-promo-valid-to">
-                             Valid to (optional)
-                           </label>
-                           <input
-                             id="card-topup-promo-valid-to"
-                             type="date"
-                             value={cardIssuanceTopupPromotion.validTo}
-                             onChange={(e) =>
-                               setCardIssuanceTopupPromotion((p) => ({ ...p, validTo: e.target.value, enabled: true }))
-                             }
-                             className={`w-full rounded-2xl border-none bg-[#eef1f3] px-4 py-3.5 text-sm font-medium text-[#2c2f31] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass}`}
-                           />
-                         </div>
-                       </div>
-                       ) : null}
-
-                       <div className="space-y-2">
-                         <label className="ml-2 block text-xs font-bold uppercase tracking-widest text-[#595c5e]" htmlFor="card-topup-promo-minimum">
-                           Minimum top-up amount
-                         </label>
-                         <div className="relative">
-                           <div className="pointer-events-none absolute inset-y-0 left-6 flex items-center">
-                             <span className="font-manrope text-lg font-extrabold text-[#0051d1]">{cardIssuanceDisplayMoneyPrefix}</span>
-                           </div>
-                           <input
-                             id="card-topup-promo-minimum"
-                             ref={cardIssuanceTopupPromotionMinWheelRef}
-                             type="number"
-                             inputMode="decimal"
-                             autoComplete="off"
-                             placeholder="50.00"
-                             value={cardIssuanceTopupPromotion.minimumTopupAmount}
-                             onKeyDown={preventNumericInputStepKeys}
-                             onWheel={preventNumericInputWheelStep}
-                             onChange={(e) =>
-                               setCardIssuanceTopupPromotion((p) => ({
-                                 ...p,
-                                 minimumTopupAmount: normalizeCardIssuanceBonusRuleInput(e.target.value),
-                                 enabled: true,
-                               }))
-                             }
-                             className={`w-full rounded-full border-none bg-[#eef1f3] py-5 pl-16 pr-8 text-xl font-bold text-[#2c2f31] placeholder:text-[#abadaf] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
-                           />
-                         </div>
-                       </div>
-
-                       <div className="space-y-3">
-                         <p className="ml-2 text-xs font-bold uppercase tracking-widest text-[#595c5e]">Reward type</p>
-                         <div className="flex gap-2">
-                           <button
-                             type="button"
-                             onClick={() =>
-                               setCardIssuanceTopupPromotion((p) => ({ ...p, rewardType: 'percent', enabled: true }))
-                             }
-                             className={`flex-1 rounded-full py-3 text-sm font-bold transition-colors ${bizFocusRingClass} ${
-                               cardIssuanceTopupPromotion.rewardType === 'percent'
-                                 ? 'bg-[#0051d1] text-white'
-                                 : 'bg-[#eef1f3] text-[#595c5e]'
-                             }`}
-                           >
-                             Percentage
-                           </button>
-                           <button
-                             type="button"
-                             onClick={() =>
-                               setCardIssuanceTopupPromotion((p) => ({ ...p, rewardType: 'fixed', enabled: true }))
-                             }
-                             className={`flex-1 rounded-full py-3 text-sm font-bold transition-colors ${bizFocusRingClass} ${
-                               cardIssuanceTopupPromotion.rewardType === 'fixed'
-                                 ? 'bg-[#0051d1] text-white'
-                                 : 'bg-[#eef1f3] text-[#595c5e]'
-                             }`}
-                           >
-                             Fixed amount
-                           </button>
-                         </div>
-                       </div>
-
-                       <div className="space-y-2">
-                         <label className="ml-2 block text-xs font-bold uppercase tracking-widest text-[#595c5e]" htmlFor="card-topup-promo-reward">
-                           {cardIssuanceTopupPromotion.rewardType === 'percent' ? 'Reward percentage' : 'Fixed reward amount'}
-                         </label>
-                         <div className="relative">
-                           <div className="pointer-events-none absolute inset-y-0 left-6 flex items-center">
-                             <span className="font-manrope text-lg font-extrabold text-[#8d3a8b]">
-                               {cardIssuanceTopupPromotion.rewardType === 'percent' ? '%' : '+'}
-                             </span>
-                           </div>
-                           <input
-                             id="card-topup-promo-reward"
-                             ref={cardIssuanceTopupPromotionRewardWheelRef}
-                             type="number"
-                             inputMode="decimal"
-                             autoComplete="off"
-                             placeholder={cardIssuanceTopupPromotion.rewardType === 'percent' ? '10' : '5.00'}
-                             value={cardIssuanceTopupPromotion.rewardValue}
-                             onKeyDown={preventNumericInputStepKeys}
-                             onWheel={preventNumericInputWheelStep}
-                             onChange={(e) =>
-                               setCardIssuanceTopupPromotion((p) => ({
-                                 ...p,
-                                 rewardValue: normalizeCardIssuanceBonusRuleInput(e.target.value),
-                                 enabled: true,
-                               }))
-                             }
-                             className={`w-full rounded-full border-none bg-[#eef1f3] py-5 pl-16 pr-8 text-xl font-bold text-[#2c2f31] placeholder:text-[#abadaf] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
-                           />
-                         </div>
-                         <div className="mt-4 flex items-center gap-3 rounded-2xl border border-[#0051d1]/5 bg-[#7a9dff]/10 p-4">
-                           <Bot className="h-5 w-5 shrink-0 text-[#0051d1]" strokeWidth={2} aria-hidden />
-                           <p className="text-sm text-[#595c5e]">
-                             {cardIssuanceTopupPromotion.rewardType === 'percent' ? (
-                               <>
-                                 Customer receives{' '}
-                                 <span className="font-bold text-[#0051d1]">
-                                   {cardIssuanceDisplayMoneyPrefix}
-                                   {formatCardIssuanceBonusRuleAmount(cardIssuanceTopupPromotionEditorPreviewReceive)}
-                                 </span>{' '}
-                                 on a {cardIssuanceDisplayMoneyPrefix}
-                                 {formatCardIssuanceBonusRuleAmount(cardIssuanceTopupPromotionEditorPreviewPay)} top-up (
-                                 {formatCardIssuanceBonusRuleAmount(cardIssuanceTopupPromotionEditorPreviewBonus)} bonus).
-                               </>
-                             ) : (
-                               <>
-                                 Customer receives{' '}
-                                 <span className="font-bold text-[#0051d1]">
-                                   {cardIssuanceDisplayMoneyPrefix}
-                                   {formatCardIssuanceBonusRuleAmount(cardIssuanceTopupPromotionEditorPreviewReceive)}
-                                 </span>{' '}
-                                 when topping up at least {cardIssuanceDisplayMoneyPrefix}
-                                 {formatCardIssuanceBonusRuleAmount(cardIssuanceTopupPromotionEditorPreviewPay)}.
-                               </>
-                             )}
-                           </p>
-                         </div>
-                       </div>
-                       </>
-                       ) : null}
-
-                       <div className="rounded-2xl border border-[#dce2f7] bg-[#e9edff]/60 px-4 py-4">
-                         <div className="flex items-center justify-between gap-4">
-                           <div className="min-w-0">
-                             <p className="text-xs font-bold uppercase tracking-widest text-[#0051d1]">
-                               {tu('programs_topup_reward_pt_switch')}
-                             </p>
-                             <p className="mt-1 text-sm text-[#595c5e]">
-                               {tu('programs_topup_reward_pt_hint')}
-                             </p>
-                           </div>
-                           <button
-                             type="button"
-                             role="switch"
-                             aria-checked={programRewardPtTopupEnabled}
-                             aria-label={tu('programs_topup_reward_pt_switch')}
-                             disabled={cardIssuanceTopupPromotionEditorPublishing}
-                             onClick={() => {
-                               const next = !programRewardPtTopupEnabled;
-                               setProgramRewardPtTopupEnabled(next);
-                               if (next && (programRewardPtTopupPercentInput === '0' || !programRewardPtTopupPercentInput.trim())) {
-                                 setProgramRewardPtTopupPercentInput('1');
-                               }
-                             }}
-                             className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-60 ${bizFocusRingClass} ${
-                               programRewardPtTopupEnabled ? 'bg-[#0051d1]' : 'bg-[#abadaf]/50'
-                             }`}
-                           >
-                             <span
-                               className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition ${
-                                 programRewardPtTopupEnabled ? 'translate-x-6' : 'translate-x-1'
-                               }`}
-                             />
-                           </button>
-                         </div>
-                         {programRewardPtTopupEnabled ? (
-                           <div className="mt-4">
-                             <BeamioPercentSlider
-                               id="card-topup-reward-pt-percent"
-                               label={tu('programs_topup_reward_pt_percent')}
-                               accent="blue"
-                               value={amountPercentInputToSlider(programRewardPtTopupPercentInput)}
-                               onChange={(n) => setProgramRewardPtTopupPercentInput(String(n))}
-                               disabled={cardIssuanceTopupPromotionEditorPublishing}
-                               focusRingClassName={bizFocusRingClass}
-                             />
-                           </div>
-                         ) : null}
-                       </div>
-
-                       <div className="rounded-2xl border border-[#eadcf7] bg-[#f5ecff]/60 px-4 py-4">
-                         <div className="flex items-center justify-between gap-4">
-                           <div className="min-w-0">
-                             <p className="text-xs font-bold uppercase tracking-widest text-[#8d3a8b]">
-                               {tu('programs_overview_referrer_reward_switch')}
-                             </p>
-                             <p className="mt-1 text-sm text-[#595c5e]">
-                               {tu('programs_overview_referrer_topup_hint')}
-                             </p>
-                           </div>
-                           <button
-                             type="button"
-                             role="switch"
-                             aria-checked={programReferrerTopupEnabled}
-                             aria-label={tu('programs_overview_referrer_reward_switch')}
-                             disabled={cardIssuanceTopupPromotionEditorPublishing}
-                             onClick={() => {
-                               const next = !programReferrerTopupEnabled;
-                               setProgramReferrerTopupEnabled(next);
-                               if (next && (programReferrerTopupPercentInput === '0' || !programReferrerTopupPercentInput.trim())) {
-                                 setProgramReferrerTopupPercentInput('1');
-                               }
-                             }}
-                             className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-60 ${bizFocusRingClass} ${
-                               programReferrerTopupEnabled ? 'bg-[#8d3a8b]' : 'bg-[#abadaf]/50'
-                             }`}
-                           >
-                             <span
-                               className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition ${
-                                 programReferrerTopupEnabled ? 'translate-x-6' : 'translate-x-1'
-                               }`}
-                             />
-                           </button>
-                         </div>
-                         {programReferrerTopupEnabled ? (
-                           <div className="mt-4 space-y-3">
-                             <div className="flex items-center justify-between gap-3">
-                               <label
-                                 className="min-w-0 text-xs font-bold uppercase tracking-widest text-[#595c5e]"
-                                 htmlFor="card-topup-referrer-reward-percent"
-                               >
-                                 {tu('programs_overview_referrer_topup_percent')}
-                               </label>
-                               <div className="flex min-h-[2.25rem] shrink-0 items-center justify-center gap-1 rounded-full border border-[#eadcf7] bg-white px-3 py-1.5">
-                                 <span className="text-center font-manrope text-base font-extrabold tabular-nums text-[#8d3a8b]">
-                                   {amountPercentInputToSlider(programReferrerTopupPercentInput)}
-                                 </span>
-                                 <span className="shrink-0 font-manrope text-sm font-bold text-[#8d3a8b]">%</span>
-                               </div>
-                             </div>
-                             <input
-                               id="card-topup-referrer-reward-percent"
-                               type="range"
-                               min={0}
-                               max={100}
-                               step={1}
-                               value={amountPercentInputToSlider(programReferrerTopupPercentInput)}
-                               disabled={cardIssuanceTopupPromotionEditorPublishing}
-                               onChange={(e) =>
-                                 setProgramReferrerTopupPercentInput(String(parseInt(e.target.value, 10)))
-                               }
-                               aria-valuemin={0}
-                               aria-valuemax={100}
-                               aria-valuenow={amountPercentInputToSlider(programReferrerTopupPercentInput)}
-                               aria-label={tu('programs_overview_referrer_topup_percent')}
-                               className={`h-2 w-full cursor-pointer appearance-none rounded-lg bg-[#eadcf7] accent-[#8d3a8b] disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
-                             />
-                             <div className="flex justify-between px-0.5 text-[11px] font-medium text-[#8d3a8b]/70">
-                               <span>0%</span>
-                               <span>50%</span>
-                               <span>100%</span>
-                             </div>
-                           </div>
-                         ) : null}
-                       </div>
-
-                       {cardIssuanceTopupPromotionEditorValidationError ||
-                       programReferrerTopupValidationError ||
-                       programRewardPtTopupValidationError ? (
-                         <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
-                           <p>
-                             {cardIssuanceTopupPromotionEditorValidationError ||
-                               programReferrerTopupValidationError ||
-                               programRewardPtTopupValidationError}
-                           </p>
-                         </div>
-                       ) : null}
-                       {(cardIssuanceCreateError || cardIssuanceTopupPromotionEditorServerError) &&
-                       !cardIssuanceTopupPromotionEditorPublishing ? (
-                         <div className="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
-                           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
-                           <p>{cardIssuanceCreateError || cardIssuanceTopupPromotionEditorServerError}</p>
-                         </div>
-                       ) : null}
-
-                       {/* Always reserve footer height so Save appearing does not jump the sheet content up. */}
-                       <div className="space-y-3 pt-2">
-                         <div
-                           className={`flex items-stretch gap-3 ${
-                             cardIssuanceTopupPromotionEditorDirty ||
-                             cardIssuanceTopupPromotionEditorPublishing
-                               ? ''
-                               : 'invisible pointer-events-none'
-                           }`}
-                           aria-hidden={
-                             !(
-                               cardIssuanceTopupPromotionEditorDirty ||
-                               cardIssuanceTopupPromotionEditorPublishing
-                             )
-                           }
-                         >
-                           <button
-                             type="button"
-                             onClick={() => void submitCardIssuanceTopupPromotionEditor()}
-                             tabIndex={
-                               cardIssuanceTopupPromotionEditorDirty ||
-                               cardIssuanceTopupPromotionEditorPublishing
-                                 ? 0
-                                 : -1
-                             }
-                             disabled={
-                               !(
-                                 cardIssuanceTopupPromotionEditorDirty ||
-                                 cardIssuanceTopupPromotionEditorPublishing
-                               ) ||
-                               Boolean(cardIssuanceTopupPromotionEditorValidationError) ||
-                               Boolean(programReferrerTopupValidationError) ||
-                               Boolean(programRewardPtTopupValidationError) ||
-                               cardIssuanceTopupPromotionEditorPublishing ||
-                               cardIssuanceTopupPromotionDeleting
-                             }
-                             className={`flex min-w-0 flex-1 items-center justify-center gap-2 rounded-full bg-[#0051d1] py-5 font-manrope text-base font-bold text-white shadow-lg shadow-[#0051d1]/20 transition-transform active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 ${CARD_SETUP_MOBILE_CTA_TOUCH_CLASS} ${bizFocusRingClass}`}
-                           >
-                             {cardIssuanceTopupPromotionEditorPublishing ? (
-                               <Loader2 className="h-5 w-5 animate-spin" strokeWidth={2} aria-hidden />
-                             ) : (
-                               <PlusCircle className="h-5 w-5" strokeWidth={2} aria-hidden />
-                             )}
-                             <span>
-                               {cardIssuanceTopupPromotionEditorPublishing
-                                 ? 'Saving...'
-                                 : 'Save Promotion'}
-                             </span>
-                           </button>
-                           <button
-                             type="button"
-                             onClick={discardCardIssuanceTopupPromotionEditorChanges}
-                             tabIndex={
-                               cardIssuanceTopupPromotionEditorDirty &&
-                               !cardIssuanceTopupPromotionEditorPublishing
-                                 ? 0
-                                 : -1
-                             }
-                             disabled={
-                               !(
-                                 cardIssuanceTopupPromotionEditorDirty &&
-                                 !cardIssuanceTopupPromotionEditorPublishing
-                               ) || cardIssuanceTopupPromotionDeleting
-                             }
-                             className={`shrink-0 rounded-full border border-[#dfe3e6] bg-white px-5 py-5 font-manrope text-sm font-bold text-[#595c5e] transition-colors hover:bg-[#eef1f3] disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass} ${
-                               cardIssuanceTopupPromotionEditorDirty &&
-                               !cardIssuanceTopupPromotionEditorPublishing
-                                 ? ''
-                                 : 'invisible pointer-events-none'
-                             }`}
-                             aria-hidden={
-                               !(
-                                 cardIssuanceTopupPromotionEditorDirty &&
-                                 !cardIssuanceTopupPromotionEditorPublishing
-                               )
-                             }
-                           >
-                             Discard changes
-                           </button>
-                         </div>
+                    <div className="shrink-0 border-t border-[#c3c6d8]/30 bg-white/95 px-5 pb-[max(1rem,env(safe-area-inset-bottom,0px))] pt-4 backdrop-blur-xl sm:px-6">
+                      <div className="mx-auto flex max-w-md flex-col gap-3">
+                        <div className="flex items-center justify-between gap-3 rounded-xl border border-[#c3c6d8] bg-white px-3 py-3 shadow-sm focus-within:border-[#1562f0] focus-within:ring-1 focus-within:ring-[#1562f0]">
+                          <label
+                            htmlFor="card-issuance-topup-simulate"
+                            className="shrink-0 text-[17px] text-[#1a1b1f]"
+                          >
+                            {tu('programs_topup_simulate_label', {
+                              prefix: cardIssuanceDisplayMoneyPrefix,
+                            })}
+                          </label>
+                          <input
+                            id="card-issuance-topup-simulate"
+                            type="number"
+                            inputMode="decimal"
+                            autoComplete="off"
+                            enterKeyHint="done"
+                            min={0}
+                            step="any"
+                            value={cardIssuanceTopupPromotionSimulateAmount}
+                            disabled={cardIssuanceTopupPromotionEditorPublishing}
+                            onKeyDown={preventNumericInputStepKeys}
+                            onWheel={preventNumericInputWheelStep}
+                            ref={cardIssuanceTopupPromotionSimulateWheelRef}
+                            onChange={(e) =>
+                              setCardIssuanceTopupPromotionSimulateAmount(
+                                normalizeCardIssuanceBonusRuleInput(e.target.value)
+                              )
+                            }
+                            className={`w-24 border-none bg-transparent p-0 text-right text-[22px] font-semibold text-[#1562f0] outline-none focus:ring-0 ${bizNumericNoSpinnerClass}`}
+                          />
+                        </div>
+                        <div className="flex flex-col gap-1.5">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-[15px] text-[#424655]">
+                              {tu('programs_topup_simulate_customer_gets')}
+                            </span>
+                            <span className="text-right text-[15px] font-medium text-[#1562f0]">
+                              {tu('programs_topup_simulate_customer_result', {
+                                credits: `${cardIssuanceDisplayMoneyPrefix}${formatCardIssuanceBonusRuleAmount(
+                                  cardIssuanceTopupPromotionSimulateLive.storeCredits
+                                )}`,
+                                points: formatCardIssuanceBonusRuleAmount(
+                                  cardIssuanceTopupPromotionSimulateLive.customerPoints
+                                ),
+                              })}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-[15px] text-[#424655]">
+                              {tu('programs_topup_simulate_referrer_gets')}
+                            </span>
+                            <span className="text-right text-[15px] font-medium text-[#1a1b1f]">
+                              {tu('programs_topup_simulate_referrer_result', {
+                                points: formatCardIssuanceBonusRuleAmount(
+                                  cardIssuanceTopupPromotionSimulateLive.referrerPoints
+                                ),
+                              })}
+                            </span>
+                          </div>
+                        </div>
+                        <p className="text-center text-[12px] font-semibold uppercase tracking-[0.05em] text-[#c6c6cb]">
+                          {tu('programs_topup_simulate_live_preview')}
+                        </p>
                       </div>
-                    </div>
                     </div>
                   </motion.div>
                 </>

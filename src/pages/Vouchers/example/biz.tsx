@@ -16699,7 +16699,7 @@ const cardIssuanceEffectiveMerchantLogo = useMemo(() => {
  }, [cardConfiguratorDraftEoaKey, cardIssuanceExistingCard?.cardAddress]);
 
  const programsOverviewTierRuleOption = useMemo(() => {
-   let fromCache: CardIssuanceTierRule | null = null;
+   let fromCache: CardIssuanceSelectableTierRule | null = null;
    if (programsCardLoyaltyTierRuleCacheKey) {
      const raw = loadTrustedCache<ProgramCardLoyaltyTierRuleTrustedV1>(programsCardLoyaltyTierRuleCacheKey);
      if (
@@ -16708,10 +16708,10 @@ const cardIssuanceEffectiveMerchantLogo = useMemo(() => {
        typeof raw.tierRuleKey === 'string' &&
        CARD_ISSUANCE_TIER_RULE_KEYS.includes(raw.tierRuleKey as CardIssuanceTierRule)
      ) {
-       fromCache = raw.tierRuleKey as CardIssuanceTierRule;
+       fromCache = coerceSelectableCardIssuanceTierRule(raw.tierRuleKey);
      }
    }
-   // Beacon upgradeType() often stays 0; Charge/Balance must overlay from card0 metadata.
+   // Beacon upgradeType() often stays 0; Charge must overlay from card0 metadata.
    const resolvedUt = cardIssuanceLoyaltyUpgradeTypeFromSources(
      cardIssuanceExistingCard?.upgradeType ?? -1,
      cardIssuanceExistingCard?.meta ?? null,
@@ -16719,6 +16719,7 @@ const cardIssuanceEffectiveMerchantLogo = useMemo(() => {
    let fromResolved =
      resolvedUt >= 0 && resolvedUt <= 2 ? cardIssuanceTierRuleFromUpgradeType(resolvedUt) : null;
    // Legacy recovery: chain/meta look like Top-up but trusted cache still has Charge/Balance.
+   // Balance is no longer selectable — coerce to Top-up (`single`); Charge (`cumulative`) is kept.
    const metaParsed = parseLoyaltyUpgradeTypeFromCardMetadata(cardIssuanceExistingCard?.meta ?? null);
    if (
      fromResolved === 'single' &&
@@ -16726,9 +16727,11 @@ const cardIssuanceEffectiveMerchantLogo = useMemo(() => {
      fromCache !== 'single' &&
      metaParsed !== 0
    ) {
-     fromResolved = fromCache;
+     fromResolved = coerceSelectableCardIssuanceTierRule(fromCache);
    }
-   const effectiveKey = fromResolved ?? fromCache ?? cardIssuanceTierRule;
+   const effectiveKey = coerceSelectableCardIssuanceTierRule(
+     fromResolved ?? fromCache ?? cardIssuanceTierRule,
+   );
    return getCardIssuanceTierRuleOptions().find((o) => o.key === effectiveKey);
  }, [
    programsCardLoyaltyTierRuleCacheKey,
@@ -16738,7 +16741,9 @@ const cardIssuanceEffectiveMerchantLogo = useMemo(() => {
  ]);
 
  const programsOverviewTierRuleKey = useMemo(
-   (): CardIssuanceTierRule => programsOverviewTierRuleOption?.key ?? cardIssuanceTierRule,
+   (): CardIssuanceSelectableTierRule =>
+     programsOverviewTierRuleOption?.key ??
+     coerceSelectableCardIssuanceTierRule(cardIssuanceTierRule),
    [programsOverviewTierRuleOption, cardIssuanceTierRule]
  );
 
@@ -16859,7 +16864,7 @@ const cardIssuanceEffectiveMerchantLogo = useMemo(() => {
    const raw = loadTrustedCache<ProgramCardLoyaltyTierRuleTrustedV1>(programsCardLoyaltyTierRuleCacheKey);
    if (!raw || raw.v !== 1 || typeof raw.tierRuleKey !== 'string') return;
    if (!CARD_ISSUANCE_TIER_RULE_KEYS.includes(raw.tierRuleKey as CardIssuanceTierRule)) return;
-   const next = raw.tierRuleKey as CardIssuanceTierRule;
+   const next = coerceSelectableCardIssuanceTierRule(raw.tierRuleKey);
    setCardIssuanceTierRule((prev) => (prev === next ? prev : next));
  }, [
    programsCardLoyaltyTierRuleCacheKey,
@@ -16868,7 +16873,7 @@ const cardIssuanceEffectiveMerchantLogo = useMemo(() => {
    cardIssuanceExistingCard?.meta,
  ]);
 
- /** Issued Program overview: sync draft Loyalty Rule from metadata overlay (Charge/Balance), not bare beacon 0. */
+ /** Issued Program overview: sync draft Loyalty Rule from metadata overlay (Charge; legacy Balance → Top-up), not bare beacon 0. */
  useEffect(() => {
    if (!cardIssuanceExistingCard?.cardAddress) return;
    if (cardIssuanceActiveProgramView !== 'overview') return;
@@ -16876,7 +16881,7 @@ const cardIssuanceEffectiveMerchantLogo = useMemo(() => {
      cardIssuanceExistingCard.upgradeType,
      cardIssuanceExistingCard.meta ?? null,
    );
-   // Only push Balance/Charge into draft; do not force Top-up over a Charge draft while meta is still loading.
+   // Only push Charge (or legacy Balance→Top-up) into draft; do not force Top-up over a Charge draft while meta is still loading.
    if (resolvedUt !== 1 && resolvedUt !== 2) return;
    const k = cardIssuanceTierRuleFromUpgradeType(resolvedUt);
    if (!k) return;

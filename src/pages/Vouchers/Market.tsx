@@ -553,46 +553,39 @@ function DiscoverMerchantMyPointsBlock({
 	storeCreditsVisible?: boolean
 }) {
 	const showStoreCredits = Boolean(storeCreditsVisible && storeCreditsDisplay)
-	const showRewardPoints = !loading && Number.isFinite(points) && points > 0
-	const showSeparateBalances = showStoreCredits || showRewardPoints
+	const pointsValue = (
+		<>
+			{formatSocialPoints13Display(loading ? 0 : points)}
+			<span className="ml-1 text-[14px] font-bold text-slate-400 dark:text-slate-500">Pts</span>
+		</>
+	)
+
+	/* Peer columns when Store Credits are present — no nested "Reward Points" label. */
+	if (showStoreCredits) {
+		return (
+			<div className="grid grid-cols-2 gap-0">
+				<div className="min-w-0 pr-3">
+					<p className="text-[12px] font-medium text-slate-500 dark:text-slate-400">Store Credits</p>
+					<p className="mt-1.5 text-[26px] font-bold leading-none tracking-tight text-[#1f2328] dark:text-slate-100 sm:text-[28px]">
+						{storeCreditsDisplay}
+					</p>
+				</div>
+				<div className="min-w-0 border-l border-slate-100 pl-3 dark:border-slate-800">
+					<p className="text-[12px] font-medium text-slate-500 dark:text-slate-400">My Points</p>
+					<p className="mt-1.5 text-[26px] font-bold leading-none tracking-tight text-[#1f2328] dark:text-slate-100 sm:text-[28px]">
+						{loading ? '—' : pointsValue}
+					</p>
+				</div>
+			</div>
+		)
+	}
 
 	return (
 		<div className="min-w-0">
 			<p className="text-[12px] font-medium text-slate-500 dark:text-slate-400">My Points</p>
-			{showSeparateBalances ? (
-				<div className="mt-2 grid grid-cols-2 gap-3">
-					{showStoreCredits ? (
-						<div className="min-w-0">
-							<p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Store Credits</p>
-							<p className="mt-1 text-[22px] font-bold leading-none tracking-tight text-[#1f2328] dark:text-slate-100 sm:text-[24px]">
-								{storeCreditsDisplay}
-							</p>
-						</div>
-					) : null}
-					{showRewardPoints ? (
-						<div className={showStoreCredits ? 'min-w-0 border-l border-slate-100 pl-3 dark:border-slate-800' : 'min-w-0'}>
-							<p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Reward Points</p>
-							<p className="mt-1 text-[22px] font-bold leading-none tracking-tight text-[#1f2328] dark:text-slate-100 sm:text-[24px]">
-								{formatSocialPoints13Display(points)}
-								<span className="ml-1 text-[13px] font-bold text-slate-400 dark:text-slate-500">Pts</span>
-							</p>
-						</div>
-					) : null}
-				</div>
-			) : (
-				<p className="mt-1.5 text-[26px] font-bold leading-none tracking-tight text-[#1f2328] dark:text-slate-100 sm:text-[28px]">
-					{loading ? (
-						'—'
-					) : (
-						<>
-							{formatSocialPoints13Display(points)}
-							<span className="ml-1 text-[14px] font-bold text-slate-400 dark:text-slate-500">
-								Pts
-							</span>
-						</>
-					)}
-				</p>
-			)}
+			<p className="mt-1.5 text-[26px] font-bold leading-none tracking-tight text-[#1f2328] dark:text-slate-100 sm:text-[28px]">
+				{loading ? '—' : pointsValue}
+			</p>
 		</div>
 	)
 }
@@ -3186,7 +3179,6 @@ function DiscoverDescriptionTextWithUrlCapsules({ text }: { text: string }) {
 }
 
 function DiscoverMerchantInfoPanelCard({ panel }: { panel: DiscoverMerchantInfoPanel }) {
-	const aboutTitle = panel.aboutTitle?.trim()
 	const aboutText = panel.aboutText?.trim()
 	const rows = (
 		[
@@ -3198,18 +3190,9 @@ function DiscoverMerchantInfoPanelCard({ panel }: { panel: DiscoverMerchantInfoP
 
 	return (
 		<div className="rounded-[22px] bg-[#eef1f4] p-4 dark:bg-slate-800/80">
-			{aboutTitle || aboutText ? (
-				<>
-					{aboutTitle ? (
-						<h2 className="text-[16px] font-bold text-[#1f2328] dark:text-slate-100">{aboutTitle}</h2>
-					) : null}
-					{aboutText ? (
-						<DiscoverAboutDetailBody text={aboutText} className={aboutTitle ? " mt-2" : ""} />
-					) : null}
-				</>
-			) : null}
+			{aboutText ? <DiscoverAboutDetailBody text={aboutText} /> : null}
 			{rows.length > 0 ? (
-				<div className={`space-y-4${aboutTitle || aboutText ? " mt-5" : ""}`}>
+				<div className={`space-y-4${aboutText ? " mt-5" : ""}`}>
 					{rows.map(({ label, value, Icon }) => (
 						<div key={label} className="flex gap-3">
 							<span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-[#1562f0] dark:bg-blue-950/50">
@@ -4254,8 +4237,11 @@ function DiscoverMerchantDetailFullScreen({
 			? (promoRewardTierForList ? 1 : 0) + metadataTierCount
 			: null
 	const showRewardTiersLoading = merchantOffersLoading && merchantOfferTiers == null && !promoRewardTierForList
-	const hasRewardTierContent =
-		promoRewardTierForList != null || (merchantOfferTiers != null && merchantOfferTiers.length > 0)
+	const hasRewardTiersContent =
+		promoRewardTiersForList != null || (merchantOfferTiers != null && merchantOfferTiers.length > 0)
+	const showCouponsLoading = merchantOffersLoading && merchantCoupons == null
+	const hasCouponsContent = merchantCoupons != null && merchantCoupons.length > 0
+	const showCouponsCard = showCouponsLoading || hasCouponsContent
 	const wellnessPointsPanel =
 		item.cardAddress != null
 			? DISCOVER_MERCHANT_WELLNESS_POINTS_PANELS[resolveDiscoverCardPanelKey(item.cardAddress)]
@@ -4272,6 +4258,8 @@ function DiscoverMerchantDetailFullScreen({
 	)
 	const heroRechargeBonusPill = topupPromotionPresentation.heroSidePill
 	const isConetGenesisCard = isConetGenesisDiscoverCard(item.cardAddress)
+	const showRewardTiersCard =
+		!isConetGenesisCard && (showRewardTiersLoading || hasRewardTiersContent)
 	const membershipFeeTiers = useMemo((): DiscoverMembershipFeeTier[] => {
 		if (isConetGenesisCard || !membershipFeeMode) return []
 		const allTiers = parseDiscoverAllTiersFromMeta(merchantMetadataRoot)
@@ -6019,10 +6007,24 @@ function DiscoverMerchantDetailFullScreen({
 								) : null}
 							</div>
 							<div className="min-w-0 border-l border-slate-100 pl-3 dark:border-slate-800 sm:pl-4">
-								<DiscoverMerchantMyPointsBlock
-									loading={myPoints13Loading}
-									points={myPoints13Num}
-								/>
+								<p className="text-[12px] font-medium text-slate-500 dark:text-slate-400">My Points</p>
+								<p className="mt-1.5 text-[26px] font-bold leading-none tracking-tight text-[#1f2328] dark:text-slate-100 sm:text-[28px]">
+									{myPoints13Loading ? (
+										'—'
+									) : (
+										<>
+											{formatSocialPoints13Display(myPoints13Num)}
+											<span className="ml-1.5 text-[16px] font-bold text-slate-400 dark:text-slate-500">Pts</span>
+										</>
+									)}
+								</p>
+								<button
+									type="button"
+									onClick={scrollToCouponsSection}
+									className="mt-3 inline-flex items-center justify-center rounded-full bg-[#e8eeff] px-4 py-2 text-[13px] font-bold text-[#1562f0] transition active:scale-[0.98] hover:bg-[#dce6ff] dark:bg-[#1e2a4a] dark:text-[#8eb4ff] dark:hover:bg-[#243556]"
+								>
+									Discover Rewards
+								</button>
 							</div>
 						</div>
 
@@ -6233,8 +6235,11 @@ function DiscoverMerchantDetailFullScreen({
 								onOpenMyNetwork={() => setShowMyNetwork(true)}
 							/>
 						) : null}
-						<h2 className="text-lg font-bold text-[#1f2328] dark:text-slate-100">Available Offers</h2>
+						{showCouponsCard || showRewardTiersCard || (!isConetGenesisCard && wellnessPointsPanel) ? (
+							<h2 className="text-lg font-bold text-[#1f2328] dark:text-slate-100">Available Offers</h2>
+						) : null}
 
+						{showCouponsCard ? (
 						<div
 							ref={couponsSectionRef}
 							className="rounded-[22px] bg-white px-6 py-4 shadow-[0_8px_22px_rgba(15,23,42,0.06)] ring-1 ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800 sm:px-7"
@@ -6247,14 +6252,14 @@ function DiscoverMerchantDetailFullScreen({
 									</span>
 								) : null}
 							</header>
-							{merchantOffersLoading && merchantCoupons == null ? (
+							{showCouponsLoading ? (
 								<div className="flex items-center justify-center gap-2 py-6 text-slate-500 dark:text-slate-400">
 									<Loader2 className="h-5 w-5 animate-spin" strokeWidth={2} aria-hidden />
 									<span className="text-[14px] font-medium">Loading coupons…</span>
 								</div>
-							) : merchantCoupons != null && merchantCoupons.length > 0 ? (
+							) : (
 								<div className="space-y-3">
-									{merchantCoupons.map((row) => (
+									{merchantCoupons!.map((row) => (
 										<DiscoverMerchantCouponOfferRow
 											key={row.coupon.id}
 											row={row}
@@ -6268,14 +6273,11 @@ function DiscoverMerchantDetailFullScreen({
 										/>
 									))}
 								</div>
-							) : (
-								<div className="rounded-xl border border-dashed border-slate-300 bg-slate-50/80 p-4 text-center text-[13px] font-medium text-slate-500 dark:border-slate-600 dark:bg-slate-800/50 dark:text-slate-400">
-									No coupons available yet.
-								</div>
 							)}
 						</div>
+						) : null}
 
-						{!isConetGenesisCard ? (
+						{showRewardTiersCard ? (
 						<div className="rounded-[22px] bg-[#eef1f3] p-4 dark:bg-slate-900/80 sm:p-5">
 							<header className="mb-3 flex items-center justify-between gap-2">
 								<h3 className="text-base font-bold text-[#1f2328] dark:text-slate-100">Reward Tiers</h3>
@@ -6290,11 +6292,11 @@ function DiscoverMerchantDetailFullScreen({
 									<Loader2 className="h-5 w-5 animate-spin" strokeWidth={2} aria-hidden />
 									<span className="text-[14px] font-medium">Loading reward tiers…</span>
 								</div>
-							) : hasRewardTierContent ? (
+							) : (
 								<div className="space-y-2.5">
-									{promoRewardTierForList ? (
-										<DiscoverMerchantPromoRewardTierCard
-											config={promoRewardTierForList}
+									{promoRewardTiersForList ? (
+										<DiscoverMerchantPromoRewardTiersCard
+											config={promoRewardTiersForList}
 											fallbackImage={item.image}
 										/>
 									) : null}
@@ -6307,10 +6309,6 @@ function DiscoverMerchantDetailFullScreen({
 											currency={displayCurrency}
 										/>
 									))}
-								</div>
-							) : (
-								<div className="rounded-xl border border-dashed border-slate-300 bg-white/80 p-4 text-center text-[13px] font-medium text-slate-500 dark:border-slate-600 dark:bg-slate-800/50 dark:text-slate-400">
-									No reward tiers configured yet.
 								</div>
 							)}
 						</div>

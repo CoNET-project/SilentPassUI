@@ -79,11 +79,16 @@ export function newTopupPromotionFixedTierId(): string {
 	return `tier-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
 }
 
-export function createDefaultFixedTierDraft(): TopupPromotionFixedTierDraft[] {
+/** Default Tiered Fixed rows (100→10, 200→50). Named FixedTiers (plural) — must match biz.tsx imports. */
+function defaultFixedTiersDraftRows(): TopupPromotionFixedTierDraft[] {
 	return [
 		{ id: newTopupPromotionFixedTierId(), topupAmount: '100', bonusAmount: '10' },
 		{ id: newTopupPromotionFixedTierId(), topupAmount: '200', bonusAmount: '50' },
 	]
+}
+
+export function createDefaultFixedTiersDraft(): TopupPromotionFixedTierDraft[] {
+	return defaultFixedTiersDraftRows()
 }
 
 export const EMPTY_TOPUP_PROMOTION_DRAFT: TopupPromotionDraft = {
@@ -94,7 +99,7 @@ export const EMPTY_TOPUP_PROMOTION_DRAFT: TopupPromotionDraft = {
 	minimumTopupAmount: '10',
 	rewardType: 'fixed',
 	rewardValue: '10',
-	fixedTiers: createDefaultFixedTierDraft(),
+	fixedTiers: defaultFixedTiersDraftRows(),
 }
 
 function parseAmount(raw: unknown): number | null {

@@ -374,13 +374,18 @@ import {
 } from '@/utils/numericInputStepKeys';
 import {
   EMPTY_TOPUP_PROMOTION_DRAFT,
+  TOPUP_PROMOTION_FIXED_TIERS_MAX,
+  cloneTopupPromotionDraft,
+  createDefaultFixedTiersDraft,
   formatTopupPromotionDisplay,
   legacyBonusRuleToTopupPromotion,
+  newTopupPromotionFixedTierId,
   parseTopupPromotionFromMetadata,
+  simulateTopupPromotionBonus,
   topupPromotionDraftFromMetadata,
   topupPromotionDraftToPayload,
   topupPromotionDraftsEqual,
-  topupPromotionToLegacyBonusRule,
+  topupPromotionToLegacyBonusRules,
   validateTopupPromotionDraft,
   type TopupPromotionDraft,
 } from '@/utils/programTopupPromotion';
@@ -13893,6 +13898,17 @@ const cardIssuanceCouponEditingIssued = Boolean(cardIssuanceEditingCouponRow?.is
  const cardIssuanceTopupPromotionMinWheelRef = useMemo(() => createNumericInputWheelNonPassiveRefCallback(), []);
  const cardIssuanceTopupPromotionRewardWheelRef = useMemo(() => createNumericInputWheelNonPassiveRefCallback(), []);
  const cardIssuanceTopupPromotionSimulateWheelRef = useMemo(() => createNumericInputWheelNonPassiveRefCallback(), []);
+ const cardIssuanceTopupPromotionTierWheelRefs = useRef(
+   new Map<string, ReturnType<typeof createNumericInputWheelNonPassiveRefCallback>>(),
+ );
+ const getCardIssuanceTopupPromotionTierWheelRef = useCallback((key: string) => {
+   let cb = cardIssuanceTopupPromotionTierWheelRefs.current.get(key);
+   if (!cb) {
+     cb = createNumericInputWheelNonPassiveRefCallback();
+     cardIssuanceTopupPromotionTierWheelRefs.current.set(key, cb);
+   }
+   return cb;
+ }, []);
  const [cardIssuanceTopupPromotionSimulateAmount, setCardIssuanceTopupPromotionSimulateAmount] =
    useState(String(CARD_ISSUANCE_BONUS_RULE_PAYMENT_DEFAULT));
  const cardIssuanceTierEditorThresholdWheelRef = useMemo(() => createNumericInputWheelNonPassiveRefCallback(), []);
@@ -15719,10 +15735,9 @@ useEffect(() => {
   if (!cardIssuanceExistingCard?.cardAddress || !cardIssuanceExistingCard.meta) return;
   if (cardIssuanceTopupPromotionEditorOpen) return;
   // Parse + heal legacy mismatch (fixed CA$N shown as percent). Editor keeps user draft incl. percent.
-  const promo = topupPromotionDraftFromMetadata(
+  setCardIssuanceTopupPromotion(
     parseTopupPromotionFromMetadata(cardIssuanceExistingCard.meta as Record<string, unknown>),
   );
-  setCardIssuanceTopupPromotion(promo);
   const rewardPt = parseUnifiedRewardTopupDraft(
     (cardIssuanceExistingCard.meta as { unifiedRewardPoints?: unknown }).unifiedRewardPoints,
   );
@@ -16914,7 +16929,7 @@ const cardIssuanceTopupPromotionOverviewSummary = useMemo(() => {
 
 const cardIssuanceTopupPromotionLegacyBonus = useMemo(() => {
   if (!cardIssuanceTopupPromotionPayload) return undefined;
-  return topupPromotionToLegacyBonusRule(cardIssuanceTopupPromotionPayload) ?? undefined;
+  return topupPromotionToLegacyBonusRules(cardIssuanceTopupPromotionPayload)[0];
 }, [cardIssuanceTopupPromotionPayload]);
 
 const cardIssuanceTopupPromotionEditorValidationError = useMemo(
@@ -17029,24 +17044,28 @@ const merchantOracleSpreadOverviewSummary = useMemo(
 const merchantOracleSpreadIsConfigured = reward13ConvertOracleSpreadBps > 0;
 
 const cardIssuanceTopupPromotionEditorPreviewPay = useMemo(() => {
+  if (cardIssuanceTopupPromotion.rewardType === 'fixed') {
+    const first = cardIssuanceTopupPromotion.fixedTiers[0];
+    const n = Number.parseFloat((first?.topupAmount ?? '').replace(/,/g, '').trim());
+    return Number.isFinite(n) && n > 0 ? n : CARD_ISSUANCE_BONUS_RULE_PAYMENT_DEFAULT;
+  }
   const raw = cardIssuanceTopupPromotion.minimumTopupAmount.replace(/,/g, '').trim();
   const n = Number.parseFloat(raw);
   return Number.isFinite(n) && n > 0 ? n : CARD_ISSUANCE_BONUS_RULE_PAYMENT_DEFAULT;
-}, [cardIssuanceTopupPromotion.minimumTopupAmount]);
-
-const cardIssuanceTopupPromotionEditorPreviewBonus = useMemo(() => {
-  const raw = cardIssuanceTopupPromotion.rewardValue.replace(/,/g, '').trim();
-  const n = Number.parseFloat(raw);
-  if (!Number.isFinite(n) || n <= 0) return CARD_ISSUANCE_BONUS_RULE_BONUS_DEFAULT;
-  if (cardIssuanceTopupPromotion.rewardType === 'percent') {
-    return Number(((cardIssuanceTopupPromotionEditorPreviewPay * n) / 100).toFixed(2));
-  }
-  return n;
 }, [
   cardIssuanceTopupPromotion.rewardType,
-  cardIssuanceTopupPromotion.rewardValue,
-  cardIssuanceTopupPromotionEditorPreviewPay,
+  cardIssuanceTopupPromotion.fixedTiers,
+  cardIssuanceTopupPromotion.minimumTopupAmount,
 ]);
+
+const cardIssuanceTopupPromotionEditorPreviewBonus = useMemo(() => {
+  const payload = topupPromotionDraftToPayload({
+    ...cardIssuanceTopupPromotion,
+    enabled: true,
+  });
+  const bonus = simulateTopupPromotionBonus(payload, cardIssuanceTopupPromotionEditorPreviewPay).storeCreditBonus;
+  return bonus > 0 ? bonus : CARD_ISSUANCE_BONUS_RULE_BONUS_DEFAULT;
+}, [cardIssuanceTopupPromotion, cardIssuanceTopupPromotionEditorPreviewPay]);
 
 const cardIssuanceTopupPromotionEditorPreviewReceive = Number(
   (cardIssuanceTopupPromotionEditorPreviewPay + cardIssuanceTopupPromotionEditorPreviewBonus).toFixed(2)
@@ -17060,21 +17079,10 @@ const cardIssuanceTopupPromotionSimulateLive = useMemo(() => {
     Number.isFinite(payParsed) && payParsed > 0
       ? payParsed
       : CARD_ISSUANCE_BONUS_RULE_PAYMENT_DEFAULT;
-  let bonus = 0;
-  if (cardIssuanceTopupPromotion.enabled) {
-    const minRaw = cardIssuanceTopupPromotion.minimumTopupAmount.replace(/,/g, '').trim();
-    const minN = Number.parseFloat(minRaw);
-    const minOk = !Number.isFinite(minN) || minN <= 0 || pay >= minN;
-    const rewardRaw = cardIssuanceTopupPromotion.rewardValue.replace(/,/g, '').trim();
-    const rewardN = Number.parseFloat(rewardRaw);
-    if (minOk && Number.isFinite(rewardN) && rewardN > 0) {
-      if (cardIssuanceTopupPromotion.rewardType === 'percent') {
-        bonus = Number(((pay * rewardN) / 100).toFixed(2));
-      } else {
-        bonus = rewardN;
-      }
-    }
-  }
+  const bonus = cardIssuanceTopupPromotion.enabled
+    ? simulateTopupPromotionBonus(topupPromotionDraftToPayload(cardIssuanceTopupPromotion), pay)
+        .storeCreditBonus
+    : 0;
   const storeCredits = Number((pay + bonus).toFixed(2));
   const loyaltyPct = programRewardPtTopupEnabled
     ? amountPercentInputToSlider(programRewardPtTopupPercentInput)
@@ -17087,10 +17095,7 @@ const cardIssuanceTopupPromotionSimulateLive = useMemo(() => {
   return { pay, bonus, storeCredits, customerPoints, referrerPoints };
 }, [
   cardIssuanceTopupPromotionSimulateAmount,
-  cardIssuanceTopupPromotion.enabled,
-  cardIssuanceTopupPromotion.rewardType,
-  cardIssuanceTopupPromotion.rewardValue,
-  cardIssuanceTopupPromotion.minimumTopupAmount,
+  cardIssuanceTopupPromotion,
   programRewardPtTopupEnabled,
   programRewardPtTopupPercentInput,
   programReferrerTopupEnabled,
@@ -19772,7 +19777,7 @@ const openCardIssuanceTopupPromotionEditor = useCallback(() => {
     referrerEnabled: boolean;
     referrerPercent: string;
   }) => {
-    setCardIssuanceTopupPromotionEditorBaseline({ ...cardIssuanceTopupPromotion });
+    setCardIssuanceTopupPromotionEditorBaseline(cloneTopupPromotionDraft(cardIssuanceTopupPromotion));
     setProgramReferrerTopupEditorBaseline({
       enabled: opts.referrerEnabled,
       percent: opts.referrerPercent,
@@ -19963,7 +19968,7 @@ const openCardIssuanceCouponSocialPromotionEditor = useCallback(
 );
 
 const disableCardIssuanceTopupPromotion = useCallback(() => {
-  setCardIssuanceTopupPromotion({ ...EMPTY_TOPUP_PROMOTION_DRAFT });
+  setCardIssuanceTopupPromotion(cloneTopupPromotionDraft(EMPTY_TOPUP_PROMOTION_DRAFT));
   setCardIssuanceTopupPromotionEditorOpen(false);
 }, []);
 
@@ -21757,9 +21762,7 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
      const socialPromotionClearRequested =
        opts?.socialPromotionOverride != null && !socialPromotionPayloadForPublish;
      const bonusPayloadForPublish = topupPromotionPayloadForPublish
-       ? (topupPromotionToLegacyBonusRule(topupPromotionPayloadForPublish)
-           ? [topupPromotionToLegacyBonusRule(topupPromotionPayloadForPublish)!]
-           : [])
+       ? topupPromotionToLegacyBonusRules(topupPromotionPayloadForPublish)
        : [];
      const rewardPtForPublish = opts?.rewardPtTopupOverride ?? {
        enabled: programRewardPtTopupEnabled,
@@ -22274,7 +22277,7 @@ const submitCardIssuanceTopupPromotionEditor = useCallback(async () => {
         );
         return;
       }
-      const legacyBonus = payload ? topupPromotionToLegacyBonusRule(payload) : null;
+      const legacyBonusRules = payload ? topupPromotionToLegacyBonusRules(payload) : [];
       setCardIssuanceTopupPromotion(nextPromotion);
       setProgramRewardPtTopupEnabled(rewardPtDraftAtStart.enabled);
       setProgramRewardPtTopupPercentInput(rewardPtDraftAtStart.percent);
@@ -22284,9 +22287,12 @@ const submitCardIssuanceTopupPromotionEditor = useCallback(async () => {
         if (promoDirty) {
           if (payload) {
             nextMeta.topupPromotion = payload;
-            if (legacyBonus) {
-              nextMeta.bonusRule = legacyBonus;
-              nextMeta.bonusRules = [legacyBonus];
+            if (legacyBonusRules.length > 0) {
+              nextMeta.bonusRule = legacyBonusRules[0];
+              nextMeta.bonusRules = legacyBonusRules;
+            } else {
+              delete nextMeta.bonusRule;
+              delete nextMeta.bonusRules;
             }
           } else {
             delete nextMeta.topupPromotion;
@@ -22392,7 +22398,7 @@ const submitCardIssuanceTopupPromotionEditor = useCallback(async () => {
 
 const discardCardIssuanceTopupPromotionEditorChanges = useCallback(() => {
   if (cardIssuanceTopupPromotionEditorBaseline == null) return;
-  setCardIssuanceTopupPromotion({ ...cardIssuanceTopupPromotionEditorBaseline });
+  setCardIssuanceTopupPromotion(cloneTopupPromotionDraft(cardIssuanceTopupPromotionEditorBaseline));
   if (programReferrerTopupEditorBaseline) {
     setProgramReferrerTopupEnabled(programReferrerTopupEditorBaseline.enabled);
     setProgramReferrerTopupPercentInput(programReferrerTopupEditorBaseline.percent);
@@ -22504,7 +22510,7 @@ const cardIssuanceConsumptionPointEditorCanSave = useMemo(
 
 const clearCardIssuanceTopupPromotion = useCallback(async () => {
   if (cardIssuanceTopupPromotionClearInFlightRef.current) return;
-  const cleared = { ...EMPTY_TOPUP_PROMOTION_DRAFT };
+  const cleared = cloneTopupPromotionDraft(EMPTY_TOPUP_PROMOTION_DRAFT);
   if (!cardIssuanceExistingCard?.cardAddress) {
     setCardIssuanceTopupPromotion(cleared);
     return;
@@ -23980,32 +23986,13 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
        setCardIssuanceStoreDisplayName(draft.storeDisplayName.slice(0, CARD_ISSUANCE_STORE_DISPLAY_NAME_MAX));
      }
      if (draft.topupPromotion && typeof draft.topupPromotion === 'object') {
-       const healed = parseTopupPromotionFromMetadata({
-         topupPromotion: draft.topupPromotion,
-         bonusRules: draft.bonusRules,
-         bonusRule: draft.bonusRules?.[0] ?? undefined,
-       });
-       if (healed) {
-         setCardIssuanceTopupPromotion(topupPromotionDraftFromMetadata(healed));
-       } else {
-         const tp = draft.topupPromotion as Record<string, unknown>;
-         setCardIssuanceTopupPromotion({
-           enabled: tp.enabled !== false,
-           validityPeriodEnabled:
-             typeof tp.validityPeriodEnabled === 'boolean'
-               ? tp.validityPeriodEnabled
-               : Boolean(
-                   (typeof tp.validFrom === 'string' && tp.validFrom.trim()) ||
-                     (typeof tp.validTo === 'string' && tp.validTo.trim())
-                 ),
-           validFrom: typeof tp.validFrom === 'string' ? tp.validFrom : '',
-           validTo: typeof tp.validTo === 'string' ? tp.validTo : '',
-           minimumTopupAmount:
-             typeof tp.minimumTopupAmount === 'string' ? tp.minimumTopupAmount : String(tp.minimumTopupAmount ?? ''),
-           rewardType: tp.rewardType === 'percent' ? 'percent' : 'fixed',
-           rewardValue: typeof tp.rewardValue === 'string' ? tp.rewardValue : String(tp.rewardValue ?? ''),
-         });
-       }
+       setCardIssuanceTopupPromotion(
+         parseTopupPromotionFromMetadata({
+           topupPromotion: draft.topupPromotion,
+           bonusRules: draft.bonusRules,
+           bonusRule: draft.bonusRules?.[0] ?? undefined,
+         }),
+       );
      } else if (draft.bonusRules?.length) {
        const first = draft.bonusRules[0];
        const fromLegacy = legacyBonusRuleToTopupPromotion({
@@ -24013,16 +24000,25 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
          bonusValue: Number.parseFloat(String(first.bonusValue).replace(/,/g, '')) || 0,
          bonusProportional: Boolean(first.bonusProportional),
        });
-       setCardIssuanceTopupPromotion(topupPromotionDraftFromMetadata(fromLegacy));
+       setCardIssuanceTopupPromotion(parseTopupPromotionFromMetadata({ topupPromotion: fromLegacy }));
      } else if (typeof draft.bonusRulePaymentAmount === 'string' && draft.bonusRulePaymentAmount.trim()) {
+       const pay = draft.bonusRulePaymentAmount;
+       const bon = typeof draft.bonusRuleBonusValue === 'string' ? draft.bonusRuleBonusValue : '';
        setCardIssuanceTopupPromotion({
          enabled: true,
          validityPeriodEnabled: false,
          validFrom: '',
          validTo: '',
-         minimumTopupAmount: draft.bonusRulePaymentAmount,
+         minimumTopupAmount: pay,
          rewardType: 'fixed',
-         rewardValue: typeof draft.bonusRuleBonusValue === 'string' ? draft.bonusRuleBonusValue : '',
+         rewardValue: bon,
+         fixedTiers: [
+           {
+             id: newTopupPromotionFixedTierId(),
+             topupAmount: pay,
+             bonusAmount: bon || '10',
+           },
+         ],
        });
      }
     if (draft.unifiedRewardTopup) {
@@ -24204,6 +24200,11 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
            minimumTopupAmount: cardIssuanceTopupPromotion.minimumTopupAmount,
            rewardType: cardIssuanceTopupPromotion.rewardType,
            rewardValue: cardIssuanceTopupPromotion.rewardValue,
+           fixedTiers: cardIssuanceTopupPromotion.fixedTiers.map((t) => ({
+             id: t.id,
+             topupAmount: t.topupAmount,
+             bonusAmount: t.bonusAmount,
+           })),
          }
        : undefined,
      unifiedRewardTopup: {
@@ -43226,16 +43227,11 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                           </p>
 
                           {cardIssuanceTopupPromotion.enabled ? (
-                            <div className="mt-5 space-y-4 border-t border-[#e3e2e7] pt-4">
-                              <div className="flex items-center justify-between gap-4 rounded-2xl bg-[#f4f3f8] px-4 py-3">
-                                <div className="min-w-0">
-                                  <p className="text-xs font-bold uppercase tracking-widest text-[#595c5e]">
-                                    {tu('programs_topup_promotion_validity_label')}
-                                  </p>
-                                  <p className="mt-1 text-sm text-[#595c5e]">
-                                    {tu('programs_topup_promotion_validity_hint')}
-                                  </p>
-                                </div>
+                            <div className="mt-6 flex flex-col gap-6">
+                              <div className="flex items-center justify-between gap-3">
+                                <span className="text-[17px] leading-[22px] text-[#1a1b1f]">
+                                  {tu('programs_topup_promotion_validity_label')}
+                                </span>
                                 <button
                                   type="button"
                                   role="switch"
@@ -43250,17 +43246,17 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                       enabled: true,
                                     }))
                                   }
-                                  className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-60 ${bizFocusRingClass} ${
+                                  className={`relative h-6 w-12 shrink-0 rounded-full transition-colors disabled:opacity-60 ${bizFocusRingClass} ${
                                     cardIssuanceTopupPromotion.validityPeriodEnabled
                                       ? 'bg-[#1562f0]'
-                                      : 'bg-[#abadaf]/50'
+                                      : 'bg-[#dfdfe4]'
                                   }`}
                                 >
                                   <span
-                                    className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition ${
+                                    className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
                                       cardIssuanceTopupPromotion.validityPeriodEnabled
-                                        ? 'translate-x-6'
-                                        : 'translate-x-1'
+                                        ? 'left-[1.35rem]'
+                                        : 'left-0.5'
                                     }`}
                                   />
                                 </button>
@@ -43270,7 +43266,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                                   <div className="space-y-2">
                                     <label
-                                      className="ml-1 block text-xs font-bold uppercase tracking-widest text-[#595c5e]"
+                                      className="block text-[12px] font-semibold uppercase tracking-[0.05em] text-[#424655]"
                                       htmlFor="card-topup-promo-valid-from"
                                     >
                                       {tu('programs_topup_promotion_valid_from')}
@@ -43287,12 +43283,12 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                           enabled: true,
                                         }))
                                       }
-                                      className={`w-full rounded-2xl border-none bg-[#eef1f3] px-4 py-3.5 text-sm font-medium text-[#2c2f31] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass}`}
+                                      className={`w-full rounded-xl border border-[#c3c6d8] bg-white px-3 py-2.5 text-sm text-[#1a1b1f] outline-none focus:border-[#1562f0] focus:ring-1 focus:ring-[#1562f0] ${bizFocusRingClass}`}
                                     />
                                   </div>
                                   <div className="space-y-2">
                                     <label
-                                      className="ml-1 block text-xs font-bold uppercase tracking-widest text-[#595c5e]"
+                                      className="block text-[12px] font-semibold uppercase tracking-[0.05em] text-[#424655]"
                                       htmlFor="card-topup-promo-valid-to"
                                     >
                                       {tu('programs_topup_promotion_valid_to')}
@@ -43309,133 +43305,304 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                           enabled: true,
                                         }))
                                       }
-                                      className={`w-full rounded-2xl border-none bg-[#eef1f3] px-4 py-3.5 text-sm font-medium text-[#2c2f31] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass}`}
+                                      className={`w-full rounded-xl border border-[#c3c6d8] bg-white px-3 py-2.5 text-sm text-[#1a1b1f] outline-none focus:border-[#1562f0] focus:ring-1 focus:ring-[#1562f0] ${bizFocusRingClass}`}
                                     />
                                   </div>
                                 </div>
                               ) : null}
 
-                              <div className="space-y-2">
-                                <label
-                                  className="ml-1 block text-xs font-bold uppercase tracking-widest text-[#595c5e]"
-                                  htmlFor="card-topup-promo-minimum"
+                              <div className="flex rounded-xl bg-[#dfdfe4] p-1">
+                                <button
+                                  type="button"
+                                  disabled={cardIssuanceTopupPromotionEditorPublishing}
+                                  onClick={() =>
+                                    setCardIssuanceTopupPromotion((p) => ({
+                                      ...p,
+                                      rewardType: 'percent',
+                                      enabled: true,
+                                    }))
+                                  }
+                                  className={`flex-1 rounded-lg py-2 text-center text-[12px] font-semibold uppercase tracking-[0.05em] transition-colors disabled:opacity-50 ${bizFocusRingClass} ${
+                                    cardIssuanceTopupPromotion.rewardType === 'percent'
+                                      ? 'bg-white text-[#1562f0] shadow-sm'
+                                      : 'text-[#424655]'
+                                  }`}
                                 >
-                                  {tu('programs_topup_promotion_min_label')}
-                                </label>
-                                <div className="relative">
-                                  <div className="pointer-events-none absolute inset-y-0 left-4 flex items-center">
-                                    <span className="text-sm font-bold text-[#1562f0]">
-                                      {cardIssuanceDisplayMoneyPrefix}
-                                    </span>
-                                  </div>
-                                  <input
-                                    id="card-topup-promo-minimum"
-                                    ref={cardIssuanceTopupPromotionMinWheelRef}
-                                    type="number"
-                                    inputMode="decimal"
-                                    autoComplete="off"
-                                    enterKeyHint="done"
-                                    placeholder="50.00"
-                                    value={cardIssuanceTopupPromotion.minimumTopupAmount}
-                                    disabled={cardIssuanceTopupPromotionEditorPublishing}
-                                    onKeyDown={preventNumericInputStepKeys}
-                                    onWheel={preventNumericInputWheelStep}
-                                    onChange={(e) =>
-                                      setCardIssuanceTopupPromotion((p) => ({
-                                        ...p,
-                                        minimumTopupAmount: normalizeCardIssuanceBonusRuleInput(e.target.value),
-                                        enabled: true,
-                                      }))
-                                    }
-                                    className={`w-full rounded-2xl border-none bg-[#eef1f3] py-3.5 pl-14 pr-4 text-base font-bold text-[#2c2f31] placeholder:text-[#abadaf] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
-                                  />
-                                </div>
+                                  {tu('programs_topup_promotion_type_percent')}
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={cardIssuanceTopupPromotionEditorPublishing}
+                                  onClick={() =>
+                                    setCardIssuanceTopupPromotion((p) => ({
+                                      ...p,
+                                      rewardType: 'fixed',
+                                      enabled: true,
+                                      fixedTiers:
+                                        p.fixedTiers.length > 0
+                                          ? p.fixedTiers
+                                          : createDefaultFixedTiersDraft(),
+                                    }))
+                                  }
+                                  className={`flex-1 rounded-lg py-2 text-center text-[12px] font-semibold uppercase tracking-[0.05em] transition-colors disabled:opacity-50 ${bizFocusRingClass} ${
+                                    cardIssuanceTopupPromotion.rewardType === 'fixed'
+                                      ? 'bg-white text-[#1562f0] shadow-sm'
+                                      : 'text-[#424655]'
+                                  }`}
+                                >
+                                  {tu('programs_topup_promotion_type_fixed')}
+                                </button>
                               </div>
 
-                              <div className="space-y-3">
-                                <p className="ml-1 text-xs font-bold uppercase tracking-widest text-[#595c5e]">
-                                  {tu('programs_topup_promotion_reward_type_label')}
-                                </p>
-                                <div className="flex gap-2">
-                                  <button
-                                    type="button"
-                                    disabled={cardIssuanceTopupPromotionEditorPublishing}
-                                    onClick={() =>
-                                      setCardIssuanceTopupPromotion((p) => ({
-                                        ...p,
-                                        rewardType: 'percent',
-                                        enabled: true,
-                                      }))
-                                    }
-                                    className={`flex-1 rounded-full py-3 text-sm font-bold transition-colors disabled:opacity-50 ${bizFocusRingClass} ${
-                                      cardIssuanceTopupPromotion.rewardType === 'percent'
-                                        ? 'bg-[#1562f0] text-white'
-                                        : 'bg-[#eef1f3] text-[#595c5e]'
-                                    }`}
-                                  >
-                                    {tu('programs_topup_promotion_type_percent')}
-                                  </button>
-                                  <button
-                                    type="button"
-                                    disabled={cardIssuanceTopupPromotionEditorPublishing}
-                                    onClick={() =>
-                                      setCardIssuanceTopupPromotion((p) => ({
-                                        ...p,
-                                        rewardType: 'fixed',
-                                        enabled: true,
-                                      }))
-                                    }
-                                    className={`flex-1 rounded-full py-3 text-sm font-bold transition-colors disabled:opacity-50 ${bizFocusRingClass} ${
-                                      cardIssuanceTopupPromotion.rewardType === 'fixed'
-                                        ? 'bg-[#1562f0] text-white'
-                                        : 'bg-[#eef1f3] text-[#595c5e]'
-                                    }`}
-                                  >
-                                    {tu('programs_topup_promotion_type_fixed')}
-                                  </button>
-                                </div>
-                              </div>
-
-                              <div className="space-y-2">
-                                <label
-                                  className="ml-1 block text-xs font-bold uppercase tracking-widest text-[#595c5e]"
-                                  htmlFor="card-topup-promo-reward"
-                                >
-                                  {cardIssuanceTopupPromotion.rewardType === 'percent'
-                                    ? tu('programs_topup_promotion_percent_label')
-                                    : tu('programs_topup_promotion_fixed_label')}
-                                </label>
-                                <div className="relative">
-                                  <div className="pointer-events-none absolute inset-y-0 left-4 flex items-center">
-                                    <span className="text-sm font-bold text-[#8d3a8b]">
-                                      {cardIssuanceTopupPromotion.rewardType === 'percent' ? '%' : '+'}
-                                    </span>
+                              {cardIssuanceTopupPromotion.rewardType === 'percent' ? (
+                                <div className="flex flex-col gap-4">
+                                  <div className="space-y-2">
+                                    <label
+                                      className="block text-[12px] font-semibold uppercase tracking-[0.05em] text-[#424655]"
+                                      htmlFor="card-topup-promo-minimum"
+                                    >
+                                      {tu('programs_topup_promotion_min_label')}
+                                    </label>
+                                    <div className="flex items-center gap-2">
+                                      <span className="shrink-0 text-[17px] text-[#1a1b1f]">
+                                        {cardIssuanceDisplayMoneyPrefix}
+                                      </span>
+                                      <input
+                                        id="card-topup-promo-minimum"
+                                        ref={cardIssuanceTopupPromotionMinWheelRef}
+                                        type="number"
+                                        inputMode="decimal"
+                                        autoComplete="off"
+                                        enterKeyHint="done"
+                                        placeholder="10"
+                                        value={cardIssuanceTopupPromotion.minimumTopupAmount}
+                                        disabled={cardIssuanceTopupPromotionEditorPublishing}
+                                        onKeyDown={preventNumericInputStepKeys}
+                                        onWheel={preventNumericInputWheelStep}
+                                        onChange={(e) =>
+                                          setCardIssuanceTopupPromotion((p) => ({
+                                            ...p,
+                                            minimumTopupAmount: normalizeCardIssuanceBonusRuleInput(
+                                              e.target.value,
+                                            ),
+                                            enabled: true,
+                                          }))
+                                        }
+                                        className={`h-10 w-full rounded-lg border border-[#c3c6d8] bg-white px-3 text-[#1a1b1f] outline-none focus:border-[#1562f0] focus:ring-1 focus:ring-[#1562f0] ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
+                                      />
+                                    </div>
                                   </div>
-                                  <input
-                                    id="card-topup-promo-reward"
-                                    ref={cardIssuanceTopupPromotionRewardWheelRef}
-                                    type="number"
-                                    inputMode="decimal"
-                                    autoComplete="off"
-                                    enterKeyHint="done"
-                                    placeholder={
-                                      cardIssuanceTopupPromotion.rewardType === 'percent' ? '10' : '5.00'
-                                    }
-                                    value={cardIssuanceTopupPromotion.rewardValue}
-                                    disabled={cardIssuanceTopupPromotionEditorPublishing}
-                                    onKeyDown={preventNumericInputStepKeys}
-                                    onWheel={preventNumericInputWheelStep}
-                                    onChange={(e) =>
-                                      setCardIssuanceTopupPromotion((p) => ({
-                                        ...p,
-                                        rewardValue: normalizeCardIssuanceBonusRuleInput(e.target.value),
-                                        enabled: true,
-                                      }))
-                                    }
-                                    className={`w-full rounded-2xl border-none bg-[#eef1f3] py-3.5 pl-12 pr-4 text-base font-bold text-[#2c2f31] placeholder:text-[#abadaf] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
-                                  />
+                                  <div className="space-y-2">
+                                    <label
+                                      className="block text-[12px] font-semibold uppercase tracking-[0.05em] text-[#424655]"
+                                      htmlFor="card-topup-promo-reward"
+                                    >
+                                      {tu('programs_topup_promotion_percent_label')}
+                                    </label>
+                                    <div className="relative">
+                                      <div className="pointer-events-none absolute inset-y-0 left-3 flex items-center">
+                                        <span className="text-sm font-medium text-[#1562f0]">%</span>
+                                      </div>
+                                      <input
+                                        id="card-topup-promo-reward"
+                                        ref={cardIssuanceTopupPromotionRewardWheelRef}
+                                        type="number"
+                                        inputMode="decimal"
+                                        autoComplete="off"
+                                        enterKeyHint="done"
+                                        placeholder="10"
+                                        value={cardIssuanceTopupPromotion.rewardValue}
+                                        disabled={cardIssuanceTopupPromotionEditorPublishing}
+                                        onKeyDown={preventNumericInputStepKeys}
+                                        onWheel={preventNumericInputWheelStep}
+                                        onChange={(e) =>
+                                          setCardIssuanceTopupPromotion((p) => ({
+                                            ...p,
+                                            rewardValue: normalizeCardIssuanceBonusRuleInput(e.target.value),
+                                            enabled: true,
+                                          }))
+                                        }
+                                        className={`h-10 w-full rounded-lg border border-[#c3c6d8] bg-white py-2 pl-8 pr-3 text-[#1a1b1f] outline-none focus:border-[#1562f0] focus:ring-1 focus:ring-[#1562f0] ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
+                                      />
+                                    </div>
+                                  </div>
                                 </div>
-                              </div>
+                              ) : (
+                                <div className="flex flex-col gap-3">
+                                  {(cardIssuanceTopupPromotion.fixedTiers.length > 0
+                                    ? cardIssuanceTopupPromotion.fixedTiers
+                                    : createDefaultFixedTiersDraft()
+                                  ).map((tier, tierIndex) => {
+                                    const tiers =
+                                      cardIssuanceTopupPromotion.fixedTiers.length > 0
+                                        ? cardIssuanceTopupPromotion.fixedTiers
+                                        : createDefaultFixedTiersDraft();
+                                    return (
+                                      <div
+                                        key={tier.id}
+                                        className="relative flex items-center gap-3 rounded-2xl bg-[#f4f3f8] p-4"
+                                      >
+                                        <div className="flex min-w-0 flex-1 flex-col gap-1">
+                                          <span className="text-[12px] font-semibold uppercase tracking-[0.05em] text-[#424655]">
+                                            {tu('programs_topup_promotion_tier_topup')}
+                                          </span>
+                                          <div className="flex items-center gap-2">
+                                            <span className="shrink-0 text-[17px] text-[#1a1b1f]">
+                                              {cardIssuanceDisplayMoneyPrefix}
+                                            </span>
+                                            <input
+                                              id={`card-topup-promo-tier-topup-${tier.id}`}
+                                              ref={getCardIssuanceTopupPromotionTierWheelRef(
+                                                `${tier.id}-topup`,
+                                              )}
+                                              type="number"
+                                              inputMode="decimal"
+                                              autoComplete="off"
+                                              enterKeyHint="next"
+                                              aria-label={`${tu('programs_topup_promotion_tier_topup')} ${tierIndex + 1}`}
+                                              value={tier.topupAmount}
+                                              disabled={cardIssuanceTopupPromotionEditorPublishing}
+                                              onKeyDown={preventNumericInputStepKeys}
+                                              onWheel={preventNumericInputWheelStep}
+                                              onChange={(e) => {
+                                                const next = normalizeCardIssuanceBonusRuleInput(
+                                                  e.target.value,
+                                                );
+                                                setCardIssuanceTopupPromotion((p) => {
+                                                  const base =
+                                                    p.fixedTiers.length > 0
+                                                      ? p.fixedTiers
+                                                      : createDefaultFixedTiersDraft();
+                                                  return {
+                                                    ...p,
+                                                    enabled: true,
+                                                    fixedTiers: base.map((t) =>
+                                                      t.id === tier.id
+                                                        ? { ...t, topupAmount: next }
+                                                        : t,
+                                                    ),
+                                                  };
+                                                });
+                                              }}
+                                              className={`h-10 w-full rounded-lg border border-[#c3c6d8] bg-white px-3 text-[#1a1b1f] outline-none focus:border-[#1562f0] focus:ring-1 focus:ring-[#1562f0] ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
+                                            />
+                                          </div>
+                                        </div>
+                                        <ArrowRight
+                                          className="mt-6 h-5 w-5 shrink-0 text-[#424655]"
+                                          strokeWidth={2}
+                                          aria-hidden
+                                        />
+                                        <div className="flex min-w-0 flex-1 flex-col gap-1">
+                                          <span className="text-[12px] font-semibold uppercase tracking-[0.05em] text-[#424655]">
+                                            {tu('programs_topup_promotion_tier_bonus')}
+                                          </span>
+                                          <div className="flex items-center gap-2">
+                                            <span className="shrink-0 text-[17px] text-[#1a1b1f]">
+                                              {cardIssuanceDisplayMoneyPrefix}
+                                            </span>
+                                            <input
+                                              id={`card-topup-promo-tier-bonus-${tier.id}`}
+                                              ref={getCardIssuanceTopupPromotionTierWheelRef(
+                                                `${tier.id}-bonus`,
+                                              )}
+                                              type="number"
+                                              inputMode="decimal"
+                                              autoComplete="off"
+                                              enterKeyHint="done"
+                                              aria-label={`${tu('programs_topup_promotion_tier_bonus')} ${tierIndex + 1}`}
+                                              value={tier.bonusAmount}
+                                              disabled={cardIssuanceTopupPromotionEditorPublishing}
+                                              onKeyDown={preventNumericInputStepKeys}
+                                              onWheel={preventNumericInputWheelStep}
+                                              onChange={(e) => {
+                                                const next = normalizeCardIssuanceBonusRuleInput(
+                                                  e.target.value,
+                                                );
+                                                setCardIssuanceTopupPromotion((p) => {
+                                                  const base =
+                                                    p.fixedTiers.length > 0
+                                                      ? p.fixedTiers
+                                                      : createDefaultFixedTiersDraft();
+                                                  return {
+                                                    ...p,
+                                                    enabled: true,
+                                                    fixedTiers: base.map((t) =>
+                                                      t.id === tier.id
+                                                        ? { ...t, bonusAmount: next }
+                                                        : t,
+                                                    ),
+                                                  };
+                                                });
+                                              }}
+                                              className={`h-10 w-full rounded-lg border border-[#c3c6d8] bg-white px-3 font-medium text-[#1562f0] outline-none focus:border-[#1562f0] focus:ring-1 focus:ring-[#1562f0] ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
+                                            />
+                                          </div>
+                                        </div>
+                                        <button
+                                          type="button"
+                                          tabIndex={-1}
+                                          aria-label="Delete tier"
+                                          disabled={
+                                            cardIssuanceTopupPromotionEditorPublishing ||
+                                            tiers.length <= 1
+                                          }
+                                          onClick={() =>
+                                            setCardIssuanceTopupPromotion((p) => {
+                                              const base =
+                                                p.fixedTiers.length > 0
+                                                  ? p.fixedTiers
+                                                  : createDefaultFixedTiersDraft();
+                                              if (base.length <= 1) return p;
+                                              return {
+                                                ...p,
+                                                enabled: true,
+                                                fixedTiers: base.filter((t) => t.id !== tier.id),
+                                              };
+                                            })
+                                          }
+                                          className={`ml-1 mt-6 shrink-0 text-[#ba1a1a] transition hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-30 ${bizFocusRingClass}`}
+                                        >
+                                          <Trash2 className="h-5 w-5" strokeWidth={2} aria-hidden />
+                                        </button>
+                                      </div>
+                                    );
+                                  })}
+                                  <button
+                                    type="button"
+                                    disabled={
+                                      cardIssuanceTopupPromotionEditorPublishing ||
+                                      cardIssuanceTopupPromotion.fixedTiers.length >=
+                                        TOPUP_PROMOTION_FIXED_TIERS_MAX
+                                    }
+                                    onClick={() =>
+                                      setCardIssuanceTopupPromotion((p) => {
+                                        const base =
+                                          p.fixedTiers.length > 0
+                                            ? p.fixedTiers
+                                            : createDefaultFixedTiersDraft();
+                                        if (base.length >= TOPUP_PROMOTION_FIXED_TIERS_MAX) return p;
+                                        return {
+                                          ...p,
+                                          enabled: true,
+                                          fixedTiers: [
+                                            ...base,
+                                            {
+                                              id: newTopupPromotionFixedTierId(),
+                                              topupAmount: '',
+                                              bonusAmount: '',
+                                            },
+                                          ],
+                                        };
+                                      })
+                                    }
+                                    className={`flex w-full items-center justify-center gap-2 py-4 text-[17px] font-medium text-[#1562f0] transition hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-40 ${bizFocusRingClass}`}
+                                  >
+                                    <Plus className="h-[22px] w-[22px]" strokeWidth={2} aria-hidden />
+                                    {tu('programs_topup_promotion_add_tier')}
+                                  </button>
+                                </div>
+                              )}
                             </div>
                           ) : null}
                         </section>

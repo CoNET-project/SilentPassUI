@@ -32,6 +32,12 @@ export type CardConfiguratorDraftTierV1 = {
 
 export type CardConfiguratorDraftRewardsPresetV1 = 'default' | 'custom' | 'salesManagement'
 
+export type CardConfiguratorDraftTopupPromotionFixedTierV1 = {
+  id: string
+  topupAmount: string
+  bonusAmount: string
+}
+
 export type CardConfiguratorDraftTopupPromotionV1 = {
   enabled?: boolean
   validityPeriodEnabled?: boolean
@@ -40,6 +46,7 @@ export type CardConfiguratorDraftTopupPromotionV1 = {
   minimumTopupAmount: string
   rewardType: 'percent' | 'fixed'
   rewardValue: string
+  fixedTiers?: CardConfiguratorDraftTopupPromotionFixedTierV1[]
 }
 
 export type CardConfiguratorDraftUnifiedRewardTopupV1 = {
@@ -120,6 +127,27 @@ function normalizeUnifiedRewardTopup(raw: unknown): CardConfiguratorDraftUnified
   }
 }
 
+function normalizeTopupPromotionFixedTiers(
+  raw: unknown
+): CardConfiguratorDraftTopupPromotionFixedTierV1[] | undefined {
+  if (!Array.isArray(raw) || raw.length === 0) return undefined
+  const out: CardConfiguratorDraftTopupPromotionFixedTierV1[] = []
+  for (let i = 0; i < raw.length; i++) {
+    const row = raw[i]
+    if (!row || typeof row !== 'object') continue
+    const t = row as Record<string, unknown>
+    const topupAmount =
+      typeof t.topupAmount === 'string' ? t.topupAmount : t.topupAmount != null ? String(t.topupAmount) : ''
+    const bonusAmount =
+      typeof t.bonusAmount === 'string' ? t.bonusAmount : t.bonusAmount != null ? String(t.bonusAmount) : ''
+    if (!topupAmount.trim() && !bonusAmount.trim()) continue
+    const id =
+      typeof t.id === 'string' && t.id.trim() ? t.id.trim() : `fixed-tier-${out.length + 1}`
+    out.push({ id, topupAmount, bonusAmount })
+  }
+  return out.length > 0 ? out : undefined
+}
+
 function normalizeTopupPromotion(raw: unknown): CardConfiguratorDraftTopupPromotionV1 | undefined {
   if (!raw || typeof raw !== 'object') return undefined
   const r = raw as Record<string, unknown>
@@ -133,7 +161,15 @@ function normalizeTopupPromotion(raw: unknown): CardConfiguratorDraftTopupPromot
     typeof r.rewardValue === 'string' ? r.rewardValue : r.rewardValue != null ? String(r.rewardValue) : ''
   const rewardTypeRaw = String(r.rewardType ?? '').trim().toLowerCase()
   const rewardType: 'percent' | 'fixed' = rewardTypeRaw === 'fixed' ? 'fixed' : 'percent'
-  if (!minimumTopupAmount.trim() && !rewardValue.trim() && r.enabled !== true) return undefined
+  const fixedTiers = normalizeTopupPromotionFixedTiers(r.fixedTiers)
+  if (
+    !minimumTopupAmount.trim() &&
+    !rewardValue.trim() &&
+    !(fixedTiers && fixedTiers.length > 0) &&
+    r.enabled !== true
+  ) {
+    return undefined
+  }
   return {
     enabled: r.enabled === false ? false : r.enabled === true ? true : undefined,
     validityPeriodEnabled:
@@ -150,6 +186,7 @@ function normalizeTopupPromotion(raw: unknown): CardConfiguratorDraftTopupPromot
     minimumTopupAmount,
     rewardType,
     rewardValue,
+    ...(fixedTiers ? { fixedTiers } : {}),
   }
 }
 

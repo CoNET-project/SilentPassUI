@@ -1,19 +1,53 @@
-import type { ShareTokenMetadataBonusRule, ShareTokenMetadataTopupPromotion } from '@/services/BeamioCard'
+/**
+ * Programs → Top-up Promotion (canonical metadata: shareTokenMetadata.topupPromotion).
+ * POS still consumes legacy bonusRules[]; fixed/tiered mode expands to multiple rules.
+ */
+
+import type {
+	ShareTokenMetadata,
+	ShareTokenMetadataBonusRule,
+	ShareTokenMetadataTopupPromotion,
+	ShareTokenMetadataTopupPromotionFixedTier,
+} from '@/services/BeamioCard'
 
 export type TopupPromotionRewardType = 'percent' | 'fixed'
 
+export type TopupPromotionFixedTierDraft = {
+	id: string
+	topupAmount: string
+	bonusAmount: string
+}
+
 export type TopupPromotionDraft = {
 	enabled: boolean
-	/** When false, validFrom/validTo are ignored and hidden in the editor. */
 	validityPeriodEnabled: boolean
 	validFrom: string
 	validTo: string
+	/** Percent mode floor; also used as legacy single-tier compat. */
 	minimumTopupAmount: string
 	rewardType: TopupPromotionRewardType
+	/** Percent mode: % of top-up. Fixed single-tier legacy: bonus amount. */
 	rewardValue: string
+	/** Fixed / Tiered Fixed rows (TOP-UP → GET BONUS). */
+	fixedTiers: TopupPromotionFixedTierDraft[]
 }
 
-/** Default to fixed currency bonus — matches POS mint semantics merchants expect for “+10”. */
+export const TOPUP_PROMOTION_FIXED_TIERS_MAX = 32
+
+export function newTopupPromotionFixedTierId(): string {
+	if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+		return crypto.randomUUID()
+	}
+	return `tier-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+}
+
+export function createDefaultFixedTierDraft(): TopupPromotionFixedTierDraft[] {
+	return [
+		{ id: newTopupPromotionFixedTierId(), topupAmount: '100', bonusAmount: '10' },
+		{ id: newTopupPromotionFixedTierId(), topupAmount: '200', bonusAmount: '50' },
+	]
+}
+
 export const EMPTY_TOPUP_PROMOTION_DRAFT: TopupPromotionDraft = {
 	enabled: false,
 	validityPeriodEnabled: false,
@@ -22,313 +56,417 @@ export const EMPTY_TOPUP_PROMOTION_DRAFT: TopupPromotionDraft = {
 	minimumTopupAmount: '10',
 	rewardType: 'fixed',
 	rewardValue: '10',
+	fixedTiers: createDefaultFixedTierDraft(),
 }
 
 function parseAmount(raw: unknown): number | null {
 	if (raw == null || raw === '') return null
 	const n = typeof raw === 'number' ? raw : Number.parseFloat(String(raw).replace(/,/g, '').trim())
-	if (!Number.isFinite(n) || n <= 0) return null
+	if (!Number.isFinite(n) || n < 0) return null
 	return Math.round(n * 100) / 100
 }
 
-function parseYmd(raw: unknown): string | undefined {
-	if (typeof raw !== 'string') return undefined
+function parseYmd(raw: unknown): string {
+	if (typeof raw !== 'string') return ''
 	const t = raw.trim()
-	if (!/^\d{4}-\d{2}-\d{2}$/.test(t)) return undefined
-	return t
+	return /^\d{4}-\d{2}-\d{2}$/.test(t) ? t : ''
 }
 
 function approxEq(a: number, b: number): boolean {
 	return Math.abs(a - b) < 0.005
 }
 
+function normalizeFixedTiersFromRaw(raw: unknown): ShareTokenMetadataTopupPromotionFixedTier[] {
+	if (!Array.isArray(raw)) return []
+	const out: ShareTokenMetadataTopupPromotionFixedTier[] = []
+	for (const row of raw) {
+		if (!row || typeof row !== 'object') continue
+		const o = row as Record<string, unknown>
+		const topup = parseAmount(o.topupAmount ?? o.topup_amount ?? o.paymentAmount ?? o.payment_amount)
+		const bonus = parseAmount(o.bonusAmount ?? o.bonus_amount ?? o.bonusValue ?? o.bonus_value)
+		if (topup == null || bonus == null || topup <= 0 || bonus <= 0) continue
+		out.push({ topupAmount: topup, bonusAmount: bonus })
+	}
+	out.sort((a, b) => a.topupAmount - b.topupAmount)
+	return out.slice(0, TOPUP_PROMOTION_FIXED_TIERS_MAX)
+}
+
+function fixedTiersDraftFromNormalized(
+	tiers: ShareTokenMetadataTopupPromotionFixedTier[],
+): TopupPromotionFixedTierDraft[] {
+	if (tiers.length === 0) return createDefaultFixedTierDraft()
+	return tiers.map((t) => ({
+		id: newTopupPromotionFixedTierId(),
+		topupAmount: String(t.topupAmount),
+		bonusAmount: String(t.bonusAmount),
+	}))
+}
+
+function parseValidFixedTiersDraft(
+	tiers: TopupPromotionFixedTierDraft[],
+): ShareTokenMetadataTopupPromotionFixedTier[] | null {
+	const out: ShareTokenMetadataTopupPromotionFixedTier[] = []
+	const seen = new Set<number>()
+	for (const row of tiers) {
+		const topup = parseAmount(row.topupAmount)
+		const bonus = parseAmount(row.bonusAmount)
+		if (topup == null || bonus == null || topup <= 0 || bonus <= 0) return null
+		const key = Math.round(topup * 100)
+		if (seen.has(key)) return null
+		seen.add(key)
+		out.push({ topupAmount: topup, bonusAmount: bonus })
+	}
+	if (out.length === 0) return null
+	out.sort((a, b) => a.topupAmount - b.topupAmount)
+	return out
+}
+
 /**
- * Legacy buggy encode wrote `rewardType: percent` + `bonusValue: rewardValue` (unscaled).
- * Correct percent encode uses `bonusValue = paymentAmount * rewardValue / 100`.
- * Heal unscaled rows to **fixed** so UI matches on-chain +CA$N bonus.
+ * Heal legacy buggy encode: `rewardType: percent` + unscaled `bonusValue === rewardValue`.
  */
 export function healTopupPromotionRewardType(
 	promo: ShareTokenMetadataTopupPromotion,
 	legacyBonus?: ShareTokenMetadataBonusRule | null,
 ): ShareTokenMetadataTopupPromotion {
 	if (promo.rewardType !== 'percent') return promo
-	const min = parseAmount(promo.minimumTopupAmount)
-	const reward = parseAmount(promo.rewardValue)
-	if (min == null || reward == null) return promo
+	const min = Number(promo.minimumTopupAmount)
+	const reward = Number(promo.rewardValue)
+	if (!(min > 0) || !(reward > 0)) return promo
 	const scaled = Math.round(min * reward) / 100
 	if (!legacyBonus) return promo
-	const bv = parseAmount(legacyBonus.bonusValue)
-	if (bv == null) return promo
-	// Legacy confirms correct percent encode — keep merchant percent setting.
-	if (legacyBonus.bonusProportional && approxEq(bv, scaled)) {
-		return promo.rewardType === 'percent' ? promo : { ...promo, rewardType: 'percent' }
-	}
-	// Legacy flat bonus with mismatched percent label → fixed.
+	const bv = Number(legacyBonus.bonusValue)
+	if (!Number.isFinite(bv)) return promo
 	if (!legacyBonus.bonusProportional && approxEq(bv, reward)) {
 		return { ...promo, rewardType: 'fixed' }
 	}
-	// Buggy percent encode: bonusValue left unscaled (== rewardValue) instead of min*% .
 	if (legacyBonus.bonusProportional && approxEq(bv, reward) && !approxEq(bv, scaled)) {
 		return { ...promo, rewardType: 'fixed' }
 	}
 	return promo
 }
 
-function inferTopupPromotionRewardType(
-	rewardTypeRaw: string,
-	min: number,
-	reward: number,
-	legacy?: ShareTokenMetadataBonusRule | null,
-): TopupPromotionRewardType {
-	if (rewardTypeRaw === 'percent') return 'percent'
-	if (rewardTypeRaw === 'fixed') return 'fixed'
-	if (legacy?.bonusProportional) {
-		const legacyMin = parseAmount(legacy.paymentAmount)
-		const bv = parseAmount(legacy.bonusValue)
-		if (legacyMin != null && bv != null && legacyMin > 0) {
-			const scaled = Math.round(legacyMin * reward) / 100
-			if (approxEq(bv, scaled)) return 'percent'
-			if (approxEq(bv, reward) && !approxEq(bv, scaled)) return 'fixed'
-		}
+export function cloneTopupPromotionDraft(d: TopupPromotionDraft): TopupPromotionDraft {
+	return {
+		...d,
+		fixedTiers: d.fixedTiers.map((t) => ({ ...t })),
 	}
-	if (legacy && !legacy.bonusProportional) {
-		const bv = parseAmount(legacy.bonusValue)
-		if (bv != null && approxEq(bv, reward)) return 'fixed'
-	}
-	return 'fixed'
 }
 
-export function formatLocalYmd(d: Date = new Date()): string {
-	const y = d.getFullYear()
-	const m = String(d.getMonth() + 1).padStart(2, '0')
-	const day = String(d.getDate()).padStart(2, '0')
-	return `${y}-${m}-${day}`
-}
-
-/** Inclusive calendar-date window (local timezone). */
-export function isTopupPromotionActive(
-	promo: ShareTokenMetadataTopupPromotion | null | undefined,
-	now: Date = new Date(),
-): boolean {
-	if (!promo || promo.enabled === false) return false
-	const min = parseAmount(promo.minimumTopupAmount)
-	const reward = parseAmount(promo.rewardValue)
-	if (min == null || reward == null) return false
-	const today = formatLocalYmd(now)
-	const from = parseYmd(promo.validFrom)
-	const to = parseYmd(promo.validTo)
-	if (from && today < from) return false
-	if (to && today > to) return false
+export function topupPromotionDraftsEqual(a: TopupPromotionDraft, b: TopupPromotionDraft): boolean {
+	if (
+		a.enabled !== b.enabled ||
+		a.validityPeriodEnabled !== b.validityPeriodEnabled ||
+		a.validFrom !== b.validFrom ||
+		a.validTo !== b.validTo ||
+		a.minimumTopupAmount !== b.minimumTopupAmount ||
+		a.rewardType !== b.rewardType ||
+		a.rewardValue !== b.rewardValue ||
+		a.fixedTiers.length !== b.fixedTiers.length
+	) {
+		return false
+	}
+	for (let i = 0; i < a.fixedTiers.length; i++) {
+		const x = a.fixedTiers[i]
+		const y = b.fixedTiers[i]
+		if (x.topupAmount !== y.topupAmount || x.bonusAmount !== y.bonusAmount) return false
+	}
 	return true
 }
 
-/**
- * Canonical → legacy bonusRule.
- * - fixed: bonus = rewardValue, not proportional
- * - percent: bonusValue = paymentAmount * (rewardValue/100), proportional
- *   so POS `principal * bonusValue / paymentAmount` == `principal * rewardValue / 100`
- */
-export function topupPromotionToLegacyBonusRule(
-	promo: ShareTokenMetadataTopupPromotion,
-): ShareTokenMetadataBonusRule | null {
-	if (!isTopupPromotionActive(promo)) {
-		const min = parseAmount(promo.minimumTopupAmount)
-		const reward = parseAmount(promo.rewardValue)
-		if (promo.enabled === false || min == null || reward == null) return null
+export function validateTopupPromotionDraft(d: TopupPromotionDraft): string {
+	if (!d.enabled) return ''
+	if (d.validityPeriodEnabled) {
+		const from = parseYmd(d.validFrom)
+		const to = parseYmd(d.validTo)
+		if (!from || !to) return 'Enter a valid date range (YYYY-MM-DD), or turn off Validity Period.'
+		if (from > to) return 'Validity start date cannot be after the end date.'
 	}
-	const min = parseAmount(promo.minimumTopupAmount)
-	const reward = parseAmount(promo.rewardValue)
-	if (min == null || reward == null) return null
-	if (promo.enabled === false) return null
-	if (promo.rewardType === 'percent') {
-		const bonusValue = Math.round(min * reward) / 100
-		if (bonusValue <= 0) return null
+	if (d.rewardType === 'percent') {
+		const min = parseAmount(d.minimumTopupAmount)
+		const reward = parseAmount(d.rewardValue)
+		if (min == null || min <= 0) return 'Minimum top-up must be greater than 0.'
+		if (reward == null || reward <= 0) return 'Bonus percent must be greater than 0.'
+		if (reward > 100) return 'Bonus percent cannot exceed 100.'
+		return ''
+	}
+	const tiers = parseValidFixedTiersDraft(d.fixedTiers)
+	if (!tiers) {
+		return 'Each tier needs a unique top-up amount and bonus greater than 0.'
+	}
+	if (tiers.length > TOPUP_PROMOTION_FIXED_TIERS_MAX) {
+		return `At most ${TOPUP_PROMOTION_FIXED_TIERS_MAX} bonus tiers.`
+	}
+	return ''
+}
+
+export function isTopupPromotionActive(d: TopupPromotionDraft): boolean {
+	if (!d.enabled) return false
+	if (d.rewardType === 'percent') {
+		const min = parseAmount(d.minimumTopupAmount)
+		const reward = parseAmount(d.rewardValue)
+		return min != null && min > 0 && reward != null && reward > 0 && reward <= 100
+	}
+	return parseValidFixedTiersDraft(d.fixedTiers) != null
+}
+
+export function topupPromotionDraftToPayload(
+	d: TopupPromotionDraft,
+): ShareTokenMetadataTopupPromotion | null {
+	if (!d.enabled) return null
+	if (validateTopupPromotionDraft(d)) return null
+
+	const base: ShareTokenMetadataTopupPromotion = {
+		enabled: true,
+		rewardType: d.rewardType,
+	}
+	if (d.validityPeriodEnabled) {
+		const from = parseYmd(d.validFrom)
+		const to = parseYmd(d.validTo)
+		if (from) base.validFrom = from
+		if (to) base.validTo = to
+	}
+
+	if (d.rewardType === 'percent') {
+		const min = parseAmount(d.minimumTopupAmount)!
+		const reward = parseAmount(d.rewardValue)!
 		return {
-			paymentAmount: min,
-			bonusValue,
-			bonusProportional: true,
+			...base,
+			minimumTopupAmount: min,
+			rewardValue: reward,
 		}
 	}
+
+	const tiers = parseValidFixedTiersDraft(d.fixedTiers)!
+	const first = tiers[0]
 	return {
-		paymentAmount: min,
-		bonusValue: reward,
-		bonusProportional: false,
+		...base,
+		minimumTopupAmount: first.topupAmount,
+		rewardValue: first.bonusAmount,
+		fixedTiers: tiers,
 	}
 }
 
+export function topupPromotionToLegacyBonusRules(
+	promo: ShareTokenMetadataTopupPromotion,
+): ShareTokenMetadataBonusRule[] {
+	if (promo.enabled === false) return []
+	if (promo.rewardType === 'percent') {
+		const min = Number(promo.minimumTopupAmount)
+		const reward = Number(promo.rewardValue)
+		if (!(min > 0) || !(reward > 0)) return []
+		const bonusValue = Math.round(min * reward) / 100
+		if (bonusValue <= 0) return []
+		return [
+			{
+				paymentAmount: min,
+				bonusValue,
+				bonusProportional: true,
+			},
+		]
+	}
+	const fromTiers = normalizeFixedTiersFromRaw(promo.fixedTiers)
+	if (fromTiers.length > 0) {
+		return fromTiers.map((t) => ({
+			paymentAmount: t.topupAmount,
+			bonusValue: t.bonusAmount,
+			bonusProportional: false,
+		}))
+	}
+	const min = Number(promo.minimumTopupAmount)
+	const reward = Number(promo.rewardValue)
+	if (!(min > 0) || !(reward > 0)) return []
+	return [
+		{
+			paymentAmount: min,
+			bonusValue: reward,
+			bonusProportional: false,
+		},
+	]
+}
+
+/** @deprecated Prefer {@link topupPromotionToLegacyBonusRules}; returns first rule only. */
+export function topupPromotionToLegacyBonusRule(
+	promo: ShareTokenMetadataTopupPromotion,
+): ShareTokenMetadataBonusRule | null {
+	return topupPromotionToLegacyBonusRules(promo)[0] ?? null
+}
+
 export function legacyBonusRuleToTopupPromotion(
-	rule: ShareTokenMetadataBonusRule | null | undefined,
-): ShareTokenMetadataTopupPromotion | null {
-	if (!rule) return null
-	const min = parseAmount(rule.paymentAmount)
-	const bonus = parseAmount(rule.bonusValue)
-	if (min == null || bonus == null) return null
-	if (rule.bonusProportional) {
-		const pct = Math.round((bonus / min) * 10000) / 100
-		if (pct <= 0) return null
+	rule: ShareTokenMetadataBonusRule,
+): ShareTokenMetadataTopupPromotion {
+	const payment = Number(rule.paymentAmount)
+	const bonus = Number(rule.bonusValue)
+	const pay = Number.isFinite(payment) && payment > 0 ? payment : 0
+	const bon = Number.isFinite(bonus) && bonus > 0 ? bonus : 0
+	if (rule.bonusProportional && pay > 0 && bon > 0) {
+		const pct = Math.round((bon / pay) * 10000) / 100
 		return {
 			enabled: true,
-			minimumTopupAmount: min,
+			minimumTopupAmount: pay,
 			rewardType: 'percent',
 			rewardValue: pct,
 		}
 	}
 	return {
 		enabled: true,
-		minimumTopupAmount: min,
+		minimumTopupAmount: pay,
 		rewardType: 'fixed',
-		rewardValue: bonus,
+		rewardValue: bon,
+		fixedTiers: pay > 0 && bon > 0 ? [{ topupAmount: pay, bonusAmount: bon }] : undefined,
 	}
 }
 
-function firstLegacyBonusRule(meta: Record<string, unknown>): ShareTokenMetadataBonusRule | null {
-	const rules = meta.bonusRules ?? meta.bonusRule
-	const first = Array.isArray(rules) ? rules[0] : rules
-	if (first && typeof first === 'object') return first as ShareTokenMetadataBonusRule
-	return null
-}
-
-export function parseTopupPromotionFromMetadata(meta: Record<string, unknown> | null | undefined): ShareTokenMetadataTopupPromotion | null {
-	if (!meta) return null
-	const legacyRoot = firstLegacyBonusRule(meta)
-	const stm = meta.shareTokenMetadata
-	const legacyStm =
-		stm && typeof stm === 'object' ? firstLegacyBonusRule(stm as Record<string, unknown>) : null
-	const legacy = legacyRoot ?? legacyStm
-
-	const direct = meta.topupPromotion
-	if (direct && typeof direct === 'object') {
-		const normalized = normalizeTopupPromotionPayload(direct as Record<string, unknown>, legacy)
-		return normalized ? healTopupPromotionRewardType(normalized, legacy) : null
-	}
-	if (stm && typeof stm === 'object') {
-		const nested = (stm as Record<string, unknown>).topupPromotion
-		if (nested && typeof nested === 'object') {
-			const normalized = normalizeTopupPromotionPayload(nested as Record<string, unknown>, legacy)
-			return normalized ? healTopupPromotionRewardType(normalized, legacy) : null
-		}
-	}
-	if (legacy) return legacyBonusRuleToTopupPromotion(legacy)
-	return null
-}
-
-export function normalizeTopupPromotionPayload(
-	raw: Record<string, unknown>,
-	legacyBonus?: ShareTokenMetadataBonusRule | null,
+export function legacyBonusRulesToTopupPromotion(
+	rules: ShareTokenMetadataBonusRule[],
 ): ShareTokenMetadataTopupPromotion | null {
-	const min = parseAmount(raw.minimumTopupAmount ?? raw.minimum_topup_amount)
-	const reward = parseAmount(raw.rewardValue ?? raw.reward_value)
-	if (min == null || reward == null) return null
-	const rewardTypeRaw = String(raw.rewardType ?? raw.reward_type ?? '').trim().toLowerCase()
-	const rewardType = inferTopupPromotionRewardType(rewardTypeRaw, min, reward, legacyBonus)
-	const enabled = raw.enabled === false ? false : true
-	return {
-		enabled,
-		validFrom: parseYmd(raw.validFrom ?? raw.valid_from),
-		validTo: parseYmd(raw.validTo ?? raw.valid_to),
-		minimumTopupAmount: min,
-		rewardType,
-		rewardValue: reward,
-	}
-}
-
-export function topupPromotionDraftFromMetadata(
-	promo: ShareTokenMetadataTopupPromotion | null | undefined,
-): TopupPromotionDraft {
-	if (!promo) return { ...EMPTY_TOPUP_PROMOTION_DRAFT }
-	const validFrom = promo.validFrom ?? ''
-	const validTo = promo.validTo ?? ''
-	return {
-		enabled: promo.enabled !== false,
-		validityPeriodEnabled: Boolean(validFrom.trim() || validTo.trim()),
-		validFrom,
-		validTo,
-		minimumTopupAmount:
-			promo.minimumTopupAmount != null && Number.isFinite(Number(promo.minimumTopupAmount))
-				? String(promo.minimumTopupAmount)
-				: '',
-		rewardType: promo.rewardType === 'percent' ? 'percent' : 'fixed',
-		rewardValue:
-			promo.rewardValue != null && Number.isFinite(Number(promo.rewardValue)) ? String(promo.rewardValue) : '',
-	}
-}
-
-/** Normalize draft fields for open-vs-current dirty comparison in the promotion editor. */
-export function normalizeTopupPromotionDraftForCompare(draft: TopupPromotionDraft): TopupPromotionDraft {
-	const validityPeriodEnabled = draft.validityPeriodEnabled
-	return {
-		enabled: draft.enabled,
-		validityPeriodEnabled,
-		validFrom: validityPeriodEnabled ? draft.validFrom.trim() : '',
-		validTo: validityPeriodEnabled ? draft.validTo.trim() : '',
-		minimumTopupAmount: draft.minimumTopupAmount.replace(/,/g, '').trim(),
-		rewardType: draft.rewardType,
-		rewardValue: draft.rewardValue.replace(/,/g, '').trim(),
-	}
-}
-
-export function topupPromotionDraftsEqual(a: TopupPromotionDraft, b: TopupPromotionDraft): boolean {
-	const na = normalizeTopupPromotionDraftForCompare(a)
-	const nb = normalizeTopupPromotionDraftForCompare(b)
-	return (
-		na.enabled === nb.enabled &&
-		na.validityPeriodEnabled === nb.validityPeriodEnabled &&
-		na.validFrom === nb.validFrom &&
-		na.validTo === nb.validTo &&
-		na.minimumTopupAmount === nb.minimumTopupAmount &&
-		na.rewardType === nb.rewardType &&
-		na.rewardValue === nb.rewardValue
-	)
-}
-
-export function validateTopupPromotionDraft(draft: TopupPromotionDraft): string {
-	if (!draft.enabled) return ''
-	const min = parseAmount(draft.minimumTopupAmount)
-	const reward = parseAmount(draft.rewardValue)
-	if (min == null) return 'Minimum top-up amount must be greater than zero.'
-	if (reward == null) return 'Reward value must be greater than zero.'
-	if (draft.rewardType === 'percent' && reward > 100) return 'Percentage reward cannot exceed 100%.'
-	if (draft.validityPeriodEnabled) {
-		const from = parseYmd(draft.validFrom)
-		const to = parseYmd(draft.validTo)
-		if (draft.validFrom.trim() && !from) return 'Valid from must be YYYY-MM-DD.'
-		if (draft.validTo.trim() && !to) return 'Valid to must be YYYY-MM-DD.'
-		if (from && to && from > to) return 'Valid from cannot be after valid to.'
-	}
-	return ''
-}
-
-export function topupPromotionDraftToPayload(draft: TopupPromotionDraft): ShareTokenMetadataTopupPromotion | null {
-	if (!draft.enabled) return null
-	const err = validateTopupPromotionDraft(draft)
-	if (err) return null
-	const min = parseAmount(draft.minimumTopupAmount)!
-	const reward = parseAmount(draft.rewardValue)!
+	const list = rules.filter((r) => {
+		const p = Number(r.paymentAmount)
+		const b = Number(r.bonusValue)
+		return Number.isFinite(p) && p > 0 && Number.isFinite(b) && b > 0
+	})
+	if (list.length === 0) return null
+	if (list.length === 1) return legacyBonusRuleToTopupPromotion(list[0])
+	const allFixed = list.every((r) => !r.bonusProportional)
+	if (!allFixed) return legacyBonusRuleToTopupPromotion(list[0])
+	const tiers = list
+		.map((r) => ({
+			topupAmount: Number(r.paymentAmount),
+			bonusAmount: Number(r.bonusValue),
+		}))
+		.sort((a, b) => a.topupAmount - b.topupAmount)
 	return {
 		enabled: true,
-		...(draft.validityPeriodEnabled && parseYmd(draft.validFrom)
-			? { validFrom: parseYmd(draft.validFrom) }
-			: {}),
-		...(draft.validityPeriodEnabled && parseYmd(draft.validTo) ? { validTo: parseYmd(draft.validTo) } : {}),
-		minimumTopupAmount: min,
-		rewardType: draft.rewardType,
-		rewardValue: reward,
+		rewardType: 'fixed',
+		minimumTopupAmount: tiers[0].topupAmount,
+		rewardValue: tiers[0].bonusAmount,
+		fixedTiers: tiers,
+	}
+}
+
+/** Alias for hydrate / draft local — same as {@link parseTopupPromotionFromMetadata}. */
+export function topupPromotionDraftFromMetadata(
+	meta: ShareTokenMetadata | null | undefined,
+): TopupPromotionDraft {
+	return parseTopupPromotionFromMetadata(meta)
+}
+
+export function parseTopupPromotionFromMetadata(
+	meta: ShareTokenMetadata | null | undefined,
+): TopupPromotionDraft {
+	if (!meta) return cloneTopupPromotionDraft(EMPTY_TOPUP_PROMOTION_DRAFT)
+	let promo = meta.topupPromotion
+	if (promo) {
+		const rules = meta.bonusRules?.length
+			? meta.bonusRules
+			: meta.bonusRule
+				? [meta.bonusRule]
+				: []
+		if (rules[0]) promo = healTopupPromotionRewardType(promo, rules[0])
+	} else {
+		const rules = meta.bonusRules?.length
+			? meta.bonusRules
+			: meta.bonusRule
+				? [meta.bonusRule]
+				: []
+		promo = legacyBonusRulesToTopupPromotion(rules) ?? undefined
+	}
+	if (!promo) return cloneTopupPromotionDraft(EMPTY_TOPUP_PROMOTION_DRAFT)
+
+	const from = parseYmd(promo.validFrom)
+	const to = parseYmd(promo.validTo)
+	const rewardType: TopupPromotionRewardType = promo.rewardType === 'percent' ? 'percent' : 'fixed'
+	const min = parseAmount(promo.minimumTopupAmount)
+	const reward = parseAmount(promo.rewardValue)
+	let fixedTiers = normalizeFixedTiersFromRaw(promo.fixedTiers)
+	if (rewardType === 'fixed' && fixedTiers.length === 0 && min != null && reward != null && min > 0 && reward > 0) {
+		fixedTiers = [{ topupAmount: min, bonusAmount: reward }]
+	}
+	if (
+		rewardType === 'fixed' &&
+		fixedTiers.length <= 1 &&
+		Array.isArray(meta.bonusRules) &&
+		meta.bonusRules.length > 1
+	) {
+		const fromRules = legacyBonusRulesToTopupPromotion(meta.bonusRules)
+		if (fromRules?.fixedTiers?.length) {
+			fixedTiers = normalizeFixedTiersFromRaw(fromRules.fixedTiers)
+		}
+	}
+
+	return {
+		enabled: promo.enabled !== false,
+		validityPeriodEnabled: Boolean(from || to),
+		validFrom: from,
+		validTo: to,
+		minimumTopupAmount: min != null && min > 0 ? String(min) : '10',
+		rewardType,
+		rewardValue: reward != null && reward > 0 ? String(reward) : rewardType === 'percent' ? '10' : '10',
+		fixedTiers: fixedTiersDraftFromNormalized(fixedTiers),
 	}
 }
 
 export function formatTopupPromotionDisplay(
-	promo: ShareTokenMetadataTopupPromotion | null | undefined,
+	promo: ShareTokenMetadataTopupPromotion,
 	moneyPrefix: string,
 ): string {
-	if (!promo || promo.enabled === false) return 'No top-up promotion configured.'
-	const min = parseAmount(promo.minimumTopupAmount)
-	const reward = parseAmount(promo.rewardValue)
-	if (min == null || reward == null) return 'Incomplete promotion — open editor to fix amounts.'
-	const rewardLabel =
-		promo.rewardType === 'percent' ? `${reward}% bonus` : `${moneyPrefix}${reward.toFixed(2)} bonus`
-	const period =
-		promo.validFrom || promo.validTo
-			? ` (${promo.validFrom ?? '…'} – ${promo.validTo ?? '…'})`
-			: ''
-	return `Min ${moneyPrefix}${min.toFixed(2)} → ${rewardLabel}${period}`
+	if (promo.enabled === false) return ''
+	const range =
+		promo.validFrom && promo.validTo ? ` · ${promo.validFrom} → ${promo.validTo}` : ''
+	if (promo.rewardType === 'percent') {
+		const min = Number(promo.minimumTopupAmount)
+		const pct = Number(promo.rewardValue)
+		if (!(min > 0) || !(pct > 0)) return ''
+		return `${pct}% bonus on top-ups from ${moneyPrefix}${min}${range}`
+	}
+	const tiers = normalizeFixedTiersFromRaw(promo.fixedTiers)
+	if (tiers.length > 1) {
+		const summary = tiers
+			.slice(0, 3)
+			.map((t) => `${moneyPrefix}${t.topupAmount}→+${moneyPrefix}${t.bonusAmount}`)
+			.join(', ')
+		const more = tiers.length > 3 ? ` +${tiers.length - 3}` : ''
+		return `Tiered bonus: ${summary}${more}${range}`
+	}
+	const min = Number(promo.minimumTopupAmount)
+	const bonus = Number(promo.rewardValue)
+	if (tiers.length === 1) {
+		return `+${moneyPrefix}${tiers[0].bonusAmount} on top-ups from ${moneyPrefix}${tiers[0].topupAmount}${range}`
+	}
+	if (!(min > 0) || !(bonus > 0)) return ''
+	return `+${moneyPrefix}${bonus} on top-ups from ${moneyPrefix}${min}${range}`
+}
+
+/** Live simulate: highest qualifying fixed tier, or percent of principal. */
+export function simulateTopupPromotionBonus(
+	promo: ShareTokenMetadataTopupPromotion | null | undefined,
+	principal: number,
+): { storeCreditBonus: number; kind: 'percent' | 'fixed' | 'none' } {
+	if (!promo || promo.enabled === false || !(principal > 0)) {
+		return { storeCreditBonus: 0, kind: 'none' }
+	}
+	if (promo.rewardType === 'percent') {
+		const min = Number(promo.minimumTopupAmount)
+		const pct = Number(promo.rewardValue)
+		if (!(min > 0) || !(pct > 0) || principal < min) {
+			return { storeCreditBonus: 0, kind: 'none' }
+		}
+		return {
+			storeCreditBonus: Math.round(principal * pct) / 100,
+			kind: 'percent',
+		}
+	}
+	const tiers = normalizeFixedTiersFromRaw(promo.fixedTiers)
+	const candidates =
+		tiers.length > 0
+			? tiers
+			: (() => {
+					const min = Number(promo.minimumTopupAmount)
+					const bonus = Number(promo.rewardValue)
+					return min > 0 && bonus > 0 ? [{ topupAmount: min, bonusAmount: bonus }] : []
+				})()
+	let best = 0
+	for (const t of candidates) {
+		if (principal >= t.topupAmount && t.bonusAmount > best) best = t.bonusAmount
+	}
+	return best > 0 ? { storeCreditBonus: best, kind: 'fixed' } : { storeCreditBonus: 0, kind: 'none' }
 }

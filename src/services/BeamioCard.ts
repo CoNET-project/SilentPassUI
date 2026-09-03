@@ -24,7 +24,10 @@ import {
 	type CardPreviewLogoDisplayTier,
 } from "@/utils/cardPreviewLogoDisplayTier";
 import { isApiExcludedUserCard, loadApiExcludedUserCards, registerLocalApiExcludedUserCard } from "@/utils/apiExcludedUserCards";
-import { parseTopupPromotionFromMetadata } from "@/utils/programTopupPromotion";
+import {
+	parseTopupPromotionFromMetadata,
+	topupPromotionDraftToPayload,
+} from "@/utils/programTopupPromotion";
 import { parseUnifiedRewardPoints } from "@/utils/unifiedRewardPoints";
 import {
 	parseShareTokenBusinessProfileFromUnknown,
@@ -1348,16 +1351,28 @@ export type ShareTokenMetadataUnifiedRewardPoints = {
 	merchantOracleSpreadBps?: number
 }
 
-/** Global top-up promotion (single optional rule); canonical for POS recharge bonus. */
+/** One fixed / tiered top-up → bonus store-credit row. */
+export type ShareTokenMetadataTopupPromotionFixedTier = {
+	/** Minimum top-up (card currency) to unlock this bonus. */
+	topupAmount: number
+	/** Fixed bonus store credits (card currency). */
+	bonusAmount: number
+}
+
+/** Global top-up promotion; POS still expands to legacy bonusRules[]. */
 export type ShareTokenMetadataTopupPromotion = {
 	enabled?: boolean
 	/** Inclusive start date YYYY-MM-DD (local calendar). */
 	validFrom?: string
 	/** Inclusive end date YYYY-MM-DD (local calendar). */
 	validTo?: string
+	/** Percent floor, or first fixed tier (compat). */
 	minimumTopupAmount: number
 	rewardType: 'percent' | 'fixed'
+	/** Percent of top-up, or first fixed tier bonus (compat). */
 	rewardValue: number
+	/** Fixed / Tiered Fixed rows (TOP-UP → GET BONUS). Prefer over single rewardValue when length > 0. */
+	fixedTiers?: ShareTokenMetadataTopupPromotionFixedTier[]
 }
 
 /** Per-role #13 reward for a social promotion event. */
@@ -4309,14 +4324,21 @@ function shareTokenTopupPromotionFromShare(
 	bonusRule?: ShareTokenMetadataBonusRule,
 	bonusRules?: ShareTokenMetadataBonusRule[],
 ): ShareTokenMetadataTopupPromotion | undefined {
-	return (
-		parseTopupPromotionFromMetadata({
-			topupPromotion: share?.topupPromotion,
-			bonusRule,
-			bonusRules,
-			shareTokenMetadata: share ?? undefined,
-		}) ?? undefined
-	)
+	const hasSource =
+		share?.topupPromotion != null ||
+		bonusRule != null ||
+		(Array.isArray(bonusRules) && bonusRules.length > 0)
+	if (!hasSource) return undefined
+	const draft = parseTopupPromotionFromMetadata({
+		topupPromotion: share?.topupPromotion as ShareTokenMetadataTopupPromotion | undefined,
+		bonusRule,
+		bonusRules,
+	})
+	if (draft.enabled) {
+		return topupPromotionDraftToPayload(draft) ?? undefined
+	}
+	const structure = topupPromotionDraftToPayload({ ...draft, enabled: true })
+	return structure ? { ...structure, enabled: false } : undefined
 }
 
 function shareTokenBonusRuleFromUnknown(

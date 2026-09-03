@@ -17,6 +17,14 @@ export type ShareTokenMetadataBonusRule = {
 	bonusProportional?: boolean
 }
 
+/** Draft / hydrate form — amounts may be strings (card-configurator localStorage). */
+export type ShareTokenMetadataBonusRuleLoose = {
+	paymentAmount?: number | string
+	bonusValue?: number | string
+	bonusProportional?: boolean
+	id?: string
+}
+
 /** One fixed / tiered top-up → bonus store-credit row. */
 export type ShareTokenMetadataTopupPromotionFixedTier = {
 	/** Minimum top-up (card currency) to unlock this bonus. */
@@ -62,8 +70,8 @@ export type TopupPromotionMetadataLoose = {
 /** Narrow metadata slice used to hydrate the Top-up Promotion draft. */
 export type TopupPromotionMetadataSource = {
 	topupPromotion?: ShareTokenMetadataTopupPromotion | TopupPromotionMetadataLoose | null
-	bonusRule?: ShareTokenMetadataBonusRule | null
-	bonusRules?: ShareTokenMetadataBonusRule[] | null
+	bonusRule?: ShareTokenMetadataBonusRule | ShareTokenMetadataBonusRuleLoose | null
+	bonusRules?: Array<ShareTokenMetadataBonusRule | ShareTokenMetadataBonusRuleLoose> | null
 }
 
 export type TopupPromotionRewardType = 'percent' | 'fixed'
@@ -187,7 +195,7 @@ function parseValidFixedTiersDraft(
  */
 export function healTopupPromotionRewardType(
 	promo: ShareTokenMetadataTopupPromotion | TopupPromotionMetadataLoose,
-	legacyBonus?: ShareTokenMetadataBonusRule | null,
+	legacyBonus?: ShareTokenMetadataBonusRule | ShareTokenMetadataBonusRuleLoose | null,
 ): ShareTokenMetadataTopupPromotion | TopupPromotionMetadataLoose {
 	if (promo.rewardType !== 'percent') return promo
 	const min = Number(promo.minimumTopupAmount)
@@ -353,7 +361,7 @@ export function topupPromotionToLegacyBonusRule(
 }
 
 export function legacyBonusRuleToTopupPromotion(
-	rule: ShareTokenMetadataBonusRule,
+	rule: ShareTokenMetadataBonusRule | ShareTokenMetadataBonusRuleLoose,
 ): ShareTokenMetadataTopupPromotion {
 	const payment = Number(rule.paymentAmount)
 	const bonus = Number(rule.bonusValue)
@@ -378,7 +386,7 @@ export function legacyBonusRuleToTopupPromotion(
 }
 
 export function legacyBonusRulesToTopupPromotion(
-	rules: ShareTokenMetadataBonusRule[],
+	rules: Array<ShareTokenMetadataBonusRule | ShareTokenMetadataBonusRuleLoose>,
 ): ShareTokenMetadataTopupPromotion | null {
 	const list = rules.filter((r) => {
 		const p = Number(r.paymentAmount)

@@ -169,6 +169,7 @@ import { DiscoverCouponSharePromotionCard } from '@/components/discover/Discover
 import { useBeamioTagDatabase } from '@/providers/BeamioTagDatabaseProvider'
 import { formatBeamioTagDisplayLine } from '@/utils/aaMultisigTaskUi'
 import { DiscoverTopupPromotionCapsule } from '@/components/discover/DiscoverTopupPromotionCapsule'
+import { DiscoverMemberPromotionBanner } from '@/components/discover/DiscoverMemberPromotionBanner'
 import { DiscoverMerchantInviteFriendsPanel } from '@/components/discover/DiscoverMerchantInviteFriendsPanel'
 import { DiscoverReferrerDownlinePage } from '@/pages/Vouchers/DiscoverReferrerDownlinePage'
 import { tu } from '@/locale/beamioLocale'
@@ -181,13 +182,12 @@ import { collectDeepLinkSearchParams } from '@/utils/beamioDeepLinkParams'
 import { useReliableTapHandler, RELIABLE_TAP_BUTTON_CLASS } from '@/utils/reliableTap'
 import {
 	formatSocialPoints13Display,
-	parseDiscoverBeamioPointsCardFromMetadata,
 	parseDiscoverProgramDescriptionFromMetadata,
 	resolveCouponSocialMissionBlockForSeries,
+	resolveDiscoverMemberPromotionBannerCopy,
 	resolveDiscoverProspectJoinPanelCopy,
 	resolveDiscoverTopupPromotionPresentation,
 	resolveDiscoverTopupPromotionStoreCreditsBadge,
-	type DiscoverBeamioPointsCardCopy,
 	type DiscoverTopupPromotionPresentation,
 } from '@/utils/discoverMerchantPromotions'
 import {
@@ -788,8 +788,6 @@ type DiscoverMerchantCuratedOffersPanel = {
 		title: string
 		description: string
 	}
-	/** Optional; Discover detail prefers metadata-derived Beamio Points (may be null → hide). */
-	beamioPoints?: DiscoverBeamioPointsCardCopy
 	collectOffers: DiscoverCuratedCollectOffer[]
 	socialMissions?: {
 		title: string
@@ -852,59 +850,6 @@ const DISCOVER_MERCHANT_CURATED_OFFERS: Record<string, DiscoverMerchantCuratedOf
 	},
 }
 
-function DiscoverCuratedBeamioPointsCard({
-	config,
-	onPointsMallClick,
-}: {
-	config: DiscoverBeamioPointsCardCopy
-	onPointsMallClick?: () => void
-}) {
-	const mallButton = (
-		<button
-			type="button"
-			onClick={onPointsMallClick}
-			className="font-semibold text-[#1562f0] underline decoration-[#1562f0]/35 underline-offset-2 transition hover:text-blue-700"
-		>
-			{config.pointsMallLabel}
-		</button>
-	)
-	const body =
-		config.description?.trim() ? (
-			<p className="mt-2 whitespace-pre-line text-[14px] leading-relaxed text-slate-600 dark:text-slate-400">
-				{config.description.trim()}
-			</p>
-		) : config.earnRateLabel && config.spendUnitLabel ? (
-			<p className="mt-2 text-[14px] leading-relaxed text-slate-600 dark:text-slate-400">
-				Earn <span className="font-bold text-[#1f2328] dark:text-slate-100">{config.earnRateLabel}</span> for
-				every <span className="font-bold text-[#1f2328] dark:text-slate-100">{config.spendUnitLabel}</span>{" "}
-				spent. Use them in our {mallButton} for exclusive products and coupons.
-			</p>
-		) : null
-	if (!body) return null
-	const footnote = config.redeemFootnote?.trim() || ""
-	return (
-		<div className="overflow-hidden rounded-[20px] bg-white shadow-[0_8px_22px_rgba(15,23,42,0.06)] ring-1 ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800">
-			<div className="p-4 sm:p-5">
-				<div className="flex items-start gap-3">
-					<span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#1562f0] text-[15px] font-bold text-white">
-						$
-					</span>
-					<div className="min-w-0 flex-1">
-						<h3 className="text-[17px] font-bold leading-snug text-[#1562f0]">{config.title}</h3>
-						{body}
-					</div>
-				</div>
-			</div>
-			{footnote ? (
-				<div className="flex items-center gap-2 border-t border-[#eadcf7] bg-[#f5ecff] px-4 py-3 dark:border-[#8d3a8b]/20 dark:bg-[#8d3a8b]/10 sm:px-5">
-					<Info className="h-4 w-4 shrink-0 text-[#8d3a8b]" strokeWidth={2.25} aria-hidden />
-					<p className="text-[13px] font-medium text-[#8d3a8b]">{footnote}</p>
-				</div>
-			) : null}
-		</div>
-	)
-}
-
 function DiscoverCuratedCollectOfferRow({
 	offer,
 	onCollect,
@@ -936,13 +881,11 @@ function DiscoverCuratedCollectOfferRow({
 function DiscoverMerchantCuratedOffersStack({
 	config,
 	onCollectOffer,
-	onPointsMallClick,
 	showTopUpBonus = true,
 	onClaimTopUp,
 }: {
 	config: DiscoverMerchantCuratedOffersPanel
 	onCollectOffer?: (offerId: string) => void
-	onPointsMallClick?: () => void
 	showTopUpBonus?: boolean
 	onClaimTopUp?: () => void
 }) {
@@ -954,9 +897,6 @@ function DiscoverMerchantCuratedOffersStack({
 					description={config.topUpBonus.description}
 					onClaimTopUp={onClaimTopUp}
 				/>
-			) : null}
-			{config.beamioPoints ? (
-				<DiscoverCuratedBeamioPointsCard config={config.beamioPoints} onPointsMallClick={onPointsMallClick} />
 			) : null}
 			{config.collectOffers.map((offer) => (
 				<DiscoverCuratedCollectOfferRow
@@ -4253,25 +4193,8 @@ function DiscoverMerchantDetailFullScreen({
 			: undefined
 	const curatedOffersPanel = useMemo(() => {
 		if (item.cardAddress == null) return undefined
-		const curated = DISCOVER_MERCHANT_CURATED_OFFERS[resolveDiscoverCardPanelKey(item.cardAddress)]
-		const fromMeta = parseDiscoverBeamioPointsCardFromMetadata(
-			merchantMetadataRoot,
-			displayCurrency,
-		)
-		if (!curated && !fromMeta) return undefined
-		if (!curated) {
-			return {
-				topUpBonus: { title: '', description: '' },
-				beamioPoints: fromMeta ?? undefined,
-				collectOffers: [],
-			} satisfies DiscoverMerchantCuratedOffersPanel
-		}
-		return {
-			...curated,
-			/** Metadata wins: null → hide Beamio Points; object → show; curated only if meta not yet loaded. */
-			beamioPoints: merchantMetadataRoot != null ? fromMeta ?? undefined : curated.beamioPoints,
-		}
-	}, [item.cardAddress, merchantMetadataRoot, displayCurrency])
+		return DISCOVER_MERCHANT_CURATED_OFFERS[resolveDiscoverCardPanelKey(item.cardAddress)]
+	}, [item.cardAddress])
 	const promoRewardTierForList = curatedOffersPanel ? undefined : promoRewardTier
 	const couponsSectionRef = useRef<HTMLDivElement | null>(null)
 	const scrollToCouponsSection = useCallback(() => {
@@ -4347,6 +4270,14 @@ function DiscoverMerchantDetailFullScreen({
 	const storeCreditsPromoBadge = useMemo(
 		() =>
 			resolveDiscoverTopupPromotionStoreCreditsBadge({
+				metadataRoot: merchantMetadataRoot,
+				currency: displayCurrency,
+			}),
+		[merchantMetadataRoot, displayCurrency],
+	)
+	const memberPromotionBanner = useMemo(
+		() =>
+			resolveDiscoverMemberPromotionBannerCopy({
 				metadataRoot: merchantMetadataRoot,
 				currency: displayCurrency,
 			}),
@@ -6037,7 +5968,7 @@ function DiscoverMerchantDetailFullScreen({
 								<p className="mt-1.5 text-[26px] font-bold leading-none tracking-tight text-[#1f2328] dark:text-slate-100 sm:text-[28px]">
 									{balanceDisplay}
 								</p>
-								{storeCreditsPromoBadge ? (
+								{storeCreditsPromoBadge && !memberPromotionBanner ? (
 									<span className="mt-2 inline-flex max-w-full items-center rounded-full bg-[#e8f8ef] px-2.5 py-1 text-[11px] font-semibold leading-snug text-[#0d7a3f] dark:bg-emerald-950/50 dark:text-emerald-300">
 										<span className="truncate">{storeCreditsPromoBadge}</span>
 									</span>
@@ -6247,6 +6178,20 @@ function DiscoverMerchantDetailFullScreen({
 					</div>
 					) : null}
 
+					{hasActiveMembership &&
+					usdcTopupPhase === 'idle' &&
+					memberPromotionBanner ? (
+						<DiscoverMemberPromotionBanner
+							primary={memberPromotionBanner.primary}
+							secondary={memberPromotionBanner.secondary}
+							onActivate={
+								canDiscoverTopUp && memberPromotionBanner.primary
+									? () => openDiscoverTopupAmount(memberPromotionBanner.suggestedAmount)
+									: undefined
+							}
+						/>
+					) : null}
+
 					{/* Top-up promo / curated offers — non-Genesis merchant cards. */}
 					{!isConetGenesisCard ? (
 					<>
@@ -6257,7 +6202,6 @@ function DiscoverMerchantDetailFullScreen({
 					{curatedOffersPanel ? (
 						<DiscoverMerchantCuratedOffersStack
 							config={curatedOffersPanel}
-							onPointsMallClick={scrollToCouponsSection}
 							onCollectOffer={scrollToCouponsSection}
 							showTopUpBonus={false}
 							onClaimTopUp={

@@ -41,9 +41,27 @@ export type ShareTokenMetadataTopupPromotion = {
 	fixedTiers?: ShareTokenMetadataTopupPromotionFixedTier[]
 }
 
+/**
+ * Loose hydrate input — metadata uses numbers; card-configurator local draft may use strings.
+ * {@link parseTopupPromotionFromMetadata} normalizes via parseAmount.
+ */
+export type TopupPromotionMetadataLoose = {
+	enabled?: boolean
+	validFrom?: string
+	validTo?: string
+	minimumTopupAmount?: number | string
+	rewardType?: string
+	rewardValue?: number | string
+	fixedTiers?: Array<{
+		topupAmount?: number | string
+		bonusAmount?: number | string
+		id?: string
+	}>
+}
+
 /** Narrow metadata slice used to hydrate the Top-up Promotion draft. */
 export type TopupPromotionMetadataSource = {
-	topupPromotion?: ShareTokenMetadataTopupPromotion | null
+	topupPromotion?: ShareTokenMetadataTopupPromotion | TopupPromotionMetadataLoose | null
 	bonusRule?: ShareTokenMetadataBonusRule | null
 	bonusRules?: ShareTokenMetadataBonusRule[] | null
 }
@@ -168,9 +186,9 @@ function parseValidFixedTiersDraft(
  * Heal legacy buggy encode: `rewardType: percent` + unscaled `bonusValue === rewardValue`.
  */
 export function healTopupPromotionRewardType(
-	promo: ShareTokenMetadataTopupPromotion,
+	promo: ShareTokenMetadataTopupPromotion | TopupPromotionMetadataLoose,
 	legacyBonus?: ShareTokenMetadataBonusRule | null,
-): ShareTokenMetadataTopupPromotion {
+): ShareTokenMetadataTopupPromotion | TopupPromotionMetadataLoose {
 	if (promo.rewardType !== 'percent') return promo
 	const min = Number(promo.minimumTopupAmount)
 	const reward = Number(promo.rewardValue)

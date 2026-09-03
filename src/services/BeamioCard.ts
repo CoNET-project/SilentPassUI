@@ -27,6 +27,14 @@ import { isApiExcludedUserCard, loadApiExcludedUserCards, registerLocalApiExclud
 import {
 	parseTopupPromotionFromMetadata,
 	topupPromotionDraftToPayload,
+	type ShareTokenMetadataBonusRule,
+	type ShareTokenMetadataTopupPromotion,
+	type ShareTokenMetadataTopupPromotionFixedTier,
+} from "@/utils/programTopupPromotion";
+export type {
+	ShareTokenMetadataBonusRule,
+	ShareTokenMetadataTopupPromotion,
+	ShareTokenMetadataTopupPromotionFixedTier,
 } from "@/utils/programTopupPromotion";
 import { parseUnifiedRewardPoints } from "@/utils/unifiedRewardPoints";
 import {
@@ -1313,17 +1321,6 @@ export async function fetchLatestMerchantProgramCardAddressForProfile(profile: {
 	return null
 }
 
-/** ERC-1155 shareTokenMetadata，写入 0x{owner}.json */
-export type ShareTokenMetadataBonusRule = {
-	paymentAmount?: number
-	bonusValue?: number
-	/**
-	 * When true, bonus scales with actual top-up: `bonusPaid = topupAmount * (bonusValue / paymentAmount)`.
-	 * When false/omitted, `bonusPaid` is the fixed `bonusValue` when the rule applies (POS reads from metadata).
-	 */
-	bonusProportional?: boolean
-}
-
 /** Unified #13 reward percents (bps). @see beamio-merchant-card-unified-reward-points-v13.mdc */
 export type ShareTokenMetadataUnifiedRewardFlow = {
 	enabled?: boolean
@@ -1349,30 +1346,6 @@ export type ShareTokenMetadataUnifiedRewardPoints = {
 	reward13ToUsdc?: ShareTokenMetadataUnifiedReward13Convert
 	/** 0–500 bps merchant oracle spread UI max (0.25% steps); chain allows up to 1000. */
 	merchantOracleSpreadBps?: number
-}
-
-/** One fixed / tiered top-up → bonus store-credit row. */
-export type ShareTokenMetadataTopupPromotionFixedTier = {
-	/** Minimum top-up (card currency) to unlock this bonus. */
-	topupAmount: number
-	/** Fixed bonus store credits (card currency). */
-	bonusAmount: number
-}
-
-/** Global top-up promotion; POS still expands to legacy bonusRules[]. */
-export type ShareTokenMetadataTopupPromotion = {
-	enabled?: boolean
-	/** Inclusive start date YYYY-MM-DD (local calendar). */
-	validFrom?: string
-	/** Inclusive end date YYYY-MM-DD (local calendar). */
-	validTo?: string
-	/** Percent floor, or first fixed tier (compat). */
-	minimumTopupAmount: number
-	rewardType: 'percent' | 'fixed'
-	/** Percent of top-up, or first fixed tier bonus (compat). */
-	rewardValue: number
-	/** Fixed / Tiered Fixed rows (TOP-UP → GET BONUS). Prefer over single rewardValue when length > 0. */
-	fixedTiers?: ShareTokenMetadataTopupPromotionFixedTier[]
 }
 
 /** Per-role #13 reward for a social promotion event. */

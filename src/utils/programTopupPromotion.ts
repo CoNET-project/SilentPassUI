@@ -1,14 +1,52 @@
 /**
  * Programs → Top-up Promotion (canonical metadata: shareTokenMetadata.topupPromotion).
  * POS still consumes legacy bonusRules[]; fixed/tiered mode expands to multiple rules.
+ *
+ * Types live here (not BeamioCard) to avoid a webpack circular graph:
+ * BeamioCard → this module → BeamioCard, which drops named exports at build time.
  */
 
-import type {
-	ShareTokenMetadata,
-	ShareTokenMetadataBonusRule,
-	ShareTokenMetadataTopupPromotion,
-	ShareTokenMetadataTopupPromotionFixedTier,
-} from '@/services/BeamioCard'
+/** ERC-1155 shareTokenMetadata bonus rule (legacy POS shape). */
+export type ShareTokenMetadataBonusRule = {
+	paymentAmount?: number
+	bonusValue?: number
+	/**
+	 * When true, bonus scales with actual top-up: `bonusPaid = topupAmount * (bonusValue / paymentAmount)`.
+	 * When false/omitted, `bonusPaid` is the fixed `bonusValue` when the rule applies (POS reads from metadata).
+	 */
+	bonusProportional?: boolean
+}
+
+/** One fixed / tiered top-up → bonus store-credit row. */
+export type ShareTokenMetadataTopupPromotionFixedTier = {
+	/** Minimum top-up (card currency) to unlock this bonus. */
+	topupAmount: number
+	/** Fixed bonus store credits (card currency). */
+	bonusAmount: number
+}
+
+/** Global top-up promotion; POS still expands to legacy bonusRules[]. */
+export type ShareTokenMetadataTopupPromotion = {
+	enabled?: boolean
+	/** Inclusive start date YYYY-MM-DD (local calendar). */
+	validFrom?: string
+	/** Inclusive end date YYYY-MM-DD (local calendar). */
+	validTo?: string
+	/** Percent floor, or first fixed tier (compat). */
+	minimumTopupAmount: number
+	rewardType: 'percent' | 'fixed'
+	/** Percent of top-up, or first fixed tier bonus (compat). */
+	rewardValue: number
+	/** Fixed / Tiered Fixed rows (TOP-UP → GET BONUS). Prefer over single rewardValue when length > 0. */
+	fixedTiers?: ShareTokenMetadataTopupPromotionFixedTier[]
+}
+
+/** Narrow metadata slice used to hydrate the Top-up Promotion draft. */
+export type TopupPromotionMetadataSource = {
+	topupPromotion?: ShareTokenMetadataTopupPromotion | null
+	bonusRule?: ShareTokenMetadataBonusRule | null
+	bonusRules?: ShareTokenMetadataBonusRule[] | null
+}
 
 export type TopupPromotionRewardType = 'percent' | 'fixed'
 
@@ -345,13 +383,13 @@ export function legacyBonusRulesToTopupPromotion(
 
 /** Alias for hydrate / draft local — same as {@link parseTopupPromotionFromMetadata}. */
 export function topupPromotionDraftFromMetadata(
-	meta: ShareTokenMetadata | null | undefined,
+	meta: TopupPromotionMetadataSource | null | undefined,
 ): TopupPromotionDraft {
 	return parseTopupPromotionFromMetadata(meta)
 }
 
 export function parseTopupPromotionFromMetadata(
-	meta: ShareTokenMetadata | null | undefined,
+	meta: TopupPromotionMetadataSource | null | undefined,
 ): TopupPromotionDraft {
 	if (!meta) return cloneTopupPromotionDraft(EMPTY_TOPUP_PROMOTION_DRAFT)
 	let promo = meta.topupPromotion

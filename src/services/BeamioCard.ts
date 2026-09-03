@@ -31,11 +31,6 @@ import {
 	type ShareTokenMetadataTopupPromotion,
 	type ShareTokenMetadataTopupPromotionFixedTier,
 } from "@/utils/programTopupPromotion";
-export type {
-	ShareTokenMetadataBonusRule,
-	ShareTokenMetadataTopupPromotion,
-	ShareTokenMetadataTopupPromotionFixedTier,
-} from "@/utils/programTopupPromotion";
 import { parseUnifiedRewardPoints } from "@/utils/unifiedRewardPoints";
 import {
 	parseShareTokenBusinessProfileFromUnknown,
@@ -48,6 +43,12 @@ import {
 	isMerchantUserCardOnConet,
 	providerForBeamioUserCard,
 } from "@/utils/beamioUserCardChain";
+
+export type {
+	ShareTokenMetadataBonusRule,
+	ShareTokenMetadataTopupPromotion,
+	ShareTokenMetadataTopupPromotionFixedTier,
+} from "@/utils/programTopupPromotion";
 //		UID 044073D2151990
 
 /** 购卡请求体：仅允许 string/number，禁止 BigInt，以便 JSON 序列化发给后端 */

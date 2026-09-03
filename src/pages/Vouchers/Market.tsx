@@ -4238,7 +4238,7 @@ function DiscoverMerchantDetailFullScreen({
 			: null
 	const showRewardTiersLoading = merchantOffersLoading && merchantOfferTiers == null && !promoRewardTierForList
 	const hasRewardTiersContent =
-		promoRewardTiersForList != null || (merchantOfferTiers != null && merchantOfferTiers.length > 0)
+		promoRewardTierForList != null || (merchantOfferTiers != null && merchantOfferTiers.length > 0)
 	const showCouponsLoading = merchantOffersLoading && merchantCoupons == null
 	const hasCouponsContent = merchantCoupons != null && merchantCoupons.length > 0
 	const showCouponsCard = showCouponsLoading || hasCouponsContent
@@ -6294,9 +6294,9 @@ function DiscoverMerchantDetailFullScreen({
 								</div>
 							) : (
 								<div className="space-y-2.5">
-									{promoRewardTiersForList ? (
+									{promoRewardTierForList ? (
 										<DiscoverMerchantPromoRewardTiersCard
-											config={promoRewardTiersForList}
+											config={promoRewardTierForList}
 											fallbackImage={item.image}
 										/>
 									) : null}

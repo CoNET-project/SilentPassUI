@@ -40882,16 +40882,18 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                            {tu('programs_loyalty_logic')}
                          </h3>
                          <div className="space-y-2">
-                           <button
-                             type="button"
-                             onClick={() => handleProgramTabChange(PROGRAM_TAB_BASIC)}
-                             className={`flex w-full items-center justify-between gap-3 rounded-lg bg-[#eeedf3] px-3 py-3 text-left transition hover:bg-[#e9e7ed] ${bizFocusRingClass}`}
-                           >
-                             <span className="text-[15px] font-medium text-[#1a1b1f]">
-                               {tu('programs_rules_membership_fee')}
-                             </span>
-                             <ChevronRight className="h-5 w-5 shrink-0 text-[#424655]" strokeWidth={2} aria-hidden />
-                           </button>
+                           {cardIssuanceMembershipFeeMode ? (
+                             <button
+                               type="button"
+                               onClick={() => handleProgramTabChange(PROGRAM_TAB_BASIC)}
+                               className={`flex w-full items-center justify-between gap-3 rounded-lg bg-[#eeedf3] px-3 py-3 text-left transition hover:bg-[#e9e7ed] ${bizFocusRingClass}`}
+                             >
+                               <span className="text-[15px] font-medium text-[#1a1b1f]">
+                                 {tu('programs_rules_membership_fee')}
+                               </span>
+                               <ChevronRight className="h-5 w-5 shrink-0 text-[#424655]" strokeWidth={2} aria-hidden />
+                             </button>
+                           ) : null}
                            <button
                              type="button"
                              onClick={openCardIssuanceTopupPromotionEditor}

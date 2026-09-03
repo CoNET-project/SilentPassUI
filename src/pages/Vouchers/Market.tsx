@@ -181,10 +181,13 @@ import { collectDeepLinkSearchParams } from '@/utils/beamioDeepLinkParams'
 import { useReliableTapHandler, RELIABLE_TAP_BUTTON_CLASS } from '@/utils/reliableTap'
 import {
 	formatSocialPoints13Display,
+	parseDiscoverBeamioPointsCardFromMetadata,
+	parseDiscoverProgramDescriptionFromMetadata,
 	resolveCouponSocialMissionBlockForSeries,
 	resolveDiscoverProspectJoinPanelCopy,
 	resolveDiscoverTopupPromotionPresentation,
 	resolveDiscoverTopupPromotionStoreCreditsBadge,
+	type DiscoverBeamioPointsCardCopy,
 	type DiscoverTopupPromotionPresentation,
 } from '@/utils/discoverMerchantPromotions'
 import {
@@ -497,8 +500,9 @@ function hasDiscoverMerchantAboutPanel(panel: DiscoverMerchantInfoPanel): boolea
 const DISCOVER_GENERIC_PROGRAM_SUBTITLE = "Member benefits and offers"
 
 /**
- * Welcome panel body = short card detail (programDescription / subtitle, ≤200 chars).
- * Do not use discoverAbout.detail here — that belongs on the About panel (≤2000 chars).
+ * Welcome panel body = card metadata `description` (programDescription).
+ * Do not use discoverAbout.detail here — that belongs on the About panel.
+ * Do not use category subtitle overrides (e.g. "Shanghai Cuisine") as the welcome body.
  */
 function resolveDiscoverWelcomeTitle(params: {
 	passTitle: string
@@ -511,13 +515,29 @@ function resolveDiscoverWelcomePanelCopy(params: {
 	passTitle: string
 	subtitle: string
 	merchantInfoPanel: DiscoverMerchantInfoPanel | undefined
+	cardAddress?: string | null
+	programDescription?: string | null
+	metadataRoot?: Record<string, unknown> | null
 }): { title: string; body: string } | null {
-	const { passTitle, subtitle, merchantInfoPanel } = params
+	const { passTitle, subtitle, merchantInfoPanel, cardAddress, programDescription, metadataRoot } = params
 	const title = resolveDiscoverWelcomeTitle({ passTitle, merchantInfoPanel })
+	const fromMeta =
+		parseDiscoverProgramDescriptionFromMetadata(metadataRoot)?.trim() ||
+		(typeof programDescription === "string" ? programDescription.trim() : "")
+	const curatedWelcome = merchantInfoPanel?.welcomeText?.trim() || ""
 	const subtitleTrim = subtitle.trim()
+	const panelKey = cardAddress ? resolveDiscoverCardPanelKey(cardAddress) : ""
+	const categoryOverride = panelKey ? DISCOVER_CARD_SUBTITLE_OVERRIDES[panelKey]?.trim() : undefined
+	const subtitleIsCategoryOnly =
+		Boolean(categoryOverride) && subtitleTrim === categoryOverride
 	const body =
-		merchantInfoPanel?.welcomeText?.trim() ||
-		(subtitleTrim && subtitleTrim !== DISCOVER_GENERIC_PROGRAM_SUBTITLE ? subtitleTrim : "") ||
+		fromMeta ||
+		curatedWelcome ||
+		(subtitleTrim &&
+		subtitleTrim !== DISCOVER_GENERIC_PROGRAM_SUBTITLE &&
+		!subtitleIsCategoryOnly
+			? subtitleTrim
+			: "") ||
 		""
 	if (!title.trim() && !body) return null
 	return { title, body }
@@ -673,8 +693,8 @@ function DiscoverMerchantProspectJoinPanel({
 const DISCOVER_MERCHANT_INFO_PANELS: Record<string, DiscoverMerchantInfoPanel> = {
 	[LONGDHANG_DISCOVER_CARD_ADDRESS.toLowerCase()]: {
 		welcomeTitle: "Welcome to LongDhang Inner Circle",
-		welcomeText:
-			"Unlock seamless dining and exclusive digital privileges. Top up your LongDhang Pass to enjoy instant bonus rewards.",
+		/** Welcome body comes from card metadata `description` — do not hardcode. */
+		welcomeText: "",
 		aboutTitle: "About LongDhang",
 		aboutText:
 			"Longdhang Shanghai Cuisine serves authentic, family-style dishes that capture the true taste of Old Shanghai. We specialize in traditional favorites, featuring our famous handmade Xiao Long Bao and deep-fried pork chops. Join us for a warm, welcoming dining experience that celebrates classic Shanghainese heritage.",
@@ -768,13 +788,8 @@ type DiscoverMerchantCuratedOffersPanel = {
 		title: string
 		description: string
 	}
-	beamioPoints: {
-		title: string
-		earnRateLabel: string
-		spendUnitLabel: string
-		pointsMallLabel: string
-		redeemFootnote: string
-	}
+	/** Optional; Discover detail prefers metadata-derived Beamio Points (may be null → hide). */
+	beamioPoints?: DiscoverBeamioPointsCardCopy
 	collectOffers: DiscoverCuratedCollectOffer[]
 	socialMissions?: {
 		title: string
@@ -794,13 +809,6 @@ const DISCOVER_MERCHANT_CURATED_OFFERS: Record<string, DiscoverMerchantCuratedOf
 		topUpBonus: {
 			title: 'New Customer Bonus',
 			description: 'Top up CA$ 100 or more, Get 10% bonus instantly!',
-		},
-		beamioPoints: {
-			title: "Beamio Points",
-			earnRateLabel: "1 Point",
-			spendUnitLabel: "CA$ 1",
-			pointsMallLabel: "Points Mall",
-			redeemFootnote: "Redeemable for Store Credit or USDC",
 		},
 		collectOffers: [],
 		socialMissions: {
@@ -848,9 +856,32 @@ function DiscoverCuratedBeamioPointsCard({
 	config,
 	onPointsMallClick,
 }: {
-	config: DiscoverMerchantCuratedOffersPanel["beamioPoints"]
+	config: DiscoverBeamioPointsCardCopy
 	onPointsMallClick?: () => void
 }) {
+	const mallButton = (
+		<button
+			type="button"
+			onClick={onPointsMallClick}
+			className="font-semibold text-[#1562f0] underline decoration-[#1562f0]/35 underline-offset-2 transition hover:text-blue-700"
+		>
+			{config.pointsMallLabel}
+		</button>
+	)
+	const body =
+		config.description?.trim() ? (
+			<p className="mt-2 whitespace-pre-line text-[14px] leading-relaxed text-slate-600 dark:text-slate-400">
+				{config.description.trim()}
+			</p>
+		) : config.earnRateLabel && config.spendUnitLabel ? (
+			<p className="mt-2 text-[14px] leading-relaxed text-slate-600 dark:text-slate-400">
+				Earn <span className="font-bold text-[#1f2328] dark:text-slate-100">{config.earnRateLabel}</span> for
+				every <span className="font-bold text-[#1f2328] dark:text-slate-100">{config.spendUnitLabel}</span>{" "}
+				spent. Use them in our {mallButton} for exclusive products and coupons.
+			</p>
+		) : null
+	if (!body) return null
+	const footnote = config.redeemFootnote?.trim() || ""
 	return (
 		<div className="overflow-hidden rounded-[20px] bg-white shadow-[0_8px_22px_rgba(15,23,42,0.06)] ring-1 ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800">
 			<div className="p-4 sm:p-5">
@@ -860,26 +891,16 @@ function DiscoverCuratedBeamioPointsCard({
 					</span>
 					<div className="min-w-0 flex-1">
 						<h3 className="text-[17px] font-bold leading-snug text-[#1562f0]">{config.title}</h3>
-						<p className="mt-2 text-[14px] leading-relaxed text-slate-600 dark:text-slate-400">
-							Earn <span className="font-bold text-[#1f2328] dark:text-slate-100">{config.earnRateLabel}</span> for
-							every <span className="font-bold text-[#1f2328] dark:text-slate-100">{config.spendUnitLabel}</span>{" "}
-							spent. Use them in our{" "}
-							<button
-								type="button"
-								onClick={onPointsMallClick}
-								className="font-semibold text-[#1562f0] underline decoration-[#1562f0]/35 underline-offset-2 transition hover:text-blue-700"
-							>
-								{config.pointsMallLabel}
-							</button>{" "}
-							for exclusive products and coupons.
-						</p>
+						{body}
 					</div>
 				</div>
 			</div>
-			<div className="flex items-center gap-2 border-t border-[#eadcf7] bg-[#f5ecff] px-4 py-3 dark:border-[#8d3a8b]/20 dark:bg-[#8d3a8b]/10 sm:px-5">
-				<Info className="h-4 w-4 shrink-0 text-[#8d3a8b]" strokeWidth={2.25} aria-hidden />
-				<p className="text-[13px] font-medium text-[#8d3a8b]">{config.redeemFootnote}</p>
-			</div>
+			{footnote ? (
+				<div className="flex items-center gap-2 border-t border-[#eadcf7] bg-[#f5ecff] px-4 py-3 dark:border-[#8d3a8b]/20 dark:bg-[#8d3a8b]/10 sm:px-5">
+					<Info className="h-4 w-4 shrink-0 text-[#8d3a8b]" strokeWidth={2.25} aria-hidden />
+					<p className="text-[13px] font-medium text-[#8d3a8b]">{footnote}</p>
+				</div>
+			) : null}
 		</div>
 	)
 }
@@ -934,7 +955,9 @@ function DiscoverMerchantCuratedOffersStack({
 					onClaimTopUp={onClaimTopUp}
 				/>
 			) : null}
-			<DiscoverCuratedBeamioPointsCard config={config.beamioPoints} onPointsMallClick={onPointsMallClick} />
+			{config.beamioPoints ? (
+				<DiscoverCuratedBeamioPointsCard config={config.beamioPoints} onPointsMallClick={onPointsMallClick} />
+			) : null}
 			{config.collectOffers.map((offer) => (
 				<DiscoverCuratedCollectOfferRow
 					key={offer.id}
@@ -1216,6 +1239,8 @@ type DiscoverFeaturedCard = {
 	/** Program name from card metadata (`shareTokenMetadata.name`). */
 	programName: string
 	subtitle: string
+	/** Card metadata `description` for welcome body (not category subtitle). */
+	programDescription?: string
 	assetLabel: string
 	rating: string
 	image: string
@@ -1264,6 +1289,7 @@ function buildDiscoverFeaturedCardFromMerchantDb(
 		title: programName,
 		programName,
 		subtitle: subtitleOverride || meta?.programDescription?.trim() || 'Member benefits and offers',
+		programDescription: meta?.programDescription?.trim() || '',
 		assetLabel: tu('member_benefits'),
 		rating: '4.8',
 		image: hero,
@@ -4137,8 +4163,11 @@ function DiscoverMerchantDetailFullScreen({
 				passTitle,
 				subtitle: item.subtitle,
 				merchantInfoPanel,
+				cardAddress: item.cardAddress,
+				programDescription: item.programDescription,
+				metadataRoot: merchantMetadataRoot,
 			}),
-		[passTitle, item.subtitle, merchantInfoPanel],
+		[passTitle, item.subtitle, item.programDescription, item.cardAddress, merchantInfoPanel, merchantMetadataRoot],
 	)
 	const discoverAboutPanel = useMemo(
 		() =>
@@ -4222,10 +4251,27 @@ function DiscoverMerchantDetailFullScreen({
 		item.cardAddress != null
 			? DISCOVER_MERCHANT_PROMO_REWARD_TIERS[resolveDiscoverCardPanelKey(item.cardAddress)]
 			: undefined
-	const curatedOffersPanel =
-		item.cardAddress != null
-			? DISCOVER_MERCHANT_CURATED_OFFERS[resolveDiscoverCardPanelKey(item.cardAddress)]
-			: undefined
+	const curatedOffersPanel = useMemo(() => {
+		if (item.cardAddress == null) return undefined
+		const curated = DISCOVER_MERCHANT_CURATED_OFFERS[resolveDiscoverCardPanelKey(item.cardAddress)]
+		const fromMeta = parseDiscoverBeamioPointsCardFromMetadata(
+			merchantMetadataRoot,
+			displayCurrency,
+		)
+		if (!curated && !fromMeta) return undefined
+		if (!curated) {
+			return {
+				topUpBonus: { title: '', description: '' },
+				beamioPoints: fromMeta ?? undefined,
+				collectOffers: [],
+			} satisfies DiscoverMerchantCuratedOffersPanel
+		}
+		return {
+			...curated,
+			/** Metadata wins: null → hide Beamio Points; object → show; curated only if meta not yet loaded. */
+			beamioPoints: merchantMetadataRoot != null ? fromMeta ?? undefined : curated.beamioPoints,
+		}
+	}, [item.cardAddress, merchantMetadataRoot, displayCurrency])
 	const promoRewardTierForList = curatedOffersPanel ? undefined : promoRewardTier
 	const couponsSectionRef = useRef<HTMLDivElement | null>(null)
 	const scrollToCouponsSection = useCallback(() => {
@@ -6714,6 +6760,7 @@ export default function Market() {
 					subtitleOverride ||
 					card.programDescription ||
 					(isFood ? "Modern cuisine" : "Artisan coffee & pastries"),
+				programDescription: card.programDescription || '',
 				assetLabel:
 					card.topTierName && card.topTierMinDisplay
 						? `${card.topTierName} · ${card.topTierMinDisplay}`

@@ -920,6 +920,124 @@ export function consumptionPointSystemEnabledFromMetadata(
 	return null
 }
 
+/** Card / shareTokenMetadata `description` for Discover welcome body (not category subtitle). */
+export function parseDiscoverProgramDescriptionFromMetadata(
+	metadataRoot: Record<string, unknown> | null | undefined,
+): string | null {
+	const root = metadataRecord(metadataRoot)
+	if (!root) return null
+	const share = shareMetadataRoot(root)
+	const raw = share?.description ?? root.description
+	if (typeof raw !== 'string') return null
+	const text = raw.replace(/\r\n/g, '\n').trim()
+	return text || null
+}
+
+function unifiedRewardBlockEnabled(
+	block: Record<string, unknown> | null | undefined,
+	percent: number | null,
+): boolean {
+	if (percent == null || percent <= 0) return false
+	if (block && block.enabled === false) return false
+	return true
+}
+
+/** Purple Redeemable footnote from `#13` exchange / unifiedRewardPoints redeem rails. */
+export function parseDiscoverReward13RedeemFootnoteFromMetadata(
+	metadataRoot: Record<string, unknown> | null | undefined,
+): string | null {
+	const root = metadataRecord(metadataRoot)
+	if (!root) return null
+	const share = shareMetadataRoot(root) ?? root
+	const unified =
+		metadataRecord(share.unifiedRewardPoints) ?? metadataRecord(root.unifiedRewardPoints)
+	const toUsdc = metadataRecord(unified?.reward13ToUsdc)?.enabled === true
+	const toPts = metadataRecord(unified?.reward13ToPoints)?.enabled === true
+	const social = readSocialExchangeFromMetadata(root) ?? readSocialExchangeFromMetadata(share)
+	const socialUsdc = social != null && social.kind === 'usdc' && social.usdcReward6 > 0n
+	const socialCoupon = social != null && social.kind === 'coupon'
+	const storeCredit = toPts || socialCoupon
+	const usdc = toUsdc || socialUsdc
+	if (storeCredit && usdc) return 'Redeemable for Store Credit or USDC'
+	if (storeCredit) return 'Redeemable for Store Credit'
+	if (usdc) return 'Redeemable for USDC'
+	return null
+}
+
+export type DiscoverBeamioPointsCardCopy = {
+	title: string
+	pointsMallLabel: string
+	/** When null, hide the purple redeem footer. */
+	redeemFootnote: string | null
+	/** Free-form body; when set, preferred over earnRateLabel/spendUnitLabel sentence. */
+	description?: string
+	earnRateLabel?: string
+	spendUnitLabel?: string
+}
+
+/**
+ * Beamio / Reward Points card on Discover detail.
+ * Returns null when metadata is missing or earn + redeem rails are all off
+ * (do not invent curated copy).
+ */
+export function parseDiscoverBeamioPointsCardFromMetadata(
+	metadataRoot: Record<string, unknown> | null | undefined,
+	currencyCode: string,
+): DiscoverBeamioPointsCardCopy | null {
+	const root = metadataRecord(metadataRoot)
+	if (!root) return null
+	const share = shareMetadataRoot(root)
+	const unified =
+		metadataRecord(share?.unifiedRewardPoints) ?? metadataRecord(root.unifiedRewardPoints)
+	const chargeBlock = metadataRecord(unified?.charge)
+	const topupBlock = metadataRecord(unified?.topup)
+	const percents = parseDiscoverActorRewardPercentsFromMetadata(root)
+	const chargeOn = unifiedRewardBlockEnabled(chargeBlock, percents.chargePercent)
+	const topupOn = unifiedRewardBlockEnabled(topupBlock, percents.topupPercent)
+	const psOn = consumptionPointSystemEnabledFromMetadata(root) === true
+	const hasEarn =
+		chargeOn ||
+		topupOn ||
+		(psOn && percents.chargePercent != null && percents.chargePercent > 0)
+	const redeemFootnote = parseDiscoverReward13RedeemFootnoteFromMetadata(root)
+	if (!hasEarn) return null
+
+	const symbolRaw = share?.Symbol ?? share?.symbol ?? root.Symbol ?? root.symbol
+	const symbol =
+		typeof symbolRaw === 'string' && symbolRaw.trim() ? symbolRaw.trim() : null
+	const title = symbol ? `${symbol} Points` : 'Reward Points'
+	const money = moneyPrefixForCurrency(currencyCode)
+	const pointsMallLabel = 'Points Mall'
+
+	if (chargeOn && percents.chargePercent != null) {
+		return {
+			title,
+			earnRateLabel: `${percents.chargePercent}% Reward PT`,
+			spendUnitLabel: `${money}1`,
+			pointsMallLabel,
+			redeemFootnote,
+		}
+	}
+	if (psOn && percents.chargePercent != null && percents.chargePercent > 0) {
+		return {
+			title,
+			earnRateLabel: `${percents.chargePercent}% Reward PT`,
+			spendUnitLabel: `${money}1`,
+			pointsMallLabel,
+			redeemFootnote,
+		}
+	}
+	if (topupOn && percents.topupPercent != null) {
+		return {
+			title,
+			description: `Earn ${percents.topupPercent}% Reward PT on every top-up. Use them in our Points Mall for exclusive products and coupons.`,
+			pointsMallLabel,
+			redeemFootnote,
+		}
+	}
+	return null
+}
+
 export function parseLoyaltyPointsDisplay(raw: string | number | null | undefined): number | null {
 	if (raw == null || raw === '') return null
 	const n = typeof raw === 'number' ? raw : Number(raw)

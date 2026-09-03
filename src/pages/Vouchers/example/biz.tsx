@@ -14205,6 +14205,9 @@ const [programReferrerDrawer, setProgramReferrerDrawer] = useState<'referrers' |
 const [programReferrerDetailAA, setProgramReferrerDetailAA] = useState<string | null>(null);
 const [programReferrerDetailList, setProgramReferrerDetailList] = useState<BeamioCardProgramReferrerRefereeRow[]>([]);
 const [programReferrerRefreshStatus, setProgramReferrerRefreshStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+const [programsPromotionSubView, setProgramsPromotionSubView] = useState<'performance' | 'rules'>('performance');
+/** UI placeholder until Universal Point Routing / M2M clearing has a real chain flag. */
+const [programsOmnichannelRoutingEnabled, setProgramsOmnichannelRoutingEnabled] = useState(false);
 /** Staff program card is declared later; daemon/loaders resolve via this ref (issuance ?? staff). */
 const staffProgramBeamioCardAddressRef = useRef<string | null>(null);
 const programReferrerEoaRef = useRef<string>('');
@@ -40374,6 +40377,53 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
 
                      {cardIssuanceProgramSection === 'promotion' ? (
                      <div className="space-y-4">
+                     <div className="sticky top-0 z-20 -mx-0.5 bg-[#f5f7f9]/95 px-0.5 pb-1 pt-0.5 backdrop-blur-sm">
+                       <div
+                         className="flex rounded-xl bg-[#e9e7ed] p-1"
+                         role="tablist"
+                         aria-label={tu('programs_promotion_tab_performance') + ' / ' + tu('programs_promotion_tab_rules')}
+                       >
+                         <button
+                           type="button"
+                           role="tab"
+                           aria-selected={programsPromotionSubView === 'performance'}
+                           onClick={() => {
+                             setProgramsPromotionSubView('performance')
+                             setProgramSocialEngagementDrawer(null)
+                             setProgramReferrerDrawer(null)
+                             setProgramReferrerDetailAA(null)
+                             setProgramReferrerDetailList([])
+                           }}
+                           className={`flex-1 rounded-lg py-2 text-center text-[15px] transition ${
+                             programsPromotionSubView === 'performance'
+                               ? 'bg-white font-bold text-[#004bc3] shadow-sm'
+                               : 'font-normal text-[#424655] hover:bg-white/40'
+                           } ${bizFocusRingClass}`}
+                         >
+                           {tu('programs_promotion_tab_performance')}
+                         </button>
+                         <button
+                           type="button"
+                           role="tab"
+                           aria-selected={programsPromotionSubView === 'rules'}
+                           onClick={() => {
+                             setProgramsPromotionSubView('rules')
+                             setProgramSocialEngagementDrawer(null)
+                             setProgramReferrerDrawer(null)
+                             setProgramReferrerDetailAA(null)
+                             setProgramReferrerDetailList([])
+                           }}
+                           className={`flex-1 rounded-lg py-2 text-center text-[15px] transition ${
+                             programsPromotionSubView === 'rules'
+                               ? 'bg-white font-bold text-[#004bc3] shadow-sm'
+                               : 'font-normal text-[#424655] hover:bg-white/40'
+                           } ${bizFocusRingClass}`}
+                         >
+                           {tu('programs_promotion_tab_rules')}
+                         </button>
+                       </div>
+                     </div>
+                     {programsPromotionSubView === 'performance' ? (
                      <div className="relative overflow-hidden rounded-xl bg-white p-4 shadow-[0_6px_24px_rgba(0,0,0,0.05)] ring-1 ring-black/[0.04] sm:rounded-2xl sm:p-5">
                        <div className="space-y-3 sm:space-y-4">
                          <div className="rounded-xl border border-[#e8ecf0] bg-[#f8fafc] p-3 sm:p-4">
@@ -40385,7 +40435,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                type="button"
                                disabled={programSocialRefreshStatus !== 'idle'}
                                onClick={() => void loadProgramSocialOverview()}
-                               className={`inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#dce2f7] bg-white text-[#1562f0] shadow-sm transition disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
+                               className={`inline-flex h-8 w-8 items-center justify-center rounded-full border border-transparent bg-[#1562f0]/10 text-[#004bc3] shadow-sm transition hover:bg-[#1562f0]/15 disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
                                aria-label={tu('programs_overview_social_refresh')}
                              >
                                {programSocialRefreshStatus === 'loading' ? (
@@ -40403,10 +40453,10 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                              <button
                                type="button"
                                onClick={() => setProgramSocialEngagementDrawer('likes')}
-                               className={`rounded-lg border bg-white px-3 py-2.5 text-left transition ${
+                               className={`rounded-lg border bg-[#ffdad6]/10 px-3 py-2.5 text-left transition ${
                                  programSocialEngagementDrawer === 'likes'
                                    ? 'border-rose-300 ring-2 ring-rose-200/80'
-                                   : 'border-rose-100 hover:border-rose-200'
+                                   : 'border-[#ffdad6] hover:border-rose-200'
                                } ${bizFocusRingClass}`}
                                aria-expanded={programSocialEngagementDrawer === 'likes'}
                              >
@@ -40419,11 +40469,14 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                <p className="font-manrope text-xl font-extrabold text-[#2c2f31]">
                                  {formatProgramSocialStatCount(programSocialLikeCount)}
                                </p>
+                               <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-[#006223]">
+                                 {tu('programs_overview_like_cost_hint')}
+                               </p>
                              </button>
                              <button
                                type="button"
                                onClick={() => setProgramSocialEngagementDrawer('shareClicks')}
-                               className={`rounded-lg border bg-white px-3 py-2.5 text-left transition ${
+                               className={`rounded-lg border bg-[#1562f0]/5 px-3 py-2.5 text-left transition ${
                                  programSocialEngagementDrawer === 'shareClicks'
                                    ? 'border-[#1562f0]/40 ring-2 ring-[#1562f0]/20'
                                    : 'border-[#dce2f7] hover:border-[#1562f0]/25'
@@ -40607,14 +40660,14 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                              <button
                                type="button"
                                onClick={() => openProgramReferrerDrawer('referrers')}
-                               className={`rounded-lg border bg-white px-3 py-2.5 text-left transition ${
+                               className={`rounded-lg border bg-[#faf9fe] px-3 py-2.5 text-left transition ${
                                  programReferrerDrawer === 'referrers'
                                    ? 'border-[#8d3a8b]/40 ring-2 ring-[#8d3a8b]/20'
-                                   : 'border-[#eadcf7] hover:border-[#8d3a8b]/25'
+                                   : 'border-[#e3e2e7] hover:border-[#8d3a8b]/25'
                                } ${bizFocusRingClass}`}
                                aria-expanded={programReferrerDrawer === 'referrers'}
                              >
-                               <div className="mb-1 flex items-center gap-1.5 text-[#8d3a8b]">
+                               <div className="mb-1 flex items-center gap-1.5 text-[#9333ea]">
                                  <UserRoundPlus className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />
                                  <span className="text-[10px] font-bold uppercase tracking-wide">
                                    {tu('programs_overview_total_referrers')}
@@ -40627,14 +40680,14 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                              <button
                                type="button"
                                onClick={() => openProgramReferrerDrawer('registeredReferees')}
-                               className={`rounded-lg border bg-white px-3 py-2.5 text-left transition ${
+                               className={`rounded-lg border bg-[#faf9fe] px-3 py-2.5 text-left transition ${
                                  programReferrerDrawer === 'registeredReferees'
                                    ? 'border-[#8d3a8b]/40 ring-2 ring-[#8d3a8b]/20'
-                                   : 'border-[#eadcf7] hover:border-[#8d3a8b]/25'
+                                   : 'border-[#e3e2e7] hover:border-[#8d3a8b]/25'
                                } ${bizFocusRingClass}`}
                                aria-expanded={programReferrerDrawer === 'registeredReferees'}
                              >
-                               <div className="mb-1 flex items-center gap-1.5 text-[#8d3a8b]">
+                               <div className="mb-1 flex items-center gap-1.5 text-[#6b21a8]">
                                  <Hexagon className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />
                                  <span className="text-[10px] font-bold uppercase tracking-wide">
                                    {tu('programs_overview_registered_referees')}
@@ -40820,6 +40873,137 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                          </AnimatePresence>
                        </div>
                      </div>
+                     ) : null}
+                     {programsPromotionSubView === 'rules' ? (
+                     <div className="space-y-3 sm:space-y-4">
+                       {/* Loyalty Logic — title + chevron rows */}
+                       <div className="rounded-xl border border-[#e8ecf0] bg-white p-4 shadow-[0_6px_24px_rgba(0,0,0,0.05)] ring-1 ring-black/[0.04] sm:p-5">
+                         <h3 className="mb-4 text-[9px] font-bold uppercase tracking-widest text-[#595c5e]">
+                           {tu('programs_loyalty_logic')}
+                         </h3>
+                         <div className="space-y-2">
+                           <button
+                             type="button"
+                             onClick={() => handleProgramTabChange(PROGRAM_TAB_BASIC)}
+                             className={`flex w-full items-center justify-between gap-3 rounded-lg bg-[#eeedf3] px-3 py-3 text-left transition hover:bg-[#e9e7ed] ${bizFocusRingClass}`}
+                           >
+                             <span className="text-[15px] font-medium text-[#1a1b1f]">
+                               {tu('programs_rules_membership_fee')}
+                             </span>
+                             <ChevronRight className="h-5 w-5 shrink-0 text-[#424655]" strokeWidth={2} aria-hidden />
+                           </button>
+                           <button
+                             type="button"
+                             onClick={openCardIssuanceTopupPromotionEditor}
+                             className={`flex w-full items-center justify-between gap-3 rounded-lg bg-[#eeedf3] px-3 py-3 text-left transition hover:bg-[#e9e7ed] ${bizFocusRingClass}`}
+                           >
+                             <span className="text-[15px] font-medium text-[#1a1b1f]">
+                               {tu('programs_rules_topup_promotion')}
+                             </span>
+                             <ChevronRight className="h-5 w-5 shrink-0 text-[#424655]" strokeWidth={2} aria-hidden />
+                           </button>
+                           <button
+                             type="button"
+                             onClick={openCardIssuanceSocialPromotionEditor}
+                             className={`flex w-full items-center justify-between gap-3 rounded-lg bg-[#eeedf3] px-3 py-3 text-left transition hover:bg-[#e9e7ed] ${bizFocusRingClass}`}
+                           >
+                             <span className="text-[15px] font-medium text-[#1a1b1f]">
+                               {tu('programs_social_promotion_title')}
+                             </span>
+                             <ChevronRight className="h-5 w-5 shrink-0 text-[#424655]" strokeWidth={2} aria-hidden />
+                           </button>
+                           <button
+                             type="button"
+                             onClick={openCardIssuanceConsumptionPointEditor}
+                             className={`flex w-full items-center justify-between gap-3 rounded-lg bg-[#eeedf3] px-3 py-3 text-left transition hover:bg-[#e9e7ed] ${bizFocusRingClass}`}
+                           >
+                             <span className="text-[15px] font-medium text-[#1a1b1f]">
+                               {tu('programs_consumption_points_title')}
+                             </span>
+                             <ChevronRight className="h-5 w-5 shrink-0 text-[#424655]" strokeWidth={2} aria-hidden />
+                           </button>
+                           <button
+                             type="button"
+                             onClick={openReward13ConvertEditor}
+                             className={`flex w-full items-center justify-between gap-3 rounded-lg bg-[#eeedf3] px-3 py-3 text-left transition hover:bg-[#e9e7ed] ${bizFocusRingClass}`}
+                           >
+                             <span className="text-[15px] font-medium text-[#1a1b1f]">
+                               {tu('programs_reward13_convert_title')}
+                             </span>
+                             <ChevronRight className="h-5 w-5 shrink-0 text-[#424655]" strokeWidth={2} aria-hidden />
+                           </button>
+                         </div>
+                       </div>
+
+                       {/* Omnichannel Engine */}
+                       <div className="rounded-xl border border-[#e8ecf0] bg-white p-4 shadow-[0_6px_24px_rgba(0,0,0,0.05)] ring-1 ring-black/[0.04] sm:p-5">
+                         <h3 className="mb-4 text-[9px] font-bold uppercase tracking-widest text-[#595c5e]">
+                           {tu('programs_rules_omnichannel_title')}
+                         </h3>
+                         <div className="flex items-center justify-between gap-3">
+                           <span className="text-[15px] font-medium text-[#1a1b1f]">
+                             {tu('programs_rules_omnichannel_activate')}
+                           </span>
+                           <button
+                             type="button"
+                             role="switch"
+                             aria-checked={programsOmnichannelRoutingEnabled}
+                             aria-label={tu('programs_rules_omnichannel_toggle_aria')}
+                             onClick={() => setProgramsOmnichannelRoutingEnabled((v) => !v)}
+                             className={`relative flex h-6 w-12 shrink-0 items-center rounded-full px-1 transition-colors ${
+                               programsOmnichannelRoutingEnabled ? 'bg-[#004bc3]' : 'bg-[#e3e2e7]'
+                             } ${bizFocusRingClass}`}
+                           >
+                             <span
+                               className={`block h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
+                                 programsOmnichannelRoutingEnabled ? 'translate-x-6' : 'translate-x-0'
+                               }`}
+                               aria-hidden
+                             />
+                           </button>
+                         </div>
+                       </div>
+
+                       {/* Financial Controls — dimmed until Omnichannel ON */}
+                       <div
+                         className={`flex flex-col items-center rounded-xl border border-[#e8ecf0] bg-white p-4 text-center shadow-[0_6px_24px_rgba(0,0,0,0.05)] ring-1 ring-black/[0.04] sm:p-5 ${
+                           programsOmnichannelRoutingEnabled ? '' : 'opacity-50'
+                         }`}
+                       >
+                         <h3 className="mb-2 text-[9px] font-bold uppercase tracking-widest text-[#595c5e]">
+                           {tu('programs_rules_financial_title')}
+                         </h3>
+                         <p className="mb-1 text-[9px] font-bold uppercase tracking-widest text-[#5d5e63]">
+                           {tu('programs_rules_usdc_reserve_label')}
+                         </p>
+                         <p className="mb-6 font-manrope text-[22px] font-bold tracking-tight text-[#1a1b1f] tabular-nums">
+                           {merchantCardUsdcReserveDisplay} USDC
+                         </p>
+                         {programsOmnichannelRoutingEnabled ? (
+                           <button
+                             type="button"
+                             onClick={() => setUsdcReserveDepositOpen(true)}
+                             className={`mb-3 flex w-full items-center justify-center gap-2 rounded-xl bg-[#004bc3] px-4 py-3 text-[15px] font-bold text-white transition hover:bg-[#003fa5] ${bizFocusRingClass}`}
+                             aria-label={tu('programs_rules_deposit_usdc_aria')}
+                           >
+                             {tu('programs_rules_deposit_usdc')}
+                           </button>
+                         ) : (
+                           <button
+                             type="button"
+                             disabled
+                             className="mb-3 flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-xl bg-[#e3e2e7] px-4 py-3 text-[13px] font-bold text-[#424655]"
+                           >
+                             <Lock className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
+                             {tu('programs_rules_routing_disabled_cta')}
+                           </button>
+                         )}
+                         <p className="px-2 text-xs text-[#424655]">
+                           {tu('programs_rules_financial_hint')}
+                         </p>
+                       </div>
+                     </div>
+                     ) : null}
                      </div>
                      ) : null}
 
@@ -41348,327 +41532,6 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                      </div>
                     ) : null}
 
-                     {cardIssuanceProgramSection === 'promotion' ? (
-                     <div className="rounded-xl bg-[#eef1f3] p-4 sm:rounded-2xl sm:p-5">
-                       <header className="mb-3 flex items-center justify-between gap-2">
-                         <h3 className="font-manrope text-base font-bold text-[#2c2f31] sm:text-[1.05rem]">{tu('programs_loyalty_logic')}</h3>
-                         <Database className="h-4 w-4 shrink-0 text-slate-400 sm:h-5 sm:w-5" strokeWidth={2} aria-hidden />
-                       </header>
-                       <div className="space-y-2 sm:space-y-3">
-                         <div className="flex items-center justify-between gap-3 rounded-lg border border-[#1562f0]/10 bg-white p-3 sm:gap-4 sm:rounded-xl sm:p-4">
-                           <div className="flex min-w-0 items-center gap-3 sm:gap-4">
-                             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#1562f0]/10 text-[#1562f0] sm:h-9 sm:w-9">
-                               <Banknote className="h-4 w-4 sm:h-[1.15rem] sm:w-[1.15rem]" strokeWidth={2} aria-hidden />
-                             </div>
-                             <div className="min-w-0">
-                               <p className="font-manrope text-sm font-bold text-[#2c2f31]">
-                                 {cardIssuanceMembershipFeeMode && programsOverviewMembershipFeeDisplay
-                                   ? tu('programs_config_rewards_membership_fee')
-                                   : (programsOverviewTierRuleOption?.title ?? tu('programs_config_loyalty_rule'))}
-                               </p>
-                               <p className="text-[10px] text-[#595c5e]">
-                                 {cardIssuanceMembershipFeeMode && programsOverviewMembershipFeeDisplay
-                                   ? tu('programs_overview_membership_fee_rule_desc', {
-                                       fee: programsOverviewMembershipFeeDisplay.feeDisplay,
-                                       duration: programsOverviewMembershipFeeDisplay.durationLabel,
-                                     })
-                                   : (programsOverviewTierRuleOption?.mobileDesc ??
-                                     'Configure how members qualify for tiers.')}
-                               </p>
-                             </div>
-                           </div>
-                           {programsOverviewTiersSortedAscending.length > 0 ? (
-                             <span className="shrink-0 rounded bg-[#1562f0] px-2 py-0.5 text-[9px] font-black uppercase tracking-tighter text-white">
-                               ACTIVE
-                             </span>
-                           ) : (
-                             <span className="shrink-0 rounded bg-slate-200 px-2 py-0.5 text-[9px] font-black uppercase tracking-tighter text-slate-600">
-                               SETUP
-                             </span>
-                           )}
-                         </div>
-                         <div className="flex items-center justify-between gap-3 rounded-lg border border-[#1562f0]/10 bg-white p-3 sm:gap-4 sm:rounded-xl sm:p-4">
-                           <div className="flex min-w-0 items-center gap-3 sm:gap-4">
-                             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#1562f0]/10 text-[#1562f0] sm:h-9 sm:w-9">
-                               <CreditCard
-                                 className="h-4 w-4 sm:h-[1.15rem] sm:w-[1.15rem]"
-                                 strokeWidth={2}
-                                 aria-hidden
-                               />
-                             </div>
-                             <div className="min-w-0">
-                               <p className="font-manrope text-sm font-bold text-[#2c2f31]">Top-up Promotion</p>
-                               <p className="text-[10px] text-[#595c5e]">
-                                 {cardIssuanceTopupPromotionOverviewSummary ||
-                                   tu('programs_bonus_none_configured')}
-                               </p>
-                             </div>
-                           </div>
-                           <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
-                             <button
-                               type="button"
-                               onClick={openCardIssuanceTopupPromotionEditor}
-                               className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-[#1562f0] transition-colors hover:bg-[#1562f0]/10 ${bizFocusRingClass}`}
-                               aria-label="Edit top-up promotion"
-                             >
-                               <Pencil
-                                 className="h-4 w-4 sm:h-[1.05rem] sm:w-[1.05rem]"
-                                 strokeWidth={2}
-                                 aria-hidden
-                               />
-                             </button>
-                             {cardIssuanceTopupPromotionPayload ? (
-                               <button
-                                 type="button"
-                                 onClick={() => void clearCardIssuanceTopupPromotion()}
-                                 disabled={
-                                   cardIssuanceTopupPromotionDeleting ||
-                                   cardIssuanceTopupPromotionEditorPublishing
-                                 }
-                                 className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-[#595c5e] transition-colors hover:bg-rose-50 hover:text-[#b31b25] disabled:cursor-not-allowed disabled:opacity-50 ${bizFocusRingClass}`}
-                                 aria-label="Clear top-up promotion"
-                                 aria-busy={cardIssuanceTopupPromotionDeleting}
-                               >
-                                 {cardIssuanceTopupPromotionDeleting ? (
-                                   <Loader2
-                                     className="h-4 w-4 animate-spin sm:h-[1.05rem] sm:w-[1.05rem]"
-                                     strokeWidth={2}
-                                     aria-hidden
-                                   />
-                                 ) : (
-                                   <Trash2
-                                     className="h-4 w-4 sm:h-[1.05rem] sm:w-[1.05rem]"
-                                     strokeWidth={2}
-                                     aria-hidden
-                                   />
-                                 )}
-                               </button>
-                             ) : null}
-                             <span
-                               className={`shrink-0 rounded px-2 py-0.5 text-[9px] font-black uppercase tracking-tighter ${
-                                 cardIssuanceTopupPromotionPayload || programRewardPtTopupEnabled
-                                   ? 'bg-[#1562f0] text-white'
-                                   : 'bg-slate-200 text-slate-600'
-                               }`}
-                             >
-                               {cardIssuanceTopupPromotionPayload || programRewardPtTopupEnabled ? 'ACTIVE' : 'OFF'}
-                             </span>
-                           </div>
-                         </div>
-                         <div className="flex items-center justify-between gap-3 rounded-lg border border-[#1562f0]/10 bg-white p-3 sm:gap-4 sm:rounded-xl sm:p-4">
-                           <div className="flex min-w-0 items-center gap-3 sm:gap-4">
-                             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#1562f0]/10 text-[#1562f0] sm:h-9 sm:w-9">
-                               <Share2
-                                 className="h-4 w-4 sm:h-[1.15rem] sm:w-[1.15rem]"
-                                 strokeWidth={2}
-                                 aria-hidden
-                               />
-                             </div>
-                             <div className="min-w-0">
-                               <p className="font-manrope text-sm font-bold text-[#2c2f31]">
-                                 {tu('programs_social_promotion_title')}
-                               </p>
-                               <p className="text-[10px] text-[#595c5e]">
-                                 {cardIssuanceSocialPromotionDisplayPromo
-                                   ? formatSocialPromotionDisplay(cardIssuanceSocialPromotionDisplayPromo)
-                                   : tu('programs_social_promotion_none')}
-                               </p>
-                             </div>
-                           </div>
-                           <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
-                             <button
-                               type="button"
-                               onClick={openCardIssuanceSocialPromotionEditor}
-                               className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-[#1562f0] transition-colors hover:bg-[#1562f0]/10 ${bizFocusRingClass}`}
-                               aria-label={tu('programs_social_promotion_edit_aria')}
-                             >
-                               <Pencil
-                                 className="h-4 w-4 sm:h-[1.05rem] sm:w-[1.05rem]"
-                                 strokeWidth={2}
-                                 aria-hidden
-                               />
-                             </button>
-                            {cardIssuanceSocialPromotionHasActive ? (
-                              <button
-                                type="button"
-                                onClick={() => void clearCardIssuanceSocialPromotion()}
-                                disabled={
-                                  cardIssuanceSocialPromotionDeleting ||
-                                  cardIssuanceSocialPromotionEditorPublishing
-                                }
-                                className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-[#595c5e] transition-colors hover:bg-rose-50 hover:text-[#b31b25] disabled:cursor-not-allowed disabled:opacity-50 ${bizFocusRingClass}`}
-                                aria-label={tu('programs_social_promotion_clear_aria')}
-                                aria-busy={cardIssuanceSocialPromotionDeleting}
-                              >
-                                {cardIssuanceSocialPromotionDeleting ? (
-                                  <Loader2
-                                    className="h-4 w-4 animate-spin sm:h-[1.05rem] sm:w-[1.05rem]"
-                                    strokeWidth={2}
-                                    aria-hidden
-                                  />
-                                ) : (
-                                  <Trash2
-                                    className="h-4 w-4 sm:h-[1.05rem] sm:w-[1.05rem]"
-                                    strokeWidth={2}
-                                    aria-hidden
-                                  />
-                                )}
-                              </button>
-                            ) : null}
-                             <span
-                               className={`shrink-0 rounded px-2 py-0.5 text-[9px] font-black uppercase tracking-tighter ${
-                                 cardIssuanceSocialPromotionHasActive
-                                   ? 'bg-[#1562f0] text-white'
-                                   : 'bg-slate-200 text-slate-600'
-                               }`}
-                             >
-                               {cardIssuanceSocialPromotionHasActive ? 'ACTIVE' : 'OFF'}
-                             </span>
-                           </div>
-                         </div>
-                         <div className="flex items-center justify-between gap-3 rounded-lg border border-[#1562f0]/10 bg-white p-3 sm:gap-4 sm:rounded-xl sm:p-4">
-                           <div className="flex min-w-0 items-center gap-3 sm:gap-4">
-                             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#1562f0]/10 text-[#1562f0] sm:h-9 sm:w-9">
-                               <Coins
-                                 className="h-4 w-4 sm:h-[1.15rem] sm:w-[1.15rem]"
-                                 strokeWidth={2}
-                                 aria-hidden
-                               />
-                             </div>
-                             <div className="min-w-0">
-                               <p className="font-manrope text-sm font-bold text-[#2c2f31]">
-                                 {tu('programs_consumption_points_title')}
-                               </p>
-                               <p className="text-[10px] text-[#595c5e]">{cardIssuanceConsumptionPointDisplay}</p>
-                             </div>
-                           </div>
-                           <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
-                             <button
-                               type="button"
-                               onClick={openCardIssuanceConsumptionPointEditor}
-                               className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-[#1562f0] transition-colors hover:bg-[#1562f0]/10 ${bizFocusRingClass}`}
-                               aria-label={tu('programs_consumption_points_edit_aria')}
-                             >
-                               <Pencil
-                                 className="h-4 w-4 sm:h-[1.05rem] sm:w-[1.05rem]"
-                                 strokeWidth={2}
-                                 aria-hidden
-                               />
-                             </button>
-                             {cardIssuancePointSystemEnabled ? (
-                               <button
-                                 type="button"
-                                 onClick={() => void clearCardIssuanceConsumptionPoints()}
-                                 disabled={
-                                   cardIssuanceConsumptionPointDeleting ||
-                                   cardIssuanceConsumptionPointEditorPublishing
-                                 }
-                                 className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-[#595c5e] transition-colors hover:bg-rose-50 hover:text-[#b31b25] disabled:cursor-not-allowed disabled:opacity-50 ${bizFocusRingClass}`}
-                                 aria-label={tu('programs_consumption_points_clear_aria')}
-                                 aria-busy={cardIssuanceConsumptionPointDeleting}
-                               >
-                                 {cardIssuanceConsumptionPointDeleting ? (
-                                   <Loader2
-                                     className="h-4 w-4 animate-spin sm:h-[1.05rem] sm:w-[1.05rem]"
-                                     strokeWidth={2}
-                                     aria-hidden
-                                   />
-                                 ) : (
-                                   <Trash2
-                                     className="h-4 w-4 sm:h-[1.05rem] sm:w-[1.05rem]"
-                                     strokeWidth={2}
-                                     aria-hidden
-                                   />
-                                 )}
-                               </button>
-                             ) : null}
-                             <span
-                               className={`shrink-0 rounded px-2 py-0.5 text-[9px] font-black uppercase tracking-tighter ${
-                                 cardIssuancePointSystemEnabled
-                                   ? 'bg-[#1562f0] text-white'
-                                   : 'bg-slate-200 text-slate-600'
-                               }`}
-                             >
-                               {cardIssuancePointSystemEnabled ? 'ACTIVE' : 'OFF'}
-                             </span>
-                           </div>
-                         </div>
-                         <div className="flex items-center justify-between gap-3 rounded-lg border border-[#1562f0]/10 bg-white p-3 sm:gap-4 sm:rounded-xl sm:p-4">
-                           <div className="flex min-w-0 items-center gap-3 sm:gap-4">
-                             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#8d3a8b]/10 text-[#8d3a8b] sm:h-9 sm:w-9">
-                               <ArrowRightLeft
-                                 className="h-4 w-4 sm:h-[1.15rem] sm:w-[1.15rem]"
-                                 strokeWidth={2}
-                                 aria-hidden
-                               />
-                             </div>
-                             <div className="min-w-0">
-                               <p className="font-manrope text-sm font-bold text-[#2c2f31]">
-                                 {tu('programs_reward13_convert_title')}
-                               </p>
-                               <p className="text-[10px] text-[#595c5e]">
-                                 {reward13ConvertOverviewSummary ||
-                                   tu('programs_reward13_convert_none')}
-                               </p>
-                             </div>
-                           </div>
-                           <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
-                             <button
-                               type="button"
-                               onClick={openReward13ConvertEditor}
-                               className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-[#8d3a8b] transition-colors hover:bg-[#8d3a8b]/10 ${bizFocusRingClass}`}
-                               aria-label={
-                                 reward13ConvertIsConfigured
-                                   ? tu('programs_reward13_convert_edit_aria')
-                                   : tu('programs_reward13_convert_configure_aria')
-                               }
-                             >
-                               <Pencil
-                                 className="h-4 w-4 sm:h-[1.05rem] sm:w-[1.05rem]"
-                                 strokeWidth={2}
-                                 aria-hidden
-                               />
-                             </button>
-                             {reward13ConvertIsConfigured ? (
-                               <button
-                                 type="button"
-                                 onClick={() => void clearReward13ConvertSettings()}
-                                 disabled={
-                                   reward13ConvertDeleting || reward13ConvertEditorPublishing
-                                 }
-                                 className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-[#595c5e] transition-colors hover:bg-rose-50 hover:text-[#b31b25] disabled:cursor-not-allowed disabled:opacity-50 ${bizFocusRingClass}`}
-                                 aria-label={tu('programs_reward13_convert_clear_aria')}
-                                 aria-busy={reward13ConvertDeleting}
-                               >
-                                 {reward13ConvertDeleting ? (
-                                   <Loader2
-                                     className="h-4 w-4 animate-spin sm:h-[1.05rem] sm:w-[1.05rem]"
-                                     strokeWidth={2}
-                                     aria-hidden
-                                   />
-                                 ) : (
-                                   <Trash2
-                                     className="h-4 w-4 sm:h-[1.05rem] sm:w-[1.05rem]"
-                                     strokeWidth={2}
-                                     aria-hidden
-                                   />
-                                 )}
-                               </button>
-                             ) : null}
-                             <span
-                               className={`shrink-0 rounded px-2 py-0.5 text-[9px] font-black uppercase tracking-tighter ${
-                                 reward13ConvertIsConfigured
-                                   ? 'bg-[#8d3a8b] text-white'
-                                   : 'bg-slate-200 text-slate-600'
-                               }`}
-                             >
-                               {reward13ConvertIsConfigured ? 'ACTIVE' : 'OFF'}
-                             </span>
-                           </div>
-                         </div>
-                       </div>
-                     </div>
-                     ) : null}
 
                    {cardIssuanceProgramSection === 'basic' ? (
                    <>

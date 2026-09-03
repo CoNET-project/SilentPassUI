@@ -22010,7 +22010,7 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
        unifiedRewardPoints: unifiedRewardPointsForPublish,
      };
      /** Balance (upgradeType 1) is no longer selectable — publish Top-up (0) or Charge (2) only. */
-     const tierRuleUpgradeForPublish: 0 | 1 | 2 | undefined = membershipFeeModeForPublish
+     const tierRuleUpgradeForPublish: 0 | 2 | undefined = membershipFeeModeForPublish
        ? 0
        : tierRuleForPublish === 'cumulative'
          ? 2
@@ -22129,9 +22129,7 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
       if (
         !membershipFeeModeForPublish &&
         tierRuleUpgradeForPublish != null &&
-        (tierRuleUpgradeForPublish === 0 ||
-          tierRuleUpgradeForPublish === 1 ||
-          tierRuleUpgradeForPublish === 2)
+        (tierRuleUpgradeForPublish === 0 || tierRuleUpgradeForPublish === 2)
       ) {
         const eoaLower = (cardConfiguratorDraftEoaKey ?? '').trim().toLowerCase();
         const loyaltyCacheKey = programCardLoyaltyTierRuleTrustedCacheKey(

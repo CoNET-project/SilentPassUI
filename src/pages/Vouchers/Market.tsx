@@ -1945,7 +1945,7 @@ function DiscoverMerchantVipPerksPreview({
 	)
 }
 
-function DiscoverMerchantPromoRewardTierCard({
+function DiscoverMerchantPromoRewardTiersCard({
 	config,
 	fallbackImage,
 }: {

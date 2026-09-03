@@ -558,7 +558,6 @@ import {
  UserX,
  ChevronsUp,
  Banknote,
- ArrowDownUp,
  Lightbulb,
   Percent,
   Signal,
@@ -11457,6 +11456,114 @@ function amountPercentInputToSlider(raw: string): number {
   return Math.min(100, Math.max(0, n));
 }
 
+const TOPUP_REWARD_PERCENT_PRESETS = [5, 10, 15, 20] as const;
+
+/** Preset % chips + Custom % — Top-up Promotion Loyalty / Social Fission (mock-aligned). */
+function TopupRewardPercentChipPicker({
+  id,
+  valueInput,
+  onChange,
+  disabled,
+  accent = 'blue',
+  focusRingClassName,
+  numericNoSpinnerClass,
+  customLabel,
+  helperText,
+  wheelRef,
+}: {
+  id: string;
+  valueInput: string;
+  onChange: (next: string) => void;
+  disabled?: boolean;
+  accent?: 'blue' | 'purple';
+  focusRingClassName: string;
+  numericNoSpinnerClass: string;
+  customLabel: string;
+  helperText?: string;
+  wheelRef?: (el: HTMLInputElement | null) => void;
+}) {
+  const current = amountPercentInputToSlider(valueInput);
+  const chipOn =
+    accent === 'purple'
+      ? 'border-[#8d3a8b] bg-[#8d3a8b]/10 font-semibold text-[#8d3a8b]'
+      : 'border-[#1562f0] bg-[#1562f0]/10 font-semibold text-[#1562f0]';
+  const chipOff =
+    accent === 'purple'
+      ? 'border-[#c3c6d8] bg-white font-medium text-[#424655] hover:border-[#8d3a8b]/40'
+      : 'border-[#c3c6d8] bg-white font-medium text-[#424655] hover:border-[#1562f0]/40';
+  const fieldFocus =
+    accent === 'purple'
+      ? 'focus:border-[#8d3a8b] focus:ring-[#8d3a8b]'
+      : 'focus:border-[#1562f0] focus:ring-[#1562f0]';
+  const pctColor = accent === 'purple' ? 'text-[#8d3a8b]' : 'text-[#1562f0]';
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap gap-2" role="group" aria-label={customLabel}>
+        {TOPUP_REWARD_PERCENT_PRESETS.map((preset) => {
+          const selected = current === preset;
+          return (
+            <button
+              key={preset}
+              type="button"
+              disabled={disabled}
+              aria-pressed={selected}
+              onClick={() => onChange(String(preset))}
+              className={`min-w-[3.75rem] rounded-xl border px-3 py-2.5 text-center text-[15px] transition disabled:opacity-50 ${focusRingClassName} ${
+                selected ? chipOn : chipOff
+              }`}
+            >
+              {preset}%
+            </button>
+          );
+        })}
+      </div>
+      <div className="space-y-2">
+        <label
+          htmlFor={id}
+          className="block text-[12px] font-semibold uppercase tracking-[0.05em] text-[#424655]"
+        >
+          {customLabel}
+        </label>
+        <div className="relative">
+          <input
+            id={id}
+            ref={wheelRef}
+            type="number"
+            inputMode="numeric"
+            autoComplete="off"
+            enterKeyHint="done"
+            min={0}
+            max={100}
+            step={1}
+            value={valueInput}
+            disabled={disabled}
+            onKeyDown={preventNumericInputStepKeys}
+            onWheel={preventNumericInputWheelStep}
+            onChange={(e) => {
+              const raw = e.target.value;
+              if (raw.trim() === '') {
+                onChange('');
+                return;
+              }
+              onChange(String(amountPercentInputToSlider(raw)));
+            }}
+            className={`h-10 w-full rounded-lg border border-[#c3c6d8] bg-white py-2 pl-3 pr-10 text-[#1a1b1f] outline-none focus:ring-1 ${fieldFocus} ${focusRingClassName} ${numericNoSpinnerClass}`}
+          />
+          <span
+            className={`pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm font-medium ${pctColor}`}
+          >
+            %
+          </span>
+        </div>
+      </div>
+      {helperText ? (
+        <p className="text-[13px] italic leading-5 text-[#424655]/90">{helperText}</p>
+      ) : null}
+    </div>
+  );
+}
+
 type CardIssuanceBonusRuleRow = {
   id: string;
   paymentAmount: string;
@@ -12561,10 +12668,21 @@ function cardIssuanceCategoryIdFromMetadata(raw: unknown): string {
 }
 
 type CardIssuanceTierRule = 'single' | 'cumulative' | 'balance';
+type CardIssuanceSelectableTierRule = 'single' | 'cumulative';
 type CardIssuanceTierPreset = 'silver' | 'gold' | 'platinum' | 'custom';
 
+/**
+ * Balance (upgradeType 1 / wallet-balance tiers) is no longer offered in Card Setup
+ * or Smart Tier Logic. Legacy drafts / on-chain balance cards coerce to Top-up (`single`).
+ */
+function coerceSelectableCardIssuanceTierRule(
+  rule: CardIssuanceTierRule | string | null | undefined,
+): CardIssuanceSelectableTierRule {
+  return rule === 'cumulative' ? 'cumulative' : 'single';
+}
+
 function getCardIssuanceTierRuleOptions(): Array<{
-  key: CardIssuanceTierRule;
+  key: CardIssuanceSelectableTierRule;
   title: string;
   mobileDesc: string;
   desktopDesc: string;
@@ -12585,22 +12703,15 @@ function getCardIssuanceTierRuleOptions(): Array<{
       desktopDesc: tu('programs_tier_rule_cumulative_desktop'),
       Icon: Banknote,
     },
-    {
-      key: 'balance',
-      title: tu('programs_tier_rule_balance'),
-      mobileDesc: tu('programs_tier_rule_balance_mobile'),
-      desktopDesc: tu('programs_tier_rule_balance_desktop'),
-      Icon: ArrowDownUp,
-    },
   ];
 }
 
+/** Includes legacy `balance` for draft/cache Record keys only — not selectable in UI. */
 const CARD_ISSUANCE_TIER_RULE_KEYS: CardIssuanceTierRule[] = ['single', 'cumulative', 'balance'];
 
 /** Maps on-chain `BeamioUserCard.upgradeType()` (0…2) to Card Configurator loyalty rule keys. */
-function cardIssuanceTierRuleFromUpgradeType(upgradeType: number): CardIssuanceTierRule | null {
-  if (upgradeType === 0) return 'single';
-  if (upgradeType === 1) return 'balance';
+function cardIssuanceTierRuleFromUpgradeType(upgradeType: number): CardIssuanceSelectableTierRule | null {
+  if (upgradeType === 0 || upgradeType === 1) return 'single';
   if (upgradeType === 2) return 'cumulative';
   return null;
 }
@@ -13898,6 +14009,14 @@ const cardIssuanceCouponEditingIssued = Boolean(cardIssuanceEditingCouponRow?.is
  const cardIssuanceTopupPromotionMinWheelRef = useMemo(() => createNumericInputWheelNonPassiveRefCallback(), []);
  const cardIssuanceTopupPromotionRewardWheelRef = useMemo(() => createNumericInputWheelNonPassiveRefCallback(), []);
  const cardIssuanceTopupPromotionSimulateWheelRef = useMemo(() => createNumericInputWheelNonPassiveRefCallback(), []);
+ const cardIssuanceTopupRewardPtCustomWheelRef = useMemo(
+   () => createNumericInputWheelNonPassiveRefCallback(),
+   [],
+ );
+ const cardIssuanceTopupReferrerCustomWheelRef = useMemo(
+   () => createNumericInputWheelNonPassiveRefCallback(),
+   [],
+ );
  const cardIssuanceTopupPromotionTierWheelRefs = useRef(
    new Map<string, ReturnType<typeof createNumericInputWheelNonPassiveRefCallback>>(),
  );
@@ -14237,7 +14356,9 @@ useEffect(() => {
        amountRaw && Number.isFinite(Number(amountRaw)) && Number(amountRaw) > 0
          ? amountRaw
          : CARD_ISSUANCE_REWARDS_SETUP_AMOUNT_DEFAULT;
-     const rule = opts.tierRule ?? cardIssuanceTierRuleRef.current;
+     const rule = coerceSelectableCardIssuanceTierRule(
+       opts.tierRule ?? cardIssuanceTierRuleRef.current,
+     );
      setCardIssuanceRewardsPreset('custom');
      setCardIssuanceRewardsSetupAmount(amount);
      setCardIssuanceRewardsMembershipFeeEnabled(opts.membershipFeeEnabled);
@@ -21564,9 +21685,9 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
      !membershipFeeModeForPublish &&
      opts?.minTopupOverride == null &&
      opts?.maxTopupOverride == null;
-   const tierRuleForPublish: CardIssuanceTierRule = membershipFeeModeForPublish
+   const tierRuleForPublish: CardIssuanceSelectableTierRule = membershipFeeModeForPublish
      ? 'single'
-     : cardIssuanceTierRule;
+     : coerceSelectableCardIssuanceTierRule(cardIssuanceTierRule);
    const tiersPayload = buildCardIssuanceTiersPayloadFromRows(
      tiersRowsForPublish,
      cardIssuanceLoyaltyUpgradeFlags(membershipFeeModeForPublish, tierRuleForPublish),
@@ -21883,13 +22004,12 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
        ...(discoverAboutForPublish ? { discoverAbout: discoverAboutForPublish } : {}),
        unifiedRewardPoints: unifiedRewardPointsForPublish,
      };
+     /** Balance (upgradeType 1) is no longer selectable — publish Top-up (0) or Charge (2) only. */
      const tierRuleUpgradeForPublish: 0 | 1 | 2 | undefined = membershipFeeModeForPublish
        ? 0
-       : tierRuleForPublish === 'balance'
-         ? 1
-         : tierRuleForPublish === 'cumulative'
-           ? 2
-           : 0;
+       : tierRuleForPublish === 'cumulative'
+         ? 2
+         : 0;
 
      let res: { success: boolean; cardAddress?: string; hash?: string; error?: string };
      if (cardIssuanceExistingCard?.cardAddress) {
@@ -24048,7 +24168,7 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
        setCardIssuanceMaxTopup(draft.maxTopup);
      }
      if (draft.tierRule) {
-       setCardIssuanceTierRule(draft.tierRule);
+       setCardIssuanceTierRule(coerceSelectableCardIssuanceTierRule(draft.tierRule));
     }
     const mapDraftTier = (t: {
        id: string
@@ -24089,10 +24209,14 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
            const rows = draft.tiersByLoyaltyRule?.[key];
            if (rows?.length) merged[key] = rows.map(mapDraftTier);
          }
+         // Legacy Balance-rule drafts: migrate rows into Top-up (`single`) for editing.
+         if (draft.tierRule === 'balance' && merged.balance?.length) {
+           merged.single = merged.balance;
+         }
          return merged;
        });
      } else if (draft.tiers?.length) {
-       const rule = draft.tierRule ?? 'single';
+       const rule = coerceSelectableCardIssuanceTierRule(draft.tierRule ?? 'single');
        setTiersByLoyaltyRule((prev) => ({
          ...prev,
          [rule]: draft.tiers!.map(mapDraftTier),
@@ -24145,12 +24269,14 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
     if (typeof draft.rewardsMembershipFeeEnabled === 'boolean') {
       setCardIssuanceRewardsMembershipFeeEnabled(draft.rewardsMembershipFeeEnabled);
     } else {
-      const ruleForFee =
+      const ruleForFee = coerceSelectableCardIssuanceTierRule(
         draft.tierRule === 'single' || draft.tierRule === 'cumulative' || draft.tierRule === 'balance'
           ? draft.tierRule
-          : 'single';
+          : 'single',
+      );
       const rowsFromDraft =
         draft.tiersByLoyaltyRule?.[ruleForFee] ??
+        (draft.tierRule === 'balance' ? draft.tiersByLoyaltyRule?.balance : undefined) ??
         draft.tiers ??
         undefined;
       if (Array.isArray(rowsFromDraft)) {
@@ -37896,11 +38022,6 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                              labelKey: 'programs_config_rewards_charge',
                              detailKey: 'programs_config_rewards_charge_detail',
                            },
-                           {
-                             key: 'balance' as const,
-                             labelKey: 'programs_config_rewards_balance',
-                             detailKey: 'programs_config_rewards_balance_detail',
-                           },
                          ] as const
                        ).map(({ key, labelKey, detailKey }) => {
                          const selected =
@@ -43263,51 +43384,56 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                               </div>
 
                               {cardIssuanceTopupPromotion.validityPeriodEnabled ? (
-                                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                                  <div className="space-y-2">
-                                    <label
-                                      className="block text-[12px] font-semibold uppercase tracking-[0.05em] text-[#424655]"
-                                      htmlFor="card-topup-promo-valid-from"
-                                    >
-                                      {tu('programs_topup_promotion_valid_from')}
-                                    </label>
-                                    <input
-                                      id="card-topup-promo-valid-from"
-                                      type="date"
-                                      value={cardIssuanceTopupPromotion.validFrom}
-                                      disabled={cardIssuanceTopupPromotionEditorPublishing}
-                                      onChange={(e) =>
-                                        setCardIssuanceTopupPromotion((p) => ({
-                                          ...p,
-                                          validFrom: e.target.value,
-                                          enabled: true,
-                                        }))
-                                      }
-                                      className={`w-full rounded-xl border border-[#c3c6d8] bg-white px-3 py-2.5 text-sm text-[#1a1b1f] outline-none focus:border-[#1562f0] focus:ring-1 focus:ring-[#1562f0] ${bizFocusRingClass}`}
-                                    />
+                                <div className="flex flex-col gap-3">
+                                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                    <div className="space-y-2">
+                                      <label
+                                        className="block text-[12px] font-semibold uppercase tracking-[0.05em] text-[#424655]"
+                                        htmlFor="card-topup-promo-valid-from"
+                                      >
+                                        {tu('programs_topup_promotion_valid_from')}
+                                      </label>
+                                      <input
+                                        id="card-topup-promo-valid-from"
+                                        type="date"
+                                        value={cardIssuanceTopupPromotion.validFrom}
+                                        disabled={cardIssuanceTopupPromotionEditorPublishing}
+                                        onChange={(e) =>
+                                          setCardIssuanceTopupPromotion((p) => ({
+                                            ...p,
+                                            validFrom: e.target.value,
+                                            enabled: true,
+                                          }))
+                                        }
+                                        className={`w-full rounded-xl border-0 bg-[#f4f3f8] px-3 py-2.5 text-sm text-[#1a1b1f] outline-none focus:ring-2 focus:ring-[#1562f0]/35 ${bizFocusRingClass}`}
+                                      />
+                                    </div>
+                                    <div className="space-y-2">
+                                      <label
+                                        className="block text-[12px] font-semibold uppercase tracking-[0.05em] text-[#424655]"
+                                        htmlFor="card-topup-promo-valid-to"
+                                      >
+                                        {tu('programs_topup_promotion_valid_to')}
+                                      </label>
+                                      <input
+                                        id="card-topup-promo-valid-to"
+                                        type="date"
+                                        value={cardIssuanceTopupPromotion.validTo}
+                                        disabled={cardIssuanceTopupPromotionEditorPublishing}
+                                        onChange={(e) =>
+                                          setCardIssuanceTopupPromotion((p) => ({
+                                            ...p,
+                                            validTo: e.target.value,
+                                            enabled: true,
+                                          }))
+                                        }
+                                        className={`w-full rounded-xl border-0 bg-[#f4f3f8] px-3 py-2.5 text-sm text-[#1a1b1f] outline-none focus:ring-2 focus:ring-[#1562f0]/35 ${bizFocusRingClass}`}
+                                      />
+                                    </div>
                                   </div>
-                                  <div className="space-y-2">
-                                    <label
-                                      className="block text-[12px] font-semibold uppercase tracking-[0.05em] text-[#424655]"
-                                      htmlFor="card-topup-promo-valid-to"
-                                    >
-                                      {tu('programs_topup_promotion_valid_to')}
-                                    </label>
-                                    <input
-                                      id="card-topup-promo-valid-to"
-                                      type="date"
-                                      value={cardIssuanceTopupPromotion.validTo}
-                                      disabled={cardIssuanceTopupPromotionEditorPublishing}
-                                      onChange={(e) =>
-                                        setCardIssuanceTopupPromotion((p) => ({
-                                          ...p,
-                                          validTo: e.target.value,
-                                          enabled: true,
-                                        }))
-                                      }
-                                      className={`w-full rounded-xl border border-[#c3c6d8] bg-white px-3 py-2.5 text-sm text-[#1a1b1f] outline-none focus:border-[#1562f0] focus:ring-1 focus:ring-[#1562f0] ${bizFocusRingClass}`}
-                                    />
-                                  </div>
+                                  <p className="text-[13px] italic leading-5 text-[#424655]/90">
+                                    {tu('programs_topup_promotion_validity_period_helper')}
+                                  </p>
                                 </div>
                               ) : null}
 
@@ -43651,17 +43777,22 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                           </p>
                           {programRewardPtTopupEnabled ? (
                             <div className="mt-5 border-t border-[#e3e2e7] pt-4">
-                              <BeamioPercentSlider
+                              <TopupRewardPercentChipPicker
                                 id="card-topup-reward-pt-percent"
-                                label={tu('programs_topup_reward_pt_percent')}
-                                accent="blue"
-                                value={amountPercentInputToSlider(programRewardPtTopupPercentInput)}
-                                onChange={(n) => {
-                                  setProgramRewardPtTopupPercentInput(String(n));
+                                valueInput={programRewardPtTopupPercentInput}
+                                onChange={(next) => {
+                                  setProgramRewardPtTopupPercentInput(next);
                                   setCardIssuanceTopupPromotionEditorServerError('');
                                 }}
                                 disabled={cardIssuanceTopupPromotionEditorPublishing}
+                                accent="blue"
                                 focusRingClassName={bizFocusRingClass}
+                                numericNoSpinnerClass={bizNumericNoSpinnerClass}
+                                customLabel={tu('programs_topup_percent_custom_label')}
+                                helperText={tu('programs_topup_loyalty_points_rate_hint', {
+                                  prefix: cardIssuanceDisplayMoneyPrefix,
+                                })}
+                                wheelRef={cardIssuanceTopupRewardPtCustomWheelRef}
                               />
                             </div>
                           ) : null}
@@ -43717,17 +43848,22 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                           </p>
                           {programReferrerTopupEnabled ? (
                             <div className="mt-5 border-t border-[#e3e2e7] pt-4">
-                              <BeamioPercentSlider
+                              <TopupRewardPercentChipPicker
                                 id="card-topup-referrer-reward-percent"
-                                label={tu('programs_overview_referrer_topup_percent')}
-                                accent="purple"
-                                value={amountPercentInputToSlider(programReferrerTopupPercentInput)}
-                                onChange={(n) => {
-                                  setProgramReferrerTopupPercentInput(String(n));
+                                valueInput={programReferrerTopupPercentInput}
+                                onChange={(next) => {
+                                  setProgramReferrerTopupPercentInput(next);
                                   setCardIssuanceTopupPromotionEditorServerError('');
                                 }}
                                 disabled={cardIssuanceTopupPromotionEditorPublishing}
+                                accent="purple"
                                 focusRingClassName={bizFocusRingClass}
+                                numericNoSpinnerClass={bizNumericNoSpinnerClass}
+                                customLabel={tu('programs_topup_percent_custom_label')}
+                                helperText={tu('programs_topup_social_fission_example_hint', {
+                                  prefix: cardIssuanceDisplayMoneyPrefix,
+                                })}
+                                wheelRef={cardIssuanceTopupReferrerCustomWheelRef}
                               />
                             </div>
                           ) : null}

@@ -163,7 +163,7 @@ function normalizeFixedTiersFromRaw(raw: unknown): ShareTokenMetadataTopupPromot
 function fixedTiersDraftFromNormalized(
 	tiers: ShareTokenMetadataTopupPromotionFixedTier[],
 ): TopupPromotionFixedTierDraft[] {
-	if (tiers.length === 0) return createDefaultFixedTierDraft()
+	if (tiers.length === 0) return createDefaultFixedTiersDraft()
 	return tiers.map((t) => ({
 		id: newTopupPromotionFixedTierId(),
 		topupAmount: String(t.topupAmount),

@@ -286,6 +286,11 @@ import {
 import { ProgramsProductionsPanel } from './programsProductionsPanel';
 import { MerchantOracleSpreadProgramEditor } from './MerchantOracleSpreadProgramEditor';
 import {
+  MembershipFeeTierProgramEditor,
+  normalizeMembershipFeeTierHexColor,
+  type MembershipFeeTierEditorDraft,
+} from './MembershipFeeTierProgramEditor';
+import {
   NavProgramMenu,
   PROGRAM_TAB_BASIC,
   PROGRAM_TAB_BUSINESS,
@@ -13710,6 +13715,28 @@ const [cardIssuanceConsumptionPointDeleting, setCardIssuanceConsumptionPointDele
 const cardIssuanceConsumptionPointClearInFlightRef = useRef(false);
 const [cardIssuanceConsumptionPointEditorServerError, setCardIssuanceConsumptionPointEditorServerError] =
   useState('');
+/** Loyalty Logic → Membership Fee tier editor (baseMembership + base tier chrome). */
+const [cardIssuanceMembershipFeeTierEditorOpen, setCardIssuanceMembershipFeeTierEditorOpen] =
+  useState(false);
+const [cardIssuanceMembershipFeeTierEditorDraft, setMembershipFeeTierEditorDraft] =
+  useState<MembershipFeeTierEditorDraft>({
+    name: 'Gold VIP Member',
+    backgroundColor: '#1562F0',
+    discountPercent: '10',
+    membershipFee: '50',
+    membershipDurationKind: 3,
+    emblem: 'crown',
+    welcomeGiftEnabled: false,
+    welcomeGiftAmount: '10',
+  });
+const [cardIssuanceMembershipFeeTierEditorBaseline, setCardIssuanceMembershipFeeTierEditorBaseline] =
+  useState<MembershipFeeTierEditorDraft | null>(null);
+const [cardIssuanceMembershipFeeTierEditorPublishing, setCardIssuanceMembershipFeeTierEditorPublishing] =
+  useState(false);
+const [cardIssuanceMembershipFeeTierEditorServerError, setCardIssuanceMembershipFeeTierEditorServerError] =
+  useState('');
+const [cardIssuanceMembershipFeeTierHexDraft, setCardIssuanceMembershipFeeTierHexDraft] =
+  useState('1562F0');
 /** Programs — #13 → #0 / #13 → Conet-USDC (Rules & Routing); oracle spread is Program Basic. */
 const [reward13ConvertToPointsEnabled, setReward13ConvertToPointsEnabled] = useState(false);
 const [reward13ConvertToUsdcEnabled, setReward13ConvertToUsdcEnabled] = useState(false);
@@ -14037,6 +14064,18 @@ const cardIssuanceCouponEditingIssued = Boolean(cardIssuanceEditingCouponRow?.is
    [],
  );
  const cardIssuanceConsumptionSimulateWheelRef = useMemo(
+   () => createNumericInputWheelNonPassiveRefCallback(),
+   [],
+ );
+ const cardIssuanceMembershipFeeTierFeeWheelRef = useMemo(
+   () => createNumericInputWheelNonPassiveRefCallback(),
+   [],
+ );
+ const cardIssuanceMembershipFeeTierDiscountWheelRef = useMemo(
+   () => createNumericInputWheelNonPassiveRefCallback(),
+   [],
+ );
+ const cardIssuanceMembershipFeeTierWelcomeGiftWheelRef = useMemo(
    () => createNumericInputWheelNonPassiveRefCallback(),
    [],
  );
@@ -17511,6 +17550,7 @@ useEffect(() => {
     !cardIssuanceTierEditorOpen &&
     !cardIssuanceSocialPromotionEditorOpen &&
     !cardIssuanceConsumptionPointEditorOpen &&
+    !cardIssuanceMembershipFeeTierEditorOpen &&
     !cardIssuanceCouponSocialPromotionEditorOpenId &&
     !cardIssuanceSocialExchangeEditorOpen &&
     !cardIssuanceCardBackgroundDrawerOpen
@@ -17527,6 +17567,7 @@ useEffect(() => {
   cardIssuanceTierEditorOpen,
   cardIssuanceSocialPromotionEditorOpen,
   cardIssuanceConsumptionPointEditorOpen,
+  cardIssuanceMembershipFeeTierEditorOpen,
   cardIssuanceCouponSocialPromotionEditorOpenId,
   cardIssuanceSocialExchangeEditorOpen,
   cardIssuanceCardBackgroundDrawerOpen,
@@ -20087,6 +20128,172 @@ useEffect(() => {
   }
 }, [cardIssuanceConsumptionPointEditorOpen]);
 
+const openCardIssuanceMembershipFeeTierEditor = useCallback(() => {
+  setCardIssuanceMembershipFeeTierEditorServerError('');
+  const singleRows = tiersByLoyaltyRule.single;
+  const base =
+    singleRows.find((t) => t.id === CARD_ISSUANCE_SINGLE_TIER_ID) ??
+    singleRows[0] ??
+    cardIssuanceBaseTier;
+  const feeRaw = (base?.membershipFee ?? '').replace(/,/g, '').trim();
+  const feeNum = Number(feeRaw);
+  const feeHuman =
+    feeRaw !== '' && Number.isFinite(feeNum) && feeNum > 0 ? String(base!.membershipFee).trim() : '50';
+  const color = normalizeMembershipFeeTierHexColor(base?.backgroundColor || '#1562F0');
+  const draft: MembershipFeeTierEditorDraft = {
+    name: (base?.name ?? '').trim() || 'Gold VIP Member',
+    backgroundColor: color,
+    discountPercent: (base?.discountPercent ?? '').trim() || '10',
+    membershipFee: feeHuman,
+    membershipDurationKind: normalizeMembershipDurationKind(base?.membershipDurationKind) || 3,
+    emblem: 'crown',
+    welcomeGiftEnabled: false,
+    welcomeGiftAmount: '10',
+  };
+  setMembershipFeeTierEditorDraft(draft);
+  setCardIssuanceMembershipFeeTierEditorBaseline({ ...draft });
+  setCardIssuanceMembershipFeeTierHexDraft(color.replace(/^#/, ''));
+  setCardIssuanceMembershipFeeTierEditorOpen(true);
+}, [tiersByLoyaltyRule.single, cardIssuanceBaseTier]);
+
+useEffect(() => {
+  if (!cardIssuanceMembershipFeeTierEditorOpen) {
+    setCardIssuanceMembershipFeeTierEditorBaseline(null);
+  }
+}, [cardIssuanceMembershipFeeTierEditorOpen]);
+
+const discardCardIssuanceMembershipFeeTierEditorChanges = useCallback(() => {
+  if (cardIssuanceMembershipFeeTierEditorBaseline == null) return;
+  const baseline = cardIssuanceMembershipFeeTierEditorBaseline;
+  setMembershipFeeTierEditorDraft({ ...baseline });
+  setCardIssuanceMembershipFeeTierHexDraft(baseline.backgroundColor.replace(/^#/, ''));
+  setCardIssuanceMembershipFeeTierEditorServerError('');
+  setCardIssuanceCreateError('');
+}, [cardIssuanceMembershipFeeTierEditorBaseline]);
+
+const closeCardIssuanceMembershipFeeTierEditor = useCallback(() => {
+  if (cardIssuanceMembershipFeeTierEditorPublishing) return;
+  discardCardIssuanceMembershipFeeTierEditorChanges();
+  setCardIssuanceMembershipFeeTierEditorOpen(false);
+}, [
+  cardIssuanceMembershipFeeTierEditorPublishing,
+  discardCardIssuanceMembershipFeeTierEditorChanges,
+]);
+
+const cardIssuanceMembershipFeeTierFeeLocked = useMemo(() => {
+  if (!cardIssuanceExistingCard?.cardAddress || !cardIssuanceMembershipFeeTierEditorBaseline) {
+    return false;
+  }
+  return BigInt(membershipFeeHumanToE6(cardIssuanceMembershipFeeTierEditorBaseline.membershipFee)) > 0n;
+}, [cardIssuanceExistingCard?.cardAddress, cardIssuanceMembershipFeeTierEditorBaseline]);
+
+const cardIssuanceMembershipFeeTierEditorDirty = useMemo(() => {
+  const baseline = cardIssuanceMembershipFeeTierEditorBaseline;
+  if (!baseline) return false;
+  const draft = cardIssuanceMembershipFeeTierEditorDraft;
+  return (
+    draft.name.trim() !== baseline.name.trim() ||
+    normalizeMembershipFeeTierHexColor(draft.backgroundColor) !==
+      normalizeMembershipFeeTierHexColor(baseline.backgroundColor) ||
+    draft.discountPercent.replace(/,/g, '').trim() !== baseline.discountPercent.replace(/,/g, '').trim() ||
+    draft.membershipFee.replace(/,/g, '').trim() !== baseline.membershipFee.replace(/,/g, '').trim() ||
+    normalizeMembershipDurationKind(draft.membershipDurationKind) !==
+      normalizeMembershipDurationKind(baseline.membershipDurationKind) ||
+    draft.emblem !== baseline.emblem ||
+    draft.welcomeGiftEnabled !== baseline.welcomeGiftEnabled ||
+    draft.welcomeGiftAmount.replace(/,/g, '').trim() !==
+      baseline.welcomeGiftAmount.replace(/,/g, '').trim()
+  );
+}, [cardIssuanceMembershipFeeTierEditorBaseline, cardIssuanceMembershipFeeTierEditorDraft]);
+
+const cardIssuanceMembershipFeeTierEditorValidationError = useMemo(() => {
+  const draft = cardIssuanceMembershipFeeTierEditorDraft;
+  if (!draft.name.trim()) return 'Tier name is required.';
+  const color = normalizeMembershipFeeTierHexColor(draft.backgroundColor, '');
+  if (!color || !/^#[0-9A-F]{6}$/i.test(color)) return 'Enter a valid 6-digit hex color.';
+  const feeN = Number(draft.membershipFee.replace(/,/g, '').trim());
+  if (!Number.isFinite(feeN) || feeN <= 0) return 'Membership fee must be greater than 0.';
+  if (!normalizeMembershipDurationKind(draft.membershipDurationKind)) {
+    return 'Select a membership duration.';
+  }
+  const discountN = Number.parseInt(
+    String(draft.discountPercent).replace(/,/g, '').replace(/\D/g, '').trim(),
+    10,
+  );
+  if (!Number.isFinite(discountN) || discountN < 0 || discountN > 90) {
+    return 'Base discount must be an integer from 0% to 90%.';
+  }
+  if (draft.welcomeGiftEnabled) {
+    const giftN = Number(draft.welcomeGiftAmount.replace(/,/g, '').trim());
+    if (!Number.isFinite(giftN) || giftN <= 0) {
+      return 'Welcome store credit gift must be greater than 0 when enabled.';
+    }
+  }
+  return '';
+}, [cardIssuanceMembershipFeeTierEditorDraft]);
+
+const cardIssuanceMembershipFeeTierEditorCanSave = useMemo(
+  () =>
+    cardIssuanceMembershipFeeTierEditorDirty &&
+    !cardIssuanceMembershipFeeTierEditorValidationError &&
+    !cardIssuanceMembershipFeeTierEditorPublishing,
+  [
+    cardIssuanceMembershipFeeTierEditorDirty,
+    cardIssuanceMembershipFeeTierEditorValidationError,
+    cardIssuanceMembershipFeeTierEditorPublishing,
+  ],
+);
+
+const buildMembershipFeeTierRowsFromEditorDraft = useCallback(
+  (draft: MembershipFeeTierEditorDraft): CardIssuanceTierRow[] => {
+    const source =
+      (tiersByLoyaltyRule.single?.length ? tiersByLoyaltyRule.single : null) ??
+      (cardIssuanceTiers.length ? cardIssuanceTiers : defaultCardIssuanceTiers());
+    const baseline = cardIssuanceMembershipFeeTierEditorBaseline;
+    const feeLocked =
+      Boolean(cardIssuanceExistingCard?.cardAddress) &&
+      baseline != null &&
+      BigInt(membershipFeeHumanToE6(baseline.membershipFee)) > 0n;
+    const feeHuman = feeLocked
+      ? baseline!.membershipFee.replace(/,/g, '').trim()
+      : draft.membershipFee.replace(/,/g, '').trim();
+    const durationKind = feeLocked
+      ? normalizeMembershipDurationKind(baseline!.membershipDurationKind) || 3
+      : normalizeMembershipDurationKind(draft.membershipDurationKind) || 3;
+    const color = normalizeMembershipFeeTierHexColor(draft.backgroundColor);
+    const discountRaw = String(draft.discountPercent)
+      .replace(/,/g, '')
+      .replace(/\D/g, '')
+      .trim();
+    const discountN = Number.parseInt(discountRaw, 10);
+    const discountPercent = Number.isFinite(discountN)
+      ? String(Math.min(90, Math.max(0, discountN)))
+      : '0';
+    let sawBase = false;
+    return source.map((row, i) => {
+      const isBase = row.id === CARD_ISSUANCE_SINGLE_TIER_ID || (!sawBase && i === 0);
+      if (!isBase) return row;
+      sawBase = true;
+      return {
+        ...row,
+        id: CARD_ISSUANCE_SINGLE_TIER_ID,
+        name: draft.name.trim(),
+        backgroundColor: color,
+        discountPercent,
+        membershipFee: feeHuman,
+        membershipDurationKind: durationKind,
+        threshold: '0',
+      };
+    });
+  },
+  [
+    tiersByLoyaltyRule.single,
+    cardIssuanceTiers,
+    cardIssuanceMembershipFeeTierEditorBaseline,
+    cardIssuanceExistingCard?.cardAddress,
+  ],
+);
+
 const refreshCardIssuanceSocialPromotionFromChain = useCallback(async (cardAddress: string) => {
   try {
     const promo = await readCardSocialPromotionFromChain(cardAddress);
@@ -22389,6 +22596,78 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
 useEffect(() => {
   handlePublishCardIssuanceRef.current = handlePublishCardIssuance;
 }, [handlePublishCardIssuance]);
+
+const submitCardIssuanceMembershipFeeTierEditor = useCallback(async () => {
+  if (cardIssuanceMembershipFeeTierEditorValidationError) return;
+  if (cardIssuanceMembershipFeeTierEditorPublishing) return;
+  const draft = cardIssuanceMembershipFeeTierEditorDraft;
+  const nextTiers = buildMembershipFeeTierRowsFromEditorDraft(draft);
+  const minTopup = CARD_ISSUANCE_REWARDS_SETUP_AMOUNT_DEFAULT;
+  setCardIssuanceMembershipFeeTierEditorServerError('');
+  setCardIssuanceCreateError('');
+  setCardIssuanceMembershipFeeTierEditorPublishing(true);
+  try {
+    if (cardIssuanceExistingCard?.cardAddress) {
+      const ok = await handlePublishCardIssuanceRef.current({
+        tiersOverride: nextTiers,
+        minTopupOverride: minTopup,
+        maxTopupOverride: minTopup,
+        loadingScope: 'bonusEditor',
+        skipOnChainRefresh: true,
+        metadataOnly: true,
+        publishErrorSink: setCardIssuanceMembershipFeeTierEditorServerError,
+      });
+      if (!ok) return;
+      const loyaltyFlags = cardIssuanceLoyaltyUpgradeFlags(true, 'single');
+      const tiersPayload = buildCardIssuanceTiersPayloadFromRows(nextTiers, loyaltyFlags);
+      setCardIssuanceExistingCard((prev) => {
+        if (!prev?.meta) return prev;
+        return {
+          ...prev,
+          meta: {
+            ...prev.meta,
+            ...(tiersPayload?.length ? { tiers: tiersPayload } : {}),
+          },
+        };
+      });
+      invalidateBeamioCardMetadataCache(cardIssuanceExistingCard.cardAddress);
+    }
+    setCardIssuanceRewardsPreset('custom');
+    setCardIssuanceRewardsMembershipFeeEnabled(true);
+    setCardIssuanceRewardsSetupAmount(
+      nextTiers.find((t) => t.id === CARD_ISSUANCE_SINGLE_TIER_ID)?.membershipFee ??
+        draft.membershipFee,
+    );
+    setCardIssuanceTierRule('single');
+    setCardIssuanceMinTopup(minTopup);
+    setCardIssuanceMaxTopup(minTopup);
+    setTiersByLoyaltyRule((prev) => ({
+      ...prev,
+      single: nextTiers,
+    }));
+    setCardIssuanceMembershipFeeTierEditorBaseline({ ...draft });
+    setCardIssuanceMembershipFeeTierEditorOpen(false);
+    setCardIssuanceOwnerAdminNotice({
+      kind: 'ok',
+      text: cardIssuanceExistingCard?.cardAddress
+        ? 'Membership Fee tier saved.'
+        : 'Membership Fee tier saved to card setup. Publish the card when you are ready.',
+    });
+  } catch {
+    setCardIssuanceMembershipFeeTierEditorServerError(
+      'Could not save Membership Fee tier. Please try again.',
+    );
+  } finally {
+    setCardIssuanceMembershipFeeTierEditorPublishing(false);
+  }
+}, [
+  cardIssuanceMembershipFeeTierEditorValidationError,
+  cardIssuanceMembershipFeeTierEditorPublishing,
+  cardIssuanceMembershipFeeTierEditorDraft,
+  buildMembershipFeeTierRowsFromEditorDraft,
+  cardIssuanceExistingCard?.cardAddress,
+  buildCardIssuanceTiersPayloadFromRows,
+]);
 
 const submitCardIssuanceTopupPromotionEditor = useCallback(async () => {
   if (
@@ -41091,7 +41370,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                          <div className="space-y-2">
                            <button
                              type="button"
-                             onClick={() => handleProgramTabChange(PROGRAM_TAB_BASIC)}
+                             onClick={() => openCardIssuanceMembershipFeeTierEditor()}
                              className={`flex w-full items-center justify-between gap-3 rounded-lg bg-[#eeedf3] px-3 py-3 text-left transition hover:bg-[#e9e7ed] ${bizFocusRingClass}`}
                            >
                              <span className="text-[15px] font-medium text-[#1a1b1f]">
@@ -44558,6 +44837,34 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                    </motion.div>
                  </>
                ) : null}
+               <MembershipFeeTierProgramEditor
+                 open={cardIssuanceMembershipFeeTierEditorOpen}
+                 draft={cardIssuanceMembershipFeeTierEditorDraft}
+                 hexDraft={cardIssuanceMembershipFeeTierHexDraft}
+                 publishing={cardIssuanceMembershipFeeTierEditorPublishing}
+                 canSave={cardIssuanceMembershipFeeTierEditorCanSave}
+                 feeLocked={cardIssuanceMembershipFeeTierFeeLocked}
+                 validationError={cardIssuanceMembershipFeeTierEditorValidationError}
+                 serverError={cardIssuanceMembershipFeeTierEditorServerError}
+                 moneyPrefix={cardIssuanceDisplayMoneyPrefix}
+                 brandName={programsOverviewDisplayName}
+                 focusRingClassName={bizFocusRingClass}
+                 numericNoSpinnerClass={bizNumericNoSpinnerClass}
+                 durationOptions={programsMembershipDurationSelectOptions.map((opt) => ({
+                   value: Number(opt.value) || 3,
+                   label: opt.label,
+                 }))}
+                 feeWheelRef={cardIssuanceMembershipFeeTierFeeWheelRef}
+                 discountWheelRef={cardIssuanceMembershipFeeTierDiscountWheelRef}
+                 welcomeGiftWheelRef={cardIssuanceMembershipFeeTierWelcomeGiftWheelRef}
+                 tu={tu}
+                 onDraftChange={(patch) =>
+                   setMembershipFeeTierEditorDraft((prev) => ({ ...prev, ...patch }))
+                 }
+                 onHexDraftChange={setCardIssuanceMembershipFeeTierHexDraft}
+                 onClose={closeCardIssuanceMembershipFeeTierEditor}
+                 onSave={() => void submitCardIssuanceMembershipFeeTierEditor()}
+               />
                <MerchantOracleSpreadProgramEditor
                  open={merchantOracleSpreadEditorOpen}
                  draftBps={merchantOracleSpreadEditorDraftBps}

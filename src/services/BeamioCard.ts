@@ -3020,7 +3020,7 @@ export async function syncConvertReward13SettingsOnChain(opts: {
 
 /**
  * Write merchant-favorable oracle FX spread (0–1000 bps) via owner executeForOwner.
- * Program Basic — Exchange rate panel.
+ * Program Basic — Settlement Margin panel.
  */
 export async function syncMerchantOracleSpreadBpsOnChain(opts: {
 	cardAddress: string
@@ -3035,7 +3035,7 @@ export async function syncMerchantOracleSpreadBpsOnChain(opts: {
 			return {
 				success: false,
 				error:
-					'Exchange rate updates require the card owner wallet. Unlock owner wallet and retry.',
+					'Settlement margin updates require the card owner wallet. Unlock owner wallet and retry.',
 			}
 		}
 
@@ -3057,7 +3057,7 @@ export async function syncMerchantOracleSpreadBpsOnChain(opts: {
 		if (!res.success) {
 			return {
 				success: false,
-				error: res.error ?? 'Failed to update exchange rate on-chain.',
+				error: res.error ?? 'Failed to update settlement margin on-chain.',
 			}
 		}
 
@@ -3073,12 +3073,12 @@ export async function syncMerchantOracleSpreadBpsOnChain(opts: {
 		return {
 			success: false,
 			error:
-				'Exchange rate was accepted by the API but is not on-chain yet. Wait a moment and save again.',
+				'Settlement margin was accepted by the API but is not on-chain yet. Wait a moment and save again.',
 		}
 	} catch (e: unknown) {
 		return {
 			success: false,
-			error: e instanceof Error ? e.message : 'Failed to update exchange rate on-chain.',
+			error: e instanceof Error ? e.message : 'Failed to update settlement margin on-chain.',
 		}
 	}
 }

@@ -37,7 +37,7 @@ export type UnifiedRewardPoints = {
 	reward13ToPoints?: UnifiedReward13ConvertFlow
 	/** Programs: allow customers to burn #13 for Conet-USDC to their AA. */
 	reward13ToUsdc?: UnifiedReward13ConvertFlow
-	/** 0–500 bps merchant oracle spread (deposit up / withdraw down); 25 bps steps. */
+	/** 0–500 bps store settlement margin vs oracle (top-up quotes +spread); 25 bps steps. */
 	merchantOracleSpreadBps?: number
 }
 
@@ -184,7 +184,7 @@ export function parseUnifiedRewardChargeDraft(raw: unknown): {
 export type Reward13ConvertDraft = {
 	toPointsEnabled: boolean
 	toUsdcEnabled: boolean
-	/** Owned by Program Basic → Exchange rate; Rules toggles must preserve. */
+	/** Owned by Program Basic → Settlement Margin; Rules toggles must preserve. */
 	oracleSpreadBps: number
 }
 
@@ -302,10 +302,10 @@ export function mergeUnifiedRewardPointsOracleSpread(
 	}
 }
 
-/** Program Basic overview line for merchant oracle FX adjustment. */
+/** Program Basic overview line for store settlement margin. */
 export function formatMerchantOracleSpreadOverview(oracleSpreadBps: number): string {
 	const bps = clampMerchantOracleSpreadBps(oracleSpreadBps)
 	if (bps <= 0) return ''
 	const pct = merchantOracleSpreadBpsToPercent(bps).toFixed(2)
-	return `FX +${pct}% deposit / −${pct}% withdraw`
+	return `+${pct}% store margin`
 }

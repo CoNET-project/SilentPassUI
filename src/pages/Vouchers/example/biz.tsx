@@ -14076,7 +14076,8 @@ const cardIssuanceEditingCouponRow = useMemo(
   [cardIssuanceCoupons, cardIssuanceEditingCouponId]
 );
 const cardIssuanceCouponEditingIssued = Boolean(cardIssuanceEditingCouponRow?.issued);
- const [cardIssuancePointSystemEnabled, setCardIssuancePointSystemEnabled] = useState(true);
+ /** New card setup: Consumption Points / all promotions default none until merchant configures. */
+ const [cardIssuancePointSystemEnabled, setCardIssuancePointSystemEnabled] = useState(false);
  const [cardIssuancePointRatioInput, setCardIssuancePointRatioInput] = useState('100');
  const [cardIssuanceMerchantTextSaving, setCardIssuanceMerchantTextSaving] = useState(false);
  const [cardIssuanceMinTopup, setCardIssuanceMinTopup] = useState(CARD_ISSUANCE_REWARDS_SETUP_AMOUNT_DEFAULT);
@@ -15960,7 +15961,15 @@ useEffect(() => {
 }, [cardIssuanceExistingCard?.cardAddress]);
 
 useEffect(() => {
-  if (!cardIssuanceExistingCard?.cardAddress || !cardIssuanceExistingCard.meta) return;
+  if (!cardIssuanceExistingCard?.cardAddress || !cardIssuanceExistingCard.meta) {
+    if (cardIssuanceTopupPromotionEditorOpen) return;
+    setCardIssuanceTopupPromotion(cloneTopupPromotionDraft(EMPTY_TOPUP_PROMOTION_DRAFT));
+    setProgramRewardPtTopupEnabled(false);
+    setProgramRewardPtTopupPercentInput('0');
+    setProgramReferrerTopupEnabled(false);
+    setProgramReferrerTopupPercentInput('0');
+    return;
+  }
   if (cardIssuanceTopupPromotionEditorOpen) return;
   // Parse + heal legacy mismatch (fixed CA$N shown as percent). Editor keeps user draft incl. percent.
   setCardIssuanceTopupPromotion(
@@ -16008,7 +16017,16 @@ useEffect(() => {
 ]);
 
 useEffect(() => {
-  if (!cardIssuanceExistingCard?.cardAddress) return;
+  if (!cardIssuanceExistingCard?.cardAddress) {
+    if (cardIssuanceConsumptionPointEditorOpen) return;
+    setCardIssuancePointSystemEnabled(false);
+    setCardIssuancePointRatioInput(
+      formatAmountPercentE6Display(CARD_ISSUANCE_POINT_RATIO_DEFAULT_E6),
+    );
+    setProgramReferrerChargeEnabled(false);
+    setProgramReferrerChargePercentInput('0');
+    return;
+  }
   if (cardIssuanceConsumptionPointEditorOpen) return;
   const chargeDraft = parseUnifiedRewardChargeDraft(
     (cardIssuanceExistingCard.meta as { unifiedRewardPoints?: unknown } | undefined)
@@ -23636,7 +23654,7 @@ const persistReward13ConvertRulesFlag = useCallback(
     const next: Reward13ConvertDraft = {
       toPointsEnabled: nextPoints,
       toUsdcEnabled: nextUsdc,
-      // Preserve merchant oracle FX — Program Basic owns Exchange rate.
+      // Preserve merchant oracle FX — Program Basic owns Settlement Margin.
       oracleSpreadBps: reward13ConvertOracleSpreadBps,
     };
     const prevPoints = reward13ConvertToPointsEnabled;
@@ -23770,7 +23788,7 @@ const submitMerchantOracleSpreadEditor = useCallback(async () => {
     const pk = getSessionPrivateKeyArmor() ?? profiles?.[0]?.privateKeyArmor;
     if (!pk) {
       setMerchantOracleSpreadEditorServerError(
-        'Unlock your wallet before saving exchange rate settings.',
+        'Unlock your wallet before saving settlement margin settings.',
       );
       return;
     }
@@ -23787,7 +23805,7 @@ const submitMerchantOracleSpreadEditor = useCallback(async () => {
       });
       if (!ok) {
         setMerchantOracleSpreadEditorServerError(
-          'Could not save exchange rate metadata. Review the error below and try again.',
+          'Could not save settlement margin metadata. Review the error below and try again.',
         );
         return;
       }
@@ -23798,7 +23816,7 @@ const submitMerchantOracleSpreadEditor = useCallback(async () => {
       });
       if (!chainRes.success) {
         setMerchantOracleSpreadEditorServerError(
-          chainRes.error ?? 'On-chain exchange rate update failed. Try again.',
+          chainRes.error ?? 'On-chain settlement margin update failed. Try again.',
         );
         return;
       }
@@ -23825,11 +23843,11 @@ const submitMerchantOracleSpreadEditor = useCallback(async () => {
       kind: 'ok',
       text:
         nextBps > 0
-          ? `Exchange rate saved. Deposit quotes use +${(nextBps / 100).toFixed(nextBps % 100 === 0 ? 0 : 2)}% vs oracle; withdraw −${(nextBps / 100).toFixed(nextBps % 100 === 0 ? 0 : 2)}%.`
-          : 'Exchange rate reset to oracle (0% adjustment).',
+          ? `Settlement margin saved. Top-up quotes use +${(nextBps / 100).toFixed(nextBps % 100 === 0 ? 0 : 2)}% vs oracle.`
+          : 'Settlement margin reset to oracle (0% buffer).',
     });
   } catch {
-    setMerchantOracleSpreadEditorServerError('Could not save exchange rate. Please try again.');
+    setMerchantOracleSpreadEditorServerError('Could not save settlement margin. Please try again.');
   } finally {
     setMerchantOracleSpreadEditorPublishing(false);
   }
@@ -23857,7 +23875,7 @@ const clearMerchantOracleSpreadSettings = useCallback(async () => {
     const pk = getSessionPrivateKeyArmor() ?? profiles?.[0]?.privateKeyArmor;
     if (!pk) {
       setMerchantOracleSpreadEditorServerError(
-        'Unlock your wallet before clearing exchange rate settings.',
+        'Unlock your wallet before clearing settlement margin settings.',
       );
       return;
     }
@@ -23871,7 +23889,7 @@ const clearMerchantOracleSpreadSettings = useCallback(async () => {
     if (!ok) {
       setCardIssuanceOwnerAdminNotice({
         kind: 'warn',
-        text: 'Could not clear exchange rate. Please try again.',
+        text: 'Could not clear settlement margin. Please try again.',
       });
       return;
     }
@@ -23883,7 +23901,7 @@ const clearMerchantOracleSpreadSettings = useCallback(async () => {
     if (!chainRes.success) {
       setCardIssuanceOwnerAdminNotice({
         kind: 'warn',
-        text: chainRes.error ?? 'Could not update exchange rate on-chain.',
+        text: chainRes.error ?? 'Could not update settlement margin on-chain.',
       });
       return;
     }
@@ -23901,7 +23919,7 @@ const clearMerchantOracleSpreadSettings = useCallback(async () => {
     invalidateBeamioCardMetadataCache(cardAddr);
     setCardIssuanceOwnerAdminNotice({
       kind: 'ok',
-      text: 'Exchange rate reset to oracle (0% adjustment).',
+      text: 'Settlement margin reset to oracle (0% buffer).',
     });
   } finally {
     merchantOracleSpreadClearInFlightRef.current = false;
@@ -27043,7 +27061,7 @@ const [memberDirectoryUserTypeDb, setMemberDirectoryUserTypeDb] = useState<Recor
    });
  }, []);
 
- /** Refresh CoNET oracle for the current merchant card currency when Exchange rate opens. */
+ /** Refresh CoNET oracle for the current merchant card currency when Settlement Margin opens. */
  useEffect(() => {
    if (!merchantOracleSpreadEditorOpen) return;
    const c = cardIssuanceCurrencyCode;
@@ -41167,7 +41185,83 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                        </div>
                      </div>
 
-                     <div className="rounded-[22px] bg-[#eef1f4] p-4">
+                     <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-[#1562f0]/10 bg-white p-3 sm:mt-4 sm:gap-4 sm:rounded-xl sm:p-4">
+                       <div className="flex min-w-0 items-center gap-3 sm:gap-4">
+                         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#0051d1]/10 text-[#0051d1] sm:h-9 sm:w-9">
+                           <Percent
+                             className="h-4 w-4 sm:h-[1.15rem] sm:w-[1.15rem]"
+                             strokeWidth={2}
+                             aria-hidden
+                           />
+                         </div>
+                         <div className="min-w-0">
+                           <p className="font-manrope text-sm font-bold text-[#2c2f31]">
+                             {tu('programs_oracle_fx_title')}
+                           </p>
+                           <p className="text-[10px] text-[#595c5e]">
+                             {merchantOracleSpreadOverviewSummary || tu('programs_oracle_fx_none')}
+                           </p>
+                         </div>
+                       </div>
+                       <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+                         <button
+                           type="button"
+                           onClick={openMerchantOracleSpreadEditor}
+                           disabled={
+                             merchantOracleSpreadEditorPublishing || merchantOracleSpreadDeleting
+                           }
+                           className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-[#0051d1] transition-colors hover:bg-[#0051d1]/10 disabled:cursor-not-allowed disabled:opacity-50 ${bizFocusRingClass}`}
+                           aria-label={
+                             merchantOracleSpreadIsConfigured
+                               ? tu('programs_oracle_fx_edit_aria')
+                               : tu('programs_oracle_fx_configure_aria')
+                           }
+                         >
+                           <Pencil
+                             className="h-4 w-4 sm:h-[1.05rem] sm:w-[1.05rem]"
+                             strokeWidth={2}
+                             aria-hidden
+                           />
+                         </button>
+                         {merchantOracleSpreadIsConfigured ? (
+                           <button
+                             type="button"
+                             onClick={() => void clearMerchantOracleSpreadSettings()}
+                             disabled={
+                               merchantOracleSpreadDeleting || merchantOracleSpreadEditorPublishing
+                             }
+                             className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-[#595c5e] transition-colors hover:bg-rose-50 hover:text-[#b31b25] disabled:cursor-not-allowed disabled:opacity-50 ${bizFocusRingClass}`}
+                             aria-label={tu('programs_oracle_fx_clear_aria')}
+                             aria-busy={merchantOracleSpreadDeleting}
+                           >
+                             {merchantOracleSpreadDeleting ? (
+                               <Loader2
+                                 className="h-4 w-4 animate-spin sm:h-[1.05rem] sm:w-[1.05rem]"
+                                 strokeWidth={2}
+                                 aria-hidden
+                               />
+                             ) : (
+                               <Trash2
+                                 className="h-4 w-4 sm:h-[1.05rem] sm:w-[1.05rem]"
+                                 strokeWidth={2}
+                                 aria-hidden
+                               />
+                             )}
+                           </button>
+                         ) : null}
+                         <span
+                           className={`shrink-0 rounded px-2 py-0.5 text-[9px] font-black uppercase tracking-tighter ${
+                             merchantOracleSpreadIsConfigured
+                               ? 'bg-[#0051d1] text-white'
+                               : 'bg-slate-200 text-slate-600'
+                           }`}
+                         >
+                           {merchantOracleSpreadIsConfigured ? 'ACTIVE' : 'OFF'}
+                         </span>
+                       </div>
+                     </div>
+
+                     <div className="mt-3 rounded-[22px] bg-[#eef1f4] p-4 sm:mt-4">
                        <h3 className="text-[16px] font-bold text-[#1f2328]">{merchantPanelAboutPreviewTitle}</h3>
                        <ProgramLivePreviewInlineField
                          hideLabel
@@ -42590,81 +42684,6 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                      </div>
                    </div>
                    )}
-                   <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-[#1562f0]/10 bg-white p-3 sm:mt-4 sm:gap-4 sm:rounded-xl sm:p-4">
-                     <div className="flex min-w-0 items-center gap-3 sm:gap-4">
-                       <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#0051d1]/10 text-[#0051d1] sm:h-9 sm:w-9">
-                         <Percent
-                           className="h-4 w-4 sm:h-[1.15rem] sm:w-[1.15rem]"
-                           strokeWidth={2}
-                           aria-hidden
-                         />
-                       </div>
-                       <div className="min-w-0">
-                         <p className="font-manrope text-sm font-bold text-[#2c2f31]">
-                           {tu('programs_oracle_fx_title')}
-                         </p>
-                         <p className="text-[10px] text-[#595c5e]">
-                           {merchantOracleSpreadOverviewSummary || tu('programs_oracle_fx_none')}
-                         </p>
-                       </div>
-                     </div>
-                     <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
-                       <button
-                         type="button"
-                         onClick={openMerchantOracleSpreadEditor}
-                         disabled={
-                           merchantOracleSpreadEditorPublishing || merchantOracleSpreadDeleting
-                         }
-                         className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-[#0051d1] transition-colors hover:bg-[#0051d1]/10 disabled:cursor-not-allowed disabled:opacity-50 ${bizFocusRingClass}`}
-                         aria-label={
-                           merchantOracleSpreadIsConfigured
-                             ? tu('programs_oracle_fx_edit_aria')
-                             : tu('programs_oracle_fx_configure_aria')
-                         }
-                       >
-                         <Pencil
-                           className="h-4 w-4 sm:h-[1.05rem] sm:w-[1.05rem]"
-                           strokeWidth={2}
-                           aria-hidden
-                         />
-                       </button>
-                       {merchantOracleSpreadIsConfigured ? (
-                         <button
-                           type="button"
-                           onClick={() => void clearMerchantOracleSpreadSettings()}
-                           disabled={
-                             merchantOracleSpreadDeleting || merchantOracleSpreadEditorPublishing
-                           }
-                           className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-[#595c5e] transition-colors hover:bg-rose-50 hover:text-[#b31b25] disabled:cursor-not-allowed disabled:opacity-50 ${bizFocusRingClass}`}
-                           aria-label={tu('programs_oracle_fx_clear_aria')}
-                           aria-busy={merchantOracleSpreadDeleting}
-                         >
-                           {merchantOracleSpreadDeleting ? (
-                             <Loader2
-                               className="h-4 w-4 animate-spin sm:h-[1.05rem] sm:w-[1.05rem]"
-                               strokeWidth={2}
-                               aria-hidden
-                             />
-                           ) : (
-                             <Trash2
-                               className="h-4 w-4 sm:h-[1.05rem] sm:w-[1.05rem]"
-                               strokeWidth={2}
-                               aria-hidden
-                             />
-                           )}
-                         </button>
-                       ) : null}
-                       <span
-                         className={`shrink-0 rounded px-2 py-0.5 text-[9px] font-black uppercase tracking-tighter ${
-                           merchantOracleSpreadIsConfigured
-                             ? 'bg-[#0051d1] text-white'
-                             : 'bg-slate-200 text-slate-600'
-                         }`}
-                       >
-                         {merchantOracleSpreadIsConfigured ? 'ACTIVE' : 'OFF'}
-                       </span>
-                     </div>
-                   </div>
                    </>
                    ) : null}
                  </section>

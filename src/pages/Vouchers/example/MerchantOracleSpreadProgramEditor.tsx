@@ -1,9 +1,9 @@
 /**
- * Program Basic — merchant-favorable oracle FX spread (0.00–5.00%, step 0.25%).
+ * Program Basic — Settlement Margin (0.00–5.00%, step 0.25%).
  * Chrome: beamio-drawer-form-chrome (Cancel left / Check right).
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, Check, ChevronLeft, Loader2 } from 'lucide-react'
+import { AlertTriangle, Check, ChevronLeft, Info, Loader2, Shield } from 'lucide-react'
 import {
 	clampMerchantOracleSpreadBps,
 	merchantOracleSpreadBpsToPercent,
@@ -21,6 +21,8 @@ const BEAMIO_PERCENT_SLIDER_TRACK_REST = '#e5e7eb'
 const SHEET_MS = 300
 const PERCENT_MAX = 5
 const PERCENT_STEP = 0.25
+const SAMPLE_TOPUP_UNITS = 100
+const SLIDER_TICKS = [0, 1.25, 2.5, 3.75, 5] as const
 
 /** @deprecated Prefer merchantOracleSpreadBpsToPercent from unifiedRewardPoints. */
 export function merchantOracleSpreadBpsToPercentWhole(bps: number): number {
@@ -32,11 +34,20 @@ export function percentWholeToMerchantOracleSpreadBps(percent: number): number {
 	return percentToMerchantOracleSpreadBps(percent)
 }
 
-function formatOraclePairRate(n: number): string {
+function formatOracleBenchmarkUsdc(n: number): string {
 	if (!Number.isFinite(n) || n <= 0) return ''
-	const abs = Math.abs(n)
-	const maxFrac = abs >= 100 ? 2 : abs >= 1 ? 4 : 6
-	return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: maxFrac })
+	return n.toLocaleString('en-US', { minimumFractionDigits: 6, maximumFractionDigits: 6 })
+}
+
+function formatSimMoney(n: number): string {
+	if (!Number.isFinite(n)) return ''
+	return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+function formatTickLabel(n: number): string {
+	if (n === 0) return '0%'
+	if (n === 5) return '5%'
+	return `${n.toFixed(2)}%`
 }
 
 export type MerchantOracleSpreadProgramEditorProps = {
@@ -116,16 +127,17 @@ export function MerchantOracleSpreadProgramEditor({
 	const cardCcy = (cardCurrency || 'CAD').trim().toUpperCase() || 'CAD'
 	const hasOracleRate =
 		oracleUsdcPerUnit != null && Number.isFinite(oracleUsdcPerUnit) && oracleUsdcPerUnit > 0
-	const isUsdPeg = cardCcy === 'USD' || cardCcy === 'USDC'
-	const inversePerUsdc = hasOracleRate ? 1 / (oracleUsdcPerUnit as number) : null
-	const depositUsdcPerUnit =
-		hasOracleRate && spreadPercent > 0
-			? (oracleUsdcPerUnit as number) * (1 + spreadPercent / 100)
-			: null
-	const withdrawUsdcPerUnit =
-		hasOracleRate && spreadPercent > 0
-			? (oracleUsdcPerUnit as number) * (1 - spreadPercent / 100)
-			: null
+
+	const simulation = useMemo(() => {
+		if (!hasOracleRate) return null
+		const rawOracleUsdc = SAMPLE_TOPUP_UNITS * (oracleUsdcPerUnit as number)
+		const appliedMarginUsdc = rawOracleUsdc * (spreadPercent / 100)
+		return {
+			rawOracleUsdc,
+			appliedMarginUsdc,
+			settlesUsdc: rawOracleUsdc + appliedMarginUsdc,
+		}
+	}, [hasOracleRate, oracleUsdcPerUnit, spreadPercent])
 
 	const commitPercentDraft = useCallback(
 		(raw: string) => {
@@ -172,7 +184,7 @@ export function MerchantOracleSpreadProgramEditor({
 						id="merchant-oracle-spread-editor-title"
 						className="pointer-events-none absolute inset-x-12 truncate text-center text-base font-semibold text-[#2c2f31]"
 					>
-						Exchange rate
+						Settlement Margin
 					</h2>
 					<button
 						type="button"
@@ -191,61 +203,13 @@ export function MerchantOracleSpreadProgramEditor({
 					</button>
 				</div>
 
-				<div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 pb-[max(1.5rem,env(safe-area-inset-bottom,0px))]">
-					<p className="text-xs leading-relaxed text-[#595c5e]">
-						Adjust oracle quotes in your favor by 0.00–5.00% in 0.25% steps. Deposit (buy) quotes move
-						higher; withdraw (sell) quotes move lower by the same percent.
-					</p>
-
-					<div className="rounded-xl border border-slate-200/80 bg-white p-4">
-						<p className="text-sm font-semibold text-[#2c2f31]">Oracle rate</p>
-						<dl className="mt-3 space-y-2 text-sm">
-							<div className="flex items-baseline justify-between gap-3">
-								<dt className="text-[#595c5e]">Card currency</dt>
-								<dd className="font-semibold tabular-nums text-[#2c2f31]">{cardCcy}</dd>
-							</div>
-							{hasOracleRate ? (
-								<>
-									<div className="flex items-baseline justify-between gap-3">
-										<dt className="text-[#595c5e]">{`1 ${cardCcy}`}</dt>
-										<dd className="font-semibold tabular-nums text-[#2c2f31]">
-											{`${formatOraclePairRate(oracleUsdcPerUnit as number)} USDC`}
-										</dd>
-									</div>
-									{!isUsdPeg && inversePerUsdc != null ? (
-										<div className="flex items-baseline justify-between gap-3">
-											<dt className="text-[#595c5e]">1 USDC</dt>
-											<dd className="font-semibold tabular-nums text-[#2c2f31]">
-												{`${formatOraclePairRate(inversePerUsdc)} ${cardCcy}`}
-											</dd>
-										</div>
-									) : null}
-								</>
-							) : (
-								<p className="text-sm text-[#595c5e]" role="status">
-									Oracle rate unavailable
-								</p>
-							)}
-						</dl>
-						{depositUsdcPerUnit != null && withdrawUsdcPerUnit != null ? (
-							<div className="mt-3 space-y-2 border-t border-slate-100 pt-3 text-sm">
-								<p className="text-[11px] font-medium uppercase tracking-wide text-[#595c5e]">
-									{`After adjustment (+${spreadPercentLabel}%)`}
-								</p>
-								<div className="flex items-baseline justify-between gap-3">
-									<span className="text-[#595c5e]">{`Deposit · 1 ${cardCcy}`}</span>
-									<span className="tabular-nums text-[#2c2f31]">
-										{`${formatOraclePairRate(depositUsdcPerUnit)} USDC`}
-									</span>
-								</div>
-								<div className="flex items-baseline justify-between gap-3">
-									<span className="text-[#595c5e]">{`Withdraw · 1 ${cardCcy}`}</span>
-									<span className="tabular-nums text-[#2c2f31]">
-										{`${formatOraclePairRate(withdrawUsdcPerUnit)} USDC`}
-									</span>
-								</div>
-							</div>
-						) : null}
+				<div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 pb-[max(1.5rem,env(safe-area-inset-bottom,0px))]">
+					<div className="flex gap-2.5 rounded-xl border border-[#1562f0]/15 bg-[#e9edff] px-3 py-2.5">
+						<Info className="mt-0.5 h-4 w-4 shrink-0 text-[#0051d1]" aria-hidden />
+						<p className="min-w-0 text-xs leading-relaxed text-[#2c2f31]">
+							Add a buffer (0–5%) to the real-time market rate. This helps cover your operational
+							costs when receiving USDC.
+						</p>
 					</div>
 
 					{serverError ? (
@@ -259,14 +223,43 @@ export function MerchantOracleSpreadProgramEditor({
 					) : null}
 
 					<div className="rounded-xl border border-slate-200/80 bg-white p-4">
+						<div className="flex items-start justify-between gap-3">
+							<div className="min-w-0">
+								<p className="text-[11px] font-medium uppercase tracking-wide text-[#595c5e]">
+									Oracle Benchmark Rate
+								</p>
+								{hasOracleRate ? (
+									<p className="mt-1 text-sm font-semibold tabular-nums text-[#2c2f31]">
+										{`1 ${cardCcy} = ${formatOracleBenchmarkUsdc(oracleUsdcPerUnit as number)} USDC`}
+									</p>
+								) : (
+									<p className="mt-1 text-sm text-[#595c5e]" role="status">
+										Oracle rate unavailable
+									</p>
+								)}
+							</div>
+							{hasOracleRate ? (
+								<span className="shrink-0 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
+									Live
+								</span>
+							) : (
+								<span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+									Unavailable
+								</span>
+							)}
+						</div>
+					</div>
+
+					<div className="rounded-xl border border-slate-200/80 bg-white p-4">
 						<div className="mb-2 flex items-center justify-between gap-2">
 							<label
 								htmlFor="merchant-oracle-spread-percent"
 								className="text-sm font-semibold text-[#2c2f31]"
 							>
-								Merchant FX adjustment
+								Store Margin
 							</label>
-							<div className="inline-flex items-center gap-1 rounded-full border border-[#dce2f7] bg-[#e9edff] px-2.5 py-1 text-sm font-semibold text-[#0051d1]">
+							<div className="inline-flex items-center gap-0.5 rounded-full border border-[#dce2f7] bg-[#e9edff] px-2.5 py-1 text-sm font-semibold text-[#0051d1]">
+								<span aria-hidden>+</span>
 								<input
 									id="merchant-oracle-spread-percent"
 									type="number"
@@ -293,7 +286,7 @@ export function MerchantOracleSpreadProgramEditor({
 									}}
 									onWheel={preventNumericInputWheelStep}
 									ref={percentInputWheelRef}
-									className={`w-14 bg-transparent text-right [-moz-appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${focusRingClassName}`}
+									className={`w-12 bg-transparent text-right [-moz-appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${focusRingClassName}`}
 								/>
 								<span aria-hidden>%</span>
 							</div>
@@ -308,21 +301,79 @@ export function MerchantOracleSpreadProgramEditor({
 							onChange={(e) =>
 								onDraftBpsChange(percentToMerchantOracleSpreadBps(Number(e.target.value)))
 							}
-							aria-label="Merchant FX adjustment percent"
+							aria-label="Store margin percent"
 							className="h-2 w-full cursor-pointer appearance-none rounded-full disabled:opacity-50"
 							style={{
 								background: `linear-gradient(to right, ${BEAMIO_PERCENT_SLIDER_TRACK_FILL} 0%, ${BEAMIO_PERCENT_SLIDER_TRACK_FILL} ${trackFillPct}%, ${BEAMIO_PERCENT_SLIDER_TRACK_REST} ${trackFillPct}%, ${BEAMIO_PERCENT_SLIDER_TRACK_REST} 100%)`,
 							}}
 						/>
-						<div className="mt-1 flex justify-between text-[10px] text-[#595c5e]">
-							<span>0%</span>
-							<span>2.50%</span>
-							<span>5%</span>
+						<div className="mt-1 flex justify-between gap-1">
+							{SLIDER_TICKS.map((tick) => (
+								<button
+									key={tick}
+									type="button"
+									tabIndex={-1}
+									disabled={publishing}
+									onClick={() => onDraftBpsChange(percentToMerchantOracleSpreadBps(tick))}
+									className={`text-[10px] tabular-nums disabled:opacity-50 ${
+										spreadPercent === tick ? 'font-semibold text-[#2c2f31]' : 'text-[#595c5e]'
+									}`}
+								>
+									{formatTickLabel(tick)}
+								</button>
+							))}
 						</div>
 						<p className="mt-2 text-[11px] leading-relaxed text-[#595c5e]">
-							{spreadPercent === 0
-								? 'Using the oracle rate with no merchant adjustment.'
-								: `Deposit quotes +${spreadPercentLabel}% · Withdraw quotes −${spreadPercentLabel}% vs oracle (${clampedDraft} bps).`}
+							Adjust in 0.25% increments · Non-Custodial
+						</p>
+					</div>
+
+					<div className="rounded-xl bg-[#0f172a] p-4 text-white">
+						<p className="text-[11px] font-medium uppercase tracking-wide text-white/55">
+							Live Settlement Simulation
+						</p>
+						<p className="mt-1 text-sm font-semibold text-white">
+							{`Sample ${SAMPLE_TOPUP_UNITS} ${cardCcy}`}
+						</p>
+						{simulation ? (
+							<dl className="mt-3 space-y-2 text-sm">
+								<div className="flex items-baseline justify-between gap-3">
+									<dt className="text-white/60">Customer Top-Up</dt>
+									<dd className="font-medium tabular-nums">
+										{`${formatSimMoney(SAMPLE_TOPUP_UNITS)} ${cardCcy}`}
+									</dd>
+								</div>
+								<div className="flex items-baseline justify-between gap-3">
+									<dt className="text-white/60">Raw Oracle</dt>
+									<dd className="tabular-nums text-white/90">
+										{`${formatSimMoney(simulation.rawOracleUsdc)} USDC`}
+									</dd>
+								</div>
+								<div className="flex items-baseline justify-between gap-3">
+									<dt className="text-white/60">Applied Margin</dt>
+									<dd className="tabular-nums text-emerald-300">
+										{`+${formatSimMoney(simulation.appliedMarginUsdc)} USDC`}
+									</dd>
+								</div>
+								<div className="flex items-baseline justify-between gap-3 border-t border-white/10 pt-2">
+									<dt className="font-semibold text-white">Settles Instantly</dt>
+									<dd className="font-semibold tabular-nums">
+										{`${formatSimMoney(simulation.settlesUsdc)} USDC`}
+									</dd>
+								</div>
+							</dl>
+						) : (
+							<p className="mt-3 text-sm text-white/60" role="status">
+								Simulation unavailable until a live oracle rate is ready.
+							</p>
+						)}
+					</div>
+
+					<div className="flex gap-2 px-0.5 pb-1">
+						<Shield className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#595c5e]" aria-hidden />
+						<p className="min-w-0 text-[11px] leading-relaxed text-[#595c5e]">
+							Non-custodial settlement: USDC is delivered on-chain using the live oracle plus your
+							store margin. Beamio does not custody customer funds.
 						</p>
 					</div>
 				</div>

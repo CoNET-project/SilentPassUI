@@ -284,10 +284,6 @@ import {
   type ProductionServiceCategoryOption,
 } from './cardIssuanceProductions';
 import { ProgramsProductionsPanel } from './programsProductionsPanel';
-import {
-  Reward13ConvertProgramEditor,
-  type Reward13ConvertDraft,
-} from './Reward13ConvertProgramEditor';
 import { MerchantOracleSpreadProgramEditor } from './MerchantOracleSpreadProgramEditor';
 import {
   NavProgramMenu,
@@ -400,7 +396,7 @@ import {
   parseUnifiedRewardTopupDraft,
   percentWholeToActorBps,
   formatMerchantOracleSpreadOverview,
-  formatReward13ConvertOverviewSummary,
+  type Reward13ConvertDraft,
 } from '@/utils/unifiedRewardPoints';
 import { BeamioPercentSlider } from '@/components/BeamioPercentSlider';
 import { CouponSocialPromotionEventsEditor } from '@/components/programs/CouponSocialPromotionEventsEditor';
@@ -3190,10 +3186,12 @@ function MobileNoAaLiteMemberSelectionPage(props: {
   onBusinessDraftUpdated?: () => void;
   onBack: () => void;
   onLiteBusinessSavedToChain: () => void;
-  /** Cover pack CTA → custom fuel USDC checkout (`MARKET_FUEL_PACKAGES.usdcAmount`). */
-  onSelectFuelPack: (usdcAmount: string) => void;
-  /** True while custom-fuel checkout is the selected product. */
+  /** Cover pack CTA → Stripe Checkout by `MARKET_FUEL_PACKAGES.id`. */
+  onSelectFuelPack: (packId: string) => void;
+  /** True while Stripe create/poll is in flight for a cover pack. */
   fuelSelectBusy?: boolean;
+  /** Persistent panel error for Stripe pack checkout (no toast). */
+  fuelPackStripeMessage?: string | null;
   /** Opens the full-screen Understanding B-Units explainer (same as Programs “Learn about B-Units”). */
   onOpenUnderstandingBUnits?: () => void;
   redeemAdminInProgress?: boolean;
@@ -3213,6 +3211,7 @@ function MobileNoAaLiteMemberSelectionPage(props: {
     onLiteBusinessSavedToChain,
     onSelectFuelPack,
     fuelSelectBusy = false,
+    fuelPackStripeMessage = null,
     onOpenUnderstandingBUnits,
     redeemAdminInProgress,
     voucherRedeemInput,
@@ -3375,6 +3374,14 @@ function MobileNoAaLiteMemberSelectionPage(props: {
               busy={voucherRedeemBusy}
               feedback={voucherRedeemFeedback}
             />
+            {fuelPackStripeMessage ? (
+              <div
+                role="alert"
+                className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[14px] leading-5 text-amber-950"
+              >
+                {fuelPackStripeMessage}
+              </div>
+            ) : null}
             {coverPacks.map((pkg) => (
               <LiteFuelCoverPackCard
                 key={pkg.id}
@@ -3384,7 +3391,7 @@ function MobileNoAaLiteMemberSelectionPage(props: {
                 onSelect={() => {
                   if (packSelectBusy) return
                   setPendingPackId(pkg.id)
-                  onSelectFuelPack(pkg.usdcAmount)
+                  onSelectFuelPack(pkg.id)
                 }}
               />
             ))}
@@ -13689,23 +13696,13 @@ const [cardIssuanceConsumptionPointDeleting, setCardIssuanceConsumptionPointDele
 const cardIssuanceConsumptionPointClearInFlightRef = useRef(false);
 const [cardIssuanceConsumptionPointEditorServerError, setCardIssuanceConsumptionPointEditorServerError] =
   useState('');
-/** Programs — #13 → #0 / #13 → Conet-USDC + oracle spread (independent of Consumption Points). */
+/** Programs — #13 → #0 / #13 → Conet-USDC (Rules & Routing); oracle spread is Program Basic. */
 const [reward13ConvertToPointsEnabled, setReward13ConvertToPointsEnabled] = useState(false);
 const [reward13ConvertToUsdcEnabled, setReward13ConvertToUsdcEnabled] = useState(false);
 const [reward13ConvertOracleSpreadBps, setReward13ConvertOracleSpreadBps] = useState(0);
-const [reward13ConvertEditorOpen, setReward13ConvertEditorOpen] = useState(false);
-const reward13ConvertEditorOpenRef = useRef(false);
-const [reward13ConvertEditorDraft, setReward13ConvertEditorDraft] = useState<Reward13ConvertDraft>({
-  toPointsEnabled: false,
-  toUsdcEnabled: false,
-  oracleSpreadBps: 0,
-});
-const [reward13ConvertEditorBaseline, setReward13ConvertEditorBaseline] =
-  useState<Reward13ConvertDraft | null>(null);
-const [reward13ConvertEditorPublishing, setReward13ConvertEditorPublishing] = useState(false);
-const [reward13ConvertDeleting, setReward13ConvertDeleting] = useState(false);
-const reward13ConvertClearInFlightRef = useRef(false);
-const [reward13ConvertEditorServerError, setReward13ConvertEditorServerError] = useState('');
+const [reward13ConvertRulesPublishing, setReward13ConvertRulesPublishing] = useState(false);
+const reward13ConvertRulesInFlightRef = useRef(false);
+const [reward13ConvertRulesError, setReward13ConvertRulesError] = useState('');
 const [merchantOracleSpreadEditorOpen, setMerchantOracleSpreadEditorOpen] = useState(false);
 const merchantOracleSpreadEditorOpenRef = useRef(false);
 const [merchantOracleSpreadEditorDraftBps, setMerchantOracleSpreadEditorDraftBps] = useState(0);
@@ -14206,8 +14203,6 @@ const [programReferrerDetailAA, setProgramReferrerDetailAA] = useState<string | 
 const [programReferrerDetailList, setProgramReferrerDetailList] = useState<BeamioCardProgramReferrerRefereeRow[]>([]);
 const [programReferrerRefreshStatus, setProgramReferrerRefreshStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
 const [programsPromotionSubView, setProgramsPromotionSubView] = useState<'performance' | 'rules'>('performance');
-/** UI placeholder until Universal Point Routing / M2M clearing has a real chain flag. */
-const [programsOmnichannelRoutingEnabled, setProgramsOmnichannelRoutingEnabled] = useState(false);
 /** Staff program card is declared later; daemon/loaders resolve via this ref (issuance ?? staff). */
 const staffProgramBeamioCardAddressRef = useRef<string | null>(null);
 const programReferrerEoaRef = useRef<string>('');
@@ -15949,14 +15944,14 @@ useEffect(() => {
 
 useEffect(() => {
   if (!cardIssuanceExistingCard?.cardAddress) {
-    if (!reward13ConvertEditorOpenRef.current && !merchantOracleSpreadEditorOpenRef.current) {
+    if (!merchantOracleSpreadEditorOpenRef.current && !reward13ConvertRulesInFlightRef.current) {
       setReward13ConvertToPointsEnabled(false);
       setReward13ConvertToUsdcEnabled(false);
       setReward13ConvertOracleSpreadBps(0);
     }
     return;
   }
-  if (reward13ConvertEditorOpen || merchantOracleSpreadEditorOpen) return;
+  if (merchantOracleSpreadEditorOpen || reward13ConvertRulesInFlightRef.current) return;
   const convertDraft = parseReward13ConvertDraft(
     (cardIssuanceExistingCard.meta as { unifiedRewardPoints?: unknown } | undefined)
       ?.unifiedRewardPoints,
@@ -15967,7 +15962,6 @@ useEffect(() => {
 }, [
   cardIssuanceExistingCard?.cardAddress,
   cardIssuanceExistingCard?.meta,
-  reward13ConvertEditorOpen,
   merchantOracleSpreadEditorOpen,
 ]);
 
@@ -17152,18 +17146,6 @@ const cardIssuanceConsumptionPointDisplay = useMemo(() => {
     ratio: formatPointRatioE6Display(e6.toString()),
   });
 }, [cardIssuancePointSystemEnabled, cardIssuancePointRatioInput, tu]);
-
-const reward13ConvertOverviewSummary = useMemo(
-  () =>
-    formatReward13ConvertOverviewSummary({
-      toPointsEnabled: reward13ConvertToPointsEnabled,
-      toUsdcEnabled: reward13ConvertToUsdcEnabled,
-    }),
-  [reward13ConvertToPointsEnabled, reward13ConvertToUsdcEnabled],
-);
-
-const reward13ConvertIsConfigured =
-  reward13ConvertToPointsEnabled || reward13ConvertToUsdcEnabled;
 
 const merchantOracleSpreadOverviewSummary = useMemo(
   () => formatMerchantOracleSpreadOverview(reward13ConvertOracleSpreadBps),
@@ -22982,67 +22964,44 @@ const clearCardIssuanceConsumptionPoints = useCallback(async () => {
   profiles,
 ]);
 
-const openReward13ConvertEditor = useCallback(() => {
-  setReward13ConvertEditorServerError('');
-  const draft: Reward13ConvertDraft = {
-    toPointsEnabled: reward13ConvertToPointsEnabled,
-    toUsdcEnabled: reward13ConvertToUsdcEnabled,
-    oracleSpreadBps: reward13ConvertOracleSpreadBps,
-  };
-  setReward13ConvertEditorDraft(draft);
-  setReward13ConvertEditorBaseline(draft);
-  reward13ConvertEditorOpenRef.current = true;
-  setReward13ConvertEditorOpen(true);
-}, [
-  reward13ConvertToPointsEnabled,
-  reward13ConvertToUsdcEnabled,
-  reward13ConvertOracleSpreadBps,
-]);
-
-const closeReward13ConvertEditor = useCallback(() => {
-  if (reward13ConvertEditorPublishing) return;
-  reward13ConvertEditorOpenRef.current = false;
-  setReward13ConvertEditorOpen(false);
-  setReward13ConvertEditorBaseline(null);
-  setReward13ConvertEditorServerError('');
-}, [reward13ConvertEditorPublishing]);
-
-useEffect(() => {
-  if (!reward13ConvertEditorOpen) {
-    setReward13ConvertEditorBaseline(null);
-  }
-}, [reward13ConvertEditorOpen]);
-
-const submitReward13ConvertEditor = useCallback(async () => {
-  const next: Reward13ConvertDraft = {
-    toPointsEnabled: reward13ConvertEditorDraft.toPointsEnabled,
-    toUsdcEnabled: reward13ConvertEditorDraft.toUsdcEnabled,
-    // Preserve merchant oracle FX — Program Basic owns Exchange rate.
-    oracleSpreadBps: reward13ConvertOracleSpreadBps,
-  };
-  if (!cardIssuanceExistingCard?.cardAddress) {
-    setReward13ConvertToPointsEnabled(next.toPointsEnabled);
-    setReward13ConvertToUsdcEnabled(next.toUsdcEnabled);
-    closeReward13ConvertEditor();
-    return;
-  }
-  setReward13ConvertEditorServerError('');
-  setCardIssuanceCreateError('');
-  setReward13ConvertEditorPublishing(true);
-  try {
-    const pk = getSessionPrivateKeyArmor() ?? profiles?.[0]?.privateKeyArmor;
-    if (!pk) {
-      setReward13ConvertEditorServerError(
-        'Unlock your wallet before saving Reward PT conversion settings.',
-      );
+const persistReward13ConvertRulesFlag = useCallback(
+  async (patch: { toPointsEnabled?: boolean; toUsdcEnabled?: boolean }) => {
+    if (reward13ConvertRulesInFlightRef.current) return;
+    const next: Reward13ConvertDraft = {
+      toPointsEnabled: patch.toPointsEnabled ?? reward13ConvertToPointsEnabled,
+      toUsdcEnabled: patch.toUsdcEnabled ?? reward13ConvertToUsdcEnabled,
+      // Preserve merchant oracle FX — Program Basic owns Exchange rate.
+      oracleSpreadBps: reward13ConvertOracleSpreadBps,
+    };
+    const prevPoints = reward13ConvertToPointsEnabled;
+    const prevUsdc = reward13ConvertToUsdcEnabled;
+    if (
+      next.toPointsEnabled === prevPoints &&
+      next.toUsdcEnabled === prevUsdc
+    ) {
       return;
     }
-    const cardAddr = ethers.getAddress(cardIssuanceExistingCard.cardAddress);
-    const dirty =
-      reward13ConvertEditorBaseline == null ||
-      reward13ConvertEditorBaseline.toPointsEnabled !== next.toPointsEnabled ||
-      reward13ConvertEditorBaseline.toUsdcEnabled !== next.toUsdcEnabled;
-    if (dirty) {
+    // Optimistic UI; roll back on failure.
+    setReward13ConvertToPointsEnabled(next.toPointsEnabled);
+    setReward13ConvertToUsdcEnabled(next.toUsdcEnabled);
+    setReward13ConvertRulesError('');
+    if (!cardIssuanceExistingCard?.cardAddress) {
+      return;
+    }
+    reward13ConvertRulesInFlightRef.current = true;
+    setReward13ConvertRulesPublishing(true);
+    setCardIssuanceCreateError('');
+    try {
+      const pk = getSessionPrivateKeyArmor() ?? profiles?.[0]?.privateKeyArmor;
+      if (!pk) {
+        setReward13ConvertToPointsEnabled(prevPoints);
+        setReward13ConvertToUsdcEnabled(prevUsdc);
+        setReward13ConvertRulesError(
+          'Unlock your wallet before saving Reward PT conversion settings.',
+        );
+        return;
+      }
+      const cardAddr = ethers.getAddress(cardIssuanceExistingCard.cardAddress);
       const ok = await handlePublishCardIssuance({
         reward13ConvertOverride: next,
         loadingScope: 'bonusEditor',
@@ -23050,8 +23009,10 @@ const submitReward13ConvertEditor = useCallback(async () => {
         skipOnChainRefresh: true,
       });
       if (!ok) {
-        setReward13ConvertEditorServerError(
-          'Could not save Reward PT conversion metadata. Review the error below and try again.',
+        setReward13ConvertToPointsEnabled(prevPoints);
+        setReward13ConvertToUsdcEnabled(prevUsdc);
+        setReward13ConvertRulesError(
+          'Could not save Reward PT conversion metadata. Review the error and try again.',
         );
         return;
       }
@@ -23062,135 +23023,45 @@ const submitReward13ConvertEditor = useCallback(async () => {
         toUsdcEnabled: next.toUsdcEnabled,
       });
       if (!chainRes.success) {
-        setReward13ConvertEditorServerError(
+        setReward13ConvertToPointsEnabled(prevPoints);
+        setReward13ConvertToUsdcEnabled(prevUsdc);
+        setReward13ConvertRulesError(
           chainRes.error ?? 'On-chain Reward PT conversion update failed. Try again.',
         );
         return;
       }
-    }
-    setReward13ConvertToPointsEnabled(next.toPointsEnabled);
-    setReward13ConvertToUsdcEnabled(next.toUsdcEnabled);
-    setCardIssuanceExistingCard((prev) => {
-      if (!prev?.meta) return prev;
-      return {
-        ...prev,
-        meta: {
-          ...prev.meta,
-          unifiedRewardPoints: mergeUnifiedRewardPointsConvert(prev.meta.unifiedRewardPoints, {
-            toPointsEnabled: next.toPointsEnabled,
-            toUsdcEnabled: next.toUsdcEnabled,
-          }),
-        },
-      };
-    });
-    invalidateBeamioCardMetadataCache(cardAddr);
-    reward13ConvertEditorOpenRef.current = false;
-    setReward13ConvertEditorOpen(false);
-    setReward13ConvertEditorBaseline(null);
-    setCardIssuanceOwnerAdminNotice({
-      kind: 'ok',
-      text:
-        next.toPointsEnabled || next.toUsdcEnabled
-          ? 'Reward PT conversion saved. Members can convert #13 on your program card.'
-          : 'Reward PT conversion disabled.',
-    });
-  } catch {
-    setReward13ConvertEditorServerError('Could not save Reward PT conversion. Please try again.');
-  } finally {
-    setReward13ConvertEditorPublishing(false);
-  }
-}, [
-  reward13ConvertEditorDraft,
-  reward13ConvertEditorBaseline,
-  reward13ConvertOracleSpreadBps,
-  cardIssuanceExistingCard?.cardAddress,
-  handlePublishCardIssuance,
-  closeReward13ConvertEditor,
-  profiles,
-]);
-
-const clearReward13ConvertSettings = useCallback(async () => {
-  if (reward13ConvertClearInFlightRef.current) return;
-  const cleared: Reward13ConvertDraft = {
-    toPointsEnabled: false,
-    toUsdcEnabled: false,
-    // Keep merchant oracle FX spread.
-    oracleSpreadBps: reward13ConvertOracleSpreadBps,
-  };
-  if (!cardIssuanceExistingCard?.cardAddress) {
-    setReward13ConvertToPointsEnabled(false);
-    setReward13ConvertToUsdcEnabled(false);
-    return;
-  }
-  reward13ConvertClearInFlightRef.current = true;
-  setReward13ConvertDeleting(true);
-  setReward13ConvertEditorServerError('');
-  setCardIssuanceCreateError('');
-  try {
-    const pk = getSessionPrivateKeyArmor() ?? profiles?.[0]?.privateKeyArmor;
-    if (!pk) {
-      setReward13ConvertEditorServerError(
-        'Unlock your wallet before disabling Reward PT conversion.',
-      );
-      return;
-    }
-    const cardAddr = ethers.getAddress(cardIssuanceExistingCard.cardAddress);
-    const ok = await handlePublishCardIssuance({
-      reward13ConvertOverride: cleared,
-      loadingScope: 'bonusEditor',
-      metadataOnly: true,
-      skipOnChainRefresh: true,
-    });
-    if (!ok) {
-      setCardIssuanceOwnerAdminNotice({
-        kind: 'warn',
-        text: 'Could not disable Reward PT conversion. Please try again.',
+      setCardIssuanceExistingCard((prev) => {
+        if (!prev?.meta) return prev;
+        return {
+          ...prev,
+          meta: {
+            ...prev.meta,
+            unifiedRewardPoints: mergeUnifiedRewardPointsConvert(prev.meta.unifiedRewardPoints, {
+              toPointsEnabled: next.toPointsEnabled,
+              toUsdcEnabled: next.toUsdcEnabled,
+            }),
+          },
+        };
       });
-      return;
+      invalidateBeamioCardMetadataCache(cardAddr);
+    } catch {
+      setReward13ConvertToPointsEnabled(prevPoints);
+      setReward13ConvertToUsdcEnabled(prevUsdc);
+      setReward13ConvertRulesError('Could not save Reward PT conversion. Please try again.');
+    } finally {
+      reward13ConvertRulesInFlightRef.current = false;
+      setReward13ConvertRulesPublishing(false);
     }
-    const chainRes = await syncConvertReward13SettingsOnChain({
-      cardAddress: cardAddr,
-      ownerPrivateKey: pk,
-      toPointsEnabled: false,
-      toUsdcEnabled: false,
-    });
-    if (!chainRes.success) {
-      setCardIssuanceOwnerAdminNotice({
-        kind: 'warn',
-        text: chainRes.error ?? 'Could not update Reward PT conversion on-chain.',
-      });
-      return;
-    }
-    setReward13ConvertToPointsEnabled(false);
-    setReward13ConvertToUsdcEnabled(false);
-    setCardIssuanceExistingCard((prev) => {
-      if (!prev?.meta) return prev;
-      return {
-        ...prev,
-        meta: {
-          ...prev.meta,
-          unifiedRewardPoints: mergeUnifiedRewardPointsConvert(prev.meta.unifiedRewardPoints, {
-            toPointsEnabled: false,
-            toUsdcEnabled: false,
-          }),
-        },
-      };
-    });
-    invalidateBeamioCardMetadataCache(cardAddr);
-    setCardIssuanceOwnerAdminNotice({
-      kind: 'ok',
-      text: 'Reward PT conversion disabled.',
-    });
-  } finally {
-    reward13ConvertClearInFlightRef.current = false;
-    setReward13ConvertDeleting(false);
-  }
-}, [
-  cardIssuanceExistingCard?.cardAddress,
-  handlePublishCardIssuance,
-  profiles,
-  reward13ConvertOracleSpreadBps,
-]);
+  },
+  [
+    reward13ConvertToPointsEnabled,
+    reward13ConvertToUsdcEnabled,
+    reward13ConvertOracleSpreadBps,
+    cardIssuanceExistingCard?.cardAddress,
+    handlePublishCardIssuance,
+    profiles,
+  ],
+);
 
 const openMerchantOracleSpreadEditor = useCallback(() => {
   if (merchantOracleSpreadEditorPublishing || merchantOracleSpreadDeleting) return;
@@ -25553,6 +25424,14 @@ useEffect(() => {
  const merchantKitStripePollRef = useRef<ReturnType<typeof setInterval> | null>(null);
  /** Detect Stripe Checkout popup closed (user abandoned before pay). */
  const merchantKitStripePopupWatcherRef = useRef<ReturnType<typeof setInterval> | null>(null);
+ /** SaaS Fuel Pack cover — Stripe Checkout (setTimeout chain; no setInterval). */
+ const [fuelPackStripeUi, setFuelPackStripeUi] = useState<'idle' | 'creating' | 'polling' | 'succeeded' | 'failed'>('idle');
+ const [fuelPackStripeSessionId, setFuelPackStripeSessionId] = useState<string | null>(null);
+ const [fuelPackStripeMessage, setFuelPackStripeMessage] = useState<string | null>(null);
+ const [fuelPackStripePackId, setFuelPackStripePackId] = useState<string | null>(null);
+ const fuelPackStripePollTimerRef = useRef<number | undefined>(undefined);
+ const fuelPackStripePopupTimerRef = useRef<number | undefined>(undefined);
+ const fuelPackStripePollGenRef = useRef(0);
  /** Full-screen checkout (marketExample.html) after Programs kit CTA */
  const [merchantKitCheckoutPlan, setMerchantKitCheckoutPlan] = useState<MerchantKitCheckoutPlanId | null>(null);
  const [merchantKitCheckoutPayTab, setMerchantKitCheckoutPayTab] = useState<'usdc' | 'card'>('usdc');
@@ -26125,6 +26004,81 @@ const [memberDirectoryUserTypeDb, setMemberDirectoryUserTypeDb] = useState<Recor
    return () => {
      cancelled = true;
    };
+ }, []);
+
+ /** Stripe success/cancel → `/biz/native-pos?fuel_pack_stripe=success|cancel&session_id=…` */
+ useEffect(() => {
+   if (typeof window === 'undefined') return;
+   const u = new URL(window.location.href);
+   const flag = u.searchParams.get('fuel_pack_stripe');
+   if (flag !== 'success' && flag !== 'cancel') return;
+   const sid = u.searchParams.get('session_id')?.trim() ?? '';
+   u.searchParams.delete('fuel_pack_stripe');
+   u.searchParams.delete('session_id');
+   window.history.replaceState({}, '', u.pathname + u.search + u.hash);
+
+   if (flag === 'cancel') {
+     setFuelPackStripeUi('failed');
+     setFuelPackStripeMessage('Checkout was cancelled. Select a pack to try again.');
+     return;
+   }
+   if (!sid) return;
+
+   let cancelled = false;
+   setFuelPackStripeUi('polling');
+   setFuelPackStripeSessionId(sid);
+   setFuelPackStripeMessage(null);
+   void (async () => {
+     for (let i = 0; i < 32 && !cancelled; i++) {
+       try {
+         const pr = await fetch(`${BEAMIO_APP_URL}/api/fuelPackStripe/poll`, {
+           method: 'POST',
+           headers: { 'Content-Type': 'application/json' },
+           body: JSON.stringify({ sessionId: sid }),
+         });
+         const pj = (await pr.json().catch(() => ({}))) as {
+           status?: string;
+           packId?: string;
+           error?: string;
+         };
+         if (pj.status === 'succeeded') {
+           if (cancelled) return;
+           setFuelPackStripeSessionId(sid);
+           setFuelPackStripePackId(typeof pj.packId === 'string' ? pj.packId : null);
+           setFuelPackStripeUi('succeeded');
+           setFuelPackStripeMessage(null);
+           const eoa = (profiles?.[0]?.keyID ?? myAddress)?.trim() ?? '';
+           if (pj.packId === 'genesis_starter') markGenesisFuelPackPurchased(eoa);
+           setOverviewRefreshTrigger((t) => t + 1);
+           setLiteChainAckRevision((n) => n + 1);
+           return;
+         }
+         if (pj.status === 'failed' || pr.status === 404) {
+           if (cancelled) return;
+           setFuelPackStripeUi('failed');
+           setFuelPackStripeMessage(
+             pr.status === 404
+               ? 'Checkout session not found. Select a pack to try again.'
+               : 'Payment was not completed.'
+           );
+           return;
+         }
+       } catch {
+         /* retry */
+       }
+       await new Promise<void>((r) => {
+         window.setTimeout(r, 700);
+       });
+     }
+     if (!cancelled) {
+       setFuelPackStripeUi('failed');
+       setFuelPackStripeMessage('Could not confirm payment yet. Check your email or try again.');
+     }
+   })();
+   return () => {
+     cancelled = true;
+   };
+   // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot return URL
  }, []);
 
  const resetMarketRefuelSuccess = useCallback(() => {
@@ -28095,6 +28049,196 @@ const overviewCustomerBalanceFromActivity = useMemo(() => {
      void runMerchantKitStripeCheckout(selectedProduct);
    }
  }, [selectedProduct, runMerchantKitStripeCheckout]);
+
+ const stopFuelPackStripePoll = useCallback(() => {
+   fuelPackStripePollGenRef.current += 1;
+   if (fuelPackStripePollTimerRef.current != null) {
+     window.clearTimeout(fuelPackStripePollTimerRef.current);
+     fuelPackStripePollTimerRef.current = undefined;
+   }
+   if (fuelPackStripePopupTimerRef.current != null) {
+     window.clearTimeout(fuelPackStripePopupTimerRef.current);
+     fuelPackStripePopupTimerRef.current = undefined;
+   }
+ }, []);
+
+ useEffect(() => () => stopFuelPackStripePoll(), [stopFuelPackStripePoll]);
+
+ const runFuelPackStripeCheckout = useCallback(
+   async (packId: string) => {
+     const id = String(packId ?? '')
+       .trim()
+       .toLowerCase();
+     const eoa = (profiles?.[0]?.keyID ?? myAddress)?.trim() ?? '';
+     if (!eoa || !ethers.isAddress(eoa)) {
+       setFuelPackStripeMessage('Connect your wallet to continue.');
+       setFuelPackStripeUi('failed');
+       return;
+     }
+     if (!id) {
+       setFuelPackStripeMessage('Select a fuel pack to continue.');
+       setFuelPackStripeUi('failed');
+       return;
+     }
+     stopFuelPackStripePoll();
+     setFuelPackStripePackId(id);
+     setFuelPackStripeMessage(null);
+     setFuelPackStripeUi('creating');
+     try {
+       const r = await fetch(`${BEAMIO_APP_URL}/api/fuelPackStripe/createSession`, {
+         method: 'POST',
+         headers: { 'Content-Type': 'application/json' },
+         body: JSON.stringify({
+           walletAddress: ethers.getAddress(eoa),
+           packId: id,
+         }),
+       });
+       const j = (await r.json().catch(() => ({}))) as {
+         error?: string;
+         url?: string;
+         sessionId?: string;
+       };
+       if (!r.ok) {
+         setFuelPackStripeUi('failed');
+         setFuelPackStripeMessage(typeof j.error === 'string' ? j.error : 'Could not start checkout.');
+         return;
+       }
+       if (!j.url || !j.sessionId) {
+         setFuelPackStripeUi('failed');
+         setFuelPackStripeMessage('Invalid response from server.');
+         return;
+       }
+       setFuelPackStripeSessionId(j.sessionId);
+       const popup = window.open(j.url, '_blank');
+       if (!popup) {
+         setFuelPackStripeUi('failed');
+         setFuelPackStripeMessage('Popup was blocked. Allow popups for this site and try again.');
+         return;
+       }
+       setFuelPackStripeUi('polling');
+       const sid = j.sessionId;
+       const gen = fuelPackStripePollGenRef.current;
+
+       const postPoll = async (userClosedCheckout?: boolean) => {
+         const pr = await fetch(`${BEAMIO_APP_URL}/api/fuelPackStripe/poll`, {
+           method: 'POST',
+           headers: { 'Content-Type': 'application/json' },
+           body: JSON.stringify({
+             sessionId: sid,
+             ...(userClosedCheckout ? { userClosedCheckout: true } : {}),
+           }),
+         });
+         return (await pr.json().catch(() => ({}))) as {
+           status?: string;
+           packId?: string;
+           error?: string;
+         };
+       };
+
+       const onSucceeded = (resolvedPackId?: string) => {
+         if (fuelPackStripePollGenRef.current !== gen) return;
+         stopFuelPackStripePoll();
+         setFuelPackStripeUi('succeeded');
+         setFuelPackStripeMessage(null);
+         const pid = resolvedPackId ?? id;
+         setFuelPackStripePackId(pid);
+         if (pid === 'genesis_starter') markGenesisFuelPackPurchased(eoa);
+         setOverviewRefreshTrigger((t) => t + 1);
+         setLiteChainAckRevision((n) => n + 1);
+       };
+
+       const onFailed = (msg: string) => {
+         if (fuelPackStripePollGenRef.current !== gen) return;
+         stopFuelPackStripePoll();
+         setFuelPackStripeUi('failed');
+         setFuelPackStripeMessage(msg);
+       };
+
+       const schedulePollTick = () => {
+         if (fuelPackStripePollGenRef.current !== gen) return;
+         fuelPackStripePollTimerRef.current = window.setTimeout(() => {
+           void (async () => {
+             if (fuelPackStripePollGenRef.current !== gen) return;
+             try {
+               const pj = await postPoll(false);
+               if (pj.status === 'succeeded') {
+                 onSucceeded(typeof pj.packId === 'string' ? pj.packId : id);
+                 return;
+               }
+               if (pj.status === 'failed') {
+                 onFailed('Payment was not completed.');
+                 return;
+               }
+             } catch {
+               /* keep polling */
+             }
+             schedulePollTick();
+           })();
+         }, 2000) as unknown as number;
+       };
+       schedulePollTick();
+
+       const schedulePopupWatch = () => {
+         if (fuelPackStripePollGenRef.current !== gen) return;
+         fuelPackStripePopupTimerRef.current = window.setTimeout(() => {
+           void (async () => {
+             if (fuelPackStripePollGenRef.current !== gen) return;
+             let closed = false;
+             try {
+               closed = popup.closed;
+             } catch {
+               schedulePopupWatch();
+               return;
+             }
+             if (!closed) {
+               schedulePopupWatch();
+               return;
+             }
+             for (let g = 0; g < 10; g++) {
+               if (fuelPackStripePollGenRef.current !== gen) return;
+               await new Promise<void>((r) => {
+                 window.setTimeout(r, 600);
+               });
+               try {
+                 const pj = await postPoll(false);
+                 if (pj.status === 'succeeded') {
+                   onSucceeded(typeof pj.packId === 'string' ? pj.packId : id);
+                   return;
+                 }
+                 if (pj.status === 'failed') {
+                   onFailed('Payment was not completed.');
+                   return;
+                 }
+               } catch {
+                 /* continue grace */
+               }
+             }
+             try {
+               await postPoll(true);
+               const pj2 = await postPoll(false);
+               if (pj2.status === 'succeeded') {
+                 onSucceeded(typeof pj2.packId === 'string' ? pj2.packId : id);
+                 return;
+               }
+               if (pj2.status === 'failed') {
+                 onFailed('Payment was not completed.');
+                 return;
+               }
+               onFailed('The payment window was closed before checkout completed.');
+             } catch {
+               onFailed('The payment window was closed before checkout completed.');
+             }
+           })();
+         }, 500) as unknown as number;
+       };
+       schedulePopupWatch();
+     } catch (e) {
+       setFuelPackStripeUi('failed');
+       setFuelPackStripeMessage((e as Error)?.message ?? 'Network error.');
+     }
+   },
+   [profiles, myAddress, stopFuelPackStripePoll]
+ );
 
  /** AA sync: DaemonProvider polls CoNET AA + ensure; Wallet tab also triggers refresh. */
  useEffect(() => {
@@ -33486,11 +33630,11 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                       if (merchantEoaForLiteForm) setLiteBusinessChainAck(merchantEoaForLiteForm);
                       setLiteChainAckRevision((n) => n + 1);
                     }}
-                    onSelectFuelPack={(usdcAmount) => {
-                      setCustomFuelAmount(usdcAmount);
-                      setSelectedProduct('custom_fuel');
+                    onSelectFuelPack={(packId) => {
+                      void runFuelPackStripeCheckout(packId);
                     }}
-                    fuelSelectBusy={selectedProduct === 'custom_fuel'}
+                    fuelSelectBusy={fuelPackStripeUi === 'creating' || fuelPackStripeUi === 'polling'}
+                    fuelPackStripeMessage={fuelPackStripeMessage}
                     onOpenUnderstandingBUnits={() => setIsBUnitsExplainerOpen(true)}
                     redeemAdminInProgress={redeemAdminInProgress}
                     voucherRedeemInput={merchantKitRedeemInput}
@@ -36175,11 +36319,11 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                       if (merchantEoaForLiteForm) setLiteBusinessChainAck(merchantEoaForLiteForm);
                       setLiteChainAckRevision((n) => n + 1);
                     }}
-                    onSelectFuelPack={(usdcAmount) => {
-                      setCustomFuelAmount(usdcAmount);
-                      setSelectedProduct('custom_fuel');
+                    onSelectFuelPack={(packId) => {
+                      void runFuelPackStripeCheckout(packId);
                     }}
-                    fuelSelectBusy={selectedProduct === 'custom_fuel'}
+                    fuelSelectBusy={fuelPackStripeUi === 'creating' || fuelPackStripeUi === 'polling'}
+                    fuelPackStripeMessage={fuelPackStripeMessage}
                     onOpenUnderstandingBUnits={() => setIsBUnitsExplainerOpen(true)}
                     redeemAdminInProgress={redeemAdminInProgress}
                     voucherRedeemInput={merchantKitRedeemInput}
@@ -40876,24 +41020,22 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                      ) : null}
                      {programsPromotionSubView === 'rules' ? (
                      <div className="space-y-3 sm:space-y-4">
-                       {/* Loyalty Logic — title + chevron rows */}
+                       {/* Loyalty Logic — Membership Fee always available (any card mode) + Add tier on Program Basic */}
                        <div className="rounded-xl border border-[#e8ecf0] bg-white p-4 shadow-[0_6px_24px_rgba(0,0,0,0.05)] ring-1 ring-black/[0.04] sm:p-5">
                          <h3 className="mb-4 text-[9px] font-bold uppercase tracking-widest text-[#595c5e]">
                            {tu('programs_loyalty_logic')}
                          </h3>
                          <div className="space-y-2">
-                           {cardIssuanceMembershipFeeMode ? (
-                             <button
-                               type="button"
-                               onClick={() => handleProgramTabChange(PROGRAM_TAB_BASIC)}
-                               className={`flex w-full items-center justify-between gap-3 rounded-lg bg-[#eeedf3] px-3 py-3 text-left transition hover:bg-[#e9e7ed] ${bizFocusRingClass}`}
-                             >
-                               <span className="text-[15px] font-medium text-[#1a1b1f]">
-                                 {tu('programs_rules_membership_fee')}
-                               </span>
-                               <ChevronRight className="h-5 w-5 shrink-0 text-[#424655]" strokeWidth={2} aria-hidden />
-                             </button>
-                           ) : null}
+                           <button
+                             type="button"
+                             onClick={() => handleProgramTabChange(PROGRAM_TAB_BASIC)}
+                             className={`flex w-full items-center justify-between gap-3 rounded-lg bg-[#eeedf3] px-3 py-3 text-left transition hover:bg-[#e9e7ed] ${bizFocusRingClass}`}
+                           >
+                             <span className="text-[15px] font-medium text-[#1a1b1f]">
+                               {tu('programs_rules_membership_fee')}
+                             </span>
+                             <ChevronRight className="h-5 w-5 shrink-0 text-[#424655]" strokeWidth={2} aria-hidden />
+                           </button>
                            <button
                              type="button"
                              onClick={openCardIssuanceTopupPromotionEditor}
@@ -40924,52 +41066,108 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                              </span>
                              <ChevronRight className="h-5 w-5 shrink-0 text-[#424655]" strokeWidth={2} aria-hidden />
                            </button>
-                           <button
-                             type="button"
-                             onClick={openReward13ConvertEditor}
-                             className={`flex w-full items-center justify-between gap-3 rounded-lg bg-[#eeedf3] px-3 py-3 text-left transition hover:bg-[#e9e7ed] ${bizFocusRingClass}`}
-                           >
-                             <span className="text-[15px] font-medium text-[#1a1b1f]">
-                               {tu('programs_reward13_convert_title')}
-                             </span>
-                             <ChevronRight className="h-5 w-5 shrink-0 text-[#424655]" strokeWidth={2} aria-hidden />
-                           </button>
                          </div>
                        </div>
 
-                       {/* Omnichannel Engine */}
+                       {/* Redemption & Routing — #13 convert flags (replaces Loyalty Reward PT conversion drawer) */}
                        <div className="rounded-xl border border-[#e8ecf0] bg-white p-4 shadow-[0_6px_24px_rgba(0,0,0,0.05)] ring-1 ring-black/[0.04] sm:p-5">
-                         <h3 className="mb-4 text-[9px] font-bold uppercase tracking-widest text-[#595c5e]">
-                           {tu('programs_rules_omnichannel_title')}
+                         <h3 className="mb-2 text-[9px] font-bold uppercase tracking-widest text-[#595c5e]">
+                           {tu('programs_rules_redemption_routing_title')}
                          </h3>
-                         <div className="flex items-center justify-between gap-3">
-                           <span className="text-[15px] font-medium text-[#1a1b1f]">
-                             {tu('programs_rules_omnichannel_activate')}
-                           </span>
-                           <button
-                             type="button"
-                             role="switch"
-                             aria-checked={programsOmnichannelRoutingEnabled}
-                             aria-label={tu('programs_rules_omnichannel_toggle_aria')}
-                             onClick={() => setProgramsOmnichannelRoutingEnabled((v) => !v)}
-                             className={`relative flex h-6 w-12 shrink-0 items-center rounded-full px-1 transition-colors ${
-                               programsOmnichannelRoutingEnabled ? 'bg-[#004bc3]' : 'bg-[#e3e2e7]'
-                             } ${bizFocusRingClass}`}
+                         <p className="mb-4 text-xs leading-relaxed text-[#424655]">
+                           {tu('programs_rules_redemption_intro')}
+                         </p>
+                         {reward13ConvertRulesError ? (
+                           <div
+                             role="alert"
+                             className="mb-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-950"
                            >
-                             <span
-                               className={`block h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
-                                 programsOmnichannelRoutingEnabled ? 'translate-x-6' : 'translate-x-0'
-                               }`}
-                               aria-hidden
-                             />
-                           </button>
+                             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" aria-hidden />
+                             <p className="min-w-0 flex-1">{reward13ConvertRulesError}</p>
+                           </div>
+                         ) : null}
+                         <div className="space-y-4">
+                           <div className="flex items-start justify-between gap-4 border-b border-[#e3e2e7] pb-3">
+                             <div className="min-w-0 flex-1">
+                               <div className="mb-1 text-[15px] font-bold text-[#1a1b1f]">
+                                 {tu('programs_rules_instore_point_topup')}
+                               </div>
+                               <p className="text-xs text-[#424655]">
+                                 {tu('programs_rules_instore_point_topup_detail')}
+                               </p>
+                             </div>
+                             <button
+                               type="button"
+                               role="switch"
+                               aria-checked={reward13ConvertToPointsEnabled}
+                               aria-busy={reward13ConvertRulesPublishing}
+                               aria-label={tu('programs_rules_instore_point_topup_toggle_aria')}
+                               disabled={reward13ConvertRulesPublishing}
+                               onClick={() =>
+                                 void persistReward13ConvertRulesFlag({
+                                   toPointsEnabled: !reward13ConvertToPointsEnabled,
+                                 })
+                               }
+                               className={`relative mt-0.5 flex h-6 w-12 shrink-0 items-center rounded-full px-1 transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                                 reward13ConvertToPointsEnabled ? 'bg-[#004bc3]' : 'bg-[#e3e2e7]'
+                               } ${bizFocusRingClass}`}
+                             >
+                               {reward13ConvertRulesPublishing ? (
+                                 <Loader2 className="mx-auto h-3.5 w-3.5 animate-spin text-[#004bc3]" aria-hidden />
+                               ) : (
+                                 <span
+                                   className={`block h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
+                                     reward13ConvertToPointsEnabled ? 'translate-x-6' : 'translate-x-0'
+                                   }`}
+                                   aria-hidden
+                                 />
+                               )}
+                             </button>
+                           </div>
+                           <div className="flex items-start justify-between gap-4">
+                             <div className="min-w-0 flex-1">
+                               <div className="mb-1 text-[15px] font-bold text-[#1a1b1f]">
+                                 {tu('programs_rules_omnichannel_activate')}
+                               </div>
+                               <p className="text-xs text-[#424655]">
+                                 {tu('programs_rules_universal_routing_detail')}
+                               </p>
+                             </div>
+                             <button
+                               type="button"
+                               role="switch"
+                               aria-checked={reward13ConvertToUsdcEnabled}
+                               aria-busy={reward13ConvertRulesPublishing}
+                               aria-label={tu('programs_rules_omnichannel_toggle_aria')}
+                               disabled={reward13ConvertRulesPublishing}
+                               onClick={() =>
+                                 void persistReward13ConvertRulesFlag({
+                                   toUsdcEnabled: !reward13ConvertToUsdcEnabled,
+                                 })
+                               }
+                               className={`relative mt-0.5 flex h-6 w-12 shrink-0 items-center rounded-full px-1 transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                                 reward13ConvertToUsdcEnabled ? 'bg-[#004bc3]' : 'bg-[#e3e2e7]'
+                               } ${bizFocusRingClass}`}
+                             >
+                               {reward13ConvertRulesPublishing ? (
+                                 <Loader2 className="mx-auto h-3.5 w-3.5 animate-spin text-[#004bc3]" aria-hidden />
+                               ) : (
+                                 <span
+                                   className={`block h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
+                                     reward13ConvertToUsdcEnabled ? 'translate-x-6' : 'translate-x-0'
+                                   }`}
+                                   aria-hidden
+                                 />
+                               )}
+                             </button>
+                           </div>
                          </div>
                        </div>
 
-                       {/* Financial Controls — dimmed until Omnichannel ON */}
+                       {/* Financial Controls — Deposit when #13 → Conet-USDC ON */}
                        <div
                          className={`flex flex-col items-center rounded-xl border border-[#e8ecf0] bg-white p-4 text-center shadow-[0_6px_24px_rgba(0,0,0,0.05)] ring-1 ring-black/[0.04] sm:p-5 ${
-                           programsOmnichannelRoutingEnabled ? '' : 'opacity-50'
+                           reward13ConvertToUsdcEnabled ? '' : 'opacity-50'
                          }`}
                        >
                          <h3 className="mb-2 text-[9px] font-bold uppercase tracking-widest text-[#595c5e]">
@@ -40981,13 +41179,14 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                          <p className="mb-6 font-manrope text-[22px] font-bold tracking-tight text-[#1a1b1f] tabular-nums">
                            {merchantCardUsdcReserveDisplay} USDC
                          </p>
-                         {programsOmnichannelRoutingEnabled ? (
+                         {reward13ConvertToUsdcEnabled ? (
                            <button
                              type="button"
                              onClick={() => setUsdcReserveDepositOpen(true)}
                              className={`mb-3 flex w-full items-center justify-center gap-2 rounded-xl bg-[#004bc3] px-4 py-3 text-[15px] font-bold text-white transition hover:bg-[#003fa5] ${bizFocusRingClass}`}
                              aria-label={tu('programs_rules_deposit_usdc_aria')}
                            >
+                             <Plus className="h-5 w-5 shrink-0" strokeWidth={2.25} aria-hidden />
                              {tu('programs_rules_deposit_usdc')}
                            </button>
                          ) : (
@@ -44205,16 +44404,6 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                    </motion.div>
                  </>
                ) : null}
-               <Reward13ConvertProgramEditor
-                 open={reward13ConvertEditorOpen}
-                 draft={reward13ConvertEditorDraft}
-                 baseline={reward13ConvertEditorBaseline}
-                 publishing={reward13ConvertEditorPublishing}
-                 serverError={reward13ConvertEditorServerError}
-                 onDraftChange={setReward13ConvertEditorDraft}
-                 onClose={closeReward13ConvertEditor}
-                 onSave={() => void submitReward13ConvertEditor()}
-               />
                <MerchantOracleSpreadProgramEditor
                  open={merchantOracleSpreadEditorOpen}
                  draftBps={merchantOracleSpreadEditorDraftBps}

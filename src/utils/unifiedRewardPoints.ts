@@ -162,11 +162,15 @@ export function parseUnifiedRewardChargeDraft(raw: unknown): {
 	return parseUnifiedRewardFlowDraft(parseUnifiedRewardPoints(raw)?.charge)
 }
 
-export function parseReward13ConvertDraft(raw: unknown): {
+/** Programs Rules & Routing / metadata publish shape for #13 convert flags. */
+export type Reward13ConvertDraft = {
 	toPointsEnabled: boolean
 	toUsdcEnabled: boolean
+	/** Owned by Program Basic → Exchange rate; Rules toggles must preserve. */
 	oracleSpreadBps: number
-} {
+}
+
+export function parseReward13ConvertDraft(raw: unknown): Reward13ConvertDraft {
 	const u = parseUnifiedRewardPoints(raw)
 	return {
 		toPointsEnabled: u?.reward13ToPoints?.enabled === true && (u.reward13ToPoints.ratioE6 ?? 0) > 0,
@@ -271,16 +275,6 @@ export function mergeUnifiedRewardPointsOracleSpread(
 		...prev,
 		merchantOracleSpreadBps: clampMerchantOracleSpreadBps(oracleSpreadBps),
 	}
-}
-
-export function formatReward13ConvertOverviewSummary(draft: {
-	toPointsEnabled: boolean
-	toUsdcEnabled: boolean
-}): string {
-	const parts: string[] = []
-	if (draft.toPointsEnabled) parts.push('Reward PT → Points ON')
-	if (draft.toUsdcEnabled) parts.push('Reward PT → USDC ON')
-	return parts.join(' · ')
 }
 
 /** Program Basic overview line for merchant oracle FX adjustment. */

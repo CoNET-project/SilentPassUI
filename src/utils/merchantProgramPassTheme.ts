@@ -125,7 +125,7 @@ function wcagContrastRatio(luminanceA: number, luminanceB: number): number {
   return (light + 0.05) / (dark + 0.05)
 }
 
-function useDarkForegroundPerWcag(backgroundLuminance: number): boolean {
+function preferDarkForegroundPerWcag(backgroundLuminance: number): boolean {
   const lb = clamp(backgroundLuminance, 0, 1)
   return wcagContrastRatio(lb, 0.0) > wcagContrastRatio(1.0, lb)
 }
@@ -152,7 +152,7 @@ function cardDiagonalGradientT(u: number, v: number, aspectWidthOverHeight = 1.6
   return (clamp(u, 0, 1) * a2 + clamp(v, 0, 1)) / (a2 + 1)
 }
 
-function useDarkForegroundWcagPreferRightSmallTextZone(
+function preferDarkForegroundWcagRightSmallTextZone(
   startRgb: { r: number; g: number; b: number },
   endRgb: { r: number; g: number; b: number },
   aspectWidthOverHeight = 1.6
@@ -182,7 +182,7 @@ function useDarkForegroundWcagPreferRightSmallTextZone(
     minCrBlack = Math.min(minCrBlack, wcagContrastRatio(lb, 0.0))
   }
   if (!Number.isFinite(minCrWhite) || !Number.isFinite(minCrBlack)) {
-    return useDarkForegroundPerWcag(relativeLuminanceFromRgb(startRgb))
+    return preferDarkForegroundPerWcag(relativeLuminanceFromRgb(startRgb))
   }
   return minCrBlack > minCrWhite
 }
@@ -191,7 +191,7 @@ function sameFamilyGradientEndRgb(startHex: string): { r: number; g: number; b: 
   const rgb = hexToRgb(startHex)
   if (!rgb) return { r: 0x15, g: 0x62, b: 0xf0 }
   const lum = relativeLuminanceFromRgb(rgb)
-  const deepBackground = !useDarkForegroundPerWcag(lum)
+  const deepBackground = !preferDarkForegroundPerWcag(lum)
   const { h: ho, s: s0, v: v0 } = rgbToHsv(rgb.r, rgb.g, rgb.b)
   if (deepBackground) {
     const v1 = clamp(v0 + 0.38, 0.52, 0.97)
@@ -231,7 +231,7 @@ export function cardIssuanceTierGradientTheme(backgroundColorRaw: string): CardI
   const startHex = tierBackgroundColorForPayload(backgroundColorRaw) ?? '#1562f0'
   const startRgb = hexToRgb(startHex) ?? { r: 0x15, g: 0x62, b: 0xf0 }
   const endRgb = sameFamilyGradientEndRgb(startHex)
-  const darkForeground = useDarkForegroundWcagPreferRightSmallTextZone(startRgb, endRgb, 1.6)
+  const darkForeground = preferDarkForegroundWcagRightSmallTextZone(startRgb, endRgb, 1.6)
   const primaryOnLight = '#0f172a'
   const primary = darkForeground ? primaryOnLight : '#ffffff'
   const secondary = darkForeground ? 'rgba(15,23,42,0.88)' : 'rgba(255,255,255,0.88)'

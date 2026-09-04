@@ -1,7 +1,7 @@
 /**
  * Programs → Loyalty Logic → Membership Fee tier editor.
  * Chrome aligns with Consumption Points (handle + Promotion badge + circular X).
- * Body follows Membership Fee Tier mock (live preview + appearance + rules).
+ * Live Card Preview uses MerchantProgramPassFace (global merchant pass render).
  */
 import React, { type Ref } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
@@ -12,13 +12,13 @@ import {
   Gift,
   Info,
   Loader2,
-  Nfc,
   Palette,
   Shield,
   Star,
   X,
   type LucideIcon,
 } from 'lucide-react'
+import { MerchantProgramPassFace } from '@/components/programs/MerchantProgramPassFace'
 import {
   preventNumericInputStepKeys,
   preventNumericInputWheelStep,
@@ -77,6 +77,8 @@ export type MembershipFeeTierProgramEditorProps = {
   serverError: string
   moneyPrefix: string
   brandName: string
+  /** Merchant share / program logo — same source as Overview Live Card Preview */
+  brandLogoSrc?: string | null
   focusRingClassName?: string
   numericNoSpinnerClass?: string
   durationOptions: DurationOption[]
@@ -90,13 +92,6 @@ export type MembershipFeeTierProgramEditorProps = {
   onSave: () => void
 }
 
-function brandInitials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean)
-  if (!parts.length) return 'BD'
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
-  return `${parts[0][0] ?? ''}${parts[1][0] ?? ''}`.toUpperCase() || 'BD'
-}
-
 export function MembershipFeeTierProgramEditor({
   open,
   draft,
@@ -108,6 +103,7 @@ export function MembershipFeeTierProgramEditor({
   serverError,
   moneyPrefix,
   brandName,
+  brandLogoSrc = null,
   focusRingClassName = '',
   numericNoSpinnerClass = '',
   durationOptions,
@@ -121,13 +117,15 @@ export function MembershipFeeTierProgramEditor({
   onSave,
 }: MembershipFeeTierProgramEditorProps) {
   const themeHex = normalizeMembershipFeeTierHexColor(draft.backgroundColor)
-  const emblemMeta =
-    MEMBERSHIP_FEE_TIER_EMBLEMS.find((e) => e.id === draft.emblem) ?? MEMBERSHIP_FEE_TIER_EMBLEMS[0]
-  const EmblemIcon = emblemMeta.Icon
-  const initials = brandInitials(brandName || 'Brand')
   const discountNum = Number(String(draft.discountPercent).replace(/,/g, '').trim())
-  const discountLabel = Number.isFinite(discountNum) && discountNum > 0 ? `${discountNum}%` : '—'
+  const discountPercentWhole =
+    Number.isFinite(discountNum) && discountNum > 0 ? Math.floor(discountNum) : 0
+  const feeDisplay = String(draft.membershipFee).replace(/,/g, '').trim() || '0'
   const giftDisplay = String(draft.welcomeGiftAmount).replace(/,/g, '').trim() || '0'
+  const passBrandName = brandName.trim() || tu('programs_membership_fee_tier_brand_fallback')
+  const passTierName =
+    draft.name.trim() || tu('programs_membership_fee_tier_name_placeholder')
+  const startingFromAmount = `${moneyPrefix}${feeDisplay}`
 
   const applyTheme = (hex: string) => {
     const next = normalizeMembershipFeeTierHexColor(hex)
@@ -208,76 +206,18 @@ export function MembershipFeeTierProgramEditor({
                       {tu('programs_membership_fee_tier_simulated_pass')}
                     </span>
                   </div>
-                  <div
-                    className="relative flex aspect-[1.586/1] w-full select-none flex-col justify-between overflow-hidden rounded-2xl border border-white/20 p-5 text-white shadow-[0_12px_32px_-4px_rgba(21,98,240,0.28),0_4px_12px_-2px_rgba(0,0,0,0.08)]"
-                    style={{
-                      background: `linear-gradient(135deg, ${themeHex} 0%, ${themeHex}cc 45%, #0A2E7A 100%)`,
-                    }}
-                  >
-                    <div
-                      className="pointer-events-none absolute inset-0"
-                      style={{
-                        background:
-                          'linear-gradient(135deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.03) 45%, rgba(255,255,255,0.18) 75%, rgba(255,255,255,0) 100%)',
-                      }}
-                      aria-hidden
-                    />
-                    <div className="pointer-events-none absolute -bottom-10 -right-8 h-44 w-44 rounded-full bg-sky-400/20 blur-2xl" aria-hidden />
-                    <div className="relative z-10 flex items-start justify-between">
-                      <div className="flex items-center space-x-2.5">
-                        <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/25 bg-white/15 text-base font-black tracking-tighter text-amber-300 shadow-inner backdrop-blur-md">
-                          {initials}
-                        </div>
-                        <div>
-                          <p className="text-xs font-semibold uppercase tracking-tight text-blue-100">
-                            {brandName || tu('programs_membership_fee_tier_brand_fallback')}
-                          </p>
-                          <h2 className="text-sm font-bold leading-tight tracking-tight text-white">
-                            {draft.name.trim() || tu('programs_membership_fee_tier_name_placeholder')}
-                          </h2>
-                        </div>
-                      </div>
-                      <div className="flex items-center space-x-1 rounded-full border border-amber-300/40 bg-amber-400/20 px-2.5 py-1 backdrop-blur-md">
-                        <EmblemIcon className="h-3.5 w-3.5 text-amber-200" strokeWidth={2.2} aria-hidden />
-                        <span className="text-[10px] font-black uppercase tracking-wider text-amber-200">
-                          {emblemMeta.label}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="relative z-10 my-auto py-1">
-                      <p className="mb-0.5 text-[10px] font-bold uppercase tracking-widest text-blue-200/90">
-                        {tu('programs_membership_fee_tier_member_benefit')}
-                      </p>
-                      <div className="flex items-baseline space-x-2">
-                        <span className="text-2xl font-black tracking-tight text-white drop-shadow-sm">
-                          {discountLabel === '—'
-                            ? tu('programs_membership_fee_tier_discount_none')
-                            : tu('programs_membership_fee_tier_discount_off', { percent: discountLabel.replace('%', '') })}
-                        </span>
-                        <span className="text-xs font-medium text-blue-100">
-                          {tu('programs_membership_fee_tier_every_purchase')}
-                        </span>
-                      </div>
-                      <div className="mt-1.5 inline-flex items-center rounded border border-white/10 bg-black/20 px-2 py-0.5 backdrop-blur-sm">
-                        <span className="font-mono text-[9px] font-semibold tracking-wider text-blue-200">
-                          {tu('programs_membership_fee_tier_pass_chain_stamp')}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="relative z-10 flex items-center justify-between border-t border-white/15 pt-2.5">
-                      <div className="flex items-center space-x-2">
-                        <span className="font-mono text-[10px] tracking-wide text-blue-200/80">
-                          {tu('programs_membership_fee_tier_pass_id_sample')}
-                        </span>
-                        <span className="text-xs text-white/30">•</span>
-                        <span className="inline-flex items-center text-[10px] font-medium text-emerald-300">
-                          <span className="mr-1.5 h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                          {tu('programs_membership_fee_tier_active_tier')}
-                        </span>
-                      </div>
-                      <Nfc className="h-4 w-4 text-white opacity-80" strokeWidth={2.2} aria-hidden />
-                    </div>
-                  </div>
+                  <MerchantProgramPassFace
+                    brandName={passBrandName}
+                    tierName={passTierName}
+                    backgroundColor={themeHex}
+                    logoSrc={brandLogoSrc}
+                    discountPercent={discountPercentWhole}
+                    upToLabel={tu('programs_overview_up_to')}
+                    memberPricingLabel={tu('programs_overview_member_pricing')}
+                    startingFromLabel={tu('programs_overview_starting_from_label')}
+                    startingFromAmount={startingFromAmount}
+                    className="shadow-[0_12px_32px_-4px_rgba(21,98,240,0.28),0_4px_12px_-2px_rgba(0,0,0,0.08)]"
+                  />
                   <p className="flex items-center justify-center gap-1.5 px-2 text-center text-[11px] leading-relaxed text-slate-500">
                     <Info className="h-3.5 w-3.5 shrink-0 text-[#1562f0]" strokeWidth={2} aria-hidden />
                     {tu('programs_membership_fee_tier_live_preview_hint')}

@@ -44815,6 +44815,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                  serverError={cardIssuanceMembershipFeeTierEditorServerError}
                  moneyPrefix={cardIssuanceDisplayMoneyPrefix}
                  brandName={programsOverviewDisplayName}
+                 brandLogoSrc={programsOverviewShareImage}
                  focusRingClassName={bizFocusRingClass}
                  numericNoSpinnerClass={bizNumericNoSpinnerClass}
                  durationOptions={programsMembershipDurationSelectOptions.map((opt) => ({

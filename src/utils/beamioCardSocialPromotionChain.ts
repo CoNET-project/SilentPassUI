@@ -10,6 +10,9 @@ import {
 	SOCIAL_PROMOTION_LINK_CLICK_RULE_ID,
 	SOCIAL_PROMOTION_TOPUP_RULE_ID,
 	cardSocialPromotionRuleIdForEventKey,
+	humanPoints13ToMint13,
+	mint13ToHumanPoints13,
+	parsePositivePoints13Human,
 	type CardSocialPromotionEventKey,
 } from '@/utils/programSocialPromotion'
 
@@ -66,7 +69,7 @@ export async function readCardRewardRuleFromChain(
 
 function rewardFromMint13(mint13: bigint): ShareTokenMetadataSocialPromotionEvent['user'] {
 	if (mint13 <= 0n) return { enabled: false, points13: 0 }
-	return { enabled: true, points13: Number(mint13) }
+	return { enabled: true, points13: mint13ToHumanPoints13(mint13) }
 }
 
 function eventFromChainRule(row: OnChainRewardRuleRow | null): ShareTokenMetadataSocialPromotionEvent | undefined {
@@ -158,19 +161,9 @@ export function buildSocialPromotionRuleIntents(
 	promo: ShareTokenMetadataSocialPromotion | null,
 ): SocialPromotionRuleIntent[] {
 	function parsePoints13(raw: unknown): bigint {
-		if (raw == null) return 0n
-		if (typeof raw === 'string') {
-			const trimmed = raw.replace(/,/g, '').trim()
-			if (!trimmed) return 0n
-			const n = Number(trimmed)
-			if (!Number.isFinite(n)) return 0n
-			return BigInt(Math.max(0, Math.floor(n)))
-		}
-		if (typeof raw === 'number') {
-			if (!Number.isFinite(raw)) return 0n
-			return BigInt(Math.max(0, Math.floor(raw)))
-		}
-		return 0n
+		const human = parsePositivePoints13Human(raw)
+		if (human == null) return 0n
+		return humanPoints13ToMint13(human)
 	}
 
 	function mintFromReward(

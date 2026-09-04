@@ -20702,29 +20702,6 @@ const openCardIssuanceCardBackgroundDrawer = useCallback(() => {
   seedCardIssuanceCardBackgroundDrawerFromTier,
 ]);
 
-const addCardIssuancePreviewTierAndOpenBackgroundDrawer = useCallback(() => {
-  let baseTiers = cardIssuanceTiers;
-  const abandonedId = cardIssuanceCardBackgroundPendingNewTierId;
-  if (abandonedId && abandonedId !== CARD_ISSUANCE_SINGLE_TIER_ID) {
-    baseTiers = cardIssuanceTiers.filter((tier) => tier.id !== abandonedId);
-  }
-  const nextRow = nextCardIssuanceTierTemplate(baseTiers, cardIssuanceMinTopup);
-  const nextTiers = reconcileTierThresholdsWithMinTopup(
-    [...baseTiers, nextRow],
-    cardIssuanceMinTopup
-  );
-  setCardIssuanceTiers(nextTiers);
-  setCardIssuancePreviewTierId(nextRow.id);
-  setCardIssuanceCardBackgroundPendingNewTierId(nextRow.id);
-  seedCardIssuanceCardBackgroundDrawerFromTier(nextRow);
-  setCardIssuanceCardBackgroundDrawerOpen(true);
-}, [
-  cardIssuanceCardBackgroundPendingNewTierId,
-  cardIssuanceMinTopup,
-  cardIssuanceTiers,
-  seedCardIssuanceCardBackgroundDrawerFromTier,
-]);
-
 /** When the user swipes to another tier, load that tier’s saved fields (unsaved draft is discarded). */
 useEffect(() => {
   if (!cardIssuanceCardBackgroundDrawerOpen || !cardIssuancePreviewEditTier?.id) return;
@@ -40288,23 +40265,13 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                 <section className="flex flex-col gap-5">
                   {cardIssuanceProgramSection === 'basic' ? (
                   <div className="space-y-4">
-                     <header className="flex min-w-0 items-start justify-between gap-3">
-                       <div className="min-w-0 space-y-0.5">
-                         <span className="block text-[9px] font-bold uppercase tracking-widest text-[#1562f0]">
-                           {tu('programs_overview_live_preview')}
-                         </span>
-                         <h3 className="font-manrope text-lg font-extrabold tracking-tight text-[#2c2f31] sm:text-xl">
-                           {tu('programs_overview_asset_title')}
-                         </h3>
-                       </div>
-                       <button
-                         type="button"
-                         onClick={addCardIssuancePreviewTierAndOpenBackgroundDrawer}
-                         className={`mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#1562f0]/25 bg-[#eaf1ff] text-[#1562f0] shadow-sm transition hover:border-[#1562f0]/50 hover:bg-[#dfeaff] ${bizFocusRingClass}`}
-                         aria-label="Add tier"
-                       >
-                         <Plus className="h-4 w-4" strokeWidth={2.5} aria-hidden />
-                       </button>
+                     <header className="min-w-0 space-y-0.5">
+                       <span className="block text-[9px] font-bold uppercase tracking-widest text-[#1562f0]">
+                         {tu('programs_overview_live_preview')}
+                       </span>
+                       <h3 className="font-manrope text-lg font-extrabold tracking-tight text-[#2c2f31] sm:text-xl">
+                         {tu('programs_overview_asset_title')}
+                       </h3>
                      </header>
                      <div
                        className={`sticky z-40 w-full bg-transparent px-1 pb-3 sm:px-2 sm:pb-4 ${CARD_CONFIGURATOR_MOBILE_STICKY_BELOW_HEADER_CLASS}`}
@@ -43904,10 +43871,10 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                               </div>
 
                               {cardIssuanceTopupPromotion.rewardType === 'percent' ? (
-                                <div className="flex flex-col gap-4">
-                                  <div className="space-y-2">
+                                <div className="flex items-start gap-3">
+                                  <div className="w-[70%] min-w-0 space-y-2">
                                     <label
-                                      className="block text-[12px] font-semibold uppercase tracking-[0.05em] text-[#424655]"
+                                      className="block truncate text-[12px] font-semibold uppercase tracking-[0.05em] text-[#424655]"
                                       htmlFor="card-topup-promo-minimum"
                                     >
                                       {tu('programs_topup_promotion_min_label')}
@@ -43937,13 +43904,13 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                             enabled: true,
                                           }))
                                         }
-                                        className={`h-10 w-full rounded-lg border border-[#c3c6d8] bg-white px-3 text-[#1a1b1f] outline-none focus:border-[#1562f0] focus:ring-1 focus:ring-[#1562f0] ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
+                                        className={`h-10 w-full min-w-0 rounded-lg border border-[#c3c6d8] bg-white px-3 text-[#1a1b1f] outline-none focus:border-[#1562f0] focus:ring-1 focus:ring-[#1562f0] ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
                                       />
                                     </div>
                                   </div>
-                                  <div className="space-y-2">
+                                  <div className="w-[30%] min-w-0 space-y-2">
                                     <label
-                                      className="block text-[12px] font-semibold uppercase tracking-[0.05em] text-[#424655]"
+                                      className="block truncate text-[12px] font-semibold uppercase tracking-[0.05em] text-[#424655]"
                                       htmlFor="card-topup-promo-reward"
                                     >
                                       {tu('programs_topup_promotion_percent_label')}
@@ -43971,7 +43938,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                             enabled: true,
                                           }))
                                         }
-                                        className={`h-10 w-full rounded-lg border border-[#c3c6d8] bg-white py-2 pl-8 pr-3 text-[#1a1b1f] outline-none focus:border-[#1562f0] focus:ring-1 focus:ring-[#1562f0] ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
+                                        className={`h-10 w-full min-w-0 rounded-lg border border-[#c3c6d8] bg-white py-2 pl-8 pr-3 text-[#1a1b1f] outline-none focus:border-[#1562f0] focus:ring-1 focus:ring-[#1562f0] ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
                                       />
                                     </div>
                                   </div>

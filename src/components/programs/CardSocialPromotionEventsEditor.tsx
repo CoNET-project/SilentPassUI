@@ -1,248 +1,217 @@
-import { useState } from 'react'
+import { ChevronDown, ChevronUp, Info } from 'lucide-react'
+import { useCallback, useMemo, useState } from 'react'
 import {
 	CARD_SOCIAL_PROMOTION_EDITABLE_EVENT_KEYS,
 	cardSocialPromotionEventLabel,
+	formatSocialPromotionEventCollapsedSummary,
+	sanitizePoints13Input,
 	type CardSocialPromotionEventKey,
 	type SocialPromotionDraft,
 	type SocialPromotionEventDraft,
+	type SocialPromotionRewardDraft,
 } from '@/utils/programSocialPromotion'
 import {
+	createNumericInputWheelNonPassiveRefCallback,
 	preventNumericInputStepKeys,
 	preventNumericInputWheelStep,
 } from '@/utils/numericInputStepKeys'
-import { useTu } from '@/locale/beamioLocale'
-import {
-	socialPromotionEventIcon,
-	socialPromotionEventIconClassName,
-	socialPromotionEventIsConfigured,
-	socialPromotionEventPanelClassName,
-	socialPromotionEventTabClassName,
-} from './socialPromotionEventChrome'
+import { socialPromotionEventIcon } from '@/components/programs/socialPromotionEventChrome'
+import { tPrograms } from '@/locale/programsLocale'
 
-const bizFocusRingClass =
-	'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/30 focus-visible:ring-offset-2'
-const bizNumericNoSpinnerClass =
-	'[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]'
+const NUMERIC_SPINNER_CLASS =
+	'[&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]'
 
 type Props = {
 	draft: SocialPromotionDraft
-	onChange: (updater: (prev: SocialPromotionDraft) => SocialPromotionDraft) => void
-	validationError?: string
+	onChange: (next: SocialPromotionDraft) => void
+	disabled?: boolean
+	lang: string
 }
 
-function cardEventHintKey(eventKey: CardSocialPromotionEventKey): string {
-	switch (eventKey) {
-		case 'linkClick':
-			return 'programs_social_promotion_event_click_hint'
-		case 'like':
-			return 'programs_social_promotion_event_like_hint'
-		case 'topup':
-			return 'programs_social_promotion_event_topup_hint'
-		default:
-			return 'programs_social_promotion_event_click_hint'
-	}
-}
-
-function cardEventLabelKey(eventKey: CardSocialPromotionEventKey): string {
-	switch (eventKey) {
-		case 'linkClick':
-			return 'programs_social_promotion_event_click'
-		case 'like':
-			return 'programs_social_promotion_event_like'
-		case 'topup':
-			return 'programs_social_promotion_event_topup'
-		default:
-			return 'programs_social_promotion_event_click'
-	}
-}
-
-function SocialPromotionEventRoleFields({
-	eventKey,
-	eventDraft,
-	onChange,
-	tu,
+function RewardPtsRow({
+	label,
+	reward,
+	disabled,
+	onToggle,
+	onPtsChange,
 }: {
-	eventKey: CardSocialPromotionEventKey
-	eventDraft: SocialPromotionEventDraft
-	onChange: Props['onChange']
-	tu: ReturnType<typeof useTu>['tu']
+	label: string
+	reward: SocialPromotionRewardDraft
+	disabled?: boolean
+	onToggle: (enabled: boolean) => void
+	onPtsChange: (pts: string) => void
 }) {
+	const wheelRef = useMemo(() => createNumericInputWheelNonPassiveRefCallback(), [])
 	return (
-		<div className="grid grid-cols-2 gap-2 sm:gap-3">
-			{(['user', 'ref'] as const).map((role) => {
-				const roleDraft = eventDraft[role]
-				const roleLabel =
-					role === 'user'
-						? tu('programs_social_promotion_user_label')
-						: tu('programs_social_promotion_ref_label')
-				return (
-					<div key={role} className="flex min-w-0 items-center gap-2">
-						<label className="flex shrink-0 cursor-pointer items-center gap-1.5">
-							<input
-								type="checkbox"
-								checked={roleDraft.enabled}
-								onChange={(e) =>
-									onChange((p) => ({
-										...p,
-										enabled: true,
-										events: {
-											...p.events,
-											[eventKey]: {
-												...p.events[eventKey],
-												[role]: {
-													...p.events[eventKey][role],
-													enabled: e.target.checked,
-												},
-											},
-										},
-									}))
-								}
-								className="h-4 w-4 rounded border-[#0051d1]/30"
-							/>
-							<span className="whitespace-nowrap text-[10px] font-bold uppercase tracking-wide text-[#595c5e] sm:text-xs">
-								{roleLabel}
-							</span>
-						</label>
-						<input
-							type="number"
-							inputMode="numeric"
-							autoComplete="off"
-							min={1}
-							step={1}
-							disabled={!roleDraft.enabled}
-							value={roleDraft.points13}
-							onKeyDown={preventNumericInputStepKeys}
-							onWheel={preventNumericInputWheelStep}
-							onChange={(e) =>
-								onChange((p) => ({
-									...p,
-									enabled: true,
-									events: {
-										...p.events,
-										[eventKey]: {
-											...p.events[eventKey],
-											[role]: {
-												...p.events[eventKey][role],
-												points13: e.target.value.replace(/[^\d]/g, ''),
-											},
-										},
-									},
-								}))
-							}
-							aria-label={`${cardSocialPromotionEventLabel(eventKey)} ${roleLabel}`}
-							className={`min-w-0 flex-1 rounded-xl border-none bg-white/80 px-3 py-2.5 text-sm font-bold text-[#2c2f31] disabled:opacity-50 sm:px-4 sm:py-3 ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
-						/>
+		<div className="flex flex-col gap-3">
+			<div className="flex items-center justify-between gap-3">
+				<label className="text-[17px] font-normal leading-[22px] tracking-[-0.01em] text-[#1a1b1f]">
+					{label}
+				</label>
+				<button
+					type="button"
+					role="switch"
+					aria-checked={reward.enabled}
+					disabled={disabled}
+					onClick={() => onToggle(!reward.enabled)}
+					className={[
+						'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out',
+						'focus:outline-none focus-visible:ring-2 focus-visible:ring-[#004bc3] focus-visible:ring-offset-2',
+						'disabled:cursor-not-allowed disabled:opacity-50',
+						reward.enabled ? 'bg-[#004bc3]' : 'bg-[#c3c6d8]',
+					].join(' ')}
+				>
+					<span
+						aria-hidden
+						className={[
+							'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+							reward.enabled ? 'translate-x-5' : 'translate-x-0',
+						].join(' ')}
+					/>
+				</button>
+			</div>
+			{reward.enabled ? (
+				<div className="relative flex items-center overflow-hidden rounded-lg border border-[#c3c6d8]/60 bg-white transition-shadow focus-within:border-[#004bc3] focus-within:ring-1 focus-within:ring-[#004bc3]">
+					<input
+						ref={wheelRef}
+						type="number"
+						inputMode="decimal"
+						autoComplete="off"
+						enterKeyHint="done"
+						min={0.01}
+						step={0.01}
+						disabled={disabled}
+						value={reward.points13}
+						onChange={(e) => onPtsChange(sanitizePoints13Input(e.target.value))}
+						onKeyDown={preventNumericInputStepKeys}
+						onKeyDownCapture={preventNumericInputStepKeys}
+						onWheel={preventNumericInputWheelStep}
+						className={[
+							'block w-full border-0 bg-transparent py-3 pl-4 pr-12 text-[17px] leading-[22px] tracking-[-0.01em] text-[#1a1b1f]',
+							'placeholder:text-[#5d5e63]/50 focus:ring-0 disabled:opacity-60',
+							NUMERIC_SPINNER_CLASS,
+						].join(' ')}
+						aria-label={`${label} points`}
+					/>
+					<div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-4">
+						<span className="text-[15px] leading-5 text-[#5d5e63]">Pts</span>
 					</div>
-				)
-			})}
+				</div>
+			) : null}
 		</div>
 	)
 }
 
-export function CardSocialPromotionEventsEditor({ draft, onChange, validationError }: Props) {
-	const { tu } = useTu()
-	const [activeEventKey, setActiveEventKey] = useState<CardSocialPromotionEventKey>('linkClick')
+export function CardSocialPromotionEventsEditor({ draft, onChange, disabled, lang }: Props) {
+	const [expandedKey, setExpandedKey] = useState<CardSocialPromotionEventKey | null>('linkClick')
 
-	const activeEventDraft = draft.events[activeEventKey]
-	const activeConfigured = socialPromotionEventIsConfigured(
-		activeEventDraft.user.enabled,
-		activeEventDraft.ref.enabled,
+	const patchEvent = useCallback(
+		(key: CardSocialPromotionEventKey, nextEvent: SocialPromotionEventDraft) => {
+			onChange({
+				...draft,
+				events: { ...draft.events, [key]: nextEvent },
+			})
+		},
+		[draft, onChange],
 	)
-	const ActiveIcon = socialPromotionEventIcon(activeEventKey)
+
+	const patchReward = useCallback(
+		(
+			key: CardSocialPromotionEventKey,
+			side: 'user' | 'ref',
+			patch: Partial<SocialPromotionRewardDraft>,
+		) => {
+			const ev = draft.events[key]
+			patchEvent(key, { ...ev, [side]: { ...ev[side], ...patch } })
+		},
+		[draft.events, patchEvent],
+	)
 
 	return (
-		<div className="space-y-4">
-			<p className="text-[11px] leading-relaxed text-[#747779]">
-				{tu('programs_social_promotion_parallel_hint')}
-			</p>
+		<div className="flex flex-col gap-4">
+			{CARD_SOCIAL_PROMOTION_EDITABLE_EVENT_KEYS.map((key) => {
+				const ev = draft.events[key]
+				const expanded = expandedKey === key
+				const Icon = socialPromotionEventIcon(key)
+				const title = cardSocialPromotionEventLabel(key)
+				const summary = formatSocialPromotionEventCollapsedSummary(ev)
+				const userLabel = tPrograms(lang, 'programs_social_promotion_user_label')
+				const refLabel = tPrograms(lang, 'programs_social_promotion_ref_label')
 
-			<div
-				className="flex gap-1.5 sm:gap-2"
-				role="tablist"
-				aria-label={tu('programs_social_promotion_title')}
-			>
-				{CARD_SOCIAL_PROMOTION_EDITABLE_EVENT_KEYS.map((eventKey) => {
-					const eventDraft = draft.events[eventKey]
-					const configured = socialPromotionEventIsConfigured(
-						eventDraft.user.enabled,
-						eventDraft.ref.enabled,
-					)
-					const isActive = activeEventKey === eventKey
-					const Icon = socialPromotionEventIcon(eventKey)
-					return (
-						<button
-							key={eventKey}
-							type="button"
-							role="tab"
-							id={`card-social-promo-tab-${eventKey}`}
-							aria-selected={isActive}
-							aria-controls={`card-social-promo-panel-${eventKey}`}
-							onClick={() => setActiveEventKey(eventKey)}
-							className={`${socialPromotionEventTabClassName(eventKey, configured, isActive)} ${bizFocusRingClass}`}
-						>
-							<Icon
-								className={`h-4 w-4 shrink-0 sm:h-[1.05rem] sm:w-[1.05rem] ${socialPromotionEventIconClassName(eventKey, configured)}`}
-								strokeWidth={isActive ? 2.25 : 2}
-								aria-hidden
-								{...(eventKey === 'like' && configured ? { fill: 'currentColor' } : {})}
-							/>
-							<span className="min-w-0 truncate">{tu(cardEventLabelKey(eventKey))}</span>
-						</button>
-					)
-				})}
-			</div>
-
-			<div
-				id={`card-social-promo-panel-${activeEventKey}`}
-				role="tabpanel"
-				aria-labelledby={`card-social-promo-tab-${activeEventKey}`}
-				className={`rounded-2xl border p-3 sm:p-4 ${socialPromotionEventPanelClassName(activeEventKey, activeConfigured)}`}
-			>
-				<div className="mb-3 flex items-start gap-2.5">
+				return (
 					<div
-						className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/70 ${socialPromotionEventIconClassName(activeEventKey, activeConfigured)}`}
+						key={key}
+						className={[
+							'overflow-hidden rounded-xl border bg-[#faf9fe] transition-colors',
+							expanded
+								? 'border-[#004bc3]/20 shadow-sm ring-1 ring-[#004bc3]/5'
+								: 'border-[#c3c6d8]/50 hover:border-[#c3c6d8]',
+						].join(' ')}
 					>
-						<ActiveIcon
-							className="h-4 w-4"
-							strokeWidth={2.25}
-							aria-hidden
-							{...(activeEventKey === 'like' && activeConfigured ? { fill: 'currentColor' } : {})}
-						/>
-					</div>
-					<div className="min-w-0">
-						<p className="text-sm font-bold text-[#2c2f31]">{tu(cardEventLabelKey(activeEventKey))}</p>
-						<p className="mt-1 text-[10px] leading-snug text-[#595c5e]">
-							{tu(cardEventHintKey(activeEventKey))}
-						</p>
-					</div>
-				</div>
+						<button
+							type="button"
+							disabled={disabled}
+							aria-expanded={expanded}
+							onClick={() => setExpandedKey(expanded ? null : key)}
+							className={[
+								'flex w-full items-center gap-3 px-4 py-3.5 text-left',
+								expanded ? 'border-b border-[#c3c6d8]/30' : '',
+								'disabled:cursor-not-allowed disabled:opacity-60',
+							].join(' ')}
+						>
+							<div
+								className={[
+									'flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full',
+									expanded ? 'bg-[#1562f0]/10 text-[#004bc3]' : 'bg-[#eeedf3] text-[#004bc3]',
+								].join(' ')}
+							>
+								<Icon className="h-5 w-5" aria-hidden strokeWidth={2} />
+							</div>
+							<div className="min-w-0 flex-1">
+								<h3 className="text-[17px] font-normal leading-[22px] tracking-[-0.01em] text-[#1a1b1f]">
+									{title}
+								</h3>
+							</div>
+							<div className="flex max-w-[55%] items-center gap-2 sm:max-w-none">
+								{!expanded && summary ? (
+									<span className="truncate text-[15px] leading-5 text-[#5d5e63]">{summary}</span>
+								) : null}
+								{expanded ? (
+									<ChevronUp className="h-5 w-5 flex-shrink-0 text-[#004bc3]" aria-hidden />
+								) : (
+									<ChevronDown className="h-5 w-5 flex-shrink-0 text-[#5d5e63]" aria-hidden />
+								)}
+							</div>
+						</button>
 
-				<SocialPromotionEventRoleFields
-					eventKey={activeEventKey}
-					eventDraft={activeEventDraft}
-					onChange={onChange}
-					tu={tu}
-				/>
+						{expanded ? (
+							<div className="flex flex-col gap-6 bg-[#faf9fe] p-4">
+								<RewardPtsRow
+									label={userLabel}
+									reward={ev.user}
+									disabled={disabled}
+									onToggle={(enabled) => patchReward(key, 'user', { enabled })}
+									onPtsChange={(points13) => patchReward(key, 'user', { points13 })}
+								/>
+								<RewardPtsRow
+									label={refLabel}
+									reward={ev.ref}
+									disabled={disabled}
+									onToggle={(enabled) => patchReward(key, 'ref', { enabled })}
+									onPtsChange={(points13) => patchReward(key, 'ref', { points13 })}
+								/>
+							</div>
+						) : null}
+					</div>
+				)
+			})}
 
-				{activeConfigured ? (
-					<p className="mt-2 text-[10px] font-semibold text-[#0051d1]">
-						{tu('programs_social_promotion_event_active')}
-					</p>
-				) : (
-					<p className="mt-2 text-[10px] font-medium text-[#747779]">
-						{tu('programs_social_promotion_event_not_set')}
-					</p>
-				)}
+			<div className="flex items-start gap-3 rounded-lg bg-[#f4f3f8] p-4">
+				<Info className="mt-0.5 h-5 w-5 flex-shrink-0 text-[#5d5e63]" aria-hidden />
+				<p className="text-[15px] leading-5 text-[#5d5e63]">
+					{tPrograms(lang, 'programs_social_promotion_bunit_note')}
+				</p>
 			</div>
-
-			<p className="ml-2 text-[11px] leading-relaxed text-[#747779]">
-				{tu('programs_social_promotion_points_hint')}
-			</p>
-			{validationError ? (
-				<div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-					<p>{validationError}</p>
-				</div>
-			) : null}
 		</div>
 	)
 }

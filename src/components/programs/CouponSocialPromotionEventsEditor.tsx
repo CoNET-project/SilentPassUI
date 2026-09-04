@@ -2,6 +2,7 @@ import { useState } from 'react'
 import {
 	COUPON_SOCIAL_PROMOTION_EVENT_KEYS,
 	couponSocialPromotionEventLabel,
+	sanitizePoints13Input,
 	type CouponSocialPromotionDraft,
 	type CouponSocialPromotionEventKey,
 	type SocialPromotionEventDraft,
@@ -109,13 +110,15 @@ function CouponSocialPromotionEventRoleFields({
 						</label>
 						<input
 							type="number"
-							inputMode="numeric"
+							inputMode="decimal"
 							autoComplete="off"
-							min={1}
-							step={1}
+							enterKeyHint="done"
+							min={0.01}
+							step={0.01}
 							disabled={!roleDraft.enabled}
 							value={roleDraft.points13}
 							onKeyDown={preventNumericInputStepKeys}
+							onKeyDownCapture={preventNumericInputStepKeys}
 							onWheel={preventNumericInputWheelStep}
 							onChange={(e) =>
 								onChange((p) => ({
@@ -126,7 +129,7 @@ function CouponSocialPromotionEventRoleFields({
 											...p.events[eventKey],
 											[role]: {
 												...p.events[eventKey][role],
-												points13: e.target.value.replace(/[^\d]/g, ''),
+												points13: sanitizePoints13Input(e.target.value),
 											},
 										},
 									},

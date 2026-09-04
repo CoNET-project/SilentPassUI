@@ -84,7 +84,7 @@ function emptyCouponSocialPromotionEvents(): Record<CouponSocialPromotionEventKe
 	}
 }
 
-const EMPTY_REWARD: SocialPromotionRewardDraft = { enabled: false, points13: '1' }
+const EMPTY_REWARD: SocialPromotionRewardDraft = { enabled: false, points13: '0.20' }
 
 export const EMPTY_SOCIAL_PROMOTION_DRAFT: SocialPromotionDraft = {
 	enabled: false,
@@ -96,21 +96,77 @@ export const EMPTY_COUPON_SOCIAL_PROMOTION_DRAFT: CouponSocialPromotionDraft = {
 	events: emptyCouponSocialPromotionEvents(),
 }
 
-function parsePositiveInt(raw: unknown): number | null {
+/** Human Pts on metadata / UI; on-chain mint = human × 1e6. */
+export const SOCIAL_POINTS13_HUMAN_SCALE = 1_000_000
+const POINTS13_MIN_HUMAN = 0.01
+const POINTS13_MAX_HUMAN = 1_000_000
+
+/**
+ * Parse human social Pts (≥ 0.01, ≤ 2 decimal places). Legacy whole ints (e.g. `1`) stay 1.00.
+ */
+export function parsePositivePoints13Human(raw: unknown): number | null {
 	if (raw == null || raw === '') return null
-	const n = typeof raw === 'number' ? raw : Number.parseInt(String(raw).trim(), 10)
-	if (!Number.isFinite(n) || n <= 0 || !Number.isInteger(n)) return null
-	return n
+	const n = typeof raw === 'number' ? raw : Number(String(raw).replace(/,/g, '').trim())
+	if (!Number.isFinite(n) || n < POINTS13_MIN_HUMAN) return null
+	const rounded = Math.round(n * 100) / 100
+	if (rounded < POINTS13_MIN_HUMAN || rounded > POINTS13_MAX_HUMAN) return null
+	return rounded
+}
+
+/** Typing sanitize: digits + optional `.` + at most 2 fractional digits. */
+export function sanitizePoints13Input(raw: string): string {
+	let s = raw.replace(/,/g, '').replace(/[^\d.]/g, '')
+	const dot = s.indexOf('.')
+	if (dot >= 0) {
+		s = `${s.slice(0, dot + 1)}${s.slice(dot + 1).replace(/\./g, '')}`
+		const [intPart, decPart = ''] = s.split('.')
+		s = `${intPart}.${decPart.slice(0, 2)}`
+	}
+	return s
+}
+
+export function formatPoints13Display(n: number): string {
+	if (!Number.isFinite(n)) return '0'
+	return Number(n.toFixed(2)).toString()
+}
+
+export function humanPoints13ToMint13(human: number): bigint {
+	if (!Number.isFinite(human) || human <= 0) return 0n
+	return BigInt(Math.round(human * SOCIAL_POINTS13_HUMAN_SCALE))
+}
+
+/**
+ * Chain mint → human Pts. Mints below 1e4 are treated as legacy whole-unit mints
+ * (pre–E6 scale); new path min is 0.01 Pts = 10_000 mint units.
+ */
+export function mint13ToHumanPoints13(mint: bigint): number {
+	if (mint <= 0n) return 0
+	if (mint < 10_000n) return Number(mint)
+	return Math.round((Number(mint) * 100) / SOCIAL_POINTS13_HUMAN_SCALE) / 100
+}
+
+/** Collapsed accordion summary, e.g. `User: 0.5 Pts | Referrer: 1 Pts`. */
+export function formatSocialPromotionEventCollapsedSummary(event: SocialPromotionEventDraft): string {
+	const parts: string[] = []
+	if (event.user.enabled) {
+		const p = parsePositivePoints13Human(event.user.points13)
+		if (p != null) parts.push(`User: ${formatPoints13Display(p)} Pts`)
+	}
+	if (event.ref.enabled) {
+		const p = parsePositivePoints13Human(event.ref.points13)
+		if (p != null) parts.push(`Referrer: ${formatPoints13Display(p)} Pts`)
+	}
+	return parts.join(' | ')
 }
 
 function rewardDraftFromPayload(
 	raw: ShareTokenMetadataSocialPromotionReward | undefined,
 ): SocialPromotionRewardDraft {
-	if (!raw || raw.enabled === false) return { enabled: false, points13: '1' }
-	const points = parsePositiveInt(raw.points13)
+	if (!raw || raw.enabled === false) return { enabled: false, points13: EMPTY_REWARD.points13 }
+	const points = parsePositivePoints13Human(raw.points13)
 	return {
-		enabled: true,
-		points13: String(points ?? 1),
+		enabled: points != null,
+		points13: points != null ? formatPoints13Display(points) : EMPTY_REWARD.points13,
 	}
 }
 
@@ -181,7 +237,7 @@ function rewardPayloadFromDraft(
 	draft: SocialPromotionRewardDraft,
 ): ShareTokenMetadataSocialPromotionReward | undefined {
 	if (!draft.enabled) return undefined
-	const points = parsePositiveInt(draft.points13)
+	const points = parsePositivePoints13Human(draft.points13)
 	if (points == null) return undefined
 	return { enabled: true, points13: points }
 }
@@ -327,9 +383,10 @@ export function socialPromotionDraftsEqual(a: SocialPromotionDraft, b: SocialPro
 
 function validateRewardDraft(draft: SocialPromotionRewardDraft, label: string): string {
 	if (!draft.enabled) return ''
-	const points = parsePositiveInt(draft.points13)
-	if (points == null) return `${label} must be a whole number of social points (≥ 1).`
-	if (points > 1_000_000) return `${label} is too large.`
+	const points = parsePositivePoints13Human(draft.points13)
+	if (points == null) {
+		return `${label} must be at least 0.01 Pts (up to 2 decimal places).`
+	}
 	return ''
 }
 
@@ -411,7 +468,7 @@ export function couponSocialPromotionDraftToPayload(
 export function cardSocialPromotionEventLabel(key: CardSocialPromotionEventKey): string {
 	switch (key) {
 		case 'linkClick':
-			return 'Link click'
+			return 'Link Click'
 		case 'like':
 			return 'Like'
 		case 'topup':
@@ -424,7 +481,7 @@ export function cardSocialPromotionEventLabel(key: CardSocialPromotionEventKey):
 export function couponSocialPromotionEventLabel(key: CouponSocialPromotionEventKey): string {
 	switch (key) {
 		case 'linkClick':
-			return 'Link click'
+			return 'Link Click'
 		case 'like':
 			return 'Like'
 		case 'claim':
@@ -438,9 +495,9 @@ export function couponSocialPromotionEventLabel(key: CouponSocialPromotionEventK
 
 function formatRewardLine(role: 'User' | 'Referrer', reward: ShareTokenMetadataSocialPromotionReward | undefined): string | null {
 	if (!reward || reward.enabled === false) return null
-	const points = parsePositiveInt(reward.points13)
+	const points = parsePositivePoints13Human(reward.points13)
 	if (points == null) return null
-	return `${role}: ${points.toFixed(0)} pt${points === 1 ? '' : 's'}`
+	return `${role}: ${formatPoints13Display(points)} Pts`
 }
 
 export function formatSocialPromotionDisplay(

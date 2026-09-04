@@ -14,6 +14,8 @@ import {
 import {
 	COUPON_SOCIAL_PROMOTION_EVENT_KEYS,
 	couponSocialPromotionRuleIdForEvent,
+	humanPoints13ToMint13,
+	parsePositivePoints13Human,
 	type CouponSocialPromotionEventKey,
 	SOCIAL_PROMOTION_LIKE_RULE_ID,
 	SOCIAL_PROMOTION_LINK_CLICK_RULE_ID,
@@ -37,19 +39,9 @@ const UC_METRIC_REF_BURN = 9
 const UC_TARGET_ISSUED_COUPON = 2
 
 function parsePoints13(raw: unknown): bigint {
-	if (raw == null) return 0n
-	if (typeof raw === 'string') {
-		const trimmed = raw.replace(/,/g, '').trim()
-		if (!trimmed) return 0n
-		const n = Number(trimmed)
-		if (!Number.isFinite(n)) return 0n
-		return BigInt(Math.max(0, Math.floor(n)))
-	}
-	if (typeof raw === 'number') {
-		if (!Number.isFinite(raw)) return 0n
-		return BigInt(Math.max(0, Math.floor(raw)))
-	}
-	return 0n
+	const human = parsePositivePoints13Human(raw)
+	if (human == null) return 0n
+	return humanPoints13ToMint13(human)
 }
 
 function couponRuleParams(

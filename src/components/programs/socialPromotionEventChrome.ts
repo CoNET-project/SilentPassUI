@@ -1,5 +1,5 @@
 import type { LucideIcon } from 'lucide-react'
-import { Flame, Gift, Heart, Landmark, Share2 } from 'lucide-react'
+import { Flame, Gift, Heart, Landmark, Link2, Share2 } from 'lucide-react'
 import type {
 	CardSocialPromotionEventKey,
 	CouponSocialPromotionEventKey,
@@ -11,7 +11,7 @@ export type SocialPromotionEventKey = CardSocialPromotionEventKey | CouponSocial
 export function socialPromotionEventIcon(key: SocialPromotionEventKey): LucideIcon {
 	switch (key) {
 		case 'linkClick':
-			return Share2
+			return Link2
 		case 'like':
 			return Heart
 		case 'topup':

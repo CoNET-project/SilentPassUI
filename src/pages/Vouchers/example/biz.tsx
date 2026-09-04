@@ -11464,8 +11464,9 @@ function amountPercentInputToSlider(raw: string): number {
 }
 
 const TOPUP_REWARD_PERCENT_PRESETS = [5, 10, 15, 20] as const;
+const CONSUMPTION_POINTS_PERCENT_PRESETS = [1, 5, 10, 20, 100] as const;
 
-/** Preset % chips + Custom % — Top-up Promotion Loyalty / Social Fission (mock-aligned). */
+/** Preset % chips + Custom % — Top-up / Consumption Points (mock-aligned). */
 function TopupRewardPercentChipPicker({
   id,
   valueInput,
@@ -11475,6 +11476,8 @@ function TopupRewardPercentChipPicker({
   focusRingClassName,
   numericNoSpinnerClass,
   customLabel,
+  quickSelectLabel,
+  presets = TOPUP_REWARD_PERCENT_PRESETS,
   helperText,
   wheelRef,
 }: {
@@ -11486,6 +11489,8 @@ function TopupRewardPercentChipPicker({
   focusRingClassName: string;
   numericNoSpinnerClass: string;
   customLabel: string;
+  quickSelectLabel?: string;
+  presets?: readonly number[];
   helperText?: string;
   wheelRef?: (el: HTMLInputElement | null) => void;
 }) {
@@ -11506,8 +11511,17 @@ function TopupRewardPercentChipPicker({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap gap-2" role="group" aria-label={customLabel}>
-        {TOPUP_REWARD_PERCENT_PRESETS.map((preset) => {
+      {quickSelectLabel ? (
+        <p className="text-[12px] font-semibold uppercase tracking-[0.05em] text-[#5d5e63]">
+          {quickSelectLabel}
+        </p>
+      ) : null}
+      <div
+        className="flex flex-wrap gap-2"
+        role="group"
+        aria-label={quickSelectLabel || customLabel}
+      >
+        {presets.map((preset) => {
           const selected = current === preset;
           return (
             <button
@@ -11516,7 +11530,7 @@ function TopupRewardPercentChipPicker({
               disabled={disabled}
               aria-pressed={selected}
               onClick={() => onChange(String(preset))}
-              className={`min-w-[3.75rem] rounded-xl border px-3 py-2.5 text-center text-[15px] transition disabled:opacity-50 ${focusRingClassName} ${
+              className={`min-w-[3.75rem] rounded-full border px-4 py-2 text-center text-[15px] transition disabled:opacity-50 ${focusRingClassName} ${
                 selected ? chipOn : chipOff
               }`}
             >
@@ -14014,6 +14028,20 @@ const cardIssuanceCouponEditingIssued = Boolean(cardIssuanceEditingCouponRow?.is
    () => createNumericInputWheelNonPassiveRefCallback(),
    [],
  );
+ const cardIssuanceConsumptionCustomerCustomWheelRef = useMemo(
+   () => createNumericInputWheelNonPassiveRefCallback(),
+   [],
+ );
+ const cardIssuanceConsumptionReferrerCustomWheelRef = useMemo(
+   () => createNumericInputWheelNonPassiveRefCallback(),
+   [],
+ );
+ const cardIssuanceConsumptionSimulateWheelRef = useMemo(
+   () => createNumericInputWheelNonPassiveRefCallback(),
+   [],
+ );
+ const [cardIssuanceConsumptionSimulateAmount, setCardIssuanceConsumptionSimulateAmount] =
+   useState('10');
  const cardIssuanceTopupPromotionTierWheelRefs = useRef(
    new Map<string, ReturnType<typeof createNumericInputWheelNonPassiveRefCallback>>(),
  );
@@ -15957,7 +15985,10 @@ useEffect(() => {
       ?.unifiedRewardPoints,
   );
   setReward13ConvertToPointsEnabled(convertDraft.toPointsEnabled);
-  setReward13ConvertToUsdcEnabled(convertDraft.toUsdcEnabled);
+  // USDC convert is subordinate: only meaningful when #13 → program points is ON.
+  setReward13ConvertToUsdcEnabled(
+    convertDraft.toPointsEnabled && convertDraft.toUsdcEnabled,
+  );
   setReward13ConvertOracleSpreadBps(convertDraft.oracleSpreadBps);
 }, [
   cardIssuanceExistingCard?.cardAddress,
@@ -17211,6 +17242,28 @@ const cardIssuanceTopupPromotionSimulateLive = useMemo(() => {
   programRewardPtTopupPercentInput,
   programReferrerTopupEnabled,
   programReferrerTopupPercentInput,
+]);
+
+/** Live Simulate Purchase footer (Consumption Points editor) — #13 pts only. */
+const cardIssuanceConsumptionSimulateLive = useMemo(() => {
+  const raw = cardIssuanceConsumptionSimulateAmount.replace(/,/g, '').trim();
+  const payParsed = Number.parseFloat(raw);
+  const pay = Number.isFinite(payParsed) && payParsed > 0 ? payParsed : 10;
+  const customerPct = cardIssuancePointSystemEnabled
+    ? amountPercentInputToSlider(cardIssuancePointRatioInput)
+    : 0;
+  const referrerPct = programReferrerChargeEnabled
+    ? amountPercentInputToSlider(programReferrerChargePercentInput)
+    : 0;
+  const customerPoints = Number(((pay * customerPct) / 100).toFixed(2));
+  const referrerPoints = Number(((pay * referrerPct) / 100).toFixed(2));
+  return { pay, customerPoints, referrerPoints };
+}, [
+  cardIssuanceConsumptionSimulateAmount,
+  cardIssuancePointSystemEnabled,
+  cardIssuancePointRatioInput,
+  programReferrerChargeEnabled,
+  programReferrerChargePercentInput,
 ]);
 
 const cardIssuancePrimaryBonusRule = cardIssuanceTopupPromotionLegacyBonus;
@@ -19978,6 +20031,7 @@ useEffect(() => {
 
 const openCardIssuanceConsumptionPointEditor = useCallback(() => {
   setCardIssuanceConsumptionPointEditorServerError('');
+  setCardIssuanceConsumptionSimulateAmount('10');
   const addr = cardIssuanceExistingCard?.cardAddress?.trim() ?? '';
 
   const finishOpen = (chargeEnabled: boolean, chargePercent: string) => {
@@ -21910,12 +21964,16 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
         cardIssuancePointRatioInput,
         cardIssuanceExistingCard?.chargeRewardRatioE6 ?? CARD_ISSUANCE_POINT_RATIO_DEFAULT_E6,
       );
-     const convertForPublish: Reward13ConvertDraft =
+     const convertRaw: Reward13ConvertDraft =
        opts?.reward13ConvertOverride ?? {
          toPointsEnabled: reward13ConvertToPointsEnabled,
          toUsdcEnabled: reward13ConvertToUsdcEnabled,
          oracleSpreadBps: reward13ConvertOracleSpreadBps,
        };
+     const convertForPublish: Reward13ConvertDraft = {
+       ...convertRaw,
+       toUsdcEnabled: convertRaw.toPointsEnabled && convertRaw.toUsdcEnabled,
+     };
      const oracleSpreadForPublish =
        opts?.merchantOracleSpreadOverride ?? reward13ConvertOracleSpreadBps;
      const unifiedRewardPointsForPublish = mergeUnifiedRewardPointsOracleSpread(
@@ -22967,9 +23025,14 @@ const clearCardIssuanceConsumptionPoints = useCallback(async () => {
 const persistReward13ConvertRulesFlag = useCallback(
   async (patch: { toPointsEnabled?: boolean; toUsdcEnabled?: boolean }) => {
     if (reward13ConvertRulesInFlightRef.current) return;
+    const nextPoints = patch.toPointsEnabled ?? reward13ConvertToPointsEnabled;
+    // Closing #13 → program points also cancels #13 → Conet-USDC (hidden until points re-enabled).
+    const nextUsdc = nextPoints
+      ? (patch.toUsdcEnabled ?? reward13ConvertToUsdcEnabled)
+      : false;
     const next: Reward13ConvertDraft = {
-      toPointsEnabled: patch.toPointsEnabled ?? reward13ConvertToPointsEnabled,
-      toUsdcEnabled: patch.toUsdcEnabled ?? reward13ConvertToUsdcEnabled,
+      toPointsEnabled: nextPoints,
+      toUsdcEnabled: nextUsdc,
       // Preserve merchant oracle FX — Program Basic owns Exchange rate.
       oracleSpreadBps: reward13ConvertOracleSpreadBps,
     };
@@ -41071,12 +41134,9 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
 
                        {/* Redemption & Routing — #13 convert flags (replaces Loyalty Reward PT conversion drawer) */}
                        <div className="rounded-xl border border-[#e8ecf0] bg-white p-4 shadow-[0_6px_24px_rgba(0,0,0,0.05)] ring-1 ring-black/[0.04] sm:p-5">
-                         <h3 className="mb-2 text-[9px] font-bold uppercase tracking-widest text-[#595c5e]">
+                         <h3 className="mb-4 text-[9px] font-bold uppercase tracking-widest text-[#595c5e]">
                            {tu('programs_rules_redemption_routing_title')}
                          </h3>
-                         <p className="mb-4 text-xs leading-relaxed text-[#424655]">
-                           {tu('programs_rules_redemption_intro')}
-                         </p>
                          {reward13ConvertRulesError ? (
                            <div
                              role="alert"
@@ -41089,8 +41149,15 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                          <div className="space-y-4">
                            <div className="flex items-start justify-between gap-4 border-b border-[#e3e2e7] pb-3">
                              <div className="min-w-0 flex-1">
-                               <div className="mb-1 text-[15px] font-bold text-[#1a1b1f]">
-                                 {tu('programs_rules_instore_point_topup')}
+                               <div className="mb-1 flex items-center gap-1.5 text-[15px] font-bold text-[#1a1b1f]">
+                                 <span>{tu('programs_rules_instore_point_topup')}</span>
+                                 <span
+                                   className="inline-flex shrink-0 text-[#595c5e]"
+                                   title={tu('programs_rules_instore_point_topup_info')}
+                                   aria-label={tu('programs_rules_instore_point_topup_info')}
+                                 >
+                                   <Info className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
+                                 </span>
                                </div>
                                <p className="text-xs text-[#424655]">
                                  {tu('programs_rules_instore_point_topup_detail')}
@@ -41103,11 +41170,15 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                aria-busy={reward13ConvertRulesPublishing}
                                aria-label={tu('programs_rules_instore_point_topup_toggle_aria')}
                                disabled={reward13ConvertRulesPublishing}
-                               onClick={() =>
-                                 void persistReward13ConvertRulesFlag({
-                                   toPointsEnabled: !reward13ConvertToPointsEnabled,
-                                 })
-                               }
+                              onClick={() => {
+                                const nextPoints = !reward13ConvertToPointsEnabled;
+                                void persistReward13ConvertRulesFlag(
+                                  nextPoints
+                                    // Points ON → show USDC row in OFF; merchant must enable USDC separately.
+                                    ? { toPointsEnabled: true, toUsdcEnabled: false }
+                                    : { toPointsEnabled: false, toUsdcEnabled: false },
+                                );
+                              }}
                                className={`relative mt-0.5 flex h-6 w-12 shrink-0 items-center rounded-full px-1 transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
                                  reward13ConvertToPointsEnabled ? 'bg-[#004bc3]' : 'bg-[#e3e2e7]'
                                } ${bizFocusRingClass}`}
@@ -41124,50 +41195,54 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                )}
                              </button>
                            </div>
-                           <div className="flex items-start justify-between gap-4">
-                             <div className="min-w-0 flex-1">
-                               <div className="mb-1 text-[15px] font-bold text-[#1a1b1f]">
-                                 {tu('programs_rules_omnichannel_activate')}
+                           {reward13ConvertToPointsEnabled ? (
+                             <div className="flex items-start justify-between gap-4">
+                               <div className="min-w-0 flex-1">
+                                 <div className="mb-1 text-[15px] font-bold text-[#1a1b1f]">
+                                   {tu('programs_rules_omnichannel_activate')}
+                                 </div>
+                                 <p className="text-xs text-[#424655]">
+                                   {tu('programs_rules_universal_routing_detail')}
+                                 </p>
                                </div>
-                               <p className="text-xs text-[#424655]">
-                                 {tu('programs_rules_universal_routing_detail')}
-                               </p>
+                               <button
+                                 type="button"
+                                 role="switch"
+                                 aria-checked={reward13ConvertToUsdcEnabled}
+                                 aria-busy={reward13ConvertRulesPublishing}
+                                 aria-label={tu('programs_rules_omnichannel_toggle_aria')}
+                                 disabled={reward13ConvertRulesPublishing}
+                                 onClick={() =>
+                                   void persistReward13ConvertRulesFlag({
+                                     toUsdcEnabled: !reward13ConvertToUsdcEnabled,
+                                   })
+                                 }
+                                 className={`relative mt-0.5 flex h-6 w-12 shrink-0 items-center rounded-full px-1 transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                                   reward13ConvertToUsdcEnabled ? 'bg-[#004bc3]' : 'bg-[#e3e2e7]'
+                                 } ${bizFocusRingClass}`}
+                               >
+                                 {reward13ConvertRulesPublishing ? (
+                                   <Loader2 className="mx-auto h-3.5 w-3.5 animate-spin text-[#004bc3]" aria-hidden />
+                                 ) : (
+                                   <span
+                                     className={`block h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
+                                       reward13ConvertToUsdcEnabled ? 'translate-x-6' : 'translate-x-0'
+                                     }`}
+                                     aria-hidden
+                                   />
+                                 )}
+                               </button>
                              </div>
-                             <button
-                               type="button"
-                               role="switch"
-                               aria-checked={reward13ConvertToUsdcEnabled}
-                               aria-busy={reward13ConvertRulesPublishing}
-                               aria-label={tu('programs_rules_omnichannel_toggle_aria')}
-                               disabled={reward13ConvertRulesPublishing}
-                               onClick={() =>
-                                 void persistReward13ConvertRulesFlag({
-                                   toUsdcEnabled: !reward13ConvertToUsdcEnabled,
-                                 })
-                               }
-                               className={`relative mt-0.5 flex h-6 w-12 shrink-0 items-center rounded-full px-1 transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
-                                 reward13ConvertToUsdcEnabled ? 'bg-[#004bc3]' : 'bg-[#e3e2e7]'
-                               } ${bizFocusRingClass}`}
-                             >
-                               {reward13ConvertRulesPublishing ? (
-                                 <Loader2 className="mx-auto h-3.5 w-3.5 animate-spin text-[#004bc3]" aria-hidden />
-                               ) : (
-                                 <span
-                                   className={`block h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
-                                     reward13ConvertToUsdcEnabled ? 'translate-x-6' : 'translate-x-0'
-                                   }`}
-                                   aria-hidden
-                                 />
-                               )}
-                             </button>
-                           </div>
+                           ) : null}
                          </div>
                        </div>
 
                        {/* Financial Controls — Deposit when #13 → Conet-USDC ON */}
                        <div
                          className={`flex flex-col items-center rounded-xl border border-[#e8ecf0] bg-white p-4 text-center shadow-[0_6px_24px_rgba(0,0,0,0.05)] ring-1 ring-black/[0.04] sm:p-5 ${
-                           reward13ConvertToUsdcEnabled ? '' : 'opacity-50'
+                           reward13ConvertToPointsEnabled && reward13ConvertToUsdcEnabled
+                             ? ''
+                             : 'opacity-50'
                          }`}
                        >
                          <h3 className="mb-2 text-[9px] font-bold uppercase tracking-widest text-[#595c5e]">
@@ -41179,7 +41254,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                          <p className="mb-6 font-manrope text-[22px] font-bold tracking-tight text-[#1a1b1f] tabular-nums">
                            {merchantCardUsdcReserveDisplay} USDC
                          </p>
-                         {reward13ConvertToUsdcEnabled ? (
+                         {reward13ConvertToPointsEnabled && reward13ConvertToUsdcEnabled ? (
                            <button
                              type="button"
                              onClick={() => setUsdcReserveDepositOpen(true)}
@@ -41196,7 +41271,9 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                              className="mb-3 flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-xl bg-[#e3e2e7] px-4 py-3 text-[13px] font-bold text-[#424655]"
                            >
                              <Lock className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
-                             {tu('programs_rules_routing_disabled_cta')}
+                             {!reward13ConvertToPointsEnabled
+                               ? tu('programs_rules_points_disabled_cta')
+                               : tu('programs_rules_routing_disabled_cta')}
                            </button>
                          )}
                          <p className="px-2 text-xs text-[#424655]">
@@ -44164,13 +44241,24 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                      initial={{ opacity: 0 }}
                      animate={{ opacity: 1 }}
                      exit={{ opacity: 0 }}
-                     onClick={() => setCardIssuanceConsumptionPointEditorOpen(false)}
+                     disabled={
+                       cardIssuanceConsumptionPointEditorPublishing ||
+                       cardIssuanceConsumptionPointDeleting
+                     }
+                     onClick={() => {
+                       if (
+                         !cardIssuanceConsumptionPointEditorPublishing &&
+                         !cardIssuanceConsumptionPointDeleting
+                       ) {
+                         closeCardIssuanceConsumptionPointEditor();
+                       }
+                     }}
                    />
                    <motion.div
                      role="dialog"
                      aria-modal="true"
                      aria-labelledby="card-consumption-points-editor-title"
-                     className="fixed inset-x-0 bottom-0 z-[91] mx-auto flex max-h-[calc(100dvh-1rem)] w-full max-w-2xl flex-col rounded-t-[2rem] bg-white shadow-[0_-24px_64px_rgba(0,0,0,0.12)]"
+                     className="fixed inset-x-0 bottom-0 z-[91] mx-auto flex max-h-[calc(100dvh-1rem)] w-full max-w-2xl flex-col overflow-hidden rounded-t-[2rem] bg-white shadow-[0_-24px_64px_rgba(0,0,0,0.12)]"
                      initial={{ y: '100%' }}
                      animate={{ y: 0 }}
                      exit={{ y: '100%' }}
@@ -44195,8 +44283,19 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                          </div>
                          <button
                            type="button"
-                           onClick={() => setCardIssuanceConsumptionPointEditorOpen(false)}
-                           className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#eef1f3] text-[#595c5e] transition-colors hover:bg-[#dfe3e6] ${bizFocusRingClass}`}
+                           disabled={
+                             cardIssuanceConsumptionPointEditorPublishing ||
+                             cardIssuanceConsumptionPointDeleting
+                           }
+                           onClick={() => {
+                             if (
+                               !cardIssuanceConsumptionPointEditorPublishing &&
+                               !cardIssuanceConsumptionPointDeleting
+                             ) {
+                               closeCardIssuanceConsumptionPointEditor();
+                             }
+                           }}
+                           className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#eef1f3] text-[#595c5e] transition-colors hover:bg-[#dfe3e6] disabled:opacity-50 ${bizFocusRingClass}`}
                            aria-label="Close consumption points editor"
                          >
                            <X className="h-5 w-5" strokeWidth={2} aria-hidden />
@@ -44204,75 +44303,97 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                        </div>
                      </div>
 
-                     <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-[max(1.5rem,env(safe-area-inset-bottom,0px))]">
-                       <div className="space-y-6">
-                         <div className="rounded-2xl border border-[#dce2f7] bg-[#e9edff]/60 px-4 py-4">
-                           <div className="flex items-center justify-between gap-4">
-                             <div className="min-w-0">
-                               <p className="text-xs font-bold uppercase tracking-widest text-[#0051d1]">
-                                 {tu('programs_consumption_points_enable_label')}
-                               </p>
-                               <p className="mt-1 text-sm text-[#595c5e]">
-                                 {tu('programs_consumption_points_enable_hint')}
-                               </p>
+                     <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-4">
+                       <div className="space-y-4">
+                         <section className="rounded-3xl border border-[#c3c6d8]/30 bg-white p-5 shadow-[0px_10px_20px_rgba(0,0,0,0.05)]">
+                           <div className="flex items-center justify-between gap-3">
+                             <div className="flex min-w-0 items-center gap-3">
+                               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#1562f0]/10 text-[#1562f0]">
+                                 <Award className="h-5 w-5" strokeWidth={2} aria-hidden />
+                               </div>
+                               <h3 className="text-[18px] font-semibold tracking-tight text-[#1a1b1f]">
+                                 {tu('programs_consumption_points_customer_title')}
+                               </h3>
                              </div>
                              <button
                                type="button"
                                role="switch"
                                aria-checked={cardIssuancePointSystemEnabled}
-                               aria-label={tu('programs_consumption_points_enable_label')}
+                               aria-label={tu('programs_consumption_points_customer_title')}
                                disabled={cardIssuanceConsumptionPointEditorPublishing}
                                onClick={() => {
                                  const next = !cardIssuancePointSystemEnabled;
                                  setCardIssuancePointSystemEnabled(next);
                                  if (
                                    next &&
-                                   (cardIssuancePointRatioInput === '0' || !cardIssuancePointRatioInput.trim())
+                                   (cardIssuancePointRatioInput === '0' ||
+                                     !cardIssuancePointRatioInput.trim())
                                  ) {
-                                   setCardIssuancePointRatioInput('100');
+                                   setCardIssuancePointRatioInput('5');
                                  }
+                                 setCardIssuanceConsumptionPointEditorServerError('');
                                }}
-                               className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-60 ${bizFocusRingClass} ${
-                                 cardIssuancePointSystemEnabled ? 'bg-[#0051d1]' : 'bg-[#abadaf]/50'
-                               }`}
+                               className={`relative h-7 w-12 shrink-0 rounded-full transition-colors ${
+                                 cardIssuancePointSystemEnabled ? 'bg-[#1562f0]' : 'bg-[#dfdfe4]'
+                               } disabled:opacity-50 ${bizFocusRingClass}`}
                              >
                                <span
-                                 className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition ${
-                                   cardIssuancePointSystemEnabled ? 'translate-x-6' : 'translate-x-1'
+                                 className={`absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-transform ${
+                                   cardIssuancePointSystemEnabled ? 'left-[1.35rem]' : 'left-0.5'
                                  }`}
                                />
                              </button>
                            </div>
+                           <p className="mt-3 text-[15px] leading-5 text-[#424655]">
+                             {tu('programs_consumption_points_customer_hint')}
+                           </p>
                            {cardIssuancePointSystemEnabled ? (
-                             <div className="mt-4">
-                               <BeamioPercentSlider
-                                 id="card-consumption-point-multiplier"
-                                 label={tu('programs_consumption_points_multiplier_label')}
-                                 accent="blue"
-                                 value={amountPercentInputToSlider(cardIssuancePointRatioInput)}
-                                 onChange={(n) => setCardIssuancePointRatioInput(String(n))}
+                             <div className="mt-5 border-t border-[#e3e2e7] pt-4">
+                               <TopupRewardPercentChipPicker
+                                 id="card-consumption-point-customer-percent"
+                                 valueInput={cardIssuancePointRatioInput}
+                                 onChange={(next) => {
+                                   setCardIssuancePointRatioInput(next);
+                                   setCardIssuanceConsumptionPointEditorServerError('');
+                                 }}
                                  disabled={cardIssuanceConsumptionPointEditorPublishing}
+                                 accent="blue"
                                  focusRingClassName={bizFocusRingClass}
+                                 numericNoSpinnerClass={bizNumericNoSpinnerClass}
+                                 customLabel={tu('programs_consumption_points_custom_percent')}
+                                 quickSelectLabel={tu('programs_consumption_points_quick_select')}
+                                 presets={CONSUMPTION_POINTS_PERCENT_PRESETS}
+                                 wheelRef={cardIssuanceConsumptionCustomerCustomWheelRef}
                                />
                              </div>
                            ) : null}
-                         </div>
+                         </section>
 
-                         <div className="rounded-2xl border border-[#eadcf7] bg-[#f5ecff]/60 px-4 py-4">
-                           <div className="flex items-center justify-between gap-4">
-                             <div className="min-w-0">
-                               <p className="text-xs font-bold uppercase tracking-widest text-[#8d3a8b]">
-                                 {tu('programs_overview_referrer_reward_switch')}
-                               </p>
-                               <p className="mt-1 text-sm text-[#595c5e]">
-                                 {tu('programs_overview_referrer_charge_hint')}
-                               </p>
+                         <section
+                           className={`rounded-3xl border border-[#c3c6d8]/30 bg-white p-5 shadow-[0px_10px_20px_rgba(0,0,0,0.05)] transition-opacity ${
+                             programReferrerChargeEnabled ? '' : 'opacity-60'
+                           }`}
+                         >
+                           <div className="flex items-center justify-between gap-3">
+                             <div className="flex min-w-0 items-center gap-3">
+                               <div
+                                 className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
+                                   programReferrerChargeEnabled
+                                     ? 'bg-[#8d3a8b]/10 text-[#8d3a8b]'
+                                     : 'bg-[#dfdfe4] text-[#5d5e63]'
+                                 }`}
+                               >
+                                 <UserPlus className="h-5 w-5" strokeWidth={2} aria-hidden />
+                               </div>
+                               <h3 className="text-[18px] font-semibold tracking-tight text-[#1a1b1f]">
+                                 {tu('programs_consumption_points_referrer_title')}
+                               </h3>
                              </div>
                              <button
                                type="button"
                                role="switch"
                                aria-checked={programReferrerChargeEnabled}
-                               aria-label={tu('programs_overview_referrer_reward_switch')}
+                               aria-label={tu('programs_consumption_points_referrer_title')}
                                disabled={cardIssuanceConsumptionPointEditorPublishing}
                                onClick={() => {
                                  const next = !programReferrerChargeEnabled;
@@ -44282,67 +44403,53 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                    (programReferrerChargePercentInput === '0' ||
                                      !programReferrerChargePercentInput.trim())
                                  ) {
-                                   setProgramReferrerChargePercentInput('1');
+                                   setProgramReferrerChargePercentInput('5');
                                  }
+                                 setCardIssuanceConsumptionPointEditorServerError('');
                                }}
-                               className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-60 ${bizFocusRingClass} ${
-                                 programReferrerChargeEnabled ? 'bg-[#8d3a8b]' : 'bg-[#abadaf]/50'
-                               }`}
+                               className={`relative h-7 w-12 shrink-0 rounded-full transition-colors ${
+                                 programReferrerChargeEnabled ? 'bg-[#8d3a8b]' : 'bg-[#dfdfe4]'
+                               } disabled:opacity-50 ${bizFocusRingClass}`}
                              >
                                <span
-                                 className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition ${
-                                   programReferrerChargeEnabled ? 'translate-x-6' : 'translate-x-1'
+                                 className={`absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-transform ${
+                                   programReferrerChargeEnabled ? 'left-[1.35rem]' : 'left-0.5'
                                  }`}
                                />
                              </button>
                            </div>
-
+                           <p className="mt-3 text-[15px] leading-5 text-[#424655]">
+                             {tu('programs_consumption_points_referrer_hint')}
+                           </p>
                            {programReferrerChargeEnabled ? (
-                             <div className="mt-4 space-y-3">
-                               <div className="flex items-center justify-between gap-3">
-                                 <label
-                                   htmlFor="card-consumption-referrer-reward-percent"
-                                   className="min-w-0 font-manrope text-sm font-bold text-[#2c2f31]"
-                                 >
-                                   {tu('programs_overview_referrer_charge_percent')}
-                                 </label>
-                                 <div className="flex min-h-[2.25rem] shrink-0 items-center justify-center gap-1 rounded-lg border border-[#eadcf7] bg-[#f5ecff] px-2.5 py-1.5">
-                                   <span className="text-center font-manrope text-[15px] font-bold tabular-nums text-[#8d3a8b]">
-                                     {amountPercentInputToSlider(programReferrerChargePercentInput)}
-                                   </span>
-                                   <span className="shrink-0 text-[12px] font-bold text-[#8d3a8b]">%</span>
-                                 </div>
-                               </div>
-                               <input
-                                 id="card-consumption-referrer-reward-percent"
-                                 type="range"
-                                 min={0}
-                                 max={100}
-                                 step={1}
-                                 value={amountPercentInputToSlider(programReferrerChargePercentInput)}
+                             <div className="mt-5 border-t border-[#e3e2e7] pt-4">
+                               <TopupRewardPercentChipPicker
+                                 id="card-consumption-point-referrer-percent"
+                                 valueInput={programReferrerChargePercentInput}
+                                 onChange={(next) => {
+                                   setProgramReferrerChargePercentInput(next);
+                                   setCardIssuanceConsumptionPointEditorServerError('');
+                                 }}
                                  disabled={cardIssuanceConsumptionPointEditorPublishing}
-                                 onChange={(e) =>
-                                   setProgramReferrerChargePercentInput(String(parseInt(e.target.value, 10)))
-                                 }
-                                 aria-valuemin={0}
-                                 aria-valuemax={100}
-                                 aria-valuenow={amountPercentInputToSlider(programReferrerChargePercentInput)}
-                                 aria-label={tu('programs_overview_referrer_charge_percent')}
-                                 className={`h-2 w-full cursor-pointer appearance-none rounded-lg bg-[#eadcf7] accent-[#8d3a8b] disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
+                                 accent="purple"
+                                 focusRingClassName={bizFocusRingClass}
+                                 numericNoSpinnerClass={bizNumericNoSpinnerClass}
+                                 customLabel={tu('programs_consumption_points_custom_percent')}
+                                 quickSelectLabel={tu('programs_consumption_points_quick_select')}
+                                 presets={CONSUMPTION_POINTS_PERCENT_PRESETS}
+                                 wheelRef={cardIssuanceConsumptionReferrerCustomWheelRef}
                                />
-                               <div className="flex justify-between px-0.5 text-[11px] font-medium text-[#8d3a8b]/70">
-                                 <span>0%</span>
-                                 <span>50%</span>
-                                 <span>100%</span>
-                               </div>
                              </div>
                            ) : null}
-                         </div>
+                         </section>
 
                          {cardIssuanceConsumptionPointEditorValidationError ||
                          programReferrerChargeValidationError ? (
-                           <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
+                           <div
+                             role="alert"
+                             className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-[13px] text-amber-900"
+                           >
+                             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
                              <p>
                                {cardIssuanceConsumptionPointEditorValidationError ||
                                  programReferrerChargeValidationError}
@@ -44352,53 +44459,100 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                          {(cardIssuanceCreateError || cardIssuanceConsumptionPointEditorServerError) &&
                          !cardIssuanceConsumptionPointEditorPublishing &&
                          !cardIssuanceConsumptionPointDeleting ? (
-                           <div className="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
-                             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
+                           <div
+                             role="alert"
+                             className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-[13px] text-red-900"
+                           >
+                             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
                              <p>{cardIssuanceCreateError || cardIssuanceConsumptionPointEditorServerError}</p>
                            </div>
                          ) : null}
+                       </div>
+                     </div>
 
-                         <div className="space-y-3 pt-2">
-                           {cardIssuanceConsumptionPointEditorDirty ||
-                           cardIssuanceConsumptionPointEditorPublishing ? (
-                             <div className="flex items-stretch gap-3">
-                               <button
-                                 type="button"
-                                 onClick={() => void submitCardIssuanceConsumptionPointEditor()}
-                                 disabled={
-                                   Boolean(cardIssuanceConsumptionPointEditorValidationError) ||
-                                   Boolean(programReferrerChargeValidationError) ||
-                                   cardIssuanceConsumptionPointEditorPublishing ||
-                                   cardIssuanceConsumptionPointDeleting
-                                 }
-                                 className={`flex min-w-0 flex-1 items-center justify-center gap-2 rounded-full bg-[#0051d1] py-5 font-manrope text-base font-bold text-white shadow-lg shadow-[#0051d1]/20 transition-transform active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 ${CARD_SETUP_MOBILE_CTA_TOUCH_CLASS} ${bizFocusRingClass}`}
-                               >
-                                 {cardIssuanceConsumptionPointEditorPublishing ? (
-                                   <Loader2 className="h-5 w-5 animate-spin" strokeWidth={2} aria-hidden />
-                                 ) : (
-                                   <PlusCircle className="h-5 w-5" strokeWidth={2} aria-hidden />
-                                 )}
-                                 <span>
-                                   {cardIssuanceConsumptionPointEditorPublishing
-                                     ? tu('programs_consumption_points_saving')
-                                     : tu('programs_consumption_points_save')}
-                                 </span>
-                               </button>
-                               {cardIssuanceConsumptionPointEditorDirty &&
-                               !cardIssuanceConsumptionPointEditorPublishing &&
-                               !cardIssuanceConsumptionPointDeleting ? (
-                                 <button
-                                   type="button"
-                                   onClick={discardCardIssuanceConsumptionPointEditorChanges}
-                                   disabled={cardIssuanceConsumptionPointDeleting}
-                                   className={`shrink-0 rounded-full border border-[#dfe3e6] bg-white px-5 py-5 font-manrope text-sm font-bold text-[#595c5e] transition-colors hover:bg-[#eef1f3] disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
-                                 >
-                                   Discard changes
-                                 </button>
-                               ) : null}
-                             </div>
-                           ) : null}
+                     <div className="shrink-0 border-t border-[#c3c6d8]/30 bg-white/95 px-5 pb-[max(1rem,env(safe-area-inset-bottom,0px))] pt-4 backdrop-blur-xl sm:px-6">
+                       <div className="mx-auto flex max-w-md flex-col gap-3">
+                         <div className="flex items-center gap-3">
+                           <div className="relative min-w-0 flex-1">
+                             <label
+                               htmlFor="card-issuance-consumption-simulate"
+                               className="sr-only"
+                             >
+                               {tu('programs_consumption_points_simulate_label', {
+                                 prefix: cardIssuanceDisplayMoneyPrefix,
+                               })}
+                             </label>
+                             <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-[15px] text-[#5d5e63]">
+                               {cardIssuanceDisplayMoneyPrefix}
+                             </span>
+                             <input
+                               id="card-issuance-consumption-simulate"
+                               type="number"
+                               inputMode="decimal"
+                               autoComplete="off"
+                               enterKeyHint="done"
+                               min={0}
+                               step="any"
+                               value={cardIssuanceConsumptionSimulateAmount}
+                               disabled={cardIssuanceConsumptionPointEditorPublishing}
+                               onKeyDown={preventNumericInputStepKeys}
+                               onWheel={preventNumericInputWheelStep}
+                               ref={cardIssuanceConsumptionSimulateWheelRef}
+                               onChange={(e) =>
+                                 setCardIssuanceConsumptionSimulateAmount(
+                                   normalizeCardIssuanceBonusRuleInput(e.target.value)
+                                 )
+                               }
+                               className={`w-full rounded-lg border border-[#c3c6d8] bg-[#f4f3f8] py-2.5 pl-12 pr-3 text-[18px] font-semibold text-[#1a1b1f] outline-none focus:border-[#1562f0] focus:bg-white focus:ring-1 focus:ring-[#1562f0] ${bizNumericNoSpinnerClass}`}
+                             />
+                           </div>
+                           <div className="shrink-0 text-right">
+                             <p className="text-[12px] font-semibold uppercase tracking-[0.05em] text-[#5d5e63]">
+                               {tu('programs_consumption_points_simulate_customer_earns')}
+                             </p>
+                             <p
+                               className={`text-[17px] font-semibold tabular-nums ${
+                                 cardIssuancePointSystemEnabled
+                                   ? 'text-[#007e2f]'
+                                   : 'text-[#5d5e63]'
+                               }`}
+                             >
+                               {tu('programs_consumption_points_simulate_pts', {
+                                 points: cardIssuanceConsumptionSimulateLive.customerPoints.toFixed(2),
+                               })}
+                             </p>
+                           </div>
+                           <div className="shrink-0 border-l border-[#e3e2e7] pl-3 text-right">
+                             <p className="text-[12px] font-semibold uppercase tracking-[0.05em] text-[#5d5e63]">
+                               {tu('programs_consumption_points_simulate_referrer_earns')}
+                             </p>
+                             <p
+                               className={`text-[17px] font-semibold tabular-nums ${
+                                 programReferrerChargeEnabled ? 'text-[#007e2f]' : 'text-[#5d5e63]'
+                               }`}
+                             >
+                               {tu('programs_consumption_points_simulate_pts', {
+                                 points: cardIssuanceConsumptionSimulateLive.referrerPoints.toFixed(2),
+                               })}
+                             </p>
+                           </div>
                          </div>
+                         <button
+                           type="button"
+                           onClick={() => void submitCardIssuanceConsumptionPointEditor()}
+                           disabled={!cardIssuanceConsumptionPointEditorCanSave}
+                           aria-busy={cardIssuanceConsumptionPointEditorPublishing}
+                           className={`flex w-full items-center justify-center gap-2 rounded-xl bg-[#1562f0] py-3 text-[17px] font-semibold text-white shadow-[0_10px_20px_rgba(21,98,240,0.2)] transition active:scale-[0.98] hover:bg-[#004bc3] disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
+                         >
+                           {cardIssuanceConsumptionPointEditorPublishing ? (
+                             <Loader2 className="h-5 w-5 animate-spin" strokeWidth={2} aria-hidden />
+                           ) : null}
+                           <span>
+                             {cardIssuanceConsumptionPointEditorPublishing
+                               ? tu('programs_consumption_points_saving')
+                               : tu('programs_consumption_points_save')}
+                           </span>
+                         </button>
                        </div>
                      </div>
                    </motion.div>

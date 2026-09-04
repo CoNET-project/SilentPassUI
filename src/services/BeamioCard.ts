@@ -2928,7 +2928,9 @@ export async function syncConvertReward13SettingsOnChain(opts: {
 		}
 
 		const wantPoints = opts.toPointsEnabled ? CONVERT_REWARD13_ENABLED_E6 : 0n
-		const wantUsdc = opts.toUsdcEnabled ? CONVERT_REWARD13_ENABLED_E6 : 0n
+		// USDC convert requires Program points convert ON.
+		const wantUsdc =
+			opts.toPointsEnabled && opts.toUsdcEnabled ? CONVERT_REWARD13_ENABLED_E6 : 0n
 		const syncSpread = opts.oracleSpreadBps != null
 		let wantSpread = 0n
 		if (syncSpread) {

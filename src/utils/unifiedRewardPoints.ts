@@ -172,9 +172,14 @@ export type Reward13ConvertDraft = {
 
 export function parseReward13ConvertDraft(raw: unknown): Reward13ConvertDraft {
 	const u = parseUnifiedRewardPoints(raw)
+	const toPointsEnabled =
+		u?.reward13ToPoints?.enabled === true && (u.reward13ToPoints.ratioE6 ?? 0) > 0
+	const toUsdcRaw =
+		u?.reward13ToUsdc?.enabled === true && (u.reward13ToUsdc.ratioE6 ?? 0) > 0
 	return {
-		toPointsEnabled: u?.reward13ToPoints?.enabled === true && (u.reward13ToPoints.ratioE6 ?? 0) > 0,
-		toUsdcEnabled: u?.reward13ToUsdc?.enabled === true && (u.reward13ToUsdc.ratioE6 ?? 0) > 0,
+		toPointsEnabled,
+		// #13 → Conet-USDC is subordinate to #13 → Program points.
+		toUsdcEnabled: toPointsEnabled && toUsdcRaw,
 		oracleSpreadBps: clampMerchantOracleSpreadBps(u?.merchantOracleSpreadBps ?? 0),
 	}
 }
@@ -248,15 +253,17 @@ export function mergeUnifiedRewardPointsConvert(
 	},
 ): UnifiedRewardPoints {
 	const prev = parseUnifiedRewardPoints(existing) ?? {}
+	const toPointsEnabled = opts.toPointsEnabled === true
+	const toUsdcEnabled = toPointsEnabled && opts.toUsdcEnabled === true
 	const next: UnifiedRewardPoints = {
 		...prev,
 		reward13ToPoints: {
-			enabled: opts.toPointsEnabled,
-			ratioE6: opts.toPointsEnabled ? CONVERT_REWARD13_RATIO_ENABLED_E6 : 0,
+			enabled: toPointsEnabled,
+			ratioE6: toPointsEnabled ? CONVERT_REWARD13_RATIO_ENABLED_E6 : 0,
 		},
 		reward13ToUsdc: {
-			enabled: opts.toUsdcEnabled,
-			ratioE6: opts.toUsdcEnabled ? CONVERT_REWARD13_RATIO_ENABLED_E6 : 0,
+			enabled: toUsdcEnabled,
+			ratioE6: toUsdcEnabled ? CONVERT_REWARD13_RATIO_ENABLED_E6 : 0,
 		},
 	}
 	if (opts.oracleSpreadBps != null) {

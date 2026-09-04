@@ -27286,7 +27286,7 @@ useLayoutEffect(() => {
   cardIssuancePreviewLiveBackgroundImage,
   cardIssuancePreviewLiveBackgroundImageFit,
   programsOverviewDisplayName,
-  cardIssuancePreviewLiveTiersName,
+  cardIssuancePreviewLiveTierName,
   cardIssuancePreviewLiveDiscountPercent,
   cardIssuancePreviewLiveThreshold,
   programsOverviewCardMinTopupDisplay,

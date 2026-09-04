@@ -633,7 +633,6 @@ export function resolveDiscoverTopupPromotionHeroSidePill(params: {
 /**
  * Compact green badge under Store Credits (#0) on Discover membership wallet card.
  * Example: `Get +5% bonus on CA$ 50+`
- * Prefer {@link resolveDiscoverMemberPromotionBannerCopy} for the full-width member banner.
  */
 export function resolveDiscoverTopupPromotionStoreCreditsBadge(params: {
 	metadataRoot: Record<string, unknown> | null | undefined
@@ -663,64 +662,6 @@ export function resolveDiscoverTopupPromotionStoreCreditsBadge(params: {
 		return `Get +${formatPromoMoneyLabel(moneyPrefix, rule.bonusValue)} on ${minLabel}+`
 	}
 	return null
-}
-
-/**
- * Member Discover detail — full-width promotion pill under the membership wallet card.
- * Primary = active top-up bonus; secondary = charge earn %. Null when neither is configured.
- * Example: `Top up CA$ 100+ for 50% Bonus Pts | Earn 40% back on all spend`
- */
-export type DiscoverMemberPromotionBannerCopy = {
-	primary: string | null
-	secondary: string | null
-	suggestedAmount?: string
-}
-
-export function resolveDiscoverMemberPromotionBannerCopy(params: {
-	metadataRoot: Record<string, unknown> | null | undefined
-	currency: string
-}): DiscoverMemberPromotionBannerCopy | null {
-	const moneyPrefix = moneyPrefixForCurrency(params.currency)
-	const unified = resolveDiscoverUnifiedTopupPromotion(params)
-	let primary: string | null = null
-	let suggestedAmount: string | undefined
-
-	if (unified?.active) {
-		if (unified.source === 'topupPromotion' && unified.topupPromo) {
-			const promo = unified.topupPromo
-			const min = parseAmount(promo.minimumTopupAmount)
-			const reward = parseAmount(promo.rewardValue)
-			if (min != null && reward != null) {
-				suggestedAmount = String(min)
-				const minLabel = formatPromoMoneyLabel(moneyPrefix, min)
-				if (promo.rewardType === 'percent') {
-					primary = `Top up ${minLabel}+ for ${formatBonusRuleAmount(reward)}% Bonus Pts`
-				} else {
-					primary = `Top up ${minLabel}+ for ${formatPromoMoneyLabel(moneyPrefix, reward)} Bonus Pts`
-				}
-			}
-		} else if (unified.bonusRule) {
-			const rule = unified.bonusRule
-			suggestedAmount = String(rule.paymentAmount)
-			const minLabel = formatPromoMoneyLabel(moneyPrefix, rule.paymentAmount)
-			if (rule.bonusProportional) {
-				const pct = (rule.bonusValue / rule.paymentAmount) * 100
-				primary = `Top up ${minLabel}+ for ${formatBonusRuleAmount(pct)}% Bonus Pts`
-			} else {
-				primary = `Top up ${minLabel}+ for ${formatPromoMoneyLabel(moneyPrefix, rule.bonusValue)} Bonus Pts`
-			}
-		}
-	}
-
-	const actor = parseDiscoverActorRewardPercentsFromMetadata(params.metadataRoot)
-	const chargePercent = actor.chargePercent
-	const secondary =
-		chargePercent != null && chargePercent > 0
-			? `Earn ${formatBonusRuleAmount(chargePercent)}% back on all spend`
-			: null
-
-	if (!primary && !secondary) return null
-	return { primary, secondary, suggestedAmount }
 }
 
 /** Long-form top-up copy (list cards / detail subcopy). */

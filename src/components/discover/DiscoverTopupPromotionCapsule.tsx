@@ -1,4 +1,5 @@
 import { Gift, ArrowRight } from 'lucide-react'
+import { DiscoverDescriptionTextWithUrlCapsules } from '@/components/discover/DiscoverDescriptionTextWithUrlCapsules'
 
 /**
  * Discover merchant detail — New Customer Bonus panel when Top-up Promotion is active.
@@ -28,7 +29,9 @@ export function DiscoverTopupPromotionCapsule({
 			<h3 className="mt-3.5 text-[22px] font-bold leading-snug tracking-tight text-white sm:text-[24px]">
 				{title}
 			</h3>
-			<p className="mt-2 text-[14px] leading-relaxed text-white/90 sm:text-[15px]">{description}</p>
+			<p className="mt-2 text-[14px] leading-relaxed text-white/90 sm:text-[15px]">
+				<DiscoverDescriptionTextWithUrlCapsules text={description} tone="onDark" />
+			</p>
 			{onClaimTopUp ? (
 				<button
 					type="button"

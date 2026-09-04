@@ -31,7 +31,7 @@ Merchant OS **Programs → Top-up Promotion** 编辑器内同时存在 **三类�
 | 对应 OFF | 写 **ratio = 0**（仍走 combined 调用，两参均为 0） |
 
 - Helper：`syncTopupRewardRatiosOnChain` / `syncChargeRewardRatiosOnChain`（单笔 UserOp `topupReward` / `chargeReward`；`biz.tsx` + `BeamioCard.ts`）。
-- UI 整数 % → E6：`parseAmountPercentHumanToE6`（`N%` → `N * 10_000`；100% = `1_000_000`）。
+- UI %（**最多 2 位小数**）→ E6：`parseAmountPercentHumanToE6`（`N%` → `round(N*100)*100`；1% = `10_000`；0.01% = `100`；100% = `1_000_000`）。
 - 同周期 mint：`ChargeRewardModuleV2.recordTopupCumulativeStat` → `amountFiat6 × ratioE6 / 1e6` → **#13**（基数 = 实付，不含 bonus #0）。
 - **`getRewardRule(2)` ≠ Top-up。** Reward PT / Referrer **不得**读写该槽；遗留固定 mint 仅由 Social Save **deactivate**。`applyTopupRewardPtOnChainRule` **@deprecated**，若被调用 **只 deactivate**，禁止再写 active 固定 mint。
 - **禁止**为此调用会重写 1/2/3 的全量 `applySocialPromotionOnChainRules`，除非用户在 Social Promotion 编辑器 Save（该 Save 仍须关掉 slot 2）。
@@ -48,7 +48,7 @@ Merchant OS **Programs → Top-up Promotion** 编辑器内同时存在 **三类�
 类型：`ShareTokenMetadata.unifiedRewardPoints` — `src/services/BeamioCard.ts`。
 
 - **bps**：`actorPercentBps` / `referrerPercentBps`，0–10000（10000 = 100%）。
-- UI 整数 % ↔ bps：`percentWholeToActorBps` / `actorBpsToPercentWhole`。
+- UI %（最多 2 位小数）↔ bps：`percentWholeToActorBps` / `actorBpsToPercentWhole` / `formatRewardPercentHumanDisplay`。
 - Publish 时 **不得**因总开关 OFF 而 strip 已启用的 `unifiedRewardPoints.topup`。
 
 ---
@@ -150,7 +150,7 @@ cardIssuanceTopupPromotionOverviewSummary = useMemo(() => [
 - ❌ 某预览面只显示 bonus、在「仅 Reward PT ON」时留空
 - ❌ 多处手写 `formatTopupPromotionDisplay` 而不经 overview summary
 - ❌ 把 `topupPromotion.enabled` 当作 Reward PT 开关
-- ❌ 把 Reward PT 整数 % 写成 `ruleId=2` 固定 `actorMint13`（须 E6 ratio）
+- ❌ 把 Reward PT % 写成 `ruleId=2` 固定 `actorMint13`（须 E6 ratio；支持 0.01% 步进）
 
 ---
 

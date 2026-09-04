@@ -67,13 +67,31 @@ export function percentToMerchantOracleSpreadBps(percent: number): number {
 	return clampMerchantOracleSpreadBps(n * 100)
 }
 
-export function percentWholeToActorBps(percent: number): number {
-	const whole = Math.max(0, Math.min(100, Math.round(percent)))
-	return whole * 100
+/** Format 0–100% with up to 2 decimals (trim trailing zeros). */
+export function formatRewardPercentHumanDisplay(percent: number): string {
+	const n = typeof percent === 'number' ? percent : Number(percent)
+	if (!Number.isFinite(n)) return '0'
+	const hundredths = Math.max(0, Math.min(10_000, Math.round(n * 100)))
+	const whole = Math.trunc(hundredths / 100)
+	const frac = hundredths % 100
+	if (frac === 0) return String(whole)
+	if (frac % 10 === 0) return `${whole}.${frac / 10}`
+	return `${whole}.${String(frac).padStart(2, '0')}`
 }
 
+/**
+ * Human percent 0–100 (0.01 steps) → bps (10000 = 100%).
+ * 1% → 100 bps; 0.01% → 1 bps; 1.5% → 150 bps.
+ */
+export function percentWholeToActorBps(percent: number): number {
+	const n = typeof percent === 'number' ? percent : Number(percent)
+	if (!Number.isFinite(n)) return 0
+	return Math.max(0, Math.min(UNIFIED_REWARD_POINTS_BPS_MAX, Math.round(Math.max(0, Math.min(100, n)) * 100)))
+}
+
+/** bps → human percent 0–100 with 0.01 resolution. */
 export function actorBpsToPercentWhole(bps: number): number {
-	return Math.max(0, Math.min(100, Math.round(clampRewardPercentBps(bps) / 100)))
+	return clampRewardPercentBps(bps) / 100
 }
 
 function parseFlow(raw: unknown): UnifiedRewardFlow | undefined {
@@ -138,9 +156,9 @@ function parseUnifiedRewardFlowDraft(flow: UnifiedRewardFlow | undefined): {
 	const refPct = actorBpsToPercentWhole(refBps)
 	return {
 		enabled,
-		percent: String(pct > 0 ? pct : 1),
+		percent: formatRewardPercentHumanDisplay(pct > 0 ? pct : 1),
 		referrerEnabled,
-		referrerPercent: String(refPct > 0 ? refPct : 1),
+		referrerPercent: formatRewardPercentHumanDisplay(refPct > 0 ? refPct : 1),
 	}
 }
 

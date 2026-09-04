@@ -291,6 +291,10 @@ import {
   type MembershipFeeTierEditorDraft,
 } from './MembershipFeeTierProgramEditor';
 import {
+  MembershipFeeTierListSheet,
+  type MembershipFeeTierListItem,
+} from './MembershipFeeTierListSheet';
+import {
   NavProgramMenu,
   PROGRAM_TAB_BASIC,
   PROGRAM_TAB_BUSINESS,
@@ -400,6 +404,7 @@ import {
   parseUnifiedRewardChargeDraft,
   parseUnifiedRewardTopupDraft,
   percentWholeToActorBps,
+  formatRewardPercentHumanDisplay,
   formatMerchantOracleSpreadOverview,
   type Reward13ConvertDraft,
 } from '@/utils/unifiedRewardPoints';
@@ -652,10 +657,10 @@ const getImg = (avatarSeed: string | undefined) => getAvatarImgUrl(avatarSeed);
 const MOBILE_FLOATING_BAR_THRESHOLD = 40;
 const MOBILE_FLOATING_BAR_FADE_RANGE = 100;
 
-/** Card Setup sticky Discover preview: shrink toward 1/3 as the main pane scrolls down. */
+/** Sticky card previews (Card Setup Discover + Programs LIVE CARD): shrink toward 1/4 as the main pane scrolls down. */
 const CARD_SETUP_DISCOVER_PREVIEW_SHRINK_THRESHOLD = 0;
 const CARD_SETUP_DISCOVER_PREVIEW_SHRINK_RANGE = 160;
-const CARD_SETUP_DISCOVER_PREVIEW_MIN_SCALE = 1 / 3;
+const CARD_SETUP_DISCOVER_PREVIEW_MIN_SCALE = 1 / 4;
 
 function cardIssuanceKetWelcomeDismissStorageKey(eoa: string): string {
   return `beamio:biz:ket-welcome-dismissed:v1:${eoa.toLowerCase()}`;
@@ -11411,7 +11416,7 @@ type CardIssuanceConsumptionPointEditorBaseline = {
   ratioInput: string;
 };
 
-/** `ratioInput` is a whole percent 0–100 (same scale as referrer Percent of charge; 100% = 1.0×). */
+/** `ratioInput` is 0–100% with up to 2 decimals (same scale as referrer Percent of charge; 100% = 1.0×). */
 function buildCardIssuancePointSystemMetadataFromDraft(
   enabled: boolean,
   ratioInput: string,
@@ -11431,7 +11436,7 @@ function buildCardIssuancePointSystemMetadataFromDraft(
 function validateCardIssuanceConsumptionPointRatioInput(enabled: boolean, ratioInput: string): string {
   if (!enabled) return '';
   const e6 = parseAmountPercentHumanToE6(ratioInput);
-  if (e6 == null) return 'Choose a whole percent from 0% to 100%.';
+  if (e6 == null) return 'Enter a percent from 0% to 100% (up to 2 decimal places).';
   if (e6 === 0n) return 'Consumption points are on — set a multiplier greater than 0%, or turn it off.';
   return '';
 }
@@ -11443,30 +11448,36 @@ function formatConsumptionPointSystemDisplay(enabled: boolean, ratioInput: strin
   return `${formatPointRatioE6Display(e6.toString())}× on qualifying charges`;
 }
 
-/** Whole percent 0–100 (1% steps) → E6 ratio (100% = 1_000_000). */
+/**
+ * Human percent 0–100 (0.01 steps) → E6 ratio (100% = 1_000_000).
+ * 1% → 10_000; 0.01% → 100; 1.5% → 15_000.
+ */
 function parseAmountPercentHumanToE6(raw: string): bigint | null {
   const t = raw.trim();
   if (!t) return null;
   const n = Number(t);
   if (!Number.isFinite(n) || n < 0 || n > 100) return null;
-  const whole = Math.round(n);
-  if (Math.abs(n - whole) > 1e-9) return null;
-  return BigInt(whole * 10_000);
+  const hundredths = Math.round(n * 100);
+  if (Math.abs(n * 100 - hundredths) > 1e-6) return null;
+  return BigInt(hundredths * 100);
 }
 
-/** Display / slider value: nearest whole percent in 0–100. */
+/** Display string: nearest 0.01% in 0–100 (trim trailing zeros). */
 function formatAmountPercentE6Display(ratioE6: string | null | undefined): string {
   if (ratioE6 == null || !/^\d+$/.test(ratioE6)) return '0';
-  const v = Math.round(Number(BigInt(ratioE6)) / 10_000);
-  if (!Number.isFinite(v)) return '0';
-  return String(Math.min(100, Math.max(0, v)));
+  const e6 = Number(BigInt(ratioE6));
+  if (!Number.isFinite(e6)) return '0';
+  return formatRewardPercentHumanDisplay(e6 / 10_000);
 }
 
 function amountPercentInputToSlider(raw: string): number {
-  const n = Math.round(Number(String(raw ?? '').trim()));
+  const n = Number(String(raw ?? '').trim());
   if (!Number.isFinite(n)) return 0;
-  return Math.min(100, Math.max(0, n));
+  return Math.min(100, Math.max(0, Math.round(n * 100) / 100));
 }
+
+/** Allow typing e.g. `1.` / `1.2` before blur clamp. */
+const AMOUNT_PERCENT_INPUT_PARTIAL_RE = /^\d{0,3}(\.\d{0,2})?$/;
 
 const TOPUP_REWARD_PERCENT_PRESETS = [5, 10, 15, 20] as const;
 const CONSUMPTION_POINTS_PERCENT_PRESETS = [1, 5, 10, 20, 100] as const;
@@ -11527,14 +11538,14 @@ function TopupRewardPercentChipPicker({
         aria-label={quickSelectLabel || customLabel}
       >
         {presets.map((preset) => {
-          const selected = current === preset;
+          const selected = Math.round(current * 100) === Math.round(preset * 100);
           return (
             <button
               key={preset}
               type="button"
               disabled={disabled}
               aria-pressed={selected}
-              onClick={() => onChange(String(preset))}
+              onClick={() => onChange(formatRewardPercentHumanDisplay(preset))}
               className={`min-w-[3.75rem] rounded-full border px-4 py-2 text-center text-[15px] transition disabled:opacity-50 ${focusRingClassName} ${
                 selected ? chipOn : chipOff
               }`}
@@ -11556,12 +11567,12 @@ function TopupRewardPercentChipPicker({
             id={id}
             ref={wheelRef}
             type="number"
-            inputMode="numeric"
+            inputMode="decimal"
             autoComplete="off"
             enterKeyHint="done"
             min={0}
             max={100}
-            step={1}
+            step={0.01}
             value={valueInput}
             disabled={disabled}
             onKeyDown={preventNumericInputStepKeys}
@@ -11572,7 +11583,18 @@ function TopupRewardPercentChipPicker({
                 onChange('');
                 return;
               }
-              onChange(String(amountPercentInputToSlider(raw)));
+              if (!AMOUNT_PERCENT_INPUT_PARTIAL_RE.test(raw)) return;
+              const n = Number(raw);
+              if (raw.endsWith('.')) {
+                onChange(raw);
+                return;
+              }
+              if (!Number.isFinite(n) || n > 100) return;
+              onChange(raw);
+            }}
+            onBlur={() => {
+              if (valueInput.trim() === '') return;
+              onChange(formatRewardPercentHumanDisplay(amountPercentInputToSlider(valueInput)));
             }}
             className={`h-10 w-full rounded-lg border border-[#c3c6d8] bg-white py-2 pl-3 pr-10 text-[#1a1b1f] outline-none focus:ring-1 ${fieldFocus} ${focusRingClassName} ${numericNoSpinnerClass}`}
           />
@@ -13271,17 +13293,20 @@ function cardIssuanceTierGradientTheme(backgroundColorRaw: string): CardIssuance
 /** Base membership tier in Card Configurator; its Min keeps Min. Reload Amount in sync. */
 const CARD_ISSUANCE_SINGLE_TIER_ID = 'tier-base';
 
-/** Membership-fee cards publish min/max top-up metadata as 1 (credit floor), not 0. */
+/** Membership-fee cards publish min/max top-up metadata as 1 (credit floor), not 0.
+ * Program Basic only updates **base** membership; higher-tier fees/durations are preserved.
+ */
 function mapCardIssuanceRowsForMembershipFeeSetup(
   rows: CardIssuanceTierRow[],
   amount: string,
   durationKind?: number
 ): CardIssuanceTierRow[] {
   const durationFromOpts = normalizeMembershipDurationKind(durationKind);
+  const baseIdx = rows.findIndex((t) => t.id === CARD_ISSUANCE_SINGLE_TIER_ID);
   return rows.map((t, i) => {
-    const isBase = t.id === CARD_ISSUANCE_SINGLE_TIER_ID || i === 0;
+    const isBase = baseIdx >= 0 ? t.id === CARD_ISSUANCE_SINGLE_TIER_ID : i === 0;
     if (!isBase) {
-      return { ...t, membershipFee: '', membershipDurationKind: 0, threshold: t.threshold };
+      return { ...t };
     }
     const duration =
       durationFromOpts ||
@@ -13289,11 +13314,17 @@ function mapCardIssuanceRowsForMembershipFeeSetup(
       3;
     return {
       ...t,
+      id: CARD_ISSUANCE_SINGLE_TIER_ID,
       threshold: '0',
       membershipFee: amount,
       membershipDurationKind: duration,
     };
   });
+}
+
+function parseMembershipFeeHumanNumber(raw: string | undefined | null): number {
+  const n = Number(String(raw ?? '').replace(/,/g, '').trim());
+  return Number.isFinite(n) ? n : NaN;
 }
 
 const defaultCardIssuanceTiers = (): CardIssuanceTierRow[] => [
@@ -13715,7 +13746,15 @@ const [cardIssuanceConsumptionPointDeleting, setCardIssuanceConsumptionPointDele
 const cardIssuanceConsumptionPointClearInFlightRef = useRef(false);
 const [cardIssuanceConsumptionPointEditorServerError, setCardIssuanceConsumptionPointEditorServerError] =
   useState('');
-/** Loyalty Logic → Membership Fee tier editor (baseMembership + base tier chrome). */
+/** Loyalty Logic → Membership Fee: list first, then per-tier editor. */
+const [cardIssuanceMembershipFeeTierListOpen, setCardIssuanceMembershipFeeTierListOpen] =
+  useState(false);
+const [cardIssuanceMembershipFeeTierListError, setCardIssuanceMembershipFeeTierListError] =
+  useState('');
+const [cardIssuanceMembershipFeeEditingTierId, setCardIssuanceMembershipFeeEditingTierId] =
+  useState<string | null>(null);
+const [cardIssuanceMembershipFeePendingNewTier, setCardIssuanceMembershipFeePendingNewTier] =
+  useState<CardIssuanceTierRow | null>(null);
 const [cardIssuanceMembershipFeeTierEditorOpen, setCardIssuanceMembershipFeeTierEditorOpen] =
   useState(false);
 const [cardIssuanceMembershipFeeTierEditorDraft, setMembershipFeeTierEditorDraft] =
@@ -17106,7 +17145,9 @@ const cardIssuanceTopupPromotionOverviewSummary = useMemo(() => {
       : '',
     programRewardPtTopupEnabled
       ? tu('programs_topup_reward_pt_overview', {
-          percent: String(amountPercentInputToSlider(programRewardPtTopupPercentInput)),
+          percent: formatRewardPercentHumanDisplay(
+            amountPercentInputToSlider(programRewardPtTopupPercentInput),
+          ),
         })
       : '',
   ]
@@ -17550,6 +17591,7 @@ useEffect(() => {
     !cardIssuanceTierEditorOpen &&
     !cardIssuanceSocialPromotionEditorOpen &&
     !cardIssuanceConsumptionPointEditorOpen &&
+    !cardIssuanceMembershipFeeTierListOpen &&
     !cardIssuanceMembershipFeeTierEditorOpen &&
     !cardIssuanceCouponSocialPromotionEditorOpenId &&
     !cardIssuanceSocialExchangeEditorOpen &&
@@ -17567,6 +17609,7 @@ useEffect(() => {
   cardIssuanceTierEditorOpen,
   cardIssuanceSocialPromotionEditorOpen,
   cardIssuanceConsumptionPointEditorOpen,
+  cardIssuanceMembershipFeeTierListOpen,
   cardIssuanceMembershipFeeTierEditorOpen,
   cardIssuanceCouponSocialPromotionEditorOpenId,
   cardIssuanceSocialExchangeEditorOpen,
@@ -20128,33 +20171,182 @@ useEffect(() => {
   }
 }, [cardIssuanceConsumptionPointEditorOpen]);
 
-const openCardIssuanceMembershipFeeTierEditor = useCallback(() => {
-  setCardIssuanceMembershipFeeTierEditorServerError('');
-  const singleRows = tiersByLoyaltyRule.single;
+const membershipFeeTierWorkingRows = useMemo((): CardIssuanceTierRow[] => {
+  const source =
+    (tiersByLoyaltyRule.single?.length ? tiersByLoyaltyRule.single : null) ??
+    (cardIssuanceTiers.length ? cardIssuanceTiers : defaultCardIssuanceTiers());
+  const pending = cardIssuanceMembershipFeePendingNewTier;
+  if (!pending) return source;
+  const idx = source.findIndex((r) => r.id === pending.id);
+  if (idx >= 0) {
+    const next = source.slice();
+    next[idx] = pending;
+    return next;
+  }
+  return [...source, pending];
+}, [tiersByLoyaltyRule.single, cardIssuanceTiers, cardIssuanceMembershipFeePendingNewTier]);
+
+const membershipFeeTierRowIsBase = useCallback((row: CardIssuanceTierRow, index: number, rows: CardIssuanceTierRow[]) => {
+  if (row.id === CARD_ISSUANCE_SINGLE_TIER_ID) return true;
+  return index === 0 && !rows.some((r) => r.id === CARD_ISSUANCE_SINGLE_TIER_ID);
+}, []);
+
+const membershipFeeDraftFromTierRow = useCallback(
+  (row: CardIssuanceTierRow, isBase: boolean): MembershipFeeTierEditorDraft => {
+    const feeRaw = (row.membershipFee ?? '').replace(/,/g, '').trim();
+    const feeNum = Number(feeRaw);
+    const feeHuman =
+      feeRaw !== '' && Number.isFinite(feeNum) && feeNum > 0
+        ? String(row.membershipFee).trim()
+        : isBase
+          ? '50'
+          : feeRaw;
+    const color = normalizeMembershipFeeTierHexColor(row.backgroundColor || '#1562F0');
+    return {
+      name:
+        (row.name ?? '').trim() ||
+        (isBase ? 'Gold VIP Member' : 'Higher Membership'),
+      backgroundColor: color,
+      discountPercent: (row.discountPercent ?? '').trim() || (isBase ? '10' : '0'),
+      membershipFee: feeHuman,
+      membershipDurationKind: normalizeMembershipDurationKind(row.membershipDurationKind) || 3,
+      emblem: 'crown',
+      welcomeGiftEnabled: false,
+      welcomeGiftAmount: '10',
+    };
+  },
+  [],
+);
+
+const membershipFeeTierListItems = useMemo((): MembershipFeeTierListItem[] => {
+  return membershipFeeTierWorkingRows.map((row, i) => {
+    const isBase = membershipFeeTierRowIsBase(row, i, membershipFeeTierWorkingRows);
+    const feeN = parseMembershipFeeHumanNumber(row.membershipFee);
+    const hasFee = Number.isFinite(feeN) && feeN > 0;
+    const feeLocked =
+      Boolean(cardIssuanceExistingCard?.cardAddress) && hasFee;
+    const durationKind = normalizeMembershipDurationKind(row.membershipDurationKind);
+    const durationTu = membershipDurationTuKey(durationKind);
+    return {
+      id: row.id,
+      name: (row.name || '').trim() || (isBase ? 'Base' : 'Higher Membership'),
+      feeLabel: hasFee
+        ? `${cardIssuanceDisplayMoneyPrefix}${String(row.membershipFee).trim()}`
+        : tu('programs_membership_fee_tier_list_fee_unset'),
+      durationLabel: durationTu ? tu(durationTu) : '',
+      isBase,
+      feeLocked,
+      color: normalizeMembershipFeeTierHexColor(row.backgroundColor || '#1562F0'),
+    };
+  });
+}, [
+  membershipFeeTierWorkingRows,
+  membershipFeeTierRowIsBase,
+  cardIssuanceExistingCard?.cardAddress,
+  cardIssuanceDisplayMoneyPrefix,
+  tu,
+]);
+
+const membershipFeeTierListCanAddHigher = useMemo(() => {
   const base =
-    singleRows.find((t) => t.id === CARD_ISSUANCE_SINGLE_TIER_ID) ??
-    singleRows[0] ??
-    cardIssuanceBaseTier;
-  const feeRaw = (base?.membershipFee ?? '').replace(/,/g, '').trim();
-  const feeNum = Number(feeRaw);
-  const feeHuman =
-    feeRaw !== '' && Number.isFinite(feeNum) && feeNum > 0 ? String(base!.membershipFee).trim() : '50';
-  const color = normalizeMembershipFeeTierHexColor(base?.backgroundColor || '#1562F0');
-  const draft: MembershipFeeTierEditorDraft = {
-    name: (base?.name ?? '').trim() || 'Gold VIP Member',
-    backgroundColor: color,
-    discountPercent: (base?.discountPercent ?? '').trim() || '10',
-    membershipFee: feeHuman,
+    membershipFeeTierWorkingRows.find((r) => r.id === CARD_ISSUANCE_SINGLE_TIER_ID) ??
+    membershipFeeTierWorkingRows[0];
+  const feeN = parseMembershipFeeHumanNumber(base?.membershipFee);
+  return Number.isFinite(feeN) && feeN > 0;
+}, [membershipFeeTierWorkingRows]);
+
+const openCardIssuanceMembershipFeeTierList = useCallback(() => {
+  setCardIssuanceMembershipFeeTierListError('');
+  setCardIssuanceMembershipFeePendingNewTier(null);
+  setCardIssuanceMembershipFeeEditingTierId(null);
+  setCardIssuanceMembershipFeeTierEditorOpen(false);
+  setCardIssuanceMembershipFeeTierListOpen(true);
+}, []);
+
+const closeCardIssuanceMembershipFeeTierList = useCallback(() => {
+  if (cardIssuanceMembershipFeeTierEditorPublishing) return;
+  if (cardIssuanceMembershipFeeTierEditorOpen) return;
+  setCardIssuanceMembershipFeeTierListOpen(false);
+  setCardIssuanceMembershipFeeTierListError('');
+  setCardIssuanceMembershipFeePendingNewTier(null);
+  setCardIssuanceMembershipFeeEditingTierId(null);
+}, [
+  cardIssuanceMembershipFeeTierEditorPublishing,
+  cardIssuanceMembershipFeeTierEditorOpen,
+]);
+
+const openCardIssuanceMembershipFeeTierEditor = useCallback(
+  (tierId: string) => {
+    setCardIssuanceMembershipFeeTierEditorServerError('');
+    setCardIssuanceMembershipFeeTierListError('');
+    const rows = membershipFeeTierWorkingRows;
+    const idx = rows.findIndex((r) => r.id === tierId);
+    const row = idx >= 0 ? rows[idx] : null;
+    if (!row) return;
+    const isBase = membershipFeeTierRowIsBase(row, idx, rows);
+    const draft = membershipFeeDraftFromTierRow(row, isBase);
+    setCardIssuanceMembershipFeeEditingTierId(row.id);
+    setMembershipFeeTierEditorDraft(draft);
+    setCardIssuanceMembershipFeeTierEditorBaseline({ ...draft });
+    setCardIssuanceMembershipFeeTierHexDraft(draft.backgroundColor.replace(/^#/, ''));
+    setCardIssuanceMembershipFeeTierEditorOpen(true);
+    setCardIssuanceMembershipFeeTierListOpen(true);
+  },
+  [
+    membershipFeeTierWorkingRows,
+    membershipFeeTierRowIsBase,
+    membershipFeeDraftFromTierRow,
+  ],
+);
+
+const addCardIssuanceMembershipFeeHigherTier = useCallback(() => {
+  if (!membershipFeeTierListCanAddHigher) {
+    setCardIssuanceMembershipFeeTierListError(
+      tu('programs_membership_fee_tier_list_add_requires_base'),
+    );
+    return;
+  }
+  setCardIssuanceMembershipFeeTierListError('');
+  const working = membershipFeeTierWorkingRows;
+  const base =
+    working.find((r) => r.id === CARD_ISSUANCE_SINGLE_TIER_ID) ?? working[0];
+  const baseFee = parseMembershipFeeHumanNumber(base?.membershipFee);
+  let maxFee = Number.isFinite(baseFee) ? baseFee : 0;
+  for (const r of working) {
+    if (r.id === CARD_ISSUANCE_SINGLE_TIER_ID) continue;
+    const f = parseMembershipFeeHumanNumber(r.membershipFee);
+    if (Number.isFinite(f) && f > maxFee) maxFee = f;
+  }
+  const nextFee = Math.max(maxFee + 1, (Number.isFinite(baseFee) ? baseFee : 0) + 1);
+  const higherCount = working.filter((r, i) => !membershipFeeTierRowIsBase(r, i, working)).length;
+  const template = nextCardIssuanceTierTemplate(working, cardIssuanceMinTopup);
+  const newRow = makeCardIssuanceTierRow({
+    ...template,
+    id: createCardIssuanceTierId(),
+    name: (template.name || '').trim() || `Tier ${higherCount + 2}`,
+    membershipFee: String(nextFee),
     membershipDurationKind: normalizeMembershipDurationKind(base?.membershipDurationKind) || 3,
-    emblem: 'crown',
-    welcomeGiftEnabled: false,
-    welcomeGiftAmount: '10',
-  };
+    discountPercent: (template.discountPercent ?? '').trim() || '10',
+    backgroundColor: template.backgroundColor || '#9333ea',
+    threshold: String(Math.max(1, higherCount + 1)),
+  });
+  const draft = membershipFeeDraftFromTierRow(newRow, false);
+  setCardIssuanceMembershipFeePendingNewTier(newRow);
+  setCardIssuanceMembershipFeeEditingTierId(newRow.id);
   setMembershipFeeTierEditorDraft(draft);
   setCardIssuanceMembershipFeeTierEditorBaseline({ ...draft });
-  setCardIssuanceMembershipFeeTierHexDraft(color.replace(/^#/, ''));
+  setCardIssuanceMembershipFeeTierHexDraft(draft.backgroundColor.replace(/^#/, ''));
+  setCardIssuanceMembershipFeeTierEditorServerError('');
   setCardIssuanceMembershipFeeTierEditorOpen(true);
-}, [tiersByLoyaltyRule.single, cardIssuanceBaseTier]);
+  setCardIssuanceMembershipFeeTierListOpen(true);
+}, [
+  membershipFeeTierListCanAddHigher,
+  membershipFeeTierWorkingRows,
+  membershipFeeTierRowIsBase,
+  membershipFeeDraftFromTierRow,
+  cardIssuanceMinTopup,
+  tu,
+]);
 
 useEffect(() => {
   if (!cardIssuanceMembershipFeeTierEditorOpen) {
@@ -20174,10 +20366,33 @@ const discardCardIssuanceMembershipFeeTierEditorChanges = useCallback(() => {
 const closeCardIssuanceMembershipFeeTierEditor = useCallback(() => {
   if (cardIssuanceMembershipFeeTierEditorPublishing) return;
   discardCardIssuanceMembershipFeeTierEditorChanges();
+  const editingId = cardIssuanceMembershipFeeEditingTierId;
+  const pending = cardIssuanceMembershipFeePendingNewTier;
+  if (pending && editingId && pending.id === editingId) {
+    setCardIssuanceMembershipFeePendingNewTier(null);
+  }
+  setCardIssuanceMembershipFeeEditingTierId(null);
   setCardIssuanceMembershipFeeTierEditorOpen(false);
+  setCardIssuanceMembershipFeeTierListOpen(true);
 }, [
   cardIssuanceMembershipFeeTierEditorPublishing,
   discardCardIssuanceMembershipFeeTierEditorChanges,
+  cardIssuanceMembershipFeeEditingTierId,
+  cardIssuanceMembershipFeePendingNewTier,
+]);
+
+const cardIssuanceMembershipFeeEditingIsBase = useMemo(() => {
+  const id = cardIssuanceMembershipFeeEditingTierId;
+  if (!id) return true;
+  if (id === CARD_ISSUANCE_SINGLE_TIER_ID) return true;
+  const rows = membershipFeeTierWorkingRows;
+  const idx = rows.findIndex((r) => r.id === id);
+  if (idx < 0) return false;
+  return membershipFeeTierRowIsBase(rows[idx], idx, rows);
+}, [
+  cardIssuanceMembershipFeeEditingTierId,
+  membershipFeeTierWorkingRows,
+  membershipFeeTierRowIsBase,
 ]);
 
 const cardIssuanceMembershipFeeTierFeeLocked = useMemo(() => {
@@ -20221,7 +20436,7 @@ const cardIssuanceMembershipFeeTierEditorValidationError = useMemo(() => {
     10,
   );
   if (!Number.isFinite(discountN) || discountN < 0 || discountN > 90) {
-    return 'Base discount must be an integer from 0% to 90%.';
+    return 'Discount must be an integer from 0% to 90%.';
   }
   if (draft.welcomeGiftEnabled) {
     const giftN = Number(draft.welcomeGiftAmount.replace(/,/g, '').trim());
@@ -20229,8 +20444,44 @@ const cardIssuanceMembershipFeeTierEditorValidationError = useMemo(() => {
       return 'Welcome store credit gift must be greater than 0 when enabled.';
     }
   }
+
+  const rows = membershipFeeTierWorkingRows;
+  const editingId = cardIssuanceMembershipFeeEditingTierId;
+  const idx = editingId ? rows.findIndex((r) => r.id === editingId) : -1;
+  const isBase =
+    !editingId ||
+    editingId === CARD_ISSUANCE_SINGLE_TIER_ID ||
+    (idx >= 0 && membershipFeeTierRowIsBase(rows[idx], idx, rows));
+
+  if (isBase) {
+    for (let i = 0; i < rows.length; i++) {
+      if (membershipFeeTierRowIsBase(rows[i], i, rows)) continue;
+      const higherFee = parseMembershipFeeHumanNumber(rows[i].membershipFee);
+      if (Number.isFinite(higherFee) && higherFee > 0 && feeN >= higherFee) {
+        return 'Base membership fee must be strictly lower than higher membership tiers.';
+      }
+    }
+  } else if (idx >= 0) {
+    if (idx > 0) {
+      const prevFee = parseMembershipFeeHumanNumber(rows[idx - 1].membershipFee);
+      if (Number.isFinite(prevFee) && feeN <= prevFee) {
+        return 'Membership fee must be strictly higher than the previous tier.';
+      }
+    }
+    if (idx < rows.length - 1) {
+      const nextFee = parseMembershipFeeHumanNumber(rows[idx + 1].membershipFee);
+      if (Number.isFinite(nextFee) && nextFee > 0 && feeN >= nextFee) {
+        return 'Membership fee must be strictly lower than the next higher tier.';
+      }
+    }
+  }
   return '';
-}, [cardIssuanceMembershipFeeTierEditorDraft]);
+}, [
+  cardIssuanceMembershipFeeTierEditorDraft,
+  membershipFeeTierWorkingRows,
+  cardIssuanceMembershipFeeEditingTierId,
+  membershipFeeTierRowIsBase,
+]);
 
 const cardIssuanceMembershipFeeTierEditorCanSave = useMemo(
   () =>
@@ -20250,6 +20501,8 @@ const buildMembershipFeeTierRowsFromEditorDraft = useCallback(
       (tiersByLoyaltyRule.single?.length ? tiersByLoyaltyRule.single : null) ??
       (cardIssuanceTiers.length ? cardIssuanceTiers : defaultCardIssuanceTiers());
     const baseline = cardIssuanceMembershipFeeTierEditorBaseline;
+    const editingId = cardIssuanceMembershipFeeEditingTierId;
+    const pending = cardIssuanceMembershipFeePendingNewTier;
     const feeLocked =
       Boolean(cardIssuanceExistingCard?.cardAddress) &&
       baseline != null &&
@@ -20269,27 +20522,62 @@ const buildMembershipFeeTierRowsFromEditorDraft = useCallback(
     const discountPercent = Number.isFinite(discountN)
       ? String(Math.min(90, Math.max(0, discountN)))
       : '0';
-    let sawBase = false;
-    return source.map((row, i) => {
-      const isBase = row.id === CARD_ISSUANCE_SINGLE_TIER_ID || (!sawBase && i === 0);
-      if (!isBase) return row;
-      sawBase = true;
-      return {
-        ...row,
-        id: CARD_ISSUANCE_SINGLE_TIER_ID,
-        name: draft.name.trim(),
-        backgroundColor: color,
-        discountPercent,
-        membershipFee: feeHuman,
-        membershipDurationKind: durationKind,
-        threshold: '0',
-      };
+    const patchRow = (row: CardIssuanceTierRow): CardIssuanceTierRow => ({
+      ...row,
+      name: draft.name.trim(),
+      backgroundColor: color,
+      discountPercent,
+      membershipFee: feeHuman,
+      membershipDurationKind: durationKind,
     });
+
+    if (pending && editingId === pending.id) {
+      const without = source.filter((r) => r.id !== pending.id);
+      return [...without, patchRow({ ...pending })];
+    }
+
+    let sawMatch = false;
+    const mapped = source.map((row, i) => {
+      const isTarget =
+        (editingId != null && row.id === editingId) ||
+        (editingId == null &&
+          (row.id === CARD_ISSUANCE_SINGLE_TIER_ID ||
+            (i === 0 && !source.some((r) => r.id === CARD_ISSUANCE_SINGLE_TIER_ID))));
+      if (!isTarget) return row;
+      sawMatch = true;
+      const isBase =
+        row.id === CARD_ISSUANCE_SINGLE_TIER_ID ||
+        editingId === CARD_ISSUANCE_SINGLE_TIER_ID ||
+        (editingId == null && i === 0);
+      return patchRow({
+        ...row,
+        id: isBase ? CARD_ISSUANCE_SINGLE_TIER_ID : row.id,
+        threshold: isBase ? '0' : row.threshold,
+      });
+    });
+    if (!sawMatch && editingId) {
+      return [
+        ...mapped,
+        patchRow(
+          makeCardIssuanceTierRow({
+            id: editingId,
+            name: draft.name.trim(),
+            backgroundColor: color,
+            discountPercent,
+            membershipFee: feeHuman,
+            membershipDurationKind: durationKind,
+          }),
+        ),
+      ];
+    }
+    return mapped;
   },
   [
     tiersByLoyaltyRule.single,
     cardIssuanceTiers,
     cardIssuanceMembershipFeeTierEditorBaseline,
+    cardIssuanceMembershipFeeEditingTierId,
+    cardIssuanceMembershipFeePendingNewTier,
     cardIssuanceExistingCard?.cardAddress,
   ],
 );
@@ -22622,8 +22910,12 @@ const submitCardIssuanceMembershipFeeTierEditor = useCallback(async () => {
       ...prev,
       single: nextTiers,
     }));
+    setCardIssuanceMembershipFeePendingNewTier(null);
+    setCardIssuanceMembershipFeeEditingTierId(null);
     setCardIssuanceMembershipFeeTierEditorBaseline({ ...draft });
     setCardIssuanceMembershipFeeTierEditorOpen(false);
+    setCardIssuanceMembershipFeeTierListOpen(true);
+    setCardIssuanceMembershipFeeTierListError('');
     setCardIssuanceOwnerAdminNotice({
       kind: 'ok',
       text: cardIssuanceExistingCard?.cardAddress
@@ -26839,11 +27131,15 @@ const [memberDirectoryUserTypeDb, setMemberDirectoryUserTypeDb] = useState<Recor
 const [mobileFloatingBarOpacity, setMobileFloatingBarOpacity] = useState(1);
 const [cardSetupDiscoverPreviewScale, setCardSetupDiscoverPreviewScale] = useState(1);
 const [cardSetupDiscoverPreviewNaturalHeight, setCardSetupDiscoverPreviewNaturalHeight] = useState(0);
+const [programsOverviewLivePreviewNaturalHeight, setProgramsOverviewLivePreviewNaturalHeight] =
+  useState(0);
 const mobileScrollContainerRef = useRef<HTMLDivElement | null>(null);
 const cardSetupDiscoverPreviewInnerRef = useRef<HTMLDivElement | null>(null);
+const programsOverviewLivePreviewInnerRef = useRef<HTMLDivElement | null>(null);
 const cardSetupDiscoverPreviewScaleRef = useRef(1);
 const cardSetupDiscoverPreviewRafRef = useRef<number | null>(null);
 const cardSetupDiscoverPreviewNaturalHeightRef = useRef(0);
+const programsOverviewLivePreviewNaturalHeightRef = useRef(0);
 
 const syncMobileScrollDerivedUi = useCallback((scrollTop: number) => {
   setMobileFloatingBarOpacity(computeMobileFloatingBarOpacity(scrollTop));
@@ -26961,6 +27257,42 @@ useLayoutEffect(() => {
   cardConfiguratorDiscoverPreviewTitle,
   cardConfiguratorDiscoverPreviewSubtitle,
   cardConfiguratorDiscoverPreviewAssetLabel,
+]);
+
+useLayoutEffect(() => {
+  const el = programsOverviewLivePreviewInnerRef.current;
+  if (!el) {
+    programsOverviewLivePreviewNaturalHeightRef.current = 0;
+    setProgramsOverviewLivePreviewNaturalHeight(0);
+    return;
+  }
+  const measure = () => {
+    const h = el.offsetHeight;
+    if (h <= 0) return;
+    if (Math.abs(h - programsOverviewLivePreviewNaturalHeightRef.current) < 2) return;
+    programsOverviewLivePreviewNaturalHeightRef.current = h;
+    setProgramsOverviewLivePreviewNaturalHeight(h);
+  };
+  measure();
+  if (typeof ResizeObserver === 'undefined') return;
+  const ro = new ResizeObserver(measure);
+  ro.observe(el);
+  return () => ro.disconnect();
+}, [
+  activeTab,
+  cardIssuanceProgramSection,
+  cardIssuanceShowConfiguratorStudio,
+  cardIssuanceExistingCard,
+  cardIssuancePreviewLiveBackgroundImage,
+  cardIssuancePreviewLiveBackgroundImageFit,
+  programsOverviewDisplayName,
+  cardIssuancePreviewLiveTiersName,
+  cardIssuancePreviewLiveDiscountPercent,
+  cardIssuancePreviewLiveThreshold,
+  programsOverviewCardMinTopupDisplay,
+  cardIssuanceTopupPromotionOverviewSummary,
+  cardIssuanceTiers.length,
+  cardIssuancePreviewDisplayNameFontSize,
 ]);
 
  useEffect(() => {
@@ -40273,11 +40605,43 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                          {tu('programs_overview_asset_title')}
                        </h3>
                      </header>
+                     {/*
+                       In-flow height stays at the full (unscaled) preview size so shrink never
+                       rewrites scrollHeight / scrollTop. Sticky chrome height + transform scale
+                       change while pinned (same pattern as Card Setup Discover preview).
+                     */}
                      <div
-                       className={`sticky z-40 w-full bg-transparent px-1 pb-3 sm:px-2 sm:pb-4 ${CARD_CONFIGURATOR_MOBILE_STICKY_BELOW_HEADER_CLASS}`}
+                       className="w-full"
+                       style={
+                         programsOverviewLivePreviewNaturalHeight > 0
+                           ? { height: programsOverviewLivePreviewNaturalHeight }
+                           : undefined
+                       }
                      >
-                       <section aria-label={tu('programs_config_issued_preview_aria')}>
-                         <div className="flex w-full items-stretch justify-start overflow-x-auto px-1 pb-1 scrollbar-hide sm:justify-center">
+                       <div
+                         className={`sticky z-40 w-full overflow-hidden bg-transparent ${CARD_CONFIGURATOR_MOBILE_STICKY_BELOW_HEADER_CLASS}`}
+                         style={
+                           programsOverviewLivePreviewNaturalHeight > 0
+                             ? {
+                                 height: Math.max(
+                                   1,
+                                   programsOverviewLivePreviewNaturalHeight *
+                                     cardSetupDiscoverPreviewScale
+                                 ),
+                               }
+                             : undefined
+                         }
+                       >
+                         <div
+                           ref={programsOverviewLivePreviewInnerRef}
+                           className="px-1 pb-3 will-change-transform sm:px-2 sm:pb-4"
+                           style={{
+                             transform: `scale(${cardSetupDiscoverPreviewScale})`,
+                             transformOrigin: 'top center',
+                           }}
+                         >
+                           <section aria-label={tu('programs_config_issued_preview_aria')}>
+                             <div className="flex w-full items-stretch justify-center overflow-x-auto px-1 pb-1 scrollbar-hide">
                          <div
                            className="relative w-full max-w-[380px] shrink-0 touch-pan-y group/prev sm:max-w-[400px]"
                            onPointerDown={(event) => {
@@ -40458,6 +40822,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                          </div>
                          </div>
                        </section>
+                         </div>
+                       </div>
                      </div>
 
                      <input
@@ -41337,7 +41703,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                          <div className="space-y-2">
                            <button
                              type="button"
-                             onClick={() => openCardIssuanceMembershipFeeTierEditor()}
+                             onClick={() => openCardIssuanceMembershipFeeTierList()}
                              className={`flex w-full items-center justify-between gap-3 rounded-lg bg-[#eeedf3] px-3 py-3 text-left transition hover:bg-[#e9e7ed] ${bizFocusRingClass}`}
                            >
                              <span className="text-[15px] font-medium text-[#1a1b1f]">
@@ -44804,6 +45170,17 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                    </motion.div>
                  </>
                ) : null}
+               <MembershipFeeTierListSheet
+                 open={cardIssuanceMembershipFeeTierListOpen && !cardIssuanceMembershipFeeTierEditorOpen}
+                 items={membershipFeeTierListItems}
+                 listError={cardIssuanceMembershipFeeTierListError}
+                 canAddHigher={membershipFeeTierListCanAddHigher}
+                 focusRingClassName={bizFocusRingClass}
+                 tu={tu}
+                 onClose={closeCardIssuanceMembershipFeeTierList}
+                 onSelectTier={(tierId) => openCardIssuanceMembershipFeeTierEditor(tierId)}
+                 onAddTier={addCardIssuanceMembershipFeeHigherTier}
+               />
                <MembershipFeeTierProgramEditor
                  open={cardIssuanceMembershipFeeTierEditorOpen}
                  draft={cardIssuanceMembershipFeeTierEditorDraft}
@@ -44816,6 +45193,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                  moneyPrefix={cardIssuanceDisplayMoneyPrefix}
                  brandName={programsOverviewDisplayName}
                  brandLogoSrc={programsOverviewShareImage}
+                 isBaseTier={cardIssuanceMembershipFeeEditingIsBase}
                  focusRingClassName={bizFocusRingClass}
                  numericNoSpinnerClass={bizNumericNoSpinnerClass}
                  durationOptions={programsMembershipDurationSelectOptions.map((opt) => ({

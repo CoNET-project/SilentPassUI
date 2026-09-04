@@ -79,6 +79,8 @@ export type MembershipFeeTierProgramEditorProps = {
   brandName: string
   /** Merchant share / program logo — same source as Overview Live Card Preview */
   brandLogoSrc?: string | null
+  /** Base membership (index 0) vs higher Add-tier membership. */
+  isBaseTier?: boolean
   focusRingClassName?: string
   numericNoSpinnerClass?: string
   durationOptions: DurationOption[]
@@ -104,6 +106,7 @@ export function MembershipFeeTierProgramEditor({
   moneyPrefix,
   brandName,
   brandLogoSrc = null,
+  isBaseTier = true,
   focusRingClassName = '',
   numericNoSpinnerClass = '',
   durationOptions,
@@ -140,7 +143,7 @@ export function MembershipFeeTierProgramEditor({
           <motion.button
             type="button"
             aria-label={tu('programs_membership_fee_tier_editor_close_aria')}
-            className="fixed inset-0 z-[90] bg-[#2c2f31]/35 backdrop-blur-[2px]"
+            className="fixed inset-0 z-[92] bg-[#2c2f31]/35 backdrop-blur-[2px]"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -153,7 +156,7 @@ export function MembershipFeeTierProgramEditor({
             role="dialog"
             aria-modal="true"
             aria-labelledby="card-membership-fee-tier-editor-title"
-            className="fixed inset-x-0 bottom-0 z-[91] mx-auto flex max-h-[calc(100dvh-1rem)] w-full max-w-2xl flex-col overflow-hidden rounded-t-[2rem] bg-white shadow-[0_-24px_64px_rgba(0,0,0,0.12)]"
+            className="fixed inset-x-0 bottom-0 z-[93] mx-auto flex max-h-[calc(100dvh-1rem)] w-full max-w-2xl flex-col overflow-hidden rounded-t-[2rem] bg-white shadow-[0_-24px_64px_rgba(0,0,0,0.12)]"
             initial={{ y: '100%' }}
             animate={{ y: 0 }}
             exit={{ y: '100%' }}
@@ -166,15 +169,19 @@ export function MembershipFeeTierProgramEditor({
                   <span className="rounded-full bg-[#0051d1]/10 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-[#0051d1]">
                     {tu('programs_membership_fee_tier_editor_badge')}
                   </span>
-                  <h3
-                    id="card-membership-fee-tier-editor-title"
-                    className="mt-3 font-manrope text-2xl font-extrabold tracking-tight text-[#2c2f31] sm:text-3xl"
-                  >
-                    {tu('programs_membership_fee_tier_editor_title')}
-                  </h3>
-                  <p className="mt-3 max-w-lg text-sm leading-relaxed text-[#595c5e]">
-                    {tu('programs_membership_fee_tier_editor_desc')}
-                  </p>
+                    <h3
+                      id="card-membership-fee-tier-editor-title"
+                      className="mt-3 font-manrope text-2xl font-extrabold tracking-tight text-[#2c2f31] sm:text-3xl"
+                    >
+                      {isBaseTier
+                        ? tu('programs_membership_fee_tier_editor_title')
+                        : tu('programs_membership_fee_tier_editor_title_higher')}
+                    </h3>
+                    <p className="mt-3 max-w-lg text-sm leading-relaxed text-[#595c5e]">
+                      {isBaseTier
+                        ? tu('programs_membership_fee_tier_editor_desc')
+                        : tu('programs_membership_fee_tier_editor_desc_higher')}
+                    </p>
                 </div>
                 <button
                   type="button"

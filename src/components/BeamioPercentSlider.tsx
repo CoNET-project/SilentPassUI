@@ -29,10 +29,20 @@ const ACCENT: Record<
   },
 }
 
-function clampPercentInt(raw: unknown): number {
-  const n = typeof raw === 'number' ? raw : parseInt(String(raw ?? ''), 10)
+/** Clamp to 0–100 with 0.01 resolution. */
+function clampPercentHundredths(raw: unknown): number {
+  const n = typeof raw === 'number' ? raw : Number(String(raw ?? '').trim())
   if (!Number.isFinite(n)) return 0
-  return Math.max(0, Math.min(100, Math.trunc(n)))
+  return Math.max(0, Math.min(100, Math.round(n * 100) / 100))
+}
+
+function formatPercentDisplay(pct: number): string {
+  const hundredths = Math.max(0, Math.min(10_000, Math.round(pct * 100)))
+  const whole = Math.trunc(hundredths / 100)
+  const frac = hundredths % 100
+  if (frac === 0) return String(whole)
+  if (frac % 10 === 0) return `${whole}.${frac / 10}`
+  return `${whole}.${String(frac).padStart(2, '0')}`
 }
 
 export type BeamioPercentSliderProps = {
@@ -53,7 +63,7 @@ export type BeamioPercentSliderProps = {
 }
 
 /**
- * 0–100% integer slider: dark fill left of thumb + focusable percent number input.
+ * 0–100% slider (0.01 steps): dark fill left of thumb + focusable percent number input.
  * @see `.cursor/rules/beamio-percent-slider-protocol.mdc`
  */
 export function BeamioPercentSlider({
@@ -69,14 +79,14 @@ export function BeamioPercentSlider({
   labelClassName = 'min-w-0 font-manrope text-sm font-bold text-[#2c2f31]',
   focusRingClassName = '',
 }: BeamioPercentSliderProps) {
-  const pct = clampPercentInt(value)
+  const pct = clampPercentHundredths(value)
   const theme = ACCENT[accent]
   const numberId = `${id}-value`
   const [draft, setDraft] = useState<string | null>(null)
   const wheelRef = useMemo(() => createNumericInputWheelNonPassiveRefCallback(), [])
 
   const commitDraft = (raw: string) => {
-    const next = clampPercentInt(raw.trim() === '' ? 0 : raw)
+    const next = clampPercentHundredths(raw.trim() === '' ? 0 : raw)
     onChange(next)
     setDraft(null)
   }
@@ -102,16 +112,16 @@ export function BeamioPercentSlider({
             ref={wheelRef}
             id={numberId}
             type="number"
-            inputMode="numeric"
+            inputMode="decimal"
             autoComplete="off"
             enterKeyHint="done"
             min={0}
             max={100}
-            step={1}
+            step={0.01}
             disabled={disabled}
-            value={draft ?? String(pct)}
+            value={draft ?? formatPercentDisplay(pct)}
             aria-label={typeof label === 'string' ? label : 'Percent'}
-            onFocus={() => setDraft(String(pct))}
+            onFocus={() => setDraft(formatPercentDisplay(pct))}
             onChange={(e) => setDraft(e.target.value)}
             onBlur={() => {
               if (draft === null) return
@@ -124,7 +134,7 @@ export function BeamioPercentSlider({
                 ;(e.target as HTMLInputElement).blur()
               }
             }}
-            className={`w-10 bg-transparent text-center font-manrope text-[15px] font-bold tabular-nums outline-none ${theme.valueText} [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield] disabled:cursor-not-allowed disabled:opacity-60 ${focusRingClassName}`}
+            className={`w-14 bg-transparent text-center font-manrope text-[15px] font-bold tabular-nums outline-none ${theme.valueText} [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield] disabled:cursor-not-allowed disabled:opacity-60 ${focusRingClassName}`}
           />
           <span className={`shrink-0 text-[12px] font-bold ${theme.valueText}`} aria-hidden>
             %
@@ -136,16 +146,17 @@ export function BeamioPercentSlider({
         type="range"
         min={0}
         max={100}
-        step={1}
+        step={0.01}
         value={pct}
         disabled={disabled}
         onChange={(e) => {
           setDraft(null)
-          onChange(clampPercentInt(e.target.value))
+          onChange(clampPercentHundredths(e.target.value))
         }}
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={pct}
+        aria-valuetext={`${formatPercentDisplay(pct)}%`}
         aria-label={typeof label === 'string' ? label : 'Percent'}
         style={
           {

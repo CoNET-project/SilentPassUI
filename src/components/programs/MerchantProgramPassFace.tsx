@@ -181,12 +181,14 @@ export function MerchantProgramPassFace({
           <p className="mt-1 text-[10px] font-bold uppercase tracking-wider">{tierName}</p>
         </div>
         <div className="shrink-0 text-right">
-          <div
-            className="text-[10px] font-bold uppercase tracking-wider opacity-80"
-            style={{ color: theme.tertiary }}
-          >
-            {`${startingFromLabel} ${startingFromAmount}`.trim()}
-          </div>
+          {startingFromLabel.trim() || startingFromAmount.trim() ? (
+            <div
+              className="text-[10px] font-bold uppercase tracking-wider opacity-80"
+              style={{ color: theme.tertiary }}
+            >
+              {`${startingFromLabel} ${startingFromAmount}`.trim()}
+            </div>
+          ) : null}
           {footerSummary ? (
             <p
               className="mt-0.5 font-manrope text-base font-bold leading-tight sm:text-lg"

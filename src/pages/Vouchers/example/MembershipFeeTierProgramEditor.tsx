@@ -81,6 +81,11 @@ export type MembershipFeeTierProgramEditorProps = {
   brandLogoSrc?: string | null
   /** Base membership (index 0) vs higher Add-tier membership. */
   isBaseTier?: boolean
+  /**
+   * When false (published charge / top-up base with no membership fee),
+   * hide Unlock Fee + Valid for — those fields do not apply.
+   */
+  showMembershipFeeFields?: boolean
   focusRingClassName?: string
   numericNoSpinnerClass?: string
   durationOptions: DurationOption[]
@@ -107,6 +112,7 @@ export function MembershipFeeTierProgramEditor({
   brandName,
   brandLogoSrc = null,
   isBaseTier = true,
+  showMembershipFeeFields = true,
   focusRingClassName = '',
   numericNoSpinnerClass = '',
   durationOptions,
@@ -128,7 +134,10 @@ export function MembershipFeeTierProgramEditor({
   const passBrandName = brandName.trim() || tu('programs_membership_fee_tier_brand_fallback')
   const passTierName =
     draft.name.trim() || tu('programs_membership_fee_tier_name_placeholder')
-  const startingFromAmount = `${moneyPrefix}${feeDisplay}`
+  const feeNum = Number(feeDisplay)
+  const showStartingFrom =
+    showMembershipFeeFields && Number.isFinite(feeNum) && feeNum > 0
+  const startingFromAmount = showStartingFrom ? `${moneyPrefix}${feeDisplay}` : ''
 
   const applyTheme = (hex: string) => {
     const next = normalizeMembershipFeeTierHexColor(hex)
@@ -221,7 +230,9 @@ export function MembershipFeeTierProgramEditor({
                     discountPercent={discountPercentWhole}
                     upToLabel={tu('programs_overview_up_to')}
                     memberPricingLabel={tu('programs_overview_member_pricing')}
-                    startingFromLabel={tu('programs_overview_starting_from_label')}
+                    startingFromLabel={
+                      showStartingFrom ? tu('programs_overview_starting_from_label') : ''
+                    }
                     startingFromAmount={startingFromAmount}
                     className="shadow-[0_12px_32px_-4px_rgba(21,98,240,0.28),0_4px_12px_-2px_rgba(0,0,0,0.08)]"
                   />
@@ -378,76 +389,92 @@ export function MembershipFeeTierProgramEditor({
                     </div>
                   </div>
 
-                  <div className="space-y-2">
-                    <div className="flex items-center space-x-1">
-                      <label className="text-xs font-bold text-slate-800" htmlFor="mf-tier-unlock-fee">
-                        {tu('programs_membership_fee_tier_unlock_fee_label')}
-                      </label>
-                      {feeLocked ? (
-                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
-                          {tu('programs_membership_fee_tier_locked')}
-                        </span>
-                      ) : null}
-                    </div>
-                    <div
-                      className={`relative rounded-xl border bg-slate-50/50 transition-all ${
-                        feeLocked
-                          ? 'border-slate-200 opacity-80'
-                          : 'border-slate-200 focus-within:border-[#1562f0] focus-within:ring-2 focus-within:ring-[#1562f0]/20'
-                      }`}
-                    >
-                      <div className="flex items-center px-3.5 py-2.5">
-                        <span className="mr-2 text-base font-extrabold text-slate-500">{moneyPrefix}</span>
-                        <input
-                          id="mf-tier-unlock-fee"
-                          ref={feeWheelRef}
-                          type="number"
-                          inputMode="decimal"
-                          step="0.01"
-                          min="0"
-                          value={draft.membershipFee}
-                          disabled={publishing || feeLocked}
-                          onChange={(e) => onDraftChange({ membershipFee: e.target.value })}
-                          onKeyDown={preventNumericInputStepKeys}
-                          onKeyDownCapture={preventNumericInputStepKeys}
-                          onWheel={preventNumericInputWheelStep}
-                          className={`w-full border-0 bg-transparent p-0 text-xl font-black tracking-tight text-slate-900 outline-none focus:ring-0 disabled:cursor-not-allowed ${numericNoSpinnerClass}`}
-                        />
-                        <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-                          {tu('programs_membership_fee_tier_one_time')}
-                        </span>
+                  {showMembershipFeeFields ? (
+                    <>
+                      <div className="space-y-2">
+                        <div className="flex items-center space-x-1">
+                          <label
+                            className="text-xs font-bold text-slate-800"
+                            htmlFor="mf-tier-unlock-fee"
+                          >
+                            {tu('programs_membership_fee_tier_unlock_fee_label')}
+                          </label>
+                          {feeLocked ? (
+                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
+                              {tu('programs_membership_fee_tier_locked')}
+                            </span>
+                          ) : null}
+                        </div>
+                        <div
+                          className={`relative rounded-xl border bg-slate-50/50 transition-all ${
+                            feeLocked
+                              ? 'border-slate-200 opacity-80'
+                              : 'border-slate-200 focus-within:border-[#1562f0] focus-within:ring-2 focus-within:ring-[#1562f0]/20'
+                          }`}
+                        >
+                          <div className="flex items-center px-3.5 py-2.5">
+                            <span className="mr-2 text-base font-extrabold text-slate-500">
+                              {moneyPrefix}
+                            </span>
+                            <input
+                              id="mf-tier-unlock-fee"
+                              ref={feeWheelRef}
+                              type="number"
+                              inputMode="decimal"
+                              step="0.01"
+                              min="0"
+                              value={draft.membershipFee}
+                              disabled={publishing || feeLocked}
+                              onChange={(e) => onDraftChange({ membershipFee: e.target.value })}
+                              onKeyDown={preventNumericInputStepKeys}
+                              onKeyDownCapture={preventNumericInputStepKeys}
+                              onWheel={preventNumericInputWheelStep}
+                              className={`w-full border-0 bg-transparent p-0 text-xl font-black tracking-tight text-slate-900 outline-none focus:ring-0 disabled:cursor-not-allowed ${numericNoSpinnerClass}`}
+                            />
+                            <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                              {tu('programs_membership_fee_tier_one_time')}
+                            </span>
+                          </div>
+                        </div>
+                        <p className="text-[11px] leading-normal text-slate-500">
+                          {tu('programs_membership_fee_tier_unlock_fee_hint')}
+                        </p>
                       </div>
-                    </div>
-                    <p className="text-[11px] leading-normal text-slate-500">
-                      {tu('programs_membership_fee_tier_unlock_fee_hint')}
-                    </p>
-                  </div>
 
-                  <div className="space-y-2 border-t border-slate-100 pt-2">
-                    <label className="text-xs font-bold text-slate-800" htmlFor="mf-tier-valid-for">
-                      {tu('programs_membership_fee_tier_valid_for_label')}
-                    </label>
-                    <select
-                      id="mf-tier-valid-for"
-                      value={draft.membershipDurationKind || 3}
-                      disabled={publishing || feeLocked}
-                      onChange={(e) =>
-                        onDraftChange({ membershipDurationKind: Number(e.target.value) || 3 })
-                      }
-                      className={`h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-semibold text-slate-900 outline-none focus:border-[#1562f0] focus:ring-2 focus:ring-[#1562f0]/20 disabled:cursor-not-allowed disabled:opacity-70 ${focusRingClassName}`}
-                    >
-                      {durationOptions.map((opt) => (
-                        <option key={opt.value} value={opt.value}>
-                          {opt.label}
-                        </option>
-                      ))}
-                    </select>
-                    <p className="text-[11px] text-slate-500">
-                      {tu('programs_membership_fee_tier_valid_for_hint')}
-                    </p>
-                  </div>
+                      <div className="space-y-2 border-t border-slate-100 pt-2">
+                        <label
+                          className="text-xs font-bold text-slate-800"
+                          htmlFor="mf-tier-valid-for"
+                        >
+                          {tu('programs_membership_fee_tier_valid_for_label')}
+                        </label>
+                        <select
+                          id="mf-tier-valid-for"
+                          value={draft.membershipDurationKind || 3}
+                          disabled={publishing || feeLocked}
+                          onChange={(e) =>
+                            onDraftChange({ membershipDurationKind: Number(e.target.value) || 3 })
+                          }
+                          className={`h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-semibold text-slate-900 outline-none focus:border-[#1562f0] focus:ring-2 focus:ring-[#1562f0]/20 disabled:cursor-not-allowed disabled:opacity-70 ${focusRingClassName}`}
+                        >
+                          {durationOptions.map((opt) => (
+                            <option key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </option>
+                          ))}
+                        </select>
+                        <p className="text-[11px] text-slate-500">
+                          {tu('programs_membership_fee_tier_valid_for_hint')}
+                        </p>
+                      </div>
+                    </>
+                  ) : null}
 
-                  <div className="space-y-2 border-t border-slate-100 pt-2">
+                  <div
+                    className={`space-y-2 ${
+                      showMembershipFeeFields ? 'border-t border-slate-100 pt-2' : ''
+                    }`}
+                  >
                     <label className="text-xs font-bold text-slate-800" htmlFor="mf-tier-discount">
                       {tu('programs_membership_fee_tier_discount_label')}
                     </label>

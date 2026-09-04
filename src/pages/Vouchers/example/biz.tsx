@@ -1495,7 +1495,11 @@ type MarketFuelPackage = {
   tagline?: string
   /** Dark gold Genesis Partner treatment. */
   theme?: 'standard' | 'partner' | 'muted'
-  /** Only the Lite fuel cover — not Market refill grids. */
+  /**
+   * When true, pack is omitted from Market Unit Provisioning / Refill unless
+   * `visibleMarketFuelPackages(..., { includeCoverOnly: true })` (Start Kit cover).
+   * Genesis Partner is listed on Market — do not set coverOnly on it.
+   */
   coverOnly?: boolean
 }
 
@@ -1559,7 +1563,6 @@ const MARKET_FUEL_PACKAGES: MarketFuelPackage[] = [
     bonusBps: 2500,
     usdcAmount: '4000',
     theme: 'partner',
-    coverOnly: true,
     tagline: 'Lock in 3+ years of clearing fuel. Stop paying SaaS fees. Start earning.',
   },
   {
@@ -20195,12 +20198,15 @@ const membershipFeeDraftFromTierRow = useCallback(
   (row: CardIssuanceTierRow, isBase: boolean): MembershipFeeTierEditorDraft => {
     const feeRaw = (row.membershipFee ?? '').replace(/,/g, '').trim();
     const feeNum = Number(feeRaw);
+    // Do not invent CA$50 / Month for charge / top-up base tiers with fee 0.
+    // Membership-fee drafts keep a real fee from the row; empty stays empty until the merchant sets it.
     const feeHuman =
       feeRaw !== '' && Number.isFinite(feeNum) && feeNum > 0
         ? String(row.membershipFee).trim()
-        : isBase
-          ? '50'
-          : feeRaw;
+        : feeRaw !== '' && Number.isFinite(feeNum)
+          ? '0'
+          : '';
+    const durationKind = normalizeMembershipDurationKind(row.membershipDurationKind);
     const color = normalizeMembershipFeeTierHexColor(row.backgroundColor || '#1562F0');
     return {
       name:
@@ -20209,7 +20215,7 @@ const membershipFeeDraftFromTierRow = useCallback(
       backgroundColor: color,
       discountPercent: (row.discountPercent ?? '').trim() || (isBase ? '10' : '0'),
       membershipFee: feeHuman,
-      membershipDurationKind: normalizeMembershipDurationKind(row.membershipDurationKind) || 3,
+      membershipDurationKind: durationKind,
       emblem: 'crown',
       welcomeGiftEnabled: false,
       welcomeGiftAmount: '10',
@@ -20284,7 +20290,20 @@ const openCardIssuanceMembershipFeeTierEditor = useCallback(
     const row = idx >= 0 ? rows[idx] : null;
     if (!row) return;
     const isBase = membershipFeeTierRowIsBase(row, idx, rows);
-    const draft = membershipFeeDraftFromTierRow(row, isBase);
+    let draft = membershipFeeDraftFromTierRow(row, isBase);
+    // New unpublished program: seed Unlock Fee defaults only when configuring membership fee.
+    const feeN = Number(String(draft.membershipFee).replace(/,/g, '').trim());
+    const needsMembershipFeeSeed =
+      !cardIssuanceExistingCard?.cardAddress &&
+      isBase &&
+      !(Number.isFinite(feeN) && feeN > 0);
+    if (needsMembershipFeeSeed) {
+      draft = {
+        ...draft,
+        membershipFee: '50',
+        membershipDurationKind: normalizeMembershipDurationKind(draft.membershipDurationKind) || 3,
+      };
+    }
     setCardIssuanceMembershipFeeEditingTierId(row.id);
     setMembershipFeeTierEditorDraft(draft);
     setCardIssuanceMembershipFeeTierEditorBaseline({ ...draft });
@@ -20296,6 +20315,7 @@ const openCardIssuanceMembershipFeeTierEditor = useCallback(
     membershipFeeTierWorkingRows,
     membershipFeeTierRowIsBase,
     membershipFeeDraftFromTierRow,
+    cardIssuanceExistingCard?.cardAddress,
   ],
 );
 
@@ -20421,15 +20441,42 @@ const cardIssuanceMembershipFeeTierEditorDirty = useMemo(() => {
   );
 }, [cardIssuanceMembershipFeeTierEditorBaseline, cardIssuanceMembershipFeeTierEditorDraft]);
 
+/** Unlock Fee / Valid for: hide for published charge/top-up base with no membership fee. */
+const cardIssuanceMembershipFeeTierShowFeeFields = useMemo(() => {
+  if (!cardIssuanceMembershipFeeEditingIsBase) return true;
+  if (cardIssuanceMembershipFeePendingNewTier) return true;
+  if (!cardIssuanceExistingCard?.cardAddress) return true;
+  const draftFee = Number(
+    String(cardIssuanceMembershipFeeTierEditorDraft.membershipFee).replace(/,/g, '').trim(),
+  );
+  const baselineFee = Number(
+    String(cardIssuanceMembershipFeeTierEditorBaseline?.membershipFee ?? '')
+      .replace(/,/g, '')
+      .trim(),
+  );
+  if (Number.isFinite(draftFee) && draftFee > 0) return true;
+  if (Number.isFinite(baselineFee) && baselineFee > 0) return true;
+  return false;
+}, [
+  cardIssuanceMembershipFeeEditingIsBase,
+  cardIssuanceMembershipFeePendingNewTier,
+  cardIssuanceExistingCard?.cardAddress,
+  cardIssuanceMembershipFeeTierEditorDraft.membershipFee,
+  cardIssuanceMembershipFeeTierEditorBaseline?.membershipFee,
+]);
+
 const cardIssuanceMembershipFeeTierEditorValidationError = useMemo(() => {
   const draft = cardIssuanceMembershipFeeTierEditorDraft;
   if (!draft.name.trim()) return 'Tier name is required.';
   const color = normalizeMembershipFeeTierHexColor(draft.backgroundColor, '');
   if (!color || !/^#[0-9A-F]{6}$/i.test(color)) return 'Enter a valid 6-digit hex color.';
   const feeN = Number(draft.membershipFee.replace(/,/g, '').trim());
-  if (!Number.isFinite(feeN) || feeN <= 0) return 'Membership fee must be greater than 0.';
-  if (!normalizeMembershipDurationKind(draft.membershipDurationKind)) {
-    return 'Select a membership duration.';
+  const requireMembershipFee = cardIssuanceMembershipFeeTierShowFeeFields;
+  if (requireMembershipFee) {
+    if (!Number.isFinite(feeN) || feeN <= 0) return 'Membership fee must be greater than 0.';
+    if (!normalizeMembershipDurationKind(draft.membershipDurationKind)) {
+      return 'Select a membership duration.';
+    }
   }
   const discountN = Number.parseInt(
     String(draft.discountPercent).replace(/,/g, '').replace(/\D/g, '').trim(),
@@ -20444,6 +20491,8 @@ const cardIssuanceMembershipFeeTierEditorValidationError = useMemo(() => {
       return 'Welcome store credit gift must be greater than 0 when enabled.';
     }
   }
+
+  if (!requireMembershipFee) return '';
 
   const rows = membershipFeeTierWorkingRows;
   const editingId = cardIssuanceMembershipFeeEditingTierId;
@@ -20478,6 +20527,7 @@ const cardIssuanceMembershipFeeTierEditorValidationError = useMemo(() => {
   return '';
 }, [
   cardIssuanceMembershipFeeTierEditorDraft,
+  cardIssuanceMembershipFeeTierShowFeeFields,
   membershipFeeTierWorkingRows,
   cardIssuanceMembershipFeeEditingTierId,
   membershipFeeTierRowIsBase,
@@ -20510,9 +20560,14 @@ const buildMembershipFeeTierRowsFromEditorDraft = useCallback(
     const feeHuman = feeLocked
       ? baseline!.membershipFee.replace(/,/g, '').trim()
       : draft.membershipFee.replace(/,/g, '').trim();
+    const feeNum = Number(feeHuman.replace(/,/g, '').trim());
+    const hasMembershipFee = Number.isFinite(feeNum) && feeNum > 0;
+    // Charge / top-up base with no Unlock Fee: keep duration 0 (do not invent Month).
     const durationKind = feeLocked
-      ? normalizeMembershipDurationKind(baseline!.membershipDurationKind) || 3
-      : normalizeMembershipDurationKind(draft.membershipDurationKind) || 3;
+      ? normalizeMembershipDurationKind(baseline!.membershipDurationKind) || (hasMembershipFee ? 3 : 0)
+      : hasMembershipFee
+        ? normalizeMembershipDurationKind(draft.membershipDurationKind) || 3
+        : normalizeMembershipDurationKind(draft.membershipDurationKind);
     const color = normalizeMembershipFeeTierHexColor(draft.backgroundColor);
     const discountRaw = String(draft.discountPercent)
       .replace(/,/g, '')
@@ -36571,7 +36626,19 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                    </span>
                  </div>
                  <div className="grid grid-cols-1 gap-6">
-                   {marketFuelPackagesForWallet.map((pkg) => (
+                   {marketFuelPackagesForWallet.map((pkg) =>
+                     pkg.theme === 'partner' ? (
+                       <LiteFuelCoverPackCard
+                         key={pkg.id}
+                         pkg={pkg}
+                         selecting={false}
+                         disabled={false}
+                         onSelect={() => {
+                           setCustomFuelAmount(pkg.usdcAmount);
+                           setSelectedProduct('custom_fuel');
+                         }}
+                       />
+                     ) : (
                      <div
                        key={pkg.id}
                        className={
@@ -36630,7 +36697,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                          Select Plan
                        </button>
                      </div>
-                   ))}
+                     ),
+                   )}
                  </div>
                </section>
 
@@ -36734,7 +36802,20 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                  </div>
 
                  <div className="grid grid-cols-1 items-stretch gap-5 md:grid-cols-2 xl:grid-cols-3">
-                   {marketFuelPackagesForWallet.map((pkg) => (
+                   {marketFuelPackagesForWallet.map((pkg) =>
+                     pkg.theme === 'partner' ? (
+                       <div key={pkg.id} className="md:col-span-2 xl:col-span-3">
+                         <LiteFuelCoverPackCard
+                           pkg={pkg}
+                           selecting={false}
+                           disabled={false}
+                           onSelect={() => {
+                             setCustomFuelAmount(pkg.usdcAmount);
+                             setSelectedProduct('custom_fuel');
+                           }}
+                         />
+                       </div>
+                     ) : (
                      <div
                        key={pkg.id}
                        className={
@@ -36802,7 +36883,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                          Buy {pkg.name}
                        </button>
                      </div>
-                   ))}
+                     ),
+                   )}
                  </div>
                </section>
 
@@ -37972,7 +38054,20 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                  </p>
                </header>
                <section className="mb-10 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-                 {marketFuelPackagesForWallet.map((pkg) => (
+                 {marketFuelPackagesForWallet.map((pkg) =>
+                   pkg.theme === 'partner' ? (
+                     <div key={pkg.id} className="md:col-span-2 xl:col-span-3">
+                       <LiteFuelCoverPackCard
+                         pkg={pkg}
+                         selecting={false}
+                         disabled={false}
+                         onSelect={() => {
+                           setCustomFuelAmount(pkg.usdcAmount);
+                           setSelectedProduct('custom_fuel');
+                         }}
+                       />
+                     </div>
+                   ) : (
                    <div
                      key={pkg.id}
                      className={
@@ -38031,7 +38126,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                        Select {pkg.name}
                      </button>
                    </div>
-                 ))}
+                   ),
+                 )}
                </section>
                <section className="mb-12 grid grid-cols-1 items-center gap-8 rounded-xl bg-[#eef1f3] p-6 md:grid-cols-12 lg:p-8">
                  <div className="relative h-56 md:col-span-5">
@@ -45194,6 +45290,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                  brandName={programsOverviewDisplayName}
                  brandLogoSrc={programsOverviewShareImage}
                  isBaseTier={cardIssuanceMembershipFeeEditingIsBase}
+                 showMembershipFeeFields={cardIssuanceMembershipFeeTierShowFeeFields}
                  focusRingClassName={bizFocusRingClass}
                  numericNoSpinnerClass={bizNumericNoSpinnerClass}
                  durationOptions={programsMembershipDurationSelectOptions.map((opt) => ({

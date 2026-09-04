@@ -16,7 +16,7 @@ import {
 	preventNumericInputWheelStep,
 } from '@/utils/numericInputStepKeys'
 import { socialPromotionEventIcon } from '@/components/programs/socialPromotionEventChrome'
-import { tPrograms } from '@/locale/programsLocale'
+import { useTu } from '@/locale/beamioLocale'
 
 const NUMERIC_SPINNER_CLASS =
 	'[&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]'
@@ -25,7 +25,10 @@ type Props = {
 	draft: SocialPromotionDraft
 	onChange: (next: SocialPromotionDraft) => void
 	disabled?: boolean
-	lang: string
+	/** Shown by the parent editor panel; accepted so the call site type-checks. */
+	validationError?: string
+	/** Kept for call-site compatibility; labels now come from `useTu`. */
+	lang?: string
 }
 
 function RewardPtsRow({
@@ -102,7 +105,8 @@ function RewardPtsRow({
 	)
 }
 
-export function CardSocialPromotionEventsEditor({ draft, onChange, disabled, lang }: Props) {
+export function CardSocialPromotionEventsEditor({ draft, onChange, disabled }: Props) {
+	const { tu } = useTu()
 	const [expandedKey, setExpandedKey] = useState<CardSocialPromotionEventKey | null>('linkClick')
 
 	const patchEvent = useCallback(
@@ -135,8 +139,8 @@ export function CardSocialPromotionEventsEditor({ draft, onChange, disabled, lan
 				const Icon = socialPromotionEventIcon(key)
 				const title = cardSocialPromotionEventLabel(key)
 				const summary = formatSocialPromotionEventCollapsedSummary(ev)
-				const userLabel = tPrograms(lang, 'programs_social_promotion_user_label')
-				const refLabel = tPrograms(lang, 'programs_social_promotion_ref_label')
+				const userLabel = tu('programs_social_promotion_user_label')
+				const refLabel = tu('programs_social_promotion_ref_label')
 
 				return (
 					<div
@@ -209,7 +213,7 @@ export function CardSocialPromotionEventsEditor({ draft, onChange, disabled, lan
 			<div className="flex items-start gap-3 rounded-lg bg-[#f4f3f8] p-4">
 				<Info className="mt-0.5 h-5 w-5 flex-shrink-0 text-[#5d5e63]" aria-hidden />
 				<p className="text-[15px] leading-5 text-[#5d5e63]">
-					{tPrograms(lang, 'programs_social_promotion_bunit_note')}
+					{tu('programs_social_promotion_bunit_note')}
 				</p>
 			</div>
 		</div>

@@ -24,6 +24,8 @@ export type MembershipFeeTierListSheetProps = {
   /** When set, overrides default Membership Fee list chrome (Top-up / Charge cards). */
   listTitle?: string
   listDesc?: string
+  addLabel?: string
+  addDisabledTitle?: string
   focusRingClassName?: string
   tu: (key: string, vars?: Record<string, string | number>) => string
   onClose: () => void
@@ -38,6 +40,8 @@ export function MembershipFeeTierListSheet({
   canAddHigher,
   listTitle,
   listDesc,
+  addLabel,
+  addDisabledTitle,
   focusRingClassName = '',
   tu,
   onClose,
@@ -46,6 +50,7 @@ export function MembershipFeeTierListSheet({
 }: MembershipFeeTierListSheetProps) {
   const resolvedTitle = listTitle ?? tu('programs_membership_fee_tier_list_title')
   const resolvedDesc = listDesc ?? tu('programs_membership_fee_tier_list_desc')
+  const resolvedAddLabel = addLabel ?? tu('programs_membership_fee_tier_list_add')
   return (
     <AnimatePresence>
       {open ? (
@@ -161,12 +166,12 @@ export function MembershipFeeTierListSheet({
                 title={
                   canAddHigher
                     ? undefined
-                    : tu('programs_membership_fee_tier_list_add_requires_base')
+                    : addDisabledTitle ?? tu('programs_membership_fee_tier_list_add_requires_base')
                 }
                 className={`mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-[#c5cad3] bg-white px-3 py-3 text-[15px] font-semibold text-[#0051d1] transition hover:border-[#0051d1]/40 hover:bg-[#0051d1]/5 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:border-[#c5cad3] disabled:hover:bg-white ${focusRingClassName}`}
               >
                 <Plus className="h-5 w-5" strokeWidth={2.25} aria-hidden />
-                {tu('programs_membership_fee_tier_list_add')}
+                {resolvedAddLabel}
               </button>
             </div>
           </motion.div>

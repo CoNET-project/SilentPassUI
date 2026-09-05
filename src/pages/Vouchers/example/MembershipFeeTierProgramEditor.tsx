@@ -81,6 +81,8 @@ export type MembershipFeeTierProgramEditorProps = {
   brandLogoSrc?: string | null
   /** Base membership (index 0) vs higher Add-tier membership. */
   isBaseTier?: boolean
+  /** Render loyalty terminology when editing a non-membership-fee rule. */
+  loyaltyMode?: boolean
   /**
    * When false (published charge / top-up base with no membership fee),
    * hide Unlock Fee + Valid for — those fields do not apply.
@@ -112,6 +114,7 @@ export function MembershipFeeTierProgramEditor({
   brandName,
   brandLogoSrc = null,
   isBaseTier = true,
+  loyaltyMode = false,
   showMembershipFeeFields = true,
   focusRingClassName = '',
   numericNoSpinnerClass = '',
@@ -176,20 +179,30 @@ export function MembershipFeeTierProgramEditor({
               <div className="mb-4 flex items-start justify-between gap-4">
                 <div className="min-w-0">
                   <span className="rounded-full bg-[#0051d1]/10 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-[#0051d1]">
-                    {tu('programs_membership_fee_tier_editor_badge')}
+                    {loyaltyMode
+                      ? tu('programs_loyalty_tier_editor_badge')
+                      : tu('programs_membership_fee_tier_editor_badge')}
                   </span>
                     <h3
                       id="card-membership-fee-tier-editor-title"
                       className="mt-3 font-manrope text-2xl font-extrabold tracking-tight text-[#2c2f31] sm:text-3xl"
                     >
-                      {isBaseTier
-                        ? tu('programs_membership_fee_tier_editor_title')
-                        : tu('programs_membership_fee_tier_editor_title_higher')}
+                      {loyaltyMode
+                        ? isBaseTier
+                          ? tu('programs_loyalty_tier_editor_title')
+                          : tu('programs_loyalty_tier_editor_title_higher')
+                        : isBaseTier
+                          ? tu('programs_membership_fee_tier_editor_title')
+                          : tu('programs_membership_fee_tier_editor_title_higher')}
                     </h3>
                     <p className="mt-3 max-w-lg text-sm leading-relaxed text-[#595c5e]">
-                      {isBaseTier
-                        ? tu('programs_membership_fee_tier_editor_desc')
-                        : tu('programs_membership_fee_tier_editor_desc_higher')}
+                      {loyaltyMode
+                        ? isBaseTier
+                          ? tu('programs_loyalty_tier_editor_desc')
+                          : tu('programs_loyalty_tier_editor_desc_higher')
+                        : isBaseTier
+                          ? tu('programs_membership_fee_tier_editor_desc')
+                          : tu('programs_membership_fee_tier_editor_desc_higher')}
                     </p>
                 </div>
                 <button

@@ -20369,9 +20369,7 @@ useEffect(() => {
 }, [cardIssuanceConsumptionPointEditorOpen]);
 
 const membershipFeeTierWorkingRows = useMemo((): CardIssuanceTierRow[] => {
-  const source =
-    (tiersByLoyaltyRule.single?.length ? tiersByLoyaltyRule.single : null) ??
-    (cardIssuanceTiers.length ? cardIssuanceTiers : defaultCardIssuanceTiers());
+  const source = cardIssuanceTiers.length ? cardIssuanceTiers : defaultCardIssuanceTiers();
   const pending = cardIssuanceMembershipFeePendingNewTier;
   if (!pending) return source;
   const idx = source.findIndex((r) => r.id === pending.id);
@@ -20381,7 +20379,7 @@ const membershipFeeTierWorkingRows = useMemo((): CardIssuanceTierRow[] => {
     return next;
   }
   return [...source, pending];
-}, [tiersByLoyaltyRule.single, cardIssuanceTiers, cardIssuanceMembershipFeePendingNewTier]);
+}, [cardIssuanceTiers, cardIssuanceMembershipFeePendingNewTier]);
 
 const membershipFeeTierRowIsBase = useCallback((row: CardIssuanceTierRow, index: number, rows: CardIssuanceTierRow[]) => {
   if (row.id === CARD_ISSUANCE_SINGLE_TIER_ID) return true;
@@ -20432,8 +20430,8 @@ const membershipFeeTierListItems = useMemo((): MembershipFeeTierListItem[] => {
       name: (row.name || '').trim() || (isBase ? 'Base' : 'Higher Membership'),
       feeLabel: hasFee
         ? `${cardIssuanceDisplayMoneyPrefix}${String(row.membershipFee).trim()}`
-        : tu('programs_membership_fee_tier_list_fee_unset'),
-      durationLabel: durationTu ? tu(durationTu) : '',
+        : `${tu(getCardIssuanceTierThresholdLabel()[programsOverviewTierRuleKey])}: ${row.threshold || '0'} · ${tu('programs_membership_fee_tier_discount_off', { percent: row.discountPercent || '0' })}`,
+      durationLabel: cardIssuanceMembershipFeeMode && durationTu ? tu(durationTu) : '',
       isBase,
       feeLocked,
       color: normalizeMembershipFeeTierHexColor(row.backgroundColor || '#1562F0'),
@@ -20444,16 +20442,18 @@ const membershipFeeTierListItems = useMemo((): MembershipFeeTierListItem[] => {
   membershipFeeTierRowIsBase,
   cardIssuanceExistingCard?.cardAddress,
   cardIssuanceDisplayMoneyPrefix,
+  programsOverviewTierRuleKey,
   tu,
 ]);
 
 const membershipFeeTierListCanAddHigher = useMemo(() => {
+  if (!cardIssuanceMembershipFeeMode) return true;
   const base =
     membershipFeeTierWorkingRows.find((r) => r.id === CARD_ISSUANCE_SINGLE_TIER_ID) ??
     membershipFeeTierWorkingRows[0];
   const feeN = parseMembershipFeeHumanNumber(base?.membershipFee);
   return Number.isFinite(feeN) && feeN > 0;
-}, [membershipFeeTierWorkingRows]);
+}, [cardIssuanceMembershipFeeMode, membershipFeeTierWorkingRows]);
 
 const openCardIssuanceMembershipFeeTierList = useCallback(() => {
   setCardIssuanceMembershipFeeTierListError('');
@@ -20488,6 +20488,7 @@ const openCardIssuanceMembershipFeeTierEditor = useCallback(
     // New unpublished program: seed Unlock Fee defaults only when configuring membership fee.
     const feeN = Number(String(draft.membershipFee).replace(/,/g, '').trim());
     const needsMembershipFeeSeed =
+      cardIssuanceMembershipFeeMode &&
       !cardIssuanceExistingCard?.cardAddress &&
       isBase &&
       !(Number.isFinite(feeN) && feeN > 0);
@@ -20510,11 +20511,13 @@ const openCardIssuanceMembershipFeeTierEditor = useCallback(
     membershipFeeTierRowIsBase,
     membershipFeeDraftFromTierRow,
     cardIssuanceExistingCard?.cardAddress,
+    cardIssuanceMembershipFeeMode,
   ],
 );
 
 const addCardIssuanceMembershipFeeHigherTier = useCallback(() => {
-  if (!membershipFeeTierListCanAddHigher) {
+  const isMembershipFeeMode = cardIssuanceMembershipFeeMode;
+  if (isMembershipFeeMode && !membershipFeeTierListCanAddHigher) {
     setCardIssuanceMembershipFeeTierListError(
       tu('programs_membership_fee_tier_list_add_requires_base'),
     );
@@ -20531,18 +20534,21 @@ const addCardIssuanceMembershipFeeHigherTier = useCallback(() => {
     const f = parseMembershipFeeHumanNumber(r.membershipFee);
     if (Number.isFinite(f) && f > maxFee) maxFee = f;
   }
-  const nextFee = Math.max(maxFee + 1, (Number.isFinite(baseFee) ? baseFee : 0) + 1);
   const higherCount = working.filter((r, i) => !membershipFeeTierRowIsBase(r, i, working)).length;
   const template = nextCardIssuanceTierTemplate(working, cardIssuanceMinTopup);
   const newRow = makeCardIssuanceTierRow({
     ...template,
     id: createCardIssuanceTierId(),
     name: (template.name || '').trim() || `Tier ${higherCount + 2}`,
-    membershipFee: String(nextFee),
-    membershipDurationKind: normalizeMembershipDurationKind(base?.membershipDurationKind) || 3,
+    membershipFee: isMembershipFeeMode ? String(Math.max(maxFee + 1, (Number.isFinite(baseFee) ? baseFee : 0) + 1)) : '',
+    membershipDurationKind: isMembershipFeeMode
+      ? normalizeMembershipDurationKind(base?.membershipDurationKind) || 3
+      : 0,
     discountPercent: (template.discountPercent ?? '').trim() || '10',
     backgroundColor: template.backgroundColor || '#9333ea',
-    threshold: String(Math.max(1, higherCount + 1)),
+    threshold: isMembershipFeeMode
+      ? String(Math.max(1, higherCount + 1))
+      : template.threshold,
   });
   const draft = membershipFeeDraftFromTierRow(newRow, false);
   setCardIssuanceMembershipFeePendingNewTier(newRow);
@@ -20555,6 +20561,7 @@ const addCardIssuanceMembershipFeeHigherTier = useCallback(() => {
   setCardIssuanceMembershipFeeTierListOpen(true);
 }, [
   membershipFeeTierListCanAddHigher,
+  cardIssuanceMembershipFeeMode,
   membershipFeeTierWorkingRows,
   membershipFeeTierRowIsBase,
   membershipFeeDraftFromTierRow,
@@ -20637,9 +20644,9 @@ const cardIssuanceMembershipFeeTierEditorDirty = useMemo(() => {
 
 /** Unlock Fee / Valid for: hide for published charge/top-up base with no membership fee. */
 const cardIssuanceMembershipFeeTierShowFeeFields = useMemo(() => {
-  if (!cardIssuanceMembershipFeeEditingIsBase) return true;
-  if (cardIssuanceMembershipFeePendingNewTier) return true;
-  if (!cardIssuanceExistingCard?.cardAddress) return true;
+  if (cardIssuanceMembershipFeeMode || cardIssuanceRewardsMembershipFeeEnabled) return true;
+  if (!cardIssuanceMembershipFeeEditingIsBase) return false;
+  if (!cardIssuanceExistingCard?.cardAddress) return cardIssuanceRewardsMembershipFeeEnabled;
   const draftFee = Number(
     String(cardIssuanceMembershipFeeTierEditorDraft.membershipFee).replace(/,/g, '').trim(),
   );
@@ -20653,6 +20660,8 @@ const cardIssuanceMembershipFeeTierShowFeeFields = useMemo(() => {
   return false;
 }, [
   cardIssuanceMembershipFeeEditingIsBase,
+  cardIssuanceMembershipFeeMode,
+  cardIssuanceRewardsMembershipFeeEnabled,
   cardIssuanceMembershipFeePendingNewTier,
   cardIssuanceExistingCard?.cardAddress,
   cardIssuanceMembershipFeeTierEditorDraft.membershipFee,
@@ -20741,9 +20750,7 @@ const cardIssuanceMembershipFeeTierEditorCanSave = useMemo(
 
 const buildMembershipFeeTierRowsFromEditorDraft = useCallback(
   (draft: MembershipFeeTierEditorDraft): CardIssuanceTierRow[] => {
-    const source =
-      (tiersByLoyaltyRule.single?.length ? tiersByLoyaltyRule.single : null) ??
-      (cardIssuanceTiers.length ? cardIssuanceTiers : defaultCardIssuanceTiers());
+    const source = cardIssuanceTiers.length ? cardIssuanceTiers : defaultCardIssuanceTiers();
     const baseline = cardIssuanceMembershipFeeTierEditorBaseline;
     const editingId = cardIssuanceMembershipFeeEditingTierId;
     const pending = cardIssuanceMembershipFeePendingNewTier;
@@ -23116,6 +23123,9 @@ const submitCardIssuanceMembershipFeeTierEditor = useCallback(async () => {
   if (cardIssuanceMembershipFeeTierEditorPublishing) return;
   const draft = cardIssuanceMembershipFeeTierEditorDraft;
   const nextTiers = buildMembershipFeeTierRowsFromEditorDraft(draft);
+  const isMembershipFeeMode =
+    cardIssuanceMembershipFeeMode || cardIssuanceRewardsMembershipFeeEnabled;
+  const selectedTierRule = isMembershipFeeMode ? 'single' : programsOverviewTierRuleKey;
   const minTopup = CARD_ISSUANCE_REWARDS_SETUP_AMOUNT_DEFAULT;
   setCardIssuanceMembershipFeeTierEditorServerError('');
   setCardIssuanceCreateError('');
@@ -23124,15 +23134,16 @@ const submitCardIssuanceMembershipFeeTierEditor = useCallback(async () => {
     if (cardIssuanceExistingCard?.cardAddress) {
       const ok = await handlePublishCardIssuanceRef.current({
         tiersOverride: nextTiers,
-        minTopupOverride: minTopup,
-        maxTopupOverride: minTopup,
+        ...(isMembershipFeeMode
+          ? { minTopupOverride: minTopup, maxTopupOverride: minTopup }
+          : {}),
         loadingScope: 'bonusEditor',
         skipOnChainRefresh: true,
         metadataOnly: true,
         publishErrorSink: setCardIssuanceMembershipFeeTierEditorServerError,
       });
       if (!ok) return;
-      const loyaltyFlags = cardIssuanceLoyaltyUpgradeFlags(true, 'single');
+      const loyaltyFlags = cardIssuanceLoyaltyUpgradeFlags(isMembershipFeeMode, selectedTierRule);
       const tiersPayload = buildCardIssuanceTiersPayloadFromRows(nextTiers, loyaltyFlags);
       setCardIssuanceExistingCard((prev) => {
         if (!prev?.meta) return prev;
@@ -23147,17 +23158,19 @@ const submitCardIssuanceMembershipFeeTierEditor = useCallback(async () => {
       invalidateBeamioCardMetadataCache(cardIssuanceExistingCard.cardAddress);
     }
     setCardIssuanceRewardsPreset('custom');
-    setCardIssuanceRewardsMembershipFeeEnabled(true);
-    setCardIssuanceRewardsSetupAmount(
-      nextTiers.find((t) => t.id === CARD_ISSUANCE_SINGLE_TIER_ID)?.membershipFee ??
-        draft.membershipFee,
-    );
-    setCardIssuanceTierRule('single');
-    setCardIssuanceMinTopup(minTopup);
-    setCardIssuanceMaxTopup(minTopup);
+    setCardIssuanceRewardsMembershipFeeEnabled(isMembershipFeeMode);
+    if (isMembershipFeeMode) {
+      setCardIssuanceRewardsSetupAmount(
+        nextTiers.find((t) => t.id === CARD_ISSUANCE_SINGLE_TIER_ID)?.membershipFee ??
+          draft.membershipFee,
+      );
+      setCardIssuanceMinTopup(minTopup);
+      setCardIssuanceMaxTopup(minTopup);
+    }
+    setCardIssuanceTierRule(selectedTierRule);
     setTiersByLoyaltyRule((prev) => ({
       ...prev,
-      single: nextTiers,
+      [selectedTierRule]: nextTiers,
     }));
     setCardIssuanceMembershipFeePendingNewTier(null);
     setCardIssuanceMembershipFeeEditingTierId(null);
@@ -23168,8 +23181,12 @@ const submitCardIssuanceMembershipFeeTierEditor = useCallback(async () => {
     setCardIssuanceOwnerAdminNotice({
       kind: 'ok',
       text: cardIssuanceExistingCard?.cardAddress
-        ? 'Membership Fee tier saved.'
-        : 'Membership Fee tier saved to card setup. Publish the card when you are ready.',
+        ? isMembershipFeeMode
+          ? 'Membership Fee tier saved.'
+          : 'Loyalty tier saved.'
+        : isMembershipFeeMode
+          ? 'Membership Fee tier saved to card setup. Publish the card when you are ready.'
+          : 'Loyalty tier saved to card setup. Publish the card when you are ready.',
     });
   } catch {
     setCardIssuanceMembershipFeeTierEditorServerError(
@@ -23183,8 +23200,12 @@ const submitCardIssuanceMembershipFeeTierEditor = useCallback(async () => {
   cardIssuanceMembershipFeeTierEditorPublishing,
   cardIssuanceMembershipFeeTierEditorDraft,
   buildMembershipFeeTierRowsFromEditorDraft,
+  cardIssuanceMembershipFeeMode,
+  cardIssuanceRewardsMembershipFeeEnabled,
+  programsOverviewTierRuleKey,
   cardIssuanceExistingCard?.cardAddress,
   buildCardIssuanceTiersPayloadFromRows,
+  cardIssuanceLoyaltyUpgradeFlags,
 ]);
 
 const submitCardIssuanceTopupPromotionEditor = useCallback(async () => {
@@ -45596,6 +45617,11 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                  canAddHigher={membershipFeeTierListCanAddHigher}
                  listTitle={programsLoyaltyLogicTierListTitle}
                  listDesc={programsLoyaltyLogicTierListDesc}
+                 addLabel={
+                   cardIssuanceMembershipFeeMode
+                     ? undefined
+                     : tu('programs_loyalty_tier_list_add')
+                 }
                  focusRingClassName={bizFocusRingClass}
                  tu={tu}
                  onClose={closeCardIssuanceMembershipFeeTierList}
@@ -45615,6 +45641,10 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                  brandName={programsOverviewDisplayName}
                  brandLogoSrc={programsOverviewShareImage}
                  isBaseTier={cardIssuanceMembershipFeeEditingIsBase}
+                 loyaltyMode={
+                   !cardIssuanceMembershipFeeMode &&
+                   !cardIssuanceRewardsMembershipFeeEnabled
+                 }
                  showMembershipFeeFields={cardIssuanceMembershipFeeTierShowFeeFields}
                  focusRingClassName={bizFocusRingClass}
                  numericNoSpinnerClass={bizNumericNoSpinnerClass}

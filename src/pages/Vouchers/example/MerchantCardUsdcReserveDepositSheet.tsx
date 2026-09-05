@@ -72,6 +72,32 @@ function formatAmount6Input(amount6: bigint): string {
 	return s.replace(/(\.\d*?[1-9])0+$/, '$1').replace(/\.0+$/, '')
 }
 
+/** Daemon `usdcReserve` / `reserveDifference` are 6-decimal integer strings. Missing ≠ 0. */
+function parseReserveUsdcE6(raw: string | null | undefined): bigint | null {
+	if (raw == null || raw === '') return null
+	try {
+		return BigInt(String(raw).trim())
+	} catch {
+		return null
+	}
+}
+
+function formatReserveUsdcE6(raw: string | null | undefined): string | null {
+	const n = parseReserveUsdcE6(raw)
+	if (n == null) return null
+	const abs = Number(n < 0n ? -n : n) / 1_000_000
+	if (!Number.isFinite(abs)) return null
+	const body = abs.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+	return n < 0n ? `-$${body}` : `$${body}`
+}
+
+function isNegativeReserveDifference(raw: string | null | undefined): boolean {
+	const n = parseReserveUsdcE6(raw)
+	return n != null && n < 0n
+}
+
+const AMOUNT_CHIPS = [10, 25, 50, 100] as const
+
 export type MerchantCardUsdcReserveDepositSheetProps = {
 	open: boolean
 	onClose: () => void
@@ -82,6 +108,10 @@ export type MerchantCardUsdcReserveDepositSheetProps = {
 	eoaBaseUsdcBalance?: string | null
 	/** CONET-USDC on merchant EOA (trusted string); null = unknown. */
 	eoaConetUsdcBalance?: string | null
+	/** Trusted 6-decimal integer from Daemon `usdcReserve`. Missing ≠ 0. */
+	usdcReserve?: string | null
+	/** Trusted 6-decimal integer: pool − #13 quote. Negative = cannot cover minted Reward PT. */
+	reserveDifference?: string | null
 	uiLocale?: FuelPackUsdcTopupUiLocale
 	bizFocusRingClass?: string
 	/** After the #13 redeem pool (Reserve) increases. */
@@ -95,6 +125,8 @@ export function MerchantCardUsdcReserveDepositSheet({
 	merchantEoa = null,
 	eoaBaseUsdcBalance = null,
 	eoaConetUsdcBalance = null,
+	usdcReserve = null,
+	reserveDifference = null,
 	uiLocale = 'en',
 	bizFocusRingClass = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0051d1]/35',
 	onArrived,
@@ -102,6 +134,7 @@ export function MerchantCardUsdcReserveDepositSheet({
 	const [isEntered, setIsEntered] = useState(false)
 	const [isClosing, setIsClosing] = useState(false)
 	const [amountInput, setAmountInput] = useState('')
+	const [lastChip, setLastChip] = useState<string | null>(null)
 	const [source, setSource] = useState<MerchantCardUsdcReserveDepositSource>('third_party')
 	const [phase, setPhase] = useState<'idle' | 'submitting' | 'listening' | 'success'>('idle')
 	const [listenKind, setListenKind] = useState<'idle' | 'eoa' | 'funding' | 'escrow'>('idle')
@@ -174,6 +207,7 @@ export function MerchantCardUsdcReserveDepositSheet({
 	useEffect(() => {
 		if (!open) return
 		setAmountInput('')
+		setLastChip(null)
 		setError(null)
 		setPhase('idle')
 		setListenKind('idle')
@@ -203,14 +237,56 @@ export function MerchantCardUsdcReserveDepositSheet({
 		}, SHEET_MS)
 	}, [isClosing, onClose, phase])
 
+	const reserveDisplay = formatReserveUsdcE6(usdcReserve)
+	const reserveLow = isNegativeReserveDifference(reserveDifference)
+	const reserveShortfallDisplay = useMemo(() => {
+		const n = parseReserveUsdcE6(reserveDifference)
+		if (n == null || n >= 0n) return null
+		return formatReserveUsdcE6((-n).toString())
+	}, [reserveDifference])
+	const projectedReserveDisplay = useMemo(() => {
+		const cur = parseReserveUsdcE6(usdcReserve)
+		if (cur == null || amount6 == null) return null
+		return formatReserveUsdcE6((cur + amount6).toString())
+	}, [usdcReserve, amount6])
+	const amountTokenLabel =
+		source === 'eoa_conet_usdc' ? 'CONET-USDC' : source === 'eoa_base_usdc' ? 'Base USDC' : 'USDC'
+	const gasLineLabel =
+		source === 'eoa_conet_usdc'
+			? 'Sponsored CNET gas'
+			: source === 'eoa_base_usdc'
+				? 'Sponsored Base + CNET gas'
+				: 'Checkout on Base; mint + fund sponsored'
+	const depositAmountDisplay =
+		amount6 != null
+			? `$${Number(ethers.formatUnits(amount6, 6)).toLocaleString('en-US', {
+					minimumFractionDigits: 2,
+					maximumFractionDigits: 2,
+				})}`
+			: '—'
+
+	const addAmountChip = useCallback(
+		(delta: number) => {
+			const add = parseUsdcHumanToAmount6(String(delta))
+			if (add == null) return
+			const current = parseUsdcHumanToAmount6(amountInput) ?? 0n
+			setAmountInput(formatAmount6Input(current + add))
+			setLastChip(String(delta))
+			setError(null)
+		},
+		[amountInput],
+	)
+
 	const setMaxFromBalance = useCallback(() => {
 		if (source === 'eoa_conet_usdc' && eoaConetBal6 != null && eoaConetBal6 > 0n) {
 			setAmountInput(formatAmount6Input(eoaConetBal6))
+			setLastChip('max')
 			setError(null)
 			return
 		}
 		if (source === 'eoa_base_usdc' && eoaBaseBal6 != null && eoaBaseBal6 > 0n) {
 			setAmountInput(formatAmount6Input(eoaBaseBal6))
+			setLastChip('max')
 			setError(null)
 		}
 	}, [source, eoaConetBal6, eoaBaseBal6])
@@ -450,10 +526,37 @@ export function MerchantCardUsdcReserveDepositSheet({
 						</div>
 					) : (
 						<>
-							<p className="text-sm leading-relaxed text-slate-600">
-								Add CONET-USDC to this program card&apos;s #13 redeem pool (USDC Reserve). A transfer to
-								the card address does not raise Reserve. Choose a source below.
-							</p>
+							<section className="relative overflow-hidden rounded-2xl border border-slate-200/90 bg-white p-4 shadow-sm">
+								<div className="relative z-10 flex items-start justify-between gap-3">
+									<div className="min-w-0">
+										<span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+											#13 redeem pool
+										</span>
+										<h3 className="mt-0.5 text-base font-bold tracking-tight text-slate-900">
+											Add funds to USDC Reserve
+										</h3>
+									</div>
+									{reserveLow ? (
+										<span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-amber-200/90 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
+											<AlertTriangle className="h-2.5 w-2.5" aria-hidden />
+											<span>
+												Low Reserve
+												{reserveShortfallDisplay ? ` (${reserveShortfallDisplay} short)` : ''}
+											</span>
+										</span>
+									) : null}
+								</div>
+								<p className="mt-2 text-xs leading-relaxed text-slate-500">
+									Add CONET-USDC to this program card&apos;s #13 redeem pool. A transfer to the card
+									address does not raise Reserve.
+								</p>
+								<div className="mt-3.5 flex items-center justify-between border-t border-slate-100 pt-3 text-xs">
+									<span className="font-medium text-slate-500">Current Reserve</span>
+									<span className="text-sm font-bold tracking-tight text-slate-800 tabular-nums">
+										{reserveDisplay ?? 'Not available'}
+									</span>
+								</div>
+							</section>
 
 							{cardOk ? (
 								<div className="mt-4">
@@ -496,10 +599,9 @@ export function MerchantCardUsdcReserveDepositSheet({
 								</div>
 							) : null}
 
-							{/* Source picker */}
 							<div className="mt-5 space-y-2">
-								<p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-									Deposit from
+								<p className="px-1 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+									Deposit source
 								</p>
 								{showEoaConet ? (
 									<button
@@ -507,26 +609,41 @@ export function MerchantCardUsdcReserveDepositSheet({
 										disabled={busy}
 										onClick={() => {
 											setSource('eoa_conet_usdc')
+											setLastChip(null)
 											setError(null)
 										}}
-										className={`flex w-full items-start gap-3 rounded-2xl border px-3.5 py-3 text-left transition ${
+										className={`flex w-full items-center justify-between gap-3 rounded-2xl border p-3.5 text-left transition ${
 											source === 'eoa_conet_usdc'
-												? 'border-[#0051d1] bg-[#e9edff] ring-1 ring-[#0051d1]/30'
-												: 'border-slate-200 bg-white hover:border-slate-300'
+												? 'border-2 border-[#0051d1] bg-white shadow-sm'
+												: 'border border-slate-200 bg-white/80 hover:bg-white'
 										} ${bizFocusRingClass}`}
 									>
-										<span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#e9edff] text-[#0051d1]">
-											<Wallet className="h-4 w-4" strokeWidth={2.25} aria-hidden />
-										</span>
-										<span className="min-w-0 flex-1">
-											<span className="block text-sm font-semibold text-[#0f172a]">
-												EOA · CONET-USDC
+										<span className="flex min-w-0 items-center gap-3">
+											<span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#dce2f7] bg-[#e9edff] text-[#0051d1]">
+												<Wallet className="h-4 w-4" strokeWidth={2.25} aria-hidden />
 											</span>
-											<span className="mt-0.5 block text-xs text-slate-500">
-												Sign and fund #13 redeem pool · available $
-												{formatUsdcBalanceLabel(eoaConetUsdcBalance)}
+											<span className="min-w-0">
+												<span className="flex items-center gap-2">
+													<span className="text-sm font-semibold text-slate-900">EOA · CONET-USDC</span>
+													<span className="rounded bg-[#e9edff] px-1.5 text-[10px] font-bold text-[#0051d1]">
+														PRIMARY
+													</span>
+												</span>
+												<span className="mt-0.5 block text-xs text-slate-500">
+													Available:{' '}
+													<span className="font-semibold text-slate-700">
+														${formatUsdcBalanceLabel(eoaConetUsdcBalance)} CONET-USDC
+													</span>
+												</span>
 											</span>
 										</span>
+										{source === 'eoa_conet_usdc' ? (
+											<span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#0051d1] text-white">
+												<Check className="h-3 w-3" strokeWidth={2.5} aria-hidden />
+											</span>
+										) : (
+											<span className="h-5 w-5 shrink-0 rounded-full border-2 border-slate-300" />
+										)}
 									</button>
 								) : null}
 								{showEoaBase ? (
@@ -535,26 +652,34 @@ export function MerchantCardUsdcReserveDepositSheet({
 										disabled={busy}
 										onClick={() => {
 											setSource('eoa_base_usdc')
+											setLastChip(null)
 											setError(null)
 										}}
-										className={`flex w-full items-start gap-3 rounded-2xl border px-3.5 py-3 text-left transition ${
+										className={`flex w-full items-center justify-between gap-3 rounded-2xl border p-3.5 text-left transition ${
 											source === 'eoa_base_usdc'
-												? 'border-[#0051d1] bg-[#e9edff] ring-1 ring-[#0051d1]/30'
-												: 'border-slate-200 bg-white hover:border-slate-300'
+												? 'border-2 border-[#0051d1] bg-white shadow-sm'
+												: 'border border-slate-200 bg-white/80 hover:bg-white'
 										} ${bizFocusRingClass}`}
 									>
-										<span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#e9edff] text-[#0051d1]">
-											<Wallet className="h-4 w-4" strokeWidth={2.25} aria-hidden />
-										</span>
-										<span className="min-w-0 flex-1">
-											<span className="block text-sm font-semibold text-[#0f172a]">
-												EOA · Base USDC
+										<span className="flex min-w-0 items-center gap-3">
+											<span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#dce2f7] bg-[#e9edff] text-[#0051d1]">
+												<Wallet className="h-4 w-4" strokeWidth={2.25} aria-hidden />
 											</span>
-											<span className="mt-0.5 block text-xs text-slate-500">
-												LockMint to your EOA, then fund Reserve · available $
-												{formatUsdcBalanceLabel(eoaBaseUsdcBalance)}
+											<span className="min-w-0">
+												<span className="text-sm font-semibold text-slate-900">EOA · Base USDC</span>
+												<span className="mt-0.5 block text-xs text-slate-500">
+													LockMint to your EOA, then fund Reserve · available $
+													{formatUsdcBalanceLabel(eoaBaseUsdcBalance)}
+												</span>
 											</span>
 										</span>
+										{source === 'eoa_base_usdc' ? (
+											<span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#0051d1] text-white">
+												<Check className="h-3 w-3" strokeWidth={2.5} aria-hidden />
+											</span>
+										) : (
+											<span className="h-5 w-5 shrink-0 rounded-full border-2 border-slate-300" />
+										)}
 									</button>
 								) : null}
 								<button
@@ -562,74 +687,118 @@ export function MerchantCardUsdcReserveDepositSheet({
 									disabled={busy}
 									onClick={() => {
 										setSource('third_party')
+										setLastChip(null)
 										setError(null)
 									}}
-									className={`flex w-full items-start gap-3 rounded-2xl border px-3.5 py-3 text-left transition ${
+									className={`flex w-full items-center justify-between gap-3 rounded-2xl border p-3.5 text-left transition ${
 										source === 'third_party'
-											? 'border-[#0051d1] bg-[#e9edff] ring-1 ring-[#0051d1]/30'
-											: 'border-slate-200 bg-white hover:border-slate-300'
+											? 'border-2 border-[#0051d1] bg-white shadow-sm'
+											: 'border border-slate-200 bg-white/80 hover:bg-white'
 									} ${bizFocusRingClass}`}
 								>
-									<span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600">
-										<ArrowDownToLine className="h-4 w-4" strokeWidth={2.25} aria-hidden />
-									</span>
-									<span className="min-w-0 flex-1">
-										<span className="block text-sm font-semibold text-[#0f172a]">
-											Third-party wallet
+									<span className="flex min-w-0 items-center gap-3">
+										<span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-500">
+											<ArrowDownToLine className="h-4 w-4" strokeWidth={2.25} aria-hidden />
 										</span>
-										<span className="mt-0.5 block text-xs text-slate-500">
-											Pay with Base USDC; mint to your EOA, then fund Reserve.
+										<span className="min-w-0">
+											<span className="text-sm font-medium text-slate-800">Third-party wallet</span>
+											<span className="mt-0.5 block text-xs text-slate-400">
+												Pay with Base USDC; mint to your EOA, then fund Reserve.
+											</span>
 										</span>
 									</span>
+									{source === 'third_party' ? (
+										<span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#0051d1] text-white">
+											<Check className="h-3 w-3" strokeWidth={2.5} aria-hidden />
+										</span>
+									) : (
+										<span className="h-5 w-5 shrink-0 rounded-full border-2 border-slate-300" />
+									)}
 								</button>
 							</div>
 
-							<label
-								htmlFor="merchant-card-usdc-reserve-deposit-amount"
-								className="mt-5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500"
-							>
-								Amount (USDC)
-							</label>
-							<div className="mt-1.5 flex items-center gap-2">
-								<input
-									ref={amountInputWheelRef}
-									id="merchant-card-usdc-reserve-deposit-amount"
-									type="number"
-									inputMode="decimal"
-									autoComplete="off"
-									enterKeyHint="done"
-									min={0}
-									step="any"
-									disabled={busy || !cardOk}
-									value={amountInput}
-									onChange={(e) => {
-										setAmountInput(e.target.value)
-										setError(null)
-									}}
-									onKeyDown={(e) => {
-										preventNumericInputStepKeys(e)
-										if (e.key === 'Enter') {
-											e.preventDefault()
-											;(e.target as HTMLInputElement).blur()
-											if (canSubmit) void handleSubmit()
-										}
-									}}
-									placeholder="0.00"
-									className={`min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-base tabular-nums text-[#0f172a] [-moz-appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none disabled:opacity-50 ${bizFocusRingClass}`}
-								/>
-								{(source === 'eoa_conet_usdc' || source === 'eoa_base_usdc') &&
-								((source === 'eoa_conet_usdc' && eoaConetN != null && eoaConetN > 0) ||
-									(source === 'eoa_base_usdc' && eoaBaseN != null && eoaBaseN > 0)) ? (
-									<button
-										type="button"
-										disabled={busy}
-										onClick={setMaxFromBalance}
-										className={`shrink-0 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-semibold text-[#0051d1] disabled:opacity-50 ${bizFocusRingClass}`}
+							<section className="mt-5 space-y-4 rounded-2xl border border-slate-200/90 bg-white p-4 shadow-sm">
+								<div className="flex items-center justify-between">
+									<label
+										htmlFor="merchant-card-usdc-reserve-deposit-amount"
+										className="text-[11px] font-bold uppercase tracking-wider text-slate-500"
 									>
-										Max
-									</button>
-								) : null}
-							</div>
+										Deposit amount
+									</label>
+									<span className="rounded-md bg-[#e9edff] px-2 py-0.5 text-xs font-semibold text-[#0051d1]">
+										{amountTokenLabel}
+									</span>
+								</div>
+								<div className="relative flex items-center rounded-xl border border-slate-200 bg-slate-50 p-3 focus-within:border-[#0051d1] focus-within:ring-2 focus-within:ring-[#0051d1]/20">
+									<span className="mr-2 text-2xl font-bold text-slate-400">$</span>
+									<input
+										ref={amountInputWheelRef}
+										id="merchant-card-usdc-reserve-deposit-amount"
+										type="number"
+										inputMode="decimal"
+										autoComplete="off"
+										enterKeyHint="done"
+										min={0}
+										step="any"
+										disabled={busy || !cardOk}
+										value={amountInput}
+										onChange={(e) => {
+											setAmountInput(e.target.value)
+											setLastChip(null)
+											setError(null)
+										}}
+										onKeyDown={(e) => {
+											preventNumericInputStepKeys(e)
+											if (e.key === 'Enter') {
+												e.preventDefault()
+												;(e.target as HTMLInputElement).blur()
+												if (canSubmit) void handleSubmit()
+											}
+										}}
+										placeholder="0.00"
+										className={`w-full border-0 bg-transparent p-0 text-3xl font-extrabold tracking-tight text-slate-900 tabular-nums focus:outline-none focus:ring-0 [-moz-appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none disabled:opacity-50 ${bizFocusRingClass}`}
+									/>
+									<div className="flex shrink-0 items-center gap-1.5 border-l border-slate-200 pl-2">
+										<span className="text-xs font-bold text-slate-800">USDC</span>
+									</div>
+								</div>
+								<div className="flex items-center justify-between gap-1.5">
+									{AMOUNT_CHIPS.map((chip) => {
+										const active = lastChip === String(chip)
+										return (
+											<button
+												key={chip}
+												type="button"
+												disabled={busy || !cardOk}
+												onClick={() => addAmountChip(chip)}
+												className={`flex-1 rounded-lg px-2 py-1.5 text-center text-xs disabled:opacity-50 ${
+													active
+														? 'bg-[#0051d1] font-semibold text-white shadow-sm'
+														: 'bg-slate-100 font-medium text-slate-700 hover:bg-slate-200'
+												} ${bizFocusRingClass}`}
+											>
+												+{chip}
+											</button>
+										)
+									})}
+									{(source === 'eoa_conet_usdc' || source === 'eoa_base_usdc') &&
+									((source === 'eoa_conet_usdc' && eoaConetN != null && eoaConetN > 0) ||
+										(source === 'eoa_base_usdc' && eoaBaseN != null && eoaBaseN > 0)) ? (
+										<button
+											type="button"
+											disabled={busy}
+											onClick={setMaxFromBalance}
+											className={`flex-1 rounded-lg px-2 py-1.5 text-center text-xs font-semibold disabled:opacity-50 ${
+												lastChip === 'max'
+													? 'bg-[#0051d1] text-white shadow-sm'
+													: 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+											} ${bizFocusRingClass}`}
+										>
+											Max
+										</button>
+									) : null}
+								</div>
+							</section>
 
 							{source === 'third_party' ? (
 								<p className="mt-3 text-xs leading-relaxed text-slate-500">
@@ -649,6 +818,27 @@ export function MerchantCardUsdcReserveDepositSheet({
 									retry skips LockMint.
 								</p>
 							)}
+
+							<section className="mt-4 space-y-2.5 rounded-2xl border border-slate-200/80 bg-slate-100/90 p-4">
+								<div className="flex items-center justify-between border-b border-slate-200/70 pb-1 text-xs font-medium text-slate-500">
+									<span>Transaction breakdown</span>
+									<span className="font-semibold text-emerald-700">Sponsored gas</span>
+								</div>
+								<div className="flex items-center justify-between text-xs">
+									<span className="text-slate-600">Deposit amount</span>
+									<span className="font-semibold tabular-nums text-slate-900">{depositAmountDisplay}</span>
+								</div>
+								<div className="flex items-center justify-between gap-3 text-xs">
+									<span className="text-slate-600">Network gas</span>
+									<span className="text-right font-semibold text-emerald-700">{gasLineLabel}</span>
+								</div>
+								<div className="flex items-center justify-between border-t border-slate-200 pt-2 text-xs">
+									<span className="font-medium text-slate-700">Projected Reserve</span>
+									<span className="text-sm font-bold tabular-nums text-[#0051d1]">
+										{projectedReserveDisplay ?? '—'}
+									</span>
+								</div>
+							</section>
 
 							{(error || amountValidationError) && phase !== 'listening' ? (
 								<div

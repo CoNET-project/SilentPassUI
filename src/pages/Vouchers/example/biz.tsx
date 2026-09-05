@@ -2747,6 +2747,15 @@ function formatDirectoryMemberDisplayName(beamioTag: string): string {
     .join(' ');
 }
 
+function formatDirectoryMemberHandle(row: BizTopupMemberTableRow, userType: MemberDirectoryUserType): string {
+  const handle = row.beamioTag.replace(/^@/, '').trim();
+  if (handle) return `@${handle}`;
+  if (userType === 'nfc') return 'NFC user';
+  const addr = row.memberAddress;
+  if (addr && ethers.isAddress(addr)) return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
+  return 'Member';
+}
+
 function directoryMemberPointsHuman(row: BizTopupMemberTableRow): number {
   try {
     return Number(BigInt(row.totalTopupFiat6 || '0')) / 1_000_000;
@@ -2956,7 +2965,29 @@ function memberRowReachedHighestRewardTier(row: BizTopupMemberTableRow, tierInfo
   return bal != null && Number.isFinite(bal) && bal >= tierInfo.highestThreshold;
 }
 
+function memberRowReachedAnyRewardTier(
+  row: BizTopupMemberTableRow,
+  levels: MembersRewardTierLevel[] | undefined,
+): boolean {
+  if (!levels || levels.length === 0) return false;
+  const bal = row.currentCardToken0Balance;
+  if (bal == null || !Number.isFinite(bal)) return false;
+  return levels.some((level) => bal >= level.threshold);
+}
+
+function memberDirectoryHasStoreCredits(row: BizTopupMemberTableRow): boolean {
+  const bal = row.currentCardToken0Balance;
+  return bal != null && Number.isFinite(bal) && bal > 0;
+}
+
+function memberDirectoryHasRecentActivity(row: BizTopupMemberTableRow, nowSec: number): boolean {
+  const since = nowSec - ACTIVE_CARDS_LOOKBACK_DAYS * 24 * 3600;
+  const ls = row.lastSeenTs ?? 0;
+  return ls > 0 && ls >= since;
+}
+
 type MembersDirectorySegment = 'app' | 'anon_nfc';
+type MembersMobileRosterFilter = 'all' | 'reward_tier' | 'store_credits' | 'recent';
 
 /** Members tab — no AA / day-0 editorial (`newOnloading.html` Members canvas: insights + glass empty state). */
 function MembersLoyaltyNoAaEditorial(props: { onSetUpFirstProgram: () => void }) {
@@ -5506,12 +5537,6 @@ const BIZ_CACHE_PREFIX = 'beamio:biz-example:'
 const ORACLE_CAD_USDC_FALLBACK = 0.740
 
 /** `newOnloading.html` Member Profile drawer — Directory list detail (App / Anonymous NFC). */
-function memberDirectoryCadFromPoints(pts: number, cadPerUsdc: number): string {
-  if (!Number.isFinite(cadPerUsdc) || cadPerUsdc <= 0 || !Number.isFinite(pts)) return '—';
-  const cad = pts / cadPerUsdc;
-  return `C$${cad.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
-
 function memberDirectoryFormatTsSec(sec: number): string {
   if (!sec || sec <= 0) return '—';
   const ms = sec < 10_000_000_000 ? sec * 1000 : sec;
@@ -5520,39 +5545,203 @@ function memberDirectoryFormatTsSec(sec: number): string {
   return d.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
+function memberDirectoryFormatRelativeTsSec(sec: number): string | null {
+  if (!sec || sec <= 0) return null;
+  const ms = sec < 10_000_000_000 ? sec * 1000 : sec;
+  const d = new Date(ms);
+  if (Number.isNaN(d.getTime())) return null;
+  const diffMs = Date.now() - d.getTime();
+  if (diffMs < 0) return null;
+  const secAgo = Math.floor(diffMs / 1000);
+  if (secAgo < 60) return 'just now';
+  const minAgo = Math.floor(secAgo / 60);
+  if (minAgo < 60) return `${minAgo}m ago`;
+  const hrAgo = Math.floor(minAgo / 60);
+  if (hrAgo < 24) return `${hrAgo}h ago`;
+  const dayAgo = Math.floor(hrAgo / 24);
+  if (dayAgo < 7) return `${dayAgo}d ago`;
+  const weekAgo = Math.floor(dayAgo / 7);
+  if (weekAgo < 5) return `${weekAgo}w ago`;
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
 type MemberDirectoryProfileDrawerProps = {
   row: BizTopupMemberTableRow;
   segment: MembersDirectorySegment;
   hasRewardTier: boolean;
   tierBadgeLabel: string | null;
-  cadPerUsdcOracle: number;
   profileMap?: Record<string, BeamioAddressProfileRecord>;
   onClose: () => void;
   onSendGift: () => void;
 };
 
-/** Returns motion layers for `AnimatePresence` (multiple direct children). */
-function memberDirectoryProfileDrawerMotionLayers(props: MemberDirectoryProfileDrawerProps): React.ReactElement[] {
-  const { row, segment, hasRewardTier, tierBadgeLabel, cadPerUsdcOracle, profileMap, onClose, onSendGift } = props;
+function MemberDirectoryProfileDrawerPanel({
+  row,
+  segment,
+  hasRewardTier,
+  tierBadgeLabel,
+  profileMap,
+  onSendGift,
+}: Omit<MemberDirectoryProfileDrawerProps, 'onClose'>): React.ReactElement {
+  const [memberIdCopied, setMemberIdCopied] = useState(false);
   const pts = directoryMemberPointsHuman(row);
   const tagRaw = row.beamioTag.replace(/^@/, '').trim();
   const displayTitle = tagRaw ? formatDirectoryMemberDisplayName(row.beamioTag) : segment === 'app' ? 'App user' : 'NFC user';
-  const headlineTag =
-    tagRaw
-      ? `@${tagRaw}`
-      : segment === 'app'
-      ? tagRaw
-        ? `@${tagRaw}`
-        : `@${row.memberAddress.slice(0, 6)}…${row.memberAddress.slice(-4)}`
+  const headlineTag = tagRaw
+    ? `@${tagRaw}`
+    : segment === 'app'
+      ? `@${row.memberAddress.slice(0, 6)}…${row.memberAddress.slice(-4)}`
       : `${row.memberAddress.slice(0, 6)}…${row.memberAddress.slice(-4)}`;
   const avatarSrc = getAvatarImgUrl(tagRaw || undefined, { address: row.memberAddress, profileMap });
+  const membershipId = formatMembershipNftMemberNo(row.membershipNftTokenId);
+  const copyMembershipId = async () => {
+    if (!membershipId) return;
+    try {
+      await navigator.clipboard.writeText(membershipId);
+      setMemberIdCopied(true);
+      window.setTimeout(() => setMemberIdCopied(false), 2000);
+    } catch {
+      setMemberIdCopied(false);
+    }
+  };
 
-  const tierProgressPct = Math.min(100, Math.round((pts / 500) * 100));
-  const toNextLabel =
-    pts >= 500 ? 'Platinum tier reached' : pts >= 200 ? `${Math.max(0, Math.ceil(500 - pts))} pts to Platinum` : `${Math.max(0, Math.ceil(200 - pts))} pts to Gold`;
+  return (
+    <div className="flex-1 overflow-y-auto px-6 pb-24">
+      <div className="mb-8 flex flex-col items-center">
+        <div className="mb-4 rounded-full bg-gradient-to-tr from-[#0051d1] to-[#7a9dff] p-1">
+          <div className="size-24 overflow-hidden rounded-full border-4 border-white bg-[#dfe3e6]">
+            <IpfsImg src={avatarSrc} alt="" className="size-full object-cover" />
+          </div>
+        </div>
+        <h3 id="member-profile-drawer-title" className="text-center font-sans text-xl font-extrabold tracking-tight text-[#2c2f31]">
+          {headlineTag}
+        </h3>
+        <p className="mt-1 text-center text-sm font-medium text-[#595c5e]">{displayTitle}</p>
+        <div className="mt-3 flex w-full justify-center">
+          <AddressCapsule
+            address={row.memberAddress}
+            explorerUrl={beamioConetBlockscoutAddressUrl(row.memberAddress)}
+            className="max-w-full border-[#dce2f7] bg-[#e9edff] text-[#424655]"
+            leadingIcon={<Wallet className="h-3.5 w-3.5 text-[#0051d1]" strokeWidth={2.25} aria-hidden />}
+          />
+        </div>
+        {membershipId ? (
+          <button
+            type="button"
+            onClick={() => void copyMembershipId()}
+            className={`mt-2 inline-flex items-center gap-1 font-mono text-xs font-semibold tracking-widest text-[#595c5e] ${bizFocusRingClass}`}
+            aria-label="Copy membership ID"
+          >
+            {membershipId}
+            {memberIdCopied ? <Check className="size-3.5 text-emerald-500" aria-hidden /> : <Copy className="size-3.5" aria-hidden />}
+          </button>
+        ) : null}
+        {hasRewardTier && tierBadgeLabel ? (
+          <div className="mt-3 inline-flex items-center rounded-full border border-[#0051d1]/20 bg-[#0051d1]/10 px-3 py-1 text-[#0047b8]">
+            <span className="font-sans text-xs font-bold">{tierBadgeLabel}</span>
+          </div>
+        ) : null}
+      </div>
 
-  const cadDisplay = memberDirectoryCadFromPoints(pts, cadPerUsdcOracle);
+      <div className="mb-8 rounded-xl border border-white bg-[#eef1f3] p-4 shadow-sm">
+        <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">Stored balance</p>
+        <p className="font-sans text-2xl font-extrabold text-[#2c2f31]">{directoryMemberCurrentBalanceDisplay(row)}</p>
+        <div className="my-4 h-px bg-[#abadaf]/30" />
+        <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">Program</p>
+        <p className="truncate font-sans text-sm font-bold text-[#2c2f31]">{row.programName}</p>
+        <div className="my-4 h-px bg-[#abadaf]/30" />
+        <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">Lifetime top-up</p>
+        <p className="font-sans text-sm font-bold text-[#2c2f31]">{directoryMemberLifetimeTopupDisplay(row)}</p>
+        {membershipId ? (
+          <>
+            <div className="my-4 h-px bg-[#abadaf]/30" />
+            <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">Membership NFT</p>
+            <p className="font-mono text-sm font-bold tracking-widest text-[#2c2f31]">{membershipId}</p>
+          </>
+        ) : null}
+        <div className="my-4 h-px bg-[#abadaf]/30" />
+        <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">Recorded top-ups</p>
+        <p className="font-sans text-lg font-bold text-[#2c2f31]">{row.topupCount.toLocaleString()}</p>
+        <div className="my-4 h-px bg-[#abadaf]/30" />
+        <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">Top-up channel</p>
+        <p className="font-sans text-sm font-bold text-[#2c2f31]">{formatMemberTopupChannelLabel(row)}</p>
+      </div>
 
+      <div className="mb-10 flex gap-3">
+        <button
+          type="button"
+          onClick={onSendGift}
+          className={`flex h-12 flex-1 items-center justify-center rounded-full bg-[#0051d1] font-sans text-sm font-bold text-white shadow-lg shadow-[#0051d1]/20 transition-transform active:scale-[0.98] ${bizFocusRingClass}`}
+        >
+          <Gift className="mr-1.5 size-4 shrink-0" strokeWidth={2} aria-hidden />
+          Send Gift
+        </button>
+        <button type="button" disabled className="flex h-12 flex-1 cursor-not-allowed items-center justify-center rounded-full border-2 border-[#dfe3e6] bg-white font-sans text-sm font-bold text-[#595c5e] opacity-70" title="Refund workflows coming soon">
+          Issue Refund
+        </button>
+      </div>
+
+      <div className="space-y-6">
+        <h4 className="text-[11px] font-black uppercase tracking-widest text-[#abadaf]">Activity Trail</h4>
+        <div className="relative">
+          <div className="absolute bottom-6 left-[9px] top-6 w-0.5 bg-[#e5e9eb]" aria-hidden />
+          <div className="relative flex gap-4 pb-6">
+            <div className="z-10 flex size-5 shrink-0 items-center justify-center rounded-full bg-[#0051d1] ring-4 ring-white">
+              <Banknote className="size-2.5 text-white" strokeWidth={2.5} aria-hidden />
+            </div>
+            <div className="min-w-0 flex-1 pt-0.5">
+              <p className="font-sans text-sm font-bold text-[#2c2f31]">Lifetime top-up: {directoryMemberLifetimeTopupDisplay(row)}</p>
+              <p className="mt-1 text-xs text-[#595c5e]">Last activity · {memberDirectoryFormatTsSec(row.lastSeenTs)}</p>
+            </div>
+          </div>
+          <div className="relative flex gap-4 pb-6">
+            <div className="z-10 flex size-5 shrink-0 items-center justify-center rounded-full bg-[#8d3a8b] ring-4 ring-white">
+              <RefreshCw className="size-2.5 text-white" strokeWidth={2.5} aria-hidden />
+            </div>
+            <div className="min-w-0 flex-1 pt-0.5">
+              <p className="font-sans text-sm font-bold text-[#2c2f31]">Top-up count</p>
+              <p className="mt-1 text-xs text-[#595c5e]">{row.topupCount.toLocaleString()} recorded on server</p>
+            </div>
+          </div>
+          <div className="relative flex gap-4">
+            <div className="z-10 flex size-5 shrink-0 items-center justify-center rounded-full bg-[#d9dde0] ring-4 ring-white">
+              <LogIn className="size-2.5 text-[#595c5e]" strokeWidth={2.5} aria-hidden />
+            </div>
+            <div className="min-w-0 flex-1 pt-0.5">
+              <p className="font-sans text-sm font-bold text-[#2c2f31]">First seen</p>
+              <p className="mt-1 text-xs text-[#595c5e]">{memberDirectoryFormatTsSec(row.firstSeenTs)}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-8 space-y-2 rounded-lg border border-[#abadaf]/20 bg-[#f5f7f9] p-3">
+        <p className="text-[10px] font-medium uppercase tracking-wider text-[#595c5e]">Program card</p>
+        <AddressCapsule
+          address={row.cardLower}
+          explorerUrl={beamioConetBlockscoutAddressUrl(row.cardLower)}
+          className="max-w-full border-[#dce2f7] bg-[#e9edff] text-[#424655]"
+          leadingIcon={<Wallet className="h-3.5 w-3.5 text-[#0051d1]" strokeWidth={2.25} aria-hidden />}
+        />
+        {row.aaAddress ? (
+          <>
+            <p className="pt-1 text-[10px] font-medium uppercase tracking-wider text-[#595c5e]">Smart wallet</p>
+            <AddressCapsule
+              address={row.aaAddress}
+              explorerUrl={beamioConetBlockscoutAddressUrl(row.aaAddress)}
+              className="max-w-full border-[#eadcf7] bg-[#f5ecff] text-[#424655]"
+              leadingIcon={<Hexagon className="h-3.5 w-3.5 text-[#8d3a8b]" strokeWidth={2.25} aria-hidden />}
+            />
+          </>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+/** Returns motion layers for `AnimatePresence` (multiple direct children). */
+function memberDirectoryProfileDrawerMotionLayers(props: MemberDirectoryProfileDrawerProps): React.ReactElement[] {
+  const { row, onClose } = props;
   const addrKey = row.memberAddress.toLowerCase();
 
   return [
@@ -5592,149 +5781,14 @@ function memberDirectoryProfileDrawerMotionLayers(props: MemberDirectoryProfileD
           </button>
           <span className="text-[10px] font-bold uppercase tracking-widest text-[#0051d1]">Profile Details</span>
         </div>
-        <div className="flex-1 overflow-y-auto px-6 pb-24">
-          <div className="mb-8 flex flex-col items-center">
-            <div className="mb-4 rounded-full bg-gradient-to-tr from-[#0051d1] to-[#7a9dff] p-1">
-              <div className="size-24 overflow-hidden rounded-full border-4 border-white bg-[#dfe3e6]">
-                <IpfsImg src={avatarSrc} alt="" className="size-full object-cover" />
-              </div>
-            </div>
-            <h3 id="member-profile-drawer-title" className="text-center font-sans text-xl font-extrabold tracking-tight text-[#2c2f31]">
-              {headlineTag}
-            </h3>
-            <p className="mt-1 text-center text-sm font-medium text-[#595c5e]">{displayTitle}</p>
-            <div className="mt-3 flex w-full justify-center">
-              <AddressCapsule
-                address={row.memberAddress}
-                explorerUrl={beamioConetBlockscoutAddressUrl(row.memberAddress)}
-                className="max-w-full border-[#dce2f7] bg-[#e9edff] text-[#424655]"
-                leadingIcon={<Wallet className="h-3.5 w-3.5 text-[#0051d1]" strokeWidth={2.25} aria-hidden />}
-              />
-            </div>
-            {formatMembershipNftMemberNo(row.membershipNftTokenId) ? (
-              <p className="mt-2 font-mono text-xs font-semibold tracking-widest text-[#595c5e]">
-                {formatMembershipNftMemberNo(row.membershipNftTokenId)}
-              </p>
-            ) : null}
-            {hasRewardTier && tierBadgeLabel ? (
-            <div
-                className="mt-3 inline-flex items-center rounded-full border border-[#0051d1]/20 bg-[#0051d1]/10 px-3 py-1 text-[#0047b8]"
-            >
-                <span className="font-sans text-xs font-bold">{tierBadgeLabel}</span>
-            </div>
-            ) : null}
-          </div>
-
-          {hasRewardTier ? (
-          <div className="mb-8">
-            <div className="mb-3 flex items-end justify-between">
-              <span className="text-xs font-semibold uppercase tracking-wider text-[#595c5e]">Tier Progress</span>
-              <span className="text-xs font-bold text-[#0051d1]">{tierProgressPct}%</span>
-            </div>
-            <div className="h-2 w-full overflow-hidden rounded-full bg-[#eef1f3]">
-              <div className="h-full rounded-full bg-[#0051d1] transition-all" style={{ width: `${tierProgressPct}%` }} />
-            </div>
-            <div className="mt-3 flex justify-between text-[11px] font-medium text-[#595c5e]">
-              <span>{cadDisplay} volume (oracle)</span>
-              <span className="text-right font-bold text-[#0047b8]">{toNextLabel}</span>
-            </div>
-          </div>
-          ) : null}
-
-          <div className="mb-8 grid grid-cols-1 gap-3">
-            <div className="rounded-lg border border-white bg-[#eef1f3] p-5 shadow-sm">
-              <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">Stored Balance</p>
-              <p className="font-sans text-2xl font-extrabold text-[#2c2f31]">{cadDisplay}</p>
-              <div className="my-4 h-px bg-[#abadaf]/30" />
-              <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">Program</p>
-              <p className="truncate font-sans text-sm font-bold text-[#2c2f31]">{row.programName}</p>
-              {formatMembershipNftMemberNo(row.membershipNftTokenId) ? (
-                <>
-                  <div className="my-4 h-px bg-[#abadaf]/30" />
-                  <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">Membership NFT</p>
-                  <p className="font-mono text-sm font-bold tracking-widest text-[#2c2f31]">
-                    {formatMembershipNftMemberNo(row.membershipNftTokenId)}
-                  </p>
-                </>
-              ) : null}
-              <div className="my-4 h-px bg-[#abadaf]/30" />
-              <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">Recorded top-ups</p>
-              <p className="font-sans text-lg font-bold text-[#2c2f31]">{row.topupCount.toLocaleString()}</p>
-              <div className="my-4 h-px bg-[#abadaf]/30" />
-              <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">Top-up channel</p>
-              <p className="font-sans text-sm font-bold text-[#2c2f31]">{formatMemberTopupChannelLabel(row)}</p>
-            </div>
-          </div>
-
-          <div className="mb-10 flex gap-3">
-            <button
-              type="button"
-              onClick={onSendGift}
-              className={`flex h-12 flex-1 items-center justify-center rounded-full bg-[#0051d1] font-sans text-sm font-bold text-white shadow-lg shadow-[#0051d1]/20 transition-transform active:scale-[0.98] ${bizFocusRingClass}`}
-            >
-              <Gift className="mr-1.5 size-4 shrink-0" strokeWidth={2} aria-hidden />
-              Send Gift
-            </button>
-            <button
-              type="button"
-              disabled
-              className="flex h-12 flex-1 cursor-not-allowed items-center justify-center rounded-full border-2 border-[#dfe3e6] bg-white font-sans text-sm font-bold text-[#595c5e] opacity-70"
-              title="Refund workflows coming soon"
-            >
-              Issue Refund
-            </button>
-          </div>
-
-          <div className="space-y-6">
-            <h4 className="text-[11px] font-black uppercase tracking-widest text-[#abadaf]">Activity Trail</h4>
-            <div className="relative">
-              <div className="absolute bottom-6 left-[9px] top-6 w-0.5 bg-[#e5e9eb]" aria-hidden />
-              <div className="relative flex gap-4 pb-6">
-                <div className="z-10 flex size-5 shrink-0 items-center justify-center rounded-full bg-[#0051d1] ring-4 ring-white">
-                  <Banknote className="size-2.5 text-white" strokeWidth={2.5} aria-hidden />
-                </div>
-                <div className="min-w-0 flex-1 pt-0.5">
-                  <p className="font-sans text-sm font-bold text-[#2c2f31]">Program points: {pts.toFixed(2)}</p>
-                  <p className="mt-1 text-xs text-[#595c5e]">Last activity · {memberDirectoryFormatTsSec(row.lastSeenTs)}</p>
-                </div>
-              </div>
-              <div className="relative flex gap-4 pb-6">
-                <div className="z-10 flex size-5 shrink-0 items-center justify-center rounded-full bg-[#8d3a8b] ring-4 ring-white">
-                  <RefreshCw className="size-2.5 text-white" strokeWidth={2.5} aria-hidden />
-                </div>
-                <div className="min-w-0 flex-1 pt-0.5">
-                  <p className="font-sans text-sm font-bold text-[#2c2f31]">Top-up events</p>
-                  <p className="mt-1 text-xs text-[#595c5e]">{row.topupCount.toLocaleString()} recorded on server</p>
-                </div>
-              </div>
-              <div className="relative flex gap-4">
-                <div className="z-10 flex size-5 shrink-0 items-center justify-center rounded-full bg-[#d9dde0] ring-4 ring-white">
-                  <LogIn className="size-2.5 text-[#595c5e]" strokeWidth={2.5} aria-hidden />
-                </div>
-                <div className="min-w-0 flex-1 pt-0.5">
-                  <p className="font-sans text-sm font-bold text-[#2c2f31]">First seen</p>
-                  <p className="mt-1 text-xs text-[#595c5e]">{memberDirectoryFormatTsSec(row.firstSeenTs)}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-8 rounded-lg border border-[#abadaf]/20 bg-[#f5f7f9] p-4">
-            <p className="text-[11px] font-medium leading-relaxed text-[#595c5e]">
-              Member card:{' '}
-              <span className="font-mono text-xs text-[#2c2f31]">{row.memberAddress.slice(0, 6)}…{row.memberAddress.slice(-4)}</span>
-              {row.aaAddress ? (
-                <>
-                  <br />
-                  AA:{' '}
-                  <span className="font-mono text-xs text-[#2c2f31]">
-                    {row.aaAddress.slice(0, 6)}…{row.aaAddress.slice(-4)}
-                  </span>
-                </>
-              ) : null}
-            </p>
-          </div>
-        </div>
+        <MemberDirectoryProfileDrawerPanel
+          row={row}
+          segment={props.segment}
+          hasRewardTier={props.hasRewardTier}
+          tierBadgeLabel={props.tierBadgeLabel}
+          profileMap={props.profileMap}
+          onSendGift={props.onSendGift}
+        />
     </motion.div>,
   ];
 }
@@ -26216,6 +26270,7 @@ const [memberDirectoryUserTypeDb, setMemberDirectoryUserTypeDb] = useState<Recor
  const [membersLoyaltyProgramKey, setMembersLoyaltyProgramKey] = useState<string>('all');
  /** Member Directory UI — `newOnloading.html` App Users vs Anonymous NFC */
  const [membersDirectorySegment, setMembersDirectorySegment] = useState<MembersDirectorySegment>('app');
+ const [membersMobileRosterFilter, setMembersMobileRosterFilter] = useState<MembersMobileRosterFilter>('all');
  const [membersMobileListCap, setMembersMobileListCap] = useState(8);
  const [membersDirectoryDetailRow, setMembersDirectoryDetailRow] = useState<BizTopupMemberTableRow | null>(null);
  /** Single-program server paginated registry (`mode=directory`) */
@@ -32189,13 +32244,55 @@ const membersRewardTierLevelsByCardLower = useMemo(() => {
    return best;
 }, [membersMobileDirectorySorted, membersRewardTierInfoByCardLower]);
 
+ const membersMobileRosterChipVisibility = useMemo(() => {
+   const nowSec = Math.floor(Date.now() / 1000);
+   let hasRewardTier = false;
+   let hasStoreCredits = false;
+   let hasRecent = false;
+   for (const row of membersMobileDirectorySorted) {
+     if (!hasRewardTier && memberRowReachedAnyRewardTier(row, membersRewardTierLevelsByCardLower.get(row.cardLower))) {
+       hasRewardTier = true;
+     }
+     if (!hasStoreCredits && memberDirectoryHasStoreCredits(row)) hasStoreCredits = true;
+     if (!hasRecent && memberDirectoryHasRecentActivity(row, nowSec)) hasRecent = true;
+     if (hasRewardTier && hasStoreCredits && hasRecent) break;
+   }
+   return { hasRewardTier, hasStoreCredits, hasRecent };
+ }, [membersMobileDirectorySorted, membersRewardTierLevelsByCardLower]);
+
+ const membersMobileRosterShowChips =
+   membersMobileRosterChipVisibility.hasRewardTier ||
+   membersMobileRosterChipVisibility.hasStoreCredits ||
+   membersMobileRosterChipVisibility.hasRecent;
+
  const membersMobileListExcludingFeatured = useMemo(() => {
-  return membersMobileDirectorySorted;
-}, [membersMobileDirectorySorted]);
+   const filter = membersMobileRosterFilter;
+   if (filter === 'all') return membersMobileDirectorySorted;
+   const nowSec = Math.floor(Date.now() / 1000);
+   return membersMobileDirectorySorted.filter((row) => {
+     if (filter === 'reward_tier') {
+       return memberRowReachedAnyRewardTier(row, membersRewardTierLevelsByCardLower.get(row.cardLower));
+     }
+     if (filter === 'store_credits') return memberDirectoryHasStoreCredits(row);
+     if (filter === 'recent') return memberDirectoryHasRecentActivity(row, nowSec);
+     return true;
+   });
+ }, [membersMobileDirectorySorted, membersMobileRosterFilter, membersRewardTierLevelsByCardLower]);
+
+ useEffect(() => {
+   const { hasRewardTier, hasStoreCredits, hasRecent } = membersMobileRosterChipVisibility;
+   if (membersMobileRosterFilter === 'reward_tier' && !hasRewardTier) {
+     setMembersMobileRosterFilter('all');
+   } else if (membersMobileRosterFilter === 'store_credits' && !hasStoreCredits) {
+     setMembersMobileRosterFilter('all');
+   } else if (membersMobileRosterFilter === 'recent' && !hasRecent) {
+     setMembersMobileRosterFilter('all');
+   }
+ }, [membersMobileRosterFilter, membersMobileRosterChipVisibility]);
 
  useEffect(() => {
    setMembersMobileListCap(8);
- }, [membersLoyaltySearch, membersDirectorySegment, membersLoyaltyProgramKey, membersMobileDirectoryFiltered.length]);
+ }, [membersLoyaltySearch, membersDirectorySegment, membersLoyaltyProgramKey, membersMobileDirectoryFiltered.length, membersMobileRosterFilter]);
 
  /** Members 表 beamioTag：由全局 addressProfile registry 填充；远程拉取仅 Daemon 分钟任务 */
  useEffect(() => {
@@ -36569,6 +36666,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
            merchantEoa={currentEoa}
            eoaBaseUsdcBalance={eoaUsdcBalance}
            eoaConetUsdcBalance={eoaConetUsdcBalance}
+           usdcReserve={merchantCardRewardReserve?.usdcReserve}
+           reserveDifference={merchantCardRewardReserve?.reserveDifference}
            onClose={() => setUsdcReserveDepositOpen(false)}
            onArrived={() => {
              refreshMerchantCardRewardReserveNow()
@@ -37100,65 +37199,153 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
              {/* Mobile Members — `marketExample.html` Customer Directory */}
              <div className="lg:hidden -mx-2 w-[calc(100%+1rem)] max-w-2xl mx-auto px-4 pb-28 pt-2 sm:-mx-4 sm:w-[calc(100%+2rem)]">
 
-               <main className="mx-auto max-w-2xl space-y-6">
-                 <section className="mt-2 space-y-1">
-                   <h1 className="text-3xl font-extrabold tracking-tight text-[#2c2f31]">{tu('members')}</h1>
-                   <div className="flex items-center gap-2">
+               <main className="mx-auto max-w-2xl space-y-4">
+                 <section className="mt-2 space-y-2">
+                   <h1 className="text-3xl font-extrabold tracking-tight text-[#2c2f31]">Customer Roster</h1>
+                   <div className="inline-flex items-center gap-2 rounded-full border border-[#dce2f7] bg-[#e9edff] px-3 py-1">
                      <span className="size-2 shrink-0 animate-pulse rounded-full bg-[#0051d1]" aria-hidden />
-                     <p className="text-sm font-semibold uppercase tracking-wide text-[#515c70]/70">
-                       Active members: {membersMobileDirectorySorted.length.toLocaleString()}
+                     <p className="text-xs font-bold text-[#0051d1]">
+                       {membersMobileDirectorySorted.length.toLocaleString()} Active Members
                      </p>
                    </div>
+                   <p className="text-sm text-[#595c5e]">Members with a recorded program top-up.</p>
                  </section>
 
-                 <div className="grid gap-4">
+                 <div className="relative">
+                   <Search
+                     className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#595c5e]"
+                     strokeWidth={2}
+                     aria-hidden
+                   />
+                   <input
+                     id="members-mobile-roster-search"
+                     type="search"
+                     autoComplete="off"
+                     placeholder="Search @tag or name"
+                     value={membersLoyaltySearch}
+                     onChange={(e) => setMembersLoyaltySearch(e.target.value)}
+                     className={`w-full rounded-full border-none bg-[#eef1f3] py-2.5 pl-10 pr-4 text-sm text-[#2c2f31] outline-none transition-all focus:ring-2 focus:ring-[#0051d1]/20 ${bizFocusRingClass}`}
+                   />
+                 </div>
+
+                 {membersMobileRosterShowChips ? (
+                   <div
+                     className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1"
+                     role="tablist"
+                     aria-label="Member filters"
+                   >
+                     <button
+                       type="button"
+                       role="tab"
+                       aria-selected={membersMobileRosterFilter === 'all'}
+                       onClick={() => setMembersMobileRosterFilter('all')}
+                       className={`shrink-0 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-bold ${
+                         membersMobileRosterFilter === 'all'
+                           ? 'bg-[#2c2f31] text-white'
+                           : 'bg-[#eef1f3] text-[#2c2f31]'
+                       } ${bizFocusRingClass}`}
+                     >
+                       All
+                     </button>
+                     {membersMobileRosterChipVisibility.hasRewardTier ? (
+                       <button
+                         type="button"
+                         role="tab"
+                         aria-selected={membersMobileRosterFilter === 'reward_tier'}
+                         onClick={() => setMembersMobileRosterFilter('reward_tier')}
+                         className={`shrink-0 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-bold ${
+                           membersMobileRosterFilter === 'reward_tier'
+                             ? 'bg-[#2c2f31] text-white'
+                             : 'bg-[#eef1f3] text-[#2c2f31]'
+                         } ${bizFocusRingClass}`}
+                       >
+                         Reward Tiers
+                       </button>
+                     ) : null}
+                     {membersMobileRosterChipVisibility.hasStoreCredits ? (
+                       <button
+                         type="button"
+                         role="tab"
+                         aria-selected={membersMobileRosterFilter === 'store_credits'}
+                         onClick={() => setMembersMobileRosterFilter('store_credits')}
+                         className={`shrink-0 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-bold ${
+                           membersMobileRosterFilter === 'store_credits'
+                             ? 'bg-[#2c2f31] text-white'
+                             : 'bg-[#eef1f3] text-[#2c2f31]'
+                         } ${bizFocusRingClass}`}
+                       >
+                         Store Credits
+                       </button>
+                     ) : null}
+                     {membersMobileRosterChipVisibility.hasRecent ? (
+                       <button
+                         type="button"
+                         role="tab"
+                         aria-selected={membersMobileRosterFilter === 'recent'}
+                         onClick={() => setMembersMobileRosterFilter('recent')}
+                         className={`shrink-0 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-bold ${
+                           membersMobileRosterFilter === 'recent'
+                             ? 'bg-[#2c2f31] text-white'
+                             : 'bg-[#eef1f3] text-[#2c2f31]'
+                         } ${bizFocusRingClass}`}
+                       >
+                         Recent Activity
+                       </button>
+                     ) : null}
+                   </div>
+                 ) : null}
+
+                 <div className="grid gap-3">
                  {membersMobileListExcludingFeatured.length === 0 ? (
                      <div className="rounded-xl border border-dashed border-[#abadaf]/40 bg-white p-10 text-center shadow-sm">
                        <Users className="mx-auto mb-3 size-10 text-[#abadaf]" strokeWidth={1.5} aria-hidden />
                        <p className="text-sm font-semibold text-[#2c2f31]">No members in this view</p>
                        <p className="mt-2 text-sm text-[#595c5e]">
-                         {topupMemberTableRowsAll.length === 0
-                           ? 'Members appear after top-ups are recorded for your programs.'
-                           : 'No App or NFC members in your directory yet.'}
+                         {membersMobileRosterFilter === 'reward_tier'
+                           ? 'No members have reached a configured reward tier yet.'
+                           : membersMobileRosterFilter === 'store_credits'
+                             ? 'No members with a recorded store credit balance in this view.'
+                             : membersMobileRosterFilter === 'recent'
+                               ? 'No members with a top-up in the last 90 days.'
+                               : topupMemberTableRowsAll.length === 0
+                                 ? 'Members appear after top-ups are recorded for your programs.'
+                                 : 'No App or NFC members in your directory yet.'}
                        </p>
                      </div>
                    ) : (
                      membersMobileListExcludingFeatured.slice(0, membersMobileListCap).map((row) => {
                        const tagRaw = row.beamioTag.replace(/^@/, '').trim();
                        const userType = resolveMemberDirectoryUserType(row, memberDirectoryUserTypeDb);
-                       const displayName =
-                         userType === 'app' || userType === 'both'
-                           ? formatDirectoryMemberDisplayName(row.beamioTag)
-                           : tagRaw
-                             ? formatDirectoryMemberDisplayName(row.beamioTag)
-                             : 'NFC user';
-                       const shortAddr = `${row.memberAddress.slice(0, 6)}…${row.memberAddress.slice(-4)}`;
-                      const hasRewardTier = membersHasRewardTierByCardLower.get(row.cardLower) ?? false;
-                      const rewardTierLevels = membersRewardTierLevelsByCardLower.get(row.cardLower);
-                      const rewardTierInfo = membersRewardTierInfoByCardLower.get(row.cardLower) ?? null;
-                      const isHighestRewardTier = memberRowReachedHighestRewardTier(row, rewardTierInfo);
-                      const showStarBadge = hasRewardTier && isHighestRewardTier;
-                      const tierBadgeLabel = resolveMembersRewardTierBadgeLabelFromLevels(
-                        rewardTierLevels,
-                        row.currentCardToken0Balance
-                      );
-                      const tierPillLabel = tierBadgeLabel
-                        ? `${tierBadgeLabel.replace(/\s+Member$/i, '').toUpperCase()} TIER`
-                        : null;
+                       const handle = formatDirectoryMemberHandle(row, userType);
+                       const isNfc =
+                         inferMemberDirectoryUserTypeFromBeamioTag(row.beamioTag) === 'nfc' || userType === 'nfc';
+                       const rewardTierLevels = membersRewardTierLevelsByCardLower.get(row.cardLower);
+                       const rewardTierInfo = membersRewardTierInfoByCardLower.get(row.cardLower) ?? null;
+                       const isHighestRewardTier = memberRowReachedHighestRewardTier(row, rewardTierInfo);
+                       const reachedAnyTier = memberRowReachedAnyRewardTier(row, rewardTierLevels);
+                       const reachedTierLabel = reachedAnyTier
+                         ? (resolveMembersRewardTierBadgeLabelFromLevels(
+                             rewardTierLevels,
+                             row.currentCardToken0Balance,
+                           )?.replace(/\s+Member$/i, '') ?? null)
+                         : null;
+                       const memberNo = formatMembershipNftMemberNo(row.membershipNftTokenId);
+                       const relative = memberDirectoryFormatRelativeTsSec(row.lastSeenTs ?? 0);
+                       const metaParts = [memberNo, reachedTierLabel, relative].filter(Boolean);
+                       const pts = directoryMemberPointsHuman(row);
                        return (
                          <button
                            type="button"
                            key={`m-${row.cardLower}-${row.memberAddress.toLowerCase()}`}
                            onClick={() => setMembersDirectoryDetailRow(row)}
-                          className={`flex w-full items-center justify-between gap-3 rounded-2xl border p-5 text-left transition-transform hover:scale-[1.01] active:scale-[0.99] ${
+                          className={`flex w-full items-center gap-3 rounded-2xl border p-4 text-left transition-transform hover:scale-[1.01] active:scale-[0.99] ${
                             isHighestRewardTier
                               ? 'border-[#0051d1]/20 bg-gradient-to-br from-[#0051d1] via-[#1562f0] to-[#7a9dff] text-white shadow-[0_12px_40px_rgba(0,81,209,0.30)]'
                               : 'border-[#e8eaed] bg-white shadow-[0_4px_24px_rgba(15,23,42,0.06)]'
                           } ${bizFocusRingClass}`}
                          >
-                           <div className="flex min-w-0 flex-1 items-center gap-4">
-                             <div className="relative shrink-0">
-                              <div className={`size-14 overflow-hidden rounded-full ring-1 ${
+                           <div className="relative shrink-0">
+                              <div className={`size-12 overflow-hidden rounded-full ring-1 ${
                                 isHighestRewardTier ? 'bg-white/10 ring-white/30' : 'bg-[#eef1f3] ring-black/[0.04]'
                               }`}>
                                  <IpfsImg
@@ -37167,46 +37354,42 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                    className="size-full object-cover"
                                  />
                                </div>
-                               {showStarBadge ? (
-                                 <div className="absolute -bottom-0.5 -right-0.5 flex size-6 items-center justify-center rounded-full border border-white bg-white shadow-sm">
-                                   <Star className="size-3.5 fill-amber-400 text-amber-500" strokeWidth={0} aria-hidden />
+                               {isHighestRewardTier ? (
+                                 <div className="absolute -bottom-0.5 -right-0.5 flex size-5 items-center justify-center rounded-full border border-white bg-white shadow-sm">
+                                   <Star className="size-3 fill-amber-400 text-amber-500" strokeWidth={0} aria-hidden />
                                  </div>
                                ) : null}
                              </div>
-                             <div className="min-w-0">
-                             <h3 className={`truncate font-manrope text-lg font-bold ${isHighestRewardTier ? 'text-white' : 'text-[#2c2f31]'}`}>@{displayName}</h3>
-                              {formatMembershipNftMemberNo(row.membershipNftTokenId) ? (
+                             <div className="min-w-0 flex-1">
+                             <h3 className={`truncate font-manrope text-base font-bold ${isHighestRewardTier ? 'text-white' : 'text-[#2c2f31]'}`}>{handle}</h3>
+                              {metaParts.length > 0 || isNfc ? (
                                 <p
-                                  className={`mt-0.5 font-mono text-xs font-semibold tracking-widest ${
+                                  className={`mt-0.5 flex min-w-0 items-center gap-1.5 truncate text-xs font-medium ${
                                     isHighestRewardTier ? 'text-white/80' : 'text-[#595c5e]'
                                   }`}
                                 >
-                                  {formatMembershipNftMemberNo(row.membershipNftTokenId)}
+                                  {isNfc ? (
+                                    <Nfc className="size-3.5 shrink-0" strokeWidth={2} aria-hidden />
+                                  ) : null}
+                                  <span className="truncate">{metaParts.join(' · ')}</span>
                                 </p>
                               ) : null}
-                              {inferMemberDirectoryUserTypeFromBeamioTag(row.beamioTag) === 'nfc' ? (
-                                <div className="mt-1 flex min-w-0 items-center gap-1.5">
-                                  <Nfc className={`size-4 shrink-0 ${isHighestRewardTier ? 'text-white' : 'text-[#515c70]/70'}`} strokeWidth={2} aria-hidden />
-                                </div>
-                              ) : null}
                              </div>
-                           </div>
                            <div className="shrink-0 text-right">
-                            <p className={`font-manrope text-lg font-extrabold tabular-nums ${isHighestRewardTier ? 'text-white' : 'text-[#2c2f31]'}`}>
+                            <p className={`font-manrope text-base font-extrabold tabular-nums ${isHighestRewardTier ? 'text-white' : 'text-[#2c2f31]'}`}>
                               {directoryMemberCurrentBalanceDisplay(row)}
                              </p>
-                            {hasRewardTier && tierPillLabel ? (
-                             <span
-                               className={`mt-2 inline-block rounded-full px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest ${
-                                isHighestRewardTier
-                                  ? 'border border-white/25 bg-white/20 text-white'
-                                   : 'bg-slate-100 text-slate-600 ring-1 ring-slate-200/80'
-                               }`}
-                             >
-                               {tierPillLabel}
-                             </span>
+                            {pts > 0 ? (
+                              <p className={`mt-0.5 text-xs font-semibold tabular-nums ${isHighestRewardTier ? 'text-white/80' : 'text-[#595c5e]'}`}>
+                                {pts.toFixed(2)} Pts
+                              </p>
                             ) : null}
                            </div>
+                           <ChevronRight
+                             className={`size-5 shrink-0 ${isHighestRewardTier ? 'text-white/70' : 'text-slate-300'}`}
+                             strokeWidth={2}
+                             aria-hidden
+                           />
                          </button>
                        );
                      })
@@ -37567,7 +37750,6 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                         membersRewardTierLevelsByCardLower.get(membersDirectoryDetailRow.cardLower),
                         membersDirectoryDetailRow.currentCardToken0Balance
                       ),
-                       cadPerUsdcOracle: oracleCadUsdc ?? ORACLE_CAD_USDC_FALLBACK,
                        profileMap: addressProfileByLower,
                        onClose: () => setMembersDirectoryDetailRow(null),
                        onSendGift: () => {

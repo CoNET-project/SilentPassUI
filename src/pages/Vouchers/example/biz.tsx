@@ -5300,7 +5300,7 @@ function StaffTerminalsInfoGrid() {
   );
 }
 
-/** Beamio Messages day-zero UI — `marketExample.html` (dual pane + Concierge welcome). */
+/** Beamio Messages day-zero UI — Messages & Defense Console (empty inbox, dual pane). */
 const VERRA_CONCIERGE_INBOX_IMG =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuDJTutfeByR_K_9krcUU0clVT6UuCnszHaJmz5MccUtFKyKcx82xLURJSgCSEd26zmWUDW3xdDwHwQmxOfNtkhrdSEJakhHElMP5bN0R8p70uV2jVuOFZnH9V_8GU_PkWKbNCC29SMq-hSB6B2ET1dIrcEZmcQKK4qo61SI2dPbVk2FNFGQ4f_5wuuhOKwS0-ykjsUwZYl9kQGVClrsrzXDNze7a4d0AQJ4RVPDiBtUt9JPVjkBoLqByQGQDy_nPDx4E84YLvqfLeo';
 
@@ -5308,10 +5308,18 @@ function MessagesDayZeroShell(props: {
   inboxSearch: string
   onInboxSearchChange: (v: string) => void
   onNewMessage: () => void
+  onLaunchCampaign?: () => void
   headerAvatarSrc: string
   eoaShortEncrypt: string
 }) {
-  const { inboxSearch, onInboxSearchChange, onNewMessage, headerAvatarSrc, eoaShortEncrypt } = props;
+  const {
+    inboxSearch,
+    onInboxSearchChange,
+    onNewMessage,
+    onLaunchCampaign,
+    headerAvatarSrc,
+    eoaShortEncrypt,
+  } = props;
   return (
     <div className="relative mx-auto w-full max-w-[1280px] animate-in pb-8 fade-in duration-300">
       <div
@@ -5323,11 +5331,15 @@ function MessagesDayZeroShell(props: {
         aria-hidden
       />
 
-      <header className="relative z-[1] mb-6 flex flex-col gap-4 sm:mb-8 sm:flex-row sm:items-center sm:justify-end">
-        <div className="flex w-full flex-wrap items-center justify-end gap-3 sm:w-auto sm:gap-6">
-          <span className="rounded-full bg-[#7a9dff] px-2.5 py-0.5 text-xs font-semibold uppercase tracking-tight text-[#001e59]">
+      <header className="relative z-[1] mb-6 flex flex-col gap-4 sm:mb-8 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-[#bcd6ff] bg-[#eef5ff] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-[#093bb0]">
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#1562f0]" aria-hidden />
             Live Support
           </span>
+          <span className="text-[11px] font-medium text-slate-500">P2P Mesh ready</span>
+        </div>
+        <div className="flex w-full flex-wrap items-center justify-end gap-3 sm:w-auto sm:gap-4">
           <button
             type="button"
             onClick={onNewMessage}
@@ -5347,7 +5359,7 @@ function MessagesDayZeroShell(props: {
       <section className="relative z-[1] flex flex-col gap-6 lg:flex-row lg:gap-8">
         {/* Left: contact list */}
         <div className="flex w-full flex-col gap-4 lg:w-[32%] lg:min-w-[280px]">
-          <div className="flex h-full min-h-[480px] flex-col gap-1 rounded-lg bg-[#eef1f3] p-2 lg:min-h-[600px]">
+          <div className="flex h-full min-h-[480px] flex-col gap-2 rounded-lg bg-[#eef1f3] p-2 lg:min-h-[600px]">
             <div className="mb-1 px-3 py-3">
               <div className="relative">
                 <Search
@@ -5359,13 +5371,14 @@ function MessagesDayZeroShell(props: {
                   type="search"
                   value={inboxSearch}
                   onChange={(e) => onInboxSearchChange(e.target.value)}
-                  placeholder="搜索聊天…"
+                  placeholder="Search messages or member @tag..."
                   autoComplete="off"
                   className={`w-full rounded-full border-0 bg-white py-3 pl-12 pr-4 text-sm font-medium text-[#2c2f31] placeholder:text-[#747779] focus:ring-2 focus:ring-[#0051d1]/20 ${bizFocusRingClass}`}
                 />
               </div>
             </div>
 
+            {/* Concierge — selected */}
             <div className="flex cursor-default items-center gap-4 rounded-lg border-l-4 border-[#0051d1] bg-white p-4 shadow-[0_4px_12px_rgba(0,0,0,0.03)]">
               <div className="relative shrink-0">
                 <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-full bg-[#0051d1]/10">
@@ -5378,20 +5391,81 @@ function MessagesDayZeroShell(props: {
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between gap-2">
                   <span className="truncate font-bold text-[#2c2f31]">Beamio Concierge</span>
-                  <span className="shrink-0 text-[10px] font-medium text-[#747779]">NOW</span>
+                  <span className="flex shrink-0 items-center gap-1 text-[10px] font-semibold text-[#0051d1]">
+                    NOW
+                    <span className="h-1.5 w-1.5 rounded-full bg-[#0051d1]" aria-hidden />
+                  </span>
                 </div>
                 <p className="truncate text-sm font-medium text-[#595c5e]">Welcome to Beamio! This is your secure…</p>
               </div>
-              <div className="h-2.5 w-2.5 shrink-0 rounded-full bg-[#0051d1]" aria-hidden />
             </div>
 
-            <div className="mt-2 flex flex-1 flex-col items-center justify-center rounded-lg border-2 border-dashed border-[#abadaf]/25 p-8 opacity-[0.85]">
+            {/* Risk Defense Sentinel sample */}
+            <div className="flex cursor-default items-start gap-3 rounded-lg border border-amber-200/70 bg-amber-50/70 p-3.5 shadow-[0_1px_3px_rgba(0,0,0,0.03)]">
+              <div className="relative shrink-0">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-500 text-white shadow-inner">
+                  <AlertTriangle className="size-5" strokeWidth={2} aria-hidden />
+                </div>
+                <div className="absolute -bottom-0.5 -right-0.5 rounded-full bg-amber-600 p-0.5 text-white ring-2 ring-white">
+                  <Shield className="size-2.5" strokeWidth={2.5} aria-hidden />
+                </div>
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="rounded bg-amber-100/90 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-800">
+                    Risk Defense Sentinel
+                  </span>
+                  <span className="text-[10px] text-slate-400">Sample</span>
+                </div>
+                <p className="mt-1 truncate text-sm font-semibold text-[#2c2f31]">Bot Claim Blocked • Voucher #VCH-8921</p>
+                <p className="mt-0.5 line-clamp-2 text-xs text-[#595c5e]">
+                  Sybil pattern intercepted. Real-time OTP challenge sent to client.
+                </p>
+              </div>
+            </div>
+
+            {/* VIP member sample */}
+            <div className="flex cursor-default items-start gap-3 rounded-lg border border-[#abadaf]/20 bg-white/90 p-3.5 opacity-90 shadow-[0_1px_3px_rgba(0,0,0,0.03)]">
+              <div className="relative shrink-0">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-indigo-600 text-xs font-semibold text-white shadow-inner">
+                  XH
+                </div>
+                <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-white bg-emerald-500" aria-hidden />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="flex min-w-0 items-center gap-1.5 truncate font-bold text-[#2c2f31]">
+                    @Xiangha
+                    <span className="shrink-0 rounded-full border border-amber-200 bg-amber-100 px-1.5 text-[9px] font-bold text-amber-800">
+                      GOLD VIP
+                    </span>
+                  </span>
+                  <span className="shrink-0 text-[10px] text-slate-400">Sample</span>
+                </div>
+                <div className="mt-1 flex items-center justify-between gap-2">
+                  <p className="truncate text-xs text-[#595c5e]">Thanks for the exclusive 15% dinner pass!</p>
+                  <span className="shrink-0 rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-600">
+                    C$138.71 Credits
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Growth CTA */}
+            <div className="mt-1 flex flex-1 flex-col items-center justify-center rounded-lg border-2 border-dashed border-[#abadaf]/30 bg-white/40 p-6 text-center">
               <UserRoundPlus className="mb-2 size-10 text-[#747779]" strokeWidth={1.5} aria-hidden />
-              <p className="text-center text-xs font-semibold leading-relaxed text-[#595c5e]">
-                No other active members
-                <br />
-                Start a campaign to engage
+              <h4 className="text-sm font-bold text-[#2c2f31]">Your secure inbox is ready.</h4>
+              <p className="mt-1 max-w-[240px] text-xs font-medium leading-relaxed text-[#595c5e]">
+                Create a voucher campaign to spark customer conversations and build your private member network.
               </p>
+              <button
+                type="button"
+                onClick={onLaunchCampaign ?? onNewMessage}
+                className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-[#2c2f31] shadow-sm transition-all hover:border-[#0051d1] hover:text-[#0051d1]"
+              >
+                <Plus className="size-3.5 text-[#0051d1]" strokeWidth={2.2} aria-hidden />
+                Launch Voucher Campaign
+              </button>
             </div>
           </div>
         </div>
@@ -5409,7 +5483,7 @@ function MessagesDayZeroShell(props: {
                   <div className="mt-1 flex items-center gap-1.5">
                     <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden />
                     <span className="text-[11px] font-bold uppercase tracking-widest text-[#747779]">
-                      Active system support
+                      Active System Support
                     </span>
                   </div>
                 </div>
@@ -5418,14 +5492,15 @@ function MessagesDayZeroShell(props: {
                 <button
                   type="button"
                   className="flex h-10 w-10 items-center justify-center rounded-full text-[#747779] transition-colors hover:bg-[#eef1f3]"
-                  aria-label="安全"
+                  aria-label="Security details"
+                  title={eoaShortEncrypt ? `Channel peer ${eoaShortEncrypt}` : 'Secure channel'}
                 >
-                  <Shield className="size-5" strokeWidth={2} aria-hidden />
+                  <Shield className="size-5 text-[#0051d1]" strokeWidth={2} aria-hidden />
                 </button>
                 <button
                   type="button"
                   className="flex h-10 w-10 items-center justify-center rounded-full text-[#747779] transition-colors hover:bg-[#eef1f3]"
-                  aria-label="More"
+                  aria-label="More options"
                 >
                   <MoreVertical className="size-5" strokeWidth={2} aria-hidden />
                 </button>
@@ -5440,12 +5515,17 @@ function MessagesDayZeroShell(props: {
                 }}
                 aria-hidden
               />
-              <div className="relative z-[1] mb-10 flex items-center gap-2 rounded-full bg-[#eef1f3] px-4 py-2 text-[11px] font-bold uppercase tracking-widest text-[#747779]">
-                <Lock className="size-3.5 shrink-0" strokeWidth={2} aria-hidden />
-                End-to-end encrypted: {eoaShortEncrypt}
+              <div
+                className="relative z-[1] mb-8 inline-flex cursor-default items-center gap-1.5 rounded-full border border-emerald-200/80 bg-emerald-50/90 px-4 py-2 text-[11px] font-medium text-emerald-800 shadow-sm"
+                title="Peer-to-peer encrypted merchant–member channel on Base L2 and CoNET. Zero phone-number exposure."
+              >
+                <Lock className="size-3.5 shrink-0 text-emerald-600" strokeWidth={2} aria-hidden />
+                <span>Secure P2P Connection</span>
+                <span className="text-emerald-500/70">•</span>
+                <span className="font-mono text-[10px] text-emerald-700">Zero-Exposure</span>
+                <Info className="size-3 shrink-0 text-emerald-600" strokeWidth={2} aria-hidden />
               </div>
               <div className="relative z-[1] w-full max-w-md">
-                {/* Outer + inner radii must match (inner ≈ outer − 1px for p-px) or blue gradient shows at corners */}
                 <div className="overflow-hidden rounded-3xl bg-gradient-to-br from-[#0051d1] to-[#7a9dff] p-px shadow-xl shadow-[#0051d1]/10">
                   <div className="rounded-[calc(1.5rem-1px)] bg-white p-6 sm:p-8">
                     <div className="mb-6 flex items-start gap-4">
@@ -5453,32 +5533,40 @@ function MessagesDayZeroShell(props: {
                         <Hand className="size-7" strokeWidth={2} aria-hidden />
                       </div>
                       <div>
-                        <h4 className="text-xl font-bold text-[#1562f0]">Welcome to Beamio!</h4>
-                        <p className="mt-1 text-xs font-medium text-[#747779]">Secure business inbox</p>
+                        <h4 className="text-xl font-bold text-[#1562f0]">Welcome to your Secure CRM!</h4>
+                        <p className="mt-1 text-xs font-medium text-[#747779]">
+                          Decentralized business inbox &amp; risk defense
+                        </p>
                       </div>
                     </div>
                     <div className="space-y-4 text-sm font-medium leading-relaxed text-[#2c2f31]">
                       <p>
-                        This is your secure, decentralized inbox. You can chat directly with your verified members here to
-                        offer VIP support or resolve disputes,{' '}
-                        <span className="font-bold text-[#0051d1]">without exposing anyone&apos;s phone number.</span>
+                        Connect directly with your verified members to offer VIP support, distribute exclusive perks, and
+                        resolve disputes—{' '}
+                        <span className="font-bold text-[#0051d1] underline decoration-[#bcd6ff]">
+                          without exposing anyone&apos;s personal phone number or private data
+                        </span>
+                        .
                       </p>
-                      <div className="rounded-lg border-l-2 border-[#0051d1]/40 bg-[#eef1f3] p-4 text-sm">
-                        <div className="mb-2 flex items-center gap-2">
-                          <BadgeCheck className="size-5 text-[#0051d1]" strokeWidth={2} aria-hidden />
-                          <span className="text-[10px] font-bold uppercase tracking-tight text-[#2c2f31]">
-                            Privacy protocol
+                      <div className="space-y-2 rounded-lg border border-slate-200/90 bg-slate-50 p-4">
+                        <div className="flex items-center gap-2">
+                          <ShieldCheck className="size-4 text-[#0051d1]" strokeWidth={2} aria-hidden />
+                          <span className="text-[10px] font-bold uppercase tracking-wide text-[#2c2f31]">
+                            Chat-as-Defense Protocol
                           </span>
                         </div>
-                        <p>
-                          All communication is <span className="font-bold italic">wallet-to-wallet</span>, helping keep
-                          merchant–customer conversations private.
+                        <p className="text-sm leading-relaxed text-[#595c5e]">
+                          All communication is <span className="font-semibold text-[#2c2f31]">wallet-to-wallet</span> on
+                          Base L2 &amp; CoNET. High-frequency coupon claims and transactions are protected against bot
+                          attacks and sybil abuse in real-time.
                         </p>
                       </div>
-                      <p>Have questions about setting up? Ask us anything after you start your first chat.</p>
+                      <p className="text-xs text-[#747779]">
+                        Have questions about setting up? Ask us anything below.
+                      </p>
                     </div>
                     <div className="mt-8 flex justify-end">
-                      <span className="text-[10px] font-bold text-[#747779]">System message</span>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-[#747779]">System message</span>
                     </div>
                   </div>
                 </div>
@@ -5490,14 +5578,14 @@ function MessagesDayZeroShell(props: {
                 <button
                   type="button"
                   className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-[#0051d1] transition-colors hover:bg-white"
-                  aria-label="Add"
+                  aria-label="Expand attachments"
                 >
                   <PlusCircle className="size-6" strokeWidth={2} aria-hidden />
                 </button>
                 <input
                   type="text"
                   readOnly
-                  placeholder="输入安全消息…"
+                  placeholder="Type a secure message..."
                   className="min-w-0 flex-1 border-0 bg-transparent text-sm font-medium text-[#2c2f31] placeholder:text-[#747779] focus:ring-0"
                 />
                 <button
@@ -5509,19 +5597,37 @@ function MessagesDayZeroShell(props: {
                   <Send className="size-5" strokeWidth={2} aria-hidden />
                 </button>
               </div>
-              <div className="mt-4 flex flex-wrap items-center justify-center gap-6">
-                <div className="flex cursor-default items-center gap-2 opacity-50">
-                  <Paperclip className="size-4 text-[#2c2f31]" strokeWidth={2} aria-hidden />
-                  <span className="text-[10px] font-bold uppercase tracking-tight text-[#595c5e]">Attach</span>
-                </div>
-                <div className="flex cursor-default items-center gap-2 opacity-50">
-                  <Landmark className="size-4 text-[#2c2f31]" strokeWidth={2} aria-hidden />
-                  <span className="text-[10px] font-bold uppercase tracking-tight text-[#595c5e]">Request payment</span>
-                </div>
-                <div className="flex cursor-default items-center gap-2 opacity-50">
-                  <Ticket className="size-4 text-[#2c2f31]" strokeWidth={2} aria-hidden />
-                  <span className="text-[10px] font-bold uppercase tracking-tight text-[#595c5e]">Issue ticket</span>
-                </div>
+              <div className="mt-4 flex flex-wrap items-center justify-center gap-4 sm:gap-6">
+                <button
+                  type="button"
+                  onClick={onLaunchCampaign ?? onNewMessage}
+                  className="group flex items-center gap-2 rounded-lg px-2 py-1 text-[#595c5e] transition-colors hover:bg-white hover:text-[#0051d1]"
+                >
+                  <Gift className="size-4 text-[#0051d1] transition-transform group-hover:scale-110" strokeWidth={2} aria-hidden />
+                  <span className="text-[10px] font-bold uppercase tracking-tight">Send Voucher</span>
+                </button>
+                <span className="hidden text-slate-300 sm:inline" aria-hidden>
+                  •
+                </span>
+                <button
+                  type="button"
+                  title="T+0 instant smart clearing with zero chargeback risk on Base L2"
+                  className="group flex items-center gap-1.5 rounded-lg px-2 py-1 text-[#595c5e] transition-colors hover:bg-emerald-50 hover:text-emerald-700"
+                >
+                  <Zap className="size-4 text-emerald-500 transition-transform group-hover:rotate-12" strokeWidth={2} aria-hidden />
+                  <span className="text-[10px] font-bold uppercase tracking-tight">Request USDC</span>
+                  <span className="rounded bg-emerald-100 px-1 text-[9px] font-bold uppercase text-emerald-800">T+0</span>
+                </button>
+                <span className="hidden text-slate-300 sm:inline" aria-hidden>
+                  •
+                </span>
+                <button
+                  type="button"
+                  className="flex items-center gap-2 rounded-lg px-2 py-1 text-[#595c5e] transition-colors hover:bg-white hover:text-[#2c2f31]"
+                >
+                  <Paperclip className="size-4" strokeWidth={2} aria-hidden />
+                  <span className="text-[10px] font-bold uppercase tracking-tight">Attach File</span>
+                </button>
               </div>
             </div>
           </div>
@@ -37920,6 +38026,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                setMessagesChatData(undefined);
                setMessagesNewError(null);
              }}
+             onLaunchCampaign={() => handleTabChange('Market')}
              headerAvatarSrc={getAvatarImgUrl(
                (profiles?.[0] as { username?: string; accountName?: string } | undefined)?.username ??
                  (profiles?.[0] as { accountName?: string } | undefined)?.accountName ??
@@ -37937,19 +38044,48 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
            />
          ) : activeTab === 'Messages' ? (
            <div className="mx-auto w-full max-w-7xl animate-in pb-10 fade-in duration-300 lg:pb-10">
-             <header className="mb-10 flex flex-col items-stretch justify-end gap-4 sm:flex-row sm:items-center sm:justify-end">
-               <button
-                 type="button"
-                 onClick={() => {
-                   setMessagesComposeOpen(true);
-                   setMessagesChatData(undefined);
-                   setMessagesNewError(null);
-                 }}
-                 className="flex items-center justify-center gap-2 rounded-full bg-[#1562f0] px-8 py-4 font-bold text-white shadow-lg shadow-[#1562f0]/20 transition-all hover:opacity-90 active:scale-95 sm:ml-auto"
-               >
-                 <MessageSquarePlus className="size-5 shrink-0" strokeWidth={2.2} aria-hidden />{tu('new_message')}</button>
-             </header>
-
+             <div className="mb-5 flex flex-col gap-3 rounded-2xl border border-slate-200/80 bg-white/90 px-4 py-3 shadow-sm backdrop-blur-md sm:px-5">
+               <div className="flex items-center gap-3">
+                 <div className="relative min-w-0 flex-1">
+                   <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" strokeWidth={2} aria-hidden />
+                   <input
+                     type="search"
+                     value={messagesInboxSearch}
+                     onChange={(e) => setMessagesInboxSearch(e.target.value)}
+                     placeholder="Search conversations or members..."
+                     autoComplete="off"
+                     className={`w-full rounded-full border-0 bg-slate-100 py-2 pl-9 pr-3 text-xs text-slate-800 placeholder:text-slate-400 focus:bg-white focus:ring-2 focus:ring-[#1562f0]/30 ${bizFocusRingClass}`}
+                   />
+                 </div>
+                 <div className="flex shrink-0 items-center gap-1.5 rounded-full border border-emerald-200/70 bg-emerald-50/80 px-2 py-1">
+                   <span className="text-[11px] font-medium tracking-tight text-emerald-800">
+                     @{beamio?.accountName || 'Merchant'}
+                   </span>
+                   <span className="grid size-5 place-items-center rounded-full bg-emerald-500 text-[10px] font-semibold text-white">☺</span>
+                 </div>
+               </div>
+               <div className="flex items-center justify-between gap-3">
+                 <div className="flex items-center gap-2">
+                   <span className="inline-flex items-center gap-1.5 rounded-full border border-[#bcd6ff] bg-[#eef5ff] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-[#093bb0]">
+                     <span className="size-1.5 animate-pulse rounded-full bg-[#1562f0]" />
+                     Live Support
+                   </span>
+                   <span className="hidden text-[11px] font-medium text-slate-500 sm:inline">P2P Mesh: active</span>
+                 </div>
+                 <button
+                   type="button"
+                   onClick={() => {
+                     setMessagesComposeOpen(true);
+                     setMessagesChatData(undefined);
+                     setMessagesNewError(null);
+                   }}
+                   className="inline-flex items-center justify-center gap-1.5 rounded-full bg-[#1562f0] px-3.5 py-1.5 text-xs font-medium text-white shadow-sm shadow-[#1562f0]/20 transition hover:bg-[#0b4cd4] active:scale-95"
+                 >
+                   <MessageSquarePlus className="size-3.5" strokeWidth={2.2} aria-hidden />
+                   New message
+                 </button>
+               </div>
+             </div>
              <div className="grid grid-cols-1 gap-8 lg:grid-cols-12">
                <div className="space-y-6 lg:col-span-4">
                  <div className="relative group">

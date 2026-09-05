@@ -17032,12 +17032,11 @@ const cardIssuanceEffectiveMerchantLogo = useMemo(() => {
    [programsOverviewTierRuleOption, cardIssuanceTierRule]
  );
 
- /** Loyalty Logic first row: Membership Fee vs Top-up vs Charge by card mode. */
+ /** Loyalty Logic first row: same wording as Basic Info → Loyalty rule type (or Membership Fee). */
  const programsLoyaltyLogicTiersEntryTitle = useMemo(() => {
-   if (cardIssuanceMembershipFeeMode) return tu('programs_rules_membership_fee');
-   if (programsOverviewTierRuleKey === 'cumulative') return tu('programs_rules_charge');
-   return tu('programs_rules_topup');
- }, [cardIssuanceMembershipFeeMode, programsOverviewTierRuleKey, tu]);
+   if (cardIssuanceMembershipFeeMode) return tu('programs_config_rewards_membership_fee');
+   return programsOverviewTierRuleOption?.title ?? tu('programs_tier_rule_single');
+ }, [cardIssuanceMembershipFeeMode, programsOverviewTierRuleOption, tu]);
 
  const programsLoyaltyLogicTierListTitle = useMemo(() => {
    if (cardIssuanceMembershipFeeMode) return tu('programs_membership_fee_tier_list_title');
@@ -42190,7 +42189,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                      ) : null}
                      {programsPromotionSubView === 'rules' ? (
                      <div className="space-y-3 sm:space-y-4">
-                       {/* Loyalty Logic — first row label follows card mode (Membership Fee / Top-up / Charge) */}
+                       {/* Loyalty Logic — first row = Basic Info Loyalty rule type (or Membership Fee) */}
                        <div className="rounded-xl border border-[#e8ecf0] bg-white p-4 shadow-[0_6px_24px_rgba(0,0,0,0.05)] ring-1 ring-black/[0.04] sm:p-5">
                          <h3 className="mb-4 text-[9px] font-bold uppercase tracking-widest text-[#595c5e]">
                            {tu('programs_loyalty_logic')}

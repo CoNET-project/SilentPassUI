@@ -5301,20 +5301,13 @@ function StaffTerminalsInfoGrid() {
 }
 
 /** Beamio Messages day-zero UI — Messages & Defense Console (empty inbox, dual pane). */
-const VERRA_CONCIERGE_INBOX_IMG =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuDJTutfeByR_K_9krcUU0clVT6UuCnszHaJmz5MccUtFKyKcx82xLURJSgCSEd26zmWUDW3xdDwHwQmxOfNtkhrdSEJakhHElMP5bN0R8p70uV2jVuOFZnH9V_8GU_PkWKbNCC29SMq-hSB6B2ET1dIrcEZmcQKK4qo61SI2dPbVk2FNFGQ4f_5wuuhOKwS0-ykjsUwZYl9kQGVClrsrzXDNze7a4d0AQJ4RVPDiBtUt9JPVjkBoLqByQGQDy_nPDx4E84YLvqfLeo';
-
 function MessagesDayZeroShell(props: {
-  inboxSearch: string
-  onInboxSearchChange: (v: string) => void
   onNewMessage: () => void
   onLaunchCampaign?: () => void
   headerAvatarSrc: string
   eoaShortEncrypt: string
 }) {
   const {
-    inboxSearch,
-    onInboxSearchChange,
     onNewMessage,
     onLaunchCampaign,
     headerAvatarSrc,
@@ -5360,99 +5353,8 @@ function MessagesDayZeroShell(props: {
         {/* Left: contact list */}
         <div className="flex w-full flex-col gap-4 lg:w-[32%] lg:min-w-[280px]">
           <div className="flex h-full min-h-[480px] flex-col gap-2 rounded-lg bg-[#eef1f3] p-2 lg:min-h-[600px]">
-            <div className="mb-1 px-3 py-3">
-              <div className="relative">
-                <Search
-                  className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-[#747779]"
-                  strokeWidth={2}
-                  aria-hidden
-                />
-                <input
-                  type="search"
-                  value={inboxSearch}
-                  onChange={(e) => onInboxSearchChange(e.target.value)}
-                  placeholder="Search messages or member @tag..."
-                  autoComplete="off"
-                  className={`w-full rounded-full border-0 bg-white py-3 pl-12 pr-4 text-sm font-medium text-[#2c2f31] placeholder:text-[#747779] focus:ring-2 focus:ring-[#0051d1]/20 ${bizFocusRingClass}`}
-                />
-              </div>
-            </div>
-
-            {/* Concierge — selected */}
-            <div className="flex cursor-default items-center gap-4 rounded-lg border-l-4 border-[#0051d1] bg-white p-4 shadow-[0_4px_12px_rgba(0,0,0,0.03)]">
-              <div className="relative shrink-0">
-                <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-full bg-[#0051d1]/10">
-                  <IpfsImg src={VERRA_CONCIERGE_INBOX_IMG} alt="" className="h-full w-full object-cover" />
-                </div>
-                <div className="absolute -bottom-1 -right-1 rounded-full bg-white p-0.5 shadow-sm">
-                  <BadgeCheck className="size-3.5 text-[#0051d1]" strokeWidth={2.4} aria-hidden />
-                </div>
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="truncate font-bold text-[#2c2f31]">Beamio Concierge</span>
-                  <span className="flex shrink-0 items-center gap-1 text-[10px] font-semibold text-[#0051d1]">
-                    NOW
-                    <span className="h-1.5 w-1.5 rounded-full bg-[#0051d1]" aria-hidden />
-                  </span>
-                </div>
-                <p className="truncate text-sm font-medium text-[#595c5e]">Welcome to Beamio! This is your secure…</p>
-              </div>
-            </div>
-
-            {/* Risk Defense Sentinel sample */}
-            <div className="flex cursor-default items-start gap-3 rounded-lg border border-amber-200/70 bg-amber-50/70 p-3.5 shadow-[0_1px_3px_rgba(0,0,0,0.03)]">
-              <div className="relative shrink-0">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-500 text-white shadow-inner">
-                  <AlertTriangle className="size-5" strokeWidth={2} aria-hidden />
-                </div>
-                <div className="absolute -bottom-0.5 -right-0.5 rounded-full bg-amber-600 p-0.5 text-white ring-2 ring-white">
-                  <Shield className="size-2.5" strokeWidth={2.5} aria-hidden />
-                </div>
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="rounded bg-amber-100/90 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-800">
-                    Risk Defense Sentinel
-                  </span>
-                  <span className="text-[10px] text-slate-400">Sample</span>
-                </div>
-                <p className="mt-1 truncate text-sm font-semibold text-[#2c2f31]">Bot Claim Blocked • Voucher #VCH-8921</p>
-                <p className="mt-0.5 line-clamp-2 text-xs text-[#595c5e]">
-                  Sybil pattern intercepted. Real-time OTP challenge sent to client.
-                </p>
-              </div>
-            </div>
-
-            {/* VIP member sample */}
-            <div className="flex cursor-default items-start gap-3 rounded-lg border border-[#abadaf]/20 bg-white/90 p-3.5 opacity-90 shadow-[0_1px_3px_rgba(0,0,0,0.03)]">
-              <div className="relative shrink-0">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-indigo-600 text-xs font-semibold text-white shadow-inner">
-                  XH
-                </div>
-                <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-white bg-emerald-500" aria-hidden />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="flex min-w-0 items-center gap-1.5 truncate font-bold text-[#2c2f31]">
-                    @Xiangha
-                    <span className="shrink-0 rounded-full border border-amber-200 bg-amber-100 px-1.5 text-[9px] font-bold text-amber-800">
-                      GOLD VIP
-                    </span>
-                  </span>
-                  <span className="shrink-0 text-[10px] text-slate-400">Sample</span>
-                </div>
-                <div className="mt-1 flex items-center justify-between gap-2">
-                  <p className="truncate text-xs text-[#595c5e]">Thanks for the exclusive 15% dinner pass!</p>
-                  <span className="shrink-0 rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-600">
-                    C$138.71 Credits
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Growth CTA */}
-            <div className="mt-1 flex flex-1 flex-col items-center justify-center rounded-lg border-2 border-dashed border-[#abadaf]/30 bg-white/40 p-6 text-center">
+            {/* Growth CTA — empty inbox */}
+            <div className="flex flex-1 flex-col items-center justify-center rounded-lg border-2 border-dashed border-[#abadaf]/30 bg-white/40 p-6 text-center">
               <UserRoundPlus className="mb-2 size-10 text-[#747779]" strokeWidth={1.5} aria-hidden />
               <h4 className="text-sm font-bold text-[#2c2f31]">Your secure inbox is ready.</h4>
               <p className="mt-1 max-w-[240px] text-xs font-medium leading-relaxed text-[#595c5e]">
@@ -5562,7 +5464,7 @@ function MessagesDayZeroShell(props: {
                         </p>
                       </div>
                       <p className="text-xs text-[#747779]">
-                        Have questions about setting up? Ask us anything below.
+                        Use New message above to start a secure conversation with a member.
                       </p>
                     </div>
                     <div className="mt-8 flex justify-end">
@@ -5570,64 +5472,6 @@ function MessagesDayZeroShell(props: {
                     </div>
                   </div>
                 </div>
-              </div>
-            </div>
-
-            <div className="border-t border-[#eef1f3] bg-[#f5f7f9]/80 px-6 py-6 backdrop-blur-xl sm:px-8">
-              <div className="flex items-center gap-3 rounded-xl bg-[#eef1f3] p-2">
-                <button
-                  type="button"
-                  className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-[#0051d1] transition-colors hover:bg-white"
-                  aria-label="Expand attachments"
-                >
-                  <PlusCircle className="size-6" strokeWidth={2} aria-hidden />
-                </button>
-                <input
-                  type="text"
-                  readOnly
-                  placeholder="Type a secure message..."
-                  className="min-w-0 flex-1 border-0 bg-transparent text-sm font-medium text-[#2c2f31] placeholder:text-[#747779] focus:ring-0"
-                />
-                <button
-                  type="button"
-                  onClick={onNewMessage}
-                  className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#0051d1] text-white shadow-lg shadow-[#0051d1]/20 transition-transform hover:scale-105 active:scale-95"
-                  aria-label="Start new message"
-                >
-                  <Send className="size-5" strokeWidth={2} aria-hidden />
-                </button>
-              </div>
-              <div className="mt-4 flex flex-wrap items-center justify-center gap-4 sm:gap-6">
-                <button
-                  type="button"
-                  onClick={onLaunchCampaign ?? onNewMessage}
-                  className="group flex items-center gap-2 rounded-lg px-2 py-1 text-[#595c5e] transition-colors hover:bg-white hover:text-[#0051d1]"
-                >
-                  <Gift className="size-4 text-[#0051d1] transition-transform group-hover:scale-110" strokeWidth={2} aria-hidden />
-                  <span className="text-[10px] font-bold uppercase tracking-tight">Send Voucher</span>
-                </button>
-                <span className="hidden text-slate-300 sm:inline" aria-hidden>
-                  •
-                </span>
-                <button
-                  type="button"
-                  title="T+0 instant smart clearing with zero chargeback risk on Base L2"
-                  className="group flex items-center gap-1.5 rounded-lg px-2 py-1 text-[#595c5e] transition-colors hover:bg-emerald-50 hover:text-emerald-700"
-                >
-                  <Zap className="size-4 text-emerald-500 transition-transform group-hover:rotate-12" strokeWidth={2} aria-hidden />
-                  <span className="text-[10px] font-bold uppercase tracking-tight">Request USDC</span>
-                  <span className="rounded bg-emerald-100 px-1 text-[9px] font-bold uppercase text-emerald-800">T+0</span>
-                </button>
-                <span className="hidden text-slate-300 sm:inline" aria-hidden>
-                  •
-                </span>
-                <button
-                  type="button"
-                  className="flex items-center gap-2 rounded-lg px-2 py-1 text-[#595c5e] transition-colors hover:bg-white hover:text-[#2c2f31]"
-                >
-                  <Paperclip className="size-4" strokeWidth={2} aria-hidden />
-                  <span className="text-[10px] font-bold uppercase tracking-tight">Attach File</span>
-                </button>
               </div>
             </div>
           </div>
@@ -38019,8 +37863,6 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
          !messagesComposeOpen &&
          !messagesChatData ? (
            <MessagesDayZeroShell
-             inboxSearch={messagesInboxSearch}
-             onInboxSearchChange={setMessagesInboxSearch}
              onNewMessage={() => {
                setMessagesComposeOpen(true);
                setMessagesChatData(undefined);
@@ -38037,7 +37879,6 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                },
              )}
              eoaShortEncrypt={(() => {
-				
                const a = (profiles?.[0]?.keyID ?? myAddress)?.trim() ?? '';
                return a.length > 10 ? `${a.slice(0, 4)}…${a.slice(-4)}` : a || '0x…';
              })()}

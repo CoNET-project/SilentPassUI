@@ -5584,7 +5584,6 @@ function MemberDirectoryProfileDrawerPanel({
   onSendGift,
 }: Omit<MemberDirectoryProfileDrawerProps, 'onClose'>): React.ReactElement {
   const [memberIdCopied, setMemberIdCopied] = useState(false);
-  const pts = directoryMemberPointsHuman(row);
   const tagRaw = row.beamioTag.replace(/^@/, '').trim();
   const displayTitle = tagRaw ? formatDirectoryMemberDisplayName(row.beamioTag) : segment === 'app' ? 'App user' : 'NFC user';
   const headlineTag = tagRaw
@@ -5594,6 +5593,15 @@ function MemberDirectoryProfileDrawerPanel({
       : `${row.memberAddress.slice(0, 6)}…${row.memberAddress.slice(-4)}`;
   const avatarSrc = getAvatarImgUrl(tagRaw || undefined, { address: row.memberAddress, profileMap });
   const membershipId = formatMembershipNftMemberNo(row.membershipNftTokenId);
+  const storeBalanceLabel = directoryMemberCurrentBalanceDisplay(row);
+  const lifetimeTopupLabel = directoryMemberLifetimeTopupDisplay(row);
+  const channelLabel = formatMemberTopupChannelLabel(row);
+  const bal = row.currentCardToken0Balance;
+  const hasAvailableBalance = bal != null && Number.isFinite(bal) && bal > 0;
+  const currencyCode = (row.currency || '').trim().toUpperCase();
+  const shortAa = row.aaAddress
+    ? `${row.aaAddress.slice(0, 6)}…${row.aaAddress.slice(-4)}`
+    : null;
   const copyMembershipId = async () => {
     if (!membershipId) return;
     try {
@@ -5606,17 +5614,37 @@ function MemberDirectoryProfileDrawerPanel({
   };
 
   return (
-    <div className="flex-1 overflow-y-auto px-6 pb-24">
-      <div className="mb-8 flex flex-col items-center">
-        <div className="mb-4 rounded-full bg-gradient-to-tr from-[#0051d1] to-[#7a9dff] p-1">
-          <div className="size-24 overflow-hidden rounded-full border-4 border-white bg-[#dfe3e6]">
-            <IpfsImg src={avatarSrc} alt="" className="size-full object-cover" />
+    <div className="custom-scrollbar flex-1 space-y-6 overflow-y-auto px-5 pb-8 pt-1">
+      <section className="flex flex-col items-center text-center">
+        <div className="relative mb-3">
+          <div className="size-24 rounded-full bg-gradient-to-tr from-[#1562F0] to-sky-400 p-1 shadow-md">
+            <div className="size-full overflow-hidden rounded-full border-2 border-white bg-[#dfe3e6]">
+              <IpfsImg src={avatarSrc} alt="" className="size-full object-cover" />
+            </div>
           </div>
         </div>
-        <h3 id="member-profile-drawer-title" className="text-center font-sans text-xl font-extrabold tracking-tight text-[#2c2f31]">
+        <h3 id="member-profile-drawer-title" className="text-2xl font-bold tracking-tight text-slate-900">
           {headlineTag}
         </h3>
-        <p className="mt-1 text-center text-sm font-medium text-[#595c5e]">{displayTitle}</p>
+        <p className="mt-0.5 text-sm font-medium text-slate-500">{displayTitle}</p>
+        {membershipId ? (
+          <button
+            type="button"
+            onClick={() => void copyMembershipId()}
+            className={`mt-3 inline-flex items-center gap-2 rounded-full border border-slate-200/80 bg-slate-50 px-3.5 py-1.5 shadow-sm transition hover:border-[#1562F0]/30 ${bizFocusRingClass}`}
+            aria-label="Copy membership ID"
+          >
+            <span className="inline-flex size-5 items-center justify-center rounded-full bg-[#1562F0]/10 text-[#1562F0]">
+              <BadgeCheck className="size-3" strokeWidth={2.5} aria-hidden />
+            </span>
+            <span className="font-mono text-xs font-bold tracking-wide text-slate-700">ID: #{membershipId}</span>
+            {memberIdCopied ? (
+              <Check className="size-3.5 text-emerald-500" aria-hidden />
+            ) : (
+              <Copy className="size-3.5 text-slate-400" aria-hidden />
+            )}
+          </button>
+        ) : null}
         <div className="mt-3 flex w-full justify-center">
           <AddressCapsule
             address={row.memberAddress}
@@ -5625,98 +5653,163 @@ function MemberDirectoryProfileDrawerPanel({
             leadingIcon={<Wallet className="h-3.5 w-3.5 text-[#0051d1]" strokeWidth={2.25} aria-hidden />}
           />
         </div>
-        {membershipId ? (
-          <button
-            type="button"
-            onClick={() => void copyMembershipId()}
-            className={`mt-2 inline-flex items-center gap-1 font-mono text-xs font-semibold tracking-widest text-[#595c5e] ${bizFocusRingClass}`}
-            aria-label="Copy membership ID"
-          >
-            {membershipId}
-            {memberIdCopied ? <Check className="size-3.5 text-emerald-500" aria-hidden /> : <Copy className="size-3.5" aria-hidden />}
-          </button>
+        {shortAa ? (
+          <p className="mt-1.5 flex items-center gap-1 font-mono text-[11px] tracking-tight text-slate-400">
+            <Hexagon className="size-3 text-[#8d3a8b]" strokeWidth={2.25} aria-hidden />
+            <span>Smart Account</span>
+            <span className="text-slate-300">•</span>
+            <span className="text-slate-500">{shortAa}</span>
+          </p>
         ) : null}
-        {hasRewardTier && tierBadgeLabel ? (
-          <div className="mt-3 inline-flex items-center rounded-full border border-[#0051d1]/20 bg-[#0051d1]/10 px-3 py-1 text-[#0047b8]">
-            <span className="font-sans text-xs font-bold">{tierBadgeLabel}</span>
-          </div>
-        ) : null}
-      </div>
+      </section>
 
-      <div className="mb-8 rounded-xl border border-white bg-[#eef1f3] p-4 shadow-sm">
-        <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">Stored balance</p>
-        <p className="font-sans text-2xl font-extrabold text-[#2c2f31]">{directoryMemberCurrentBalanceDisplay(row)}</p>
-        <div className="my-4 h-px bg-[#abadaf]/30" />
-        <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">Program</p>
-        <p className="truncate font-sans text-sm font-bold text-[#2c2f31]">{row.programName}</p>
-        <div className="my-4 h-px bg-[#abadaf]/30" />
-        <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">Lifetime top-up</p>
-        <p className="font-sans text-sm font-bold text-[#2c2f31]">{directoryMemberLifetimeTopupDisplay(row)}</p>
-        {membershipId ? (
-          <>
-            <div className="my-4 h-px bg-[#abadaf]/30" />
-            <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">Membership NFT</p>
-            <p className="font-mono text-sm font-bold tracking-widest text-[#2c2f31]">{membershipId}</p>
-          </>
-        ) : null}
-        <div className="my-4 h-px bg-[#abadaf]/30" />
-        <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">Recorded top-ups</p>
-        <p className="font-sans text-lg font-bold text-[#2c2f31]">{row.topupCount.toLocaleString()}</p>
-        <div className="my-4 h-px bg-[#abadaf]/30" />
-        <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">Top-up channel</p>
-        <p className="font-sans text-sm font-bold text-[#2c2f31]">{formatMemberTopupChannelLabel(row)}</p>
-      </div>
-
-      <div className="mb-10 flex gap-3">
-        <button
-          type="button"
-          onClick={onSendGift}
-          className={`flex h-12 flex-1 items-center justify-center rounded-full bg-[#0051d1] font-sans text-sm font-bold text-white shadow-lg shadow-[#0051d1]/20 transition-transform active:scale-[0.98] ${bizFocusRingClass}`}
-        >
-          <Gift className="mr-1.5 size-4 shrink-0" strokeWidth={2} aria-hidden />
-          Send Gift
-        </button>
-        <button type="button" disabled className="flex h-12 flex-1 cursor-not-allowed items-center justify-center rounded-full border-2 border-[#dfe3e6] bg-white font-sans text-sm font-bold text-[#595c5e] opacity-70" title="Refund workflows coming soon">
-          Issue Refund
-        </button>
-      </div>
-
-      <div className="space-y-6">
-        <h4 className="text-[11px] font-black uppercase tracking-widest text-[#abadaf]">Activity Trail</h4>
-        <div className="relative">
-          <div className="absolute bottom-6 left-[9px] top-6 w-0.5 bg-[#e5e9eb]" aria-hidden />
-          <div className="relative flex gap-4 pb-6">
-            <div className="z-10 flex size-5 shrink-0 items-center justify-center rounded-full bg-[#0051d1] ring-4 ring-white">
-              <Banknote className="size-2.5 text-white" strokeWidth={2.5} aria-hidden />
-            </div>
-            <div className="min-w-0 flex-1 pt-0.5">
-              <p className="font-sans text-sm font-bold text-[#2c2f31]">Lifetime top-up: {directoryMemberLifetimeTopupDisplay(row)}</p>
-              <p className="mt-1 text-xs text-[#595c5e]">Last activity · {memberDirectoryFormatTsSec(row.lastSeenTs)}</p>
-            </div>
+      <section className="space-y-4 rounded-2xl border border-slate-200/80 bg-slate-50 p-4 shadow-[0_2px_8px_-1px_rgba(15,23,42,0.05)]">
+        <div className="border-b border-slate-200/70 pb-3.5">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+              Store credits
+            </span>
+            {hasAvailableBalance ? (
+              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                Available now
+              </span>
+            ) : null}
           </div>
-          <div className="relative flex gap-4 pb-6">
-            <div className="z-10 flex size-5 shrink-0 items-center justify-center rounded-full bg-[#8d3a8b] ring-4 ring-white">
-              <RefreshCw className="size-2.5 text-white" strokeWidth={2.5} aria-hidden />
-            </div>
-            <div className="min-w-0 flex-1 pt-0.5">
-              <p className="font-sans text-sm font-bold text-[#2c2f31]">Top-up count</p>
-              <p className="mt-1 text-xs text-[#595c5e]">{row.topupCount.toLocaleString()} recorded on server</p>
-            </div>
+          <div className="mt-1 flex items-baseline gap-1">
+            <span className="text-3xl font-extrabold tracking-tight text-slate-900">{storeBalanceLabel}</span>
+            {currencyCode ? (
+              <span className="text-xs font-semibold uppercase text-slate-500">{currencyCode}</span>
+            ) : null}
           </div>
-          <div className="relative flex gap-4">
-            <div className="z-10 flex size-5 shrink-0 items-center justify-center rounded-full bg-[#d9dde0] ring-4 ring-white">
-              <LogIn className="size-2.5 text-[#595c5e]" strokeWidth={2.5} aria-hidden />
-            </div>
-            <div className="min-w-0 flex-1 pt-0.5">
-              <p className="font-sans text-sm font-bold text-[#2c2f31]">First seen</p>
-              <p className="mt-1 text-xs text-[#595c5e]">{memberDirectoryFormatTsSec(row.firstSeenTs)}</p>
+        </div>
+        <div className="grid grid-cols-2 gap-3 text-left">
+          <div className="rounded-xl border border-slate-100 bg-white p-2.5">
+            <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
+              {hasRewardTier && tierBadgeLabel ? 'Tier credential' : 'Program'}
+            </span>
+            {hasRewardTier && tierBadgeLabel ? (
+              <div className="mt-1 inline-flex items-center gap-1 rounded border border-amber-200/60 bg-amber-50 px-2 py-0.5 text-xs font-bold text-amber-700">
+                <Crown className="size-3 shrink-0 text-amber-600" strokeWidth={2.25} aria-hidden />
+                <span className="truncate">{tierBadgeLabel.replace(/\s+Member$/i, '')}</span>
+              </div>
+            ) : (
+              <p className="mt-0.5 truncate text-sm font-bold text-slate-800">{row.programName || '—'}</p>
+            )}
+          </div>
+          <div className="rounded-xl border border-slate-100 bg-white p-2.5">
+            <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Lifetime top-up</span>
+            <p className="mt-0.5 text-sm font-bold text-slate-800">{lifetimeTopupLabel}</p>
+          </div>
+          <div className="rounded-xl border border-slate-100 bg-white p-2.5">
+            <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Recorded top-ups</span>
+            <p className="mt-0.5 text-sm font-bold text-slate-800">
+              {row.topupCount.toLocaleString()} completed
+            </p>
+          </div>
+          <div className="rounded-xl border border-slate-100 bg-white p-2.5">
+            <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Channel</span>
+            <div className="mt-0.5 flex items-center gap-1.5">
+              {row.usedNfcTopup ? (
+                <Nfc className="size-3.5 shrink-0 text-[#1562F0]" strokeWidth={2} aria-hidden />
+              ) : row.usedAppTopup ? (
+                <Smartphone className="size-3.5 shrink-0 text-[#1562F0]" strokeWidth={2} aria-hidden />
+              ) : null}
+              <span className="text-xs font-semibold text-slate-700">
+                {row.usedNfcTopup && !row.usedAppTopup
+                  ? 'NFC tap'
+                  : row.usedAppTopup && !row.usedNfcTopup
+                    ? 'App'
+                    : channelLabel}
+              </span>
             </div>
           </div>
         </div>
-      </div>
+        {hasRewardTier && tierBadgeLabel && row.programName ? (
+          <p className="truncate px-0.5 text-[11px] font-medium text-slate-500">
+            Program · {row.programName}
+          </p>
+        ) : null}
+      </section>
 
-      <div className="mt-8 space-y-2 rounded-lg border border-[#abadaf]/20 bg-[#f5f7f9] p-3">
-        <p className="text-[10px] font-medium uppercase tracking-wider text-[#595c5e]">Program card</p>
+      <section className="grid grid-cols-2 gap-3 pt-0.5">
+        <button
+          type="button"
+          onClick={onSendGift}
+          className={`flex items-center justify-center gap-1.5 rounded-2xl bg-[#1562F0] px-4 py-3.5 text-sm font-semibold text-white shadow-[0_4px_14px_0_rgba(21,98,240,0.35)] transition duration-150 hover:bg-[#0E4DC5] active:scale-[0.98] ${bizFocusRingClass}`}
+        >
+          <Gift className="size-4 shrink-0" strokeWidth={2.2} aria-hidden />
+          <span>Send Gift</span>
+        </button>
+        <button
+          type="button"
+          disabled
+          className="flex cursor-not-allowed items-center justify-center gap-1.5 rounded-2xl border border-slate-300 bg-white px-4 py-3.5 text-sm font-semibold text-slate-700 opacity-70 shadow-sm"
+          title="Refund workflows coming soon"
+        >
+          <Banknote className="size-4 shrink-0 text-slate-500" strokeWidth={2} aria-hidden />
+          <span>Issue Refund</span>
+        </button>
+      </section>
+
+      <section className="space-y-3.5 pt-1">
+        <h4 className="px-1 text-xs font-bold uppercase tracking-wider text-slate-500">Activity Trail</h4>
+        <div className="relative space-y-5 pl-6 before:absolute before:bottom-2 before:left-2.5 before:top-2 before:w-[1.5px] before:bg-slate-200">
+          <div className="relative">
+            <span className="absolute -left-6 top-0.5 flex size-5 items-center justify-center rounded-full border-2 border-emerald-600 bg-emerald-50">
+              <Banknote className="size-2.5 text-emerald-600" strokeWidth={2.5} aria-hidden />
+            </span>
+            <div className="rounded-xl border border-slate-100 bg-slate-50/90 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="rounded-md bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                  Lifetime top-up
+                </span>
+                <span className="text-[11px] font-bold text-slate-800">{lifetimeTopupLabel}</span>
+              </div>
+              <p className="mt-1.5 text-xs font-semibold text-slate-800">Cumulative recorded top-ups</p>
+              <p className="mt-0.5 text-[11px] text-slate-400">
+                Last activity · {memberDirectoryFormatTsSec(row.lastSeenTs)}
+              </p>
+            </div>
+          </div>
+          <div className="relative">
+            <span className="absolute -left-6 top-0.5 flex size-5 items-center justify-center rounded-full border-2 border-indigo-600 bg-indigo-50">
+              <RefreshCw className="size-2.5 text-indigo-600" strokeWidth={2.5} aria-hidden />
+            </span>
+            <div className="rounded-xl border border-slate-100 bg-slate-50/90 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="rounded-md bg-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-700">
+                  Top-up count
+                </span>
+                <span className="text-[11px] font-bold text-slate-800">{row.topupCount.toLocaleString()}</span>
+              </div>
+              <p className="mt-1.5 text-xs font-semibold text-slate-800">
+                {row.topupCount.toLocaleString()} recorded on server
+              </p>
+              <p className="mt-0.5 text-[11px] text-slate-400">Channel · {channelLabel}</p>
+            </div>
+          </div>
+          <div className="relative">
+            <span className="absolute -left-6 top-0.5 flex size-5 items-center justify-center rounded-full border-2 border-slate-400 bg-slate-100">
+              <LogIn className="size-2.5 text-slate-500" strokeWidth={2.5} aria-hidden />
+            </span>
+            <div className="rounded-xl border border-slate-100 bg-slate-50/90 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="rounded-md bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-700">
+                  First seen
+                </span>
+                <span className="text-[11px] text-slate-400">Enrolled</span>
+              </div>
+              <p className="mt-1.5 text-xs font-semibold text-slate-800">
+                {row.programName ? `Joined ${row.programName}` : 'First recorded on this program'}
+              </p>
+              <p className="mt-0.5 text-[11px] text-slate-400">{memberDirectoryFormatTsSec(row.firstSeenTs)}</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="space-y-2 rounded-xl border border-slate-200/80 bg-slate-100/90 p-3">
+        <p className="text-[10px] font-medium uppercase tracking-wider text-slate-500">Program card</p>
         <AddressCapsule
           address={row.cardLower}
           explorerUrl={beamioConetBlockscoutAddressUrl(row.cardLower)}
@@ -5725,7 +5818,7 @@ function MemberDirectoryProfileDrawerPanel({
         />
         {row.aaAddress ? (
           <>
-            <p className="pt-1 text-[10px] font-medium uppercase tracking-wider text-[#595c5e]">Smart wallet</p>
+            <p className="pt-1 text-[10px] font-medium uppercase tracking-wider text-slate-500">Smart wallet</p>
             <AddressCapsule
               address={row.aaAddress}
               explorerUrl={beamioConetBlockscoutAddressUrl(row.aaAddress)}
@@ -5734,7 +5827,7 @@ function MemberDirectoryProfileDrawerPanel({
             />
           </>
         ) : null}
-      </div>
+      </section>
     </div>
   );
 }
@@ -5749,7 +5842,7 @@ function memberDirectoryProfileDrawerMotionLayers(props: MemberDirectoryProfileD
       type="button"
       key={`${addrKey}-member-profile-scrim`}
       layout={false}
-      className="fixed inset-0 z-[119] cursor-default bg-[#2c2f31]/20 backdrop-blur-sm"
+      className="fixed inset-0 z-[119] cursor-default bg-black/25"
       aria-label="Close profile"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
@@ -5757,39 +5850,50 @@ function memberDirectoryProfileDrawerMotionLayers(props: MemberDirectoryProfileD
       transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
       onClick={onClose}
     />,
-    <motion.div
+    <motion.aside
       key={`${addrKey}-member-profile-panel`}
       layout={false}
       role="dialog"
       aria-modal="true"
       aria-labelledby="member-profile-drawer-title"
-      className="fixed right-0 top-0 z-[120] flex h-full w-[92%] max-w-sm flex-col bg-white shadow-2xl md:w-80"
-      initial={{ x: '100%' }}
-      animate={{ x: 0 }}
-      exit={{ x: '100%' }}
+      className="fixed inset-x-0 bottom-0 z-[120] mx-auto flex max-h-[min(932px,calc(100dvh-2.5rem))] w-full max-w-[430px] flex-col overflow-hidden rounded-tl-3xl rounded-tr-3xl bg-white shadow-[0_-8px_40px_-4px_rgba(0,0,0,0.18)]"
+      style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+      initial={{ y: '100%' }}
+      animate={{ y: 0 }}
+      exit={{ y: '100%' }}
       transition={{ type: 'spring', damping: 32, stiffness: 360, mass: 0.85 }}
       onClick={(e) => e.stopPropagation()}
     >
-        <div className="flex items-center justify-between px-6 pb-2 pt-6">
-          <button
-            type="button"
-            onClick={onClose}
-            className={`flex size-10 items-center justify-center rounded-full text-[#9a9d9f] transition-colors hover:bg-[#eef1f3] ${bizFocusRingClass}`}
-            aria-label="Close"
-          >
-            <X className="size-5" strokeWidth={2} aria-hidden />
-          </button>
-          <span className="text-[10px] font-bold uppercase tracking-widest text-[#0051d1]">Profile Details</span>
+      <div className="flex w-full justify-center pb-1 pt-2.5" aria-hidden>
+        <span className="h-1.5 w-11 rounded-full bg-slate-300" />
+      </div>
+      <header className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
+        <button
+          type="button"
+          onClick={onClose}
+          className={`flex size-9 items-center justify-center rounded-full bg-slate-100 text-slate-500 transition hover:bg-slate-200 active:scale-95 ${bizFocusRingClass}`}
+          aria-label="Close details drawer"
+        >
+          <X className="size-5" strokeWidth={2.2} aria-hidden />
+        </button>
+        <div className="flex flex-col items-center">
+          <span className="text-[11px] font-bold uppercase tracking-widest text-[#1562F0]">Profile Details</span>
+          <span className="text-xs font-medium text-slate-400">Beamio Business OS</span>
         </div>
-        <MemberDirectoryProfileDrawerPanel
-          row={row}
-          segment={props.segment}
-          hasRewardTier={props.hasRewardTier}
-          tierBadgeLabel={props.tierBadgeLabel}
-          profileMap={props.profileMap}
-          onSendGift={props.onSendGift}
-        />
-    </motion.div>,
+        <span className="size-9 shrink-0" aria-hidden />
+      </header>
+      <MemberDirectoryProfileDrawerPanel
+        row={row}
+        segment={props.segment}
+        hasRewardTier={props.hasRewardTier}
+        tierBadgeLabel={props.tierBadgeLabel}
+        profileMap={props.profileMap}
+        onSendGift={props.onSendGift}
+      />
+      <div className="flex h-6 w-full items-end justify-center bg-white pb-1" aria-hidden>
+        <div className="h-1 w-32 rounded-full bg-slate-900/40" />
+      </div>
+    </motion.aside>,
   ];
 }
 
@@ -16927,6 +17031,25 @@ const cardIssuanceEffectiveMerchantLogo = useMemo(() => {
      coerceSelectableCardIssuanceTierRule(cardIssuanceTierRule),
    [programsOverviewTierRuleOption, cardIssuanceTierRule]
  );
+
+ /** Loyalty Logic first row: Membership Fee vs Top-up vs Charge by card mode. */
+ const programsLoyaltyLogicTiersEntryTitle = useMemo(() => {
+   if (cardIssuanceMembershipFeeMode) return tu('programs_rules_membership_fee');
+   if (programsOverviewTierRuleKey === 'cumulative') return tu('programs_rules_charge');
+   return tu('programs_rules_topup');
+ }, [cardIssuanceMembershipFeeMode, programsOverviewTierRuleKey, tu]);
+
+ const programsLoyaltyLogicTierListTitle = useMemo(() => {
+   if (cardIssuanceMembershipFeeMode) return tu('programs_membership_fee_tier_list_title');
+   if (programsOverviewTierRuleKey === 'cumulative') return tu('programs_charge_tier_list_title');
+   return tu('programs_topup_tier_list_title');
+ }, [cardIssuanceMembershipFeeMode, programsOverviewTierRuleKey, tu]);
+
+ const programsLoyaltyLogicTierListDesc = useMemo(() => {
+   if (cardIssuanceMembershipFeeMode) return tu('programs_membership_fee_tier_list_desc');
+   if (programsOverviewTierRuleKey === 'cumulative') return tu('programs_charge_tier_list_desc');
+   return tu('programs_topup_tier_list_desc');
+ }, [cardIssuanceMembershipFeeMode, programsOverviewTierRuleKey, tu]);
 
  const programsOverviewMembershipFeeDisplay = useMemo(() => {
    if (!cardIssuanceMembershipFeeMode || !cardIssuanceBaseTier) return null;
@@ -42067,7 +42190,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                      ) : null}
                      {programsPromotionSubView === 'rules' ? (
                      <div className="space-y-3 sm:space-y-4">
-                       {/* Loyalty Logic — Membership Fee always available (any card mode) + Add tier on Program Basic */}
+                       {/* Loyalty Logic — first row label follows card mode (Membership Fee / Top-up / Charge) */}
                        <div className="rounded-xl border border-[#e8ecf0] bg-white p-4 shadow-[0_6px_24px_rgba(0,0,0,0.05)] ring-1 ring-black/[0.04] sm:p-5">
                          <h3 className="mb-4 text-[9px] font-bold uppercase tracking-widest text-[#595c5e]">
                            {tu('programs_loyalty_logic')}
@@ -42079,7 +42202,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                              className={`flex w-full items-center justify-between gap-3 rounded-lg bg-[#eeedf3] px-3 py-3 text-left transition hover:bg-[#e9e7ed] ${bizFocusRingClass}`}
                            >
                              <span className="text-[15px] font-medium text-[#1a1b1f]">
-                               {tu('programs_rules_membership_fee')}
+                               {programsLoyaltyLogicTiersEntryTitle}
                              </span>
                              <ChevronRight className="h-5 w-5 shrink-0 text-[#424655]" strokeWidth={2} aria-hidden />
                            </button>
@@ -45472,6 +45595,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                  items={membershipFeeTierListItems}
                  listError={cardIssuanceMembershipFeeTierListError}
                  canAddHigher={membershipFeeTierListCanAddHigher}
+                 listTitle={programsLoyaltyLogicTierListTitle}
+                 listDesc={programsLoyaltyLogicTierListDesc}
                  focusRingClassName={bizFocusRingClass}
                  tu={tu}
                  onClose={closeCardIssuanceMembershipFeeTierList}

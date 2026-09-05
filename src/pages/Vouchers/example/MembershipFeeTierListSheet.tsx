@@ -21,6 +21,9 @@ export type MembershipFeeTierListSheetProps = {
   items: MembershipFeeTierListItem[]
   listError: string
   canAddHigher: boolean
+  /** When set, overrides default Membership Fee list chrome (Top-up / Charge cards). */
+  listTitle?: string
+  listDesc?: string
   focusRingClassName?: string
   tu: (key: string, vars?: Record<string, string | number>) => string
   onClose: () => void
@@ -33,12 +36,16 @@ export function MembershipFeeTierListSheet({
   items,
   listError,
   canAddHigher,
+  listTitle,
+  listDesc,
   focusRingClassName = '',
   tu,
   onClose,
   onSelectTier,
   onAddTier,
 }: MembershipFeeTierListSheetProps) {
+  const resolvedTitle = listTitle ?? tu('programs_membership_fee_tier_list_title')
+  const resolvedDesc = listDesc ?? tu('programs_membership_fee_tier_list_desc')
   return (
     <AnimatePresence>
       {open ? (
@@ -73,10 +80,10 @@ export function MembershipFeeTierListSheet({
                     id="card-membership-fee-tier-list-title"
                     className="mt-3 font-manrope text-2xl font-extrabold tracking-tight text-[#2c2f31] sm:text-3xl"
                   >
-                    {tu('programs_membership_fee_tier_list_title')}
+                    {resolvedTitle}
                   </h3>
                   <p className="mt-3 max-w-lg text-sm leading-relaxed text-[#595c5e]">
-                    {tu('programs_membership_fee_tier_list_desc')}
+                    {resolvedDesc}
                   </p>
                 </div>
                 <button

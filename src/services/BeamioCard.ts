@@ -1578,7 +1578,8 @@ export type CreateBeamioCardParams = {
 
 export type UpdateBeamioCardShareMetadataParams = {
 	cardAddress: string
-	shareTokenMetadata: ShareTokenMetadata
+	/** Full or partial patch; Master merges into existing card0 `shareTokenMetadata`. */
+	shareTokenMetadata: Partial<ShareTokenMetadata>
 	tiers?: TierMetadata[]
 	upgradeType?: 0 | 1 | 2
 	transferWhitelistEnabled?: boolean

@@ -1495,6 +1495,12 @@ export type ShareTokenMetadata = {
 	topupPromotion?: ShareTokenMetadataTopupPromotion
 	/** Onboarding business identity and channel, persisted in global card metadata. */
 	businessProfile?: ShareTokenBusinessProfile
+	/**
+	 * Official Support Chat contacts: POS terminal EOA addresses (checksummed).
+	 * Consumers open CoNET Chat with these EOAs from Discover.
+	 * `null` clears the field on metadata update merge.
+	 */
+	supportChat?: string[] | null
 	/** Unified #13 actor/referrer percents (bps). */
 	unifiedRewardPoints?: ShareTokenMetadataUnifiedRewardPoints
 	/** Social #13 rewards — link click / like / top-up (user + referrer). */

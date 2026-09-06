@@ -995,6 +995,39 @@ function mergeDeviceHandleSuggestionPeers(
   return out;
 }
 
+function beamioProfileRecordToSearchResult(rec: BeamioAddressProfileRecord): searchResult | null {
+  const raw = (rec.addressLower ?? '').trim();
+  if (!raw || !ethers.isAddress(raw)) return null;
+  const tag = plainBeamioTagSeed(rec.accountName ?? rec.username);
+  return {
+    address: ethers.getAddress(raw),
+    created_at: Number(rec.updatedAt) || 0,
+    first_name: String(rec.first_name || rec.firstName || ''),
+    last_name: String(rec.last_name || rec.lastName || ''),
+    image: String(rec.image || ''),
+    username: tag,
+    follow_count: '0',
+    follower_count: '0',
+  };
+}
+
+function mergeMessagesTagSearchResults(
+  local: searchResult[],
+  remote: searchResult[],
+  limit = 12,
+): searchResult[] {
+  const seen = new Set<string>();
+  const out: searchResult[] = [];
+  for (const row of [...local, ...remote]) {
+    const key = String(row.address || '').trim().toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(row);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
 function linkTerminalDeviceNameFromResolved(resolved: DeviceHandleResolvedState): string | null {
   if (resolved.addressOnly) return null;
   const tag = plainBeamioTagSeed(resolved.accountName ?? resolved.username);
@@ -5333,14 +5366,6 @@ function MessagesDayZeroShell(props: {
           <span className="text-[11px] font-medium text-slate-500">P2P Mesh ready</span>
         </div>
         <div className="flex w-full flex-wrap items-center justify-end gap-3 sm:w-auto sm:gap-4">
-          <button
-            type="button"
-            onClick={onNewMessage}
-            className="flex items-center gap-2 rounded-full bg-[#0051d1] px-5 py-2.5 text-sm font-bold text-white shadow-md shadow-[#0051d1]/20 transition-opacity hover:opacity-90"
-          >
-            <MessageSquarePlus className="size-4 shrink-0" strokeWidth={2.2} aria-hidden />
-            New message
-          </button>
           <IpfsImg
             src={headerAvatarSrc}
             alt=""
@@ -5464,7 +5489,7 @@ function MessagesDayZeroShell(props: {
                         </p>
                       </div>
                       <p className="text-xs text-[#747779]">
-                        Use New message above to start a secure conversation with a member.
+                        Launch a voucher campaign to start secure conversations with members.
                       </p>
                     </div>
                     <div className="mt-8 flex justify-end">
@@ -6479,6 +6504,8 @@ type FixedUserCardMetadata = {
   cardOwner?: string
   /** `shareTokenMetadata.Symbol` or `symbol` — card points token label for dashboard */
   currencySymbol?: string
+  /** Official Support Chat POS EOAs (`shareTokenMetadata.supportChat`). */
+  supportChat?: string[]
 }
 
 const firstNonEmptyString = (...values: unknown[]): string | undefined => {
@@ -6504,15 +6531,42 @@ const parseFixedUserCardMetadata = (raw: unknown, cardOwner?: string): FixedUser
     typeof meta.symbol === 'string' ? meta.symbol : undefined
   );
 
+  const supportChatRaw = share?.supportChat;
+  const supportChat: string[] = [];
+  if (Array.isArray(supportChatRaw)) {
+    const seen = new Set<string>();
+    for (const item of supportChatRaw) {
+      if (typeof item !== 'string' || !ethers.isAddress(item.trim())) continue;
+      try {
+        const checksum = ethers.getAddress(item.trim());
+        const lower = checksum.toLowerCase();
+        if (seen.has(lower)) continue;
+        seen.add(lower);
+        supportChat.push(checksum);
+        if (supportChat.length >= 32) break;
+      } catch {
+        /* skip invalid */
+      }
+    }
+  }
+
   const parsed: FixedUserCardMetadata = {
     name: firstNonEmptyString(share?.name, meta.name),
     description: firstNonEmptyString(share?.description, meta.description),
     image: firstNonEmptyString(share?.image, meta.image),
     ...(cardOwner ? { cardOwner } : {}),
     ...(symRaw ? { currencySymbol: symRaw } : {}),
+    ...(supportChat.length > 0 ? { supportChat } : {}),
   };
 
-  return parsed.name || parsed.description || parsed.image || parsed.cardOwner || parsed.currencySymbol ? parsed : null;
+  return parsed.name ||
+    parsed.description ||
+    parsed.image ||
+    parsed.cardOwner ||
+    parsed.currencySymbol ||
+    (parsed.supportChat && parsed.supportChat.length > 0)
+    ? parsed
+    : null;
 }
 
 /** Fallback label when card metadata has no `Symbol` (e.g. infra CashTrees asset). */
@@ -22729,6 +22783,9 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
        ...(cardIssuanceDescription.trim() ? { description: cardIssuanceDescription.trim() } : {}),
        ...(discoverAboutForPublish ? { discoverAbout: discoverAboutForPublish } : {}),
        unifiedRewardPoints: unifiedRewardPointsForPublish,
+       ...(fixedCardMetadata?.supportChat && fixedCardMetadata.supportChat.length > 0
+         ? { supportChat: fixedCardMetadata.supportChat }
+         : {}),
      };
      /** Balance (upgradeType 1) is no longer selectable — publish Top-up (0) or Charge (2) only. */
      const tierRuleUpgradeForPublish: 0 | 2 | undefined = membershipFeeModeForPublish
@@ -26284,6 +26341,9 @@ useEffect(() => {
  const [messagesNewLoading, setMessagesNewLoading] = useState(false);
  const [messagesNewError, setMessagesNewError] = useState<string | null>(null);
  const [messagesNewResults, setMessagesNewResults] = useState<searchResult[]>([]);
+ /** Mobile Messages floating bar: BeamioTag search dropdown open. */
+ const [messagesMobileTagSearchOpen, setMessagesMobileTagSearchOpen] = useState(false);
+ const messagesNewSearchGenRef = useRef(0);
  /** `null` until ChatList reports; `0` triggers day-zero shell (marketExample.html). */
  const [messagesInboxTotalThreads, setMessagesInboxTotalThreads] = useState<number | null>(null);
 
@@ -27393,6 +27453,14 @@ const setMobileScrollContainerNode = useCallback(
 );
 
  const openMobileGlobalSearch = useCallback(() => {
+   if (activeTab === 'Messages') {
+     setMessagesMobileTagSearchOpen(true);
+     window.setTimeout(() => {
+       const el = document.getElementById('messages-beamio-tag-search');
+       if (el instanceof HTMLInputElement) el.focus();
+     }, 40);
+     return;
+   }
    if (activeTab === 'Transactions') {
      const el = document.getElementById('transactions-ledger-search');
      el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -27520,6 +27588,7 @@ useLayoutEffect(() => {
    if (activeTab !== 'Messages') {
      setMessagesChatData(undefined);
      setMessagesComposeOpen(false);
+     setMessagesMobileTagSearchOpen(false);
      setMessagesNewQuery('');
      setMessagesNewResults([]);
      setMessagesNewError(null);
@@ -27534,20 +27603,52 @@ useLayoutEffect(() => {
      setMessagesNewError(null);
      return;
    }
+   const gen = ++messagesNewSearchGenRef.current;
    setMessagesNewLoading(true);
    setMessagesNewError(null);
    try {
      const isAddr = ethers.isAddress(raw);
      const searchKey = isAddr ? ethers.getAddress(raw) : raw;
+     const localRecs = isAddr ? [] : searchLocalByTagPrefix(raw, 12);
+     const localResults = localRecs
+       .map(beamioProfileRecordToSearchResult)
+       .filter((r): r is searchResult => !!r);
+     if (gen === messagesNewSearchGenRef.current && localResults.length) {
+       setMessagesNewResults(localResults);
+     }
      const res = await searchRemoteAndIngest(searchKey);
-     setMessagesNewResults((res as { results?: searchResult[] } | null | undefined)?.results ?? []);
+     if (gen !== messagesNewSearchGenRef.current) return;
+     const remote = (res as { results?: searchResult[] } | null | undefined)?.results ?? [];
+     setMessagesNewResults(mergeMessagesTagSearchResults(localResults, remote, 12));
    } catch {
-     setMessagesNewError('搜索失败，请重试。');
-     setMessagesNewResults([]);
+     if (gen !== messagesNewSearchGenRef.current) return;
+     setMessagesNewError(tu('search_failed_try_again'));
+     // Keep local results on remote failure (trusted-vs-untrusted).
    } finally {
-     setMessagesNewLoading(false);
+     if (gen === messagesNewSearchGenRef.current) setMessagesNewLoading(false);
    }
- }, [messagesNewQuery, searchRemoteAndIngest]);
+ }, [messagesNewQuery, searchRemoteAndIngest, searchLocalByTagPrefix, tu]);
+
+ useEffect(() => {
+   if (activeTab !== 'Messages') return;
+   if (!messagesMobileTagSearchOpen && !messagesComposeOpen) return;
+   const q = messagesNewQuery.trim();
+   if (!q) {
+     setMessagesNewResults([]);
+     setMessagesNewError(null);
+     return;
+   }
+   const t = window.setTimeout(() => {
+     void runMessagesUserSearch();
+   }, 320);
+   return () => window.clearTimeout(t);
+ }, [
+   activeTab,
+   messagesMobileTagSearchOpen,
+   messagesComposeOpen,
+   messagesNewQuery,
+   runMessagesUserSearch,
+ ]);
 
  const startChatWithSearchUser = useCallback(
    async (beamioer: searchResult) => {
@@ -27577,6 +27678,7 @@ useLayoutEffect(() => {
      }
      setMessagesChatData(cd);
      setMessagesComposeOpen(false);
+     setMessagesMobileTagSearchOpen(false);
      setMessagesNewQuery('');
      setMessagesNewResults([]);
      setMessagesNewError(null);
@@ -27757,6 +27859,9 @@ useEffect(() => {
  const [settlementClearError, setSettlementClearError] = useState<string | null>(null);
  /** Staff tab: which terminal row has the ⋮ actions menu open */
  const [staffTerminalActionMenuOpenId, setStaffTerminalActionMenuOpenId] = useState<string | null>(null);
+ /** Staff: toggle Support Chat for a terminal (metadata `supportChat`) */
+ const [supportChatToggleLoadingId, setSupportChatToggleLoadingId] = useState<string | null>(null);
+ const [supportChatToggleError, setSupportChatToggleError] = useState<string | null>(null);
  /** POS chat `beamio_pos_terminal_permission_v1` queue (same localStorage as App.tsx inbound handler) */
  const [posTerminalPermissionPending, setPosTerminalPermissionPending] = useState<PosTerminalPermissionPendingV1[]>([]);
  /** EOA + AA + myAddress: must match `getCardsOfOwnerWithDetailsForProfile` owner pairing so Staff sees pending under either identity. */
@@ -27821,6 +27926,80 @@ useEffect(() => {
  useEffect(() => {
    setStaffTerminalActionMenuOpenId(null);
  }, [activeTab]);
+
+ const isTerminalInSupportChat = useCallback(
+   (terminalEoa: string): boolean => {
+     const list = fixedCardMetadata?.supportChat;
+     if (!list?.length || !terminalEoa || !ethers.isAddress(terminalEoa)) return false;
+     const lower = terminalEoa.trim().toLowerCase();
+     return list.some((a) => a.toLowerCase() === lower);
+   },
+   [fixedCardMetadata?.supportChat],
+ );
+
+ /** Staff: add/remove POS EOA from official Support Chat (`shareTokenMetadata.supportChat`). */
+ const toggleTerminalSupportChat = useCallback(
+   async (term: TerminalRecord) => {
+     if (supportChatToggleLoadingId) return;
+     const cardRaw = (staffProgramBeamioCardAddress ?? '').trim();
+     if (!cardRaw || !ethers.isAddress(cardRaw)) {
+       setSupportChatToggleError('No issued program card.');
+       return;
+     }
+     const posRaw = (term.id ?? '').trim();
+     if (!posRaw || !ethers.isAddress(posRaw)) {
+       setSupportChatToggleError('Invalid terminal address.');
+       return;
+     }
+     let checksum: string;
+     let cardAddress: string;
+     try {
+       checksum = ethers.getAddress(posRaw);
+       cardAddress = ethers.getAddress(cardRaw);
+     } catch {
+       setSupportChatToggleError('Invalid terminal address.');
+       return;
+     }
+     const lower = checksum.toLowerCase();
+     const prev = fixedCardMetadata?.supportChat ?? [];
+     const already = prev.some((a) => a.toLowerCase() === lower);
+     const next = already
+       ? prev.filter((a) => a.toLowerCase() !== lower)
+       : [...prev.filter((a) => a.toLowerCase() !== lower), checksum].slice(0, 32);
+
+     setSupportChatToggleError(null);
+     setSupportChatToggleLoadingId(term.id);
+     setStaffTerminalActionMenuOpenId(null);
+     try {
+       const res = await updateBeamioCardShareMetadata({
+         cardAddress,
+         shareTokenMetadata: { supportChat: next.length > 0 ? next : null },
+       });
+       if (!res.success) {
+         setSupportChatToggleError(res.error ?? 'Failed to update Support Chat');
+         return;
+       }
+       setFixedCardMetadata((prevMeta) => {
+         const nextMeta: FixedUserCardMetadata = { ...(prevMeta ?? {}) };
+         if (next.length > 0) nextMeta.supportChat = next;
+         else delete nextMeta.supportChat;
+         saveTrustedCache(fixedCardMetadataCacheKey, nextMeta);
+         return nextMeta;
+       });
+     } catch (e: unknown) {
+       setSupportChatToggleError((e as Error)?.message ?? 'Failed to update Support Chat');
+     } finally {
+       setSupportChatToggleLoadingId(null);
+     }
+   },
+   [
+     supportChatToggleLoadingId,
+     staffProgramBeamioCardAddress,
+     fixedCardMetadata?.supportChat,
+     fixedCardMetadataCacheKey,
+   ],
+ );
+
  const [newDeviceName, setNewDeviceName] = useState('');
  const [newTerminalMintLimit, setNewTerminalMintLimit] = useState('1000');
  /** Mobile Terminal Onboarding (`marketExample.html` Link New Terminal) — reload cap toggle + method chips (stored in admin metadata JSON). */
@@ -33294,6 +33473,15 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
 
                {showStaffTerminalsManagement ? (
                  <section className="mb-4 sm:mb-5">
+                   {supportChatToggleError ? (
+                     <div
+                       role="alert"
+                       className="mb-2 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs font-medium text-amber-900 sm:mb-3 sm:text-sm"
+                     >
+                       <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" aria-hidden />
+                       <p>{supportChatToggleError}</p>
+                     </div>
+                   ) : null}
                    <div className="mb-2 px-2 sm:mb-3">
                      <h3 className="text-xs font-bold uppercase tracking-widest text-[#595c5e] sm:text-sm">
                        Active Devices ({terminals.length})
@@ -33345,6 +33533,11 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                      {isPrimary ? (
                                        <span className="rounded-full bg-[#0051d1]/10 px-2 py-0.5 text-[10px] font-bold uppercase text-[#0051d1]">
                                          Primary
+                                       </span>
+                                     ) : null}
+                                     {termEoa && isTerminalInSupportChat(termEoa) ? (
+                                       <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold uppercase text-emerald-700">
+                                         Support Chat
                                        </span>
                                      ) : null}
                                    </div>
@@ -33454,6 +33647,25 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                      >
                                        <RefreshCcw className="size-4 shrink-0 text-[#1562f0]" strokeWidth={2} aria-hidden />
                                        Reset Terminal Limit
+                                     </button>
+                                     <button
+                                       type="button"
+                                       role="menuitem"
+                                       disabled={supportChatToggleLoadingId === term.id || !termEoa}
+                                       className={`flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-semibold text-[#2c2f31] transition-colors hover:bg-[#eef1f3] disabled:opacity-50 ${bizFocusRingClass}`}
+                                       onClick={() => {
+                                         void toggleTerminalSupportChat(term);
+                                       }}
+                                       aria-busy={supportChatToggleLoadingId === term.id}
+                                     >
+                                       {supportChatToggleLoadingId === term.id ? (
+                                         <Loader2 className="size-4 shrink-0 animate-spin text-[#1562f0]" aria-hidden />
+                                       ) : (
+                                         <MessageSquare className="size-4 shrink-0 text-[#1562f0]" strokeWidth={2} aria-hidden />
+                                       )}
+                                       {termEoa && isTerminalInSupportChat(termEoa)
+                                         ? 'Remove from Support Chat'
+                                         : 'Set as Support Chat'}
                                      </button>
                                      <button
                                        type="button"
@@ -34189,7 +34401,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
             opacity: mobileFloatingBarOpacity,
           }}
         >
-          <div className="mx-auto max-w-7xl">
+          <div className="relative mx-auto max-w-7xl">
             <div
               className="flex items-center gap-2 rounded-full border border-slate-200/80 bg-white/92 px-2.5 py-2 shadow-[0_12px_36px_rgba(15,23,42,0.12)] backdrop-blur-xl transition-opacity duration-300"
               style={{ pointerEvents: mobileFloatingBarOpacity < 0.05 ? 'none' : 'auto' }}
@@ -34204,6 +34416,42 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
               </button>
               {activeTab === 'Transactions' ? (
                 <div className="min-w-0 flex-1" aria-hidden />
+              ) : activeTab === 'Messages' ? (
+                <div className="flex min-w-0 flex-1 items-center rounded-full bg-slate-50/90 px-4 py-2.5">
+                  <Search size={18} className="shrink-0 text-slate-400" strokeWidth={2} aria-hidden />
+                  <input
+                    id="messages-beamio-tag-search"
+                    type="search"
+                    value={messagesNewQuery}
+                    onChange={(e) => {
+                      setMessagesNewQuery(e.target.value);
+                      setMessagesMobileTagSearchOpen(true);
+                      setMessagesNewError(null);
+                    }}
+                    onFocus={() => setMessagesMobileTagSearchOpen(true)}
+                    onBlur={() => {
+                      window.setTimeout(() => setMessagesMobileTagSearchOpen(false), 180);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        void runMessagesUserSearch();
+                      }
+                      if (e.key === 'Escape') {
+                        setMessagesMobileTagSearchOpen(false);
+                        (e.target as HTMLInputElement).blur();
+                      }
+                    }}
+                    placeholder={tu('search_beamio_tags_or_paste_address')}
+                    aria-label={tu('search_beamio_tags_or_paste_address')}
+                    autoComplete="off"
+                    enterKeyHint="search"
+                    className={`min-w-0 flex-1 border-0 bg-transparent pl-3 pr-0 text-sm font-medium text-slate-700 placeholder:text-slate-400 focus:ring-0 ${bizFocusRingClass}`}
+                  />
+                  {messagesNewLoading ? (
+                    <Loader2 className="ml-1 size-4 shrink-0 animate-spin text-slate-400" aria-hidden />
+                  ) : null}
+                </div>
               ) : (
                 <div className="flex min-w-0 flex-1 items-center rounded-full bg-slate-50/90 px-4 py-2.5">
                   <Search size={18} className="shrink-0 text-slate-400" strokeWidth={2} aria-hidden />
@@ -34233,6 +34481,71 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                 </div>
               </button>
             </div>
+            {activeTab === 'Messages' &&
+            messagesMobileTagSearchOpen &&
+            (messagesNewQuery.trim() || messagesNewResults.length > 0 || messagesNewError) ? (
+              <div
+                className="pointer-events-auto absolute inset-x-0 top-full z-30 mt-2 max-h-[min(60vh,420px)] overflow-y-auto rounded-2xl border border-slate-200/90 bg-white p-2 shadow-[0_16px_48px_rgba(15,23,42,0.18)]"
+                role="listbox"
+                aria-label={tu('search_beamio_tags_or_paste_address')}
+              >
+                {messagesNewError ? (
+                  <p className="px-3 py-2 text-sm font-medium text-amber-600" role="alert">
+                    {messagesNewError}
+                  </p>
+                ) : null}
+                {messagesNewLoading && messagesNewResults.length === 0 ? (
+                  <div className="flex justify-center py-6">
+                    <Loader2 className="size-6 animate-spin text-slate-400" aria-hidden />
+                  </div>
+                ) : null}
+                <ul className="space-y-1">
+                  {messagesNewResults.map((r) => {
+                    const un = (r.username || '').trim();
+                    const show =
+                      un && un !== '未知' ? `@${un}` : r.address ? `${r.address.slice(0, 6)}…${r.address.slice(-4)}` : '—';
+                    return (
+                      <li key={r.address}>
+                        <button
+                          type="button"
+                          role="option"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => void startChatWithSearchUser(r)}
+                          className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition hover:bg-slate-50"
+                        >
+                          {r.image?.trim() ? (
+                            <IpfsImg
+                              src={r.image.trim()}
+                              alt=""
+                              className="size-10 shrink-0 rounded-full object-cover ring-1 ring-black/5"
+                            />
+                          ) : (
+                            <div className="grid size-10 shrink-0 place-items-center rounded-full bg-slate-200 text-xs font-bold text-slate-600 ring-1 ring-black/5">
+                              {(show.replace('@', '').slice(0, 2) || '?').toUpperCase()}
+                            </div>
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate text-sm font-semibold text-slate-900">{show}</div>
+                            {r.address ? (
+                              <div className="truncate font-mono text-[11px] text-slate-500">
+                                {`${r.address.slice(0, 6)}…${r.address.slice(-4)}`}
+                              </div>
+                            ) : null}
+                          </div>
+                          <ChevronRight className="size-4 shrink-0 text-slate-300" strokeWidth={2} aria-hidden />
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+                {!messagesNewLoading &&
+                messagesNewQuery.trim() &&
+                messagesNewResults.length === 0 &&
+                !messagesNewError ? (
+                  <p className="px-3 py-4 text-sm text-slate-500">No accounts found.</p>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         </div>
       )}
@@ -37995,7 +38308,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                          onKeyDown={(e) => {
                            if (e.key === 'Enter') void runMessagesUserSearch();
                          }}
-                         placeholder="@beamioTag or 0x…"
+                         placeholder={tu('search_beamio_tags_or_paste_address')}
                          autoComplete="off"
                          className={`min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 placeholder:text-slate-400 ${bizFocusRingClass}`}
                        />
@@ -38157,6 +38470,15 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
 
              {showStaffTerminalsManagement && (
                <section className="mb-4 md:mb-6">
+                 {supportChatToggleError ? (
+                   <div
+                     role="alert"
+                     className="mb-2 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs font-medium text-amber-900 sm:mb-3 sm:text-sm"
+                   >
+                     <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" aria-hidden />
+                     <p>{supportChatToggleError}</p>
+                   </div>
+                 ) : null}
                  <div className="mb-2 flex flex-col gap-2 sm:mb-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
                    <h2 className="font-sans text-xl font-extrabold tracking-tight text-[#2c2f31] sm:text-2xl">Active Terminals</h2>
                    <span className="w-fit rounded-full bg-[#eef1f3] px-3 py-1 text-xs font-bold text-[#1562f0] sm:px-4 sm:py-2 sm:text-sm">
@@ -38202,7 +38524,14 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                              </div>
                              <div className="min-w-0 flex-1">
                                <div className="mb-0.5 flex flex-wrap items-start justify-between gap-2 sm:mb-1">
-                                 <h3 className="font-sans text-base font-bold text-[#2c2f31] sm:text-lg">{term.tag}</h3>
+                                 <div className="flex min-w-0 flex-wrap items-center gap-2">
+                                   <h3 className="font-sans text-base font-bold text-[#2c2f31] sm:text-lg">{term.tag}</h3>
+                                   {isTerminalInSupportChat(term.id) ? (
+                                     <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold uppercase text-emerald-700">
+                                       Support Chat
+                                     </span>
+                                   ) : null}
+                                 </div>
                                  <span
                                    className={
                                      isPrimary
@@ -38320,6 +38649,29 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                    >
                                      <RefreshCcw className="size-4 shrink-0 text-[#1562f0]" strokeWidth={2} aria-hidden />
                                      Reset Terminal Limit
+                                   </button>
+                                   <button
+                                     type="button"
+                                     role="menuitem"
+                                     disabled={
+                                       supportChatToggleLoadingId === term.id ||
+                                       !term.id ||
+                                       !ethers.isAddress(term.id)
+                                     }
+                                     className={`flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-semibold text-[#2c2f31] transition-colors hover:bg-[#eef1f3] disabled:opacity-50 ${bizFocusRingClass}`}
+                                     onClick={() => {
+                                       void toggleTerminalSupportChat(term);
+                                     }}
+                                     aria-busy={supportChatToggleLoadingId === term.id}
+                                   >
+                                     {supportChatToggleLoadingId === term.id ? (
+                                       <Loader2 className="size-4 shrink-0 animate-spin text-[#1562f0]" aria-hidden />
+                                     ) : (
+                                       <MessageSquare className="size-4 shrink-0 text-[#1562f0]" strokeWidth={2} aria-hidden />
+                                     )}
+                                     {isTerminalInSupportChat(term.id)
+                                       ? 'Remove from Support Chat'
+                                       : 'Set as Support Chat'}
                                    </button>
                                    <button
                                      type="button"
@@ -47800,6 +48152,29 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                    const afterRemove = cached.filter((t) => t.id.toLowerCase() !== posLower);
                    saveTrustedCache(linkedTerminalsCacheKey, afterRemove);
                    setTerminals(afterRemove);
+                   const prevSupport = fixedCardMetadata?.supportChat ?? [];
+                   const strippedSupport = prevSupport.filter((a) => a.toLowerCase() !== posLower);
+                   if (strippedSupport.length !== prevSupport.length) {
+                     try {
+                       const stripRes = await updateBeamioCardShareMetadata({
+                         cardAddress,
+                         shareTokenMetadata: {
+                           supportChat: strippedSupport.length > 0 ? strippedSupport : null,
+                         },
+                       });
+                       if (stripRes.success) {
+                         setFixedCardMetadata((prevMeta) => {
+                           const nextMeta: FixedUserCardMetadata = { ...(prevMeta ?? {}) };
+                           if (strippedSupport.length > 0) nextMeta.supportChat = strippedSupport;
+                           else delete nextMeta.supportChat;
+                           saveTrustedCache(fixedCardMetadataCacheKey, nextMeta);
+                           return nextMeta;
+                         });
+                       }
+                     } catch {
+                       /* best-effort: terminal already revoked */
+                     }
+                   }
                    await fetchTerminals();
                  } catch (e: unknown) {
                    setRemoveTerminalError((e as Error)?.message ?? 'Failed to revoke terminal');

@@ -49,6 +49,7 @@ import {
   Plus,
   ImageIcon,
   AlertTriangle,
+  MessageCircle,
 } from "lucide-react"
 import { useNavigate, useLocation } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
@@ -2046,6 +2047,32 @@ function readDiscoverNestedObject(
 	return v != null && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null
 }
 
+/** Official POS EOAs from `shareTokenMetadata.supportChat` (merchant-designated Support Chat). */
+function parseSupportChatAddressesFromMetadata(
+	meta: Record<string, unknown> | null,
+): string[] {
+	if (!meta) return []
+	const share = readDiscoverNestedObject(meta, "shareTokenMetadata")
+	const raw = share?.supportChat
+	if (!Array.isArray(raw)) return []
+	const out: string[] = []
+	const seen = new Set<string>()
+	for (const entry of raw) {
+		if (typeof entry !== "string" || !entry.trim()) continue
+		try {
+			const checksum = ethers.getAddress(entry.trim())
+			const lower = checksum.toLowerCase()
+			if (seen.has(lower)) continue
+			seen.add(lower)
+			out.push(checksum)
+			if (out.length >= 32) break
+		} catch {
+			/* skip invalid */
+		}
+	}
+	return out
+}
+
 function readDiscoverStringField(
 	base: Record<string, unknown> | null,
 	keys: string[]
@@ -3776,6 +3803,7 @@ function DiscoverMerchantDetailFullScreen({
 		resolveTag,
 		searchRemoteAndIngest,
 		ingestSearchResponse,
+		ensureProfilesForAddresses,
 	} = useBeamioTagDatabase()
 	const profile = profiles?.[0] as Parameters<typeof getMyAssets>[0] | undefined
 	const [resolvedDiscoverAbout, setResolvedDiscoverAbout] = useState<ShareTokenMetadataDiscoverAbout | null>(
@@ -3821,6 +3849,13 @@ function DiscoverMerchantDetailFullScreen({
 	const [issuerOwnerEoa, setIssuerOwnerEoa] = useState<string | null>(item.cardOwner ?? null)
 	const [issuerProfileItem, setIssuerProfileItem] = useState<searchResult | null>(null)
 	const [issuerProfileOpening, setIssuerProfileOpening] = useState(false)
+	const [supportChatOpening, setSupportChatOpening] = useState(false)
+	const [supportChatPickerOpen, setSupportChatPickerOpen] = useState(false)
+	const [supportChatError, setSupportChatError] = useState<string | null>(null)
+	const supportChatAddresses = useMemo(
+		() => parseSupportChatAddressesFromMetadata(merchantMetadataRoot),
+		[merchantMetadataRoot],
+	)
 	/** Card social missions from getRewardRule(1/3) + top-up ratio E6; undefined = loading, null = none. */
 	const [chainCardSocialPromotion, setChainCardSocialPromotion] = useState<
 		Awaited<ReturnType<typeof readCardSocialPromotionFromChain>> | undefined
@@ -3917,6 +3952,91 @@ function DiscoverMerchantDetailFullScreen({
 		searchRemoteAndIngest,
 		ingestSearchResponse,
 		resolveTag,
+	])
+
+	/** Open CoNET Chat with a merchant-designated Support Chat POS EOA (exact address only). */
+	const openSupportChatPeer = useCallback(
+		async (rawEoa: string) => {
+			if (supportChatOpening || issuerProfileOpening) return
+			let peerEoa: string
+			try {
+				peerEoa = ethers.getAddress(rawEoa.trim())
+			} catch {
+				setSupportChatError('Invalid Support Chat address.')
+				return
+			}
+			setSupportChatError(null)
+			setSupportChatPickerOpen(false)
+			setSupportChatOpening(true)
+			try {
+				let itemResult = resolvePeerSearchResult(peerEoa)
+				if (!itemResult) {
+					const record = lookupProfileByAddress(peerEoa)
+					const tag = (record?.accountName ?? record?.username ?? '').replace(/^@+/, '')
+					if (tag) {
+						await searchRemoteAndIngest(tag)
+						itemResult = resolvePeerSearchResult(peerEoa)
+					}
+				}
+				if (!itemResult) {
+					const res = await searchUsername(peerEoa).catch(() => null)
+					if (res) {
+						ingestSearchResponse(res, peerEoa)
+						itemResult = resolvePeerSearchResult(peerEoa)
+						if (!itemResult) {
+							const rows = (res as { results?: searchResult[] })?.results ?? []
+							const match = rows.find(
+								(r) => (r.address || '').toLowerCase() === peerEoa.toLowerCase(),
+							)
+							if (match) itemResult = match
+						}
+					}
+				}
+				if (!itemResult) {
+					const rec = lookupProfileByAddress(peerEoa)
+					const tagPlain = resolveTag(peerEoa)?.replace(/^@+/, '') ?? ''
+					itemResult = {
+						address: peerEoa,
+						created_at: 0,
+						first_name: rec?.first_name ?? rec?.firstName ?? '',
+						last_name: rec?.last_name ?? rec?.lastName ?? '',
+						follow_count: '',
+						follower_count: '',
+						username: tagPlain,
+						image: rec?.image ?? '',
+					}
+				}
+				setIssuerProfileItem(itemResult)
+			} finally {
+				setSupportChatOpening(false)
+			}
+		},
+		[
+			supportChatOpening,
+			issuerProfileOpening,
+			resolvePeerSearchResult,
+			lookupProfileByAddress,
+			searchRemoteAndIngest,
+			ingestSearchResponse,
+			resolveTag,
+		],
+	)
+
+	const onSupportChatClick = useCallback(() => {
+		if (supportChatAddresses.length === 0 || supportChatOpening || issuerProfileOpening) return
+		setSupportChatError(null)
+		if (supportChatAddresses.length === 1) {
+			void openSupportChatPeer(supportChatAddresses[0]!)
+			return
+		}
+		setSupportChatPickerOpen(true)
+		void ensureProfilesForAddresses(supportChatAddresses)
+	}, [
+		supportChatAddresses,
+		supportChatOpening,
+		issuerProfileOpening,
+		openSupportChatPeer,
+		ensureProfilesForAddresses,
 	])
 
 	useEffect(() => {
@@ -5776,6 +5896,41 @@ function DiscoverMerchantDetailFullScreen({
 			<div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-[calc(2rem+env(safe-area-inset-bottom))] pt-4">
 				<div className="mx-auto flex max-w-lg flex-col gap-4">
 					{likeError ? <DiscoverPayPanelError message={likeError} /> : null}
+					{supportChatAddresses.length > 0 ? (
+						<div className="flex flex-col gap-2">
+							<button
+								type="button"
+								onClick={onSupportChatClick}
+								disabled={supportChatOpening || issuerProfileOpening}
+								aria-busy={supportChatOpening}
+								aria-label="Support Chat"
+								className={[
+									'inline-flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3.5',
+									'bg-[#0F172A] text-[15px] font-semibold text-white',
+									'shadow-[0_8px_22px_rgba(15,23,42,0.12)]',
+									'dark:bg-slate-100 dark:text-slate-900',
+									'transition active:scale-[0.99]',
+									'disabled:cursor-not-allowed disabled:opacity-60',
+								].join(' ')}
+							>
+								{supportChatOpening ? (
+									<Loader2 className="h-5 w-5 shrink-0 animate-spin" aria-hidden />
+								) : (
+									<MessageCircle className="h-5 w-5 shrink-0" strokeWidth={2} aria-hidden />
+								)}
+								Support Chat
+							</button>
+							{supportChatError ? (
+								<div
+									role="alert"
+									className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-100"
+								>
+									<AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
+									<p className="min-w-0 flex-1 leading-snug">{supportChatError}</p>
+								</div>
+							) : null}
+						</div>
+					) : null}
 					{showProspectJoinPanel ? (
 						<DiscoverMerchantProspectJoinPanel
 							heading={prospectJoinPanelCopy.heading}
@@ -6232,6 +6387,73 @@ function DiscoverMerchantDetailFullScreen({
 				</AnimatePresence>,
 				document.body,
 			)}
+		{supportChatPickerOpen && supportChatAddresses.length > 1
+			? createPortal(
+					<div
+						className="fixed inset-0 z-[102] flex flex-col justify-end bg-black/40"
+						role="dialog"
+						aria-modal="true"
+						aria-label="Choose Support Chat"
+						onClick={() => {
+							if (!supportChatOpening) setSupportChatPickerOpen(false)
+						}}
+					>
+						<div
+							className="max-h-[70vh] overflow-hidden rounded-t-3xl bg-white dark:bg-slate-900"
+							style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
+							onClick={(e) => e.stopPropagation()}
+						>
+							<div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3 dark:border-slate-800">
+								<p className="text-[15px] font-semibold text-slate-900 dark:text-slate-100">
+									Choose Support Chat
+								</p>
+								<button
+									type="button"
+									tabIndex={-1}
+									aria-label="Cancel"
+									disabled={supportChatOpening}
+									onClick={() => setSupportChatPickerOpen(false)}
+									className="rounded-full px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-50 dark:text-slate-300 dark:hover:bg-slate-800"
+								>
+									Cancel
+								</button>
+							</div>
+							<ul className="max-h-[min(50vh,24rem)] overflow-y-auto overscroll-contain px-2 py-2">
+								{supportChatAddresses.map((addr) => {
+									const tag = (resolveTag(addr) || '').replace(/^@+/, '')
+									const short = `${addr.slice(0, 6)}…${addr.slice(-4)}`
+									return (
+										<li key={addr.toLowerCase()}>
+											<button
+												type="button"
+												disabled={supportChatOpening}
+												aria-busy={supportChatOpening}
+												onClick={() => void openSupportChatPeer(addr)}
+												className="flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left transition hover:bg-slate-50 disabled:opacity-60 dark:hover:bg-slate-800/80"
+											>
+												<span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#e9edff] text-[#0051d1]">
+													<MessageCircle className="h-5 w-5" strokeWidth={2} aria-hidden />
+												</span>
+												<span className="min-w-0 flex-1">
+													<span className="block truncate text-[15px] font-semibold text-slate-900 dark:text-slate-100">
+														{tag ? `@${tag}` : short}
+													</span>
+													{tag ? (
+														<span className="mt-0.5 block truncate font-mono text-[12px] text-slate-500 dark:text-slate-400">
+															{short}
+														</span>
+													) : null}
+												</span>
+											</button>
+										</li>
+									)
+								})}
+							</ul>
+						</div>
+					</div>,
+					document.body,
+				)
+			: null}
 		{showMyNetwork && resolveUserEoa() && item.cardAddress ? (
 			<DiscoverReferrerDownlinePage
 				cardAddress={item.cardAddress}

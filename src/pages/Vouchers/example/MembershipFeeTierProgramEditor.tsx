@@ -113,7 +113,7 @@ export type MembershipFeeTierProgramEditorProps = {
   feeWheelRef: Ref<HTMLInputElement>
   discountWheelRef: Ref<HTMLInputElement>
   welcomeGiftWheelRef: Ref<HTMLInputElement>
-  backgroundImageFileRef: RefObject<HTMLInputElement | null>
+  backgroundImageFileRef: RefObject<HTMLInputElement>
   backgroundImageUploading: boolean
   backgroundImageDropActive: boolean
   /** Baseline still had an image — warn when saving as Color. */

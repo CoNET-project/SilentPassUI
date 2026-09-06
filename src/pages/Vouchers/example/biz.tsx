@@ -20421,8 +20421,6 @@ const membershipFeeTierListItems = useMemo((): MembershipFeeTierListItem[] => {
     const isBase = membershipFeeTierRowIsBase(row, i, membershipFeeTierWorkingRows);
     const feeN = parseMembershipFeeHumanNumber(row.membershipFee);
     const hasFee = Number.isFinite(feeN) && feeN > 0;
-    const feeLocked =
-      Boolean(cardIssuanceExistingCard?.cardAddress) && hasFee;
     const durationKind = normalizeMembershipDurationKind(row.membershipDurationKind);
     const durationTu = membershipDurationTuKey(durationKind);
     return {
@@ -20433,7 +20431,6 @@ const membershipFeeTierListItems = useMemo((): MembershipFeeTierListItem[] => {
         : `${tu(getCardIssuanceTierThresholdLabel()[programsOverviewTierRuleKey])}: ${row.threshold || '0'} · ${tu('programs_membership_fee_tier_discount_off', { percent: row.discountPercent || '0' })}`,
       durationLabel: cardIssuanceMembershipFeeMode && durationTu ? tu(durationTu) : '',
       isBase,
-      feeLocked,
       color: normalizeMembershipFeeTierHexColor(row.backgroundColor || '#1562F0'),
     };
   });
@@ -20637,12 +20634,7 @@ const cardIssuanceMembershipFeeEditingIsBase = useMemo(() => {
   membershipFeeTierRowIsBase,
 ]);
 
-const cardIssuanceMembershipFeeTierFeeLocked = useMemo(() => {
-  if (!cardIssuanceExistingCard?.cardAddress || !cardIssuanceMembershipFeeTierEditorBaseline) {
-    return false;
-  }
-  return BigInt(membershipFeeHumanToE6(cardIssuanceMembershipFeeTierEditorBaseline.membershipFee)) > 0n;
-}, [cardIssuanceExistingCard?.cardAddress, cardIssuanceMembershipFeeTierEditorBaseline]);
+/** Fee/duration stay editable after publish; changes apply to future joins only. */
 
 const cardIssuanceMembershipFeeTierEditorDirty = useMemo(() => {
   const baseline = cardIssuanceMembershipFeeTierEditorBaseline;
@@ -20799,21 +20791,13 @@ const buildMembershipFeeTierRowsFromEditorDraft = useCallback(
     const baseline = cardIssuanceMembershipFeeTierEditorBaseline;
     const editingId = cardIssuanceMembershipFeeEditingTierId;
     const pending = cardIssuanceMembershipFeePendingNewTier;
-    const feeLocked =
-      Boolean(cardIssuanceExistingCard?.cardAddress) &&
-      baseline != null &&
-      BigInt(membershipFeeHumanToE6(baseline.membershipFee)) > 0n;
-    const feeHuman = feeLocked
-      ? baseline!.membershipFee.replace(/,/g, '').trim()
-      : draft.membershipFee.replace(/,/g, '').trim();
+    const feeHuman = draft.membershipFee.replace(/,/g, '').trim();
     const feeNum = Number(feeHuman.replace(/,/g, '').trim());
     const hasMembershipFee = Number.isFinite(feeNum) && feeNum > 0;
     // Charge / top-up base with no Unlock Fee: keep duration 0 (do not invent Month).
-    const durationKind = feeLocked
-      ? normalizeMembershipDurationKind(baseline!.membershipDurationKind) || (hasMembershipFee ? 3 : 0)
-      : hasMembershipFee
-        ? normalizeMembershipDurationKind(draft.membershipDurationKind) || 3
-        : normalizeMembershipDurationKind(draft.membershipDurationKind);
+    const durationKind = hasMembershipFee
+      ? normalizeMembershipDurationKind(draft.membershipDurationKind) || 3
+      : normalizeMembershipDurationKind(draft.membershipDurationKind);
     const color = normalizeMembershipFeeTierHexColor(draft.backgroundColor);
     const styleImageDraft = String(draft.backgroundImage ?? '').trim();
     const styleMode =
@@ -46273,7 +46257,6 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                  hexDraft={cardIssuanceMembershipFeeTierHexDraft}
                  publishing={cardIssuanceMembershipFeeTierEditorPublishing}
                  canSave={cardIssuanceMembershipFeeTierEditorCanSave}
-                 feeLocked={cardIssuanceMembershipFeeTierFeeLocked}
                  validationError={cardIssuanceMembershipFeeTierEditorValidationError}
                  serverError={cardIssuanceMembershipFeeTierEditorServerError}
                  moneyPrefix={cardIssuanceDisplayMoneyPrefix}

@@ -12,7 +12,6 @@ export type MembershipFeeTierListItem = {
   feeLabel: string
   durationLabel: string
   isBase: boolean
-  feeLocked: boolean
   color: string
 }
 
@@ -136,11 +135,6 @@ export function MembershipFeeTierListSheet({
                           {item.isBase ? (
                             <span className="rounded-full bg-[#0051d1]/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#0051d1]">
                               {tu('programs_membership_fee_tier_list_base_badge')}
-                            </span>
-                          ) : null}
-                          {item.feeLocked ? (
-                            <span className="rounded-full bg-[#eeedf3] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#595c5e]">
-                              {tu('programs_membership_fee_tier_locked')}
                             </span>
                           ) : null}
                         </span>

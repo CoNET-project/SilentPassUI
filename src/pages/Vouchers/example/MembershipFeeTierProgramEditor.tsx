@@ -91,7 +91,6 @@ export type MembershipFeeTierProgramEditorProps = {
   hexDraft: string
   publishing: boolean
   canSave: boolean
-  feeLocked: boolean
   validationError: string
   serverError: string
   moneyPrefix: string
@@ -137,7 +136,6 @@ export function MembershipFeeTierProgramEditor({
   hexDraft,
   publishing,
   canSave,
-  feeLocked,
   validationError,
   serverError,
   moneyPrefix,
@@ -659,26 +657,13 @@ export function MembershipFeeTierProgramEditor({
                   {showMembershipFeeFields ? (
                     <>
                       <div className="space-y-2">
-                        <div className="flex items-center space-x-1">
-                          <label
-                            className="text-xs font-bold text-slate-800"
-                            htmlFor="mf-tier-unlock-fee"
-                          >
-                            {tu('programs_membership_fee_tier_unlock_fee_label')}
-                          </label>
-                          {feeLocked ? (
-                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
-                              {tu('programs_membership_fee_tier_locked')}
-                            </span>
-                          ) : null}
-                        </div>
-                        <div
-                          className={`relative rounded-xl border bg-slate-50/50 transition-all ${
-                            feeLocked
-                              ? 'border-slate-200 opacity-80'
-                              : 'border-slate-200 focus-within:border-[#1562f0] focus-within:ring-2 focus-within:ring-[#1562f0]/20'
-                          }`}
+                        <label
+                          className="text-xs font-bold text-slate-800"
+                          htmlFor="mf-tier-unlock-fee"
                         >
+                          {tu('programs_membership_fee_tier_unlock_fee_label')}
+                        </label>
+                        <div className="relative rounded-xl border border-slate-200 bg-slate-50/50 transition-all focus-within:border-[#1562f0] focus-within:ring-2 focus-within:ring-[#1562f0]/20">
                           <div className="flex items-center px-3.5 py-2.5">
                             <span className="mr-2 text-base font-extrabold text-slate-500">
                               {moneyPrefix}
@@ -691,7 +676,7 @@ export function MembershipFeeTierProgramEditor({
                               step="0.01"
                               min="0"
                               value={draft.membershipFee}
-                              disabled={publishing || feeLocked}
+                              disabled={publishing}
                               onChange={(e) => onDraftChange({ membershipFee: e.target.value })}
                               onKeyDown={preventNumericInputStepKeys}
                               onKeyDownCapture={preventNumericInputStepKeys}
@@ -718,7 +703,7 @@ export function MembershipFeeTierProgramEditor({
                         <select
                           id="mf-tier-valid-for"
                           value={draft.membershipDurationKind || 3}
-                          disabled={publishing || feeLocked}
+                          disabled={publishing}
                           onChange={(e) =>
                             onDraftChange({ membershipDurationKind: Number(e.target.value) || 3 })
                           }

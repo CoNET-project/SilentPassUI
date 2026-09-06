@@ -287,6 +287,7 @@ import { ProgramsProductionsPanel } from './programsProductionsPanel';
 import { MerchantOracleSpreadProgramEditor } from './MerchantOracleSpreadProgramEditor';
 import {
   MembershipFeeTierProgramEditor,
+  normalizeMembershipFeeTierBackgroundImageFit,
   normalizeMembershipFeeTierHexColor,
   type MembershipFeeTierEditorDraft,
 } from './MembershipFeeTierProgramEditor';
@@ -5337,13 +5338,11 @@ function StaffTerminalsInfoGrid() {
 function MessagesDayZeroShell(props: {
   onNewMessage: () => void
   onLaunchCampaign?: () => void
-  headerAvatarSrc: string
   eoaShortEncrypt: string
 }) {
   const {
     onNewMessage,
     onLaunchCampaign,
-    headerAvatarSrc,
     eoaShortEncrypt,
   } = props;
   return (
@@ -5356,23 +5355,6 @@ function MessagesDayZeroShell(props: {
         className="pointer-events-none fixed bottom-[-8%] left-[-5%] z-0 h-[40%] w-[40%] rounded-full bg-[#515c70]/5 blur-[80px]"
         aria-hidden
       />
-
-      <header className="relative z-[1] mb-6 flex flex-col gap-4 sm:mb-8 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-wrap items-center gap-2.5">
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-[#bcd6ff] bg-[#eef5ff] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-[#093bb0]">
-            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#1562f0]" aria-hidden />
-            Live Support
-          </span>
-          <span className="text-[11px] font-medium text-slate-500">P2P Mesh ready</span>
-        </div>
-        <div className="flex w-full flex-wrap items-center justify-end gap-3 sm:w-auto sm:gap-4">
-          <IpfsImg
-            src={headerAvatarSrc}
-            alt=""
-            className="h-10 w-10 shrink-0 rounded-full border-2 border-[#0051d1]/20 object-cover"
-          />
-        </div>
-      </header>
 
       <section className="relative z-[1] flex flex-col gap-6 lg:flex-row lg:gap-8">
         {/* Left: contact list */}
@@ -13925,7 +13907,10 @@ const [cardIssuanceMembershipFeeTierEditorOpen, setCardIssuanceMembershipFeeTier
 const [cardIssuanceMembershipFeeTierEditorDraft, setMembershipFeeTierEditorDraft] =
   useState<MembershipFeeTierEditorDraft>({
     name: 'Gold VIP Member',
+    backgroundMode: 'color',
     backgroundColor: '#1562F0',
+    backgroundImage: '',
+    backgroundImageFit: 'width',
     discountPercent: '10',
     membershipFee: '50',
     membershipDurationKind: 3,
@@ -13941,6 +13926,12 @@ const [cardIssuanceMembershipFeeTierEditorServerError, setCardIssuanceMembership
   useState('');
 const [cardIssuanceMembershipFeeTierHexDraft, setCardIssuanceMembershipFeeTierHexDraft] =
   useState('1562F0');
+/** Membership Fee / Loyalty tier editor — Card Style image (separate from Basic Info Card background). */
+const [membershipFeeTierBgUploading, setMembershipFeeTierBgUploading] = useState(false);
+const [membershipFeeTierBgDropActive, setMembershipFeeTierBgDropActive] = useState(false);
+const membershipFeeTierBgFileRef = useRef<HTMLInputElement>(null);
+const membershipFeeTierBgPendingIpfsRef = useRef('');
+const [membershipFeeTierBgPendingIpfs, setMembershipFeeTierBgPendingIpfs] = useState('');
 /** Programs — #13 → #0 / #13 → Conet-USDC (Rules & Routing); oracle spread is Program Basic. */
 const [reward13ConvertToPointsEnabled, setReward13ConvertToPointsEnabled] = useState(false);
 const [reward13ConvertToUsdcEnabled, setReward13ConvertToUsdcEnabled] = useState(false);
@@ -20404,11 +20395,16 @@ const membershipFeeDraftFromTierRow = useCallback(
           : '';
     const durationKind = normalizeMembershipDurationKind(row.membershipDurationKind);
     const color = normalizeMembershipFeeTierHexColor(row.backgroundColor || '#1562F0');
+    const backgroundImage = String(row.backgroundImage ?? '').trim();
+    const backgroundImageFit = normalizeMembershipFeeTierBackgroundImageFit(row.backgroundImageFit);
     return {
       name:
         (row.name ?? '').trim() ||
         (isBase ? 'Gold VIP Member' : 'Higher Membership'),
+      backgroundMode: backgroundImage ? 'image' : 'color',
       backgroundColor: color,
+      backgroundImage,
+      backgroundImageFit,
       discountPercent: (row.discountPercent ?? '').trim() || (isBase ? '10' : '0'),
       membershipFee: feeHuman,
       membershipDurationKind: durationKind,
@@ -20504,6 +20500,9 @@ const openCardIssuanceMembershipFeeTierEditor = useCallback(
       };
     }
     setCardIssuanceMembershipFeeEditingTierId(row.id);
+    membershipFeeTierBgPendingIpfsRef.current = '';
+    setMembershipFeeTierBgPendingIpfs('');
+    setMembershipFeeTierBgDropActive(false);
     setMembershipFeeTierEditorDraft(draft);
     setCardIssuanceMembershipFeeTierEditorBaseline({ ...draft });
     setCardIssuanceMembershipFeeTierHexDraft(draft.backgroundColor.replace(/^#/, ''));
@@ -20557,6 +20556,9 @@ const addCardIssuanceMembershipFeeHigherTier = useCallback(() => {
   const draft = membershipFeeDraftFromTierRow(newRow, false);
   setCardIssuanceMembershipFeePendingNewTier(newRow);
   setCardIssuanceMembershipFeeEditingTierId(newRow.id);
+  membershipFeeTierBgPendingIpfsRef.current = '';
+  setMembershipFeeTierBgPendingIpfs('');
+  setMembershipFeeTierBgDropActive(false);
   setMembershipFeeTierEditorDraft(draft);
   setCardIssuanceMembershipFeeTierEditorBaseline({ ...draft });
   setCardIssuanceMembershipFeeTierHexDraft(draft.backgroundColor.replace(/^#/, ''));
@@ -20582,14 +20584,28 @@ useEffect(() => {
 const discardCardIssuanceMembershipFeeTierEditorChanges = useCallback(() => {
   if (cardIssuanceMembershipFeeTierEditorBaseline == null) return;
   const baseline = cardIssuanceMembershipFeeTierEditorBaseline;
-  setMembershipFeeTierEditorDraft({ ...baseline });
+  membershipFeeTierBgPendingIpfsRef.current = '';
+  setMembershipFeeTierBgPendingIpfs('');
+  setMembershipFeeTierBgDropActive(false);
+  setMembershipFeeTierEditorDraft((prev) => {
+    const prevImg = (prev.backgroundImage || '').trim();
+    const baseImg = (baseline.backgroundImage || '').trim();
+    if (prevImg.startsWith('blob:') && prevImg !== baseImg) {
+      try {
+        URL.revokeObjectURL(prevImg);
+      } catch {
+        /* ignore */
+      }
+    }
+    return { ...baseline };
+  });
   setCardIssuanceMembershipFeeTierHexDraft(baseline.backgroundColor.replace(/^#/, ''));
   setCardIssuanceMembershipFeeTierEditorServerError('');
   setCardIssuanceCreateError('');
 }, [cardIssuanceMembershipFeeTierEditorBaseline]);
 
 const closeCardIssuanceMembershipFeeTierEditor = useCallback(() => {
-  if (cardIssuanceMembershipFeeTierEditorPublishing) return;
+  if (cardIssuanceMembershipFeeTierEditorPublishing || membershipFeeTierBgUploading) return;
   discardCardIssuanceMembershipFeeTierEditorChanges();
   const editingId = cardIssuanceMembershipFeeEditingTierId;
   const pending = cardIssuanceMembershipFeePendingNewTier;
@@ -20601,6 +20617,7 @@ const closeCardIssuanceMembershipFeeTierEditor = useCallback(() => {
   setCardIssuanceMembershipFeeTierListOpen(true);
 }, [
   cardIssuanceMembershipFeeTierEditorPublishing,
+  membershipFeeTierBgUploading,
   discardCardIssuanceMembershipFeeTierEditorChanges,
   cardIssuanceMembershipFeeEditingTierId,
   cardIssuanceMembershipFeePendingNewTier,
@@ -20633,8 +20650,12 @@ const cardIssuanceMembershipFeeTierEditorDirty = useMemo(() => {
   const draft = cardIssuanceMembershipFeeTierEditorDraft;
   return (
     draft.name.trim() !== baseline.name.trim() ||
+    (draft.backgroundMode ?? 'color') !== (baseline.backgroundMode ?? 'color') ||
     normalizeMembershipFeeTierHexColor(draft.backgroundColor) !==
       normalizeMembershipFeeTierHexColor(baseline.backgroundColor) ||
+    String(draft.backgroundImage ?? '').trim() !== String(baseline.backgroundImage ?? '').trim() ||
+    normalizeMembershipFeeTierBackgroundImageFit(draft.backgroundImageFit) !==
+      normalizeMembershipFeeTierBackgroundImageFit(baseline.backgroundImageFit) ||
     draft.discountPercent.replace(/,/g, '').trim() !== baseline.discountPercent.replace(/,/g, '').trim() ||
     draft.membershipFee.replace(/,/g, '').trim() !== baseline.membershipFee.replace(/,/g, '').trim() ||
     normalizeMembershipDurationKind(draft.membershipDurationKind) !==
@@ -20675,8 +20696,24 @@ const cardIssuanceMembershipFeeTierShowFeeFields = useMemo(() => {
 const cardIssuanceMembershipFeeTierEditorValidationError = useMemo(() => {
   const draft = cardIssuanceMembershipFeeTierEditorDraft;
   if (!draft.name.trim()) return 'Tier name is required.';
-  const color = normalizeMembershipFeeTierHexColor(draft.backgroundColor, '');
-  if (!color || !/^#[0-9A-F]{6}$/i.test(color)) return 'Enter a valid 6-digit hex color.';
+  const styleImage = String(draft.backgroundImage ?? '').trim();
+  const styleMode =
+    styleImage || draft.backgroundMode === 'image' ? 'image' : 'color';
+  if (styleMode === 'image') {
+    if (!styleImage) {
+      return tu('programs_membership_fee_tier_style_image_required');
+    }
+    if (
+      (styleImage.startsWith('blob:') || styleImage.startsWith('data:')) &&
+      !membershipFeeTierBgPendingIpfs.trim() &&
+      !membershipFeeTierBgPendingIpfsRef.current.trim()
+    ) {
+      return tu('programs_membership_fee_tier_style_image_preparing');
+    }
+  } else {
+    const color = normalizeMembershipFeeTierHexColor(draft.backgroundColor, '');
+    if (!color || !/^#[0-9A-F]{6}$/i.test(color)) return 'Enter a valid 6-digit hex color.';
+  }
   const feeN = Number(draft.membershipFee.replace(/,/g, '').trim());
   const requireMembershipFee = cardIssuanceMembershipFeeTierShowFeeFields;
   if (requireMembershipFee) {
@@ -20738,17 +20775,21 @@ const cardIssuanceMembershipFeeTierEditorValidationError = useMemo(() => {
   membershipFeeTierWorkingRows,
   cardIssuanceMembershipFeeEditingTierId,
   membershipFeeTierRowIsBase,
+  membershipFeeTierBgPendingIpfs,
+  tu,
 ]);
 
 const cardIssuanceMembershipFeeTierEditorCanSave = useMemo(
   () =>
     cardIssuanceMembershipFeeTierEditorDirty &&
     !cardIssuanceMembershipFeeTierEditorValidationError &&
-    !cardIssuanceMembershipFeeTierEditorPublishing,
+    !cardIssuanceMembershipFeeTierEditorPublishing &&
+    !membershipFeeTierBgUploading,
   [
     cardIssuanceMembershipFeeTierEditorDirty,
     cardIssuanceMembershipFeeTierEditorValidationError,
     cardIssuanceMembershipFeeTierEditorPublishing,
+    membershipFeeTierBgUploading,
   ],
 );
 
@@ -20774,6 +20815,24 @@ const buildMembershipFeeTierRowsFromEditorDraft = useCallback(
         ? normalizeMembershipDurationKind(draft.membershipDurationKind) || 3
         : normalizeMembershipDurationKind(draft.membershipDurationKind);
     const color = normalizeMembershipFeeTierHexColor(draft.backgroundColor);
+    const styleImageDraft = String(draft.backgroundImage ?? '').trim();
+    const styleMode =
+      styleImageDraft || draft.backgroundMode === 'image' ? 'image' : 'color';
+    let nextBackgroundImage = '';
+    let nextBackgroundImageFit: 'width' | 'height' = 'width';
+    if (styleMode === 'image') {
+      const pendingIpfs =
+        membershipFeeTierBgPendingIpfs.trim() ||
+        membershipFeeTierBgPendingIpfsRef.current.trim();
+      if (styleImageDraft.startsWith('blob:') || styleImageDraft.startsWith('data:')) {
+        nextBackgroundImage = pendingIpfs;
+      } else {
+        nextBackgroundImage = pendingIpfs || styleImageDraft;
+      }
+      nextBackgroundImageFit = normalizeMembershipFeeTierBackgroundImageFit(
+        draft.backgroundImageFit,
+      );
+    }
     const discountRaw = String(draft.discountPercent)
       .replace(/,/g, '')
       .replace(/\D/g, '')
@@ -20786,6 +20845,10 @@ const buildMembershipFeeTierRowsFromEditorDraft = useCallback(
       ...row,
       name: draft.name.trim(),
       backgroundColor: color,
+      backgroundImage: nextBackgroundImage,
+      backgroundImageFit: nextBackgroundImage
+        ? nextBackgroundImageFit
+        : normalizeMembershipFeeTierBackgroundImageFit(row.backgroundImageFit),
       discountPercent,
       membershipFee: feeHuman,
       membershipDurationKind: durationKind,
@@ -20839,6 +20902,7 @@ const buildMembershipFeeTierRowsFromEditorDraft = useCallback(
     cardIssuanceMembershipFeeEditingTierId,
     cardIssuanceMembershipFeePendingNewTier,
     cardIssuanceExistingCard?.cardAddress,
+    membershipFeeTierBgPendingIpfs,
   ],
 );
 
@@ -21897,6 +21961,210 @@ const clearCardIssuanceCardBackgroundDraftImage = useCallback(() => {
   setCardIssuanceCardBackgroundMode('color');
   setCardIssuanceCreateError('');
 }, [revokeCardIssuanceCardBackgroundDraftBlob]);
+
+const revokeMembershipFeeTierBgDraftBlob = useCallback((url: string) => {
+  if (!url.startsWith('blob:')) return;
+  try {
+    URL.revokeObjectURL(url);
+  } catch {
+    /* ignore */
+  }
+}, []);
+
+/** Membership Fee / Loyalty tier editor — Color XOR Image (mirrors Card background). */
+const ingestMembershipFeeTierBackgroundImageFile = useCallback(
+  async (file: File) => {
+    if (membershipFeeTierBgUploading || cardIssuanceMembershipFeeTierEditorPublishing) return;
+    const looksLikeImage =
+      (file.type && file.type.startsWith('image/')) ||
+      /\.(jpe?g|png|webp|gif|heic|heif|avif)$/i.test(file.name || '');
+    if (!looksLikeImage) {
+      setCardIssuanceMembershipFeeTierEditorServerError(
+        'Please choose an image file (JPG, PNG, or WebP).',
+      );
+      return;
+    }
+    const p0 = profiles?.[0];
+    if (!p0?.privateKeyArmor) {
+      setCardIssuanceMembershipFeeTierEditorServerError(
+        'Profile not available for upload. Open Settings and ensure your wallet is ready.',
+      );
+      return;
+    }
+    setCardIssuanceMembershipFeeTierEditorServerError('');
+    setMembershipFeeTierBgDropActive(false);
+    setMembershipFeeTierBgUploading(true);
+    membershipFeeTierBgPendingIpfsRef.current = '';
+    setMembershipFeeTierBgPendingIpfs('');
+    const localPreview = URL.createObjectURL(file);
+    setMembershipFeeTierEditorDraft((prev) => {
+      const prevImg = String(prev.backgroundImage ?? '').trim();
+      if (
+        (prevImg.startsWith('blob:') || prevImg.startsWith('data:')) &&
+        prevImg !== localPreview
+      ) {
+        revokeMembershipFeeTierBgDraftBlob(prevImg);
+      }
+      return {
+        ...prev,
+        backgroundMode: 'image',
+        backgroundImage: localPreview,
+        backgroundImageFit: normalizeMembershipFeeTierBackgroundImageFit(
+          prev.backgroundImageFit,
+        ),
+      };
+    });
+    try {
+      const hash = await uploadImageFileToIpfsWithRetry(file, (dataUrl) => postToIPFS(p0, dataUrl));
+      if (!hash) {
+        setCardIssuanceMembershipFeeTierEditorServerError('Background image upload failed.');
+        membershipFeeTierBgPendingIpfsRef.current = '';
+        setMembershipFeeTierBgPendingIpfs('');
+        setMembershipFeeTierEditorDraft((prev) => {
+          const prevImg = String(prev.backgroundImage ?? '').trim();
+          if (prevImg === localPreview) {
+            revokeMembershipFeeTierBgDraftBlob(localPreview);
+            const baseImg = String(
+              cardIssuanceMembershipFeeTierEditorBaseline?.backgroundImage ?? '',
+            ).trim();
+            return {
+              ...prev,
+              backgroundImage: baseImg,
+              backgroundMode: baseImg ? 'image' : 'color',
+            };
+          }
+          return prev;
+        });
+        return;
+      }
+      const ipfsUrl = `${IPFS_GET_FRAGMENT}${hash}&t=${Date.now()}`;
+      membershipFeeTierBgPendingIpfsRef.current = ipfsUrl;
+      setMembershipFeeTierBgPendingIpfs(ipfsUrl);
+    } catch (err: any) {
+      setCardIssuanceMembershipFeeTierEditorServerError(
+        err?.message ?? 'Background image upload failed.',
+      );
+      membershipFeeTierBgPendingIpfsRef.current = '';
+      setMembershipFeeTierBgPendingIpfs('');
+      setMembershipFeeTierEditorDraft((prev) => {
+        const prevImg = String(prev.backgroundImage ?? '').trim();
+        if (prevImg === localPreview || prevImg.startsWith('blob:') || prevImg.startsWith('data:')) {
+          revokeMembershipFeeTierBgDraftBlob(
+            prevImg === localPreview ? localPreview : prevImg,
+          );
+        }
+        const baseImg = String(
+          cardIssuanceMembershipFeeTierEditorBaseline?.backgroundImage ?? '',
+        ).trim();
+        return {
+          ...prev,
+          backgroundImage: baseImg,
+          backgroundMode: baseImg ? 'image' : 'color',
+        };
+      });
+    } finally {
+      setMembershipFeeTierBgUploading(false);
+    }
+  },
+  [
+    cardIssuanceMembershipFeeTierEditorBaseline?.backgroundImage,
+    cardIssuanceMembershipFeeTierEditorPublishing,
+    membershipFeeTierBgUploading,
+    profiles,
+    revokeMembershipFeeTierBgDraftBlob,
+  ],
+);
+
+const handleMembershipFeeTierBackgroundImagePick: React.ChangeEventHandler<HTMLInputElement> =
+  useCallback(
+    (e) => {
+      const input = e.currentTarget;
+      const file = input.files?.[0];
+      input.value = '';
+      if (!file) return;
+      void ingestMembershipFeeTierBackgroundImageFile(file);
+    },
+    [ingestMembershipFeeTierBackgroundImageFile],
+  );
+
+const handleMembershipFeeTierBackgroundImageDragEnter = useCallback(
+  (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (membershipFeeTierBgUploading || cardIssuanceMembershipFeeTierEditorPublishing) return;
+    if ([...e.dataTransfer.types].includes('Files')) {
+      setMembershipFeeTierBgDropActive(true);
+    }
+  },
+  [cardIssuanceMembershipFeeTierEditorPublishing, membershipFeeTierBgUploading],
+);
+
+const handleMembershipFeeTierBackgroundImageDragOver = useCallback(
+  (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (membershipFeeTierBgUploading || cardIssuanceMembershipFeeTierEditorPublishing) return;
+    e.dataTransfer.dropEffect = 'copy';
+    if ([...e.dataTransfer.types].includes('Files')) {
+      setMembershipFeeTierBgDropActive(true);
+    }
+  },
+  [cardIssuanceMembershipFeeTierEditorPublishing, membershipFeeTierBgUploading],
+);
+
+const handleMembershipFeeTierBackgroundImageDragLeave = useCallback((e: React.DragEvent) => {
+  e.preventDefault();
+  e.stopPropagation();
+  const next = e.relatedTarget as Node | null;
+  if (next && e.currentTarget.contains(next)) return;
+  setMembershipFeeTierBgDropActive(false);
+}, []);
+
+const handleMembershipFeeTierBackgroundImageDrop = useCallback(
+  (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setMembershipFeeTierBgDropActive(false);
+    if (membershipFeeTierBgUploading || cardIssuanceMembershipFeeTierEditorPublishing) return;
+    const file =
+      [...(e.dataTransfer.files ?? [])].find(
+        (f) =>
+          (f.type && f.type.startsWith('image/')) ||
+          /\.(jpe?g|png|webp|gif|heic|heif|avif)$/i.test(f.name || ''),
+      ) ?? e.dataTransfer.files?.[0];
+    if (!file) {
+      setCardIssuanceMembershipFeeTierEditorServerError(
+        'Please drop an image file (JPG, PNG, or WebP).',
+      );
+      return;
+    }
+    void ingestMembershipFeeTierBackgroundImageFile(file);
+  },
+  [
+    cardIssuanceMembershipFeeTierEditorPublishing,
+    ingestMembershipFeeTierBackgroundImageFile,
+    membershipFeeTierBgUploading,
+  ],
+);
+
+const clearMembershipFeeTierBackgroundDraftImage = useCallback(() => {
+  membershipFeeTierBgPendingIpfsRef.current = '';
+  setMembershipFeeTierBgPendingIpfs('');
+  setMembershipFeeTierBgDropActive(false);
+  setMembershipFeeTierEditorDraft((prev) => {
+    const prevImg = String(prev.backgroundImage ?? '').trim();
+    if (prevImg.startsWith('blob:') || prevImg.startsWith('data:')) {
+      revokeMembershipFeeTierBgDraftBlob(prevImg);
+    }
+    return {
+      ...prev,
+      backgroundMode: 'color',
+      backgroundImage: '',
+    };
+  });
+  setCardIssuanceMembershipFeeTierEditorServerError('');
+}, [revokeMembershipFeeTierBgDraftBlob]);
+
 const handleCardIssuanceProductionIconPick: React.ChangeEventHandler<HTMLInputElement> = useCallback(
   async (e) => {
     const input = e.currentTarget;
@@ -23127,9 +23395,50 @@ useEffect(() => {
 
 const submitCardIssuanceMembershipFeeTierEditor = useCallback(async () => {
   if (cardIssuanceMembershipFeeTierEditorValidationError) return;
-  if (cardIssuanceMembershipFeeTierEditorPublishing) return;
+  if (cardIssuanceMembershipFeeTierEditorPublishing || membershipFeeTierBgUploading) return;
   const draft = cardIssuanceMembershipFeeTierEditorDraft;
-  const nextTiers = buildMembershipFeeTierRowsFromEditorDraft(draft);
+  const styleImageDraft = String(draft.backgroundImage ?? '').trim();
+  const styleMode =
+    styleImageDraft || draft.backgroundMode === 'image' ? 'image' : 'color';
+  let resolvedBackgroundImage = '';
+  let resolvedMode: 'color' | 'image' = 'color';
+  if (styleMode === 'image') {
+    const pendingIpfs =
+      membershipFeeTierBgPendingIpfs.trim() ||
+      membershipFeeTierBgPendingIpfsRef.current.trim();
+    if (styleImageDraft.startsWith('blob:') || styleImageDraft.startsWith('data:')) {
+      if (!pendingIpfs) {
+        setCardIssuanceMembershipFeeTierEditorServerError(
+          tu('programs_membership_fee_tier_style_image_preparing'),
+        );
+        return;
+      }
+      resolvedBackgroundImage = pendingIpfs;
+    } else {
+      resolvedBackgroundImage = pendingIpfs || styleImageDraft;
+    }
+    if (
+      !resolvedBackgroundImage ||
+      resolvedBackgroundImage.startsWith('blob:') ||
+      resolvedBackgroundImage.startsWith('data:')
+    ) {
+      setCardIssuanceMembershipFeeTierEditorServerError(
+        tu('programs_membership_fee_tier_style_image_preparing'),
+      );
+      return;
+    }
+    resolvedMode = 'image';
+  }
+  const resolvedDraft: MembershipFeeTierEditorDraft = {
+    ...draft,
+    backgroundMode: resolvedMode,
+    backgroundColor: normalizeMembershipFeeTierHexColor(draft.backgroundColor),
+    backgroundImage: resolvedBackgroundImage,
+    backgroundImageFit: resolvedBackgroundImage
+      ? normalizeMembershipFeeTierBackgroundImageFit(draft.backgroundImageFit)
+      : 'width',
+  };
+  const nextTiers = buildMembershipFeeTierRowsFromEditorDraft(resolvedDraft);
   const isMembershipFeeMode =
     cardIssuanceMembershipFeeMode || cardIssuanceRewardsMembershipFeeEnabled;
   const selectedTierRule = isMembershipFeeMode ? 'single' : programsOverviewTierRuleKey;
@@ -23169,7 +23478,7 @@ const submitCardIssuanceMembershipFeeTierEditor = useCallback(async () => {
     if (isMembershipFeeMode) {
       setCardIssuanceRewardsSetupAmount(
         nextTiers.find((t) => t.id === CARD_ISSUANCE_SINGLE_TIER_ID)?.membershipFee ??
-          draft.membershipFee,
+          resolvedDraft.membershipFee,
       );
       setCardIssuanceMinTopup(minTopup);
       setCardIssuanceMaxTopup(minTopup);
@@ -23179,9 +23488,15 @@ const submitCardIssuanceMembershipFeeTierEditor = useCallback(async () => {
       ...prev,
       [selectedTierRule]: nextTiers,
     }));
+    if (styleImageDraft.startsWith('blob:') || styleImageDraft.startsWith('data:')) {
+      revokeMembershipFeeTierBgDraftBlob(styleImageDraft);
+    }
+    membershipFeeTierBgPendingIpfsRef.current = '';
+    setMembershipFeeTierBgPendingIpfs('');
+    setMembershipFeeTierEditorDraft(resolvedDraft);
     setCardIssuanceMembershipFeePendingNewTier(null);
     setCardIssuanceMembershipFeeEditingTierId(null);
-    setCardIssuanceMembershipFeeTierEditorBaseline({ ...draft });
+    setCardIssuanceMembershipFeeTierEditorBaseline({ ...resolvedDraft });
     setCardIssuanceMembershipFeeTierEditorOpen(false);
     setCardIssuanceMembershipFeeTierListOpen(true);
     setCardIssuanceMembershipFeeTierListError('');
@@ -23205,6 +23520,8 @@ const submitCardIssuanceMembershipFeeTierEditor = useCallback(async () => {
 }, [
   cardIssuanceMembershipFeeTierEditorValidationError,
   cardIssuanceMembershipFeeTierEditorPublishing,
+  membershipFeeTierBgUploading,
+  membershipFeeTierBgPendingIpfs,
   cardIssuanceMembershipFeeTierEditorDraft,
   buildMembershipFeeTierRowsFromEditorDraft,
   cardIssuanceMembershipFeeMode,
@@ -23213,6 +23530,8 @@ const submitCardIssuanceMembershipFeeTierEditor = useCallback(async () => {
   cardIssuanceExistingCard?.cardAddress,
   buildCardIssuanceTiersPayloadFromRows,
   cardIssuanceLoyaltyUpgradeFlags,
+  revokeMembershipFeeTierBgDraftBlob,
+  tu,
 ]);
 
 const submitCardIssuanceTopupPromotionEditor = useCallback(async () => {
@@ -34213,7 +34532,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
     
      {isMobileMenuOpen && (
        <div
-         className={`fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 transition-opacity ${
+         className={`fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[55] transition-opacity ${
            isTerminalsMarketRoute ? '' : 'lg:hidden'
          }`}
          onClick={() => setIsMobileMenuOpen(false)}
@@ -34223,7 +34542,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
 
      {/* --- Sidebar --- */}
      <aside
-       className={`fixed inset-y-0 left-0 z-50 flex flex-col bg-slate-50 transition-all duration-300 ease-in-out
+       className={`fixed inset-y-0 left-0 z-[60] flex flex-col bg-slate-50 transition-all duration-300 ease-in-out
          ${
            isTerminalsMarketRoute
              ? `${isMobileMenuOpen ? 'translate-x-0 w-72' : '-translate-x-full w-72'}`
@@ -34395,7 +34714,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
      <main className="flex-1 flex flex-col h-full relative overflow-hidden transition-all duration-300 ease-in-out min-w-0">
      {mobileGlobalSearchBarVisible && (
        <div
-         className="pointer-events-none fixed inset-x-0 z-20 px-3 lg:hidden"
+         className="pointer-events-none fixed inset-x-0 z-[50] px-3 lg:hidden"
           style={{
             top: 'max(0.75rem, env(safe-area-inset-top, 0px))',
             opacity: mobileFloatingBarOpacity,
@@ -38182,15 +38501,6 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                setMessagesNewError(null);
              }}
              onLaunchCampaign={() => handleTabChange('Market')}
-             headerAvatarSrc={getAvatarImgUrl(
-               (profiles?.[0] as { username?: string; accountName?: string } | undefined)?.username ??
-                 (profiles?.[0] as { accountName?: string } | undefined)?.accountName ??
-                 beamio?.accountName,
-               {
-                 address: profiles?.[0]?.keyID ?? myAddress ?? undefined,
-                 profileMap: addressProfileByLower,
-               },
-             )}
              eoaShortEncrypt={(() => {
                const a = (profiles?.[0]?.keyID ?? myAddress)?.trim() ?? '';
                return a.length > 10 ? `${a.slice(0, 4)}…${a.slice(-4)}` : a || '0x…';
@@ -45984,11 +46294,25 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                  feeWheelRef={cardIssuanceMembershipFeeTierFeeWheelRef}
                  discountWheelRef={cardIssuanceMembershipFeeTierDiscountWheelRef}
                  welcomeGiftWheelRef={cardIssuanceMembershipFeeTierWelcomeGiftWheelRef}
+                 backgroundImageFileRef={membershipFeeTierBgFileRef}
+                 backgroundImageUploading={membershipFeeTierBgUploading}
+                 backgroundImageDropActive={membershipFeeTierBgDropActive}
+                 baselineHadBackgroundImage={Boolean(
+                   String(
+                     cardIssuanceMembershipFeeTierEditorBaseline?.backgroundImage ?? '',
+                   ).trim(),
+                 )}
                  tu={tu}
                  onDraftChange={(patch) =>
                    setMembershipFeeTierEditorDraft((prev) => ({ ...prev, ...patch }))
                  }
                  onHexDraftChange={setCardIssuanceMembershipFeeTierHexDraft}
+                 onBackgroundImageFileChange={handleMembershipFeeTierBackgroundImagePick}
+                 onBackgroundImageClear={clearMembershipFeeTierBackgroundDraftImage}
+                 onBackgroundImageDragEnter={handleMembershipFeeTierBackgroundImageDragEnter}
+                 onBackgroundImageDragOver={handleMembershipFeeTierBackgroundImageDragOver}
+                 onBackgroundImageDragLeave={handleMembershipFeeTierBackgroundImageDragLeave}
+                 onBackgroundImageDrop={handleMembershipFeeTierBackgroundImageDrop}
                  onClose={closeCardIssuanceMembershipFeeTierEditor}
                  onSave={() => void submitCardIssuanceMembershipFeeTierEditor()}
                />

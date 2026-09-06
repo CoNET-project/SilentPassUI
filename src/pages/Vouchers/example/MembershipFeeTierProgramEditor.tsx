@@ -2,19 +2,24 @@
  * Programs → Loyalty Logic → Membership Fee tier editor.
  * Chrome aligns with Consumption Points (handle + Promotion badge + circular X).
  * Live Card Preview uses MerchantProgramPassFace (global merchant pass render).
+ * Card Style = Color XOR Image (same product model as Basic Info → Card background).
  */
-import React, { type Ref } from 'react'
+import React, { type Ref, type RefObject } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   AlertTriangle,
+  AlignVerticalSpaceAround,
   Crown,
   Gem,
   Gift,
+  ImagePlus,
   Info,
   Loader2,
   Palette,
+  RectangleHorizontal,
   Shield,
   Star,
+  Trash2,
   X,
   type LucideIcon,
 } from 'lucide-react'
@@ -23,6 +28,15 @@ import {
   preventNumericInputStepKeys,
   preventNumericInputWheelStep,
 } from '@/utils/numericInputStepKeys'
+
+export type MembershipFeeTierBackgroundMode = 'color' | 'image'
+export type MembershipFeeTierBackgroundImageFit = 'width' | 'height'
+
+export function normalizeMembershipFeeTierBackgroundImageFit(
+  raw: unknown,
+): MembershipFeeTierBackgroundImageFit {
+  return raw === 'height' ? 'height' : 'width'
+}
 
 export const MEMBERSHIP_FEE_TIER_THEME_PRESETS = [
   { id: 'beamio', hex: '#1562F0', label: 'Beamio' },
@@ -46,7 +60,12 @@ export const MEMBERSHIP_FEE_TIER_EMBLEMS: Array<{
 
 export type MembershipFeeTierEditorDraft = {
   name: string
+  /** Color XOR Image — same as Basic Info Card background. */
+  backgroundMode: MembershipFeeTierBackgroundMode
   backgroundColor: string
+  /** Tier pass background image (blob preview or IPFS URL). Maps to `TierMetadata.image`. */
+  backgroundImage: string
+  backgroundImageFit: MembershipFeeTierBackgroundImageFit
   discountPercent: string
   membershipFee: string
   membershipDurationKind: number
@@ -94,9 +113,20 @@ export type MembershipFeeTierProgramEditorProps = {
   feeWheelRef: Ref<HTMLInputElement>
   discountWheelRef: Ref<HTMLInputElement>
   welcomeGiftWheelRef: Ref<HTMLInputElement>
+  backgroundImageFileRef: RefObject<HTMLInputElement | null>
+  backgroundImageUploading: boolean
+  backgroundImageDropActive: boolean
+  /** Baseline still had an image — warn when saving as Color. */
+  baselineHadBackgroundImage?: boolean
   tu: (key: string, vars?: Record<string, string | number>) => string
   onDraftChange: (patch: Partial<MembershipFeeTierEditorDraft>) => void
   onHexDraftChange: (hexWithoutHash: string) => void
+  onBackgroundImageFileChange: React.ChangeEventHandler<HTMLInputElement>
+  onBackgroundImageClear: () => void
+  onBackgroundImageDragEnter: (e: React.DragEvent) => void
+  onBackgroundImageDragOver: (e: React.DragEvent) => void
+  onBackgroundImageDragLeave: (e: React.DragEvent) => void
+  onBackgroundImageDrop: (e: React.DragEvent) => void
   onClose: () => void
   onSave: () => void
 }
@@ -122,13 +152,29 @@ export function MembershipFeeTierProgramEditor({
   feeWheelRef,
   discountWheelRef,
   welcomeGiftWheelRef,
+  backgroundImageFileRef,
+  backgroundImageUploading,
+  backgroundImageDropActive,
+  baselineHadBackgroundImage = false,
   tu,
   onDraftChange,
   onHexDraftChange,
+  onBackgroundImageFileChange,
+  onBackgroundImageClear,
+  onBackgroundImageDragEnter,
+  onBackgroundImageDragOver,
+  onBackgroundImageDragLeave,
+  onBackgroundImageDrop,
   onClose,
   onSave,
 }: MembershipFeeTierProgramEditorProps) {
   const themeHex = normalizeMembershipFeeTierHexColor(draft.backgroundColor)
+  const styleImage = (draft.backgroundImage ?? '').trim()
+  const hasStyleImage = styleImage.length > 0
+  const styleMode: MembershipFeeTierBackgroundMode =
+    hasStyleImage || draft.backgroundMode === 'image' ? 'image' : 'color'
+  const styleImageFit = normalizeMembershipFeeTierBackgroundImageFit(draft.backgroundImageFit)
+  const showStyleTabs = !hasStyleImage
   const discountNum = Number(String(draft.discountPercent).replace(/,/g, '').trim())
   const discountPercentWhole =
     Number.isFinite(discountNum) && discountNum > 0 ? Math.floor(discountNum) : 0
@@ -141,11 +187,20 @@ export function MembershipFeeTierProgramEditor({
   const showStartingFrom =
     showMembershipFeeFields && Number.isFinite(feeNum) && feeNum > 0
   const startingFromAmount = showStartingFrom ? `${moneyPrefix}${feeDisplay}` : ''
+  const chromeBusy = publishing || backgroundImageUploading
 
   const applyTheme = (hex: string) => {
     const next = normalizeMembershipFeeTierHexColor(hex)
-    onDraftChange({ backgroundColor: next })
+    onDraftChange({ backgroundMode: 'color', backgroundColor: next })
     onHexDraftChange(next.replace(/^#/, ''))
+  }
+
+  const setStyleMode = (mode: MembershipFeeTierBackgroundMode) => {
+    if (mode === 'color') {
+      onDraftChange({ backgroundMode: 'color' })
+      return
+    }
+    onDraftChange({ backgroundMode: 'image' })
   }
 
   return (
@@ -159,9 +214,9 @@ export function MembershipFeeTierProgramEditor({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            disabled={publishing}
+            disabled={chromeBusy}
             onClick={() => {
-              if (!publishing) onClose()
+              if (!chromeBusy) onClose()
             }}
           />
           <motion.div
@@ -207,9 +262,9 @@ export function MembershipFeeTierProgramEditor({
                 </div>
                 <button
                   type="button"
-                  disabled={publishing}
+                  disabled={chromeBusy}
                   onClick={() => {
-                    if (!publishing) onClose()
+                    if (!chromeBusy) onClose()
                   }}
                   className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#eef1f3] text-[#595c5e] transition-colors hover:bg-[#dfe3e6] disabled:opacity-50 ${focusRingClassName}`}
                   aria-label={tu('programs_membership_fee_tier_editor_close_aria')}
@@ -239,6 +294,8 @@ export function MembershipFeeTierProgramEditor({
                     brandName={passBrandName}
                     tierName={passTierName}
                     backgroundColor={themeHex}
+                    backgroundImage={hasStyleImage ? styleImage : null}
+                    backgroundImageFit={styleImageFit}
                     logoSrc={brandLogoSrc}
                     discountPercent={discountPercentWhole}
                     upToLabel={tu('programs_overview_up_to')}
@@ -273,7 +330,7 @@ export function MembershipFeeTierProgramEditor({
                       id="mf-tier-name-input"
                       type="text"
                       value={draft.name}
-                      disabled={publishing}
+                      disabled={chromeBusy}
                       onChange={(e) => onDraftChange({ name: e.target.value })}
                       placeholder={tu('programs_membership_fee_tier_name_placeholder')}
                       className={`h-11 w-full rounded-xl border border-slate-200 px-3.5 text-sm font-medium text-slate-800 outline-none transition-all focus:border-[#1562f0] focus:ring-2 focus:ring-[#1562f0]/25 disabled:opacity-60 ${focusRingClassName}`}
@@ -284,79 +341,276 @@ export function MembershipFeeTierProgramEditor({
                       <span className="text-xs font-semibold text-slate-700">
                         {tu('programs_membership_fee_tier_theme_label')}
                       </span>
-                      <span className="font-mono text-[11px] font-medium text-slate-400">
-                        HEX {themeHex}
-                      </span>
+                      {styleMode === 'color' && !hasStyleImage ? (
+                        <span className="font-mono text-[11px] font-medium text-slate-400">
+                          HEX {themeHex}
+                        </span>
+                      ) : null}
                     </div>
-                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                      {MEMBERSHIP_FEE_TIER_THEME_PRESETS.map((preset) => {
-                        const active =
-                          normalizeMembershipFeeTierHexColor(preset.hex) === themeHex
-                        return (
-                          <button
-                            key={preset.id}
-                            type="button"
-                            disabled={publishing}
-                            onClick={() => applyTheme(preset.hex)}
-                            className={`flex items-center space-x-2 rounded-xl p-2 text-left transition-all ${
-                              active
-                                ? 'border-2 border-[#1562f0] bg-blue-50/50'
-                                : 'border border-slate-200 bg-white hover:border-slate-300'
-                            }`}
-                          >
-                            <div
-                              className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] text-white shadow-sm ${
-                                active ? '' : ''
-                              }`}
-                              style={{ backgroundColor: preset.hex }}
-                            >
-                              {active ? '✓' : null}
+
+                    {showStyleTabs ? (
+                      <div
+                        className="grid grid-cols-2 gap-1.5 rounded-2xl bg-[#eef1f3] p-1"
+                        role="tablist"
+                        aria-label={tu('programs_membership_fee_tier_style_type_aria')}
+                      >
+                        <button
+                          type="button"
+                          role="tab"
+                          aria-selected={styleMode === 'color'}
+                          disabled={chromeBusy}
+                          onClick={() => setStyleMode('color')}
+                          className={`inline-flex items-center justify-center gap-1.5 rounded-xl px-2.5 py-2.5 text-xs font-bold transition disabled:opacity-60 ${
+                            styleMode === 'color'
+                              ? 'bg-white text-[#0051d1] shadow-sm'
+                              : 'text-[#595c5e] hover:text-[#2c2f31]'
+                          } ${focusRingClassName}`}
+                        >
+                          <Palette className="h-3.5 w-3.5" strokeWidth={2.2} aria-hidden />
+                          {tu('programs_membership_fee_tier_style_color')}
+                        </button>
+                        <button
+                          type="button"
+                          role="tab"
+                          aria-selected={styleMode === 'image'}
+                          disabled={chromeBusy}
+                          onClick={() => setStyleMode('image')}
+                          className={`inline-flex items-center justify-center gap-1.5 rounded-xl px-2.5 py-2.5 text-xs font-bold transition disabled:opacity-60 ${
+                            styleMode === 'image'
+                              ? 'bg-white text-[#0051d1] shadow-sm'
+                              : 'text-[#595c5e] hover:text-[#2c2f31]'
+                          } ${focusRingClassName}`}
+                        >
+                          <ImagePlus className="h-3.5 w-3.5" strokeWidth={2.2} aria-hidden />
+                          {tu('programs_membership_fee_tier_style_image')}
+                        </button>
+                      </div>
+                    ) : null}
+
+                    <input
+                      ref={backgroundImageFileRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={onBackgroundImageFileChange}
+                    />
+
+                    {styleMode === 'color' && !hasStyleImage ? (
+                      <div className="space-y-2">
+                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                          {MEMBERSHIP_FEE_TIER_THEME_PRESETS.map((preset) => {
+                            const active =
+                              normalizeMembershipFeeTierHexColor(preset.hex) === themeHex
+                            return (
+                              <button
+                                key={preset.id}
+                                type="button"
+                                disabled={chromeBusy}
+                                onClick={() => applyTheme(preset.hex)}
+                                className={`flex items-center space-x-2 rounded-xl p-2 text-left transition-all ${
+                                  active
+                                    ? 'border-2 border-[#1562f0] bg-blue-50/50'
+                                    : 'border border-slate-200 bg-white hover:border-slate-300'
+                                }`}
+                              >
+                                <div
+                                  className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] text-white shadow-sm"
+                                  style={{ backgroundColor: preset.hex }}
+                                >
+                                  {active ? '✓' : null}
+                                </div>
+                                <span
+                                  className={`truncate text-xs ${
+                                    active ? 'font-bold text-slate-900' : 'font-semibold text-slate-700'
+                                  }`}
+                                >
+                                  {preset.label}
+                                </span>
+                              </button>
+                            )
+                          })}
+                        </div>
+                        <div className="mt-2 flex items-center space-x-2">
+                          <div className="relative flex-1">
+                            <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                              <span className="font-mono text-xs text-slate-400">#</span>
                             </div>
-                            <span
-                              className={`truncate text-xs ${
-                                active ? 'font-bold text-slate-900' : 'font-semibold text-slate-700'
-                              }`}
-                            >
-                              {preset.label}
+                            <input
+                              type="text"
+                              maxLength={6}
+                              value={hexDraft}
+                              disabled={chromeBusy}
+                              onChange={(e) => {
+                                const next = e.target.value.replace(/[^0-9a-fA-F]/g, '').slice(0, 6)
+                                onHexDraftChange(next)
+                                if (next.length === 3 || next.length === 6) {
+                                  onDraftChange({
+                                    backgroundMode: 'color',
+                                    backgroundColor: normalizeMembershipFeeTierHexColor(next),
+                                  })
+                                }
+                              }}
+                              onBlur={() => {
+                                const next = normalizeMembershipFeeTierHexColor(hexDraft || themeHex)
+                                onDraftChange({ backgroundMode: 'color', backgroundColor: next })
+                                onHexDraftChange(next.replace(/^#/, ''))
+                              }}
+                              className={`h-9 w-full rounded-lg border border-slate-200 pl-7 pr-3 font-mono text-xs font-semibold uppercase text-slate-800 outline-none focus:border-[#1562f0] focus:ring-1 focus:ring-[#1562f0] disabled:opacity-60 ${focusRingClassName}`}
+                              aria-label={tu('programs_membership_fee_tier_theme_hex_aria')}
+                            />
+                          </div>
+                          <div
+                            className="h-9 w-9 shrink-0 rounded-lg border border-slate-200 shadow-inner"
+                            style={{ backgroundColor: themeHex }}
+                            aria-hidden
+                          />
+                        </div>
+                        {baselineHadBackgroundImage ? (
+                          <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                            {tu('programs_membership_fee_tier_style_color_clears_image')}
+                          </p>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <div className="space-y-2.5">
+                        {hasStyleImage ? (
+                          <div
+                            className={`relative overflow-hidden rounded-2xl border bg-[#f7f8f9] transition ${
+                              backgroundImageDropActive
+                                ? 'border-[#1562f0] ring-2 ring-[#1562f0]/25'
+                                : 'border-[#e8ecf0]'
+                            }`}
+                            onDragEnter={onBackgroundImageDragEnter}
+                            onDragOver={onBackgroundImageDragOver}
+                            onDragLeave={onBackgroundImageDragLeave}
+                            onDrop={onBackgroundImageDrop}
+                          >
+                            <div className="relative aspect-[16/9] w-full overflow-hidden bg-[#0f172a]">
+                              <MerchantProgramPassFace
+                                brandName={passBrandName}
+                                tierName={passTierName}
+                                backgroundColor={themeHex}
+                                backgroundImage={styleImage}
+                                backgroundImageFit={styleImageFit}
+                                logoSrc={brandLogoSrc}
+                                discountPercent={discountPercentWhole}
+                                upToLabel={tu('programs_overview_up_to')}
+                                memberPricingLabel={tu('programs_overview_member_pricing')}
+                                startingFromLabel=""
+                                startingFromAmount=""
+                                className="!shadow-none h-full w-full rounded-none"
+                              />
+                            </div>
+                            <div className="absolute left-2.5 top-2.5 z-10 flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                title={tu('programs_membership_fee_tier_style_fit_width')}
+                                aria-label={tu('programs_membership_fee_tier_style_fit_width')}
+                                aria-pressed={styleImageFit === 'width'}
+                                disabled={chromeBusy}
+                                onClick={() =>
+                                  onDraftChange({
+                                    backgroundMode: 'image',
+                                    backgroundImageFit: 'width',
+                                  })
+                                }
+                                className={`flex h-8 w-8 items-center justify-center rounded-full text-white shadow-md ring-1 backdrop-blur-[2px] transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                                  styleImageFit === 'width'
+                                    ? 'bg-[#0051d1]/90 ring-white/50'
+                                    : 'bg-[#2c2f31]/45 ring-white/35 hover:bg-[#2c2f31]/60'
+                                } ${focusRingClassName}`}
+                              >
+                                <RectangleHorizontal className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />
+                              </button>
+                              <button
+                                type="button"
+                                title={tu('programs_membership_fee_tier_style_fit_height')}
+                                aria-label={tu('programs_membership_fee_tier_style_fit_height')}
+                                aria-pressed={styleImageFit === 'height'}
+                                disabled={chromeBusy}
+                                onClick={() =>
+                                  onDraftChange({
+                                    backgroundMode: 'image',
+                                    backgroundImageFit: 'height',
+                                  })
+                                }
+                                className={`flex h-8 w-8 items-center justify-center rounded-full text-white shadow-md ring-1 backdrop-blur-[2px] transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                                  styleImageFit === 'height'
+                                    ? 'bg-[#0051d1]/90 ring-white/50'
+                                    : 'bg-[#2c2f31]/45 ring-white/35 hover:bg-[#2c2f31]/60'
+                                } ${focusRingClassName}`}
+                              >
+                                <AlignVerticalSpaceAround
+                                  className="h-3.5 w-3.5"
+                                  strokeWidth={2.25}
+                                  aria-hidden
+                                />
+                              </button>
+                            </div>
+                            <div className="absolute right-2.5 top-2.5 z-10 flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => backgroundImageFileRef.current?.click()}
+                                disabled={backgroundImageUploading}
+                                aria-busy={backgroundImageUploading}
+                                aria-label={
+                                  backgroundImageUploading
+                                    ? tu('programs_membership_fee_tier_style_preparing')
+                                    : tu('programs_membership_fee_tier_style_replace')
+                                }
+                                className={`flex h-8 w-8 items-center justify-center rounded-full bg-[#2c2f31]/45 text-white shadow-md ring-1 ring-white/35 backdrop-blur-[2px] transition hover:bg-[#2c2f31]/60 disabled:cursor-not-allowed disabled:opacity-60 ${focusRingClassName}`}
+                              >
+                                {backgroundImageUploading ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2} aria-hidden />
+                                ) : (
+                                  <ImagePlus className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />
+                                )}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={onBackgroundImageClear}
+                                disabled={chromeBusy}
+                                aria-label={tu('programs_membership_fee_tier_style_remove')}
+                                className={`flex h-8 w-8 items-center justify-center rounded-full bg-[#2c2f31]/45 text-white shadow-md ring-1 ring-white/35 backdrop-blur-[2px] transition hover:bg-red-600/80 disabled:cursor-not-allowed disabled:opacity-60 ${focusRingClassName}`}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled={chromeBusy}
+                            onClick={() => backgroundImageFileRef.current?.click()}
+                            onDragEnter={onBackgroundImageDragEnter}
+                            onDragOver={onBackgroundImageDragOver}
+                            onDragLeave={onBackgroundImageDragLeave}
+                            onDrop={onBackgroundImageDrop}
+                            className={`flex w-full flex-col items-center justify-center gap-2 rounded-2xl border border-dashed px-4 py-8 text-center transition disabled:opacity-60 ${
+                              backgroundImageDropActive
+                                ? 'border-[#1562f0] bg-blue-50/60 ring-2 ring-[#1562f0]/20'
+                                : 'border-slate-300 bg-[#f7f8f9] hover:border-slate-400'
+                            } ${focusRingClassName}`}
+                          >
+                            {backgroundImageUploading ? (
+                              <Loader2
+                                className="h-6 w-6 animate-spin text-[#1562f0]"
+                                strokeWidth={2}
+                                aria-hidden
+                              />
+                            ) : (
+                              <ImagePlus className="h-6 w-6 text-[#1562f0]" strokeWidth={2} aria-hidden />
+                            )}
+                            <span className="text-sm font-bold text-slate-800">
+                              {tu('programs_membership_fee_tier_style_upload_title')}
+                            </span>
+                            <span className="max-w-xs text-[11px] leading-snug text-slate-500">
+                              {tu('programs_membership_fee_tier_style_upload_hint')}
                             </span>
                           </button>
-                        )
-                      })}
-                    </div>
-                    <div className="mt-2 flex items-center space-x-2">
-                      <div className="relative flex-1">
-                        <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-                          <span className="font-mono text-xs text-slate-400">#</span>
-                        </div>
-                        <input
-                          type="text"
-                          maxLength={6}
-                          value={hexDraft}
-                          disabled={publishing}
-                          onChange={(e) => {
-                            const next = e.target.value.replace(/[^0-9a-fA-F]/g, '').slice(0, 6)
-                            onHexDraftChange(next)
-                            if (next.length === 3 || next.length === 6) {
-                              onDraftChange({
-                                backgroundColor: normalizeMembershipFeeTierHexColor(next),
-                              })
-                            }
-                          }}
-                          onBlur={() => {
-                            const next = normalizeMembershipFeeTierHexColor(hexDraft || themeHex)
-                            onDraftChange({ backgroundColor: next })
-                            onHexDraftChange(next.replace(/^#/, ''))
-                          }}
-                          className={`h-9 w-full rounded-lg border border-slate-200 pl-7 pr-3 font-mono text-xs font-semibold uppercase text-slate-800 outline-none focus:border-[#1562f0] focus:ring-1 focus:ring-[#1562f0] disabled:opacity-60 ${focusRingClassName}`}
-                          aria-label={tu('programs_membership_fee_tier_theme_hex_aria')}
-                        />
+                        )}
                       </div>
-                      <div
-                        className="h-9 w-9 shrink-0 rounded-lg border border-slate-200 shadow-inner"
-                        style={{ backgroundColor: themeHex }}
-                        aria-hidden
-                      />
-                    </div>
+                    )}
                   </div>
                   <div className="space-y-1.5 pt-1">
                     <label className="text-xs font-semibold text-slate-700">

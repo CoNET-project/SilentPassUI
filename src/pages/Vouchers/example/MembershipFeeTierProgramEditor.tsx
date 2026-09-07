@@ -60,6 +60,8 @@ export const MEMBERSHIP_FEE_TIER_EMBLEMS: Array<{
 
 export type MembershipFeeTierEditorDraft = {
   name: string
+  /** Loyalty threshold for top-up / charge tiers, in card currency units. */
+  threshold: string
   /** Color XOR Image — same as Basic Info Card background. */
   backgroundMode: MembershipFeeTierBackgroundMode
   backgroundColor: string
@@ -106,6 +108,9 @@ export type MembershipFeeTierProgramEditorProps = {
    * hide Unlock Fee + Valid for — those fields do not apply.
    */
   showMembershipFeeFields?: boolean
+  /** Show the loyalty threshold when editing a top-up / charge tier. */
+  showThresholdField?: boolean
+  thresholdLabel?: string
   focusRingClassName?: string
   numericNoSpinnerClass?: string
   durationOptions: DurationOption[]
@@ -144,6 +149,8 @@ export function MembershipFeeTierProgramEditor({
   isBaseTier = true,
   loyaltyMode = false,
   showMembershipFeeFields = true,
+  showThresholdField = false,
+  thresholdLabel = '',
   focusRingClassName = '',
   numericNoSpinnerClass = '',
   durationOptions,
@@ -720,6 +727,41 @@ export function MembershipFeeTierProgramEditor({
                         </p>
                       </div>
                     </>
+                  ) : null}
+
+                  {showThresholdField ? (
+                    <div className="space-y-2">
+                      <label
+                        className="text-xs font-bold text-slate-800"
+                        htmlFor="mf-tier-loyalty-threshold"
+                      >
+                        {thresholdLabel}
+                      </label>
+                      <div className="relative rounded-xl border border-slate-200 bg-slate-50/50 transition-all focus-within:border-[#1562f0] focus-within:ring-2 focus-within:ring-[#1562f0]/20">
+                        <div className="flex items-center px-3.5 py-2.5">
+                          <span className="mr-2 text-base font-extrabold text-slate-500">
+                            {moneyPrefix}
+                          </span>
+                          <input
+                            id="mf-tier-loyalty-threshold"
+                            type="number"
+                            inputMode="decimal"
+                            min="0"
+                            step="1"
+                            value={draft.threshold}
+                            disabled={publishing}
+                            onChange={(e) => onDraftChange({ threshold: e.target.value })}
+                            onKeyDown={preventNumericInputStepKeys}
+                            onKeyDownCapture={preventNumericInputStepKeys}
+                            onWheel={preventNumericInputWheelStep}
+                            className={`w-full border-0 bg-transparent p-0 text-xl font-black tracking-tight text-slate-900 outline-none focus:ring-0 disabled:cursor-not-allowed ${numericNoSpinnerClass}`}
+                          />
+                        </div>
+                      </div>
+                      <p className="text-[11px] leading-normal text-slate-500">
+                        Set the amount required for this loyalty tier. You can update it after publishing.
+                      </p>
+                    </div>
                   ) : null}
 
                   <div

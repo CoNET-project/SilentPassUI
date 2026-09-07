@@ -39,7 +39,8 @@ export function ChatHeaderIOS({
 
   const tagText = useMemo(() => {
     if (!beamioer) return ""
-    if (!isUnknown && beamioer.username) return beamioer.username
+    const u = (beamioer.username || "").trim()
+    if (!isUnknown && u) return u.startsWith("@") ? u : `@${u}`
     return fmtAddr(beamioer.address)
   }, [beamioer, isUnknown])
 

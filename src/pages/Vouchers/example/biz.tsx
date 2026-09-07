@@ -13995,6 +13995,7 @@ const [cardIssuanceMembershipFeeTierEditorOpen, setCardIssuanceMembershipFeeTier
 const [cardIssuanceMembershipFeeTierEditorDraft, setMembershipFeeTierEditorDraft] =
   useState<MembershipFeeTierEditorDraft>({
     name: 'Gold VIP Member',
+    threshold: String(CARD_ISSUANCE_MIN_TOPUP_DEFAULT),
     backgroundMode: 'color',
     backgroundColor: '#1562F0',
     backgroundImage: '',
@@ -14394,6 +14395,15 @@ const cardIssuanceCouponEditingIssued = Boolean(cardIssuanceEditingCouponRow?.is
    () => cardIssuanceRowsHaveMembershipFee(cardIssuanceTiers),
    [cardIssuanceTiers]
  );
+const cardIssuanceTierThresholdLabel = useMemo(() => {
+  if (cardIssuanceTierRule === 'cumulative') {
+    return tu('programs_tier_threshold_cumulative');
+  }
+  if (cardIssuanceTierRule === 'balance') {
+    return tu('programs_tier_threshold_balance');
+  }
+  return tu('programs_tier_threshold_single');
+}, [cardIssuanceTierRule, tu]);
  useEffect(() => {
    if (!cardIssuanceMembershipFeeMode) return;
    setCardIssuanceMinTopup(CARD_ISSUANCE_REWARDS_SETUP_AMOUNT_DEFAULT);
@@ -20537,6 +20547,7 @@ const membershipFeeDraftFromTierRow = useCallback(
     const backgroundImage = String(row.backgroundImage ?? '').trim();
     const backgroundImageFit = normalizeMembershipFeeTierBackgroundImageFit(row.backgroundImageFit);
     return {
+      threshold: String(row.threshold ?? CARD_ISSUANCE_MIN_TOPUP_DEFAULT),
       name:
         (row.name ?? '').trim() ||
         (isBase ? 'Gold VIP Member' : 'Higher Membership'),
@@ -20788,6 +20799,7 @@ const cardIssuanceMembershipFeeTierEditorDirty = useMemo(() => {
     normalizeMembershipFeeTierBackgroundImageFit(draft.backgroundImageFit) !==
       normalizeMembershipFeeTierBackgroundImageFit(baseline.backgroundImageFit) ||
     draft.discountPercent.replace(/,/g, '').trim() !== baseline.discountPercent.replace(/,/g, '').trim() ||
+    draft.threshold.replace(/,/g, '').trim() !== baseline.threshold.replace(/,/g, '').trim() ||
     draft.membershipFee.replace(/,/g, '').trim() !== baseline.membershipFee.replace(/,/g, '').trim() ||
     normalizeMembershipDurationKind(draft.membershipDurationKind) !==
       normalizeMembershipDurationKind(baseline.membershipDurationKind) ||
@@ -20867,8 +20879,6 @@ const cardIssuanceMembershipFeeTierEditorValidationError = useMemo(() => {
     }
   }
 
-  if (!requireMembershipFee) return '';
-
   const rows = membershipFeeTierWorkingRows;
   const editingId = cardIssuanceMembershipFeeEditingTierId;
   const idx = editingId ? rows.findIndex((r) => r.id === editingId) : -1;
@@ -20876,6 +20886,25 @@ const cardIssuanceMembershipFeeTierEditorValidationError = useMemo(() => {
     !editingId ||
     editingId === CARD_ISSUANCE_SINGLE_TIER_ID ||
     (idx >= 0 && membershipFeeTierRowIsBase(rows[idx], idx, rows));
+  const thresholdInt = cardIssuanceTierThresholdToInt(draft.threshold);
+
+  if (!requireMembershipFee) {
+    if (thresholdInt <= 0) return 'Enter a valid loyalty tier amount.';
+    const minTopupN = cardIssuanceTierThresholdToInt(cardIssuanceMinTopup);
+    if (isBase && thresholdInt < cardIssuanceMinTopupCurrencyFloor) {
+      return `Base Tier must be at least ${cardIssuanceMinTopupFloorLabel}.`;
+    }
+    if (!isBase && thresholdInt <= minTopupN) {
+      return 'Reward tiers must be above the Base minimum spending amount.';
+    }
+    const otherThresholds = rows
+      .filter((tier) => tier.id !== editingId)
+      .map((tier) => cardIssuanceTierThresholdToInt(tier.threshold));
+    if (otherThresholds.includes(thresholdInt)) {
+      return 'Another tier already uses this minimum spending amount.';
+    }
+    return '';
+  }
 
   if (isBase) {
     for (let i = 0; i < rows.length; i++) {
@@ -20967,6 +20996,12 @@ const buildMembershipFeeTierRowsFromEditorDraft = useCallback(
     const patchRow = (row: CardIssuanceTierRow): CardIssuanceTierRow => ({
       ...row,
       name: draft.name.trim(),
+      threshold:
+        hasMembershipFee && row.id === CARD_ISSUANCE_SINGLE_TIER_ID
+          ? row.threshold
+          : cardIssuanceTierThresholdToInt(draft.threshold) > 0
+            ? String(cardIssuanceTierThresholdToInt(draft.threshold))
+            : row.threshold,
       backgroundColor: color,
       backgroundImage: nextBackgroundImage,
       backgroundImageFit: nextBackgroundImage
@@ -21008,6 +21043,7 @@ const buildMembershipFeeTierRowsFromEditorDraft = useCallback(
           makeCardIssuanceTierRow({
             id: editingId,
             name: draft.name.trim(),
+            threshold: draft.threshold,
             backgroundColor: color,
             discountPercent,
             membershipFee: feeHuman,
@@ -46491,6 +46527,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                    !cardIssuanceRewardsMembershipFeeEnabled
                  }
                  showMembershipFeeFields={cardIssuanceMembershipFeeTierShowFeeFields}
+                 showThresholdField={!cardIssuanceMembershipFeeTierShowFeeFields}
+                 thresholdLabel={cardIssuanceTierThresholdLabel}
                  focusRingClassName={bizFocusRingClass}
                  numericNoSpinnerClass={bizNumericNoSpinnerClass}
                  durationOptions={programsMembershipDurationSelectOptions.map((opt) => ({

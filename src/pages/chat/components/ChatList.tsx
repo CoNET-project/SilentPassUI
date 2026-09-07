@@ -12,6 +12,7 @@ import {
 	AlertTriangle
 } from "lucide-react"
 import { useDaemonContext } from "@/providers/DaemonProvider"
+import { useBeamioTagDatabase } from "@/providers/BeamioTagDatabaseProvider"
 import { checkSign, getKeysFromCoNETPGPSC, makeMessage, dedupeChatsByAddress, refreshChatRoutes } from '@/services/chat' 
 import {searchUsername, storeSystemData} from '@/services/beamio'
 import { tu } from '@/locale/beamioLocale'
@@ -47,7 +48,7 @@ function fmtListTime(ts?: number) {
   if (diff === 0) {
     return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })
   }
-  if (diff === oneDay) return "昨天"
+  if (diff === oneDay) return tu('yesterday')
 
   const y = d.getFullYear()
   const m = String(d.getMonth() + 1).padStart(2, "0")
@@ -58,10 +59,14 @@ function fmtListTime(ts?: number) {
 const getImg = (avatarSeed: string) =>
 	`https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed).toString()}`
 
-const displayName = (item: searchResult) => {
-	const lastname = item?.last_name?.split('\r\n')||[]
-	const fullName = `${item?.first_name || ''} ${/^\{/.test(lastname[0]) ? '': lastname[0] || ''}`.trim()
-	return fullName || item.username || item.address
+/** Prefer @beamioTag; never show a raw 42-char address as the primary chat title. */
+const formatChatListTitle = (beamio: searchResult | undefined | null, address: string): string => {
+	const u = (beamio?.username || '').trim()
+	if (u && u !== '未知') return u.startsWith('@') ? u : `@${u}`
+	const lastname = beamio?.last_name?.split('\r\n') || []
+	const fullName = `${beamio?.first_name || ''} ${/^\{/.test(lastname[0] || '') ? '' : lastname[0] || ''}`.trim()
+	if (fullName) return fullName
+	return fmtAddr(address)
 }
 
 const unknowAcc = (address: string):searchResult => {
@@ -158,7 +163,7 @@ function Avatar({
 		) : (
 			<div className="h-12 w-12 rounded-full bg-[linear-gradient(180deg,#9db3d9_0%,#6f88be_100%)] grid place-items-center ring-1 ring-black/5">
 			<span className="text-white font-semibold text-[16px] tracking-wide">
-				{displayName(fromBeamio||unknowAcc(address))}
+				{(formatChatListTitle(fromBeamio, address).replace(/^@/, '').slice(0, 1) || '?').toUpperCase()}
 			</span>
 			
 			
@@ -182,13 +187,19 @@ function categoryChipMatches(it: chatData, category: ChatListProps['categoryFilt
 	return true
 }
 
-function searchMatchesThread(it: chatData, qRaw: string) {
+function searchMatchesThread(
+	it: chatData,
+	qRaw: string,
+	extraUsername?: string | null,
+) {
 	const q = (qRaw || '').trim().toLowerCase()
 	if (!q) return true
 	const addr = (it.address || '').toLowerCase()
 	if (addr.includes(q)) return true
 	const un = (it.beamio?.username || '').toLowerCase()
-	if (un.includes(q)) return true
+	if (un.includes(q) || un.replace(/^@+/, '').includes(q.replace(/^@+/, ''))) return true
+	const extra = (extraUsername || '').toLowerCase().replace(/^@+/, '')
+	if (extra && (extra.includes(q.replace(/^@+/, '')) || `@${extra}`.includes(q))) return true
 	const disp = `${it.beamio?.first_name || ''} ${it.beamio?.last_name || ''}`.toLowerCase()
 	return disp.includes(q)
 }
@@ -203,6 +214,8 @@ export default function ChatList({
 	onInboxTotalThreadCountChange,
 }: ChatListProps) {
 	const { profiles, setProfiles } = useDaemonContext()
+	const { resolvePeerSearchResult, ensureProfilesForAddresses, profileMap } = useBeamioTagDatabase()
+	const tagEnrichAtRef = useRef(0)
 
 	const allSortedThreads = useMemo(() => {
 		const profile: profile = profiles?.[0]
@@ -235,8 +248,11 @@ export default function ChatList({
 	const items = useMemo(() => {
 		return allSortedThreads
 			.filter((it) => categoryChipMatches(it, categoryFilter))
-			.filter((it) => searchMatchesThread(it, searchQuery))
-	}, [allSortedThreads, categoryFilter, searchQuery])
+			.filter((it) => {
+				const peer = resolvePeerSearchResult(it.address)
+				return searchMatchesThread(it, searchQuery, peer?.username)
+			})
+	}, [allSortedThreads, categoryFilter, searchQuery, resolvePeerSearchResult, profileMap])
 
 	useEffect(() => {
 		onInboxTotalThreadCountChange?.(allSortedThreads.length)
@@ -321,6 +337,73 @@ export default function ChatList({
 		})()
 	}, [profiles, setProfiles])
 
+	// Stub chats often only have EOA — hydrate @beamioTag from Tag DB + remote.
+	useEffect(() => {
+		if (!items.length) return
+		const addrs = items
+			.map(c => String(c.address || '').trim())
+			.filter(a => /^0x[a-fA-F0-9]{40}$/i.test(a))
+		if (!addrs.length) return
+		const needFetch = addrs.filter(a => {
+			const peer = resolvePeerSearchResult(a)
+			const u = (peer?.username || '').trim()
+			return !u || u === '未知'
+		})
+		if (!needFetch.length) return
+		const now = Date.now()
+		if (now - tagEnrichAtRef.current < 8_000) return
+		tagEnrichAtRef.current = now
+		void ensureProfilesForAddresses(needFetch, { maxPerTick: 28 }).catch(() => {})
+	}, [items, ensureProfilesForAddresses, resolvePeerSearchResult, profileMap])
+
+	// Sync Tag DB → chat.beamio so list titles / Avatars keep @tag after refresh.
+	useEffect(() => {
+		if (!items.length || !profileMap) return
+		setProfiles(prev => {
+			if (!prev?.length) return prev
+			const cur = prev[0]
+			const chats = Array.isArray(cur?.chats) ? cur.chats : []
+			if (!chats.length) return prev
+			let changed = false
+			const nextChats = chats.map(c => {
+				const addr = String(c?.address || '').trim()
+				if (!/^0x[a-fA-F0-9]{40}$/i.test(addr)) return c
+				const peer = resolvePeerSearchResult(addr)
+				const u = (peer?.username || '').trim()
+				if (!u || u === '未知') return c
+				const curU = (c.beamio?.username || '').trim()
+				if (curU === u || curU === `@${u}` || `@${curU}` === u) {
+					const needName =
+						(!(c.beamio?.first_name || '').trim() && (peer?.first_name || '').trim()) ||
+						(!(c.beamio?.last_name || '').trim() && (peer?.last_name || '').trim())
+					if (!needName && (c.beamio?.image || '') === (peer?.image || c.beamio?.image || '')) {
+						return c
+					}
+				}
+				changed = true
+				return {
+					...c,
+					beamio: {
+						...(c.beamio || {}),
+						...peer,
+						address: addr,
+						username: u.startsWith('@') ? u.slice(1) : u,
+					},
+				}
+			})
+			if (!changed) return prev
+			const nextProfiles = [...prev]
+			nextProfiles[0] = { ...cur, chats: nextChats }
+			const temp = CoNET_Data
+			if (temp) {
+				temp.profiles = nextProfiles
+				setCoNET_Data(temp)
+			}
+			void storeSystemData().catch(() => {})
+			return nextProfiles
+		})
+	}, [items, profileMap, resolvePeerSearchResult, setProfiles])
+
 	
 
 
@@ -363,7 +446,16 @@ export default function ChatList({
             const timeText = fmtListTime(
 				last?.createdAt || it.beamio?.created_at || 0
 			)
-            const name = it.beamio ? displayName(it.beamio) : `${it.address.slice(0, 6)}…${it.address.slice(-4)}`
+            const name = formatChatListTitle(
+				(() => {
+					const fromDb = resolvePeerSearchResult(it.address)
+					if (fromDb) return fromDb
+					return it.beamio
+				})(),
+				it.address,
+			)
+            const listBeamio =
+				resolvePeerSearchResult(it.address) || it.beamio || undefined
 
             const unread = Math.max(0, Number(it.unreadCount || 0))
             const muted = !!it.muted
@@ -435,7 +527,7 @@ export default function ChatList({
                   <div className={`flex items-center gap-3 ${variant === 'merchant' ? 'py-0' : 'py-3.5'}`}>
                     <Avatar
 						address={it.address}
-						beamio={it.beamio}
+						beamio={listBeamio}
 					/>
 
                     <div className="min-w-0 flex-1">

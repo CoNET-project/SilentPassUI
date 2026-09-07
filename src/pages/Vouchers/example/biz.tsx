@@ -5880,6 +5880,7 @@ const USER_CARD_TIERS_AND_CURRENCY_READ_ABI = [
   'function tiers(uint256) view returns (uint256 minUsdc6, uint256 attr, uint256 tierExpirySeconds)',
   'function currency() view returns (uint8)',
   'function upgradeType() view returns (uint8)',
+  'function membershipFees() view returns (uint256[] feeE6, uint8[] durationKind)',
 ] as const
 
 const USER_CARD_CURRENCY_READ_ABI = ['function currency() view returns (uint8)'] as const
@@ -5907,7 +5908,11 @@ type BeamioUserCardChainTier = {
 async function fetchBeamioUserCardTiersAndCurrencyFromChain(
   cardAddress: string,
   provider: ethers.Provider
-): Promise<{ tiers: BeamioUserCardChainTier[]; currencyType: number }> {
+): Promise<{
+  tiers: BeamioUserCardChainTier[]
+  currencyType: number
+  membershipFeeCount: number | null
+}> {
   const addr = ethers.getAddress(cardAddress)
   const c = new ethers.Contract(addr, USER_CARD_TIERS_AND_CURRENCY_READ_ABI, provider)
   let upgradeType = 0
@@ -5945,7 +5950,16 @@ async function fetchBeamioUserCardTiersAndCurrencyFromChain(
     currencyType = 0
   }
   if (!Number.isFinite(currencyType) || currencyType < 0) currencyType = 0
-  return { tiers: rows, currencyType }
+  let membershipFeeCount: number | null = null
+  try {
+    const [feeE6] = await c.membershipFees()
+    membershipFeeCount = Array.isArray(feeE6) ? feeE6.length : null
+  } catch {
+    // An old implementation may not expose the membership fee view. Unknown
+    // is deliberately preserved so migration audit cannot treat it as zero.
+    membershipFeeCount = null
+  }
+  return { tiers: rows, currencyType, membershipFeeCount }
 }
 
 const TX_PAGE_TUPLE = 'tuple(bytes32 id, bytes32 originalPaymentHash, uint256 chainId, bytes32 txCategory, string displayJson, uint64 timestamp, address payer, address payee, uint256 finalRequestAmountFiat6, uint256 finalRequestAmountUSDC6, bool isAAAccount, tuple(uint16 gasChainType, uint256 gasWei, uint256 gasUSDC6, uint256 serviceUSDC6, uint256 bServiceUSDC6, uint256 bServiceUnits6, address feePayer) fees, tuple(uint256 requestAmountFiat6, uint256 requestAmountUSDC6, uint8 currencyFiat, uint256 discountAmountFiat6, uint16 discountRateBps, uint256 taxAmountFiat6, uint16 taxRateBps, string afterNotePayer, string afterNotePayee) meta, bool exists, address topAdmin, address subordinate)';
@@ -14496,6 +14510,9 @@ const handlePublishCardIssuanceRef = useRef<
    upgradeType: number;
    /** On-chain Charge Reward PT (#13) ratio; 1_000_000 = 1 point per 1 card-currency unit spent. */
    chargeRewardRatioE6: string | null;
+  /** Trusted RPC-derived structural counts used by the legacy migration audit. */
+  chainTierCount: number | null;
+  membershipFeeCount: number | null;
  } | null>(null);
  const legacyCardMigrationAudit = useMemo<LegacyCardMigrationAudit | null>(() => {
    if (!cardIssuanceExistingCard) return null;
@@ -14503,8 +14520,24 @@ const handlePublishCardIssuanceRef = useRef<
      cardAddress: cardIssuanceExistingCard.cardAddress,
      metadata: cardIssuanceExistingCard.meta,
      upgradeType: cardIssuanceExistingCard.upgradeType,
+     chainTierCount: cardIssuanceExistingCard.chainTierCount,
+     membershipFeeCount: cardIssuanceExistingCard.membershipFeeCount,
    });
  }, [cardIssuanceExistingCard]);
+ const legacyCardMigrationAutoUpgradeRef = useRef<string | null>(null);
+ const legacyCardMigrationCanAutoUpgrade = Boolean(
+   legacyCardMigrationAudit &&
+     legacyCardMigrationAudit.status === 'legacy-review' &&
+     !legacyCardMigrationAudit.hasQualificationMode &&
+     cardIssuanceOnchainFetch === 'done' &&
+     cardIssuanceExistingCard?.meta &&
+     Number.isFinite(cardIssuanceExistingCard.chainTierCount) &&
+     cardIssuanceExistingCard.chainTierCount === legacyCardMigrationAudit.metadataTierCount &&
+     Number.isFinite(cardIssuanceExistingCard.membershipFeeCount) &&
+     cardIssuanceExistingCard.membershipFeeCount ===
+       legacyCardMigrationAudit.metadataMembershipFeeCount &&
+     (profiles?.[0]?.keyID ?? myAddress ?? '').trim(),
+ );
 const [programSocialLikeCount, setProgramSocialLikeCount] = useState<number | null>(null);
 const [programSocialShareClickCount, setProgramSocialShareClickCount] = useState<number | null>(null);
 const [programSocialLikes, setProgramSocialLikes] = useState<BeamioCardProgramSocialLikeRow[]>([]);
@@ -23179,6 +23212,7 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
                ? { tiers: metadataTiersForPublish }
                : {}),
            ...(tierRuleUpgradeForPublish != null ? { upgradeType: tierRuleUpgradeForPublish } : {}),
+           tierQualificationMode: tierQualificationModeForPublish,
          });
        } else {
          res = await updateBeamioCardShareMetadata({
@@ -23192,6 +23226,7 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
                  ? { tiers: metadataTiersForPublish }
                  : {}),
              ...(tierRuleUpgradeForPublish != null ? { upgradeType: tierRuleUpgradeForPublish } : {}),
+             tierQualificationMode: tierQualificationModeForPublish,
            });
        }
      } else {
@@ -23439,6 +23474,24 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
 useEffect(() => {
   handlePublishCardIssuanceRef.current = handlePublishCardIssuance;
 }, [handlePublishCardIssuance]);
+
+useEffect(() => {
+  if (!legacyCardMigrationCanAutoUpgrade || !cardIssuanceExistingCard) return;
+  const cardKey = cardIssuanceExistingCard.cardAddress.toLowerCase();
+  if (legacyCardMigrationAutoUpgradeRef.current === cardKey) return;
+  legacyCardMigrationAutoUpgradeRef.current = cardKey;
+
+  void handlePublishCardIssuanceRef.current({
+    metadataOnly: true,
+    skipOnChainRefresh: true,
+    publishErrorSink: () => undefined,
+  }).then((ok) => {
+    if (!ok) legacyCardMigrationAutoUpgradeRef.current = null;
+  });
+}, [
+  cardIssuanceExistingCard,
+  legacyCardMigrationCanAutoUpgrade,
+]);
 
 const submitCardIssuanceMembershipFeeTierEditor = useCallback(async () => {
   if (cardIssuanceMembershipFeeTierEditorValidationError) return;
@@ -25126,8 +25179,13 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
        if (cancelled) return;
       let upgradeType = -1;
       let chargeRewardRatioE6: string | null = null;
+      let chainTierCount: number | null = null;
+      let membershipFeeCount: number | null = null;
        try {
          const { provider: cardProvider } = await providerForBeamioUserCard(primary);
+         const chainShape = await fetchBeamioUserCardTiersAndCurrencyFromChain(primary, cardProvider);
+         chainTierCount = chainShape.tiers.length;
+         membershipFeeCount = chainShape.membershipFeeCount;
          const card = new ethers.Contract(
            primary,
           [
@@ -25146,6 +25204,8 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
         }
        } catch {
          upgradeType = -1;
+          chainTierCount = null;
+          membershipFeeCount = null;
        }
        if (cancelled) return;
        upgradeType = cardIssuanceLoyaltyUpgradeTypeFromSources(upgradeType, meta);
@@ -25195,6 +25255,8 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
           meta: mergedMeta,
           upgradeType,
           chargeRewardRatioE6,
+          chainTierCount,
+          membershipFeeCount,
         };
       });
      } catch {
@@ -39431,7 +39493,9 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                ) : null}
              </header>
 
-             {legacyCardMigrationAudit && legacyCardMigrationAudit.status !== 'migrated' &&
+             {legacyCardMigrationAudit &&
+             legacyCardMigrationAudit.status !== 'migrated' &&
+             !legacyCardMigrationCanAutoUpgrade &&
              cardIssuanceActiveProgramView === 'overview' ? (
                <section
                  className={`mb-6 rounded-2xl border px-4 py-4 ${

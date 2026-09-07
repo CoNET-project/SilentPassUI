@@ -1932,6 +1932,11 @@ export const updateBeamioCardTiers = async (
 				...(params.upgradeType === 0 || params.upgradeType === 1 || params.upgradeType === 2
 					? { upgradeType: params.upgradeType }
 					: {}),
+				...(params.tierQualificationMode === 0 ||
+				params.tierQualificationMode === 1 ||
+				params.tierQualificationMode === 2
+					? { tierQualificationMode: params.tierQualificationMode }
+					: {}),
 				...(typeof params.transferWhitelistEnabled === 'boolean' && {
 					transferWhitelistEnabled: params.transferWhitelistEnabled,
 				}),
@@ -4065,6 +4070,8 @@ export type CardMetadataFromUri = {
 	logoDisplayTier?: CardPreviewLogoDisplayTier
 	/** Card-level loyalty: 0 Top-up, 1 Balance, 2 Charge. Beacon `upgradeType()` may stay 0. */
 	upgradeType?: 0 | 1 | 2
+	/** Canonical card-level acquisition mode written during legacy migration. */
+	tierQualificationMode?: 0 | 1 | 2
 }
 
 /** Prefer explicit card0 `upgradeType`; otherwise infer Charge/Balance from per-tier flags. */
@@ -4607,6 +4614,7 @@ export const getCardMetadataFrom1155Json = async (cardAddress: string): Promise<
 			shareTokenMetadata?: { name?: string; image?: string; description?: string; categories?: unknown; bonusRule?: unknown; coupons?: unknown }
 			baseMembership?: CardMetadataFromUri['baseMembership']
 			tiers?: CardTierMetadata[]
+			tierQualificationMode?: unknown
 			properties?: Record<string, unknown>
 		}
 		const share = json?.shareTokenMetadata as Record<string, unknown> | undefined
@@ -4651,6 +4659,11 @@ export const getCardMetadataFrom1155Json = async (cardAddress: string): Promise<
 			...limits,
 			...(logoDisplayTier !== undefined && { logoDisplayTier }),
 			...(parsedUpgradeType !== undefined && { upgradeType: parsedUpgradeType }),
+			...(json?.tierQualificationMode === 0 ||
+			json?.tierQualificationMode === 1 ||
+			json?.tierQualificationMode === 2
+				? { tierQualificationMode: json.tierQualificationMode as 0 | 1 | 2 }
+				: {}),
 		}
 		cardMetadataCache.set(cacheKey, { ...meta, timestamp: Date.now() })
 		return meta
@@ -4830,6 +4843,7 @@ export const getCardMetadataFromUri = async (cardAddress: string): Promise<CardM
 			shareTokenMetadata?: { name?: string; image?: string; description?: string; categories?: unknown; bonusRule?: unknown; coupons?: unknown }
 			baseMembership?: CardMetadataFromUri['baseMembership']
 			tiers?: CardTierMetadata[]
+			tierQualificationMode?: unknown
 		}
 		// 兼容顶层 ERC1155 与服务器写入的 shareTokenMetadata 嵌套结构；API 返回 shared 时带 tiers
 		const shareObj = json?.shareTokenMetadata as Record<string, unknown> | undefined

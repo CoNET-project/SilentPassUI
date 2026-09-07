@@ -6185,19 +6185,17 @@ function DiscoverMerchantDetailFullScreen({
 				className="relative shrink-0 bg-[color:var(--discover-merchant-hero-bg)] dark:bg-slate-950"
 				style={
 					{
-						['--discover-merchant-hero-bg' as string]:
-							merchantDetailBrandColor ?? merchantDetailPageSurface,
+						// Same mixed surface as the scroll body — do not use raw brand hex here.
+						['--discover-merchant-hero-bg' as string]: merchantDetailPageSurface,
 					} as React.CSSProperties
 				}
 			>
 				<div className="relative h-[min(42vh,320px)] w-full overflow-hidden rounded-b-[28px]">
-					{merchantDetailBrandColor ? (
-						<div
-							className="pointer-events-none absolute inset-0 dark:hidden"
-							style={{ backgroundColor: merchantDetailBrandColor }}
-							aria-hidden
-						/>
-					) : null}
+					<div
+						className="pointer-events-none absolute inset-0 dark:hidden"
+						style={{ backgroundColor: merchantDetailPageSurface }}
+						aria-hidden
+					/>
 					<DiscoverFeaturedBrandHeroImage
 						src={item.image}
 						alt=""

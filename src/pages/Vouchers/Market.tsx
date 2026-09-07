@@ -897,11 +897,12 @@ function DiscoverMerchantProspectJoinPanel({
 			{hasImage ? (
 				<div className="relative aspect-[16/10] overflow-hidden rounded-[16px] text-white shadow-[0_4px_16px_rgba(15,23,42,0.12)] sm:aspect-[16/9]">
 					<CardPassBackgroundImage src={imageUrl} fit={backgroundImageFit} />
+					{/* Top-weighted scrim: copy sits at the top so mid/lower art (ribbons, marks) stays clear. */}
 					<div
-						className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-black/40 to-black/25"
+						className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/75 via-black/40 to-black/15"
 						aria-hidden
 					/>
-					<div className="relative z-[1] flex h-full flex-col justify-end p-3.5 sm:p-4">
+					<div className="relative z-[1] flex h-full flex-col justify-start p-3.5 sm:p-4">
 						{headerChrome}
 						{seasonalHeader}
 						{welcomeBody}

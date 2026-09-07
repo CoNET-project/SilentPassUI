@@ -26864,6 +26864,8 @@ useEffect(() => {
  /** Mobile Messages floating bar: BeamioTag search dropdown open. */
  const [messagesMobileTagSearchOpen, setMessagesMobileTagSearchOpen] = useState(false);
  const messagesNewSearchGenRef = useRef(0);
+ /** Prevent provider/callback identity changes from restarting the same dropdown search. */
+ const messagesNewSearchScheduledQueryRef = useRef('');
  /** `null` until ChatList reports; `0` triggers day-zero shell (marketExample.html). */
  const [messagesInboxTotalThreads, setMessagesInboxTotalThreads] = useState<number | null>(null);
 
@@ -28106,6 +28108,7 @@ useLayoutEffect(() => {
 
  useEffect(() => {
    if (activeTab !== 'Messages') {
+     messagesNewSearchScheduledQueryRef.current = '';
      setMessagesChatData(undefined);
      setMessagesComposeOpen(false);
      setMessagesMobileTagSearchOpen(false);
@@ -28154,10 +28157,13 @@ useLayoutEffect(() => {
    if (!messagesMobileTagSearchOpen && !messagesComposeOpen) return;
    const q = messagesNewQuery.trim();
    if (!q) {
+     messagesNewSearchScheduledQueryRef.current = '';
      setMessagesNewResults([]);
      setMessagesNewError(null);
      return;
    }
+   if (messagesNewSearchScheduledQueryRef.current === q) return;
+   messagesNewSearchScheduledQueryRef.current = q;
    const t = window.setTimeout(() => {
      void runMessagesUserSearch();
    }, 320);

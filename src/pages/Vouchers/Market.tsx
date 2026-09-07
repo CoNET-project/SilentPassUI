@@ -1485,7 +1485,13 @@ function parseTierDiscountPct(description: string | null | undefined): number {
 	return m ? Number.parseFloat(m[1]) : 0
 }
 
-/** Reward tiers only — excludes base tier (lowest `minUsdc6`, biz `CARD_ISSUANCE_SINGLE_TIER_ID` / tier-base). */
+/**
+ * Discover membership preview tiers.
+ *
+ * The first row is the base membership tier for legacy metadata where
+ * `baseMembership` has not been split out yet. It must remain visible in the
+ * preview even though it is not an Add-tier row.
+ */
 function parseDiscoverRewardTiersFromMeta(
 	meta: Record<string, unknown> | null,
 	_currency: string
@@ -1554,9 +1560,7 @@ function parseDiscoverRewardTiersFromMeta(
 		})
 	}
 	rows.sort((a, b) => (a.minUsdc6 < b.minUsdc6 ? -1 : a.minUsdc6 > b.minUsdc6 ? 1 : 0))
-	if (rows.length <= 1) return []
-	const baseMinUsdc6 = rows[0].minUsdc6
-	return rows.filter((row) => row.minUsdc6 > baseMinUsdc6)
+	return rows
 }
 
 /** All membership rows: `baseMembership` (index 0) + higher `tiers[]` (index 1+). Legacy: fee rows in `tiers` only. */
@@ -1841,14 +1845,13 @@ function DiscoverMerchantTierOfferRow({
 	)
 }
 
-/** Horizontal VIP perks preview. The base membership is intentionally excluded. */
+/** Compact horizontal VIP perks preview, including the base membership tier. */
 function DiscoverMerchantVipPerksPreview({
 	tiers,
 }: {
 	tiers: DiscoverOfferTierRow[]
 }) {
-	const higherTiers = tiers.filter((tier) => (tier.index ?? 0) > 0)
-	if (higherTiers.length === 0) return null
+	if (tiers.length === 0) return null
 
 	const palettes = [
 		{
@@ -1882,29 +1885,29 @@ function DiscoverMerchantVipPerksPreview({
 				</p>
 			</div>
 			<div className="-mx-1 flex snap-x snap-mandatory gap-3 overflow-x-auto px-1 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-				{higherTiers.map((tier, index) => {
+				{tiers.map((tier, index) => {
 					const palette = palettes[Math.min(index, palettes.length - 1)]
 					const discount =
 						tier.discountPct > 0 ? `${Math.round(tier.discountPct)}% Off` : 'Member Perks'
 					return (
 						<article
 							key={`${tier.index ?? index}-${tier.name}`}
-							className={`relative w-[296px] shrink-0 snap-start overflow-hidden rounded-[22px] border bg-white p-6 dark:bg-slate-800/90 ${palette.border}`}
+							className={`relative w-[148px] shrink-0 snap-start overflow-hidden rounded-[11px] border bg-white p-3 dark:bg-slate-800/90 ${palette.border}`}
 						>
 							<div
-								className={`absolute -right-10 -top-14 h-36 w-36 rounded-full ${palette.corner}`}
+								className={`absolute -right-5 -top-7 h-[72px] w-[72px] rounded-full ${palette.corner}`}
 								aria-hidden
 							/>
-							<div className={`relative flex h-12 w-12 items-center justify-center rounded-full ${palette.icon}`}>
-								<Medal className="h-6 w-6" strokeWidth={1.8} aria-hidden />
+							<div className={`relative flex h-6 w-6 items-center justify-center rounded-full ${palette.icon}`}>
+								<Medal className="h-3 w-3" strokeWidth={1.8} aria-hidden />
 							</div>
-							<p className={`relative mt-7 text-[13px] font-medium uppercase tracking-[0.18em] ${palette.accent}`}>
+							<p className={`relative mt-3.5 truncate text-[6.5px] font-medium uppercase tracking-[0.12em] ${palette.accent}`}>
 								{tier.name}
 							</p>
-							<p className="relative mt-2 text-[28px] font-extrabold leading-tight tracking-tight text-[#1f2328] dark:text-slate-100">
+							<p className="relative mt-1 text-[14px] font-extrabold leading-tight tracking-tight text-[#1f2328] dark:text-slate-100">
 								{discount}
 							</p>
-							<p className="relative mt-2 text-[15px] text-slate-500 dark:text-slate-300">All Purchases</p>
+							<p className="relative mt-1 text-[7.5px] text-slate-500 dark:text-slate-300">All Purchases</p>
 						</article>
 					)
 				})}

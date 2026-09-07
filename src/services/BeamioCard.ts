@@ -1485,7 +1485,7 @@ export type ShareTokenMetadata = {
 	categories?: string[]
 	/** Points / fungible display symbol (e.g. "$VERRA"); persisted for merchant Daily Dashboard */
 	Symbol?: string
-	/** Card-level accent / share artwork background (CSS hex); optional */
+	/** Card-level Discover brand / page accent (CSS hex); set from Base card background */
 	backgroundColor?: string
 	/** Whole currency units (same scale as Card Issuance min/max top-up); optional */
 	minimumTopup?: number
@@ -4041,6 +4041,11 @@ export type CardMetadataFromUri = {
 	image?: string
 	/** From shareTokenMetadata.merchantImage — optional banner / hero image URL */
 	merchantImage?: string
+	/**
+	 * Card-level brand / accent hex from Card background (Base tier).
+	 * Discover merchant detail page uses this for the page surface tint.
+	 */
+	backgroundColor?: string
 	/** Paid-membership base plan. This is canonical membership tier index 0. */
 	baseMembership?: {
 		membershipFeeE6?: string
@@ -4248,6 +4253,30 @@ function shareTokenMerchantImageFromUnknown(share: Record<string, unknown> | und
 	if (typeof raw !== 'string') return undefined
 	const t = raw.trim()
 	return t || undefined
+}
+
+/** Card-level brand hex (`#RGB` / `#RRGGBB`) from shareTokenMetadata or top-level mirror. */
+function shareTokenBackgroundColorFromUnknown(
+	share: Record<string, unknown> | undefined | null,
+	topLevel?: unknown,
+): string | undefined {
+	const candidates: unknown[] = []
+	if (share && typeof share === 'object') {
+		candidates.push(share.backgroundColor, share.background_color)
+	}
+	if (typeof topLevel === 'string') candidates.push(topLevel)
+	for (const raw of candidates) {
+		if (typeof raw !== 'string') continue
+		const s = raw.trim()
+		if (!s) continue
+		const withHash = s.startsWith('#') ? s : `#${s}`
+		if (/^#[0-9a-fA-F]{6}$/.test(withHash)) return withHash.toUpperCase()
+		if (/^#[0-9a-fA-F]{3}$/.test(withHash)) {
+			const h = withHash.slice(1)
+			return `#${h[0]}${h[0]}${h[1]}${h[1]}${h[2]}${h[2]}`.toUpperCase()
+		}
+	}
+	return undefined
 }
 
 function shareTokenLogoDisplayTierFromUnknown(
@@ -4636,6 +4665,7 @@ export const getCardMetadataFrom1155Json = async (cardAddress: string): Promise<
 		const merchantImage =
 			shareTokenMerchantImageFromUnknown(share) ??
 			(typeof json.merchantImage === 'string' && json.merchantImage.trim() ? json.merchantImage.trim() : undefined)
+		const backgroundColor = shareTokenBackgroundColorFromUnknown(share, json.backgroundColor)
 		const parsedUpgradeType = parseLoyaltyUpgradeTypeFromCardMetadata(json)
 		const meta: CardMetadataFromUri = {
 			name: (share?.name ?? json?.name) as string | undefined,
@@ -4644,6 +4674,7 @@ export const getCardMetadataFrom1155Json = async (cardAddress: string): Promise<
 			...(description && { description }),
 			...(discoverAbout && { discoverAbout }),
 			...(merchantImage && { merchantImage }),
+			...(backgroundColor && { backgroundColor }),
 			...(bonusRule && { bonusRule }),
 			...(bonusRules && { bonusRules }),
 			...(topupPromotion && { topupPromotion }),
@@ -4708,6 +4739,7 @@ export const getCardMetadataFromApi = async (cardAddress: string): Promise<CardM
 			(typeof metaJson.merchantImage === 'string' && metaJson.merchantImage.trim()
 				? metaJson.merchantImage.trim()
 				: undefined)
+		const backgroundColor = shareTokenBackgroundColorFromUnknown(share, metaJson.backgroundColor)
 		const parsedUpgradeType = parseLoyaltyUpgradeTypeFromCardMetadata(metaJson)
 		const meta: CardMetadataFromUri = {
 			name: (share?.name ?? metaJson.name) as string | undefined,
@@ -4716,6 +4748,7 @@ export const getCardMetadataFromApi = async (cardAddress: string): Promise<CardM
 			...(description && { description }),
 			...(discoverAbout && { discoverAbout }),
 			...(merchantImage && { merchantImage }),
+			...(backgroundColor && { backgroundColor }),
 			...(bonusRule && { bonusRule }),
 			...(bonusRules && { bonusRules }),
 			...(topupPromotion && { topupPromotion }),
@@ -4865,6 +4898,7 @@ export const getCardMetadataFromUri = async (cardAddress: string): Promise<CardM
 		const merchantImage =
 			shareTokenMerchantImageFromUnknown(shareObj) ??
 			(typeof json.merchantImage === 'string' && json.merchantImage.trim() ? json.merchantImage.trim() : undefined)
+		const backgroundColor = shareTokenBackgroundColorFromUnknown(shareObj, json.backgroundColor)
 		const parsedUpgradeType = parseLoyaltyUpgradeTypeFromCardMetadata(json)
 		const meta: CardMetadataFromUri = {
 			name: json?.name ?? json?.shareTokenMetadata?.name,
@@ -4873,6 +4907,7 @@ export const getCardMetadataFromUri = async (cardAddress: string): Promise<CardM
 			...(description && { description }),
 			...(discoverAbout && { discoverAbout }),
 			...(merchantImage && { merchantImage }),
+			...(backgroundColor && { backgroundColor }),
 			...(bonusRule && { bonusRule }),
 			...(bonusRules && { bonusRules }),
 			...(topupPromotion && { topupPromotion }),

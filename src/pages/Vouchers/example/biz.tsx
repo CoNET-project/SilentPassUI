@@ -166,6 +166,7 @@ import {
   fileLooksLikeProductionBackgroundMedia,
   inferProductionBackgroundMimeFromFile,
 } from '@/utils/ipfsCardImageUpload';
+import { extractImageBrandTone } from '@/utils/extractImageBrandTone';
 import {
   fileLooksLikeProductionBackgroundVideo,
   preloadProductionBackgroundVideoProcessor,
@@ -14021,6 +14022,9 @@ const [membershipFeeTierBgDropActive, setMembershipFeeTierBgDropActive] = useSta
 const membershipFeeTierBgFileRef = useRef<HTMLInputElement>(null);
 const membershipFeeTierBgPendingIpfsRef = useRef('');
 const [membershipFeeTierBgPendingIpfs, setMembershipFeeTierBgPendingIpfs] = useState('');
+/** Mid-tone brand hex from Membership Fee Base tier background image (only applied when editing Base). */
+const membershipFeeTierBgPendingBrandToneRef = useRef('');
+const [membershipFeeTierBgPendingBrandTone, setMembershipFeeTierBgPendingBrandTone] = useState('');
 /** Programs — #13 → #0 / #13 → Conet-USDC (Rules & Routing); oracle spread is Program Basic. */
 const [reward13ConvertToPointsEnabled, setReward13ConvertToPointsEnabled] = useState(false);
 const [reward13ConvertToUsdcEnabled, setReward13ConvertToUsdcEnabled] = useState(false);
@@ -14455,6 +14459,8 @@ const handlePublishCardIssuanceRef = useRef<
     rewardPtTopupOverride?: { enabled: boolean; percent: string };
     reward13ConvertOverride?: Reward13ConvertDraft;
     merchantOracleSpreadOverride?: number;
+    /** Card-level brand hex (Base tier Card background) — same-tick publish override. */
+    brandColorOverride?: string;
     metadataOnly?: boolean;
     loadingScope?: 'default' | 'bonusEditor';
     skipOnChainRefresh?: boolean;
@@ -14502,6 +14508,13 @@ const handlePublishCardIssuanceRef = useRef<
  const cardIssuanceCardBackgroundPendingIpfsRef = useRef('');
  /** Mirror of pending IPFS URL so `canSave` re-renders after upload (refs alone do not). */
  const [cardIssuanceCardBackgroundPendingIpfs, setCardIssuanceCardBackgroundPendingIpfs] = useState('');
+ /** Mid-tone brand hex extracted from the pending Card background image (Base tier). */
+ const cardIssuanceCardBackgroundPendingBrandToneRef = useRef('');
+ const [cardIssuanceCardBackgroundPendingBrandTone, setCardIssuanceCardBackgroundPendingBrandTone] =
+   useState('');
+ /** Card-level brand color for Discover merchant detail (`shareTokenMetadata.backgroundColor`). */
+ const cardIssuanceBrandColorRef = useRef('');
+ const [cardIssuanceBrandColor, setCardIssuanceBrandColor] = useState('');
  /**
   * Tier id created via Add tier (+) that is not yet confirmed by Card background Save.
   * Closing the drawer without Save removes this tier from the preview list.
@@ -16115,6 +16128,19 @@ const cardIssuancePreviewLiveLogoIconClass = useMemo(
    const dn = (cardIssuanceExistingCard.meta.displayName ?? '').trim().slice(0, CARD_ISSUANCE_STORE_DISPLAY_NAME_MAX);
    setCardIssuanceStoreDisplayName(dn);
  }, [cardIssuanceExistingCard?.cardAddress, cardIssuanceExistingCard?.meta?.displayName]);
+
+ useEffect(() => {
+   const addr = cardIssuanceExistingCard?.cardAddress;
+   if (!addr) {
+     cardIssuanceBrandColorRef.current = '';
+     setCardIssuanceBrandColor('');
+     return;
+   }
+   const raw = (cardIssuanceExistingCard?.meta?.backgroundColor ?? '').trim();
+   const hex = raw ? tierBackgroundColorForPayload(raw) ?? '' : '';
+   cardIssuanceBrandColorRef.current = hex;
+   setCardIssuanceBrandColor(hex);
+ }, [cardIssuanceExistingCard?.cardAddress, cardIssuanceExistingCard?.meta?.backgroundColor]);
 
  useEffect(() => {
    if (!cardIssuanceExistingCard?.cardAddress || !cardIssuanceExistingCard.meta) return;
@@ -20649,6 +20675,8 @@ const openCardIssuanceMembershipFeeTierEditor = useCallback(
     setCardIssuanceMembershipFeeEditingTierId(row.id);
     membershipFeeTierBgPendingIpfsRef.current = '';
     setMembershipFeeTierBgPendingIpfs('');
+    membershipFeeTierBgPendingBrandToneRef.current = '';
+    setMembershipFeeTierBgPendingBrandTone('');
     setMembershipFeeTierBgDropActive(false);
     setMembershipFeeTierEditorDraft(draft);
     setCardIssuanceMembershipFeeTierEditorBaseline({ ...draft });
@@ -21733,6 +21761,8 @@ const discardCardIssuanceCardBackground = useCallback(() => {
   const base = cardIssuanceCardBackgroundBaseline;
   cardIssuanceCardBackgroundPendingIpfsRef.current = '';
   setCardIssuanceCardBackgroundPendingIpfs('');
+  cardIssuanceCardBackgroundPendingBrandToneRef.current = '';
+  setCardIssuanceCardBackgroundPendingBrandTone('');
   setCardIssuanceCardBackgroundDraftImage((prev) => {
     if (prev.startsWith('blob:') && prev !== (base?.image ?? '')) {
       revokeCardIssuanceCardBackgroundDraftBlob(prev);
@@ -21880,10 +21910,33 @@ const saveCardIssuanceCardBackground = useCallback(async () => {
       cardIssuanceTierRule,
     );
     const tiersPayload = buildCardIssuanceTiersPayloadFromRows(nextTiers, loyaltyFlags);
-    if (tiersPayload?.length) {
+    /** Card-level Discover brand color: Base tier only (image mid-tone or solid color). */
+    let brandColorForPublish: string | undefined;
+    if (editingBaseTier) {
+      const pendingTone =
+        cardIssuanceCardBackgroundPendingBrandTone.trim() ||
+        cardIssuanceCardBackgroundPendingBrandToneRef.current.trim();
+      const brandRaw =
+        nextImage && pendingTone
+          ? pendingTone
+          : nextImage
+            ? nextColor
+            : nextColor;
+      brandColorForPublish = tierBackgroundColorForPayload(brandRaw) ?? nextColor;
+      cardIssuanceBrandColorRef.current = brandColorForPublish;
+      setCardIssuanceBrandColor(brandColorForPublish);
+    }
+    if (tiersPayload?.length || brandColorForPublish) {
       setCardIssuanceExistingCard((prev) => {
         if (!prev?.meta) return prev;
-        return { ...prev, meta: { ...prev.meta, tiers: tiersPayload } };
+        return {
+          ...prev,
+          meta: {
+            ...prev.meta,
+            ...(tiersPayload?.length ? { tiers: tiersPayload } : {}),
+            ...(brandColorForPublish ? { backgroundColor: brandColorForPublish } : {}),
+          },
+        };
       });
     }
     if (cardIssuanceExistingCard?.cardAddress) {
@@ -21907,6 +21960,7 @@ const saveCardIssuanceCardBackground = useCallback(async () => {
         loadingScope: 'bonusEditor',
         skipOnChainRefresh: true,
         ...(chainTierUnchanged ? { metadataOnly: true } : {}),
+        ...(brandColorForPublish ? { brandColorOverride: brandColorForPublish } : {}),
       });
       if (!ok) return;
     }
@@ -21919,6 +21973,8 @@ const saveCardIssuanceCardBackground = useCallback(async () => {
     });
     cardIssuanceCardBackgroundPendingIpfsRef.current = '';
     setCardIssuanceCardBackgroundPendingIpfs('');
+    cardIssuanceCardBackgroundPendingBrandToneRef.current = '';
+    setCardIssuanceCardBackgroundPendingBrandTone('');
     setCardIssuanceCardBackgroundDraftColor(nextColor);
     setCardIssuanceCardBackgroundDraftImageFit(nextImageFit);
     setCardIssuanceCardBackgroundDraftName(nextName);
@@ -21986,6 +22042,8 @@ const ingestCardIssuanceTierBackgroundImageFile = useCallback(
     setCardIssuanceTierBackgroundImageUploading(true);
     cardIssuanceCardBackgroundPendingIpfsRef.current = '';
     setCardIssuanceCardBackgroundPendingIpfs('');
+    cardIssuanceCardBackgroundPendingBrandToneRef.current = '';
+    setCardIssuanceCardBackgroundPendingBrandTone('');
     const localPreview = URL.createObjectURL(file);
     setCardIssuanceCardBackgroundDraftImage((prev) => {
       if ((prev.startsWith('blob:') || prev.startsWith('data:')) && prev !== localPreview) {
@@ -21994,12 +22052,19 @@ const ingestCardIssuanceTierBackgroundImageFile = useCallback(
       return localPreview;
     });
     setCardIssuanceCardBackgroundMode('image');
+    void extractImageBrandTone(file).then((tone) => {
+      const hex = tone ? tierBackgroundColorForPayload(tone) ?? '' : '';
+      cardIssuanceCardBackgroundPendingBrandToneRef.current = hex;
+      setCardIssuanceCardBackgroundPendingBrandTone(hex);
+    });
     try {
       const hash = await uploadImageFileToIpfsWithRetry(file, (dataUrl) => postToIPFS(p0, dataUrl));
       if (!hash) {
         setCardIssuanceCreateError('Tier background image upload failed.');
         cardIssuanceCardBackgroundPendingIpfsRef.current = '';
         setCardIssuanceCardBackgroundPendingIpfs('');
+        cardIssuanceCardBackgroundPendingBrandToneRef.current = '';
+        setCardIssuanceCardBackgroundPendingBrandTone('');
         setCardIssuanceCardBackgroundDraftImage((prev) => {
           if (prev === localPreview) {
             revokeCardIssuanceCardBackgroundDraftBlob(localPreview);
@@ -22017,6 +22082,8 @@ const ingestCardIssuanceTierBackgroundImageFile = useCallback(
       setCardIssuanceCreateError(err?.message ?? 'Tier background image upload failed.');
       cardIssuanceCardBackgroundPendingIpfsRef.current = '';
       setCardIssuanceCardBackgroundPendingIpfs('');
+      cardIssuanceCardBackgroundPendingBrandToneRef.current = '';
+      setCardIssuanceCardBackgroundPendingBrandTone('');
       setCardIssuanceCardBackgroundDraftImage((prev) => {
         if (prev === localPreview || prev.startsWith('blob:') || prev.startsWith('data:')) {
           revokeCardIssuanceCardBackgroundDraftBlob(prev === localPreview ? localPreview : prev);
@@ -22110,6 +22177,8 @@ const handleCardIssuanceTierBackgroundImageDrop = useCallback(
 const clearCardIssuanceCardBackgroundDraftImage = useCallback(() => {
   cardIssuanceCardBackgroundPendingIpfsRef.current = '';
   setCardIssuanceCardBackgroundPendingIpfs('');
+  cardIssuanceCardBackgroundPendingBrandToneRef.current = '';
+  setCardIssuanceCardBackgroundPendingBrandTone('');
   setCardIssuanceCardBackgroundDropActive(false);
   setCardIssuanceCardBackgroundDraftImage((prev) => {
     if (prev.startsWith('blob:') || prev.startsWith('data:')) {
@@ -22155,6 +22224,8 @@ const ingestMembershipFeeTierBackgroundImageFile = useCallback(
     setMembershipFeeTierBgUploading(true);
     membershipFeeTierBgPendingIpfsRef.current = '';
     setMembershipFeeTierBgPendingIpfs('');
+    membershipFeeTierBgPendingBrandToneRef.current = '';
+    setMembershipFeeTierBgPendingBrandTone('');
     const localPreview = URL.createObjectURL(file);
     setMembershipFeeTierEditorDraft((prev) => {
       const prevImg = String(prev.backgroundImage ?? '').trim();
@@ -22173,12 +22244,19 @@ const ingestMembershipFeeTierBackgroundImageFile = useCallback(
         ),
       };
     });
+    void extractImageBrandTone(file).then((tone) => {
+      const hex = tone ? tierBackgroundColorForPayload(tone) ?? '' : '';
+      membershipFeeTierBgPendingBrandToneRef.current = hex;
+      setMembershipFeeTierBgPendingBrandTone(hex);
+    });
     try {
       const hash = await uploadImageFileToIpfsWithRetry(file, (dataUrl) => postToIPFS(p0, dataUrl));
       if (!hash) {
         setCardIssuanceMembershipFeeTierEditorServerError('Background image upload failed.');
         membershipFeeTierBgPendingIpfsRef.current = '';
         setMembershipFeeTierBgPendingIpfs('');
+        membershipFeeTierBgPendingBrandToneRef.current = '';
+        setMembershipFeeTierBgPendingBrandTone('');
         setMembershipFeeTierEditorDraft((prev) => {
           const prevImg = String(prev.backgroundImage ?? '').trim();
           if (prevImg === localPreview) {
@@ -22205,6 +22283,8 @@ const ingestMembershipFeeTierBackgroundImageFile = useCallback(
       );
       membershipFeeTierBgPendingIpfsRef.current = '';
       setMembershipFeeTierBgPendingIpfs('');
+      membershipFeeTierBgPendingBrandToneRef.current = '';
+      setMembershipFeeTierBgPendingBrandTone('');
       setMembershipFeeTierEditorDraft((prev) => {
         const prevImg = String(prev.backgroundImage ?? '').trim();
         if (prevImg === localPreview || prevImg.startsWith('blob:') || prevImg.startsWith('data:')) {
@@ -22309,6 +22389,8 @@ const handleMembershipFeeTierBackgroundImageDrop = useCallback(
 const clearMembershipFeeTierBackgroundDraftImage = useCallback(() => {
   membershipFeeTierBgPendingIpfsRef.current = '';
   setMembershipFeeTierBgPendingIpfs('');
+  membershipFeeTierBgPendingBrandToneRef.current = '';
+  setMembershipFeeTierBgPendingBrandTone('');
   setMembershipFeeTierBgDropActive(false);
   setMembershipFeeTierEditorDraft((prev) => {
     const prevImg = String(prev.backgroundImage ?? '').trim();
@@ -22829,6 +22911,11 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
       reward13ConvertOverride?: Reward13ConvertDraft;
       /** Merchant oracle FX spread bps (0–500, 25-step). When omitted, keeps current UI state. */
       merchantOracleSpreadOverride?: number;
+      /**
+       * Card-level Discover brand color (`shareTokenMetadata.backgroundColor`).
+       * Prefer this over React state when Save + Publish run in the same tick.
+       */
+      brandColorOverride?: string;
       metadataOnly?: boolean;
        loadingScope?: 'default' | 'bonusEditor';
       /** Metadata-only publish that already patches local card meta (e.g. itemCategory chips). */
@@ -23170,6 +23257,12 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
        contact: cardIssuanceDiscoverAboutContact,
        location: cardIssuanceDiscoverAboutLocation,
      });
+     const brandColorForPublish =
+       tierBackgroundColorForPayload(
+         opts?.brandColorOverride ??
+           cardIssuanceBrandColorRef.current ??
+           cardIssuanceBrandColor,
+       ) ?? undefined;
      const shareTokenMetadataForPublish: Record<string, unknown> = {
        name: metaName,
        minimumTopup: minTopupN,
@@ -23179,6 +23272,7 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
              displayName: cardIssuanceStoreDisplayName.trim().slice(0, CARD_ISSUANCE_STORE_DISPLAY_NAME_MAX),
            }
          : {}),
+       ...(brandColorForPublish ? { backgroundColor: brandColorForPublish } : {}),
        ...(topupPromotionPayloadForPublish
          ? {
              topupPromotion: topupPromotionPayloadForPublish,
@@ -23512,6 +23606,7 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
    cardIssuanceProgramName,
    cardIssuanceCurrencySymbol,
    cardIssuanceStoreDisplayName,
+  cardIssuanceBrandColor,
   cardIssuanceTopupPromotion,
   programRewardPtTopupEnabled,
   programRewardPtTopupPercentInput,
@@ -23639,6 +23734,20 @@ const submitCardIssuanceMembershipFeeTierEditor = useCallback(async () => {
   setCardIssuanceCreateError('');
   setCardIssuanceMembershipFeeTierEditorPublishing(true);
   try {
+    /** Card-level Discover brand color: Base membership only (image mid-tone or solid color). */
+    let brandColorForPublish: string | undefined;
+    if (cardIssuanceMembershipFeeEditingIsBase) {
+      const pendingTone =
+        membershipFeeTierBgPendingBrandTone.trim() ||
+        membershipFeeTierBgPendingBrandToneRef.current.trim();
+      const nextColor = normalizeMembershipFeeTierHexColor(resolvedDraft.backgroundColor);
+      const brandRaw =
+        resolvedMode === 'image' && pendingTone ? pendingTone : nextColor;
+      brandColorForPublish =
+        tierBackgroundColorForPayload(brandRaw) ?? nextColor;
+      cardIssuanceBrandColorRef.current = brandColorForPublish;
+      setCardIssuanceBrandColor(brandColorForPublish);
+    }
     if (cardIssuanceExistingCard?.cardAddress) {
       const ok = await handlePublishCardIssuanceRef.current({
         tiersOverride: nextTiers,
@@ -23649,6 +23758,7 @@ const submitCardIssuanceMembershipFeeTierEditor = useCallback(async () => {
         skipOnChainRefresh: true,
         metadataOnly: true,
         publishErrorSink: setCardIssuanceMembershipFeeTierEditorServerError,
+        ...(brandColorForPublish ? { brandColorOverride: brandColorForPublish } : {}),
       });
       if (!ok) return;
       const loyaltyFlags = cardIssuanceLoyaltyUpgradeFlags(isMembershipFeeMode, selectedTierRule);
@@ -23660,6 +23770,7 @@ const submitCardIssuanceMembershipFeeTierEditor = useCallback(async () => {
           meta: {
             ...prev.meta,
             ...(tiersPayload?.length ? { tiers: tiersPayload } : {}),
+            ...(brandColorForPublish ? { backgroundColor: brandColorForPublish } : {}),
           },
         };
       });
@@ -23685,6 +23796,8 @@ const submitCardIssuanceMembershipFeeTierEditor = useCallback(async () => {
     }
     membershipFeeTierBgPendingIpfsRef.current = '';
     setMembershipFeeTierBgPendingIpfs('');
+    membershipFeeTierBgPendingBrandToneRef.current = '';
+    setMembershipFeeTierBgPendingBrandTone('');
     setMembershipFeeTierEditorDraft(resolvedDraft);
     setCardIssuanceMembershipFeePendingNewTier(null);
     setCardIssuanceMembershipFeeEditingTierId(null);
@@ -23714,7 +23827,9 @@ const submitCardIssuanceMembershipFeeTierEditor = useCallback(async () => {
   cardIssuanceMembershipFeeTierEditorPublishing,
   membershipFeeTierBgUploading,
   membershipFeeTierBgPendingIpfs,
+  membershipFeeTierBgPendingBrandTone,
   cardIssuanceMembershipFeeTierEditorDraft,
+  cardIssuanceMembershipFeeEditingIsBase,
   buildMembershipFeeTierRowsFromEditorDraft,
   cardIssuanceMembershipFeeMode,
   cardIssuanceRewardsMembershipFeeEnabled,

@@ -48,6 +48,7 @@ import PrivateKeyReveal from '@/components/Setting/PrivateKey/PrivateKey';
 import VscodeJsonBlock from '@/components/VscodeJsonBlock';
 import { getOracleCadUsdcFromConet, getOracleUsdcFromConet, AuthorizationSign } from '@/services/beamio';
 import { formatAmount, displayFiatPrefixFromCode, type ICurrency } from '@/services/currency';
+import { auditLegacyCardMigration, type LegacyCardMigrationAudit } from '@/utils/legacyCardMigrationAudit';
 import contracts from '@/utils/contracts';
 import {
   checkRedeemAdminCodeValid,
@@ -14496,6 +14497,14 @@ const handlePublishCardIssuanceRef = useRef<
    /** On-chain Charge Reward PT (#13) ratio; 1_000_000 = 1 point per 1 card-currency unit spent. */
    chargeRewardRatioE6: string | null;
  } | null>(null);
+ const legacyCardMigrationAudit = useMemo<LegacyCardMigrationAudit | null>(() => {
+   if (!cardIssuanceExistingCard) return null;
+   return auditLegacyCardMigration({
+     cardAddress: cardIssuanceExistingCard.cardAddress,
+     metadata: cardIssuanceExistingCard.meta,
+     upgradeType: cardIssuanceExistingCard.upgradeType,
+   });
+ }, [cardIssuanceExistingCard]);
 const [programSocialLikeCount, setProgramSocialLikeCount] = useState<number | null>(null);
 const [programSocialShareClickCount, setProgramSocialShareClickCount] = useState<number | null>(null);
 const [programSocialLikes, setProgramSocialLikes] = useState<BeamioCardProgramSocialLikeRow[]>([]);
@@ -39421,6 +39430,41 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                  </div>
                ) : null}
              </header>
+
+             {legacyCardMigrationAudit && legacyCardMigrationAudit.status !== 'migrated' &&
+             cardIssuanceActiveProgramView === 'overview' ? (
+               <section
+                 className={`mb-6 rounded-2xl border px-4 py-4 ${
+                   legacyCardMigrationAudit.status === 'legacy-ambiguous'
+                     ? 'border-amber-200 bg-amber-50'
+                     : 'border-[#1562f0]/20 bg-[#1562f0]/5'
+                 }`}
+                 role="status"
+               >
+                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                   <div className="min-w-0">
+                     <p className="text-xs font-bold uppercase tracking-[0.14em] text-[#2c2f31]">
+                       Legacy card migration review
+                     </p>
+                     <p className="mt-1 text-sm font-medium leading-relaxed text-[#4b4f52]">
+                       {legacyCardMigrationAudit.reason}
+                     </p>
+                     <p className="mt-1 text-[11px] font-medium text-[#747779]">
+                       Existing membership and issued NFT slots are preserved until you explicitly review and publish changes.
+                     </p>
+                   </div>
+                   {legacyCardMigrationAudit.status === 'legacy-review' ? (
+                     <button
+                       type="button"
+                       onClick={() => setCardIssuanceActiveProgramView('configure')}
+                       className={`shrink-0 rounded-full bg-[#1562f0] px-4 py-2 text-xs font-bold text-white shadow-sm transition-opacity hover:opacity-90 ${bizFocusRingClass}`}
+                     >
+                       Review upgrade
+                     </button>
+                   ) : null}
+                 </div>
+               </section>
+             ) : null}
 
              <div
                className={`mb-6 ${isCardConfiguratorMobileShell ? 'hidden' : ''} ${

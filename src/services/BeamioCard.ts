@@ -4639,6 +4639,7 @@ export const getCardMetadataFrom1155Json = async (cardAddress: string): Promise<
 			name?: string
 			image?: string
 			merchantImage?: string
+			backgroundColor?: string
 			description?: string
 			shareTokenMetadata?: { name?: string; image?: string; description?: string; categories?: unknown; bonusRule?: unknown; coupons?: unknown }
 			baseMembership?: CardMetadataFromUri['baseMembership']
@@ -4872,6 +4873,7 @@ export const getCardMetadataFromUri = async (cardAddress: string): Promise<CardM
 			name?: string
 			image?: string
 			merchantImage?: string
+			backgroundColor?: string
 			description?: string
 			shareTokenMetadata?: { name?: string; image?: string; description?: string; categories?: unknown; bonusRule?: unknown; coupons?: unknown }
 			baseMembership?: CardMetadataFromUri['baseMembership']

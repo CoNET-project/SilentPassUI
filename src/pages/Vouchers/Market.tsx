@@ -5,6 +5,7 @@ import {
 	normalizeCardPassBackgroundImageFit,
 	type CardPassBackgroundImageFit,
 } from '@/components/card/CardPassBackgroundImage'
+import { cardTierGradientCss, cardTierGradientTheme } from '@/utils/cardTierGradient'
 import { isFactoryDefaultMerchantAssetUrl } from '@/utils/isFactoryDefaultMerchantAssetUrl'
 import {
 	ipfsFragmentUrlFromHash,
@@ -673,16 +674,29 @@ function DiscoverMerchantProspectJoinPanel({
 	const imageUrl = (backgroundImageUrl ?? '').trim()
 	const hasImage = Boolean(imageUrl)
 	const solidColor = (backgroundColor ?? '').trim() || null
-	const useCustomSolid = !hasImage && Boolean(solidColor)
-	const lightSolid = useCustomSolid && solidColor ? discoverCssColorIsLight(solidColor) : false
-	const onDarkChrome = hasImage || !lightSolid
-	const accentForCta = solidColor && !lightSolid ? solidColor : '#1562f0'
+	/** No image → merchant pass gradient (tier[0] or default brand blue), not flat fill. */
+	const gradientSource = solidColor || '#1562f0'
+	const tierTheme = !hasImage ? cardTierGradientTheme(gradientSource) : null
+	const gradientCss = !hasImage ? cardTierGradientCss(gradientSource) : null
+	const onDarkChrome = hasImage || Boolean(tierTheme?.isDarkStart)
+	const accentForCta =
+		solidColor && tierTheme?.isDarkStart ? solidColor : '#1562f0'
+	const eyebrowColor = hasImage
+		? '#E8D5B5'
+		: tierTheme?.tertiary ?? '#8B7D6B'
+	const titleColor = hasImage ? '#ffffff' : tierTheme?.primary ?? '#0F172A'
+	const bodyColor = hasImage
+		? 'rgba(255,255,255,0.8)'
+		: tierTheme?.secondary ?? '#666666'
+	const sparkleColor = hasImage
+		? '#D4B483'
+		: tierTheme?.isDarkStart
+			? '#E8D5B5'
+			: '#B8956A'
 	const badgeClass = onDarkChrome
 		? 'inline-flex items-center gap-1.5 rounded-full bg-[#e4e9ff] px-3 py-1 text-[11px] font-bold uppercase tracking-[0.06em] text-[#0c2a6b]'
 		: 'inline-flex items-center gap-1.5 rounded-full bg-[#0c2a6b]/10 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.06em] text-[#0c2a6b]'
-	const titleClass = onDarkChrome
-		? 'mt-3 text-[20px] font-bold leading-snug tracking-tight text-white sm:text-[22px]'
-		: 'mt-3 text-[20px] font-bold leading-snug tracking-tight text-[#0F172A] sm:text-[22px]'
+	const titleClass = 'mt-3 text-[20px] font-bold leading-snug tracking-tight sm:text-[22px]'
 	const footerClass = onDarkChrome
 		? 'mt-3 flex items-center justify-center gap-1.5 text-center text-[12px] leading-snug text-white/75'
 		: 'mt-3 flex items-center justify-center gap-1.5 text-center text-[12px] leading-snug text-slate-600'
@@ -690,14 +704,18 @@ function DiscoverMerchantProspectJoinPanel({
 		<section
 			className={[
 				'relative overflow-hidden rounded-[22px] p-4 shadow-[0_8px_22px_rgba(15,23,42,0.06)] sm:p-5',
-				!hasImage && !useCustomSolid ? 'bg-[#1562f0] text-white' : '',
-				useCustomSolid && lightSolid ? 'text-[#0F172A]' : '',
-				useCustomSolid && !lightSolid ? 'text-white' : '',
 				hasImage ? 'text-white' : '',
 			]
 				.filter(Boolean)
 				.join(' ')}
-			style={useCustomSolid && solidColor ? { backgroundColor: solidColor } : undefined}
+			style={
+				!hasImage && gradientCss
+					? {
+							backgroundImage: gradientCss,
+							color: tierTheme?.primary ?? '#0F172A',
+						}
+					: undefined
+			}
 			aria-label={heading}
 		>
 			{hasImage ? (
@@ -731,19 +749,15 @@ function DiscoverMerchantProspectJoinPanel({
 					aria-label={`Membership ${price}${duration ? ` · ${duration}` : ''}`}
 				>
 					<span
-						className={[
-							'block text-[15px] font-bold tabular-nums tracking-tight',
-							onDarkChrome ? 'text-white' : 'text-[#0F172A]',
-						].join(' ')}
+						className="block text-[15px] font-bold tabular-nums tracking-tight"
+						style={{ color: titleColor }}
 					>
 						{price}
 					</span>
 					{duration ? (
 						<span
-							className={[
-								'mt-0.5 block text-[10px] font-semibold uppercase tracking-[0.06em]',
-								onDarkChrome ? 'text-white/75' : 'text-slate-600',
-							].join(' ')}
+							className="mt-0.5 block text-[10px] font-semibold uppercase tracking-[0.06em]"
+							style={{ color: bodyColor }}
 						>
 							{duration}
 						</span>
@@ -755,27 +769,26 @@ function DiscoverMerchantProspectJoinPanel({
 			{showMultiplierCarousel ? (
 				<div className={price ? 'mt-3' : undefined}>
 					<p
-						className={[
-							'inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.08em]',
-							onDarkChrome ? 'text-[#E8D5B5]' : 'text-[#8B7D6B]',
-						].join(' ')}
+						className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.08em]"
+						style={{ color: eyebrowColor }}
 					>
-						<Sparkles className="h-3.5 w-3.5 shrink-0 text-[#D4B483]" strokeWidth={2.25} aria-hidden />
+						<Sparkles
+							className="h-3.5 w-3.5 shrink-0"
+							style={{ color: sparkleColor }}
+							strokeWidth={2.25}
+							aria-hidden
+						/>
 						Special Seasonal Promotion
 					</p>
 					<h3
-						className={[
-							'mt-2 font-serif text-[22px] font-semibold leading-snug tracking-tight sm:text-[24px]',
-							onDarkChrome ? 'text-white' : 'text-[#2C2C2C]',
-						].join(' ')}
+						className="mt-2 font-serif text-[22px] font-semibold leading-snug tracking-tight sm:text-[24px]"
+						style={{ color: titleColor }}
 					>
 						Give the Perfect Gift & Match Bonus
 					</h3>
 					<p
-						className={[
-							'mt-2 text-[14px] leading-relaxed',
-							onDarkChrome ? 'text-white/80' : 'text-[#666666]',
-						].join(' ')}
+						className="mt-2 text-[14px] leading-relaxed"
+						style={{ color: bodyColor }}
 					>
 						Gift wellness or top up clinic credits today. All tier bonuses are applied
 						instantly upon top-up.
@@ -853,13 +866,13 @@ function DiscoverMerchantProspectJoinPanel({
 				</div>
 			) : (
 				<>
-					<h3 className={titleClass}>{heading}</h3>
+					<h3 className={titleClass} style={{ color: titleColor }}>
+						{heading}
+					</h3>
 					{body ? (
 						<p
-							className={[
-								'mt-2 text-[14px] leading-relaxed',
-								onDarkChrome ? 'text-white/90' : 'text-slate-700',
-							].join(' ')}
+							className="mt-2 text-[14px] leading-relaxed"
+							style={{ color: bodyColor }}
 						>
 							<DiscoverDescriptionTextWithUrlCapsules
 								text={body}
@@ -1555,17 +1568,6 @@ function discoverParseCssRgb(color: string): { r: number; g: number; b: number }
 		return { r: Number(rgb[1]), g: Number(rgb[2]), b: Number(rgb[3]) }
 	}
 	return null
-}
-
-/** Relative luminance heuristic for contrast on solid tier backgrounds. */
-function discoverCssColorIsLight(color: string): boolean {
-	const rgb = discoverParseCssRgb(color)
-	if (!rgb) return false
-	const r = rgb.r / 255
-	const g = rgb.g / 255
-	const b = rgb.b / 255
-	const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b
-	return lum > 0.62
 }
 
 /**

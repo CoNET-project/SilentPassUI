@@ -70,6 +70,22 @@ export function resolveBeamioTagLocal(
   return beamioTagFromRecord(lookupProfileLocal(map, address));
 }
 
+/** Convert a local Tag DB row into the chat `searchResult` shape used by ChatList / headers. */
+export function searchResultFromProfileRecord(rec: BeamioAddressProfileRecord): searchResult {
+  const addr = ethers.getAddress(rec.addressLower);
+  const tag = (rec.username ?? rec.accountName ?? '').replace(/^@+/, '');
+  return {
+    address: addr,
+    username: tag,
+    first_name: rec.first_name ?? rec.firstName ?? '',
+    last_name: rec.last_name ?? rec.lastName ?? '',
+    image: rec.image ?? '',
+    created_at: 0,
+    follow_count: '',
+    follower_count: '',
+  };
+}
+
 export function profileNeedsRemoteRefresh(
   record: BeamioAddressProfileRecord | undefined | null,
   now = Date.now(),

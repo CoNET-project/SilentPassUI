@@ -27,6 +27,7 @@ import {
   resolveBeamioTagLocal,
   saveAddressProfileMap,
   searchLocalProfilesByTagPrefix,
+  searchResultFromProfileRecord,
   toBeamioCapsuleItem,
   walletStoragePartitionLower,
 } from '@/utils/beamioTagDatabase';
@@ -41,6 +42,8 @@ export type BeamioTagDatabaseContextValue = {
   resolveTag: (address: string | undefined) => string;
   resolveTagPlain: (address: string | undefined) => string;
   toCapsuleItem: (address: string | undefined) => ReturnType<typeof toBeamioCapsuleItem>;
+  /** Local Tag DB → chat `searchResult` when @tag is known (null if missing). */
+  resolvePeerSearchResult: (address: string | undefined) => searchResult | null;
   resolveAvatarSeed: (preferred: string | undefined, address?: string) => string;
   avatarImgUrl: (preferred: string | undefined, address?: string) => string;
   /** Trusted merge + persist (remote success only). */
@@ -65,6 +68,7 @@ const defaultValue: BeamioTagDatabaseContextValue = {
   resolveTag: () => '',
   resolveTagPlain: () => '',
   toCapsuleItem: () => null,
+  resolvePeerSearchResult: () => null,
   resolveAvatarSeed: () => '@Beamio',
   avatarImgUrl: () =>
     'https://api.dicebear.com/8.x/fun-emoji/svg?seed=%40Beamio',
@@ -158,6 +162,15 @@ export function BeamioTagDatabaseProvider({ children }: { children: ReactNode })
     [profileMap],
   );
 
+  const resolvePeerSearchResult = useCallback(
+    (address: string | undefined) => {
+      const rec = lookupProfileLocal(profileMap, address);
+      if (!rec || !beamioTagFromRecord(rec)) return null;
+      return searchResultFromProfileRecord(rec);
+    },
+    [profileMap],
+  );
+
   const resolveAvatarSeed = useCallback(
     (preferred: string | undefined, address?: string) =>
       resolveAvatarSeedFromDb(profileMap, preferred, address),
@@ -224,6 +237,7 @@ export function BeamioTagDatabaseProvider({ children }: { children: ReactNode })
       resolveTag,
       resolveTagPlain,
       toCapsuleItem,
+      resolvePeerSearchResult,
       resolveAvatarSeed,
       avatarImgUrl,
       mergeTrustedProfiles,
@@ -239,6 +253,7 @@ export function BeamioTagDatabaseProvider({ children }: { children: ReactNode })
       resolveTag,
       resolveTagPlain,
       toCapsuleItem,
+      resolvePeerSearchResult,
       resolveAvatarSeed,
       avatarImgUrl,
       mergeTrustedProfiles,

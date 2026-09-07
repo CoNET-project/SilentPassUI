@@ -5498,6 +5498,26 @@ function MessagesDayZeroShell(props: {
 
 /** BeamioUserCard read: CoNET L1 program cards only (biz Merchant OS; no Base L2 fallback). */
 const BIZ_CACHE_PREFIX = 'beamio:biz-example:'
+const LEGACY_CARD_MIGRATION_COMPLETED_KEY = (cardAddress: string) =>
+  `${BIZ_CACHE_PREFIX}legacy-card-migration-completed:v1:${cardAddress.trim().toLowerCase()}`
+
+function hasLegacyCardMigrationCompleted(cardAddress: string | null | undefined): boolean {
+  if (typeof window === 'undefined' || !cardAddress?.trim()) return false
+  try {
+    return window.localStorage.getItem(LEGACY_CARD_MIGRATION_COMPLETED_KEY(cardAddress)) === '1'
+  } catch {
+    return false
+  }
+}
+
+function markLegacyCardMigrationCompleted(cardAddress: string): void {
+  if (typeof window === 'undefined' || !cardAddress.trim()) return
+  try {
+    window.localStorage.setItem(LEGACY_CARD_MIGRATION_COMPLETED_KEY(cardAddress), '1')
+  } catch {
+    // Ignore local storage failures; the on-chain migration has already succeeded.
+  }
+}
 /** Fallback when CoNET oracle fetch fails */
 const ORACLE_CAD_USDC_FALLBACK = 0.740
 
@@ -14522,8 +14542,26 @@ const handlePublishCardIssuanceRef = useRef<
   chainTierCount: number | null;
   membershipFeeCount: number | null;
  } | null>(null);
+ const [legacyCardMigrationLocalRevision, setLegacyCardMigrationLocalRevision] = useState(0);
  const legacyCardMigrationAudit = useMemo<LegacyCardMigrationAudit | null>(() => {
    if (!cardIssuanceExistingCard) return null;
+   if (hasLegacyCardMigrationCompleted(cardIssuanceExistingCard.cardAddress)) {
+     return {
+       status: 'migrated',
+       reason: 'This card was already migrated successfully on this device.',
+       cardAddress: cardIssuanceExistingCard.cardAddress,
+       tierCount: Number.isFinite(cardIssuanceExistingCard.chainTierCount)
+         ? Math.max(0, Number(cardIssuanceExistingCard.chainTierCount))
+         : 0,
+       metadataTierCount: Array.isArray(cardIssuanceExistingCard.meta?.tiers)
+         ? cardIssuanceExistingCard.meta?.tiers?.length ?? 0
+         : 0,
+       membershipFeeCount: cardIssuanceExistingCard.membershipFeeCount,
+       metadataMembershipFeeCount: 0,
+       hasMembershipSchedule: false,
+       hasQualificationMode: false,
+     };
+   }
    return auditLegacyCardMigration({
      cardAddress: cardIssuanceExistingCard.cardAddress,
      metadata: cardIssuanceExistingCard.meta,
@@ -14531,19 +14569,16 @@ const handlePublishCardIssuanceRef = useRef<
      chainTierCount: cardIssuanceExistingCard.chainTierCount,
      membershipFeeCount: cardIssuanceExistingCard.membershipFeeCount,
    });
- }, [cardIssuanceExistingCard]);
+ }, [cardIssuanceExistingCard, legacyCardMigrationLocalRevision]);
  const legacyCardMigrationAutoUpgradeRef = useRef<string | null>(null);
  const legacyCardMigrationCanAutoUpgrade = Boolean(
    legacyCardMigrationAudit &&
      legacyCardMigrationAudit.status === 'legacy-review' &&
      !legacyCardMigrationAudit.hasQualificationMode &&
+     legacyCardMigrationAudit.metadataTierCount > 0 &&
      cardIssuanceOnchainFetch === 'done' &&
      cardIssuanceExistingCard?.meta &&
      Number.isFinite(cardIssuanceExistingCard.chainTierCount) &&
-     cardIssuanceExistingCard.chainTierCount === legacyCardMigrationAudit.metadataTierCount &&
-     Number.isFinite(cardIssuanceExistingCard.membershipFeeCount) &&
-     cardIssuanceExistingCard.membershipFeeCount ===
-       legacyCardMigrationAudit.metadataMembershipFeeCount &&
      (profiles?.[0]?.keyID ?? myAddress ?? '').trim(),
  );
 const [programSocialLikeCount, setProgramSocialLikeCount] = useState<number | null>(null);
@@ -23485,17 +23520,29 @@ useEffect(() => {
 }, [handlePublishCardIssuance]);
 
 useEffect(() => {
+  if (legacyCardMigrationAudit?.status === 'migrated' && cardIssuanceExistingCard) {
+    markLegacyCardMigrationCompleted(cardIssuanceExistingCard.cardAddress);
+  }
+}, [legacyCardMigrationAudit, cardIssuanceExistingCard]);
+
+useEffect(() => {
   if (!legacyCardMigrationCanAutoUpgrade || !cardIssuanceExistingCard) return;
   const cardKey = cardIssuanceExistingCard.cardAddress.toLowerCase();
   if (legacyCardMigrationAutoUpgradeRef.current === cardKey) return;
   legacyCardMigrationAutoUpgradeRef.current = cardKey;
 
   void handlePublishCardIssuanceRef.current({
-    metadataOnly: true,
-    skipOnChainRefresh: true,
+    // Legacy migration uses the non-empty metadata tiers as the canonical
+    // schedule. This must take the on-chain setTiers path; metadata-only
+    // publishing would leave the old card with its incomplete tier layout.
     publishErrorSink: () => undefined,
   }).then((ok) => {
-    if (!ok) legacyCardMigrationAutoUpgradeRef.current = null;
+    if (!ok) {
+      legacyCardMigrationAutoUpgradeRef.current = null;
+      return;
+    }
+    markLegacyCardMigrationCompleted(cardIssuanceExistingCard.cardAddress);
+    setLegacyCardMigrationLocalRevision((value) => value + 1);
   });
 }, [
   cardIssuanceExistingCard,
@@ -39501,43 +39548,6 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                  </div>
                ) : null}
              </header>
-
-             {legacyCardMigrationAudit &&
-             legacyCardMigrationAudit.status !== 'migrated' &&
-             !legacyCardMigrationCanAutoUpgrade &&
-             cardIssuanceActiveProgramView === 'overview' ? (
-               <section
-                 className={`mb-6 rounded-2xl border px-4 py-4 ${
-                   legacyCardMigrationAudit.status === 'legacy-ambiguous'
-                     ? 'border-amber-200 bg-amber-50'
-                     : 'border-[#1562f0]/20 bg-[#1562f0]/5'
-                 }`}
-                 role="status"
-               >
-                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                   <div className="min-w-0">
-                     <p className="text-xs font-bold uppercase tracking-[0.14em] text-[#2c2f31]">
-                       Legacy card migration review
-                     </p>
-                     <p className="mt-1 text-sm font-medium leading-relaxed text-[#4b4f52]">
-                       {legacyCardMigrationAudit.reason}
-                     </p>
-                     <p className="mt-1 text-[11px] font-medium text-[#747779]">
-                       Existing membership and issued NFT slots are preserved until you explicitly review and publish changes.
-                     </p>
-                   </div>
-                   {legacyCardMigrationAudit.status === 'legacy-review' ? (
-                     <button
-                       type="button"
-                       onClick={() => setCardIssuanceActiveProgramView('configure')}
-                       className={`shrink-0 rounded-full bg-[#1562f0] px-4 py-2 text-xs font-bold text-white shadow-sm transition-opacity hover:opacity-90 ${bizFocusRingClass}`}
-                     >
-                       Review upgrade
-                     </button>
-                   ) : null}
-                 </div>
-               </section>
-             ) : null}
 
              <div
                className={`mb-6 ${isCardConfiguratorMobileShell ? 'hidden' : ''} ${

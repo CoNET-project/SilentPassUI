@@ -40,10 +40,11 @@ function positiveAmountLike(value: unknown): boolean {
 /**
  * Read-only guard for existing cards.
  *
- * Existing cards must never be silently rewritten from /home: setTiers replaces
- * the complete array and can invalidate the meaning of already-issued slots.
- * Only cards with an explicit migration marker are considered migrated. All
- * other cards enter the merchant's review/configuration flow.
+ * Existing cards may be silently migrated when their non-empty metadata tier
+ * schedule is the canonical source for a legacy card. The migration caller
+ * still owns the safety gates: explicit migration markers remain migrated,
+ * unavailable metadata remains ambiguous, and empty metadata never authorizes
+ * replacing the on-chain schedule.
  */
 export function auditLegacyCardMigration(input: {
   cardAddress: string;
@@ -114,52 +115,16 @@ export function auditLegacyCardMigration(input: {
     };
   }
 
-  if (
-    metadataTierCount > 0 &&
-    (!chainTierCountKnown || tierCount !== metadataTierCount)
-  ) {
-    return {
-      status: "legacy-ambiguous",
-      reason: chainTierCountKnown
-        ? "The metadata tier count does not match the on-chain tier slots."
-        : "The on-chain tier slots could not be read, so the metadata tiers cannot be matched safely.",
-      cardAddress: input.cardAddress,
-      tierCount,
-      metadataTierCount,
-      membershipFeeCount,
-      metadataMembershipFeeCount,
-      hasMembershipSchedule,
-      hasQualificationMode,
-    };
-  }
-
-  if (
-    metadataMembershipFeeCount > 0 &&
-    membershipFeeCountKnown &&
-    membershipFeeCount !== metadataMembershipFeeCount
-  ) {
-    return {
-      status: "legacy-ambiguous",
-      reason:
-        "The metadata membership fee schedule does not match the on-chain fee slots.",
-      cardAddress: input.cardAddress,
-      tierCount,
-      metadataTierCount,
-      membershipFeeCount,
-      metadataMembershipFeeCount,
-      hasMembershipSchedule,
-      hasQualificationMode,
-    };
-  }
-
   return {
     status: "legacy-review",
     reason:
-      !chainTierCountKnown || !membershipFeeCountKnown
-        ? "The card is legacy; some on-chain layout data is unavailable and must be confirmed before migration."
-        : input.upgradeType < 0
-        ? "The card is legacy and its on-chain qualification mode still needs confirmation."
-        : "The card is legacy and requires explicit owner review before tier migration.",
+      metadataTierCount === 0
+        ? "The card has no metadata tier schedule and cannot be silently migrated."
+        : !chainTierCountKnown
+          ? "The card is legacy; metadata tiers are available, but the on-chain tier read is unavailable."
+          : input.upgradeType < 0
+            ? "The card is legacy and its on-chain qualification mode still needs confirmation."
+            : "The legacy card will use its non-empty metadata tiers as the migration source of truth.",
     cardAddress: input.cardAddress,
     tierCount,
     metadataTierCount,

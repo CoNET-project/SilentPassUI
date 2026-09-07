@@ -238,6 +238,7 @@ export function useWalletMerchantPassesStickyDisplay(
 	return useMemo(() => {
 		const safeStickyCards = filterDisplayUserCards(stickyCards)
 		const safeStickyDetails = filterExcludedCardDetailKeys(stickyDetails)
+		/** Recent Activity 只用于叠卡排序（最近事件优先），不得当展示白名单。 */
 		const latestEventMsByCard = new Map<string, number>()
 		for (const tx of recentActivityItems) {
 			const cardAddress = recentActivityMerchantProgramCardAddress(tx)
@@ -247,27 +248,20 @@ export function useWalletMerchantPassesStickyDisplay(
 			if (!Number.isFinite(timestampMs)) continue
 			latestEventMsByCard.set(key, Math.max(latestEventMsByCard.get(key) ?? 0, timestampMs))
 		}
-		const holdingsCards = safeStickyCards.filter((c) =>
-			isDisplayableMerchantPass(c, safeStickyDetails)
-		)
 		if (recentActivitySettled && !recentActivityLoading) {
 			lastEventMsRef.current = latestEventMsByCard
 		}
-		const eventFilter =
+		const latestEventMsForSort =
 			recentActivitySettled && !recentActivityLoading
 				? latestEventMsByCard
 				: lastEventMsRef.current.size > 0
 					? lastEventMsRef.current
 					: latestEventMsByCard
-		const displayableCards =
-			eventFilter.size > 0
-				? holdingsCards.filter((c) => eventFilter.has(c.cardAddress.toLowerCase()))
-				: stackOrder.length > 0
-					? holdingsCards.filter((c) =>
-							stackOrder.some((k) => k.toLowerCase() === c.cardAddress.toLowerCase()),
-						)
-					: []
-		const stackCards = buildStackCards(displayableCards, stackOrder, eventFilter)
+		/** 展示 = 持仓（#0 / #13 / 会员 NFT / claimable / catalogs）；无 Indexer 流水也要显示。 */
+		const displayableCards = safeStickyCards.filter((c) =>
+			isDisplayableMerchantPass(c, safeStickyDetails),
+		)
+		const stackCards = buildStackCards(displayableCards, stackOrder, latestEventMsForSort)
 		const allStickyDetailsKnown =
 			safeStickyCards.length > 0 &&
 			safeStickyCards.every((c) => safeStickyDetails[c.cardAddress.toLowerCase()] !== undefined)
@@ -280,8 +274,8 @@ export function useWalletMerchantPassesStickyDisplay(
 		 */
 		const hasRememberedStack = stackOrder.length > 0
 		const knownNoPass =
-			recentActivitySettled &&
-			!recentActivityLoading &&
+			feedSettled &&
+			!feedLoading &&
 			safeStickyCards.length > 0 &&
 			displayableCards.length === 0 &&
 			allStickyDetailsKnown
@@ -291,8 +285,6 @@ export function useWalletMerchantPassesStickyDisplay(
 				!hasRememberedStack &&
 				feedSettled &&
 				!feedLoading &&
-				recentActivitySettled &&
-				!recentActivityLoading &&
 				!hasEverHadCards)
 		const showSkeleton = displayableCards.length > 0 && !detailsReady
 		const showStack = detailsReady

@@ -2169,7 +2169,28 @@ export function myCardAssetsHasHoldings(assets: MyCardAssets | null | undefined)
 	return (assets.nfts ?? []).some((n) => Number(n?.tokenId ?? 0) > 0)
 }
 
-/** My Brands feeder：getMyAssets 空 NFT 时保留 wallet 快照中的持仓。 */
+/** Merge wallet NFT rows missing from my-assets (e.g. membership #100+ on AA while my-assets only has #3–#30 stats). */
+function mergeMyCardNftHoldings(
+	myNfts: MyCardAssets['nfts'] | undefined,
+	walletNfts: MyCardAssets['nfts'] | undefined
+): MyCardAssets['nfts'] {
+	const mine = myNfts ?? []
+	const wallet = walletNfts ?? []
+	if (!wallet.length) return mine
+	if (!mine.length) return wallet
+	const byId = new Map<string, (typeof mine)[number]>()
+	for (const n of mine) {
+		const id = String(n?.tokenId ?? '0')
+		if (Number(id) > 0) byId.set(id, n)
+	}
+	for (const n of wallet) {
+		const id = String(n?.tokenId ?? '0')
+		if (Number(id) > 0 && !byId.has(id)) byId.set(id, n)
+	}
+	return [...byId.values()]
+}
+
+/** My Brands feeder：合并 wallet 快照持仓（含会员 NFT），勿因仅有 stat NFT 丢掉 wallet 会员档。 */
 export function resolveMyCardAssetsForFeedRow(
 	fromMyAssets: MyCardAssets | null,
 	fromWallet: MyCardAssets | null | undefined,
@@ -2179,14 +2200,12 @@ export function resolveMyCardAssetsForFeedRow(
 	const prevAssets = prev ?? null
 	if (fromMyAssets) {
 		if (wallet) {
-			const myHasNft = (fromMyAssets.nfts ?? []).some((n) => Number(n?.tokenId ?? 0) > 0)
-			const walletHasNft = (wallet.nfts ?? []).some((n) => Number(n?.tokenId ?? 0) > 0)
-			if (!myHasNft && walletHasNft) {
-				return { ...fromMyAssets, nfts: wallet.nfts }
-			}
-			if (!myCardAssetsHasHoldings(fromMyAssets) && myCardAssetsHasHoldings(wallet)) {
+			const mergedNfts = mergeMyCardNftHoldings(fromMyAssets.nfts, wallet.nfts)
+			const merged = { ...fromMyAssets, nfts: mergedNfts }
+			if (!myCardAssetsHasHoldings(merged) && myCardAssetsHasHoldings(wallet)) {
 				return wallet
 			}
+			return merged
 		}
 		return fromMyAssets
 	}

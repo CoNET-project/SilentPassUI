@@ -52,6 +52,11 @@ type ShareTokenMetadataCouponSocialPromotion = {
 	}
 }
 
+type ShareTokenMetadataTopupPromotionFixedTier = {
+	topupAmount: number
+	bonusAmount: number
+}
+
 type ShareTokenMetadataTopupPromotion = {
 	enabled?: boolean
 	validFrom?: string
@@ -59,6 +64,26 @@ type ShareTokenMetadataTopupPromotion = {
 	minimumTopupAmount: number
 	rewardType: 'percent' | 'fixed'
 	rewardValue: number
+	/** Fixed multi-tier Store Credit Multipliers (canonical). */
+	fixedTiers?: ShareTokenMetadataTopupPromotionFixedTier[]
+}
+
+/** Discover Welcome Offer carousel card when ≥2 Store Credit Multipliers. */
+export type DiscoverStoreCreditMultiplierCard = {
+	id: string
+	topupAmount: number
+	bonusAmount: number
+	totalValue: number
+	bonusPercent: number
+	isBestValue: boolean
+	/** e.g. `+10% BONUS` / `+20% MATCH` — null when Best Value badge is used. */
+	percentHeader: string | null
+	/** e.g. `BEST VALUE • +15%` */
+	bestValueBadge: string | null
+	topupLabel: string
+	freeCreditLabel: string
+	valLabel: string
+	suggestedAmount: string
 }
 
 export type DiscoverTopupPromotionCapsuleCopy = {
@@ -295,13 +320,37 @@ function healTopupPromotionRewardType(
 	return promo
 }
 
+function normalizeTopupPromotionFixedTiers(raw: unknown): ShareTokenMetadataTopupPromotionFixedTier[] {
+	if (!Array.isArray(raw)) return []
+	const out: ShareTokenMetadataTopupPromotionFixedTier[] = []
+	const seen = new Set<number>()
+	for (const row of raw) {
+		if (!row || typeof row !== 'object') continue
+		const o = row as Record<string, unknown>
+		const topup = parseAmount(o.topupAmount ?? o.topup_amount ?? o.paymentAmount)
+		const bonus = parseAmount(o.bonusAmount ?? o.bonus_amount ?? o.bonusValue)
+		if (topup == null || bonus == null || topup <= 0 || bonus <= 0) continue
+		const key = Math.round(topup * 100)
+		if (seen.has(key)) continue
+		seen.add(key)
+		out.push({ topupAmount: topup, bonusAmount: bonus })
+	}
+	out.sort((a, b) => a.topupAmount - b.topupAmount)
+	return out
+}
+
 function normalizeTopupPromotionPayload(raw: Record<string, unknown>): ShareTokenMetadataTopupPromotion | null {
-	const min = parseAmount(raw.minimumTopupAmount ?? raw.minimum_topup_amount)
-	const reward = parseAmount(raw.rewardValue ?? raw.reward_value)
-	if (min == null || reward == null) return null
+	const fixedTiers = normalizeTopupPromotionFixedTiers(raw.fixedTiers ?? raw.fixed_tiers)
+	let min = parseAmount(raw.minimumTopupAmount ?? raw.minimum_topup_amount)
+	let reward = parseAmount(raw.rewardValue ?? raw.reward_value)
 	const rewardTypeRaw = String(raw.rewardType ?? raw.reward_type ?? '').trim().toLowerCase()
 	// Missing / unknown → fixed (not percent). Explicit "percent" still honored.
 	const rewardType: 'percent' | 'fixed' = rewardTypeRaw === 'percent' ? 'percent' : 'fixed'
+	if (rewardType === 'fixed' && fixedTiers.length > 0) {
+		if (min == null || min <= 0) min = fixedTiers[0].topupAmount
+		if (reward == null || reward <= 0) reward = fixedTiers[0].bonusAmount
+	}
+	if (min == null || reward == null) return null
 	if (raw.enabled === false) return null
 	return {
 		enabled: true,
@@ -310,6 +359,7 @@ function normalizeTopupPromotionPayload(raw: Record<string, unknown>): ShareToke
 		minimumTopupAmount: min,
 		rewardType,
 		rewardValue: reward,
+		...(rewardType === 'fixed' && fixedTiers.length > 0 ? { fixedTiers } : {}),
 	}
 }
 
@@ -403,6 +453,85 @@ export type DiscoverProspectJoinPanelCopy = {
 	hasTopupPromotion: boolean
 	hasChargePromotion: boolean
 	ctaLabel: string
+	/**
+	 * When length > 1, Welcome Offer hides heading/body/bonusBadge and shows
+	 * a horizontal Store Credit Multiplier carousel instead.
+	 */
+	multiplierCards: DiscoverStoreCreditMultiplierCard[]
+}
+
+/**
+ * Build Welcome Offer carousel cards from Store Credit Multipliers.
+ * Returns [] when fewer than 2 tiers (caller keeps single-offer copy).
+ */
+export function resolveDiscoverStoreCreditMultiplierCards(params: {
+	metadataRoot: Record<string, unknown> | null | undefined
+	currency: string
+}): DiscoverStoreCreditMultiplierCard[] {
+	const meta = params.metadataRoot ?? null
+	const moneyPrefix = moneyPrefixForCurrency(params.currency)
+	const tiers: { topupAmount: number; bonusAmount: number }[] = []
+
+	const topupPromo = parseTopupPromotionFromMetadata(meta)
+	if (topupPromo?.fixedTiers && topupPromo.fixedTiers.length > 0) {
+		for (const t of topupPromo.fixedTiers) {
+			tiers.push({ topupAmount: t.topupAmount, bonusAmount: t.bonusAmount })
+		}
+	} else if (!metadataHasTopupPromotionBlock(meta)) {
+		const rules = parseDiscoverRechargeBonusRules(meta ?? {})
+		for (const rule of rules) {
+			if (rule.paymentAmount > 0 && rule.bonusValue > 0) {
+				tiers.push({ topupAmount: rule.paymentAmount, bonusAmount: rule.bonusValue })
+			}
+		}
+	}
+
+	if (tiers.length < 2) return []
+
+	const withPct = tiers.map((t, index) => ({
+		...t,
+		index,
+		bonusPercent: t.topupAmount > 0 ? Math.round((t.bonusAmount / t.topupAmount) * 10000) / 100 : 0,
+	}))
+
+	let bestIndex = 0
+	if (withPct.length >= 3) {
+		bestIndex = Math.floor((withPct.length - 1) / 2)
+	} else {
+		bestIndex = withPct.reduce(
+			(best, row, i) => (row.bonusPercent > withPct[best].bonusPercent ? i : best),
+			0,
+		)
+	}
+
+	const maxPctIndex = withPct.reduce(
+		(best, row, i) => (row.bonusPercent > withPct[best].bonusPercent ? i : best),
+		0,
+	)
+
+	return withPct.map((row, i) => {
+		const totalValue = Number((row.topupAmount + row.bonusAmount).toFixed(2))
+		const pctLabel = formatBonusRuleAmount(row.bonusPercent)
+		const isBestValue = i === bestIndex
+		const isMatch = !isBestValue && i === maxPctIndex
+		const topupMoney = formatPromoMoneyLabel(moneyPrefix, row.topupAmount)
+		const freeMoney = formatPromoMoneyLabel(moneyPrefix, row.bonusAmount)
+		const valMoney = formatPromoMoneyLabel(moneyPrefix, totalValue)
+		return {
+			id: `scm-${i}-${Math.round(row.topupAmount * 100)}`,
+			topupAmount: row.topupAmount,
+			bonusAmount: row.bonusAmount,
+			totalValue,
+			bonusPercent: row.bonusPercent,
+			isBestValue,
+			percentHeader: isBestValue ? null : isMatch ? `+${pctLabel}% MATCH` : `+${pctLabel}% BONUS`,
+			bestValueBadge: isBestValue ? `BEST VALUE • +${pctLabel}%` : null,
+			topupLabel: topupMoney,
+			freeCreditLabel: `+${freeMoney} Free Credit`,
+			valLabel: `Val: ${valMoney}`,
+			suggestedAmount: String(row.topupAmount),
+		}
+	})
 }
 
 function joinCircleSubject(welcomeTitle?: string, passTitle?: string): string | null {
@@ -524,6 +653,11 @@ export function resolveDiscoverProspectJoinPanelCopy(params: {
 			? `Earn ${formatBonusRuleAmount(chargePercent)}% back in points on every future purchase.`
 			: null
 
+	const multiplierCards = resolveDiscoverStoreCreditMultiplierCards({
+		metadataRoot: params.metadataRoot,
+		currency: params.currency,
+	})
+
 	return {
 		heading,
 		body,
@@ -532,6 +666,7 @@ export function resolveDiscoverProspectJoinPanelCopy(params: {
 		hasTopupPromotion,
 		hasChargePromotion,
 		ctaLabel: 'Claim Offer & Top Up',
+		multiplierCards,
 	}
 }
 

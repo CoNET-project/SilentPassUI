@@ -679,29 +679,88 @@ function DiscoverMerchantProspectJoinPanel({
 	const tierTheme = !hasImage ? cardTierGradientTheme(gradientSource) : null
 	const gradientCss = !hasImage ? cardTierGradientCss(gradientSource) : null
 	/**
-	 * With a background image: image is its own hero card (dark chrome).
-	 * Offers / CTA / footer sit below on the light panel shell — not overlaid.
+	 * With a background image: copy sits on the light panel shell (above the image card);
+	 * image is hero-only. Offers / CTA / footer stay below.
 	 */
 	const shellOnDark = !hasImage && Boolean(tierTheme?.isDarkStart)
 	const accentForCta =
 		!hasImage && solidColor && tierTheme?.isDarkStart ? solidColor : '#1562f0'
-	const heroEyebrowColor = '#E8D5B5'
-	const heroTitleColor = '#ffffff'
-	const heroBodyColor = 'rgba(255,255,255,0.8)'
-	const heroSparkleColor = '#D4B483'
+	/**
+	 * Brand text above the image hero (on white / dark:slate-900 shell).
+	 * Light pastels fail on white → dark slate; dark brands fail on slate-900 → light slate.
+	 */
+	const brandOnPanelShell = useMemo(() => {
+		const onWhite = {
+			eyebrow: '#8B7D6B',
+			title: '#0F172A',
+			body: '#666666',
+			sparkle: '#B8956A',
+		}
+		const onDark = {
+			eyebrow: '#cbd5e1',
+			title: '#f1f5f9',
+			body: 'rgba(241,245,249,0.78)',
+			sparkle: '#e2e8f0',
+		}
+		const defaultBrand = {
+			eyebrow: '#1562f0',
+			title: '#1562f0',
+			body: 'rgba(21,98,240,0.78)',
+			sparkle: '#1562f0',
+		}
+		const raw = (solidColor ?? '').trim()
+		if (!raw) return { light: defaultBrand, dark: defaultBrand }
+		const hex = raw.replace(/^#/, '')
+		if (!/^[0-9a-fA-F]{6}$/.test(hex) && !/^[0-9a-fA-F]{8}$/.test(hex)) {
+			return { light: onWhite, dark: onDark }
+		}
+		const ri = parseInt(hex.slice(0, 2), 16)
+		const gi = parseInt(hex.slice(2, 4), 16)
+		const bi = parseInt(hex.slice(4, 6), 16)
+		const lin = (c: number) => {
+			const x = c / 255
+			return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4
+		}
+		const lum = 0.2126 * lin(ri) + 0.7152 * lin(gi) + 0.0722 * lin(bi)
+		const contrast = (a: number, b: number) => {
+			const hi = Math.max(a, b)
+			const lo = Math.min(a, b)
+			return (hi + 0.05) / (lo + 0.05)
+		}
+		/** Approximate slate-900 luminance. */
+		const slate900Lum = 0.025
+		const brand = `#${hex.slice(0, 6)}`
+		const brandBody = `rgba(${ri},${gi},${bi},0.78)`
+		const brandSet = { eyebrow: brand, title: brand, body: brandBody, sparkle: brand }
+		const light = contrast(lum, 1) < 3 ? onWhite : brandSet
+		const dark = contrast(lum, slate900Lum) < 3 ? onDark : brandSet
+		return { light, dark }
+	}, [solidColor])
 	const shellEyebrowColor = tierTheme?.tertiary ?? '#8B7D6B'
 	const shellTitleColor = tierTheme?.primary ?? '#0F172A'
 	const shellBodyColor = tierTheme?.secondary ?? '#666666'
 	const shellSparkleColor = tierTheme?.isDarkStart ? '#E8D5B5' : '#B8956A'
-	const eyebrowColor = hasImage ? heroEyebrowColor : shellEyebrowColor
-	const titleColor = hasImage ? heroTitleColor : shellTitleColor
-	const bodyColor = hasImage ? heroBodyColor : shellBodyColor
-	const sparkleColor = hasImage ? heroSparkleColor : shellSparkleColor
-	const badgeClass = hasImage || shellOnDark
+	const eyebrowColor = hasImage ? brandOnPanelShell.light.eyebrow : shellEyebrowColor
+	const titleColor = hasImage ? brandOnPanelShell.light.title : shellTitleColor
+	const bodyColor = hasImage ? brandOnPanelShell.light.body : shellBodyColor
+	const sparkleColor = hasImage ? brandOnPanelShell.light.sparkle : shellSparkleColor
+	const joinCopyCssVars = hasImage
+		? ({
+				['--join-eyebrow' as string]: brandOnPanelShell.light.eyebrow,
+				['--join-title' as string]: brandOnPanelShell.light.title,
+				['--join-body' as string]: brandOnPanelShell.light.body,
+				['--join-sparkle' as string]: brandOnPanelShell.light.sparkle,
+				['--join-eyebrow-dark' as string]: brandOnPanelShell.dark.eyebrow,
+				['--join-title-dark' as string]: brandOnPanelShell.dark.title,
+				['--join-body-dark' as string]: brandOnPanelShell.dark.body,
+				['--join-sparkle-dark' as string]: brandOnPanelShell.dark.sparkle,
+			} as React.CSSProperties)
+		: undefined
+	const badgeClass = shellOnDark
 		? 'inline-flex items-center gap-1.5 rounded-full bg-[#e4e9ff] px-3 py-1 text-[11px] font-bold uppercase tracking-[0.06em] text-[#0c2a6b]'
 		: 'inline-flex items-center gap-1.5 rounded-full bg-[#0c2a6b]/10 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.06em] text-[#0c2a6b]'
 	const titleClass = 'mt-3 text-[20px] font-bold leading-snug tracking-tight sm:text-[22px]'
-	/** Footer always below the image card → light chrome when hasImage. */
+	/** Footer always on light shell when hasImage. */
 	const footerClass = shellOnDark
 		? 'mt-3 flex items-center justify-center gap-1.5 text-center text-[12px] leading-snug text-white/75'
 		: 'mt-3 flex items-center justify-center gap-1.5 text-center text-[12px] leading-snug text-slate-600'
@@ -714,22 +773,36 @@ function DiscoverMerchantProspectJoinPanel({
 			<span
 				className={[
 					'shrink-0 rounded-full px-3 py-1 text-right leading-tight ring-1',
-					hasImage || shellOnDark
+					shellOnDark
 						? 'bg-white/15 ring-white/20'
 						: 'bg-black/[0.06] ring-black/10',
 				].join(' ')}
 				aria-label={`Membership ${price}${duration ? ` · ${duration}` : ''}`}
 			>
 				<span
-					className="block text-[15px] font-bold tabular-nums tracking-tight"
-					style={{ color: titleColor }}
+					className={[
+						'block text-[15px] font-bold tabular-nums tracking-tight',
+						hasImage
+							? 'text-[color:var(--join-title)] dark:text-[color:var(--join-title-dark)]'
+							: '',
+					]
+						.filter(Boolean)
+						.join(' ')}
+					style={hasImage ? undefined : { color: titleColor }}
 				>
 					{price}
 				</span>
 				{duration ? (
 					<span
-						className="mt-0.5 block text-[10px] font-semibold uppercase tracking-[0.06em]"
-						style={{ color: bodyColor }}
+						className={[
+							'mt-0.5 block text-[10px] font-semibold uppercase tracking-[0.06em]',
+							hasImage
+								? 'text-[color:var(--join-body)] dark:text-[color:var(--join-body-dark)]'
+								: '',
+						]
+							.filter(Boolean)
+							.join(' ')}
+						style={hasImage ? undefined : { color: bodyColor }}
 					>
 						{duration}
 					</span>
@@ -758,24 +831,55 @@ function DiscoverMerchantProspectJoinPanel({
 	const seasonalHeader = showMultiplierCarousel ? (
 		<div className={price ? 'mt-3' : undefined}>
 			<p
-				className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.08em]"
-				style={{ color: eyebrowColor }}
+				className={[
+					'inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.08em]',
+					hasImage
+						? 'text-[color:var(--join-eyebrow)] dark:text-[color:var(--join-eyebrow-dark)]'
+						: '',
+				]
+					.filter(Boolean)
+					.join(' ')}
+				style={hasImage ? undefined : { color: eyebrowColor }}
 			>
 				<Sparkles
-					className="h-3.5 w-3.5 shrink-0"
-					style={{ color: sparkleColor }}
+					className={[
+						'h-3.5 w-3.5 shrink-0',
+						hasImage
+							? 'text-[color:var(--join-sparkle)] dark:text-[color:var(--join-sparkle-dark)]'
+							: '',
+					]
+						.filter(Boolean)
+						.join(' ')}
+					style={hasImage ? undefined : { color: sparkleColor }}
 					strokeWidth={2.25}
 					aria-hidden
 				/>
 				Special Seasonal Promotion
 			</p>
 			<h3
-				className="mt-2 font-serif text-[22px] font-semibold leading-snug tracking-tight sm:text-[24px]"
-				style={{ color: titleColor }}
+				className={[
+					'mt-2 font-serif text-[22px] font-semibold leading-snug tracking-tight sm:text-[24px]',
+					hasImage
+						? 'text-[color:var(--join-title)] dark:text-[color:var(--join-title-dark)]'
+						: '',
+				]
+					.filter(Boolean)
+					.join(' ')}
+				style={hasImage ? undefined : { color: titleColor }}
 			>
 				Give the Perfect Gift & Match Bonus
 			</h3>
-			<p className="mt-2 text-[14px] leading-relaxed" style={{ color: bodyColor }}>
+			<p
+				className={[
+					'mt-2 text-[14px] leading-relaxed',
+					hasImage
+						? 'text-[color:var(--join-body)] dark:text-[color:var(--join-body-dark)]'
+						: '',
+				]
+					.filter(Boolean)
+					.join(' ')}
+				style={hasImage ? undefined : { color: bodyColor }}
+			>
 				Gift wellness or top up clinic credits today. All tier bonuses are applied
 				instantly upon top-up.
 			</p>
@@ -784,14 +888,34 @@ function DiscoverMerchantProspectJoinPanel({
 
 	const welcomeBody = !showMultiplierCarousel ? (
 		<>
-			<h3 className={titleClass} style={{ color: titleColor }}>
+			<h3
+				className={[
+					titleClass,
+					hasImage
+						? 'text-[color:var(--join-title)] dark:text-[color:var(--join-title-dark)]'
+						: '',
+				]
+					.filter(Boolean)
+					.join(' ')}
+				style={hasImage ? undefined : { color: titleColor }}
+			>
 				{heading}
 			</h3>
 			{body ? (
-				<p className="mt-2 text-[14px] leading-relaxed" style={{ color: bodyColor }}>
+				<p
+					className={[
+						'mt-2 text-[14px] leading-relaxed',
+						hasImage
+							? 'text-[color:var(--join-body)] dark:text-[color:var(--join-body-dark)]'
+							: '',
+					]
+						.filter(Boolean)
+						.join(' ')}
+					style={hasImage ? undefined : { color: bodyColor }}
+				>
 					<DiscoverDescriptionTextWithUrlCapsules
 						text={body}
-						tone={hasImage || shellOnDark ? 'onDark' : 'onLight'}
+						tone={shellOnDark ? 'onDark' : 'onLight'}
 					/>
 				</p>
 			) : null}
@@ -890,31 +1014,21 @@ function DiscoverMerchantProspectJoinPanel({
 							backgroundImage: gradientCss,
 							color: tierTheme?.primary ?? '#0F172A',
 						}
-					: undefined
+					: joinCopyCssVars
 			}
 			aria-label={heading}
 		>
+			{/* Copy always on panel shell (brand color on white when hasImage). Image is hero-only. */}
+			<div className="relative z-[1]">
+				{headerChrome}
+				{seasonalHeader}
+				{welcomeBody}
+			</div>
 			{hasImage ? (
-				<div className="relative aspect-[16/10] overflow-hidden rounded-[16px] text-white shadow-[0_4px_16px_rgba(15,23,42,0.12)] sm:aspect-[16/9]">
+				<div className="relative mt-3 aspect-[16/10] overflow-hidden rounded-[16px] shadow-[0_4px_16px_rgba(15,23,42,0.12)] sm:aspect-[16/9]">
 					<CardPassBackgroundImage src={imageUrl} fit={backgroundImageFit} />
-					{/* Top-weighted scrim: copy sits at the top so mid/lower art (ribbons, marks) stays clear. */}
-					<div
-						className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/75 via-black/40 to-black/15"
-						aria-hidden
-					/>
-					<div className="relative z-[1] flex h-full flex-col justify-start p-3.5 sm:p-4">
-						{headerChrome}
-						{seasonalHeader}
-						{welcomeBody}
-					</div>
 				</div>
-			) : (
-				<div className="relative z-[1]">
-					{headerChrome}
-					{seasonalHeader}
-					{welcomeBody}
-				</div>
-			)}
+			) : null}
 			{multiplierOffers}
 			{onClaim ? (
 				<button

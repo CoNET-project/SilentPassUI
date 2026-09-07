@@ -784,12 +784,20 @@ function DiscoverMerchantProspectJoinPanel({
 			) : null}
 			{showMultiplierCarousel ? (
 				<div
-					className="-mx-1 mt-3 flex snap-x snap-mandatory gap-3 overflow-x-auto px-1 pb-1 pt-3 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+					className={[
+						'mt-2.5 flex gap-2 pt-2',
+						multiplierCards.length > 3
+							? '-mx-1 snap-x snap-mandatory overflow-x-auto px-1 pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'
+							: 'w-full',
+					]
+						.filter(Boolean)
+						.join(' ')}
 					role="list"
 					aria-label="Store credit multiplier offers"
 				>
 					{multiplierCards.map((card) => {
 						const selected = card.id === selectedCard?.id
+						const scrollMany = multiplierCards.length > 3
 						return (
 							<button
 								key={card.id}
@@ -799,9 +807,12 @@ function DiscoverMerchantProspectJoinPanel({
 								aria-label={`${card.topupLabel} top up, ${card.freeCreditLabel}`}
 								onClick={() => setSelectedCardId(card.id)}
 								className={[
-									'relative flex w-[148px] shrink-0 snap-center flex-col items-center rounded-[20px] bg-[#FDF8F1] px-3 pb-3 pt-5 text-center transition',
+									'relative flex flex-col items-center rounded-[14px] bg-[#FDF8F1] px-1.5 pb-2 pt-3.5 text-center transition sm:px-2',
+									scrollMany
+										? 'w-[min(28vw,112px)] shrink-0 snap-center'
+										: 'min-w-0 flex-1 basis-0',
 									card.isBestValue
-										? 'border-[2.5px] border-[#D4B483] shadow-[0_4px_14px_rgba(90,60,30,0.12)]'
+										? 'border-2 border-[#D4B483] shadow-[0_2px_10px_rgba(90,60,30,0.1)]'
 										: 'border border-[#E8E0D4]',
 									selected && !card.isBestValue ? 'ring-2 ring-[#1562f0]/35' : '',
 									selected && card.isBestValue ? 'ring-2 ring-[#1562f0]/25' : '',
@@ -810,30 +821,32 @@ function DiscoverMerchantProspectJoinPanel({
 									.join(' ')}
 							>
 								{card.isBestValue && card.bestValueBadge ? (
-									<span className="absolute -top-2.5 left-1/2 z-[1] -translate-x-1/2 whitespace-nowrap rounded-full bg-[#3d3429] px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.04em] text-[#FDF8F1]">
+									<span className="absolute -top-2 left-1/2 z-[1] max-w-[calc(100%+0.5rem)] -translate-x-1/2 truncate rounded-full bg-[#3d3429] px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-[0.03em] text-[#FDF8F1] sm:px-2 sm:text-[9px]">
 										{card.bestValueBadge}
 									</span>
 								) : null}
 								{card.isBestValue ? (
-									<span className="mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#9ca3af]">
+									<span className="mb-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-[#9ca3af]">
 										Popular
 									</span>
 								) : card.percentHeader ? (
-									<span className="mb-1 text-[11px] font-bold uppercase tracking-[0.04em] text-[#C45C26]">
+									<span className="mb-0.5 text-[10px] font-bold uppercase tracking-[0.03em] text-[#C45C26] sm:text-[11px]">
 										{card.percentHeader}
 									</span>
 								) : (
-									<span className="mb-1 h-[16px]" aria-hidden />
+									<span className="mb-0.5 h-[14px]" aria-hidden />
 								)}
-								<span className="text-[12px] font-medium text-[#6b7280]">Top Up</span>
-								<span className="mt-0.5 text-[20px] font-bold leading-tight tracking-tight text-[#2c2416] tabular-nums">
+								<span className="text-[10px] font-medium text-[#6b7280] sm:text-[11px]">Top Up</span>
+								<span className="mt-0.5 text-[15px] font-bold leading-tight tracking-tight text-[#2c2416] tabular-nums sm:text-[17px]">
 									{card.topupLabel}
 								</span>
-								<span className="my-2.5 h-px w-full bg-[#E8E0D4]" aria-hidden />
-								<span className="text-[12px] font-bold leading-snug text-[#16a34a]">
+								<span className="my-1.5 h-px w-full bg-[#E8E0D4]" aria-hidden />
+								<span className="text-[10px] font-bold leading-snug text-[#16a34a] sm:text-[11px]">
 									{card.freeCreditLabel}
 								</span>
-								<span className="mt-1.5 text-[11px] font-medium text-[#9ca3af]">{card.valLabel}</span>
+								<span className="mt-1 text-[9px] font-medium text-[#9ca3af] sm:text-[10px]">
+									{card.valLabel}
+								</span>
 							</button>
 						)
 					})}
@@ -4666,6 +4679,9 @@ function DiscoverMerchantDetailFullScreen({
 		[merchantDetailBrandColor],
 	)
 	const showProspectJoinPanel = !isConetGenesisCard && !hasActiveMembership
+	/** Same gate as DiscoverMerchantProspectJoinPanel carousel (`multiplierCards.length > 1`). */
+	const showStoreCreditMultiplierOffers =
+		showProspectJoinPanel && prospectJoinPanelCopy.multiplierCards.length > 1
 	const prospectJoinMembershipPrice = useMemo(() => {
 		const joinTier = membershipUi.joinTier
 		if (!joinTier) return { price: null as string | null, duration: null as string | null }
@@ -6205,7 +6221,7 @@ function DiscoverMerchantDetailFullScreen({
 						className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/75 via-black/25 to-black/30"
 						aria-hidden
 					/>
-					{heroRechargeBonusPill ? (
+					{heroRechargeBonusPill && !showStoreCreditMultiplierOffers ? (
 						<DiscoverRechargeBonusHeroChip
 							label={heroRechargeBonusPill}
 							className="pointer-events-none absolute bottom-4 right-4 z-[15]"

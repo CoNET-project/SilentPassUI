@@ -4631,12 +4631,9 @@ function DiscoverMerchantDetailFullScreen({
 	/** Brand chrome from card settings (`tiers[0].backgroundColor`, then highest-tier fallback). */
 	const merchantDetailBrandColor = useMemo(() => {
 		if (prospectJoinPanelBackground.backgroundColor) return prospectJoinPanelBackground.backgroundColor
-		const fromItem =
-			typeof item.tierTopBackground === 'string' && item.tierTopBackground.trim()
-				? discoverSafeCssColor(item.tierTopBackground)
-				: null
-		return fromItem
-	}, [item.tierTopBackground, prospectJoinPanelBackground.backgroundColor])
+		const { tierTopBackground } = parseDiscoverTiersFromMeta(merchantMetadataRoot)
+		return tierTopBackground ? discoverSafeCssColor(tierTopBackground) : null
+	}, [merchantMetadataRoot, prospectJoinPanelBackground.backgroundColor])
 	const merchantDetailPageSurface = useMemo(
 		() =>
 			merchantDetailBrandColor

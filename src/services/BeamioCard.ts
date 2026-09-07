@@ -1572,6 +1572,12 @@ export type CreateBeamioCardParams = {
 	upgradeType?: 0 | 1 | 2
 	/** ERC-1155 shareTokenMetadata，用于创建 0x{owner}.json */
 	shareTokenMetadata?: ShareTokenMetadata
+	/** Paid-membership base plan. It is canonical tier index 0, not an Add-tier row. */
+	baseMembership?: {
+		membershipFeeE6?: string
+		membershipFee?: string | number
+		membershipDurationKind?: MembershipDurationKind | number
+	}
 	/** Tier 类型 metadata（如 Gold Card 说明），存于 0x{owner}.json，回送 NFT metadata 时包含 */
 	tiers?: TierMetadata[]
 }
@@ -1580,6 +1586,12 @@ export type UpdateBeamioCardShareMetadataParams = {
 	cardAddress: string
 	/** Full or partial patch; Master merges into existing card0 `shareTokenMetadata`. */
 	shareTokenMetadata: Partial<ShareTokenMetadata>
+	/** Paid-membership base plan. Omit to preserve the existing value; null removes it. */
+	baseMembership?: {
+		membershipFeeE6?: string
+		membershipFee?: string | number
+		membershipDurationKind?: MembershipDurationKind | number
+	} | null
 	tiers?: TierMetadata[]
 	upgradeType?: 0 | 1 | 2
 	transferWhitelistEnabled?: boolean
@@ -1726,6 +1738,7 @@ export const updateBeamioCardShareMetadata = async (
 		const body = JSON.stringify({
 			cardAddress: params.cardAddress,
 			shareTokenMetadata: params.shareTokenMetadata,
+			...(params.baseMembership !== undefined && { baseMembership: params.baseMembership }),
 			...(params.tiers && params.tiers.length > 0 && { tiers: params.tiers }),
 			...(params.upgradeType === 0 || params.upgradeType === 1 || params.upgradeType === 2
 				? { upgradeType: params.upgradeType }
@@ -1903,7 +1916,10 @@ export const updateBeamioCardTiers = async (
 				nonce: params.nonce,
 				ownerSignature: params.ownerSignature,
 				shareTokenMetadata: params.shareTokenMetadata,
-				...(params.tiers && params.tiers.length > 0 && { tiers: params.tiers }),
+				...(params.baseMembership !== undefined && { baseMembership: params.baseMembership }),
+				// An empty higher-tier array is meaningful for a paid card with
+				// only baseMembership. Do not leave stale higher tiers in metadata.
+				...(params.tiers !== undefined && { tiers: params.tiers }),
 				...(params.upgradeType === 0 || params.upgradeType === 1 || params.upgradeType === 2
 					? { upgradeType: params.upgradeType }
 					: {}),
@@ -1947,6 +1963,7 @@ export const createBeamioCard = async (params: CreateBeamioCardParams): Promise<
 				? { upgradeType: params.upgradeType }
 				: {}),
 			...(params.shareTokenMetadata && { shareTokenMetadata: params.shareTokenMetadata }),
+			...(params.baseMembership && { baseMembership: params.baseMembership }),
 			...(params.tiers && params.tiers.length > 0 && { tiers: params.tiers }),
 		})
 		logCreateCardRequestBody(createCardEndpoint, body)
@@ -4010,6 +4027,12 @@ export type CardMetadataFromUri = {
 	image?: string
 	/** From shareTokenMetadata.merchantImage — optional banner / hero image URL */
 	merchantImage?: string
+	/** Paid-membership base plan. This is canonical membership tier index 0. */
+	baseMembership?: {
+		membershipFeeE6?: string
+		membershipFee?: string | number
+		membershipDurationKind?: MembershipDurationKind | number
+	}
 	tiers?: CardTierMetadata[]
 	cardOwner?: string
 	categories?: string[]
@@ -4573,6 +4596,7 @@ export const getCardMetadataFrom1155Json = async (cardAddress: string): Promise<
 			merchantImage?: string
 			description?: string
 			shareTokenMetadata?: { name?: string; image?: string; description?: string; categories?: unknown; bonusRule?: unknown; coupons?: unknown }
+			baseMembership?: CardMetadataFromUri['baseMembership']
 			tiers?: CardTierMetadata[]
 			properties?: Record<string, unknown>
 		}
@@ -4612,6 +4636,7 @@ export const getCardMetadataFrom1155Json = async (cardAddress: string): Promise<
 			...(coupons && { coupons }),
 			...(productions && { productions }),
 			...(itemCategory && { itemCategory }),
+			...(json.baseMembership && { baseMembership: json.baseMembership }),
 			...(Array.isArray(json?.tiers) && json.tiers.length > 0 && { tiers: json.tiers }),
 			...(categories && { categories }),
 			...limits,
@@ -4678,6 +4703,9 @@ export const getCardMetadataFromApi = async (cardAddress: string): Promise<CardM
 			...(coupons && { coupons }),
 			...(productions && { productions }),
 			...(itemCategory && { itemCategory }),
+			...(metaJson.baseMembership && typeof metaJson.baseMembership === 'object'
+				? { baseMembership: metaJson.baseMembership as CardMetadataFromUri['baseMembership'] }
+				: {}),
 			...(Array.isArray(metaJson.tiers) && metaJson.tiers.length > 0 && { tiers: metaJson.tiers as CardTierMetadata[] }),
 			...(cardOwner && { cardOwner }),
 			...(categories && { categories }),
@@ -4791,6 +4819,7 @@ export const getCardMetadataFromUri = async (cardAddress: string): Promise<CardM
 			merchantImage?: string
 			description?: string
 			shareTokenMetadata?: { name?: string; image?: string; description?: string; categories?: unknown; bonusRule?: unknown; coupons?: unknown }
+			baseMembership?: CardMetadataFromUri['baseMembership']
 			tiers?: CardTierMetadata[]
 		}
 		// 兼容顶层 ERC1155 与服务器写入的 shareTokenMetadata 嵌套结构；API 返回 shared 时带 tiers
@@ -4830,6 +4859,7 @@ export const getCardMetadataFromUri = async (cardAddress: string): Promise<CardM
 			...(coupons && { coupons }),
 			...(productions && { productions }),
 			...(itemCategory && { itemCategory }),
+			...(json.baseMembership && { baseMembership: json.baseMembership }),
 			...(Array.isArray(json?.tiers) && json.tiers.length > 0 && { tiers: json.tiers }),
 			...(categories && { categories }),
 			...limits,

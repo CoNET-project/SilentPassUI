@@ -13136,6 +13136,44 @@ function cardIssuanceTierRowsFromMetadata(tiers: CardTierMetadata[]): CardIssuan
   });
 }
 
+/**
+ * Fee-card metadata stores its base plan separately, while the contract uses
+ * index 0 for that plan. Rebuild the editor's canonical list in that order.
+ * Legacy cards without `baseMembership` keep their old tiers[0] base layout.
+ */
+function cardIssuanceMembershipRowsFromMetadata(
+  baseMembership: {
+    membershipFeeE6?: string;
+    membershipFee?: string | number;
+    membershipDurationKind?: number;
+  } | undefined,
+  tiers: CardTierMetadata[] | undefined,
+): CardIssuanceTierRow[] {
+  const higherRows = cardIssuanceTierRowsFromMetadata(tiers ?? []);
+  if (!baseMembership) return higherRows;
+  const feeHuman =
+    membershipFeeE6ToHuman(baseMembership.membershipFeeE6) ||
+    (baseMembership.membershipFee != null ? String(baseMembership.membershipFee).replace(/,/g, '').trim() : '');
+  const baseRow = makeCardIssuanceTierRow({
+    id: CARD_ISSUANCE_SINGLE_TIER_ID,
+    name: 'Base',
+    preset: 'silver',
+    threshold: String(CARD_ISSUANCE_MIN_TOPUP_DEFAULT),
+    membershipFee: feeHuman,
+    membershipDurationKind: BigInt(membershipFeeHumanToE6(feeHuman)) > 0n
+      ? normalizeMembershipDurationKind(baseMembership.membershipDurationKind) || 3
+      : 0,
+  });
+  return [
+    baseRow,
+    ...higherRows.map((row, index) => ({
+      ...row,
+      id: `tier-issued-${index + 1}`,
+      name: row.name || `Tier ${index + 2}`,
+    })),
+  ];
+}
+
 function nextCardIssuanceTierTemplate(
   tiers: CardIssuanceTierRow[],
   minTopupStr: string
@@ -16019,8 +16057,12 @@ useEffect(() => {
 }, [cardIssuanceExistingCard?.cardAddress, cardIssuanceExistingCard?.meta]);
 
 useEffect(() => {
-  if (!cardIssuanceExistingCard?.cardAddress || !cardIssuanceExistingCard.meta?.tiers?.length) return;
-  const rows = cardIssuanceTierRowsFromMetadata(cardIssuanceExistingCard.meta.tiers);
+  if (!cardIssuanceExistingCard?.cardAddress || !cardIssuanceExistingCard.meta) return;
+  const rows = cardIssuanceMembershipRowsFromMetadata(
+    cardIssuanceExistingCard.meta.baseMembership,
+    cardIssuanceExistingCard.meta.tiers,
+  );
+  if (rows.length === 0) return;
   const resolvedUt = cardIssuanceLoyaltyUpgradeTypeFromSources(
     cardIssuanceExistingCard.upgradeType,
     cardIssuanceExistingCard.meta,
@@ -16035,6 +16077,7 @@ useEffect(() => {
   if (rows[0]?.threshold) setCardIssuanceMinTopup(rows[0].threshold);
 }, [
   cardIssuanceExistingCard?.cardAddress,
+  cardIssuanceExistingCard?.meta?.baseMembership,
   cardIssuanceExistingCard?.meta?.tiers,
   cardIssuanceExistingCard?.meta,
   cardIssuanceExistingCard?.upgradeType,
@@ -16063,10 +16106,12 @@ useEffect(() => {
 useEffect(() => {
   if (!cardIssuanceExistingCard?.cardAddress || !cardIssuanceExistingCard.meta) return;
   const metaTiers = cardIssuanceExistingCard.meta.tiers;
-  const membershipFromMeta =
-    Array.isArray(metaTiers) &&
-    metaTiers.length > 0 &&
-    cardIssuanceRowsHaveMembershipFee(cardIssuanceTierRowsFromMetadata(metaTiers));
+  const membershipFromMeta = cardIssuanceRowsHaveMembershipFee(
+    cardIssuanceMembershipRowsFromMetadata(
+      cardIssuanceExistingCard.meta.baseMembership,
+      metaTiers,
+    ),
+  );
   const topupDefault = CARD_ISSUANCE_REWARDS_SETUP_AMOUNT_DEFAULT;
   const topupDefaultN = Number.parseInt(topupDefault, 10);
   const metaMin = cardIssuanceExistingCard.meta.minimumTopupCad;
@@ -16093,6 +16138,7 @@ useEffect(() => {
   cardIssuanceExistingCard?.cardAddress,
   cardIssuanceExistingCard?.meta?.minimumTopupCad,
   cardIssuanceExistingCard?.meta?.maximumTopupCad,
+  cardIssuanceExistingCard?.meta?.baseMembership,
   cardIssuanceExistingCard?.meta?.tiers,
   cardIssuanceMinTopupCurrencyFloor,
   cardIssuanceMaxTopupCurrencyCap,
@@ -23045,6 +23091,18 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
        : tierRuleForPublish === 'cumulative'
          ? 2
          : 0;
+     // A fee card's base plan is tier index 0 in the contract, but remains a
+     // card-level metadata object. Add-tier rows begin at index 1.
+     const baseMembershipForPublish = membershipFeeModeForPublish && tiersPayload?.[0]
+       ? {
+           membershipFeeE6: tiersPayload[0].membershipFeeE6,
+           membershipFee: tiersPayload[0].membershipFee,
+           membershipDurationKind: tiersPayload[0].membershipDurationKind,
+         }
+       : undefined;
+     const metadataTiersForPublish = membershipFeeModeForPublish
+       ? (tiersPayload?.slice(1) ?? [])
+       : tiersPayload;
 
      let res: { success: boolean; cardAddress?: string; hash?: string; error?: string };
      if (cardIssuanceExistingCard?.cardAddress) {
@@ -23058,6 +23116,21 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
          const chainOwner = await getCardOwner(cardAddrNorm);
          if (ethers.getAddress(chainOwner) !== signerAddr) {
            return publishFail('Tier updates require the card owner wallet. Switch to the owner wallet or re-issue the program card.');
+         }
+         // Existing paid cards predate atomic initCode schedules. Update the
+         // parallel fee table first, then replace its index-aligned tiers in
+         // the same owner-gateway flow. New cards always receive both inside
+         // their BeaconProxy initializer.
+         if (membershipFeeModeForPublish) {
+           const feeUpdate = await publishMembershipFeesViaExecuteForOwner({
+             cardAddress: cardAddrNorm,
+             ownerPrivateKey: pk,
+             feeE6: tiersPayload.map((tier) => tier.membershipFeeE6 ?? membershipFeeHumanToE6(tier.membershipFee)),
+             durationKind: tiersPayload.map((tier) => tier.membershipDurationKind ?? 0),
+           });
+           if (!feeUpdate.success) {
+             return publishFail(feeUpdate.error ?? 'Failed to update the membership fee schedule on-chain.');
+           }
          }
          const chainTiers = tiersPayload.map((t) => ({
            minUsdc6: t.minUsdc6,
@@ -23076,7 +23149,14 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
            nonce,
            ownerSignature,
            shareTokenMetadata: shareTokenMetadataForPublish as ShareTokenMetadata,
-           tiers: tiersPayload,
+           ...(baseMembershipForPublish && { baseMembership: baseMembershipForPublish }),
+           // An empty higher-tier array is meaningful for fee cards: it clears
+           // a prior Add-tier schedule while preserving baseMembership.
+           ...(membershipFeeModeForPublish
+             ? { tiers: metadataTiersForPublish }
+             : metadataTiersForPublish && metadataTiersForPublish.length > 0
+               ? { tiers: metadataTiersForPublish }
+               : {}),
            ...(tierRuleUpgradeForPublish != null ? { upgradeType: tierRuleUpgradeForPublish } : {}),
          });
        } else {
@@ -23084,7 +23164,12 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
              cardAddress: cardIssuanceExistingCard.cardAddress,
              shareTokenMetadata: shareTokenMetadataForPublish as ShareTokenMetadata,
              // metadataOnly / chrome-only path must still replace tiers (image / imageFit / color).
-             ...(tiersPayload && tiersPayload.length > 0 ? { tiers: tiersPayload } : {}),
+             ...(baseMembershipForPublish && { baseMembership: baseMembershipForPublish }),
+             ...(membershipFeeModeForPublish
+               ? { tiers: metadataTiersForPublish }
+               : metadataTiersForPublish && metadataTiersForPublish.length > 0
+                 ? { tiers: metadataTiersForPublish }
+                 : {}),
              ...(tierRuleUpgradeForPublish != null ? { upgradeType: tierRuleUpgradeForPublish } : {}),
            });
        }
@@ -23095,57 +23180,13 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
            unitPriceHuman: '1',
            ...(tierRuleUpgradeForPublish != null ? { upgradeType: tierRuleUpgradeForPublish } : {}),
            shareTokenMetadata: shareTokenMetadataForPublish as ShareTokenMetadata,
-           ...(tiersPayload && tiersPayload.length > 0 ? { tiers: tiersPayload } : {}),
+           ...(baseMembershipForPublish && { baseMembership: baseMembershipForPublish }),
+           ...(membershipFeeModeForPublish
+             ? { tiers: metadataTiersForPublish }
+             : metadataTiersForPublish && metadataTiersForPublish.length > 0
+               ? { tiers: metadataTiersForPublish }
+               : {}),
          });
-       if (
-         res.success &&
-         res.cardAddress &&
-         !membershipFeeModeForPublish &&
-         tiersPayload &&
-         tiersPayload.length > 0 &&
-         !opts?.metadataOnly
-       ) {
-         const pk = getSessionPrivateKeyArmor() ?? profiles?.[0]?.privateKeyArmor;
-         if (!pk) {
-           return publishFail(
-             'Card was created, but on-chain tiers failed to apply. Unlock your wallet, open the program, and save tiers again.'
-           );
-         }
-         const cardAddrNorm = ethers.getAddress(res.cardAddress);
-         const signerAddr = ethers.getAddress(new ethers.Wallet(pk).address);
-         const chainOwner = await getCardOwner(cardAddrNorm);
-         if (ethers.getAddress(chainOwner) !== signerAddr) {
-           return publishFail(
-             'Card was created, but on-chain tiers failed to apply. Switch to the owner wallet, open the program, and save tiers again.'
-           );
-         }
-         const chainTiers = tiersPayload.map((t) => ({
-           minUsdc6: t.minUsdc6,
-           attr: t.attr,
-           tierExpirySeconds: 0,
-           upgradeByBalance: Boolean(t.upgradeByBalance),
-         }));
-         const data = encodeSetTiers(chainTiers);
-         const deadline = Math.floor(Date.now() / 1000) + 3600;
-         const nonce = ethers.hexlify(ethers.randomBytes(32));
-         const ownerSignature = await signExecuteForOwner(pk, cardAddrNorm, data, deadline, nonce);
-         const tierRes = await updateBeamioCardTiers({
-           cardAddress: cardAddrNorm,
-           data,
-           deadline,
-           nonce,
-           ownerSignature,
-           shareTokenMetadata: shareTokenMetadataForPublish as ShareTokenMetadata,
-           tiers: tiersPayload,
-           ...(tierRuleUpgradeForPublish != null ? { upgradeType: tierRuleUpgradeForPublish } : {}),
-         });
-         if (!tierRes.success) {
-           return publishFail(
-             tierRes.error ??
-               'Card was created, but on-chain tiers failed to apply. Open the program and save tiers again.'
-           );
-         }
-       }
      }
 
      const resolvedPublishCardAddr =

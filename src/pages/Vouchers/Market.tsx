@@ -1574,6 +1574,24 @@ function discoverMixCssColorWithWhite(color: string, whiteAmount: number): strin
 const DISCOVER_MERCHANT_DETAIL_PAGE_FALLBACK_BG = '#f5f7f9'
 const DISCOVER_MERCHANT_DETAIL_PAGE_WHITE_MIX = 0.9
 
+/**
+ * Card-level Discover brand color from flattened `backgroundColor` or
+ * `shareTokenMetadata.backgroundColor` (Merchant OS Base card background).
+ */
+function parseDiscoverCardBrandColor(meta: Record<string, unknown> | null): string | null {
+	if (meta == null) return null
+	const share =
+		meta.shareTokenMetadata != null && typeof meta.shareTokenMetadata === 'object'
+			? (meta.shareTokenMetadata as Record<string, unknown>)
+			: null
+	const raw =
+		meta.backgroundColor ??
+		meta.background_color ??
+		share?.backgroundColor ??
+		share?.background_color
+	return typeof raw === 'string' && raw.trim() ? discoverSafeCssColor(raw) : null
+}
+
 function discoverResolveTierBackgroundImageUrl(raw: unknown): string | null {
 	if (raw == null) return null
 	const s = String(raw).trim()
@@ -4628,8 +4646,13 @@ function DiscoverMerchantDetailFullScreen({
 		() => parseDiscoverTier0PanelBackground(merchantMetadataRoot),
 		[merchantMetadataRoot],
 	)
-	/** Brand chrome from card settings (`tiers[0].backgroundColor`, then highest-tier fallback). */
+	/**
+	 * Page brand chrome: prefer card-level `backgroundColor` (Base pass background /
+	 * image mid-tone), then tiers[0], then highest-tier fallback.
+	 */
 	const merchantDetailBrandColor = useMemo(() => {
+		const cardLevel = parseDiscoverCardBrandColor(merchantMetadataRoot)
+		if (cardLevel) return cardLevel
 		if (prospectJoinPanelBackground.backgroundColor) return prospectJoinPanelBackground.backgroundColor
 		const { tierTopBackground } = parseDiscoverTiersFromMeta(merchantMetadataRoot)
 		return tierTopBackground ? discoverSafeCssColor(tierTopBackground) : null

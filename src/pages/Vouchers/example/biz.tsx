@@ -5953,7 +5953,15 @@ async function fetchBeamioUserCardTiersAndCurrencyFromChain(
   let membershipFeeCount: number | null = null
   try {
     const [feeE6] = await c.membershipFees()
-    membershipFeeCount = Array.isArray(feeE6) ? feeE6.length : null
+    membershipFeeCount = Array.isArray(feeE6)
+      ? feeE6.reduce((count, fee) => {
+          try {
+            return BigInt(fee.toString()) > 0n ? count + 1 : count
+          } catch {
+            return count
+          }
+        }, 0)
+      : null
   } catch {
     // An old implementation may not expose the membership fee view. Unknown
     // is deliberately preserved so migration audit cannot treat it as zero.
@@ -15321,9 +15329,10 @@ const loadProgramReferrerList = useCallback(async () => {
    ketNoCardProgramsEligibleRef.current = ketNoCardProgramsEligible;
  }, [ketNoCardProgramsEligible]);
 
+ // Existing merchant cards must be audited as soon as Merchant OS Overview/Home
+ // is entered; the no-card Ket gate only applies to pre-issuance onboarding.
  const cardIssuanceProgramsOrBusinessActive =
-   isProgramAreaTab(activeTab) ||
-   (activeTab === 'Overview' && ketNoCardProgramsEligible);
+   isProgramAreaTab(activeTab) || activeTab === 'Overview';
 
  /** Card Setup / Discover preview — Ket Overview pre-issue, or legacy configure; never Program after first issue. */
  const cardIssuanceShowConfiguratorStudio = useMemo(() => {

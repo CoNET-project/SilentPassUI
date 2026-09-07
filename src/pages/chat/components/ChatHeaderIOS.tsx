@@ -16,9 +16,6 @@ export type searchResult = {
   
 }
 
-const getImg = (avatarSeed: string) =>
-  `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed).toString()}`
-
 const fmtAddr = (a = "") =>
   a && a !== ethers.ZeroAddress ? `${a.slice(0, 6)}…${a.slice(-4)}` : "—"
 
@@ -27,18 +24,18 @@ export function ChatHeaderIOS({
   onBack,
   onCenterClick,
   online,
-  avatarSrc
+  avatarSrc,
+  embedded = false,
 }: {
   beamioer?: searchResult
   onBack?: () => void
   onCenterClick?: () => void
   online: boolean
   avatarSrc: string
+  /** Merchant Messages pane: position relative to chat root, not the viewport. */
+  embedded?: boolean
 }) {
   const isUnknown = !beamioer || beamioer.username === "未知"
-
-
-
 
   const tagText = useMemo(() => {
     if (!beamioer) return ""
@@ -47,13 +44,19 @@ export function ChatHeaderIOS({
   }, [beamioer, isUnknown])
 
   return (
-    <div className="fixed top-0 left-0 right-0 z-[80] pointer-events-none">
-      <div className="pt-[calc(env(safe-area-inset-top)+4px)]">
+    <div
+      className={[
+        embedded ? "absolute top-0 left-0 right-0 z-[80]" : "fixed top-0 left-0 right-0 z-[80]",
+        "pointer-events-none",
+      ].join(" ")}
+    >
+      <div className={embedded ? "pt-1" : "pt-[calc(env(safe-area-inset-top)+4px)]"}>
         {/* Back：玻璃圆 */}
         <div className="px-4 h-14 flex items-center">
           <button
             type="button"
             onClick={onBack}
+            tabIndex={-1}
             className={[
               "pointer-events-auto",
               "h-11 w-11 rounded-full grid place-items-center",
@@ -62,13 +65,12 @@ export function ChatHeaderIOS({
               "shadow-[0_18px_38px_rgba(15,23,42,0.14)]",
               "active:scale-[0.98] transition"
             ].join(" ")}
-            aria-label="返回"
+            aria-label="Back"
           >
             <ChevronLeft className="w-6 h-6 text-slate-900" strokeWidth={2.6} />
           </button>
         </div>
 
-        {/* ✅ 头像（无外圈） + 下方紧凑胶囊（同一中线居中） */}
 			<div className="relative -mt-[54px] flex justify-center">
 			<motion.div
 				initial={{ opacity: 0, y: -6, scale: 0.985 }}
@@ -76,7 +78,6 @@ export function ChatHeaderIOS({
 				transition={{ type: "spring", stiffness: 520, damping: 42 }}
 				className="pointer-events-none"
 			>
-				{/* ✅ 关键：用 flex-col items-center，保证头像与胶囊同一中线居中 */}
 				<div className="flex flex-col items-center">
 					<div className="relative z-10">
 						{beamioer?.address ? (
@@ -102,7 +103,6 @@ export function ChatHeaderIOS({
 							/>
 						)}
 
-						{/* ✅ Online 状态小绿点 */}
 						{online && (
 							<span
 							className="
@@ -118,15 +118,15 @@ export function ChatHeaderIOS({
 						)}
 					</div>
 
-					{/* ✅ 紧凑胶囊：更像 iOS Messages */}
 					<button
 						type="button"
 						onClick={onCenterClick}
+						tabIndex={-1}
 						className={[
 							"pointer-events-auto",
-							"-mt-1",                 // ✅ 更贴近头像（紧凑）
+							"-mt-1",
 							"inline-flex items-center gap-1",
-							"px-1 py-1",              // ✅ 更紧凑
+							"px-1 py-1",
 							"rounded-full",
 							"bg-white/60 backdrop-blur-xl",
 							"ring-1 ring-white/70",
@@ -137,7 +137,7 @@ export function ChatHeaderIOS({
 					>
 						<span
 							className="text-[15px] font-semibold"
-							style={{ color: "rgba(22,82,240,0.6)" }} // ✅ Beamio Blue 60% 透明
+							style={{ color: "rgba(22,82,240,0.6)" }}
 							>
 							@{tagText}
 						</span>
@@ -145,7 +145,7 @@ export function ChatHeaderIOS({
 						<ChevronRight
 							className="w-4 h-4"
 							strokeWidth={2.6}
-							style={{ color: "rgba(22,82,240,0.6)" }} // ✅ 同色 60%
+							style={{ color: "rgba(22,82,240,0.6)" }}
 						/>
 					</button>
 				</div>

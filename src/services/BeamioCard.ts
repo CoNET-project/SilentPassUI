@@ -1570,6 +1570,8 @@ export type CreateBeamioCardParams = {
 	/** When true, card is deployed with points transfer whitelist enforcement enabled */
 	transferWhitelistEnabled?: boolean
 	upgradeType?: 0 | 1 | 2
+	/** Canonical card-level acquisition mode: 0 top-up, 1 direct membership purchase, 2 charge. */
+	tierQualificationMode?: 0 | 1 | 2
 	/** ERC-1155 shareTokenMetadata，用于创建 0x{owner}.json */
 	shareTokenMetadata?: ShareTokenMetadata
 	/** Paid-membership base plan. It is canonical tier index 0, not an Add-tier row. */
@@ -1594,6 +1596,8 @@ export type UpdateBeamioCardShareMetadataParams = {
 	} | null
 	tiers?: TierMetadata[]
 	upgradeType?: 0 | 1 | 2
+	/** Canonical card-level acquisition mode: 0 top-up, 1 direct purchase, 2 charge. */
+	tierQualificationMode?: 0 | 1 | 2
 	transferWhitelistEnabled?: boolean
 }
 
@@ -1742,6 +1746,11 @@ export const updateBeamioCardShareMetadata = async (
 			...(params.tiers && params.tiers.length > 0 && { tiers: params.tiers }),
 			...(params.upgradeType === 0 || params.upgradeType === 1 || params.upgradeType === 2
 				? { upgradeType: params.upgradeType }
+				: {}),
+			...(params.tierQualificationMode === 0 ||
+			params.tierQualificationMode === 1 ||
+			params.tierQualificationMode === 2
+				? { tierQualificationMode: params.tierQualificationMode }
 				: {}),
 			...(typeof params.transferWhitelistEnabled === 'boolean' && {
 				transferWhitelistEnabled: params.transferWhitelistEnabled,

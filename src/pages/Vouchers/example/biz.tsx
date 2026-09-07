@@ -657,6 +657,13 @@ const getImg = (avatarSeed: string | undefined) => getAvatarImgUrl(avatarSeed);
 
 const MOBILE_FLOATING_BAR_THRESHOLD = 40;
 const MOBILE_FLOATING_BAR_FADE_RANGE = 100;
+/** Fixed bar: `top` + `h-[3.9375rem]`. Spacer must clear this plus fade threshold so content does not slide under an still-opaque bar. */
+const MOBILE_FLOATING_BAR_HEIGHT_REM = 3.9375;
+const MOBILE_FLOATING_BAR_TOP_MIN_REM = 0.75;
+/** Scroll-top spacer under the fixed mobile menu/search/@tag capsule (`lg:hidden`). */
+const MOBILE_FLOATING_BAR_SCROLL_CLEARANCE_STYLE = {
+  minHeight: `calc(max(${MOBILE_FLOATING_BAR_TOP_MIN_REM}rem, env(safe-area-inset-top, 0px)) + ${MOBILE_FLOATING_BAR_HEIGHT_REM}rem + ${MOBILE_FLOATING_BAR_THRESHOLD}px + 0.75rem)`,
+} as const;
 
 /** Sticky card previews (Card Setup Discover + Programs LIVE CARD): shrink toward 1/4 as the main pane scrolls down. */
 const CARD_SETUP_DISCOVER_PREVIEW_SHRINK_THRESHOLD = 0;
@@ -23091,6 +23098,11 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
        : tierRuleForPublish === 'cumulative'
          ? 2
          : 0;
+     const tierQualificationModeForPublish: 0 | 1 | 2 = membershipFeeModeForPublish
+       ? 1
+       : tierRuleUpgradeForPublish === 2
+         ? 2
+         : 0;
      // A fee card's base plan is tier index 0 in the contract, but remains a
      // card-level metadata object. Add-tier rows begin at index 1.
      const baseMembershipForPublish = membershipFeeModeForPublish && tiersPayload?.[0]
@@ -23179,6 +23191,7 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
            currency: CARD_ISSUANCE_BEAMIO_CURRENCY,
            unitPriceHuman: '1',
            ...(tierRuleUpgradeForPublish != null ? { upgradeType: tierRuleUpgradeForPublish } : {}),
+           tierQualificationMode: tierQualificationModeForPublish,
            shareTokenMetadata: shareTokenMetadataForPublish as ShareTokenMetadata,
            ...(baseMembershipForPublish && { baseMembership: baseMembershipForPublish }),
            ...(membershipFeeModeForPublish
@@ -32519,7 +32532,8 @@ const programsMobileTopNavVisible =
  normalizeProgramTab(activeTab) === PROGRAM_TAB_BUSINESS ||
  (showBizFirstMembershipOnboarding && !isProgramAreaTab(activeTab)) ||
  settingsSecurityBackupOpen ||
- (!mediumMenuPageUsesGlobalOnly && useTerminalsMarketLayout && activeTab === 'Staff');
+ (!mediumMenuPageUsesGlobalOnly && useTerminalsMarketLayout && activeTab === 'Staff') ||
+ (activeTab === 'Messages' && Boolean(messagesChatData || messagesComposeOpen));
  /** The mobile/tablet global search floating bar (menu + search + @tag, rendered below `lg`) is showing. When it is, the desktop sticky header must not also appear in the medium (md) range, otherwise the header stacks directly under the global search control. */
  const mobileGlobalSearchBarVisible = !hideMobileFloatingBar && !programsMobileTopNavVisible;
 /** Wallet tab Total Estimated Value: sum trusted Base + CoNET USDC (EOA + AA), then display by card currency. */
@@ -34741,19 +34755,19 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
        <div
          className="pointer-events-none fixed inset-x-0 z-[50] px-3 lg:hidden"
           style={{
-            top: 'max(0.75rem, env(safe-area-inset-top, 0px))',
+            top: `max(${MOBILE_FLOATING_BAR_TOP_MIN_REM}rem, env(safe-area-inset-top, 0px))`,
             opacity: mobileFloatingBarOpacity,
           }}
         >
           <div className="relative mx-auto max-w-7xl">
             <div
-              className="flex items-center gap-2 rounded-full border border-slate-200/80 bg-white/92 px-2.5 py-2 shadow-[0_12px_36px_rgba(15,23,42,0.12)] backdrop-blur-xl transition-opacity duration-300"
+              className={`@container flex h-[${MOBILE_FLOATING_BAR_HEIGHT_REM}rem] items-center gap-2 rounded-full border border-slate-200/80 bg-white/92 px-2.5 shadow-[0_12px_36px_rgba(15,23,42,0.12)] backdrop-blur-xl transition-opacity duration-300 [container-type:size]`}
               style={{ pointerEvents: mobileFloatingBarOpacity < 0.05 ? 'none' : 'auto' }}
             >
               <button
                 type="button"
                 onClick={() => setIsMobileMenuOpen(true)}
-                className="shrink-0 rounded-full p-2.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
+                className="flex h-[90%] shrink-0 items-center justify-center rounded-full px-2.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
                 aria-label={tu('open_menu')}
               >
                 <Menu size={22} />
@@ -34761,8 +34775,14 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
               {activeTab === 'Transactions' ? (
                 <div className="min-w-0 flex-1" aria-hidden />
               ) : activeTab === 'Messages' ? (
-                <div className="flex min-w-0 flex-1 items-center rounded-full bg-slate-50/90 px-4 py-2.5">
-                  <Search size={18} className="shrink-0 text-slate-400" strokeWidth={2} aria-hidden />
+                <div
+                  className="flex h-[90%] min-w-0 flex-1 items-center gap-2 rounded-full bg-slate-50/90 px-4 text-[length:50cqh] leading-none"
+                >
+                  <Search
+                    className="size-[0.92em] shrink-0 text-slate-400"
+                    strokeWidth={2.25}
+                    aria-hidden
+                  />
                   <input
                     id="messages-beamio-tag-search"
                     type="search"
@@ -34786,19 +34806,24 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                         (e.target as HTMLInputElement).blur();
                       }
                     }}
-                    placeholder={tu('search_beamio_tags_or_paste_address')}
                     aria-label={tu('search_beamio_tags_or_paste_address')}
                     autoComplete="off"
                     enterKeyHint="search"
-                    className={`min-w-0 flex-1 border-0 bg-transparent pl-3 pr-0 text-sm font-medium text-slate-700 placeholder:text-slate-400 focus:ring-0 ${bizFocusRingClass}`}
+                    className="h-full min-w-0 flex-1 border-0 bg-transparent p-0 text-[1em] font-medium leading-none text-slate-700 outline-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0"
                   />
                   {messagesNewLoading ? (
-                    <Loader2 className="ml-1 size-4 shrink-0 animate-spin text-slate-400" aria-hidden />
+                    <Loader2 className="size-[0.92em] shrink-0 animate-spin text-slate-400" aria-hidden />
                   ) : null}
                 </div>
               ) : (
-                <div className="flex min-w-0 flex-1 items-center rounded-full bg-slate-50/90 px-4 py-2.5">
-                  <Search size={18} className="shrink-0 text-slate-400" strokeWidth={2} aria-hidden />
+                <div
+                  className="flex h-[90%] min-w-0 flex-1 items-center gap-2 rounded-full bg-slate-50/90 px-4 text-[length:50cqh] leading-none"
+                >
+                  <Search
+                    className="size-[0.92em] shrink-0 text-slate-400"
+                    strokeWidth={2.25}
+                    aria-hidden
+                  />
                   <input
                     type="search"
                     readOnly
@@ -34807,16 +34832,15 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                       e.preventDefault();
                       openMobileGlobalSearch();
                     }}
-                    placeholder={tu('search_transactions_or_members')}
                     aria-label={tu('search_transactions_or_members')}
-                    className="min-w-0 flex-1 cursor-pointer border-0 bg-transparent pl-3 pr-0 text-sm font-medium text-slate-700 placeholder:text-slate-400 focus:ring-0"
+                    className="h-full min-w-0 flex-1 cursor-pointer border-0 bg-transparent p-0 text-[1em] font-medium leading-none text-slate-700 outline-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0"
                   />
                 </div>
               )}
               <button
                 type="button"
                 onClick={() => handleTabChange('Settings')}
-                className={`flex max-w-[42%] shrink-0 items-center gap-2 rounded-full bg-slate-50/90 pl-3 pr-1.5 py-1.5 text-left transition-colors hover:bg-slate-100 ${bizFocusRingClass}`}
+                className={`flex h-[90%] max-w-[42%] shrink-0 items-center gap-2 rounded-full bg-slate-50/90 pl-3 pr-1.5 text-left transition-colors hover:bg-slate-100 ${bizFocusRingClass}`}
                 aria-label={tu('open_settings')}
               >
                 <span className="truncate text-xs font-bold text-slate-600">@{mobileHeaderBeamioTag}</span>
@@ -35110,13 +35134,14 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
       <div
         ref={setMobileScrollContainerNode}
         onScroll={handleMobileContentScroll}
-        className={`flex-1 min-h-0 relative overflow-y-auto overscroll-y-contain p-2 sm:p-4`}
+        className={`flex-1 min-h-0 relative overscroll-y-contain ${
+          activeTab === 'Messages' && (messagesChatData || messagesComposeOpen)
+            ? 'overflow-hidden p-0'
+            : 'overflow-y-auto p-2 sm:p-4'
+        }`}
       >
-        {!hideMobileFloatingBar && !programsMobileTopNavVisible ? (
-          <div
-            className="shrink-0 lg:hidden"
-            style={{ minHeight: 'calc(max(0.75rem, env(safe-area-inset-top, 0px)) + 4.75rem)' }}
-          />
+        {mobileGlobalSearchBarVisible ? (
+          <div className="shrink-0 lg:hidden" style={MOBILE_FLOATING_BAR_SCROLL_CLEARANCE_STYLE} aria-hidden />
         ) : null}
         {activeTab === 'Overview' && profileAwaitingIssuanceGate ? (
           <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 py-16">
@@ -35990,7 +36015,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                 ) : null}
                 <div className="flex gap-2 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                   {([
-                    { id: 'all' as const, label: '全部' },
+                    { id: 'all' as const, label: tu('all') },
                     { id: 'topup' as const, label: 'Top-up' },
                     { id: 'charge' as const, label: 'Charges' },
                     { id: 'coupons' as const, label: 'Coupons' },
@@ -38532,8 +38557,15 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
              })()}
            />
          ) : activeTab === 'Messages' ? (
-           <div className="mx-auto w-full max-w-7xl animate-in pb-10 fade-in duration-300 lg:pb-10">
-             <div className="mb-5 flex flex-col gap-3 rounded-2xl border border-slate-200/80 bg-white/90 px-4 py-3 shadow-sm backdrop-blur-md sm:px-5">
+           <div
+             className={
+               messagesChatData || messagesComposeOpen
+                 ? 'mx-auto flex h-full min-h-0 w-full max-w-7xl flex-col animate-in fade-in duration-300 lg:pb-10'
+                 : 'mx-auto w-full max-w-7xl animate-in pb-10 fade-in duration-300 lg:pb-10'
+             }
+           >
+             {/* Desktop only: inbox search + Live Support + New message. Mobile uses the fixed floating bar (tag search + @tag) — do not duplicate that chrome here. */}
+             <div className={`mb-5 hidden flex-col gap-3 rounded-2xl border border-slate-200/80 bg-white/90 px-4 py-3 shadow-sm backdrop-blur-md sm:px-5 lg:flex${messagesChatData || messagesComposeOpen ? ' lg:mb-5' : ''}`}>
                <div className="flex items-center gap-3">
                  <div className="relative min-w-0 flex-1">
                    <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" strokeWidth={2} aria-hidden />
@@ -38575,20 +38607,21 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                  </button>
                </div>
              </div>
-             <div className="grid grid-cols-1 gap-8 lg:grid-cols-12">
-               <div className="space-y-6 lg:col-span-4">
-                 <div className="relative group">
-                   <Search className="pointer-events-none absolute left-5 top-1/2 size-5 -translate-y-1/2 text-slate-400 transition-colors group-focus-within:text-[#1562f0]" strokeWidth={2} />
-                   <input
-                     type="search"
-                     value={messagesInboxSearch}
-                     onChange={(e) => setMessagesInboxSearch(e.target.value)}
-                     placeholder="Search BeamioTags..."
-                     autoComplete="off"
-                     className={`w-full rounded-xl border-0 bg-slate-100 py-5 pl-14 pr-6 text-sm font-medium text-slate-900 transition-all placeholder:text-slate-400 focus:bg-white focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass}`}
-                   />
-                 </div>
-                 <div className="flex gap-2 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+             <div
+               className={`grid grid-cols-1 lg:grid-cols-12 ${
+                 messagesChatData || messagesComposeOpen
+                   ? 'min-h-0 flex-1 gap-0 lg:gap-8'
+                   : 'gap-8'
+               }`}
+             >
+               {/* Mobile: hide inbox when a thread / compose is open so Chat fills the pane. Desktop keeps both columns. */}
+               <div
+                 className={`space-y-6 lg:col-span-4${
+                   messagesChatData || messagesComposeOpen ? ' hidden lg:block' : ''
+                 }`}
+               >
+                 <div className="flex items-center gap-2">
+                   <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                    {(
                      [
                        { id: 'all' as const, label: tu('all_chats') },
@@ -38610,6 +38643,20 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                        {label}
                      </button>
                    ))}
+                   </div>
+                   <button
+                     type="button"
+                     onClick={() => {
+                       setMessagesComposeOpen(true);
+                       setMessagesChatData(undefined);
+                       setMessagesNewError(null);
+                     }}
+                     className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-full bg-[#1562f0] px-3 py-2 text-xs font-medium text-white shadow-sm shadow-[#1562f0]/20 transition hover:bg-[#0b4cd4] active:scale-95 lg:hidden"
+                     aria-label="New message"
+                   >
+                     <MessageSquarePlus className="size-3.5" strokeWidth={2.2} aria-hidden />
+                     New
+                   </button>
                  </div>
                  <div className="max-h-[min(70vh,700px)] space-y-4 overflow-y-auto pr-1 scrollbar-hide">
                    <ChatList
@@ -38628,9 +38675,17 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                  </div>
                </div>
 
-               <div className="flex min-h-[min(70vh,700px)] flex-col overflow-hidden rounded-xl border border-slate-100 bg-white shadow-xl shadow-slate-900/5 lg:col-span-8">
+               <div
+                 className={`flex-col overflow-hidden lg:col-span-8 ${
+                   messagesChatData
+                     ? 'flex min-h-0 flex-1 rounded-none border-0 bg-[#F2F2F7] shadow-none lg:min-h-[min(70vh,700px)] lg:rounded-xl lg:border lg:border-slate-100 lg:bg-white lg:shadow-xl lg:shadow-slate-900/5'
+                     : messagesComposeOpen
+                       ? 'flex min-h-0 flex-1 rounded-none border-0 bg-white shadow-none lg:min-h-[min(70vh,700px)] lg:rounded-xl lg:border lg:border-slate-100 lg:shadow-xl lg:shadow-slate-900/5'
+                       : 'hidden min-h-[min(70vh,700px)] rounded-xl border border-slate-100 bg-white shadow-xl shadow-slate-900/5 lg:flex'
+                 }`}
+               >
                  {messagesComposeOpen ? (
-                   <div className="flex flex-1 flex-col gap-4 p-6 sm:p-8">
+                   <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-6 sm:p-8">
                      <div>
                        <h3 className="text-lg font-bold text-slate-900">New message</h3>
                        <p className="mt-1 text-sm text-slate-500">Search by Beamio tag or wallet address.</p>

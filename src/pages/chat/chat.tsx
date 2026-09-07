@@ -6,8 +6,6 @@ import { motion, AnimatePresence } from "framer-motion"
 import { checkSign, emitReactionAsNewMessage, createMembershipActivatedCard } from '@/services/chat' 
 import {
   ArrowUp,
-  ChevronLeft,
-  Info,
   Video,
   Check,
   Plus,
@@ -23,7 +21,6 @@ import {
   Copy,
   Loader2,
   CheckCircle2,
-  ShieldCheck,
   ExternalLink,
   X
 } from "lucide-react"
@@ -1109,99 +1106,22 @@ export default function Chat({ onBack, chatData, privateKey, layout = 'fullscree
 	}, [text])
 
 	const isEmbedded = layout === 'embedded'
-	const embeddedHeaderTitle = useMemo(() => {
-		const b = fromBeamio
-		const a = (chatData.address || '').trim()
-		const short = a.length > 10 ? `${a.slice(0, 6)}…${a.slice(-4)}` : a
-		if (!b) return short || '聊天'
-		if (b.username && b.username !== '未知') return `@${b.username}`
-		return short || '聊天'
-	}, [fromBeamio, chatData.address])
 
   return (
 		<div
 			className={
 				isEmbedded
-					? 'relative flex h-full min-h-0 flex-col overflow-hidden bg-slate-50'
+					? 'relative flex h-full min-h-0 flex-col overflow-hidden bg-[#F2F2F7]'
 					: 'fixed inset-0 bg-[#F2F2F7]'
 			}
 		>
-			{isEmbedded ? (
-				<div className="shrink-0 border-b border-slate-200/80 bg-white/90 px-4 py-3 backdrop-blur-xl">
-					<div className="flex items-center justify-between gap-3">
-					<div className="flex min-w-0 flex-1 items-center gap-3">
-						<button
-							type="button"
-							onClick={onBack}
-							className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-slate-700 transition hover:bg-slate-100"
-							aria-label="Back"
-						>
-							<ChevronLeft className="h-6 w-6" strokeWidth={2.4} />
-						</button>
-						{userImg ? (
-							<IpfsImg src={userImg} alt="" className="h-11 w-11 shrink-0 rounded-full object-cover ring-1 ring-black/5" />
-						) : (
-							<div className="h-11 w-11 shrink-0 rounded-full bg-slate-200 ring-1 ring-black/5" />
-						)}
-						<div className="min-w-0">
-							<h3 className="truncate font-extrabold text-slate-900">{embeddedHeaderTitle}</h3>
-							<div className="mt-0.5 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-500">
-								{chatData.chatData.online ? (
-									<>
-										<span className="h-2 w-2 rounded-full bg-emerald-500" />
-										<span>Direct Member Channel · Online</span>
-									</>
-								) : (
-									<span>Offline</span>
-								)}
-							</div>
-						</div>
-					</div>
-					<div className="flex shrink-0 gap-1">
-						<button type="button" className="inline-flex items-center gap-1 rounded-lg border border-[#bcd6ff] bg-[#eef5ff] px-2.5 py-1.5 text-[11px] font-semibold text-[#093bb0] transition hover:bg-[#d9e8ff]" aria-label="Toggle member profile">
-							<Info className="h-3.5 w-3.5" strokeWidth={2} />
-							<span>Profile</span>
-						</button>
-						<button type="button" className="rounded-full p-2.5 text-slate-500 transition hover:bg-slate-100" aria-label="Info">
-							<MoreHorizontal className="h-5 w-5" strokeWidth={2} />
-						</button>
-					</div>
-					</div>
-					<div className="mt-3 rounded-xl border border-slate-200/80 bg-slate-50/90 p-3">
-						<div className="flex items-center justify-between">
-							<span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-								<ShieldCheck className="h-3 w-3 text-[#1562f0]" strokeWidth={2} />
-								Contextual Profile Radar
-							</span>
-							<span className="text-[10px] font-medium text-slate-500">Last visit: <strong className="text-slate-700">recently</strong></span>
-						</div>
-						<div className="mt-2 grid grid-cols-3 gap-2">
-							<div className="rounded-lg border border-slate-200/70 bg-white p-2 shadow-sm">
-								<p className="text-[10px] font-medium text-slate-400">Store Credits</p>
-								<p className="mt-0.5 text-xs font-bold text-slate-900">Available</p>
-								<p className="text-[9px] font-medium text-emerald-600">Fiat 1:1 Pegged</p>
-							</div>
-							<div className="rounded-lg border border-slate-200/70 bg-white p-2 shadow-sm">
-								<p className="text-[10px] font-medium text-slate-400">Accum. Points</p>
-								<p className="mt-0.5 text-xs font-bold text-slate-900">Member balance</p>
-								<p className="text-[9px] font-medium text-[#1562f0]">Verified on-chain</p>
-							</div>
-							<div className="rounded-lg border border-slate-200/70 bg-white p-2 shadow-sm">
-								<p className="text-[10px] font-medium text-slate-400">M2M Purchases</p>
-								<p className="mt-0.5 text-xs font-bold text-slate-900">Active</p>
-								<p className="text-[9px] font-medium text-slate-500">Cross-store</p>
-							</div>
-						</div>
-					</div>
-				</div>
-			) : (
-				<ChatHeaderIOS
-					beamioer={fromBeamio}
-					onBack={onBack}
-					online={chatData.chatData.online}
-					avatarSrc={userImg}
-				/>
-			)}
+			<ChatHeaderIOS
+				beamioer={fromBeamio}
+				onBack={onBack}
+				online={chatData.chatData.online}
+				avatarSrc={userImg}
+				embedded={isEmbedded}
+			/>
 
 			<div className={isEmbedded ? 'relative flex min-h-0 min-w-0 flex-1 flex-col' : 'contents'}>
 			{/* iOS 风格 Message Reaction 菜单：仅对收到的消息显示，在 message 上方，内容可左右滚动；一点展开/收缩动画 */}
@@ -1269,35 +1189,19 @@ export default function Chat({ onBack, chatData, privateKey, layout = 'fullscree
 			<div
 				className={
 					isEmbedded
-						? 'relative flex min-h-0 flex-1 flex-col bg-slate-50/80'
+						? 'relative flex min-h-0 flex-1 flex-col bg-[#F2F2F7]'
 						: ['absolute inset-0', 'bg-[#F2F2F7]'].join(' ')
 				}
 			>
-			{isEmbedded ? (
-				<div className="relative z-[11] flex justify-center px-3 pt-3">
-					<div className="inline-flex items-center gap-2 rounded-full border border-emerald-200/80 bg-emerald-50/90 px-3.5 py-1.5 text-xs font-medium text-emerald-800 shadow-sm">
-						<CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" strokeWidth={2.2} />
-						<span className="font-semibold">End-to-End Encrypted Inbox</span>
-						<span className="text-emerald-400">•</span>
-						<span className="text-[10px] text-emerald-700">Chat securely with your verified members</span>
-					</div>
-				</div>
-			) : null}
 			{/* 顶部白色渐变蒙版 */}
 			<div
-				className={
-					(isEmbedded ? 'h-6' : 'h-[10rem]') +
-					' pointer-events-none absolute left-0 right-0 top-0 z-10'
-				}
+				className="pointer-events-none absolute left-0 right-0 top-0 z-10 h-[10rem]"
 				style={{ background: "linear-gradient(to bottom, rgba(242,242,247,1) 0%, rgba(242,242,247,0) 100%)" }}
 				aria-hidden
 			/>
 			{/* 底部白色渐变蒙版 */}
 			<div
-				className={
-					(isEmbedded ? 'h-8' : 'h-[10rem]') +
-					' pointer-events-none absolute bottom-0 left-0 right-0 z-10'
-				}
+				className="pointer-events-none absolute bottom-0 left-0 right-0 z-10 h-[10rem]"
 				style={{ background: "linear-gradient(to top, rgba(242,242,247,1) 0%, rgba(242,242,247,0) 100%)" }}
 				aria-hidden
 			/>
@@ -1314,7 +1218,7 @@ export default function Chat({ onBack, chatData, privateKey, layout = 'fullscree
 			>
 				<div className="flex min-h-full flex-col justify-end">
 				<div className="mx-auto w-full max-w-[820px]">
-					<div aria-hidden className={isEmbedded ? 'h-3' : 'h-[96px]'} />
+					<div aria-hidden className="h-[96px]" />
 					<AnimatePresence initial={false}>
 							{sections.map(sec => (
 									<div key={sec.key}>
@@ -1673,7 +1577,7 @@ export default function Chat({ onBack, chatData, privateKey, layout = 'fullscree
 							</AnimatePresence>
 
 					{/* ✅ 关键：底部 spacer */}
-					<div aria-hidden className={isEmbedded ? 'h-4' : 'h-[96px]'} />
+					<div aria-hidden className="h-[96px]" />
 				</div>
 				</div>
 			</div>
@@ -1683,27 +1587,13 @@ export default function Chat({ onBack, chatData, privateKey, layout = 'fullscree
 			<div
 				className={
 					isEmbedded
-						? 'z-20 shrink-0 border-t border-slate-200/80 bg-white/95 pb-2 pt-2 backdrop-blur-md'
+						? 'absolute bottom-0 left-0 right-0 z-50 pb-[env(safe-area-inset-bottom)]'
 						: ['fixed left-0 right-0 bottom-0 z-50', 'pb-[env(safe-area-inset-bottom)]'].join(' ')
 				}
 			>
 				<div className={["bg-white/0"].join(" ")}>
 					<div className="relative">
 						<div className="mx-auto w-full max-w-[820px] px-3 pt-3 pb-4">
-						{isEmbedded ? (
-							<div className="mb-2 flex items-center gap-1.5 overflow-x-auto py-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-								{[
-									['🎁', 'Send Voucher'],
-									['★', 'Grant Points'],
-									['💳', 'Issue Credits / Refund'],
-									['⚡', 'Request USDC · T+0'],
-								].map(([icon, label]) => (
-									<button key={label} type="button" className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[#bcd6ff] bg-[#eef5ff] px-2.5 py-1 text-[11px] font-semibold text-[#093bb0] transition hover:bg-[#d9e8ff]">
-										<span>{icon}</span><span>{label}</span>
-									</button>
-								))}
-							</div>
-						) : null}
 						<div className="flex items-center gap-2">
 							<PlusActionMenu
 								open={plusOpen}
@@ -1744,11 +1634,7 @@ export default function Chat({ onBack, chatData, privateKey, layout = 'fullscree
 									onChange={e => hasRoute && setText(e.target.value)}
 									onKeyDown={hasRoute ? onKeyDown : undefined}
 									placeholder={
-										hasRoute
-											? isEmbedded
-												? "Type a secure message or select an asset action..."
-												: "iMessage…"
-											: "No route – message may not be delivered"
+										hasRoute ? "iMessage…" : "No route – message may not be delivered"
 									}
 									readOnly={!hasRoute}
 									rows={1}

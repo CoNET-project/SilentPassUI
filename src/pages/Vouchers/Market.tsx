@@ -678,33 +678,209 @@ function DiscoverMerchantProspectJoinPanel({
 	const gradientSource = solidColor || '#1562f0'
 	const tierTheme = !hasImage ? cardTierGradientTheme(gradientSource) : null
 	const gradientCss = !hasImage ? cardTierGradientCss(gradientSource) : null
-	const onDarkChrome = hasImage || Boolean(tierTheme?.isDarkStart)
+	/**
+	 * With a background image: image is its own hero card (dark chrome).
+	 * Offers / CTA / footer sit below on the light panel shell — not overlaid.
+	 */
+	const shellOnDark = !hasImage && Boolean(tierTheme?.isDarkStart)
 	const accentForCta =
-		solidColor && tierTheme?.isDarkStart ? solidColor : '#1562f0'
-	const eyebrowColor = hasImage
-		? '#E8D5B5'
-		: tierTheme?.tertiary ?? '#8B7D6B'
-	const titleColor = hasImage ? '#ffffff' : tierTheme?.primary ?? '#0F172A'
-	const bodyColor = hasImage
-		? 'rgba(255,255,255,0.8)'
-		: tierTheme?.secondary ?? '#666666'
-	const sparkleColor = hasImage
-		? '#D4B483'
-		: tierTheme?.isDarkStart
-			? '#E8D5B5'
-			: '#B8956A'
-	const badgeClass = onDarkChrome
+		!hasImage && solidColor && tierTheme?.isDarkStart ? solidColor : '#1562f0'
+	const heroEyebrowColor = '#E8D5B5'
+	const heroTitleColor = '#ffffff'
+	const heroBodyColor = 'rgba(255,255,255,0.8)'
+	const heroSparkleColor = '#D4B483'
+	const shellEyebrowColor = tierTheme?.tertiary ?? '#8B7D6B'
+	const shellTitleColor = tierTheme?.primary ?? '#0F172A'
+	const shellBodyColor = tierTheme?.secondary ?? '#666666'
+	const shellSparkleColor = tierTheme?.isDarkStart ? '#E8D5B5' : '#B8956A'
+	const eyebrowColor = hasImage ? heroEyebrowColor : shellEyebrowColor
+	const titleColor = hasImage ? heroTitleColor : shellTitleColor
+	const bodyColor = hasImage ? heroBodyColor : shellBodyColor
+	const sparkleColor = hasImage ? heroSparkleColor : shellSparkleColor
+	const badgeClass = hasImage || shellOnDark
 		? 'inline-flex items-center gap-1.5 rounded-full bg-[#e4e9ff] px-3 py-1 text-[11px] font-bold uppercase tracking-[0.06em] text-[#0c2a6b]'
 		: 'inline-flex items-center gap-1.5 rounded-full bg-[#0c2a6b]/10 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.06em] text-[#0c2a6b]'
 	const titleClass = 'mt-3 text-[20px] font-bold leading-snug tracking-tight sm:text-[22px]'
-	const footerClass = onDarkChrome
+	/** Footer always below the image card → light chrome when hasImage. */
+	const footerClass = shellOnDark
 		? 'mt-3 flex items-center justify-center gap-1.5 text-center text-[12px] leading-snug text-white/75'
 		: 'mt-3 flex items-center justify-center gap-1.5 text-center text-[12px] leading-snug text-slate-600'
+	const ctaClass = shellOnDark
+		? 'mt-4 flex w-full items-center justify-center gap-2 rounded-full bg-white px-4 py-3 text-[15px] font-bold shadow-sm transition active:scale-[0.98] hover:bg-white/95'
+		: 'mt-4 flex w-full items-center justify-center gap-2 rounded-full bg-[#1562f0] px-4 py-3 text-[15px] font-bold text-white shadow-sm transition active:scale-[0.98] hover:bg-[#1256d6]'
+
+	const membershipPricePill =
+		price ? (
+			<span
+				className={[
+					'shrink-0 rounded-full px-3 py-1 text-right leading-tight ring-1',
+					hasImage || shellOnDark
+						? 'bg-white/15 ring-white/20'
+						: 'bg-black/[0.06] ring-black/10',
+				].join(' ')}
+				aria-label={`Membership ${price}${duration ? ` · ${duration}` : ''}`}
+			>
+				<span
+					className="block text-[15px] font-bold tabular-nums tracking-tight"
+					style={{ color: titleColor }}
+				>
+					{price}
+				</span>
+				{duration ? (
+					<span
+						className="mt-0.5 block text-[10px] font-semibold uppercase tracking-[0.06em]"
+						style={{ color: bodyColor }}
+					>
+						{duration}
+					</span>
+				) : null}
+			</span>
+		) : null
+
+	const headerChrome =
+		!showMultiplierCarousel || price ? (
+			<div
+				className={[
+					'flex items-start gap-3',
+					showMultiplierCarousel ? 'justify-end' : 'justify-between',
+				].join(' ')}
+			>
+				{!showMultiplierCarousel ? (
+					<span className={badgeClass}>
+						<Crown className="h-3.5 w-3.5 shrink-0" strokeWidth={2.25} aria-hidden />
+						Exclusive Welcome Offer
+					</span>
+				) : null}
+				{membershipPricePill}
+			</div>
+		) : null
+
+	const seasonalHeader = showMultiplierCarousel ? (
+		<div className={price ? 'mt-3' : undefined}>
+			<p
+				className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.08em]"
+				style={{ color: eyebrowColor }}
+			>
+				<Sparkles
+					className="h-3.5 w-3.5 shrink-0"
+					style={{ color: sparkleColor }}
+					strokeWidth={2.25}
+					aria-hidden
+				/>
+				Special Seasonal Promotion
+			</p>
+			<h3
+				className="mt-2 font-serif text-[22px] font-semibold leading-snug tracking-tight sm:text-[24px]"
+				style={{ color: titleColor }}
+			>
+				Give the Perfect Gift & Match Bonus
+			</h3>
+			<p className="mt-2 text-[14px] leading-relaxed" style={{ color: bodyColor }}>
+				Gift wellness or top up clinic credits today. All tier bonuses are applied
+				instantly upon top-up.
+			</p>
+		</div>
+	) : null
+
+	const welcomeBody = !showMultiplierCarousel ? (
+		<>
+			<h3 className={titleClass} style={{ color: titleColor }}>
+				{heading}
+			</h3>
+			{body ? (
+				<p className="mt-2 text-[14px] leading-relaxed" style={{ color: bodyColor }}>
+					<DiscoverDescriptionTextWithUrlCapsules
+						text={body}
+						tone={hasImage || shellOnDark ? 'onDark' : 'onLight'}
+					/>
+				</p>
+			) : null}
+			{bonusBadge ? (
+				<span className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-[#14532d] px-3 py-1 text-[12px] font-semibold text-[#bbf7d0]">
+					<Flame className="h-3.5 w-3.5 shrink-0" strokeWidth={2.25} aria-hidden />
+					{bonusBadge}
+				</span>
+			) : null}
+		</>
+	) : null
+
+	const multiplierOffers = showMultiplierCarousel ? (
+		<div
+			className={[
+				'mt-2.5 flex gap-2 pt-2',
+				hasImage ? 'mt-3 pt-0' : '',
+				multiplierCards.length > 3
+					? '-mx-1 snap-x snap-mandatory overflow-x-auto px-1 pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'
+					: 'w-full',
+			]
+				.filter(Boolean)
+				.join(' ')}
+			role="list"
+			aria-label="Store credit multiplier offers"
+		>
+			{multiplierCards.map((card) => {
+				const selected = card.id === selectedCard?.id
+				const scrollMany = multiplierCards.length > 3
+				return (
+					<button
+						key={card.id}
+						type="button"
+						role="listitem"
+						aria-pressed={selected}
+						aria-label={`${card.topupLabel} top up, ${card.freeCreditLabel}`}
+						onClick={() => setSelectedCardId(card.id)}
+						className={[
+							'relative flex flex-col items-center rounded-[14px] bg-[#FDF8F1] px-1.5 pb-2 pt-3.5 text-center transition sm:px-2',
+							scrollMany
+								? 'w-[min(28vw,112px)] shrink-0 snap-center'
+								: 'min-w-0 flex-1 basis-0',
+							card.isBestValue
+								? 'border-2 border-[#D4B483] shadow-[0_2px_10px_rgba(90,60,30,0.1)]'
+								: 'border border-[#E8E0D4]',
+							selected && !card.isBestValue ? 'ring-2 ring-[#1562f0]/35' : '',
+							selected && card.isBestValue ? 'ring-2 ring-[#1562f0]/25' : '',
+						]
+							.filter(Boolean)
+							.join(' ')}
+					>
+						{card.isBestValue && card.bestValueBadge ? (
+							<span className="absolute -top-2 left-1/2 z-[1] max-w-[calc(100%+0.5rem)] -translate-x-1/2 truncate rounded-full bg-[#3d3429] px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-[0.03em] text-[#FDF8F1] sm:px-2 sm:text-[9px]">
+								{card.bestValueBadge}
+							</span>
+						) : null}
+						{card.isBestValue ? (
+							<span className="mb-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-[#9ca3af]">
+								Popular
+							</span>
+						) : card.percentHeader ? (
+							<span className="mb-0.5 text-[10px] font-bold uppercase tracking-[0.03em] text-[#C45C26] sm:text-[11px]">
+								{card.percentHeader}
+							</span>
+						) : (
+							<span className="mb-0.5 h-[14px]" aria-hidden />
+						)}
+						<span className="text-[10px] font-medium text-[#6b7280] sm:text-[11px]">Top Up</span>
+						<span className="mt-0.5 text-[15px] font-bold leading-tight tracking-tight text-[#2c2416] tabular-nums sm:text-[17px]">
+							{card.topupLabel}
+						</span>
+						<span className="my-1.5 h-px w-full bg-[#E8E0D4]" aria-hidden />
+						<span className="text-[10px] font-bold leading-snug text-[#16a34a] sm:text-[11px]">
+							{card.freeCreditLabel}
+						</span>
+						<span className="mt-1 text-[9px] font-medium text-[#9ca3af] sm:text-[10px]">
+							{card.valLabel}
+						</span>
+					</button>
+				)
+			})}
+		</div>
+	) : null
+
 	return (
 		<section
 			className={[
 				'relative overflow-hidden rounded-[22px] p-4 shadow-[0_8px_22px_rgba(15,23,42,0.06)] sm:p-5',
-				hasImage ? 'text-white' : '',
+				hasImage ? 'bg-white dark:bg-slate-900' : '',
 			]
 				.filter(Boolean)
 				.join(' ')}
@@ -719,181 +895,32 @@ function DiscoverMerchantProspectJoinPanel({
 			aria-label={heading}
 		>
 			{hasImage ? (
-				<>
+				<div className="relative aspect-[16/10] overflow-hidden rounded-[16px] text-white shadow-[0_4px_16px_rgba(15,23,42,0.12)] sm:aspect-[16/9]">
 					<CardPassBackgroundImage src={imageUrl} fit={backgroundImageFit} />
-					<div className="pointer-events-none absolute inset-0 bg-black/45" aria-hidden />
-				</>
-			) : null}
-			<div className="relative z-[1]">
-			{!showMultiplierCarousel || price ? (
-			<div
-				className={[
-					'flex items-start gap-3',
-					showMultiplierCarousel ? 'justify-end' : 'justify-between',
-				].join(' ')}
-			>
-			{!showMultiplierCarousel ? (
-			<span className={badgeClass}>
-				<Crown className="h-3.5 w-3.5 shrink-0" strokeWidth={2.25} aria-hidden />
-				Exclusive Welcome Offer
-			</span>
-			) : null}
-			{price ? (
-				<span
-					className={[
-						'shrink-0 rounded-full px-3 py-1 text-right leading-tight ring-1',
-						onDarkChrome
-							? 'bg-white/15 ring-white/20'
-							: 'bg-black/[0.06] ring-black/10',
-					].join(' ')}
-					aria-label={`Membership ${price}${duration ? ` · ${duration}` : ''}`}
-				>
-					<span
-						className="block text-[15px] font-bold tabular-nums tracking-tight"
-						style={{ color: titleColor }}
-					>
-						{price}
-					</span>
-					{duration ? (
-						<span
-							className="mt-0.5 block text-[10px] font-semibold uppercase tracking-[0.06em]"
-							style={{ color: bodyColor }}
-						>
-							{duration}
-						</span>
-					) : null}
-				</span>
-			) : null}
-			</div>
-			) : null}
-			{showMultiplierCarousel ? (
-				<div className={price ? 'mt-3' : undefined}>
-					<p
-						className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.08em]"
-						style={{ color: eyebrowColor }}
-					>
-						<Sparkles
-							className="h-3.5 w-3.5 shrink-0"
-							style={{ color: sparkleColor }}
-							strokeWidth={2.25}
-							aria-hidden
-						/>
-						Special Seasonal Promotion
-					</p>
-					<h3
-						className="mt-2 font-serif text-[22px] font-semibold leading-snug tracking-tight sm:text-[24px]"
-						style={{ color: titleColor }}
-					>
-						Give the Perfect Gift & Match Bonus
-					</h3>
-					<p
-						className="mt-2 text-[14px] leading-relaxed"
-						style={{ color: bodyColor }}
-					>
-						Gift wellness or top up clinic credits today. All tier bonuses are applied
-						instantly upon top-up.
-					</p>
-				</div>
-			) : null}
-			{showMultiplierCarousel ? (
-				<div
-					className={[
-						'mt-2.5 flex gap-2 pt-2',
-						multiplierCards.length > 3
-							? '-mx-1 snap-x snap-mandatory overflow-x-auto px-1 pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'
-							: 'w-full',
-					]
-						.filter(Boolean)
-						.join(' ')}
-					role="list"
-					aria-label="Store credit multiplier offers"
-				>
-					{multiplierCards.map((card) => {
-						const selected = card.id === selectedCard?.id
-						const scrollMany = multiplierCards.length > 3
-						return (
-							<button
-								key={card.id}
-								type="button"
-								role="listitem"
-								aria-pressed={selected}
-								aria-label={`${card.topupLabel} top up, ${card.freeCreditLabel}`}
-								onClick={() => setSelectedCardId(card.id)}
-								className={[
-									'relative flex flex-col items-center rounded-[14px] bg-[#FDF8F1] px-1.5 pb-2 pt-3.5 text-center transition sm:px-2',
-									scrollMany
-										? 'w-[min(28vw,112px)] shrink-0 snap-center'
-										: 'min-w-0 flex-1 basis-0',
-									card.isBestValue
-										? 'border-2 border-[#D4B483] shadow-[0_2px_10px_rgba(90,60,30,0.1)]'
-										: 'border border-[#E8E0D4]',
-									selected && !card.isBestValue ? 'ring-2 ring-[#1562f0]/35' : '',
-									selected && card.isBestValue ? 'ring-2 ring-[#1562f0]/25' : '',
-								]
-									.filter(Boolean)
-									.join(' ')}
-							>
-								{card.isBestValue && card.bestValueBadge ? (
-									<span className="absolute -top-2 left-1/2 z-[1] max-w-[calc(100%+0.5rem)] -translate-x-1/2 truncate rounded-full bg-[#3d3429] px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-[0.03em] text-[#FDF8F1] sm:px-2 sm:text-[9px]">
-										{card.bestValueBadge}
-									</span>
-								) : null}
-								{card.isBestValue ? (
-									<span className="mb-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-[#9ca3af]">
-										Popular
-									</span>
-								) : card.percentHeader ? (
-									<span className="mb-0.5 text-[10px] font-bold uppercase tracking-[0.03em] text-[#C45C26] sm:text-[11px]">
-										{card.percentHeader}
-									</span>
-								) : (
-									<span className="mb-0.5 h-[14px]" aria-hidden />
-								)}
-								<span className="text-[10px] font-medium text-[#6b7280] sm:text-[11px]">Top Up</span>
-								<span className="mt-0.5 text-[15px] font-bold leading-tight tracking-tight text-[#2c2416] tabular-nums sm:text-[17px]">
-									{card.topupLabel}
-								</span>
-								<span className="my-1.5 h-px w-full bg-[#E8E0D4]" aria-hidden />
-								<span className="text-[10px] font-bold leading-snug text-[#16a34a] sm:text-[11px]">
-									{card.freeCreditLabel}
-								</span>
-								<span className="mt-1 text-[9px] font-medium text-[#9ca3af] sm:text-[10px]">
-									{card.valLabel}
-								</span>
-							</button>
-						)
-					})}
+					<div
+						className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-black/40 to-black/25"
+						aria-hidden
+					/>
+					<div className="relative z-[1] flex h-full flex-col justify-end p-3.5 sm:p-4">
+						{headerChrome}
+						{seasonalHeader}
+						{welcomeBody}
+					</div>
 				</div>
 			) : (
-				<>
-					<h3 className={titleClass} style={{ color: titleColor }}>
-						{heading}
-					</h3>
-					{body ? (
-						<p
-							className="mt-2 text-[14px] leading-relaxed"
-							style={{ color: bodyColor }}
-						>
-							<DiscoverDescriptionTextWithUrlCapsules
-								text={body}
-								tone={onDarkChrome ? 'onDark' : 'onLight'}
-							/>
-						</p>
-					) : null}
-					{bonusBadge ? (
-						<span className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-[#14532d] px-3 py-1 text-[12px] font-semibold text-[#bbf7d0]">
-							<Flame className="h-3.5 w-3.5 shrink-0" strokeWidth={2.25} aria-hidden />
-							{bonusBadge}
-						</span>
-					) : null}
-				</>
+				<div className="relative z-[1]">
+					{headerChrome}
+					{seasonalHeader}
+					{welcomeBody}
+				</div>
 			)}
+			{multiplierOffers}
 			{onClaim ? (
 				<button
 					type="button"
 					onClick={() => onClaim(selectedCard?.suggestedAmount)}
-					className="mt-4 flex w-full items-center justify-center gap-2 rounded-full bg-white px-4 py-3 text-[15px] font-bold shadow-sm transition active:scale-[0.98] hover:bg-white/95"
-					style={{ color: accentForCta }}
+					className={ctaClass}
+					style={shellOnDark ? { color: accentForCta } : undefined}
 				>
 					{ctaLabel}
 					<ArrowRight className="h-4 w-4 shrink-0" strokeWidth={2.5} aria-hidden />
@@ -905,7 +932,6 @@ function DiscoverMerchantProspectJoinPanel({
 					{chargeFooter}
 				</p>
 			) : null}
-			</div>
 		</section>
 	)
 }

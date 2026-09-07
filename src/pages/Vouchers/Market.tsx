@@ -784,7 +784,7 @@ function DiscoverMerchantProspectJoinPanel({
 			) : null}
 			{showMultiplierCarousel ? (
 				<div
-					className="-mx-1 mt-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-1 pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+					className="-mx-1 mt-3 flex snap-x snap-mandatory gap-3 overflow-x-auto px-1 pb-1 pt-3 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
 					role="list"
 					aria-label="Store credit multiplier offers"
 				>
@@ -1524,30 +1524,55 @@ function discoverSafeCssColor(raw: string | null | undefined): string | null {
 	return null
 }
 
-/** Relative luminance heuristic for contrast on solid tier backgrounds. */
-function discoverCssColorIsLight(color: string): boolean {
+function discoverParseCssRgb(color: string): { r: number; g: number; b: number } | null {
 	const t = color.trim()
 	const hex = t.match(/^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i)
 	if (hex) {
 		let h = hex[1]
 		if (h.length === 3) h = h.split('').map((c) => c + c).join('')
 		if (h.length === 8) h = h.slice(0, 6)
-		const r = parseInt(h.slice(0, 2), 16) / 255
-		const g = parseInt(h.slice(2, 4), 16) / 255
-		const b = parseInt(h.slice(4, 6), 16) / 255
-		const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b
-		return lum > 0.62
+		return {
+			r: parseInt(h.slice(0, 2), 16),
+			g: parseInt(h.slice(2, 4), 16),
+			b: parseInt(h.slice(4, 6), 16),
+		}
 	}
 	const rgb = t.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i)
 	if (rgb) {
-		const r = Number(rgb[1]) / 255
-		const g = Number(rgb[2]) / 255
-		const b = Number(rgb[3]) / 255
-		const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b
-		return lum > 0.62
+		return { r: Number(rgb[1]), g: Number(rgb[2]), b: Number(rgb[3]) }
 	}
-	return false
+	return null
 }
+
+/** Relative luminance heuristic for contrast on solid tier backgrounds. */
+function discoverCssColorIsLight(color: string): boolean {
+	const rgb = discoverParseCssRgb(color)
+	if (!rgb) return false
+	const r = rgb.r / 255
+	const g = rgb.g / 255
+	const b = rgb.b / 255
+	const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b
+	return lum > 0.62
+}
+
+/**
+ * Mix merchant brand color toward white for Discover detail page chrome.
+ * `whiteAmount` 0 = brand, 1 = white. Used so each merchant gets a distinct soft surface
+ * from the same `tiers[0].backgroundColor` source as Exclusive Welcome Offer — not a hardcoded gray.
+ */
+function discoverMixCssColorWithWhite(color: string, whiteAmount: number): string | null {
+	const rgb = discoverParseCssRgb(color)
+	if (!rgb) return null
+	const t = Math.min(1, Math.max(0, whiteAmount))
+	const r = Math.round(rgb.r + (255 - rgb.r) * t)
+	const g = Math.round(rgb.g + (255 - rgb.g) * t)
+	const b = Math.round(rgb.b + (255 - rgb.b) * t)
+	return `rgb(${r}, ${g}, ${b})`
+}
+
+/** Soft page surface tint from brand (fallback stays the previous default gray). */
+const DISCOVER_MERCHANT_DETAIL_PAGE_FALLBACK_BG = '#f5f7f9'
+const DISCOVER_MERCHANT_DETAIL_PAGE_WHITE_MIX = 0.9
 
 function discoverResolveTierBackgroundImageUrl(raw: unknown): string | null {
 	if (raw == null) return null
@@ -4603,6 +4628,23 @@ function DiscoverMerchantDetailFullScreen({
 		() => parseDiscoverTier0PanelBackground(merchantMetadataRoot),
 		[merchantMetadataRoot],
 	)
+	/** Brand chrome from card settings (`tiers[0].backgroundColor`, then highest-tier fallback). */
+	const merchantDetailBrandColor = useMemo(() => {
+		if (prospectJoinPanelBackground.backgroundColor) return prospectJoinPanelBackground.backgroundColor
+		const fromItem =
+			typeof item.tierTopBackground === 'string' && item.tierTopBackground.trim()
+				? discoverSafeCssColor(item.tierTopBackground)
+				: null
+		return fromItem
+	}, [item.tierTopBackground, prospectJoinPanelBackground.backgroundColor])
+	const merchantDetailPageSurface = useMemo(
+		() =>
+			merchantDetailBrandColor
+				? discoverMixCssColorWithWhite(merchantDetailBrandColor, DISCOVER_MERCHANT_DETAIL_PAGE_WHITE_MIX) ??
+					DISCOVER_MERCHANT_DETAIL_PAGE_FALLBACK_BG
+				: DISCOVER_MERCHANT_DETAIL_PAGE_FALLBACK_BG,
+		[merchantDetailBrandColor],
+	)
 	const showProspectJoinPanel = !isConetGenesisCard && !hasActiveMembership
 	const prospectJoinMembershipPrice = useMemo(() => {
 		const joinTier = membershipUi.joinTier
@@ -6111,9 +6153,31 @@ function DiscoverMerchantDetailFullScreen({
 
 	return (
 		<>
-		<div className="flex h-full min-h-0 flex-col bg-[#f5f7f9] dark:bg-slate-950 text-[#1f2328] dark:text-slate-100">
-			<div className="relative shrink-0">
+		<div
+			className="flex h-full min-h-0 flex-col bg-[color:var(--discover-merchant-page-bg)] text-[#1f2328] dark:bg-slate-950 dark:text-slate-100"
+			style={
+				{
+					['--discover-merchant-page-bg' as string]: merchantDetailPageSurface,
+				} as React.CSSProperties
+			}
+		>
+			<div
+				className="relative shrink-0 bg-[color:var(--discover-merchant-hero-bg)] dark:bg-slate-950"
+				style={
+					{
+						['--discover-merchant-hero-bg' as string]:
+							merchantDetailBrandColor ?? merchantDetailPageSurface,
+					} as React.CSSProperties
+				}
+			>
 				<div className="relative h-[min(42vh,320px)] w-full overflow-hidden rounded-b-[28px]">
+					{merchantDetailBrandColor ? (
+						<div
+							className="pointer-events-none absolute inset-0 dark:hidden"
+							style={{ backgroundColor: merchantDetailBrandColor }}
+							aria-hidden
+						/>
+					) : null}
 					<DiscoverFeaturedBrandHeroImage
 						src={item.image}
 						alt=""
@@ -6191,7 +6255,7 @@ function DiscoverMerchantDetailFullScreen({
 				</div>
 			</div>
 
-			<div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-[calc(2rem+env(safe-area-inset-bottom))] pt-4">
+			<div className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-[color:var(--discover-merchant-page-bg)] px-4 pb-[calc(2rem+env(safe-area-inset-bottom))] pt-4 dark:bg-slate-950">
 				<div className="mx-auto flex max-w-lg flex-col gap-4">
 					{likeError ? <DiscoverPayPanelError message={likeError} /> : null}
 					{supportChatAddresses.length > 0 ? (
@@ -7409,7 +7473,7 @@ export default function Market() {
 			{discoverMerchantDetail ? (
 				<motion.div
 					key={`discover-merchant-${discoverMerchantDetail.id}`}
-					className="fixed inset-0 z-[110] flex flex-col bg-[#f5f7f9] dark:bg-slate-950"
+					className="fixed inset-0 z-[110] flex flex-col bg-transparent dark:bg-slate-950"
 					initial={discoverDetailEnterImmediate ? false : { x: '100%' }}
 					animate={{ x: 0 }}
 					exit={{ x: '100%' }}

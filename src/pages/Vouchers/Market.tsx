@@ -4539,6 +4539,8 @@ function DiscoverMerchantDetailFullScreen({
 	const [giftSheetClosing, setGiftSheetClosing] = useState(false)
 	const supportChatGoToChatRef = useRef(false)
 	const giftSheetCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+	/** Gift sheet multi-step: return true if a flow step was popped (do not close sheet). */
+	const giftSheetBackHandlerRef = useRef<(() => boolean) | null>(null)
 	const supportChatAddresses = useMemo(
 		() => parseSupportChatAddressesFromMetadata(merchantMetadataRoot),
 		[merchantMetadataRoot],
@@ -5796,6 +5798,7 @@ function DiscoverMerchantDetailFullScreen({
 
 	const closeGiftSheet = useCallback(() => {
 		if (giftSheetClosing) return
+		giftSheetBackHandlerRef.current = null
 		setGiftSheetClosing(true)
 		if (giftSheetCloseTimerRef.current) clearTimeout(giftSheetCloseTimerRef.current)
 		giftSheetCloseTimerRef.current = setTimeout(() => {
@@ -6698,6 +6701,7 @@ function DiscoverMerchantDetailFullScreen({
 			if (e.key !== 'Escape') return
 			if (giftSheetOpen) {
 				e.preventDefault()
+				if (giftSheetBackHandlerRef.current?.()) return
 				closeGiftSheet()
 				return
 			}
@@ -7452,13 +7456,19 @@ function DiscoverMerchantDetailFullScreen({
 							<div className={`${BEAMIO_CIRCULAR_BACK_ROW_CLASS} px-4`}>
 								<BeamioCircularBackButton
 									variant="onLight"
-									onClick={closeGiftSheet}
+									onClick={() => {
+										if (giftSheetBackHandlerRef.current?.()) return
+										closeGiftSheet()
+									}}
 									className="absolute left-4 top-0"
 								/>
 							</div>
 							<div className="flex flex-1 flex-col px-5 pb-[max(1.25rem,env(safe-area-inset-bottom,0px))]">
 								<DiscoverMerchantGiftSheet
 									onClose={closeGiftSheet}
+									registerBackHandler={(handler) => {
+										giftSheetBackHandlerRef.current = handler
+									}}
 									cardAddress={item.cardAddress?.trim() ?? ''}
 									merchantTitle={passTitle}
 									currency={displayCurrency}

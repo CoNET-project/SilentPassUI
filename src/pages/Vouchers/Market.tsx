@@ -4476,7 +4476,7 @@ function DiscoverMerchantDetailFullScreen({
 }) {
 	const navigate = useNavigate()
 	const location = useLocation()
-	const { profiles, setProfiles, discoverMerchantStatByCard, registerDiscoverMerchantStatFeedCards, applyDiscoverMerchantLikeCountDelta, couponOpenClaimStatusByKey, registerCouponOpenClaimFeedTargets, applyCouponOpenClaimStatus, myBrandCardDetails, setChatHomeItem } = useDaemonContext()
+	const { profiles, setProfiles, setShowFooter, discoverMerchantStatByCard, registerDiscoverMerchantStatFeedCards, applyDiscoverMerchantLikeCountDelta, couponOpenClaimStatusByKey, registerCouponOpenClaimFeedTargets, applyCouponOpenClaimStatus, myBrandCardDetails, setChatHomeItem } = useDaemonContext()
 	const { registerCardAddresses, resolveName, lookupByAddress, ensureCardsForAddresses, peekMetadata } =
 		useMerchantCardDatabase()
 	const {
@@ -5810,8 +5810,9 @@ function DiscoverMerchantDetailFullScreen({
 		setMerchantVisitError(null)
 		setGiftSheetClosing(false)
 		setGiftSheetEntered(false)
+		setShowFooter(false)
 		setGiftSheetOpen(true)
-	}, [])
+	}, [setShowFooter])
 
 	const onMerchantVisitBooking = useCallback(() => {
 		setMerchantVisitError(null)
@@ -7433,8 +7434,9 @@ function DiscoverMerchantDetailFullScreen({
 		{giftSheetOpen && typeof document !== 'undefined'
 			? createPortal(
 					<div
-						className="fixed inset-0 z-[121] flex flex-col bg-[color:var(--discover-merchant-page-bg,#f4f6f8)] transition-transform duration-300 ease-out dark:bg-slate-950"
+						className="fixed inset-0 z-[130] transition-transform duration-300 ease-out dark:bg-slate-950"
 						style={{
+							backgroundColor: merchantDetailPageSurface,
 							transform: giftSheetClosing || !giftSheetEntered ? 'translateX(100%)' : 'translateX(0)',
 						}}
 						role="dialog"
@@ -7442,20 +7444,19 @@ function DiscoverMerchantDetailFullScreen({
 						aria-label="Gift store credit"
 						onTouchMove={(e) => e.stopPropagation()}
 					>
+						{/* Shell matches MerchantCardTopUpFlow: one full-height scroll + safe-area top. */}
 						<div
-							className="flex min-h-0 flex-1 flex-col overflow-hidden pb-[max(1.5rem,env(safe-area-inset-bottom,0px))]"
+							className="flex h-full flex-col overflow-y-auto"
 							style={{ paddingTop: 'max(1rem, env(safe-area-inset-top, 0px))' }}
 						>
-							<div className="px-4">
-								<div className={`relative flex items-center ${BEAMIO_CIRCULAR_BACK_ROW_CLASS}`}>
-									<BeamioCircularBackButton
-										variant="onLight"
-										onClick={closeGiftSheet}
-										className="absolute left-0 top-0"
-									/>
-								</div>
+							<div className={`${BEAMIO_CIRCULAR_BACK_ROW_CLASS} px-4`}>
+								<BeamioCircularBackButton
+									variant="onLight"
+									onClick={closeGiftSheet}
+									className="absolute left-4 top-0"
+								/>
 							</div>
-							<div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pt-2">
+							<div className="flex flex-1 flex-col px-5 pb-[max(1.25rem,env(safe-area-inset-bottom,0px))]">
 								<DiscoverMerchantGiftSheet
 									onClose={closeGiftSheet}
 									cardAddress={item.cardAddress?.trim() ?? ''}

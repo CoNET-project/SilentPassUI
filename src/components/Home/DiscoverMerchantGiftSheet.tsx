@@ -33,6 +33,14 @@ import {
 	makeBeamioSearchAddressOnlyResult,
 	sortSearchResultsExactFirst,
 } from '@/components/Home/beamioSearchResultPresentation'
+import {
+	discoverContrastTextOnBrand,
+	discoverMixCssColorWithBlack,
+	discoverParseCssRgb,
+	parseDiscoverMerchantBrandColor,
+} from '@/utils/discoverMerchantPromotions'
+
+const GIFT_BRAND_FALLBACK = '#2c2416'
 
 function preventNumericInputStepKeys(e: KeyboardEvent<HTMLInputElement>): void {
 	if (
@@ -171,6 +179,31 @@ export default function DiscoverMerchantGiftSheet({
 			return false
 		}
 	}, [baseFeeE6])
+	/** Same brand chrome as MerchantCardTopUpFlow / Discover merchant detail. */
+	const brandColor = useMemo(
+		() => parseDiscoverMerchantBrandColor(metadataRoot) ?? GIFT_BRAND_FALLBACK,
+		[metadataRoot],
+	)
+	const brandControl = useMemo(
+		() => discoverMixCssColorWithBlack(brandColor, 0.14) ?? brandColor,
+		[brandColor],
+	)
+	const onBrandText = useMemo(() => discoverContrastTextOnBrand(brandColor), [brandColor])
+	/** Labels / secondary on brand fill — same hierarchy as Top-up `text-white/70`. */
+	const onBrandMuted = useMemo(
+		() => (onBrandText === '#ffffff' ? 'rgba(255,255,255,0.75)' : 'rgba(17,24,39,0.72)'),
+		[onBrandText],
+	)
+	const brandShadow = useMemo(() => {
+		const rgb = discoverParseCssRgb(brandColor)
+		if (!rgb) return '0 8px 28px rgba(15, 23, 42, 0.18)'
+		return `0 8px 28px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.28)`
+	}, [brandColor])
+	const brandControlShadow = useMemo(() => {
+		const rgb = discoverParseCssRgb(brandControl)
+		if (!rgb) return '0 4px 16px rgba(15, 23, 42, 0.16)'
+		return `0 4px 16px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.22)`
+	}, [brandControl])
 	const minHuman = isFeeCard ? membershipFeeE6ToHuman(baseFeeE6) || '0' : '0.01'
 
 	const [amountText, setAmountText] = useState(isFeeCard ? minHuman : '')
@@ -370,7 +403,7 @@ export default function DiscoverMerchantGiftSheet({
 				formatAmount(Number(ethers.formatUnits(issuedTopupCreditE6, 6)), ccy)
 			: null
 		return (
-			<section className="mx-auto flex w-full max-w-lg flex-col gap-5 px-4 pb-8" aria-label="Gift code ready">
+			<section className="mx-auto flex w-full max-w-lg flex-col gap-5" aria-label="Gift code ready">
 				<header className="px-0.5">
 					<div className="flex items-center gap-1.5">
 						<Sparkles className="h-3.5 w-3.5 shrink-0 text-[#C9A227]" strokeWidth={2} aria-hidden />
@@ -378,7 +411,7 @@ export default function DiscoverMerchantGiftSheet({
 							Gift ready to share
 						</span>
 					</div>
-					<h2 className="mt-2 font-serif text-[22px] font-semibold leading-snug tracking-tight text-[#2c2416] dark:text-slate-100 sm:text-[24px]">
+					<h2 className="mt-2 font-serif text-[22px] font-semibold leading-snug tracking-tight text-[#0F172A] dark:text-slate-100 sm:text-[24px]">
 						Your redeem code is ready
 					</h2>
 					<p className="mt-2 text-[13px] leading-relaxed text-[#6b7280] dark:text-slate-400">
@@ -388,17 +421,29 @@ export default function DiscoverMerchantGiftSheet({
 					</p>
 				</header>
 
-				<div className="overflow-hidden rounded-[20px] bg-[#2c2416] px-4 pb-4 pt-3.5 text-white shadow-[0_8px_28px_rgba(44,36,22,0.28)]">
+				<div
+					className="overflow-hidden rounded-[20px] px-4 pb-4 pt-3.5 shadow-[0_8px_28px_rgba(15,23,42,0.18)]"
+					style={{ backgroundColor: brandColor, color: onBrandText, boxShadow: brandShadow }}
+				>
 					<div className="flex items-center justify-between gap-2">
-						<span className="shrink-0 rounded-full bg-[#3d3429] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[#D4B483]">
+						<span
+							className="shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em]"
+							style={{ backgroundColor: brandControl, color: onBrandText }}
+						>
 							Gift
 						</span>
-						<p className="min-w-0 flex-1 truncate text-center font-serif text-[15px] font-semibold tracking-tight text-white">
+						<p
+							className="min-w-0 flex-1 truncate text-center font-serif text-[15px] font-semibold tracking-tight"
+							style={{ color: onBrandText }}
+						>
 							{merchantLabel}
 						</p>
 						<span className="w-[4.5rem] shrink-0" aria-hidden />
 					</div>
-					<p className="mt-4 break-all rounded-xl bg-white/[0.08] px-4 py-3 font-mono text-[15px] font-semibold tracking-wide text-white ring-1 ring-white/10">
+					<p
+						className="mt-4 break-all rounded-xl bg-white/[0.08] px-4 py-3 font-mono text-[15px] font-semibold tracking-wide ring-1 ring-white/10"
+						style={{ color: onBrandText }}
+					>
 						{issuedCode}
 					</p>
 				</div>
@@ -407,12 +452,17 @@ export default function DiscoverMerchantGiftSheet({
 					<button
 						type="button"
 						onClick={() => void handleCopyCode()}
-						className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#3d3429] px-5 py-3.5 text-[15px] font-bold text-white shadow-[0_4px_16px_rgba(44,36,22,0.22)] transition active:scale-[0.98]"
+						className="inline-flex w-full items-center justify-center gap-2 rounded-full px-5 py-3.5 text-[15px] font-bold transition active:scale-[0.98]"
+						style={{
+							backgroundColor: brandControl,
+							color: onBrandText,
+							boxShadow: brandControlShadow,
+						}}
 					>
 						{copyStatus === 'ok' ? (
-							<Check className="h-5 w-5 text-[#D4B483]" strokeWidth={2.25} aria-hidden />
+							<Check className="h-5 w-5 shrink-0" strokeWidth={2.25} aria-hidden />
 						) : (
-							<Copy className="h-5 w-5 text-[#D4B483]" strokeWidth={2.25} aria-hidden />
+							<Copy className="h-5 w-5 shrink-0" strokeWidth={2.25} aria-hidden />
 						)}
 						<span>{copyStatus === 'ok' ? 'Copied' : 'Copy gift code'}</span>
 						<ChevronRight className="h-5 w-5 opacity-80" strokeWidth={2.25} aria-hidden />
@@ -420,9 +470,9 @@ export default function DiscoverMerchantGiftSheet({
 					<button
 						type="button"
 						onClick={() => void handleShare()}
-						className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-[#e8ecf0] bg-white px-5 py-3 text-[14px] font-semibold text-[#2c2416] shadow-sm transition active:scale-[0.98] dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+						className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-[#e8ecf0] bg-white px-5 py-3 text-[14px] font-semibold text-[#0F172A] shadow-sm transition active:scale-[0.98] dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
 					>
-						<Share2 className="h-4 w-4 text-[#8a7a68]" strokeWidth={2.25} aria-hidden />
+						<Share2 className="h-4 w-4 text-[#6b7280]" strokeWidth={2.25} aria-hidden />
 						Share with a friend
 					</button>
 					<button
@@ -448,7 +498,7 @@ export default function DiscoverMerchantGiftSheet({
 	}
 
 	return (
-		<section className="mx-auto flex w-full max-w-lg flex-col gap-5 px-4 pb-8" aria-label="Send a merchant gift">
+		<section className="mx-auto flex w-full max-w-lg flex-col gap-5" aria-label="Send a merchant gift">
 			<header className="px-0.5">
 				<div className="flex items-center gap-1.5">
 					<Sparkles className="h-3.5 w-3.5 shrink-0 text-[#C9A227]" strokeWidth={2} aria-hidden />
@@ -456,7 +506,7 @@ export default function DiscoverMerchantGiftSheet({
 						Treat someone special
 					</span>
 				</div>
-				<h2 className="mt-2 font-serif text-[22px] font-semibold leading-snug tracking-tight text-[#2c2416] dark:text-slate-100 sm:text-[24px]">
+				<h2 className="mt-2 font-serif text-[22px] font-semibold leading-snug tracking-tight text-[#0F172A] dark:text-slate-100 sm:text-[24px]">
 					Gift Store Credit & Open Redeem
 				</h2>
 				<p className="mt-2 text-[13px] leading-relaxed text-[#6b7280] dark:text-slate-400">
@@ -465,38 +515,59 @@ export default function DiscoverMerchantGiftSheet({
 				</p>
 			</header>
 
-			<div className="overflow-hidden rounded-[20px] bg-[#2c2416] px-4 pb-4 pt-3.5 text-white shadow-[0_8px_28px_rgba(44,36,22,0.28)]">
+			<div
+				className="overflow-hidden rounded-[20px] px-4 pb-4 pt-3.5 shadow-[0_8px_28px_rgba(15,23,42,0.18)]"
+				style={{ backgroundColor: brandColor, color: onBrandText, boxShadow: brandShadow }}
+			>
 				<div className="flex items-center justify-between gap-2">
-					<span className="shrink-0 rounded-full bg-[#3d3429] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[#D4B483]">
+					<span
+						className="shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em]"
+						style={{ backgroundColor: brandControl, color: onBrandText }}
+					>
 						Gift
 					</span>
-					<p className="min-w-0 flex-1 truncate text-center font-serif text-[15px] font-semibold tracking-tight text-white">
+					<p
+						className="min-w-0 flex-1 truncate text-center font-serif text-[15px] font-semibold tracking-tight"
+						style={{ color: onBrandText }}
+					>
 						{merchantLabel}
 					</p>
 					<span className="w-[4.5rem] shrink-0" aria-hidden />
 				</div>
 				<div className="mt-4 grid grid-cols-2 gap-3">
-					<div className="rounded-xl bg-white/[0.06] px-3 py-3 ring-1 ring-white/10">
-						<p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#D4B483]">
+					<div className="rounded-xl bg-white/[0.12] px-3 py-3 ring-1 ring-white/20">
+						<p
+							className="text-[10px] font-semibold uppercase tracking-[0.12em]"
+							style={{ color: onBrandMuted }}
+						>
 							Currency
 						</p>
-						<p className="mt-1.5 text-[22px] font-bold leading-none tracking-tight text-white tabular-nums">
+						<p
+							className="mt-1.5 text-[22px] font-bold leading-none tracking-tight tabular-nums"
+							style={{ color: onBrandText }}
+						>
 							{ccy}
 						</p>
-						<p className="mt-2 inline-flex items-center gap-1.5 text-[11px] font-medium text-emerald-400/90">
-							<span className="h-1.5 w-1.5 rounded-full bg-emerald-400" aria-hidden />
+						<p className="mt-2 inline-flex items-center gap-1.5 text-[11px] font-medium text-emerald-300">
+							<span className="h-1.5 w-1.5 rounded-full bg-emerald-300" aria-hidden />
 							Card pricing
 						</p>
 					</div>
-					<div className="rounded-xl bg-white/[0.06] px-3 py-3 ring-1 ring-white/10">
-						<p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#D4B483]">
+					<div className="rounded-xl bg-white/[0.12] px-3 py-3 ring-1 ring-white/20">
+						<p
+							className="text-[10px] font-semibold uppercase tracking-[0.12em]"
+							style={{ color: onBrandMuted }}
+						>
 							{isFeeCard ? 'Min gift' : 'From'}
 						</p>
-						<p className="mt-1.5 text-[22px] font-bold leading-none tracking-tight text-[#D4B483] tabular-nums">
+						<p
+							className="mt-1.5 text-[22px] font-bold leading-none tracking-tight tabular-nums"
+							style={{ color: onBrandText }}
+						>
 							{prefix}
 							{minHuman}
 						</p>
-						<p className="mt-2 text-[11px] font-medium text-white/45">
+						<p className="mt-2 text-[11px] font-medium" style={{ color: onBrandMuted }}>
 							{isFeeCard ? 'Membership floor' : 'Open amount'}
 						</p>
 					</div>
@@ -508,7 +579,7 @@ export default function DiscoverMerchantGiftSheet({
 					Gift amount ({ccy})
 				</span>
 				<div className="relative">
-					<span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[15px] font-semibold text-[#8a7a68]">
+					<span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 min-w-[2.75rem] text-[15px] font-semibold text-[#6b7280]">
 						{prefix}
 					</span>
 					<input
@@ -527,7 +598,13 @@ export default function DiscoverMerchantGiftSheet({
 						onKeyDown={preventNumericInputStepKeys}
 						onWheel={preventNumericInputWheelStep}
 						disabled={submitting}
-						className="w-full rounded-2xl border border-[#e8ecf0] bg-white py-3.5 pl-11 pr-4 text-[16px] font-semibold text-[#2c2416] outline-none ring-0 focus:border-[#3d3429] dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]"
+						className="w-full rounded-2xl border border-[#e8ecf0] bg-white py-3.5 pl-16 pr-4 text-[16px] font-semibold text-[#111827] outline-none ring-0 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]"
+						onFocus={(e) => {
+							e.currentTarget.style.borderColor = brandColor
+						}}
+						onBlur={(e) => {
+							e.currentTarget.style.borderColor = ''
+						}}
 						placeholder={minHuman}
 					/>
 				</div>
@@ -542,7 +619,7 @@ export default function DiscoverMerchantGiftSheet({
 				) : (
 					<div className="relative">
 						<Search
-							className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#8a7a68]"
+							className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6b7280]"
 							aria-hidden
 						/>
 						<input
@@ -552,10 +629,16 @@ export default function DiscoverMerchantGiftSheet({
 							disabled={submitting}
 							placeholder="@BeamioTag or address"
 							autoComplete="off"
-							className="w-full rounded-2xl border border-[#e8ecf0] bg-white py-3 pl-10 pr-4 text-[14px] text-[#2c2416] outline-none focus:border-[#3d3429] dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+							className="w-full rounded-2xl border border-[#e8ecf0] bg-white py-3 pl-10 pr-4 text-[14px] text-[#111827] outline-none dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+							onFocus={(e) => {
+								e.currentTarget.style.borderColor = brandColor
+							}}
+							onBlur={(e) => {
+								e.currentTarget.style.borderColor = ''
+							}}
 						/>
 						{friendLoading ? (
-							<Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-[#8a7a68]" aria-hidden />
+							<Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-[#6b7280]" aria-hidden />
 						) : null}
 						{showFriendDropdown && friendResults.length > 0 ? (
 							<ul className="absolute z-10 mt-1 max-h-56 w-full overflow-y-auto rounded-2xl border border-[#e8ecf0] bg-white shadow-lg dark:border-slate-600 dark:bg-slate-900">
@@ -598,12 +681,17 @@ export default function DiscoverMerchantGiftSheet({
 					onClick={() => void handlePurchase()}
 					disabled={submitting}
 					aria-busy={submitting}
-					className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#3d3429] px-5 py-3.5 text-[15px] font-bold text-white shadow-[0_4px_16px_rgba(44,36,22,0.22)] transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
+					className="inline-flex w-full items-center justify-center gap-2 rounded-full px-5 py-3.5 text-[15px] font-bold transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
+					style={{
+						backgroundColor: brandControl,
+						color: onBrandText,
+						boxShadow: brandControlShadow,
+					}}
 				>
 					{submitting ? (
 						<Loader2 className="h-5 w-5 animate-spin" aria-hidden />
 					) : (
-						<Gift className="h-5 w-5 text-[#D4B483]" strokeWidth={2.25} aria-hidden />
+						<Gift className="h-5 w-5 shrink-0" strokeWidth={2.25} aria-hidden />
 					)}
 					<span>{submitting ? 'Creating gift…' : 'Pay with CoNET-USDC & Gift'}</span>
 					{!submitting ? (

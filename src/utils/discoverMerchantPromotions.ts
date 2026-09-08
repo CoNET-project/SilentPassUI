@@ -202,6 +202,25 @@ export function discoverMixCssColorWithWhite(color: string, whiteAmount: number)
 	return `rgb(${r}, ${g}, ${b})`
 }
 
+/** Mix brand toward black for CTA / badge chrome. `blackAmount` 0 = brand, 1 = black. */
+export function discoverMixCssColorWithBlack(color: string, blackAmount: number): string | null {
+	const rgb = discoverParseCssRgb(color)
+	if (!rgb) return null
+	const t = Math.min(1, Math.max(0, blackAmount))
+	const r = Math.round(rgb.r * (1 - t))
+	const g = Math.round(rgb.g * (1 - t))
+	const b = Math.round(rgb.b * (1 - t))
+	return `rgb(${r}, ${g}, ${b})`
+}
+
+/** Text on a solid brand fill (gift card / CTA). */
+export function discoverContrastTextOnBrand(color: string): '#ffffff' | '#111827' {
+	const rgb = discoverParseCssRgb(color)
+	if (!rgb) return '#ffffff'
+	const L = (0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b) / 255
+	return L > 0.62 ? '#111827' : '#ffffff'
+}
+
 /**
  * Card-level Discover brand color from flattened `backgroundColor` or
  * `shareTokenMetadata.backgroundColor` (Merchant OS Base card background).

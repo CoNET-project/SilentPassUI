@@ -192,7 +192,7 @@ export function OnboardingBusinessDiscoveryForm({
 							id={`${idPrefix}-name`}
 							value={storeName}
 							onChange={setStoreName}
-							placeholder={tu('onb_business_name_ph')}
+							placeholder={tu('onb_lookup_composer_ph')}
 							inputClassName={inputClass}
 							onSelectCandidate={onSelectLookupCandidate}
 							skipLookupValue={lookupSkipValue}

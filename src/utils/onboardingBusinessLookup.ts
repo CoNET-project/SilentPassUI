@@ -24,6 +24,19 @@ export type OnboardingBusinessLookupCandidate = {
 type LookupOk = { ok: true; candidates: OnboardingBusinessLookupCandidate[] }
 type LookupErr = { ok: false; error: string }
 
+export type OnboardingLookupFilePayload = {
+	filename: string
+	mimeType: string
+	dataBase64: string
+}
+
+export const ONBOARDING_LOOKUP_MAX_FILES = 3
+export const ONBOARDING_LOOKUP_MAX_FILE_BYTES = Math.floor(1.5 * 1024 * 1024)
+export const ONBOARDING_LOOKUP_MAX_TOTAL_BYTES = Math.floor(3.5 * 1024 * 1024)
+
+export const ONBOARDING_LOOKUP_FILE_ACCEPT =
+	'.pdf,.docx,.jpg,.jpeg,.png,.gif,.webp,application/pdf,image/jpeg,image/png,image/gif,image/webp,application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+
 const CACHE_MS = 60_000
 const cache = new Map<string, { at: number; result: LookupOk | LookupErr }>()
 const inflight = new Map<string, Promise<LookupOk | LookupErr>>()
@@ -49,6 +62,56 @@ export function shouldLookupOnboardingBusiness(raw: string): boolean {
 	if (q.length < 3) return false
 	if (q.length > 200) return false
 	return true
+}
+
+export function canSendOnboardingLookup(raw: string, fileCount: number): boolean {
+	if (fileCount > 0) return fileCount <= ONBOARDING_LOOKUP_MAX_FILES
+	return shouldLookupOnboardingBusiness(raw)
+}
+
+export type OnboardingLookupFileClass = 'ok' | 'legacy_word' | 'unsupported' | 'too_large'
+
+export function classifyOnboardingLookupFile(file: File): OnboardingLookupFileClass {
+	if (file.size > ONBOARDING_LOOKUP_MAX_FILE_BYTES) return 'too_large'
+	const name = file.name.trim()
+	if (/\.docx$/i.test(name)) return 'ok'
+	if (/\.doc$/i.test(name)) return 'legacy_word'
+	if (/\.(pdf|jpe?g|png|gif|webp)$/i.test(name)) return 'ok'
+	const mime = file.type.toLowerCase()
+	if (mime === 'application/msword') return 'legacy_word'
+	if (
+		mime === 'application/pdf' ||
+		mime === 'image/jpeg' ||
+		mime === 'image/png' ||
+		mime === 'image/gif' ||
+		mime === 'image/webp' ||
+		mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+	) {
+		return 'ok'
+	}
+	return 'unsupported'
+}
+
+export function isOnboardingLookupImageFile(file: File): boolean {
+	if (file.type.toLowerCase().startsWith('image/')) return true
+	return /\.(jpe?g|png|gif|webp)$/i.test(file.name)
+}
+
+export function fileToOnboardingLookupBase64(file: File): Promise<string> {
+	return new Promise((resolve, reject) => {
+		const reader = new FileReader()
+		reader.onload = () => {
+			const s = String(reader.result ?? '')
+			const i = s.indexOf(',')
+			resolve(i >= 0 ? s.slice(i + 1) : s)
+		}
+		reader.onerror = () => reject(reader.error ?? new Error('read_failed'))
+		reader.readAsDataURL(file)
+	})
+}
+
+function filesInflightKey(files: OnboardingLookupFilePayload[]): string {
+	return files.map((f) => `${f.filename}:${f.dataBase64.length}`).join('|')
 }
 
 const PHYSICAL_CATS = [
@@ -218,10 +281,18 @@ function mapCandidate(raw: unknown): OnboardingBusinessLookupCandidate | null {
 	})
 }
 
-export async function lookupOnboardingBusinesses(query: string): Promise<LookupOk | LookupErr> {
-	const key = lookupCacheKey(query)
-	const hit = cache.get(key)
-	if (hit && Date.now() - hit.at < CACHE_MS) return hit.result
+export async function lookupOnboardingBusinesses(
+	query: string,
+	files?: OnboardingLookupFilePayload[],
+): Promise<LookupOk | LookupErr> {
+	const hasFiles = Boolean(files?.length)
+	const key = hasFiles
+		? `attach:${lookupCacheKey(query)}:${filesInflightKey(files!)}`
+		: lookupCacheKey(query)
+	if (!hasFiles) {
+		const hit = cache.get(key)
+		if (hit && Date.now() - hit.at < CACHE_MS) return hit.result
+	}
 	const pending = inflight.get(key)
 	if (pending) return pending
 
@@ -230,14 +301,16 @@ export async function lookupOnboardingBusinesses(query: string): Promise<LookupO
 			const res = await fetch(`${BEAMIO_API_BASE_URL}/onboardingBusinessLookup`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ query: normalizeLookupQuery(query) }),
+				body: JSON.stringify({
+					query: normalizeLookupQuery(query),
+					...(hasFiles ? { files } : {}),
+				}),
 			})
 			const json = (await res.json().catch(() => null)) as
 				| { ok?: boolean; candidates?: unknown; error?: string }
 				| null
 			if (res.status === 429) {
-				const err: LookupErr = { ok: false, error: 'rate_limited' }
-				return err
+				return { ok: false, error: 'rate_limited' }
 			}
 			if (!res.ok || !json || json.ok === false) {
 				return { ok: false, error: String(json?.error ?? 'lookup_failed') }
@@ -246,7 +319,7 @@ export async function lookupOnboardingBusinesses(query: string): Promise<LookupO
 				? json.candidates.map(mapCandidate).filter((c): c is OnboardingBusinessLookupCandidate => Boolean(c))
 				: []
 			const ok: LookupOk = { ok: true, candidates }
-			cache.set(key, { at: Date.now(), result: ok })
+			if (!hasFiles) cache.set(key, { at: Date.now(), result: ok })
 			return ok
 		} catch {
 			return { ok: false, error: 'network' }

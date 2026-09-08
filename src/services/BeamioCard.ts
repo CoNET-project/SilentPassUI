@@ -501,18 +501,122 @@ export const quoteCurrencyAmountInUSDCFair = async (
 	return { usdc6, usdc: ethers.formatUnits(usdc6, 6) }
 }
 
-/** Discover Gifting: EIP-3009 USDC auth + redeem code → Cluster/Master createGiftRedeemForPayer. */
+export type MerchantGiftPayWith = 'usdc' | 'credit'
+
+const GIFT_CREDIT_EIP712_TYPES = {
+	GiftCreditPurchase: [
+		{ name: 'card', type: 'address' },
+		{ name: 'from', type: 'address' },
+		{ name: 'payerAccount', type: 'address' },
+		{ name: 'membershipFeeE6', type: 'uint256' },
+		{ name: 'topupCreditE6', type: 'uint256' },
+		{ name: 'burnAmountE6', type: 'uint256' },
+		{ name: 'redeemHash', type: 'bytes32' },
+		{ name: 'validAfter', type: 'uint64' },
+		{ name: 'validBefore', type: 'uint64' },
+		{ name: 'nonce', type: 'bytes32' },
+	],
+} as const
+
+/** Offline EIP-712 for Credit Gift (`payWith=credit`). verifyingContract = cardAddress. */
+export const signMerchantGiftCreditPurchase = async (args: {
+	userPrivateKey: string
+	cardAddress: string
+	from: string
+	payerAccount: string
+	membershipFeeE6: string | bigint
+	topupCreditE6: string | bigint
+	burnAmountE6: string | bigint
+	redeemHash: string
+	validAfter?: number
+	validBefore?: number
+}): Promise<{
+	from: string
+	payerAccount: string
+	userSignature: string
+	nonce: string
+	validAfter: number
+	validBefore: number
+	redeemHash: string
+	burnAmountE6: string
+}> => {
+	const card = ethers.getAddress(args.cardAddress)
+	const from = ethers.getAddress(args.from)
+	const payerAccount = ethers.getAddress(args.payerAccount)
+	const membershipFeeE6 = BigInt(args.membershipFeeE6)
+	const topupCreditE6 = BigInt(args.topupCreditE6)
+	const burnAmountE6 = BigInt(args.burnAmountE6)
+	const redeemHash = ethers.hexlify(ethers.getBytes(args.redeemHash))
+	if (redeemHash.length !== 66) throw new Error('Invalid redeemHash')
+	const validAfter = args.validAfter ?? 0
+	const validBefore = args.validBefore ?? Math.floor(Date.now() / 1000) + 3600
+	const nonce = ethers.hexlify(ethers.randomBytes(32))
+	const wallet = new ethers.Wallet(args.userPrivateKey)
+	const userSignature = await wallet.signTypedData(
+		{
+			name: 'BeamioMerchantGiftCredit',
+			version: '1',
+			chainId: CONET_MAINNET_CHAIN_ID,
+			verifyingContract: card,
+		},
+		GIFT_CREDIT_EIP712_TYPES,
+		{
+			card,
+			from,
+			payerAccount,
+			membershipFeeE6,
+			topupCreditE6,
+			burnAmountE6,
+			redeemHash,
+			validAfter,
+			validBefore,
+			nonce,
+		},
+	)
+	return {
+		from,
+		payerAccount,
+		userSignature,
+		nonce,
+		validAfter,
+		validBefore,
+		redeemHash,
+		burnAmountE6: burnAmountE6.toString(),
+	}
+}
+
+/** Read buyer AA program points (#0) on a merchant card (CoNET). */
+export const readMerchantCardProgramPoints0Balance = async (
+	cardAddress: string,
+	holder: string,
+): Promise<bigint> => {
+	if (!ethers.isAddress(cardAddress) || !ethers.isAddress(holder)) return 0n
+	const { provider } = await providerForBeamioUserCard(cardAddress)
+	const card = new ethers.Contract(
+		ethers.getAddress(cardAddress),
+		['function balanceOf(address account, uint256 id) view returns (uint256)'],
+		provider,
+	)
+	return (await card.balanceOf(ethers.getAddress(holder), 0n)) as bigint
+}
+
+/** Discover Gifting: USDC EIP-3009 or Credit #0 burn → Cluster/Master createGiftRedeem*. */
 export const postPurchaseMerchantGiftRedeem = async (payload: {
 	cardAddress: string
 	from: string
-	usdcAmount: string
 	userSignature: string
 	nonce: string
 	validAfter: number | string
 	validBefore: number | string
 	redeemCode: string
+	/** Default usdc. credit = burn #0 G+F from buyer AA. */
+	payWith?: MerchantGiftPayWith
+	/** Required for usdc rail. */
+	usdcAmount?: string
 	membershipFeeE6?: string
 	topupPrincipalE6?: string
+	/** Optional hint for credit rail AA. */
+	payerAccount?: string
 }): Promise<{
 	success: boolean
 	error?: string
@@ -522,8 +626,10 @@ export const postPurchaseMerchantGiftRedeem = async (payload: {
 	membershipFeeE6?: string
 	topupCreditE6?: string
 	txHash?: string
+	payWith?: MerchantGiftPayWith
 }> => {
 	const endpoint = `${beamioApi}/api/purchaseMerchantGiftRedeem`
+	const payWith: MerchantGiftPayWith = payload.payWith === 'credit' ? 'credit' : 'usdc'
 	try {
 		const res = await fetch(endpoint, {
 			method: 'POST',
@@ -531,14 +637,20 @@ export const postPurchaseMerchantGiftRedeem = async (payload: {
 			body: JSON.stringify({
 				cardAddress: payload.cardAddress,
 				from: payload.from,
-				usdcAmount: payload.usdcAmount,
+				payWith,
 				userSignature: payload.userSignature,
 				nonce: payload.nonce,
 				validAfter: String(payload.validAfter),
 				validBefore: String(payload.validBefore),
 				redeemCode: payload.redeemCode,
+				...(payWith === 'usdc' && payload.usdcAmount != null
+					? { usdcAmount: payload.usdcAmount }
+					: {}),
 				...(payload.membershipFeeE6 != null ? { membershipFeeE6: payload.membershipFeeE6 } : {}),
 				...(payload.topupPrincipalE6 != null ? { topupPrincipalE6: payload.topupPrincipalE6 } : {}),
+				...(payWith === 'credit' && payload.payerAccount
+					? { payerAccount: payload.payerAccount }
+					: {}),
 			}),
 		})
 		const data = (await res.json().catch(() => ({}))) as Record<string, unknown>
@@ -551,6 +663,7 @@ export const postPurchaseMerchantGiftRedeem = async (payload: {
 		}
 		return {
 			success: true,
+			payWith,
 			redeemCode: typeof data.redeemCode === 'string' ? data.redeemCode : payload.redeemCode,
 			redeemHash: typeof data.redeemHash === 'string' ? data.redeemHash : undefined,
 			shareUrl: typeof data.shareUrl === 'string' ? data.shareUrl : undefined,

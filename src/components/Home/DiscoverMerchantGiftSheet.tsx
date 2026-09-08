@@ -20,12 +20,21 @@ import { fiatPrefix, formatAmount } from '@/services/currency'
 import {
 	postPurchaseMerchantGiftRedeem,
 	quoteCurrencyAmountInUSDCFair,
+	readMerchantCardProgramPoints0Balance,
+	signMerchantGiftCreditPurchase,
 	USDC2Token,
+	type MerchantGiftPayWith,
 } from '@/services/BeamioCard'
 import { resolveSigningPrivateKeyArmor } from '@/utils/resolveSigningPrivateKeyArmor'
 import { parseDiscoverTopupAmountInput, readEoaConetUsdcBalance6 } from '@/utils/discoverEoaUsdcTopup'
 import { membershipFeeE6ToHuman } from '@/utils/discoverMembershipFee'
 import { buildMerchantGiftRedeemShareUrl } from '@/utils/merchantGiftRedeemShare'
+import {
+	computeGiftCreditBurnAmountE6,
+	parseGiftCreditPurchaseConfig,
+} from '@/utils/giftCreditPurchaseMetadata'
+import { resolveBeamioAaOnConet } from '@/utils/resolveBeamioAaFromCardFactory'
+import { conetDepinProvider } from '@/utils/constants'
 import { searchUsername } from '@/services/beamio'
 import { IpfsImg } from '@/components/IpfsImg'
 import beamioQrLogo from '@/components/assets/logo512.png'
@@ -210,10 +219,68 @@ export default function DiscoverMerchantGiftSheet({
 	}, [brandControl])
 	const minHuman = isFeeCard ? membershipFeeE6ToHuman(baseFeeE6) || '0' : '0.01'
 
+	const giftCreditConfig = useMemo(
+		() => parseGiftCreditPurchaseConfig(metadataRoot ?? null),
+		[metadataRoot],
+	)
+	const creditPayEnabled = giftCreditConfig.enabled
+
 	const [amountText, setAmountText] = useState(isFeeCard ? minHuman : '')
+	const [payWith, setPayWith] = useState<MerchantGiftPayWith>('usdc')
+	const [aaPoints0Bal, setAaPoints0Bal] = useState<bigint | null>(null)
+	const [aaPoints0Loading, setAaPoints0Loading] = useState(false)
+	const [resolvedAa, setResolvedAa] = useState<string | null>(null)
 	const [panelError, setPanelError] = useState<string | null>(null)
 	const [submitting, setSubmitting] = useState(false)
 	const submitInFlightRef = useRef(false)
+
+	useEffect(() => {
+		if (!creditPayEnabled && payWith === 'credit') setPayWith('usdc')
+	}, [creditPayEnabled, payWith])
+
+	useEffect(() => {
+		if (!creditPayEnabled || payWith !== 'credit') {
+			setAaPoints0Bal(null)
+			setAaPoints0Loading(false)
+			return
+		}
+		const card = cardAddress.trim()
+		const eoa = (profile?.keyID ?? '').trim()
+		if (!card || !ethers.isAddress(card) || !eoa || !ethers.isAddress(eoa)) {
+			setAaPoints0Bal(null)
+			setResolvedAa(null)
+			return
+		}
+		let cancelled = false
+		setAaPoints0Loading(true)
+		void (async () => {
+			try {
+				let aa = (profile?.aaAccount ?? '').trim()
+				if (!aa || !ethers.isAddress(aa)) {
+					aa = (await resolveBeamioAaOnConet(conetDepinProvider, eoa)) ?? ''
+				}
+				if (cancelled) return
+				if (!aa || !ethers.isAddress(aa)) {
+					setResolvedAa(null)
+					setAaPoints0Bal(null)
+					return
+				}
+				const aaAddr = ethers.getAddress(aa)
+				setResolvedAa(aaAddr)
+				const bal = await readMerchantCardProgramPoints0Balance(card, aaAddr)
+				if (!cancelled) setAaPoints0Bal(bal)
+			} catch {
+				if (!cancelled) {
+					setAaPoints0Bal(null)
+				}
+			} finally {
+				if (!cancelled) setAaPoints0Loading(false)
+			}
+		})()
+		return () => {
+			cancelled = true
+		}
+	}, [creditPayEnabled, payWith, cardAddress, profile?.keyID, profile?.aaAccount, amountText])
 
 	const [friendQuery, setFriendQuery] = useState('')
 	const [friendResults, setFriendResults] = useState<searchResult[]>([])
@@ -315,6 +382,30 @@ export default function DiscoverMerchantGiftSheet({
 		}
 	}
 
+	const creditBurnPreview = useMemo(() => {
+		if (payWith !== 'credit') return null
+		const parsed = parseDiscoverTopupAmountInput(amountText, ccy)
+		if (!parsed.ok) return null
+		let totalE6: bigint
+		try {
+			totalE6 = ethers.parseUnits(parsed.apiAmount, 6)
+		} catch {
+			return null
+		}
+		if (totalE6 <= 0n) return null
+		let feeE6 = 0n
+		try {
+			feeE6 = BigInt(baseFeeE6)
+		} catch {
+			feeE6 = 0n
+		}
+		if (feeE6 > 0n && totalE6 < feeE6) return null
+		const membershipFeeE6 = feeE6 > 0n ? feeE6 : 0n
+		const topupPrincipalE6 = feeE6 > 0n ? totalE6 - feeE6 : totalE6
+		const giftFaceE6 = membershipFeeE6 + topupPrincipalE6
+		return computeGiftCreditBurnAmountE6(giftCreditConfig, giftFaceE6)
+	}, [payWith, amountText, ccy, baseFeeE6, giftCreditConfig])
+
 	const handlePurchase = async () => {
 		setPanelError(null)
 		if (submitInFlightRef.current || submitting) return
@@ -365,10 +456,88 @@ export default function DiscoverMerchantGiftSheet({
 
 		const membershipFeeE6 = feeE6 > 0n ? feeE6.toString() : '0'
 		const topupPrincipalE6 = feeE6 > 0n ? (totalE6 - feeE6).toString() : totalE6.toString()
+		const useCredit = payWith === 'credit' && creditPayEnabled
 
 		submitInFlightRef.current = true
 		setSubmitting(true)
 		try {
+			const { code } = generateCODE('')
+			const redeemCode = String(code ?? '').trim()
+			if (!redeemCode) {
+				setPanelError('Could not generate a redeem code. Try again.')
+				return
+			}
+
+			if (useCredit) {
+				const giftFaceE6 = BigInt(membershipFeeE6) + BigInt(topupPrincipalE6)
+				const { burnAmountE6 } = computeGiftCreditBurnAmountE6(giftCreditConfig, giftFaceE6)
+
+				let payerAccount = resolvedAa
+				if (!payerAccount || !ethers.isAddress(payerAccount)) {
+					const profileAa = (profile?.aaAccount ?? '').trim()
+					if (profileAa && ethers.isAddress(profileAa)) {
+						payerAccount = ethers.getAddress(profileAa)
+					} else {
+						payerAccount = (await resolveBeamioAaOnConet(conetDepinProvider, from)) ?? null
+					}
+				}
+				if (!payerAccount || !ethers.isAddress(payerAccount)) {
+					setPanelError('Smart Wallet (AA) is required to pay with store credit.')
+					return
+				}
+				payerAccount = ethers.getAddress(payerAccount)
+
+				const bal = await readMerchantCardProgramPoints0Balance(card, payerAccount)
+				if (bal < burnAmountE6) {
+					const need = membershipFeeE6ToHuman(burnAmountE6.toString()) || ethers.formatUnits(burnAmountE6, 6)
+					const have = membershipFeeE6ToHuman(bal.toString()) || ethers.formatUnits(bal, 6)
+					setPanelError(
+						`Insufficient store credit (#0) on your Smart Wallet. Need about ${prefix}${need}; balance is ${prefix}${have}.`,
+					)
+					return
+				}
+
+				const redeemHash = ethers.keccak256(ethers.toUtf8Bytes(redeemCode))
+				const auth = await signMerchantGiftCreditPurchase({
+					userPrivateKey: pk,
+					cardAddress: card,
+					from,
+					payerAccount,
+					membershipFeeE6,
+					topupCreditE6: topupPrincipalE6,
+					burnAmountE6,
+					redeemHash,
+				})
+
+				const result = await postPurchaseMerchantGiftRedeem({
+					cardAddress: card,
+					from: auth.from,
+					payWith: 'credit',
+					payerAccount: auth.payerAccount,
+					userSignature: auth.userSignature,
+					nonce: auth.nonce,
+					validAfter: auth.validAfter,
+					validBefore: auth.validBefore,
+					redeemCode,
+					membershipFeeE6,
+					topupPrincipalE6,
+				})
+				if (!result.success) {
+					setPanelError(result.error ?? 'Gift purchase failed.')
+					return
+				}
+				const plain = (result.redeemCode ?? redeemCode).trim()
+				const claimUrl =
+					buildMerchantGiftRedeemShareUrl(card, plain) ||
+					result.shareUrl?.trim() ||
+					null
+				setIssuedCode(plain)
+				setIssuedShareUrl(claimUrl)
+				setIssuedTopupCreditE6(result.topupCreditE6 ?? topupPrincipalE6)
+				onSuccess?.()
+				return
+			}
+
 			const { usdc, usdc6 } = await quoteCurrencyAmountInUSDCFair(ccy, parsed.apiAmount)
 			const bal = await readEoaConetUsdcBalance6(profile as profile)
 			if (bal < usdc6) {
@@ -379,16 +548,10 @@ export default function DiscoverMerchantGiftSheet({
 			}
 
 			const auth = await USDC2Token(pk, usdc, card)
-			const { code } = generateCODE('')
-			const redeemCode = String(code ?? '').trim()
-			if (!redeemCode) {
-				setPanelError('Could not generate a redeem code. Try again.')
-				return
-			}
-
 			const result = await postPurchaseMerchantGiftRedeem({
 				cardAddress: card,
 				from: auth.from,
+				payWith: 'usdc',
 				usdcAmount: auth.usdcAmount,
 				userSignature: auth.userSignature,
 				nonce: auth.nonce,
@@ -420,9 +583,22 @@ export default function DiscoverMerchantGiftSheet({
 	}
 
 	const merchantLabel = merchantTitle.trim() || 'this merchant'
-	const giftFooterTip = isFeeCard
-		? `Minimum ${prefix}${minHuman}. Non-members get membership from the fee portion; members get full store credit.`
-		: 'Recipient gets store credit for this amount — plus any Top-up Multiplier the merchant configured.'
+	const giftFooterTip =
+		payWith === 'credit'
+			? isFeeCard
+				? `Minimum ${prefix}${minHuman}. Paid from your Smart Wallet store credit (#0). No Top-up Multiplier or Reward PT on this rail.`
+				: 'Paid from your Smart Wallet store credit (#0). Recipient gets the gift face only — no Top-up Multiplier or Reward PT.'
+			: isFeeCard
+				? `Minimum ${prefix}${minHuman}. Non-members get membership from the fee portion; members get full store credit.`
+				: 'Recipient gets store credit for this amount — plus any Top-up Multiplier the merchant configured.'
+
+	const payCtaLabel =
+		payWith === 'credit' ? 'Pay with store credit & Gift' : 'Pay with CoNET-USDC & Gift'
+
+	const headerBlurb =
+		payWith === 'credit'
+			? `Burn store credit (#0) on your Smart Wallet for ${merchantLabel}. You only sign offline — no network gas for you or the recipient.`
+			: `Pay with CoNET-USDC for ${merchantLabel}. You only sign offline — no network gas for you or the recipient. The merchant does not need to sign.`
 
 	if (issuedCode) {
 		const creditHuman = issuedTopupCreditE6
@@ -581,8 +757,7 @@ export default function DiscoverMerchantGiftSheet({
 					Gift Store Credit & Open Redeem
 				</h2>
 				<p className="mt-2 text-[13px] leading-relaxed text-[#6b7280] dark:text-slate-400">
-					Pay with CoNET-USDC for {merchantLabel}. You only sign offline — no network gas for you or
-					the recipient. The merchant does not need to sign.
+					{headerBlurb}
 				</p>
 			</header>
 
@@ -681,6 +856,76 @@ export default function DiscoverMerchantGiftSheet({
 				</div>
 			</label>
 
+			{creditPayEnabled ? (
+				<fieldset className="block" disabled={submitting}>
+					<legend className="mb-1.5 block text-[12px] font-semibold uppercase tracking-[0.08em] text-[#9ca3af]">
+						Pay with
+					</legend>
+					<div className="grid grid-cols-2 gap-2">
+						<label
+							className={`flex cursor-pointer items-center gap-2 rounded-2xl border px-3 py-3 text-[13px] font-semibold transition ${
+								payWith === 'usdc'
+									? 'border-[#0051d1] bg-[#e9edff] text-[#0F172A]'
+									: 'border-[#e8ecf0] bg-white text-[#6b7280] dark:border-slate-600 dark:bg-slate-900'
+							}`}
+						>
+							<input
+								type="radio"
+								name="discover-gift-pay-with"
+								value="usdc"
+								checked={payWith === 'usdc'}
+								onChange={() => {
+									setPayWith('usdc')
+									setPanelError(null)
+								}}
+								className="sr-only"
+							/>
+							<span>CoNET-USDC</span>
+						</label>
+						<label
+							className={`flex cursor-pointer items-center gap-2 rounded-2xl border px-3 py-3 text-[13px] font-semibold transition ${
+								payWith === 'credit'
+									? 'border-[#0051d1] bg-[#e9edff] text-[#0F172A]'
+									: 'border-[#e8ecf0] bg-white text-[#6b7280] dark:border-slate-600 dark:bg-slate-900'
+							}`}
+						>
+							<input
+								type="radio"
+								name="discover-gift-pay-with"
+								value="credit"
+								checked={payWith === 'credit'}
+								onChange={() => {
+									setPayWith('credit')
+									setPanelError(null)
+								}}
+								className="sr-only"
+							/>
+							<span>Store credit</span>
+						</label>
+					</div>
+					{payWith === 'credit' ? (
+						<p className="mt-2 text-[12px] leading-snug text-[#6b7280] dark:text-slate-400">
+							{aaPoints0Loading
+								? 'Checking Smart Wallet store credit…'
+								: aaPoints0Bal != null
+									? `Smart Wallet #0 balance: ${prefix}${
+											membershipFeeE6ToHuman(aaPoints0Bal.toString()) ||
+											ethers.formatUnits(aaPoints0Bal, 6)
+										}${
+											creditBurnPreview
+												? ` · Burn about ${prefix}${
+														membershipFeeE6ToHuman(
+															creditBurnPreview.burnAmountE6.toString(),
+														) || ethers.formatUnits(creditBurnPreview.burnAmountE6, 6)
+													}`
+												: ''
+										}`
+									: 'Could not load Smart Wallet store credit. Unlock your wallet and try again.'}
+						</p>
+					) : null}
+				</fieldset>
+			) : null}
+
 			<div>
 				<span className="mb-1.5 block text-[12px] font-semibold uppercase tracking-[0.08em] text-[#9ca3af]">
 					Share with a friend (optional)
@@ -764,7 +1009,7 @@ export default function DiscoverMerchantGiftSheet({
 					) : (
 						<Gift className="h-5 w-5 shrink-0" strokeWidth={2.25} aria-hidden />
 					)}
-					<span>{submitting ? 'Creating gift…' : 'Pay with CoNET-USDC & Gift'}</span>
+					<span>{submitting ? 'Creating gift…' : payCtaLabel}</span>
 					{!submitting ? (
 						<ChevronRight className="h-5 w-5 opacity-80" strokeWidth={2.25} aria-hidden />
 					) : null}

@@ -150,8 +150,8 @@ export default function DiscoverMerchantGiftSheet({
 	onClose,
 	onSuccess,
 }: Props) {
-	const ccy = (currency || 'USD').toUpperCase()
-	const prefix = fiatPrefix(ccy as Parameters<typeof fiatPrefix>[0])
+	const ccy = ((currency || 'USD').toUpperCase() || 'USD') as ICurrency
+	const prefix = fiatPrefix(ccy)
 	const baseFeeE6 = useMemo(() => discoverGiftBaseMembershipFeeE6(metadataRoot), [metadataRoot])
 	const isFeeCard = useMemo(() => {
 		try {

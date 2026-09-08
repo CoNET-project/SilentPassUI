@@ -4,6 +4,7 @@ import {
 	initMessage,
 	sendMessage,
 } from '@/services/chat'
+import { mirrorChatMessageToHistory } from '@/services/chatHistoryMirror'
 import { storeSystemData } from '@/services/beamio'
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
 
@@ -99,6 +100,11 @@ export async function sendMerchantGiftRedeemChat(
 		memo: noteText || undefined,
 		usdcAmount: amount,
 	})
+	// Distinct from optional note so timestamp-only fallbacks never collide.
+	giftCard.createdAt = now + 1
+	if (giftCard.paymentCard) {
+		giftCard.paymentCard.timeStamp = now + 1
+	}
 	outbound.push(giftCard)
 
 	for (const msg of outbound) {
@@ -118,6 +124,8 @@ export async function sendMerchantGiftRedeemChat(
 		/* best-effort local persist */
 	}
 
+	const peer = (friendAddress || chat.address || '').toLowerCase()
+
 	for (const msg of outbound) {
 		const payload =
 			msg.paymentCard != null
@@ -136,12 +144,19 @@ export async function sendMerchantGiftRedeemChat(
 					error: 'Gift purchased, but chat delivery failed. Share the claim link with your friend.',
 				}
 			}
+			mirrorChatMessageToHistory(peer, msg, 'out')
 		} catch {
 			return {
 				ok: false,
 				error: 'Gift purchased, but chat delivery failed. Share the claim link with your friend.',
 			}
 		}
+	}
+
+	try {
+		await storeSystemData()
+	} catch {
+		/* ignore */
 	}
 
 	return { ok: true }

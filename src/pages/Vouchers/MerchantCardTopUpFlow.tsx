@@ -60,6 +60,10 @@ import {
 	buildDiscoverMerchantShareUrl,
 	shareDiscoverMerchantUrl,
 } from '@/utils/discoverMerchantShare'
+import {
+	quoteDiscoverStoreCreditTopupBonus,
+	resolveDiscoverMerchantPageBrandColor,
+} from '@/utils/discoverMerchantPromotions'
 
 const SPINNER_CLASS =
 	'[&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]'
@@ -397,7 +401,13 @@ export default function MerchantCardTopUpFlow({
 	onSuccess,
 }: Props) {
 	const { setShowFooter, myBrandCardDetails } = useDaemonContext()
-	const { resolveName, resolveImage, registerCardAddresses } = useMerchantCardDatabase()
+	const {
+		resolveName,
+		resolveImage,
+		registerCardAddresses,
+		lookupByAddress,
+		ensureCardsForAddresses,
+	} = useMerchantCardDatabase()
 	const [isEntered, setIsEntered] = useState(false)
 	const [isClosing, setIsClosing] = useState(false)
 	const [step, setStep] = useState<Step>('amount')
@@ -434,6 +444,19 @@ export default function MerchantCardTopUpFlow({
 
 	const prefix = displayFiatPrefixFromCode(cardCurrency, 'USD')
 	const fiatHuman = amountInput.replace(/,/g, '').trim() || '0'
+	const metadataRoot = lookupByAddress(cardAddress)?.metadataRoot ?? null
+	const pageSurface = useMemo(
+		() => resolveDiscoverMerchantPageBrandColor(metadataRoot),
+		[metadataRoot],
+	)
+	const creditQuote = useMemo(() => {
+		const amount = Number(fiatHuman)
+		return quoteDiscoverStoreCreditTopupBonus({
+			metadataRoot,
+			currency: String(cardCurrency || 'USD'),
+			amount,
+		})
+	}, [metadataRoot, cardCurrency, fiatHuman])
 	const profileAa =
 		profile.aaAccount && ethers.isAddress(profile.aaAccount)
 			? ethers.getAddress(profile.aaAccount)
@@ -514,6 +537,7 @@ export default function MerchantCardTopUpFlow({
 	useEffect(() => {
 		if (!open || !cardAddress) return
 		registerCardAddresses([cardAddress])
+		void ensureCardsForAddresses([cardAddress])
 		void getCardMetadataFromApi(cardAddress)
 			.then((meta) => {
 				if (meta?.name && !isGenericMerchantCardDisplayName(meta.name)) {
@@ -522,7 +546,7 @@ export default function MerchantCardTopUpFlow({
 				setMerchantIcon(pickNonFactoryMerchantAssetUrl(meta?.icon, meta?.image))
 			})
 			.catch(() => undefined)
-	}, [open, cardAddress, registerCardAddresses])
+	}, [open, cardAddress, registerCardAddresses, ensureCardsForAddresses])
 
 	const loadQuoteAndBalances = useCallback(async () => {
 		if (!cardAddress || Number(fiatHuman) <= 0) return
@@ -1061,7 +1085,7 @@ export default function MerchantCardTopUpFlow({
 					if (localPay.ok) {
 						const refreshed = await getMyAssets(profile, cardAddress, { bypassCache: true })
 						assets = refreshed ?? undefined
-						setMintedLabel(Number(fiatHuman).toFixed(2))
+						setMintedLabel(creditQuote ? creditQuote.total.toFixed(2) : Number(fiatHuman).toFixed(2))
 						setStep('success')
 						onSuccess?.(assets)
 						return
@@ -1121,7 +1145,7 @@ export default function MerchantCardTopUpFlow({
 				throw new Error('Nothing to top up')
 			}
 
-			setMintedLabel(Number(fiatHuman).toFixed(2))
+			setMintedLabel(creditQuote ? creditQuote.total.toFixed(2) : Number(fiatHuman).toFixed(2))
 			setStep('success')
 			onSuccess?.(assets)
 		} catch (e: unknown) {
@@ -1187,9 +1211,10 @@ export default function MerchantCardTopUpFlow({
 			className={`fixed inset-0 z-[130] dark:bg-slate-950 ${
 				step === 'success'
 					? 'bg-[radial-gradient(120%_90%_at_50%_8%,#d9f5e4_0%,#f3eef8_38%,#eef4fb_68%,#F9F9FB_100%)]'
-					: 'bg-[#F9F9FB]'
+					: ''
 			}`}
 			style={{
+				backgroundColor: step === 'success' ? undefined : pageSurface,
 				transform: isClosing || !isEntered ? 'translateX(100%)' : 'translateX(0)',
 				transition: 'transform 300ms ease-out',
 			}}
@@ -1263,6 +1288,11 @@ export default function MerchantCardTopUpFlow({
 										style={{ width: `${heroDigitsWidth}ch` }}
 									/>
 								</div>
+								{creditQuote ? (
+									<p className="mt-4 text-center text-[15px] font-medium text-[#3B66F5]">
+										You'll get {creditQuote.totalLabel} in store credits
+									</p>
+								) : null}
 								<div className="mt-12 w-full max-w-md">
 									<p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#9aa3b2]">
 										Quick amount

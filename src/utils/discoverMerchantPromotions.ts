@@ -158,6 +158,152 @@ function shareMetadataRoot(meta: Record<string, unknown> | null | undefined): Re
 	return meta
 }
 
+/** Only allow safe inline style colors (hex / rgb / rgba). */
+export function discoverSafeCssColor(raw: string | null | undefined): string | null {
+	if (raw == null || typeof raw !== 'string') return null
+	const t = raw.trim()
+	if (!t) return null
+	if (/^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(t)) return t
+	if (/^rgba?\(/i.test(t)) return t
+	return null
+}
+
+export function discoverParseCssRgb(color: string): { r: number; g: number; b: number } | null {
+	const t = color.trim()
+	const hex = t.match(/^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i)
+	if (hex) {
+		let h = hex[1]
+		if (h.length === 3) h = h.split('').map((c) => c + c).join('')
+		if (h.length === 8) h = h.slice(0, 6)
+		return {
+			r: parseInt(h.slice(0, 2), 16),
+			g: parseInt(h.slice(2, 4), 16),
+			b: parseInt(h.slice(4, 6), 16),
+		}
+	}
+	const rgb = t.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i)
+	if (rgb) {
+		return { r: Number(rgb[1]), g: Number(rgb[2]), b: Number(rgb[3]) }
+	}
+	return null
+}
+
+/**
+ * Mix merchant brand color toward white for Discover / Top-up page chrome.
+ * `whiteAmount` 0 = brand, 1 = white.
+ */
+export function discoverMixCssColorWithWhite(color: string, whiteAmount: number): string | null {
+	const rgb = discoverParseCssRgb(color)
+	if (!rgb) return null
+	const t = Math.min(1, Math.max(0, whiteAmount))
+	const r = Math.round(rgb.r + (255 - rgb.r) * t)
+	const g = Math.round(rgb.g + (255 - rgb.g) * t)
+	const b = Math.round(rgb.b + (255 - rgb.b) * t)
+	return `rgb(${r}, ${g}, ${b})`
+}
+
+/**
+ * Card-level Discover brand color from flattened `backgroundColor` or
+ * `shareTokenMetadata.backgroundColor` (Merchant OS Base card background).
+ */
+export function parseDiscoverCardBrandColor(meta: Record<string, unknown> | null | undefined): string | null {
+	if (meta == null) return null
+	const share = shareMetadataRoot(meta)
+	const raw =
+		meta.backgroundColor ??
+		meta.background_color ??
+		share?.backgroundColor ??
+		share?.background_color
+	return typeof raw === 'string' && raw.trim() ? discoverSafeCssColor(raw) : null
+}
+
+export const DISCOVER_MERCHANT_PAGE_WHITE_MIX = 0.9
+export const DISCOVER_TOPUP_PAGE_FALLBACK_BG = '#F9F9FB'
+
+function parseDiscoverTierBackgroundColor(tier: unknown): string | null {
+	if (tier == null || typeof tier !== 'object') return null
+	const o = tier as Record<string, unknown>
+	const nested =
+		o.properties != null && typeof o.properties === 'object'
+			? (o.properties as Record<string, unknown>)
+			: null
+	const bgRaw =
+		o.backgroundColor ?? o.background_color ?? nested?.backgroundColor ?? nested?.background_color
+	return typeof bgRaw === 'string' && bgRaw.trim() ? discoverSafeCssColor(bgRaw) : null
+}
+
+function discoverMetadataTiers(meta: Record<string, unknown> | null | undefined): unknown[] | null {
+	if (!meta) return null
+	if (Array.isArray(meta.tiers) && meta.tiers.length > 0) return meta.tiers
+	const share = shareMetadataRoot(meta)
+	if (share && Array.isArray(share.tiers) && share.tiers.length > 0) return share.tiers
+	return null
+}
+
+function parseDiscoverHighestTierBackground(
+	meta: Record<string, unknown> | null | undefined,
+): string | null {
+	const raw = discoverMetadataTiers(meta)
+	if (!raw) return null
+	let bestMin = -1n
+	let bestBg: string | null = null
+	for (const item of raw) {
+		if (item == null || typeof item !== 'object') continue
+		const o = item as Record<string, unknown>
+		const minRaw = o.minUsdc6 ?? o.min_usdc6
+		let minUsdc6 = 0n
+		try {
+			if (typeof minRaw === 'bigint') minUsdc6 = minRaw
+			else if (typeof minRaw === 'number' && Number.isFinite(minRaw)) minUsdc6 = BigInt(Math.trunc(minRaw))
+			else if (typeof minRaw === 'string' && minRaw.trim()) minUsdc6 = BigInt(minRaw.trim())
+		} catch {
+			minUsdc6 = 0n
+		}
+		const bg = parseDiscoverTierBackgroundColor(item)
+		if (minUsdc6 > bestMin) {
+			bestMin = minUsdc6
+			bestBg = bg
+		} else if (minUsdc6 === bestMin && bg) {
+			bestBg = bg
+		}
+	}
+	return bestBg
+}
+
+/**
+ * Discover / Top-up brand chrome: card-level `backgroundColor`, then tiers[0],
+ * then the highest `minUsdc6` tier. Same chain as Discover merchant detail.
+ */
+export function parseDiscoverMerchantBrandColor(
+	meta: Record<string, unknown> | null | undefined,
+): string | null {
+	const cardLevel = parseDiscoverCardBrandColor(meta)
+	if (cardLevel) return cardLevel
+	const tiers = discoverMetadataTiers(meta)
+	const first = tiers?.length ? parseDiscoverTierBackgroundColor(tiers[0]) : null
+	if (first) return first
+	return parseDiscoverHighestTierBackground(meta)
+}
+
+/** Soft merchant page surface: brand mixed toward white, or the Top-up gray fallback. */
+export function resolveDiscoverMerchantPageBrandColor(
+	meta: Record<string, unknown> | null | undefined,
+	fallback = DISCOVER_TOPUP_PAGE_FALLBACK_BG,
+): string {
+	const brand = parseDiscoverMerchantBrandColor(meta)
+	if (!brand) return fallback
+	return discoverMixCssColorWithWhite(brand, DISCOVER_MERCHANT_PAGE_WHITE_MIX) ?? fallback
+}
+
+export type DiscoverStoreCreditTopupQuote = {
+	principal: number
+	bonus: number
+	total: number
+	principalLabel: string
+	bonusLabel: string
+	totalLabel: string
+}
+
 function rewardFromPayload(raw: SocialPromotionReward | undefined): SocialPromotionReward | null {
 	if (!raw || raw.enabled === false) return null
 	const points = parsePositiveInt(raw.points13)
@@ -726,6 +872,70 @@ export function resolveDiscoverUnifiedTopupPromotion(params: {
 		source: 'bonusRules',
 		bonusRule: primaryBonus,
 		active: true,
+	}
+}
+
+/**
+ * Quote Store Credit Multiplier / top-up bonus for an entered amount.
+ * Returns null when the promotion is inactive or the amount does not qualify.
+ */
+export function quoteDiscoverStoreCreditTopupBonus(params: {
+	metadataRoot: Record<string, unknown> | null | undefined
+	currency: string
+	amount: number
+}): DiscoverStoreCreditTopupQuote | null {
+	const amount = Number(params.amount)
+	if (!Number.isFinite(amount) || amount <= 0) return null
+	const unified = resolveDiscoverUnifiedTopupPromotion({ metadataRoot: params.metadataRoot })
+	if (!unified?.active) return null
+
+	let bonus: number | null = null
+	if (unified.source === 'topupPromotion' && unified.topupPromo) {
+		const promo = unified.topupPromo
+		const min = parseAmount(promo.minimumTopupAmount)
+		const reward = parseAmount(promo.rewardValue)
+		if (min == null || reward == null) return null
+		if (promo.rewardType === 'percent') {
+			if (amount < min) return null
+			bonus = Number(((amount * reward) / 100).toFixed(2))
+		} else if (promo.fixedTiers && promo.fixedTiers.length > 0) {
+			let picked: ShareTokenMetadataTopupPromotionFixedTier | null = null
+			for (const tier of promo.fixedTiers) {
+				if (amount >= tier.topupAmount) picked = tier
+			}
+			if (!picked) return null
+			bonus = Number(picked.bonusAmount.toFixed(2))
+		} else {
+			if (amount < min) return null
+			bonus = Number(reward.toFixed(2))
+		}
+	} else {
+		const rules = parseDiscoverRechargeBonusRules(params.metadataRoot ?? {})
+		let picked: DiscoverRechargeBonusRule | null = null
+		for (const rule of rules) {
+			if (rule.paymentAmount <= 0 || rule.bonusValue <= 0) continue
+			if (amount < rule.paymentAmount) continue
+			if (!picked || rule.paymentAmount > picked.paymentAmount) picked = rule
+		}
+		if (!picked) return null
+		if (picked.bonusProportional && picked.paymentAmount > 0) {
+			bonus = Number(((amount * picked.bonusValue) / picked.paymentAmount).toFixed(2))
+		} else {
+			bonus = Number(picked.bonusValue.toFixed(2))
+		}
+	}
+
+	if (bonus == null || bonus <= 0) return null
+	const principal = Number(amount.toFixed(2))
+	const total = Number((principal + bonus).toFixed(2))
+	const moneyPrefix = moneyPrefixForCurrency(params.currency)
+	return {
+		principal,
+		bonus,
+		total,
+		principalLabel: formatPromoMoneyLabel(moneyPrefix, principal),
+		bonusLabel: formatPromoMoneyLabel(moneyPrefix, bonus),
+		totalLabel: formatPromoMoneyLabel(moneyPrefix, total),
 	}
 }
 

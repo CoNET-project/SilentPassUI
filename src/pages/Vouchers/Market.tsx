@@ -198,8 +198,13 @@ import { readDiscoverShareReferrer, stashDiscoverShareReferrer } from '@/utils/d
 import { collectDeepLinkSearchParams } from '@/utils/beamioDeepLinkParams'
 import { useReliableTapHandler, RELIABLE_TAP_BUTTON_CLASS } from '@/utils/reliableTap'
 import {
+	DISCOVER_MERCHANT_PAGE_WHITE_MIX,
+	discoverMixCssColorWithWhite,
+	discoverParseCssRgb,
+	discoverSafeCssColor,
 	formatSocialPoints13Display,
 	parseDiscoverActorRewardPercentsFromMetadata,
+	parseDiscoverMerchantBrandColor,
 	parseDiscoverProgramDescriptionFromMetadata,
 	resolveCouponSocialMissionBlockForSeries,
 	resolveDiscoverProspectJoinPanelCopy,
@@ -1773,36 +1778,6 @@ function DiscoverHeroStatCapsules({
 	)
 }
 
-/** Only allow safe inline style colors (hex / rgb / rgba). */
-function discoverSafeCssColor(raw: string | null | undefined): string | null {
-	if (raw == null || typeof raw !== "string") return null
-	const t = raw.trim()
-	if (!t) return null
-	if (/^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(t)) return t
-	if (/^rgba?\(/i.test(t)) return t
-	return null
-}
-
-function discoverParseCssRgb(color: string): { r: number; g: number; b: number } | null {
-	const t = color.trim()
-	const hex = t.match(/^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i)
-	if (hex) {
-		let h = hex[1]
-		if (h.length === 3) h = h.split('').map((c) => c + c).join('')
-		if (h.length === 8) h = h.slice(0, 6)
-		return {
-			r: parseInt(h.slice(0, 2), 16),
-			g: parseInt(h.slice(2, 4), 16),
-			b: parseInt(h.slice(4, 6), 16),
-		}
-	}
-	const rgb = t.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i)
-	if (rgb) {
-		return { r: Number(rgb[1]), g: Number(rgb[2]), b: Number(rgb[3]) }
-	}
-	return null
-}
-
 function discoverRelativeLuminance(r: number, g: number, b: number): number {
 	const lin = (c: number) => {
 		const x = c / 255
@@ -1846,42 +1821,8 @@ function discoverBrandTextOnShell(
 	return { solid, body: `rgba(${r}, ${g}, ${b}, 0.78)` }
 }
 
-/**
- * Mix merchant brand color toward white for Discover detail page chrome.
- * `whiteAmount` 0 = brand, 1 = white. Used so each merchant gets a distinct soft surface
- * from the same `tiers[0].backgroundColor` source as Exclusive Welcome Offer — not a hardcoded gray.
- */
-function discoverMixCssColorWithWhite(color: string, whiteAmount: number): string | null {
-	const rgb = discoverParseCssRgb(color)
-	if (!rgb) return null
-	const t = Math.min(1, Math.max(0, whiteAmount))
-	const r = Math.round(rgb.r + (255 - rgb.r) * t)
-	const g = Math.round(rgb.g + (255 - rgb.g) * t)
-	const b = Math.round(rgb.b + (255 - rgb.b) * t)
-	return `rgb(${r}, ${g}, ${b})`
-}
-
 /** Soft page surface tint from brand (fallback stays the previous default gray). */
 const DISCOVER_MERCHANT_DETAIL_PAGE_FALLBACK_BG = '#f5f7f9'
-const DISCOVER_MERCHANT_DETAIL_PAGE_WHITE_MIX = 0.9
-
-/**
- * Card-level Discover brand color from flattened `backgroundColor` or
- * `shareTokenMetadata.backgroundColor` (Merchant OS Base card background).
- */
-function parseDiscoverCardBrandColor(meta: Record<string, unknown> | null): string | null {
-	if (meta == null) return null
-	const share =
-		meta.shareTokenMetadata != null && typeof meta.shareTokenMetadata === 'object'
-			? (meta.shareTokenMetadata as Record<string, unknown>)
-			: null
-	const raw =
-		meta.backgroundColor ??
-		meta.background_color ??
-		share?.backgroundColor ??
-		share?.background_color
-	return typeof raw === 'string' && raw.trim() ? discoverSafeCssColor(raw) : null
-}
 
 function discoverResolveTierBackgroundImageUrl(raw: unknown): string | null {
 	if (raw == null) return null
@@ -4964,17 +4905,14 @@ function DiscoverMerchantDetailFullScreen({
 	 * Page brand chrome: prefer card-level `backgroundColor` (Base pass background /
 	 * image mid-tone), then tiers[0], then highest-tier fallback.
 	 */
-	const merchantDetailBrandColor = useMemo(() => {
-		const cardLevel = parseDiscoverCardBrandColor(merchantMetadataRoot)
-		if (cardLevel) return cardLevel
-		if (prospectJoinPanelBackground.backgroundColor) return prospectJoinPanelBackground.backgroundColor
-		const { tierTopBackground } = parseDiscoverTiersFromMeta(merchantMetadataRoot)
-		return tierTopBackground ? discoverSafeCssColor(tierTopBackground) : null
-	}, [merchantMetadataRoot, prospectJoinPanelBackground.backgroundColor])
+	const merchantDetailBrandColor = useMemo(
+		() => parseDiscoverMerchantBrandColor(merchantMetadataRoot),
+		[merchantMetadataRoot],
+	)
 	const merchantDetailPageSurface = useMemo(
 		() =>
 			merchantDetailBrandColor
-				? discoverMixCssColorWithWhite(merchantDetailBrandColor, DISCOVER_MERCHANT_DETAIL_PAGE_WHITE_MIX) ??
+				? discoverMixCssColorWithWhite(merchantDetailBrandColor, DISCOVER_MERCHANT_PAGE_WHITE_MIX) ??
 					DISCOVER_MERCHANT_DETAIL_PAGE_FALLBACK_BG
 				: DISCOVER_MERCHANT_DETAIL_PAGE_FALLBACK_BG,
 		[merchantDetailBrandColor],

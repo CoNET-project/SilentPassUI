@@ -4,6 +4,7 @@ import {
 } from '@/services/chat'
 
 import { useEffect, useRef, useState } from "react"
+import { useLocation, useNavigate } from "react-router-dom"
 import { useScrollCapsuleOpacity } from "@/hooks/useScrollCapsuleOpacity"
 import { ReactComponent as ChatBlueIcon } from '@/components/Footer/assets/chat-blue.svg'
 import Chat from './chat'
@@ -14,7 +15,14 @@ import { tu } from '@/locale/beamioLocale'
 /** 与 Wallet / Discover 顶栏胶囊圆标底色一致 */
 const CHAT_CAPSULE_ACCENT = '#1562f0'
 
+type ChatRouteLocationState = {
+	chatBackToDiscoverMerchantCard?: string
+	discoverDetailReturnTo?: string
+} | null
+
 const Home = () => {
+	const navigate = useNavigate()
+	const location = useLocation()
 	const {
 		profiles,
 		setShowFooter,
@@ -99,6 +107,11 @@ const Home = () => {
 					<ChatList
 						title="" // 你如果不要 tu('messages') 大标题就留空
 						onOpen={item => {
+							// User picked another thread from the list — drop Discover return target.
+							const state = location.state as ChatRouteLocationState
+							if (state?.chatBackToDiscoverMerchantCard) {
+								navigate(location.pathname, { replace: true, state: {} })
+							}
 							setChatData(item)      // ✅ 打开某个会话
 							setShowFooter(false)
 						}}
@@ -111,9 +124,24 @@ const Home = () => {
 		{chatData && (
 			<Chat
 				onBack={() => {
+					const state = location.state as ChatRouteLocationState
+					const backCard = state?.chatBackToDiscoverMerchantCard?.trim() ?? ''
+					const returnTo = state?.discoverDetailReturnTo?.trim()
 					setChatData(undefined)
-					setShowFooter(true)
 					setMessageCount(0)
+					if (backCard) {
+						navigate('/discover', {
+							replace: true,
+							state: {
+								openDiscoverMerchantCard: backCard,
+								...(returnTo && returnTo.startsWith('/')
+									? { discoverDetailReturnTo: returnTo }
+									: {}),
+							},
+						})
+						return
+					}
+					setShowFooter(true)
 				}}
 				chatData={chatData}
 				allNodes={allNodes}
@@ -121,7 +149,7 @@ const Home = () => {
 			/>
 		)}
 		</div>
-  )
+	)
 }
 
 export default Home

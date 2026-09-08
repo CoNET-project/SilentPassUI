@@ -54,7 +54,7 @@ import {
   ExternalLink,
   Gift,
   Calendar,
-  Headphones,
+	Headphones,
   Crown,
   Sparkles,
   Copy,
@@ -64,6 +64,7 @@ import {
   ImageIcon,
   AlertTriangle,
   MessageCircle,
+  Coins,
 } from "lucide-react"
 import { useNavigate, useLocation } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
@@ -115,6 +116,7 @@ import {
 	resolveDiscoverMembershipUiState,
 	type DiscoverMembershipFeeTier,
 } from "@/utils/discoverMembershipFee"
+import { formatWalletMembershipMemberNo } from "@/pages/Wallet/walletMerchantPassDisplay"
 import { loadMyBrandsFeedLocalCache } from "@/utils/myBrandsFeedLocalCache"
 import type { MyBrandCardFeedDetailsMap } from "@/utils/myBrandsFeedState"
 import {
@@ -180,7 +182,6 @@ import ShowPayQR from "./showPayQR"
 import greenCard from "./assets/greenCard.png"
 import blackCard from "./assets/BlackCard.png"
 import longdhangStoreCardBg from "@/components/assets/longdhangStoreCardBg.png"
-import longdhangRewardTierPromo from "@/components/assets/longdhangRewardTierPromo.png"
 import { isIpfsFragmentImageUrl } from "@/utils/ipfsImageLibrary"
 import DiscoverMerchantShareButton from '@/components/DiscoverMerchantShareButton'
 import { DiscoverCouponSharePromotionCard } from '@/components/discover/DiscoverCouponSharePromotionCard'
@@ -587,98 +588,36 @@ const DISCOVER_VISIT_BRAND_FALLBACK = '#4b4537'
 const DISCOVER_VISIT_BOOKING_ICON = '#e4c9a0'
 const DISCOVER_VISIT_MUTED_ICON = '#8a8f98'
 
-/** Balance strip + Booking / Gifting / Contact. Brand chrome follows the merchant color. */
+/** Booking / Gifting / Contact. Brand chrome follows the merchant color. */
 function DiscoverMerchantVisitActionsBlock({
 	brandColor,
-	showBalanceCard,
-	badgeDollars,
-	balanceFiat,
-	pointsDisplay,
-	chargePercent,
-	balanceClickable,
-	onBalanceClick,
 	onBooking,
 	onGifting,
 	onContact,
 	contactBusy,
 	actionsDisabled,
 	error,
+	giftingLabel = 'Gifting',
+	giftAccentColor,
 }: {
 	brandColor: string
-	showBalanceCard: boolean
-	badgeDollars: string
-	balanceFiat: string
-	pointsDisplay: string
-	chargePercent: number | null
-	balanceClickable: boolean
-	onBalanceClick: () => void
 	onBooking: () => void
 	onGifting: () => void
 	onContact: () => void
 	contactBusy: boolean
 	actionsDisabled: boolean
 	error: string | null
+	/** Health & Beauty loyalty layout uses "Gift Voucher". */
+	giftingLabel?: string
+	giftAccentColor?: string
 }) {
 	const brand = brandColor.trim() || DISCOVER_VISIT_BRAND_FALLBACK
-	const balanceInner = (
-		<>
-			<div
-				className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border bg-white dark:bg-slate-900"
-				style={{ borderColor: `${brand}55` }}
-			>
-				<span className="flex items-baseline leading-none" style={{ color: brand }}>
-					<span className="text-[18px] font-bold tabular-nums">{badgeDollars}</span>
-					<span className="text-[12px] font-bold">$</span>
-				</span>
-			</div>
-			<div className="min-w-0 flex-1">
-				<p className="truncate text-[14px] leading-snug" style={{ color: brand }}>
-					Your Balance:{' '}
-					<span className="font-semibold">{balanceFiat}</span>
-					<span className="mx-1.5 inline-block align-middle text-[10px] text-[#c5c9ce]" aria-hidden>
-						•
-					</span>
-					<span className="font-medium text-[#8a8f98] dark:text-slate-400">
-						{pointsDisplay} Pts
-					</span>
-				</p>
-				{chargePercent != null ? (
-					<p className="mt-0.5 truncate text-[12px] leading-snug text-[#8a8f98] dark:text-slate-400">
-						Earn{' '}
-						<span className="font-semibold" style={{ color: brand }}>
-							{chargePercent}% back in Points
-						</span>{' '}
-						on every visit &amp; purchase
-					</p>
-				) : null}
-			</div>
-			<ChevronRight className="h-4 w-4 shrink-0 text-[#c5c9ce]" strokeWidth={2.2} aria-hidden />
-		</>
-	)
+	const giftColor = giftAccentColor?.trim() || DISCOVER_VISIT_MUTED_ICON
 	const actionBtnClass =
 		'flex min-h-[5.5rem] flex-col items-center justify-center gap-2 rounded-[22px] px-2 py-4 ring-1 transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60'
 
 	return (
 		<div className="flex flex-col gap-3">
-			{showBalanceCard ? (
-				balanceClickable ? (
-					<button
-						type="button"
-						onClick={onBalanceClick}
-						aria-label="Your Balance"
-						className="flex w-full items-center gap-3 rounded-[22px] bg-white px-4 py-3.5 text-left shadow-[0_8px_22px_rgba(15,23,42,0.06)] ring-1 ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800"
-					>
-						{balanceInner}
-					</button>
-				) : (
-					<div
-						aria-label="Your Balance"
-						className="flex w-full items-center gap-3 rounded-[22px] bg-white px-4 py-3.5 shadow-[0_8px_22px_rgba(15,23,42,0.06)] ring-1 ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800"
-					>
-						{balanceInner}
-					</div>
-				)
-			) : null}
 			<div className="grid grid-cols-3 gap-3">
 				<button
 					type="button"
@@ -695,12 +634,12 @@ function DiscoverMerchantVisitActionsBlock({
 					type="button"
 					onClick={onGifting}
 					disabled={actionsDisabled}
-					aria-label="Gifting"
+					aria-label={giftingLabel}
 					className={`${actionBtnClass} bg-white ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800`}
 				>
-					<Gift className="h-6 w-6" style={{ color: DISCOVER_VISIT_MUTED_ICON }} strokeWidth={1.8} aria-hidden />
+					<Gift className="h-6 w-6" style={{ color: giftColor }} strokeWidth={1.8} aria-hidden />
 					<span className="text-[14px] font-semibold" style={{ color: brand }}>
-						Gifting
+						{giftingLabel}
 					</span>
 				</button>
 				<button
@@ -731,6 +670,496 @@ function DiscoverMerchantVisitActionsBlock({
 				</div>
 			) : null}
 		</div>
+	)
+}
+
+const DISCOVER_HEALTH_BEAUTY_ACCENT = '#e67e22'
+const DISCOVER_HEALTH_BEAUTY_PASS_BG = '#4b453d'
+const DISCOVER_HEALTH_BEAUTY_LEAF = '#c9a882'
+
+/**
+ * Health & Beauty · no Store Credit Multiplier · user already holds credits / points / pass.
+ * Active Pass layout (Chillax-style) — not Member Recharge Privileges.
+ */
+function DiscoverMerchantHealthBeautyLoyaltyPassPanel({
+	passTitle,
+	chargePercent,
+	balancePrefix,
+	storeCreditsDisplay,
+	rewardPtsDisplay,
+	membershipFeesZero,
+	brandColor,
+	onActivateTopUp,
+	onBooking,
+	onGifting,
+	onContact,
+	onSendGift,
+	contactBusy,
+	topUpDisabled,
+	actionsDisabled,
+	visitError,
+}: {
+	passTitle: string
+	chargePercent: number | null
+	balancePrefix: string
+	storeCreditsDisplay: string
+	rewardPtsDisplay: string
+	membershipFeesZero: boolean
+	brandColor: string
+	onActivateTopUp: () => void
+	onBooking: () => void
+	onGifting: () => void
+	onContact: () => void
+	onSendGift: () => void
+	contactBusy: boolean
+	topUpDisabled: boolean
+	actionsDisabled: boolean
+	visitError: string | null
+}) {
+	const brand = brandColor.trim() || DISCOVER_HEALTH_BEAUTY_PASS_BG
+	const pct =
+		chargePercent != null && Number.isFinite(chargePercent) && chargePercent > 0
+			? Number(chargePercent.toFixed(2)).toString()
+			: null
+	const passEyebrow = `${passTitle.trim().toUpperCase() || 'MERCHANT'} MEMBER PASS`
+	const fiatLabel = balancePrefix.trim() || 'CA$'
+	const alliancePtsLabel = (() => {
+		const raw = String(rewardPtsDisplay || '0').trim()
+		if (raw === '—') return '—'
+		const withoutPts = raw.replace(/\s*Pts$/i, '').trim()
+		const stripped = withoutPts.replace(/\.00$/, '')
+		return `${stripped} Pts`
+	})()
+
+	return (
+		<div className="flex flex-col gap-4" aria-label="Active member pass">
+			<div className="flex items-center gap-2.5">
+				<span
+					className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
+					style={{ backgroundColor: `${DISCOVER_HEALTH_BEAUTY_ACCENT}22` }}
+					aria-hidden
+				>
+					<Star
+						className="h-4 w-4"
+						style={{ color: DISCOVER_HEALTH_BEAUTY_ACCENT }}
+						fill={DISCOVER_HEALTH_BEAUTY_ACCENT}
+						strokeWidth={0}
+					/>
+				</span>
+				<p
+					className="min-w-0 flex-1 text-[11px] font-bold uppercase tracking-[0.14em]"
+					style={{ color: DISCOVER_HEALTH_BEAUTY_ACCENT }}
+				>
+					{passEyebrow}
+				</p>
+				<span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-emerald-200/90 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-800 dark:border-emerald-800/50 dark:bg-emerald-950/40 dark:text-emerald-200">
+					<span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden />
+					Active Pass
+				</span>
+			</div>
+
+			<section
+				className="overflow-hidden rounded-[1.35rem] px-5 pb-5 pt-5 text-white shadow-[0_16px_40px_rgba(45,40,35,0.28)]"
+				style={{ backgroundColor: brand }}
+			>
+				<div className="flex items-start justify-between gap-3">
+					<div className="min-w-0">
+						<p
+							className="truncate text-[1.65rem] font-semibold leading-none tracking-tight text-white"
+							style={{ fontFamily: 'Georgia, "Times New Roman", Times, serif' }}
+						>
+							{passTitle.trim() || 'Merchant'}
+						</p>
+						<p className="mt-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/55">
+							Digital Customer Card
+						</p>
+					</div>
+					<svg viewBox="0 0 40 40" className="mt-1 h-9 w-9 shrink-0 opacity-90" aria-hidden>
+						<path
+							d="M20 4c2.5 6 8 10 8 16a8 8 0 1 1-16 0c0-6 5.5-10 8-16z"
+							fill={DISCOVER_HEALTH_BEAUTY_LEAF}
+						/>
+						<path
+							d="M20 12c1.2 3.2 4 5.2 4 8.2a4 4 0 1 1-8 0c0-3 2.8-5 4-8.2z"
+							fill="#f5e6c8"
+							opacity="0.55"
+						/>
+					</svg>
+				</div>
+
+				<div className="mt-6 grid grid-cols-2 gap-0 border-t border-white/15 pt-5">
+					<div className="min-w-0 pr-4">
+						<p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/50">
+							Available Balance
+						</p>
+						<p className="mt-1.5 truncate text-[1.55rem] font-bold leading-none tracking-tight text-white tabular-nums">
+							{storeCreditsDisplay}
+						</p>
+					</div>
+					<div className="min-w-0 border-l border-white/15 pl-4 text-right">
+						<p className="inline-flex w-full items-center justify-end gap-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white/50">
+							<Coins className="h-3 w-3 shrink-0 opacity-80" strokeWidth={2.25} aria-hidden />
+							Alliance Points
+						</p>
+						<p
+							className="mt-1.5 truncate text-[1.55rem] font-bold leading-none tracking-tight tabular-nums"
+							style={{ color: '#e8a45c' }}
+						>
+							{alliancePtsLabel}
+						</p>
+					</div>
+				</div>
+
+				<div className="mt-5 flex items-center gap-2.5 border-t border-white/15 pt-4">
+					{pct != null ? (
+						<>
+							<span
+								className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full"
+								style={{ backgroundColor: 'rgba(52, 211, 153, 0.22)' }}
+								aria-hidden
+							>
+								<Check className="h-3 w-3 text-emerald-300" strokeWidth={3} />
+							</span>
+							<p className="min-w-0 flex-1 text-[13px] font-medium leading-snug text-white/90">
+								Earn {pct}% back on every visit &amp; purchase
+							</p>
+						</>
+					) : (
+						<p className="min-w-0 flex-1 text-[13px] font-medium leading-snug text-white/70">
+							Earn Alliance Points on every visit &amp; purchase
+						</p>
+					)}
+					<span className="shrink-0 text-[10px] font-bold uppercase tracking-[0.12em] text-white/40">
+						No Tier Caps
+					</span>
+				</div>
+			</section>
+
+			<button
+				type="button"
+				onClick={onActivateTopUp}
+				disabled={topUpDisabled}
+				className="flex w-full items-center justify-center gap-2.5 rounded-2xl px-4 py-3.5 text-[15px] font-bold text-white shadow-[0_10px_28px_rgba(75,69,61,0.35)] transition hover:brightness-110 active:scale-[0.99] disabled:opacity-60"
+				style={{ backgroundColor: brand }}
+			>
+				<Wallet className="h-5 w-5 shrink-0 opacity-90" strokeWidth={2.25} aria-hidden />
+				Top Up
+			</button>
+
+			<section className="rounded-2xl border border-[#ebe6df] bg-[#faf8f5] px-4 py-4 dark:border-slate-700 dark:bg-slate-900/80">
+				<div className="flex items-start gap-3">
+					<span
+						className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
+						style={{ backgroundColor: `${DISCOVER_HEALTH_BEAUTY_ACCENT}18` }}
+						aria-hidden
+					>
+						<Gift
+							className="h-[18px] w-[18px]"
+							style={{ color: DISCOVER_HEALTH_BEAUTY_ACCENT }}
+							strokeWidth={2.25}
+						/>
+					</span>
+					<div className="min-w-0 flex-1">
+						<p className="text-[15px] font-bold tracking-tight text-[#1f2328] dark:text-slate-100">
+							Spend &amp; Points Utility
+						</p>
+						<p className="mt-1.5 text-[13px] leading-relaxed text-[#5c6570] dark:text-slate-400">
+							Points never expire. Automatically redeem 100 Pts = {fiatLabel} 1.00 at checkout to offset any
+							treatment, aftercare product, or across 1,000+ Alliance Merchants.
+						</p>
+					</div>
+				</div>
+				<div className="mt-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-[#ebe6df] pt-3 dark:border-slate-700">
+					<span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#3d4450] dark:text-slate-300">
+						<ShieldCheck className="h-3.5 w-3.5 text-emerald-600" strokeWidth={2.25} aria-hidden />
+						Instant ledger settlement
+					</span>
+					{membershipFeesZero ? (
+						<span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#3d4450] dark:text-slate-300">
+							Zero Membership Fees
+						</span>
+					) : null}
+				</div>
+			</section>
+
+			<DiscoverMerchantVisitActionsBlock
+				brandColor={brand}
+				onBooking={onBooking}
+				onGifting={onGifting}
+				onContact={onContact}
+				contactBusy={contactBusy}
+				actionsDisabled={actionsDisabled}
+				error={visitError}
+				giftingLabel="Gift Voucher"
+				giftAccentColor={DISCOVER_HEALTH_BEAUTY_ACCENT}
+			/>
+
+			<section className="overflow-hidden rounded-2xl border border-[#ebe6df] bg-white shadow-[0_8px_24px_rgba(31,35,40,0.06)] dark:border-slate-700 dark:bg-slate-900">
+				<div className="px-4 py-4">
+					<div className="flex items-start gap-3">
+						<span
+							className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+							style={{ backgroundColor: '#f5e6a8' }}
+							aria-hidden
+						>
+							<Gift className="h-5 w-5 text-[#8a6a10]" strokeWidth={2.25} />
+						</span>
+						<div className="min-w-0 flex-1">
+							<div className="flex flex-wrap items-center gap-2">
+								<p className="text-[13px] font-bold uppercase tracking-[0.12em] text-[#1f2328] dark:text-slate-100">
+									Gift Wellness to Friends
+								</p>
+								<span className="inline-flex rounded-full bg-[#eceff3] px-2 py-0.5 text-[10px] font-semibold text-[#6b7280] dark:bg-slate-800 dark:text-slate-400">
+									Beamio Gift
+								</span>
+							</div>
+							<p className="mt-1 text-[12px] font-medium leading-snug text-[#5c6570] dark:text-slate-400">
+								Share the {passTitle.trim() || 'merchant'} experience with instant digital delivery
+							</p>
+							<p className="mt-1.5 text-[12px] leading-relaxed text-[#6b7280] dark:text-slate-500">
+								Send custom treatment vouchers or prepaid credits directly to friends via link or
+								BeamioTag with zero platform fees. Recipient can redeem or merge into their own member
+								pass immediately.
+							</p>
+						</div>
+					</div>
+					<div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[#f0ebe4] pt-3 dark:border-slate-700">
+						<span className="text-[11px] font-semibold text-[#5c6570] dark:text-slate-400">
+							Instant transfer &amp; non-expiring
+						</span>
+						<button
+							type="button"
+							onClick={onSendGift}
+							disabled={actionsDisabled}
+							className="inline-flex items-center justify-center rounded-full px-4 py-2 text-[12px] font-bold text-white transition hover:brightness-110 active:scale-[0.98] disabled:opacity-60"
+							style={{ backgroundColor: brand }}
+						>
+							Send as Gift
+						</button>
+					</div>
+				</div>
+			</section>
+		</div>
+	)
+}
+
+function DiscoverStoreCreditMultiplierOffersRow({
+	cards,
+	selectedCardId,
+	onSelect,
+	className = '',
+}: {
+	cards: DiscoverStoreCreditMultiplierCard[]
+	selectedCardId: string | null
+	onSelect: (id: string) => void
+	className?: string
+}) {
+	if (cards.length < 2) return null
+	const scrollMany = cards.length > 3
+	return (
+		<div
+			className={[
+				'flex gap-2',
+				scrollMany
+					? '-mx-1 snap-x snap-mandatory overflow-x-auto px-1 pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'
+					: 'w-full',
+				className,
+			]
+				.filter(Boolean)
+				.join(' ')}
+			role="list"
+			aria-label="Store credit multiplier offers"
+		>
+			{cards.map((card) => {
+				const selected = card.id === selectedCardId
+				return (
+					<button
+						key={card.id}
+						type="button"
+						role="listitem"
+						aria-pressed={selected}
+						aria-label={`${card.topupLabel} top up, ${card.freeCreditLabel}`}
+						onClick={() => onSelect(card.id)}
+						className={[
+							'relative flex flex-col items-center rounded-[14px] bg-[#FDF8F1] px-1.5 pb-2 pt-3.5 text-center transition sm:px-2',
+							scrollMany
+								? 'w-[min(28vw,112px)] shrink-0 snap-center'
+								: 'min-w-0 flex-1 basis-0',
+							card.isBestValue
+								? 'border-2 border-[#D4B483] shadow-[0_2px_10px_rgba(90,60,30,0.1)]'
+								: 'border border-[#E8E0D4]',
+							selected && !card.isBestValue ? 'ring-2 ring-[#1562f0]/35' : '',
+							selected && card.isBestValue ? 'ring-2 ring-[#1562f0]/25' : '',
+						]
+							.filter(Boolean)
+							.join(' ')}
+					>
+						{card.isBestValue && card.bestValueBadge ? (
+							<span className="absolute -top-2 left-1/2 z-[1] max-w-[calc(100%+0.5rem)] -translate-x-1/2 truncate rounded-full bg-[#3d3429] px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-[0.03em] text-[#FDF8F1] sm:px-2 sm:text-[9px]">
+								{card.bestValueBadge}
+							</span>
+						) : null}
+						{card.isBestValue ? (
+							<span className="mb-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-[#9ca3af]">
+								Popular
+							</span>
+						) : card.percentHeader ? (
+							<span className="mb-0.5 text-[10px] font-bold uppercase tracking-[0.03em] text-[#C45C26] sm:text-[11px]">
+								{card.percentHeader}
+							</span>
+						) : (
+							<span className="mb-0.5 h-[14px]" aria-hidden />
+						)}
+						<span className="text-[10px] font-medium text-[#6b7280] sm:text-[11px]">Top Up</span>
+						<span className="mt-0.5 text-[15px] font-bold leading-tight tracking-tight text-[#2c2416] tabular-nums sm:text-[17px]">
+							{card.topupLabel}
+						</span>
+						<span className="my-1.5 h-px w-full bg-[#E8E0D4]" aria-hidden />
+						<span className="text-[10px] font-bold leading-snug text-[#16a34a] sm:text-[11px]">
+							{card.freeCreditLabel}
+						</span>
+						<span className="mt-1 text-[9px] font-medium text-[#9ca3af] sm:text-[10px]">
+							{card.valLabel}
+						</span>
+					</button>
+				)
+			})}
+		</div>
+	)
+}
+
+function DiscoverMerchantMemberRechargePrivilegesPanel({
+	merchantName,
+	tierBadgeLabel,
+	memberNo,
+	storeCreditsLabel,
+	pointsLabel,
+	pointsFiatHint,
+	multiplierCards,
+	footerTip,
+	canTopUp,
+	topUpBusy,
+	onRecharge,
+}: {
+	merchantName: string
+	tierBadgeLabel: string
+	memberNo: string
+	storeCreditsLabel: string
+	pointsLabel: string
+	pointsFiatHint?: string | null
+	multiplierCards: DiscoverStoreCreditMultiplierCard[]
+	footerTip: string
+	canTopUp: boolean
+	topUpBusy: boolean
+	onRecharge: (suggestedAmount?: string) => void
+}) {
+	const [selectedCardId, setSelectedCardId] = useState<string | null>(null)
+	useEffect(() => {
+		if (!multiplierCards.length) {
+			setSelectedCardId(null)
+			return
+		}
+		setSelectedCardId((prev) => {
+			if (prev && multiplierCards.some((c) => c.id === prev)) return prev
+			return multiplierCards.find((c) => c.isBestValue)?.id ?? multiplierCards[0]?.id ?? null
+		})
+	}, [multiplierCards])
+	const selectedCard = useMemo(
+		() => multiplierCards.find((c) => c.id === selectedCardId) ?? multiplierCards[0] ?? null,
+		[multiplierCards, selectedCardId],
+	)
+	const badgeText = (tierBadgeLabel || 'MEMBER').trim().toUpperCase()
+
+	return (
+		<section
+			className="flex flex-col gap-5"
+			aria-label="Member recharge privileges"
+		>
+			<header className="px-0.5">
+				<div className="flex items-center gap-1.5">
+					<Sparkles className="h-3.5 w-3.5 shrink-0 text-[#C9A227]" strokeWidth={2} aria-hidden />
+					<span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#9ca3af]">
+						Special seasonal promotion
+					</span>
+				</div>
+				<h2 className="mt-2 font-serif text-[22px] font-semibold leading-snug tracking-tight text-[#2c2416] dark:text-slate-100 sm:text-[24px]">
+					Member Recharge Privileges & Instant Match
+				</h2>
+				<p className="mt-2 text-[13px] leading-relaxed text-[#6b7280] dark:text-slate-400">
+					Replenish your balance to unlock instant bonus store credits — redeemable across all services.
+				</p>
+			</header>
+
+			<div className="overflow-hidden rounded-[20px] bg-[#2c2416] px-4 pb-4 pt-3.5 text-white shadow-[0_8px_28px_rgba(44,36,22,0.28)]">
+				<div className="flex items-center justify-between gap-2">
+					<span className="shrink-0 rounded-full bg-[#3d3429] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[#D4B483]">
+						{badgeText}
+					</span>
+					<p className="min-w-0 flex-1 truncate text-center font-serif text-[15px] font-semibold tracking-tight text-white">
+						{merchantName}
+					</p>
+					{memberNo ? (
+						<span className="shrink-0 text-[11px] font-medium tabular-nums text-white/45">{memberNo}</span>
+					) : (
+						<span className="w-[4.5rem] shrink-0" aria-hidden />
+					)}
+				</div>
+				<div className="mt-4 grid grid-cols-2 gap-3">
+					<div className="rounded-xl bg-white/[0.06] px-3 py-3 ring-1 ring-white/10">
+						<p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#D4B483]">
+							Store Credits
+						</p>
+						<p className="mt-1.5 text-[22px] font-bold leading-none tracking-tight text-white tabular-nums">
+							{storeCreditsLabel}
+						</p>
+						<p className="mt-2 inline-flex items-center gap-1.5 text-[11px] font-medium text-emerald-400/90">
+							<span className="h-1.5 w-1.5 rounded-full bg-emerald-400" aria-hidden />
+							In vault
+						</p>
+					</div>
+					<div className="rounded-xl bg-white/[0.06] px-3 py-3 ring-1 ring-white/10">
+						<p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#D4B483]">
+							My Points
+						</p>
+						<p className="mt-1.5 text-[22px] font-bold leading-none tracking-tight text-[#D4B483] tabular-nums">
+							{pointsLabel}
+						</p>
+						{pointsFiatHint ? (
+							<p className="mt-2 text-[11px] font-medium text-white/45">{pointsFiatHint}</p>
+						) : (
+							<p className="mt-2 text-[11px] font-medium text-white/45">Reward PT</p>
+						)}
+					</div>
+				</div>
+			</div>
+
+			<DiscoverStoreCreditMultiplierOffersRow
+				cards={multiplierCards}
+				selectedCardId={selectedCard?.id ?? null}
+				onSelect={setSelectedCardId}
+			/>
+
+			<div className="flex flex-col gap-2.5">
+				<button
+					type="button"
+					disabled={!canTopUp || topUpBusy || !selectedCard}
+					onClick={() => onRecharge(selectedCard?.suggestedAmount?.trim() || undefined)}
+					className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#3d3429] px-5 py-3.5 text-[15px] font-bold text-white shadow-[0_4px_16px_rgba(44,36,22,0.22)] transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
+				>
+					{topUpBusy ? (
+						<Loader2 className="h-5 w-5 animate-spin" aria-hidden />
+					) : (
+						<Zap className="h-5 w-5 text-[#D4B483]" strokeWidth={2.25} aria-hidden />
+					)}
+					<span>Recharge Balance & Get Bonus</span>
+					<ChevronRight className="h-5 w-5 opacity-80" strokeWidth={2.25} aria-hidden />
+				</button>
+				<p className="inline-flex items-start justify-center gap-1.5 px-2 text-center text-[12px] font-medium leading-snug text-emerald-700 dark:text-emerald-400">
+					<Check className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={2.5} aria-hidden />
+					<span>{footerTip}</span>
+				</p>
+			</div>
+		</section>
 	)
 }
 
@@ -1015,75 +1444,12 @@ function DiscoverMerchantProspectJoinPanel({
 	) : null
 
 	const multiplierOffers = showMultiplierCarousel ? (
-		<div
-			className={[
-				'mt-2.5 flex gap-2 pt-2',
-				hasImage ? 'mt-3 pt-0' : '',
-				multiplierCards.length > 3
-					? '-mx-1 snap-x snap-mandatory overflow-x-auto px-1 pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'
-					: 'w-full',
-			]
-				.filter(Boolean)
-				.join(' ')}
-			role="list"
-			aria-label="Store credit multiplier offers"
-		>
-			{multiplierCards.map((card) => {
-				const selected = card.id === selectedCard?.id
-				const scrollMany = multiplierCards.length > 3
-				return (
-					<button
-						key={card.id}
-						type="button"
-						role="listitem"
-						aria-pressed={selected}
-						aria-label={`${card.topupLabel} top up, ${card.freeCreditLabel}`}
-						onClick={() => setSelectedCardId(card.id)}
-						className={[
-							'relative flex flex-col items-center rounded-[14px] bg-[#FDF8F1] px-1.5 pb-2 pt-3.5 text-center transition sm:px-2',
-							scrollMany
-								? 'w-[min(28vw,112px)] shrink-0 snap-center'
-								: 'min-w-0 flex-1 basis-0',
-							card.isBestValue
-								? 'border-2 border-[#D4B483] shadow-[0_2px_10px_rgba(90,60,30,0.1)]'
-								: 'border border-[#E8E0D4]',
-							selected && !card.isBestValue ? 'ring-2 ring-[#1562f0]/35' : '',
-							selected && card.isBestValue ? 'ring-2 ring-[#1562f0]/25' : '',
-						]
-							.filter(Boolean)
-							.join(' ')}
-					>
-						{card.isBestValue && card.bestValueBadge ? (
-							<span className="absolute -top-2 left-1/2 z-[1] max-w-[calc(100%+0.5rem)] -translate-x-1/2 truncate rounded-full bg-[#3d3429] px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-[0.03em] text-[#FDF8F1] sm:px-2 sm:text-[9px]">
-								{card.bestValueBadge}
-							</span>
-						) : null}
-						{card.isBestValue ? (
-							<span className="mb-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-[#9ca3af]">
-								Popular
-							</span>
-						) : card.percentHeader ? (
-							<span className="mb-0.5 text-[10px] font-bold uppercase tracking-[0.03em] text-[#C45C26] sm:text-[11px]">
-								{card.percentHeader}
-							</span>
-						) : (
-							<span className="mb-0.5 h-[14px]" aria-hidden />
-						)}
-						<span className="text-[10px] font-medium text-[#6b7280] sm:text-[11px]">Top Up</span>
-						<span className="mt-0.5 text-[15px] font-bold leading-tight tracking-tight text-[#2c2416] tabular-nums sm:text-[17px]">
-							{card.topupLabel}
-						</span>
-						<span className="my-1.5 h-px w-full bg-[#E8E0D4]" aria-hidden />
-						<span className="text-[10px] font-bold leading-snug text-[#16a34a] sm:text-[11px]">
-							{card.freeCreditLabel}
-						</span>
-						<span className="mt-1 text-[9px] font-medium text-[#9ca3af] sm:text-[10px]">
-							{card.valLabel}
-						</span>
-					</button>
-				)
-			})}
-		</div>
+		<DiscoverStoreCreditMultiplierOffersRow
+			cards={multiplierCards}
+			selectedCardId={selectedCard?.id ?? null}
+			onSelect={setSelectedCardId}
+			className={hasImage ? 'mt-3 pt-0' : 'mt-2.5 pt-2'}
+		/>
 	) : null
 
 	return (
@@ -1176,25 +1542,6 @@ const DISCOVER_MERCHANT_INFO_PANELS: Record<string, DiscoverMerchantInfoPanel> =
 		openingHours: "Mon-Sat: 9 am - 6 pm",
 		contact: "+1 (604) 270-1449",
 		location: "#1-7100 River Road,\nRichmond, BC",
-	},
-}
-
-type DiscoverMerchantPromoRewardTier = {
-	badge: string
-	title: string
-	description: string
-	/** Optional hero override; falls back to Discover merchant image. */
-	backgroundImage?: string
-}
-
-/** Curated VIP reward tier promo cards (Discover detail). Key: card address lowercased. */
-const DISCOVER_MERCHANT_PROMO_REWARD_TIERS: Record<string, DiscoverMerchantPromoRewardTier> = {
-	[LONGDHANG_DISCOVER_CARD_ADDRESS.toLowerCase()]: {
-		badge: "VIP Privilege",
-		title: "10% Bonus on Every Top-Up!",
-		description:
-			"Top up $100 CAD or more to instantly unlock a 10% bonus balance. (e.g., Add $100, receive $110). Treat yourself to authentic Shanghai cuisine anytime, with balance that never expires.",
-		backgroundImage: longdhangRewardTierPromo,
 	},
 }
 
@@ -1973,8 +2320,6 @@ type DiscoverOfferTierRow = {
 	index?: number
 }
 
-const DISCOVER_TIER_MEDALS = ["🥉", "🥈", "🥇"] as const
-
 const MEMBERSHIP_DURATION_LABELS: Record<number, string> = {
 	1: 'Day',
 	2: 'Week',
@@ -2038,90 +2383,6 @@ function discoverMetadataHasMembershipFee(meta: Record<string, unknown> | null):
 		if (BigInt(feeE6) > 0n) return true
 	}
 	return false
-}
-
-function parseTierDiscountPct(description: string | null | undefined): number {
-	if (!description?.trim()) return 0
-	const m = description.trim().match(/(\d+(?:\.\d+)?)\s*%\s*discount/i)
-	return m ? Number.parseFloat(m[1]) : 0
-}
-
-/**
- * Discover membership preview tiers.
- *
- * The first row is the base membership tier for legacy metadata where
- * `baseMembership` has not been split out yet. It must remain visible in the
- * preview even though it is not an Add-tier row.
- */
-function parseDiscoverRewardTiersFromMeta(
-	meta: Record<string, unknown> | null,
-	_currency: string
-): DiscoverOfferTierRow[] {
-	if (meta == null) return []
-	const raw = meta.tiers
-	if (!Array.isArray(raw) || raw.length === 0) return []
-	const rows: DiscoverOfferTierRow[] = []
-	for (const item of raw) {
-		if (item == null || typeof item !== "object") continue
-		const o = item as Record<string, unknown>
-		const minRaw = o.minUsdc6 ?? o.min_usdc6
-		let minUsdc6 = 0n
-		try {
-			if (typeof minRaw === "bigint") minUsdc6 = minRaw
-			else if (typeof minRaw === "number" && Number.isFinite(minRaw)) minUsdc6 = BigInt(Math.trunc(minRaw))
-			else if (typeof minRaw === "string" && minRaw.trim()) minUsdc6 = BigInt(minRaw.trim())
-		} catch {
-			minUsdc6 = 0n
-		}
-		const nested =
-			o.properties != null && typeof o.properties === "object"
-				? (o.properties as Record<string, unknown>)
-				: null
-		const nameRaw = o.name ?? nested?.name
-		const tierName =
-			typeof nameRaw === "string" && nameRaw.trim() ? nameRaw.trim() : "Tier"
-		const descRaw = o.description ?? nested?.description
-		const description = typeof descRaw === "string" ? descRaw : ""
-		const bgRaw =
-			o.backgroundColor ??
-			o.background_color ??
-			nested?.background_color ??
-			nested?.backgroundColor
-		const backgroundColor =
-			typeof bgRaw === "string" && bgRaw.trim() ? discoverSafeCssColor(bgRaw) : null
-		let membershipFeeE6: string | undefined
-		if (o.membershipFeeE6 != null && String(o.membershipFeeE6).trim() !== '') {
-			try {
-				membershipFeeE6 = BigInt(String(o.membershipFeeE6).replace(/,/g, '').trim()).toString()
-			} catch {
-				membershipFeeE6 = undefined
-			}
-		}
-		const membershipFee =
-			o.membershipFee != null && String(o.membershipFee).trim() !== ''
-				? String(o.membershipFee).replace(/,/g, '').trim()
-				: undefined
-		const durationRaw =
-			o.membershipDurationKind != null ? Number(o.membershipDurationKind) : NaN
-		const membershipDurationKind =
-			Number.isFinite(durationRaw) && durationRaw >= 1 && durationRaw <= 6
-				? Math.trunc(durationRaw)
-				: undefined
-		const indexRaw = o.index != null ? Number(o.index) : NaN
-		const index = Number.isFinite(indexRaw) ? Math.trunc(indexRaw) : undefined
-		rows.push({
-			name: tierName,
-			minUsdc6,
-			discountPct: parseTierDiscountPct(description),
-			backgroundColor,
-			membershipFeeE6,
-			membershipFee,
-			membershipDurationKind,
-			index,
-		})
-	}
-	rows.sort((a, b) => (a.minUsdc6 < b.minUsdc6 ? -1 : a.minUsdc6 > b.minUsdc6 ? 1 : 0))
-	return rows
 }
 
 /** All membership rows: `baseMembership` (index 0) + higher `tiers[]` (index 1+). Legacy: fee rows in `tiers` only. */
@@ -2351,155 +2612,6 @@ function DiscoverMerchantCouponOfferRow({
 					getPrivateKeyArmor={getPrivateKeyArmor}
 				/>
 			) : null}
-		</div>
-	)
-}
-
-function DiscoverMerchantTierOfferRow({
-	tier,
-	index,
-	total,
-	currency,
-}: {
-	tier: DiscoverOfferTierRow
-	index: number
-	total: number
-	currency: string
-}) {
-	const ccy = currency.toUpperCase() as Parameters<typeof fiatPrefix>[0]
-	const prefix = fiatPrefix(ccy)
-	const threshold =
-		tier.minUsdc6 > 0n
-			? `${prefix} ${formatAmount(Number(ethers.formatUnits(tier.minUsdc6, 6)), ccy)}`
-			: "—"
-	const medal = DISCOVER_TIER_MEDALS[Math.min(index, DISCOVER_TIER_MEDALS.length - 1)]
-	const isTop = index === total - 1
-	return (
-		<div
-			className={[
-				"flex items-center justify-between gap-3 rounded-xl border border-transparent bg-white p-3.5 dark:bg-slate-800/90",
-				isTop ? "ring-1 ring-[#1562f0]/10" : "",
-			].join(" ")}
-		>
-			<div className="flex min-w-0 items-center gap-3">
-				<div className="text-2xl" aria-hidden>
-					{medal}
-				</div>
-				<div className="min-w-0">
-					<h4 className="truncate text-[15px] font-bold text-[#1f2328] dark:text-slate-100">{tier.name}</h4>
-					<p className="text-[14px] font-bold tracking-tight text-[#1f2328] dark:text-slate-200">{threshold}</p>
-				</div>
-			</div>
-			<p
-				className={[
-					"shrink-0 text-right text-[14px] font-bold",
-					tier.discountPct > 0
-						? isTop
-							? "text-[#1562f0]"
-							: "text-[#1f2328] dark:text-slate-100"
-						: "text-slate-400",
-				].join(" ")}
-			>
-				{tier.discountPct > 0 ? `${Math.round(tier.discountPct)}% DISCOUNT` : "Member pricing"}
-			</p>
-		</div>
-	)
-}
-
-/** Compact horizontal VIP perks preview, including the base membership tier. */
-function DiscoverMerchantVipPerksPreview({
-	tiers,
-}: {
-	tiers: DiscoverOfferTierRow[]
-}) {
-	if (tiers.length === 0) return null
-
-	const palettes = [
-		{
-			border: 'border-slate-200',
-			accent: 'text-slate-500',
-			icon: 'bg-slate-100 text-slate-500',
-			corner: 'bg-slate-50',
-		},
-		{
-			border: 'border-amber-200',
-			accent: 'text-amber-500',
-			icon: 'bg-amber-50 text-amber-500',
-			corner: 'bg-amber-50/70',
-		},
-		{
-			border: 'border-[#cbd9ff]',
-			accent: 'text-[#1562f0]',
-			icon: 'bg-[#e9edff] text-[#1562f0]',
-			corner: 'bg-[#f4f7ff]',
-		},
-	]
-
-	return (
-		<section aria-label="VIP Perks Preview" className="space-y-3">
-			<div>
-				<h3 className="text-[20px] font-bold tracking-tight text-[#1f2328] dark:text-slate-100">
-					VIP Perks Preview
-				</h3>
-				<p className="mt-1 text-[14px] leading-relaxed text-slate-500 dark:text-slate-400">
-					Level up through top-ups or spending to unlock exclusive discounts.
-				</p>
-			</div>
-			<div className="-mx-1 flex snap-x snap-mandatory gap-3 overflow-x-auto px-1 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-				{tiers.map((tier, index) => {
-					const palette = palettes[Math.min(index, palettes.length - 1)]
-					const discount =
-						tier.discountPct > 0 ? `${Math.round(tier.discountPct)}% Off` : 'Member Perks'
-					return (
-						<article
-							key={`${tier.index ?? index}-${tier.name}`}
-							className={`relative w-[148px] shrink-0 snap-start overflow-hidden rounded-[11px] border bg-white p-3 dark:bg-slate-800/90 ${palette.border}`}
-						>
-							<div
-								className={`absolute -right-5 -top-7 h-[72px] w-[72px] rounded-full ${palette.corner}`}
-								aria-hidden
-							/>
-							<div className={`relative flex h-6 w-6 items-center justify-center rounded-full ${palette.icon}`}>
-								<Medal className="h-3 w-3" strokeWidth={1.8} aria-hidden />
-							</div>
-							<p className={`relative mt-3.5 truncate text-[6.5px] font-medium uppercase tracking-[0.12em] ${palette.accent}`}>
-								{tier.name}
-							</p>
-							<p className="relative mt-1 text-[14px] font-extrabold leading-tight tracking-tight text-[#1f2328] dark:text-slate-100">
-								{discount}
-							</p>
-							<p className="relative mt-1 text-[7.5px] text-slate-500 dark:text-slate-300">All Purchases</p>
-						</article>
-					)
-				})}
-			</div>
-		</section>
-	)
-}
-
-function DiscoverMerchantPromoRewardTiersCard({
-	config,
-	fallbackImage,
-}: {
-	config: DiscoverMerchantPromoRewardTier
-	fallbackImage: string
-}) {
-	const hero = config.backgroundImage?.trim() || fallbackImage
-	return (
-		<div className="relative overflow-hidden rounded-[28px] shadow-[0_10px_28px_rgba(15,23,42,0.18)] ring-1 ring-black/10">
-			<IpfsImg src={hero} alt="" className="absolute inset-0 h-full w-full object-cover" draggable={false} />
-			<div className="absolute inset-0 bg-gradient-to-t from-black/88 via-black/58 to-black/32" aria-hidden />
-			<div className="relative z-[1] flex flex-col p-5 pb-5 pt-4 sm:p-6">
-				<span className="inline-flex w-fit rounded-full bg-[#1562f0] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-white">
-					{config.badge}
-				</span>
-				<h4 className="mt-4 text-[22px] font-extrabold leading-[1.15] tracking-tight text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.72)] sm:text-[24px]">
-					{config.title}
-				</h4>
-				<p className="mt-3 text-[14px] font-medium leading-relaxed text-white drop-shadow-[0_1px_6px_rgba(0,0,0,0.68)] sm:text-[15px]">
-					{config.description}
-				</p>
-			</div>
 		</div>
 	)
 }
@@ -4352,9 +4464,15 @@ function DiscoverPayPanelError({ message }: { message: string }) {
 function DiscoverMerchantDetailFullScreen({
 	item,
 	onClose,
+	onLeaveForChat,
+	discoverDetailReturnTo,
 }: {
 	item: DiscoverFeaturedCard
 	onClose: () => void
+	/** Soft-dismiss detail when opening Contact chat so Chat Back can reopen this page. */
+	onLeaveForChat?: () => void
+	/** Preserve wallet/search return path across Contact → Chat → merchant detail. */
+	discoverDetailReturnTo?: string | null
 }) {
 	const navigate = useNavigate()
 	const location = useLocation()
@@ -4394,7 +4512,6 @@ function DiscoverMerchantDetailFullScreen({
 	const cardTopupBaselineMembershipRef = useRef<{ tokenId: string; feeE6: bigint | null } | null>(null)
 	const cardTopupSuccessPollAbortRef = useRef<AbortController | null>(null)
 	const [merchantCoupons, setMerchantCoupons] = useState<DiscoverMerchantCouponOffer[] | null>(null)
-	const [merchantOfferTiers, setMerchantOfferTiers] = useState<DiscoverOfferTierRow[] | null>(null)
 	const [merchantOffersLoading, setMerchantOffersLoading] = useState(false)
 	const [userSocialPoints13, setUserSocialPoints13] = useState<number | null>(() => {
 		const pts = Number(
@@ -4585,8 +4702,22 @@ function DiscoverMerchantDetailFullScreen({
 				}
 				if (goToChat) {
 					setChatHomeItem(itemResult)
-					navigate('/chat')
-					onClose()
+					const cardRaw = item.cardAddress?.trim() ?? ''
+					const card =
+						cardRaw && ethers.isAddress(cardRaw) ? ethers.getAddress(cardRaw) : ''
+					const returnTo = discoverDetailReturnTo?.trim()
+					navigate('/chat', {
+						state: {
+							...(card
+								? { chatBackToDiscoverMerchantCard: card }
+								: {}),
+							...(returnTo && returnTo.startsWith('/')
+								? { discoverDetailReturnTo: returnTo }
+								: {}),
+						},
+					})
+					if (onLeaveForChat) onLeaveForChat()
+					else onClose()
 					return
 				}
 				setIssuerProfileItem(itemResult)
@@ -4605,6 +4736,9 @@ function DiscoverMerchantDetailFullScreen({
 			setChatHomeItem,
 			navigate,
 			onClose,
+			onLeaveForChat,
+			discoverDetailReturnTo,
+			item.cardAddress,
 		],
 	)
 
@@ -4797,27 +4931,14 @@ function DiscoverMerchantDetailFullScreen({
 		if (fromMeta && fromMeta.toLowerCase() !== 'tier') return fromMeta
 		return membershipFeeDisplay?.tierName?.trim() || `Tier ${activeTierIndex}`
 	}, [hasActiveMembership, merchantMetadataRoot, merchantAssets, membershipFeeDisplay])
-	const promoRewardTier =
-		item.cardAddress != null
-			? DISCOVER_MERCHANT_PROMO_REWARD_TIERS[resolveDiscoverCardPanelKey(item.cardAddress)]
-			: undefined
 	const curatedOffersPanel = useMemo(() => {
 		if (item.cardAddress == null) return undefined
 		return DISCOVER_MERCHANT_CURATED_OFFERS[resolveDiscoverCardPanelKey(item.cardAddress)]
 	}, [item.cardAddress])
-	const promoRewardTierForList = curatedOffersPanel ? undefined : promoRewardTier
 	const couponsSectionRef = useRef<HTMLDivElement | null>(null)
 	const scrollToCouponsSection = useCallback(() => {
 		couponsSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
 	}, [])
-	const metadataTierCount = merchantOfferTiers?.length ?? 0
-	const rewardTierDisplayCount =
-		promoRewardTierForList != null || merchantOfferTiers != null
-			? (promoRewardTierForList ? 1 : 0) + metadataTierCount
-			: null
-	const showRewardTiersLoading = merchantOffersLoading && merchantOfferTiers == null && !promoRewardTierForList
-	const hasRewardTiersContent =
-		promoRewardTierForList != null || (merchantOfferTiers != null && merchantOfferTiers.length > 0)
 	const showCouponsLoading = merchantOffersLoading && merchantCoupons == null
 	const hasCouponsContent = merchantCoupons != null && merchantCoupons.length > 0
 	const showCouponsCard = showCouponsLoading || hasCouponsContent
@@ -4837,8 +4958,6 @@ function DiscoverMerchantDetailFullScreen({
 	)
 	const heroRechargeBonusPill = topupPromotionPresentation.heroSidePill
 	const isConetGenesisCard = isConetGenesisDiscoverCard(item.cardAddress)
-	const showRewardTiersCard =
-		!isConetGenesisCard && (showRewardTiersLoading || hasRewardTiersContent)
 	const membershipFeeTiers = useMemo((): DiscoverMembershipFeeTier[] => {
 		if (isConetGenesisCard || !membershipFeeMode) return []
 		const allTiers = parseDiscoverAllTiersFromMeta(merchantMetadataRoot)
@@ -4917,17 +5036,66 @@ function DiscoverMerchantDetailFullScreen({
 				: DISCOVER_MERCHANT_DETAIL_PAGE_FALLBACK_BG,
 		[merchantDetailBrandColor],
 	)
-	const visitChargePercent = useMemo(() => {
-		const n = parseDiscoverActorRewardPercentsFromMetadata(merchantMetadataRoot).chargePercent
-		return n != null && n > 0 ? n : null
-	}, [merchantMetadataRoot])
-	const visitBalanceFiat = `${balancePrefix} ${formatAmount(Number(merchantAssets?.points ?? 0), displayCurrency)}`
-	const visitBadgeDollars = String(Math.trunc(Math.abs(Number(merchantAssets?.points ?? 0))))
-	const visitPointsDisplay = formatSocialPoints13Display(myPoints13Loading ? 0 : (myPoints13Num ?? 0))
-	const showProspectJoinPanel = !isConetGenesisCard && !hasActiveMembership
-	/** Same gate as DiscoverMerchantProspectJoinPanel carousel (`multiplierCards.length > 1`). */
+	/** User already holds this merchant’s store credits, Reward PT, and/or valid membership. */
+	const hasMerchantProgramHoldings =
+		hasActiveMembership ||
+		Number(merchantAssets?.points ?? 0) > 0 ||
+		myPoints13Num > 0
+	/**
+	 * Health & Beauty + no Store Credit Multiplier + user holds credits/points/pass
+	 * → Chillax Active Pass layout. Hide while amount pad / receive flow is open.
+	 */
+	const showHealthBeautyLoyaltyPass =
+		!isConetGenesisCard &&
+		item.category === 'health-beauty' &&
+		prospectJoinPanelCopy.multiplierCards.length <= 1 &&
+		hasMerchantProgramHoldings &&
+		usdcTopupPhase === 'idle' &&
+		!discoverTopUpOpen
+	const showProspectJoinPanel =
+		!isConetGenesisCard && !hasActiveMembership && !showHealthBeautyLoyaltyPass
+	/**
+	 * Member + Store Credit Multiplier (≥2 tiers): premium recharge layout.
+	 * Hide while amount pad / receive flow is open so top-up UX stays on the white card.
+	 */
+	const showMemberRechargePrivileges =
+		!isConetGenesisCard &&
+		hasActiveMembership &&
+		prospectJoinPanelCopy.multiplierCards.length > 1 &&
+		usdcTopupPhase === 'idle' &&
+		!discoverTopUpOpen
+	/** Hide hero bonus pill whenever multiplier offers are the primary promo chrome. */
 	const showStoreCreditMultiplierOffers =
-		showProspectJoinPanel && prospectJoinPanelCopy.multiplierCards.length > 1
+		prospectJoinPanelCopy.multiplierCards.length > 1 &&
+		(showProspectJoinPanel || showMemberRechargePrivileges)
+	const healthBeautyChargePercent = useMemo(() => {
+		if (!showHealthBeautyLoyaltyPass) return null
+		const { chargePercent } = parseDiscoverActorRewardPercentsFromMetadata(merchantMetadataRoot)
+		if (chargePercent == null || !Number.isFinite(chargePercent) || chargePercent <= 0) return null
+		return chargePercent
+	}, [showHealthBeautyLoyaltyPass, merchantMetadataRoot])
+	const memberRechargeMemberNo = useMemo(() => {
+		const nft = pickActiveDiscoverMembershipNft(merchantAssets?.nfts)
+		const tokenId = nft?.tokenId != null ? String(nft.tokenId).trim() : ''
+		return tokenId ? formatWalletMembershipMemberNo(tokenId) : ''
+	}, [merchantAssets?.nfts])
+	const memberRechargeFooterTip = useMemo(() => {
+		const { chargePercent } = parseDiscoverActorRewardPercentsFromMetadata(merchantMetadataRoot)
+		if (chargePercent != null && Number.isFinite(chargePercent) && chargePercent > 0) {
+			const pct = Number.isInteger(chargePercent)
+				? String(chargePercent)
+				: chargePercent.toFixed(2).replace(/\.?0+$/, '')
+			return `Earn ${pct}% back in points on every future purchase.`
+		}
+		return 'Bonus credits unlock instantly and never expire.'
+	}, [merchantMetadataRoot])
+	const memberRechargePointsFiatHint = useMemo(() => {
+		if (myPoints13Loading) return null
+		const n = Number(myPoints13Num)
+		if (!Number.isFinite(n) || n <= 0) return null
+		const prefix = balancePrefix || ''
+		return `= ${prefix}${formatAmount(n, displayCurrency)} Value`
+	}, [myPoints13Loading, myPoints13Num, balancePrefix, displayCurrency])
 	const prospectJoinMembershipPrice = useMemo(() => {
 		const joinTier = membershipUi.joinTier
 		if (!joinTier) return { price: null as string | null, duration: null as string | null }
@@ -5645,17 +5813,6 @@ function DiscoverMerchantDetailFullScreen({
 		setGiftSheetOpen(true)
 	}, [])
 
-	const onMerchantVisitBalanceClick = useCallback(() => {
-		setMerchantVisitError(null)
-		if (canDiscoverTopUp) {
-			openDiscoverTopupAmount()
-			return
-		}
-		if (showCouponsCard) {
-			scrollToCouponsSection()
-		}
-	}, [canDiscoverTopUp, openDiscoverTopupAmount, showCouponsCard, scrollToCouponsSection])
-
 	const onMerchantVisitBooking = useCallback(() => {
 		setMerchantVisitError(null)
 		if (showCouponsCard) {
@@ -5730,16 +5887,9 @@ function DiscoverMerchantDetailFullScreen({
 		return [{ cardAddress, title: passTitle, points, currency: displayCurrency }]
 	}, [item.cardAddress, merchantAssets?.points, passTitle, displayCurrency])
 
-	const renderVisitActions = (showBalanceCard: boolean) => (
+	const renderVisitActions = () => (
 		<DiscoverMerchantVisitActionsBlock
 			brandColor={merchantDetailBrandColor ?? DISCOVER_VISIT_BRAND_FALLBACK}
-			showBalanceCard={showBalanceCard}
-			badgeDollars={visitBadgeDollars}
-			balanceFiat={visitBalanceFiat}
-			pointsDisplay={visitPointsDisplay}
-			chargePercent={visitChargePercent}
-			balanceClickable
-			onBalanceClick={onMerchantVisitBalanceClick}
 			onBooking={onMerchantVisitBooking}
 			onGifting={onMerchantVisitGifting}
 			onContact={() => void onMerchantVisitContact()}
@@ -6466,7 +6616,6 @@ function DiscoverMerchantDetailFullScreen({
 	useEffect(() => {
 		if (!item.cardAddress) {
 			setMerchantCoupons(null)
-			setMerchantOfferTiers(null)
 			setMerchantOffersLoading(false)
 			return
 		}
@@ -6519,24 +6668,13 @@ function DiscoverMerchantDetailFullScreen({
 				const rec = (key ? ensuredMap[key] : undefined) ?? null
 				const metadataRoot =
 					rec?.metadataRoot && typeof rec.metadataRoot === 'object' ? rec.metadataRoot : null
-				if (metadataRoot) {
-					const tiersFromApi = parseDiscoverRewardTiersFromMeta(
-						{ tiers: metadataRoot.tiers ?? [] } as Record<string, unknown>,
-						ccy,
-					)
-					if (tiersFromApi.length > 0) {
-						setMerchantOfferTiers(tiersFromApi)
-					} else {
-						setMerchantOfferTiers([])
-					}
-				}
 				const freshAbout = parseDiscoverAboutFromShare(
 					readDiscoverNestedObject(metadataRoot, 'shareTokenMetadata'),
 				)
 				if (freshAbout) setResolvedDiscoverAbout(freshAbout)
 			})
 			.catch(() => {
-				// Untrusted — keep previous coupon/tier state.
+				// Untrusted — keep previous coupon state.
 			})
 			.finally(() => {
 				if (!cancelled) setMerchantOffersLoading(false)
@@ -6722,6 +6860,38 @@ function DiscoverMerchantDetailFullScreen({
 							) : null}
 						</div>
 					) : null}
+					{showHealthBeautyLoyaltyPass ? (
+						<DiscoverMerchantHealthBeautyLoyaltyPassPanel
+							passTitle={passTitle}
+							chargePercent={healthBeautyChargePercent}
+							balancePrefix={balancePrefix || 'CA$'}
+							storeCreditsDisplay={balanceDisplay}
+							rewardPtsDisplay={
+								myPoints13Loading
+									? '—'
+									: `${formatSocialPoints13Display(myPoints13Num)} Pts`
+							}
+							membershipFeesZero={!membershipFeeMode}
+							brandColor={merchantDetailBrandColor ?? DISCOVER_HEALTH_BEAUTY_PASS_BG}
+							onActivateTopUp={() => {
+								if (usdcTopupPhase !== 'idle' || discoverTopUpOpen) return
+								claimDiscoverTopupPromotion()
+							}}
+							onBooking={onMerchantVisitBooking}
+							onGifting={onMerchantVisitGifting}
+							onContact={() => void onMerchantVisitContact()}
+							onSendGift={openGiftSheet}
+							contactBusy={supportChatOpening}
+							topUpDisabled={
+								giftSheetOpen ||
+								usdcTopupPhase !== 'idle' ||
+								discoverTopUpOpen ||
+								!canDiscoverTopUp
+							}
+							actionsDisabled={giftSheetOpen}
+							visitError={merchantVisitError}
+						/>
+					) : null}
 					{showProspectJoinPanel ? (
 						<DiscoverMerchantProspectJoinPanel
 							heading={prospectJoinPanelCopy.heading}
@@ -6748,7 +6918,57 @@ function DiscoverMerchantDetailFullScreen({
 							}
 						/>
 					) : null}
-					{!isConetGenesisCard && !hasActiveMembership ? renderVisitActions(true) : null}
+					{showMemberRechargePrivileges ? (
+						<>
+							<DiscoverMerchantMemberRechargePrivilegesPanel
+								merchantName={passTitle}
+								tierBadgeLabel={activeMembershipTierName || 'Member'}
+								memberNo={memberRechargeMemberNo}
+								storeCreditsLabel={balanceDisplay}
+								pointsLabel={
+									myPoints13Loading
+										? '—'
+										: `${formatSocialPoints13Display(myPoints13Num)} Pts`
+								}
+								pointsFiatHint={memberRechargePointsFiatHint}
+								multiplierCards={prospectJoinPanelCopy.multiplierCards}
+								footerTip={memberRechargeFooterTip}
+								canTopUp={canDiscoverTopUp}
+								topUpBusy={usdcTopupSubmitting}
+								onRecharge={claimDiscoverTopupPromotion}
+							/>
+							{!merchantAssetsLoading &&
+							membershipUi.mode === 'can_upgrade' &&
+							membershipUi.upgradeTier ? (
+								<div className="mt-4 space-y-3 rounded-[22px] bg-white p-5 shadow-[0_8px_22px_rgba(15,23,42,0.06)] ring-1 ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800">
+									<p className="text-[13px] leading-relaxed text-slate-600 dark:text-slate-400">
+										Upgrade membership to {membershipUi.upgradeTier.name}
+										{(() => {
+											const feeHuman = membershipFeeE6ToHuman(membershipUi.upgradeTier.feeE6)
+											const durationLabel =
+												membershipUi.upgradeTier.durationKind != null
+													? MEMBERSHIP_DURATION_LABELS[membershipUi.upgradeTier.durationKind] ?? ''
+													: ''
+											if (!feeHuman) return ''
+											return ` · ${balancePrefix ? `${balancePrefix}${feeHuman}` : feeHuman}${durationLabel ? ` / ${durationLabel}` : ''}`
+										})()}
+										.
+									</p>
+									<button
+										type="button"
+										onClick={() => openDiscoverMembershipPay('upgrade')}
+										className="w-full rounded-full border border-[#1562f0]/30 bg-[#1562f0]/10 px-4 py-2.5 text-[14px] font-bold text-[#1562f0] transition active:scale-[0.98] hover:bg-[#1562f0]/15"
+									>
+										Upgrade membership
+									</button>
+								</div>
+							) : null}
+							{renderVisitActions()}
+						</>
+					) : null}
+					{!isConetGenesisCard && !hasActiveMembership && !showHealthBeautyLoyaltyPass
+						? renderVisitActions()
+						: null}
 					{isConetGenesisCard ? (
 						<ConetGenesisNodeDiscoverSection
 							onLockSeat={lockConetGenesisSeat}
@@ -6759,8 +6979,10 @@ function DiscoverMerchantDetailFullScreen({
 						/>
 					) : null}
 
-					{/* Membership wallet — only when the user already holds this merchant membership. */}
-					{hasActiveMembership || usdcTopupPhase !== 'idle' ? (
+					{/* Membership wallet — white card when member without multiplier layout, or during top-up flow. */}
+					{(hasActiveMembership || usdcTopupPhase !== 'idle') &&
+					!showMemberRechargePrivileges &&
+					!showHealthBeautyLoyaltyPass ? (
 					<div
 						className="rounded-[22px] bg-white p-5 shadow-[0_8px_22px_rgba(15,23,42,0.06)] ring-1 ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800"
 					>
@@ -7009,15 +7231,16 @@ function DiscoverMerchantDetailFullScreen({
 					</div>
 					) : null}
 
-					{!isConetGenesisCard && hasActiveMembership ? renderVisitActions(false) : null}
+					{!isConetGenesisCard &&
+					hasActiveMembership &&
+					!showMemberRechargePrivileges &&
+					!showHealthBeautyLoyaltyPass
+						? renderVisitActions()
+						: null}
 
 					{/* Top-up promo / curated offers — non-Genesis merchant cards. */}
 					{!isConetGenesisCard ? (
 					<>
-					<DiscoverMerchantVipPerksPreview
-						tiers={parseDiscoverAllTiersFromMeta(merchantMetadataRoot)}
-					/>
-
 					{curatedOffersPanel ? (
 						<DiscoverMerchantCuratedOffersStack
 							config={curatedOffersPanel}
@@ -7034,7 +7257,7 @@ function DiscoverMerchantDetailFullScreen({
 					) : null}
 
 					<div className="space-y-4">
-						{item.cardAddress ? (
+						{item.cardAddress && !showHealthBeautyLoyaltyPass ? (
 							<DiscoverMerchantInviteFriendsPanel
 								cardAddress={item.cardAddress}
 								merchantTitle={passTitle}
@@ -7044,7 +7267,7 @@ function DiscoverMerchantDetailFullScreen({
 								onOpenMyNetwork={() => setShowMyNetwork(true)}
 							/>
 						) : null}
-						{showCouponsCard || showRewardTiersCard || (!isConetGenesisCard && wellnessPointsPanel) ? (
+						{showCouponsCard || (!isConetGenesisCard && wellnessPointsPanel) ? (
 							<h2 className="text-lg font-bold text-[#1f2328] dark:text-slate-100">Available Offers</h2>
 						) : null}
 
@@ -7086,42 +7309,6 @@ function DiscoverMerchantDetailFullScreen({
 						</div>
 						) : null}
 
-						{showRewardTiersCard ? (
-						<div className="rounded-[22px] bg-[#eef1f3] p-4 dark:bg-slate-900/80 sm:p-5">
-							<header className="mb-3 flex items-center justify-between gap-2">
-								<h3 className="text-base font-bold text-[#1f2328] dark:text-slate-100">Reward Tiers</h3>
-								{rewardTierDisplayCount != null ? (
-									<span className="rounded-full border border-[#1562f0]/15 bg-white px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[#1562f0] dark:bg-slate-800">
-										{rewardTierDisplayCount.toLocaleString()} reward tiers
-									</span>
-								) : null}
-							</header>
-							{showRewardTiersLoading ? (
-								<div className="flex items-center justify-center gap-2 py-6 text-slate-500 dark:text-slate-400">
-									<Loader2 className="h-5 w-5 animate-spin" strokeWidth={2} aria-hidden />
-									<span className="text-[14px] font-medium">Loading reward tiers…</span>
-								</div>
-							) : (
-								<div className="space-y-2.5">
-									{promoRewardTierForList ? (
-										<DiscoverMerchantPromoRewardTiersCard
-											config={promoRewardTierForList}
-											fallbackImage={item.image}
-										/>
-									) : null}
-									{merchantOfferTiers?.map((tier, index) => (
-										<DiscoverMerchantTierOfferRow
-											key={`${tier.name}-${tier.minUsdc6.toString()}-${index}`}
-											tier={tier}
-											index={index}
-											total={merchantOfferTiers.length}
-											currency={displayCurrency}
-										/>
-									))}
-								</div>
-							)}
-						</div>
-						) : null}
 
 						{!isConetGenesisCard && wellnessPointsPanel ? (
 							<DiscoverMerchantWellnessPointsCard
@@ -7611,6 +7798,17 @@ export default function Market() {
 		/** Footer restore deferred to AnimatePresence `onExitComplete` so exit layer cannot steal taps. */
 	}, [navigate, setShowFooter])
 
+	/** When Contact opens Chat, exit animation must not restore Footer (Chat hides it). */
+	const skipMerchantDetailExitFooterRestoreRef = useRef(false)
+
+	/** Contact → Chat: dismiss overlay without consuming `discoverDetailReturnTo` (Chat Back reopens detail). */
+	const leaveDiscoverMerchantDetailForChat = useCallback(() => {
+		skipMerchantDetailExitFooterRestoreRef.current = true
+		stripDiscoverMerchantDeepLinkParams()
+		setDiscoverMerchantDetail(null)
+		setDiscoverDetailEnterImmediate(false)
+	}, [])
+
 	const discoverFeaturedCards = useMemo<DiscoverFeaturedCard[]>(() => {
 		const rows: DiscoverFeaturedCard[] = latestCardsRows.map((card, idx) => {
 			const dbDisplayName = resolveName(card.cardAddress)
@@ -7938,6 +8136,10 @@ export default function Market() {
 
 		<AnimatePresence
 			onExitComplete={() => {
+				if (skipMerchantDetailExitFooterRestoreRef.current) {
+					skipMerchantDetailExitFooterRestoreRef.current = false
+					return
+				}
 				/** Exit motion still mounts `fixed inset-0 z-[110]` briefly; restore Footer after it unmounts. */
 				setShowFooter(true)
 			}}
@@ -7955,6 +8157,8 @@ export default function Market() {
 					<DiscoverMerchantDetailFullScreen
 						item={discoverMerchantDetail}
 						onClose={closeDiscoverMerchantDetail}
+						onLeaveForChat={leaveDiscoverMerchantDetailForChat}
+						discoverDetailReturnTo={discoverDetailReturnToRef.current}
 					/>
 				</motion.div>
 			) : null}

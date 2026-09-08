@@ -487,18 +487,16 @@ export default function DiscoverMerchantGiftSheet({
 							<ul className="absolute z-10 mt-1 max-h-56 w-full overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-lg dark:border-slate-600 dark:bg-slate-900">
 								{friendResults.map((r) => (
 									<li key={r.address}>
-										<button
-											type="button"
-											className="w-full px-2 py-1 text-left hover:bg-slate-50 dark:hover:bg-slate-800"
-											onClick={() => {
-												setSelectedFriend(r)
+										<BeamioSearchResultRow
+											item={r}
+											query={friendQuery}
+											onSelect={(item) => {
+												setSelectedFriend(item)
 												setFriendQuery('')
 												setFriendResults([])
 												setShowFriendDropdown(false)
 											}}
-										>
-											<BeamioSearchResultRow item={r} />
-										</button>
+										/>
 									</li>
 								))}
 							</ul>

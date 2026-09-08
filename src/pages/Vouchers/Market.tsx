@@ -7470,7 +7470,7 @@ function DiscoverMerchantDetailFullScreen({
 										giftSheetBackHandlerRef.current = handler
 									}}
 									cardAddress={item.cardAddress?.trim() ?? ''}
-									merchantTitle={passTitle}
+									merchantTitle={item.title.trim() || passTitle}
 									currency={displayCurrency}
 									metadataRoot={merchantMetadataRoot}
 									profile={profile}

@@ -746,12 +746,16 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 		if (isWalletReady) updateManifestStartUrl(window.location.href)
 	}, [settingsOpen, redeemFromUrl, redeeming, redeemResult?.success, beamioTag, recoveryCode])
 
-	// loading ready 后：无 redeem URL 则直接进入 home（防重复调用）；onboarding 子屏阶段不触发
+	// loading ready 后进入 home（防重复调用）；onboarding 子屏阶段不触发。
+	// Returning users with beamiocard+redeemcode: App opens MerchantGiftClaimSheet — do not keep Card Active here.
 	useEffect(() => {
-		if (isInitialEntry || !hasCheckedUrl || redeemFromUrl !== null || loading) return
+		if (isInitialEntry || !hasCheckedUrl || loading) return
 		if (settingsOpen && ONBOARDING_MODAL_SCREENS.has(settingsOpen)) return
 		if (consumerAppNeedsWalletRecover(CoNET_Data)) return
 		if (homeCalledRef.current) return
+		if (redeemFromUrl !== null) {
+			setRedeemFromUrl(null)
+		}
 		homeCalledRef.current = true
 		setIsInitialEntry(false)
 		setIsInitialLoading(false)
@@ -860,41 +864,7 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 		return () => { cancelled = true }
 	}, [settingsOpen, redeemFromUrl, temp, redeemPostCreateInProgress])
 
-	// 有 redeem URL 时在后台执行 redeem，完成后拉取 CCSA 资产（仅 restore 流程，CreateUsernamePinScreen 流程由上方 effect 处理）
-	useEffect(() => {
-		if (!redeemFromUrl || isInitialEntry || redeemHandledByRecoveryRef.current) return
-		const profile = CoNET_Data?.profiles?.[0]
-		let toUserEOA = ''
-		if (profile?.keyID && ethers.isAddress(profile.keyID)) {
-			toUserEOA = profile.keyID
-		} else if (profile?.privateKeyArmor) {
-			try {
-				toUserEOA = new ethers.Wallet(profile.privateKeyArmor).address
-			} catch {}
-		}
-		if (!toUserEOA || !ethers.isAddress(toUserEOA)) return
-		let cancelled = false
-		setRedeeming(true)
-		postCardRedeem(redeemFromUrl.cardAddress, redeemFromUrl.redeemCode, toUserEOA)
-			.then((result) => {
-				if (cancelled) return
-				setRedeemDone(true)
-				setRedeemResult(result.success ? { success: true, tx: result.tx } : { success: false, error: result.error ?? tu('redeem_failed_2') })
-				if (result.success && profile) {
-					// 1. 使用正确的卡地址：redeem 目标卡（redeemFromUrl.cardAddress），自定义 beamiocard 时否则会查到错误卡
-					const cardAddr = redeemFromUrl.cardAddress || CCSA_Card_Address
-					getMyAssets(profile, cardAddr).then((assets) => {
-						if (!cancelled && assets) {
-							setCcsaAssets({ points: assets.points, nfts: assets.nfts ?? [] })
-						}
-					}).catch(() => {})
-				}
-			})
-			.finally(() => {
-				if (!cancelled) setRedeeming(false)
-			})
-		return () => { cancelled = true }
-	}, [redeemFromUrl, isInitialEntry])
+	// Returning-user auto postCardRedeem removed — gift/redeem URLs open MerchantGiftClaimSheet in App.
 
 	const initialSplashOnly = isInitialEntry && !redeemFromUrl && !settingsOpen
 	const showInitialEntrySplash = isInitialEntry && !settingsOpen

@@ -21,6 +21,7 @@ import {
   BarChart3,
   Sticker,
   DollarSign,
+  Gift,
   MoreHorizontal,
   Copy,
   Loader2,
@@ -375,6 +376,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		setbBeamioUsers,
 		currencyData = {} as Record<string, number>,
 		usdcbalance = 0,
+		setScanData,
 	} = useDaemonContext()
 	
 
@@ -1769,6 +1771,62 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 															</div>
 														</div>
 													</div>
+														)
+													})()
+												) : m.paymentCard!.cardType === "merchantGift" ? (
+													(() => {
+														const pc = m.paymentCard!
+														const claimUrl = (pc.requestUrl || pc.cashcodeUrl || '').trim()
+														const amountStr = `${fiatPrefix(pc.currency)}${Number(pc.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+														const openGiftClaim = () => {
+															if (!claimUrl) return
+															// Same path as global search paste → App opens MerchantGiftClaimSheet
+															setScanData(claimUrl)
+														}
+														return (
+															<button
+																type="button"
+																onClick={openGiftClaim}
+																className={`w-[280px] max-w-full overflow-hidden rounded-[18px] bg-gradient-to-br from-[#2f2b27] via-[#25221e] to-[#1a1816] text-left text-[#faf9fe] shadow-[0_8px_24px_rgba(2,6,23,0.28)] ring-1 ring-white/10 transition active:scale-[0.99] ${isMe ? 'ml-auto' : 'mr-auto'}`}
+															>
+																<div className="flex items-center justify-between gap-2 px-3.5 pb-2 pt-3">
+																	<div className="flex min-w-0 items-center gap-1.5">
+																		<Gift className="h-3.5 w-3.5 shrink-0 text-white" aria-hidden />
+																		<span className="truncate text-[10px] font-semibold uppercase tracking-[0.12em] text-white/90">
+																			Direct asset drop
+																		</span>
+																	</div>
+																	<span className="shrink-0 font-mono text-[10px] tracking-wide text-white/45">
+																		{formatTimeLabel(pc.timeStamp)}
+																	</span>
+																</div>
+																<div className="mx-3 mb-3 overflow-hidden rounded-xl bg-gradient-to-r from-slate-300/25 via-purple-300/20 to-slate-200/15 px-3 py-3">
+																	<div className="flex items-start justify-between gap-2">
+																		<div className="min-w-0">
+																			<span className="inline-flex rounded-full bg-white/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-white/80">
+																				Gift
+																			</span>
+																			<p className="mt-1.5 truncate text-[13px] font-semibold text-white">
+																				{pc.title || 'Merchant gift'}
+																			</p>
+																		</div>
+																		<span className="shrink-0 text-[11px] font-semibold uppercase tracking-wider text-white/70">
+																			Gift voucher
+																		</span>
+																	</div>
+																</div>
+																<div className="px-3.5 pb-3.5">
+																	<p className="text-[10px] font-semibold uppercase tracking-wider text-[#baa479]">
+																		Gift card value
+																	</p>
+																	<p className="mt-0.5 text-[22px] font-bold tracking-tight text-white">
+																		{amountStr}
+																	</p>
+																	<p className="mt-1 text-[11px] text-white/55">
+																		Tap to claim to your vault
+																	</p>
+																</div>
+															</button>
 														)
 													})()
 												) : (

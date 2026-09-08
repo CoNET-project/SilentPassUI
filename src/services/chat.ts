@@ -1397,6 +1397,48 @@ export function createPaymentRequestCard(opts: {
 }
 
 /**
+ * Merchant gift redeem card for Chat (Direct transfer to @BeamioTag).
+ * Tap opens the same gift claim sheet as `/app/?beamiocard=&redeemcode=`.
+ */
+export function createMerchantGiftRedeemCard(params: {
+	amount: number
+	currency: ICurrency
+	merchantTitle: string
+	claimUrl: string
+	/** Optional short note shown under the card chrome */
+	memo?: string
+	usdcAmount?: number
+}): ChatMessage {
+	const now = Date.now()
+	const sendId =
+		typeof crypto !== 'undefined' && crypto.randomUUID
+			? crypto.randomUUID()
+			: `gift_${now}_${Math.random().toString(36).slice(2)}`
+	const title = (params.merchantTitle || 'Merchant gift').trim() || 'Merchant gift'
+	const card: paymentCard = {
+		amount: params.amount,
+		currency: params.currency,
+		title,
+		timeStamp: now,
+		usdcAmount: params.usdcAmount ?? params.amount,
+		cashcodeUrl: params.claimUrl,
+		cardType: 'merchantGift',
+		requestUrl: params.claimUrl,
+		statusLabel: 'Gift voucher',
+		memo: params.memo?.trim() || undefined,
+	}
+	return {
+		sendId,
+		id: sendId,
+		from: 'me',
+		text: '',
+		createdAt: now,
+		status: 'sent',
+		paymentCard: card,
+	}
+}
+
+/**
  * 创建用于 Chat 的 Membership Activated 卡片消息。
  * 对应 MessageSendReceiveCard 的 variant="membershipActivated"。
  */

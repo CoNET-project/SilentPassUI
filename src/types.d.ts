@@ -150,8 +150,8 @@ type paymentCard = {
 		timeStamp: number
 		usdcAmount: number
 		cashcodeUrl: string
-		/** 卡片类型：不传或 payment 为普通支付，cashcode 由 cashcodeUrl 决定，membershipActivated 为会员已激活，paymentRequest 为收款请求卡 */
-		cardType?: "payment" | "cashcode" | "membershipActivated" | "paymentRequest"
+		/** 卡片类型：不传或 payment 为普通支付，cashcode 由 cashcodeUrl 决定，membershipActivated 为会员已激活，paymentRequest 为收款请求卡，merchantGift 为商户礼品兑换卡 */
+		cardType?: "payment" | "cashcode" | "membershipActivated" | "paymentRequest" | "merchantGift"
 		/** 仅 membershipActivated：状态胶囊文案，如 "Confirmed on-chain" */
 		statusLabel?: string
 		/** 辅助字段：交易 hash（如链上 tx hash），可用于 View Invoice 等 */

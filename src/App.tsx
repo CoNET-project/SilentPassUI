@@ -76,10 +76,10 @@ import RenderActionPage from '@/renderAction'
 import { getUserInfo } from "@/services/beamio"
 import { AppButton } from "@/components/button/AppButton"
 import { Check } from "lucide-react"
-import { postCardCouponOpenClaimWithCurrentWallet, postCardRedeem, type CouponOpenClaimEligibility } from "@/services/BeamioCard"
+import { postCardCouponOpenClaimWithCurrentWallet, type CouponOpenClaimEligibility } from "@/services/BeamioCard"
 import CouponClaimTicketPreview from "@/components/Home/CouponClaimTicketPreview"
 import ShowPayCodeSheet from "@/components/Home/ShowPayCodeSheet"
-import RedeemClaimTicketPreview from "@/components/Home/RedeemClaimTicketPreview"
+import MerchantGiftClaimSheet from "@/components/Home/MerchantGiftClaimSheet"
 import type { ActiveCouponListItem } from "@/pages/Home/ActiveCouponsScreen"
 import {
 	collectDeepLinkSearchParams,
@@ -173,7 +173,6 @@ function AppShell() {
   /** Already-claimed open-claim → OpenContainer QR for POS 核销. */
   const [couponClaimShowPayOpen, setCouponClaimShowPayOpen] = useState(false)
   const [redeemClaimIntent, setRedeemClaimIntent] = useState<{ cardAddress?: string; redeemCode: string } | null>(null)
-  const [redeemClaimSubmitting, setRedeemClaimSubmitting] = useState(false)
   /** 扫码 beamio URL 中的 wallet 参数：{ beamioAccount, wallet }，PayScreen 优先使用此地址 */
   const [preferredPayeeWallet, setPreferredPayeeWallet] = useState<{ beamioAccount: string; wallet: string } | null>(null)
   const runningRef = useRef(false)
@@ -312,41 +311,6 @@ function AppShell() {
       couponId: couponClaimIntent.couponId,
     })
   }, [isInitialLoading, couponClaimIntent, profiles?.[0]])
-
-  const handleConfirmRedeemClaim = async () => {
-    if (!redeemClaimIntent || redeemClaimSubmitting) return
-    const cardAddress = redeemClaimIntent.cardAddress?.trim() ?? ''
-    if (!cardAddress || !ethers.isAddress(cardAddress)) {
-      Toast.show({ content: tu('redeem_link_is_missing_a_valid_card_address'), position: 'top' })
-      return
-    }
-    const privateKeyArmor = resolveSigningPrivateKeyArmor(profiles?.[0])
-    const toUserEOA = (profiles?.[0]?.keyID ?? '').trim()
-    if (!privateKeyArmor || !toUserEOA || !ethers.isAddress(toUserEOA)) {
-      Toast.show({ content: tu('unlock_your_wallet_with_your_access_password_to_continue'), position: 'top' })
-      return
-    }
-    setRedeemClaimSubmitting(true)
-    try {
-      const ret = await postCardRedeem(
-        ethers.getAddress(cardAddress),
-        redeemClaimIntent.redeemCode,
-        ethers.getAddress(toUserEOA)
-      )
-      if (ret.success) {
-        setRedeemResult({ success: true, tx: ret.tx })
-        closeRedeemClaimPanel()
-        void refreshRecentActivityNoAa()
-        Toast.show({ content: tu('redeem_submitted_successfully'), position: 'top' })
-      } else {
-        Toast.show({ content: mapServerError(ret.error, 'redeemFailed'), position: 'top' })
-      }
-    } catch (e: any) {
-      Toast.show({ content: mapServerError(e?.message), position: 'top' })
-    } finally {
-      setRedeemClaimSubmitting(false)
-    }
-  }
 
   useEffect(() => {
     if (!couponClaimIntent) {
@@ -2204,64 +2168,43 @@ function AppShell() {
 				</div>
 			</div>
 
-			{/* Redeem 结果：BeamioOnboardingModal Go To Home 后后台 redeem 完成，从下往上滑出 */}
+			{/* Merchant gift redeem (beamiocard + redeemcode) — Instant Vault Top-Up sheet */}
+			{redeemClaimIntent?.cardAddress ? (
+				<MerchantGiftClaimSheet
+					cardAddress={redeemClaimIntent.cardAddress}
+					redeemCode={redeemClaimIntent.redeemCode}
+					onClose={closeRedeemClaimPanel}
+					onSuccess={(tx) => {
+						setRedeemResult({ success: true, tx })
+						void refreshRecentActivityNoAa()
+					}}
+				/>
+			) : redeemClaimIntent ? (
+				<div className="fixed inset-0 z-[10000] flex flex-col bg-white dark:bg-slate-900">
+					<div className="flex items-center justify-between border-b border-slate-200 px-5 pb-3 pt-[calc(env(safe-area-inset-top)+14px)] dark:border-slate-800">
+						<div>
+							<h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">{tu('redeem_code')}</h2>
+						</div>
+						<button
+							type="button"
+							onClick={closeRedeemClaimPanel}
+							className="text-sm font-medium text-slate-600 dark:text-slate-300"
+						>
+							Close
+						</button>
+					</div>
+					<div className="flex-1 overflow-y-auto px-5 py-5">
+						<div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/30">
+							<p className="text-sm font-semibold text-amber-800 dark:text-amber-200">{tu('missing_card_address')}</p>
+							<p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+								{tu('this_redeem_link_must_include_a_valid_program_card_address')}
+							</p>
+						</div>
+					</div>
+				</div>
+			) : null}
+
 			<AnimatePresence>
-				{redeemClaimIntent && (
-					<motion.div
-						key="redeem-claim-overlay"
-						className="fixed inset-0 z-[10000] bg-white dark:bg-slate-900 flex flex-col"
-						initial={{ x: "100%" }}
-						animate={{ x: 0 }}
-						exit={{ x: "100%" }}
-						transition={{ duration: 0.25, ease: "easeOut" }}
-					>
-						<div className="flex items-center justify-between px-5 pt-[calc(env(safe-area-inset-top)+14px)] pb-3 border-b border-slate-200 dark:border-slate-800">
-							<div>
-								<h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">{tu('redeem_code')}</h2>
-								<p className="text-xs text-slate-500 dark:text-slate-400">{tu('confirm_before_submitting_on_chain_redeem')}</p>
-							</div>
-							<button
-								type="button"
-								onClick={() => {
-									if (redeemClaimSubmitting) return
-									closeRedeemClaimPanel()
-								}}
-								disabled={redeemClaimSubmitting}
-								className="text-sm font-medium text-slate-600 dark:text-slate-300 disabled:opacity-50"
-							>
-								Close
-							</button>
-						</div>
-
-						<div className="flex-1 overflow-y-auto px-5 py-5">
-							{redeemClaimIntent.cardAddress ? (
-								<RedeemClaimTicketPreview
-									cardAddress={redeemClaimIntent.cardAddress}
-									redeemCode={redeemClaimIntent.redeemCode}
-									submitting={redeemClaimSubmitting}
-									getPrivateKeyArmor={() => resolveSigningPrivateKeyArmor(profiles?.[0]) || undefined}
-									onWalletUnlock={() => navigate('/settings')}
-								/>
-							) : (
-								<div className="rounded-2xl border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800 p-4">
-									<p className="text-sm font-semibold text-amber-800 dark:text-amber-200">{tu('missing_card_address')}</p>
-									<p className="text-xs text-amber-700 dark:text-amber-300 mt-1">{tu('this_redeem_link_must_include_a_valid_program_card_address')}</p>
-								</div>
-							)}
-						</div>
-
-						<div className="px-5 pb-[calc(env(safe-area-inset-bottom)+16px)] pt-2 border-t border-slate-200 dark:border-slate-800">
-							<AppButton
-								fullWidth
-								onClick={handleConfirmRedeemClaim}
-								disabled={redeemClaimSubmitting || !redeemClaimIntent.cardAddress}
-								className="rounded-xl"
-							>
-								{redeemClaimSubmitting ? tu('redeeming') : tu('redeem')}
-							</AppButton>
-						</div>
-					</motion.div>
-				)}
 				{couponClaimIntent && (
 					<motion.div
 						key="coupon-claim-overlay"

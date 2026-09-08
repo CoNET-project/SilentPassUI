@@ -41,6 +41,8 @@ import {
 import { resolveBeamioAaOnConet } from '@/utils/resolveBeamioAaFromCardFactory'
 import { conetDepinProvider } from '@/utils/constants'
 import { searchUsername } from '@/services/beamio'
+import { useDaemonContext } from '@/providers/DaemonProvider'
+import { sendMerchantGiftRedeemChat } from '@/utils/sendMerchantGiftRedeemChat'
 import { IpfsImg } from '@/components/IpfsImg'
 import beamioQrLogo from '@/components/assets/logo512.png'
 import {
@@ -235,6 +237,7 @@ export default function DiscoverMerchantGiftSheet({
 	onSuccess,
 	registerBackHandler,
 }: Props) {
+	const { profiles, setProfiles, allNodes } = useDaemonContext()
 	const ccy = ((currency || 'USD').toUpperCase() || 'USD') as ICurrency
 	const prefix = fiatPrefix(ccy)
 	const baseFeeE6 = useMemo(() => discoverGiftBaseMembershipFeeE6(metadataRoot), [metadataRoot])
@@ -307,6 +310,7 @@ export default function DiscoverMerchantGiftSheet({
 
 	const [issuedCode, setIssuedCode] = useState<string | null>(null)
 	const [issuedShareUrl, setIssuedShareUrl] = useState<string | null>(null)
+	const [chatDeliveryHint, setChatDeliveryHint] = useState<string | null>(null)
 	const [issuedTopupCreditE6, setIssuedTopupCreditE6] = useState<string | null>(null)
 	const [copyCodeStatus, setCopyCodeStatus] = useState<'idle' | 'ok'>('idle')
 	const [copyLinkStatus, setCopyLinkStatus] = useState<'idle' | 'ok'>('idle')
@@ -704,6 +708,7 @@ export default function DiscoverMerchantGiftSheet({
 				setIssuedCode(plain)
 				setIssuedShareUrl(claimUrl)
 				setIssuedTopupCreditE6(result.topupCreditE6 ?? topupPrincipalE6)
+				await deliverGiftChatIfNeeded(plain, claimUrl, Number(parsed.apiAmount))
 				onSuccess?.()
 				return
 			}
@@ -712,7 +717,7 @@ export default function DiscoverMerchantGiftSheet({
 			const bal = await readEoaConetUsdcBalance6(profile as profile)
 			if (bal < usdc6) {
 				setPanelError(
-					`Insufficient CoNET-USDC. Need about ${usdc} USDC; your balance is ${ethers.formatUnits(bal, 6)}.`,
+					`Insufficient USDC. Need about ${usdc} USDC; your balance is ${ethers.formatUnits(bal, 6)}.`,
 				)
 				return
 			}
@@ -741,12 +746,50 @@ export default function DiscoverMerchantGiftSheet({
 			setIssuedCode(plain)
 			setIssuedShareUrl(claimUrl)
 			setIssuedTopupCreditE6(result.topupCreditE6 ?? topupPrincipalE6)
+			await deliverGiftChatIfNeeded(plain, claimUrl, Number(parsed.apiAmount))
 			onSuccess?.()
 		} catch (e) {
 			setPanelError((e as Error)?.message ?? 'Gift purchase failed.')
 		} finally {
 			submitInFlightRef.current = false
 			setSubmitting(false)
+		}
+	}
+
+	const deliverGiftChatIfNeeded = async (
+		_redeemPlain: string,
+		claimUrl: string | null,
+		amountHuman: number,
+	) => {
+		setChatDeliveryHint(null)
+		if (deliveryMode !== 'friend' || !selectedFriend || !claimUrl?.trim()) return
+		const signingPk =
+			resolveSigningPrivateKeyArmor(profile as profile) ||
+			resolveSigningPrivateKeyArmor(profiles?.[0])
+		const profileList = profiles?.length ? profiles : profile ? [profile as profile] : []
+		if (!signingPk || !profileList.length) {
+			setChatDeliveryHint(
+				'Gift purchased. Could not send chat — share the claim link with your friend.',
+			)
+			return
+		}
+		const chatRet = await sendMerchantGiftRedeemChat({
+			profiles: profileList,
+			setProfiles,
+			allNodes: allNodes ?? [],
+			friend: selectedFriend,
+			privateKeyArmor: signingPk,
+			amount: Number.isFinite(amountHuman) ? amountHuman : Number(previewAmount) || 0,
+			currency: ccy,
+			merchantTitle: merchantLabel,
+			claimUrl,
+			note: giftNote,
+		})
+		if (!chatRet.ok) {
+			setChatDeliveryHint(
+				chatRet.error ??
+					'Gift purchased. Share the claim link if the chat message did not send.',
+			)
 		}
 	}
 
@@ -767,7 +810,7 @@ export default function DiscoverMerchantGiftSheet({
 	}, [giftFacePreview, payWith, creditPayEnabled, prefix, previewAmount, usdcQuoteLabel])
 
 	const payCtaLabel =
-		payWith === 'credit' ? 'Confirm & pay with store credit' : 'Confirm & pay with CoNET-USDC'
+		payWith === 'credit' ? 'Confirm & pay with store credit' : 'Confirm & pay with USDC'
 
 	const stepPill = (n: GiftFlowStep, label: string) => (
 		<div className="mb-3 inline-flex items-center gap-1.5 self-start rounded-full bg-[#dbe1ff] px-2.5 py-1 text-[#00184a]">
@@ -880,6 +923,15 @@ export default function DiscoverMerchantGiftSheet({
 						{creditHuman ? ` — about ${prefix}${creditHuman} store credit after claim` : ''}
 						{successDirect && friendName ? `. Share with ${friendName}.` : '. Share the link or code.'}
 					</p>
+					{chatDeliveryHint ? (
+						<div
+							role="alert"
+							className="mt-3 flex w-full max-w-sm items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-left dark:border-amber-800 dark:bg-amber-950/40"
+						>
+							<AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
+							<p className="text-[12px] leading-snug text-amber-900 dark:text-amber-100">{chatDeliveryHint}</p>
+						</div>
+					) : null}
 				</header>
 
 				{successDirect && selectedFriend ? (
@@ -1512,14 +1564,14 @@ export default function DiscoverMerchantGiftSheet({
 							<div>
 								<div className="flex flex-wrap items-center gap-2">
 									<span className="text-base font-semibold text-[#1a1b1f] dark:text-slate-100">
-										CoNET-USDC
+										USDC
 									</span>
 									<span className="rounded-full bg-[#dbe1ff] px-2 py-0.5 text-[11px] font-semibold text-[#00184a]">
 										EOA · sponsored gas
 									</span>
 								</div>
 								<p className="mt-1 text-xs text-[#5d5e63]">
-									{usdcQuoteLabel ?? 'Quoted in CoNET-USDC at checkout'}
+									{usdcQuoteLabel ?? 'Quoted in USDC at checkout'}
 								</p>
 							</div>
 						</div>

@@ -30,7 +30,16 @@ import {
 	type MerchantGiftPayWith,
 } from '@/services/BeamioCard'
 import { resolveSigningPrivateKeyArmor } from '@/utils/resolveSigningPrivateKeyArmor'
-import { parseDiscoverTopupAmountInput, readEoaConetUsdcBalance6 } from '@/utils/discoverEoaUsdcTopup'
+import {
+	parseDiscoverTopupAmountInput,
+	pollUntilEoaConetUsdcAtLeast,
+	readEoaConetUsdcBalance6,
+	readEoaUsdcBalance6,
+} from '@/utils/discoverEoaUsdcTopup'
+import {
+	formatQuotedUsdc6ForDisplay,
+	payWalletUsdcDepositWithLocalWallet,
+} from '@/utils/discoverUsdcTopupSession'
 import { membershipFeeE6ToHuman } from '@/utils/discoverMembershipFee'
 import { buildMerchantGiftRedeemShareUrl } from '@/utils/merchantGiftRedeemShare'
 import {
@@ -300,6 +309,9 @@ export default function DiscoverMerchantGiftSheet({
 	const [submitting, setSubmitting] = useState(false)
 	const submitInFlightRef = useRef(false)
 	const [usdcQuoteLabel, setUsdcQuoteLabel] = useState<string | null>(null)
+	/** Combined CoNET-USDC + Base USDC available for Gift USDC settlement. */
+	const [usdcAvailableLabel, setUsdcAvailableLabel] = useState<string | null>(null)
+	const [usdcSubmitHint, setUsdcSubmitHint] = useState<string | null>(null)
 
 	const [friendQuery, setFriendQuery] = useState('')
 	const [friendResults, setFriendResults] = useState<searchResult[]>([])
@@ -394,26 +406,52 @@ export default function DiscoverMerchantGiftSheet({
 	useEffect(() => {
 		if (step !== 3 || payWith !== 'usdc') {
 			setUsdcQuoteLabel(null)
+			setUsdcAvailableLabel(null)
 			return
 		}
 		const parsed = parseDiscoverTopupAmountInput(amountText, ccy)
 		if (!parsed.ok) {
 			setUsdcQuoteLabel(null)
+			setUsdcAvailableLabel(null)
 			return
 		}
 		let cancelled = false
 		void (async () => {
 			try {
-				const { usdc } = await quoteCurrencyAmountInUSDCFair(ccy, parsed.apiAmount)
-				if (!cancelled) setUsdcQuoteLabel(`~$${usdc} USDC`)
+				const [{ usdc }, conetBal, baseBal] = await Promise.all([
+					quoteCurrencyAmountInUSDCFair(ccy, parsed.apiAmount),
+					readEoaConetUsdcBalance6(profile as profile).catch(() => null),
+					readEoaUsdcBalance6(profile as profile).catch(() => null),
+				])
+				if (cancelled) return
+				setUsdcQuoteLabel(`Need ~$${usdc} USDC`)
+				if (conetBal != null && baseBal != null) {
+					const combined = conetBal + baseBal
+					setUsdcAvailableLabel(
+						`~$${formatQuotedUsdc6ForDisplay(combined)} USDC available · CoNET + Base`,
+					)
+				} else if (conetBal != null) {
+					setUsdcAvailableLabel(
+						`~$${formatQuotedUsdc6ForDisplay(conetBal)} CoNET-USDC · Base unavailable`,
+					)
+				} else if (baseBal != null) {
+					setUsdcAvailableLabel(
+						`~$${formatQuotedUsdc6ForDisplay(baseBal)} Base USDC · CoNET unavailable`,
+					)
+				} else {
+					setUsdcAvailableLabel(null)
+				}
 			} catch {
-				if (!cancelled) setUsdcQuoteLabel(null)
+				if (!cancelled) {
+					setUsdcQuoteLabel(null)
+					setUsdcAvailableLabel(null)
+				}
 			}
 		})()
 		return () => {
 			cancelled = true
 		}
-	}, [step, payWith, amountText, ccy])
+	}, [step, payWith, amountText, ccy, profile])
 
 	const myAddress = (profile?.keyID ?? '').trim().toLowerCase()
 	const normalizedFriendQuery = friendQuery.trim()
@@ -635,6 +673,7 @@ export default function DiscoverMerchantGiftSheet({
 
 		submitInFlightRef.current = true
 		setSubmitting(true)
+		setUsdcSubmitHint(null)
 		try {
 			const { code } = generateCODE('')
 			const redeemCode = String(code ?? '').trim()
@@ -714,15 +753,77 @@ export default function DiscoverMerchantGiftSheet({
 			}
 
 			const { usdc, usdc6 } = await quoteCurrencyAmountInUSDCFair(ccy, parsed.apiAmount)
-			const bal = await readEoaConetUsdcBalance6(profile as profile)
-			if (bal < usdc6) {
+			let conetBal = await readEoaConetUsdcBalance6(profile as profile)
+			let baseBal = 0n
+			try {
+				baseBal = await readEoaUsdcBalance6(profile as profile)
+			} catch {
+				baseBal = 0n
+			}
+			const combined = conetBal + baseBal
+			if (combined < usdc6) {
 				setPanelError(
-					`Insufficient USDC. Need about ${usdc} USDC; your balance is ${ethers.formatUnits(bal, 6)}.`,
+					`Insufficient USDC. Need about ${usdc} USDC across CoNET and Base; available ~$${formatQuotedUsdc6ForDisplay(combined)} USDC.`,
 				)
 				return
 			}
 
+			// CoNET-USDC shortfall: bridge Base USDC → EOA CoNET-USDC, then pay full gift in CoNET-USDC.
+			if (conetBal < usdc6) {
+				const shortfall = usdc6 - conetBal
+				if (baseBal < shortfall) {
+					setPanelError(
+						`Insufficient USDC. Need about ${usdc} USDC; CoNET ~$${formatQuotedUsdc6ForDisplay(conetBal)}, Base ~$${formatQuotedUsdc6ForDisplay(baseBal)}.`,
+					)
+					return
+				}
+				const eoa =
+					(typeof profile?.keyID === 'string' && ethers.isAddress(profile.keyID)
+						? ethers.getAddress(profile.keyID)
+						: '') || new ethers.Wallet(pk).address
+				setUsdcSubmitHint(
+					`Moving ~$${formatQuotedUsdc6ForDisplay(shortfall)} Base USDC to CoNET…`,
+				)
+				const deposit = await payWalletUsdcDepositWithLocalWallet({
+					profile: profile as profile,
+					privateKeyArmor: pk,
+					beneficiaryEoa: eoa,
+					usdcAmount6: shortfall,
+				})
+				if (!deposit.ok) {
+					setUsdcSubmitHint(null)
+					setPanelError(deposit.error)
+					return
+				}
+				setUsdcSubmitHint('Waiting for CoNET-USDC…')
+				const poll = await pollUntilEoaConetUsdcAtLeast({
+					profile: profile as profile,
+					minBalance6: usdc6,
+					onProgress: (label) => setUsdcSubmitHint(label),
+				})
+				setUsdcSubmitHint(null)
+				if (poll === 'cancelled') {
+					setPanelError('Payment cancelled.')
+					return
+				}
+				if (poll !== 'ok') {
+					setPanelError(
+						'CoNET-USDC deposit is still confirming. Please try again in a moment.',
+					)
+					return
+				}
+				conetBal = await readEoaConetUsdcBalance6(profile as profile)
+				if (conetBal < usdc6) {
+					setPanelError(
+						`CoNET-USDC is still short after deposit. Need about ${usdc} USDC; balance is ~$${formatQuotedUsdc6ForDisplay(conetBal)}.`,
+					)
+					return
+				}
+			}
+
+			setUsdcSubmitHint('Signing CoNET-USDC payment…')
 			const auth = await USDC2Token(pk, usdc, card)
+			setUsdcSubmitHint(null)
 			const result = await postPurchaseMerchantGiftRedeem({
 				cardAddress: card,
 				from: auth.from,
@@ -749,10 +850,12 @@ export default function DiscoverMerchantGiftSheet({
 			await deliverGiftChatIfNeeded(plain, claimUrl, Number(parsed.apiAmount))
 			onSuccess?.()
 		} catch (e) {
+			setUsdcSubmitHint(null)
 			setPanelError((e as Error)?.message ?? 'Gift purchase failed.')
 		} finally {
 			submitInFlightRef.current = false
 			setSubmitting(false)
+			setUsdcSubmitHint(null)
 		}
 	}
 
@@ -1567,12 +1670,17 @@ export default function DiscoverMerchantGiftSheet({
 										USDC
 									</span>
 									<span className="rounded-full bg-[#dbe1ff] px-2 py-0.5 text-[11px] font-semibold text-[#00184a]">
-										EOA · sponsored gas
+										EOA · CoNET + Base
 									</span>
 								</div>
 								<p className="mt-1 text-xs text-[#5d5e63]">
-									{usdcQuoteLabel ?? 'Quoted in USDC at checkout'}
+									{usdcAvailableLabel ??
+										usdcQuoteLabel ??
+										'Quoted in USDC at checkout · CoNET + Base'}
 								</p>
+								{usdcAvailableLabel && usdcQuoteLabel ? (
+									<p className="mt-0.5 text-xs text-[#5d5e63]">{usdcQuoteLabel}</p>
+								) : null}
 							</div>
 						</div>
 						{payWith === 'usdc' ? (
@@ -1701,6 +1809,16 @@ export default function DiscoverMerchantGiftSheet({
 				</div>
 			</div>
 
+			{usdcSubmitHint && payWith === 'usdc' ? (
+				<div
+					className="mb-3 flex gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-[13px] text-slate-700 dark:border-slate-600 dark:bg-slate-800/60 dark:text-slate-200"
+					aria-live="polite"
+				>
+					<Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin" aria-hidden />
+					<p>{usdcSubmitHint}</p>
+				</div>
+			) : null}
+
 			{panelError ? (
 				<div
 					role="alert"
@@ -1728,7 +1846,13 @@ export default function DiscoverMerchantGiftSheet({
 				) : (
 					<Gift className="h-5 w-5 shrink-0" strokeWidth={2.25} aria-hidden />
 				)}
-				<span>{submitting ? 'Creating gift…' : payCtaLabel}</span>
+				<span>
+					{submitting
+						? usdcSubmitHint && payWith === 'usdc'
+							? usdcSubmitHint
+							: 'Creating gift…'
+						: payCtaLabel}
+				</span>
 				{!submitting ? <ChevronRight className="h-5 w-5 opacity-80" strokeWidth={2.25} aria-hidden /> : null}
 			</button>
 			<p className="mt-2 text-center text-[12px] font-medium leading-snug text-emerald-700 dark:text-emerald-400">

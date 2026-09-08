@@ -125,7 +125,11 @@ import {
 } from "@/services/genesisNodeReferral"
 import { plainBeamioTagSeed } from "@/utils/beamioTagDatabase"
 import { useMerchantCardDatabase } from "@/providers/MerchantCardDatabaseProvider"
-import { merchantCardRecordFromLatestCardsRaw } from "@/utils/merchantCardDatabase"
+import {
+	merchantCardRecordFromLatestCardsRaw,
+	pickMerchantCardListTitle,
+} from "@/utils/merchantCardDatabase"
+import { isGenericMerchantCardDisplayName } from "@/utils/isGenericMerchantCardDisplayName"
 import { formatDiscoverLikeCount, invalidateDiscoverMerchantStatCache } from "@/utils/discoverMerchantLikeCount"
 import {
 	DISCOVER_USER_LIKE_TARGET,
@@ -1035,6 +1039,8 @@ function DiscoverMerchantMemberRechargePrivilegesPanel({
 	storeCreditsLabel,
 	pointsLabel,
 	pointsFiatHint,
+	/** User holds store credits (#0) and/or Reward PT (#13). */
+	hasPointsOrCredits,
 	multiplierCards,
 	footerTip,
 	canTopUp,
@@ -1047,6 +1053,7 @@ function DiscoverMerchantMemberRechargePrivilegesPanel({
 	storeCreditsLabel: string
 	pointsLabel: string
 	pointsFiatHint?: string | null
+	hasPointsOrCredits: boolean
 	multiplierCards: DiscoverStoreCreditMultiplierCard[]
 	footerTip: string
 	canTopUp: boolean
@@ -1069,6 +1076,11 @@ function DiscoverMerchantMemberRechargePrivilegesPanel({
 		[multiplierCards, selectedCardId],
 	)
 	const badgeText = (tierBadgeLabel || 'MEMBER').trim().toUpperCase()
+	const headerEyebrow = hasPointsOrCredits ? '✨ Share & earn points' : '🔥 First top-up exclusive'
+	const headerTitle = hasPointsOrCredits ? 'Fresh Rewards Unlocked!' : 'Claim Your Welcome Match'
+	const headerBody = hasPointsOrCredits
+		? 'You earned points on your last bite. Redeem them for your favorite dish or reload for more bonuses.'
+		: 'Get instant bonus credits on your first top-up. Enjoy zero-friction checkouts on every bite.'
 
 	return (
 		<section
@@ -1076,17 +1088,14 @@ function DiscoverMerchantMemberRechargePrivilegesPanel({
 			aria-label="Member recharge privileges"
 		>
 			<header className="px-0.5">
-				<div className="flex items-center gap-1.5">
-					<Sparkles className="h-3.5 w-3.5 shrink-0 text-[#C9A227]" strokeWidth={2} aria-hidden />
-					<span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#9ca3af]">
-						Special seasonal promotion
-					</span>
-				</div>
+				<p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#9ca3af]">
+					{headerEyebrow}
+				</p>
 				<h2 className="mt-2 font-serif text-[22px] font-semibold leading-snug tracking-tight text-[#2c2416] dark:text-slate-100 sm:text-[24px]">
-					Member Recharge Privileges & Instant Match
+					{headerTitle}
 				</h2>
 				<p className="mt-2 text-[13px] leading-relaxed text-[#6b7280] dark:text-slate-400">
-					Replenish your balance to unlock instant bonus store credits — redeemable across all services.
+					{headerBody}
 				</p>
 			</header>
 
@@ -1095,9 +1104,13 @@ function DiscoverMerchantMemberRechargePrivilegesPanel({
 					<span className="shrink-0 rounded-full bg-[#3d3429] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[#D4B483]">
 						{badgeText}
 					</span>
-					<p className="min-w-0 flex-1 truncate text-center font-serif text-[15px] font-semibold tracking-tight text-white">
-						{merchantName}
-					</p>
+					{merchantName.trim() && !isGenericMerchantCardDisplayName(merchantName) ? (
+						<p className="min-w-0 flex-1 truncate text-center font-serif text-[15px] font-semibold tracking-tight text-white">
+							{merchantName.trim()}
+						</p>
+					) : (
+						<span className="min-w-0 flex-1" aria-hidden />
+					)}
 					{memberNo ? (
 						<span className="shrink-0 text-[11px] font-medium tabular-nums text-white/45">{memberNo}</span>
 					) : (
@@ -4586,7 +4599,12 @@ function DiscoverMerchantDetailFullScreen({
 	const usdcTopupPollAbortRef = useRef<AbortController | null>(null)
 	const usdcTopupUrlCopiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 	const ccy = (item.currency || "CAD").toUpperCase()
-	const passTitle = item.programName.trim() || resolveName(item.cardAddress ?? '') || item.title
+	const passTitle = pickMerchantCardListTitle({
+		workerName: resolveName(item.cardAddress ?? ''),
+		metaName: item.programName,
+		chainName: item.title,
+		fallback: '',
+	})
 
 	const openIssuerProfile = useCallback(async () => {
 		const ownerEoa = issuerOwnerEoa
@@ -6930,6 +6948,10 @@ function DiscoverMerchantDetailFullScreen({
 										: `${formatSocialPoints13Display(myPoints13Num)} Pts`
 								}
 								pointsFiatHint={memberRechargePointsFiatHint}
+								hasPointsOrCredits={
+									Number(merchantAssets?.points ?? 0) > 0 ||
+									(Number.isFinite(myPoints13Num) && myPoints13Num > 0)
+								}
 								multiplierCards={prospectJoinPanelCopy.multiplierCards}
 								footerTip={memberRechargeFooterTip}
 								canTopUp={canDiscoverTopUp}

@@ -239,6 +239,165 @@ export function buildWalletUsdcDepositUrl(params: {
 	return url.toString()
 }
 
+export type PayWalletUsdcDepositLocalResult =
+	| { ok: true; USDC_tx?: string; usdcAmount6: bigint; fulfillPending?: boolean }
+	| { ok: false; error: string; insufficientBalance?: boolean }
+
+/**
+ * Bridge Base USDC → buyer EOA CoNET-USDC via `/api/nfcUsdcTopup` `workflow=walletDeposit`
+ * (settle to {@link GENESIS_NODE_BRIDGE_INITIATOR}, Master LockMint in background).
+ *
+ * Use when Gift / CoNET-USDC spend needs more CoNET-USDC than the EOA holds, but Base USDC
+ * covers the shortfall. Caller must poll CoNET balance until LockMint confirms.
+ */
+export async function payWalletUsdcDepositWithLocalWallet(params: {
+	profile: profile
+	privateKeyArmor: string
+	beneficiaryEoa: string
+	/** Exact USDC amount to settle on Base (6-decimal atomic). */
+	usdcAmount6: bigint
+}): Promise<PayWalletUsdcDepositLocalResult> {
+	const required6 = params.usdcAmount6
+	if (required6 <= 0n) {
+		return { ok: false, error: 'Invalid deposit amount.' }
+	}
+
+	let balance6: bigint
+	try {
+		balance6 = await readEoaUsdcBalance6(params.profile)
+	} catch (e: unknown) {
+		const msg = e instanceof Error ? e.message : 'Unable to read USDC balance on Base'
+		return { ok: false, error: msg }
+	}
+	if (!eoaCanSelfFundDiscoverTopup(balance6, required6)) {
+		return {
+			ok: false,
+			insufficientBalance: true,
+			error: `Insufficient USDC on Base. Need ${formatQuotedUsdc6ForDisplay(required6)} USDC.`,
+		}
+	}
+
+	const amountHuman = ethers.formatUnits(required6, 6)
+	const bodyObj: Record<string, string> = {
+		amount: amountHuman,
+		currency: 'USDC',
+		beneficiary: ethers.getAddress(params.beneficiaryEoa),
+		workflow: WALLET_USDC_DEPOSIT_WORKFLOW,
+		paymentToken: 'USDC',
+	}
+	const topupUrl = `${beamioApi}/api/nfcUsdcTopup`
+	const body = JSON.stringify(bodyObj)
+
+	const firstRes = await fetch(topupUrl, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body,
+	})
+
+	if (firstRes.status !== 402) {
+		const json = (await firstRes.json().catch(() => ({}))) as {
+			success?: boolean
+			error?: string
+			USDC_tx?: string
+			fulfillPending?: boolean
+			usdcAmount6?: string
+		}
+		if (firstRes.ok && json.success !== false && json.USDC_tx) {
+			let settled6 = required6
+			try {
+				if (json.usdcAmount6 && /^\d+$/.test(String(json.usdcAmount6))) {
+					settled6 = BigInt(String(json.usdcAmount6))
+				}
+			} catch {
+				/* keep required6 */
+			}
+			return {
+				ok: true,
+				USDC_tx: json.USDC_tx,
+				usdcAmount6: settled6,
+				fulfillPending: json.fulfillPending === true,
+			}
+		}
+		return {
+			ok: false,
+			error: json.error ?? `Payment challenge failed (HTTP ${firstRes.status})`,
+		}
+	}
+
+	const challenge = (await firstRes.json().catch(() => ({}))) as {
+		accepts?: Array<{
+			maxAmountRequired?: string | number
+			payTo?: string
+		}>
+	}
+	const message = Array.isArray(challenge.accepts) ? challenge.accepts[0] : null
+	if (!message?.payTo || message.maxAmountRequired == null) {
+		return { ok: false, error: 'Invalid payment challenge' }
+	}
+
+	let payTo: string
+	try {
+		payTo = ethers.getAddress(String(message.payTo))
+	} catch {
+		return { ok: false, error: 'Invalid payment recipient' }
+	}
+	if (payTo.toLowerCase() !== GENESIS_NODE_BRIDGE_INITIATOR.toLowerCase()) {
+		return { ok: false, error: 'Unexpected payment recipient' }
+	}
+
+	let payAmount: bigint
+	try {
+		payAmount = BigInt(String(message.maxAmountRequired).split('.')[0])
+	} catch {
+		return { ok: false, error: 'Invalid payment amount' }
+	}
+	if (payAmount !== required6) {
+		return {
+			ok: false,
+			error: `Payment amount mismatch: ${payAmount.toString()} != ${required6.toString()}`,
+		}
+	}
+
+	const paymentHeader = await AuthorizationSign(payAmount, payTo, params.privateKeyArmor)
+	if (!paymentHeader) {
+		return { ok: false, error: 'Wallet signature failed' }
+	}
+
+	const secondRes = await fetch(topupUrl, {
+		method: 'POST',
+		headers: {
+			'Content-Type': 'application/json',
+			'X-PAYMENT': paymentHeader,
+			'Access-Control-Expose-Headers': 'X-PAYMENT-RESPONSE',
+		},
+		body,
+	})
+	const json = (await secondRes.json().catch(() => ({}))) as {
+		success?: boolean
+		error?: string
+		USDC_tx?: string
+		fulfillPending?: boolean
+		usdcAmount6?: string
+	}
+	if (!secondRes.ok || json.success === false) {
+		return { ok: false, error: json.error ?? `Payment failed (HTTP ${secondRes.status})` }
+	}
+	let settled6 = payAmount
+	try {
+		if (json.usdcAmount6 && /^\d+$/.test(String(json.usdcAmount6))) {
+			settled6 = BigInt(String(json.usdcAmount6))
+		}
+	} catch {
+		/* keep payAmount */
+	}
+	return {
+		ok: true,
+		USDC_tx: json.USDC_tx,
+		usdcAmount6: settled6,
+		fulfillPending: json.fulfillPending === true,
+	}
+}
+
 export type PayGenesisNodeSeatLocalResult =
 	| { ok: true; USDC_tx?: string; testMode?: boolean }
 	| { ok: false; error: string; insufficientBalance?: boolean }

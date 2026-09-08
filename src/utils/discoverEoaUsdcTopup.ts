@@ -166,6 +166,53 @@ export type DiscoverEoaUsdcTopupPollOutcome =
 	| { status: 'error'; message: string }
 	| { status: 'timeout' }
 
+/**
+ * Wait until EOA CoNET-USDC balance reaches `minBalance6` (e.g. after walletDeposit LockMint).
+ * Failures / timeouts do not clear any trusted cache — caller keeps last known balances.
+ */
+export async function pollUntilEoaConetUsdcAtLeast(params: {
+	profile: profile
+	minBalance6: bigint
+	onProgress?: (label: string) => void
+	signal?: AbortSignal
+}): Promise<'ok' | 'timeout' | 'cancelled'> {
+	if (params.minBalance6 <= 0n) return 'ok'
+
+	const sleep = (ms: number) =>
+		new Promise<void>((resolve, reject) => {
+			const t = setTimeout(resolve, ms)
+			params.signal?.addEventListener('abort', () => {
+				clearTimeout(t)
+				reject(new DOMException('Aborted', 'AbortError'))
+			})
+		})
+
+	try {
+		await sleep(POLL_INTERVAL_MS)
+	} catch {
+		return 'cancelled'
+	}
+
+	let ticks = 0
+	while (ticks < MAX_POLL_TICKS) {
+		if (params.signal?.aborted) return 'cancelled'
+		ticks += 1
+		try {
+			const current6 = await readEoaConetUsdcBalance6(params.profile)
+			if (current6 >= params.minBalance6) return 'ok'
+		} catch {
+			params.onProgress?.('Waiting for CoNET-USDC…')
+		}
+		params.onProgress?.('Waiting for CoNET-USDC on your wallet…')
+		try {
+			await sleep(POLL_INTERVAL_MS)
+		} catch {
+			return 'cancelled'
+		}
+	}
+	return 'timeout'
+}
+
 export async function pollEoaUsdcFundingThenTopup(params: {
 	profile: profile
 	cardAddress: string

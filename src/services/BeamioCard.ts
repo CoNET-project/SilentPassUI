@@ -1493,6 +1493,16 @@ export type ShareTokenMetadata = {
 	maximumTopup?: number
 	/** Global top-up promotion (single); preferred over legacy bonusRules. */
 	topupPromotion?: ShareTokenMetadataTopupPromotion
+	/**
+	 * Discover Credit Gift — optional burn-#0 purchase fee (default OFF).
+	 * Percent base = full gift face G; fee F never mints to claimer.
+	 */
+	giftCreditPurchase?: {
+		enabled?: boolean
+		feeKind?: 'percent' | 'fixed'
+		percentBps?: number
+		feeE6?: string
+	}
 	/** Onboarding business identity and channel, persisted in global card metadata. */
 	businessProfile?: ShareTokenBusinessProfile
 	/**

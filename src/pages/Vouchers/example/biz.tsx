@@ -419,6 +419,17 @@ import {
   type Reward13ConvertDraft,
 } from '@/utils/unifiedRewardPoints';
 import { BeamioPercentSlider } from '@/components/BeamioPercentSlider';
+import {
+  GiftCreditPurchaseProgramEditor,
+  giftCreditPurchaseEditorIsDirty,
+} from '@/components/GiftCreditPurchaseProgramEditor';
+import {
+  DEFAULT_GIFT_CREDIT_PURCHASE_CONFIG,
+  cloneGiftCreditPurchaseConfig,
+  parseGiftCreditPurchaseConfig,
+  serializeGiftCreditPurchaseConfig,
+  type GiftCreditPurchaseConfig,
+} from '@/utils/giftCreditPurchaseMetadata';
 import { CouponSocialPromotionEventsEditor } from '@/components/programs/CouponSocialPromotionEventsEditor';
 import { CardSocialPromotionEventsEditor } from '@/components/programs/CardSocialPromotionEventsEditor';
 import {
@@ -13950,6 +13961,19 @@ const [cardIssuanceTopupPromotion, setCardIssuanceTopupPromotion] = useState<Top
  const cardIssuanceTopupPromotionClearInFlightRef = useRef(false);
  const [cardIssuanceTopupPromotionEditorServerError, setCardIssuanceTopupPromotionEditorServerError] =
    useState('');
+ /** Discover Credit Gift — burn #0 purchase fee (default OFF). */
+ const [cardIssuanceGiftCreditPurchase, setCardIssuanceGiftCreditPurchase] =
+   useState<GiftCreditPurchaseConfig>(() =>
+     cloneGiftCreditPurchaseConfig(DEFAULT_GIFT_CREDIT_PURCHASE_CONFIG),
+   );
+ const [cardIssuanceGiftCreditPurchaseEditorOpen, setCardIssuanceGiftCreditPurchaseEditorOpen] =
+   useState(false);
+ const [cardIssuanceGiftCreditPurchaseEditorBaseline, setCardIssuanceGiftCreditPurchaseEditorBaseline] =
+   useState<GiftCreditPurchaseConfig | null>(null);
+ const [cardIssuanceGiftCreditPurchaseEditorPublishing, setCardIssuanceGiftCreditPurchaseEditorPublishing] =
+   useState(false);
+ const [cardIssuanceGiftCreditPurchaseEditorServerError, setCardIssuanceGiftCreditPurchaseEditorServerError] =
+   useState('');
 const [cardIssuanceSocialPromotion, setCardIssuanceSocialPromotion] = useState<SocialPromotionDraft>(
   EMPTY_SOCIAL_PROMOTION_DRAFT
 );
@@ -14438,6 +14462,7 @@ const cardIssuanceTierEditorMembershipFeeWheelRef = useMemo(
 const handlePublishCardIssuanceRef = useRef<
   (opts?: {
     topupPromotionOverride?: TopupPromotionDraft;
+    giftCreditPurchaseOverride?: GiftCreditPurchaseConfig;
     socialPromotionOverride?: SocialPromotionDraft;
     couponsOverride?: CardIssuanceCouponRow[];
     productionsOverride?: CardIssuanceProductionRow[];
@@ -16304,6 +16329,23 @@ useEffect(() => {
   cardIssuanceExistingCard?.meta?.bonusRule,
   cardIssuanceExistingCard?.meta,
   cardIssuanceTopupPromotionEditorOpen,
+]);
+
+useEffect(() => {
+  if (cardIssuanceGiftCreditPurchaseEditorOpen) return;
+  if (!cardIssuanceExistingCard?.cardAddress || !cardIssuanceExistingCard.meta) {
+    setCardIssuanceGiftCreditPurchase(
+      cloneGiftCreditPurchaseConfig(DEFAULT_GIFT_CREDIT_PURCHASE_CONFIG),
+    );
+    return;
+  }
+  setCardIssuanceGiftCreditPurchase(
+    parseGiftCreditPurchaseConfig(cardIssuanceExistingCard.meta as Record<string, unknown>),
+  );
+}, [
+  cardIssuanceExistingCard?.cardAddress,
+  cardIssuanceExistingCard?.meta,
+  cardIssuanceGiftCreditPurchaseEditorOpen,
 ]);
 
 /** Social promotion draft: chain getRewardRule(1/2/3) first, then metadata fallback. */
@@ -20468,6 +20510,61 @@ useEffect(() => {
   }
 }, [cardIssuanceSocialPromotionEditorOpen]);
 
+const openCardIssuanceGiftCreditPurchaseEditor = useCallback(() => {
+  setCardIssuanceGiftCreditPurchaseEditorServerError('');
+  setCardIssuanceGiftCreditPurchaseEditorBaseline(
+    cloneGiftCreditPurchaseConfig(cardIssuanceGiftCreditPurchase),
+  );
+  setCardIssuanceGiftCreditPurchaseEditorOpen(true);
+}, [cardIssuanceGiftCreditPurchase]);
+
+const closeCardIssuanceGiftCreditPurchaseEditor = useCallback(() => {
+  if (cardIssuanceGiftCreditPurchaseEditorPublishing) return;
+  if (cardIssuanceGiftCreditPurchaseEditorBaseline != null) {
+    setCardIssuanceGiftCreditPurchase(
+      cloneGiftCreditPurchaseConfig(cardIssuanceGiftCreditPurchaseEditorBaseline),
+    );
+  }
+  setCardIssuanceGiftCreditPurchaseEditorOpen(false);
+  setCardIssuanceGiftCreditPurchaseEditorBaseline(null);
+  setCardIssuanceGiftCreditPurchaseEditorServerError('');
+}, [
+  cardIssuanceGiftCreditPurchaseEditorPublishing,
+  cardIssuanceGiftCreditPurchaseEditorBaseline,
+]);
+
+useEffect(() => {
+  if (!cardIssuanceGiftCreditPurchaseEditorOpen) {
+    setCardIssuanceGiftCreditPurchaseEditorBaseline(null);
+  }
+}, [cardIssuanceGiftCreditPurchaseEditorOpen]);
+
+const cardIssuanceGiftCreditPurchaseEditorCanSave = useMemo(() => {
+  if (!cardIssuanceGiftCreditPurchaseEditorOpen || cardIssuanceGiftCreditPurchaseEditorBaseline == null) {
+    return false;
+  }
+  if (cardIssuanceGiftCreditPurchaseEditorPublishing) return false;
+  return giftCreditPurchaseEditorIsDirty(
+    cardIssuanceGiftCreditPurchase,
+    cardIssuanceGiftCreditPurchaseEditorBaseline,
+  );
+}, [
+  cardIssuanceGiftCreditPurchaseEditorOpen,
+  cardIssuanceGiftCreditPurchaseEditorBaseline,
+  cardIssuanceGiftCreditPurchaseEditorPublishing,
+  cardIssuanceGiftCreditPurchase,
+]);
+
+const cardIssuanceGiftCreditPurchaseOverviewSummary = useMemo(() => {
+  if (!cardIssuanceGiftCreditPurchase.enabled) return '';
+  if (cardIssuanceGiftCreditPurchase.feeKind === 'percent') {
+    const pct = (cardIssuanceGiftCreditPurchase.percentBps / 100).toFixed(2).replace(/\.?0+$/, '');
+    return `Credit Gift fee ${pct}% of gift face`;
+  }
+  const feeHuman = Number(cardIssuanceGiftCreditPurchase.feeE6) / 1e6;
+  return `Credit Gift fee ${cardIssuanceDisplayMoneyPrefix}${feeHuman.toFixed(2)}`;
+}, [cardIssuanceGiftCreditPurchase, cardIssuanceDisplayMoneyPrefix]);
+
 const openCardIssuanceConsumptionPointEditor = useCallback(() => {
   setCardIssuanceConsumptionPointEditorServerError('');
   setCardIssuanceConsumptionSimulateAmount('10');
@@ -22887,6 +22984,7 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
    async (
      opts?: {
        topupPromotionOverride?: TopupPromotionDraft;
+       giftCreditPurchaseOverride?: GiftCreditPurchaseConfig;
     socialPromotionOverride?: SocialPromotionDraft;
       couponsOverride?: CardIssuanceCouponRow[];
       productionsOverride?: CardIssuanceProductionRow[];
@@ -23160,6 +23258,10 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
      const socialPromotionPayloadForPublish = socialPromotionDraftToPayload(socialDraftForPublish);
      const socialPromotionClearRequested =
        opts?.socialPromotionOverride != null && !socialPromotionPayloadForPublish;
+     const giftCreditForPublish =
+       opts?.giftCreditPurchaseOverride ?? cardIssuanceGiftCreditPurchase;
+     const giftCreditPurchasePayloadForPublish =
+       serializeGiftCreditPurchaseConfig(giftCreditForPublish);
      const bonusPayloadForPublish = topupPromotionPayloadForPublish
        ? topupPromotionToLegacyBonusRules(topupPromotionPayloadForPublish)
        : [];
@@ -23275,6 +23377,8 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
          : socialPromotionClearRequested
            ? { socialPromotion: null }
            : {}),
+       // Always write (incl. OFF). updateCardShareMetadata omitting this key would keep prior ON.
+       giftCreditPurchase: giftCreditPurchasePayloadForPublish,
        pointSystem: pointSystemForPublish,
       coupons: couponsPayloadForPublish ?? [],
       productions: productionsPayloadForPublish ?? [],
@@ -23596,6 +23700,7 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
    cardIssuanceStoreDisplayName,
   cardIssuanceBrandColor,
   cardIssuanceTopupPromotion,
+  cardIssuanceGiftCreditPurchase,
   programRewardPtTopupEnabled,
   programRewardPtTopupPercentInput,
   reward13ConvertToPointsEnabled,
@@ -24235,6 +24340,53 @@ const submitCardIssuanceSocialPromotionEditor = useCallback(async () => {
   handlePublishCardIssuance,
   profiles,
   refreshCardIssuanceSocialPromotionFromChain,
+]);
+
+const submitCardIssuanceGiftCreditPurchaseEditor = useCallback(async () => {
+  if (cardIssuanceGiftCreditPurchaseEditorPublishing) return;
+  if (!cardIssuanceGiftCreditPurchaseEditorCanSave) return;
+  setCardIssuanceGiftCreditPurchaseEditorPublishing(true);
+  setCardIssuanceGiftCreditPurchaseEditorServerError('');
+  setCardIssuanceCreateError('');
+  try {
+    const ok = await handlePublishCardIssuance({
+      metadataOnly: true,
+      loadingScope: 'bonusEditor',
+      skipOnChainRefresh: true,
+      giftCreditPurchaseOverride: cardIssuanceGiftCreditPurchase,
+    });
+    if (!ok) {
+      const err =
+        (typeof cardIssuanceCreateError === 'string' && cardIssuanceCreateError.trim()) ||
+        'Failed to save Credit Gift purchase settings.';
+      setCardIssuanceGiftCreditPurchaseEditorServerError(err);
+      return;
+    }
+    const nextSerialized = serializeGiftCreditPurchaseConfig(cardIssuanceGiftCreditPurchase);
+    setCardIssuanceExistingCard((prev) => {
+      if (!prev?.meta) return prev;
+      const meta = { ...(prev.meta as Record<string, unknown>) };
+      const share = {
+        ...((meta.shareTokenMetadata as Record<string, unknown> | undefined) ?? {}),
+        giftCreditPurchase: nextSerialized,
+      };
+      meta.shareTokenMetadata = share;
+      meta.giftCreditPurchase = nextSerialized;
+      return { ...prev, meta: meta as typeof prev.meta };
+    });
+    setCardIssuanceGiftCreditPurchaseEditorBaseline(
+      cloneGiftCreditPurchaseConfig(cardIssuanceGiftCreditPurchase),
+    );
+    setCardIssuanceGiftCreditPurchaseEditorOpen(false);
+  } finally {
+    setCardIssuanceGiftCreditPurchaseEditorPublishing(false);
+  }
+}, [
+  cardIssuanceGiftCreditPurchaseEditorPublishing,
+  cardIssuanceGiftCreditPurchaseEditorCanSave,
+  cardIssuanceGiftCreditPurchase,
+  handlePublishCardIssuance,
+  cardIssuanceCreateError,
 ]);
 
 const submitCardIssuanceConsumptionPointEditor = useCallback(async () => {
@@ -40746,6 +40898,16 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                               ? 'Edit Top-up Promotion'
                               : 'Configure Top-up Promotion'}
                           </button>
+                          <button
+                            type="button"
+                            onClick={openCardIssuanceGiftCreditPurchaseEditor}
+                            className={`mt-2 flex w-full items-center justify-center gap-2 rounded-full border-2 border-dashed border-[#d7dce1] bg-white/35 py-4 text-sm font-semibold text-[#595c5e] transition-colors hover:bg-white/60 ${bizFocusRingClass}`}
+                          >
+                            <Pencil className="h-5 w-5 shrink-0" strokeWidth={2.25} aria-hidden />
+                            {cardIssuanceGiftCreditPurchaseOverviewSummary
+                              ? 'Edit Credit Gift'
+                              : 'Configure Credit Gift'}
+                          </button>
                          </div>
                        </section>
                      </div>
@@ -43303,6 +43465,21 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                            >
                              <span className="text-[15px] font-medium text-[#1a1b1f]">
                                {tu('programs_rules_topup_promotion')}
+                             </span>
+                             <ChevronRight className="h-5 w-5 shrink-0 text-[#424655]" strokeWidth={2} aria-hidden />
+                           </button>
+                           <button
+                             type="button"
+                             onClick={openCardIssuanceGiftCreditPurchaseEditor}
+                             className={`flex w-full items-center justify-between gap-3 rounded-lg bg-[#eeedf3] px-3 py-3 text-left transition hover:bg-[#e9e7ed] ${bizFocusRingClass}`}
+                           >
+                             <span className="min-w-0 flex-1 text-[15px] font-medium text-[#1a1b1f]">
+                               Credit Gift
+                               {cardIssuanceGiftCreditPurchaseOverviewSummary ? (
+                                 <span className="mt-0.5 block truncate text-[11px] font-normal text-[#595c5e]">
+                                   {cardIssuanceGiftCreditPurchaseOverviewSummary}
+                                 </span>
+                               ) : null}
                              </span>
                              <ChevronRight className="h-5 w-5 shrink-0 text-[#424655]" strokeWidth={2} aria-hidden />
                            </button>
@@ -46353,6 +46530,19 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                  </>
                ) : null}
              </AnimatePresence>
+             <GiftCreditPurchaseProgramEditor
+               open={cardIssuanceGiftCreditPurchaseEditorOpen}
+               value={cardIssuanceGiftCreditPurchase}
+               onChange={setCardIssuanceGiftCreditPurchase}
+               onClose={closeCardIssuanceGiftCreditPurchaseEditor}
+               onSave={() => void submitCardIssuanceGiftCreditPurchaseEditor()}
+               canSave={cardIssuanceGiftCreditPurchaseEditorCanSave}
+               publishing={cardIssuanceGiftCreditPurchaseEditorPublishing}
+               serverError={cardIssuanceGiftCreditPurchaseEditorServerError}
+               currencyPrefix={cardIssuanceDisplayMoneyPrefix}
+               numericNoSpinnerClassName={bizNumericNoSpinnerClass}
+               focusRingClassName={bizFocusRingClass}
+             />
              <AnimatePresence>
                {cardIssuanceConsumptionPointEditorOpen ? (
                  <>

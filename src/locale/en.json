@@ -695,7 +695,7 @@
     "addressRequired": "Address is required.",
     "invalidRedeemCode": "Invalid redeem code.",
     "rpcError": "RPC error.",
-    "merchantCardOwnerUnavailable": "Unable to read merchant card on CoNET. Please retry.",
+    "merchantCardOwnerUnavailable": "Unable to read this merchant program card on CoNET. Please retry.",
     "merchantCardNotOnConet": "Merchant card is not on CoNET."
   },
   "time": {

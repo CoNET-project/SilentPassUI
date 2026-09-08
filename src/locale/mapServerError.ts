@@ -53,7 +53,8 @@ const ERROR_PATTERNS: Array<{ test: RegExp; key: ErrorKey }> = [
 	{ test: /rpc error/i, key: 'rpcError' },
 	{ test: /merchant card is not on conet/i, key: 'merchantCardNotOnConet' },
 	{ test: /cannot resolve merchant card owner/i, key: 'merchantCardOwnerUnavailable' },
-	{ test: /could not decode result data|BAD_DATA|method["']?:\s*["']?owner\(?\)?["']?/i, key: 'merchantCardOwnerUnavailable' },
+	// CoNET-only merchant cards: Base RPC eth_call → empty `0x` / BAD_DATA on owner / getRedeemStatus
+	{ test: /could not decode result data|BAD_DATA|getRedeemStatus|method["']?:\s*["']?owner\(?\)?["']?/i, key: 'merchantCardOwnerUnavailable' },
 ]
 
 /** Already-localized zh-CN error text → key (when API returns cached zh or client fallback) */

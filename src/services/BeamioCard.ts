@@ -503,7 +503,7 @@ export const quoteCurrencyAmountInUSDCFair = async (
 
 export type MerchantGiftPayWith = 'usdc' | 'credit'
 
-const GIFT_CREDIT_EIP712_TYPES = {
+const GIFT_CREDIT_EIP712_TYPES: Record<string, { name: string; type: string }[]> = {
 	GiftCreditPurchase: [
 		{ name: 'card', type: 'address' },
 		{ name: 'from', type: 'address' },
@@ -516,7 +516,7 @@ const GIFT_CREDIT_EIP712_TYPES = {
 		{ name: 'validBefore', type: 'uint64' },
 		{ name: 'nonce', type: 'bytes32' },
 	],
-} as const
+}
 
 /** Offline EIP-712 for Credit Gift (`payWith=credit`). verifyingContract = cardAddress. */
 export const signMerchantGiftCreditPurchase = async (args: {

@@ -87,6 +87,7 @@ import {
 	parseRedeemClaimFromParams,
 	isRedeemDeepLink,
 	isCouponOpenClaimDeepLink,
+	normalizeDeepLinkInput,
 } from "@/utils/beamioDeepLinkParams"
 import { parseDiscoverMerchantFromParams, stripDiscoverMerchantDeepLinkParams } from "@/utils/discoverMerchantShare"
 import { readDiscoverShareReferrer, stashDiscoverShareReferrer } from "@/utils/discoverShareReferrerStash"
@@ -1776,15 +1777,16 @@ function AppShell() {
     }
   }
 
-  // scan QR workflow：isInitialLoading 时不处理 scanData，扫码逻辑仅适用于已有 wallet 后的正常使用
+  // scan QR / global search paste：isInitialLoading 时暂缓；loading 结束后须再跑（deps 含 isInitialLoading）
   useEffect(() => {
-    if (!scanData||isInitialLoading) return
+    if (!scanData || isInitialLoading) return
 
     const run = async () => {
+      const link = normalizeDeepLinkInput(scanData)
       // Coupon / redeem deep links must win over stale voucherPay scanIntent (global search paste after bill scan).
       // Redeem deep links win when both redeemcode and couponId are present (redeem-required coupons).
-      if (isRedeemUrl(scanData)) {
-        const parsed = parseRedeemUrl(scanData)
+      if (isRedeemUrl(link)) {
+        const parsed = parseRedeemUrl(link)
         setScanData('')
         setScanIntent('')
         if (parsed) {
@@ -1795,8 +1797,8 @@ function AppShell() {
         }
         return
       }
-      if (isCouponOpenClaimDeepLink(scanData)) {
-        const parsed = parseCouponOpenClaimFromParams(collectDeepLinkSearchParams(scanData))
+      if (isCouponOpenClaimDeepLink(link)) {
+        const parsed = parseCouponOpenClaimFromParams(collectDeepLinkSearchParams(link))
         setScanData('')
         setScanIntent('')
         if (parsed) {
@@ -1886,7 +1888,7 @@ function AppShell() {
     }
 
     run()
-  }, [scanData, scanIntent])
+  }, [scanData, scanIntent, isInitialLoading])
 
   // ② 入站 chat 串行队列处理：避免并行 addNewMessage 导致同一消息被处理两次
 	useEffect(() => {

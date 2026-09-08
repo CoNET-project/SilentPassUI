@@ -11,6 +11,7 @@ import { useDaemonContext } from "@/providers/DaemonProvider"
 import { QrCode } from "lucide-react"
 import { emitWalletEvent } from "@/services/beamio"
 import { tu } from '@/locale/beamioLocale'
+import { normalizeDeepLinkInput } from '@/utils/beamioDeepLinkParams'
 
 export type ScanButtonHandle = {
   start: (options?: { hideModeSwitcher?: boolean }) => void
@@ -87,9 +88,10 @@ const ScanButton = forwardRef<ScanButtonHandle, Props>(({ iconSize = 18, hidden,
   }), [handleGoScan, scanning, loading, stopScan])
 
   const handleScanSuccess = (text: string) => {
-    setScanData(text)
-    emitWalletEvent("scan:url", text)
-    onAfterScan?.(text)
+    const normalized = normalizeDeepLinkInput(text)
+    setScanData(normalized)
+    emitWalletEvent("scan:url", normalized)
+    onAfterScan?.(normalized)
   }
 
   return (

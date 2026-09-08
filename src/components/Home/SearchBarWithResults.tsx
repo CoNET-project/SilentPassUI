@@ -11,7 +11,12 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import {ethers} from 'ethers'
 import { getDeprecatedBeamioConetLinkMemo } from '@/utils/deprecatedBeamioConet'
 import NavigateLeftButton from '@/components/navigate'
-import { collectDeepLinkSearchParams, isCouponOpenClaimDeepLink, isRedeemDeepLink } from '@/utils/beamioDeepLinkParams'
+import {
+	collectDeepLinkSearchParams,
+	isCouponOpenClaimDeepLink,
+	isRedeemDeepLink,
+	normalizeDeepLinkInput,
+} from '@/utils/beamioDeepLinkParams'
 import {
 	isDiscoverMerchantDeepLink,
 	parseDiscoverMerchantFromParams,
@@ -233,7 +238,8 @@ const SearchInputWithDropdown =
 
 		// 2) search() 内部不要再用 hasQuery（它是旧的 render 值），改成用传入 q 的长度控制 dropdown
 		const search = async (q: string) => {
-		const qq = q.trim().replace('@', '')
+		// Gift / redeem share links: strip soft line-breaks before URL parse
+		const qq = normalizeDeepLinkInput(q.trim().replace('@', ''))
 
 		// ✅ 少于2个字符：不搜索，不显示下拉
 		if (qq.length < 2) {
@@ -348,8 +354,14 @@ const SearchInputWithDropdown =
 				try {
 					const result = await scanQrViaCashTreesNative()
 					if (result.ok) {
-						setScanData(result.text)
-						emitWalletEvent('scan:url', result.text)
+						const text = normalizeDeepLinkInput(result.text)
+						setScanData(text)
+						// Gift / redeem / open-claim: same path as paste → App scanData → claim UI
+						if (isRedeemDeepLink(text) || isCouponOpenClaimDeepLink(text)) {
+							closeWindow('/History')
+							return
+						}
+						emitWalletEvent('scan:url', text)
 						closeWindow('/')
 						return
 					}
@@ -619,7 +631,14 @@ const SearchInputWithDropdown =
 					ref={scanBtnRef}
 					hidden
 					hideModeSwitcher
-					onAfterScan={() => closeWindow('/')}
+					onAfterScan={(text) => {
+						const normalized = normalizeDeepLinkInput(text)
+						if (isRedeemDeepLink(normalized) || isCouponOpenClaimDeepLink(normalized)) {
+							closeWindow('/History')
+							return
+						}
+						closeWindow('/')
+					}}
 				/>
 				{/** Search List */}
 				{/* ✅ FIX 3: 增加 z-50 确保层级

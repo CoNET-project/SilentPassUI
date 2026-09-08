@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent, WheelEvent } from 'react'
 import { ethers } from 'ethers'
+import { QRCodeCanvas } from 'qrcode.react'
 import {
 	AlertTriangle,
 	Check,
 	ChevronRight,
 	Copy,
 	Gift,
+	Link2,
 	Loader2,
 	Search,
 	Share2,
@@ -23,8 +25,10 @@ import {
 import { resolveSigningPrivateKeyArmor } from '@/utils/resolveSigningPrivateKeyArmor'
 import { parseDiscoverTopupAmountInput, readEoaConetUsdcBalance6 } from '@/utils/discoverEoaUsdcTopup'
 import { membershipFeeE6ToHuman } from '@/utils/discoverMembershipFee'
+import { buildMerchantGiftRedeemShareUrl } from '@/utils/merchantGiftRedeemShare'
 import { searchUsername } from '@/services/beamio'
 import { IpfsImg } from '@/components/IpfsImg'
+import beamioQrLogo from '@/components/assets/logo512.png'
 import {
 	BeamioSearchResultRow,
 	beamioSearchAvatarUrl,
@@ -221,7 +225,8 @@ export default function DiscoverMerchantGiftSheet({
 	const [issuedCode, setIssuedCode] = useState<string | null>(null)
 	const [issuedShareUrl, setIssuedShareUrl] = useState<string | null>(null)
 	const [issuedTopupCreditE6, setIssuedTopupCreditE6] = useState<string | null>(null)
-	const [copyStatus, setCopyStatus] = useState<'idle' | 'ok'>('idle')
+	const [copyCodeStatus, setCopyCodeStatus] = useState<'idle' | 'ok'>('idle')
+	const [copyLinkStatus, setCopyLinkStatus] = useState<'idle' | 'ok'>('idle')
 
 	const myAddress = (profile?.keyID ?? '').trim().toLowerCase()
 	const normalizedFriendQuery = friendQuery.trim()
@@ -257,10 +262,13 @@ export default function DiscoverMerchantGiftSheet({
 		return () => window.clearTimeout(timer)
 	}, [normalizedFriendQuery, canSearchFriend, myAddress, selectedFriend])
 
-	const buildShareMessage = (code: string) => {
+	const buildShareMessage = (code: string, claimUrl: string) => {
 		const title = merchantTitle.trim() || 'merchant'
 		const friendTag = (selectedFriend?.username ?? '').trim()
 		const hello = friendTag ? `@${friendTag}` : 'friend'
+		if (claimUrl) {
+			return `Hi ${hello} — here's a gift for ${title} on Beamio:\n${claimUrl}\n(Or enter code ${code} in Discover.)`
+		}
 		return `Hi ${hello} — here's a ${title} gift redeem code:\n${code}\nOpen Beamio Discover and enter the code to claim.`
 	}
 
@@ -268,25 +276,40 @@ export default function DiscoverMerchantGiftSheet({
 		if (!issuedCode) return
 		try {
 			await navigator.clipboard.writeText(issuedCode)
-			setCopyStatus('ok')
-			window.setTimeout(() => setCopyStatus('idle'), 2000)
+			setCopyCodeStatus('ok')
+			window.setTimeout(() => setCopyCodeStatus('idle'), 2000)
 		} catch {
 			setPanelError('Could not copy the code. Please copy it manually.')
 		}
 	}
 
+	const handleCopyClaimLink = async () => {
+		const url = issuedShareUrl?.trim()
+		if (!url) {
+			setPanelError('Claim link is unavailable.')
+			return
+		}
+		try {
+			await navigator.clipboard.writeText(url)
+			setCopyLinkStatus('ok')
+			window.setTimeout(() => setCopyLinkStatus('idle'), 2000)
+		} catch {
+			setPanelError('Could not copy the claim link. Please copy it manually.')
+		}
+	}
+
 	const handleShare = async () => {
 		if (!issuedCode) return
-		const text = buildShareMessage(issuedCode)
-		const url = issuedShareUrl?.trim()
+		const url = issuedShareUrl?.trim() ?? ''
+		const text = buildShareMessage(issuedCode, url)
 		try {
 			if (typeof navigator.share === 'function') {
 				await navigator.share(url ? { text, url } : { text })
 				return
 			}
-			await navigator.clipboard.writeText(url ? `${text}\n${url}` : text)
-			setCopyStatus('ok')
-			window.setTimeout(() => setCopyStatus('idle'), 2000)
+			await navigator.clipboard.writeText(url ? text : text)
+			setCopyLinkStatus('ok')
+			window.setTimeout(() => setCopyLinkStatus('idle'), 2000)
 		} catch {
 			/* user cancelled share — keep panel */
 		}
@@ -380,8 +403,12 @@ export default function DiscoverMerchantGiftSheet({
 				return
 			}
 			const plain = (result.redeemCode ?? redeemCode).trim()
+			const claimUrl =
+				buildMerchantGiftRedeemShareUrl(card, plain) ||
+				result.shareUrl?.trim() ||
+				null
 			setIssuedCode(plain)
-			setIssuedShareUrl(result.shareUrl?.trim() || null)
+			setIssuedShareUrl(claimUrl)
 			setIssuedTopupCreditE6(result.topupCreditE6 ?? topupPrincipalE6)
 			onSuccess?.()
 		} catch (e) {
@@ -402,6 +429,7 @@ export default function DiscoverMerchantGiftSheet({
 			? membershipFeeE6ToHuman(issuedTopupCreditE6) ||
 				formatAmount(Number(ethers.formatUnits(issuedTopupCreditE6, 6)), ccy)
 			: null
+		const claimUrl = issuedShareUrl?.trim() ?? ''
 		return (
 			<section className="mx-auto flex w-full max-w-lg flex-col gap-5" aria-label="Gift code ready">
 				<header className="px-0.5">
@@ -412,10 +440,11 @@ export default function DiscoverMerchantGiftSheet({
 						</span>
 					</div>
 					<h2 className="mt-2 font-serif text-[22px] font-semibold leading-snug tracking-tight text-[#0F172A] dark:text-slate-100 sm:text-[24px]">
-						Your redeem code is ready
+						Your claim link is ready
 					</h2>
 					<p className="mt-2 text-[13px] leading-relaxed text-[#6b7280] dark:text-slate-400">
-						Copy it now — shown once and never stored on our servers. Anyone with the code can claim
+						Share the link or QR — social previews use Beamio app-download. The redeem code is shown
+						once and never stored on our servers. Anyone with the link or code can claim
 						{isFeeCard ? ' (membership for new members, or store credit)' : ' store credit'}
 						{creditHuman ? ` — about ${prefix}${creditHuman} toward #0 after claim` : ''}.
 					</p>
@@ -448,24 +477,66 @@ export default function DiscoverMerchantGiftSheet({
 					</p>
 				</div>
 
+				{claimUrl ? (
+					<div className="flex flex-col items-center gap-3 rounded-[20px] border border-[#e8ecf0] bg-white px-4 py-5 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+						<p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#9ca3af]">
+							Scan to claim
+						</p>
+						<div className="rounded-[20px] bg-white p-3 shadow-[0_12px_28px_rgba(15,23,42,0.12)] ring-1 ring-slate-100">
+							<QRCodeCanvas
+								value={claimUrl}
+								size={220}
+								level="H"
+								includeMargin={false}
+								bgColor="#ffffff"
+								fgColor="#0F172A"
+								imageSettings={{
+									src: beamioQrLogo,
+									height: 52,
+									width: 52,
+									excavate: true,
+								}}
+								className="block"
+							/>
+						</div>
+						<p className="w-full break-all px-1 text-center text-[11px] leading-snug text-[#6b7280] dark:text-slate-400">
+							{claimUrl}
+						</p>
+					</div>
+				) : null}
+
 				<div className="flex flex-col gap-2.5">
+					{claimUrl ? (
+						<button
+							type="button"
+							onClick={() => void handleCopyClaimLink()}
+							className="inline-flex w-full items-center justify-center gap-2 rounded-full px-5 py-3.5 text-[15px] font-bold transition active:scale-[0.98]"
+							style={{
+								backgroundColor: brandControl,
+								color: onBrandText,
+								boxShadow: brandControlShadow,
+							}}
+						>
+							{copyLinkStatus === 'ok' ? (
+								<Check className="h-5 w-5 shrink-0" strokeWidth={2.25} aria-hidden />
+							) : (
+								<Link2 className="h-5 w-5 shrink-0" strokeWidth={2.25} aria-hidden />
+							)}
+							<span>{copyLinkStatus === 'ok' ? 'Claim link copied' : 'Copy claim link'}</span>
+							<ChevronRight className="h-5 w-5 opacity-80" strokeWidth={2.25} aria-hidden />
+						</button>
+					) : null}
 					<button
 						type="button"
 						onClick={() => void handleCopyCode()}
-						className="inline-flex w-full items-center justify-center gap-2 rounded-full px-5 py-3.5 text-[15px] font-bold transition active:scale-[0.98]"
-						style={{
-							backgroundColor: brandControl,
-							color: onBrandText,
-							boxShadow: brandControlShadow,
-						}}
+						className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-[#e8ecf0] bg-white px-5 py-3 text-[14px] font-semibold text-[#0F172A] shadow-sm transition active:scale-[0.98] dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
 					>
-						{copyStatus === 'ok' ? (
-							<Check className="h-5 w-5 shrink-0" strokeWidth={2.25} aria-hidden />
+						{copyCodeStatus === 'ok' ? (
+							<Check className="h-4 w-4 shrink-0 text-emerald-500" strokeWidth={2.25} aria-hidden />
 						) : (
-							<Copy className="h-5 w-5 shrink-0" strokeWidth={2.25} aria-hidden />
+							<Copy className="h-4 w-4 shrink-0 text-[#6b7280]" strokeWidth={2.25} aria-hidden />
 						)}
-						<span>{copyStatus === 'ok' ? 'Copied' : 'Copy gift code'}</span>
-						<ChevronRight className="h-5 w-5 opacity-80" strokeWidth={2.25} aria-hidden />
+						<span>{copyCodeStatus === 'ok' ? 'Code copied' : 'Copy gift code'}</span>
 					</button>
 					<button
 						type="button"

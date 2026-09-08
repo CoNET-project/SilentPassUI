@@ -27,10 +27,29 @@ export function resolveDiscoverShareReferrerEoa(opts?: {
 	return parseDiscoverReferrerFromParams(collectDeepLinkSearchParams(href))
 }
 
+/**
+ * Chat / SMS soft line-breaks and zero-width chars often break `new URL`.
+ * Strip whitespace only when the paste looks like a Beamio deep link.
+ */
+export function normalizeDeepLinkInput(raw: string): string {
+	const input = raw?.trim() ?? ''
+	if (!input) return ''
+	const looksLikeLink =
+		/https?:\/\//i.test(input) ||
+		/beamio\.app/i.test(input) ||
+		/app-download/i.test(input) ||
+		/redeemcode=/i.test(input) ||
+		/beamiocard=/i.test(input) ||
+		/couponid=/i.test(input) ||
+		/nftRedeemcode=/i.test(input)
+	if (!looksLikeLink) return input
+	return input.replace(/[\s\u200b\u200c\u200d\ufeff]+/g, '')
+}
+
 /** Merge query from URL search + hash (#/?...) for HashRouter deep links. */
 export function collectDeepLinkSearchParams(raw: string): URLSearchParams {
 	const merged = new URLSearchParams()
-	const input = raw?.trim() ?? ''
+	const input = normalizeDeepLinkInput(raw)
 	if (!input) return merged
 
 	const appendParams = (sp: URLSearchParams) => {

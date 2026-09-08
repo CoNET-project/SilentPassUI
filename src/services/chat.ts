@@ -647,7 +647,8 @@ export const connectToGossipNode = async (
       // ... (加密/准备逻辑保持不变) ...
       const wallet = new ethers.Wallet(privateKeyArmor);
       const key = Buffer.from(crypto.getRandomValues(new Uint8Array(16))).toString('base64');
-      const command = { command: 'mining', walletAddress: wallet.address, algorithm: 'aes-256-cbc', Securitykey: key };
+      // listenKind:'chat' — PWA presence/mailbox listen (vs LayerMinus mining). See beamio-conet-chat-protocol.mdc.
+      const command = { command: 'mining', listenKind: 'chat', walletAddress: wallet.address, algorithm: 'aes-256-cbc', Securitykey: key };
       const message = JSON.stringify(command);
       const signMessage = await wallet.signMessage(message);
       
@@ -830,6 +831,18 @@ export const checkSign = (message: string, signMess: string, signWallet: string)
 }
 
 
+/** Prefer sendId so two messages in the same ms (e.g. note + payment card) never collapse. */
+const stableChatMessageId = (m: ChatMessage | null | undefined, fallbackTs?: number): string => {
+	if (m?.id?.startsWith('tmp_')) return String(m.id)
+	const sendId = typeof m?.sendId === 'string' ? m.sendId.trim() : ''
+	if (sendId) return sendId
+	if (typeof m?.id === 'string' && m.id.trim()) return m.id.trim()
+	const created = Number(m?.createdAt)
+	if (Number.isFinite(created)) return String(created)
+	if (Number.isFinite(Number(fallbackTs))) return String(fallbackTs)
+	return `msg_${Math.random().toString(16).slice(2)}`
+}
+
 export const makeMessage = (
 	data: ChatMessage[],
 	newChatText: string,
@@ -837,87 +850,67 @@ export const makeMessage = (
 	from: "me" | "them",
 	status?: "sending" | "sent" | "failed"
 ) => {
-  // 1) 先把已有消息“规范化”：用 createdAt(=timestamp) 生成稳定唯一 id
-	const normalized = (data || []).map(m => {
-		// ✅ 保留你本地临时消息 tmp_... 的 id（用于发送三态 UI）
-		if (m?.id?.startsWith("tmp_")) return m
-
-		const ts = Number(m?.createdAt)
-		const stableId = Number.isFinite(ts)
-		? String(ts) // ✅ 用 timestamp 作为唯一性
-		: (m?.id || `msg_${Math.random().toString(16).slice(2)}`)
-
-		return {
-			...m,
-			id: stableId
-		}
+	// Never rewrite sendId-backed ids to createdAt alone (same-ms note + card would drop one).
+	const normalized = (data || []).map((m) => {
+		if (m?.id?.startsWith('tmp_')) return m
+		const id = stableChatMessageId(m)
+		return { ...m, id }
 	})
 
-	// 2) 建一个 Set 来做去重（以 id=timestamp 为唯一性）
 	const seen = new Set<string>()
 	const result: ChatMessage[] = []
 
 	for (const m of normalized) {
 		if (!m) continue
-
-		const key = m.id || String(m.createdAt || "")
-		if (!key) continue
-
-		if (seen.has(key)) continue
+		const key = stableChatMessageId(m)
+		if (!key || seen.has(key)) continue
 		seen.add(key)
-		result.push(m)
-  	}
+		result.push({ ...m, id: key })
+	}
 
-	// 3) 集成“新来的消息”：newChatText + timestamp + from + status
-	//    ✅ 你要求：通过 timestamp 检查唯一性，可直接用 timestamp 作为 id
 	const ts = Number(timestamp)
-	const text = (newChatText || "").trim()
-  	try {
+	const text = (newChatText || '').trim()
+	try {
 		const card: ChatMessage = JSON.parse(text)
-		const dedupKey = card.sendId || card.id || String(ts)
+		const dedupKey = stableChatMessageId(card, ts)
 		if (seen.has(dedupKey)) {
-			// 已存在则不再追加（如重复推送）
+			// duplicate push — keep existing
 		} else if (card.paymentCard) {
 			card.from = 'them'
-			if (!card.id) card.id = String(ts)
+			card.id = dedupKey
 			if (card.createdAt == null) card.createdAt = ts
 			seen.add(dedupKey)
 			result.push(card)
 		} else if (card.reply) {
 			card.from = 'them'
-			if (!card.id) card.id = String(ts)
+			card.id = dedupKey
 			if (card.createdAt == null) card.createdAt = ts
 			seen.add(dedupKey)
 			result.push(card)
 		} else if (card.sendId != null) {
-			// 发送方带 sendId 的正文消息（对方发来的普通文字）
 			card.from = 'them'
-			if (!card.id) card.id = String(ts)
+			card.id = dedupKey
 			if (card.createdAt == null) card.createdAt = ts
 			seen.add(dedupKey)
 			result.push(card)
 		} else throw new Error('')
-	} catch (ex) {
+	} catch {
 		if (text && Number.isFinite(ts)) {
-		const incomingId = String(ts)
-
-		if (!seen.has(incomingId)) {
-			seen.add(incomingId)
-			result.push({
-				id: incomingId,
-				from,
-				text,
-				createdAt: ts,
-				status: status ?? (from === "me" ? "sent" : "sent")
-			})
+			const incomingId = String(ts)
+			if (!seen.has(incomingId)) {
+				seen.add(incomingId)
+				result.push({
+					id: incomingId,
+					from,
+					text,
+					createdAt: ts,
+					status: status ?? (from === 'me' ? 'sent' : 'sent'),
+				})
+			}
 		}
 	}
-	}
 
-
-	// 4) 排序：按时间升序（iMessage 从上到下）
 	result.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0))
-
 	return result
 }
 

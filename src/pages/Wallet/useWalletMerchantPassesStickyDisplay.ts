@@ -51,22 +51,45 @@ function mergeDetailsTrusted(
 	return next
 }
 
+/** Program points (#0) — same value shown as `CAD N` on the pass face. */
+function cardProgramPointsBalance(
+	cardAddress: string,
+	details: MyBrandCardFeedDetailsMap,
+): number {
+	const raw = details[cardAddress.toLowerCase()]?.assets?.points
+	if (raw == null || String(raw).trim() === '') return 0
+	const n = Number(raw)
+	return Number.isFinite(n) ? Math.max(0, n) : 0
+}
+
+/**
+ * Wallet stack top 5: recently active first, then highest balance.
+ * Sticky order is only a tiebreaker (reduces jitter when event/balance tie).
+ * Array last index is frontmost (`WalletMerchantPassStackCard.isFrontmost`).
+ */
 function buildStackCards(
 	cards: UserCardInfo[],
 	stackOrder: string[],
-	latestEventMsByCard: ReadonlyMap<string, number>
+	latestEventMsByCard: ReadonlyMap<string, number>,
+	details: MyBrandCardFeedDetailsMap,
 ): UserCardInfo[] {
 	const stackRank = new Map(stackOrder.map((address, index) => [address, index]))
-	return [...cards]
-		.sort((a, b) => {
-			const eventDelta =
-				(latestEventMsByCard.get(b.cardAddress.toLowerCase()) ?? 0) -
-				(latestEventMsByCard.get(a.cardAddress.toLowerCase()) ?? 0)
-			if (eventDelta !== 0) return eventDelta
-			return (stackRank.get(a.cardAddress.toLowerCase()) ?? Number.MAX_SAFE_INTEGER) -
-				(stackRank.get(b.cardAddress.toLowerCase()) ?? Number.MAX_SAFE_INTEGER)
-		})
-		.slice(0, 5)
+	const ranked = [...cards].sort((a, b) => {
+		const aKey = a.cardAddress.toLowerCase()
+		const bKey = b.cardAddress.toLowerCase()
+		const eventDelta =
+			(latestEventMsByCard.get(bKey) ?? 0) - (latestEventMsByCard.get(aKey) ?? 0)
+		if (eventDelta !== 0) return eventDelta
+		const balanceDelta =
+			cardProgramPointsBalance(bKey, details) - cardProgramPointsBalance(aKey, details)
+		if (balanceDelta !== 0) return balanceDelta
+		return (
+			(stackRank.get(aKey) ?? Number.MAX_SAFE_INTEGER) -
+			(stackRank.get(bKey) ?? Number.MAX_SAFE_INTEGER)
+		)
+	})
+	// Highest priority first in `ranked`; reverse so it is frontmost (last index).
+	return ranked.slice(0, 5).reverse()
 }
 
 function hasPositivePoints(pointsRaw: unknown): boolean {
@@ -261,7 +284,12 @@ export function useWalletMerchantPassesStickyDisplay(
 		const displayableCards = safeStickyCards.filter((c) =>
 			isDisplayableMerchantPass(c, safeStickyDetails),
 		)
-		const stackCards = buildStackCards(displayableCards, stackOrder, latestEventMsForSort)
+		const stackCards = buildStackCards(
+			displayableCards,
+			stackOrder,
+			latestEventMsForSort,
+			safeStickyDetails,
+		)
 		const allStickyDetailsKnown =
 			safeStickyCards.length > 0 &&
 			safeStickyCards.every((c) => safeStickyDetails[c.cardAddress.toLowerCase()] !== undefined)

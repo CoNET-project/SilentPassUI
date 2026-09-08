@@ -1,6 +1,6 @@
 /**
- * /wallet Merchant Passes 叠卡顺序（EOA 隔离）。
- * 固定顺序，避免按余额排序导致每轮 daemon 刷新时卡片换位抖动。
+ * /wallet Merchant Passes 叠卡 sticky 顺序（EOA 隔离）。
+ * 仅作 buildStackCards 平局 tiebreaker；主排序为「最近活跃 → 余额最大」。
  */
 
 import { ethers } from 'ethers'

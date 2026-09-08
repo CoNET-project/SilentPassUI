@@ -24,6 +24,8 @@ export type VerraBusinessProfileDraft = {
   province?: string
   /** Business channel from discovery form (physical / digital / app). */
   channelKind?: VerraBusinessChannelKind
+  /** Session-only: cover extra fields shown after a lookup candidate is chosen. Strip before EOA merge. */
+  coverDetailsUnlocked?: boolean
   publicBio?: string
   legalBusinessName?: string
   taxId?: string
@@ -31,9 +33,14 @@ export type VerraBusinessProfileDraft = {
   streetAddress?: string
   postalCode?: string
   supportEmail?: string
+  supportPhone?: string
   timezone?: string
   merchantRemarks?: string
   brandHex?: string
+  /** Card Setup logo (`shareTokenMetadata.image`), filled after a lookup pick. */
+  logoUrl?: string
+  /** Card Setup Discover background (`shareTokenMetadata.merchantImage`). */
+  merchantImageUrl?: string
   updatedAt?: number
 }
 
@@ -123,9 +130,11 @@ export function mergeSessionOnboardingDraftIntoEoa(eoa: string): void {
   } catch {
     prev = {}
   }
+  const { coverDetailsUnlocked: _coverUnlock, ...sessRest } = sess
+  void _coverUnlock
   const merged: VerraBusinessProfileDraft = {
     ...prev,
-    ...sess,
+    ...sessRest,
     updatedAt: Date.now(),
   }
   try {

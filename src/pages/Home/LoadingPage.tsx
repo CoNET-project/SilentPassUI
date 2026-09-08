@@ -36,6 +36,23 @@ import {
 	orgTypeToBusinessType,
 	type OrgTypeSelect,
 } from '@/pages/Home/OnboardingBusinessDiscoveryForm'
+import {
+	seedOnboardingFormFromCandidate,
+} from '@/pages/Home/OnboardingFromWebsiteScreen'
+import {
+	clearOnboardingWebCandidate,
+	fetchOnboardingCardSetupAssets,
+	type OnboardingBusinessLookupCandidate,
+} from '@/utils/onboardingBusinessLookup'
+import {
+	applyOnboardingCardSetupAssetsToEoa,
+	clearOnboardingCardSetupAssets,
+	dispatchOnboardingCardSetupReady,
+	loadOnboardingCardSetupAssets,
+	persistOnboardingCardSetupAssets,
+	pickEmptyOnly,
+	type OnboardingCardSetupAssets,
+} from '@/utils/onboardingCardSetupAssetsLocal'
 import { MerchantLegalDocumentOverlay } from '@/pages/Vouchers/example/MerchantLegalDocumentOverlay'
 import type { BeamioLegalDocId } from '@/utils/beamioLegalDocuments'
 import {
@@ -64,13 +81,19 @@ import { BizOnboardingLocalePicker } from '@/pages/Home/BizOnboardingLocalePicke
 
 const APP_VERSION = (packageJson as { version?: string }).version ?? ''
 
-/** Onboarding business details：无草稿时默认国家（Canada） */
-const DEFAULT_ONBOARDING_DETAIL_COUNTRY = "CA"
+/** Onboarding business details: empty until the merchant selects a country. */
+const DEFAULT_ONBOARDING_DETAIL_COUNTRY = ''
 
 type OnboardingCoverMobilePhase = 'entry' | 'businessForm'
 
 function parseDraftChannelKind(raw: unknown): VerraBusinessChannelKind | '' {
 	return raw === 'physical' || raw === 'digital' || raw === 'app' ? raw : ''
+}
+
+function sessionHasUnlockedCoverDetails(d: ReturnType<typeof loadSessionOnboardingBusinessDraft>): boolean {
+	if (!d) return false
+	if (d.coverDetailsUnlocked === true) return true
+	return Boolean(d.channelKind && d.category?.trim() && d.storeName?.trim() && d.country?.trim())
 }
 const ISSUED_NFT_START_ID = 100_000_000_000
 
@@ -151,6 +174,21 @@ export default function BeamioOnboardingModal({
 	)
 	const [detailCity, setDetailCity] = useState(() => loadSessionOnboardingBusinessDraft()?.city ?? '')
 	const [detailProvince, setDetailProvince] = useState(() => loadSessionOnboardingBusinessDraft()?.province ?? '')
+	const [detailWebsite, setDetailWebsite] = useState(
+		() => loadSessionOnboardingBusinessDraft()?.website ?? '',
+	)
+	const [detailPublicBio, setDetailPublicBio] = useState(
+		() => loadSessionOnboardingBusinessDraft()?.publicBio ?? '',
+	)
+	/** Extra cover fields stay hidden until a lookup candidate is chosen (or a prior session already unlocked them). */
+	const [lookupSkipName, setLookupSkipName] = useState(() => {
+		const d = loadSessionOnboardingBusinessDraft()
+		if (sessionHasUnlockedCoverDetails(d) && d?.storeName?.trim()) return d.storeName.trim()
+		return ''
+	})
+	const [coverDetailsUnlocked, setCoverDetailsUnlocked] = useState(() =>
+		sessionHasUnlockedCoverDetails(loadSessionOnboardingBusinessDraft()),
+	)
 	/** Full-screen creating overlay owned here so it survives InitialEntry → Recovery layout swap (avoids flash). */
 	const [workspaceCreating, setWorkspaceCreating] = useState(false)
 	const [qrDataUrl, setQrDataUrl] = useState('')
@@ -171,8 +209,21 @@ export default function BeamioOnboardingModal({
 	const [ccsaAssets, setCcsaAssets] = useState<{ points: string; nfts: { tokenId: string }[] } | null>(null)
 	const redeemHandledByRecoveryRef = useRef(false)
 	const homeCalledRef = useRef(false)
+	const cardSetupGenRef = useRef(0)
+	const lastEoaRef = useRef('')
+	const [cardSetupPreparing, setCardSetupPreparing] = useState(false)
+	const [cardSetupPrepareError, setCardSetupPrepareError] = useState('')
 	const [redeemActivating, setRedeemActivating] = useState(false)
 	const [redeemPostCreateInProgress, setRedeemPostCreateInProgress] = useState(false)
+
+	useEffect(() => {
+		clearOnboardingWebCandidate()
+	}, [])
+
+	useEffect(() => {
+		const eoa = eoaAddress.trim()
+		if (eoa && ethers.isAddress(eoa)) lastEoaRef.current = ethers.getAddress(eoa)
+	}, [eoaAddress])
 
 	useEffect(() => {
 		setShowFooter?.(!workspaceCreating)
@@ -190,6 +241,9 @@ export default function BeamioOnboardingModal({
 			city: detailCity,
 			province: detailProvince,
 			channelKind: detailChannelKind || undefined,
+			coverDetailsUnlocked,
+			website: detailWebsite,
+			publicBio: detailPublicBio,
 		})
 	}, [
 		isInitialEntry,
@@ -201,6 +255,9 @@ export default function BeamioOnboardingModal({
 		detailCity,
 		detailProvince,
 		detailChannelKind,
+		coverDetailsUnlocked,
+		detailWebsite,
+		detailPublicBio,
 	])
 
 
@@ -237,6 +294,10 @@ export default function BeamioOnboardingModal({
 			setDetailCountry(DEFAULT_ONBOARDING_DETAIL_COUNTRY)
 			setDetailCity("")
 			setDetailProvince("")
+			setDetailWebsite("")
+			setDetailPublicBio("")
+			setCoverDetailsUnlocked(false)
+			clearOnboardingWebCandidate()
 			setWorkspaceCreating(false)
 			onInitComplete?.()
 			return
@@ -289,13 +350,17 @@ export default function BeamioOnboardingModal({
 		const eoa = profiles[0]?.keyID?.trim()
 		if (eoa && ethers.isAddress(eoa)) {
 			const eoaNorm = ethers.getAddress(eoa)
+			lastEoaRef.current = eoaNorm
 			setEoaAddress(eoa)
 			setMyAddress(eoa)
 			mergeSessionOnboardingDraftIntoEoa(eoaNorm)
+			const assets = loadOnboardingCardSetupAssets()
+			if (assets) applyOnboardingCardSetupAssetsToEoa(eoaNorm, assets)
 		}
 		SetLoading(false)
 		setIsInitialEntry(false)
 		setIsInitialLoading(false)
+		clearOnboardingWebCandidate()
 		if (!opts?.dontClose) setSettingsOpen('')
 		if (hasSessionPrivateKeyArmor()) {
 			markWorkspaceSessionUnlocked()
@@ -327,9 +392,51 @@ export default function BeamioOnboardingModal({
 		if (bt) setCoverBusinessType(bt)
 	}
 
+	const commitPreparedCardSetupAssets = (assets: OnboardingCardSetupAssets) => {
+		persistOnboardingCardSetupAssets(assets)
+		const sess = loadSessionOnboardingBusinessDraft() ?? {}
+		saveSessionOnboardingBusinessDraft({
+			logoUrl: pickEmptyOnly(sess.logoUrl ?? '', assets.logoUrl),
+			merchantImageUrl: pickEmptyOnly(sess.merchantImageUrl ?? '', assets.backgroundUrl),
+			brandHex: pickEmptyOnly(sess.brandHex ?? '', assets.brandColor),
+			publicBio: pickEmptyOnly(sess.publicBio ?? '', assets.discoverCopy),
+		})
+		const eoa = lastEoaRef.current
+		if (eoa) applyOnboardingCardSetupAssetsToEoa(eoa, assets)
+		dispatchOnboardingCardSetupReady()
+	}
+
+	const collapseCoverDetails = () => {
+		cardSetupGenRef.current += 1
+		setCardSetupPreparing(false)
+		setCardSetupPrepareError('')
+		clearOnboardingCardSetupAssets()
+		setLookupSkipName('')
+		setCoverDetailsUnlocked(false)
+		setDetailChannelKind('')
+		setDetailOrgType('')
+		setDetailCategory('')
+		setDetailCountry(DEFAULT_ONBOARDING_DETAIL_COUNTRY)
+		setDetailCity('')
+		setDetailProvince('')
+		setDetailWebsite('')
+		setDetailPublicBio('')
+		setCoverTermsAccepted(false)
+		saveSessionOnboardingBusinessDraft({
+			streetAddress: '',
+			postalCode: '',
+			supportEmail: '',
+			supportPhone: '',
+		})
+	}
+
 	const discoveryFormSharedProps = {
 		storeName: detailBusinessName,
-		setStoreName: setDetailBusinessName,
+		setStoreName: (v: string) => {
+			setLookupSkipName('')
+			setDetailBusinessName(v)
+			if (!v.trim()) collapseCoverDetails()
+		},
 		channelKind: detailChannelKind,
 		setChannelKind: (v: VerraBusinessChannelKind) => setDetailChannelKind(v),
 		category: detailCategory,
@@ -337,7 +444,10 @@ export default function BeamioOnboardingModal({
 		orgType: detailOrgType,
 		setOrgType: setDetailOrgTypeAndSync,
 		country: detailCountry,
-		setCountry: setDetailCountry,
+		setCountry: (v: string) => {
+			if (!v.trim()) return
+			setDetailCountry(v)
+		},
 		city: detailCity,
 		setCity: setDetailCity,
 		province: detailProvince,
@@ -345,6 +455,65 @@ export default function BeamioOnboardingModal({
 		termsAccepted: coverTermsAccepted,
 		setTermsAccepted: setCoverTermsAccepted,
 		onOpenLegalDoc: openOnboardingLegalDoc,
+		detailsVisible: coverDetailsUnlocked,
+		lookupSkipValue: lookupSkipName,
+		cardSetupPreparing,
+		cardSetupPrepareError,
+		onSelectLookupCandidate: (candidate: OnboardingBusinessLookupCandidate) => {
+			const seeded = seedOnboardingFormFromCandidate(candidate, detailBusinessName)
+			setLookupSkipName(seeded.storeName.trim())
+			setDetailBusinessName(seeded.storeName)
+			setDetailChannelKind(seeded.channelKind)
+			setDetailCategory(seeded.category)
+			setDetailOrgTypeAndSync(seeded.orgType)
+			setDetailCountry(seeded.country)
+			setDetailCity(seeded.city)
+			setDetailProvince(seeded.province)
+			setDetailWebsite(seeded.website)
+			setDetailPublicBio(seeded.publicBio)
+			setCoverDetailsUnlocked(true)
+			saveSessionOnboardingBusinessDraft({
+				streetAddress: seeded.street,
+				postalCode: seeded.postalCode,
+				supportEmail: seeded.email,
+				supportPhone: seeded.phone,
+			})
+			clearOnboardingWebCandidate()
+			const gen = ++cardSetupGenRef.current
+			setCardSetupPreparing(true)
+			setCardSetupPrepareError('')
+			void (async () => {
+				try {
+					const result = await fetchOnboardingCardSetupAssets({
+						name: seeded.storeName,
+						website: seeded.website,
+						snippet: candidate.snippet,
+						publicBio: seeded.publicBio,
+						channelKind: seeded.channelKind,
+						category: seeded.category,
+						country: seeded.country,
+						city: seeded.city,
+					})
+					if (gen !== cardSetupGenRef.current) return
+					if (!result.ok) {
+						setCardSetupPrepareError(
+							result.error === 'rate_limited'
+								? tu('onb_lookup_rate_limited')
+								: tu('onb_card_setup_prepare_error'),
+						)
+						return
+					}
+					commitPreparedCardSetupAssets({
+						logoUrl: result.logoUrl,
+						backgroundUrl: result.backgroundUrl,
+						brandColor: result.brandColor,
+						discoverCopy: result.discoverCopy,
+					})
+				} finally {
+					if (gen === cardSetupGenRef.current) setCardSetupPreparing(false)
+				}
+			})()
+		},
 	}
 
 	const onboardingLegalFooterLinks = (
@@ -379,6 +548,8 @@ export default function BeamioOnboardingModal({
 		const bt = orgTypeToBusinessType(detailOrgType) ?? coverBusinessType
 		setCoverBusinessType(bt)
 		setCoverTermsAccepted(true)
+		const assets = loadOnboardingCardSetupAssets()
+		const sess = loadSessionOnboardingBusinessDraft() ?? {}
 		saveSessionOnboardingBusinessDraft({
 			businessType: bt,
 			onboardingTermsAccepted: true,
@@ -388,6 +559,12 @@ export default function BeamioOnboardingModal({
 			city: detailCity,
 			province: detailProvince,
 			channelKind: detailChannelKind || undefined,
+			coverDetailsUnlocked: true,
+			website: detailWebsite,
+			publicBio: detailPublicBio.trim() || pickEmptyOnly(sess.publicBio ?? '', assets?.discoverCopy ?? ''),
+			logoUrl: pickEmptyOnly(sess.logoUrl ?? '', assets?.logoUrl ?? ''),
+			merchantImageUrl: pickEmptyOnly(sess.merchantImageUrl ?? '', assets?.backgroundUrl ?? ''),
+			brandHex: pickEmptyOnly(sess.brandHex ?? '', assets?.brandColor ?? ''),
 		})
 		onboardingCoverContinue(true, true)
 	}
@@ -581,24 +758,14 @@ export default function BeamioOnboardingModal({
 								<BizOnboardingLocalePicker />
 							</header>
 
-							<div className="flex-1 overflow-y-auto overflow-x-hidden pt-[calc(4rem+env(safe-area-inset-top))] pb-[calc(11rem+env(safe-area-inset-bottom))]">
+							<div
+								className={`flex-1 overflow-y-auto overflow-x-hidden pt-[calc(4rem+env(safe-area-inset-top))] ${
+									coverDetailsUnlocked
+										? 'pb-[calc(11rem+env(safe-area-inset-bottom))]'
+										: 'pb-[max(1.25rem,env(safe-area-inset-bottom))]'
+								}`}
+							>
 								<div className="mx-auto w-full max-w-2xl px-5 pt-6">
-									<div className="mb-2 rounded-xl border border-[#c3c6d8]/60 bg-[#eeedf3]/80 px-4 py-3 sm:flex sm:items-center sm:justify-between sm:gap-4">
-										<p className="text-sm text-[#424655]">
-											<span className="font-semibold text-[#2c2f31]">{tu('onb_returning_title')}</span>{' '}
-											{tu('onb_returning_sub')}
-										</p>
-										<button
-											type="button"
-											onClick={() => setShowBizLogin(true)}
-											className={`mt-3 inline-flex shrink-0 items-center justify-center rounded-full border border-[#1562f0]/40 bg-white px-4 py-2 text-sm font-bold text-[#1562f0] transition hover:bg-[#1562f0]/5 sm:mt-0 ${bizBrandFocusRingClass}`}
-										>
-											{tu('onb_restore_account')}
-											<span className="ml-1" aria-hidden>
-												→
-											</span>
-										</button>
-									</div>
 									<OnboardingBusinessDiscoveryForm
 										{...discoveryFormSharedProps}
 										layout="sheet"
@@ -686,25 +853,6 @@ export default function BeamioOnboardingModal({
 
 				<section className="hidden w-full flex-col justify-center bg-white p-5 md:flex md:w-[60%] md:p-10 lg:p-14">
 					<div className="mx-auto w-full max-w-xl md:mx-0">
-						<div className="mb-6 flex flex-col justify-between gap-4 rounded-2xl border border-[#1562f0]/10 bg-[#1562f0]/5 p-5 md:mb-8 md:flex-row md:items-center md:p-6">
-							<div>
-								<h3 className="font-bold text-[#2c2f31]">{tu('onb_returning_title')}</h3>
-								<p className="mt-1 text-sm text-[#595c5e]">{tu('onb_returning_sub')}</p>
-							</div>
-							<button
-								type="button"
-								onClick={() => setShowBizLogin(true)}
-								className={`
-									inline-flex items-center justify-center gap-2 rounded-full border border-[#1562f0]/20 bg-white px-6 py-3 text-sm font-bold text-[#1562f0]
-									shadow-sm transition-all hover:bg-[#1562f0]/5 hover:shadow-md active:scale-[0.98]
-									${bizBrandFocusRingClass}
-								`}
-							>
-								{tu('onb_restore_account')}
-								<ArrowRight className="h-4 w-4 shrink-0" strokeWidth={2.25} aria-hidden />
-							</button>
-						</div>
-
 						<OnboardingBusinessDiscoveryForm
 							{...discoveryFormSharedProps}
 							layout="embedded"

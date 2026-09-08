@@ -1,8 +1,13 @@
 import React, { useMemo } from 'react'
-import { ArrowRight, Bot, ChevronDown, Globe, ShieldCheck, Store } from 'lucide-react'
+import { AlertTriangle, ArrowRight, Bot, ChevronDown, Globe, Loader2, ShieldCheck, Store } from 'lucide-react'
 import { bizBrandFocusRingClass } from '@/pages/Home/brandUi'
-import { ONBOARDING_REGIONS_BY_COUNTRY } from '@/pages/Home/onboardingRegions'
+import {
+	onboardingCountrySelectOptionElements,
+	OnboardingProvinceControl,
+} from '@/pages/Home/onboardingLocationFields'
 import { useTu } from '@/locale/beamioLocale'
+import { BusinessNameLookupField } from '@/pages/Home/BusinessNameLookupField'
+import type { OnboardingBusinessLookupCandidate } from '@/utils/onboardingBusinessLookup'
 import type {
 	VerraBusinessChannelKind,
 	VerraBusinessProfileBusinessType,
@@ -26,7 +31,7 @@ export function businessTypeToOrgType(bt: VerraBusinessProfileBusinessType | und
 	return ''
 }
 
-const PHYSICAL_SUBS = [
+export const PHYSICAL_SUBS = [
 	{ value: 'food-beverage', labelKey: 'onb_cat_food_beverage' },
 	{ value: 'grocery-convenience', labelKey: 'onb_cat_grocery' },
 	{ value: 'fitness-wellness', labelKey: 'onb_cat_fitness' },
@@ -36,21 +41,21 @@ const PHYSICAL_SUBS = [
 	{ value: 'retail-shopping', labelKey: 'onb_cat_retail' },
 ] as const
 
-const DIGITAL_SUBS = [
+export const DIGITAL_SUBS = [
 	{ value: 'ecommerce-store', labelKey: 'onb_cat_ecommerce' },
 	{ value: 'creator-kol', labelKey: 'onb_cat_creator_kol' },
 	{ value: 'digital-services', labelKey: 'onb_cat_digital_services' },
 	{ value: 'freelance-agency', labelKey: 'onb_cat_freelance' },
 ] as const
 
-const APP_SUBS = [
+export const APP_SUBS = [
 	{ value: 'saas-platform', labelKey: 'onb_cat_saas' },
 	{ value: 'mobile-application', labelKey: 'onb_cat_mobile_app' },
 	{ value: 'ai-ml-service', labelKey: 'onb_cat_ai_ml' },
 	{ value: 'api-provider', labelKey: 'onb_cat_api_provider' },
 ] as const
 
-function subsForChannel(kind: VerraBusinessChannelKind | '') {
+export function subsForChannel(kind: VerraBusinessChannelKind | '') {
 	if (kind === 'digital') return DIGITAL_SUBS
 	if (kind === 'app') return APP_SUBS
 	if (kind === 'physical') return PHYSICAL_SUBS
@@ -85,6 +90,16 @@ export type OnboardingBusinessDiscoveryFormProps = {
 	setTermsAccepted: (v: boolean) => void
 	onOpenLegalDoc: (docId: 'privacy' | 'terms') => (e: React.MouseEvent) => void
 	onSubmit: () => void
+	/** Choosing a lookup result hydrates this form; remaining fields stay hidden until then. */
+	onSelectLookupCandidate?: (candidate: OnboardingBusinessLookupCandidate) => void
+	/** Category, location, terms, and Next stay hidden until a lookup candidate is chosen. */
+	detailsVisible?: boolean
+	/** Skip refetch after a pick; focus still reopens the last suggestion list. */
+	lookupSkipValue?: string
+	/** After a lookup pick, Cluster prepares Card Setup logo / background / brand color / Discover copy. */
+	cardSetupPreparing?: boolean
+	/** Panel-inline prepare error; Continue stays available. */
+	cardSetupPrepareError?: string
 	/** `embedded` = desktop right panel (no sticky footer). `sheet` = mobile sticky CTA. */
 	layout?: 'embedded' | 'sheet'
 	idPrefix?: string
@@ -109,6 +124,11 @@ export function OnboardingBusinessDiscoveryForm({
 	setTermsAccepted,
 	onOpenLegalDoc,
 	onSubmit,
+	onSelectLookupCandidate,
+	detailsVisible = false,
+	lookupSkipValue = '',
+	cardSetupPreparing = false,
+	cardSetupPrepareError = '',
 	layout = 'embedded',
 	idPrefix = 'onb-discovery',
 }: OnboardingBusinessDiscoveryFormProps): React.ReactElement {
@@ -167,17 +187,33 @@ export function OnboardingBusinessDiscoveryForm({
 					<label className={fieldLabel} htmlFor={`${idPrefix}-name`}>
 						{tu('onb_business_name')}
 					</label>
-					<input
-						id={`${idPrefix}-name`}
-						type="text"
-						value={storeName}
-						onChange={(e) => setStoreName(e.target.value)}
-						placeholder={tu('onb_business_name_ph')}
-						autoComplete="organization"
-						className={inputClass}
-					/>
+					{onSelectLookupCandidate ? (
+						<BusinessNameLookupField
+							id={`${idPrefix}-name`}
+							value={storeName}
+							onChange={setStoreName}
+							placeholder={tu('onb_business_name_ph')}
+							inputClassName={inputClass}
+							onSelectCandidate={onSelectLookupCandidate}
+							skipLookupValue={lookupSkipValue}
+							hintFilled={detailsVisible}
+							hintLocationMissing={detailsVisible && !country.trim()}
+						/>
+					) : (
+						<input
+							id={`${idPrefix}-name`}
+							type="text"
+							value={storeName}
+							onChange={(e) => setStoreName(e.target.value)}
+							placeholder={tu('onb_business_name_ph')}
+							autoComplete="organization"
+							className={inputClass}
+						/>
+					)}
 				</div>
 
+				{detailsVisible ? (
+				<>
 				<div className="space-y-3">
 					<p className={fieldLabel}>{tu('onb_business_category')}</p>
 					<div className="grid grid-cols-1 gap-3 md:grid-cols-3">
@@ -270,18 +306,25 @@ export function OnboardingBusinessDiscoveryForm({
 								</label>
 								<select
 									id={`${idPrefix}-country`}
+									key={`${idPrefix}-country-${country || 'empty'}`}
 									value={country}
 									onChange={(e) => {
-										setCountry(e.target.value)
+										const next = e.target.value
+										if (!next) {
+											e.currentTarget.value = country
+											return
+										}
+										setCountry(next)
 										setProvince('')
 									}}
 									className={`${inputClass} appearance-none cursor-pointer`}
 								>
-									<option value="CA">{tu('onb_country_ca')}</option>
-									<option value="US">{tu('onb_country_us')}</option>
-									<option value="GB">{tu('onb_country_gb')}</option>
-									<option value="AU">{tu('onb_country_au')}</option>
-									<option value="DE">{tu('onb_country_de')}</option>
+									{country ? null : (
+										<option value="" disabled>
+											{tu('onb_select_country')}
+										</option>
+									)}
+									{onboardingCountrySelectOptionElements(country)}
 								</select>
 								<SelectChevron />
 							</div>
@@ -300,27 +343,20 @@ export function OnboardingBusinessDiscoveryForm({
 										className={inputClass}
 									/>
 								</div>
-								<div className="relative space-y-1">
+								<div className="space-y-1">
 									<label className={fieldLabel} htmlFor={`${idPrefix}-province`}>
 										{tu('onb_province')}
 									</label>
-									<select
+									<OnboardingProvinceControl
 										id={`${idPrefix}-province`}
+										country={country}
 										value={province}
-										disabled={!country}
-										onChange={(e) => setProvince(e.target.value)}
-										className={`${inputClass} appearance-none cursor-pointer disabled:cursor-not-allowed disabled:opacity-60`}
-									>
-										<option value="">{country ? tu('onb_select') : tu('onb_select_country_first')}</option>
-										{(country ? ONBOARDING_REGIONS_BY_COUNTRY[country] ?? [] : []).map(({ value, label }) => (
-											<option key={value} value={value}>
-												{label}
-											</option>
-										))}
-									</select>
-									<span className="pointer-events-none absolute right-4 top-9 text-[#747779]">
-										<ChevronDown className="h-5 w-5" aria-hidden />
-									</span>
+										onChange={setProvince}
+										selectClassName={`${inputClass} appearance-none cursor-pointer disabled:cursor-not-allowed disabled:opacity-60`}
+										emptySelectLabel={tu('onb_select')}
+										noCountryLabel={tu('onb_select_country_first')}
+										freeTextPlaceholder={tu('onb_province_ph')}
+									/>
 								</div>
 							</div>
 						</div>
@@ -333,6 +369,8 @@ export function OnboardingBusinessDiscoveryForm({
 							</div>
 						</div>
 					</div>
+				) : null}
+				</>
 				) : null}
 			</div>
 		</>
@@ -382,13 +420,24 @@ export function OnboardingBusinessDiscoveryForm({
 					{tu('onb_terms_suffix')}
 				</span>
 			</label>
+			{cardSetupPrepareError ? (
+				<div
+					role="alert"
+					className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm font-medium text-amber-900"
+				>
+					<AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" aria-hidden />
+					<p>{cardSetupPrepareError}</p>
+				</div>
+			) : null}
 			<button
 				type="button"
-				disabled={!canSubmit}
+				disabled={!canSubmit || cardSetupPreparing}
 				onClick={() => {
-					if (!canSubmit) return
+					if (!canSubmit || cardSetupPreparing) return
 					onSubmit()
 				}}
+				aria-busy={cardSetupPreparing}
+				aria-label={cardSetupPreparing ? tu('onb_card_setup_preparing') : tu('onb_next_claim_tag')}
 				className={`
 					flex w-full items-center justify-center gap-2 rounded-xl bg-[#1562f0] py-4 text-[17px] font-semibold text-white
 					shadow-[0px_10px_20px_rgba(0,0,0,0.05)] transition-all hover:shadow-md active:scale-[0.98]
@@ -396,8 +445,17 @@ export function OnboardingBusinessDiscoveryForm({
 					${bizBrandFocusRingClass}
 				`}
 			>
-				{tu('onb_next_claim_tag')}
-				<ArrowRight className="h-5 w-5 shrink-0" strokeWidth={2.25} aria-hidden />
+				{cardSetupPreparing ? (
+					<>
+						<Loader2 className="h-5 w-5 shrink-0 animate-spin" aria-hidden />
+						{tu('onb_card_setup_preparing')}
+					</>
+				) : (
+					<>
+						{tu('onb_next_claim_tag')}
+						<ArrowRight className="h-5 w-5 shrink-0" strokeWidth={2.25} aria-hidden />
+					</>
+				)}
 			</button>
 		</div>
 	)
@@ -406,9 +464,11 @@ export function OnboardingBusinessDiscoveryForm({
 		return (
 			<>
 				<div className="mx-auto w-full max-w-2xl px-5 pb-4 pt-2 md:px-0">{formBody}</div>
-				<div className="fixed bottom-0 left-0 z-50 flex w-full flex-col items-center border-t border-[#e3e2e7] bg-[#faf9fe]/90 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] backdrop-blur-xl md:px-8">
-					{termsAndCta}
-				</div>
+				{detailsVisible ? (
+					<div className="fixed bottom-0 left-0 z-50 flex w-full flex-col items-center border-t border-[#e3e2e7] bg-[#faf9fe]/90 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] backdrop-blur-xl md:px-8">
+						{termsAndCta}
+					</div>
+				) : null}
 			</>
 		)
 	}
@@ -416,7 +476,9 @@ export function OnboardingBusinessDiscoveryForm({
 	return (
 		<div className="w-full">
 			{formBody}
-			<div className="mt-8 space-y-5 border-t border-[#abadaf]/15 pt-6">{termsAndCta}</div>
+			{detailsVisible ? (
+				<div className="mt-8 space-y-5 border-t border-[#abadaf]/15 pt-6">{termsAndCta}</div>
+			) : null}
 		</div>
 	)
 }

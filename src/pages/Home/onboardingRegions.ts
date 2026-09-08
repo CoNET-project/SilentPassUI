@@ -105,3 +105,82 @@ export const ONBOARDING_REGIONS_BY_COUNTRY: Readonly<
 		{ value: "TH", label: "Thuringia" },
 	],
 }
+
+function foldOnboardingRegionKey(s: string): string {
+	return s
+		.normalize('NFKD')
+		.replace(/[\u0300-\u036f]/g, '')
+		.toLowerCase()
+		.replace(/[^a-z0-9\u4e00-\u9fff]+/g, '')
+}
+
+/** Independent copy of Cluster province aliases — do not import x402sdk. */
+const EXTRA_ONBOARDING_PROVINCE_ALIASES: Record<string, Record<string, string>> = {
+	CA: {
+		卑诗: 'BC',
+		卑詩: 'BC',
+		不列颠哥伦比亚: 'BC',
+		不列顛哥倫比亞: 'BC',
+		安大略: 'ON',
+		魁北克: 'QC',
+		阿尔伯塔: 'AB',
+		阿爾伯塔: 'AB',
+	},
+	US: {
+		加州: 'CA',
+		加利福尼亚: 'CA',
+		加利福尼亞: 'CA',
+		纽约: 'NY',
+		紐約: 'NY',
+		德州: 'TX',
+		得克萨斯: 'TX',
+	},
+	GB: {
+		英格兰: 'ENG',
+		英格蘭: 'ENG',
+		苏格兰: 'SCT',
+		蘇格蘭: 'SCT',
+		威尔士: 'WLS',
+		威爾士: 'WLS',
+	},
+	AU: {
+		新南威尔士: 'NSW',
+		新南威爾士: 'NSW',
+		维多利亚: 'VIC',
+		維多利亞: 'VIC',
+	},
+	DE: {
+		bayern: 'BY',
+		nrw: 'NW',
+		nordrheinwestfalen: 'NW',
+		巴伐利亚: 'BY',
+		巴伐利亞: 'BY',
+	},
+}
+
+export function hasCodedOnboardingProvinces(country: string): boolean {
+	const regions = ONBOARDING_REGIONS_BY_COUNTRY[country]
+	return Array.isArray(regions) && regions.length > 0
+}
+
+/** Map a full name or alias onto the region `value` code. Uncoded countries keep clipped free text. */
+export function normalizeOnboardingProvince(country: string, raw: string): string {
+	if (!country) return ''
+	const t = raw.trim()
+	if (!t || /^unknown$/i.test(t)) return ''
+	const regions = ONBOARDING_REGIONS_BY_COUNTRY[country]
+	if (!regions?.length) return t.slice(0, 80)
+	const upper = t.toUpperCase()
+	if (regions.some((r) => r.value === upper)) return upper
+	const folded = foldOnboardingRegionKey(t)
+	const byLabel = regions.find(
+		(r) => foldOnboardingRegionKey(r.label) === folded || foldOnboardingRegionKey(r.value) === folded,
+	)
+	if (byLabel) return byLabel.value
+	const extras = EXTRA_ONBOARDING_PROVINCE_ALIASES[country]
+	if (!extras) return ''
+	for (const [alias, code] of Object.entries(extras)) {
+		if (foldOnboardingRegionKey(alias) === folded) return code
+	}
+	return ''
+}

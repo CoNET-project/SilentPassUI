@@ -76,6 +76,8 @@ export type CardConfiguratorDraftV1 = {
   shareImageUrl?: string
   /** IPFS URL for `shareTokenMetadata.merchantImage` (wide / hero; distinct from logo `image`). */
   merchantImageUrl?: string
+  /** Discover brand color (`shareTokenMetadata.backgroundColor`). */
+  brandColor?: string
   /** 0–3 hero logo scale; persisted to shareTokenMetadata.logoDisplayTier on publish */
   logoDisplayTier?: CardPreviewLogoDisplayTier
   categoryId?: string
@@ -289,6 +291,8 @@ export function loadCardConfiguratorDraftForEoa(eoaLower: string): CardConfigura
       tiersByLoyaltyRule: normalizeTiersByLoyaltyRule(p.tiersByLoyaltyRule),
       tiers: normalizeTiers(p.tiers),
       shareImageUrl: typeof p.shareImageUrl === 'string' ? p.shareImageUrl : undefined,
+      merchantImageUrl: typeof p.merchantImageUrl === 'string' ? p.merchantImageUrl : undefined,
+      brandColor: typeof p.brandColor === 'string' ? p.brandColor : undefined,
       ...(logoDisplayTier !== undefined ? { logoDisplayTier } : {}),
       categoryId: typeof p.categoryId === 'string' ? p.categoryId : undefined,
       description: typeof p.description === 'string' ? p.description : undefined,
@@ -318,6 +322,43 @@ export function saveCardConfiguratorDraftForEoa(eoaLower: string, draft: Omit<Ca
   } catch {
     /* quota */
   }
+}
+
+export function patchCardConfiguratorDraftForEoa(
+  eoaLower: string,
+  patch: Partial<Omit<CardConfiguratorDraftV1, 'version'>>,
+): void {
+  const prev = loadCardConfiguratorDraftForEoa(eoaLower)
+  const rest: Omit<CardConfiguratorDraftV1, 'version' | 'updatedAt'> = prev
+    ? {
+        programName: prev.programName,
+        currencySymbol: prev.currencySymbol,
+        storeDisplayName: prev.storeDisplayName,
+        bonusRules: prev.bonusRules,
+        bonusRulePaymentAmount: prev.bonusRulePaymentAmount,
+        bonusRuleBonusValue: prev.bonusRuleBonusValue,
+        topupPromotion: prev.topupPromotion,
+        unifiedRewardTopup: prev.unifiedRewardTopup,
+        minTopup: prev.minTopup,
+        maxTopup: prev.maxTopup,
+        tierRule: prev.tierRule,
+        tiersByLoyaltyRule: prev.tiersByLoyaltyRule,
+        tiers: prev.tiers,
+        shareImageUrl: prev.shareImageUrl,
+        merchantImageUrl: prev.merchantImageUrl,
+        brandColor: prev.brandColor,
+        logoDisplayTier: prev.logoDisplayTier,
+        categoryId: prev.categoryId,
+        description: prev.description,
+        mobileStep: prev.mobileStep,
+        configuratorPreviewMode: prev.configuratorPreviewMode,
+        previewTierId: prev.previewTierId,
+        rewardsPreset: prev.rewardsPreset,
+        rewardsMembershipFeeEnabled: prev.rewardsMembershipFeeEnabled,
+        rewardsSetupAmount: prev.rewardsSetupAmount,
+      }
+    : {}
+  saveCardConfiguratorDraftForEoa(eoaLower, { ...rest, ...patch })
 }
 
 export function clearCardConfiguratorDraftForEoa(eoaLower: string): void {

@@ -11,7 +11,10 @@ import {
 } from "lucide-react"
 import { bizBrandFocusRingClass } from "@/pages/Home/brandUi"
 import { BizOnboardingLocalePicker } from "@/pages/Home/BizOnboardingLocalePicker"
-import { ONBOARDING_REGIONS_BY_COUNTRY } from "@/pages/Home/onboardingRegions"
+import {
+	OnboardingCountrySelectOptions,
+	OnboardingProvinceControl,
+} from "@/pages/Home/onboardingLocationFields"
 import { useTu } from '@/locale/beamioLocale'
 import { MerchantLegalDocumentOverlay } from '@/pages/Vouchers/example/MerchantLegalDocumentOverlay'
 import type { BeamioLegalDocId } from '@/utils/beamioLegalDocuments'
@@ -202,11 +205,7 @@ export function OnboardingBusinessDetailsScreen({
 										`}
 									>
 										<option value="">{tu('onb_select_country')}</option>
-										<option value="CA">{tu('onb_country_ca')}</option>
-										<option value="US">{tu('onb_country_us')}</option>
-										<option value="GB">{tu('onb_country_gb')}</option>
-										<option value="AU">{tu('onb_country_au')}</option>
-										<option value="DE">{tu('onb_country_de')}</option>
+										<OnboardingCountrySelectOptions current={detailCountry} />
 									</select>
 									<OnboardingDetailsSelectChevron />
 								</div>
@@ -235,30 +234,21 @@ export function OnboardingBusinessDetailsScreen({
 									<label className="ml-2 block text-[10px] font-bold uppercase tracking-[0.1em] text-[#595c5e]" htmlFor="onb-detail-province">
 										{tu('onb_province')}
 									</label>
-									<div className="relative">
-										<select
-											id="onb-detail-province"
-											value={detailProvince}
-											disabled={!detailCountry}
-											onChange={(e) => setDetailProvince(e.target.value)}
-											className={`
-												w-full appearance-none rounded-2xl border-0 bg-[#eef1f3] px-5 py-4 text-base text-[#2c2f31] transition-all
-												focus:bg-white focus:ring-2 focus:ring-[#1562f0]/20
-												disabled:cursor-not-allowed disabled:opacity-60
-												${bizBrandFocusRingClass}
-											`}
-										>
-											<option value="">
-												{detailCountry ? tu('onb_select') : tu('onb_select_country_first')}
-											</option>
-											{(detailCountry ? ONBOARDING_REGIONS_BY_COUNTRY[detailCountry] ?? [] : []).map(({ value, label }) => (
-												<option key={value} value={value}>
-													{label}
-												</option>
-											))}
-										</select>
-										<OnboardingDetailsSelectChevron />
-									</div>
+									<OnboardingProvinceControl
+										id="onb-detail-province"
+										country={detailCountry}
+										value={detailProvince}
+										onChange={setDetailProvince}
+										selectClassName={`
+											w-full appearance-none rounded-2xl border-0 bg-[#eef1f3] px-5 py-4 text-base text-[#2c2f31] transition-all
+											focus:bg-white focus:ring-2 focus:ring-[#1562f0]/20
+											disabled:cursor-not-allowed disabled:opacity-60
+											${bizBrandFocusRingClass}
+										`}
+										emptySelectLabel={tu('onb_select')}
+										noCountryLabel={tu('onb_select_country_first')}
+										freeTextPlaceholder={tu('onb_province_ph')}
+									/>
 								</div>
 							</div>
 						</div>

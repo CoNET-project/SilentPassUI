@@ -228,6 +228,10 @@ import {
   saveCardConfiguratorDraftForEoa,
 } from '@/utils/cardConfiguratorDraftLocal';
 import {
+  loadOnboardingCardSetupAssetsRecord,
+  ONBOARDING_CARD_SETUP_EVENT,
+} from '@/utils/onboardingCardSetupAssetsLocal';
+import {
   CARD_ISSUANCE_PRODUCTION_ISSUE_TOTAL_DEFAULT,
   CARD_ISSUANCE_PRODUCTION_ISSUE_TOTAL_MAX,
   CARD_ISSUANCE_REDEEM_REGISTER_BATCH_MAX,
@@ -336,7 +340,10 @@ import {
   tierLogoImgClassForScale,
   type TierLogoDisplayScale,
 } from '@/utils/tierLogoDisplayScale';
-import { ONBOARDING_REGIONS_BY_COUNTRY } from '@/pages/Home/onboardingRegions';
+import {
+  OnboardingCountrySelectOptions,
+  OnboardingProvinceControl,
+} from '@/pages/Home/onboardingLocationFields';
 import {
   beamioTagFromRecord,
   normalizeAddressKey,
@@ -3368,8 +3375,6 @@ function MobileNoAaLiteMemberSelectionPage(props: {
   const categoryUnknown =
     category.length > 0 && !LITE_MOBILE_ONBOARDING_CATEGORY_OPTIONS.some((o) => o.value === category);
 
-  const regionOptions = country ? ONBOARDING_REGIONS_BY_COUNTRY[country] ?? [] : [];
-
   const runSaveToChainAndReleaseGate = async () => {
     if (!formComplete || !beamio?.accountName?.trim() || !privateKeyArmor?.trim()) {
       setPushError('Complete all fields and ensure your wallet is unlocked.');
@@ -3622,20 +3627,13 @@ function MobileNoAaLiteMemberSelectionPage(props: {
                     onChange={(e) => {
                       const v = e.target.value;
                       setCountry(v);
-                      const regions = v ? ONBOARDING_REGIONS_BY_COUNTRY[v] ?? [] : [];
-                      const keepProv = regions.some((r) => r.value === province);
-                      const nextProv = keepProv ? province : '';
-                      setProvince(nextProv);
-                      persist({ country: v, province: nextProv });
+                      setProvince('');
+                      persist({ country: v, province: '' });
                     }}
                     className={`w-full appearance-none rounded-2xl border-none bg-[#eef1f3] px-5 py-4 text-base text-[#2c2f31] focus:bg-white focus:ring-2 focus:ring-[#1562f0]/20 ${bizFocusRingClass}`}
                   >
                     <option value="">Select country</option>
-                    <option value="CA">Canada</option>
-                    <option value="US">United States</option>
-                    <option value="GB">United Kingdom</option>
-                    <option value="AU">Australia</option>
-                    <option value="DE">Germany</option>
+                    <OnboardingCountrySelectOptions current={country} />
                   </select>
                   <ChevronDown className="pointer-events-none absolute right-4 top-1/2 size-5 -translate-y-1/2 text-[#747779]" strokeWidth={2} aria-hidden />
                 </div>
@@ -3663,27 +3661,19 @@ function MobileNoAaLiteMemberSelectionPage(props: {
                   <label className="ml-2 block text-[10px] font-bold uppercase tracking-[0.1em] text-[#595c5e]" htmlFor="lite-mobile-biz-province">
                     Province
                   </label>
-                  <div className="relative">
-                    <select
-                      id="lite-mobile-biz-province"
-                      value={province}
-                      disabled={!country}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        setProvince(v);
-                        persist({ province: v });
-                      }}
-                      className={`w-full appearance-none rounded-2xl border-none bg-[#eef1f3] px-5 py-4 text-base text-[#2c2f31] focus:bg-white focus:ring-2 focus:ring-[#1562f0]/20 disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
-                    >
-                      <option value="">{country ? 'Select' : 'Select country first'}</option>
-                      {regionOptions.map((r) => (
-                        <option key={r.value} value={r.value}>
-                          {r.label}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown className="pointer-events-none absolute right-4 top-1/2 size-5 -translate-y-1/2 text-[#747779]" strokeWidth={2} aria-hidden />
-                  </div>
+                  <OnboardingProvinceControl
+                    id="lite-mobile-biz-province"
+                    country={country}
+                    value={province}
+                    onChange={(v) => {
+                      setProvince(v);
+                      persist({ province: v });
+                    }}
+                    selectClassName={`w-full appearance-none rounded-2xl border-none bg-[#eef1f3] px-5 py-4 text-base text-[#2c2f31] focus:bg-white focus:ring-2 focus:ring-[#1562f0]/20 disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
+                    emptySelectLabel="Select"
+                    noCountryLabel="Select country first"
+                    freeTextPlaceholder="Province / state / region"
+                  />
                 </div>
               </div>
             </div>
@@ -14515,6 +14505,8 @@ const handlePublishCardIssuanceRef = useRef<
  /** Card-level brand color for Discover merchant detail (`shareTokenMetadata.backgroundColor`). */
  const cardIssuanceBrandColorRef = useRef('');
  const [cardIssuanceBrandColor, setCardIssuanceBrandColor] = useState('');
+ /** Applied onboarding Card Setup asset signature; skip re-hydrate so user edits stay. */
+ const cardIssuanceOnboardingAssetsSigRef = useRef('');
  /**
   * Tier id created via Add tier (+) that is not yet confirmed by Card background Save.
   * Closing the drawer without Save removes this tier from the preview list.
@@ -16131,11 +16123,7 @@ const cardIssuancePreviewLiveLogoIconClass = useMemo(
 
  useEffect(() => {
    const addr = cardIssuanceExistingCard?.cardAddress;
-   if (!addr) {
-     cardIssuanceBrandColorRef.current = '';
-     setCardIssuanceBrandColor('');
-     return;
-   }
+   if (!addr) return;
    const raw = (cardIssuanceExistingCard?.meta?.backgroundColor ?? '').trim();
    const hex = raw ? tierBackgroundColorForPayload(raw) ?? '' : '';
    cardIssuanceBrandColorRef.current = hex;
@@ -25622,20 +25610,37 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
          [rule]: draft.tiers!.map(mapDraftTier),
        }));
      }
-     if (typeof draft.shareImageUrl === 'string') {
-       setCardIssuanceShareImageUrl(draft.shareImageUrl);
-     }
-     if (typeof draft.merchantImageUrl === 'string') {
-       setCardIssuanceMerchantImageUrl(draft.merchantImageUrl);
+     const onboardingAssetsPresent = loadOnboardingCardSetupAssetsRecord() !== null;
+     if (!onboardingAssetsPresent) {
+       if (typeof draft.shareImageUrl === 'string') {
+         const share = draft.shareImageUrl.trim();
+         if (share) setCardIssuanceShareImageUrl(share);
+       }
+       if (typeof draft.merchantImageUrl === 'string') {
+         const merchant = draft.merchantImageUrl.trim();
+         if (merchant) setCardIssuanceMerchantImageUrl(merchant);
+       }
+       if (typeof draft.brandColor === 'string') {
+         const hex = draft.brandColor.trim()
+           ? tierBackgroundColorForPayload(draft.brandColor) ?? ''
+           : '';
+         if (hex) {
+           cardIssuanceBrandColorRef.current = hex;
+           setCardIssuanceBrandColor(hex);
+         }
+       }
+       if (typeof draft.description === 'string') {
+         const desc = draft.description.trim();
+         if (desc) {
+           setCardIssuanceDescription(desc.slice(0, CARD_ISSUANCE_CONFIGURATION_MAX_CHARS));
+         }
+       }
      }
      if (draft.logoDisplayTier != null) {
        setCardIssuanceLogoDisplayTier(draft.logoDisplayTier);
      }
      if (typeof draft.categoryId === 'string' && draft.categoryId.trim()) {
        setCardIssuanceCategoryId(draft.categoryId.trim());
-     }
-     if (typeof draft.description === 'string') {
-       setCardIssuanceDescription(draft.description);
      }
      if (draft.mobileStep != null) {
        setCardIssuanceMobileStep(cardIssuanceExistingCard ? draft.mobileStep : 1);
@@ -25709,6 +25714,8 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
 
  const persistCardConfiguratorDraftNow = useCallback(() => {
    if (!cardConfiguratorDraftEoaKey || cardIssuanceExistingCard) return;
+   const prev = loadCardConfiguratorDraftForEoa(cardConfiguratorDraftEoaKey);
+   const onboardingAssetsPresent = loadOnboardingCardSetupAssetsRecord() !== null;
    saveCardConfiguratorDraftForEoa(cardConfiguratorDraftEoaKey, {
      programName: cardIssuanceProgramName,
      currencySymbol: cardIssuanceCurrencySymbol,
@@ -25794,11 +25801,20 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
        backgroundImageFit: t.backgroundImageFit,
        logoDisplayScale: t.logoDisplayScale,
      })),
-     shareImageUrl: cardIssuanceShareImageUrl,
-     merchantImageUrl: cardIssuanceMerchantImageUrl,
+     shareImageUrl: onboardingAssetsPresent
+       ? cardIssuanceShareImageUrl.trim()
+       : cardIssuanceShareImageUrl.trim() || prev?.shareImageUrl || '',
+     merchantImageUrl: onboardingAssetsPresent
+       ? cardIssuanceMerchantImageUrl.trim()
+       : cardIssuanceMerchantImageUrl.trim() || prev?.merchantImageUrl || '',
+     brandColor: onboardingAssetsPresent
+       ? cardIssuanceBrandColor.trim()
+       : cardIssuanceBrandColor.trim() || prev?.brandColor || '',
      logoDisplayTier: cardIssuanceLogoDisplayTier,
      categoryId: cardIssuanceCategoryId,
-     description: cardIssuanceDescription,
+     description: onboardingAssetsPresent
+       ? cardIssuanceDescription.trim()
+       : cardIssuanceDescription.trim() || prev?.description || '',
      mobileStep: cardIssuanceMobileStep,
      configuratorPreviewMode: cardIssuanceConfiguratorPreviewMode,
      previewTierId: cardIssuancePreviewTierId,
@@ -25821,6 +25837,7 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
    tiersByLoyaltyRule,
    cardIssuanceShareImageUrl,
    cardIssuanceMerchantImageUrl,
+   cardIssuanceBrandColor,
    cardIssuanceLogoDisplayTier,
    cardIssuanceCategoryId,
    cardIssuanceDescription,
@@ -26033,12 +26050,6 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
    const merged = patchBusinessProfileDraftForEoa(businessProfileEoaResolved, patch);
    setBusinessProfileForm(merged);
  }, [businessProfileEoaResolved]);
- const businessProfileProvinceOptions = useMemo(() => {
-   const c = businessProfileForm.country ?? '';
-   if (!c) return [];
-   const r = ONBOARDING_REGIONS_BY_COUNTRY[c];
-   return r ? [...r] : [];
- }, [businessProfileForm.country]);
  useEffect(() => {
    if (!businessProfileEoaResolved) return;
    setBusinessProfileForm(loadBusinessProfileDraftForEoa(businessProfileEoaResolved) ?? {});
@@ -26145,6 +26156,62 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
    if (!def) return;
    setCardIssuanceStoreDisplayName((prev) => (prev.trim() === '' ? def : prev));
  }, [cardIssuanceExistingCard?.cardAddress, cardIssuanceDefaultStoreDisplayName]);
+ useEffect(() => {
+   if (cardIssuanceExistingCard?.cardAddress) return;
+   const hydrateOnboardingCardSetupAssets = () => {
+     const present = loadOnboardingCardSetupAssetsRecord();
+     if (present) {
+       const sig = JSON.stringify({
+         l: present.logoUrl,
+         b: present.backgroundUrl,
+         c: present.brandColor,
+         d: present.discoverCopy,
+       });
+       if (sig === cardIssuanceOnboardingAssetsSigRef.current) return;
+       cardIssuanceOnboardingAssetsSigRef.current = sig;
+       setCardIssuanceShareImageUrl(present.logoUrl);
+       setCardIssuanceMerchantImageUrl(present.backgroundUrl);
+       const color = present.brandColor
+         ? tierBackgroundColorForPayload(present.brandColor) ?? ''
+         : '';
+       cardIssuanceBrandColorRef.current = color;
+       setCardIssuanceBrandColor(color);
+       setCardIssuanceDescription(
+         present.discoverCopy.slice(0, CARD_ISSUANCE_CONFIGURATION_MAX_CHARS),
+       );
+       return;
+     }
+     cardIssuanceOnboardingAssetsSigRef.current = '';
+     const eoa = businessProfileEoaResolved;
+     const eoaDraft = eoa ? loadBusinessProfileDraftForEoa(eoa) ?? {} : {};
+     const cfg = eoa ? loadCardConfiguratorDraftForEoa(eoa) : null;
+     const logo = (eoaDraft.logoUrl || cfg?.shareImageUrl || '').trim();
+     const background = (eoaDraft.merchantImageUrl || cfg?.merchantImageUrl || '').trim();
+     const rawColor = (eoaDraft.brandHex || cfg?.brandColor || '').trim();
+     const color = rawColor ? tierBackgroundColorForPayload(rawColor) ?? '' : '';
+     const copy = (cfg?.description || eoaDraft.publicBio || '').trim();
+     if (logo) {
+       setCardIssuanceShareImageUrl((prev) => (prev.trim() ? prev : logo));
+     }
+     if (background) {
+       setCardIssuanceMerchantImageUrl((prev) => (prev.trim() ? prev : background));
+     }
+     if (color) {
+       setCardIssuanceBrandColor((prev) => {
+         if (prev.trim()) return prev;
+         cardIssuanceBrandColorRef.current = color;
+         return color;
+       });
+     }
+     if (copy) {
+       const sliced = copy.slice(0, CARD_ISSUANCE_CONFIGURATION_MAX_CHARS);
+       setCardIssuanceDescription((prev) => (prev.trim() ? prev : sliced));
+     }
+   };
+   hydrateOnboardingCardSetupAssets();
+   window.addEventListener(ONBOARDING_CARD_SETUP_EVENT, hydrateOnboardingCardSetupAssets);
+   return () => window.removeEventListener(ONBOARDING_CARD_SETUP_EVENT, hydrateOnboardingCardSetupAssets);
+ }, [cardIssuanceExistingCard?.cardAddress, businessProfileEoaResolved, liteBusinessFormRevision]);
  /** Wallet-scoped localStorage partition (bizSite: different EOA login → different `eoa:…:` storage prefix). */
  const walletStoragePartitionLower = useMemo(
    () => bizWalletStoragePartitionLower(profiles?.[0]?.keyID, myAddress),
@@ -47808,25 +47875,17 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                        <label className="mb-3 block text-xs font-bold uppercase tracking-widest text-slate-400" htmlFor="biz-settings-province">
                          {tu('onb_province')}
                        </label>
-                       <div className="relative">
-                         <select
-                           id="biz-settings-province"
-                           value={businessProfileForm.province ?? ''}
-                           onChange={(e) => patchBizBusinessProfile({ province: e.target.value })}
-                           disabled={!businessProfileEoaResolved || businessProfileProvinceOptions.length === 0}
-                           className="w-full appearance-none rounded-xl border-0 bg-[#eef1f3] px-4 py-4 pr-10 text-sm font-medium text-[#2c2f31] disabled:cursor-not-allowed disabled:opacity-70"
-                         >
-                           <option value="">
-                             {businessProfileForm.country ? tu('hub_select_province') : tu('onb_select_country_first')}
-                           </option>
-                           {businessProfileProvinceOptions.map((opt) => (
-                             <option key={opt.value} value={opt.value}>
-                               {opt.label}
-                             </option>
-                           ))}
-                         </select>
-                         <ChevronDown className="pointer-events-none absolute right-4 top-1/2 size-5 -translate-y-1/2 text-[#595c5e]" strokeWidth={2} aria-hidden />
-                       </div>
+                       <OnboardingProvinceControl
+                         id="biz-settings-province"
+                         country={businessProfileForm.country ?? ''}
+                         value={businessProfileForm.province ?? ''}
+                         onChange={(v) => patchBizBusinessProfile({ province: v })}
+                         disabled={!businessProfileEoaResolved}
+                         selectClassName="w-full appearance-none rounded-xl border-0 bg-[#eef1f3] px-4 py-4 pr-10 text-sm font-medium text-[#2c2f31] disabled:cursor-not-allowed disabled:opacity-70"
+                         emptySelectLabel={tu('hub_select_province')}
+                         noCountryLabel={tu('onb_select_country_first')}
+                         freeTextPlaceholder={tu('onb_province_ph')}
+                       />
                      </div>
                      <div>
                        <label className="mb-3 block text-xs font-bold uppercase tracking-widest text-slate-400" htmlFor="biz-settings-country">
@@ -47844,11 +47903,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                            className="w-full appearance-none rounded-xl border-0 bg-[#eef1f3] px-4 py-4 pr-10 text-sm font-medium text-[#2c2f31] disabled:cursor-not-allowed disabled:opacity-70"
                          >
                            <option value="">{tu('onb_select_country')}</option>
-                           <option value="CA">{tu('onb_country_ca')}</option>
-                           <option value="US">{tu('onb_country_us')}</option>
-                           <option value="GB">{tu('onb_country_gb')}</option>
-                           <option value="AU">{tu('onb_country_au')}</option>
-                           <option value="DE">{tu('onb_country_de')}</option>
+                           <OnboardingCountrySelectOptions current={businessProfileForm.country ?? ''} />
                          </select>
                          <Globe className="pointer-events-none absolute right-4 top-1/2 size-5 -translate-y-1/2 text-[#595c5e]" strokeWidth={2} aria-hidden />
                        </div>
@@ -47863,20 +47918,38 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                    <h4 className="font-manrope text-xl font-bold">{tu('hub_contact_preferences')}</h4>
                  </div>
                  <div className="space-y-6 rounded-xl border border-[#e5e9eb] bg-white p-6 shadow-[0_20px_40px_rgba(21,98,240,0.04)]">
-                   <div>
-                     <label className="mb-3 block text-xs font-bold uppercase tracking-widest text-slate-400" htmlFor="biz-settings-support-email-2">
-                       {tu('hub_support_email')}
-                     </label>
-                     <input
-                       id="biz-settings-support-email-2"
-                       type="email"
-                       value={businessProfileForm.supportEmail ?? ''}
-                       onChange={(e) => patchBizBusinessProfile({ supportEmail: e.target.value })}
-                       disabled={!businessProfileEoaResolved}
-                       placeholder={tu('hub_support_email_ph')}
-                       autoComplete="email"
-                       className={`w-full rounded-xl border-0 bg-[#eef1f3] px-4 py-4 text-sm font-medium text-[#2c2f31] placeholder:text-[#abadaf] transition-all focus:bg-white focus:ring-2 focus:ring-[#0051d1]/20 disabled:cursor-not-allowed disabled:opacity-70 ${bizFocusRingClass}`}
-                     />
+                   <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                     <div>
+                       <label className="mb-3 block text-xs font-bold uppercase tracking-widest text-slate-400" htmlFor="biz-settings-support-email-2">
+                         {tu('hub_support_email')}
+                       </label>
+                       <input
+                         id="biz-settings-support-email-2"
+                         type="email"
+                         value={businessProfileForm.supportEmail ?? ''}
+                         onChange={(e) => patchBizBusinessProfile({ supportEmail: e.target.value })}
+                         disabled={!businessProfileEoaResolved}
+                         placeholder={tu('hub_support_email_ph')}
+                         autoComplete="email"
+                         className={`w-full rounded-xl border-0 bg-[#eef1f3] px-4 py-4 text-sm font-medium text-[#2c2f31] placeholder:text-[#abadaf] transition-all focus:bg-white focus:ring-2 focus:ring-[#0051d1]/20 disabled:cursor-not-allowed disabled:opacity-70 ${bizFocusRingClass}`}
+                       />
+                     </div>
+                     <div>
+                       <label className="mb-3 block text-xs font-bold uppercase tracking-widest text-slate-400" htmlFor="biz-settings-support-phone">
+                         {tu('hub_support_phone')}
+                       </label>
+                       <input
+                         id="biz-settings-support-phone"
+                         type="tel"
+                         value={businessProfileForm.supportPhone ?? ''}
+                         onChange={(e) => patchBizBusinessProfile({ supportPhone: e.target.value })}
+                         disabled={!businessProfileEoaResolved}
+                         placeholder={tu('hub_support_phone_ph')}
+                         autoComplete="tel"
+                         inputMode="tel"
+                         className={`w-full rounded-xl border-0 bg-[#eef1f3] px-4 py-4 text-sm font-medium text-[#2c2f31] placeholder:text-[#abadaf] transition-all focus:bg-white focus:ring-2 focus:ring-[#0051d1]/20 disabled:cursor-not-allowed disabled:opacity-70 ${bizFocusRingClass}`}
+                       />
+                     </div>
                    </div>
                    <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                      <div>

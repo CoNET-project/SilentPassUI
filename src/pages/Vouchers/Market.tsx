@@ -53,6 +53,8 @@ import {
 	Medal,
   ExternalLink,
   Gift,
+  Calendar,
+  Headphones,
   Crown,
   Sparkles,
   Copy,
@@ -73,8 +75,9 @@ import { DiscoverDescriptionTextWithUrlCapsules } from "@/components/discover/Di
 import { resolveSigningPrivateKeyArmor } from "@/utils/resolveSigningPrivateKeyArmor"
 import { checkStorage, searchUsername } from "@/services/beamio"
 import BeamioContactProfilePreview from "@/components/Home/BeamioContactProfilePreview"
+import MerchantAssetGiftSheet, { type MerchantGiftCardOption } from "@/components/Home/MerchantAssetGiftSheet"
 import { fiatPrefix, formatAmount } from "@/services/currency"
-import { getMyAssetsAggregated, getMyAssets, peekGetMyAssetsCache, getCardTiersFromContract, getCardUpgradeTypeFromContract, quoteUSDCToCAD, postUSDCUserCardTopup, safeUsdc6ToAmountString, currencyAmountToSafeUsdc6, fetchCardActiveIssuedCouponSeriesTrusted, postCardCouponOpenClaimWithCurrentWallet, postCardRecordUserLikeWithCurrentWallet, resolveCouponOpenClaimEligibility, merchantBackgroundImageFromMetadataRoot, merchantIconUrlFromMetadataRoot, getCardOwner, readUserSocialPoints13BalanceOnCard, type CardActiveIssuedCouponSeriesItem, type CardMetadataFromUri, type CouponOpenClaimEligibility, type USDCUserCardTopupIntent } from "@/services/BeamioCard"
+import { getMyAssetsAggregated, getMyAssets, peekGetMyAssetsCache, getCardTiersFromContract, getCardUpgradeTypeFromContract, quoteUSDCToCAD, postUSDCUserCardTopup, safeUsdc6ToAmountString, currencyAmountToSafeUsdc6, fetchCardActiveIssuedCouponSeriesTrusted, postCardCouponOpenClaimWithCurrentWallet, postCardRecordUserLikeWithCurrentWallet, resolveCouponOpenClaimEligibility, merchantBackgroundImageFromMetadataRoot, merchantIconUrlFromMetadataRoot, getCardOwner, getCardPosAdminEoas, readUserSocialPoints13BalanceOnCard, type CardActiveIssuedCouponSeriesItem, type CardMetadataFromUri, type CouponOpenClaimEligibility, type USDCUserCardTopupIntent } from "@/services/BeamioCard"
 import {
 	couponOpenClaimEligibilityFromLocal,
 	pickCouponOpenClaimStatusFromMap,
@@ -148,6 +151,7 @@ import {
 } from "@/utils/discoverMerchantCategory"
 import {
 	BeamioCircularBackButton,
+	BEAMIO_CIRCULAR_BACK_ROW_CLASS,
 	BEAMIO_HERO_FLOATING_BACK_ROW_CLASS,
 	beamioHeroFloatingBackTopStyle,
 } from "@/components/BeamioCircularBackButton"
@@ -195,6 +199,7 @@ import { collectDeepLinkSearchParams } from '@/utils/beamioDeepLinkParams'
 import { useReliableTapHandler, RELIABLE_TAP_BUTTON_CLASS } from '@/utils/reliableTap'
 import {
 	formatSocialPoints13Display,
+	parseDiscoverActorRewardPercentsFromMetadata,
 	parseDiscoverProgramDescriptionFromMetadata,
 	resolveCouponSocialMissionBlockForSeries,
 	resolveDiscoverProspectJoinPanelCopy,
@@ -573,52 +578,153 @@ function discoverMerchantAboutPanelForDisplay(
 	return hasDiscoverMerchantAboutPanel(next) ? next : null
 }
 
-/** #13 Reward PT — always shown; not gated by Top-up / Charge Promotion. */
-function DiscoverMerchantMyPointsBlock({
-	loading,
-	points,
-	storeCreditsDisplay,
-	storeCreditsVisible,
+const DISCOVER_VISIT_BRAND_FALLBACK = '#4b4537'
+const DISCOVER_VISIT_BOOKING_ICON = '#e4c9a0'
+const DISCOVER_VISIT_MUTED_ICON = '#8a8f98'
+
+/** Balance strip + Booking / Gifting / Contact. Brand chrome follows the merchant color. */
+function DiscoverMerchantVisitActionsBlock({
+	brandColor,
+	showBalanceCard,
+	badgeDollars,
+	balanceFiat,
+	pointsDisplay,
+	chargePercent,
+	balanceClickable,
+	onBalanceClick,
+	onBooking,
+	onGifting,
+	onContact,
+	contactBusy,
+	actionsDisabled,
+	error,
 }: {
-	loading: boolean
-	points: number
-	storeCreditsDisplay?: string
-	storeCreditsVisible?: boolean
+	brandColor: string
+	showBalanceCard: boolean
+	badgeDollars: string
+	balanceFiat: string
+	pointsDisplay: string
+	chargePercent: number | null
+	balanceClickable: boolean
+	onBalanceClick: () => void
+	onBooking: () => void
+	onGifting: () => void
+	onContact: () => void
+	contactBusy: boolean
+	actionsDisabled: boolean
+	error: string | null
 }) {
-	const showStoreCredits = Boolean(storeCreditsVisible && storeCreditsDisplay)
-	const pointsValue = (
+	const brand = brandColor.trim() || DISCOVER_VISIT_BRAND_FALLBACK
+	const balanceInner = (
 		<>
-			{formatSocialPoints13Display(loading ? 0 : points)}
-			<span className="ml-1 text-[14px] font-bold text-slate-400 dark:text-slate-500">Pts</span>
+			<div
+				className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border bg-white dark:bg-slate-900"
+				style={{ borderColor: `${brand}55` }}
+			>
+				<span className="flex items-baseline leading-none" style={{ color: brand }}>
+					<span className="text-[18px] font-bold tabular-nums">{badgeDollars}</span>
+					<span className="text-[12px] font-bold">$</span>
+				</span>
+			</div>
+			<div className="min-w-0 flex-1">
+				<p className="truncate text-[14px] leading-snug" style={{ color: brand }}>
+					Your Balance:{' '}
+					<span className="font-semibold">{balanceFiat}</span>
+					<span className="mx-1.5 inline-block align-middle text-[10px] text-[#c5c9ce]" aria-hidden>
+						•
+					</span>
+					<span className="font-medium text-[#8a8f98] dark:text-slate-400">
+						{pointsDisplay} Pts
+					</span>
+				</p>
+				{chargePercent != null ? (
+					<p className="mt-0.5 truncate text-[12px] leading-snug text-[#8a8f98] dark:text-slate-400">
+						Earn{' '}
+						<span className="font-semibold" style={{ color: brand }}>
+							{chargePercent}% back in Points
+						</span>{' '}
+						on every visit &amp; purchase
+					</p>
+				) : null}
+			</div>
+			<ChevronRight className="h-4 w-4 shrink-0 text-[#c5c9ce]" strokeWidth={2.2} aria-hidden />
 		</>
 	)
-
-	/* Peer columns when Store Credits are present — no nested "Reward Points" label. */
-	if (showStoreCredits) {
-		return (
-			<div className="grid grid-cols-2 gap-0">
-				<div className="min-w-0 pr-3">
-					<p className="text-[12px] font-medium text-slate-500 dark:text-slate-400">Store Credits</p>
-					<p className="mt-1.5 text-[26px] font-bold leading-none tracking-tight text-[#1f2328] dark:text-slate-100 sm:text-[28px]">
-						{storeCreditsDisplay}
-					</p>
-				</div>
-				<div className="min-w-0 border-l border-slate-100 pl-3 dark:border-slate-800">
-					<p className="text-[12px] font-medium text-slate-500 dark:text-slate-400">My Points</p>
-					<p className="mt-1.5 text-[26px] font-bold leading-none tracking-tight text-[#1f2328] dark:text-slate-100 sm:text-[28px]">
-						{loading ? '—' : pointsValue}
-					</p>
-				</div>
-			</div>
-		)
-	}
+	const actionBtnClass =
+		'flex min-h-[5.5rem] flex-col items-center justify-center gap-2 rounded-[22px] px-2 py-4 ring-1 transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60'
 
 	return (
-		<div className="min-w-0">
-			<p className="text-[12px] font-medium text-slate-500 dark:text-slate-400">My Points</p>
-			<p className="mt-1.5 text-[26px] font-bold leading-none tracking-tight text-[#1f2328] dark:text-slate-100 sm:text-[28px]">
-				{loading ? '—' : pointsValue}
-			</p>
+		<div className="flex flex-col gap-3">
+			{showBalanceCard ? (
+				balanceClickable ? (
+					<button
+						type="button"
+						onClick={onBalanceClick}
+						aria-label="Your Balance"
+						className="flex w-full items-center gap-3 rounded-[22px] bg-white px-4 py-3.5 text-left shadow-[0_8px_22px_rgba(15,23,42,0.06)] ring-1 ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800"
+					>
+						{balanceInner}
+					</button>
+				) : (
+					<div
+						aria-label="Your Balance"
+						className="flex w-full items-center gap-3 rounded-[22px] bg-white px-4 py-3.5 shadow-[0_8px_22px_rgba(15,23,42,0.06)] ring-1 ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800"
+					>
+						{balanceInner}
+					</div>
+				)
+			) : null}
+			<div className="grid grid-cols-3 gap-3">
+				<button
+					type="button"
+					onClick={onBooking}
+					disabled={actionsDisabled}
+					aria-label="Booking"
+					className={`${actionBtnClass} ring-transparent`}
+					style={{ backgroundColor: brand, color: '#ffffff', borderColor: 'transparent' }}
+				>
+					<Calendar className="h-6 w-6" style={{ color: DISCOVER_VISIT_BOOKING_ICON }} strokeWidth={1.8} aria-hidden />
+					<span className="text-[14px] font-semibold text-white">Booking</span>
+				</button>
+				<button
+					type="button"
+					onClick={onGifting}
+					disabled={actionsDisabled}
+					aria-label="Gifting"
+					className={`${actionBtnClass} bg-white ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800`}
+				>
+					<Gift className="h-6 w-6" style={{ color: DISCOVER_VISIT_MUTED_ICON }} strokeWidth={1.8} aria-hidden />
+					<span className="text-[14px] font-semibold" style={{ color: brand }}>
+						Gifting
+					</span>
+				</button>
+				<button
+					type="button"
+					onClick={onContact}
+					disabled={actionsDisabled || contactBusy}
+					aria-busy={contactBusy}
+					aria-label="Contact"
+					className={`${actionBtnClass} bg-white ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800`}
+				>
+					{contactBusy ? (
+						<Loader2 className="h-6 w-6 animate-spin" style={{ color: DISCOVER_VISIT_MUTED_ICON }} strokeWidth={2} aria-hidden />
+					) : (
+						<Headphones className="h-6 w-6" style={{ color: DISCOVER_VISIT_MUTED_ICON }} strokeWidth={1.8} aria-hidden />
+					)}
+					<span className="text-[14px] font-semibold" style={{ color: brand }}>
+						Contact
+					</span>
+				</button>
+			</div>
+			{error ? (
+				<div
+					role="alert"
+					className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-100"
+				>
+					<AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
+					<p className="min-w-0 flex-1 leading-snug">{error}</p>
+				</div>
+			) : null}
 		</div>
 	)
 }
@@ -647,7 +753,7 @@ function DiscoverMerchantProspectJoinPanel({
 	/** ≥2 Store Credit Multipliers → seasonal copy + horizontal carousel; hides welcome heading/body/bonusBadge. */
 	multiplierCards?: DiscoverStoreCreditMultiplierCard[]
 	onClaim?: (suggestedAmount?: string) => void
-	/** From metadata `tiers[0].backgroundColor` when set. */
+	/** Brand fill / copy color: prefer card-level `backgroundColor`, else `tiers[0]`. */
 	backgroundColor?: string | null
 	/** From metadata `tiers[0].image` when set. */
 	backgroundImageUrl?: string | null
@@ -687,21 +793,9 @@ function DiscoverMerchantProspectJoinPanel({
 		!hasImage && solidColor && tierTheme?.isDarkStart ? solidColor : '#1562f0'
 	/**
 	 * Brand text above the image hero (on white / dark:slate-900 shell).
-	 * Light pastels fail on white → dark slate; dark brands fail on slate-900 → light slate.
+	 * Always keeps merchant brand hue; only darken/lighten for WCAG-ish contrast.
 	 */
 	const brandOnPanelShell = useMemo(() => {
-		const onWhite = {
-			eyebrow: '#8B7D6B',
-			title: '#0F172A',
-			body: '#666666',
-			sparkle: '#B8956A',
-		}
-		const onDark = {
-			eyebrow: '#cbd5e1',
-			title: '#f1f5f9',
-			body: 'rgba(241,245,249,0.78)',
-			sparkle: '#e2e8f0',
-		}
 		const defaultBrand = {
 			eyebrow: '#1562f0',
 			title: '#1562f0',
@@ -710,31 +804,13 @@ function DiscoverMerchantProspectJoinPanel({
 		}
 		const raw = (solidColor ?? '').trim()
 		if (!raw) return { light: defaultBrand, dark: defaultBrand }
-		const hex = raw.replace(/^#/, '')
-		if (!/^[0-9a-fA-F]{6}$/.test(hex) && !/^[0-9a-fA-F]{8}$/.test(hex)) {
-			return { light: onWhite, dark: onDark }
-		}
-		const ri = parseInt(hex.slice(0, 2), 16)
-		const gi = parseInt(hex.slice(2, 4), 16)
-		const bi = parseInt(hex.slice(4, 6), 16)
-		const lin = (c: number) => {
-			const x = c / 255
-			return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4
-		}
-		const lum = 0.2126 * lin(ri) + 0.7152 * lin(gi) + 0.0722 * lin(bi)
-		const contrast = (a: number, b: number) => {
-			const hi = Math.max(a, b)
-			const lo = Math.min(a, b)
-			return (hi + 0.05) / (lo + 0.05)
-		}
-		/** Approximate slate-900 luminance. */
-		const slate900Lum = 0.025
-		const brand = `#${hex.slice(0, 6)}`
-		const brandBody = `rgba(${ri},${gi},${bi},0.78)`
-		const brandSet = { eyebrow: brand, title: brand, body: brandBody, sparkle: brand }
-		const light = contrast(lum, 1) < 3 ? onWhite : brandSet
-		const dark = contrast(lum, slate900Lum) < 3 ? onDark : brandSet
-		return { light, dark }
+		const lightAdj = discoverBrandTextOnShell(raw, 1)
+		const darkAdj = discoverBrandTextOnShell(raw, 0.025)
+		const toSet = (adj: { solid: string; body: string } | null) =>
+			adj
+				? { eyebrow: adj.solid, title: adj.solid, body: adj.body, sparkle: adj.solid }
+				: defaultBrand
+		return { light: toSet(lightAdj), dark: toSet(darkAdj) }
 	}, [solidColor])
 	const shellEyebrowColor = tierTheme?.tertiary ?? '#8B7D6B'
 	const shellTitleColor = tierTheme?.primary ?? '#0F172A'
@@ -760,10 +836,15 @@ function DiscoverMerchantProspectJoinPanel({
 		? 'inline-flex items-center gap-1.5 rounded-full bg-[#e4e9ff] px-3 py-1 text-[11px] font-bold uppercase tracking-[0.06em] text-[#0c2a6b]'
 		: 'inline-flex items-center gap-1.5 rounded-full bg-[#0c2a6b]/10 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.06em] text-[#0c2a6b]'
 	const titleClass = 'mt-3 text-[20px] font-bold leading-snug tracking-tight sm:text-[22px]'
-	/** Footer always on light shell when hasImage. */
-	const footerClass = shellOnDark
-		? 'mt-3 flex items-center justify-center gap-1.5 text-center text-[12px] leading-snug text-white/75'
-		: 'mt-3 flex items-center justify-center gap-1.5 text-center text-[12px] leading-snug text-slate-600'
+	/** Vault trust line — same merchant title color as the Join heading. */
+	const footerClass = [
+		'mt-3 flex items-center justify-center gap-1.5 text-center text-[12px] leading-snug',
+		hasImage
+			? 'text-[color:var(--join-title)] dark:text-[color:var(--join-title-dark)]'
+			: '',
+	]
+		.filter(Boolean)
+		.join(' ')
 	const ctaClass = shellOnDark
 		? 'mt-4 flex w-full items-center justify-center gap-2 rounded-full bg-white px-4 py-3 text-[15px] font-bold shadow-sm transition active:scale-[0.98] hover:bg-white/95'
 		: 'mt-4 flex w-full items-center justify-center gap-2 rounded-full bg-[#1562f0] px-4 py-3 text-[15px] font-bold text-white shadow-sm transition active:scale-[0.98] hover:bg-[#1256d6]'
@@ -1041,12 +1122,23 @@ function DiscoverMerchantProspectJoinPanel({
 					<ArrowRight className="h-4 w-4 shrink-0" strokeWidth={2.5} aria-hidden />
 				</button>
 			) : null}
-			{chargeFooter ? (
-				<p className={footerClass}>
-					<span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#4ade80]" aria-hidden />
-					{chargeFooter}
-				</p>
-			) : null}
+			<p className={footerClass} style={hasImage ? undefined : { color: titleColor }}>
+				<svg className="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" aria-hidden>
+					<path
+						fill="#16a34a"
+						d="M12 2 4 5v6.1c0 5.05 3.4 9.76 8 10.9 4.6-1.14 8-5.85 8-10.9V5l-8-3Z"
+					/>
+					<path
+						fill="none"
+						stroke="#fff"
+						strokeWidth="2.4"
+						strokeLinecap="round"
+						strokeLinejoin="round"
+						d="m9 12 2.1 2.1L15.2 10"
+					/>
+				</svg>
+				{chargeFooter ?? 'CoNET L1 smart vault • Never expires & 100% redeemable'}
+			</p>
 		</section>
 	)
 }
@@ -1709,6 +1801,49 @@ function discoverParseCssRgb(color: string): { r: number; g: number; b: number }
 		return { r: Number(rgb[1]), g: Number(rgb[2]), b: Number(rgb[3]) }
 	}
 	return null
+}
+
+function discoverRelativeLuminance(r: number, g: number, b: number): number {
+	const lin = (c: number) => {
+		const x = c / 255
+		return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4
+	}
+	return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
+}
+
+function discoverContrastRatio(lumA: number, lumB: number): number {
+	const hi = Math.max(lumA, lumB)
+	const lo = Math.min(lumA, lumB)
+	return (hi + 0.05) / (lo + 0.05)
+}
+
+/**
+ * Keep brand hue for join-panel copy on white / slate-900 shells.
+ * Too-light brands are darkened; too-dark brands are lightened — never swap to navy/gray neutrals.
+ */
+function discoverBrandTextOnShell(
+	color: string,
+	bgLum: number,
+	minContrast = 3,
+): { solid: string; body: string } | null {
+	const rgb = discoverParseCssRgb(color)
+	if (!rgb) return null
+	let { r, g, b } = rgb
+	const towardDark = discoverRelativeLuminance(r, g, b) > bgLum
+	for (let i = 0; i < 28; i++) {
+		if (discoverContrastRatio(discoverRelativeLuminance(r, g, b), bgLum) >= minContrast) break
+		if (towardDark) {
+			r = Math.max(0, Math.round(r * 0.88))
+			g = Math.max(0, Math.round(g * 0.88))
+			b = Math.max(0, Math.round(b * 0.88))
+		} else {
+			r = Math.min(255, Math.round(r + (255 - r) * 0.14))
+			g = Math.min(255, Math.round(g + (255 - g) * 0.14))
+			b = Math.min(255, Math.round(b + (255 - b) * 0.14))
+		}
+	}
+	const solid = `rgb(${r}, ${g}, ${b})`
+	return { solid, body: `rgba(${r}, ${g}, ${b}, 0.78)` }
 }
 
 /**
@@ -4282,7 +4417,7 @@ function DiscoverMerchantDetailFullScreen({
 }) {
 	const navigate = useNavigate()
 	const location = useLocation()
-	const { profiles, setProfiles, discoverMerchantStatByCard, registerDiscoverMerchantStatFeedCards, applyDiscoverMerchantLikeCountDelta, couponOpenClaimStatusByKey, registerCouponOpenClaimFeedTargets, applyCouponOpenClaimStatus, myBrandCardDetails } = useDaemonContext()
+	const { profiles, setProfiles, discoverMerchantStatByCard, registerDiscoverMerchantStatFeedCards, applyDiscoverMerchantLikeCountDelta, couponOpenClaimStatusByKey, registerCouponOpenClaimFeedTargets, applyCouponOpenClaimStatus, myBrandCardDetails, setChatHomeItem } = useDaemonContext()
 	const { registerCardAddresses, resolveName, lookupByAddress, ensureCardsForAddresses, peekMetadata } =
 		useMerchantCardDatabase()
 	const {
@@ -4340,6 +4475,12 @@ function DiscoverMerchantDetailFullScreen({
 	const [supportChatOpening, setSupportChatOpening] = useState(false)
 	const [supportChatPickerOpen, setSupportChatPickerOpen] = useState(false)
 	const [supportChatError, setSupportChatError] = useState<string | null>(null)
+	const [merchantVisitError, setMerchantVisitError] = useState<string | null>(null)
+	const [giftSheetOpen, setGiftSheetOpen] = useState(false)
+	const [giftSheetEntered, setGiftSheetEntered] = useState(false)
+	const [giftSheetClosing, setGiftSheetClosing] = useState(false)
+	const supportChatGoToChatRef = useRef(false)
+	const giftSheetCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 	const supportChatAddresses = useMemo(
 		() => parseSupportChatAddressesFromMetadata(merchantMetadataRoot),
 		[merchantMetadataRoot],
@@ -4442,20 +4583,27 @@ function DiscoverMerchantDetailFullScreen({
 		resolveTag,
 	])
 
-	/** Open CoNET Chat with a merchant-designated Support Chat POS EOA (exact address only). */
+	/** Open CoNET Chat with a merchant POS / owner EOA. Genesis Support Chat uses the profile overlay. */
 	const openSupportChatPeer = useCallback(
-		async (rawEoa: string) => {
-			if (supportChatOpening || issuerProfileOpening) return
+		async (rawEoa: string, opts?: { goToChat?: boolean; skipBusyGuard?: boolean }) => {
+			const goToChat = Boolean(opts?.goToChat)
+			const skipBusyGuard = Boolean(opts?.skipBusyGuard)
+			if (!skipBusyGuard && (supportChatOpening || issuerProfileOpening)) return
+			const reportError = (msg: string) => {
+				if (goToChat) setMerchantVisitError(msg)
+				else setSupportChatError(msg)
+			}
 			let peerEoa: string
 			try {
 				peerEoa = ethers.getAddress(rawEoa.trim())
 			} catch {
-				setSupportChatError('Invalid Support Chat address.')
+				reportError(goToChat ? 'Invalid contact address.' : 'Invalid Support Chat address.')
 				return
 			}
-			setSupportChatError(null)
+			if (goToChat) setMerchantVisitError(null)
+			else setSupportChatError(null)
 			setSupportChatPickerOpen(false)
-			setSupportChatOpening(true)
+			if (!skipBusyGuard) setSupportChatOpening(true)
 			try {
 				let itemResult = resolvePeerSearchResult(peerEoa)
 				if (!itemResult) {
@@ -4494,9 +4642,15 @@ function DiscoverMerchantDetailFullScreen({
 						image: rec?.image ?? '',
 					}
 				}
+				if (goToChat) {
+					setChatHomeItem(itemResult)
+					navigate('/chat')
+					onClose()
+					return
+				}
 				setIssuerProfileItem(itemResult)
 			} finally {
-				setSupportChatOpening(false)
+				if (!skipBusyGuard) setSupportChatOpening(false)
 			}
 		},
 		[
@@ -4507,11 +4661,15 @@ function DiscoverMerchantDetailFullScreen({
 			searchRemoteAndIngest,
 			ingestSearchResponse,
 			resolveTag,
+			setChatHomeItem,
+			navigate,
+			onClose,
 		],
 	)
 
 	const onSupportChatClick = useCallback(() => {
 		if (supportChatAddresses.length === 0 || supportChatOpening || issuerProfileOpening) return
+		supportChatGoToChatRef.current = false
 		setSupportChatError(null)
 		if (supportChatAddresses.length === 1) {
 			void openSupportChatPeer(supportChatAddresses[0]!)
@@ -4821,6 +4979,13 @@ function DiscoverMerchantDetailFullScreen({
 				: DISCOVER_MERCHANT_DETAIL_PAGE_FALLBACK_BG,
 		[merchantDetailBrandColor],
 	)
+	const visitChargePercent = useMemo(() => {
+		const n = parseDiscoverActorRewardPercentsFromMetadata(merchantMetadataRoot).chargePercent
+		return n != null && n > 0 ? n : null
+	}, [merchantMetadataRoot])
+	const visitBalanceFiat = `${balancePrefix} ${formatAmount(Number(merchantAssets?.points ?? 0), displayCurrency)}`
+	const visitBadgeDollars = String(Math.trunc(Math.abs(Number(merchantAssets?.points ?? 0))))
+	const visitPointsDisplay = formatSocialPoints13Display(myPoints13Loading ? 0 : (myPoints13Num ?? 0))
 	const showProspectJoinPanel = !isConetGenesisCard && !hasActiveMembership
 	/** Same gate as DiscoverMerchantProspectJoinPanel carousel (`multiplierCards.length > 1`). */
 	const showStoreCreditMultiplierOffers =
@@ -5521,6 +5686,129 @@ function DiscoverMerchantDetailFullScreen({
 			openDiscoverTopupAmount,
 			topupPromotionCapsule?.suggestedAmount,
 		],
+	)
+
+	const closeGiftSheet = useCallback(() => {
+		if (giftSheetClosing) return
+		setGiftSheetClosing(true)
+		if (giftSheetCloseTimerRef.current) clearTimeout(giftSheetCloseTimerRef.current)
+		giftSheetCloseTimerRef.current = setTimeout(() => {
+			setGiftSheetOpen(false)
+			setGiftSheetEntered(false)
+			setGiftSheetClosing(false)
+			giftSheetCloseTimerRef.current = null
+		}, 300)
+	}, [giftSheetClosing])
+
+	const openGiftSheet = useCallback(() => {
+		setMerchantVisitError(null)
+		setGiftSheetClosing(false)
+		setGiftSheetEntered(false)
+		setGiftSheetOpen(true)
+	}, [])
+
+	const onMerchantVisitBalanceClick = useCallback(() => {
+		setMerchantVisitError(null)
+		if (canDiscoverTopUp) {
+			openDiscoverTopupAmount()
+			return
+		}
+		if (showCouponsCard) {
+			scrollToCouponsSection()
+		}
+	}, [canDiscoverTopUp, openDiscoverTopupAmount, showCouponsCard, scrollToCouponsSection])
+
+	const onMerchantVisitBooking = useCallback(() => {
+		setMerchantVisitError(null)
+		if (showCouponsCard) {
+			scrollToCouponsSection()
+			return
+		}
+		setMerchantVisitError('No bookings are available right now.')
+	}, [showCouponsCard, scrollToCouponsSection])
+
+	const onMerchantVisitGifting = useCallback(() => {
+		setMerchantVisitError(null)
+		if (Number(merchantAssets?.points ?? 0) > 0 && item.cardAddress) {
+			openGiftSheet()
+			return
+		}
+		setMerchantVisitError('You need store credits to send a gift.')
+	}, [merchantAssets?.points, item.cardAddress, openGiftSheet])
+
+	const onMerchantVisitContact = useCallback(async () => {
+		if (supportChatOpening || issuerProfileOpening) return
+		setMerchantVisitError(null)
+		if (supportChatAddresses.length === 1) {
+			setSupportChatOpening(true)
+			try {
+				await openSupportChatPeer(supportChatAddresses[0]!, { goToChat: true, skipBusyGuard: true })
+			} finally {
+				setSupportChatOpening(false)
+			}
+			return
+		}
+		if (supportChatAddresses.length > 1) {
+			supportChatGoToChatRef.current = true
+			setSupportChatPickerOpen(true)
+			void ensureProfilesForAddresses(supportChatAddresses)
+			return
+		}
+		const cardAddress = item.cardAddress?.trim() ?? ''
+		if (!cardAddress || !ethers.isAddress(cardAddress)) {
+			setMerchantVisitError('No merchant contact is available.')
+			return
+		}
+		setSupportChatOpening(true)
+		try {
+			const pos = await getCardPosAdminEoas(cardAddress)
+			if (!pos.ok) {
+				setMerchantVisitError('Could not load merchant terminals. Try again.')
+				return
+			}
+			const peer = pos.addresses[0] || issuerOwnerEoa
+			if (!peer) {
+				setMerchantVisitError('No merchant contact is available.')
+				return
+			}
+			await openSupportChatPeer(peer, { goToChat: true, skipBusyGuard: true })
+		} finally {
+			setSupportChatOpening(false)
+		}
+	}, [
+		supportChatOpening,
+		issuerProfileOpening,
+		supportChatAddresses,
+		openSupportChatPeer,
+		ensureProfilesForAddresses,
+		item.cardAddress,
+		issuerOwnerEoa,
+	])
+
+	const giftSheetCards = useMemo((): MerchantGiftCardOption[] => {
+		const cardAddress = item.cardAddress?.trim() ?? ''
+		const points = Number(merchantAssets?.points ?? 0)
+		if (!cardAddress || !Number.isFinite(points) || points <= 0) return []
+		return [{ cardAddress, title: passTitle, points, currency: displayCurrency }]
+	}, [item.cardAddress, merchantAssets?.points, passTitle, displayCurrency])
+
+	const renderVisitActions = (showBalanceCard: boolean) => (
+		<DiscoverMerchantVisitActionsBlock
+			brandColor={merchantDetailBrandColor ?? DISCOVER_VISIT_BRAND_FALLBACK}
+			showBalanceCard={showBalanceCard}
+			badgeDollars={visitBadgeDollars}
+			balanceFiat={visitBalanceFiat}
+			pointsDisplay={visitPointsDisplay}
+			chargePercent={visitChargePercent}
+			balanceClickable
+			onBalanceClick={onMerchantVisitBalanceClick}
+			onBooking={onMerchantVisitBooking}
+			onGifting={onMerchantVisitGifting}
+			onContact={() => void onMerchantVisitContact()}
+			contactBusy={supportChatOpening}
+			actionsDisabled={giftSheetOpen}
+			error={merchantVisitError}
+		/>
 	)
 
 	const handleUsdcTopupContinue = useCallback(async () => {
@@ -6323,12 +6611,38 @@ function DiscoverMerchantDetailFullScreen({
 	}, [item.cardAddress, ccy, ensureCardsForAddresses, registerCardAddresses])
 
 	useEffect(() => {
-		const onKey = (e: KeyboardEvent) => {
-			if (e.key === "Escape") onClose()
+		if (!giftSheetOpen) return
+		const frame = requestAnimationFrame(() => setGiftSheetEntered(true))
+		return () => cancelAnimationFrame(frame)
+	}, [giftSheetOpen])
+
+	useEffect(() => {
+		return () => {
+			if (giftSheetCloseTimerRef.current) clearTimeout(giftSheetCloseTimerRef.current)
 		}
-		window.addEventListener("keydown", onKey)
-		return () => window.removeEventListener("keydown", onKey)
-	}, [onClose])
+	}, [])
+
+	useEffect(() => {
+		const onKey = (e: KeyboardEvent) => {
+			if (e.key !== 'Escape') return
+			if (giftSheetOpen) {
+				e.preventDefault()
+				closeGiftSheet()
+				return
+			}
+			if (supportChatPickerOpen) {
+				e.preventDefault()
+				if (!supportChatOpening) {
+					supportChatGoToChatRef.current = false
+					setSupportChatPickerOpen(false)
+				}
+				return
+			}
+			onClose()
+		}
+		window.addEventListener('keydown', onKey)
+		return () => window.removeEventListener('keydown', onKey)
+	}, [onClose, giftSheetOpen, closeGiftSheet, supportChatPickerOpen, supportChatOpening])
 
 	return (
 		<>
@@ -6435,7 +6749,7 @@ function DiscoverMerchantDetailFullScreen({
 			<div className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-[color:var(--discover-merchant-page-bg)] px-4 pb-[calc(2rem+env(safe-area-inset-bottom))] pt-4 dark:bg-slate-950">
 				<div className="mx-auto flex max-w-lg flex-col gap-4">
 					{likeError ? <DiscoverPayPanelError message={likeError} /> : null}
-					{supportChatAddresses.length > 0 ? (
+					{isConetGenesisCard && supportChatAddresses.length > 0 ? (
 						<div className="flex flex-col gap-2">
 							<button
 								type="button"
@@ -6479,7 +6793,9 @@ function DiscoverMerchantDetailFullScreen({
 							membershipPrice={prospectJoinMembershipPrice.price}
 							membershipDuration={prospectJoinMembershipPrice.duration}
 							multiplierCards={prospectJoinPanelCopy.multiplierCards}
-							backgroundColor={prospectJoinPanelBackground.backgroundColor}
+							backgroundColor={
+								merchantDetailBrandColor ?? prospectJoinPanelBackground.backgroundColor
+							}
 							backgroundImageUrl={prospectJoinPanelBackground.backgroundImageUrl}
 							backgroundImageFit={prospectJoinPanelBackground.imageFit}
 							ctaLabel={
@@ -6494,23 +6810,7 @@ function DiscoverMerchantDetailFullScreen({
 							}
 						/>
 					) : null}
-					{!isConetGenesisCard && !hasActiveMembership ? (
-						<div
-							className="rounded-[22px] bg-white p-5 shadow-[0_8px_22px_rgba(15,23,42,0.06)] ring-1 ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800"
-							aria-label="My Points"
-						>
-							<DiscoverMerchantMyPointsBlock
-								loading={myPoints13Loading}
-								points={myPoints13Num}
-								storeCreditsDisplay={balanceDisplay}
-								storeCreditsVisible={
-									!merchantAssetsLoading &&
-									Number.isFinite(Number(merchantAssets?.points)) &&
-									Number(merchantAssets?.points ?? 0) > 0
-								}
-							/>
-						</div>
-					) : null}
+					{!isConetGenesisCard && !hasActiveMembership ? renderVisitActions(true) : null}
 					{isConetGenesisCard ? (
 						<ConetGenesisNodeDiscoverSection
 							onLockSeat={lockConetGenesisSeat}
@@ -6771,6 +7071,8 @@ function DiscoverMerchantDetailFullScreen({
 					</div>
 					) : null}
 
+					{!isConetGenesisCard && hasActiveMembership ? renderVisitActions(false) : null}
+
 					{/* Top-up promo / curated offers — non-Genesis merchant cards. */}
 					{!isConetGenesisCard ? (
 					<>
@@ -6907,7 +7209,7 @@ function DiscoverMerchantDetailFullScreen({
 				<AnimatePresence>
 					<motion.div
 						key="discover-issuer-profile"
-						className="fixed inset-0 z-[101] flex flex-col bg-white dark:bg-slate-900"
+						className="fixed inset-0 z-[121] flex flex-col bg-white dark:bg-slate-900"
 						initial={{ x: '100%' }}
 						animate={{ x: 0 }}
 						exit={{ x: '100%' }}
@@ -6933,12 +7235,15 @@ function DiscoverMerchantDetailFullScreen({
 		{supportChatPickerOpen && supportChatAddresses.length > 1
 			? createPortal(
 					<div
-						className="fixed inset-0 z-[102] flex flex-col justify-end bg-black/40"
+						className="fixed inset-0 z-[122] flex flex-col justify-end bg-black/40"
 						role="dialog"
 						aria-modal="true"
 						aria-label="Choose Support Chat"
 						onClick={() => {
-							if (!supportChatOpening) setSupportChatPickerOpen(false)
+							if (!supportChatOpening) {
+								supportChatGoToChatRef.current = false
+								setSupportChatPickerOpen(false)
+							}
 						}}
 					>
 						<div
@@ -6955,7 +7260,12 @@ function DiscoverMerchantDetailFullScreen({
 									tabIndex={-1}
 									aria-label="Cancel"
 									disabled={supportChatOpening}
-									onClick={() => setSupportChatPickerOpen(false)}
+									onClick={() => {
+										if (!supportChatOpening) {
+											supportChatGoToChatRef.current = false
+											setSupportChatPickerOpen(false)
+										}
+									}}
 									className="rounded-full px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-50 dark:text-slate-300 dark:hover:bg-slate-800"
 								>
 									Cancel
@@ -6971,7 +7281,11 @@ function DiscoverMerchantDetailFullScreen({
 												type="button"
 												disabled={supportChatOpening}
 												aria-busy={supportChatOpening}
-												onClick={() => void openSupportChatPeer(addr)}
+												onClick={() =>
+													void openSupportChatPeer(addr, {
+														goToChat: supportChatGoToChatRef.current,
+													})
+												}
 												className="flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left transition hover:bg-slate-50 disabled:opacity-60 dark:hover:bg-slate-800/80"
 											>
 												<span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#e9edff] text-[#0051d1]">
@@ -6992,6 +7306,49 @@ function DiscoverMerchantDetailFullScreen({
 									)
 								})}
 							</ul>
+						</div>
+					</div>,
+					document.body,
+				)
+			: null}
+		{giftSheetOpen && typeof document !== 'undefined'
+			? createPortal(
+					<div
+						className="fixed inset-0 z-[121] flex flex-col bg-[#f4f6f8] transition-transform duration-300 ease-out dark:bg-slate-950"
+						style={{
+							transform: giftSheetClosing || !giftSheetEntered ? 'translateX(100%)' : 'translateX(0)',
+						}}
+						role="dialog"
+						aria-modal="true"
+						aria-label="Send a gift"
+						onTouchMove={(e) => e.stopPropagation()}
+					>
+						<div
+							className="flex min-h-0 flex-1 flex-col overflow-hidden pb-[max(1.5rem,env(safe-area-inset-bottom,0px))]"
+							style={{ paddingTop: 'max(1rem, env(safe-area-inset-top, 0px))' }}
+						>
+							<div className="px-4">
+								<div className={`flex items-center justify-between ${BEAMIO_CIRCULAR_BACK_ROW_CLASS}`}>
+									<BeamioCircularBackButton
+										variant="onLight"
+										onClick={closeGiftSheet}
+										className="absolute left-0 top-0"
+									/>
+								</div>
+								<header className="pb-5 pt-2">
+									<h1 className="mt-2 text-3xl font-semibold tracking-tight text-[#0F172A] dark:text-slate-100">
+										Send a gift
+									</h1>
+								</header>
+							</div>
+							<div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+								<MerchantAssetGiftSheet
+									onClose={closeGiftSheet}
+									cards={giftSheetCards}
+									profile={profile}
+									onSuccess={() => void refreshMerchantAssets()}
+								/>
+							</div>
 						</div>
 					</div>,
 					document.body,

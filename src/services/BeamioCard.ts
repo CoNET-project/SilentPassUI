@@ -2825,6 +2825,74 @@ export const getCardOwner = async (cardAddress: string): Promise<string> => {
 	}
 }
 
+/**
+ * POS terminal EOAs on a merchant card (`getAdminListWithMetadata()` minus `owner()`).
+ * Live cards expose AdminStats `getAdminListWithMetadata`, not a bare `getAdminList()`.
+ * `{ ok: false }` is untrusted (RPC/parse failure) — callers must not treat that as “no POS”.
+ * `{ ok: true, addresses: [] }` is a trusted empty list.
+ */
+export async function getCardPosAdminEoas(
+	cardAddress: string,
+): Promise<{ ok: true; addresses: string[] } | { ok: false }> {
+	try {
+		const addr = ethers.getAddress(cardAddress)
+		const { provider } = await providerForBeamioUserCard(addr)
+		const code = await provider.getCode(addr)
+		if (!code || code === '0x') return { ok: false }
+		const card = new ethers.Contract(
+			addr,
+			[
+				'function getAdminListWithMetadata() view returns (address[] admins, string[] metadatas, address[] parents)',
+				'function owner() view returns (address)',
+			],
+			provider,
+		)
+		const readList = async (): Promise<{ owner: string; list: string[] }> => {
+			const [tuple, ownerRaw] = await Promise.all([
+				card.getAdminListWithMetadata() as Promise<[string[], string[], string[]]>,
+				card.owner() as Promise<string>,
+			])
+			const named = (tuple as { admins?: unknown } | null)?.admins
+			const listRaw = Array.isArray(tuple?.[0])
+				? tuple[0]
+				: Array.isArray(named)
+					? named
+					: []
+			return {
+				owner: ethers.getAddress(ownerRaw),
+				list: listRaw,
+			}
+		}
+		let snapshot: { owner: string; list: string[] }
+		try {
+			snapshot = await readList()
+		} catch (err) {
+			if (!isEmptyEthCallResult(err)) throw err
+			await sleepMs(250)
+			snapshot = await readList()
+		}
+		const seen = new Set<string>()
+		const addresses: string[] = []
+		const ownerKey = snapshot.owner.toLowerCase()
+		for (const raw of snapshot.list) {
+			if (typeof raw !== 'string' || !raw.trim()) continue
+			try {
+				const checksum = ethers.getAddress(raw)
+				if (checksum === ethers.ZeroAddress) continue
+				const key = checksum.toLowerCase()
+				if (key === ownerKey || seen.has(key)) continue
+				seen.add(key)
+				addresses.push(checksum)
+			} catch {
+				/* skip malformed */
+			}
+		}
+		return { ok: true, addresses }
+	} catch {
+		return { ok: false }
+	}
+}
+
 /** EIP-712 签名：Owner 授权 executeForOwner(cardAddr, data, deadline, nonce)。通用接口，支持 createRedeem、cancelRedeem 等。
  * 注意：签名者（从 privateKey 恢复的 EOA）必须等于 card.owner()。若卡 owner 为 AA 地址，用 EOA 签会 revert UC_InvalidSignature。 */
 export const signExecuteForOwner = async (

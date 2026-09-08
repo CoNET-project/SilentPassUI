@@ -448,7 +448,7 @@ export type DiscoverProspectJoinPanelCopy = {
 	body: string
 	/** Green pill, e.g. `Get 50% Bonus Points`. Null when no top-up bonus to show. */
 	bonusBadge: string | null
-	/** Charge Reward PT footer, e.g. `Earn 40% back in points on every future purchase.` */
+	/** Trust footer under Claim CTA. Always the CoNET L1 vault line. */
 	chargeFooter: string | null
 	hasTopupPromotion: boolean
 	hasChargePromotion: boolean
@@ -648,10 +648,7 @@ export function resolveDiscoverProspectJoinPanelCopy(params: {
 				? `Get ${amounts.receiveLabel}`
 				: null
 
-	const chargeFooter =
-		hasChargePromotion && chargePercent != null
-			? `Earn ${formatBonusRuleAmount(chargePercent)}% back in points on every future purchase.`
-			: null
+	const chargeFooter = 'CoNET L1 smart vault • Never expires & 100% redeemable'
 
 	const multiplierCards = resolveDiscoverStoreCreditMultiplierCards({
 		metadataRoot: params.metadataRoot,

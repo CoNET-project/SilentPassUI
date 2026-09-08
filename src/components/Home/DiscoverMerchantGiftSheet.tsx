@@ -1,7 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent, WheelEvent } from 'react'
 import { ethers } from 'ethers'
-import { AlertTriangle, Check, Copy, Gift, Loader2, Search, Share2, X } from 'lucide-react'
+import {
+	AlertTriangle,
+	Check,
+	ChevronRight,
+	Copy,
+	Gift,
+	Loader2,
+	Search,
+	Share2,
+	Sparkles,
+	X,
+} from 'lucide-react'
 import { generateCODE } from '@/services/beamio'
 import { fiatPrefix, formatAmount } from '@/services/currency'
 import {
@@ -348,96 +359,156 @@ export default function DiscoverMerchantGiftSheet({
 		}
 	}
 
+	const merchantLabel = merchantTitle.trim() || 'this merchant'
+	const giftFooterTip = isFeeCard
+		? `Minimum ${prefix}${minHuman}. Non-members get membership from the fee portion; members get full store credit.`
+		: 'Recipient gets store credit for this amount — plus any Top-up Multiplier the merchant configured.'
+
 	if (issuedCode) {
 		const creditHuman = issuedTopupCreditE6
-			? membershipFeeE6ToHuman(issuedTopupCreditE6) || formatAmount(Number(ethers.formatUnits(issuedTopupCreditE6, 6)), ccy)
+			? membershipFeeE6ToHuman(issuedTopupCreditE6) ||
+				formatAmount(Number(ethers.formatUnits(issuedTopupCreditE6, 6)), ccy)
 			: null
 		return (
-			<div className="flex flex-col gap-5 px-4 pb-8">
-				<div className="rounded-2xl border border-emerald-200/80 bg-emerald-50/80 p-5 dark:border-emerald-800/50 dark:bg-emerald-950/40">
-					<div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-300">
-						<Gift className="h-5 w-5 shrink-0" aria-hidden />
-						<p className="text-[15px] font-semibold">Gift code ready</p>
+			<section className="mx-auto flex w-full max-w-lg flex-col gap-5 px-4 pb-8" aria-label="Gift code ready">
+				<header className="px-0.5">
+					<div className="flex items-center gap-1.5">
+						<Sparkles className="h-3.5 w-3.5 shrink-0 text-[#C9A227]" strokeWidth={2} aria-hidden />
+						<span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#9ca3af]">
+							Gift ready to share
+						</span>
 					</div>
-					<p className="mt-2 text-[13px] leading-relaxed text-emerald-900/80 dark:text-emerald-100/80">
-						Copy this code now. It is shown once and is not stored on our servers. Anyone with the
-						code can claim store credit
-						{isFeeCard ? ' (and membership if they are not already a member)' : ''}
-						{creditHuman ? ` — about ${prefix}${creditHuman} toward #0 credit after claim` : ''}.
+					<h2 className="mt-2 font-serif text-[22px] font-semibold leading-snug tracking-tight text-[#2c2416] dark:text-slate-100 sm:text-[24px]">
+						Your redeem code is ready
+					</h2>
+					<p className="mt-2 text-[13px] leading-relaxed text-[#6b7280] dark:text-slate-400">
+						Copy it now — shown once and never stored on our servers. Anyone with the code can claim
+						{isFeeCard ? ' (membership for new members, or store credit)' : ' store credit'}
+						{creditHuman ? ` — about ${prefix}${creditHuman} toward #0 after claim` : ''}.
 					</p>
-					<p className="mt-4 break-all rounded-xl bg-white px-4 py-3 font-mono text-[15px] font-semibold tracking-wide text-slate-900 shadow-sm dark:bg-slate-900 dark:text-slate-100">
+				</header>
+
+				<div className="overflow-hidden rounded-[20px] bg-[#2c2416] px-4 pb-4 pt-3.5 text-white shadow-[0_8px_28px_rgba(44,36,22,0.28)]">
+					<div className="flex items-center justify-between gap-2">
+						<span className="shrink-0 rounded-full bg-[#3d3429] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[#D4B483]">
+							Gift
+						</span>
+						<p className="min-w-0 flex-1 truncate text-center font-serif text-[15px] font-semibold tracking-tight text-white">
+							{merchantLabel}
+						</p>
+						<span className="w-[4.5rem] shrink-0" aria-hidden />
+					</div>
+					<p className="mt-4 break-all rounded-xl bg-white/[0.08] px-4 py-3 font-mono text-[15px] font-semibold tracking-wide text-white ring-1 ring-white/10">
 						{issuedCode}
 					</p>
-					<div className="mt-4 flex flex-wrap gap-2">
-						<button
-							type="button"
-							onClick={() => void handleCopyCode()}
-							className="inline-flex items-center gap-2 rounded-full bg-[#1562f0] px-4 py-2.5 text-[14px] font-semibold text-white"
-						>
-							{copyStatus === 'ok' ? (
-								<Check className="h-4 w-4 text-emerald-300" aria-hidden />
-							) : (
-								<Copy className="h-4 w-4" aria-hidden />
-							)}
-							{copyStatus === 'ok' ? 'Copied' : 'Copy code'}
-						</button>
-						<button
-							type="button"
-							onClick={() => void handleShare()}
-							className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-[14px] font-semibold text-slate-800 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
-						>
-							<Share2 className="h-4 w-4" aria-hidden />
-							Share
-						</button>
-						<button
-							type="button"
-							onClick={onClose}
-							className="inline-flex items-center gap-2 rounded-full border border-transparent px-4 py-2.5 text-[14px] font-semibold text-slate-600 dark:text-slate-300"
-						>
-							Done
-						</button>
-					</div>
 				</div>
+
+				<div className="flex flex-col gap-2.5">
+					<button
+						type="button"
+						onClick={() => void handleCopyCode()}
+						className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#3d3429] px-5 py-3.5 text-[15px] font-bold text-white shadow-[0_4px_16px_rgba(44,36,22,0.22)] transition active:scale-[0.98]"
+					>
+						{copyStatus === 'ok' ? (
+							<Check className="h-5 w-5 text-[#D4B483]" strokeWidth={2.25} aria-hidden />
+						) : (
+							<Copy className="h-5 w-5 text-[#D4B483]" strokeWidth={2.25} aria-hidden />
+						)}
+						<span>{copyStatus === 'ok' ? 'Copied' : 'Copy gift code'}</span>
+						<ChevronRight className="h-5 w-5 opacity-80" strokeWidth={2.25} aria-hidden />
+					</button>
+					<button
+						type="button"
+						onClick={() => void handleShare()}
+						className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-[#e8ecf0] bg-white px-5 py-3 text-[14px] font-semibold text-[#2c2416] shadow-sm transition active:scale-[0.98] dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+					>
+						<Share2 className="h-4 w-4 text-[#8a7a68]" strokeWidth={2.25} aria-hidden />
+						Share with a friend
+					</button>
+					<button
+						type="button"
+						onClick={onClose}
+						className="inline-flex w-full items-center justify-center px-5 py-2 text-[14px] font-semibold text-[#6b7280] dark:text-slate-400"
+					>
+						Done
+					</button>
+				</div>
+
 				{panelError ? (
-					<div role="alert" className="flex gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-[13px] text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
+					<div
+						role="alert"
+						className="flex gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-[13px] text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100"
+					>
 						<AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
 						<p>{panelError}</p>
 					</div>
 				) : null}
-			</div>
+			</section>
 		)
 	}
 
 	return (
-		<div className="flex flex-col gap-5 px-4 pb-8">
-			<p className="text-[14px] leading-relaxed text-slate-600 dark:text-slate-300">
-				Pay with CoNET-USDC to create an open gift redeem code for{' '}
-				<span className="font-semibold text-slate-900 dark:text-slate-100">
-					{merchantTitle.trim() || 'this merchant'}
-				</span>
-				. You and the recipient do not pay network gas — only offline signatures. The merchant does
-				not need to sign.
-			</p>
+		<section className="mx-auto flex w-full max-w-lg flex-col gap-5 px-4 pb-8" aria-label="Send a merchant gift">
+			<header className="px-0.5">
+				<div className="flex items-center gap-1.5">
+					<Sparkles className="h-3.5 w-3.5 shrink-0 text-[#C9A227]" strokeWidth={2} aria-hidden />
+					<span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#9ca3af]">
+						Treat someone special
+					</span>
+				</div>
+				<h2 className="mt-2 font-serif text-[22px] font-semibold leading-snug tracking-tight text-[#2c2416] dark:text-slate-100 sm:text-[24px]">
+					Gift Store Credit & Open Redeem
+				</h2>
+				<p className="mt-2 text-[13px] leading-relaxed text-[#6b7280] dark:text-slate-400">
+					Pay with CoNET-USDC for {merchantLabel}. You only sign offline — no network gas for you or
+					the recipient. The merchant does not need to sign.
+				</p>
+			</header>
 
-			{isFeeCard ? (
-				<p className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-[13px] text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
-					Membership fee card: minimum gift is {prefix}
-					{minHuman}. Non-members receive a membership NFT from the fee portion; any remainder
-					becomes store credit. Existing members receive the full amount as store credit.
-				</p>
-			) : (
-				<p className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-[13px] text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
-					Recipient receives store credit for this gift amount (plus any Top-up Multiplier configured
-					by the merchant).
-				</p>
-			)}
+			<div className="overflow-hidden rounded-[20px] bg-[#2c2416] px-4 pb-4 pt-3.5 text-white shadow-[0_8px_28px_rgba(44,36,22,0.28)]">
+				<div className="flex items-center justify-between gap-2">
+					<span className="shrink-0 rounded-full bg-[#3d3429] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[#D4B483]">
+						Gift
+					</span>
+					<p className="min-w-0 flex-1 truncate text-center font-serif text-[15px] font-semibold tracking-tight text-white">
+						{merchantLabel}
+					</p>
+					<span className="w-[4.5rem] shrink-0" aria-hidden />
+				</div>
+				<div className="mt-4 grid grid-cols-2 gap-3">
+					<div className="rounded-xl bg-white/[0.06] px-3 py-3 ring-1 ring-white/10">
+						<p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#D4B483]">
+							Currency
+						</p>
+						<p className="mt-1.5 text-[22px] font-bold leading-none tracking-tight text-white tabular-nums">
+							{ccy}
+						</p>
+						<p className="mt-2 inline-flex items-center gap-1.5 text-[11px] font-medium text-emerald-400/90">
+							<span className="h-1.5 w-1.5 rounded-full bg-emerald-400" aria-hidden />
+							Card pricing
+						</p>
+					</div>
+					<div className="rounded-xl bg-white/[0.06] px-3 py-3 ring-1 ring-white/10">
+						<p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#D4B483]">
+							{isFeeCard ? 'Min gift' : 'From'}
+						</p>
+						<p className="mt-1.5 text-[22px] font-bold leading-none tracking-tight text-[#D4B483] tabular-nums">
+							{prefix}
+							{minHuman}
+						</p>
+						<p className="mt-2 text-[11px] font-medium text-white/45">
+							{isFeeCard ? 'Membership floor' : 'Open amount'}
+						</p>
+					</div>
+				</div>
+			</div>
 
 			<label className="block">
-				<span className="mb-1.5 block text-[12px] font-semibold uppercase tracking-wide text-slate-500">
+				<span className="mb-1.5 block text-[12px] font-semibold uppercase tracking-[0.08em] text-[#9ca3af]">
 					Gift amount ({ccy})
 				</span>
 				<div className="relative">
-					<span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[15px] font-semibold text-slate-500">
+					<span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[15px] font-semibold text-[#8a7a68]">
 						{prefix}
 					</span>
 					<input
@@ -456,21 +527,24 @@ export default function DiscoverMerchantGiftSheet({
 						onKeyDown={preventNumericInputStepKeys}
 						onWheel={preventNumericInputWheelStep}
 						disabled={submitting}
-						className="w-full rounded-2xl border border-slate-200 bg-white py-3 pl-10 pr-4 text-[16px] font-semibold text-slate-900 outline-none focus:border-[#1562f0] dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]"
+						className="w-full rounded-2xl border border-[#e8ecf0] bg-white py-3.5 pl-11 pr-4 text-[16px] font-semibold text-[#2c2416] outline-none ring-0 focus:border-[#3d3429] dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]"
 						placeholder={minHuman}
 					/>
 				</div>
 			</label>
 
 			<div>
-				<span className="mb-1.5 block text-[12px] font-semibold uppercase tracking-wide text-slate-500">
+				<span className="mb-1.5 block text-[12px] font-semibold uppercase tracking-[0.08em] text-[#9ca3af]">
 					Share with a friend (optional)
 				</span>
 				{selectedFriend ? (
 					<GiftFriendCapsule item={selectedFriend} onClear={() => setSelectedFriend(null)} />
 				) : (
 					<div className="relative">
-						<Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden />
+						<Search
+							className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#8a7a68]"
+							aria-hidden
+						/>
 						<input
 							type="search"
 							value={friendQuery}
@@ -478,13 +552,13 @@ export default function DiscoverMerchantGiftSheet({
 							disabled={submitting}
 							placeholder="@BeamioTag or address"
 							autoComplete="off"
-							className="w-full rounded-2xl border border-slate-200 bg-white py-3 pl-10 pr-4 text-[14px] text-slate-900 outline-none focus:border-[#1562f0] dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+							className="w-full rounded-2xl border border-[#e8ecf0] bg-white py-3 pl-10 pr-4 text-[14px] text-[#2c2416] outline-none focus:border-[#3d3429] dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
 						/>
 						{friendLoading ? (
-							<Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-slate-400" aria-hidden />
+							<Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-[#8a7a68]" aria-hidden />
 						) : null}
 						{showFriendDropdown && friendResults.length > 0 ? (
-							<ul className="absolute z-10 mt-1 max-h-56 w-full overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-lg dark:border-slate-600 dark:bg-slate-900">
+							<ul className="absolute z-10 mt-1 max-h-56 w-full overflow-y-auto rounded-2xl border border-[#e8ecf0] bg-white shadow-lg dark:border-slate-600 dark:bg-slate-900">
 								{friendResults.map((r) => (
 									<li key={r.address}>
 										<BeamioSearchResultRow
@@ -503,8 +577,8 @@ export default function DiscoverMerchantGiftSheet({
 						) : null}
 					</div>
 				)}
-				<p className="mt-1.5 text-[12px] text-slate-500 dark:text-slate-400">
-					Selecting a friend only helps you share the code. Anyone with the code can claim.
+				<p className="mt-1.5 text-[12px] text-[#9ca3af] dark:text-slate-400">
+					Selecting a friend only helps you share. Anyone with the code can claim.
 				</p>
 			</div>
 
@@ -518,25 +592,29 @@ export default function DiscoverMerchantGiftSheet({
 				</div>
 			) : null}
 
-			<button
-				type="button"
-				onClick={() => void handlePurchase()}
-				disabled={submitting}
-				aria-busy={submitting}
-				className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#1562f0] px-5 py-3.5 text-[15px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
-			>
-				{submitting ? (
-					<>
+			<div className="flex flex-col gap-2.5">
+				<button
+					type="button"
+					onClick={() => void handlePurchase()}
+					disabled={submitting}
+					aria-busy={submitting}
+					className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#3d3429] px-5 py-3.5 text-[15px] font-bold text-white shadow-[0_4px_16px_rgba(44,36,22,0.22)] transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
+				>
+					{submitting ? (
 						<Loader2 className="h-5 w-5 animate-spin" aria-hidden />
-						Creating gift…
-					</>
-				) : (
-					<>
-						<Gift className="h-5 w-5" aria-hidden />
-						Pay with CoNET-USDC
-					</>
-				)}
-			</button>
-		</div>
+					) : (
+						<Gift className="h-5 w-5 text-[#D4B483]" strokeWidth={2.25} aria-hidden />
+					)}
+					<span>{submitting ? 'Creating gift…' : 'Pay with CoNET-USDC & Gift'}</span>
+					{!submitting ? (
+						<ChevronRight className="h-5 w-5 opacity-80" strokeWidth={2.25} aria-hidden />
+					) : null}
+				</button>
+				<p className="inline-flex items-start justify-center gap-1.5 px-2 text-center text-[12px] font-medium leading-snug text-emerald-700 dark:text-emerald-400">
+					<Check className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={2.5} aria-hidden />
+					<span>{giftFooterTip}</span>
+				</p>
+			</div>
+		</section>
 	)
 }

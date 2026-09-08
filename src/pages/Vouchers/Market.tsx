@@ -7433,13 +7433,13 @@ function DiscoverMerchantDetailFullScreen({
 		{giftSheetOpen && typeof document !== 'undefined'
 			? createPortal(
 					<div
-						className="fixed inset-0 z-[121] flex flex-col bg-[#f4f6f8] transition-transform duration-300 ease-out dark:bg-slate-950"
+						className="fixed inset-0 z-[121] flex flex-col bg-[color:var(--discover-merchant-page-bg,#f4f6f8)] transition-transform duration-300 ease-out dark:bg-slate-950"
 						style={{
 							transform: giftSheetClosing || !giftSheetEntered ? 'translateX(100%)' : 'translateX(0)',
 						}}
 						role="dialog"
 						aria-modal="true"
-						aria-label="Send a gift"
+						aria-label="Gift store credit"
 						onTouchMove={(e) => e.stopPropagation()}
 					>
 						<div
@@ -7447,20 +7447,15 @@ function DiscoverMerchantDetailFullScreen({
 							style={{ paddingTop: 'max(1rem, env(safe-area-inset-top, 0px))' }}
 						>
 							<div className="px-4">
-								<div className={`flex items-center justify-between ${BEAMIO_CIRCULAR_BACK_ROW_CLASS}`}>
+								<div className={`relative flex items-center ${BEAMIO_CIRCULAR_BACK_ROW_CLASS}`}>
 									<BeamioCircularBackButton
 										variant="onLight"
 										onClick={closeGiftSheet}
 										className="absolute left-0 top-0"
 									/>
 								</div>
-								<header className="pb-5 pt-2">
-									<h1 className="mt-2 text-3xl font-semibold tracking-tight text-[#0F172A] dark:text-slate-100">
-										Send a gift
-									</h1>
-								</header>
 							</div>
-							<div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+							<div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pt-2">
 								<DiscoverMerchantGiftSheet
 									onClose={closeGiftSheet}
 									cardAddress={item.cardAddress?.trim() ?? ''}

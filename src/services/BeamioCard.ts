@@ -484,6 +484,87 @@ const MERCHANT_DEPOSIT_QUOTE_ABI = [
 ] as const
 
 /**
+ * Fair-only factory quote (no merchant deposit spread).
+ * Required for Discover Gifting — Cluster `purchaseMerchantGiftRedeem` rejects ~2% drift vs fair.
+ */
+export const quoteCurrencyAmountInUSDCFair = async (
+	currencyCode: string,
+	amountHuman: string,
+): Promise<{ usdc6: bigint; usdc: string }> => {
+	const factory = merchantCardFactory()
+	const cur = CURRENCY_TO_ENUM[currencyCode.toUpperCase()]
+	if (cur === undefined) throw new Error(`Unsupported currency: ${currencyCode}`)
+	const amount6 = ethers.parseUnits(amountHuman, 6)
+	if (amount6 <= 0n) throw new Error('amount must be > 0')
+	const usdc6 = (await factory.quoteCurrencyAmountInUSDC6(cur, amount6)) as bigint
+	if (usdc6 <= 0n) throw new Error('Fair USDC quote returned 0')
+	return { usdc6, usdc: ethers.formatUnits(usdc6, 6) }
+}
+
+/** Discover Gifting: EIP-3009 USDC auth + redeem code → Cluster/Master createGiftRedeemForPayer. */
+export const postPurchaseMerchantGiftRedeem = async (payload: {
+	cardAddress: string
+	from: string
+	usdcAmount: string
+	userSignature: string
+	nonce: string
+	validAfter: number | string
+	validBefore: number | string
+	redeemCode: string
+	membershipFeeE6?: string
+	topupPrincipalE6?: string
+}): Promise<{
+	success: boolean
+	error?: string
+	redeemCode?: string
+	redeemHash?: string
+	shareUrl?: string
+	membershipFeeE6?: string
+	topupCreditE6?: string
+	txHash?: string
+}> => {
+	const endpoint = `${beamioApi}/api/purchaseMerchantGiftRedeem`
+	try {
+		const res = await fetch(endpoint, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				cardAddress: payload.cardAddress,
+				from: payload.from,
+				usdcAmount: payload.usdcAmount,
+				userSignature: payload.userSignature,
+				nonce: payload.nonce,
+				validAfter: String(payload.validAfter),
+				validBefore: String(payload.validBefore),
+				redeemCode: payload.redeemCode,
+				...(payload.membershipFeeE6 != null ? { membershipFeeE6: payload.membershipFeeE6 } : {}),
+				...(payload.topupPrincipalE6 != null ? { topupPrincipalE6: payload.topupPrincipalE6 } : {}),
+			}),
+		})
+		const data = (await res.json().catch(() => ({}))) as Record<string, unknown>
+		if (!res.ok || data.success === false) {
+			const errMsg =
+				typeof data.error === 'string' && data.error.trim()
+					? data.error.trim()
+					: `Request failed (${res.status})`
+			return { success: false, error: errMsg }
+		}
+		return {
+			success: true,
+			redeemCode: typeof data.redeemCode === 'string' ? data.redeemCode : payload.redeemCode,
+			redeemHash: typeof data.redeemHash === 'string' ? data.redeemHash : undefined,
+			shareUrl: typeof data.shareUrl === 'string' ? data.shareUrl : undefined,
+			membershipFeeE6: typeof data.membershipFeeE6 === 'string' ? data.membershipFeeE6 : undefined,
+			topupCreditE6: typeof data.topupCreditE6 === 'string' ? data.topupCreditE6 : undefined,
+			txHash: typeof data.txHash === 'string' ? data.txHash : undefined,
+		}
+	} catch (e: unknown) {
+		const msg = e instanceof Error ? e.message : String(e)
+		return { success: false, error: msg || 'Network error' }
+	}
+}
+
+/**
  * 链上报价：显示货币金额 → 用户应付 USDC（deposit）。
  * 有商户卡地址时优先 `quoteUsdcDepositForFiat6`（factory fair + merchantOracleSpreadBps，
  * 与 Merchant OS Programs → Exchange rate 一致）；失败再回退 factory fair ± spread helper。

@@ -76,7 +76,7 @@ import { DiscoverDescriptionTextWithUrlCapsules } from "@/components/discover/Di
 import { resolveSigningPrivateKeyArmor } from "@/utils/resolveSigningPrivateKeyArmor"
 import { checkStorage, searchUsername } from "@/services/beamio"
 import BeamioContactProfilePreview from "@/components/Home/BeamioContactProfilePreview"
-import MerchantAssetGiftSheet, { type MerchantGiftCardOption } from "@/components/Home/MerchantAssetGiftSheet"
+import DiscoverMerchantGiftSheet from "@/components/Home/DiscoverMerchantGiftSheet"
 import { fiatPrefix, formatAmount } from "@/services/currency"
 import { getMyAssetsAggregated, getMyAssets, peekGetMyAssetsCache, getCardTiersFromContract, getCardUpgradeTypeFromContract, quoteUSDCToCAD, postUSDCUserCardTopup, safeUsdc6ToAmountString, currencyAmountToSafeUsdc6, fetchCardActiveIssuedCouponSeriesTrusted, postCardCouponOpenClaimWithCurrentWallet, postCardRecordUserLikeWithCurrentWallet, resolveCouponOpenClaimEligibility, merchantBackgroundImageFromMetadataRoot, merchantIconUrlFromMetadataRoot, getCardOwner, getCardPosAdminEoas, readUserSocialPoints13BalanceOnCard, type CardActiveIssuedCouponSeriesItem, type CardMetadataFromUri, type CouponOpenClaimEligibility, type USDCUserCardTopupIntent } from "@/services/BeamioCard"
 import {
@@ -5824,12 +5824,13 @@ function DiscoverMerchantDetailFullScreen({
 
 	const onMerchantVisitGifting = useCallback(() => {
 		setMerchantVisitError(null)
-		if (Number(merchantAssets?.points ?? 0) > 0 && item.cardAddress) {
+		const card = item.cardAddress?.trim() ?? ''
+		if (card && ethers.isAddress(card)) {
 			openGiftSheet()
 			return
 		}
-		setMerchantVisitError('You need store credits to send a gift.')
-	}, [merchantAssets?.points, item.cardAddress, openGiftSheet])
+		setMerchantVisitError('Merchant card is unavailable.')
+	}, [item.cardAddress, openGiftSheet])
 
 	const onMerchantVisitContact = useCallback(async () => {
 		if (supportChatOpening || issuerProfileOpening) return
@@ -5879,13 +5880,6 @@ function DiscoverMerchantDetailFullScreen({
 		item.cardAddress,
 		issuerOwnerEoa,
 	])
-
-	const giftSheetCards = useMemo((): MerchantGiftCardOption[] => {
-		const cardAddress = item.cardAddress?.trim() ?? ''
-		const points = Number(merchantAssets?.points ?? 0)
-		if (!cardAddress || !Number.isFinite(points) || points <= 0) return []
-		return [{ cardAddress, title: passTitle, points, currency: displayCurrency }]
-	}, [item.cardAddress, merchantAssets?.points, passTitle, displayCurrency])
 
 	const renderVisitActions = () => (
 		<DiscoverMerchantVisitActionsBlock
@@ -7467,9 +7461,12 @@ function DiscoverMerchantDetailFullScreen({
 								</header>
 							</div>
 							<div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-								<MerchantAssetGiftSheet
+								<DiscoverMerchantGiftSheet
 									onClose={closeGiftSheet}
-									cards={giftSheetCards}
+									cardAddress={item.cardAddress?.trim() ?? ''}
+									merchantTitle={passTitle}
+									currency={displayCurrency}
+									metadataRoot={merchantMetadataRoot}
 									profile={profile}
 									onSuccess={() => void refreshMerchantAssets()}
 								/>

@@ -19,6 +19,7 @@ import {
 	BEAMIO_TAG_ALLOWED_RE,
 	normalizeBeamioTagInput,
 } from "@/utils/beamioTagRules"
+import { resolveRegistrableBeamioTagFromBusiness } from "@/utils/suggestBeamioTagFromBusiness"
 import type { VerraBusinessProfileDraft } from "@/utils/verraBusinessProfileLocal"
 import { useTu } from '@/locale/beamioLocale'
 
@@ -77,6 +78,9 @@ export default function BusinessIdentityForm({
 	const tagDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 	const beamioNameRef = useRef("")
 	const tagStatusRef = useRef<"idle" | "checking" | "valid" | "invalid">("idle")
+	const userEditedHandleRef = useRef(false)
+	const autoFillAttemptedKeyRef = useRef("")
+	const validateAndCheckTagRef = useRef<(raw?: string) => Promise<boolean>>(async () => false)
 	const handleInputRef = useRef<HTMLInputElement>(null)
 	const passwordInputRef = useRef<HTMLInputElement>(null)
 	const confirmInputRef = useRef<HTMLInputElement>(null)
@@ -112,8 +116,8 @@ export default function BusinessIdentityForm({
 		return { ok: true, v: trimmed, msg: "" }
 	}
 
-	const validateAndCheckTag = async () => {
-		const { ok, v, msg } = localValidateTag(beamioName)
+	const validateAndCheckTag = async (explicitRaw?: string) => {
+		const { ok, v, msg } = localValidateTag(explicitRaw ?? beamioNameRef.current)
 		setTagError("")
 
 		if (!ok) {
@@ -166,19 +170,76 @@ export default function BusinessIdentityForm({
 			return false
 		}
 	}
+	validateAndCheckTagRef.current = validateAndCheckTag
 
 	const scheduleTagAvailabilityCheck = (raw?: string) => {
 		if (tagDebounceRef.current) clearTimeout(tagDebounceRef.current)
-		const trimmed = normalizeBeamioTagInput(raw ?? beamioName)
+		const trimmed = normalizeBeamioTagInput(raw ?? beamioNameRef.current)
 		if (trimmed.length <= 2) return
 		const { ok } = localValidateTag(trimmed)
 		if (!ok) return
 		if (isHandleConfirmedAvailable(trimmed)) return
 		tagDebounceRef.current = setTimeout(() => {
 			tagDebounceRef.current = null
-			void validateAndCheckTag()
+			void validateAndCheckTag(trimmed)
 		}, TAG_AVAILABILITY_DEBOUNCE_MS)
 	}
+
+	const lookupStoreName = recoveryDraft?.storeName?.trim() ?? ""
+	const lookupWebsite = recoveryDraft?.website?.trim() ?? ""
+
+	useEffect(() => {
+		if (!lookupStoreName) return
+		if (userEditedHandleRef.current) return
+		const key = `${lookupStoreName}\n${lookupWebsite}`
+		if (autoFillAttemptedKeyRef.current === key) return
+
+		let cancelled = false
+		const seq = ++tagCheckSeqRef.current
+		setTagStatusSynced("checking")
+		setTagError("")
+
+		void (async () => {
+			const result = await resolveRegistrableBeamioTagFromBusiness({
+				name: lookupStoreName,
+				website: lookupWebsite || undefined,
+				isAvailable: (tag) => checkBeamioAccountAPI(tag),
+			})
+			if (cancelled || userEditedHandleRef.current) return
+			if (seq !== tagCheckSeqRef.current) return
+
+			autoFillAttemptedKeyRef.current = key
+			const tag = result.tag
+			if (!tag) {
+				setTagStatusSynced("idle")
+				return
+			}
+
+			setBeamioName(tag)
+			beamioNameRef.current = tag
+
+			if (result.availability === "available") {
+				lastCheckedRef.current = tag
+				setTagStatusSynced("valid")
+				setTagError("")
+				return
+			}
+			if (result.availability === "taken") {
+				lastCheckedRef.current = ""
+				setTagStatusSynced("invalid")
+				setTagError(tu("onb_identity_tag_taken", { tag }))
+				return
+			}
+
+			lastCheckedRef.current = ""
+			setTagStatusSynced("idle")
+			void validateAndCheckTagRef.current(tag)
+		})()
+
+		return () => {
+			cancelled = true
+		}
+	}, [lookupStoreName, lookupWebsite])
 
 	useEffect(() => {
 		beamioNameRef.current = beamioName
@@ -351,6 +412,7 @@ export default function BusinessIdentityForm({
 							value={beamioName}
 							placeholder={tu('onb_identity_handle_ph')}
 							onChange={(e) => {
+								userEditedHandleRef.current = true
 								const next = normalizeBeamioTagInput(e.currentTarget.value)
 								setBeamioName(next)
 								beamioNameRef.current = next
@@ -384,13 +446,13 @@ export default function BusinessIdentityForm({
 								scheduleTagAvailabilityCheck(local.v)
 							}}
 							onBlur={() => {
-								const t = normalizeBeamioTagInput(beamioName)
+								const t = normalizeBeamioTagInput(beamioNameRef.current)
 								if (t.length < 3 || isHandleConfirmedAvailable(t)) return
 								if (tagDebounceRef.current) {
 									clearTimeout(tagDebounceRef.current)
 									tagDebounceRef.current = null
 								}
-								void validateAndCheckTag()
+								void validateAndCheckTag(t)
 							}}
 						/>
 						<div className="pointer-events-none absolute inset-y-0 right-4 flex w-5 items-center justify-center">
@@ -410,7 +472,7 @@ export default function BusinessIdentityForm({
 					</div>
 					<div className="min-h-[1.375rem] pl-1" aria-live="polite">
 						{tagStatus === "invalid" && tagError ? (
-							<div className="flex items-center gap-1.5 text-[11px] font-medium text-orange-600">
+							<div role="alert" className="flex items-center gap-1.5 text-[11px] font-medium text-orange-600">
 								<AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden />
 								<span>{tagError}</span>
 							</div>

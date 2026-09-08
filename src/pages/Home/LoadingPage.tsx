@@ -948,6 +948,7 @@ export default function BeamioOnboardingModal({
 							businessType: coverBusinessType,
 							onboardingTermsAccepted: coverTermsAccepted,
 							storeName: detailBusinessName,
+							website: detailWebsite,
 							category: detailCategory,
 							country: detailCountry,
 							city: detailCity,

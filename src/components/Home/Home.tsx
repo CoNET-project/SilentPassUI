@@ -61,6 +61,7 @@ import ActiveHistoryPannelNew from '@/pages/History/components/activeHistoryPann
 import { MyBrandsFullScreenDrawer } from '@/pages/Brands/MyBrandsFullScreenDrawer'
 import {
 	MyBrandListEntries,
+	buildMyBrandLatestEventMsByCard,
 	sortMyBrandCardsForList,
 } from '@/pages/Brands/MyBrandsListSection'
 import { RECENT_ACTIVITY_PREVIEW_COUNT } from '@/pages/History/recentActivityIndexerMerge'
@@ -283,6 +284,7 @@ const Home = (_props: HomeProps) => {
 		setPayTag, setSendToMemo, listenningProcess, setListenningProcess, usdcbalance, setPaymentLinkCode,
 		currencyData, setRedeemCode, setPayMePayment, setAllNodes, setGossip, gossip, setCharts, charts, setShowFooter, scanData, setScanData,
 		myBrandCards, myBrandCardDetails,
+		recentActivityNoAaItems,
 		aaAccountUsdcBalance, refreshRecentActivityNoAa, conetWalletBalances,
 		conetAaWalletBalances,
 	} = useDaemonContext()
@@ -443,9 +445,19 @@ const Home = (_props: HomeProps) => {
 		}
 	}, [profiles?.[0]?.keyID, profiles?.[0]?.aaAccount])
 
+	const myBrandLatestEventMsByCard = useMemo(
+		() => buildMyBrandLatestEventMsByCard(recentActivityNoAaItems),
+		[recentActivityNoAaItems],
+	)
+
 	const myBrandCardsPreview = useMemo(
-		() => sortMyBrandCardsForList(myBrandCards.filter((c) => !isCardExcludedFromDisplay(c.cardAddress))).slice(0, 5),
-		[myBrandCards]
+		() =>
+			sortMyBrandCardsForList(
+				myBrandCards.filter((c) => !isCardExcludedFromDisplay(c.cardAddress)),
+				myBrandCardDetails,
+				myBrandLatestEventMsByCard,
+			).slice(0, 5),
+		[myBrandCards, myBrandCardDetails, myBrandLatestEventMsByCard],
 	)
 
 	useEffect(() => {

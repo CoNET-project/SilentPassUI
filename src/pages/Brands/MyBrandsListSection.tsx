@@ -35,6 +35,10 @@ import {
 	pickMerchantCardListIconUrl,
 	pickMerchantCardListTitle,
 } from '@/utils/merchantCardDatabase'
+import {
+	recentActivityMerchantProgramCardAddress,
+	type TxView,
+} from '@/pages/History/recentActivityIndexerMerge'
 
 export function resolveCardImageUrl(url: string | undefined): string | undefined {
 	if (!url?.trim()) return undefined
@@ -197,9 +201,56 @@ export function MyBrandCardRow({
 	)
 }
 
-/** My Brands 列表排序 — 与 `/myBrands` 页一致（按商户名）。 */
-export function sortMyBrandCardsForList(cards: UserCardInfo[]): UserCardInfo[] {
-	return [...cards].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'en'))
+function cardProgramPointsBalanceForSort(
+	cardAddress: string,
+	details: Record<string, MyBrandCardDetailLike | undefined> | null | undefined,
+): number {
+	const raw = details?.[cardAddress.toLowerCase()]?.assets?.points
+	if (raw == null || String(raw).trim() === '') return 0
+	const n = Number(raw)
+	return Number.isFinite(n) ? Math.max(0, n) : 0
+}
+
+/** Build per-card latest event ms from Recent Activity (merchant program card address). */
+export function buildMyBrandLatestEventMsByCard(
+	items: ReadonlyArray<TxView> | null | undefined,
+): Map<string, number> {
+	const out = new Map<string, number>()
+	if (!items?.length) return out
+	for (const tx of items) {
+		const cardAddress = recentActivityMerchantProgramCardAddress(tx)
+		if (!cardAddress) continue
+		const key = cardAddress.toLowerCase()
+		const timestampMs = Number(tx.timestampMs)
+		if (!Number.isFinite(timestampMs)) continue
+		out.set(key, Math.max(out.get(key) ?? 0, timestampMs))
+	}
+	return out
+}
+
+/**
+ * My Brands / Home「My Store Cards」列表排序（最上 = 优先）：
+ * 1) 最近有 activity 的卡
+ * 2) 余额（program points）最大
+ * 3) 商户名（平局）
+ */
+export function sortMyBrandCardsForList(
+	cards: UserCardInfo[],
+	details?: Record<string, MyBrandCardDetailLike | undefined> | null,
+	latestEventMsByCard?: ReadonlyMap<string, number> | null,
+): UserCardInfo[] {
+	return [...cards].sort((a, b) => {
+		const aKey = a.cardAddress.toLowerCase()
+		const bKey = b.cardAddress.toLowerCase()
+		const eventDelta =
+			(latestEventMsByCard?.get(bKey) ?? 0) - (latestEventMsByCard?.get(aKey) ?? 0)
+		if (eventDelta !== 0) return eventDelta
+		const balanceDelta =
+			cardProgramPointsBalanceForSort(bKey, details) -
+			cardProgramPointsBalanceForSort(aKey, details)
+		if (balanceDelta !== 0) return balanceDelta
+		return (a.name || '').localeCompare(b.name || '', 'en')
+	})
 }
 
 function mapOwnedCatalogToTicketItem(item: MyBrandsOwnedCatalogSnapshot): ActiveCouponListItem {
@@ -836,7 +887,11 @@ export function resolveHeldTierPresentation(detail: unknown): {
 
 export function MyBrandsListSection({ onAddNewMerchantCard }: { onAddNewMerchantCard?: () => void } = {}) {
 	const navigate = useNavigate()
-	const { myBrandCards, myBrandCardDetails } = useDaemonContext()
+	const {
+		myBrandCards,
+		myBrandCardDetails,
+		recentActivityNoAaItems,
+	} = useDaemonContext()
 	const handleAddNewMerchantCard = () => {
 		if (onAddNewMerchantCard) {
 			onAddNewMerchantCard()
@@ -845,9 +900,19 @@ export function MyBrandsListSection({ onAddNewMerchantCard }: { onAddNewMerchant
 		navigate('/myWallet')
 	}
 
+	const latestEventMsByCard = useMemo(
+		() => buildMyBrandLatestEventMsByCard(recentActivityNoAaItems),
+		[recentActivityNoAaItems],
+	)
+
 	const sorted = useMemo(
-		() => sortMyBrandCardsForList(myBrandCards.filter((c) => !isCardExcludedFromDisplay(c.cardAddress))),
-		[myBrandCards]
+		() =>
+			sortMyBrandCardsForList(
+				myBrandCards.filter((c) => !isCardExcludedFromDisplay(c.cardAddress)),
+				myBrandCardDetails,
+				latestEventMsByCard,
+			),
+		[myBrandCards, myBrandCardDetails, latestEventMsByCard],
 	)
 
 	return (

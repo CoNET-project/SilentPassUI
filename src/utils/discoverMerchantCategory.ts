@@ -25,13 +25,21 @@ export function discoverCategoryLabel(category: DiscoverCategoryTab): string {
 	return DISCOVER_CATEGORY_LABEL_BY_ID[category] ?? DISCOVER_CATEGORY_LABEL_BY_ID['local-services']
 }
 
-/** Align x402sdk `shareTokenMetadata.categories` + biz `CARD_ISSUANCE_CATEGORY_OPTIONS` ids. */
+/** Read the canonical business profile category, with categories[] as a legacy fallback. */
 export function parseDiscoverPrimaryCategoryId(meta: Record<string, unknown> | null): string | null {
 	if (meta == null) return null
 	const share =
 		meta.shareTokenMetadata != null && typeof meta.shareTokenMetadata === 'object'
 			? (meta.shareTokenMetadata as Record<string, unknown>)
 			: null
+	const businessProfile =
+		share?.businessProfile != null && typeof share.businessProfile === 'object'
+			? (share.businessProfile as Record<string, unknown>)
+			: null
+	const businessProfileCategory = businessProfile?.category
+	if (typeof businessProfileCategory === 'string' && businessProfileCategory.trim()) {
+		return businessProfileCategory.trim().toLowerCase()
+	}
 	const raw = share?.categories
 	if (!Array.isArray(raw) || raw.length === 0) return null
 	for (const c of raw) {
@@ -70,12 +78,21 @@ export function classifyDiscoverMerchantCategory(input: DiscoverMerchantCategory
 	const name = (input.name || '').toLowerCase()
 	const description = (input.programDescription || '').toLowerCase()
 	const category = (input.categoryId ?? '').toLowerCase()
+	// A declared merchant category is authoritative. `local-services` remains
+	// the legacy/default bucket, so heuristics may still refine that value.
+	if (category === 'food-beverage' || category === 'food') return 'food-beverage'
+	if (category === 'health-beauty' || category === 'health' || category === 'beauty') return 'health-beauty'
+	if (category === 'grocery-convenience') return 'grocery-convenience'
+	if (category === 'retail-shopping' || category === 'shopping') return 'retail-shopping'
+	if (category === 'education-training') return 'education-training'
+	if (category === 'fitness-wellness') return 'fitness-wellness'
+	if (category === 'entertainment-leisure' || category === 'movies') return 'entertainment-leisure'
 	const foodNameOrCopy =
-		/restaurant|dining|bistro|kitchen|steakhouse|noodle|\bpho\b|cuisine|dumpling|xiaolong|xiao long|dim\s*sum|shanghainese|longdhang|老弄堂|弄堂|餐厅|饭店|酒楼|火锅|烧烤|茶餐厅|面馆|小吃|美食|餐饮/.test(
+		/restaurant|dining|bistro|kitchen|steakhouse|noodle|\bpoke\b|\bpho\b|cuisine|dumpling|xiaolong|xiao long|dim\s*sum|shanghainese|longdhang|老弄堂|弄堂|餐厅|饭店|酒楼|火锅|烧烤|茶餐厅|面馆|小吃|美食|餐饮/.test(
 			name,
 		) ||
 		/\bcafe\b|\bcafé\b|\bcoffee\b/.test(name) ||
-		/restaurant|dining|bistro|kitchen|steak|cuisine|dumpling|xiaolong|xiao long|dim\s*sum|shanghainese|\bpho\b|老弄堂|弄堂|餐厅|饭店|酒楼|火锅|烧烤|茶餐厅|面馆|小吃|美食|餐饮/.test(
+		/restaurant|dining|bistro|kitchen|steak|cuisine|dumpling|xiaolong|xiao long|dim\s*sum|shanghainese|\bpoke\b|\bpho\b|老弄堂|弄堂|餐厅|饭店|酒楼|火锅|烧烤|茶餐厅|面馆|小吃|美食|餐饮/.test(
 			description,
 		)
 	// Brand name / dining copy beats metadata tags and promo “wellness / store” wording.
@@ -85,13 +102,6 @@ export function classifyDiscoverMerchantCategory(input: DiscoverMerchantCategory
 	if (/\bbeauty\b|\bspa\b|\bsalon\b|medspa|barbershop|美容|护肤|美发|美甲|养生馆|水疗/.test(name)) {
 		return 'health-beauty'
 	}
-	if (category === 'food-beverage' || category === 'food') return 'food-beverage'
-	if (category === 'health-beauty') return 'health-beauty'
-	if (category === 'grocery-convenience') return 'grocery-convenience'
-	if (category === 'retail-shopping' || category === 'shopping') return 'retail-shopping'
-	if (category === 'education-training') return 'education-training'
-	if (category === 'fitness-wellness') return 'fitness-wellness'
-	if (category === 'entertainment-leisure' || category === 'movies') return 'entertainment-leisure'
 	if (category === 'local-services') return 'local-services'
 	if (/grocery|supermarket|mart|convenience|store/.test(name) || /grocery|supermarket|mart|convenience|store/.test(description)) {
 		return 'grocery-convenience'

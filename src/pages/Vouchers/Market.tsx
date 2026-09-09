@@ -4986,6 +4986,22 @@ function hydrateDiscoverMerchantCardAssets(
 	return null
 }
 
+function discoverMerchantAssetsHaveHoldings(
+	assets: Awaited<ReturnType<typeof getMyAssets>> | null,
+): boolean {
+	if (!assets) return false
+	const points = Number(assets.points)
+	const rewardPoints = Number(assets.chargeRewardPoints)
+	return (
+		customerHasValidMembershipFromAssets({
+			primaryMemberTokenId: pickActiveDiscoverMembershipNft(assets.nfts)?.tokenId,
+			nfts: assets.nfts,
+		}) ||
+		(Number.isFinite(points) && points > 0) ||
+		(Number.isFinite(rewardPoints) && rewardPoints > 0)
+	)
+}
+
 function DiscoverPayPanelError({ message }: { message: string }) {
 	return (
 		<div
@@ -5039,7 +5055,13 @@ function DiscoverMerchantDetailFullScreen({
 	const [merchantAssetsLoading, setMerchantAssetsLoading] = useState(
 		() =>
 			Boolean(profiles?.[0]?.keyID && item.cardAddress) &&
-			hydrateDiscoverMerchantCardAssets(profiles?.[0] as Parameters<typeof getMyAssets>[0] | undefined, item.cardAddress ?? undefined, myBrandCardDetails) == null,
+			!discoverMerchantAssetsHaveHoldings(
+				hydrateDiscoverMerchantCardAssets(
+					profiles?.[0] as Parameters<typeof getMyAssets>[0] | undefined,
+					item.cardAddress ?? undefined,
+					myBrandCardDetails,
+				),
+			),
 	)
 	const [cardTopupSuccessBalance, setCardTopupSuccessBalance] = useState<string | null>(null)
 	const [cardTopupOverlayPhase, setCardTopupOverlayPhase] = useState<'idle' | 'listening' | 'success'>('idle')
@@ -7023,9 +7045,13 @@ function DiscoverMerchantDetailFullScreen({
 		)
 		const seededPts = Number(seeded?.chargeRewardPoints)
 		const hasSeededPts = Number.isFinite(seededPts) && seededPts > 0
+		// A cached asset object can be structurally present while still containing
+		// the old EOA-only zero snapshot. Do not treat that as a complete answer
+		// for a card whose holdings may live on the user's AA.
+		const seededHasHoldings = discoverMerchantAssetsHaveHoldings(seeded)
 		if (seeded) {
 			setMerchantAssets(seeded)
-			setMerchantAssetsLoading(false)
+			setMerchantAssetsLoading(!seededHasHoldings)
 		}
 		if (hasSeededPts) {
 			setUserSocialPoints13(seededPts)
@@ -7035,7 +7061,7 @@ function DiscoverMerchantDetailFullScreen({
 		const userEOA = resolveUserEoa()
 		const socialEoa = userEOA ?? ''
 		const needSocial = !hasSeededPts && socialEoa.length > 0
-		const needAssets = !seeded
+		const needAssets = !seeded || !seededHasHoldings
 		if (!needSocial && !needAssets) return
 		if (!smartPayPrefetchDone) return
 		// Top-up open: still refresh #13 for Smart Pay seed; skip getMyAssets storm.
@@ -7061,7 +7087,11 @@ function DiscoverMerchantDetailFullScreen({
 			if (needAssets && !discoverTopUpOpen && !cancelled) {
 				setMerchantAssetsLoading(true)
 				try {
-					const res = await getMyAssets(profile, cardAddress)
+					const res = await getMyAssets(profile, cardAddress, {
+						// Re-read zero snapshots so AA-held #0 / membership assets
+						// cannot be hidden by a stale EOA-only cache entry.
+						bypassCache: true,
+					})
 					if (!cancelled && res != null) setMerchantAssets(res)
 				} catch {
 					if (!cancelled) setMerchantAssets((prev) => prev)

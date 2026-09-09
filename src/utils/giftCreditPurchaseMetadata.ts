@@ -134,6 +134,21 @@ export function serializeGiftCreditPurchaseConfig(
 	}
 }
 
+/**
+ * Extract the persisted Credit Gift config while preserving an explicit
+ * `enabled: false`. Callers must distinguish a missing field from the
+ * metadata's intentional default-off value.
+ */
+export function pickGiftCreditPurchaseSerializedFromMetadata(
+	metadata: Record<string, unknown> | null | undefined,
+): GiftCreditPurchaseConfigSerialized | undefined {
+	if (!metadata) return undefined
+	const share = asRecord(metadata.shareTokenMetadata) ?? metadata
+	const raw = asRecord(share.giftCreditPurchase) ?? asRecord(metadata.giftCreditPurchase)
+	if (!raw) return undefined
+	return serializeGiftCreditPurchaseConfig(parseGiftCreditPurchaseConfig(metadata))
+}
+
 export function cloneGiftCreditPurchaseConfig(
 	config: GiftCreditPurchaseConfig,
 ): GiftCreditPurchaseConfig {

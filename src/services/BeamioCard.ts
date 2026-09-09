@@ -33,6 +33,10 @@ import {
 } from "@/utils/programTopupPromotion";
 import { parseUnifiedRewardPoints } from "@/utils/unifiedRewardPoints";
 import {
+	pickGiftCreditPurchaseSerializedFromMetadata,
+	type GiftCreditPurchaseConfigSerialized,
+} from "@/utils/giftCreditPurchaseMetadata";
+import {
 	parseShareTokenBusinessProfileFromUnknown,
 	type ShareTokenBusinessProfile,
 } from "@/utils/verraBusinessProfileLocal";
@@ -4066,6 +4070,7 @@ export type CardMetadataFromUri = {
 	cardOwner?: string
 	categories?: string[]
 	topupPromotion?: ShareTokenMetadataTopupPromotion
+	giftCreditPurchase?: GiftCreditPurchaseConfigSerialized
 	businessProfile?: ShareTokenBusinessProfile
 	unifiedRewardPoints?: ShareTokenMetadataUnifiedRewardPoints
 	socialPromotion?: ShareTokenMetadataSocialPromotion
@@ -4140,6 +4145,7 @@ const cardMetadataCache = new Map<
 		bonusRule?: ShareTokenMetadataBonusRule
 		bonusRules?: ShareTokenMetadataBonusRule[]
 		topupPromotion?: ShareTokenMetadataTopupPromotion
+		giftCreditPurchase?: GiftCreditPurchaseConfigSerialized
 		unifiedRewardPoints?: ShareTokenMetadataUnifiedRewardPoints
 		businessProfile?: ShareTokenBusinessProfile
 		pointSystem?: ShareTokenMetadataPointSystem
@@ -4159,7 +4165,10 @@ const CARD_METADATA_CACHE_TTL_MS = 5 * 60 * 1000
 /** Bust client cache after server-side metadata updates (e.g. merchantImage). */
 export function invalidateBeamioCardMetadataCache(cardAddress: string): void {
 	const key = cardAddress.trim().toLowerCase()
-	if (key) cardMetadataCache.delete(key)
+	if (!key) return
+	cardMetadataCache.delete(key)
+	const hex40 = key.startsWith('0x') ? key.slice(2) : key
+	if (hex40.length === 40) cardMetadataCache.delete(`1155_${hex40}`)
 }
 
 /** Non-negative whole-number top-up limit from metadata shareTokenMetadata (CAD / card currency units). Min may be 0. */
@@ -4668,6 +4677,7 @@ export const getCardMetadataFrom1155Json = async (cardAddress: string): Promise<
 		const topupPromotion = shareTokenTopupPromotionFromShare(share, bonusRule, bonusRules)
 		const businessProfile = shareTokenBusinessProfileFromUnknown(share)
 		const unifiedRewardPoints = parseUnifiedRewardPoints(share?.unifiedRewardPoints)
+		const giftCreditPurchase = pickGiftCreditPurchaseSerializedFromMetadata(json as Record<string, unknown>)
 		const pointSystem = shareTokenPointSystemFromUnknown(share)
 		const coupons = shareTokenCouponsFromUnknown(share)
 		const productions = shareTokenProductionsFromUnknown(share)
@@ -4689,6 +4699,7 @@ export const getCardMetadataFrom1155Json = async (cardAddress: string): Promise<
 			...(bonusRule && { bonusRule }),
 			...(bonusRules && { bonusRules }),
 			...(topupPromotion && { topupPromotion }),
+			...(giftCreditPurchase && { giftCreditPurchase }),
 			...(businessProfile && { businessProfile }),
 			...(unifiedRewardPoints && { unifiedRewardPoints }),
 			...(pointSystem && { pointSystem }),
@@ -4739,6 +4750,7 @@ export const getCardMetadataFromApi = async (cardAddress: string): Promise<CardM
 		const topupPromotion = shareTokenTopupPromotionFromShare(share, bonusRule, bonusRules)
 		const businessProfile = shareTokenBusinessProfileFromUnknown(share)
 		const unifiedRewardPoints = parseUnifiedRewardPoints(share?.unifiedRewardPoints)
+		const giftCreditPurchase = pickGiftCreditPurchaseSerializedFromMetadata(metaJson)
 		const pointSystem = shareTokenPointSystemFromUnknown(share)
 		const coupons = shareTokenCouponsFromUnknown(share)
 		const productions = shareTokenProductionsFromUnknown(share)
@@ -4763,6 +4775,7 @@ export const getCardMetadataFromApi = async (cardAddress: string): Promise<CardM
 			...(bonusRule && { bonusRule }),
 			...(bonusRules && { bonusRules }),
 			...(topupPromotion && { topupPromotion }),
+			...(giftCreditPurchase && { giftCreditPurchase }),
 			...(businessProfile && { businessProfile }),
 			...(unifiedRewardPoints && { unifiedRewardPoints }),
 			...(pointSystem && { pointSystem }),
@@ -4902,6 +4915,7 @@ export const getCardMetadataFromUri = async (cardAddress: string): Promise<CardM
 		const topupPromotion = shareTokenTopupPromotionFromShare(shareObj, bonusRule, bonusRules)
 		const businessProfile = shareTokenBusinessProfileFromUnknown(shareObj)
 		const unifiedRewardPoints = parseUnifiedRewardPoints(shareObj?.unifiedRewardPoints)
+		const giftCreditPurchase = pickGiftCreditPurchaseSerializedFromMetadata(json as Record<string, unknown>)
 		const pointSystem = shareTokenPointSystemFromUnknown(shareObj)
 		const coupons = shareTokenCouponsFromUnknown(shareObj)
 		const productions = shareTokenProductionsFromUnknown(shareObj)
@@ -4923,6 +4937,7 @@ export const getCardMetadataFromUri = async (cardAddress: string): Promise<CardM
 			...(bonusRule && { bonusRule }),
 			...(bonusRules && { bonusRules }),
 			...(topupPromotion && { topupPromotion }),
+			...(giftCreditPurchase && { giftCreditPurchase }),
 			...(businessProfile && { businessProfile }),
 			...(unifiedRewardPoints && { unifiedRewardPoints }),
 			...(pointSystem && { pointSystem }),

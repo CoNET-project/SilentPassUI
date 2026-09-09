@@ -179,13 +179,13 @@ export function GiftCreditPurchaseProgramEditor({
 										aria-label="Enable Credit Gift"
 										disabled={publishing}
 										onClick={() => patch({ enabled: !value.enabled })}
-										className={`relative h-8 w-14 shrink-0 rounded-full transition-colors ${
-											value.enabled ? 'bg-[#1562f0]' : 'bg-[#c3c6d8]'
+										className={`relative inline-flex h-8 w-14 shrink-0 cursor-pointer items-center rounded-full p-1 transition-colors ${
+											value.enabled ? 'bg-[#1562f0]' : 'bg-slate-300'
 										} ${focusRingClassName}`}
 									>
 										<span
-											className={`absolute top-1 h-6 w-6 rounded-full bg-white shadow transition-transform ${
-												value.enabled ? 'translate-x-7' : 'translate-x-1'
+											className={`pointer-events-none inline-block h-6 w-6 rounded-full bg-white shadow transition-transform ${
+												value.enabled ? 'translate-x-6' : 'translate-x-0'
 											}`}
 										/>
 									</button>

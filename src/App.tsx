@@ -72,6 +72,7 @@ import CoNetMiningDetailPage from '@/pages/BountyBoard/CoNetMiningDetailPage'
 import GenesisNodeReferralPage from '@/pages/BountyBoard/GenesisNodeReferralPage'
 import GenesisL0RedeemManagePage from '@/pages/BountyBoard/GenesisL0RedeemManagePage'
 import GenesisL1EvangelistManagePage from '@/pages/BountyBoard/GenesisL1EvangelistManagePage'
+import StripePaymentReturnPage from '@/pages/Vouchers/StripePaymentReturnPage'
 import RenderActionPage from '@/renderAction'
 import { getUserInfo } from "@/services/beamio"
 import { AppButton } from "@/components/button/AppButton"
@@ -1964,6 +1965,7 @@ function AppShell() {
 					<Route path="/discover" element={<Market />} />
 					<Route path="/browser" element={<Browser />} />
 					<Route path="/myWallet" element={<MyWallet />} />
+					<Route path="/stripe-payment-return" element={<StripePaymentReturnPage />} />
 					<Route path="/myBrands" element={<MyBrandsPage />} />
 					<Route path="/HistoryAll" element={<HistoryAll />} />
 					<Route path="/vouchers-example" element={<VouchersExample />} />

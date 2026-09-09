@@ -70,11 +70,26 @@ export function classifyDiscoverMerchantCategory(input: DiscoverMerchantCategory
 	const name = (input.name || '').toLowerCase()
 	const description = (input.programDescription || '').toLowerCase()
 	const category = (input.categoryId ?? '').toLowerCase()
-	if (category === 'food-beverage') return 'food-beverage'
+	const foodNameOrCopy =
+		/restaurant|dining|bistro|kitchen|steakhouse|noodle|\bpho\b|cuisine|dumpling|xiaolong|xiao long|dim\s*sum|shanghainese/.test(
+			name,
+		) ||
+		/\bcafe\b|\bcafé\b|\bcoffee\b/.test(name) ||
+		/restaurant|dining|bistro|kitchen|steak|cuisine|dumpling|xiaolong|xiao long|dim\s*sum|shanghainese|\bpho\b/.test(
+			description,
+		)
+	// Brand name / dining copy beats metadata tags and promo “wellness / store” wording.
+	if (foodNameOrCopy) {
+		return 'food-beverage'
+	}
+	if (/\bbeauty\b|\bspa\b|\bsalon\b|medspa|barbershop/.test(name)) {
+		return 'health-beauty'
+	}
+	if (category === 'food-beverage' || category === 'food') return 'food-beverage'
+	if (category === 'health-beauty') return 'health-beauty'
 	if (category === 'grocery-convenience') return 'grocery-convenience'
 	if (category === 'retail-shopping' || category === 'shopping') return 'retail-shopping'
 	if (category === 'education-training') return 'education-training'
-	if (category === 'health-beauty') return 'health-beauty'
 	if (category === 'fitness-wellness') return 'fitness-wellness'
 	if (category === 'entertainment-leisure' || category === 'movies') return 'entertainment-leisure'
 	if (category === 'local-services') return 'local-services'
@@ -98,8 +113,8 @@ export function classifyDiscoverMerchantCategory(input: DiscoverMerchantCategory
 	}
 	if (
 		category === 'food' ||
-		/dining|restaurant|kitchen|bistro|steak|bar|wine|noodle|pho/.test(name) ||
-		/dining|restaurant|kitchen|bistro|steak|bar|wine|noodle|pho/.test(description)
+		/bar|wine/.test(name) ||
+		/bar|wine/.test(description)
 	) {
 		return 'food-beverage'
 	}

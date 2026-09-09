@@ -2066,6 +2066,22 @@ const DISCOVER_MERCHANT_INFO_PANELS: Record<string, DiscoverMerchantInfoPanel> =
 	},
 }
 
+/** Extra copy for category classify / Gift theme (subtitle + About). */
+function discoverClassifyProgramDescription(
+	cardAddress: string | null | undefined,
+	programDescription?: string | null,
+): string {
+	if (!cardAddress?.trim()) return (programDescription ?? '').trim()
+	const key = resolveDiscoverCardPanelKey(cardAddress)
+	return [
+		programDescription,
+		DISCOVER_CARD_SUBTITLE_OVERRIDES[key],
+		DISCOVER_MERCHANT_INFO_PANELS[key]?.aboutText,
+	]
+		.filter((part): part is string => typeof part === 'string' && part.trim().length > 0)
+		.join('\n')
+}
+
 type DiscoverMerchantWellnessPointsPanel = {
 	title: string
 	memberSinceLabel: string
@@ -2534,7 +2550,7 @@ function buildDiscoverFeaturedCardFromMerchantDb(
 	const programName = meta?.name?.trim() || resolveName(cardAddress) || 'Merchant'
 	const category = classifyDiscoverMerchantCategory({
 		name: programName,
-		programDescription: meta?.programDescription ?? '',
+		programDescription: discoverClassifyProgramDescription(cardAddress, meta?.programDescription ?? ''),
 		categoryId: meta?.categoryId ?? null,
 	})
 	const subtitleOverride =
@@ -8104,6 +8120,12 @@ function DiscoverMerchantDetailFullScreen({
 									metadataRoot={merchantMetadataRoot}
 									profile={profile}
 									onSuccess={() => void refreshMerchantAssets()}
+									category={item.category}
+									merchantImage={item.image || item.logo || null}
+									programDescription={discoverClassifyProgramDescription(
+										item.cardAddress ?? undefined,
+										item.programDescription,
+									)}
 								/>
 							</div>
 						</div>
@@ -8454,7 +8476,7 @@ export default function Market() {
 			const dbImage = resolveImage(card.cardAddress)
 			const category = classifyDiscoverMerchantCategory({
 				name: card.name,
-				programDescription: card.programDescription,
+				programDescription: discoverClassifyProgramDescription(card.cardAddress, card.programDescription),
 				categoryId: card.categoryId,
 			})
 			const isFood = category === "food-beverage"

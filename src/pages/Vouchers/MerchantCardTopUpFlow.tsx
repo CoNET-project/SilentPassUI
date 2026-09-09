@@ -418,6 +418,7 @@ export default function MerchantCardTopUpFlow({
 	const [payError, setPayError] = useState('')
 	const [stripeReady, setStripeReady] = useState(false)
 	const [stripeBusy, setStripeBusy] = useState(false)
+	const stripeBusinessKeyRef = useRef<string | null>(null)
 	const [mintedLabel, setMintedLabel] = useState('0.00')
 	const [successNote, setSuccessNote] = useState('')
 	const [usedManual, setUsedManual] = useState(false)
@@ -466,6 +467,7 @@ export default function MerchantCardTopUpFlow({
 	useEffect(() => {
 		if (!open || !cardAddress || !ethers.isAddress(cardAddress)) return
 		let cancelled = false
+		stripeBusinessKeyRef.current = null
 		setStripeReady(false)
 		void fetch('/api/merchantCardStripe/status', {
 			method: 'POST',
@@ -498,6 +500,16 @@ export default function MerchantCardTopUpFlow({
 					amountFiat6,
 					currency: String(cardCurrency || 'USD').toUpperCase(),
 					kind: stripeKind ?? 'topup',
+					businessIdempotencyKey: (() => {
+						if (!stripeBusinessKeyRef.current) {
+							const randomPart =
+								typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+									? crypto.randomUUID()
+									: `${Date.now()}-${Math.random().toString(16).slice(2)}`
+							stripeBusinessKeyRef.current = `merchant-card-stripe:${randomPart}`
+						}
+						return stripeBusinessKeyRef.current
+					})(),
 					...(stripeKind === 'membership' && membershipTierIndex != null
 						? { membershipTierIndex }
 						: {}),

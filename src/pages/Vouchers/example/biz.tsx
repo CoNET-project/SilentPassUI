@@ -10,6 +10,7 @@ import React, {
 } from 'react';
 import { motion, LayoutGroup, AnimatePresence } from 'framer-motion';
 import { IpfsImg } from '@/components/IpfsImg';
+import MerchantCardStripePanel from '@/components/MerchantCardStripePanel';
 import type { LucideIcon } from 'lucide-react';
 import { ethers } from 'ethers';
 import html2canvas from 'html2canvas';
@@ -35656,6 +35657,9 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
           <div
             className={`mx-auto w-full animate-in fade-in duration-500 ${!showBizFirstMembershipOnboarding ? 'max-w-[1400px] space-y-3' : 'max-w-[1400px] space-y-4'}`}
           >
+            {isAdminForUI && staffProgramBeamioCardAddress && (
+              <MerchantCardStripePanel cardAddress={staffProgramBeamioCardAddress} />
+            )}
             {hasAaAccount && SHOW_LINKED_MERCHANT_CARD_PANEL && staffProgramBeamioCardAddress && showFixedCardMetadata && (
               <div className="flex justify-end">
                 <div className="relative h-[230px] w-full max-w-xl overflow-hidden rounded-[24px] border border-slate-800 bg-gradient-to-br from-slate-950 via-[#0f2247] to-[#0a0a0c] shadow-[0_0_32px_rgba(21,98,240,0.22)] sm:h-[250px] sm:rounded-[28px]">

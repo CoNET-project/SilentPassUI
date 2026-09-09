@@ -2457,7 +2457,6 @@ const Home = (_props: HomeProps) => {
 												</div>
 												<div className="flex flex-col min-w-0">
 													<span className="text-sm font-bold text-gray-900 dark:text-slate-100 tracking-tight">{tu('wallet_usdc')}</span>
-													<span className="text-[10px] text-gray-400 dark:text-slate-500 font-bold uppercase tracking-wider mt-0.5">{tu('on_base')}</span>
 												</div>
 											</div>
 											<div className="text-right shrink-0 pl-2">
@@ -3554,7 +3553,7 @@ const Home = (_props: HomeProps) => {
 														</div>
 														<div>
 															<p className="font-bold text-gray-900 dark:text-slate-100">Buy USDC with card</p>
-															<p className="text-xs text-gray-500 dark:text-slate-400">Card checkout. USDC sent to your EOA Wallet on Base.</p>
+															<p className="text-xs text-gray-500 dark:text-slate-400">Card checkout. USDC sent to your EOA Wallet.</p>
 														</div>
 													</div>
 													<ChevronRight className="text-gray-400" size={20} />

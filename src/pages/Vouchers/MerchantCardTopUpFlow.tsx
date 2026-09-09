@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, Check, ChevronRight, Info, Loader2, Lock, Share, Share2, SlidersHorizontal, Sparkles, Tag } from 'lucide-react'
 import usdcIcon from '@/components/assets/usdc.png'
-import baseIcon from '@/components/assets/base-logo.png'
 import { ethers } from 'ethers'
 import {
 	BeamioCircularBackButton,
@@ -157,23 +156,8 @@ function UsdcMark({ size = 16 }: { size?: number }) {
 	)
 }
 
-function UsdcBaseMark({ size = 16 }: { size?: number }) {
-	const badge = Math.max(10, Math.round(size * 0.625))
-	return (
-		<span className="relative inline-flex shrink-0" style={{ width: size, height: size }}>
-			<img src={usdcIcon} alt="USDC" className="block h-full w-full rounded-full object-contain" />
-			<img
-				src={baseIcon}
-				alt="Base"
-				className="absolute -bottom-0.5 -right-0.5 rounded-full border border-white bg-white object-contain dark:border-slate-900"
-				style={{ width: badge, height: badge }}
-			/>
-		</span>
-	)
-}
-
-function CashUsdcMark({ needsBase, size = 16 }: { needsBase: boolean; size?: number }) {
-	return needsBase ? <UsdcBaseMark size={size} /> : <UsdcMark size={size} />
+function CashUsdcMark({ size = 16 }: { size?: number }) {
+	return <UsdcMark size={size} />
 }
 
 function formatPtsShort(points6: bigint): string {
@@ -300,12 +284,11 @@ function formatCashFiatApiAmount(cashFiat: number, currency: string): string {
 	return n.toFixed(decimals)
 }
 
-function formatInsufficientBaseUsdcAlert(have6: bigint, need6: bigint): string {
-	return `This remainder is paid with USDC on Base. You have $${formatUsdc(have6)} Base USDC; this cash portion needs $${formatUsdc(need6)}. Add Base USDC, or turn off Use Points to pay the full amount after funding.`
-}
-
-function formatInsufficientConetUsdcAlert(have6: bigint, need6: bigint): string {
-	return `This payment uses CONET-USDC on CoNET, not Base USDC. You have $${formatUsdc(have6)} CONET-USDC; this top-up needs $${formatUsdc(need6)}.`
+function formatInsufficientUsdcAlert(have6: bigint, need6: bigint, opts?: { afterPoints?: boolean }): string {
+	if (opts?.afterPoints) {
+		return `You have $${formatUsdc(have6)} USDC; this cash portion needs $${formatUsdc(need6)}. Add USDC, or turn off Use Points to pay the full amount after funding.`
+	}
+	return `You have $${formatUsdc(have6)} USDC; this top-up needs $${formatUsdc(need6)}. Add USDC to continue.`
 }
 
 function resolveSmartPayCoveredFiat(opts: {
@@ -363,20 +346,20 @@ function composeDualPayFailure(
 	cashErr: string,
 ): string {
 	if (!pointsOk && !cashOk) {
-		return `Both payments failed. Points: ${pointsErr} Base USDC: ${cashErr}`
+		return `Both payments failed. Points: ${pointsErr}. USDC: ${cashErr}`
 	}
 	if (pointsOk && !cashOk) {
-		return `Reward PT was applied. Base USDC payment failed: ${cashErr}`
+		return `Reward PT was applied. USDC payment failed: ${cashErr}`
 	}
 	if (!pointsOk && cashOk) {
-		return `Base USDC payment succeeded. Points top-up failed: ${pointsErr}`
+		return `USDC payment succeeded. Points top-up failed: ${pointsErr}`
 	}
 	return 'Top-up failed'
 }
 
 function friendlyTopupContainerError(raw: string): string {
 	const m = raw.match(/Insufficient CONET-USDC \(have=(\d+), need=(\d+)\)/)
-	if (m) return formatInsufficientConetUsdcAlert(BigInt(m[1]), BigInt(m[2]))
+	if (m) return formatInsufficientUsdcAlert(BigInt(m[1]), BigInt(m[2]))
 	return raw
 }
 
@@ -385,7 +368,8 @@ function isInsufficientConetUsdcError(raw: string): boolean {
 }
 
 function formatUnfundableDualCashAlert(conetHave6: bigint, baseHave6: bigint, need6: bigint): string {
-	return `You have $${formatUsdc(conetHave6)} CONET-USDC and $${formatUsdc(baseHave6)} Base USDC; the remaining cash needs $${formatUsdc(need6)}. Add CONET-USDC for one CoNET payment, or add Base USDC to pay the remainder after points.`
+	const totalHave6 = conetHave6 + baseHave6
+	return `You have $${formatUsdc(totalHave6)} USDC; the remaining cash needs $${formatUsdc(need6)}. Add USDC to continue, or turn off Use Points to pay the full amount after funding.`
 }
 
 export default function MerchantCardTopUpFlow({
@@ -767,9 +751,7 @@ export default function MerchantCardTopUpFlow({
 			: ''
 	const payPanelAlert = payError || cashUnfundableAlert
 	const payBusyLabel = dualSmartPay
-		? cashNeedsBaseUsdc
-			? 'Paying with Points and Base USDC…'
-			: 'Paying with Points and CONET-USDC…'
+		? 'Paying with Points and USDC…'
 		: legs.length > 0
 			? 'Applying points…'
 			: 'Paying with USDC…'
@@ -946,7 +928,7 @@ export default function MerchantCardTopUpFlow({
 								return {
 									ok: false,
 									error:
-										'Smart Wallet (AA) is required for Base USDC top-up. Open Wallet and finish setup, then retry.',
+										'Smart Wallet (AA) is required for USDC top-up. Open Wallet and finish setup, then retry.',
 								}
 							}
 							let cardOwnerForCash: string | null = null
@@ -977,7 +959,9 @@ export default function MerchantCardTopUpFlow({
 							if (baseBal !== null && !eoaCanSelfFundDiscoverTopup(baseBal, settleQuotedUsdc6)) {
 								return {
 									ok: false,
-									error: formatInsufficientBaseUsdcAlert(baseBal, settleQuotedUsdc6),
+									error: formatInsufficientUsdcAlert(baseBal, settleQuotedUsdc6, {
+										afterPoints: true,
+									}),
 								}
 							}
 							const localPay = await payDiscoverTreasuryBridgeWithLocalWallet({
@@ -991,7 +975,7 @@ export default function MerchantCardTopUpFlow({
 								quotedUsdc6: settleQuotedUsdc6,
 							})
 							if (!localPay.ok) {
-								return { ok: false, error: localPay.error || 'Base USDC top-up failed' }
+								return { ok: false, error: localPay.error || 'USDC top-up failed' }
 							}
 							return { ok: true }
 						} catch (e: unknown) {
@@ -1004,7 +988,7 @@ export default function MerchantCardTopUpFlow({
 					}
 					const cashRes = await runCashBase()
 					if (!cashRes.ok) {
-						throw new Error(`Base USDC payment failed: ${cashRes.error}`)
+						throw new Error(`USDC payment failed: ${cashRes.error}`)
 					}
 				}
 				try {
@@ -1015,8 +999,8 @@ export default function MerchantCardTopUpFlow({
 				}
 				setSuccessNote(
 					oneShotDone
-						? 'Points and CONET-USDC completed in one CoNET payment.'
-						: 'Points and Base USDC both completed.',
+						? 'Points and USDC completed in one payment.'
+						: 'Points and USDC both completed.',
 				)
 			} else if (legs.length > 0) {
 				const container = await postTopupWithReward13Container({
@@ -1066,7 +1050,7 @@ export default function MerchantCardTopUpFlow({
 				if (baseBal !== null && eoaCanSelfFundDiscoverTopup(baseBal, settleQuotedUsdc6)) {
 					if (!userAa || !ethers.isAddress(userAa)) {
 						throw new Error(
-							'Smart Wallet (AA) is required for Base USDC top-up. Open Wallet and finish setup, then retry.',
+							'Smart Wallet (AA) is required for USDC top-up. Open Wallet and finish setup, then retry.',
 						)
 					}
 					if (!cardOwnerForCash || cardOwnerForCash === ethers.ZeroAddress) {
@@ -1091,7 +1075,7 @@ export default function MerchantCardTopUpFlow({
 						return
 					}
 					if (!localPay.insufficientBalance) {
-						throw new Error(localPay.error || 'Base USDC top-up failed')
+						throw new Error(localPay.error || 'USDC top-up failed')
 					}
 					/* Balance raced down — fall through to CoNET-USDC / third-party. */
 				}
@@ -1113,7 +1097,7 @@ export default function MerchantCardTopUpFlow({
 					if (!buy?.success) {
 						throw new Error(
 							buy?.error ||
-								'Store credit purchase failed. Check CoNET-USDC balance and try again.',
+								'Store credit purchase failed. Check USDC balance and try again.',
 						)
 					}
 					assets = buy.assets ?? undefined
@@ -1176,9 +1160,7 @@ export default function MerchantCardTopUpFlow({
 				: `${formatUsdcDue(quotedUsdc6)} USDC`
 	const confirmPayLabel =
 		cashUsdc6 > 0n
-			? cashNeedsBaseUsdc
-				? `Pay ${formatUsdcDue(cashUsdc6)} Base USDC`
-				: `Pay ${formatUsdcDue(cashUsdc6)} CONET-USDC`
+			? `Pay ${formatUsdcDue(cashUsdc6)} USDC`
 			: coveredFiat > 0
 				? 'Apply Points'
 				: `Pay ${formatUsdcDue(quotedUsdc6)} USDC`
@@ -1401,9 +1383,7 @@ export default function MerchantCardTopUpFlow({
 								<p className="mt-3 text-[13px] leading-relaxed text-white/90">
 									{smartPay
 										? cashUsdc6 > 0n
-											? cashNeedsBaseUsdc
-												? 'Points + Base USDC. Use available points, then cover the rest with USDC on Base.'
-												: 'Points + CONET-USDC. Use available points and pay the rest in one CoNET payment.'
+											? 'Points + USDC. Use available points, then cover the rest with USDC.'
 											: 'Use available points to cover this top-up.'
 										: 'Pay the full amount with USDC.'}
 								</p>
@@ -1439,15 +1419,10 @@ export default function MerchantCardTopUpFlow({
 										</p>
 									</div>
 								</div>
-								{cashNeedsBaseUsdc && baseUsdc6 !== null ? (
+								{dualSmartPay && cashUsdc6 > 0n && eoaUsdc6 !== null ? (
 									<p className="mt-2 text-[12px] text-white/75">
-										CONET-USDC is short. Remaining cash uses USDC on Base after Reward PT.
-										{' '}
-										Base USDC ${formatUsdc(baseUsdc6)} · need ${formatUsdc(cashUsdc6)}
-									</p>
-								) : dualSmartPay && eoaUsdc6 !== null ? (
-									<p className="mt-2 text-[12px] text-white/75">
-										CONET-USDC ${formatUsdc(eoaUsdc6)} · need ${formatUsdc(cashUsdc6)}
+										USDC ${formatUsdc(eoaUsdc6 + (baseUsdc6 ?? 0n))} · need $
+										{formatUsdc(cashUsdc6)}
 									</p>
 								) : null}
 							</div>
@@ -1499,7 +1474,7 @@ export default function MerchantCardTopUpFlow({
 						<>
 							<p className="mb-3 text-sm text-slate-500">
 								Reward PT from this store converts to store credit (#0). Points from other stores can
-								cover cash only if that program can pay CONET-USDC.
+								cover cash only if that program can pay USDC.
 							</p>
 							<div className="space-y-2">
 								{usableRows.map((row) => {
@@ -1561,7 +1536,7 @@ export default function MerchantCardTopUpFlow({
 								</p>
 								<p className="mt-2 flex items-center justify-center gap-2 text-[34px] font-bold tracking-tight text-[#111827] dark:text-slate-100">
 									{cashUsdc6 > 0n || coveredFiat <= 0 ? (
-										<CashUsdcMark needsBase={cashNeedsBaseUsdc} size={28} />
+										<CashUsdcMark size={28} />
 									) : null}
 									{amountDueLabel}
 								</p>
@@ -1606,8 +1581,8 @@ export default function MerchantCardTopUpFlow({
 								<div className="mt-4 flex items-center justify-between gap-3 border-t border-slate-100 pt-3 text-[15px] font-bold text-[#111827] dark:border-slate-700 dark:text-slate-100">
 									<span>USDC Required</span>
 									<span className="inline-flex items-center gap-1.5">
-										<CashUsdcMark needsBase={cashNeedsBaseUsdc} size={16} />
-										{formatUsdcDue(cashUsdc6)} {cashNeedsBaseUsdc ? 'Base USDC' : 'CONET-USDC'}
+										<CashUsdcMark size={16} />
+										{formatUsdcDue(cashUsdc6)}
 									</span>
 								</div>
 							</div>

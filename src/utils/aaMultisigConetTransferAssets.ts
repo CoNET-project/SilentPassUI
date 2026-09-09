@@ -72,7 +72,7 @@ async function fetchConetAaMultisigTransferAssetOptions(
 		candidates.push({
 			id: 'usdc',
 			chain: 'conet',
-			label: 'CoNET-USDC',
+			label: 'USDC',
 			balanceRaw: usdcRaw,
 			decimals: 6,
 			balanceDisplay: formatBalanceDisplay(usdcRaw, 6, 2),
@@ -187,7 +187,7 @@ export function buildTransferTaskTitle(asset: AaMultisigTransferAssetId, amountR
 		case 'cnet':
 			return `Transfer ${formatBalanceDisplay(amountRaw, 18)} CNET`
 		case 'usdc':
-			return `Transfer $${formatBalanceDisplay(amountRaw, 6, 2)} CoNET-USDC`
+			return `Transfer $${formatBalanceDisplay(amountRaw, 6, 2)} USDC`
 		case 'gb_paid':
 			return `Transfer ${formatGbDisplayFromWei(amountRaw, 9)} Payment GB`
 		case 'buint_paid':
@@ -195,7 +195,7 @@ export function buildTransferTaskTitle(asset: AaMultisigTransferAssetId, amountR
 		case 'base_eth':
 			return `Transfer ${formatBalanceDisplay(amountRaw, 18)} Base ETH`
 		case 'base_usdc':
-			return `Transfer $${formatBalanceDisplay(amountRaw, 6, 2)} Base USDC`
+			return `Transfer $${formatBalanceDisplay(amountRaw, 6, 2)} USDC`
 		default:
 			return 'Transfer'
 	}
@@ -217,7 +217,7 @@ export function formatTransferTaskSummary(task: {
 		case 'cnet':
 			return `${formatBalanceDisplay(raw, 18)} CNET → ${shortTo}`
 		case 'usdc':
-			return `$${formatBalanceDisplay(raw, 6, 2)} CoNET-USDC → ${shortTo}`
+			return `$${formatBalanceDisplay(raw, 6, 2)} USDC → ${shortTo}`
 		case 'gb_paid':
 			return `${formatGbDisplayFromWei(raw, 9)} Payment GB → ${shortTo}`
 		case 'buint_paid':
@@ -225,7 +225,7 @@ export function formatTransferTaskSummary(task: {
 		case 'base_eth':
 			return `${formatBalanceDisplay(raw, 18)} Base ETH → ${shortTo}`
 		case 'base_usdc':
-			return `$${formatBalanceDisplay(raw, 6, 2)} Base USDC → ${shortTo}`
+			return `$${formatBalanceDisplay(raw, 6, 2)} USDC → ${shortTo}`
 		default:
 			return `$${formatBalanceDisplay(raw, 6, 2)} → ${shortTo}`
 	}

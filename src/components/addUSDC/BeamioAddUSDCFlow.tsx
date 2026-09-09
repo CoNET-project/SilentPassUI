@@ -235,7 +235,7 @@ export default function BeamioAddUSDCFlow({
                   <OptionRow
                     icon={<CreditCard className="h-5 w-5" />}
                     title="Buy USDC with card"
-                    desc="Stripe sends USDC on Base to your EOA"
+                    desc="Stripe sends USDC to your EOA"
                     tag="Card"
                     onClick={() => setScreen("stripe")}
                   />
@@ -243,7 +243,7 @@ export default function BeamioAddUSDCFlow({
                   <OptionRow
                     icon={<Building2 className="h-5 w-5" />}
                     title="Transfer from another wallet / exchange"
-                    desc="Withdraw or send USDC on Base to your address"
+                    desc="Withdraw or send USDC to your address"
                     tag="0 fee"
                     onClick={() => setScreen("transfer")}
                   />
@@ -344,7 +344,7 @@ export default function BeamioAddUSDCFlow({
           <div className="px-4 pt-4">
             <Card>
               <div className="text-sm text-slate-600">
-                Send or withdraw <b>USDC</b> on <b>Base</b> to your Beamio address.
+                Send or withdraw <b>USDC</b> to your Beamio address.
               </div>
 
               <div className="mt-4 space-y-2">

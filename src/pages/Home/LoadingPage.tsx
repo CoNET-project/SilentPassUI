@@ -996,7 +996,7 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 								CCSA Ready
 							</h1>
 							<p className="text-sm md:text-base text-slate-600 dark:text-slate-400 mb-5 leading-relaxed">
-								Self-custodial USDC on Base — you control your funds.
+								Self-custodial USDC — you control your funds.
 							</p>
 
 							{/* CCSA 卡片 */}

@@ -187,7 +187,7 @@ export default function BeamioReceiveScreen() {
 										md:text-[11px]
 									"
 								>
-									USDC on Base
+									USDC
 								</span>
 								<span
 									className="
@@ -196,7 +196,7 @@ export default function BeamioReceiveScreen() {
 										md:text-[12px]
 									"
 								>
-									Only send on Base
+									Compatible wallet only
 								</span>
 							</div>
 						</div>
@@ -209,7 +209,7 @@ export default function BeamioReceiveScreen() {
 								md:text-[12px] md:leading-normal md:mb-4
 							"
 						>
-							Show your Beamio address or QR code to receive USDC on Base. This wallet is
+							Show your Beamio address or QR code to receive USDC. This wallet is
 							self-custodial – funds go directly to you.
 						</p>
 
@@ -314,7 +314,7 @@ export default function BeamioReceiveScreen() {
 								text-center leading-relaxed
 								"
 							>
-								Only send <span className="font-medium">Base 上的 USDC</span> to this address.
+								Only send <span className="font-medium">USDC</span> to this address.
 								Sending any other assets may result in loss of funds.
 							</p>
 						</div>
@@ -450,7 +450,7 @@ export default function BeamioReceiveScreen() {
 								Beamio never takes custody of your funds.
 							</p>
 							<p>
-								Payments go directly from other wallets to your Beamio wallet on Base. You keep
+								Payments go directly from other wallets to your Beamio wallet. You keep
 								full control of your keys.
 							</p>
 						</div>

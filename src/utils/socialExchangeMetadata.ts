@@ -69,7 +69,7 @@ export function socialExchangeSummaryLabel(exchange: SocialExchangeConfig): stri
 	const pts = exchange.pointsCost
 	if (exchange.kind === 'usdc' && exchange.usdcReward6 > 0n) {
 		const usdc = (Number(exchange.usdcReward6) / 1_000_000).toFixed(2)
-		return `Burn ${pts} social points → $${usdc} CONET-USDC`
+		return `Burn ${pts} social points → $${usdc} USDC`
 	}
 	return `Burn ${pts} social points → 1 activity coupon`
 }

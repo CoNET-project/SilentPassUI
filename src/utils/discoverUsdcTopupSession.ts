@@ -266,14 +266,14 @@ export async function payWalletUsdcDepositWithLocalWallet(params: {
 	try {
 		balance6 = await readEoaUsdcBalance6(params.profile)
 	} catch (e: unknown) {
-		const msg = e instanceof Error ? e.message : 'Unable to read USDC balance on Base'
+		const msg = e instanceof Error ? e.message : 'Unable to read USDC balance'
 		return { ok: false, error: msg }
 	}
 	if (!eoaCanSelfFundDiscoverTopup(balance6, required6)) {
 		return {
 			ok: false,
 			insufficientBalance: true,
-			error: `Insufficient USDC on Base. Need ${formatQuotedUsdc6ForDisplay(required6)} USDC.`,
+			error: `Insufficient USDC. Need ${formatQuotedUsdc6ForDisplay(required6)} USDC.`,
 		}
 	}
 
@@ -432,7 +432,7 @@ export async function payGenesisNodeSeatWithLocalWallet(params: {
 	try {
 		balance6 = await readEoaUsdcBalance6(params.profile)
 	} catch (e: unknown) {
-		const msg = e instanceof Error ? e.message : 'Unable to read USDC balance on Base'
+		const msg = e instanceof Error ? e.message : 'Unable to read USDC balance'
 		return { ok: false, error: msg }
 	}
 	if (!eoaCanSelfFundDiscoverTopup(balance6, required6)) {
@@ -440,8 +440,8 @@ export async function payGenesisNodeSeatWithLocalWallet(params: {
 			ok: false,
 			insufficientBalance: true,
 			error: testMode
-				? 'Insufficient USDC on Base. Need 4.00 USDC for this test purchase.'
-				: `Insufficient USDC on Base. Need ${(qty * GENESIS_NODE_SEAT_USDC_PER_NODE).toLocaleString('en-US')} USDC.`,
+				? 'Insufficient USDC. Need 4.00 USDC for this test purchase.'
+				: `Insufficient USDC. Need ${(qty * GENESIS_NODE_SEAT_USDC_PER_NODE).toLocaleString('en-US')} USDC.`,
 		}
 	}
 
@@ -634,14 +634,14 @@ export async function payDiscoverTreasuryBridgeWithLocalWallet(params: {
 	try {
 		balance6 = await readEoaUsdcBalance6(params.profile)
 	} catch (e: unknown) {
-		const msg = e instanceof Error ? e.message : 'Unable to read USDC balance on Base'
+		const msg = e instanceof Error ? e.message : 'Unable to read USDC balance'
 		return { ok: false, error: msg }
 	}
 	if (!eoaCanSelfFundDiscoverTopup(balance6, required6)) {
 		return {
 			ok: false,
 			insufficientBalance: true,
-			error: `Insufficient USDC on Base. Need ${formatQuotedUsdc6ForDisplay(required6)} USDC.`,
+			error: `Insufficient USDC. Need ${formatQuotedUsdc6ForDisplay(required6)} USDC.`,
 		}
 	}
 
@@ -717,7 +717,7 @@ export async function payDiscoverTreasuryBridgeWithLocalWallet(params: {
 		return {
 			ok: false,
 			insufficientBalance: true,
-			error: `Insufficient USDC on Base. Need ${formatQuotedUsdc6ForDisplay(payAmount)} USDC.`,
+			error: `Insufficient USDC. Need ${formatQuotedUsdc6ForDisplay(payAmount)} USDC.`,
 		}
 	}
 
@@ -748,11 +748,11 @@ export async function payDiscoverTreasuryBridgeWithLocalWallet(params: {
 
 /** @deprecated Prefer {@link discoverTreasuryBridgePaymentHint}. */
 export function discoverClientTopupPaymentHint(): string {
-	return 'Ask the payer to scan this QR or open the link to pay USDC on Base. USDC is sent to your wallet; this app completes the merchant top-up after funds arrive.'
+	return 'Ask the payer to scan this QR or open the link to pay USDC. USDC is sent to your wallet; this app completes the merchant top-up after funds arrive.'
 }
 
 export function discoverTreasuryBridgePaymentHint(): string {
-	return 'Scan this QR or open the link to pay USDC on Base. Funds go to the Beamio treasury; card points credit to your Smart Wallet after payment confirms. The merchant receives CoNET-USDC separately.'
+	return 'Scan this QR or open the link to pay USDC. Funds go to the Beamio treasury; card points credit to your Smart Wallet after payment confirms.'
 }
 
 type NfcUsdcTopupQuoteResponse = {
@@ -805,7 +805,7 @@ export function newDiscoverUsdcTopupSessionId(): string {
 }
 
 export function discoverUsdcTopupPaymentHint(): string {
-	return 'Scan this QR or open the payment link to pay with USDC on Base. Your balance updates after payment is confirmed.'
+	return 'Scan this QR or open the payment link to pay with USDC. Your balance updates after payment is confirmed.'
 }
 
 function progressLabelForState(state: string): string {

@@ -657,7 +657,7 @@ export const SendHistoryTable = (
 										USDC {formatWithThousands(usdcbalance)}
 									</p>
 									<p className="text-[11px] text-slate-500 dark:text-slate-400">
-										Available on Base
+										USDC
 									</p>
 								</div>
 							</div>

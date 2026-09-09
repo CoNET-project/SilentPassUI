@@ -428,15 +428,15 @@ export default function DiscoverMerchantGiftSheet({
 				if (conetBal != null && baseBal != null) {
 					const combined = conetBal + baseBal
 					setUsdcAvailableLabel(
-						`~$${formatQuotedUsdc6ForDisplay(combined)} USDC available · CoNET + Base`,
+						`~$${formatQuotedUsdc6ForDisplay(combined)} USDC available`,
 					)
 				} else if (conetBal != null) {
 					setUsdcAvailableLabel(
-						`~$${formatQuotedUsdc6ForDisplay(conetBal)} CoNET-USDC · Base unavailable`,
+						`~$${formatQuotedUsdc6ForDisplay(conetBal)} USDC available`,
 					)
 				} else if (baseBal != null) {
 					setUsdcAvailableLabel(
-						`~$${formatQuotedUsdc6ForDisplay(baseBal)} Base USDC · CoNET unavailable`,
+						`~$${formatQuotedUsdc6ForDisplay(baseBal)} USDC available`,
 					)
 				} else {
 					setUsdcAvailableLabel(null)
@@ -782,7 +782,7 @@ export default function DiscoverMerchantGiftSheet({
 						? ethers.getAddress(profile.keyID)
 						: '') || new ethers.Wallet(pk).address
 				setUsdcSubmitHint(
-					`Moving ~$${formatQuotedUsdc6ForDisplay(shortfall)} Base USDC to CoNET…`,
+					`Moving ~$${formatQuotedUsdc6ForDisplay(shortfall)} USDC…`,
 				)
 				const deposit = await payWalletUsdcDepositWithLocalWallet({
 					profile: profile as profile,
@@ -795,7 +795,7 @@ export default function DiscoverMerchantGiftSheet({
 					setPanelError(deposit.error)
 					return
 				}
-				setUsdcSubmitHint('Waiting for CoNET-USDC…')
+				setUsdcSubmitHint('Waiting for USDC…')
 				const poll = await pollUntilEoaConetUsdcAtLeast({
 					profile: profile as profile,
 					minBalance6: usdc6,
@@ -808,20 +808,20 @@ export default function DiscoverMerchantGiftSheet({
 				}
 				if (poll !== 'ok') {
 					setPanelError(
-						'CoNET-USDC deposit is still confirming. Please try again in a moment.',
+						'USDC deposit is still confirming. Please try again in a moment.',
 					)
 					return
 				}
 				conetBal = await readEoaConetUsdcBalance6(profile as profile)
 				if (conetBal < usdc6) {
 					setPanelError(
-						`CoNET-USDC is still short after deposit. Need about ${usdc} USDC; balance is ~$${formatQuotedUsdc6ForDisplay(conetBal)}.`,
+						`USDC is still short after deposit. Need about ${usdc} USDC; balance is ~$${formatQuotedUsdc6ForDisplay(conetBal)}.`,
 					)
 					return
 				}
 			}
 
-			setUsdcSubmitHint('Signing CoNET-USDC payment…')
+			setUsdcSubmitHint('Signing USDC payment…')
 			const auth = await USDC2Token(pk, usdc, card)
 			setUsdcSubmitHint(null)
 			const result = await postPurchaseMerchantGiftRedeem({
@@ -1670,13 +1670,13 @@ export default function DiscoverMerchantGiftSheet({
 										USDC
 									</span>
 									<span className="rounded-full bg-[#dbe1ff] px-2 py-0.5 text-[11px] font-semibold text-[#00184a]">
-										EOA · CoNET + Base
+										EOA
 									</span>
 								</div>
 								<p className="mt-1 text-xs text-[#5d5e63]">
 									{usdcAvailableLabel ??
 										usdcQuoteLabel ??
-										'Quoted in USDC at checkout · CoNET + Base'}
+										'Quoted in USDC at checkout'}
 								</p>
 								{usdcAvailableLabel && usdcQuoteLabel ? (
 									<p className="mt-0.5 text-xs text-[#5d5e63]">{usdcQuoteLabel}</p>

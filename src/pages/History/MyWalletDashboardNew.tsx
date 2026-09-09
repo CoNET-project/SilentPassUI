@@ -1631,7 +1631,7 @@ export default function MyWalletDashboardNew() {
 	const cards: Card[] = [
 		{
 			id: 'eoa',
-			name: 'Base 上的 USDC',
+			name: 'USDC',
 			balance: String(usdcbalance ?? 0),
 			balanceFiat: balanceFiat,
 			address: myAddress || '',
@@ -3114,7 +3114,7 @@ export default function MyWalletDashboardNew() {
 													</div>
 													<div className="min-w-0">
 														<p className="font-bold text-gray-900 dark:text-slate-100">Buy USDC with card</p>
-														<p className="text-xs text-gray-500 dark:text-slate-400">Card checkout. USDC sent to your EOA Wallet on Base.</p>
+														<p className="text-xs text-gray-500 dark:text-slate-400">Card checkout. USDC sent to your EOA Wallet.</p>
 													</div>
 												</div>
 												<ChevronRight className="text-gray-400 shrink-0" size={20} />

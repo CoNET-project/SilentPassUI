@@ -4704,7 +4704,7 @@ function ConetGenesisNodeDiscoverSection({
 								? localTestEoa
 									? 'Your wallet has enough USDC — pay 4.00 USDC in-app'
 									: 'Your wallet has enough USDC — pay in-app'
-								: 'Pay with an external wallet on Base'}
+								: 'Pay with an external wallet'}
 						</p>
 					) : null}
 				</div>
@@ -6553,12 +6553,12 @@ function DiscoverMerchantDetailFullScreen({
 			if (eoaCanSelfFundDiscoverTopup(baseUsdc6, quotedUsdc6)) {
 				if (!userAa) {
 					setDiscoverPayPanelError(
-						'Smart Wallet (AA) is required for Base USDC top-up. Open Wallet and finish setup, then retry.',
+						'Smart Wallet (AA) is required for USDC top-up. Open Wallet and finish setup, then retry.',
 					)
 					return
 				}
 				setUsdcTopupBaselineUsdc6(baseUsdc6)
-				setUsdcTopupProgress('Paying with Base USDC…')
+				setUsdcTopupProgress('Paying with USDC…')
 				cardTopupBaselinePoints6Ref.current = await readCardPoints6Fresh()
 				captureCardTopupBaselines(isMembershipPay ? usdcTopupIntent : 'topup')
 				const localPay = await payDiscoverTreasuryBridgeWithLocalWallet({
@@ -6770,7 +6770,7 @@ function DiscoverMerchantDetailFullScreen({
 				eoaCanSelfFundDiscoverTopup(current6, usdcTopupRequiredUsdc6) ||
 				eoaMeetsExternalFundingTarget(current6, usdcTopupBaselineUsdc6, usdcTopupRequiredUsdc6)
 			if (!funded) {
-				setDiscoverPayPanelError('CoNET-USDC has not arrived yet. Ask the payer to complete the payment link.')
+				setDiscoverPayPanelError('USDC has not arrived yet. Ask the payer to complete the payment link.')
 				return
 			}
 			setUsdcTopupProgress('Completing top-up…')

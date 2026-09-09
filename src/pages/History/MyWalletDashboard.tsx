@@ -846,7 +846,7 @@ export function MyWalletDashboard() {
 										className={["w-5 h-5 object-contain", reflash ? "animate-spin opacity-80" : ""].join(" ")}
 									/>
 								</button>
-								<span className="font-medium">Base 上的 USDC</span>
+								<span className="font-medium">USDC</span>
 							</div>
 						</div>
 
@@ -962,7 +962,7 @@ export function MyWalletDashboard() {
 					type="button"
 					onClick={() => setActiveSlide(0)}
 					className={`h-2 rounded-full transition-all duration-300 ${activeSlide === 0 ? 'w-8 bg-blue-600' : 'w-2 bg-slate-300'}`}
-					aria-label="Base 上的 USDC"
+					aria-label="USDC"
 				/>
 				<button
 					type="button"

@@ -2023,7 +2023,7 @@ export async function signAndSubmitFulfillTransferOrder(args: {
 		if (seller.toLowerCase() === buyer.toLowerCase()) return { success: false, error: 'You cannot buy your own order' }
 		priceUsdc6 = order[2] as bigint
 		usdcAddr = ethers.getAddress(await read.usdcToken!())
-		if (usdcAddr === ethers.ZeroAddress) return { success: false, error: 'CoNET-USDC token not configured' }
+		if (usdcAddr === ethers.ZeroAddress) return { success: false, error: 'USDC token not configured' }
 		nonce = (await read.beneficiaryNonces!(buyer)) as bigint
 	} catch (e: unknown) {
 		const err = e as { shortMessage?: string; message?: string }
@@ -2035,11 +2035,11 @@ export async function signAndSubmitFulfillTransferOrder(args: {
 	let tokenName: string
 	try {
 		const bal = (await usdc.balanceOf!(buyer)) as bigint
-		if (bal < priceUsdc6) return { success: false, error: 'Insufficient CoNET-USDC balance' }
+		if (bal < priceUsdc6) return { success: false, error: 'Insufficient USDC balance' }
 		tokenName = (await usdc.name!()) as string
 	} catch (e: unknown) {
 		const err = e as { shortMessage?: string; message?: string }
-		return { success: false, error: err?.shortMessage ?? err?.message ?? 'CoNET-USDC precheck failed' }
+		return { success: false, error: err?.shortMessage ?? err?.message ?? 'USDC precheck failed' }
 	}
 
 	const now = Math.floor(Date.now() / 1000)

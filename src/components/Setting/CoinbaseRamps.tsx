@@ -75,8 +75,8 @@ const CoinbaseRamps: React.FC = () => {
 
 	const description =
 		mode === "onramp"
-		? "Top up your Beamio wallet with USDC on Base. Fiat payments and KYC are handled by Coinbase."
-		: "Convert your USDC on Base to fiat via Coinbase. Beamio never touches your bank details.";
+		? "Top up your Beamio wallet with USDC. Fiat payments and KYC are handled by Coinbase."
+		: "Convert your USDC to fiat via Coinbase. Beamio never touches your bank details.";
 
 	return (
 		<div className="min-h-screen bg-slate-50">
@@ -184,7 +184,7 @@ const CoinbaseRamps: React.FC = () => {
 
 				{/* Coinbase branding note */}
 				<p className="mt-4 text-[10px] text-slate-400 leading-relaxed">
-					Fiat on/off ramp is provided by Coinbase. Beamio remains a non-custodial USDC wallet on Base; we never hold your fiat or bank details.
+					Fiat on/off ramp is provided by Coinbase. Beamio remains a non-custodial USDC wallet; we never hold your fiat or bank details.
 				</p>
 			</main>
 		</div>
@@ -212,7 +212,7 @@ const StepIntro: React.FC<{ mode: RampMode; onNext: () => void, url: string }> =
 				<li>You choose how much to add.</li>
 				<li>We send you to Coinbase to pay with card or bank.</li>
 				<li>
-					USDC is deposited into your Beamio wallet on Base once complete.
+					USDC is deposited into your Beamio wallet once complete.
 				</li>
 				</>
 			) : (

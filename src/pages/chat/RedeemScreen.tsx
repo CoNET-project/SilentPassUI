@@ -280,7 +280,7 @@ const RedeemScreen = ({close}: Prof) => {
 								<section className="space-y-1 text-[11px] text-slate-500">
 									<p>
 										When you redeem, <span className="font-mono font-bold">{amount}</span> will be released
-										from the Cashcode smart contract to your Beamio wallet on Base.
+										from the Cashcode smart contract to your Beamio wallet.
 										Beamio pays the network fee for this transaction.
 									</p>
 								</section>

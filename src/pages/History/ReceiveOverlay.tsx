@@ -112,7 +112,7 @@ export default function ReceiveOverlay({ onClose, address }: ReceiveOverlayProps
 			<div className="mt-2 text-[11px] leading-relaxed
 				text-slate-600 dark:text-slate-500
 			">
-				Use this address to receive USDC on Base via Beamio or any compatible wallet.
+				Use this address to receive USDC via Beamio or any compatible wallet.
 			</div>
 			</div>
       </div>

@@ -307,7 +307,7 @@ export function ConformSignInfo({
 				
 			 : 
 				<div className="px-5 py-4 text-sm opacity-70 border-t border-slate-200 dark:border-white/10">
-					By signing this request, you allow Beamio to use your wallet to create a USDC transfer on Base.<br />
+					By signing this request, you allow Beamio to use your wallet to create a USDC transfer.<br />
 					Those changes may not occur immediately. Beamio pays the network fee, so you will not pay gas for this payment.
 				</div>
 			

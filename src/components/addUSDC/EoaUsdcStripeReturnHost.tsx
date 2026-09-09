@@ -91,7 +91,7 @@ export default function EoaUsdcStripeReturnHost() {
 				setMessage('Stripe is sending USDC to your EOA…')
 			} else {
 				setView('waiting')
-				setMessage('Complete Stripe Onramp. Stripe sends USDC on Base to your EOA.')
+				setMessage('Complete Stripe Onramp. Stripe sends USDC to your EOA.')
 			}
 			if (Date.now() - started > POLL_MAX_MS) {
 				setView('error')

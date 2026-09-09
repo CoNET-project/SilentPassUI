@@ -150,7 +150,7 @@ export default function EoaUsdcStripePanel({ walletAddress, onSuccess }: EoaUsdc
 				</div>
 				<div className="min-w-0">
 					<h4 className="text-base font-bold text-slate-900 dark:text-slate-100">Buy USDC with card</h4>
-					<p className="text-xs text-slate-500 dark:text-slate-400">Stripe sends USDC on Base to your EOA</p>
+					<p className="text-xs text-slate-500 dark:text-slate-400">Stripe sends USDC to your EOA</p>
 				</div>
 			</div>
 
@@ -209,7 +209,7 @@ export default function EoaUsdcStripePanel({ walletAddress, onSuccess }: EoaUsdc
 			</div>
 
 			{phase === 'waiting' && (
-				<p className="mb-3 text-xs text-slate-500 dark:text-slate-400">Complete Stripe Onramp. Stripe sends USDC on Base to your EOA.</p>
+				<p className="mb-3 text-xs text-slate-500 dark:text-slate-400">Complete Stripe Onramp. Stripe sends USDC to your EOA.</p>
 			)}
 			{phase === 'transferring' && (
 				<p className="mb-3 text-xs text-slate-500 dark:text-slate-400">Stripe is sending USDC to your EOA…</p>

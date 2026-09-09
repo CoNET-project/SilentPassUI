@@ -40,7 +40,7 @@ export function buildEoaUsdcTransferQrUri(params: {
 
 export function discoverEoaUsdcReceiveHint(usdcAmountDisplay: string, recipientEoa: string): string {
 	const short = `${recipientEoa.slice(0, 6)}…${recipientEoa.slice(-4)}`
-	return `Ask the payer to send ${usdcAmountDisplay} USDC on Base to your wallet ${short}. This app will complete the merchant top-up after USDC arrives.`
+	return `Ask the payer to send ${usdcAmountDisplay} USDC to your wallet ${short}. This app will complete the merchant top-up after USDC arrives.`
 }
 
 export async function readEoaUsdcBalance6(profile: profile): Promise<bigint> {
@@ -63,7 +63,7 @@ export async function readEoaConetUsdcBalance6(profile: profile): Promise<bigint
 			: '')
 	if (!eoa || !ethers.isAddress(eoa)) return 0n
 	const res = await fetchConetUsdcBalance(eoa, { bypassMemoryCache: true })
-	if (!res.ok) throw new Error(res.error ?? 'Unable to read CoNET-USDC balance')
+	if (!res.ok) throw new Error(res.error ?? 'Unable to read USDC balance')
 	return res.balanceRaw
 }
 
@@ -98,7 +98,7 @@ export function formatDiscoverUsdcTopupMinUsdcDisplay(requiredMinUsdc6: string):
 export function discoverUsdcTopupRulesHintText(preview: USDCUserCardTopupPreviewPayload): string {
 	const min = formatDiscoverUsdcTopupMinUsdcDisplay(preview.requiredMinUsdc6)
 	if (preview.intent === 'first_purchase') {
-		return `First purchase requires at least ${min} CoNET-USDC for this merchant card.`
+		return `First purchase requires at least ${min} USDC for this merchant card.`
 	}
 	return ''
 }
@@ -110,7 +110,7 @@ export function discoverUsdcTopupAmountTooSmallError(
 	const need = formatDiscoverUsdcTopupMinUsdcDisplay(preview.requiredMinUsdc6)
 	const got = usdc6ToExactTransferAmount(providedUsdc6)
 	const intentLabel = preview.intent === 'first_purchase' ? 'first purchase' : preview.intent
-	return `Amount too small for ${intentLabel}. Minimum required is ${need} CoNET-USDC (this top-up quotes ~${got} CoNET-USDC).`
+	return `Amount too small for ${intentLabel}. Minimum required is ${need} USDC (this top-up quotes ~${got} USDC).`
 }
 
 export type DiscoverUsdcTopupPrecheckResult =
@@ -201,9 +201,9 @@ export async function pollUntilEoaConetUsdcAtLeast(params: {
 			const current6 = await readEoaConetUsdcBalance6(params.profile)
 			if (current6 >= params.minBalance6) return 'ok'
 		} catch {
-			params.onProgress?.('Waiting for CoNET-USDC…')
+			params.onProgress?.('Waiting for USDC…')
 		}
-		params.onProgress?.('Waiting for CoNET-USDC on your wallet…')
+		params.onProgress?.('Waiting for USDC on your wallet…')
 		try {
 			await sleep(POLL_INTERVAL_MS)
 		} catch {
@@ -254,18 +254,18 @@ export async function pollEoaUsdcFundingThenTopup(params: {
 		try {
 			current6 = await readEoaConetUsdcBalance6(params.profile)
 		} catch {
-			params.onProgress?.('Waiting for CoNET-USDC…')
+			params.onProgress?.('Waiting for USDC…')
 			await sleep(POLL_INTERVAL_MS)
 			continue
 		}
 
 		if (!isFunded(current6)) {
-			params.onProgress?.('Waiting for CoNET-USDC on your wallet…')
+			params.onProgress?.('Waiting for USDC on your wallet…')
 			await sleep(POLL_INTERVAL_MS)
 			continue
 		}
 
-		params.onProgress?.('CoNET-USDC received — completing top-up…')
+		params.onProgress?.('USDC received — completing top-up…')
 		const ret = await postUSDCUserCardTopup({
 			profile: params.profile,
 			cardAddress: params.cardAddress,

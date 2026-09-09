@@ -40,7 +40,7 @@ export default function BeamioPaymentMethodsScreen({colse}:prof) {
             <p className="text-xs leading-relaxed text-slate-700">
               Beamio never takes custody of your funds and does not hold card or bank details. Fiat on-ramp and
               off-ramp are processed directly by <span className="font-semibold">Coinbase</span>, with balances
-              delivered as USDC on Base.
+              delivered as USDC.
             </p>
           </div>
 
@@ -73,7 +73,7 @@ export default function BeamioPaymentMethodsScreen({colse}:prof) {
                   <div className="flex flex-col">
                     <span className="text-sm font-semibold text-slate-900">Buy USDC with Coinbase</span>
                     <span className="text-xs text-slate-500">
-                      Use cards or bank accounts via Coinbase to get USDC on Base in your Beamio wallet.
+                      Use cards or bank accounts via Coinbase to get USDC in your Beamio wallet.
                     </span>
                   </div>
                 </div>

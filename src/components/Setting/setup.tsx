@@ -75,7 +75,7 @@ export default function BeamioSettingsScreen({
 							{/* Brand strip */}
 							<section className="bg-white border-b border-slate-100 px-4 py-3 flex items-center justify-between">
 								<div>
-									<p className="text-sm font-semibold">Beamio · 0-gas USDC on Base</p>
+									<p className="text-sm font-semibold">Beamio · 0-gas USDC</p>
 									<p className="text-xs text-slate-500">
 										Non-custodial passkey wallet · no centralized user database
 									</p>

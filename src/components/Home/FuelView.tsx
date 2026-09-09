@@ -369,7 +369,7 @@ const FuelView: React.FC<FuelViewProps> = ({ onClose, bUnitBalance, onRefresh, a
 
               {amountConfig.disabled ? (
                 <div className="rounded-xl bg-slate-100 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 px-4 py-4 text-center text-[13px] font-medium text-slate-500 dark:text-slate-400">
-                  {usdcBalance === null ? 'Loading USDC balance...' : usdcBalance < MIN_PURCHASE_USD ? 'Minimum purchase is $1. Add USDC on Base to refuel.' : 'No USDC on Base. Add USDC to refuel.'}
+                  {usdcBalance === null ? 'Loading USDC balance...' : usdcBalance < MIN_PURCHASE_USD ? 'Minimum purchase is $1. Add USDC to refuel.' : 'No USDC. Add USDC to refuel.'}
                 </div>
               ) : (
               <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-700/50 rounded-2xl p-4 border border-slate-100 dark:border-slate-600 focus-within:border-orange-500 transition-colors">

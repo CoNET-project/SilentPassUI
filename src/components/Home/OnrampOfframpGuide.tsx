@@ -46,7 +46,7 @@ export default function OnrampOfframpGuide() {
           </li>
           <li>
             After the onramp transaction is confirmed, USDC will be delivered to
-            the wallet that Beamio is connected to on Base. Beamio then uses
+            your Beamio wallet. Beamio then uses
             this balance for Cashcodes, Payments, and Requests.
           </li>
         </ol>
@@ -69,7 +69,7 @@ export default function OnrampOfframpGuide() {
           </li>
           <li>
             Confirm the asset is{' '}
-            <span className="font-semibold">Base 上的 USDC</span>.
+            <span className="font-semibold">USDC</span>.
           </li>
           <li>
             Enter the amount of USDC you want to withdraw and select your payout

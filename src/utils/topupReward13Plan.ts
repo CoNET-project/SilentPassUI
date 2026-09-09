@@ -94,6 +94,7 @@ const CARD_IFACE = new ethers.Interface([
 	'function currency() view returns (uint8)',
 	'function pointsUnitPriceInCurrencyE6() view returns (uint256)',
 	'function convertReward13ToUsdcRatioE6() view returns (uint256)',
+	'function convertReward13ToPointsRatioE6() view returns (uint256)',
 	'function quoteUsdcWithdrawForFiat6(uint256 fiatAmount6) view returns (uint256)',
 ])
 
@@ -107,23 +108,24 @@ export type Reward13Row = {
 	cardAddress: string
 	name: string
 	icon?: string
-	/** Full AA #13 balance (not escrow-capped). */
+	/** Full AA #13 balance. */
 	pointsBalance6: bigint
 	escrowUsdc6: bigint
-	/** Full-balance on-chain USDC quote (peer) or escrow-capped quote (same-store). */
+	/** Full-balance on-chain USDC quote (peer only; same-store unused for cover). */
 	quotedUsdc6: bigint
-	/** Fail-closed max USDC this row can pay: min(quote, escrow, ERC20). */
+	/** Peer: fail-closed max USDC = min(quote, escrow, ERC20). Same-store: 0. */
 	redeemableUsdc6: bigint
 	/**
-	 * Usable burn #13 after escrow + card USDC liquidity.
-	 * Same-store and peer both size via findBurn13ForUsdcTarget when capped.
+	 * Usable burn #13 for cover.
+	 * Same-store: full #13 when merchant allows PT→#0 (no USDC escrow).
+	 * Peer: sized via findBurn13ForUsdcTarget against escrow + liquidity.
 	 */
 	redeemablePoints6: bigint
 	supportsRedeem: boolean
 	coverKind: Reward13CoverKind
 	/**
-	 * Same-store: true after on-chain escrow+liquidity sized redeemable (incl. 0).
-	 * Preview/hydrate rows stay false so UI does not treat escrow-unknown as settled.
+	 * Same-store: true after refine (allow gate + balance sized, incl. redeemable 0).
+	 * Preview/hydrate rows stay false so UI does not settle cover prematurely.
 	 */
 	escrowSized?: boolean
 }
@@ -220,12 +222,12 @@ export function mergeReward13Rows(prev: Reward13Row[], incoming: Reward13Row[]):
 	for (const row of incoming) {
 		const key = row.cardAddress.toLowerCase()
 		const existing = map.get(key)
-		// Escrow-sized same-store (incl. usable = 0) always replaces optimistic preview.
+		// Allow-gate sized same-store (incl. usable = 0) always replaces optimistic preview.
 		if (row.escrowSized) {
 			map.set(key, row)
 			continue
 		}
-		// Never let seed / preview (escrowSized=false) wipe a trusted escrow-sized row.
+		// Never let seed / preview (escrowSized=false) wipe a trusted sized row.
 		if (existing?.escrowSized && !row.escrowSized) {
 			if (
 				row.coverKind === 'toProgramPoints' &&
@@ -236,7 +238,7 @@ export function mergeReward13Rows(prev: Reward13Row[], incoming: Reward13Row[]):
 			continue
 		}
 		// Never let a transient empty / failed read wipe a trusted positive #13 balance
-		// when the incoming row is not escrow-sized yet.
+		// when the incoming row is not sized yet.
 		if (
 			existing &&
 			existing.coverKind === 'toProgramPoints' &&
@@ -308,8 +310,8 @@ export function seedAssetsFromPoints13Human(
 }
 
 /**
- * Optimistic same-store row before escrow + liquidity sizing.
- * redeemable stays 0 so Cover / settle do not treat escrow-unknown as full PT.
+ * Optimistic same-store row before allow-gate refine.
+ * redeemable stays 0 until convertReward13ToPointsRatio / price are confirmed.
  */
 function previewSameStoreRow(cardAddress: string, bal13: bigint, name?: string): Reward13Row {
 	return {
@@ -355,7 +357,7 @@ export function hydrateSameStoreRowFromAssets(
 	return previewSameStoreRow(ethers.getAddress(cardAddress), bal, name)
 }
 
-/** Sync greedy cover in USDC-6. Same-store first (escrow-capped PT → proportional USDC). */
+/** Sync greedy cover in USDC-6. Same-store first (full allowed PT → proportional USDC). */
 export function estimateCoverUsdc6(rows: Reward13Row[], needUsdc6: bigint, fiat6 = 0n): bigint {
 	if (needUsdc6 <= 0n) return 0n
 	const same = rows
@@ -389,7 +391,7 @@ export function estimateCoverUsdc6(rows: Reward13Row[], needUsdc6: bigint, fiat6
 	return covered
 }
 
-/** Same-store escrow-capped #13 in card fiat: min(amount, redeemablePoints). */
+/** Same-store allowed #13 in card fiat: min(amount, redeemablePoints). */
 export function estimateSameStoreCoverFiat(rows: Reward13Row[], fiatN: number): number {
 	if (!Number.isFinite(fiatN) || fiatN <= 0) return 0
 	const same = rows.find((r) => r.coverKind === 'toProgramPoints' && r.redeemablePoints6 > 0n)
@@ -399,12 +401,12 @@ export function estimateSameStoreCoverFiat(rows: Reward13Row[], fiatN: number): 
 	return Math.min(fiatN, pts)
 }
 
-/** Same-store usable burn #13 > 0 after escrow + card USDC liquidity. */
+/** Same-store usable burn #13 > 0 (merchant allow PT→#0; no USDC escrow). */
 export function sameStoreHasPositiveCover(rows: Reward13Row[]): boolean {
 	return rows.some((r) => r.coverKind === 'toProgramPoints' && r.redeemablePoints6 > 0n)
 }
 
-/** Same-store #13 was sized against rewardEscrow + card USDC (settle even if usable = 0). */
+/** Same-store #13 refine finished (settle even if usable = 0 when allow is off). */
 export function sameStoreEscrowSized(rows: Reward13Row[]): boolean {
 	return rows.some((r) => r.coverKind === 'toProgramPoints' && r.escrowSized === true)
 }
@@ -480,23 +482,6 @@ async function findBurn13ForUsdcTarget(
 	return { burn13: bestBurn, usdcOut6: confirm }
 }
 
-/** Same-store: map USDC escrow/liquidity cap → usable #13 without binary search. */
-function sameStoreRedeemableFromUsdcCap(
-	bal13: bigint,
-	quotedUsdc6: bigint,
-	maxUsdc: bigint,
-): { redeemablePoints6: bigint; redeemableUsdc6: bigint } {
-	if (bal13 <= 0n || quotedUsdc6 <= 0n || maxUsdc <= 0n) {
-		return { redeemablePoints6: 0n, redeemableUsdc6: 0n }
-	}
-	if (maxUsdc >= quotedUsdc6) {
-		return { redeemablePoints6: bal13, redeemableUsdc6: quotedUsdc6 }
-	}
-	let pts = (bal13 * maxUsdc) / quotedUsdc6
-	if (pts > bal13) pts = bal13
-	return { redeemablePoints6: pts, redeemableUsdc6: maxUsdc }
-}
-
 function fallbackQuotedUsdc6(currencyCode: string, fiat6: bigint, quotedUsdc6: bigint): bigint {
 	if (quotedUsdc6 > 0n || fiat6 <= 0n) return quotedUsdc6
 	const code = currencyCode.toUpperCase()
@@ -513,9 +498,8 @@ async function buildReward13RowForCard(
 	const usdc = new ethers.Contract(CONET_USDC, ERC20_IFACE, conetDepinProvider)
 	const isSameStore = target !== null && cardAddress === target
 
-	// Same-store: never catch balance/escrow/tokenBal → 0. That painted Covered CA$ 0.00
-	// while AA still held #13 (fail-closed + escrowSized poison cache). Throw so caller
-	// keeps unsized preview and retries instead of settling usable=0.
+	// Same-store: never catch balanceOf → 0 (would settle Covered CA$ 0 while AA still
+	// holds #13). Throw so caller keeps unsized preview and retries.
 	const bal13 = isSameStore
 		? ((await contract.balanceOf(aa, 13n)) as bigint)
 		: ((await contract.balanceOf(aa, 13n).catch(() => 0n)) as bigint)
@@ -534,33 +518,30 @@ async function buildReward13RowForCard(
 	let escrow = 0n
 
 	if (isSameStore) {
-		// Same-store burn #13 → #0 is 1:1 card fiat, but usable PT is capped by
-		// merchant rewardEscrowUsdc6 + card CONET-USDC liquidity. Use O(1)
-		// proportional map — binary search hung Smart Pay on serial RPC.
+		// Same-store: burn #13 → mint #0. No USDC path / escrow / card liquidity.
+		// Merchant allow = convertReward13ToPointsRatioE6 > 0 (Programs PT→#0 toggle).
+		// Ratio read fail → allow (matches chain: same-store does not require ratio).
 		coverKind = 'toProgramPoints'
-		supportsRedeem = false
-		escrow = (await contract.rewardEscrowUsdc6()) as bigint
+		escrow = 0n
+		redeemableUsdc6 = 0n
+		quotedUsdc6 = fallbackQuotedUsdc6(currencyCode, fiat6, 0n)
+		if (quotedUsdc6 === 0n && fiat6 > 0n) quotedUsdc6 = fiat6
+
+		let allowPtToPoints = true
 		try {
-			quotedUsdc6 = (await contract.quoteUsdcWithdrawForFiat6(bal13)) as bigint
+			const ratio = (await contract.convertReward13ToPointsRatioE6()) as bigint
+			allowPtToPoints = ratio > 0n
 		} catch {
-			quotedUsdc6 = 0n
+			allowPtToPoints = true
 		}
-		if (quotedUsdc6 === 0n && priceE6 > 0n) {
-			quotedUsdc6 = fallbackQuotedUsdc6(currencyCode, fiat6, 0n)
-			if (quotedUsdc6 === 0n && fiat6 > 0n) quotedUsdc6 = fiat6
+
+		if (priceE6 > 0n && allowPtToPoints) {
+			redeemablePoints6 = bal13
+			supportsRedeem = true
+		} else {
+			redeemablePoints6 = 0n
+			supportsRedeem = false
 		}
-		const tokenBal = (await usdc.balanceOf(cardAddress)) as bigint
-		const maxUsdc =
-			quotedUsdc6 < escrow
-				? quotedUsdc6 < tokenBal
-					? quotedUsdc6
-					: tokenBal
-				: escrow < tokenBal
-					? escrow
-					: tokenBal
-		const sized = sameStoreRedeemableFromUsdcCap(bal13, quotedUsdc6, maxUsdc)
-		redeemableUsdc6 = sized.redeemableUsdc6
-		redeemablePoints6 = sized.redeemablePoints6
 	} else {
 		escrow = (await contract.rewardEscrowUsdc6().catch(() => 0n)) as bigint
 		// Do not gate peer redemption on runtime bytecode inspection or the
@@ -672,12 +653,12 @@ async function loadReward13RowsForAaUncached(
 		try {
 			await refineSameStore()
 		} catch {
-			// One retry: serial CoNET RPC often fails the first escrow/tokenBal after preview.
+			// One retry: serial CoNET RPC often fails the first allow-gate refine after preview.
 			try {
 				await refineSameStore()
 			} catch {
 				// Keep unsized preview (escrowSized=false). Settling usable=0 here was the
-				// Covered CA$ 0.00 bug when escrow/tokenBal RPC failed under serial RPC.
+				// Covered CA$ 0.00 bug when same-store refine RPC failed under serial RPC.
 			}
 		}
 	}
@@ -742,7 +723,7 @@ export async function loadReward13RowsForAa(
 	const key = reward13CacheKey(aa, target)
 	const cached = reward13RowsCache.get(key)
 	// Only short-circuit on positive usable cover. Sized redeemable=0 with leftover
-	// pointsBalance (fail-closed poison / escrow drained) must re-fetch — otherwise
+	// pointsBalance (allow off / refine fail poison) must re-fetch — otherwise
 	// Smart Pay sticks at Covered CA$ 0.00 for the TTL window.
 	if (
 		cached &&
@@ -782,7 +763,7 @@ export async function loadReward13RowsForAa(
 		if (sameStoreHasPositiveCover(rows)) {
 			reward13RowsCache.set(key, { rows, ts: Date.now() })
 		} else {
-			// Do not cache escrowSized usable=0 (poisoned fail-closed or drained escrow).
+			// Do not cache sized usable=0 (allow off or refine poison).
 			reward13RowsCache.delete(key)
 		}
 		return rows
@@ -798,7 +779,7 @@ function sortByBalance(a: Reward13Row, b: Reward13Row): number {
 	return 0
 }
 
-/** Prefer larger escrow-capped redeemable capacity when ordering cover legs. */
+/** Prefer larger usable redeemable capacity when ordering cover legs. */
 function sortByRedeemable(a: Reward13Row, b: Reward13Row): number {
 	const aPts = a.coverKind === 'toProgramPoints' ? a.redeemablePoints6 : a.redeemableUsdc6
 	const bPts = b.coverKind === 'toProgramPoints' ? b.redeemablePoints6 : b.redeemableUsdc6

@@ -587,7 +587,7 @@ export default function MerchantCardTopUpFlow({
 				if (existing && existing.pointsBalance6 >= hydrated.pointsBalance6) return prev
 				return mergeReward13Rows(prev, [hydrated])
 			})
-			// Preview seed has redeemable=0 until escrow sizing; do not settle cover yet.
+			// Preview seed has redeemable=0 until allow-gate refine; do not settle cover yet.
 			return true
 		},
 		[cardAddress, merchantName],
@@ -845,7 +845,7 @@ export default function MerchantCardTopUpFlow({
 	const confirmDisabled = payBusy || !quoteReady || cashUnfundable || !pointsPlanReady
 	const canOpenConfirm =
 		!payBusy && quoteReady && pointsPlanReady && Number.isFinite(fiatN) && fiatN > 0
-	// Usable PT = escrow + liquidity capped redeemable (not full wallet #13 balance).
+	// Usable PT = same-store full #13 when allow PT→#0; peer = escrow+liquidity sized.
 	const availablePts6 = usableRows.reduce((sum, row) => sum + row.redeemablePoints6, 0n)
 	const merchantCount = usableRows.length
 

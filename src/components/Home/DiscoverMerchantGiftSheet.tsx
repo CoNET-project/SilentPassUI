@@ -25,6 +25,7 @@ import {
 	Flower2,
 	Receipt,
 	MessageCircle,
+	Store,
 } from 'lucide-react'
 import {
 	classifyDiscoverMerchantCategory,
@@ -297,6 +298,50 @@ function themeRedeemHint(kind: GiftStep1Kind): string {
 	if (kind === 'food-beverage') return 'Dine-in & takeout'
 	if (kind === 'health-beauty') return 'In-clinic treatments & sessions'
 	return 'Redeem at this merchant'
+}
+
+function themeStep3PassTitle(kind: GiftStep1Kind): string {
+	if (kind === 'food-beverage') return 'Dining Gift Pass'
+	if (kind === 'health-beauty') return 'Wellness & Spa Pass'
+	return 'Digital Gift Pass'
+}
+
+function themeStep3VoucherBadge(kind: GiftStep1Kind): string {
+	if (kind === 'health-beauty') return 'Wellness voucher'
+	return 'Gift voucher'
+}
+
+function themeStep3Lead(kind: GiftStep1Kind, merchant: string, recipientHandle: string | null): string {
+	if (kind === 'food-beverage') {
+		return recipientHandle
+			? `Treating ${recipientHandle} to ${merchant}`
+			: `Dining gift card for ${merchant} · shareable claim link`
+	}
+	if (kind === 'health-beauty') {
+		return recipientHandle
+			? `Gifting a wellness session to ${recipientHandle} at ${merchant}`
+			: `Wellness gift for ${merchant} · shareable claim link`
+	}
+	return recipientHandle
+		? `${merchant} digital gift card · to ${recipientHandle}`
+		: `${merchant} digital gift card · shareable claim link`
+}
+
+function themeStep3PerkTitle(kind: GiftStep1Kind): string {
+	if (kind === 'food-beverage') return 'First-time visitor note'
+	if (kind === 'health-beauty') return 'Welcome wellness note'
+	return 'Recipient note'
+}
+
+function themeStep3PerkBody(kind: GiftStep1Kind, prefix: string, amount: string, merchant: string): string {
+	const face = `${prefix}${amount}`
+	if (kind === 'food-beverage') {
+		return `Your friend receives ${face} dining credit at ${merchant}. Unclaimed gifts return automatically in 24h.`
+	}
+	if (kind === 'health-beauty') {
+		return `Your friend receives ${face} wellness credit at ${merchant}. Unclaimed gifts return automatically in 24h.`
+	}
+	return `Your friend receives ${face} store credit at ${merchant}. Unclaimed gifts return automatically in 24h.`
 }
 
 function chatToFriendSearchResult(chat: chatData): searchResult | null {

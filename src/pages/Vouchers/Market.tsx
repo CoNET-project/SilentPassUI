@@ -8086,6 +8086,7 @@ function DiscoverMerchantDetailFullScreen({
 						className="fixed inset-0 z-[130] transition-transform duration-300 ease-out dark:bg-slate-950"
 						style={{
 							backgroundColor: merchantDetailPageSurface,
+							['--discover-merchant-page-bg' as string]: merchantDetailPageSurface,
 							transform: giftSheetClosing || !giftSheetEntered ? 'translateX(100%)' : 'translateX(0)',
 						}}
 						role="dialog"

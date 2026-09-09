@@ -126,6 +126,16 @@ function formatUsdc(usdc6: bigint): string {
 	return Number(ethers.formatUnits(usdc6, 6)).toFixed(2)
 }
 
+/** Cross-store #13→USDC vs CAD quote can leave sub-cent dust that still prints as $0.00. */
+function isDisplayZeroUsdc(usdc6: bigint): boolean {
+	return usdc6 <= 0n || formatUsdc(usdc6) === '0.00'
+}
+
+function payableCashUsdc6(quotedUsdc6: bigint, coveredUsdc6: bigint): bigint {
+	const raw = quotedUsdc6 > coveredUsdc6 ? quotedUsdc6 - coveredUsdc6 : 0n
+	return isDisplayZeroUsdc(raw) ? 0n : raw
+}
+
 function merchantInitials(name: string): string {
 	const parts = name.trim().split(/\s+/).filter(Boolean)
 	if (parts.length >= 2) {
@@ -825,7 +835,7 @@ export default function MerchantCardTopUpFlow({
 	}, [smartPay, rows, selected, quotedUsdc6, quotedForFiat, fiatHuman, usedManual, sameStoreReady])
 
 	const coveredUsdc6 = sumUsdc6(legs)
-	const cashUsdc6 = quotedUsdc6 > coveredUsdc6 ? quotedUsdc6 - coveredUsdc6 : 0n
+	const cashUsdc6 = payableCashUsdc6(quotedUsdc6, coveredUsdc6)
 	const dualSmartPay = smartPay && legs.length > 0 && cashUsdc6 > 0n
 	const conetCoversCash = dualSmartPay && eoaUsdc6 !== null && eoaUsdc6 >= cashUsdc6
 	const cashNeedsBaseUsdc = dualSmartPay && !conetCoversCash

@@ -59,6 +59,13 @@ function filesFingerprint(files: File[]): string {
 	return files.map((f) => `${f.name}:${f.size}`).join('|')
 }
 
+/** Clickable sample queries: own site, third-party listing, or a business name. */
+const LOOKUP_SAMPLE_QUERIES = [
+	'starbucks.com',
+	'https://www.ubereats.com/store/starbucks',
+	'Blue Bottle Coffee',
+] as const
+
 type Props = {
 	id: string
 	value: string
@@ -82,7 +89,7 @@ export function BusinessNameLookupField({
 	onSelectCandidate,
 	skipLookupValue = '',
 	hintFilled = false,
-	hintLocationMissing = false,
+	hintLocationMissing: _hintLocationMissing = false,
 }: Props): React.ReactElement {
 	const { tu } = useTu()
 	const listboxId = useId()
@@ -100,20 +107,30 @@ export function BusinessNameLookupField({
 	const [candidates, setCandidates] = useState<OnboardingBusinessLookupCandidate[]>([])
 	const [files, setFiles] = useState<File[]>([])
 	const [lastSubmittedKey, setLastSubmittedKey] = useState('')
+	const [attachArmed, setAttachArmed] = useState(false)
+	const attachArmCleanupRef = useRef<(() => void) | null>(null)
 
 	const currentKey = `${value.trim()}\0${filesFingerprint(files)}`
 	const canSend = canSendOnboardingLookup(value, files.length) && !loading
+	const showSamples = !hintFilled && !value.trim() && files.length === 0 && !loading
 
 	const resizeComposer = useCallback(() => {
 		const el = taRef.current
 		if (!el) return
 		el.style.height = 'auto'
-		el.style.height = `${Math.min(Math.max(el.scrollHeight, 44), 160)}px`
+		el.style.height = `${Math.min(Math.max(el.scrollHeight, 80), 160)}px`
 	}, [])
 
 	useEffect(() => {
 		resizeComposer()
 	}, [value, files.length, resizeComposer])
+
+	useEffect(() => {
+		return () => {
+			attachArmCleanupRef.current?.()
+			attachArmCleanupRef.current = null
+		}
+	}, [])
 
 	useEffect(() => {
 		const onPointer = (e: PointerEvent) => {
@@ -129,9 +146,10 @@ export function BusinessNameLookupField({
 		setOpen(true)
 	}
 
-	const sendLookup = async () => {
+	const sendLookup = useCallback(async (queryOverride?: string) => {
 		if (inFlightRef.current) return
-		const q = value.trim()
+		const q = (queryOverride ?? value).trim()
+		const submittedKey = `${q}\0${filesFingerprint(files)}`
 		const skipHit =
 			files.length === 0 &&
 			((skipLookupValue && skipLookupValue === q) ||
@@ -140,15 +158,18 @@ export function BusinessNameLookupField({
 			reopenLookupPanel()
 			return
 		}
-		if (!canSendOnboardingLookup(value, files.length)) return
+		if (!canSendOnboardingLookup(q, files.length)) return
 
 		inFlightRef.current = true
 		const seq = ++seqRef.current
+		setAttachArmed(false)
+		attachArmCleanupRef.current?.()
+		attachArmCleanupRef.current = null
 		setLoading(true)
 		setErrorKey('')
 		setCandidates([])
 		setOpen(true)
-		setLastSubmittedKey(currentKey)
+		setLastSubmittedKey(submittedKey)
 		try {
 			let payload: OnboardingLookupFilePayload[] | undefined
 			if (files.length > 0) {
@@ -160,7 +181,7 @@ export function BusinessNameLookupField({
 					})),
 				)
 			}
-			const res = await lookupOnboardingBusinesses(value, payload)
+			const res = await lookupOnboardingBusinesses(q, payload)
 			if (seq !== seqRef.current) return
 			setLoading(false)
 			if (!res.ok) {
@@ -179,9 +200,41 @@ export function BusinessNameLookupField({
 		} finally {
 			if (seq === seqRef.current) inFlightRef.current = false
 		}
+	}, [files, skipLookupValue, value])
+
+	const applySample = (query: string) => {
+		skipLookupForValueRef.current = ''
+		setAttachArmed(false)
+		attachArmCleanupRef.current?.()
+		attachArmCleanupRef.current = null
+		onChange(query)
+		setErrorKey('')
+		void sendLookup(query)
+	}
+
+	const openAttachPicker = () => {
+		if (loading || files.length >= ONBOARDING_LOOKUP_MAX_FILES) return
+		setAttachArmed(true)
+		fileRef.current?.click()
+		attachArmCleanupRef.current?.()
+		const disarm = () => {
+			attachArmCleanupRef.current?.()
+			attachArmCleanupRef.current = null
+			window.setTimeout(() => setAttachArmed(false), 80)
+		}
+		const onWinFocus = () => disarm()
+		const fallback = window.setTimeout(disarm, 12_000)
+		window.addEventListener('focus', onWinFocus)
+		attachArmCleanupRef.current = () => {
+			window.removeEventListener('focus', onWinFocus)
+			window.clearTimeout(fallback)
+		}
 	}
 
 	const onPickFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
+		setAttachArmed(false)
+		attachArmCleanupRef.current?.()
+		attachArmCleanupRef.current = null
 		const picked = Array.from(e.target.files ?? [])
 		e.target.value = ''
 		if (!picked.length) return
@@ -216,14 +269,36 @@ export function BusinessNameLookupField({
 	const showEmpty =
 		open && !loading && !errorKey && lastSubmittedKey === currentKey && candidates.length === 0
 	const showPanel = open && (loading || candidates.length > 0 || showEmpty)
-	const hintKey = hintFilled
-		? hintLocationMissing
-			? 'onb_lookup_hint_filled_location_missing'
-			: 'onb_lookup_hint_filled'
-		: 'onb_lookup_hint'
+
+	const samplePills = showSamples ? (
+		<div
+			role="group"
+			aria-label={tu('onb_lookup_samples_label')}
+			className="mb-3 flex flex-col items-start gap-2"
+		>
+			{LOOKUP_SAMPLE_QUERIES.map((query) => (
+				<button
+					key={query}
+					type="button"
+					disabled={loading}
+					aria-label={tu('onb_lookup_sample_aria', { query })}
+					className="max-w-full rounded-full bg-[#f0f2f7] px-4 py-2.5 text-left text-[15px] leading-snug text-[#1a1b1f] transition hover:bg-[#e4e8f0] disabled:opacity-50"
+					onMouseDown={(e) => e.preventDefault()}
+					onClick={(e) => {
+						e.preventDefault()
+						e.stopPropagation()
+						applySample(query)
+					}}
+				>
+					<span className="block truncate">{query}</span>
+				</button>
+			))}
+		</div>
+	) : null
 
 	return (
 		<div ref={wrapRef}>
+			{samplePills}
 			<div className="relative">
 				<div className="rounded-[24px] border border-[#e3e2e7] bg-white shadow-[0_4px_18px_rgba(15,23,42,0.06)]">
 					{files.length > 0 ? (
@@ -256,47 +331,34 @@ export function BusinessNameLookupField({
 							))}
 						</div>
 					) : null}
-					<textarea
-						id={id}
-						ref={taRef}
-						rows={1}
-						role="combobox"
-						aria-autocomplete="list"
-						aria-expanded={showPanel}
-						aria-controls={listboxId}
-						value={value}
-						onChange={(e) => {
-							skipLookupForValueRef.current = ''
-							onChange(e.target.value)
-							setErrorKey('')
-						}}
-						onFocus={reopenLookupPanel}
-						onClick={reopenLookupPanel}
-						onKeyDown={(e) => {
-							if (e.key === 'Escape') {
-								setOpen(false)
-								return
-							}
-							if (e.key === 'Enter' && !e.shiftKey) {
-								e.preventDefault()
-								void sendLookup()
-							}
-						}}
-						placeholder={placeholder}
-						autoComplete="off"
-						enterKeyHint="send"
-						className="w-full resize-none border-0 bg-transparent px-4 pb-1 pt-3 text-[17px] leading-[22px] text-[#1a1b1f] placeholder:text-[#424655]/50 focus:outline-none"
-					/>
-					<div className="flex items-center justify-between px-2 pb-2">
+					<div className="flex items-end gap-1.5 px-2 pb-2 pt-1">
 						<button
 							type="button"
 							tabIndex={-1}
 							disabled={loading || files.length >= ONBOARDING_LOOKUP_MAX_FILES}
 							aria-label={tu('onb_lookup_attach_label')}
-							className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[#424655] transition hover:bg-[#f4f3f8] disabled:opacity-40"
-							onClick={() => fileRef.current?.click()}
+							aria-pressed={attachArmed}
+							data-armed={attachArmed ? 'true' : undefined}
+							className={[
+								'group relative isolate mb-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full p-0',
+								'text-[#2c2f31] transition duration-200 active:scale-[0.96] disabled:opacity-40',
+								'focus:outline-none',
+								'focus-visible:text-[#1562f0] focus-visible:shadow-[0_0_0_2px_#fff,0_0_0_5px_#1562f0,0_8px_20px_rgba(21,98,240,0.14)]',
+								'data-[armed=true]:text-[#1562f0] data-[armed=true]:shadow-[0_0_0_2px_#fff,0_0_0_5px_#1562f0,0_8px_20px_rgba(21,98,240,0.14)]',
+							].join(' ')}
+							onClick={openAttachPicker}
 						>
-							<Paperclip className="h-[18px] w-[18px]" aria-hidden />
+							<span
+								className={[
+									'pointer-events-none absolute inset-0 rounded-full border border-white/80 bg-[#f5f7f9]/65 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_4px_14px_rgba(15,23,42,0.07),0_1px_3px_rgba(15,23,42,0.04)] ring-1 ring-black/[0.08] backdrop-blur-md',
+									'group-hover:bg-white/75',
+									attachArmed
+										? 'border-white bg-white shadow-none ring-0'
+										: '',
+								].join(' ')}
+								aria-hidden
+							/>
+							<Paperclip className="relative z-[1] h-[18px] w-[18px]" aria-hidden />
 						</button>
 						<input
 							ref={fileRef}
@@ -306,12 +368,44 @@ export function BusinessNameLookupField({
 							className="hidden"
 							onChange={onPickFiles}
 						/>
+						<textarea
+							id={id}
+							ref={taRef}
+							rows={3}
+							role="combobox"
+							aria-autocomplete="list"
+							aria-expanded={showPanel}
+							aria-controls={listboxId}
+							value={value}
+							onChange={(e) => {
+								skipLookupForValueRef.current = ''
+								onChange(e.target.value)
+								setErrorKey('')
+							}}
+							onFocus={reopenLookupPanel}
+							onClick={reopenLookupPanel}
+							onKeyDown={(e) => {
+								if (e.key === 'Escape') {
+									setOpen(false)
+									return
+								}
+								if (e.key === 'Enter' && !e.shiftKey) {
+									e.preventDefault()
+									void sendLookup()
+								}
+							}}
+							placeholder={placeholder}
+							aria-label={tu('onb_lookup_composer_aria')}
+							autoComplete="off"
+							enterKeyHint="send"
+							className="min-h-[80px] w-full min-w-0 flex-1 resize-none border-0 bg-transparent px-1 pb-1 pt-2 text-[17px] leading-[22px] text-[#1a1b1f] placeholder:text-[#424655]/50 focus:outline-none"
+						/>
 						<button
 							type="button"
 							aria-label={tu('onb_lookup_send_label')}
 							aria-busy={loading}
 							disabled={!canSend}
-							className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#1562f0] text-white transition disabled:cursor-not-allowed disabled:opacity-40"
+							className="mb-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#1562f0] text-white transition disabled:cursor-not-allowed disabled:opacity-40"
 							onClick={() => void sendLookup()}
 						>
 							{loading ? (
@@ -329,11 +423,14 @@ export function BusinessNameLookupField({
 						aria-label={tu('onb_lookup_results_label')}
 						className="absolute left-0 right-0 top-full z-[60] mt-1 max-h-64 overflow-y-auto rounded-xl border border-[#e3e2e7] bg-white py-1 shadow-[0_12px_32px_rgba(15,23,42,0.12)]"
 					>
-						{loading && candidates.length === 0 ? (
-							<p className="px-4 py-3 text-[15px] text-[#424655]">
-								{files.length > 0 ? tu('onb_lookup_analyzing') : tu('onb_lookup_searching')}
-							</p>
-						) : null}
+							{loading && candidates.length === 0 ? (
+								<p
+									className="onboarding-lookup-loading-text px-4 py-3 text-[15px]"
+									aria-live="polite"
+								>
+									{files.length > 0 ? tu('onb_lookup_analyzing') : tu('onb_lookup_searching')}
+								</p>
+							) : null}
 						{showEmpty ? (
 							<p className="px-4 py-3 text-[15px] text-[#424655]">{tu('onb_lookup_empty')}</p>
 						) : null}
@@ -381,9 +478,7 @@ export function BusinessNameLookupField({
 				<p role="alert" className="mt-1.5 text-[13px] leading-snug text-[#92400e]">
 					{tu(errorKey)}
 				</p>
-			) : (
-				<p className="mt-1.5 text-[13px] leading-snug text-[#747779]">{tu(hintKey)}</p>
-			)}
+			) : null}
 		</div>
 	)
 }

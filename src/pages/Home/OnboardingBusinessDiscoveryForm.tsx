@@ -184,9 +184,6 @@ export function OnboardingBusinessDiscoveryForm({
 
 			<div className="space-y-8">
 				<div className="space-y-2">
-					<label className={fieldLabel} htmlFor={`${idPrefix}-name`}>
-						{tu('onb_business_name')}
-					</label>
 					{onSelectLookupCandidate ? (
 						<BusinessNameLookupField
 							id={`${idPrefix}-name`}
@@ -200,15 +197,20 @@ export function OnboardingBusinessDiscoveryForm({
 							hintLocationMissing={detailsVisible && !country.trim()}
 						/>
 					) : (
-						<input
-							id={`${idPrefix}-name`}
-							type="text"
-							value={storeName}
-							onChange={(e) => setStoreName(e.target.value)}
-							placeholder={tu('onb_business_name_ph')}
-							autoComplete="organization"
-							className={inputClass}
-						/>
+						<>
+							<label className={fieldLabel} htmlFor={`${idPrefix}-name`}>
+								{tu('onb_business_name')}
+							</label>
+							<input
+								id={`${idPrefix}-name`}
+								type="text"
+								value={storeName}
+								onChange={(e) => setStoreName(e.target.value)}
+								placeholder={tu('onb_business_name_ph')}
+								autoComplete="organization"
+								className={inputClass}
+							/>
+						</>
 					)}
 				</div>
 

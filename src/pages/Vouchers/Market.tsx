@@ -1033,7 +1033,6 @@ function DiscoverStoreCreditMultiplierOffersRow({
 }
 
 function DiscoverMerchantMemberRechargePrivilegesPanel({
-	merchantName,
 	tierBadgeLabel,
 	memberNo,
 	storeCreditsLabel,
@@ -1047,7 +1046,6 @@ function DiscoverMerchantMemberRechargePrivilegesPanel({
 	topUpBusy,
 	onRecharge,
 }: {
-	merchantName: string
 	tierBadgeLabel: string
 	memberNo: string
 	storeCreditsLabel: string
@@ -1104,18 +1102,9 @@ function DiscoverMerchantMemberRechargePrivilegesPanel({
 					<span className="shrink-0 rounded-full bg-[#3d3429] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[#D4B483]">
 						{badgeText}
 					</span>
-					{merchantName.trim() && !isGenericMerchantCardDisplayName(merchantName) ? (
-						<p className="min-w-0 flex-1 truncate text-center font-serif text-[15px] font-semibold tracking-tight text-white">
-							{merchantName.trim()}
-						</p>
-					) : (
-						<span className="min-w-0 flex-1" aria-hidden />
-					)}
 					{memberNo ? (
 						<span className="shrink-0 text-[11px] font-medium tabular-nums text-white/45">{memberNo}</span>
-					) : (
-						<span className="w-[4.5rem] shrink-0" aria-hidden />
-					)}
+					) : null}
 				</div>
 				<div className="mt-4 grid grid-cols-2 gap-3">
 					<div className="rounded-xl bg-white/[0.06] px-3 py-3 ring-1 ring-white/10">
@@ -6938,7 +6927,6 @@ function DiscoverMerchantDetailFullScreen({
 					{showMemberRechargePrivileges ? (
 						<>
 							<DiscoverMerchantMemberRechargePrivilegesPanel
-								merchantName={passTitle}
 								tierBadgeLabel={activeMembershipTierName || 'Member'}
 								memberNo={memberRechargeMemberNo}
 								storeCreditsLabel={balanceDisplay}

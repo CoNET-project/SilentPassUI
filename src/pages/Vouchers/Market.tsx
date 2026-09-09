@@ -64,7 +64,10 @@ import {
   ImageIcon,
   AlertTriangle,
   MessageCircle,
-  Coins,
+	Coins,
+	HelpCircle,
+	Store,
+	Send,
 } from "lucide-react"
 import { useNavigate, useLocation } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
@@ -601,8 +604,12 @@ function DiscoverMerchantVisitActionsBlock({
 	contactBusy,
 	actionsDisabled,
 	error,
+	bookingLabel = 'Booking',
 	giftingLabel = 'Gifting',
 	giftAccentColor,
+	secondaryLabelColor,
+	primaryActionIcon = 'calendar',
+	contactIcon = 'headphones',
 }: {
 	brandColor: string
 	onBooking: () => void
@@ -611,14 +618,23 @@ function DiscoverMerchantVisitActionsBlock({
 	contactBusy: boolean
 	actionsDisabled: boolean
 	error: string | null
-	/** Health & Beauty loyalty layout uses "Gift Voucher". */
+	/** Food & Beverage prospect layout uses "Order Pick-up". */
+	bookingLabel?: string
+	/** Health & Beauty / Food & Beverage loyalty layouts use "Gift Voucher". */
 	giftingLabel?: string
 	giftAccentColor?: string
+	/** Secondary action label color (defaults to brand). */
+	secondaryLabelColor?: string
+	primaryActionIcon?: 'calendar' | 'bag'
+	contactIcon?: 'headphones' | 'store'
 }) {
 	const brand = brandColor.trim() || DISCOVER_VISIT_BRAND_FALLBACK
 	const giftColor = giftAccentColor?.trim() || DISCOVER_VISIT_MUTED_ICON
+	const secondaryText = secondaryLabelColor?.trim() || brand
 	const actionBtnClass =
 		'flex min-h-[5.5rem] flex-col items-center justify-center gap-2 rounded-[22px] px-2 py-4 ring-1 transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60'
+	const PrimaryIcon = primaryActionIcon === 'bag' ? ShoppingBag : Calendar
+	const ContactIconEl = contactIcon === 'store' ? Store : Headphones
 
 	return (
 		<div className="flex flex-col gap-3">
@@ -627,12 +643,17 @@ function DiscoverMerchantVisitActionsBlock({
 					type="button"
 					onClick={onBooking}
 					disabled={actionsDisabled}
-					aria-label="Booking"
+					aria-label={bookingLabel}
 					className={`${actionBtnClass} ring-transparent`}
 					style={{ backgroundColor: brand, color: '#ffffff', borderColor: 'transparent' }}
 				>
-					<Calendar className="h-6 w-6" style={{ color: DISCOVER_VISIT_BOOKING_ICON }} strokeWidth={1.8} aria-hidden />
-					<span className="text-[14px] font-semibold text-white">Booking</span>
+					<PrimaryIcon
+						className="h-6 w-6"
+						style={{ color: primaryActionIcon === 'bag' ? '#ffffff' : DISCOVER_VISIT_BOOKING_ICON }}
+						strokeWidth={1.8}
+						aria-hidden
+					/>
+					<span className="text-[14px] font-semibold text-white">{bookingLabel}</span>
 				</button>
 				<button
 					type="button"
@@ -642,7 +663,7 @@ function DiscoverMerchantVisitActionsBlock({
 					className={`${actionBtnClass} bg-white ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800`}
 				>
 					<Gift className="h-6 w-6" style={{ color: giftColor }} strokeWidth={1.8} aria-hidden />
-					<span className="text-[14px] font-semibold" style={{ color: brand }}>
+					<span className="text-[14px] font-semibold" style={{ color: secondaryText }}>
 						{giftingLabel}
 					</span>
 				</button>
@@ -657,9 +678,9 @@ function DiscoverMerchantVisitActionsBlock({
 					{contactBusy ? (
 						<Loader2 className="h-6 w-6 animate-spin" style={{ color: DISCOVER_VISIT_MUTED_ICON }} strokeWidth={2} aria-hidden />
 					) : (
-						<Headphones className="h-6 w-6" style={{ color: DISCOVER_VISIT_MUTED_ICON }} strokeWidth={1.8} aria-hidden />
+						<ContactIconEl className="h-6 w-6" style={{ color: DISCOVER_VISIT_MUTED_ICON }} strokeWidth={1.8} aria-hidden />
 					)}
-					<span className="text-[14px] font-semibold" style={{ color: brand }}>
+					<span className="text-[14px] font-semibold" style={{ color: secondaryText }}>
 						Contact
 					</span>
 				</button>
@@ -938,6 +959,241 @@ function DiscoverMerchantHealthBeautyLoyaltyPassPanel({
 							className="inline-flex items-center justify-center rounded-full px-4 py-2 text-[12px] font-bold text-white transition hover:brightness-110 active:scale-[0.98] disabled:opacity-60"
 							style={{ backgroundColor: brand }}
 						>
+							Send as Gift
+						</button>
+					</div>
+				</div>
+			</section>
+		</div>
+	)
+}
+
+const DISCOVER_FOOD_BEVERAGE_GIFT_ACCENT = '#ea580c'
+const DISCOVER_FOOD_BEVERAGE_PASS_FALLBACK = '#5c554b'
+const DISCOVER_FOOD_BEVERAGE_SECONDARY_TEXT = '#3d4450'
+
+/**
+ * Food & Beverage · no Store Credit Multiplier · non-member with no #0 / #13 holdings.
+ * Member Pass preview + Order Pick-up / Gift Voucher / Contact (brand chrome).
+ */
+function DiscoverMerchantFoodBeverageProspectPassPanel({
+	passTitle,
+	chargePercent,
+	balancePrefix,
+	membershipFeesZero,
+	brandColor,
+	onActivateTopUp,
+	onFirstDiningSpend,
+	onBooking,
+	onGifting,
+	onContact,
+	onSendGift,
+	contactBusy,
+	topUpDisabled,
+	actionsDisabled,
+	visitError,
+}: {
+	passTitle: string
+	chargePercent: number | null
+	balancePrefix: string
+	membershipFeesZero: boolean
+	brandColor: string
+	onActivateTopUp: () => void
+	onFirstDiningSpend: () => void
+	onBooking: () => void
+	onGifting: () => void
+	onContact: () => void
+	onSendGift: () => void
+	contactBusy: boolean
+	topUpDisabled: boolean
+	actionsDisabled: boolean
+	visitError: string | null
+}) {
+	const brand = brandColor.trim() || DISCOVER_FOOD_BEVERAGE_PASS_FALLBACK
+	const pct =
+		chargePercent != null && Number.isFinite(chargePercent) && chargePercent > 0
+			? Number(chargePercent.toFixed(2)).toString()
+			: null
+	const nameUpper = passTitle.trim().toUpperCase() || 'MERCHANT'
+	const nameDisplay = passTitle.trim() || 'Merchant'
+	const fiatLabel = balancePrefix.trim() || 'CA$'
+	const welcomeRewardLine =
+		pct != null ? `${pct}% Points on All Bowls & Bites` : 'Points on All Bowls & Bites'
+	const howPointsTitle =
+		pct != null ? `How Points Work · ${pct}% Back` : 'How Points Work'
+	const howPointsBody =
+		pct != null
+			? `Earn ${pct}% back in Points on every dining order. 1 Pt = ${fiatLabel}1.00 — redeem anytime at this merchant or across Alliance partners.`
+			: `Earn Points on every dining order. 1 Pt = ${fiatLabel}1.00 — redeem anytime at this merchant or across Alliance partners.`
+
+	return (
+		<div className="flex flex-col gap-4" aria-label={`${nameDisplay} member pass preview`}>
+			<div className="flex items-center gap-2.5">
+				<span
+					className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#eceff3] dark:bg-slate-800"
+					aria-hidden
+				>
+					<UtensilsCrossed className="h-4 w-4 text-[#6b7280]" strokeWidth={2} />
+				</span>
+				<p className="min-w-0 flex-1 text-[11px] font-bold uppercase tracking-[0.14em] text-[#6b7280] dark:text-slate-400">
+					{nameUpper} MEMBER PASS
+				</p>
+				{pct != null ? (
+					<span className="inline-flex shrink-0 items-center rounded-full border border-emerald-200/90 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-800 dark:border-emerald-800/50 dark:bg-emerald-950/40 dark:text-emerald-200">
+						{pct}% Back
+					</span>
+				) : null}
+			</div>
+
+			<section
+				className="overflow-hidden rounded-[1.35rem] px-5 pb-5 pt-5 text-white shadow-[0_16px_40px_rgba(45,40,35,0.28)]"
+				style={{ backgroundColor: brand }}
+				aria-label={`${nameDisplay} VIP digital dining pass`}
+			>
+				<div className="flex items-start justify-between gap-3">
+					<div className="min-w-0">
+						<p
+							className="truncate text-[1.65rem] font-semibold leading-none tracking-tight text-white"
+							style={{ fontFamily: 'Georgia, "Times New Roman", Times, serif' }}
+						>
+							{nameUpper} VIP
+						</p>
+						<p className="mt-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/55">
+							Digital Dining &amp; Loyalty Pass
+						</p>
+					</div>
+					<UtensilsCrossed className="mt-1 h-8 w-8 shrink-0 text-white/75" strokeWidth={1.6} aria-hidden />
+				</div>
+
+				<div className="mt-6 border-t border-white/15 pt-5">
+					<p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/50">
+						Welcome Reward Preview
+					</p>
+					<p className="mt-2 text-[16px] font-bold leading-snug tracking-tight text-white">
+						{welcomeRewardLine}
+					</p>
+				</div>
+			</section>
+
+			<button
+				type="button"
+				onClick={onActivateTopUp}
+				disabled={topUpDisabled}
+				className="flex w-full items-center justify-center gap-2.5 rounded-2xl px-4 py-3.5 text-[15px] font-bold text-white shadow-[0_10px_28px_rgba(75,69,61,0.35)] transition hover:brightness-110 active:scale-[0.99] disabled:opacity-60"
+				style={{ backgroundColor: brand }}
+			>
+				<Wallet className="h-5 w-5 shrink-0 opacity-90" strokeWidth={2.25} aria-hidden />
+				Top Up to Activate Pass
+			</button>
+
+			<p className="text-center text-[12px] leading-snug text-[#5c6570] dark:text-slate-400">
+				or auto-activates on your{' '}
+				<button
+					type="button"
+					onClick={onFirstDiningSpend}
+					disabled={actionsDisabled}
+					className="font-semibold text-[#1f2328] underline decoration-[#1f2328]/55 underline-offset-2 transition hover:opacity-80 disabled:opacity-50 dark:text-slate-100 dark:decoration-slate-100/55"
+				>
+					First Dining Order &amp; Spend
+				</button>
+			</p>
+
+			<p className="flex items-center justify-center gap-1.5 text-center text-[12px] leading-snug text-[#5c6570] dark:text-slate-400">
+				<span
+					className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white"
+					aria-hidden
+				>
+					<Check className="h-2.5 w-2.5" strokeWidth={3} />
+				</span>
+				CoNET L1 smart vault · Never expires &amp; 100% redeemable
+			</p>
+
+			<section className="rounded-2xl border border-[#ebe6df] bg-[#faf8f5] px-4 py-4 dark:border-slate-700 dark:bg-slate-900/80">
+				<div className="flex items-start gap-3">
+					<span
+						className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
+						style={{ backgroundColor: `${DISCOVER_FOOD_BEVERAGE_GIFT_ACCENT}18` }}
+						aria-hidden
+					>
+						<HelpCircle
+							className="h-[18px] w-[18px]"
+							style={{ color: DISCOVER_FOOD_BEVERAGE_GIFT_ACCENT }}
+							strokeWidth={2.25}
+						/>
+					</span>
+					<div className="min-w-0 flex-1">
+						<p className="text-[15px] font-bold tracking-tight text-[#1f2328] dark:text-slate-100">
+							{howPointsTitle}
+						</p>
+						<p className="mt-1.5 text-[13px] leading-relaxed text-[#5c6570] dark:text-slate-400">
+							{howPointsBody}
+						</p>
+					</div>
+				</div>
+				<div className="mt-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-[#ebe6df] pt-3 dark:border-slate-700">
+					<span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#3d4450] dark:text-slate-300">
+						<ShieldCheck className="h-3.5 w-3.5 text-emerald-600" strokeWidth={2.25} aria-hidden />
+						Instant ledger settlement
+					</span>
+					{membershipFeesZero ? (
+						<span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#3d4450] dark:text-slate-300">
+							Zero Membership Fees
+						</span>
+					) : null}
+				</div>
+			</section>
+
+			<DiscoverMerchantVisitActionsBlock
+				brandColor={brand}
+				onBooking={onBooking}
+				onGifting={onGifting}
+				onContact={onContact}
+				contactBusy={contactBusy}
+				actionsDisabled={actionsDisabled}
+				error={visitError}
+				bookingLabel="Order Pick-up"
+				giftingLabel="Gift Voucher"
+				giftAccentColor={DISCOVER_FOOD_BEVERAGE_GIFT_ACCENT}
+				secondaryLabelColor={DISCOVER_FOOD_BEVERAGE_SECONDARY_TEXT}
+				primaryActionIcon="bag"
+				contactIcon="store"
+			/>
+
+			<section className="overflow-hidden rounded-2xl border border-[#ebe6df] bg-white shadow-[0_8px_24px_rgba(31,35,40,0.06)] dark:border-slate-700 dark:bg-slate-900">
+				<div className="px-4 py-4">
+					<div className="flex items-start gap-3">
+						<span
+							className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+							style={{ backgroundColor: `${DISCOVER_FOOD_BEVERAGE_GIFT_ACCENT}22` }}
+							aria-hidden
+						>
+							<Gift
+								className="h-5 w-5"
+								style={{ color: DISCOVER_FOOD_BEVERAGE_GIFT_ACCENT }}
+								strokeWidth={2.25}
+							/>
+						</span>
+						<div className="min-w-0 flex-1">
+							<p className="text-[13px] font-bold uppercase tracking-[0.12em] text-[#1f2328] dark:text-slate-100">
+								Gift a {nameDisplay} to Friends
+							</p>
+							<p className="mt-1 text-[12px] font-medium leading-snug text-[#5c6570] dark:text-slate-400">
+								Send dining credits or vouchers with instant digital delivery
+							</p>
+						</div>
+					</div>
+					<div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[#f0ebe4] pt-3 dark:border-slate-700">
+						<span className="text-[11px] font-semibold text-[#5c6570] dark:text-slate-400">
+							Instant transfer &amp; non-expiring
+						</span>
+						<button
+							type="button"
+							onClick={onSendGift}
+							disabled={actionsDisabled}
+							className="inline-flex items-center justify-center gap-1.5 rounded-full px-4 py-2 text-[12px] font-bold text-white transition hover:brightness-110 active:scale-[0.98] disabled:opacity-60"
+							style={{ backgroundColor: brand }}
+						>
+							<Send className="h-3.5 w-3.5 shrink-0 opacity-90" strokeWidth={2.25} aria-hidden />
 							Send as Gift
 						</button>
 					</div>
@@ -3763,7 +4019,7 @@ function DiscoverMerchantInfoPanelCard({ panel }: { panel: DiscoverMerchantInfoP
 	).filter((row) => row.value?.trim())
 
 	return (
-		<div className="rounded-[22px] bg-[#eef1f4] p-4 dark:bg-slate-800/80">
+		<div className="rounded-[22px] bg-white p-4 ring-1 ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800">
 			{aboutText ? <DiscoverAboutDetailBody text={aboutText} /> : null}
 			{rows.length > 0 ? (
 				<div className={`space-y-4${aboutText ? " mt-5" : ""}`}>
@@ -5061,8 +5317,22 @@ function DiscoverMerchantDetailFullScreen({
 		hasMerchantProgramHoldings &&
 		usdcTopupPhase === 'idle' &&
 		!discoverTopUpOpen
+	/**
+	 * Food & Beverage + no Store Credit Multiplier + non-member with no #0 / #13
+	 * → Member Pass prospect layout (Poke Eyokey-style). Hide while top-up pad is open.
+	 */
+	const showFoodBeverageProspectPass =
+		!isConetGenesisCard &&
+		item.category === 'food-beverage' &&
+		prospectJoinPanelCopy.multiplierCards.length <= 1 &&
+		!hasMerchantProgramHoldings &&
+		usdcTopupPhase === 'idle' &&
+		!discoverTopUpOpen
 	const showProspectJoinPanel =
-		!isConetGenesisCard && !hasActiveMembership && !showHealthBeautyLoyaltyPass
+		!isConetGenesisCard &&
+		!hasActiveMembership &&
+		!showHealthBeautyLoyaltyPass &&
+		!showFoodBeverageProspectPass
 	/**
 	 * Member + Store Credit Multiplier (≥2 tiers): premium recharge layout.
 	 * Hide while amount pad / receive flow is open so top-up UX stays on the white card.
@@ -5083,6 +5353,12 @@ function DiscoverMerchantDetailFullScreen({
 		if (chargePercent == null || !Number.isFinite(chargePercent) || chargePercent <= 0) return null
 		return chargePercent
 	}, [showHealthBeautyLoyaltyPass, merchantMetadataRoot])
+	const foodBeverageChargePercent = useMemo(() => {
+		if (!showFoodBeverageProspectPass) return null
+		const { chargePercent } = parseDiscoverActorRewardPercentsFromMetadata(merchantMetadataRoot)
+		if (chargePercent == null || !Number.isFinite(chargePercent) || chargePercent <= 0) return null
+		return chargePercent
+	}, [showFoodBeverageProspectPass, merchantMetadataRoot])
 	const memberRechargeMemberNo = useMemo(() => {
 		const nft = pickActiveDiscoverMembershipNft(merchantAssets?.nfts)
 		const tokenId = nft?.tokenId != null ? String(nft.tokenId).trim() : ''
@@ -6898,6 +7174,33 @@ function DiscoverMerchantDetailFullScreen({
 							visitError={merchantVisitError}
 						/>
 					) : null}
+					{showFoodBeverageProspectPass ? (
+						<DiscoverMerchantFoodBeverageProspectPassPanel
+							passTitle={passTitle}
+							chargePercent={foodBeverageChargePercent}
+							balancePrefix={balancePrefix || 'CA$'}
+							membershipFeesZero={!membershipFeeMode}
+							brandColor={merchantDetailBrandColor ?? DISCOVER_FOOD_BEVERAGE_PASS_FALLBACK}
+							onActivateTopUp={() => {
+								if (usdcTopupPhase !== 'idle' || discoverTopUpOpen) return
+								claimDiscoverTopupPromotion()
+							}}
+							onFirstDiningSpend={onMerchantVisitBooking}
+							onBooking={onMerchantVisitBooking}
+							onGifting={onMerchantVisitGifting}
+							onContact={() => void onMerchantVisitContact()}
+							onSendGift={openGiftSheet}
+							contactBusy={supportChatOpening}
+							topUpDisabled={
+								giftSheetOpen ||
+								usdcTopupPhase !== 'idle' ||
+								discoverTopUpOpen ||
+								!canDiscoverTopUp
+							}
+							actionsDisabled={giftSheetOpen}
+							visitError={merchantVisitError}
+						/>
+					) : null}
 					{showProspectJoinPanel ? (
 						<DiscoverMerchantProspectJoinPanel
 							heading={prospectJoinPanelCopy.heading}
@@ -6975,7 +7278,10 @@ function DiscoverMerchantDetailFullScreen({
 							{renderVisitActions()}
 						</>
 					) : null}
-					{!isConetGenesisCard && !hasActiveMembership && !showHealthBeautyLoyaltyPass
+					{!isConetGenesisCard &&
+					!hasActiveMembership &&
+					!showHealthBeautyLoyaltyPass &&
+					!showFoodBeverageProspectPass
 						? renderVisitActions()
 						: null}
 					{isConetGenesisCard ? (
@@ -7266,7 +7572,9 @@ function DiscoverMerchantDetailFullScreen({
 					) : null}
 
 					<div className="space-y-4">
-						{item.cardAddress && !showHealthBeautyLoyaltyPass ? (
+						{item.cardAddress &&
+						!showHealthBeautyLoyaltyPass &&
+						!showFoodBeverageProspectPass ? (
 							<DiscoverMerchantInviteFriendsPanel
 								cardAddress={item.cardAddress}
 								merchantTitle={passTitle}

@@ -4,7 +4,7 @@ import { ethers } from 'ethers'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { beamioApi } from '@/utils/constants'
 import {
-	encodeAddAdmin,
+	encodeAdminManagerAdd,
 	postCardAddAdmin,
 	signExecuteForOwner,
 } from '@/services/BeamioCard'
@@ -95,7 +95,7 @@ export default function MerchantCardStripePanel({ cardAddress }: Props) {
 			for (const fulfillmentAdmin of fulfillmentAdmins) {
 				const deadline = Math.floor(Date.now() / 1000) + 3600
 				const nonce = ethers.hexlify(ethers.randomBytes(32))
-				const data = encodeAddAdmin(fulfillmentAdmin, 1)
+				const data = encodeAdminManagerAdd(fulfillmentAdmin, 1, '{}')
 				const ownerSignature = await signExecuteForOwner(
 					profile.privateKeyArmor,
 					cardAddress,

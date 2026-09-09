@@ -61,7 +61,7 @@ function filesFingerprint(files: File[]): string {
 
 /** Clickable sample queries: own site, third-party listing, or a business name. */
 const LOOKUP_SAMPLE_QUERIES = [
-	'starbucks.com',
+	'https://maysense.com/?sca_ref=11391220.9bVWBdc5TI5X6MF',
 	'https://www.ubereats.com/store/starbucks',
 	'Blue Bottle Coffee',
 ] as const

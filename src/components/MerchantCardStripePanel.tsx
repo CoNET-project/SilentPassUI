@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { CreditCard, ExternalLink, Loader2, ShieldCheck } from 'lucide-react'
 import { ethers } from 'ethers'
 import { useDaemonContext } from '@/providers/DaemonProvider'
+import { beamioApi } from '@/utils/constants'
 import {
 	encodeAddAdmin,
 	postCardAddAdmin,
@@ -19,7 +20,7 @@ type Props = {
 	cardAddress: string
 }
 
-const stripeEndpoint = (path: string) => `/api/merchantCardStripe/${path}`
+const stripeEndpoint = (path: string) => `${beamioApi}/api/merchantCardStripe/${path}`
 const STRIPE_STATUS_TIMEOUT_MS = 15_000
 
 async function fetchStripeStatus(cardAddress: string): Promise<Response> {

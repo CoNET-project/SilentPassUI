@@ -20,6 +20,22 @@ type Props = {
 }
 
 const stripeEndpoint = (path: string) => `/api/merchantCardStripe/${path}`
+const STRIPE_STATUS_TIMEOUT_MS = 15_000
+
+async function fetchStripeStatus(cardAddress: string): Promise<Response> {
+	const controller = new AbortController()
+	const timeout = window.setTimeout(() => controller.abort(), STRIPE_STATUS_TIMEOUT_MS)
+	try {
+		return await fetch(stripeEndpoint('status'), {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ cardAddress: ethers.getAddress(cardAddress) }),
+			signal: controller.signal,
+		})
+	} finally {
+		window.clearTimeout(timeout)
+	}
+}
 
 export default function MerchantCardStripePanel({ cardAddress }: Props) {
 	const { profiles } = useDaemonContext()
@@ -30,11 +46,7 @@ export default function MerchantCardStripePanel({ cardAddress }: Props) {
 	const loadStatus = useCallback(async () => {
 		if (!ethers.isAddress(cardAddress)) return
 		try {
-			const response = await fetch(stripeEndpoint('status'), {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ cardAddress: ethers.getAddress(cardAddress) }),
-			})
+			const response = await fetchStripeStatus(cardAddress)
 			const body = (await response.json().catch(() => ({}))) as StripeStatus & { error?: string }
 			if (!response.ok) throw new Error(body.error ?? 'Unable to read Stripe status')
 			setStatus({
@@ -47,6 +59,9 @@ export default function MerchantCardStripePanel({ cardAddress }: Props) {
 						: [],
 			})
 		} catch (e: any) {
+			// A failed read is still a terminal UI state; do not leave the CTA
+			// spinning forever while preserving the error for the user.
+			setStatus({ linked: false, fulfillmentAdmin: null, fulfillmentAdmins: [] })
 			setError(e?.message ?? String(e))
 		}
 	}, [cardAddress])
@@ -65,11 +80,7 @@ export default function MerchantCardStripePanel({ cardAddress }: Props) {
 		setBusy(true)
 		setError('')
 		try {
-			const statusResponse = await fetch(stripeEndpoint('status'), {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ cardAddress: ethers.getAddress(cardAddress) }),
-			})
+			const statusResponse = await fetchStripeStatus(cardAddress)
 			const stripeStatus = (await statusResponse.json()) as StripeStatus & { error?: string }
 			const fulfillmentAdmins = Array.isArray(stripeStatus.fulfillmentAdmins)
 				? stripeStatus.fulfillmentAdmins.filter((address): address is string => ethers.isAddress(address))

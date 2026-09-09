@@ -71,18 +71,18 @@ export function classifyDiscoverMerchantCategory(input: DiscoverMerchantCategory
 	const description = (input.programDescription || '').toLowerCase()
 	const category = (input.categoryId ?? '').toLowerCase()
 	const foodNameOrCopy =
-		/restaurant|dining|bistro|kitchen|steakhouse|noodle|\bpho\b|cuisine|dumpling|xiaolong|xiao long|dim\s*sum|shanghainese/.test(
+		/restaurant|dining|bistro|kitchen|steakhouse|noodle|\bpho\b|cuisine|dumpling|xiaolong|xiao long|dim\s*sum|shanghainese|longdhang|老弄堂|弄堂|餐厅|饭店|酒楼|火锅|烧烤|茶餐厅|面馆|小吃|美食|餐饮/.test(
 			name,
 		) ||
 		/\bcafe\b|\bcafé\b|\bcoffee\b/.test(name) ||
-		/restaurant|dining|bistro|kitchen|steak|cuisine|dumpling|xiaolong|xiao long|dim\s*sum|shanghainese|\bpho\b/.test(
+		/restaurant|dining|bistro|kitchen|steak|cuisine|dumpling|xiaolong|xiao long|dim\s*sum|shanghainese|\bpho\b|老弄堂|弄堂|餐厅|饭店|酒楼|火锅|烧烤|茶餐厅|面馆|小吃|美食|餐饮/.test(
 			description,
 		)
 	// Brand name / dining copy beats metadata tags and promo “wellness / store” wording.
 	if (foodNameOrCopy) {
 		return 'food-beverage'
 	}
-	if (/\bbeauty\b|\bspa\b|\bsalon\b|medspa|barbershop/.test(name)) {
+	if (/\bbeauty\b|\bspa\b|\bsalon\b|medspa|barbershop|美容|护肤|美发|美甲|养生馆|水疗/.test(name)) {
 		return 'health-beauty'
 	}
 	if (category === 'food-beverage' || category === 'food') return 'food-beverage'

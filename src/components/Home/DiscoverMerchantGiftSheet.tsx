@@ -26,6 +26,9 @@ import {
 	Receipt,
 	MessageCircle,
 	Store,
+	Zap,
+	Pencil,
+	Star,
 } from 'lucide-react'
 import {
 	classifyDiscoverMerchantCategory,
@@ -209,6 +212,57 @@ const HEALTH_AMOUNT_CHIPS: GiftAmountChip[] = [
 	{ value: 200, caption: 'Deep Rebalance' },
 	{ value: 300, caption: 'Full Transform' },
 ]
+
+type GiftNoteChip = { id: string; label: string; text: string }
+
+const FOOD_NOTE_CHIPS: GiftNoteChip[] = [
+	{
+		id: 'lunch',
+		label: '🍽️ Lunch on me',
+		text: 'Lunch is on me! Treat yourself well today 🍽️✨',
+	},
+	{
+		id: 'signature',
+		label: '🍲 Taste signature',
+		text: 'Happy dining! Taste the legendary signature bowl 🍲',
+	},
+	{
+		id: 'appetite',
+		label: '🥳 Good appetite',
+		text: 'Sending sweet vibes and good appetite! 🥳',
+	},
+]
+
+const HEALTH_NOTE_CHIPS: GiftNoteChip[] = [
+	{
+		id: 'relax',
+		label: '✨ Relax & recharge',
+		text: 'Take some time to relax and recharge. You deserve this moment of calm! ✨🌿',
+	},
+	{
+		id: 'pamper',
+		label: '🌸 Little pampering',
+		text: 'A little pampering session just for you! Enjoy glowing self-care 🌸',
+	},
+	{
+		id: 'renewal',
+		label: '🌿 Deep renewal',
+		text: 'Wishing you full recovery, tension release and deep renewal 🌿✨',
+	},
+]
+
+function themeNoteChips(kind: GiftStep1Kind): GiftNoteChip[] {
+	if (kind === 'food-beverage') return FOOD_NOTE_CHIPS
+	if (kind === 'health-beauty') return HEALTH_NOTE_CHIPS
+	return []
+}
+
+function occasionEmojiTileClass(emoji: string): string {
+	if (emoji === '🍽️' || emoji === '🛁') return 'bg-amber-100'
+	if (emoji === '🎂') return 'bg-pink-100'
+	if (emoji === '☕' || emoji === '🌿') return 'bg-orange-100'
+	return 'bg-purple-100'
+}
 
 function resolveGiftStep1Kind(
 	category?: DiscoverCategoryTab | string | null,
@@ -575,6 +629,7 @@ export default function DiscoverMerchantGiftSheet({
 		return occ.message(merchantTitle.trim() || 'this merchant')
 	})
 	const [presetAmount, setPresetAmount] = useState<number | null>(() => themeDefaultAmount(step1Kind))
+	const [customAmountOpen, setCustomAmountOpen] = useState(false)
 	const [amountText, setAmountText] = useState(() => {
 		const floor = isFeeCard ? Number(minHuman) || 0 : 0
 		const start = Math.max(themeDefaultAmount(step1Kind), floor)
@@ -630,6 +685,7 @@ export default function DiscoverMerchantGiftSheet({
 		const floor = isFeeCard ? Number(minHuman) || 0 : 0
 		const start = Math.max(themeDefaultAmount(step1Kind), floor)
 		setPresetAmount(themeDefaultAmount(step1Kind))
+		setCustomAmountOpen(false)
 		setAmountText(formatGiftStartAmount(start))
 	}, [step1Kind, step, issuedCode, merchantTitle, isFeeCard, minHuman])
 
@@ -959,7 +1015,14 @@ export default function DiscoverMerchantGiftSheet({
 
 	const selectPreset = (n: number) => {
 		setPresetAmount(n)
+		setCustomAmountOpen(false)
 		setAmountText(String(n))
+		setPanelError(null)
+	}
+
+	const openCustomAmount = () => {
+		setPresetAmount(null)
+		setCustomAmountOpen(true)
 		setPanelError(null)
 	}
 
@@ -1343,6 +1406,82 @@ export default function DiscoverMerchantGiftSheet({
 						</p>
 					</div>
 				</div>
+			</div>
+		</div>
+	)
+
+	const themedGiftCard = (
+		<div
+			className="relative w-full overflow-hidden rounded-2xl p-5 shadow-md"
+			style={{ backgroundColor: brandColor, color: onBrandText, boxShadow: brandShadow }}
+		>
+			<div className="pointer-events-none absolute -right-8 -bottom-8 h-44 w-44 rounded-full bg-white/10 blur-xl" />
+			<div
+				className="pointer-events-none absolute right-4 top-4 opacity-15"
+				aria-hidden
+			>
+				{step1Kind === 'health-beauty' ? (
+					<Flower2 className="h-[72px] w-[72px]" strokeWidth={1.25} />
+				) : (
+					<Utensils className="h-[72px] w-[72px]" strokeWidth={1.25} />
+				)}
+			</div>
+			<div className="relative z-10 flex items-start justify-between gap-3">
+				<div className="flex min-w-0 items-center gap-3">
+					<div
+						className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+						style={{ backgroundColor: 'rgba(255,255,255,0.12)' }}
+					>
+						{step1Kind === 'health-beauty' ? (
+							<Flower2 className="h-6 w-6" strokeWidth={2} aria-hidden />
+						) : (
+							<Utensils className="h-6 w-6" strokeWidth={2} aria-hidden />
+						)}
+					</div>
+					<div className="flex min-w-0 flex-col">
+						<span
+							className="text-[12px] font-semibold uppercase tracking-wider"
+							style={{ color: onBrandMuted }}
+						>
+							{step1Kind === 'health-beauty' ? 'Wellness Gift Pass' : 'Dining Gift Pass'}
+						</span>
+						<span className="truncate text-[22px] font-semibold leading-7 tracking-tight" style={{ color: onBrandText }}>
+							{merchantLabel}
+						</span>
+					</div>
+				</div>
+				<span
+					className="shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-medium tracking-wide"
+					style={{ backgroundColor: 'rgba(255,255,255,0.12)', color: onBrandMuted }}
+				>
+					{activeOccasion.emoji} {activeOccasion.label}
+				</span>
+			</div>
+			<div className="relative z-10 my-6">
+				<span
+					className="block text-[12px] font-semibold uppercase tracking-wider opacity-80"
+					style={{ color: onBrandMuted }}
+				>
+					Gift value
+				</span>
+				<div className="mt-0.5 flex items-baseline gap-1">
+					<span className="text-[34px] font-bold leading-none tracking-tight" style={{ color: onBrandText }}>
+						{prefix}
+						{previewAmount}
+					</span>
+				</div>
+			</div>
+			<div
+				className="relative z-10 flex items-center justify-between gap-2 border-t pt-3 text-[12px] font-semibold uppercase tracking-wide"
+				style={{ borderColor: 'rgba(255,255,255,0.12)', color: onBrandMuted }}
+			>
+				<div className="flex items-center gap-1.5">
+					<ShieldCheck className="h-4 w-4 shrink-0" strokeWidth={2.25} aria-hidden />
+					<span className="normal-case tracking-normal">100% value to recipient</span>
+				</div>
+				<span className="shrink-0 text-right tracking-wider opacity-80">
+					{step1Kind === 'health-beauty' ? 'Redeem in-clinic & online' : 'Valid dine-in / takeout'}
+				</span>
 			</div>
 		</div>
 	)
@@ -2015,23 +2154,343 @@ export default function DiscoverMerchantGiftSheet({
 	}
 
 	/* ─── Step 1: Configure ─── */
+	if (step === 1 && step1Kind !== 'generic') {
+		const isDining = step1Kind === 'food-beverage'
+		const noteChips = themeNoteChips(step1Kind)
+		const customBounds = themeCustomBounds(step1Kind)
+		const customMin = Math.max(Number(minHuman) || 0, customBounds?.min ?? 0)
+		const customMax = customBounds?.max
+		const merchantInitial = merchantLabel.replace(/^@/, '').trim().charAt(0).toUpperCase() || '?'
+		return (
+			<section className="mx-auto flex w-full max-w-lg flex-col gap-1 pb-8" aria-label="Configure gift">
+				<div className="mb-2 flex items-center justify-between gap-2">
+					<div
+						className="inline-flex items-center gap-1.5 rounded-full px-3 py-1"
+						style={{ backgroundColor: brandTint, color: brandControl }}
+					>
+						{isDining ? (
+							<Utensils className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />
+						) : (
+							<Flower2 className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />
+						)}
+						<span className="text-[12px] font-semibold uppercase tracking-[0.05em]">
+							{isDining ? 'Gourmet Dining Gift' : 'Wellness & Self-Care Gift'}
+						</span>
+					</div>
+					<div
+						className="inline-flex items-center gap-1 rounded-full px-2.5 py-1"
+						style={{ backgroundColor: `${brandControl}18`, color: brandControl }}
+					>
+						<Zap className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />
+						<span className="text-[12px] font-semibold uppercase tracking-[0.05em]">Instant Delivery</span>
+					</div>
+				</div>
+				<h2 className="text-[28px] font-bold leading-tight tracking-tight text-[#0F172A] dark:text-slate-100">
+					{isDining ? 'Treat a Friend 🍽️' : 'Gift of Wellness ✨'}
+				</h2>
+				<p className="mt-0.5 text-[15px] text-[#5d5e63] dark:text-slate-400">
+					{isDining
+						? `Send a delicious experience at ${merchantLabel}.`
+						: `Send a relaxing experience at ${merchantLabel}.`}
+				</p>
+
+				<div className="mt-3">{themedGiftCard}</div>
+				<div className="mt-2.5 flex items-center gap-1.5 px-2">
+					<Check className="h-4 w-4 shrink-0" strokeWidth={2.5} style={{ color: brandControl }} aria-hidden />
+					<p className="text-[13px] leading-tight text-[#5d5e63] dark:text-slate-400">
+						They get exactly what you pay. 100% value goes to your friend.
+					</p>
+				</div>
+
+				<section className="mt-6">
+					<div className="mb-2.5 flex items-center justify-between gap-2">
+						<h3 className="text-[18px] font-semibold tracking-tight text-[#1a1b1f] dark:text-slate-100">
+							{isDining ? 'Select Dining Gift Amount' : 'Select Wellness Gift Amount'}
+						</h3>
+						<span className="text-[12px] font-semibold uppercase tracking-[0.05em] text-[#5d5e63]">
+							{ccy} currency
+						</span>
+					</div>
+					<div className="grid grid-cols-3 gap-2.5">
+						{visiblePresets.map((chip) => {
+							const n = chip.value
+							const active =
+								!customAmountOpen &&
+								presetAmount === n &&
+								!Number.isNaN(Number(amountText)) &&
+								Number(amountText) === n
+							return (
+								<button
+									key={n}
+									type="button"
+									onClick={() => selectPreset(n)}
+									className={`flex flex-col items-center justify-center rounded-xl px-2 py-3 text-center transition active:scale-95 ${
+										active
+											? 'shadow-sm'
+											: 'bg-[#f4f3f8] text-[#1a1b1f] hover:bg-[#eeedf3] dark:bg-slate-800 dark:text-slate-100'
+									}`}
+									style={
+										active
+											? { backgroundColor: brandControl, color: onBrandText, boxShadow: brandControlShadow }
+											: undefined
+									}
+								>
+									<span className="text-[17px] font-semibold">
+										{prefix} {n}
+									</span>
+									{chip.caption ? (
+										<span
+											className="mt-0.5 text-center text-[11px] font-semibold"
+											style={active ? { color: onBrandMuted } : undefined}
+										>
+											{chip.caption}
+										</span>
+									) : null}
+								</button>
+							)
+						})}
+						<button
+							type="button"
+							onClick={openCustomAmount}
+							className={`col-span-2 flex items-center justify-center gap-2 rounded-xl px-4 py-3 transition active:scale-95 ${
+								customAmountOpen
+									? 'shadow-sm'
+									: 'bg-[#f4f3f8] text-[#1a1b1f] hover:bg-[#eeedf3] dark:bg-slate-800 dark:text-slate-100'
+							}`}
+							style={
+								customAmountOpen
+									? { backgroundColor: brandControl, color: onBrandText, boxShadow: brandControlShadow }
+									: undefined
+							}
+						>
+							<Pencil
+								className="h-[18px] w-[18px]"
+								strokeWidth={2}
+								style={customAmountOpen ? undefined : { color: brandControl }}
+								aria-hidden
+							/>
+							<span className="text-[15px] font-semibold">Custom Amount</span>
+						</button>
+					</div>
+					{customAmountOpen ? (
+						<div className="relative mt-3 flex items-center rounded-xl bg-[#f4f3f8] px-4 py-2.5 dark:bg-slate-800">
+							<span className="mr-1.5 text-[18px] font-semibold text-[#1a1b1f] dark:text-slate-100">
+								{prefix}
+							</span>
+							<input
+								id="discover-gift-amount"
+								type="number"
+								inputMode="decimal"
+								autoComplete="off"
+								enterKeyHint="done"
+								min={customMin > 0 ? customMin : undefined}
+								max={customMax}
+								step="0.01"
+								value={amountText}
+								onChange={(e) => {
+									setPresetAmount(null)
+									setAmountText(e.target.value)
+									setPanelError(null)
+								}}
+								onKeyDown={preventNumericInputStepKeys}
+								onWheel={preventNumericInputWheelStep}
+								className="w-full bg-transparent text-[17px] font-medium text-[#1a1b1f] outline-none placeholder:text-[#737687] dark:text-slate-100 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]"
+								placeholder={
+									customMax
+										? `Enter amount (${customMin || customBounds?.min} - ${customMax})`
+										: 'Enter amount'
+								}
+							/>
+						</div>
+					) : null}
+					<div className="mt-2 flex items-center gap-1.5 text-[#5d5e63]">
+						<Check className="h-4 w-4 shrink-0" strokeWidth={2.5} style={{ color: brandControl }} aria-hidden />
+						<span className="text-[12px] font-semibold uppercase tracking-[0.05em]">
+							They get exactly what you pay. No hidden deduction.
+							{isFeeCard ? ` Min ${prefix}${minHuman}.` : ''}
+						</span>
+					</div>
+				</section>
+
+				<section className="mt-6">
+					<h3 className="mb-2.5 text-[18px] font-semibold tracking-tight text-[#1a1b1f] dark:text-slate-100">
+						Select Occasion Theme
+					</h3>
+					<div className="grid grid-cols-2 gap-2.5">
+						{occasionCatalog.map((occ) => {
+							const active = occasionId === occ.id
+							const subtitle = occasionSubtitle(occ)
+							return (
+								<button
+									key={occ.id}
+									type="button"
+									onClick={() => selectOccasion(occ)}
+									className={`flex items-center gap-2.5 rounded-xl p-3 text-left transition ${
+										active
+											? 'bg-[#eeedf3] shadow-sm ring-1 dark:bg-slate-800'
+											: 'bg-[#f4f3f8] hover:bg-[#eeedf3] dark:bg-slate-900'
+									}`}
+									style={active ? { boxShadow: brandSelectedRing } : undefined}
+								>
+									<div
+										className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[18px] ${occasionEmojiTileClass(occ.emoji)}`}
+									>
+										{occ.emoji}
+									</div>
+									<div className="flex min-w-0 flex-col">
+										<span className="truncate text-[14px] font-semibold text-[#1a1b1f] dark:text-slate-100">
+											{occ.label}
+										</span>
+										{subtitle ? (
+											<span className="text-[11px] font-semibold text-[#5d5e63]">{subtitle}</span>
+										) : null}
+									</div>
+								</button>
+							)
+						})}
+					</div>
+				</section>
+
+				<section className="mt-6">
+					<div className="mb-2 flex items-center justify-between gap-2">
+						<label
+							className="text-[18px] font-semibold tracking-tight text-[#1a1b1f] dark:text-slate-100"
+							htmlFor="discover-gift-note"
+						>
+							Personal Greeting Note
+						</label>
+						<span className="text-[12px] font-semibold uppercase tracking-[0.05em] text-[#5d5e63]">
+							{giftNote.length} / {noteMax}
+						</span>
+					</div>
+					<div className="rounded-2xl bg-[#f4f3f8] p-3.5 focus-within:bg-[#eeedf3] dark:bg-slate-800 dark:focus-within:bg-slate-700">
+						<textarea
+							id="discover-gift-note"
+							rows={3}
+							maxLength={noteMax}
+							value={giftNote}
+							onChange={(e) => setGiftNote(e.target.value)}
+							placeholder={
+								isDining
+									? `e.g. Lunch is on me! Enjoy the best dishes at ${merchantLabel}`
+									: 'e.g. Take some time to relax and recharge. You deserve it!'
+							}
+							className="w-full resize-none bg-transparent text-[15px] leading-relaxed text-[#1a1b1f] outline-none placeholder:text-[#737687] dark:text-slate-100"
+						/>
+						{noteChips.length ? (
+							<div className="flex items-center gap-1.5 overflow-x-auto pt-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+								{noteChips.map((chip) => (
+									<button
+										key={chip.id}
+										type="button"
+										onClick={() => setGiftNote(chip.text.slice(0, noteMax))}
+										className="shrink-0 rounded-full bg-[#eeedf3] px-2.5 py-1 text-[12px] text-[#424655] transition hover:bg-[#e3e2e7] dark:bg-slate-700 dark:text-slate-200"
+									>
+										{chip.label}
+									</button>
+								))}
+							</div>
+						) : null}
+					</div>
+				</section>
+
+				{spotlightUrl ? (
+					<section className="mt-6">
+						<div className="flex items-center gap-3.5 rounded-2xl bg-[#f4f3f8] p-4 dark:bg-slate-800">
+							<IpfsImg
+								src={spotlightUrl}
+								alt=""
+								className="h-16 w-16 shrink-0 rounded-xl object-cover shadow-sm"
+							/>
+							<div className="flex min-w-0 flex-col">
+								<div className="flex items-center gap-1">
+									<span className="truncate text-[14px] font-semibold text-[#1a1b1f] dark:text-slate-100">
+										{isDining
+											? `${merchantLabel} dining experience`
+											: `${merchantLabel} wellness experience`}
+									</span>
+									<Star className="h-4 w-4 shrink-0" strokeWidth={2.25} style={{ color: brandControl }} aria-hidden />
+								</div>
+								<p className="mt-0.5 line-clamp-2 text-[12px] text-[#5d5e63] dark:text-slate-400">
+									{isDining
+										? 'Recipient can redeem on their phone via QR scan for dine-in or takeout.'
+										: 'Recipient can redeem via QR scan at check-in, or book a session on their phone.'}
+								</p>
+							</div>
+						</div>
+					</section>
+				) : (
+					<section className="mt-6">
+						<div className="flex items-center gap-3.5 rounded-2xl bg-[#f4f3f8] p-4 dark:bg-slate-800">
+							<div
+								className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl text-[20px] font-bold shadow-sm"
+								style={{ backgroundColor: brandColor, color: onBrandText }}
+							>
+								{merchantInitial}
+							</div>
+							<div className="flex min-w-0 flex-col">
+								<div className="flex items-center gap-1">
+									<span className="truncate text-[14px] font-semibold text-[#1a1b1f] dark:text-slate-100">
+										{isDining
+											? `${merchantLabel} dining experience`
+											: `${merchantLabel} wellness experience`}
+									</span>
+									<Star className="h-4 w-4 shrink-0" strokeWidth={2.25} style={{ color: brandControl }} aria-hidden />
+								</div>
+								<p className="mt-0.5 line-clamp-2 text-[12px] text-[#5d5e63] dark:text-slate-400">
+									{isDining
+										? 'Recipient can redeem on their phone via QR scan for dine-in or takeout.'
+										: 'Recipient can redeem via QR scan at check-in, or book a session on their phone.'}
+								</p>
+							</div>
+						</div>
+					</section>
+				)}
+
+				{panelError ? (
+					<div
+						role="alert"
+						className="mt-6 flex gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-[13px] text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100"
+					>
+						<AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+						<p>{panelError}</p>
+					</div>
+				) : null}
+
+				<section className="mt-8">
+					<button
+						type="button"
+						onClick={goStep2}
+						className="inline-flex h-14 w-full items-center justify-center gap-2 rounded-2xl px-6 text-[17px] font-semibold shadow-md transition active:scale-[0.99]"
+						style={{
+							backgroundColor: brandControl,
+							color: onBrandText,
+							boxShadow: brandControlShadow,
+						}}
+					>
+						<span>Continue to Delivery Method</span>
+						<ChevronRight className="h-5 w-5" strokeWidth={2.25} aria-hidden />
+					</button>
+					<div className="mt-3 flex items-center justify-center gap-1.5 text-center">
+						<Lock className="h-3.5 w-3.5 shrink-0 text-[#5d5e63]" strokeWidth={2.25} aria-hidden />
+						<span className="text-[11px] font-semibold uppercase leading-none tracking-[0.05em] text-[#5d5e63]">
+							Protected by Beamio · Unclaimed gifts return automatically in 24h
+						</span>
+					</div>
+				</section>
+			</section>
+		)
+	}
+
 	if (step === 1) {
 		return (
 			<section className="mx-auto flex w-full max-w-lg flex-col gap-1 pb-4" aria-label="Configure gift">
 				{stepPill(1, 'Configure Gift')}
 				<h2 className="text-[28px] font-bold leading-tight tracking-tight text-[#0F172A] dark:text-slate-100">
-					{step1Kind === 'food-beverage'
-						? 'Treat someone to a meal'
-						: step1Kind === 'health-beauty'
-							? 'Send a wellness gift'
-							: 'Send a Gift Card'}
+					Send a Gift Card
 				</h2>
 				<p className="mt-0.5 text-[15px] text-[#5d5e63] dark:text-slate-400">
-					{step1Kind === 'food-beverage'
-						? `Dining gift for ${merchantLabel}`
-						: step1Kind === 'health-beauty'
-							? `Care gift for ${merchantLabel}`
-							: `Curated store credit for ${merchantLabel}`}
+					Curated store credit for {merchantLabel}
 				</p>
 
 				<div className="mt-4">{brandGiftCard}</div>
@@ -2128,13 +2587,12 @@ export default function DiscoverMerchantGiftSheet({
 					<div className="flex items-center gap-2 overflow-x-auto pb-1.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
 						{occasionCatalog.map((occ) => {
 							const active = occasionId === occ.id
-							const subtitle = occasionSubtitle(occ)
 							return (
 								<button
 									key={occ.id}
 									type="button"
 									onClick={() => selectOccasion(occ)}
-									className={`flex shrink-0 flex-col items-start gap-0.5 rounded-2xl px-3.5 py-2 text-left transition ${
+									className={`flex shrink-0 items-center gap-1.5 rounded-2xl px-3.5 py-2 text-[15px] transition ${
 										active
 											? 'shadow-sm'
 											: 'bg-[#f4f3f8] text-[#1a1b1f] hover:bg-[#eeedf3] dark:bg-slate-800 dark:text-slate-100'
@@ -2145,18 +2603,8 @@ export default function DiscoverMerchantGiftSheet({
 											: undefined
 									}
 								>
-									<span className="flex items-center gap-1.5 text-[15px]">
-										<span>{occ.emoji}</span>
-										<span>{occ.label}</span>
-									</span>
-									{subtitle ? (
-										<span
-											className="text-[11px] font-semibold"
-											style={active ? { color: onBrandMuted } : undefined}
-										>
-											{subtitle}
-										</span>
-									) : null}
+									<span>{occ.emoji}</span>
+									<span>{occ.label}</span>
 								</button>
 							)
 						})}
@@ -2164,12 +2612,12 @@ export default function DiscoverMerchantGiftSheet({
 					<div className="rounded-2xl bg-white p-3.5 shadow-sm ring-1 ring-slate-100 dark:bg-slate-900 dark:ring-slate-700">
 						<label
 							className="mb-1.5 block text-[12px] font-semibold uppercase tracking-wider text-[#5d5e63]"
-							htmlFor="discover-gift-note"
+							htmlFor="discover-gift-note-generic"
 						>
 							Note to recipient
 						</label>
 						<textarea
-							id="discover-gift-note"
+							id="discover-gift-note-generic"
 							rows={3}
 							maxLength={noteMax}
 							value={giftNote}
@@ -2620,167 +3068,262 @@ export default function DiscoverMerchantGiftSheet({
 	}
 
 	/* ─── Step 3: Checkout ─── */
-	return (
-		<section className="mx-auto flex w-full max-w-lg flex-col gap-1 pb-8" aria-label="Gift checkout">
-			{stepPill(3, 'Smart Checkout')}
-			<div className="mb-1 flex flex-wrap items-center gap-2">
-				<span className="flex items-center gap-0.5 text-xs font-semibold text-emerald-700 dark:text-emerald-400">
-					<ShieldCheck className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />
-					Offline sign · gas sponsored
-				</span>
+	const step3RecipientHandle =
+		deliveryMode === 'friend' && selectedFriend
+			? (selectedFriend.username ?? '').trim()
+				? `@${selectedFriend.username.trim()}`
+				: beamioSearchDisplayName(selectedFriend) || beamioSearchShortAddress(selectedFriend.address)
+			: null
+	const Step3KindIcon =
+		step1Kind === 'food-beverage' ? Utensils : step1Kind === 'health-beauty' ? Flower2 : Gift
+	const creditAvailLabel =
+		aaPoints0Loading
+			? 'Checking Smart Wallet #0…'
+			: aaPoints0Bal != null
+				? `Avail: ${prefix}${
+						membershipFeeE6ToHuman(aaPoints0Bal.toString()) || ethers.formatUnits(aaPoints0Bal, 6)
+					}`
+				: 'Burn #0 from your Smart Wallet'
+	const creditBurnLabel =
+		giftFacePreview && payWith === 'credit'
+			? `${prefix}${
+					membershipFeeE6ToHuman(giftFacePreview.burnAmountE6.toString()) ||
+					ethers.formatUnits(giftFacePreview.burnAmountE6, 6)
+				}`
+			: null
+	const creditFeeChip =
+		giftCreditConfig.feeKind === 'percent' && giftCreditConfig.percentBps > 0
+			? `${(giftCreditConfig.percentBps / 100).toFixed(2)}% gift fee`
+			: creditFeeLabel && payWith === 'credit'
+				? `Fee ${creditFeeLabel}`
+				: null
+
+	const methodCheck = (selected: boolean) =>
+		selected ? (
+			<div
+				className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-white shadow-sm"
+				style={{ backgroundColor: brandControl }}
+			>
+				<Check className="h-3.5 w-3.5" strokeWidth={2.5} aria-hidden />
 			</div>
-			<h2 className="text-[22px] font-semibold tracking-tight text-[#0F172A] dark:text-slate-100">
-				Checkout & settlement
+		) : (
+			<div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-[#eeedf3] dark:bg-slate-700">
+				<Check className="h-3.5 w-3.5 text-[#eeedf3] dark:text-slate-700" aria-hidden />
+			</div>
+		)
+
+	return (
+		<section
+			className="relative mx-auto flex w-full max-w-lg flex-col gap-1 pb-32"
+			aria-label="Payment and confirmation"
+		>
+			<div className="mb-2 flex items-center justify-between gap-3">
+				{stepPill(3, 'Review & Pay')}
+				<div
+					className="inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1"
+					style={{ backgroundColor: `${brandTint}` }}
+				>
+					<ShieldCheck className="h-3.5 w-3.5" style={{ color: brandControl }} strokeWidth={2.25} aria-hidden />
+					<span className="text-[11px] font-semibold" style={{ color: brandControl }}>
+						Secure checkout
+					</span>
+				</div>
+			</div>
+			<p className="mb-1 flex items-center gap-1 text-xs font-semibold text-emerald-700 dark:text-emerald-400">
+				<ShieldCheck className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />
+				Offline sign · gas sponsored
+			</p>
+			<h2 className="text-[28px] font-bold leading-[34px] tracking-tight text-[#1a1b1f] dark:text-slate-100">
+				Payment & Confirmation
 			</h2>
-			<p className="text-[15px] text-[#5d5e63] dark:text-slate-400">
-				{merchantLabel} digital gift card
-				{deliveryMode === 'friend' && selectedFriend?.username
-					? ` · to @${selectedFriend.username.trim()}`
-					: ' · shareable claim link'}
+			<p className="mt-0.5 text-[15px] leading-5 text-[#424655] dark:text-slate-400">
+				{themeStep3Lead(step1Kind, merchantLabel, step3RecipientHandle)}
 			</p>
 
-			{deliveryMode === 'friend' && selectedFriend ? (
-				<div className="mt-4 rounded-2xl border border-slate-100 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-					<p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[#5d5e63]">
-						Target recipient
-					</p>
-					<GiftFriendCapsule
-						item={selectedFriend}
-						onClear={() => setSelectedFriend(null)}
-						accentColor={brandControl}
+			<div className="mb-8 mt-5">
+				<div className="relative flex min-h-[190px] flex-col justify-between overflow-hidden rounded-xl bg-gradient-to-br from-white to-[#eeedf3] p-6 shadow-md dark:from-slate-900 dark:to-slate-800">
+					<div
+						className="pointer-events-none absolute -right-8 -top-8 h-36 w-36 rounded-full blur-2xl"
+						style={{ backgroundColor: brandTint }}
 					/>
-				</div>
-			) : null}
-
-			<div className="mt-4">{brandGiftCard}</div>
-
-			<div className="mb-6 flex flex-col gap-3">
-				<div className="flex items-center justify-between">
-					<h3 className="text-sm font-semibold tracking-tight text-[#1a1b1f] dark:text-slate-100">
-						Select settlement asset
-					</h3>
-					<span className="text-xs font-medium text-[#5d5e63]">Offline signature</span>
-				</div>
-
-				<button
-					type="button"
-					onClick={() => {
-						setPayWith('usdc')
-						setPanelError(null)
-					}}
-					disabled={submitting}
-					className={`rounded-2xl p-4 text-left transition ${
-						payWith === 'usdc'
-							? 'bg-white dark:bg-slate-900'
-							: 'bg-[#f4f3f8] hover:bg-white dark:bg-slate-800'
-					}`}
-					style={payWith === 'usdc' ? { boxShadow: brandSelectedRing } : undefined}
-				>
-					<div className="flex items-start justify-between gap-3">
-						<div className="flex items-start gap-3">
+					<div className="relative z-10 flex items-start justify-between gap-3">
+						<div className="flex items-center gap-3">
 							<div
-								className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+								className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl shadow-sm"
 								style={{ backgroundColor: brandTint, color: brandControl }}
 							>
-								<Wallet className="h-5 w-5" strokeWidth={2} aria-hidden />
+								{spotlightUrl ? (
+									<IpfsImg src={spotlightUrl} alt="" className="h-full w-full object-cover" />
+								) : (
+									<Step3KindIcon className="h-6 w-6" strokeWidth={2} aria-hidden />
+								)}
 							</div>
-							<div>
-								<div className="flex flex-wrap items-center gap-2">
-									<span className="text-base font-semibold text-[#1a1b1f] dark:text-slate-100">
-										USDC
-									</span>
-									<span
-										className="rounded-full px-2 py-0.5 text-[11px] font-semibold"
-										style={{ backgroundColor: brandTint, color: brandControl }}
-									>
-										EOA
-									</span>
-								</div>
-								<p className="mt-1 text-xs text-[#5d5e63]">
-									{usdcAvailableLabel ??
-										usdcQuoteLabel ??
-										'Quoted in USDC at checkout'}
-								</p>
-								{usdcAvailableLabel && usdcQuoteLabel ? (
-									<p className="mt-0.5 text-xs text-[#5d5e63]">{usdcQuoteLabel}</p>
-								) : null}
+							<div className="flex min-w-0 flex-col">
+								<span className="text-[12px] font-semibold uppercase tracking-[0.05em] text-[#424655] dark:text-slate-400">
+									{merchantLabel}
+								</span>
+								<span className="text-[22px] font-semibold leading-7 tracking-tight text-[#1a1b1f] dark:text-slate-100">
+									{themeStep3PassTitle(step1Kind)}
+								</span>
 							</div>
 						</div>
-						{payWith === 'usdc' ? (
-							<span
-								className="flex items-center gap-0.5 text-[11px] font-semibold"
-								style={{ color: brandControl }}
-							>
-								<Check className="h-3.5 w-3.5" aria-hidden /> Selected
-							</span>
-						) : null}
+						<span
+							className="shrink-0 rounded-full px-2.5 py-1 text-[12px] font-semibold uppercase tracking-[0.05em]"
+							style={{ backgroundColor: brandTint, color: brandControl }}
+						>
+							{themeStep3VoucherBadge(step1Kind)}
+						</span>
 					</div>
-				</button>
+					<div className="relative my-3 flex items-center justify-between">
+						<div className="h-4 w-4 -ml-8 rounded-full bg-[var(--discover-merchant-page-bg,#faf9fe)] dark:bg-slate-950" />
+						<div className="mx-2 flex flex-1 items-center justify-center gap-1.5 opacity-30">
+							{Array.from({ length: 8 }).map((_, i) => (
+								<span key={i} className="h-0.5 w-2 rounded-full bg-[#737687]" />
+							))}
+						</div>
+						<div className="h-4 w-4 -mr-8 rounded-full bg-[var(--discover-merchant-page-bg,#faf9fe)] dark:bg-slate-950" />
+					</div>
+					<div className="relative z-10 flex items-end justify-between pt-1">
+						<div>
+							<span className="mb-0.5 block text-[12px] font-semibold uppercase tracking-[0.05em] text-[#424655] dark:text-slate-400">
+								Face value
+							</span>
+							<span className="text-[34px] font-bold leading-none tracking-tight text-[#1a1b1f] dark:text-slate-100">
+								{prefix}
+								{previewAmount.split('.')[0]}
+								<span className="text-[22px] font-semibold">.{previewAmount.split('.')[1] ?? '00'}</span>
+							</span>
+						</div>
+						<div className="text-right">
+							<span className="mb-0.5 block text-[12px] font-semibold uppercase tracking-[0.05em] text-[#424655] dark:text-slate-400">
+								Gift recipient
+							</span>
+							<div className="flex items-center justify-end gap-1.5">
+								<Gift className="h-[18px] w-[18px]" style={{ color: brandControl }} strokeWidth={2} aria-hidden />
+								<span className="text-[22px] font-semibold leading-7" style={{ color: brandControl }}>
+									{step3RecipientHandle || 'Shareable link'}
+								</span>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
 
-				{creditPayEnabled ? (
+			<div className="mb-8 flex flex-col gap-2">
+				<div className="flex items-center justify-between px-1">
+					<span className="text-[12px] font-semibold uppercase tracking-wider text-[#424655] dark:text-slate-400">
+						Payment method
+					</span>
+					<span className="text-[12px] font-medium" style={{ color: brandControl }}>
+						{creditPayEnabled ? 'Select one' : 'Offline signature'}
+					</span>
+				</div>
+				<div className="flex flex-col gap-2.5">
 					<button
 						type="button"
 						onClick={() => {
-							setPayWith('credit')
+							setPayWith('usdc')
 							setPanelError(null)
 						}}
 						disabled={submitting}
-						className={`rounded-2xl p-4 text-left transition ${
-							payWith === 'credit'
-								? 'bg-white dark:bg-slate-900'
-								: 'bg-[#f4f3f8] hover:bg-white dark:bg-slate-800'
+						className={`relative flex items-center justify-between rounded-xl bg-white p-3.5 text-left shadow-sm transition duration-200 dark:bg-slate-900 ${
+							payWith === 'usdc' ? 'shadow-md' : 'opacity-75'
 						}`}
-						style={payWith === 'credit' ? { boxShadow: brandSelectedRing } : undefined}
+						style={payWith === 'usdc' ? { boxShadow: brandSelectedRing } : undefined}
 					>
-						<div className="flex items-start justify-between gap-3">
-							<div className="flex items-start gap-3">
-								<div
-									className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
-									style={{ backgroundColor: brandColor, color: onBrandText }}
-								>
-									<Gift className="h-5 w-5" strokeWidth={2} aria-hidden />
-								</div>
-								<div>
-									<div className="flex flex-wrap items-center gap-2">
-										<span className="text-base font-semibold text-[#1a1b1f] dark:text-slate-100">
-											Store credit ({merchantLabel})
-										</span>
-										{giftCreditConfig.feeKind === 'percent' && giftCreditConfig.percentBps > 0 ? (
-											<span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600 dark:bg-slate-700 dark:text-slate-300">
-												{(giftCreditConfig.percentBps / 100).toFixed(2)}% gift fee
-											</span>
-										) : null}
-									</div>
-									<p className="mt-1 text-xs text-[#5d5e63]">
-										{aaPoints0Loading
-											? 'Checking Smart Wallet #0…'
-											: aaPoints0Bal != null
-												? `Available: ${prefix}${
-														membershipFeeE6ToHuman(aaPoints0Bal.toString()) ||
-														ethers.formatUnits(aaPoints0Bal, 6)
-													}`
-												: 'Burn #0 from your Smart Wallet'}
-										{giftFacePreview && payWith === 'credit'
-											? ` · Burn about ${prefix}${
-													membershipFeeE6ToHuman(giftFacePreview.burnAmountE6.toString()) ||
-													ethers.formatUnits(giftFacePreview.burnAmountE6, 6)
-												}`
-											: ''}
-									</p>
-								</div>
+						<div className="flex min-w-0 items-center gap-3">
+							<div
+								className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+								style={{
+									backgroundColor: payWith === 'usdc' ? brandTint : '#eeedf3',
+									color: payWith === 'usdc' ? brandControl : '#424655',
+								}}
+							>
+								<Wallet className="h-[22px] w-[22px]" strokeWidth={2} aria-hidden />
 							</div>
-							{payWith === 'credit' ? (
-								<span className="flex items-center gap-0.5 text-[11px] font-semibold text-emerald-700">
-									<Check className="h-3.5 w-3.5" aria-hidden /> Selected
+							<div className="flex min-w-0 flex-col">
+								<div className="flex flex-wrap items-center gap-2">
+									<span className="text-[17px] font-semibold text-[#1a1b1f] dark:text-slate-100">USDC</span>
+									{payWith === 'usdc' ? (
+										<span
+											className="rounded-full px-2 py-0.5 text-[12px] font-semibold uppercase tracking-[0.05em]"
+											style={{ backgroundColor: brandTint, color: brandControl }}
+										>
+											Selected
+										</span>
+									) : null}
+								</div>
+								<span className="truncate text-[15px] text-[#424655] dark:text-slate-400">
+									{usdcAvailableLabel ?? 'Quoted in USDC at checkout'}
+									{usdcQuoteLabel ? ` · Need ${usdcQuoteLabel}` : ''}
 								</span>
-							) : null}
+							</div>
+						</div>
+						<div className="flex items-center gap-3 pl-2">
+							<span
+								className="whitespace-nowrap text-[17px] font-bold"
+								style={{ color: payWith === 'usdc' ? brandControl : '#424655' }}
+							>
+								{usdcQuoteLabel ?? `${prefix}${previewAmount}`}
+							</span>
+							{methodCheck(payWith === 'usdc')}
 						</div>
 					</button>
-				) : null}
+
+					{creditPayEnabled ? (
+						<button
+							type="button"
+							onClick={() => {
+								setPayWith('credit')
+								setPanelError(null)
+							}}
+							disabled={submitting}
+							className={`relative flex items-center justify-between rounded-xl bg-white p-3.5 text-left shadow-sm transition duration-200 dark:bg-slate-900 ${
+								payWith === 'credit' ? 'shadow-md' : 'opacity-75'
+							}`}
+							style={payWith === 'credit' ? { boxShadow: brandSelectedRing } : undefined}
+						>
+							<div className="flex min-w-0 items-center gap-3">
+								<div
+									className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+									style={{
+										backgroundColor: payWith === 'credit' ? brandTint : '#eeedf3',
+										color: payWith === 'credit' ? brandControl : '#424655',
+									}}
+								>
+									<Store className="h-[22px] w-[22px]" strokeWidth={2} aria-hidden />
+								</div>
+								<div className="flex min-w-0 flex-col">
+									<div className="flex flex-wrap items-center gap-1.5">
+										<span className="text-[17px] font-semibold text-[#1a1b1f] dark:text-slate-100">
+											Store credits
+										</span>
+										<span className="text-[15px] text-[#424655] dark:text-slate-400">
+											({merchantLabel})
+										</span>
+									</div>
+									<span className="truncate text-[15px] text-[#424655] dark:text-slate-400">
+										{creditAvailLabel}
+										{creditFeeChip ? ` · ${creditFeeChip}` : ''}
+									</span>
+								</div>
+							</div>
+							<div className="flex items-center gap-3 pl-2">
+								<span
+									className="whitespace-nowrap text-[17px] font-bold"
+									style={{ color: payWith === 'credit' ? brandControl : '#424655' }}
+								>
+									{creditBurnLabel ?? `${prefix}${previewAmount}`}
+								</span>
+								{methodCheck(payWith === 'credit')}
+							</div>
+						</button>
+					) : null}
+				</div>
 			</div>
 
 			{isFeeCard ? (
-				<div className="mb-6 rounded-2xl border border-amber-200/80 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/30">
+				<div className="mb-8 rounded-xl border border-amber-200/80 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/30">
 					<div className="flex items-start gap-3">
 						<div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-200/80 text-amber-800">
 							<AlertTriangle className="h-4 w-4" aria-hidden />
@@ -2799,40 +3342,110 @@ export default function DiscoverMerchantGiftSheet({
 				</div>
 			) : null}
 
-			<div className="mb-6 flex flex-col gap-3.5 rounded-2xl bg-[#f4f3f8] p-5 shadow-sm dark:bg-slate-800">
+			<div className="mb-8 rounded-xl bg-white p-6 shadow-sm dark:bg-slate-900">
 				<div className="flex items-center justify-between pb-1">
-					<div className="flex items-center gap-2">
-						<span className="text-sm font-semibold text-[#1a1b1f] dark:text-slate-100">Settlement ledger</span>
-					</div>
-					<span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300">
-						No hidden fees
+					<span className="text-[12px] font-semibold uppercase tracking-wider text-[#424655] dark:text-slate-400">
+						Order summary
+					</span>
+					<span className="flex items-center gap-1 text-[12px] font-semibold text-emerald-800 dark:text-emerald-300">
+						<span className="h-1.5 w-1.5 rounded-full bg-emerald-700" />
+						Quoted settlement
 					</span>
 				</div>
-				<div className="flex items-center justify-between text-xs">
-					<span className="text-[#5d5e63]">Gift face value</span>
-					<span className="font-semibold text-[#1a1b1f] dark:text-slate-100">
-						{prefix}
-						{previewAmount}
-					</span>
-				</div>
-				{payWith === 'credit' && creditPayEnabled ? (
-					<div className="flex items-center justify-between text-xs">
-						<span className="text-[#5d5e63]">Merchant gift fee</span>
-						<span className="font-semibold" style={{ color: brandControl }}>
-							{creditFeeLabel ? `+ ${creditFeeLabel}` : '—'}
+				<div className="flex flex-col gap-2 pt-1 text-[15px] text-[#424655] dark:text-slate-400">
+					<div className="flex items-center justify-between">
+						<span>Gift card value</span>
+						<span className="font-medium text-[#1a1b1f] dark:text-slate-100">
+							{prefix}
+							{previewAmount}
 						</span>
 					</div>
-				) : null}
-				<div className="flex items-center justify-between text-xs">
-					<span className="text-[#5d5e63]">Network gas</span>
-					<span className="font-semibold text-emerald-700 dark:text-emerald-400">Free (sponsored)</span>
+					{payWith === 'credit' && creditPayEnabled ? (
+						<div className="flex items-center justify-between">
+							<span>Merchant gift fee</span>
+							<span className="font-medium" style={{ color: brandControl }}>
+								{creditFeeLabel ? `+ ${creditFeeLabel}` : `${prefix}0.00`}
+							</span>
+						</div>
+					) : null}
+					{payWith === 'usdc' && usdcQuoteLabel ? (
+						<div className="flex items-center justify-between">
+							<span className="flex items-center gap-1">
+								USDC
+								<Wallet className="h-3.5 w-3.5" style={{ color: brandControl }} aria-hidden />
+							</span>
+							<span className="font-medium" style={{ color: brandControl }}>
+								{usdcQuoteLabel}
+							</span>
+						</div>
+					) : null}
+					<div className="flex items-center justify-between">
+						<span>Platform & handling fee</span>
+						<span className="font-medium text-emerald-700 dark:text-emerald-400">{prefix}0.00 (Free)</span>
+					</div>
+					<div className="flex items-center justify-between">
+						<span>Network gas</span>
+						<span className="font-medium text-emerald-700 dark:text-emerald-400">Free (sponsored)</span>
+					</div>
 				</div>
-				<div className="my-1 h-px bg-slate-200 dark:bg-slate-600" />
-				<div className="flex items-center justify-between text-sm">
-					<span className="font-semibold text-[#1a1b1f] dark:text-slate-100">Total deducted</span>
-					<span className="text-base font-bold" style={{ color: brandControl }}>
-						{payTotalLabel}
-					</span>
+				<div className="my-3 h-px w-full bg-[#e3e2e7] dark:bg-slate-700" />
+				<div className="flex items-baseline justify-between gap-3">
+					<div>
+						<span className="text-[22px] font-semibold leading-7 text-[#1a1b1f] dark:text-slate-100">
+							Total amount
+						</span>
+						<span className="mt-0.5 block text-[12px] font-medium text-emerald-800 dark:text-emerald-300">
+							{payWith === 'credit' ? 'Store credit settlement' : 'USDC settlement'}
+						</span>
+					</div>
+					<div className="text-right">
+						<span
+							className="text-[28px] font-bold leading-[34px] tracking-tight"
+							style={{ color: brandControl }}
+						>
+							{payTotalLabel}
+						</span>
+						<span className="block text-[12px] font-semibold uppercase tracking-[0.05em] text-[#424655] dark:text-slate-400">
+							Total deduction: {prefix}
+							{previewAmount}
+						</span>
+					</div>
+				</div>
+			</div>
+
+			<div
+				className="mb-8 rounded-xl p-4 shadow-sm"
+				style={{
+					background: `linear-gradient(90deg, ${brandTint} 0%, #f4f3f8 100%)`,
+				}}
+			>
+				<div className="flex items-start gap-3">
+					<div
+						className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
+						style={{ backgroundColor: `${brandControl}1a`, color: brandControl }}
+					>
+						<Sparkles className="h-5 w-5" strokeWidth={2} aria-hidden />
+					</div>
+					<div className="flex flex-col">
+						<span className="text-[15px] font-semibold text-[#1a1b1f] dark:text-slate-100">
+							{themeStep3PerkTitle(step1Kind)}
+						</span>
+						<p className="mt-0.5 text-[15px] leading-relaxed text-[#424655] dark:text-slate-400">
+							{themeStep3PerkBody(step1Kind, prefix, previewAmount, merchantLabel)}
+						</p>
+					</div>
+				</div>
+			</div>
+
+			<div className="mb-8 flex items-center justify-center gap-4 py-2 text-[#737687]">
+				<div className="flex items-center gap-1.5">
+					<Lock className="h-4 w-4" aria-hidden />
+					<span className="text-[12px] font-semibold uppercase tracking-[0.05em]">Protected by Beamio</span>
+				</div>
+				<span className="h-1 w-1 rounded-full bg-[#c3c6d8]" />
+				<div className="flex items-center gap-1.5">
+					<CheckCircle2 className="h-4 w-4" aria-hidden />
+					<span className="text-[12px] font-semibold uppercase tracking-[0.05em]">24h auto-return</span>
 				</div>
 			</div>
 
@@ -2856,35 +3469,46 @@ export default function DiscoverMerchantGiftSheet({
 				</div>
 			) : null}
 
-			<button
-				type="button"
-				onClick={() => void handlePurchase()}
-				disabled={submitting}
-				aria-busy={submitting}
-				className="inline-flex w-full items-center justify-center gap-2 rounded-2xl px-5 py-3.5 text-[15px] font-bold transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
-				style={{
-					backgroundColor: brandControl,
-					color: onBrandText,
-					boxShadow: brandControlShadow,
-				}}
+			<div
+				className="fixed bottom-0 left-0 right-0 z-40 bg-[#faf9fe]/95 px-5 pt-3 shadow-[0_-4px_24px_rgba(0,0,0,0.06)] backdrop-blur-xl dark:bg-slate-950/95"
+				style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom, 0px))' }}
 			>
-				{submitting ? (
-					<Loader2 className="h-5 w-5 animate-spin" aria-hidden />
-				) : (
-					<Gift className="h-5 w-5 shrink-0" strokeWidth={2.25} aria-hidden />
-				)}
-				<span>
-					{submitting
-						? usdcSubmitHint && payWith === 'usdc'
-							? usdcSubmitHint
-							: 'Creating gift…'
-						: payCtaLabel}
-				</span>
-				{!submitting ? <ChevronRight className="h-5 w-5 opacity-80" strokeWidth={2.25} aria-hidden /> : null}
-			</button>
-			<p className="mt-2 text-center text-[12px] font-medium leading-snug text-emerald-700 dark:text-emerald-400">
-				You only sign offline — no network gas for you or the recipient.
-			</p>
+				<div className="mx-auto flex w-full max-w-lg items-center justify-between gap-4">
+					<div className="flex min-w-0 flex-col">
+						<span className="text-[12px] font-semibold uppercase tracking-[0.05em] text-[#424655] dark:text-slate-400">
+							Due now
+						</span>
+						<span className="truncate text-[22px] font-bold leading-7 tracking-tight text-[#1a1b1f] dark:text-slate-100">
+							{payTotalLabel}
+						</span>
+					</div>
+					<button
+						type="button"
+						onClick={() => void handlePurchase()}
+						disabled={submitting}
+						aria-busy={submitting}
+						aria-label={payCtaLabel}
+						className="flex h-[52px] max-w-[240px] flex-1 items-center justify-center gap-2 rounded-xl px-4 text-[15px] font-semibold tracking-tight shadow-md transition duration-150 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
+						style={{
+							backgroundColor: brandControl,
+							color: onBrandText,
+							boxShadow: brandControlShadow,
+						}}
+					>
+						{submitting ? (
+							<Loader2 className="h-5 w-5 animate-spin" aria-hidden />
+						) : (
+							<>
+								<span className="truncate">{payCtaLabel}</span>
+								<ChevronRight className="h-5 w-5 shrink-0 opacity-90" strokeWidth={2.25} aria-hidden />
+							</>
+						)}
+					</button>
+				</div>
+				<p className="mx-auto mt-2 max-w-lg pb-1 text-center text-[12px] font-semibold uppercase tracking-[0.05em] text-[#424655] dark:text-slate-400">
+					Protected by Beamio · Unclaimed gifts return automatically in 24h
+				</p>
+			</div>
 		</section>
 	)
 }

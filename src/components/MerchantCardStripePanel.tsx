@@ -80,6 +80,11 @@ export default function MerchantCardStripePanel({ cardAddress }: Props) {
 		}
 		setBusy(true)
 		setError('')
+		// Reserve the browser tab synchronously from the click handler so the
+		// later async API calls cannot make the popup blocker reject Stripe.
+		const stripeTab = typeof window !== 'undefined'
+			? window.open('about:blank', '_blank', 'noopener,noreferrer')
+			: null
 		try {
 			const statusResponse = await fetchStripeStatus(cardAddress)
 			const stripeStatus = (await statusResponse.json()) as StripeStatus & { error?: string }
@@ -123,9 +128,14 @@ export default function MerchantCardStripePanel({ cardAddress }: Props) {
 			})
 			const link = (await linkResponse.json()) as { url?: string; error?: string }
 			if (!linkResponse.ok || !link.url) throw new Error(link.error ?? 'Unable to create Stripe onboarding link.')
-			openExternalUrl(link.url)
+			if (stripeTab && !stripeTab.closed) {
+				stripeTab.location.href = link.url
+			} else {
+				openExternalUrl(link.url)
+			}
 			setStatus({ linked: false, fulfillmentAdmin: fulfillmentAdmins[0], fulfillmentAdmins })
 		} catch (e: any) {
+			if (stripeTab && !stripeTab.closed) stripeTab.close()
 			setError(e?.message ?? String(e))
 		} finally {
 			setBusy(false)

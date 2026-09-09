@@ -60,11 +60,16 @@ export default function MerchantCardStripePanel({ cardAddress }: Props) {
 						: [],
 			})
 		} catch (e: any) {
-			// A failed read is still a terminal UI state; do not leave the CTA
-			// spinning forever while preserving the error for the user.
-			setStatus({ linked: false, fulfillmentAdmin: null, fulfillmentAdmins: [] })
 			setError(e?.message ?? String(e))
 		}
+		// Keep the last trusted connection state after a transient read failure.
+		// On the first read only, expose a terminal disconnected state so the
+		// CTA does not remain in "Checking Stripe…" forever.
+		setStatus((previous) => previous ?? {
+			linked: false,
+			fulfillmentAdmin: null,
+			fulfillmentAdmins: [],
+		})
 	}, [cardAddress])
 
 	useEffect(() => {
@@ -121,13 +126,20 @@ export default function MerchantCardStripePanel({ cardAddress }: Props) {
 				}
 			}
 
-			const linkResponse = await fetch(stripeEndpoint('createAccountLink'), {
+			const merchantEoa = profile.keyID
+			if (!merchantEoa || !ethers.isAddress(merchantEoa)) {
+				throw new Error('Unable to resolve the merchant wallet address.')
+			}
+			const linkResponse = await fetch(stripeEndpoint('oauth/start'), {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ cardAddress: ethers.getAddress(cardAddress) }),
+				body: JSON.stringify({
+					cardAddress: ethers.getAddress(cardAddress),
+					merchantEoa: ethers.getAddress(merchantEoa),
+				}),
 			})
 			const link = (await linkResponse.json()) as { url?: string; error?: string }
-			if (!linkResponse.ok || !link.url) throw new Error(link.error ?? 'Unable to create Stripe onboarding link.')
+			if (!linkResponse.ok || !link.url) throw new Error(link.error ?? 'Unable to start Stripe OAuth Connect.')
 			if (stripeTab && !stripeTab.closed) {
 				stripeTab.location.href = link.url
 			} else {
@@ -154,7 +166,7 @@ export default function MerchantCardStripePanel({ cardAddress }: Props) {
 					<div>
 						<h2 className="text-base font-semibold text-slate-900">Accept card payments</h2>
 						<p className="mt-1 text-sm text-slate-500">
-							Connect Stripe to receive program card top-ups and membership payments.
+							Authorize your Stripe account to receive program card top-ups and membership payments.
 						</p>
 					</div>
 				</div>
@@ -173,7 +185,7 @@ export default function MerchantCardStripePanel({ cardAddress }: Props) {
 				className="mt-4 inline-flex min-h-10 items-center gap-2 rounded-xl bg-[#635bff] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#5148e5] disabled:cursor-not-allowed disabled:opacity-60"
 			>
 				{busy || status === null ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <ExternalLink className="h-4 w-4" aria-hidden />}
-				{busy ? 'Opening Stripe…' : status === null ? 'Checking Stripe…' : 'Connect Stripe'}
+				{busy ? 'Opening Stripe authorization…' : status === null ? 'Checking Stripe…' : 'Connect Stripe account'}
 			</button>
 		</section>
 	)

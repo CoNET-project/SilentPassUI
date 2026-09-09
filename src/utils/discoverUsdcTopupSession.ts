@@ -790,7 +790,7 @@ export async function fetchDiscoverClientTopupQuotedUsdc6(params: {
 export function formatQuotedUsdc6ForDisplay(usdc6: bigint): string {
 	const human = ethers.formatUnits(usdc6, 6)
 	const n = Number(human)
-	return Number.isFinite(n) ? n.toFixed(6).replace(/\.?0+$/, '') || '0' : human
+	return Number.isFinite(n) ? n.toFixed(2) : human
 }
 
 export function newDiscoverUsdcTopupSessionId(): string {

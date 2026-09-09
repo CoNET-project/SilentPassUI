@@ -481,6 +481,11 @@ function formatPreviewAmount(raw: string): string {
 	return n.toFixed(2)
 }
 
+function formatUsdcAmountForDisplay(raw: string): string {
+	const n = Number(String(raw).replace(/,/g, '').trim())
+	return Number.isFinite(n) && n >= 0 ? n.toFixed(2) : '0.00'
+}
+
 function GiftFriendCapsule({
 	item,
 	onClear,
@@ -777,7 +782,7 @@ export default function DiscoverMerchantGiftSheet({
 					readEoaUsdcBalance6(profile as profile).catch(() => null),
 				])
 				if (cancelled) return
-				setUsdcQuoteLabel(`Need ~$${usdc} USDC`)
+				setUsdcQuoteLabel(`Need ~$${formatUsdcAmountForDisplay(usdc)} USDC`)
 				if (conetBal != null && baseBal != null) {
 					const combined = conetBal + baseBal
 					setUsdcAvailableLabel(
@@ -1166,7 +1171,7 @@ export default function DiscoverMerchantGiftSheet({
 			const combined = conetBal + baseBal
 			if (combined < usdc6) {
 				setPanelError(
-					`Insufficient USDC. Need about ${usdc} USDC across CoNET and Base; available ~$${formatQuotedUsdc6ForDisplay(combined)} USDC.`,
+					`Insufficient USDC. Need about ${formatUsdcAmountForDisplay(usdc)} USDC across CoNET and Base; available ~$${formatQuotedUsdc6ForDisplay(combined)} USDC.`,
 				)
 				return
 			}
@@ -1176,7 +1181,7 @@ export default function DiscoverMerchantGiftSheet({
 				const shortfall = usdc6 - conetBal
 				if (baseBal < shortfall) {
 					setPanelError(
-						`Insufficient USDC. Need about ${usdc} USDC; CoNET ~$${formatQuotedUsdc6ForDisplay(conetBal)}, Base ~$${formatQuotedUsdc6ForDisplay(baseBal)}.`,
+						`Insufficient USDC. Need about ${formatUsdcAmountForDisplay(usdc)} USDC; CoNET ~$${formatQuotedUsdc6ForDisplay(conetBal)}, Base ~$${formatQuotedUsdc6ForDisplay(baseBal)}.`,
 					)
 					return
 				}
@@ -1218,7 +1223,7 @@ export default function DiscoverMerchantGiftSheet({
 				conetBal = await readEoaConetUsdcBalance6(profile as profile)
 				if (conetBal < usdc6) {
 					setPanelError(
-						`USDC is still short after deposit. Need about ${usdc} USDC; balance is ~$${formatQuotedUsdc6ForDisplay(conetBal)}.`,
+						`USDC is still short after deposit. Need about ${formatUsdcAmountForDisplay(usdc)} USDC; balance is ~$${formatQuotedUsdc6ForDisplay(conetBal)}.`,
 					)
 					return
 				}

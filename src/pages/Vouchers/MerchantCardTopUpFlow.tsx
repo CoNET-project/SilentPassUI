@@ -136,6 +136,26 @@ function payableCashUsdc6(quotedUsdc6: bigint, coveredUsdc6: bigint): bigint {
 	return isDisplayZeroUsdc(raw) ? 0n : raw
 }
 
+/** Chain refresh after a confirmed top-up must not keep Confirm on “Applying points…”. */
+const ASSET_REFRESH_AFTER_TOPUP_MS = 6_000
+
+async function refreshMyAssetsAfterSuccessfulTopup(
+	profile: profile,
+	cardAddress: string,
+): Promise<MyCardAssets | undefined> {
+	try {
+		const refreshed = await Promise.race([
+			getMyAssets(profile, cardAddress, { bypassCache: true }),
+			new Promise<null>((resolve) => {
+				setTimeout(() => resolve(null), ASSET_REFRESH_AFTER_TOPUP_MS)
+			}),
+		])
+		return refreshed ?? undefined
+	} catch {
+		return undefined
+	}
+}
+
 function merchantInitials(name: string): string {
 	const parts = name.trim().split(/\s+/).filter(Boolean)
 	if (parts.length >= 2) {
@@ -1091,12 +1111,7 @@ export default function MerchantCardTopUpFlow({
 						throw new Error(`USDC payment failed: ${cashRes.error}`)
 					}
 				}
-				try {
-					const refreshed = await getMyAssets(profile, cardAddress, { bypassCache: true })
-					assets = refreshed ?? undefined
-				} catch {
-					/* payments already succeeded — untrusted asset refresh must not hide success */
-				}
+				assets = await refreshMyAssetsAfterSuccessfulTopup(profile, cardAddress)
 				setSuccessNote(
 					oneShotDone
 						? 'Points and USDC completed in one payment.'
@@ -1114,8 +1129,7 @@ export default function MerchantCardTopUpFlow({
 				if (!container.success) {
 					throw new Error(friendlyTopupContainerError(container.error || 'Points top-up failed'))
 				}
-				const refreshed = await getMyAssets(profile, cardAddress, { bypassCache: true })
-				assets = refreshed ?? undefined
+				assets = await refreshMyAssetsAfterSuccessfulTopup(profile, cardAddress)
 				setSuccessNote('')
 			} else if (cashUsdc6 > 0n) {
 				/**
@@ -1167,8 +1181,7 @@ export default function MerchantCardTopUpFlow({
 						quotedUsdc6: settleQuotedUsdc6,
 					})
 					if (localPay.ok) {
-						const refreshed = await getMyAssets(profile, cardAddress, { bypassCache: true })
-						assets = refreshed ?? undefined
+						assets = await refreshMyAssetsAfterSuccessfulTopup(profile, cardAddress)
 						setMintedLabel(creditQuote ? creditQuote.total.toFixed(2) : Number(fiatHuman).toFixed(2))
 						setStep('success')
 						onSuccess?.(assets)

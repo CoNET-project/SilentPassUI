@@ -12,6 +12,7 @@ import { openExternalUrl } from '@/utils/openExternalUrl'
 type StripeStatus = {
 	linked: boolean
 	fulfillmentAdmin: string | null
+	fulfillmentAdmins?: string[]
 }
 
 type Props = {
@@ -39,6 +40,11 @@ export default function MerchantCardStripePanel({ cardAddress }: Props) {
 			setStatus({
 				linked: body.linked === true,
 				fulfillmentAdmin: body.fulfillmentAdmin ?? null,
+				fulfillmentAdmins: Array.isArray(body.fulfillmentAdmins)
+					? body.fulfillmentAdmins.filter((address): address is string => ethers.isAddress(address))
+					: body.fulfillmentAdmin && ethers.isAddress(body.fulfillmentAdmin)
+						? [body.fulfillmentAdmin]
+						: [],
 			})
 		} catch (e: any) {
 			setError(e?.message ?? String(e))
@@ -65,29 +71,38 @@ export default function MerchantCardStripePanel({ cardAddress }: Props) {
 				body: JSON.stringify({ cardAddress: ethers.getAddress(cardAddress) }),
 			})
 			const stripeStatus = (await statusResponse.json()) as StripeStatus & { error?: string }
-			if (!statusResponse.ok || !stripeStatus.fulfillmentAdmin) {
+			const fulfillmentAdmins = Array.isArray(stripeStatus.fulfillmentAdmins)
+				? stripeStatus.fulfillmentAdmins.filter((address): address is string => ethers.isAddress(address))
+				: stripeStatus.fulfillmentAdmin && ethers.isAddress(stripeStatus.fulfillmentAdmin)
+					? [stripeStatus.fulfillmentAdmin]
+					: []
+			if (!statusResponse.ok || fulfillmentAdmins.length === 0) {
 				throw new Error(stripeStatus.error ?? 'Stripe fulfillment is not configured.')
 			}
 
-			const deadline = Math.floor(Date.now() / 1000) + 3600
-			const nonce = ethers.hexlify(ethers.randomBytes(32))
-			const data = encodeAddAdmin(stripeStatus.fulfillmentAdmin, 1)
-			const ownerSignature = await signExecuteForOwner(
-				profile.privateKeyArmor,
-				cardAddress,
-				data,
-				deadline,
-				nonce,
-			)
-			const adminResult = await postCardAddAdmin({
-				cardAddress,
-				data,
-				deadline,
-				nonce,
-				ownerSignature,
-				adminEOA: stripeStatus.fulfillmentAdmin,
-			})
-			if (!adminResult.success) throw new Error(adminResult.error ?? 'Unable to authorize Stripe fulfillment.')
+			for (const fulfillmentAdmin of fulfillmentAdmins) {
+				const deadline = Math.floor(Date.now() / 1000) + 3600
+				const nonce = ethers.hexlify(ethers.randomBytes(32))
+				const data = encodeAddAdmin(fulfillmentAdmin, 1)
+				const ownerSignature = await signExecuteForOwner(
+					profile.privateKeyArmor,
+					cardAddress,
+					data,
+					deadline,
+					nonce,
+				)
+				const adminResult = await postCardAddAdmin({
+					cardAddress,
+					data,
+					deadline,
+					nonce,
+					ownerSignature,
+					adminEOA: fulfillmentAdmin,
+				})
+				if (!adminResult.success) {
+					throw new Error(`Unable to authorize Stripe fulfillment admin ${fulfillmentAdmin}. ${adminResult.error ?? ''}`.trim())
+				}
+			}
 
 			const linkResponse = await fetch(stripeEndpoint('createAccountLink'), {
 				method: 'POST',
@@ -97,7 +112,7 @@ export default function MerchantCardStripePanel({ cardAddress }: Props) {
 			const link = (await linkResponse.json()) as { url?: string; error?: string }
 			if (!linkResponse.ok || !link.url) throw new Error(link.error ?? 'Unable to create Stripe onboarding link.')
 			openExternalUrl(link.url)
-			setStatus({ linked: false, fulfillmentAdmin: stripeStatus.fulfillmentAdmin })
+			setStatus({ linked: false, fulfillmentAdmin: fulfillmentAdmins[0], fulfillmentAdmins })
 		} catch (e: any) {
 			setError(e?.message ?? String(e))
 		} finally {

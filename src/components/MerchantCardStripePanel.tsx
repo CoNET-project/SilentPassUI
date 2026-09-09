@@ -88,8 +88,9 @@ export default function MerchantCardStripePanel({ cardAddress }: Props) {
 		// Reserve the browser tab synchronously from the click handler so the
 		// later async API calls cannot make the popup blocker reject Stripe.
 		const stripeTab = typeof window !== 'undefined'
-			? window.open('about:blank', '_blank', 'noopener,noreferrer')
+			? window.open('', '_blank')
 			: null
+		let stripeNavigated = false
 		try {
 			const statusResponse = await fetchStripeStatus(cardAddress)
 			const stripeStatus = (await statusResponse.json()) as StripeStatus & { error?: string }
@@ -100,6 +101,32 @@ export default function MerchantCardStripePanel({ cardAddress }: Props) {
 					: []
 			if (!statusResponse.ok || fulfillmentAdmins.length === 0) {
 				throw new Error(stripeStatus.error ?? 'Stripe fulfillment is not configured.')
+			}
+
+			const merchantEoa = profile.keyID
+			if (!merchantEoa || !ethers.isAddress(merchantEoa)) {
+				throw new Error('Unable to resolve the merchant wallet address.')
+			}
+			const linkResponse = await fetch(stripeEndpoint('oauth/start'), {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					cardAddress: ethers.getAddress(cardAddress),
+					merchantEoa: ethers.getAddress(merchantEoa),
+				}),
+			})
+			const link = (await linkResponse.json()) as { url?: string; error?: string }
+			if (!linkResponse.ok || !link.url) throw new Error(link.error ?? 'Unable to start Stripe OAuth Connect.')
+
+			// Navigate before the owner-signature flow. The OAuth page must not
+			// remain on about:blank while the on-chain admin transactions run.
+			if (stripeTab && !stripeTab.closed) {
+				stripeTab.location.assign(link.url)
+				stripeNavigated = true
+			} else if (!openExternalUrl(link.url)) {
+				throw new Error('Unable to open Stripe authorization. Please allow pop-ups and try again.')
+			} else {
+				stripeNavigated = true
 			}
 
 			for (const fulfillmentAdmin of fulfillmentAdmins) {
@@ -125,29 +152,9 @@ export default function MerchantCardStripePanel({ cardAddress }: Props) {
 					throw new Error(`Unable to authorize Stripe fulfillment admin ${fulfillmentAdmin}. ${adminResult.error ?? ''}`.trim())
 				}
 			}
-
-			const merchantEoa = profile.keyID
-			if (!merchantEoa || !ethers.isAddress(merchantEoa)) {
-				throw new Error('Unable to resolve the merchant wallet address.')
-			}
-			const linkResponse = await fetch(stripeEndpoint('oauth/start'), {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					cardAddress: ethers.getAddress(cardAddress),
-					merchantEoa: ethers.getAddress(merchantEoa),
-				}),
-			})
-			const link = (await linkResponse.json()) as { url?: string; error?: string }
-			if (!linkResponse.ok || !link.url) throw new Error(link.error ?? 'Unable to start Stripe OAuth Connect.')
-			if (stripeTab && !stripeTab.closed) {
-				stripeTab.location.href = link.url
-			} else {
-				openExternalUrl(link.url)
-			}
 			setStatus({ linked: false, fulfillmentAdmin: fulfillmentAdmins[0], fulfillmentAdmins })
 		} catch (e: any) {
-			if (stripeTab && !stripeTab.closed) stripeTab.close()
+			if (!stripeNavigated && stripeTab && !stripeTab.closed) stripeTab.close()
 			setError(e?.message ?? String(e))
 		} finally {
 			setBusy(false)

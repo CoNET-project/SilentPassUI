@@ -96,7 +96,7 @@ export default function RestoreWalletUnifiedScreen({
 	initialBeamioTag = '',
 }: RestoreWalletUnifiedScreenProps) {
 	const prefillTag = normalizeBeamioTagInput(initialBeamioTag)
-	const [tab, setTab] = useState<RestoreTab>(prefillTag ? 'login' : 'recovery')
+	const [tab, setTab] = useState<RestoreTab>(initialRecoveryCode ? 'recovery' : 'login')
 	const { scanRef, scanData } = useDaemonContext()
 
 	// —— Recovery —

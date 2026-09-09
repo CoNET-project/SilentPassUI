@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, Check, ChevronRight, Info, Loader2, Lock, Share, Share2, SlidersHorizontal, Sparkles, Tag } from 'lucide-react'
+import { AlertTriangle, Check, ChevronRight, CreditCard, Info, Loader2, Lock, Share, Share2, SlidersHorizontal, Sparkles, Tag } from 'lucide-react'
 import usdcIcon from '@/components/assets/usdc.png'
 import { ethers } from 'ethers'
 import {
@@ -105,6 +105,9 @@ type Props = {
 	cardCurrency: string
 	profile: profile
 	initialAmount?: string
+	stripeKind?: 'topup' | 'membership'
+	membershipTierIndex?: number
+	membershipFeeFiat6?: string
 	/** Discover / My Brands already-loaded #13. First-paint Smart Pay cover — do not wait for planner RPC. */
 	seedAssets?: SeedReward13Assets | null
 	/** Discover My Points #13 (human). Used when `seedAssets` still lacks chargeRewardPoints. */
@@ -380,6 +383,9 @@ export default function MerchantCardTopUpFlow({
 	cardCurrency,
 	profile,
 	initialAmount,
+	stripeKind,
+	membershipTierIndex,
+	membershipFeeFiat6,
 	seedAssets,
 	seedPoints13,
 	onSuccess,
@@ -410,6 +416,8 @@ export default function MerchantCardTopUpFlow({
 	const [merchantIcon, setMerchantIcon] = useState<string | undefined>()
 	const [payBusy, setPayBusy] = useState(false)
 	const [payError, setPayError] = useState('')
+	const [stripeReady, setStripeReady] = useState(false)
+	const [stripeBusy, setStripeBusy] = useState(false)
 	const [mintedLabel, setMintedLabel] = useState('0.00')
 	const [successNote, setSuccessNote] = useState('')
 	const [usedManual, setUsedManual] = useState(false)
@@ -428,6 +436,13 @@ export default function MerchantCardTopUpFlow({
 
 	const prefix = displayFiatPrefixFromCode(cardCurrency, 'USD')
 	const fiatHuman = amountInput.replace(/,/g, '').trim() || '0'
+	const amountFiat6 = useMemo(() => {
+		const normalized = fiatHuman.trim()
+		if (!/^(?:\d+)(?:\.\d{1,6})?$/.test(normalized)) return null
+		const [whole, fraction = ''] = normalized.split('.')
+		const value = BigInt(whole) * 1_000_000n + BigInt(fraction.padEnd(6, '0'))
+		return value > 0n ? value.toString() : null
+	}, [fiatHuman])
 	const metadataRoot = lookupByAddress(cardAddress)?.metadataRoot ?? null
 	const pageSurface = useMemo(
 		() => resolveDiscoverMerchantPageBrandColor(metadataRoot),
@@ -447,6 +462,69 @@ export default function MerchantCardTopUpFlow({
 			: ''
 	/** Chain-resolved Consumer AA that holds #13 (may differ from profile.aaAccount). */
 	const [resolvedAa, setResolvedAa] = useState('')
+
+	useEffect(() => {
+		if (!open || !cardAddress || !ethers.isAddress(cardAddress)) return
+		let cancelled = false
+		setStripeReady(false)
+		void fetch('/api/merchantCardStripe/status', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ cardAddress: ethers.getAddress(cardAddress) }),
+		})
+			.then(async (response) => {
+				const body = (await response.json().catch(() => ({}))) as { linked?: boolean }
+				if (!cancelled && response.ok && body.linked === true) setStripeReady(true)
+			})
+			.catch(() => {
+				// Optional payment method: preserve the last trusted state on failure.
+			})
+		return () => {
+			cancelled = true
+		}
+	}, [open, cardAddress])
+
+	const payWithStripe = useCallback(async () => {
+		if (stripeBusy || !stripeReady || !amountFiat6 || !profile.keyID) return
+		setStripeBusy(true)
+		setPayError('')
+		try {
+			const response = await fetch('/api/merchantCardStripe/createCheckout', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					cardAddress: ethers.getAddress(cardAddress),
+					buyerEoa: ethers.getAddress(profile.keyID),
+					amountFiat6,
+					currency: String(cardCurrency || 'USD').toUpperCase(),
+					kind: stripeKind ?? 'topup',
+					...(stripeKind === 'membership' && membershipTierIndex != null
+						? { membershipTierIndex }
+						: {}),
+					...(stripeKind === 'membership' && membershipFeeFiat6
+						? { membershipFeeFiat6 }
+						: {}),
+				}),
+			})
+			const body = (await response.json().catch(() => ({}))) as { url?: string; error?: string }
+			if (!response.ok || !body.url) throw new Error(body.error ?? 'Unable to start Stripe Checkout.')
+			openExternalUrl(body.url)
+		} catch (error) {
+			setPayError(error instanceof Error ? error.message : 'Unable to start Stripe Checkout.')
+		} finally {
+			setStripeBusy(false)
+		}
+	}, [
+		amountFiat6,
+		cardAddress,
+		cardCurrency,
+		membershipFeeFiat6,
+		membershipTierIndex,
+		profile.keyID,
+		stripeBusy,
+		stripeKind,
+		stripeReady,
+	])
 
 	const close = useCallback(() => {
 		if (isClosing || payBusy) return
@@ -1426,6 +1504,27 @@ export default function MerchantCardTopUpFlow({
 									</p>
 								) : null}
 							</div>
+
+							{stripeReady ? (
+								<button
+									type="button"
+									onClick={() => void payWithStripe()}
+									disabled={stripeBusy || payBusy || !amountFiat6}
+									aria-busy={stripeBusy}
+									className="mt-3 flex w-full items-center gap-3 rounded-[18px] border border-[#635bff]/30 bg-[#f4f2ff] px-3.5 py-3.5 text-left text-[#312e81] disabled:cursor-not-allowed disabled:opacity-45"
+								>
+									<span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-[#635bff] shadow-sm">
+										{stripeBusy ? <Loader2 className="h-5 w-5 animate-spin" aria-hidden /> : <CreditCard className="h-5 w-5" aria-hidden />}
+									</span>
+									<span className="min-w-0 flex-1">
+										<span className="block text-[15px] font-bold">Pay with Stripe</span>
+										<span className="mt-0.5 block text-[13px] text-[#6366a8]">
+											Pay the full amount by card.
+										</span>
+									</span>
+									<ChevronRight className="h-5 w-5 shrink-0 text-[#8b87c8]" aria-hidden />
+								</button>
+							) : null}
 
 							{smartPay ? (
 								<button

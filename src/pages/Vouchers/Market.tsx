@@ -8181,6 +8181,13 @@ function DiscoverMerchantDetailFullScreen({
 						cardCurrency={String(merchantAssets?.cardCurrency ?? displayCurrency ?? 'USD')}
 						profile={profiles[0]}
 						initialAmount={discoverTopUpPrefill}
+						stripeKind={
+							usdcTopupIntent === 'first_purchase' || usdcTopupIntent === 'upgrade'
+								? 'membership'
+								: 'topup'
+						}
+						membershipTierIndex={membershipPurchaseTierIndex ?? undefined}
+						membershipFeeFiat6={membershipPurchaseFeeFiat6 || undefined}
 						seedAssets={merchantAssets}
 						seedPoints13={myPoints13Num > 0 ? myPoints13Num : userSocialPoints13}
 						onClose={() => {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { CheckCircle2, ChevronDown, CreditCard, ExternalLink, Loader2, ShieldCheck, Unplug } from 'lucide-react'
+import { CheckCircle2, ChevronDown, ChevronRight, CreditCard, ExternalLink, Loader2, Power, ShieldCheck, Unplug } from 'lucide-react'
 import { ethers } from 'ethers'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { beamioApi } from '@/utils/constants'
@@ -13,6 +13,7 @@ type StripeStatus = {
 	linked: boolean
 	chargesEnabled?: boolean
 	detailsSubmitted?: boolean
+	topupEnabled?: boolean
 	fulfillmentAdmin: string | null
 	fulfillmentAdmins?: string[]
 }
@@ -36,6 +37,23 @@ function buildStripeDisconnectMessage(params: {
 		'Beamio Merchant Card Stripe Disconnect',
 		`Card: ${ethers.getAddress(params.cardAddress).toLowerCase()}`,
 		`Merchant: ${ethers.getAddress(params.merchantEoa).toLowerCase()}`,
+		`Deadline: ${params.deadline}`,
+		`Nonce: ${params.nonce.toLowerCase()}`,
+	].join('\n')
+}
+
+function buildStripeTopupEnabledMessage(params: {
+	cardAddress: string
+	merchantEoa: string
+	deadline: number
+	nonce: string
+	topupEnabled: boolean
+}): string {
+	return [
+		'Beamio Merchant Card Stripe Top-up Availability',
+		`Card: ${ethers.getAddress(params.cardAddress).toLowerCase()}`,
+		`Merchant: ${ethers.getAddress(params.merchantEoa).toLowerCase()}`,
+		`Top-up enabled: ${params.topupEnabled ? 'true' : 'false'}`,
 		`Deadline: ${params.deadline}`,
 		`Nonce: ${params.nonce.toLowerCase()}`,
 	].join('\n')
@@ -75,10 +93,17 @@ export default function MerchantCardStripePanel({ cardAddress }: Props) {
 	const { profiles } = useDaemonContext()
 	const [status, setStatus] = useState<StripeStatus | null>(null)
 	const [busy, setBusy] = useState(false)
-	const [disconnectOpen, setDisconnectOpen] = useState(false)
+	const [menuOpen, setMenuOpen] = useState(false)
+	const [disconnectConfirmationOpen, setDisconnectConfirmationOpen] = useState(false)
 	const [disconnecting, setDisconnecting] = useState(false)
+	const [topupUpdating, setTopupUpdating] = useState(false)
+	const [disconnectSlideProgress, setDisconnectSlideProgress] = useState(0)
 	const [error, setError] = useState('')
 	const disconnectInFlightRef = useRef(false)
+	const topupInFlightRef = useRef(false)
+	const disconnectSliderRef = useRef<HTMLDivElement | null>(null)
+	const disconnectSlideStartRef = useRef<{ pointerId: number; clientX: number; progress: number } | null>(null)
+	const disconnectSlideProgressRef = useRef(0)
 	const stripePopupRef = useRef<Window | null>(null)
 	const stripePopupPollTimerRef = useRef<number | null>(null)
 
@@ -101,6 +126,7 @@ export default function MerchantCardStripePanel({ cardAddress }: Props) {
 				linked: body.linked === true,
 				chargesEnabled: body.chargesEnabled === true,
 				detailsSubmitted: body.detailsSubmitted === true,
+				topupEnabled: body.topupEnabled !== false,
 				fulfillmentAdmin: body.fulfillmentAdmin ?? null,
 				fulfillmentAdmins: Array.isArray(body.fulfillmentAdmins)
 					? body.fulfillmentAdmins.filter((address): address is string => ethers.isAddress(address))
@@ -109,7 +135,10 @@ export default function MerchantCardStripePanel({ cardAddress }: Props) {
 						: [],
 			}
 			setStatus(nextStatus)
-			if (!nextStatus.connected) setDisconnectOpen(false)
+			if (!nextStatus.connected) {
+				setMenuOpen(false)
+				setDisconnectConfirmationOpen(false)
+			}
 		} catch (e: any) {
 			setError(e?.message ?? String(e))
 		}
@@ -295,7 +324,10 @@ export default function MerchantCardStripePanel({ cardAddress }: Props) {
 			if (!response.ok || body.disconnected !== true) {
 				throw new Error(body.error ?? 'Unable to disconnect Stripe.')
 			}
-			setDisconnectOpen(false)
+			setMenuOpen(false)
+			setDisconnectConfirmationOpen(false)
+			disconnectSlideProgressRef.current = 0
+			setDisconnectSlideProgress(0)
 			await loadStatus()
 		} catch (e: any) {
 			setError(e?.message ?? String(e))
@@ -304,6 +336,111 @@ export default function MerchantCardStripePanel({ cardAddress }: Props) {
 			setDisconnecting(false)
 		}
 	}, [cardAddress, loadStatus, profiles])
+
+	const setStripeTopupEnabled = useCallback(async (topupEnabled: boolean) => {
+		if (topupInFlightRef.current || disconnecting) return
+		topupInFlightRef.current = true
+		setTopupUpdating(true)
+		setError('')
+		try {
+			const profile = profiles?.[0]
+			if (!profile?.privateKeyArmor?.trim()) {
+				throw new Error('Unlock the merchant wallet before changing Stripe top-ups.')
+			}
+			const wallet = new ethers.Wallet(profile.privateKeyArmor.trim())
+			const merchantEoa = ethers.getAddress(wallet.address)
+			const deadline = Math.floor(Date.now() / 1000) + 5 * 60
+			const nonce = ethers.hexlify(ethers.randomBytes(32))
+			const signature = await wallet.signMessage(buildStripeTopupEnabledMessage({
+				cardAddress,
+				merchantEoa,
+				deadline,
+				nonce,
+				topupEnabled,
+			}))
+			const response = await fetch(stripeEndpoint('topupEnabled'), {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					cardAddress: ethers.getAddress(cardAddress),
+					merchantEoa,
+					deadline,
+					nonce,
+					signature,
+					topupEnabled,
+				}),
+			})
+			const body = (await response.json().catch(() => ({}))) as { error?: string; topupEnabled?: boolean }
+			if (!response.ok || body.topupEnabled !== topupEnabled) {
+				throw new Error(body.error ?? 'Unable to update Stripe top-ups.')
+			}
+			setStatus((current) => current ? { ...current, topupEnabled } : current)
+			await loadStatus()
+		} catch (e: any) {
+			setError(e?.message ?? String(e))
+		} finally {
+			topupInFlightRef.current = false
+			setTopupUpdating(false)
+		}
+	}, [cardAddress, disconnecting, loadStatus, profiles])
+
+	const resetDisconnectSlider = useCallback(() => {
+		disconnectSlideStartRef.current = null
+		disconnectSlideProgressRef.current = 0
+		setDisconnectSlideProgress(0)
+	}, [])
+
+	const setDisconnectSliderProgress = useCallback((progress: number) => {
+		const nextProgress = Math.min(1, Math.max(0, progress))
+		disconnectSlideProgressRef.current = nextProgress
+		setDisconnectSlideProgress(nextProgress)
+	}, [])
+
+	const onDisconnectSliderPointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+		if (disconnecting || busy) return
+		event.preventDefault()
+		event.currentTarget.setPointerCapture(event.pointerId)
+		disconnectSlideStartRef.current = {
+			pointerId: event.pointerId,
+			clientX: event.clientX,
+			progress: disconnectSlideProgressRef.current,
+		}
+	}, [busy, disconnecting])
+
+	const onDisconnectSliderPointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+		const start = disconnectSlideStartRef.current
+		const track = disconnectSliderRef.current
+		if (!start || start.pointerId !== event.pointerId || !track) return
+		const maxTravel = Math.max(1, track.getBoundingClientRect().width - 56)
+		setDisconnectSliderProgress(start.progress + (event.clientX - start.clientX) / maxTravel)
+	}, [setDisconnectSliderProgress])
+
+	const onDisconnectSliderPointerEnd = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+		const start = disconnectSlideStartRef.current
+		if (!start || start.pointerId !== event.pointerId) return
+		disconnectSlideStartRef.current = null
+		if (disconnectSlideProgressRef.current >= 0.84) {
+			setDisconnectSliderProgress(1)
+			void disconnectStripe()
+			return
+		}
+		resetDisconnectSlider()
+	}, [disconnectStripe, resetDisconnectSlider, setDisconnectSliderProgress])
+
+	const onDisconnectSliderKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
+		if (disconnecting || busy) return
+		if (event.key === 'ArrowRight') {
+			event.preventDefault()
+			setDisconnectSliderProgress(disconnectSlideProgressRef.current + 0.1)
+		} else if (event.key === 'ArrowLeft') {
+			event.preventDefault()
+			setDisconnectSliderProgress(disconnectSlideProgressRef.current - 0.1)
+		} else if ((event.key === 'Enter' || event.key === ' ') && disconnectSlideProgressRef.current >= 0.84) {
+			event.preventDefault()
+			setDisconnectSliderProgress(1)
+			void disconnectStripe()
+		}
+	}, [busy, disconnectStripe, disconnecting, setDisconnectSliderProgress])
 
 	return (
 		<section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5" aria-label="Stripe payments">
@@ -330,46 +467,117 @@ export default function MerchantCardStripePanel({ cardAddress }: Props) {
 				<div className="mt-4">
 					<button
 						type="button"
-						onClick={() => setDisconnectOpen((open) => !open)}
-						disabled={disconnecting}
-						aria-expanded={disconnectOpen}
+						onClick={() => {
+							setMenuOpen((open) => !open)
+							setDisconnectConfirmationOpen(false)
+							resetDisconnectSlider()
+						}}
+						disabled={disconnecting || topupUpdating}
+						aria-expanded={menuOpen}
 						className="inline-flex min-h-10 items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
 					>
 						<CheckCircle2 className="h-4 w-4 text-emerald-600" aria-hidden />
 						<span>Stripe connected</span>
-						<ChevronDown className={`h-4 w-4 transition-transform ${disconnectOpen ? 'rotate-180' : ''}`} aria-hidden />
+						<ChevronDown className={`h-4 w-4 transition-transform ${menuOpen ? 'rotate-180' : ''}`} aria-hidden />
 					</button>
 					<p className="mt-2 text-sm text-slate-500">
 						{status.linked
-							? 'This card can accept Stripe payments.'
+							? status.topupEnabled
+								? 'This card can accept Stripe top-ups and membership payments.'
+								: 'Stripe top-ups are off. Membership payments remain available.'
 							: 'Complete your Stripe account setup before this card can accept payments.'}
 					</p>
-					{disconnectOpen ? (
+					{menuOpen ? (
 						<div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-							<p className="text-sm font-medium text-slate-800">Disconnect this Stripe account?</p>
-							<p className="mt-1 text-sm text-slate-600">
-								This stops new Stripe payments for this card and removes Beamio&apos;s saved connection. Your Stripe account will not be closed or deleted.
-							</p>
-							<div className="mt-3 flex flex-wrap gap-2">
+							{disconnectConfirmationOpen ? (
+								<>
+									<p className="text-sm font-semibold text-slate-900">Disconnect Stripe?</p>
+									<p className="mt-1 text-sm text-slate-600">
+										Slide the control all the way to the right to stop new Stripe Checkout sessions and remove this card&apos;s saved Stripe connection. Your Stripe account will not be closed or deleted.
+									</p>
+									<div
+										ref={disconnectSliderRef}
+										role="slider"
+										tabIndex={0}
+										aria-label="Slide right to disconnect Stripe"
+										aria-valuemin={0}
+										aria-valuemax={100}
+										aria-valuenow={Math.round(disconnectSlideProgress * 100)}
+										aria-valuetext={disconnecting ? 'Disconnecting Stripe' : 'Slide right to disconnect Stripe'}
+										onKeyDown={onDisconnectSliderKeyDown}
+										onPointerDown={onDisconnectSliderPointerDown}
+										onPointerMove={onDisconnectSliderPointerMove}
+										onPointerUp={onDisconnectSliderPointerEnd}
+										onPointerCancel={onDisconnectSliderPointerEnd}
+										className="relative mt-4 h-14 select-none overflow-hidden rounded-full border border-rose-200 bg-rose-50 outline-none transition focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-2"
+										style={{ touchAction: 'none' }}
+									>
+										<div
+											className="absolute inset-y-0 left-0 bg-rose-100 transition-[width] duration-150"
+											style={{ width: `${disconnectSlideProgress * 100}%` }}
+										/>
+										<p className="pointer-events-none absolute inset-0 flex items-center justify-center px-14 text-center text-sm font-semibold text-rose-800">
+											{disconnecting ? 'Disconnecting Stripe…' : 'Slide right to disconnect'}
+										</p>
+										<div
+											className="pointer-events-none absolute top-1 flex h-12 w-12 items-center justify-center rounded-full bg-rose-600 text-white shadow-md transition-[left] duration-150"
+											style={{ left: `calc(${disconnectSlideProgress * 100}% + ${4 - disconnectSlideProgress * 56}px)` }}
+										>
+											{disconnecting ? <Loader2 className="h-5 w-5 animate-spin" aria-hidden /> : <ChevronRight className="h-5 w-5" aria-hidden />}
+										</div>
+									</div>
+									<p className="mt-2 text-center text-xs text-slate-500">Use the right arrow key or drag the control to confirm.</p>
+									<button
+										type="button"
+										onClick={() => {
+											setDisconnectConfirmationOpen(false)
+											resetDisconnectSlider()
+										}}
+										disabled={disconnecting}
+										className="mt-3 min-h-10 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+									>
+										Cancel
+									</button>
+								</>
+							) : (
+								<>
+									<p className="text-sm font-medium text-slate-800">Stripe payment options</p>
+									<div className="mt-2 grid gap-2">
+										<button
+											type="button"
+											onClick={() => void setStripeTopupEnabled(!status.topupEnabled)}
+											disabled={topupUpdating || disconnecting || busy}
+											aria-busy={topupUpdating}
+											className="flex min-h-12 items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-left transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+										>
+											{topupUpdating ? <Loader2 className="h-4 w-4 shrink-0 animate-spin text-slate-600" aria-hidden /> : <Power className="h-4 w-4 shrink-0 text-slate-600" aria-hidden />}
+											<span className="min-w-0 flex-1">
+												<span className="block text-sm font-semibold text-slate-900">
+													{status.topupEnabled ? 'Stripe topup off' : 'Stripe topup on'}
+												</span>
+												<span className="block text-xs text-slate-500">
+													{status.topupEnabled ? 'Stop offering new Stripe top-ups. Membership payments stay available.' : 'Allow new Stripe top-ups again.'}
+												</span>
+											</span>
+										</button>
 								<button
 									type="button"
-									onClick={() => void disconnectStripe()}
-									disabled={disconnecting || busy}
-									aria-busy={disconnecting}
-									className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-rose-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+									onClick={() => {
+										setDisconnectConfirmationOpen(true)
+										resetDisconnectSlider()
+									}}
+									disabled={disconnecting || topupUpdating || busy}
+									className="flex min-h-12 items-center gap-3 rounded-xl border border-rose-200 bg-white px-3 py-2 text-left transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
 								>
-									{disconnecting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Unplug className="h-4 w-4" aria-hidden />}
-									{disconnecting ? 'Disconnecting Stripe…' : 'Disconnect Stripe'}
+									<Unplug className="h-4 w-4 shrink-0 text-rose-600" aria-hidden />
+									<span className="min-w-0 flex-1">
+										<span className="block text-sm font-semibold text-rose-700">Disconnect Stripe</span>
+										<span className="block text-xs text-slate-500">Remove this card&apos;s saved Stripe connection.</span>
+									</span>
 								</button>
-								<button
-									type="button"
-									onClick={() => setDisconnectOpen(false)}
-									disabled={disconnecting || busy}
-									className="min-h-10 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
-								>
-									Cancel
-								</button>
-							</div>
+									</div>
+								</>
+							)}
 						</div>
 					) : null}
 				</div>

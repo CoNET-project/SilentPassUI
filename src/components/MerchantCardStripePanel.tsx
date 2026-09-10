@@ -4,7 +4,7 @@ import { ethers } from 'ethers'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { beamioApi } from '@/utils/constants'
 import {
-	encodeAdminManagerAdd,
+	encodeAddAdminWithMintLimit,
 	isCardAdmin,
 	postCardAddAdmin,
 	signExecuteForOwner,
@@ -17,6 +17,14 @@ type StripeStatus = {
 	topupEnabled?: boolean
 	fulfillmentAdmin: string | null
 	fulfillmentAdmins?: string[]
+	adminLimitStatus?: Array<{
+		admin: string
+		isCardAdmin: boolean
+		limit: string
+		usedFromClear: string
+		unlimited: boolean
+		requiresOwnerAuthorization: boolean
+	}>
 }
 
 type Props = {
@@ -171,7 +179,12 @@ async function ensureMissingStripeFulfillmentAdmins(params: {
 
 		const deadline = Math.floor(Date.now() / 1000) + 3600
 		const nonce = ethers.hexlify(ethers.randomBytes(32))
-		const data = encodeAdminManagerAdd(fulfillmentAdmin, 1, '{}')
+		const data = encodeAddAdminWithMintLimit(
+			fulfillmentAdmin,
+			1,
+			'{"source":"stripe-fulfillment"}',
+			ethers.MaxUint256,
+		)
 		const ownerSignature = await signExecuteForOwner(
 			params.privateKeyArmor,
 			params.cardAddress,
@@ -190,6 +203,55 @@ async function ensureMissingStripeFulfillmentAdmins(params: {
 		if (!adminResult.success) {
 			throw new Error(
 				`Unable to authorize Stripe fulfillment admin ${fulfillmentAdmin}. ${adminResult.error ?? ''}`.trim(),
+			)
+		}
+	}
+}
+
+/**
+ * Stripe fulfillment admins are a server signer pool, not merchant-managed POS
+ * admins. They still need an owner-authorized unlimited mint allowance because
+ * every Stripe top-up is submitted through executeForAdmin.
+ */
+async function ensureStripeFulfillmentAdminAllowances(params: {
+	cardAddress: string
+	privateKeyArmor: string
+	fulfillmentAdmins: string[]
+	adminLimitStatus?: StripeStatus['adminLimitStatus']
+}): Promise<void> {
+	const statusByAdmin = new Map(
+		(params.adminLimitStatus ?? []).map((entry) => [entry.admin.toLowerCase(), entry]),
+	)
+	for (const fulfillmentAdmin of params.fulfillmentAdmins) {
+		const current = statusByAdmin.get(fulfillmentAdmin.toLowerCase())
+		if (current?.isCardAdmin && current.unlimited) continue
+
+		const deadline = Math.floor(Date.now() / 1000) + 3600
+		const nonce = ethers.hexlify(ethers.randomBytes(32))
+		const data = encodeAddAdminWithMintLimit(
+			fulfillmentAdmin,
+			1,
+			'{"source":"stripe-fulfillment"}',
+			ethers.MaxUint256,
+		)
+		const ownerSignature = await signExecuteForOwner(
+			params.privateKeyArmor,
+			params.cardAddress,
+			data,
+			deadline,
+			nonce,
+		)
+		const result = await postCardAddAdmin({
+			cardAddress: params.cardAddress,
+			data,
+			deadline,
+			nonce,
+			ownerSignature,
+			adminEOA: fulfillmentAdmin,
+		})
+		if (!result.success) {
+			throw new Error(
+				`Unable to authorize unlimited Stripe fulfillment allowance for ${fulfillmentAdmin}. ${result.error ?? ''}`.trim(),
 			)
 		}
 	}
@@ -254,6 +316,7 @@ export default function MerchantCardStripePanel({ cardAddress }: Props) {
 					: body.fulfillmentAdmin && ethers.isAddress(body.fulfillmentAdmin)
 						? [body.fulfillmentAdmin]
 						: [],
+				adminLimitStatus: Array.isArray(body.adminLimitStatus) ? body.adminLimitStatus : [],
 			}
 			setStatus(nextStatus)
 			if (!nextStatus.connected) {
@@ -364,11 +427,22 @@ export default function MerchantCardStripePanel({ cardAddress }: Props) {
 
 			navigateStripeTab(stripeTab, link.url)
 			stripeNavigated = true
-			void ensureMissingStripeFulfillmentAdmins({
-				cardAddress,
-				privateKeyArmor: profile.privateKeyArmor,
-				fulfillmentAdmins,
-			}).catch((adminError: unknown) => {
+			void (async () => {
+				await ensureMissingStripeFulfillmentAdmins({
+					cardAddress,
+					privateKeyArmor: profile.privateKeyArmor!,
+					fulfillmentAdmins,
+				})
+				const refreshed = await fetchStripeStatus(cardAddress)
+				const refreshedStatus = (await refreshed.json().catch(() => ({}))) as StripeStatus & { error?: string }
+				if (!refreshed.ok) throw new Error(refreshedStatus.error ?? 'Unable to verify Stripe fulfillment authorization.')
+				await ensureStripeFulfillmentAdminAllowances({
+					cardAddress,
+					privateKeyArmor: profile.privateKeyArmor!,
+					fulfillmentAdmins,
+					adminLimitStatus: refreshedStatus.adminLimitStatus,
+				})
+			})().catch((adminError: unknown) => {
 				const message = adminError instanceof Error ? adminError.message : String(adminError)
 				setError(message)
 			})
@@ -460,6 +534,27 @@ export default function MerchantCardStripePanel({ cardAddress }: Props) {
 			const profile = profiles?.[0]
 			if (!profile?.privateKeyArmor?.trim()) {
 				throw new Error('Unlock the merchant wallet before changing Stripe top-ups.')
+			}
+			if (topupEnabled) {
+				const statusResponse = await fetchStripeStatus(cardAddress)
+				const stripeStatus = (await statusResponse.json().catch(() => ({}))) as StripeStatus & { error?: string }
+				if (!statusResponse.ok) {
+					throw new Error(stripeStatus.error ?? 'Unable to verify Stripe fulfillment authorization.')
+				}
+				const fulfillmentAdmins = Array.isArray(stripeStatus.fulfillmentAdmins)
+					? stripeStatus.fulfillmentAdmins.filter((address): address is string => ethers.isAddress(address))
+					: stripeStatus.fulfillmentAdmin && ethers.isAddress(stripeStatus.fulfillmentAdmin)
+						? [stripeStatus.fulfillmentAdmin]
+						: []
+				if (fulfillmentAdmins.length === 0) {
+					throw new Error('Stripe fulfillment is not configured.')
+				}
+				await ensureStripeFulfillmentAdminAllowances({
+					cardAddress,
+					privateKeyArmor: profile.privateKeyArmor.trim(),
+					fulfillmentAdmins,
+					adminLimitStatus: stripeStatus.adminLimitStatus,
+				})
 			}
 			const wallet = new ethers.Wallet(profile.privateKeyArmor.trim())
 			const merchantEoa = ethers.getAddress(wallet.address)
@@ -662,6 +757,7 @@ export default function MerchantCardStripePanel({ cardAddress }: Props) {
 											onClick={() => void setStripeTopupEnabled(!status.topupEnabled)}
 											disabled={topupUpdating || disconnecting || busy}
 											aria-busy={topupUpdating}
+											aria-pressed={status.topupEnabled}
 											className="flex min-h-12 items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-left transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
 										>
 											{topupUpdating ? <Loader2 className="h-4 w-4 shrink-0 animate-spin text-slate-600" aria-hidden /> : <Power className="h-4 w-4 shrink-0 text-slate-600" aria-hidden />}
@@ -671,6 +767,20 @@ export default function MerchantCardStripePanel({ cardAddress }: Props) {
 												</span>
 												<span className="block text-xs text-slate-500">
 													{status.topupEnabled ? 'Stop offering new Stripe top-ups. Membership payments stay available.' : 'Allow new Stripe top-ups again.'}
+												</span>
+											</span>
+											<span
+												aria-hidden="true"
+												className={`relative inline-flex h-7 w-14 shrink-0 items-center rounded-full px-1 transition-colors ${
+													status.topupEnabled ? 'bg-emerald-500' : 'bg-slate-300'
+												}`}
+											>
+												<span
+													className={`flex h-5 w-5 items-center justify-center rounded-full bg-white text-[9px] font-bold shadow-sm transition-transform ${
+														status.topupEnabled ? 'translate-x-7 text-emerald-700' : 'translate-x-0 text-slate-500'
+													}`}
+												>
+													{status.topupEnabled ? 'ON' : 'OFF'}
 												</span>
 											</span>
 										</button>

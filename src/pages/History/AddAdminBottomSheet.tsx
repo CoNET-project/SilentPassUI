@@ -155,7 +155,8 @@ export default function AddAdminBottomSheet({ userCards, onClose, onSuccess }: P
             <BeamioNavBack title="Add Admin" onClose={onClose} onMore={() => {}} />
             <div className="flex-1 overflow-y-auto px-6 py-4">
                 <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
-                    Add an EOA address as admin. AA / smart contract addresses are not allowed.
+                    Add an EOA address as admin. New top-level admins receive an unlimited
+                    program-point mint allowance. AA / smart contract addresses are not allowed.
                 </p>
 
                 {/* Select card */}

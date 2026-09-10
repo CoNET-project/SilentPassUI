@@ -5001,6 +5001,29 @@ function discoverMerchantAssetsHaveHoldings(
 	)
 }
 
+type DiscoverMerchantProgramPresentation = {
+	hasActiveMembership: boolean
+	hasProgramHoldings: boolean
+}
+
+function discoverMerchantProgramPresentationFromAssets(
+	assets: Awaited<ReturnType<typeof getMyAssets>> | null,
+): DiscoverMerchantProgramPresentation {
+	const hasActiveMembership = customerHasValidMembershipFromAssets({
+		primaryMemberTokenId: pickActiveDiscoverMembershipNft(assets?.nfts)?.tokenId,
+		nfts: assets?.nfts,
+	})
+	const points = Number(assets?.points)
+	const rewardPoints = Number(assets?.chargeRewardPoints)
+	return {
+		hasActiveMembership,
+		hasProgramHoldings:
+			hasActiveMembership ||
+			(Number.isFinite(points) && points > 0) ||
+			(Number.isFinite(rewardPoints) && rewardPoints > 0),
+	}
+}
+
 function DiscoverPayPanelError({ message }: { message: string }) {
 	return (
 		<div
@@ -5065,10 +5088,36 @@ function DiscoverMerchantDetailFullScreen({
 	const [merchantAssets, setMerchantAssets] = useState<Awaited<ReturnType<typeof getMyAssets>> | null>(() =>
 		seededMerchantAssets,
 	)
+	/**
+	 * Keep the member/prospect layout stable for this merchant-detail session.
+	 * A zero seed is provisional because older cache rows may omit AA holdings; the
+	 * first complete asset read locks it. Later background refreshes may update
+	 * balances, but must not swap the whole pass layout while a child flow closes.
+	 */
+	const seededMerchantAssetsHaveHoldings = discoverMerchantAssetsHaveHoldings(seededMerchantAssets)
+	const merchantAssetsSeedAppliedRef = useRef(seededMerchantAssets != null)
+	const merchantProgramPresentationLockedRef = useRef(
+		seededMerchantAssetsHaveHoldings || !profiles?.[0]?.keyID || !item.cardAddress,
+	)
+	const [merchantProgramPresentation, setMerchantProgramPresentation] =
+		useState<DiscoverMerchantProgramPresentation>(() =>
+			discoverMerchantProgramPresentationFromAssets(seededMerchantAssets),
+		)
+	const adoptMerchantProgramPresentation = useCallback(
+		(
+			assets: Awaited<ReturnType<typeof getMyAssets>> | null,
+			options?: { force?: boolean },
+		) => {
+			if (merchantProgramPresentationLockedRef.current && !options?.force) return
+			merchantProgramPresentationLockedRef.current = true
+			setMerchantProgramPresentation(discoverMerchantProgramPresentationFromAssets(assets))
+		},
+		[],
+	)
 	const [merchantAssetsLoading, setMerchantAssetsLoading] = useState(
 		() =>
 			Boolean(profiles?.[0]?.keyID && item.cardAddress) &&
-			!discoverMerchantAssetsHaveHoldings(seededMerchantAssets),
+			!seededMerchantAssetsHaveHoldings,
 	)
 	const [cardTopupSuccessBalance, setCardTopupSuccessBalance] = useState<string | null>(null)
 	const [cardTopupOverlayPhase, setCardTopupOverlayPhase] = useState<'idle' | 'listening' | 'success'>('idle')
@@ -5462,10 +5511,7 @@ function DiscoverMerchantDetailFullScreen({
 			merchantAssets?.chargeRewardPoints != null &&
 			Number.isFinite(Number(merchantAssets.chargeRewardPoints))
 		)
-	const hasActiveMembership = customerHasValidMembershipFromAssets({
-		primaryMemberTokenId: pickActiveDiscoverMembershipNft(merchantAssets?.nfts)?.tokenId,
-		nfts: merchantAssets?.nfts,
-	})
+	const hasActiveMembership = merchantProgramPresentation.hasActiveMembership
 	const membershipFeeMode = discoverMetadataHasMembershipFee(merchantMetadataRoot)
 	const membershipFeeDisplay = useMemo(() => {
 		if (!membershipFeeMode) return null
@@ -5611,10 +5657,7 @@ function DiscoverMerchantDetailFullScreen({
 		[merchantDetailBrandColor],
 	)
 	/** User already holds this merchant’s store credits, Reward PT, and/or valid membership. */
-	const hasMerchantProgramHoldings =
-		hasActiveMembership ||
-		Number(merchantAssets?.points ?? 0) > 0 ||
-		myPoints13Num > 0
+	const hasMerchantProgramHoldings = merchantProgramPresentation.hasProgramHoldings
 	/**
 	 * Health & Beauty + no Store Credit Multiplier + user holds credits/points/pass
 	 * → Chillax Active Pass layout. Hide while amount pad / receive flow is open.
@@ -6258,6 +6301,7 @@ function DiscoverMerchantDetailFullScreen({
 				if (ac.signal.aborted) return
 				if (assets != null) {
 					setMerchantAssets(assets)
+					adoptMerchantProgramPresentation(assets, { force: true })
 					const cur = (assets.cardCurrency || ccy).toUpperCase() as Parameters<typeof fiatPrefix>[0]
 					const prefix = fiatPrefix(cur)
 					const amt = formatAmount(Number(assets.points ?? 0), cur)
@@ -6270,7 +6314,14 @@ function DiscoverMerchantDetailFullScreen({
 			setCardTopupSuccessBalance(balanceText)
 			setCardTopupOverlayPhase('success')
 		},
-		[ccy, item.cardAddress, membershipFeeTiers, profile, resetUsdcTopupFlow],
+		[
+			adoptMerchantProgramPresentation,
+			ccy,
+			item.cardAddress,
+			membershipFeeTiers,
+			profile,
+			resetUsdcTopupFlow,
+		],
 	)
 
 	const startCardTopupSuccessAfterPay = useCallback(
@@ -7056,9 +7107,11 @@ function DiscoverMerchantDetailFullScreen({
 		// the old EOA-only zero snapshot. Do not treat that as a complete answer
 		// for a card whose holdings may live on the user's AA.
 		const seededHasHoldings = discoverMerchantAssetsHaveHoldings(seeded)
-		if (seeded) {
+		if (seeded && !merchantAssetsSeedAppliedRef.current) {
+			merchantAssetsSeedAppliedRef.current = true
 			setMerchantAssets(seeded)
 			setMerchantAssetsLoading(!seededHasHoldings)
+			if (seededHasHoldings) adoptMerchantProgramPresentation(seeded)
 		}
 		if (hasSeededPts) {
 			setUserSocialPoints13(seededPts)
@@ -7101,6 +7154,7 @@ function DiscoverMerchantDetailFullScreen({
 					})
 					if (!cancelled && res != null) {
 						setMerchantAssets(res)
+						adoptMerchantProgramPresentation(res)
 						onMerchantAssetsConfirmed?.(cardAddress, res)
 					}
 				} catch {
@@ -7122,6 +7176,7 @@ function DiscoverMerchantDetailFullScreen({
 		smartPayPrefetchDone,
 		discoverTopUpOpen,
 		seededMerchantAssets,
+		adoptMerchantProgramPresentation,
 		onMerchantAssetsConfirmed,
 	])
 
@@ -8264,6 +8319,7 @@ function DiscoverMerchantDetailFullScreen({
 						onSuccess={(assets) => {
 							if (assets) {
 								setMerchantAssets(assets)
+								adoptMerchantProgramPresentation(assets, { force: true })
 								if (item.cardAddress) onMerchantAssetsConfirmed?.(item.cardAddress, assets)
 							}
 						}}

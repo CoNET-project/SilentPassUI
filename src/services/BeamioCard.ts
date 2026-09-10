@@ -3208,15 +3208,41 @@ export const encodeCancelRedeem = (code: string): string =>
 
 const adminManagerInterface = new ethers.Interface([
     'function adminManager(address to, bool admin, uint256 newThreshold, string metadata)',
+    'function adminManager(address to, bool admin, uint256 newThreshold, string metadata, uint256 mintLimit)',
 ])
 
-/** 构建 adminManager 的 calldata。admin=true 添加并写入 metadata，admin=false 移除（metadata 可传空，移除时 metadata 保留可查） */
-export const encodeAdminManager = (to: string, admin: boolean, newThreshold: number | bigint, metadata: string = ''): string =>
-    adminManagerInterface.encodeFunctionData('adminManager', [to, admin, BigInt(newThreshold), metadata])
+/** 链上治理用 uint256.max 表示无限 airdrop/top-up 额度；0 是禁止额度，不是 unlimited。 */
+export const UNLIMITED_ADMIN_AIRDROP_LIMIT = ethers.MaxUint256
 
-/** 便捷：添加 admin（带 metadata） */
+/**
+ * 构建 adminManager calldata。
+ *
+ * 新增顶层 admin 默认显式写入 unlimited。旧的四参数入口会把新 admin
+ * 的额度初始化为 0，之后 Stripe / NFC top-up 会直接 revert
+ * UC_AdminAirdropLimitExceeded。移除 admin 仍使用四参数入口。
+ */
+export const encodeAdminManager = (
+    to: string,
+    admin: boolean,
+    newThreshold: number | bigint,
+    metadata: string = '',
+    mintLimit: bigint = UNLIMITED_ADMIN_AIRDROP_LIMIT,
+): string => {
+    if (!admin) {
+        return adminManagerInterface.encodeFunctionData(
+            'adminManager(address,bool,uint256,string)',
+            [to, false, BigInt(newThreshold), metadata],
+        )
+    }
+    return adminManagerInterface.encodeFunctionData(
+        'adminManager(address,bool,uint256,string,uint256)',
+        [to, true, BigInt(newThreshold), metadata, mintLimit],
+    )
+}
+
+/** 便捷：添加默认 unlimited 的顶层 admin（带 metadata）。 */
 export const encodeAddAdmin = (newAdmin: string, newThreshold: number | bigint, metadata: string = ''): string =>
-    encodeAdminManager(newAdmin, true, newThreshold, metadata)
+    encodeAdminManager(newAdmin, true, newThreshold, metadata, UNLIMITED_ADMIN_AIRDROP_LIMIT)
 
 /** 便捷：移除 admin */
 export const encodeRemoveAdmin = (adminToRemove: string, newThreshold: number | bigint): string =>

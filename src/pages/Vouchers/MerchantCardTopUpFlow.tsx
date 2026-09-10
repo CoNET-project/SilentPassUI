@@ -72,7 +72,7 @@ const BEAMIO_API_BASE = 'https://beamio.app'
 
 const QUICK = ['10', '20', '50', '100'] as const
 
-type Step = 'amount' | 'pay' | 'select' | 'confirm' | 'success'
+type Step = 'amount' | 'pay' | 'select' | 'confirm' | 'stripeWaiting' | 'success'
 
 type SeedReward13Assets = {
 	chargeRewardPoints?: string
@@ -453,6 +453,7 @@ export default function MerchantCardTopUpFlow({
 	const [stripeBusy, setStripeBusy] = useState(false)
 	const [stripeSessionId, setStripeSessionId] = useState<string | null>(null)
 	const [stripePaymentMessage, setStripePaymentMessage] = useState('')
+	const [stripePaymentOutcome, setStripePaymentOutcome] = useState<'pending' | 'success' | 'cancelled' | 'failed'>('pending')
 	const stripeBusinessKeyRef = useRef<string | null>(null)
 	const [mintedLabel, setMintedLabel] = useState('0.00')
 	const [successNote, setSuccessNote] = useState('')
@@ -507,6 +508,7 @@ export default function MerchantCardTopUpFlow({
 		setStripeReady(false)
 		setStripeSessionId(null)
 		setStripePaymentMessage('')
+		setStripePaymentOutcome('pending')
 		void fetch(`${BEAMIO_API_BASE}/api/merchantCardStripe/status`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
@@ -562,6 +564,8 @@ export default function MerchantCardTopUpFlow({
 				throw new Error(body.error ?? 'Unable to start Stripe payment.')
 			}
 			setStripeSessionId(body.sessionId)
+			setStripePaymentOutcome('pending')
+			setStep('stripeWaiting')
 			openExternalUrl(body.url)
 		} catch (error) {
 			setPayError(error instanceof Error ? error.message : 'Unable to start Stripe payment.')
@@ -602,14 +606,19 @@ export default function MerchantCardTopUpFlow({
 					setStripeBusy(false)
 					setStripePaymentMessage('Payment completed. Your store credits are now available.')
 					setStripeSessionId(null)
+					setStripePaymentOutcome('success')
+					setMintedLabel(creditQuote ? creditQuote.total.toFixed(2) : Number(fiatHuman).toFixed(2))
+					setStep('success')
 					onSuccess?.()
 					return
 				}
 				if (body.fulfillmentStatus === 'fulfillment_failed' || body.status === 'failed') {
 					setStripeBusy(false)
-					setStripePaymentMessage('')
+					setStripePaymentMessage(body.error || 'Stripe payment could not be completed.')
 					setStripeSessionId(null)
+					setStripePaymentOutcome('failed')
 					setPayError(body.error || 'Stripe payment was canceled or could not be completed.')
+					setStep('stripeWaiting')
 					return
 				}
 				setStripePaymentMessage(
@@ -623,6 +632,7 @@ export default function MerchantCardTopUpFlow({
 				} else {
 					setStripeBusy(false)
 					setStripePaymentMessage('Payment is still pending. You can close this panel and check again later.')
+					setStripePaymentOutcome('pending')
 				}
 			} catch (error) {
 				if (disposed) return
@@ -633,6 +643,7 @@ export default function MerchantCardTopUpFlow({
 				} else {
 					setStripeBusy(false)
 					setStripePaymentMessage(error instanceof Error ? error.message : 'Unable to read Stripe payment status.')
+					setStripePaymentOutcome('failed')
 				}
 			}
 		}
@@ -710,6 +721,7 @@ export default function MerchantCardTopUpFlow({
 		setPayError('')
 		setPayBusy(false)
 		setSuccessNote('')
+		setStripePaymentOutcome('pending')
 		setSharing(false)
 		setShareCopied(false)
 		setShareAlert('')
@@ -1383,6 +1395,8 @@ export default function MerchantCardTopUpFlow({
 					? 'Select Points'
 					: step === 'confirm'
 						? 'Confirm Top-Up'
+						: step === 'stripeWaiting'
+							? 'Stripe Payment'
 						: 'Top-Up Successful'
 
 	return (
@@ -1858,6 +1872,43 @@ export default function MerchantCardTopUpFlow({
 										{confirmPayLabel}
 									</>
 								)}
+							</button>
+						</div>
+					)}
+
+					{step === 'stripeWaiting' && (
+						<div className="flex min-h-0 flex-1 flex-col items-center justify-center text-center">
+							{stripePaymentOutcome === 'failed' ? (
+								<AlertTriangle className="h-14 w-14 text-amber-500" aria-hidden />
+							) : (
+								<Loader2 className="h-14 w-14 animate-spin text-[#635bff]" aria-hidden />
+							)}
+							<h1 className="mt-7 text-[1.75rem] font-bold tracking-tight text-[#0F172A] dark:text-slate-100">
+								{stripePaymentOutcome === 'failed'
+									? 'Payment needs attention'
+									: stripePaymentOutcome === 'cancelled'
+										? 'Payment cancelled'
+										: 'Waiting for Stripe payment'}
+							</h1>
+							<p className="mt-3 max-w-sm text-[15px] leading-relaxed text-slate-500 dark:text-slate-400">
+								{stripePaymentMessage ||
+									'Complete payment in the Stripe window. We are checking the payment and card credit status automatically.'}
+							</p>
+							{stripePaymentOutcome === 'failed' ? (
+								<div
+									role="alert"
+									className="mt-6 w-full max-w-sm rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-left text-sm text-amber-800"
+								>
+									{payError || 'The Stripe payment was not completed.'}
+								</div>
+							) : null}
+							<button
+								type="button"
+								disabled={stripeBusy}
+								onClick={close}
+								className="mt-auto w-full max-w-sm rounded-2xl bg-[#eef1f6] py-4 text-[17px] font-semibold text-[#3B66F5] disabled:cursor-not-allowed disabled:opacity-50"
+							>
+								{stripeBusy ? 'Checking payment…' : 'Done'}
 							</button>
 						</div>
 					)}

@@ -54,6 +54,7 @@ import {
 	readEoaUsdcBalance6,
 } from '@/utils/discoverEoaUsdcTopup'
 import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
+import StripePaymentElementForm from '@/components/StripePaymentElementForm'
 import { loadMyBrandsFeedLocalCache } from '@/utils/myBrandsFeedLocalCache'
 import {
 	buildDiscoverMerchantShareUrl,
@@ -448,6 +449,11 @@ export default function MerchantCardTopUpFlow({
 	const [payError, setPayError] = useState('')
 	const [stripeReady, setStripeReady] = useState(false)
 	const [stripeBusy, setStripeBusy] = useState(false)
+	const [stripePaymentContext, setStripePaymentContext] = useState<{
+		clientSecret: string
+		publishableKey: string
+		paymentIntentId: string
+	} | null>(null)
 	const stripeBusinessKeyRef = useRef<string | null>(null)
 	const [mintedLabel, setMintedLabel] = useState('0.00')
 	const [successNote, setSuccessNote] = useState('')
@@ -500,6 +506,7 @@ export default function MerchantCardTopUpFlow({
 		let cancelled = false
 		stripeBusinessKeyRef.current = null
 		setStripeReady(false)
+		setStripePaymentContext(null)
 		void fetch('/api/merchantCardStripe/status', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
@@ -522,7 +529,7 @@ export default function MerchantCardTopUpFlow({
 		setStripeBusy(true)
 		setPayError('')
 		try {
-			const response = await fetch('/api/merchantCardStripe/createCheckout', {
+			const response = await fetch('/api/merchantCardStripe/createPaymentIntent', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
@@ -549,11 +556,22 @@ export default function MerchantCardTopUpFlow({
 						: {}),
 				}),
 			})
-			const body = (await response.json().catch(() => ({}))) as { url?: string; error?: string }
-			if (!response.ok || !body.url) throw new Error(body.error ?? 'Unable to start Stripe Checkout.')
-			openExternalUrl(body.url)
+			const body = (await response.json().catch(() => ({}))) as {
+				clientSecret?: string
+				publishableKey?: string
+				paymentIntentId?: string
+				error?: string
+			}
+			if (!response.ok || !body.clientSecret || !body.publishableKey || !body.paymentIntentId) {
+				throw new Error(body.error ?? 'Unable to start Stripe payment.')
+			}
+			setStripePaymentContext({
+				clientSecret: body.clientSecret,
+				publishableKey: body.publishableKey,
+				paymentIntentId: body.paymentIntentId,
+			})
 		} catch (error) {
-			setPayError(error instanceof Error ? error.message : 'Unable to start Stripe Checkout.')
+			setPayError(error instanceof Error ? error.message : 'Unable to start Stripe payment.')
 		} finally {
 			setStripeBusy(false)
 		}
@@ -1555,7 +1573,7 @@ export default function MerchantCardTopUpFlow({
 								) : null}
 							</div>
 
-							{stripeReady ? (
+							{stripeReady && !stripePaymentContext ? (
 								<button
 									type="button"
 									onClick={() => void payWithStripe()}
@@ -1574,6 +1592,19 @@ export default function MerchantCardTopUpFlow({
 									</span>
 									<ChevronRight className="h-5 w-5 shrink-0 text-[#8b87c8]" aria-hidden />
 								</button>
+							) : null}
+							{stripePaymentContext ? (
+								<StripePaymentElementForm
+									clientSecret={stripePaymentContext.clientSecret}
+									publishableKey={stripePaymentContext.publishableKey}
+									amountLabel={formatPrefixedFiat(prefix, formatFiatHero(fiatN))}
+									onCancel={() => setStripePaymentContext(null)}
+									onSuccess={(paymentIntentId) => {
+										window.location.assign(
+											`/app/stripe-payment-return?payment_intent=${encodeURIComponent(paymentIntentId)}`,
+										)
+									}}
+								/>
 							) : null}
 
 							{smartPay ? (

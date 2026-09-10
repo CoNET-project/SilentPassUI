@@ -14,7 +14,7 @@ type StripeStatus = {
 export default function StripePaymentReturnPage() {
 	const [params] = useSearchParams()
 	const { setShowFooter } = useDaemonContext()
-	const sessionId = params.get('session_id') || ''
+	const sessionId = params.get('session_id') || params.get('payment_intent') || ''
 	const cancelled = params.get('cancelled') === '1'
 	const [state, setState] = useState<StripeStatus | null>(null)
 	const [error, setError] = useState('')

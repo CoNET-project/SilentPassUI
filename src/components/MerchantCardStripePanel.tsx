@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { CheckCircle2, ChevronDown, ChevronRight, CreditCard, ExternalLink, Loader2, Power, ShieldCheck, Unplug } from 'lucide-react'
+import { CheckCircle2, ChevronDown, ChevronRight, CreditCard, ExternalLink, Loader2, ShieldCheck } from 'lucide-react'
 import { ethers } from 'ethers'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { beamioApi } from '@/utils/constants'
@@ -207,7 +207,6 @@ export default function MerchantCardStripePanel({ cardAddress }: Props) {
 	const [status, setStatus] = useState<StripeStatus | null>(null)
 	const [busy, setBusy] = useState(false)
 	const [menuOpen, setMenuOpen] = useState(false)
-	const [disconnectConfirmationOpen, setDisconnectConfirmationOpen] = useState(false)
 	const [disconnecting, setDisconnecting] = useState(false)
 	const [topupUpdating, setTopupUpdating] = useState(false)
 	const [disconnectSlideProgress, setDisconnectSlideProgress] = useState(0)
@@ -251,7 +250,6 @@ export default function MerchantCardStripePanel({ cardAddress }: Props) {
 			setStatus(nextStatus)
 			if (!nextStatus.connected) {
 				setMenuOpen(false)
-				setDisconnectConfirmationOpen(false)
 			}
 		} catch (e: any) {
 			setError(e?.message ?? String(e))
@@ -434,7 +432,6 @@ export default function MerchantCardStripePanel({ cardAddress }: Props) {
 				throw new Error(body.error ?? 'Unable to disconnect Stripe.')
 			}
 			setMenuOpen(false)
-			setDisconnectConfirmationOpen(false)
 			disconnectSlideProgressRef.current = 0
 			setDisconnectSlideProgress(0)
 			await loadStatus()
@@ -594,21 +591,44 @@ export default function MerchantCardStripePanel({ cardAddress }: Props) {
 			) : null}
 			{status?.connected ? (
 				<div className="mt-4">
-					<button
-						type="button"
-						onClick={() => {
-							setMenuOpen((open) => !open)
-							setDisconnectConfirmationOpen(false)
-							resetDisconnectSlider()
-						}}
-						disabled={disconnecting || topupUpdating}
-						aria-expanded={menuOpen}
-						className="inline-flex min-h-10 items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
-					>
-						<CheckCircle2 className="h-4 w-4 text-emerald-600" aria-hidden />
-						<span>Stripe connected</span>
-						<ChevronDown className={`h-4 w-4 transition-transform ${menuOpen ? 'rotate-180' : ''}`} aria-hidden />
-					</button>
+					<div className="flex flex-wrap items-center gap-2">
+						<button
+							type="button"
+							onClick={() => {
+								setMenuOpen((open) => !open)
+								resetDisconnectSlider()
+							}}
+							disabled={disconnecting || topupUpdating}
+							aria-expanded={menuOpen}
+							className="inline-flex min-h-10 items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+						>
+							<CheckCircle2 className="h-4 w-4 text-emerald-600" aria-hidden />
+							<span>Stripe connected</span>
+							<ChevronDown className={`h-4 w-4 transition-transform ${menuOpen ? 'rotate-180' : ''}`} aria-hidden />
+						</button>
+						<button
+							type="button"
+							onClick={() => void setStripeTopupEnabled(!status.topupEnabled)}
+							disabled={topupUpdating || disconnecting || busy}
+							aria-busy={topupUpdating}
+							aria-label={status.topupEnabled ? 'Turn Stripe top-ups off' : 'Turn Stripe top-ups on'}
+							aria-pressed={status.topupEnabled}
+							className="inline-flex min-h-10 items-center rounded-full border border-slate-200 bg-white px-1.5 py-1 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+						>
+							<span
+								aria-hidden="true"
+								className={`relative inline-flex h-7 w-14 shrink-0 items-center rounded-full px-1 transition-colors ${
+									status.topupEnabled ? 'bg-emerald-500' : 'bg-slate-300'
+								}`}
+							>
+								<span
+									className={`block h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${
+										status.topupEnabled ? 'translate-x-7' : 'translate-x-0'
+									}`}
+								/>
+							</span>
+						</button>
+					</div>
 					<p className="mt-2 text-sm text-slate-500">
 						{status.linked
 							? status.topupEnabled
@@ -618,108 +638,42 @@ export default function MerchantCardStripePanel({ cardAddress }: Props) {
 					</p>
 					{menuOpen ? (
 						<div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-							{disconnectConfirmationOpen ? (
-								<>
-									<p className="text-sm font-semibold text-slate-900">Disconnect Stripe?</p>
-									<p className="mt-1 text-sm text-slate-600">
-										Slide the control all the way to the right to stop new Stripe Checkout sessions and remove this card&apos;s saved Stripe connection. Your Stripe account will not be closed or deleted.
-									</p>
-									<div
-										ref={disconnectSliderRef}
-										role="slider"
-										tabIndex={0}
-										aria-label="Slide right to disconnect Stripe"
-										aria-valuemin={0}
-										aria-valuemax={100}
-										aria-valuenow={Math.round(disconnectSlideProgress * 100)}
-										aria-valuetext={disconnecting ? 'Disconnecting Stripe' : 'Slide right to disconnect Stripe'}
-										onKeyDown={onDisconnectSliderKeyDown}
-										onPointerDown={onDisconnectSliderPointerDown}
-										onPointerMove={onDisconnectSliderPointerMove}
-										onPointerUp={onDisconnectSliderPointerEnd}
-										onPointerCancel={onDisconnectSliderPointerEnd}
-										className="relative mt-4 h-14 select-none overflow-hidden rounded-full border border-rose-200 bg-rose-50 outline-none transition focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-2"
-										style={{ touchAction: 'none' }}
-									>
-										<div
-											className="absolute inset-y-0 left-0 bg-rose-100 transition-[width] duration-150"
-											style={{ width: `${disconnectSlideProgress * 100}%` }}
-										/>
-										<p className="pointer-events-none absolute inset-0 flex items-center justify-center px-14 text-center text-sm font-semibold text-rose-800">
-											{disconnecting ? 'Disconnecting Stripe…' : 'Slide right to disconnect'}
-										</p>
-										<div
-											className="pointer-events-none absolute top-1 flex h-12 w-12 items-center justify-center rounded-full bg-rose-600 text-white shadow-md transition-[left] duration-150"
-											style={{ left: `calc(${disconnectSlideProgress * 100}% + ${4 - disconnectSlideProgress * 56}px)` }}
-										>
-											{disconnecting ? <Loader2 className="h-5 w-5 animate-spin" aria-hidden /> : <ChevronRight className="h-5 w-5" aria-hidden />}
-										</div>
-									</div>
-									<p className="mt-2 text-center text-xs text-slate-500">Use the right arrow key or drag the control to confirm.</p>
-									<button
-										type="button"
-										onClick={() => {
-											setDisconnectConfirmationOpen(false)
-											resetDisconnectSlider()
-										}}
-										disabled={disconnecting}
-										className="mt-3 min-h-10 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
-									>
-										Cancel
-									</button>
-								</>
-							) : (
-								<>
-									<p className="text-sm font-medium text-slate-800">Stripe payment options</p>
-									<div className="mt-2 grid gap-2">
-										<button
-											type="button"
-											onClick={() => void setStripeTopupEnabled(!status.topupEnabled)}
-											disabled={topupUpdating || disconnecting || busy}
-											aria-busy={topupUpdating}
-											aria-pressed={status.topupEnabled}
-											className="flex min-h-12 items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-left transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
-										>
-											{topupUpdating ? <Loader2 className="h-4 w-4 shrink-0 animate-spin text-slate-600" aria-hidden /> : <Power className="h-4 w-4 shrink-0 text-slate-600" aria-hidden />}
-											<span className="min-w-0 flex-1">
-												<span className="block text-sm font-semibold text-slate-900">
-													{status.topupEnabled ? 'Stripe topup off' : 'Stripe topup on'}
-												</span>
-												<span className="block text-xs text-slate-500">
-													{status.topupEnabled ? 'Stop offering new Stripe top-ups. Membership payments stay available.' : 'Allow new Stripe top-ups again.'}
-												</span>
-											</span>
-											<span
-												aria-hidden="true"
-												className={`relative inline-flex h-7 w-14 shrink-0 items-center rounded-full px-1 transition-colors ${
-													status.topupEnabled ? 'bg-emerald-500' : 'bg-slate-300'
-												}`}
-											>
-												<span
-													className={`block h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${
-														status.topupEnabled ? 'translate-x-7' : 'translate-x-0'
-													}`}
-												/>
-											</span>
-										</button>
-								<button
-									type="button"
-									onClick={() => {
-										setDisconnectConfirmationOpen(true)
-										resetDisconnectSlider()
-									}}
-									disabled={disconnecting || topupUpdating || busy}
-									className="flex min-h-12 items-center gap-3 rounded-xl border border-rose-200 bg-white px-3 py-2 text-left transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+							<p className="text-sm font-medium text-slate-800">Stripe payment options</p>
+							<p className="mt-1 text-sm text-slate-600">
+								Slide right to disconnect Stripe and remove this card&apos;s saved connection. Your Stripe account will not be closed or deleted.
+							</p>
+							<div
+								ref={disconnectSliderRef}
+								role="slider"
+								tabIndex={0}
+								aria-label="Slide right to disconnect Stripe"
+								aria-valuemin={0}
+								aria-valuemax={100}
+								aria-valuenow={Math.round(disconnectSlideProgress * 100)}
+								aria-valuetext={disconnecting ? 'Disconnecting Stripe' : 'Slide right to disconnect Stripe'}
+								onKeyDown={onDisconnectSliderKeyDown}
+								onPointerDown={onDisconnectSliderPointerDown}
+								onPointerMove={onDisconnectSliderPointerMove}
+								onPointerUp={onDisconnectSliderPointerEnd}
+								onPointerCancel={onDisconnectSliderPointerEnd}
+								className="relative mt-4 h-14 select-none overflow-hidden rounded-full border border-rose-200 bg-rose-50 outline-none transition focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-2"
+								style={{ touchAction: 'none' }}
+							>
+								<div
+									className="absolute inset-y-0 left-0 bg-rose-100 transition-[width] duration-150"
+									style={{ width: `${disconnectSlideProgress * 100}%` }}
+								/>
+								<p className="pointer-events-none absolute inset-0 flex items-center justify-center px-14 text-center text-sm font-semibold text-rose-800">
+									{disconnecting ? 'Disconnecting Stripe…' : 'Slide right to disconnect'}
+								</p>
+								<div
+									className="pointer-events-none absolute top-1 flex h-12 w-12 items-center justify-center rounded-full bg-rose-600 text-white shadow-md transition-[left] duration-150"
+									style={{ left: `calc(${disconnectSlideProgress * 100}% + ${4 - disconnectSlideProgress * 56}px)` }}
 								>
-									<Unplug className="h-4 w-4 shrink-0 text-rose-600" aria-hidden />
-									<span className="min-w-0 flex-1">
-										<span className="block text-sm font-semibold text-rose-700">Disconnect Stripe</span>
-										<span className="block text-xs text-slate-500">Remove this card&apos;s saved Stripe connection.</span>
-									</span>
-								</button>
-									</div>
-								</>
-							)}
+									{disconnecting ? <Loader2 className="h-5 w-5 animate-spin" aria-hidden /> : <ChevronRight className="h-5 w-5" aria-hidden />}
+								</div>
+							</div>
+							<p className="mt-2 text-center text-xs text-slate-500">Use the right arrow key or drag the control to confirm.</p>
 						</div>
 					) : null}
 				</div>

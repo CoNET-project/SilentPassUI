@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { CreditCard, ExternalLink, Loader2, ShieldCheck } from 'lucide-react'
+import { CheckCircle2, ChevronDown, CreditCard, ExternalLink, Loader2, ShieldCheck, Unplug } from 'lucide-react'
 import { ethers } from 'ethers'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { beamioApi } from '@/utils/constants'
@@ -9,7 +9,10 @@ import {
 	signExecuteForOwner,
 } from '@/services/BeamioCard'
 type StripeStatus = {
+	connected?: boolean
 	linked: boolean
+	chargesEnabled?: boolean
+	detailsSubmitted?: boolean
 	fulfillmentAdmin: string | null
 	fulfillmentAdmins?: string[]
 }
@@ -22,6 +25,36 @@ const stripeEndpoint = (path: string) => `${beamioApi}/api/merchantCardStripe/${
 const STRIPE_STATUS_TIMEOUT_MS = 15_000
 const STRIPE_OAUTH_POPUP_POLL_MS = 500
 const STRIPE_OAUTH_MESSAGE_TYPE = 'beamio:merchant-card-stripe-oauth-complete'
+
+function buildStripeDisconnectMessage(params: {
+	cardAddress: string
+	merchantEoa: string
+	deadline: number
+	nonce: string
+}): string {
+	return [
+		'Beamio Merchant Card Stripe Disconnect',
+		`Card: ${ethers.getAddress(params.cardAddress).toLowerCase()}`,
+		`Merchant: ${ethers.getAddress(params.merchantEoa).toLowerCase()}`,
+		`Deadline: ${params.deadline}`,
+		`Nonce: ${params.nonce.toLowerCase()}`,
+	].join('\n')
+}
+
+function buildStripeOAuthConnectMessage(params: {
+	cardAddress: string
+	merchantEoa: string
+	deadline: number
+	nonce: string
+}): string {
+	return [
+		'Beamio Merchant Card Stripe OAuth Connect',
+		`Card: ${ethers.getAddress(params.cardAddress).toLowerCase()}`,
+		`Merchant: ${ethers.getAddress(params.merchantEoa).toLowerCase()}`,
+		`Deadline: ${params.deadline}`,
+		`Nonce: ${params.nonce.toLowerCase()}`,
+	].join('\n')
+}
 
 async function fetchStripeStatus(cardAddress: string): Promise<Response> {
 	const controller = new AbortController()
@@ -42,7 +75,10 @@ export default function MerchantCardStripePanel({ cardAddress }: Props) {
 	const { profiles } = useDaemonContext()
 	const [status, setStatus] = useState<StripeStatus | null>(null)
 	const [busy, setBusy] = useState(false)
+	const [disconnectOpen, setDisconnectOpen] = useState(false)
+	const [disconnecting, setDisconnecting] = useState(false)
 	const [error, setError] = useState('')
+	const disconnectInFlightRef = useRef(false)
 	const stripePopupRef = useRef<Window | null>(null)
 	const stripePopupPollTimerRef = useRef<number | null>(null)
 
@@ -60,26 +96,23 @@ export default function MerchantCardStripePanel({ cardAddress }: Props) {
 			const response = await fetchStripeStatus(cardAddress)
 			const body = (await response.json().catch(() => ({}))) as StripeStatus & { error?: string }
 			if (!response.ok) throw new Error(body.error ?? 'Unable to read Stripe status')
-			setStatus({
+			const nextStatus = {
+				connected: body.connected === true || body.linked === true,
 				linked: body.linked === true,
+				chargesEnabled: body.chargesEnabled === true,
+				detailsSubmitted: body.detailsSubmitted === true,
 				fulfillmentAdmin: body.fulfillmentAdmin ?? null,
 				fulfillmentAdmins: Array.isArray(body.fulfillmentAdmins)
 					? body.fulfillmentAdmins.filter((address): address is string => ethers.isAddress(address))
 					: body.fulfillmentAdmin && ethers.isAddress(body.fulfillmentAdmin)
 						? [body.fulfillmentAdmin]
 						: [],
-			})
+			}
+			setStatus(nextStatus)
+			if (!nextStatus.connected) setDisconnectOpen(false)
 		} catch (e: any) {
 			setError(e?.message ?? String(e))
 		}
-		// Keep the last trusted connection state after a transient read failure.
-		// On the first read only, expose a terminal disconnected state so the
-		// CTA does not remain in "Checking Stripe…" forever.
-		setStatus((previous) => previous ?? {
-			linked: false,
-			fulfillmentAdmin: null,
-			fulfillmentAdmins: [],
-		})
 	}, [cardAddress])
 
 	useEffect(() => {
@@ -153,10 +186,8 @@ export default function MerchantCardStripePanel({ cardAddress }: Props) {
 				throw new Error(stripeStatus.error ?? 'Stripe fulfillment is not configured.')
 			}
 
-			const merchantEoa = profile.keyID
-			if (!merchantEoa || !ethers.isAddress(merchantEoa)) {
-				throw new Error('Unable to resolve the merchant wallet address.')
-			}
+			const merchantWallet = new ethers.Wallet(profile.privateKeyArmor.trim())
+			const merchantEoa = ethers.getAddress(merchantWallet.address)
 			for (const fulfillmentAdmin of fulfillmentAdmins) {
 				const deadline = Math.floor(Date.now() / 1000) + 3600
 				const nonce = ethers.hexlify(ethers.randomBytes(32))
@@ -181,12 +212,23 @@ export default function MerchantCardStripePanel({ cardAddress }: Props) {
 				}
 			}
 
+			const deadline = Math.floor(Date.now() / 1000) + 5 * 60
+			const nonce = ethers.hexlify(ethers.randomBytes(32))
+			const signature = await merchantWallet.signMessage(buildStripeOAuthConnectMessage({
+				cardAddress,
+				merchantEoa,
+				deadline,
+				nonce,
+			}))
 			const linkResponse = await fetch(stripeEndpoint('oauth/start'), {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
 					cardAddress: ethers.getAddress(cardAddress),
-					merchantEoa: ethers.getAddress(merchantEoa),
+					merchantEoa,
+					deadline,
+					nonce,
+					signature,
 				}),
 			})
 			const link = (await linkResponse.json()) as { url?: string; error?: string }
@@ -218,7 +260,50 @@ export default function MerchantCardStripePanel({ cardAddress }: Props) {
 		}
 	}, [busy, cardAddress, profiles, stopWatchingStripePopup])
 
-	if (status?.linked) return null
+	const disconnectStripe = useCallback(async () => {
+		if (disconnectInFlightRef.current) return
+		disconnectInFlightRef.current = true
+		setDisconnecting(true)
+		setError('')
+		try {
+			const profile = profiles?.[0]
+			if (!profile?.privateKeyArmor?.trim()) {
+				throw new Error('Unlock the merchant wallet before disconnecting Stripe.')
+			}
+			const wallet = new ethers.Wallet(profile.privateKeyArmor.trim())
+			const merchantEoa = ethers.getAddress(wallet.address)
+			const deadline = Math.floor(Date.now() / 1000) + 5 * 60
+			const nonce = ethers.hexlify(ethers.randomBytes(32))
+			const signature = await wallet.signMessage(buildStripeDisconnectMessage({
+				cardAddress,
+				merchantEoa,
+				deadline,
+				nonce,
+			}))
+			const response = await fetch(stripeEndpoint('disconnect'), {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					cardAddress: ethers.getAddress(cardAddress),
+					merchantEoa,
+					deadline,
+					nonce,
+					signature,
+				}),
+			})
+			const body = (await response.json().catch(() => ({}))) as { error?: string; disconnected?: boolean }
+			if (!response.ok || body.disconnected !== true) {
+				throw new Error(body.error ?? 'Unable to disconnect Stripe.')
+			}
+			setDisconnectOpen(false)
+			await loadStatus()
+		} catch (e: any) {
+			setError(e?.message ?? String(e))
+		} finally {
+			disconnectInFlightRef.current = false
+			setDisconnecting(false)
+		}
+	}, [cardAddress, loadStatus, profiles])
 
 	return (
 		<section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5" aria-label="Stripe payments">
@@ -241,16 +326,65 @@ export default function MerchantCardStripePanel({ cardAddress }: Props) {
 					{error}
 				</div>
 			) : null}
-			<button
-				type="button"
-				onClick={() => void connectStripe()}
-				disabled={busy || status === null}
-				aria-busy={busy}
-				className="mt-4 inline-flex min-h-10 items-center gap-2 rounded-xl bg-[#635bff] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#5148e5] disabled:cursor-not-allowed disabled:opacity-60"
-			>
-				{busy || status === null ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <ExternalLink className="h-4 w-4" aria-hidden />}
-				{busy ? 'Preparing Stripe authorization…' : status === null ? 'Checking Stripe…' : 'Connect Stripe account'}
-			</button>
+			{status?.connected ? (
+				<div className="mt-4">
+					<button
+						type="button"
+						onClick={() => setDisconnectOpen((open) => !open)}
+						disabled={disconnecting}
+						aria-expanded={disconnectOpen}
+						className="inline-flex min-h-10 items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+					>
+						<CheckCircle2 className="h-4 w-4 text-emerald-600" aria-hidden />
+						<span>Stripe connected</span>
+						<ChevronDown className={`h-4 w-4 transition-transform ${disconnectOpen ? 'rotate-180' : ''}`} aria-hidden />
+					</button>
+					<p className="mt-2 text-sm text-slate-500">
+						{status.linked
+							? 'This card can accept Stripe payments.'
+							: 'Complete your Stripe account setup before this card can accept payments.'}
+					</p>
+					{disconnectOpen ? (
+						<div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+							<p className="text-sm font-medium text-slate-800">Disconnect this Stripe account?</p>
+							<p className="mt-1 text-sm text-slate-600">
+								This stops new Stripe payments for this card and removes Beamio&apos;s saved connection. Your Stripe account will not be closed or deleted.
+							</p>
+							<div className="mt-3 flex flex-wrap gap-2">
+								<button
+									type="button"
+									onClick={() => void disconnectStripe()}
+									disabled={disconnecting || busy}
+									aria-busy={disconnecting}
+									className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-rose-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+								>
+									{disconnecting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Unplug className="h-4 w-4" aria-hidden />}
+									{disconnecting ? 'Disconnecting Stripe…' : 'Disconnect Stripe'}
+								</button>
+								<button
+									type="button"
+									onClick={() => setDisconnectOpen(false)}
+									disabled={disconnecting || busy}
+									className="min-h-10 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+								>
+									Cancel
+								</button>
+							</div>
+						</div>
+					) : null}
+				</div>
+			) : (
+				<button
+					type="button"
+					onClick={() => void connectStripe()}
+					disabled={busy || status === null || disconnecting}
+					aria-busy={busy}
+					className="mt-4 inline-flex min-h-10 items-center gap-2 rounded-xl bg-[#635bff] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#5148e5] disabled:cursor-not-allowed disabled:opacity-60"
+				>
+					{busy || status === null ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <ExternalLink className="h-4 w-4" aria-hidden />}
+					{busy ? 'Preparing Stripe authorization…' : status === null ? 'Checking Stripe…' : 'Connect Stripe account'}
+				</button>
+			)}
 		</section>
 	)
 }

@@ -5114,6 +5114,16 @@ function DiscoverMerchantDetailFullScreen({
 		},
 		[],
 	)
+	/**
+	 * Freeze the detail-page chrome before opening a child top-up flow.
+	 * Asset refreshes may continue in the background, but returning from the
+	 * child flow must not insert/remove the member pass header in mid-frame.
+	 * A confirmed top-up success is the only path that may force-adopt a new
+	 * presentation snapshot.
+	 */
+	const freezeMerchantProgramPresentation = useCallback(() => {
+		merchantProgramPresentationLockedRef.current = true
+	}, [])
 	const [merchantAssetsLoading, setMerchantAssetsLoading] = useState(
 		() =>
 			Boolean(profiles?.[0]?.keyID && item.cardAddress) &&
@@ -6399,6 +6409,7 @@ function DiscoverMerchantDetailFullScreen({
 	}, [item.cardAddress, resolveUserEoa, usdcTopupIntentLocked, usdcTopupPhase])
 
 	const openDiscoverTopupAmount = useCallback((prefillAmount?: string) => {
+		freezeMerchantProgramPresentation()
 		setUsdcTopupError('')
 		setUsdcTopupIntent('topup')
 		setUsdcTopupIntentLocked(false)
@@ -6408,11 +6419,12 @@ function DiscoverMerchantDetailFullScreen({
 		setUsdcTopupRulesHint('')
 		setDiscoverTopUpPrefill(prefillAmount?.trim() || undefined)
 		setDiscoverTopUpOpen(true)
-	}, [])
+	}, [freezeMerchantProgramPresentation])
 
 	const openDiscoverMembershipPay = useCallback((kind: 'join' | 'upgrade') => {
 		const tier = kind === 'join' ? membershipUi.joinTier : membershipUi.upgradeTier
 		if (!tier) return
+		freezeMerchantProgramPresentation()
 		const prefill = membershipPurchaseApiAmountHuman(tier.feeE6)
 		setUsdcTopupError('')
 		setUsdcTopupAmountText(prefill)
@@ -6432,7 +6444,12 @@ function DiscoverMerchantDetailFullScreen({
 				: `Upgrade to ${tier.name} includes membership fee ${feePart}${durationLabel ? ` · ${durationLabel}` : ''}.`,
 		)
 		setUsdcTopupPhase('amount')
-	}, [balancePrefix, membershipUi.joinTier, membershipUi.upgradeTier])
+	}, [
+		balancePrefix,
+		freezeMerchantProgramPresentation,
+		membershipUi.joinTier,
+		membershipUi.upgradeTier,
+	])
 
 	/** New Customer Bonus CTA — top-up with suggested min (or selected multiplier tier), or join membership when required. */
 	const claimDiscoverTopupPromotion = useCallback(

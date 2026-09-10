@@ -5568,7 +5568,8 @@ function DiscoverMerchantDetailFullScreen({
 		!merchantAssetsLoading &&
 		(membershipUi.mode === 'no_fee' ||
 			membershipUi.mode === 'member_topup_only' ||
-			membershipUi.mode === 'can_upgrade')
+			membershipUi.mode === 'can_upgrade' ||
+			membershipUi.mode === 'need_member')
 	const storeCreditsPromoBadge = useMemo(
 		() =>
 			resolveDiscoverTopupPromotionStoreCreditsBadge({

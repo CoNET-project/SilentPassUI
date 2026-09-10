@@ -457,6 +457,7 @@ export default function MerchantCardTopUpFlow({
 	const [shareCopied, setShareCopied] = useState(false)
 	const [shareAlert, setShareAlert] = useState('')
 	const closeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+	const closeStartedRef = useRef(false)
 	const shareResetTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 	const legsPlanGen = useRef(0)
 	const rowsReadyRef = useRef(false)
@@ -568,13 +569,22 @@ export default function MerchantCardTopUpFlow({
 		stripeReady,
 	])
 
+	const finishClose = useCallback(() => {
+		if (!closeStartedRef.current) return
+		if (closeTimer.current) {
+			clearTimeout(closeTimer.current)
+			closeTimer.current = undefined
+		}
+		onClose()
+	}, [onClose])
+
 	const close = useCallback(() => {
-		if (isClosing || payBusy) return
+		if (closeStartedRef.current || isClosing || payBusy) return
+		closeStartedRef.current = true
 		setIsClosing(true)
-		closeTimer.current = setTimeout(() => {
-			onClose()
-		}, 300)
-	}, [isClosing, onClose, payBusy])
+		// Fallback only; the normal path waits for the actual CSS transition.
+		closeTimer.current = setTimeout(finishClose, 360)
+	}, [finishClose, isClosing, payBusy])
 
 	const handleShareEarn = useCallback(async () => {
 		if (sharing) return
@@ -617,6 +627,7 @@ export default function MerchantCardTopUpFlow({
 		if (!open) return
 		setIsEntered(false)
 		setIsClosing(false)
+		closeStartedRef.current = false
 		setStep('amount')
 		setAmountInput(initialAmount?.trim() || '50.00')
 		setSmartPay(true)
@@ -632,6 +643,7 @@ export default function MerchantCardTopUpFlow({
 		return () => {
 			cancelAnimationFrame(frame)
 			if (closeTimer.current) clearTimeout(closeTimer.current)
+			closeTimer.current = undefined
 			if (shareResetTimer.current) clearTimeout(shareResetTimer.current)
 		}
 	}, [open, initialAmount])
@@ -1310,6 +1322,11 @@ export default function MerchantCardTopUpFlow({
 				backgroundColor: step === 'success' ? undefined : pageSurface,
 				transform: isClosing || !isEntered ? 'translateX(100%)' : 'translateX(0)',
 				transition: 'transform 300ms ease-out',
+			}}
+			onTransitionEnd={(event) => {
+				if (event.target === event.currentTarget && event.propertyName === 'transform') {
+					finishClose()
+				}
 			}}
 		>
 			<div

@@ -66,7 +66,7 @@ export function BeamioCircularBackButton({
 				'relative isolate inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full p-1',
 				RELIABLE_TAP_BUTTON_CLASS,
 				chevronClass,
-				'transition active:scale-[0.96] disabled:pointer-events-none disabled:opacity-40',
+				'transition-colors duration-150 disabled:pointer-events-none disabled:opacity-40',
 				className,
 			].join(' ')}
 		>

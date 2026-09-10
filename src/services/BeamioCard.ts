@@ -489,6 +489,7 @@ const cardCouponOpenClaimEndpoint = `${beamioApi}/api/cardCouponOpenClaim`
 const cardFundSocialExchangeUsdcEscrowEndpoint = `${beamioApi}/api/cardFundSocialExchangeUsdcEscrow`
 const cardRedeemAdminEndpoint = `${beamioApi}/api/cardRedeemAdmin`
 const cardAddAdminEndpoint = `${beamioApi}/api/cardAddAdmin`
+const cardAddAdminBatchEndpoint = `${beamioApi}/api/cardAddAdminBatch`
 const cardAddAdminByAdminEndpoint = `${beamioApi}/api/cardAddAdminByAdmin`
 const cardClearAdminMintCounterEndpoint = `${beamioApi}/api/cardClearAdminMintCounter`
 const cardTerminalSettlementClearEndpoint = `${beamioApi}/api/cardTerminalSettlementClear`
@@ -3142,6 +3143,7 @@ const addAdminInterface = new ethers.Interface([
 const adminManagerInterface = new ethers.Interface([
     'function adminManager(address to, bool admin, uint256 newThreshold, string metadata)',
     'function adminManager(address to, bool admin, uint256 newThreshold, string metadata, uint256 mintLimit)',
+    'function adminManagerBatch(address[] tos, uint256 newThreshold, string metadata, uint256 mintLimit)',
 ])
 
 /** 构建 addAdmin 的 calldata（供 executeForOwner 使用）。newAdmin 必须为 EOA，newThreshold 为所需签名数（通常 1） */
@@ -3156,6 +3158,19 @@ export const encodeAddAdminWithMintLimit = (
     mintLimitPoints6: bigint
 ): string =>
     adminManagerInterface.encodeFunctionData('adminManager(address,bool,uint256,string,uint256)', [newAdmin, true, BigInt(newThreshold), metadata, mintLimitPoints6])
+
+export const encodeAddAdminsWithMintLimit = (
+	admins: string[],
+	newThreshold: number | bigint,
+	metadata: string,
+	mintLimitPoints6: bigint,
+): string =>
+	adminManagerInterface.encodeFunctionData('adminManagerBatch(address[],uint256,string,uint256)', [
+		admins.map((admin) => ethers.getAddress(admin)),
+		BigInt(newThreshold),
+		metadata,
+		mintLimitPoints6,
+	])
 
 /**
  * `adminManager(to, true, threshold, metadata)` — 4 参 calldata。
@@ -3452,6 +3467,38 @@ export const postCardAddAdmin = async (payload: {
     } catch (e: any) {
         return { success: false, error: e?.message ?? String(e) }
     }
+}
+
+/** 提交一次 owner-signed adminManagerBatch，Cluster 预检后由 Master 只 relay 一笔交易。 */
+export const postCardAddAdminBatch = async (payload: {
+	cardAddress: string
+	data: string
+	deadline: number
+	nonce: string
+	ownerSignature: string
+	adminEOAs: string[]
+}): Promise<{ success: boolean; hash?: string; error?: string }> => {
+	try {
+		const batchSignal = createFetchTimeoutSignal(600_000)
+		const res = await fetch(cardAddAdminBatchEndpoint, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				cardAddress: payload.cardAddress,
+				data: payload.data,
+				deadline: payload.deadline,
+				nonce: payload.nonce,
+				ownerSignature: payload.ownerSignature,
+				adminEOAs: payload.adminEOAs.map((admin) => ethers.getAddress(admin)),
+			}),
+			...(batchSignal ? { signal: batchSignal } : {}),
+		})
+		const data = await res.json()
+		if (!res.ok) return { success: false, error: data.error ?? 'cardAddAdminBatch failed' }
+		return { success: true, hash: data.txHash ?? data.hash }
+	} catch (e: any) {
+		return { success: false, error: e?.message ?? String(e) }
+	}
 }
 
 /** 提交 addAdmin 到 API cardAddAdminByAdmin。若传 adminEOA，Cluster 会先 ensureAAForEOA 再执行。 */

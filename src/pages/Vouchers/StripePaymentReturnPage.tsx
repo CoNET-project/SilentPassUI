@@ -25,21 +25,25 @@ export default function StripePaymentReturnPage() {
 	}, [setShowFooter])
 
 	useEffect(() => {
-		if (!sessionId || cancelled) return
+		if (!sessionId) return
 		let disposed = false
 		let timer: ReturnType<typeof setTimeout> | undefined
 		let attempts = 0
 
 		const poll = async () => {
 			try {
-				const response = await fetch('/api/merchantCardStripe/poll', {
+				const response = await fetch(
+					cancelled ? '/api/merchantCardStripe/cancel' : '/api/merchantCardStripe/poll',
+					{
 					method: 'POST',
 					headers: { 'Content-Type': 'application/json' },
 					body: JSON.stringify({ sessionId }),
-				})
+					},
+				)
 				const body = (await response.json().catch(() => ({}))) as StripeStatus & { error?: string }
 				if (!response.ok) throw new Error(body.error || 'Unable to read Stripe payment status.')
 				if (disposed) return
+				if (cancelled) return
 				setState(body)
 				setError('')
 				const done =

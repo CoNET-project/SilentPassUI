@@ -54,7 +54,6 @@ import {
 	readEoaUsdcBalance6,
 } from '@/utils/discoverEoaUsdcTopup'
 import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
-import StripePaymentElementForm from '@/components/StripePaymentElementForm'
 import { loadMyBrandsFeedLocalCache } from '@/utils/myBrandsFeedLocalCache'
 import {
 	buildDiscoverMerchantShareUrl,
@@ -449,11 +448,8 @@ export default function MerchantCardTopUpFlow({
 	const [payError, setPayError] = useState('')
 	const [stripeReady, setStripeReady] = useState(false)
 	const [stripeBusy, setStripeBusy] = useState(false)
-	const [stripePaymentContext, setStripePaymentContext] = useState<{
-		clientSecret: string
-		publishableKey: string
-		paymentIntentId: string
-	} | null>(null)
+	const [stripeSessionId, setStripeSessionId] = useState<string | null>(null)
+	const [stripePaymentMessage, setStripePaymentMessage] = useState('')
 	const stripeBusinessKeyRef = useRef<string | null>(null)
 	const [mintedLabel, setMintedLabel] = useState('0.00')
 	const [successNote, setSuccessNote] = useState('')
@@ -506,7 +502,8 @@ export default function MerchantCardTopUpFlow({
 		let cancelled = false
 		stripeBusinessKeyRef.current = null
 		setStripeReady(false)
-		setStripePaymentContext(null)
+		setStripeSessionId(null)
+		setStripePaymentMessage('')
 		void fetch('/api/merchantCardStripe/status', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
@@ -528,8 +525,9 @@ export default function MerchantCardTopUpFlow({
 		if (stripeBusy || !stripeReady || !amountFiat6 || !profile.keyID) return
 		setStripeBusy(true)
 		setPayError('')
+		setStripePaymentMessage('Opening secure Stripe payment…')
 		try {
-			const response = await fetch('/api/merchantCardStripe/createPaymentIntent', {
+			const response = await fetch('/api/merchantCardStripe/createCheckout', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
@@ -556,23 +554,14 @@ export default function MerchantCardTopUpFlow({
 						: {}),
 				}),
 			})
-			const body = (await response.json().catch(() => ({}))) as {
-				clientSecret?: string
-				publishableKey?: string
-				paymentIntentId?: string
-				error?: string
-			}
-			if (!response.ok || !body.clientSecret || !body.publishableKey || !body.paymentIntentId) {
+			const body = (await response.json().catch(() => ({}))) as { sessionId?: string; url?: string; error?: string }
+			if (!response.ok || !body.sessionId || !body.url) {
 				throw new Error(body.error ?? 'Unable to start Stripe payment.')
 			}
-			setStripePaymentContext({
-				clientSecret: body.clientSecret,
-				publishableKey: body.publishableKey,
-				paymentIntentId: body.paymentIntentId,
-			})
+			setStripeSessionId(body.sessionId)
+			openExternalUrl(body.url)
 		} catch (error) {
 			setPayError(error instanceof Error ? error.message : 'Unable to start Stripe payment.')
-		} finally {
 			setStripeBusy(false)
 		}
 	}, [
@@ -586,6 +575,70 @@ export default function MerchantCardTopUpFlow({
 		stripeKind,
 		stripeReady,
 	])
+
+	useEffect(() => {
+		if (!stripeSessionId) return
+		let disposed = false
+		let timer: ReturnType<typeof setTimeout> | undefined
+		let attempts = 0
+		const poll = async () => {
+			try {
+				const response = await fetch('/api/merchantCardStripe/poll', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ sessionId: stripeSessionId }),
+				})
+				const body = (await response.json().catch(() => ({}))) as {
+					status?: string
+					fulfillmentStatus?: string
+					error?: string | null
+				}
+				if (!response.ok) throw new Error(body.error || 'Unable to read Stripe payment status.')
+				if (disposed) return
+				if (body.fulfillmentStatus === 'fulfillment_succeeded') {
+					setStripeBusy(false)
+					setStripePaymentMessage('Payment completed. Your store credits are now available.')
+					setStripeSessionId(null)
+					onSuccess?.()
+					return
+				}
+				if (body.fulfillmentStatus === 'fulfillment_failed' || body.status === 'failed') {
+					setStripeBusy(false)
+					setStripePaymentMessage('')
+					setStripeSessionId(null)
+					setPayError(body.error || 'Stripe payment was canceled or could not be completed.')
+					return
+				}
+				setStripePaymentMessage(
+					body.status === 'succeeded'
+						? 'Payment received. Waiting for the merchant card update…'
+						: 'Complete payment in the Stripe tab. This page will update automatically.',
+				)
+				if (attempts < 120 && !disposed) {
+					attempts += 1
+					timer = setTimeout(() => void poll(), 3000)
+				} else {
+					setStripeBusy(false)
+					setStripePaymentMessage('Payment is still pending. You can close this panel and check again later.')
+				}
+			} catch (error) {
+				if (disposed) return
+				setStripePaymentMessage('Waiting for Stripe payment status…')
+				if (attempts < 120) {
+					attempts += 1
+					timer = setTimeout(() => void poll(), 5000)
+				} else {
+					setStripeBusy(false)
+					setStripePaymentMessage(error instanceof Error ? error.message : 'Unable to read Stripe payment status.')
+				}
+			}
+		}
+		void poll()
+		return () => {
+			disposed = true
+			if (timer) clearTimeout(timer)
+		}
+	}, [onSuccess, stripeSessionId])
 
 	const finishClose = useCallback(() => {
 		if (!closeStartedRef.current) return
@@ -1573,7 +1626,7 @@ export default function MerchantCardTopUpFlow({
 								) : null}
 							</div>
 
-							{stripeReady && !stripePaymentContext ? (
+							{stripeReady ? (
 								<button
 									type="button"
 									onClick={() => void payWithStripe()}
@@ -1593,18 +1646,16 @@ export default function MerchantCardTopUpFlow({
 									<ChevronRight className="h-5 w-5 shrink-0 text-[#8b87c8]" aria-hidden />
 								</button>
 							) : null}
-							{stripePaymentContext ? (
-								<StripePaymentElementForm
-									clientSecret={stripePaymentContext.clientSecret}
-									publishableKey={stripePaymentContext.publishableKey}
-									amountLabel={formatPrefixedFiat(prefix, formatFiatHero(fiatN))}
-									onCancel={() => setStripePaymentContext(null)}
-									onSuccess={(paymentIntentId) => {
-										window.location.assign(
-											`/app/stripe-payment-return?payment_intent=${encodeURIComponent(paymentIntentId)}`,
-										)
-									}}
-								/>
+							{stripePaymentMessage ? (
+								<div
+									role="status"
+									className="mt-3 flex items-start gap-2 rounded-2xl border border-[#635bff]/20 bg-[#f8f7ff] px-3.5 py-3 text-[13px] text-[#4338a0]"
+								>
+									{stripeBusy ? (
+										<Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin" aria-hidden />
+									) : null}
+									<p>{stripePaymentMessage}</p>
+								</div>
 							) : null}
 
 							{smartPay ? (

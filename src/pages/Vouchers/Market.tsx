@@ -5089,16 +5089,16 @@ function DiscoverMerchantDetailFullScreen({
 		seededMerchantAssets,
 	)
 	/**
-	 * Keep the member/prospect layout stable for this merchant-detail session.
-	 * A zero seed is provisional because older cache rows may omit AA holdings; the
-	 * first complete asset read locks it. Later background refreshes may update
-	 * balances, but must not swap the whole pass layout while a child flow closes.
+	 * Snapshot the member/prospect chrome when this detail session opens.
+	 * The detail page remains mounted below Top-up, so allowing an asynchronous
+	 * asset refresh to change this state makes the returned page visibly switch
+	 * between prospect and member layouts. Only a confirmed successful payment
+	 * may replace this snapshot.
 	 */
 	const seededMerchantAssetsHaveHoldings = discoverMerchantAssetsHaveHoldings(seededMerchantAssets)
 	const merchantAssetsSeedAppliedRef = useRef(seededMerchantAssets != null)
-	const merchantProgramPresentationLockedRef = useRef(
-		seededMerchantAssetsHaveHoldings || !profiles?.[0]?.keyID || !item.cardAddress,
-	)
+	const merchantAssetsBootstrapAttemptedRef = useRef(false)
+	const merchantProgramPresentationLockedRef = useRef(true)
 	const [merchantProgramPresentation, setMerchantProgramPresentation] =
 		useState<DiscoverMerchantProgramPresentation>(() =>
 			discoverMerchantProgramPresentationFromAssets(seededMerchantAssets),
@@ -5115,11 +5115,9 @@ function DiscoverMerchantDetailFullScreen({
 		[],
 	)
 	/**
-	 * Freeze the detail-page chrome before opening a child top-up flow.
-	 * Asset refreshes may continue in the background, but returning from the
-	 * child flow must not insert/remove the member pass header in mid-frame.
-	 * A confirmed top-up success is the only path that may force-adopt a new
-	 * presentation snapshot.
+	 * Retained at top-up entry as a defensive guard. The snapshot is already
+	 * locked at detail-page entry; a confirmed top-up success is the only path
+	 * that may force-adopt a replacement.
 	 */
 	const freezeMerchantProgramPresentation = useCallback(() => {
 		merchantProgramPresentationLockedRef.current = true
@@ -7138,12 +7136,18 @@ function DiscoverMerchantDetailFullScreen({
 		const userEOA = resolveUserEoa()
 		const socialEoa = userEOA ?? ''
 		const needSocial = !hasSeededPts && socialEoa.length > 0
-		const needAssets = !seeded || !seededHasHoldings
+		// A detail session may remain mounted while its Top-up child flow opens and
+		// closes. Bootstrap assets once, but never start a second membership read
+		// merely because that child flow returned or the daemon mirror changed.
+		const needAssets =
+			!merchantAssetsBootstrapAttemptedRef.current &&
+			(!seeded || !seededHasHoldings)
 		if (!needSocial && !needAssets) return
 		if (!smartPayPrefetchDone) return
 		// Top-up open: still refresh #13 for Smart Pay seed; skip getMyAssets storm.
 		if (discoverTopUpOpen && !needSocial) return
 
+		if (needAssets) merchantAssetsBootstrapAttemptedRef.current = true
 		let cancelled = false
 		void (async () => {
 			// Serial: CoNET RPC is batchMaxCount:1. A parallel getMyAssets storm
@@ -7171,6 +7175,8 @@ function DiscoverMerchantDetailFullScreen({
 					})
 					if (!cancelled && res != null) {
 						setMerchantAssets(res)
+						// Do not replace the member/prospect snapshot during this
+						// detail session. A confirmed payment uses force: true.
 						adoptMerchantProgramPresentation(res)
 						onMerchantAssetsConfirmed?.(cardAddress, res)
 					}
@@ -8304,7 +8310,6 @@ function DiscoverMerchantDetailFullScreen({
 						balanceText={cardTopupSuccessBalance ?? ''}
 						onCancel={() => {
 							dismissCardTopupOverlay()
-							void refreshMerchantAssets()
 						}}
 						onDone={() => dismissCardTopupOverlay()}
 					/>,

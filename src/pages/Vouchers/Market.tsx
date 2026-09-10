@@ -704,39 +704,46 @@ const DISCOVER_HEALTH_BEAUTY_LEAF = '#c9a882'
 
 function DiscoverDynamicPassTitle({ title }: { title: string }) {
 	const titleRef = useRef<HTMLParagraphElement>(null)
+	const containerRef = useRef<HTMLDivElement>(null)
 
 	useLayoutEffect(() => {
 		const element = titleRef.current
-		if (!element) return
+		const container = containerRef.current
+		if (!element || !container) return
 
 		const fitTitle = () => {
 			const maxFontSize = 26.4
 			const minFontSize = 13
 			element.style.fontSize = `${maxFontSize}px`
-			const availableWidth = element.clientWidth
+			const availableWidth = container.clientWidth
 			const requiredWidth = element.scrollWidth
 			if (!availableWidth || !requiredWidth) return
-			element.style.fontSize = `${Math.max(
+			const nextFontSize = Math.max(
 				minFontSize,
 				Math.min(maxFontSize, maxFontSize * (availableWidth / requiredWidth)),
-			)}px`
+			)
+			if (Math.abs(Number.parseFloat(element.style.fontSize) - nextFontSize) > 0.05) {
+				element.style.fontSize = `${nextFontSize}px`
+			}
 		}
 
 		fitTitle()
 		const observer = new ResizeObserver(fitTitle)
-		observer.observe(element)
+		observer.observe(container)
 		return () => observer.disconnect()
 	}, [title])
 
 	return (
-		<p
-			ref={titleRef}
-			className="whitespace-nowrap font-semibold leading-none tracking-tight text-white"
-			style={{ fontFamily: 'Georgia, "Times New Roman", Times, serif' }}
-			title={title}
-		>
-			{title}
-		</p>
+		<div ref={containerRef} className="min-w-0">
+			<p
+				ref={titleRef}
+				className="whitespace-nowrap font-semibold leading-none tracking-tight text-white"
+				style={{ fontFamily: 'Georgia, "Times New Roman", Times, serif' }}
+				title={title}
+			>
+				{title}
+			</p>
+		</div>
 	)
 }
 
@@ -895,7 +902,7 @@ function DiscoverMerchantHealthBeautyLoyaltyPassPanel({
 				type="button"
 				onClick={onActivateTopUp}
 				disabled={topUpDisabled}
-				className="flex w-full items-center justify-center gap-2.5 rounded-2xl px-4 py-3.5 text-[15px] font-bold text-white shadow-[0_10px_28px_rgba(75,69,61,0.35)] transition hover:brightness-110 active:scale-[0.99] disabled:opacity-60"
+				className="flex w-full items-center justify-center gap-2.5 rounded-2xl px-4 py-3.5 text-[15px] font-bold text-white shadow-[0_10px_28px_rgba(75,69,61,0.35)] transition-colors duration-150 hover:brightness-110 disabled:opacity-60"
 				style={{ backgroundColor: brand }}
 			>
 				<Wallet className="h-5 w-5 shrink-0 opacity-90" strokeWidth={2.25} aria-hidden />
@@ -1093,7 +1100,7 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 				type="button"
 				onClick={onActivateTopUp}
 				disabled={topUpDisabled}
-				className="flex w-full items-center justify-center gap-2.5 rounded-2xl px-4 py-3.5 text-[15px] font-bold text-white shadow-[0_10px_28px_rgba(75,69,61,0.35)] transition hover:brightness-110 active:scale-[0.99] disabled:opacity-60"
+				className="flex w-full items-center justify-center gap-2.5 rounded-2xl px-4 py-3.5 text-[15px] font-bold text-white shadow-[0_10px_28px_rgba(75,69,61,0.35)] transition-colors duration-150 hover:brightness-110 disabled:opacity-60"
 				style={{ backgroundColor: brand }}
 			>
 				<Wallet className="h-5 w-5 shrink-0 opacity-90" strokeWidth={2.25} aria-hidden />
@@ -1357,7 +1364,7 @@ function DiscoverMerchantFoodBeverageLoyaltyPassPanel({
 				type="button"
 				onClick={onActivateTopUp}
 				disabled={topUpDisabled}
-				className="flex w-full items-center justify-center gap-2.5 rounded-2xl px-4 py-3.5 text-[15px] font-bold text-white shadow-[0_10px_28px_rgba(75,69,61,0.35)] transition hover:brightness-110 active:scale-[0.99] disabled:opacity-60"
+				className="flex w-full items-center justify-center gap-2.5 rounded-2xl px-4 py-3.5 text-[15px] font-bold text-white shadow-[0_10px_28px_rgba(75,69,61,0.35)] transition-colors duration-150 hover:brightness-110 disabled:opacity-60"
 				style={{ backgroundColor: brand }}
 			>
 				<Wallet className="h-5 w-5 shrink-0 opacity-90" strokeWidth={2.25} aria-hidden />

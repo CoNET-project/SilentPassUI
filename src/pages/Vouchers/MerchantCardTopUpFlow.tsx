@@ -420,7 +420,7 @@ export default function MerchantCardTopUpFlow({
 	seedPoints13,
 	onSuccess,
 }: Props) {
-	const { setShowFooter, myBrandCardDetails } = useDaemonContext()
+	const { myBrandCardDetails } = useDaemonContext()
 	const {
 		resolveName,
 		resolveImage,
@@ -615,7 +615,6 @@ export default function MerchantCardTopUpFlow({
 
 	useEffect(() => {
 		if (!open) return
-		setShowFooter(false)
 		setIsEntered(false)
 		setIsClosing(false)
 		setStep('amount')
@@ -632,11 +631,10 @@ export default function MerchantCardTopUpFlow({
 		const frame = requestAnimationFrame(() => setIsEntered(true))
 		return () => {
 			cancelAnimationFrame(frame)
-			setShowFooter(true)
 			if (closeTimer.current) clearTimeout(closeTimer.current)
 			if (shareResetTimer.current) clearTimeout(shareResetTimer.current)
 		}
-	}, [open, initialAmount, setShowFooter])
+	}, [open, initialAmount])
 
 	useEffect(() => {
 		if (!open || !cardAddress) return

@@ -5,6 +5,7 @@ import { useDaemonContext } from '@/providers/DaemonProvider'
 import { beamioApi } from '@/utils/constants'
 import {
 	encodeAdminManagerAdd,
+	isCardAdmin,
 	postCardAddAdmin,
 	signExecuteForOwner,
 } from '@/services/BeamioCard'
@@ -26,6 +27,9 @@ const stripeEndpoint = (path: string) => `${beamioApi}/api/merchantCardStripe/${
 const STRIPE_STATUS_TIMEOUT_MS = 15_000
 const STRIPE_OAUTH_POPUP_POLL_MS = 500
 const STRIPE_OAUTH_MESSAGE_TYPE = 'beamio:merchant-card-stripe-oauth-complete'
+const STRIPE_OAUTH_NAVIGATE_TYPE = 'beamio:stripe-oauth-navigate'
+const STRIPE_OAUTH_FAIL_TYPE = 'beamio:stripe-oauth-fail'
+const STRIPE_CONNECT_OAUTH_ORIGIN = 'https://connect.stripe.com'
 
 function buildStripeDisconnectMessage(params: {
 	cardAddress: string
@@ -72,6 +76,123 @@ function buildStripeOAuthConnectMessage(params: {
 		`Deadline: ${params.deadline}`,
 		`Nonce: ${params.nonce.toLowerCase()}`,
 	].join('\n')
+}
+
+function isStripeTabClosed(tab: Window | null): boolean {
+	if (!tab) return true
+	try {
+		return tab.closed
+	} catch {
+		return true
+	}
+}
+
+function isStripeConnectOAuthUrl(url: string): boolean {
+	try {
+		const parsed = new URL(url)
+		return parsed.protocol === 'https:' && parsed.origin === STRIPE_CONNECT_OAUTH_ORIGIN
+	} catch {
+		return false
+	}
+}
+
+function writeStripePreparingDocument(stripeTab: Window): void {
+	const expectedOrigin = window.location.origin
+	stripeTab.document.open()
+	stripeTab.document.write(`<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>Preparing Stripe</title></head>
+<body style="font-family:system-ui;padding:2rem">
+<p id="status">Preparing secure Stripe authorization…</p>
+<script>
+(function () {
+	var expected = ${JSON.stringify(expectedOrigin)};
+	window.addEventListener('message', function (event) {
+		if (event.origin !== expected) return;
+		var data = event.data;
+		if (!data || typeof data !== 'object') return;
+		if (data.type === ${JSON.stringify(STRIPE_OAUTH_NAVIGATE_TYPE)} && typeof data.url === 'string') {
+			try {
+				var parsed = new URL(data.url);
+				if (parsed.protocol === 'https:' && parsed.origin === ${JSON.stringify(STRIPE_CONNECT_OAUTH_ORIGIN)}) {
+					location.replace(data.url);
+				}
+			} catch (_err) {}
+			return;
+		}
+		if (data.type === ${JSON.stringify(STRIPE_OAUTH_FAIL_TYPE)}) {
+			var el = document.getElementById('status');
+			if (el) el.textContent = typeof data.message === 'string' && data.message
+				? data.message
+				: 'Stripe authorization failed.';
+		}
+	});
+})();
+</script>
+</body>
+</html>`)
+	stripeTab.document.close()
+}
+
+function sendStripeTabMessage(stripeTab: Window, payload: Record<string, unknown>): void {
+	try {
+		stripeTab.postMessage(payload, window.location.origin)
+	} catch {
+		// Tab may already be detached; parent location.assign is the fallback.
+	}
+}
+
+function navigateStripeTab(stripeTab: Window, url: string): void {
+	sendStripeTabMessage(stripeTab, { type: STRIPE_OAUTH_NAVIGATE_TYPE, url })
+	try {
+		stripeTab.location.replace(url)
+	} catch {
+		try {
+			stripeTab.location.href = url
+		} catch {
+			// Child postMessage listener still navigates when the opener reference is detached.
+		}
+	}
+}
+
+async function ensureMissingStripeFulfillmentAdmins(params: {
+	cardAddress: string
+	privateKeyArmor: string
+	fulfillmentAdmins: string[]
+}): Promise<void> {
+	for (const fulfillmentAdmin of params.fulfillmentAdmins) {
+		let alreadyAdmin = false
+		try {
+			alreadyAdmin = await isCardAdmin(params.cardAddress, fulfillmentAdmin)
+		} catch {
+			alreadyAdmin = false
+		}
+		if (alreadyAdmin) continue
+
+		const deadline = Math.floor(Date.now() / 1000) + 3600
+		const nonce = ethers.hexlify(ethers.randomBytes(32))
+		const data = encodeAdminManagerAdd(fulfillmentAdmin, 1, '{}')
+		const ownerSignature = await signExecuteForOwner(
+			params.privateKeyArmor,
+			params.cardAddress,
+			data,
+			deadline,
+			nonce,
+		)
+		const adminResult = await postCardAddAdmin({
+			cardAddress: params.cardAddress,
+			data,
+			deadline,
+			nonce,
+			ownerSignature,
+			adminEOA: fulfillmentAdmin,
+		})
+		if (!adminResult.success) {
+			throw new Error(
+				`Unable to authorize Stripe fulfillment admin ${fulfillmentAdmin}. ${adminResult.error ?? ''}`.trim(),
+			)
+		}
+	}
 }
 
 async function fetchStripeStatus(cardAddress: string): Promise<Response> {
@@ -199,10 +320,7 @@ export default function MerchantCardStripePanel({ cardAddress }: Props) {
 				throw new Error('Unable to open Stripe authorization. Please allow pop-ups and try again.')
 			}
 			stripePopupRef.current = stripeTab
-			stripeTab.document.write(
-				'<!doctype html><title>Preparing Stripe</title><p style="font-family:system-ui;padding:2rem">Preparing secure Stripe authorization…</p>',
-			)
-			stripeTab.document.close()
+			writeStripePreparingDocument(stripeTab)
 
 			const statusResponse = await fetchStripeStatus(cardAddress)
 			const stripeStatus = (await statusResponse.json()) as StripeStatus & { error?: string }
@@ -217,30 +335,6 @@ export default function MerchantCardStripePanel({ cardAddress }: Props) {
 
 			const merchantWallet = new ethers.Wallet(profile.privateKeyArmor.trim())
 			const merchantEoa = ethers.getAddress(merchantWallet.address)
-			for (const fulfillmentAdmin of fulfillmentAdmins) {
-				const deadline = Math.floor(Date.now() / 1000) + 3600
-				const nonce = ethers.hexlify(ethers.randomBytes(32))
-				const data = encodeAdminManagerAdd(fulfillmentAdmin, 1, '{}')
-				const ownerSignature = await signExecuteForOwner(
-					profile.privateKeyArmor,
-					cardAddress,
-					data,
-					deadline,
-					nonce,
-				)
-				const adminResult = await postCardAddAdmin({
-					cardAddress,
-					data,
-					deadline,
-					nonce,
-					ownerSignature,
-					adminEOA: fulfillmentAdmin,
-				})
-				if (!adminResult.success) {
-					throw new Error(`Unable to authorize Stripe fulfillment admin ${fulfillmentAdmin}. ${adminResult.error ?? ''}`.trim())
-				}
-			}
-
 			const deadline = Math.floor(Date.now() / 1000) + 5 * 60
 			const nonce = ethers.hexlify(ethers.randomBytes(32))
 			const signature = await merchantWallet.signMessage(buildStripeOAuthConnectMessage({
@@ -261,14 +355,26 @@ export default function MerchantCardStripePanel({ cardAddress }: Props) {
 				}),
 			})
 			const link = (await linkResponse.json()) as { url?: string; error?: string }
-			if (!linkResponse.ok || !link.url) throw new Error(link.error ?? 'Unable to start Stripe OAuth Connect.')
-			if (stripeTab.closed) throw new Error('The Stripe authorization window was closed. Please try again.')
+			if (!linkResponse.ok || !link.url || !isStripeConnectOAuthUrl(link.url)) {
+				throw new Error(link.error ?? 'Unable to start Stripe OAuth Connect.')
+			}
+			if (isStripeTabClosed(stripeTab)) {
+				throw new Error('The Stripe authorization window was closed. Please try again.')
+			}
 
-			stripeTab.location.assign(link.url)
+			navigateStripeTab(stripeTab, link.url)
 			stripeNavigated = true
+			void ensureMissingStripeFulfillmentAdmins({
+				cardAddress,
+				privateKeyArmor: profile.privateKeyArmor,
+				fulfillmentAdmins,
+			}).catch((adminError: unknown) => {
+				const message = adminError instanceof Error ? adminError.message : String(adminError)
+				setError(message)
+			})
 			const watchForStripePopupClose = () => {
 				if (stripePopupRef.current !== stripeTab) return
-				if (stripeTab.closed) {
+				if (isStripeTabClosed(stripeTab)) {
 					stopWatchingStripePopup()
 					setBusy(false)
 					setError('Stripe authorization was closed before it was completed.')
@@ -281,9 +387,17 @@ export default function MerchantCardStripePanel({ cardAddress }: Props) {
 			}
 			watchForStripePopupClose()
 		} catch (e: any) {
-			if (!stripeNavigated && stripeTab && !stripeTab.closed) stripeTab.close()
+			const message = e?.message ?? String(e)
+			if (!stripeNavigated && stripeTab && !isStripeTabClosed(stripeTab)) {
+				sendStripeTabMessage(stripeTab, { type: STRIPE_OAUTH_FAIL_TYPE, message })
+				try {
+					stripeTab.close()
+				} catch {
+					// Keep the fail copy in the tab if the browser blocks close().
+				}
+			}
 			stopWatchingStripePopup()
-			setError(e?.message ?? String(e))
+			setError(message)
 		} finally {
 			if (!stripeNavigated) setBusy(false)
 		}

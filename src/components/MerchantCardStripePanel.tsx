@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { CreditCard, ExternalLink, Loader2, ShieldCheck } from 'lucide-react'
 import { ethers } from 'ethers'
 import { useDaemonContext } from '@/providers/DaemonProvider'
@@ -8,8 +8,6 @@ import {
 	postCardAddAdmin,
 	signExecuteForOwner,
 } from '@/services/BeamioCard'
-import { openExternalUrl } from '@/utils/openExternalUrl'
-
 type StripeStatus = {
 	linked: boolean
 	fulfillmentAdmin: string | null
@@ -22,6 +20,8 @@ type Props = {
 
 const stripeEndpoint = (path: string) => `${beamioApi}/api/merchantCardStripe/${path}`
 const STRIPE_STATUS_TIMEOUT_MS = 15_000
+const STRIPE_OAUTH_POPUP_POLL_MS = 500
+const STRIPE_OAUTH_MESSAGE_TYPE = 'beamio:merchant-card-stripe-oauth-complete'
 
 async function fetchStripeStatus(cardAddress: string): Promise<Response> {
 	const controller = new AbortController()
@@ -43,6 +43,16 @@ export default function MerchantCardStripePanel({ cardAddress }: Props) {
 	const [status, setStatus] = useState<StripeStatus | null>(null)
 	const [busy, setBusy] = useState(false)
 	const [error, setError] = useState('')
+	const stripePopupRef = useRef<Window | null>(null)
+	const stripePopupPollTimerRef = useRef<number | null>(null)
+
+	const stopWatchingStripePopup = useCallback(() => {
+		if (stripePopupPollTimerRef.current !== null) {
+			window.clearTimeout(stripePopupPollTimerRef.current)
+			stripePopupPollTimerRef.current = null
+		}
+		stripePopupRef.current = null
+	}, [])
 
 	const loadStatus = useCallback(async () => {
 		if (!ethers.isAddress(cardAddress)) return
@@ -76,6 +86,37 @@ export default function MerchantCardStripePanel({ cardAddress }: Props) {
 		void loadStatus()
 	}, [loadStatus])
 
+	useEffect(() => {
+		const expectedCardAddress = ethers.isAddress(cardAddress) ? ethers.getAddress(cardAddress).toLowerCase() : ''
+		const trustedCallbackOrigin = new URL(beamioApi).origin
+		const onStripeOAuthComplete = (event: MessageEvent<unknown>) => {
+			if (event.origin !== trustedCallbackOrigin || event.source !== stripePopupRef.current) return
+			const payload = event.data
+			if (!payload || typeof payload !== 'object') return
+			const result = payload as { type?: unknown; status?: unknown; cardAddress?: unknown; message?: unknown }
+			if (
+				result.type !== STRIPE_OAUTH_MESSAGE_TYPE ||
+				typeof result.cardAddress !== 'string' ||
+				!ethers.isAddress(result.cardAddress) ||
+				ethers.getAddress(result.cardAddress).toLowerCase() !== expectedCardAddress
+			) return
+
+			stopWatchingStripePopup()
+			setBusy(false)
+			if (result.status === 'success') {
+				setError('')
+				void loadStatus()
+				return
+			}
+			setError(typeof result.message === 'string' && result.message ? result.message : 'Stripe authorization was not completed.')
+		}
+		window.addEventListener('message', onStripeOAuthComplete)
+		return () => {
+			window.removeEventListener('message', onStripeOAuthComplete)
+			stopWatchingStripePopup()
+		}
+	}, [cardAddress, loadStatus, stopWatchingStripePopup])
+
 	const connectStripe = useCallback(async () => {
 		if (busy) return
 		const profile = profiles?.[0]
@@ -92,6 +133,15 @@ export default function MerchantCardStripePanel({ cardAddress }: Props) {
 			: null
 		let stripeNavigated = false
 		try {
+			if (!stripeTab) {
+				throw new Error('Unable to open Stripe authorization. Please allow pop-ups and try again.')
+			}
+			stripePopupRef.current = stripeTab
+			stripeTab.document.write(
+				'<!doctype html><title>Preparing Stripe</title><p style="font-family:system-ui;padding:2rem">Preparing secure Stripe authorization…</p>',
+			)
+			stripeTab.document.close()
+
 			const statusResponse = await fetchStripeStatus(cardAddress)
 			const stripeStatus = (await statusResponse.json()) as StripeStatus & { error?: string }
 			const fulfillmentAdmins = Array.isArray(stripeStatus.fulfillmentAdmins)
@@ -107,28 +157,6 @@ export default function MerchantCardStripePanel({ cardAddress }: Props) {
 			if (!merchantEoa || !ethers.isAddress(merchantEoa)) {
 				throw new Error('Unable to resolve the merchant wallet address.')
 			}
-			const linkResponse = await fetch(stripeEndpoint('oauth/start'), {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					cardAddress: ethers.getAddress(cardAddress),
-					merchantEoa: ethers.getAddress(merchantEoa),
-				}),
-			})
-			const link = (await linkResponse.json()) as { url?: string; error?: string }
-			if (!linkResponse.ok || !link.url) throw new Error(link.error ?? 'Unable to start Stripe OAuth Connect.')
-
-			// Navigate before the owner-signature flow. The OAuth page must not
-			// remain on about:blank while the on-chain admin transactions run.
-			if (stripeTab && !stripeTab.closed) {
-				stripeTab.location.assign(link.url)
-				stripeNavigated = true
-			} else if (!openExternalUrl(link.url)) {
-				throw new Error('Unable to open Stripe authorization. Please allow pop-ups and try again.')
-			} else {
-				stripeNavigated = true
-			}
-
 			for (const fulfillmentAdmin of fulfillmentAdmins) {
 				const deadline = Math.floor(Date.now() / 1000) + 3600
 				const nonce = ethers.hexlify(ethers.randomBytes(32))
@@ -152,14 +180,43 @@ export default function MerchantCardStripePanel({ cardAddress }: Props) {
 					throw new Error(`Unable to authorize Stripe fulfillment admin ${fulfillmentAdmin}. ${adminResult.error ?? ''}`.trim())
 				}
 			}
-			setStatus({ linked: false, fulfillmentAdmin: fulfillmentAdmins[0], fulfillmentAdmins })
+
+			const linkResponse = await fetch(stripeEndpoint('oauth/start'), {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					cardAddress: ethers.getAddress(cardAddress),
+					merchantEoa: ethers.getAddress(merchantEoa),
+				}),
+			})
+			const link = (await linkResponse.json()) as { url?: string; error?: string }
+			if (!linkResponse.ok || !link.url) throw new Error(link.error ?? 'Unable to start Stripe OAuth Connect.')
+			if (stripeTab.closed) throw new Error('The Stripe authorization window was closed. Please try again.')
+
+			stripeTab.location.assign(link.url)
+			stripeNavigated = true
+			const watchForStripePopupClose = () => {
+				if (stripePopupRef.current !== stripeTab) return
+				if (stripeTab.closed) {
+					stopWatchingStripePopup()
+					setBusy(false)
+					setError('Stripe authorization was closed before it was completed.')
+					return
+				}
+				stripePopupPollTimerRef.current = window.setTimeout(
+					watchForStripePopupClose,
+					STRIPE_OAUTH_POPUP_POLL_MS,
+				)
+			}
+			watchForStripePopupClose()
 		} catch (e: any) {
 			if (!stripeNavigated && stripeTab && !stripeTab.closed) stripeTab.close()
+			stopWatchingStripePopup()
 			setError(e?.message ?? String(e))
 		} finally {
-			setBusy(false)
+			if (!stripeNavigated) setBusy(false)
 		}
-	}, [busy, cardAddress, profiles])
+	}, [busy, cardAddress, profiles, stopWatchingStripePopup])
 
 	if (status?.linked) return null
 
@@ -192,7 +249,7 @@ export default function MerchantCardStripePanel({ cardAddress }: Props) {
 				className="mt-4 inline-flex min-h-10 items-center gap-2 rounded-xl bg-[#635bff] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#5148e5] disabled:cursor-not-allowed disabled:opacity-60"
 			>
 				{busy || status === null ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <ExternalLink className="h-4 w-4" aria-hidden />}
-				{busy ? 'Opening Stripe authorization…' : status === null ? 'Checking Stripe…' : 'Connect Stripe account'}
+				{busy ? 'Preparing Stripe authorization…' : status === null ? 'Checking Stripe…' : 'Connect Stripe account'}
 			</button>
 		</section>
 	)

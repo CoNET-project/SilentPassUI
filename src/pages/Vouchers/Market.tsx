@@ -702,6 +702,44 @@ const DISCOVER_HEALTH_BEAUTY_ACCENT = '#e67e22'
 const DISCOVER_HEALTH_BEAUTY_PASS_BG = '#4b453d'
 const DISCOVER_HEALTH_BEAUTY_LEAF = '#c9a882'
 
+function DiscoverDynamicPassTitle({ title }: { title: string }) {
+	const titleRef = useRef<HTMLParagraphElement>(null)
+
+	useLayoutEffect(() => {
+		const element = titleRef.current
+		if (!element) return
+
+		const fitTitle = () => {
+			const maxFontSize = 26.4
+			const minFontSize = 13
+			element.style.fontSize = `${maxFontSize}px`
+			const availableWidth = element.clientWidth
+			const requiredWidth = element.scrollWidth
+			if (!availableWidth || !requiredWidth) return
+			element.style.fontSize = `${Math.max(
+				minFontSize,
+				Math.min(maxFontSize, maxFontSize * (availableWidth / requiredWidth)),
+			)}px`
+		}
+
+		fitTitle()
+		const observer = new ResizeObserver(fitTitle)
+		observer.observe(element)
+		return () => observer.disconnect()
+	}, [title])
+
+	return (
+		<p
+			ref={titleRef}
+			className="whitespace-nowrap font-semibold leading-none tracking-tight text-white"
+			style={{ fontFamily: 'Georgia, "Times New Roman", Times, serif' }}
+			title={title}
+		>
+			{title}
+		</p>
+	)
+}
+
 /**
  * Health & Beauty · no Store Credit Multiplier · user already holds credits / points / pass.
  * Active Pass layout (Chillax-style) — not Member Recharge Privileges.
@@ -712,7 +750,6 @@ function DiscoverMerchantHealthBeautyLoyaltyPassPanel({
 	balancePrefix,
 	storeCreditsDisplay,
 	rewardPtsDisplay,
-	membershipFeesZero,
 	brandColor,
 	onActivateTopUp,
 	onBooking,
@@ -729,7 +766,6 @@ function DiscoverMerchantHealthBeautyLoyaltyPassPanel({
 	balancePrefix: string
 	storeCreditsDisplay: string
 	rewardPtsDisplay: string
-	membershipFeesZero: boolean
 	brandColor: string
 	onActivateTopUp: () => void
 	onBooking: () => void
@@ -789,12 +825,7 @@ function DiscoverMerchantHealthBeautyLoyaltyPassPanel({
 			>
 				<div className="flex items-start justify-between gap-3">
 					<div className="min-w-0">
-						<p
-							className="truncate text-[1.65rem] font-semibold leading-none tracking-tight text-white"
-							style={{ fontFamily: 'Georgia, "Times New Roman", Times, serif' }}
-						>
-							{passTitle.trim() || 'Merchant'}
-						</p>
+						<DiscoverDynamicPassTitle title={passTitle.trim() || 'Merchant'} />
 						<p className="mt-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/55">
 							Digital Customer Card
 						</p>
@@ -889,21 +920,16 @@ function DiscoverMerchantHealthBeautyLoyaltyPassPanel({
 							Spend &amp; Points Utility
 						</p>
 						<p className="mt-1.5 text-[13px] leading-relaxed text-[#5c6570] dark:text-slate-400">
-							Points never expire. Automatically redeem 100 Pts = {fiatLabel} 1.00 at checkout to offset any
+							Points never expire. Automatically redeem 1 Pts = {fiatLabel}1.00 at checkout to offset any
 							treatment, aftercare product, or across 1,000+ Alliance Merchants.
 						</p>
 					</div>
 				</div>
-				<div className="mt-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-[#ebe6df] pt-3 dark:border-slate-700">
+				<div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-[#ebe6df] pt-3 dark:border-slate-700">
 					<span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#3d4450] dark:text-slate-300">
 						<ShieldCheck className="h-3.5 w-3.5 text-emerald-600" strokeWidth={2.25} aria-hidden />
 						Instant ledger settlement
 					</span>
-					{membershipFeesZero ? (
-						<span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#3d4450] dark:text-slate-300">
-							Zero Membership Fees
-						</span>
-					) : null}
 				</div>
 			</section>
 
@@ -930,14 +956,9 @@ function DiscoverMerchantHealthBeautyLoyaltyPassPanel({
 							<Gift className="h-5 w-5 text-[#8a6a10]" strokeWidth={2.25} />
 						</span>
 						<div className="min-w-0 flex-1">
-							<div className="flex flex-wrap items-center gap-2">
-								<p className="text-[13px] font-bold uppercase tracking-[0.12em] text-[#1f2328] dark:text-slate-100">
-									Gift Wellness to Friends
-								</p>
-								<span className="inline-flex rounded-full bg-[#eceff3] px-2 py-0.5 text-[10px] font-semibold text-[#6b7280] dark:bg-slate-800 dark:text-slate-400">
-									Beamio Gift
-								</span>
-							</div>
+							<p className="text-[13px] font-bold uppercase tracking-[0.12em] text-[#1f2328] dark:text-slate-100">
+								Gift Wellness to Friends
+							</p>
 							<p className="mt-1 text-[12px] font-medium leading-snug text-[#5c6570] dark:text-slate-400">
 								Share the {passTitle.trim() || 'merchant'} experience with instant digital delivery
 							</p>
@@ -980,7 +1001,6 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 	passTitle,
 	chargePercent,
 	balancePrefix,
-	membershipFeesZero,
 	brandColor,
 	onActivateTopUp,
 	onFirstDiningSpend,
@@ -996,7 +1016,6 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 	passTitle: string
 	chargePercent: number | null
 	balancePrefix: string
-	membershipFeesZero: boolean
 	brandColor: string
 	onActivateTopUp: () => void
 	onFirstDiningSpend: () => void
@@ -1052,12 +1071,7 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 			>
 				<div className="flex items-start justify-between gap-3">
 					<div className="min-w-0">
-						<p
-							className="truncate text-[1.65rem] font-semibold leading-none tracking-tight text-white"
-							style={{ fontFamily: 'Georgia, "Times New Roman", Times, serif' }}
-						>
-							{nameUpper} VIP
-						</p>
+						<DiscoverDynamicPassTitle title={`${nameUpper} VIP`} />
 						<p className="mt-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/55">
 							Digital Dining &amp; Loyalty Pass
 						</p>
@@ -1130,16 +1144,11 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 						</p>
 					</div>
 				</div>
-				<div className="mt-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-[#ebe6df] pt-3 dark:border-slate-700">
+				<div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-[#ebe6df] pt-3 dark:border-slate-700">
 					<span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#3d4450] dark:text-slate-300">
 						<ShieldCheck className="h-3.5 w-3.5 text-emerald-600" strokeWidth={2.25} aria-hidden />
 						Instant ledger settlement
 					</span>
-					{membershipFeesZero ? (
-						<span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#3d4450] dark:text-slate-300">
-							Zero Membership Fees
-						</span>
-					) : null}
 				</div>
 			</section>
 
@@ -1213,7 +1222,6 @@ function DiscoverMerchantFoodBeverageLoyaltyPassPanel({
 	balancePrefix,
 	storeCreditsDisplay,
 	rewardPtsDisplay,
-	membershipFeesZero,
 	brandColor,
 	onActivateTopUp,
 	onBooking,
@@ -1230,7 +1238,6 @@ function DiscoverMerchantFoodBeverageLoyaltyPassPanel({
 	balancePrefix: string
 	storeCreditsDisplay: string
 	rewardPtsDisplay: string
-	membershipFeesZero: boolean
 	brandColor: string
 	onActivateTopUp: () => void
 	onBooking: () => void
@@ -1290,12 +1297,7 @@ function DiscoverMerchantFoodBeverageLoyaltyPassPanel({
 			>
 				<div className="flex items-start justify-between gap-3">
 					<div className="min-w-0">
-						<p
-							className="truncate text-[1.65rem] font-semibold leading-none tracking-tight text-white"
-							style={{ fontFamily: 'Georgia, "Times New Roman", Times, serif' }}
-						>
-							{nameDisplay}
-						</p>
+						<DiscoverDynamicPassTitle title={nameDisplay} />
 						<p className="mt-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/55">
 							Digital Dining &amp; Loyalty Pass
 						</p>
@@ -1380,21 +1382,16 @@ function DiscoverMerchantFoodBeverageLoyaltyPassPanel({
 							Spend &amp; Points Utility
 						</p>
 						<p className="mt-1.5 text-[13px] leading-relaxed text-[#5c6570] dark:text-slate-400">
-							Points never expire. Automatically redeem 100 Pts = {fiatLabel} 1.00 at checkout to offset any
+							Points never expire. Automatically redeem 1 Pts = {fiatLabel}1.00 at checkout to offset any
 							dining order, or across 1,000+ Alliance Merchants.
 						</p>
 					</div>
 				</div>
-				<div className="mt-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-[#ebe6df] pt-3 dark:border-slate-700">
+				<div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-[#ebe6df] pt-3 dark:border-slate-700">
 					<span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#3d4450] dark:text-slate-300">
 						<ShieldCheck className="h-3.5 w-3.5 text-emerald-600" strokeWidth={2.25} aria-hidden />
 						Instant ledger settlement
 					</span>
-					{membershipFeesZero ? (
-						<span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#3d4450] dark:text-slate-300">
-							Zero Membership Fees
-						</span>
-					) : null}
 				</div>
 			</section>
 
@@ -1429,14 +1426,9 @@ function DiscoverMerchantFoodBeverageLoyaltyPassPanel({
 							/>
 						</span>
 						<div className="min-w-0 flex-1">
-							<div className="flex flex-wrap items-center gap-2">
-								<p className="text-[13px] font-bold uppercase tracking-[0.12em] text-[#1f2328] dark:text-slate-100">
-									Gift Dining to Friends
-								</p>
-								<span className="inline-flex rounded-full bg-[#eceff3] px-2 py-0.5 text-[10px] font-semibold text-[#6b7280] dark:bg-slate-800 dark:text-slate-400">
-									Beamio Gift
-								</span>
-							</div>
+							<p className="text-[13px] font-bold uppercase tracking-[0.12em] text-[#1f2328] dark:text-slate-100">
+								Gift Dining to Friends
+							</p>
 							<p className="mt-1 text-[12px] font-medium leading-snug text-[#5c6570] dark:text-slate-400">
 								Share the {nameDisplay} experience with instant digital delivery
 							</p>
@@ -2688,17 +2680,17 @@ function discoverBrandTextOnShell(
 	const rgb = discoverParseCssRgb(color)
 	if (!rgb) return null
 	let { r, g, b } = rgb
-	const towardDark = discoverRelativeLuminance(r, g, b) > bgLum
+	const towardLight = discoverRelativeLuminance(r, g, b) < bgLum
 	for (let i = 0; i < 28; i++) {
 		if (discoverContrastRatio(discoverRelativeLuminance(r, g, b), bgLum) >= minContrast) break
-		if (towardDark) {
-			r = Math.max(0, Math.round(r * 0.88))
-			g = Math.max(0, Math.round(g * 0.88))
-			b = Math.max(0, Math.round(b * 0.88))
-		} else {
+		if (towardLight) {
 			r = Math.min(255, Math.round(r + (255 - r) * 0.14))
 			g = Math.min(255, Math.round(g + (255 - g) * 0.14))
 			b = Math.min(255, Math.round(b + (255 - b) * 0.14))
+		} else {
+			r = Math.max(0, Math.round(r * 0.88))
+			g = Math.max(0, Math.round(g * 0.88))
+			b = Math.max(0, Math.round(b * 0.88))
 		}
 	}
 	const solid = `rgb(${r}, ${g}, ${b})`
@@ -7474,7 +7466,6 @@ function DiscoverMerchantDetailFullScreen({
 									? '—'
 									: `${formatSocialPoints13Display(myPoints13Num)} Pts`
 							}
-							membershipFeesZero={!membershipFeeMode}
 							brandColor={merchantDetailBrandColor ?? DISCOVER_HEALTH_BEAUTY_PASS_BG}
 							onActivateTopUp={() => {
 								if (usdcTopupPhase !== 'idle' || discoverTopUpOpen) return
@@ -7506,7 +7497,6 @@ function DiscoverMerchantDetailFullScreen({
 									? '—'
 									: `${formatSocialPoints13Display(myPoints13Num)} Pts`
 							}
-							membershipFeesZero={!membershipFeeMode}
 							brandColor={merchantDetailBrandColor ?? DISCOVER_FOOD_BEVERAGE_PASS_FALLBACK}
 							onActivateTopUp={() => {
 								if (usdcTopupPhase !== 'idle' || discoverTopUpOpen) return
@@ -7532,7 +7522,6 @@ function DiscoverMerchantDetailFullScreen({
 							passTitle={passTitle}
 							chargePercent={foodBeverageChargePercent}
 							balancePrefix={balancePrefix || 'CA$'}
-							membershipFeesZero={!membershipFeeMode}
 							brandColor={merchantDetailBrandColor ?? DISCOVER_FOOD_BEVERAGE_PASS_FALLBACK}
 							onActivateTopUp={() => {
 								if (usdcTopupPhase !== 'idle' || discoverTopUpOpen) return

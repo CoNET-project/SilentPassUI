@@ -7507,8 +7507,7 @@ function DiscoverMerchantDetailFullScreen({
 							topUpDisabled={
 								giftSheetOpen ||
 								usdcTopupPhase !== 'idle' ||
-								discoverTopUpOpen ||
-								!canDiscoverTopUp
+								discoverTopUpOpen
 							}
 							actionsDisabled={giftSheetOpen}
 							visitError={merchantVisitError}
@@ -7538,8 +7537,7 @@ function DiscoverMerchantDetailFullScreen({
 							topUpDisabled={
 								giftSheetOpen ||
 								usdcTopupPhase !== 'idle' ||
-								discoverTopUpOpen ||
-								!canDiscoverTopUp
+								discoverTopUpOpen
 							}
 							actionsDisabled={giftSheetOpen}
 							visitError={merchantVisitError}
@@ -7564,8 +7562,7 @@ function DiscoverMerchantDetailFullScreen({
 							topUpDisabled={
 								giftSheetOpen ||
 								usdcTopupPhase !== 'idle' ||
-								discoverTopUpOpen ||
-								!canDiscoverTopUp
+								discoverTopUpOpen
 							}
 							actionsDisabled={giftSheetOpen}
 							visitError={merchantVisitError}

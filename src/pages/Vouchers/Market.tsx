@@ -5018,6 +5018,8 @@ function DiscoverMerchantDetailFullScreen({
 	onClose,
 	onLeaveForChat,
 	discoverDetailReturnTo,
+	initialMerchantAssets,
+	onMerchantAssetsConfirmed,
 }: {
 	item: DiscoverFeaturedCard
 	onClose: () => void
@@ -5025,6 +5027,12 @@ function DiscoverMerchantDetailFullScreen({
 	onLeaveForChat?: () => void
 	/** Preserve wallet/search return path across Contact → Chat → merchant detail. */
 	discoverDetailReturnTo?: string | null
+	/** Reuse the last trusted result while the detail overlay is remounted. */
+	initialMerchantAssets?: Awaited<ReturnType<typeof getMyAssets>> | null
+	onMerchantAssetsConfirmed?: (
+		cardAddress: string,
+		assets: Awaited<ReturnType<typeof getMyAssets>>,
+	) => void
 }) {
 	const navigate = useNavigate()
 	const location = useLocation()
@@ -5040,6 +5048,12 @@ function DiscoverMerchantDetailFullScreen({
 		ensureProfilesForAddresses,
 	} = useBeamioTagDatabase()
 	const profile = profiles?.[0] as Parameters<typeof getMyAssets>[0] | undefined
+	const seededMerchantAssets = useMemo(
+		() =>
+			initialMerchantAssets ??
+			hydrateDiscoverMerchantCardAssets(profile, item.cardAddress ?? undefined, myBrandCardDetails),
+		[initialMerchantAssets, profile, item.cardAddress, myBrandCardDetails],
+	)
 	const [resolvedDiscoverAbout, setResolvedDiscoverAbout] = useState<ShareTokenMetadataDiscoverAbout | null>(
 		item.discoverAbout,
 	)
@@ -5049,18 +5063,12 @@ function DiscoverMerchantDetailFullScreen({
 	const merchantLikeCount = pickDiscoverMerchantLikeCount(discoverMerchantStatByCard, item.cardAddress)
 	const merchantShareClickCount = pickDiscoverMerchantRefClickCount(discoverMerchantStatByCard, item.cardAddress)
 	const [merchantAssets, setMerchantAssets] = useState<Awaited<ReturnType<typeof getMyAssets>> | null>(() =>
-		hydrateDiscoverMerchantCardAssets(profiles?.[0] as Parameters<typeof getMyAssets>[0] | undefined, item.cardAddress ?? undefined, myBrandCardDetails),
+		seededMerchantAssets,
 	)
 	const [merchantAssetsLoading, setMerchantAssetsLoading] = useState(
 		() =>
 			Boolean(profiles?.[0]?.keyID && item.cardAddress) &&
-			!discoverMerchantAssetsHaveHoldings(
-				hydrateDiscoverMerchantCardAssets(
-					profiles?.[0] as Parameters<typeof getMyAssets>[0] | undefined,
-					item.cardAddress ?? undefined,
-					myBrandCardDetails,
-				),
-			),
+			!discoverMerchantAssetsHaveHoldings(seededMerchantAssets),
 	)
 	const [cardTopupSuccessBalance, setCardTopupSuccessBalance] = useState<string | null>(null)
 	const [cardTopupOverlayPhase, setCardTopupOverlayPhase] = useState<'idle' | 'listening' | 'success'>('idle')
@@ -6104,12 +6112,15 @@ function DiscoverMerchantDetailFullScreen({
 		if (!profile?.keyID || !item.cardAddress) return
 		getMyAssets(profile, item.cardAddress)
 			.then((res) => {
-				if (res != null) setMerchantAssets(res)
+				if (res != null) {
+					setMerchantAssets(res)
+					onMerchantAssetsConfirmed?.(item.cardAddress!, res)
+				}
 			})
 			.catch(() => {
 				/* untrusted — keep last trusted */
 			})
-	}, [profile, item.cardAddress])
+	}, [profile, item.cardAddress, onMerchantAssetsConfirmed])
 
 	const resetUsdcTopupFlow = useCallback(() => {
 		usdcTopupPollAbortRef.current?.abort()
@@ -7037,11 +7048,7 @@ function DiscoverMerchantDetailFullScreen({
 			setUserSocialPointsLoading(false)
 			return
 		}
-		const seeded = hydrateDiscoverMerchantCardAssets(
-			profile,
-			cardAddress,
-			myBrandCardDetails,
-		)
+		const seeded = seededMerchantAssets
 		const seededPts = Number(seeded?.chargeRewardPoints)
 		const hasSeededPts = Number.isFinite(seededPts) && seededPts > 0
 		// A cached asset object can be structurally present while still containing
@@ -7091,7 +7098,10 @@ function DiscoverMerchantDetailFullScreen({
 						// cannot be hidden by a stale EOA-only cache entry.
 						bypassCache: true,
 					})
-					if (!cancelled && res != null) setMerchantAssets(res)
+					if (!cancelled && res != null) {
+						setMerchantAssets(res)
+						onMerchantAssetsConfirmed?.(cardAddress, res)
+					}
 				} catch {
 					if (!cancelled) setMerchantAssets((prev) => prev)
 				}
@@ -7102,7 +7112,17 @@ function DiscoverMerchantDetailFullScreen({
 		return () => {
 			cancelled = true
 		}
-	}, [daemonCardAssets, item.cardAddress, profile?.keyID, profile?.aaAccount, resolveUserEoa, smartPayPrefetchDone, discoverTopUpOpen])
+	}, [
+		daemonCardAssets,
+		item.cardAddress,
+		profile?.keyID,
+		profile?.aaAccount,
+		resolveUserEoa,
+		smartPayPrefetchDone,
+		discoverTopUpOpen,
+		seededMerchantAssets,
+		onMerchantAssetsConfirmed,
+	])
 
 	useEffect(() => {
 		if (!merchantCoupons?.length) {
@@ -8244,7 +8264,10 @@ function DiscoverMerchantDetailFullScreen({
 							setDiscoverTopUpPrefill(undefined)
 						}}
 						onSuccess={(assets) => {
-							if (assets) setMerchantAssets(assets)
+							if (assets) {
+								setMerchantAssets(assets)
+								if (item.cardAddress) onMerchantAssetsConfirmed?.(item.cardAddress, assets)
+							}
 						}}
 					/>,
 					document.body,
@@ -8268,6 +8291,9 @@ export default function Market() {
 		lookupByAddress,
 	} = useMerchantCardDatabase()
 	const [myAssets, setMyAssets] = useState<Awaited<ReturnType<typeof getMyAssetsAggregated>> | null>(null)
+	const [discoverMerchantAssetsByCard, setDiscoverMerchantAssetsByCard] = useState<
+		Record<string, Awaited<ReturnType<typeof getMyAssets>>>
+	>({})
 	const [showCardDetail, setShowCardDetail] = useState(false)
 	const [overlayMode, setOverlayMode] = useState<"cardItem" | "cardDetail">("cardItem")
 	const [settingsOpen, setSettingsOpen] = useState<"" | "USDCTopup" | "showPayQR">("")
@@ -8469,6 +8495,17 @@ export default function Market() {
 			setShowFooter(false)
 		},
 		[setShowFooter],
+	)
+
+	const rememberDiscoverMerchantAssets = useCallback(
+		(cardAddress: string, assets: Awaited<ReturnType<typeof getMyAssets>>) => {
+			const key = cardAddress.trim().toLowerCase()
+			if (!key) return
+			setDiscoverMerchantAssetsByCard((previous) =>
+				previous[key] === assets ? previous : { ...previous, [key]: assets },
+			)
+		},
+		[],
 	)
 
 	const closeDiscoverMerchantDetail = useCallback(() => {
@@ -8847,6 +8884,12 @@ export default function Market() {
 						onClose={closeDiscoverMerchantDetail}
 						onLeaveForChat={leaveDiscoverMerchantDetailForChat}
 						discoverDetailReturnTo={discoverDetailReturnToRef.current}
+						initialMerchantAssets={
+							discoverMerchantDetail.cardAddress
+								? discoverMerchantAssetsByCard[discoverMerchantDetail.cardAddress.toLowerCase()] ?? null
+								: null
+						}
+						onMerchantAssetsConfirmed={rememberDiscoverMerchantAssets}
 					/>
 				</motion.div>
 			) : null}

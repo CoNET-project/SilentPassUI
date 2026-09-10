@@ -1944,6 +1944,8 @@ function AppShell() {
 				<div className="flex-1 min-h-0 flex flex-col">
 				<Routes>
 				<Route path="/Onboarding" element={<BeamioInstallOnboarding />} />
+				{/* Stripe returns in a fresh tab and must be visible even before wallet boot. */}
+				<Route path="/stripe-payment-return" element={<StripePaymentReturnPage />} />
 				<Route element={<AppEntryGate />}>
 					<Route path="/" element={<Home />} />
 					<Route path="/wallet" element={<WalletOverview />} />
@@ -1965,7 +1967,6 @@ function AppShell() {
 					<Route path="/discover" element={<Market />} />
 					<Route path="/browser" element={<Browser />} />
 					<Route path="/myWallet" element={<MyWallet />} />
-					<Route path="/stripe-payment-return" element={<StripePaymentReturnPage />} />
 					<Route path="/myBrands" element={<MyBrandsPage />} />
 					<Route path="/HistoryAll" element={<HistoryAll />} />
 					<Route path="/vouchers-example" element={<VouchersExample />} />

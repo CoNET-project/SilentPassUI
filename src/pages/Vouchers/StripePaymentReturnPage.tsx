@@ -3,6 +3,9 @@ import { AlertTriangle, Check, Loader2 } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 
+/** Absolute API host — required in iOS Embedded OTA (`cashtrees-local://`). */
+const BEAMIO_API_BASE = 'https://beamio.app'
+
 type StripeStatus = {
 	status?: 'pending' | 'succeeded' | 'failed'
 	paymentStatus?: string
@@ -33,7 +36,9 @@ export default function StripePaymentReturnPage() {
 		const poll = async () => {
 			try {
 				const response = await fetch(
-					cancelled ? '/api/merchantCardStripe/cancel' : '/api/merchantCardStripe/poll',
+					cancelled
+						? `${BEAMIO_API_BASE}/api/merchantCardStripe/cancel`
+						: `${BEAMIO_API_BASE}/api/merchantCardStripe/poll`,
 					{
 					method: 'POST',
 					headers: { 'Content-Type': 'application/json' },

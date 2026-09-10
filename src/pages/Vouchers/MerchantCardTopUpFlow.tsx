@@ -67,6 +67,9 @@ import {
 const SPINNER_CLASS =
 	'[&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]'
 
+/** Absolute API host — required in iOS Embedded OTA (`cashtrees-local://`); relative `/api` fails there. */
+const BEAMIO_API_BASE = 'https://beamio.app'
+
 const QUICK = ['10', '20', '50', '100'] as const
 
 type Step = 'amount' | 'pay' | 'select' | 'confirm' | 'success'
@@ -504,7 +507,7 @@ export default function MerchantCardTopUpFlow({
 		setStripeReady(false)
 		setStripeSessionId(null)
 		setStripePaymentMessage('')
-		void fetch('/api/merchantCardStripe/status', {
+		void fetch(`${BEAMIO_API_BASE}/api/merchantCardStripe/status`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({ cardAddress: ethers.getAddress(cardAddress) }),
@@ -527,7 +530,7 @@ export default function MerchantCardTopUpFlow({
 		setPayError('')
 		setStripePaymentMessage('Opening secure Stripe payment…')
 		try {
-			const response = await fetch('/api/merchantCardStripe/createCheckout', {
+			const response = await fetch(`${BEAMIO_API_BASE}/api/merchantCardStripe/createCheckout`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
@@ -583,7 +586,7 @@ export default function MerchantCardTopUpFlow({
 		let attempts = 0
 		const poll = async () => {
 			try {
-				const response = await fetch('/api/merchantCardStripe/poll', {
+				const response = await fetch(`${BEAMIO_API_BASE}/api/merchantCardStripe/poll`, {
 					method: 'POST',
 					headers: { 'Content-Type': 'application/json' },
 					body: JSON.stringify({ sessionId: stripeSessionId }),

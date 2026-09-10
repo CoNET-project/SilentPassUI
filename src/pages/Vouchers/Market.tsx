@@ -2002,17 +2002,16 @@ function DiscoverMerchantProspectJoinPanel({
 				</div>
 			) : null}
 			{multiplierOffers}
-			{onClaim ? (
-				<button
-					type="button"
-					onClick={() => onClaim(selectedCard?.suggestedAmount)}
-					className={ctaClass}
-					style={shellOnDark ? { color: accentForCta } : undefined}
-				>
-					{ctaLabel}
-					<ArrowRight className="h-4 w-4 shrink-0" strokeWidth={2.5} aria-hidden />
-				</button>
-			) : null}
+			<button
+				type="button"
+				onClick={() => onClaim?.(selectedCard?.suggestedAmount)}
+				disabled={!onClaim}
+				className={ctaClass}
+				style={shellOnDark ? { color: accentForCta } : undefined}
+			>
+				{ctaLabel}
+				<ArrowRight className="h-4 w-4 shrink-0" strokeWidth={2.5} aria-hidden />
+			</button>
 			<p className={footerClass} style={hasImage ? undefined : { color: titleColor }}>
 				<svg className="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" aria-hidden>
 					<path
@@ -7735,11 +7734,10 @@ function DiscoverMerchantDetailFullScreen({
 									? 'Claim Offer & Become a Member'
 									: prospectJoinPanelCopy.ctaLabel
 							}
-							onClaim={
-								usdcTopupPhase === 'idle' && !discoverTopUpOpen
-									? claimDiscoverTopupPromotion
-									: undefined
-							}
+							onClaim={(suggestedAmount) => {
+								if (usdcTopupPhase !== 'idle' || discoverTopUpOpen) return
+								claimDiscoverTopupPromotion(suggestedAmount)
+							}}
 						/>
 					) : null}
 					{showMemberRechargePrivileges ? (
@@ -8080,11 +8078,10 @@ function DiscoverMerchantDetailFullScreen({
 							config={curatedOffersPanel}
 							onCollectOffer={scrollToCouponsSection}
 							showTopUpBonus={false}
-							onClaimTopUp={
-								usdcTopupPhase === 'idle' && !discoverTopUpOpen
-									? claimDiscoverTopupPromotion
-									: undefined
-							}
+							onClaimTopUp={() => {
+								if (usdcTopupPhase !== 'idle' || discoverTopUpOpen) return
+								claimDiscoverTopupPromotion()
+							}}
 						/>
 					) : null}
 					</>

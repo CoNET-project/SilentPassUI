@@ -32,16 +32,15 @@ export function DiscoverTopupPromotionCapsule({
 			<p className="mt-2 text-[14px] leading-relaxed text-white/90 sm:text-[15px]">
 				<DiscoverDescriptionTextWithUrlCapsules text={description} tone="onDark" />
 			</p>
-			{onClaimTopUp ? (
-				<button
-					type="button"
-					onClick={onClaimTopUp}
-					className="mt-5 flex w-full items-center justify-center gap-2 rounded-full bg-white px-4 py-3 text-[15px] font-bold text-[#1562f0] shadow-sm transition active:scale-[0.98] hover:bg-white/95"
-				>
-					{ctaLabel}
-					<ArrowRight className="h-4 w-4 shrink-0" strokeWidth={2.5} aria-hidden />
-				</button>
-			) : null}
+			<button
+				type="button"
+				onClick={() => onClaimTopUp?.()}
+				disabled={!onClaimTopUp}
+				className="mt-5 flex w-full items-center justify-center gap-2 rounded-full bg-white px-4 py-3 text-[15px] font-bold text-[#1562f0] shadow-sm transition active:scale-[0.98] hover:bg-white/95"
+			>
+				{ctaLabel}
+				<ArrowRight className="h-4 w-4 shrink-0" strokeWidth={2.5} aria-hidden />
+			</button>
 		</section>
 	)
 }

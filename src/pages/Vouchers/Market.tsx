@@ -5565,7 +5565,7 @@ function DiscoverMerchantDetailFullScreen({
 		Boolean(item.cardAddress) &&
 		usdcTopupPhase === 'idle' &&
 		!discoverTopUpOpen &&
-		!merchantAssetsLoading &&
+		(!merchantAssetsLoading || membershipUi.mode === 'need_member') &&
 		(membershipUi.mode === 'no_fee' ||
 			membershipUi.mode === 'member_topup_only' ||
 			membershipUi.mode === 'can_upgrade' ||

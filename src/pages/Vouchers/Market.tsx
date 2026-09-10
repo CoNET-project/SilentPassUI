@@ -5024,6 +5024,16 @@ function discoverMerchantProgramPresentationFromAssets(
 	}
 }
 
+function discoverMerchantProgramPresentationEquals(
+	left: DiscoverMerchantProgramPresentation,
+	right: DiscoverMerchantProgramPresentation,
+): boolean {
+	return (
+		left.hasActiveMembership === right.hasActiveMembership &&
+		left.hasProgramHoldings === right.hasProgramHoldings
+	)
+}
+
 function DiscoverPayPanelError({ message }: { message: string }) {
 	return (
 		<div
@@ -5099,6 +5109,11 @@ function DiscoverMerchantDetailFullScreen({
 	const merchantAssetsSeedAppliedRef = useRef(seededMerchantAssets != null)
 	const merchantAssetsBootstrapAttemptedRef = useRef(false)
 	const merchantProgramPresentationLockedRef = useRef(true)
+	/**
+	 * Food & Beverage single-lane chrome: lock prospect vs loyalty at first paint.
+	 * Only a confirmed payment (`force: true`) may switch this lane.
+	 */
+	const sessionFoodBeveragePassLaneRef = useRef<'prospect' | 'loyalty' | null>(null)
 	const [merchantProgramPresentation, setMerchantProgramPresentation] =
 		useState<DiscoverMerchantProgramPresentation>(() =>
 			discoverMerchantProgramPresentationFromAssets(seededMerchantAssets),
@@ -5110,7 +5125,11 @@ function DiscoverMerchantDetailFullScreen({
 		) => {
 			if (merchantProgramPresentationLockedRef.current && !options?.force) return
 			merchantProgramPresentationLockedRef.current = true
-			setMerchantProgramPresentation(discoverMerchantProgramPresentationFromAssets(assets))
+			const next = discoverMerchantProgramPresentationFromAssets(assets)
+			setMerchantProgramPresentation(next)
+			if (options?.force) {
+				sessionFoodBeveragePassLaneRef.current = next.hasProgramHoldings ? 'loyalty' : 'prospect'
+			}
 		},
 		[],
 	)
@@ -5122,11 +5141,7 @@ function DiscoverMerchantDetailFullScreen({
 	const freezeMerchantProgramPresentation = useCallback(() => {
 		merchantProgramPresentationLockedRef.current = true
 	}, [])
-	const [merchantAssetsLoading, setMerchantAssetsLoading] = useState(
-		() =>
-			Boolean(profiles?.[0]?.keyID && item.cardAddress) &&
-			!seededMerchantAssetsHaveHoldings,
-	)
+	const [merchantAssetsLoading, setMerchantAssetsLoading] = useState(false)
 	const [cardTopupSuccessBalance, setCardTopupSuccessBalance] = useState<string | null>(null)
 	const [cardTopupOverlayPhase, setCardTopupOverlayPhase] = useState<'idle' | 'listening' | 'success'>('idle')
 	const [cardTopupSuccessKind, setCardTopupSuccessKind] = useState<USDCUserCardTopupIntent>('topup')
@@ -5137,13 +5152,15 @@ function DiscoverMerchantDetailFullScreen({
 	const [merchantCoupons, setMerchantCoupons] = useState<DiscoverMerchantCouponOffer[] | null>(null)
 	const [merchantOffersLoading, setMerchantOffersLoading] = useState(false)
 	const [userSocialPoints13, setUserSocialPoints13] = useState<number | null>(() => {
-		const pts = Number(
-			hydrateDiscoverMerchantCardAssets(
-				profiles?.[0] as Parameters<typeof getMyAssets>[0] | undefined,
-				item.cardAddress ?? undefined,
-				myBrandCardDetails,
-			)?.chargeRewardPoints,
+		const seeded = hydrateDiscoverMerchantCardAssets(
+			profiles?.[0] as Parameters<typeof getMyAssets>[0] | undefined,
+			item.cardAddress ?? undefined,
+			myBrandCardDetails,
 		)
+		if (!discoverMerchantProgramPresentationFromAssets(seeded).hasProgramHoldings) {
+			return null
+		}
+		const pts = Number(seeded?.chargeRewardPoints)
 		return Number.isFinite(pts) && pts > 0 ? pts : null
 	})
 	const [userSocialPointsLoading, setUserSocialPointsLoading] = useState(false)
@@ -5435,7 +5452,7 @@ function DiscoverMerchantDetailFullScreen({
 
 	useEffect(() => {
 		if (!item.cardAddress || issuerOwnerEoa) return
-		if (!smartPayPrefetchDone || discoverTopUpOpen) return
+		if (!smartPayPrefetchDone) return
 		let cancelled = false
 		void getCardOwner(item.cardAddress)
 			.then((owner) => {
@@ -5448,16 +5465,15 @@ function DiscoverMerchantDetailFullScreen({
 		return () => {
 			cancelled = true
 		}
-	}, [item.cardAddress, issuerOwnerEoa, smartPayPrefetchDone, discoverTopUpOpen])
+	}, [item.cardAddress, issuerOwnerEoa, smartPayPrefetchDone])
 
 	useEffect(() => {
 		if (!item.cardAddress) {
 			setChainCardSocialPromotion(undefined)
 			return
 		}
-		if (!smartPayPrefetchDone || discoverTopUpOpen) return
+		if (!smartPayPrefetchDone) return
 		let cancelled = false
-		setChainCardSocialPromotion(undefined)
 		void readCardSocialPromotionFromChain(item.cardAddress).then((promo) => {
 			if (cancelled || promo == null) return
 			setChainCardSocialPromotion(promo)
@@ -5465,7 +5481,7 @@ function DiscoverMerchantDetailFullScreen({
 		return () => {
 			cancelled = true
 		}
-	}, [item.cardAddress, smartPayPrefetchDone, discoverTopUpOpen])
+	}, [item.cardAddress, smartPayPrefetchDone])
 
 	const merchantInfoPanel =
 		item.cardAddress != null
@@ -5644,6 +5660,18 @@ function DiscoverMerchantDetailFullScreen({
 			}),
 		[merchantMetadataRoot, displayCurrency, discoverWelcomePanel?.title, discoverWelcomePanel?.body, passTitle],
 	)
+	/**
+	 * Freeze the multiplier-vs-prospect branch for this detail session.
+	 * Late metadata can grow `multiplierCards` and would otherwise unmount the
+	 * prospect / loyalty pass while Top-up is sliding in.
+	 */
+	const sessionMultiplierCardCountRef = useRef<number | null>(null)
+	if (sessionMultiplierCardCountRef.current == null) {
+		sessionMultiplierCardCountRef.current = prospectJoinPanelCopy.multiplierCards.length
+	}
+	const sessionMultiplierCardCount = sessionMultiplierCardCountRef.current
+	const sessionHasSingleMultiplierLane = sessionMultiplierCardCount <= 1
+	const sessionHasMultiplierOffers = sessionMultiplierCardCount > 1
 	const prospectJoinPanelBackground = useMemo(
 		() => parseDiscoverTier0PanelBackground(merchantMetadataRoot),
 		[merchantMetadataRoot],
@@ -5666,28 +5694,38 @@ function DiscoverMerchantDetailFullScreen({
 	)
 	/** User already holds this merchant’s store credits, Reward PT, and/or valid membership. */
 	const hasMerchantProgramHoldings = merchantProgramPresentation.hasProgramHoldings
+	if (
+		sessionFoodBeveragePassLaneRef.current == null &&
+		!isConetGenesisCard &&
+		item.category === 'food-beverage' &&
+		sessionHasSingleMultiplierLane
+	) {
+		sessionFoodBeveragePassLaneRef.current = hasMerchantProgramHoldings ? 'loyalty' : 'prospect'
+	}
+	const foodBeveragePassLane = sessionFoodBeveragePassLaneRef.current
 	/**
 	 * Health & Beauty + no Store Credit Multiplier + user holds credits/points/pass
-	 * → Chillax Active Pass layout. Hide while amount pad / receive flow is open.
+	 * → Chillax Active Pass layout. Keep this chrome mounted under the Top-up
+	 * overlay so Back does not remount a different membership branch.
+	 * Hide only for the inline membership-pay amount pad (`usdcTopupPhase`).
 	 */
 	const showHealthBeautyLoyaltyPass =
 		!isConetGenesisCard &&
 		item.category === 'health-beauty' &&
-		prospectJoinPanelCopy.multiplierCards.length <= 1 &&
+		sessionHasSingleMultiplierLane &&
 		hasMerchantProgramHoldings &&
-		usdcTopupPhase === 'idle' &&
-		!discoverTopUpOpen
+		usdcTopupPhase === 'idle'
 	/**
 	 * Food & Beverage + no Store Credit Multiplier + non-member with no #0 / #13
-	 * → Member Pass prospect layout (Poke Eyokey-style). Hide while top-up pad is open.
+	 * → Member Pass prospect layout (Poke Eyokey-style). Stay mounted while the
+	 * Top-up overlay is open, including when `usdcTopupPhase` is not idle.
+	 * Do not fall through to the join / holdings branch.
 	 */
 	const showFoodBeverageProspectPass =
 		!isConetGenesisCard &&
 		item.category === 'food-beverage' &&
-		prospectJoinPanelCopy.multiplierCards.length <= 1 &&
-		!hasMerchantProgramHoldings &&
-		usdcTopupPhase === 'idle' &&
-		!discoverTopUpOpen
+		sessionHasSingleMultiplierLane &&
+		foodBeveragePassLane === 'prospect'
 	/**
 	 * Food & Beverage + no Store Credit Multiplier + member / #0 / #13 holdings
 	 * → Active Member Pass (Health & Beauty parity) with dining chrome + brand color.
@@ -5695,29 +5733,28 @@ function DiscoverMerchantDetailFullScreen({
 	const showFoodBeverageLoyaltyPass =
 		!isConetGenesisCard &&
 		item.category === 'food-beverage' &&
-		prospectJoinPanelCopy.multiplierCards.length <= 1 &&
-		hasMerchantProgramHoldings &&
-		usdcTopupPhase === 'idle' &&
-		!discoverTopUpOpen
+		sessionHasSingleMultiplierLane &&
+		foodBeveragePassLane === 'loyalty' &&
+		usdcTopupPhase === 'idle'
 	const showProspectJoinPanel =
 		!isConetGenesisCard &&
 		!hasActiveMembership &&
 		!showHealthBeautyLoyaltyPass &&
 		!showFoodBeverageProspectPass &&
-		!showFoodBeverageLoyaltyPass
+		!showFoodBeverageLoyaltyPass &&
+		foodBeveragePassLane !== 'prospect'
 	/**
 	 * Member + Store Credit Multiplier (≥2 tiers): premium recharge layout.
-	 * Hide while amount pad / receive flow is open so top-up UX stays on the white card.
+	 * Hide only for the inline membership-pay amount pad so that card can take over.
 	 */
 	const showMemberRechargePrivileges =
 		!isConetGenesisCard &&
 		hasActiveMembership &&
-		prospectJoinPanelCopy.multiplierCards.length > 1 &&
-		usdcTopupPhase === 'idle' &&
-		!discoverTopUpOpen
+		sessionHasMultiplierOffers &&
+		usdcTopupPhase === 'idle'
 	/** Hide hero bonus pill whenever multiplier offers are the primary promo chrome. */
 	const showStoreCreditMultiplierOffers =
-		prospectJoinPanelCopy.multiplierCards.length > 1 &&
+		sessionHasMultiplierOffers &&
 		(showProspectJoinPanel || showMemberRechargePrivileges)
 	const healthBeautyChargePercent = useMemo(() => {
 		if (!showHealthBeautyLoyaltyPass) return null
@@ -6052,7 +6089,7 @@ function DiscoverMerchantDetailFullScreen({
 	useEffect(() => {
 		const card = item.cardAddress?.trim()
 		if (shareClickRecordedRef.current || !card || !ethers.isAddress(card)) return
-		if (!smartPayPrefetchDone || discoverTopUpOpen) return
+		if (!smartPayPrefetchDone) return
 		const privateKeyArmor = resolveSigningPrivateKeyArmor(profile)
 		if (!privateKeyArmor) return
 		shareClickRecordedRef.current = true
@@ -6061,7 +6098,7 @@ function DiscoverMerchantDetailFullScreen({
 			privateKeyArmor,
 			referrerEoa: shareReferrerFromUrl,
 		})
-	}, [item.cardAddress, profile?.keyID, shareReferrerFromUrl, smartPayPrefetchDone, discoverTopUpOpen])
+	}, [item.cardAddress, profile?.keyID, shareReferrerFromUrl, smartPayPrefetchDone])
 
 	useEffect(() => {
 		const card = item.cardAddress?.trim()
@@ -6070,7 +6107,7 @@ function DiscoverMerchantDetailFullScreen({
 			setLikeError('')
 			return
 		}
-		if (!smartPayPrefetchDone || discoverTopUpOpen) return
+		if (!smartPayPrefetchDone) return
 		const eoa = resolveUserEoa()
 		if (!eoa) {
 			setUserLiked(null)
@@ -6094,7 +6131,7 @@ function DiscoverMerchantDetailFullScreen({
 		return () => {
 			cancelled = true
 		}
-	}, [item.cardAddress, resolveUserEoa, profile?.keyID, smartPayPrefetchDone, discoverTopUpOpen])
+	}, [item.cardAddress, resolveUserEoa, profile?.keyID, smartPayPrefetchDone])
 
 	const submitMerchantUserLike = useCallback(async () => {
 		const card = item.cardAddress?.trim()
@@ -6160,19 +6197,35 @@ function DiscoverMerchantDetailFullScreen({
 		return resolveSigningPrivateKeyArmor(profile) || undefined
 	}, [profile])
 
-	const refreshMerchantAssets = useCallback(() => {
+	const refreshMerchantAssets = useCallback((opts?: { force?: boolean }) => {
 		if (!profile?.keyID || !item.cardAddress) return
 		getMyAssets(profile, item.cardAddress)
 			.then((res) => {
-				if (res != null) {
-					setMerchantAssets(res)
-					onMerchantAssetsConfirmed?.(item.cardAddress!, res)
+				if (res == null) return
+				const incoming = discoverMerchantProgramPresentationFromAssets(res)
+				if (
+					!opts?.force &&
+					!discoverMerchantProgramPresentationEquals(incoming, merchantProgramPresentation)
+				) {
+					// Leftover #0 / #13 / NFT must not flip this overlay session's chrome.
+					return
 				}
+				if (opts?.force) {
+					adoptMerchantProgramPresentation(res, { force: true })
+				}
+				setMerchantAssets(res)
+				onMerchantAssetsConfirmed?.(item.cardAddress!, res)
 			})
 			.catch(() => {
 				/* untrusted — keep last trusted */
 			})
-	}, [profile, item.cardAddress, onMerchantAssetsConfirmed])
+	}, [
+		adoptMerchantProgramPresentation,
+		item.cardAddress,
+		merchantProgramPresentation,
+		onMerchantAssetsConfirmed,
+		profile,
+	])
 
 	const resetUsdcTopupFlow = useCallback(() => {
 		usdcTopupPollAbortRef.current?.abort()
@@ -7115,7 +7168,13 @@ function DiscoverMerchantDetailFullScreen({
 			setUserSocialPointsLoading(false)
 			return
 		}
+		const sessionPresentation = merchantProgramPresentation
 		const seeded = seededMerchantAssets
+		const incomingFromSeed = discoverMerchantProgramPresentationFromAssets(seeded)
+		const seedMatchesSession = discoverMerchantProgramPresentationEquals(
+			incomingFromSeed,
+			sessionPresentation,
+		)
 		const seededPts = Number(seeded?.chargeRewardPoints)
 		const hasSeededPts = Number.isFinite(seededPts) && seededPts > 0
 		// A cached asset object can be structurally present while still containing
@@ -7124,28 +7183,35 @@ function DiscoverMerchantDetailFullScreen({
 		const seededHasHoldings = discoverMerchantAssetsHaveHoldings(seeded)
 		if (seeded && !merchantAssetsSeedAppliedRef.current) {
 			merchantAssetsSeedAppliedRef.current = true
-			setMerchantAssets(seeded)
-			setMerchantAssetsLoading(!seededHasHoldings)
-			if (seededHasHoldings) adoptMerchantProgramPresentation(seeded)
+			if (seedMatchesSession) {
+				setMerchantAssets(seeded)
+				if (seededHasHoldings) adoptMerchantProgramPresentation(seeded)
+			}
+			setMerchantAssetsLoading(false)
 		}
-		if (hasSeededPts) {
+		if (hasSeededPts && sessionPresentation.hasProgramHoldings && seedMatchesSession) {
 			setUserSocialPoints13(seededPts)
 			setUserSocialPointsLoading(false)
 		}
 
 		const userEOA = resolveUserEoa()
 		const socialEoa = userEOA ?? ''
-		const needSocial = !hasSeededPts && socialEoa.length > 0
+		// Prospect chrome is frozen for this overlay session. Leftover #0 / #13
+		// must not paint member/PT numbers under the Top-up slide. Smart Pay
+		// still reads leftover through collectSmartPaySeedAssets independently.
+		const needSocial =
+			!hasSeededPts &&
+			socialEoa.length > 0 &&
+			sessionPresentation.hasProgramHoldings
 		// A detail session may remain mounted while its Top-up child flow opens and
 		// closes. Bootstrap assets once, but never start a second membership read
 		// merely because that child flow returned or the daemon mirror changed.
 		const needAssets =
 			!merchantAssetsBootstrapAttemptedRef.current &&
+			sessionPresentation.hasProgramHoldings &&
 			(!seeded || !seededHasHoldings)
 		if (!needSocial && !needAssets) return
 		if (!smartPayPrefetchDone) return
-		// Top-up open: still refresh #13 for Smart Pay seed; skip getMyAssets storm.
-		if (discoverTopUpOpen && !needSocial) return
 
 		if (needAssets) merchantAssetsBootstrapAttemptedRef.current = true
 		let cancelled = false
@@ -7165,7 +7231,7 @@ function DiscoverMerchantDetailFullScreen({
 				}
 				if (!cancelled) setUserSocialPointsLoading(false)
 			}
-			if (needAssets && !discoverTopUpOpen && !cancelled) {
+			if (needAssets && !cancelled) {
 				setMerchantAssetsLoading(true)
 				try {
 					const res = await getMyAssets(profile, cardAddress, {
@@ -7174,11 +7240,14 @@ function DiscoverMerchantDetailFullScreen({
 						bypassCache: true,
 					})
 					if (!cancelled && res != null) {
-						setMerchantAssets(res)
+						const incoming = discoverMerchantProgramPresentationFromAssets(res)
+						if (discoverMerchantProgramPresentationEquals(incoming, sessionPresentation)) {
+							setMerchantAssets(res)
+							onMerchantAssetsConfirmed?.(cardAddress, res)
+						}
 						// Do not replace the member/prospect snapshot during this
 						// detail session. A confirmed payment uses force: true.
 						adoptMerchantProgramPresentation(res)
-						onMerchantAssetsConfirmed?.(cardAddress, res)
 					}
 				} catch {
 					if (!cancelled) setMerchantAssets((prev) => prev)
@@ -7197,10 +7266,11 @@ function DiscoverMerchantDetailFullScreen({
 		profile?.aaAccount,
 		resolveUserEoa,
 		smartPayPrefetchDone,
-		discoverTopUpOpen,
 		seededMerchantAssets,
 		adoptMerchantProgramPresentation,
 		onMerchantAssetsConfirmed,
+		merchantProgramPresentation.hasActiveMembership,
+		merchantProgramPresentation.hasProgramHoldings,
 	])
 
 	useEffect(() => {
@@ -7629,7 +7699,7 @@ function DiscoverMerchantDetailFullScreen({
 							brandColor={merchantDetailBrandColor ?? DISCOVER_FOOD_BEVERAGE_PASS_FALLBACK}
 							onActivateTopUp={() => {
 								if (usdcTopupPhase !== 'idle' || discoverTopUpOpen) return
-								claimDiscoverTopupPromotion()
+								openDiscoverTopupAmount()
 							}}
 							onFirstDiningSpend={onMerchantVisitBooking}
 							onBooking={onMerchantVisitBooking}
@@ -7741,7 +7811,8 @@ function DiscoverMerchantDetailFullScreen({
 					) : null}
 
 					{/* Membership wallet — white card when member without multiplier layout, or during top-up flow. */}
-					{(hasActiveMembership || usdcTopupPhase !== 'idle') &&
+					{(hasActiveMembership ||
+						(usdcTopupPhase !== 'idle' && hasMerchantProgramHoldings)) &&
 					!showMemberRechargePrivileges &&
 					!showHealthBeautyLoyaltyPass &&
 					!showFoodBeverageLoyaltyPass ? (
@@ -8242,7 +8313,7 @@ function DiscoverMerchantDetailFullScreen({
 									currency={displayCurrency}
 									metadataRoot={merchantMetadataRoot}
 									profile={profile}
-									onSuccess={() => void refreshMerchantAssets()}
+									onSuccess={() => void refreshMerchantAssets({ force: true })}
 									category={item.category}
 									merchantImage={item.image || item.logo || null}
 									programDescription={discoverClassifyProgramDescription(

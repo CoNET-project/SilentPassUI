@@ -622,10 +622,14 @@ export default function MerchantCardStripePanel({ cardAddress }: Props) {
 								}`}
 							>
 								<span
-									className={`block h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${
-										status.topupEnabled ? 'translate-x-7' : 'translate-x-0'
+									className={`flex h-5 w-5 items-center justify-center rounded-full bg-white shadow-sm transition-transform ${
+									topupUpdating ? 'translate-x-3.5' : status.topupEnabled ? 'translate-x-7' : 'translate-x-0'
 									}`}
-								/>
+								>
+									{topupUpdating ? (
+										<Loader2 className="h-3.5 w-3.5 animate-spin text-slate-500" aria-hidden />
+									) : null}
+								</span>
 							</span>
 						</button>
 					</div>

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, Check, ChevronRight, CreditCard, ExternalLink, Info, Loader2, Lock, Share, Share2, SlidersHorizontal, Star, Tag, Ticket, Wallet } from 'lucide-react'
+import { AlertTriangle, Check, ChevronRight, CreditCard, ExternalLink, Info, Loader2, Lock, Share, Share2, Star, Tag, Ticket, Wallet } from 'lucide-react'
 import usdcIcon from '@/components/assets/usdc.png'
 import { ethers } from 'ethers'
 import { BeamioCircularBackButton } from '@/components/BeamioCircularBackButton'
@@ -1979,8 +1979,20 @@ export default function MerchantCardTopUpFlow({
 									</button>
 								</div>
 
-								<div
-									className="mt-4 flex items-center justify-between gap-3 rounded-2xl px-3 py-3"
+								<button
+									type="button"
+									disabled={payBusy}
+									aria-label="Choose points manually"
+									onClick={() => {
+										setPayError('')
+										setSmartPay(true)
+										setUsedManual(true)
+										// Manual selection starts with every currently usable
+										// merchant selected; the user can opt out explicitly.
+										setSelected(new Set(usableRows.map((row) => row.cardAddress.toLowerCase())))
+										setStep('select')
+									}}
+									className="mt-4 flex w-full items-center justify-between gap-3 rounded-2xl px-3 py-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50"
 									style={{ backgroundColor: merchantBrandSoftTint }}
 								>
 									<div className="flex min-w-0 items-center gap-2.5">
@@ -2015,7 +2027,7 @@ export default function MerchantCardTopUpFlow({
 											`-${formatPrefixedFiat(prefix, coveredFiat.toFixed(2))}`
 										)}
 									</p>
-								</div>
+								</button>
 
 								<div className="mt-4" aria-busy={coverEstimatePending}>
 									<div
@@ -2236,57 +2248,6 @@ export default function MerchantCardTopUpFlow({
 									) : null}
 									<p>{stripePaymentMessage}</p>
 								</div>
-							) : null}
-
-							{smartPay ? (
-								<button
-									type="button"
-									onClick={() => {
-										setUsedManual(true)
-										// Manual selection starts with every currently usable
-										// merchant selected; the user can opt out explicitly.
-										setSelected(new Set(usableRows.map((row) => row.cardAddress.toLowerCase())))
-										setStep('select')
-									}}
-									disabled={payBusy || rowsLoading || usableRows.length === 0}
-									className="mt-3 flex w-full items-center gap-3 rounded-[18px] border px-3.5 py-3.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-40"
-									style={{
-										borderColor: merchantBrandBorder,
-										backgroundColor: merchantBrandSoftTint,
-									}}
-								>
-									<span
-										className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full"
-										style={{
-											backgroundColor: merchantBrandTint,
-											color: merchantBrandActionColor,
-										}}
-									>
-										<SlidersHorizontal className="h-5 w-5" strokeWidth={2.2} aria-hidden />
-									</span>
-									<span className="min-w-0 flex-1">
-										<span
-											className="block text-[15px] font-bold text-slate-900 dark:text-slate-100"
-										>
-											Choose Points Manually
-										</span>
-										<span
-											className="mt-0.5 block text-[13px]"
-											style={{ color: merchantBrandMutedColor }}
-										>
-											{rowsLoading
-												? 'Loading available points…'
-												: `Available: ${formatPtsShort(availablePts6)} Pts (from ${merchantCount} merchant${
-														merchantCount === 1 ? '' : 's'
-													})`}
-										</span>
-									</span>
-									<ChevronRight
-										className="h-5 w-5 shrink-0"
-										style={{ color: merchantBrandActionColor }}
-										aria-hidden
-									/>
-								</button>
 							) : null}
 
 							<div

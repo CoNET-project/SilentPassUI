@@ -1441,32 +1441,37 @@ export default function MerchantCardTopUpFlow({
 				<div className="flex flex-1 flex-col px-5 pb-[max(1.25rem,env(safe-area-inset-bottom,0px))]">
 					{step === 'amount' && (
 						<div className="flex min-h-0 flex-1 flex-col">
-							<div className="flex flex-1 flex-col items-center pt-8">
+							<div className="flex flex-1 flex-col items-center pt-1">
+								<div className="relative flex w-full items-center justify-center border-b border-slate-200/80 pb-3 dark:border-slate-800">
+									<h1 className="text-[22px] font-semibold tracking-tight text-[#1a1b1f] dark:text-slate-100">
+										Top Up
+									</h1>
+								</div>
 								{displayMerchantIcon ? (
 									<IpfsImg
 										src={displayMerchantIcon}
 										alt=""
-										className="h-20 w-20 rounded-full object-cover"
+										className="mt-6 h-20 w-20 rounded-full border border-slate-200 object-cover shadow-sm dark:border-slate-700"
 									/>
 								) : (
 									<div
-										className="flex h-20 w-20 items-center justify-center rounded-full bg-[#eceef2] text-2xl font-bold text-slate-500"
+										className="mt-6 flex h-20 w-20 items-center justify-center rounded-full border border-slate-200 bg-slate-100 text-2xl font-bold text-slate-600 shadow-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
 										aria-hidden
 									>
 										{(displayMerchantName || 'M').trim().slice(0, 1).toUpperCase()}
 									</div>
 								)}
-								<p className="mt-4 text-[22px] font-bold leading-tight text-[#111827] dark:text-slate-100">
+								<p className="mt-3 text-[22px] font-bold leading-tight text-[#1a1b1f] dark:text-slate-100">
 									{displayMerchantName}
 								</p>
-								<p className="mt-1.5 text-[15px] font-medium text-[#8b919c]">
+								<p className="mt-1 text-[15px] font-medium text-slate-600 dark:text-slate-400">
 									Store Credits: {storeCreditsLabel}
 								</p>
 								<label htmlFor="merchant-topup-amount" className="sr-only">
 									Amount
 								</label>
 								<div className="mt-12 inline-flex items-baseline justify-center border-b-2 border-[#9ec0ff] pb-1.5">
-									<span className="shrink-0 text-[34px] font-bold text-[#9aa3b2]">{prefix}</span>
+									<span className="shrink-0 text-[34px] font-bold text-slate-500 dark:text-slate-400">{prefix}</span>
 									<input
 										id="merchant-topup-amount"
 										type="number"
@@ -1486,18 +1491,49 @@ export default function MerchantCardTopUpFlow({
 										style={{ width: `${heroDigitsWidth}ch` }}
 									/>
 								</div>
-								{creditQuote ? (
-									<p className="mt-4 text-center text-[15px] font-medium text-[#3B66F5]">
-										You'll get {creditQuote.totalLabel} in store credits
-									</p>
+								{creditQuote && creditQuote.bonus > 0 ? (
+									<div className="relative mt-5 w-full max-w-md overflow-hidden rounded-2xl border border-emerald-500/30 bg-white p-4 shadow-sm dark:bg-slate-900">
+										<div className="pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full bg-emerald-500/10 blur-xl" />
+										<div className="relative flex items-center justify-between gap-2">
+											<span className="inline-flex items-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+												+ {prefix} {creditQuote.bonus.toFixed(2)} Bonus!
+											</span>
+											<span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+												Best Value
+											</span>
+										</div>
+										<div className="mt-3 flex items-center justify-between border-b border-slate-200/80 py-1 text-sm dark:border-slate-700">
+											<span className="font-medium text-slate-600 dark:text-slate-400">Base Top-Up</span>
+											<span className="font-semibold text-[#1a1b1f] dark:text-slate-100">
+												{prefix} {creditQuote.principal.toFixed(2)}
+											</span>
+										</div>
+										<div className="flex items-center justify-between border-b border-slate-200/80 py-1 text-sm dark:border-slate-700">
+											<span className="font-medium text-emerald-700 dark:text-emerald-300">Merchant Bonus</span>
+											<span className="font-bold text-emerald-600 dark:text-emerald-300">
+												+ {prefix} {creditQuote.bonus.toFixed(2)}
+											</span>
+										</div>
+										<div className="flex items-center justify-between pt-2.5">
+											<span className="font-semibold text-[#1a1b1f] dark:text-slate-100">Total purchasing power</span>
+											<span className="text-xl font-bold tracking-tight text-[#1562f0]">
+												{prefix} {creditQuote.total.toFixed(2)}
+											</span>
+										</div>
+									</div>
 								) : null}
-								<div className="mt-12 w-full max-w-md">
-									<p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#9aa3b2]">
+								<div className="mt-7 w-full max-w-md">
+									<p className="pl-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-600 dark:text-slate-400">
 										Quick amount
 									</p>
 									<div className="mt-3 grid grid-cols-2 gap-3">
 										{QUICK.map((q) => {
 											const selected = amountMatchesQuick(q)
+											const quickQuote = quoteDiscoverStoreCreditTopupBonus({
+												metadataRoot,
+												currency: String(cardCurrency || 'USD'),
+												amount: Number(q),
+											})
 											return (
 												<button
 													key={q}
@@ -1509,21 +1545,35 @@ export default function MerchantCardTopUpFlow({
 															: 'border border-transparent bg-[#f0f1f3] text-[#111827]'
 													}`}
 												>
-													${q}
+													<span className="block">{prefix} {q}</span>
+													{quickQuote && quickQuote.bonus > 0 ? (
+														<span className="mt-0.5 block text-[10px] font-medium text-emerald-700 dark:text-emerald-300">
+															+ {prefix} {quickQuote.bonus.toFixed(2)} Free
+														</span>
+													) : (
+														<span className="mt-0.5 block text-[10px] font-medium text-slate-500 dark:text-slate-400">
+															Standard
+														</span>
+													)}
 												</button>
 											)
 										})}
 									</div>
 								</div>
 							</div>
-							<button
-								type="button"
-								disabled={Number(fiatHuman) <= 0}
-								onClick={goPay}
-								className="mt-auto w-full rounded-2xl bg-[#3B66F5] py-4 text-[17px] font-bold text-white disabled:opacity-40"
-							>
-								Next
-							</button>
+							<div className="mt-6 bg-gradient-to-t from-white via-white/95 to-transparent pb-1 pt-4 dark:from-slate-950 dark:via-slate-950/95">
+								<button
+									type="button"
+									disabled={Number(fiatHuman) <= 0}
+									onClick={goPay}
+									className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#1562f0] py-4 text-[17px] font-bold text-white shadow-[0_10px_20px_rgba(21,98,240,0.25)] transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+								>
+									<span>
+										Continue with {prefix} {(creditQuote?.total ?? Number(fiatHuman)).toFixed(2)} Credit
+									</span>
+									<ChevronRight className="h-5 w-5" aria-hidden />
+								</button>
+							</div>
 						</div>
 					)}
 

@@ -5200,6 +5200,11 @@ function DiscoverMerchantDetailFullScreen({
 	const couponClaimStatusTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
 	const merchantCouponsRef = useRef<DiscoverMerchantCouponOffer[] | null>(null)
 	merchantCouponsRef.current = merchantCoupons
+	const ensureCardsForAddressesRef = useRef(ensureCardsForAddresses)
+	ensureCardsForAddressesRef.current = ensureCardsForAddresses
+	const registerCardAddressesRef = useRef(registerCardAddresses)
+	registerCardAddressesRef.current = registerCardAddresses
+	const merchantCouponsRequestIdRef = useRef(0)
 	const [discoverTopUpOpen, setDiscoverTopUpOpen] = useState(false)
 	const [smartPayPrefetchDone, setSmartPayPrefetchDone] = useState(false)
 	const [discoverTopUpPrefill, setDiscoverTopUpPrefill] = useState<string | undefined>()
@@ -7392,16 +7397,17 @@ function DiscoverMerchantDetailFullScreen({
 		}
 		let cancelled = false
 		const cardAddress = item.cardAddress
+		const requestId = ++merchantCouponsRequestIdRef.current
 		// Only show Coupons loading on first fetch — never blank the panel on metadata/cardMap refresh.
 		if (merchantCouponsRef.current == null) {
 			setMerchantOffersLoading(true)
 		}
-		registerCardAddresses([cardAddress])
-		Promise.all([
-			fetchCardActiveIssuedCouponSeriesTrusted(cardAddress, 50),
-			ensureCardsForAddresses([cardAddress], { maxPerTick: 1 }),
-		])
-			.then(([couponRows, ensuredMap]) => {
+		registerCardAddressesRef.current([cardAddress])
+
+		// Coupons must not wait for the unrelated merchant metadata Worker. The
+		// metadata warm-up is best-effort and may be delayed by RPC/IDB work.
+		void fetchCardActiveIssuedCouponSeriesTrusted(cardAddress, 50)
+			.then((couponRows) => {
 				if (cancelled) return
 				if (couponRows != null) {
 					const mapped = couponRows
@@ -7435,6 +7441,21 @@ function DiscoverMerchantDetailFullScreen({
 						return mapped
 					})
 				}
+			})
+			.catch(() => {
+				// Untrusted — keep previous coupon state.
+			})
+			.finally(() => {
+				if (!cancelled && merchantCouponsRequestIdRef.current === requestId) {
+					setMerchantOffersLoading(false)
+				}
+			})
+
+		// Warm merchant metadata independently; it must never hold the Coupons
+		// panel in a loading state.
+		void ensureCardsForAddressesRef.current([cardAddress], { maxPerTick: 1 })
+			.then((ensuredMap) => {
+				if (cancelled) return
 				const key = normalizeCardAddressKey(cardAddress)
 				const rec = (key ? ensuredMap[key] : undefined) ?? null
 				const metadataRoot =
@@ -7445,17 +7466,15 @@ function DiscoverMerchantDetailFullScreen({
 				if (freshAbout) setResolvedDiscoverAbout(freshAbout)
 			})
 			.catch(() => {
-				// Untrusted — keep previous coupon state.
-			})
-			.finally(() => {
-				if (!cancelled) setMerchantOffersLoading(false)
+				// Untrusted metadata — keep the seeded merchant presentation.
 			})
 		return () => {
 			cancelled = true
 		}
-		// Intentionally omit lookupByAddress: it changes whenever cardMap updates and would
-		// re-fetch/remount the Coupons panel (visible flash after claim / metadata warm).
-	}, [item.cardAddress, ccy, ensureCardsForAddresses, registerCardAddresses])
+		// Function identities come from the global merchant-card provider and may
+		// change when its background mirror updates. Keep this request single-flight
+		// for the card session; the refs above always call the latest functions.
+	}, [item.cardAddress])
 
 	useEffect(() => {
 		if (!giftSheetOpen) return

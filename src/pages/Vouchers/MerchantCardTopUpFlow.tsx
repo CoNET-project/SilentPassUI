@@ -2240,15 +2240,6 @@ export default function MerchantCardTopUpFlow({
 										</p>
 									</div>
 								</div>
-								{dualSmartPay && cashUsdc6 > 0n && eoaUsdc6 !== null ? (
-									<p
-										className="mt-2 text-[12px]"
-										style={{ color: merchantBrandMutedColor }}
-									>
-										USDC ${formatUsdc(eoaUsdc6 + (baseUsdc6 ?? 0n))} · need $
-										{formatUsdc(cashUsdc6)}
-									</p>
-								) : null}
 							</div>
 
 							<div

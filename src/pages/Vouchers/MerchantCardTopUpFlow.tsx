@@ -61,6 +61,10 @@ import {
 } from '@/utils/discoverMerchantShare'
 import {
 	quoteDiscoverStoreCreditTopupBonus,
+	discoverContrastTextOnBrand,
+	discoverMixCssColorWithBlack,
+	discoverMixCssColorWithWhite,
+	parseDiscoverMerchantBrandColor,
 	resolveDiscoverMerchantPageBrandColor,
 } from '@/utils/discoverMerchantPromotions'
 
@@ -485,6 +489,29 @@ export default function MerchantCardTopUpFlow({
 	const pageSurface = useMemo(
 		() => resolveDiscoverMerchantPageBrandColor(metadataRoot),
 		[metadataRoot],
+	)
+	const merchantBrandColor = useMemo(
+		() => parseDiscoverMerchantBrandColor(metadataRoot) ?? '#1562f0',
+		[metadataRoot],
+	)
+	const merchantBrandTextColor = useMemo(
+		() => discoverContrastTextOnBrand(merchantBrandColor),
+		[merchantBrandColor],
+	)
+	const merchantBrandActionColor = useMemo(
+		() =>
+			merchantBrandTextColor === '#111827'
+				? discoverMixCssColorWithBlack(merchantBrandColor, 0.55) ?? '#334155'
+				: merchantBrandColor,
+		[merchantBrandColor, merchantBrandTextColor],
+	)
+	const merchantBrandTint = useMemo(
+		() => discoverMixCssColorWithWhite(merchantBrandColor, 0.86) ?? '#e8eeff',
+		[merchantBrandColor],
+	)
+	const merchantBrandBorder = useMemo(
+		() => discoverMixCssColorWithWhite(merchantBrandColor, 0.55) ?? '#9ec0ff',
+		[merchantBrandColor],
 	)
 	const creditQuote = useMemo(() => {
 		const amount = Number(fiatHuman)
@@ -1470,7 +1497,10 @@ export default function MerchantCardTopUpFlow({
 								<label htmlFor="merchant-topup-amount" className="sr-only">
 									Amount
 								</label>
-								<div className="mt-12 inline-flex items-baseline justify-center border-b-2 border-[#9ec0ff] pb-1.5">
+								<div
+									className="mt-12 inline-flex items-baseline justify-center border-b-2 pb-1.5"
+									style={{ borderColor: merchantBrandBorder }}
+								>
 									<span className="shrink-0 text-[34px] font-bold text-slate-500 dark:text-slate-400">{prefix}</span>
 									<input
 										id="merchant-topup-amount"
@@ -1516,7 +1546,10 @@ export default function MerchantCardTopUpFlow({
 										</div>
 										<div className="flex items-center justify-between pt-2.5">
 											<span className="font-semibold text-[#1a1b1f] dark:text-slate-100">Total purchasing power</span>
-											<span className="text-xl font-bold tracking-tight text-[#1562f0]">
+											<span
+												className="text-xl font-bold tracking-tight"
+												style={{ color: merchantBrandActionColor }}
+											>
 												{prefix} {creditQuote.total.toFixed(2)}
 											</span>
 										</div>
@@ -1541,9 +1574,18 @@ export default function MerchantCardTopUpFlow({
 													onClick={() => setAmountInput(Number(q).toFixed(2))}
 													className={`rounded-2xl py-3.5 text-[16px] font-semibold transition ${
 														selected
-															? 'border border-[#3B66F5] bg-[#e8eeff] text-[#3B66F5]'
+															? 'border text-[#111827] dark:text-slate-100'
 															: 'border border-transparent bg-[#f0f1f3] text-[#111827]'
 													}`}
+													style={
+														selected
+															? {
+																	borderColor: merchantBrandBorder,
+																	backgroundColor: merchantBrandTint,
+																	color: merchantBrandActionColor,
+																}
+															: undefined
+													}
 												>
 													<span className="block">{prefix} {q}</span>
 													{quickQuote && quickQuote.bonus > 0 ? (
@@ -1566,7 +1608,11 @@ export default function MerchantCardTopUpFlow({
 									type="button"
 									disabled={Number(fiatHuman) <= 0}
 									onClick={goPay}
-									className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#1562f0] py-4 text-[17px] font-bold text-white shadow-[0_10px_20px_rgba(21,98,240,0.25)] transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+									className="flex w-full items-center justify-center gap-2 rounded-xl py-4 text-[17px] font-bold shadow-[0_10px_20px_rgba(15,23,42,0.18)] transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+									style={{
+										backgroundColor: merchantBrandActionColor,
+										color: merchantBrandTextColor,
+									}}
 								>
 									<span>
 										Continue with {prefix} {(creditQuote?.total ?? Number(fiatHuman)).toFixed(2)} Credit
@@ -1588,8 +1634,9 @@ export default function MerchantCardTopUpFlow({
 									/>
 								) : (
 									<div
-										className="flex h-16 w-16 items-center justify-center rounded-full bg-[#eceef2] text-[20px] font-bold text-[#3B66F5]"
+										className="flex h-16 w-16 items-center justify-center rounded-full bg-slate-100 text-[20px] font-bold dark:bg-slate-800"
 										aria-hidden
+										style={{ color: merchantBrandActionColor }}
 									>
 										{merchantInitials(displayMerchantName)}
 									</div>
@@ -1604,7 +1651,15 @@ export default function MerchantCardTopUpFlow({
 								Payment Method
 							</p>
 
-							<div className="mt-3 overflow-hidden rounded-[22px] bg-gradient-to-b from-[#3B82F6] to-[#1D4ED8] p-4 text-white shadow-[0_12px_28px_rgba(29,78,216,0.28)]">
+							<div
+								className="mt-3 overflow-hidden rounded-[22px] p-4 shadow-[0_12px_28px_rgba(15,23,42,0.22)]"
+								style={{
+									backgroundImage: `linear-gradient(to bottom, ${merchantBrandActionColor}, ${
+										discoverMixCssColorWithBlack(merchantBrandActionColor, 0.28) ?? merchantBrandActionColor
+									})`,
+									color: merchantBrandTextColor,
+								}}
+							>
 								<div className="flex items-center justify-between">
 									<div className="flex items-center gap-2">
 										<Sparkles className="h-4 w-4 text-[#86efac]" strokeWidth={2.25} aria-hidden />
@@ -1738,7 +1793,13 @@ export default function MerchantCardTopUpFlow({
 									disabled={payBusy || rowsLoading || usableRows.length === 0}
 									className="mt-3 flex w-full items-center gap-3 rounded-[18px] border border-slate-200 bg-white px-3.5 py-3.5 text-left disabled:opacity-40"
 								>
-									<span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#e8eeff] text-[#3B66F5]">
+									<span
+										className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full"
+										style={{
+											backgroundColor: merchantBrandTint,
+											color: merchantBrandActionColor,
+										}}
+									>
 										<SlidersHorizontal className="h-5 w-5" strokeWidth={2.2} aria-hidden />
 									</span>
 									<span className="min-w-0 flex-1">
@@ -1761,7 +1822,11 @@ export default function MerchantCardTopUpFlow({
 								type="button"
 								disabled={!canOpenConfirm}
 								onClick={goConfirm}
-								className="mt-auto w-full rounded-2xl bg-[#3B66F5] py-4 text-[17px] font-bold text-white disabled:opacity-40"
+								className="mt-auto w-full rounded-2xl py-4 text-[17px] font-bold disabled:opacity-40"
+								style={{
+									backgroundColor: merchantBrandActionColor,
+									color: merchantBrandTextColor,
+								}}
 							>
 								Confirm Top Up
 							</button>
@@ -1909,7 +1974,11 @@ export default function MerchantCardTopUpFlow({
 								aria-busy={payBusy}
 								aria-label={payBusy ? payBusyLabel : confirmPayLabel}
 								onClick={() => void redeemLegsThenBuy()}
-								className="mt-auto flex w-full items-center justify-center gap-2 rounded-2xl bg-[#3B66F5] py-4 text-[17px] font-bold text-white disabled:opacity-40"
+								className="mt-auto flex w-full items-center justify-center gap-2 rounded-2xl py-4 text-[17px] font-bold disabled:opacity-40"
+								style={{
+									backgroundColor: merchantBrandActionColor,
+									color: merchantBrandTextColor,
+								}}
 							>
 								{payBusy ? (
 									<>
@@ -1956,7 +2025,8 @@ export default function MerchantCardTopUpFlow({
 								type="button"
 								disabled={stripeBusy}
 								onClick={close}
-								className="mt-auto w-full max-w-sm rounded-2xl bg-[#eef1f6] py-4 text-[17px] font-semibold text-[#3B66F5] disabled:cursor-not-allowed disabled:opacity-50"
+								className="mt-auto w-full max-w-sm rounded-2xl bg-slate-100 py-4 text-[17px] font-semibold disabled:cursor-not-allowed disabled:opacity-50 dark:bg-slate-800"
+								style={{ color: merchantBrandActionColor }}
 							>
 								{stripeBusy ? 'Checking payment…' : 'Done'}
 							</button>
@@ -2010,7 +2080,11 @@ export default function MerchantCardTopUpFlow({
 									aria-busy={sharing}
 									aria-label="Share & Earn"
 									onClick={() => void handleShareEarn()}
-									className="mt-6 flex w-full items-center justify-center gap-2 rounded-2xl bg-[#3B66F5] py-4 text-[17px] font-bold text-white disabled:opacity-40"
+									className="mt-6 flex w-full items-center justify-center gap-2 rounded-2xl py-4 text-[17px] font-bold disabled:opacity-40"
+									style={{
+										backgroundColor: merchantBrandActionColor,
+										color: merchantBrandTextColor,
+									}}
 								>
 									{sharing ? (
 										<Loader2 className="h-5 w-5 animate-spin" aria-hidden />
@@ -2025,7 +2099,8 @@ export default function MerchantCardTopUpFlow({
 									type="button"
 									disabled={sharing}
 									onClick={close}
-									className="mt-3 w-full rounded-2xl bg-[#eef1f6] py-4 text-[17px] font-semibold text-[#3B66F5] disabled:opacity-40 dark:bg-slate-800 dark:text-[#8eb0ff]"
+									className="mt-3 w-full rounded-2xl bg-slate-100 py-4 text-[17px] font-semibold disabled:opacity-40 dark:bg-slate-800"
+									style={{ color: merchantBrandActionColor }}
 								>
 									Done
 								</button>

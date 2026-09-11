@@ -513,6 +513,18 @@ export default function MerchantCardTopUpFlow({
 		() => discoverMixCssColorWithWhite(merchantBrandColor, 0.55) ?? '#9ec0ff',
 		[merchantBrandColor],
 	)
+	const merchantBrandPaymentSurface = useMemo(
+		() => discoverMixCssColorWithBlack(merchantBrandActionColor, 0.58) ?? '#2b2d42',
+		[merchantBrandActionColor],
+	)
+	const merchantBrandPaymentSurfaceEnd = useMemo(
+		() => discoverMixCssColorWithBlack(merchantBrandActionColor, 0.78) ?? '#1f2030',
+		[merchantBrandActionColor],
+	)
+	const merchantBrandPaymentTextColor = useMemo(
+		() => discoverContrastTextOnBrand(merchantBrandPaymentSurface),
+		[merchantBrandPaymentSurface],
+	)
 	const creditQuote = useMemo(() => {
 		const amount = Number(fiatHuman)
 		return quoteDiscoverStoreCreditTopupBonus({
@@ -1741,12 +1753,10 @@ export default function MerchantCardTopUpFlow({
 							</p>
 
 							<div
-								className="mt-3 overflow-hidden rounded-[22px] p-4 shadow-[0_12px_28px_rgba(15,23,42,0.22)]"
+								className="mt-3 overflow-hidden rounded-[24px] border border-white/10 p-4 shadow-[0_16px_34px_rgba(15,23,42,0.24)]"
 								style={{
-									backgroundImage: `linear-gradient(to bottom, ${merchantBrandActionColor}, ${
-										discoverMixCssColorWithBlack(merchantBrandActionColor, 0.28) ?? merchantBrandActionColor
-									})`,
-									color: merchantBrandTextColor,
+									backgroundImage: `linear-gradient(to bottom, ${merchantBrandPaymentSurface}, ${merchantBrandPaymentSurfaceEnd})`,
+									color: merchantBrandPaymentTextColor,
 								}}
 							>
 								<div className="flex items-center justify-between">
@@ -1760,7 +1770,7 @@ export default function MerchantCardTopUpFlow({
 									</span>
 								</div>
 
-								<div className="mt-4 flex items-center justify-between rounded-2xl border border-white/20 bg-black/15 px-3.5 py-3">
+								<div className="mt-4 flex items-center justify-between rounded-[22px] border border-white/20 bg-black/15 px-3.5 py-3.5">
 									<div>
 										<p className="text-[15px] font-bold">Use Points</p>
 										<p className="mt-0.5 text-[12px] text-white/75">
@@ -1790,7 +1800,7 @@ export default function MerchantCardTopUpFlow({
 									</button>
 								</div>
 
-								<p className="mt-3 text-[13px] leading-relaxed text-white/90">
+								<p className="mt-4 text-[13px] leading-relaxed text-white/90">
 									{smartPay
 										? cashUsdc6 > 0n
 											? 'Points + USDC. Use available points, then cover the rest with USDC.'
@@ -1799,7 +1809,7 @@ export default function MerchantCardTopUpFlow({
 								</p>
 
 								<div
-									className="mt-4 grid grid-cols-2 gap-3 rounded-2xl bg-black/20 px-4 py-3"
+									className="mt-4 grid grid-cols-2 gap-3 rounded-[22px] bg-black/20 px-4 py-3.5"
 									aria-busy={coverEstimatePending}
 								>
 									<div>

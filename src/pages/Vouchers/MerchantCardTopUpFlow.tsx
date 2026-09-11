@@ -2,10 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, Check, ChevronRight, CreditCard, Info, Loader2, Lock, Share, Share2, SlidersHorizontal, Sparkles, Tag } from 'lucide-react'
 import usdcIcon from '@/components/assets/usdc.png'
 import { ethers } from 'ethers'
-import {
-	BeamioCircularBackButton,
-	BEAMIO_CIRCULAR_BACK_ROW_CLASS,
-} from '@/components/BeamioCircularBackButton'
+import { BeamioCircularBackButton } from '@/components/BeamioCircularBackButton'
 import { IpfsImg } from '@/components/IpfsImg'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { useMerchantCardDatabase } from '@/providers/MerchantCardDatabaseProvider'
@@ -495,16 +492,18 @@ export default function MerchantCardTopUpFlow({
 		() => parseDiscoverMerchantBrandColor(metadataRoot) ?? '#1562f0',
 		[metadataRoot],
 	)
-	const merchantBrandTextColor = useMemo(
-		() => discoverContrastTextOnBrand(merchantBrandColor),
+	const merchantBrandActionColor = useMemo(
+		() => {
+			const brandTextColor = discoverContrastTextOnBrand(merchantBrandColor)
+			return brandTextColor === '#111827'
+				? discoverMixCssColorWithBlack(merchantBrandColor, 0.55) ?? '#334155'
+				: merchantBrandColor
+		},
 		[merchantBrandColor],
 	)
-	const merchantBrandActionColor = useMemo(
-		() =>
-			merchantBrandTextColor === '#111827'
-				? discoverMixCssColorWithBlack(merchantBrandColor, 0.55) ?? '#334155'
-				: merchantBrandColor,
-		[merchantBrandColor, merchantBrandTextColor],
+	const merchantBrandTextColor = useMemo(
+		() => discoverContrastTextOnBrand(merchantBrandActionColor),
+		[merchantBrandActionColor],
 	)
 	const merchantBrandTint = useMemo(
 		() => discoverMixCssColorWithWhite(merchantBrandColor, 0.86) ?? '#e8eeff',
@@ -1457,8 +1456,17 @@ export default function MerchantCardTopUpFlow({
 				style={{ paddingTop: 'max(1rem, env(safe-area-inset-top, 0px))' }}
 			>
 				{step !== 'success' ? (
-					<div className={`${BEAMIO_CIRCULAR_BACK_ROW_CLASS} px-4`}>
-						<BeamioCircularBackButton variant="onLight" onClick={back} className="absolute left-4 top-0" />
+					<div className="pointer-events-none fixed inset-x-0 top-0 z-[160] px-4 pt-[max(1rem,env(safe-area-inset-top,0px))]">
+						<BeamioCircularBackButton
+							variant="onLight"
+							onClick={back}
+							className="pointer-events-auto absolute left-4 top-0"
+						/>
+						{step === 'amount' ? (
+							<h1 className="pointer-events-none absolute inset-x-12 top-1/2 -translate-y-1/2 text-center text-[22px] font-semibold tracking-tight text-[#1a1b1f] dark:text-slate-100">
+								Top Up
+							</h1>
+						) : null}
 					</div>
 				) : null}
 				{step === 'confirm' ? (
@@ -1473,21 +1481,25 @@ export default function MerchantCardTopUpFlow({
 					</header>
 				) : null}
 
-				<div className="flex flex-1 flex-col px-5 pb-[max(1.25rem,env(safe-area-inset-bottom,0px))]">
+				<div
+					className={`flex flex-1 flex-col px-5 pb-[max(1.25rem,env(safe-area-inset-bottom,0px))] ${
+						step === 'pay' || step === 'confirm' ? 'pt-12' : ''
+					}`}
+				>
 					{step === 'amount' && (
 						<div className="flex min-h-0 flex-1 flex-col">
 							<div className="flex flex-1 flex-col items-center pt-1">
-								<div className="relative flex w-full items-center justify-center border-b border-slate-200/80 pb-3 dark:border-slate-800">
-									<h1 className="text-[22px] font-semibold tracking-tight text-[#1a1b1f] dark:text-slate-100">
-										Top Up
-									</h1>
-								</div>
 								{displayMerchantIcon ? (
-									<IpfsImg
-										src={displayMerchantIcon}
-										alt=""
-										className="mt-6 h-20 w-20 rounded-full border border-slate-200 object-cover shadow-sm dark:border-slate-700"
-									/>
+									<div
+										className="mt-6 flex h-20 w-20 items-center justify-center rounded-full border border-slate-200 p-1 shadow-sm dark:border-slate-700"
+										style={{ backgroundColor: merchantBrandActionColor }}
+									>
+										<IpfsImg
+											src={displayMerchantIcon}
+											alt=""
+											className="h-full w-full rounded-full object-cover"
+										/>
+									</div>
 								) : (
 									<div
 										className="mt-6 flex h-20 w-20 items-center justify-center rounded-full border border-slate-200 bg-slate-100 text-2xl font-bold text-slate-600 shadow-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
@@ -1591,7 +1603,7 @@ export default function MerchantCardTopUpFlow({
 													key={q}
 													type="button"
 													onClick={() => setAmountInput(Number(q).toFixed(2))}
-													className={`relative rounded-2xl py-3.5 text-[16px] font-semibold transition ${
+													className={`relative rounded-2xl py-3.5 text-[16px] font-semibold shadow-[0_4px_12px_rgba(15,23,42,0.10)] transition ${
 														selected
 															? 'border text-[#111827] dark:text-slate-100'
 															: 'border border-transparent bg-[#f0f1f3] text-[#111827]'
@@ -1679,11 +1691,16 @@ export default function MerchantCardTopUpFlow({
 								<div className="flex items-center justify-between gap-3">
 									<div className="flex min-w-0 items-center gap-3">
 										{displayMerchantIcon ? (
-											<IpfsImg
-												src={displayMerchantIcon}
-												alt=""
-												className="h-11 w-11 shrink-0 rounded-xl object-cover"
-											/>
+											<div
+												className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl p-0.5"
+												style={{ backgroundColor: merchantBrandActionColor }}
+											>
+												<IpfsImg
+													src={displayMerchantIcon}
+													alt=""
+													className="h-full w-full rounded-lg object-cover"
+												/>
+											</div>
 										) : (
 											<div
 												className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-sm font-bold"
@@ -1721,11 +1738,16 @@ export default function MerchantCardTopUpFlow({
 
 							<div className="flex flex-col items-center pt-2">
 								{displayMerchantIcon ? (
-									<IpfsImg
-										src={displayMerchantIcon}
-										alt=""
-										className="h-16 w-16 rounded-full object-cover"
-									/>
+									<div
+										className="flex h-16 w-16 items-center justify-center rounded-full p-1"
+										style={{ backgroundColor: merchantBrandActionColor }}
+									>
+										<IpfsImg
+											src={displayMerchantIcon}
+											alt=""
+											className="h-full w-full rounded-full object-cover"
+										/>
+									</div>
 								) : (
 									<div
 										className="flex h-16 w-16 items-center justify-center rounded-full bg-slate-100 text-[20px] font-bold dark:bg-slate-800"
@@ -1848,24 +1870,37 @@ export default function MerchantCardTopUpFlow({
 									onClick={() => void payWithStripe()}
 									disabled={stripeBusy || payBusy || !amountFiat6}
 									aria-busy={stripeBusy}
-									className="mt-3 flex w-full items-center gap-3 rounded-[18px] border border-[#635bff]/30 bg-[#f4f2ff] px-3.5 py-3.5 text-left text-[#312e81] disabled:cursor-not-allowed disabled:opacity-45"
+									className="mt-3 flex w-full items-center gap-3 rounded-[18px] border px-3.5 py-3.5 text-left disabled:cursor-not-allowed disabled:opacity-45"
+									style={{
+										borderColor: merchantBrandBorder,
+										backgroundColor: merchantBrandTint,
+										color: merchantBrandActionColor,
+									}}
 								>
-									<span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-[#635bff] shadow-sm">
+									<span
+										className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white shadow-sm"
+										style={{ color: merchantBrandActionColor }}
+									>
 										{stripeBusy ? <Loader2 className="h-5 w-5 animate-spin" aria-hidden /> : <CreditCard className="h-5 w-5" aria-hidden />}
 									</span>
 									<span className="min-w-0 flex-1">
 										<span className="block text-[15px] font-bold">Pay with Stripe</span>
-										<span className="mt-0.5 block text-[13px] text-[#6366a8]">
+										<span className="mt-0.5 block text-[13px] text-slate-600 dark:text-slate-300">
 											Pay the full amount by card.
 										</span>
 									</span>
-									<ChevronRight className="h-5 w-5 shrink-0 text-[#8b87c8]" aria-hidden />
+									<ChevronRight className="h-5 w-5 shrink-0" aria-hidden />
 								</button>
 							) : null}
 							{stripePaymentMessage ? (
 								<div
 									role="status"
-									className="mt-3 flex items-start gap-2 rounded-2xl border border-[#635bff]/20 bg-[#f8f7ff] px-3.5 py-3 text-[13px] text-[#4338a0]"
+									className="mt-3 flex items-start gap-2 rounded-2xl border px-3.5 py-3 text-[13px]"
+									style={{
+										borderColor: merchantBrandBorder,
+										backgroundColor: merchantBrandTint,
+										color: merchantBrandActionColor,
+									}}
 								>
 									{stripeBusy ? (
 										<Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin" aria-hidden />

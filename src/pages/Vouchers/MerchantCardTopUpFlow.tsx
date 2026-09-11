@@ -1736,33 +1736,6 @@ export default function MerchantCardTopUpFlow({
 								</div>
 							</div>
 
-							<div className="flex flex-col items-center pt-2">
-								{displayMerchantIcon ? (
-									<div
-										className="flex h-16 w-16 items-center justify-center rounded-full p-1"
-										style={{ backgroundColor: merchantBrandActionColor }}
-									>
-										<IpfsImg
-											src={displayMerchantIcon}
-											alt=""
-											className="h-full w-full rounded-full object-cover"
-										/>
-									</div>
-								) : (
-									<div
-										className="flex h-16 w-16 items-center justify-center rounded-full bg-slate-100 text-[20px] font-bold dark:bg-slate-800"
-										aria-hidden
-										style={{ color: merchantBrandActionColor }}
-									>
-										{merchantInitials(displayMerchantName)}
-									</div>
-								)}
-								<p className="mt-3 text-[17px] font-semibold text-[#4b5563]">{displayMerchantName}</p>
-								<p className="mt-1 text-[34px] font-bold tracking-tight text-[#111827]">
-									{formatPrefixedFiat(prefix, formatFiatHero(fiatN))}
-								</p>
-							</div>
-
 							<p className="mt-7 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
 								Smart Checkout · Payment Method
 							</p>

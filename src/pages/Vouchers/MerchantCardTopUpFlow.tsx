@@ -72,6 +72,33 @@ const SPINNER_CLASS =
 /** Absolute API host — required in iOS Embedded OTA (`cashtrees-local://`); relative `/api` fails there. */
 const BEAMIO_API_BASE = 'https://beamio.app'
 
+function readPendingStripeSession(key: string): string | null {
+	if (!key) return null
+	try {
+		return window.localStorage.getItem(key)
+	} catch {
+		return null
+	}
+}
+
+function rememberPendingStripeSession(key: string, sessionId: string): void {
+	if (!key) return
+	try {
+		window.localStorage.setItem(key, sessionId)
+	} catch {
+		// Reconciliation remains server-backed when local persistence is unavailable.
+	}
+}
+
+function forgetPendingStripeSession(key: string): void {
+	if (!key) return
+	try {
+		window.localStorage.removeItem(key)
+	} catch {
+		// Ignore storage restrictions; Stripe remains the source of payment state.
+	}
+}
+
 const QUICK = ['10', '20', '50', '100'] as const
 
 type Step = 'amount' | 'pay' | 'select' | 'confirm' | 'stripeWaiting' | 'success'
@@ -458,6 +485,11 @@ export default function MerchantCardTopUpFlow({
 	const [stripeSessionId, setStripeSessionId] = useState<string | null>(null)
 	const [stripePaymentMessage, setStripePaymentMessage] = useState('')
 	const [stripePaymentOutcome, setStripePaymentOutcome] = useState<'pending' | 'success' | 'cancelled' | 'failed'>('pending')
+	const stripeCancelInFlightRef = useRef(false)
+	const stripePendingStorageKey =
+		cardAddress && profile.keyID
+			? `beamio:merchant-card-stripe-pending:${cardAddress.toLowerCase()}:${profile.keyID.toLowerCase()}`
+			: ''
 	const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('usdc')
 	const stripeBusinessKeyRef = useRef<string | null>(null)
 	const [mintedLabel, setMintedLabel] = useState('0.00')
@@ -575,6 +607,7 @@ export default function MerchantCardTopUpFlow({
 		let cancelled = false
 		stripeBusinessKeyRef.current = null
 		setStripeReady(false)
+		setStripeBusy(false)
 		setStripeSessionId(null)
 		setStripePaymentMessage('')
 		setStripePaymentOutcome('pending')
@@ -590,10 +623,53 @@ export default function MerchantCardTopUpFlow({
 			.catch(() => {
 				// Optional payment method: preserve the last trusted state on failure.
 			})
+		const rememberedSessionId = stripePendingStorageKey
+			? readPendingStripeSession(stripePendingStorageKey)
+			: null
+		if (rememberedSessionId) {
+			void fetch(`${BEAMIO_API_BASE}/api/merchantCardStripe/poll`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ sessionId: rememberedSessionId }),
+			})
+				.then(async (response) => {
+					const body = (await response.json().catch(() => ({}))) as {
+						status?: string
+						fulfillmentStatus?: string
+						error?: string | null
+					}
+					if (cancelled || !response.ok) return
+					if (body.fulfillmentStatus === 'fulfillment_succeeded') {
+						forgetPendingStripeSession(stripePendingStorageKey)
+						setStripeBusy(false)
+						setStripePaymentOutcome('success')
+						setStripePaymentMessage('Payment completed. Your store credits are now available.')
+						setMintedLabel(creditQuote ? creditQuote.total.toFixed(2) : Number(fiatHuman).toFixed(2))
+						setStep('success')
+						onSuccess?.()
+					} else if (body.fulfillmentStatus === 'fulfillment_failed' || body.status === 'failed') {
+						forgetPendingStripeSession(stripePendingStorageKey)
+						setStripeBusy(false)
+						setStripePaymentOutcome('failed')
+						setStripePaymentMessage(body.error || 'Stripe payment could not be completed.')
+						setPayError(body.error || 'Stripe payment could not be completed.')
+						setStep('stripeWaiting')
+					} else {
+						setStripeSessionId(rememberedSessionId)
+						setStripeBusy(true)
+						setStripePaymentOutcome('pending')
+						setStripePaymentMessage('A previous Stripe payment is still being reconciled.')
+						setStep('stripeWaiting')
+					}
+				})
+				.catch(() => {
+					// Keep the remembered session. A later open can reconcile it again.
+				})
+		}
 		return () => {
 			cancelled = true
 		}
-	}, [open, cardAddress])
+	}, [cardAddress, creditQuote, fiatHuman, onSuccess, open, profile.keyID, stripePendingStorageKey])
 
 	useEffect(() => {
 		if (stripeReady) setPaymentMethod('card')
@@ -638,6 +714,7 @@ export default function MerchantCardTopUpFlow({
 				throw new Error(body.error ?? 'Unable to start Stripe payment.')
 			}
 			setStripeSessionId(body.sessionId)
+			rememberPendingStripeSession(stripePendingStorageKey, body.sessionId)
 			setStripePaymentOutcome('pending')
 			setStep('stripeWaiting')
 			openExternalUrl(body.url)
@@ -655,6 +732,7 @@ export default function MerchantCardTopUpFlow({
 		stripeBusy,
 		stripeKind,
 		stripeReady,
+		stripePendingStorageKey,
 	])
 
 	useEffect(() => {
@@ -679,6 +757,7 @@ export default function MerchantCardTopUpFlow({
 				if (body.fulfillmentStatus === 'fulfillment_succeeded') {
 					setStripeBusy(false)
 					setStripePaymentMessage('Payment completed. Your store credits are now available.')
+					forgetPendingStripeSession(stripePendingStorageKey)
 					setStripeSessionId(null)
 					setStripePaymentOutcome('success')
 					setMintedLabel(creditQuote ? creditQuote.total.toFixed(2) : Number(fiatHuman).toFixed(2))
@@ -689,6 +768,7 @@ export default function MerchantCardTopUpFlow({
 				if (body.fulfillmentStatus === 'fulfillment_failed' || body.status === 'failed') {
 					setStripeBusy(false)
 					setStripePaymentMessage(body.error || 'Stripe payment could not be completed.')
+					forgetPendingStripeSession(stripePendingStorageKey)
 					setStripeSessionId(null)
 					setStripePaymentOutcome('failed')
 					setPayError(body.error || 'Stripe payment was canceled or could not be completed.')
@@ -726,7 +806,7 @@ export default function MerchantCardTopUpFlow({
 			disposed = true
 			if (timer) clearTimeout(timer)
 		}
-	}, [onSuccess, stripeSessionId])
+	}, [onSuccess, stripePendingStorageKey, stripeSessionId])
 
 	const finishClose = useCallback(() => {
 		if (!closeStartedRef.current) return
@@ -744,6 +824,57 @@ export default function MerchantCardTopUpFlow({
 		// Fallback only; the normal path waits for the actual CSS transition.
 		closeTimer.current = setTimeout(finishClose, 360)
 	}, [finishClose, isClosing, payBusy])
+
+	const cancelStripeAndClose = useCallback(async () => {
+		if (stripeCancelInFlightRef.current) return
+		const sessionId = stripeSessionId
+		if (!sessionId) {
+			close()
+			return
+		}
+		stripeCancelInFlightRef.current = true
+		setStripeBusy(true)
+		setStripePaymentMessage('Closing the Stripe payment securely…')
+		try {
+			const response = await fetch(`${BEAMIO_API_BASE}/api/merchantCardStripe/cancel`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ sessionId }),
+				keepalive: true,
+			})
+			const body = (await response.json().catch(() => ({}))) as {
+				status?: string
+				paymentStatus?: string
+				cancelled?: boolean
+				error?: string | null
+			}
+			if (!response.ok) throw new Error(body.error || 'Unable to close the Stripe payment.')
+			if (body.paymentStatus === 'paid' || body.status === 'complete') {
+				// A late close click must not hide a payment that won the race.
+				setStripeBusy(false)
+				setStripePaymentOutcome('pending')
+				setStripePaymentMessage('Payment received. Waiting for the merchant card update…')
+				return
+			}
+			setStripeSessionId(null)
+			forgetPendingStripeSession(stripePendingStorageKey)
+			setStripeBusy(false)
+			setStripePaymentOutcome(body.cancelled ? 'cancelled' : 'failed')
+			setStripePaymentMessage(
+				body.cancelled
+					? 'The Stripe payment was closed before payment was completed.'
+					: 'The Stripe payment is still being reconciled.',
+			)
+			close()
+		} catch (error) {
+			setStripeBusy(false)
+			setPayError(error instanceof Error ? error.message : 'Unable to close the Stripe payment.')
+			setStripePaymentOutcome('failed')
+			setStripePaymentMessage('The payment could not be closed yet. Please retry.')
+		} finally {
+			stripeCancelInFlightRef.current = false
+		}
+	}, [close, stripePendingStorageKey, stripeSessionId])
 
 	const handleShareEarn = useCallback(async () => {
 		if (sharing) return
@@ -1478,6 +1609,7 @@ export default function MerchantCardTopUpFlow({
 		}
 		else if (step === 'select') setStep('pay')
 		else if (step === 'confirm') setStep('pay')
+		else if (step === 'stripeWaiting') void cancelStripeAndClose()
 		else close()
 	}
 
@@ -2642,7 +2774,7 @@ export default function MerchantCardTopUpFlow({
 
 					{step === 'stripeWaiting' && (
 						<div className="flex min-h-0 flex-1 flex-col items-center justify-center text-center">
-							{stripePaymentOutcome === 'failed' ? (
+							{stripePaymentOutcome === 'failed' || stripePaymentOutcome === 'cancelled' ? (
 								<AlertTriangle className="h-14 w-14 text-amber-500" aria-hidden />
 							) : (
 								<Loader2
@@ -2676,17 +2808,25 @@ export default function MerchantCardTopUpFlow({
 									{payError || 'The Stripe payment was not completed.'}
 								</div>
 							) : null}
+							{stripePaymentOutcome === 'cancelled' ? (
+								<div
+									role="status"
+									className="mt-6 w-full max-w-sm rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-left text-sm text-slate-700"
+								>
+									The unpaid Stripe Checkout Session has been expired. You can start a new payment.
+								</div>
+							) : null}
 							<button
 								type="button"
 								disabled={stripeBusy}
-								onClick={close}
+								onClick={() => void cancelStripeAndClose()}
 								className="mt-auto w-full max-w-sm rounded-2xl py-4 text-[17px] font-semibold disabled:cursor-not-allowed disabled:opacity-50"
 								style={{
 									backgroundColor: merchantBrandIdleSurface,
 									color: merchantBrandActionColor,
 								}}
 							>
-								{stripeBusy ? 'Checking payment…' : 'Done'}
+								{stripeBusy ? 'Closing payment…' : 'Done'}
 							</button>
 						</div>
 					)}

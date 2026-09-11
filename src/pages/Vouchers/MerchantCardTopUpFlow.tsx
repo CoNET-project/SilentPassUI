@@ -444,6 +444,7 @@ export default function MerchantCardTopUpFlow({
 	const [rowsReady, setRowsReady] = useState(false)
 	const [sameStoreReady, setSameStoreReady] = useState(false)
 	const [selected, setSelected] = useState<Set<string>>(new Set())
+	const [committedSelected, setCommittedSelected] = useState<Set<string> | null>(null)
 	const [quotedUsdc6, setQuotedUsdc6] = useState(0n)
 	const [quotedForFiat, setQuotedForFiat] = useState('')
 	const [eoaUsdc6, setEoaUsdc6] = useState<bigint | null>(null)
@@ -1099,6 +1100,7 @@ export default function MerchantCardTopUpFlow({
 		smartPay && Number.isFinite(fiatN) && fiatN > 0
 			? Math.min(100, Math.max(0, (coveredFiat / fiatN) * 100))
 			: 0
+	const cashBarPct = 100 - pointsBarPct
 	const appliedPtsLabel =
 		appliedPts6 > 0n
 			? formatPtsShort(appliedPts6)
@@ -1462,6 +1464,10 @@ export default function MerchantCardTopUpFlow({
 			: coveredFiat > 0
 				? 'Apply Points'
 				: `Pay ${formatUsdcDue(quotedUsdc6)} USDC`
+	const cashRequiredLabel =
+		paymentMethod === 'card'
+			? formatPrefixedFiat(prefix, cashFiat.toFixed(2))
+			: formatUsdcDue(cashUsdc6)
 
 	const back = () => {
 		if (payBusy) return
@@ -1517,6 +1523,22 @@ export default function MerchantCardTopUpFlow({
 							onClick={back}
 							className="pointer-events-auto absolute left-4 top-0"
 						/>
+						{step === 'select' ? (
+							<button
+								type="button"
+								onClick={() => {
+									setCommittedSelected(new Set(selected))
+									setUsedManual(true)
+									setStep('pay')
+								}}
+								className="pointer-events-auto absolute right-4 top-0 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-black/[0.08] bg-white/90 text-[#2c2f31] shadow-[0_2px_10px_rgba(0,0,0,0.16),0_1px_3px_rgba(0,0,0,0.12)] backdrop-blur-md transition active:scale-[0.96] hover:bg-white dark:border-white/25 dark:bg-slate-800/90 dark:text-slate-100"
+								aria-label="Confirm"
+								title="Confirm"
+								tabIndex={-1}
+							>
+								<Check className="h-[17px] w-[17px]" strokeWidth={2.5} aria-hidden />
+							</button>
+						) : null}
 						{step === 'amount' ? (
 							<h1
 								className="pointer-events-none absolute inset-x-12 top-1/2 -translate-y-1/2 text-center text-[22px] font-semibold tracking-tight dark:text-slate-100"
@@ -1987,9 +2009,14 @@ export default function MerchantCardTopUpFlow({
 										setPayError('')
 										setSmartPay(true)
 										setUsedManual(true)
-										// Manual selection starts with every currently usable
-										// merchant selected; the user can opt out explicitly.
-										setSelected(new Set(usableRows.map((row) => row.cardAddress.toLowerCase())))
+										// Reopen with the last confirmed selection. The first
+										// visit defaults to every currently usable merchant.
+										const usableKeys = usableRows.map((row) => row.cardAddress.toLowerCase())
+										setSelected(
+											committedSelected
+												? new Set(usableKeys.filter((key) => committedSelected.has(key)))
+												: new Set(usableKeys),
+										)
 										setStep('select')
 									}}
 									className="mt-4 flex w-full items-center justify-between gap-3 rounded-2xl px-3 py-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50"
@@ -2031,14 +2058,21 @@ export default function MerchantCardTopUpFlow({
 
 								<div className="mt-4" aria-busy={coverEstimatePending}>
 									<div
-										className="h-2 overflow-hidden rounded-full"
-										style={{ backgroundColor: merchantBrandActionColor }}
+										className="flex h-2 overflow-hidden rounded-full"
+										aria-label={`${pointsBarPct.toFixed(2)}% Points, ${cashBarPct.toFixed(2)}% cash`}
 									>
 										<div
-											className="h-full rounded-l-full"
+											className="h-full"
 											style={{
 												width: `${pointsBarPct}%`,
 												backgroundColor: merchantBrandPointsTrack,
+											}}
+										/>
+										<div
+											className="h-full"
+											style={{
+												width: `${cashBarPct}%`,
+												backgroundColor: merchantBrandActionColor,
 											}}
 										/>
 									</div>
@@ -2104,74 +2138,76 @@ export default function MerchantCardTopUpFlow({
 								</p>
 
 								<div className="mt-3 space-y-2.5" role="radiogroup" aria-label="Payment method">
-									<button
-										type="button"
-										role="radio"
-										aria-checked={paymentMethod === 'card'}
-										disabled={!stripeReady || stripeBusy || payBusy || !amountFiat6}
-										onClick={() => setPaymentMethod('card')}
-										className="flex w-full items-center gap-3 rounded-[18px] border p-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-45"
-										style={{
-											borderColor:
-												paymentMethod === 'card' ? merchantBrandActionColor : merchantBrandBorder,
-											backgroundColor:
-												paymentMethod === 'card' ? merchantBrandSoftTint : 'transparent',
-										}}
-									>
-										<span
-											className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full"
+									{stripeReady ? (
+										<button
+											type="button"
+											role="radio"
+											aria-checked={paymentMethod === 'card'}
+											disabled={stripeBusy || payBusy || !amountFiat6}
+											onClick={() => setPaymentMethod('card')}
+											className="flex w-full items-center gap-3 rounded-[18px] border p-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-45"
 											style={{
+												borderColor:
+													paymentMethod === 'card' ? merchantBrandActionColor : merchantBrandBorder,
 												backgroundColor:
-													paymentMethod === 'card' ? merchantBrandActionColor : merchantBrandTint,
-												color:
-													paymentMethod === 'card'
-														? merchantBrandTextColor
-														: merchantBrandActionColor,
+													paymentMethod === 'card' ? merchantBrandSoftTint : 'transparent',
 											}}
 										>
-											{stripeBusy ? (
-												<Loader2 className="h-5 w-5 animate-spin" aria-hidden />
-											) : (
-												<CreditCard className="h-5 w-5" aria-hidden />
-											)}
-										</span>
-										<span className="min-w-0 flex-1">
 											<span
-												className="block text-[15px] font-semibold"
-												style={{ color: merchantBrandActionColor }}
+												className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full"
+												style={{
+													backgroundColor:
+														paymentMethod === 'card' ? merchantBrandActionColor : merchantBrandTint,
+													color:
+														paymentMethod === 'card'
+															? merchantBrandTextColor
+															: merchantBrandActionColor,
+												}}
 											>
-												Credit / Debit Card
+												{stripeBusy ? (
+													<Loader2 className="h-5 w-5 animate-spin" aria-hidden />
+												) : (
+													<CreditCard className="h-5 w-5" aria-hidden />
+												)}
 											</span>
-											<span
-												className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[12px]"
-												style={{ color: merchantBrandMutedColor }}
-											>
+											<span className="min-w-0 flex-1">
 												<span
-													className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold"
-													style={{
-														backgroundColor: merchantBrandTint,
-														color: merchantBrandActionColor,
-													}}
+													className="block text-[15px] font-semibold"
+													style={{ color: merchantBrandActionColor }}
 												>
-													Secure Gateway <ExternalLink className="h-3 w-3" aria-hidden />
+													Credit / Debit Card
 												</span>
-												<span>Instant payment via secure gateway · Zero data stored</span>
+												<span
+													className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[12px]"
+													style={{ color: merchantBrandMutedColor }}
+												>
+													<span
+														className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold"
+														style={{
+															backgroundColor: merchantBrandTint,
+															color: merchantBrandActionColor,
+														}}
+													>
+														Secure Gateway <ExternalLink className="h-3 w-3" aria-hidden />
+													</span>
+													<span>Instant payment via secure gateway · Zero data stored</span>
+												</span>
 											</span>
-										</span>
-										<span
-											className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2"
-											style={{
-												borderColor: merchantBrandActionColor,
-												backgroundColor:
-													paymentMethod === 'card' ? merchantBrandActionColor : 'transparent',
-											}}
-											aria-hidden
-										>
-											{paymentMethod === 'card' ? (
-												<span className="h-2 w-2 rounded-full bg-white" />
-											) : null}
-										</span>
-									</button>
+											<span
+												className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2"
+												style={{
+													borderColor: merchantBrandActionColor,
+													backgroundColor:
+														paymentMethod === 'card' ? merchantBrandActionColor : 'transparent',
+												}}
+												aria-hidden
+											>
+												{paymentMethod === 'card' ? (
+													<span className="h-2 w-2 rounded-full bg-white" />
+												) : null}
+											</span>
+										</button>
+									) : null}
 
 									<button
 										type="button"
@@ -2314,7 +2350,7 @@ export default function MerchantCardTopUpFlow({
 											className="text-[20px]"
 											style={{ color: merchantBrandActionColor }}
 										>
-											{formatUsdcDue(cashUsdc6)}
+											{cashRequiredLabel}
 										</span>
 									</div>
 								</div>
@@ -2448,20 +2484,6 @@ export default function MerchantCardTopUpFlow({
 									</p>
 								)}
 							</div>
-							<button
-								type="button"
-								onClick={() => {
-									setUsedManual(true)
-									setStep('pay')
-								}}
-								className="mt-6 w-full rounded-full py-3.5 text-base font-semibold"
-								style={{
-									backgroundColor: merchantBrandActionColor,
-									color: merchantBrandTextColor,
-								}}
-							>
-								Next
-							</button>
 						</>
 					)}
 

@@ -61,6 +61,7 @@ import {
 } from '@/utils/discoverMerchantShare'
 import {
 	quoteDiscoverStoreCreditTopupBonus,
+	resolveDiscoverStoreCreditMultiplierCards,
 	discoverContrastTextOnBrand,
 	discoverMixCssColorWithBlack,
 	discoverMixCssColorWithWhite,
@@ -521,6 +522,21 @@ export default function MerchantCardTopUpFlow({
 			amount,
 		})
 	}, [metadataRoot, cardCurrency, fiatHuman])
+	const multiplierCards = useMemo(
+		() =>
+			resolveDiscoverStoreCreditMultiplierCards({
+				metadataRoot,
+				currency: String(cardCurrency || 'USD'),
+			}),
+		[metadataRoot, cardCurrency],
+	)
+	const quickAmounts = useMemo(
+		() =>
+			multiplierCards.length >= 2
+				? multiplierCards.map((card) => String(card.topupAmount))
+				: [...QUICK],
+		[multiplierCards],
+	)
 	const profileAa =
 		profile.aaAccount && ethers.isAddress(profile.aaAccount)
 			? ethers.getAddress(profile.aaAccount)
@@ -1552,19 +1568,30 @@ export default function MerchantCardTopUpFlow({
 										Quick amount
 									</p>
 									<div className="mt-3 grid grid-cols-2 gap-3">
-										{QUICK.map((q) => {
+										{quickAmounts.map((q, index) => {
 											const selected = amountMatchesQuick(q)
+											const multiplierCard =
+												multiplierCards.length >= 2 ? multiplierCards[index] : null
 											const quickQuote = quoteDiscoverStoreCreditTopupBonus({
 												metadataRoot,
 												currency: String(cardCurrency || 'USD'),
 												amount: Number(q),
 											})
+											const bonusAmount = multiplierCard?.bonusAmount ?? quickQuote?.bonus ?? 0
+											const bonusPercent = multiplierCard?.bonusPercent ?? (Number(q) > 0
+												? (bonusAmount / Number(q)) * 100
+												: 0)
+											const bonusPercentLabel = Number.isInteger(bonusPercent)
+												? String(bonusPercent)
+												: bonusPercent.toFixed(2).replace(/0+$/, '').replace(/\.$/, '')
+											const hasBonus = bonusAmount > 0
+											const isBestValue = multiplierCard?.isBestValue === true
 											return (
 												<button
 													key={q}
 													type="button"
 													onClick={() => setAmountInput(Number(q).toFixed(2))}
-													className={`rounded-2xl py-3.5 text-[16px] font-semibold transition ${
+													className={`relative rounded-2xl py-3.5 text-[16px] font-semibold transition ${
 														selected
 															? 'border text-[#111827] dark:text-slate-100'
 															: 'border border-transparent bg-[#f0f1f3] text-[#111827]'
@@ -1579,10 +1606,35 @@ export default function MerchantCardTopUpFlow({
 															: undefined
 													}
 												>
-													<span className="block">{prefix} {q}</span>
-													{quickQuote && quickQuote.bonus > 0 ? (
-														<span className="mt-0.5 block text-[10px] font-medium text-emerald-700 dark:text-emerald-300">
-															+ {prefix} {quickQuote.bonus.toFixed(2)} Free
+													{isBestValue ? (
+														<span
+															className="absolute -top-2.5 right-2 rounded-full px-2 py-0.5 text-[10px] font-bold shadow-sm"
+															style={{
+																backgroundColor: merchantBrandActionColor,
+																color: merchantBrandTextColor,
+															}}
+														>
+															Best Value • +{bonusPercentLabel}% Extra
+														</span>
+													) : hasBonus ? (
+														<span
+															className="absolute -top-2.5 right-2 rounded-full border px-1.5 py-0.5 text-[10px] font-bold"
+															style={{
+																backgroundColor: merchantBrandTint,
+																borderColor: merchantBrandBorder,
+																color: merchantBrandActionColor,
+															}}
+														>
+															+{bonusPercentLabel}% Bonus
+														</span>
+													) : null}
+													<span className="block">{prefix} {formatFiatHero(Number(q))}</span>
+													{hasBonus ? (
+														<span
+															className="mt-0.5 block text-[10px] font-bold"
+															style={{ color: merchantBrandActionColor }}
+														>
+															+{prefix} {bonusAmount.toFixed(2)} Free
 														</span>
 													) : (
 														<span className="mt-0.5 block text-[10px] font-medium text-slate-500 dark:text-slate-400">

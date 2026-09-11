@@ -2686,7 +2686,9 @@ function discoverBrandTextOnShell(
 	const rgb = discoverParseCssRgb(color)
 	if (!rgb) return null
 	let { r, g, b } = rgb
-	const towardLight = discoverRelativeLuminance(r, g, b) < bgLum
+	// Move text away from the shell background: darken on light shells,
+	// lighten on dark shells. The previous comparison inverted this direction.
+	const towardLight = discoverRelativeLuminance(r, g, b) > bgLum
 	for (let i = 0; i < 28; i++) {
 		if (discoverContrastRatio(discoverRelativeLuminance(r, g, b), bgLum) >= minContrast) break
 		if (towardLight) {

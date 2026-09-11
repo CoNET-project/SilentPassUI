@@ -1592,7 +1592,7 @@ export default function MerchantCardTopUpFlow({
 				>
 					{step === 'amount' && (
 						<div className="flex min-h-0 flex-1 flex-col">
-							<div className="flex flex-1 flex-col items-center pt-1">
+							<div className="flex flex-1 flex-col items-center pt-5">
 								{displayMerchantIcon ? (
 									<div
 										className="mt-6 flex h-20 w-20 items-center justify-center rounded-full border p-1 shadow-sm"

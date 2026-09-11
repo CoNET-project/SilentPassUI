@@ -6500,7 +6500,13 @@ function DiscoverMerchantDetailFullScreen({
 				? `First purchase includes membership fee ${feePart}${durationLabel ? ` · ${durationLabel}` : ''}.`
 				: `Upgrade to ${tier.name} includes membership fee ${feePart}${durationLabel ? ` · ${durationLabel}` : ''}.`,
 		)
-		setUsdcTopupPhase('amount')
+		// Membership payment uses the full payment overlay so the user can
+		// choose USDC or the merchant's Stripe gateway. The inline amount
+		// panel is only for ordinary top-ups and cannot complete membership
+		// fulfillment.
+		setDiscoverTopUpPrefill(prefill)
+		setUsdcTopupPhase('idle')
+		setDiscoverTopUpOpen(true)
 	}, [
 		balancePrefix,
 		freezeMerchantProgramPresentation,

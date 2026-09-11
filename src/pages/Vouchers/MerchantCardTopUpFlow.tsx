@@ -1531,12 +1531,16 @@ export default function MerchantCardTopUpFlow({
 									setUsedManual(true)
 									setStep('pay')
 								}}
-								className="pointer-events-auto absolute right-4 top-0 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-black/[0.08] bg-white/90 text-[#2c2f31] shadow-[0_2px_10px_rgba(0,0,0,0.16),0_1px_3px_rgba(0,0,0,0.12)] backdrop-blur-md transition active:scale-[0.96] hover:bg-white dark:border-white/25 dark:bg-slate-800/90 dark:text-slate-100"
+								className="pointer-events-auto absolute right-4 top-0 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full p-1 text-[#2c2f31] transition active:scale-[0.96] dark:text-slate-100"
 								aria-label="Confirm"
 								title="Confirm"
 								tabIndex={-1}
 							>
-								<Check className="h-[17px] w-[17px]" strokeWidth={2.5} aria-hidden />
+								<span
+									className="pointer-events-none absolute inset-1 rounded-full border border-black/[0.08] bg-white/90 shadow-[0_2px_10px_rgba(0,0,0,0.16),0_1px_3px_rgba(15,23,42,0.12)] backdrop-blur-md dark:border-white/25 dark:bg-slate-800/90"
+									aria-hidden
+								/>
+								<Check className="relative z-[1] h-[17px] w-[17px]" strokeWidth={2.5} aria-hidden />
 							</button>
 						) : null}
 						{step === 'amount' ? (
@@ -1651,6 +1655,7 @@ export default function MerchantCardTopUpFlow({
 										step="0.01"
 										value={amountInput}
 										onChange={(e) => setAmountInput(e.target.value)}
+										onFocus={(e) => e.currentTarget.select()}
 										onKeyDown={preventStepKeys}
 										onWheel={(e) => {
 											e.preventDefault()

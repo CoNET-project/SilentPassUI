@@ -580,6 +580,13 @@ export default function MerchantCardTopUpFlow({
 			amount,
 		})
 	}, [metadataRoot, cardCurrency, fiatHuman])
+
+	const stripeOnSuccessRef = useRef<typeof onSuccess>(onSuccess)
+	const stripeCreditQuoteRef = useRef<typeof creditQuote>(creditQuote)
+	const stripeFiatHumanRef = useRef(fiatHuman)
+	stripeOnSuccessRef.current = onSuccess
+	stripeCreditQuoteRef.current = creditQuote
+	stripeFiatHumanRef.current = fiatHuman
 	const multiplierCards = useMemo(
 		() =>
 			resolveDiscoverStoreCreditMultiplierCards({
@@ -644,9 +651,10 @@ export default function MerchantCardTopUpFlow({
 						setStripeBusy(false)
 						setStripePaymentOutcome('success')
 						setStripePaymentMessage('Payment completed. Your store credits are now available.')
-						setMintedLabel(creditQuote ? creditQuote.total.toFixed(2) : Number(fiatHuman).toFixed(2))
+						const currentQuote = stripeCreditQuoteRef.current
+						setMintedLabel(currentQuote ? currentQuote.total.toFixed(2) : Number(stripeFiatHumanRef.current).toFixed(2))
 						setStep('success')
-						onSuccess?.()
+						stripeOnSuccessRef.current?.()
 					} else if (body.fulfillmentStatus === 'fulfillment_failed' || body.status === 'failed') {
 						forgetPendingStripeSession(stripePendingStorageKey)
 						setStripeBusy(false)
@@ -669,7 +677,7 @@ export default function MerchantCardTopUpFlow({
 		return () => {
 			cancelled = true
 		}
-	}, [cardAddress, creditQuote, fiatHuman, onSuccess, open, profile.keyID, stripePendingStorageKey])
+	}, [cardAddress, open, profile.keyID, stripePendingStorageKey])
 
 	useEffect(() => {
 		if (stripeReady) setPaymentMethod('card')
@@ -760,9 +768,10 @@ export default function MerchantCardTopUpFlow({
 					forgetPendingStripeSession(stripePendingStorageKey)
 					setStripeSessionId(null)
 					setStripePaymentOutcome('success')
-					setMintedLabel(creditQuote ? creditQuote.total.toFixed(2) : Number(fiatHuman).toFixed(2))
+					const currentQuote = stripeCreditQuoteRef.current
+					setMintedLabel(currentQuote ? currentQuote.total.toFixed(2) : Number(stripeFiatHumanRef.current).toFixed(2))
 					setStep('success')
-					onSuccess?.()
+					stripeOnSuccessRef.current?.()
 					return
 				}
 				if (body.fulfillmentStatus === 'fulfillment_failed' || body.status === 'failed') {
@@ -806,7 +815,7 @@ export default function MerchantCardTopUpFlow({
 			disposed = true
 			if (timer) clearTimeout(timer)
 		}
-	}, [onSuccess, stripePendingStorageKey, stripeSessionId])
+	}, [stripePendingStorageKey, stripeSessionId])
 
 	const finishClose = useCallback(() => {
 		if (!closeStartedRef.current) return

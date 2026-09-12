@@ -81,7 +81,6 @@ export function classifyDiscoverMerchantCategory(input: DiscoverMerchantCategory
 	// A declared merchant category is authoritative. `local-services` remains
 	// the legacy/default bucket, so heuristics may still refine that value.
 	if (category === 'food-beverage' || category === 'food') return 'food-beverage'
-	if (category === 'health-beauty' || category === 'health' || category === 'beauty') return 'health-beauty'
 	if (category === 'grocery-convenience') return 'grocery-convenience'
 	if (category === 'retail-shopping' || category === 'shopping') return 'retail-shopping'
 	if (category === 'education-training') return 'education-training'
@@ -99,6 +98,7 @@ export function classifyDiscoverMerchantCategory(input: DiscoverMerchantCategory
 	if (foodNameOrCopy) {
 		return 'food-beverage'
 	}
+	if (category === 'health-beauty' || category === 'health' || category === 'beauty') return 'health-beauty'
 	if (/\bbeauty\b|\bspa\b|\bsalon\b|medspa|barbershop|美容|护肤|美发|美甲|养生馆|水疗/.test(name)) {
 		return 'health-beauty'
 	}

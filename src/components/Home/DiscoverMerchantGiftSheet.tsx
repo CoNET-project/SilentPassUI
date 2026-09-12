@@ -149,23 +149,23 @@ type GiftAmountChip = { value: number; caption: string }
 
 const FOOD_OCCASIONS: GiftThemedOccasion[] = [
 	{
-		id: 'treat-meal',
-		emoji: '🍽️',
-		label: 'Treat a Meal',
+		id: 'just-because',
+		emoji: '✨',
+		label: 'Just Because',
 		subtitle: 'Warm comfort',
 		message: (m) => `Lunch is on me! Enjoy the best dishes at ${m}.`,
 	},
 	{
 		id: 'birthday',
 		emoji: '🎂',
-		label: 'Happy Birthday',
+		label: 'Birthday Treat',
 		subtitle: 'Sweet surprise',
 		message: (m) => `Happy birthday! Enjoy a delicious meal at ${m} — my treat.`,
 	},
 	{
 		id: 'coffee',
 		emoji: '☕',
-		label: 'Coffee & Drinks',
+		label: 'Coffee Break',
 		subtitle: 'Casual sip',
 		message: (m) => `Coffee is on me at ${m}. Enjoy a casual sip!`,
 	},
@@ -175,6 +175,27 @@ const FOOD_OCCASIONS: GiftThemedOccasion[] = [
 		label: 'Celebrate',
 		subtitle: 'Big milestone',
 		message: (m) => `Let’s celebrate at ${m}. Dinner is on me!`,
+	},
+	{
+		id: 'thanks',
+		emoji: '🙏',
+		label: 'Thank You',
+		subtitle: 'Gratitude gift',
+		message: (m) => `Thank you — enjoy this meal at ${m}. You deserve it!`,
+	},
+	{
+		id: 'cheers',
+		emoji: '🥂',
+		label: 'Cheers',
+		subtitle: 'Toast together',
+		message: (m) => `Cheers! Let’s toast together at ${m} — on me.`,
+	},
+	{
+		id: 'special-feast',
+		emoji: '🍷',
+		label: 'Special Feast',
+		subtitle: 'Gourmet night',
+		message: (m) => `A special feast awaits at ${m}. Enjoy a gourmet night — on me.`,
 	},
 ]
 
@@ -228,18 +249,18 @@ type GiftNoteChip = { id: string; label: string; text: string }
 const FOOD_NOTE_CHIPS: GiftNoteChip[] = [
 	{
 		id: 'lunch',
-		label: '🍽️ Lunch on me',
-		text: 'Lunch is on me! Treat yourself well today 🍽️✨',
+		label: '🍽️ Lunch on me!',
+		text: 'Lunch is on me! Treat yourself today 🍽️',
 	},
 	{
-		id: 'signature',
-		label: '🍲 Taste signature',
-		text: 'Happy dining! Taste the legendary signature bowl 🍲',
+		id: 'enjoy',
+		label: '😋 Enjoy the meal',
+		text: 'Enjoy every bite of your meal! 😋',
 	},
 	{
-		id: 'appetite',
-		label: '🥳 Good appetite',
-		text: 'Sending sweet vibes and good appetite! 🥳',
+		id: 'treat',
+		label: '✨ Special treat',
+		text: 'A little special treat just for you ✨',
 	},
 ]
 
@@ -268,9 +289,9 @@ function themeNoteChips(kind: GiftStep1Kind): GiftNoteChip[] {
 }
 
 function occasionEmojiTileClass(emoji: string): string {
-	if (emoji === '🍽️' || emoji === '🛁') return 'bg-amber-100'
+	if (emoji === '✨' || emoji === '🙏' || emoji === '🍽️' || emoji === '🛁') return 'bg-amber-100'
 	if (emoji === '🎂') return 'bg-pink-100'
-	if (emoji === '☕' || emoji === '🌿') return 'bg-orange-100'
+	if (emoji === '☕' || emoji === '🌿' || emoji === '🍷') return 'bg-orange-100'
 	return 'bg-purple-100'
 }
 
@@ -2579,7 +2600,7 @@ export default function DiscoverMerchantGiftSheet({
 						role="listbox"
 						aria-label="Occasion theme"
 					>
-						<div className="flex w-full gap-2.5">
+						<div className="flex w-max gap-2.5">
 							{occasionCatalog.map((occ) => {
 								const active = occasionId === occ.id
 								const subtitle = occasionSubtitle(occ)
@@ -2590,34 +2611,38 @@ export default function DiscoverMerchantGiftSheet({
 										role="option"
 										aria-selected={active}
 										onClick={() => selectOccasion(occ)}
-										className={`relative flex min-w-[6.75rem] flex-1 basis-0 snap-start flex-col items-start rounded-2xl border-2 px-3 pb-3.5 pt-3.5 text-left transition ${
+										className={`flex w-36 shrink-0 snap-start flex-col justify-between rounded-2xl border-2 p-3.5 text-left transition ${
 											active
-												? 'bg-[#f8f8fb] dark:bg-slate-800'
+												? 'bg-[#f8f8fb] shadow-sm dark:bg-slate-800'
 												: 'border-transparent bg-[#f4f3f8] hover:bg-[#eeedf3] dark:bg-slate-900'
 										}`}
 										style={active ? { borderColor: brandControl } : undefined}
 									>
-										{active ? (
-											<Check
-												className="absolute right-3 top-3 h-4 w-4"
-												strokeWidth={2.75}
-												style={{ color: brandControl }}
-												aria-hidden
-											/>
-										) : null}
-										<div
-											className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-[20px] ${occasionEmojiTileClass(occ.emoji)}`}
-										>
-											{occ.emoji}
+										<div className="mb-3 flex w-full items-center justify-between">
+											<div
+												className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-[20px] ${occasionEmojiTileClass(occ.emoji)}`}
+											>
+												{occ.emoji}
+											</div>
+											{active ? (
+												<Check
+													className="h-[18px] w-[18px] shrink-0"
+													strokeWidth={2.75}
+													style={{ color: brandControl }}
+													aria-hidden
+												/>
+											) : null}
 										</div>
-										<span className="mt-3 line-clamp-2 text-[14px] font-semibold leading-snug text-[#1a1b1f] dark:text-slate-100">
-											{occ.label}
-										</span>
-										{subtitle ? (
-											<span className="mt-0.5 line-clamp-2 text-[12px] font-medium leading-snug text-[#5d5e63]">
-												{subtitle}
+										<div className="flex min-w-0 flex-col">
+											<span className="truncate text-[14px] font-semibold leading-snug text-[#1a1b1f] dark:text-slate-100">
+												{occ.label}
 											</span>
-										) : null}
+											{subtitle ? (
+												<span className="mt-0.5 truncate text-[11px] font-medium leading-snug text-[#5d5e63]">
+													{subtitle}
+												</span>
+											) : null}
+										</div>
 									</button>
 								)
 							})}

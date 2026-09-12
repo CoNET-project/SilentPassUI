@@ -25,7 +25,6 @@ import {
 	Receipt,
 	MessageCircle,
 	Store,
-	Zap,
 	Pencil,
 	Star,
 } from 'lucide-react'
@@ -42,6 +41,7 @@ import {
 	postPurchaseMerchantGiftRedeem,
 	quoteCurrencyAmountInUSDCFair,
 	readMerchantCardProgramPoints0Balance,
+	peekGetMyAssetsCache,
 	signMerchantGiftCreditPurchase,
 	signMerchantGiftReward13Purchase,
 	USDC2Token,
@@ -49,8 +49,17 @@ import {
 } from '@/services/BeamioCard'
 import {
 	formatPtsHuman,
+	hydrateSameStoreRowFromAssets,
+	isTrustedSameStoreZero,
 	loadReward13RowsForAa,
+	mergeReward13Rows,
 	planAutoCoverUsdc,
+	parseFiatHumanTo6,
+	peekReward13RowsCache,
+	pickRichestReward13Seed,
+	resolveAaHoldingReward13,
+	sameStoreEscrowSized,
+	sameStoreHasPositiveCover,
 	type CoverLeg,
 } from '@/utils/topupReward13Plan'
 import { resolveSigningPrivateKeyArmor } from '@/utils/resolveSigningPrivateKeyArmor'
@@ -74,6 +83,7 @@ import {
 import { resolveBeamioAaOnConet } from '@/utils/resolveBeamioAaFromCardFactory'
 import { conetDepinProvider } from '@/utils/constants'
 import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
+import { loadMyBrandsFeedLocalCache } from '@/utils/myBrandsFeedLocalCache'
 import { searchUsername } from '@/services/beamio'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { sendMerchantGiftRedeemChat } from '@/utils/sendMerchantGiftRedeemChat'
@@ -625,8 +635,10 @@ export default function DiscoverMerchantGiftSheet({
 	merchantImage,
 	programDescription,
 }: Props) {
-	const { profiles, setProfiles, allNodes, setChatHomeItem } = useDaemonContext()
+	const { profiles, setProfiles, allNodes, setChatHomeItem, myBrandCardDetails } = useDaemonContext()
 	const navigate = useNavigate()
+	const profileRef = useRef(profile)
+	profileRef.current = profile
 	const step1Kind = useMemo(
 		() => resolveGiftStep1Kind(category, merchantTitle, metadataRoot, programDescription),
 		[category, merchantTitle, metadataRoot, programDescription],
@@ -716,6 +728,7 @@ export default function DiscoverMerchantGiftSheet({
 	const [submitting, setSubmitting] = useState(false)
 	const submitInFlightRef = useRef(false)
 	const [usdcQuoteLabel, setUsdcQuoteLabel] = useState<string | null>(null)
+	const [quotedGiftUsdc6, setQuotedGiftUsdc6] = useState<bigint | null>(null)
 	/** Combined CoNET-USDC + Base USDC available for Gift USDC settlement. */
 	const [usdcAvailableLabel, setUsdcAvailableLabel] = useState<string | null>(null)
 	const [usdcSubmitHint, setUsdcSubmitHint] = useState<string | null>(null)
@@ -899,23 +912,26 @@ export default function DiscoverMerchantGiftSheet({
 		if (step !== 3 || payWith !== 'usdc') {
 			setUsdcQuoteLabel(null)
 			setUsdcAvailableLabel(null)
+			setQuotedGiftUsdc6(null)
 			return
 		}
 		const parsed = parseDiscoverTopupAmountInput(amountText, ccy)
 		if (!parsed.ok) {
 			setUsdcQuoteLabel(null)
 			setUsdcAvailableLabel(null)
+			setQuotedGiftUsdc6(null)
 			return
 		}
 		let cancelled = false
 		void (async () => {
 			try {
-				const [{ usdc }, conetBal, baseBal] = await Promise.all([
+				const [{ usdc6, usdc }, conetBal, baseBal] = await Promise.all([
 					quoteCurrencyAmountInUSDCFair(ccy, parsed.apiAmount),
-					readEoaConetUsdcBalance6(profile as profile).catch(() => null),
-					readEoaUsdcBalance6(profile as profile).catch(() => null),
+					readEoaConetUsdcBalance6(profileRef.current as profile).catch(() => null),
+					readEoaUsdcBalance6(profileRef.current as profile).catch(() => null),
 				])
 				if (cancelled) return
+				setQuotedGiftUsdc6(usdc6)
 				setUsdcQuoteLabel(`Need ~$${formatUsdcAmountForDisplay(usdc)} USDC`)
 				if (conetBal != null && baseBal != null) {
 					const combined = conetBal + baseBal
@@ -937,53 +953,104 @@ export default function DiscoverMerchantGiftSheet({
 				if (!cancelled) {
 					setUsdcQuoteLabel(null)
 					setUsdcAvailableLabel(null)
+					setQuotedGiftUsdc6(null)
 				}
 			}
 		})()
 		return () => {
 			cancelled = true
 		}
-	}, [step, payWith, amountText, ccy, profile])
+	}, [step, payWith, amountText, ccy, profile?.keyID, profile?.aaAccount])
 
 	useEffect(() => {
+		const currentProfile = profileRef.current
 		if (step !== 3 || !cardAddress || !ethers.isAddress(cardAddress)) {
-			setReward13Rows([])
 			setReward13Legs([])
+			setReward13Loading(false)
+			return
+		}
+		if (!currentProfile) {
+			setReward13Loading(false)
 			return
 		}
 		let cancelled = false
-		setReward13Loading(true)
+		const card = ethers.getAddress(cardAddress)
+		const cardLower = card.toLowerCase()
+		const eoaLower = (currentProfile.keyID ?? '').trim().toLowerCase()
+		const daemonAssets = myBrandCardDetails[cardLower]?.assets ?? null
+		const localAssets = eoaLower
+			? loadMyBrandsFeedLocalCache(eoaLower)?.details?.[cardLower]?.assets ?? null
+			: null
+		const seed = pickRichestReward13Seed(
+			peekGetMyAssetsCache(currentProfile as profile, card),
+			daemonAssets,
+			localAssets,
+		)
+		const hydrated = hydrateSameStoreRowFromAssets(card, seed, merchantTitle)
+		const cached = peekReward13RowsCache(currentProfile.aaAccount, card)
+		const initialRows = mergeReward13Rows(cached ?? [], hydrated ? [hydrated] : [])
+		if (initialRows.length > 0) {
+			setReward13Rows((prev) => mergeReward13Rows(prev, initialRows))
+		}
+		setReward13Loading(
+			!sameStoreHasPositiveCover(initialRows) && !sameStoreEscrowSized(initialRows),
+		)
 		void (async () => {
+			const settleWatchdog = window.setTimeout(() => {
+				if (!cancelled) setReward13Loading(false)
+			}, 12_000)
 			try {
-				const aa =
-					resolvedAa ||
-					(profile?.aaAccount && ethers.isAddress(profile.aaAccount)
-						? ethers.getAddress(profile.aaAccount)
-						: profile?.keyID && ethers.isAddress(profile.keyID)
-							? (await resolveBeamioAaOnConet(conetDepinProvider, profile.keyID)) ?? ''
-							: '')
-				if (!aa || !ethers.isAddress(aa)) return
-				if (!profile) return
-				const parsed = parseDiscoverTopupAmountInput(amountText, ccy)
-				if (!parsed.ok) return
-				const { usdc6 } = await quoteCurrencyAmountInUSDCFair(ccy, parsed.apiAmount)
-				const rows = await loadReward13RowsForAa(profile as profile, aa, cardAddress)
-				const fiat6 = ethers.parseUnits(parsed.apiAmount, 6)
-				const legs = await planAutoCoverUsdc(rows, usdc6, fiat6)
+				const aa = await resolveAaHoldingReward13(
+					currentProfile as profile,
+					resolvedAa || currentProfile.aaAccount,
+				)
+				if (!aa) return
+				if (!cancelled) setResolvedAa(aa)
+				const peeked = peekReward13RowsCache(aa, card)
+				if (peeked && !cancelled) {
+					setReward13Rows((prev) => mergeReward13Rows(prev, peeked))
+					if (sameStoreHasPositiveCover(peeked)) setReward13Loading(false)
+				}
+				const rows = await loadReward13RowsForAa(currentProfile as profile, aa, card, {
+					onPartial: (partial) => {
+						if (cancelled) return
+						setReward13Rows((prev) => mergeReward13Rows(prev, partial))
+						if (
+							sameStoreHasPositiveCover(partial) ||
+							sameStoreEscrowSized(partial) ||
+							isTrustedSameStoreZero(aa, card)
+						) {
+							setReward13Loading(false)
+						}
+					},
+				})
 				if (!cancelled) {
-					setReward13Rows(rows)
-					setReward13Legs(legs)
+					setReward13Rows((prev) => mergeReward13Rows(prev, rows))
+					setReward13Loading(false)
 				}
 			} catch {
 				// Keep the last trusted PT rows; an RPC failure is not zero PT.
-			} finally {
 				if (!cancelled) setReward13Loading(false)
+			} finally {
+				window.clearTimeout(settleWatchdog)
 			}
 		})()
 		return () => {
 			cancelled = true
 		}
-	}, [step, amountText, ccy, cardAddress, profile, resolvedAa])
+	}, [step, cardAddress, merchantTitle, myBrandCardDetails, profile?.keyID, profile?.aaAccount, resolvedAa])
+
+	useEffect(() => {
+		if (step !== 3 || quotedGiftUsdc6 == null || reward13Loading) return
+		const parsed = parseDiscoverTopupAmountInput(amountText, ccy)
+		if (!parsed.ok) return
+		const fiat6 = parseFiatHumanTo6(parsed.apiAmount)
+		void planAutoCoverUsdc(reward13Rows, quotedGiftUsdc6, fiat6)
+			.then((legs) => setReward13Legs(legs))
+			.catch(() => {
+				// Keep the last trusted plan when the quote planner cannot complete.
+			})
+	}, [step, amountText, ccy, quotedGiftUsdc6, reward13Rows, reward13Loading])
 
 	const myAddress = (profile?.keyID ?? '').trim().toLowerCase()
 	const recentFriends = useMemo(() => {
@@ -1573,12 +1640,11 @@ export default function DiscoverMerchantGiftSheet({
 		),
 	).size
 	const remainingUsdcLabel = useMemo(() => {
-		const quoted = usdcQuoteLabel?.match(/\$([0-9.]+)/)?.[1]
-		if (!quoted) return null
-		const total = ethers.parseUnits(quoted, 6)
+		const total = quotedGiftUsdc6
+		if (total == null) return null
 		const remaining = total > reward13AppliedUsdc6 ? total - reward13AppliedUsdc6 : 0n
 		return `$${formatQuotedUsdc6ForDisplay(remaining)} USDC`
-	}, [usdcQuoteLabel, reward13AppliedUsdc6])
+	}, [quotedGiftUsdc6, reward13AppliedUsdc6])
 
 	const payTotalLabel = useMemo(() => {
 		if (!giftFacePreview) return `${prefix}${previewAmount}`
@@ -2439,10 +2505,9 @@ export default function DiscoverMerchantGiftSheet({
 		const customMin = Math.max(Number(minHuman) || 0, customBounds?.min ?? 0)
 		const customMax = customBounds?.max
 		const themedCustomColSpan = visiblePresets.length % 3 === 2 ? 'col-span-1' : 'col-span-2'
-		const merchantInitial = merchantLabel.replace(/^@/, '').trim().charAt(0).toUpperCase() || '?'
 		return (
 			<section className="mx-auto flex w-full min-w-0 max-w-lg flex-col gap-1 pb-8" aria-label="Configure gift">
-				<div className="mb-2 flex items-center justify-between gap-2">
+				<div className="mb-2 flex items-center gap-2">
 					<div
 						className="inline-flex items-center gap-1.5 rounded-full px-3 py-1"
 						style={{ backgroundColor: brandTint, color: brandControl }}
@@ -2456,13 +2521,6 @@ export default function DiscoverMerchantGiftSheet({
 							{isDining ? 'Gourmet Dining Gift' : 'Wellness & Self-Care Gift'}
 						</span>
 					</div>
-					<div
-						className="inline-flex items-center gap-1 rounded-full px-2.5 py-1"
-						style={{ backgroundColor: `${brandControl}18`, color: brandControl }}
-					>
-						<Zap className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />
-						<span className="text-[12px] font-semibold uppercase tracking-[0.05em]">Instant Delivery</span>
-					</div>
 				</div>
 				<h2 className="text-[28px] font-bold leading-tight tracking-tight text-[#0F172A] dark:text-slate-100">
 					{isDining ? 'Treat a Friend 🍽️' : 'Gift of Wellness ✨'}
@@ -2474,12 +2532,6 @@ export default function DiscoverMerchantGiftSheet({
 				</p>
 
 				<div className="mt-3">{themedGiftCard}</div>
-				<div className="mt-2.5 flex items-center gap-1.5 px-2">
-					<Check className="h-4 w-4 shrink-0" strokeWidth={2.5} style={{ color: brandControl }} aria-hidden />
-					<p className="text-[13px] leading-tight text-[#5d5e63] dark:text-slate-400">
-						They get exactly what you pay. 100% value goes to your friend.
-					</p>
-				</div>
 
 				<section className="mt-6">
 					<div className="mb-2.5 flex items-center justify-between gap-2">
@@ -2693,59 +2745,6 @@ export default function DiscoverMerchantGiftSheet({
 					</div>
 				</section>
 
-				{spotlightUrl ? (
-					<section className="mt-6">
-						<div className="flex items-center gap-3.5 rounded-2xl bg-[#f4f3f8] p-4 dark:bg-slate-800">
-							<IpfsImg
-								src={spotlightUrl}
-								alt=""
-								className="h-16 w-16 shrink-0 rounded-xl object-cover shadow-sm"
-							/>
-							<div className="flex min-w-0 flex-col">
-								<div className="flex items-center gap-1">
-									<span className="truncate text-[14px] font-semibold text-[#1a1b1f] dark:text-slate-100">
-										{isDining
-											? `${merchantLabel} dining experience`
-											: `${merchantLabel} wellness experience`}
-									</span>
-									<Star className="h-4 w-4 shrink-0" strokeWidth={2.25} style={{ color: brandControl }} aria-hidden />
-								</div>
-								<p className="mt-0.5 line-clamp-2 text-[12px] text-[#5d5e63] dark:text-slate-400">
-									{isDining
-										? 'Recipient can redeem on their phone via QR scan for dine-in or takeout.'
-										: 'Recipient can redeem via QR scan at check-in, or book a session on their phone.'}
-								</p>
-							</div>
-						</div>
-					</section>
-				) : (
-					<section className="mt-6">
-						<div className="flex items-center gap-3.5 rounded-2xl bg-[#f4f3f8] p-4 dark:bg-slate-800">
-							<div
-								className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl text-[20px] font-bold shadow-sm"
-								style={{ backgroundColor: brandColor, color: onBrandText }}
-							>
-								{merchantInitial}
-							</div>
-							<div className="flex min-w-0 flex-col">
-								<div className="flex items-center gap-1">
-									<span className="truncate text-[14px] font-semibold text-[#1a1b1f] dark:text-slate-100">
-										{isDining
-											? `${merchantLabel} dining experience`
-											: `${merchantLabel} wellness experience`}
-									</span>
-									<Star className="h-4 w-4 shrink-0" strokeWidth={2.25} style={{ color: brandControl }} aria-hidden />
-								</div>
-								<p className="mt-0.5 line-clamp-2 text-[12px] text-[#5d5e63] dark:text-slate-400">
-									{isDining
-										? 'Recipient can redeem on their phone via QR scan for dine-in or takeout.'
-										: 'Recipient can redeem via QR scan at check-in, or book a session on their phone.'}
-								</p>
-							</div>
-						</div>
-					</section>
-				)}
-
 				{panelError ? (
 					<div
 						role="alert"
@@ -2770,12 +2769,6 @@ export default function DiscoverMerchantGiftSheet({
 						<span>Continue to Delivery Method</span>
 						<ChevronRight className="h-5 w-5" strokeWidth={2.25} aria-hidden />
 					</button>
-					<div className="mt-3 flex items-center justify-center gap-1.5 text-center">
-						<Lock className="h-3.5 w-3.5 shrink-0 text-[#5d5e63]" strokeWidth={2.25} aria-hidden />
-						<span className="text-[11px] font-semibold uppercase leading-none tracking-[0.05em] text-[#5d5e63]">
-							Protected by Beamio · Unclaimed gifts return automatically in 24h
-						</span>
-					</div>
 				</section>
 			</section>
 		)

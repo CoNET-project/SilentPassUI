@@ -2411,7 +2411,7 @@ export default function DiscoverMerchantGiftSheet({
 		const themedCustomColSpan = visiblePresets.length % 3 === 2 ? 'col-span-1' : 'col-span-2'
 		const merchantInitial = merchantLabel.replace(/^@/, '').trim().charAt(0).toUpperCase() || '?'
 		return (
-			<section className="mx-auto flex w-full max-w-lg flex-col gap-1 pb-8" aria-label="Configure gift">
+			<section className="mx-auto flex w-full min-w-0 max-w-lg flex-col gap-1 pb-8" aria-label="Configure gift">
 				<div className="mb-2 flex items-center justify-between gap-2">
 					<div
 						className="inline-flex items-center gap-1.5 rounded-full px-3 py-1"
@@ -2561,16 +2561,16 @@ export default function DiscoverMerchantGiftSheet({
 					</div>
 				</section>
 
-				<section className="mt-6">
+				<section className="mt-6 min-w-0">
 					<h3 className="mb-2.5 text-[18px] font-semibold tracking-tight text-[#1a1b1f] dark:text-slate-100">
 						Select Occasion Theme
 					</h3>
 					<div
-						className="-mx-5 overflow-x-auto overscroll-x-contain px-5 pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [scroll-snap-type:x_mandatory] [&::-webkit-scrollbar]:hidden"
+						className="min-w-0 w-full overflow-x-auto overscroll-x-contain p-1 [-ms-overflow-style:none] [scrollbar-width:none] [scroll-snap-type:x_mandatory] [&::-webkit-scrollbar]:hidden"
 						role="listbox"
 						aria-label="Occasion theme"
 					>
-						<div className="flex w-max gap-2.5 pr-5">
+						<div className="flex w-full gap-2.5">
 							{occasionCatalog.map((occ) => {
 								const active = occasionId === occ.id
 								const subtitle = occasionSubtitle(occ)
@@ -2581,12 +2581,12 @@ export default function DiscoverMerchantGiftSheet({
 										role="option"
 										aria-selected={active}
 										onClick={() => selectOccasion(occ)}
-										className={`relative flex w-[9.25rem] shrink-0 snap-start flex-col items-start rounded-2xl px-3.5 pb-3.5 pt-3.5 text-left transition ${
+										className={`relative flex min-w-[6.75rem] flex-1 basis-0 snap-start flex-col items-start rounded-2xl border-2 px-3 pb-3.5 pt-3.5 text-left transition ${
 											active
 												? 'bg-[#f8f8fb] dark:bg-slate-800'
-												: 'bg-[#f4f3f8] hover:bg-[#eeedf3] dark:bg-slate-900'
+												: 'border-transparent bg-[#f4f3f8] hover:bg-[#eeedf3] dark:bg-slate-900'
 										}`}
-										style={active ? { boxShadow: brandSelectedRing } : undefined}
+										style={active ? { borderColor: brandControl } : undefined}
 									>
 										{active ? (
 											<Check

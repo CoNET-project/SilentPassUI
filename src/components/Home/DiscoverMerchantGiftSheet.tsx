@@ -93,6 +93,8 @@ import {
 	discoverMixCssColorWithWhite,
 	discoverParseCssRgb,
 	parseDiscoverMerchantBrandColor,
+	resolveDiscoverStoreCreditMultiplierCards,
+	type DiscoverStoreCreditMultiplierCard,
 } from '@/utils/discoverMerchantPromotions'
 
 const GIFT_BRAND_FALLBACK = '#2c2416'
@@ -318,6 +320,54 @@ function themeCustomBounds(kind: GiftStep1Kind): { min: number; max: number } | 
 	if (kind === 'food-beverage') return { min: 10, max: 1000 }
 	if (kind === 'health-beauty') return { min: 20, max: 1500 }
 	return null
+}
+
+function formatGiftBonusPercent(pct: number): string {
+	if (!Number.isFinite(pct) || pct <= 0) return ''
+	if (Number.isInteger(pct)) return String(pct)
+	return pct.toFixed(2).replace(/0+$/, '').replace(/\.$/, '')
+}
+
+function giftAmountChipsFromMultiplierCards(
+	cards: DiscoverStoreCreditMultiplierCard[],
+	minNum: number,
+): GiftAmountChip[] {
+	return cards
+		.filter((card) => card.topupAmount >= minNum || minNum <= 0)
+		.map((card) => {
+			const pct = formatGiftBonusPercent(card.bonusPercent)
+			return {
+				value: card.topupAmount,
+				caption: card.isBestValue ? 'Best Value' : pct ? `+${pct}% Extra` : '',
+			}
+		})
+}
+
+function recommendedGiftAmount(
+	kind: GiftStep1Kind,
+	floor: number,
+	cards: DiscoverStoreCreditMultiplierCard[],
+	minNum: number,
+): number {
+	if (cards.length >= 2) {
+		const eligible = cards.filter((card) => card.topupAmount >= minNum || minNum <= 0)
+		const best = eligible.find((card) => card.isBestValue) ?? eligible[0]
+		if (best) return Math.max(best.topupAmount, floor)
+	}
+	return Math.max(themeDefaultAmount(kind), floor)
+}
+
+function giftCustomBounds(
+	kind: GiftStep1Kind,
+	promoAmounts: number[],
+): { min: number; max: number } | null {
+	const base = themeCustomBounds(kind)
+	if (!base) return null
+	if (!promoAmounts.length) return base
+	return {
+		min: Math.min(base.min, Math.min(...promoAmounts)),
+		max: Math.max(base.max, Math.max(...promoAmounts)),
+	}
 }
 
 function themeNoteMax(kind: GiftStep1Kind): number {
@@ -666,28 +716,71 @@ export default function DiscoverMerchantGiftSheet({
 	const previewAmount = formatPreviewAmount(amountText)
 	const activeOccasion = occasionCatalog.find((o) => o.id === occasionId) ?? occasionCatalog[0]!
 
-	const visiblePresets = useMemo(
-		() => themeAmountChips(step1Kind).filter((chip) => chip.value >= minNum || minNum <= 0),
-		[minNum, step1Kind],
+	const multiplierCards = useMemo(
+		() =>
+			resolveDiscoverStoreCreditMultiplierCards({
+				metadataRoot,
+				currency: String(ccy || 'USD'),
+			}),
+		[metadataRoot, ccy],
+	)
+	const visiblePresets = useMemo(() => {
+		if (multiplierCards.length >= 2) {
+			const promoChips = giftAmountChipsFromMultiplierCards(multiplierCards, minNum)
+			if (promoChips.length > 0) return promoChips
+		}
+		return themeAmountChips(step1Kind).filter((chip) => chip.value >= minNum || minNum <= 0)
+	}, [minNum, multiplierCards, step1Kind])
+	const promoAmounts = useMemo(
+		() => (multiplierCards.length >= 2 ? multiplierCards.map((card) => card.topupAmount) : []),
+		[multiplierCards],
+	)
+	const giftBounds = useMemo(
+		() => giftCustomBounds(step1Kind, promoAmounts),
+		[promoAmounts, step1Kind],
 	)
 	const noteMax = themeNoteMax(step1Kind)
 	const appliedStep1KindRef = useRef(step1Kind)
+	const appliedAmountSourceRef = useRef('')
 
 	useEffect(() => {
-		if (appliedStep1KindRef.current === step1Kind) return
+		const promoKey =
+			multiplierCards.length >= 2
+				? multiplierCards
+						.map((card) => `${card.topupAmount}:${card.bonusPercent}:${card.isBestValue ? 1 : 0}`)
+						.join('|')
+				: ''
+		const sourceKey = `${step1Kind}|${promoKey}|${minHuman}`
+		const kindChanged = appliedStep1KindRef.current !== step1Kind
+		const sourceChanged = appliedAmountSourceRef.current !== sourceKey
+		if (!kindChanged && !sourceChanged) return
 		appliedStep1KindRef.current = step1Kind
+		appliedAmountSourceRef.current = sourceKey
 		if (step !== 1 || issuedCode) return
-		const occId = themeDefaultOccasionId(step1Kind)
-		const catalog = themeOccasionCatalog(step1Kind)
-		const occ = catalog.find((o) => o.id === occId) ?? catalog[0]!
-		setOccasionId(occId)
-		setGiftNote(occ.message(merchantTitle.trim() || 'this merchant'))
+		if (!kindChanged && customAmountOpen) return
+		if (kindChanged) {
+			const occId = themeDefaultOccasionId(step1Kind)
+			const catalog = themeOccasionCatalog(step1Kind)
+			const occ = catalog.find((o) => o.id === occId) ?? catalog[0]!
+			setOccasionId(occId)
+			setGiftNote(occ.message(merchantTitle.trim() || 'this merchant'))
+		}
 		const floor = isFeeCard ? Number(minHuman) || 0 : 0
-		const start = Math.max(themeDefaultAmount(step1Kind), floor)
-		setPresetAmount(themeDefaultAmount(step1Kind))
+		const start = recommendedGiftAmount(step1Kind, floor, multiplierCards, minNum)
+		setPresetAmount(start)
 		setCustomAmountOpen(false)
 		setAmountText(formatGiftStartAmount(start))
-	}, [step1Kind, step, issuedCode, merchantTitle, isFeeCard, minHuman])
+	}, [
+		customAmountOpen,
+		isFeeCard,
+		issuedCode,
+		merchantTitle,
+		minHuman,
+		minNum,
+		multiplierCards,
+		step,
+		step1Kind,
+	])
 
 	useEffect(() => {
 		if (!creditPayEnabled && payWith === 'credit') setPayWith('usdc')
@@ -1044,7 +1137,7 @@ export default function DiscoverMerchantGiftSheet({
 			setPanelError(`Gift amount must be at least ${prefix}${minHuman} (base membership fee).`)
 			return false
 		}
-		const bounds = themeCustomBounds(step1Kind)
+		const bounds = giftBounds
 		if (bounds) {
 			const human = Number(ethers.formatUnits(totalE6, 6))
 			if (human < bounds.min) {
@@ -1076,7 +1169,7 @@ export default function DiscoverMerchantGiftSheet({
 	const selectPreset = (n: number) => {
 		setPresetAmount(n)
 		setCustomAmountOpen(false)
-		setAmountText(String(n))
+		setAmountText(formatGiftStartAmount(n))
 		setPanelError(null)
 	}
 
@@ -2312,9 +2405,10 @@ export default function DiscoverMerchantGiftSheet({
 	if (step === 1 && step1Kind !== 'generic') {
 		const isDining = step1Kind === 'food-beverage'
 		const noteChips = themeNoteChips(step1Kind)
-		const customBounds = themeCustomBounds(step1Kind)
+		const customBounds = giftBounds
 		const customMin = Math.max(Number(minHuman) || 0, customBounds?.min ?? 0)
 		const customMax = customBounds?.max
+		const themedCustomColSpan = visiblePresets.length % 3 === 2 ? 'col-span-1' : 'col-span-2'
 		const merchantInitial = merchantLabel.replace(/^@/, '').trim().charAt(0).toUpperCase() || '?'
 		return (
 			<section className="mx-auto flex w-full max-w-lg flex-col gap-1 pb-8" aria-label="Configure gift">
@@ -2391,7 +2485,7 @@ export default function DiscoverMerchantGiftSheet({
 									}
 								>
 									<span className="text-[17px] font-semibold">
-										{prefix} {n}
+										{prefix} {formatGiftStartAmount(n)}
 									</span>
 									{chip.caption ? (
 										<span
@@ -2407,7 +2501,7 @@ export default function DiscoverMerchantGiftSheet({
 						<button
 							type="button"
 							onClick={openCustomAmount}
-							className={`col-span-2 flex items-center justify-center gap-2 rounded-xl px-4 py-3 transition active:scale-95 ${
+							className={`${themedCustomColSpan} flex items-center justify-center gap-2 rounded-xl px-4 py-3 transition active:scale-95 ${
 								customAmountOpen
 									? 'shadow-sm'
 									: 'bg-[#f4f3f8] text-[#1a1b1f] hover:bg-[#eeedf3] dark:bg-slate-800 dark:text-slate-100'
@@ -2662,7 +2756,15 @@ export default function DiscoverMerchantGiftSheet({
 							Instant mint
 						</span>
 					</div>
-					<div className="grid grid-cols-4 gap-2">
+					<div
+						className={`grid gap-2 ${
+							visiblePresets.length <= 2
+								? 'grid-cols-2'
+								: visiblePresets.length === 3
+									? 'grid-cols-3'
+									: 'grid-cols-4'
+						}`}
+					>
 						{visiblePresets.map((chip) => {
 							const n = chip.value
 							const active = presetAmount === n && !Number.isNaN(Number(amountText)) && Number(amountText) === n
@@ -2686,7 +2788,9 @@ export default function DiscoverMerchantGiftSheet({
 									>
 										{prefix}
 									</span>
-									<span className="text-[22px] font-semibold leading-none">{n}</span>
+									<span className="text-[22px] font-semibold leading-none">
+										{formatGiftStartAmount(n)}
+									</span>
 									{chip.caption ? (
 										<span
 											className="mt-1 text-center text-[9px] font-semibold uppercase leading-tight tracking-wide"

@@ -1628,18 +1628,38 @@ export default function DiscoverMerchantGiftSheet({
 		const remaining = total > reward13AppliedUsdc6 ? total - reward13AppliedUsdc6 : 0n
 		return `$${formatQuotedUsdc6ForDisplay(remaining)} USDC`
 	}, [quotedGiftUsdc6, reward13AppliedUsdc6])
+	const rewardPtFullyCoversGift =
+		quotedGiftUsdc6 !== null &&
+		reward13AppliedPoints6 > 0n &&
+		reward13AppliedUsdc6 >= quotedGiftUsdc6
+
+	useEffect(() => {
+		if (rewardPtFullyCoversGift && remainingPayMethod !== 'usdc') {
+			setRemainingPayMethod('usdc')
+		}
+	}, [remainingPayMethod, rewardPtFullyCoversGift])
 
 	const payTotalLabel = useMemo(() => {
 		if (!giftFacePreview) return `${prefix}${previewAmount}`
+		if (rewardPtFullyCoversGift) return reward13AppliedLabel
 		if (remainingPayMethod === 'credit') {
 			const burn = giftFacePreview.burnAmountE6
 			return `${prefix}${membershipFeeE6ToHuman(burn.toString()) || ethers.formatUnits(burn, 6)} store credit`
 		}
 		return usdcQuoteLabel ?? `${prefix}${previewAmount}`
-	}, [giftFacePreview, remainingPayMethod, prefix, previewAmount, usdcQuoteLabel])
+	}, [
+		giftFacePreview,
+		prefix,
+		previewAmount,
+		remainingPayMethod,
+		reward13AppliedLabel,
+		rewardPtFullyCoversGift,
+		usdcQuoteLabel,
+	])
 
-	const payCtaLabel =
-		remainingPayMethod === 'credit'
+	const payCtaLabel = rewardPtFullyCoversGift
+		? 'Pay with Reward PT'
+		: remainingPayMethod === 'credit'
 			? 'Confirm & pay with store credit'
 			: remainingPayMethod === 'stripe'
 				? 'Pay with card'
@@ -3569,15 +3589,17 @@ export default function DiscoverMerchantGiftSheet({
 						Reward PT is read from your connected Smart Wallet and applied before the remaining payment.
 					</p>
 				</div>
-				<div className="flex items-center justify-between px-1">
-					<span className="text-[12px] font-semibold uppercase tracking-wider text-[#424655] dark:text-slate-400">
-						Remaining payment
-					</span>
-					<span className="text-[12px] font-medium" style={{ color: brandControl }}>
-						Select one
-					</span>
-				</div>
-				<div className="flex flex-col gap-2.5" role="radiogroup" aria-label="Remaining payment">
+				{!rewardPtFullyCoversGift ? (
+					<>
+						<div className="flex items-center justify-between px-1">
+							<span className="text-[12px] font-semibold uppercase tracking-wider text-[#424655] dark:text-slate-400">
+								Remaining payment
+							</span>
+							<span className="text-[12px] font-medium" style={{ color: brandControl }}>
+								Select one
+							</span>
+						</div>
+						<div className="flex flex-col gap-2.5" role="radiogroup" aria-label="Remaining payment">
 					<button
 						type="button"
 						role="radio"
@@ -3733,7 +3755,9 @@ export default function DiscoverMerchantGiftSheet({
 							</div>
 						</button>
 					) : null}
-				</div>
+						</div>
+					</>
+				) : null}
 			</div>
 
 			{isFeeCard ? (
@@ -3782,7 +3806,7 @@ export default function DiscoverMerchantGiftSheet({
 							</span>
 						</div>
 					) : null}
-					{remainingPayMethod !== 'credit' && usdcQuoteLabel ? (
+					{!rewardPtFullyCoversGift && remainingPayMethod !== 'credit' && usdcQuoteLabel ? (
 						<div className="flex items-center justify-between">
 							<span className="flex items-center gap-1">
 								USDC
@@ -3809,7 +3833,9 @@ export default function DiscoverMerchantGiftSheet({
 							Total amount
 						</span>
 						<span className="mt-0.5 block text-[12px] font-medium text-emerald-800 dark:text-emerald-300">
-							{remainingPayMethod === 'credit'
+							{rewardPtFullyCoversGift
+								? 'Reward PT settlement'
+								: remainingPayMethod === 'credit'
 								? 'Store credit settlement'
 								: remainingPayMethod === 'stripe'
 									? 'Card settlement'

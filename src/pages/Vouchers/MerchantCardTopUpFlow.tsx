@@ -1276,8 +1276,20 @@ export default function MerchantCardTopUpFlow({
 	// cash-only ready — that unlocked Confirm while Points Covered still spun / showed 0.
 	const pointsPlanReady = !smartPay || sameStoreReady || legs.length > 0
 	const confirmDisabled = payBusy || !quoteReady || cashUnfundable || !pointsPlanReady
+	// When Reward PT covers the entire top-up, the CTA must submit the points
+	// payment directly. Do not let a previously selected card method change the
+	// zero-cash checkout back into a cash payment.
+	const rewardPtFullyCoversOrder =
+		smartPay &&
+		!coverEstimatePending &&
+		pointsPlanReady &&
+		legs.length > 0 &&
+		cashUsdc6 === 0n &&
+		cashFiat <= 0.005
 	const paymentSubmitDisabled =
-		paymentMethod === 'card'
+		rewardPtFullyCoversOrder
+			? confirmDisabled
+			: paymentMethod === 'card'
 			? payBusy || stripeBusy || !stripeReady || !amountFiat6
 			: confirmDisabled
 	// Usable PT = same-store full #13 when allow PT→#0; peer = escrow+liquidity sized.
@@ -1599,13 +1611,17 @@ export default function MerchantCardTopUpFlow({
 				? 'Covered'
 				: `${formatUsdcDue(quotedUsdc6)} USDC`
 	const confirmPayLabel =
-		cashUsdc6 > 0n
+		rewardPtFullyCoversOrder
+			? 'Pay with Reward PT'
+			: cashUsdc6 > 0n
 			? `Pay ${formatUsdcDue(cashUsdc6)} USDC`
 			: coveredFiat > 0
 				? 'Apply Points'
 				: `Pay ${formatUsdcDue(quotedUsdc6)} USDC`
 	const cashRequiredLabel =
-		paymentMethod === 'card'
+		rewardPtFullyCoversOrder
+			? formatPrefixedFiat(prefix, '0.00')
+			: paymentMethod === 'card'
 			? formatPrefixedFiat(prefix, cashFiat.toFixed(2))
 			: formatUsdcDue(cashUsdc6)
 
@@ -2242,10 +2258,11 @@ export default function MerchantCardTopUpFlow({
 								</div>
 							</div>
 
-							<div
-								className="mt-4 rounded-[22px] border bg-white p-4 shadow-[0_4px_24px_rgba(15,23,42,0.06)] dark:bg-slate-900"
-								style={{ borderColor: merchantBrandBorder }}
-							>
+							{!rewardPtFullyCoversOrder ? (
+								<div
+									className="mt-4 rounded-[22px] border bg-white p-4 shadow-[0_4px_24px_rgba(15,23,42,0.06)] dark:bg-slate-900"
+									style={{ borderColor: merchantBrandBorder }}
+								>
 								<div className="flex items-center justify-between gap-3">
 									<div>
 										<p
@@ -2405,7 +2422,8 @@ export default function MerchantCardTopUpFlow({
 										</span>
 									</button>
 								</div>
-							</div>
+								</div>
+							) : null}
 							{stripePaymentMessage ? (
 								<div
 									role="status"
@@ -2526,12 +2544,18 @@ export default function MerchantCardTopUpFlow({
 								aria-label={
 									payBusy || stripeBusy
 										? payBusyLabel
-										: paymentMethod === 'card'
+										: rewardPtFullyCoversOrder
+											? 'Pay with Reward PT'
+											: paymentMethod === 'card'
 											? 'Pay with card'
 											: confirmPayLabel
 								}
 								onClick={() =>
-									void (paymentMethod === 'card' ? payWithStripe() : redeemLegsThenBuy())
+									void (
+										rewardPtFullyCoversOrder || paymentMethod !== 'card'
+											? redeemLegsThenBuy()
+											: payWithStripe()
+									)
 								}
 								className="mt-5 flex w-full items-center justify-center gap-2 rounded-2xl py-4 text-[17px] font-bold shadow-[0_10px_20px_rgba(15,23,42,0.16)] disabled:cursor-not-allowed disabled:opacity-40"
 								style={{
@@ -2547,7 +2571,11 @@ export default function MerchantCardTopUpFlow({
 								) : (
 									<>
 										<Lock className="h-4 w-4" aria-hidden />
-										{paymentMethod === 'card' ? 'Pay with card' : confirmPayLabel}
+										{rewardPtFullyCoversOrder
+											? 'Pay with Reward PT'
+											: paymentMethod === 'card'
+												? 'Pay with card'
+												: confirmPayLabel}
 									</>
 								)}
 							</button>

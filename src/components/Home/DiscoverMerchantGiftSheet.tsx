@@ -3734,6 +3734,9 @@ export default function DiscoverMerchantGiftSheet({
 										{creditAvailLabel}
 										{creditFeeChip ? ` · ${creditFeeChip}` : ''}
 									</span>
+									<span className="mt-1 text-[12px] leading-4 text-[#6b6258] dark:text-slate-400">
+										Top-up promotions do not apply to Store credits.
+									</span>
 								</div>
 							</div>
 							<div className="flex items-center gap-3 pl-2">

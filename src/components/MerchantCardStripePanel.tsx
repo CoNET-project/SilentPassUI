@@ -167,7 +167,7 @@ async function ensureStripeFulfillmentAdminsBatch(params: {
 	privateKeyArmor: string
 	fulfillmentAdmins: string[]
 	adminLimitStatus?: StripeStatus['adminLimitStatus']
-}): Promise<void> {
+}): Promise<{ hash?: string }> {
 	const admins = Array.from(new Set(params.fulfillmentAdmins.map((admin) => ethers.getAddress(admin))))
 	if (admins.length === 0) throw new Error('Stripe fulfillment is not configured.')
 	const deadline = Math.floor(Date.now() / 1000) + 3600
@@ -185,6 +185,24 @@ async function ensureStripeFulfillmentAdminsBatch(params: {
 	if (!result.success) {
 		throw new Error(`Unable to authorize Stripe fulfillment admins in one transaction. ${result.error ?? ''}`.trim())
 	}
+	const statusResponse = await fetchStripeStatus(params.cardAddress)
+	const status = (await statusResponse.json().catch(() => ({}))) as StripeStatus & { error?: string }
+	if (!statusResponse.ok) {
+		throw new Error(status.error ?? 'Unable to verify Stripe fulfillment admin authorization.')
+	}
+	const statusByAdmin = new Map(
+		(status.adminLimitStatus ?? []).map((entry) => [entry.admin.toLowerCase(), entry]),
+	)
+	const notUnlimited = admins.filter((admin) => {
+		const entry = statusByAdmin.get(admin.toLowerCase())
+		return !entry?.isCardAdmin || !entry.unlimited
+	})
+	if (notUnlimited.length > 0) {
+		throw new Error(
+			`Stripe fulfillment authorization is incomplete. These Beamio admins are not unlimited: ${notUnlimited.join(', ')}`,
+		)
+	}
+	return { hash: result.hash }
 }
 
 async function fetchStripeStatus(cardAddress: string): Promise<Response> {
@@ -353,18 +371,16 @@ export default function MerchantCardStripePanel({ cardAddress }: Props) {
 				throw new Error('The Stripe authorization window was closed. Please try again.')
 			}
 
+			// The card-owner batch authorization must be confirmed before Stripe
+			// OAuth continues. A background authorization could leave Stripe
+			// connected while one signer still has limit=0.
+			await ensureStripeFulfillmentAdminsBatch({
+				cardAddress,
+				privateKeyArmor: profile.privateKeyArmor!,
+				fulfillmentAdmins,
+			})
 			navigateStripeTab(stripeTab, link.url)
 			stripeNavigated = true
-			void (async () => {
-					await ensureStripeFulfillmentAdminsBatch({
-					cardAddress,
-					privateKeyArmor: profile.privateKeyArmor!,
-					fulfillmentAdmins,
-				})
-			})().catch((adminError: unknown) => {
-				const message = adminError instanceof Error ? adminError.message : String(adminError)
-				setError(message)
-			})
 			const watchForStripePopupClose = () => {
 				if (stripePopupRef.current !== stripeTab) return
 				if (isStripeTabClosed(stripeTab)) {

@@ -678,8 +678,9 @@ export default function DiscoverMerchantGiftSheet({
 		return formatGiftStartAmount(start)
 	})
 	const [showDigitalReceipt, setShowDigitalReceipt] = useState(false)
-	const [payWith, setPayWith] = useState<MerchantGiftPayWith>('usdc')
-	const [giftPayWith, setGiftPayWith] = useState<'usdc' | 'stripe'>('usdc')
+	const [remainingPayMethod, setRemainingPayMethod] = useState<'usdc' | 'stripe' | 'credit'>('usdc')
+	const payWith: MerchantGiftPayWith = remainingPayMethod === 'credit' ? 'credit' : 'usdc'
+	const giftPayWith: 'usdc' | 'stripe' = remainingPayMethod === 'stripe' ? 'stripe' : 'usdc'
 	const [stripeReady, setStripeReady] = useState(false)
 	const [stripeSessionId, setStripeSessionId] = useState<string | null>(null)
 	const [stripeBusy, setStripeBusy] = useState(false)
@@ -783,8 +784,12 @@ export default function DiscoverMerchantGiftSheet({
 	])
 
 	useEffect(() => {
-		if (!creditPayEnabled && payWith === 'credit') setPayWith('usdc')
-	}, [creditPayEnabled, payWith])
+		if (!creditPayEnabled && remainingPayMethod === 'credit') setRemainingPayMethod('usdc')
+	}, [creditPayEnabled, remainingPayMethod])
+
+	useEffect(() => {
+		if (!stripeReady && remainingPayMethod === 'stripe') setRemainingPayMethod('usdc')
+	}, [stripeReady, remainingPayMethod])
 
 	useEffect(() => {
 		if (!cardAddress || !ethers.isAddress(cardAddress)) return
@@ -1556,15 +1561,19 @@ export default function DiscoverMerchantGiftSheet({
 
 	const payTotalLabel = useMemo(() => {
 		if (!giftFacePreview) return `${prefix}${previewAmount}`
-		if (payWith === 'credit' && creditPayEnabled) {
+		if (remainingPayMethod === 'credit') {
 			const burn = giftFacePreview.burnAmountE6
 			return `${prefix}${membershipFeeE6ToHuman(burn.toString()) || ethers.formatUnits(burn, 6)} store credit`
 		}
 		return usdcQuoteLabel ?? `${prefix}${previewAmount}`
-	}, [giftFacePreview, payWith, creditPayEnabled, prefix, previewAmount, usdcQuoteLabel])
+	}, [giftFacePreview, remainingPayMethod, prefix, previewAmount, usdcQuoteLabel])
 
 	const payCtaLabel =
-		payWith === 'credit' ? 'Confirm & pay with store credit' : 'Confirm & pay with USDC'
+		remainingPayMethod === 'credit'
+			? 'Confirm & pay with store credit'
+			: remainingPayMethod === 'stripe'
+				? 'Pay with card'
+				: 'Confirm & pay with USDC'
 
 	const stepPill = (n: GiftFlowStep, label: string) => (
 		<div
@@ -3329,7 +3338,7 @@ export default function DiscoverMerchantGiftSheet({
 					}`
 				: 'Burn #0 from your Smart Wallet'
 	const creditBurnLabel =
-		giftFacePreview && payWith === 'credit'
+		giftFacePreview && remainingPayMethod === 'credit'
 			? `${prefix}${
 					membershipFeeE6ToHuman(giftFacePreview.burnAmountE6.toString()) ||
 					ethers.formatUnits(giftFacePreview.burnAmountE6, 6)
@@ -3338,22 +3347,23 @@ export default function DiscoverMerchantGiftSheet({
 	const creditFeeChip =
 		giftCreditConfig.feeKind === 'percent' && giftCreditConfig.percentBps > 0
 			? `${(giftCreditConfig.percentBps / 100).toFixed(2)}% gift fee`
-			: creditFeeLabel && payWith === 'credit'
+			: creditFeeLabel && remainingPayMethod === 'credit'
 				? `Fee ${creditFeeLabel}`
 				: null
 
 	const methodCheck = (selected: boolean) =>
 		selected ? (
 			<div
-				className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-white shadow-sm"
+				className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-white shadow-sm"
 				style={{ backgroundColor: brandControl }}
 			>
 				<Check className="h-3.5 w-3.5" strokeWidth={2.5} aria-hidden />
 			</div>
 		) : (
-			<div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-[#eeedf3] dark:bg-slate-700">
-				<Check className="h-3.5 w-3.5 text-[#eeedf3] dark:text-slate-700" aria-hidden />
-			</div>
+			<div
+				className="h-5 w-5 shrink-0 rounded-full border-2 border-[#d7d6de] bg-white dark:border-slate-600 dark:bg-slate-900"
+				aria-hidden
+			/>
 		)
 
 	const startGiftStripeCheckout = async (
@@ -3546,26 +3556,27 @@ export default function DiscoverMerchantGiftSheet({
 						Select one
 					</span>
 				</div>
-				<div className="flex flex-col gap-2.5">
+				<div className="flex flex-col gap-2.5" role="radiogroup" aria-label="Remaining payment">
 					<button
 						type="button"
+						role="radio"
+						aria-checked={remainingPayMethod === 'usdc'}
 						onClick={() => {
-							setPayWith('usdc')
-							setGiftPayWith('usdc')
+							setRemainingPayMethod('usdc')
 							setPanelError(null)
 						}}
 						disabled={submitting}
 						className={`relative flex items-center justify-between rounded-xl bg-white p-3.5 text-left shadow-sm transition duration-200 dark:bg-slate-900 ${
-							payWith === 'usdc' ? 'shadow-md' : 'opacity-75'
+							remainingPayMethod === 'usdc' ? 'shadow-md' : 'opacity-75'
 						}`}
-						style={payWith === 'usdc' ? { boxShadow: brandSelectedRing } : undefined}
+						style={remainingPayMethod === 'usdc' ? { boxShadow: brandSelectedRing } : undefined}
 					>
 						<div className="flex min-w-0 items-center gap-3">
 							<div
 								className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
 								style={{
-									backgroundColor: payWith === 'usdc' ? brandTint : '#eeedf3',
-									color: payWith === 'usdc' ? brandControl : '#424655',
+									backgroundColor: remainingPayMethod === 'usdc' ? brandTint : '#eeedf3',
+									color: remainingPayMethod === 'usdc' ? brandControl : '#424655',
 								}}
 							>
 								<Wallet className="h-[22px] w-[22px]" strokeWidth={2} aria-hidden />
@@ -3573,7 +3584,7 @@ export default function DiscoverMerchantGiftSheet({
 							<div className="flex min-w-0 flex-col">
 								<div className="flex flex-wrap items-center gap-2">
 									<span className="text-[17px] font-semibold text-[#1a1b1f] dark:text-slate-100">USDC</span>
-									{payWith === 'usdc' ? (
+									{remainingPayMethod === 'usdc' ? (
 										<span
 											className="rounded-full px-2 py-0.5 text-[12px] font-semibold uppercase tracking-[0.05em]"
 											style={{ backgroundColor: brandTint, color: brandControl }}
@@ -3591,67 +3602,83 @@ export default function DiscoverMerchantGiftSheet({
 						<div className="flex items-center gap-3 pl-2">
 							<span
 								className="whitespace-nowrap text-[17px] font-bold"
-								style={{ color: payWith === 'usdc' ? brandControl : '#424655' }}
+								style={{ color: remainingPayMethod === 'usdc' ? brandControl : '#424655' }}
 							>
 								{usdcQuoteLabel ?? `${prefix}${previewAmount}`}
 							</span>
-							{methodCheck(payWith === 'usdc')}
+							{methodCheck(remainingPayMethod === 'usdc')}
 						</div>
 					</button>
 
-					<button
-						type="button"
-						onClick={() => {
-							setGiftPayWith('stripe')
-							setPanelError(null)
-						}}
-						disabled={submitting || stripeBusy || !stripeReady}
-						className={`relative flex items-center justify-between rounded-xl bg-white p-3.5 text-left shadow-sm transition duration-200 dark:bg-slate-900 ${
-							giftPayWith === 'stripe' ? 'shadow-md' : 'opacity-75'
-						}`}
-						style={giftPayWith === 'stripe' ? { boxShadow: brandSelectedRing } : undefined}
-					>
-						<div className="flex min-w-0 items-center gap-3">
-							<div
-								className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
-								style={{
-									backgroundColor: giftPayWith === 'stripe' ? brandTint : '#eeedf3',
-									color: giftPayWith === 'stripe' ? brandControl : '#424655',
-								}}
-							>
-								<Receipt className="h-[22px] w-[22px]" strokeWidth={2} aria-hidden />
-							</div>
-							<div className="flex min-w-0 flex-col">
-								<span className="text-[17px] font-semibold text-[#1a1b1f] dark:text-slate-100">
-									Credit / Debit Card
-								</span>
-								<span className="truncate text-[15px] text-[#424655] dark:text-slate-400">
-									{stripeReady ? 'Connected Stripe · secure checkout' : 'Connected Stripe is unavailable'}
-								</span>
-							</div>
-						</div>
-						{methodCheck(giftPayWith === 'stripe')}
-					</button>
-
-					{creditPayEnabled ? (
+					{stripeReady ? (
 						<button
 							type="button"
+							role="radio"
+							aria-checked={remainingPayMethod === 'stripe'}
 							onClick={() => {
-								setPayWith('credit')
+								setRemainingPayMethod('stripe')
 								setPanelError(null)
 							}}
-							disabled={submitting}
+							disabled={submitting || stripeBusy}
 							className={`relative flex items-center justify-between rounded-xl bg-white p-3.5 text-left shadow-sm transition duration-200 dark:bg-slate-900 ${
-								payWith === 'credit' ? 'shadow-md' : 'opacity-75'
+								remainingPayMethod === 'stripe' ? 'shadow-md' : 'opacity-75'
 							}`}
-							style={payWith === 'credit' ? { boxShadow: brandSelectedRing } : undefined}
+							style={remainingPayMethod === 'stripe' ? { boxShadow: brandSelectedRing } : undefined}
 						>
 							<div className="flex min-w-0 items-center gap-3">
 								<div
 									className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
 									style={{
-										backgroundColor: payWith === 'credit' ? brandTint : '#eeedf3',
-										color: payWith === 'credit' ? brandControl : '#424655',
+										backgroundColor: remainingPayMethod === 'stripe' ? brandTint : '#eeedf3',
+										color: remainingPayMethod === 'stripe' ? brandControl : '#424655',
+									}}
+								>
+									<Receipt className="h-[22px] w-[22px]" strokeWidth={2} aria-hidden />
+								</div>
+								<div className="flex min-w-0 flex-col">
+									<div className="flex flex-wrap items-center gap-2">
+										<span className="text-[17px] font-semibold text-[#1a1b1f] dark:text-slate-100">
+											Credit / Debit Card
+										</span>
+										{remainingPayMethod === 'stripe' ? (
+											<span
+												className="rounded-full px-2 py-0.5 text-[12px] font-semibold uppercase tracking-[0.05em]"
+												style={{ backgroundColor: brandTint, color: brandControl }}
+											>
+												Selected
+											</span>
+										) : null}
+									</div>
+									<span className="truncate text-[15px] text-[#424655] dark:text-slate-400">
+										Connected Stripe · secure checkout
+									</span>
+								</div>
+							</div>
+							{methodCheck(remainingPayMethod === 'stripe')}
+						</button>
+					) : null}
+
+					{creditPayEnabled ? (
+						<button
+							type="button"
+							role="radio"
+							aria-checked={remainingPayMethod === 'credit'}
+							onClick={() => {
+								setRemainingPayMethod('credit')
+								setPanelError(null)
+							}}
+							disabled={submitting}
+							className={`relative flex items-center justify-between rounded-xl bg-white p-3.5 text-left shadow-sm transition duration-200 dark:bg-slate-900 ${
+								remainingPayMethod === 'credit' ? 'shadow-md' : 'opacity-75'
+							}`}
+							style={remainingPayMethod === 'credit' ? { boxShadow: brandSelectedRing } : undefined}
+						>
+							<div className="flex min-w-0 items-center gap-3">
+								<div
+									className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+									style={{
+										backgroundColor: remainingPayMethod === 'credit' ? brandTint : '#eeedf3',
+										color: remainingPayMethod === 'credit' ? brandControl : '#424655',
 									}}
 								>
 									<Store className="h-[22px] w-[22px]" strokeWidth={2} aria-hidden />
@@ -3674,11 +3701,11 @@ export default function DiscoverMerchantGiftSheet({
 							<div className="flex items-center gap-3 pl-2">
 								<span
 									className="whitespace-nowrap text-[17px] font-bold"
-									style={{ color: payWith === 'credit' ? brandControl : '#424655' }}
+									style={{ color: remainingPayMethod === 'credit' ? brandControl : '#424655' }}
 								>
 									{creditBurnLabel ?? `${prefix}${previewAmount}`}
 								</span>
-								{methodCheck(payWith === 'credit')}
+								{methodCheck(remainingPayMethod === 'credit')}
 							</div>
 						</button>
 					) : null}
@@ -3723,7 +3750,7 @@ export default function DiscoverMerchantGiftSheet({
 							{previewAmount}
 						</span>
 					</div>
-					{payWith === 'credit' && creditPayEnabled ? (
+					{remainingPayMethod === 'credit' ? (
 						<div className="flex items-center justify-between">
 							<span>Merchant gift fee</span>
 							<span className="font-medium" style={{ color: brandControl }}>
@@ -3731,7 +3758,7 @@ export default function DiscoverMerchantGiftSheet({
 							</span>
 						</div>
 					) : null}
-					{payWith === 'usdc' && usdcQuoteLabel ? (
+					{remainingPayMethod !== 'credit' && usdcQuoteLabel ? (
 						<div className="flex items-center justify-between">
 							<span className="flex items-center gap-1">
 								USDC
@@ -3758,7 +3785,11 @@ export default function DiscoverMerchantGiftSheet({
 							Total amount
 						</span>
 						<span className="mt-0.5 block text-[12px] font-medium text-emerald-800 dark:text-emerald-300">
-							{payWith === 'credit' ? 'Store credit settlement' : 'USDC settlement'}
+							{remainingPayMethod === 'credit'
+								? 'Store credit settlement'
+								: remainingPayMethod === 'stripe'
+									? 'Card settlement'
+									: 'USDC settlement'}
 						</span>
 					</div>
 					<div className="text-right">
@@ -3812,7 +3843,7 @@ export default function DiscoverMerchantGiftSheet({
 				</div>
 			</div>
 
-			{usdcSubmitHint && payWith === 'usdc' ? (
+			{usdcSubmitHint && remainingPayMethod === 'usdc' ? (
 				<div
 					className="mb-3 flex gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-[13px] text-slate-700 dark:border-slate-600 dark:bg-slate-800/60 dark:text-slate-200"
 					aria-live="polite"

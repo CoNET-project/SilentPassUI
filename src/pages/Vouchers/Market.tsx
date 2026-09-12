@@ -5035,6 +5035,28 @@ function discoverMerchantProgramPresentationEquals(
 	)
 }
 
+/** Empty seed → real #0/#13 or membership may promote chrome while the session is locked. */
+function discoverMerchantProgramPresentationIsUpgrade(
+	incoming: DiscoverMerchantProgramPresentation,
+	current: DiscoverMerchantProgramPresentation,
+): boolean {
+	return (
+		(incoming.hasProgramHoldings && !current.hasProgramHoldings) ||
+		(incoming.hasActiveMembership && !current.hasActiveMembership)
+	)
+}
+
+/** Top-up return / untrusted empty must not flash prospect chrome. */
+function discoverMerchantProgramPresentationIsDowngrade(
+	incoming: DiscoverMerchantProgramPresentation,
+	current: DiscoverMerchantProgramPresentation,
+): boolean {
+	return (
+		(!incoming.hasProgramHoldings && current.hasProgramHoldings) ||
+		(!incoming.hasActiveMembership && current.hasActiveMembership)
+	)
+}
+
 function DiscoverPayPanelError({ message }: { message: string }) {
 	return (
 		<div
@@ -5106,7 +5128,6 @@ function DiscoverMerchantDetailFullScreen({
 	 * between prospect and member layouts. Only a confirmed successful payment
 	 * may replace this snapshot.
 	 */
-	const seededMerchantAssetsHaveHoldings = discoverMerchantAssetsHaveHoldings(seededMerchantAssets)
 	const merchantAssetsSeedAppliedRef = useRef(seededMerchantAssets != null)
 	const merchantAssetsBootstrapAttemptedRef = useRef(false)
 	const merchantProgramPresentationLockedRef = useRef(true)
@@ -5124,9 +5145,19 @@ function DiscoverMerchantDetailFullScreen({
 			assets: Awaited<ReturnType<typeof getMyAssets>> | null,
 			options?: { force?: boolean },
 		) => {
-			if (merchantProgramPresentationLockedRef.current && !options?.force) return
-			merchantProgramPresentationLockedRef.current = true
 			const next = discoverMerchantProgramPresentationFromAssets(assets)
+			const locked = merchantProgramPresentationLockedRef.current
+			if (locked && !options?.force) {
+				// Upgrade-only while locked: empty seed → real #0/#13 or membership
+				// may promote chrome. Never downgrade (Top-up return must not flash prospect).
+				setMerchantProgramPresentation((current) => {
+					if (discoverMerchantProgramPresentationEquals(next, current)) return current
+					if (!discoverMerchantProgramPresentationIsUpgrade(next, current)) return current
+					return next
+				})
+				return
+			}
+			merchantProgramPresentationLockedRef.current = true
 			setMerchantProgramPresentation(next)
 			if (options?.force) {
 				sessionFoodBeveragePassLaneRef.current = next.hasProgramHoldings ? 'loyalty' : 'prospect'
@@ -5745,6 +5776,7 @@ function DiscoverMerchantDetailFullScreen({
 	const showProspectJoinPanel =
 		!isConetGenesisCard &&
 		!hasActiveMembership &&
+		!hasMerchantProgramHoldings &&
 		!showHealthBeautyLoyaltyPass &&
 		!showFoodBeverageProspectPass &&
 		!showFoodBeverageLoyaltyPass &&
@@ -5755,7 +5787,7 @@ function DiscoverMerchantDetailFullScreen({
 	 */
 	const showMemberRechargePrivileges =
 		!isConetGenesisCard &&
-		hasActiveMembership &&
+		hasMerchantProgramHoldings &&
 		sessionHasMultiplierOffers &&
 		usdcTopupPhase === 'idle'
 	/** Hide hero bonus pill whenever multiplier offers are the primary promo chrome. */
@@ -6211,13 +6243,14 @@ function DiscoverMerchantDetailFullScreen({
 				const incoming = discoverMerchantProgramPresentationFromAssets(res)
 				if (
 					!opts?.force &&
-					!discoverMerchantProgramPresentationEquals(incoming, merchantProgramPresentation)
+					discoverMerchantProgramPresentationIsDowngrade(incoming, merchantProgramPresentation)
 				) {
-					// Leftover #0 / #13 / NFT must not flip this overlay session's chrome.
 					return
 				}
 				if (opts?.force) {
 					adoptMerchantProgramPresentation(res, { force: true })
+				} else {
+					adoptMerchantProgramPresentation(res)
 				}
 				setMerchantAssets(res)
 				onMerchantAssetsConfirmed?.(item.cardAddress!, res)
@@ -7219,9 +7252,7 @@ function DiscoverMerchantDetailFullScreen({
 		// closes. Bootstrap assets once, but never start a second membership read
 		// merely because that child flow returned or the daemon mirror changed.
 		const needAssets =
-			!merchantAssetsBootstrapAttemptedRef.current &&
-			sessionPresentation.hasProgramHoldings &&
-			(!seeded || !seededHasHoldings)
+			!merchantAssetsBootstrapAttemptedRef.current && (!seeded || !seededHasHoldings)
 		if (!needSocial && !needAssets) return
 		if (!smartPayPrefetchDone) return
 
@@ -7253,12 +7284,10 @@ function DiscoverMerchantDetailFullScreen({
 					})
 					if (!cancelled && res != null) {
 						const incoming = discoverMerchantProgramPresentationFromAssets(res)
-						if (discoverMerchantProgramPresentationEquals(incoming, sessionPresentation)) {
+						if (!discoverMerchantProgramPresentationIsDowngrade(incoming, sessionPresentation)) {
 							setMerchantAssets(res)
 							onMerchantAssetsConfirmed?.(cardAddress, res)
 						}
-						// Do not replace the member/prospect snapshot during this
-						// detail session. A confirmed payment uses force: true.
 						adoptMerchantProgramPresentation(res)
 					}
 				} catch {
@@ -7820,6 +7849,7 @@ function DiscoverMerchantDetailFullScreen({
 					) : null}
 					{!isConetGenesisCard &&
 					!hasActiveMembership &&
+					!showMemberRechargePrivileges &&
 					!showHealthBeautyLoyaltyPass &&
 					!showFoodBeverageProspectPass &&
 					!showFoodBeverageLoyaltyPass

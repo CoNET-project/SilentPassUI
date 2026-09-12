@@ -4041,7 +4041,8 @@ export const getMyAssets = async (
         }
 
         // 2. 用 EOA 查资产，由卡合约内部 _resolveAccount(EOA) 得到 AA，与购卡/发 NFT 时一致
-        const [pointsBalance, nfts] = await cardContract.getOwnershipByEOA(eoa);
+        const [pointsBalanceRaw, nfts] = await cardContract.getOwnershipByEOA(eoa);
+        let pointsBalance = pointsBalanceRaw as bigint
         const currency = getICurrency(await cardContract.currency());
 
         // 3. 确保前端使用的 AA 与卡内解析一致；无 AA 时不把 aaAccount 设为 EOA（AA→EOA 要求 sender 为合约）
@@ -4064,10 +4065,19 @@ export const getMyAssets = async (
         const rewardAa =
             (await resolveAaHoldingReward13(profile, profile.aaAccount).catch(() => null)) ||
             balanceAddress
-        const [usdcBalanceRaw, chargeRewardBalance] = await Promise.all([
+        const programPoints0Holder =
+            (rewardAa && ethers.isAddress(rewardAa) ? rewardAa : '') ||
+            (profile.aaAccount && ethers.isAddress(profile.aaAccount) ? profile.aaAccount : '')
+        const [usdcBalanceRaw, chargeRewardBalance, aaProgramPoints0] = await Promise.all([
             usdcContract.balanceOf(balanceAddress),
             cardContract.balanceOf(rewardAa, rewardTokenId),
+            pointsBalance === 0n && programPoints0Holder
+                ? cardContract.balanceOf(ethers.getAddress(programPoints0Holder), 0n).catch(() => 0n)
+                : Promise.resolve(0n),
         ]);
+        if (pointsBalance === 0n && (aaProgramPoints0 as bigint) > 0n) {
+            pointsBalance = aaProgramPoints0 as bigint
+        }
         const usdcBalance = ethers.formatUnits(usdcBalanceRaw, 6);
 
         // 4. 格式化数据并返回

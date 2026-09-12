@@ -3536,33 +3536,53 @@ export default function DiscoverMerchantGiftSheet({
 
 			<div className="mb-8 flex flex-col gap-2">
 				<div
-					className="rounded-xl border p-3.5"
-					style={{ borderColor: `${brandControl}35`, backgroundColor: `${brandTint}` }}
+					className="rounded-2xl border bg-white p-4 shadow-[0_4px_18px_rgba(15,23,42,0.06)] dark:bg-slate-900"
+					style={{ borderColor: `${brandControl}55` }}
 				>
 					<div className="flex items-center justify-between gap-3">
 						<div className="flex min-w-0 items-center gap-2">
-							<Star className="h-4 w-4 shrink-0" style={{ color: brandControl }} aria-hidden />
-							<span className="text-[12px] font-semibold uppercase tracking-wider" style={{ color: brandControl }}>
+							<div
+								className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full"
+								style={{ backgroundColor: `${brandControl}18` }}
+							>
+								<Star className="h-4 w-4" style={{ color: brandControl }} strokeWidth={2.25} aria-hidden />
+							</div>
+							<span className="truncate text-[12px] font-bold uppercase tracking-[0.08em]" style={{ color: brandControl }}>
 								Reward PT (#13) available
 							</span>
 						</div>
-						{reward13Loading ? <Loader2 className="h-4 w-4 animate-spin" style={{ color: brandControl }} aria-hidden /> : null}
+						{reward13Loading ? (
+							<span
+								className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full"
+								style={{ backgroundColor: `${brandControl}18`, color: brandControl }}
+							>
+								<Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+							</span>
+						) : reward13SourceCount > 0 ? (
+							<span
+								className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full"
+								style={{ backgroundColor: brandControl }}
+							>
+								<Check className="h-4 w-4 text-white" strokeWidth={2.75} aria-hidden />
+							</span>
+						) : null}
 					</div>
-					<div className="mt-2 flex items-baseline justify-between gap-3">
-						<span className="text-[15px] text-[#424655] dark:text-slate-300">
+					<div className="mt-3 flex items-center justify-between gap-4">
+						<span className="min-w-0 text-[15px] font-medium text-[#424655] dark:text-slate-200">
 							{reward13SourceCount > 0
 								? `${reward13SourceCount} merchant card${reward13SourceCount === 1 ? '' : 's'} available`
 								: 'No eligible Reward PT found'}
 						</span>
-						<span className="text-[18px] font-bold" style={{ color: brandControl }}>
+						<span className="shrink-0 text-[19px] font-bold tabular-nums" style={{ color: brandControl }}>
 							{reward13AppliedLabel}
 						</span>
 					</div>
-					<div className="mt-1 flex items-center justify-between gap-3 text-[13px] text-[#424655] dark:text-slate-400">
+					<div className="mt-1.5 flex items-center justify-between gap-3 text-[13px] text-[#424655] dark:text-slate-400">
 						<span>Estimated value</span>
-						<span className="font-semibold">{reward13AppliedValueLabel}</span>
+						<span className="shrink-0 font-semibold tabular-nums">{reward13AppliedValueLabel}</span>
 					</div>
-					<p className="mt-2 text-[12px] leading-4 text-[#424655] dark:text-slate-400">
+					<div className="my-3 h-px" style={{ backgroundColor: `${brandControl}22` }} />
+					<p className="text-[12px] leading-4 text-[#424655] dark:text-slate-400">
 						Reward PT is read from your connected Smart Wallet and applied before the remaining payment.
 					</p>
 				</div>

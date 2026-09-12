@@ -195,7 +195,11 @@ async function ensureStripeFulfillmentAdminsBatch(params: {
 	)
 	const notUnlimited = admins.filter((admin) => {
 		const entry = statusByAdmin.get(admin.toLowerCase())
-		return !entry?.isCardAdmin || !entry.unlimited
+		// Governance exposes `unlimited=true` only for the card owner. For
+		// delegated Beamio admins, the effective unlimited allowance is the
+		// uint256 max sentinel written by adminManagerBatch.
+		const hasMaxAllowance = entry?.limit === ethers.MaxUint256.toString()
+		return !entry?.isCardAdmin || (!entry.unlimited && !hasMaxAllowance)
 	})
 	if (notUnlimited.length > 0) {
 		throw new Error(
@@ -294,12 +298,40 @@ export default function MerchantCardStripePanel({ cardAddress }: Props) {
 			) return
 
 			stopWatchingStripePopup()
-			setBusy(false)
 			if (result.status === 'success') {
+				setBusy(true)
 				setError('')
-				void loadStatus()
+				void (async () => {
+					try {
+						const profile = profiles?.[0]
+						if (!profile?.privateKeyArmor) {
+							throw new Error('Unlock the merchant wallet before authorizing Stripe fulfillment admins.')
+						}
+						const statusResponse = await fetchStripeStatus(cardAddress)
+						const stripeStatus = (await statusResponse.json().catch(() => ({}))) as StripeStatus & { error?: string }
+						const fulfillmentAdmins = Array.isArray(stripeStatus.fulfillmentAdmins)
+							? stripeStatus.fulfillmentAdmins.filter((address): address is string => ethers.isAddress(address))
+							: stripeStatus.fulfillmentAdmin && ethers.isAddress(stripeStatus.fulfillmentAdmin)
+								? [stripeStatus.fulfillmentAdmin]
+								: []
+						if (!statusResponse.ok || fulfillmentAdmins.length === 0) {
+							throw new Error(stripeStatus.error ?? 'Stripe fulfillment is not configured.')
+						}
+						await ensureStripeFulfillmentAdminsBatch({
+							cardAddress,
+							privateKeyArmor: profile.privateKeyArmor,
+							fulfillmentAdmins,
+						})
+						await loadStatus()
+					} catch (e: any) {
+						setError(e?.message ?? String(e))
+					} finally {
+						setBusy(false)
+					}
+				})()
 				return
 			}
+			setBusy(false)
 			setError(typeof result.message === 'string' && result.message ? result.message : 'Stripe authorization was not completed.')
 		}
 		window.addEventListener('message', onStripeOAuthComplete)
@@ -307,7 +339,7 @@ export default function MerchantCardStripePanel({ cardAddress }: Props) {
 			window.removeEventListener('message', onStripeOAuthComplete)
 			stopWatchingStripePopup()
 		}
-	}, [cardAddress, loadStatus, stopWatchingStripePopup])
+	}, [cardAddress, loadStatus, profiles, stopWatchingStripePopup])
 
 	const connectStripe = useCallback(async () => {
 		if (busy) return
@@ -371,14 +403,6 @@ export default function MerchantCardStripePanel({ cardAddress }: Props) {
 				throw new Error('The Stripe authorization window was closed. Please try again.')
 			}
 
-			// The card-owner batch authorization must be confirmed before Stripe
-			// OAuth continues. A background authorization could leave Stripe
-			// connected while one signer still has limit=0.
-			await ensureStripeFulfillmentAdminsBatch({
-				cardAddress,
-				privateKeyArmor: profile.privateKeyArmor!,
-				fulfillmentAdmins,
-			})
 			navigateStripeTab(stripeTab, link.url)
 			stripeNavigated = true
 			const watchForStripePopupClose = () => {

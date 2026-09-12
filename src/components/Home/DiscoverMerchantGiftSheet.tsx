@@ -449,23 +449,6 @@ function themeStep3Lead(kind: GiftStep1Kind, merchant: string, recipientHandle: 
 		: `${merchant} digital gift card · shareable claim link`
 }
 
-function themeStep3PerkTitle(kind: GiftStep1Kind): string {
-	if (kind === 'food-beverage') return 'First-time visitor note'
-	if (kind === 'health-beauty') return 'Welcome wellness note'
-	return 'Recipient note'
-}
-
-function themeStep3PerkBody(kind: GiftStep1Kind, prefix: string, amount: string, merchant: string): string {
-	const face = `${prefix}${amount}`
-	if (kind === 'food-beverage') {
-		return `Your friend receives ${face} dining credit at ${merchant}. Unclaimed gifts return automatically in 24h.`
-	}
-	if (kind === 'health-beauty') {
-		return `Your friend receives ${face} wellness credit at ${merchant}. Unclaimed gifts return automatically in 24h.`
-	}
-	return `Your friend receives ${face} store credit at ${merchant}. Unclaimed gifts return automatically in 24h.`
-}
-
 function chatToFriendSearchResult(chat: chatData): searchResult | null {
 	const addr = String(chat.address ?? '').trim()
 	if (!addr) return null
@@ -3845,42 +3828,6 @@ export default function DiscoverMerchantGiftSheet({
 							{previewAmount}
 						</span>
 					</div>
-				</div>
-			</div>
-
-			<div
-				className="mb-8 rounded-xl p-4 shadow-sm"
-				style={{
-					background: `linear-gradient(90deg, ${brandTint} 0%, #f4f3f8 100%)`,
-				}}
-			>
-				<div className="flex items-start gap-3">
-					<div
-						className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
-						style={{ backgroundColor: `${brandControl}1a`, color: brandControl }}
-					>
-						<Sparkles className="h-5 w-5" strokeWidth={2} aria-hidden />
-					</div>
-					<div className="flex flex-col">
-						<span className="text-[15px] font-semibold text-[#1a1b1f] dark:text-slate-100">
-							{themeStep3PerkTitle(step1Kind)}
-						</span>
-						<p className="mt-0.5 text-[15px] leading-relaxed text-[#424655] dark:text-slate-400">
-							{themeStep3PerkBody(step1Kind, prefix, previewAmount, merchantLabel)}
-						</p>
-					</div>
-				</div>
-			</div>
-
-			<div className="mb-8 flex items-center justify-center gap-4 py-2 text-[#737687]">
-				<div className="flex items-center gap-1.5">
-					<Lock className="h-4 w-4" aria-hidden />
-					<span className="text-[12px] font-semibold uppercase tracking-[0.05em]">Protected by Beamio</span>
-				</div>
-				<span className="h-1 w-1 rounded-full bg-[#c3c6d8]" />
-				<div className="flex items-center gap-1.5">
-					<CheckCircle2 className="h-4 w-4" aria-hidden />
-					<span className="text-[12px] font-semibold uppercase tracking-[0.05em]">24h auto-return</span>
 				</div>
 			</div>
 

@@ -2565,38 +2565,54 @@ export default function DiscoverMerchantGiftSheet({
 					<h3 className="mb-2.5 text-[18px] font-semibold tracking-tight text-[#1a1b1f] dark:text-slate-100">
 						Select Occasion Theme
 					</h3>
-					<div className="grid grid-cols-2 gap-2.5">
-						{occasionCatalog.map((occ) => {
-							const active = occasionId === occ.id
-							const subtitle = occasionSubtitle(occ)
-							return (
-								<button
-									key={occ.id}
-									type="button"
-									onClick={() => selectOccasion(occ)}
-									className={`flex items-center gap-2.5 rounded-xl p-3 text-left transition ${
-										active
-											? 'bg-[#eeedf3] shadow-sm ring-1 dark:bg-slate-800'
-											: 'bg-[#f4f3f8] hover:bg-[#eeedf3] dark:bg-slate-900'
-									}`}
-									style={active ? { boxShadow: brandSelectedRing } : undefined}
-								>
-									<div
-										className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[18px] ${occasionEmojiTileClass(occ.emoji)}`}
+					<div
+						className="-mx-5 overflow-x-auto overscroll-x-contain px-5 pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [scroll-snap-type:x_mandatory] [&::-webkit-scrollbar]:hidden"
+						role="listbox"
+						aria-label="Occasion theme"
+					>
+						<div className="flex w-max gap-2.5 pr-5">
+							{occasionCatalog.map((occ) => {
+								const active = occasionId === occ.id
+								const subtitle = occasionSubtitle(occ)
+								return (
+									<button
+										key={occ.id}
+										type="button"
+										role="option"
+										aria-selected={active}
+										onClick={() => selectOccasion(occ)}
+										className={`relative flex w-[9.25rem] shrink-0 snap-start flex-col items-start rounded-2xl px-3.5 pb-3.5 pt-3.5 text-left transition ${
+											active
+												? 'bg-[#f8f8fb] dark:bg-slate-800'
+												: 'bg-[#f4f3f8] hover:bg-[#eeedf3] dark:bg-slate-900'
+										}`}
+										style={active ? { boxShadow: brandSelectedRing } : undefined}
 									>
-										{occ.emoji}
-									</div>
-									<div className="flex min-w-0 flex-col">
-										<span className="truncate text-[14px] font-semibold text-[#1a1b1f] dark:text-slate-100">
+										{active ? (
+											<Check
+												className="absolute right-3 top-3 h-4 w-4"
+												strokeWidth={2.75}
+												style={{ color: brandControl }}
+												aria-hidden
+											/>
+										) : null}
+										<div
+											className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-[20px] ${occasionEmojiTileClass(occ.emoji)}`}
+										>
+											{occ.emoji}
+										</div>
+										<span className="mt-3 line-clamp-2 text-[14px] font-semibold leading-snug text-[#1a1b1f] dark:text-slate-100">
 											{occ.label}
 										</span>
 										{subtitle ? (
-											<span className="text-[11px] font-semibold text-[#5d5e63]">{subtitle}</span>
+											<span className="mt-0.5 line-clamp-2 text-[12px] font-medium leading-snug text-[#5d5e63]">
+												{subtitle}
+											</span>
 										) : null}
-									</div>
-								</button>
-							)
-						})}
+									</button>
+								)
+							})}
+						</div>
 					</div>
 				</section>
 

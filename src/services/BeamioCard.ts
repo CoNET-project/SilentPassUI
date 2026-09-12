@@ -501,7 +501,13 @@ export const quoteCurrencyAmountInUSDCFair = async (
 	return { usdc6, usdc: ethers.formatUnits(usdc6, 6) }
 }
 
-export type MerchantGiftPayWith = 'usdc' | 'credit'
+export type MerchantGiftPayWith = 'usdc' | 'credit' | 'reward13'
+
+export type MerchantGiftReward13PeerLeg = {
+	cardAddress: string
+	burn13: string
+	usdcOut6: string
+}
 
 const GIFT_CREDIT_EIP712_TYPES: Record<string, { name: string; type: string }[]> = {
 	GiftCreditPurchase: [
@@ -516,6 +522,85 @@ const GIFT_CREDIT_EIP712_TYPES: Record<string, { name: string; type: string }[]>
 		{ name: 'validBefore', type: 'uint64' },
 		{ name: 'nonce', type: 'bytes32' },
 	],
+}
+
+const GIFT_REWARD13_EIP712_TYPES: Record<string, { name: string; type: string }[]> = {
+	GiftReward13Payment: [
+		{ name: 'card', type: 'address' },
+		{ name: 'from', type: 'address' },
+		{ name: 'payerAccount', type: 'address' },
+		{ name: 'membershipFeeE6', type: 'uint256' },
+		{ name: 'topupCreditE6', type: 'uint256' },
+		{ name: 'sameStoreBurn13', type: 'uint256' },
+		{ name: 'peerLegsHash', type: 'bytes32' },
+		{ name: 'redeemHash', type: 'bytes32' },
+		{ name: 'validAfter', type: 'uint64' },
+		{ name: 'validBefore', type: 'uint64' },
+		{ name: 'nonce', type: 'bytes32' },
+	],
+}
+
+const hashGiftReward13PeerLegs = (legs: MerchantGiftReward13PeerLeg[]): string => {
+	if (!legs.length) return ethers.ZeroHash
+	const sorted = [...legs]
+		.map((leg) => ({
+			cardAddress: ethers.getAddress(leg.cardAddress),
+			burn13: BigInt(leg.burn13),
+			usdcOut6: BigInt(leg.usdcOut6),
+		}))
+		.sort((a, b) => a.cardAddress.toLowerCase().localeCompare(b.cardAddress.toLowerCase()))
+	return ethers.keccak256(
+		ethers.concat(
+			sorted.map((leg) =>
+				ethers.solidityPacked(['address', 'uint256', 'uint256'], [
+					leg.cardAddress,
+					leg.burn13,
+					leg.usdcOut6,
+				]),
+			),
+		),
+	)
+}
+
+export const signMerchantGiftReward13Purchase = async (args: {
+	userPrivateKey: string
+	cardAddress: string
+	from: string
+	payerAccount: string
+	membershipFeeE6: string | bigint
+	topupCreditE6: string | bigint
+	sameStoreBurn13: string | bigint
+	peerLegs: MerchantGiftReward13PeerLeg[]
+	redeemHash: string
+	validAfter?: number
+	validBefore?: number
+}): Promise<{ from: string; payerAccount: string; userSignature: string; nonce: string; validAfter: number; validBefore: number; peerLegsHash: string }> => {
+	const card = ethers.getAddress(args.cardAddress)
+	const from = ethers.getAddress(args.from)
+	const payerAccount = ethers.getAddress(args.payerAccount)
+	const peerLegsHash = hashGiftReward13PeerLegs(args.peerLegs)
+	const validAfter = args.validAfter ?? 0
+	const validBefore = args.validBefore ?? Math.floor(Date.now() / 1000) + 3600
+	const nonce = ethers.hexlify(ethers.randomBytes(32))
+	const wallet = new ethers.Wallet(args.userPrivateKey)
+	const userSignature = await wallet.signTypedData(
+		{ name: 'BeamioMerchantGiftReward13', version: '1', chainId: CONET_MAINNET_CHAIN_ID, verifyingContract: card },
+		GIFT_REWARD13_EIP712_TYPES,
+		{
+			card,
+			from,
+			payerAccount,
+			membershipFeeE6: BigInt(args.membershipFeeE6),
+			topupCreditE6: BigInt(args.topupCreditE6),
+			sameStoreBurn13: BigInt(args.sameStoreBurn13),
+			peerLegsHash,
+			redeemHash: ethers.hexlify(ethers.getBytes(args.redeemHash)),
+			validAfter,
+			validBefore,
+			nonce,
+		},
+	)
+	return { from, payerAccount, userSignature, nonce, validAfter, validBefore, peerLegsHash }
 }
 
 /** Offline EIP-712 for Credit Gift (`payWith=credit`). verifyingContract = cardAddress. */
@@ -617,6 +702,14 @@ export const postPurchaseMerchantGiftRedeem = async (payload: {
 	topupPrincipalE6?: string
 	/** Optional hint for credit rail AA. */
 	payerAccount?: string
+	sameStoreBurn13?: string
+	peerLegs?: MerchantGiftReward13PeerLeg[]
+	peerLegsHash?: string
+	cashUsdcAmount?: string
+	cashSignature?: string
+	cashNonce?: string
+	cashValidAfter?: number | string
+	cashValidBefore?: number | string
 }): Promise<{
 	success: boolean
 	error?: string
@@ -629,7 +722,8 @@ export const postPurchaseMerchantGiftRedeem = async (payload: {
 	payWith?: MerchantGiftPayWith
 }> => {
 	const endpoint = `${beamioApi}/api/purchaseMerchantGiftRedeem`
-	const payWith: MerchantGiftPayWith = payload.payWith === 'credit' ? 'credit' : 'usdc'
+	const payWith: MerchantGiftPayWith =
+		payload.payWith === 'credit' ? 'credit' : payload.payWith === 'reward13' ? 'reward13' : 'usdc'
 	try {
 		const res = await fetch(endpoint, {
 			method: 'POST',
@@ -650,6 +744,24 @@ export const postPurchaseMerchantGiftRedeem = async (payload: {
 				...(payload.topupPrincipalE6 != null ? { topupPrincipalE6: payload.topupPrincipalE6 } : {}),
 				...(payWith === 'credit' && payload.payerAccount
 					? { payerAccount: payload.payerAccount }
+					: {}),
+				...(payWith === 'reward13' && payload.payerAccount
+					? { payerAccount: payload.payerAccount }
+					: {}),
+				...(payWith === 'reward13' && payload.sameStoreBurn13 != null
+					? { sameStoreBurn13: payload.sameStoreBurn13 }
+					: {}),
+				...(payWith === 'reward13' && payload.peerLegs
+					? { peerLegs: payload.peerLegs, peerLegsHash: payload.peerLegsHash }
+					: {}),
+				...(payWith === 'reward13' && payload.cashUsdcAmount
+					? {
+							cashUsdcAmount: payload.cashUsdcAmount,
+							cashSignature: payload.cashSignature,
+							cashNonce: payload.cashNonce,
+							cashValidAfter: String(payload.cashValidAfter ?? 0),
+							cashValidBefore: String(payload.cashValidBefore ?? 0),
+						}
 					: {}),
 			}),
 		})

@@ -5,7 +5,6 @@ import { ethers } from 'ethers'
 import { QRCodeCanvas } from 'qrcode.react'
 import {
 	AlertTriangle,
-	AtSign,
 	Check,
 	ChevronRight,
 	Copy,
@@ -44,9 +43,16 @@ import {
 	quoteCurrencyAmountInUSDCFair,
 	readMerchantCardProgramPoints0Balance,
 	signMerchantGiftCreditPurchase,
+	signMerchantGiftReward13Purchase,
 	USDC2Token,
 	type MerchantGiftPayWith,
 } from '@/services/BeamioCard'
+import {
+	formatPtsHuman,
+	loadReward13RowsForAa,
+	planAutoCoverUsdc,
+	type CoverLeg,
+} from '@/utils/topupReward13Plan'
 import { resolveSigningPrivateKeyArmor } from '@/utils/resolveSigningPrivateKeyArmor'
 import {
 	parseDiscoverTopupAmountInput,
@@ -67,6 +73,7 @@ import {
 } from '@/utils/giftCreditPurchaseMetadata'
 import { resolveBeamioAaOnConet } from '@/utils/resolveBeamioAaFromCardFactory'
 import { conetDepinProvider } from '@/utils/constants'
+import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
 import { searchUsername } from '@/services/beamio'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { sendMerchantGiftRedeemChat } from '@/utils/sendMerchantGiftRedeemChat'
@@ -90,6 +97,7 @@ import {
 
 const GIFT_BRAND_FALLBACK = '#2c2416'
 const AMOUNT_PRESETS = [25, 50, 100, 200] as const
+const BEAMIO_API_BASE = 'https://beamio.app'
 
 type GiftFlowStep = 1 | 2 | 3
 type DeliveryMode = 'friend' | 'link'
@@ -331,27 +339,6 @@ function themeOccasionCatalog(kind: GiftStep1Kind): GiftOccasion[] {
 function formatGiftStartAmount(start: number): string {
 	if (!(start > 0)) return ''
 	return Number.isInteger(start) ? String(start) : start.toFixed(2)
-}
-
-function themeDeliveryLead(
-	kind: GiftStep1Kind,
-	prefix: string,
-	amount: string,
-	merchant: string,
-): string {
-	if (kind === 'food-beverage') {
-		return `Choose how your friend receives this ${prefix}${amount} dining treat.`
-	}
-	if (kind === 'health-beauty') {
-		return `Choose how your friend receives this ${prefix}${amount} wellness gift.`
-	}
-	return `Choose how your friend receives this ${prefix}${amount} voucher at ${merchant}.`
-}
-
-function themeRedeemHint(kind: GiftStep1Kind): string {
-	if (kind === 'food-beverage') return 'Dine-in & takeout'
-	if (kind === 'health-beauty') return 'In-clinic treatments & sessions'
-	return 'Redeem at this merchant'
 }
 
 function themeStep3PassTitle(kind: GiftStep1Kind): string {
@@ -642,6 +629,14 @@ export default function DiscoverMerchantGiftSheet({
 	})
 	const [showDigitalReceipt, setShowDigitalReceipt] = useState(false)
 	const [payWith, setPayWith] = useState<MerchantGiftPayWith>('usdc')
+	const [giftPayWith, setGiftPayWith] = useState<'usdc' | 'stripe'>('usdc')
+	const [stripeReady, setStripeReady] = useState(false)
+	const [stripeSessionId, setStripeSessionId] = useState<string | null>(null)
+	const [stripeBusy, setStripeBusy] = useState(false)
+	const [stripePaymentMessage, setStripePaymentMessage] = useState<string | null>(null)
+	const [reward13Rows, setReward13Rows] = useState<Awaited<ReturnType<typeof loadReward13RowsForAa>>>([])
+	const [reward13Legs, setReward13Legs] = useState<CoverLeg[]>([])
+	const [reward13Loading, setReward13Loading] = useState(false)
 	const [aaPoints0Bal, setAaPoints0Bal] = useState<bigint | null>(null)
 	const [aaPoints0Loading, setAaPoints0Loading] = useState(false)
 	const [resolvedAa, setResolvedAa] = useState<string | null>(null)
@@ -697,6 +692,26 @@ export default function DiscoverMerchantGiftSheet({
 	useEffect(() => {
 		if (!creditPayEnabled && payWith === 'credit') setPayWith('usdc')
 	}, [creditPayEnabled, payWith])
+
+	useEffect(() => {
+		if (!cardAddress || !ethers.isAddress(cardAddress)) return
+		let cancelled = false
+		void fetch(`${BEAMIO_API_BASE}/api/merchantCardStripe/status`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ cardAddress: ethers.getAddress(cardAddress) }),
+		})
+			.then(async (response) => {
+				const body = (await response.json().catch(() => ({}))) as { linked?: boolean }
+				if (!cancelled && response.ok) setStripeReady(body.linked === true)
+			})
+			.catch(() => {
+				// Optional payment rail: preserve the last trusted availability.
+			})
+		return () => {
+			cancelled = true
+		}
+	}, [cardAddress])
 
 	useEffect(() => {
 		if (!registerBackHandler) return
@@ -810,6 +825,46 @@ export default function DiscoverMerchantGiftSheet({
 			cancelled = true
 		}
 	}, [step, payWith, amountText, ccy, profile])
+
+	useEffect(() => {
+		if (step !== 3 || !cardAddress || !ethers.isAddress(cardAddress)) {
+			setReward13Rows([])
+			setReward13Legs([])
+			return
+		}
+		let cancelled = false
+		setReward13Loading(true)
+		void (async () => {
+			try {
+				const aa =
+					resolvedAa ||
+					(profile?.aaAccount && ethers.isAddress(profile.aaAccount)
+						? ethers.getAddress(profile.aaAccount)
+						: profile?.keyID && ethers.isAddress(profile.keyID)
+							? (await resolveBeamioAaOnConet(conetDepinProvider, profile.keyID)) ?? ''
+							: '')
+				if (!aa || !ethers.isAddress(aa)) return
+				if (!profile) return
+				const parsed = parseDiscoverTopupAmountInput(amountText, ccy)
+				if (!parsed.ok) return
+				const { usdc6 } = await quoteCurrencyAmountInUSDCFair(ccy, parsed.apiAmount)
+				const rows = await loadReward13RowsForAa(profile as profile, aa, cardAddress)
+				const fiat6 = ethers.parseUnits(parsed.apiAmount, 6)
+				const legs = await planAutoCoverUsdc(rows, usdc6, fiat6)
+				if (!cancelled) {
+					setReward13Rows(rows)
+					setReward13Legs(legs)
+				}
+			} catch {
+				// Keep the last trusted PT rows; an RPC failure is not zero PT.
+			} finally {
+				if (!cancelled) setReward13Loading(false)
+			}
+		})()
+		return () => {
+			cancelled = true
+		}
+	}, [step, amountText, ccy, cardAddress, profile, resolvedAa])
 
 	const myAddress = (profile?.keyID ?? '').trim().toLowerCase()
 	const recentFriends = useMemo(() => {
@@ -1160,7 +1215,47 @@ export default function DiscoverMerchantGiftSheet({
 				return
 			}
 
-			const { usdc, usdc6 } = await quoteCurrencyAmountInUSDCFair(ccy, parsed.apiAmount)
+			const { usdc6: quotedUsdc6 } = await quoteCurrencyAmountInUSDCFair(ccy, parsed.apiAmount)
+			const usdc6 = quotedUsdc6 > reward13AppliedUsdc6 ? quotedUsdc6 - reward13AppliedUsdc6 : 0n
+			const usdc = ethers.formatUnits(usdc6, 6)
+			const rewardLegs = reward13Legs.map((leg) => ({
+				cardAddress: leg.cardAddress,
+				burn13: leg.pointsCost.toString(),
+				usdcOut6: leg.usdcReward6.toString(),
+			}))
+			const sameStoreLeg = rewardLegs.find((leg) => leg.cardAddress.toLowerCase() === card.toLowerCase())
+			const payerAccount = resolvedAa || profile?.aaAccount
+			if (giftPayWith === 'stripe') {
+				if (reward13AppliedPoints6 <= 0n || !payerAccount || !ethers.isAddress(payerAccount)) {
+					setPanelError('Connected Stripe requires at least one Reward PT source.')
+					return
+				}
+				const rewardAuth = await signMerchantGiftReward13Purchase({
+					userPrivateKey: pk,
+					cardAddress: card,
+					from,
+					payerAccount: ethers.getAddress(payerAccount),
+					membershipFeeE6,
+					topupCreditE6: topupPrincipalE6,
+					sameStoreBurn13: sameStoreLeg?.burn13 ?? '0',
+					peerLegs: rewardLegs.filter((leg) => leg.cardAddress.toLowerCase() !== card.toLowerCase()),
+					redeemHash: ethers.keccak256(ethers.toUtf8Bytes(redeemCode)),
+				})
+				const remainderFiat6 = quotedUsdc6 > 0n
+					? ((totalE6 * usdc6) / quotedUsdc6).toString()
+					: '0'
+				await startGiftStripeCheckout(
+					ethers.keccak256(ethers.toUtf8Bytes(redeemCode)),
+					remainderFiat6,
+					rewardAuth,
+					rewardLegs.filter((leg) => leg.cardAddress.toLowerCase() !== card.toLowerCase()),
+					sameStoreLeg?.burn13 ?? '0',
+					membershipFeeE6,
+					topupPrincipalE6,
+				)
+				setStripePaymentMessage('Complete payment in the Connected Stripe tab. Return here to reconcile the result.')
+				return
+			}
 			let conetBal = await readEoaConetUsdcBalance6(profile as profile)
 			let baseBal = 0n
 			try {
@@ -1229,21 +1324,49 @@ export default function DiscoverMerchantGiftSheet({
 				}
 			}
 
-			setUsdcSubmitHint('Signing USDC payment…')
-			const auth = await USDC2Token(pk, usdc, card)
+			setUsdcSubmitHint(usdc6 > 0n ? 'Signing USDC payment…' : 'Preparing Reward PT payment…')
+			const auth = usdc6 > 0n ? await USDC2Token(pk, usdc, card) : null
+			if (reward13AppliedPoints6 > 0n && (!payerAccount || !ethers.isAddress(payerAccount))) {
+				throw new Error('Smart Wallet (AA) is required to use Reward PT.')
+			}
+			const rewardAuth =
+				reward13AppliedPoints6 > 0n
+					? await signMerchantGiftReward13Purchase({
+							userPrivateKey: pk,
+							cardAddress: card,
+							from,
+							payerAccount: ethers.getAddress(payerAccount!),
+							membershipFeeE6,
+							topupCreditE6: topupPrincipalE6,
+							sameStoreBurn13: sameStoreLeg?.burn13 ?? '0',
+							peerLegs: rewardLegs.filter((leg) => leg.cardAddress.toLowerCase() !== card.toLowerCase()),
+							redeemHash: ethers.keccak256(ethers.toUtf8Bytes(redeemCode)),
+						})
+					: null
 			setUsdcSubmitHint(null)
 			const result = await postPurchaseMerchantGiftRedeem({
 				cardAddress: card,
-				from: auth.from,
-				payWith: 'usdc',
-				usdcAmount: auth.usdcAmount,
-				userSignature: auth.userSignature,
-				nonce: auth.nonce,
-				validAfter: auth.validAfter,
-				validBefore: auth.validBefore,
+				from: auth?.from ?? rewardAuth!.from,
+				payWith: rewardAuth ? 'reward13' : 'usdc',
+				usdcAmount: auth?.usdcAmount,
+				userSignature: rewardAuth?.userSignature ?? auth!.userSignature,
+				nonce: rewardAuth?.nonce ?? auth!.nonce,
+				validAfter: rewardAuth?.validAfter ?? auth!.validAfter,
+				validBefore: rewardAuth?.validBefore ?? auth!.validBefore,
 				redeemCode,
 				membershipFeeE6,
 				topupPrincipalE6,
+				payerAccount: rewardAuth?.payerAccount,
+				sameStoreBurn13: sameStoreLeg?.burn13,
+				peerLegs: rewardAuth
+					? rewardLegs.filter((leg) => leg.cardAddress.toLowerCase() !== card.toLowerCase())
+					: undefined,
+				peerLegsHash: rewardAuth?.peerLegsHash,
+				cashUsdcAmount: auth?.usdcAmount,
+				cashSignature: auth?.userSignature,
+				cashNonce: auth?.nonce,
+				cashValidAfter: auth?.validAfter,
+				cashValidBefore: auth?.validBefore,
 			})
 			if (!result.success) {
 				setPanelError(result.error ?? 'Gift purchase failed.')
@@ -1310,6 +1433,33 @@ export default function DiscoverMerchantGiftSheet({
 		if (fee <= 0n) return `${prefix}0.00`
 		return `${prefix}${membershipFeeE6ToHuman(fee.toString()) || ethers.formatUnits(fee, 6)}`
 	}, [giftFacePreview, creditPayEnabled, giftCreditConfig, prefix])
+
+	const reward13AppliedPoints6 = useMemo(
+		() => reward13Legs.reduce((sum, leg) => sum + leg.pointsCost, 0n),
+		[reward13Legs],
+	)
+	const reward13AppliedUsdc6 = useMemo(
+		() => reward13Legs.reduce((sum, leg) => sum + leg.usdcReward6, 0n),
+		[reward13Legs],
+	)
+	const reward13AppliedLabel =
+		reward13AppliedPoints6 > 0n ? `${formatPtsHuman(reward13AppliedPoints6)} PT` : '0.00 PT'
+	const reward13AppliedValueLabel =
+		reward13AppliedUsdc6 > 0n
+			? `$${formatQuotedUsdc6ForDisplay(reward13AppliedUsdc6)} USDC`
+			: '$0.00 USDC'
+	const reward13SourceCount = new Set(
+		(reward13Legs.length > 0 ? reward13Legs : reward13Rows.map((row) => ({ cardAddress: row.cardAddress } as CoverLeg))).map(
+			(leg) => leg.cardAddress.toLowerCase(),
+		),
+	).size
+	const remainingUsdcLabel = useMemo(() => {
+		const quoted = usdcQuoteLabel?.match(/\$([0-9.]+)/)?.[1]
+		if (!quoted) return null
+		const total = ethers.parseUnits(quoted, 6)
+		const remaining = total > reward13AppliedUsdc6 ? total - reward13AppliedUsdc6 : 0n
+		return `$${formatQuotedUsdc6ForDisplay(remaining)} USDC`
+	}, [usdcQuoteLabel, reward13AppliedUsdc6])
 
 	const payTotalLabel = useMemo(() => {
 		if (!giftFacePreview) return `${prefix}${previewAmount}`
@@ -2676,7 +2826,6 @@ export default function DiscoverMerchantGiftSheet({
 	/* ─── Step 2: Delivery ─── */
 	if (step === 2) {
 		const merchantInitial = merchantLabel.replace(/^@/, '').trim().charAt(0).toUpperCase() || '?'
-		const redeemHint = themeRedeemHint(step1Kind)
 		const SummaryKindIcon =
 			step1Kind === 'food-beverage' ? Utensils : step1Kind === 'health-beauty' ? Flower2 : Gift
 		const selectRecentFriend = (item: searchResult) => {
@@ -2688,21 +2837,15 @@ export default function DiscoverMerchantGiftSheet({
 		}
 
 		return (
-			<section className="mx-auto flex w-full max-w-lg flex-col gap-1 pb-6" aria-label="How would you like to deliver?">
-				<div className="flex items-center justify-between gap-3">
+			<section className="mx-auto flex w-full max-w-lg flex-col gap-1 pb-6" aria-label="Choose delivery method">
+				<div className="px-1 pt-1">
 					{stepPill(2, 'Delivery Method')}
-					<span className="shrink-0 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#5d5e63]">
-						Step 2 / 3
-					</span>
+					<h2 className="mt-3 text-[28px] font-bold leading-tight tracking-tight text-[#1a1b1f] dark:text-slate-100">
+						Choose Delivery Method
+					</h2>
 				</div>
-				<h2 className="text-[28px] font-bold leading-tight tracking-tight text-[#0F172A] dark:text-slate-100">
-					How would you like to deliver?
-				</h2>
-				<p className="mt-0.5 text-[15px] text-[#5d5e63] dark:text-slate-400">
-					{themeDeliveryLead(step1Kind, prefix, previewAmount, merchantLabel)}
-				</p>
 
-				<div className="relative mb-4 mt-4 overflow-hidden rounded-xl bg-white p-3.5 shadow-sm dark:bg-slate-900">
+				<div className="relative mb-2 mt-3 overflow-hidden rounded-xl bg-white p-4 shadow-sm dark:bg-slate-900">
 					<div className="flex items-center gap-3">
 						<div
 							className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg"
@@ -2724,48 +2867,23 @@ export default function DiscoverMerchantGiftSheet({
 						</div>
 						<div className="flex min-w-0 flex-1 flex-col">
 							<div className="flex items-center justify-between gap-2">
-								<span
-									className="truncate text-[11px] font-semibold uppercase tracking-[0.08em]"
-									style={{ color: brandControl }}
-								>
-									{activeOccasion.label}
+								<span className="truncate text-[17px] font-semibold text-[#1a1b1f] dark:text-slate-100">
+									{merchantLabel}
 								</span>
-								<div className="flex shrink-0 items-center gap-2">
-									<span className="text-[17px] font-semibold text-[#1a1b1f] dark:text-slate-100">
-										{prefix}
-										{previewAmount}
-									</span>
-									<button
-										type="button"
-										onClick={() => {
-											setStep(1)
-											setPanelError(null)
-										}}
-										className="rounded px-2 py-0.5 text-[12px] font-semibold transition"
-										style={{ backgroundColor: brandTint, color: brandControl }}
-									>
-										Edit
-									</button>
-								</div>
+								<span className="shrink-0 text-[17px] font-semibold" style={{ color: brandControl }}>
+									{prefix}
+									{previewAmount}
+								</span>
 							</div>
-							<p className="mt-0.5 truncate text-[16px] font-medium text-[#1a1b1f] dark:text-slate-100">
-								{merchantLabel}
-							</p>
-							<div className="mt-0.5 flex items-center gap-1.5 text-[13px] text-[#5d5e63]">
+							<div className="mt-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.05em] text-[#5d5e63]">
 								<CheckCircle2 className="h-3.5 w-3.5 shrink-0" style={{ color: brandControl }} aria-hidden />
-								<span className="truncate">{redeemHint}</span>
+								<span className="truncate">Instant Redemption Ready</span>
 							</div>
-							{giftNote.trim() ? (
-								<div className="mt-0.5 flex items-center gap-1 text-[12px] text-[#5d5e63]">
-									<MessageSquare className="h-3.5 w-3.5 shrink-0" aria-hidden />
-									<span className="truncate">Includes personalized greeting note</span>
-								</div>
-							) : null}
 						</div>
 					</div>
 				</div>
 
-				<div className="mb-4 flex flex-col gap-2" role="radiogroup" aria-label="Delivery method">
+				<div className="mt-3 flex flex-col gap-3.5" role="radiogroup" aria-label="Delivery method">
 					{/* Direct @BeamioTag */}
 					<div
 						role="radio"
@@ -2782,58 +2900,53 @@ export default function DiscoverMerchantGiftSheet({
 								setPanelError(null)
 							}
 						}}
-						className="cursor-pointer rounded-xl bg-white p-6 text-left shadow-sm transition dark:bg-slate-900"
+						className="relative cursor-pointer overflow-hidden rounded-xl bg-white p-4 text-left shadow-sm transition dark:bg-slate-900"
 						style={
 							deliveryMode === 'friend'
 								? { boxShadow: brandSelectedRing }
 								: { boxShadow: '0 0 0 1px #e8ecf0' }
 						}
 					>
+						<div
+							className={`absolute bottom-0 left-0 top-0 w-1.5 transition-opacity ${
+								deliveryMode === 'friend' ? 'opacity-100' : 'opacity-0'
+							}`}
+							style={{ backgroundColor: brandControl }}
+							aria-hidden
+						/>
 						<div className="flex items-start justify-between gap-3">
-							<div className="flex items-center gap-3">
+							<div className="flex min-w-0 items-start gap-3 pl-1.5">
 								<div
-									className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full"
+									className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full"
 									style={
 										deliveryMode === 'friend'
-											? { backgroundColor: brandTint, color: brandControl }
-											: { backgroundColor: '#eeedf3', color: '#424655' }
+											? { backgroundColor: brandControl, color: onBrandText }
+											: { backgroundColor: '#e3e2e7', color: '#424655' }
 									}
 								>
-									<AtSign className="h-6 w-6" strokeWidth={2} aria-hidden />
+									{deliveryMode === 'friend' ? <span className="h-2 w-2 rounded-full bg-white" /> : null}
 								</div>
-								<div>
+								<div className="min-w-0">
 									<div className="flex flex-wrap items-center gap-1.5">
 										<h3 className="text-[17px] font-semibold leading-snug text-[#1a1b1f] dark:text-slate-100">
 											Send to @BeamioTag
 										</h3>
 										<span
-											className="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider"
+											className="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider"
 											style={{ backgroundColor: `${brandControl}18`, color: brandControl }}
 										>
-											Direct
+											Fastest
 										</span>
 									</div>
 									<p className="mt-0.5 text-[15px] text-[#5d5e63] dark:text-slate-400">
-										Pick a friend for a personalized share message.
+										Instantly drop the gift into their digital wallet.
 									</p>
 								</div>
-							</div>
-							<div
-								className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${
-									deliveryMode === 'friend' ? '' : 'bg-[#eeedf3] dark:bg-slate-700'
-								}`}
-								style={
-									deliveryMode === 'friend'
-										? { backgroundColor: brandControl, color: onBrandText }
-										: undefined
-								}
-							>
-								{deliveryMode === 'friend' ? <Check className="h-4 w-4" strokeWidth={2.5} aria-hidden /> : null}
 							</div>
 						</div>
 						{deliveryMode === 'friend' ? (
 							<div
-								className="mt-4 space-y-3 border-t border-slate-100 pt-3 dark:border-slate-700"
+								className="mt-3.5 space-y-3 rounded-xl bg-[#f4f3f8] p-3 dark:bg-slate-800"
 								onClick={(e) => e.stopPropagation()}
 								onKeyDown={(e) => e.stopPropagation()}
 							>
@@ -2862,7 +2975,7 @@ export default function DiscoverMerchantGiftSheet({
 											htmlFor="gift-recipient-handle"
 											className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.08em] text-[#5d5e63]"
 										>
-											Recipient Beamio handle
+											Recipient Wallet Tag
 										</label>
 										<div className="relative">
 											<span
@@ -2875,7 +2988,7 @@ export default function DiscoverMerchantGiftSheet({
 												type="search"
 												value={friendQuery}
 												onChange={(e) => setFriendQuery(e.target.value)}
-												placeholder="Username"
+												placeholder="Enter a BeamioTag"
 												autoComplete="off"
 												className="h-12 w-full rounded-lg bg-[#f4f3f8] py-2.5 pl-8 pr-10 text-[17px] text-[#1a1b1f] outline-none dark:bg-slate-800 dark:text-slate-100"
 											/>
@@ -2956,82 +3069,91 @@ export default function DiscoverMerchantGiftSheet({
 								setPanelError(null)
 							}
 						}}
-						className="cursor-pointer rounded-xl bg-white p-6 text-left shadow-sm transition dark:bg-slate-900"
+						className="relative cursor-pointer overflow-hidden rounded-xl bg-white p-4 text-left shadow-sm transition dark:bg-slate-900"
 						style={
 							deliveryMode === 'link'
 								? { boxShadow: brandSelectedRing }
 								: { boxShadow: '0 0 0 1px #e8ecf0' }
 						}
 					>
+						<div
+							className={`absolute bottom-0 left-0 top-0 w-1.5 transition-opacity ${
+								deliveryMode === 'link' ? 'opacity-100' : 'opacity-0'
+							}`}
+							style={{ backgroundColor: brandControl }}
+							aria-hidden
+						/>
 						<div className="flex items-start justify-between gap-3">
-							<div className="flex items-center gap-3">
+							<div className="flex min-w-0 items-start gap-3 pl-1.5">
 								<div
-									className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full"
+									className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full"
 									style={
 										deliveryMode === 'link'
-											? { backgroundColor: brandTint, color: brandControl }
-											: { backgroundColor: '#eeedf3', color: '#424655' }
+											? { backgroundColor: brandControl, color: onBrandText }
+											: { backgroundColor: '#e3e2e7', color: '#424655' }
 									}
 								>
-									<Link2 className="h-6 w-6" strokeWidth={2} aria-hidden />
+									{deliveryMode === 'link' ? <span className="h-2 w-2 rounded-full bg-white" /> : null}
 								</div>
-								<div>
+								<div className="min-w-0">
 									<h3 className="text-[17px] font-semibold leading-snug text-[#1a1b1f] dark:text-slate-100">
 										Create a Shareable Link
 									</h3>
 									<p className="mt-0.5 text-[15px] text-[#5d5e63] dark:text-slate-400">
-										Share via WhatsApp, iMessage, or any messenger.
+										Share via WhatsApp, Text, or any messenger.
 									</p>
 								</div>
-							</div>
-							<div
-								className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${
-									deliveryMode === 'link' ? '' : 'bg-[#eeedf3] dark:bg-slate-700'
-								}`}
-								style={
-									deliveryMode === 'link'
-										? { backgroundColor: brandControl, color: onBrandText }
-										: undefined
-								}
-							>
-								{deliveryMode === 'link' ? <Check className="h-4 w-4" strokeWidth={2.5} aria-hidden /> : null}
 							</div>
 						</div>
 						{deliveryMode === 'link' ? (
 							<div
-								className="mt-4 space-y-2.5 border-t border-slate-100 pt-3 dark:border-slate-700"
+								className="mt-3 flex flex-wrap items-center gap-2 pl-1.5 pt-1"
 								onClick={(e) => e.stopPropagation()}
 							>
-								<div className="flex items-start gap-2.5 rounded-lg bg-[#f4f3f8] p-3 dark:bg-slate-800">
-									<MessageSquare className="mt-0.5 h-5 w-5 shrink-0" style={{ color: brandControl }} aria-hidden />
-									<p className="text-[13px] leading-relaxed text-[#5d5e63] dark:text-slate-400">
-										A private claim link is created after payment. Your friend can claim in Beamio Discover
-										with the link or code.
-									</p>
-								</div>
-								<div className="flex flex-wrap items-center gap-2 pt-1">
-									<span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#5d5e63]">
-										Channels:
-									</span>
-									{['WhatsApp', 'iMessage', 'Direct Link'].map((channel) => (
+								{[
+									{ label: 'Text', icon: MessageSquare },
+									{ label: 'WhatsApp', icon: MessageCircle },
+									{ label: 'WeChat', icon: MessageSquare },
+									{ label: 'Copy', icon: Link2 },
+								].map(({ label, icon: ChannelIcon }) => (
 										<span
-											key={channel}
-											className="rounded bg-[#eeedf3] px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-[#5d5e63] dark:bg-slate-800 dark:text-slate-300"
+											key={label}
+											className="inline-flex items-center gap-1.5 rounded-lg bg-[#f4f3f8] px-2.5 py-1.5 text-[11px] font-semibold text-[#5d5e63] dark:bg-slate-800 dark:text-slate-300"
 										>
-											{channel}
+											<ChannelIcon className="h-3.5 w-3.5" aria-hidden />
+											{label}
 										</span>
-									))}
-								</div>
+								))}
 							</div>
 						) : null}
 					</div>
 				</div>
 
-				<div className="mb-2 flex items-center justify-center gap-2 rounded-lg bg-[#f4f3f8] px-3 py-2 text-center dark:bg-slate-800">
-					<CheckCircle2 className="h-[18px] w-[18px] shrink-0" style={{ color: brandControl }} aria-hidden />
-					<span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5d5e63]">
-						Unclaimed gifts return automatically in 24h
-					</span>
+				<div className="mt-1 flex items-center justify-between gap-3 rounded-xl bg-[#f4f3f8] p-3.5 dark:bg-slate-800">
+					<div className="flex min-w-0 items-center gap-3">
+						<div
+							className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
+							style={{ backgroundColor: brandTint, color: brandControl }}
+						>
+							<Gift className="h-5 w-5" strokeWidth={2.25} aria-hidden />
+						</div>
+						<div className="min-w-0">
+							<span className="block text-[11px] font-semibold uppercase tracking-[0.06em] text-[#1a1b1f] dark:text-slate-100">
+								Digital Gift Envelope Included
+							</span>
+							<span className="block truncate text-[11px] text-[#5d5e63] dark:text-slate-400">
+								Custom animated unwrapping presentation ready
+							</span>
+						</div>
+					</div>
+					<button
+						type="button"
+						onClick={() => setStep(1)}
+						className="shrink-0 rounded-lg bg-white px-2.5 py-1 text-[11px] font-semibold shadow-sm dark:bg-slate-900"
+						style={{ color: brandControl }}
+					>
+						Edit Note
+					</button>
 				</div>
 
 				{panelError ? (
@@ -3055,16 +3177,13 @@ export default function DiscoverMerchantGiftSheet({
 							boxShadow: brandControlShadow,
 						}}
 					>
-						<span>
-							Proceed to checkout ({prefix}
-							{previewAmount})
-						</span>
+						<span>Proceed to Smart Checkout</span>
 						<ChevronRight className="h-5 w-5" strokeWidth={2.25} aria-hidden />
 					</button>
 					<div className="flex items-center justify-center gap-1.5 text-center">
 						<Lock className="h-3.5 w-3.5 shrink-0 text-[#5d5e63]" aria-hidden />
 						<span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5d5e63]">
-							Protected by Beamio · Unclaimed gifts return automatically in 24h
+							100% Secure · Unclaimed gifts auto-return in 24h
 						</span>
 					</div>
 				</div>
@@ -3116,6 +3235,59 @@ export default function DiscoverMerchantGiftSheet({
 				<Check className="h-3.5 w-3.5 text-[#eeedf3] dark:text-slate-700" aria-hidden />
 			</div>
 		)
+
+	const startGiftStripeCheckout = async (
+		redeemHash: string,
+		amountFiat6: string,
+		rewardAuth: {
+			userSignature: string
+			nonce: string
+			validAfter: number | string
+			validBefore: number | string
+			payerAccount: string
+		},
+		peerLegs: Array<{ cardAddress: string; burn13: string; usdcOut6: string }>,
+		sameStoreBurn13: string,
+		ptMembershipFeeE6: string,
+		ptTopupPrincipalE6: string,
+	) => {
+		if (stripeBusy || !stripeReady || !profile?.keyID || !ethers.isAddress(profile.keyID)) return false
+		setStripeBusy(true)
+		setPanelError(null)
+		try {
+			const response = await fetch(`${BEAMIO_API_BASE}/api/merchantCardStripe/createCheckout`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					cardAddress: ethers.getAddress(cardAddress),
+					buyerEoa: ethers.getAddress(profile.keyID),
+					amountFiat6,
+					currency: String(ccy || 'USD').toUpperCase(),
+					kind: 'gift',
+					redeemHash,
+					ptUserSignature: rewardAuth.userSignature,
+					ptNonce: rewardAuth.nonce,
+					ptValidAfter: String(rewardAuth.validAfter),
+					ptValidBefore: String(rewardAuth.validBefore),
+					ptPayerAccount: rewardAuth.payerAccount,
+					ptMembershipFeeE6,
+					ptTopupPrincipalE6,
+					ptSameStoreBurn13: sameStoreBurn13,
+					ptPeerLegs: peerLegs,
+					businessIdempotencyKey: `merchant-gift-stripe:${redeemHash.slice(2, 18)}`,
+				}),
+			})
+			const body = (await response.json().catch(() => ({}))) as { sessionId?: string; url?: string; error?: string }
+			if (!response.ok || !body.sessionId || !body.url) throw new Error(body.error || 'Unable to start Connected Stripe checkout.')
+			setStripeSessionId(body.sessionId)
+			openExternalUrl(body.url)
+			return true
+		} catch (error) {
+			setStripeBusy(false)
+			setPanelError(error instanceof Error ? error.message : 'Unable to start Connected Stripe checkout.')
+			return false
+		}
+	}
 
 	return (
 		<section
@@ -3215,12 +3387,43 @@ export default function DiscoverMerchantGiftSheet({
 			</div>
 
 			<div className="mb-8 flex flex-col gap-2">
+				<div
+					className="rounded-xl border p-3.5"
+					style={{ borderColor: `${brandControl}35`, backgroundColor: `${brandTint}` }}
+				>
+					<div className="flex items-center justify-between gap-3">
+						<div className="flex min-w-0 items-center gap-2">
+							<Star className="h-4 w-4 shrink-0" style={{ color: brandControl }} aria-hidden />
+							<span className="text-[12px] font-semibold uppercase tracking-wider" style={{ color: brandControl }}>
+								Reward PT (#13) available
+							</span>
+						</div>
+						{reward13Loading ? <Loader2 className="h-4 w-4 animate-spin" style={{ color: brandControl }} aria-hidden /> : null}
+					</div>
+					<div className="mt-2 flex items-baseline justify-between gap-3">
+						<span className="text-[15px] text-[#424655] dark:text-slate-300">
+							{reward13SourceCount > 0
+								? `${reward13SourceCount} merchant card${reward13SourceCount === 1 ? '' : 's'} available`
+								: 'No eligible Reward PT found'}
+						</span>
+						<span className="text-[18px] font-bold" style={{ color: brandControl }}>
+							{reward13AppliedLabel}
+						</span>
+					</div>
+					<div className="mt-1 flex items-center justify-between gap-3 text-[13px] text-[#424655] dark:text-slate-400">
+						<span>Estimated value</span>
+						<span className="font-semibold">{reward13AppliedValueLabel}</span>
+					</div>
+					<p className="mt-2 text-[12px] leading-4 text-[#424655] dark:text-slate-400">
+						Reward PT is read from your connected Smart Wallet and applied before the remaining payment.
+					</p>
+				</div>
 				<div className="flex items-center justify-between px-1">
 					<span className="text-[12px] font-semibold uppercase tracking-wider text-[#424655] dark:text-slate-400">
-						Payment method
+						Remaining payment
 					</span>
 					<span className="text-[12px] font-medium" style={{ color: brandControl }}>
-						{creditPayEnabled ? 'Select one' : 'Offline signature'}
+						Select one
 					</span>
 				</div>
 				<div className="flex flex-col gap-2.5">
@@ -3228,6 +3431,7 @@ export default function DiscoverMerchantGiftSheet({
 						type="button"
 						onClick={() => {
 							setPayWith('usdc')
+							setGiftPayWith('usdc')
 							setPanelError(null)
 						}}
 						disabled={submitting}
@@ -3259,8 +3463,8 @@ export default function DiscoverMerchantGiftSheet({
 									) : null}
 								</div>
 								<span className="truncate text-[15px] text-[#424655] dark:text-slate-400">
-									{usdcAvailableLabel ?? 'Quoted in USDC at checkout'}
-									{usdcQuoteLabel ? ` · Need ${usdcQuoteLabel}` : ''}
+							{usdcAvailableLabel ?? 'Quoted in USDC at checkout'}
+							{usdcQuoteLabel ? ` · Remaining ${remainingUsdcLabel ?? usdcQuoteLabel}` : ''}
 								</span>
 							</div>
 						</div>
@@ -3273,6 +3477,40 @@ export default function DiscoverMerchantGiftSheet({
 							</span>
 							{methodCheck(payWith === 'usdc')}
 						</div>
+					</button>
+
+					<button
+						type="button"
+						onClick={() => {
+							setGiftPayWith('stripe')
+							setPanelError(null)
+						}}
+						disabled={submitting || stripeBusy || !stripeReady}
+						className={`relative flex items-center justify-between rounded-xl bg-white p-3.5 text-left shadow-sm transition duration-200 dark:bg-slate-900 ${
+							giftPayWith === 'stripe' ? 'shadow-md' : 'opacity-75'
+						}`}
+						style={giftPayWith === 'stripe' ? { boxShadow: brandSelectedRing } : undefined}
+					>
+						<div className="flex min-w-0 items-center gap-3">
+							<div
+								className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+								style={{
+									backgroundColor: giftPayWith === 'stripe' ? brandTint : '#eeedf3',
+									color: giftPayWith === 'stripe' ? brandControl : '#424655',
+								}}
+							>
+								<Receipt className="h-[22px] w-[22px]" strokeWidth={2} aria-hidden />
+							</div>
+							<div className="flex min-w-0 flex-col">
+								<span className="text-[17px] font-semibold text-[#1a1b1f] dark:text-slate-100">
+									Credit / Debit Card
+								</span>
+								<span className="truncate text-[15px] text-[#424655] dark:text-slate-400">
+									{stripeReady ? 'Connected Stripe · secure checkout' : 'Connected Stripe is unavailable'}
+								</span>
+							</div>
+						</div>
+						{methodCheck(giftPayWith === 'stripe')}
 					</button>
 
 					{creditPayEnabled ? (
@@ -3473,6 +3711,16 @@ export default function DiscoverMerchantGiftSheet({
 					<p>{panelError}</p>
 				</div>
 			) : null}
+			{stripePaymentMessage || stripeSessionId ? (
+				<div
+					className="mb-3 flex gap-2 rounded-xl border px-3 py-2.5 text-[13px]"
+					style={{ borderColor: `${brandControl}35`, backgroundColor: brandTint, color: brandControl }}
+					role="status"
+				>
+					<Receipt className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+					<p>{stripePaymentMessage ?? 'Connected Stripe checkout is open. Return here to reconcile payment status.'}</p>
+				</div>
+			) : null}
 
 			<div
 				className="fixed bottom-0 left-0 right-0 z-40 bg-[#faf9fe]/95 px-5 pt-3 shadow-[0_-4px_24px_rgba(0,0,0,0.06)] backdrop-blur-xl dark:bg-slate-950/95"
@@ -3490,7 +3738,7 @@ export default function DiscoverMerchantGiftSheet({
 					<button
 						type="button"
 						onClick={() => void handlePurchase()}
-						disabled={submitting}
+						disabled={submitting || stripeBusy}
 						aria-busy={submitting}
 						aria-label={payCtaLabel}
 						className="flex h-[52px] max-w-[240px] flex-1 items-center justify-center gap-2 rounded-xl px-4 text-[15px] font-semibold tracking-tight shadow-md transition duration-150 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"

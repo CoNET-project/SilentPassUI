@@ -3593,24 +3593,30 @@ export default function DiscoverMerchantGiftSheet({
 								Reward PT (#13) available
 							</span>
 						</div>
-						{reward13Loading ? (
+						<button
+							type="button"
+							role="switch"
+							aria-checked={reward13AppliedPoints6 > 0n}
+							aria-label="Customize Reward PT sources"
+							disabled={reward13Loading || reward13SelectableRows.length === 0}
+							onClick={openReward13Selection}
+							className="relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0051d1]/35 disabled:cursor-not-allowed disabled:opacity-60"
+							style={{
+								backgroundColor: reward13AppliedPoints6 > 0n ? brandControl : '#c7ced8',
+								borderColor: reward13AppliedPoints6 > 0n ? brandControl : '#b8c1ce',
+							}}
+						>
 							<span
-								className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full"
-								style={{ backgroundColor: `${brandControl}18`, color: brandControl }}
+								className={`flex h-5 w-5 items-center justify-center rounded-full bg-white shadow-sm transition-transform ${
+									reward13AppliedPoints6 > 0n ? 'translate-x-6' : 'translate-x-1'
+								}`}
 							>
-								<Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+								{reward13Loading ? <Loader2 className="h-3 w-3 animate-spin text-slate-500" aria-hidden /> : null}
 							</span>
-						) : reward13SourceCount > 0 ? (
-							<span
-								className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full"
-								style={{ backgroundColor: brandControl }}
-							>
-								<Check className="h-4 w-4 text-white" strokeWidth={2.75} aria-hidden />
-							</span>
-						) : null}
+						</button>
 					</div>
 					<div
-						className="mt-3 flex cursor-pointer items-center justify-between gap-4 rounded-lg -mx-1 px-1 py-0.5 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0051d1]/35 dark:hover:bg-slate-800"
+						className="mt-3 -mx-1 cursor-pointer rounded-lg px-1 py-0.5 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0051d1]/35 dark:hover:bg-slate-800"
 						role="button"
 						tabIndex={0}
 						aria-expanded={reward13SelectionOpen}
@@ -3623,31 +3629,20 @@ export default function DiscoverMerchantGiftSheet({
 							}
 						}}
 					>
-						<span className="min-w-0 text-[15px] font-medium text-[#424655] dark:text-slate-200">
-							{reward13SourceCount > 0
-								? `${reward13SourceCount} merchant card${reward13SourceCount === 1 ? '' : 's'} available`
-								: 'No eligible Reward PT found'}
-						</span>
-						<span className="shrink-0 text-[19px] font-bold tabular-nums" style={{ color: brandControl }}>
-							{reward13AppliedLabel}
-						</span>
-					</div>
-					<div
-						className="mt-1.5 flex cursor-pointer items-center justify-between gap-3 rounded-lg -mx-1 px-1 py-0.5 text-[13px] text-[#424655] transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0051d1]/35 dark:text-slate-400 dark:hover:bg-slate-800"
-						role="button"
-						tabIndex={0}
-						aria-expanded={reward13SelectionOpen}
-						aria-label="Customize Reward PT sources"
-						onClick={openReward13Selection}
-						onKeyDown={(event) => {
-							if (event.key === 'Enter' || event.key === ' ') {
-								event.preventDefault()
-								openReward13Selection()
-							}
-						}}
-					>
-						<span>Estimated value</span>
-						<span className="shrink-0 font-semibold tabular-nums">{reward13AppliedValueLabel}</span>
+						<div className="flex items-center justify-between gap-4">
+							<span className="min-w-0 text-[15px] font-medium text-[#424655] dark:text-slate-200">
+								{reward13SourceCount > 0
+									? `${reward13SourceCount} merchant card${reward13SourceCount === 1 ? '' : 's'} available`
+									: 'No eligible Reward PT found'}
+							</span>
+							<span className="shrink-0 text-[19px] font-bold tabular-nums" style={{ color: brandControl }}>
+								{reward13AppliedLabel}
+							</span>
+						</div>
+						<div className="mt-1.5 flex items-center justify-between gap-3 text-[13px] text-[#424655] dark:text-slate-400">
+							<span>Estimated value</span>
+							<span className="shrink-0 font-semibold tabular-nums">{reward13AppliedValueLabel}</span>
+						</div>
 					</div>
 					{reward13SelectionOpen ? (
 						<div className="mt-3 rounded-xl border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-700 dark:bg-slate-800/70">
@@ -3673,7 +3668,7 @@ export default function DiscoverMerchantGiftSheet({
 									const key = row.cardAddress.toLowerCase()
 									const selected = selectedReward13Cards.has(key)
 									return (
-										<label
+										<div
 											key={row.cardAddress}
 											className="flex cursor-pointer items-center gap-3 rounded-xl border bg-white p-2.5 dark:bg-slate-900"
 											style={{
@@ -3681,14 +3676,24 @@ export default function DiscoverMerchantGiftSheet({
 												backgroundColor: selected ? `${brandTint}` : undefined,
 											}}
 										>
-											<input
-												type="checkbox"
-												checked={selected}
-												onChange={() => toggleReward13Card(row.cardAddress)}
-												className="h-4 w-4"
-												style={{ accentColor: brandControl }}
+											<button
+												type="button"
+												role="switch"
+												aria-checked={selected}
 												aria-label={`Use Reward PT from ${row.name}`}
-											/>
+												onClick={() => toggleReward13Card(row.cardAddress)}
+												className="relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0051d1]/35"
+												style={{
+													backgroundColor: selected ? brandControl : '#c7ced8',
+													borderColor: selected ? brandControl : '#b8c1ce',
+												}}
+											>
+												<span
+													className={`h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
+														selected ? 'translate-x-6' : 'translate-x-1'
+													}`}
+												/>
+											</button>
 											{row.icon ? (
 												<IpfsImg src={row.icon} alt="" className="h-8 w-8 rounded-full object-cover" />
 											) : (
@@ -3700,7 +3705,7 @@ export default function DiscoverMerchantGiftSheet({
 											<span className="shrink-0 text-[12px] font-semibold tabular-nums" style={{ color: brandControl }}>
 												{formatPtsHuman(row.redeemablePoints6)} PT
 											</span>
-										</label>
+										</div>
 									)
 								})}
 								{reward13SelectableRows.length === 0 ? (

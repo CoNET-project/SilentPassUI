@@ -1037,6 +1037,11 @@ function DiscoverMerchantHowPointsWorkPanel({
 }) {
 	if (!enabled) return null
 
+	const isDiningReward = rewardContext === 'dining order'
+	const headingContext = isDiningReward
+		? 'Every Meal'
+		: `Every ${rewardContext.charAt(0).toUpperCase()}${rewardContext.slice(1)}`
+
 	return (
 		<section className="rounded-2xl border border-[#ebe6df] bg-[#faf8f5] px-4 py-4 dark:border-slate-700 dark:bg-slate-900/80">
 			<div className="flex items-start gap-3">
@@ -1053,11 +1058,12 @@ function DiscoverMerchantHowPointsWorkPanel({
 				</span>
 				<div className="min-w-0 flex-1">
 					<p className="text-[15px] font-bold tracking-tight text-[#1f2328] dark:text-slate-100">
-						How Reward PT Works{pct ? ` · ${pct}% Back` : ''}
+						How Reward PT Works{pct ? ` · ${pct}% Back on ${headingContext}` : ''}
 					</p>
 					<p className="mt-1.5 text-[13px] leading-relaxed text-[#5c6570] dark:text-slate-400">
-						Earn Reward PT on every {rewardContext}. PT never expires (1 PT = {fiatLabel}1.00) and can be
-						used here or across the Alliance network.
+						{isDiningReward
+							? `Eat, earn, and enjoy! Reward PT never expires (1 PT = ${fiatLabel}1.00). Use it for your favorite dishes here, or seamlessly across our Alliance network.`
+							: `Earn Reward PT on every ${rewardContext}. PT never expires (1 PT = ${fiatLabel}1.00) and can be used here or across the Alliance network.`}
 					</p>
 				</div>
 			</div>
@@ -1166,14 +1172,6 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 				) : null}
 			</section>
 
-			<DiscoverMerchantHowPointsWorkPanel
-				pct={pct}
-				enabled={customerLoyaltyPointsEnabled}
-				fiatLabel={fiatLabel}
-				accent={DISCOVER_FOOD_BEVERAGE_GIFT_ACCENT}
-				rewardContext="dining order"
-			/>
-
 			<button
 				type="button"
 				onClick={onActivateTopUp}
@@ -1184,6 +1182,14 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 				<Wallet className="h-5 w-5 shrink-0 opacity-90" strokeWidth={2.25} aria-hidden />
 				Top Up to Activate
 			</button>
+
+			<DiscoverMerchantHowPointsWorkPanel
+				pct={pct}
+				enabled={customerLoyaltyPointsEnabled}
+				fiatLabel={fiatLabel}
+				accent={DISCOVER_FOOD_BEVERAGE_GIFT_ACCENT}
+				rewardContext="dining order"
+			/>
 
 			<p className="text-center text-[12px] leading-snug text-[#5c6570] dark:text-slate-400">
 				or auto-activates on your{' '}

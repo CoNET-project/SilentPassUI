@@ -1118,6 +1118,8 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 	visitError: string | null
 }) {
 	const brand = brandColor.trim() || DISCOVER_FOOD_BEVERAGE_PASS_FALLBACK
+	const brandTheme = cardTierGradientTheme(brand)
+	const brandGradient = cardTierGradientCss(brand)
 	const pct =
 		chargePercent != null && Number.isFinite(chargePercent) && chargePercent > 0
 			? Number(chargePercent.toFixed(2)).toString()
@@ -1144,8 +1146,12 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 			</div>
 
 			<section
-				className="overflow-hidden rounded-[1.35rem] px-5 pb-5 pt-5 text-white shadow-[0_16px_40px_rgba(45,40,35,0.28)]"
-				style={{ backgroundColor: brand }}
+				className="aspect-[2/1] overflow-hidden rounded-[1.35rem] px-5 pb-5 pt-5 text-white shadow-[0_16px_40px_rgba(45,40,35,0.28)]"
+				style={{
+					backgroundImage: brandGradient,
+					color: brandTheme.primary,
+					minHeight: 'min(256px, calc((100vw - 2rem) / 2))',
+				}}
 				aria-label={`${nameDisplay} VIP digital dining pass`}
 			>
 				<div className="flex items-start justify-between gap-3">

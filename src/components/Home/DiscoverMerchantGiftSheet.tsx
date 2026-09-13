@@ -27,6 +27,7 @@ import {
 	Store,
 	Pencil,
 	Star,
+	Ticket,
 } from 'lucide-react'
 import {
 	classifyDiscoverMerchantCategory,
@@ -112,7 +113,7 @@ const GIFT_BRAND_FALLBACK = '#2c2416'
 const AMOUNT_PRESETS = [25, 50, 100, 200] as const
 const BEAMIO_API_BASE = 'https://beamio.app'
 
-type GiftFlowStep = 1 | 2 | 3
+type GiftFlowStep = 1 | 2 | 3 | 'select'
 type DeliveryMode = 'friend' | 'link'
 
 type GiftOccasion = {
@@ -600,6 +601,8 @@ type Props = {
 	onSuccess?: () => void
 	/** Return true when a flow step was popped (caller should not close the sheet). */
 	registerBackHandler?: (handler: (() => boolean) | null) => void
+	/** When non-null, parent chrome shows a floating Confirm (Select PT). */
+	registerConfirmHandler?: (handler: (() => void) | null) => void
 	category?: DiscoverCategoryTab | string | null
 	merchantImage?: string | null
 	/** Extra dining / About copy when metadata category is missing or generic. */
@@ -615,6 +618,7 @@ export default function DiscoverMerchantGiftSheet({
 	onClose,
 	onSuccess,
 	registerBackHandler,
+	registerConfirmHandler,
 	category,
 	merchantImage,
 	programDescription,
@@ -666,6 +670,26 @@ export default function DiscoverMerchantGiftSheet({
 		() => discoverMixCssColorWithWhite(brandControl, 0.82) ?? '#eeedf3',
 		[brandControl],
 	)
+	const brandSoftTint = useMemo(
+		() => discoverMixCssColorWithWhite(brandColor, 0.93) ?? brandTint,
+		[brandColor, brandTint],
+	)
+	const brandMuted = useMemo(
+		() => discoverMixCssColorWithWhite(brandControl, 0.42) ?? '#9aa3b2',
+		[brandControl],
+	)
+	const brandSaved = useMemo(
+		() => discoverMixCssColorWithBlack(brandControl, 0.18) ?? brandControl,
+		[brandControl],
+	)
+	const brandPointsTrack = useMemo(
+		() => discoverMixCssColorWithBlack(brandControl, 0.28) ?? brandControl,
+		[brandControl],
+	)
+	const brandSwitchOff = useMemo(
+		() => discoverMixCssColorWithWhite(brandControl, 0.55) ?? '#cbd5e1',
+		[brandControl],
+	)
 	const brandSelectedRing = useMemo(
 		() => `${brandControlShadow}, 0 0 0 2px ${brandControl}`,
 		[brandControl, brandControlShadow],
@@ -705,8 +729,15 @@ export default function DiscoverMerchantGiftSheet({
 	const [reward13Rows, setReward13Rows] = useState<Awaited<ReturnType<typeof loadReward13RowsForAa>>>([])
 	const [reward13Legs, setReward13Legs] = useState<CoverLeg[]>([])
 	const [reward13Loading, setReward13Loading] = useState(false)
-	const [reward13SelectionOpen, setReward13SelectionOpen] = useState(false)
+	/** Master switch for applying Reward PT — independent of the Select PT page. */
+	const [reward13Enabled, setReward13Enabled] = useState(true)
 	const [selectedReward13Cards, setSelectedReward13Cards] = useState<Set<string>>(() => new Set())
+	/** Last Confirm selection from Select PT (re-open seed), same as Top-up. */
+	const [committedSelectedReward13Cards, setCommittedSelectedReward13Cards] = useState<Set<string> | null>(
+		null,
+	)
+	/** Once the user confirms Select PT, keep manual selection on step 3. */
+	const [reward13UsedManual, setReward13UsedManual] = useState(false)
 	const [aaPoints0Bal, setAaPoints0Bal] = useState<bigint | null>(null)
 	const [aaPoints0Loading, setAaPoints0Loading] = useState(false)
 	const [resolvedAa, setResolvedAa] = useState<string | null>(null)
@@ -835,6 +866,16 @@ export default function DiscoverMerchantGiftSheet({
 		if (!registerBackHandler) return
 		registerBackHandler(() => {
 			if (issuedCode) return false
+			if (step === 'select') {
+				setSelectedReward13Cards(
+					committedSelectedReward13Cards
+						? new Set(committedSelectedReward13Cards)
+						: new Set(),
+				)
+				setStep(3)
+				setPanelError(null)
+				return true
+			}
 			if (step === 3) {
 				setStep(2)
 				setPanelError(null)
@@ -848,7 +889,22 @@ export default function DiscoverMerchantGiftSheet({
 			return false
 		})
 		return () => registerBackHandler(null)
-	}, [registerBackHandler, step, issuedCode])
+	}, [registerBackHandler, step, issuedCode, committedSelectedReward13Cards])
+
+	useEffect(() => {
+		if (!registerConfirmHandler) return
+		if (step !== 'select') {
+			registerConfirmHandler(null)
+			return
+		}
+		registerConfirmHandler(() => {
+			setCommittedSelectedReward13Cards(new Set(selectedReward13Cards))
+			setReward13UsedManual(true)
+			setStep(3)
+			setPanelError(null)
+		})
+		return () => registerConfirmHandler(null)
+	}, [registerConfirmHandler, step, selectedReward13Cards])
 
 	useEffect(() => {
 		if (!creditPayEnabled || payWith !== 'credit' || step !== 3) {
@@ -1031,18 +1087,25 @@ export default function DiscoverMerchantGiftSheet({
 	}, [cardAddress, merchantTitle, myBrandCardDetails, profile?.keyID, profile?.aaAccount])
 
 	useEffect(() => {
-		if (step === 3) return
+		if (step === 3 || step === 'select') return
 		setReward13Legs([])
-		setReward13SelectionOpen(false)
 		setSelectedReward13Cards(new Set())
+		setCommittedSelectedReward13Cards(null)
+		setReward13Enabled(true)
+		setReward13UsedManual(false)
 	}, [step])
 
 	useEffect(() => {
-		if (step !== 3 || quotedGiftUsdc6 == null || reward13Loading) return
+		if ((step !== 3 && step !== 'select') || quotedGiftUsdc6 == null || reward13Loading) return
+		if (!reward13Enabled) {
+			setReward13Legs([])
+			return
+		}
 		const parsed = parseDiscoverTopupAmountInput(amountText, ccy)
 		if (!parsed.ok) return
 		const fiat6 = parseFiatHumanTo6(parsed.apiAmount)
-		const plan = reward13SelectionOpen
+		const useManual = reward13UsedManual || step === 'select'
+		const plan = useManual
 			? planManualCoverUsdc(reward13Rows, selectedReward13Cards, quotedGiftUsdc6, fiat6)
 			: planAutoCoverUsdc(reward13Rows, quotedGiftUsdc6, fiat6)
 		void plan
@@ -1057,7 +1120,8 @@ export default function DiscoverMerchantGiftSheet({
 		quotedGiftUsdc6,
 		reward13Rows,
 		reward13Loading,
-		reward13SelectionOpen,
+		reward13Enabled,
+		reward13UsedManual,
 		selectedReward13Cards,
 	])
 
@@ -1365,7 +1429,7 @@ export default function DiscoverMerchantGiftSheet({
 						membershipFeeE6ToHuman(burnAmountE6.toString()) || ethers.formatUnits(burnAmountE6, 6)
 					const have = membershipFeeE6ToHuman(bal.toString()) || ethers.formatUnits(bal, 6)
 					setPanelError(
-						`Insufficient store credit (#0) on your Smart Wallet. Need about ${prefix}${need}; balance is ${prefix}${have}.`,
+						`Insufficient store credit on your Smart Wallet. Need about ${prefix}${need}; balance is ${prefix}${have}.`,
 					)
 					return
 				}
@@ -1643,15 +1707,17 @@ export default function DiscoverMerchantGiftSheet({
 		reward13AppliedUsdc6 > 0n
 			? `$${formatQuotedUsdc6ForDisplay(reward13AppliedUsdc6)} USDC`
 			: '$0.00 USDC'
-	const reward13SourceCount = reward13SelectionOpen
-		? selectedReward13Cards.size
-		: new Set(
-				(
-					reward13Legs.length > 0
-						? reward13Legs
-						: reward13Rows.map((row) => ({ cardAddress: row.cardAddress } as CoverLeg))
-				).map((leg) => leg.cardAddress.toLowerCase()),
-			).size
+	const reward13SourceCount = !reward13Enabled
+		? 0
+		: reward13UsedManual
+			? selectedReward13Cards.size
+			: new Set(
+					(
+						reward13Legs.length > 0
+							? reward13Legs
+							: reward13Rows.map((row) => ({ cardAddress: row.cardAddress } as CoverLeg))
+					).map((leg) => leg.cardAddress.toLowerCase()),
+				).size
 	const reward13SelectableRows = useMemo(
 		() =>
 			reward13Rows.filter((row) =>
@@ -1662,14 +1728,24 @@ export default function DiscoverMerchantGiftSheet({
 		[reward13Rows],
 	)
 	const openReward13Selection = () => {
-		if (!reward13SelectionOpen) {
-			setSelectedReward13Cards(
-				new Set(
-					reward13SelectableRows.map((row) => row.cardAddress.toLowerCase()),
-				),
-			)
-		}
-		setReward13SelectionOpen(true)
+		setPanelError(null)
+		setReward13Enabled(true)
+		const usableKeys = reward13SelectableRows.map((row) => row.cardAddress.toLowerCase())
+		setSelectedReward13Cards(
+			committedSelectedReward13Cards
+				? new Set(usableKeys.filter((key) => committedSelectedReward13Cards.has(key)))
+				: new Set(usableKeys),
+		)
+		setStep('select')
+	}
+	const toggleReward13Enabled = () => {
+		setReward13Enabled((previous) => {
+			const next = !previous
+			if (!next) {
+				setReward13Legs([])
+			}
+			return next
+		})
 	}
 	const toggleReward13Card = (cardAddress: string) => {
 		const key = cardAddress.toLowerCase()
@@ -1690,6 +1766,34 @@ export default function DiscoverMerchantGiftSheet({
 		quotedGiftUsdc6 !== null &&
 		reward13AppliedPoints6 > 0n &&
 		reward13AppliedUsdc6 >= quotedGiftUsdc6
+
+	const reward13CoveredUsdc6 =
+		reward13Enabled && quotedGiftUsdc6 != null
+			? reward13AppliedUsdc6 > quotedGiftUsdc6
+				? quotedGiftUsdc6
+				: reward13AppliedUsdc6
+			: 0n
+	const reward13CashUsdc6 =
+		quotedGiftUsdc6 != null && quotedGiftUsdc6 > reward13CoveredUsdc6
+			? quotedGiftUsdc6 - reward13CoveredUsdc6
+			: 0n
+	const reward13SavedPercent =
+		reward13Enabled && quotedGiftUsdc6 != null && quotedGiftUsdc6 > 0n && reward13CoveredUsdc6 > 0n
+			? Math.min(100, Math.round(Number((reward13CoveredUsdc6 * 10000n) / quotedGiftUsdc6) / 100))
+			: 0
+	const reward13PointsBarPct =
+		reward13Enabled && quotedGiftUsdc6 != null && quotedGiftUsdc6 > 0n
+			? Math.min(100, Math.max(0, Number((reward13CoveredUsdc6 * 10000n) / quotedGiftUsdc6) / 100))
+			: 0
+	const reward13CashBarPct = 100 - reward13PointsBarPct
+	const reward13CoveredUsdcLabel =
+		reward13CoveredUsdc6 > 0n
+			? `$${formatQuotedUsdc6ForDisplay(reward13CoveredUsdc6)} USDC`
+			: '$0.00 USDC'
+	const reward13CashUsdcLabel =
+		reward13CashUsdc6 > 0n
+			? `$${formatQuotedUsdc6ForDisplay(reward13CashUsdc6)} USDC`
+			: '$0.00 USDC'
 
 	useEffect(() => {
 		if (rewardPtFullyCoversGift && remainingPayMethod !== 'usdc') {
@@ -3014,6 +3118,88 @@ export default function DiscoverMerchantGiftSheet({
 		)
 	}
 
+	/* ─── Select PT (Reward PT sources) — same chrome as Top-up Select PT ─── */
+	if (step === 'select') {
+		return (
+			<section
+				className="relative mx-auto flex w-full max-w-lg flex-col gap-1 pb-32"
+				aria-label="Select PT"
+			>
+				<header className="px-0 pb-6 pt-2">
+					<p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#424655]">
+						Reward PT
+					</p>
+					<h1
+						className="mt-1 text-3xl font-semibold text-[#1a1b1f] dark:text-slate-100"
+						style={{ color: brandControl }}
+					>
+						Select PT
+					</h1>
+				</header>
+				<p className="mb-3 text-sm leading-relaxed text-[#424655] dark:text-slate-400">
+					Reward PT from this store converts to store credit. PT from other stores can cover
+					cash only if that program can pay USDC.
+				</p>
+				{reward13SelectableRows.length === 0 ? (
+					<p className="rounded-2xl border border-slate-200 bg-white px-4 py-6 text-sm text-[#424655] dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+						No Reward PT is available to cover this gift yet.
+					</p>
+				) : (
+					<div className="space-y-2" role="group" aria-label="Reward PT merchant cards">
+						{reward13SelectableRows.map((row) => {
+							const key = row.cardAddress.toLowerCase()
+							const checked = selectedReward13Cards.has(key)
+							const upToUsdc = formatQuotedUsdc6ForDisplay(row.redeemableUsdc6)
+							return (
+								<label
+									key={row.cardAddress}
+									className="flex cursor-pointer items-center gap-3 rounded-2xl border bg-white p-3 shadow-[0_4px_18px_rgba(15,23,42,0.06)] transition-colors dark:bg-slate-900"
+									style={{
+										borderColor: checked ? `${brandControl}73` : '#e2e8f0',
+										backgroundColor: checked ? brandTint : undefined,
+										boxShadow: checked ? `0 0 0 1px ${brandControl}33` : undefined,
+									}}
+								>
+									<input
+										type="checkbox"
+										className="h-4 w-4 shrink-0 rounded border-slate-300 focus:ring-[#0051d1]/35"
+										style={{ accentColor: brandControl }}
+										checked={checked}
+										onChange={() => toggleReward13Card(row.cardAddress)}
+										aria-label={`${row.name || 'Merchant card'} Reward PT`}
+									/>
+									{row.icon ? (
+										<IpfsImg src={row.icon} alt="" className="h-10 w-10 shrink-0 rounded-full object-cover" />
+									) : (
+										<div
+											className="h-10 w-10 shrink-0 rounded-full"
+											style={{ backgroundColor: brandTint }}
+										/>
+									)}
+									<span className="min-w-0 flex-1">
+										<span
+											className="block truncate text-[15px] font-semibold text-[#1a1b1f] dark:text-slate-100"
+											style={{ color: brandControl }}
+										>
+											{row.name || 'Merchant card'}
+										</span>
+										<span className="mt-0.5 block text-xs text-[#424655] dark:text-slate-400">
+											{row.coverKind === 'toProgramPoints'
+												? row.redeemablePoints6 < row.pointsBalance6
+													? `${formatPtsHuman(row.redeemablePoints6)} of ${formatPtsHuman(row.pointsBalance6)} PT usable · store credit`
+													: `${formatPtsHuman(row.redeemablePoints6)} PT · converts to this store's credit`
+												: `${formatPtsHuman(row.redeemablePoints6)} of ${formatPtsHuman(row.pointsBalance6)} PT · up to $${upToUsdc}`}
+										</span>
+									</span>
+								</label>
+							)
+						})}
+					</div>
+				)}
+			</section>
+		)
+	}
+
 	/* ─── Step 2: Delivery ─── */
 	if (step === 2) {
 		const merchantInitial = merchantLabel.replace(/^@/, '').trim().charAt(0).toUpperCase() || '?'
@@ -3382,12 +3568,12 @@ export default function DiscoverMerchantGiftSheet({
 		step1Kind === 'food-beverage' ? Utensils : step1Kind === 'health-beauty' ? Flower2 : Gift
 	const creditAvailLabel =
 		aaPoints0Loading
-			? 'Checking Smart Wallet #0…'
+			? 'Checking Smart Wallet store credit…'
 			: aaPoints0Bal != null
 				? `Avail: ${prefix}${
 						membershipFeeE6ToHuman(aaPoints0Bal.toString()) || ethers.formatUnits(aaPoints0Bal, 6)
 					}`
-				: 'Burn #0 from your Smart Wallet'
+				: 'Burn store credit from your Smart Wallet'
 	const creditBurnLabel =
 		giftFacePreview && remainingPayMethod === 'credit'
 			? `${prefix}${
@@ -3552,144 +3738,115 @@ export default function DiscoverMerchantGiftSheet({
 			</div>
 
 			<div className="mb-8 flex flex-col gap-2">
-				{/* Hide empty PT chrome — only show when Smart Wallet has usable #13. Prefetch runs on Gift open. */}
+				{/* Hide empty Reward PT chrome — only show when Smart Wallet has usable Reward PT. Prefetch runs on Gift open. */}
 				{reward13SelectableRows.length > 0 ? (
 				<div
-					className="rounded-2xl border bg-white p-4 shadow-[0_4px_18px_rgba(15,23,42,0.06)] dark:bg-slate-900"
+					className="overflow-hidden rounded-[24px] border bg-white p-4 shadow-[0_16px_34px_rgba(15,23,42,0.08)] dark:bg-slate-900"
 					style={{ borderColor: `${brandControl}55` }}
 				>
-					<div className="flex items-center justify-between gap-3">
-						<div className="flex min-w-0 items-center gap-2">
-							<div
-								className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full"
-								style={{ backgroundColor: `${brandControl}18` }}
+					<div className="flex items-start justify-between gap-3">
+						<div className="flex min-w-0 items-start gap-2.5">
+							<span
+								className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px]"
+								style={{ backgroundColor: brandTint, color: brandControl }}
 							>
-								<Star className="h-4 w-4" style={{ color: brandControl }} strokeWidth={2.25} aria-hidden />
-							</div>
-							<span className="truncate text-[12px] font-bold uppercase tracking-[0.08em]" style={{ color: brandControl }}>
-								Reward PT (#13) available
+								<Star className="h-4 w-4" strokeWidth={2.25} aria-hidden />
 							</span>
+							<div className="min-w-0">
+								<div className="flex flex-wrap items-center gap-2">
+									<p className="text-[16px] font-semibold dark:text-slate-100" style={{ color: brandControl }}>
+										{reward13Loading ? (
+											<Loader2 className="inline h-4 w-4 animate-spin" style={{ color: brandControl }} aria-hidden />
+										) : (
+											`${reward13AppliedLabel} Applied`
+										)}
+									</p>
+									<span
+										className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold"
+										style={{ backgroundColor: brandTint, color: brandControl }}
+									>
+										{reward13Loading ? '…' : `${reward13SavedPercent}%`} SAVED
+									</span>
+								</div>
+								<p className="mt-1 text-[13px] dark:text-slate-400" style={{ color: brandMuted }}>
+									{reward13Loading
+										? 'Estimating PT cover…'
+										: `${reward13CoveredUsdcLabel} saved on this order`}
+								</p>
+							</div>
 						</div>
 						<button
 							type="button"
 							role="switch"
-							aria-checked={reward13AppliedPoints6 > 0n}
-							aria-label="Customize Reward PT sources"
+							aria-checked={reward13Enabled}
+							aria-label="Use Reward PT"
 							disabled={reward13Loading}
-							onClick={openReward13Selection}
-							className="relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0051d1]/35 disabled:cursor-not-allowed disabled:opacity-60"
+							onClick={toggleReward13Enabled}
+							className="relative mt-0.5 h-7 w-12 shrink-0 rounded-full transition disabled:opacity-50"
 							style={{
-								backgroundColor: reward13AppliedPoints6 > 0n ? brandControl : '#c7ced8',
-								borderColor: reward13AppliedPoints6 > 0n ? brandControl : '#b8c1ce',
+								backgroundColor: reward13Enabled ? brandControl : brandSwitchOff,
 							}}
 						>
 							<span
-								className={`flex h-5 w-5 items-center justify-center rounded-full bg-white shadow-sm transition-transform ${
-									reward13AppliedPoints6 > 0n ? 'translate-x-6' : 'translate-x-1'
+								className={`absolute top-0.5 flex h-6 w-6 items-center justify-center rounded-full bg-white shadow transition ${
+									reward13Enabled ? 'left-[22px]' : 'left-0.5'
 								}`}
 							>
 								{reward13Loading ? <Loader2 className="h-3 w-3 animate-spin text-slate-500" aria-hidden /> : null}
 							</span>
 						</button>
 					</div>
-					<div
-						className="mt-3 -mx-1 cursor-pointer rounded-lg px-1 py-0.5 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0051d1]/35 dark:hover:bg-slate-800"
-						role="button"
-						tabIndex={0}
-						aria-expanded={reward13SelectionOpen}
-						aria-label="Customize Reward PT sources"
+
+					<button
+						type="button"
+						disabled={reward13Loading}
+						aria-label="Choose Reward PT manually"
 						onClick={openReward13Selection}
-						onKeyDown={(event) => {
-							if (event.key === 'Enter' || event.key === ' ') {
-								event.preventDefault()
-								openReward13Selection()
-							}
-						}}
+						className="mt-4 flex w-full items-center justify-between gap-3 rounded-2xl px-3 py-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+						style={{ backgroundColor: brandSoftTint }}
 					>
-						<div className="flex items-center justify-between gap-4">
-							<span className="min-w-0 text-[15px] font-medium text-[#424655] dark:text-slate-200">
-								{`${reward13SourceCount} merchant card${reward13SourceCount === 1 ? '' : 's'} available`}
+						<div className="flex min-w-0 items-center gap-2.5">
+							<span
+								className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px]"
+								style={{ backgroundColor: brandTint, color: brandControl }}
+							>
+								<Ticket className="h-4 w-4" strokeWidth={2.1} aria-hidden />
 							</span>
-							<span className="shrink-0 text-[19px] font-bold tabular-nums" style={{ color: brandControl }}>
-								{reward13AppliedLabel}
-							</span>
+							<p className="truncate text-[15px] font-medium dark:text-slate-200" style={{ color: brandControl }}>
+								{reward13AppliedLabel} Discount
+							</p>
 						</div>
-						<div className="mt-1.5 flex items-center justify-between gap-3 text-[13px] text-[#424655] dark:text-slate-400">
-							<span>Estimated value</span>
-							<span className="shrink-0 font-semibold tabular-nums">{reward13AppliedValueLabel}</span>
+						<p className="shrink-0 text-[15px] font-semibold" style={{ color: brandSaved }} aria-busy={reward13Loading}>
+							{reward13Loading ? (
+								<Loader2 className="h-4 w-4 animate-spin" style={{ color: brandControl }} aria-hidden />
+							) : (
+								`-${reward13CoveredUsdcLabel}`
+							)}
+						</p>
+					</button>
+
+					<div className="mt-4" aria-busy={reward13Loading}>
+						<div
+							className="flex h-2 overflow-hidden rounded-full"
+							aria-label={`${reward13PointsBarPct.toFixed(2)}% PT, ${reward13CashBarPct.toFixed(2)}% cash`}
+						>
+							<div
+								className="h-full"
+								style={{ width: `${reward13PointsBarPct}%`, backgroundColor: brandPointsTrack }}
+							/>
+							<div
+								className="h-full"
+								style={{ width: `${reward13CashBarPct}%`, backgroundColor: brandControl }}
+							/>
+						</div>
+						<div
+							className="mt-2 flex items-center justify-between gap-3 text-[12px] dark:text-slate-400"
+							style={{ color: brandMuted }}
+						>
+							<p>PT: {reward13Loading ? '…' : reward13CoveredUsdcLabel}</p>
+							<p>Amount Due: {reward13Loading ? '…' : reward13CashUsdcLabel}</p>
 						</div>
 					</div>
-					{reward13SelectionOpen ? (
-						<div className="mt-3 rounded-xl border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-700 dark:bg-slate-800/70">
-							<div className="mb-2 flex items-center justify-between gap-3">
-								<span className="text-[12px] font-semibold uppercase tracking-[0.08em] text-[#424655] dark:text-slate-300">
-									Customize Reward PT
-								</span>
-								<button
-									type="button"
-									className="text-[12px] font-semibold"
-									style={{ color: brandControl }}
-									onClick={() => setReward13SelectionOpen(false)}
-									aria-label="Close Reward PT selection"
-								>
-									Done
-								</button>
-							</div>
-							<p className="mb-2 text-[12px] leading-4 text-[#424655] dark:text-slate-400">
-								Choose which merchant cards can contribute Reward PT to this gift.
-							</p>
-							<div className="flex flex-col gap-2">
-								{reward13SelectableRows.map((row) => {
-									const key = row.cardAddress.toLowerCase()
-									const selected = selectedReward13Cards.has(key)
-									return (
-										<div
-											key={row.cardAddress}
-											className="flex cursor-pointer items-center gap-3 rounded-xl border bg-white p-2.5 dark:bg-slate-900"
-											style={{
-												borderColor: selected ? brandControl : '#e2e2e7',
-												backgroundColor: selected ? `${brandTint}` : undefined,
-											}}
-										>
-											<button
-												type="button"
-												role="switch"
-												aria-checked={selected}
-												aria-label={`Use Reward PT from ${row.name}`}
-												onClick={() => toggleReward13Card(row.cardAddress)}
-												className="relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0051d1]/35"
-												style={{
-													backgroundColor: selected ? brandControl : '#c7ced8',
-													borderColor: selected ? brandControl : '#b8c1ce',
-												}}
-											>
-												<span
-													className={`h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
-														selected ? 'translate-x-6' : 'translate-x-1'
-													}`}
-												/>
-											</button>
-											{row.icon ? (
-												<IpfsImg src={row.icon} alt="" className="h-8 w-8 rounded-full object-cover" />
-											) : (
-												<div className="h-8 w-8 shrink-0 rounded-full" style={{ backgroundColor: brandTint }} />
-											)}
-											<span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-[#424655] dark:text-slate-200">
-												{row.name}
-											</span>
-											<span className="shrink-0 text-[12px] font-semibold tabular-nums" style={{ color: brandControl }}>
-												{formatPtsHuman(row.redeemablePoints6)} PT
-											</span>
-										</div>
-									)
-								})}
-							</div>
-						</div>
-					) : null}
-					<div className="my-3 h-px" style={{ backgroundColor: `${brandControl}22` }} />
-					<p className="text-[12px] leading-4 text-[#424655] dark:text-slate-400">
-						Reward PT is read from your connected Smart Wallet and applied before the remaining payment.
-					</p>
 				</div>
 				) : null}
 				{!rewardPtFullyCoversGift ? (
@@ -3875,7 +4032,7 @@ export default function DiscoverMerchantGiftSheet({
 							</h4>
 							<p className="mt-1.5 text-xs leading-relaxed text-amber-950/80 dark:text-amber-100/80">
 								Non-members may receive membership from the fee portion of this gift; existing members
-								typically receive full store credit toward #0. Minimum gift is {prefix}
+								typically receive full store credit. Minimum gift is {prefix}
 								{minHuman}.
 							</p>
 						</div>
@@ -3927,35 +4084,6 @@ export default function DiscoverMerchantGiftSheet({
 					<div className="flex items-center justify-between">
 						<span>Network gas</span>
 						<span className="font-medium text-emerald-700 dark:text-emerald-400">Free (sponsored)</span>
-					</div>
-				</div>
-				<div className="my-3 h-px w-full bg-[#e3e2e7] dark:bg-slate-700" />
-				<div className="flex items-baseline justify-between gap-3">
-					<div>
-						<span className="text-[22px] font-semibold leading-7 text-[#1a1b1f] dark:text-slate-100">
-							Total amount
-						</span>
-						<span className="mt-0.5 block text-[12px] font-medium text-emerald-800 dark:text-emerald-300">
-							{rewardPtFullyCoversGift
-								? 'Reward PT settlement'
-								: remainingPayMethod === 'credit'
-								? 'Store credit settlement'
-								: remainingPayMethod === 'stripe'
-									? 'Card settlement'
-									: 'USDC settlement'}
-						</span>
-					</div>
-					<div className="text-right">
-						<span
-							className="text-[28px] font-bold leading-[34px] tracking-tight"
-							style={{ color: brandControl }}
-						>
-							{payTotalLabel}
-						</span>
-						<span className="block text-[12px] font-semibold uppercase tracking-[0.05em] text-[#424655] dark:text-slate-400">
-							Total deduction: {prefix}
-							{previewAmount}
-						</span>
 					</div>
 				</div>
 			</div>

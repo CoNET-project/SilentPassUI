@@ -992,6 +992,30 @@ export function resolveDiscoverTopupPromotionHeroSidePill(params: {
 }
 
 /**
+ * Percent-only top-up welcome line for Discover panels (excludes fixed / fixedTiers).
+ * Example: `Top up CA$ 100 or more, Get 10% bonus instantly!`
+ */
+export function resolveDiscoverPercentTopupPromotionWelcomeLine(params: {
+	metadataRoot: Record<string, unknown> | null | undefined
+	currency: string
+}): string | null {
+	const unified = resolveDiscoverUnifiedTopupPromotion(params)
+	if (!unified?.active) return null
+	if (unified.source === 'topupPromotion' && unified.topupPromo) {
+		const promo = unified.topupPromo
+		if (promo.rewardType !== 'percent') return null
+		if (promo.fixedTiers && promo.fixedTiers.length > 0) return null
+		const reward = parseAmount(promo.rewardValue)
+		if (reward == null) return null
+		return formatTopupPromotionCapsuleCopy(promo, params.currency).description.trim() || null
+	}
+	if (unified.bonusRule?.bonusProportional) {
+		return formatRechargeBonusCapsuleCopy(unified.bonusRule, params.currency).description.trim() || null
+	}
+	return null
+}
+
+/**
  * Compact green badge under Store Credits (#0) on Discover membership wallet card.
  * Example: `Get +5% bonus on CA$ 50+`
  */

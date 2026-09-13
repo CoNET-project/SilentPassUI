@@ -215,6 +215,7 @@ import {
 	parseDiscoverMerchantBrandColor,
 	parseDiscoverProgramDescriptionFromMetadata,
 	resolveCouponSocialMissionBlockForSeries,
+	resolveDiscoverPercentTopupPromotionWelcomeLine,
 	resolveDiscoverProspectJoinPanelCopy,
 	resolveDiscoverTopupPromotionPresentation,
 	resolveDiscoverTopupPromotionStoreCreditsBadge,
@@ -1007,6 +1008,7 @@ const DISCOVER_FOOD_BEVERAGE_SECONDARY_TEXT = '#3d4450'
 function DiscoverMerchantFoodBeverageProspectPassPanel({
 	passTitle,
 	chargePercent,
+	percentTopupWelcomeLine,
 	balancePrefix,
 	brandColor,
 	onActivateTopUp,
@@ -1022,6 +1024,8 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 }: {
 	passTitle: string
 	chargePercent: number | null
+	/** Percent top-up promo only (not fixed / fixedTiers). */
+	percentTopupWelcomeLine: string | null
 	balancePrefix: string
 	brandColor: string
 	onActivateTopUp: () => void
@@ -1040,11 +1044,13 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 		chargePercent != null && Number.isFinite(chargePercent) && chargePercent > 0
 			? Number(chargePercent.toFixed(2)).toString()
 			: null
+	const topupLine = percentTopupWelcomeLine?.trim() || null
 	const nameUpper = passTitle.trim().toUpperCase() || 'MERCHANT'
 	const nameDisplay = passTitle.trim() || 'Merchant'
 	const fiatLabel = balancePrefix.trim() || 'CA$'
-	const welcomeRewardLine =
+	const chargeWelcomeLine =
 		pct != null ? `${pct}% Points on All Bowls & Bites` : 'Points on All Bowls & Bites'
+	const welcomeRewardLine = topupLine ?? chargeWelcomeLine
 	const howPointsTitle =
 		pct != null ? `How Points Work · ${pct}% Back` : 'How Points Work'
 	const howPointsBody =
@@ -1088,11 +1094,16 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 
 				<div className="mt-6 border-t border-white/15 pt-5">
 					<p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/50">
-						Welcome Reward Preview
+						{topupLine ? 'Top-up Bonus' : 'Welcome Reward Preview'}
 					</p>
 					<p className="mt-2 text-[16px] font-bold leading-snug tracking-tight text-white">
 						{welcomeRewardLine}
 					</p>
+					{topupLine && pct != null ? (
+						<p className="mt-2 text-[12px] font-medium leading-snug text-white/75">
+							{chargeWelcomeLine}
+						</p>
+					) : null}
 				</div>
 			</section>
 
@@ -5213,6 +5224,9 @@ function DiscoverMerchantDetailFullScreen({
 	const giftSheetCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 	/** Gift sheet multi-step: return true if a flow step was popped (do not close sheet). */
 	const giftSheetBackHandlerRef = useRef<(() => boolean) | null>(null)
+	/** Gift Select Points Confirm (same chrome as Top-up Select Points). */
+	const giftSheetConfirmHandlerRef = useRef<(() => void) | null>(null)
+	const [giftSheetSelectConfirmVisible, setGiftSheetSelectConfirmVisible] = useState(false)
 	const supportChatAddresses = useMemo(
 		() => parseSupportChatAddressesFromMetadata(merchantMetadataRoot),
 		[merchantMetadataRoot],
@@ -5806,6 +5820,14 @@ function DiscoverMerchantDetailFullScreen({
 		if (chargePercent == null || !Number.isFinite(chargePercent) || chargePercent <= 0) return null
 		return chargePercent
 	}, [showFoodBeverageProspectPass, showFoodBeverageLoyaltyPass, merchantMetadataRoot])
+	/** Percent top-up only — hide fixed / fixedTiers on F&B prospect Welcome Reward. */
+	const foodBeveragePercentTopupWelcomeLine = useMemo(() => {
+		if (!showFoodBeverageProspectPass) return null
+		return resolveDiscoverPercentTopupPromotionWelcomeLine({
+			metadataRoot: merchantMetadataRoot,
+			currency: displayCurrency,
+		})
+	}, [showFoodBeverageProspectPass, merchantMetadataRoot, displayCurrency])
 	const memberRechargeMemberNo = useMemo(() => {
 		const nft = pickActiveDiscoverMembershipNft(merchantAssets?.nfts)
 		const tokenId = nft?.tokenId != null ? String(nft.tokenId).trim() : ''
@@ -6581,6 +6603,8 @@ function DiscoverMerchantDetailFullScreen({
 	const closeGiftSheet = useCallback(() => {
 		if (giftSheetClosing) return
 		giftSheetBackHandlerRef.current = null
+		giftSheetConfirmHandlerRef.current = null
+		setGiftSheetSelectConfirmVisible(false)
 		setGiftSheetClosing(true)
 		if (giftSheetCloseTimerRef.current) clearTimeout(giftSheetCloseTimerRef.current)
 		giftSheetCloseTimerRef.current = setTimeout(() => {
@@ -6593,6 +6617,9 @@ function DiscoverMerchantDetailFullScreen({
 
 	const openGiftSheet = useCallback(() => {
 		setMerchantVisitError(null)
+		giftSheetBackHandlerRef.current = null
+		giftSheetConfirmHandlerRef.current = null
+		setGiftSheetSelectConfirmVisible(false)
 		setGiftSheetClosing(false)
 		setGiftSheetEntered(false)
 		setShowFooter(false)
@@ -7761,6 +7788,7 @@ function DiscoverMerchantDetailFullScreen({
 						<DiscoverMerchantFoodBeverageProspectPassPanel
 							passTitle={passTitle}
 							chargePercent={foodBeverageChargePercent}
+							percentTopupWelcomeLine={foodBeveragePercentTopupWelcomeLine}
 							balancePrefix={balancePrefix || 'CA$'}
 							brandColor={merchantDetailBrandColor ?? DISCOVER_FOOD_BEVERAGE_PASS_FALLBACK}
 							onActivateTopUp={() => {
@@ -8352,26 +8380,46 @@ function DiscoverMerchantDetailFullScreen({
 						aria-label="Gift store credit"
 						onTouchMove={(e) => e.stopPropagation()}
 					>
-						{/* Shell matches MerchantCardTopUpFlow: one full-height scroll + safe-area top. */}
+						{/* Shell matches MerchantCardTopUpFlow: floating Back/Confirm + one full-height scroll. */}
 						<div
 							className="flex h-full flex-col overflow-y-auto"
 							style={{ paddingTop: 'max(1rem, env(safe-area-inset-top, 0px))' }}
 						>
-							<div className={`${BEAMIO_CIRCULAR_BACK_ROW_CLASS} px-4`}>
+							<div className="pointer-events-none fixed inset-x-0 top-0 z-[160] px-4 pt-[max(1rem,env(safe-area-inset-top,0px))]">
 								<BeamioCircularBackButton
 									variant="onLight"
 									onClick={() => {
 										if (giftSheetBackHandlerRef.current?.()) return
 										closeGiftSheet()
 									}}
-									className="absolute left-4 top-0"
+									className="pointer-events-auto absolute left-4 top-0"
 								/>
+								{giftSheetSelectConfirmVisible ? (
+									<button
+										type="button"
+										onClick={() => giftSheetConfirmHandlerRef.current?.()}
+										className="pointer-events-auto absolute right-4 top-0 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full p-1 text-[#2c2f31] transition active:scale-[0.96] dark:text-slate-100"
+										aria-label="Confirm"
+										title="Confirm"
+										tabIndex={-1}
+									>
+										<span
+											className="pointer-events-none absolute inset-1 rounded-full border border-black/[0.08] bg-white/90 shadow-[0_2px_10px_rgba(0,0,0,0.16),0_1px_3px_rgba(15,23,42,0.12)] backdrop-blur-md dark:border-white/25 dark:bg-slate-800/90"
+											aria-hidden
+										/>
+										<Check className="relative z-[1] h-[17px] w-[17px]" strokeWidth={2.5} aria-hidden />
+									</button>
+								) : null}
 							</div>
-							<div className="flex flex-1 flex-col px-5 pb-[max(1.25rem,env(safe-area-inset-bottom,0px))]">
+							<div className="flex flex-1 flex-col px-5 pt-12 pb-[max(1.25rem,env(safe-area-inset-bottom,0px))]">
 								<DiscoverMerchantGiftSheet
 									onClose={closeGiftSheet}
 									registerBackHandler={(handler) => {
 										giftSheetBackHandlerRef.current = handler
+									}}
+									registerConfirmHandler={(handler) => {
+										giftSheetConfirmHandlerRef.current = handler
+										setGiftSheetSelectConfirmVisible(handler != null)
 									}}
 									cardAddress={item.cardAddress?.trim() ?? ''}
 									merchantTitle={item.title.trim() || passTitle}

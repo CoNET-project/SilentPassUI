@@ -352,7 +352,7 @@ function formatCashFiatApiAmount(cashFiat: number, currency: string): string {
 
 function formatInsufficientUsdcAlert(have6: bigint, need6: bigint, opts?: { afterPoints?: boolean }): string {
 	if (opts?.afterPoints) {
-		return `You have $${formatUsdc(have6)} USDC; this cash portion needs $${formatUsdc(need6)}. Add USDC, or turn off Use Points to pay the full amount after funding.`
+		return `You have $${formatUsdc(have6)} USDC; this cash portion needs $${formatUsdc(need6)}. Add USDC, or turn off Use PT to pay the full amount after funding.`
 	}
 	return `You have $${formatUsdc(have6)} USDC; this top-up needs $${formatUsdc(need6)}. Add USDC to continue.`
 }
@@ -412,7 +412,7 @@ function composeDualPayFailure(
 	cashErr: string,
 ): string {
 	if (!pointsOk && !cashOk) {
-		return `Both payments failed. Points: ${pointsErr}. USDC: ${cashErr}`
+		return `Both payments failed. PT: ${pointsErr}. USDC: ${cashErr}`
 	}
 	if (pointsOk && !cashOk) {
 		return `Reward PT was applied. USDC payment failed: ${cashErr}`
@@ -435,7 +435,7 @@ function isInsufficientConetUsdcError(raw: string): boolean {
 
 function formatUnfundableDualCashAlert(conetHave6: bigint, baseHave6: bigint, need6: bigint): string {
 	const totalHave6 = conetHave6 + baseHave6
-	return `You have $${formatUsdc(totalHave6)} USDC; the remaining cash needs $${formatUsdc(need6)}. Add USDC to continue, or turn off Use Points to pay the full amount after funding.`
+	return `You have $${formatUsdc(totalHave6)} USDC; the remaining cash needs $${formatUsdc(need6)}. Add USDC to continue, or turn off Use PT to pay the full amount after funding.`
 }
 
 export default function MerchantCardTopUpFlow({
@@ -504,6 +504,8 @@ export default function MerchantCardTopUpFlow({
 	const shareResetTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 	const legsPlanGen = useRef(0)
 	const rowsReadyRef = useRef(false)
+	/** Only user toggle-off; auto cash-only while #13 loads must not stick after PT arrives. */
+	const smartPayUserOptOutRef = useRef(false)
 	const shareUrl = useMemo(
 		() => buildDiscoverMerchantShareUrl(cardAddress, profile.keyID),
 		[cardAddress, profile.keyID],
@@ -929,6 +931,7 @@ export default function MerchantCardTopUpFlow({
 		closeStartedRef.current = false
 		setStep('amount')
 		setAmountInput(initialAmount?.trim() || '50.00')
+		smartPayUserOptOutRef.current = false
 		setSmartPay(true)
 		setUsedManual(false)
 		setSelected(new Set())
@@ -1181,7 +1184,7 @@ export default function MerchantCardTopUpFlow({
 			: ''
 	const payPanelAlert = payError || cashUnfundableAlert
 	const payBusyLabel = dualSmartPay
-		? 'Paying with Points and USDC…'
+		? 'Paying with PT and USDC…'
 		: legs.length > 0
 			? 'Applying points…'
 			: 'Paying with USDC…'
@@ -1211,13 +1214,21 @@ export default function MerchantCardTopUpFlow({
 			: r.redeemableUsdc6 > 0n && r.redeemablePoints6 > 0n,
 	)
 
-	// No usable #13 → cash-only; Smart Checkout chrome stays hidden when length === 0.
+	// No usable #13 → temporary cash-only. When PT arrives after AA resolve / allow-gate
+	// refine, re-enable Smart Pay unless the user explicitly turned the switch off.
+	// (Gift keeps reward13Enabled=true; Top-up must not stick on auto-off.)
 	useEffect(() => {
 		if (!open || rowsLoading) return
-		if (usableRows.length === 0 && smartPay) {
-			setSmartPay(false)
-			setLegs([])
-			setUsedManual(false)
+		if (usableRows.length === 0) {
+			if (smartPay) {
+				setSmartPay(false)
+				setLegs([])
+				setUsedManual(false)
+			}
+			return
+		}
+		if (!smartPay && !smartPayUserOptOutRef.current) {
+			setSmartPay(true)
 		}
 	}, [open, rowsLoading, usableRows.length, smartPay])
 
@@ -1358,7 +1369,7 @@ export default function MerchantCardTopUpFlow({
 					if (container.success) {
 						oneShotDone = true
 					} else {
-						const raw = container.error || 'Points top-up failed'
+						const raw = container.error || 'PT top-up failed'
 						if (!conetCovers && isInsufficientConetUsdcError(raw)) {
 							/* fall through to Reward PT then Base USDC remainder */
 						} else {
@@ -1380,7 +1391,7 @@ export default function MerchantCardTopUpFlow({
 							if (!container.success) {
 								return {
 									ok: false,
-									error: friendlyTopupContainerError(container.error || 'Points top-up failed'),
+									error: friendlyTopupContainerError(container.error || 'PT top-up failed'),
 								}
 							}
 							return { ok: true }
@@ -1464,8 +1475,8 @@ export default function MerchantCardTopUpFlow({
 				assets = await refreshMyAssetsAfterSuccessfulTopup(profile, cardAddress)
 				setSuccessNote(
 					oneShotDone
-						? 'Points and USDC completed in one payment.'
-						: 'Points and USDC both completed.',
+						? 'PT and USDC completed in one payment.'
+						: 'PT and USDC both completed.',
 				)
 			} else if (legs.length > 0) {
 				const container = await postTopupWithReward13Container({
@@ -1477,7 +1488,7 @@ export default function MerchantCardTopUpFlow({
 					wallet,
 				})
 				if (!container.success) {
-					throw new Error(friendlyTopupContainerError(container.error || 'Points top-up failed'))
+					throw new Error(friendlyTopupContainerError(container.error || 'PT top-up failed'))
 				}
 				assets = await refreshMyAssetsAfterSuccessfulTopup(profile, cardAddress)
 				setSuccessNote('')
@@ -1627,7 +1638,7 @@ export default function MerchantCardTopUpFlow({
 			: cashUsdc6 > 0n
 			? `Pay ${formatUsdcDue(cashUsdc6)} USDC`
 			: coveredFiat > 0
-				? 'Apply Points'
+				? 'Apply PT'
 				: `Pay ${formatUsdcDue(quotedUsdc6)} USDC`
 	const cashRequiredLabel =
 		rewardPtFullyCoversOrder
@@ -1655,7 +1666,7 @@ export default function MerchantCardTopUpFlow({
 			: step === 'pay'
 				? 'Payment'
 				: step === 'select'
-					? 'Select Points'
+					? 'Select PT'
 					: step === 'confirm'
 						? 'Confirm Top-Up'
 						: step === 'stripeWaiting'
@@ -2130,7 +2141,7 @@ export default function MerchantCardTopUpFlow({
 															aria-hidden
 														/>
 													) : (
-														`${appliedPtsLabel} Points Applied`
+														`${appliedPtsLabel} Applied`
 													)}
 												</p>
 												<span
@@ -2148,7 +2159,7 @@ export default function MerchantCardTopUpFlow({
 												style={{ color: merchantBrandMutedColor }}
 											>
 												{coverEstimatePending
-													? 'Estimating points cover…'
+													? 'Estimating PT cover…'
 													: `${formatPrefixedFiat(prefix, coveredFiat.toFixed(2))} saved on this order`}
 											</p>
 										</div>
@@ -2157,11 +2168,15 @@ export default function MerchantCardTopUpFlow({
 										type="button"
 										role="switch"
 										aria-checked={smartPay}
-										aria-label="Use Points"
+										aria-label="Use Reward PT"
 										disabled={payBusy}
 										onClick={() => {
 											setPayError('')
-											setSmartPay((v) => !v)
+											setSmartPay((v) => {
+												const next = !v
+												smartPayUserOptOutRef.current = !next
+												return next
+											})
 											setUsedManual(false)
 										}}
 										className="relative mt-0.5 h-7 w-12 shrink-0 rounded-full transition disabled:opacity-50"
@@ -2180,9 +2195,10 @@ export default function MerchantCardTopUpFlow({
 								<button
 									type="button"
 									disabled={payBusy}
-									aria-label="Choose points manually"
+									aria-label="Choose Reward PT manually"
 									onClick={() => {
 										setPayError('')
+										smartPayUserOptOutRef.current = false
 										setSmartPay(true)
 										setUsedManual(true)
 										// Reopen with the last confirmed selection. The first
@@ -2212,7 +2228,7 @@ export default function MerchantCardTopUpFlow({
 											className="truncate text-[15px] font-medium dark:text-slate-200"
 											style={{ color: merchantBrandActionColor }}
 										>
-											{appliedPtsLabel} Points Discount
+											{appliedPtsLabel} Discount
 										</p>
 									</div>
 									<p
@@ -2235,7 +2251,7 @@ export default function MerchantCardTopUpFlow({
 								<div className="mt-4" aria-busy={coverEstimatePending}>
 									<div
 										className="flex h-2 overflow-hidden rounded-full"
-										aria-label={`${pointsBarPct.toFixed(2)}% Points, ${cashBarPct.toFixed(2)}% cash`}
+										aria-label={`${pointsBarPct.toFixed(2)}% PT, ${cashBarPct.toFixed(2)}% cash`}
 									>
 										<div
 											className="h-full"
@@ -2257,7 +2273,7 @@ export default function MerchantCardTopUpFlow({
 										style={{ color: merchantBrandMutedColor }}
 									>
 										<p>
-											Points:{' '}
+											PT:{' '}
 											{coverEstimatePending
 												? '…'
 												: formatPrefixedFiat(prefix, coveredFiat.toFixed(2))}

@@ -1939,7 +1939,8 @@ function DiscoverMerchantProspectJoinPanel({
 	const titleClass = 'mt-3 text-[20px] font-bold leading-snug tracking-tight sm:text-[22px]'
 	/** Vault trust line — same merchant title color as the Join heading. */
 	const footerClass = [
-		'mt-3 flex items-center justify-center gap-1.5 text-center text-[12px] leading-snug',
+		'flex items-center justify-center gap-1.5 text-center text-[12px] leading-snug',
+		hasImage ? 'mt-3' : 'absolute bottom-4 left-4 right-4',
 		hasImage
 			? 'text-[color:var(--join-title)] dark:text-[color:var(--join-title-dark)]'
 			: '',
@@ -2123,6 +2124,7 @@ function DiscoverMerchantProspectJoinPanel({
 		<section
 			className={[
 				'relative overflow-hidden rounded-[22px] p-4 shadow-[0_8px_22px_rgba(15,23,42,0.06)] sm:p-5',
+				!hasImage ? 'pb-16 sm:pb-16' : '',
 				hasImage ? 'bg-white dark:bg-slate-900' : '',
 			]
 				.filter(Boolean)

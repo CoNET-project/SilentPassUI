@@ -1624,11 +1624,11 @@ function DiscoverStoreCreditMultiplierOffersRow({
 }
 
 function DiscoverMerchantMemberRechargePrivilegesPanel({
-	tierBadgeLabel,
-	memberNo,
+	passTitle,
 	storeCreditsLabel,
 	pointsLabel,
-	pointsFiatHint,
+	chargePercent,
+	isDining,
 	/** User holds store credits (#0) and/or Reward PT (#13). */
 	hasPointsOrCredits,
 	multiplierCards,
@@ -1638,11 +1638,11 @@ function DiscoverMerchantMemberRechargePrivilegesPanel({
 	onRecharge,
 	backgroundColor,
 }: {
-	tierBadgeLabel: string
-	memberNo: string
+	passTitle: string
 	storeCreditsLabel: string
 	pointsLabel: string
-	pointsFiatHint?: string | null
+	chargePercent: number | null
+	isDining: boolean
 	hasPointsOrCredits: boolean
 	multiplierCards: DiscoverStoreCreditMultiplierCard[]
 	footerTip: string
@@ -1666,10 +1666,17 @@ function DiscoverMerchantMemberRechargePrivilegesPanel({
 		() => multiplierCards.find((c) => c.id === selectedCardId) ?? multiplierCards[0] ?? null,
 		[multiplierCards, selectedCardId],
 	)
-	const badgeText = (tierBadgeLabel || 'MEMBER').trim().toUpperCase()
 	const panelBackgroundColor = (backgroundColor ?? '').trim() || '#2c2416'
 	const panelTheme = cardTierGradientTheme(panelBackgroundColor)
 	const panelGradient = cardTierGradientCss(panelBackgroundColor)
+	const passName = passTitle.trim() || 'Merchant'
+	const passSubtitle = isDining ? 'Digital Dining & Loyalty Pass' : 'Digital Loyalty Pass'
+	const rewardLine =
+		chargePercent != null && Number.isFinite(chargePercent) && chargePercent > 0
+			? `Earn ${Number(chargePercent.toFixed(2)).toString()}% back on every ${
+					isDining ? 'dining order' : 'purchase'
+				}`
+			: `Earn Alliance Points on every ${isDining ? 'dining order' : 'purchase'}`
 	const headerEyebrow = hasPointsOrCredits ? '✨ Share & earn points' : '🔥 First top-up exclusive'
 	const headerTitle = hasPointsOrCredits ? 'Fresh Rewards Unlocked!' : 'Claim Your Welcome Match'
 	const headerBody = hasPointsOrCredits
@@ -1694,75 +1701,96 @@ function DiscoverMerchantMemberRechargePrivilegesPanel({
 			</header>
 
 			<div
-				className="aspect-[3/2] overflow-hidden rounded-[20px] px-4 pb-4 pt-3.5 shadow-[0_8px_28px_rgba(44,36,22,0.28)]"
+				className="aspect-[3/2] overflow-hidden rounded-[20px] px-5 pb-5 pt-5 shadow-[0_8px_28px_rgba(44,36,22,0.28)]"
 				style={{ backgroundImage: panelGradient, color: panelTheme.primary }}
 			>
-				<div className="flex items-center justify-between gap-2">
-					<span
-						className="shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em]"
-						style={{ backgroundColor: panelTheme.defaultBadgeBg, color: panelTheme.defaultBadgeFg }}
-					>
-						{badgeText}
-					</span>
-					{memberNo ? (
-						<span
-							className="shrink-0 text-[11px] font-medium tabular-nums"
+				<div className="flex items-start justify-between gap-3">
+					<div className="min-w-0">
+						<DiscoverDynamicPassTitle title={passName} />
+						<p
+							className="mt-1.5 text-[10px] font-semibold uppercase tracking-[0.18em]"
 							style={{ color: panelTheme.tertiary }}
 						>
-							{memberNo}
-						</span>
-					) : null}
+							{passSubtitle}
+						</p>
+					</div>
+					{isDining ? (
+						<UtensilsCrossed
+							className="mt-1 h-8 w-8 shrink-0"
+							style={{ color: panelTheme.tertiary }}
+							strokeWidth={1.6}
+							aria-hidden
+						/>
+					) : (
+						<Star
+							className="mt-1 h-8 w-8 shrink-0"
+							style={{ color: panelTheme.tertiary }}
+							strokeWidth={1.6}
+							aria-hidden
+						/>
+					)}
 				</div>
-				<div className="mt-4 grid grid-cols-2 gap-3">
-					<div
-						className="rounded-xl px-3 py-3 ring-1"
-						style={{
-							backgroundColor: panelTheme.iconOrbitBg,
-							boxShadow: `inset 0 0 0 1px ${panelTheme.cardBorder}`,
-						}}
-					>
+
+				<div
+					className="mt-6 grid grid-cols-2 gap-0 border-t pt-5"
+					style={{ borderColor: panelTheme.cardBorder }}
+				>
+					<div className="min-w-0 pr-4">
 						<p
-							className="text-[10px] font-semibold uppercase tracking-[0.12em]"
-							style={{ color: panelTheme.accent }}
+							className="text-[10px] font-semibold uppercase tracking-[0.14em]"
+							style={{ color: panelTheme.tertiary }}
 						>
-							Store Credits
+							Available Balance
 						</p>
-						<p
-							className="mt-1.5 text-[22px] font-bold leading-none tracking-tight tabular-nums"
-							style={{ color: panelTheme.primary }}
-						>
+						<p className="mt-1.5 truncate text-[1.55rem] font-bold leading-none tracking-tight tabular-nums">
 							{storeCreditsLabel}
-						</p>
-						<p className="mt-2 inline-flex items-center gap-1.5 text-[11px] font-medium text-emerald-400/90">
-							<span className="h-1.5 w-1.5 rounded-full bg-emerald-400" aria-hidden />
-							In vault
 						</p>
 					</div>
 					<div
-						className="rounded-xl px-3 py-3 ring-1"
-						style={{
-							backgroundColor: panelTheme.iconOrbitBg,
-							boxShadow: `inset 0 0 0 1px ${panelTheme.cardBorder}`,
-						}}
+						className="min-w-0 border-l pl-4 text-right"
+						style={{ borderColor: panelTheme.cardBorder }}
 					>
 						<p
-							className="text-[10px] font-semibold uppercase tracking-[0.12em]"
-							style={{ color: panelTheme.accent }}
+							className="inline-flex w-full items-center justify-end gap-1 text-[10px] font-semibold uppercase tracking-[0.14em]"
+							style={{ color: panelTheme.tertiary }}
 						>
-							My Points
+							<Coins className="h-3 w-3 shrink-0 opacity-80" strokeWidth={2.25} aria-hidden />
+							Alliance Points
 						</p>
 						<p
-							className="mt-1.5 text-[22px] font-bold leading-none tracking-tight tabular-nums"
-							style={{ color: panelTheme.primary }}
+							className="mt-1.5 truncate text-[1.55rem] font-bold leading-none tracking-tight tabular-nums"
+							style={{ color: '#e8a45c' }}
 						>
 							{pointsLabel}
 						</p>
-						{pointsFiatHint ? (
-							<p className="mt-2 text-[11px] font-medium text-white/45">{pointsFiatHint}</p>
-						) : (
-							<p className="mt-2 text-[11px] font-medium text-white/45">Reward PT</p>
-						)}
 					</div>
+				</div>
+
+				<div
+					className="mt-5 flex items-center gap-2.5 border-t pt-4"
+					style={{ borderColor: panelTheme.cardBorder }}
+				>
+					{chargePercent != null && chargePercent > 0 ? (
+						<span
+							className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full"
+							style={{ backgroundColor: 'rgba(52, 211, 153, 0.22)' }}
+							aria-hidden
+						>
+							<Check className="h-3 w-3 text-emerald-300" strokeWidth={3} />
+						</span>
+					) : null}
+					<p
+						className="min-w-0 flex-1 text-[13px] font-medium leading-snug"
+						style={{ color: panelTheme.secondary }}
+					>
+						{rewardLine}
+					</p>
+					<span
+						className="shrink-0 text-[10px] font-bold uppercase tracking-[0.12em]"
+						style={{ color: panelTheme.tertiary }}
+					>
+						No Tier Caps
+					</span>
 				</div>
 			</div>
 
@@ -5936,11 +5964,6 @@ function DiscoverMerchantDetailFullScreen({
 			currency: displayCurrency,
 		})
 	}, [showFoodBeverageProspectPass, merchantMetadataRoot, displayCurrency])
-	const memberRechargeMemberNo = useMemo(() => {
-		const nft = pickActiveDiscoverMembershipNft(merchantAssets?.nfts)
-		const tokenId = nft?.tokenId != null ? String(nft.tokenId).trim() : ''
-		return tokenId ? formatWalletMembershipMemberNo(tokenId) : ''
-	}, [merchantAssets?.nfts])
 	const memberRechargeFooterTip = useMemo(() => {
 		const { chargePercent } = parseDiscoverActorRewardPercentsFromMetadata(merchantMetadataRoot)
 		if (chargePercent != null && Number.isFinite(chargePercent) && chargePercent > 0) {
@@ -5951,13 +5974,12 @@ function DiscoverMerchantDetailFullScreen({
 		}
 		return 'Bonus credits unlock instantly and never expire.'
 	}, [merchantMetadataRoot])
-	const memberRechargePointsFiatHint = useMemo(() => {
-		if (myPoints13Loading) return null
-		const n = Number(myPoints13Num)
-		if (!Number.isFinite(n) || n <= 0) return null
-		const prefix = balancePrefix || ''
-		return `= ${prefix}${formatAmount(n, displayCurrency)} Value`
-	}, [myPoints13Loading, myPoints13Num, balancePrefix, displayCurrency])
+	const memberRechargeChargePercent = useMemo(() => {
+		const { chargePercent } = parseDiscoverActorRewardPercentsFromMetadata(merchantMetadataRoot)
+		return chargePercent != null && Number.isFinite(chargePercent) && chargePercent > 0
+			? chargePercent
+			: null
+	}, [merchantMetadataRoot])
 	const prospectJoinMembershipPrice = useMemo(() => {
 		const joinTier = membershipUi.joinTier
 		if (!joinTier) return { price: null as string | null, duration: null as string | null }
@@ -7943,15 +7965,15 @@ function DiscoverMerchantDetailFullScreen({
 					{showMemberRechargePrivileges ? (
 						<>
 							<DiscoverMerchantMemberRechargePrivilegesPanel
-								tierBadgeLabel={activeMembershipTierName || 'Member'}
-								memberNo={memberRechargeMemberNo}
+								passTitle={passTitle}
 								storeCreditsLabel={balanceDisplay}
 								pointsLabel={
 									myPoints13Loading
 										? '—'
 										: `${formatSocialPoints13Display(myPoints13Num)} Pts`
 								}
-								pointsFiatHint={memberRechargePointsFiatHint}
+								chargePercent={memberRechargeChargePercent}
+								isDining={item.category === 'food-beverage'}
 								hasPointsOrCredits={
 									Number(merchantAssets?.points ?? 0) > 0 ||
 									(Number.isFinite(myPoints13Num) && myPoints13Num > 0)

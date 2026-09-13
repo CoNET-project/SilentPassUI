@@ -45976,10 +45976,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                     >
                                       {tu('programs_topup_promotion_percent_label')}
                                     </label>
-                                    <div className="relative">
-                                      <div className="pointer-events-none absolute inset-y-0 left-3 flex items-center">
-                                        <span className="text-sm font-medium text-[#1562f0]">%</span>
-                                      </div>
+                                    <div className="flex items-center gap-2">
                                       <input
                                         id="card-topup-promo-reward"
                                         ref={cardIssuanceTopupPromotionRewardWheelRef}
@@ -45999,8 +45996,9 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                             enabled: true,
                                           }))
                                         }
-                                        className={`h-10 w-full min-w-0 rounded-lg border border-[#c3c6d8] bg-white py-2 pl-8 pr-3 text-[#1a1b1f] outline-none focus:border-[#1562f0] focus:ring-1 focus:ring-[#1562f0] ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
+                                        className={`h-10 min-w-0 flex-1 rounded-lg border border-[#c3c6d8] bg-white px-3 py-2 text-[#1a1b1f] outline-none focus:border-[#1562f0] focus:ring-1 focus:ring-[#1562f0] ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
                                       />
+                                      <span className="shrink-0 text-sm font-medium text-[#1562f0]">%</span>
                                     </div>
                                   </div>
                                 </div>

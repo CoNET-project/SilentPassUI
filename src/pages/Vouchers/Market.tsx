@@ -1088,6 +1088,8 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 	percentTopupWelcomeLine,
 	balancePrefix,
 	brandColor,
+	backgroundImageUrl,
+	backgroundImageFit = 'width',
 	onActivateTopUp,
 	onFirstDiningSpend,
 	onBooking,
@@ -1106,6 +1108,8 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 	percentTopupWelcomeLine: string | null
 	balancePrefix: string
 	brandColor: string
+	backgroundImageUrl?: string | null
+	backgroundImageFit?: CardPassBackgroundImageFit
 	onActivateTopUp: () => void
 	onFirstDiningSpend: () => void
 	onBooking: () => void
@@ -1128,6 +1132,8 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 	const nameUpper = passTitle.trim().toUpperCase() || 'MERCHANT'
 	const nameDisplay = passTitle.trim() || 'Merchant'
 	const fiatLabel = balancePrefix.trim() || 'CA$'
+	const imageUrl = (backgroundImageUrl ?? '').trim()
+	const hasImage = Boolean(imageUrl)
 	const chargeWelcomeLine = pct != null ? `${pct}% Reward PT on Every Order` : null
 	const welcomeRewardLine = topupLine ?? chargeWelcomeLine
 
@@ -1146,15 +1152,21 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 			</div>
 
 			<section
-				className="aspect-[2/1] overflow-hidden rounded-[1.35rem] px-5 pb-5 pt-5 text-white shadow-[0_16px_40px_rgba(45,40,35,0.28)]"
+				className="relative aspect-[2/1] overflow-hidden rounded-[1.35rem] px-5 pb-5 pt-5 text-white shadow-[0_16px_40px_rgba(45,40,35,0.28)]"
 				style={{
-					backgroundImage: brandGradient,
+					backgroundImage: hasImage ? undefined : brandGradient,
 					color: brandTheme.primary,
 					minHeight: 'min(256px, calc((100vw - 2rem) / 2))',
 				}}
 				aria-label={`${nameDisplay} VIP digital dining pass`}
 			>
-				<div className="flex items-start justify-between gap-3">
+				{hasImage ? (
+					<div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
+						<CardPassBackgroundImage src={imageUrl} fit={backgroundImageFit} />
+						<div className="absolute inset-0 bg-slate-950/20" />
+					</div>
+				) : null}
+				<div className="relative z-[1] flex items-start justify-between gap-3">
 					<div className="min-w-0">
 						<DiscoverDynamicPassTitle title={`${nameUpper} VIP`} />
 						<p className="mt-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/55">
@@ -1165,7 +1177,7 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 				</div>
 
 				{welcomeRewardLine ? (
-					<div className="mt-6 border-t border-white/15 pt-5">
+					<div className="relative z-[1] mt-6 border-t border-white/15 pt-5">
 						<p className="text-[16px] font-bold leading-snug tracking-tight text-white">
 							{welcomeRewardLine}
 						</p>
@@ -7921,6 +7933,8 @@ function DiscoverMerchantDetailFullScreen({
 							percentTopupWelcomeLine={foodBeveragePercentTopupWelcomeLine}
 							balancePrefix={balancePrefix || 'CA$'}
 							brandColor={merchantDetailBrandColor ?? DISCOVER_FOOD_BEVERAGE_PASS_FALLBACK}
+							backgroundImageUrl={prospectJoinPanelBackground.backgroundImageUrl}
+							backgroundImageFit={prospectJoinPanelBackground.imageFit}
 							onActivateTopUp={() => {
 								if (usdcTopupPhase !== 'idle' || discoverTopUpOpen) return
 								openDiscoverTopupAmount()

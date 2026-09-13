@@ -21315,7 +21315,10 @@ const disableCardIssuanceTopupPromotion = useCallback(() => {
        ...buildTierMetaFields(t),
      };
    });
-  valid.sort((a, b) => b.minUsdc6 - a.minUsdc6);
+  // The card contract and Cluster precheck require tiers in strictly
+  // increasing minUsdc6 order. Keep the payload order aligned with that
+  // canonical on-chain schedule.
+  valid.sort((a, b) => a.minUsdc6 - b.minUsdc6);
   return valid.map((t, idx) => ({
     index: idx,
     minUsdc6: String(t.minUsdc6),

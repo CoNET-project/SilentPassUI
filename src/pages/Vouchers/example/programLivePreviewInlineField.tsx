@@ -19,6 +19,11 @@ type ProgramLivePreviewInlineFieldProps = {
   displayClassName?: string;
   /** View-mode label when value is blank (never shows input placeholder publicly). */
   emptyDisplay?: string;
+  /**
+   * When `value` is blank, seed the editor with this copy instead of an empty box.
+   * Leaving without typing does not write the seed back (avoids a false dirty state).
+   */
+  emptyEditSeed?: string;
   /** Called when edit mode closes (blur or Escape). */
   onCommit?: () => void;
   /** Called immediately before entering edit mode (e.g. sync draft from displayed tier). */
@@ -42,17 +47,26 @@ export function ProgramLivePreviewInlineField({
   hideLabel = false,
   displayClassName = '',
   emptyDisplay = 'Empty',
+  emptyEditSeed,
   onCommit,
   onEditStart,
 }: ProgramLivePreviewInlineFieldProps) {
   const fieldId = useId();
   const [editing, setEditing] = useState(false);
+  const [editDraft, setEditDraft] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const closeEditing = () => {
+    setEditDraft(null);
     setEditing(false);
     onCommit?.();
+  };
+
+  const applyDraftChange = (next: string) => {
+    const clipped = maxLength != null ? next.slice(0, maxLength) : next;
+    setEditDraft(clipped);
+    onChange(clipped);
   };
 
   useEffect(() => {
@@ -64,6 +78,7 @@ export function ProgramLivePreviewInlineField({
   const rawDisplay = (displayValue ?? value).trim();
   const hasContent = rawDisplay.length > 0;
   const shown = hasContent ? rawDisplay : emptyDisplay;
+  const editingValue = editDraft ?? value;
   const inputClass = `w-full rounded-lg border border-[#1562f0]/30 bg-white px-3 py-2 text-sm font-semibold text-[#2c2f31] outline-none transition-colors focus:border-[#1562f0] disabled:cursor-not-allowed disabled:opacity-60 ${focusRingClass} ${
     multiline ? 'resize-y font-medium leading-relaxed' : ''
   }`;
@@ -71,19 +86,22 @@ export function ProgramLivePreviewInlineField({
   if (editing && !disabled) {
     return (
       <div className={`space-y-1.5 ${className}`}>
-        <label htmlFor={fieldId} className="block text-[9px] font-bold uppercase tracking-widest text-[#595c5e]">
-          {label}
-        </label>
+        {hideLabel ? null : (
+          <label htmlFor={fieldId} className="block text-[9px] font-bold uppercase tracking-widest text-[#595c5e]">
+            {label}
+          </label>
+        )}
         {multiline ? (
           <textarea
             id={fieldId}
             ref={textareaRef}
             rows={rows}
-            value={value}
+            value={editingValue}
             maxLength={maxLength}
             placeholder={placeholder}
+            aria-label={hideLabel ? label : undefined}
             disabled={disabled}
-            onChange={(e) => onChange(maxLength != null ? e.target.value.slice(0, maxLength) : e.target.value)}
+            onChange={(e) => applyDraftChange(e.target.value)}
             onBlur={closeEditing}
             onKeyDown={(e) => {
               if (e.key === 'Escape') closeEditing();
@@ -97,11 +115,12 @@ export function ProgramLivePreviewInlineField({
             type="text"
             inputMode={inputMode}
             autoComplete="off"
-            value={value}
+            value={editingValue}
             maxLength={maxLength}
             placeholder={placeholder}
+            aria-label={hideLabel ? label : undefined}
             disabled={disabled}
-            onChange={(e) => onChange(maxLength != null ? e.target.value.slice(0, maxLength) : e.target.value)}
+            onChange={(e) => applyDraftChange(e.target.value)}
             onBlur={closeEditing}
             onKeyDown={(e) => {
               if (e.key === 'Escape') closeEditing();
@@ -109,7 +128,7 @@ export function ProgramLivePreviewInlineField({
             className={inputClass}
           />
         )}
-        {hint ? <p className="text-[10px] font-medium text-[#747779]">{hint}</p> : null}
+        {hint && !hideLabel ? <p className="text-[10px] font-medium text-[#747779]">{hint}</p> : null}
       </div>
     );
   }
@@ -120,6 +139,7 @@ export function ProgramLivePreviewInlineField({
       disabled={disabled}
       onClick={() => {
         onEditStart?.();
+        setEditDraft(value.trim() ? value : (emptyEditSeed ?? value));
         setEditing(true);
       }}
       className={`group w-full rounded-lg text-left transition-colors hover:bg-[#1562f0]/[0.04] disabled:cursor-not-allowed disabled:opacity-60 ${className} ${focusRingClass}`}

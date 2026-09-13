@@ -42847,8 +42847,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                      <div className="mt-3 rounded-[22px] bg-[#eef1f4] p-4 sm:mt-4">
                        <h3 className="text-[16px] font-bold text-[#1f2328]">{merchantPanelAboutPreviewTitle}</h3>
                        <ProgramLivePreviewInlineField
+                         hideLabel
                          label={tu('programs_merchant_welcome_title_label')}
-                         hint={tu('programs_merchant_welcome_title_hint')}
                          value={cardIssuanceDiscoverWelcomeTitle}
                          onChange={(v) =>
                            setCardIssuanceDiscoverWelcomeTitle(
@@ -42861,6 +42861,11 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                            cardIssuanceStoreDisplayName.trim()
                              ? `Welcome to ${cardIssuanceStoreDisplayName.trim()}`
                              : programsLivePreviewEmptyLabel
+                         }
+                         emptyEditSeed={
+                           cardIssuanceStoreDisplayName.trim()
+                             ? `Welcome to ${cardIssuanceStoreDisplayName.trim()}`
+                             : undefined
                          }
                          displayClassName="mt-1 text-[15px] font-semibold leading-snug text-[#1f2328]"
                          className="mt-3 rounded-none px-0 py-0 hover:bg-white/60"

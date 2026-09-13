@@ -54,6 +54,7 @@ import {
 	loadReward13RowsForAa,
 	mergeReward13Rows,
 	planAutoCoverUsdc,
+	planManualCoverUsdc,
 	parseFiatHumanTo6,
 	peekReward13RowsCache,
 	pickRichestReward13Seed,
@@ -704,6 +705,8 @@ export default function DiscoverMerchantGiftSheet({
 	const [reward13Rows, setReward13Rows] = useState<Awaited<ReturnType<typeof loadReward13RowsForAa>>>([])
 	const [reward13Legs, setReward13Legs] = useState<CoverLeg[]>([])
 	const [reward13Loading, setReward13Loading] = useState(false)
+	const [reward13SelectionOpen, setReward13SelectionOpen] = useState(false)
+	const [selectedReward13Cards, setSelectedReward13Cards] = useState<Set<string>>(() => new Set())
 	const [aaPoints0Bal, setAaPoints0Bal] = useState<bigint | null>(null)
 	const [aaPoints0Loading, setAaPoints0Loading] = useState(false)
 	const [resolvedAa, setResolvedAa] = useState<string | null>(null)
@@ -950,6 +953,8 @@ export default function DiscoverMerchantGiftSheet({
 		if (step !== 3 || !cardAddress || !ethers.isAddress(cardAddress)) {
 			setReward13Legs([])
 			setReward13Loading(false)
+			setReward13SelectionOpen(false)
+			setSelectedReward13Cards(new Set())
 			return
 		}
 		if (!currentProfile) {
@@ -1028,12 +1033,24 @@ export default function DiscoverMerchantGiftSheet({
 		const parsed = parseDiscoverTopupAmountInput(amountText, ccy)
 		if (!parsed.ok) return
 		const fiat6 = parseFiatHumanTo6(parsed.apiAmount)
-		void planAutoCoverUsdc(reward13Rows, quotedGiftUsdc6, fiat6)
+		const plan = reward13SelectionOpen
+			? planManualCoverUsdc(reward13Rows, selectedReward13Cards, quotedGiftUsdc6, fiat6)
+			: planAutoCoverUsdc(reward13Rows, quotedGiftUsdc6, fiat6)
+		void plan
 			.then((legs) => setReward13Legs(legs))
 			.catch(() => {
 				// Keep the last trusted plan when the quote planner cannot complete.
 			})
-	}, [step, amountText, ccy, quotedGiftUsdc6, reward13Rows, reward13Loading])
+	}, [
+		step,
+		amountText,
+		ccy,
+		quotedGiftUsdc6,
+		reward13Rows,
+		reward13Loading,
+		reward13SelectionOpen,
+		selectedReward13Cards,
+	])
 
 	const myAddress = (profile?.keyID ?? '').trim().toLowerCase()
 	const recentFriends = useMemo(() => {
@@ -1617,11 +1634,43 @@ export default function DiscoverMerchantGiftSheet({
 		reward13AppliedUsdc6 > 0n
 			? `$${formatQuotedUsdc6ForDisplay(reward13AppliedUsdc6)} USDC`
 			: '$0.00 USDC'
-	const reward13SourceCount = new Set(
-		(reward13Legs.length > 0 ? reward13Legs : reward13Rows.map((row) => ({ cardAddress: row.cardAddress } as CoverLeg))).map(
-			(leg) => leg.cardAddress.toLowerCase(),
-		),
-	).size
+	const reward13SourceCount = reward13SelectionOpen
+		? selectedReward13Cards.size
+		: new Set(
+				(
+					reward13Legs.length > 0
+						? reward13Legs
+						: reward13Rows.map((row) => ({ cardAddress: row.cardAddress } as CoverLeg))
+				).map((leg) => leg.cardAddress.toLowerCase()),
+			).size
+	const reward13SelectableRows = useMemo(
+		() =>
+			reward13Rows.filter((row) =>
+				row.coverKind === 'toProgramPoints'
+					? row.redeemablePoints6 > 0n
+					: row.redeemableUsdc6 > 0n && row.redeemablePoints6 > 0n,
+			),
+		[reward13Rows],
+	)
+	const openReward13Selection = () => {
+		if (!reward13SelectionOpen) {
+			setSelectedReward13Cards(
+				new Set(
+					reward13SelectableRows.map((row) => row.cardAddress.toLowerCase()),
+				),
+			)
+		}
+		setReward13SelectionOpen(true)
+	}
+	const toggleReward13Card = (cardAddress: string) => {
+		const key = cardAddress.toLowerCase()
+		setSelectedReward13Cards((previous) => {
+			const next = new Set(previous)
+			if (next.has(key)) next.delete(key)
+			else next.add(key)
+			return next
+		})
+	}
 	const remainingUsdcLabel = useMemo(() => {
 		const total = quotedGiftUsdc6
 		if (total == null) return null
@@ -3560,7 +3609,20 @@ export default function DiscoverMerchantGiftSheet({
 							</span>
 						) : null}
 					</div>
-					<div className="mt-3 flex items-center justify-between gap-4">
+					<div
+						className="mt-3 flex cursor-pointer items-center justify-between gap-4 rounded-lg -mx-1 px-1 py-0.5 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0051d1]/35 dark:hover:bg-slate-800"
+						role="button"
+						tabIndex={0}
+						aria-expanded={reward13SelectionOpen}
+						aria-label="Customize Reward PT sources"
+						onClick={openReward13Selection}
+						onKeyDown={(event) => {
+							if (event.key === 'Enter' || event.key === ' ') {
+								event.preventDefault()
+								openReward13Selection()
+							}
+						}}
+					>
 						<span className="min-w-0 text-[15px] font-medium text-[#424655] dark:text-slate-200">
 							{reward13SourceCount > 0
 								? `${reward13SourceCount} merchant card${reward13SourceCount === 1 ? '' : 's'} available`
@@ -3570,10 +3632,85 @@ export default function DiscoverMerchantGiftSheet({
 							{reward13AppliedLabel}
 						</span>
 					</div>
-					<div className="mt-1.5 flex items-center justify-between gap-3 text-[13px] text-[#424655] dark:text-slate-400">
+					<div
+						className="mt-1.5 flex cursor-pointer items-center justify-between gap-3 rounded-lg -mx-1 px-1 py-0.5 text-[13px] text-[#424655] transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0051d1]/35 dark:text-slate-400 dark:hover:bg-slate-800"
+						role="button"
+						tabIndex={0}
+						aria-expanded={reward13SelectionOpen}
+						aria-label="Customize Reward PT sources"
+						onClick={openReward13Selection}
+						onKeyDown={(event) => {
+							if (event.key === 'Enter' || event.key === ' ') {
+								event.preventDefault()
+								openReward13Selection()
+							}
+						}}
+					>
 						<span>Estimated value</span>
 						<span className="shrink-0 font-semibold tabular-nums">{reward13AppliedValueLabel}</span>
 					</div>
+					{reward13SelectionOpen ? (
+						<div className="mt-3 rounded-xl border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-700 dark:bg-slate-800/70">
+							<div className="mb-2 flex items-center justify-between gap-3">
+								<span className="text-[12px] font-semibold uppercase tracking-[0.08em] text-[#424655] dark:text-slate-300">
+									Customize Reward PT
+								</span>
+								<button
+									type="button"
+									className="text-[12px] font-semibold"
+									style={{ color: brandControl }}
+									onClick={() => setReward13SelectionOpen(false)}
+									aria-label="Close Reward PT selection"
+								>
+									Done
+								</button>
+							</div>
+							<p className="mb-2 text-[12px] leading-4 text-[#424655] dark:text-slate-400">
+								Choose which merchant cards can contribute Reward PT to this gift.
+							</p>
+							<div className="flex flex-col gap-2">
+								{reward13SelectableRows.map((row) => {
+									const key = row.cardAddress.toLowerCase()
+									const selected = selectedReward13Cards.has(key)
+									return (
+										<label
+											key={row.cardAddress}
+											className="flex cursor-pointer items-center gap-3 rounded-xl border bg-white p-2.5 dark:bg-slate-900"
+											style={{
+												borderColor: selected ? brandControl : '#e2e2e7',
+												backgroundColor: selected ? `${brandTint}` : undefined,
+											}}
+										>
+											<input
+												type="checkbox"
+												checked={selected}
+												onChange={() => toggleReward13Card(row.cardAddress)}
+												className="h-4 w-4"
+												style={{ accentColor: brandControl }}
+												aria-label={`Use Reward PT from ${row.name}`}
+											/>
+											{row.icon ? (
+												<IpfsImg src={row.icon} alt="" className="h-8 w-8 rounded-full object-cover" />
+											) : (
+												<div className="h-8 w-8 shrink-0 rounded-full" style={{ backgroundColor: brandTint }} />
+											)}
+											<span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-[#424655] dark:text-slate-200">
+												{row.name}
+											</span>
+											<span className="shrink-0 text-[12px] font-semibold tabular-nums" style={{ color: brandControl }}>
+												{formatPtsHuman(row.redeemablePoints6)} PT
+											</span>
+										</label>
+									)
+								})}
+								{reward13SelectableRows.length === 0 ? (
+									<p className="text-[12px] text-[#424655] dark:text-slate-400">
+										No eligible Reward PT found.
+									</p>
+								) : null}
+							</div>
+						</div>
+					) : null}
 					<div className="my-3 h-px" style={{ backgroundColor: `${brandControl}22` }} />
 					<p className="text-[12px] leading-4 text-[#424655] dark:text-slate-400">
 						Reward PT is read from your connected Smart Wallet and applied before the remaining payment.

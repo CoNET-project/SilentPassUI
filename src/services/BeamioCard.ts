@@ -4081,6 +4081,11 @@ export const getTierIndexForRedeemAmount = (
 
 /** Discover detail About block (`shareTokenMetadata.discoverAbout`). */
 export type ShareTokenMetadataDiscoverAbout = {
+	/**
+	 * Exclusive Welcome Offer heading on Discover merchant detail.
+	 * When unset, consumer defaults to `Welcome to {displayName}`.
+	 */
+	welcomeTitle?: string
 	/** Long-form About paragraph on Discover merchant detail */
 	detail?: string
 	openingHours?: string
@@ -4298,13 +4303,17 @@ export function shareTokenDiscoverAboutFromUnknown(
 	const raw = share.discoverAbout
 	if (raw == null || typeof raw !== 'object' || Array.isArray(raw)) return undefined
 	const o = raw as Record<string, unknown>
+	const welcomeTitle = shareTokenDiscoverAboutStringField(o.welcomeTitle)
 	const detail = shareTokenDiscoverAboutStringField(o.detail)
 	const openingHours = shareTokenDiscoverAboutStringField(o.openingHours)
 	const contact = shareTokenDiscoverAboutStringField(o.contact)
 	const location = shareTokenDiscoverAboutStringField(o.location)
 	const aboutTitle = shareTokenDiscoverAboutStringField(o.aboutTitle)
-	if (!detail && !openingHours && !contact && !location && !aboutTitle) return undefined
+	if (!welcomeTitle && !detail && !openingHours && !contact && !location && !aboutTitle) {
+		return undefined
+	}
 	return {
+		...(welcomeTitle ? { welcomeTitle } : {}),
 		...(detail ? { detail } : {}),
 		...(openingHours ? { openingHours } : {}),
 		...(contact ? { contact } : {}),

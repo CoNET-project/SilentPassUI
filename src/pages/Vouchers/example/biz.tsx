@@ -11291,6 +11291,8 @@ const CARD_ISSUANCE_REWARDS_SETUP_AMOUNT_DEFAULT = '1';
 const CARD_ISSUANCE_LEGACY_MIN_TOPUP_DEFAULT = 10;
 /** Max length for Card Issuance configuration text (card description, tier description, etc.). */
 const CARD_ISSUANCE_CONFIGURATION_MAX_CHARS = 200;
+/** Discover Exclusive Welcome Offer heading (optional; consumer defaults to Welcome to {displayName}). */
+const CARD_ISSUANCE_DISCOVER_WELCOME_TITLE_MAX = 200;
 /** Discover detail About block — long-form detail paragraph. */
 const CARD_ISSUANCE_DISCOVER_ABOUT_DETAIL_MAX = 2000;
 const CARD_ISSUANCE_DISCOVER_ABOUT_OPENING_HOURS_MAX = 500;
@@ -11298,17 +11300,22 @@ const CARD_ISSUANCE_DISCOVER_ABOUT_CONTACT_MAX = 120;
 const CARD_ISSUANCE_DISCOVER_ABOUT_LOCATION_MAX = 500;
 
 function buildDiscoverAboutMetadataPayload(fields: {
+  welcomeTitle?: string;
   detail: string;
   openingHours: string;
   contact: string;
   location: string;
 }): ShareTokenMetadataDiscoverAbout | undefined {
+  const welcomeTitle = (fields.welcomeTitle ?? '')
+    .trim()
+    .slice(0, CARD_ISSUANCE_DISCOVER_WELCOME_TITLE_MAX);
   const detail = fields.detail.trim().slice(0, CARD_ISSUANCE_DISCOVER_ABOUT_DETAIL_MAX);
   const openingHours = fields.openingHours.trim().slice(0, CARD_ISSUANCE_DISCOVER_ABOUT_OPENING_HOURS_MAX);
   const contact = fields.contact.trim().slice(0, CARD_ISSUANCE_DISCOVER_ABOUT_CONTACT_MAX);
   const location = fields.location.trim().slice(0, CARD_ISSUANCE_DISCOVER_ABOUT_LOCATION_MAX);
-  if (!detail && !openingHours && !contact && !location) return undefined;
+  if (!welcomeTitle && !detail && !openingHours && !contact && !location) return undefined;
   return {
+    ...(welcomeTitle ? { welcomeTitle } : {}),
     ...(detail ? { detail } : {}),
     ...(openingHours ? { openingHours } : {}),
     ...(contact ? { contact } : {}),
@@ -11330,6 +11337,7 @@ function discoverAboutFieldsEqual(
 ): boolean {
   const norm = (v?: string) => (v ?? '').trim();
   return (
+    norm(a?.welcomeTitle) === norm(b?.welcomeTitle) &&
     norm(a?.detail) === norm(b?.detail) &&
     norm(a?.openingHours) === norm(b?.openingHours) &&
     norm(a?.contact) === norm(b?.contact) &&
@@ -14543,6 +14551,7 @@ const handlePublishCardIssuanceRef = useRef<
  const [cardIssuanceCategoryId, setCardIssuanceCategoryId] = useState<string>(CARD_ISSUANCE_DEFAULT_CATEGORY_ID);
  /** Card-level metadata description (`shareTokenMetadata.description`). */
  const [cardIssuanceDescription, setCardIssuanceDescription] = useState('');
+ const [cardIssuanceDiscoverWelcomeTitle, setCardIssuanceDiscoverWelcomeTitle] = useState('');
  const [cardIssuanceDiscoverAboutDetail, setCardIssuanceDiscoverAboutDetail] = useState('');
  const [cardIssuanceDiscoverAboutOpeningHours, setCardIssuanceDiscoverAboutOpeningHours] = useState('');
  const [cardIssuanceDiscoverAboutContact, setCardIssuanceDiscoverAboutContact] = useState('');
@@ -16179,6 +16188,9 @@ const cardIssuancePreviewLiveLogoIconClass = useMemo(
  useEffect(() => {
    if (!cardIssuanceExistingCard?.cardAddress || !cardIssuanceExistingCard.meta) return;
    const about = cardIssuanceExistingCard.meta.discoverAbout;
+   setCardIssuanceDiscoverWelcomeTitle(
+     (about?.welcomeTitle ?? '').trim().slice(0, CARD_ISSUANCE_DISCOVER_WELCOME_TITLE_MAX)
+   );
    setCardIssuanceDiscoverAboutDetail(
      (about?.detail ?? '').trim().slice(0, CARD_ISSUANCE_DISCOVER_ABOUT_DETAIL_MAX)
    );
@@ -17773,6 +17785,7 @@ const merchantPanelTextDirty = useMemo(() => {
   const savedDesc = (meta.description ?? '').trim();
   const savedDisplay = (meta.displayName ?? '').trim();
   const draftAbout = buildDiscoverAboutMetadataPayload({
+    welcomeTitle: cardIssuanceDiscoverWelcomeTitle,
     detail: cardIssuanceDiscoverAboutDetail,
     openingHours: cardIssuanceDiscoverAboutOpeningHours,
     contact: cardIssuanceDiscoverAboutContact,
@@ -17790,6 +17803,7 @@ const merchantPanelTextDirty = useMemo(() => {
   cardIssuanceProgramName,
   cardIssuanceDescription,
   cardIssuanceStoreDisplayName,
+  cardIssuanceDiscoverWelcomeTitle,
   cardIssuanceDiscoverAboutDetail,
   cardIssuanceDiscoverAboutOpeningHours,
   cardIssuanceDiscoverAboutContact,
@@ -17874,6 +17888,7 @@ const discardProgramBasicChanges = useCallback(() => {
   setCardIssuanceProgramName((meta.name ?? card.userCard.name ?? '').trim());
   setCardIssuanceDescription((meta.description ?? '').trim());
   setCardIssuanceStoreDisplayName((meta.displayName ?? '').trim());
+  setCardIssuanceDiscoverWelcomeTitle((meta.discoverAbout?.welcomeTitle ?? '').trim());
   setCardIssuanceDiscoverAboutDetail((meta.discoverAbout?.detail ?? '').trim());
   setCardIssuanceDiscoverAboutOpeningHours((meta.discoverAbout?.openingHours ?? '').trim());
   setCardIssuanceDiscoverAboutContact((meta.discoverAbout?.contact ?? '').trim());
@@ -23346,6 +23361,7 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
 		buildShareTokenBusinessProfileFromDraft(merchantChannelProfileDraftRef.current),
 	);
      const discoverAboutForPublish = buildDiscoverAboutMetadataPayload({
+       welcomeTitle: cardIssuanceDiscoverWelcomeTitle,
        detail: cardIssuanceDiscoverAboutDetail,
        openingHours: cardIssuanceDiscoverAboutOpeningHours,
        contact: cardIssuanceDiscoverAboutContact,
@@ -23722,6 +23738,7 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
    cardIssuanceLogoDisplayTier,
    cardIssuanceCategoryId,
    cardIssuanceDescription,
+   cardIssuanceDiscoverWelcomeTitle,
    cardIssuanceDiscoverAboutDetail,
    cardIssuanceDiscoverAboutOpeningHours,
    cardIssuanceDiscoverAboutContact,
@@ -25371,6 +25388,7 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
        CARD_ISSUANCE_STORE_DISPLAY_NAME_MAX
      );
      const discoverAboutSaved = buildDiscoverAboutMetadataPayload({
+       welcomeTitle: cardIssuanceDiscoverWelcomeTitle,
        detail: cardIssuanceDiscoverAboutDetail,
        openingHours: cardIssuanceDiscoverAboutOpeningHours,
        contact: cardIssuanceDiscoverAboutContact,
@@ -25455,6 +25473,7 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
    cardIssuanceProgramName,
    cardIssuanceDescription,
    cardIssuanceStoreDisplayName,
+   cardIssuanceDiscoverWelcomeTitle,
    cardIssuanceDiscoverAboutDetail,
    cardIssuanceDiscoverAboutOpeningHours,
    cardIssuanceDiscoverAboutContact,
@@ -42828,6 +42847,27 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                      <div className="mt-3 rounded-[22px] bg-[#eef1f4] p-4 sm:mt-4">
                        <h3 className="text-[16px] font-bold text-[#1f2328]">{merchantPanelAboutPreviewTitle}</h3>
                        <ProgramLivePreviewInlineField
+                         label={tu('programs_merchant_welcome_title_label')}
+                         hint={tu('programs_merchant_welcome_title_hint')}
+                         value={cardIssuanceDiscoverWelcomeTitle}
+                         onChange={(v) =>
+                           setCardIssuanceDiscoverWelcomeTitle(
+                             v.slice(0, CARD_ISSUANCE_DISCOVER_WELCOME_TITLE_MAX)
+                           )
+                         }
+                         maxLength={CARD_ISSUANCE_DISCOVER_WELCOME_TITLE_MAX}
+                         placeholder={tu('programs_merchant_welcome_title_ph')}
+                         emptyDisplay={
+                           cardIssuanceStoreDisplayName.trim()
+                             ? `Welcome to ${cardIssuanceStoreDisplayName.trim()}`
+                             : programsLivePreviewEmptyLabel
+                         }
+                         displayClassName="mt-1 text-[15px] font-semibold leading-snug text-[#1f2328]"
+                         className="mt-3 rounded-none px-0 py-0 hover:bg-white/60"
+                         disabled={cardIssuanceMerchantTextSaving}
+                         focusRingClass={bizFocusRingClass}
+                       />
+                       <ProgramLivePreviewInlineField
                          hideLabel
                          label={tu('programs_merchant_about_detail_label', {
                            max: String(CARD_ISSUANCE_DISCOVER_ABOUT_DETAIL_MAX),
@@ -42849,7 +42889,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                          }
                          emptyDisplay={programsLivePreviewEmptyLabel}
                          displayClassName="mt-2 whitespace-pre-line text-[14px] font-medium leading-relaxed text-slate-600"
-                         className="mt-2 rounded-none px-0 py-0 hover:bg-white/60"
+                         className="mt-4 rounded-none px-0 py-0 hover:bg-white/60"
                          disabled={cardIssuanceMerchantTextSaving}
                          focusRingClass={bizFocusRingClass}
                        />

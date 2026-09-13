@@ -6401,6 +6401,11 @@ function DiscoverMerchantDetailFullScreen({
 				if (ac.signal.aborted) return
 				if (assets != null) {
 					setMerchantAssets(assets)
+					// The detail card and its parent Discover list may be reading
+					// their balances from different mirrors.  Propagate the
+					// confirmed post-top-up snapshot so the visible Store Credits
+					// card does not remain on the pre-payment balance.
+					onMerchantAssetsConfirmed?.(cardAddress, assets)
 					adoptMerchantProgramPresentation(assets, { force: true })
 					const cur = (assets.cardCurrency || ccy).toUpperCase() as Parameters<typeof fiatPrefix>[0]
 					const prefix = fiatPrefix(cur)
@@ -6419,6 +6424,7 @@ function DiscoverMerchantDetailFullScreen({
 			ccy,
 			item.cardAddress,
 			membershipFeeTiers,
+			onMerchantAssetsConfirmed,
 			profile,
 			resetUsdcTopupFlow,
 		],
@@ -6459,13 +6465,18 @@ function DiscoverMerchantDetailFullScreen({
 				setDiscoverPayPanelError(mapServerError(ret.error ?? 'Top-up failed'))
 				return false
 			}
-			if (ret.assets) setMerchantAssets(ret.assets as Awaited<ReturnType<typeof getMyAssets>>)
+			if (ret.assets) {
+				const assets = ret.assets as Awaited<ReturnType<typeof getMyAssets>>
+				setMerchantAssets(assets)
+				onMerchantAssetsConfirmed?.(cardAddress, assets)
+			}
 			startCardTopupSuccessAfterPay(kind)
 			return true
 		},
 		[
 			captureCardTopupBaselines,
 			item.cardAddress,
+			onMerchantAssetsConfirmed,
 			profile,
 			readCardPoints6Fresh,
 			setDiscoverPayPanelError,

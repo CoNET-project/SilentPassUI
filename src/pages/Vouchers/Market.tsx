@@ -65,7 +65,6 @@ import {
   AlertTriangle,
   MessageCircle,
 	Coins,
-	HelpCircle,
 	Store,
 	Send,
 } from "lucide-react"
@@ -452,6 +451,8 @@ type DiscoverMerchantInfoPanel = {
 }
 
 type ShareTokenMetadataDiscoverAbout = {
+	/** Exclusive Welcome Offer heading; blank → `Welcome to ${displayName}`. */
+	welcomeTitle?: string
 	detail?: string
 	openingHours?: string
 	contact?: string
@@ -484,13 +485,16 @@ function parseDiscoverAboutFromShare(
 		const t = trimDiscoverAboutMultilineField(v)
 		return t || undefined
 	}
+	const welcomeTitle = field("welcomeTitle")
 	const detail = field("detail")
 	const openingHours = field("openingHours")
 	const contact = field("contact")
 	const location = field("location")
 	const aboutTitle = field("aboutTitle")
-	if (!detail && !openingHours && !contact && !location && !aboutTitle) return null
-	return { detail, openingHours, contact, location, aboutTitle }
+	if (!welcomeTitle && !detail && !openingHours && !contact && !location && !aboutTitle) {
+		return null
+	}
+	return { welcomeTitle, detail, openingHours, contact, location, aboutTitle }
 }
 
 function resolveDiscoverMerchantInfoPanel(
@@ -500,13 +504,17 @@ function resolveDiscoverMerchantInfoPanel(
 ): DiscoverMerchantInfoPanel | undefined {
 	const legacy = DISCOVER_MERCHANT_INFO_PANELS[resolveDiscoverCardPanelKey(cardAddress)]
 	if (discoverAbout) {
+		const welcomeFromMeta = discoverAbout.welcomeTitle?.trim()
 		const aboutText = discoverAbout.detail?.trim()
 		const openingHours = discoverAbout.openingHours?.trim()
 		const contact = discoverAbout.contact?.trim()
 		const location = discoverAbout.location?.trim()
-		if (aboutText || openingHours || contact || location) {
+		if (welcomeFromMeta || aboutText || openingHours || contact || location) {
 			return {
-				welcomeTitle: legacy?.welcomeTitle ?? `Welcome to ${merchantDisplayName}`,
+				welcomeTitle:
+					welcomeFromMeta ||
+					legacy?.welcomeTitle ||
+					`Welcome to ${merchantDisplayName}`,
 				welcomeText: legacy?.welcomeText ?? "",
 				aboutTitle:
 					discoverAbout.aboutTitle?.trim() || legacy?.aboutTitle || `About ${merchantDisplayName}`,
@@ -1009,7 +1017,6 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 	passTitle,
 	chargePercent,
 	percentTopupWelcomeLine,
-	balancePrefix,
 	brandColor,
 	onActivateTopUp,
 	onFirstDiningSpend,
@@ -1026,7 +1033,6 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 	chargePercent: number | null
 	/** Percent top-up promo only (not fixed / fixedTiers). */
 	percentTopupWelcomeLine: string | null
-	balancePrefix: string
 	brandColor: string
 	onActivateTopUp: () => void
 	onFirstDiningSpend: () => void
@@ -1047,12 +1053,8 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 	const topupLine = percentTopupWelcomeLine?.trim() || null
 	const nameUpper = passTitle.trim().toUpperCase() || 'MERCHANT'
 	const nameDisplay = passTitle.trim() || 'Merchant'
-	const fiatLabel = balancePrefix.trim() || 'CA$'
-	const chargeWelcomeLine = 'Points on Every Order'
+	const chargeWelcomeLine = pct != null ? `${pct}% Points on Every Order` : null
 	const welcomeRewardLine = topupLine ?? chargeWelcomeLine
-	const howPointsTitle =
-		pct != null ? `How Points Work · ${pct}% Back on Every Meal` : 'How Points Work'
-	const howPointsBody = `Eat, earn, and enjoy! Your points never expire (1 Pt = ${fiatLabel}1.00). Use them for your favorite dishes here, or seamlessly across our Alliance network.`
 
 	return (
 		<div className="flex flex-col gap-4" aria-label={`${nameDisplay} member pass preview`}>
@@ -1066,11 +1068,6 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 				<p className="min-w-0 flex-1 text-[11px] font-bold uppercase tracking-[0.14em] text-[#6b7280] dark:text-slate-400">
 					{nameUpper} MEMBER PASS
 				</p>
-				{pct != null ? (
-					<span className="inline-flex shrink-0 items-center rounded-full border border-emerald-200/90 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-800 dark:border-emerald-800/50 dark:bg-emerald-950/40 dark:text-emerald-200">
-						{pct}% Back
-					</span>
-				) : null}
 			</div>
 
 			<section
@@ -1088,16 +1085,18 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 					<UtensilsCrossed className="mt-1 h-8 w-8 shrink-0 text-white/75" strokeWidth={1.6} aria-hidden />
 				</div>
 
-				<div className="mt-6 border-t border-white/15 pt-5">
-					<p className="text-[16px] font-bold leading-snug tracking-tight text-white">
-						{welcomeRewardLine}
-					</p>
-					{topupLine && pct != null ? (
-						<p className="mt-2 text-[12px] font-medium leading-snug text-white/75">
-							{chargeWelcomeLine}
+				{welcomeRewardLine ? (
+					<div className="mt-6 border-t border-white/15 pt-5">
+						<p className="text-[16px] font-bold leading-snug tracking-tight text-white">
+							{welcomeRewardLine}
 						</p>
-					) : null}
-				</div>
+						{topupLine && chargeWelcomeLine ? (
+							<p className="mt-2 text-[12px] font-medium leading-snug text-white/75">
+								{chargeWelcomeLine}
+							</p>
+						) : null}
+					</div>
+				) : null}
 			</section>
 
 			<button
@@ -1132,36 +1131,6 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 				</span>
 				CoNET L1 smart vault · Never expires &amp; 100% redeemable
 			</p>
-
-			<section className="rounded-2xl border border-[#ebe6df] bg-[#faf8f5] px-4 py-4 dark:border-slate-700 dark:bg-slate-900/80">
-				<div className="flex items-start gap-3">
-					<span
-						className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
-						style={{ backgroundColor: `${DISCOVER_FOOD_BEVERAGE_GIFT_ACCENT}18` }}
-						aria-hidden
-					>
-						<HelpCircle
-							className="h-[18px] w-[18px]"
-							style={{ color: DISCOVER_FOOD_BEVERAGE_GIFT_ACCENT }}
-							strokeWidth={2.25}
-						/>
-					</span>
-					<div className="min-w-0 flex-1">
-						<p className="text-[15px] font-bold tracking-tight text-[#1f2328] dark:text-slate-100">
-							{howPointsTitle}
-						</p>
-						<p className="mt-1.5 text-[13px] leading-relaxed text-[#5c6570] dark:text-slate-400">
-							{howPointsBody}
-						</p>
-					</div>
-				</div>
-				<div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-[#ebe6df] pt-3 dark:border-slate-700">
-					<span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#3d4450] dark:text-slate-300">
-						<ShieldCheck className="h-3.5 w-3.5 text-emerald-600" strokeWidth={2.25} aria-hidden />
-						Instant ledger settlement
-					</span>
-				</div>
-			</section>
 
 			<DiscoverMerchantVisitActionsBlock
 				brandColor={brand}
@@ -5652,7 +5621,6 @@ function DiscoverMerchantDetailFullScreen({
 			}),
 		[merchantMetadataRoot, displayCurrency],
 	)
-	const heroRechargeBonusPill = topupPromotionPresentation.heroSidePill
 	const isConetGenesisCard = isConetGenesisDiscoverCard(item.cardAddress)
 	const membershipFeeTiers = useMemo((): DiscoverMembershipFeeTier[] => {
 		if (isConetGenesisCard || !membershipFeeMode) return []
@@ -7620,12 +7588,6 @@ function DiscoverMerchantDetailFullScreen({
 						className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/75 via-black/25 to-black/30"
 						aria-hidden
 					/>
-					{heroRechargeBonusPill && !showStoreCreditMultiplierOffers ? (
-						<DiscoverRechargeBonusHeroChip
-							label={heroRechargeBonusPill}
-							className="pointer-events-none absolute bottom-4 right-4 z-[15]"
-						/>
-					) : null}
 					<div className="pointer-events-none absolute bottom-0 left-0 right-0 z-10 px-5 pb-5 pt-8">
 						<div className="mb-1 flex items-center gap-2">
 							<span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/20 text-white backdrop-blur-sm">
@@ -7791,7 +7753,6 @@ function DiscoverMerchantDetailFullScreen({
 							passTitle={passTitle}
 							chargePercent={foodBeverageChargePercent}
 							percentTopupWelcomeLine={foodBeveragePercentTopupWelcomeLine}
-							balancePrefix={balancePrefix || 'CA$'}
 							brandColor={merchantDetailBrandColor ?? DISCOVER_FOOD_BEVERAGE_PASS_FALLBACK}
 							onActivateTopUp={() => {
 								if (usdcTopupPhase !== 'idle' || discoverTopUpOpen) return

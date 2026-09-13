@@ -3025,10 +3025,6 @@ export default function DiscoverMerchantGiftSheet({
 									{previewAmount}
 								</span>
 							</div>
-							<div className="mt-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.05em] text-[#5d5e63]">
-								<CheckCircle2 className="h-3.5 w-3.5 shrink-0" style={{ color: brandControl }} aria-hidden />
-								<span className="truncate">Instant Redemption Ready</span>
-							</div>
 						</div>
 					</div>
 				</div>
@@ -3330,12 +3326,6 @@ export default function DiscoverMerchantGiftSheet({
 						<span>Proceed to Smart Checkout</span>
 						<ChevronRight className="h-5 w-5" strokeWidth={2.25} aria-hidden />
 					</button>
-					<div className="flex items-center justify-center gap-1.5 text-center">
-						<Lock className="h-3.5 w-3.5 shrink-0 text-[#5d5e63]" aria-hidden />
-						<span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-[#5d5e63]">
-							100% Secure · Unclaimed gifts auto-return in 24h
-						</span>
-					</div>
 				</div>
 			</section>
 		)

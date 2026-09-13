@@ -948,17 +948,14 @@ export default function DiscoverMerchantGiftSheet({
 		}
 	}, [step, payWith, amountText, ccy, profile?.keyID, profile?.aaAccount])
 
+	// Prefetch #13 as soon as Gift opens (step 1+), so step 3 does not jitter
+	// while the Reward PT panel settles.
 	useEffect(() => {
 		const currentProfile = profileRef.current
-		if (step !== 3 || !cardAddress || !ethers.isAddress(cardAddress)) {
-			setReward13Legs([])
-			setReward13Loading(false)
-			setReward13SelectionOpen(false)
-			setSelectedReward13Cards(new Set())
+		if (!cardAddress || !ethers.isAddress(cardAddress)) {
 			return
 		}
 		if (!currentProfile) {
-			setReward13Loading(false)
 			return
 		}
 		let cancelled = false
@@ -992,7 +989,10 @@ export default function DiscoverMerchantGiftSheet({
 					currentProfile as profile,
 					resolvedAa || currentProfile.aaAccount,
 				)
-				if (!aa) return
+				if (!aa) {
+					if (!cancelled) setReward13Loading(false)
+					return
+				}
 				if (!cancelled) setResolvedAa(aa)
 				const peeked = peekReward13RowsCache(aa, card)
 				if (peeked && !cancelled) {
@@ -1026,7 +1026,16 @@ export default function DiscoverMerchantGiftSheet({
 		return () => {
 			cancelled = true
 		}
-	}, [step, cardAddress, merchantTitle, myBrandCardDetails, profile?.keyID, profile?.aaAccount, resolvedAa])
+		// resolvedAa is written inside this effect; do not depend on it or the fetch restarts.
+		// eslint-disable-next-line react-hooks/exhaustive-deps -- prefetch once per card / profile identity
+	}, [cardAddress, merchantTitle, myBrandCardDetails, profile?.keyID, profile?.aaAccount])
+
+	useEffect(() => {
+		if (step === 3) return
+		setReward13Legs([])
+		setReward13SelectionOpen(false)
+		setSelectedReward13Cards(new Set())
+	}, [step])
 
 	useEffect(() => {
 		if (step !== 3 || quotedGiftUsdc6 == null || reward13Loading) return
@@ -1713,22 +1722,6 @@ export default function DiscoverMerchantGiftSheet({
 			: remainingPayMethod === 'stripe'
 				? 'Pay with card'
 				: 'Confirm & pay with USDC'
-
-	const stepPill = (n: GiftFlowStep, label: string) => (
-		<div
-			className="mb-3 inline-flex items-center gap-1.5 self-start rounded-full px-2.5 py-1"
-			style={{ backgroundColor: brandTint, color: brandControl }}
-		>
-			<span
-				className="h-1.5 w-1.5 animate-pulse rounded-full"
-				style={{ backgroundColor: brandControl }}
-				aria-hidden
-			/>
-			<span className="text-[11px] font-semibold uppercase tracking-[0.08em]">
-				Step {n} of 3 · {label}
-			</span>
-		</div>
-	)
 
 	const brandGiftCard = (
 		<div
@@ -2829,7 +2822,6 @@ export default function DiscoverMerchantGiftSheet({
 	if (step === 1) {
 		return (
 			<section className="mx-auto flex w-full max-w-lg flex-col gap-1 pb-4" aria-label="Configure gift">
-				{stepPill(1, 'Configure Gift')}
 				<h2 className="text-[28px] font-bold leading-tight tracking-tight text-[#0F172A] dark:text-slate-100">
 					Send a Gift Card
 				</h2>
@@ -3038,8 +3030,7 @@ export default function DiscoverMerchantGiftSheet({
 		return (
 			<section className="mx-auto flex w-full max-w-lg flex-col gap-1 pb-6" aria-label="Choose delivery method">
 				<div className="px-1 pt-1">
-					{stepPill(2, 'Delivery Method')}
-					<h2 className="mt-3 text-[28px] font-bold leading-tight tracking-tight text-[#1a1b1f] dark:text-slate-100">
+					<h2 className="text-[28px] font-bold leading-tight tracking-tight text-[#1a1b1f] dark:text-slate-100">
 						Choose Delivery Method
 					</h2>
 				</div>
@@ -3484,22 +3475,6 @@ export default function DiscoverMerchantGiftSheet({
 			className="relative mx-auto flex w-full max-w-lg flex-col gap-1 pb-32"
 			aria-label="Payment and confirmation"
 		>
-			<div className="mb-2 flex items-center justify-between gap-3">
-				{stepPill(3, 'Review & Pay')}
-				<div
-					className="inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1"
-					style={{ backgroundColor: `${brandTint}` }}
-				>
-					<ShieldCheck className="h-3.5 w-3.5" style={{ color: brandControl }} strokeWidth={2.25} aria-hidden />
-					<span className="text-[11px] font-semibold" style={{ color: brandControl }}>
-						Secure checkout
-					</span>
-				</div>
-			</div>
-			<p className="mb-1 flex items-center gap-1 text-xs font-semibold text-emerald-700 dark:text-emerald-400">
-				<ShieldCheck className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />
-				Offline sign · gas sponsored
-			</p>
 			<h2 className="text-[28px] font-bold leading-[34px] tracking-tight text-[#1a1b1f] dark:text-slate-100">
 				Payment & Confirmation
 			</h2>
@@ -3577,6 +3552,8 @@ export default function DiscoverMerchantGiftSheet({
 			</div>
 
 			<div className="mb-8 flex flex-col gap-2">
+				{/* Hide empty PT chrome — only show when Smart Wallet has usable #13. Prefetch runs on Gift open. */}
+				{reward13SelectableRows.length > 0 ? (
 				<div
 					className="rounded-2xl border bg-white p-4 shadow-[0_4px_18px_rgba(15,23,42,0.06)] dark:bg-slate-900"
 					style={{ borderColor: `${brandControl}55` }}
@@ -3598,7 +3575,7 @@ export default function DiscoverMerchantGiftSheet({
 							role="switch"
 							aria-checked={reward13AppliedPoints6 > 0n}
 							aria-label="Customize Reward PT sources"
-							disabled={reward13Loading || reward13SelectableRows.length === 0}
+							disabled={reward13Loading}
 							onClick={openReward13Selection}
 							className="relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0051d1]/35 disabled:cursor-not-allowed disabled:opacity-60"
 							style={{
@@ -3631,9 +3608,7 @@ export default function DiscoverMerchantGiftSheet({
 					>
 						<div className="flex items-center justify-between gap-4">
 							<span className="min-w-0 text-[15px] font-medium text-[#424655] dark:text-slate-200">
-								{reward13SourceCount > 0
-									? `${reward13SourceCount} merchant card${reward13SourceCount === 1 ? '' : 's'} available`
-									: 'No eligible Reward PT found'}
+								{`${reward13SourceCount} merchant card${reward13SourceCount === 1 ? '' : 's'} available`}
 							</span>
 							<span className="shrink-0 text-[19px] font-bold tabular-nums" style={{ color: brandControl }}>
 								{reward13AppliedLabel}
@@ -3708,11 +3683,6 @@ export default function DiscoverMerchantGiftSheet({
 										</div>
 									)
 								})}
-								{reward13SelectableRows.length === 0 ? (
-									<p className="text-[12px] text-[#424655] dark:text-slate-400">
-										No eligible Reward PT found.
-									</p>
-								) : null}
 							</div>
 						</div>
 					) : null}
@@ -3721,6 +3691,7 @@ export default function DiscoverMerchantGiftSheet({
 						Reward PT is read from your connected Smart Wallet and applied before the remaining payment.
 					</p>
 				</div>
+				) : null}
 				{!rewardPtFullyCoversGift ? (
 					<>
 						<div className="flex items-center justify-between px-1">

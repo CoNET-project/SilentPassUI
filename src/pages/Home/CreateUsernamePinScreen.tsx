@@ -15,7 +15,7 @@ import {
 import { getActivatingSteps } from "./RecoveryQRScreen"
 import { VerraFloatingNavChrome } from "./VerraFloatingNavChrome"
 import { APP_FLOATING_CHROME_MAIN_TOP_PT, APP_TITLE_BLOCK_TO_FIRST_CONTROL_MB } from "@/ui/appContentSpacing"
-import { tu } from '@/locale/beamioLocale'
+import { useTu } from '@/locale/beamioLocale'
 import { getCurrentBeamioUiLocale } from '@/locale/i18n'
 import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
 
@@ -93,6 +93,7 @@ const CreateUsernamePinScreen = forwardRef<
 	{ close, isRedeemFlow = false, onRequestClose, onCreatingWalletChange },
 	ref
 ) {
+	const { tu } = useTu()
 	const [beamioName, setBeamioName] = useState("")
 	const [password, setPassword] = useState("")
 	const [passwordTouched, setPasswordTouched] = useState(false)

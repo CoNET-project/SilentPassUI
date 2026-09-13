@@ -63,10 +63,11 @@ import OnboardingWelcomeScreen from './OnboardingWelcomeScreen'
 import ccsabackphoto from '../Vouchers/assets/ccsacard.avif'
 import packageJson from '../../../package.json'
 import { VERRA_BRAND_LOGO_SRC } from '@/ui/verraBrandAssets'
-import { tu } from '@/locale/beamioLocale'
+import { tu, useTu } from '@/locale/beamioLocale'
 import { applyBeamioUiLanguageFromProfile, type BeamioUiLocale } from '@/locale/i18n'
 import { useTranslation } from 'react-i18next'
 import { BeamioLocalePicker } from '@/components/locale/BeamioLocalePicker'
+import { writeBeamioUiLanguageBootstrap } from '@/utils/beamioProfileLocaleCurrency'
 
 
 const APP_VERSION = (packageJson as { version?: string }).version ?? ''
@@ -229,6 +230,7 @@ function OnboardLocalePicker() {
 			menuAlign="left"
 			locale={locale}
 			onSelect={async (next) => {
+				writeBeamioUiLanguageBootstrap(next)
 				await applyBeamioUiLanguageFromProfile(next)
 			}}
 		/>
@@ -242,6 +244,7 @@ function InitialEntrySplash({
 	onGetStarted,
 	onRestoreWallet,
 }: InitialEntrySplashProps) {
+	const { tu } = useTu()
 	return (
 		<div
 			className={[

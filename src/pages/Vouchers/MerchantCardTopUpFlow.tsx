@@ -1210,6 +1210,17 @@ export default function MerchantCardTopUpFlow({
 			? r.redeemablePoints6 > 0n
 			: r.redeemableUsdc6 > 0n && r.redeemablePoints6 > 0n,
 	)
+
+	// No usable #13 → cash-only; Smart Checkout chrome stays hidden when length === 0.
+	useEffect(() => {
+		if (!open || rowsLoading) return
+		if (usableRows.length === 0 && smartPay) {
+			setSmartPay(false)
+			setLegs([])
+			setUsedManual(false)
+		}
+	}, [open, rowsLoading, usableRows.length, smartPay])
+
 	// In manual mode, a deselected merchant must be excluded from every
 	// downstream cover calculation, not only from the generated burn legs.
 	// Otherwise Review/Confirm can re-estimate against all displayRows and
@@ -2081,6 +2092,9 @@ export default function MerchantCardTopUpFlow({
 								</div>
 							</div>
 
+							{/* Hide empty Reward PT chrome — Top-up already prefetches #13 on open. */}
+							{usableRows.length > 0 ? (
+								<>
 							<p
 								className="mt-7 text-[11px] font-semibold uppercase tracking-[0.14em]"
 								style={{ color: merchantBrandMutedColor }}
@@ -2257,6 +2271,8 @@ export default function MerchantCardTopUpFlow({
 									</div>
 								</div>
 							</div>
+								</>
+							) : null}
 
 							{!rewardPtFullyCoversOrder ? (
 								<div

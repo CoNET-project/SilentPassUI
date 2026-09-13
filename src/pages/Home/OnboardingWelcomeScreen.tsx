@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { tu } from '@/locale/beamioLocale'
+import { useTu } from '@/locale/beamioLocale'
 import { Check, ShieldCheck, BookMarked, ArrowRight, Loader2 } from 'lucide-react'
 
 export type OnboardingWelcomeScreenProps = {
@@ -11,6 +11,7 @@ export type OnboardingWelcomeScreenProps = {
  * Post Security Backup — welcome / passport-active success (Beamio Welcome mockup).
  */
 export default function OnboardingWelcomeScreen({ beamioTag, onEnterHome }: OnboardingWelcomeScreenProps) {
+  const { tu } = useTu()
   const [entering, setEntering] = useState(false)
   const handle = (beamioTag || '').replace(/^@+/, '').trim()
   const displayHandle = handle ? `@${handle}` : '@you'

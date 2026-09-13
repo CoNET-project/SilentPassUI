@@ -2,9 +2,10 @@ import { useTranslation } from 'react-i18next'
 import { IpfsImg } from '@/components/IpfsImg'
 import { BeamioLocalePicker } from '@/components/locale/BeamioLocalePicker'
 import { ChevronLeft } from 'lucide-react'
-import { tu } from '@/locale/beamioLocale'
+import { useTu } from '@/locale/beamioLocale'
 import { applyBeamioUiLanguageFromProfile } from '@/locale/i18n'
 import type { BeamioUiLocale } from '@/utils/beamioProfileLocaleCurrency'
+import { writeBeamioUiLanguageBootstrap } from '@/utils/beamioProfileLocaleCurrency'
 
 const APP_LOGO_SRC = `${process.env.PUBLIC_URL ?? ''}/logo192.png`
 
@@ -26,6 +27,7 @@ export function VerraFloatingNavChrome({
 	compact?: boolean
 }) {
 	const { i18n } = useTranslation()
+	const { tu } = useTu()
 	const locale = (i18n.language === 'en' ? 'en' : 'zh-CN') as BeamioUiLocale
 
 	if (tone === 'create') {
@@ -66,6 +68,7 @@ export function VerraFloatingNavChrome({
 						menuAlign="right"
 						locale={locale}
 						onSelect={async (next) => {
+							writeBeamioUiLanguageBootstrap(next)
 							await applyBeamioUiLanguageFromProfile(next)
 						}}
 					/>

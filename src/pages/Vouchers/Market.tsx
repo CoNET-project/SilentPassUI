@@ -1701,7 +1701,7 @@ function DiscoverMerchantMemberRechargePrivilegesPanel({
 			</header>
 
 			<div
-				className="aspect-[3/2] overflow-hidden rounded-[20px] px-5 pb-5 pt-5 shadow-[0_8px_28px_rgba(44,36,22,0.28)]"
+				className="relative aspect-[2/1] overflow-hidden rounded-[20px] px-5 pb-5 pt-5 shadow-[0_8px_28px_rgba(44,36,22,0.28)]"
 				style={{ backgroundImage: panelGradient, color: panelTheme.primary }}
 			>
 				<div className="flex items-start justify-between gap-3">
@@ -1767,7 +1767,7 @@ function DiscoverMerchantMemberRechargePrivilegesPanel({
 				</div>
 
 				<div
-					className="mt-5 flex items-center gap-2.5 border-t pt-4"
+					className="absolute bottom-5 left-5 right-5 flex items-end gap-2.5 border-t pt-4"
 					style={{ borderColor: panelTheme.cardBorder }}
 				>
 					{chargePercent != null && chargePercent > 0 ? (
@@ -1780,7 +1780,7 @@ function DiscoverMerchantMemberRechargePrivilegesPanel({
 						</span>
 					) : null}
 					<p
-						className="min-w-0 flex-1 text-[13px] font-medium leading-snug"
+						className="min-w-0 flex-1 text-left text-[13px] font-medium leading-snug"
 						style={{ color: panelTheme.secondary }}
 					>
 						{rewardLine}

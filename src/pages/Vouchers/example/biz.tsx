@@ -23438,6 +23438,10 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
            membershipFeeE6: tiersPayload[0].membershipFeeE6,
            membershipFee: tiersPayload[0].membershipFee,
            membershipDurationKind: tiersPayload[0].membershipDurationKind,
+           ...(tiersPayload[0].image ? { image: tiersPayload[0].image } : {}),
+           ...(tiersPayload[0].image
+             ? { imageFit: tiersPayload[0].imageFit }
+             : {}),
          }
        : undefined;
      const metadataTiersForPublish = membershipFeeModeForPublish

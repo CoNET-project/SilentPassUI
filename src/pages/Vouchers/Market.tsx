@@ -1048,15 +1048,11 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 	const nameUpper = passTitle.trim().toUpperCase() || 'MERCHANT'
 	const nameDisplay = passTitle.trim() || 'Merchant'
 	const fiatLabel = balancePrefix.trim() || 'CA$'
-	const chargeWelcomeLine =
-		pct != null ? `${pct}% Points on All Bowls & Bites` : 'Points on All Bowls & Bites'
+	const chargeWelcomeLine = 'Points on Every Order'
 	const welcomeRewardLine = topupLine ?? chargeWelcomeLine
 	const howPointsTitle =
-		pct != null ? `How Points Work · ${pct}% Back` : 'How Points Work'
-	const howPointsBody =
-		pct != null
-			? `Earn ${pct}% back in Points on every dining order. 1 Pt = ${fiatLabel}1.00 — redeem anytime at this merchant or across Alliance partners.`
-			: `Earn Points on every dining order. 1 Pt = ${fiatLabel}1.00 — redeem anytime at this merchant or across Alliance partners.`
+		pct != null ? `How Points Work · ${pct}% Back on Every Meal` : 'How Points Work'
+	const howPointsBody = `Eat, earn, and enjoy! Your points never expire (1 Pt = ${fiatLabel}1.00). Use them for your favorite dishes here, or seamlessly across our Alliance network.`
 
 	return (
 		<div className="flex flex-col gap-4" aria-label={`${nameDisplay} member pass preview`}>
@@ -1093,10 +1089,7 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 				</div>
 
 				<div className="mt-6 border-t border-white/15 pt-5">
-					<p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/50">
-						{topupLine ? 'Top-up Bonus' : 'Welcome Reward Preview'}
-					</p>
-					<p className="mt-2 text-[16px] font-bold leading-snug tracking-tight text-white">
+					<p className="text-[16px] font-bold leading-snug tracking-tight text-white">
 						{welcomeRewardLine}
 					</p>
 					{topupLine && pct != null ? (
@@ -1115,7 +1108,7 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 				style={{ backgroundColor: brand }}
 			>
 				<Wallet className="h-5 w-5 shrink-0 opacity-90" strokeWidth={2.25} aria-hidden />
-				Top Up to Activate Pass
+				Top Up to Activate
 			</button>
 
 			<p className="text-center text-[12px] leading-snug text-[#5c6570] dark:text-slate-400">
@@ -1190,8 +1183,11 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 				<div className="px-4 py-4">
 					<div className="flex items-start gap-3">
 						<span
-							className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
-							style={{ backgroundColor: `${DISCOVER_FOOD_BEVERAGE_GIFT_ACCENT}22` }}
+							className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border"
+							style={{
+								backgroundColor: `${DISCOVER_FOOD_BEVERAGE_GIFT_ACCENT}22`,
+								borderColor: `${DISCOVER_FOOD_BEVERAGE_GIFT_ACCENT}55`,
+							}}
 							aria-hidden
 						>
 							<Gift
@@ -1202,15 +1198,21 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 						</span>
 						<div className="min-w-0 flex-1">
 							<p className="text-[13px] font-bold uppercase tracking-[0.12em] text-[#1f2328] dark:text-slate-100">
-								Gift a {nameDisplay} to Friends
+								Treat a Friend
 							</p>
 							<p className="mt-1 text-[12px] font-medium leading-snug text-[#5c6570] dark:text-slate-400">
-								Send dining credits or vouchers with instant digital delivery
+								Share the fresh {nameDisplay} experience with instant digital delivery.
 							</p>
 						</div>
 					</div>
+					<p className="mt-3 text-[12px] leading-relaxed text-[#5c6570] dark:text-slate-400">
+						Send dining vouchers or prepaid credits directly to friends via link or @BeamioTag with{' '}
+						<span className="font-bold text-[#3d4450] dark:text-slate-200">zero platform fees</span>
+						. Recipients can redeem or merge into their own pass immediately.
+					</p>
 					<div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[#f0ebe4] pt-3 dark:border-slate-700">
-						<span className="text-[11px] font-semibold text-[#5c6570] dark:text-slate-400">
+						<span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#5c6570] dark:text-slate-400">
+							<ShieldCheck className="h-3.5 w-3.5 shrink-0 text-emerald-600" strokeWidth={2.25} aria-hidden />
 							Instant transfer &amp; non-expiring
 						</span>
 						<button

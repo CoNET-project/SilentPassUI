@@ -1636,6 +1636,7 @@ function DiscoverMerchantMemberRechargePrivilegesPanel({
 	canTopUp,
 	topUpBusy,
 	onRecharge,
+	backgroundColor,
 }: {
 	tierBadgeLabel: string
 	memberNo: string
@@ -1648,6 +1649,7 @@ function DiscoverMerchantMemberRechargePrivilegesPanel({
 	canTopUp: boolean
 	topUpBusy: boolean
 	onRecharge: (suggestedAmount?: string) => void
+	backgroundColor?: string | null
 }) {
 	const [selectedCardId, setSelectedCardId] = useState<string | null>(null)
 	useEffect(() => {
@@ -1665,6 +1667,9 @@ function DiscoverMerchantMemberRechargePrivilegesPanel({
 		[multiplierCards, selectedCardId],
 	)
 	const badgeText = (tierBadgeLabel || 'MEMBER').trim().toUpperCase()
+	const panelBackgroundColor = (backgroundColor ?? '').trim() || '#2c2416'
+	const panelTheme = cardTierGradientTheme(panelBackgroundColor)
+	const panelGradient = cardTierGradientCss(panelBackgroundColor)
 	const headerEyebrow = hasPointsOrCredits ? '✨ Share & earn points' : '🔥 First top-up exclusive'
 	const headerTitle = hasPointsOrCredits ? 'Fresh Rewards Unlocked!' : 'Claim Your Welcome Match'
 	const headerBody = hasPointsOrCredits
@@ -1688,21 +1693,44 @@ function DiscoverMerchantMemberRechargePrivilegesPanel({
 				</p>
 			</header>
 
-			<div className="overflow-hidden rounded-[20px] bg-[#2c2416] px-4 pb-4 pt-3.5 text-white shadow-[0_8px_28px_rgba(44,36,22,0.28)]">
+			<div
+				className="aspect-[3/2] overflow-hidden rounded-[20px] px-4 pb-4 pt-3.5 shadow-[0_8px_28px_rgba(44,36,22,0.28)]"
+				style={{ backgroundImage: panelGradient, color: panelTheme.primary }}
+			>
 				<div className="flex items-center justify-between gap-2">
-					<span className="shrink-0 rounded-full bg-[#3d3429] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[#D4B483]">
+					<span
+						className="shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em]"
+						style={{ backgroundColor: panelTheme.defaultBadgeBg, color: panelTheme.defaultBadgeFg }}
+					>
 						{badgeText}
 					</span>
 					{memberNo ? (
-						<span className="shrink-0 text-[11px] font-medium tabular-nums text-white/45">{memberNo}</span>
+						<span
+							className="shrink-0 text-[11px] font-medium tabular-nums"
+							style={{ color: panelTheme.tertiary }}
+						>
+							{memberNo}
+						</span>
 					) : null}
 				</div>
 				<div className="mt-4 grid grid-cols-2 gap-3">
-					<div className="rounded-xl bg-white/[0.06] px-3 py-3 ring-1 ring-white/10">
-						<p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#D4B483]">
+					<div
+						className="rounded-xl px-3 py-3 ring-1"
+						style={{
+							backgroundColor: panelTheme.iconOrbitBg,
+							boxShadow: `inset 0 0 0 1px ${panelTheme.cardBorder}`,
+						}}
+					>
+						<p
+							className="text-[10px] font-semibold uppercase tracking-[0.12em]"
+							style={{ color: panelTheme.accent }}
+						>
 							Store Credits
 						</p>
-						<p className="mt-1.5 text-[22px] font-bold leading-none tracking-tight text-white tabular-nums">
+						<p
+							className="mt-1.5 text-[22px] font-bold leading-none tracking-tight tabular-nums"
+							style={{ color: panelTheme.primary }}
+						>
 							{storeCreditsLabel}
 						</p>
 						<p className="mt-2 inline-flex items-center gap-1.5 text-[11px] font-medium text-emerald-400/90">
@@ -1710,11 +1738,23 @@ function DiscoverMerchantMemberRechargePrivilegesPanel({
 							In vault
 						</p>
 					</div>
-					<div className="rounded-xl bg-white/[0.06] px-3 py-3 ring-1 ring-white/10">
-						<p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#D4B483]">
+					<div
+						className="rounded-xl px-3 py-3 ring-1"
+						style={{
+							backgroundColor: panelTheme.iconOrbitBg,
+							boxShadow: `inset 0 0 0 1px ${panelTheme.cardBorder}`,
+						}}
+					>
+						<p
+							className="text-[10px] font-semibold uppercase tracking-[0.12em]"
+							style={{ color: panelTheme.accent }}
+						>
 							My Points
 						</p>
-						<p className="mt-1.5 text-[22px] font-bold leading-none tracking-tight text-[#D4B483] tabular-nums">
+						<p
+							className="mt-1.5 text-[22px] font-bold leading-none tracking-tight tabular-nums"
+							style={{ color: panelTheme.primary }}
+						>
 							{pointsLabel}
 						</p>
 						{pointsFiatHint ? (
@@ -7917,6 +7957,9 @@ function DiscoverMerchantDetailFullScreen({
 									(Number.isFinite(myPoints13Num) && myPoints13Num > 0)
 								}
 								multiplierCards={prospectJoinPanelCopy.multiplierCards}
+								backgroundColor={
+									merchantDetailBrandColor ?? prospectJoinPanelBackground.backgroundColor
+								}
 								footerTip={memberRechargeFooterTip}
 								canTopUp={canDiscoverTopUp}
 								topUpBusy={usdcTopupSubmitting}

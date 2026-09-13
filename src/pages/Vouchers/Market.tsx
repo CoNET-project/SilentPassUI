@@ -67,6 +67,7 @@ import {
 	Coins,
 	Store,
 	Send,
+	HelpCircle,
 } from "lucide-react"
 import { useNavigate, useLocation } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
@@ -211,6 +212,8 @@ import {
 	discoverSafeCssColor,
 	formatSocialPoints13Display,
 	parseDiscoverActorRewardPercentsFromMetadata,
+	hasDiscoverReferrerRewardSettingFromMetadata,
+	consumptionPointSystemEnabledFromMetadata,
 	parseDiscoverMerchantBrandColor,
 	parseDiscoverProgramDescriptionFromMetadata,
 	resolveCouponSocialMissionBlockForSeries,
@@ -763,6 +766,7 @@ function DiscoverDynamicPassTitle({ title }: { title: string }) {
 function DiscoverMerchantHealthBeautyLoyaltyPassPanel({
 	passTitle,
 	chargePercent,
+	customerLoyaltyPointsEnabled,
 	balancePrefix,
 	storeCreditsDisplay,
 	rewardPtsDisplay,
@@ -779,6 +783,7 @@ function DiscoverMerchantHealthBeautyLoyaltyPassPanel({
 }: {
 	passTitle: string
 	chargePercent: number | null
+	customerLoyaltyPointsEnabled: boolean
 	balancePrefix: string
 	storeCreditsDisplay: string
 	rewardPtsDisplay: string
@@ -907,6 +912,14 @@ function DiscoverMerchantHealthBeautyLoyaltyPassPanel({
 				</div>
 			</section>
 
+			<DiscoverMerchantHowPointsWorkPanel
+				pct={pct}
+				enabled={customerLoyaltyPointsEnabled}
+				fiatLabel={fiatLabel}
+				accent={DISCOVER_HEALTH_BEAUTY_ACCENT}
+				rewardContext="visit or purchase"
+			/>
+
 			<button
 				type="button"
 				onClick={onActivateTopUp}
@@ -933,10 +946,10 @@ function DiscoverMerchantHealthBeautyLoyaltyPassPanel({
 					</span>
 					<div className="min-w-0 flex-1">
 						<p className="text-[15px] font-bold tracking-tight text-[#1f2328] dark:text-slate-100">
-							Spend &amp; Points Utility
+							Spend &amp; Reward PT Utility
 						</p>
 						<p className="mt-1.5 text-[13px] leading-relaxed text-[#5c6570] dark:text-slate-400">
-							Points never expire. Automatically redeem 1 Pts = {fiatLabel}1.00 at checkout to offset any
+							Reward PT never expires. Automatically redeem 1 PT = {fiatLabel}1.00 at checkout to offset any
 							treatment, aftercare product, or across 1,000+ Alliance Merchants.
 						</p>
 					</div>
@@ -1009,6 +1022,55 @@ const DISCOVER_FOOD_BEVERAGE_GIFT_ACCENT = '#ea580c'
 const DISCOVER_FOOD_BEVERAGE_PASS_FALLBACK = '#5c554b'
 const DISCOVER_FOOD_BEVERAGE_SECONDARY_TEXT = '#3d4450'
 
+function DiscoverMerchantHowPointsWorkPanel({
+	pct,
+	enabled,
+	fiatLabel,
+	accent,
+	rewardContext,
+}: {
+	pct: string | null
+	enabled: boolean
+	fiatLabel: string
+	accent: string
+	rewardContext: string
+}) {
+	if (!enabled) return null
+
+	return (
+		<section className="rounded-2xl border border-[#ebe6df] bg-[#faf8f5] px-4 py-4 dark:border-slate-700 dark:bg-slate-900/80">
+			<div className="flex items-start gap-3">
+				<span
+					className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
+					style={{ backgroundColor: `${accent}18` }}
+					aria-hidden
+				>
+					<HelpCircle
+						className="h-[18px] w-[18px]"
+						style={{ color: accent }}
+						strokeWidth={2.25}
+					/>
+				</span>
+				<div className="min-w-0 flex-1">
+					<p className="text-[15px] font-bold tracking-tight text-[#1f2328] dark:text-slate-100">
+						How Reward PT Works{pct ? ` · ${pct}% Back` : ''}
+					</p>
+					<p className="mt-1.5 text-[13px] leading-relaxed text-[#5c6570] dark:text-slate-400">
+						Earn Reward PT on every {rewardContext}. PT never expires (1 PT = {fiatLabel}1.00) and can be
+						used here or across the Alliance network.
+					</p>
+				</div>
+			</div>
+			<div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-[#ebe6df] pt-3 dark:border-slate-700">
+				<span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#3d4450] dark:text-slate-300">
+					<ShieldCheck className="h-3.5 w-3.5 text-emerald-600" strokeWidth={2.25} aria-hidden />
+					Instant ledger settlement
+				</span>
+			</div>
+		</section>
+	)
+}
+
 /**
  * Food & Beverage · no Store Credit Multiplier · non-member with no #0 / #13 holdings.
  * Member Pass preview + Order Pick-up / Gift Voucher / Contact (brand chrome).
@@ -1016,7 +1078,9 @@ const DISCOVER_FOOD_BEVERAGE_SECONDARY_TEXT = '#3d4450'
 function DiscoverMerchantFoodBeverageProspectPassPanel({
 	passTitle,
 	chargePercent,
+	customerLoyaltyPointsEnabled,
 	percentTopupWelcomeLine,
+	balancePrefix,
 	brandColor,
 	onActivateTopUp,
 	onFirstDiningSpend,
@@ -1031,8 +1095,10 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 }: {
 	passTitle: string
 	chargePercent: number | null
+	customerLoyaltyPointsEnabled: boolean
 	/** Percent top-up promo only (not fixed / fixedTiers). */
 	percentTopupWelcomeLine: string | null
+	balancePrefix: string
 	brandColor: string
 	onActivateTopUp: () => void
 	onFirstDiningSpend: () => void
@@ -1053,7 +1119,8 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 	const topupLine = percentTopupWelcomeLine?.trim() || null
 	const nameUpper = passTitle.trim().toUpperCase() || 'MERCHANT'
 	const nameDisplay = passTitle.trim() || 'Merchant'
-	const chargeWelcomeLine = pct != null ? `${pct}% Points on Every Order` : null
+	const fiatLabel = balancePrefix.trim() || 'CA$'
+	const chargeWelcomeLine = pct != null ? `${pct}% Reward PT on Every Order` : null
 	const welcomeRewardLine = topupLine ?? chargeWelcomeLine
 
 	return (
@@ -1098,6 +1165,14 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 					</div>
 				) : null}
 			</section>
+
+			<DiscoverMerchantHowPointsWorkPanel
+				pct={pct}
+				enabled={customerLoyaltyPointsEnabled}
+				fiatLabel={fiatLabel}
+				accent={DISCOVER_FOOD_BEVERAGE_GIFT_ACCENT}
+				rewardContext="dining order"
+			/>
 
 			<button
 				type="button"
@@ -1208,6 +1283,7 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 function DiscoverMerchantFoodBeverageLoyaltyPassPanel({
 	passTitle,
 	chargePercent,
+	customerLoyaltyPointsEnabled,
 	balancePrefix,
 	storeCreditsDisplay,
 	rewardPtsDisplay,
@@ -1224,6 +1300,7 @@ function DiscoverMerchantFoodBeverageLoyaltyPassPanel({
 }: {
 	passTitle: string
 	chargePercent: number | null
+	customerLoyaltyPointsEnabled: boolean
 	balancePrefix: string
 	storeCreditsDisplay: string
 	rewardPtsDisplay: string
@@ -1342,6 +1419,14 @@ function DiscoverMerchantFoodBeverageLoyaltyPassPanel({
 				</div>
 			</section>
 
+			<DiscoverMerchantHowPointsWorkPanel
+				pct={pct}
+				enabled={customerLoyaltyPointsEnabled}
+				fiatLabel={fiatLabel}
+				accent={DISCOVER_FOOD_BEVERAGE_GIFT_ACCENT}
+				rewardContext="dining order"
+			/>
+
 			<button
 				type="button"
 				onClick={onActivateTopUp}
@@ -1368,10 +1453,10 @@ function DiscoverMerchantFoodBeverageLoyaltyPassPanel({
 					</span>
 					<div className="min-w-0 flex-1">
 						<p className="text-[15px] font-bold tracking-tight text-[#1f2328] dark:text-slate-100">
-							Spend &amp; Points Utility
+							Spend &amp; Reward PT Utility
 						</p>
 						<p className="mt-1.5 text-[13px] leading-relaxed text-[#5c6570] dark:text-slate-400">
-							Points never expire. Automatically redeem 1 Pts = {fiatLabel}1.00 at checkout to offset any
+							Reward PT never expires. Automatically redeem 1 PT = {fiatLabel}1.00 at checkout to offset any
 							dining order, or across 1,000+ Alliance Merchants.
 						</p>
 					</div>
@@ -5790,6 +5875,13 @@ function DiscoverMerchantDetailFullScreen({
 		if (chargePercent == null || !Number.isFinite(chargePercent) || chargePercent <= 0) return null
 		return chargePercent
 	}, [showFoodBeverageProspectPass, showFoodBeverageLoyaltyPass, merchantMetadataRoot])
+	const customerLoyaltyPointsEnabled = useMemo(() => {
+		if (consumptionPointSystemEnabledFromMetadata(merchantMetadataRoot) === true) return true
+		const { chargePercent } = parseDiscoverActorRewardPercentsFromMetadata(merchantMetadataRoot)
+		if (chargePercent != null && Number.isFinite(chargePercent) && chargePercent > 0) return true
+		if (hasDiscoverReferrerRewardSettingFromMetadata(merchantMetadataRoot)) return true
+		return Object.values(chainCardSocialPromotion?.events ?? {}).some((event) => event?.ref?.enabled === true)
+	}, [merchantMetadataRoot, chainCardSocialPromotion])
 	/** Percent top-up only — hide fixed / fixedTiers on F&B prospect Welcome Reward. */
 	const foodBeveragePercentTopupWelcomeLine = useMemo(() => {
 		if (!showFoodBeverageProspectPass) return null
@@ -7692,6 +7784,7 @@ function DiscoverMerchantDetailFullScreen({
 						<DiscoverMerchantHealthBeautyLoyaltyPassPanel
 							passTitle={passTitle}
 							chargePercent={healthBeautyChargePercent}
+							customerLoyaltyPointsEnabled={customerLoyaltyPointsEnabled}
 							balancePrefix={balancePrefix || 'CA$'}
 							storeCreditsDisplay={balanceDisplay}
 							rewardPtsDisplay={
@@ -7722,6 +7815,7 @@ function DiscoverMerchantDetailFullScreen({
 						<DiscoverMerchantFoodBeverageLoyaltyPassPanel
 							passTitle={passTitle}
 							chargePercent={foodBeverageChargePercent}
+							customerLoyaltyPointsEnabled={customerLoyaltyPointsEnabled}
 							balancePrefix={balancePrefix || 'CA$'}
 							storeCreditsDisplay={balanceDisplay}
 							rewardPtsDisplay={
@@ -7752,7 +7846,9 @@ function DiscoverMerchantDetailFullScreen({
 						<DiscoverMerchantFoodBeverageProspectPassPanel
 							passTitle={passTitle}
 							chargePercent={foodBeverageChargePercent}
+							customerLoyaltyPointsEnabled={customerLoyaltyPointsEnabled}
 							percentTopupWelcomeLine={foodBeveragePercentTopupWelcomeLine}
+							balancePrefix={balancePrefix || 'CA$'}
 							brandColor={merchantDetailBrandColor ?? DISCOVER_FOOD_BEVERAGE_PASS_FALLBACK}
 							onActivateTopUp={() => {
 								if (usdcTopupPhase !== 'idle' || discoverTopUpOpen) return

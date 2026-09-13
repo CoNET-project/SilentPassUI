@@ -1283,6 +1283,27 @@ export function parseDiscoverActorRewardPercentsFromMetadata(
 	return { chargePercent, topupPercent }
 }
 
+/** True when card metadata configures any referrer-facing Reward PT ratio. */
+export function hasDiscoverReferrerRewardSettingFromMetadata(
+	metadataRoot: Record<string, unknown> | null | undefined,
+): boolean {
+	const root = metadataRecord(metadataRoot)
+	if (!root) return false
+	const share = metadataRecord(root.shareTokenMetadata)
+	const unified = metadataRecord(share?.unifiedRewardPoints) ?? metadataRecord(root.unifiedRewardPoints)
+	const charge = metadataRecord(unified?.charge)
+	const topup = metadataRecord(unified?.topup)
+	const referrerBps = [charge?.referrerPercentBps, topup?.referrerPercentBps]
+		.some((raw) => wholePercentFromBpsRaw(raw) != null)
+	const referrerRatio = [
+		topup?.referrerRewardFromTopupAmountRatioE6,
+		share?.referrerTopupAmountRatioE6,
+		root.referrerTopupAmountRatioE6,
+	]
+		.some((raw) => wholePercentFromRatioE6Raw(raw) != null)
+	return referrerBps || referrerRatio
+}
+
 /** null = metadata not ready; boolean = consumption point system enabled flag from shareTokenMetadata.pointSystem. */
 export function consumptionPointSystemEnabledFromMetadata(
 	metadataRoot: Record<string, unknown> | null | undefined,

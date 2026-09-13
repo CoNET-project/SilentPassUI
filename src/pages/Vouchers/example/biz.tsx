@@ -45887,46 +45887,47 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                 </div>
                               ) : null}
 
-                              <div className="flex rounded-xl bg-[#dfdfe4] p-1">
-                                <button
-                                  type="button"
-                                  disabled={cardIssuanceTopupPromotionEditorPublishing}
-                                  onClick={() =>
-                                    setCardIssuanceTopupPromotion((p) => ({
-                                      ...p,
-                                      rewardType: 'percent',
-                                      enabled: true,
-                                    }))
-                                  }
-                                  className={`flex-1 rounded-lg py-2 text-center text-[12px] font-semibold uppercase tracking-[0.05em] transition-colors disabled:opacity-50 ${bizFocusRingClass} ${
-                                    cardIssuanceTopupPromotion.rewardType === 'percent'
-                                      ? 'bg-white text-[#1562f0] shadow-sm'
-                                      : 'text-[#424655]'
-                                  }`}
-                                >
-                                  {tu('programs_topup_promotion_type_percent')}
-                                </button>
-                                <button
-                                  type="button"
-                                  disabled={cardIssuanceTopupPromotionEditorPublishing}
-                                  onClick={() =>
-                                    setCardIssuanceTopupPromotion((p) => ({
-                                      ...p,
-                                      rewardType: 'fixed',
-                                      enabled: true,
-                                      fixedTiers:
-                                        p.fixedTiers.length > 0
-                                          ? p.fixedTiers
-                                          : createDefaultFixedTiersDraft(),
-                                    }))
-                                  }
-                                  className={`flex-1 rounded-lg py-2 text-center text-[12px] font-semibold uppercase tracking-[0.05em] transition-colors disabled:opacity-50 ${bizFocusRingClass} ${
-                                    cardIssuanceTopupPromotion.rewardType === 'fixed'
-                                      ? 'bg-white text-[#1562f0] shadow-sm'
-                                      : 'text-[#424655]'
-                                  }`}
-                                >
+                              <div className="flex items-center justify-between gap-3">
+                                <span className="text-[15px] font-semibold uppercase tracking-[0.05em] text-[#424655]">
                                   {tu('programs_topup_promotion_type_fixed')}
+                                </span>
+                                <button
+                                  type="button"
+                                  role="switch"
+                                  aria-checked={cardIssuanceTopupPromotion.rewardType === 'fixed'}
+                                  aria-label={tu('programs_topup_promotion_type_fixed')}
+                                  disabled={cardIssuanceTopupPromotionEditorPublishing}
+                                  onClick={() =>
+                                    setCardIssuanceTopupPromotion((p) => {
+                                      const nextFixed = p.rewardType !== 'fixed';
+                                      return {
+                                        ...p,
+                                        rewardType: nextFixed ? 'fixed' : 'percent',
+                                        enabled: true,
+                                        ...(nextFixed
+                                          ? {
+                                              fixedTiers:
+                                                p.fixedTiers.length > 0
+                                                  ? p.fixedTiers
+                                                  : createDefaultFixedTiersDraft(),
+                                            }
+                                          : {}),
+                                      };
+                                    })
+                                  }
+                                  className={`relative h-6 w-12 shrink-0 rounded-full transition-colors disabled:opacity-60 ${bizFocusRingClass} ${
+                                    cardIssuanceTopupPromotion.rewardType === 'fixed'
+                                      ? 'bg-[#1562f0]'
+                                      : 'bg-[#dfdfe4]'
+                                  }`}
+                                >
+                                  <span
+                                    className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
+                                      cardIssuanceTopupPromotion.rewardType === 'fixed'
+                                        ? 'left-[1.35rem]'
+                                        : 'left-0.5'
+                                    }`}
+                                  />
                                 </button>
                               </div>
 

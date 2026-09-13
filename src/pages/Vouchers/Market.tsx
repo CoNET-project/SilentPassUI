@@ -1209,16 +1209,6 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 				</button>
 			</p>
 
-			<p className="flex items-center justify-center gap-1.5 text-center text-[12px] leading-snug text-[#5c6570] dark:text-slate-400">
-				<span
-					className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white"
-					aria-hidden
-				>
-					<Check className="h-2.5 w-2.5" strokeWidth={3} />
-				</span>
-				CoNET L1 smart vault · Never expires &amp; 100% redeemable
-			</p>
-
 			<DiscoverMerchantVisitActionsBlock
 				brandColor={brand}
 				onBooking={onBooking}
@@ -2905,8 +2895,13 @@ function parseDiscoverTier0PanelBackground(
 		: Array.isArray(share?.tiers)
 			? share!.tiers
 			: null
-	if (!tiersRaw || tiersRaw.length === 0) return empty
-	const first = tiersRaw[0]
+	const baseMembership =
+		meta.baseMembership != null &&
+		typeof meta.baseMembership === 'object' &&
+		!Array.isArray(meta.baseMembership)
+			? (meta.baseMembership as Record<string, unknown>)
+			: null
+	const first = baseMembership ?? tiersRaw?.[0]
 	if (first == null || typeof first !== 'object') return empty
 	const o = first as Record<string, unknown>
 	const nested =

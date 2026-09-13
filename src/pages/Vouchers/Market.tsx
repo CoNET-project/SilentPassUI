@@ -8385,20 +8385,20 @@ function DiscoverMerchantDetailFullScreen({
 							className="flex h-full flex-col overflow-y-auto"
 							style={{ paddingTop: 'max(1rem, env(safe-area-inset-top, 0px))' }}
 						>
-							<div className="pointer-events-none fixed inset-x-0 top-0 z-[160] px-4 pt-[max(1rem,env(safe-area-inset-top,0px))]">
+							<div className="pointer-events-none fixed inset-x-0 top-0 z-[160] flex items-center justify-between px-4 pt-[max(1rem,env(safe-area-inset-top,0px))]">
 								<BeamioCircularBackButton
 									variant="onLight"
 									onClick={() => {
 										if (giftSheetBackHandlerRef.current?.()) return
 										closeGiftSheet()
 									}}
-									className="pointer-events-auto absolute left-4 top-0"
+									className="pointer-events-auto"
 								/>
 								{giftSheetSelectConfirmVisible ? (
 									<button
 										type="button"
 										onClick={() => giftSheetConfirmHandlerRef.current?.()}
-										className="pointer-events-auto absolute right-4 top-0 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full p-1 text-[#2c2f31] transition active:scale-[0.96] dark:text-slate-100"
+										className="pointer-events-auto relative inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full p-1 text-[#2c2f31] transition active:scale-[0.96] dark:text-slate-100"
 										aria-label="Confirm"
 										title="Confirm"
 										tabIndex={-1}
@@ -8409,7 +8409,9 @@ function DiscoverMerchantDetailFullScreen({
 										/>
 										<Check className="relative z-[1] h-[17px] w-[17px]" strokeWidth={2.5} aria-hidden />
 									</button>
-								) : null}
+								) : (
+									<span className="inline-flex h-11 w-11 shrink-0" aria-hidden />
+								)}
 							</div>
 							<div className="flex flex-1 flex-col px-5 pt-12 pb-[max(1.25rem,env(safe-area-inset-bottom,0px))]">
 								<DiscoverMerchantGiftSheet

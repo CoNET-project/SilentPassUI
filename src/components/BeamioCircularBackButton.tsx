@@ -45,6 +45,9 @@ export function BeamioCircularBackButton({
 	const chevronClass = isDark
 		? 'text-white/80'
 		: 'text-[#2c2f31] dark:text-slate-100'
+	// Caller `absolute` / `fixed` must win — base `relative` otherwise steals layout
+	// (Tailwind conflict order) and floats Confirm off the Back baseline.
+	const positionClass = /\b(absolute|fixed)\b/.test(className) ? '' : 'relative'
 
 	return (
 		<button
@@ -63,12 +66,15 @@ export function BeamioCircularBackButton({
 			onPointerUp={tap.onPointerUp}
 			onClick={tap.onClick}
 			className={[
-				'relative isolate inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full p-1',
+				positionClass,
+				'isolate inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full p-1',
 				RELIABLE_TAP_BUTTON_CLASS,
 				chevronClass,
 				'transition-colors duration-150 disabled:pointer-events-none disabled:opacity-40',
 				className,
-			].join(' ')}
+			]
+				.filter(Boolean)
+				.join(' ')}
 		>
 			{/* Visual 36px disc — blur on non-interactive layer (backdrop-filter on the button can miss taps on iOS WebKit). */}
 			<span

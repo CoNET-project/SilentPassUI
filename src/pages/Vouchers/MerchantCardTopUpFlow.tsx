@@ -1696,12 +1696,20 @@ export default function MerchantCardTopUpFlow({
 				style={{ paddingTop: 'max(1rem, env(safe-area-inset-top, 0px))' }}
 			>
 				{step !== 'success' ? (
-					<div className="pointer-events-none fixed inset-x-0 top-0 z-[160] px-4 pt-[max(1rem,env(safe-area-inset-top,0px))]">
+					<div className="pointer-events-none fixed inset-x-0 top-0 z-[160] flex items-center justify-between px-4 pt-[max(1rem,env(safe-area-inset-top,0px))]">
 						<BeamioCircularBackButton
 							variant="onLight"
 							onClick={back}
-							className="pointer-events-auto absolute left-4 top-0"
+							className="pointer-events-auto relative z-[1]"
 						/>
+						{step === 'amount' ? (
+							<h1
+								className="pointer-events-none absolute inset-x-12 top-[max(1rem,env(safe-area-inset-top,0px))] flex h-11 items-center justify-center text-center text-[22px] font-semibold tracking-tight dark:text-slate-100"
+								style={{ color: merchantBrandActionColor }}
+							>
+								Top Up
+							</h1>
+						) : null}
 						{step === 'select' ? (
 							<button
 								type="button"
@@ -1710,7 +1718,7 @@ export default function MerchantCardTopUpFlow({
 									setUsedManual(true)
 									setStep('pay')
 								}}
-								className="pointer-events-auto absolute right-4 top-0 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full p-1 text-[#2c2f31] transition active:scale-[0.96] dark:text-slate-100"
+								className="pointer-events-auto relative z-[1] inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full p-1 text-[#2c2f31] transition active:scale-[0.96] dark:text-slate-100"
 								aria-label="Confirm"
 								title="Confirm"
 								tabIndex={-1}
@@ -1721,15 +1729,9 @@ export default function MerchantCardTopUpFlow({
 								/>
 								<Check className="relative z-[1] h-[17px] w-[17px]" strokeWidth={2.5} aria-hidden />
 							</button>
-						) : null}
-						{step === 'amount' ? (
-							<h1
-								className="pointer-events-none absolute inset-x-12 top-1/2 -translate-y-1/2 text-center text-[22px] font-semibold tracking-tight dark:text-slate-100"
-								style={{ color: merchantBrandActionColor }}
-							>
-								Top Up
-							</h1>
-						) : null}
+						) : (
+							<span className="inline-flex h-11 w-11 shrink-0" aria-hidden />
+						)}
 					</div>
 				) : null}
 				{step === 'confirm' ? (

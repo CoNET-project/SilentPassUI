@@ -16,7 +16,7 @@ const FLOATING_BACK_BTN: Record<'create' | 'restore', string> = {
 		'border border-[#1a1c1f]/10 bg-[#f9f9fe]/92 text-[#1a1c1f] shadow-sm backdrop-blur-md hover:bg-[#f9f9fe]',
 }
 
-/** Create: Back · Beamio · locale. Restore: Back · app logo (no center title bar). */
+/** Create: Back · Beamio · locale. Restore: Back · locale · app logo (no center title bar). */
 export function VerraFloatingNavChrome({
 	onBack,
 	tone = 'create',
@@ -97,15 +97,26 @@ export function VerraFloatingNavChrome({
 			>
 				<ChevronLeft className={compact ? 'h-5 w-5' : 'h-6 w-6'} strokeWidth={2} aria-hidden />
 			</button>
-			<IpfsImg
-				src={APP_LOGO_SRC}
-				alt="Beamio"
-				className={[
-					'pointer-events-none shrink-0 object-contain',
-					compact ? 'h-8 w-8 rounded-[9px]' : 'h-9 w-9 rounded-[10px]',
-				].join(' ')}
-				draggable={false}
-			/>
+			<div className="pointer-events-auto flex shrink-0 items-center gap-2">
+				<BeamioLocalePicker
+					variant="create"
+					menuAlign="right"
+					locale={locale}
+					onSelect={async (next) => {
+						writeBeamioUiLanguageBootstrap(next)
+						await applyBeamioUiLanguageFromProfile(next)
+					}}
+				/>
+				<IpfsImg
+					src={APP_LOGO_SRC}
+					alt="Beamio"
+					className={[
+						'pointer-events-none shrink-0 object-contain',
+						compact ? 'h-8 w-8 rounded-[9px]' : 'h-9 w-9 rounded-[10px]',
+					].join(' ')}
+					draggable={false}
+				/>
+			</div>
 		</div>
 	)
 }

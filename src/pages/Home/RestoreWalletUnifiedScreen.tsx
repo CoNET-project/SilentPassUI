@@ -16,14 +16,14 @@ import {
 } from 'lucide-react'
 import { VerraFloatingNavChrome } from './VerraFloatingNavChrome'
 import { APP_FLOATING_CHROME_MAIN_TOP_PT, APP_TITLE_BLOCK_TO_FIRST_CONTROL_MB } from '@/ui/appContentSpacing'
-import { tu } from '@/locale/beamioLocale'
+import { useTu } from '@/locale/beamioLocale'
 
 type RestoreTab = 'login' | 'recovery'
 const APP_LOGO_SRC = `${process.env.PUBLIC_URL ?? ''}/logo192.png`
 /** Align step chrome with CreateUsernamePinScreen passport loading. */
 const RESTORE_LOADING_STEPS = [
-	{ id: 0, title: 'Restoring Wallet', desc: 'Decrypting your secure vault' },
-	{ id: 1, title: 'Preparing Security Backup', desc: 'Creating your local recovery package' },
+	{ id: 0, titleKey: 'restoring_wallet', descKey: 'decrypting_your_secure_vault' },
+	{ id: 1, titleKey: 'preparing_security_backup', descKey: 'creating_your_local_recovery_package' },
 ] as const
 const RESTORE_STEP_DURATION_MS = 2000
 
@@ -95,6 +95,7 @@ export default function RestoreWalletUnifiedScreen({
 	initialRecoveryCode = '',
 	initialBeamioTag = '',
 }: RestoreWalletUnifiedScreenProps) {
+	const { tu } = useTu()
 	const prefillTag = normalizeBeamioTagInput(initialBeamioTag)
 	const [tab, setTab] = useState<RestoreTab>(initialRecoveryCode ? 'recovery' : 'login')
 	const { scanRef, scanData } = useDaemonContext()
@@ -140,20 +141,20 @@ export default function RestoreWalletUnifiedScreen({
 	useEffect(() => {
 		const run = async () => {
 			if (!scanData || /^http/i.test(scanData)) {
-				if (scanData && /^http/i.test(scanData)) setRecoveryError('Invalid recovery code format')
+				if (scanData && /^http/i.test(scanData)) setRecoveryError(tu('invalid_recovery_code_format'))
 				return
 			}
 			setRecoveryCode(scanData)
 			setRecoveryError('')
 		}
 		run()
-	}, [scanData])
+	}, [scanData, tu])
 
 	useEffect(() => {
 		const off = onWalletEvent('scan:url', (url: string) => {
 			if (tab !== 'recovery') return
 			if (/^http/i.test(url)) {
-				setRecoveryError('Invalid recovery code format')
+				setRecoveryError(tu('invalid_recovery_code_format'))
 				return
 			}
 			if (url?.length) {
@@ -164,7 +165,7 @@ export default function RestoreWalletUnifiedScreen({
 		return () => {
 			if (typeof off === 'function') off()
 		}
-	}, [tab])
+	}, [tab, tu])
 
 	useEffect(() => {
 		if (!recoveryError) return
@@ -181,11 +182,11 @@ export default function RestoreWalletUnifiedScreen({
 	const formatBeamioName = () => {
 		let trimmed = username.trim().replace(/^@+/, '')
 		if (!trimmed) {
-			setLoginError('Please enter a username')
+			setLoginError(tu('please_enter_a_username'))
 			return ''
 		}
 		if (!/^[a-zA-Z0-9_.-]{3,26}$/.test(trimmed)) {
-			setLoginError('Use 3–26 letters, numbers, dots, _ or -')
+			setLoginError(tu('use_3_26_letters_numbers_dots_underscore_or_hyphen'))
 			return ''
 		}
 		return trimmed
@@ -198,14 +199,14 @@ export default function RestoreWalletUnifiedScreen({
 		if (!trimmed) return
 		const password = pin.trim()
 		if (password.length < 6) {
-			setLoginError('Password must be at least 6 characters')
+			setLoginError(tu('password_must_be_at_least_6_characters'))
 			return
 		}
 		setLoginLoading(true)
 		try {
 			const canRestore = await restoreWithUserPin(trimmed, password)
 			if (!canRestore || typeof canRestore === 'boolean') {
-				setLoginError('Something went wrong while restoring your wallet.')
+				setLoginError(tu('something_went_wrong_while_restoring_your_wallet'))
 				return
 			}
 
@@ -213,13 +214,13 @@ export default function RestoreWalletUnifiedScreen({
 			const beamioProfile = canRestore?.beamio
 			const privateKey = canRestore?.profiles?.[0]?.privateKeyArmor
 			if (!mnemonicPhrase || !beamioProfile || !privateKey) {
-				setLoginError('Restored wallet is incomplete. Please try again.')
+				setLoginError(tu('restored_wallet_is_incomplete'))
 				return
 			}
 
 			const regenerated = await RegenerateRecover(mnemonicPhrase, beamioProfile, password, privateKey)
 			if (!regenerated?.recoverCode || !regenerated?.qrCode) {
-				setLoginError('Failed to prepare Security Backup. Please try again.')
+				setLoginError(tu('failed_to_prepare_security_backup'))
 				return
 			}
 
@@ -230,7 +231,7 @@ export default function RestoreWalletUnifiedScreen({
 				beamioTag: beamioProfile.accountName || trimmed,
 			})
 		} catch {
-			setLoginError('Something went wrong while restoring your wallet.')
+			setLoginError(tu('something_went_wrong_while_restoring_your_wallet'))
 		} finally {
 			setLoginLoading(false)
 		}
@@ -240,14 +241,14 @@ export default function RestoreWalletUnifiedScreen({
 		e.preventDefault()
 		setRecoveryError('')
 		if (!recoveryCode.trim()) {
-			setRecoveryError('Please enter your recovery code.')
+			setRecoveryError(tu('please_enter_your_recovery_code'))
 			return
 		}
 		setRecoveryLoading(true)
 		try {
 			const canRestore = await restoreWithRedeem(recoveryCode, '')
 			if (!canRestore || typeof canRestore === 'boolean') {
-				setRecoveryError('Invalid recovery code')
+				setRecoveryError(tu('invalid_recovery_code'))
 				return
 			}
 			await onRestore({
@@ -257,7 +258,7 @@ export default function RestoreWalletUnifiedScreen({
 				beamioTag: canRestore?.beamio?.accountName || '',
 			})
 		} catch {
-			setRecoveryError('Something went wrong while restoring your wallet.')
+			setRecoveryError(tu('something_went_wrong_while_restoring_your_wallet'))
 		} finally {
 			setRecoveryLoading(false)
 		}
@@ -272,7 +273,7 @@ export default function RestoreWalletUnifiedScreen({
 		}
 		if (nativeResult.status === 'failed') {
 			if (nativeResult.error && nativeResult.error !== 'cancelled') {
-				setRecoveryError('Unable to scan Recovery QR. Please try again.')
+				setRecoveryError(tu('unable_to_scan_recovery_qr'))
 			}
 			return
 		}
@@ -383,11 +384,11 @@ export default function RestoreWalletUnifiedScreen({
 									</div>
 									<div className="flex min-w-0 flex-col pt-1">
 										<span className="text-lg font-semibold leading-7 text-[#151c27] [@media(max-height:640px)]:text-base [@media(max-height:640px)]:leading-6">
-											{s.title}
+											{tu(s.titleKey)}
 										</span>
-										{s.desc ? (
+										{s.descKey ? (
 											<span className="mt-0.5 text-xs text-[#424655] [@media(max-height:640px)]:text-[11px]">
-												{s.desc}
+												{tu(s.descKey)}
 											</span>
 										) : null}
 									</div>
@@ -428,13 +429,13 @@ export default function RestoreWalletUnifiedScreen({
 				className={`flex min-h-0 flex-1 flex-col overflow-hidden px-6 pb-[max(0.75rem,env(safe-area-inset-bottom))] [@media(max-height:560px)]:px-5 ${APP_FLOATING_CHROME_MAIN_TOP_PT}`}
 			>
 				<div className={`shrink-0 text-center ${APP_TITLE_BLOCK_TO_FIRST_CONTROL_MB}`}>
-					<h1 className="text-3xl font-extrabold tracking-tight text-[#1a1c1f] sm:text-3xl">Welcome Back</h1>
+					<h1 className="text-3xl font-extrabold tracking-tight text-[#1a1c1f] sm:text-3xl">{tu('welcome_back')}</h1>
 					<p className="mt-0.5 text-base font-medium text-[#424655] [@media(max-height:640px)]:text-sm">
-						Access your local community vault.
+						{tu('access_your_local_community_vault')}
 					</p>
 				</div>
 
-				<div className="mt-2 flex h-12 shrink-0 rounded-2xl bg-[#e8e8ed] p-1" role="tablist" aria-label="Restore method">
+				<div className="mt-2 flex h-12 shrink-0 rounded-2xl bg-[#e8e8ed] p-1" role="tablist" aria-label={tu('restore_method')}>
 					<button
 						type="button"
 						role="tab"
@@ -449,7 +450,7 @@ export default function RestoreWalletUnifiedScreen({
 								: 'text-[#424655]'
 						}`}
 					>
-						ID &amp; Password
+						{tu('id_and_password')}
 					</button>
 					<button
 						type="button"
@@ -465,7 +466,7 @@ export default function RestoreWalletUnifiedScreen({
 								: 'text-[#424655]'
 						}`}
 					>
-						Recovery Key
+						{tu('recovery_key')}
 					</button>
 				</div>
 
@@ -479,7 +480,7 @@ export default function RestoreWalletUnifiedScreen({
 							<div className="flex flex-col gap-5 [@media(max-height:700px)]:gap-4 [@media(max-height:640px)]:gap-3">
 								<div className="space-y-2">
 									<label htmlFor="welcome-back-beamio-id" className={fieldLabelClass}>
-										Beamio ID
+										{tu('beamio_id')}
 									</label>
 									<div className="relative">
 										<div className="pointer-events-none absolute inset-y-0 left-5 flex items-center [@media(max-height:560px)]:left-4">
@@ -501,7 +502,7 @@ export default function RestoreWalletUnifiedScreen({
 													? 'ring-2 ring-inset ring-orange-400/80 focus:ring-orange-400/40'
 													: '',
 											].join(' ')}
-											placeholder="Username"
+											placeholder={tu('username')}
 											value={username}
 											onChange={e => {
 												setUsername(e.target.value.replace(/@/g, ''))
@@ -512,7 +513,7 @@ export default function RestoreWalletUnifiedScreen({
 								</div>
 								<div className="space-y-2">
 									<label htmlFor="welcome-back-password" className={fieldLabelClass}>
-										Password
+										{tu('password')}
 									</label>
 									<div className="relative">
 										<input
@@ -543,7 +544,7 @@ export default function RestoreWalletUnifiedScreen({
 											tabIndex={-1}
 											className="absolute inset-y-0 right-5 flex items-center rounded-lg p-1 text-[#424655] transition-colors hover:text-[#1a1c1f] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#004bc3]/30 [@media(max-height:560px)]:right-4"
 											onClick={() => setPeekPin(p => !p)}
-											aria-label={peekPin ? 'Hide password' : 'Show password'}
+											aria-label={peekPin ? tu('hide_password') : tu('show_password')}
 										>
 											{peekPin ? (
 												<EyeOff className="h-6 w-6 [@media(max-height:560px)]:h-5 [@media(max-height:560px)]:w-5" strokeWidth={2} />
@@ -567,7 +568,7 @@ export default function RestoreWalletUnifiedScreen({
 										loading={loginLoading}
 										className="h-14 rounded-full text-base font-bold !bg-gradient-to-br !from-[#004bc3] !to-[#1562f0] !text-white shadow-[0_4px_24px_rgba(21,98,240,0.15)] hover:!opacity-90 active:!scale-[0.98] focus-visible:!ring-2 focus-visible:!ring-[#004bc3]/40"
 									>
-										Unlock
+										{tu('unlock')}
 									</AppButton>
 								</div>
 							</div>
@@ -577,7 +578,7 @@ export default function RestoreWalletUnifiedScreen({
 							<div className="flex flex-col gap-5 [@media(max-height:700px)]:gap-4 [@media(max-height:640px)]:gap-3">
 								<div className="shrink-0 rounded-lg bg-white px-4 py-3 shadow-[0_4px_24px_rgba(0,0,0,0.02)]">
 									<p className="text-center text-sm font-medium leading-snug text-[#424655]">
-										Use your securely saved Recovery QR or alphanumeric code to restore your vault.
+										{tu('use_your_securely_saved_recovery_qr')}
 									</p>
 								</div>
 								<button
@@ -589,8 +590,8 @@ export default function RestoreWalletUnifiedScreen({
 										<QrCode className="h-6 w-6 text-[#1562f0]" strokeWidth={2.25} />
 									</div>
 									<div className="text-center px-3">
-										<p className="text-sm font-bold text-[#1a1c1f]">Tap to Scan Recovery QR</p>
-										<p className="text-[10px] text-[#424655]">from Camera or Photos</p>
+										<p className="text-sm font-bold text-[#1a1c1f]">{tu('tap_to_scan_recovery_qr')}</p>
+										<p className="text-[10px] text-[#424655]">{tu('from_camera_or_photos')}</p>
 									</div>
 								</button>
 								<div className="flex shrink-0 items-center gap-2 py-0.5">
@@ -600,7 +601,7 @@ export default function RestoreWalletUnifiedScreen({
 								</div>
 								<div className="flex w-full shrink-0 flex-col space-y-2">
 									<label htmlFor="welcome-back-recovery-code" className={fieldLabelClass}>
-										Enter Recovery Code
+										{tu('enter_recovery_code')}
 									</label>
 									<textarea
 										id="welcome-back-recovery-code"
@@ -611,7 +612,7 @@ export default function RestoreWalletUnifiedScreen({
 												? 'ring-2 ring-inset ring-orange-400/80 focus:ring-orange-400/40'
 												: '',
 										].join(' ')}
-										placeholder="Enter your recovery code here..."
+										placeholder={tu('enter_your_recovery_code_here')}
 										value={recoveryCode}
 										onChange={e => {
 											setRecoveryCode(e.target.value)
@@ -638,7 +639,7 @@ export default function RestoreWalletUnifiedScreen({
 													: '!bg-[#004bc3] !text-white shadow-[0_8px_30px_rgb(0,75,195,0.2)] hover:!bg-[#1562f0]'
 											}`}
 										>
-											Restore Vault
+											{tu('restore_vault')}
 										</AppButton>
 									</div>
 								</div>
@@ -651,7 +652,7 @@ export default function RestoreWalletUnifiedScreen({
 					<div className="flex items-center gap-2 rounded-full border border-[#e8e8ed] bg-white px-3 py-1.5 shadow-sm">
 						<ShieldCheck className="h-4 w-4 shrink-0 text-[#1562f0]" strokeWidth={2.25} />
 						<span className="text-[9px] font-bold uppercase tracking-widest text-[#1a1c1f]">
-							End-to-End Encrypted
+							{tu('end_to_end_encrypted')}
 						</span>
 					</div>
 				</div>

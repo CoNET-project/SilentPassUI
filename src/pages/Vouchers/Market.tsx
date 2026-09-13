@@ -1091,7 +1091,7 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 							{welcomeRewardLine}
 						</p>
 						{topupLine && chargeWelcomeLine ? (
-							<p className="mt-2 text-[12px] font-medium leading-snug text-white/75">
+							<p className="mt-2 text-[14px] font-medium leading-snug text-white/75">
 								{chargeWelcomeLine}
 							</p>
 						) : null}

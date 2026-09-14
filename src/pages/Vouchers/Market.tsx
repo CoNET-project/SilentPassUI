@@ -1155,6 +1155,7 @@ function DiscoverMerchantMembershipTiersPanel({
 				),
 	)
 	const [selectedIndex, setSelectedIndex] = useState(initialIndex)
+	const tiersScrollerRef = useRef<HTMLDivElement>(null)
 	useEffect(() => {
 		const nextActiveIndex =
 			activeTierIndex == null
@@ -1166,12 +1167,14 @@ function DiscoverMerchantMembershipTiersPanel({
 				: Math.min(current, Math.max(sortedTiers.length - 1, 0)),
 		)
 	}, [activeTierIndex, sortedTiers.length])
+	useEffect(() => {
+		const selectedCard = tiersScrollerRef.current?.querySelector<HTMLElement>(
+			`[data-tier-index="${selectedIndex}"]`,
+		)
+		selectedCard?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' })
+	}, [selectedIndex])
 	const selectedTier = sortedTiers[selectedIndex] ?? sortedTiers[0]
 	if (!selectedTier) return null
-	const selectedTierIndex = selectedTier.index ?? selectedIndex
-	const isCurrentMember = activeTierIndex != null && selectedTierIndex === activeTierIndex
-	const selectedTierBrand = selectedTier.backgroundColor?.trim() || brand
-	const selectedTierTheme = cardTierGradientTheme(selectedTierBrand)
 
 	return (
 		<section
@@ -1210,58 +1213,71 @@ function DiscoverMerchantMembershipTiersPanel({
 
 				<div className="mt-5">
 					<div
-						className="relative overflow-hidden rounded-[20px] border px-4 pb-4 pt-5"
-						style={{
-							backgroundImage: cardTierGradientCss(selectedTierBrand),
-							borderColor: `${selectedTierBrand}88`,
-							color: selectedTierTheme.primary,
-							boxShadow: `0 2px 0 ${selectedTierBrand}55`,
-						}}
-						onTouchStart={(event) => {
-							const touch = event.touches[0]
-							event.currentTarget.dataset.swipeStartX = String(touch?.clientX ?? '')
-						}}
-						onTouchEnd={(event) => {
-							const start = Number(event.currentTarget.dataset.swipeStartX)
-							const end = event.changedTouches[0]?.clientX ?? start
-							if (!Number.isFinite(start) || Math.abs(end - start) < 32) return
-							setSelectedIndex((current) =>
-								end < start
-									? Math.min(current + 1, sortedTiers.length - 1)
-									: Math.max(current - 1, 0),
-							)
-						}}
+						ref={tiersScrollerRef}
+						className="flex snap-x snap-mandatory gap-4 overflow-x-auto overscroll-x-contain pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+						aria-label={`${name} membership tier cards`}
 					>
-						{activeTierIndex != null && isCurrentMember ? (
-							<span
-								className="mb-3 inline-flex rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-[0.08em]"
-								style={{ backgroundColor: selectedTierBrand, color: selectedTierTheme.primary }}
-							>
-								You are currently a {selectedTier.name} member
-							</span>
-						) : activeTierIndex == null ? (
-							<span className="mb-3 inline-flex rounded-full border border-current/25 bg-white/15 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.08em]">
-								Not a member yet
-							</span>
-						) : null}
-						<div className="flex items-center justify-between gap-2">
-							<p className="text-[17px] font-bold uppercase tracking-[0.04em]" style={{ color: selectedTierTheme.primary }}>
-								{selectedTier.name}
-							</p>
-							<Medal className="h-6 w-6 shrink-0" style={{ color: selectedTierTheme.primary }} strokeWidth={1.8} aria-hidden />
-						</div>
-						<p className="mt-5 text-[12px] font-medium opacity-75">Cumulative Spend</p>
-						<p className="mt-1 text-[25px] font-bold leading-none tracking-tight">
-							{formatSpend(selectedTier.minUsdc6)}
-						</p>
-						<div className="my-4 h-px bg-current opacity-20" />
-						<p className="text-[21px] font-bold leading-none" style={{ color: selectedTierTheme.primary }}>
-							{discountFromDescription(selectedTier.description) ?? 'Member Benefits'}
-						</p>
-						<p className="mt-2 text-[13px] font-medium opacity-75">Every Future Order</p>
-						<div className="mt-3 border-t border-current pt-3 text-[12px] opacity-75">
-							{selectedTier.description || 'Member dining privileges'}
-						</div>
+						{sortedTiers.map((tier, tierPosition) => {
+							const tierIndex = tier.index ?? tierPosition
+							const tierBrand = tier.backgroundColor?.trim() || brand
+							const tierTheme = cardTierGradientTheme(tierBrand)
+							const isCurrentMember = activeTierIndex != null && tierIndex === activeTierIndex
+							const isTopTier = tierPosition === sortedTiers.length - 1
+							return (
+								<div
+									key={`${tierIndex}-${tier.name}`}
+									data-tier-index={tierPosition}
+									className="relative min-w-[calc(88%-0.5rem)] snap-center overflow-hidden rounded-[20px] border bg-white px-4 pb-4 pt-5 sm:min-w-[calc(50%-0.5rem)] dark:bg-slate-900"
+									style={{
+										borderColor: `${tierBrand}88`,
+										boxShadow: `0 2px 0 ${tierBrand}55`,
+									}}
+									onClick={() => setSelectedIndex(tierPosition)}
+								>
+									{isTopTier ? (
+										<span
+											className="absolute right-3 top-0 -translate-y-1/2 rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-[0.08em]"
+											style={{ backgroundColor: tierBrand, color: tierTheme.primary }}
+										>
+											Top Tier
+										</span>
+									) : null}
+									{isCurrentMember ? (
+										<span
+											className="mb-3 inline-flex rounded-full px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.06em]"
+											style={{ backgroundColor: `${tierBrand}18`, color: tierBrand }}
+										>
+											You are currently a member
+										</span>
+									) : activeTierIndex == null ? (
+										<span
+											className="mb-3 inline-flex rounded-full border px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.06em]"
+											style={{ borderColor: `${tierBrand}55`, color: tierBrand }}
+										>
+											Not a member yet
+										</span>
+									) : null}
+									<div className="flex items-center justify-between gap-2">
+										<p className="text-[17px] font-bold uppercase tracking-[0.04em]" style={{ color: tierBrand }}>
+											{tier.name}
+										</p>
+										<Medal className="h-6 w-6 shrink-0" style={{ color: tierBrand }} strokeWidth={1.8} aria-hidden />
+									</div>
+									<p className="mt-5 text-[12px] font-medium text-[#8a857c] dark:text-slate-400">Cumulative Spend</p>
+									<p className="mt-1 text-[25px] font-bold leading-none tracking-tight text-[#4b473f] dark:text-slate-100">
+										{formatSpend(tier.minUsdc6)}
+									</p>
+									<div className="my-4 h-px bg-slate-200 dark:bg-slate-700" />
+									<p className="text-[21px] font-bold leading-none" style={{ color: tierBrand }}>
+										{discountFromDescription(tier.description) ?? 'Member Benefits'}
+									</p>
+									<p className="mt-2 text-[13px] font-medium text-[#8a857c] dark:text-slate-400">Every Future Order</p>
+									<div className="mt-3 border-t border-slate-200 pt-3 text-[12px] text-[#8a857c] dark:border-slate-700 dark:text-slate-400">
+										{tier.description || 'Member dining privileges'}
+									</div>
+								</div>
+							)
+						})}
 					</div>
 					{sortedTiers.length > 1 ? (
 						<div className="mt-3 flex items-center justify-between gap-3">

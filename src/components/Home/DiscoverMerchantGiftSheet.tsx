@@ -1808,11 +1808,21 @@ export default function DiscoverMerchantGiftSheet({
 			const burn = giftFacePreview.burnAmountE6
 			return `${prefix}${membershipFeeE6ToHuman(burn.toString()) || ethers.formatUnits(burn, 6)} store credit`
 		}
+		if (remainingPayMethod === 'stripe' && quotedGiftUsdc6 && quotedGiftUsdc6 > 0n) {
+			const cashUsdc6 =
+				quotedGiftUsdc6 > reward13AppliedUsdc6
+					? quotedGiftUsdc6 - reward13AppliedUsdc6
+					: 0n
+			const cashFiat6 = (giftFacePreview.totalE6 * cashUsdc6) / quotedGiftUsdc6
+			return `${prefix}${Number(ethers.formatUnits(cashFiat6, 6)).toFixed(2)}`
+		}
 		return usdcQuoteLabel ?? `${prefix}${previewAmount}`
 	}, [
 		giftFacePreview,
 		prefix,
 		previewAmount,
+		quotedGiftUsdc6,
+		reward13AppliedUsdc6,
 		remainingPayMethod,
 		reward13AppliedLabel,
 		rewardPtFullyCoversGift,
@@ -4066,7 +4076,7 @@ export default function DiscoverMerchantGiftSheet({
 							</span>
 						</div>
 					) : null}
-					{!rewardPtFullyCoversGift && remainingPayMethod !== 'credit' && usdcQuoteLabel ? (
+					{!rewardPtFullyCoversGift && remainingPayMethod === 'usdc' && usdcQuoteLabel ? (
 						<div className="flex items-center justify-between">
 							<span className="flex items-center gap-1">
 								USDC
@@ -4074,6 +4084,17 @@ export default function DiscoverMerchantGiftSheet({
 							</span>
 							<span className="font-medium" style={{ color: brandControl }}>
 								{usdcQuoteLabel}
+							</span>
+						</div>
+					) : null}
+					{!rewardPtFullyCoversGift && remainingPayMethod === 'stripe' ? (
+						<div className="flex items-center justify-between">
+							<span className="flex items-center gap-1">
+								{ccy}
+								<Receipt className="h-3.5 w-3.5" style={{ color: brandControl }} aria-hidden />
+							</span>
+							<span className="font-medium" style={{ color: brandControl }}>
+								{payTotalLabel}
 							</span>
 						</div>
 					) : null}

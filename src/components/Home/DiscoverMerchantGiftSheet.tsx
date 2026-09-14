@@ -436,22 +436,6 @@ function themeStep3VoucherBadge(kind: GiftStep1Kind): string {
 	return 'Gift voucher'
 }
 
-function themeStep3Lead(kind: GiftStep1Kind, merchant: string, recipientHandle: string | null): string {
-	if (kind === 'food-beverage') {
-		return recipientHandle
-			? `Treating ${recipientHandle} to ${merchant}`
-			: `Dining gift card for ${merchant} · shareable claim link`
-	}
-	if (kind === 'health-beauty') {
-		return recipientHandle
-			? `Gifting a wellness session to ${recipientHandle} at ${merchant}`
-			: `Wellness gift for ${merchant} · shareable claim link`
-	}
-	return recipientHandle
-		? `${merchant} digital gift card · to ${recipientHandle}`
-		: `${merchant} digital gift card · shareable claim link`
-}
-
 function chatToFriendSearchResult(chat: chatData): searchResult | null {
 	const addr = String(chat.address ?? '').trim()
 	if (!addr) return null
@@ -3338,7 +3322,7 @@ export default function DiscoverMerchantGiftSheet({
 								</span>
 								<span className="shrink-0 text-[17px] font-semibold" style={{ color: brandControl }}>
 									{prefix}
-									{previewAmount}
+									{giftValueDisplayHuman}
 								</span>
 							</div>
 						</div>
@@ -3508,9 +3492,6 @@ export default function DiscoverMerchantGiftSheet({
 										</div>
 									</div>
 								) : null}
-								<p className="text-[13px] leading-relaxed text-[#424655] dark:text-slate-400">
-									The claim link still works for anyone you send it to.
-								</p>
 							</div>
 						) : null}
 					</div>
@@ -3751,13 +3732,6 @@ export default function DiscoverMerchantGiftSheet({
 			className="relative mx-auto flex w-full max-w-lg flex-col gap-1 pb-8"
 			aria-label="Payment and confirmation"
 		>
-			<h2 className="text-[28px] font-bold leading-[34px] tracking-tight text-[#1a1b1f] dark:text-slate-100">
-				Payment & Confirmation
-			</h2>
-			<p className="mt-0.5 text-[15px] leading-5 text-[#424655] dark:text-slate-400">
-				{themeStep3Lead(step1Kind, merchantLabel, step3RecipientHandle)}
-			</p>
-
 			<div className="mb-8 mt-5">
 				<div className="relative flex min-h-[190px] flex-col justify-between overflow-hidden rounded-xl bg-gradient-to-br from-white to-[#eeedf3] p-6 shadow-md dark:from-slate-900 dark:to-slate-800">
 					<div
@@ -3808,8 +3782,10 @@ export default function DiscoverMerchantGiftSheet({
 							</span>
 							<span className="text-[34px] font-bold leading-none tracking-tight text-[#1a1b1f] dark:text-slate-100">
 								{prefix}
-								{previewAmount.split('.')[0]}
-								<span className="text-[22px] font-semibold">.{previewAmount.split('.')[1] ?? '00'}</span>
+								{giftValueDisplayHuman.split('.')[0]}
+								<span className="text-[22px] font-semibold">
+									.{giftValueDisplayHuman.split('.')[1] ?? '00'}
+								</span>
 							</span>
 						</div>
 						<div className="text-right">

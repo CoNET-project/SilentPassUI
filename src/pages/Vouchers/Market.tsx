@@ -1129,10 +1129,14 @@ function DiscoverMerchantMembershipTiersPanel({
 }) {
 	const name = merchantName.trim() || 'merchant'
 	const brand = brandColor.trim() || DISCOVER_VISIT_BRAND_FALLBACK
-	const sortedTiers = [...tiers].sort((a, b) => {
-		if (a.minUsdc6 === b.minUsdc6) return (a.index ?? 0) - (b.index ?? 0)
-		return a.minUsdc6 < b.minUsdc6 ? -1 : 1
-	})
+	// Base membership is configured separately from the customer-facing
+	// higher-tier cards and should never be rendered in this panel.
+	const sortedTiers = tiers
+		.filter((tier) => tier.index !== 0)
+		.sort((a, b) => {
+			if (a.minUsdc6 === b.minUsdc6) return (a.index ?? 0) - (b.index ?? 0)
+			return a.minUsdc6 < b.minUsdc6 ? -1 : 1
+		})
 	const formatSpend = (raw: bigint) => {
 		const amount = Number(raw) / 1_000_000
 		if (!Number.isFinite(amount)) return `${balancePrefix}${raw.toString()}`
@@ -1227,7 +1231,7 @@ function DiscoverMerchantMembershipTiersPanel({
 								<div
 									key={`${tierIndex}-${tier.name}`}
 									data-tier-index={tierPosition}
-									className="relative min-w-[72%] snap-center overflow-hidden rounded-[16px] border bg-white px-3 pb-3 pt-4 sm:min-w-[42%] dark:bg-slate-900"
+									className="relative min-w-[36%] snap-center overflow-hidden rounded-[16px] border bg-white px-3 pb-3 pt-4 sm:min-w-[21%] dark:bg-slate-900"
 									style={{
 										borderColor: `${tierBrand}88`,
 										boxShadow: `0 2px 0 ${tierBrand}55`,
@@ -1272,9 +1276,6 @@ function DiscoverMerchantMembershipTiersPanel({
 										{discountFromDescription(tier.description) ?? 'Member Benefits'}
 									</p>
 									<p className="mt-1.5 text-[11px] font-medium text-[#8a857c] dark:text-slate-400">Every Future Order</p>
-									<div className="mt-2 border-t border-slate-200 pt-2 text-[11px] text-[#8a857c] dark:border-slate-700 dark:text-slate-400">
-										{tier.description || 'Member dining privileges'}
-									</div>
 								</div>
 							)
 						})}

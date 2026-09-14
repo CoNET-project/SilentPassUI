@@ -1172,10 +1172,16 @@ function DiscoverMerchantMembershipTiersPanel({
 		)
 	}, [activeTierIndex, sortedTiers.length])
 	useEffect(() => {
-		const selectedCard = tiersScrollerRef.current?.querySelector<HTMLElement>(
+		const scroller = tiersScrollerRef.current
+		const selectedCard = scroller?.querySelector<HTMLElement>(
 			`[data-tier-index="${selectedIndex}"]`,
 		)
-		selectedCard?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' })
+		if (!scroller || !selectedCard) return
+		const centeredLeft =
+			selectedCard.offsetLeft - (scroller.clientWidth - selectedCard.offsetWidth) / 2
+		// Move only the horizontal tier rail. scrollIntoView can also move the
+		// merchant detail page vertically when this panel mounts or updates.
+		scroller.scrollTo({ left: Math.max(0, centeredLeft), behavior: 'smooth' })
 	}, [selectedIndex])
 	const selectedTier = sortedTiers[selectedIndex] ?? sortedTiers[0]
 	if (!selectedTier) return null

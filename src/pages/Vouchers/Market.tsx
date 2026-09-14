@@ -1129,10 +1129,13 @@ function DiscoverMerchantMembershipTiersPanel({
 }) {
 	const name = merchantName.trim() || 'merchant'
 	const brand = brandColor.trim() || DISCOVER_VISIT_BRAND_FALLBACK
-	// Base membership is configured separately from the customer-facing
-	// higher-tier cards and should never be rendered in this panel.
 	const sortedTiers = tiers
-		.filter((tier) => tier.index !== 0)
+		.filter((tier) => {
+			if (tier.index !== 0) return true
+			if (!tier.hasExplicitName) return false
+			const normalizedName = tier.name.trim().toLowerCase()
+			return normalizedName !== 'base' && normalizedName !== 'base tier'
+		})
 		.sort((a, b) => {
 			if (a.minUsdc6 === b.minUsdc6) return (a.index ?? 0) - (b.index ?? 0)
 			return a.minUsdc6 < b.minUsdc6 ? -1 : 1
@@ -3214,6 +3217,7 @@ function parseDiscoverTiersFromMeta(meta: Record<string, unknown> | null): {
 
 type DiscoverOfferTierRow = {
 	name: string
+	hasExplicitName?: boolean
 	minUsdc6: bigint
 	discountPct: number
 	description?: string
@@ -3314,8 +3318,9 @@ function parseDiscoverAllTiersFromMeta(meta: Record<string, unknown> | null): Di
 				? (o.properties as Record<string, unknown>)
 				: null
 		const nameRaw = o.name ?? nested?.name
+		const hasExplicitName = typeof nameRaw === 'string' && nameRaw.trim().length > 0
 		const tierName =
-			typeof nameRaw === 'string' && nameRaw.trim() ? nameRaw.trim() : fallbackName
+			hasExplicitName ? String(nameRaw).trim() : fallbackName
 		const descriptionRaw = o.description ?? nested?.description
 		const description =
 			typeof descriptionRaw === 'string' && descriptionRaw.trim()
@@ -3352,6 +3357,7 @@ function parseDiscoverAllTiersFromMeta(meta: Record<string, unknown> | null): Di
 		const index = Number.isFinite(indexRaw) ? Math.trunc(indexRaw) : fallbackIndex
 		return {
 			name: tierName,
+			hasExplicitName,
 			minUsdc6: minUsdc6 > 0n ? minUsdc6 : BigInt(fallbackIndex + 1),
 			discountPct: 0,
 			description,

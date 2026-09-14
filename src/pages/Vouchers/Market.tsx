@@ -931,37 +931,6 @@ function DiscoverMerchantHealthBeautyLoyaltyPassPanel({
 				Top Up
 			</button>
 
-			<section className="rounded-2xl border border-[#ebe6df] bg-[#faf8f5] px-4 py-4 dark:border-slate-700 dark:bg-slate-900/80">
-				<div className="flex items-start gap-3">
-					<span
-						className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
-						style={{ backgroundColor: `${DISCOVER_HEALTH_BEAUTY_ACCENT}18` }}
-						aria-hidden
-					>
-						<Gift
-							className="h-[18px] w-[18px]"
-							style={{ color: DISCOVER_HEALTH_BEAUTY_ACCENT }}
-							strokeWidth={2.25}
-						/>
-					</span>
-					<div className="min-w-0 flex-1">
-						<p className="text-[15px] font-bold tracking-tight text-[#1f2328] dark:text-slate-100">
-							Spend &amp; Reward PT Utility
-						</p>
-						<p className="mt-1.5 text-[13px] leading-relaxed text-[#5c6570] dark:text-slate-400">
-							Reward PT never expires. Automatically redeem 1 PT = {fiatLabel}1.00 at checkout to offset any
-							treatment, aftercare product, or across 1,000+ Alliance Merchants.
-						</p>
-					</div>
-				</div>
-				<div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-[#ebe6df] pt-3 dark:border-slate-700">
-					<span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#3d4450] dark:text-slate-300">
-						<ShieldCheck className="h-3.5 w-3.5 text-emerald-600" strokeWidth={2.25} aria-hidden />
-						Instant ledger settlement
-					</span>
-				</div>
-			</section>
-
 			<DiscoverMerchantVisitActionsBlock
 				brandColor={brand}
 				onBooking={onBooking}
@@ -1451,37 +1420,6 @@ function DiscoverMerchantFoodBeverageLoyaltyPassPanel({
 				<Wallet className="h-5 w-5 shrink-0 opacity-90" strokeWidth={2.25} aria-hidden />
 				Top Up
 			</button>
-
-			<section className="rounded-2xl border border-[#ebe6df] bg-[#faf8f5] px-4 py-4 dark:border-slate-700 dark:bg-slate-900/80">
-				<div className="flex items-start gap-3">
-					<span
-						className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
-						style={{ backgroundColor: `${DISCOVER_FOOD_BEVERAGE_GIFT_ACCENT}18` }}
-						aria-hidden
-					>
-						<Gift
-							className="h-[18px] w-[18px]"
-							style={{ color: DISCOVER_FOOD_BEVERAGE_GIFT_ACCENT }}
-							strokeWidth={2.25}
-						/>
-					</span>
-					<div className="min-w-0 flex-1">
-						<p className="text-[15px] font-bold tracking-tight text-[#1f2328] dark:text-slate-100">
-							Spend &amp; Reward PT Utility
-						</p>
-						<p className="mt-1.5 text-[13px] leading-relaxed text-[#5c6570] dark:text-slate-400">
-							Reward PT never expires. Automatically redeem 1 PT = {fiatLabel}1.00 at checkout to offset any
-							dining order, or across 1,000+ Alliance Merchants.
-						</p>
-					</div>
-				</div>
-				<div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-[#ebe6df] pt-3 dark:border-slate-700">
-					<span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#3d4450] dark:text-slate-300">
-						<ShieldCheck className="h-3.5 w-3.5 text-emerald-600" strokeWidth={2.25} aria-hidden />
-						Instant ledger settlement
-					</span>
-				</div>
-			</section>
 
 			<DiscoverMerchantVisitActionsBlock
 				brandColor={brand}

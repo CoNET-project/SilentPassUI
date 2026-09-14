@@ -14,6 +14,7 @@ import {
 import React, { useState, useMemo, useEffect, useLayoutEffect, useCallback, useRef } from "react"
 import { createPortal } from "react-dom"
 import {
+  ChevronLeft,
   ChevronRight,
   Server,
   Activity,
@@ -1107,6 +1108,186 @@ function DiscoverMerchantTreatAFriendPanel({
 						<Send className="h-3.5 w-3.5 shrink-0 opacity-90" strokeWidth={2.25} aria-hidden />
 						Send as Gift
 					</button>
+				</div>
+			</div>
+		</section>
+	)
+}
+
+function DiscoverMerchantMembershipTiersPanel({
+	merchantName,
+	brandColor,
+	balancePrefix,
+	tiers,
+	activeTierIndex,
+}: {
+	merchantName: string
+	brandColor: string
+	balancePrefix: string
+	tiers: DiscoverOfferTierRow[]
+	activeTierIndex: number | null
+}) {
+	const name = merchantName.trim() || 'merchant'
+	const brand = brandColor.trim() || DISCOVER_VISIT_BRAND_FALLBACK
+	const sortedTiers = [...tiers].sort((a, b) => {
+		if (a.minUsdc6 === b.minUsdc6) return (a.index ?? 0) - (b.index ?? 0)
+		return a.minUsdc6 < b.minUsdc6 ? -1 : 1
+	})
+	const formatSpend = (raw: bigint) => {
+		const amount = Number(raw) / 1_000_000
+		if (!Number.isFinite(amount)) return `${balancePrefix}${raw.toString()}`
+		return `${balancePrefix}${amount.toLocaleString('en-US', {
+			minimumFractionDigits: 0,
+			maximumFractionDigits: 2,
+		})}`
+	}
+	const discountFromDescription = (description: string | undefined) => {
+		const match = description?.match(/(\d+(?:\.\d+)?)\s*%/)
+		return match ? `${match[1]}% OFF` : null
+	}
+	const initialIndex = Math.max(
+		0,
+		activeTierIndex == null
+			? 0
+			: Math.max(
+					0,
+					sortedTiers.findIndex((tier) => tier.index === activeTierIndex),
+				),
+	)
+	const [selectedIndex, setSelectedIndex] = useState(initialIndex)
+	useEffect(() => {
+		const nextActiveIndex =
+			activeTierIndex == null
+				? null
+				: sortedTiers.findIndex((tier) => tier.index === activeTierIndex)
+		setSelectedIndex((current) =>
+			nextActiveIndex != null && nextActiveIndex >= 0
+				? nextActiveIndex
+				: Math.min(current, Math.max(sortedTiers.length - 1, 0)),
+		)
+	}, [activeTierIndex, sortedTiers.length])
+	const selectedTier = sortedTiers[selectedIndex] ?? sortedTiers[0]
+	if (!selectedTier) return null
+	const selectedTierIndex = selectedTier.index ?? selectedIndex
+	const isCurrentMember = activeTierIndex != null && selectedTierIndex === activeTierIndex
+	const selectedTierBrand = selectedTier.backgroundColor?.trim() || brand
+	const selectedTierTheme = cardTierGradientTheme(selectedTierBrand)
+
+	return (
+		<section
+			className="overflow-hidden rounded-[22px] border bg-white shadow-[0_8px_24px_rgba(31,35,40,0.06)] dark:bg-slate-900"
+			style={{ borderColor: `${brand}55` }}
+			aria-label={`${name} membership tiers`}
+		>
+			<div className="px-4 py-5 sm:px-5">
+				<div className="flex items-start gap-3">
+					<span
+						className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border"
+						style={{
+							backgroundColor: `${brand}18`,
+							borderColor: `${brand}55`,
+							color: brand,
+						}}
+						aria-hidden
+					>
+						<Medal className="h-5 w-5" strokeWidth={2.1} />
+					</span>
+					<div className="min-w-0 flex-1">
+						<p
+							className="text-[13px] font-bold uppercase tracking-[0.12em]"
+							style={{ color: brand }}
+						>
+							VIP Membership Tiers
+						</p>
+						<h2 className="mt-1 text-[21px] font-bold leading-tight text-[#4b473f] dark:text-slate-100">
+							Spend &amp; Unlock Tier Privileges
+						</h2>
+						<p className="mt-1.5 text-[13px] leading-relaxed text-[#8a857c] dark:text-slate-400">
+							Accumulate spending with your {name} Pass to unlock dining discounts on every future order.
+						</p>
+					</div>
+				</div>
+
+				<div className="mt-5">
+					<div
+						className="relative overflow-hidden rounded-[20px] border px-4 pb-4 pt-5"
+						style={{
+							backgroundImage: cardTierGradientCss(selectedTierBrand),
+							borderColor: `${selectedTierBrand}88`,
+							color: selectedTierTheme.primary,
+							boxShadow: `0 2px 0 ${selectedTierBrand}55`,
+						}}
+						onTouchStart={(event) => {
+							const touch = event.touches[0]
+							event.currentTarget.dataset.swipeStartX = String(touch?.clientX ?? '')
+						}}
+						onTouchEnd={(event) => {
+							const start = Number(event.currentTarget.dataset.swipeStartX)
+							const end = event.changedTouches[0]?.clientX ?? start
+							if (!Number.isFinite(start) || Math.abs(end - start) < 32) return
+							setSelectedIndex((current) =>
+								end < start
+									? Math.min(current + 1, sortedTiers.length - 1)
+									: Math.max(current - 1, 0),
+							)
+						}}
+					>
+						{activeTierIndex != null && isCurrentMember ? (
+							<span
+								className="mb-3 inline-flex rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-[0.08em]"
+								style={{ backgroundColor: selectedTierBrand, color: selectedTierTheme.primary }}
+							>
+								You are currently a {selectedTier.name} member
+							</span>
+						) : activeTierIndex == null ? (
+							<span className="mb-3 inline-flex rounded-full border border-current/25 bg-white/15 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.08em]">
+								Not a member yet
+							</span>
+						) : null}
+						<div className="flex items-center justify-between gap-2">
+							<p className="text-[17px] font-bold uppercase tracking-[0.04em]" style={{ color: selectedTierTheme.primary }}>
+								{selectedTier.name}
+							</p>
+							<Medal className="h-6 w-6 shrink-0" style={{ color: selectedTierTheme.primary }} strokeWidth={1.8} aria-hidden />
+						</div>
+						<p className="mt-5 text-[12px] font-medium opacity-75">Cumulative Spend</p>
+						<p className="mt-1 text-[25px] font-bold leading-none tracking-tight">
+							{formatSpend(selectedTier.minUsdc6)}
+						</p>
+						<div className="my-4 h-px bg-current opacity-20" />
+						<p className="text-[21px] font-bold leading-none" style={{ color: selectedTierTheme.primary }}>
+							{discountFromDescription(selectedTier.description) ?? 'Member Benefits'}
+						</p>
+						<p className="mt-2 text-[13px] font-medium opacity-75">Every Future Order</p>
+						<div className="mt-3 border-t border-current pt-3 text-[12px] opacity-75">
+							{selectedTier.description || 'Member dining privileges'}
+						</div>
+					</div>
+					{sortedTiers.length > 1 ? (
+						<div className="mt-3 flex items-center justify-between gap-3">
+							<button
+								type="button"
+								onClick={() => setSelectedIndex((current) => Math.max(current - 1, 0))}
+								disabled={selectedIndex === 0}
+								className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-sm disabled:cursor-not-allowed disabled:opacity-35 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+								aria-label="Previous membership tier"
+							>
+								<ChevronLeft className="h-4 w-4" aria-hidden />
+							</button>
+							<p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+								{selectedIndex + 1} / {sortedTiers.length}
+							</p>
+							<button
+								type="button"
+								onClick={() => setSelectedIndex((current) => Math.min(current + 1, sortedTiers.length - 1))}
+								disabled={selectedIndex === sortedTiers.length - 1}
+								className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-sm disabled:cursor-not-allowed disabled:opacity-35 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+								aria-label="Next membership tier"
+							>
+								<ChevronRight className="h-4 w-4" aria-hidden />
+							</button>
+						</div>
+					) : null}
 				</div>
 			</div>
 		</section>
@@ -3012,6 +3193,7 @@ type DiscoverOfferTierRow = {
 	name: string
 	minUsdc6: bigint
 	discountPct: number
+	description?: string
 	backgroundColor: string | null
 	membershipFeeE6?: string
 	membershipFee?: string
@@ -3111,6 +3293,20 @@ function parseDiscoverAllTiersFromMeta(meta: Record<string, unknown> | null): Di
 		const nameRaw = o.name ?? nested?.name
 		const tierName =
 			typeof nameRaw === 'string' && nameRaw.trim() ? nameRaw.trim() : fallbackName
+		const descriptionRaw = o.description ?? nested?.description
+		const description =
+			typeof descriptionRaw === 'string' && descriptionRaw.trim()
+				? descriptionRaw.trim()
+				: undefined
+		const backgroundRaw =
+			o.backgroundColor ??
+			o.background_color ??
+			nested?.backgroundColor ??
+			nested?.background_color
+		const backgroundColor =
+			typeof backgroundRaw === 'string' && backgroundRaw.trim()
+				? discoverSafeCssColor(backgroundRaw)
+				: null
 		let membershipFeeE6: string | undefined
 		if (o.membershipFeeE6 != null && String(o.membershipFeeE6).trim() !== '') {
 			try {
@@ -3135,7 +3331,8 @@ function parseDiscoverAllTiersFromMeta(meta: Record<string, unknown> | null): Di
 			name: tierName,
 			minUsdc6: minUsdc6 > 0n ? minUsdc6 : BigInt(fallbackIndex + 1),
 			discountPct: 0,
-			backgroundColor: null,
+			description,
+			backgroundColor,
 			membershipFeeE6,
 			membershipFee,
 			membershipDurationKind,
@@ -5776,6 +5973,12 @@ function DiscoverMerchantDetailFullScreen({
 		if (fromMeta && fromMeta.toLowerCase() !== 'tier') return fromMeta
 		return membershipFeeDisplay?.tierName?.trim() || `Tier ${activeTierIndex}`
 	}, [hasActiveMembership, merchantMetadataRoot, merchantAssets, membershipFeeDisplay])
+	const activeMembershipTierIndex = useMemo(() => {
+		if (!hasActiveMembership) return null
+		const activeNft = pickActiveDiscoverMembershipNft(merchantAssets?.nfts)
+		const rawTierIndex = activeNft != null ? Number(activeNft.tier) : NaN
+		return Number.isFinite(rawTierIndex) && rawTierIndex >= 0 ? rawTierIndex : null
+	}, [hasActiveMembership, merchantAssets])
 	const curatedOffersPanel = useMemo(() => {
 		if (item.cardAddress == null) return undefined
 		return DISCOVER_MERCHANT_CURATED_OFFERS[resolveDiscoverCardPanelKey(item.cardAddress)]
@@ -5875,6 +6078,10 @@ function DiscoverMerchantDetailFullScreen({
 	const sessionHasMultiplierOffers = sessionMultiplierCardCount > 1
 	const prospectJoinPanelBackground = useMemo(
 		() => parseDiscoverTier0PanelBackground(merchantMetadataRoot),
+		[merchantMetadataRoot],
+	)
+	const discoverMembershipTiers = useMemo(
+		() => parseDiscoverAllTiersFromMeta(merchantMetadataRoot),
 		[merchantMetadataRoot],
 	)
 	/**
@@ -8059,6 +8266,13 @@ function DiscoverMerchantDetailFullScreen({
 							actionsDisabled={giftSheetOpen}
 						/>
 					) : null}
+					<DiscoverMerchantMembershipTiersPanel
+						merchantName={passTitle}
+						brandColor={merchantDetailBrandColor ?? DISCOVER_VISIT_BRAND_FALLBACK}
+						balancePrefix={balancePrefix || 'CA$'}
+						tiers={discoverMembershipTiers}
+						activeTierIndex={activeMembershipTierIndex}
+					/>
 					{isConetGenesisCard ? (
 						<ConetGenesisNodeDiscoverSection
 							onLockSeat={lockConetGenesisSeat}

@@ -3668,7 +3668,7 @@ export default function DiscoverMerchantGiftSheet({
 
 	return (
 		<section
-			className="relative mx-auto flex w-full max-w-lg flex-col gap-1 pb-32"
+			className="relative mx-auto flex w-full max-w-lg flex-col gap-1 pb-8"
 			aria-label="Payment and confirmation"
 		>
 			<h2 className="text-[28px] font-bold leading-[34px] tracking-tight text-[#1a1b1f] dark:text-slate-100">
@@ -4051,13 +4051,9 @@ export default function DiscoverMerchantGiftSheet({
 			) : null}
 
 			<div className="mb-8 rounded-xl bg-white p-6 shadow-sm dark:bg-slate-900">
-				<div className="flex items-center justify-between pb-1">
+				<div className="pb-1">
 					<span className="text-[12px] font-semibold uppercase tracking-wider text-[#424655] dark:text-slate-400">
-						Order summary
-					</span>
-					<span className="flex items-center gap-1 text-[12px] font-semibold text-emerald-800 dark:text-emerald-300">
-						<span className="h-1.5 w-1.5 rounded-full bg-emerald-700" />
-						Quoted settlement
+						Transaction summary
 					</span>
 				</div>
 				<div className="flex flex-col gap-2 pt-1 text-[15px] text-[#424655] dark:text-slate-400">
@@ -4098,14 +4094,6 @@ export default function DiscoverMerchantGiftSheet({
 							</span>
 						</div>
 					) : null}
-					<div className="flex items-center justify-between">
-						<span>Platform & handling fee</span>
-						<span className="font-medium text-emerald-700 dark:text-emerald-400">{prefix}0.00 (Free)</span>
-					</div>
-					<div className="flex items-center justify-between">
-						<span>Network gas</span>
-						<span className="font-medium text-emerald-700 dark:text-emerald-400">Free (sponsored)</span>
-					</div>
 				</div>
 			</div>
 
@@ -4139,11 +4127,8 @@ export default function DiscoverMerchantGiftSheet({
 				</div>
 			) : null}
 
-			<div
-				className="fixed bottom-0 left-0 right-0 z-40 bg-[#faf9fe]/95 px-5 pt-3 shadow-[0_-4px_24px_rgba(0,0,0,0.06)] backdrop-blur-xl dark:bg-slate-950/95"
-				style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom, 0px))' }}
-			>
-				<div className="mx-auto flex w-full max-w-lg items-center justify-between gap-4">
+			<div className="mt-2">
+				<div className="flex flex-col gap-3">
 					<div className="flex min-w-0 flex-col">
 						<span className="text-[12px] font-semibold uppercase tracking-[0.05em] text-[#424655] dark:text-slate-400">
 							Due now
@@ -4158,7 +4143,7 @@ export default function DiscoverMerchantGiftSheet({
 						disabled={submitting || stripeBusy}
 						aria-busy={submitting}
 						aria-label={payCtaLabel}
-						className="flex h-[52px] max-w-[240px] flex-1 items-center justify-center gap-2 rounded-xl px-4 text-[15px] font-semibold tracking-tight shadow-md transition duration-150 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
+						className="flex w-full items-center justify-center gap-2 rounded-2xl py-4 text-[17px] font-bold disabled:opacity-40"
 						style={{
 							backgroundColor: brandControl,
 							color: onBrandText,
@@ -4175,7 +4160,7 @@ export default function DiscoverMerchantGiftSheet({
 						)}
 					</button>
 				</div>
-				<p className="mx-auto mt-2 max-w-lg pb-1 text-center text-[12px] font-semibold uppercase tracking-[0.05em] text-[#424655] dark:text-slate-400">
+				<p className="mt-2 text-center text-[12px] font-semibold uppercase tracking-[0.05em] text-[#424655] dark:text-slate-400">
 					Protected by Beamio · Unclaimed gifts return automatically in 24h
 				</p>
 			</div>

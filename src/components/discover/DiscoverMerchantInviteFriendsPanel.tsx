@@ -93,7 +93,10 @@ export function DiscoverMerchantInviteFriendsPanel(props: {
 	}, [isMember, cardAddress, referrerEoa])
 
 	const headlinePercent = ratios ? buildHeadlinePercent(ratios) : 0
-	const visible = Boolean(ratios && headlinePercent > 0)
+	const hasSocialReferralReward = Object.values(chainCardSocialPromotion?.events ?? {}).some(
+		(event) => event?.ref?.enabled === true,
+	)
+	const visible = headlinePercent > 0 || hasSocialReferralReward
 
 	const shareUrl = buildDiscoverMerchantShareUrl(cardAddress, referrerEoa)
 	const displayName = merchantTitle.trim() || 'this store'
@@ -162,9 +165,15 @@ export function DiscoverMerchantInviteFriendsPanel(props: {
 		}
 	}, [shareUrl, sharing, displayName])
 
-	if (!visible || !ratios) return null
+	if (!visible) return null
 
 	const showMemberDetailsChrome = isMember && detailsOpen
+	const headlineCopy =
+		headlinePercent > 0 ? `Earn ${headlinePercent}% & Reward PT! ✨` : 'Earn Reward PT! ✨'
+	const bodyCopy =
+		headlinePercent > 0
+			? `Share this store. Earn a ${headlinePercent}% match when they spend, plus you both get instant Reward PT when they visit and Like!`
+			: 'Share this store. You both get instant Reward PT when they visit and Like!'
 
 	return (
 		<section
@@ -172,11 +181,10 @@ export function DiscoverMerchantInviteFriendsPanel(props: {
 			aria-label="Invite friends referral rewards"
 		>
 			<h3 className="text-[17px] font-bold leading-snug text-[#1f2328] dark:text-slate-100">
-				Invite Friends, Earn {headlinePercent}% & Bonus Points! ✨
+				Invite Friends, {headlineCopy}
 			</h3>
 			<p className="mt-2 text-[13px] font-medium leading-relaxed text-slate-500 dark:text-slate-400">
-				Share this store. Earn a {headlinePercent}% match when they spend, plus you both get
-				instant points when they visit and Like!
+				{bodyCopy}
 			</p>
 			<button
 				type="button"

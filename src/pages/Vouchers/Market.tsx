@@ -8580,10 +8580,7 @@ function DiscoverMerchantDetailFullScreen({
 					) : null}
 
 					<div className="space-y-4">
-						{item.cardAddress &&
-						!showHealthBeautyLoyaltyPass &&
-						!showFoodBeverageProspectPass &&
-						!showFoodBeverageLoyaltyPass ? (
+						{item.cardAddress && !isConetGenesisCard ? (
 							<DiscoverMerchantInviteFriendsPanel
 								cardAddress={item.cardAddress}
 								merchantTitle={passTitle}

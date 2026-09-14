@@ -1227,7 +1227,7 @@ function DiscoverMerchantMembershipTiersPanel({
 								<div
 									key={`${tierIndex}-${tier.name}`}
 									data-tier-index={tierPosition}
-									className="relative min-w-[calc(88%-0.5rem)] snap-center overflow-hidden rounded-[20px] border bg-white px-4 pb-4 pt-5 sm:min-w-[calc(50%-0.5rem)] dark:bg-slate-900"
+									className="relative min-w-[72%] snap-center overflow-hidden rounded-[16px] border bg-white px-3 pb-3 pt-4 sm:min-w-[42%] dark:bg-slate-900"
 									style={{
 										borderColor: `${tierBrand}88`,
 										boxShadow: `0 2px 0 ${tierBrand}55`,
@@ -1236,7 +1236,7 @@ function DiscoverMerchantMembershipTiersPanel({
 								>
 									{isTopTier ? (
 										<span
-											className="absolute right-3 top-0 -translate-y-1/2 rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-[0.08em]"
+											className="absolute right-2 top-2 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.06em]"
 											style={{ backgroundColor: tierBrand, color: tierTheme.primary }}
 										>
 											Top Tier
@@ -1244,35 +1244,35 @@ function DiscoverMerchantMembershipTiersPanel({
 									) : null}
 									{isCurrentMember ? (
 										<span
-											className="mb-3 inline-flex rounded-full px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.06em]"
+											className="mb-2 inline-flex rounded-full px-2 py-0.5 text-[8px] font-bold uppercase tracking-[0.05em]"
 											style={{ backgroundColor: `${tierBrand}18`, color: tierBrand }}
 										>
 											You are currently a member
 										</span>
 									) : activeTierIndex == null ? (
 										<span
-											className="mb-3 inline-flex rounded-full border px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.06em]"
+											className="mb-2 inline-flex rounded-full border px-2 py-0.5 text-[8px] font-bold uppercase tracking-[0.05em]"
 											style={{ borderColor: `${tierBrand}55`, color: tierBrand }}
 										>
 											Not a member yet
 										</span>
 									) : null}
 									<div className="flex items-center justify-between gap-2">
-										<p className="text-[17px] font-bold uppercase tracking-[0.04em]" style={{ color: tierBrand }}>
+										<p className="text-[15px] font-bold uppercase tracking-[0.03em]" style={{ color: tierBrand }}>
 											{tier.name}
 										</p>
-										<Medal className="h-6 w-6 shrink-0" style={{ color: tierBrand }} strokeWidth={1.8} aria-hidden />
+										<Medal className="h-5 w-5 shrink-0" style={{ color: tierBrand }} strokeWidth={1.8} aria-hidden />
 									</div>
-									<p className="mt-5 text-[12px] font-medium text-[#8a857c] dark:text-slate-400">Cumulative Spend</p>
-									<p className="mt-1 text-[25px] font-bold leading-none tracking-tight text-[#4b473f] dark:text-slate-100">
+									<p className="mt-3 text-[11px] font-medium text-[#8a857c] dark:text-slate-400">Cumulative Spend</p>
+									<p className="mt-1 text-[21px] font-bold leading-none tracking-tight text-[#4b473f] dark:text-slate-100">
 										{formatSpend(tier.minUsdc6)}
 									</p>
-									<div className="my-4 h-px bg-slate-200 dark:bg-slate-700" />
-									<p className="text-[21px] font-bold leading-none" style={{ color: tierBrand }}>
+									<div className="my-3 h-px bg-slate-200 dark:bg-slate-700" />
+									<p className="text-[18px] font-bold leading-none" style={{ color: tierBrand }}>
 										{discountFromDescription(tier.description) ?? 'Member Benefits'}
 									</p>
-									<p className="mt-2 text-[13px] font-medium text-[#8a857c] dark:text-slate-400">Every Future Order</p>
-									<div className="mt-3 border-t border-slate-200 pt-3 text-[12px] text-[#8a857c] dark:border-slate-700 dark:text-slate-400">
+									<p className="mt-1.5 text-[11px] font-medium text-[#8a857c] dark:text-slate-400">Every Future Order</p>
+									<div className="mt-2 border-t border-slate-200 pt-2 text-[11px] text-[#8a857c] dark:border-slate-700 dark:text-slate-400">
 										{tier.description || 'Member dining privileges'}
 									</div>
 								</div>

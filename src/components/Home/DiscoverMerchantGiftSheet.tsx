@@ -87,6 +87,7 @@ import { conetDepinProvider } from '@/utils/constants'
 import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
 import { loadMyBrandsFeedLocalCache } from '@/utils/myBrandsFeedLocalCache'
 import { searchUsername } from '@/services/beamio'
+import { quoteDiscoverStoreCreditTopupBonus } from '@/utils/discoverMerchantPromotions'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { sendMerchantGiftRedeemChat } from '@/utils/sendMerchantGiftRedeemChat'
 import { IpfsImg } from '@/components/IpfsImg'
@@ -534,6 +535,23 @@ function formatPreviewAmount(raw: string): string {
 	return n.toFixed(2)
 }
 
+function sumGiftValueE6(membershipFeeE6: string | undefined, topupCreditE6: string | undefined): string {
+	try {
+		return (BigInt(membershipFeeE6 ?? '0') + BigInt(topupCreditE6 ?? '0')).toString()
+	} catch {
+		return '0'
+	}
+}
+
+function formatGiftValueE6(e6: string | null | undefined): string | null {
+	if (!e6) return null
+	try {
+		return formatPreviewAmount(ethers.formatUnits(e6, 6))
+	} catch {
+		return null
+	}
+}
+
 function formatUsdcAmountForDisplay(raw: string): string {
 	const n = Number(String(raw).replace(/,/g, '').trim())
 	return Number.isFinite(n) && n >= 0 ? n.toFixed(2) : '0.00'
@@ -761,6 +779,7 @@ export default function DiscoverMerchantGiftSheet({
 	const [issuedShareUrl, setIssuedShareUrl] = useState<string | null>(null)
 	const [chatDeliveryHint, setChatDeliveryHint] = useState<string | null>(null)
 	const [issuedTopupCreditE6, setIssuedTopupCreditE6] = useState<string | null>(null)
+	const [issuedGiftValueE6, setIssuedGiftValueE6] = useState<string | null>(null)
 	const [copyCodeStatus, setCopyCodeStatus] = useState<'idle' | 'ok'>('idle')
 	const [copyLinkStatus, setCopyLinkStatus] = useState<'idle' | 'ok'>('idle')
 
@@ -1213,6 +1232,38 @@ export default function DiscoverMerchantGiftSheet({
 		}
 	}, [amountText, ccy, baseFeeE6, giftCreditConfig])
 
+	/**
+	 * The API applies Top-up Promotion only on the direct USDC rail.
+	 * Credit (#0), Reward PT, and Stripe/reward13 rails receive principal only.
+	 * For fee cards, the promotion applies to the top-up portion, not the
+	 * membership fee, so the displayed gift value is fee + credited top-up.
+	 */
+	const giftValueQuote = useMemo(() => {
+		if (remainingPayMethod !== 'usdc' || !giftFacePreview) return null
+		return quoteDiscoverStoreCreditTopupBonus({
+			metadataRoot,
+			currency: ccy,
+			amount: Number(ethers.formatUnits(giftFacePreview.topupPrincipalE6, 6)),
+		})
+	}, [ccy, giftFacePreview, metadataRoot, remainingPayMethod])
+	const giftValueDisplayHuman = useMemo(() => {
+		if (!giftFacePreview) return previewAmount
+		if (!giftValueQuote) {
+			return formatGiftValueE6(
+				(giftFacePreview.membershipFeeE6 + giftFacePreview.topupPrincipalE6).toString(),
+			) ?? previewAmount
+		}
+		try {
+			const creditedTopupE6 = ethers.parseUnits(String(giftValueQuote.total), 6)
+			return (
+				formatGiftValueE6((giftFacePreview.membershipFeeE6 + creditedTopupE6).toString()) ??
+				previewAmount
+			)
+		} catch {
+			return previewAmount
+		}
+	}, [giftFacePreview, giftValueQuote, previewAmount])
+
 	const buildShareMessage = (code: string, claimUrl: string) => {
 		const title = merchantTitle.trim() || 'merchant'
 		const friendTag = (selectedFriend?.username ?? '').trim()
@@ -1469,7 +1520,21 @@ export default function DiscoverMerchantGiftSheet({
 				setIssuedCode(plain)
 				setIssuedShareUrl(claimUrl)
 				setIssuedTopupCreditE6(result.topupCreditE6 ?? topupPrincipalE6)
-				await deliverGiftChatIfNeeded(plain, claimUrl, Number(parsed.apiAmount))
+				setIssuedGiftValueE6(
+					sumGiftValueE6(result.membershipFeeE6 ?? membershipFeeE6.toString(), result.topupCreditE6 ?? topupPrincipalE6),
+				)
+				await deliverGiftChatIfNeeded(
+					plain,
+					claimUrl,
+					Number(
+						formatGiftValueE6(
+							sumGiftValueE6(
+								result.membershipFeeE6 ?? membershipFeeE6.toString(),
+								result.topupCreditE6 ?? topupPrincipalE6,
+							),
+						) ?? parsed.apiAmount,
+					),
+				)
 				onSuccess?.()
 				return
 			}
@@ -1637,7 +1702,21 @@ export default function DiscoverMerchantGiftSheet({
 			setIssuedCode(plain)
 			setIssuedShareUrl(claimUrl)
 			setIssuedTopupCreditE6(result.topupCreditE6 ?? topupPrincipalE6)
-			await deliverGiftChatIfNeeded(plain, claimUrl, Number(parsed.apiAmount))
+			setIssuedGiftValueE6(
+				sumGiftValueE6(result.membershipFeeE6 ?? membershipFeeE6.toString(), result.topupCreditE6 ?? topupPrincipalE6),
+			)
+			await deliverGiftChatIfNeeded(
+				plain,
+				claimUrl,
+				Number(
+					formatGiftValueE6(
+						sumGiftValueE6(
+							result.membershipFeeE6 ?? membershipFeeE6.toString(),
+							result.topupCreditE6 ?? topupPrincipalE6,
+						),
+					) ?? parsed.apiAmount,
+				),
+			)
 			onSuccess?.()
 		} catch (e) {
 			setUsdcSubmitHint(null)
@@ -1970,7 +2049,7 @@ export default function DiscoverMerchantGiftSheet({
 				<div className="mt-0.5 flex items-baseline gap-1">
 					<span className="text-[34px] font-bold leading-none tracking-tight" style={{ color: onBrandText }}>
 						{prefix}
-						{previewAmount}
+						{giftValueDisplayHuman}
 					</span>
 				</div>
 			</div>
@@ -1995,6 +2074,7 @@ export default function DiscoverMerchantGiftSheet({
 			? membershipFeeE6ToHuman(issuedTopupCreditE6) ||
 				formatAmount(Number(ethers.formatUnits(issuedTopupCreditE6, 6)), ccy)
 			: null
+		const issuedGiftValueHuman = formatGiftValueE6(issuedGiftValueE6) ?? giftValueDisplayHuman
 		const claimUrl = issuedShareUrl?.trim() ?? ''
 		const friendTag = (selectedFriend?.username ?? '').trim()
 		const friendName = selectedFriend ? beamioSearchDisplayName(selectedFriend) : ''
@@ -2525,7 +2605,7 @@ export default function DiscoverMerchantGiftSheet({
 					</h2>
 					<p className="mt-2 max-w-sm text-[13px] leading-relaxed text-[#6b7280] dark:text-slate-400">
 						{prefix}
-						{previewAmount} {merchantLabel} gift
+						{issuedGiftValueHuman} {merchantLabel} gift
 						{creditHuman ? ` — about ${prefix}${creditHuman} store credit after claim` : ''}
 						{successDirect && friendName ? `. Share with ${friendName}.` : '. Share the link or code.'}
 					</p>
@@ -4061,7 +4141,7 @@ export default function DiscoverMerchantGiftSheet({
 						<span>Gift card value</span>
 						<span className="font-medium text-[#1a1b1f] dark:text-slate-100">
 							{prefix}
-							{previewAmount}
+							{giftValueDisplayHuman}
 						</span>
 					</div>
 					{remainingPayMethod === 'credit' ? (
@@ -4129,14 +4209,6 @@ export default function DiscoverMerchantGiftSheet({
 
 			<div className="mt-2">
 				<div className="flex flex-col gap-3">
-					<div className="flex min-w-0 flex-col">
-						<span className="text-[12px] font-semibold uppercase tracking-[0.05em] text-[#424655] dark:text-slate-400">
-							Due now
-						</span>
-						<span className="truncate text-[22px] font-bold leading-7 tracking-tight text-[#1a1b1f] dark:text-slate-100">
-							{payTotalLabel}
-						</span>
-					</div>
 					<button
 						type="button"
 						onClick={() => void handlePurchase()}
@@ -4160,9 +4232,6 @@ export default function DiscoverMerchantGiftSheet({
 						)}
 					</button>
 				</div>
-				<p className="mt-2 text-center text-[12px] font-semibold uppercase tracking-[0.05em] text-[#424655] dark:text-slate-400">
-					Protected by Beamio · Unclaimed gifts return automatically in 24h
-				</p>
 			</div>
 		</section>
 	)

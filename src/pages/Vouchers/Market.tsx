@@ -1046,6 +1046,73 @@ function DiscoverMerchantHowPointsWorkPanel({
 	)
 }
 
+function DiscoverMerchantTreatAFriendPanel({
+	merchantName,
+	brandColor,
+	onSendGift,
+	actionsDisabled,
+}: {
+	merchantName: string
+	brandColor: string
+	onSendGift: () => void
+	actionsDisabled: boolean
+}) {
+	const name = merchantName.trim() || 'merchant'
+	const brand = brandColor.trim() || DISCOVER_VISIT_BRAND_FALLBACK
+
+	return (
+		<section className="overflow-hidden rounded-2xl border border-[#ebe6df] bg-white shadow-[0_8px_24px_rgba(31,35,40,0.06)] dark:border-slate-700 dark:bg-slate-900">
+			<div className="px-4 py-4">
+				<div className="flex items-start gap-3">
+					<span
+						className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border"
+						style={{
+							backgroundColor: `${DISCOVER_FOOD_BEVERAGE_GIFT_ACCENT}22`,
+							borderColor: `${DISCOVER_FOOD_BEVERAGE_GIFT_ACCENT}55`,
+						}}
+						aria-hidden
+					>
+						<Gift
+							className="h-5 w-5"
+							style={{ color: DISCOVER_FOOD_BEVERAGE_GIFT_ACCENT }}
+							strokeWidth={2.25}
+						/>
+					</span>
+					<div className="min-w-0 flex-1">
+						<p className="text-[13px] font-bold uppercase tracking-[0.12em] text-[#1f2328] dark:text-slate-100">
+							Treat a Friend
+						</p>
+						<p className="mt-1 text-[12px] font-medium leading-snug text-[#5c6570] dark:text-slate-400">
+							Share the fresh {name} experience with instant digital delivery.
+						</p>
+					</div>
+				</div>
+				<p className="mt-3 text-[12px] leading-relaxed text-[#5c6570] dark:text-slate-400">
+					Send dining vouchers or prepaid credits directly to friends via link or @BeamioTag with{' '}
+					<span className="font-bold text-[#3d4450] dark:text-slate-200">zero platform fees</span>.
+					Recipients can redeem or merge into their own pass immediately.
+				</p>
+				<div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[#f0ebe4] pt-3 dark:border-slate-700">
+					<span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#5c6570] dark:text-slate-400">
+						<ShieldCheck className="h-3.5 w-3.5 shrink-0 text-emerald-600" strokeWidth={2.25} aria-hidden />
+						Instant transfer &amp; non-expiring
+					</span>
+					<button
+						type="button"
+						onClick={onSendGift}
+						disabled={actionsDisabled}
+						className="inline-flex items-center justify-center gap-1.5 rounded-full px-4 py-2 text-[12px] font-bold text-white transition hover:brightness-110 active:scale-[0.98] disabled:opacity-60"
+						style={{ backgroundColor: brand }}
+					>
+						<Send className="h-3.5 w-3.5 shrink-0 opacity-90" strokeWidth={2.25} aria-hidden />
+						Send as Gift
+					</button>
+				</div>
+			</div>
+		</section>
+	)
+}
+
 /**
  * Food & Beverage · no Store Credit Multiplier · non-member with no #0 / #13 holdings.
  * Member Pass preview + Order Pick-up / Gift Voucher / Contact (brand chrome).
@@ -1453,14 +1520,15 @@ function DiscoverMerchantFoodBeverageLoyaltyPassPanel({
 						</span>
 						<div className="min-w-0 flex-1">
 							<p className="text-[13px] font-bold uppercase tracking-[0.12em] text-[#1f2328] dark:text-slate-100">
-								Gift Dining to Friends
+								Treat a Friend
 							</p>
 							<p className="mt-1 text-[12px] font-medium leading-snug text-[#5c6570] dark:text-slate-400">
 								Share the {nameDisplay} experience with instant digital delivery
 							</p>
 							<p className="mt-1.5 text-[12px] leading-relaxed text-[#6b7280] dark:text-slate-500">
-								Send dining vouchers or prepaid credits directly to friends via link or BeamioTag with
-								zero platform fees. Recipient can redeem or merge into their own member pass immediately.
+								Send dining vouchers or prepaid credits directly to friends via link or @BeamioTag with
+								<span className="font-bold text-[#3d4450] dark:text-slate-200"> zero platform fees</span>.
+								Recipients can redeem or merge into their own pass immediately.
 							</p>
 						</div>
 					</div>
@@ -7979,6 +8047,18 @@ function DiscoverMerchantDetailFullScreen({
 					!showFoodBeverageLoyaltyPass
 						? renderVisitActions()
 						: null}
+					{showProspectJoinPanel &&
+					!showMemberRechargePrivileges &&
+					!showHealthBeautyLoyaltyPass &&
+					!showFoodBeverageProspectPass &&
+					!showFoodBeverageLoyaltyPass ? (
+						<DiscoverMerchantTreatAFriendPanel
+							merchantName={passTitle}
+							brandColor={merchantDetailBrandColor ?? DISCOVER_VISIT_BRAND_FALLBACK}
+							onSendGift={openGiftSheet}
+							actionsDisabled={giftSheetOpen}
+						/>
+					) : null}
 					{isConetGenesisCard ? (
 						<ConetGenesisNodeDiscoverSection
 							onLockSeat={lockConetGenesisSeat}

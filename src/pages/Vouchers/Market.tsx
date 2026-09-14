@@ -1240,7 +1240,7 @@ function DiscoverMerchantMembershipTiersPanel({
 								<div
 									key={`${tierIndex}-${tier.name}`}
 									data-tier-index={tierPosition}
-									className="relative min-w-[36%] snap-center overflow-hidden rounded-[16px] border bg-white px-3 pb-3 pt-4 sm:min-w-[21%] dark:bg-slate-900"
+									className="relative min-w-0 flex-[0_0_calc((100%_-_1rem)_/_2)] snap-center overflow-visible rounded-[16px] border bg-white px-3 pb-3 pt-4 sm:flex-[0_0_21%] dark:bg-slate-900"
 									style={{
 										borderColor: `${tierBrand}88`,
 										boxShadow: `0 2px 0 ${tierBrand}55`,
@@ -1249,7 +1249,7 @@ function DiscoverMerchantMembershipTiersPanel({
 								>
 									{isTopTier ? (
 										<span
-											className="absolute right-2 top-2 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.06em]"
+											className="absolute -right-px -top-[9px] z-10 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.06em]"
 											style={{ backgroundColor: tierBrand, color: tierTheme.primary }}
 										>
 											Top Tier

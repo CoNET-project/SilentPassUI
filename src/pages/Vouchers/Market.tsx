@@ -912,6 +912,14 @@ function DiscoverMerchantHealthBeautyLoyaltyPassPanel({
 				Top Up
 			</button>
 
+			<DiscoverMerchantHowPointsWorkPanel
+				pct={pct}
+				enabled={customerLoyaltyPointsEnabled}
+				fiatLabel={fiatLabel}
+				accent={DISCOVER_HEALTH_BEAUTY_ACCENT}
+				rewardContext="purchase"
+			/>
+
 			<DiscoverMerchantVisitActionsBlock
 				brandColor={brand}
 				onBooking={onBooking}
@@ -1421,6 +1429,14 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 				</button>
 			</p>
 
+			<DiscoverMerchantHowPointsWorkPanel
+				pct={pct}
+				enabled={customerLoyaltyPointsEnabled}
+				fiatLabel={fiatLabel}
+				accent={DISCOVER_FOOD_BEVERAGE_GIFT_ACCENT}
+				rewardContext="dining order"
+			/>
+
 			<DiscoverMerchantVisitActionsBlock
 				brandColor={brand}
 				onBooking={onBooking}
@@ -1591,6 +1607,14 @@ function DiscoverMerchantFoodBeverageLoyaltyPassPanel({
 				<Wallet className="h-5 w-5 shrink-0 opacity-90" strokeWidth={2.25} aria-hidden />
 				Top Up
 			</button>
+
+			<DiscoverMerchantHowPointsWorkPanel
+				pct={pct}
+				enabled={customerLoyaltyPointsEnabled}
+				fiatLabel={fiatLabel}
+				accent={DISCOVER_FOOD_BEVERAGE_GIFT_ACCENT}
+				rewardContext="dining order"
+			/>
 
 			<DiscoverMerchantVisitActionsBlock
 				brandColor={brand}
@@ -6968,6 +6992,15 @@ function DiscoverMerchantDetailFullScreen({
 			error={merchantVisitError}
 		/>
 	)
+	const renderHowPointsWorkPanel = () => (
+		<DiscoverMerchantHowPointsWorkPanel
+			pct={merchantRewardPtPercent}
+			enabled={customerLoyaltyPointsEnabled}
+			fiatLabel={balancePrefix || 'CA$'}
+			accent={DISCOVER_FOOD_BEVERAGE_GIFT_ACCENT}
+			rewardContext={item.category === 'food-beverage' ? 'dining order' : 'purchase'}
+		/>
+	)
 
 	const handleUsdcTopupContinue = useCallback(async () => {
 		const cardAddress = item.cardAddress?.trim() ?? ''
@@ -8226,16 +8259,18 @@ function DiscoverMerchantDetailFullScreen({
 									</button>
 								</div>
 							) : null}
+							{renderHowPointsWorkPanel()}
 							{renderVisitActions()}
 						</>
 					) : null}
-					<DiscoverMerchantHowPointsWorkPanel
-						pct={merchantRewardPtPercent}
-						enabled={customerLoyaltyPointsEnabled}
-						fiatLabel={balancePrefix || 'CA$'}
-						accent={DISCOVER_FOOD_BEVERAGE_GIFT_ACCENT}
-						rewardContext={item.category === 'food-beverage' ? 'dining order' : 'purchase'}
-					/>
+					{!isConetGenesisCard &&
+					!hasActiveMembership &&
+					!showMemberRechargePrivileges &&
+					!showHealthBeautyLoyaltyPass &&
+					!showFoodBeverageProspectPass &&
+					!showFoodBeverageLoyaltyPass
+						? renderHowPointsWorkPanel()
+						: null}
 					{!isConetGenesisCard &&
 					!hasActiveMembership &&
 					!showMemberRechargePrivileges &&
@@ -8523,6 +8558,13 @@ function DiscoverMerchantDetailFullScreen({
 					</div>
 					) : null}
 
+					{!isConetGenesisCard &&
+					hasActiveMembership &&
+					!showMemberRechargePrivileges &&
+					!showHealthBeautyLoyaltyPass &&
+					!showFoodBeverageLoyaltyPass
+						? renderHowPointsWorkPanel()
+						: null}
 					{!isConetGenesisCard &&
 					hasActiveMembership &&
 					!showMemberRechargePrivileges &&

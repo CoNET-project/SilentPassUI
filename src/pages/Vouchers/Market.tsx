@@ -1227,7 +1227,7 @@ function DiscoverMerchantMembershipTiersPanel({
 								<div
 									key={`${tierIndex}-${tier.name}`}
 									data-tier-index={tierPosition}
-									className="relative min-w-0 flex-[0_0_calc((100%_-_1rem)_/_2)] snap-center overflow-visible rounded-[16px] border bg-white px-3 pb-3 pt-4 sm:flex-[0_0_21%] dark:bg-slate-900"
+									className="relative min-w-0 flex-[0_0_calc((100%_-_1rem)_/_2)] snap-center overflow-visible rounded-[16px] border bg-white px-3 pb-3 pt-4 dark:bg-slate-900"
 									style={{
 										borderColor: `${tierBrand}88`,
 										boxShadow: `0 2px 0 ${tierBrand}55`,
@@ -7960,6 +7960,9 @@ function DiscoverMerchantDetailFullScreen({
 		}, 300)
 	}
 
+	const MERCHANT_HERO_COLLAPSE_SCROLL_TOP = 48
+	const MERCHANT_HERO_EXPAND_SCROLL_TOP = 8
+
 	useEffect(() => {
 		return () => {
 			if (merchantHeroAnimationTimerRef.current) {
@@ -8089,7 +8092,17 @@ function DiscoverMerchantDetailFullScreen({
 					const previousScrollTop = merchantHeroScrollTopRef.current
 					merchantHeroScrollTopRef.current = nextScrollTop
 					if (Math.abs(nextScrollTop - previousScrollTop) < 1) return
-					const nextTarget = nextScrollTop > previousScrollTop ? 'collapsed' : 'expanded'
+
+					// Keep a wide hysteresis band so small direction changes in the
+					// middle of the content do not repeatedly toggle the hero.
+					let nextTarget: 'expanded' | 'collapsed' | null = null
+					if (nextScrollTop >= MERCHANT_HERO_COLLAPSE_SCROLL_TOP) {
+						nextTarget = 'collapsed'
+					} else if (nextScrollTop <= MERCHANT_HERO_EXPAND_SCROLL_TOP) {
+						nextTarget = 'expanded'
+					}
+					if (!nextTarget) return
+
 					merchantHeroAnimationRequestedRef.current = nextTarget
 					if (
 						merchantHeroAnimationRunningRef.current ||

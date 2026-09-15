@@ -901,14 +901,6 @@ function DiscoverMerchantHealthBeautyLoyaltyPassPanel({
 				</div>
 			</section>
 
-			<DiscoverMerchantHowPointsWorkPanel
-				pct={pct}
-				enabled={customerLoyaltyPointsEnabled}
-				fiatLabel={fiatLabel}
-				accent={DISCOVER_HEALTH_BEAUTY_ACCENT}
-				rewardContext="visit or purchase"
-			/>
-
 			<button
 				type="button"
 				onClick={onActivateTopUp}
@@ -1406,14 +1398,6 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 				Top Up to Activate
 			</button>
 
-			<DiscoverMerchantHowPointsWorkPanel
-				pct={pct}
-				enabled={customerLoyaltyPointsEnabled}
-				fiatLabel={fiatLabel}
-				accent={DISCOVER_FOOD_BEVERAGE_GIFT_ACCENT}
-				rewardContext="dining order"
-			/>
-
 			<p className="text-center text-[12px] leading-snug text-[#5c6570] dark:text-slate-400">
 				or auto-activates on your{' '}
 				<button
@@ -1636,14 +1620,6 @@ function DiscoverMerchantFoodBeverageLoyaltyPassPanel({
 					</span>
 				</div>
 			</section>
-
-			<DiscoverMerchantHowPointsWorkPanel
-				pct={pct}
-				enabled={customerLoyaltyPointsEnabled}
-				fiatLabel={fiatLabel}
-				accent={DISCOVER_FOOD_BEVERAGE_GIFT_ACCENT}
-				rewardContext="dining order"
-			/>
 
 			<button
 				type="button"
@@ -1882,8 +1858,14 @@ function DiscoverMerchantMemberRechargePrivilegesPanel({
 			</header>
 
 			<div
-				className="relative aspect-[2/1] overflow-hidden rounded-[20px] px-5 pb-5 pt-5 shadow-[0_8px_28px_rgba(44,36,22,0.28)]"
-				style={{ backgroundImage: panelGradient, color: panelTheme.primary }}
+				className="relative flex min-h-0 flex-col overflow-hidden rounded-[20px] px-5 pb-5 pt-5 shadow-[0_8px_28px_rgba(44,36,22,0.28)]"
+				style={{
+					backgroundImage: panelGradient,
+					color: panelTheme.primary,
+					// Keep the 2:1 ratio as a minimum, but let long labels and
+					// currency values increase the card height naturally.
+					minHeight: 'min(256px, calc((100vw - 2rem) / 2))',
+				}}
 			>
 				<div className="flex items-start justify-between gap-3">
 					<div className="min-w-0">
@@ -1948,7 +1930,7 @@ function DiscoverMerchantMemberRechargePrivilegesPanel({
 				</div>
 
 				<div
-					className="absolute bottom-5 left-5 right-5 flex items-end gap-2.5 border-t pt-4"
+					className="mt-auto flex items-end gap-2.5 border-t pt-4"
 					style={{ borderColor: panelTheme.cardBorder }}
 				>
 					{chargePercent != null && chargePercent > 0 ? (
@@ -5559,7 +5541,6 @@ function DiscoverMerchantDetailFullScreen({
 	const merchantHeroScrollTopRef = useRef(0)
 	const merchantHeroAnimationRunningRef = useRef(false)
 	const merchantHeroAnimationTargetRef = useRef<'expanded' | 'collapsed'>('expanded')
-	const merchantHeroAnimationRequestedRef = useRef<'expanded' | 'collapsed'>('expanded')
 	const merchantHeroAnimationTimerRef = useRef<number | null>(null)
 	const [giftSheetOpen, setGiftSheetOpen] = useState(false)
 	const [giftSheetEntered, setGiftSheetEntered] = useState(false)
@@ -6175,11 +6156,23 @@ function DiscoverMerchantDetailFullScreen({
 	}, [showFoodBeverageProspectPass, showFoodBeverageLoyaltyPass, merchantMetadataRoot])
 	const customerLoyaltyPointsEnabled = useMemo(() => {
 		if (consumptionPointSystemEnabledFromMetadata(merchantMetadataRoot) === true) return true
-		const { chargePercent } = parseDiscoverActorRewardPercentsFromMetadata(merchantMetadataRoot)
-		if (chargePercent != null && Number.isFinite(chargePercent) && chargePercent > 0) return true
+		const { chargePercent, topupPercent } = parseDiscoverActorRewardPercentsFromMetadata(merchantMetadataRoot)
+		if (
+			(chargePercent != null && Number.isFinite(chargePercent) && chargePercent > 0) ||
+			(topupPercent != null && Number.isFinite(topupPercent) && topupPercent > 0)
+		) {
+			return true
+		}
 		if (hasDiscoverReferrerRewardSettingFromMetadata(merchantMetadataRoot)) return true
 		return Object.values(chainCardSocialPromotion?.events ?? {}).some((event) => event?.ref?.enabled === true)
 	}, [merchantMetadataRoot, chainCardSocialPromotion])
+	const merchantRewardPtPercent = useMemo(() => {
+		const { chargePercent, topupPercent } = parseDiscoverActorRewardPercentsFromMetadata(merchantMetadataRoot)
+		const percent = chargePercent ?? topupPercent
+		return percent != null && Number.isFinite(percent) && percent > 0
+			? Number(percent.toFixed(2)).toString()
+			: null
+	}, [merchantMetadataRoot])
 	/** Percent top-up only — hide fixed / fixedTiers on F&B prospect Welcome Reward. */
 	const foodBeveragePercentTopupWelcomeLine = useMemo(() => {
 		if (!showFoodBeverageProspectPass) return null
@@ -7953,10 +7946,6 @@ function DiscoverMerchantDetailFullScreen({
 		merchantHeroAnimationTimerRef.current = window.setTimeout(() => {
 			merchantHeroAnimationRunningRef.current = false
 			merchantHeroAnimationTimerRef.current = null
-			const requested = merchantHeroAnimationRequestedRef.current
-			if (requested !== merchantHeroAnimationTargetRef.current) {
-				animateMerchantHeroTo(requested)
-			}
 		}, 300)
 	}
 
@@ -8092,22 +8081,28 @@ function DiscoverMerchantDetailFullScreen({
 					const previousScrollTop = merchantHeroScrollTopRef.current
 					merchantHeroScrollTopRef.current = nextScrollTop
 					if (Math.abs(nextScrollTop - previousScrollTop) < 1) return
+					// Height changes can make the browser emit a compensating scroll
+					// event. Ignore all scroll input while the hero transition is
+					// running so that this layout correction cannot reverse it.
+					if (merchantHeroAnimationRunningRef.current) return
 
 					// Keep a wide hysteresis band so small direction changes in the
 					// middle of the content do not repeatedly toggle the hero.
 					let nextTarget: 'expanded' | 'collapsed' | null = null
-					if (nextScrollTop >= MERCHANT_HERO_COLLAPSE_SCROLL_TOP) {
+					if (
+						nextScrollTop > previousScrollTop &&
+						nextScrollTop >= MERCHANT_HERO_COLLAPSE_SCROLL_TOP
+					) {
 						nextTarget = 'collapsed'
-					} else if (nextScrollTop <= MERCHANT_HERO_EXPAND_SCROLL_TOP) {
+					} else if (
+						nextScrollTop < previousScrollTop &&
+						nextScrollTop <= MERCHANT_HERO_EXPAND_SCROLL_TOP
+					) {
 						nextTarget = 'expanded'
 					}
 					if (!nextTarget) return
 
-					merchantHeroAnimationRequestedRef.current = nextTarget
-					if (
-						merchantHeroAnimationRunningRef.current ||
-						merchantHeroAnimationTargetRef.current === nextTarget
-					) {
+					if (merchantHeroAnimationTargetRef.current === nextTarget) {
 						return
 					}
 					animateMerchantHeroTo(nextTarget)
@@ -8320,6 +8315,13 @@ function DiscoverMerchantDetailFullScreen({
 							{renderVisitActions()}
 						</>
 					) : null}
+					<DiscoverMerchantHowPointsWorkPanel
+						pct={merchantRewardPtPercent}
+						enabled={customerLoyaltyPointsEnabled}
+						fiatLabel={balancePrefix || 'CA$'}
+						accent={DISCOVER_FOOD_BEVERAGE_GIFT_ACCENT}
+						rewardContext={item.category === 'food-beverage' ? 'dining order' : 'purchase'}
+					/>
 					{!isConetGenesisCard &&
 					!hasActiveMembership &&
 					!showMemberRechargePrivileges &&
@@ -8328,11 +8330,7 @@ function DiscoverMerchantDetailFullScreen({
 					!showFoodBeverageLoyaltyPass
 						? renderVisitActions()
 						: null}
-					{showProspectJoinPanel &&
-					!showMemberRechargePrivileges &&
-					!showHealthBeautyLoyaltyPass &&
-					!showFoodBeverageProspectPass &&
-					!showFoodBeverageLoyaltyPass ? (
+					{!isConetGenesisCard ? (
 						<DiscoverMerchantTreatAFriendPanel
 							merchantName={passTitle}
 							brandColor={merchantDetailBrandColor ?? DISCOVER_VISIT_BRAND_FALLBACK}

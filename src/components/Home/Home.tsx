@@ -876,11 +876,6 @@ const Home = (_props: HomeProps) => {
 		setOpeningReceiveWalletId(null)
 	}, [openingReceiveWalletId])
 
-	const openReceiveQr = useCallback(() => {
-		setReceiveWalletOpenError('')
-		setPayReceiveView('qr')
-	}, [])
-
 	const openReceiveFromWallet = useCallback(() => {
 		setReceiveWalletOpenError('')
 		setPayReceiveView('wallets')
@@ -914,7 +909,6 @@ const Home = (_props: HomeProps) => {
 	}, [openingReceiveWalletId, receiveWalletEoa, receiveWalletUsdcAmount])
 
 	const openReceiveSheetTap = useReliableTapHandler(handleAddFunds)
-	const openReceiveQrTap = useReliableTapHandler(openReceiveQr)
 	const openReceiveFromWalletTap = useReliableTapHandler(openReceiveFromWallet)
 	const openPayCodeSheetTap = useReliableTapHandler(() => {
 		setPayReceiveView('tabs')
@@ -2139,9 +2133,9 @@ const Home = (_props: HomeProps) => {
 													data-touch-priority="1"
 													{...openPayCodeSheetTap}
 													className={`relative z-10 flex w-full min-h-[48px] items-center justify-center gap-3 rounded-full bg-white px-8 py-4 text-[#1562f0] shadow-xl shadow-black/20 transition-transform duration-300 active:scale-[0.98] active:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[#1562f0] ${HOME_TOUCH_BUTTON_CLASS}`}
+													aria-label={tu('show_pay_code')}
 												>
 													<QrCode className="h-6 w-6 shrink-0" strokeWidth={2.2} aria-hidden />
-													<span className="text-base font-bold uppercase tracking-widest">{tu('show_pay_code')}</span>
 												</button>
 											</div>
 										</div>
@@ -2939,17 +2933,17 @@ const Home = (_props: HomeProps) => {
 											<button
 												type="button"
 												className={fundWalletOptionClass}
-												{...openReceiveQrTap}
+												onClick={() => dismissPayReceiveThenOpenAddCash('coinbase')}
 											>
 												<span className="min-w-0">
 													<span className="block text-base font-semibold text-[#191c1d] dark:text-slate-100">
-														{tu('receive_via_qr')}
+														Base Onramp
 													</span>
 													<span className="mt-0.5 block text-sm text-[#737687] dark:text-slate-400">
-														{tu('scan_to_send_to_this_wallet')}
+														Buy USDC on Base and send it to this wallet
 													</span>
 												</span>
-												<QrCode className="h-7 w-7 shrink-0 text-[#0051d1]" strokeWidth={1.75} aria-hidden />
+												<img src={baseIcon} alt="" className="h-8 w-8 shrink-0 rounded-full object-contain" />
 											</button>
 											<button
 												type="button"

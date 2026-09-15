@@ -88,6 +88,11 @@ function sampleLuminanceUnderPoint(clientX: number, clientY: number): number | n
 const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 	const barControls = useAnimation()
 	const wasVisibleRef = useRef(visible)
+	const [scrollHidden, setScrollHidden] = useState(false)
+	const scrollPositionsRef = useRef(new Map<EventTarget, number>())
+	const scrollFadeRunningRef = useRef(false)
+	const scrollFadeTargetRef = useRef<'shown' | 'hidden'>('shown')
+	const scrollFadeRequestedTargetRef = useRef<'shown' | 'hidden'>('shown')
 
 	useEffect(() => {
 	let cancelled = false
@@ -100,6 +105,8 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 		wasVisibleRef.current = visible
 
 		if (!visible) {
+				setScrollHidden(false)
+				scrollFadeTargetRef.current = 'shown'
 			await barControls.start({
 				y: HIDE_Y,
 				opacity: 0,
@@ -109,6 +116,8 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 		}
 
 		// Always land on interactive y=0 immediately (avoids mid-slide dead taps).
+			setScrollHidden(false)
+			scrollFadeTargetRef.current = 'shown'
 		barControls.set({ y: 0, opacity: 1 })
 		if (wasVisible) return
 
@@ -130,6 +139,67 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 	return () => {
 		cancelled = true
 	}
+	}, [visible, barControls])
+
+	useEffect(() => {
+		if (!visible || typeof window === 'undefined') return
+		let cancelled = false
+
+		const readScrollTop = (target: EventTarget | null): number | null => {
+			if (target instanceof HTMLElement) return target.scrollTop
+			if (target === document || target === window) {
+				return Math.max(window.scrollY, document.documentElement.scrollTop)
+			}
+			return null
+		}
+
+		const startFade = (target: 'shown' | 'hidden') => {
+			if (cancelled) return
+			scrollFadeTargetRef.current = target
+			scrollFadeRunningRef.current = true
+			setScrollHidden(target === 'hidden')
+
+			// Direction changes do not stop or restart the current animation.
+			// The latest requested endpoint is applied only after this one lands.
+			void barControls
+				.start({
+					opacity: target === 'hidden' ? 0 : 1,
+					transition: { duration: 0.28, ease: [0.2, 0.8, 0.2, 1] },
+				})
+				.finally(() => {
+					scrollFadeRunningRef.current = false
+					if (
+						!cancelled &&
+						scrollFadeRequestedTargetRef.current !== scrollFadeTargetRef.current
+					) {
+						startFade(scrollFadeRequestedTargetRef.current)
+					}
+				})
+		}
+
+		const handleScrollDirection = (event: Event) => {
+			const target = event.target
+			if (!target) return
+			const nextScrollTop = readScrollTop(target)
+			if (nextScrollTop == null) return
+
+			const previousScrollTop = scrollPositionsRef.current.get(target) ?? nextScrollTop
+			scrollPositionsRef.current.set(target, nextScrollTop)
+			if (Math.abs(nextScrollTop - previousScrollTop) < 1) return
+
+			const direction = nextScrollTop > previousScrollTop ? 'down' : 'up'
+			const nextTarget = direction === 'down' ? 'hidden' : 'shown'
+			scrollFadeRequestedTargetRef.current = nextTarget
+			if (scrollFadeRunningRef.current || scrollFadeTargetRef.current === nextTarget) return
+			startFade(nextTarget)
+		}
+
+		window.addEventListener('scroll', handleScrollDirection, { passive: true, capture: true })
+		return () => {
+			cancelled = true
+			window.removeEventListener('scroll', handleScrollDirection, true)
+			scrollPositionsRef.current.clear()
+		}
 	}, [visible, barControls])
 
 	const navigate = useNavigate()
@@ -181,6 +251,7 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 	const [animId, setAnimId] = useState(0)
 	const totalDur = 0.62
 	const { hasNewVersion, darkModle, isInitialLoading, messageCount, setMessageCount, setShowFooter, setChatSearchOpen } = useDaemonContext()
+	const interactiveVisible = visible && !scrollHidden
 
 	const [showBar, setShowBar] = useState(true)
 
@@ -584,14 +655,14 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 			<div
 				className={[
 					'relative shrink-0 overflow-visible',
-					visible ? 'pointer-events-auto' : 'pointer-events-none',
+					interactiveVisible ? 'pointer-events-auto' : 'pointer-events-none',
 				].join(' ')}
 				style={{ width: FOOTER_BAR_VISUAL_W_PX, height: FOOTER_BAR_VISUAL_H_PX }}
 			>
 			<div
 				className={[
 					'absolute bottom-0 left-0 origin-bottom-left',
-					visible ? 'pointer-events-auto' : 'pointer-events-none',
+					interactiveVisible ? 'pointer-events-auto' : 'pointer-events-none',
 				].join(' ')}
 				style={{
 					width: FOOTER_BAR_LAYOUT_W_PX,
@@ -657,7 +728,7 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 					<div
 						className={[
 							'relative pt-1 pb-1.5 overflow-visible',
-							visible ? 'pointer-events-auto' : 'pointer-events-none',
+							interactiveVisible ? 'pointer-events-auto' : 'pointer-events-none',
 						].join(' ')}
 					>
 						<div className="relative grid grid-cols-5 items-center gap-0 overflow-visible">
@@ -680,8 +751,8 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 				{/* Search：与左侧 tab bar 同一行垂直居中，随 footer 同步显隐 */}
 				<button
 					type="button"
-					tabIndex={visible ? 0 : -1}
-					disabled={!visible}
+					tabIndex={interactiveVisible ? 0 : -1}
+					disabled={!interactiveVisible}
 					onClick={() => {
 						setChatSearchOpen(true)
 						setShowFooter(false)
@@ -690,7 +761,7 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 						'w-10 h-10 rounded-full flex items-center justify-center border shrink-0',
 						'focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/70 focus-visible:ring-offset-2 focus-visible:ring-offset-white/90',
 						'dark:focus-visible:ring-[#6ba3ff]/75 dark:focus-visible:ring-offset-slate-900',
-						visible ? 'pointer-events-auto' : 'pointer-events-none',
+						interactiveVisible ? 'pointer-events-auto' : 'pointer-events-none',
 					].join(' ')}
 					style={{
 						backgroundColor: isDarkUnderneath ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)',

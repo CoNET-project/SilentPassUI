@@ -5556,6 +5556,11 @@ function DiscoverMerchantDetailFullScreen({
 	const [merchantVisitError, setMerchantVisitError] = useState<string | null>(null)
 	const [merchantHeroHeight, setMerchantHeroHeight] = useState<number | null>(null)
 	const merchantHeroExpandedHeightRef = useRef<number | null>(null)
+	const merchantHeroScrollTopRef = useRef(0)
+	const merchantHeroAnimationRunningRef = useRef(false)
+	const merchantHeroAnimationTargetRef = useRef<'expanded' | 'collapsed'>('expanded')
+	const merchantHeroAnimationRequestedRef = useRef<'expanded' | 'collapsed'>('expanded')
+	const merchantHeroAnimationTimerRef = useRef<number | null>(null)
 	const [giftSheetOpen, setGiftSheetOpen] = useState(false)
 	const [giftSheetEntered, setGiftSheetEntered] = useState(false)
 	const [giftSheetClosing, setGiftSheetClosing] = useState(false)
@@ -7933,6 +7938,36 @@ function DiscoverMerchantDetailFullScreen({
 		return () => window.removeEventListener('keydown', onKey)
 	}, [onClose, giftSheetOpen, closeGiftSheet, supportChatPickerOpen, supportChatOpening])
 
+	const animateMerchantHeroTo = (target: 'expanded' | 'collapsed') => {
+		const expandedHeight =
+			merchantHeroExpandedHeightRef.current ??
+			Math.min(window.innerHeight * 0.42, 320)
+		merchantHeroExpandedHeightRef.current = expandedHeight
+		merchantHeroAnimationTargetRef.current = target
+		merchantHeroAnimationRunningRef.current = true
+		setMerchantHeroHeight(target === 'collapsed' ? 64 : expandedHeight)
+
+		if (merchantHeroAnimationTimerRef.current) {
+			window.clearTimeout(merchantHeroAnimationTimerRef.current)
+		}
+		merchantHeroAnimationTimerRef.current = window.setTimeout(() => {
+			merchantHeroAnimationRunningRef.current = false
+			merchantHeroAnimationTimerRef.current = null
+			const requested = merchantHeroAnimationRequestedRef.current
+			if (requested !== merchantHeroAnimationTargetRef.current) {
+				animateMerchantHeroTo(requested)
+			}
+		}, 300)
+	}
+
+	useEffect(() => {
+		return () => {
+			if (merchantHeroAnimationTimerRef.current) {
+				window.clearTimeout(merchantHeroAnimationTimerRef.current)
+			}
+		}
+	}, [])
+
 	return (
 		<>
 		<div
@@ -7953,7 +7988,7 @@ function DiscoverMerchantDetailFullScreen({
 				}
 			>
 				<div
-					className="relative w-full overflow-hidden rounded-b-[28px] transition-[height] duration-150 ease-out"
+					className="relative w-full overflow-hidden rounded-b-[28px] transition-[height] duration-300 ease-out"
 					style={{ height: merchantHeroHeight ?? 'min(42vh, 320px)' }}
 				>
 					<div
@@ -8050,8 +8085,19 @@ function DiscoverMerchantDetailFullScreen({
 						merchantHeroExpandedHeightRef.current ??
 						Math.min(window.innerHeight * 0.42, 320)
 					merchantHeroExpandedHeightRef.current = expandedHeight
-					const nextHeight = Math.max(64, expandedHeight - event.currentTarget.scrollTop)
-					setMerchantHeroHeight((current) => (current === nextHeight ? current : nextHeight))
+					const nextScrollTop = event.currentTarget.scrollTop
+					const previousScrollTop = merchantHeroScrollTopRef.current
+					merchantHeroScrollTopRef.current = nextScrollTop
+					if (Math.abs(nextScrollTop - previousScrollTop) < 1) return
+					const nextTarget = nextScrollTop > previousScrollTop ? 'collapsed' : 'expanded'
+					merchantHeroAnimationRequestedRef.current = nextTarget
+					if (
+						merchantHeroAnimationRunningRef.current ||
+						merchantHeroAnimationTargetRef.current === nextTarget
+					) {
+						return
+					}
+					animateMerchantHeroTo(nextTarget)
 				}}
 			>
 				<div className="mx-auto flex max-w-lg flex-col gap-4">

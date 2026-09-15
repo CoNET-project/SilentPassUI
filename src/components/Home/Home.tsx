@@ -3487,23 +3487,22 @@ const Home = (_props: HomeProps) => {
 								<div className="flex-shrink-0 flex items-center justify-between px-4 pt-2 pb-1">
 									<div className="w-10" />
 									<div className="w-12 h-1.5 rounded-full bg-gray-200 dark:bg-slate-600" />
-									<button
-										type="button"
-										onClick={closeAddCashSheet}
-										className="w-10 h-10 rounded-full flex items-center justify-center text-gray-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
-										aria-label={tu('close')}
-									>
-										<X className="h-5 w-5 text-[#191c1d] dark:text-slate-100" aria-hidden />
-									</button>
+									{addCashMode === 'methods' ? (
+										<button
+											type="button"
+											onClick={closeAddCashSheet}
+											className="w-10 h-10 rounded-full flex items-center justify-center text-gray-500 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+											aria-label={tu('close')}
+										>
+											<X className="h-5 w-5 text-[#191c1d] dark:text-slate-100" aria-hidden />
+										</button>
+									) : (
+										<div className="w-10" aria-hidden />
+									)}
 								</div>
 								<div className="flex-1 overflow-y-auto min-h-0 overscroll-contain px-6 pb-4 flex flex-col">
 									{showAddUsdcInSheet ? (
 										<>
-											<BeamioNavBack
-												title=""
-												onClose={() => setShowAddUsdcInSheet(false)}
-												onMore={() => {}}
-											/>
 											<BeamioAddUSDCFlow
 												embedInSheet
 												onCancel={() => setShowAddUsdcInSheet(false)}
@@ -3589,13 +3588,10 @@ const Home = (_props: HomeProps) => {
 									) : addCashMode === 'store_qr' ? (
 										<>
 											<div className="flex items-center mb-6 w-full relative">
-												<button
-													type="button"
+												<BeamioCircularBackButton
 													onClick={() => setAddCashMode('methods')}
-													className="text-[#1562f0] dark:text-[#6ba3ff] font-bold flex items-center text-sm absolute left-0"
-												>
-													<ChevronRight className="rotate-180 mr-1" size={16} /> Back
-												</button>
+													className="absolute left-0 top-1"
+												/>
 												<h3 className="text-xl font-bold text-gray-900 dark:text-slate-100 tracking-tight mx-auto">{tu('store_deposit')}</h3>
 											</div>
 											<div className="flex flex-col items-center justify-center mb-auto pt-4">
@@ -3622,8 +3618,7 @@ const Home = (_props: HomeProps) => {
 									) : addCashMode === 'stripe' ? (
 										<>
 											<div className="flex items-center mb-6 w-full relative">
-												<button
-													type="button"
+												<BeamioCircularBackButton
 													onClick={() => {
 														if (addCashOpenedAsStripe) {
 															closeAddCashSheet()
@@ -3631,10 +3626,8 @@ const Home = (_props: HomeProps) => {
 														}
 														setAddCashMode('methods')
 													}}
-													className="text-[#1562f0] dark:text-[#6ba3ff] font-bold flex items-center text-sm absolute left-0"
-												>
-													<ChevronRight className="rotate-180 mr-1" size={16} /> Back
-												</button>
+													className="absolute left-0 top-1"
+												/>
 												<h3 className="text-xl font-bold text-gray-900 dark:text-slate-100 tracking-tight mx-auto">Buy USDC with card</h3>
 											</div>
 											<EoaUsdcStripePanel walletAddress={resolveStripeDepositEoa(profiles)} />
@@ -3642,8 +3635,7 @@ const Home = (_props: HomeProps) => {
 									) : addCashMode === 'coinbase' ? (
 										<>
 											<div className="flex items-center mb-6 w-full relative">
-												<button
-													type="button"
+												<BeamioCircularBackButton
 													onClick={() => {
 														if (addCashOpenedAsStripe) {
 															closeAddCashSheet()
@@ -3651,10 +3643,8 @@ const Home = (_props: HomeProps) => {
 														}
 														setAddCashMode('methods')
 													}}
-													className="text-[#1562f0] dark:text-[#6ba3ff] font-bold flex items-center text-sm absolute left-0"
-												>
-													<ChevronRight className="rotate-180 mr-1" size={16} /> Back
-												</button>
+													className="absolute left-0 top-1"
+												/>
 												<h3 className="text-xl font-bold text-gray-900 dark:text-slate-100 tracking-tight mx-auto">Coinbase</h3>
 											</div>
 											<div className="flex flex-col items-center justify-center mb-auto pt-4 w-full">
@@ -3737,13 +3727,10 @@ const Home = (_props: HomeProps) => {
 										) : (
 											<>
 												<div className="flex items-center mb-6 w-full relative">
-													<button
-														type="button"
+													<BeamioCircularBackButton
 														onClick={() => setAddCashMode('methods')}
-														className="text-[#1562f0] dark:text-[#6ba3ff] font-bold flex items-center text-sm absolute left-0"
-													>
-														<ChevronRight className="rotate-180 mr-1" size={16} /> Back
-													</button>
+														className="absolute left-0 top-1"
+													/>
 													<h3 className="text-xl font-bold text-gray-900 dark:text-slate-100 tracking-tight mx-auto">{tu('top_up_store_card')}</h3>
 												</div>
 												<div className="flex flex-col mb-auto pt-2 w-full">

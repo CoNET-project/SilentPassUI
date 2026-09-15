@@ -1395,7 +1395,7 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 			</div>
 
 			<section
-				className="relative aspect-[2/1] overflow-hidden rounded-[1.35rem] px-5 pb-5 pt-5 text-white shadow-[0_16px_40px_rgba(45,40,35,0.28)]"
+				className="relative overflow-hidden rounded-[1.35rem] px-5 pb-5 pt-5 text-white shadow-[0_16px_40px_rgba(45,40,35,0.28)]"
 				style={{
 					backgroundImage: hasImage ? undefined : brandGradient,
 					color: brandTheme.primary,
@@ -5594,6 +5594,8 @@ function DiscoverMerchantDetailFullScreen({
 	const [supportChatPickerOpen, setSupportChatPickerOpen] = useState(false)
 	const [supportChatError, setSupportChatError] = useState<string | null>(null)
 	const [merchantVisitError, setMerchantVisitError] = useState<string | null>(null)
+	const [merchantHeroHeight, setMerchantHeroHeight] = useState<number | null>(null)
+	const merchantHeroExpandedHeightRef = useRef<number | null>(null)
 	const [giftSheetOpen, setGiftSheetOpen] = useState(false)
 	const [giftSheetEntered, setGiftSheetEntered] = useState(false)
 	const [giftSheetClosing, setGiftSheetClosing] = useState(false)
@@ -7990,7 +7992,10 @@ function DiscoverMerchantDetailFullScreen({
 					} as React.CSSProperties
 				}
 			>
-				<div className="relative h-[min(42vh,320px)] w-full overflow-hidden rounded-b-[28px]">
+				<div
+					className="relative w-full overflow-hidden rounded-b-[28px] transition-[height] duration-150 ease-out"
+					style={{ height: merchantHeroHeight ?? 'min(42vh, 320px)' }}
+				>
 					<div
 						className="pointer-events-none absolute inset-0 dark:hidden"
 						style={{ backgroundColor: merchantDetailPageSurface }}
@@ -8006,7 +8011,10 @@ function DiscoverMerchantDetailFullScreen({
 						aria-hidden
 					/>
 					<div className="pointer-events-none absolute bottom-0 left-0 right-0 z-10 px-5 pb-5 pt-8">
-						<div className="mb-1 flex items-center gap-2">
+						<div
+							className="mb-1 flex items-center gap-2 transition-opacity duration-150"
+							style={{ opacity: merchantHeroHeight == null ? 1 : Math.max(0, merchantHeroHeight / 320 - 0.2) }}
+						>
 							<span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/20 text-white backdrop-blur-sm">
 								<MerchantCategoryIcon className="h-5 w-5" strokeWidth={2} aria-hidden />
 							</span>
@@ -8014,9 +8022,17 @@ function DiscoverMerchantDetailFullScreen({
 						<div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
 							<h1 className="text-2xl font-bold leading-tight text-white drop-shadow-sm">{item.title}</h1>
 						</div>
-						<DiscoverHeroStatCapsules likeCount={merchantLikeCount} shareClickCount={merchantShareClickCount} />
+						<div
+							className="transition-opacity duration-150"
+							style={{ opacity: merchantHeroHeight == null ? 1 : Math.max(0, merchantHeroHeight / 220 - 0.25) }}
+						>
+							<DiscoverHeroStatCapsules likeCount={merchantLikeCount} shareClickCount={merchantShareClickCount} />
+						</div>
 						{item.cardAddress ? (
-							<span className="pointer-events-auto">
+							<span
+								className="pointer-events-auto transition-opacity duration-150"
+								style={{ opacity: merchantHeroHeight == null ? 1 : Math.max(0, merchantHeroHeight / 220 - 0.25) }}
+							>
 								<DiscoverMerchantCardAddressCapsule address={item.cardAddress} />
 							</span>
 						) : null}
@@ -8067,7 +8083,17 @@ function DiscoverMerchantDetailFullScreen({
 				</div>
 			</div>
 
-			<div className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-[color:var(--discover-merchant-page-bg)] px-4 pb-[calc(2rem+env(safe-area-inset-bottom))] pt-4 dark:bg-slate-950">
+			<div
+				className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-[color:var(--discover-merchant-page-bg)] px-4 pb-[calc(2rem+env(safe-area-inset-bottom))] pt-4 dark:bg-slate-950"
+				onScroll={(event) => {
+					const expandedHeight =
+						merchantHeroExpandedHeightRef.current ??
+						Math.min(window.innerHeight * 0.42, 320)
+					merchantHeroExpandedHeightRef.current = expandedHeight
+					const nextHeight = Math.max(64, expandedHeight - event.currentTarget.scrollTop)
+					setMerchantHeroHeight((current) => (current === nextHeight ? current : nextHeight))
+				}}
+			>
 				<div className="mx-auto flex max-w-lg flex-col gap-4">
 					{likeError ? <DiscoverPayPanelError message={likeError} /> : null}
 					{isConetGenesisCard && supportChatAddresses.length > 0 ? (

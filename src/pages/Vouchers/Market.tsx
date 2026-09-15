@@ -14,8 +14,7 @@ import {
 import React, { useState, useMemo, useEffect, useLayoutEffect, useCallback, useRef } from "react"
 import { createPortal } from "react-dom"
 import {
-  ChevronLeft,
-  ChevronRight,
+	ChevronRight,
   Server,
   Activity,
   Zap,
@@ -620,7 +619,6 @@ function DiscoverMerchantVisitActionsBlock({
 	bookingLabel = 'Booking',
 	giftingLabel = 'Gifting',
 	giftAccentColor,
-	secondaryLabelColor,
 	primaryActionIcon = 'calendar',
 	contactIcon = 'headphones',
 }: {
@@ -636,14 +634,11 @@ function DiscoverMerchantVisitActionsBlock({
 	/** Health & Beauty / Food & Beverage loyalty layouts use "Gift Voucher". */
 	giftingLabel?: string
 	giftAccentColor?: string
-	/** Secondary action label color (defaults to brand). */
-	secondaryLabelColor?: string
 	primaryActionIcon?: 'calendar' | 'bag'
 	contactIcon?: 'headphones' | 'store'
 }) {
 	const brand = brandColor.trim() || DISCOVER_VISIT_BRAND_FALLBACK
 	const giftColor = giftAccentColor?.trim() || DISCOVER_VISIT_MUTED_ICON
-	const secondaryText = secondaryLabelColor?.trim() || brand
 	const actionBtnClass =
 		'flex min-h-[5.5rem] flex-col items-center justify-center gap-2 rounded-[22px] px-2 py-4 ring-1 transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60'
 	const PrimaryIcon = primaryActionIcon === 'bag' ? ShoppingBag : Calendar
@@ -666,7 +661,6 @@ function DiscoverMerchantVisitActionsBlock({
 						strokeWidth={1.8}
 						aria-hidden
 					/>
-					<span className="text-[14px] font-semibold text-white">{bookingLabel}</span>
 				</button>
 				<button
 					type="button"
@@ -676,9 +670,6 @@ function DiscoverMerchantVisitActionsBlock({
 					className={`${actionBtnClass} bg-white ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800`}
 				>
 					<Gift className="h-6 w-6" style={{ color: giftColor }} strokeWidth={1.8} aria-hidden />
-					<span className="text-[14px] font-semibold" style={{ color: secondaryText }}>
-						{giftingLabel}
-					</span>
 				</button>
 				<button
 					type="button"
@@ -693,9 +684,6 @@ function DiscoverMerchantVisitActionsBlock({
 					) : (
 						<ContactIconEl className="h-6 w-6" style={{ color: DISCOVER_VISIT_MUTED_ICON }} strokeWidth={1.8} aria-hidden />
 					)}
-					<span className="text-[14px] font-semibold" style={{ color: secondaryText }}>
-						Contact
-					</span>
 				</button>
 			</div>
 			{error ? (
@@ -990,7 +978,6 @@ function DiscoverMerchantHealthBeautyLoyaltyPassPanel({
 
 const DISCOVER_FOOD_BEVERAGE_GIFT_ACCENT = '#ea580c'
 const DISCOVER_FOOD_BEVERAGE_PASS_FALLBACK = '#5c554b'
-const DISCOVER_FOOD_BEVERAGE_SECONDARY_TEXT = '#3d4450'
 
 function DiscoverMerchantHowPointsWorkPanel({
 	pct,
@@ -1289,31 +1276,6 @@ function DiscoverMerchantMembershipTiersPanel({
 							)
 						})}
 					</div>
-					{sortedTiers.length > 1 ? (
-						<div className="mt-3 flex items-center justify-between gap-3">
-							<button
-								type="button"
-								onClick={() => setSelectedIndex((current) => Math.max(current - 1, 0))}
-								disabled={selectedIndex === 0}
-								className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-sm disabled:cursor-not-allowed disabled:opacity-35 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-								aria-label="Previous membership tier"
-							>
-								<ChevronLeft className="h-4 w-4" aria-hidden />
-							</button>
-							<p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
-								{selectedIndex + 1} / {sortedTiers.length}
-							</p>
-							<button
-								type="button"
-								onClick={() => setSelectedIndex((current) => Math.min(current + 1, sortedTiers.length - 1))}
-								disabled={selectedIndex === sortedTiers.length - 1}
-								className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-sm disabled:cursor-not-allowed disabled:opacity-35 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-								aria-label="Next membership tier"
-							>
-								<ChevronRight className="h-4 w-4" aria-hidden />
-							</button>
-						</div>
-					) : null}
 				</div>
 			</div>
 		</section>
@@ -1475,9 +1437,8 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 				bookingLabel="Order Pick-up"
 				giftingLabel="Gift Voucher"
 				giftAccentColor={DISCOVER_FOOD_BEVERAGE_GIFT_ACCENT}
-				secondaryLabelColor={DISCOVER_FOOD_BEVERAGE_SECONDARY_TEXT}
 				primaryActionIcon="bag"
-				contactIcon="store"
+				contactIcon="headphones"
 			/>
 
 			<section className="overflow-hidden rounded-2xl border border-[#ebe6df] bg-white shadow-[0_8px_24px_rgba(31,35,40,0.06)] dark:border-slate-700 dark:bg-slate-900">
@@ -1706,9 +1667,8 @@ function DiscoverMerchantFoodBeverageLoyaltyPassPanel({
 				bookingLabel="Order Pick-up"
 				giftingLabel="Gift Voucher"
 				giftAccentColor={DISCOVER_FOOD_BEVERAGE_GIFT_ACCENT}
-				secondaryLabelColor={DISCOVER_FOOD_BEVERAGE_SECONDARY_TEXT}
 				primaryActionIcon="bag"
-				contactIcon="store"
+				contactIcon="headphones"
 			/>
 
 			<section className="overflow-hidden rounded-2xl border border-[#ebe6df] bg-white shadow-[0_8px_24px_rgba(31,35,40,0.06)] dark:border-slate-700 dark:bg-slate-900">
@@ -9004,6 +8964,7 @@ export default function Market() {
 	const [purchasingGenesis, setPurchasingGenesis] = useState(false)
 	const [qrPayload, setQrPayload] = useState<string>("")
 	const [discoverCategory, setDiscoverCategory] = useState<DiscoverFilterTab>("all")
+	const discoverCategoryScrollerRef = useRef<HTMLDivElement | null>(null)
 	const [discoverMerchantDetail, setDiscoverMerchantDetail] = useState<DiscoverFeaturedCard | null>(null)
 	const [discoverDetailEnterImmediate, setDiscoverDetailEnterImmediate] = useState(false)
 	const discoverDeepLinkTarget = useMemo(
@@ -9032,7 +8993,10 @@ export default function Market() {
 			<button
 				key={tab.id}
 				type="button"
-				onClick={() => setDiscoverCategory(tab.id)}
+				onClick={() => {
+					setDiscoverCategory(tab.id)
+					discoverCategoryScrollerRef.current?.scrollTo({ left: 0, behavior: 'smooth' })
+				}}
 				className={[
 					"flex shrink-0 items-center gap-2 rounded-full px-3.5 py-2.5 text-[13px] sm:text-[14px] font-semibold tracking-tight transition-all whitespace-nowrap",
 					active
@@ -9449,7 +9413,10 @@ export default function Market() {
 			<section className="pt-1 pb-8">
 				<div className="flex min-h-0 items-center gap-2 py-6 pl-4 pr-4 sm:py-7 sm:pl-6 sm:pr-6">
 					<div className="shrink-0">{renderDiscoverFilterChip(DISCOVER_ALL_OPTION)}</div>
-					<div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+					<div
+						ref={discoverCategoryScrollerRef}
+						className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+					>
 						{discoverCategoryTabsOrdered.map((tab) => renderDiscoverFilterChip(tab))}
 					</div>
 				</div>

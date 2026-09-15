@@ -9577,6 +9577,7 @@ export default function Market() {
 		</div>
 
 		<AnimatePresence
+			mode="wait"
 			onExitComplete={() => {
 				if (skipMerchantDetailExitFooterRestoreRef.current) {
 					skipMerchantDetailExitFooterRestoreRef.current = false
@@ -9588,7 +9589,7 @@ export default function Market() {
 		>
 			{discoverMerchantDetail ? (
 				<motion.div
-					key={`discover-merchant-${discoverMerchantDetail.id}`}
+					key={`discover-merchant-${discoverMerchantDetail.cardAddress?.toLowerCase() || discoverMerchantDetail.id}`}
 					className="fixed inset-0 z-[110] flex flex-col bg-transparent dark:bg-slate-950"
 					initial={discoverDetailEnterImmediate ? false : { x: '100%' }}
 					animate={{ x: 0 }}

@@ -1972,6 +1972,7 @@ const Home = (_props: HomeProps) => {
 					/>
 					<div className="relative z-10 flex shrink-0 items-center justify-self-end gap-1.5">
 						<HomeLanguageSelector />
+						{(linkedNfcListLoading || linkedNfcCards.length > 0 || hasNativeNfcReaderForLink) ? (
 						<div className="relative z-10 flex h-11 w-11 shrink-0 items-center justify-center">
 						{linkedNfcListLoading && linkedNfcCards.length === 0 ? (
 						<div
@@ -2034,6 +2035,7 @@ const Home = (_props: HomeProps) => {
 						</button>
 					) : null}
 						</div>
+						) : null}
 					</div>
 				</div>
 			)}

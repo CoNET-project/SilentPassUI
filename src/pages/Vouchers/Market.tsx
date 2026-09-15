@@ -1127,6 +1127,17 @@ function DiscoverMerchantMembershipTiersPanel({
 			maximumFractionDigits: 2,
 		})}`
 	}
+	const formatTierAmount = (tier: DiscoverOfferTierRow) => {
+		const membershipFeeE6 = discoverTierMembershipFeeE6(tier)
+		if (membershipFeeE6 !== '0') {
+			try {
+				return formatSpend(BigInt(membershipFeeE6))
+			} catch {
+				// Fall through to the threshold display for malformed legacy metadata.
+			}
+		}
+		return formatSpend(tier.minUsdc6)
+	}
 	const discountFromDescription = (description: string | undefined) => {
 		const match = description?.match(/(\d+(?:\.\d+)?)\s*%/)
 		return match ? `${match[1]}% OFF` : null
@@ -1255,9 +1266,11 @@ function DiscoverMerchantMembershipTiersPanel({
 										</p>
 										<Medal className="h-5 w-5 shrink-0" style={{ color: tierBrand }} strokeWidth={1.8} aria-hidden />
 									</div>
-									<p className="mt-3 text-[11px] font-medium text-[#8a857c] dark:text-slate-400">Cumulative Spend</p>
+									<p className="mt-3 text-[11px] font-medium text-[#8a857c] dark:text-slate-400">
+										{discoverTierMembershipFeeE6(tier) !== '0' ? 'Membership Fee' : 'Cumulative Spend'}
+									</p>
 									<p className="mt-1 text-[21px] font-bold leading-none tracking-tight text-[#4b473f] dark:text-slate-100">
-										{formatSpend(tier.minUsdc6)}
+										{formatTierAmount(tier)}
 									</p>
 									<div className="my-3 h-px bg-slate-200 dark:bg-slate-700" />
 									<p className="text-[18px] font-bold leading-none" style={{ color: tierBrand }}>

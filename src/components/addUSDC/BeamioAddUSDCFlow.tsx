@@ -158,7 +158,7 @@ export default function BeamioAddUSDCFlow({
 					</div>
 				)}
 				{screen === "coinbase" && !loading && (
-					<Card>
+					<div className="px-0 pt-4 pb-2">
 						<div className="text-sm text-slate-600">
 							You’ll complete checkout with Coinbase. Verification may be required.
 						</div>
@@ -169,7 +169,7 @@ export default function BeamioAddUSDCFlow({
 						<div className="mt-4 rounded-2xl bg-slate-50 p-4 text-xs text-slate-600">
 							If Coinbase fails, you can still add USDC by transferring from another wallet/exchange.
 						</div>
-					</Card>
+					</div>
 				)}
 				{screen === "coinbase_error" && !loading && (
 					<Card>

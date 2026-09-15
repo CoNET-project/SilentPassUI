@@ -1227,7 +1227,7 @@ function DiscoverMerchantMembershipTiersPanel({
 				<div className="mt-5">
 					<div
 						ref={tiersScrollerRef}
-						className="flex snap-x snap-mandatory gap-4 overflow-x-auto overscroll-x-contain pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+						className="flex snap-x snap-mandatory gap-4 overflow-x-auto overscroll-x-contain pb-1 pt-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
 						aria-label={`${name} membership tier cards`}
 					>
 						{sortedTiers.map((tier, tierPosition) => {

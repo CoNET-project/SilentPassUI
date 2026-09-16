@@ -22588,6 +22588,43 @@ const clearMembershipFeeTierBackgroundDraftImage = useCallback(() => {
   setCardIssuanceMembershipFeeTierEditorServerError('');
 }, [revokeMembershipFeeTierBgDraftBlob]);
 
+const removeMembershipFeeTierBackgroundDraftImage = useCallback(
+  (image: string) => {
+    const target = String(image ?? '').trim();
+    if (!target) return;
+    setMembershipFeeTierEditorDraft((prev) => {
+      const current = String(prev.backgroundImage ?? '').trim();
+      const remaining = (prev.backgroundImageOptions ?? []).filter(
+        (candidate) => candidate !== target,
+      );
+      if (target.startsWith('blob:') || target.startsWith('data:')) {
+        revokeMembershipFeeTierBgDraftBlob(target);
+      }
+      if (target === membershipFeeTierBgPendingIpfsRef.current) {
+        membershipFeeTierBgPendingIpfsRef.current = '';
+        setMembershipFeeTierBgPendingIpfs('');
+      }
+      if (remaining.length === 0) {
+        return {
+          ...prev,
+          backgroundMode: 'color',
+          backgroundImage: '',
+          backgroundImageOptions: [],
+        };
+      }
+      const nextImage = target === current ? remaining[0] : current;
+      return {
+        ...prev,
+        backgroundMode: 'image',
+        backgroundImage: nextImage || remaining[0],
+        backgroundImageOptions: remaining,
+      };
+    });
+    setCardIssuanceMembershipFeeTierEditorServerError('');
+  },
+  [revokeMembershipFeeTierBgDraftBlob],
+);
+
 const handleCardIssuanceProductionIconPick: React.ChangeEventHandler<HTMLInputElement> = useCallback(
   async (e) => {
     const input = e.currentTarget;
@@ -47081,6 +47118,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                  }}
                  onHexDraftChange={setCardIssuanceMembershipFeeTierHexDraft}
                  onBackgroundImageFileChange={handleMembershipFeeTierBackgroundImagePick}
+                 onBackgroundImageRemove={removeMembershipFeeTierBackgroundDraftImage}
                  onBackgroundImageClear={clearMembershipFeeTierBackgroundDraftImage}
                  onBackgroundImageDragEnter={handleMembershipFeeTierBackgroundImageDragEnter}
                  onBackgroundImageDragOver={handleMembershipFeeTierBackgroundImageDragOver}

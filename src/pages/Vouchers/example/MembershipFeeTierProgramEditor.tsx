@@ -128,6 +128,7 @@ export type MembershipFeeTierProgramEditorProps = {
   onDraftChange: (patch: Partial<MembershipFeeTierEditorDraft>) => void
   onHexDraftChange: (hexWithoutHash: string) => void
   onBackgroundImageFileChange: React.ChangeEventHandler<HTMLInputElement>
+  onBackgroundImageRemove?: (image: string) => void
   onBackgroundImageClear: () => void
   onBackgroundImageDragEnter: (e: React.DragEvent) => void
   onBackgroundImageDragOver: (e: React.DragEvent) => void
@@ -167,6 +168,7 @@ export function MembershipFeeTierProgramEditor({
   onDraftChange,
   onHexDraftChange,
   onBackgroundImageFileChange,
+  onBackgroundImageRemove,
   onBackgroundImageClear,
   onBackgroundImageDragEnter,
   onBackgroundImageDragOver,
@@ -507,35 +509,52 @@ export function MembershipFeeTierProgramEditor({
                               {styleImageOptions.map((image, index) => {
                                 const selected = image === styleImage
                                 return (
-                                  <button
+                                  <div
                                     key={`${image}-${index}`}
-                                    type="button"
-                                    aria-label={`Use tier background image ${index + 1}`}
-                                    aria-pressed={selected}
-                                    disabled={chromeBusy}
-                                    onClick={() =>
-                                      onDraftChange({
-                                        backgroundMode: 'image',
-                                        backgroundImage: image,
-                                      })
-                                    }
-                                    className={`relative h-20 w-28 shrink-0 snap-start overflow-hidden rounded-xl border-2 bg-[#0f172a] transition ${
-                                      selected
-                                        ? 'border-[#0051d1] ring-2 ring-[#0051d1]/20'
-                                        : 'border-transparent hover:border-slate-300'
-                                    }`}
+                                    className="relative h-20 w-28 shrink-0 snap-start"
                                   >
-                                    <img
-                                      src={image}
-                                      alt=""
-                                      className="h-full w-full object-cover"
-                                    />
-                                    {selected ? (
-                                      <span className="absolute bottom-1 right-1 rounded-full bg-[#0051d1] px-1.5 py-0.5 text-[9px] font-bold text-white">
-                                        Selected
-                                      </span>
-                                    ) : null}
-                                  </button>
+                                    <button
+                                      type="button"
+                                      aria-label={`Use tier background image ${index + 1}`}
+                                      aria-pressed={selected}
+                                      disabled={chromeBusy}
+                                      onClick={() =>
+                                        onDraftChange({
+                                          backgroundMode: 'image',
+                                          backgroundImage: image,
+                                        })
+                                      }
+                                      className={`relative h-full w-full overflow-hidden rounded-xl border-2 bg-[#0f172a] transition ${
+                                        selected
+                                          ? 'border-[#0051d1] ring-2 ring-[#0051d1]/20'
+                                          : 'border-transparent hover:border-slate-300'
+                                      }`}
+                                    >
+                                      <img
+                                        src={image}
+                                        alt=""
+                                        className="h-full w-full object-cover"
+                                      />
+                                      {selected ? (
+                                        <span className="absolute bottom-1 right-1 rounded-full bg-[#0051d1] px-1.5 py-0.5 text-[9px] font-bold text-white">
+                                          Selected
+                                        </span>
+                                      ) : null}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      tabIndex={-1}
+                                      aria-label={`Remove tier background image ${index + 1}`}
+                                      disabled={chromeBusy}
+                                      onClick={(event) => {
+                                        event.stopPropagation()
+                                        onBackgroundImageRemove?.(image)
+                                      }}
+                                      className={`absolute right-1 top-1 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-[#2c2f31]/55 text-white shadow-md ring-1 ring-white/40 backdrop-blur-[2px] transition hover:bg-red-600/85 disabled:cursor-not-allowed disabled:opacity-60 ${focusRingClassName}`}
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />
+                                    </button>
+                                  </div>
                                 )
                               })}
                               <button
@@ -616,15 +635,6 @@ export function MembershipFeeTierProgramEditor({
                                 ) : (
                                   <ImagePlus className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />
                                 )}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={onBackgroundImageClear}
-                                disabled={chromeBusy}
-                                aria-label={tu('programs_membership_fee_tier_style_remove')}
-                                className={`flex h-8 w-8 items-center justify-center rounded-full bg-[#2c2f31]/45 text-white shadow-md ring-1 ring-white/35 backdrop-blur-[2px] transition hover:bg-red-600/80 disabled:cursor-not-allowed disabled:opacity-60 ${focusRingClassName}`}
-                              >
-                                <Trash2 className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />
                               </button>
                             </div>
                           </div>

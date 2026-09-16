@@ -3102,7 +3102,7 @@ export default function DiscoverMerchantGiftSheet({
 							Choose gift card design
 						</h3>
 						<div
-							className="flex gap-2.5 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+							className="flex w-max min-w-full snap-x snap-mandatory touch-pan-x gap-2.5 overflow-x-auto overscroll-x-contain pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
 							role="listbox"
 							aria-label="Gift card design"
 						>
@@ -3116,7 +3116,7 @@ export default function DiscoverMerchantGiftSheet({
 										aria-selected={selected}
 										aria-label={`Use gift card design ${index + 1}`}
 										onClick={() => setSelectedGiftCardImage(image)}
-										className={`h-24 w-36 shrink-0 overflow-hidden rounded-xl border-2 bg-slate-900 object-cover transition ${
+										className={`h-24 w-36 shrink-0 snap-start overflow-hidden rounded-xl border-2 bg-slate-900 object-cover transition ${
 											selected
 												? 'ring-2 ring-offset-1'
 												: 'border-transparent opacity-80 hover:opacity-100'

@@ -93,6 +93,7 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 	const scrollFadeRunningRef = useRef(false)
 	const scrollFadeTargetRef = useRef<'shown' | 'hidden'>('shown')
 	const scrollFadeRequestedTargetRef = useRef<'shown' | 'hidden'>('shown')
+	const scrollTopShowHoldUntilRef = useRef(0)
 
 	useEffect(() => {
 	let cancelled = false
@@ -144,6 +145,7 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 	useEffect(() => {
 		if (!visible || typeof window === 'undefined') return
 		let cancelled = false
+		scrollTopShowHoldUntilRef.current = 0
 
 		const readScrollTop = (target: EventTarget | null): number | null => {
 			if (target instanceof HTMLElement) return target.scrollTop
@@ -188,7 +190,14 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 			if (Math.abs(nextScrollTop - previousScrollTop) < 1) return
 
 			const direction = nextScrollTop > previousScrollTop ? 'down' : 'up'
-			const nextTarget = direction === 'down' ? 'hidden' : 'shown'
+			// Elastic scrolling can emit a short downward event immediately after
+			// reaching the top. Keep the global search visible for one second so
+			// that bounce does not hide it again.
+			if (direction === 'up' && nextScrollTop <= 2) {
+				scrollTopShowHoldUntilRef.current = Date.now() + 1000
+			}
+			const holdSearchVisible = Date.now() < scrollTopShowHoldUntilRef.current
+			const nextTarget = direction === 'down' && !holdSearchVisible ? 'hidden' : 'shown'
 			scrollFadeRequestedTargetRef.current = nextTarget
 			if (scrollFadeRunningRef.current || scrollFadeTargetRef.current === nextTarget) return
 			startFade(nextTarget)

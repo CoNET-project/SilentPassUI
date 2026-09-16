@@ -1,38 +1,104 @@
-# Beamio
+# Beamio Consumer
 
-Beamio 是一款基于 Base 与 CoNET 的移动端支付与钱包应用，支持 USDC 转账、支付请求、Vouchers 与 Express Pay 等能力。
+Beamio Consumer is the self-custody application for direct relationships between customers and merchants. It brings merchant discovery, memberships, coupons, Store Credit, Reward PT, and USDC into one mobile-first experience built with CoNET infrastructure.
 
-## 主要功能
+Beamio supports transactions without becoming the custodian, counterparty, or owner of the customer relationship. Wallet authorization stays on the customer device, while supported writes are submitted through gas-sponsored relays.
 
-- **Main Wallet (EOA)**：主钱包，支持 USDC 收发
-- **Express Pay (AA)**：账户抽象钱包，支持智能路由与赞助 gas
-- **Payment QR / Request**：生成支付 QR 或链接，接收 USDC 付款
-- **x402 支付**：集成 EIP-3009 与 Coinbase CDP，支持 HTTP 402 支付流程
-- **Vouchers**：凭证与联盟卡（CCSA）的购买、充值与消费
+## Product experience
 
-## 技术栈
+- **Self-custody wallet** — Manage an EOA Wallet and a CoNET Smart Wallet without sending private keys to Beamio.
+- **USDC payments** — Send, receive, and request USDC through mobile-friendly payment, QR, and sharing flows.
+- **Merchant discovery** — Find participating merchants and connect directly to their programs.
+- **Memberships and coupons** — Join merchant programs, claim eligible coupons, and present assets for in-store use.
+- **Store Credit** — Hold value issued by a specific merchant program.
+- **Reward PT** — Earn rewards from purchases, referrals, sharing, and engagement, then use eligible PT under participating program rules.
+- **Private messaging** — Communicate through encrypted CoNET messaging and recover supported chat history across devices.
+- **CoNET participation** — View supported network, validator, referral, and reward experiences from the Bounty Board.
 
-- React + TypeScript
-- Base（Ethereum L2）
-- CoNET Layer Minus（去中心化物理基础设施）
-- [Settle on Base](https://api.settleonbase.xyz) API
+Store Credit remains specific to the issuing merchant. Reward PT is a separate asset and is only portable where participating program rules allow it. Any remaining payment amount may be settled in USDC.
 
-## History – Requesting 三种状态
+## Trust and security model
 
-交易列表中 Requesting 类记录的三种展示状态（`activeHistoryPannelNew.tsx` 中 `TxItemRow`）：
+- Wallet material is stored on the customer device and restored through the user's BeamioTag and access password.
+- Mnemonics and signing keys are never stored in Local Storage or sent to application servers.
+- Supported USDC and program actions use local authorization with sponsored submission.
+- Merchant program ownership and customer assets remain distinct; Beamio does not pool them into a custodial balance.
+- Remote data failures do not erase previously trusted local state.
 
-| 状态 | 判定条件 | Title | Subtitle |
-|------|----------|-------|----------|
-| **Pending** | `request_create` / `request_expired` 且未过期 | Payment QR | forText 或 "QR Generated" |
-| **Expired** | `request_create` / `request_expired` 且已过期 | Request Expired | forText 或 "Link Invalidated" |
-| **Fulfilled** | `request_fulfilled`（已支付完成） | Payment Received | "Paid by @" + beamioTag 或 "Paid by " + fullName/shortAddr |
+## Application architecture
 
-| 状态 | 左侧 Icon | Icon 背景色 | 状态 Badge | 金额区 |
-|------|-----------|--------------|------------|--------|
-| Pending | QrCode | 橙色 (#FF9500) | Waiting | Pending |
-| Expired | XCircle | 灰色 | Expired | Expired |
-| Fulfilled | QrCode | 绿色 (#34C759) | Request | 实际金额（绿色） |
+This repository contains the Consumer PWA served at [beamio.app/app](https://beamio.app/app/). It also runs inside the Beamio iOS and Android WebView shells.
+
+The application uses:
+
+- React 18 and TypeScript
+- Create React App with CRACO
+- CoNET L1 for consumer Smart Wallets, merchant programs, Reward PT, memberships, and application state
+- Base for supported USDC wallet balances and settlement paths
+- Ethers v6 for chain interaction and local signing
+- PouchDB and IndexedDB for device-local wallet and trusted application data
+- Dedicated workers for wallet feeds, BeamioTag and merchant-card data, and encrypted chat
+- OpenPGP for CoNET messaging
+- Local-first IPFS image storage
+
+Chain reads are worker-managed, cached, deduplicated, and refreshed in the background. UI components consume trusted mirrors instead of issuing independent recurring RPC requests.
+
+## Getting started
+
+Requirements:
+
+- Node.js 20 (`.nvmrc`)
+- Yarn
+
+Install dependencies and start the development server:
+
+```bash
+nvm use
+yarn install
+yarn start
+```
+
+Create a production build for `/app/`:
+
+```bash
+yarn build
+```
+
+Create the root-path build used by the native embedded package:
+
+```bash
+yarn build:embedded
+```
+
+Run the test suite:
+
+```bash
+yarn test
+```
+
+## Deployment
+
+Production deployment must use the repository-level deployment script:
+
+```bash
+./scripts/deployBeamioPwa.sh
+```
+
+Run it from the `BeamioContract` repository root. The script bumps the patch version, updates the embedded OTA manifest, commits and pushes the version change, builds the PWA, publishes `/app/`, creates `SilentPassUI-<version>.zip`, and verifies the live OTA files.
+
+Do not publish only the static `build/` directory. Native shells discover updates through:
+
+- `https://beamio.app/app/update.json`
+- `https://beamio.app/app/SilentPassUI-<version>.zip`
+
+## Related applications
+
+- [Beamio](https://beamio.app/) — Product overview
+- [Beamio POS](https://pos.beamio.app/) — Authorized in-store terminal
+- [Beamio Merchant OS](https://biz.beamio.app/) — Merchant program and operations control plane
+- [Beamio whitepaper](https://gitbook.conet.network/applications/beamio.html) — Product model and trust boundaries
+- [CoNET](https://conet.network/) — Underlying decentralized infrastructure
 
 ## License
 
-Beamio is licensed under the MIT License (`MIT`), see [MIT_LICENSE](./MIT_LICENSE)
+Beamio Consumer is licensed under the MIT License. See [MIT_LICENSE](./MIT_LICENSE).

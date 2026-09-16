@@ -2096,6 +2096,17 @@ export default function DiscoverMerchantGiftSheet({
 					{activeOccasion.emoji} {activeOccasion.label}
 				</span>
 			</div>
+			{selectedGiftCardImage ? (
+				<div className="relative z-10 mt-4 h-36 overflow-hidden rounded-xl bg-black/15">
+					<IpfsImg
+						key={selectedGiftCardImage}
+						src={selectedGiftCardImage}
+						alt=""
+						className="h-full w-full object-cover"
+					/>
+					<div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/25 via-transparent to-transparent" />
+				</div>
+			) : null}
 			<div className="relative z-10 my-6">
 				<span
 					className="block text-[12px] font-semibold uppercase tracking-wider opacity-80"
@@ -2843,6 +2854,40 @@ export default function DiscoverMerchantGiftSheet({
 				</p>
 
 				<div className="mt-3">{themedGiftCard}</div>
+				{giftCardImageOptions.length > 1 ? (
+					<div className="mt-4">
+						<h3 className="mb-2.5 text-[18px] font-semibold tracking-tight text-[#1a1b1f] dark:text-slate-100">
+							Choose gift card design
+						</h3>
+						<div
+							className="flex w-max min-w-full snap-x snap-mandatory touch-pan-x gap-2.5 overflow-x-auto overscroll-x-contain pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+							role="listbox"
+							aria-label="Gift card design"
+						>
+							{giftCardImageOptions.map((image, index) => {
+								const selected = image === selectedGiftCardImage
+								return (
+									<button
+										key={`${image}-${index}`}
+										type="button"
+										role="option"
+										aria-selected={selected}
+										aria-label={`Use gift card design ${index + 1}`}
+										onClick={() => setSelectedGiftCardImage(image)}
+										className={`h-24 w-36 shrink-0 snap-start overflow-hidden rounded-xl border-2 bg-slate-900 transition ${
+											selected
+												? 'ring-2 ring-offset-1'
+												: 'border-transparent opacity-80 hover:opacity-100'
+										}`}
+										style={selected ? { borderColor: brandControl, boxShadow: `0 0 0 2px ${brandControl}` } : undefined}
+									>
+										<IpfsImg src={image} alt="" className="h-full w-full object-cover" />
+									</button>
+								)
+							})}
+						</div>
+					</div>
+				) : null}
 
 				<section className="mt-6">
 					<div className="mb-2.5 flex items-center justify-between gap-2">

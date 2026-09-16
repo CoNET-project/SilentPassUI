@@ -673,13 +673,6 @@ export default function MerchantCardStripePanel({ cardAddress }: Props) {
 							</span>
 						</button>
 					</div>
-					<p className="mt-2 text-sm text-slate-500">
-						{status.linked
-							? status.topupEnabled
-								? 'This card can accept Stripe top-ups and membership payments.'
-								: 'Stripe top-ups are off. Membership payments remain available.'
-							: 'Complete your Stripe account setup before this card can accept payments.'}
-					</p>
 					{menuOpen ? (
 						<div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
 							<p className="text-sm font-medium text-slate-800">Stripe payment options</p>

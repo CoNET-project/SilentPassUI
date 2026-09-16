@@ -36,6 +36,7 @@ import {
 	type DiscoverCategoryTab,
 } from '@/utils/discoverMerchantCategory'
 import { pickNonFactoryMerchantAssetUrl } from '@/utils/isFactoryDefaultMerchantAssetUrl'
+import { shareDiscoverMerchantUrl } from '@/utils/discoverMerchantShare'
 import { generateCODE } from '@/services/beamio'
 import { fiatPrefix, formatAmount } from '@/services/currency'
 import {
@@ -1300,6 +1301,25 @@ export default function DiscoverMerchantGiftSheet({
 			window.setTimeout(() => setCopyLinkStatus('idle'), 2000)
 		} catch {
 			/* user cancelled share */
+		}
+	}
+
+	const giftPurchaseUrl = useMemo(
+		() =>
+			`https://beamio.app/gift/${
+				ethers.isAddress(cardAddress) ? encodeURIComponent(ethers.getAddress(cardAddress)) : encodeURIComponent(cardAddress)
+			}`,
+		[cardAddress],
+	)
+
+	const handleShareGiftPurchaseUrl = async () => {
+		const text = `Buy a gift from ${merchantTitle.trim() || 'this merchant'}`
+		try {
+			const outcome = await shareDiscoverMerchantUrl(giftPurchaseUrl, { title: text })
+			if (outcome === 'copied') setPanelError('Gift purchase link copied.')
+			if (outcome === 'failed') setPanelError('Could not share the Gift purchase link.')
+		} catch {
+			/* user cancelled the system share menu */
 		}
 	}
 
@@ -2745,9 +2765,24 @@ export default function DiscoverMerchantGiftSheet({
 						</span>
 					</div>
 				</div>
-				<h2 className="text-[28px] font-bold leading-tight tracking-tight text-[#0F172A] dark:text-slate-100">
-					{isDining ? 'Treat a Friend 🍽️' : 'Gift of Wellness ✨'}
-				</h2>
+				<div className="flex items-start justify-between gap-3">
+					<h2 className="min-w-0 flex-1 text-[28px] font-bold leading-tight tracking-tight text-[#0F172A] dark:text-slate-100">
+						{isDining ? 'Treat a Friend 🍽️' : 'Gift of Wellness ✨'}
+					</h2>
+					<button
+						type="button"
+						onClick={() => void handleShareGiftPurchaseUrl()}
+						className="mt-1 inline-flex max-w-[46%] shrink-0 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 shadow-sm transition hover:bg-slate-50 active:scale-95 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+						aria-label="Share Gift purchase page"
+						title={giftPurchaseUrl}
+					>
+						<Link2 className="h-3.5 w-3.5 shrink-0" aria-hidden />
+						<span className="truncate">
+							{`beamio.app/gift/${cardAddress.slice(0, 6)}…${cardAddress.slice(-4)}`}
+						</span>
+						<Share2 className="h-3.5 w-3.5 shrink-0" aria-hidden />
+					</button>
+				</div>
 				<p className="mt-0.5 text-[15px] text-[#5d5e63] dark:text-slate-400">
 					{isDining
 						? `Send a delicious experience at ${merchantLabel}.`

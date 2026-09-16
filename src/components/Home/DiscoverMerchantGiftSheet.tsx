@@ -2854,7 +2854,7 @@ export default function DiscoverMerchantGiftSheet({
 							Choose gift card design
 						</h3>
 						<div
-							className="flex w-max min-w-full snap-x snap-mandatory touch-pan-x gap-2.5 overflow-x-auto overscroll-x-contain pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+							className="flex w-full snap-x snap-mandatory touch-pan-x gap-2.5 overflow-x-auto overscroll-x-contain pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
 							role="listbox"
 							aria-label="Gift card design"
 						>
@@ -3141,7 +3141,7 @@ export default function DiscoverMerchantGiftSheet({
 							Choose gift card design
 						</h3>
 						<div
-							className="flex w-max min-w-full snap-x snap-mandatory touch-pan-x gap-2.5 overflow-x-auto overscroll-x-contain pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+							className="flex w-full snap-x snap-mandatory touch-pan-x gap-2.5 overflow-x-auto overscroll-x-contain pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
 							role="listbox"
 							aria-label="Gift card design"
 						>

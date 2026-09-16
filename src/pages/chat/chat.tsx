@@ -5,6 +5,7 @@ import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
 import { motion, AnimatePresence } from "framer-motion"
 import { checkSign, emitReactionAsNewMessage, createMembershipActivatedCard } from '@/services/chat'
 import { mirrorChatMessageToHistory } from '@/services/chatHistoryMirror' 
+import { IpfsImg } from '@/components/IpfsImg'
 import {
   ArrowUp,
   ChevronLeft,
@@ -1800,6 +1801,11 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 																		{formatTimeLabel(pc.timeStamp)}
 																	</span>
 																</div>
+																{pc.imageUrl ? (
+																	<div className="mx-3 mb-3 h-28 overflow-hidden rounded-xl">
+																		<IpfsImg src={pc.imageUrl} alt="" className="h-full w-full object-cover" />
+																	</div>
+																) : null}
 																<div className="mx-3 mb-3 overflow-hidden rounded-xl bg-gradient-to-r from-slate-300/25 via-purple-300/20 to-slate-200/15 px-3 py-3">
 																	<div className="flex items-start justify-between gap-2">
 																		<div className="min-w-0">

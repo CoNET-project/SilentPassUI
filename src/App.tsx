@@ -173,7 +173,11 @@ function AppShell() {
   const [couponClaimSubmitting, setCouponClaimSubmitting] = useState(false)
   /** Already-claimed open-claim → OpenContainer QR for POS 核销. */
   const [couponClaimShowPayOpen, setCouponClaimShowPayOpen] = useState(false)
-  const [redeemClaimIntent, setRedeemClaimIntent] = useState<{ cardAddress?: string; redeemCode: string } | null>(null)
+  const [redeemClaimIntent, setRedeemClaimIntent] = useState<{
+    cardAddress?: string
+    redeemCode: string
+    giftImageUrl?: string
+  } | null>(null)
   /** 扫码 beamio URL 中的 wallet 参数：{ beamioAccount, wallet }，PayScreen 优先使用此地址 */
   const [preferredPayeeWallet, setPreferredPayeeWallet] = useState<{ beamioAccount: string; wallet: string } | null>(null)
   const runningRef = useRef(false)
@@ -2176,6 +2180,7 @@ function AppShell() {
 				<MerchantGiftClaimSheet
 					cardAddress={redeemClaimIntent.cardAddress}
 					redeemCode={redeemClaimIntent.redeemCode}
+					giftImageUrl={redeemClaimIntent.giftImageUrl}
 					onClose={closeRedeemClaimPanel}
 					onSuccess={(tx) => {
 						setRedeemResult({ success: true, tx })

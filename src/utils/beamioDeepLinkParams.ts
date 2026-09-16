@@ -120,7 +120,7 @@ export function parseCouponOpenClaimFromParams(
 
 export function parseRedeemClaimFromParams(
 	sp: URLSearchParams
-): { cardAddress?: string; redeemCode: string } | null {
+): { cardAddress?: string; redeemCode: string; giftImageUrl?: string } | null {
 	const redeemcode = (sp.get('redeemcode') ?? sp.get('Redeemcode') ?? '').trim()
 	if (!redeemcode) return null
 	const beamiocard = (sp.get('beamiocard') ?? sp.get('Beamiocard') ?? '').trim()
@@ -129,6 +129,7 @@ export function parseRedeemClaimFromParams(
 	return {
 		cardAddress,
 		redeemCode: decodeURIComponent(redeemcode),
+		giftImageUrl: sp.get('giftimage')?.trim() || undefined,
 	}
 }
 

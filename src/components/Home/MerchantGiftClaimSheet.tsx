@@ -25,6 +25,7 @@ import { IpfsImg } from '@/components/IpfsImg'
 type Props = {
 	cardAddress: string
 	redeemCode: string
+	giftImageUrl?: string
 	onClose: () => void
 	onSuccess?: (tx?: string) => void
 	/** Navigate to chat with sender when available */
@@ -38,6 +39,7 @@ type Props = {
 export default function MerchantGiftClaimSheet({
 	cardAddress,
 	redeemCode,
+	giftImageUrl,
 	onClose,
 	onSuccess,
 	onReplyInChat,
@@ -86,6 +88,7 @@ export default function MerchantGiftClaimSheet({
 	}, [card, resolveName, peekMetadata])
 
 	const merchantImage = card ? resolveImage(card) : ''
+	const selectedGiftImage = giftImageUrl?.trim() || ''
 
 	const close = useCallback(() => {
 		if (closing || submitting) return
@@ -200,6 +203,11 @@ export default function MerchantGiftClaimSheet({
 							</div>
 
 							<div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#2f2b27] via-[#25221e] to-[#1a1816] p-4 text-[#faf9fe] shadow-md">
+								{selectedGiftImage ? (
+									<div className="mb-3 h-32 overflow-hidden rounded-xl">
+										<IpfsImg src={selectedGiftImage} alt="" className="h-full w-full object-cover" />
+									</div>
+								) : null}
 								<div className="flex items-center justify-between gap-2">
 									<div className="flex min-w-0 items-center gap-2">
 										<span className="rounded-full bg-[#baa479]/20 px-2.5 py-0.5 text-[12px] font-semibold uppercase tracking-wider text-[#edd8af]">

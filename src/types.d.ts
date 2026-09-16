@@ -162,6 +162,8 @@ type paymentCard = {
 		walletLabel?: string
 		/** 仅 paymentRequest：备注/原因，如 "Dinner Split" */
 		memo?: string
+		/** 仅 merchantGift：the tier background selected by the purchaser */
+		imageUrl?: string
 	}
 
 

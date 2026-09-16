@@ -1401,6 +1401,8 @@ export function createMerchantGiftRedeemCard(params: {
 	claimUrl: string
 	/** Optional short note shown under the card chrome */
 	memo?: string
+	/** Tier background selected by the purchaser */
+	imageUrl?: string
 	usdcAmount?: number
 }): ChatMessage {
 	const now = Date.now()
@@ -1420,6 +1422,7 @@ export function createMerchantGiftRedeemCard(params: {
 		requestUrl: params.claimUrl,
 		statusLabel: 'Gift voucher',
 		memo: params.memo?.trim() || undefined,
+		imageUrl: params.imageUrl?.trim() || undefined,
 	}
 	return {
 		sendId,

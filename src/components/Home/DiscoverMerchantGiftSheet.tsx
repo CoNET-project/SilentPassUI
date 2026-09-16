@@ -1555,7 +1555,7 @@ export default function DiscoverMerchantGiftSheet({
 				}
 				const plain = (result.redeemCode ?? redeemCode).trim()
 				const claimUrl =
-					buildMerchantGiftRedeemShareUrl(card, plain) || result.shareUrl?.trim() || null
+					buildMerchantGiftRedeemShareUrl(card, plain, selectedGiftCardImage) || result.shareUrl?.trim() || null
 				setIssuedCode(plain)
 				setIssuedShareUrl(claimUrl)
 				setIssuedTopupCreditE6(result.topupCreditE6 ?? topupPrincipalE6)
@@ -1737,7 +1737,7 @@ export default function DiscoverMerchantGiftSheet({
 			}
 			const plain = (result.redeemCode ?? redeemCode).trim()
 			const claimUrl =
-				buildMerchantGiftRedeemShareUrl(card, plain) || result.shareUrl?.trim() || null
+				buildMerchantGiftRedeemShareUrl(card, plain, selectedGiftCardImage) || result.shareUrl?.trim() || null
 			setIssuedCode(plain)
 			setIssuedShareUrl(claimUrl)
 			setIssuedTopupCreditE6(result.topupCreditE6 ?? topupPrincipalE6)
@@ -1794,6 +1794,7 @@ export default function DiscoverMerchantGiftSheet({
 			currency: ccy,
 			merchantTitle: merchantLabel,
 			claimUrl,
+			imageUrl: selectedGiftCardImage,
 			note: giftNote,
 		})
 		if (!chatRet.ok) {
@@ -3461,8 +3462,8 @@ export default function DiscoverMerchantGiftSheet({
 							className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg"
 							style={{ backgroundColor: brandColor, color: onBrandText }}
 						>
-							{spotlightUrl ? (
-								<IpfsImg src={spotlightUrl} alt="" className="h-full w-full object-cover" />
+							{selectedGiftCardImage ? (
+								<IpfsImg src={selectedGiftCardImage} alt="" className="h-full w-full object-cover" />
 							) : (
 								<div className="flex h-full w-full items-center justify-center text-[18px] font-bold">
 									{merchantInitial}
@@ -3904,8 +3905,8 @@ export default function DiscoverMerchantGiftSheet({
 								className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl shadow-sm"
 								style={{ backgroundColor: brandTint, color: brandControl }}
 							>
-								{spotlightUrl ? (
-									<IpfsImg src={spotlightUrl} alt="" className="h-full w-full object-cover" />
+								{selectedGiftCardImage ? (
+									<IpfsImg src={selectedGiftCardImage} alt="" className="h-full w-full object-cover" />
 								) : (
 									<Step3KindIcon className="h-6 w-6" strokeWidth={2} aria-hidden />
 								)}

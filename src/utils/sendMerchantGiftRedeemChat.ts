@@ -18,6 +18,8 @@ export type SendMerchantGiftRedeemChatParams = {
 	currency: ICurrency
 	merchantTitle: string
 	claimUrl: string
+	/** Tier background selected by the purchaser */
+	imageUrl?: string | null
 	/** Optional personalized note sent as a normal text bubble before the gift card */
 	note?: string
 }
@@ -40,6 +42,7 @@ export async function sendMerchantGiftRedeemChat(
 		currency,
 		merchantTitle,
 		claimUrl,
+		imageUrl,
 		note,
 	} = params
 
@@ -97,6 +100,7 @@ export async function sendMerchantGiftRedeemChat(
 		currency,
 		merchantTitle,
 		claimUrl: claimUrl.trim(),
+		imageUrl: imageUrl?.trim() || undefined,
 		memo: noteText || undefined,
 		usdcAmount: amount,
 	})

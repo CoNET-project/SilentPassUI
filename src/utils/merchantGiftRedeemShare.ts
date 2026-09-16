@@ -10,6 +10,7 @@ import { appendAppDownloadShareCacheBust } from './appDownloadShareCacheBust'
 export function buildMerchantGiftRedeemShareUrl(
 	cardAddress: string,
 	redeemCode: string,
+	giftImageUrl?: string | null,
 	cacheBustV?: string,
 ): string {
 	const addr = cardAddress?.trim() ?? ''
@@ -17,7 +18,9 @@ export function buildMerchantGiftRedeemShareUrl(
 	if (!addr || !code || !ethers.isAddress(addr)) return ''
 	const redeemUrl = `https://beamio.app/app/?beamiocard=${encodeURIComponent(
 		ethers.getAddress(addr),
-	)}&redeemcode=${encodeURIComponent(code)}`
+	)}&redeemcode=${encodeURIComponent(code)}${
+		giftImageUrl?.trim() ? `&giftimage=${encodeURIComponent(giftImageUrl.trim())}` : ''
+	}`
 	const base = `https://beamio.app/app-download?target=${encodeURIComponent(redeemUrl)}`
 	return appendAppDownloadShareCacheBust(base, cacheBustV)
 }

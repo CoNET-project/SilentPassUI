@@ -13054,6 +13054,8 @@ type CardIssuanceTierRow = {
    * Independent of card-level `merchantImage` (Discover / merchant hero).
    */
   backgroundImage: string;
+  /** Optional tier background image candidates; `backgroundImage` is the active selection. */
+  backgroundImageOptions: string[];
   /** Maps to `TierMetadata.imageFit` — width-first or height-first render. */
   backgroundImageFit: CardIssuanceBackgroundImageFit;
   /** Maps to `TierMetadata.logoDisplayScale` — top-left logo 2x/4x/6x/8x/hidden. */
@@ -13148,6 +13150,11 @@ function makeCardIssuanceTierRow(
     tierDescriptionOpen: overrides.tierDescriptionOpen ?? false,
     backgroundColor: overrides.backgroundColor ?? '#6366f1',
     backgroundImage: overrides.backgroundImage ?? '',
+    backgroundImageOptions: Array.isArray(overrides.backgroundImageOptions)
+      ? overrides.backgroundImageOptions.filter((image): image is string => typeof image === 'string' && image.trim() !== '')
+      : overrides.backgroundImage
+        ? [overrides.backgroundImage]
+        : [],
     backgroundImageFit: normalizeCardIssuanceBackgroundImageFit(overrides.backgroundImageFit),
     logoDisplayScale: clampTierLogoDisplayScale(overrides.logoDisplayScale),
     membershipFee: overrides.membershipFee ?? '',
@@ -13184,6 +13191,11 @@ function cardIssuanceTierRowsFromMetadata(tiers: CardTierMetadata[]): CardIssuan
       tierDescription: t.description ?? '',
       backgroundColor: t.backgroundColor ?? (i === 0 ? '#94a3b8' : '#6366f1'),
       backgroundImage: typeof t.image === 'string' ? t.image.trim() : '',
+      backgroundImageOptions: Array.isArray(t.images)
+        ? t.images.filter((image): image is string => typeof image === 'string' && image.trim() !== '')
+        : typeof t.image === 'string' && t.image.trim()
+          ? [t.image.trim()]
+          : [],
       backgroundImageFit: normalizeCardIssuanceBackgroundImageFit(t.imageFit),
       logoDisplayScale: clampTierLogoDisplayScale(
         (t as { logoDisplayScale?: unknown }).logoDisplayScale ??
@@ -13584,6 +13596,7 @@ const defaultCardIssuanceTiers = (): CardIssuanceTierRow[] => [
     tierDescriptionOpen: false,
     backgroundColor: '#94a3b8',
     backgroundImage: '',
+    backgroundImageOptions: [],
     backgroundImageFit: 'width',
     logoDisplayScale: TIER_LOGO_DISPLAY_SCALE_DEFAULT,
     membershipFee: '',
@@ -14023,6 +14036,7 @@ const [cardIssuanceMembershipFeeTierEditorDraft, setMembershipFeeTierEditorDraft
     backgroundMode: 'color',
     backgroundColor: '#1562F0',
     backgroundImage: '',
+    backgroundImageOptions: [],
     backgroundImageFit: 'width',
     discountPercent: '10',
     membershipFee: '50',
@@ -20672,6 +20686,14 @@ const membershipFeeDraftFromTierRow = useCallback(
     const durationKind = normalizeMembershipDurationKind(row.membershipDurationKind);
     const color = normalizeMembershipFeeTierHexColor(row.backgroundColor || '#1562F0');
     const backgroundImage = String(row.backgroundImage ?? '').trim();
+    const backgroundImageOptions = Array.from(
+      new Set(
+        (row.backgroundImageOptions ?? [])
+          .map((image) => String(image ?? '').trim())
+          .filter(Boolean)
+          .concat(backgroundImage ? [backgroundImage] : []),
+      ),
+    );
     const backgroundImageFit = normalizeMembershipFeeTierBackgroundImageFit(row.backgroundImageFit);
     return {
       threshold: String(row.threshold ?? CARD_ISSUANCE_MIN_TOPUP_DEFAULT),
@@ -20681,6 +20703,7 @@ const membershipFeeDraftFromTierRow = useCallback(
       backgroundMode: backgroundImage ? 'image' : 'color',
       backgroundColor: color,
       backgroundImage,
+      backgroundImageOptions,
       backgroundImageFit,
       discountPercent: (row.discountPercent ?? '').trim() || (isBase ? '10' : '0'),
       membershipFee: feeHuman,
@@ -20925,6 +20948,8 @@ const cardIssuanceMembershipFeeTierEditorDirty = useMemo(() => {
     normalizeMembershipFeeTierHexColor(draft.backgroundColor) !==
       normalizeMembershipFeeTierHexColor(baseline.backgroundColor) ||
     String(draft.backgroundImage ?? '').trim() !== String(baseline.backgroundImage ?? '').trim() ||
+    JSON.stringify(draft.backgroundImageOptions ?? []) !==
+      JSON.stringify(baseline.backgroundImageOptions ?? []) ||
     normalizeMembershipFeeTierBackgroundImageFit(draft.backgroundImageFit) !==
       normalizeMembershipFeeTierBackgroundImageFit(baseline.backgroundImageFit) ||
     draft.discountPercent.replace(/,/g, '').trim() !== baseline.discountPercent.replace(/,/g, '').trim() ||
@@ -21097,6 +21122,14 @@ const buildMembershipFeeTierRowsFromEditorDraft = useCallback(
       : normalizeMembershipDurationKind(draft.membershipDurationKind);
     const color = normalizeMembershipFeeTierHexColor(draft.backgroundColor);
     const styleImageDraft = String(draft.backgroundImage ?? '').trim();
+    const styleImageOptions = Array.from(
+      new Set(
+        (draft.backgroundImageOptions ?? [])
+          .map((image) => String(image ?? '').trim())
+          .filter(Boolean)
+          .concat(styleImageDraft ? [styleImageDraft] : []),
+      ),
+    );
     const styleMode =
       styleImageDraft || draft.backgroundMode === 'image' ? 'image' : 'color';
     let nextBackgroundImage = '';
@@ -21133,6 +21166,7 @@ const buildMembershipFeeTierRowsFromEditorDraft = useCallback(
             : row.threshold,
       backgroundColor: color,
       backgroundImage: nextBackgroundImage,
+      backgroundImageOptions: styleImageOptions,
       backgroundImageFit: nextBackgroundImage
         ? nextBackgroundImageFit
         : normalizeMembershipFeeTierBackgroundImageFit(row.backgroundImageFit),
@@ -21286,6 +21320,14 @@ const disableCardIssuanceTopupPromotion = useCallback(() => {
      }
      const backgroundColor = tierBackgroundColorForPayload(t.backgroundColor);
      const image = (t.backgroundImage ?? '').trim();
+     const images = Array.from(
+       new Set(
+         (t.backgroundImageOptions ?? [])
+           .map((candidate) => String(candidate ?? '').trim())
+           .filter(Boolean)
+           .concat(image ? [image] : []),
+       ),
+     );
      const imageFit = normalizeCardIssuanceBackgroundImageFit(t.backgroundImageFit);
      const logoDisplayScale = clampTierLogoDisplayScale(t.logoDisplayScale);
      const membershipDurationKind = hasMembershipFee
@@ -21301,7 +21343,7 @@ const disableCardIssuanceTopupPromotion = useCallback(() => {
        membershipDurationKind,
        ...(description ? { description } : {}),
        ...(backgroundColor ? { backgroundColor } : {}),
-       ...(image ? { image, imageFit } : {}),
+       ...(image ? { image, imageFit, ...(images.length > 1 ? { images } : {}) } : {}),
      };
    };
 
@@ -21347,7 +21389,15 @@ const disableCardIssuanceTopupPromotion = useCallback(() => {
     membershipDurationKind: t.membershipDurationKind,
     ...(t.description ? { description: t.description } : {}),
     ...(t.backgroundColor ? { backgroundColor: t.backgroundColor } : {}),
-    ...(t.image ? { image: t.image, imageFit: t.imageFit } : {}),
+    ...(t.image
+      ? {
+          image: t.image,
+          imageFit: t.imageFit,
+          ...(t.images && t.images.length > 1
+            ? { images: t.images }
+            : {}),
+        }
+      : {}),
   }));
 }, []);
 
@@ -22343,6 +22393,9 @@ const ingestMembershipFeeTierBackgroundImageFile = useCallback(
         ...prev,
         backgroundMode: 'image',
         backgroundImage: localPreview,
+        backgroundImageOptions: Array.from(
+          new Set([...(prev.backgroundImageOptions ?? []), localPreview]),
+        ),
         backgroundImageFit: normalizeMembershipFeeTierBackgroundImageFit(
           prev.backgroundImageFit,
         ),
@@ -22371,6 +22424,9 @@ const ingestMembershipFeeTierBackgroundImageFile = useCallback(
             return {
               ...prev,
               backgroundImage: baseImg,
+              backgroundImageOptions: (prev.backgroundImageOptions ?? []).filter(
+                (image) => image !== localPreview,
+              ),
               backgroundMode: baseImg ? 'image' : 'color',
             };
           }
@@ -22381,6 +22437,18 @@ const ingestMembershipFeeTierBackgroundImageFile = useCallback(
       const ipfsUrl = `${IPFS_GET_FRAGMENT}${hash}&t=${Date.now()}`;
       membershipFeeTierBgPendingIpfsRef.current = ipfsUrl;
       setMembershipFeeTierBgPendingIpfs(ipfsUrl);
+      setMembershipFeeTierEditorDraft((prev) => ({
+        ...prev,
+        backgroundMode: 'image',
+        backgroundImage: ipfsUrl,
+        backgroundImageOptions: Array.from(
+          new Set(
+            (prev.backgroundImageOptions ?? [])
+              .map((image) => (image === localPreview ? ipfsUrl : image))
+              .concat(ipfsUrl),
+          ),
+        ),
+      }));
     } catch (err: any) {
       setCardIssuanceMembershipFeeTierEditorServerError(
         err?.message ?? 'Background image upload failed.',
@@ -22402,6 +22470,9 @@ const ingestMembershipFeeTierBackgroundImageFile = useCallback(
         return {
           ...prev,
           backgroundImage: baseImg,
+          backgroundImageOptions: (prev.backgroundImageOptions ?? []).filter(
+            (image) => image !== localPreview,
+          ),
           backgroundMode: baseImg ? 'image' : 'color',
         };
       });
@@ -22422,10 +22493,14 @@ const handleMembershipFeeTierBackgroundImagePick: React.ChangeEventHandler<HTMLI
   useCallback(
     (e) => {
       const input = e.currentTarget;
-      const file = input.files?.[0];
+      const files = Array.from(input.files ?? []);
       input.value = '';
-      if (!file) return;
-      void ingestMembershipFeeTierBackgroundImageFile(file);
+      if (files.length === 0) return;
+      void (async () => {
+        for (const file of files) {
+          await ingestMembershipFeeTierBackgroundImageFile(file);
+        }
+      })();
     },
     [ingestMembershipFeeTierBackgroundImageFile],
   );
@@ -22498,13 +22573,16 @@ const clearMembershipFeeTierBackgroundDraftImage = useCallback(() => {
   setMembershipFeeTierBgDropActive(false);
   setMembershipFeeTierEditorDraft((prev) => {
     const prevImg = String(prev.backgroundImage ?? '').trim();
+    const remaining = (prev.backgroundImageOptions ?? []).filter((image) => image !== prevImg);
     if (prevImg.startsWith('blob:') || prevImg.startsWith('data:')) {
       revokeMembershipFeeTierBgDraftBlob(prevImg);
     }
+    const nextImage = remaining[0] ?? '';
     return {
       ...prev,
-      backgroundMode: 'color',
-      backgroundImage: '',
+      backgroundMode: nextImage ? 'image' : 'color',
+      backgroundImage: nextImage,
+      backgroundImageOptions: remaining,
     };
   });
   setCardIssuanceMembershipFeeTierEditorServerError('');
@@ -25747,6 +25825,7 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
        tierDescriptionOpen: boolean
        backgroundColor: string
        backgroundImage?: string
+       backgroundImageOptions?: string[]
        backgroundImageFit?: CardIssuanceBackgroundImageFit
        logoDisplayScale?: TierLogoDisplayScale
      }): CardIssuanceTierRow => ({
@@ -25764,6 +25843,11 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
        tierDescriptionOpen: t.tierDescriptionOpen,
        backgroundColor: t.backgroundColor,
        backgroundImage: typeof t.backgroundImage === 'string' ? t.backgroundImage : '',
+       backgroundImageOptions: Array.isArray(t.backgroundImageOptions)
+         ? t.backgroundImageOptions.filter((image): image is string => typeof image === 'string' && image.trim() !== '')
+         : typeof t.backgroundImage === 'string' && t.backgroundImage.trim()
+           ? [t.backgroundImage.trim()]
+           : [],
        backgroundImageFit: normalizeCardIssuanceBackgroundImageFit(t.backgroundImageFit),
        logoDisplayScale: clampTierLogoDisplayScale(t.logoDisplayScale),
        membershipFee: '',
@@ -46980,9 +47064,21 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                    ).trim(),
                  )}
                  tu={tu}
-                 onDraftChange={(patch) =>
+                 onDraftChange={(patch) => {
+                   if (Object.prototype.hasOwnProperty.call(patch, 'backgroundImage')) {
+                     const nextImage = String(patch.backgroundImage ?? '').trim()
+                     const pendingImage =
+                       membershipFeeTierBgPendingIpfs.trim() ||
+                       membershipFeeTierBgPendingIpfsRef.current.trim()
+                     if (nextImage && nextImage !== pendingImage) {
+                       membershipFeeTierBgPendingIpfsRef.current = ''
+                       setMembershipFeeTierBgPendingIpfs('')
+                       membershipFeeTierBgPendingBrandToneRef.current = ''
+                       setMembershipFeeTierBgPendingBrandTone('')
+                     }
+                   }
                    setMembershipFeeTierEditorDraft((prev) => ({ ...prev, ...patch }))
-                 }
+                 }}
                  onHexDraftChange={setCardIssuanceMembershipFeeTierHexDraft}
                  onBackgroundImageFileChange={handleMembershipFeeTierBackgroundImagePick}
                  onBackgroundImageClear={clearMembershipFeeTierBackgroundDraftImage}

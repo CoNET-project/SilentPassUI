@@ -67,6 +67,8 @@ export type MembershipFeeTierEditorDraft = {
   backgroundColor: string
   /** Tier pass background image (blob preview or IPFS URL). Maps to `TierMetadata.image`. */
   backgroundImage: string
+  /** Candidate tier background images; `backgroundImage` is the active selection. */
+  backgroundImageOptions: string[]
   backgroundImageFit: MembershipFeeTierBackgroundImageFit
   discountPercent: string
   membershipFee: string
@@ -176,6 +178,13 @@ export function MembershipFeeTierProgramEditor({
   const themeHex = normalizeMembershipFeeTierHexColor(draft.backgroundColor)
   const styleImage = (draft.backgroundImage ?? '').trim()
   const hasStyleImage = styleImage.length > 0
+  const styleImageOptions = Array.from(
+    new Set(
+      [styleImage, ...(draft.backgroundImageOptions ?? [])]
+        .map((image) => String(image ?? '').trim())
+        .filter(Boolean),
+    ),
+  )
   const styleMode: MembershipFeeTierBackgroundMode =
     hasStyleImage || draft.backgroundMode === 'image' ? 'image' : 'color'
   const styleImageFit = normalizeMembershipFeeTierBackgroundImageFit(draft.backgroundImageFit)
@@ -396,6 +405,7 @@ export function MembershipFeeTierProgramEditor({
                       ref={backgroundImageFileRef}
                       type="file"
                       accept="image/*"
+                      multiple
                       className="hidden"
                       onChange={onBackgroundImageFileChange}
                     />
@@ -490,21 +500,57 @@ export function MembershipFeeTierProgramEditor({
                             onDragLeave={onBackgroundImageDragLeave}
                             onDrop={onBackgroundImageDrop}
                           >
-                            <div className="relative aspect-[16/9] w-full overflow-hidden bg-[#0f172a]">
-                              <MerchantProgramPassFace
-                                brandName={passBrandName}
-                                tierName={passTierName}
-                                backgroundColor={themeHex}
-                                backgroundImage={styleImage}
-                                backgroundImageFit={styleImageFit}
-                                logoSrc={brandLogoSrc}
-                                discountPercent={discountPercentWhole}
-                                upToLabel={tu('programs_overview_up_to')}
-                                memberPricingLabel={tu('programs_overview_member_pricing')}
-                                startingFromLabel=""
-                                startingFromAmount=""
-                                className="!shadow-none h-full w-full rounded-none"
-                              />
+                            <div
+                              className="flex snap-x snap-mandatory gap-2 overflow-x-auto p-2"
+                              aria-label="Tier background image choices"
+                            >
+                              {styleImageOptions.map((image, index) => {
+                                const selected = image === styleImage
+                                return (
+                                  <button
+                                    key={`${image}-${index}`}
+                                    type="button"
+                                    aria-label={`Use tier background image ${index + 1}`}
+                                    aria-pressed={selected}
+                                    disabled={chromeBusy}
+                                    onClick={() =>
+                                      onDraftChange({
+                                        backgroundMode: 'image',
+                                        backgroundImage: image,
+                                      })
+                                    }
+                                    className={`relative h-20 w-28 shrink-0 snap-start overflow-hidden rounded-xl border-2 bg-[#0f172a] transition ${
+                                      selected
+                                        ? 'border-[#0051d1] ring-2 ring-[#0051d1]/20'
+                                        : 'border-transparent hover:border-slate-300'
+                                    }`}
+                                  >
+                                    <img
+                                      src={image}
+                                      alt=""
+                                      className="h-full w-full object-cover"
+                                    />
+                                    {selected ? (
+                                      <span className="absolute bottom-1 right-1 rounded-full bg-[#0051d1] px-1.5 py-0.5 text-[9px] font-bold text-white">
+                                        Selected
+                                      </span>
+                                    ) : null}
+                                  </button>
+                                )
+                              })}
+                              <button
+                                type="button"
+                                aria-label={tu('programs_membership_fee_tier_style_replace')}
+                                disabled={chromeBusy}
+                                onClick={() => backgroundImageFileRef.current?.click()}
+                                className="flex h-20 w-20 shrink-0 snap-start items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white text-[#0051d1] transition hover:border-[#0051d1] disabled:opacity-60"
+                              >
+                                {backgroundImageUploading ? (
+                                  <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
+                                ) : (
+                                  <ImagePlus className="h-5 w-5" aria-hidden />
+                                )}
+                              </button>
                             </div>
                             <div className="absolute left-2.5 top-2.5 z-10 flex items-center gap-1.5">
                               <button

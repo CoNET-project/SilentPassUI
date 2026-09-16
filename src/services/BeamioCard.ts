@@ -1549,6 +1549,8 @@ export type TierMetadata = {
 	name?: string
 	description?: string
 	image?: string
+	/** Optional tier background image candidates; `image` remains the active selection. */
+	images?: string[]
 	/** Pass card background image fit: width-first or height-first. */
 	imageFit?: 'width' | 'height'
 	backgroundColor?: string
@@ -4016,6 +4018,8 @@ export type CardTierMetadata = {
 	name?: string
 	description?: string
 	image?: string
+	/** Optional tier background image candidates; `image` remains the active selection. */
+	images?: string[]
 	/** Pass card background image fit: width-first or height-first. */
 	imageFit?: 'width' | 'height'
 	backgroundColor?: string

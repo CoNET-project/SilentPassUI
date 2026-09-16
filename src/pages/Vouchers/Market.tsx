@@ -3022,8 +3022,17 @@ function parseDiscoverTier0PanelBackground(
 		nested?.background_color
 	const backgroundColor =
 		typeof bgRaw === 'string' && bgRaw.trim() ? discoverSafeCssColor(bgRaw) : null
-	const imageRaw = o.image ?? o.backgroundImage ?? nested?.image ?? nested?.backgroundImage
-	const backgroundImageUrl = discoverResolveTierBackgroundImageUrl(imageRaw)
+	const imageCandidates = [
+		o.image,
+		...(Array.isArray(o.images) ? o.images : []),
+		o.backgroundImage,
+		nested?.image,
+		nested?.backgroundImage,
+	]
+	const backgroundImageUrl =
+		imageCandidates
+			.map((candidate) => discoverResolveTierBackgroundImageUrl(candidate))
+			.find((url): url is string => Boolean(url)) ?? null
 	const imageFit = normalizeCardPassBackgroundImageFit(o.imageFit ?? nested?.imageFit)
 	return { backgroundColor, backgroundImageUrl, imageFit }
 }

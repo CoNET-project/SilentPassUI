@@ -2914,6 +2914,8 @@ export type TierMetadata = {
 	description?: string
 	/** Pass face background image (IPFS URL) */
 	image?: string
+	/** Uploaded tier background choices; `image` is the merchant-selected choice. */
+	images?: string[]
 	/** Pass background fit: width-first or height-first */
 	imageFit?: 'width' | 'height'
 	/** Top-left merchant logo scale on pass face */
@@ -4174,7 +4176,17 @@ export type CardPointSystemMetadata = {
 }
 
 /** 卡 metadata 中的 tier 项（创建卡时由 cardManager 提交，存于 0x{owner}.json） */
-export type CardTierMetadata = { index: number; minUsdc6?: string; attr?: number; name?: string; description?: string; image?: string; backgroundColor?: string }
+export type CardTierMetadata = {
+	index: number
+	minUsdc6?: string
+	attr?: number
+	name?: string
+	description?: string
+	image?: string
+	/** Uploaded tier background choices; `image` is the merchant-selected choice. */
+	images?: string[]
+	backgroundColor?: string
+}
 
 function parsePositiveMetadataNumber(raw: unknown): number | null {
 	if (typeof raw === 'number') {

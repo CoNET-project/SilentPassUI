@@ -186,13 +186,16 @@ function tiersDisplaySig(tiers: unknown): string {
 		.map((raw) => {
 			const t = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}
 			const image = String(t.image ?? t.backgroundImage ?? '').trim()
+			const images = Array.isArray(t.images)
+				? t.images.filter((image): image is string => typeof image === 'string' && image.trim() !== '').join(',')
+				: ''
 			const fit = String(t.imageFit ?? '').trim()
 			const bg = String(t.backgroundColor ?? t.background_color ?? '').trim()
 			const name = String(t.name ?? '').trim()
 			const min = t.minUsdc6 != null ? String(t.minUsdc6).trim() : ''
 			const idx = t.index != null ? String(t.index) : ''
 			const logoScale = t.logoDisplayScale != null ? String(t.logoDisplayScale) : ''
-			return [idx, name, min, image, fit, bg, logoScale].join('^')
+			return [idx, name, min, image, images, fit, bg, logoScale].join('^')
 		})
 		.join('||')
 }

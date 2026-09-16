@@ -497,6 +497,8 @@ export type MyBrandTierMetaRow = {
 	background_color?: string
 	/** Pass face background image (TierMetadata.image) */
 	image?: string
+	/** Uploaded tier background choices; `image` is the selected choice. */
+	images?: string[]
 	backgroundImage?: string
 	imageFit?: 'width' | 'height' | string
 	logoDisplayScale?: string | number
@@ -775,8 +777,15 @@ function resolvePrimaryBonusRule(
 
 function resolveTierBackgroundImageUrl(row: MyBrandTierMetaRow | undefined): string | undefined {
 	if (!row) return undefined
-	const url = resolveCardImageUrl(row.image) ?? resolveCardImageUrl(row.backgroundImage)
-	if (url && !isFactoryDefaultMerchantAssetUrl(url)) return url
+	const candidates = [
+		row.image,
+		...(Array.isArray(row.images) ? row.images : []),
+		row.backgroundImage,
+	]
+	for (const candidate of candidates) {
+		const url = resolveCardImageUrl(candidate)
+		if (url && !isFactoryDefaultMerchantAssetUrl(url)) return url
+	}
 	return undefined
 }
 

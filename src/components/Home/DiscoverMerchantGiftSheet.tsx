@@ -542,6 +542,34 @@ function formatUsdcAmountForDisplay(raw: string): string {
 	return Number.isFinite(n) && n >= 0 ? n.toFixed(2) : '0.00'
 }
 
+function discoverGiftCardImageOptions(
+	metadataRoot: Record<string, unknown> | null | undefined,
+	merchantImage?: string | null,
+): string[] {
+	const candidates: unknown[] = [merchantImage]
+	const share = metadataRoot?.shareTokenMetadata
+	if (share && typeof share === 'object' && !Array.isArray(share)) {
+		candidates.push((share as Record<string, unknown>).image)
+	}
+	candidates.push(metadataRoot?.image)
+	const tiers = metadataRoot?.tiers
+	if (Array.isArray(tiers)) {
+		for (const raw of tiers) {
+			if (!raw || typeof raw !== 'object' || Array.isArray(raw)) continue
+			const tier = raw as Record<string, unknown>
+			candidates.push(tier.image)
+			if (Array.isArray(tier.images)) candidates.push(...tier.images)
+		}
+	}
+	return Array.from(
+		new Set(
+			candidates
+				.map((raw) => (typeof raw === 'string' ? pickNonFactoryMerchantAssetUrl(raw) : undefined))
+				.filter((url): url is string => Boolean(url)),
+		),
+	)
+}
+
 function GiftFriendCapsule({
 	item,
 	onClear,
@@ -636,6 +664,20 @@ export default function DiscoverMerchantGiftSheet({
 	)
 	const occasionCatalog = themeOccasionCatalog(step1Kind)
 	const spotlightUrl = pickNonFactoryMerchantAssetUrl(merchantImage)
+	const giftCardImageOptions = useMemo(
+		() => discoverGiftCardImageOptions(metadataRoot, merchantImage),
+		[metadataRoot, merchantImage],
+	)
+	const [selectedGiftCardImage, setSelectedGiftCardImage] = useState<string | null>(
+		() => giftCardImageOptions[0] ?? null,
+	)
+	useEffect(() => {
+		setSelectedGiftCardImage((current) =>
+			current && giftCardImageOptions.includes(current)
+				? current
+				: giftCardImageOptions[0] ?? null,
+		)
+	}, [giftCardImageOptions])
 	const ccy = ((currency || 'USD').toUpperCase() || 'USD') as ICurrency
 	const prefix = fiatPrefix(ccy)
 	const baseFeeE6 = useMemo(() => discoverGiftBaseMembershipFeeE6(metadataRoot), [metadataRoot])
@@ -1963,6 +2005,17 @@ export default function DiscoverMerchantGiftSheet({
 						<span className="text-[10px] font-semibold uppercase tracking-wide">Face value</span>
 					</div>
 				</div>
+				{selectedGiftCardImage ? (
+					<div className="relative mt-4 h-36 overflow-hidden rounded-xl bg-black/15">
+						<IpfsImg
+							key={selectedGiftCardImage}
+							src={selectedGiftCardImage}
+							alt=""
+							className="h-full w-full object-cover"
+						/>
+						<div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/25 via-transparent to-transparent" />
+					</div>
+				) : null}
 				<div className="mt-6 flex items-end justify-between gap-3">
 					<div>
 						<span
@@ -3043,6 +3096,40 @@ export default function DiscoverMerchantGiftSheet({
 				</p>
 
 				<div className="mt-4">{brandGiftCard}</div>
+				{giftCardImageOptions.length > 1 ? (
+					<div className="mb-2">
+						<h3 className="mb-2.5 text-[18px] font-semibold tracking-tight text-[#1a1b1f] dark:text-slate-100">
+							Choose gift card design
+						</h3>
+						<div
+							className="flex gap-2.5 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+							role="listbox"
+							aria-label="Gift card design"
+						>
+							{giftCardImageOptions.map((image, index) => {
+								const selected = image === selectedGiftCardImage
+								return (
+									<button
+										key={`${image}-${index}`}
+										type="button"
+										role="option"
+										aria-selected={selected}
+										aria-label={`Use gift card design ${index + 1}`}
+										onClick={() => setSelectedGiftCardImage(image)}
+										className={`h-24 w-36 shrink-0 overflow-hidden rounded-xl border-2 bg-slate-900 object-cover transition ${
+											selected
+												? 'ring-2 ring-offset-1'
+												: 'border-transparent opacity-80 hover:opacity-100'
+										}`}
+										style={selected ? { borderColor: brandControl, boxShadow: `0 0 0 2px ${brandControl}` } : undefined}
+									>
+										<IpfsImg src={image} alt="" className="h-full w-full object-cover" />
+									</button>
+								)
+							})}
+						</div>
+					</div>
+				) : null}
 
 				<section className="mb-6 flex flex-col gap-3">
 					<div className="flex items-center justify-between">

@@ -544,14 +544,10 @@ function formatUsdcAmountForDisplay(raw: string): string {
 
 function discoverGiftCardImageOptions(
 	metadataRoot: Record<string, unknown> | null | undefined,
-	merchantImage?: string | null,
 ): string[] {
-	const candidates: unknown[] = [merchantImage]
-	const share = metadataRoot?.shareTokenMetadata
-	if (share && typeof share === 'object' && !Array.isArray(share)) {
-		candidates.push((share as Record<string, unknown>).image)
-	}
-	candidates.push(metadataRoot?.image)
+	// Tier backgrounds are intentionally isolated from merchant-level branding.
+	// A merchant logo/hero must never masquerade as `tiers[x].images[]`.
+	const candidates: unknown[] = []
 	const tiers = metadataRoot?.tiers
 	if (Array.isArray(tiers)) {
 		for (const raw of tiers) {
@@ -664,10 +660,7 @@ export default function DiscoverMerchantGiftSheet({
 	)
 	const occasionCatalog = themeOccasionCatalog(step1Kind)
 	const spotlightUrl = pickNonFactoryMerchantAssetUrl(merchantImage)
-	const giftCardImageOptions = useMemo(
-		() => discoverGiftCardImageOptions(metadataRoot, merchantImage),
-		[metadataRoot, merchantImage],
-	)
+	const giftCardImageOptions = useMemo(() => discoverGiftCardImageOptions(metadataRoot), [metadataRoot])
 	const [selectedGiftCardImage, setSelectedGiftCardImage] = useState<string | null>(
 		() => giftCardImageOptions[0] ?? null,
 	)

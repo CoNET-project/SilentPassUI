@@ -1036,6 +1036,7 @@ function DiscoverMerchantHowPointsWorkPanel({
 
 type DiscoverMerchantMediaItem = {
 	url: string
+	thumbnailUrl?: string
 	kind: 'image' | 'video'
 	title: string
 }
@@ -1062,12 +1063,14 @@ function discoverMerchantMediaItems(
 		const title = String(row.name ?? row.title ?? row.subtitle ?? 'Merchant media').trim() || 'Merchant media'
 		const kind = row.kind === 'video' ? 'video' : row.kind === 'image' ? 'image' : undefined
 		const mediaUrl = typeof row.url === 'string' ? row.url : undefined
+		const thumbnailRaw = typeof row.thumbnailUrl === 'string' ? row.thumbnailUrl : undefined
 		const imageRaw = kind === 'video' ? undefined : mediaUrl ?? row.productionImage ?? row.image ?? row.icon
 		const videoRaw = kind === 'image' ? undefined : mediaUrl ?? row.productionVideo ?? row.videoUrl ?? row.video ?? row.animation_url
 		const image = typeof imageRaw === 'string' ? discoverResolveTierBackgroundImageUrl(imageRaw) : null
 		const video = typeof videoRaw === 'string' ? discoverResolveTierBackgroundImageUrl(videoRaw) : null
+		const thumbnailUrl = thumbnailRaw ? discoverResolveTierBackgroundImageUrl(thumbnailRaw) ?? undefined : undefined
 		if (image) items.push({ url: image, kind: 'image', title })
-		if (video) items.push({ url: video, kind: 'video', title })
+		if (video) items.push({ url: video, thumbnailUrl, kind: 'video', title })
 	}
 	return Array.from(new Map(items.map((item) => [`${item.kind}:${item.url}`, item])).values())
 }
@@ -1091,13 +1094,17 @@ function DiscoverMerchantMediaCarousel({
 					<div key={`${item.kind}:${item.url}`} className="w-[min(78vw,23rem)] shrink-0 snap-start overflow-hidden rounded-xl bg-slate-100 dark:bg-slate-800">
 						<div className="aspect-[4/3]">
 							{item.kind === 'video' ? (
-								<video
-									src={item.url}
-									className="h-full w-full object-cover"
-									controls
-									playsInline
-									preload="metadata"
-								/>
+								item.thumbnailUrl ? (
+									<IpfsImg src={item.thumbnailUrl} alt={item.title} className="h-full w-full object-cover" />
+								) : (
+									<video
+										src={item.url}
+										className="h-full w-full object-cover"
+										controls
+										playsInline
+										preload="metadata"
+									/>
+								)
 							) : (
 								<IpfsImg src={item.url} alt={item.title} className="h-full w-full object-cover" />
 							)}

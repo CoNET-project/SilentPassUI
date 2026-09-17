@@ -4215,12 +4215,22 @@ export default function DiscoverMerchantGiftSheet({
 								setPanelError(null)
 							}}
 							disabled={submitting}
-							className={`relative flex items-center justify-between rounded-xl bg-white p-3.5 text-left shadow-sm transition duration-200 dark:bg-slate-900 ${
+							className={`relative flex items-center justify-between overflow-hidden rounded-xl bg-white p-3.5 text-left shadow-sm transition duration-200 dark:bg-slate-900 ${
 								remainingPayMethod === 'credit' ? 'shadow-md' : 'opacity-75'
 							}`}
 							style={remainingPayMethod === 'credit' ? { boxShadow: brandSelectedRing } : undefined}
 						>
-							<div className="flex min-w-0 items-center gap-3">
+							{selectedGiftCardImage ? (
+								<>
+									<IpfsImg
+										src={selectedGiftCardImage}
+										alt=""
+										className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+									/>
+									<div className="pointer-events-none absolute inset-0 bg-white/75 dark:bg-slate-950/75" />
+								</>
+							) : null}
+							<div className="relative z-10 flex min-w-0 items-center gap-3">
 								<div
 									className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
 									style={{
@@ -4231,6 +4241,12 @@ export default function DiscoverMerchantGiftSheet({
 									<Store className="h-[22px] w-[22px]" strokeWidth={2} aria-hidden />
 								</div>
 								<div className="flex min-w-0 flex-col">
+									{selectedGiftCardImage ? (
+										<span className="text-[17px] font-semibold text-[#1a1b1f] dark:text-slate-100">
+											{creditAvailLabel}
+										</span>
+									) : (
+										<>
 									<div className="flex flex-wrap items-center gap-1.5">
 										<span className="text-[17px] font-semibold text-[#1a1b1f] dark:text-slate-100">
 											Store credits
@@ -4246,9 +4262,11 @@ export default function DiscoverMerchantGiftSheet({
 									<span className="mt-1 text-[12px] leading-4 text-[#6b6258] dark:text-slate-400">
 										Top-up promotions do not apply to Store credits.
 									</span>
+										</>
+									)}
 								</div>
 							</div>
-							<div className="flex items-center gap-3 pl-2">
+							<div className="relative z-10 flex items-center gap-3 pl-2">
 								<span
 									className="whitespace-nowrap text-[17px] font-bold"
 									style={{ color: remainingPayMethod === 'credit' ? brandControl : '#424655' }}

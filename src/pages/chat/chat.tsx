@@ -54,7 +54,7 @@ import { PlusActionMenu } from "./components/PlusActionMenu"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import { searchUsername, storeSystemData, AuthorizationSign } from '@/services/beamio'
 import { fiatPrefix } from '@/services/currency'
-import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
+import { getCashTreesNativeNfcBridge, openExternalUrl } from '@/utils/cashTreesNativeNfc'
 import { MessageSendReceiveCard } from "./components/messageSendReceiveCard"
 import { AaMultisigChatRequestCard } from '@/components/chat/AaMultisigChatRequestCard'
 import { ChatShareLinkPreviewCard } from '@/components/chat/ChatShareLinkPreviewCard'
@@ -129,6 +129,32 @@ type ChatFileJob = {
 	status: 'uploading' | 'ready' | 'failed' | 'cancelled'
 	error?: string
 	manifest?: ChatFileMessageManifest
+	thumbnailUrl?: string
+}
+
+async function createVideoThumbnail(videoFile: File): Promise<Blob> {
+	const url = URL.createObjectURL(videoFile)
+	try {
+		const video = document.createElement('video')
+		video.preload = 'metadata'
+		video.muted = true
+		video.src = url
+		await new Promise<void>((resolve, reject) => {
+			video.onloadeddata = () => resolve()
+			video.onerror = () => reject(new Error('Video thumbnail could not be created.'))
+		})
+		video.currentTime = Math.min(0.1, Number.isFinite(video.duration) ? Math.max(0, video.duration / 10) : 0)
+		await new Promise<void>(resolve => { video.onseeked = () => resolve(); window.setTimeout(resolve, 250) })
+		const canvas = document.createElement('canvas')
+		canvas.width = 512
+		canvas.height = 288
+		const context = canvas.getContext('2d')
+		if (!context) throw new Error('Video thumbnail could not be created.')
+		context.drawImage(video, 0, 0, canvas.width, canvas.height)
+		return await new Promise<Blob>((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Video thumbnail could not be created.')), 'image/jpeg', 0.82))
+	} finally {
+		URL.revokeObjectURL(url)
+	}
 }
 
 async function filesFromDropItems(items: DataTransferItemList): Promise<File[]> {
@@ -357,18 +383,41 @@ function ChatFileMessagePlayer({ manifest, isMe }: { manifest: ChatFileMessageMa
 	const [files, setFiles] = useState<Map<string, Blob> | null>(null)
 	const [error, setError] = useState<string | null>(null)
 	const [loading, setLoading] = useState(false)
+	const [playing, setPlaying] = useState(false)
+	const [videoUrl, setVideoUrl] = useState<string | null>(null)
+	const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+	const videoRef = useRef<HTMLVideoElement | null>(null)
+	const [videoBlob, setVideoBlob] = useState<Blob | null>(null)
 	useEffect(() => {
 		const controller = new AbortController()
 		setLoading(true)
 		setError(null)
 		setFiles(null)
+		setVideoUrl(null)
+		setPreviewUrl(null)
+		setVideoBlob(null)
 		void decryptChatFileManifest(manifest, controller.signal)
-			.then(setFiles)
+			.then(result => {
+				setFiles(result)
+				if (manifest.mediaKind === 'video') {
+					const videoEntry = Array.from(result.entries()).find(([name]) => name !== manifest.previewName)?.[1]
+					const preview = manifest.previewName ? result.get(manifest.previewName) : undefined
+					if (videoEntry) {
+						setVideoBlob(videoEntry)
+						setVideoUrl(URL.createObjectURL(videoEntry))
+					}
+					if (preview) setPreviewUrl(URL.createObjectURL(preview))
+				}
+			})
 			.catch(error => {
 				if (error?.name !== 'AbortError') setError(error instanceof Error ? error.message : 'File attachment is unavailable.')
 			})
 			.finally(() => setLoading(false))
-		return () => controller.abort()
+		return () => {
+			controller.abort()
+			setVideoUrl(previous => { if (previous) URL.revokeObjectURL(previous); return null })
+			setPreviewUrl(previous => { if (previous) URL.revokeObjectURL(previous); return null })
+		}
 	}, [manifest])
 	const download = (name: string, blob: Blob) => {
 		const url = URL.createObjectURL(blob)
@@ -380,15 +429,31 @@ function ChatFileMessagePlayer({ manifest, isMe }: { manifest: ChatFileMessageMa
 	}
 	return (
 		<div className={['min-w-[220px] rounded-2xl px-3 py-2 ring-1 ring-black/5', isMe ? 'bg-[#dceaff]/70' : 'bg-white/70'].join(' ')}>
+			{manifest.mediaKind === 'video' && videoUrl ? (
+				<div className="relative mb-2 overflow-hidden rounded-xl bg-slate-900">
+					<video ref={videoRef} src={videoUrl} className="block max-h-64 w-full object-contain" onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onEnded={() => setPlaying(false)} controls={false} />
+					{previewUrl ? <img src={previewUrl} alt="Video thumbnail" className="absolute inset-0 h-full w-full object-cover" style={{ opacity: playing ? 0 : 1 }} /> : null}
+					<button type="button" onClick={() => {
+						const video = videoRef.current
+						if (!video) return
+						if (video.paused) void video.play().catch(() => setError('Video could not be played.'))
+						else video.pause()
+					}} aria-label={playing ? 'Pause video' : 'Play video'} className="absolute inset-0 grid place-items-center">
+						<span className="grid h-12 w-12 place-items-center rounded-full bg-black/60 text-white shadow-lg"><Play className="ml-1 h-6 w-6 fill-current" /></span>
+					</button>
+				</div>
+			) : null}
 			<div className="text-[12px] font-semibold text-slate-700">{manifest.count} file{manifest.count === 1 ? '' : 's'} · {formatVoiceBytes(manifest.sizeBytes)}</div>
 			{loading ? <div className="mt-1 text-[12px] text-slate-500">Preparing files…</div> : null}
 			{error ? <div role="alert" className="mt-1 text-[12px] text-rose-600">{error}</div> : null}
 			{files ? <div className="mt-1 space-y-1">{Array.from(files.entries()).map(([name, blob]) => (
+				name === manifest.previewName ? null :
 				<div key={name} className="flex items-center gap-2 text-[12px]">
 					<span className="min-w-0 flex-1 truncate text-slate-600">{name}</span>
 					<button type="button" onClick={() => download(name, blob)} className="shrink-0 font-semibold text-[#1652f0]">Download</button>
 				</div>
 			))}</div> : null}
+			{manifest.mediaKind === 'video' && videoBlob ? <button type="button" onClick={() => download(manifest.name, videoBlob)} className="mt-1 text-[12px] font-semibold text-[#1652f0]">Download video</button> : null}
 		</div>
 	)
 }
@@ -716,6 +781,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 	const fileControllersRef = useRef(new Map<string, AbortController>())
 	const storageDataRef = useRef<(() => Promise<void>) | null>(null)
 	const fileInputRef = useRef<HTMLInputElement | null>(null)
+	const cameraInputRef = useRef<HTMLInputElement | null>(null)
 	const [fileError, setFileError] = useState<string | null>(null)
 	const [fileDropActive, setFileDropActive] = useState(false)
 	const [chatError, setChatError] = useState<string | null>(null)
@@ -874,11 +940,20 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		if (files.length !== incoming.length) setFileError('Photos and audio use their existing chat actions. Drop documents, archives, or folders here.')
 		if (!files.length) return
 		const id = crypto.randomUUID()
-		setFileJobs(previous => [...previous, { id, files, name: files.length === 1 ? files[0].name : `${files.length} files`, progress: 0, status: 'uploading' }])
+		const videoFile = files.length === 1 && files[0].type.startsWith('video/') ? files[0] : null
+		let thumbnail: Blob | undefined
+		try {
+			if (videoFile) thumbnail = await createVideoThumbnail(videoFile)
+		} catch (error) {
+			setFileError(error instanceof Error ? error.message : 'Video thumbnail could not be created.')
+			return
+		}
+		const thumbnailUrl = thumbnail ? URL.createObjectURL(thumbnail) : undefined
+		setFileJobs(previous => [...previous, { id, files, name: files.length === 1 ? files[0].name : `${files.length} files`, progress: 0, status: 'uploading', thumbnailUrl }])
 		const controller = new AbortController()
 		fileControllersRef.current.set(id, controller)
 		try {
-			const encrypted = await encryptChatFiles(files)
+			const encrypted = await encryptChatFiles(files, undefined, thumbnail)
 			const fragmentHash = await uploadEncryptedChatFileDataUrl(
 				profiles[0]?.privateKeyArmor || '',
 				encrypted.dataUrl,
@@ -899,9 +974,27 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		}
 	}, [hasRoute, profiles])
 
+	const openChatCamera = useCallback(() => {
+		if (!hasRoute) return
+		const native = getCashTreesNativeNfcBridge()
+		if (typeof native?.requestCameraCapture === 'function') {
+			try {
+				native.requestCameraCapture({ requestId: crypto.randomUUID(), mediaType: 'video' })
+				return
+			} catch {
+				/* Fall through to the browser capture input. */
+			}
+		}
+		cameraInputRef.current?.click()
+	}, [hasRoute])
+
 	const cancelChatFileJob = useCallback((id: string) => {
 		fileControllersRef.current.get(id)?.abort()
-		setFileJobs(previous => previous.filter(item => item.id !== id))
+		setFileJobs(previous => {
+			const removed = previous.find(item => item.id === id)
+			if (removed?.thumbnailUrl) URL.revokeObjectURL(removed.thumbnailUrl)
+			return previous.filter(item => item.id !== id)
+		})
 	}, [])
 
 	const stopVoiceDurationTimer = useCallback(() => {
@@ -1653,7 +1746,11 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 			await storageData()
 			if (sent) mirrorChatMessageToHistory(chatData.address, settled.find(message => message.id === payload.id), 'out')
 			else setFileError('A file message failed to reach CoNET entry nodes. Please try again.')
-			if (sent) setFileJobs(previous => previous.filter(item => item.id !== job.id))
+			if (sent) setFileJobs(previous => {
+				const removed = previous.find(item => item.id === job.id)
+				if (removed?.thumbnailUrl) URL.revokeObjectURL(removed.thumbnailUrl)
+				return previous.filter(item => item.id !== job.id)
+			})
 		}
 	}, [allNodes, chatData, fileJobs, privateKey])
 
@@ -2757,8 +2854,9 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 						) : null}
 						{fileJobs.length ? (
 							<div className="mb-2 space-y-1.5">
-								{fileJobs.map(job => (
+										{fileJobs.map(job => (
 									<div key={job.id} className="flex items-center gap-2 rounded-2xl bg-white/75 px-3 py-2 ring-1 ring-black/5 backdrop-blur-xl">
+										{job.thumbnailUrl ? <div className="relative h-12 w-16 shrink-0 overflow-hidden rounded-lg bg-slate-900"><img src={job.thumbnailUrl} alt="Video thumbnail" className="h-full w-full object-cover" /><span className="absolute inset-0 grid place-items-center"><span className="grid h-6 w-6 place-items-center rounded-full bg-black/60 text-white"><Play className="ml-0.5 h-3 w-3 fill-current" /></span></span></div> : null}
 										<div className="min-w-0 flex-1">
 											<p className="truncate text-[13px] font-semibold text-slate-700">{job.name}</p>
 											{job.status === 'uploading' ? <div className="mt-1 h-1 overflow-hidden rounded-full bg-slate-200"><div className="h-full bg-[#1652f0] transition-[width]" style={{ width: `${Math.max(2, job.progress * 100)}%` }} /></div> : null}
@@ -2783,12 +2881,14 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 							}}
 						>
 						<input ref={fileInputRef} type="file" multiple hidden {...({ webkitdirectory: '' } as Record<string, string>)} onChange={event => { void addChatFiles(Array.from(event.target.files || [])); event.currentTarget.value = '' }} />
+						<input ref={cameraInputRef} type="file" accept="video/*" capture="environment" hidden onChange={event => { void addChatFiles(Array.from(event.target.files || [])); event.currentTarget.value = '' }} />
 						<div className="flex items-center gap-2">
 							<PlusActionMenu
 								open={plusOpen}
 								onClose={() => setPlusOpen(false)}
 								anchorRef={plusBtnRef}
 								onAttachFiles={() => fileInputRef.current?.click()}
+								onCaptureCamera={openChatCamera}
 								
 							/>
 								{/* ✅ 输入框：内部放 send 按钮 */}

@@ -7,6 +7,8 @@ export type CashTreesNativeNfcBridge = {
 	saveRecoveryQrToPhotos?: (payload: { dataUrl: string; filename?: string; requestId?: string }) => void
 	scanRecoveryQr?: (payload: { requestId?: string }) => void
 	scanQr?: (payload: { requestId?: string }) => void
+	/** Opens the native camera UI. Older shells omit this method and use the PWA input fallback. */
+	requestCameraCapture?: (payload: { requestId?: string; mediaType?: 'video' }) => void
 	/** iOS WK bridge — object payload. Android `@JavascriptInterface` accepts a plain URL string (use `openExternalUrl`). */
 	openURL?: (payload: { url: string }) => void
 	/** PWA catalog → native install probe. iOS uses `{ requestId, queries }` + `cashtreesios`. */

@@ -20,6 +20,10 @@ export type ChatFileMessageManifest = {
 	count: number
 	sizeBytes: number
 	files: ChatFileEntry[]
+	/** Video attachments keep their preview inside the encrypted fragment. */
+	mediaKind?: 'video'
+	previewName?: string
+	mime?: string
 }
 
 const bytesToBase64 = (bytes: Uint8Array): string => {
@@ -41,7 +45,7 @@ const dataUrlToBytes = (dataUrl: string): Uint8Array => {
 	return base64ToBytes(dataUrl.slice(comma + 1))
 }
 
-export async function encryptChatFiles(files: File[], displayName?: string): Promise<{
+export async function encryptChatFiles(files: File[], displayName?: string, preview?: Blob): Promise<{
 	dataUrl: string
 	manifest: Omit<ChatFileMessageManifest, 'fragmentHash'>
 }> {
@@ -57,6 +61,8 @@ export async function encryptChatFiles(files: File[], displayName?: string): Pro
 		metadata.push({ name, sizeBytes: bytes.byteLength })
 		totalBytes += bytes.byteLength
 	}
+	const previewName = preview ? `.${metadata[0]?.name || 'video'}.preview.jpg` : undefined
+	if (preview && previewName) entries[previewName] = new Uint8Array(await preview.arrayBuffer())
 	const zipped = zipSync(entries, { level: 6 })
 	const keyBytes = crypto.getRandomValues(new Uint8Array(32))
 	const ivBytes = crypto.getRandomValues(new Uint8Array(12))
@@ -76,6 +82,7 @@ export async function encryptChatFiles(files: File[], displayName?: string): Pro
 			count: metadata.length,
 			sizeBytes: totalBytes,
 			files: metadata,
+			...(previewName ? { mediaKind: 'video' as const, previewName, mime: files[0]?.type || 'video/mp4' } : {}),
 		},
 	}
 }
@@ -133,7 +140,11 @@ export async function decryptChatFileManifest(manifest: ChatFileMessageManifest,
 	const result = new Map<string, Blob>()
 	for (const entry of manifest.files) {
 		const bytes = files[entry.name]
-		if (bytes) result.set(entry.name, new Blob([bytes], { type: 'application/octet-stream' }))
+		if (bytes) result.set(entry.name, new Blob([bytes], { type: manifest.mediaKind === 'video' ? (manifest.mime || 'video/mp4') : 'application/octet-stream' }))
+	}
+	if (manifest.previewName) {
+		const previewBytes = files[manifest.previewName]
+		if (previewBytes) result.set(manifest.previewName, new Blob([previewBytes], { type: 'image/jpeg' }))
 	}
 	return result
 }

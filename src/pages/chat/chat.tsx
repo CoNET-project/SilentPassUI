@@ -107,7 +107,7 @@ function formatVoiceBytes(bytes: number): string {
 	return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
 }
 
-function VoiceMessagePlayer({ manifest }: { manifest: VoiceMessageManifest }) {
+function VoiceMessagePlayer({ manifest, isMe }: { manifest: VoiceMessageManifest; isMe: boolean }) {
 	const [url, setUrl] = useState<string | null>(null)
 	const [error, setError] = useState<string | null>(null)
 	const [loading, setLoading] = useState(false)
@@ -138,17 +138,20 @@ function VoiceMessagePlayer({ manifest }: { manifest: VoiceMessageManifest }) {
 	return (
 		<div
 			className={[
-				'min-w-[190px] rounded-2xl px-3 py-2.5 text-slate-900',
+				'min-w-[190px] rounded-2xl px-3 py-2.5 text-slate-900 shadow-sm',
+				isMe ? 'bg-[#dceaff]' : 'bg-white',
 			].join(' ')}
 		>
 			{loading ? <div className="text-[13px] text-slate-500">Preparing voice message…</div> : null}
 			{error ? <div role="alert" className="text-[13px] text-rose-600">{error}</div> : null}
 			{url ? (
-				<audio controls preload="metadata" src={url} className="h-9 w-full" />
+				<div className="flex items-center gap-1.5 rounded-full bg-white/80 p-1">
+					<audio controls preload="metadata" src={url} className="h-9 min-w-0 flex-1" />
+					<span className="shrink-0 px-1.5 text-[11px] text-slate-500">
+						{formatVoiceDuration(manifest.durationMs)}
+					</span>
+				</div>
 			) : null}
-			<div className="mt-1 text-right text-[11px] text-slate-500">
-				{formatVoiceDuration(manifest.durationMs)}
-			</div>
 		</div>
 	)
 }
@@ -1816,7 +1819,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 											<div className="max-w-[78%] sm:max-w-[62%]">
 											{hasVoice && m.voiceMessage ? (
 												<div className="relative">
-													<VoiceMessagePlayer manifest={m.voiceMessage} />
+													<VoiceMessagePlayer manifest={m.voiceMessage} isMe={isMe} />
 													{isMe && (
 														<div className="absolute -bottom-2 -right-2">
 															<BubbleCornerStatus status={m.status} onRetry={() => setVoiceError('Please record and send the voice message again.')} />

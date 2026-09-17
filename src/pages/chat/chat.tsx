@@ -951,7 +951,8 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 			if (videoFile) thumbnail = await createVideoThumbnail(videoFile)
 		} catch (error) {
 			setFileError(error instanceof Error ? error.message : 'Video thumbnail could not be created.')
-			return
+			// Keep the video job alive and continue uploading; the receiver can still
+			// render the decrypted video when no local thumbnail is available.
 		}
 		const thumbnailUrl = thumbnail ? URL.createObjectURL(thumbnail) : undefined
 		setFileJobs(previous => [...previous, { id, files, name: files.length === 1 ? files[0].name : `${files.length} files`, progress: 0, status: 'uploading', thumbnailUrl }])

@@ -213,8 +213,7 @@ function VoiceMessagePlayer({ manifest }: { manifest: VoiceMessageManifest }) {
 							{volume === 0 ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
 						</button>
 						{volumeOpen ? (
-							<div className="absolute bottom-full right-0 z-20 mb-2 w-44 rounded-2xl bg-white p-3 shadow-xl ring-1 ring-black/10">
-								<p className="mb-2 text-[11px] font-semibold text-slate-600">Volume {Math.round(volume * 100)}%</p>
+							<div className="absolute bottom-full right-0 z-20 mb-2 flex h-40 w-14 items-center justify-center rounded-2xl bg-white p-2 shadow-xl ring-1 ring-black/10">
 								<input
 									type="range"
 									min={0}
@@ -222,8 +221,8 @@ function VoiceMessagePlayer({ manifest }: { manifest: VoiceMessageManifest }) {
 									step={0.01}
 									value={volume}
 									onChange={event => setVolume(Number(event.target.value))}
-									className="w-full accent-[#1652f0]"
-									aria-label="Volume"
+									className="h-32 w-6 accent-[#1652f0] [writing-mode:vertical-lr] [direction:rtl]"
+									aria-label={`Volume ${Math.round(volume * 100)} percent`}
 								/>
 							</div>
 						) : null}

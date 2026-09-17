@@ -71,32 +71,59 @@ export async function uploadEncryptedVoiceDataUrl(
 	const wallet = new ethers.Wallet(privateKey)
 	const fragmentHash = ethers.keccak256(ethers.toUtf8Bytes(dataUrl))
 	const signMessage = await wallet.signMessage(wallet.address)
-	const chunks: string[] = []
-	for (let offset = 0; offset < dataUrl.length; offset += VOICE_CHUNK_BYTES) {
-		chunks.push(dataUrl.slice(offset, offset + VOICE_CHUNK_BYTES))
+	const payloadBytes = new TextEncoder().encode(dataUrl)
+	const totalSize = payloadBytes.length
+	const statusParams = new URLSearchParams({
+		hash: fragmentHash,
+		wallet: wallet.address,
+		signMessage,
+	})
+	const statusResponse = await fetch(
+		`${IPFS_API}/storageFragmentChunkStatus?${statusParams.toString()}`,
+	)
+	const status = (await statusResponse.json().catch(() => null)) as {
+		ok?: boolean
+		complete?: boolean
+		received?: number
+		totalSize?: number | null
+		error?: string
+	} | null
+	if (!statusResponse.ok || !status?.ok) {
+		throw new Error(status?.error || `Voice upload status failed (${statusResponse.status})`)
 	}
-	for (let index = 0; index < chunks.length; index += 1) {
+	if (status.complete) {
+		onProgress?.(1)
+		return fragmentHash
+	}
+	if (status.totalSize != null && status.totalSize !== totalSize) {
+		throw new Error('Voice upload resume conflict. Please record again.')
+	}
+
+	let offset = Math.min(Math.max(0, status.received ?? 0), totalSize)
+	while (offset < totalSize) {
+		const chunk = payloadBytes.subarray(offset, Math.min(offset + VOICE_CHUNK_BYTES, totalSize))
+		const form = new FormData()
+		form.append('wallet', wallet.address)
+		form.append('signMessage', signMessage)
+		form.append('hash', fragmentHash)
+		form.append('totalSize', String(totalSize))
+		form.append('offset', String(offset))
+		form.append('chunk', new Blob([chunk]), 'voice-fragment.chunk')
 		const response = await fetch(`${IPFS_API}/storageFragmentChunk`, {
 			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({
-				wallet: wallet.address,
-				signMessage,
-				hash: fragmentHash,
-				chunkIndex: index,
-				totalChunks: chunks.length,
-				chunk: chunks[index],
-			}),
+			body: form,
 		})
-		if (!response.ok) throw new Error(`Voice upload failed (${response.status})`)
-		onProgress?.((index + 1) / chunks.length)
+		const result = (await response.json().catch(() => null)) as {
+			ok?: boolean
+			received?: number
+			error?: string
+		} | null
+		if (!response.ok || !result?.ok) {
+			throw new Error(result?.error || `Voice upload failed (${response.status})`)
+		}
+		offset = Math.min(Number(result.received ?? offset + chunk.length), totalSize)
+		onProgress?.(totalSize > 0 ? offset / totalSize : 1)
 	}
-	const complete = await fetch(`${IPFS_API}/storageFragmentChunk/complete`, {
-		method: 'POST',
-		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify({ wallet: wallet.address, signMessage, hash: fragmentHash }),
-	})
-	if (!complete.ok) throw new Error(`Voice upload could not be finalized (${complete.status})`)
 	return fragmentHash
 }
 

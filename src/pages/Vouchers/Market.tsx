@@ -1094,13 +1094,13 @@ function DiscoverMerchantMediaCarousel({
 			<div className="flex snap-x snap-mandatory touch-pan-x gap-3 overflow-x-auto overscroll-x-contain px-4 pb-4 pt-3 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
 				{items.map((item) => (
 					<div key={`${item.kind}:${item.url}`} className="w-[min(78vw,23rem)] shrink-0 snap-start overflow-hidden rounded-xl bg-slate-100 dark:bg-slate-800">
-						<div className="aspect-[4/3]">
+						<div className="aspect-[4/3] overflow-hidden rounded-xl">
 							{item.kind === 'video' ? (
 								item.thumbnailUrl ? (
 									activeVideoKey === `${item.kind}:${item.url}` ? (
 										<video
 											src={item.url}
-											className="h-full w-full object-cover"
+											className="h-full w-full rounded-xl object-cover"
 											controls
 											autoPlay
 											playsInline
@@ -1108,11 +1108,11 @@ function DiscoverMerchantMediaCarousel({
 									) : (
 										<button
 											type="button"
-											className="relative h-full w-full cursor-pointer"
+											className="relative h-full w-full cursor-pointer overflow-hidden rounded-xl"
 											aria-label={`Play ${item.title}`}
 											onClick={() => setActiveVideoKey(`${item.kind}:${item.url}`)}
 										>
-											<IpfsImg src={item.thumbnailUrl} alt={item.title} className="h-full w-full object-cover" />
+											<IpfsImg src={item.thumbnailUrl} alt={item.title} className="h-full w-full rounded-xl object-cover" />
 											<span
 												className="pointer-events-none absolute left-1/2 top-1/2 flex h-12 w-12 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-black/55 text-white shadow-lg ring-2 ring-white/80"
 												aria-hidden
@@ -1124,14 +1124,14 @@ function DiscoverMerchantMediaCarousel({
 								) : (
 									<video
 										src={item.url}
-										className="h-full w-full object-cover"
+										className="h-full w-full rounded-xl object-cover"
 										controls
 										playsInline
 										preload="metadata"
 									/>
 								)
 							) : (
-								<IpfsImg src={item.url} alt={item.title} className="h-full w-full object-cover" />
+								<IpfsImg src={item.url} alt={item.title} className="h-full w-full rounded-xl object-cover" />
 							)}
 						</div>
 					</div>

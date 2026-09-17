@@ -698,9 +698,16 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 			const next = [...(messagesRef.current || []), payload]
 			messagesRef.current = next
 			setMessages(next)
+			const wirePayload = {
+				sendId,
+				from: 'me' as const,
+				text: '',
+				createdAt: now,
+				voiceMessage: payload.voiceMessage,
+			}
 			const sent = await sendMessage(
 				chatData.chatData.publicArmored,
-				JSON.stringify({ ...payload, id: undefined }),
+				JSON.stringify(wirePayload),
 				privateKey,
 				allNodes,
 			)

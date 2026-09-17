@@ -105,6 +105,7 @@ async function postLegacyFragment(args: {
   wallet: string;
   signMessage: string;
   image: string;
+  hash: string;
 }): Promise<string> {
   const resp = await fetch(`${IPFS_API_BASE}storageFragment`, {
     method: 'POST',
@@ -120,10 +121,10 @@ async function postLegacyFragment(args: {
     hash?: string;
     error?: string;
   } | null;
-  if (!resp.ok || !data?.ok || data.hash == null) {
+  if (!resp.ok || data?.error) {
     throw new Error(data?.error || `Direct upload failed (${resp.status})`);
   }
-  return data.hash;
+  return data?.hash || args.hash;
 }
 
 function wrapNetworkError(err: unknown): Error {
@@ -277,7 +278,8 @@ export async function uploadMediaFileToIpfsChunked(
       message: 'Retrying with direct upload…',
     });
     const { wallet, signMessage } = await signFragmentWallet(profile);
-    return postLegacyFragment({ wallet: wallet.address, signMessage, image: dataUrl });
+    const hash = ethers.keccak256(ethers.toUtf8Bytes(dataUrl));
+    return postLegacyFragment({ wallet: wallet.address, signMessage, image: dataUrl, hash });
   }
 }
 

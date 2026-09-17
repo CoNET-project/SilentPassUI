@@ -140,8 +140,15 @@ async function createVideoThumbnail(videoFile: File): Promise<Blob> {
 		video.muted = true
 		video.src = url
 		await new Promise<void>((resolve, reject) => {
-			video.onloadeddata = () => resolve()
-			video.onerror = () => reject(new Error('Video thumbnail could not be created.'))
+			const timeout = window.setTimeout(() => reject(new Error('Video thumbnail timed out; continuing upload.')), 8_000)
+			video.onloadeddata = () => {
+				window.clearTimeout(timeout)
+				resolve()
+			}
+			video.onerror = () => {
+				window.clearTimeout(timeout)
+				reject(new Error('Video thumbnail could not be created.'))
+			}
 		})
 		video.currentTime = Math.min(0.1, Number.isFinite(video.duration) ? Math.max(0, video.duration / 10) : 0)
 		await new Promise<void>(resolve => { video.onseeked = () => resolve(); window.setTimeout(resolve, 250) })
@@ -960,7 +967,11 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		])
 		let thumbnail: Blob | undefined
 		try {
-			if (videoFile) thumbnail = await createVideoThumbnail(videoFile)
+			if (videoFile) {
+				setFileJobs(previous => previous.map(item => item.id === id ? { ...item, progress: 0.03 } : item))
+				thumbnail = await createVideoThumbnail(videoFile)
+				setFileJobs(previous => previous.map(item => item.id === id ? { ...item, progress: 0.08 } : item))
+			}
 		} catch (error) {
 			setFileError(error instanceof Error ? error.message : 'Video thumbnail could not be created.')
 			// Keep the video job alive and continue uploading; the receiver can still

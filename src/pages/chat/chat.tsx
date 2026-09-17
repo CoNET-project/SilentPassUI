@@ -114,6 +114,22 @@ function formatVoiceBytes(bytes: number): string {
 	return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
 }
 
+function voiceWaveformPath(samples: number[]): string {
+	if (samples.length === 0) return 'M 0 16 L 240 16'
+	const upper = samples.map((sample, index) => {
+		const x = (index / Math.max(1, samples.length - 1)) * 240
+		const amplitude = Math.max(1.5, Math.min(14, sample * 14))
+		return `${x.toFixed(2)} ${(16 - amplitude).toFixed(2)}`
+	})
+	const lower = [...samples].reverse().map((sample, reverseIndex) => {
+		const index = samples.length - 1 - reverseIndex
+		const x = (index / Math.max(1, samples.length - 1)) * 240
+		const amplitude = Math.max(1.5, Math.min(14, sample * 14))
+		return `${x.toFixed(2)} ${(16 + amplitude).toFixed(2)}`
+	})
+	return `M ${upper.join(' L ')} L ${lower.join(' L ')} Z`
+}
+
 function VoiceMessagePlayer({ manifest, isMe }: { manifest: VoiceMessageManifest; isMe: boolean }) {
 	const [url, setUrl] = useState<string | null>(null)
 	const [error, setError] = useState<string | null>(null)
@@ -788,7 +804,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 			sum += normalized * normalized
 		}
 		const rms = Math.min(1, Math.sqrt(sum / values.length) * 3.5)
-		setVoiceLevelSamples(previous => [...previous.slice(-47), rms])
+		setVoiceLevelSamples(previous => [...previous.slice(-119), rms])
 		voiceLevelRafRef.current = window.requestAnimationFrame(sampleVoiceLevel)
 	}, [])
 
@@ -2497,17 +2513,17 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 										}}
 									/>
 								</div>
-								<div className="mt-1.5 flex h-5 items-end gap-0.5 overflow-hidden" aria-label="Current recording volume">
-									{Array.from({ length: 48 }, (_, index) => {
-										const level = voiceLevelSamples[index] ?? 0.04
-										return (
-											<span
-												key={index}
-												className="min-w-0 flex-1 rounded-full bg-rose-400/80 transition-[height] duration-100"
-												style={{ height: `${Math.max(8, Math.round(level * 100))}%` }}
-											/>
-										)
-									})}
+								<div className="mt-1.5 h-8 overflow-hidden rounded-md bg-[#fff4f7]/70" aria-label="Current recording volume">
+									<svg
+										viewBox="0 0 240 32"
+										preserveAspectRatio="none"
+										className="h-full w-full"
+										role="img"
+										aria-label="Live recording waveform"
+									>
+										<path d={voiceWaveformPath(voiceLevelSamples)} fill="rgba(225,29,72,0.58)" />
+										<path d="M 0 16 L 240 16" stroke="rgba(225,29,72,0.28)" strokeWidth="0.5" />
+									</svg>
 								</div>
 							</div>
 						)}

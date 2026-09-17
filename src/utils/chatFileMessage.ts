@@ -5,6 +5,7 @@ export const FILE_MESSAGE_TYPE = 'file_message_v1' as const
 export const FILE_CHUNK_BYTES = 512 * 1024
 export const FILE_MAX_DATA_URL_CHARS = 240 * 1024 * 1024
 const IPFS_API = 'https://ipfs.conet.network/api'
+const FILE_DIRECT_UPLOAD_MAX_DATA_URL_CHARS = 48 * 1024 * 1024
 
 export type ChatFileEntry = {
 	name: string
@@ -117,7 +118,23 @@ export async function uploadEncryptedChatFileDataUrl(
 		form.append('chunk', new Blob([chunk]), 'file-fragment.chunk')
 		const response = await fetch(`${IPFS_API}/storageFragmentChunk`, { method: 'POST', body: form, signal })
 		const result = await response.json().catch(() => null) as { ok?: boolean; received?: number; error?: string } | null
-		if (!response.ok || !result?.ok) throw new Error(result?.error || `File upload failed (${response.status})`)
+		if (!response.ok || !result?.ok) {
+			if (response.status >= 500 && dataUrl.length <= FILE_DIRECT_UPLOAD_MAX_DATA_URL_CHARS) {
+				const directResponse = await fetch(`${IPFS_API}/storageFragment`, {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ wallet: wallet.address, signMessage, image: dataUrl }),
+					signal,
+				})
+				const directBody = await directResponse.json().catch(() => null) as { error?: string } | null
+				if (directResponse.ok && !directBody?.error) {
+					onProgress?.(1)
+					return fragmentHash
+				}
+				throw new Error(directBody?.error || `File direct upload failed (${directResponse.status})`)
+			}
+			throw new Error(result?.error || `File upload failed (${response.status})`)
+		}
 		offset = Math.min(Number(result.received ?? offset + chunk.length), totalSize)
 		onProgress?.(totalSize ? offset / totalSize : 1)
 	}

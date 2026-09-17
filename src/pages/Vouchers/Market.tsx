@@ -8371,13 +8371,13 @@ function DiscoverMerchantDetailFullScreen({
 						: null}
 					{!isConetGenesisCard ? (
 						<>
-							<DiscoverMerchantMediaCarousel metadataRoot={merchantMetadataRoot} />
 							<DiscoverMerchantTreatAFriendPanel
 								merchantName={passTitle}
 								brandColor={merchantDetailBrandColor ?? DISCOVER_VISIT_BRAND_FALLBACK}
 								onSendGift={openGiftSheet}
 								actionsDisabled={giftSheetOpen}
 							/>
+							<DiscoverMerchantMediaCarousel metadataRoot={merchantMetadataRoot} />
 						</>
 					) : null}
 					<DiscoverMerchantMembershipTiersPanel

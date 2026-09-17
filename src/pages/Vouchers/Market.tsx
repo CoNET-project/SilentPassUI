@@ -1044,18 +1044,26 @@ function discoverMerchantMediaItems(
 	metadataRoot: Record<string, unknown> | null | undefined,
 ): DiscoverMerchantMediaItem[] {
 	const share = readDiscoverNestedObject(metadataRoot ?? null, 'shareTokenMetadata')
-	const rows = Array.isArray(share?.productions)
-		? share!.productions
-		: Array.isArray(metadataRoot?.productions)
-			? metadataRoot!.productions
+	const genericMediaRows = Array.isArray(share?.merchantMedia)
+		? share?.merchantMedia ?? []
+		: Array.isArray(metadataRoot?.merchantMedia)
+			? metadataRoot?.merchantMedia ?? []
 			: []
+	const catalogRows = Array.isArray(share?.productions)
+		? share?.productions ?? []
+		: Array.isArray(metadataRoot?.productions)
+			? metadataRoot?.productions ?? []
+			: []
+	const rows = [...genericMediaRows, ...catalogRows]
 	const items: DiscoverMerchantMediaItem[] = []
 	for (const raw of rows) {
 		if (!raw || typeof raw !== 'object' || Array.isArray(raw)) continue
 		const row = raw as Record<string, unknown>
 		const title = String(row.name ?? row.title ?? row.subtitle ?? 'Merchant media').trim() || 'Merchant media'
-		const imageRaw = row.productionImage ?? row.image ?? row.icon
-		const videoRaw = row.productionVideo ?? row.videoUrl ?? row.video ?? row.animation_url
+		const kind = row.kind === 'video' ? 'video' : row.kind === 'image' ? 'image' : undefined
+		const mediaUrl = typeof row.url === 'string' ? row.url : undefined
+		const imageRaw = kind === 'video' ? undefined : mediaUrl ?? row.productionImage ?? row.image ?? row.icon
+		const videoRaw = kind === 'image' ? undefined : mediaUrl ?? row.productionVideo ?? row.videoUrl ?? row.video ?? row.animation_url
 		const image = typeof imageRaw === 'string' ? discoverResolveTierBackgroundImageUrl(imageRaw) : null
 		const video = typeof videoRaw === 'string' ? discoverResolveTierBackgroundImageUrl(videoRaw) : null
 		if (image) items.push({ url: image, kind: 'image', title })

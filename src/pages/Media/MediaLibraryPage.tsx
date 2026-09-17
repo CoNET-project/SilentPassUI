@@ -2,6 +2,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { Check, FileVideo, ImagePlus, Images, Loader2, Trash2, UploadCloud, Video, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useDaemonContext } from '@/providers/DaemonProvider'
+import { updateBeamioCardShareMetadata } from '@/services/BeamioCard'
 import { uploadMediaFileToIpfsChunked } from '@/utils/ipfsFragmentChunkUpload'
 
 type MediaRecord = {
@@ -12,7 +13,14 @@ type MediaRecord = {
 	createdAt: number
 }
 
+type MediaInput = Partial<Omit<MediaRecord, 'url'>> & Pick<MediaRecord, 'url'>
+
 const MEDIA_STORAGE_PREFIX = 'beamio:merchant-media:v1:'
+
+type MediaLibraryPageProps = {
+	cardAddress: string
+	initialMedia?: MediaInput[]
+}
 
 function storageKey(address: string): string {
 	return `${MEDIA_STORAGE_PREFIX}${address.trim().toLowerCase()}`
@@ -31,11 +39,24 @@ function saveMedia(address: string, rows: MediaRecord[]): void {
 	localStorage.setItem(storageKey(address), JSON.stringify(rows))
 }
 
-export function MediaLibraryPage() {
+export function MediaLibraryPage({ cardAddress, initialMedia = [] }: MediaLibraryPageProps) {
 	const { profiles, setShowFooter } = useDaemonContext()
 	const profile = profiles?.[0]
 	const address = profile?.keyID?.trim() || ''
-	const [items, setItems] = useState<MediaRecord[]>(() => (address ? loadMedia(address) : []))
+	const normalizedCardAddress = cardAddress.trim()
+	const [items, setItems] = useState<MediaRecord[]>(() =>
+		initialMedia.length > 0
+			? initialMedia.map((item, index) => ({
+					id: item.id || `${item.url}-${index}`,
+					url: item.url,
+					name: item.name || 'Merchant media',
+					kind: item.kind === 'video' ? 'video' : 'image',
+					createdAt: item.createdAt || Date.now(),
+				}))
+			: address
+				? loadMedia(address)
+				: [],
+	)
 	const [uploading, setUploading] = useState(false)
 	const [uploadMessage, setUploadMessage] = useState('')
 	const [error, setError] = useState('')
@@ -59,9 +80,22 @@ export function MediaLibraryPage() {
 		setSelectedFile(file)
 	}
 
+	const persistCardMedia = async (rows: MediaRecord[]) => {
+		if (!normalizedCardAddress) {
+			throw new Error('Open a merchant program card before adding media.')
+		}
+		const result = await updateBeamioCardShareMetadata({
+			cardAddress: normalizedCardAddress,
+			shareTokenMetadata: { merchantMedia: rows },
+		})
+		if (!result.success) {
+			throw new Error(result.error || 'Failed to update merchant card media.')
+		}
+	}
+
 	const onUpload = async () => {
 		const file = selectedFile
-		if (!file || !address || !profile?.privateKeyArmor) return
+		if (!file || !address || !normalizedCardAddress || !profile?.privateKeyArmor) return
 		setError('')
 		setUploading(true)
 		setUploadMessage('Preparing media…')
@@ -79,6 +113,7 @@ export function MediaLibraryPage() {
 				createdAt: Date.now(),
 			}
 			const rows = [next, ...items]
+			await persistCardMedia(rows)
 			setItems(rows)
 			saveMedia(address, rows)
 			setUploadMessage('Upload complete.')
@@ -92,10 +127,16 @@ export function MediaLibraryPage() {
 		}
 	}
 
-	const remove = (id: string) => {
+	const remove = async (id: string) => {
 		const rows = items.filter((item) => item.id !== id)
-		setItems(rows)
-		if (address) saveMedia(address, rows)
+		setError('')
+		try {
+			await persistCardMedia(rows)
+			setItems(rows)
+			if (address) saveMedia(address, rows)
+		} catch (removeError) {
+			setError(removeError instanceof Error ? removeError.message : 'Failed to update merchant card media.')
+		}
 	}
 
 	return (
@@ -106,12 +147,12 @@ export function MediaLibraryPage() {
 					<p className="text-xs font-black uppercase tracking-[0.2em] text-[#0051d1]">Assets</p>
 					<h1 className="mt-1 text-3xl font-black tracking-tight text-slate-900">Media</h1>
 					<p className="mt-2 text-sm text-slate-500">
-						Upload and manage images and videos for your Business Catalog items.
+						Upload and manage images and videos displayed across your merchant card.
 					</p>
 				</div>
 				<button
 					type="button"
-					disabled={uploading || !address}
+					disabled={uploading || !address || !normalizedCardAddress}
 					onClick={() => {
 						setError('')
 						setUploadMessage('')
@@ -129,7 +170,15 @@ export function MediaLibraryPage() {
 			{uploadMessage ? <p className="text-sm text-slate-500">{uploadMessage}</p> : null}
 			{error ? <p role="alert" className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-800">{error}</p> : null}
 
-			{items.length === 0 ? (
+			{!normalizedCardAddress ? (
+				<div className="flex min-h-64 flex-col items-center justify-center rounded-3xl border border-dashed border-amber-200 bg-amber-50 text-center">
+					<Images className="h-10 w-10 text-amber-400" />
+					<p className="mt-3 font-semibold text-amber-900">Select a merchant card first</p>
+					<p className="mt-1 px-6 text-sm text-amber-800">
+						Open an existing merchant program card before managing its media.
+					</p>
+				</div>
+			) : items.length === 0 ? (
 				<div className="flex min-h-64 flex-col items-center justify-center rounded-3xl border border-dashed border-slate-300 bg-white text-center">
 					<Images className="h-10 w-10 text-slate-300" />
 					<p className="mt-3 font-semibold text-slate-700">No media yet</p>
@@ -149,7 +198,7 @@ export function MediaLibraryPage() {
 							<div className="flex items-center gap-3 p-3">
 								{item.kind === 'video' ? <Video className="h-4 w-4 text-slate-500" /> : <Images className="h-4 w-4 text-slate-500" />}
 								<p className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-700">{item.name}</p>
-								<button type="button" onClick={() => remove(item.id)} aria-label={`Remove ${item.name}`} className="rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600">
+								<button type="button" onClick={() => void remove(item.id)} disabled={uploading} aria-label={`Remove ${item.name}`} className="rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50">
 									<Trash2 className="h-4 w-4" />
 								</button>
 							</div>

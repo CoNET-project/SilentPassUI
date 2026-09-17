@@ -1530,6 +1530,14 @@ export type ShareTokenMetadata = {
 	coupons?: ShareTokenMetadataCoupon[]
 	/** Program service catalog / productions (global category Product | Service | Menu | ShareLink | SalesManagement). */
 	productions?: ShareTokenMetadataProduction[]
+	/** Generic media library assets shown on the merchant card Discover page. */
+	merchantMedia?: Array<{
+		id?: string
+		url: string
+		name?: string
+		kind?: 'image' | 'video'
+		createdAt?: number
+	}>
 	/** Item category chip definitions for catalog UI (legacy `serviceCategory`). */
 	itemCategory?: ShareTokenMetadataServiceCategoryEntry[]
 	/** @deprecated Read compat only — prefer `itemCategory`. */
@@ -4143,6 +4151,7 @@ export type CardMetadataFromUri = {
 	pointSystem?: ShareTokenMetadataPointSystem
 	coupons?: ShareTokenMetadataCoupon[]
 	productions?: ShareTokenMetadataProduction[]
+	merchantMedia?: ShareTokenMetadata['merchantMedia']
 	itemCategory?: ShareTokenMetadataServiceCategoryEntry[]
 	/** @deprecated Read compat only — prefer `itemCategory`. */
 	serviceCategory?: ShareTokenMetadataServiceCategoryEntry[]

@@ -35803,7 +35803,12 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
         {mobileGlobalSearchBarVisible ? (
           <div className="shrink-0 lg:hidden" style={MOBILE_FLOATING_BAR_SCROLL_CLEARANCE_STYLE} aria-hidden />
         ) : null}
-        {activeTab === 'Media' ? <MediaLibraryPage /> : null}
+        {activeTab === 'Media' ? (
+          <MediaLibraryPage
+            cardAddress={cardIssuanceExistingCard?.cardAddress ?? ''}
+            initialMedia={cardIssuanceExistingCard?.meta?.merchantMedia ?? []}
+          />
+        ) : null}
         {activeTab === 'Overview' && profileAwaitingIssuanceGate ? (
           <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 py-16">
             <Loader2 className="h-10 w-10 animate-spin text-[#1562f0]" strokeWidth={2} aria-hidden />

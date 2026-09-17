@@ -1307,13 +1307,24 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 				return { ...rm, ...lm, status: lm.status }
 			}
 			if (remoteRank > localRank) {
-				return { ...rm, status: rm.status }
+				return {
+					...rm,
+					...(lm.fileMessage && !rm.fileMessage ? { fileMessage: lm.fileMessage } : {}),
+					status: rm.status,
+				}
 			}
 			// equal rank: remote text/payload wins; keep local status if set
 			if (lm.status && lm.status !== rm.status) {
-				return { ...rm, status: lm.status }
+				return {
+					...rm,
+					...(lm.fileMessage && !rm.fileMessage ? { fileMessage: lm.fileMessage } : {}),
+					status: lm.status,
+				}
 			}
-			return rm
+			return {
+				...rm,
+				...(lm.fileMessage && !rm.fileMessage ? { fileMessage: lm.fileMessage } : {}),
+			}
 		})
 
 		// ✅ 2) 把 local 里仍然存在但 remote 里没有的 tmp_ 消息追加回去（防止被冲掉）

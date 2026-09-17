@@ -1082,6 +1082,7 @@ function DiscoverMerchantMediaCarousel({
 	metadataRoot: Record<string, unknown> | null | undefined
 }) {
 	const items = useMemo(() => discoverMerchantMediaItems(metadataRoot), [metadataRoot])
+	const [activeVideoKey, setActiveVideoKey] = useState<string | null>(null)
 	if (items.length === 0) return null
 	return (
 		<section className="overflow-hidden rounded-2xl border border-[#ebe6df] bg-white shadow-[0_8px_24px_rgba(31,35,40,0.06)] dark:border-slate-700 dark:bg-slate-900">
@@ -1096,15 +1097,30 @@ function DiscoverMerchantMediaCarousel({
 						<div className="aspect-[4/3]">
 							{item.kind === 'video' ? (
 								item.thumbnailUrl ? (
-									<div className="relative h-full w-full">
-										<IpfsImg src={item.thumbnailUrl} alt={item.title} className="h-full w-full object-cover" />
-										<span
-											className="pointer-events-none absolute left-1/2 top-1/2 flex h-12 w-12 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-black/55 text-white shadow-lg ring-2 ring-white/80"
-											aria-hidden
+									activeVideoKey === `${item.kind}:${item.url}` ? (
+										<video
+											src={item.url}
+											className="h-full w-full object-cover"
+											controls
+											autoPlay
+											playsInline
+										/>
+									) : (
+										<button
+											type="button"
+											className="relative h-full w-full cursor-pointer"
+											aria-label={`Play ${item.title}`}
+											onClick={() => setActiveVideoKey(`${item.kind}:${item.url}`)}
 										>
-											<Play className="ml-0.5 h-5 w-5 fill-current" strokeWidth={2.25} />
-										</span>
-									</div>
+											<IpfsImg src={item.thumbnailUrl} alt={item.title} className="h-full w-full object-cover" />
+											<span
+												className="pointer-events-none absolute left-1/2 top-1/2 flex h-12 w-12 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-black/55 text-white shadow-lg ring-2 ring-white/80"
+												aria-hidden
+											>
+												<Play className="ml-0.5 h-5 w-5 fill-current" strokeWidth={2.25} />
+											</span>
+										</button>
+									)
 								) : (
 									<video
 										src={item.url}

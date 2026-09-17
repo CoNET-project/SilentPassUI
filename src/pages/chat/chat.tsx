@@ -124,6 +124,7 @@ function VoiceMessagePlayer({ manifest }: { manifest: VoiceMessageManifest }) {
 	const [menuOpen, setMenuOpen] = useState(false)
 	const [playbackRate, setPlaybackRate] = useState(1)
 	const audioRef = useRef<HTMLAudioElement | null>(null)
+	const voiceControlsRef = useRef<HTMLDivElement | null>(null)
 	useEffect(() => {
 		let cancelled = false
 		setUrl(null)
@@ -160,6 +161,17 @@ function VoiceMessagePlayer({ manifest }: { manifest: VoiceMessageManifest }) {
 		const timer = window.setTimeout(() => setVolumeOpen(false), 3000)
 		return () => window.clearTimeout(timer)
 	}, [volumeOpen, volume])
+	useEffect(() => {
+		if (!volumeOpen && !menuOpen) return
+		const closeOnOutsideAction = (event: PointerEvent) => {
+			const target = event.target
+			if (target instanceof Node && voiceControlsRef.current?.contains(target)) return
+			setVolumeOpen(false)
+			setMenuOpen(false)
+		}
+		document.addEventListener('pointerdown', closeOnOutsideAction, true)
+		return () => document.removeEventListener('pointerdown', closeOnOutsideAction, true)
+	}, [menuOpen, volumeOpen])
 
 	const togglePlayback = () => {
 		const audio = audioRef.current
@@ -182,7 +194,7 @@ function VoiceMessagePlayer({ manifest }: { manifest: VoiceMessageManifest }) {
 	}
 
 	return (
-		<div className="relative min-w-[230px] text-slate-900">
+		<div ref={voiceControlsRef} className="relative min-w-[230px] text-slate-900">
 			{loading ? <div className="text-[13px] text-slate-500">Preparing voice message…</div> : null}
 			{error ? <div role="alert" className="text-[13px] text-rose-600">{error}</div> : null}
 			{url ? (

@@ -463,9 +463,13 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 	const recordingStartedAtRef = useRef(0)
 	const recordingChunksRef = useRef<Blob[]>([])
 	const recordingTimerRef = useRef<number | null>(null)
+	const voiceLevelRafRef = useRef<number | null>(null)
+	const voiceAnalyserRef = useRef<AnalyserNode | null>(null)
+	const voiceAudioContextRef = useRef<AudioContext | null>(null)
 	const [isRecordingVoice, setIsRecordingVoice] = useState(false)
 	const [voiceDurationMs, setVoiceDurationMs] = useState(0)
 	const [voiceRecordedBytes, setVoiceRecordedBytes] = useState(0)
+	const [voiceLevelSamples, setVoiceLevelSamples] = useState<number[]>([])
 	const [voiceDraftBlob, setVoiceDraftBlob] = useState<Blob | null>(null)
 	const [voiceSending, setVoiceSending] = useState(false)
 	const [voiceError, setVoiceError] = useState<string | null>(null)
@@ -626,6 +630,32 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		}
 	}, [])
 
+	const stopVoiceLevelMeter = useCallback(() => {
+		if (voiceLevelRafRef.current !== null) {
+			window.cancelAnimationFrame(voiceLevelRafRef.current)
+			voiceLevelRafRef.current = null
+		}
+		voiceAnalyserRef.current = null
+		const context = voiceAudioContextRef.current
+		voiceAudioContextRef.current = null
+		if (context) void context.close().catch(() => {})
+	}, [])
+
+	const sampleVoiceLevel = useCallback(() => {
+		const analyser = voiceAnalyserRef.current
+		if (!analyser) return
+		const values = new Uint8Array(analyser.fftSize)
+		analyser.getByteTimeDomainData(values)
+		let sum = 0
+		for (const value of values) {
+			const normalized = (value - 128) / 128
+			sum += normalized * normalized
+		}
+		const rms = Math.min(1, Math.sqrt(sum / values.length) * 3.5)
+		setVoiceLevelSamples(previous => [...previous.slice(-47), rms])
+		voiceLevelRafRef.current = window.requestAnimationFrame(sampleVoiceLevel)
+	}, [])
+
 	const scheduleVoiceDurationTimer = useCallback(() => {
 		stopVoiceDurationTimer()
 		if (!recordingStartedAtRef.current) return
@@ -637,8 +667,9 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 
 	useEffect(() => () => {
 		stopVoiceDurationTimer()
+		stopVoiceLevelMeter()
 		try { recorderRef.current?.stop() } catch { /* already stopped */ }
-	}, [stopVoiceDurationTimer])
+	}, [stopVoiceDurationTimer, stopVoiceLevelMeter])
 
 	const startVoiceRecording = useCallback(async () => {
 		if (!hasRoute || isRecordingVoice || voiceSending) return
@@ -653,6 +684,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 				.find(type => MediaRecorder.isTypeSupported(type)) || ''
 			const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream)
 			recordingChunksRef.current = []
+			setVoiceLevelSamples([])
 			recorder.ondataavailable = event => {
 				if (event.data.size > 0) {
 					recordingChunksRef.current.push(event.data)
@@ -665,17 +697,31 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 			setVoiceDurationMs(0)
 			setVoiceRecordedBytes(0)
 			setIsRecordingVoice(true)
-			recorder.start()
+			const AudioContextCtor =
+				window.AudioContext ||
+				(window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+			if (AudioContextCtor) {
+				const audioContext = new AudioContextCtor()
+				const source = audioContext.createMediaStreamSource(stream)
+				const analyser = audioContext.createAnalyser()
+				analyser.fftSize = 256
+				source.connect(analyser)
+				voiceAudioContextRef.current = audioContext
+				voiceAnalyserRef.current = analyser
+				voiceLevelRafRef.current = window.requestAnimationFrame(sampleVoiceLevel)
+			}
+			recorder.start(250)
 			scheduleVoiceDurationTimer()
 		} catch {
 			setVoiceError('Microphone access was denied or unavailable.')
 		}
-	}, [hasRoute, isRecordingVoice, scheduleVoiceDurationTimer, voiceSending])
+	}, [hasRoute, isRecordingVoice, sampleVoiceLevel, scheduleVoiceDurationTimer, voiceSending])
 
 	const finishVoiceRecording = useCallback(async () => {
 		const recorder = recorderRef.current
 		if (!recorder || recorder.state === 'inactive') return
 		stopVoiceDurationTimer()
+		stopVoiceLevelMeter()
 		const durationMs = Math.max(1, Date.now() - recordingStartedAtRef.current)
 		setVoiceDurationMs(durationMs)
 		setIsRecordingVoice(false)
@@ -694,7 +740,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		setVoiceDraftBlob(blob)
 		setVoiceRecordedBytes(blob.size)
 		setVoiceError(null)
-	}, [stopVoiceDurationTimer])
+	}, [stopVoiceDurationTimer, stopVoiceLevelMeter])
 
 	const cancelVoiceDraft = useCallback(() => {
 		if (voiceSending) return
@@ -2314,6 +2360,18 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 											width: `${Math.min(100, Math.max(2, (voiceRecordedBytes / VOICE_MAX_AUDIO_BYTES) * 100))}%`,
 										}}
 									/>
+								</div>
+								<div className="mt-1.5 flex h-5 items-end gap-0.5 overflow-hidden" aria-label="Current recording volume">
+									{Array.from({ length: 48 }, (_, index) => {
+										const level = voiceLevelSamples[index] ?? 0.04
+										return (
+											<span
+												key={index}
+												className="min-w-0 flex-1 rounded-full bg-rose-400/80 transition-[height] duration-100"
+												style={{ height: `${Math.max(8, Math.round(level * 100))}%` }}
+											/>
+										)
+									})}
 								</div>
 							</div>
 						)}

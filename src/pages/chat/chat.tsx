@@ -946,6 +946,18 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		if (!files.length) return
 		const id = crypto.randomUUID()
 		const videoFile = files.length === 1 && files[0].type.startsWith('video/') ? files[0] : null
+		const controller = new AbortController()
+		fileControllersRef.current.set(id, controller)
+		setFileJobs(previous => [
+			...previous,
+			{
+				id,
+				files,
+				name: files.length === 1 ? files[0].name : `${files.length} files`,
+				progress: 0,
+				status: 'uploading',
+			},
+		])
 		let thumbnail: Blob | undefined
 		try {
 			if (videoFile) thumbnail = await createVideoThumbnail(videoFile)
@@ -954,10 +966,14 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 			// Keep the video job alive and continue uploading; the receiver can still
 			// render the decrypted video when no local thumbnail is available.
 		}
+		if (controller.signal.aborted) {
+			fileControllersRef.current.delete(id)
+			return
+		}
 		const thumbnailUrl = thumbnail ? URL.createObjectURL(thumbnail) : undefined
-		setFileJobs(previous => [...previous, { id, files, name: files.length === 1 ? files[0].name : `${files.length} files`, progress: 0, status: 'uploading', thumbnailUrl }])
-		const controller = new AbortController()
-		fileControllersRef.current.set(id, controller)
+		if (thumbnailUrl) {
+			setFileJobs(previous => previous.map(item => item.id === id ? { ...item, thumbnailUrl } : item))
+		}
 		try {
 			const encrypted = await encryptChatFiles(files, undefined, thumbnail)
 			const fragmentHash = await uploadEncryptedChatFileDataUrl(

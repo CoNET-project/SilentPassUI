@@ -107,7 +107,7 @@ function formatVoiceBytes(bytes: number): string {
 	return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
 }
 
-function VoiceMessagePlayer({ manifest, isMe }: { manifest: VoiceMessageManifest; isMe: boolean }) {
+function VoiceMessagePlayer({ manifest }: { manifest: VoiceMessageManifest }) {
 	const [url, setUrl] = useState<string | null>(null)
 	const [error, setError] = useState<string | null>(null)
 	const [loading, setLoading] = useState(false)
@@ -136,12 +136,7 @@ function VoiceMessagePlayer({ manifest, isMe }: { manifest: VoiceMessageManifest
 		}
 	}, [manifest])
 	return (
-		<div
-			className={[
-				'min-w-[190px] rounded-2xl px-3 py-2.5 text-slate-900 shadow-sm',
-				isMe ? 'bg-[#dceaff]' : 'bg-white',
-			].join(' ')}
-		>
+		<div className="min-w-[190px] text-slate-900">
 			{loading ? <div className="text-[13px] text-slate-500">Preparing voice message…</div> : null}
 			{error ? <div role="alert" className="text-[13px] text-rose-600">{error}</div> : null}
 			{url ? (
@@ -1819,7 +1814,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 											<div className="max-w-[78%] sm:max-w-[62%]">
 											{hasVoice && m.voiceMessage ? (
 												<div className="relative">
-													<VoiceMessagePlayer manifest={m.voiceMessage} isMe={isMe} />
+													<VoiceMessagePlayer manifest={m.voiceMessage} />
 													{isMe && (
 														<div className="absolute -bottom-2 -right-2">
 															<BubbleCornerStatus status={m.status} onRetry={() => setVoiceError('Please record and send the voice message again.')} />

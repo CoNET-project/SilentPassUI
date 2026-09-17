@@ -2990,11 +2990,13 @@ export default function DiscoverMerchantGiftSheet({
 							/>
 						</div>
 					) : null}
-					{isFeeCard ? (
-						<div className="mt-2 text-[12px] font-semibold uppercase tracking-[0.05em] text-[#5d5e63]">
-							Min {prefix}{minHuman}.
-						</div>
-					) : null}
+					<div className="mt-2 flex items-center gap-1.5 text-[#5d5e63]">
+						<Check className="h-4 w-4 shrink-0" strokeWidth={2.5} style={{ color: brandControl }} aria-hidden />
+						<span className="text-[12px] font-semibold uppercase tracking-[0.05em]">
+							They get exactly what you pay. No hidden deduction.
+							{isFeeCard ? ` Min ${prefix}${minHuman}.` : ''}
+						</span>
+					</div>
 				</section>
 
 				<section className="mt-6 min-w-0">

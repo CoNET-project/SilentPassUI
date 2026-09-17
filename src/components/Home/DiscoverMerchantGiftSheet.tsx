@@ -2990,13 +2990,11 @@ export default function DiscoverMerchantGiftSheet({
 							/>
 						</div>
 					) : null}
-					<div className="mt-2 flex items-center gap-1.5 text-[#5d5e63]">
-						<Check className="h-4 w-4 shrink-0" strokeWidth={2.5} style={{ color: brandControl }} aria-hidden />
-						<span className="text-[12px] font-semibold uppercase tracking-[0.05em]">
-							They get exactly what you pay. No hidden deduction.
-							{isFeeCard ? ` Min ${prefix}${minHuman}.` : ''}
-						</span>
-					</div>
+					{isFeeCard ? (
+						<div className="mt-2 text-[12px] font-semibold uppercase tracking-[0.05em] text-[#5d5e63]">
+							Min {prefix}{minHuman}.
+						</div>
+					) : null}
 				</section>
 
 				<section className="mt-6 min-w-0">
@@ -4140,10 +4138,11 @@ export default function DiscoverMerchantGiftSheet({
 										</span>
 									) : null}
 								</div>
-								<span className="truncate text-[15px] text-[#424655] dark:text-slate-400">
-							{usdcAvailableLabel ?? 'Quoted in USDC at checkout'}
-							{usdcQuoteLabel ? ` · Remaining ${remainingUsdcLabel ?? usdcQuoteLabel}` : ''}
-								</span>
+								{usdcQuoteLabel ? (
+									<span className="truncate text-[15px] text-[#424655] dark:text-slate-400">
+										Remaining {remainingUsdcLabel ?? usdcQuoteLabel}
+									</span>
+								) : null}
 							</div>
 						</div>
 						<div className="flex items-center gap-3 pl-2">
@@ -4190,9 +4189,6 @@ export default function DiscoverMerchantGiftSheet({
 											</span>
 										) : null}
 									</div>
-									<span className="truncate text-[15px] text-[#424655] dark:text-slate-400">
-										Connected Stripe · secure checkout
-									</span>
 								</div>
 							</div>
 							{methodCheck(remainingPayMethod === 'stripe')}

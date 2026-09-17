@@ -2788,6 +2788,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 								open={plusOpen}
 								onClose={() => setPlusOpen(false)}
 								anchorRef={plusBtnRef}
+								onAttachFiles={() => fileInputRef.current?.click()}
 								
 							/>
 								{/* ✅ 输入框：内部放 send 按钮 */}
@@ -2810,7 +2811,6 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 									>
 										<Plus className="h-4 w-4 text-slate-500" strokeWidth={2.6} />
 									</button>
-									<button type="button" tabIndex={-1} onClick={() => fileInputRef.current?.click()} aria-label="Attach files" className="absolute bottom-2 left-11 grid h-8 w-8 place-items-center rounded-full text-slate-500 ring-1 ring-slate-300/70"><Paperclip className="h-4 w-4" /></button>
 									<textarea
 									key={inputSession}
 									ref={inputRef}

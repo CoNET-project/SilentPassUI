@@ -2,9 +2,9 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallba
 import type { LucideIcon } from "lucide-react"
 import { createPortal } from "react-dom"
 import { AnimatePresence, motion } from "framer-motion"
-import { Camera, Image as ImageIcon, Sticker, BarChart3, Mic, Clock } from "lucide-react"
+import { Camera, Image as ImageIcon, Sticker, BarChart3, Mic, Clock, Paperclip } from "lucide-react"
 
-type ActionKey = "camera" | "photos" | "stickers" | "polls" | "audio" | "later"
+type ActionKey = "camera" | "photos" | "stickers" | "polls" | "audio" | "later" | "files"
 
 type MenuItem = {
   key: ActionKey
@@ -18,9 +18,11 @@ type Props = {
   onClose: () => void
   anchorRef: React.RefObject<HTMLElement>
   items?: MenuItem[]
+  onAttachFiles?: () => void
 }
 
 const DEFAULT_ITEMS: MenuItem[] = [
+  { key: "files", label: "Attach files", Icon: Paperclip },
   { key: "camera", label: "Camera", Icon: Camera },
   { key: "photos", label: "Photos", Icon: ImageIcon },
   { key: "stickers", label: "Stickers", Icon: Sticker },
@@ -41,7 +43,7 @@ function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n))
 }
 
-export function PlusActionMenu({ open, onClose, anchorRef, items = DEFAULT_ITEMS }: Props) {
+export function PlusActionMenu({ open, onClose, anchorRef, items = DEFAULT_ITEMS, onAttachFiles }: Props) {
   const [pos, setPos] = useState<Pos | null>(null)
 
   // ✅ hooks 必须无条件调用：menuRef 放这里
@@ -196,6 +198,7 @@ export function PlusActionMenu({ open, onClose, anchorRef, items = DEFAULT_ITEMS
                     "active:bg-black/5 hover:bg-black/5"
                   ].join(" ")}
                   onClick={() => {
+                    if (it.key === "files") onAttachFiles?.()
                     it.onClick?.()
                     onClose()
                   }}

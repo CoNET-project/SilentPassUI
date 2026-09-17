@@ -101,6 +101,31 @@ async function postChunk(args: {
   };
 }
 
+async function postLegacyFragment(args: {
+  wallet: string;
+  signMessage: string;
+  image: string;
+}): Promise<string> {
+  const resp = await fetch(`${IPFS_API_BASE}storageFragment`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      wallet: args.wallet,
+      signMessage: args.signMessage,
+      image: args.image,
+    }),
+  });
+  const data = (await resp.json().catch(() => null)) as {
+    ok?: boolean;
+    hash?: string;
+    error?: string;
+  } | null;
+  if (!resp.ok || !data?.ok || data.hash == null) {
+    throw new Error(data?.error || `Direct upload failed (${resp.status})`);
+  }
+  return data.hash;
+}
+
 function wrapNetworkError(err: unknown): Error {
   const msg = err instanceof Error ? err.message : String(err);
   if (/failed to fetch|networkerror|load failed|aborted/i.test(msg)) {
@@ -235,7 +260,25 @@ export async function uploadMediaFileToIpfsChunked(
     totalBytes: file.size,
     message: 'Preparing file for upload…',
   });
-  return uploadDataUrlToIpfsChunked(profile, dataUrl, onProgress, signal);
+  try {
+    return await uploadDataUrlToIpfsChunked(profile, dataUrl, onProgress, signal);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (!/network error reaching ipfs\.conet\.network/i.test(message)) {
+      throw err;
+    }
+    if (signal?.aborted) throw new DOMException('Upload aborted', 'AbortError');
+
+    onProgress?.({
+      phase: 'upload',
+      percent: 0,
+      receivedBytes: 0,
+      totalBytes: dataUrl.length,
+      message: 'Retrying with direct upload…',
+    });
+    const { wallet, signMessage } = await signFragmentWallet(profile);
+    return postLegacyFragment({ wallet: wallet.address, signMessage, image: dataUrl });
+  }
 }
 
 export function ipfsFragmentUrlFromHash(hash: string): string {

@@ -4147,12 +4147,6 @@ export default function DiscoverMerchantGiftSheet({
 							</div>
 						</div>
 						<div className="flex items-center gap-3 pl-2">
-							<span
-								className="whitespace-nowrap text-[17px] font-bold"
-								style={{ color: remainingPayMethod === 'usdc' ? brandControl : '#424655' }}
-							>
-								{usdcQuoteLabel ?? `${prefix}${previewAmount}`}
-							</span>
 							{methodCheck(remainingPayMethod === 'usdc')}
 						</div>
 					</button>
@@ -4267,12 +4261,6 @@ export default function DiscoverMerchantGiftSheet({
 								</div>
 							</div>
 							<div className="relative z-10 flex items-center gap-3 pl-2">
-								<span
-									className="whitespace-nowrap text-[17px] font-bold"
-									style={{ color: remainingPayMethod === 'credit' ? brandControl : '#424655' }}
-								>
-									{creditBurnLabel ?? `${prefix}${previewAmount}`}
-								</span>
 								{methodCheck(remainingPayMethod === 'credit')}
 							</div>
 						</button>

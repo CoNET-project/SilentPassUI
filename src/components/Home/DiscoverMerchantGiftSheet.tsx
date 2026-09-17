@@ -767,6 +767,7 @@ export default function DiscoverMerchantGiftSheet({
 	const [reward13Rows, setReward13Rows] = useState<Awaited<ReturnType<typeof loadReward13RowsForAa>>>([])
 	const [reward13Legs, setReward13Legs] = useState<CoverLeg[]>([])
 	const [reward13Loading, setReward13Loading] = useState(false)
+	const reward13PrefetchKeyRef = useRef('')
 	/** Master switch for applying Reward PT — independent of the Select PT page. */
 	const [reward13Enabled, setReward13Enabled] = useState(true)
 	const [selectedReward13Cards, setSelectedReward13Cards] = useState<Set<string>>(() => new Set())
@@ -1057,6 +1058,9 @@ export default function DiscoverMerchantGiftSheet({
 		const card = ethers.getAddress(cardAddress)
 		const cardLower = card.toLowerCase()
 		const eoaLower = (currentProfile.keyID ?? '').trim().toLowerCase()
+		const prefetchKey = `${cardLower}:${eoaLower}`
+		if (reward13PrefetchKeyRef.current === prefetchKey) return
+		reward13PrefetchKeyRef.current = prefetchKey
 		const daemonAssets = myBrandCardDetails[cardLower]?.assets ?? null
 		const localAssets = eoaLower
 			? loadMyBrandsFeedLocalCache(eoaLower)?.details?.[cardLower]?.assets ?? null
@@ -1123,7 +1127,7 @@ export default function DiscoverMerchantGiftSheet({
 		}
 		// resolvedAa is written inside this effect; do not depend on it or the fetch restarts.
 		// eslint-disable-next-line react-hooks/exhaustive-deps -- prefetch once per card / profile identity
-	}, [cardAddress, merchantTitle, myBrandCardDetails, profile?.keyID, profile?.aaAccount])
+	}, [cardAddress, profile?.keyID, profile?.aaAccount])
 
 	useEffect(() => {
 		if (step === 3 || step === 'select') return
@@ -1875,12 +1879,6 @@ export default function DiscoverMerchantGiftSheet({
 			return next
 		})
 	}
-	const remainingUsdcLabel = useMemo(() => {
-		const total = quotedGiftUsdc6
-		if (total == null) return null
-		const remaining = total > reward13AppliedUsdc6 ? total - reward13AppliedUsdc6 : 0n
-		return `$${formatQuotedUsdc6ForDisplay(remaining)} USDC`
-	}, [quotedGiftUsdc6, reward13AppliedUsdc6])
 	const rewardPtFullyCoversGift =
 		quotedGiftUsdc6 !== null &&
 		reward13AppliedPoints6 > 0n &&
@@ -4138,11 +4136,6 @@ export default function DiscoverMerchantGiftSheet({
 										</span>
 									) : null}
 								</div>
-								{usdcQuoteLabel ? (
-									<span className="truncate text-[15px] text-[#424655] dark:text-slate-400">
-										Remaining {remainingUsdcLabel ?? usdcQuoteLabel}
-									</span>
-								) : null}
 							</div>
 						</div>
 						<div className="flex items-center gap-3 pl-2">

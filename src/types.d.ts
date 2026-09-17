@@ -741,6 +741,7 @@ type ChatMessage = {
 	status?: "sending" | "sent" | "delivered" | "failed"
 	/** End-to-end encrypted voice metadata; the audio itself is never in the chat payload. */
 	voiceMessage?: import('@/utils/voiceMessage').VoiceMessageManifest
+	fileMessage?: import('@/utils/chatFileMessage').ChatFileMessageManifest
 	paymentCard?: paymentCard
 	/** 本条为 reaction 时，messageId 为目标消息的 sendId */
 	reply?: ChatMessageReply

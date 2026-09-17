@@ -38,6 +38,7 @@
 		"copy-to-clipboard": "^3.3.3",
 		"ethers": "^6.15.0",
 		"framer-motion": "^12.23.7",
+		"fflate": "^0.8.2",
 		"html2canvas": "^1.4.1",
 		"html5-qrcode": "^2.3.8",
 		"i18next": "^26.3.1",

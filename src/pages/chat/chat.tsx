@@ -37,7 +37,8 @@ import {
   ExternalLink,
   X,
   CornerUpLeft,
-  Trash2
+  Trash2,
+  Paperclip
 } from "lucide-react"
 import { ChatHeaderIOS } from "./components/ChatHeaderIOS"
 import {
@@ -86,6 +87,12 @@ import {
 	VOICE_MAX_AUDIO_BYTES,
 	type VoiceMessageManifest,
 } from '@/utils/voiceMessage'
+import {
+	decryptChatFileManifest,
+	encryptChatFiles,
+	uploadEncryptedChatFileDataUrl,
+	type ChatFileMessageManifest,
+} from '@/utils/chatFileMessage'
 
 const aptEndpoint = 'https://api.settleonbase.xyz'
 const baseExplorerTxUrl = (hash: string) => `https://basescan.org/tx/${hash}`
@@ -112,6 +119,46 @@ function formatVoiceBytes(bytes: number): string {
 	if (bytes < 1024) return `${bytes} B`
 	if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
 	return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
+}
+
+type ChatFileJob = {
+	id: string
+	files: File[]
+	name: string
+	progress: number
+	status: 'uploading' | 'ready' | 'failed' | 'cancelled'
+	error?: string
+	manifest?: ChatFileMessageManifest
+}
+
+async function filesFromDropItems(items: DataTransferItemList): Promise<File[]> {
+	const output: File[] = []
+	const readEntry = async (entry: any, prefix = ''): Promise<void> => {
+		if (entry?.isFile) {
+			const file = await new Promise<File>((resolve, reject) => entry.file(resolve, reject))
+			Object.defineProperty(file, 'webkitRelativePath', { value: `${prefix}${file.name}` })
+			output.push(file)
+			return
+		}
+		if (entry?.isDirectory) {
+			const reader = entry.createReader()
+			while (true) {
+				const batch = await new Promise<any[]>((resolve, reject) => reader.readEntries(resolve, reject))
+				if (!batch.length) break
+				for (const child of batch) await readEntry(child, `${prefix}${entry.name}/`)
+			}
+		}
+	}
+	for (let i = 0; i < items.length; i += 1) {
+		const item = items[i]
+		const entry = item.webkitGetAsEntry?.()
+		if (entry) await readEntry(entry)
+		else {
+			const file = item.getAsFile()
+			if (file) output.push(file)
+		}
+	}
+	return output
 }
 
 function voiceWaveformPath(samples: number[]): string {
@@ -302,6 +349,46 @@ function VoiceMessagePlayer({ manifest, isMe }: { manifest: VoiceMessageManifest
 					</div>
 				</div>
 			) : null}
+		</div>
+	)
+}
+
+function ChatFileMessagePlayer({ manifest, isMe }: { manifest: ChatFileMessageManifest; isMe: boolean }) {
+	const [files, setFiles] = useState<Map<string, Blob> | null>(null)
+	const [error, setError] = useState<string | null>(null)
+	const [loading, setLoading] = useState(false)
+	useEffect(() => {
+		const controller = new AbortController()
+		setLoading(true)
+		setError(null)
+		setFiles(null)
+		void decryptChatFileManifest(manifest, controller.signal)
+			.then(setFiles)
+			.catch(error => {
+				if (error?.name !== 'AbortError') setError(error instanceof Error ? error.message : 'File attachment is unavailable.')
+			})
+			.finally(() => setLoading(false))
+		return () => controller.abort()
+	}, [manifest])
+	const download = (name: string, blob: Blob) => {
+		const url = URL.createObjectURL(blob)
+		const anchor = document.createElement('a')
+		anchor.href = url
+		anchor.download = name.split('/').pop() || 'download'
+		anchor.click()
+		window.setTimeout(() => URL.revokeObjectURL(url), 0)
+	}
+	return (
+		<div className={['min-w-[220px] rounded-2xl px-3 py-2 ring-1 ring-black/5', isMe ? 'bg-[#dceaff]/70' : 'bg-white/70'].join(' ')}>
+			<div className="text-[12px] font-semibold text-slate-700">{manifest.count} file{manifest.count === 1 ? '' : 's'} · {formatVoiceBytes(manifest.sizeBytes)}</div>
+			{loading ? <div className="mt-1 text-[12px] text-slate-500">Preparing files…</div> : null}
+			{error ? <div role="alert" className="mt-1 text-[12px] text-rose-600">{error}</div> : null}
+			{files ? <div className="mt-1 space-y-1">{Array.from(files.entries()).map(([name, blob]) => (
+				<div key={name} className="flex items-center gap-2 text-[12px]">
+					<span className="min-w-0 flex-1 truncate text-slate-600">{name}</span>
+					<button type="button" onClick={() => download(name, blob)} className="shrink-0 font-semibold text-[#1652f0]">Download</button>
+				</div>
+			))}</div> : null}
 		</div>
 	)
 }
@@ -625,6 +712,12 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 	const [voiceDraftBlob, setVoiceDraftBlob] = useState<Blob | null>(null)
 	const [voiceSending, setVoiceSending] = useState(false)
 	const [voiceError, setVoiceError] = useState<string | null>(null)
+	const [fileJobs, setFileJobs] = useState<ChatFileJob[]>([])
+	const fileControllersRef = useRef(new Map<string, AbortController>())
+	const storageDataRef = useRef<(() => Promise<void>) | null>(null)
+	const fileInputRef = useRef<HTMLInputElement | null>(null)
+	const [fileError, setFileError] = useState<string | null>(null)
+	const [fileDropActive, setFileDropActive] = useState(false)
 	const [chatError, setChatError] = useState<string | null>(null)
 
 	const toAddress = chatData.address
@@ -690,7 +783,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 
 	/** 仅展示“正文”消息（含文字或 paymentCard）；带 reply 的 reaction 消息不单独成行，用于在目标消息上显示 icon */
 	const displayableMessages = useMemo(() => {
-		return (messages || []).filter(m => !m.reply || !!m.text || !!m.paymentCard || !!m.voiceMessage)
+		return (messages || []).filter(m => !m.reply || !!m.text || !!m.paymentCard || !!m.voiceMessage || !!m.fileMessage)
 	}, [messages])
 
 	const sections = useMemo(() => {
@@ -770,10 +863,46 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 	const hasRoute = !!(chatData.chatData?.routersArmoreds?.trim())
 
 	const canSend = useMemo(() => {
-		return !!toAddress && !!hasRoute && (text.trim().length > 0 || !!voiceDraftBlob)
-	}, [toAddress, hasRoute, text, voiceDraftBlob])
+		return !!toAddress && !!hasRoute && (text.trim().length > 0 || !!voiceDraftBlob || fileJobs.some(job => job.status === 'ready'))
+	}, [toAddress, hasRoute, text, voiceDraftBlob, fileJobs])
 
 	const runningRef = useRef(false)
+
+	const addChatFiles = useCallback(async (incoming: File[]) => {
+		if (!hasRoute || !incoming.length) return
+		const files = incoming.filter(file => !file.type.startsWith('image/') && !file.type.startsWith('audio/'))
+		if (files.length !== incoming.length) setFileError('Photos and audio use their existing chat actions. Drop documents, archives, or folders here.')
+		if (!files.length) return
+		const id = crypto.randomUUID()
+		setFileJobs(previous => [...previous, { id, files, name: files.length === 1 ? files[0].name : `${files.length} files`, progress: 0, status: 'uploading' }])
+		const controller = new AbortController()
+		fileControllersRef.current.set(id, controller)
+		try {
+			const encrypted = await encryptChatFiles(files)
+			const fragmentHash = await uploadEncryptedChatFileDataUrl(
+				profiles[0]?.privateKeyArmor || '',
+				encrypted.dataUrl,
+				progress => setFileJobs(previous => previous.map(item => item.id === id ? { ...item, progress } : item)),
+				controller.signal,
+			)
+			setFileJobs(previous => previous.map(item => item.id === id
+				? { ...item, status: 'ready', progress: 1, manifest: { ...encrypted.manifest, fragmentHash } }
+				: item))
+		} catch (error) {
+			if (error instanceof DOMException && error.name === 'AbortError') {
+				setFileJobs(previous => previous.filter(item => item.id !== id))
+			} else {
+				setFileJobs(previous => previous.map(item => item.id === id ? { ...item, status: 'failed', error: error instanceof Error ? error.message : 'File upload failed.' } : item))
+			}
+		} finally {
+			fileControllersRef.current.delete(id)
+		}
+	}, [hasRoute, profiles])
+
+	const cancelChatFileJob = useCallback((id: string) => {
+		fileControllersRef.current.get(id)?.abort()
+		setFileJobs(previous => previous.filter(item => item.id !== id))
+	}, [])
 
 	const stopVoiceDurationTimer = useCallback(() => {
 		if (recordingTimerRef.current !== null) {
@@ -945,7 +1074,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 			messagesRef.current = settled
 			setMessages(settled)
 			chatData.messages = settled
-			await storageData()
+			await storageDataRef.current?.()
 			if (sent) mirrorChatMessageToHistory(chatData.address, settled.find(message => message.id === payload.id), 'out')
 			else setVoiceError('Voice message failed to reach CoNET entry nodes. Please retry.')
 			if (sent) {
@@ -1496,6 +1625,38 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		}, 400)
 	}
 
+	const sendFileDrafts = useCallback(async () => {
+		const ready = fileJobs.filter(job => job.status === 'ready' && job.manifest)
+		if (!ready.length || !privateKey || !allNodes?.length) return
+		for (const job of ready) {
+			const now = Date.now()
+			const sendId = crypto.randomUUID()
+			const payload: ChatMessage = {
+				id: `tmp_${now}_${Math.random().toString(16).slice(2)}`,
+				sendId,
+				from: 'me',
+				text: '',
+				createdAt: now,
+				status: 'sending',
+				fileMessage: job.manifest,
+			}
+			const next = [...(messagesRef.current || []), payload]
+			messagesRef.current = next
+			setMessages(next)
+			const sent = await sendMessage(chatData.chatData.publicArmored, JSON.stringify({
+				sendId, from: 'me', text: '', createdAt: now, fileMessage: job.manifest,
+			}), privateKey, allNodes).catch(() => false)
+			const settled = next.map(message => message.id === payload.id ? { ...message, status: sent ? 'sent' as const : 'failed' as const } : message)
+			messagesRef.current = settled
+			setMessages(settled)
+			chatData.messages = settled
+			await storageData()
+			if (sent) mirrorChatMessageToHistory(chatData.address, settled.find(message => message.id === payload.id), 'out')
+			else setFileError('A file message failed to reach CoNET entry nodes. Please try again.')
+			if (sent) setFileJobs(previous => previous.filter(item => item.id !== job.id))
+		}
+	}, [allNodes, chatData, fileJobs, privateKey])
+
 	async function send() {
 		const temp = CoNET_Data
 		if (!temp || !profiles?.length) return
@@ -1503,7 +1664,10 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 
 		// Prefer DOM value so in-progress IME composition is included when user taps Send.
 		const t = (inputRef.current?.value ?? text).trim()
-		if (!t) return
+		if (!t) {
+			await sendFileDrafts()
+			return
+		}
 
 		const nowGuard = Date.now()
 		const prev = lastSentGuardRef.current
@@ -1595,6 +1759,16 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 			mirrorChatMessageToHistory(chatData.address, sentMsg, 'out')
 		}
 	}
+
+	const sendAll = useCallback(async () => {
+		const value = (inputRef.current?.value ?? text).trim()
+		if (value) {
+			await send()
+			await sendFileDrafts()
+		} else {
+			await send()
+		}
+	}, [sendFileDrafts, text])
 
 	useEffect(() => {
 		if (chatData.unreadCount > 0) {
@@ -1722,6 +1896,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 
 		await storeSystemData()
 	}
+	storageDataRef.current = storageData
 
 	function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
 		// keyCode 229 = IME processing (Android WebView / legacy); isComposing = modern browsers
@@ -1946,6 +2121,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 										const hasMultisigCard = !!multisigPreview
 										const hasCard = !!m.paymentCard
 										const hasVoice = !!m.voiceMessage
+										const hasFile = !!m.fileMessage
 										const shareUrl =
 											!hasMultisigCard && !hasCard && isPrimarilyBeamioShareLinkMessage(m.text)
 												? findBeamioShareUrlInText(m.text)
@@ -1967,7 +2143,12 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 											className={["w-full flex mb-2", isMe ? "justify-end" : "justify-start"].join(" ")}
 										>
 											<div className="max-w-[78%] sm:max-w-[62%]">
-											{hasVoice && m.voiceMessage ? (
+											{hasFile && m.fileMessage ? (
+												<div className="relative">
+													<ChatFileMessagePlayer manifest={m.fileMessage} isMe={isMe} />
+													{isMe ? <div className="absolute -bottom-2 -right-2"><BubbleCornerStatus status={m.status} /></div> : null}
+												</div>
+											) : hasVoice && m.voiceMessage ? (
 												<div className="relative">
 													<VoiceMessagePlayer manifest={m.voiceMessage} isMe={isMe} />
 													{isMe && (
@@ -2570,6 +2751,34 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 								</button>
 							</div>
 						) : null}
+						{fileJobs.length ? (
+							<div className="mb-2 space-y-1.5">
+								{fileJobs.map(job => (
+									<div key={job.id} className="flex items-center gap-2 rounded-2xl bg-white/75 px-3 py-2 ring-1 ring-black/5 backdrop-blur-xl">
+										<div className="min-w-0 flex-1">
+											<p className="truncate text-[13px] font-semibold text-slate-700">{job.name}</p>
+											{job.status === 'uploading' ? <div className="mt-1 h-1 overflow-hidden rounded-full bg-slate-200"><div className="h-full bg-[#1652f0] transition-[width]" style={{ width: `${Math.max(2, job.progress * 100)}%` }} /></div> : null}
+											{job.status === 'ready' ? <p className="text-[11px] text-emerald-600">Ready · press Send</p> : null}
+											{job.error ? <p role="alert" className="text-[11px] text-rose-600">{job.error}</p> : null}
+										</div>
+										<button type="button" tabIndex={-1} onClick={() => cancelChatFileJob(job.id)} aria-label="Cancel file upload" className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-slate-500 hover:bg-rose-50 hover:text-rose-600"><X className="h-4 w-4" strokeWidth={2.4} /></button>
+									</div>
+								))}
+							</div>
+						) : null}
+						{fileError ? <div role="alert" className="mb-2 rounded-xl bg-rose-50 px-3 py-2 text-[12px] text-rose-700">{fileError}</div> : null}
+						<div
+							className={fileDropActive ? 'rounded-2xl ring-2 ring-[#1652f0]/50' : ''}
+							onDragEnter={event => { event.preventDefault(); setFileDropActive(true) }}
+							onDragOver={event => event.preventDefault()}
+							onDragLeave={event => { if (event.currentTarget === event.target) setFileDropActive(false) }}
+							onDrop={event => {
+								event.preventDefault()
+								setFileDropActive(false)
+								void filesFromDropItems(event.dataTransfer.items).then(addChatFiles)
+							}}
+						>
+						<input ref={fileInputRef} type="file" multiple hidden {...({ webkitdirectory: '' } as Record<string, string>)} onChange={event => { void addChatFiles(Array.from(event.target.files || [])); event.currentTarget.value = '' }} />
 						<div className="flex items-center gap-2">
 							<PlusActionMenu
 								open={plusOpen}
@@ -2597,6 +2806,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 									>
 										<Plus className="h-4 w-4 text-slate-500" strokeWidth={2.6} />
 									</button>
+									<button type="button" tabIndex={-1} onClick={() => fileInputRef.current?.click()} aria-label="Attach files" className="absolute bottom-2 left-11 grid h-8 w-8 place-items-center rounded-full text-slate-500 ring-1 ring-slate-300/70"><Paperclip className="h-4 w-4" /></button>
 									<textarea
 									key={inputSession}
 									ref={inputRef}
@@ -2645,7 +2855,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 										if (voiceDraftBlob) {
 											void sendVoiceDraft()
 										} else if (canSend || (hasRoute && (inputRef.current?.value ?? text).trim())) {
-											void send()
+										void sendAll()
 										} else if (isRecordingVoice) {
 											void finishVoiceRecording()
 										} else {
@@ -2685,6 +2895,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 									</button>
 								</div>
 							</div>
+						</div>
 						</div>
 					</div>
 				</div>

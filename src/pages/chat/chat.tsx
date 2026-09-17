@@ -216,8 +216,8 @@ function VoiceMessagePlayer({ manifest, isMe }: { manifest: VoiceMessageManifest
 			{url ? (
 				<div
 					className={[
-						'flex items-center gap-1.5 rounded-full p-1.5 backdrop-blur-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_8px_20px_rgba(15,23,42,0.08)] ring-1 ring-white/70',
-						isMe ? 'bg-[#dceaff]/70' : 'bg-white/60',
+						'flex items-center gap-1.5 rounded-full p-1.5 backdrop-blur-2xl shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_8px_20px_rgba(15,23,42,0.08)] ring-1 ring-white/70',
+						isMe ? 'bg-[#dceaff]/45' : 'bg-white/45',
 					].join(' ')}
 				>
 					<audio
@@ -231,11 +231,11 @@ function VoiceMessagePlayer({ manifest, isMe }: { manifest: VoiceMessageManifest
 						type="button"
 						onClick={togglePlayback}
 						aria-label={playing ? 'Pause voice message' : 'Play voice message'}
-						className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-slate-900 text-white transition active:scale-95"
+						className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white/55 text-[#424655]/85 shadow-[0_2px_8px_rgba(15,23,42,0.12)] ring-1 ring-white/80 backdrop-blur-md transition active:scale-95"
 					>
 						{playing ? <Pause className="h-4 w-4 fill-current" /> : <Play className="ml-0.5 h-4 w-4 fill-current" />}
 					</button>
-					<span className="min-w-0 flex-1 text-center text-[13px] font-semibold text-slate-700">
+					<span className="min-w-0 flex-1 text-center text-[13px] font-semibold text-[#424655]/80">
 						{formatVoiceDuration(manifest.durationMs)}
 					</span>
 					<div className="relative">
@@ -246,7 +246,7 @@ function VoiceMessagePlayer({ manifest, isMe }: { manifest: VoiceMessageManifest
 								setMenuOpen(false)
 							}}
 							aria-label="Adjust volume"
-							className="grid h-9 w-9 place-items-center rounded-full text-slate-700 transition hover:bg-black/5 active:scale-95"
+							className="grid h-9 w-9 place-items-center rounded-full text-[#424655]/80 transition hover:bg-white/35 active:scale-95"
 						>
 							{volume === 0 ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
 						</button>
@@ -273,7 +273,7 @@ function VoiceMessagePlayer({ manifest, isMe }: { manifest: VoiceMessageManifest
 								setVolumeOpen(false)
 							}}
 							aria-label="Voice message options"
-							className="grid h-9 w-9 place-items-center rounded-full text-slate-700 transition hover:bg-black/5 active:scale-95"
+							className="grid h-9 w-9 place-items-center rounded-full text-[#424655]/80 transition hover:bg-white/35 active:scale-95"
 						>
 							<Gauge className="h-4 w-4" />
 						</button>

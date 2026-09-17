@@ -2000,7 +2000,7 @@ export default function DiscoverMerchantGiftSheet({
 					</div>
 				</div>
 				{selectedGiftCardImage ? (
-					<div className="relative mt-4 h-36 overflow-hidden rounded-xl bg-black/15">
+					<div className="relative mt-4 aspect-[2/1] overflow-hidden rounded-xl bg-black/15">
 						<IpfsImg
 							key={selectedGiftCardImage}
 							src={selectedGiftCardImage}
@@ -2097,7 +2097,7 @@ export default function DiscoverMerchantGiftSheet({
 				</span>
 			</div> : null}
 			{selectedGiftCardImage ? (
-				<div className="relative z-10 aspect-[4/3] overflow-hidden bg-black/15">
+				<div className="relative z-10 aspect-[2/1] overflow-hidden bg-black/15">
 					<IpfsImg
 						key={selectedGiftCardImage}
 						src={selectedGiftCardImage}

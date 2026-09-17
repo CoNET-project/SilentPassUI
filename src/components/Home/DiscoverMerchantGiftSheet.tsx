@@ -2045,21 +2045,27 @@ export default function DiscoverMerchantGiftSheet({
 
 	const themedGiftCard = (
 		<div
-			className="relative w-full overflow-hidden rounded-2xl p-5 shadow-md"
+			className={`relative w-full overflow-hidden rounded-2xl shadow-md ${
+				selectedGiftCardImage ? '' : 'p-5'
+			}`}
 			style={{ backgroundColor: brandColor, color: onBrandText, boxShadow: brandShadow }}
 		>
-			<div className="pointer-events-none absolute -right-8 -bottom-8 h-44 w-44 rounded-full bg-white/10 blur-xl" />
-			<div
-				className="pointer-events-none absolute right-4 top-4 opacity-15"
-				aria-hidden
-			>
-				{step1Kind === 'health-beauty' ? (
-					<Flower2 className="h-[72px] w-[72px]" strokeWidth={1.25} />
-				) : (
-					<Utensils className="h-[72px] w-[72px]" strokeWidth={1.25} />
-				)}
-			</div>
-			<div className="relative z-10 flex items-start justify-between gap-3">
+			{!selectedGiftCardImage ? (
+				<>
+					<div className="pointer-events-none absolute -right-8 -bottom-8 h-44 w-44 rounded-full bg-white/10 blur-xl" />
+					<div
+						className="pointer-events-none absolute right-4 top-4 opacity-15"
+						aria-hidden
+					>
+						{step1Kind === 'health-beauty' ? (
+							<Flower2 className="h-[72px] w-[72px]" strokeWidth={1.25} />
+						) : (
+							<Utensils className="h-[72px] w-[72px]" strokeWidth={1.25} />
+						)}
+					</div>
+				</>
+			) : null}
+			{!selectedGiftCardImage ? <div className="relative z-10 flex items-start justify-between gap-3">
 				<div className="flex min-w-0 items-center gap-3">
 					<div
 						className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
@@ -2089,9 +2095,9 @@ export default function DiscoverMerchantGiftSheet({
 				>
 					{activeOccasion.emoji} {activeOccasion.label}
 				</span>
-			</div>
+			</div> : null}
 			{selectedGiftCardImage ? (
-				<div className="relative z-10 mt-4 h-36 overflow-hidden rounded-xl bg-black/15">
+				<div className="relative z-10 aspect-[4/3] overflow-hidden bg-black/15">
 					<IpfsImg
 						key={selectedGiftCardImage}
 						src={selectedGiftCardImage}
@@ -2101,7 +2107,7 @@ export default function DiscoverMerchantGiftSheet({
 					<div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/25 via-transparent to-transparent" />
 				</div>
 			) : null}
-			<div className="relative z-10 my-6">
+			{!selectedGiftCardImage ? <div className="relative z-10 my-6">
 				<span
 					className="block text-[12px] font-semibold uppercase tracking-wider opacity-80"
 					style={{ color: onBrandMuted }}
@@ -2114,8 +2120,8 @@ export default function DiscoverMerchantGiftSheet({
 						{giftValueDisplayHuman}
 					</span>
 				</div>
-			</div>
-			<div
+			</div> : null}
+			{!selectedGiftCardImage ? <div
 				className="relative z-10 flex items-center justify-between gap-2 border-t pt-3 text-[12px] font-semibold uppercase tracking-wide"
 				style={{ borderColor: 'rgba(255,255,255,0.12)', color: onBrandMuted }}
 			>
@@ -2126,7 +2132,7 @@ export default function DiscoverMerchantGiftSheet({
 				<span className="shrink-0 text-right tracking-wider opacity-80">
 					{step1Kind === 'health-beauty' ? 'Redeem in-clinic & online' : 'Valid dine-in / takeout'}
 				</span>
-			</div>
+			</div> : null}
 		</div>
 	)
 

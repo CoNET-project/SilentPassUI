@@ -68,6 +68,7 @@ import {
 	Store,
 	Send,
 	HelpCircle,
+	Play,
 } from "lucide-react"
 import { useNavigate, useLocation } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
@@ -1095,7 +1096,15 @@ function DiscoverMerchantMediaCarousel({
 						<div className="aspect-[4/3]">
 							{item.kind === 'video' ? (
 								item.thumbnailUrl ? (
-									<IpfsImg src={item.thumbnailUrl} alt={item.title} className="h-full w-full object-cover" />
+									<div className="relative h-full w-full">
+										<IpfsImg src={item.thumbnailUrl} alt={item.title} className="h-full w-full object-cover" />
+										<span
+											className="pointer-events-none absolute left-1/2 top-1/2 flex h-12 w-12 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-black/55 text-white shadow-lg ring-2 ring-white/80"
+											aria-hidden
+										>
+											<Play className="ml-0.5 h-5 w-5 fill-current" strokeWidth={2.25} />
+										</span>
+									</div>
 								) : (
 									<video
 										src={item.url}

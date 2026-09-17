@@ -27,6 +27,13 @@ import {
   Copy,
   Loader2,
   CheckCircle2,
+  Play,
+  Pause,
+  Volume2,
+  VolumeX,
+  Download,
+  Gauge,
+  Check,
   ExternalLink,
   X,
   CornerUpLeft,
@@ -111,6 +118,12 @@ function VoiceMessagePlayer({ manifest }: { manifest: VoiceMessageManifest }) {
 	const [url, setUrl] = useState<string | null>(null)
 	const [error, setError] = useState<string | null>(null)
 	const [loading, setLoading] = useState(false)
+	const [playing, setPlaying] = useState(false)
+	const [volume, setVolume] = useState(1)
+	const [volumeOpen, setVolumeOpen] = useState(false)
+	const [menuOpen, setMenuOpen] = useState(false)
+	const [playbackRate, setPlaybackRate] = useState(1)
+	const audioRef = useRef<HTMLAudioElement | null>(null)
 	useEffect(() => {
 		let cancelled = false
 		setUrl(null)
@@ -129,22 +142,127 @@ function VoiceMessagePlayer({ manifest }: { manifest: VoiceMessageManifest }) {
 			})
 		return () => {
 			cancelled = true
+			setPlaying(false)
 			setUrl(previous => {
 				if (previous) URL.revokeObjectURL(previous)
 				return null
 			})
 		}
 	}, [manifest])
+	useEffect(() => {
+		const audio = audioRef.current
+		if (!audio) return
+		audio.volume = volume
+		audio.playbackRate = playbackRate
+	}, [volume, playbackRate, url])
+
+	const togglePlayback = () => {
+		const audio = audioRef.current
+		if (!audio || !url) return
+		if (audio.paused) {
+			void audio.play().then(() => setPlaying(true)).catch(() => setError('Voice message could not be played.'))
+		} else {
+			audio.pause()
+			setPlaying(false)
+		}
+	}
+
+	const downloadVoice = () => {
+		if (!url) return
+		const anchor = document.createElement('a')
+		anchor.href = url
+		anchor.download = `voice-message-${manifest.durationMs}.webm`
+		anchor.click()
+		setMenuOpen(false)
+	}
+
 	return (
-		<div className="min-w-[190px] text-slate-900">
+		<div className="relative min-w-[230px] text-slate-900">
 			{loading ? <div className="text-[13px] text-slate-500">Preparing voice message…</div> : null}
 			{error ? <div role="alert" className="text-[13px] text-rose-600">{error}</div> : null}
 			{url ? (
-				<div className="flex items-center gap-1.5 rounded-full bg-white/80 p-1">
-					<audio controls preload="metadata" src={url} className="h-9 min-w-0 flex-1" />
-					<span className="shrink-0 px-1.5 text-[11px] text-slate-500">
+				<div className="flex items-center gap-1.5 rounded-full bg-white/80 p-1.5 shadow-sm ring-1 ring-black/5">
+					<audio
+						ref={audioRef}
+						preload="metadata"
+						src={url}
+						className="hidden"
+						onEnded={() => setPlaying(false)}
+					/>
+					<button
+						type="button"
+						onClick={togglePlayback}
+						aria-label={playing ? 'Pause voice message' : 'Play voice message'}
+						className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-slate-900 text-white transition active:scale-95"
+					>
+						{playing ? <Pause className="h-4 w-4 fill-current" /> : <Play className="ml-0.5 h-4 w-4 fill-current" />}
+					</button>
+					<span className="min-w-0 flex-1 text-center text-[13px] font-semibold text-slate-700">
 						{formatVoiceDuration(manifest.durationMs)}
 					</span>
+					<div className="relative">
+						<button
+							type="button"
+							onClick={() => {
+								setVolumeOpen(previous => !previous)
+								setMenuOpen(false)
+							}}
+							aria-label="Adjust volume"
+							className="grid h-9 w-9 place-items-center rounded-full text-slate-700 transition hover:bg-black/5 active:scale-95"
+						>
+							{volume === 0 ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
+						</button>
+						{volumeOpen ? (
+							<div className="absolute bottom-full right-0 z-20 mb-2 w-44 rounded-2xl bg-white p-3 shadow-xl ring-1 ring-black/10">
+								<p className="mb-2 text-[11px] font-semibold text-slate-600">Volume {Math.round(volume * 100)}%</p>
+								<input
+									type="range"
+									min={0}
+									max={1}
+									step={0.01}
+									value={volume}
+									onChange={event => setVolume(Number(event.target.value))}
+									className="w-full accent-[#1652f0]"
+									aria-label="Volume"
+								/>
+							</div>
+						) : null}
+					</div>
+					<div className="relative">
+						<button
+							type="button"
+							onClick={() => {
+								setMenuOpen(previous => !previous)
+								setVolumeOpen(false)
+							}}
+							aria-label="Voice message options"
+							className="grid h-9 w-9 place-items-center rounded-full text-slate-700 transition hover:bg-black/5 active:scale-95"
+						>
+							<Gauge className="h-4 w-4" />
+						</button>
+						{menuOpen ? (
+							<div className="absolute bottom-full right-0 z-20 mb-2 w-36 rounded-2xl bg-white p-1.5 shadow-xl ring-1 ring-black/10">
+								<button type="button" onClick={downloadVoice} className="flex w-full items-center gap-2 rounded-xl px-2.5 py-2 text-left text-xs font-semibold text-slate-700 hover:bg-slate-100">
+									<Download className="h-3.5 w-3.5" /> Download
+								</button>
+								<p className="px-2.5 pb-1 pt-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">Playback speed</p>
+								{[1, 1.5, 2].map(rate => (
+									<button
+										key={rate}
+										type="button"
+										onClick={() => {
+											setPlaybackRate(rate)
+											setMenuOpen(false)
+										}}
+										className={`flex w-full items-center justify-between rounded-xl px-2.5 py-2 text-left text-xs font-semibold hover:bg-slate-100 ${playbackRate === rate ? 'text-[#1652f0]' : 'text-slate-700'}`}
+									>
+										<span>{rate}x</span>
+										{playbackRate === rate ? <Check className="h-3.5 w-3.5" /> : null}
+									</button>
+								))}
+							</div>
+						) : null}
+					</div>
 				</div>
 			) : null}
 		</div>

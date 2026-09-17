@@ -42692,9 +42692,9 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                          <div className="absolute right-3 top-3 flex items-center gap-1.5">
                            <button
                              type="button"
-                             aria-label={tu('programs_overview_replace_banner')}
+                             aria-label="Open media library"
                              disabled={cardIssuanceMerchantImageUploading}
-                             onClick={() => cardIssuanceMerchantImageIssuedPanelFileRef.current?.click()}
+                             onClick={() => handleTabChange('Media')}
                              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#2c2f31]/45 text-white shadow-md ring-1 ring-white/35 backdrop-blur-[2px] transition hover:bg-[#2c2f31]/60 disabled:cursor-not-allowed disabled:opacity-60"
                            >
                              {cardIssuanceMerchantImageUploading ? (

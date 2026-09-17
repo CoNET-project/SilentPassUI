@@ -136,7 +136,7 @@ export function ChatHeaderIOS({
 							className="text-[15px] font-semibold"
 							style={{ color: "rgba(22,82,240,0.6)" }} // ✅ Beamio Blue 60% 透明
 							>
-							@{tagText}
+							{tagText}
 						</span>
 
 						<ChevronRight

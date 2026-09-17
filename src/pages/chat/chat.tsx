@@ -2291,6 +2291,24 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 												? findHttpUrlInText(m.text)
 												: null
 										const hasGenericLinkCard = !!genericUrl
+										const reactionBadges = (() => {
+											const reactions = getReactionsForMessage(m)
+											const show = reactions?.slice(-2) ?? []
+											if (!show.length) return null
+											const hasMyReply = show.some(r => r.from === 'me')
+											return (
+												<div
+													className={`absolute -top-2 -left-2 z-10 flex items-center gap-0.5 rounded-tl-xl rounded-tr-xl rounded-br-xl rounded-bl-[6px] px-1.5 py-1 shadow-lg ring-1 ring-black/5 ${hasMyReply ? 'bg-[#1652f0]/80' : 'bg-slate-100/90'}`}
+													aria-hidden
+												>
+													{show.map((r, i) => (
+														<span key={`${r.reactionKey}-${i}`} className="text-base leading-none">
+															{REACTIONS.find(x => x.key === r.reactionKey)?.label ?? r.reactionKey}
+														</span>
+													))}
+												</div>
+											)
+										})()
 
 										return (
 										<motion.div
@@ -2303,12 +2321,38 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 										>
 											<div className="max-w-[78%] sm:max-w-[62%]">
 											{hasFile && m.fileMessage ? (
-												<div className="relative">
+												<div
+													className="relative"
+													onPointerDown={e => {
+														if (e.pointerType === "mouse" && e.button !== 0) return
+														if (pressTimerRef.current) window.clearTimeout(pressTimerRef.current)
+														const target = e.currentTarget as HTMLElement
+														pressTimerRef.current = window.setTimeout(() => openReactionBarForElement(m, target, isMe), 450)
+													}}
+													onPointerUp={() => { if (pressTimerRef.current) window.clearTimeout(pressTimerRef.current); pressTimerRef.current = null }}
+													onPointerCancel={() => { if (pressTimerRef.current) window.clearTimeout(pressTimerRef.current); pressTimerRef.current = null }}
+													onPointerLeave={() => { if (pressTimerRef.current) window.clearTimeout(pressTimerRef.current); pressTimerRef.current = null }}
+													onContextMenu={e => { e.preventDefault(); openReactionBarForElement(m, e.currentTarget as HTMLElement, isMe) }}
+												>
+													{reactionBadges}
 													<ChatFileMessagePlayer manifest={m.fileMessage} isMe={isMe} />
 													{isMe ? <div className="absolute -bottom-2 -right-2"><BubbleCornerStatus status={m.status} /></div> : null}
 												</div>
 											) : hasVoice && m.voiceMessage ? (
-												<div className="relative">
+												<div
+													className="relative"
+													onPointerDown={e => {
+														if (e.pointerType === "mouse" && e.button !== 0) return
+														if (pressTimerRef.current) window.clearTimeout(pressTimerRef.current)
+														const target = e.currentTarget as HTMLElement
+														pressTimerRef.current = window.setTimeout(() => openReactionBarForElement(m, target, isMe), 450)
+													}}
+													onPointerUp={() => { if (pressTimerRef.current) window.clearTimeout(pressTimerRef.current); pressTimerRef.current = null }}
+													onPointerCancel={() => { if (pressTimerRef.current) window.clearTimeout(pressTimerRef.current); pressTimerRef.current = null }}
+													onPointerLeave={() => { if (pressTimerRef.current) window.clearTimeout(pressTimerRef.current); pressTimerRef.current = null }}
+													onContextMenu={e => { e.preventDefault(); openReactionBarForElement(m, e.currentTarget as HTMLElement, isMe) }}
+												>
+													{reactionBadges}
 													<VoiceMessagePlayer manifest={m.voiceMessage} isMe={isMe} />
 													{isMe && (
 														<div className="absolute -bottom-2 -right-2">

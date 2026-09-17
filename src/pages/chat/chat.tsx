@@ -1876,12 +1876,16 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 
 		const idx = chats.findIndex(c => String(c?.address || "").toLowerCase() === addr)
 
-		const nextChats =
-			idx >= 0
-			? chats.map((c, i) => (i === idx ? { ...c, ...chatData } : c))
-			: [...chats, { ...chatData }]
-
-		const nextProfile = { ...p0, chats: nextChats }
+		const persistableMessages = (chatData.messages || []).map(message => {
+			if (!message.fileMessage) return message
+			const { fileMessage: _fileMessage, ...safeMessage } = message
+			return safeMessage
+		})
+		const persistableChat = { ...chatData, messages: persistableMessages }
+		const persistableChats = idx >= 0
+			? chats.map((c, i) => i === idx ? persistableChat : c)
+			: [...chats, persistableChat]
+		const nextProfile = { ...p0, chats: persistableChats }
 		const nextProfiles = ps.slice()
 		nextProfiles[0] = nextProfile
 

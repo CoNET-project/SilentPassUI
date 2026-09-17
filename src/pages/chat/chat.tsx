@@ -2577,24 +2577,6 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 								anchorRef={plusBtnRef}
 								
 							/>
-							 {/* ✅ 左侧：+ 透明圆圈按钮（与右侧同风格） */}
-							<button
-								ref={plusBtnRef}
-								type="button"
-								tabIndex={-1}
-								onClick={() => setPlusOpen(true)}
-								className={[
-								"h-9 w-9 rounded-full",
-								"grid place-items-center",
-								"transition active:scale-[0.95]",
-								"bg-transparent",
-								"ring-1 ring-slate-300/70",
-								"backdrop-blur-xl"
-								].join(" ")}
-								aria-label="More actions"
-							>
-								<Plus className="h-4 w-4 text-slate-500" strokeWidth={2.6} />
-							</button>
 								{/* ✅ 输入框：内部放 send 按钮 */}
 								<div
 									className={[
@@ -2605,6 +2587,16 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 									"shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]"
 									].join(" ")}
 								>
+									<button
+										ref={plusBtnRef}
+										type="button"
+										tabIndex={-1}
+										onClick={() => setPlusOpen(true)}
+										className="absolute bottom-2 left-2 grid h-8 w-8 place-items-center rounded-full bg-transparent ring-1 ring-slate-300/70 backdrop-blur-xl transition active:scale-[0.95]"
+										aria-label="More actions"
+									>
+										<Plus className="h-4 w-4 text-slate-500" strokeWidth={2.6} />
+									</button>
 									<textarea
 									key={inputSession}
 									ref={inputRef}
@@ -2633,7 +2625,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 									spellCheck
 									className={[
 										"w-full resize-none bg-transparent outline-none",
-										"px-4 py-3",
+										"py-3 pl-14 pr-14",
 										"pr-14",
 										"text-[15px] leading-[20px]",
 										"placeholder:text-slate-400",

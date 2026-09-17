@@ -325,6 +325,7 @@ import {
   type ProgramsIssuedItemClaimWalletsView,
 } from './programsIssuedItemClaimWallets';
 import { CatalogVideoOgOpenClaimSharePreview } from './businessCatalogListItemPreview';
+import { MediaLibraryPage } from '@/pages/Media/MediaLibraryPage';
 import {
   CARD_PREVIEW_LOGO_DISPLAY_TIER_COUNT,
   CARD_PREVIEW_LOGO_ICON_TIER_CLASSES,
@@ -564,6 +565,7 @@ import {
   ShoppingCart,
   Package,
   Palette,
+  Images,
   History,
   RectangleHorizontal,
   AlignVerticalSpaceAround,
@@ -35325,6 +35327,13 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
            focusRingClass={bizFocusRingClass}
          />
          ) : null}
+         <NavItem
+           icon={Images}
+           label="Media"
+           isActive={activeTab === 'Media'}
+           onClick={() => handleTabChange('Media')}
+           collapsed={isSidebarCollapsed && !isMobileMenuOpen}
+         />
          <NavItem icon={ShoppingBag} label={tu('market')} isActive={activeTab === 'Market'} onClick={() => handleTabChange('Market')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
          {isValidatorDepositRedeemAdminFetched && isValidatorDepositRedeemAdmin ? (
            <NavItem icon={Shield} label={tu('validator_management')} isActive={activeTab === 'Validator Management'} onClick={() => handleTabChange('Validator Management')} collapsed={isSidebarCollapsed && !isMobileMenuOpen} />
@@ -35794,6 +35803,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
         {mobileGlobalSearchBarVisible ? (
           <div className="shrink-0 lg:hidden" style={MOBILE_FLOATING_BAR_SCROLL_CLEARANCE_STYLE} aria-hidden />
         ) : null}
+        {activeTab === 'Media' ? <MediaLibraryPage /> : null}
         {activeTab === 'Overview' && profileAwaitingIssuanceGate ? (
           <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 py-16">
             <Loader2 className="h-10 w-10 animate-spin text-[#1562f0]" strokeWidth={2} aria-hidden />

@@ -68,7 +68,6 @@ import {
 	Store,
 	Send,
 	HelpCircle,
-	Play,
 } from "lucide-react"
 import { useNavigate, useLocation } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
@@ -1082,7 +1081,6 @@ function DiscoverMerchantMediaCarousel({
 	metadataRoot: Record<string, unknown> | null | undefined
 }) {
 	const items = useMemo(() => discoverMerchantMediaItems(metadataRoot), [metadataRoot])
-	const [activeVideoKey, setActiveVideoKey] = useState<string | null>(null)
 	if (items.length === 0) return null
 	return (
 		<section className="overflow-hidden rounded-2xl border border-[#ebe6df] bg-white shadow-[0_8px_24px_rgba(31,35,40,0.06)] dark:border-slate-700 dark:bg-slate-900">
@@ -1096,40 +1094,17 @@ function DiscoverMerchantMediaCarousel({
 					<div key={`${item.kind}:${item.url}`} className="w-[min(78vw,23rem)] shrink-0 snap-start overflow-hidden rounded-xl bg-slate-100 dark:bg-slate-800">
 						<div className="aspect-[4/3] overflow-hidden rounded-xl">
 							{item.kind === 'video' ? (
-								item.thumbnailUrl ? (
-									activeVideoKey === `${item.kind}:${item.url}` ? (
-										<video
-											src={item.url}
-											className="h-full w-full rounded-xl object-cover"
-											controls
-											autoPlay
-											playsInline
-										/>
-									) : (
-										<button
-											type="button"
-											className="relative h-full w-full cursor-pointer overflow-hidden rounded-xl"
-											aria-label={`Play ${item.title}`}
-											onClick={() => setActiveVideoKey(`${item.kind}:${item.url}`)}
-										>
-											<IpfsImg src={item.thumbnailUrl} alt={item.title} className="h-full w-full rounded-xl object-cover" />
-											<span
-												className="pointer-events-none absolute left-1/2 top-1/2 flex h-12 w-12 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-black/55 text-white shadow-lg ring-2 ring-white/80"
-												aria-hidden
-											>
-												<Play className="ml-0.5 h-5 w-5 fill-current" strokeWidth={2.25} />
-											</span>
-										</button>
-									)
-								) : (
-									<video
-										src={item.url}
-										className="h-full w-full rounded-xl object-cover"
-										controls
-										playsInline
-										preload="metadata"
-									/>
-								)
+								<video
+									src={item.url}
+									poster={item.thumbnailUrl}
+									className="h-full w-full rounded-xl object-cover"
+									autoPlay
+									muted
+									loop
+									controls
+									playsInline
+									preload="metadata"
+								/>
 							) : (
 								<IpfsImg src={item.url} alt={item.title} className="h-full w-full rounded-xl object-cover" />
 							)}

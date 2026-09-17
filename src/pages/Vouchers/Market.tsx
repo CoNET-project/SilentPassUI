@@ -1034,6 +1034,79 @@ function DiscoverMerchantHowPointsWorkPanel({
 	)
 }
 
+type DiscoverMerchantMediaItem = {
+	url: string
+	kind: 'image' | 'video'
+	title: string
+}
+
+function discoverMerchantMediaItems(
+	metadataRoot: Record<string, unknown> | null | undefined,
+): DiscoverMerchantMediaItem[] {
+	const share = readDiscoverNestedObject(metadataRoot ?? null, 'shareTokenMetadata')
+	const rows = Array.isArray(share?.productions)
+		? share!.productions
+		: Array.isArray(metadataRoot?.productions)
+			? metadataRoot!.productions
+			: []
+	const items: DiscoverMerchantMediaItem[] = []
+	for (const raw of rows) {
+		if (!raw || typeof raw !== 'object' || Array.isArray(raw)) continue
+		const row = raw as Record<string, unknown>
+		const title = String(row.name ?? row.title ?? row.subtitle ?? 'Merchant media').trim() || 'Merchant media'
+		const imageRaw = row.productionImage ?? row.image ?? row.icon
+		const videoRaw = row.productionVideo ?? row.videoUrl ?? row.video ?? row.animation_url
+		const image = typeof imageRaw === 'string' ? discoverResolveTierBackgroundImageUrl(imageRaw) : null
+		const video = typeof videoRaw === 'string' ? discoverResolveTierBackgroundImageUrl(videoRaw) : null
+		if (image) items.push({ url: image, kind: 'image', title })
+		if (video) items.push({ url: video, kind: 'video', title })
+	}
+	return Array.from(new Map(items.map((item) => [`${item.kind}:${item.url}`, item])).values())
+}
+
+function DiscoverMerchantMediaCarousel({
+	metadataRoot,
+}: {
+	metadataRoot: Record<string, unknown> | null | undefined
+}) {
+	const items = useMemo(() => discoverMerchantMediaItems(metadataRoot), [metadataRoot])
+	if (items.length === 0) return null
+	return (
+		<section className="overflow-hidden rounded-2xl border border-[#ebe6df] bg-white shadow-[0_8px_24px_rgba(31,35,40,0.06)] dark:border-slate-700 dark:bg-slate-900">
+			<div className="px-4 pt-4">
+				<p className="text-[13px] font-bold uppercase tracking-[0.12em] text-[#1f2328] dark:text-slate-100">
+					Merchant media
+				</p>
+				<p className="mt-1 text-[12px] text-[#6b7280] dark:text-slate-400">
+					Swipe left or right to explore
+				</p>
+			</div>
+			<div className="flex snap-x snap-mandatory touch-pan-x gap-3 overflow-x-auto overscroll-x-contain px-4 pb-4 pt-3 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+				{items.map((item) => (
+					<div key={`${item.kind}:${item.url}`} className="w-[min(78vw,23rem)] shrink-0 snap-start overflow-hidden rounded-xl bg-slate-100 dark:bg-slate-800">
+						<div className="aspect-[4/3]">
+							{item.kind === 'video' ? (
+								<video
+									src={item.url}
+									className="h-full w-full object-cover"
+									controls
+									playsInline
+									preload="metadata"
+								/>
+							) : (
+								<IpfsImg src={item.url} alt={item.title} className="h-full w-full object-cover" />
+							)}
+						</div>
+						<p className="truncate px-3 py-2 text-[12px] font-semibold text-[#3d4450] dark:text-slate-200">
+							{item.title}
+						</p>
+					</div>
+				))}
+			</div>
+		</section>
+	)
+}
+
 function DiscoverMerchantTreatAFriendPanel({
 	merchantName,
 	brandColor,
@@ -8289,12 +8362,15 @@ function DiscoverMerchantDetailFullScreen({
 						? renderVisitActions()
 						: null}
 					{!isConetGenesisCard ? (
-						<DiscoverMerchantTreatAFriendPanel
-							merchantName={passTitle}
-							brandColor={merchantDetailBrandColor ?? DISCOVER_VISIT_BRAND_FALLBACK}
-							onSendGift={openGiftSheet}
-							actionsDisabled={giftSheetOpen}
-						/>
+						<>
+							<DiscoverMerchantMediaCarousel metadataRoot={merchantMetadataRoot} />
+							<DiscoverMerchantTreatAFriendPanel
+								merchantName={passTitle}
+								brandColor={merchantDetailBrandColor ?? DISCOVER_VISIT_BRAND_FALLBACK}
+								onSendGift={openGiftSheet}
+								actionsDisabled={giftSheetOpen}
+							/>
+						</>
 					) : null}
 					<DiscoverMerchantMembershipTiersPanel
 						merchantName={passTitle}

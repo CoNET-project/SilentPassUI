@@ -6,6 +6,7 @@ export const VOICE_MAX_DATA_URL_CHARS = 240 * 1024 * 1024
 /** Approximate raw audio ceiling after Data URL/base64 overhead and AES-GCM tag. */
 export const VOICE_MAX_AUDIO_BYTES = Math.floor((VOICE_MAX_DATA_URL_CHARS - 64) * 0.75) - 16
 const IPFS_API = 'https://ipfs.conet.network/api'
+const VOICE_DIRECT_UPLOAD_MAX_DATA_URL_CHARS = 48 * 1024 * 1024
 
 export type VoiceMessageManifest = {
 	type: typeof VOICE_MESSAGE_TYPE
@@ -121,6 +122,25 @@ export async function uploadEncryptedVoiceDataUrl(
 			error?: string
 		} | null
 		if (!response.ok || !result?.ok) {
+			if (response.status >= 500 && dataUrl.length <= VOICE_DIRECT_UPLOAD_MAX_DATA_URL_CHARS) {
+				const directResponse = await fetch(`${IPFS_API}/storageFragment`, {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						wallet: wallet.address,
+						signMessage,
+						image: dataUrl,
+					}),
+				})
+				const directBody = (await directResponse.json().catch(() => null)) as {
+					error?: string
+				} | null
+				if (directResponse.ok && !directBody?.error) {
+					onProgress?.(1)
+					return fragmentHash
+				}
+				throw new Error(directBody?.error || `Voice direct upload failed (${directResponse.status})`)
+			}
 			throw new Error(result?.error || `Voice upload failed (${response.status})`)
 		}
 		offset = Math.min(Number(result.received ?? offset + chunk.length), totalSize)

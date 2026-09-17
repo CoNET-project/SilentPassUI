@@ -3900,6 +3900,16 @@ export default function DiscoverMerchantGiftSheet({
 			aria-label="Payment and confirmation"
 		>
 			<div className="mb-8 mt-5">
+				{selectedGiftCardImage ? (
+					<div className="relative aspect-[2/1] overflow-hidden rounded-xl shadow-md">
+						<IpfsImg src={selectedGiftCardImage} alt="" className="h-full w-full object-cover" />
+						<div className="absolute inset-0 flex items-end bg-gradient-to-t from-black/65 via-transparent to-transparent p-5">
+							<span className="text-[34px] font-bold leading-none tracking-tight text-white">
+								{prefix}{giftValueDisplayHuman}
+							</span>
+						</div>
+					</div>
+				) : (
 				<div className="relative flex min-h-[190px] flex-col justify-between overflow-hidden rounded-xl bg-gradient-to-br from-white to-[#eeedf3] p-6 shadow-md dark:from-slate-900 dark:to-slate-800">
 					<div
 						className="pointer-events-none absolute -right-8 -top-8 h-36 w-36 rounded-full blur-2xl"
@@ -3968,6 +3978,7 @@ export default function DiscoverMerchantGiftSheet({
 						</div>
 					</div>
 				</div>
+				)}
 			</div>
 
 			<div className="mb-8 flex flex-col gap-2">

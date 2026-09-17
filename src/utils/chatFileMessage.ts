@@ -102,7 +102,27 @@ export async function uploadEncryptedChatFileDataUrl(
 	const statusParams = new URLSearchParams({ hash: fragmentHash, wallet: wallet.address, signMessage })
 	const statusResponse = await fetch(`${IPFS_API}/storageFragmentChunkStatus?${statusParams}`, { signal })
 	const status = await statusResponse.json().catch(() => null) as { ok?: boolean; complete?: boolean; received?: number; totalSize?: number | null; error?: string } | null
-	if (!statusResponse.ok || !status?.ok) throw new Error(status?.error || `File upload status failed (${statusResponse.status})`)
+	const directUpload = async (): Promise<string> => {
+		if (dataUrl.length > FILE_DIRECT_UPLOAD_MAX_DATA_URL_CHARS) {
+			throw new Error(status?.error || `File upload status failed (${statusResponse.status})`)
+		}
+		const directResponse = await fetch(`${IPFS_API}/storageFragment`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ wallet: wallet.address, signMessage, image: dataUrl }),
+			signal,
+		})
+		const directBody = await directResponse.json().catch(() => null) as { error?: string } | null
+		if (!directResponse.ok || directBody?.error) {
+			throw new Error(directBody?.error || `File direct upload failed (${directResponse.status})`)
+		}
+		onProgress?.(1)
+		return fragmentHash
+	}
+	if (!statusResponse.ok || !status?.ok) {
+		if (statusResponse.status >= 500) return directUpload()
+		throw new Error(status?.error || `File upload status failed (${statusResponse.status})`)
+	}
 	if (status.complete) { onProgress?.(1); return fragmentHash }
 	if (status.totalSize != null && status.totalSize !== totalSize) throw new Error('File upload resume conflict. Please choose the files again.')
 	let offset = Math.min(Math.max(0, status.received ?? 0), totalSize)
@@ -120,18 +140,7 @@ export async function uploadEncryptedChatFileDataUrl(
 		const result = await response.json().catch(() => null) as { ok?: boolean; received?: number; error?: string } | null
 		if (!response.ok || !result?.ok) {
 			if (response.status >= 500 && dataUrl.length <= FILE_DIRECT_UPLOAD_MAX_DATA_URL_CHARS) {
-				const directResponse = await fetch(`${IPFS_API}/storageFragment`, {
-					method: 'POST',
-					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify({ wallet: wallet.address, signMessage, image: dataUrl }),
-					signal,
-				})
-				const directBody = await directResponse.json().catch(() => null) as { error?: string } | null
-				if (directResponse.ok && !directBody?.error) {
-					onProgress?.(1)
-					return fragmentHash
-				}
-				throw new Error(directBody?.error || `File direct upload failed (${directResponse.status})`)
+				return directUpload()
 			}
 			throw new Error(result?.error || `File upload failed (${response.status})`)
 		}

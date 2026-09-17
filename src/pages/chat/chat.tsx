@@ -155,6 +155,11 @@ function VoiceMessagePlayer({ manifest }: { manifest: VoiceMessageManifest }) {
 		audio.volume = volume
 		audio.playbackRate = playbackRate
 	}, [volume, playbackRate, url])
+	useEffect(() => {
+		if (!volumeOpen) return
+		const timer = window.setTimeout(() => setVolumeOpen(false), 3000)
+		return () => window.clearTimeout(timer)
+	}, [volumeOpen, volume])
 
 	const togglePlayback = () => {
 		const audio = audioRef.current
@@ -213,7 +218,7 @@ function VoiceMessagePlayer({ manifest }: { manifest: VoiceMessageManifest }) {
 							{volume === 0 ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
 						</button>
 						{volumeOpen ? (
-							<div className="absolute bottom-full right-0 z-20 mb-2 flex h-40 w-14 items-center justify-center rounded-2xl bg-white p-2 shadow-xl ring-1 ring-black/10">
+							<div className="absolute bottom-full right-0 z-20 mb-2 flex h-28 w-10 items-center justify-center rounded-2xl bg-white p-1 shadow-xl ring-1 ring-black/10">
 								<input
 									type="range"
 									min={0}
@@ -221,7 +226,7 @@ function VoiceMessagePlayer({ manifest }: { manifest: VoiceMessageManifest }) {
 									step={0.01}
 									value={volume}
 									onChange={event => setVolume(Number(event.target.value))}
-									className="h-32 w-6 accent-[#1652f0] [writing-mode:vertical-lr] [direction:rtl]"
+									className="h-20 w-4 accent-[#1652f0] [writing-mode:vertical-lr] [direction:rtl]"
 									aria-label={`Volume ${Math.round(volume * 100)} percent`}
 								/>
 							</div>

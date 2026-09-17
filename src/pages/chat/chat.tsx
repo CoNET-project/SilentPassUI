@@ -72,7 +72,12 @@ import {
 } from '@/utils/aaMultisigTaskUi'
 import type { AaMultisigChatPreview } from '@/utils/aaMultisigChatPreview'
 import { tu } from '@/locale/beamioLocale'
-import { Toast } from 'antd-mobile'
+import {
+	decryptVoiceFragment,
+	encryptVoiceBlob,
+	uploadEncryptedVoiceDataUrl,
+	type VoiceMessageManifest,
+} from '@/utils/voiceMessage'
 
 const aptEndpoint = 'https://api.settleonbase.xyz'
 const baseExplorerTxUrl = (hash: string) => `https://basescan.org/tx/${hash}`
@@ -89,6 +94,53 @@ const REACTIONS = [
 ] as const
 
 type ReactionKey = typeof REACTIONS[number]["key"]
+
+function formatVoiceDuration(durationMs: number): string {
+	const totalSeconds = Math.max(0, Math.round(durationMs / 1000))
+	return `${Math.floor(totalSeconds / 60)}:${String(totalSeconds % 60).padStart(2, '0')}`
+}
+
+function VoiceMessagePlayer({ manifest }: { manifest: VoiceMessageManifest }) {
+	const [url, setUrl] = useState<string | null>(null)
+	const [error, setError] = useState<string | null>(null)
+	const [loading, setLoading] = useState(false)
+	useEffect(() => {
+		let cancelled = false
+		setUrl(null)
+		setError(null)
+		setLoading(true)
+		void decryptVoiceFragment(manifest)
+			.then(blob => {
+				if (cancelled) return
+				setUrl(URL.createObjectURL(blob))
+			})
+			.catch(() => {
+				if (!cancelled) setError('Voice message is unavailable')
+			})
+			.finally(() => {
+				if (!cancelled) setLoading(false)
+			})
+		return () => {
+			cancelled = true
+			setUrl(previous => {
+				if (previous) URL.revokeObjectURL(previous)
+				return null
+			})
+		}
+	}, [manifest])
+	return (
+		<div className="min-w-[190px] rounded-2xl bg-white/90 px-3 py-2.5 text-slate-900 shadow-sm">
+			{loading ? <div className="text-[13px] text-slate-500">Preparing voice message…</div> : null}
+			{error ? <div role="alert" className="text-[13px] text-rose-600">{error}</div> : null}
+			{url ? (
+				<audio controls preload="metadata" src={url} className="h-9 w-full" />
+			) : null}
+			<div className="mt-1 text-[11px] text-slate-500">
+				Voice message · {formatVoiceDuration(manifest.durationMs)}
+			</div>
+		</div>
+	)
+}
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n))
@@ -395,6 +447,15 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 	const [inputSession, setInputSession] = useState(0)
 	/** Guard rapid double-tap / IME echo re-send of the same body. */
 	const lastSentGuardRef = useRef<{ text: string; at: number }>({ text: '', at: 0 })
+	const recorderRef = useRef<MediaRecorder | null>(null)
+	const recordingStartedAtRef = useRef(0)
+	const recordingChunksRef = useRef<Blob[]>([])
+	const recordingTimerRef = useRef<number | null>(null)
+	const [isRecordingVoice, setIsRecordingVoice] = useState(false)
+	const [voiceDurationMs, setVoiceDurationMs] = useState(0)
+	const [voiceSending, setVoiceSending] = useState(false)
+	const [voiceError, setVoiceError] = useState<string | null>(null)
+	const [chatError, setChatError] = useState<string | null>(null)
 
 	const toAddress = chatData.address
 	const walletEoa = (profiles[0]?.keyID ?? '').trim()
@@ -459,7 +520,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 
 	/** 仅展示“正文”消息（含文字或 paymentCard）；带 reply 的 reaction 消息不单独成行，用于在目标消息上显示 icon */
 	const displayableMessages = useMemo(() => {
-		return (messages || []).filter(m => !m.reply || !!m.text || !!m.paymentCard)
+		return (messages || []).filter(m => !m.reply || !!m.text || !!m.paymentCard || !!m.voiceMessage)
 	}, [messages])
 
 	const sections = useMemo(() => {
@@ -543,6 +604,121 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 	}, [toAddress, hasRoute, text])
 
 	const runningRef = useRef(false)
+
+	const stopVoiceDurationTimer = useCallback(() => {
+		if (recordingTimerRef.current !== null) {
+			window.clearTimeout(recordingTimerRef.current)
+			recordingTimerRef.current = null
+		}
+	}, [])
+
+	const scheduleVoiceDurationTimer = useCallback(() => {
+		stopVoiceDurationTimer()
+		if (!recordingStartedAtRef.current) return
+		recordingTimerRef.current = window.setTimeout(() => {
+			setVoiceDurationMs(Date.now() - recordingStartedAtRef.current)
+			scheduleVoiceDurationTimer()
+		}, 250)
+	}, [stopVoiceDurationTimer])
+
+	useEffect(() => () => {
+		stopVoiceDurationTimer()
+		try { recorderRef.current?.stop() } catch { /* already stopped */ }
+	}, [stopVoiceDurationTimer])
+
+	const startVoiceRecording = useCallback(async () => {
+		if (!hasRoute || isRecordingVoice || voiceSending) return
+		setVoiceError(null)
+		if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+			setVoiceError('Voice recording is not supported by this browser.')
+			return
+		}
+		try {
+			const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+			const mimeType = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/webm']
+				.find(type => MediaRecorder.isTypeSupported(type)) || ''
+			const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream)
+			recordingChunksRef.current = []
+			recorder.ondataavailable = event => {
+				if (event.data.size > 0) recordingChunksRef.current.push(event.data)
+			}
+			recorder.onerror = () => setVoiceError('Voice recording failed. Please try again.')
+			recorderRef.current = recorder
+			recordingStartedAtRef.current = Date.now()
+			setVoiceDurationMs(0)
+			setIsRecordingVoice(true)
+			recorder.start()
+			scheduleVoiceDurationTimer()
+		} catch {
+			setVoiceError('Microphone access was denied or unavailable.')
+		}
+	}, [hasRoute, isRecordingVoice, scheduleVoiceDurationTimer, voiceSending])
+
+	const finishVoiceRecording = useCallback(async () => {
+		const recorder = recorderRef.current
+		if (!recorder || recorder.state === 'inactive') return
+		stopVoiceDurationTimer()
+		const durationMs = Math.max(1, Date.now() - recordingStartedAtRef.current)
+		setVoiceDurationMs(durationMs)
+		setIsRecordingVoice(false)
+		await new Promise<void>(resolve => {
+			recorder.onstop = () => resolve()
+			recorder.stop()
+		})
+		recorder.stream.getTracks().forEach(track => track.stop())
+		recorderRef.current = null
+		const blob = new Blob(recordingChunksRef.current, { type: recorder.mimeType || 'audio/webm' })
+		recordingChunksRef.current = []
+		if (!blob.size) {
+			setVoiceError('No audio was recorded. Please try again.')
+			return
+		}
+		if (!profiles?.[0]?.privateKeyArmor) {
+			setVoiceError('Your wallet is not ready to send a voice message.')
+			return
+		}
+		setVoiceSending(true)
+		try {
+			const encrypted = await encryptVoiceBlob(blob, durationMs)
+			const fragmentHash = await uploadEncryptedVoiceDataUrl(
+				profiles[0].privateKeyArmor,
+				encrypted.dataUrl,
+			)
+			const now = Date.now()
+			const sendId = crypto.randomUUID()
+			const payload: ChatMessage = {
+				id: `tmp_${now}_${Math.random().toString(16).slice(2)}`,
+				sendId,
+				from: 'me',
+				text: '',
+				createdAt: now,
+				status: 'sending',
+				voiceMessage: { ...encrypted.manifest, fragmentHash },
+			}
+			const next = [...(messagesRef.current || []), payload]
+			messagesRef.current = next
+			setMessages(next)
+			const sent = await sendMessage(
+				chatData.chatData.publicArmored,
+				JSON.stringify({ ...payload, id: undefined }),
+				privateKey,
+				allNodes,
+			)
+			const settled = next.map(message =>
+				message.id === payload.id ? { ...message, status: sent ? 'sent' as const : 'failed' as const } : message,
+			)
+			messagesRef.current = settled
+			setMessages(settled)
+			chatData.messages = settled
+			await storageData()
+			if (sent) mirrorChatMessageToHistory(chatData.address, settled.find(message => message.id === payload.id), 'out')
+			else setVoiceError('Voice message failed to reach CoNET entry nodes. Please retry.')
+		} catch (error) {
+			setVoiceError(error instanceof Error ? error.message : 'Voice message could not be sent.')
+		} finally {
+			setVoiceSending(false)
+		}
+	}, [allNodes, chatData, privateKey, profiles, stopVoiceDurationTimer])
 
 	const reflashdata = async () => {
 		if (!profiles?.length) return
@@ -1159,10 +1335,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 
 			chatData.messages = next
 			await storageData()
-			Toast.show({
-				content: 'Message failed to reach CoNET entry nodes. Check console [sendMessage] logs.',
-				position: 'top',
-			})
+			setChatError('Message failed to reach CoNET entry nodes. Please try again.')
 			return
 		}
 
@@ -1532,6 +1705,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 										const multisigPreview = parseAaMultisigChatPreview(m.text)
 										const hasMultisigCard = !!multisigPreview
 										const hasCard = !!m.paymentCard
+										const hasVoice = !!m.voiceMessage
 										const shareUrl =
 											!hasMultisigCard && !hasCard && isPrimarilyBeamioShareLinkMessage(m.text)
 												? findBeamioShareUrlInText(m.text)
@@ -1553,7 +1727,16 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 											className={["w-full flex mb-2", isMe ? "justify-end" : "justify-start"].join(" ")}
 										>
 											<div className="max-w-[78%] sm:max-w-[62%]">
-											{hasMultisigCard && multisigPreview ? (
+											{hasVoice && m.voiceMessage ? (
+												<div className="relative">
+													<VoiceMessagePlayer manifest={m.voiceMessage} />
+													{isMe && (
+														<div className="absolute -bottom-2 -right-2">
+															<BubbleCornerStatus status={m.status} onRetry={() => setVoiceError('Please record and send the voice message again.')} />
+														</div>
+													)}
+												</div>
+											) : hasMultisigCard && multisigPreview ? (
 												<AaMultisigChatRequestCard
 													preview={(() => {
 														const stored =
@@ -2059,6 +2242,26 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 				<div className={["bg-white/0"].join(" ")}>
 					<div className="relative">
 						<div className="mx-auto w-full max-w-[820px] px-3 pt-3 pb-4">
+						{chatError && (
+							<div role="alert" className="mb-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-[13px] text-rose-700">
+								{chatError}
+								<button type="button" className="ml-2 underline" onClick={() => setChatError(null)}>Dismiss</button>
+							</div>
+						)}
+						{voiceError && (
+							<div role="alert" className="mb-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-[13px] text-rose-700">
+								{voiceError}
+								<button type="button" className="ml-2 underline" onClick={() => setVoiceError(null)}>Dismiss</button>
+							</div>
+						)}
+						{isRecordingVoice && (
+							<div className="mb-2 flex items-center justify-between rounded-xl border border-rose-200 bg-white/85 px-3 py-2 text-[13px] text-rose-700">
+								<span>Recording voice message · {formatVoiceDuration(voiceDurationMs)}</span>
+								<button type="button" className="font-semibold underline" onClick={() => void finishVoiceRecording()}>
+									Stop
+								</button>
+							</div>
+						)}
 						{replyTo && (
 							<div className="mb-2 flex items-center gap-2 rounded-2xl bg-white/70 backdrop-blur-xl ring-1 ring-black/5 px-3 py-2 shadow-[0_4px_16px_rgba(15,23,42,0.06)]">
 								<CornerUpLeft className="h-4 w-4 shrink-0 text-[#1652f0]" strokeWidth={2.2} />
@@ -2161,23 +2364,17 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 									onClick={() => {
 										if (canSend || (hasRoute && (inputRef.current?.value ?? text).trim())) {
 											void send()
+										} else if (isRecordingVoice) {
+											void finishVoiceRecording()
+										} else {
+											void startVoiceRecording()
 										}
 									}}
-									disabled={false}
+									disabled={voiceSending}
 									onPointerDown={e => {
 										// Keep focus until send() snapshots DOM value + remounts; avoids IME commit-on-blur refill.
 										if (canSend || (hasRoute && (inputRef.current?.value ?? "").trim())) {
 											e.preventDefault()
-										}
-									}}
-									onMouseDown={() => {
-										if (!canSend) {
-										console.log("start voice message")
-										}
-									}}
-									onTouchStart={() => {
-										if (!canSend) {
-										console.log("start voice message (touch)")
 										}
 									}}
 									className={[
@@ -2190,12 +2387,16 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 											"bg-[rgba(22,82,240,0.60)]",
 											"shadow-[0_4px_12px_rgba(22,82,240,0.15)]"
 											].join(" ")
-										: ["bg-transparent", "ring-1 ring-slate-300/70"].join(" ")
+										: isRecordingVoice
+											? ["bg-rose-500", "ring-1 ring-rose-600"].join(" ")
+											: ["bg-transparent", "ring-1 ring-slate-300/70"].join(" ")
 									].join(" ")}
-									aria-label={canSend ? tu('send') : "Voice message"}
+									aria-label={canSend ? tu('send') : isRecordingVoice ? "Stop voice recording" : "Record voice message"}
 									>
 									{canSend ? (
 										<ArrowUp className="h-4 w-4 text-white/70" strokeWidth={2.8} />
+									) : isRecordingVoice ? (
+										<div className="h-3 w-3 rounded-sm bg-white" aria-hidden />
 									) : (
 										<Mic className="h-4 w-4 text-slate-400" strokeWidth={2.4} />
 									)}

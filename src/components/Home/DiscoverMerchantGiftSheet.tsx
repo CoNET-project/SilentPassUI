@@ -3811,7 +3811,7 @@ export default function DiscoverMerchantGiftSheet({
 				? `Avail: ${prefix}${
 						membershipFeeE6ToHuman(aaPoints0Bal.toString()) || ethers.formatUnits(aaPoints0Bal, 6)
 					}`
-				: 'Burn store credit from your Smart Wallet'
+				: 'Store Credit'
 	const creditBurnLabel =
 		giftFacePreview && remainingPayMethod === 'credit'
 			? `${prefix}${

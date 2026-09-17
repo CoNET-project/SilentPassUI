@@ -466,6 +466,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 	const [isRecordingVoice, setIsRecordingVoice] = useState(false)
 	const [voiceDurationMs, setVoiceDurationMs] = useState(0)
 	const [voiceRecordedBytes, setVoiceRecordedBytes] = useState(0)
+	const [voiceDraftBlob, setVoiceDraftBlob] = useState<Blob | null>(null)
 	const [voiceSending, setVoiceSending] = useState(false)
 	const [voiceError, setVoiceError] = useState<string | null>(null)
 	const [chatError, setChatError] = useState<string | null>(null)
@@ -613,8 +614,8 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 	const hasRoute = !!(chatData.chatData?.routersArmoreds?.trim())
 
 	const canSend = useMemo(() => {
-		return !!toAddress && !!hasRoute && text.trim().length > 0
-	}, [toAddress, hasRoute, text])
+		return !!toAddress && !!hasRoute && (text.trim().length > 0 || !!voiceDraftBlob)
+	}, [toAddress, hasRoute, text, voiceDraftBlob])
 
 	const runningRef = useRef(false)
 
@@ -690,13 +691,25 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 			setVoiceError('No audio was recorded. Please try again.')
 			return
 		}
-		if (!profiles?.[0]?.privateKeyArmor) {
-			setVoiceError('Your wallet is not ready to send a voice message.')
-			return
-		}
+		setVoiceDraftBlob(blob)
+		setVoiceRecordedBytes(blob.size)
+		setVoiceError(null)
+	}, [stopVoiceDurationTimer])
+
+	const cancelVoiceDraft = useCallback(() => {
+		if (voiceSending) return
+		setVoiceDraftBlob(null)
+		setVoiceDurationMs(0)
+		setVoiceRecordedBytes(0)
+		setVoiceError(null)
+	}, [voiceSending])
+
+	const sendVoiceDraft = useCallback(async () => {
+		if (!voiceDraftBlob || voiceSending || !profiles?.[0]?.privateKeyArmor) return
 		setVoiceSending(true)
+		setVoiceError(null)
 		try {
-			const encrypted = await encryptVoiceBlob(blob, durationMs)
+			const encrypted = await encryptVoiceBlob(voiceDraftBlob, voiceDurationMs)
 			const fragmentHash = await uploadEncryptedVoiceDataUrl(
 				profiles[0].privateKeyArmor,
 				encrypted.dataUrl,
@@ -737,12 +750,17 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 			await storageData()
 			if (sent) mirrorChatMessageToHistory(chatData.address, settled.find(message => message.id === payload.id), 'out')
 			else setVoiceError('Voice message failed to reach CoNET entry nodes. Please retry.')
+			if (sent) {
+				setVoiceDraftBlob(null)
+				setVoiceDurationMs(0)
+				setVoiceRecordedBytes(0)
+			}
 		} catch (error) {
 			setVoiceError(error instanceof Error ? error.message : 'Voice message could not be sent.')
 		} finally {
 			setVoiceSending(false)
 		}
-	}, [allNodes, chatData, privateKey, profiles, stopVoiceDurationTimer])
+	}, [allNodes, chatData, privateKey, profiles, voiceDraftBlob, voiceDurationMs, voiceSending])
 
 	const reflashdata = async () => {
 		if (!profiles?.length) return
@@ -2319,6 +2337,29 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 								</button>
 							</div>
 						)}
+						{voiceDraftBlob && !isRecordingVoice ? (
+							<div className="mb-2 flex items-center gap-3 rounded-2xl bg-white/75 px-3 py-2 ring-1 ring-black/5 backdrop-blur-xl">
+								<span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#dceaff] text-[#1652f0]" aria-hidden>
+									<Mic className="h-4 w-4" strokeWidth={2.3} />
+								</span>
+								<div className="min-w-0 flex-1">
+									<p className="truncate text-[13px] font-semibold text-slate-700">Voice message ready</p>
+									<p className="text-[11px] text-slate-500">
+										{formatVoiceDuration(voiceDurationMs)} · {formatVoiceBytes(voiceRecordedBytes)} · Press Send
+									</p>
+								</div>
+								<button
+									type="button"
+									tabIndex={-1}
+									disabled={voiceSending}
+									onClick={cancelVoiceDraft}
+									aria-label="Delete voice message"
+									className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-slate-500 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
+								>
+									<X className="h-4 w-4" strokeWidth={2.4} />
+								</button>
+							</div>
+						) : null}
 						<div className="flex items-center gap-2">
 							<PlusActionMenu
 								open={plusOpen}
@@ -2399,7 +2440,9 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 									type="button"
 									tabIndex={-1}
 									onClick={() => {
-										if (canSend || (hasRoute && (inputRef.current?.value ?? text).trim())) {
+										if (voiceDraftBlob) {
+											void sendVoiceDraft()
+										} else if (canSend || (hasRoute && (inputRef.current?.value ?? text).trim())) {
 											void send()
 										} else if (isRecordingVoice) {
 											void finishVoiceRecording()
@@ -2410,7 +2453,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 									disabled={voiceSending}
 									onPointerDown={e => {
 										// Keep focus until send() snapshots DOM value + remounts; avoids IME commit-on-blur refill.
-										if (canSend || (hasRoute && (inputRef.current?.value ?? "").trim())) {
+										if (voiceDraftBlob || canSend || (hasRoute && (inputRef.current?.value ?? "").trim())) {
 											e.preventDefault()
 										}
 									}}
@@ -2428,7 +2471,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 											? ["bg-rose-500", "ring-1 ring-rose-600"].join(" ")
 											: ["bg-transparent", "ring-1 ring-slate-300/70"].join(" ")
 									].join(" ")}
-									aria-label={canSend ? tu('send') : isRecordingVoice ? "Stop voice recording" : "Record voice message"}
+									aria-label={voiceDraftBlob || canSend ? tu('send') : isRecordingVoice ? "Stop voice recording" : "Record voice message"}
 									>
 									{canSend ? (
 										<ArrowUp className="h-4 w-4 text-white/70" strokeWidth={2.8} />

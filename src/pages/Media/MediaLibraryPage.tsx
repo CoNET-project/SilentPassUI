@@ -62,6 +62,7 @@ export function MediaLibraryPage({ cardAddress, initialMedia = [] }: MediaLibrar
 	const [error, setError] = useState('')
 	const [addMediaOpen, setAddMediaOpen] = useState(false)
 	const [selectedFile, setSelectedFile] = useState<File | null>(null)
+	const [selectedPreviewUrl, setSelectedPreviewUrl] = useState('')
 	const [dragOver, setDragOver] = useState(false)
 	const inputRef = useRef<HTMLInputElement>(null)
 
@@ -69,6 +70,16 @@ export function MediaLibraryPage({ cardAddress, initialMedia = [] }: MediaLibrar
 		setShowFooter(false)
 		return () => setShowFooter(true)
 	}, [setShowFooter])
+
+	useEffect(() => {
+		if (!selectedFile) {
+			setSelectedPreviewUrl('')
+			return
+		}
+		const url = URL.createObjectURL(selectedFile)
+		setSelectedPreviewUrl(url)
+		return () => URL.revokeObjectURL(url)
+	}, [selectedFile])
 
 	const selectFile = (file: File | undefined) => {
 		if (!file) return
@@ -313,6 +324,25 @@ export function MediaLibraryPage({ cardAddress, initialMedia = [] }: MediaLibrar
 						>
 							{uploading ? (
 								<Loader2 className="h-7 w-7 animate-spin text-[#1562f0]" aria-hidden />
+							) : selectedFile && selectedPreviewUrl ? (
+								<span className="mb-2 block aspect-[4/3] w-full overflow-hidden rounded-xl bg-[#0f172a]" aria-hidden>
+									{selectedFile.type.startsWith('video/') ? (
+										<video
+											src={selectedPreviewUrl}
+											className="h-full w-full object-contain"
+											muted
+											autoPlay
+											loop
+											playsInline
+										/>
+									) : (
+										<img
+											src={selectedPreviewUrl}
+											alt=""
+											className="h-full w-full object-contain"
+										/>
+									)}
+								</span>
 							) : selectedFile ? (
 								selectedFile.type.startsWith('video/') ? (
 									<FileVideo className="h-7 w-7 text-[#0051d1]" aria-hidden />

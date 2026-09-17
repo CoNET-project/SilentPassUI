@@ -1072,9 +1072,9 @@ export default function DiscoverMerchantGiftSheet({
 		if (initialRows.length > 0) {
 			setReward13Rows((prev) => mergeReward13Rows(prev, initialRows))
 		}
-		setReward13Loading(
-			!sameStoreHasPositiveCover(initialRows) && !sameStoreEscrowSized(initialRows),
-		)
+		// Resolve PT during Gift-sheet entry. Keep the PT panel hidden until this
+		// prefetch settles, preventing a transient 0.00 PT panel on step 3.
+		setReward13Loading(true)
 		void (async () => {
 			const settleWatchdog = window.setTimeout(() => {
 				if (!cancelled) setReward13Loading(false)
@@ -3983,7 +3983,7 @@ export default function DiscoverMerchantGiftSheet({
 
 			<div className="mb-8 flex flex-col gap-2">
 				{/* Hide empty Reward PT chrome — only show when Smart Wallet has usable Reward PT. Prefetch runs on Gift open. */}
-				{reward13SelectableRows.length > 0 ? (
+				{!reward13Loading && reward13SelectableRows.length > 0 ? (
 				<div
 					className="overflow-hidden rounded-[24px] border bg-white p-4 shadow-[0_16px_34px_rgba(15,23,42,0.08)] dark:bg-slate-900"
 					style={{ borderColor: `${brandControl}55` }}

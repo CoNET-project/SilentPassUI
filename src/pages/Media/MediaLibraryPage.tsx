@@ -3,11 +3,13 @@ import { Check, FileVideo, ImagePlus, Images, Loader2, Trash2, UploadCloud, Vide
 import { useEffect, useRef, useState } from 'react'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { updateBeamioCardShareMetadata } from '@/services/BeamioCard'
-import { uploadMediaFileToIpfsChunked } from '@/utils/ipfsFragmentChunkUpload'
+import { ProductionVideoIconFramePicker } from '@/pages/Vouchers/example/ProductionVideoIconFramePicker'
+import { uploadDataUrlToIpfsChunked, uploadMediaFileToIpfsChunked } from '@/utils/ipfsFragmentChunkUpload'
 
 type MediaRecord = {
 	id: string
 	url: string
+	thumbnailUrl?: string
 	name: string
 	kind: 'image' | 'video'
 	createdAt: number
@@ -49,6 +51,7 @@ export function MediaLibraryPage({ cardAddress, initialMedia = [] }: MediaLibrar
 			? initialMedia.map((item, index) => ({
 					id: item.id || `${item.url}-${index}`,
 					url: item.url,
+					...(item.thumbnailUrl ? { thumbnailUrl: item.thumbnailUrl } : {}),
 					name: item.name || 'Merchant media',
 					kind: item.kind === 'video' ? 'video' : 'image',
 					createdAt: item.createdAt || Date.now(),
@@ -63,6 +66,8 @@ export function MediaLibraryPage({ cardAddress, initialMedia = [] }: MediaLibrar
 	const [addMediaOpen, setAddMediaOpen] = useState(false)
 	const [selectedFile, setSelectedFile] = useState<File | null>(null)
 	const [selectedPreviewUrl, setSelectedPreviewUrl] = useState('')
+	const [selectedThumbnailDataUrl, setSelectedThumbnailDataUrl] = useState('')
+	const [selectedThumbnailTimeSec, setSelectedThumbnailTimeSec] = useState<number | null>(null)
 	const [dragOver, setDragOver] = useState(false)
 	const inputRef = useRef<HTMLInputElement>(null)
 
@@ -89,6 +94,8 @@ export function MediaLibraryPage({ cardAddress, initialMedia = [] }: MediaLibrar
 		}
 		setError('')
 		setSelectedFile(file)
+		setSelectedThumbnailDataUrl('')
+		setSelectedThumbnailTimeSec(null)
 	}
 
 	const persistCardMedia = async (rows: MediaRecord[]) => {
@@ -122,6 +129,14 @@ export function MediaLibraryPage({ cardAddress, initialMedia = [] }: MediaLibrar
 				name: file.name,
 				kind: file.type.startsWith('video/') ? 'video' : 'image',
 				createdAt: Date.now(),
+			}
+			if (file.type.startsWith('video/') && selectedThumbnailDataUrl) {
+				setUploadMessage('Uploading selected video thumbnail…')
+				const thumbnailHash = await uploadDataUrlToIpfsChunked(
+					{ privateKeyArmor: profile.privateKeyArmor },
+					selectedThumbnailDataUrl,
+				)
+				next.thumbnailUrl = `https://ipfs.conet.network/api/getFragment?hash=${thumbnailHash}`
 			}
 			const rows = [next, ...items]
 			await persistCardMedia(rows)
@@ -201,7 +216,11 @@ export function MediaLibraryPage({ cardAddress, initialMedia = [] }: MediaLibrar
 						<article key={item.id} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
 							<div className="aspect-[4/3] bg-slate-100">
 								{item.kind === 'video' ? (
+								item.thumbnailUrl ? (
+									<img src={item.thumbnailUrl} alt={item.name} className="h-full w-full object-contain" />
+								) : (
 									<video src={item.url} controls className="h-full w-full object-contain" />
+								)
 								) : (
 									<img src={item.url} alt={item.name} className="h-full w-full object-contain" />
 								)}
@@ -268,7 +287,12 @@ export function MediaLibraryPage({ cardAddress, initialMedia = [] }: MediaLibrar
 							</h2>
 							<button
 								type="button"
-								disabled={!selectedFile || uploading || !address}
+								disabled={
+									!selectedFile ||
+									uploading ||
+									!address ||
+									(selectedFile.type.startsWith('video/') && !selectedThumbnailDataUrl)
+								}
 								onClick={() => void onUpload()}
 								aria-busy={uploading}
 								aria-label={uploading ? 'Uploading' : 'Upload'}
@@ -368,6 +392,28 @@ export function MediaLibraryPage({ cardAddress, initialMedia = [] }: MediaLibrar
 								<span className="text-xs text-[#747779]">Drag and drop, or click to browse</span>
 							) : null}
 						</button>
+						{selectedFile?.type.startsWith('video/') && selectedPreviewUrl ? (
+							<div className="mt-3 overflow-hidden rounded-2xl border border-[#e8ecf0] bg-[#f8fafb]">
+								<ProductionVideoIconFramePicker
+									videoSrc={selectedPreviewUrl}
+									sourceFile={selectedFile}
+									disabled={uploading}
+									onSelectFrame={(frame) => {
+										setSelectedThumbnailDataUrl(frame.dataUrl)
+										setSelectedThumbnailTimeSec(frame.timeSec)
+									}}
+								/>
+								{selectedThumbnailTimeSec != null ? (
+									<p className="px-3 pb-3 text-xs font-medium text-[#595c5e]">
+										Selected thumbnail at {selectedThumbnailTimeSec.toFixed(1)}s.
+									</p>
+								) : (
+									<p className="px-3 pb-3 text-xs font-medium text-amber-800">
+										Select a thumbnail before uploading.
+									</p>
+								)}
+							</div>
+						) : null}
 						{selectedFile && !uploading ? (
 							<p className="mt-3 text-center text-xs text-[#747779]">
 								Click the check button above to upload this file.

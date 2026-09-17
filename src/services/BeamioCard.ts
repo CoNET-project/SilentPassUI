@@ -1534,6 +1534,7 @@ export type ShareTokenMetadata = {
 	merchantMedia?: Array<{
 		id?: string
 		url: string
+		thumbnailUrl?: string
 		name?: string
 		kind?: 'image' | 'video'
 		createdAt?: number

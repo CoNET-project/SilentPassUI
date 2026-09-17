@@ -784,6 +784,11 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 	const cameraInputRef = useRef<HTMLInputElement | null>(null)
 	const [fileError, setFileError] = useState<string | null>(null)
 	const [fileDropActive, setFileDropActive] = useState(false)
+	const [cameraStream, setCameraStream] = useState<MediaStream | null>(null)
+	const [cameraRecording, setCameraRecording] = useState(false)
+	const cameraRecorderRef = useRef<MediaRecorder | null>(null)
+	const cameraChunksRef = useRef<Blob[]>([])
+	const cameraPreviewRef = useRef<HTMLVideoElement | null>(null)
 	const [chatError, setChatError] = useState<string | null>(null)
 
 	const toAddress = chatData.address
@@ -985,8 +990,60 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 				/* Fall through to the browser capture input. */
 			}
 		}
-		cameraInputRef.current?.click()
+		void navigator.mediaDevices?.getUserMedia({ video: true, audio: true })
+			.then(stream => setCameraStream(stream))
+			.catch(() => cameraInputRef.current?.click())
 	}, [hasRoute])
+
+	const closeChatCamera = useCallback(() => {
+		try { cameraRecorderRef.current?.stop() } catch {}
+		cameraRecorderRef.current = null
+		cameraChunksRef.current = []
+		cameraStream?.getTracks().forEach(track => track.stop())
+		setCameraStream(null)
+		setCameraRecording(false)
+	}, [cameraStream])
+
+	const startChatCameraRecording = useCallback((video: HTMLVideoElement) => {
+		if (!cameraStream || cameraRecording) return
+		const mimeType = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm']
+			.find(type => MediaRecorder.isTypeSupported(type)) || ''
+		const recorder = mimeType ? new MediaRecorder(cameraStream, { mimeType }) : new MediaRecorder(cameraStream)
+		cameraChunksRef.current = []
+		recorder.ondataavailable = event => {
+			if (event.data.size > 0) cameraChunksRef.current.push(event.data)
+		}
+		recorder.onstop = () => {
+			const blob = new Blob(cameraChunksRef.current, { type: recorder.mimeType || 'video/webm' })
+			cameraChunksRef.current = []
+			cameraRecorderRef.current = null
+			cameraStream.getTracks().forEach(track => track.stop())
+			setCameraStream(null)
+			setCameraRecording(false)
+			if (blob.size > 0) {
+				const file = new File([blob], `camera-${Date.now()}.webm`, { type: blob.type || 'video/webm' })
+				void addChatFiles([file])
+			}
+		}
+		cameraRecorderRef.current = recorder
+		recorder.start(250)
+		setCameraRecording(true)
+		video.play().catch(() => {})
+	}, [addChatFiles, cameraRecording, cameraStream])
+
+	const stopChatCameraRecording = useCallback(() => {
+		if (cameraRecorderRef.current?.state !== 'inactive') cameraRecorderRef.current?.stop()
+	}, [])
+
+	useEffect(() => {
+		const video = cameraPreviewRef.current
+		if (!video || !cameraStream) return
+		video.srcObject = cameraStream
+		void video.play().catch(() => {})
+		return () => {
+			video.srcObject = null
+		}
+	}, [cameraStream])
 
 	const cancelChatFileJob = useCallback((id: string) => {
 		fileControllersRef.current.get(id)?.abort()
@@ -2764,6 +2821,35 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 				<div className={["bg-white/0"].join(" ")}>
 					<div className="relative">
 						<div className="mx-auto w-full max-w-[820px] px-3 pt-3 pb-4">
+						{cameraStream ? (
+							<div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/55 px-4 backdrop-blur-sm">
+								<div className="w-full max-w-lg overflow-hidden rounded-3xl bg-white p-3 shadow-2xl">
+									<video
+										ref={cameraPreviewRef}
+										className="aspect-[3/4] w-full rounded-2xl bg-black object-cover"
+										autoPlay
+										muted
+										playsInline
+									/>
+									<div className="mt-3 flex items-center justify-between gap-3">
+										<button
+											type="button"
+											onClick={closeChatCamera}
+											className="rounded-full px-4 py-2 text-sm font-semibold text-slate-600 ring-1 ring-slate-200"
+										>
+											Cancel
+										</button>
+										<button
+											type="button"
+											onClick={() => cameraRecording ? stopChatCameraRecording() : startChatCameraRecording(cameraPreviewRef.current as HTMLVideoElement)}
+											className="rounded-full bg-[#1652f0] px-5 py-2 text-sm font-semibold text-white"
+										>
+											{cameraRecording ? 'Stop' : 'Record video'}
+										</button>
+									</div>
+								</div>
+							</div>
+						) : null}
 						{chatError && (
 							<div role="alert" className="mb-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-[13px] text-rose-700">
 								{chatError}

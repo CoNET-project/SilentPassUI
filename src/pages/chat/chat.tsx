@@ -76,6 +76,7 @@ import {
 	decryptVoiceFragment,
 	encryptVoiceBlob,
 	uploadEncryptedVoiceDataUrl,
+	VOICE_MAX_AUDIO_BYTES,
 	type VoiceMessageManifest,
 } from '@/utils/voiceMessage'
 
@@ -98,6 +99,12 @@ type ReactionKey = typeof REACTIONS[number]["key"]
 function formatVoiceDuration(durationMs: number): string {
 	const totalSeconds = Math.max(0, Math.round(durationMs / 1000))
 	return `${Math.floor(totalSeconds / 60)}:${String(totalSeconds % 60).padStart(2, '0')}`
+}
+
+function formatVoiceBytes(bytes: number): string {
+	if (bytes < 1024) return `${bytes} B`
+	if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+	return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
 }
 
 function VoiceMessagePlayer({ manifest }: { manifest: VoiceMessageManifest }) {
@@ -453,6 +460,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 	const recordingTimerRef = useRef<number | null>(null)
 	const [isRecordingVoice, setIsRecordingVoice] = useState(false)
 	const [voiceDurationMs, setVoiceDurationMs] = useState(0)
+	const [voiceRecordedBytes, setVoiceRecordedBytes] = useState(0)
 	const [voiceSending, setVoiceSending] = useState(false)
 	const [voiceError, setVoiceError] = useState<string | null>(null)
 	const [chatError, setChatError] = useState<string | null>(null)
@@ -640,12 +648,16 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 			const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream)
 			recordingChunksRef.current = []
 			recorder.ondataavailable = event => {
-				if (event.data.size > 0) recordingChunksRef.current.push(event.data)
+				if (event.data.size > 0) {
+					recordingChunksRef.current.push(event.data)
+					setVoiceRecordedBytes(prev => prev + event.data.size)
+				}
 			}
 			recorder.onerror = () => setVoiceError('Voice recording failed. Please try again.')
 			recorderRef.current = recorder
 			recordingStartedAtRef.current = Date.now()
 			setVoiceDurationMs(0)
+			setVoiceRecordedBytes(0)
 			setIsRecordingVoice(true)
 			recorder.start()
 			scheduleVoiceDurationTimer()
@@ -2262,11 +2274,24 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 							</div>
 						)}
 						{isRecordingVoice && (
-							<div className="mb-2 flex items-center justify-between rounded-xl border border-rose-200 bg-white/85 px-3 py-2 text-[13px] text-rose-700">
-								<span>Recording voice message · {formatVoiceDuration(voiceDurationMs)}</span>
-								<button type="button" className="font-semibold underline" onClick={() => void finishVoiceRecording()}>
-									Stop
-								</button>
+							<div className="mb-2 rounded-xl border border-rose-200 bg-white/85 px-3 py-2 text-[13px] text-rose-700">
+								<div className="flex items-center justify-between gap-3">
+									<span>
+										Recording voice message · {formatVoiceDuration(voiceDurationMs)} ·{' '}
+										{formatVoiceBytes(voiceRecordedBytes)}
+									</span>
+									<button type="button" className="shrink-0 font-semibold underline" onClick={() => void finishVoiceRecording()}>
+										Stop
+									</button>
+								</div>
+								<div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-rose-100" aria-hidden>
+									<div
+										className="h-full rounded-full bg-rose-500 transition-[width] duration-300"
+										style={{
+											width: `${Math.min(100, Math.max(2, (voiceRecordedBytes / VOICE_MAX_AUDIO_BYTES) * 100))}%`,
+										}}
+									/>
+								</div>
 							</div>
 						)}
 						{replyTo && (

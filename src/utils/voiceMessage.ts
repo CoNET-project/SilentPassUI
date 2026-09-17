@@ -3,6 +3,8 @@ import { ethers } from 'ethers'
 export const VOICE_MESSAGE_TYPE = 'voice_message_v1' as const
 export const VOICE_CHUNK_BYTES = 512 * 1024
 export const VOICE_MAX_DATA_URL_CHARS = 240 * 1024 * 1024
+/** Approximate raw audio ceiling after Data URL/base64 overhead and AES-GCM tag. */
+export const VOICE_MAX_AUDIO_BYTES = Math.floor((VOICE_MAX_DATA_URL_CHARS - 64) * 0.75) - 16
 const IPFS_API = 'https://ipfs.conet.network/api'
 
 export type VoiceMessageManifest = {

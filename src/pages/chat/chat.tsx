@@ -37,6 +37,7 @@ import {
   ZoomOut,
   Gauge,
   Check,
+  FileText,
   ExternalLink,
   X,
   CornerUpLeft,
@@ -628,6 +629,35 @@ function ChatImageFullscreenPreview({
 	)
 }
 
+function ChatPdfFullscreenPreview({
+	src,
+	onClose,
+	onDownload,
+}: {
+	src: string
+	onClose: () => void
+	onDownload: () => void
+}) {
+	const chromeBtn =
+		'pointer-events-auto grid h-11 w-11 place-items-center rounded-full border border-white/35 bg-white/20 text-white/90 shadow-[0_2px_10px_rgba(0,0,0,0.35)] backdrop-blur-md transition hover:bg-white/30'
+
+	return (
+		<div className="fixed inset-0 z-[120] flex flex-col bg-slate-950/95" role="dialog" aria-modal="true" aria-label="PDF preview">
+			<div className="pointer-events-none fixed inset-x-0 top-0 z-10 flex items-center justify-between gap-2 px-4 pt-[max(1rem,env(safe-area-inset-top,0px))]">
+				<button type="button" tabIndex={-1} onClick={onClose} aria-label="Back" className={chromeBtn}>
+					<ChevronLeft className="h-5 w-5" strokeWidth={2.5} aria-hidden />
+				</button>
+				<button type="button" tabIndex={-1} onClick={onDownload} aria-label="Download PDF" className={chromeBtn}>
+					<Download className="h-5 w-5" aria-hidden />
+				</button>
+			</div>
+			<div className="min-h-0 flex-1 px-2 pb-[env(safe-area-inset-bottom,0px)] pt-[calc(max(1rem,env(safe-area-inset-top,0px))+3.25rem)]">
+				<iframe src={src} title="PDF preview" className="h-full w-full rounded-xl bg-white shadow-2xl" />
+			</div>
+		</div>
+	)
+}
+
 function ChatFileMessagePlayer({ manifest, isMe }: { manifest: ChatFileMessageManifest; isMe: boolean }) {
 	const [files, setFiles] = useState<Map<string, Blob> | null>(null)
 	const [error, setError] = useState<string | null>(null)
@@ -636,10 +666,13 @@ function ChatFileMessagePlayer({ manifest, isMe }: { manifest: ChatFileMessageMa
 	const [videoUrl, setVideoUrl] = useState<string | null>(null)
 	const [previewUrl, setPreviewUrl] = useState<string | null>(null)
 	const [fullImageUrl, setFullImageUrl] = useState<string | null>(null)
+	const [pdfUrl, setPdfUrl] = useState<string | null>(null)
 	const [imageFullscreen, setImageFullscreen] = useState(false)
+	const [pdfFullscreen, setPdfFullscreen] = useState(false)
 	const videoRef = useRef<HTMLVideoElement | null>(null)
 	const [videoBlob, setVideoBlob] = useState<Blob | null>(null)
 	const [imageBlob, setImageBlob] = useState<Blob | null>(null)
+	const [pdfBlob, setPdfBlob] = useState<Blob | null>(null)
 	const previewBlob = files && manifest.previewName ? files.get(manifest.previewName) ?? null : null
 	const downloadImageBlob = imageBlob ?? previewBlob
 	useEffect(() => {
@@ -650,13 +683,16 @@ function ChatFileMessagePlayer({ manifest, isMe }: { manifest: ChatFileMessageMa
 		setVideoUrl(null)
 		setPreviewUrl(null)
 		setFullImageUrl(null)
+		setPdfUrl(null)
 		setVideoBlob(null)
 		setImageBlob(null)
+		setPdfBlob(null)
 		setImageFullscreen(false)
+		setPdfFullscreen(false)
 		void decryptChatFileManifest(manifest, controller.signal)
 			.then(result => {
 				setFiles(result)
-				if (manifest.mediaKind === 'video' || manifest.mediaKind === 'image') {
+				if (manifest.mediaKind === 'video' || manifest.mediaKind === 'image' || manifest.mediaKind === 'pdf') {
 					const mainEntryName = manifest.files[0]?.name
 					const mainBlob = mainEntryName ? result.get(mainEntryName) : undefined
 					const videoEntry = Array.from(result.entries()).find(([name]) => name !== manifest.previewName)?.[1]
@@ -676,6 +712,10 @@ function ChatFileMessagePlayer({ manifest, isMe }: { manifest: ChatFileMessageMa
 					} else if (preview) {
 						setPreviewUrl(URL.createObjectURL(preview))
 					}
+					if (manifest.mediaKind === 'pdf' && mainBlob) {
+						setPdfBlob(mainBlob)
+						setPdfUrl(URL.createObjectURL(mainBlob))
+					}
 				}
 			})
 			.catch(error => {
@@ -687,6 +727,7 @@ function ChatFileMessagePlayer({ manifest, isMe }: { manifest: ChatFileMessageMa
 			setVideoUrl(previous => { if (previous) URL.revokeObjectURL(previous); return null })
 			setPreviewUrl(previous => { if (previous) URL.revokeObjectURL(previous); return null })
 			setFullImageUrl(previous => { if (previous) URL.revokeObjectURL(previous); return null })
+			setPdfUrl(previous => { if (previous) URL.revokeObjectURL(previous); return null })
 		}
 	}, [manifest])
 	const download = async (name: string, blob: Blob) => {
@@ -721,6 +762,7 @@ function ChatFileMessagePlayer({ manifest, isMe }: { manifest: ChatFileMessageMa
 		window.setTimeout(() => URL.revokeObjectURL(url), 0)
 	}
 	const isImageMessage = manifest.mediaKind === 'image'
+	const isPdfMessage = manifest.mediaKind === 'pdf'
 	return (
 		<div
 			className={[
@@ -745,7 +787,24 @@ function ChatFileMessagePlayer({ manifest, isMe }: { manifest: ChatFileMessageMa
 					) : null}
 				</div>
 			) : null}
-			{manifest.mediaKind === 'image' ? (
+			{isPdfMessage ? (
+				<button
+					type="button"
+					disabled={!pdfUrl}
+					onClick={() => setPdfFullscreen(true)}
+					className="flex w-full items-center gap-3 rounded-xl bg-white/55 px-3 py-3 text-left transition hover:bg-white/80 disabled:cursor-wait"
+					aria-label="Open PDF fullscreen"
+				>
+					<span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-rose-100 text-rose-600" aria-hidden>
+						<FileText className="h-5 w-5" />
+					</span>
+					<span className="min-w-0 flex-1">
+						<span className="block truncate text-[13px] font-semibold text-slate-700">{manifest.name}</span>
+						<span className="mt-0.5 block text-[11px] font-medium text-slate-500">PDF · Tap to preview</span>
+					</span>
+					<span className="text-[11px] font-semibold text-[#1652f0]">Open</span>
+				</button>
+			) : manifest.mediaKind === 'image' ? (
 				<button
 					type="button"
 					disabled={!previewUrl}
@@ -803,6 +862,13 @@ function ChatFileMessagePlayer({ manifest, isMe }: { manifest: ChatFileMessageMa
 					onClose={() => setImageFullscreen(false)}
 					canDownload={Boolean(downloadImageBlob)}
 					onDownload={() => void download(manifest.files[0]?.name ?? manifest.name, downloadImageBlob!)}
+				/>
+			) : null}
+			{isPdfMessage && pdfFullscreen && pdfUrl ? (
+				<ChatPdfFullscreenPreview
+					src={pdfUrl}
+					onClose={() => setPdfFullscreen(false)}
+					onDownload={() => { if (pdfBlob) void download(manifest.name, pdfBlob) }}
 				/>
 			) : null}
 		</div>
@@ -1296,7 +1362,13 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		const files = incoming
 		if (!files.length) return
 		const id = crypto.randomUUID()
-		const mediaFile = files.length === 1 && (files[0].type.startsWith('video/') || files[0].type.startsWith('image/')) ? files[0] : null
+		const isPdfFile = files[0].type === 'application/pdf' || files[0].name.toLowerCase().endsWith('.pdf')
+		const mediaFile = files.length === 1 && (
+			files[0].type.startsWith('video/')
+			|| files[0].type.startsWith('image/')
+			|| isPdfFile
+		) ? files[0] : null
+		const previewMediaFile = mediaFile && (mediaFile.type.startsWith('video/') || mediaFile.type.startsWith('image/')) ? mediaFile : null
 		const videoFile = mediaFile?.type.startsWith('video/') ? mediaFile : null
 		const controller = new AbortController()
 		fileControllersRef.current.set(id, controller)
@@ -1316,8 +1388,8 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 				setFileJobs(previous => previous.map(item => item.id === id ? { ...item, progress: 0.03 } : item))
 				thumbnail = await createVideoThumbnail(videoFile)
 				setFileJobs(previous => previous.map(item => item.id === id ? { ...item, progress: 0.08 } : item))
-			} else if (mediaFile) {
-				thumbnail = mediaFile
+			} else if (previewMediaFile) {
+				thumbnail = previewMediaFile
 				setFileJobs(previous => previous.map(item => item.id === id ? { ...item, progress: 0.08 } : item))
 			}
 		} catch (error) {

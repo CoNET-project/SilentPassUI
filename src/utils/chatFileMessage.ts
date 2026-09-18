@@ -22,7 +22,7 @@ export type ChatFileMessageManifest = {
 	sizeBytes: number
 	files: ChatFileEntry[]
 	/** Media attachments keep their preview inside the encrypted fragment. */
-	mediaKind?: 'video' | 'image'
+	mediaKind?: 'video' | 'image' | 'pdf'
 	previewName?: string
 	mime?: string
 }
@@ -83,13 +83,17 @@ export async function encryptChatFiles(files: File[], displayName?: string, prev
 			count: metadata.length,
 			sizeBytes: totalBytes,
 			files: metadata,
-			...(previewName
-				? {
-						mediaKind: files[0]?.type.startsWith('image/') ? ('image' as const) : ('video' as const),
-						previewName,
-						mime: files[0]?.type || 'application/octet-stream',
-					}
-				: {}),
+			...(files.length === 1 && files[0]?.type.startsWith('image/')
+				? { mediaKind: 'image' as const, mime: files[0].type }
+				: files.length === 1 && (
+					files[0]?.type === 'application/pdf'
+					|| files[0]?.name.toLowerCase().endsWith('.pdf')
+				)
+					? { mediaKind: 'pdf' as const, mime: files[0].type || 'application/pdf' }
+					: files.length === 1 && files[0]?.type.startsWith('video/')
+						? { mediaKind: 'video' as const, mime: files[0].type }
+						: {}),
+			...(previewName ? { previewName } : {}),
 		},
 	}
 }
@@ -172,7 +176,14 @@ export async function decryptChatFileManifest(manifest: ChatFileMessageManifest,
 	const result = new Map<string, Blob>()
 	for (const entry of manifest.files) {
 		const bytes = files[entry.name]
-		if (bytes) result.set(entry.name, new Blob([bytes], { type: manifest.mediaKind === 'video' ? (manifest.mime || 'video/mp4') : 'application/octet-stream' }))
+		if (bytes) {
+			const mime = manifest.mediaKind === 'video'
+				? (manifest.mime || 'video/mp4')
+				: manifest.mediaKind === 'pdf'
+					? (manifest.mime || 'application/pdf')
+					: 'application/octet-stream'
+			result.set(entry.name, new Blob([bytes], { type: mime }))
+		}
 	}
 	if (manifest.previewName) {
 		const previewBytes = files[manifest.previewName]

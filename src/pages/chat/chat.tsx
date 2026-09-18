@@ -3171,7 +3171,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 									].join(" ")}
 								>
 									{fileJobs.length ? (
-										<div className="relative mx-2 flex flex-wrap justify-end gap-1.5 pt-2">
+										<div className="relative mx-2 flex flex-wrap justify-start gap-1.5 pt-2">
 											{fileJobs.map(job => (
 												<div key={job.id} className="inline-flex max-w-[min(100%,22rem)] items-center gap-2 rounded-2xl bg-white/75 px-3 py-2 ring-1 ring-black/5 backdrop-blur-xl">
 													{job.thumbnailUrl ? (

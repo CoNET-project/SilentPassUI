@@ -766,10 +766,12 @@ function ChatFileMessagePlayer({ manifest, isMe }: { manifest: ChatFileMessageMa
 	return (
 		<div
 			className={[
-				isImageMessage
+				isPdfMessage
+					? 'min-w-0 bg-transparent p-0 ring-0'
+					: isImageMessage
 					? 'max-w-[min(78vw,280px)] overflow-hidden rounded-2xl p-0 ring-1 ring-black/5'
 					: 'min-w-[220px] rounded-2xl px-3 py-2 ring-1 ring-black/5',
-				isMe ? 'bg-[#dceaff]/70' : 'bg-white/70',
+				isPdfMessage ? '' : isMe ? 'bg-[#dceaff]/70' : 'bg-white/70',
 			].join(' ')}
 		>
 			{manifest.mediaKind === 'video' && videoUrl ? (
@@ -792,7 +794,10 @@ function ChatFileMessagePlayer({ manifest, isMe }: { manifest: ChatFileMessageMa
 					type="button"
 					disabled={!pdfUrl}
 					onClick={() => setPdfFullscreen(true)}
-					className="flex w-full items-center gap-3 rounded-xl bg-white/55 px-3 py-3 text-left transition hover:bg-white/80 disabled:cursor-wait"
+					className={[
+						'flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition disabled:cursor-wait',
+						isMe ? 'bg-[#dceaff]/70 hover:bg-[#dceaff]' : 'bg-white/70 hover:bg-white',
+					].join(' ')}
 					aria-label="Open PDF fullscreen"
 				>
 					<span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-rose-100 text-rose-600" aria-hidden>

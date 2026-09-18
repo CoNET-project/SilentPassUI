@@ -3194,9 +3194,9 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 									].join(" ")}
 								>
 									{fileJobs.length ? (
-										<div className="relative mx-2 space-y-1.5 pt-2">
+										<div className="relative mx-2 flex flex-wrap justify-end gap-1.5 pt-2">
 											{fileJobs.map(job => (
-												<div key={job.id} className="flex items-center gap-2 rounded-2xl bg-white/75 px-3 py-2 ring-1 ring-black/5 backdrop-blur-xl">
+												<div key={job.id} className="inline-flex max-w-[min(100%,22rem)] items-center gap-2 rounded-2xl bg-white/75 px-3 py-2 ring-1 ring-black/5 backdrop-blur-xl">
 													{job.thumbnailUrl ? (
 														<div className="relative h-12 w-16 shrink-0 overflow-hidden rounded-lg bg-slate-100">
 															<img src={job.thumbnailUrl} alt={job.name} className="h-full w-full object-cover" />
@@ -3212,7 +3212,6 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 													<div className="min-w-0 flex-1">
 														<p className="truncate text-[13px] font-semibold text-slate-700">{job.name}</p>
 														{job.status === 'uploading' ? <div className="mt-1 h-1 overflow-hidden rounded-full bg-slate-200"><div className="h-full bg-[#1652f0] transition-[width]" style={{ width: `${Math.max(2, job.progress * 100)}%` }} /></div> : null}
-														{job.status === 'ready' ? <p className="text-[11px] text-emerald-600">Ready · press Send</p> : null}
 														{job.error ? <p role="alert" className="text-[11px] text-rose-600">{job.error}</p> : null}
 													</div>
 													<button type="button" tabIndex={-1} onClick={() => cancelChatFileJob(job.id)} aria-label="Cancel file upload" className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-slate-500 hover:bg-rose-50 hover:text-rose-600"><X className="h-4 w-4" strokeWidth={2.4} /></button>

@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom"
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
 import { motion, AnimatePresence } from "framer-motion"
 import { ethers } from "ethers"
-import { getDocument } from "pdfjs-dist/legacy/build/pdf"
+import { getDocument, GlobalWorkerOptions } from "pdfjs-dist/legacy/build/pdf"
 import { checkSign, emitReactionAsNewMessage, createMembershipActivatedCard } from '@/services/chat'
 import { mirrorChatMessageToHistory } from '@/services/chatHistoryMirror' 
 import { IpfsImg } from '@/components/IpfsImg'
@@ -101,6 +101,7 @@ import {
 
 const aptEndpoint = 'https://api.settleonbase.xyz'
 const baseExplorerTxUrl = (hash: string) => `https://basescan.org/tx/${hash}`
+GlobalWorkerOptions.workerSrc = `${process.env.PUBLIC_URL || '/app'}/pdf.worker.min.js`
 
 const REACTIONS = [
   { key: "love", label: "❤️" },
@@ -653,7 +654,7 @@ function ChatPdfFullscreenPreview({
 		void (async () => {
 			try {
 				const data = new Uint8Array(await src.arrayBuffer())
-				const pdf = await getDocument({ data, disableWorker: true } as any).promise
+				const pdf = await getDocument({ data } as any).promise
 				if (cancelled) {
 					await pdf.destroy()
 					return

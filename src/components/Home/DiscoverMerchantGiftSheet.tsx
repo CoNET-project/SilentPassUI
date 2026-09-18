@@ -2129,7 +2129,7 @@ export default function DiscoverMerchantGiftSheet({
 					</div>
 				</div>
 			) : null}
-			{!selectedGiftCardImage ? <div className="relative z-10 mt-10 mb-6">
+			{!selectedGiftCardImage ? <div className="absolute inset-x-5 bottom-5 z-10">
 				<div className="mt-0.5 flex items-baseline gap-1">
 					<span className="text-[34px] font-bold leading-none tracking-tight" style={{ color: onBrandText }}>
 						{prefix}

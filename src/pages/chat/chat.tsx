@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom"
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
 import { motion, AnimatePresence } from "framer-motion"
 import { ethers } from "ethers"
+import { getDocument } from "pdfjs-dist/legacy/build/pdf"
 import { checkSign, emitReactionAsNewMessage, createMembershipActivatedCard } from '@/services/chat'
 import { mirrorChatMessageToHistory } from '@/services/chatHistoryMirror' 
 import { IpfsImg } from '@/components/IpfsImg'
@@ -634,10 +635,76 @@ function ChatPdfFullscreenPreview({
 	onClose,
 	onDownload,
 }: {
-	src: string
+	src: Blob
 	onClose: () => void
 	onDownload: () => void
 }) {
+	const [pageCount, setPageCount] = useState(0)
+	const [error, setError] = useState<string | null>(null)
+	const pdfRef = useRef<any>(null)
+	const canvasRefs = useRef<HTMLCanvasElement[]>([])
+	const pagesRef = useRef<HTMLDivElement | null>(null)
+
+	useEffect(() => {
+		let cancelled = false
+		setPageCount(0)
+		setError(null)
+		canvasRefs.current = []
+		void (async () => {
+			try {
+				const data = new Uint8Array(await src.arrayBuffer())
+				const pdf = await getDocument({ data, disableWorker: true } as any).promise
+				if (cancelled) {
+					await pdf.destroy()
+					return
+				}
+				pdfRef.current = pdf
+				setPageCount(pdf.numPages)
+			} catch (reason) {
+				if (!cancelled) setError(reason instanceof Error ? reason.message : 'PDF could not be opened.')
+			}
+		})()
+		return () => {
+			cancelled = true
+			const pdf = pdfRef.current
+			pdfRef.current = null
+			if (pdf) void pdf.destroy()
+		}
+	}, [src])
+
+	useEffect(() => {
+		const pdf = pdfRef.current
+		const container = pagesRef.current
+		if (!pdf || !container || !pageCount) return
+		let cancelled = false
+		void (async () => {
+			try {
+				for (let pageNumber = 1; pageNumber <= pageCount; pageNumber += 1) {
+					if (cancelled) return
+					const canvas = canvasRefs.current[pageNumber - 1]
+					if (!canvas) continue
+					const page = await pdf.getPage(pageNumber)
+					const baseViewport = page.getViewport({ scale: 1 })
+					const availableWidth = Math.max(280, container.clientWidth - 24)
+					const scale = Math.min(1.6, availableWidth / baseViewport.width)
+					const viewport = page.getViewport({ scale })
+					const pixelRatio = Math.min(window.devicePixelRatio || 1, 2)
+					canvas.width = Math.ceil(viewport.width * pixelRatio)
+					canvas.height = Math.ceil(viewport.height * pixelRatio)
+					canvas.style.width = `${viewport.width}px`
+					canvas.style.height = `${viewport.height}px`
+					const context = canvas.getContext('2d')
+					if (!context) continue
+					context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0)
+					await page.render({ canvasContext: context, viewport }).promise
+				}
+			} catch (reason) {
+				if (!cancelled) setError(reason instanceof Error ? reason.message : 'PDF page could not be rendered.')
+			}
+		})()
+		return () => { cancelled = true }
+	}, [pageCount])
+
 	const chromeBtn =
 		'pointer-events-auto grid h-11 w-11 place-items-center rounded-full border border-white/35 bg-white/20 text-white/90 shadow-[0_2px_10px_rgba(0,0,0,0.35)] backdrop-blur-md transition hover:bg-white/30'
 
@@ -651,8 +718,19 @@ function ChatPdfFullscreenPreview({
 					<Download className="h-5 w-5" aria-hidden />
 				</button>
 			</div>
-			<div className="min-h-0 flex-1 px-2 pb-[env(safe-area-inset-bottom,0px)] pt-[calc(max(1rem,env(safe-area-inset-top,0px))+3.25rem)]">
-				<iframe src={src} title="PDF preview" className="h-full w-full rounded-xl bg-white shadow-2xl" />
+			<div ref={pagesRef} className="min-h-0 flex-1 overflow-y-auto px-2 pb-[env(safe-area-inset-bottom,0px)] pt-[calc(max(1rem,env(safe-area-inset-top,0px))+3.25rem)]">
+				<div className="mx-auto flex min-h-full max-w-3xl flex-col items-center gap-3 rounded-xl bg-slate-700/50 py-3 shadow-2xl">
+					{Array.from({ length: pageCount }, (_, index) => (
+						<canvas
+							key={index}
+							ref={canvas => { if (canvas) canvasRefs.current[index] = canvas }}
+							className="block max-w-full bg-white shadow-md"
+							aria-label={`PDF page ${index + 1}`}
+						/>
+					))}
+					{!error && !pageCount ? <Loader2 className="my-10 h-6 w-6 animate-spin text-white/75" aria-label="Loading PDF" /> : null}
+					{error ? <div role="alert" className="m-4 rounded-xl bg-rose-950/70 px-4 py-3 text-sm text-rose-100">{error}</div> : null}
+				</div>
 			</div>
 		</div>
 	)
@@ -869,9 +947,9 @@ function ChatFileMessagePlayer({ manifest, isMe }: { manifest: ChatFileMessageMa
 					onDownload={() => void download(manifest.files[0]?.name ?? manifest.name, downloadImageBlob!)}
 				/>
 			) : null}
-			{isPdfMessage && pdfFullscreen && pdfUrl ? (
+			{isPdfMessage && pdfFullscreen && pdfBlob ? (
 				<ChatPdfFullscreenPreview
-					src={pdfUrl}
+					src={pdfBlob}
 					onClose={() => setPdfFullscreen(false)}
 					onDownload={() => { if (pdfBlob) void download(manifest.name, pdfBlob) }}
 				/>

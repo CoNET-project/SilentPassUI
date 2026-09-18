@@ -2105,28 +2105,10 @@ export default function DiscoverMerchantGiftSheet({
 				</>
 			) : null}
 			{!selectedGiftCardImage ? <div className="relative z-10 flex items-start justify-between gap-3">
-				<div className="flex min-w-0 items-center gap-3">
-					<div
-						className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
-						style={{ backgroundColor: 'rgba(255,255,255,0.12)' }}
-					>
-						{step1Kind === 'health-beauty' ? (
-							<Flower2 className="h-6 w-6" strokeWidth={2} aria-hidden />
-						) : (
-							<Utensils className="h-6 w-6" strokeWidth={2} aria-hidden />
-						)}
-					</div>
-					<div className="flex min-w-0 flex-col">
-						<span
-							className="text-[12px] font-semibold uppercase tracking-wider"
-							style={{ color: onBrandMuted }}
-						>
-							{step1Kind === 'health-beauty' ? 'Wellness Gift Pass' : 'Dining Gift Pass'}
-						</span>
-						<span className="truncate text-[22px] font-semibold leading-7 tracking-tight" style={{ color: onBrandText }}>
-							{merchantLabel}
-						</span>
-					</div>
+				<div className="flex min-w-0 flex-col">
+					<span className="truncate text-[22px] font-semibold leading-7 tracking-tight" style={{ color: onBrandText }}>
+						{merchantLabel}
+					</span>
 				</div>
 				<span
 					className="shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-medium tracking-wide"
@@ -2147,30 +2129,12 @@ export default function DiscoverMerchantGiftSheet({
 				</div>
 			) : null}
 			{!selectedGiftCardImage ? <div className="relative z-10 my-6">
-				<span
-					className="block text-[12px] font-semibold uppercase tracking-wider opacity-80"
-					style={{ color: onBrandMuted }}
-				>
-					Gift value
-				</span>
 				<div className="mt-0.5 flex items-baseline gap-1">
 					<span className="text-[34px] font-bold leading-none tracking-tight" style={{ color: onBrandText }}>
 						{prefix}
 						{giftValueDisplayHuman}
 					</span>
 				</div>
-			</div> : null}
-			{!selectedGiftCardImage ? <div
-				className="relative z-10 flex items-center justify-between gap-2 border-t pt-3 text-[12px] font-semibold uppercase tracking-wide"
-				style={{ borderColor: 'rgba(255,255,255,0.12)', color: onBrandMuted }}
-			>
-				<div className="flex items-center gap-1.5">
-					<ShieldCheck className="h-4 w-4 shrink-0" strokeWidth={2.25} aria-hidden />
-					<span className="normal-case tracking-normal">100% value to recipient</span>
-				</div>
-				<span className="shrink-0 text-right tracking-wider opacity-80">
-					{step1Kind === 'health-beauty' ? 'Redeem in-clinic & online' : 'Valid dine-in / takeout'}
-				</span>
 			</div> : null}
 		</div>
 	)

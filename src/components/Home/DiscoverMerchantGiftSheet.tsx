@@ -3464,39 +3464,7 @@ export default function DiscoverMerchantGiftSheet({
 					</h2>
 				</div>
 
-				<div className="relative mb-2 mt-3 overflow-hidden rounded-xl bg-white p-4 shadow-sm dark:bg-slate-900">
-					<div className="flex items-center gap-3">
-						<div
-							className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg"
-							style={{ backgroundColor: brandColor, color: onBrandText }}
-						>
-							{selectedGiftCardImage ? (
-								<IpfsImg src={selectedGiftCardImage} alt="" className="h-full w-full object-cover" />
-							) : (
-								<div className="flex h-full w-full items-center justify-center text-[18px] font-bold">
-									{merchantInitial}
-								</div>
-							)}
-							<div
-								className="absolute bottom-0.5 right-0.5 flex h-5 w-5 items-center justify-center rounded"
-								style={{ backgroundColor: 'rgba(255,255,255,0.92)', color: brandControl }}
-							>
-								<SummaryKindIcon className="h-3 w-3" strokeWidth={2.25} aria-hidden />
-							</div>
-						</div>
-						<div className="flex min-w-0 flex-1 flex-col">
-							<div className="flex items-center justify-between gap-2">
-								<span className="truncate text-[17px] font-semibold text-[#1a1b1f] dark:text-slate-100">
-									{merchantLabel}
-								</span>
-								<span className="shrink-0 text-[17px] font-semibold" style={{ color: brandControl }}>
-									{prefix}
-									{giftValueDisplayHuman}
-								</span>
-							</div>
-						</div>
-					</div>
-				</div>
+				<div className="mt-3">{themedGiftCard}</div>
 
 				<div className="mt-3 flex flex-col gap-3.5" role="radiogroup" aria-label="Delivery method">
 					{/* Direct @BeamioTag */}

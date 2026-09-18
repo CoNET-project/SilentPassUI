@@ -9624,28 +9624,14 @@ export default function Market() {
 								<h4 className="font-bold text-[19px] leading-none tracking-tight text-[#1f2328] dark:text-slate-100 line-clamp-1">
 									{item.title}
 								</h4>
-								<p className="text-[#2f5fcf] text-[10px] font-semibold uppercase tracking-wide whitespace-nowrap pt-1">
-									Your Assets
-								</p>
+								<div className="flex shrink-0 items-center gap-2">
+									<DiscoverFeaturedLikeCountBadge count={likeCount} />
+									<DiscoverFeaturedShareClickCountBadge count={shareClickCount} />
+								</div>
 							</div>
 							<p className="text-[#4b5361] dark:text-slate-300 text-[15px] leading-tight line-clamp-2">
 								{item.subtitle}
 							</p>
-							{item.rechargeBonusDisplay && item.rechargeBonusSidePill ? (
-								<div className="mt-3 flex items-start gap-2.5">
-									<div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#f797ef]/20 sm:h-9 sm:w-9">
-										<Gift className="h-4 w-4 text-[#8d3a8b] sm:h-[1.05rem] sm:w-[1.05rem]" strokeWidth={2} aria-hidden />
-									</div>
-									<div className="min-w-0">
-										<p className="text-[12px] font-bold text-[#2c2f31] dark:text-slate-100 sm:text-sm">Recharge Bonus</p>
-										<p className="text-[11px] leading-snug text-[#595c5e] dark:text-slate-400">{item.rechargeBonusDisplay}</p>
-									</div>
-								</div>
-							) : null}
-							<div className="mt-2 flex justify-end gap-2">
-								<DiscoverFeaturedLikeCountBadge count={likeCount} />
-								<DiscoverFeaturedShareClickCountBadge count={shareClickCount} />
-							</div>
 						</div>
 					</button>
 					)

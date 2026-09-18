@@ -9624,7 +9624,7 @@ export default function Market() {
 								<h4 className="font-bold text-[19px] leading-none tracking-tight text-[#1f2328] dark:text-slate-100 line-clamp-1">
 									{item.title}
 								</h4>
-								<div className="flex shrink-0 items-center gap-2">
+								<div className="flex shrink-0 -translate-y-10 items-center gap-2">
 									<DiscoverFeaturedLikeCountBadge count={likeCount} />
 									<DiscoverFeaturedShareClickCountBadge count={shareClickCount} />
 								</div>

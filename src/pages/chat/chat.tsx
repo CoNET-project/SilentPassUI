@@ -33,6 +33,8 @@ import {
   Volume2,
   VolumeX,
   Download,
+  ZoomIn,
+  ZoomOut,
   Gauge,
   Check,
   ExternalLink,
@@ -437,6 +439,195 @@ function VoiceMessagePlayer({ manifest, isMe }: { manifest: VoiceMessageManifest
 	)
 }
 
+const CHAT_IMAGE_PREVIEW_MIN_SCALE = 1
+const CHAT_IMAGE_PREVIEW_MAX_SCALE = 5
+
+function touchPairDistance(touches: TouchList | React.TouchList): number {
+	if (touches.length < 2) return 0
+	const dx = touches[0].clientX - touches[1].clientX
+	const dy = touches[0].clientY - touches[1].clientY
+	return Math.hypot(dx, dy)
+}
+
+function ChatImageFullscreenPreview({
+	src,
+	onClose,
+	onDownload,
+	canDownload,
+}: {
+	src: string
+	onClose: () => void
+	onDownload: () => void
+	canDownload: boolean
+}) {
+	const [scale, setScale] = useState(1)
+	const [pan, setPan] = useState({ x: 0, y: 0 })
+	const viewportRef = useRef<HTMLDivElement>(null)
+	const pinchRef = useRef<{ dist: number; scale: number } | null>(null)
+	const panDragRef = useRef<{ startX: number; startY: number; panX: number; panY: number } | null>(null)
+
+	const clampScale = useCallback((value: number) => clamp(value, CHAT_IMAGE_PREVIEW_MIN_SCALE, CHAT_IMAGE_PREVIEW_MAX_SCALE), [])
+
+	const setScaleClamped = useCallback(
+		(next: number | ((prev: number) => number)) => {
+			setScale(prev => {
+				const raw = typeof next === 'function' ? next(prev) : next
+				const s = clampScale(raw)
+				if (s <= 1) setPan({ x: 0, y: 0 })
+				return s
+			})
+		},
+		[clampScale]
+	)
+
+	useEffect(() => {
+		const el = viewportRef.current
+		if (!el) return
+		const onWheel = (event: WheelEvent) => {
+			event.preventDefault()
+			const delta = event.deltaY > 0 ? -0.12 : 0.12
+			setScaleClamped(prev => prev + delta)
+		}
+		el.addEventListener('wheel', onWheel, { passive: false })
+		return () => el.removeEventListener('wheel', onWheel)
+	}, [setScaleClamped])
+
+	const zoomIn = () => setScaleClamped(prev => prev + 0.35)
+	const zoomOut = () => setScaleClamped(prev => prev - 0.35)
+
+	const onTouchStart = (event: React.TouchEvent) => {
+		if (event.touches.length === 2) {
+			pinchRef.current = { dist: touchPairDistance(event.touches), scale }
+			panDragRef.current = null
+			return
+		}
+		if (event.touches.length === 1 && scale > 1) {
+			panDragRef.current = {
+				startX: event.touches[0].clientX,
+				startY: event.touches[0].clientY,
+				panX: pan.x,
+				panY: pan.y,
+			}
+		}
+	}
+
+	const onTouchMove = (event: React.TouchEvent) => {
+		if (event.touches.length === 2 && pinchRef.current) {
+			event.preventDefault()
+			const dist = touchPairDistance(event.touches)
+			if (pinchRef.current.dist <= 0) return
+			const ratio = dist / pinchRef.current.dist
+			const base = pinchRef.current.scale
+			setScaleClamped(base * ratio)
+			return
+		}
+		if (event.touches.length === 1 && panDragRef.current && scale > 1) {
+			event.preventDefault()
+			const dx = event.touches[0].clientX - panDragRef.current.startX
+			const dy = event.touches[0].clientY - panDragRef.current.startY
+			setPan({ x: panDragRef.current.panX + dx, y: panDragRef.current.panY + dy })
+		}
+	}
+
+	const endPanOrPinch = () => {
+		pinchRef.current = null
+		panDragRef.current = null
+	}
+
+	const onMouseDown = (event: React.MouseEvent) => {
+		if (scale <= 1 || event.button !== 0) return
+		panDragRef.current = {
+			startX: event.clientX,
+			startY: event.clientY,
+			panX: pan.x,
+			panY: pan.y,
+		}
+	}
+
+	const onMouseMove = (event: React.MouseEvent) => {
+		if (!panDragRef.current || scale <= 1) return
+		const dx = event.clientX - panDragRef.current.startX
+		const dy = event.clientY - panDragRef.current.startY
+		setPan({ x: panDragRef.current.panX + dx, y: panDragRef.current.panY + dy })
+	}
+
+	const chromeBtn =
+		'pointer-events-auto grid h-11 w-11 place-items-center rounded-full border border-white/35 bg-white/20 text-white/90 shadow-[0_2px_10px_rgba(0,0,0,0.35)] backdrop-blur-md transition hover:bg-white/30 disabled:opacity-40'
+
+	return (
+		<div
+			className="fixed inset-0 z-[120] flex flex-col bg-black/95"
+			role="dialog"
+			aria-modal="true"
+			aria-label="Image preview"
+		>
+			<div
+				className="pointer-events-none fixed inset-x-0 top-0 z-10 flex items-center justify-between gap-2 px-4 pt-[max(1rem,env(safe-area-inset-top,0px))]"
+			>
+				<button type="button" tabIndex={-1} onClick={onClose} aria-label="Back" className={chromeBtn}>
+					<ChevronLeft className="h-5 w-5" strokeWidth={2.5} aria-hidden />
+				</button>
+				<div className="pointer-events-auto flex items-center gap-2">
+					<button
+						type="button"
+						tabIndex={-1}
+						onClick={zoomOut}
+						disabled={scale <= CHAT_IMAGE_PREVIEW_MIN_SCALE}
+						aria-label="Zoom out"
+						className={chromeBtn}
+					>
+						<ZoomOut className="h-5 w-5" aria-hidden />
+					</button>
+					<button
+						type="button"
+						tabIndex={-1}
+						onClick={zoomIn}
+						disabled={scale >= CHAT_IMAGE_PREVIEW_MAX_SCALE}
+						aria-label="Zoom in"
+						className={chromeBtn}
+					>
+						<ZoomIn className="h-5 w-5" aria-hidden />
+					</button>
+				</div>
+				{canDownload ? (
+					<button type="button" tabIndex={-1} onClick={onDownload} aria-label="Download image" className={chromeBtn}>
+						<Download className="h-5 w-5" aria-hidden />
+					</button>
+				) : (
+					<span className="h-11 w-11 shrink-0" aria-hidden />
+				)}
+			</div>
+			<div
+				ref={viewportRef}
+				className="min-h-0 flex-1 touch-none overflow-hidden pt-[calc(max(1rem,env(safe-area-inset-top,0px))+3.25rem)] pb-[env(safe-area-inset-bottom,0px)]"
+				onTouchStart={onTouchStart}
+				onTouchMove={onTouchMove}
+				onTouchEnd={endPanOrPinch}
+				onTouchCancel={endPanOrPinch}
+				onMouseDown={onMouseDown}
+				onMouseMove={onMouseMove}
+				onMouseUp={endPanOrPinch}
+				onMouseLeave={endPanOrPinch}
+			>
+				<div className="flex h-full w-full items-center justify-center px-2">
+					<img
+						src={src}
+						alt=""
+						draggable={false}
+						onDoubleClick={() => setScaleClamped(prev => (prev > 1 ? 1 : 2.5))}
+						className="max-h-full max-w-full select-none object-contain"
+						style={{
+							transform: `translate(${pan.x}px, ${pan.y}px) scale(${scale})`,
+							transformOrigin: 'center center',
+							cursor: scale > 1 ? 'grab' : 'zoom-in',
+						}}
+					/>
+				</div>
+			</div>
+		</div>
+	)
+}
+
 function ChatFileMessagePlayer({ manifest, isMe }: { manifest: ChatFileMessageManifest; isMe: boolean }) {
 	const [files, setFiles] = useState<Map<string, Blob> | null>(null)
 	const [error, setError] = useState<string | null>(null)
@@ -607,40 +798,12 @@ function ChatFileMessagePlayer({ manifest, isMe }: { manifest: ChatFileMessageMa
 				</div>
 			))}</div> : null}
 			{manifest.mediaKind === 'image' && imageFullscreen && (fullImageUrl || previewUrl) ? (
-				<div
-					className="fixed inset-0 z-[120] flex items-center justify-center bg-black/95"
-					role="dialog"
-					aria-modal="true"
-					aria-label="Image preview"
-				>
-					<img
-						src={fullImageUrl ?? previewUrl ?? ''}
-						alt=""
-						className="max-h-full max-w-full object-contain px-4 py-20"
-					/>
-					<div className="pointer-events-none fixed inset-x-0 top-0 z-10 flex items-center justify-between px-4 pt-[max(1rem,env(safe-area-inset-top,0px))]">
-						<button
-							type="button"
-							tabIndex={-1}
-							onClick={() => setImageFullscreen(false)}
-							aria-label="Back"
-							className="pointer-events-auto grid h-11 w-11 place-items-center rounded-full border border-white/35 bg-white/20 text-white/90 shadow-[0_2px_10px_rgba(0,0,0,0.35)] backdrop-blur-md transition hover:bg-white/30"
-						>
-							<ChevronLeft className="h-5 w-5" strokeWidth={2.5} aria-hidden />
-						</button>
-						{downloadImageBlob ? (
-							<button
-								type="button"
-								tabIndex={-1}
-								onClick={() => void download(manifest.files[0]?.name ?? manifest.name, downloadImageBlob)}
-								aria-label="Download image"
-								className="pointer-events-auto grid h-11 w-11 place-items-center rounded-full border border-white/35 bg-white/20 text-white/90 shadow-[0_2px_10px_rgba(0,0,0,0.35)] backdrop-blur-md transition hover:bg-white/30"
-							>
-								<Download className="h-5 w-5" aria-hidden />
-							</button>
-						) : null}
-					</div>
-				</div>
+				<ChatImageFullscreenPreview
+					src={fullImageUrl ?? previewUrl ?? ''}
+					onClose={() => setImageFullscreen(false)}
+					canDownload={Boolean(downloadImageBlob)}
+					onDownload={() => void download(manifest.files[0]?.name ?? manifest.name, downloadImageBlob!)}
+				/>
 			) : null}
 		</div>
 	)

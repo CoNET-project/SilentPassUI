@@ -850,6 +850,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 	)
 	const pressTimerRef = useRef<number | null>(null)
 	const messagesRef = useRef<ChatMessage[]>(chatData.messages || [])
+	const liveFileMessagesRef = useRef(new Map<string, ChatMessage>())
 	const skipNextReflashdataRef = useRef(false)
 	const [fromBeamio, setfromBeamio] = useState<searchResult|undefined> ()
 	const [userImg, setUserImg] = useState('')
@@ -1308,7 +1309,10 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		const remote = Array.isArray(myChat.messages) ? myChat.messages : []
 
 		// 本地 UI 正在显示的消息（可能包含 tmp_ / 更先进的 status）
-		const local = Array.isArray(messagesRef.current) ? messagesRef.current : []
+		const local = [
+			...(Array.isArray(messagesRef.current) ? messagesRef.current : []),
+			...liveFileMessagesRef.current.values(),
+		]
 
 		// 建索引：local by id 与 sendId（远端可能用任一来匹配）
 		const localById = new Map<string, ChatMessage>()
@@ -1853,6 +1857,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 				status: 'sending',
 				fileMessage: job.manifest,
 			}
+			if (payload.sendId) liveFileMessagesRef.current.set(payload.sendId, payload)
 			const next = [...(messagesRef.current || []), payload]
 			messagesRef.current = next
 			setMessages(next)
@@ -1863,8 +1868,12 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 			messagesRef.current = settled
 			setMessages(settled)
 			chatData.messages = settled
+			const settledFileMessage = settled.find(message => message.id === payload.id)
+			if (settledFileMessage?.sendId) {
+				liveFileMessagesRef.current.set(settledFileMessage.sendId, settledFileMessage)
+			}
 			await storageData()
-			if (sent) mirrorChatMessageToHistory(chatData.address, settled.find(message => message.id === payload.id), 'out')
+			if (sent) mirrorChatMessageToHistory(chatData.address, settledFileMessage, 'out')
 			else setFileError('A file message failed to reach CoNET entry nodes. Please try again.')
 			if (sent) setFileJobs(previous => {
 				const removed = previous.find(item => item.id === job.id)

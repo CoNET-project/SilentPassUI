@@ -964,8 +964,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 
 	const addChatFiles = useCallback(async (incoming: File[]) => {
 		if (!hasRoute || !incoming.length) return
-		const files = incoming.filter(file => !file.type.startsWith('image/') && !file.type.startsWith('audio/'))
-		if (files.length !== incoming.length) setFileError('Photos and audio use their existing chat actions. Drop documents, archives, or folders here.')
+		const files = incoming
 		if (!files.length) return
 		const id = crypto.randomUUID()
 		const videoFile = files.length === 1 && files[0].type.startsWith('video/') ? files[0] : null

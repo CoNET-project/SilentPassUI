@@ -9590,6 +9590,7 @@ export default function Market() {
 							<DiscoverFeaturedBrandHeroImage
 								src={item.image}
 								alt={item.title}
+								videoSrc={discoverMerchantHeroVideoFromMetadata(item.metadataRoot)}
 								className="w-full aspect-[16/9] object-cover"
 							/>
 							{item.rechargeBonusSidePill ? (

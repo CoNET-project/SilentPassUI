@@ -55,6 +55,15 @@ export function MerchantMediaLibraryPicker(props: MerchantMediaLibraryPickerProp
 		window.setTimeout(onClose, 300)
 	}, [isClosing, onClose, selecting])
 
+	const goToMedia = useCallback(() => {
+		if (!onGoToMedia || selecting || isClosing) return
+		setIsClosing(true)
+		window.setTimeout(() => {
+			onClose()
+			onGoToMedia()
+		}, 300)
+	}, [onGoToMedia, onClose, selecting, isClosing])
+
 	useEffect(() => {
 		if (!open) return
 		const onPointerDown = (event: PointerEvent) => {
@@ -111,15 +120,22 @@ export function MerchantMediaLibraryPicker(props: MerchantMediaLibraryPickerProp
 					>
 						Choose background
 					</p>
-					<span className="h-9 w-9 shrink-0" aria-hidden />
+					{onGoToMedia ? (
+						<button
+							type="button"
+							tabIndex={-1}
+							disabled={selecting}
+							onClick={goToMedia}
+							className="shrink-0 rounded-full bg-[#0051d1] px-3.5 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-[#0046b8] active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-60"
+						>
+							Add new
+						</button>
+					) : (
+						<span className="h-9 w-9 shrink-0" aria-hidden />
+					)}
 				</div>
 
 				<div className="min-h-0 flex-1 overflow-y-auto px-4 pb-[max(1.25rem,env(safe-area-inset-bottom,0px))]">
-					<p className="mb-4 text-center text-sm text-slate-500">
-						Swipe horizontally to browse uploaded images and videos. Tap one to set the Discover hero
-						background.
-					</p>
-
 					{selecting ? (
 						<div className="flex items-center justify-center gap-2 py-8 text-sm text-slate-600">
 							<Loader2 className="h-5 w-5 animate-spin text-[#0051d1]" aria-hidden />
@@ -140,13 +156,10 @@ export function MerchantMediaLibraryPicker(props: MerchantMediaLibraryPickerProp
 							{onGoToMedia ? (
 								<button
 									type="button"
-									onClick={() => {
-										close()
-										window.setTimeout(onGoToMedia, 320)
-									}}
+									onClick={goToMedia}
 									className="mt-4 rounded-xl bg-[#0051d1] px-4 py-2.5 text-sm font-bold text-white shadow-sm"
 								>
-									Go to Media
+									Add new
 								</button>
 							) : null}
 						</div>

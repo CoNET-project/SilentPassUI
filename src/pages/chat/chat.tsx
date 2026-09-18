@@ -3170,8 +3170,22 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 									"shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]"
 									].join(" ")}
 								>
-									{fileJobs.length ? (
-										<div className="relative mx-2 flex flex-wrap justify-start gap-1.5 pt-2">
+									{fileJobs.length || (voiceDraftBlob && !isRecordingVoice) ? (
+										<div className="relative mx-2 flex flex-wrap items-center justify-start gap-1.5 pt-2">
+											{voiceDraftBlob && !isRecordingVoice ? (
+												<div className="flex items-center gap-2 rounded-2xl bg-white/75 px-3 py-2 ring-1 ring-black/5 backdrop-blur-xl">
+													<span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#dceaff] text-[#1652f0]" aria-hidden>
+														<Mic className="h-4 w-4" strokeWidth={2.3} />
+													</span>
+													<div className="min-w-0">
+														<p className="truncate text-[13px] font-semibold text-slate-700">Voice message</p>
+														<p className="text-[11px] text-slate-500">{formatVoiceDuration(voiceDurationMs)} · {formatVoiceBytes(voiceRecordedBytes)}</p>
+													</div>
+													<button type="button" tabIndex={-1} disabled={voiceSending} onClick={cancelVoiceDraft} aria-label="Delete voice message" className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-slate-500 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50">
+														<X className="h-4 w-4" strokeWidth={2.4} />
+													</button>
+												</div>
+											) : null}
 											{fileJobs.map(job => (
 												<div key={job.id} className="inline-flex max-w-[min(100%,22rem)] items-center gap-2 rounded-2xl bg-white/75 px-3 py-2 ring-1 ring-black/5 backdrop-blur-xl">
 													{job.thumbnailUrl ? (
@@ -3194,29 +3208,6 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 													<button type="button" tabIndex={-1} onClick={() => cancelChatFileJob(job.id)} aria-label="Cancel file upload" className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-slate-500 hover:bg-rose-50 hover:text-rose-600"><X className="h-4 w-4" strokeWidth={2.4} /></button>
 												</div>
 											))}
-										</div>
-									) : null}
-									{voiceDraftBlob && !isRecordingVoice ? (
-										<div className="mx-2 flex items-center gap-2 pt-2">
-											<div className="inline-flex max-w-[min(100%,22rem)] items-center gap-2 rounded-2xl bg-white/75 px-3 py-2 ring-1 ring-black/5 backdrop-blur-xl">
-												<span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#dceaff] text-[#1652f0]" aria-hidden>
-													<Mic className="h-4 w-4" strokeWidth={2.3} />
-												</span>
-												<div className="min-w-0 flex-1">
-													<p className="truncate text-[13px] font-semibold text-slate-700">Voice message</p>
-													<p className="text-[11px] text-slate-500">{formatVoiceDuration(voiceDurationMs)} · {formatVoiceBytes(voiceRecordedBytes)}</p>
-												</div>
-												<button
-													type="button"
-													tabIndex={-1}
-													disabled={voiceSending}
-													onClick={cancelVoiceDraft}
-													aria-label="Delete voice message"
-													className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-slate-500 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
-												>
-													<X className="h-4 w-4" strokeWidth={2.4} />
-												</button>
-											</div>
 										</div>
 									) : null}
 									<button

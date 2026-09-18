@@ -1911,6 +1911,10 @@ export default function DiscoverMerchantGiftSheet({
 		reward13CashUsdc6 > 0n
 			? `$${formatQuotedUsdc6ForDisplay(reward13CashUsdc6)} USDC`
 			: '$0.00 USDC'
+	const remainingUsdcQuoteLabel =
+		quotedGiftUsdc6 != null
+			? `Need ~$${formatQuotedUsdc6ForDisplay(reward13CashUsdc6)} USDC`
+			: usdcQuoteLabel
 
 	useEffect(() => {
 		if (rewardPtFullyCoversGift && remainingPayMethod !== 'usdc') {
@@ -1933,7 +1937,7 @@ export default function DiscoverMerchantGiftSheet({
 			const cashFiat6 = (giftFacePreview.totalE6 * cashUsdc6) / quotedGiftUsdc6
 			return `${prefix}${Number(ethers.formatUnits(cashFiat6, 6)).toFixed(2)}`
 		}
-		return usdcQuoteLabel ?? `${prefix}${previewAmount}`
+		return remainingUsdcQuoteLabel ?? `${prefix}${previewAmount}`
 	}, [
 		giftFacePreview,
 		prefix,
@@ -1943,7 +1947,7 @@ export default function DiscoverMerchantGiftSheet({
 		remainingPayMethod,
 		reward13AppliedLabel,
 		rewardPtFullyCoversGift,
-		usdcQuoteLabel,
+		remainingUsdcQuoteLabel,
 	])
 
 	const payCtaLabel = rewardPtFullyCoversGift
@@ -4301,14 +4305,14 @@ export default function DiscoverMerchantGiftSheet({
 							</span>
 						</div>
 					) : null}
-					{!rewardPtFullyCoversGift && remainingPayMethod === 'usdc' && usdcQuoteLabel ? (
+					{!rewardPtFullyCoversGift && remainingPayMethod === 'usdc' && remainingUsdcQuoteLabel ? (
 						<div className="flex items-center justify-between">
 							<span className="flex items-center gap-1">
 								USDC
 								<Wallet className="h-3.5 w-3.5" style={{ color: brandControl }} aria-hidden />
 							</span>
 							<span className="font-medium" style={{ color: brandControl }}>
-								{usdcQuoteLabel}
+								{remainingUsdcQuoteLabel}
 							</span>
 						</div>
 					) : null}

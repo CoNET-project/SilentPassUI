@@ -2503,26 +2503,33 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 			didInitialScrollRef.current = true
 			forceClearUnread()
 		}
+		const hasPendingImage = () =>
+			Array.from(scroller.querySelectorAll('img')).some(image => !image.complete)
 		const pinToBottom = () => {
 			if (!pendingInitialScrollRef.current) return
 			scrollToBottom("auto")
-			if (Date.now() - startedAt >= 3500) finishPinning()
-			else {
-				if (finishTimer !== null) window.clearTimeout(finishTimer)
-				finishTimer = window.setTimeout(finishPinning, 600)
-			}
+			if (hasPendingImage() || Date.now() - startedAt < 1500) return
+			if (finishTimer !== null) window.clearTimeout(finishTimer)
+			finishTimer = window.setTimeout(finishPinning, 1200)
 		}
 		const frame = requestAnimationFrame(pinToBottom)
 		const observer = typeof ResizeObserver !== 'undefined'
 			? new ResizeObserver(pinToBottom)
 			: null
+		const mutationObserver = typeof MutationObserver !== 'undefined'
+			? new MutationObserver(pinToBottom)
+			: null
 		observer?.observe(scroller)
 		if (content instanceof HTMLElement) observer?.observe(content)
-		hardStopTimer = window.setTimeout(finishPinning, 4500)
+		mutationObserver?.observe(scroller, { childList: true, subtree: true })
+		scroller.addEventListener('load', pinToBottom, true)
+		hardStopTimer = window.setTimeout(finishPinning, 10000)
 
 		return () => {
 			cancelAnimationFrame(frame)
 			observer?.disconnect()
+			mutationObserver?.disconnect()
+			scroller.removeEventListener('load', pinToBottom, true)
 			if (finishTimer !== null) window.clearTimeout(finishTimer)
 			if (hardStopTimer !== null) window.clearTimeout(hardStopTimer)
 		}

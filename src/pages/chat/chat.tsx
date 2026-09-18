@@ -3054,22 +3054,6 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 								</button>
 							</div>
 						) : null}
-						{fileJobs.length ? (
-							<div className="mb-2 space-y-1.5">
-										{fileJobs.map(job => (
-									<div key={job.id} className="flex items-center gap-2 rounded-2xl bg-white/75 px-3 py-2 ring-1 ring-black/5 backdrop-blur-xl">
-										{job.thumbnailUrl ? <div className="relative h-12 w-16 shrink-0 overflow-hidden rounded-lg bg-slate-900"><img src={job.thumbnailUrl} alt="Video thumbnail" className="h-full w-full object-cover" /><span className="absolute inset-0 grid place-items-center"><span className="grid h-6 w-6 place-items-center rounded-full bg-black/60 text-white"><Play className="ml-0.5 h-3 w-3 fill-current" /></span></span></div> : null}
-										<div className="min-w-0 flex-1">
-											<p className="truncate text-[13px] font-semibold text-slate-700">{job.name}</p>
-											{job.status === 'uploading' ? <div className="mt-1 h-1 overflow-hidden rounded-full bg-slate-200"><div className="h-full bg-[#1652f0] transition-[width]" style={{ width: `${Math.max(2, job.progress * 100)}%` }} /></div> : null}
-											{job.status === 'ready' ? <p className="text-[11px] text-emerald-600">Ready · press Send</p> : null}
-											{job.error ? <p role="alert" className="text-[11px] text-rose-600">{job.error}</p> : null}
-										</div>
-										<button type="button" tabIndex={-1} onClick={() => cancelChatFileJob(job.id)} aria-label="Cancel file upload" className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-slate-500 hover:bg-rose-50 hover:text-rose-600"><X className="h-4 w-4" strokeWidth={2.4} /></button>
-									</div>
-								))}
-							</div>
-						) : null}
 						{fileError ? <div role="alert" className="mb-2 rounded-xl bg-rose-50 px-3 py-2 text-[12px] text-rose-700">{fileError}</div> : null}
 						<div
 							className={fileDropActive ? 'rounded-2xl ring-2 ring-[#1652f0]/50' : ''}
@@ -3103,6 +3087,22 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 									"shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]"
 									].join(" ")}
 								>
+									{fileJobs.length ? (
+										<div className="relative mx-2 space-y-1.5 pt-2">
+											{fileJobs.map(job => (
+												<div key={job.id} className="flex items-center gap-2 rounded-2xl bg-white/75 px-3 py-2 ring-1 ring-black/5 backdrop-blur-xl">
+													{job.thumbnailUrl ? <div className="relative h-12 w-16 shrink-0 overflow-hidden rounded-lg bg-slate-900"><img src={job.thumbnailUrl} alt="Video thumbnail" className="h-full w-full object-cover" /><span className="absolute inset-0 grid place-items-center"><span className="grid h-6 w-6 place-items-center rounded-full bg-black/60 text-white"><Play className="ml-0.5 h-3 w-3 fill-current" /></span></span></div> : null}
+													<div className="min-w-0 flex-1">
+														<p className="truncate text-[13px] font-semibold text-slate-700">{job.name}</p>
+														{job.status === 'uploading' ? <div className="mt-1 h-1 overflow-hidden rounded-full bg-slate-200"><div className="h-full bg-[#1652f0] transition-[width]" style={{ width: `${Math.max(2, job.progress * 100)}%` }} /></div> : null}
+														{job.status === 'ready' ? <p className="text-[11px] text-emerald-600">Ready · press Send</p> : null}
+														{job.error ? <p role="alert" className="text-[11px] text-rose-600">{job.error}</p> : null}
+													</div>
+													<button type="button" tabIndex={-1} onClick={() => cancelChatFileJob(job.id)} aria-label="Cancel file upload" className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-slate-500 hover:bg-rose-50 hover:text-rose-600"><X className="h-4 w-4" strokeWidth={2.4} /></button>
+												</div>
+											))}
+										</div>
+									) : null}
 									<button
 										ref={plusBtnRef}
 										type="button"

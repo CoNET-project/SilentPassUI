@@ -477,8 +477,29 @@ function ChatFileMessagePlayer({ manifest, isMe }: { manifest: ChatFileMessageMa
 			setPreviewUrl(previous => { if (previous) URL.revokeObjectURL(previous); return null })
 		}
 	}, [manifest])
-	const download = (name: string, blob: Blob) => {
+	const download = async (name: string, blob: Blob) => {
 		const url = URL.createObjectURL(blob)
+		const native = getCashTreesNativeNfcBridge()
+		if (typeof native?.saveFile === 'function') {
+			const dataUrl = await new Promise<string>((resolve, reject) => {
+				const reader = new FileReader()
+				reader.onload = () => resolve(String(reader.result || ''))
+				reader.onerror = () => reject(reader.error || new Error('File could not be prepared.'))
+				reader.readAsDataURL(blob)
+			})
+			try {
+				native.saveFile({
+					dataUrl,
+					filename: name.split('/').pop() || 'download',
+					mimeType: blob.type || 'application/octet-stream',
+					requestId: crypto.randomUUID(),
+				})
+				URL.revokeObjectURL(url)
+				return
+			} catch {
+				// Fall back to the browser download path.
+			}
+		}
 		const anchor = document.createElement('a')
 		anchor.href = url
 		anchor.download = name.split('/').pop() || 'download'

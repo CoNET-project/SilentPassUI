@@ -5,6 +5,7 @@ export type CashTreesNativeNfcBridge = {
 	startPhysicalCardBind: () => void
 	cancelPhysicalCardBind?: () => void
 	saveRecoveryQrToPhotos?: (payload: { dataUrl: string; filename?: string; requestId?: string }) => void
+	saveFile?: (payload: { dataUrl: string; filename?: string; mimeType?: string; requestId?: string }) => void
 	scanRecoveryQr?: (payload: { requestId?: string }) => void
 	scanQr?: (payload: { requestId?: string }) => void
 	/** Opens the native camera UI. Older shells omit this method and use the PWA input fallback. */

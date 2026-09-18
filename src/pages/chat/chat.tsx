@@ -440,14 +440,15 @@ function ChatFileMessagePlayer({ manifest, isMe }: { manifest: ChatFileMessageMa
 				<div className="relative mb-2 overflow-hidden rounded-xl bg-slate-900">
 					<video ref={videoRef} src={videoUrl} className="block max-h-64 w-full object-contain" onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onEnded={() => setPlaying(false)} controls={false} />
 					{previewUrl ? <img src={previewUrl} alt="Video thumbnail" className="absolute inset-0 h-full w-full object-cover" style={{ opacity: playing ? 0 : 1 }} /> : null}
-					<button type="button" onClick={() => {
-						const video = videoRef.current
-						if (!video) return
-						if (video.paused) void video.play().catch(() => setError('Video could not be played.'))
-						else video.pause()
-					}} aria-label={playing ? 'Pause video' : 'Play video'} className="absolute inset-0 grid place-items-center">
-						<span className="grid h-12 w-12 place-items-center rounded-full bg-black/60 text-white shadow-lg"><Play className="ml-1 h-6 w-6 fill-current" /></span>
-					</button>
+					{!playing ? (
+						<button type="button" onClick={() => {
+							const video = videoRef.current
+							if (!video) return
+							void video.play().catch(() => setError('Video could not be played.'))
+						}} aria-label="Play video" className="absolute inset-0 grid place-items-center">
+							<span className="grid h-12 w-12 place-items-center rounded-full bg-black/60 text-white shadow-lg"><Play className="ml-1 h-6 w-6 fill-current" /></span>
+						</button>
+					) : null}
 				</div>
 			) : null}
 			<div className="text-[12px] font-semibold text-slate-700">{manifest.count} file{manifest.count === 1 ? '' : 's'} · {formatVoiceBytes(manifest.sizeBytes)}</div>

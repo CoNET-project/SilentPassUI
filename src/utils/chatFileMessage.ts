@@ -25,6 +25,9 @@ export type ChatFileMessageManifest = {
 	mediaKind?: 'video' | 'image' | 'pdf'
 	previewName?: string
 	mime?: string
+	/** Multiple files and folder selections are delivered as one ZIP bundle. */
+	isArchive?: boolean
+	archiveName?: string
 }
 
 const bytesToBase64 = (bytes: Uint8Array): string => {
@@ -63,6 +66,8 @@ export async function encryptChatFiles(files: File[], displayName?: string, prev
 		totalBytes += bytes.byteLength
 	}
 	const previewName = preview ? `.${metadata[0]?.name || 'video'}.preview.jpg` : undefined
+	const hasFolderPath = files.some(file => Boolean(file.webkitRelativePath && file.webkitRelativePath.includes('/')))
+	const isArchive = files.length > 1 || hasFolderPath
 	if (preview && previewName) entries[previewName] = new Uint8Array(await preview.arrayBuffer())
 	const zipped = zipSync(entries, { level: 6 })
 	const keyBytes = crypto.getRandomValues(new Uint8Array(32))
@@ -83,17 +88,23 @@ export async function encryptChatFiles(files: File[], displayName?: string, prev
 			count: metadata.length,
 			sizeBytes: totalBytes,
 			files: metadata,
-			...(files.length === 1 && files[0]?.type.startsWith('image/')
+			...(files.length === 1 && !isArchive && files[0]?.type.startsWith('image/')
 				? { mediaKind: 'image' as const, mime: files[0].type }
-				: files.length === 1 && (
+				: files.length === 1 && !isArchive && (
 					files[0]?.type === 'application/pdf'
 					|| files[0]?.name.toLowerCase().endsWith('.pdf')
 				)
 					? { mediaKind: 'pdf' as const, mime: files[0].type || 'application/pdf' }
-					: files.length === 1 && files[0]?.type.startsWith('video/')
+					: files.length === 1 && !isArchive && files[0]?.type.startsWith('video/')
 						? { mediaKind: 'video' as const, mime: files[0].type }
 						: {}),
 			...(previewName ? { previewName } : {}),
+			...(isArchive
+				? {
+						isArchive: true,
+						archiveName: `${displayName || (hasFolderPath ? 'Folder' : 'Files')}.zip`,
+					}
+				: {}),
 		},
 	}
 }
@@ -195,4 +206,16 @@ export async function decryptChatFileManifest(manifest: ChatFileMessageManifest,
 		}
 	}
 	return result
+}
+
+export async function createChatFileArchive(
+	files: Map<string, Blob>,
+	manifest: ChatFileMessageManifest,
+): Promise<Blob> {
+	const entries: Record<string, Uint8Array> = {}
+	for (const entry of manifest.files) {
+		const blob = files.get(entry.name)
+		if (blob) entries[entry.name] = new Uint8Array(await blob.arrayBuffer())
+	}
+	return new Blob([zipSync(entries, { level: 6 })], { type: 'application/zip' })
 }

@@ -93,6 +93,7 @@ import {
 	type VoiceMessageManifest,
 } from '@/utils/voiceMessage'
 import {
+	createChatFileArchive,
 	decryptChatFileManifest,
 	encryptChatFiles,
 	uploadEncryptedChatFileDataUrl,
@@ -752,6 +753,7 @@ function ChatFileMessagePlayer({ manifest, isMe }: { manifest: ChatFileMessageMa
 	const [videoBlob, setVideoBlob] = useState<Blob | null>(null)
 	const [imageBlob, setImageBlob] = useState<Blob | null>(null)
 	const [pdfBlob, setPdfBlob] = useState<Blob | null>(null)
+	const [archiveBlob, setArchiveBlob] = useState<Blob | null>(null)
 	const previewBlob = files && manifest.previewName ? files.get(manifest.previewName) ?? null : null
 	const downloadImageBlob = imageBlob ?? previewBlob
 	useEffect(() => {
@@ -766,11 +768,17 @@ function ChatFileMessagePlayer({ manifest, isMe }: { manifest: ChatFileMessageMa
 		setVideoBlob(null)
 		setImageBlob(null)
 		setPdfBlob(null)
+		setArchiveBlob(null)
 		setImageFullscreen(false)
 		setPdfFullscreen(false)
 		void decryptChatFileManifest(manifest, controller.signal)
 			.then(result => {
 				setFiles(result)
+				if (manifest.isArchive) {
+					void createChatFileArchive(result, manifest)
+						.then(setArchiveBlob)
+						.catch(() => setError('ZIP bundle could not be prepared.'))
+				}
 				if (manifest.mediaKind === 'video' || manifest.mediaKind === 'image' || manifest.mediaKind === 'pdf') {
 					const mainEntryName = manifest.files[0]?.name
 					const mainBlob = mainEntryName ? result.get(mainEntryName) : undefined
@@ -925,7 +933,21 @@ function ChatFileMessagePlayer({ manifest, isMe }: { manifest: ChatFileMessageMa
 					{error}
 				</div>
 			) : null}
-			{files && !manifest.mediaKind ? <div className="mt-1 space-y-1">{Array.from(files.entries()).map(([name, blob]) => (
+			{manifest.isArchive ? (
+				<div className="mt-1 flex items-center justify-between gap-2 text-[12px] font-semibold text-slate-700">
+					<span>{manifest.count} files · ZIP bundle · {formatVoiceBytes(manifest.sizeBytes)}</span>
+					{archiveBlob ? (
+						<button
+							type="button"
+							onClick={() => void download(manifest.archiveName || 'Files.zip', archiveBlob)}
+							aria-label="Download ZIP bundle"
+							className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-[#1652f0] transition hover:bg-[#1652f0]/10"
+						>
+							<Download className="h-4 w-4" aria-hidden />
+						</button>
+					) : <Loader2 className="h-4 w-4 animate-spin text-slate-400" aria-label="Preparing ZIP bundle" />}
+				</div>
+			) : files && !manifest.mediaKind ? <div className="mt-1 space-y-1">{Array.from(files.entries()).map(([name, blob]) => (
 				name === manifest.previewName ? null :
 				<div key={name} className="flex items-center gap-2 text-[12px]">
 					<span className="min-w-0 flex-1 truncate text-slate-600">{name}</span>
@@ -1447,7 +1469,8 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		if (!files.length) return
 		const id = crypto.randomUUID()
 		const isPdfFile = files[0].type === 'application/pdf' || files[0].name.toLowerCase().endsWith('.pdf')
-		const mediaFile = files.length === 1 && (
+		const isFolderSelection = files.some(file => Boolean(file.webkitRelativePath && file.webkitRelativePath.includes('/')))
+		const mediaFile = files.length === 1 && !isFolderSelection && (
 			files[0].type.startsWith('video/')
 			|| files[0].type.startsWith('image/')
 			|| isPdfFile

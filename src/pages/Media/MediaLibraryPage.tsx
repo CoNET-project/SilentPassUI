@@ -5,40 +5,17 @@ import { useDaemonContext } from '@/providers/DaemonProvider'
 import { updateBeamioCardShareMetadata } from '@/services/BeamioCard'
 import { ProductionVideoIconFramePicker } from '@/pages/Vouchers/example/ProductionVideoIconFramePicker'
 import { uploadDataUrlToIpfsChunked, uploadMediaFileToIpfsChunked } from '@/utils/ipfsFragmentChunkUpload'
-
-type MediaRecord = {
-	id: string
-	url: string
-	thumbnailUrl?: string
-	name: string
-	kind: 'image' | 'video'
-	createdAt: number
-}
-
-type MediaInput = Partial<Omit<MediaRecord, 'url'>> & Pick<MediaRecord, 'url'>
-
-const MEDIA_STORAGE_PREFIX = 'beamio:merchant-media:v1:'
+import {
+	loadMedia,
+	resolveMerchantMediaItems,
+	saveMedia,
+	type MediaInput,
+	type MediaRecord,
+} from '@/pages/Media/merchantMediaStorage'
 
 type MediaLibraryPageProps = {
 	cardAddress: string
 	initialMedia?: MediaInput[]
-}
-
-function storageKey(address: string): string {
-	return `${MEDIA_STORAGE_PREFIX}${address.trim().toLowerCase()}`
-}
-
-function loadMedia(address: string): MediaRecord[] {
-	try {
-		const parsed = JSON.parse(localStorage.getItem(storageKey(address)) || '[]')
-		return Array.isArray(parsed) ? parsed : []
-	} catch {
-		return []
-	}
-}
-
-function saveMedia(address: string, rows: MediaRecord[]): void {
-	localStorage.setItem(storageKey(address), JSON.stringify(rows))
 }
 
 export function MediaLibraryPage({ cardAddress, initialMedia = [] }: MediaLibraryPageProps) {
@@ -47,18 +24,7 @@ export function MediaLibraryPage({ cardAddress, initialMedia = [] }: MediaLibrar
 	const address = profile?.keyID?.trim() || ''
 	const normalizedCardAddress = cardAddress.trim()
 	const [items, setItems] = useState<MediaRecord[]>(() =>
-		initialMedia.length > 0
-			? initialMedia.map((item, index) => ({
-					id: item.id || `${item.url}-${index}`,
-					url: item.url,
-					...(item.thumbnailUrl ? { thumbnailUrl: item.thumbnailUrl } : {}),
-					name: item.name || 'Merchant media',
-					kind: item.kind === 'video' ? 'video' : 'image',
-					createdAt: item.createdAt || Date.now(),
-				}))
-			: address
-				? loadMedia(address)
-				: [],
+		resolveMerchantMediaItems(initialMedia, address),
 	)
 	const [uploading, setUploading] = useState(false)
 	const [uploadMessage, setUploadMessage] = useState('')

@@ -326,6 +326,7 @@ import {
 } from './programsIssuedItemClaimWallets';
 import { CatalogVideoOgOpenClaimSharePreview } from './businessCatalogListItemPreview';
 import { MediaLibraryPage } from '@/pages/Media/MediaLibraryPage';
+import { MerchantMediaLibraryPicker } from '@/pages/Media/MerchantMediaLibraryPicker';
 import {
   CARD_PREVIEW_LOGO_DISPLAY_TIER_COUNT,
   CARD_PREVIEW_LOGO_ICON_TIER_CLASSES,
@@ -14516,6 +14517,8 @@ const handlePublishCardIssuanceRef = useRef<
  const [cardIssuanceMerchantImageUploading, setCardIssuanceMerchantImageUploading] = useState(false);
  /** User removed hero for next Publish; suppresses metadata fallback until publish succeeds or card switches. */
  const [cardIssuanceMerchantImageClearPending, setCardIssuanceMerchantImageClearPending] = useState(false);
+ /** Programs Overview Discover hero: pick from uploaded media without leaving Overview. */
+ const [discoverMediaPickerOpen, setDiscoverMediaPickerOpen] = useState(false);
  /** Issued Program Asset: sticky merchant card preview background editor (color XOR image). */
  const [cardIssuanceCardBackgroundDrawerOpen, setCardIssuanceCardBackgroundDrawerOpen] = useState(false);
  const [cardIssuanceCardBackgroundMode, setCardIssuanceCardBackgroundMode] = useState<'color' | 'image'>('color');
@@ -21546,6 +21549,48 @@ const disableCardIssuanceTopupPromotion = useCallback(() => {
    },
    [profiles, cardIssuanceExistingCard?.cardAddress]
  );
+
+ const applyCardIssuanceMerchantImageFromUrl = useCallback(
+   async (url: string): Promise<boolean> => {
+     const trimmed = url.trim();
+     if (!trimmed) return false;
+     const issuedAddr = cardIssuanceExistingCard?.cardAddress?.trim();
+     if (!issuedAddr || !ethers.isAddress(issuedAddr)) {
+       setCardIssuanceCreateError('Select a merchant card before setting the background.');
+       return false;
+     }
+     setCardIssuanceCreateError('');
+     setCardIssuanceMerchantImageUploading(true);
+     try {
+       const save = await updateCardMerchantImage({
+         cardAddress: ethers.getAddress(issuedAddr),
+         merchantImage: trimmed,
+       });
+       if (!save.success) {
+         setCardIssuanceCreateError(save.error ?? 'Failed to save merchant image on server.');
+         return false;
+       }
+       setCardIssuanceMerchantImageClearPending(false);
+       setCardIssuanceMerchantImageUrl(trimmed);
+       setCardIssuanceExistingCard((prev) => {
+         if (!prev?.meta) return prev;
+         return { ...prev, meta: { ...prev.meta, merchantImage: trimmed } };
+       });
+       return true;
+     } catch (err: any) {
+       setCardIssuanceCreateError(err?.message ?? 'Failed to save merchant image.');
+       return false;
+     } finally {
+       setCardIssuanceMerchantImageUploading(false);
+     }
+   },
+   [cardIssuanceExistingCard?.cardAddress]
+ );
+
+ const openDiscoverMediaPicker = useCallback(() => {
+   if (cardIssuanceMerchantImageUploading) return;
+   setDiscoverMediaPickerOpen(true);
+ }, [cardIssuanceMerchantImageUploading]);
 
  const removeIssuedProgramMerchantImage = useCallback(async (): Promise<boolean> => {
    const addr = cardIssuanceExistingCard?.cardAddress?.trim();
@@ -42683,18 +42728,28 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                        aria-label={tu('programs_overview_discover_preview_aria')}
                      >
                        <div className="relative">
+                         <button
+                           type="button"
+                           aria-label="Change Discover background"
+                           disabled={cardIssuanceMerchantImageUploading}
+                           onClick={openDiscoverMediaPicker}
+                           className="absolute inset-0 z-[1] cursor-pointer border-0 bg-transparent p-0 disabled:cursor-not-allowed"
+                         />
                          <IpfsImg
                            src={merchantPanelDiscoverHeroSrc}
                            alt=""
-                           className="aspect-[16/9] w-full object-cover"
+                           className="relative z-0 aspect-[16/9] w-full object-cover"
                            draggable={false}
                          />
-                         <div className="absolute right-3 top-3 flex items-center gap-1.5">
+                         <div className="absolute right-3 top-3 z-10 flex items-center gap-1.5">
                            <button
                              type="button"
                              aria-label="Open media library"
                              disabled={cardIssuanceMerchantImageUploading}
-                             onClick={() => handleTabChange('Media')}
+                             onClick={(event) => {
+                               event.stopPropagation();
+                               openDiscoverMediaPicker();
+                             }}
                              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#2c2f31]/45 text-white shadow-md ring-1 ring-white/35 backdrop-blur-[2px] transition hover:bg-[#2c2f31]/60 disabled:cursor-not-allowed disabled:opacity-60"
                            >
                              {cardIssuanceMerchantImageUploading ? (
@@ -42708,14 +42763,17 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                type="button"
                                aria-label={tu('programs_overview_remove_banner')}
                                disabled={cardIssuanceMerchantImageUploading}
-                               onClick={() => void removeIssuedProgramMerchantImage()}
+                               onClick={(event) => {
+                                 event.stopPropagation();
+                                 void removeIssuedProgramMerchantImage();
+                               }}
                                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#2c2f31]/45 text-white shadow-md ring-1 ring-white/35 backdrop-blur-[2px] transition hover:bg-[#2c2f31]/60 disabled:cursor-not-allowed disabled:opacity-60"
                              >
                                <Trash2 className="h-4 w-4" strokeWidth={2} aria-hidden />
                              </button>
                            ) : null}
                          </div>
-                         <div className="absolute -bottom-8 left-6">
+                         <div className="absolute -bottom-8 left-6 z-10">
                            <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl border border-slate-100 bg-white shadow-[0_10px_20px_rgba(15,23,42,0.12)]">
                              {programsOverviewShareImage ? (
                                <IpfsImg
@@ -51817,6 +51875,20 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
         </div>
       </div>
     ) : null}
+
+    <MerchantMediaLibraryPicker
+      open={discoverMediaPickerOpen}
+      onClose={() => setDiscoverMediaPickerOpen(false)}
+      cardAddress={cardIssuanceExistingCard?.cardAddress ?? ''}
+      eoaAddress={profiles?.[0]?.keyID ?? ''}
+      initialMedia={cardIssuanceExistingCard?.meta?.merchantMedia ?? []}
+      selecting={cardIssuanceMerchantImageUploading}
+      onGoToMedia={() => handleTabChange('Media')}
+      onSelect={async (_item, heroUrl) => {
+        const ok = await applyCardIssuanceMerchantImageFromUrl(heroUrl);
+        if (ok) setDiscoverMediaPickerOpen(false);
+      }}
+    />
 
      {/* TxDisplayRow JSON modal (`raw` = full indexer Transaction + mapped UI fields) */}
      {rawTxJsonModal && (

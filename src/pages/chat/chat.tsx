@@ -2391,11 +2391,35 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 			/>
 			<div
 				ref={scrollRef}
-				className="h-full overflow-y-auto px-4 py-4"
+				className="relative h-full overflow-y-auto px-4 py-4"
 				onScroll={() => {
 				clearUnreadIfNeeded()
 				}}
+				onDragEnter={event => {
+					event.preventDefault()
+					setFileDropActive(true)
+				}}
+				onDragOver={event => {
+					event.preventDefault()
+					event.dataTransfer.dropEffect = 'copy'
+				}}
+				onDragLeave={event => {
+					if (event.currentTarget === event.target) setFileDropActive(false)
+				}}
+				onDrop={event => {
+					event.preventDefault()
+					setFileDropActive(false)
+					void filesFromDropItems(event.dataTransfer.items).then(addChatFiles)
+				}}
 			>
+				{fileDropActive ? (
+					<div className="pointer-events-none absolute inset-3 z-30 grid place-items-center rounded-3xl border-2 border-dashed border-[#1652f0]/70 bg-[#dceaff]/55 backdrop-blur-sm">
+						<div className="rounded-2xl bg-white/85 px-6 py-4 text-center shadow-lg ring-1 ring-white/80">
+							<p className="text-base font-semibold text-[#1652f0]">Drop files to attach</p>
+							<p className="mt-1 text-xs text-slate-500">Files and folders are encrypted before upload.</p>
+						</div>
+					</div>
+				) : null}
 				<div className="min-h-full flex flex-col justify-end">
 				<div className="mx-auto w-full max-w-[820px]">
 					<div aria-hidden className="h-[96px]" />

@@ -37,6 +37,7 @@ type CashTreesAndroidOpenUrlBridge = CashTreesNativeNfcBridge & {
 	publishAppState?: (json: string) => void
 	queryInstalledApps?: (json: string) => string
 	listInstalledWalletApps?: () => string
+	saveFile?: (json: string) => void
 }
 
 const LEGACY_RECEIVE_WALLET_NATIVE_IDS = new Set(['metamask', 'base'])
@@ -212,6 +213,33 @@ function tryNativeOpenUrl(url: string): boolean {
 		}
 	}
 
+	return false
+}
+
+export function saveFileToNative(payload: {
+	dataUrl: string
+	filename?: string
+	mimeType?: string
+	requestId?: string
+}): boolean {
+	const w = cashTreesNativeWindow()
+	if (!w) return false
+	if (typeof w.CashTreesIOS?.saveFile === 'function') {
+		try {
+			w.CashTreesIOS.saveFile(payload)
+			return true
+		} catch {
+			return false
+		}
+	}
+	if (typeof w.CashTreesAndroid?.saveFile === 'function') {
+		try {
+			w.CashTreesAndroid.saveFile(JSON.stringify(payload))
+			return true
+		} catch {
+			return false
+		}
+	}
 	return false
 }
 

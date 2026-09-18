@@ -55,7 +55,7 @@ import { PlusActionMenu } from "./components/PlusActionMenu"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import { searchUsername, storeSystemData, AuthorizationSign } from '@/services/beamio'
 import { fiatPrefix } from '@/services/currency'
-import { getCashTreesNativeNfcBridge, openExternalUrl } from '@/utils/cashTreesNativeNfc'
+import { getCashTreesNativeNfcBridge, openExternalUrl, saveFileToNative } from '@/utils/cashTreesNativeNfc'
 import { MessageSendReceiveCard } from "./components/messageSendReceiveCard"
 import { AaMultisigChatRequestCard } from '@/components/chat/AaMultisigChatRequestCard'
 import { ChatShareLinkPreviewCard } from '@/components/chat/ChatShareLinkPreviewCard'
@@ -488,14 +488,16 @@ function ChatFileMessagePlayer({ manifest, isMe }: { manifest: ChatFileMessageMa
 				reader.readAsDataURL(blob)
 			})
 			try {
-				native.saveFile({
+				const saved = saveFileToNative({
 					dataUrl,
 					filename: name.split('/').pop() || 'download',
 					mimeType: blob.type || 'application/octet-stream',
 					requestId: crypto.randomUUID(),
 				})
-				URL.revokeObjectURL(url)
-				return
+				if (saved) {
+					URL.revokeObjectURL(url)
+					return
+				}
 			} catch {
 				// Fall back to the browser download path.
 			}

@@ -3137,29 +3137,6 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 								</button>
 							</div>
 						)}
-						{voiceDraftBlob && !isRecordingVoice ? (
-							<div className="mb-2 flex items-center gap-3 rounded-2xl bg-white/75 px-3 py-2 ring-1 ring-black/5 backdrop-blur-xl">
-								<span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#dceaff] text-[#1652f0]" aria-hidden>
-									<Mic className="h-4 w-4" strokeWidth={2.3} />
-								</span>
-								<div className="min-w-0 flex-1">
-									<p className="truncate text-[13px] font-semibold text-slate-700">Voice message ready</p>
-									<p className="text-[11px] text-slate-500">
-										{formatVoiceDuration(voiceDurationMs)} · {formatVoiceBytes(voiceRecordedBytes)} · Press Send
-									</p>
-								</div>
-								<button
-									type="button"
-									tabIndex={-1}
-									disabled={voiceSending}
-									onClick={cancelVoiceDraft}
-									aria-label="Delete voice message"
-									className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-slate-500 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
-								>
-									<X className="h-4 w-4" strokeWidth={2.4} />
-								</button>
-							</div>
-						) : null}
 						{fileError ? <div role="alert" className="mb-2 rounded-xl bg-rose-50 px-3 py-2 text-[12px] text-rose-700">{fileError}</div> : null}
 						<div
 							className={fileDropActive ? 'rounded-2xl ring-2 ring-[#1652f0]/50' : ''}
@@ -3217,6 +3194,29 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 													<button type="button" tabIndex={-1} onClick={() => cancelChatFileJob(job.id)} aria-label="Cancel file upload" className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-slate-500 hover:bg-rose-50 hover:text-rose-600"><X className="h-4 w-4" strokeWidth={2.4} /></button>
 												</div>
 											))}
+										</div>
+									) : null}
+									{voiceDraftBlob && !isRecordingVoice ? (
+										<div className="mx-2 flex items-center gap-2 pt-2">
+											<div className="inline-flex max-w-[min(100%,22rem)] items-center gap-2 rounded-2xl bg-white/75 px-3 py-2 ring-1 ring-black/5 backdrop-blur-xl">
+												<span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#dceaff] text-[#1652f0]" aria-hidden>
+													<Mic className="h-4 w-4" strokeWidth={2.3} />
+												</span>
+												<div className="min-w-0 flex-1">
+													<p className="truncate text-[13px] font-semibold text-slate-700">Voice message</p>
+													<p className="text-[11px] text-slate-500">{formatVoiceDuration(voiceDurationMs)} · {formatVoiceBytes(voiceRecordedBytes)}</p>
+												</div>
+												<button
+													type="button"
+													tabIndex={-1}
+													disabled={voiceSending}
+													onClick={cancelVoiceDraft}
+													aria-label="Delete voice message"
+													className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-slate-500 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
+												>
+													<X className="h-4 w-4" strokeWidth={2.4} />
+												</button>
+											</div>
 										</div>
 									) : null}
 									<button

@@ -553,7 +553,15 @@ function ChatFileMessagePlayer({ manifest, isMe }: { manifest: ChatFileMessageMa
 				name === manifest.previewName ? null :
 				<div key={name} className="flex items-center gap-2 text-[12px]">
 					<span className="min-w-0 flex-1 truncate text-slate-600">{name}</span>
-					<button type="button" onClick={() => download(name, blob)} className="shrink-0 font-semibold text-[#1652f0]">Download</button>
+					<button
+						type="button"
+						onClick={() => download(name, blob)}
+						aria-label={`Download ${name}`}
+						title="Download file"
+						className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-[#1652f0] transition hover:bg-[#1652f0]/10"
+					>
+						<Download className="h-4 w-4" aria-hidden />
+					</button>
 				</div>
 			))}</div> : null}
 		</div>
@@ -3173,7 +3181,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 									{fileJobs.length || (voiceDraftBlob && !isRecordingVoice) ? (
 										<div className="relative mx-2 flex flex-wrap items-center justify-start gap-1.5 pt-2">
 											{voiceDraftBlob && !isRecordingVoice ? (
-												<div className="flex items-center gap-2 rounded-2xl bg-white/75 px-3 py-2 ring-1 ring-black/5 backdrop-blur-xl">
+												<div className="inline-flex h-11 max-w-[min(100%,22rem)] items-center gap-2 rounded-2xl bg-white/75 px-3 ring-1 ring-black/5 backdrop-blur-xl">
 													<span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#dceaff] text-[#1652f0]" aria-hidden>
 														<Mic className="h-4 w-4" strokeWidth={2.3} />
 													</span>
@@ -3187,9 +3195,9 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 												</div>
 											) : null}
 											{fileJobs.map(job => (
-												<div key={job.id} className="inline-flex max-w-[min(100%,22rem)] items-center gap-2 rounded-2xl bg-white/75 px-3 py-2 ring-1 ring-black/5 backdrop-blur-xl">
+												<div key={job.id} className="inline-flex h-11 max-w-[min(100%,22rem)] items-center gap-2 rounded-2xl bg-white/75 px-3 ring-1 ring-black/5 backdrop-blur-xl">
 													{job.thumbnailUrl ? (
-														<div className="relative h-12 w-16 shrink-0 overflow-hidden rounded-lg bg-slate-100">
+														<div className="relative h-8 w-10 shrink-0 overflow-hidden rounded-lg bg-slate-100">
 															<img src={job.thumbnailUrl} alt={job.name} className="h-full w-full object-cover" />
 															{job.files.length === 1 && job.files[0].type.startsWith('video/') ? (
 																<span className="absolute inset-0 grid place-items-center">

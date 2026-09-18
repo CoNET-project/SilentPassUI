@@ -4305,6 +4305,18 @@ export default function DiscoverMerchantGiftSheet({
 							</span>
 						</div>
 					) : null}
+					{remainingPayMethod === 'usdc' &&
+					reward13Enabled &&
+					!reward13Loading &&
+					reward13CoveredUsdc6 > 0n &&
+					!rewardPtFullyCoversGift ? (
+						<div className="flex items-center justify-between">
+							<span>Reward PT discount</span>
+							<span className="font-medium" style={{ color: brandSaved }}>
+								-{reward13CoveredUsdcLabel}
+							</span>
+						</div>
+					) : null}
 					{!rewardPtFullyCoversGift && remainingPayMethod === 'usdc' && remainingUsdcQuoteLabel ? (
 						<div className="flex items-center justify-between">
 							<span className="flex items-center gap-1">

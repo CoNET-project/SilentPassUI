@@ -444,8 +444,10 @@ function ChatFileMessagePlayer({ manifest, isMe }: { manifest: ChatFileMessageMa
 	const [playing, setPlaying] = useState(false)
 	const [videoUrl, setVideoUrl] = useState<string | null>(null)
 	const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+	const [imageFullscreen, setImageFullscreen] = useState(false)
 	const videoRef = useRef<HTMLVideoElement | null>(null)
 	const [videoBlob, setVideoBlob] = useState<Blob | null>(null)
+	const previewBlob = files && manifest.previewName ? files.get(manifest.previewName) ?? null : null
 	useEffect(() => {
 		const controller = new AbortController()
 		setLoading(true)
@@ -454,6 +456,7 @@ function ChatFileMessagePlayer({ manifest, isMe }: { manifest: ChatFileMessageMa
 		setVideoUrl(null)
 		setPreviewUrl(null)
 		setVideoBlob(null)
+		setImageFullscreen(false)
 		void decryptChatFileManifest(manifest, controller.signal)
 			.then(result => {
 				setFiles(result)
@@ -525,25 +528,32 @@ function ChatFileMessagePlayer({ manifest, isMe }: { manifest: ChatFileMessageMa
 					) : null}
 				</div>
 			) : null}
-			{manifest.mediaKind === 'image' && previewUrl ? (
-				<div className="relative mb-2 overflow-hidden rounded-xl bg-slate-100">
-					<img src={previewUrl} alt={manifest.name} className="block max-h-64 w-full object-contain" />
-				</div>
-			) : null}
 			{manifest.mediaKind === 'video' || manifest.mediaKind === 'image' ? (
-				<div className="flex items-center justify-end gap-2 text-[12px] font-semibold text-slate-700">
-					<span>{manifest.count} file{manifest.count === 1 ? '' : 's'} · {formatVoiceBytes(manifest.sizeBytes)}</span>
-					{videoBlob ? (
-						<button
-							type="button"
-							onClick={() => download(manifest.name, videoBlob)}
-							aria-label="Download video"
-							className="grid h-7 w-7 place-items-center rounded-full text-[#1652f0] transition hover:bg-[#1652f0]/10"
-						>
-							<Download className="h-4 w-4" aria-hidden />
-						</button>
-					) : null}
-				</div>
+				manifest.mediaKind === 'image' ? (
+					<button
+						type="button"
+						disabled={!previewUrl}
+						onClick={() => setImageFullscreen(true)}
+						className="flex w-full items-center justify-end gap-2 text-[12px] font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+						aria-label="Open image fullscreen"
+					>
+						<span>{manifest.count} file{manifest.count === 1 ? '' : 's'} · {formatVoiceBytes(manifest.sizeBytes)}</span>
+					</button>
+				) : (
+					<div className="flex items-center justify-end gap-2 text-[12px] font-semibold text-slate-700">
+						<span>{manifest.count} file{manifest.count === 1 ? '' : 's'} · {formatVoiceBytes(manifest.sizeBytes)}</span>
+						{videoBlob ? (
+							<button
+								type="button"
+								onClick={() => download(manifest.name, videoBlob)}
+								aria-label="Download video"
+								className="grid h-7 w-7 place-items-center rounded-full text-[#1652f0] transition hover:bg-[#1652f0]/10"
+							>
+								<Download className="h-4 w-4" aria-hidden />
+							</button>
+						) : null}
+					</div>
+				)
 			) : (
 				<div className="text-[12px] font-semibold text-slate-700">{manifest.count} file{manifest.count === 1 ? '' : 's'} · {formatVoiceBytes(manifest.sizeBytes)}</div>
 			)}
@@ -564,6 +574,38 @@ function ChatFileMessagePlayer({ manifest, isMe }: { manifest: ChatFileMessageMa
 					</button>
 				</div>
 			))}</div> : null}
+			{manifest.mediaKind === 'image' && imageFullscreen && previewUrl ? (
+				<div
+					className="fixed inset-0 z-[120] flex items-center justify-center bg-black/95"
+					role="dialog"
+					aria-modal="true"
+					aria-label="Image preview"
+				>
+					<img src={previewUrl} alt={manifest.name} className="max-h-full max-w-full object-contain px-4 py-20" />
+					<div className="pointer-events-none fixed inset-x-0 top-0 z-10 flex items-center justify-between px-4 pt-[max(1rem,env(safe-area-inset-top,0px))]">
+						<button
+							type="button"
+							tabIndex={-1}
+							onClick={() => setImageFullscreen(false)}
+							aria-label="Back"
+							className="pointer-events-auto grid h-11 w-11 place-items-center rounded-full border border-white/35 bg-white/20 text-white/90 shadow-[0_2px_10px_rgba(0,0,0,0.35)] backdrop-blur-md transition hover:bg-white/30"
+						>
+							<ChevronLeft className="h-5 w-5" strokeWidth={2.5} aria-hidden />
+						</button>
+						{previewBlob ? (
+							<button
+								type="button"
+								tabIndex={-1}
+								onClick={() => void download(manifest.name, previewBlob)}
+								aria-label="Download image"
+								className="pointer-events-auto grid h-11 w-11 place-items-center rounded-full border border-white/35 bg-white/20 text-white/90 shadow-[0_2px_10px_rgba(0,0,0,0.35)] backdrop-blur-md transition hover:bg-white/30"
+							>
+								<Download className="h-5 w-5" aria-hidden />
+							</button>
+						) : null}
+					</div>
+				</div>
+			) : null}
 		</div>
 	)
 }

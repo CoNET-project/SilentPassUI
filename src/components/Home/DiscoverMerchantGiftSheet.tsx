@@ -347,6 +347,31 @@ function occasionSubtitle(occ: GiftOccasion): string {
 		: ''
 }
 
+function giftOccasionDefaultBackground(occasion: GiftOccasion, kind: GiftStep1Kind): string {
+	const palettes: Record<string, [string, string, string]> = {
+		'just-because': ['#f6d7c8', '#d98772', '#7a4039'],
+		birthday: ['#f7d5ea', '#d77bae', '#79375e'],
+		coffee: ['#ead8c3', '#a87955', '#513828'],
+		celebrate: ['#e2d6f7', '#9474cf', '#4e397d'],
+		thanks: ['#f5e4b8', '#c99a42', '#6c4d1f'],
+		cheers: ['#ecd8bd', '#ad7d46', '#593d23'],
+		'special-feast': ['#e7c7c7', '#9f4d52', '#4e2328'],
+		'self-care': ['#d9ece8', '#72aaa1', '#315e58'],
+		recovery: ['#dcebd2', '#79a66a', '#365e31'],
+		wellness: ['#dcebd2', '#79a66a', '#365e31'],
+	}
+	const [light, mid, dark] =
+		palettes[occasion.id] ??
+		(kind === 'health-beauty'
+			? ['#dcebdc', '#7aa780', '#365b3c']
+			: ['#eadfc9', '#a58a62', '#55452f'])
+	const subtitle = occasionSubtitle(occasion)
+	const safeLabel = occasion.label.replace(/[&<>"']/g, '')
+	const safeSubtitle = subtitle.replace(/[&<>"']/g, '')
+	const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="600" viewBox="0 0 1200 600"><defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${light}"/><stop offset=".56" stop-color="${mid}"/><stop offset="1" stop-color="${dark}"/></linearGradient><radialGradient id="glow"><stop offset="0" stop-color="#fff" stop-opacity=".72"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient></defs><rect width="1200" height="600" fill="url(#bg)"/><circle cx="1020" cy="105" r="310" fill="url(#glow)"/><circle cx="190" cy="535" r="260" fill="#fff" opacity=".12"/><path d="M0 440 C240 360 410 520 650 420 S1010 310 1200 405 V600 H0Z" fill="#fff" opacity=".11"/><text x="930" y="245" text-anchor="middle" font-size="132">${occasion.emoji}</text><text x="930" y="310" text-anchor="middle" fill="#fff" opacity=".88" font-family="Arial,sans-serif" font-size="31" font-weight="700">${safeLabel}</text><text x="930" y="348" text-anchor="middle" fill="#fff" opacity=".68" font-family="Arial,sans-serif" font-size="21">${safeSubtitle}</text></svg>`
+	return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`
+}
+
 function themeDefaultAmount(kind: GiftStep1Kind): number {
 	return kind === 'food-beverage' ? 50 : 100
 }
@@ -807,6 +832,10 @@ export default function DiscoverMerchantGiftSheet({
 	const merchantLabel = merchantTitle.trim() || 'this merchant'
 	const previewAmount = formatPreviewAmount(amountText)
 	const activeOccasion = occasionCatalog.find((o) => o.id === occasionId) ?? occasionCatalog[0]!
+	const defaultOccasionBackground = useMemo(
+		() => giftOccasionDefaultBackground(activeOccasion, step1Kind),
+		[activeOccasion, step1Kind],
+	)
 
 	const multiplierCards = useMemo(
 		() =>
@@ -2054,6 +2083,14 @@ export default function DiscoverMerchantGiftSheet({
 		>
 			{!selectedGiftCardImage ? (
 				<>
+					<img
+						key={defaultOccasionBackground}
+						src={defaultOccasionBackground}
+						alt=""
+						className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+						aria-hidden
+					/>
+					<div className="pointer-events-none absolute inset-0 bg-black/20" />
 					<div className="pointer-events-none absolute -right-8 -bottom-8 h-44 w-44 rounded-full bg-white/10 blur-xl" />
 					<div
 						className="pointer-events-none absolute right-4 top-4 opacity-15"

@@ -9579,6 +9579,10 @@ export default function Market() {
 				{filteredFeaturedCards.map((item) => {
 					const likeCount = pickDiscoverMerchantLikeCount(discoverMerchantStatByCard, item.cardAddress)
 					const shareClickCount = pickDiscoverMerchantRefClickCount(discoverMerchantStatByCard, item.cardAddress)
+					const featuredBrandColor =
+						parseDiscoverMerchantBrandColor(item.metadataRoot) ?? DISCOVER_VISIT_BRAND_FALLBACK
+					const featuredBrandTint =
+						discoverMixCssColorWithWhite(featuredBrandColor, 0.9) ?? '#ffffff'
 					return (
 					<button
 						key={item.id}
@@ -9615,7 +9619,7 @@ export default function Market() {
 								</div>
 							</div>
 						</div>
-						<div className="px-6 pb-6 pt-11">
+						<div className="px-6 pb-6 pt-11" style={{ backgroundColor: featuredBrandTint }}>
 							<div className="flex items-start justify-between gap-3 mb-1">
 								<h4 className="font-bold text-[19px] leading-none tracking-tight text-[#1f2328] dark:text-slate-100 line-clamp-1">
 									{item.title}

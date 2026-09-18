@@ -176,7 +176,12 @@ export async function decryptChatFileManifest(manifest: ChatFileMessageManifest,
 	}
 	if (manifest.previewName) {
 		const previewBytes = files[manifest.previewName]
-		if (previewBytes) result.set(manifest.previewName, new Blob([previewBytes], { type: 'image/jpeg' }))
+		if (previewBytes) {
+			const previewMime = manifest.mediaKind === 'image'
+				? (manifest.mime || 'image/jpeg')
+				: 'image/jpeg'
+			result.set(manifest.previewName, new Blob([previewBytes], { type: previewMime }))
+		}
 	}
 	return result
 }

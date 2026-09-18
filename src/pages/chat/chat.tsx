@@ -2485,18 +2485,47 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		}
 	}, [chatData.unreadCount])
 
-	// ✅ 2) messages 初次装载 / reflashdata 后：补一枪“首屏到底”（只做一次）
+	// 首次装载 / rehydrate 后，持续贴底到消息内容完成布局。
+	// 图片、音频和文件消息会在消息数组不变时异步改变 scrollHeight，
+	// 因此单次 requestAnimationFrame 不足以保证最新消息可见。
 	useEffect(() => {
 		if (!pendingInitialScrollRef.current) return
-		// 只要有消息，就在下一帧到底
 		if (!messages?.length) return
 
-		requestAnimationFrame(() => {
-				scrollToBottom("auto")
-			didInitialScrollRef.current = true
+		const scroller = scrollRef.current
+		if (!scroller) return
+		let finishTimer: number | null = null
+		let hardStopTimer: number | null = null
+		const startedAt = Date.now()
+		const content = scroller.firstElementChild
+		const finishPinning = () => {
 			pendingInitialScrollRef.current = false
-			forceClearUnread() // ✅ 替代 clearUnreadIfNeeded
-		})
+			didInitialScrollRef.current = true
+			forceClearUnread()
+		}
+		const pinToBottom = () => {
+			if (!pendingInitialScrollRef.current) return
+			scrollToBottom("auto")
+			if (Date.now() - startedAt >= 3500) finishPinning()
+			else {
+				if (finishTimer !== null) window.clearTimeout(finishTimer)
+				finishTimer = window.setTimeout(finishPinning, 600)
+			}
+		}
+		const frame = requestAnimationFrame(pinToBottom)
+		const observer = typeof ResizeObserver !== 'undefined'
+			? new ResizeObserver(pinToBottom)
+			: null
+		observer?.observe(scroller)
+		if (content instanceof HTMLElement) observer?.observe(content)
+		hardStopTimer = window.setTimeout(finishPinning, 4500)
+
+		return () => {
+			cancelAnimationFrame(frame)
+			observer?.disconnect()
+			if (finishTimer !== null) window.clearTimeout(finishTimer)
+			if (hardStopTimer !== null) window.clearTimeout(hardStopTimer)
+		}
 	}, [messages.length])
 
 	// 当用户发送新消息后，视图自动滚动到最底部

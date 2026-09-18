@@ -444,10 +444,13 @@ function ChatFileMessagePlayer({ manifest, isMe }: { manifest: ChatFileMessageMa
 	const [playing, setPlaying] = useState(false)
 	const [videoUrl, setVideoUrl] = useState<string | null>(null)
 	const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+	const [fullImageUrl, setFullImageUrl] = useState<string | null>(null)
 	const [imageFullscreen, setImageFullscreen] = useState(false)
 	const videoRef = useRef<HTMLVideoElement | null>(null)
 	const [videoBlob, setVideoBlob] = useState<Blob | null>(null)
+	const [imageBlob, setImageBlob] = useState<Blob | null>(null)
 	const previewBlob = files && manifest.previewName ? files.get(manifest.previewName) ?? null : null
+	const downloadImageBlob = imageBlob ?? previewBlob
 	useEffect(() => {
 		const controller = new AbortController()
 		setLoading(true)
@@ -455,19 +458,33 @@ function ChatFileMessagePlayer({ manifest, isMe }: { manifest: ChatFileMessageMa
 		setFiles(null)
 		setVideoUrl(null)
 		setPreviewUrl(null)
+		setFullImageUrl(null)
 		setVideoBlob(null)
+		setImageBlob(null)
 		setImageFullscreen(false)
 		void decryptChatFileManifest(manifest, controller.signal)
 			.then(result => {
 				setFiles(result)
 				if (manifest.mediaKind === 'video' || manifest.mediaKind === 'image') {
+					const mainEntryName = manifest.files[0]?.name
+					const mainBlob = mainEntryName ? result.get(mainEntryName) : undefined
 					const videoEntry = Array.from(result.entries()).find(([name]) => name !== manifest.previewName)?.[1]
 					const preview = manifest.previewName ? result.get(manifest.previewName) : undefined
 					if (manifest.mediaKind === 'video' && videoEntry) {
 						setVideoBlob(videoEntry)
 						setVideoUrl(URL.createObjectURL(videoEntry))
 					}
-					if (preview) setPreviewUrl(URL.createObjectURL(preview))
+					if (manifest.mediaKind === 'image') {
+						const fullImage = mainBlob ?? videoEntry
+						if (fullImage) {
+							setImageBlob(fullImage)
+							setFullImageUrl(URL.createObjectURL(fullImage))
+						}
+						const thumbSource = preview ?? fullImage
+						if (thumbSource) setPreviewUrl(URL.createObjectURL(thumbSource))
+					} else if (preview) {
+						setPreviewUrl(URL.createObjectURL(preview))
+					}
 				}
 			})
 			.catch(error => {
@@ -478,6 +495,7 @@ function ChatFileMessagePlayer({ manifest, isMe }: { manifest: ChatFileMessageMa
 			controller.abort()
 			setVideoUrl(previous => { if (previous) URL.revokeObjectURL(previous); return null })
 			setPreviewUrl(previous => { if (previous) URL.revokeObjectURL(previous); return null })
+			setFullImageUrl(previous => { if (previous) URL.revokeObjectURL(previous); return null })
 		}
 	}, [manifest])
 	const download = async (name: string, blob: Blob) => {
@@ -511,8 +529,16 @@ function ChatFileMessagePlayer({ manifest, isMe }: { manifest: ChatFileMessageMa
 		anchor.click()
 		window.setTimeout(() => URL.revokeObjectURL(url), 0)
 	}
+	const isImageMessage = manifest.mediaKind === 'image'
 	return (
-		<div className={['min-w-[220px] rounded-2xl px-3 py-2 ring-1 ring-black/5', isMe ? 'bg-[#dceaff]/70' : 'bg-white/70'].join(' ')}>
+		<div
+			className={[
+				isImageMessage
+					? 'max-w-[min(78vw,280px)] overflow-hidden rounded-2xl p-0 ring-1 ring-black/5'
+					: 'min-w-[220px] rounded-2xl px-3 py-2 ring-1 ring-black/5',
+				isMe ? 'bg-[#dceaff]/70' : 'bg-white/70',
+			].join(' ')}
+		>
 			{manifest.mediaKind === 'video' && videoUrl ? (
 				<div className="relative mb-2 overflow-hidden rounded-xl bg-slate-900">
 					<video ref={videoRef} src={videoUrl} className="block max-h-64 w-full object-contain" onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onEnded={() => setPlaying(false)} controls={false} />
@@ -528,37 +554,43 @@ function ChatFileMessagePlayer({ manifest, isMe }: { manifest: ChatFileMessageMa
 					) : null}
 				</div>
 			) : null}
-			{manifest.mediaKind === 'video' || manifest.mediaKind === 'image' ? (
-				manifest.mediaKind === 'image' ? (
-					<button
-						type="button"
-						disabled={!previewUrl}
-						onClick={() => setImageFullscreen(true)}
-						className="flex w-full items-center justify-end gap-2 text-[12px] font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
-						aria-label="Open image fullscreen"
-					>
-						<span>{manifest.count} file{manifest.count === 1 ? '' : 's'} · {formatVoiceBytes(manifest.sizeBytes)}</span>
-					</button>
-				) : (
-					<div className="flex items-center justify-end gap-2 text-[12px] font-semibold text-slate-700">
-						<span>{manifest.count} file{manifest.count === 1 ? '' : 's'} · {formatVoiceBytes(manifest.sizeBytes)}</span>
-						{videoBlob ? (
-							<button
-								type="button"
-								onClick={() => download(manifest.name, videoBlob)}
-								aria-label="Download video"
-								className="grid h-7 w-7 place-items-center rounded-full text-[#1652f0] transition hover:bg-[#1652f0]/10"
-							>
-								<Download className="h-4 w-4" aria-hidden />
-							</button>
-						) : null}
-					</div>
-				)
+			{manifest.mediaKind === 'image' ? (
+				<button
+					type="button"
+					disabled={!previewUrl}
+					onClick={() => setImageFullscreen(true)}
+					className="block w-full text-left disabled:cursor-wait"
+					aria-label="Open image fullscreen"
+				>
+					{previewUrl ? (
+						<img src={previewUrl} alt="" className="block max-h-64 w-full object-cover" />
+					) : (
+						<div className="aspect-[4/3] min-w-[200px] animate-pulse bg-slate-200/80" aria-hidden />
+					)}
+				</button>
+			) : manifest.mediaKind === 'video' ? (
+				<div className="flex items-center justify-end gap-2 px-3 py-2 text-[12px] font-semibold text-slate-700">
+					<span>{manifest.count} file{manifest.count === 1 ? '' : 's'} · {formatVoiceBytes(manifest.sizeBytes)}</span>
+					{videoBlob ? (
+						<button
+							type="button"
+							onClick={() => download(manifest.name, videoBlob)}
+							aria-label="Download video"
+							className="grid h-7 w-7 place-items-center rounded-full text-[#1652f0] transition hover:bg-[#1652f0]/10"
+						>
+							<Download className="h-4 w-4" aria-hidden />
+						</button>
+					) : null}
+				</div>
 			) : (
 				<div className="text-[12px] font-semibold text-slate-700">{manifest.count} file{manifest.count === 1 ? '' : 's'} · {formatVoiceBytes(manifest.sizeBytes)}</div>
 			)}
-			{loading ? <div className="mt-1 text-[12px] text-slate-500">Preparing files…</div> : null}
-			{error ? <div role="alert" className="mt-1 text-[12px] text-rose-600">{error}</div> : null}
+			{loading && !isImageMessage ? <div className="mt-1 text-[12px] text-slate-500">Preparing files…</div> : null}
+			{error ? (
+				<div role="alert" className={isImageMessage ? 'px-3 py-2 text-[12px] text-rose-600' : 'mt-1 text-[12px] text-rose-600'}>
+					{error}
+				</div>
+			) : null}
 			{files && !manifest.mediaKind ? <div className="mt-1 space-y-1">{Array.from(files.entries()).map(([name, blob]) => (
 				name === manifest.previewName ? null :
 				<div key={name} className="flex items-center gap-2 text-[12px]">
@@ -574,14 +606,18 @@ function ChatFileMessagePlayer({ manifest, isMe }: { manifest: ChatFileMessageMa
 					</button>
 				</div>
 			))}</div> : null}
-			{manifest.mediaKind === 'image' && imageFullscreen && previewUrl ? (
+			{manifest.mediaKind === 'image' && imageFullscreen && (fullImageUrl || previewUrl) ? (
 				<div
 					className="fixed inset-0 z-[120] flex items-center justify-center bg-black/95"
 					role="dialog"
 					aria-modal="true"
 					aria-label="Image preview"
 				>
-					<img src={previewUrl} alt={manifest.name} className="max-h-full max-w-full object-contain px-4 py-20" />
+					<img
+						src={fullImageUrl ?? previewUrl ?? ''}
+						alt=""
+						className="max-h-full max-w-full object-contain px-4 py-20"
+					/>
 					<div className="pointer-events-none fixed inset-x-0 top-0 z-10 flex items-center justify-between px-4 pt-[max(1rem,env(safe-area-inset-top,0px))]">
 						<button
 							type="button"
@@ -592,11 +628,11 @@ function ChatFileMessagePlayer({ manifest, isMe }: { manifest: ChatFileMessageMa
 						>
 							<ChevronLeft className="h-5 w-5" strokeWidth={2.5} aria-hidden />
 						</button>
-						{previewBlob ? (
+						{downloadImageBlob ? (
 							<button
 								type="button"
 								tabIndex={-1}
-								onClick={() => void download(manifest.name, previewBlob)}
+								onClick={() => void download(manifest.files[0]?.name ?? manifest.name, downloadImageBlob)}
 								aria-label="Download image"
 								className="pointer-events-auto grid h-11 w-11 place-items-center rounded-full border border-white/35 bg-white/20 text-white/90 shadow-[0_2px_10px_rgba(0,0,0,0.35)] backdrop-blur-md transition hover:bg-white/30"
 							>

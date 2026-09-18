@@ -406,10 +406,10 @@ function ChatFileMessagePlayer({ manifest, isMe }: { manifest: ChatFileMessageMa
 		void decryptChatFileManifest(manifest, controller.signal)
 			.then(result => {
 				setFiles(result)
-				if (manifest.mediaKind === 'video') {
+				if (manifest.mediaKind === 'video' || manifest.mediaKind === 'image') {
 					const videoEntry = Array.from(result.entries()).find(([name]) => name !== manifest.previewName)?.[1]
 					const preview = manifest.previewName ? result.get(manifest.previewName) : undefined
-					if (videoEntry) {
+					if (manifest.mediaKind === 'video' && videoEntry) {
 						setVideoBlob(videoEntry)
 						setVideoUrl(URL.createObjectURL(videoEntry))
 					}
@@ -451,7 +451,12 @@ function ChatFileMessagePlayer({ manifest, isMe }: { manifest: ChatFileMessageMa
 					) : null}
 				</div>
 			) : null}
-			{manifest.mediaKind === 'video' ? (
+			{manifest.mediaKind === 'image' && previewUrl ? (
+				<div className="relative mb-2 overflow-hidden rounded-xl bg-slate-100">
+					<img src={previewUrl} alt={manifest.name} className="block max-h-64 w-full object-contain" />
+				</div>
+			) : null}
+			{manifest.mediaKind === 'video' || manifest.mediaKind === 'image' ? (
 				<div className="flex items-center justify-end gap-2 text-[12px] font-semibold text-slate-700">
 					<span>{manifest.count} file{manifest.count === 1 ? '' : 's'} · {formatVoiceBytes(manifest.sizeBytes)}</span>
 					{videoBlob ? (
@@ -470,7 +475,7 @@ function ChatFileMessagePlayer({ manifest, isMe }: { manifest: ChatFileMessageMa
 			)}
 			{loading ? <div className="mt-1 text-[12px] text-slate-500">Preparing files…</div> : null}
 			{error ? <div role="alert" className="mt-1 text-[12px] text-rose-600">{error}</div> : null}
-			{files ? <div className="mt-1 space-y-1">{Array.from(files.entries()).map(([name, blob]) => (
+			{files && !manifest.mediaKind ? <div className="mt-1 space-y-1">{Array.from(files.entries()).map(([name, blob]) => (
 				name === manifest.previewName ? null :
 				<div key={name} className="flex items-center gap-2 text-[12px]">
 					<span className="min-w-0 flex-1 truncate text-slate-600">{name}</span>
@@ -967,7 +972,8 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		const files = incoming
 		if (!files.length) return
 		const id = crypto.randomUUID()
-		const videoFile = files.length === 1 && files[0].type.startsWith('video/') ? files[0] : null
+		const mediaFile = files.length === 1 && (files[0].type.startsWith('video/') || files[0].type.startsWith('image/')) ? files[0] : null
+		const videoFile = mediaFile?.type.startsWith('video/') ? mediaFile : null
 		const controller = new AbortController()
 		fileControllersRef.current.set(id, controller)
 		setFileJobs(previous => [
@@ -985,6 +991,9 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 			if (videoFile) {
 				setFileJobs(previous => previous.map(item => item.id === id ? { ...item, progress: 0.03 } : item))
 				thumbnail = await createVideoThumbnail(videoFile)
+				setFileJobs(previous => previous.map(item => item.id === id ? { ...item, progress: 0.08 } : item))
+			} else if (mediaFile) {
+				thumbnail = mediaFile
 				setFileJobs(previous => previous.map(item => item.id === id ? { ...item, progress: 0.08 } : item))
 			}
 		} catch (error) {

@@ -21,8 +21,8 @@ export type ChatFileMessageManifest = {
 	count: number
 	sizeBytes: number
 	files: ChatFileEntry[]
-	/** Video attachments keep their preview inside the encrypted fragment. */
-	mediaKind?: 'video'
+	/** Media attachments keep their preview inside the encrypted fragment. */
+	mediaKind?: 'video' | 'image'
 	previewName?: string
 	mime?: string
 }
@@ -83,7 +83,13 @@ export async function encryptChatFiles(files: File[], displayName?: string, prev
 			count: metadata.length,
 			sizeBytes: totalBytes,
 			files: metadata,
-			...(previewName ? { mediaKind: 'video' as const, previewName, mime: files[0]?.type || 'video/mp4' } : {}),
+			...(previewName
+				? {
+						mediaKind: files[0]?.type.startsWith('image/') ? ('image' as const) : ('video' as const),
+						previewName,
+						mime: files[0]?.type || 'application/octet-stream',
+					}
+				: {}),
 		},
 	}
 }

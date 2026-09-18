@@ -314,12 +314,27 @@ function DiscoverFeaturedBrandHeroImage({
 	src,
 	alt,
 	className,
+	videoSrc,
 }: {
 	src: string
 	alt: string
 	className?: string
+	videoSrc?: string | null
 }) {
 	const trimmed = src.trim()
+	if (videoSrc?.trim()) {
+		return (
+			<video
+				src={videoSrc.trim()}
+				className={className}
+				autoPlay
+				muted
+				loop
+				playsInline
+				preload="metadata"
+			/>
+		)
+	}
 	if (!trimmed) {
 		return <div className={className} aria-hidden />
 	}
@@ -327,6 +342,22 @@ function DiscoverFeaturedBrandHeroImage({
 		return <img src={trimmed} alt={alt} className={className} draggable={false} />
 	}
 	return <IpfsImg src={trimmed} alt={alt} className={className} draggable={false} />
+}
+
+function discoverMerchantHeroVideoFromMetadata(
+	metadataRoot: Record<string, unknown> | null | undefined,
+): string | null {
+	const share = readDiscoverNestedObject(metadataRoot ?? null, 'shareTokenMetadata')
+	const rawRows = Array.isArray(share?.merchantMedia)
+		? share?.merchantMedia ?? []
+		: Array.isArray(metadataRoot?.merchantMedia)
+			? metadataRoot?.merchantMedia ?? []
+			: []
+	const videos = rawRows
+		.filter((raw): raw is Record<string, unknown> => Boolean(raw && typeof raw === 'object' && !Array.isArray(raw)))
+		.filter(row => row.kind === 'video' && typeof row.url === 'string' && row.url.trim())
+		.sort((a, b) => Number(b.createdAt ?? 0) - Number(a.createdAt ?? 0))
+	return videos.length ? String(videos[0].url).trim() : null
 }
 
 /** Featured Brands list logo — bundled assets sync; IPFS shows letter until blob ready or on failure. */
@@ -8031,6 +8062,7 @@ function DiscoverMerchantDetailFullScreen({
 					<DiscoverFeaturedBrandHeroImage
 						src={item.image}
 						alt=""
+						videoSrc={discoverMerchantHeroVideoFromMetadata(item.metadataRoot)}
 						className="pointer-events-none absolute inset-0 h-full w-full object-cover"
 					/>
 					<div

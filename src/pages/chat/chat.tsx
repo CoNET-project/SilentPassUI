@@ -451,7 +451,23 @@ function ChatFileMessagePlayer({ manifest, isMe }: { manifest: ChatFileMessageMa
 					) : null}
 				</div>
 			) : null}
-			<div className="text-[12px] font-semibold text-slate-700">{manifest.count} file{manifest.count === 1 ? '' : 's'} · {formatVoiceBytes(manifest.sizeBytes)}</div>
+			{manifest.mediaKind === 'video' ? (
+				<div className="flex items-center justify-end gap-2 text-[12px] font-semibold text-slate-700">
+					<span>{manifest.count} file{manifest.count === 1 ? '' : 's'} · {formatVoiceBytes(manifest.sizeBytes)}</span>
+					{videoBlob ? (
+						<button
+							type="button"
+							onClick={() => download(manifest.name, videoBlob)}
+							aria-label="Download video"
+							className="grid h-7 w-7 place-items-center rounded-full text-[#1652f0] transition hover:bg-[#1652f0]/10"
+						>
+							<Download className="h-4 w-4" aria-hidden />
+						</button>
+					) : null}
+				</div>
+			) : (
+				<div className="text-[12px] font-semibold text-slate-700">{manifest.count} file{manifest.count === 1 ? '' : 's'} · {formatVoiceBytes(manifest.sizeBytes)}</div>
+			)}
 			{loading ? <div className="mt-1 text-[12px] text-slate-500">Preparing files…</div> : null}
 			{error ? <div role="alert" className="mt-1 text-[12px] text-rose-600">{error}</div> : null}
 			{files ? <div className="mt-1 space-y-1">{Array.from(files.entries()).map(([name, blob]) => (
@@ -461,7 +477,6 @@ function ChatFileMessagePlayer({ manifest, isMe }: { manifest: ChatFileMessageMa
 					<button type="button" onClick={() => download(name, blob)} className="shrink-0 font-semibold text-[#1652f0]">Download</button>
 				</div>
 			))}</div> : null}
-			{manifest.mediaKind === 'video' && videoBlob ? <button type="button" onClick={() => download(manifest.name, videoBlob)} className="mt-1 text-[12px] font-semibold text-[#1652f0]">Download video</button> : null}
 		</div>
 	)
 }

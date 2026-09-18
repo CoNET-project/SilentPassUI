@@ -1180,7 +1180,7 @@ function DiscoverMerchantTreatAFriendPanel({
 						/>
 					</span>
 					<div className="min-w-0 flex-1">
-						<p className="text-[13px] font-bold uppercase tracking-[0.12em] text-[#1f2328] dark:text-slate-100">
+						<p className="text-[13px] font-bold tracking-[0.12em] text-[#1f2328] dark:text-slate-100">
 							Treat a Friend
 						</p>
 						<p className="mt-1 text-[12px] font-medium leading-snug text-[#5c6570] dark:text-slate-400">
@@ -1189,15 +1189,9 @@ function DiscoverMerchantTreatAFriendPanel({
 					</div>
 				</div>
 				<p className="mt-3 text-[12px] leading-relaxed text-[#5c6570] dark:text-slate-400">
-					Send dining vouchers or prepaid credits directly to friends via link or @BeamioTag with{' '}
-					<span className="font-bold text-[#3d4450] dark:text-slate-200">zero platform fees</span>.
-					Recipients can redeem or merge into their own pass immediately.
+					Zero platform fees, ready to use immediately.
 				</p>
-				<div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[#f0ebe4] pt-3 dark:border-slate-700">
-					<span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#5c6570] dark:text-slate-400">
-						<ShieldCheck className="h-3.5 w-3.5 shrink-0 text-emerald-600" strokeWidth={2.25} aria-hidden />
-						Instant transfer &amp; non-expiring
-					</span>
+				<div className="mt-4 flex justify-end border-t border-[#f0ebe4] pt-3 dark:border-slate-700">
 					<button
 						type="button"
 						onClick={onSendGift}
@@ -1205,7 +1199,7 @@ function DiscoverMerchantTreatAFriendPanel({
 						className="inline-flex items-center justify-center gap-1.5 rounded-full px-4 py-2 text-[12px] font-bold text-white transition hover:brightness-110 active:scale-[0.98] disabled:opacity-60"
 						style={{ backgroundColor: brand }}
 					>
-						<Send className="h-3.5 w-3.5 shrink-0 opacity-90" strokeWidth={2.25} aria-hidden />
+						<span aria-hidden>💌</span>
 						Send as Gift
 					</button>
 				</div>
@@ -1469,12 +1463,6 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 	return (
 		<div className="flex flex-col gap-4" aria-label={`${nameDisplay} member pass preview`}>
 			<div className="flex items-center gap-2.5">
-				<span
-					className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#eceff3] dark:bg-slate-800"
-					aria-hidden
-				>
-					<UtensilsCrossed className="h-4 w-4 text-[#6b7280]" strokeWidth={2} />
-				</span>
 				<p className="min-w-0 flex-1 text-[11px] font-bold uppercase tracking-[0.14em] text-[#6b7280] dark:text-slate-400">
 					{nameUpper} MEMBER PASS
 				</p>
@@ -1498,26 +1486,24 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 				<div className="relative z-[1] flex items-start justify-between gap-3">
 					<div className="min-w-0">
 						<DiscoverDynamicPassTitle title={`${nameUpper} VIP`} />
-						<p className="mt-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/55">
-							Digital Dining &amp; Loyalty Pass
-						</p>
 					</div>
 					<UtensilsCrossed className="mt-1 h-8 w-8 shrink-0 text-white/75" strokeWidth={1.6} aria-hidden />
 				</div>
 
-				{welcomeRewardLine ? (
-					<div className="relative z-[1] mt-6 border-t border-white/15 pt-5">
-						<p className="text-[16px] font-bold leading-snug tracking-tight text-white">
-							{welcomeRewardLine}
-						</p>
-						{topupLine && chargeWelcomeLine ? (
-							<p className="mt-2 text-[14px] font-medium leading-snug text-white/75">
-								{chargeWelcomeLine}
-							</p>
-						) : null}
-					</div>
-				) : null}
 			</section>
+
+			{welcomeRewardLine ? (
+				<div className="px-4 text-center">
+					<p className="text-[16px] font-bold leading-snug tracking-tight text-[#2c2f31] dark:text-slate-100">
+						{welcomeRewardLine}
+					</p>
+					{topupLine && chargeWelcomeLine ? (
+						<p className="mt-2 text-[14px] font-medium leading-snug text-[#5c6570] dark:text-slate-400">
+							{chargeWelcomeLine}
+						</p>
+					) : null}
+				</div>
+			) : null}
 
 			<button
 				type="button"

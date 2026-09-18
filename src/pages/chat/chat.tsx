@@ -3195,7 +3195,18 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 										<div className="relative mx-2 space-y-1.5 pt-2">
 											{fileJobs.map(job => (
 												<div key={job.id} className="flex items-center gap-2 rounded-2xl bg-white/75 px-3 py-2 ring-1 ring-black/5 backdrop-blur-xl">
-													{job.thumbnailUrl ? <div className="relative h-12 w-16 shrink-0 overflow-hidden rounded-lg bg-slate-900"><img src={job.thumbnailUrl} alt="Video thumbnail" className="h-full w-full object-cover" /><span className="absolute inset-0 grid place-items-center"><span className="grid h-6 w-6 place-items-center rounded-full bg-black/60 text-white"><Play className="ml-0.5 h-3 w-3 fill-current" /></span></span></div> : null}
+													{job.thumbnailUrl ? (
+														<div className="relative h-12 w-16 shrink-0 overflow-hidden rounded-lg bg-slate-100">
+															<img src={job.thumbnailUrl} alt={job.name} className="h-full w-full object-cover" />
+															{job.files.length === 1 && job.files[0].type.startsWith('video/') ? (
+																<span className="absolute inset-0 grid place-items-center">
+																	<span className="grid h-6 w-6 place-items-center rounded-full bg-black/60 text-white">
+																		<Play className="ml-0.5 h-3 w-3 fill-current" />
+																	</span>
+																</span>
+															) : null}
+														</div>
+													) : null}
 													<div className="min-w-0 flex-1">
 														<p className="truncate text-[13px] font-semibold text-slate-700">{job.name}</p>
 														{job.status === 'uploading' ? <div className="mt-1 h-1 overflow-hidden rounded-full bg-slate-200"><div className="h-full bg-[#1652f0] transition-[width]" style={{ width: `${Math.max(2, job.progress * 100)}%` }} /></div> : null}

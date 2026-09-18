@@ -742,6 +742,8 @@ type ChatMessage = {
 	/** End-to-end encrypted voice metadata; the audio itself is never in the chat payload. */
 	voiceMessage?: import('@/utils/voiceMessage').VoiceMessageManifest
 	fileMessage?: import('@/utils/chatFileMessage').ChatFileMessageManifest
+	/** Local encrypted copy of fileMessage for refresh recovery; never wire-sent. */
+	fileMessageCipher?: string
 	paymentCard?: paymentCard
 	/** 本条为 reaction 时，messageId 为目标消息的 sendId */
 	reply?: ChatMessageReply

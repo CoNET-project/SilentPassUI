@@ -3,6 +3,7 @@ import { flushSync } from "react-dom"
 import { useNavigate } from "react-router-dom"
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
 import { motion, AnimatePresence } from "framer-motion"
+import { ethers } from "ethers"
 import { checkSign, emitReactionAsNewMessage, createMembershipActivatedCard } from '@/services/chat'
 import { mirrorChatMessageToHistory } from '@/services/chatHistoryMirror' 
 import { IpfsImg } from '@/components/IpfsImg'
@@ -119,6 +120,56 @@ function formatVoiceBytes(bytes: number): string {
 	if (bytes < 1024) return `${bytes} B`
 	if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
 	return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+	let binary = ''
+	for (let i = 0; i < bytes.length; i += 0x8000) {
+		binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+	}
+	return btoa(binary)
+}
+
+function base64ToBytes(value: string): Uint8Array {
+	const binary = atob(value)
+	const bytes = new Uint8Array(binary.length)
+	for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i)
+	return bytes
+}
+
+async function localFileManifestKey(privateKey: string, usage: KeyUsage[]): Promise<CryptoKey> {
+	const keyMaterial = ethers.getBytes(ethers.keccak256(ethers.toUtf8Bytes(privateKey)))
+	return crypto.subtle.importKey('raw', keyMaterial, 'AES-GCM', false, usage)
+}
+
+async function encryptLocalFileManifest(manifest: ChatFileMessageManifest, privateKey: string): Promise<string> {
+	const iv = crypto.getRandomValues(new Uint8Array(12))
+	const key = await localFileManifestKey(privateKey, ['encrypt'])
+	const cipher = new Uint8Array(await crypto.subtle.encrypt(
+		{ name: 'AES-GCM', iv },
+		key,
+		new TextEncoder().encode(JSON.stringify(manifest)),
+	))
+	return `${bytesToBase64(iv)}.${bytesToBase64(cipher)}`
+}
+
+async function decryptLocalFileManifest(
+	cipherText: string,
+	privateKey: string,
+): Promise<ChatFileMessageManifest | null> {
+	try {
+		const [ivB64, cipherB64] = cipherText.split('.')
+		if (!ivB64 || !cipherB64) return null
+		const key = await localFileManifestKey(privateKey, ['decrypt'])
+		const plain = await crypto.subtle.decrypt(
+			{ name: 'AES-GCM', iv: base64ToBytes(ivB64) },
+			key,
+			base64ToBytes(cipherB64),
+		)
+		return JSON.parse(new TextDecoder().decode(plain)) as ChatFileMessageManifest
+	} catch {
+		return null
+	}
 }
 
 type ChatFileJob = {
@@ -1306,7 +1357,12 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		if (!myChat) return
 
 		// profiles/落盘的消息（“远端”）
-		const remote = Array.isArray(myChat.messages) ? myChat.messages : []
+		const remoteStored = Array.isArray(myChat.messages) ? myChat.messages : []
+		const remote = await Promise.all(remoteStored.map(async message => {
+			if (message.fileMessage || !message.fileMessageCipher || !privateKey) return message
+			const fileMessage = await decryptLocalFileManifest(message.fileMessageCipher, privateKey)
+			return fileMessage ? { ...message, fileMessage } : message
+		}))
 
 		// 本地 UI 正在显示的消息（可能包含 tmp_ / 更先进的 status）
 		const local = [
@@ -2102,11 +2158,14 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 
 		const idx = chats.findIndex(c => String(c?.address || "").toLowerCase() === addr)
 
-		const persistableMessages = (chatData.messages || []).map(message => {
+		const persistableMessages = await Promise.all((chatData.messages || []).map(async message => {
 			if (!message.fileMessage) return message
+			const fileMessageCipher = privateKey
+				? await encryptLocalFileManifest(message.fileMessage, privateKey)
+				: undefined
 			const { fileMessage: _fileMessage, ...safeMessage } = message
-			return safeMessage
-		})
+			return fileMessageCipher ? { ...safeMessage, fileMessageCipher } : safeMessage
+		}))
 		const persistableChat = { ...chatData, messages: persistableMessages }
 		const persistableChats = idx >= 0
 			? chats.map((c, i) => i === idx ? persistableChat : c)

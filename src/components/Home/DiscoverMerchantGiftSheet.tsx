@@ -2076,7 +2076,7 @@ export default function DiscoverMerchantGiftSheet({
 
 	const themedGiftCard = (
 		<div
-			className={`relative w-full overflow-hidden rounded-2xl shadow-md ${
+			className={`relative aspect-[2/1] w-full overflow-hidden rounded-2xl shadow-md ${
 				selectedGiftCardImage ? '' : 'p-5'
 			}`}
 			style={{ backgroundColor: brandColor, color: onBrandText, boxShadow: brandShadow }}
@@ -2110,12 +2110,6 @@ export default function DiscoverMerchantGiftSheet({
 						{merchantLabel}
 					</span>
 				</div>
-				<span
-					className="shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-medium tracking-wide"
-					style={{ backgroundColor: 'rgba(255,255,255,0.12)', color: onBrandMuted }}
-				>
-					{activeOccasion.emoji} {activeOccasion.label}
-				</span>
 			</div> : null}
 			{selectedGiftCardImage ? (
 				<div className="relative z-10 aspect-[2/1] overflow-hidden bg-black/15">
@@ -2126,9 +2120,16 @@ export default function DiscoverMerchantGiftSheet({
 						className="h-full w-full object-cover"
 					/>
 					<div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/25 via-transparent to-transparent" />
+					<div className="pointer-events-none absolute inset-x-5 bottom-5 text-white">
+						<p className="truncate text-[18px] font-semibold leading-tight">{merchantLabel}</p>
+						<div className="mt-2 flex items-baseline gap-1">
+							<span className="text-[15px] font-bold">{prefix}</span>
+							<span className="text-[34px] font-bold leading-none tracking-tight">{giftValueDisplayHuman}</span>
+						</div>
+					</div>
 				</div>
 			) : null}
-			{!selectedGiftCardImage ? <div className="relative z-10 my-6">
+			{!selectedGiftCardImage ? <div className="relative z-10 mt-10 mb-6">
 				<div className="mt-0.5 flex items-baseline gap-1">
 					<span className="text-[34px] font-bold leading-none tracking-tight" style={{ color: onBrandText }}>
 						{prefix}

@@ -1068,7 +1068,12 @@ function AppShell() {
 								sessionCreated = true
 								localChanged = true
 							}
+							const beforeCount = Array.isArray(chats[idx].messages) ? chats[idx].messages.length : 0
 							const { messages, added } = mergeHistoryEntriesIntoMessages(chats[idx].messages, es)
+							publishNativePwaLog(
+								added === es.length ? 'info' : 'warn',
+								`[historyRestore] merge peer=${peer.slice(0, 10)}…${peer.slice(-8)} entries=${es.length} added=${added} before=${beforeCount} after=${messages.length}`,
+							)
 							if (added <= 0 && !sessionCreated) continue
 							if (!sessionCreated) {
 								chats = [...chats]

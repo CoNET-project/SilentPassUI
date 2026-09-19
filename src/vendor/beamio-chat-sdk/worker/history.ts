@@ -73,6 +73,12 @@ const LOCAL_INDEX_KEY_PREFIX = 'beamio.chat.history.index:'
 const LOCAL_FRAG_KEY_PREFIX = 'beamio.chat.history.frag:'
 const FRAGMENT_GENESIS_INFO = 'frag-genesis'
 
+function diagnosticCid(cid: string): string {
+	return typeof cid === 'string' && cid.length > 12
+		? `${cid.slice(0, 10)}…${cid.slice(-8)}`
+		: cid
+}
+
 export class HistoryStore {
 	private master: Uint8Array | null = null
 	private indexKey: Uint8Array | null = null
@@ -150,9 +156,13 @@ export class HistoryStore {
 			const ptr = await registry.getPointer!(ethers.getAddress(this.eoaLower))
 			const indexHash = String(ptr[0])
 			if (!indexHash || indexHash === ethers.ZeroHash) return null
+			this.emit.log(
+				'info',
+				`[history] pointer index=${diagnosticCid(indexHash)} seq=${ptr[2].toString()} ts=${ptr[1].toString()}`,
+			)
 			return { indexHash, ts: BigInt(ptr[1].toString()), seq: BigInt(ptr[2].toString()) }
 		} catch (ex) {
-			this.emit.log('warn', `readOnchainPointer error: ${(ex as Error)?.message ?? String(ex)}`)
+			this.emit.log('warn', `[history] pointer read failed: ${(ex as Error)?.message ?? String(ex)}`)
 			return null
 		}
 	}
@@ -162,10 +172,18 @@ export class HistoryStore {
 		try {
 			const url = `${this.readBase}/getFragment?hash=${encodeURIComponent(indexHash)}`
 			const res = await fetch(url, { method: 'GET', cache: 'no-store' })
-			if (!res.ok) return null
+			if (!res.ok) {
+				this.emit.log('warn', `[history] index fetch failed hash=${diagnosticCid(indexHash)} http=${res.status}`)
+				return null
+			}
 			const text = (await res.text()).trim()
+			this.emit.log(
+				'info',
+				`[history] index fetched hash=${diagnosticCid(indexHash)} chars=${text.length}`,
+			)
 			return text || null
 		} catch {
+			this.emit.log('warn', `[history] index fetch threw hash=${diagnosticCid(indexHash)}`)
 			return null
 		}
 	}
@@ -263,21 +281,31 @@ export class HistoryStore {
 		if (!cipher) return false
 		try {
 			const parsed = JSON.parse(await aesGcmDecryptString(this.indexKey, cipher)) as IndexManifest
-			if (parsed?.v !== 1 || parsed.eoa?.toLowerCase() !== this.eoaLower) return false
+			if (parsed?.v !== 1 || parsed.eoa?.toLowerCase() !== this.eoaLower) {
+				this.emit.log('warn', '[history] index rejected: version or EOA mismatch')
+				return false
+			}
 			const local = this.manifest?.records ?? []
 			const remote = Array.isArray(parsed.records) ? parsed.records : []
 			const merged = this.unionMergeRecords(local, remote)
+			this.emit.log(
+				'info',
+				`[history] index decrypted remoteRecords=${remote.length} localRecords=${local.length} mergedRecords=${merged.length}`,
+			)
 			const records = this.hasChainConflict(local, remote, merged)
 				? await this.relinearizeAndReencrypt(merged)
 				: merged
-			if (!records) return false
+			if (!records) {
+				this.emit.log('warn', '[history] index chain conflict could not be relinearized')
+				return false
+			}
 			const changed =
 				records.length !== local.length || records.some((record, index) => record.cid !== local[index]?.cid)
 			if (!changed) return false
 			const nextManifest = { ...parsed, updatedAt: Date.now(), records }
 			return await this.persistManifest(nextManifest, { requireRemoteCommit: Boolean(this.opts.apiBaseUrl) })
-		} catch {
-			/* Untrusted network data never replaces the local trusted mirror. */
+		} catch (ex) {
+			this.emit.log('warn', `[history] index decrypt/parse failed: ${(ex as Error)?.message ?? String(ex)}`)
 			return false
 		}
 	}
@@ -405,11 +433,16 @@ export class HistoryStore {
 		try {
 			const url = `${this.readBase}/getFragment?hash=${encodeURIComponent(cid)}`
 			const res = await fetch(url, { method: 'GET', cache: 'no-store' })
-			if (!res.ok) return null
+			if (!res.ok) {
+				this.emit.log('warn', `[history] fragment fetch failed cid=${diagnosticCid(cid)} http=${res.status}`)
+				return null
+			}
 			const text = (await res.text()).trim()
+			this.emit.log('info', `[history] fragment fetched cid=${diagnosticCid(cid)} chars=${text.length}`)
 			if (text && this.opts.persistence) await this.opts.persistence.set(`${LOCAL_FRAG_KEY_PREFIX}${cid}`, text)
 			return text || null
-		} catch {
+		} catch (ex) {
+			this.emit.log('warn', `[history] fragment fetch threw cid=${diagnosticCid(cid)}: ${(ex as Error)?.message ?? String(ex)}`)
 			return null
 		}
 	}
@@ -421,12 +454,19 @@ export class HistoryStore {
 
 	private async decryptRecord(rec: IndexRecord): Promise<HistoryEntry | null> {
 		const cipher = await this.downloadFragment(rec.cid)
-		if (!cipher) return null
+		if (!cipher) {
+			this.emit.log('warn', `[history] record unavailable seq=${rec.seq} cid=${diagnosticCid(rec.cid)}`)
+			return null
+		}
 		try {
 			const key = await this.fragmentKey(rec.seq, rec.prevCid)
 			const body = await aesGcmDecryptString(key, cipher)
 			return { seq: rec.seq, ts: rec.ts, peer: rec.peer, dir: rec.dir, sendId: rec.sendId, body }
-		} catch {
+		} catch (ex) {
+			this.emit.log(
+				'warn',
+				`[history] record decrypt failed seq=${rec.seq} cid=${diagnosticCid(rec.cid)} prev=${diagnosticCid(rec.prevCid)}: ${(ex as Error)?.message ?? String(ex)}`,
+			)
 			return null
 		}
 	}
@@ -454,10 +494,18 @@ export class HistoryStore {
 		const ordered = [...records].sort((a, b) => a.seq - b.seq)
 		const tail = ordered.slice(Math.max(0, ordered.length - tailCount))
 		const older = ordered.slice(0, Math.max(0, ordered.length - tailCount))
+		this.emit.log(
+			'info',
+			`[history] load peer=${peerFilter ?? 'all'} records=${ordered.length} tail=${tail.length} older=${older.length}`,
+		)
 
 		// Eagerly decrypt the last ~2 screens in parallel.
 		const tailEntries = (await Promise.all(tail.map((r) => this.decryptRecord(r)))).filter(
 			(e): e is HistoryEntry => !!e,
+		)
+		this.emit.log(
+			tailEntries.length === tail.length ? 'info' : 'warn',
+			`[history] tail decrypted=${tailEntries.length}/${tail.length}`,
 		)
 		this.emit.buffer(peerFilter ?? 'all', tailEntries, true)
 
@@ -468,6 +516,10 @@ export class HistoryStore {
 				const slice = older.slice(Math.max(0, i - batchSize), i)
 				const entries = (await Promise.all(slice.map((r) => this.decryptRecord(r)))).filter(
 					(e): e is HistoryEntry => !!e,
+				)
+				this.emit.log(
+					entries.length === slice.length ? 'info' : 'warn',
+					`[history] backfill decrypted=${entries.length}/${slice.length}`,
 				)
 				if (entries.length) this.emit.buffer(peerFilter ?? 'all', entries, false)
 			}

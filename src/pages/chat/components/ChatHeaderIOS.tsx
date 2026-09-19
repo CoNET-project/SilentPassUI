@@ -71,9 +71,13 @@ export function ChatHeaderIOS({
             <button
               type="button"
               onClick={onCall}
-              disabled={callBusy}
-              className="pointer-events-auto grid h-11 w-11 place-items-center rounded-full bg-white/50 text-slate-900 shadow-[0_18px_38px_rgba(15,23,42,0.14)] ring-1 ring-white/60 backdrop-blur-xl transition active:scale-[0.98] disabled:cursor-wait disabled:opacity-50"
-              aria-label={callBusy ? "Calling" : "Start voice call"}
+              disabled={!online || callBusy}
+              className={[
+                "pointer-events-auto grid h-11 w-11 place-items-center rounded-full bg-white/50 text-slate-900 shadow-[0_18px_38px_rgba(15,23,42,0.14)] ring-1 ring-white/60 backdrop-blur-xl transition active:scale-[0.98]",
+                !online || callBusy ? "cursor-not-allowed opacity-40" : "",
+              ].join(" ")}
+              aria-label={!online ? "Voice call unavailable while offline" : callBusy ? "Calling" : "Start voice call"}
+              title={!online ? "Voice call unavailable while offline" : callBusy ? "Calling" : "Start voice call"}
               aria-busy={callBusy}
             >
               <Phone className="h-5 w-5" strokeWidth={2.4} aria-hidden />

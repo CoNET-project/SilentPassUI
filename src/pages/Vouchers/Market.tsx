@@ -1111,7 +1111,7 @@ function DiscoverMerchantMediaCarousel({
 		<section className="overflow-hidden rounded-2xl border border-[#ebe6df] bg-white shadow-[0_8px_24px_rgba(31,35,40,0.06)] dark:border-slate-700 dark:bg-slate-900">
 			<div className="px-4 pt-4">
 				<p className="text-[13px] font-bold uppercase tracking-[0.12em] text-[#1f2328] dark:text-slate-100">
-					Merchant media
+					Stories
 				</p>
 			</div>
 			<div className="flex snap-x snap-mandatory touch-pan-x gap-3 overflow-x-auto overscroll-x-contain px-4 pb-4 pt-3 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -1474,10 +1474,6 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 						<div className="absolute inset-0 bg-slate-950/20" />
 					</div>
 				) : null}
-				<div className="relative z-[1] flex justify-end">
-					<UtensilsCrossed className="mt-1 h-8 w-8 shrink-0 text-white/75" strokeWidth={1.6} aria-hidden />
-				</div>
-
 			</section>
 
 			{welcomeRewardLine ? (

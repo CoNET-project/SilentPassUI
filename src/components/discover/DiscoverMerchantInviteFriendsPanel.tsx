@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { BarChart3, Check, ChevronDown, ChevronUp, Loader2, Share2 } from 'lucide-react'
+import { BarChart3, Check, ChevronDown, ChevronUp, Loader2 } from 'lucide-react'
 import { Toast } from 'antd-mobile'
 import { tu } from '@/locale/beamioLocale'
 import {
@@ -27,23 +27,6 @@ function formatLikePointsLabel(points: number, singular: string, plural: string)
 	const n = Math.max(0, Math.trunc(points))
 	if (n === 1) return `+1 ${singular}`
 	return `+${n.toLocaleString('en-US')} ${plural}`
-}
-
-function buildHeadlinePercent(ratios: CardReferrerAmountRatioPercents): number {
-	return Math.max(ratios.chargePercent, ratios.topupPercent)
-}
-
-function buildSpendEarnValue(ratios: CardReferrerAmountRatioPercents): string | null {
-	const { chargePercent, topupPercent } = ratios
-	if (chargePercent <= 0 && topupPercent <= 0) return null
-	if (chargePercent > 0 && topupPercent > 0) {
-		if (chargePercent === topupPercent) {
-			return `${chargePercent}% on their Top-ups & Spend`
-		}
-		return `${topupPercent}% on Top-ups · ${chargePercent}% on Spend`
-	}
-	if (topupPercent > 0) return `${topupPercent}% on their Top-ups`
-	return `${chargePercent}% on their Spend`
 }
 
 export function DiscoverMerchantInviteFriendsPanel(props: {
@@ -92,7 +75,11 @@ export function DiscoverMerchantInviteFriendsPanel(props: {
 		}
 	}, [isMember, cardAddress, referrerEoa])
 
-	const headlinePercent = ratios ? buildHeadlinePercent(ratios) : 0
+	const headlinePercent = ratios
+		? ratios.topupPercent > 0
+			? ratios.topupPercent
+			: ratios.chargePercent
+		: 0
 	const hasSocialReferralReward = Object.values(chainCardSocialPromotion?.events ?? {}).some(
 		(event) => event?.ref?.enabled === true,
 	)
@@ -109,32 +96,31 @@ export function DiscoverMerchantInviteFriendsPanel(props: {
 	const detailRows = useMemo((): RewardDetailRow[] => {
 		if (!ratios) return []
 		const rows: RewardDetailRow[] = []
-		const spend = buildSpendEarnValue(ratios)
-		if (spend) {
+		if (ratios.topupPercent > 0) {
 			rows.push({
-				key: 'spend',
+				key: 'topup',
 				label: 'YOU EARN →',
-				value: spend,
+				value: `${ratios.topupPercent}% on Top-ups`,
 				tone: 'you',
 			})
 		}
-		const like = chainCardSocialPromotion?.events?.like
-		const youLike = like?.ref?.enabled ? like.ref.points13 : 0
-		const friendLike = like?.user?.enabled ? like.user.points13 : 0
+		if (ratios.chargePercent > 0) {
+			rows.push({
+				key: 'spend',
+				label: 'YOU EARN →',
+				value: `${ratios.chargePercent}% on Spend`,
+				tone: 'you',
+			})
+		}
+		const youLike = chainCardSocialPromotion?.events?.like?.ref?.enabled
+			? chainCardSocialPromotion.events.like.ref.points13
+			: 0
 		if (youLike > 0) {
 			rows.push({
 				key: 'you-like',
 				label: 'YOU EARN →',
-				value: `${formatLikePointsLabel(youLike, 'Pt', 'Pts')} when they Like & Engage`,
+				value: `${formatLikePointsLabel(youLike, 'Pt', 'Pts').replace(/^\+/, '')} on Visits`,
 				tone: 'you',
-			})
-		}
-		if (friendLike > 0) {
-			rows.push({
-				key: 'friend-like',
-				label: 'FRIEND EARNS →',
-				value: `${formatLikePointsLabel(friendLike, 'Pt', 'Pts')} for Liking & Joining`,
-				tone: 'friend',
 			})
 		}
 		return rows
@@ -169,11 +155,13 @@ export function DiscoverMerchantInviteFriendsPanel(props: {
 
 	const showMemberDetailsChrome = isMember && detailsOpen
 	const headlineCopy =
-		headlinePercent > 0 ? `Earn ${headlinePercent}% & Reward PT! ✨` : 'Earn Reward PT! ✨'
-	const bodyCopy =
 		headlinePercent > 0
-			? `Share this store. Earn a ${headlinePercent}% match when they spend, plus you both get instant Reward PT when they visit and Like!`
-			: 'Share this store. You both get instant Reward PT when they visit and Like!'
+			? `Earn ${headlinePercent}% & Reward PT! ✨`
+			: hasSocialReferralReward
+				? 'Earn Reward PT! ✨'
+				: 'Earn Points! ✨'
+	const bodyCopy =
+		'Share this store with your friends. You can earn continuous Point rewards when they top up, spend, or interact!'
 
 	return (
 		<section
@@ -198,9 +186,7 @@ export function DiscoverMerchantInviteFriendsPanel(props: {
 					<Loader2 className="h-5 w-5 animate-spin" aria-hidden />
 				) : shared ? (
 					<Check className="h-5 w-5 text-emerald-300" strokeWidth={2.5} aria-hidden />
-				) : (
-					<Share2 className="h-5 w-5" strokeWidth={2.25} aria-hidden />
-				)}
+				) : <span aria-hidden>🔗</span>}
 				{shared ? 'Link shared' : 'Share Store Link'}
 			</button>
 			{detailsOpen && detailRows.length > 0 ? (

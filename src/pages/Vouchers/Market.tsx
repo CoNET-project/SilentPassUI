@@ -1048,19 +1048,13 @@ function DiscoverMerchantHowPointsWorkPanel({
 					<p className="text-[15px] font-bold tracking-tight text-[#1f2328] dark:text-slate-100">
 						How Reward PT Works{pct ? ` · ${pct}% Back on ${headingContext}` : ''}
 					</p>
-					<p className="mt-1.5 text-[13px] leading-relaxed text-[#5c6570] dark:text-slate-400">
-						{isDiningReward
-							? `Eat, earn, and enjoy! Reward PT never expires (1 PT = ${fiatLabel}1.00). Use it for your favorite dishes here, or seamlessly across our Alliance network.`
-							: `Earn Reward PT on every ${rewardContext}. PT never expires (1 PT = ${fiatLabel}1.00) and can be used here or across the Alliance network.`}
-					</p>
 				</div>
 			</div>
-			<div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-[#ebe6df] pt-3 dark:border-slate-700">
-				<span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#3d4450] dark:text-slate-300">
-					<ShieldCheck className="h-3.5 w-3.5 text-emerald-600" strokeWidth={2.25} aria-hidden />
-					Instant ledger settlement
-				</span>
-			</div>
+			<p className="mt-3 text-[13px] leading-relaxed text-[#5c6570] dark:text-slate-400">
+				{isDiningReward
+					? `Earn while you eat! Reward PT acts as real cash (1 PT = ${fiatLabel}1.00) and never expires. Use it for your favorite dishes here, or seamlessly across our Alliance network.`
+					: `Earn Reward PT on every ${rewardContext}. PT acts as real cash (1 PT = ${fiatLabel}1.00) and never expires, and can be used here or across the Alliance network.`}
+			</p>
 		</section>
 	)
 }
@@ -1402,6 +1396,14 @@ function DiscoverMerchantMembershipTiersPanel({
 	)
 }
 
+function renderDiscoverNumericEmphasis(value: string) {
+	return value.split(/((?:CA\$|\$|€|£)\s*\d+(?:\.\d+)?%?|\d+(?:\.\d+)?%)/g).map((part, index) =>
+		/^(?:CA\$|\$|€|£)\s*\d+(?:\.\d+)?%?$|^\d+(?:\.\d+)?%$/.test(part)
+			? <strong key={`${part}-${index}`}>{part}</strong>
+			: <React.Fragment key={`${part}-${index}`}>{part}</React.Fragment>,
+	)
+}
+
 /**
  * Food & Beverage · no Store Credit Multiplier · non-member with no #0 / #13 holdings.
  * Member Pass preview + Order Pick-up / Gift Voucher / Contact (brand chrome).
@@ -1462,12 +1464,6 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 
 	return (
 		<div className="flex flex-col gap-4" aria-label={`${nameDisplay} member pass preview`}>
-			<div className="flex items-center gap-2.5">
-				<p className="min-w-0 flex-1 text-[11px] font-bold uppercase tracking-[0.14em] text-[#6b7280] dark:text-slate-400">
-					{nameUpper} MEMBER PASS
-				</p>
-			</div>
-
 			<section
 				className="relative overflow-hidden rounded-[1.35rem] px-5 pb-5 pt-5 text-white shadow-[0_16px_40px_rgba(45,40,35,0.28)]"
 				style={{
@@ -1483,10 +1479,7 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 						<div className="absolute inset-0 bg-slate-950/20" />
 					</div>
 				) : null}
-				<div className="relative z-[1] flex items-start justify-between gap-3">
-					<div className="min-w-0">
-						<DiscoverDynamicPassTitle title={`${nameUpper} VIP`} />
-					</div>
+				<div className="relative z-[1] flex justify-end">
 					<UtensilsCrossed className="mt-1 h-8 w-8 shrink-0 text-white/75" strokeWidth={1.6} aria-hidden />
 				</div>
 
@@ -1495,11 +1488,11 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 			{welcomeRewardLine ? (
 				<div className="px-4 text-center">
 					<p className="text-[16px] font-bold leading-snug tracking-tight text-[#2c2f31] dark:text-slate-100">
-						{welcomeRewardLine}
+						{renderDiscoverNumericEmphasis(welcomeRewardLine)}
 					</p>
 					{topupLine && chargeWelcomeLine ? (
-						<p className="mt-2 text-[14px] font-medium leading-snug text-[#5c6570] dark:text-slate-400">
-							{chargeWelcomeLine}
+						<p className="mt-2 text-[11px] font-semibold leading-snug text-[#5c6570] dark:text-slate-400">
+							{renderDiscoverNumericEmphasis(chargeWelcomeLine)}
 						</p>
 					) : null}
 				</div>

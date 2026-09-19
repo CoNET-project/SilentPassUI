@@ -2917,7 +2917,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 				}}
 			>
 				{fileDropActive ? (
-					<div className="pointer-events-none absolute inset-3 z-30 grid place-items-center rounded-3xl border-2 border-dashed border-[#1652f0]/70 bg-[#dceaff]/55 backdrop-blur-sm">
+					<div className="pointer-events-none fixed inset-0 z-[120] grid place-items-center border-2 border-dashed border-[#1652f0]/70 bg-[#dceaff]/55 backdrop-blur-sm">
 						<div className="rounded-2xl bg-white/85 px-6 py-4 text-center shadow-lg ring-1 ring-white/80">
 							<p className="text-base font-semibold text-[#1652f0]">Drop files to attach</p>
 							<p className="mt-1 text-xs text-slate-500">Files and folders are encrypted before upload.</p>

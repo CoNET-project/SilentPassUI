@@ -643,9 +643,19 @@ function ChatPdfFullscreenPreview({
 }) {
 	const [pageCount, setPageCount] = useState(0)
 	const [error, setError] = useState<string | null>(null)
+	const [fallbackUrl, setFallbackUrl] = useState<string | null>(null)
 	const pdfRef = useRef<any>(null)
 	const canvasRefs = useRef<HTMLCanvasElement[]>([])
 	const pagesRef = useRef<HTMLDivElement | null>(null)
+
+	useEffect(() => {
+		const url = URL.createObjectURL(src)
+		setFallbackUrl(url)
+		return () => {
+			URL.revokeObjectURL(url)
+			setFallbackUrl(null)
+		}
+	}, [src])
 
 	useEffect(() => {
 		let cancelled = false
@@ -731,7 +741,14 @@ function ChatPdfFullscreenPreview({
 						/>
 					))}
 					{!error && !pageCount ? <Loader2 className="my-10 h-6 w-6 animate-spin text-white/75" aria-label="Loading PDF" /> : null}
-					{error ? <div role="alert" className="m-4 rounded-xl bg-rose-950/70 px-4 py-3 text-sm text-rose-100">{error}</div> : null}
+					{error && fallbackUrl ? (
+						<iframe
+							src={fallbackUrl}
+							title="PDF preview"
+							className="h-[calc(100dvh-8rem)] w-full min-w-0 bg-white"
+						/>
+					) : null}
+					{error && !fallbackUrl ? <div role="alert" className="m-4 rounded-xl bg-rose-950/70 px-4 py-3 text-sm text-rose-100">{error}</div> : null}
 				</div>
 			</div>
 		</div>

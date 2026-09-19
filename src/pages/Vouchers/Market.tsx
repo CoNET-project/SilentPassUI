@@ -1448,6 +1448,7 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 	percentTopupWelcomeLine,
 	balancePrefix,
 	brandColor,
+	iconUrl,
 	backgroundImageUrl,
 	backgroundImageFit = 'width',
 	onActivateTopUp,
@@ -1467,6 +1468,7 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 	percentTopupWelcomeLine: string | null
 	balancePrefix: string
 	brandColor: string
+	iconUrl?: string | null
 	backgroundImageUrl?: string | null
 	backgroundImageFit?: CardPassBackgroundImageFit
 	onActivateTopUp: () => void
@@ -1482,12 +1484,12 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 	const brand = brandColor.trim() || DISCOVER_FOOD_BEVERAGE_PASS_FALLBACK
 	const brandTheme = cardTierGradientTheme(brand)
 	const brandGradient = cardTierGradientCss(brand)
+	const logoUrl = iconUrl?.trim() || ''
 	const pct =
 		chargePercent != null && Number.isFinite(chargePercent) && chargePercent > 0
 			? Number(chargePercent.toFixed(2)).toString()
 			: null
 	const topupLine = percentTopupWelcomeLine?.trim() || null
-	const nameUpper = passTitle.trim().toUpperCase() || 'MERCHANT'
 	const nameDisplay = passTitle.trim() || 'Merchant'
 	const fiatLabel = balancePrefix.trim() || 'CA$'
 	const imageUrl = (backgroundImageUrl ?? '').trim()
@@ -1512,6 +1514,21 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 						<div className="absolute inset-0 bg-slate-950/20" />
 					</div>
 				) : null}
+				{logoUrl ? (
+					<div className="relative z-10 flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl bg-white/90 p-2 shadow-[0_8px_22px_rgba(15,23,42,0.3)] ring-1 ring-white/70">
+						<DiscoverFeaturedBrandLogoImage
+							src={logoUrl}
+							fallbackLetter={nameDisplay}
+							className="h-full w-full rounded-xl object-cover"
+						/>
+					</div>
+				) : (
+					<div className="relative z-10 flex min-h-[216px] items-center justify-center text-center">
+						<h3 className="max-w-[90%] text-[clamp(2rem,7vw,3.5rem)] font-black leading-[0.95] tracking-[-0.045em] text-white drop-shadow-[0_4px_12px_rgba(15,23,42,0.58)]">
+							{nameDisplay}
+						</h3>
+					</div>
+				)}
 			</section>
 
 			{welcomeRewardLine ? (
@@ -8294,6 +8311,7 @@ function DiscoverMerchantDetailFullScreen({
 							percentTopupWelcomeLine={foodBeveragePercentTopupWelcomeLine}
 							balancePrefix={balancePrefix || 'CA$'}
 							brandColor={merchantDetailBrandColor ?? DISCOVER_FOOD_BEVERAGE_PASS_FALLBACK}
+							iconUrl={item.logo}
 							backgroundImageUrl={prospectJoinPanelBackground.backgroundImageUrl}
 							backgroundImageFit={prospectJoinPanelBackground.imageFit}
 							onActivateTopUp={() => {

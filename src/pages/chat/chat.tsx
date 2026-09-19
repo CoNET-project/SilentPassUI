@@ -257,6 +257,18 @@ async function filesFromDropItems(items: DataTransferItemList): Promise<File[]> 
 	return output
 }
 
+async function filesFromDropTransfer(dataTransfer: DataTransfer): Promise<File[]> {
+	const fromItems = await filesFromDropItems(dataTransfer.items)
+	const all = [...fromItems, ...Array.from(dataTransfer.files)]
+	const seen = new Set<string>()
+	return all.filter(file => {
+		const key = `${file.name}:${file.size}:${file.lastModified}`
+		if (seen.has(key)) return false
+		seen.add(key)
+		return true
+	})
+}
+
 function voiceWaveformPath(samples: number[]): string {
 	if (samples.length === 0) return 'M 0 16 L 240 16'
 	const upper = samples.map((sample, index) => {
@@ -2923,7 +2935,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 				onDrop={event => {
 					event.preventDefault()
 					setFileDropActive(false)
-					void filesFromDropItems(event.dataTransfer.items).then(addChatFiles)
+					void filesFromDropTransfer(event.dataTransfer).then(addChatFiles)
 				}}
 			>
 				{fileDropActive ? (
@@ -3629,17 +3641,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 							</div>
 						)}
 						{fileError ? <div role="alert" className="mb-2 rounded-xl bg-rose-50 px-3 py-2 text-[12px] text-rose-700">{fileError}</div> : null}
-						<div
-							className={fileDropActive ? 'rounded-2xl ring-2 ring-[#1652f0]/50' : ''}
-							onDragEnter={event => { event.preventDefault(); setFileDropActive(true) }}
-							onDragOver={event => event.preventDefault()}
-							onDragLeave={event => { if (event.currentTarget === event.target) setFileDropActive(false) }}
-							onDrop={event => {
-								event.preventDefault()
-								setFileDropActive(false)
-								void filesFromDropItems(event.dataTransfer.items).then(addChatFiles)
-							}}
-						>
+						<div>
 						<input ref={fileInputRef} type="file" multiple hidden {...({ webkitdirectory: '' } as Record<string, string>)} onChange={event => { void addChatFiles(Array.from(event.target.files || [])); event.currentTarget.value = '' }} />
 						<input ref={cameraInputRef} type="file" accept="video/*" capture="environment" hidden onChange={event => { void addChatFiles(Array.from(event.target.files || [])); event.currentTarget.value = '' }} />
 						<div className="flex items-center gap-2">

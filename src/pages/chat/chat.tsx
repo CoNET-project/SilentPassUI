@@ -3683,6 +3683,12 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 													) : null}
 													<div className="min-w-0 flex-1">
 														<p className="truncate text-[13px] font-semibold text-slate-700">{job.name}</p>
+														{job.files.length > 1 ? (
+															<p className="truncate text-[11px] text-slate-500">
+																{job.files.slice(0, 3).map(file => file.name).join(' · ')}
+																{job.files.length > 3 ? ` · +${job.files.length - 3} more` : ''}
+															</p>
+														) : null}
 														{job.status === 'uploading' ? <div className="mt-1 h-1 overflow-hidden rounded-full bg-slate-200"><div className="h-full bg-[#1652f0] transition-[width]" style={{ width: `${Math.max(2, job.progress * 100)}%` }} /></div> : null}
 														{job.error ? <p role="alert" className="text-[11px] text-rose-600">{job.error}</p> : null}
 													</div>

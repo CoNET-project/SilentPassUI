@@ -401,6 +401,10 @@ type DataTransferItemWithHandle = DataTransferItem & {
 	getAsFileSystemHandle?: () => Promise<FileSystemHandle | null>
 }
 
+type WalkableDirectoryHandle = FileSystemDirectoryHandle & {
+	values(): AsyncIterableIterator<FileSystemHandle>
+}
+
 function snapshotFileSystemHandle(item: DataTransferItem): Promise<FileSystemHandle | null> {
 	const withHandle = item as DataTransferItemWithHandle
 	if (typeof withHandle.getAsFileSystemHandle !== 'function') return Promise.resolve(null)
@@ -460,7 +464,10 @@ async function filesFromDropItems(items: DataTransferItemList): Promise<{
 		hasDirectory = true
 		markDroppedDirectoryName(directoryNames, handle.name)
 		try {
-			for await (const child of handle.values()) {
+			const walker = handle as FileSystemDirectoryHandle & {
+				values: () => AsyncIterableIterator<FileSystemHandle>
+			}
+			for await (const child of walker.values()) {
 				if (child.kind === 'directory') {
 					await readDirectoryHandle(child as FileSystemDirectoryHandle, `${prefix}${handle.name}/`)
 					continue

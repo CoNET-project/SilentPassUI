@@ -1,6 +1,6 @@
 {
 	"name": "Beamio",
-	"version": "0.52.605",
+	"version": "0.52.606",
 	"private": true,
 	"homepage": "/app",
 	"dependencies": {

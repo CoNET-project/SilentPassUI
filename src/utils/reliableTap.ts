@@ -39,7 +39,7 @@ export function useReliableTapHandler(handler: () => void) {
 				const dy = e.clientY - start.y
 				if (dx * dx + dy * dy > TAP_MOVE_TOLERANCE_PX * TAP_MOVE_TOLERANCE_PX) return
 			}
-			if (e.currentTarget.disabled) return
+			if ((e.currentTarget as HTMLButtonElement).disabled) return
 			// Android WebView may report finger taps as `mouse`; fire on pointerup
 			// for every pointer type and suppress the duplicate click event.
 			pointerTapDoneRef.current = true

@@ -5,6 +5,7 @@ import { useDaemonContext } from '@/providers/DaemonProvider'
 import { updateBeamioCardShareMetadata } from '@/services/BeamioCard'
 import { ProductionVideoIconFramePicker } from '@/pages/Vouchers/example/ProductionVideoIconFramePicker'
 import { uploadDataUrlToIpfsChunked, uploadMediaFileToIpfsChunked } from '@/utils/ipfsFragmentChunkUpload'
+import { standardizeProductionBackgroundVideo } from '@/utils/productionBackgroundVideo'
 import {
 	loadMedia,
 	resolveMerchantMediaItems,
@@ -84,9 +85,19 @@ export function MediaLibraryPage({ cardAddress, initialMedia = [] }: MediaLibrar
 		setUploading(true)
 		setUploadMessage('Preparing media…')
 		try {
+			let uploadFile = file
+			if (file.type.startsWith('video/')) {
+				const standardized = await standardizeProductionBackgroundVideo({
+					file,
+					startSec: 0,
+					onStatus: (message) => setUploadMessage(message),
+					onConvertProgress: (ratio) => setUploadMessage(`Optimizing video… ${Math.round(ratio * 100)}%`),
+				})
+				uploadFile = standardized.file
+			}
 			const hash = await uploadMediaFileToIpfsChunked(
 				{ privateKeyArmor: profile.privateKeyArmor },
-				file,
+				uploadFile,
 				(progress) => setUploadMessage(progress.message),
 			)
 			const next: MediaRecord = {

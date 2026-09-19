@@ -3140,7 +3140,7 @@ export default function DiscoverMerchantGiftSheet({
 					Curated store credit for {merchantLabel}
 				</p>
 
-				<div className="mt-4">{brandGiftCard}</div>
+				<div className="mt-4">{themedGiftCard}</div>
 				{giftCardImageOptions.length > 1 ? (
 					<div className="mb-2">
 						<h3 className="mb-2.5 text-[18px] font-semibold tracking-tight text-[#1a1b1f] dark:text-slate-100">

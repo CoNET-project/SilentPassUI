@@ -1174,7 +1174,7 @@ function DiscoverMerchantTreatAFriendPanel({
 						/>
 					</span>
 					<div className="min-w-0 flex-1">
-						<p className="text-[13px] font-bold tracking-[0.12em] text-[#1f2328] dark:text-slate-100">
+						<p className="text-[15px] font-bold tracking-tight text-[#1f2328] dark:text-slate-100">
 							Treat a Friend
 						</p>
 					</div>

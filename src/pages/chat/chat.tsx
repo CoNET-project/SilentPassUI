@@ -257,9 +257,12 @@ async function filesFromDropItems(items: DataTransferItemList): Promise<File[]> 
 	return output
 }
 
-async function filesFromDropTransfer(dataTransfer: DataTransfer): Promise<File[]> {
+async function filesFromDropTransfer(
+	dataTransfer: DataTransfer,
+	directFiles: File[] = Array.from(dataTransfer.files),
+): Promise<File[]> {
 	const fromItems = await filesFromDropItems(dataTransfer.items)
-	const all = [...fromItems, ...Array.from(dataTransfer.files)]
+	const all = [...directFiles, ...fromItems]
 	const seen = new Set<string>()
 	return all.filter(file => {
 		const key = `${file.name}:${file.size}:${file.lastModified}`
@@ -2935,7 +2938,8 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 				onDrop={event => {
 					event.preventDefault()
 					setFileDropActive(false)
-					void filesFromDropTransfer(event.dataTransfer).then(addChatFiles)
+					const directFiles = Array.from(event.dataTransfer.files)
+					void filesFromDropTransfer(event.dataTransfer, directFiles).then(addChatFiles)
 				}}
 			>
 				{fileDropActive ? (

@@ -8236,6 +8236,8 @@ function DiscoverMerchantDetailFullScreen({
 							customerLoyaltyPointsEnabled={customerLoyaltyPointsEnabled}
 							balancePrefix={balancePrefix || 'CA$'}
 							storeCreditsDisplay={balanceDisplay}
+							rewardPtsLoading={myPoints13Loading}
+							rewardPtsNum={myPoints13Num}
 							topupPromotionCapsule={topupPromotionIncentiveLine}
 							brandColor={merchantDetailBrandColor ?? DISCOVER_HEALTH_BEAUTY_PASS_BG}
 							onActivateTopUp={() => {

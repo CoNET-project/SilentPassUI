@@ -926,9 +926,6 @@ function DiscoverMerchantHealthBeautyLoyaltyPassPanel({
 							Earn Alliance Points on every visit &amp; purchase
 						</p>
 					)}
-					<span className="shrink-0 text-[10px] font-bold uppercase tracking-[0.12em] text-white/40">
-						No Tier Caps
-					</span>
 				</div>
 			</section>
 
@@ -1674,9 +1671,6 @@ function DiscoverMerchantFoodBeverageLoyaltyPassPanel({
 							Earn Alliance Points on every dining order
 						</p>
 					)}
-					<span className="shrink-0 text-[10px] font-bold uppercase tracking-[0.12em] text-white/40">
-						No Tier Caps
-					</span>
 				</div>
 			</section>
 
@@ -1971,12 +1965,6 @@ function DiscoverMerchantMemberRechargePrivilegesPanel({
 					>
 						{rewardLine}
 					</p>
-					<span
-						className="shrink-0 text-[10px] font-bold uppercase tracking-[0.12em]"
-						style={{ color: panelTheme.tertiary }}
-					>
-						No Tier Caps
-					</span>
 				</div>
 			</div>
 
@@ -9558,7 +9546,7 @@ export default function Market() {
 						key={item.id}
 						type="button"
 						onClick={() => openDiscoverMerchantDetail(item)}
-						className="w-full min-w-0 text-left bg-white dark:bg-slate-900 rounded-[30px] shadow-[0_8px_22px_rgba(15,23,42,0.06)] border border-[#e8ecf0] dark:border-slate-800 overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0] focus-visible:ring-offset-2 focus-visible:ring-offset-[#f5f7f9] dark:focus-visible:ring-offset-slate-950 active:scale-[0.99] transition-transform"
+						className="w-full min-w-0 text-left bg-white dark:bg-slate-900 rounded-[30px] shadow-[0_8px_22px_rgba(15,23,42,0.09)] border border-[#e8ecf0] dark:border-slate-800 overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0] focus-visible:ring-offset-2 focus-visible:ring-offset-[#f5f7f9] dark:focus-visible:ring-offset-slate-950 active:scale-[0.99] transition-transform"
 					>
 						<div className="relative">
 							<DiscoverFeaturedBrandHeroImage

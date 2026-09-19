@@ -43,8 +43,6 @@ import {
 	Dumbbell,
 	Clapperboard,
 	Building2,
-	Search,
-	Mic,
 	Heart,
 	Clock,
 	Phone,
@@ -779,6 +777,61 @@ function DiscoverDynamicPassTitle({ title }: { title: string }) {
 	)
 }
 
+function formatDiscoverLoyaltyPassRewardPt(params: {
+	loading: boolean
+	pointsNum: number
+	fiatLabel: string
+}): { main: string; fiatHint: string | null } {
+	const { loading, pointsNum, fiatLabel } = params
+	if (loading) return { main: '—', fiatHint: null }
+	const formatted = formatSocialPoints13Display(pointsNum)
+	const main = `${formatted} PT`
+	if (!(pointsNum > 0)) return { main, fiatHint: null }
+	const prefix = fiatLabel.trim() || 'CA$'
+	return { main, fiatHint: `≈ ${prefix}${formatted}` }
+}
+
+function DiscoverLoyaltyPassIncentiveLine({
+	topupPromotionCapsule,
+	pct,
+	earnWithPct,
+	earnDefault,
+}: {
+	topupPromotionCapsule?: string | null
+	pct: string | null
+	earnWithPct: string
+	earnDefault: string
+}) {
+	const promo = topupPromotionCapsule?.trim()
+	if (promo) {
+		return (
+			<div className="mt-5 border-t border-white/15 pt-4">
+				<p className="min-w-0 text-[13px] font-medium leading-snug text-white/90">{promo}</p>
+			</div>
+		)
+	}
+	return (
+		<div className="mt-5 flex items-center gap-2.5 border-t border-white/15 pt-4">
+			{pct != null ? (
+				<>
+					<span
+						className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full"
+						style={{ backgroundColor: 'rgba(52, 211, 153, 0.22)' }}
+						aria-hidden
+					>
+						<Check className="h-3 w-3 text-emerald-300" strokeWidth={3} />
+					</span>
+					<p className="min-w-0 flex-1 text-[13px] font-medium leading-snug text-white/90">
+						{earnWithPct}
+					</p>
+				</>
+			) : (
+				<p className="min-w-0 flex-1 text-[13px] font-medium leading-snug text-white/70">{earnDefault}</p>
+			)}
+		</div>
+	)
+}
+
 /**
  * Health & Beauty · no Store Credit Multiplier · user already holds credits / points / pass.
  * Active Pass layout (Chillax-style) — not Member Recharge Privileges.
@@ -789,7 +842,9 @@ function DiscoverMerchantHealthBeautyLoyaltyPassPanel({
 	customerLoyaltyPointsEnabled,
 	balancePrefix,
 	storeCreditsDisplay,
-	rewardPtsDisplay,
+	rewardPtsLoading,
+	rewardPtsNum,
+	topupPromotionCapsule,
 	brandColor,
 	onActivateTopUp,
 	onBooking,
@@ -806,7 +861,9 @@ function DiscoverMerchantHealthBeautyLoyaltyPassPanel({
 	customerLoyaltyPointsEnabled: boolean
 	balancePrefix: string
 	storeCreditsDisplay: string
-	rewardPtsDisplay: string
+	rewardPtsLoading: boolean
+	rewardPtsNum: number
+	topupPromotionCapsule?: string | null
 	brandColor: string
 	onActivateTopUp: () => void
 	onBooking: () => void
@@ -823,15 +880,13 @@ function DiscoverMerchantHealthBeautyLoyaltyPassPanel({
 		chargePercent != null && Number.isFinite(chargePercent) && chargePercent > 0
 			? Number(chargePercent.toFixed(2)).toString()
 			: null
-	const passEyebrow = `${passTitle.trim().toUpperCase() || 'MERCHANT'} MEMBER PASS`
+	const nameDisplay = passTitle.trim() || 'Merchant'
 	const fiatLabel = balancePrefix.trim() || 'CA$'
-	const alliancePtsLabel = (() => {
-		const raw = String(rewardPtsDisplay || '0').trim()
-		if (raw === '—') return '—'
-		const withoutPts = raw.replace(/\s*Pts$/i, '').trim()
-		const stripped = withoutPts.replace(/\.00$/, '')
-		return `${stripped} Pts`
-	})()
+	const rewardPt = formatDiscoverLoyaltyPassRewardPt({
+		loading: rewardPtsLoading,
+		pointsNum: rewardPtsNum,
+		fiatLabel,
+	})
 
 	return (
 		<div className="flex flex-col gap-4" aria-label="Active member pass">
@@ -849,15 +904,11 @@ function DiscoverMerchantHealthBeautyLoyaltyPassPanel({
 					/>
 				</span>
 				<p
-					className="min-w-0 flex-1 text-[11px] font-bold uppercase tracking-[0.14em]"
+					className="min-w-0 flex-1 truncate text-[15px] font-semibold tracking-tight"
 					style={{ color: DISCOVER_HEALTH_BEAUTY_ACCENT }}
 				>
-					{passEyebrow}
+					{nameDisplay}
 				</p>
-				<span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-emerald-200/90 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-800 dark:border-emerald-800/50 dark:bg-emerald-950/40 dark:text-emerald-200">
-					<span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden />
-					Active Pass
-				</span>
 			</div>
 
 			<section
@@ -887,46 +938,36 @@ function DiscoverMerchantHealthBeautyLoyaltyPassPanel({
 				<div className="mt-6 grid grid-cols-2 gap-0 border-t border-white/15 pt-5">
 					<div className="min-w-0 pr-4">
 						<p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/50">
-							Available Balance
+							STORE CREDITS
 						</p>
 						<p className="mt-1.5 truncate text-[1.55rem] font-bold leading-none tracking-tight text-white tabular-nums">
 							{storeCreditsDisplay}
 						</p>
 					</div>
 					<div className="min-w-0 border-l border-white/15 pl-4 text-right">
-						<p className="inline-flex w-full items-center justify-end gap-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white/50">
-							<Coins className="h-3 w-3 shrink-0 opacity-80" strokeWidth={2.25} aria-hidden />
-							Alliance Points
+						<p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/50">
+							Reward PT
 						</p>
 						<p
 							className="mt-1.5 truncate text-[1.55rem] font-bold leading-none tracking-tight tabular-nums"
 							style={{ color: '#e8a45c' }}
 						>
-							{alliancePtsLabel}
+							{rewardPt.main}
 						</p>
+						{rewardPt.fiatHint ? (
+							<p className="mt-1 truncate text-[12px] font-medium tabular-nums text-white/55">
+								{rewardPt.fiatHint}
+							</p>
+						) : null}
 					</div>
 				</div>
 
-				<div className="mt-5 flex items-center gap-2.5 border-t border-white/15 pt-4">
-					{pct != null ? (
-						<>
-							<span
-								className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full"
-								style={{ backgroundColor: 'rgba(52, 211, 153, 0.22)' }}
-								aria-hidden
-							>
-								<Check className="h-3 w-3 text-emerald-300" strokeWidth={3} />
-							</span>
-							<p className="min-w-0 flex-1 text-[13px] font-medium leading-snug text-white/90">
-								Earn {pct}% back on every visit &amp; purchase
-							</p>
-						</>
-					) : (
-						<p className="min-w-0 flex-1 text-[13px] font-medium leading-snug text-white/70">
-							Earn Alliance Points on every visit &amp; purchase
-						</p>
-					)}
-				</div>
+				<DiscoverLoyaltyPassIncentiveLine
+					topupPromotionCapsule={topupPromotionCapsule}
+					pct={pct}
+					earnWithPct={`Earn ${pct}% back on every visit & purchase`}
+					earnDefault="Earn Reward PT on every visit & purchase"
+				/>
 			</section>
 
 			<button
@@ -1546,7 +1587,9 @@ function DiscoverMerchantFoodBeverageLoyaltyPassPanel({
 	customerLoyaltyPointsEnabled,
 	balancePrefix,
 	storeCreditsDisplay,
-	rewardPtsDisplay,
+	rewardPtsLoading,
+	rewardPtsNum,
+	topupPromotionCapsule,
 	brandColor,
 	onActivateTopUp,
 	onBooking,
@@ -1562,7 +1605,9 @@ function DiscoverMerchantFoodBeverageLoyaltyPassPanel({
 	customerLoyaltyPointsEnabled: boolean
 	balancePrefix: string
 	storeCreditsDisplay: string
-	rewardPtsDisplay: string
+	rewardPtsLoading: boolean
+	rewardPtsNum: number
+	topupPromotionCapsule?: string | null
 	brandColor: string
 	onActivateTopUp: () => void
 	onBooking: () => void
@@ -1579,15 +1624,12 @@ function DiscoverMerchantFoodBeverageLoyaltyPassPanel({
 			? Number(chargePercent.toFixed(2)).toString()
 			: null
 	const nameDisplay = passTitle.trim() || 'Merchant'
-	const passEyebrow = `${nameDisplay.toUpperCase()} MEMBER PASS`
 	const fiatLabel = balancePrefix.trim() || 'CA$'
-	const alliancePtsLabel = (() => {
-		const raw = String(rewardPtsDisplay || '0').trim()
-		if (raw === '—') return '—'
-		const withoutPts = raw.replace(/\s*Pts$/i, '').trim()
-		const stripped = withoutPts.replace(/\.00$/, '')
-		return `${stripped} Pts`
-	})()
+	const rewardPt = formatDiscoverLoyaltyPassRewardPt({
+		loading: rewardPtsLoading,
+		pointsNum: rewardPtsNum,
+		fiatLabel,
+	})
 
 	return (
 		<div className="flex flex-col gap-4" aria-label="Active dining member pass">
@@ -1604,15 +1646,11 @@ function DiscoverMerchantFoodBeverageLoyaltyPassPanel({
 					/>
 				</span>
 				<p
-					className="min-w-0 flex-1 text-[11px] font-bold uppercase tracking-[0.14em]"
+					className="min-w-0 flex-1 truncate text-[15px] font-semibold tracking-tight"
 					style={{ color: DISCOVER_FOOD_BEVERAGE_GIFT_ACCENT }}
 				>
-					{passEyebrow}
+					{nameDisplay}
 				</p>
-				<span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-emerald-200/90 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-800 dark:border-emerald-800/50 dark:bg-emerald-950/40 dark:text-emerald-200">
-					<span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden />
-					Active Pass
-				</span>
 			</div>
 
 			<section
@@ -1632,46 +1670,36 @@ function DiscoverMerchantFoodBeverageLoyaltyPassPanel({
 				<div className="mt-6 grid grid-cols-2 gap-0 border-t border-white/15 pt-5">
 					<div className="min-w-0 pr-4">
 						<p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/50">
-							Available Balance
+							STORE CREDITS
 						</p>
 						<p className="mt-1.5 truncate text-[1.55rem] font-bold leading-none tracking-tight text-white tabular-nums">
 							{storeCreditsDisplay}
 						</p>
 					</div>
 					<div className="min-w-0 border-l border-white/15 pl-4 text-right">
-						<p className="inline-flex w-full items-center justify-end gap-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white/50">
-							<Coins className="h-3 w-3 shrink-0 opacity-80" strokeWidth={2.25} aria-hidden />
-							Alliance Points
+						<p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/50">
+							Reward PT
 						</p>
 						<p
 							className="mt-1.5 truncate text-[1.55rem] font-bold leading-none tracking-tight tabular-nums"
 							style={{ color: '#e8a45c' }}
 						>
-							{alliancePtsLabel}
+							{rewardPt.main}
 						</p>
+						{rewardPt.fiatHint ? (
+							<p className="mt-1 truncate text-[12px] font-medium tabular-nums text-white/55">
+								{rewardPt.fiatHint}
+							</p>
+						) : null}
 					</div>
 				</div>
 
-				<div className="mt-5 flex items-center gap-2.5 border-t border-white/15 pt-4">
-					{pct != null ? (
-						<>
-							<span
-								className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full"
-								style={{ backgroundColor: 'rgba(52, 211, 153, 0.22)' }}
-								aria-hidden
-							>
-								<Check className="h-3 w-3 text-emerald-300" strokeWidth={3} />
-							</span>
-							<p className="min-w-0 flex-1 text-[13px] font-medium leading-snug text-white/90">
-								Earn {pct}% back on every dining order
-							</p>
-						</>
-					) : (
-						<p className="min-w-0 flex-1 text-[13px] font-medium leading-snug text-white/70">
-							Earn Alliance Points on every dining order
-						</p>
-					)}
-				</div>
+				<DiscoverLoyaltyPassIncentiveLine
+					topupPromotionCapsule={topupPromotionCapsule}
+					pct={pct}
+					earnWithPct={`Earn ${pct}% back on every dining order`}
+					earnDefault="Earn Reward PT on every dining order"
+				/>
 			</section>
 
 			<button
@@ -1800,13 +1828,16 @@ function DiscoverStoreCreditMultiplierOffersRow({
 function DiscoverMerchantMemberRechargePrivilegesPanel({
 	passTitle,
 	storeCreditsLabel,
-	pointsLabel,
+	balancePrefix,
+	rewardPtsLoading,
+	rewardPtsNum,
 	chargePercent,
 	isDining,
 	/** User holds store credits (#0) and/or Reward PT (#13). */
 	hasPointsOrCredits,
 	multiplierCards,
 	footerTip,
+	topupPromotionIncentiveLine,
 	canTopUp,
 	topUpBusy,
 	onRecharge,
@@ -1814,12 +1845,15 @@ function DiscoverMerchantMemberRechargePrivilegesPanel({
 }: {
 	passTitle: string
 	storeCreditsLabel: string
-	pointsLabel: string
+	balancePrefix: string
+	rewardPtsLoading: boolean
+	rewardPtsNum: number
 	chargePercent: number | null
 	isDining: boolean
 	hasPointsOrCredits: boolean
 	multiplierCards: DiscoverStoreCreditMultiplierCard[]
 	footerTip: string
+	topupPromotionIncentiveLine?: string | null
 	canTopUp: boolean
 	topUpBusy: boolean
 	onRecharge: (suggestedAmount?: string) => void
@@ -1845,16 +1879,23 @@ function DiscoverMerchantMemberRechargePrivilegesPanel({
 	const panelGradient = cardTierGradientCss(panelBackgroundColor)
 	const passName = passTitle.trim() || 'Merchant'
 	const passSubtitle = isDining ? 'Digital Dining & Loyalty Pass' : 'Digital Loyalty Pass'
+	const rewardPt = formatDiscoverLoyaltyPassRewardPt({
+		loading: rewardPtsLoading,
+		pointsNum: rewardPtsNum,
+		fiatLabel: balancePrefix,
+	})
+	const promotionLine = topupPromotionIncentiveLine?.trim() || null
 	const rewardLine =
-		chargePercent != null && Number.isFinite(chargePercent) && chargePercent > 0
+		promotionLine ||
+		(chargePercent != null && Number.isFinite(chargePercent) && chargePercent > 0
 			? `Earn ${Number(chargePercent.toFixed(2)).toString()}% back on every ${
 					isDining ? 'dining order' : 'purchase'
 				}`
-			: `Earn Alliance Points on every ${isDining ? 'dining order' : 'purchase'}`
-	const headerEyebrow = hasPointsOrCredits ? '✨ Share & earn points' : '🔥 First top-up exclusive'
+			: `Earn Reward PT on every ${isDining ? 'dining order' : 'purchase'}`)
+	const headerEyebrow = hasPointsOrCredits ? '✨ Share & earn Reward PT' : '🔥 First top-up exclusive'
 	const headerTitle = hasPointsOrCredits ? 'Fresh Rewards Unlocked!' : 'Claim Your Welcome Match'
 	const headerBody = hasPointsOrCredits
-		? 'You earned points on your last bite. Redeem them for your favorite dish or reload for more bonuses.'
+		? 'You earned Reward PT on your last bite. Redeem it for your favorite dish or reload for more bonuses.'
 		: 'Get instant bonus credits on your first top-up. Enjoy zero-friction checkouts on every bite.'
 
 	return (
@@ -1920,7 +1961,7 @@ function DiscoverMerchantMemberRechargePrivilegesPanel({
 							className="text-[10px] font-semibold uppercase tracking-[0.14em]"
 							style={{ color: panelTheme.tertiary }}
 						>
-							Available Balance
+							STORE CREDITS
 						</p>
 						<p className="mt-1.5 truncate text-[1.55rem] font-bold leading-none tracking-tight tabular-nums">
 							{storeCreditsLabel}
@@ -1935,14 +1976,19 @@ function DiscoverMerchantMemberRechargePrivilegesPanel({
 							style={{ color: panelTheme.tertiary }}
 						>
 							<Coins className="h-3 w-3 shrink-0 opacity-80" strokeWidth={2.25} aria-hidden />
-							Alliance Points
+							REWARD PT
 						</p>
 						<p
 							className="mt-1.5 truncate text-[1.55rem] font-bold leading-none tracking-tight tabular-nums"
 							style={{ color: '#e8a45c' }}
 						>
-							{pointsLabel}
+							{rewardPt.main}
 						</p>
+						{rewardPt.fiatHint ? (
+							<p className="mt-1 truncate text-[12px] font-medium tabular-nums opacity-70">
+								{rewardPt.fiatHint}
+							</p>
+						) : null}
 					</div>
 				</div>
 
@@ -6049,7 +6095,15 @@ function DiscoverMerchantDetailFullScreen({
 			}),
 		[merchantMetadataRoot, displayCurrency],
 	)
-	const topupPromotionCapsule = topupPromotionPresentation.capsuleCopy
+	const topupPromotionCapsuleMeta = topupPromotionPresentation.capsuleCopy
+	const topupPromotionIncentiveLine = useMemo(() => {
+		const cap = topupPromotionCapsuleMeta
+		if (!cap) return null
+		const desc = cap.description?.trim()
+		if (desc) return desc
+		const title = cap.title?.trim()
+		return title || null
+	}, [topupPromotionCapsuleMeta])
 	const prospectJoinPanelCopy = useMemo(
 		() =>
 			resolveDiscoverProspectJoinPanelCopy({
@@ -6207,7 +6261,7 @@ function DiscoverMerchantDetailFullScreen({
 			const pct = Number.isInteger(chargePercent)
 				? String(chargePercent)
 				: chargePercent.toFixed(2).replace(/\.?0+$/, '')
-			return `Earn ${pct}% back in points on every future purchase.`
+			return `Earn ${pct}% back in Reward PT on every future purchase.`
 		}
 		return 'Bonus credits unlock instantly and never expire.'
 	}, [merchantMetadataRoot])
@@ -6955,7 +7009,7 @@ function DiscoverMerchantDetailFullScreen({
 				return
 			}
 			const amount =
-				(suggestedAmount ?? '').trim() || topupPromotionCapsule?.suggestedAmount
+				(suggestedAmount ?? '').trim() || topupPromotionCapsuleMeta?.suggestedAmount
 			openDiscoverTopupAmount(amount)
 		},
 		[
@@ -6963,7 +7017,7 @@ function DiscoverMerchantDetailFullScreen({
 			membershipUi.mode,
 			openDiscoverMembershipPay,
 			openDiscoverTopupAmount,
-			topupPromotionCapsule?.suggestedAmount,
+			topupPromotionCapsuleMeta?.suggestedAmount,
 		],
 	)
 
@@ -8182,11 +8236,7 @@ function DiscoverMerchantDetailFullScreen({
 							customerLoyaltyPointsEnabled={customerLoyaltyPointsEnabled}
 							balancePrefix={balancePrefix || 'CA$'}
 							storeCreditsDisplay={balanceDisplay}
-							rewardPtsDisplay={
-								myPoints13Loading
-									? '—'
-									: `${formatSocialPoints13Display(myPoints13Num)} Pts`
-							}
+							topupPromotionCapsule={topupPromotionIncentiveLine}
 							brandColor={merchantDetailBrandColor ?? DISCOVER_HEALTH_BEAUTY_PASS_BG}
 							onActivateTopUp={() => {
 								if (usdcTopupPhase !== 'idle' || discoverTopUpOpen) return
@@ -8213,11 +8263,9 @@ function DiscoverMerchantDetailFullScreen({
 							customerLoyaltyPointsEnabled={customerLoyaltyPointsEnabled}
 							balancePrefix={balancePrefix || 'CA$'}
 							storeCreditsDisplay={balanceDisplay}
-							rewardPtsDisplay={
-								myPoints13Loading
-									? '—'
-									: `${formatSocialPoints13Display(myPoints13Num)} Pts`
-							}
+							rewardPtsLoading={myPoints13Loading}
+							rewardPtsNum={myPoints13Num}
+							topupPromotionCapsule={topupPromotionIncentiveLine}
 							brandColor={merchantDetailBrandColor ?? DISCOVER_FOOD_BEVERAGE_PASS_FALLBACK}
 							onActivateTopUp={() => {
 								if (usdcTopupPhase !== 'idle' || discoverTopUpOpen) return
@@ -8294,11 +8342,9 @@ function DiscoverMerchantDetailFullScreen({
 							<DiscoverMerchantMemberRechargePrivilegesPanel
 								passTitle={passTitle}
 								storeCreditsLabel={balanceDisplay}
-								pointsLabel={
-									myPoints13Loading
-										? '—'
-										: `${formatSocialPoints13Display(myPoints13Num)} Pts`
-								}
+								balancePrefix={balancePrefix || 'CA$'}
+								rewardPtsLoading={myPoints13Loading}
+								rewardPtsNum={myPoints13Num}
 								chargePercent={memberRechargeChargePercent}
 								isDining={item.category === 'food-beverage'}
 								hasPointsOrCredits={
@@ -8306,6 +8352,7 @@ function DiscoverMerchantDetailFullScreen({
 									(Number.isFinite(myPoints13Num) && myPoints13Num > 0)
 								}
 								multiplierCards={prospectJoinPanelCopy.multiplierCards}
+								topupPromotionIncentiveLine={topupPromotionIncentiveLine}
 								backgroundColor={
 									merchantDetailBrandColor ?? prospectJoinPanelBackground.backgroundColor
 								}
@@ -8448,14 +8495,14 @@ function DiscoverMerchantDetailFullScreen({
 								) : null}
 							</div>
 							<div className="min-w-0 border-l border-slate-100 pl-3 dark:border-slate-800 sm:pl-4">
-								<p className="text-[12px] font-medium text-slate-500 dark:text-slate-400">My Points</p>
+								<p className="text-[12px] font-medium text-slate-500 dark:text-slate-400">Reward PT</p>
 								<p className="mt-1.5 text-[26px] font-bold leading-none tracking-tight text-[#1f2328] dark:text-slate-100 sm:text-[28px]">
 									{myPoints13Loading ? (
 										'—'
 									) : (
 										<>
 											{formatSocialPoints13Display(myPoints13Num)}
-											<span className="ml-1.5 text-[16px] font-bold text-slate-400 dark:text-slate-500">Pts</span>
+											<span className="ml-1.5 text-[16px] font-bold text-slate-400 dark:text-slate-500">PT</span>
 										</>
 									)}
 								</p>
@@ -9235,13 +9282,6 @@ export default function Market() {
 		flash()
 	}
 
-	/** Discover top bar: open same global search as footer (portal masks page + bottom SearchInputWithDropdown). */
-	const openDiscoverGlobalSearch = () => {
-		if (chatSearchOpen) return
-		setShowFooter(false)
-		setChatSearchOpen(true)
-	}
-
 	const openDiscoverMerchantDetail = useCallback(
 		(card: DiscoverFeaturedCard, opts?: { immediate?: boolean }) => {
 			if (opts?.immediate) setDiscoverDetailEnterImmediate(true)
@@ -9489,23 +9529,6 @@ export default function Market() {
 			/>
 
 		<div className="animate-in fade-in duration-300 pb-8 max-w-lg mx-auto w-full px-3 sm:px-5">
-			<section className="pt-3 pb-3">
-				<button
-					type="button"
-					onClick={openDiscoverGlobalSearch}
-					onFocus={openDiscoverGlobalSearch}
-					className="flex w-full items-center gap-3 rounded-full border border-[#e8ecf0] bg-white py-3 pl-4 pr-3 text-left shadow-[0_4px_14px_rgba(15,23,42,0.06)] outline-none ring-[#1562f0]/30 transition-shadow focus-visible:ring-2 dark:border-slate-700 dark:bg-slate-900 dark:shadow-none"
-					aria-label="Search businesses, NGOs, or friends"
-				>
-					<Search className="h-5 w-5 shrink-0 text-slate-400" strokeWidth={2} aria-hidden />
-					<span className="min-w-0 flex-1 truncate text-[15px] text-slate-400">
-						Search businesses, NGOs, or friends…
-					</span>
-					<span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-50 text-[#1562f0] dark:bg-blue-950/50 dark:text-blue-400" aria-hidden>
-						<Mic className="h-5 w-5" strokeWidth={2} />
-					</span>
-				</button>
-			</section>
 			{/* Generous inset: box-shadow (~22px blur) must stay inside scrollport; avoid clipping vs overflow-x */}
 			<section className="pt-1 pb-8">
 				<div className="flex min-h-0 items-center gap-2 py-6 pl-4 pr-4 sm:py-7 sm:pl-6 sm:pr-6">

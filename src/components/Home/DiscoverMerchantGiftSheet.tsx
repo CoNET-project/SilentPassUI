@@ -1942,7 +1942,7 @@ export default function DiscoverMerchantGiftSheet({
 			: '$0.00 USDC'
 	const remainingUsdcQuoteLabel =
 		quotedGiftUsdc6 != null
-			? `Need ~$${formatQuotedUsdc6ForDisplay(reward13CashUsdc6)} USDC`
+			? `Due ~$${formatQuotedUsdc6ForDisplay(reward13CashUsdc6)} USDC`
 			: usdcQuoteLabel
 
 	useEffect(() => {
@@ -2120,12 +2120,10 @@ export default function DiscoverMerchantGiftSheet({
 						className="h-full w-full object-cover"
 					/>
 					<div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/25 via-transparent to-transparent" />
-					<div className="pointer-events-none absolute inset-x-5 bottom-5 text-white">
-						<p className="truncate text-[18px] font-semibold leading-tight">{merchantLabel}</p>
-						<div className="mt-2 flex items-baseline gap-1">
-							<span className="text-[15px] font-bold">{prefix}</span>
-							<span className="text-[34px] font-bold leading-none tracking-tight">{giftValueDisplayHuman}</span>
-						</div>
+					<div className="pointer-events-none absolute inset-x-5 bottom-5 flex items-end text-white">
+						<span className="text-[34px] font-bold leading-none tracking-tight">
+							{prefix}{giftValueDisplayHuman}
+						</span>
 					</div>
 				</div>
 			) : null}

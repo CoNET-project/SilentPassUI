@@ -227,34 +227,71 @@ async function createVideoThumbnail(videoFile: File): Promise<Blob> {
 	}
 }
 
-async function filesFromDropItems(items: DataTransferItemList): Promise<File[]> {
+/**
+ * Collect files from a drop. Critical: call webkitGetAsEntry() / getAsFile() for
+ * EVERY item synchronously before any await — browsers invalidate later items once
+ * the first async entry.file() runs.
+ *
+ * For plain multi-file drops (no folders), prefer the sync `dataTransfer.files`
+ * list — it is the most reliable multi-file source across Chrome / Safari / Firefox.
+ */
+async function filesFromDropItems(items: DataTransferItemList): Promise<{
+	files: File[]
+	hasDirectory: boolean
+}> {
 	const output: File[] = []
-	const readEntry = async (entry: any, prefix = ''): Promise<void> => {
-		if (entry?.isFile) {
-			const file = await new Promise<File>((resolve, reject) => entry.file(resolve, reject))
-			Object.defineProperty(file, 'webkitRelativePath', { value: `${prefix}${file.name}` })
+	type Snapshot =
+		| { kind: 'entry'; entry: FileSystemEntry }
+		| { kind: 'file'; file: File }
+	const snapshots: Snapshot[] = []
+	let hasDirectory = false
+	for (let i = 0; i < items.length; i += 1) {
+		const item = items[i]
+		if (!item) continue
+		const entry = typeof item.webkitGetAsEntry === 'function' ? item.webkitGetAsEntry() : null
+		if (entry) {
+			if (entry.isDirectory) hasDirectory = true
+			snapshots.push({ kind: 'entry', entry })
+			continue
+		}
+		const file = item.getAsFile()
+		if (file) snapshots.push({ kind: 'file', file })
+	}
+
+	const readEntry = async (entry: FileSystemEntry, prefix = ''): Promise<void> => {
+		if (entry.isFile) {
+			const file = await new Promise<File>((resolve, reject) => {
+				;(entry as FileSystemFileEntry).file(resolve, reject)
+			})
+			Object.defineProperty(file, 'webkitRelativePath', {
+				value: `${prefix}${file.name}`,
+				configurable: true,
+			})
 			output.push(file)
 			return
 		}
-		if (entry?.isDirectory) {
-			const reader = entry.createReader()
+		if (entry.isDirectory) {
+			const reader = (entry as FileSystemDirectoryEntry).createReader()
 			while (true) {
-				const batch = await new Promise<any[]>((resolve, reject) => reader.readEntries(resolve, reject))
+				const batch = await new Promise<FileSystemEntry[]>((resolve, reject) => {
+					reader.readEntries(resolve, reject)
+				})
 				if (!batch.length) break
-				for (const child of batch) await readEntry(child, `${prefix}${entry.name}/`)
+				for (const child of batch) {
+					await readEntry(child, `${prefix}${entry.name}/`)
+				}
 			}
 		}
 	}
-	for (let i = 0; i < items.length; i += 1) {
-		const item = items[i]
-		const entry = item.webkitGetAsEntry?.()
-		if (entry) await readEntry(entry)
-		else {
-			const file = item.getAsFile()
-			if (file) output.push(file)
+
+	for (const snapshot of snapshots) {
+		if (snapshot.kind === 'file') {
+			output.push(snapshot.file)
+			continue
 		}
+		await readEntry(snapshot.entry)
 	}
-	return output
+	return { files: output, hasDirectory }
 }
 
 async function filesFromDropTransfer(
@@ -262,10 +299,15 @@ async function filesFromDropTransfer(
 	directFiles: File[] = Array.from(dataTransfer.files),
 ): Promise<File[]> {
 	const fromItems = await filesFromDropItems(dataTransfer.items)
-	const all = [...directFiles, ...fromItems]
+	// Plain multi-file drops: trust the sync FileList — entry.file() after await
+	// can still lose siblings in some WebKit builds even with entry snapshots.
+	if (!fromItems.hasDirectory && directFiles.length > 0) {
+		return directFiles
+	}
+	const all = [...directFiles, ...fromItems.files]
 	const seen = new Set<string>()
 	return all.filter(file => {
-		const key = `${file.name}:${file.size}:${file.lastModified}`
+		const key = `${file.name}:${file.size}:${file.lastModified}:${file.webkitRelativePath || ''}`
 		if (seen.has(key)) return false
 		seen.add(key)
 		return true
@@ -1345,6 +1387,8 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 	const cameraInputRef = useRef<HTMLInputElement | null>(null)
 	const [fileError, setFileError] = useState<string | null>(null)
 	const [fileDropActive, setFileDropActive] = useState(false)
+	/** Nested dragenter/leave depth on the chat shell — avoids clearing the overlay when React remounts children under the cursor (relatedTarget often null). */
+	const fileDragDepthRef = useRef(0)
 	const [cameraStream, setCameraStream] = useState<MediaStream | null>(null)
 	const [cameraRecording, setCameraRecording] = useState(false)
 	const cameraRecorderRef = useRef<MediaRecorder | null>(null)
@@ -1575,6 +1619,58 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 			fileControllersRef.current.delete(id)
 		}
 	}, [hasRoute, profiles])
+
+	const handleChatFileDragEnter = useCallback((event: React.DragEvent) => {
+		event.preventDefault()
+		event.stopPropagation()
+		if (!hasRoute) return
+		if (!Array.from(event.dataTransfer.types).includes('Files')) return
+		fileDragDepthRef.current += 1
+		setFileDropActive(true)
+	}, [hasRoute])
+
+	const handleChatFileDragOver = useCallback((event: React.DragEvent) => {
+		event.preventDefault()
+		event.stopPropagation()
+		if (!hasRoute) return
+		event.dataTransfer.dropEffect = 'copy'
+		if (Array.from(event.dataTransfer.types).includes('Files')) setFileDropActive(true)
+	}, [hasRoute])
+
+	const handleChatFileDragLeave = useCallback((event: React.DragEvent) => {
+		event.preventDefault()
+		event.stopPropagation()
+		const next = event.relatedTarget as Node | null
+		// Overlay mount often fires leave with relatedTarget=null — do not clear.
+		if (!next) return
+		if (event.currentTarget.contains(next)) return
+		fileDragDepthRef.current = Math.max(0, fileDragDepthRef.current - 1)
+		if (fileDragDepthRef.current === 0) setFileDropActive(false)
+	}, [])
+
+	const handleChatFileDrop = useCallback((event: React.DragEvent) => {
+		event.preventDefault()
+		event.stopPropagation()
+		// Snapshot FileList BEFORE any React state update — some engines clear
+		// dataTransfer after the drop handler yields / re-renders.
+		const directFiles = Array.from(event.dataTransfer.files || [])
+		const dataTransfer = event.dataTransfer
+		fileDragDepthRef.current = 0
+		setFileDropActive(false)
+		if (!hasRoute) return
+		void filesFromDropTransfer(dataTransfer, directFiles).then(files => {
+			if (files.length) void addChatFiles(files)
+		})
+	}, [addChatFiles, hasRoute])
+
+	useEffect(() => {
+		const clearFileDropUi = () => {
+			fileDragDepthRef.current = 0
+			setFileDropActive(false)
+		}
+		window.addEventListener('dragend', clearFileDropUi)
+		return () => window.removeEventListener('dragend', clearFileDropUi)
+	}, [])
 
 	const openChatCamera = useCallback(() => {
 		if (!hasRoute) return
@@ -2772,7 +2868,13 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 
 
   return (
-		<div className="fixed inset-0 bg-[#F1F8ED]">
+		<div
+			className="fixed inset-0 bg-[#F1F8ED]"
+			onDragEnter={handleChatFileDragEnter}
+			onDragOver={handleChatFileDragOver}
+			onDragLeave={handleChatFileDragLeave}
+			onDrop={handleChatFileDrop}
+		>
 			<ChatHeaderIOS
 				beamioer={fromBeamio}
 				onBack={onBack}
@@ -2924,27 +3026,15 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 				onScroll={() => {
 				clearUnreadIfNeeded()
 				}}
-				onDragEnter={event => {
-					event.preventDefault()
-					setFileDropActive(true)
-				}}
-				onDragOver={event => {
-					event.preventDefault()
-					event.dataTransfer.dropEffect = 'copy'
-				}}
-				onDragLeave={event => {
-					if (event.currentTarget === event.target) setFileDropActive(false)
-				}}
-				onDrop={event => {
-					event.preventDefault()
-					setFileDropActive(false)
-					const directFiles = Array.from(event.dataTransfer.files)
-					void filesFromDropTransfer(event.dataTransfer, directFiles).then(addChatFiles)
-				}}
 			>
 				{fileDropActive ? (
-					<div className="pointer-events-none fixed inset-0 z-[120] grid place-items-center border-2 border-dashed border-[#1652f0]/70 bg-[#dceaff]/55 backdrop-blur-sm">
-						<div className="rounded-2xl bg-white/85 px-6 py-4 text-center shadow-lg ring-1 ring-white/80">
+					<div
+						className="fixed inset-0 z-[120] grid place-items-center border-2 border-dashed border-[#1652f0]/70 bg-[#dceaff]/55 backdrop-blur-sm"
+						onDragEnter={handleChatFileDragEnter}
+						onDragOver={handleChatFileDragOver}
+						onDrop={handleChatFileDrop}
+					>
+						<div className="pointer-events-none rounded-2xl bg-white/85 px-6 py-4 text-center shadow-lg ring-1 ring-white/80">
 							<p className="text-base font-semibold text-[#1652f0]">Drop files to attach</p>
 							<p className="mt-1 text-xs text-slate-500">Files and folders are encrypted before upload.</p>
 						</div>
@@ -3546,6 +3636,9 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 					"fixed left-0 right-0 bottom-0 z-50",
 					"pb-[env(safe-area-inset-bottom)]"
 				].join(" ")}
+				onDragEnter={handleChatFileDragEnter}
+				onDragOver={handleChatFileDragOver}
+				onDrop={handleChatFileDrop}
 			>
 				<div className={["bg-white/0"].join(" ")}>
 					<div className="relative">
@@ -3646,7 +3739,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 						)}
 						{fileError ? <div role="alert" className="mb-2 rounded-xl bg-rose-50 px-3 py-2 text-[12px] text-rose-700">{fileError}</div> : null}
 						<div>
-						<input ref={fileInputRef} type="file" multiple hidden {...({ webkitdirectory: '' } as Record<string, string>)} onChange={event => { void addChatFiles(Array.from(event.target.files || [])); event.currentTarget.value = '' }} />
+						<input ref={fileInputRef} type="file" multiple hidden onChange={event => { void addChatFiles(Array.from(event.target.files || [])); event.currentTarget.value = '' }} />
 						<input ref={cameraInputRef} type="file" accept="video/*" capture="environment" hidden onChange={event => { void addChatFiles(Array.from(event.target.files || [])); event.currentTarget.value = '' }} />
 						<div className="flex items-center gap-2">
 							<PlusActionMenu

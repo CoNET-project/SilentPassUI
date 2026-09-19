@@ -9167,7 +9167,7 @@ export default function Market() {
 					discoverCategoryScrollerRef.current?.scrollTo({ left: 0, behavior: 'smooth' })
 				}}
 				className={[
-					"flex shrink-0 items-center gap-2 rounded-full px-3.5 py-2.5 text-[13px] sm:text-[14px] font-semibold tracking-tight transition-all whitespace-nowrap",
+					"flex shrink-0 items-center gap-1.5 rounded-full px-3 py-2 text-[13px] sm:text-[14px] font-semibold tracking-tight transition-all whitespace-nowrap",
 					active
 						? "bg-[#1562f0] text-white shadow-[0_8px_22px_rgba(21,98,240,0.42)]"
 						: "bg-white text-[#1f2328] shadow-[0_2px_10px_rgba(15,23,42,0.08)] border border-[#e8ecf0] dark:bg-slate-800 dark:text-slate-100 dark:border-slate-700 dark:shadow-[0_2px_12px_rgba(0,0,0,0.35)]",
@@ -9545,18 +9545,18 @@ export default function Market() {
 
 		{/* 滚动容器：Discover 布局对齐 example/market.html */}
 		<div
-			className="flex min-h-0 flex-1 flex-col overflow-y-auto py-2 pb-24 [scrollbar-width:thin]"
+			className="flex min-h-0 flex-1 flex-col overflow-y-auto pb-24 [scrollbar-width:thin]"
 			style={{ WebkitOverflowScrolling: "touch", flex: "1 1 0%", minHeight: 0 }}
 		>
 			<div
 				className="shrink-0"
-				style={{ minHeight: "calc(max(1rem, env(safe-area-inset-top, 0px)) + 1rem)" }}
+				style={{ minHeight: "max(0.5rem, env(safe-area-inset-top, 0px))" }}
 			/>
 
-		<div className="animate-in fade-in duration-300 pb-8 max-w-lg mx-auto w-full px-3 sm:px-5">
-			{/* Generous inset: box-shadow (~22px blur) must stay inside scrollport; avoid clipping vs overflow-x */}
-			<section className="pt-1 pb-8">
-				<div className="flex min-h-0 items-center gap-2 py-6 pl-4 pr-4 sm:py-7 sm:pl-6 sm:pr-6">
+		<div className="animate-in fade-in duration-300 pb-6 max-w-lg mx-auto w-full px-3 sm:px-5">
+			{/* Chip shadow (~22px blur) stays inside the column; keep a small inset, not a tall spacer. */}
+			<section className="pb-2">
+				<div className="flex min-h-0 items-center gap-2 py-2 pl-1 pr-1 sm:py-2.5">
 					<div className="shrink-0">{renderDiscoverFilterChip(DISCOVER_ALL_OPTION)}</div>
 					<div
 						ref={discoverCategoryScrollerRef}
@@ -9567,11 +9567,7 @@ export default function Market() {
 				</div>
 			</section>
 
-			<section className="py-4">
-				<div className="flex items-center gap-2 mb-4 flex-wrap">
-					<h3 className="font-bold text-[21px] leading-none tracking-tight text-[#202227] dark:text-slate-100">{tu('featured_brands')}</h3>
-				</div>
-
+			<section className="pb-3">
 				{/* untrusted 错误：仅在彻底无 cache rows 时提示，避免 cache 命中时干扰阅读 */}
 				{latestCardsError && latestCardsRows.length === 0 ? (
 					<p className="text-[6px] text-amber-600 dark:text-amber-400 mb-3">{latestCardsError}</p>
@@ -9581,7 +9577,7 @@ export default function Market() {
 					<p className="text-[7px] text-slate-500 dark:text-slate-400 mb-4">正在加载新卡…</p>
 				) : null}
 
-				<div className="grid grid-cols-1 gap-5">
+				<div className="grid grid-cols-1 gap-4">
 				{filteredFeaturedCards.map((item) => {
 					const likeCount = pickDiscoverMerchantLikeCount(discoverMerchantStatByCard, item.cardAddress)
 					const shareClickCount = pickDiscoverMerchantRefClickCount(discoverMerchantStatByCard, item.cardAddress)
@@ -9625,7 +9621,7 @@ export default function Market() {
 								</div>
 							</div>
 						</div>
-						<div className="px-6 pb-6 pt-11" style={{ backgroundColor: featuredBrandTint }}>
+						<div className="px-5 pb-5 pt-10" style={{ backgroundColor: featuredBrandTint }}>
 							<div className="flex items-start justify-between gap-3 mb-1">
 								<h4 className="font-bold text-[19px] leading-none tracking-tight text-[#1f2328] dark:text-slate-100 line-clamp-1">
 									{item.title}

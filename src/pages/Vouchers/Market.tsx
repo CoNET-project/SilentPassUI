@@ -158,6 +158,7 @@ import {
 } from "@/utils/discoverMerchantCategory"
 import {
 	BeamioCircularBackButton,
+	BeamioHeroGlassIconButton,
 	BEAMIO_CIRCULAR_BACK_ROW_CLASS,
 	BEAMIO_HERO_FLOATING_BACK_ROW_CLASS,
 	beamioHeroFloatingBackTopStyle,
@@ -8152,25 +8153,24 @@ function DiscoverMerchantDetailFullScreen({
 								referrerEoa={shareReferrerEoa}
 							/>
 						) : null}
-						<button
-							type="button"
+						<BeamioHeroGlassIconButton
 							onClick={onMerchantLikeHeartClick}
 							disabled={likeLoading || Boolean(userLiked)}
-							className={[
-								"flex h-11 w-11 items-center justify-center rounded-full shadow-lg ring-1 active:scale-95 disabled:opacity-70",
-								userLiked
-									? "bg-rose-500 text-white ring-rose-600/30 disabled:cursor-default"
-									: "bg-slate-800/85 text-white ring-white/10",
-							].join(" ")}
-							aria-label={userLiked ? "Liked" : "Like this brand"}
-							aria-pressed={Boolean(userLiked)}
+							keepOpacityWhenDisabled={Boolean(userLiked)}
+							ariaLabel={userLiked ? "Liked" : "Like this brand"}
+							ariaPressed={Boolean(userLiked)}
 						>
 							{likeLoading ? (
-								<Loader2 className="h-5 w-5 animate-spin" strokeWidth={2} aria-hidden />
+								<Loader2 className="h-[17px] w-[17px] animate-spin" strokeWidth={2.5} aria-hidden />
 							) : (
-								<Heart className="h-5 w-5" strokeWidth={2} fill={userLiked ? "currentColor" : "none"} />
+								<Heart
+									className={userLiked ? "h-[17px] w-[17px] text-rose-400" : "h-[17px] w-[17px]"}
+									strokeWidth={2.5}
+									fill={userLiked ? "currentColor" : "none"}
+									aria-hidden
+								/>
 							)}
-						</button>
+						</BeamioHeroGlassIconButton>
 					</div>
 				</div>
 			</div>

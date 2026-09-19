@@ -1,7 +1,11 @@
 import { ChevronLeft } from 'lucide-react'
-import type { ButtonHTMLAttributes } from 'react'
+import type { ButtonHTMLAttributes, ReactNode } from 'react'
 import { tu } from '@/locale/beamioLocale'
 import { useReliableTapHandler, RELIABLE_TAP_BUTTON_CLASS } from '@/utils/reliableTap'
+
+/** Discover hero `onDark` disc — Share / Like must reuse this chrome. */
+export const BEAMIO_ON_DARK_GLASS_DISC_CLASS =
+	'border border-white/40 bg-white/20 shadow-[0_2px_10px_rgba(0,0,0,0.28),0_1px_3px_rgba(0,0,0,0.18)]'
 
 type BeamioCircularBackButtonProps = {
 	onClick: () => void
@@ -36,7 +40,7 @@ export function BeamioCircularBackButton({
 	const tap = useReliableTapHandler(onClick)
 	const isDark = variant === 'onDark'
 	const discChrome = isDark
-		? 'border border-white/40 bg-white/20 shadow-[0_2px_10px_rgba(0,0,0,0.28),0_1px_3px_rgba(0,0,0,0.18)]'
+		? BEAMIO_ON_DARK_GLASS_DISC_CLASS
 		: [
 				'border border-black/[0.08] bg-white/90',
 				'dark:border-white/25 dark:bg-slate-800/90',
@@ -101,3 +105,76 @@ export const BEAMIO_HERO_FLOATING_BACK_ROW_CLASS =
 export const beamioHeroFloatingBackTopStyle = {
 	top: 'max(0.75rem, env(safe-area-inset-top))',
 } as const
+
+type BeamioHeroGlassIconButtonProps = {
+	onClick: () => void
+	children: ReactNode
+	ariaLabel: string
+	title?: string
+	className?: string
+	disabled?: boolean
+	/** Keep full chrome when disabled (e.g. Liked heart). */
+	keepOpacityWhenDisabled?: boolean
+	ariaPressed?: boolean
+} & Omit<
+	ButtonHTMLAttributes<HTMLButtonElement>,
+	'type' | 'onClick' | 'children' | 'onPointerDown' | 'onPointerUp' | 'aria-pressed' | 'aria-label'
+>
+
+/**
+ * Same 44×44 hit + 36px frosted disc as `BeamioCircularBackButton` `onDark`.
+ * Use for Discover hero Share / Like so chrome matches Back.
+ */
+export function BeamioHeroGlassIconButton({
+	onClick,
+	children,
+	ariaLabel,
+	title,
+	className = '',
+	disabled = false,
+	keepOpacityWhenDisabled = false,
+	ariaPressed,
+	...rest
+}: BeamioHeroGlassIconButtonProps) {
+	const tap = useReliableTapHandler(onClick)
+	const positionClass = /\b(absolute|fixed)\b/.test(className) ? '' : 'relative'
+
+	return (
+		<button
+			type="button"
+			tabIndex={-1}
+			disabled={disabled}
+			data-touch-priority="1"
+			aria-label={ariaLabel}
+			aria-pressed={ariaPressed}
+			title={title}
+			{...rest}
+			style={{
+				touchAction: 'manipulation',
+				WebkitTapHighlightColor: 'transparent',
+				...(typeof rest.style === 'object' && rest.style ? rest.style : null),
+			}}
+			onPointerDown={tap.onPointerDown}
+			onPointerUp={tap.onPointerUp}
+			onClick={tap.onClick}
+			className={[
+				positionClass,
+				'isolate inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full p-1',
+				RELIABLE_TAP_BUTTON_CLASS,
+				'text-white/80 transition-colors duration-150 disabled:pointer-events-none',
+				keepOpacityWhenDisabled ? '' : 'disabled:opacity-40',
+				className,
+			]
+				.filter(Boolean)
+				.join(' ')}
+		>
+			<span
+				className={['pointer-events-none absolute inset-1 rounded-full', BEAMIO_ON_DARK_GLASS_DISC_CLASS].join(' ')}
+				aria-hidden
+			>
+				<span className="absolute inset-0 rounded-full backdrop-blur-md" aria-hidden />
+			</span>
+			<span className="relative z-[1] inline-flex items-center justify-center">{children}</span>
+		</button>
+	)
+}

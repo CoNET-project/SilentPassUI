@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from "framer-motion"
 import { ethers } from "ethers"
 import { getDocument, GlobalWorkerOptions } from "pdfjs-dist/legacy/build/pdf"
 import { checkSign, emitReactionAsNewMessage, createMembershipActivatedCard } from '@/services/chat'
-import { mirrorChatMessageToHistory } from '@/services/chatHistoryMirror' 
+import { backfillChatMessagesToHistory, mirrorChatMessageToHistory } from '@/services/chatHistoryMirror'
 import { IpfsImg } from '@/components/IpfsImg'
 import {
   ArrowUp,
@@ -2007,6 +2007,11 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		const next = [...merged, ...localTempExtras]
 			.slice()
 			.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0))
+
+		// Repair messages that survived only in this device's local chat mirror.
+		// HistoryStore de-duplicates by sendId before uploading, so this is safe
+		// to run whenever the conversation is opened/refreshed.
+		backfillChatMessagesToHistory(chatData.address, next)
 
 		// ✅ 3) 刷 UI
 		pendingInitialScrollRef.current = true

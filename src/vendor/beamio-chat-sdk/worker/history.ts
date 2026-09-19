@@ -531,6 +531,10 @@ export class HistoryStore {
 			await this.syncFromHeadUnlocked()
 			if (!this.manifest) this.manifest = { v: 1, eoa: this.eoaLower, updatedAt: Date.now(), records: [] }
 			const records = this.manifest.records
+			if (entry.sendId && records.some((record) => record.sendId === entry.sendId)) {
+				this.emit.log('info', `[history] append skipped existing sendId=${diagnosticCid(entry.sendId)}`)
+				return
+			}
 			const seq = records.length ? records[records.length - 1].seq + 1 : 0
 			const prevCid = records.length ? records[records.length - 1].cid : this.genesisCid
 			const cipher = await aesGcmEncryptString(await this.fragmentKey(seq, prevCid), entry.body)

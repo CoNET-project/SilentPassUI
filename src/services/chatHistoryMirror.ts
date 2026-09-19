@@ -52,6 +52,23 @@ export const mirrorChatMessageToHistory = (
 }
 
 /**
+ * Repair the encrypted history mirror from messages that are still present in the
+ * current device's chat session. Only sendId-backed messages are eligible: the
+ * worker can de-duplicate those safely without guessing whether two legacy
+ * messages with the same timestamp are identical.
+ */
+export const backfillChatMessagesToHistory = (
+	peerEoa: string | undefined,
+	messages: ChatMessage[] | undefined,
+): void => {
+	if (!peerEoa || !Array.isArray(messages)) return
+	for (const message of messages) {
+		if (!message?.sendId) continue
+		mirrorChatMessageToHistory(peerEoa, message, message.from === 'me' ? 'out' : 'in')
+	}
+}
+
+/**
  * Merge decrypted history entries (from a `historyBuffer` batch) into an existing message
  * list, deduping by sendId/id/createdAt and preserving each entry's own `from` direction.
  * Returns a new sorted array; entries already present are ignored (local copy wins).

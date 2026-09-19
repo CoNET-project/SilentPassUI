@@ -191,6 +191,34 @@ export function getCashTreesNativeNfcBridge(): CashTreesNativeNfcBridge | null {
 	return null
 }
 
+/** Start native video capture while keeping Android's String-only JS bridge contract. */
+export function requestNativeCameraCapture(payload: {
+	requestId?: string
+	mediaType?: 'video'
+}): boolean {
+	const w = cashTreesNativeWindow()
+	if (!w) return false
+	if (typeof w.CashTreesAndroid?.requestCameraCapture === 'function') {
+		try {
+			;(w.CashTreesAndroid.requestCameraCapture as unknown as (json: string) => void)(
+				JSON.stringify(payload),
+			)
+			return true
+		} catch {
+			return false
+		}
+	}
+	if (typeof w.CashTreesIOS?.requestCameraCapture === 'function') {
+		try {
+			w.CashTreesIOS.requestCameraCapture(payload)
+			return true
+		} catch {
+			return false
+		}
+	}
+	return false
+}
+
 function tryNativeOpenUrl(url: string): boolean {
 	const w = cashTreesNativeWindow()
 	if (!w) return false

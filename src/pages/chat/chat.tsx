@@ -65,7 +65,7 @@ import { PlusActionMenu } from "./components/PlusActionMenu"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import { searchUsername, storeSystemData, AuthorizationSign } from '@/services/beamio'
 import { fiatPrefix } from '@/services/currency'
-import { getCashTreesNativeNfcBridge, openExternalUrl, saveFileToNative } from '@/utils/cashTreesNativeNfc'
+import { getCashTreesNativeNfcBridge, openExternalUrl, requestNativeCameraCapture, saveFileToNative } from '@/utils/cashTreesNativeNfc'
 import { MessageSendReceiveCard } from "./components/messageSendReceiveCard"
 import { AaMultisigChatRequestCard } from '@/components/chat/AaMultisigChatRequestCard'
 import { ChatShareLinkPreviewCard } from '@/components/chat/ChatShareLinkPreviewCard'
@@ -1741,6 +1741,8 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 	const storageDataRef = useRef<(() => Promise<void>) | null>(null)
 	const fileInputRef = useRef<HTMLInputElement | null>(null)
 	const cameraInputRef = useRef<HTMLInputElement | null>(null)
+	const cameraRequestIdRef = useRef<string | null>(null)
+	const addChatFilesRef = useRef<((incoming: File[]) => void | Promise<void>) | null>(null)
 	const [fileError, setFileError] = useState<string | null>(null)
 	const [fileDropActive, setFileDropActive] = useState(false)
 	/** Nested dragenter/leave depth on the chat shell — avoids clearing the overlay when React remounts children under the cursor (relatedTarget often null). */
@@ -1751,6 +1753,43 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 	const cameraChunksRef = useRef<Blob[]>([])
 	const cameraPreviewRef = useRef<HTMLVideoElement | null>(null)
 	const [chatError, setChatError] = useState<string | null>(null)
+
+	useEffect(() => {
+		const handleNativeCameraResult = (event: Event) => {
+			const detail = (event as CustomEvent<{
+				action?: string
+				ok?: boolean
+				requestId?: string
+				dataUrl?: string
+				error?: string
+			}>).detail
+			if (detail?.action !== 'cameraCapture') return
+			if (cameraRequestIdRef.current && detail.requestId && detail.requestId !== cameraRequestIdRef.current) return
+			cameraRequestIdRef.current = null
+			if (!detail.ok) {
+				setFileError(detail.error === 'cancelled' ? 'Camera capture was cancelled.' : 'Camera capture failed. Please try again.')
+				return
+			}
+			if (!detail.dataUrl) {
+				setFileError('Camera returned no video. Please try again.')
+				return
+			}
+			void fetch(detail.dataUrl)
+				.then(response => response.blob())
+				.then(blob => {
+					if (!blob.size) throw new Error('empty_camera_video')
+					const file = new File([blob], `camera-${Date.now()}.mp4`, { type: blob.type || 'video/mp4' })
+					void addChatFilesRef.current?.([file])
+				})
+				.catch(() => setFileError('The captured video could not be read. Please try again.'))
+		}
+		window.addEventListener('cashtreesandroid', handleNativeCameraResult)
+		window.addEventListener('cashtreesios', handleNativeCameraResult)
+		return () => {
+			window.removeEventListener('cashtreesandroid', handleNativeCameraResult)
+			window.removeEventListener('cashtreesios', handleNativeCameraResult)
+		}
+	}, [])
 
 	const toAddress = chatData.address
 	const walletEoa = (profiles[0]?.keyID ?? '').trim()
@@ -2211,6 +2250,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 			fileControllersRef.current.delete(id)
 		}
 	}, [hasRoute, profiles])
+	addChatFilesRef.current = addChatFiles
 
 	const handleChatFileDragEnter = useCallback((event: React.DragEvent) => {
 		event.preventDefault()
@@ -2279,19 +2319,31 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 	}, [])
 
 	const openChatCamera = useCallback(() => {
-		if (!hasRoute) return
-		const native = getCashTreesNativeNfcBridge()
-		if (typeof native?.requestCameraCapture === 'function') {
-			try {
-				native.requestCameraCapture({ requestId: crypto.randomUUID(), mediaType: 'video' })
-				return
-			} catch {
-				/* Fall through to the browser capture input. */
-			}
+		if (!hasRoute) {
+			setFileError('Camera attachments require an active Chat route.')
+			return
 		}
-		void navigator.mediaDevices?.getUserMedia({ video: true, audio: true })
-			.then(stream => setCameraStream(stream))
-			.catch(() => cameraInputRef.current?.click())
+		const requestId = crypto.randomUUID()
+		cameraRequestIdRef.current = requestId
+		if (requestNativeCameraCapture({ requestId, mediaType: 'video' })) {
+			return
+		}
+		const getUserMedia = navigator.mediaDevices?.getUserMedia
+		if (typeof getUserMedia === 'function') {
+			void getUserMedia.call(navigator.mediaDevices, { video: true, audio: true })
+				.then(stream => {
+					cameraRequestIdRef.current = null
+					setFileError(null)
+					setCameraStream(stream)
+				})
+				.catch(() => {
+					cameraRequestIdRef.current = null
+					cameraInputRef.current?.click()
+				})
+			return
+		}
+		cameraRequestIdRef.current = null
+		cameraInputRef.current?.click()
 	}, [hasRoute])
 
 	const closeChatCamera = useCallback(() => {

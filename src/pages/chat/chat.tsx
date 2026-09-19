@@ -189,10 +189,180 @@ type ChatFileJob = {
 	thumbnailUrl?: string
 }
 
-function chatFileBundleDisplayName(files: File[]): string {
+const SKIP_DROP_FILE_NAMES = new Set(['.ds_store', 'thumbs.db', 'desktop.ini'])
+
+function isJunkDropFileName(name: string): boolean {
+	const base = (name.split('/').pop() || name).trim()
+	if (!base) return true
+	const lower = base.toLowerCase()
+	return SKIP_DROP_FILE_NAMES.has(lower) || base.startsWith('._')
+}
+
+function fileNameStem(name: string): string {
+	const lastDot = name.lastIndexOf('.')
+	return lastDot > 0 ? name.slice(0, lastDot) : name
+}
+
+const IMAGE_LIKE_FOLDER_EXT = /\.(png|jpe?g|gif|webp|bmp|heic|heif|tiff?)$/i
+
+function folderDisplayName(name: string): string {
+	const trimmed = name.trim()
+	if (!trimmed) return trimmed
+	// Chrome/macOS type-sniffs a dropped folder as `folder.png`.
+	return IMAGE_LIKE_FOLDER_EXT.test(trimmed) ? fileNameStem(trimmed) : trimmed
+}
+
+function isTopLevelDroppedFile(file: File): boolean {
+	const name = file.name
+	const stem = fileNameStem(name)
+	const rel = (file.webkitRelativePath || '').replace(/\/+$/, '')
+	return !rel || rel === name || rel === stem
+}
+
+function isNotFoundReadError(error: unknown): boolean {
+	const message = error instanceof Error ? error.message : ''
+	return (error instanceof DOMException && error.name === 'NotFoundError')
+		|| /could not be found at the time an operation was processed/i.test(message)
+}
+
+function markDroppedDirectoryName(directoryNames: Set<string>, name: string): void {
+	const trimmed = name.trim()
+	if (!trimmed) return
+	directoryNames.add(trimmed)
+	directoryNames.add(fileNameStem(trimmed))
+}
+
+function extraDirectoryNamesFromHint(hint?: string | null): Set<string> | undefined {
+	if (!hint?.trim()) return undefined
+	const names = new Set<string>()
+	markDroppedDirectoryName(names, hint.trim())
+	return names
+}
+
+function looksLikeDirectoryStub(file: File, directoryNames: Set<string>): boolean {
+	if (!isTopLevelDroppedFile(file)) return false
+	const name = file.name
+	const stem = fileNameStem(name)
+	if (directoryNames.has(name) || directoryNames.has(stem)) return true
+	// Chrome/macOS type-sniffs a dropped folder as a 0-byte File, often
+	// `folder.png` / image/png. The stub is not a real child.
+	if (file.size === 0) return true
+	return false
+}
+
+function cloneFileWithBytes(file: File, bytes: ArrayBuffer): File {
+	const next = new File([bytes], file.name, { type: file.type, lastModified: file.lastModified })
+	const rel = file.webkitRelativePath
+	if (rel) Object.defineProperty(next, 'webkitRelativePath', { value: rel, configurable: true })
+	return next
+}
+
+function folderNameFromDroppedFiles(files: File[]): string | null {
+	const prefixes = new Set<string>()
+	for (const file of files) {
+		const rel = file.webkitRelativePath || ''
+		if (!rel.includes('/')) continue
+		const top = rel.split('/').find(Boolean)
+		if (top) prefixes.add(top)
+	}
+	if (prefixes.size === 1) return folderDisplayName([...prefixes][0] || '') || null
+	return null
+}
+
+function folderNameFromStubNames(stubNames: string[]): string | null {
+	const stems = [...new Set(stubNames.map(name => folderDisplayName(name).trim()).filter(Boolean))]
+	return stems.length === 1 ? stems[0] : null
+}
+
+function inferDroppedDirectoryNames(files: File[], extraNames?: Set<string>): Set<string> {
+	const names = extraNames ? new Set(extraNames) : new Set<string>()
+	for (const file of files) {
+		const rel = file.webkitRelativePath || ''
+		const top = rel.split('/').find(Boolean)
+		if (top) names.add(top)
+		if (isTopLevelDroppedFile(file) && file.size === 0) {
+			names.add(file.name)
+			names.add(fileNameStem(file.name))
+		}
+	}
+	return names
+}
+
+function sanitizeDroppedChatFiles(files: File[], directoryNames?: Set<string>): File[] {
+	const names = inferDroppedDirectoryNames(files, directoryNames)
+	return files.filter(file => (
+		!isJunkDropFileName(file.name)
+		&& !isJunkDropFileName(file.webkitRelativePath || '')
+		&& !looksLikeDirectoryStub(file, names)
+	))
+}
+
+async function materializeDroppedChatFiles(
+	files: File[],
+	directoryNames?: Set<string>,
+): Promise<{ files: File[]; stubNames: string[] }> {
+	const names = inferDroppedDirectoryNames(files, directoryNames)
+	const kept: File[] = []
+	const stubNames: string[] = []
+	for (const file of files) {
+		if (looksLikeDirectoryStub(file, names)) {
+			stubNames.push(file.name)
+			continue
+		}
+		try {
+			const bytes = await file.arrayBuffer()
+			// Chrome folder stubs can report size > 0, then yield 0 readable bytes
+			// without throwing. Keep those out of the composer file list.
+			if (bytes.byteLength === 0 && isTopLevelDroppedFile(file) && files.length > 1) {
+				stubNames.push(file.name)
+				continue
+			}
+			kept.push(cloneFileWithBytes(file, bytes))
+		} catch (error) {
+			if (isNotFoundReadError(error)) {
+				stubNames.push(file.name)
+				continue
+			}
+			throw error
+		}
+	}
+	return { files: kept, stubNames }
+}
+
+function resolveDropFolderHint(opts: {
+	files: File[]
+	stubNames: string[]
+	directoryNames?: Set<string>
+	singleItemManyFiles?: boolean
+	firstDirectName?: string
+}): string | null {
+	const fromPaths = folderNameFromDroppedFiles(opts.files)
+	if (fromPaths) return fromPaths
+	const fromStubs = folderNameFromStubNames(opts.stubNames)
+	if (fromStubs) return fromStubs
+	if (opts.directoryNames && opts.directoryNames.size > 0) {
+		const stems = [...new Set(
+			[...opts.directoryNames].map(name => folderDisplayName(name).trim()).filter(Boolean),
+		)]
+		if (stems.length === 1) return stems[0]
+	}
+	if (opts.singleItemManyFiles && opts.firstDirectName) {
+		return folderDisplayName(opts.firstDirectName) || null
+	}
+	return null
+}
+
+function chatFileBundleDisplayName(files: File[], folderHint?: string | null): string {
+	const folder = folderDisplayName(folderHint || folderNameFromDroppedFiles(files) || '')
+	if (folder) return folder
 	if (files.length <= 1) return files[0]?.name || 'File'
-	const names = files.map(file => file.name).join(' · ')
-	return `${files.length} files · ${names}`
+	return `${files.length} files`
+}
+
+function chatFileReadErrorMessage(error: unknown): string {
+	if (isNotFoundReadError(error)) return 'This folder could not be read. Drop the files inside it, or try again.'
+	const message = error instanceof Error ? error.message : ''
+	return message || 'Those files could not be added.'
 }
 
 async function createVideoThumbnail(videoFile: File): Promise<Blob> {
@@ -227,10 +397,27 @@ async function createVideoThumbnail(videoFile: File): Promise<Blob> {
 	}
 }
 
+type DataTransferItemWithHandle = DataTransferItem & {
+	getAsFileSystemHandle?: () => Promise<FileSystemHandle | null>
+}
+
+function snapshotFileSystemHandle(item: DataTransferItem): Promise<FileSystemHandle | null> {
+	const withHandle = item as DataTransferItemWithHandle
+	if (typeof withHandle.getAsFileSystemHandle !== 'function') return Promise.resolve(null)
+	try {
+		return Promise.resolve(withHandle.getAsFileSystemHandle()).catch(() => null)
+	} catch {
+		return Promise.resolve(null)
+	}
+}
+
 /**
- * Collect files from a drop. Critical: call webkitGetAsEntry() / getAsFile() for
- * EVERY item synchronously before any await — browsers invalidate later items once
- * the first async entry.file() runs.
+ * Collect files from a drop. Critical: call getAsFileSystemHandle() /
+ * webkitGetAsEntry() / getAsFile() for EVERY item synchronously before any
+ * await — browsers invalidate later items once the first async entry.file() runs.
+ *
+ * Chrome/macOS may report a folder named `rrrr.png` as a FILE (image/png).
+ * FileSystemDirectoryHandle is the only reliable way to walk that folder.
  *
  * For plain multi-file drops (no folders), prefer the sync `dataTransfer.files`
  * list — it is the most reliable multi-file source across Chrome / Safari / Firefox.
@@ -238,80 +425,218 @@ async function createVideoThumbnail(videoFile: File): Promise<Blob> {
 async function filesFromDropItems(items: DataTransferItemList): Promise<{
 	files: File[]
 	hasDirectory: boolean
+	directoryNames: Set<string>
 }> {
 	const output: File[] = []
 	type Snapshot =
-		| { kind: 'entry'; entry: FileSystemEntry }
-		| { kind: 'file'; file: File }
+		| { kind: 'entry'; entry: FileSystemEntry; handlePromise: Promise<FileSystemHandle | null> }
+		| { kind: 'file'; file: File; handlePromise: Promise<FileSystemHandle | null> }
 	const snapshots: Snapshot[] = []
+	const directoryNames = new Set<string>()
 	let hasDirectory = false
 	for (let i = 0; i < items.length; i += 1) {
 		const item = items[i]
 		if (!item) continue
+		const handlePromise = snapshotFileSystemHandle(item)
 		const entry = typeof item.webkitGetAsEntry === 'function' ? item.webkitGetAsEntry() : null
 		if (entry) {
-			if (entry.isDirectory) hasDirectory = true
-			snapshots.push({ kind: 'entry', entry })
+			if (entry.isDirectory) {
+				hasDirectory = true
+				markDroppedDirectoryName(directoryNames, entry.name)
+			}
+			snapshots.push({ kind: 'entry', entry, handlePromise })
 			continue
 		}
 		const file = item.getAsFile()
-		if (file) snapshots.push({ kind: 'file', file })
+		if (file) snapshots.push({ kind: 'file', file, handlePromise })
+	}
+
+	const markImageNamedFolder = (name: string): void => {
+		hasDirectory = true
+		markDroppedDirectoryName(directoryNames, name)
+	}
+
+	const readDirectoryHandle = async (handle: FileSystemDirectoryHandle, prefix = ''): Promise<void> => {
+		hasDirectory = true
+		markDroppedDirectoryName(directoryNames, handle.name)
+		try {
+			for await (const child of handle.values()) {
+				if (child.kind === 'directory') {
+					await readDirectoryHandle(child as FileSystemDirectoryHandle, `${prefix}${handle.name}/`)
+					continue
+				}
+				if (child.kind !== 'file') continue
+				try {
+					const file = await (child as FileSystemFileHandle).getFile()
+					if (isJunkDropFileName(file.name)) continue
+					Object.defineProperty(file, 'webkitRelativePath', {
+						value: `${prefix}${handle.name}/${file.name}`,
+						configurable: true,
+					})
+					output.push(file)
+				} catch {
+					// Child vanished — skip that file only.
+				}
+			}
+		} catch {
+			// Directory listing failed — skip this folder, keep siblings.
+		}
+	}
+
+	const treatUnreadableImageNamedAsFolder = async (name: string, file?: File): Promise<boolean> => {
+		if (!IMAGE_LIKE_FOLDER_EXT.test(name)) return false
+		if (file) {
+			try {
+				const bytes = await file.arrayBuffer()
+				if (bytes.byteLength > 0) return false
+			} catch (error) {
+				if (!isNotFoundReadError(error)) return false
+			}
+		}
+		markImageNamedFolder(name)
+		return true
 	}
 
 	const readEntry = async (entry: FileSystemEntry, prefix = ''): Promise<void> => {
 		if (entry.isFile) {
-			const file = await new Promise<File>((resolve, reject) => {
-				;(entry as FileSystemFileEntry).file(resolve, reject)
-			})
-			Object.defineProperty(file, 'webkitRelativePath', {
-				value: `${prefix}${file.name}`,
-				configurable: true,
-			})
-			output.push(file)
+			try {
+				const file = await new Promise<File>((resolve, reject) => {
+					;(entry as FileSystemFileEntry).file(resolve, reject)
+				})
+				if (isJunkDropFileName(file.name)) return
+				if (!prefix && await treatUnreadableImageNamedAsFolder(file.name, file)) return
+				Object.defineProperty(file, 'webkitRelativePath', {
+					value: `${prefix}${file.name}`,
+					configurable: true,
+				})
+				output.push(file)
+			} catch {
+				if (!prefix && IMAGE_LIKE_FOLDER_EXT.test(entry.name)) markImageNamedFolder(entry.name)
+			}
 			return
 		}
 		if (entry.isDirectory) {
-			const reader = (entry as FileSystemDirectoryEntry).createReader()
-			while (true) {
-				const batch = await new Promise<FileSystemEntry[]>((resolve, reject) => {
-					reader.readEntries(resolve, reject)
-				})
-				if (!batch.length) break
-				for (const child of batch) {
-					await readEntry(child, `${prefix}${entry.name}/`)
+			markDroppedDirectoryName(directoryNames, entry.name)
+			try {
+				const reader = (entry as FileSystemDirectoryEntry).createReader()
+				while (true) {
+					const batch = await new Promise<FileSystemEntry[]>((resolve, reject) => {
+						reader.readEntries(resolve, reject)
+					})
+					if (!batch.length) break
+					for (const child of batch) {
+						await readEntry(child, `${prefix}${entry.name}/`)
+					}
 				}
+			} catch {
+				// Directory listing failed — skip this folder, keep siblings.
 			}
 		}
 	}
 
 	for (const snapshot of snapshots) {
+		const handle = await snapshot.handlePromise
+		if (handle?.kind === 'directory') {
+			await readDirectoryHandle(handle as FileSystemDirectoryHandle)
+			continue
+		}
+		if (handle?.kind === 'file') {
+			try {
+				const file = await (handle as FileSystemFileHandle).getFile()
+				if (await treatUnreadableImageNamedAsFolder(file.name, file)) {
+					if (snapshot.kind === 'entry') await readEntry(snapshot.entry)
+					continue
+				}
+				if (isJunkDropFileName(file.name) || looksLikeDirectoryStub(file, directoryNames)) continue
+				if (snapshot.kind === 'entry' && snapshot.entry.isDirectory) {
+					await readEntry(snapshot.entry)
+					continue
+				}
+				output.push(file)
+			} catch {
+				if (IMAGE_LIKE_FOLDER_EXT.test(handle.name)) {
+					markImageNamedFolder(handle.name)
+				} else if (snapshot.kind === 'entry') {
+					await readEntry(snapshot.entry)
+				}
+			}
+			continue
+		}
 		if (snapshot.kind === 'file') {
-			output.push(snapshot.file)
+			if (!isJunkDropFileName(snapshot.file.name) && !looksLikeDirectoryStub(snapshot.file, directoryNames)) {
+				if (await treatUnreadableImageNamedAsFolder(snapshot.file.name, snapshot.file)) continue
+				output.push(snapshot.file)
+			}
 			continue
 		}
 		await readEntry(snapshot.entry)
 	}
-	return { files: output, hasDirectory }
+	return { files: output, hasDirectory, directoryNames }
 }
 
 async function filesFromDropTransfer(
 	dataTransfer: DataTransfer,
 	directFiles: File[] = Array.from(dataTransfer.files),
-): Promise<File[]> {
+): Promise<{ files: File[]; folderHint: string | null }> {
+	// Chrome invalidates FileList File objects after the first await in the
+	// drop handler. Start arrayBuffer() in this same turn so a FileList
+	// fallback stays readable if FileSystemDirectoryHandle walk fails.
+	const eagerDirectReads = directFiles.map(file =>
+		file.arrayBuffer()
+			.then((bytes): { file: File; bytes: ArrayBuffer } => ({ file, bytes }))
+			.catch((error: unknown): { file: File; error: unknown } => ({ file, error })),
+	)
 	const fromItems = await filesFromDropItems(dataTransfer.items)
-	// Plain multi-file drops: trust the sync FileList — entry.file() after await
-	// can still lose siblings in some WebKit builds even with entry snapshots.
-	if (!fromItems.hasDirectory && directFiles.length > 0) {
-		return directFiles
+	const directoryNames = inferDroppedDirectoryNames(directFiles, fromItems.directoryNames)
+	const itemsHaveChildren = fromItems.files.some(file => (file.webkitRelativePath || '').includes('/'))
+	const directLooksLikeFolder = fromItems.hasDirectory
+		|| itemsHaveChildren
+		|| directFiles.some(file => looksLikeDirectoryStub(file, directoryNames))
+	let source: File[]
+	if (directLooksLikeFolder) {
+		if (fromItems.files.length > 0) {
+			source = fromItems.files
+		} else {
+			const eagerly = await Promise.all(eagerDirectReads)
+			const fromEager: File[] = []
+			for (const result of eagerly) {
+				if ('error' in result) {
+					if (isNotFoundReadError(result.error) || looksLikeDirectoryStub(result.file, directoryNames)) {
+						markDroppedDirectoryName(directoryNames, result.file.name)
+						continue
+					}
+					throw result.error
+				}
+				if (result.bytes.byteLength === 0 && isTopLevelDroppedFile(result.file)) {
+					markDroppedDirectoryName(directoryNames, result.file.name)
+					continue
+				}
+				if (isJunkDropFileName(result.file.name) || looksLikeDirectoryStub(result.file, directoryNames)) continue
+				fromEager.push(cloneFileWithBytes(result.file, result.bytes))
+			}
+			source = fromEager
+		}
+	} else {
+		source = directFiles.length > 0 ? directFiles : fromItems.files
 	}
-	const all = [...directFiles, ...fromItems.files]
 	const seen = new Set<string>()
-	return all.filter(file => {
+	const unique = sanitizeDroppedChatFiles(source, directoryNames).filter(file => {
 		const key = `${file.name}:${file.size}:${file.lastModified}:${file.webkitRelativePath || ''}`
 		if (seen.has(key)) return false
 		seen.add(key)
 		return true
 	})
+	const materialized = await materializeDroppedChatFiles(unique, directoryNames)
+	const folderHint = resolveDropFolderHint({
+		files: materialized.files,
+		stubNames: materialized.stubNames,
+		directoryNames,
+		singleItemManyFiles: fromItems.hasDirectory || directLooksLikeFolder,
+		firstDirectName: fromItems.hasDirectory
+			? ([...fromItems.directoryNames][0] || [...directoryNames][0])
+			: (directFiles[0]?.name),
+	})
+	return { files: materialized.files, folderHint }
 }
 
 function voiceWaveformPath(samples: number[]): string {
@@ -1545,13 +1870,35 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 
 	const runningRef = useRef(false)
 
-	const addChatFiles = useCallback(async (incoming: File[]) => {
+	const addChatFiles = useCallback(async (incoming: File[], dropFolderHint?: string | null) => {
 		if (!hasRoute || !incoming.length) return
-		const files = incoming
-		if (!files.length) return
+		const extraDirectoryNames = extraDirectoryNamesFromHint(dropFolderHint)
+		let readable: { files: File[]; stubNames: string[] }
+		try {
+			readable = await materializeDroppedChatFiles(
+				sanitizeDroppedChatFiles(incoming, extraDirectoryNames),
+				extraDirectoryNames,
+			)
+		} catch (error) {
+			setFileError(chatFileReadErrorMessage(error))
+			return
+		}
+		const files = readable.files
+		const folderHint = resolveDropFolderHint({
+			files,
+			stubNames: readable.stubNames,
+			directoryNames: extraDirectoryNames,
+			singleItemManyFiles: incoming.length > 1 || Boolean(dropFolderHint),
+			firstDirectName: dropFolderHint || incoming[0]?.name,
+		}) || dropFolderHint || null
+		if (!files.length) {
+			setFileError('This folder could not be read. Drop the files inside it, or try again.')
+			return
+		}
 		const id = crypto.randomUUID()
 		const isPdfFile = files[0].type === 'application/pdf' || files[0].name.toLowerCase().endsWith('.pdf')
-		const isFolderSelection = files.some(file => Boolean(file.webkitRelativePath && file.webkitRelativePath.includes('/')))
+		const isFolderSelection = Boolean(folderHint) || files.some(file => Boolean(file.webkitRelativePath && file.webkitRelativePath.includes('/')))
+		const bundleName = chatFileBundleDisplayName(files, folderHint)
 		const mediaFile = files.length === 1 && !isFolderSelection && (
 			files[0].type.startsWith('video/')
 			|| files[0].type.startsWith('image/')
@@ -1566,7 +1913,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 			{
 				id,
 				files,
-				name: chatFileBundleDisplayName(files),
+				name: bundleName,
 				progress: 0,
 				status: 'uploading',
 			},
@@ -1582,22 +1929,34 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 				setFileJobs(previous => previous.map(item => item.id === id ? { ...item, progress: 0.08 } : item))
 			}
 		} catch (error) {
-			setFileError(error instanceof Error ? error.message : 'Video thumbnail could not be created.')
-			// Keep the video job alive and continue uploading; the receiver can still
-			// render the decrypted video when no local thumbnail is available.
+			if (!isNotFoundReadError(error)) {
+				setFileError(chatFileReadErrorMessage(error) || 'Video thumbnail could not be created.')
+			}
+			// Keep the job alive and continue uploading; the receiver can still
+			// render the decrypted media when no local thumbnail is available.
 		}
 		if (controller.signal.aborted) {
 			fileControllersRef.current.delete(id)
 			return
 		}
-		const thumbnailUrl = thumbnail ? URL.createObjectURL(thumbnail) : undefined
+		let thumbnailUrl: string | undefined
+		try {
+			thumbnailUrl = thumbnail ? URL.createObjectURL(thumbnail) : undefined
+		} catch (error) {
+			if (!isNotFoundReadError(error)) {
+				setFileError(chatFileReadErrorMessage(error))
+			}
+			thumbnail = undefined
+		}
 		if (thumbnailUrl) {
 			setFileJobs(previous => previous.map(item => item.id === id ? { ...item, thumbnailUrl } : item))
 		}
 		try {
 			const encrypted = await encryptChatFiles(
 				files,
-				files.length > 1 ? chatFileBundleDisplayName(files) : undefined,
+				files.length > 1 || Boolean(folderHint)
+					? bundleName
+					: undefined,
 				thumbnail,
 			)
 			const fragmentHash = await uploadEncryptedChatFileDataUrl(
@@ -1613,7 +1972,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 			if (error instanceof DOMException && error.name === 'AbortError') {
 				setFileJobs(previous => previous.filter(item => item.id !== id))
 			} else {
-				setFileJobs(previous => previous.map(item => item.id === id ? { ...item, status: 'failed', error: error instanceof Error ? error.message : 'File upload failed.' } : item))
+				setFileJobs(previous => previous.map(item => item.id === id ? { ...item, status: 'failed', error: chatFileReadErrorMessage(error) } : item))
 			}
 		} finally {
 			fileControllersRef.current.delete(id)
@@ -1655,11 +2014,24 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		// dataTransfer after the drop handler yields / re-renders.
 		const directFiles = Array.from(event.dataTransfer.files || [])
 		const dataTransfer = event.dataTransfer
+		if (!hasRoute) {
+			fileDragDepthRef.current = 0
+			setFileDropActive(false)
+			return
+		}
+		// Start the FileSystem walk + FileList arrayBuffer() before React
+		// state updates yield; Chrome otherwise invalidates the drop Files.
+		const dropWork = filesFromDropTransfer(dataTransfer, directFiles)
 		fileDragDepthRef.current = 0
 		setFileDropActive(false)
-		if (!hasRoute) return
-		void filesFromDropTransfer(dataTransfer, directFiles).then(files => {
-			if (files.length) void addChatFiles(files)
+		void dropWork.then(({ files, folderHint }) => {
+			if (files.length) {
+				void addChatFiles(files, folderHint)
+				return
+			}
+			setFileError('This folder could not be read. Drop the files inside it, or try again.')
+		}).catch(error => {
+			setFileError(chatFileReadErrorMessage(error))
 		})
 	}, [addChatFiles, hasRoute])
 
@@ -3796,11 +4168,10 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 														</div>
 													) : null}
 													<div className="min-w-0 flex-1">
-														<p className="truncate text-[13px] font-semibold text-slate-700">{job.name}</p>
+														<p className="truncate text-[13px] font-semibold text-slate-700">{folderDisplayName(job.name) || job.name}</p>
 														{job.files.length > 1 ? (
 															<p className="truncate text-[11px] text-slate-500">
-																{job.files.slice(0, 3).map(file => file.name).join(' · ')}
-																{job.files.length > 3 ? ` · +${job.files.length - 3} more` : ''}
+																{`${job.files.length} files · ${formatVoiceBytes(job.files.reduce((sum, file) => sum + file.size, 0))}`}
 															</p>
 														) : null}
 														{job.status === 'uploading' ? <div className="mt-1 h-1 overflow-hidden rounded-full bg-slate-200"><div className="h-full bg-[#1652f0] transition-[width]" style={{ width: `${Math.max(2, job.progress * 100)}%` }} /></div> : null}

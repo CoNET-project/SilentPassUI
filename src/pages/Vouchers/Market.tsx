@@ -9559,7 +9559,9 @@ export default function Market() {
 		>
 			<div
 				className="shrink-0"
-				style={{ minHeight: "max(0.5rem, env(safe-area-inset-top, 0px))" }}
+				style={{
+					minHeight: "calc(max(0.5rem, env(safe-area-inset-top, 0px)) + 3.5rem)",
+				}}
 			/>
 
 		<div className="animate-in fade-in duration-300 pb-6 max-w-lg mx-auto w-full px-3 sm:px-5">

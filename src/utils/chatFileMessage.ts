@@ -60,15 +60,32 @@ export async function encryptChatFiles(files: File[], displayName?: string, prev
 	for (const file of files) {
 		const name = (file.webkitRelativePath || file.name || 'file').replace(/^\/+/, '')
 		if (!name || name.includes('..')) throw new Error('A file name is not safe to send.')
-		const bytes = new Uint8Array(await file.arrayBuffer())
+		let bytes: Uint8Array
+		try {
+			bytes = new Uint8Array(await file.arrayBuffer())
+		} catch (error) {
+			const notFound = (error instanceof DOMException && error.name === 'NotFoundError')
+				|| (error instanceof Error && /could not be found at the time an operation was processed/i.test(error.message))
+			if (notFound) continue
+			throw error
+		}
 		entries[name] = bytes
 		metadata.push({ name, sizeBytes: bytes.byteLength })
 		totalBytes += bytes.byteLength
 	}
+	if (!metadata.length) throw new Error('This folder could not be read. Drop the files inside it, or try again.')
 	const previewName = preview ? `.${metadata[0]?.name || 'video'}.preview.jpg` : undefined
 	const hasFolderPath = files.some(file => Boolean(file.webkitRelativePath && file.webkitRelativePath.includes('/')))
 	const isArchive = files.length > 1 || hasFolderPath
-	if (preview && previewName) entries[previewName] = new Uint8Array(await preview.arrayBuffer())
+	if (preview && previewName) {
+		try {
+			entries[previewName] = new Uint8Array(await preview.arrayBuffer())
+		} catch (error) {
+			const notFound = (error instanceof DOMException && error.name === 'NotFoundError')
+				|| (error instanceof Error && /could not be found at the time an operation was processed/i.test(error.message))
+			if (!notFound) throw error
+		}
+	}
 	const zipped = zipSync(entries, { level: 6 })
 	const keyBytes = crypto.getRandomValues(new Uint8Array(32))
 	const ivBytes = crypto.getRandomValues(new Uint8Array(12))

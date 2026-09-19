@@ -795,12 +795,10 @@ function DiscoverLoyaltyPassIncentiveLine({
 	topupPromotionCapsule,
 	pct,
 	earnWithPct,
-	earnDefault,
 }: {
 	topupPromotionCapsule?: string | null
 	pct: string | null
 	earnWithPct: string
-	earnDefault: string
 }) {
 	const promo = topupPromotionCapsule?.trim()
 	if (promo) {
@@ -810,24 +808,19 @@ function DiscoverLoyaltyPassIncentiveLine({
 			</div>
 		)
 	}
+	if (pct == null) return null
 	return (
 		<div className="mt-5 flex items-center gap-2.5 border-t border-white/15 pt-4">
-			{pct != null ? (
-				<>
-					<span
-						className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full"
-						style={{ backgroundColor: 'rgba(52, 211, 153, 0.22)' }}
-						aria-hidden
-					>
-						<Check className="h-3 w-3 text-emerald-300" strokeWidth={3} />
-					</span>
-					<p className="min-w-0 flex-1 text-[13px] font-medium leading-snug text-white/90">
-						{earnWithPct}
-					</p>
-				</>
-			) : (
-				<p className="min-w-0 flex-1 text-[13px] font-medium leading-snug text-white/70">{earnDefault}</p>
-			)}
+			<span
+				className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full"
+				style={{ backgroundColor: 'rgba(52, 211, 153, 0.22)' }}
+				aria-hidden
+			>
+				<Check className="h-3 w-3 text-emerald-300" strokeWidth={3} />
+			</span>
+			<p className="min-w-0 flex-1 text-[13px] font-medium leading-snug text-white/90">
+				{earnWithPct}
+			</p>
 		</div>
 	)
 }
@@ -966,7 +959,6 @@ function DiscoverMerchantHealthBeautyLoyaltyPassPanel({
 					topupPromotionCapsule={topupPromotionCapsule}
 					pct={pct}
 					earnWithPct={`Earn ${pct}% back on every visit & purchase`}
-					earnDefault="Earn Reward PT on every visit & purchase"
 				/>
 			</section>
 
@@ -1061,7 +1053,7 @@ function DiscoverMerchantHowPointsWorkPanel({
 	accent: string
 	rewardContext: string
 }) {
-	if (!enabled) return null
+	if (!enabled || pct == null) return null
 
 	const isDiningReward = rewardContext === 'dining order'
 	const headingContext = isDiningReward
@@ -1715,7 +1707,6 @@ function DiscoverMerchantFoodBeverageLoyaltyPassPanel({
 					topupPromotionCapsule={topupPromotionCapsule}
 					pct={pct}
 					earnWithPct={`Earn ${pct}% back on every dining order`}
-					earnDefault="Earn Reward PT on every dining order"
 				/>
 			</section>
 
@@ -1910,7 +1901,8 @@ function DiscoverMerchantMemberRechargePrivilegesPanel({
 			? `Earn ${Number(chargePercent.toFixed(2)).toString()}% back in Reward PT on every ${
 					isDining ? 'dining order' : 'purchase'
 				}.`
-			: `Earn Reward PT on every ${isDining ? 'dining order' : 'purchase'}.`)
+			: null)
+	const showIncentiveFooter = Boolean(promotionLine || rewardPtEarnLine)
 	const headerEyebrow = hasPointsOrCredits ? '✨ Share & earn Reward PT' : '🔥 First top-up exclusive'
 	const headerTitle = hasPointsOrCredits ? 'Fresh Rewards Unlocked!' : 'Claim Your Welcome Match'
 	const headerBody = hasPointsOrCredits
@@ -2011,27 +2003,31 @@ function DiscoverMerchantMemberRechargePrivilegesPanel({
 					</div>
 				</div>
 
-				<div
-					className="mt-auto flex items-end gap-2.5 border-t pt-4"
-					style={{ borderColor: panelTheme.cardBorder }}
-				>
-					{chargePercent != null && chargePercent > 0 ? (
-						<span
-							className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full"
-							style={{ backgroundColor: 'rgba(52, 211, 153, 0.22)' }}
-							aria-hidden
-						>
-							<Check className="h-3 w-3 text-emerald-300" strokeWidth={3} />
-						</span>
-					) : null}
-					<p
-						className="min-w-0 flex-1 text-left text-[13px] font-medium leading-snug"
-						style={{ color: panelTheme.secondary }}
+				{showIncentiveFooter ? (
+					<div
+						className="mt-auto flex items-end gap-2.5 border-t pt-4"
+						style={{ borderColor: panelTheme.cardBorder }}
 					>
-						{promotionLine ? <span className="block">{promotionLine}</span> : null}
-						<span className={promotionLine ? 'mt-1 block' : 'block'}>{rewardPtEarnLine}</span>
-					</p>
-				</div>
+						{chargePercent != null && chargePercent > 0 ? (
+							<span
+								className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full"
+								style={{ backgroundColor: 'rgba(52, 211, 153, 0.22)' }}
+								aria-hidden
+							>
+								<Check className="h-3 w-3 text-emerald-300" strokeWidth={3} />
+							</span>
+						) : null}
+						<p
+							className="min-w-0 flex-1 text-left text-[13px] font-medium leading-snug"
+							style={{ color: panelTheme.secondary }}
+						>
+							{promotionLine ? <span className="block">{promotionLine}</span> : null}
+							{rewardPtEarnLine ? (
+								<span className={promotionLine ? 'mt-1 block' : 'block'}>{rewardPtEarnLine}</span>
+							) : null}
+						</p>
+					</div>
+				) : null}
 			</div>
 
 			<DiscoverStoreCreditMultiplierOffersRow
@@ -6249,17 +6245,12 @@ function DiscoverMerchantDetailFullScreen({
 		return chargePercent
 	}, [showFoodBeverageProspectPass, showFoodBeverageLoyaltyPass, merchantMetadataRoot])
 	const customerLoyaltyPointsEnabled = useMemo(() => {
-		if (consumptionPointSystemEnabledFromMetadata(merchantMetadataRoot) === true) return true
 		const { chargePercent, topupPercent } = parseDiscoverActorRewardPercentsFromMetadata(merchantMetadataRoot)
-		if (
+		return (
 			(chargePercent != null && Number.isFinite(chargePercent) && chargePercent > 0) ||
 			(topupPercent != null && Number.isFinite(topupPercent) && topupPercent > 0)
-		) {
-			return true
-		}
-		if (hasDiscoverReferrerRewardSettingFromMetadata(merchantMetadataRoot)) return true
-		return Object.values(chainCardSocialPromotion?.events ?? {}).some((event) => event?.ref?.enabled === true)
-	}, [merchantMetadataRoot, chainCardSocialPromotion])
+		)
+	}, [merchantMetadataRoot])
 	const merchantRewardPtPercent = useMemo(() => {
 		const { chargePercent, topupPercent } = parseDiscoverActorRewardPercentsFromMetadata(merchantMetadataRoot)
 		const percent = chargePercent ?? topupPercent
@@ -6275,7 +6266,7 @@ function DiscoverMerchantDetailFullScreen({
 		if (topupPercent != null && Number.isFinite(topupPercent) && topupPercent > 0) {
 			return `Earn ${Number(topupPercent.toFixed(2)).toString()}% in Reward PT on every top-up.`
 		}
-		return 'Earn Reward PT on every purchase.'
+		return null
 	}, [merchantMetadataRoot])
 	/** Percent top-up only — hide fixed / fixedTiers on F&B prospect Welcome Reward. */
 	const foodBeveragePercentTopupWelcomeLine = useMemo(() => {

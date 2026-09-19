@@ -730,13 +730,13 @@ function ChatPdfFullscreenPreview({
 					<Download className="h-5 w-5" aria-hidden />
 				</button>
 			</div>
-			<div ref={pagesRef} className="min-h-0 flex-1 overflow-y-auto px-2 pb-[env(safe-area-inset-bottom,0px)] pt-[calc(max(1rem,env(safe-area-inset-top,0px))+3.25rem)]">
-				<div className="mx-auto flex min-h-full max-w-3xl flex-col items-center gap-3 rounded-xl bg-slate-700/50 py-3 shadow-2xl">
+			<div ref={pagesRef} className="min-h-0 min-w-0 flex-1 overflow-x-auto overflow-y-auto px-2 pb-[env(safe-area-inset-bottom,0px)] pt-[calc(max(1rem,env(safe-area-inset-top,0px))+3.25rem)]">
+				<div className="mx-auto flex min-h-full w-full min-w-0 max-w-3xl flex-col items-center gap-3 rounded-xl bg-slate-700/50 py-3 shadow-2xl">
 					{Array.from({ length: pageCount }, (_, index) => (
 						<canvas
 							key={index}
 							ref={canvas => { if (canvas) canvasRefs.current[index] = canvas }}
-							className="block max-w-full bg-white shadow-md"
+							className="block h-auto max-w-full bg-white shadow-md"
 							aria-label={`PDF page ${index + 1}`}
 						/>
 					))}

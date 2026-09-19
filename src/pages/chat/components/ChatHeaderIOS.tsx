@@ -2,7 +2,7 @@ import { IpfsImg } from '@/components/IpfsImg';
 import React, { useMemo } from "react"
 import { ethers } from "ethers"
 import { motion } from "framer-motion"
-import { ChevronLeft, ChevronRight } from "lucide-react"
+import { ChevronLeft, ChevronRight, Phone } from "lucide-react"
 import { tu } from '@/locale/beamioLocale'
 
 export type searchResult = {
@@ -28,11 +28,15 @@ export function ChatHeaderIOS({
   onBack,
   onCenterClick,
   online,
-  avatarSrc
+  avatarSrc,
+  onCall,
+  callBusy,
 }: {
   beamioer?: searchResult
   onBack?: () => void
   onCenterClick?: () => void
+  onCall?: () => void
+  callBusy?: boolean
   online: boolean
   avatarSrc: string
 }) {
@@ -47,7 +51,7 @@ export function ChatHeaderIOS({
     <div className="fixed top-0 left-0 right-0 z-[80] pointer-events-none">
       <div className="pt-[calc(env(safe-area-inset-top)+4px)]">
         {/* Back：玻璃圆 */}
-        <div className="px-4 h-14 flex items-center">
+        <div className="px-4 h-14 flex items-center justify-between">
           <button
             type="button"
             onClick={onBack}
@@ -63,6 +67,18 @@ export function ChatHeaderIOS({
           >
             <ChevronLeft className="w-6 h-6 text-slate-900" strokeWidth={2.6} />
           </button>
+          {onCall ? (
+            <button
+              type="button"
+              onClick={onCall}
+              disabled={callBusy}
+              className="pointer-events-auto grid h-11 w-11 place-items-center rounded-full bg-white/50 text-slate-900 shadow-[0_18px_38px_rgba(15,23,42,0.14)] ring-1 ring-white/60 backdrop-blur-xl transition active:scale-[0.98] disabled:cursor-wait disabled:opacity-50"
+              aria-label={callBusy ? "Calling" : "Start voice call"}
+              aria-busy={callBusy}
+            >
+              <Phone className="h-5 w-5" strokeWidth={2.4} aria-hidden />
+            </button>
+          ) : null}
         </div>
 
         {/* ✅ 头像（无外圈） + 下方紧凑胶囊（同一中线居中） */}

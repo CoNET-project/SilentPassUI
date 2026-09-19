@@ -56,6 +56,7 @@ function makeGossip(): GossipCore {
 	return new GossipCore({
 		message: (line, armorHash, plain, viaDomain) =>
 			post({ type: 'event:message', payload: { line, armorHash, plain, viaDomain, receivedAt: Date.now() } }),
+		voiceFrame: (payload) => post({ type: 'event:voiceFrame', payload }),
 		status: (status: StatusEvent['status'], detail?: string) =>
 			post({ type: 'event:status', payload: { status, detail } }),
 		log: (level, message) => post({ type: 'event:log', level, message }),
@@ -202,6 +203,25 @@ async function handle(cmd: WorkerInbound): Promise<void> {
 			} catch (ex) {
 				post({ type: 'ack', reqId: cmd.reqId, ok: false, error: (ex as Error)?.message ?? String(ex) })
 			}
+			return
+		}
+		case 'voiceFrame': {
+			try {
+				const ok = await gossip!.sendVoiceFrame(cmd.routerArmoredPublicKey, cmd.frame)
+				post({ type: 'ack', reqId: cmd.reqId, ok: true, result: { sent: ok } })
+			} catch (ex) {
+				post({ type: 'ack', reqId: cmd.reqId, ok: false, error: (ex as Error)?.message ?? String(ex) })
+			}
+			return
+		}
+		case 'voiceListen': {
+			const ok = await gossip!.startVoiceListen(cmd.sessionId)
+			post({ type: 'ack', reqId: cmd.reqId, ok: true, result: { started: ok } })
+			return
+		}
+		case 'voiceUnlisten': {
+			const ok = await gossip!.stopVoiceListen(cmd.sessionId)
+			post({ type: 'ack', reqId: cmd.reqId, ok: true, result: { stopped: ok } })
 			return
 		}
 		case 'pause':

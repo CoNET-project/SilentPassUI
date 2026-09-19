@@ -60,6 +60,41 @@ export interface ChatRoute {
 	routePgpKeyID?: string
 }
 
+export type VoiceCallSignalType =
+	| 'voice_call_offer_v1'
+	| 'voice_call_accept_v1'
+	| 'voice_call_reject_v1'
+	| 'voice_end_v1'
+
+export interface VoiceCallSignal {
+	type: VoiceCallSignalType
+	callId: string
+	sessionId: string
+	from: string
+	to: string
+	createdAt: number
+	expiresAt: number
+	sessionKey?: string
+	peerSessionId?: string
+	codec?: string
+	reason?: string
+}
+
+export interface VoiceFrame {
+	type: 'voice_frame_v1'
+	callId: string
+	sessionId: string
+	from: string
+	to: string
+	seq: number
+	timestamp: number
+	payload: string
+}
+
+export const VOICE_MAX_FRAME_B64 = 12_000
+export const VOICE_FRAME_TIMESTAMP_SKEW_SEC = 30
+export const VOICE_CALL_MAX_DURATION_MS = 15 * 60 * 1000
+
 /** Inbound decrypted line (still to be checkSign'd / parsed by the host). */
 export interface InboundEnvelope {
 	/**
@@ -138,6 +173,7 @@ export interface ChatEventMap {
 	status: StatusEvent
 	log: ChatLogEvent
 	historyBuffer: HistoryBufferEvent
+	voiceFrame: Record<string, unknown>
 }
 
 export type ChatEventName = keyof ChatEventMap
@@ -248,6 +284,9 @@ export interface BeamioChatClient {
 		routerArmoredPublicKey: string,
 		command: Record<string, unknown>,
 	): Promise<boolean>
+	sendVoiceFrame(routerArmoredPublicKey: string, frame: Record<string, unknown>): Promise<boolean>
+	startVoiceListen(sessionId: string): Promise<boolean>
+	stopVoiceListen(sessionId: string): Promise<boolean>
 	on<K extends ChatEventName>(event: K, cb: ChatEventListener<K>): Unsubscribe
 	/** Probe mailbox listen-pool presence for the given contacts. */
 	queryPresence(contacts: ChatRoute[]): Promise<Record<string, boolean>>

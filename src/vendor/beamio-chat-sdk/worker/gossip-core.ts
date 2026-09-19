@@ -49,6 +49,7 @@ import { buildPostBody, encryptRouteCommand, wrapArmorToEntryRoute, wrapArmorToM
 /** Callbacks the worker entry wires to `postMessage`. */
 export interface GossipEmit {
 	message(line: string, armorHash: string | undefined, plain: boolean, viaDomain?: string): void
+	voiceFrame(payload: Record<string, unknown>): void
 	status(status: StatusEvent['status'], detail?: string): void
 	log(level: 'info' | 'warn' | 'error', message: string): void
 	presence(payload: PresenceEvent): void
@@ -95,6 +96,7 @@ export class GossipCore {
 	private pgpPrivateKey: PrivateKey | null = null
 	private userPgpKeyID = ''
 	private listenController: AbortController | null = null
+	private voiceListenController: AbortController | null = null
 	private lastActivityAt = 0
 	private paused = false
 	private ackContext: {
@@ -140,6 +142,7 @@ export class GossipCore {
 	pause(): void {
 		this.paused = true
 		this.clearListen('background_pause')
+		this.voiceListenController?.abort('voice_stop')
 		this.lastActivityAt = 0
 		this.emit.status('paused')
 	}
@@ -152,6 +155,7 @@ export class GossipCore {
 
 	destroy(): void {
 		this.clearListen('destroy')
+		this.voiceListenController?.abort('voice_stop')
 		this.wallet = null
 		this.pgpPrivateKey = null
 		this.cfg = null
@@ -424,6 +428,10 @@ export class GossipCore {
 			return
 		}
 		try {
+			if (data.type === 'voice_frame_v1') {
+				this.emit.voiceFrame(data)
+				return
+			}
 			const armored = typeof data.data === 'string' ? data.data : ''
 			if (armored && /^-----BEGIN PGP MESSAGE-----/i.test(armored)) {
 				const msg = await readMessage({ armoredMessage: armored })
@@ -635,5 +643,79 @@ export class GossipCore {
 			this.emit.log('warn', `postMailboxCommand error: ${(ex as Error)?.message ?? String(ex)}`)
 			return false
 		}
+	}
+
+	async sendVoiceFrame(routerArmoredPublicKey: string, frame: Record<string, unknown>): Promise<boolean> {
+		const command = { command: 'voice_uplink', ...frame, timestamp: Math.floor(Date.now() / 1000) }
+		return this.postMailboxCommand(routerArmoredPublicKey, command)
+	}
+
+	async startVoiceListen(sessionId: string): Promise<boolean> {
+		if (this.paused || !this.cfg || !this.wallet || !sessionId) return false
+		this.voiceListenController?.abort('voice_replace')
+		const route = this.cfg.identity.ownRouteArmoredPublicKey || ''
+		const routeNodes = pickRouteNodesByArmoredKey(this.nodes, route)
+		const mailboxDomains = new Set(routeNodes.map((n) => n.domain))
+		const entries = await pickHealthyGossipNodes(this.nodes.filter((n) => !mailboxDomains.has(n.domain)))
+		if (!route || !entries.length) return false
+		const inner = await encryptRouteCommand(this.wallet, {
+			command: 'voice_listen',
+			walletAddress: this.wallet.address,
+			sessionId,
+			timestamp: Math.floor(Date.now() / 1000),
+		}, route)
+		const controller = new AbortController()
+		this.voiceListenController = controller
+		const node = getRandomNode(entries)!
+		void (async () => {
+			try {
+				const armored = this.cfg?.runtime.outerWrap === false ? inner : await wrapArmorToEntryRoute(inner, node.armoredPublicKey)
+				const res = await fetch(postUrl(node.domain), {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', Connection: 'keep-alive' },
+					body: JSON.stringify(buildPostBody(armored)),
+					signal: controller.signal,
+					cache: 'no-store',
+				})
+				if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`)
+				const reader = res.body.getReader()
+				const decoder = new TextDecoder()
+				let buffer = ''
+				while (!controller.signal.aborted) {
+					const { value, done } = await reader.read()
+					if (done) break
+					buffer += decoder.decode(value, { stream: true })
+					let idx: number
+					while ((idx = buffer.indexOf('\n\n')) >= 0) {
+						const block = buffer.slice(0, idx)
+						buffer = buffer.slice(idx + 2)
+						const payload = block.split('\n').filter(line => line.startsWith('data:')).map(line => line.slice(5).trimStart()).join('\n').trim()
+						if (!payload) continue
+						try {
+							const frame = JSON.parse(payload) as Record<string, unknown>
+							if (frame.type === 'voice_frame_v1') this.emit.voiceFrame(frame)
+						} catch { /* malformed frame */ }
+					}
+				}
+				await reader.cancel()
+			} catch (ex) {
+				if (!controller.signal.aborted) this.emit.log('warn', `voice SSE failed: ${(ex as Error)?.message ?? String(ex)}`)
+			}
+		})()
+		return true
+	}
+
+	async stopVoiceListen(sessionId: string): Promise<boolean> {
+		const route = this.cfg?.identity.ownRouteArmoredPublicKey || ''
+		const wallet = this.wallet
+		this.voiceListenController?.abort('voice_stop')
+		this.voiceListenController = null
+		if (!route || !wallet) return true
+		return this.postMailboxCommand(route, {
+			command: 'voice_unlisten',
+			walletAddress: wallet.address,
+			sessionId,
+			timestamp: Math.floor(Date.now() / 1000),
+		})
 	}
 }

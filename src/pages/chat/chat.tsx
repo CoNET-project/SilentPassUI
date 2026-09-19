@@ -55,6 +55,12 @@ import {
 	makeMessage
 
 } from '@/services/chat'
+import {
+	startWorkerVoiceListen,
+	stopWorkerVoiceListen,
+	sendWorkerVoiceFrame,
+	onVoiceFrame,
+} from '@/services/chatWorkerBridge'
 import { PlusActionMenu } from "./components/PlusActionMenu"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import { searchUsername, storeSystemData, AuthorizationSign } from '@/services/beamio'
@@ -92,6 +98,14 @@ import {
 	VOICE_MAX_AUDIO_BYTES,
 	type VoiceMessageManifest,
 } from '@/utils/voiceMessage'
+import {
+	makeVoiceCallSignal,
+	randomVoiceId,
+	createVoiceSessionKey,
+	voiceSessionKeyToBase64,
+	voiceSessionKeyFromBase64,
+} from '@/utils/voiceCallSession'
+import { startVoiceCapture, VoicePlaybackBuffer } from '@/services/voiceCallMedia'
 import {
 	createChatFileArchive,
 	decryptChatFileManifest,
@@ -1712,6 +1726,16 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 	const [voiceDraftBlob, setVoiceDraftBlob] = useState<Blob | null>(null)
 	const [voiceSending, setVoiceSending] = useState(false)
 	const [voiceError, setVoiceError] = useState<string | null>(null)
+	const [voiceCallState, setVoiceCallState] = useState<'idle' | 'outgoing' | 'ended'>('idle')
+	const voiceCallSessionRef = useRef<string | null>(null)
+	const voiceCallOfferRef = useRef<{ callId: string; sessionKey: string } | null>(null)
+	const voiceCallKeyRef = useRef<Uint8Array | null>(null)
+	const voiceCallPeerSessionRef = useRef<string | null>(null)
+	const voiceCaptureStopRef = useRef<(() => void) | null>(null)
+	const voicePlaybackAudioRef = useRef<HTMLAudioElement | null>(null)
+	const voicePlaybackRef = useRef<VoicePlaybackBuffer | null>(null)
+	const voiceFrameSeqRef = useRef(0)
+	const [incomingVoiceOffer, setIncomingVoiceOffer] = useState<Record<string, any> | null>(null)
 	const [fileJobs, setFileJobs] = useState<ChatFileJob[]>([])
 	const fileControllersRef = useRef(new Map<string, AbortController>())
 	const storageDataRef = useRef<(() => Promise<void>) | null>(null)
@@ -1730,6 +1754,193 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 
 	const toAddress = chatData.address
 	const walletEoa = (profiles[0]?.keyID ?? '').trim()
+
+	const startVoiceMedia = useCallback(async () => {
+		if (voiceCaptureStopRef.current || !voiceCallKeyRef.current || !voiceCallPeerSessionRef.current) return
+		if (!navigator.mediaDevices?.getUserMedia) {
+			setVoiceError('Voice calling is not supported by this browser.')
+			return
+		}
+		try {
+			const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+			const key = voiceCallKeyRef.current
+			const targetSessionId = voiceCallPeerSessionRef.current
+			const callId = voiceCallOfferRef.current?.callId || ''
+			voiceFrameSeqRef.current = 0
+			voiceCaptureStopRef.current = await startVoiceCapture(stream, key, async (payload) => {
+				const route = chatData.chatData?.routersArmoreds?.trim()
+				if (!route || !callId || !targetSessionId) return
+				await sendWorkerVoiceFrame(route, {
+					type: 'voice_frame_v1',
+					callId,
+					sessionId: voiceCallSessionRef.current,
+					targetSessionId,
+					targetWallet: toAddress,
+					seq: voiceFrameSeqRef.current++,
+					payload,
+				})
+			})
+		} catch {
+			setVoiceError('Microphone access was denied or unavailable.')
+		}
+	}, [chatData.chatData, toAddress])
+
+	const startVoiceCall = useCallback(async () => {
+		if (voiceCallState !== 'idle') return
+		const route = chatData.chatData?.routersArmoreds?.trim()
+		const recipientPgp = chatData.chatData?.publicArmored?.trim()
+		if (!route || !recipientPgp) {
+			setVoiceError('Voice calling requires the contact to have an active Chat route.')
+			return
+		}
+		const sessionId = randomVoiceId('voice')
+		const key = createVoiceSessionKey()
+		const started = await startWorkerVoiceListen(sessionId)
+		if (!started) {
+			setVoiceError('Voice call could not open a temporary relay.')
+			return
+		}
+		voiceCallSessionRef.current = sessionId
+		voiceCallKeyRef.current = key
+		setVoiceCallState('outgoing')
+		const signal = makeVoiceCallSignal({
+			type: 'voice_call_offer_v1',
+			callId: randomVoiceId('call'),
+			sessionId,
+			from: new ethers.Wallet(privateKey).address,
+			to: toAddress,
+			sessionKey: voiceSessionKeyToBase64(key),
+			codec: 'audio/webm;codecs=opus',
+		})
+		voiceCallOfferRef.current = { callId: signal.callId, sessionKey: signal.sessionKey || '' }
+		const sent = await sendMessage(recipientPgp, JSON.stringify(signal), privateKey, allNodes)
+		if (!sent) {
+			await stopWorkerVoiceListen(sessionId)
+			voiceCallSessionRef.current = null
+			setVoiceCallState('idle')
+			setVoiceError('Voice call request could not be delivered.')
+		}
+	}, [allNodes, chatData.chatData, privateKey, toAddress, voiceCallState])
+
+	useEffect(() => {
+		const latest = [...messages].reverse().find((message) => message.from === 'them' && message.text)
+		if (!latest?.text) return
+		try {
+			const signal = JSON.parse(latest.text) as Record<string, any>
+			if (
+				signal.type === 'voice_call_offer_v1' &&
+				typeof signal.callId === 'string' &&
+				typeof signal.sessionId === 'string' &&
+				typeof signal.sessionKey === 'string' &&
+				Number(signal.expiresAt) > Date.now()
+			) {
+				setIncomingVoiceOffer(previous => previous?.callId === signal.callId ? previous : signal)
+			}
+			if (
+				signal.type === 'voice_call_accept_v1' &&
+				voiceCallOfferRef.current?.callId === signal.callId &&
+				typeof signal.peerSessionId === 'string'
+			) {
+				// The relay is now paired. Media capture is intentionally owned by
+				// the call controller, not the normal Chat message stream.
+				voiceCallPeerSessionRef.current = signal.peerSessionId
+				setVoiceCallState('outgoing')
+				void startVoiceMedia()
+			}
+		} catch {
+			/* ordinary Chat text */
+		}
+	}, [messages, startVoiceMedia])
+
+	const acceptVoiceCall = useCallback(async () => {
+		const offer = incomingVoiceOffer
+		if (!offer) return
+		try {
+			const key = voiceSessionKeyFromBase64(offer.sessionKey)
+			voiceCallKeyRef.current = key
+			voiceCallOfferRef.current = { callId: offer.callId, sessionKey: offer.sessionKey }
+			const sessionId = randomVoiceId('voice')
+			if (!await startWorkerVoiceListen(sessionId)) {
+				setVoiceError('Voice call could not open a temporary relay.')
+				return
+			}
+			voiceCallSessionRef.current = sessionId
+			voiceCallPeerSessionRef.current = offer.sessionId
+			const answer = makeVoiceCallSignal({
+				type: 'voice_call_accept_v1',
+				callId: offer.callId,
+				sessionId,
+				peerSessionId: offer.sessionId,
+				from: new ethers.Wallet(privateKey).address,
+				to: offer.from,
+				codec: offer.codec || 'audio/webm;codecs=opus',
+			})
+			const sent = await sendMessage(chatData.chatData.publicArmored, JSON.stringify(answer), privateKey, allNodes)
+			if (!sent) {
+				await stopWorkerVoiceListen(sessionId)
+				setVoiceError('Voice call acceptance could not be delivered.')
+				return
+			}
+			setIncomingVoiceOffer(null)
+			setVoiceCallState('outgoing')
+			void startVoiceMedia()
+		} catch {
+			setVoiceError('This voice call request is invalid or expired.')
+		}
+	}, [allNodes, chatData.chatData.publicArmored, incomingVoiceOffer, privateKey, startVoiceMedia])
+
+	const rejectVoiceCall = useCallback(async () => {
+		const offer = incomingVoiceOffer
+		if (!offer) return
+		const reject = makeVoiceCallSignal({
+			type: 'voice_call_reject_v1',
+			callId: offer.callId,
+			sessionId: offer.sessionId,
+			from: new ethers.Wallet(privateKey).address,
+			to: offer.from,
+			reason: 'declined',
+		})
+		await sendMessage(chatData.chatData.publicArmored, JSON.stringify(reject), privateKey, allNodes)
+		setIncomingVoiceOffer(null)
+	}, [allNodes, chatData.chatData.publicArmored, incomingVoiceOffer, privateKey])
+
+	const endVoiceCall = useCallback(async () => {
+		const sessionId = voiceCallSessionRef.current
+		if (sessionId) await stopWorkerVoiceListen(sessionId)
+		voiceCaptureStopRef.current?.()
+		voiceCaptureStopRef.current = null
+		voicePlaybackRef.current?.destroy()
+		voicePlaybackRef.current = null
+		voiceCallKeyRef.current = null
+		voiceCallPeerSessionRef.current = null
+		voiceCallSessionRef.current = null
+		setVoiceCallState('ended')
+		window.setTimeout(() => setVoiceCallState('idle'), 300)
+	}, [])
+
+	useEffect(() => {
+		const audio = voicePlaybackAudioRef.current
+		if (!audio) return
+		const playback = new VoicePlaybackBuffer(audio)
+		voicePlaybackRef.current = playback
+		return () => {
+			playback.destroy()
+			if (voicePlaybackRef.current === playback) voicePlaybackRef.current = null
+		}
+	}, [])
+
+	useEffect(() => onVoiceFrame((frame) => {
+		if (
+			voiceCallState !== 'outgoing' ||
+			frame.type !== 'voice_frame_v1' ||
+			typeof frame.payload !== 'string' ||
+			frame.callId !== voiceCallOfferRef.current?.callId
+		) return
+		voicePlaybackRef.current?.setKey(voiceCallKeyRef.current || new Uint8Array())
+		void voicePlaybackRef.current?.push(frame.payload).catch(() => {
+			setVoiceError('Incoming voice audio could not be decoded.')
+		})
+	}), [voiceCallState])
 
 	const openMultisigFromChat = useCallback(
 		(messageText: string, isMeMessage: boolean, taskId: string, aaAccount?: string) => {
@@ -1792,7 +2003,17 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 
 	/** 仅展示“正文”消息（含文字或 paymentCard）；带 reply 的 reaction 消息不单独成行，用于在目标消息上显示 icon */
 	const displayableMessages = useMemo(() => {
-		return (messages || []).filter(m => !m.reply || !!m.text || !!m.paymentCard || !!m.voiceMessage || !!m.fileMessage)
+		return (messages || []).filter(m => {
+			if (m.text) {
+				try {
+					const parsed = JSON.parse(m.text) as { type?: unknown }
+					if (typeof parsed.type === 'string' && parsed.type.startsWith('voice_call_')) return false
+				} catch {
+					/* ordinary text */
+				}
+			}
+			return !m.reply || !!m.text || !!m.paymentCard || !!m.voiceMessage || !!m.fileMessage
+		})
 	}, [messages])
 
 	const sections = useMemo(() => {
@@ -1879,6 +2100,10 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 
 	const addChatFiles = useCallback(async (incoming: File[], dropFolderHint?: string | null) => {
 		if (!hasRoute || !incoming.length) return
+		// A later successful drop must not leave the previous folder-read alert
+		// attached to the composer. Failed jobs are also stale for this new
+		// user action; keeping them would continue rendering their alert <p>.
+		setFileError(null)
 		const extraDirectoryNames = extraDirectoryNamesFromHint(dropFolderHint)
 		let readable: { files: File[]; stubNames: string[] }
 		try {
@@ -1902,6 +2127,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 			setFileError('This folder could not be read. Drop the files inside it, or try again.')
 			return
 		}
+		setFileJobs(previous => previous.filter(job => job.status !== 'failed'))
 		const id = crypto.randomUUID()
 		const isPdfFile = files[0].type === 'application/pdf' || files[0].name.toLowerCase().endsWith('.pdf')
 		const isFolderSelection = Boolean(folderHint) || files.some(file => Boolean(file.webkitRelativePath && file.webkitRelativePath.includes('/')))
@@ -2026,6 +2252,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 			setFileDropActive(false)
 			return
 		}
+		setFileError(null)
 		// Start the FileSystem walk + FileList arrayBuffer() before React
 		// state updates yield; Chrome otherwise invalidates the drop Files.
 		const dropWork = filesFromDropTransfer(dataTransfer, directFiles)
@@ -3264,7 +3491,23 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 				onBack={onBack}
 				online={chatData.chatData.online}
 				avatarSrc={userImg}
+				onCall={voiceCallState === 'outgoing' ? endVoiceCall : startVoiceCall}
+				callBusy={voiceCallState === 'outgoing'}
 			/>
+			{incomingVoiceOffer ? (
+				<div className="pointer-events-auto fixed left-4 right-4 top-[max(5.5rem,calc(env(safe-area-inset-top)+5rem))] z-[90] rounded-2xl border border-white/80 bg-white/85 px-4 py-3 shadow-[0_12px_30px_rgba(15,23,42,0.16)] backdrop-blur-xl">
+					<div className="flex items-center gap-3">
+						<Phone className="h-5 w-5 text-[#1652f0]" aria-hidden />
+						<div className="min-w-0 flex-1">
+							<p className="text-sm font-semibold text-slate-800">Incoming voice call</p>
+							<p className="text-xs text-slate-500">Accept to open a temporary encrypted relay.</p>
+						</div>
+						<button type="button" onClick={() => void acceptVoiceCall()} className="rounded-full bg-[#1652f0] px-3 py-1.5 text-xs font-semibold text-white">Accept</button>
+						<button type="button" onClick={() => void rejectVoiceCall()} className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700">Decline</button>
+					</div>
+				</div>
+			) : null}
+			<audio ref={voicePlaybackAudioRef} className="hidden" preload="none" aria-hidden />
 
 			{/* iOS 风格 Message Reaction 菜单：仅对收到的消息显示，在 message 上方，内容可左右滚动；一点展开/收缩动画 */}
 			<AnimatePresence>

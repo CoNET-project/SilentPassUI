@@ -13,6 +13,7 @@ Beamio supports transactions without becoming the custodian, counterparty, or ow
 - **Store Credit** — Hold value issued by a specific merchant program.
 - **Reward PT** — Earn rewards from purchases, referrals, sharing, and engagement, then use eligible PT under participating program rules.
 - **Private messaging** — Communicate through encrypted CoNET messaging and recover supported chat history across devices.
+- **Real-time voice MVP** — Experimental one-to-one voice sessions use a separate random temporary mailbox SSE per participant and encrypted uplink/downlink frames; normal Chat SSE and Chat history remain untouched.
 - **CoNET participation** — View supported network, validator, referral, and reward experiences from the Bounty Board.
 
 Store Credit remains specific to the issuing merchant. Reward PT is a separate asset and is only portable where participating program rules allow it. Any remaining payment amount may be settled in USDC.
@@ -40,6 +41,11 @@ The application uses:
 - Dedicated workers for wallet feeds, BeamioTag and merchant-card data, and encrypted chat
 - OpenPGP for CoNET messaging
 - Local-first IPFS image storage
+
+The voice-session helper keeps the AES-256-GCM key in active memory and sends
+it only inside the recipient user-PGP call signal. It is not WebRTC and does
+not create a peer socket; the SI relay only sees opaque frames and bounded
+session metadata.
 
 Chain reads are worker-managed, cached, deduplicated, and refreshed in the background. UI components consume trusted mirrors instead of issuing independent recurring RPC requests.
 

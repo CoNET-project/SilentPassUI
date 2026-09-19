@@ -48,6 +48,7 @@ let activeClient: ChatWorkerClient | null = null
  * before or after `startWorkerGossipListen()`; the active client fans batches here.
  */
 const historyBufferListeners = new Set<(batch: HistoryBufferEvent) => void>()
+const voiceFrameListeners = new Set<(frame: Record<string, unknown>) => void>()
 
 /**
  * Race fix: `initChat` sets React `gossip=true` *before* the worker client exists.
@@ -66,6 +67,11 @@ export const onHistoryBuffer = (cb: (batch: HistoryBufferEvent) => void): (() =>
 	return () => {
 		historyBufferListeners.delete(cb)
 	}
+}
+
+export const onVoiceFrame = (cb: (frame: Record<string, unknown>) => void): (() => void) => {
+	voiceFrameListeners.add(cb)
+	return () => voiceFrameListeners.delete(cb)
 }
 
 const runHistoryLoad = async (options?: HistoryLoadOptions): Promise<void> => {
@@ -151,6 +157,7 @@ export interface StartWorkerGossipParams {
 	rootSignal: AbortSignal
 	/** Decrypted host-ready line → existing addNewMessage serial queue. */
 	onLine: (line: string) => void
+	onVoiceFrame?: (frame: Record<string, unknown>) => void
 	/** Any inbound / liveness activity → refresh main-thread staleness timer. */
 	onActivity: () => void
 	/** Optional structured log sink (never logs key material / plaintext / ciphertext). */
@@ -229,6 +236,12 @@ export const startWorkerGossipListen = async (p: StartWorkerGossipParams): Promi
 			p.onLog?.(l.level, l.message)
 		}),
 	)
+	unsubs.push(client.on('voiceFrame', (frame) => {
+		for (const cb of voiceFrameListeners) {
+			try { cb(frame) } catch { /* isolate voice UI listeners */ }
+		}
+		p.onVoiceFrame?.(frame)
+	}))
 	// Fan encrypted-history restore/append batches to host subscribers (ChatList / chat page).
 	unsubs.push(
 		client.history.onBuffer((batch) => {
@@ -278,6 +291,36 @@ export const startWorkerGossipListen = async (p: StartWorkerGossipParams): Promi
 	} catch (ex) {
 		p.onLog?.('error', `worker gossip init failed: ${(ex as Error)?.message ?? String(ex)}`)
 		teardown()
+		return false
+	}
+}
+
+export const startWorkerVoiceListen = async (sessionId: string): Promise<boolean> => {
+	if (!activeClient) return false
+	try {
+		return await activeClient.startVoiceListen(sessionId)
+	} catch {
+		return false
+	}
+}
+
+export const stopWorkerVoiceListen = async (sessionId: string): Promise<boolean> => {
+	if (!activeClient) return false
+	try {
+		return await activeClient.stopVoiceListen(sessionId)
+	} catch {
+		return false
+	}
+}
+
+export const sendWorkerVoiceFrame = async (
+	routerArmoredPublicKey: string,
+	frame: Record<string, unknown>,
+): Promise<boolean> => {
+	if (!activeClient) return false
+	try {
+		return await activeClient.sendVoiceFrame(routerArmoredPublicKey, frame)
+	} catch {
 		return false
 	}
 }

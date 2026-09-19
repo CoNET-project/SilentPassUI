@@ -9560,7 +9560,7 @@ export default function Market() {
 			<div
 				className="shrink-0"
 				style={{
-					minHeight: "calc(max(0.5rem, env(safe-area-inset-top, 0px)) + 3.5rem)",
+					minHeight: "calc(max(0.5rem, env(safe-area-inset-top, 0px)) + 4.5rem)",
 				}}
 			/>
 

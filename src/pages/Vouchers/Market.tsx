@@ -69,6 +69,7 @@ import {
 } from "lucide-react"
 import { useNavigate, useLocation } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
+import { useScrollCapsuleOpacity } from "@/hooks/useScrollCapsuleOpacity"
 import { ethers } from "ethers"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import { beamioApi } from "@/utils/constants"
@@ -9136,6 +9137,11 @@ export default function Market() {
 	const discoverCategoryScrollerRef = useRef<HTMLDivElement | null>(null)
 	const [discoverMerchantDetail, setDiscoverMerchantDetail] = useState<DiscoverFeaturedCard | null>(null)
 	const [discoverDetailEnterImmediate, setDiscoverDetailEnterImmediate] = useState(false)
+	const {
+		onScroll: onDiscoverScroll,
+		setRef: setDiscoverScrollRef,
+		setLayerRef: setDiscoverCategoryLayerRef,
+	} = useScrollCapsuleOpacity(true)
 	const discoverDeepLinkTarget = useMemo(
 		() => resolveDiscoverMerchantDeepLinkTarget(location),
 		[location],
@@ -9162,6 +9168,7 @@ export default function Market() {
 			<button
 				key={tab.id}
 				type="button"
+				data-capsule-interactive
 				onClick={() => {
 					setDiscoverCategory(tab.id)
 					discoverCategoryScrollerRef.current?.scrollTo({ left: 0, behavior: 'smooth' })
@@ -9170,7 +9177,7 @@ export default function Market() {
 					"flex shrink-0 items-center gap-1.5 rounded-full px-3 py-2 text-[13px] sm:text-[14px] font-semibold tracking-tight transition-all whitespace-nowrap",
 					active
 						? "bg-[#1562f0] text-white shadow-[0_8px_22px_rgba(21,98,240,0.42)]"
-						: "bg-white text-[#1f2328] shadow-[0_2px_10px_rgba(15,23,42,0.08)] border border-[#e8ecf0] dark:bg-slate-800 dark:text-slate-100 dark:border-slate-700 dark:shadow-[0_2px_12px_rgba(0,0,0,0.35)]",
+						: "bg-white/60 text-[#1f2328] shadow-[0_2px_10px_rgba(15,23,42,0.08)] border border-white/70 backdrop-blur-md dark:bg-slate-800/60 dark:text-slate-100 dark:border-slate-700/70 dark:shadow-[0_2px_12px_rgba(0,0,0,0.35)]",
 				].join(" ")}
 			>
 				<Icon className="h-[17px] w-[17px] shrink-0 sm:h-[18px] sm:w-[18px]" strokeWidth={active ? 2.25 : 2} aria-hidden />
@@ -9545,6 +9552,8 @@ export default function Market() {
 
 		{/* 滚动容器：Discover 布局对齐 example/market.html */}
 		<div
+			ref={setDiscoverScrollRef}
+			onScroll={onDiscoverScroll}
 			className="flex min-h-0 flex-1 flex-col overflow-y-auto pb-24 [scrollbar-width:thin]"
 			style={{ WebkitOverflowScrolling: "touch", flex: "1 1 0%", minHeight: 0 }}
 		>
@@ -9554,19 +9563,6 @@ export default function Market() {
 			/>
 
 		<div className="animate-in fade-in duration-300 pb-6 max-w-lg mx-auto w-full px-3 sm:px-5">
-			{/* Chip shadow (~22px blur) stays inside the column; keep a small inset, not a tall spacer. */}
-			<section className="pb-2">
-				<div className="flex min-h-0 items-center gap-2 py-2 pl-1 pr-1 sm:py-2.5">
-					<div className="shrink-0">{renderDiscoverFilterChip(DISCOVER_ALL_OPTION)}</div>
-					<div
-						ref={discoverCategoryScrollerRef}
-						className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
-					>
-						{discoverCategoryTabsOrdered.map((tab) => renderDiscoverFilterChip(tab))}
-					</div>
-				</div>
-			</section>
-
 			<section className="pb-3">
 				{/* untrusted 错误：仅在彻底无 cache rows 时提示，避免 cache 命中时干扰阅读 */}
 				{latestCardsError && latestCardsRows.length === 0 ? (
@@ -9649,6 +9645,24 @@ export default function Market() {
 		</div>
 
 		</div>
+		</div>
+
+		<div
+			ref={setDiscoverCategoryLayerRef}
+			className="pointer-events-none fixed inset-x-0 z-40 px-3 sm:px-5 transition-opacity duration-300 ease-out"
+			style={{ top: "max(0.5rem, env(safe-area-inset-top, 0px))" }}
+		>
+			<div className="mx-auto flex max-w-lg min-w-0 items-center gap-2 rounded-full border border-white/70 bg-white/55 px-1 py-1 shadow-[0_8px_28px_rgba(15,23,42,0.14),inset_0_1px_0_rgba(255,255,255,0.85)] backdrop-blur-xl dark:border-white/15 dark:bg-slate-900/55">
+				<div className="shrink-0" data-capsule-interactive>
+					{renderDiscoverFilterChip(DISCOVER_ALL_OPTION)}
+				</div>
+				<div
+					ref={discoverCategoryScrollerRef}
+					className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+				>
+					{discoverCategoryTabsOrdered.map((tab) => renderDiscoverFilterChip(tab))}
+				</div>
+			</div>
 		</div>
 
 		<AnimatePresence

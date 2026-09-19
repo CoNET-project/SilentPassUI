@@ -1032,9 +1032,9 @@ function DiscoverMerchantHowPointsWorkPanel({
 
 	return (
 		<section className="rounded-2xl border border-[#ebe6df] bg-[#faf8f5] px-4 py-4 dark:border-slate-700 dark:bg-slate-900/80">
-			<div className="flex items-start gap-3">
+			<div className="flex items-center gap-3">
 				<span
-					className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
+					className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
 					style={{ backgroundColor: `${accent}18` }}
 					aria-hidden
 				>
@@ -1158,7 +1158,7 @@ function DiscoverMerchantTreatAFriendPanel({
 	return (
 		<section className="overflow-hidden rounded-2xl border border-[#ebe6df] bg-white shadow-[0_8px_24px_rgba(31,35,40,0.06)] dark:border-slate-700 dark:bg-slate-900">
 			<div className="px-4 py-4">
-				<div className="flex items-start gap-3">
+				<div className="flex items-center gap-3">
 					<span
 						className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border"
 						style={{
@@ -1177,13 +1177,10 @@ function DiscoverMerchantTreatAFriendPanel({
 						<p className="text-[13px] font-bold tracking-[0.12em] text-[#1f2328] dark:text-slate-100">
 							Treat a Friend
 						</p>
-						<p className="mt-1 text-[12px] font-medium leading-snug text-[#5c6570] dark:text-slate-400">
-							Share the fresh {name} experience with instant digital delivery.
-						</p>
 					</div>
 				</div>
 				<p className="mt-3 text-[12px] leading-relaxed text-[#5c6570] dark:text-slate-400">
-					Zero platform fees, ready to use immediately.
+					Share the fresh {name} experience with instant digital delivery. Zero platform fees, ready to use immediately.
 				</p>
 				<div className="mt-4 flex justify-end border-t border-[#f0ebe4] pt-3 dark:border-slate-700">
 					<button

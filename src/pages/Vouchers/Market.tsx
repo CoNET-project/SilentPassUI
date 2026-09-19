@@ -1158,7 +1158,7 @@ function DiscoverMerchantTreatAFriendPanel({
 	return (
 		<section className="overflow-hidden rounded-2xl border border-[#ebe6df] bg-white shadow-[0_8px_24px_rgba(31,35,40,0.06)] dark:border-slate-700 dark:bg-slate-900">
 			<div className="px-4 py-4">
-				<div className="flex items-center gap-3">
+				<div className="flex items-center justify-between gap-3">
 					<span
 						className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border"
 						style={{
@@ -1178,22 +1178,20 @@ function DiscoverMerchantTreatAFriendPanel({
 							Treat a Friend
 						</p>
 					</div>
-				</div>
-				<p className="mt-3 text-[12px] leading-relaxed text-[#5c6570] dark:text-slate-400">
-					Share the fresh {name} experience with instant digital delivery. Zero platform fees, ready to use immediately.
-				</p>
-				<div className="mt-4 flex justify-end border-t border-[#f0ebe4] pt-3 dark:border-slate-700">
 					<button
 						type="button"
 						onClick={onSendGift}
 						disabled={actionsDisabled}
-						className="inline-flex items-center justify-center gap-1.5 rounded-full px-4 py-2 text-[12px] font-bold text-white transition hover:brightness-110 active:scale-[0.98] disabled:opacity-60"
+						className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-full px-4 py-2 text-[12px] font-bold text-white transition hover:brightness-110 active:scale-[0.98] disabled:opacity-60"
 						style={{ backgroundColor: brand }}
 					>
 						<span aria-hidden>💌</span>
 						Send as Gift
 					</button>
 				</div>
+				<p className="mt-3 text-[12px] leading-relaxed text-[#5c6570] dark:text-slate-400">
+					Share the fresh {name} experience with instant digital delivery. Zero platform fees, ready to use immediately.
+				</p>
 			</div>
 		</section>
 	)

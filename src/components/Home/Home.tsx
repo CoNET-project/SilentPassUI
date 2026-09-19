@@ -1,6 +1,6 @@
 // Home.tsx
 
-import { useEffect, useRef, useState, useMemo, useCallback, type KeyboardEvent, type WheelEvent } from "react"
+import { useEffect, useRef, useState, useMemo, useCallback, type KeyboardEvent, type TouchEvent, type WheelEvent } from "react"
 import { useScrollCapsuleOpacity } from "@/hooks/useScrollCapsuleOpacity"
 import { useReliableTapHandler, RELIABLE_TAP_BUTTON_CLASS } from '@/utils/reliableTap'
 import { createPortal } from 'react-dom';
@@ -910,12 +910,30 @@ const Home = (_props: HomeProps) => {
 
 	const openReceiveSheetTap = useReliableTapHandler(handleAddFunds)
 	const openReceiveFromWalletTap = useReliableTapHandler(openReceiveFromWallet)
-	const openPayCodeSheetTap = useReliableTapHandler(() => {
+	const openPayCodeSheet = useCallback(() => {
 		setPayReceiveView('tabs')
 		setPayReceiveQrMode('pay')
 		setShowPayReceiveSheet(true)
 		setShowFooter(false)
-	})
+	}, [setShowFooter])
+	const payCodeTouchHandledRef = useRef(false)
+	const openPayCodeSheetTap = {
+		onClick: () => {
+			if (payCodeTouchHandledRef.current) {
+				payCodeTouchHandledRef.current = false
+				return
+			}
+			openPayCodeSheet()
+		},
+		onTouchEnd: (event: TouchEvent<HTMLButtonElement>) => {
+			event.preventDefault()
+			payCodeTouchHandledRef.current = true
+			openPayCodeSheet()
+			window.setTimeout(() => {
+				payCodeTouchHandledRef.current = false
+			}, 500)
+		},
+	}
 
 	/** 余额卡：白底 + 渐变描边 */
 	function BalanceCard() {

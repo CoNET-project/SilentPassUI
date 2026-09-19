@@ -189,6 +189,12 @@ type ChatFileJob = {
 	thumbnailUrl?: string
 }
 
+function chatFileBundleDisplayName(files: File[]): string {
+	if (files.length <= 1) return files[0]?.name || 'File'
+	const names = files.map(file => file.name).join(' · ')
+	return `${files.length} files · ${names}`
+}
+
 async function createVideoThumbnail(videoFile: File): Promise<Blob> {
 	const url = URL.createObjectURL(videoFile)
 	try {
@@ -1501,7 +1507,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 			{
 				id,
 				files,
-				name: files.length === 1 ? files[0].name : `${files.length} files`,
+				name: chatFileBundleDisplayName(files),
 				progress: 0,
 				status: 'uploading',
 			},
@@ -1530,7 +1536,11 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 			setFileJobs(previous => previous.map(item => item.id === id ? { ...item, thumbnailUrl } : item))
 		}
 		try {
-			const encrypted = await encryptChatFiles(files, undefined, thumbnail)
+			const encrypted = await encryptChatFiles(
+				files,
+				files.length > 1 ? chatFileBundleDisplayName(files) : undefined,
+				thumbnail,
+			)
 			const fragmentHash = await uploadEncryptedChatFileDataUrl(
 				profiles[0]?.privateKeyArmor || '',
 				encrypted.dataUrl,

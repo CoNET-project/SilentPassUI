@@ -1849,6 +1849,7 @@ function DiscoverMerchantMemberRechargePrivilegesPanel({
 	rewardPtsLoading,
 	rewardPtsNum,
 	chargePercent,
+	rewardPtLine,
 	isDining,
 	/** User holds store credits (#0) and/or Reward PT (#13). */
 	hasPointsOrCredits,
@@ -1866,6 +1867,7 @@ function DiscoverMerchantMemberRechargePrivilegesPanel({
 	rewardPtsLoading: boolean
 	rewardPtsNum: number
 	chargePercent: number | null
+	rewardPtLine?: string | null
 	isDining: boolean
 	hasPointsOrCredits: boolean
 	multiplierCards: DiscoverStoreCreditMultiplierCard[]
@@ -1902,13 +1904,13 @@ function DiscoverMerchantMemberRechargePrivilegesPanel({
 		fiatLabel: balancePrefix,
 	})
 	const promotionLine = topupPromotionIncentiveLine?.trim() || null
-	const rewardLine =
-		promotionLine ||
+	const rewardPtEarnLine =
+		rewardPtLine?.trim() ||
 		(chargePercent != null && Number.isFinite(chargePercent) && chargePercent > 0
-			? `Earn ${Number(chargePercent.toFixed(2)).toString()}% back on every ${
+			? `Earn ${Number(chargePercent.toFixed(2)).toString()}% back in Reward PT on every ${
 					isDining ? 'dining order' : 'purchase'
-				}`
-			: `Earn Reward PT on every ${isDining ? 'dining order' : 'purchase'}`)
+				}.`
+			: `Earn Reward PT on every ${isDining ? 'dining order' : 'purchase'}.`)
 	const headerEyebrow = hasPointsOrCredits ? '✨ Share & earn Reward PT' : '🔥 First top-up exclusive'
 	const headerTitle = hasPointsOrCredits ? 'Fresh Rewards Unlocked!' : 'Claim Your Welcome Match'
 	const headerBody = hasPointsOrCredits
@@ -2026,7 +2028,8 @@ function DiscoverMerchantMemberRechargePrivilegesPanel({
 						className="min-w-0 flex-1 text-left text-[13px] font-medium leading-snug"
 						style={{ color: panelTheme.secondary }}
 					>
-						{rewardLine}
+						{promotionLine ? <span className="block">{promotionLine}</span> : null}
+						<span className={promotionLine ? 'mt-1 block' : 'block'}>{rewardPtEarnLine}</span>
 					</p>
 				</div>
 			</div>
@@ -6264,6 +6267,16 @@ function DiscoverMerchantDetailFullScreen({
 			? Number(percent.toFixed(2)).toString()
 			: null
 	}, [merchantMetadataRoot])
+	const memberRechargeRewardPtLine = useMemo(() => {
+		const { chargePercent, topupPercent } = parseDiscoverActorRewardPercentsFromMetadata(merchantMetadataRoot)
+		if (chargePercent != null && Number.isFinite(chargePercent) && chargePercent > 0) {
+			return `Earn ${Number(chargePercent.toFixed(2)).toString()}% back in Reward PT on every future purchase.`
+		}
+		if (topupPercent != null && Number.isFinite(topupPercent) && topupPercent > 0) {
+			return `Earn ${Number(topupPercent.toFixed(2)).toString()}% in Reward PT on every top-up.`
+		}
+		return 'Earn Reward PT on every purchase.'
+	}, [merchantMetadataRoot])
 	/** Percent top-up only — hide fixed / fixedTiers on F&B prospect Welcome Reward. */
 	const foodBeveragePercentTopupWelcomeLine = useMemo(() => {
 		if (!showFoodBeverageProspectPass) return null
@@ -8366,6 +8379,7 @@ function DiscoverMerchantDetailFullScreen({
 								rewardPtsLoading={myPoints13Loading}
 								rewardPtsNum={myPoints13Num}
 								chargePercent={memberRechargeChargePercent}
+								rewardPtLine={memberRechargeRewardPtLine}
 								isDining={item.category === 'food-beverage'}
 								hasPointsOrCredits={
 									Number(merchantAssets?.points ?? 0) > 0 ||

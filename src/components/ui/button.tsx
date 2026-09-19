@@ -3,6 +3,7 @@
 ============================ */
 import * as React from "react"
 import { cn } from "@/lib/utils"
+import { useReliableTapHandler, RELIABLE_TAP_BUTTON_CLASS } from "@/utils/reliableTap"
 
 export type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: "default" | "outline" | "ghost"|'secondary'
@@ -10,7 +11,10 @@ export type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
 }
 
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant = "default", size = "md", ...props }, ref) => {
+  ({ className, variant = "default", size = "md", onClick, style, disabled, ...props }, ref) => {
+    const tap = useReliableTapHandler(() => {
+      if (!disabled) onClick?.({} as React.MouseEvent<HTMLButtonElement>)
+    })
     const base = "inline-flex items-center justify-center whitespace-nowrap rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 disabled:opacity-60 disabled:pointer-events-none"
     const variants = {
       default: "bg-slate-900 text-white hover:bg-slate-800",
@@ -27,8 +31,18 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     return (
       <button
         ref={ref}
-        className={cn(base, variants[variant], sizes[size], className)}
+        data-touch-priority="1"
+        style={{
+          touchAction: "manipulation",
+          WebkitTapHighlightColor: "transparent",
+          ...(typeof style === "object" && style ? style : null),
+        }}
+        className={cn(base, variants[variant], sizes[size], RELIABLE_TAP_BUTTON_CLASS, className)}
         {...props}
+        disabled={disabled}
+        onPointerDown={tap.onPointerDown}
+        onPointerUp={tap.onPointerUp}
+        onClick={tap.onClick}
       />
     )
   }

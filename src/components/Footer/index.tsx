@@ -19,6 +19,7 @@ import { searchUsername, storeSystemData } from '@/services/beamio'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import type { Transition } from 'framer-motion'
 import { tu } from '@/locale/beamioLocale'
+import { useReliableTapHandler, RELIABLE_TAP_BUTTON_CLASS } from '@/utils/reliableTap'
 
 
 /** Footer 可点击 tab；首格 `/history` 对应首页 `/`；第二格为 Wallet */
@@ -470,6 +471,10 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 		return showBar
 	}, [showBar])
 
+	const searchTap = useReliableTapHandler(() => {
+		setChatSearchOpen(true)
+		setShowFooter(false)
+	})
 
 	//					紅色氣泡表示
 	useEffect(() => {
@@ -554,6 +559,7 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 		badge?: string
 	}) => {
 		const active = activeKey !== 'home' && activeKey === k
+		const tap = useReliableTapHandler(() => go(k))
 
 		const iconTarget = (() => {
 			if (!active) return { scaleX: 1, scaleY: 1, y: 0 }
@@ -571,17 +577,15 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 		return (
 			<button
 				type="button"
-				onClick={() => go(k)}
-				className="
-					relative w-full h-6 px-[1px]
-					flex flex-col items-center justify-center
-					gap-[1px]
-					rounded-md
-					select-none focus:outline-none
-					focus-visible:ring-2 focus-visible:ring-[#1562f0]/70
-					focus-visible:ring-offset-2 focus-visible:ring-offset-white/90
-					dark:focus-visible:ring-[#6ba3ff]/75 dark:focus-visible:ring-offset-slate-900
-				"
+				data-touch-priority="1"
+				onPointerDown={tap.onPointerDown}
+				onPointerUp={tap.onPointerUp}
+				onClick={tap.onClick}
+				className={[
+					'relative w-full h-6 px-[1px] flex flex-col items-center justify-center gap-[1px] rounded-md select-none focus:outline-none',
+					RELIABLE_TAP_BUTTON_CLASS,
+					'focus-visible:ring-2 focus-visible:ring-[#1562f0]/70 focus-visible:ring-offset-2 focus-visible:ring-offset-white/90 dark:focus-visible:ring-[#6ba3ff]/75 dark:focus-visible:ring-offset-slate-900',
+				].join(' ')}
 			>
 				<motion.div
 					className="relative flex items-center justify-center"
@@ -762,12 +766,13 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 					type="button"
 					tabIndex={interactiveVisible ? 0 : -1}
 					disabled={!interactiveVisible}
-					onClick={() => {
-						setChatSearchOpen(true)
-						setShowFooter(false)
-					}}
+					data-touch-priority="1"
+					onPointerDown={searchTap.onPointerDown}
+					onPointerUp={searchTap.onPointerUp}
+					onClick={searchTap.onClick}
 					className={[
 						'w-10 h-10 rounded-full flex items-center justify-center border shrink-0',
+						RELIABLE_TAP_BUTTON_CLASS,
 						'focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/70 focus-visible:ring-offset-2 focus-visible:ring-offset-white/90',
 						'dark:focus-visible:ring-[#6ba3ff]/75 dark:focus-visible:ring-offset-slate-900',
 						interactiveVisible ? 'pointer-events-auto' : 'pointer-events-none',

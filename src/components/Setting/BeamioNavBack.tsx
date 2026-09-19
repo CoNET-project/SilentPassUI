@@ -1,7 +1,10 @@
 import {  ArrowLeft, MoreVertical } from 'lucide-react'
 import { tu } from '@/locale/beamioLocale'
+import { useReliableTapHandler, RELIABLE_TAP_BUTTON_CLASS } from '@/utils/reliableTap'
 
 export default function BeamioNavBack({ title, onClose, onMore, showMore=false }: {title: string, onClose: () => void,  onMore: () => void, showMore?: boolean}) {
+		const closeTap = useReliableTapHandler(onClose)
+		const moreTap = useReliableTapHandler(onMore)
 	
 		return (
 			<header
@@ -17,16 +20,14 @@ export default function BeamioNavBack({ title, onClose, onMore, showMore=false }
 			{/* Left droplet back button */}
 			<button
 				type="button"
-				onClick={onClose}
-				className="
-				absolute left-4 top-[calc(50%+1rem)] -translate-y-1/2
-				h-12 w-12 min-w-12 min-h-12
-				rounded-full
-				flex items-center justify-center
-				transition
-				active:scale-[0.96]
-				touch-manipulation
-				"
+				data-touch-priority="1"
+				onPointerDown={closeTap.onPointerDown}
+				onPointerUp={closeTap.onPointerUp}
+				onClick={closeTap.onClick}
+				className={[
+					'absolute left-4 top-[calc(50%+1rem)] -translate-y-1/2 h-12 w-12 min-w-12 min-h-12 rounded-full flex items-center justify-center transition active:scale-[0.96]',
+					RELIABLE_TAP_BUTTON_CLASS,
+				].join(' ')}
 				aria-label={tu('back')}
 			>
 				<span
@@ -61,17 +62,14 @@ export default function BeamioNavBack({ title, onClose, onMore, showMore=false }
 				showMore && (
 					<button
 						type="button"
-						onClick={onMore}
-						className="
-						pointer-events-auto
-						absolute right-4
-						h-10 w-10
-						rounded-full
-						flex items-center justify-center
-						transition
-						active:scale-[0.96]
-						translate-y-[1px]
-						"
+						data-touch-priority="1"
+						onPointerDown={moreTap.onPointerDown}
+						onPointerUp={moreTap.onPointerUp}
+						onClick={moreTap.onClick}
+						className={[
+							'pointer-events-auto absolute right-4 h-10 w-10 rounded-full flex items-center justify-center transition active:scale-[0.96] translate-y-[1px]',
+							RELIABLE_TAP_BUTTON_CLASS,
+						].join(' ')}
 						aria-label="More"
 					>
 						<span

@@ -1,5 +1,6 @@
 import React from "react"
 import type { ButtonHTMLAttributes, ReactNode } from "react"
+import { useReliableTapHandler, RELIABLE_TAP_BUTTON_CLASS } from "@/utils/reliableTap"
 
 type ButtonVariant = "primary" | "secondary" | "ghost" | "danger"
 
@@ -63,12 +64,17 @@ export function AppButton({
   rightIcon,
   children,
   className = "",
+  style,
+  onClick,
   disabled,
   ...rest
 }: AppButtonProps) {
   const finalVariant: ButtonVariant = errorText.length ? "danger" : variant
   const isDisabled = disabled || loading
   const widthClass = fullWidth ? "w-full" : ""
+  const tap = useReliableTapHandler(() => {
+    if (!isDisabled) onClick?.({} as React.MouseEvent<HTMLButtonElement>)
+  })
 
   const loadingDotColor =
     finalVariant === "primary" || finalVariant === "danger"
@@ -79,14 +85,24 @@ export function AppButton({
     <div className={widthClass}>
       <button
         disabled={isDisabled}
+        data-touch-priority="1"
+        style={{
+          touchAction: "manipulation",
+          WebkitTapHighlightColor: "transparent",
+          ...(typeof style === "object" && style ? style : null),
+        }}
         className={`
           ${baseClasses}
           ${sizeClasses}
           ${variantClasses[finalVariant]}
           ${widthClass}
+          ${RELIABLE_TAP_BUTTON_CLASS}
           ${className}
         `}
         {...rest}
+        onPointerDown={tap.onPointerDown}
+        onPointerUp={tap.onPointerUp}
+        onClick={tap.onClick}
       >
         {loading ? (
           <span className="flex items-center justify-center gap-1.5">

@@ -20,12 +20,12 @@ export function useReliableTapHandler(handler: () => void) {
 	const onPointerDown = useCallback((e: PointerEvent<HTMLElement>) => {
 		pointerTapDoneRef.current = false
 		pointerStartRef.current = { x: e.clientX, y: e.clientY }
-		if (e.pointerType === 'touch') {
-			try {
-				e.currentTarget.setPointerCapture(e.pointerId)
-			} catch {
-				/* ignore */
-			}
+		// Android WebView can classify a finger as a mouse pointer. Capture every
+		// pointer type so a small finger drift cannot lose the matching pointerup.
+		try {
+			e.currentTarget.setPointerCapture(e.pointerId)
+		} catch {
+			/* ignore */
 		}
 	}, [])
 
@@ -39,6 +39,7 @@ export function useReliableTapHandler(handler: () => void) {
 				const dy = e.clientY - start.y
 				if (dx * dx + dy * dy > TAP_MOVE_TOLERANCE_PX * TAP_MOVE_TOLERANCE_PX) return
 			}
+			if (e.currentTarget.disabled) return
 			// Android WebView may report finger taps as `mouse`; fire on pointerup
 			// for every pointer type and suppress the duplicate click event.
 			pointerTapDoneRef.current = true

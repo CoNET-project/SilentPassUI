@@ -1,6 +1,7 @@
 import React from "react"
 import { X } from "lucide-react"
 import { tu } from '@/locale/beamioLocale'
+import { useReliableTapHandler, RELIABLE_TAP_BUTTON_CLASS } from '@/utils/reliableTap'
 
 type Props = {
   onClick: () => void
@@ -18,11 +19,15 @@ export default function IOSBounceCloseButton({
 	className = "",
 	ariaLabel = tu('close')
 }: Props) {
+  const tap = useReliableTapHandler(onClick)
   return (
     <>
       <button
         type="button"
-        onClick={onClick}
+        data-touch-priority="1"
+        onPointerDown={tap.onPointerDown}
+        onPointerUp={tap.onPointerUp}
+        onClick={tap.onClick}
         aria-label={ariaLabel}
         className={[
           "ios-bounce-btn",
@@ -31,7 +36,8 @@ export default function IOSBounceCloseButton({
           "bg-black/5 border border-white",
           "backdrop-blur",
           "will-change-transform",
-          "select-none touch-manipulation",
+          "select-none",
+          RELIABLE_TAP_BUTTON_CLASS,
           className
         ].join(" ")}
       >

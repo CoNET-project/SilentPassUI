@@ -13,6 +13,7 @@ import {
 	Loader2,
 	MessageSquare,
 	Search,
+	ExternalLink,
 	Share2,
 	ShieldCheck,
 	Sparkles,
@@ -36,7 +37,6 @@ import {
 	type DiscoverCategoryTab,
 } from '@/utils/discoverMerchantCategory'
 import { pickNonFactoryMerchantAssetUrl } from '@/utils/isFactoryDefaultMerchantAssetUrl'
-import { shareDiscoverMerchantUrl } from '@/utils/discoverMerchantShare'
 import { generateCODE } from '@/services/beamio'
 import { fiatPrefix, formatAmount } from '@/services/currency'
 import {
@@ -1380,14 +1380,10 @@ export default function DiscoverMerchantGiftSheet({
 		[cardAddress],
 	)
 
-	const handleShareGiftPurchaseUrl = async () => {
-		const text = `Buy a gift from ${merchantTitle.trim() || 'this merchant'}`
-		try {
-			const outcome = await shareDiscoverMerchantUrl(giftPurchaseUrl, { title: text })
-			if (outcome === 'copied') setPanelError('Gift purchase link copied.')
-			if (outcome === 'failed') setPanelError('Could not share the Gift purchase link.')
-		} catch {
-			/* user cancelled the system share menu */
+	const handleOpenGiftPurchaseUrl = () => {
+		setPanelError(null)
+		if (!openExternalUrl(giftPurchaseUrl)) {
+			setPanelError('Could not open the Gift purchase page.')
 		}
 	}
 
@@ -2837,16 +2833,14 @@ export default function DiscoverMerchantGiftSheet({
 					</h2>
 					<button
 						type="button"
-						onClick={() => void handleShareGiftPurchaseUrl()}
+						onClick={handleOpenGiftPurchaseUrl}
 						className="mt-1 inline-flex max-w-[46%] shrink-0 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 shadow-sm transition hover:bg-slate-50 active:scale-95 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
-						aria-label="Share Gift purchase page"
+						aria-label="Open Gift purchase page"
 						title={giftPurchaseUrl}
 					>
 						<Link2 className="h-3.5 w-3.5 shrink-0" aria-hidden />
-						<span className="truncate">
-							{`beamio.app/gift/${cardAddress.slice(0, 6)}…${cardAddress.slice(-4)}`}
-						</span>
-						<Share2 className="h-3.5 w-3.5 shrink-0" aria-hidden />
+						<span className="truncate">{`beamio.app/gift/${cardAddress.slice(0, 6)}…${cardAddress.slice(-4)}`}</span>
+						<ExternalLink className="h-3.5 w-3.5 shrink-0" aria-hidden />
 					</button>
 				</div>
 				<p className="mt-0.5 text-[15px] text-[#5d5e63] dark:text-slate-400">

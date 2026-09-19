@@ -2480,13 +2480,17 @@ const RegenerateUser = async (beamio: beamio, recoverData:IAccountRecover[], pri
 			pgpKey: beamio.pgpPublicKeyArmor ?? ''
 		}
 
+		const controller = new AbortController()
+		const timeout = window.setTimeout(() => controller.abort(), 30_000)
 		const resp = await fetch(Url, {
 			method: "POST",
 			headers: {
 				"Content-Type": "application/json"
 			},
-			body: JSON.stringify(body)
+			body: JSON.stringify(body),
+			signal: controller.signal,
 		})
+		window.clearTimeout(timeout)
 
 		if (!resp.ok) {
 			return false

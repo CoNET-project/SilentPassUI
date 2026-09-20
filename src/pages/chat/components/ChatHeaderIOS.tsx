@@ -2,7 +2,7 @@ import { IpfsImg } from '@/components/IpfsImg';
 import React, { useMemo } from "react"
 import { ethers } from "ethers"
 import { motion } from "framer-motion"
-import { ChevronLeft, ChevronRight, Phone } from "lucide-react"
+import { ChevronLeft, ChevronRight, Phone, PhoneCall } from "lucide-react"
 import { tu } from '@/locale/beamioLocale'
 
 export type searchResult = {
@@ -30,12 +30,14 @@ export function ChatHeaderIOS({
   online,
   avatarSrc,
   onCall,
+  onPhoneHistory,
   callBusy,
 }: {
   beamioer?: searchResult
   onBack?: () => void
   onCenterClick?: () => void
   onCall?: () => void
+  onPhoneHistory?: () => void
   callBusy?: boolean
   online: boolean
   avatarSrc: string
@@ -67,6 +69,18 @@ export function ChatHeaderIOS({
           >
             <ChevronLeft className="w-6 h-6 text-slate-900" strokeWidth={2.6} />
           </button>
+          <div className="pointer-events-auto flex items-center gap-2">
+          {onPhoneHistory ? (
+            <button
+              type="button"
+              onClick={onPhoneHistory}
+              className="grid h-11 w-11 place-items-center rounded-full bg-white/50 text-slate-900 shadow-[0_18px_38px_rgba(15,23,42,0.14)] ring-1 ring-white/60 backdrop-blur-xl transition active:scale-[0.98]"
+              aria-label="Open Phone history"
+              title="Open Phone history"
+            >
+              <PhoneCall className="h-5 w-5" strokeWidth={2.4} aria-hidden />
+            </button>
+          ) : null}
           {onCall ? (
             <button
               type="button"
@@ -83,6 +97,7 @@ export function ChatHeaderIOS({
               <Phone className="h-5 w-5" strokeWidth={2.4} aria-hidden />
             </button>
           ) : null}
+          </div>
         </div>
 
         {/* ✅ 头像（无外圈） + 下方紧凑胶囊（同一中线居中） */}

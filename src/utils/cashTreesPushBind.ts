@@ -12,7 +12,7 @@ import { CoNET_Data } from '@/utils/globals'
 const IOS_BUNDLE_ID = 'com.beamio.beamio'
 const ANDROID_BUNDLE_ID = 'com.beamio.app'
 
-type PushPlatform = 'ios' | 'android'
+type PushPlatform = 'ios' | 'ios_voip' | 'android'
 
 type PushTokenDetail = {
 	action?: string
@@ -64,13 +64,13 @@ async function signMessage(message: string): Promise<{ eoa: string; signature: s
 
 function normalizePlatform(raw: string | undefined, hostHint: ReturnType<typeof getCashTreesNativeNfcHost>): PushPlatform | null {
 	const p = (raw || hostHint || '').toLowerCase()
-	if (p === 'ios' || p === 'android') return p
+	if (p === 'ios' || p === 'ios_voip' || p === 'android') return p
 	return null
 }
 
 /** APNs = 64 hex; FCM = longer opaque string (often contains `:`). */
 function isValidDeviceToken(platform: PushPlatform, token: string): boolean {
-	if (platform === 'ios') return /^[0-9a-f]{64}$/i.test(token)
+	if (platform === 'ios' || platform === 'ios_voip') return /^[0-9a-f]{64}$/i.test(token)
 	if (token.length < 80 || token.length > 4096) return false
 	return /^[A-Za-z0-9_.:\-]+$/.test(token)
 }
@@ -89,7 +89,9 @@ async function registerDeviceToken(
 	const platform = opts?.platform || (host === 'android' ? 'android' : host === 'ios' ? 'ios' : null)
 	if (!platform) return false
 
-	const token = platform === 'ios' ? deviceToken.trim().toLowerCase() : deviceToken.trim()
+	const token = platform === 'ios' || platform === 'ios_voip'
+		? deviceToken.trim().toLowerCase()
+		: deviceToken.trim()
 	if (!isValidDeviceToken(platform, token)) return false
 	if (token === lastRegisteredToken) return true
 
@@ -259,5 +261,37 @@ export async function syncChatBadgeToApi(unreadRaw: number): Promise<void> {
 		/* keep lastSyncedUnread so we retry next tick */
 	} finally {
 		syncInFlight = false
+	}
+}
+
+/** Notify registered VoIP/FCM devices about a signed voice-call offer. */
+export async function registerVoiceCallPush(params: {
+	callId: string
+	sessionId: string
+	callerEoa: string
+	calleeEoa: string
+	expiresAt: number
+}): Promise<boolean> {
+	const timestamp = Math.floor(Date.now() / 1000)
+	const message = [
+		'Beamio voiceCallPush',
+		`callId:${params.callId}`,
+		`sessionId:${params.sessionId}`,
+		`callerEoa:${params.callerEoa.toLowerCase()}`,
+		`calleeEoa:${params.calleeEoa.toLowerCase()}`,
+		`expiresAt:${params.expiresAt}`,
+		`timestamp:${timestamp}`,
+	].join('\n')
+	const signed = await signMessage(message)
+	if (!signed) return false
+	try {
+		const res = await fetch(`${beamioApi}/api/voiceCallPush`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ ...params, timestamp, signature: signed.signature }),
+		})
+		return res.ok
+	} catch {
+		return false
 	}
 }

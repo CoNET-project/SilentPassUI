@@ -1614,6 +1614,75 @@ export const queryMailboxWalletOnline = async (opts: {
 	}
 }
 
+/** Send a minimal, route-encrypted voice-call wake-up command to the callee's mailbox. */
+export const sendVoiceCallPushViaMailbox = async (opts: {
+	callId: string
+	sessionId: string
+	calleeEoa: string
+	calleeRouteArmored: string
+	privateKeyArmor: string
+	expiresAt: number
+	entryNodes: nodeInfo[]
+	mailboxDomains?: Set<string>
+}): Promise<boolean> => {
+	if (!ethers.isAddress(opts.calleeEoa) || !opts.calleeRouteArmored?.trim() || !opts.privateKeyArmor || !opts.entryNodes.length) return false
+	try {
+		const wallet = new ethers.Wallet(opts.privateKeyArmor)
+		const timestamp = Math.floor(Date.now() / 1000)
+		const apiMessage = [
+			'Beamio voiceCallPush',
+			`callId:${opts.callId}`,
+			`sessionId:${opts.sessionId}`,
+			`callerEoa:${wallet.address.toLowerCase()}`,
+			`calleeEoa:${ethers.getAddress(opts.calleeEoa).toLowerCase()}`,
+			`expiresAt:${opts.expiresAt}`,
+			`timestamp:${timestamp}`,
+		].join('\n')
+		const signature = await wallet.signMessage(apiMessage)
+		const command = {
+			command: 'voice_call_push',
+			walletAddress: wallet.address,
+			targetWallet: ethers.getAddress(opts.calleeEoa),
+			callId: opts.callId,
+			sessionId: opts.sessionId,
+			expiresAt: opts.expiresAt,
+			timestamp,
+			signature,
+		}
+		const message = JSON.stringify(command)
+		const signMessage = await wallet.signMessage(message)
+		const encryptionKeys = await readKey({ armoredKey: opts.calleeRouteArmored })
+		const pgpMsg = await createMessage({
+			text: Buffer.from(JSON.stringify({ message, signMessage })).toString('base64'),
+		})
+		const encrypted = await encrypt({
+			message: pgpMsg,
+			encryptionKeys,
+			config: { preferredCompressionAlgorithm: enums.compression.zlib },
+		})
+		const armored = typeof encrypted === 'string' ? encrypted : String((encrypted as any)?.data ?? encrypted)
+		const mailboxDomains = opts.mailboxDomains || new Set<string>()
+		const pool = opts.entryNodes.filter(n => n?.domain && !mailboxDomains.has(n.domain))
+		const targets = getRandomNodes(pool.length ? pool : opts.entryNodes, Math.min(4, pool.length || opts.entryNodes.length))
+		const results = await Promise.all(targets.map(async node => {
+			try {
+				const res = await postWithTimeout(`https://${node.domain}.conet.network/post`, {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ data: armored }),
+					referrerPolicy: 'no-referrer',
+				}, 10_000)
+				return res.ok
+			} catch {
+				return false
+			}
+		}))
+		return results.some(Boolean)
+	} catch {
+		return false
+	}
+}
+
 /**
  * Probe all chats with a mailbox route. Returns address(lower) → online for trusted replies only.
  */

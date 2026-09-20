@@ -115,6 +115,7 @@ interface Region {
 	silentPassPassports?: passportInfo[];
 	webFilter?: boolean
 	chats?: chatData[]
+	phoneCalls?: PhoneCallRecord[]
 	chatManager?: IChat
 	aaAccount?: string
 	/** 用户发行的 BeamioUserCard 列表，仅当 RPC/API 明确成功时更新。错误时不可信空 [] */
@@ -730,6 +731,18 @@ type ChatMessageReply = {
 	paymentHash?: string
 }
 
+type PhoneCallRecord = {
+	callId: string
+	sessionId: string
+	peerAddress: string
+	direction: 'incoming' | 'outgoing'
+	status: 'ringing' | 'answered' | 'declined' | 'missed' | 'cancelled' | 'ended' | 'failed'
+	createdAt: number
+	answeredAt?: number
+	endedAt?: number
+	durationMs?: number
+}
+
 type ChatMessage = {
 	/** 本地列表唯一标识（如 tmp_xxx 或时间戳字符串） */
 	id?: string
@@ -744,6 +757,7 @@ type ChatMessage = {
 	fileMessage?: import('@/utils/chatFileMessage').ChatFileMessageManifest
 	/** Local encrypted copy of fileMessage for refresh recovery; never wire-sent. */
 	fileMessageCipher?: string
+	callRecord?: PhoneCallRecord
 	paymentCard?: paymentCard
 	/** 本条为 reaction 时，messageId 为目标消息的 sendId */
 	reply?: ChatMessageReply

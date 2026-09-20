@@ -5,7 +5,7 @@ import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
 import { motion, AnimatePresence } from "framer-motion"
 import { ethers } from "ethers"
 import { getDocument, GlobalWorkerOptions } from "pdfjs-dist/legacy/build/pdf"
-import { checkSign, emitReactionAsNewMessage, createMembershipActivatedCard } from '@/services/chat'
+import { checkSign, emitReactionAsNewMessage, createMembershipActivatedCard, sendVoiceCallPushViaMailbox } from '@/services/chat'
 import { backfillChatMessagesToHistory, mirrorChatMessageToHistory } from '@/services/chatHistoryMirror'
 import { IpfsImg } from '@/components/IpfsImg'
 import {
@@ -65,7 +65,7 @@ import { PlusActionMenu } from "./components/PlusActionMenu"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import { searchUsername, storeSystemData, AuthorizationSign } from '@/services/beamio'
 import { fiatPrefix } from '@/services/currency'
-import { getCashTreesNativeNfcBridge, openExternalUrl, requestNativeCameraCapture, saveFileToNative } from '@/utils/cashTreesNativeNfc'
+import { dispatchNativeSystemCallAction, getCashTreesNativeNfcBridge, openExternalUrl, requestNativeCameraCapture, saveFileToNative } from '@/utils/cashTreesNativeNfc'
 import { MessageSendReceiveCard } from "./components/messageSendReceiveCard"
 import { AaMultisigChatRequestCard } from '@/components/chat/AaMultisigChatRequestCard'
 import { ChatShareLinkPreviewCard } from '@/components/chat/ChatShareLinkPreviewCard'
@@ -1728,13 +1728,14 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 	const [voiceError, setVoiceError] = useState<string | null>(null)
 	const [voiceCallState, setVoiceCallState] = useState<'idle' | 'outgoing' | 'ended'>('idle')
 	const voiceCallSessionRef = useRef<string | null>(null)
-	const voiceCallOfferRef = useRef<{ callId: string; sessionKey: string } | null>(null)
+	const voiceCallOfferRef = useRef<{ callId: string; sessionId: string; sessionKey: string } | null>(null)
 	const voiceCallKeyRef = useRef<Uint8Array | null>(null)
 	const voiceCallPeerSessionRef = useRef<string | null>(null)
 	const voiceCaptureStopRef = useRef<(() => void) | null>(null)
 	const voicePlaybackAudioRef = useRef<HTMLAudioElement | null>(null)
 	const voicePlaybackRef = useRef<VoicePlaybackBuffer | null>(null)
 	const voiceFrameSeqRef = useRef(0)
+	const reportedIncomingCallIdsRef = useRef(new Set<string>())
 	const [incomingVoiceOffer, setIncomingVoiceOffer] = useState<Record<string, any> | null>(null)
 	const [fileJobs, setFileJobs] = useState<ChatFileJob[]>([])
 	const fileControllersRef = useRef(new Map<string, AbortController>())
@@ -1753,6 +1754,39 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 	const cameraChunksRef = useRef<Blob[]>([])
 	const cameraPreviewRef = useRef<HTMLVideoElement | null>(null)
 	const [chatError, setChatError] = useState<string | null>(null)
+
+	const upsertPhoneCallRecord = useCallback((patch: PhoneCallRecord) => {
+		const currentProfiles = Array.isArray(profiles) ? profiles : []
+		if (!currentProfiles.length) return
+		const current: PhoneCallRecord[] = Array.isArray(currentProfiles[0].phoneCalls) ? currentProfiles[0].phoneCalls : []
+		const previous = current.find(item => item.sessionId === patch.sessionId)
+		const merged: PhoneCallRecord = {
+			...previous,
+			...patch,
+			createdAt: previous?.createdAt ?? patch.createdAt,
+		}
+		const nextProfiles = currentProfiles.slice()
+		nextProfiles[0] = {
+			...currentProfiles[0],
+			phoneCalls: [...current.filter(item => item.sessionId !== patch.sessionId), merged]
+				.sort((a, b) => b.createdAt - a.createdAt)
+				.slice(0, 200),
+		}
+		setProfiles(nextProfiles)
+		if (CoNET_Data) {
+			CoNET_Data.profiles = nextProfiles
+			setCoNET_Data(CoNET_Data)
+		}
+		void storeSystemData()
+		mirrorChatMessageToHistory(chatData.address, {
+			id: `phone_${patch.sessionId}_${merged.status}_${Date.now()}`,
+			sendId: `phone:${patch.sessionId}:${merged.status}`,
+			from: 'me',
+			text: '',
+			createdAt: Date.now(),
+			callRecord: merged,
+		}, 'out')
+	}, [chatData.address, profiles, setProfiles])
 
 	useEffect(() => {
 		const handleNativeCameraResult = (event: Event) => {
@@ -1834,6 +1868,11 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		}
 		const sessionId = randomVoiceId('voice')
 		const key = createVoiceSessionKey()
+		const callerWallet = new ethers.Wallet(privateKey).address
+		const callerCallId = String(
+			CoNET_Data?.beamio?.accountName ||
+			callerWallet,
+		).trim() || callerWallet
 		const started = await startWorkerVoiceListen(sessionId)
 		if (!started) {
 			setVoiceError('Voice call could not open a temporary relay.')
@@ -1844,22 +1883,55 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		setVoiceCallState('outgoing')
 		const signal = makeVoiceCallSignal({
 			type: 'voice_call_offer_v1',
-			callId: randomVoiceId('call'),
+			callId: callerCallId,
 			sessionId,
-			from: new ethers.Wallet(privateKey).address,
+			from: callerWallet,
 			to: toAddress,
 			sessionKey: voiceSessionKeyToBase64(key),
 			codec: 'audio/webm;codecs=opus',
 		})
-		voiceCallOfferRef.current = { callId: signal.callId, sessionKey: signal.sessionKey || '' }
+		voiceCallOfferRef.current = { callId: signal.callId, sessionId, sessionKey: signal.sessionKey || '' }
+		upsertPhoneCallRecord({
+			callId: signal.callId,
+			sessionId,
+			peerAddress: toAddress,
+			direction: 'outgoing',
+			status: 'ringing',
+			createdAt: Date.now(),
+		})
+		dispatchNativeSystemCallAction('startSystemCall', {
+			callId: signal.callId,
+			peerAddress: toAddress,
+			displayName: chatData.beamio?.username || toAddress,
+		})
 		const sent = await sendMessage(recipientPgp, JSON.stringify(signal), privateKey, allNodes)
 		if (!sent) {
 			await stopWorkerVoiceListen(sessionId)
 			voiceCallSessionRef.current = null
 			setVoiceCallState('idle')
+			upsertPhoneCallRecord({
+				callId: signal.callId,
+				sessionId,
+				peerAddress: toAddress,
+				direction: 'outgoing',
+				status: 'failed',
+				createdAt: Date.now(),
+				endedAt: Date.now(),
+			})
+			dispatchNativeSystemCallAction('endSystemCall', { callId: signal.callId })
 			setVoiceError('Voice call request could not be delivered.')
+		} else {
+			void sendVoiceCallPushViaMailbox({
+				callId: signal.callId,
+				sessionId,
+				calleeEoa: toAddress,
+				calleeRouteArmored: route,
+				privateKeyArmor: privateKey,
+				expiresAt: Number(signal.expiresAt) || Date.now() + 120_000,
+				entryNodes: allNodes,
+			})
 		}
-	}, [allNodes, chatData.chatData, privateKey, toAddress, voiceCallState])
+	}, [allNodes, chatData, privateKey, toAddress, upsertPhoneCallRecord, voiceCallState])
 
 	useEffect(() => {
 		const latest = [...messages].reverse().find((message) => message.from === 'them' && message.text)
@@ -1874,6 +1946,22 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 				Number(signal.expiresAt) > Date.now()
 			) {
 				setIncomingVoiceOffer(previous => previous?.callId === signal.callId ? previous : signal)
+				if (!reportedIncomingCallIdsRef.current.has(signal.sessionId)) {
+					reportedIncomingCallIdsRef.current.add(signal.sessionId)
+					upsertPhoneCallRecord({
+						callId: signal.callId,
+						sessionId: signal.sessionId,
+						peerAddress: chatData.address,
+						direction: 'incoming',
+						status: 'ringing',
+						createdAt: Date.now(),
+					})
+					dispatchNativeSystemCallAction('reportIncomingSystemCall', {
+						callId: signal.callId,
+						peerAddress: chatData.address,
+						displayName: chatData.beamio?.username || chatData.address,
+					})
+				}
 			}
 			if (
 				signal.type === 'voice_call_accept_v1' &&
@@ -1889,7 +1977,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		} catch {
 			/* ordinary Chat text */
 		}
-	}, [messages, startVoiceMedia])
+	}, [chatData, messages, startVoiceMedia, upsertPhoneCallRecord])
 
 	const acceptVoiceCall = useCallback(async () => {
 		const offer = incomingVoiceOffer
@@ -1897,7 +1985,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		try {
 			const key = voiceSessionKeyFromBase64(offer.sessionKey)
 			voiceCallKeyRef.current = key
-			voiceCallOfferRef.current = { callId: offer.callId, sessionKey: offer.sessionKey }
+			voiceCallOfferRef.current = { callId: offer.callId, sessionId: offer.sessionId, sessionKey: offer.sessionKey }
 			const sessionId = randomVoiceId('voice')
 			if (!await startWorkerVoiceListen(sessionId)) {
 				setVoiceError('Voice call could not open a temporary relay.')
@@ -1922,11 +2010,25 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 			}
 			setIncomingVoiceOffer(null)
 			setVoiceCallState('outgoing')
+			upsertPhoneCallRecord({
+				callId: offer.callId,
+				sessionId: offer.sessionId,
+				peerAddress: offer.from,
+				direction: 'incoming',
+				status: 'answered',
+				createdAt: Number(offer.createdAt) || Date.now(),
+				answeredAt: Date.now(),
+			})
+			dispatchNativeSystemCallAction('startSystemCall', {
+				callId: offer.callId,
+				peerAddress: offer.from,
+				displayName: offer.from,
+			})
 			void startVoiceMedia()
 		} catch {
 			setVoiceError('This voice call request is invalid or expired.')
 		}
-	}, [allNodes, chatData.chatData.publicArmored, incomingVoiceOffer, privateKey, startVoiceMedia])
+	}, [allNodes, chatData.chatData.publicArmored, incomingVoiceOffer, privateKey, startVoiceMedia, upsertPhoneCallRecord])
 
 	const rejectVoiceCall = useCallback(async () => {
 		const offer = incomingVoiceOffer
@@ -1940,11 +2042,23 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 			reason: 'declined',
 		})
 		await sendMessage(chatData.chatData.publicArmored, JSON.stringify(reject), privateKey, allNodes)
+		upsertPhoneCallRecord({
+			callId: offer.callId,
+			sessionId: offer.sessionId,
+			peerAddress: offer.from,
+			direction: 'incoming',
+			status: 'declined',
+			createdAt: Number(offer.createdAt) || Date.now(),
+			endedAt: Date.now(),
+		})
+		dispatchNativeSystemCallAction('endSystemCall', { callId: offer.callId })
 		setIncomingVoiceOffer(null)
-	}, [allNodes, chatData.chatData.publicArmored, incomingVoiceOffer, privateKey])
+	}, [allNodes, chatData.chatData.publicArmored, incomingVoiceOffer, privateKey, upsertPhoneCallRecord])
 
 	const endVoiceCall = useCallback(async () => {
 		const sessionId = voiceCallSessionRef.current
+		const callId = voiceCallOfferRef.current?.callId
+		const callSessionId = voiceCallOfferRef.current?.sessionId || sessionId || ''
 		if (sessionId) await stopWorkerVoiceListen(sessionId)
 		voiceCaptureStopRef.current?.()
 		voiceCaptureStopRef.current = null
@@ -1953,9 +2067,41 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		voiceCallKeyRef.current = null
 		voiceCallPeerSessionRef.current = null
 		voiceCallSessionRef.current = null
+		if (callId) {
+			upsertPhoneCallRecord({
+				callId,
+				sessionId: callSessionId,
+				peerAddress: toAddress,
+				direction: 'outgoing',
+				status: 'ended',
+				createdAt: Date.now(),
+				endedAt: Date.now(),
+			})
+			dispatchNativeSystemCallAction('endSystemCall', { callId })
+		}
 		setVoiceCallState('ended')
 		window.setTimeout(() => setVoiceCallState('idle'), 300)
-	}, [])
+	}, [toAddress, upsertPhoneCallRecord])
+
+	useEffect(() => {
+		const onNativeCallAction = (event: Event) => {
+			const detail = (event as CustomEvent<{ action?: string; callId?: string }>).detail
+			if (!detail?.action || !detail.callId) return
+			if (detail.action === 'callAnswered' && incomingVoiceOffer?.callId === detail.callId) {
+				void acceptVoiceCall()
+			} else if (detail.action === 'callRejected' && incomingVoiceOffer?.callId === detail.callId) {
+				void rejectVoiceCall()
+			} else if (detail.action === 'callEnded') {
+				void endVoiceCall()
+			}
+		}
+		window.addEventListener('cashtreesios', onNativeCallAction)
+		window.addEventListener('cashtreesandroid', onNativeCallAction)
+		return () => {
+			window.removeEventListener('cashtreesios', onNativeCallAction)
+			window.removeEventListener('cashtreesandroid', onNativeCallAction)
+		}
+	}, [acceptVoiceCall, endVoiceCall, incomingVoiceOffer, rejectVoiceCall])
 
 	useEffect(() => {
 		const audio = voicePlaybackAudioRef.current
@@ -3544,6 +3690,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 				online={chatData.chatData.online}
 				avatarSrc={userImg}
 				onCall={voiceCallState === 'outgoing' ? endVoiceCall : startVoiceCall}
+				onPhoneHistory={() => navigate('/phone')}
 				callBusy={voiceCallState === 'outgoing'}
 			/>
 			{incomingVoiceOffer ? (

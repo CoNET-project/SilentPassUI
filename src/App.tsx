@@ -15,6 +15,7 @@ import Pay from "./pages/Pay"
 import QrOperationPage from "./pages/Pay/QrOperationPage"
 import Chat from "./pages/chat"
 import ChatDetail from "./pages/chatDetail"
+import PhoneHistoryPage from "./pages/Phone"
 import BeamioInstallOnboarding from "@/components/launchPage"
 import Browser from "@/pages/Browser"
 import { initChat, checkSign, createInboundChatSession, makeMessage, sendMessage, resumeGossipListenOnForeground, pauseGossipListenOnBackground, getGossipDeliveryAckContext, getKeysFromCoNETPGPSC } from "@/services/chat"
@@ -1056,6 +1057,7 @@ function AppShell() {
 						const profile = list[0]
 						if (!profile) return prev
 						let chats = Array.isArray(profile.chats) ? [...profile.chats] : []
+						let phoneCalls = Array.isArray(profile.phoneCalls) ? [...profile.phoneCalls] : []
 						let localChanged = false
 						for (const [peer, es] of byPeer) {
 							let idx = chats.findIndex((c) => (c?.address || '').toLowerCase() === peer)
@@ -1070,6 +1072,20 @@ function AppShell() {
 							}
 							const beforeCount = Array.isArray(chats[idx].messages) ? chats[idx].messages.length : 0
 							const { messages, added } = mergeHistoryEntriesIntoMessages(chats[idx].messages, es)
+							for (const entry of es) {
+								try {
+									const callRecord = (JSON.parse(entry.body) as ChatMessage)?.callRecord
+									if (!callRecord?.callId) continue
+									const old = phoneCalls.find(item => item.callId === callRecord.callId)
+									phoneCalls = [
+										...phoneCalls.filter(item => item.callId !== callRecord.callId),
+										{ ...old, ...callRecord },
+									].sort((a, b) => b.createdAt - a.createdAt).slice(0, 200)
+									localChanged = true
+								} catch {
+									// Non-call chat history entries are handled below.
+								}
+							}
 							publishNativePwaLog(
 								added === es.length ? 'info' : 'warn',
 								`[historyRestore] merge peer=${peer.slice(0, 10)}…${peer.slice(-8)} entries=${es.length} added=${added} before=${beforeCount} after=${messages.length}`,
@@ -1092,10 +1108,13 @@ function AppShell() {
 						}
 						if (!localChanged) return prev
 						changed = true
-						const nextProfile = { ...profile, chats }
+						const nextProfile = { ...profile, chats, phoneCalls }
 						const nextList = [...list]
 						nextList[0] = nextProfile
-						if (CoNET_Data?.profiles?.length) CoNET_Data.profiles[0].chats = chats
+						if (CoNET_Data?.profiles?.length) {
+							CoNET_Data.profiles[0].chats = chats
+							CoNET_Data.profiles[0].phoneCalls = phoneCalls
+						}
 						return nextList
 					})
 				})
@@ -1972,6 +1991,7 @@ function AppShell() {
 					<Route path="/qr" element={<QrOperationPage />} />
 					<Route path="/Chat" element={<Chat />} />
 					<Route path="/chat/:id" element={<ChatDetail />} />
+					<Route path="/phone" element={<PhoneHistoryPage />} />
 					<Route path="/settings" element={<MyWallet />} />
 					<Route path="/discover" element={<Market />} />
 					<Route path="/browser" element={<Browser />} />

@@ -2378,7 +2378,15 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		const extraDirectoryNames = extraDirectoryNamesFromHint(dropFolderHint)
 		let readable: { files: File[]; stubNames: string[] }
 		try {
-			if (source === 'picker') {
+			if (source === 'camera') {
+				// Native camera already returns a materialized File. Do not send
+				// it through the dropped-folder reader, which can classify the
+				// camera result as an unreadable directory in WebViews.
+				readable = {
+					files: incoming,
+					stubNames: [],
+				}
+			} else if (source === 'picker') {
 				readable = {
 					files: await materializePickedChatFiles(incoming),
 					stubNames: [],

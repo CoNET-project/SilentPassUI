@@ -2675,7 +2675,7 @@ type DiscoverCategoryOption = { id: DiscoverFilterTab; label: string; Icon: type
 
 const DISCOVER_ALL_OPTION: DiscoverCategoryOption = {
 	id: "all",
-	label: "All",
+	label: "",
 	Icon: LayoutGrid,
 }
 
@@ -9169,6 +9169,7 @@ export default function Market() {
 				key={tab.id}
 				type="button"
 				data-capsule-interactive
+				aria-label={tab.id === "all" ? "All categories" : tab.label}
 				onClick={() => {
 					setDiscoverCategory(tab.id)
 					discoverCategoryScrollerRef.current?.scrollTo({ left: 0, behavior: 'smooth' })
@@ -9654,7 +9655,7 @@ export default function Market() {
 			className="pointer-events-none fixed inset-x-0 z-40 px-3 sm:px-5 transition-opacity duration-300 ease-out"
 			style={{ top: "max(0.5rem, env(safe-area-inset-top, 0px))" }}
 		>
-			<div className="mx-auto flex max-w-lg min-w-0 items-center gap-2 rounded-full border border-white/70 bg-white/55 px-1 py-1 shadow-[0_8px_28px_rgba(15,23,42,0.14),inset_0_1px_0_rgba(255,255,255,0.85)] backdrop-blur-xl dark:border-white/15 dark:bg-slate-900/55">
+			<div className="mx-auto flex max-w-lg min-w-0 items-center gap-2 overflow-hidden rounded-full border border-white/70 bg-white/55 px-1 py-1 shadow-[0_8px_28px_rgba(15,23,42,0.14),inset_0_1px_0_rgba(255,255,255,0.85)] backdrop-blur-xl dark:border-white/15 dark:bg-slate-900/55">
 				<div className="shrink-0" data-capsule-interactive>
 					{renderDiscoverFilterChip(DISCOVER_ALL_OPTION)}
 				</div>

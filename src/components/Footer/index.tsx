@@ -659,7 +659,12 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 			style={{
 				bottom: '1rem',//'calc(1rem + env(safe-area-inset-bottom))',
 				willChange: 'transform, opacity',
-				pointerEvents: 'none',
+				// Android WebView can fail to retarget touch events from a
+				// pointer-events:none fixed parent to transformed descendants.
+				// Keep the footer hit box interactive while visible; hidden
+				// states still let touches pass through to the page below.
+				pointerEvents: interactiveVisible ? 'auto' : 'none',
+				touchAction: 'manipulation',
 				/* Hidden: hard-hide so Coupons / fullscreen sheets cannot paint "under" a translucent bar. */
 				visibility: visible ? 'visible' : 'hidden',
 			}}

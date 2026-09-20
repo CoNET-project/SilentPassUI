@@ -5,7 +5,7 @@ import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
 import { motion, AnimatePresence } from "framer-motion"
 import { ethers } from "ethers"
 import { getDocument, GlobalWorkerOptions } from "pdfjs-dist/legacy/build/pdf"
-import { checkSign, emitReactionAsNewMessage, createMembershipActivatedCard, sendVoiceCallPushViaMailbox } from '@/services/chat'
+import { checkSign, emitReactionAsNewMessage, createMembershipActivatedCard, sendVoiceCallOffer } from '@/services/chat'
 import { backfillChatMessagesToHistory, mirrorChatMessageToHistory } from '@/services/chatHistoryMirror'
 import { IpfsImg } from '@/components/IpfsImg'
 import {
@@ -99,13 +99,11 @@ import {
 	type VoiceMessageManifest,
 } from '@/utils/voiceMessage'
 import {
-	makeVoiceCallSignal,
 	randomVoiceId,
-	createVoiceSessionKey,
-	voiceSessionKeyToBase64,
-	voiceSessionKeyFromBase64,
+	type VoiceCallSignal,
 } from '@/utils/voiceCallSession'
 import { startVoiceCapture, VoicePlaybackBuffer } from '@/services/voiceCallMedia'
+import { createVoiceCallController, type VoiceCallController } from '@/services/voiceCallController'
 import {
 	createChatFileArchive,
 	decryptChatFileManifest,
@@ -1736,6 +1734,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 	const voicePlaybackRef = useRef<VoicePlaybackBuffer | null>(null)
 	const voiceFrameSeqRef = useRef(0)
 	const reportedIncomingCallIdsRef = useRef(new Set<string>())
+	const voiceControllerRef = useRef<VoiceCallController | null>(null)
 	const [incomingVoiceOffer, setIncomingVoiceOffer] = useState<Record<string, any> | null>(null)
 	const [fileJobs, setFileJobs] = useState<ChatFileJob[]>([])
 	const fileControllersRef = useRef(new Map<string, AbortController>())
@@ -1743,6 +1742,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 	const fileInputRef = useRef<HTMLInputElement | null>(null)
 	const cameraInputRef = useRef<HTMLInputElement | null>(null)
 	const cameraRequestIdRef = useRef<string | null>(null)
+	const nativeCameraChunksRef = useRef<{ requestId: string; mimeType: string; chunks: string[] } | null>(null)
 	const addChatFilesRef = useRef<((incoming: File[]) => void | Promise<void>) | null>(null)
 	const [fileError, setFileError] = useState<string | null>(null)
 	const [fileDropActive, setFileDropActive] = useState(false)
@@ -1789,33 +1789,61 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 	}, [chatData.address, profiles, setProfiles])
 
 	useEffect(() => {
+		const addCapturedVideo = (dataUrl: string, mimeType?: string) => {
+			if (!dataUrl) {
+				setFileError('Camera returned no video. Please try again.')
+				return
+			}
+			void fetch(dataUrl)
+				.then(response => response.blob())
+				.then(blob => {
+					if (!blob.size) throw new Error('empty_camera_video')
+					const file = new File([blob], `camera-${Date.now()}.mp4`, { type: mimeType || blob.type || 'video/mp4' })
+					void addChatFilesRef.current?.([file])
+				})
+				.catch(() => setFileError('The captured video could not be read. Please try again.'))
+		}
 		const handleNativeCameraResult = (event: Event) => {
 			const detail = (event as CustomEvent<{
 				action?: string
 				ok?: boolean
 				requestId?: string
 				dataUrl?: string
+				data?: string
+				mimeType?: string
 				error?: string
 			}>).detail
-			if (detail?.action !== 'cameraCapture') return
+			if (!detail?.action?.startsWith('cameraCapture')) return
 			if (cameraRequestIdRef.current && detail.requestId && detail.requestId !== cameraRequestIdRef.current) return
+			if (detail.action === 'cameraCaptureStart') {
+				nativeCameraChunksRef.current = {
+					requestId: detail.requestId || cameraRequestIdRef.current || '',
+					mimeType: detail.mimeType || 'video/mp4',
+					chunks: [],
+				}
+				return
+			}
+			if (detail.action === 'cameraCaptureChunk') {
+				const transfer = nativeCameraChunksRef.current
+				if (transfer && transfer.requestId === (detail.requestId || transfer.requestId)) {
+					transfer.chunks.push(detail.data || '')
+				}
+				return
+			}
+			if (detail.action === 'cameraCaptureEnd') {
+				const transfer = nativeCameraChunksRef.current
+				nativeCameraChunksRef.current = null
+				cameraRequestIdRef.current = null
+				if (transfer) addCapturedVideo(`data:${transfer.mimeType};base64,${transfer.chunks.join('')}`, transfer.mimeType)
+				else setFileError('Camera returned no video. Please try again.')
+				return
+			}
 			cameraRequestIdRef.current = null
 			if (!detail.ok) {
 				setFileError(detail.error === 'cancelled' ? 'Camera capture was cancelled.' : 'Camera capture failed. Please try again.')
 				return
 			}
-			if (!detail.dataUrl) {
-				setFileError('Camera returned no video. Please try again.')
-				return
-			}
-			void fetch(detail.dataUrl)
-				.then(response => response.blob())
-				.then(blob => {
-					if (!blob.size) throw new Error('empty_camera_video')
-					const file = new File([blob], `camera-${Date.now()}.mp4`, { type: blob.type || 'video/mp4' })
-					void addChatFilesRef.current?.([file])
-				})
-				.catch(() => setFileError('The captured video could not be read. Please try again.'))
+			addCapturedVideo(detail.dataUrl || '', detail.mimeType)
 		}
 		window.addEventListener('cashtreesandroid', handleNativeCameraResult)
 		window.addEventListener('cashtreesios', handleNativeCameraResult)
@@ -1866,30 +1894,31 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 			setVoiceError('Voice calling requires the contact to have an active Chat route.')
 			return
 		}
-		const sessionId = randomVoiceId('voice')
-		const key = createVoiceSessionKey()
 		const callerWallet = new ethers.Wallet(privateKey).address
 		const callerCallId = String(
 			CoNET_Data?.beamio?.accountName ||
 			callerWallet,
 		).trim() || callerWallet
-		const started = await startWorkerVoiceListen(sessionId)
-		if (!started) {
+		const controller = createVoiceCallController({
+			privateKey,
+			localCallId: callerCallId,
+			peerEoa: toAddress,
+			peerPgp: recipientPgp,
+			peerRoute: route,
+			allNodes,
+		})
+		const channel = await controller.startOutgoing()
+		if (!channel) {
 			setVoiceError('Voice call could not open a temporary relay.')
 			return
 		}
+		voiceControllerRef.current = controller
+		const sessionId = channel.sessionId
+		const key = channel.sessionKey
 		voiceCallSessionRef.current = sessionId
 		voiceCallKeyRef.current = key
 		setVoiceCallState('outgoing')
-		const signal = makeVoiceCallSignal({
-			type: 'voice_call_offer_v1',
-			callId: callerCallId,
-			sessionId,
-			from: callerWallet,
-			to: toAddress,
-			sessionKey: voiceSessionKeyToBase64(key),
-			codec: 'audio/webm;codecs=opus',
-		})
+		const signal = channel.signal
 		voiceCallOfferRef.current = { callId: signal.callId, sessionId, sessionKey: signal.sessionKey || '' }
 		upsertPhoneCallRecord({
 			callId: signal.callId,
@@ -1904,33 +1933,6 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 			peerAddress: toAddress,
 			displayName: chatData.beamio?.username || toAddress,
 		})
-		const sent = await sendMessage(recipientPgp, JSON.stringify(signal), privateKey, allNodes)
-		if (!sent) {
-			await stopWorkerVoiceListen(sessionId)
-			voiceCallSessionRef.current = null
-			setVoiceCallState('idle')
-			upsertPhoneCallRecord({
-				callId: signal.callId,
-				sessionId,
-				peerAddress: toAddress,
-				direction: 'outgoing',
-				status: 'failed',
-				createdAt: Date.now(),
-				endedAt: Date.now(),
-			})
-			dispatchNativeSystemCallAction('endSystemCall', { callId: signal.callId })
-			setVoiceError('Voice call request could not be delivered.')
-		} else {
-			void sendVoiceCallPushViaMailbox({
-				callId: signal.callId,
-				sessionId,
-				calleeEoa: toAddress,
-				calleeRouteArmored: route,
-				privateKeyArmor: privateKey,
-				expiresAt: Number(signal.expiresAt) || Date.now() + 120_000,
-				entryNodes: allNodes,
-			})
-		}
 	}, [allNodes, chatData, privateKey, toAddress, upsertPhoneCallRecord, voiceCallState])
 
 	useEffect(() => {
@@ -1983,31 +1985,27 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		const offer = incomingVoiceOffer
 		if (!offer) return
 		try {
-			const key = voiceSessionKeyFromBase64(offer.sessionKey)
-			voiceCallKeyRef.current = key
-			voiceCallOfferRef.current = { callId: offer.callId, sessionId: offer.sessionId, sessionKey: offer.sessionKey }
-			const sessionId = randomVoiceId('voice')
-			if (!await startWorkerVoiceListen(sessionId)) {
+			const localWallet = new ethers.Wallet(privateKey).address
+			const controller = createVoiceCallController({
+				privateKey,
+				localCallId: String(CoNET_Data?.beamio?.accountName || localWallet).trim() || localWallet,
+				peerEoa: offer.from,
+				peerPgp: chatData.chatData.publicArmored,
+				peerRoute: chatData.chatData.routersArmoreds,
+				allNodes,
+			})
+			const channel = await controller.acceptIncoming(offer as VoiceCallSignal)
+			if (!channel) {
 				setVoiceError('Voice call could not open a temporary relay.')
 				return
 			}
+			voiceControllerRef.current = controller
+			const key = channel.sessionKey
+			const sessionId = channel.sessionId
+			voiceCallKeyRef.current = key
 			voiceCallSessionRef.current = sessionId
 			voiceCallPeerSessionRef.current = offer.sessionId
-			const answer = makeVoiceCallSignal({
-				type: 'voice_call_accept_v1',
-				callId: offer.callId,
-				sessionId,
-				peerSessionId: offer.sessionId,
-				from: new ethers.Wallet(privateKey).address,
-				to: offer.from,
-				codec: offer.codec || 'audio/webm;codecs=opus',
-			})
-			const sent = await sendMessage(chatData.chatData.publicArmored, JSON.stringify(answer), privateKey, allNodes)
-			if (!sent) {
-				await stopWorkerVoiceListen(sessionId)
-				setVoiceError('Voice call acceptance could not be delivered.')
-				return
-			}
+			voiceCallOfferRef.current = { callId: channel.callId, sessionId: offer.sessionId, sessionKey: offer.sessionKey }
 			setIncomingVoiceOffer(null)
 			setVoiceCallState('outgoing')
 			upsertPhoneCallRecord({
@@ -2028,20 +2026,21 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		} catch {
 			setVoiceError('This voice call request is invalid or expired.')
 		}
-	}, [allNodes, chatData.chatData.publicArmored, incomingVoiceOffer, privateKey, startVoiceMedia, upsertPhoneCallRecord])
+	}, [allNodes, chatData.chatData, incomingVoiceOffer, privateKey, startVoiceMedia, upsertPhoneCallRecord])
 
 	const rejectVoiceCall = useCallback(async () => {
 		const offer = incomingVoiceOffer
 		if (!offer) return
-		const reject = makeVoiceCallSignal({
-			type: 'voice_call_reject_v1',
-			callId: offer.callId,
-			sessionId: offer.sessionId,
-			from: new ethers.Wallet(privateKey).address,
-			to: offer.from,
-			reason: 'declined',
+		const localWallet = new ethers.Wallet(privateKey).address
+		const controller = createVoiceCallController({
+			privateKey,
+			localCallId: String(CoNET_Data?.beamio?.accountName || localWallet).trim() || localWallet,
+			peerEoa: offer.from,
+			peerPgp: chatData.chatData.publicArmored,
+			peerRoute: chatData.chatData.routersArmoreds,
+			allNodes,
 		})
-		await sendMessage(chatData.chatData.publicArmored, JSON.stringify(reject), privateKey, allNodes)
+		await controller.rejectIncoming(offer as VoiceCallSignal)
 		upsertPhoneCallRecord({
 			callId: offer.callId,
 			sessionId: offer.sessionId,
@@ -2059,7 +2058,12 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		const sessionId = voiceCallSessionRef.current
 		const callId = voiceCallOfferRef.current?.callId
 		const callSessionId = voiceCallOfferRef.current?.sessionId || sessionId || ''
-		if (sessionId) await stopWorkerVoiceListen(sessionId)
+		if (voiceControllerRef.current) {
+			await voiceControllerRef.current.end()
+			voiceControllerRef.current = null
+		} else if (sessionId) {
+			await stopWorkerVoiceListen(sessionId)
+		}
 		voiceCaptureStopRef.current?.()
 		voiceCaptureStopRef.current = null
 		voicePlaybackRef.current?.destroy()

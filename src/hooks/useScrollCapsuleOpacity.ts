@@ -33,6 +33,7 @@ export function useScrollCapsuleOpacity(enabled = true) {
 	const scrollRef = useRef<HTMLDivElement | null>(null)
 	const layerRef = useRef<HTMLElement | null>(null)
 	const opacityRef = useRef(1)
+	const lastScrollTopRef = useRef(0)
 	const rafRef = useRef<number | null>(null)
 
 	const commitOpacity = useCallback((next: number) => {
@@ -53,7 +54,13 @@ export function useScrollCapsuleOpacity(enabled = true) {
 	const scheduleOpacity = useCallback(
 		(scrollTop: number) => {
 			if (!enabled) return
-			const next = computeOpacity(scrollTop)
+			const previousScrollTop = lastScrollTopRef.current
+			const scrollDelta = scrollTop - previousScrollTop
+			lastScrollTopRef.current = scrollTop
+			const next =
+				scrollDelta < 0 && opacityRef.current < 1
+					? Math.min(1, opacityRef.current + Math.abs(scrollDelta) / FADE_RANGE)
+					: computeOpacity(scrollTop)
 			if (rafRef.current != null) cancelAnimationFrame(rafRef.current)
 			rafRef.current = requestAnimationFrame(() => {
 				rafRef.current = null
@@ -73,7 +80,10 @@ export function useScrollCapsuleOpacity(enabled = true) {
 	const setRef = useCallback(
 		(node: HTMLDivElement | null) => {
 			scrollRef.current = node
-			if (node) commitOpacity(computeOpacity(node.scrollTop))
+			if (node) {
+				lastScrollTopRef.current = node.scrollTop
+				commitOpacity(computeOpacity(node.scrollTop))
+			}
 		},
 		[commitOpacity]
 	)

@@ -7,6 +7,8 @@ export type VoiceCallSignal = {
 	createdAt: number
 	expiresAt: number
 	sessionKey?: string
+	tempWalletAddress?: string
+	entryDomains?: string[]
 	peerSessionId?: string
 	codec?: string
 	reason?: string

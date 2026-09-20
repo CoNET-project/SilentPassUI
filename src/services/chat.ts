@@ -1,4 +1,5 @@
 import {generateKey, readKey, createMessage, enums, encrypt} from 'openpgp'
+import { ensureNativePushBoundForWallet } from '@/utils/cashTreesPushBind'
 import { CoNET_Data, setCoNET_Data } from "@/utils/globals"
 
 import {GuardianNodesMainnet, conetDepinProvider, beamioApi} from '@/utils/constants'
@@ -1681,6 +1682,41 @@ export const sendVoiceCallPushViaMailbox = async (opts: {
 	} catch {
 		return false
 	}
+}
+
+/** Chat-module entry point: sends the offer and automatically registers/wakes native call devices. */
+export const sendVoiceCallOffer = async (opts: {
+	recipientPgp: string
+	recipientRoute: string
+	signal: {
+		callId: string
+		sessionId: string
+		from: string
+		to: string
+		expiresAt: number
+	}
+	privateKey: string
+	allNodes: nodeInfo[]
+	entryNodes?: nodeInfo[]
+}): Promise<boolean> => {
+	const sent = await sendMessage(
+		opts.recipientPgp,
+		JSON.stringify(opts.signal),
+		opts.privateKey,
+		opts.entryNodes?.length ? opts.entryNodes : opts.allNodes,
+	)
+	if (!sent) return false
+	ensureNativePushBoundForWallet()
+	void sendVoiceCallPushViaMailbox({
+		callId: opts.signal.callId,
+		sessionId: opts.signal.sessionId,
+		calleeEoa: opts.signal.to,
+		calleeRouteArmored: opts.recipientRoute,
+		privateKeyArmor: opts.privateKey,
+		expiresAt: opts.signal.expiresAt,
+		entryNodes: opts.entryNodes?.length ? opts.entryNodes : opts.allNodes,
+	})
+	return true
 }
 
 /**

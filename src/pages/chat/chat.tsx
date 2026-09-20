@@ -1803,7 +1803,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 	const cameraInputRef = useRef<HTMLInputElement | null>(null)
 	const cameraRequestIdRef = useRef<string | null>(null)
 	const nativeCameraChunksRef = useRef<{ requestId: string; mimeType: string; chunks: string[] } | null>(null)
-	const addChatFilesRef = useRef<((incoming: File[]) => void | Promise<void>) | null>(null)
+	const addChatFilesRef = useRef<((incoming: File[], dropFolderHint?: string | null, source?: 'drop' | 'picker') => void | Promise<void>) | null>(null)
 	const [fileError, setFileError] = useState<string | null>(null)
 	const [fileDropActive, setFileDropActive] = useState(false)
 	/** Nested dragenter/leave depth on the chat shell — avoids clearing the overlay when React remounts children under the cursor (relatedTarget often null). */
@@ -1862,7 +1862,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 				.then(blob => {
 					if (!blob.size) throw new Error('empty_camera_video')
 					const file = new File([blob], `camera-${Date.now()}.mp4`, { type: mimeType || blob.type || 'video/mp4' })
-					void addChatFilesRef.current?.([file])
+					void addChatFilesRef.current?.([file], null, 'picker')
 				})
 				.catch(() => setFileError('The captured video could not be read. Please try again.'))
 		}

@@ -9661,7 +9661,7 @@ export default function Market() {
 				</div>
 				<div
 					ref={discoverCategoryScrollerRef}
-					className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+					className="flex min-w-0 flex-1 touch-pan-x items-center gap-2 overflow-x-auto overscroll-x-contain [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
 				>
 					{discoverCategoryTabsOrdered.map((tab) => renderDiscoverFilterChip(tab))}
 				</div>

@@ -58,9 +58,13 @@ export function useScrollCapsuleOpacity(enabled = true) {
 			const scrollDelta = scrollTop - previousScrollTop
 			lastScrollTopRef.current = scrollTop
 			const next =
-				scrollDelta < 0 && opacityRef.current < 1
-					? Math.min(1, opacityRef.current + Math.abs(scrollDelta) / FADE_RANGE)
-					: computeOpacity(scrollTop)
+				scrollDelta === 0
+					? scrollTop <= THRESHOLD
+						? 1
+						: opacityRef.current
+					: scrollDelta < 0 && opacityRef.current < 1
+						? Math.min(1, opacityRef.current + Math.abs(scrollDelta) / FADE_RANGE)
+						: computeOpacity(scrollTop)
 			if (rafRef.current != null) cancelAnimationFrame(rafRef.current)
 			rafRef.current = requestAnimationFrame(() => {
 				rafRef.current = null

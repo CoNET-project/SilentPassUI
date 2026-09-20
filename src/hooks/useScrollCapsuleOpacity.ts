@@ -18,6 +18,9 @@ function syncCapsulePointerEvents(layer: HTMLElement, opacity: number): void {
 
 function applyOpacityToLayer(layer: HTMLElement, next: number): void {
 	layer.style.opacity = String(next)
+	// Native WebViews can keep a translucent fixed layer visually present while
+	// compositing. Move the layer with the fade so it is unambiguously hidden.
+	layer.style.transform = `translate3d(0, ${-(1 - next) * 100}%, 0)`
 	syncCapsulePointerEvents(layer, next)
 }
 

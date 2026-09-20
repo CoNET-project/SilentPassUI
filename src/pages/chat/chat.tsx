@@ -1803,8 +1803,9 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 	const cameraInputRef = useRef<HTMLInputElement | null>(null)
 	const cameraRequestIdRef = useRef<string | null>(null)
 	const nativeCameraChunksRef = useRef<{ requestId: string; mimeType: string; chunks: string[] } | null>(null)
-	const addChatFilesRef = useRef<((incoming: File[], dropFolderHint?: string | null, source?: 'drop' | 'picker') => void | Promise<void>) | null>(null)
+	const addChatFilesRef = useRef<((incoming: File[], dropFolderHint?: string | null, source?: 'drop' | 'picker' | 'camera') => void | Promise<void>) | null>(null)
 	const [fileError, setFileError] = useState<string | null>(null)
+	const [nativeCameraProcessing, setNativeCameraProcessing] = useState(false)
 	const [fileDropActive, setFileDropActive] = useState(false)
 	/** Nested dragenter/leave depth on the chat shell — avoids clearing the overlay when React remounts children under the cursor (relatedTarget often null). */
 	const fileDragDepthRef = useRef(0)
@@ -1854,6 +1855,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 			// user successfully starts a new camera capture.
 			setFileError(null)
 			if (!dataUrl) {
+				setNativeCameraProcessing(false)
 				setFileError('Camera returned no video. Please try again.')
 				return
 			}
@@ -1862,9 +1864,15 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 				.then(blob => {
 					if (!blob.size) throw new Error('empty_camera_video')
 					const file = new File([blob], `camera-${Date.now()}.mp4`, { type: mimeType || blob.type || 'video/mp4' })
-					void addChatFilesRef.current?.([file], null, 'picker')
+					// iOS camera recordings can use a codec that WKWebView can
+					// upload but cannot decode for a local thumbnail. Keep the
+					// upload path intact and skip only the optional thumbnail.
+					void addChatFilesRef.current?.([file], null, 'camera')
 				})
-				.catch(() => setFileError('The captured video could not be read. Please try again.'))
+				.catch(() => {
+					setNativeCameraProcessing(false)
+					setFileError('The captured video could not be read. Please try again.')
+				})
 		}
 		const handleNativeCameraResult = (event: Event) => {
 			const detail = (event as CustomEvent<{
@@ -1880,6 +1888,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 			if (cameraRequestIdRef.current && detail.requestId && detail.requestId !== cameraRequestIdRef.current) return
 			if (detail.action === 'cameraCaptureStart') {
 				setFileError(null)
+				setNativeCameraProcessing(true)
 				nativeCameraChunksRef.current = {
 					requestId: detail.requestId || cameraRequestIdRef.current || '',
 					mimeType: detail.mimeType || 'video/mp4',
@@ -1899,11 +1908,15 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 				nativeCameraChunksRef.current = null
 				cameraRequestIdRef.current = null
 				if (transfer) addCapturedVideo(`data:${transfer.mimeType};base64,${transfer.chunks.join('')}`, transfer.mimeType)
-				else setFileError('Camera returned no video. Please try again.')
+				else {
+					setNativeCameraProcessing(false)
+					setFileError('Camera returned no video. Please try again.')
+				}
 				return
 			}
 			cameraRequestIdRef.current = null
 			if (!detail.ok) {
+				setNativeCameraProcessing(false)
 				setFileError(detail.error === 'cancelled' ? 'Camera capture was cancelled.' : 'Camera capture failed. Please try again.')
 				return
 			}
@@ -2355,7 +2368,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 	const addChatFiles = useCallback(async (
 		incoming: File[],
 		dropFolderHint?: string | null,
-		source: 'drop' | 'picker' = 'drop',
+		source: 'drop' | 'picker' | 'camera' = 'drop',
 	) => {
 		if (!hasRoute || !incoming.length) return
 		// A later successful drop must not leave the previous folder-read alert
@@ -2418,13 +2431,14 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 				status: 'uploading',
 			},
 		])
+		if (source === 'camera') setNativeCameraProcessing(false)
 		let thumbnail: Blob | undefined
 		let mediaDimensions: { width: number; height: number } | undefined
 		try {
-			if (previewMediaFile) {
+			if (previewMediaFile && source !== 'camera') {
 				mediaDimensions = await readMediaDimensions(previewMediaFile)
 			}
-			if (videoFile) {
+			if (videoFile && source !== 'camera') {
 				setFileJobs(previous => previous.map(item => item.id === id ? { ...item, progress: 0.03 } : item))
 				thumbnail = await createVideoThumbnail(videoFile)
 				setFileJobs(previous => previous.map(item => item.id === id ? { ...item, progress: 0.08 } : item))
@@ -2433,6 +2447,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 				setFileJobs(previous => previous.map(item => item.id === id ? { ...item, progress: 0.08 } : item))
 			}
 		} catch (error) {
+			if (source === 'camera') setNativeCameraProcessing(false)
 			if (!isNotFoundReadError(error)) {
 				setFileError(chatFileReadErrorMessage(error) || 'Video thumbnail could not be created.')
 			}
@@ -2560,6 +2575,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		const requestId = crypto.randomUUID()
 		cameraRequestIdRef.current = requestId
 		if (requestNativeCameraCapture({ requestId, mediaType: 'video' })) {
+			setNativeCameraProcessing(true)
 			return
 		}
 		const getUserMedia = navigator.mediaDevices?.getUserMedia
@@ -3947,7 +3963,14 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 			/>
 			<div
 				ref={setChatScrollRef}
-				className="relative h-full overflow-y-auto px-4 py-4"
+				className="relative h-full overscroll-contain overflow-y-auto px-4 py-4"
+				style={{
+					// Image/IPFS decoding can change descendants after the first
+					// paint. Disable browser scroll anchoring so WebView/browser
+					// does not repeatedly compensate the viewport and appear to
+					// shake while media messages settle.
+					overflowAnchor: 'none',
+				}}
 				onScroll={() => {
 				clearUnreadIfNeeded()
 				}}
@@ -4662,6 +4685,12 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 								</button>
 							</div>
 						)}
+						{nativeCameraProcessing ? (
+							<div role="status" aria-live="polite" className="mb-2 flex items-center gap-2 rounded-xl bg-blue-50 px-3 py-2 text-[12px] text-blue-700">
+								<Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
+								<span>Processing your camera video… Please wait.</span>
+							</div>
+						) : null}
 						{fileError ? <div role="alert" className="mb-2 rounded-xl bg-rose-50 px-3 py-2 text-[12px] text-rose-700">{fileError}</div> : null}
 						<div>
 						<input ref={fileInputRef} type="file" multiple hidden onChange={event => { void addChatFiles(Array.from(event.target.files || []), null, 'picker'); event.currentTarget.value = '' }} />

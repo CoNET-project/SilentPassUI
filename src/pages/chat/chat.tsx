@@ -343,6 +343,18 @@ async function materializeDroppedChatFiles(
 	return { files: kept, stubNames }
 }
 
+async function materializePickedChatFiles(files: File[]): Promise<File[]> {
+	const output: File[] = []
+	for (const file of files) {
+		const bytes = await file.arrayBuffer()
+		if (bytes.byteLength === 0) {
+			throw new Error('The selected file is empty or unavailable. Please choose it again.')
+		}
+		output.push(cloneFileWithBytes(file, bytes))
+	}
+	return output
+}
+
 function resolveDropFolderHint(opts: {
 	files: File[]
 	stubNames: string[]
@@ -2340,7 +2352,11 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 
 	const runningRef = useRef(false)
 
-	const addChatFiles = useCallback(async (incoming: File[], dropFolderHint?: string | null) => {
+	const addChatFiles = useCallback(async (
+		incoming: File[],
+		dropFolderHint?: string | null,
+		source: 'drop' | 'picker' = 'drop',
+	) => {
 		if (!hasRoute || !incoming.length) return
 		// A later successful drop must not leave the previous folder-read alert
 		// attached to the composer. Failed jobs are also stale for this new
@@ -2349,12 +2365,21 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		const extraDirectoryNames = extraDirectoryNamesFromHint(dropFolderHint)
 		let readable: { files: File[]; stubNames: string[] }
 		try {
-			readable = await materializeDroppedChatFiles(
-				sanitizeDroppedChatFiles(incoming, extraDirectoryNames),
-				extraDirectoryNames,
-			)
+			if (source === 'picker') {
+				readable = {
+					files: await materializePickedChatFiles(incoming),
+					stubNames: [],
+				}
+			} else {
+				readable = await materializeDroppedChatFiles(
+					sanitizeDroppedChatFiles(incoming, extraDirectoryNames),
+					extraDirectoryNames,
+				)
+			}
 		} catch (error) {
-			setFileError(chatFileReadErrorMessage(error))
+			setFileError(source === 'picker'
+				? (error instanceof Error ? error.message : 'The selected file could not be read. Please choose it again.')
+				: chatFileReadErrorMessage(error))
 			return
 		}
 		const files = readable.files
@@ -3749,15 +3774,34 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 				</div>
 			) : null}
 			{incomingVoiceOffer ? (
-				<div className="pointer-events-auto fixed left-4 right-4 top-[max(5.5rem,calc(env(safe-area-inset-top)+5rem))] z-[90] rounded-2xl border border-white/80 bg-white/85 px-4 py-3 shadow-[0_12px_30px_rgba(15,23,42,0.16)] backdrop-blur-xl">
+				<div
+					className="pointer-events-auto fixed isolate left-4 right-4 top-[max(5.5rem,calc(env(safe-area-inset-top)+5rem))] z-[100] rounded-2xl border border-white/80 bg-white/85 px-4 py-3 shadow-[0_12px_30px_rgba(15,23,42,0.16)] backdrop-blur-xl"
+					role="dialog"
+					aria-label="Incoming voice call"
+					style={{ touchAction: 'manipulation' }}
+				>
 					<div className="flex items-center gap-3">
 						<Phone className="h-5 w-5 text-[#1652f0]" aria-hidden />
 						<div className="min-w-0 flex-1">
 							<p className="text-sm font-semibold text-slate-800">Incoming voice call</p>
 							<p className="text-xs text-slate-500">Accept to open a temporary encrypted relay.</p>
 						</div>
-						<button type="button" onClick={() => void acceptVoiceCall()} className="rounded-full bg-[#1652f0] px-3 py-1.5 text-xs font-semibold text-white">Accept</button>
-						<button type="button" onClick={() => void rejectVoiceCall()} className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700">Decline</button>
+						<button
+							type="button"
+							onClick={() => void acceptVoiceCall()}
+							className="pointer-events-auto relative z-10 min-h-11 min-w-[76px] touch-manipulation rounded-full bg-[#1652f0] px-3 py-1.5 text-xs font-semibold text-white"
+							aria-label="Accept incoming voice call"
+						>
+							Accept
+						</button>
+						<button
+							type="button"
+							onClick={() => void rejectVoiceCall()}
+							className="pointer-events-auto relative z-10 min-h-11 min-w-[76px] touch-manipulation rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700"
+							aria-label="Decline incoming voice call"
+						>
+							Decline
+						</button>
 					</div>
 				</div>
 			) : null}
@@ -4620,8 +4664,8 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 						)}
 						{fileError ? <div role="alert" className="mb-2 rounded-xl bg-rose-50 px-3 py-2 text-[12px] text-rose-700">{fileError}</div> : null}
 						<div>
-						<input ref={fileInputRef} type="file" multiple hidden onChange={event => { void addChatFiles(Array.from(event.target.files || [])); event.currentTarget.value = '' }} />
-						<input ref={cameraInputRef} type="file" accept="video/*" capture="environment" hidden onChange={event => { void addChatFiles(Array.from(event.target.files || [])); event.currentTarget.value = '' }} />
+						<input ref={fileInputRef} type="file" multiple hidden onChange={event => { void addChatFiles(Array.from(event.target.files || []), null, 'picker'); event.currentTarget.value = '' }} />
+						<input ref={cameraInputRef} type="file" accept="video/*" capture="environment" hidden onChange={event => { void addChatFiles(Array.from(event.target.files || []), null, 'picker'); event.currentTarget.value = '' }} />
 						<div className="flex items-center gap-2">
 							<PlusActionMenu
 								open={plusOpen}

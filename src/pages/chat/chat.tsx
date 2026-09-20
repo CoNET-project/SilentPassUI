@@ -1838,6 +1838,9 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 
 	useEffect(() => {
 		const addCapturedVideo = (dataUrl: string, mimeType?: string) => {
+			// A previous folder/drop failure must not remain visible after the
+			// user successfully starts a new camera capture.
+			setFileError(null)
 			if (!dataUrl) {
 				setFileError('Camera returned no video. Please try again.')
 				return
@@ -1864,6 +1867,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 			if (!detail?.action?.startsWith('cameraCapture')) return
 			if (cameraRequestIdRef.current && detail.requestId && detail.requestId !== cameraRequestIdRef.current) return
 			if (detail.action === 'cameraCaptureStart') {
+				setFileError(null)
 				nativeCameraChunksRef.current = {
 					requestId: detail.requestId || cameraRequestIdRef.current || '',
 					mimeType: detail.mimeType || 'video/mp4',
@@ -2523,6 +2527,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 	}, [])
 
 	const openChatCamera = useCallback(() => {
+		setFileError(null)
 		if (!hasRoute) {
 			setFileError('Camera attachments require an active Chat route.')
 			return

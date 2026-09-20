@@ -17,6 +17,7 @@ function syncCapsulePointerEvents(layer: HTMLElement, opacity: number): void {
 }
 
 function applyOpacityToLayer(layer: HTMLElement, next: number): void {
+	layer.style.transition = 'opacity 300ms ease-out, transform 300ms ease-out'
 	layer.style.opacity = String(next)
 	// Native WebViews can keep a translucent fixed layer visually present while
 	// compositing. Move the layer with the fade so it is unambiguously hidden.
@@ -38,7 +39,13 @@ export function useScrollCapsuleOpacity(enabled = true) {
 	const layerRef = useRef<HTMLElement | null>(null)
 	const opacityRef = useRef(1)
 	const lastScrollTopRef = useRef(0)
+	const latestScrollTopRef = useRef(0)
 	const rafRef = useRef<number | null>(null)
+	const hideUnlockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+	const revealTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+	const revealPendingDistanceRef = useRef(0)
+	const revealArmedRef = useRef(false)
+	const revealReadyRef = useRef(false)
 
 	const commitOpacity = useCallback((next: number) => {
 		if (Math.abs(next - opacityRef.current) < OPACITY_EPS) {
@@ -61,19 +68,57 @@ export function useScrollCapsuleOpacity(enabled = true) {
 			const previousScrollTop = lastScrollTopRef.current
 			const scrollDelta = scrollTop - previousScrollTop
 			lastScrollTopRef.current = scrollTop
-			const next =
-				scrollDelta === 0
-					? scrollTop <= THRESHOLD
-						? 1
-						: opacityRef.current
-					: scrollDelta < 0 && opacityRef.current < 1
-						? Math.min(1, opacityRef.current + Math.abs(scrollDelta) / FADE_RANGE)
-						: computeOpacity(scrollTop)
-			if (rafRef.current != null) cancelAnimationFrame(rafRef.current)
-			rafRef.current = requestAnimationFrame(() => {
-				rafRef.current = null
-				commitOpacity(next)
-			})
+			latestScrollTopRef.current = scrollTop
+			if (scrollDelta > 0) {
+				revealArmedRef.current = false
+				revealReadyRef.current = false
+				revealPendingDistanceRef.current = 0
+				if (revealTimerRef.current != null) {
+					clearTimeout(revealTimerRef.current)
+					revealTimerRef.current = null
+				}
+				// Let the first downward event start the hide animation. Ignore
+				// subsequent downward noise until that animation settles.
+				if (hideUnlockTimerRef.current != null) return
+				const next = computeOpacity(scrollTop)
+				hideUnlockTimerRef.current = setTimeout(() => {
+					hideUnlockTimerRef.current = null
+					if (latestScrollTopRef.current > THRESHOLD && opacityRef.current > 0) {
+						commitOpacity(computeOpacity(latestScrollTopRef.current))
+					}
+				}, 300)
+				if (rafRef.current != null) cancelAnimationFrame(rafRef.current)
+				rafRef.current = requestAnimationFrame(() => {
+					rafRef.current = null
+					commitOpacity(next)
+				})
+				return
+			}
+			if (scrollDelta < 0 && opacityRef.current < 1) {
+				revealPendingDistanceRef.current += Math.abs(scrollDelta)
+				if (revealReadyRef.current) {
+					const pending = revealPendingDistanceRef.current
+					revealPendingDistanceRef.current = 0
+					commitOpacity(Math.min(1, opacityRef.current + pending / FADE_RANGE))
+					return
+				}
+				if (!revealArmedRef.current) {
+					revealArmedRef.current = true
+					revealTimerRef.current = setTimeout(() => {
+						revealTimerRef.current = null
+						revealArmedRef.current = false
+						revealReadyRef.current = true
+						const pending = revealPendingDistanceRef.current
+						revealPendingDistanceRef.current = 0
+						if (pending <= 0 || opacityRef.current >= 1) return
+						commitOpacity(Math.min(1, opacityRef.current + pending / FADE_RANGE))
+					}, 500)
+				}
+				return
+			}
+			if (scrollDelta === 0 && scrollTop <= THRESHOLD) {
+				commitOpacity(1)
+			}
 		},
 		[commitOpacity, enabled]
 	)
@@ -133,20 +178,36 @@ export function useScrollCapsuleOpacity(enabled = true) {
 	useEffect(() => {
 		if (!enabled) return
 		const handler = (e: Event) => {
-			const target = e.target as HTMLElement | null
-			if (!target || target !== scrollRef.current) return
-			const top = typeof target.scrollTop === 'number' ? target.scrollTop : 0
+			const target = e.target
+			const scrollNode = scrollRef.current
+			const isKnownScrollTarget =
+				target === scrollNode ||
+				target === document ||
+				target === document.documentElement ||
+				target === document.body ||
+				target === window
+			if (!isKnownScrollTarget) return
+			const top =
+				target === window || target === document
+					? window.scrollY
+					: typeof (target as HTMLElement).scrollTop === 'number'
+						? (target as HTMLElement).scrollTop
+						: scrollNode?.scrollTop ?? 0
 			scheduleOpacity(top)
 		}
 		document.addEventListener('scroll', handler, { passive: true, capture: true })
+		window.addEventListener('scroll', handler, { passive: true })
 		const scrollNode = scrollRef.current
 		if (scrollNode) {
 			scrollNode.addEventListener('scroll', handler, { passive: true })
 		}
 		return () => {
 			document.removeEventListener('scroll', handler, true)
+			window.removeEventListener('scroll', handler)
 			scrollNode?.removeEventListener('scroll', handler)
 			if (rafRef.current != null) cancelAnimationFrame(rafRef.current)
+			if (hideUnlockTimerRef.current != null) clearTimeout(hideUnlockTimerRef.current)
+			if (revealTimerRef.current != null) clearTimeout(revealTimerRef.current)
 		}
 	}, [enabled, scheduleOpacity])
 

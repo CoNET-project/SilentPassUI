@@ -19,6 +19,7 @@ type Props = {
   anchorRef: React.RefObject<HTMLElement>
   items?: MenuItem[]
   onAttachFiles?: () => void
+  onSelectPhotos?: () => void
   onCaptureCamera?: () => void
 }
 
@@ -44,7 +45,7 @@ function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n))
 }
 
-export function PlusActionMenu({ open, onClose, anchorRef, items = DEFAULT_ITEMS, onAttachFiles, onCaptureCamera }: Props) {
+export function PlusActionMenu({ open, onClose, anchorRef, items = DEFAULT_ITEMS, onAttachFiles, onSelectPhotos, onCaptureCamera }: Props) {
   const [pos, setPos] = useState<Pos | null>(null)
 
   // ✅ hooks 必须无条件调用：menuRef 放这里
@@ -200,6 +201,7 @@ export function PlusActionMenu({ open, onClose, anchorRef, items = DEFAULT_ITEMS
                   ].join(" ")}
                   onClick={() => {
                     if (it.key === "files") onAttachFiles?.()
+                    if (it.key === "photos") onSelectPhotos?.()
                     if (it.key === "camera") onCaptureCamera?.()
                     it.onClick?.()
                     onClose()

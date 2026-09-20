@@ -1816,6 +1816,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 	const fileControllersRef = useRef(new Map<string, AbortController>())
 	const storageDataRef = useRef<(() => Promise<void>) | null>(null)
 	const fileInputRef = useRef<HTMLInputElement | null>(null)
+	const photoInputRef = useRef<HTMLInputElement | null>(null)
 	const cameraInputRef = useRef<HTMLInputElement | null>(null)
 	const cameraRequestIdRef = useRef<string | null>(null)
 	const nativeCameraChunksRef = useRef<{ requestId: string; mimeType: string; chunks: string[] } | null>(null)
@@ -4718,6 +4719,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 						{fileError ? <div role="alert" className="mb-2 rounded-xl bg-rose-50 px-3 py-2 text-[12px] text-rose-700">{fileError}</div> : null}
 						<div>
 						<input ref={fileInputRef} type="file" multiple hidden onChange={event => { void addChatFiles(Array.from(event.target.files || []), null, 'picker'); event.currentTarget.value = '' }} />
+						<input ref={photoInputRef} type="file" accept="image/*,video/*" multiple hidden onChange={event => { void addChatFiles(Array.from(event.target.files || []), null, 'picker'); event.currentTarget.value = '' }} />
 						<input ref={cameraInputRef} type="file" accept="video/*" capture="environment" hidden onChange={event => { void addChatFiles(Array.from(event.target.files || []), null, 'picker'); event.currentTarget.value = '' }} />
 						<div className="flex items-center gap-2">
 							<PlusActionMenu
@@ -4725,6 +4727,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 								onClose={() => setPlusOpen(false)}
 								anchorRef={plusBtnRef}
 								onAttachFiles={() => fileInputRef.current?.click()}
+								onSelectPhotos={() => photoInputRef.current?.click()}
 								onCaptureCamera={openChatCamera}
 								
 							/>

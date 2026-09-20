@@ -27,6 +27,7 @@ export function ChatHeaderIOS({
   beamioer,
   onBack,
   onCenterClick,
+  layerRef,
   online,
   avatarSrc,
   onCall,
@@ -36,6 +37,7 @@ export function ChatHeaderIOS({
   beamioer?: searchResult
   onBack?: () => void
   onCenterClick?: () => void
+  layerRef?: React.Ref<HTMLDivElement>
   onCall?: () => void
   onPhoneHistory?: () => void
   callBusy?: boolean
@@ -50,7 +52,7 @@ export function ChatHeaderIOS({
   }, [beamioer])
 
   return (
-    <div className="fixed top-0 left-0 right-0 z-[80] pointer-events-none">
+    <div ref={layerRef} className="fixed top-0 left-0 right-0 z-[80] pointer-events-none transition-opacity duration-300">
       <div className="pt-[calc(env(safe-area-inset-top)+4px)]">
         {/* Back：玻璃圆 */}
         <div className="px-4 h-14 flex items-center justify-between">

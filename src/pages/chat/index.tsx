@@ -32,7 +32,11 @@ const Home = () => {
 	const [chatData, setChatData] = useState<chatData> ()
 	const [privateKey, setPrivate] = useState('')
 	const didInitRef = useRef(false)
-	const { opacity: capsuleOpacity, onScroll: onCapsuleScroll, setRef: setScrollRef } = useScrollCapsuleOpacity(!chatData)
+	const {
+		onScroll: onCapsuleScroll,
+		setRef: setScrollRef,
+		setLayerRef: setChatCapsuleLayerRef,
+	} = useScrollCapsuleOpacity(!chatData)
 
 
 
@@ -75,10 +79,10 @@ const Home = () => {
 			<>
 				{/* 与 Home / Wallet / Discover：Footer 同款图标 + 胶囊样式，随滚动渐隐 */}
 				<div
-					className="pointer-events-none fixed left-4 right-4 z-40 flex items-center justify-start transition-opacity duration-300"
+					ref={setChatCapsuleLayerRef}
+					className="fixed left-4 right-4 z-40 flex items-center justify-start transition-opacity duration-300"
 					style={{
 						top: 'max(1rem, env(safe-area-inset-top, 0px))',
-						opacity: capsuleOpacity,
 					}}
 					aria-hidden
 				>

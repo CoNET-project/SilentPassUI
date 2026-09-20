@@ -25,6 +25,9 @@ export type ChatFileMessageManifest = {
 	mediaKind?: 'video' | 'image' | 'pdf'
 	previewName?: string
 	mime?: string
+	/** Intrinsic media dimensions captured before upload for layout reservation. */
+	width?: number
+	height?: number
 	/** Multiple files and folder selections are delivered as one ZIP bundle. */
 	isArchive?: boolean
 	archiveName?: string
@@ -49,7 +52,7 @@ const dataUrlToBytes = (dataUrl: string): Uint8Array => {
 	return base64ToBytes(dataUrl.slice(comma + 1))
 }
 
-export async function encryptChatFiles(files: File[], displayName?: string, preview?: Blob): Promise<{
+export async function encryptChatFiles(files: File[], displayName?: string, preview?: Blob, dimensions?: { width: number; height: number }): Promise<{
 	dataUrl: string
 	manifest: Omit<ChatFileMessageManifest, 'fragmentHash'>
 }> {
@@ -106,14 +109,14 @@ export async function encryptChatFiles(files: File[], displayName?: string, prev
 			sizeBytes: totalBytes,
 			files: metadata,
 			...(files.length === 1 && !isArchive && files[0]?.type.startsWith('image/')
-				? { mediaKind: 'image' as const, mime: files[0].type }
+				? { mediaKind: 'image' as const, mime: files[0].type, ...dimensions }
 				: files.length === 1 && !isArchive && (
 					files[0]?.type === 'application/pdf'
 					|| files[0]?.name.toLowerCase().endsWith('.pdf')
 				)
 					? { mediaKind: 'pdf' as const, mime: files[0].type || 'application/pdf' }
 					: files.length === 1 && !isArchive && files[0]?.type.startsWith('video/')
-						? { mediaKind: 'video' as const, mime: files[0].type }
+						? { mediaKind: 'video' as const, mime: files[0].type, ...dimensions }
 						: {}),
 			...(previewName ? { previewName } : {}),
 			...(isArchive

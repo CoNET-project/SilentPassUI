@@ -9652,16 +9652,17 @@ export default function Market() {
 
 		<div
 			ref={setDiscoverCategoryLayerRef}
-			className="pointer-events-none fixed inset-x-0 z-40 px-3 sm:px-5 transition-opacity duration-300 ease-out"
+			className="fixed inset-x-0 z-40 px-3 sm:px-5 transition-opacity duration-300 ease-out"
 			style={{ top: "max(0.5rem, env(safe-area-inset-top, 0px))" }}
 		>
-			<div className="mx-auto flex max-w-lg min-w-0 items-center gap-2 overflow-hidden rounded-full border border-white/70 bg-white/55 px-1 py-1 shadow-[0_8px_28px_rgba(15,23,42,0.14),inset_0_1px_0_rgba(255,255,255,0.85)] backdrop-blur-xl dark:border-white/15 dark:bg-slate-900/55">
+			<div className="mx-auto flex max-w-lg min-w-0 touch-pan-x items-center gap-2 overflow-hidden rounded-full border border-white/70 bg-white/55 px-1 py-1 shadow-[0_8px_28px_rgba(15,23,42,0.14),inset_0_1px_0_rgba(255,255,255,0.85)] backdrop-blur-xl dark:border-white/15 dark:bg-slate-900/55">
 				<div className="shrink-0" data-capsule-interactive>
 					{renderDiscoverFilterChip(DISCOVER_ALL_OPTION)}
 				</div>
 				<div
 					ref={discoverCategoryScrollerRef}
 					className="flex min-w-0 flex-1 touch-pan-x items-center gap-2 overflow-x-auto overscroll-x-contain [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+					style={{ WebkitOverflowScrolling: 'touch' }}
 				>
 					{discoverCategoryTabsOrdered.map((tab) => renderDiscoverFilterChip(tab))}
 				</div>

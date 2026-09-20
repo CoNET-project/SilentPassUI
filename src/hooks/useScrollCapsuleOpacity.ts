@@ -10,6 +10,7 @@ const computeOpacity = (scrollTop: number) =>
 
 function syncCapsulePointerEvents(layer: HTMLElement, opacity: number): void {
 	const pe = opacity < 0.05 ? 'none' : 'auto'
+	layer.style.pointerEvents = pe
 	layer.querySelectorAll('[data-capsule-interactive]').forEach((el) => {
 		;(el as HTMLElement).style.pointerEvents = pe
 	})
@@ -135,8 +136,13 @@ export function useScrollCapsuleOpacity(enabled = true) {
 			scheduleOpacity(top)
 		}
 		document.addEventListener('scroll', handler, { passive: true, capture: true })
+		const scrollNode = scrollRef.current
+		if (scrollNode) {
+			scrollNode.addEventListener('scroll', handler, { passive: true })
+		}
 		return () => {
 			document.removeEventListener('scroll', handler, true)
+			scrollNode?.removeEventListener('scroll', handler)
 			if (rafRef.current != null) cancelAnimationFrame(rafRef.current)
 		}
 	}, [enabled, scheduleOpacity])

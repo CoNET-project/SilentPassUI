@@ -1951,11 +1951,11 @@ const Home = (_props: HomeProps) => {
 					</span>
 				</button>
 			</div> */}
-			{/* 顶部栏：左右胶囊同一行；外层 pe-none，可点控件显式 pe-auto（防长 tag 溢出 / App z-40 抢点击） */}
+			{/* 顶部栏：指针事件由 useScrollCapsuleOpacity 按 opacity 同步控制，兼容原生 WebView。 */}
 			{!openSearch && (
 				<div
 					ref={setCapsuleLayerRef}
-					className="pointer-events-none fixed left-4 right-4 z-30 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 transition-opacity duration-300"
+					className="fixed left-4 right-4 z-30 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 transition-opacity duration-300"
 					style={{
 						// 与下方主内容顶部占位一致；WebView 常返回 safe-area 0，需至少 1rem 与浏览器+PWA 视觉对齐
 						top: 'max(1rem, env(safe-area-inset-top, 0px))',

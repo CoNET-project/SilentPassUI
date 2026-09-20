@@ -46,6 +46,7 @@ import {
   Paperclip
 } from "lucide-react"
 import { ChatHeaderIOS } from "./components/ChatHeaderIOS"
+import { useScrollCapsuleOpacity } from "@/hooks/useScrollCapsuleOpacity"
 import {
 	initBeamioPGPKeys,
 	regiestChatRoute,
@@ -407,6 +408,39 @@ async function createVideoThumbnail(videoFile: File): Promise<Blob> {
 	} finally {
 		URL.revokeObjectURL(url)
 	}
+}
+
+async function readMediaDimensions(file: File): Promise<{ width: number; height: number } | undefined> {
+	if (file.type.startsWith('image/')) {
+		const url = URL.createObjectURL(file)
+		try {
+			const image = new Image()
+			const dimensions = await new Promise<{ width: number; height: number }>((resolve, reject) => {
+				image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight })
+				image.onerror = () => reject(new Error('Image dimensions could not be read.'))
+				image.src = url
+			})
+			return dimensions.width > 0 && dimensions.height > 0 ? dimensions : undefined
+		} finally {
+			URL.revokeObjectURL(url)
+		}
+	}
+	if (file.type.startsWith('video/')) {
+		const url = URL.createObjectURL(file)
+		try {
+			const video = document.createElement('video')
+			video.preload = 'metadata'
+			video.src = url
+			const dimensions = await new Promise<{ width: number; height: number }>((resolve, reject) => {
+				video.onloadedmetadata = () => resolve({ width: video.videoWidth, height: video.videoHeight })
+				video.onerror = () => reject(new Error('Video dimensions could not be read.'))
+			})
+			return dimensions.width > 0 && dimensions.height > 0 ? dimensions : undefined
+		} finally {
+			URL.revokeObjectURL(url)
+		}
+	}
+	return undefined
 }
 
 type DataTransferItemWithHandle = DataTransferItem & {
@@ -1274,6 +1308,10 @@ function ChatFileMessagePlayer({ manifest, isMe }: { manifest: ChatFileMessageMa
 	}
 	const isImageMessage = manifest.mediaKind === 'image'
 	const isPdfMessage = manifest.mediaKind === 'pdf'
+	const mediaAspectRatio =
+		manifest.width && manifest.height && manifest.width > 0 && manifest.height > 0
+			? `${manifest.width} / ${manifest.height}`
+			: '4 / 3'
 	return (
 		<div
 			className={[
@@ -1285,11 +1323,11 @@ function ChatFileMessagePlayer({ manifest, isMe }: { manifest: ChatFileMessageMa
 				isPdfMessage ? '' : isMe ? 'bg-[#dceaff]/70' : 'bg-white/70',
 			].join(' ')}
 		>
-			{manifest.mediaKind === 'video' && videoUrl ? (
-				<div className="relative mb-2 overflow-hidden rounded-xl bg-slate-900">
-					<video ref={videoRef} src={videoUrl} className="block max-h-64 w-full object-contain" onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onEnded={() => setPlaying(false)} controls={false} />
+			{manifest.mediaKind === 'video' ? (
+				<div className="relative mb-2 w-full overflow-hidden rounded-xl bg-slate-900" style={{ aspectRatio: mediaAspectRatio }}>
+					{videoUrl ? <video ref={videoRef} src={videoUrl} className="absolute inset-0 block h-full w-full object-contain" onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onEnded={() => setPlaying(false)} controls={false} /> : <div className="absolute inset-0 animate-pulse bg-slate-800/70" aria-hidden />}
 					{previewUrl ? <img src={previewUrl} alt="Video thumbnail" className="absolute inset-0 h-full w-full object-cover" style={{ opacity: playing ? 0 : 1 }} /> : null}
-					{!playing ? (
+					{videoUrl && !playing ? (
 						<button type="button" onClick={() => {
 							const video = videoRef.current
 							if (!video) return
@@ -1329,9 +1367,9 @@ function ChatFileMessagePlayer({ manifest, isMe }: { manifest: ChatFileMessageMa
 					aria-label="Open image fullscreen"
 				>
 					{previewUrl ? (
-						<img src={previewUrl} alt="" className="block max-h-64 w-full object-cover" />
+						<img src={previewUrl} alt="" className="block h-full w-full object-cover" style={{ aspectRatio: mediaAspectRatio }} />
 					) : (
-						<div className="aspect-[4/3] min-w-[200px] animate-pulse bg-slate-200/80" aria-hidden />
+						<div className="min-w-[200px] animate-pulse bg-slate-200/80" style={{ aspectRatio: mediaAspectRatio }} aria-hidden />
 					)}
 				</button>
 			) : manifest.mediaKind === 'video' ? (
@@ -1700,6 +1738,14 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 	const [messages, setMessages] = useState<ChatMessage[]>(chatData.messages)
 
 	const scrollRef = useRef<HTMLDivElement | null>(null)
+	const {
+		setRef: setHeaderScrollRef,
+		setLayerRef: setHeaderLayerRef,
+	} = useScrollCapsuleOpacity(true)
+	const setChatScrollRef = useCallback((node: HTMLDivElement | null) => {
+		scrollRef.current = node
+		setHeaderScrollRef(node)
+	}, [setHeaderScrollRef])
 	const inputRef = useRef<HTMLTextAreaElement | null>(null)
 	/** CJK / non-Latin IME: Enter confirms candidates — must not send while composing. */
 	const imeComposingRef = useRef(false)
@@ -2341,7 +2387,11 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 			},
 		])
 		let thumbnail: Blob | undefined
+		let mediaDimensions: { width: number; height: number } | undefined
 		try {
+			if (previewMediaFile) {
+				mediaDimensions = await readMediaDimensions(previewMediaFile)
+			}
 			if (videoFile) {
 				setFileJobs(previous => previous.map(item => item.id === id ? { ...item, progress: 0.03 } : item))
 				thumbnail = await createVideoThumbnail(videoFile)
@@ -2380,6 +2430,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 					? bundleName
 					: undefined,
 				thumbnail,
+				mediaDimensions,
 			)
 			const fragmentHash = await uploadEncryptedChatFileDataUrl(
 				profiles[0]?.privateKeyArmor || '',
@@ -3460,53 +3511,29 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		}
 	}, [chatData.unreadCount])
 
-	// 首次装载 / rehydrate 后，持续贴底到消息内容完成布局。
-	// 图片、音频和文件消息会在消息数组不变时异步改变 scrollHeight，
-	// 因此单次 requestAnimationFrame 不足以保证最新消息可见。
+	// 首次装载 / rehydrate 后贴底一次。媒体消息现在在 manifest 中携带
+	// intrinsic width/height，外层先占位固定 aspect-ratio，不再用 ResizeObserver
+	// 追踪异步 Blob 加载；反复 pin 会造成图片解密完成时页面抖动。
 	useEffect(() => {
 		if (!pendingInitialScrollRef.current) return
 		if (!messages?.length) return
 
 		const scroller = scrollRef.current
 		if (!scroller) return
-		let finishTimer: number | null = null
-		let hardStopTimer: number | null = null
-		const startedAt = Date.now()
-		const content = scroller.firstElementChild
 		const finishPinning = () => {
 			pendingInitialScrollRef.current = false
 			didInitialScrollRef.current = true
 			forceClearUnread()
 		}
-		const hasPendingImage = () =>
-			Array.from(scroller.querySelectorAll('img')).some(image => !image.complete)
-		const pinToBottom = () => {
-			if (!pendingInitialScrollRef.current) return
+		let finishTimer: number | null = null
+		const frame = requestAnimationFrame(() => {
 			scrollToBottom("auto")
-			if (hasPendingImage() || Date.now() - startedAt < 1500) return
-			if (finishTimer !== null) window.clearTimeout(finishTimer)
-			finishTimer = window.setTimeout(finishPinning, 1200)
-		}
-		const frame = requestAnimationFrame(pinToBottom)
-		const observer = typeof ResizeObserver !== 'undefined'
-			? new ResizeObserver(pinToBottom)
-			: null
-		const mutationObserver = typeof MutationObserver !== 'undefined'
-			? new MutationObserver(pinToBottom)
-			: null
-		observer?.observe(scroller)
-		if (content instanceof HTMLElement) observer?.observe(content)
-		mutationObserver?.observe(scroller, { childList: true, subtree: true })
-		scroller.addEventListener('load', pinToBottom, true)
-		hardStopTimer = window.setTimeout(finishPinning, 10000)
+			finishTimer = window.setTimeout(finishPinning, 250)
+		})
 
 		return () => {
 			cancelAnimationFrame(frame)
-			observer?.disconnect()
-			mutationObserver?.disconnect()
-			scroller.removeEventListener('load', pinToBottom, true)
 			if (finishTimer !== null) window.clearTimeout(finishTimer)
-			if (hardStopTimer !== null) window.clearTimeout(hardStopTimer)
 		}
 	}, [messages.length])
 
@@ -3689,6 +3716,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 			onDrop={handleChatFileDrop}
 		>
 			<ChatHeaderIOS
+				layerRef={setHeaderLayerRef}
 				beamioer={fromBeamio}
 				onBack={onBack}
 				online={chatData.chatData.online}
@@ -3851,7 +3879,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 				aria-hidden
 			/>
 			<div
-				ref={scrollRef}
+				ref={setChatScrollRef}
 				className="relative h-full overflow-y-auto px-4 py-4"
 				onScroll={() => {
 				clearUnreadIfNeeded()

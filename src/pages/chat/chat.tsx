@@ -46,6 +46,7 @@ import {
   Paperclip
 } from "lucide-react"
 import { ChatHeaderIOS } from "./components/ChatHeaderIOS"
+import BeamioContactProfilePreview from "@/components/Home/BeamioContactProfilePreview"
 import { useScrollCapsuleOpacity } from "@/hooks/useScrollCapsuleOpacity"
 import {
 	initBeamioPGPKeys,
@@ -2209,6 +2210,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 	const liveFileMessagesRef = useRef(new Map<string, ChatMessage>())
 	const skipNextReflashdataRef = useRef(false)
 	const [fromBeamio, setfromBeamio] = useState<searchResult|undefined> ()
+	const [showContactProfile, setShowContactProfile] = useState(false)
 	const [userImg, setUserImg] = useState('')
 	const [plusOpen, setPlusOpen] = useState(false)
 	const plusBtnRef = useRef<HTMLButtonElement | null>(null)
@@ -3722,12 +3724,25 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 				layerRef={setHeaderLayerRef}
 				beamioer={fromBeamio}
 				onBack={onBack}
+				onCenterClick={() => {
+					if (fromBeamio) setShowContactProfile(true)
+				}}
 				online={chatData.chatData.online}
 				avatarSrc={userImg}
 				onCall={voiceCallState === 'outgoing' ? endVoiceCall : startVoiceCall}
 				onPhoneHistory={() => navigate('/phone')}
 				callBusy={voiceCallState === 'outgoing'}
 			/>
+			{showContactProfile && fromBeamio ? (
+				<div className="fixed inset-0 z-[9999] flex flex-col overflow-hidden bg-white dark:bg-slate-900">
+					<div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
+						<BeamioContactProfilePreview
+							item={fromBeamio}
+							close={() => setShowContactProfile(false)}
+						/>
+					</div>
+				</div>
+			) : null}
 			{incomingVoiceOffer ? (
 				<div className="pointer-events-auto fixed left-4 right-4 top-[max(5.5rem,calc(env(safe-area-inset-top)+5rem))] z-[90] rounded-2xl border border-white/80 bg-white/85 px-4 py-3 shadow-[0_12px_30px_rgba(15,23,42,0.16)] backdrop-blur-xl">
 					<div className="flex items-center gap-3">

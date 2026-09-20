@@ -52,7 +52,7 @@ export function ChatHeaderIOS({
   }, [beamioer])
 
   return (
-    <div ref={layerRef} className="fixed top-0 left-0 right-0 z-[80] pointer-events-none transition-opacity duration-300">
+    <div ref={layerRef} className="fixed top-0 left-0 right-0 z-[80] transition-opacity duration-300">
       <div className="pt-[calc(env(safe-area-inset-top)+4px)]">
         {/* Back：玻璃圆 */}
         <div className="px-4 h-14 flex items-center justify-between">
@@ -76,7 +76,7 @@ export function ChatHeaderIOS({
             <button
               type="button"
               onClick={onPhoneHistory}
-              className="grid h-11 w-11 place-items-center rounded-full bg-white/50 text-slate-900 shadow-[0_18px_38px_rgba(15,23,42,0.14)] ring-1 ring-white/60 backdrop-blur-xl transition active:scale-[0.98]"
+              className="pointer-events-auto grid h-11 w-11 place-items-center rounded-full bg-white/50 text-slate-900 shadow-[0_18px_38px_rgba(15,23,42,0.14)] ring-1 ring-white/60 backdrop-blur-xl transition active:scale-[0.98]"
               aria-label="Open Phone history"
               title="Open Phone history"
             >
@@ -103,12 +103,12 @@ export function ChatHeaderIOS({
         </div>
 
         {/* ✅ 头像（无外圈） + 下方紧凑胶囊（同一中线居中） */}
-			<div className="relative -mt-[54px] flex justify-center">
+			<div className="pointer-events-none relative -mt-[54px] flex justify-center">
 			<motion.div
 				initial={{ opacity: 0, y: -6, scale: 0.985 }}
 				animate={{ opacity: 1, y: 0, scale: 1 }}
 				transition={{ type: "spring", stiffness: 520, damping: 42 }}
-				className="pointer-events-none"
+				className="pointer-events-auto"
 			>
 				{/* ✅ 关键：用 flex-col items-center，保证头像与胶囊同一中线居中 */}
 				<div className="flex flex-col items-center">
@@ -155,7 +155,7 @@ export function ChatHeaderIOS({
 					{/* ✅ 紧凑胶囊：更像 iOS Messages */}
 					<button
 						type="button"
-						onClick={onCenterClick}
+						onClick={onCenterClick ?? onBack}
 						className={[
 							"pointer-events-auto",
 							"-mt-1",                 // ✅ 更贴近头像（紧凑）
@@ -167,7 +167,7 @@ export function ChatHeaderIOS({
 							"shadow-[0_14px_30px_rgba(15,23,42,0.12)]",
 							"active:scale-[0.99] transition"
 						].join(" ")}
-						aria-label="Open profile"
+						aria-label={onCenterClick ? "Open profile" : "Back to chats"}
 					>
 						<span
 							className="text-[15px] font-semibold"

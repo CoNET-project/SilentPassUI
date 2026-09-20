@@ -1741,6 +1741,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 	const {
 		setRef: setHeaderScrollRef,
 		setLayerRef: setHeaderLayerRef,
+		showCapsuleNow,
 	} = useScrollCapsuleOpacity(true)
 	const setChatScrollRef = useCallback((node: HTMLDivElement | null) => {
 		scrollRef.current = node
@@ -2896,11 +2897,12 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 
 		requestAnimationFrame(() => {
 			scrollToBottom("auto")
+			showCapsuleNow()
 			didInitialScrollRef.current = true
 			// 这里不要 pendingInitialScrollRef.current = false
 			// 让 pending 那个 effect 负责“最终一次的清 unread”
 		})
-	}, [])
+	}, [showCapsuleNow])
 
 	/** 菜单与定位相关常量：菜单估算高度、间距、底部输入栏预留 */
 	const MENU_EST_H = 150
@@ -3523,6 +3525,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		const finishPinning = () => {
 			pendingInitialScrollRef.current = false
 			didInitialScrollRef.current = true
+			showCapsuleNow()
 			forceClearUnread()
 		}
 		let finishTimer: number | null = null
@@ -3535,7 +3538,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 			cancelAnimationFrame(frame)
 			if (finishTimer !== null) window.clearTimeout(finishTimer)
 		}
-	}, [messages.length])
+	}, [messages.length, showCapsuleNow])
 
 	// 当用户发送新消息后，视图自动滚动到最底部
 	const prevMessagesLengthRef = useRef(messages.length)

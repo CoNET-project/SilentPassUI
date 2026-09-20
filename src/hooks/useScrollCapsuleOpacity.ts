@@ -65,6 +65,16 @@ export function useScrollCapsuleOpacity(enabled = true) {
 	const scheduleOpacity = useCallback(
 		(scrollTop: number) => {
 			if (!enabled) return
+			const scrollNode = scrollRef.current
+			// A short/new page has no upward scroll range. Keep its navigation
+			// controls visible even when an initial pin-to-bottom emits a scroll
+			// event at the bottom edge.
+			if (scrollNode && scrollNode.scrollHeight <= scrollNode.clientHeight) {
+				lastScrollTopRef.current = scrollTop
+				latestScrollTopRef.current = scrollTop
+				commitOpacity(1)
+				return
+			}
 			const previousScrollTop = lastScrollTopRef.current
 			const scrollDelta = scrollTop - previousScrollTop
 			lastScrollTopRef.current = scrollTop
@@ -122,6 +132,24 @@ export function useScrollCapsuleOpacity(enabled = true) {
 		},
 		[commitOpacity, enabled]
 	)
+
+	const showCapsuleNow = useCallback(() => {
+		const top = scrollRef.current?.scrollTop ?? 0
+		lastScrollTopRef.current = top
+		latestScrollTopRef.current = top
+		revealPendingDistanceRef.current = 0
+		revealArmedRef.current = false
+		revealReadyRef.current = false
+		if (hideUnlockTimerRef.current != null) {
+			clearTimeout(hideUnlockTimerRef.current)
+			hideUnlockTimerRef.current = null
+		}
+		if (revealTimerRef.current != null) {
+			clearTimeout(revealTimerRef.current)
+			revealTimerRef.current = null
+		}
+		commitOpacity(1)
+	}, [commitOpacity])
 
 	const onScroll = useCallback(
 		(e: React.UIEvent<HTMLDivElement>) => {
@@ -211,5 +239,5 @@ export function useScrollCapsuleOpacity(enabled = true) {
 		}
 	}, [enabled, scheduleOpacity])
 
-	return { opacity, onScroll, setRef, setLayerRef, resyncLayerPointerEvents }
+	return { opacity, onScroll, setRef, setLayerRef, resyncLayerPointerEvents, showCapsuleNow }
 }

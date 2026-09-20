@@ -1216,6 +1216,7 @@ function ChatFileMessagePlayer({ manifest, isMe }: { manifest: ChatFileMessageMa
 	const [playing, setPlaying] = useState(false)
 	const [videoUrl, setVideoUrl] = useState<string | null>(null)
 	const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+	const [previewLoadFailed, setPreviewLoadFailed] = useState(false)
 	const [fullImageUrl, setFullImageUrl] = useState<string | null>(null)
 	const [pdfUrl, setPdfUrl] = useState<string | null>(null)
 	const [imageFullscreen, setImageFullscreen] = useState(false)
@@ -1234,6 +1235,7 @@ function ChatFileMessagePlayer({ manifest, isMe }: { manifest: ChatFileMessageMa
 		setFiles(null)
 		setVideoUrl(null)
 		setPreviewUrl(null)
+		setPreviewLoadFailed(false)
 		setFullImageUrl(null)
 		setPdfUrl(null)
 		setVideoBlob(null)
@@ -1339,7 +1341,21 @@ function ChatFileMessagePlayer({ manifest, isMe }: { manifest: ChatFileMessageMa
 			{manifest.mediaKind === 'video' ? (
 				<div className="relative mb-2 w-full overflow-hidden rounded-xl bg-slate-900" style={{ aspectRatio: mediaAspectRatio }}>
 					{videoUrl ? <video ref={videoRef} src={videoUrl} className="absolute inset-0 block h-full w-full object-contain" onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onEnded={() => setPlaying(false)} controls={false} /> : <div className="absolute inset-0 animate-pulse bg-slate-800/70" aria-hidden />}
-					{previewUrl ? <img src={previewUrl} alt="Video thumbnail" className="absolute inset-0 h-full w-full object-cover" style={{ opacity: playing ? 0 : 1 }} /> : null}
+					{previewUrl && !previewLoadFailed ? (
+						<img
+							src={previewUrl}
+							alt="Video thumbnail"
+							className="absolute inset-0 h-full w-full object-cover"
+							style={{ opacity: playing ? 0 : 1 }}
+							onError={() => {
+								setPreviewLoadFailed(true)
+								setPreviewUrl(previous => {
+									if (previous) URL.revokeObjectURL(previous)
+									return null
+								})
+							}}
+						/>
+					) : null}
 					{videoUrl && !playing ? (
 						<button type="button" onClick={() => {
 							const video = videoRef.current

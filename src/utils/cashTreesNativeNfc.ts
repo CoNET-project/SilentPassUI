@@ -10,6 +10,9 @@ export type CashTreesNativeNfcBridge = {
 	scanQr?: (payload: { requestId?: string }) => void
 	/** Opens the native camera UI. Older shells omit this method and use the PWA input fallback. */
 	requestCameraCapture?: (payload: { requestId?: string; mediaType?: 'video' }) => void
+	startSystemCall?: (payload: Record<string, unknown>) => void
+	reportIncomingSystemCall?: (payload: Record<string, unknown>) => void
+	endSystemCall?: (payload: Record<string, unknown>) => void
 	/** iOS WK bridge — object payload. Android `@JavascriptInterface` accepts a plain URL string (use `openExternalUrl`). */
 	openURL?: (payload: { url: string }) => void
 	/** PWA catalog → native install probe. iOS uses `{ requestId, queries }` + `cashtreesios`. */
@@ -217,6 +220,29 @@ export function requestNativeCameraCapture(payload: {
 		}
 	}
 	return false
+}
+
+export function dispatchNativeSystemCallAction(
+	action: 'startSystemCall' | 'reportIncomingSystemCall' | 'endSystemCall',
+	payload: Record<string, unknown>,
+): boolean {
+	const w = cashTreesNativeWindow()
+	if (!w) return false
+	const bridge = (w.CashTreesAndroid || w.CashTreesIOS) as
+		| (Record<string, unknown> & { __android?: boolean })
+		| undefined
+	const fn = bridge?.[action]
+	if (typeof fn !== 'function') return false
+	try {
+		if (w.CashTreesAndroid) {
+			;(fn as unknown as (json: string) => void)(JSON.stringify({ action, ...payload }))
+		} else {
+			;(fn as unknown as (value: Record<string, unknown>) => void)({ action, ...payload })
+		}
+		return true
+	} catch {
+		return false
+	}
 }
 
 function tryNativeOpenUrl(url: string): boolean {

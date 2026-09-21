@@ -2075,6 +2075,18 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 				typeof signal.sessionKey === 'string' &&
 				Number(signal.expiresAt) > Date.now()
 			) {
+				const persistedPhoneCalls = Array.isArray(profiles?.[0]?.phoneCalls)
+					? profiles[0].phoneCalls
+					: []
+				const previousCall = persistedPhoneCalls.find(
+					(item: any) =>
+						item.callId === signal.callId ||
+						item.sessionId === signal.sessionId,
+				)
+				const terminalCallStatuses = new Set(['declined', 'ended', 'answered', 'missed'])
+				if (terminalCallStatuses.has(String(previousCall?.status || ''))) {
+					return
+				}
 				setIncomingVoiceOffer(previous => previous?.callId === signal.callId ? previous : signal)
 				if (!reportedIncomingCallIdsRef.current.has(signal.sessionId)) {
 					reportedIncomingCallIdsRef.current.add(signal.sessionId)
@@ -2107,7 +2119,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		} catch {
 			/* ordinary Chat text */
 		}
-	}, [chatData, messages, startVoiceMedia, upsertPhoneCallRecord])
+	}, [chatData, messages, profiles, startVoiceMedia, upsertPhoneCallRecord])
 
 	const acceptVoiceCall = useCallback(async () => {
 		const offer = incomingVoiceOffer

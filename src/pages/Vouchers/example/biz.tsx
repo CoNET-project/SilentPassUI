@@ -14176,6 +14176,7 @@ const [cardIssuanceEditingCouponId, setCardIssuanceEditingCouponId] = useState<s
 const [cardIssuanceCouponName, setCardIssuanceCouponName] = useState(cardIssuanceCouponNameDefault());
 const [cardIssuanceCouponIcon, setCardIssuanceCouponIcon] = useState('');
 const [cardIssuanceCouponImage, setCardIssuanceCouponImage] = useState('');
+const [cardIssuanceCouponMediaTab, setCardIssuanceCouponMediaTab] = useState<'icon' | 'background'>('icon');
 const [cardIssuanceCouponBackgroundColor, setCardIssuanceCouponBackgroundColor] = useState('#0051d1');
 const [cardIssuanceCouponDescription, setCardIssuanceCouponDescription] = useState(
   cardIssuanceCouponDescriptionDefault()
@@ -18235,6 +18236,7 @@ const openCardIssuanceCouponCreate = useCallback(() => {
   setCardIssuanceCouponName(cardIssuanceCouponNameDefault());
   setCardIssuanceCouponIcon('');
   setCardIssuanceCouponImage('');
+  setCardIssuanceCouponMediaTab('icon');
   setCardIssuanceCouponBackgroundColor('#0051d1');
   setCardIssuanceCouponDescription(cardIssuanceCouponDescriptionDefault());
   setCardIssuanceCouponIssueTotal(String(CARD_ISSUANCE_COUPON_ISSUE_TOTAL_DEFAULT));
@@ -18260,6 +18262,7 @@ const openCardIssuanceCouponEdit = useCallback((couponId: string) => {
   setCardIssuanceCouponIssueTotal(row.issueTotal || String(CARD_ISSUANCE_COUPON_ISSUE_TOTAL_DEFAULT));
   setCardIssuanceCouponIcon(row.icon || '');
   setCardIssuanceCouponImage((row.couponImage ?? '').trim());
+  setCardIssuanceCouponMediaTab((row.couponImage ?? '').trim() ? 'background' : 'icon');
   setCardIssuanceCouponBackgroundColor(
     tierBackgroundColorForPayload(row.backgroundColor) ?? (row.backgroundColor.trim() || '#0051d1')
   );
@@ -44935,7 +44938,43 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                     {!cardIssuanceCouponEditorIsSocialExchange ||
                     cardIssuanceCouponSocialExchangeDraft?.kind === 'coupon' ? (
                     <>
-                    <div>
+                    <div className="mb-3 inline-flex rounded-full bg-[#eef1f3] p-1" role="tablist" aria-label="Coupon media">
+                      <button
+                        type="button"
+                        role="tab"
+                        aria-selected={cardIssuanceCouponMediaTab === 'icon'}
+                        onClick={() => {
+                          setCardIssuanceCouponMediaTab('icon');
+                          setCardIssuanceCouponImage('');
+                          if (cardIssuanceCouponImageFileRef.current) cardIssuanceCouponImageFileRef.current.value = '';
+                        }}
+                        className={`rounded-full px-4 py-2 text-xs font-bold transition ${
+                          cardIssuanceCouponMediaTab === 'icon'
+                            ? 'bg-white text-[#1562f0] shadow-sm'
+                            : 'text-[#747779]'
+                        }`}
+                      >
+                        Coupon icon
+                      </button>
+                      <button
+                        type="button"
+                        role="tab"
+                        aria-selected={cardIssuanceCouponMediaTab === 'background'}
+                        onClick={() => {
+                          setCardIssuanceCouponMediaTab('background');
+                          setCardIssuanceCouponIcon('');
+                          if (cardIssuanceCouponIconFileRef.current) cardIssuanceCouponIconFileRef.current.value = '';
+                        }}
+                        className={`rounded-full px-4 py-2 text-xs font-bold transition ${
+                          cardIssuanceCouponMediaTab === 'background'
+                            ? 'bg-white text-[#1562f0] shadow-sm'
+                            : 'text-[#747779]'
+                        }`}
+                      >
+                        Background image
+                      </button>
+                    </div>
+                    <div className={cardIssuanceCouponMediaTab === 'icon' ? '' : 'hidden'}>
                       <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">{tu('programs_coupon_icon_label')}</label>
                       <p className="mb-2 text-[11px] font-medium leading-relaxed text-[#747779]">
                         Recommended: square image, 512 × 512 px or larger, 1:1 ratio. Keep the artwork centered inside a
@@ -44981,7 +45020,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                         </div>
                       )}
                     </div>
-                    <div>
+                    <div className={cardIssuanceCouponMediaTab === 'background' ? '' : 'hidden'}>
                       <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">
                         Coupon background image (optional)
                       </label>

@@ -173,12 +173,6 @@ export default function RestoreWalletUnifiedScreen({
 		return () => clearTimeout(t)
 	}, [recoveryError])
 
-	useEffect(() => {
-		if (!loginError) return
-		const t = setTimeout(() => setLoginError(''), 4000)
-		return () => clearTimeout(t)
-	}, [loginError])
-
 	const formatBeamioName = () => {
 		let trimmed = username.trim().replace(/^@+/, '')
 		if (!trimmed) {

@@ -67,11 +67,13 @@ export function AppButton({
   style,
   onClick,
   disabled,
+  type = "button",
   ...rest
 }: AppButtonProps) {
   const finalVariant: ButtonVariant = errorText.length ? "danger" : variant
   const isDisabled = disabled || loading
   const widthClass = fullWidth ? "w-full" : ""
+  const isSubmitButton = type === "submit"
   const tap = useReliableTapHandler(() => {
     if (!isDisabled) onClick?.({} as React.MouseEvent<HTMLButtonElement>)
   })
@@ -84,6 +86,7 @@ export function AppButton({
   return (
     <div className={widthClass}>
       <button
+        type={type}
         disabled={isDisabled}
         data-touch-priority="1"
         style={{
@@ -100,9 +103,13 @@ export function AppButton({
           ${className}
         `}
         {...rest}
-        onPointerDown={tap.onPointerDown}
-        onPointerUp={tap.onPointerUp}
-        onClick={tap.onClick}
+        {...(isSubmitButton
+          ? { onClick }
+          : {
+              onPointerDown: tap.onPointerDown,
+              onPointerUp: tap.onPointerUp,
+              onClick: tap.onClick,
+            })}
       >
         {loading ? (
           <span className="flex items-center justify-center gap-1.5">

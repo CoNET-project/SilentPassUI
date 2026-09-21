@@ -1361,6 +1361,7 @@ function AppShell() {
 					) {
 						dispatchNativeSystemCallAction('reportIncomingSystemCall', {
 							callId: signal.callId,
+							sessionId: signal.sessionId,
 							peerAddress: signAddr,
 							displayName: signAddr,
 						})

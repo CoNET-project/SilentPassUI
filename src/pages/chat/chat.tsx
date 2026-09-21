@@ -1807,12 +1807,14 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 	const [voiceSending, setVoiceSending] = useState(false)
 	const [voiceError, setVoiceError] = useState<string | null>(null)
 	const [voiceCallState, setVoiceCallState] = useState<'idle' | 'outgoing' | 'ended'>('idle')
+	const [voiceCallMuted, setVoiceCallMuted] = useState(false)
 	const [incomingVoiceAction, setIncomingVoiceAction] = useState<'idle' | 'accepting' | 'declining'>('idle')
 	const voiceCallSessionRef = useRef<string | null>(null)
 	const voiceCallOfferRef = useRef<{ callId: string; sessionId: string; sessionKey: string; expiresAt?: number } | null>(null)
 	const voiceCallKeyRef = useRef<Uint8Array | null>(null)
 	const voiceCallPeerSessionRef = useRef<string | null>(null)
 	const voiceCaptureStopRef = useRef<(() => void) | null>(null)
+	const voiceCallStreamRef = useRef<MediaStream | null>(null)
 	const voicePlaybackAudioRef = useRef<HTMLAudioElement | null>(null)
 	const voicePlaybackRef = useRef<VoicePlaybackBuffer | null>(null)
 	const voiceFrameSeqRef = useRef(0)
@@ -1998,6 +2000,22 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 			const key = voiceCallKeyRef.current
 			const targetSessionId = voiceCallPeerSessionRef.current
 			const callId = voiceCallOfferRef.current?.callId || ''
+			voiceCallStreamRef.current = stream
+			setVoiceCallMuted(false)
+			setVoiceLevelSamples([])
+			const AudioContextCtor =
+				window.AudioContext ||
+				(window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+			if (AudioContextCtor) {
+				const audioContext = new AudioContextCtor()
+				const source = audioContext.createMediaStreamSource(stream)
+				const analyser = audioContext.createAnalyser()
+				analyser.fftSize = 256
+				source.connect(analyser)
+				voiceAudioContextRef.current = audioContext
+				voiceAnalyserRef.current = analyser
+				voiceLevelRafRef.current = window.requestAnimationFrame(sampleVoiceLevel)
+			}
 			voiceFrameSeqRef.current = 0
 			voiceCaptureStopRef.current = await startVoiceCapture(stream, key, async (payload) => {
 				const route = chatData.chatData?.routersArmoreds?.trim()
@@ -2048,6 +2066,8 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		const key = channel.sessionKey
 		voiceCallSessionRef.current = sessionId
 		voiceCallKeyRef.current = key
+		setVoiceCallMuted(false)
+		setVoiceLevelSamples([])
 		setVoiceCallState('outgoing')
 		const signal = channel.signal
 		voiceCallOfferRef.current = {
@@ -2067,6 +2087,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		})
 		dispatchNativeSystemCallAction('startSystemCall', {
 			callId: signal.callId,
+			sessionId,
 			peerAddress: toAddress,
 			displayName: chatData.beamio?.username || toAddress,
 		})
@@ -2110,6 +2131,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 					})
 					dispatchNativeSystemCallAction('reportIncomingSystemCall', {
 						callId: signal.callId,
+					sessionId: signal.sessionId,
 						peerAddress: chatData.address,
 						displayName: chatData.beamio?.username || chatData.address,
 					})
@@ -2163,6 +2185,8 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 			const key = channel.sessionKey
 			const sessionId = channel.sessionId
 			voiceCallKeyRef.current = key
+			setVoiceCallMuted(false)
+			setVoiceLevelSamples([])
 			voiceCallSessionRef.current = sessionId
 			voiceCallPeerSessionRef.current = offer.sessionId
 			voiceCallOfferRef.current = {
@@ -2184,6 +2208,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 			})
 			dispatchNativeSystemCallAction('startSystemCall', {
 				callId: offer.callId,
+				sessionId: offer.sessionId,
 				peerAddress: offer.from,
 				displayName: offer.from,
 			})
@@ -2245,6 +2270,17 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		}
 		voiceCaptureStopRef.current?.()
 		voiceCaptureStopRef.current = null
+		voiceCallStreamRef.current = null
+		if (voiceLevelRafRef.current !== null) {
+			window.cancelAnimationFrame(voiceLevelRafRef.current)
+			voiceLevelRafRef.current = null
+		}
+		voiceAnalyserRef.current = null
+		const voiceAudioContext = voiceAudioContextRef.current
+		voiceAudioContextRef.current = null
+		if (voiceAudioContext) void voiceAudioContext.close().catch(() => {})
+		setVoiceLevelSamples([])
+		setVoiceCallMuted(false)
 		voicePlaybackRef.current?.destroy()
 		voicePlaybackRef.current = null
 		voiceCallKeyRef.current = null
@@ -2266,19 +2302,35 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 				endedAt,
 				durationMs: previous?.answeredAt ? Math.max(0, endedAt - previous.answeredAt) : previous?.durationMs,
 			})
-			dispatchNativeSystemCallAction('endSystemCall', { callId })
+			dispatchNativeSystemCallAction('endSystemCall', { callId, sessionId: callSessionId })
 		}
 		setVoiceCallState('ended')
 		window.setTimeout(() => setVoiceCallState('idle'), 300)
 	}, [profiles, toAddress, upsertPhoneCallRecord])
 
+	const toggleVoiceCallMute = useCallback(() => {
+		const nextMuted = !voiceCallMuted
+		voiceCallStreamRef.current?.getAudioTracks().forEach(track => {
+			track.enabled = !nextMuted
+		})
+		setVoiceCallMuted(nextMuted)
+	}, [voiceCallMuted])
+
 	useEffect(() => {
 		const onNativeCallAction = (event: Event) => {
-			const detail = (event as CustomEvent<{ action?: string; callId?: string }>).detail
-			if (!detail?.action || !detail.callId) return
-			if (detail.action === 'callAnswered' && incomingVoiceOffer?.callId === detail.callId) {
+			const detail = (event as CustomEvent<{
+				action?: string
+				callId?: string
+				sessionId?: string
+			}>).detail
+			if (!detail?.action || (!detail.callId && !detail.sessionId)) return
+			const matchesIncoming =
+				Boolean(incomingVoiceOffer) &&
+				((detail.sessionId && incomingVoiceOffer?.sessionId === detail.sessionId) ||
+					(detail.callId && incomingVoiceOffer?.callId === detail.callId))
+			if (detail.action === 'callAnswered' && matchesIncoming) {
 				void acceptVoiceCall()
-			} else if (detail.action === 'callRejected' && incomingVoiceOffer?.callId === detail.callId) {
+			} else if (detail.action === 'callRejected' && matchesIncoming) {
 				void rejectVoiceCall()
 			} else if (detail.action === 'callEnded') {
 				void endVoiceCall()
@@ -3990,6 +4042,20 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		el.scrollTop = el.scrollHeight
 	}, [text])
 
+	const activeVoiceSessionId = voiceCallOfferRef.current?.sessionId || voiceCallSessionRef.current || ''
+	const activeVoiceCallRecord = (Array.isArray(profiles?.[0]?.phoneCalls) ? profiles[0].phoneCalls : [])
+		.find((item: PhoneCallRecord) => item.sessionId === activeVoiceSessionId)
+	const activeVoicePeerTag = (
+		chatData.beamio?.username ||
+		fromBeamio?.username ||
+		(activeVoiceCallRecord?.peerAddress || toAddress)
+	).trim()
+	const activeVoicePeerLabel = activeVoicePeerTag
+		? activeVoicePeerTag.startsWith('@') ? activeVoicePeerTag : `@${activeVoicePeerTag}`
+		: '@Beamio'
+	const currentVoiceLevel = voiceLevelSamples.length
+		? voiceLevelSamples[voiceLevelSamples.length - 1]
+		: 0
 	
 
 
@@ -4021,6 +4087,70 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 							item={fromBeamio}
 							close={() => setShowContactProfile(false)}
 						/>
+					</div>
+				</div>
+			) : null}
+			{voiceCallState === 'outgoing' ? (
+				<div
+					className="fixed inset-0 z-[170] flex flex-col overflow-hidden bg-[#071126] px-6 pb-[max(2rem,env(safe-area-inset-bottom))] pt-[max(5rem,calc(env(safe-area-inset-top)+3rem))] text-white"
+					role="dialog"
+					aria-label="Voice call"
+				>
+					<div className="flex flex-1 flex-col items-center">
+						<p className="text-[11px] font-semibold tracking-[0.24em] text-emerald-300/80">BEAMIO VOICE CALL</p>
+						<h1 className="mt-5 text-3xl font-semibold tracking-tight">
+							{activeVoiceCallRecord?.status === 'answered' ? 'Voice call' : 'Calling'}
+						</h1>
+						<div className="mt-6 inline-flex max-w-full items-center rounded-full border border-white/20 bg-white/10 px-5 py-2.5 text-lg font-semibold shadow-lg backdrop-blur-xl">
+							<span className="truncate">{activeVoicePeerLabel}</span>
+						</div>
+						{activeVoiceCallRecord?.peerAddress ? (
+							<div className="mt-3 max-w-full rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-xs text-slate-300">
+								{activeVoiceCallRecord.peerAddress.slice(0, 6)}…{activeVoiceCallRecord.peerAddress.slice(-4)}
+							</div>
+						) : null}
+						<div className="mt-12 w-full max-w-xl rounded-2xl border border-emerald-300/20 bg-black/35 p-4 shadow-[0_20px_60px_rgba(0,0,0,0.3)]">
+							<div className="mb-3 flex items-center justify-between text-xs text-slate-300">
+								<span className="inline-flex items-center gap-2">
+									<Mic className="h-4 w-4 text-emerald-300" aria-hidden />
+									Microphone
+								</span>
+								<span>{Math.round(currentVoiceLevel * 100)}%</span>
+							</div>
+							<svg
+								viewBox="0 0 240 32"
+								className="h-28 w-full"
+								role="img"
+								aria-label="Microphone volume"
+							>
+								<path d="M0 20H600M0 60H600M0 100H600" stroke="rgba(148,163,184,0.18)" />
+								<path d={voiceWaveformPath(voiceLevelSamples.length ? voiceLevelSamples : Array(64).fill(0.04))} fill="rgba(52,211,153,0.55)" />
+							</svg>
+						</div>
+						<p className="mt-4 text-center text-sm text-slate-300">
+							{voiceCallMuted ? 'Your microphone is muted.' : 'Speak normally. Your microphone is active.'}
+						</p>
+					</div>
+					<div className="flex items-center justify-center gap-5">
+						<button
+							type="button"
+							onClick={toggleVoiceCallMute}
+							className="grid h-14 w-14 place-items-center rounded-full border border-white/20 bg-white/10 text-white shadow-lg backdrop-blur-xl transition active:scale-95"
+							aria-label={voiceCallMuted ? 'Unmute microphone' : 'Mute microphone'}
+							aria-pressed={voiceCallMuted}
+							title={voiceCallMuted ? 'Unmute microphone' : 'Mute microphone'}
+						>
+							{voiceCallMuted ? <VolumeX className="h-6 w-6" aria-hidden /> : <Volume2 className="h-6 w-6" aria-hidden />}
+						</button>
+						<button
+							type="button"
+							onClick={() => void endVoiceCall()}
+							className="grid h-16 w-16 place-items-center rounded-full bg-rose-600 text-white shadow-[0_12px_30px_rgba(225,29,72,0.45)] transition active:scale-95"
+							aria-label="End voice call"
+							title="End voice call"
+						>
+							<Phone className="h-7 w-7 rotate-[135deg]" strokeWidth={2.5} aria-hidden />
+						</button>
 					</div>
 				</div>
 			) : null}

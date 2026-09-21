@@ -10,6 +10,7 @@ export type CashTreesNativeNfcBridge = {
 	scanQr?: (payload: { requestId?: string }) => void
 	/** Opens the native camera UI. Older shells omit this method and use the PWA input fallback. */
 	requestCameraCapture?: (payload: { requestId?: string; mediaType?: 'video' }) => void
+	requestPhotoPicker?: (payload: { requestId?: string }) => void
 	startSystemCall?: (payload: Record<string, unknown>) => void
 	reportIncomingSystemCall?: (payload: Record<string, unknown>) => void
 	endSystemCall?: (payload: Record<string, unknown>) => void
@@ -214,6 +215,28 @@ export function requestNativeCameraCapture(payload: {
 	if (typeof w.CashTreesIOS?.requestCameraCapture === 'function') {
 		try {
 			w.CashTreesIOS.requestCameraCapture(payload)
+			return true
+		} catch {
+			return false
+		}
+	}
+	return false
+}
+
+export function requestNativePhotoPicker(payload: { requestId?: string }): boolean {
+	const w = cashTreesNativeWindow()
+	if (!w) return false
+	if (typeof w.CashTreesIOS?.requestPhotoPicker === 'function') {
+		try {
+			w.CashTreesIOS.requestPhotoPicker(payload)
+			return true
+		} catch {
+			return false
+		}
+	}
+	if (typeof w.CashTreesAndroid?.requestPhotoPicker === 'function') {
+		try {
+			;(w.CashTreesAndroid.requestPhotoPicker as unknown as (json: string) => void)(JSON.stringify(payload))
 			return true
 		} catch {
 			return false

@@ -67,7 +67,7 @@ import { PlusActionMenu } from "./components/PlusActionMenu"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import { searchUsername, storeSystemData, AuthorizationSign } from '@/services/beamio'
 import { fiatPrefix } from '@/services/currency'
-import { dispatchNativeSystemCallAction, getCashTreesNativeNfcBridge, openExternalUrl, requestNativeCameraCapture, saveFileToNative } from '@/utils/cashTreesNativeNfc'
+import { dispatchNativeSystemCallAction, getCashTreesNativeNfcBridge, openExternalUrl, requestNativeCameraCapture, requestNativePhotoPicker, saveFileToNative } from '@/utils/cashTreesNativeNfc'
 import { MessageSendReceiveCard } from "./components/messageSendReceiveCard"
 import { AaMultisigChatRequestCard } from '@/components/chat/AaMultisigChatRequestCard'
 import { ChatShareLinkPreviewCard } from '@/components/chat/ChatShareLinkPreviewCard'
@@ -1820,6 +1820,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 	const cameraInputRef = useRef<HTMLInputElement | null>(null)
 	const cameraRequestIdRef = useRef<string | null>(null)
 	const nativeCameraChunksRef = useRef<{ requestId: string; mimeType: string; chunks: string[] } | null>(null)
+	const nativePhotoChunksRef = useRef<{ requestId: string; mimeType: string; filename?: string; chunks: string[] } | null>(null)
 	const addChatFilesRef = useRef<((incoming: File[], dropFolderHint?: string | null, source?: 'drop' | 'picker' | 'camera') => void | Promise<void>) | null>(null)
 	const [fileError, setFileError] = useState<string | null>(null)
 	const [nativeCameraProcessing, setNativeCameraProcessing] = useState(false)
@@ -1867,7 +1868,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 	}, [chatData.address, profiles, setProfiles])
 
 	useEffect(() => {
-		const addCapturedVideo = (dataUrl: string, mimeType?: string) => {
+		const addCapturedMedia = (dataUrl: string, mimeType?: string, filename?: string) => {
 			// A previous folder/drop failure must not remain visible after the
 			// user successfully starts a new camera capture.
 			setFileError(null)
@@ -1880,7 +1881,8 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 				.then(response => response.blob())
 				.then(blob => {
 					if (!blob.size) throw new Error('empty_camera_video')
-					const file = new File([blob], `camera-${Date.now()}.mp4`, { type: mimeType || blob.type || 'video/mp4' })
+					const resolvedMime = mimeType || blob.type || 'application/octet-stream'
+					const file = new File([blob], filename || `camera-${Date.now()}.${resolvedMime.split('/')[1] || 'bin'}`, { type: resolvedMime })
 					// iOS camera recordings can use a codec that WKWebView can
 					// upload but cannot decode for a local thumbnail. Keep the
 					// upload path intact and skip only the optional thumbnail.
@@ -1899,9 +1901,10 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 				dataUrl?: string
 				data?: string
 				mimeType?: string
+				filename?: string
 				error?: string
 			}>).detail
-			if (!detail?.action?.startsWith('cameraCapture')) return
+			if (!detail?.action?.startsWith('cameraCapture') && !detail?.action?.startsWith('photoPicker')) return
 			if (cameraRequestIdRef.current && detail.requestId && detail.requestId !== cameraRequestIdRef.current) return
 			if (detail.action === 'cameraCaptureStart') {
 				setFileError(null)
@@ -1913,8 +1916,26 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 				}
 				return
 			}
+			if (detail.action === 'photoPickerStart') {
+				setFileError(null)
+				setNativeCameraProcessing(true)
+				nativePhotoChunksRef.current = {
+					requestId: detail.requestId || cameraRequestIdRef.current || '',
+					mimeType: detail.mimeType || 'application/octet-stream',
+					filename: detail.filename,
+					chunks: [],
+				}
+				return
+			}
 			if (detail.action === 'cameraCaptureChunk') {
 				const transfer = nativeCameraChunksRef.current
+				if (transfer && transfer.requestId === (detail.requestId || transfer.requestId)) {
+					transfer.chunks.push(detail.data || '')
+				}
+				return
+			}
+			if (detail.action === 'photoPickerChunk') {
+				const transfer = nativePhotoChunksRef.current
 				if (transfer && transfer.requestId === (detail.requestId || transfer.requestId)) {
 					transfer.chunks.push(detail.data || '')
 				}
@@ -1924,10 +1945,20 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 				const transfer = nativeCameraChunksRef.current
 				nativeCameraChunksRef.current = null
 				cameraRequestIdRef.current = null
-				if (transfer) addCapturedVideo(`data:${transfer.mimeType};base64,${transfer.chunks.join('')}`, transfer.mimeType)
+				if (transfer) addCapturedMedia(`data:${transfer.mimeType};base64,${transfer.chunks.join('')}`, transfer.mimeType)
 				else {
 					setNativeCameraProcessing(false)
 					setFileError('Camera returned no video. Please try again.')
+				}
+				return
+			}
+			if (detail.action === 'photoPickerEnd') {
+				const transfer = nativePhotoChunksRef.current
+				nativePhotoChunksRef.current = null
+				if (transfer) addCapturedMedia(`data:${transfer.mimeType};base64,${transfer.chunks.join('')}`, transfer.mimeType, transfer.filename)
+				else {
+					setNativeCameraProcessing(false)
+					setFileError('The selected photo or video could not be read. Please try again.')
 				}
 				return
 			}
@@ -1937,7 +1968,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 				setFileError(detail.error === 'cancelled' ? 'Camera capture was cancelled.' : 'Camera capture failed. Please try again.')
 				return
 			}
-			addCapturedVideo(detail.dataUrl || '', detail.mimeType)
+			addCapturedMedia(detail.dataUrl || '', detail.mimeType)
 		}
 		window.addEventListener('cashtreesandroid', handleNativeCameraResult)
 		window.addEventListener('cashtreesios', handleNativeCameraResult)
@@ -4727,7 +4758,10 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 								onClose={() => setPlusOpen(false)}
 								anchorRef={plusBtnRef}
 								onAttachFiles={() => fileInputRef.current?.click()}
-								onSelectPhotos={() => photoInputRef.current?.click()}
+								onSelectPhotos={() => {
+									const requestId = `photo-${Date.now()}`
+									if (!requestNativePhotoPicker({ requestId })) photoInputRef.current?.click()
+								}}
 								onCaptureCamera={openChatCamera}
 								
 							/>

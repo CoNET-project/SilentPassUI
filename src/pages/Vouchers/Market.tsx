@@ -1438,6 +1438,7 @@ function renderDiscoverNumericEmphasis(value: string) {
 function DiscoverMerchantFoodBeverageProspectPassPanel({
 	passTitle,
 	chargePercent,
+	topupRewardPtPercent,
 	customerLoyaltyPointsEnabled,
 	percentTopupWelcomeLine,
 	balancePrefix,
@@ -1457,6 +1458,7 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 }: {
 	passTitle: string
 	chargePercent: number | null
+	topupRewardPtPercent: number | null
 	customerLoyaltyPointsEnabled: boolean
 	/** Percent top-up promo only (not fixed / fixedTiers). */
 	percentTopupWelcomeLine: string | null
@@ -1489,7 +1491,15 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 	const imageUrl = (backgroundImageUrl ?? '').trim()
 	const hasImage = Boolean(imageUrl)
 	const chargeWelcomeLine = pct != null ? `${pct}% Reward PT on Every Order` : null
-	const welcomeRewardLine = topupLine ?? chargeWelcomeLine
+	const topupRewardPtLine =
+		topupRewardPtPercent != null &&
+		Number.isFinite(topupRewardPtPercent) &&
+		topupRewardPtPercent > 0
+			? `Earn ${Number(topupRewardPtPercent.toFixed(2)).toString()}% Reward PT on every top-up.`
+			: null
+	const welcomeRewardLine = [topupLine, topupRewardPtLine, chargeWelcomeLine]
+		.filter((line): line is string => Boolean(line))
+		.join(' · ') || null
 
 	return (
 		<div className="flex flex-col gap-4" aria-label={`${nameDisplay} member pass preview`}>
@@ -1508,7 +1518,7 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 						<div className="absolute inset-0 bg-slate-950/20" />
 					</div>
 				) : null}
-				{logoUrl ? (
+				{!hasImage && logoUrl ? (
 					<div className="relative z-10 flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl bg-white/90 p-2 shadow-[0_8px_22px_rgba(15,23,42,0.3)] ring-1 ring-white/70">
 						<DiscoverFeaturedBrandLogoImage
 							src={logoUrl}
@@ -6278,6 +6288,13 @@ function DiscoverMerchantDetailFullScreen({
 			currency: displayCurrency,
 		})
 	}, [showFoodBeverageProspectPass, merchantMetadataRoot, displayCurrency])
+	const foodBeverageTopupRewardPtPercent = useMemo(() => {
+		if (!showFoodBeverageProspectPass) return null
+		const { topupPercent } = parseDiscoverActorRewardPercentsFromMetadata(merchantMetadataRoot)
+		return topupPercent != null && Number.isFinite(topupPercent) && topupPercent > 0
+			? topupPercent
+			: null
+	}, [showFoodBeverageProspectPass, merchantMetadataRoot])
 	const memberRechargeFooterTip = useMemo(() => {
 		const { chargePercent } = parseDiscoverActorRewardPercentsFromMetadata(merchantMetadataRoot)
 		if (chargePercent != null && Number.isFinite(chargePercent) && chargePercent > 0) {
@@ -8312,6 +8329,7 @@ function DiscoverMerchantDetailFullScreen({
 						<DiscoverMerchantFoodBeverageProspectPassPanel
 							passTitle={passTitle}
 							chargePercent={foodBeverageChargePercent}
+							topupRewardPtPercent={foodBeverageTopupRewardPtPercent}
 							customerLoyaltyPointsEnabled={customerLoyaltyPointsEnabled}
 							percentTopupWelcomeLine={foodBeveragePercentTopupWelcomeLine}
 							balancePrefix={balancePrefix || 'CA$'}

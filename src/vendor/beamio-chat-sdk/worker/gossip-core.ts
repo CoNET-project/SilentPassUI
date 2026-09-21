@@ -650,7 +650,16 @@ export class GossipCore {
 		return this.postMailboxCommand(routerArmoredPublicKey, command)
 	}
 
-	async startVoiceListen(sessionId: string): Promise<boolean> {
+	async startVoiceListen(
+		sessionId: string,
+		pushWakeup?: {
+			callId: string
+			calleeEoa: string
+			expiresAt: number
+			timestamp: number
+			signature: string
+		},
+	): Promise<boolean> {
 		if (this.paused || !this.cfg || !this.wallet || !sessionId) return false
 		this.voiceListenController?.abort('voice_replace')
 		const route = this.cfg.identity.ownRouteArmoredPublicKey || ''
@@ -663,6 +672,13 @@ export class GossipCore {
 			walletAddress: this.wallet.address,
 			sessionId,
 			timestamp: Math.floor(Date.now() / 1000),
+			...(pushWakeup ? {
+				callId: pushWakeup.callId,
+				targetWallet: pushWakeup.calleeEoa,
+				expiresAt: pushWakeup.expiresAt,
+				pushTimestamp: pushWakeup.timestamp,
+				pushSignature: pushWakeup.signature,
+			} : {}),
 		}, route)
 		const controller = new AbortController()
 		this.voiceListenController = controller

@@ -1615,120 +1615,6 @@ export const queryMailboxWalletOnline = async (opts: {
 	}
 }
 
-/** Send a minimal, route-encrypted voice-call wake-up command to the callee's mailbox. */
-export const sendVoiceCallPushViaMailbox = async (opts: {
-	callId: string
-	sessionId: string
-	calleeEoa: string
-	calleeRouteArmored: string
-	privateKeyArmor: string
-	expiresAt: number
-	entryNodes: nodeInfo[]
-	mailboxDomains?: Set<string>
-}): Promise<boolean> => {
-	if (!ethers.isAddress(opts.calleeEoa) || !opts.calleeRouteArmored?.trim() || !opts.privateKeyArmor || !opts.entryNodes.length) return false
-	try {
-		const wallet = new ethers.Wallet(opts.privateKeyArmor)
-		const timestamp = Math.floor(Date.now() / 1000)
-		const apiMessage = [
-			'Beamio voiceCallPush',
-			`callId:${opts.callId}`,
-			`sessionId:${opts.sessionId}`,
-			`callerEoa:${wallet.address.toLowerCase()}`,
-			`calleeEoa:${ethers.getAddress(opts.calleeEoa).toLowerCase()}`,
-			`expiresAt:${opts.expiresAt}`,
-			`timestamp:${timestamp}`,
-		].join('\n')
-		const signature = await wallet.signMessage(apiMessage)
-		const command = {
-			command: 'voice_call_push',
-			walletAddress: wallet.address,
-			targetWallet: ethers.getAddress(opts.calleeEoa),
-			callId: opts.callId,
-			sessionId: opts.sessionId,
-			expiresAt: opts.expiresAt,
-			timestamp,
-			signature,
-		}
-		const message = JSON.stringify(command)
-		const signMessage = await wallet.signMessage(message)
-		const encryptionKeys = await readKey({ armoredKey: opts.calleeRouteArmored })
-		const pgpMsg = await createMessage({
-			text: Buffer.from(JSON.stringify({ message, signMessage })).toString('base64'),
-		})
-		const encrypted = await encrypt({
-			message: pgpMsg,
-			encryptionKeys,
-			config: { preferredCompressionAlgorithm: enums.compression.zlib },
-		})
-		const armored = typeof encrypted === 'string' ? encrypted : String((encrypted as any)?.data ?? encrypted)
-		const mailboxDomains = opts.mailboxDomains || new Set<string>()
-		const pool = opts.entryNodes.filter(n => n?.domain && !mailboxDomains.has(n.domain))
-		const targets = getRandomNodes(pool.length ? pool : opts.entryNodes, Math.min(4, pool.length || opts.entryNodes.length))
-		const results = await Promise.all(targets.map(async node => {
-			try {
-				const res = await postWithTimeout(`https://${node.domain}.conet.network/post`, {
-					method: 'POST',
-					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify({ data: armored }),
-					referrerPolicy: 'no-referrer',
-				}, 10_000)
-				return res.ok
-			} catch {
-				return false
-			}
-		}))
-		return results.some(Boolean)
-	} catch {
-		return false
-	}
-}
-
-/** Chat-module entry point: sends the offer and automatically registers/wakes native call devices. */
-const sendVoiceCallPushDirect = async (signal: {
-	callId: string
-	sessionId: string
-	from: string
-	to: string
-	expiresAt: number
-}, privateKey: string): Promise<boolean> => {
-	try {
-		const wallet = new ethers.Wallet(privateKey)
-		const timestamp = Math.floor(Date.now() / 1000)
-		const message = [
-			'Beamio voiceCallPush',
-			`callId:${signal.callId}`,
-			`sessionId:${signal.sessionId}`,
-			`callerEoa:${wallet.address.toLowerCase()}`,
-			`calleeEoa:${ethers.getAddress(signal.to).toLowerCase()}`,
-			`expiresAt:${signal.expiresAt}`,
-			`timestamp:${timestamp}`,
-		].join('\n')
-		const signature = await wallet.signMessage(message)
-		const res = await postWithTimeout(`${beamioApi}/api/voiceCallPush`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({
-				callId: signal.callId,
-				sessionId: signal.sessionId,
-				callerEoa: signal.from,
-				calleeEoa: signal.to,
-				expiresAt: signal.expiresAt,
-				timestamp,
-				signature,
-			}),
-		}, 10_000)
-		if (!res.ok) {
-			console.warn(`[VoiceCall] direct push endpoint returned HTTP ${res.status}`)
-			return false
-		}
-		return true
-	} catch (error) {
-		console.warn('[VoiceCall] direct push endpoint unavailable', error)
-		return false
-	}
-}
-
 export const sendVoiceCallOffer = async (opts: {
 	recipientPgp: string
 	recipientRoute: string
@@ -1751,18 +1637,6 @@ export const sendVoiceCallOffer = async (opts: {
 	)
 	if (!sent) return false
 	ensureNativePushBoundForWallet()
-	// The mailbox work package is the signaling fallback. The direct endpoint
-	// is required to wake native shells through FCM/APNs when Chat is closed.
-	void sendVoiceCallPushDirect(opts.signal, opts.privateKey)
-	void sendVoiceCallPushViaMailbox({
-		callId: opts.signal.callId,
-		sessionId: opts.signal.sessionId,
-		calleeEoa: opts.signal.to,
-		calleeRouteArmored: opts.recipientRoute,
-		privateKeyArmor: opts.privateKey,
-		expiresAt: opts.signal.expiresAt,
-		entryNodes: opts.entryNodes?.length ? opts.entryNodes : opts.allNodes,
-	})
 	return true
 }
 

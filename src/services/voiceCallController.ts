@@ -94,7 +94,6 @@ export function createVoiceCallController(options: VoiceCallControllerOptions) {
 		const sessionId = randomVoiceId('voice')
 		const sessionKey = createVoiceSessionKey()
 		selectedEntries = getRandomNodes(options.allNodes, Math.min(4, options.allNodes.length))
-		if (!await startWorkerVoiceListen(sessionId)) return null
 		const signal = makeVoiceCallSignal({
 			type: 'voice_call_offer_v1',
 			callId: options.localCallId,
@@ -106,6 +105,25 @@ export function createVoiceCallController(options: VoiceCallControllerOptions) {
 			entryDomains: selectedEntries.map(node => node.domain),
 			codec: 'audio/webm;codecs=opus',
 		})
+		const callerWallet = new ethers.Wallet(options.privateKey)
+		const pushTimestamp = Math.floor(Date.now() / 1000)
+		const pushMessage = [
+			'Beamio voiceCallPush',
+			`callId:${signal.callId}`,
+			`sessionId:${signal.sessionId}`,
+			`callerEoa:${callerWallet.address.toLowerCase()}`,
+			`calleeEoa:${ethers.getAddress(signal.to).toLowerCase()}`,
+			`expiresAt:${signal.expiresAt}`,
+			`timestamp:${pushTimestamp}`,
+		].join('\n')
+		const pushSignature = await callerWallet.signMessage(pushMessage)
+		if (!await startWorkerVoiceListen(sessionId, {
+			callId: signal.callId,
+			calleeEoa: signal.to,
+			expiresAt: signal.expiresAt,
+			timestamp: pushTimestamp,
+			signature: pushSignature,
+		})) return null
 		const sent = await sendVoiceCallOffer({
 			recipientPgp: options.peerPgp,
 			recipientRoute: options.peerRoute,

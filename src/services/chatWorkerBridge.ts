@@ -295,10 +295,19 @@ export const startWorkerGossipListen = async (p: StartWorkerGossipParams): Promi
 	}
 }
 
-export const startWorkerVoiceListen = async (sessionId: string): Promise<boolean> => {
+export const startWorkerVoiceListen = async (
+	sessionId: string,
+	pushWakeup?: {
+		callId: string
+		calleeEoa: string
+		expiresAt: number
+		timestamp: number
+		signature: string
+	},
+): Promise<boolean> => {
 	if (!activeClient) return false
 	try {
-		return await activeClient.startVoiceListen(sessionId)
+		return await activeClient.startVoiceListen(sessionId, pushWakeup)
 	} catch {
 		return false
 	}

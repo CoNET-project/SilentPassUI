@@ -180,8 +180,17 @@ class BeamioChatClientImpl implements BeamioChatClient {
 		return !!r?.sent
 	}
 
-	async startVoiceListen(sessionId: string): Promise<boolean> {
-		const r = await this.request<{ started: boolean }>({ type: 'voiceListen', reqId: 0, sessionId })
+	async startVoiceListen(
+		sessionId: string,
+		pushWakeup?: {
+			callId: string
+			calleeEoa: string
+			expiresAt: number
+			timestamp: number
+			signature: string
+		},
+	): Promise<boolean> {
+		const r = await this.request<{ started: boolean }>({ type: 'voiceListen', reqId: 0, sessionId, pushWakeup })
 		return !!r?.started
 	}
 

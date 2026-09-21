@@ -285,7 +285,16 @@ export interface BeamioChatClient {
 		command: Record<string, unknown>,
 	): Promise<boolean>
 	sendVoiceFrame(routerArmoredPublicKey: string, frame: Record<string, unknown>): Promise<boolean>
-	startVoiceListen(sessionId: string): Promise<boolean>
+	startVoiceListen(
+		sessionId: string,
+		pushWakeup?: {
+			callId: string
+			calleeEoa: string
+			expiresAt: number
+			timestamp: number
+			signature: string
+		},
+	): Promise<boolean>
 	stopVoiceListen(sessionId: string): Promise<boolean>
 	on<K extends ChatEventName>(event: K, cb: ChatEventListener<K>): Unsubscribe
 	/** Probe mailbox listen-pool presence for the given contacts. */

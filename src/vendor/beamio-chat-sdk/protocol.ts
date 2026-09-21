@@ -59,7 +59,18 @@ export type WorkerCommand =
 			routerArmoredPublicKey: string
 			frame: Record<string, unknown>
 	  }
-	| { type: 'voiceListen'; reqId: number; sessionId: string }
+	| {
+			type: 'voiceListen'
+			reqId: number
+			sessionId: string
+			pushWakeup?: {
+				callId: string
+				calleeEoa: string
+				expiresAt: number
+				timestamp: number
+				signature: string
+			}
+	  }
 	| { type: 'voiceUnlisten'; reqId: number; sessionId: string }
 	| { type: 'pause' }
 	| { type: 'resume' }

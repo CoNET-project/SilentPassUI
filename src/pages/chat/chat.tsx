@@ -2909,6 +2909,16 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		const myChat = chats.find(n => String(n.address || "").toLowerCase() === addr)
 		if (!myChat) return
 
+		// Profile updates are frequent while the gossip/history daemons are
+		// active. Capture the viewport before the async decrypt work starts:
+		// rehydrating the same conversation must never force a native WebView
+		// back to the bottom and produce a visible periodic jump.
+		const currentScroller = scrollRef.current
+		const wasAtBottom = !didInitialScrollRef.current || !!(
+			currentScroller &&
+			currentScroller.scrollHeight - currentScroller.scrollTop - currentScroller.clientHeight <= 24
+		)
+
 		// profiles/落盘的消息（“远端”）
 		const remoteStored = Array.isArray(myChat.messages) ? myChat.messages : []
 		const remote = await Promise.all(remoteStored.map(async message => {
@@ -2972,13 +2982,32 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 			.slice()
 			.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0))
 
+		const messageViewportSignature = (message: ChatMessage) => JSON.stringify({
+			id: message.id,
+			sendId: message.sendId,
+			createdAt: message.createdAt,
+			status: message.status,
+			text: message.text,
+			fileHash: message.fileMessage?.fragmentHash || message.fileMessage?.archiveName,
+			voiceHash: message.voiceMessage?.fragmentHash,
+		})
+		const previousSignatures = (messagesRef.current || []).map(messageViewportSignature)
+		const nextSignatures = next.map(messageViewportSignature)
+		const changed =
+			previousSignatures.length !== nextSignatures.length ||
+			previousSignatures.some((signature, index) => signature !== nextSignatures[index])
+		if (!changed) return
+
 		// Repair messages that survived only in this device's local chat mirror.
 		// HistoryStore de-duplicates by sendId before uploading, so this is safe
 		// to run whenever the conversation is opened/refreshed.
 		backfillChatMessagesToHistory(chatData.address, next)
 
 		// ✅ 3) 刷 UI
-		pendingInitialScrollRef.current = true
+		// Only pin after a real message change, and only when the user was
+		// already at the bottom (or this is the first hydration). A profile
+		// refresh must preserve a user's reading position.
+		pendingInitialScrollRef.current = wasAtBottom
 		messagesRef.current = next
 		setMessages(next)
 	}

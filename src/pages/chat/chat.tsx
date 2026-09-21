@@ -102,6 +102,8 @@ import {
 } from '@/utils/voiceMessage'
 import {
 	decryptVoiceFrame,
+	claimIncomingVoiceCallReport,
+	hasReportedIncomingVoiceCall,
 	randomVoiceId,
 	type VoiceCallSignal,
 } from '@/utils/voiceCallSession'
@@ -1812,7 +1814,6 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 	const voicePlaybackAudioRef = useRef<HTMLAudioElement | null>(null)
 	const voicePlaybackRef = useRef<VoicePlaybackBuffer | null>(null)
 	const voiceFrameSeqRef = useRef(0)
-	const reportedIncomingCallIdsRef = useRef(new Set<string>())
 	const voiceControllerRef = useRef<VoiceCallController | null>(null)
 	const [incomingVoiceOffer, setIncomingVoiceOffer] = useState<Record<string, any> | null>(null)
 	const [fileJobs, setFileJobs] = useState<ChatFileJob[]>([])
@@ -2088,8 +2089,9 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 					return
 				}
 				setIncomingVoiceOffer(previous => previous?.callId === signal.callId ? previous : signal)
-				if (!reportedIncomingCallIdsRef.current.has(signal.sessionId)) {
-					reportedIncomingCallIdsRef.current.add(signal.sessionId)
+				const alreadyReported = hasReportedIncomingVoiceCall(signal.callId, signal.sessionId)
+				if (!alreadyReported) {
+					claimIncomingVoiceCallReport(signal.callId, signal.sessionId)
 					upsertPhoneCallRecord({
 						callId: signal.callId,
 						sessionId: signal.sessionId,

@@ -14,6 +14,19 @@ export type VoiceCallSignal = {
 	reason?: string
 }
 
+const reportedIncomingVoiceCallIds = new Set<string>()
+
+export function claimIncomingVoiceCallReport(callId: string, sessionId: string): boolean {
+	const key = `${callId.trim()}:${sessionId.trim()}`
+	if (!callId.trim() || !sessionId.trim() || reportedIncomingVoiceCallIds.has(key)) return false
+	reportedIncomingVoiceCallIds.add(key)
+	return true
+}
+
+export function hasReportedIncomingVoiceCall(callId: string, sessionId: string): boolean {
+	return reportedIncomingVoiceCallIds.has(`${callId.trim()}:${sessionId.trim()}`)
+}
+
 export const VOICE_MAX_FRAME_B64 = 12_000
 export const VOICE_FRAME_TIMESTAMP_SKEW_SEC = 30
 export const VOICE_CALL_MAX_DURATION_MS = 15 * 60 * 1000

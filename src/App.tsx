@@ -5,7 +5,7 @@ import { useDaemonContext } from "./providers/DaemonProvider"
 import { useBeamioTagDatabase } from "./providers/BeamioTagDatabaseProvider"
 import Footer from "@/components/Footer"
 import EoaUsdcStripeReturnHost from "@/components/addUSDC/EoaUsdcStripeReturnHost"
-import { openExternalUrl } from "@/utils/cashTreesNativeNfc"
+import { dispatchNativeSystemCallAction, openExternalUrl } from "@/utils/cashTreesNativeNfc"
 import { clearOfflineChatAlertsViaBridge } from "@/utils/cashTreesNativeAppStateBridge"
 import SearchInputWithDropdown from "@/components/Home/SearchBarWithResults"
 import AppEntryGate from "@/components/AppEntryGate"
@@ -101,6 +101,7 @@ import { ingestAaMultisigFromChat } from '@/utils/aaMultisigIngest'
 import { tu } from '@/locale/beamioLocale'
 import { mapServerError } from '@/locale/mapServerError'
 import { installPwaLifecycleRecovery } from '@/utils/pwaLifecycleRecovery'
+import { claimIncomingVoiceCallReport } from '@/utils/voiceCallSession'
 
 global.Buffer = require("buffer").Buffer
 
@@ -1338,6 +1339,43 @@ function AppShell() {
 				continue
 			}
 			const signAddr = sign
+
+			// Voice offers can arrive while the user is on the Chat list (or another
+			// page). Report them globally so Android Telecom is not dependent on
+			// mounting the conversation page first.
+			try {
+				const signal = JSON.parse(displayText) as {
+					type?: string
+					callId?: string
+					sessionId?: string
+					expiresAt?: number
+				}
+				if (
+					signal.type === 'voice_call_offer_v1' &&
+					typeof signal.callId === 'string' &&
+					typeof signal.sessionId === 'string' &&
+					Number(signal.expiresAt) > Date.now()
+				) {
+					const previousCall = (Array.isArray(profile.phoneCalls) ? profile.phoneCalls : []).find(
+						(item: any) =>
+							item.callId === signal.callId ||
+							item.sessionId === signal.sessionId,
+					)
+					const terminalStatuses = new Set(['declined', 'ended', 'answered', 'missed'])
+					if (
+						!terminalStatuses.has(String(previousCall?.status || '')) &&
+						claimIncomingVoiceCallReport(signal.callId, signal.sessionId)
+					) {
+						dispatchNativeSystemCallAction('reportIncomingSystemCall', {
+							callId: signal.callId,
+							peerAddress: signAddr,
+							displayName: signAddr,
+						})
+					}
+				}
+			} catch {
+				/* Ordinary chat text is not a voice offer. */
+			}
 
 			// Delivery receipt → mark sender bubble Delivered; never a chat bubble / unread.
 			// Still mailbox-ACK this armor (cancels offline APNs); do NOT emit another sender receipt.

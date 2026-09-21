@@ -42,6 +42,16 @@ export function EmbeddedPwaUpdateBanner(): React.ReactElement | null {
 				setError('')
 				return
 			}
+			// A native shell may have already consumed or discarded the staged
+			// bundle while the page was being recreated. Do not keep a stale
+			// "Update ready" banner visible when the bridge says no bundle
+			// remains; the next native poll can advertise it again.
+			const actualPendingVersion = readEmbeddedPwaPendingVersion()
+			if (!actualPendingVersion && applyError === 'No staged update') {
+				setPendingVersion('')
+				setError('')
+				return
+			}
 			setError(applyError || tu('update_failed'))
 		})
 

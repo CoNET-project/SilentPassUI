@@ -340,7 +340,7 @@ const RecoveryQRScreen = ({
             </div>
 
             <div className="flex w-full items-center justify-between gap-3 rounded-xl border border-[#e1e7f6] bg-[#f0f3ff] px-4 py-3 [@media(max-height:560px)]:px-3 [@media(max-height:560px)]:py-2.5">
-              <span className="min-w-0 flex-1 select-all break-all font-mono text-xs font-semibold tracking-widest text-[#171c26] uppercase [@media(max-height:560px)]:text-[11px]">
+              <span className="min-w-0 flex-1 select-all break-all font-mono text-xs font-semibold tracking-widest text-[#171c26] [@media(max-height:560px)]:text-[11px]">
                 {recoveryCode || '—'}
               </span>
               <Lock className="h-[18px] w-[18px] shrink-0 text-[#1562f0]" strokeWidth={2.25} aria-hidden />

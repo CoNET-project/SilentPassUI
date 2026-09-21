@@ -1807,7 +1807,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 	const [voiceCallState, setVoiceCallState] = useState<'idle' | 'outgoing' | 'ended'>('idle')
 	const [incomingVoiceAction, setIncomingVoiceAction] = useState<'idle' | 'accepting' | 'declining'>('idle')
 	const voiceCallSessionRef = useRef<string | null>(null)
-	const voiceCallOfferRef = useRef<{ callId: string; sessionId: string; sessionKey: string } | null>(null)
+	const voiceCallOfferRef = useRef<{ callId: string; sessionId: string; sessionKey: string; expiresAt?: number } | null>(null)
 	const voiceCallKeyRef = useRef<Uint8Array | null>(null)
 	const voiceCallPeerSessionRef = useRef<string | null>(null)
 	const voiceCaptureStopRef = useRef<(() => void) | null>(null)
@@ -2048,7 +2048,12 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		voiceCallKeyRef.current = key
 		setVoiceCallState('outgoing')
 		const signal = channel.signal
-		voiceCallOfferRef.current = { callId: signal.callId, sessionId, sessionKey: signal.sessionKey || '' }
+		voiceCallOfferRef.current = {
+			callId: signal.callId,
+			sessionId,
+			sessionKey: signal.sessionKey || '',
+			expiresAt: signal.expiresAt,
+		}
 		upsertPhoneCallRecord({
 			callId: signal.callId,
 			sessionId,
@@ -2056,6 +2061,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 			direction: 'outgoing',
 			status: 'ringing',
 			createdAt: Date.now(),
+			expiresAt: signal.expiresAt,
 		})
 		dispatchNativeSystemCallAction('startSystemCall', {
 			callId: signal.callId,
@@ -2099,6 +2105,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 						direction: 'incoming',
 						status: 'ringing',
 						createdAt: Date.now(),
+						expiresAt: signal.expiresAt,
 					})
 					dispatchNativeSystemCallAction('reportIncomingSystemCall', {
 						callId: signal.callId,
@@ -2148,7 +2155,12 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 			voiceCallKeyRef.current = key
 			voiceCallSessionRef.current = sessionId
 			voiceCallPeerSessionRef.current = offer.sessionId
-			voiceCallOfferRef.current = { callId: channel.callId, sessionId: offer.sessionId, sessionKey: offer.sessionKey }
+			voiceCallOfferRef.current = {
+				callId: channel.callId,
+				sessionId: offer.sessionId,
+				sessionKey: offer.sessionKey,
+				expiresAt: offer.expiresAt,
+			}
 			setIncomingVoiceOffer(null)
 			setVoiceCallState('outgoing')
 			upsertPhoneCallRecord({
@@ -2211,7 +2223,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		void rejectVoiceCall()
 	})
 
-	const endVoiceCall = useCallback(async () => {
+	const endVoiceCall = useCallback(async (requestedStatus?: PhoneCallRecord['status']) => {
 		const sessionId = voiceCallSessionRef.current
 		const callId = voiceCallOfferRef.current?.callId
 		const callSessionId = voiceCallOfferRef.current?.sessionId || sessionId || ''
@@ -2229,12 +2241,16 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		voiceCallPeerSessionRef.current = null
 		voiceCallSessionRef.current = null
 		if (callId) {
+			const previous = (Array.isArray(profiles?.[0]?.phoneCalls) ? profiles[0].phoneCalls : [])
+				.find(item => item.callId === callId)
+			const status = requestedStatus
+				|| (previous?.status === 'ringing' ? 'cancelled' : previous?.status === 'missed' ? 'missed' : 'ended')
 			upsertPhoneCallRecord({
 				callId,
 				sessionId: callSessionId,
 				peerAddress: toAddress,
 				direction: 'outgoing',
-				status: 'ended',
+				status,
 				createdAt: Date.now(),
 				endedAt: Date.now(),
 			})
@@ -2242,7 +2258,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		}
 		setVoiceCallState('ended')
 		window.setTimeout(() => setVoiceCallState('idle'), 300)
-	}, [toAddress, upsertPhoneCallRecord])
+	}, [profiles, toAddress, upsertPhoneCallRecord])
 
 	useEffect(() => {
 		const onNativeCallAction = (event: Event) => {
@@ -2263,6 +2279,40 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 			window.removeEventListener('cashtreesandroid', onNativeCallAction)
 		}
 	}, [acceptVoiceCall, endVoiceCall, incomingVoiceOffer, rejectVoiceCall])
+
+	// Turn an unanswered offer into an explicit chat record instead of leaving
+	// the protocol message as an empty bubble.
+	useEffect(() => {
+		const incoming = incomingVoiceOffer
+		const outgoing = voiceCallState === 'outgoing' ? voiceCallOfferRef.current : null
+		const expiresAt = Number(incoming?.expiresAt || outgoing?.expiresAt || 0)
+		if (!expiresAt || expiresAt <= Date.now()) return
+
+		const timer = window.setTimeout(() => {
+			if (incoming?.callId) {
+				const current = (Array.isArray(profiles?.[0]?.phoneCalls) ? profiles[0].phoneCalls : [])
+					.find(item => item.callId === incoming.callId)
+				if (current?.status === 'ringing') {
+					upsertPhoneCallRecord({
+						...current,
+						status: 'missed',
+						endedAt: Date.now(),
+					})
+					dispatchNativeSystemCallAction('endSystemCall', { callId: incoming.callId })
+					setIncomingVoiceOffer(null)
+				}
+				return
+			}
+
+			const callId = outgoing?.callId
+			if (!callId) return
+			const current = (Array.isArray(profiles?.[0]?.phoneCalls) ? profiles[0].phoneCalls : [])
+				.find(item => item.callId === callId)
+			if (current?.status === 'ringing') void endVoiceCall('missed')
+		}, Math.max(0, expiresAt - Date.now()))
+
+		return () => window.clearTimeout(timer)
+	}, [endVoiceCall, incomingVoiceOffer, profiles, upsertPhoneCallRecord, voiceCallState])
 
 	useEffect(() => {
 		const audio = voicePlaybackAudioRef.current
@@ -2394,18 +2444,35 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 
 	/** 仅展示“正文”消息（含文字或 paymentCard）；带 reply 的 reaction 消息不单独成行，用于在目标消息上显示 icon */
 	const displayableMessages = useMemo(() => {
-		return (messages || []).filter(m => {
+		const existingCallIds = new Set(
+			(messages || [])
+				.map(message => message.callRecord?.callId)
+				.filter((callId): callId is string => !!callId),
+		)
+		const currentChatCalls = (Array.isArray(profiles?.[0]?.phoneCalls) ? profiles[0].phoneCalls : [])
+			.filter(record => record.peerAddress?.toLowerCase() === chatData.address?.toLowerCase())
+			.filter(record => !existingCallIds.has(record.callId))
+			.map(record => ({
+				id: `phone_${record.callId}`,
+				sendId: `phone:${record.callId}:${record.status}`,
+				from: record.direction === 'outgoing' ? 'me' : 'them',
+				text: '',
+				createdAt: record.createdAt,
+				callRecord: record,
+			} satisfies ChatMessage))
+
+		return [...(messages || []), ...currentChatCalls].filter(m => {
 			if (m.text) {
 				try {
 					const parsed = JSON.parse(m.text) as { type?: unknown }
-					if (typeof parsed.type === 'string' && parsed.type.startsWith('voice_call_')) return false
+					if (typeof parsed.type === 'string' && parsed.type.startsWith('voice_')) return false
 				} catch {
 					/* ordinary text */
 				}
 			}
 			return !m.reply || !!m.text || !!m.paymentCard || !!m.voiceMessage || !!m.fileMessage
 		})
-	}, [messages])
+	}, [chatData.address, messages, profiles])
 
 	const sections = useMemo(() => {
 		return groupChatMessages(displayableMessages, new Date())
@@ -4167,6 +4234,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 										const hasMultisigCard = !!multisigPreview
 										const hasCard = !!m.paymentCard
 										const hasVoice = !!m.voiceMessage
+										const hasCallRecord = !!m.callRecord
 										const hasFile = !!m.fileMessage
 										const shareUrl =
 											!hasMultisigCard && !hasCard && isPrimarilyBeamioShareLinkMessage(m.text)
@@ -4207,7 +4275,46 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 											className={["w-full flex mb-2", isMe ? "justify-end" : "justify-start"].join(" ")}
 										>
 											<div className="max-w-[78%] sm:max-w-[62%]">
-											{hasFile && m.fileMessage ? (
+											{hasCallRecord && m.callRecord ? (
+												(() => {
+													const record = m.callRecord
+													const statusText =
+														record.status === 'ringing'
+															? record.direction === 'outgoing' ? 'Calling…' : 'Incoming call'
+															: record.status === 'missed'
+																? 'No answer'
+																: record.status === 'declined'
+																	? 'Call declined'
+																	: record.status === 'cancelled'
+																		? 'Call cancelled'
+																		: record.status === 'failed'
+																			? 'Call failed'
+																			: record.status === 'answered'
+																				? 'Voice call'
+																				: 'Call ended'
+													const statusClass =
+														record.status === 'missed' || record.status === 'declined' || record.status === 'failed'
+															? 'text-rose-600'
+															: record.status === 'ringing'
+																? 'text-[#1652f0]'
+																: 'text-slate-600'
+													return (
+														<div className="flex min-w-[190px] items-center gap-3 rounded-2xl bg-white/90 px-4 py-3 shadow-[0_4px_16px_rgba(15,23,42,0.08)] ring-1 ring-black/5">
+															<div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
+																record.status === 'missed' || record.status === 'declined'
+																	? 'bg-rose-50'
+																	: 'bg-[#e9edff]'
+															}`}>
+																<Phone className={`h-4.5 w-4.5 ${statusClass}`} strokeWidth={2.25} aria-hidden />
+															</div>
+															<div className="min-w-0">
+																<div className={`text-sm font-semibold ${statusClass}`}>{statusText}</div>
+																<div className="mt-0.5 text-[11px] text-slate-400">{formatTimeLabel(record.createdAt)}</div>
+															</div>
+														</div>
+													)
+												})()
+											) : hasFile && m.fileMessage ? (
 												<div
 													className="relative"
 													onPointerDown={e => {

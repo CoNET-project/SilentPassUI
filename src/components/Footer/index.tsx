@@ -660,7 +660,10 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 			animate={barControls}
 			initial={false}
 			style={{
-				bottom: '1rem',//'calc(1rem + env(safe-area-inset-bottom))',
+				// Safari can reduce the visual viewport while its Smart App
+				// Banner is visible. Keep the global bar anchored to the
+				// usable bottom edge instead of the layout viewport edge.
+				bottom: 'max(1rem, env(safe-area-inset-bottom, 0px))',
 				willChange: 'transform, opacity',
 				// Android WebView can fail to retarget touch events from a
 				// pointer-events:none fixed parent to transformed descendants.

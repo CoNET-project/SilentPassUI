@@ -738,6 +738,7 @@ type PhoneCallRecord = {
 	direction: 'incoming' | 'outgoing'
 	status: 'ringing' | 'answered' | 'declined' | 'missed' | 'cancelled' | 'ended' | 'failed'
 	createdAt: number
+	expiresAt?: number
 	answeredAt?: number
 	endedAt?: number
 	durationMs?: number

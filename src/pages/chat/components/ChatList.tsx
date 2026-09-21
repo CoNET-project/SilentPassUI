@@ -18,6 +18,7 @@ import {searchUsername, storeSystemData} from '@/services/beamio'
 import { tu } from '@/locale/beamioLocale'
 import { chatShareLinkListPreview } from '@/utils/chatShareLinkPreview'
 import { chatGenericLinkListPreview } from '@/utils/chatGenericLinkPreview'
+import { parseVoiceCallSignal } from '@/utils/voiceCallSession'
 
 // 注意：不再接受 `list` prop。ChatList 内部直接从 useDaemonContext().profiles[0].chats
 // 读取并通过 useMemo 派生 items，避免与 profile.chats 出现两个数据源不一致的风险
@@ -469,12 +470,22 @@ export default function ChatList({
 
             const isFailed = last?.from === "me" && last?.status === "failed"
             const rawLast = last?.text?.trim() || ""
-            const sharePreview = rawLast ? chatShareLinkListPreview(rawLast) : null
+            const voiceSignal = rawLast ? parseVoiceCallSignal(rawLast) : null
+            const voicePreview = voiceSignal
+              ? voiceSignal.type === 'voice_call_offer_v1'
+                ? 'Incoming voice call'
+                : voiceSignal.type === 'voice_call_accept_v1'
+                  ? 'Voice call answered'
+                  : voiceSignal.type === 'voice_call_reject_v1'
+                    ? 'Voice call declined'
+                    : 'Voice call ended'
+              : null
+            const sharePreview = !voicePreview && rawLast ? chatShareLinkListPreview(rawLast) : null
             const genericPreview =
-              !sharePreview && rawLast ? chatGenericLinkListPreview(rawLast) : null
+              !voicePreview && !sharePreview && rawLast ? chatGenericLinkListPreview(rawLast) : null
             const subtitle = isFailed
               ? "Message Send Failure"
-              : sharePreview || genericPreview || rawLast
+              : voicePreview || sharePreview || genericPreview || rawLast
 
             return (
               <button

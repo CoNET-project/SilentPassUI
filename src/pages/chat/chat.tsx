@@ -2089,15 +2089,13 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 					? profiles[0].phoneCalls
 					: []
 				const previousCall = persistedPhoneCalls.find(
-					(item: any) =>
-						item.callId === signal.callId ||
-						item.sessionId === signal.sessionId,
+					(item: any) => item.sessionId === signal.sessionId,
 				)
 				const terminalCallStatuses = new Set(['declined', 'ended', 'answered', 'missed'])
 				if (terminalCallStatuses.has(String(previousCall?.status || ''))) {
 					return
 				}
-				setIncomingVoiceOffer(previous => previous?.callId === signal.callId ? previous : signal)
+				setIncomingVoiceOffer(previous => previous?.sessionId === signal.sessionId ? previous : signal)
 				const alreadyReported = hasReportedIncomingVoiceCall(signal.callId, signal.sessionId)
 				if (!alreadyReported) {
 					claimIncomingVoiceCallReport(signal.callId, signal.sessionId)
@@ -2119,7 +2117,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 			}
 			if (
 				signal.type === 'voice_call_accept_v1' &&
-				voiceCallOfferRef.current?.callId === signal.callId &&
+				voiceCallOfferRef.current?.sessionId === signal.peerSessionId &&
 				typeof signal.peerSessionId === 'string'
 			) {
 				// The relay is now paired. Media capture is intentionally owned by
@@ -2254,7 +2252,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		voiceCallSessionRef.current = null
 		if (callId) {
 			const previous = (Array.isArray(profiles?.[0]?.phoneCalls) ? profiles[0].phoneCalls : [])
-				.find((item: PhoneCallRecord) => item.callId === callId)
+				.find((item: PhoneCallRecord) => item.sessionId === callSessionId)
 			const status = requestedStatus
 				|| (previous?.status === 'ringing' ? 'cancelled' : previous?.status === 'missed' ? 'missed' : 'ended')
 			const endedAt = Date.now()
@@ -2305,7 +2303,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		const timer = window.setTimeout(() => {
 			if (incoming?.callId) {
 				const current = (Array.isArray(profiles?.[0]?.phoneCalls) ? profiles[0].phoneCalls : [])
-					.find((item: PhoneCallRecord) => item.callId === incoming.callId)
+					.find((item: PhoneCallRecord) => item.sessionId === incoming.sessionId)
 				if (current?.status === 'ringing') {
 					upsertPhoneCallRecord({
 						...current,
@@ -2321,7 +2319,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 			const callId = outgoing?.callId
 			if (!callId) return
 			const current = (Array.isArray(profiles?.[0]?.phoneCalls) ? profiles[0].phoneCalls : [])
-				.find((item: PhoneCallRecord) => item.callId === callId)
+				.find((item: PhoneCallRecord) => item.sessionId === outgoing?.sessionId)
 			if (current?.status === 'ringing') void endVoiceCall('missed')
 		}, Math.max(0, expiresAt - Date.now()))
 
@@ -2458,17 +2456,17 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 
 	/** 仅展示“正文”消息（含文字或 paymentCard）；带 reply 的 reaction 消息不单独成行，用于在目标消息上显示 icon */
 	const displayableMessages = useMemo(() => {
-		const existingCallIds = new Set(
+		const existingCallSessionIds = new Set(
 			(messages || [])
-				.map(message => message.callRecord?.callId)
-				.filter((callId): callId is string => !!callId),
+				.map(message => message.callRecord?.sessionId)
+				.filter((sessionId): sessionId is string => !!sessionId),
 		)
 		const currentChatCalls = (Array.isArray(profiles?.[0]?.phoneCalls) ? profiles[0].phoneCalls : [])
 			.filter((record: PhoneCallRecord) => record.peerAddress?.toLowerCase() === chatData.address?.toLowerCase())
-			.filter((record: PhoneCallRecord) => !existingCallIds.has(record.callId))
+			.filter((record: PhoneCallRecord) => !existingCallSessionIds.has(record.sessionId))
 			.map((record: PhoneCallRecord) => ({
-				id: `phone_${record.callId}`,
-				sendId: `phone:${record.callId}:${record.status}`,
+				id: `phone_${record.sessionId}`,
+				sendId: `phone:${record.sessionId}:${record.status}`,
 				from: record.direction === 'outgoing' ? 'me' : 'them',
 				text: '',
 				createdAt: record.createdAt,

@@ -1352,9 +1352,7 @@ function AppShell() {
 					Number(signal.expiresAt) > Date.now()
 				) {
 					const previousCall = (Array.isArray(profile.phoneCalls) ? profile.phoneCalls : []).find(
-						(item: any) =>
-							item.callId === signal.callId ||
-							item.sessionId === signal.sessionId,
+						(item: any) => item.sessionId === signal.sessionId,
 					)
 					const terminalStatuses = new Set(['declined', 'ended', 'answered', 'missed'])
 					if (

@@ -101,6 +101,7 @@ import {
 	type VoiceMessageManifest,
 } from '@/utils/voiceMessage'
 import {
+	decryptVoiceFrame,
 	randomVoiceId,
 	type VoiceCallSignal,
 } from '@/utils/voiceCallSession'
@@ -2267,11 +2268,55 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 			typeof frame.payload !== 'string' ||
 			frame.callId !== voiceCallOfferRef.current?.callId
 		) return
-		voicePlaybackRef.current?.setKey(voiceCallKeyRef.current || new Uint8Array())
-		void voicePlaybackRef.current?.push(frame.payload).catch(() => {
-			setVoiceError('Incoming voice audio could not be decoded.')
-		})
-	}), [voiceCallState])
+		void (async () => {
+			try {
+				const plain = await decryptVoiceFrame(
+					voiceCallKeyRef.current || new Uint8Array(),
+					frame.payload as string,
+				)
+				let control: { type?: string; callId?: string } | null = null
+				try {
+					control = JSON.parse(new TextDecoder().decode(plain)) as {
+						type?: string
+						callId?: string
+					}
+				} catch {
+					// Audio frames are binary; only JSON payloads are control frames.
+				}
+				if (control?.type === 'voice_call_reject_v1') {
+					const callId = control.callId || voiceCallOfferRef.current?.callId || ''
+					await voiceControllerRef.current?.end()
+					voiceControllerRef.current = null
+					voiceCaptureStopRef.current?.()
+					voiceCaptureStopRef.current = null
+					voicePlaybackRef.current?.destroy()
+					voicePlaybackRef.current = null
+					voiceCallKeyRef.current = null
+					voiceCallPeerSessionRef.current = null
+					voiceCallSessionRef.current = null
+					if (callId) {
+						upsertPhoneCallRecord({
+							callId,
+							sessionId: voiceCallOfferRef.current?.sessionId || '',
+							peerAddress: toAddress,
+							direction: 'outgoing',
+							status: 'declined',
+							createdAt: Date.now(),
+							endedAt: Date.now(),
+						})
+						dispatchNativeSystemCallAction('endSystemCall', { callId })
+					}
+					setVoiceCallState('ended')
+					window.setTimeout(() => setVoiceCallState('idle'), 300)
+					return
+				}
+				voicePlaybackRef.current?.setKey(voiceCallKeyRef.current || new Uint8Array())
+				await voicePlaybackRef.current?.push(frame.payload as string)
+			} catch {
+				setVoiceError('Incoming voice audio could not be decoded.')
+			}
+		})()
+	}), [toAddress, upsertPhoneCallRecord, voiceCallState])
 
 	const openMultisigFromChat = useCallback(
 		(messageText: string, isMeMessage: boolean, taskId: string, aaAccount?: string) => {

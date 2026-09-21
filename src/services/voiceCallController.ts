@@ -1,6 +1,7 @@
 import { ethers } from 'ethers'
 import {
 	createVoiceSessionKey,
+	encryptVoiceFrame,
 	makeVoiceCallSignal,
 	randomVoiceId,
 	voiceSessionKeyFromBase64,
@@ -15,6 +16,7 @@ import {
 import {
 	startWorkerVoiceListen,
 	stopWorkerVoiceListen,
+	sendWorkerVoiceFrame,
 } from '@/services/chatWorkerBridge'
 
 export type VoiceCallControllerOptions = {
@@ -33,6 +35,48 @@ export type VoiceCallChannel = {
 	entryDomains: string[]
 	signal: VoiceCallSignal
 	sessionKey: Uint8Array
+}
+
+/**
+ * Send an incoming-call rejection over the caller's temporary voice SSE.
+ *
+ * The caller is listening on `offer.sessionId` before the offer is delivered.
+ * Keep this control signal on that short-lived encrypted relay instead of
+ * depending only on the normal Chat mailbox, which may be paused while the
+ * native call UI is in the foreground.
+ */
+export const sendVoiceCallRejectionToTemporaryRelay = async (
+	options: VoiceCallControllerOptions,
+	offer: VoiceCallSignal,
+): Promise<boolean> => {
+	if (!offer.sessionId || !offer.from || !offer.callId || !offer.sessionKey) return false
+	try {
+		const sessionKey = voiceSessionKeyFromBase64(offer.sessionKey)
+		const rejection = JSON.stringify({
+			type: 'voice_call_reject_v1',
+			callId: offer.callId,
+			sessionId: offer.sessionId,
+			from: new ethers.Wallet(options.privateKey).address,
+			to: offer.from,
+			reason: 'declined',
+			createdAt: Date.now(),
+		})
+		const payload = await encryptVoiceFrame(
+			sessionKey,
+			new TextEncoder().encode(rejection),
+		)
+		return await sendWorkerVoiceFrame(options.peerRoute, {
+			type: 'voice_frame_v1',
+			callId: offer.callId,
+			sessionId: randomVoiceId('reject'),
+			targetSessionId: offer.sessionId,
+			targetWallet: offer.from,
+			seq: 0,
+			payload,
+		})
+	} catch {
+		return false
+	}
 }
 
 /**
@@ -119,6 +163,8 @@ export function createVoiceCallController(options: VoiceCallControllerOptions) {
 			to: offer.from,
 			reason: 'declined',
 		})
+		const sentToTemporaryRelay = await sendVoiceCallRejectionToTemporaryRelay(options, offer)
+		if (sentToTemporaryRelay) return true
 		return sendMessage(options.peerPgp, JSON.stringify(reject), options.privateKey, selectedEntries.length ? selectedEntries : options.allNodes)
 	}
 

@@ -225,6 +225,7 @@ import {
 	type DiscoverTopupPromotionPresentation,
 } from '@/utils/discoverMerchantPromotions'
 import {
+	actorPercentFromSocialEvent,
 	readCardSocialPromotionFromChain,
 } from '@/utils/discoverMerchantSocialPromotionChain'
 import { normalizeCardAddressKey } from '@/utils/merchantCardDatabase'
@@ -1497,7 +1498,7 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 		topupRewardPtPercent > 0
 			? `Earn ${Number(topupRewardPtPercent.toFixed(2)).toString()}% Reward PT on every top-up.`
 			: null
-	const welcomeRewardLine = [topupLine, topupRewardPtLine, chargeWelcomeLine]
+	const welcomeRewardLine = [topupLine, topupRewardPtLine]
 		.filter((line): line is string => Boolean(line))
 		.join(' · ') || null
 
@@ -1518,7 +1519,7 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 						<div className="absolute inset-0 bg-slate-950/20" />
 					</div>
 				) : null}
-				{!hasImage && logoUrl ? (
+				{hasImage ? null : logoUrl ? (
 					<div className="relative z-10 flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl bg-white/90 p-2 shadow-[0_8px_22px_rgba(15,23,42,0.3)] ring-1 ring-white/70">
 						<DiscoverFeaturedBrandLogoImage
 							src={logoUrl}
@@ -6247,15 +6248,24 @@ function DiscoverMerchantDetailFullScreen({
 	const healthBeautyChargePercent = useMemo(() => {
 		if (!showHealthBeautyLoyaltyPass) return null
 		const { chargePercent } = parseDiscoverActorRewardPercentsFromMetadata(merchantMetadataRoot)
-		if (chargePercent == null || !Number.isFinite(chargePercent) || chargePercent <= 0) return null
-		return chargePercent
-	}, [showHealthBeautyLoyaltyPass, merchantMetadataRoot])
+		const chainChargePercent = actorPercentFromSocialEvent(chainCardSocialPromotion?.events?.charge)
+		const resolved = chargePercent ?? chainChargePercent
+		if (resolved == null || !Number.isFinite(resolved) || resolved <= 0) return null
+		return resolved
+	}, [showHealthBeautyLoyaltyPass, merchantMetadataRoot, chainCardSocialPromotion])
 	const foodBeverageChargePercent = useMemo(() => {
 		if (!showFoodBeverageProspectPass && !showFoodBeverageLoyaltyPass) return null
 		const { chargePercent } = parseDiscoverActorRewardPercentsFromMetadata(merchantMetadataRoot)
-		if (chargePercent == null || !Number.isFinite(chargePercent) || chargePercent <= 0) return null
-		return chargePercent
-	}, [showFoodBeverageProspectPass, showFoodBeverageLoyaltyPass, merchantMetadataRoot])
+		const chainChargePercent = actorPercentFromSocialEvent(chainCardSocialPromotion?.events?.charge)
+		const resolved = chargePercent ?? chainChargePercent
+		if (resolved == null || !Number.isFinite(resolved) || resolved <= 0) return null
+		return resolved
+	}, [
+		showFoodBeverageProspectPass,
+		showFoodBeverageLoyaltyPass,
+		merchantMetadataRoot,
+		chainCardSocialPromotion,
+	])
 	const customerLoyaltyPointsEnabled = useMemo(() => {
 		const { chargePercent, topupPercent } = parseDiscoverActorRewardPercentsFromMetadata(merchantMetadataRoot)
 		return (
@@ -6272,14 +6282,18 @@ function DiscoverMerchantDetailFullScreen({
 	}, [merchantMetadataRoot])
 	const memberRechargeRewardPtLine = useMemo(() => {
 		const { chargePercent, topupPercent } = parseDiscoverActorRewardPercentsFromMetadata(merchantMetadataRoot)
-		if (chargePercent != null && Number.isFinite(chargePercent) && chargePercent > 0) {
-			return `Earn ${Number(chargePercent.toFixed(2)).toString()}% back in Reward PT on every future purchase.`
+		const chainChargePercent = actorPercentFromSocialEvent(chainCardSocialPromotion?.events?.charge)
+		const chainTopupPercent = actorPercentFromSocialEvent(chainCardSocialPromotion?.events?.topup)
+		const resolvedChargePercent = chargePercent ?? chainChargePercent
+		const resolvedTopupPercent = topupPercent ?? chainTopupPercent
+		if (resolvedChargePercent != null && Number.isFinite(resolvedChargePercent) && resolvedChargePercent > 0) {
+			return `Earn ${Number(resolvedChargePercent.toFixed(2)).toString()}% back in Reward PT on every future purchase.`
 		}
-		if (topupPercent != null && Number.isFinite(topupPercent) && topupPercent > 0) {
-			return `Earn ${Number(topupPercent.toFixed(2)).toString()}% in Reward PT on every top-up.`
+		if (resolvedTopupPercent != null && Number.isFinite(resolvedTopupPercent) && resolvedTopupPercent > 0) {
+			return `Earn ${Number(resolvedTopupPercent.toFixed(2)).toString()}% in Reward PT on every top-up.`
 		}
 		return null
-	}, [merchantMetadataRoot])
+	}, [merchantMetadataRoot, chainCardSocialPromotion])
 	/** Percent top-up only — hide fixed / fixedTiers on F&B prospect Welcome Reward. */
 	const foodBeveragePercentTopupWelcomeLine = useMemo(() => {
 		if (!showFoodBeverageProspectPass) return null
@@ -6291,10 +6305,12 @@ function DiscoverMerchantDetailFullScreen({
 	const foodBeverageTopupRewardPtPercent = useMemo(() => {
 		if (!showFoodBeverageProspectPass) return null
 		const { topupPercent } = parseDiscoverActorRewardPercentsFromMetadata(merchantMetadataRoot)
-		return topupPercent != null && Number.isFinite(topupPercent) && topupPercent > 0
-			? topupPercent
+		const chainTopupPercent = actorPercentFromSocialEvent(chainCardSocialPromotion?.events?.topup)
+		const resolved = topupPercent ?? chainTopupPercent
+		return resolved != null && Number.isFinite(resolved) && resolved > 0
+			? resolved
 			: null
-	}, [showFoodBeverageProspectPass, merchantMetadataRoot])
+	}, [showFoodBeverageProspectPass, merchantMetadataRoot, chainCardSocialPromotion])
 	const memberRechargeFooterTip = useMemo(() => {
 		const { chargePercent } = parseDiscoverActorRewardPercentsFromMetadata(merchantMetadataRoot)
 		if (chargePercent != null && Number.isFinite(chargePercent) && chargePercent > 0) {
@@ -6307,10 +6323,12 @@ function DiscoverMerchantDetailFullScreen({
 	}, [merchantMetadataRoot])
 	const memberRechargeChargePercent = useMemo(() => {
 		const { chargePercent } = parseDiscoverActorRewardPercentsFromMetadata(merchantMetadataRoot)
-		return chargePercent != null && Number.isFinite(chargePercent) && chargePercent > 0
-			? chargePercent
+		const chainChargePercent = actorPercentFromSocialEvent(chainCardSocialPromotion?.events?.charge)
+		const resolved = chargePercent ?? chainChargePercent
+		return resolved != null && Number.isFinite(resolved) && resolved > 0
+			? resolved
 			: null
-	}, [merchantMetadataRoot])
+	}, [merchantMetadataRoot, chainCardSocialPromotion])
 	const prospectJoinMembershipPrice = useMemo(() => {
 		const joinTier = membershipUi.joinTier
 		if (!joinTier) return { price: null as string | null, duration: null as string | null }

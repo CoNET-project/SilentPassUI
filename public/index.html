@@ -17,7 +17,7 @@
 	
 	<meta
 		name="viewport"
-		content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0, viewport-fit=cover"
+		content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
 	/>
     <title>Beamio — Stablecoin Pay App on Base</title>
     <style>
@@ -27,11 +27,17 @@
       width: 100%;
       height: 100%;
       background: #000414;
+      /* pan-x/pan-y keeps scroll; pinch-zoom is not in this set. Do not use touch-action: none. */
+      touch-action: pan-x pan-y;
+      -ms-touch-action: pan-x pan-y;
+      -webkit-text-size-adjust: 100%;
+      text-size-adjust: 100%;
     }
 
     /* 🚩 建议把 #root 也拉满高，否则 React 里还要再写一次 */
     #root {
       height: 100%;
+      touch-action: pan-x pan-y;
     }
 
     /* 骨架屏样式 */
@@ -82,6 +88,29 @@
 		
     </div>
 	<div id="overlay-root"></div>
+	<script>
+		(function () {
+			function blockGesture(event) {
+				event.preventDefault();
+			}
+			document.addEventListener('gesturestart', blockGesture, { passive: false, capture: true });
+			document.addEventListener('gesturechange', blockGesture, { passive: false, capture: true });
+			document.addEventListener('gestureend', blockGesture, { passive: false, capture: true });
+			document.addEventListener('wheel', function (event) {
+				if (event.ctrlKey) event.preventDefault();
+			}, { passive: false, capture: true });
+			document.addEventListener('touchmove', function (event) {
+				if (event.touches && event.touches.length > 1) event.preventDefault();
+			}, { passive: false, capture: true });
+			document.addEventListener('keydown', function (event) {
+				if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
+				var key = event.key;
+				if (key === '+' || key === '-' || key === '=' || key === '_' || key === '0') {
+					event.preventDefault();
+				}
+			}, true);
+		})();
+	</script>
 </body>
 
 </html>

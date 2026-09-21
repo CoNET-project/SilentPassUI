@@ -804,26 +804,18 @@ function DiscoverLoyaltyPassIncentiveLine({
 	earnWithPct: string
 }) {
 	const promo = topupPromotionCapsule?.trim()
-	if (promo) {
-		return (
-			<div className="mt-5 border-t border-white/15 pt-4">
-				<p className="min-w-0 text-[13px] font-medium leading-snug text-white/90">{promo}</p>
-			</div>
-		)
-	}
-	if (pct == null) return null
+	const rewardLine = pct == null ? null : earnWithPct
+	if (!promo && !rewardLine) return null
 	return (
-		<div className="mt-5 flex items-center gap-2.5 border-t border-white/15 pt-4">
-			<span
-				className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full"
-				style={{ backgroundColor: 'rgba(52, 211, 153, 0.22)' }}
-				aria-hidden
-			>
-				<Check className="h-3 w-3 text-emerald-300" strokeWidth={3} />
-			</span>
-			<p className="min-w-0 flex-1 text-[13px] font-medium leading-snug text-white/90">
-				{earnWithPct}
-			</p>
+		<div className="mt-5 border-t border-white/15 pt-4">
+			{promo ? (
+				<p className="min-w-0 text-[13px] font-medium leading-snug text-white/90">{promo}</p>
+			) : null}
+			{rewardLine ? (
+				<p className={promo ? 'mt-1 min-w-0 text-[13px] font-medium leading-snug text-white/90' : 'min-w-0 text-[13px] font-medium leading-snug text-white/90'}>
+					{rewardLine}
+				</p>
+			) : null}
 		</div>
 	)
 }

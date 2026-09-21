@@ -471,10 +471,13 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 		return showBar
 	}, [showBar])
 
-	const searchTap = useReliableTapHandler(() => {
+	// Do not open the search sheet from pointerup. Android WebView can
+	// synthesize a second click after the footer is hidden; the newly mounted
+	// QR button may then receive that same touch and launch the scanner.
+	const openGlobalSearch = useCallback(() => {
 		setChatSearchOpen(true)
 		setShowFooter(false)
-	})
+	}, [setChatSearchOpen, setShowFooter])
 
 	//					紅色氣泡表示
 	useEffect(() => {
@@ -772,9 +775,7 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 					tabIndex={interactiveVisible ? 0 : -1}
 					disabled={!interactiveVisible}
 					data-touch-priority="1"
-					onPointerDown={searchTap.onPointerDown}
-					onPointerUp={searchTap.onPointerUp}
-					onClick={searchTap.onClick}
+					onClick={openGlobalSearch}
 					className={[
 						'w-10 h-10 rounded-full flex items-center justify-center border shrink-0',
 						RELIABLE_TAP_BUTTON_CLASS,

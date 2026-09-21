@@ -14,6 +14,54 @@ export type VoiceCallSignal = {
 	reason?: string
 }
 
+/** Unwrap the nested Chat envelope used by gossip before inspecting a call signal. */
+export function parseVoiceCallSignal(raw: unknown): VoiceCallSignal | null {
+	let value: unknown = raw
+	for (let depth = 0; depth < 4; depth += 1) {
+		if (typeof value === 'string') {
+			try {
+				value = JSON.parse(value)
+			} catch {
+				return null
+			}
+		}
+		if (!value || typeof value !== 'object') return null
+		const candidate = value as Partial<VoiceCallSignal> & { text?: unknown }
+		if (
+			(candidate.type === 'voice_call_offer_v1'
+				|| candidate.type === 'voice_call_accept_v1'
+				|| candidate.type === 'voice_call_reject_v1'
+				|| candidate.type === 'voice_end_v1')
+			&& typeof candidate.callId === 'string'
+			&& typeof candidate.sessionId === 'string'
+		) {
+			return candidate as VoiceCallSignal
+		}
+		if (typeof candidate.text !== 'string') return null
+		value = candidate.text
+	}
+	return null
+}
+
+export function isVoiceCallProtocolMessage(raw: unknown): boolean {
+	let value: unknown = raw
+	for (let depth = 0; depth < 4; depth += 1) {
+		if (typeof value === 'string') {
+			try {
+				value = JSON.parse(value)
+			} catch {
+				return false
+			}
+		}
+		if (!value || typeof value !== 'object') return false
+		const candidate = value as { type?: unknown; text?: unknown }
+		if (typeof candidate.type === 'string' && candidate.type.startsWith('voice_')) return true
+		if (typeof candidate.text !== 'string') return false
+		value = candidate.text
+	}
+	return false
+}
+
 const reportedIncomingVoiceCallIds = new Set<string>()
 
 export function claimIncomingVoiceCallReport(callId: string, sessionId: string): boolean {

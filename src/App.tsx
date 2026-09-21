@@ -101,7 +101,7 @@ import { ingestAaMultisigFromChat } from '@/utils/aaMultisigIngest'
 import { tu } from '@/locale/beamioLocale'
 import { mapServerError } from '@/locale/mapServerError'
 import { installPwaLifecycleRecovery } from '@/utils/pwaLifecycleRecovery'
-import { claimIncomingVoiceCallReport } from '@/utils/voiceCallSession'
+import { claimIncomingVoiceCallReport, parseVoiceCallSignal } from '@/utils/voiceCallSession'
 
 global.Buffer = require("buffer").Buffer
 
@@ -1344,14 +1344,9 @@ function AppShell() {
 			// page). Report them globally so Android Telecom is not dependent on
 			// mounting the conversation page first.
 			try {
-				const signal = JSON.parse(displayText) as {
-					type?: string
-					callId?: string
-					sessionId?: string
-					expiresAt?: number
-				}
+				const signal = parseVoiceCallSignal(displayText)
 				if (
-					signal.type === 'voice_call_offer_v1' &&
+					signal?.type === 'voice_call_offer_v1' &&
 					typeof signal.callId === 'string' &&
 					typeof signal.sessionId === 'string' &&
 					Number(signal.expiresAt) > Date.now()

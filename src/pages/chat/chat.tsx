@@ -104,6 +104,8 @@ import {
 	decryptVoiceFrame,
 	claimIncomingVoiceCallReport,
 	hasReportedIncomingVoiceCall,
+	isVoiceCallProtocolMessage,
+	parseVoiceCallSignal,
 	randomVoiceId,
 	type VoiceCallSignal,
 } from '@/utils/voiceCallSession'
@@ -2074,7 +2076,8 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		const latest = [...messages].reverse().find((message) => message.from === 'them' && message.text)
 		if (!latest?.text) return
 		try {
-			const signal = JSON.parse(latest.text) as Record<string, any>
+			const signal = parseVoiceCallSignal(latest.text)
+			if (!signal) return
 			if (
 				signal.type === 'voice_call_offer_v1' &&
 				typeof signal.callId === 'string' &&
@@ -2474,14 +2477,9 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 
 		return [...(messages || []), ...currentChatCalls].filter(m => {
 			if (m.text) {
-				try {
-					const parsed = JSON.parse(m.text) as { type?: unknown }
-					if (typeof parsed.type === 'string' && parsed.type.startsWith('voice_')) return false
-				} catch {
-					/* ordinary text */
-				}
+				if (isVoiceCallProtocolMessage(m.text)) return false
 			}
-			return !m.reply || !!m.text || !!m.paymentCard || !!m.voiceMessage || !!m.fileMessage
+			return !m.reply || !!m.text || !!m.paymentCard || !!m.voiceMessage || !!m.fileMessage || !!m.callRecord
 		})
 	}, [chatData.address, messages, profiles])
 

@@ -2,9 +2,9 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallba
 import type { LucideIcon } from "lucide-react"
 import { createPortal } from "react-dom"
 import { AnimatePresence, motion } from "framer-motion"
-import { Camera, Image as ImageIcon, Sticker, BarChart3, Mic, Clock, Paperclip } from "lucide-react"
+import { Camera, Image as ImageIcon, Paperclip } from "lucide-react"
 
-type ActionKey = "camera" | "photos" | "stickers" | "polls" | "audio" | "later" | "files"
+type ActionKey = "camera" | "photos" | "files"
 
 type MenuItem = {
   key: ActionKey
@@ -26,11 +26,7 @@ type Props = {
 const DEFAULT_ITEMS: MenuItem[] = [
   { key: "files", label: "Attach files", Icon: Paperclip },
   { key: "camera", label: "Camera", Icon: Camera },
-  { key: "photos", label: "Photos", Icon: ImageIcon },
-  { key: "stickers", label: "Stickers", Icon: Sticker },
-  { key: "polls", label: "Polls", Icon: BarChart3 },
-  { key: "audio", label: "Audio", Icon: Mic },
-  { key: "later", label: "Send Later", Icon: Clock }
+  { key: "photos", label: "Photos", Icon: ImageIcon }
 ]
 
 type Pos = {

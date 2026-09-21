@@ -2242,7 +2242,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		voiceCallSessionRef.current = null
 		if (callId) {
 			const previous = (Array.isArray(profiles?.[0]?.phoneCalls) ? profiles[0].phoneCalls : [])
-				.find(item => item.callId === callId)
+				.find((item: PhoneCallRecord) => item.callId === callId)
 			const status = requestedStatus
 				|| (previous?.status === 'ringing' ? 'cancelled' : previous?.status === 'missed' ? 'missed' : 'ended')
 			upsertPhoneCallRecord({
@@ -2291,7 +2291,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		const timer = window.setTimeout(() => {
 			if (incoming?.callId) {
 				const current = (Array.isArray(profiles?.[0]?.phoneCalls) ? profiles[0].phoneCalls : [])
-					.find(item => item.callId === incoming.callId)
+					.find((item: PhoneCallRecord) => item.callId === incoming.callId)
 				if (current?.status === 'ringing') {
 					upsertPhoneCallRecord({
 						...current,
@@ -2307,7 +2307,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 			const callId = outgoing?.callId
 			if (!callId) return
 			const current = (Array.isArray(profiles?.[0]?.phoneCalls) ? profiles[0].phoneCalls : [])
-				.find(item => item.callId === callId)
+				.find((item: PhoneCallRecord) => item.callId === callId)
 			if (current?.status === 'ringing') void endVoiceCall('missed')
 		}, Math.max(0, expiresAt - Date.now()))
 
@@ -2450,9 +2450,9 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 				.filter((callId): callId is string => !!callId),
 		)
 		const currentChatCalls = (Array.isArray(profiles?.[0]?.phoneCalls) ? profiles[0].phoneCalls : [])
-			.filter(record => record.peerAddress?.toLowerCase() === chatData.address?.toLowerCase())
-			.filter(record => !existingCallIds.has(record.callId))
-			.map(record => ({
+			.filter((record: PhoneCallRecord) => record.peerAddress?.toLowerCase() === chatData.address?.toLowerCase())
+			.filter((record: PhoneCallRecord) => !existingCallIds.has(record.callId))
+			.map((record: PhoneCallRecord) => ({
 				id: `phone_${record.callId}`,
 				sendId: `phone:${record.callId}:${record.status}`,
 				from: record.direction === 'outgoing' ? 'me' : 'them',

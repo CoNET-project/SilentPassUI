@@ -45075,7 +45075,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                         Applies only to this coupon ticket. Your program-wide merchant banner is not used here.
                       </p>
                     </div>
-                    {tileBackgroundColorApplies(cardIssuanceCouponImage) ? (
+                    {cardIssuanceCouponMediaTab === 'icon' &&
+                    tileBackgroundColorApplies(cardIssuanceCouponImage) ? (
                     <div className="space-y-2">
                       <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">{tu('programs_coupon_bg_color')}</label>
                       <div className="flex flex-wrap gap-2">

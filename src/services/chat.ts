@@ -1691,8 +1691,20 @@ const sendVoiceCallPushDirect = async (signal: {
 	from: string
 	to: string
 	expiresAt: number
-}): Promise<boolean> => {
+}, privateKey: string): Promise<boolean> => {
 	try {
+		const wallet = new ethers.Wallet(privateKey)
+		const timestamp = Math.floor(Date.now() / 1000)
+		const message = [
+			'Beamio voiceCallPush',
+			`callId:${signal.callId}`,
+			`sessionId:${signal.sessionId}`,
+			`callerEoa:${wallet.address.toLowerCase()}`,
+			`calleeEoa:${ethers.getAddress(signal.to).toLowerCase()}`,
+			`expiresAt:${signal.expiresAt}`,
+			`timestamp:${timestamp}`,
+		].join('\n')
+		const signature = await wallet.signMessage(message)
 		const res = await postWithTimeout(`${beamioApi}/api/voiceCallPush`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
@@ -1702,6 +1714,8 @@ const sendVoiceCallPushDirect = async (signal: {
 				callerEoa: signal.from,
 				calleeEoa: signal.to,
 				expiresAt: signal.expiresAt,
+				timestamp,
+				signature,
 			}),
 		}, 10_000)
 		if (!res.ok) {
@@ -1739,7 +1753,7 @@ export const sendVoiceCallOffer = async (opts: {
 	ensureNativePushBoundForWallet()
 	// The mailbox work package is the signaling fallback. The direct endpoint
 	// is required to wake native shells through FCM/APNs when Chat is closed.
-	void sendVoiceCallPushDirect(opts.signal)
+	void sendVoiceCallPushDirect(opts.signal, opts.privateKey)
 	void sendVoiceCallPushViaMailbox({
 		callId: opts.signal.callId,
 		sessionId: opts.signal.sessionId,

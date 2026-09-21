@@ -2123,12 +2123,21 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 				// the call controller, not the normal Chat message stream.
 				voiceCallPeerSessionRef.current = signal.peerSessionId
 				setVoiceCallState('outgoing')
+				upsertPhoneCallRecord({
+					callId: signal.callId,
+					sessionId: voiceCallOfferRef.current?.sessionId || signal.sessionId,
+					peerAddress: toAddress,
+					direction: 'outgoing',
+					status: 'answered',
+					createdAt: Date.now(),
+					answeredAt: Date.now(),
+				})
 				void startVoiceMedia()
 			}
 		} catch {
 			/* ordinary Chat text */
 		}
-	}, [chatData, messages, profiles, startVoiceMedia, upsertPhoneCallRecord])
+	}, [chatData, messages, profiles, startVoiceMedia, toAddress, upsertPhoneCallRecord])
 
 	const acceptVoiceCall = useCallback(async () => {
 		const offer = incomingVoiceOffer
@@ -2245,14 +2254,16 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 				.find((item: PhoneCallRecord) => item.callId === callId)
 			const status = requestedStatus
 				|| (previous?.status === 'ringing' ? 'cancelled' : previous?.status === 'missed' ? 'missed' : 'ended')
+			const endedAt = Date.now()
 			upsertPhoneCallRecord({
 				callId,
 				sessionId: callSessionId,
-				peerAddress: toAddress,
-				direction: 'outgoing',
+				peerAddress: previous?.peerAddress || toAddress,
+				direction: previous?.direction || 'outgoing',
 				status,
-				createdAt: Date.now(),
-				endedAt: Date.now(),
+				createdAt: previous?.createdAt || endedAt,
+				endedAt,
+				durationMs: previous?.answeredAt ? Math.max(0, endedAt - previous.answeredAt) : previous?.durationMs,
 			})
 			dispatchNativeSystemCallAction('endSystemCall', { callId })
 		}
@@ -4284,14 +4295,14 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 															: record.status === 'missed'
 																? 'No answer'
 																: record.status === 'declined'
-																	? 'Call declined'
+																	? 'Recipient declined'
 																	: record.status === 'cancelled'
 																		? 'Call cancelled'
 																		: record.status === 'failed'
 																			? 'Call failed'
 																			: record.status === 'answered'
-																				? 'Voice call'
-																				: 'Call ended'
+																				? record.durationMs ? `Voice call · ${formatVoiceDuration(record.durationMs)}` : 'Voice call'
+																				: record.durationMs ? `Call ended · ${formatVoiceDuration(record.durationMs)}` : 'Call ended'
 													const statusClass =
 														record.status === 'missed' || record.status === 'declined' || record.status === 'failed'
 															? 'text-rose-600'

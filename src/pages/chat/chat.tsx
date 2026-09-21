@@ -106,6 +106,7 @@ import {
 } from '@/utils/voiceCallSession'
 import { startVoiceCapture, VoicePlaybackBuffer } from '@/services/voiceCallMedia'
 import { createVoiceCallController, type VoiceCallController } from '@/services/voiceCallController'
+import { useReliableTapHandler, RELIABLE_TAP_BUTTON_CLASS } from '@/utils/reliableTap'
 import {
 	createChatFileArchive,
 	decryptChatFileManifest,
@@ -1801,6 +1802,7 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 	const [voiceSending, setVoiceSending] = useState(false)
 	const [voiceError, setVoiceError] = useState<string | null>(null)
 	const [voiceCallState, setVoiceCallState] = useState<'idle' | 'outgoing' | 'ended'>('idle')
+	const [incomingVoiceAction, setIncomingVoiceAction] = useState<'idle' | 'accepting' | 'declining'>('idle')
 	const voiceCallSessionRef = useRef<string | null>(null)
 	const voiceCallOfferRef = useRef<{ callId: string; sessionId: string; sessionKey: string } | null>(null)
 	const voiceCallKeyRef = useRef<Uint8Array | null>(null)
@@ -2108,7 +2110,8 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 
 	const acceptVoiceCall = useCallback(async () => {
 		const offer = incomingVoiceOffer
-		if (!offer) return
+		if (!offer || incomingVoiceAction !== 'idle') return
+		setIncomingVoiceAction('accepting')
 		try {
 			const localWallet = new ethers.Wallet(privateKey).address
 			const controller = createVoiceCallController({
@@ -2150,34 +2153,48 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 			void startVoiceMedia()
 		} catch {
 			setVoiceError('This voice call request is invalid or expired.')
+		} finally {
+			setIncomingVoiceAction('idle')
 		}
-	}, [allNodes, chatData.chatData, incomingVoiceOffer, privateKey, startVoiceMedia, upsertPhoneCallRecord])
+	}, [allNodes, chatData.chatData, incomingVoiceAction, incomingVoiceOffer, privateKey, startVoiceMedia, upsertPhoneCallRecord])
 
 	const rejectVoiceCall = useCallback(async () => {
 		const offer = incomingVoiceOffer
-		if (!offer) return
+		if (!offer || incomingVoiceAction !== 'idle') return
+		setIncomingVoiceAction('declining')
 		const localWallet = new ethers.Wallet(privateKey).address
-		const controller = createVoiceCallController({
-			privateKey,
-			localCallId: String(CoNET_Data?.beamio?.accountName || localWallet).trim() || localWallet,
-			peerEoa: offer.from,
-			peerPgp: chatData.chatData.publicArmored,
-			peerRoute: chatData.chatData.routersArmoreds,
-			allNodes,
-		})
-		await controller.rejectIncoming(offer as VoiceCallSignal)
-		upsertPhoneCallRecord({
-			callId: offer.callId,
-			sessionId: offer.sessionId,
-			peerAddress: offer.from,
-			direction: 'incoming',
-			status: 'declined',
-			createdAt: Number(offer.createdAt) || Date.now(),
-			endedAt: Date.now(),
-		})
-		dispatchNativeSystemCallAction('endSystemCall', { callId: offer.callId })
-		setIncomingVoiceOffer(null)
-	}, [allNodes, chatData.chatData.publicArmored, incomingVoiceOffer, privateKey, upsertPhoneCallRecord])
+		try {
+			const controller = createVoiceCallController({
+				privateKey,
+				localCallId: String(CoNET_Data?.beamio?.accountName || localWallet).trim() || localWallet,
+				peerEoa: offer.from,
+				peerPgp: chatData.chatData.publicArmored,
+				peerRoute: chatData.chatData.routersArmoreds,
+				allNodes,
+			})
+			await controller.rejectIncoming(offer as VoiceCallSignal)
+			upsertPhoneCallRecord({
+				callId: offer.callId,
+				sessionId: offer.sessionId,
+				peerAddress: offer.from,
+				direction: 'incoming',
+				status: 'declined',
+				createdAt: Number(offer.createdAt) || Date.now(),
+				endedAt: Date.now(),
+			})
+			dispatchNativeSystemCallAction('endSystemCall', { callId: offer.callId })
+			setIncomingVoiceOffer(null)
+		} finally {
+			setIncomingVoiceAction('idle')
+		}
+	}, [allNodes, chatData.chatData.publicArmored, incomingVoiceAction, incomingVoiceOffer, privateKey, upsertPhoneCallRecord])
+
+	const acceptVoiceCallTap = useReliableTapHandler(() => {
+		void acceptVoiceCall()
+	})
+	const rejectVoiceCallTap = useReliableTapHandler(() => {
+		void rejectVoiceCall()
+	})
 
 	const endVoiceCall = useCallback(async () => {
 		const sessionId = voiceCallSessionRef.current
@@ -3889,19 +3906,23 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 						</div>
 						<button
 							type="button"
-							onClick={() => void acceptVoiceCall()}
-							className="pointer-events-auto relative z-10 min-h-11 min-w-[76px] touch-manipulation rounded-full bg-[#1652f0] px-3 py-1.5 text-xs font-semibold text-white"
+							{...acceptVoiceCallTap}
+							disabled={incomingVoiceAction !== 'idle'}
+							className={`${RELIABLE_TAP_BUTTON_CLASS} pointer-events-auto relative z-10 min-h-11 min-w-[76px] touch-manipulation rounded-full bg-[#1652f0] px-3 py-1.5 text-xs font-semibold text-white disabled:cursor-wait disabled:opacity-60`}
 							aria-label="Accept incoming voice call"
+							aria-busy={incomingVoiceAction === 'accepting'}
 						>
-							Accept
+							{incomingVoiceAction === 'accepting' ? 'Accepting…' : 'Accept'}
 						</button>
 						<button
 							type="button"
-							onClick={() => void rejectVoiceCall()}
-							className="pointer-events-auto relative z-10 min-h-11 min-w-[76px] touch-manipulation rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700"
+							{...rejectVoiceCallTap}
+							disabled={incomingVoiceAction !== 'idle'}
+							className={`${RELIABLE_TAP_BUTTON_CLASS} pointer-events-auto relative z-10 min-h-11 min-w-[76px] touch-manipulation rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 disabled:cursor-wait disabled:opacity-60`}
 							aria-label="Decline incoming voice call"
+							aria-busy={incomingVoiceAction === 'declining'}
 						>
-							Decline
+							{incomingVoiceAction === 'declining' ? 'Declining…' : 'Decline'}
 						</button>
 					</div>
 				</div>

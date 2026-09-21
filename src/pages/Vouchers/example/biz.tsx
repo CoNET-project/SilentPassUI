@@ -44701,6 +44701,11 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                       <input
                         type="text"
                         value={cardIssuanceCouponName}
+                        onFocus={() => {
+                          if (cardIssuanceCouponName === cardIssuanceCouponNameDefault()) {
+                            setCardIssuanceCouponName('');
+                          }
+                        }}
                         onChange={(e) => setCardIssuanceCouponName(e.target.value)}
                         disabled={cardIssuanceCouponEditingIssued}
                         placeholder={tu('programs_coupon_name_ph')}
@@ -44715,6 +44720,11 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                       <input
                         type="text"
                         value={cardIssuanceCouponDescription}
+                        onFocus={() => {
+                          if (cardIssuanceCouponDescription === cardIssuanceCouponDescriptionDefault()) {
+                            setCardIssuanceCouponDescription('');
+                          }
+                        }}
                         onChange={(e) =>
                           setCardIssuanceCouponDescription(e.target.value.replace(/\r?\n/g, ' '))
                         }
@@ -47504,6 +47514,11 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                            id="card-social-exchange-name"
                            type="text"
                            value={cardIssuanceSocialExchangeName}
+                           onFocus={() => {
+                             if (cardIssuanceSocialExchangeName === cardIssuanceCouponNameDefault()) {
+                               setCardIssuanceSocialExchangeName('');
+                             }
+                           }}
                            onChange={(e) => setCardIssuanceSocialExchangeName(e.target.value)}
                            placeholder={tu('programs_coupon_name_ph')}
                            autoComplete="off"
@@ -47522,6 +47537,11 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                            id="card-social-exchange-description"
                            type="text"
                            value={cardIssuanceSocialExchangeDescription}
+                           onFocus={() => {
+                             if (cardIssuanceSocialExchangeDescription === cardIssuanceCouponDescriptionDefault()) {
+                               setCardIssuanceSocialExchangeDescription('');
+                             }
+                           }}
                            onChange={(e) =>
                              setCardIssuanceSocialExchangeDescription(e.target.value.replace(/\r?\n/g, ' '))
                            }

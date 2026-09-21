@@ -14185,6 +14185,8 @@ const [cardIssuanceCouponIssueTotal, setCardIssuanceCouponIssueTotal] = useState
   String(CARD_ISSUANCE_COUPON_ISSUE_TOTAL_DEFAULT)
 );
 const [cardIssuanceCouponRequiresRedeemCode, setCardIssuanceCouponRequiresRedeemCode] = useState(false);
+const [cardIssuanceCouponClaimMode, setCardIssuanceCouponClaimMode] = useState<'open' | 'redeem' | 'rewardPt'>('open');
+const [cardIssuanceCouponRewardPtCost, setCardIssuanceCouponRewardPtCost] = useState('10');
 const [cardIssuanceCouponDateRestriction, setCardIssuanceCouponDateRestriction] = useState<'none' | 'range'>('none');
 const [cardIssuanceCouponValidFromYmd, setCardIssuanceCouponValidFromYmd] = useState(() => couponDefaultValidFromYmd());
 const [cardIssuanceCouponValidToYmd, setCardIssuanceCouponValidToYmd] = useState(() => couponDefaultValidToYmd());
@@ -18237,6 +18239,8 @@ const openCardIssuanceCouponCreate = useCallback(() => {
   setCardIssuanceCouponIcon('');
   setCardIssuanceCouponImage('');
   setCardIssuanceCouponMediaTab('icon');
+  setCardIssuanceCouponClaimMode('open');
+  setCardIssuanceCouponRewardPtCost('10');
   setCardIssuanceCouponBackgroundColor('#0051d1');
   setCardIssuanceCouponDescription(cardIssuanceCouponDescriptionDefault());
   setCardIssuanceCouponIssueTotal(String(CARD_ISSUANCE_COUPON_ISSUE_TOTAL_DEFAULT));
@@ -18263,6 +18267,12 @@ const openCardIssuanceCouponEdit = useCallback((couponId: string) => {
   setCardIssuanceCouponIcon(row.icon || '');
   setCardIssuanceCouponImage((row.couponImage ?? '').trim());
   setCardIssuanceCouponMediaTab((row.couponImage ?? '').trim() ? 'background' : 'icon');
+  setCardIssuanceCouponClaimMode(
+    row.socialExchange?.kind === 'coupon' ? 'rewardPt' : row.requiresRedeemCode ? 'redeem' : 'open'
+  );
+  setCardIssuanceCouponRewardPtCost(
+    row.socialExchange?.kind === 'coupon' ? String(row.socialExchange.pointsCost ?? 10) : '10'
+  );
   setCardIssuanceCouponBackgroundColor(
     tierBackgroundColorForPayload(row.backgroundColor) ?? (row.backgroundColor.trim() || '#0051d1')
   );
@@ -18473,6 +18483,7 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
     ? cardIssuanceCoupons.find((item) => item.id === cardIssuanceEditingCouponId) ?? null
     : null;
   const isSocialExchangeEdit = cardIssuanceCouponSocialExchangeDraft !== null;
+  const isRewardPtCoupon = !isSocialExchangeEdit && cardIssuanceCouponClaimMode === 'rewardPt';
   const lockIssuedOnChainFields = Boolean(editingCouponExistingRow?.issued);
   const name = lockIssuedOnChainFields
     ? (editingCouponExistingRow?.name?.trim() ?? '')
@@ -18492,15 +18503,18 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
   const issueTotalAsFloat = Number.parseFloat(issueTotalRaw);
   const hasCouponBackgroundImage = couponImageTrim.length > 0;
   const socialExchangeKind = cardIssuanceCouponSocialExchangeDraft?.kind ?? 'coupon';
-  if (isSocialExchangeEdit) {
-    const socialErr = validateSocialExchangeDraft(cardIssuanceCouponSocialExchangeDraft!);
+  const rewardPtDraft = isRewardPtCoupon
+    ? { ...EMPTY_SOCIAL_EXCHANGE_DRAFT, kind: 'coupon' as const, pointsCost: cardIssuanceCouponRewardPtCost }
+    : null;
+  if (isSocialExchangeEdit || rewardPtDraft) {
+    const socialErr = validateSocialExchangeDraft(cardIssuanceCouponSocialExchangeDraft ?? rewardPtDraft!);
     if (socialErr) {
       setCardIssuanceCouponEditorError(socialErr);
       return;
     }
   }
   if (
-    isSocialExchangeEdit &&
+    (isSocialExchangeEdit || isRewardPtCoupon) &&
     socialExchangeKind === 'usdc' &&
     !lockIssuedOnChainFields &&
     !name
@@ -18508,12 +18522,12 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
     setCardIssuanceCouponEditorError('Activity name is required.');
     return;
   }
-  if (!isSocialExchangeEdit && !name && !hasCouponBackgroundImage) {
+  if (!isSocialExchangeEdit && !isRewardPtCoupon && !name && !hasCouponBackgroundImage) {
     setCardIssuanceCouponEditorError('Coupon name is required.');
     return;
   }
   if (
-    isSocialExchangeEdit &&
+    (isSocialExchangeEdit || isRewardPtCoupon) &&
     socialExchangeKind === 'coupon' &&
     !name &&
     !hasCouponBackgroundImage
@@ -18550,7 +18564,7 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
     }
   }
   const issueTotalFixed = String(issueTotalN);
-  const requiresRedeemCodeFinal = isSocialExchangeEdit
+  const requiresRedeemCodeFinal = isSocialExchangeEdit || isRewardPtCoupon
     ? false
     : lockIssuedOnChainFields
       ? editingCouponExistingRow?.requiresRedeemCode === true
@@ -18565,13 +18579,14 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
     ? (dr === 'range' ? editingCouponExistingRow?.couponValidToYmd ?? '' : '')
     : (dr === 'range' ? parseCouponYmd(cardIssuanceCouponValidToYmd) ?? '' : '');
   const socialPayloadForSave =
-    isSocialExchangeEdit && !lockIssuedOnChainFields
-      ? socialExchangeDraftToPayload(cardIssuanceCouponSocialExchangeDraft!)
+    (isSocialExchangeEdit || isRewardPtCoupon) && !lockIssuedOnChainFields
+      ? socialExchangeDraftToPayload(cardIssuanceCouponSocialExchangeDraft ?? rewardPtDraft!)
       : editingCouponExistingRow?.socialExchange ?? undefined;
   const issuedTokenIdForPromo = editingCouponExistingRow?.issuedTokenId?.trim() ?? '';
   if (
     lockIssuedOnChainFields &&
     !isSocialExchangeEdit &&
+    !isRewardPtCoupon &&
     cardIssuanceCouponSocialPromotionDraft.enabled
   ) {
     const socialErr = validateCouponSocialPromotionDraft(cardIssuanceCouponSocialPromotionDraft);
@@ -18581,7 +18596,7 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
     }
   }
   const couponSocialPayloadForSave =
-    lockIssuedOnChainFields && !isSocialExchangeEdit && issuedTokenIdForPromo
+    lockIssuedOnChainFields && !isSocialExchangeEdit && !isRewardPtCoupon && issuedTokenIdForPromo
       ? cardIssuanceCouponSocialPromotionDraft.enabled
         ? couponSocialPromotionDraftToPayload(
             cardIssuanceCouponSocialPromotionDraft,
@@ -18599,7 +18614,7 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
             ...item,
             name: item.issued ? item.name : name,
             issueTotal: item.issued ? item.issueTotal : issueTotalFixed,
-            requiresRedeemCode: isSocialExchangeEdit
+            requiresRedeemCode: isSocialExchangeEdit || isRewardPtCoupon
               ? false
               : item.issued
                 ? item.requiresRedeemCode
@@ -18613,16 +18628,18 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
             description,
             issued: item.issued,
             issuedTokenId: item.issuedTokenId,
-            ...(isSocialExchangeEdit
+            ...(isSocialExchangeEdit || isRewardPtCoupon
               ? {
                   socialExchange:
                     socialPayloadForSave ??
                     item.socialExchange ??
-                    socialExchangeDraftToPayload(cardIssuanceCouponSocialExchangeDraft!) ??
+                    socialExchangeDraftToPayload(cardIssuanceCouponSocialExchangeDraft ?? rewardPtDraft!) ??
                     undefined,
                 }
-              : {}),
-            ...(lockIssuedOnChainFields && !isSocialExchangeEdit
+              : !lockIssuedOnChainFields
+                ? { socialExchange: undefined }
+                : {}),
+            ...(lockIssuedOnChainFields && !isSocialExchangeEdit && !isRewardPtCoupon
               ? { socialPromotion: couponSocialPayloadForSave }
               : {}),
           }
@@ -44825,16 +44842,17 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                         </>
                       ) : (
                         <>
-                      <div className="grid grid-cols-2 gap-2">
+                      <div className="grid grid-cols-3 gap-2">
                         <button
                           type="button"
                           onClick={() => {
                             if (cardIssuanceCouponEditingIssued) return;
+                            setCardIssuanceCouponClaimMode('open');
                             setCardIssuanceCouponRequiresRedeemCode(false);
                           }}
                           disabled={cardIssuanceCouponEditingIssued}
                           className={`rounded-2xl px-3 py-3 text-center text-sm font-semibold transition-colors ${bizFocusRingClass} ${
-                            !cardIssuanceCouponRequiresRedeemCode
+                            cardIssuanceCouponClaimMode === 'open'
                               ? 'bg-[#1562f0] text-white shadow-sm shadow-[#1562f0]/25'
                               : 'bg-[#eef1f3] text-[#595c5e] hover:bg-[#e4e7ea]'
                           } disabled:cursor-not-allowed disabled:opacity-60`}
@@ -44845,20 +44863,65 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                           type="button"
                           onClick={() => {
                             if (cardIssuanceCouponEditingIssued) return;
+                            setCardIssuanceCouponClaimMode('redeem');
                             setCardIssuanceCouponRequiresRedeemCode(true);
                           }}
                           disabled={cardIssuanceCouponEditingIssued}
                           className={`rounded-2xl px-3 py-3 text-center text-sm font-semibold transition-colors ${bizFocusRingClass} ${
-                            cardIssuanceCouponRequiresRedeemCode
+                            cardIssuanceCouponClaimMode === 'redeem'
                               ? 'bg-[#1562f0] text-white shadow-sm shadow-[#1562f0]/25'
                               : 'bg-[#eef1f3] text-[#595c5e] hover:bg-[#e4e7ea]'
                           } disabled:cursor-not-allowed disabled:opacity-60`}
                         >
                           Redeem code
                         </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (cardIssuanceCouponEditingIssued) return;
+                            setCardIssuanceCouponClaimMode('rewardPt');
+                            setCardIssuanceCouponRequiresRedeemCode(false);
+                          }}
+                          disabled={cardIssuanceCouponEditingIssued}
+                          className={`rounded-2xl px-3 py-3 text-center text-sm font-semibold transition-colors ${bizFocusRingClass} ${
+                            cardIssuanceCouponClaimMode === 'rewardPt'
+                              ? 'bg-[#8d3a8b] text-white shadow-sm shadow-[#8d3a8b]/25'
+                              : 'bg-[#eef1f3] text-[#595c5e] hover:bg-[#e4e7ea]'
+                          } disabled:cursor-not-allowed disabled:opacity-60`}
+                        >
+                          Use Reward PT
+                        </button>
                       </div>
+                      {cardIssuanceCouponClaimMode === 'rewardPt' ? (
+                        <div className="mt-3">
+                          <label
+                            className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]"
+                            htmlFor="programs-coupon-reward-pt-cost"
+                          >
+                            Reward PT required
+                          </label>
+                          <input
+                            id="programs-coupon-reward-pt-cost"
+                            type="number"
+                            inputMode="numeric"
+                            min={1}
+                            step={1}
+                            value={cardIssuanceCouponRewardPtCost}
+                            onKeyDown={preventNumericInputStepKeys}
+                            onKeyDownCapture={preventNumericInputStepKeys}
+                            onWheel={preventNumericInputWheelStep}
+                            onChange={(e) =>
+                              setCardIssuanceCouponRewardPtCost(e.target.value.replace(/[^\d]/g, ''))
+                            }
+                            className={`block w-full rounded-2xl border-none bg-[#eef1f3] px-4 py-3 text-sm text-[#2c2f31] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#8d3a8b]/20 ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
+                          />
+                          <p className="mt-1 text-[11px] text-[#747779]">
+                            Members burn the required Reward PT to receive this coupon.
+                          </p>
+                        </div>
+                      ) : null}
                       <p className="mt-1 text-[11px] text-[#abadaf]">
-                        {cardIssuanceCouponRequiresRedeemCode
+                        {cardIssuanceCouponClaimMode === 'redeem'
                           ? `Members enter a redeem code to claim. Codes are registered on-chain in batches of up to ${CARD_ISSUANCE_REDEEM_REGISTER_BATCH_MAX.toLocaleString()} (contract limit); register more from the Coupons list as needed.`
                           : 'Members can claim without entering a secret redeem code, within your issuance cap.'}
                       </p>

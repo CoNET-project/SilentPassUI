@@ -1685,6 +1685,36 @@ export const sendVoiceCallPushViaMailbox = async (opts: {
 }
 
 /** Chat-module entry point: sends the offer and automatically registers/wakes native call devices. */
+const sendVoiceCallPushDirect = async (signal: {
+	callId: string
+	sessionId: string
+	from: string
+	to: string
+	expiresAt: number
+}): Promise<boolean> => {
+	try {
+		const res = await postWithTimeout(`${beamioApi}/api/voiceCallPush`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				callId: signal.callId,
+				sessionId: signal.sessionId,
+				callerEoa: signal.from,
+				calleeEoa: signal.to,
+				expiresAt: signal.expiresAt,
+			}),
+		}, 10_000)
+		if (!res.ok) {
+			console.warn(`[VoiceCall] direct push endpoint returned HTTP ${res.status}`)
+			return false
+		}
+		return true
+	} catch (error) {
+		console.warn('[VoiceCall] direct push endpoint unavailable', error)
+		return false
+	}
+}
+
 export const sendVoiceCallOffer = async (opts: {
 	recipientPgp: string
 	recipientRoute: string
@@ -1707,6 +1737,9 @@ export const sendVoiceCallOffer = async (opts: {
 	)
 	if (!sent) return false
 	ensureNativePushBoundForWallet()
+	// The mailbox work package is the signaling fallback. The direct endpoint
+	// is required to wake native shells through FCM/APNs when Chat is closed.
+	void sendVoiceCallPushDirect(opts.signal)
 	void sendVoiceCallPushViaMailbox({
 		callId: opts.signal.callId,
 		sessionId: opts.signal.sessionId,

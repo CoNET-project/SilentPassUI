@@ -44919,15 +44919,20 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                           <input
                             id="programs-coupon-reward-pt-cost"
                             type="number"
-                            inputMode="numeric"
-                            min={1}
-                            step={1}
+                            inputMode="decimal"
+                            min={0.01}
+                            step={0.01}
                             value={cardIssuanceCouponRewardPtCost}
                             onKeyDown={preventNumericInputStepKeys}
                             onKeyDownCapture={preventNumericInputStepKeys}
                             onWheel={preventNumericInputWheelStep}
                             onChange={(e) =>
-                              setCardIssuanceCouponRewardPtCost(e.target.value.replace(/[^\d]/g, ''))
+                              setCardIssuanceCouponRewardPtCost(
+                                e.target.value
+                                  .replace(/[^\d.]/g, '')
+                                  .replace(/(\..*)\./g, '$1')
+                                  .replace(/^(\d+)(\.\d{0,2})?.*$/, '$1$2')
+                              )
                             }
                             className={`block w-full rounded-2xl border-none bg-[#eef1f3] px-4 py-3 text-sm text-[#2c2f31] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#8d3a8b]/20 ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
                           />

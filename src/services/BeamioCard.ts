@@ -1853,6 +1853,7 @@ export const updateIssuedCouponMetadata = async (params: {
 	description: string
 	/** Wide coupon hero background (https); empty string clears. */
 	couponImage?: string
+	socialExchange?: ShareTokenMetadataSocialExchange
 	/** When true, delist from client discover/claim. */
 	disable?: boolean
 }): Promise<{ success: boolean; cardAddress?: string; error?: string }> => {
@@ -1865,6 +1866,7 @@ export const updateIssuedCouponMetadata = async (params: {
 			backgroundColor: params.backgroundColor,
 			description: params.description,
 			couponImage: params.couponImage ?? '',
+			...(params.socialExchange ? { socialExchange: params.socialExchange } : {}),
 			...(typeof params.disable === 'boolean' ? { disable: params.disable } : {}),
 		})
 		const signal = createFetchTimeoutSignal(180_000)

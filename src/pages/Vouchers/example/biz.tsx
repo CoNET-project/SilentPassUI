@@ -18670,7 +18670,8 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
             prevRow.icon !== nextRow.icon ||
             prevRow.backgroundColor !== nextRow.backgroundColor ||
             prevRow.description !== nextRow.description ||
-            (prevRow.couponImage ?? '') !== (nextRow.couponImage ?? '');
+            (prevRow.couponImage ?? '') !== (nextRow.couponImage ?? '') ||
+            JSON.stringify(prevRow.socialExchange ?? null) !== JSON.stringify(nextRow.socialExchange ?? null);
           if (metadataChanged) {
             const metadataRes = await updateIssuedCouponMetadata({
               cardAddress: cardIssuanceExistingCard.cardAddress,
@@ -18684,6 +18685,7 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
                 }) ?? '',
               description: nextRow.description,
               couponImage: nextRow.couponImage ?? '',
+              socialExchange: nextRow.socialExchange,
             });
             if (!metadataRes.success) {
               saveOk = false;

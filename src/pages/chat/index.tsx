@@ -6,14 +6,10 @@ import {
 import { useEffect, useRef, useState } from "react"
 import { useLocation, useNavigate } from "react-router-dom"
 import { useScrollCapsuleOpacity } from "@/hooks/useScrollCapsuleOpacity"
-import { ReactComponent as ChatBlueIcon } from '@/components/Footer/assets/chat-blue.svg'
 import Chat from './chat'
 
 import ChatList from './components/ChatList'
-import { tu } from '@/locale/beamioLocale'
-
-/** 与 Wallet / Discover 顶栏胶囊圆标底色一致 */
-const CHAT_CAPSULE_ACCENT = '#1562f0'
+import { useBeamioTagDatabase } from '@/providers/BeamioTagDatabaseProvider'
 
 type ChatRouteLocationState = {
 	chatBackToDiscoverMerchantCard?: string
@@ -29,6 +25,7 @@ const Home = () => {
 		setMessageCount,
 		allNodes, chatHomeItem, setChatHomeItem,
   	} = useDaemonContext()
+	const { resolveTagPlain, avatarImgUrl } = useBeamioTagDatabase()
 	const [chatData, setChatData] = useState<chatData> ()
 	const [privateKey, setPrivate] = useState('')
 	const didInitRef = useRef(false)
@@ -37,6 +34,10 @@ const Home = () => {
 		setRef: setScrollRef,
 		setLayerRef: setChatCapsuleLayerRef,
 	} = useScrollCapsuleOpacity(!chatData)
+	const ownEoa = profiles?.[0]?.keyID?.trim() ?? ''
+	const resolvedOwnTag = resolveTagPlain(ownEoa)
+	const ownTag = resolvedOwnTag || '@Beamio'
+	const ownAvatar = avatarImgUrl(undefined, ownEoa)
 
 
 
@@ -87,13 +88,14 @@ const Home = () => {
 					aria-hidden
 				>
 					<div className="flex items-center gap-2.5 rounded-full border border-slate-100/90 bg-white py-2 pl-2 pr-4 shadow-[0_4px_24px_rgba(15,23,42,0.08)] dark:border-slate-700/80 dark:bg-slate-800">
-						<div
-							className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white"
-							style={{ backgroundColor: CHAT_CAPSULE_ACCENT }}
-						>
-							<ChatBlueIcon className="h-[22px] w-[22px] block shrink-0" aria-hidden />
-						</div>
-						<span className="text-[15px] font-bold tracking-tight text-[#0F172A] dark:text-slate-100">{tu('chat')}</span>
+						<img
+							src={ownAvatar}
+							alt=""
+							className="h-10 w-10 shrink-0 rounded-full object-cover"
+						/>
+						<span className="max-w-[12rem] truncate text-[15px] font-bold tracking-tight text-[#0F172A] dark:text-slate-100">
+							{ownTag.startsWith('@') ? ownTag : `@${ownTag}`}
+						</span>
 					</div>
 				</div>
 

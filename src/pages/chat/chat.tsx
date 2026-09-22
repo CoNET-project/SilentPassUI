@@ -1663,6 +1663,7 @@ type ChatProps = {
 	allNodes: nodeInfo[]
 	chatData: chatData
 	privateKey: string
+	autoVoiceCallAction?: 'accept' | 'reject' | null
 
 }
 
@@ -1750,7 +1751,7 @@ type ChatListProps = {
 
 
 
-export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
+export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction }: ChatProps) {
 	const navigate = useNavigate()
 	const [text, setText] = useState("")
 	 
@@ -2315,6 +2316,20 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 		})
 		setVoiceCallMuted(nextMuted)
 	}, [voiceCallMuted])
+
+	const autoVoiceCallActionHandledRef = useRef<string | null>(null)
+	useEffect(() => {
+		const offer = incomingVoiceOffer
+		if (!autoVoiceCallAction || !offer?.sessionId) return
+		const key = `${offer.sessionId}:${autoVoiceCallAction}`
+		if (autoVoiceCallActionHandledRef.current === key) return
+		autoVoiceCallActionHandledRef.current = key
+		if (autoVoiceCallAction === 'accept') {
+			void acceptVoiceCall()
+		} else {
+			void rejectVoiceCall()
+		}
+	}, [acceptVoiceCall, autoVoiceCallAction, incomingVoiceOffer, rejectVoiceCall])
 
 	useEffect(() => {
 		const onNativeCallAction = (event: Event) => {

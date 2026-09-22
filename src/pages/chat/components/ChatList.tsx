@@ -19,12 +19,13 @@ import { tu } from '@/locale/beamioLocale'
 import { chatShareLinkListPreview } from '@/utils/chatShareLinkPreview'
 import { chatGenericLinkListPreview } from '@/utils/chatGenericLinkPreview'
 import { parseVoiceCallSignal } from '@/utils/voiceCallSession'
+import { isCashTreesNativeWebView } from '@/utils/cashTreesNativeNfc'
 
 // 注意：不再接受 `list` prop。ChatList 内部直接从 useDaemonContext().profiles[0].chats
 // 读取并通过 useMemo 派生 items，避免与 profile.chats 出现两个数据源不一致的风险
 // （历史 bug：index.tsx 错传 `list={profiles[0]?.chat}` typo 导致死代码）。
 type ChatListProps = {
-  onOpen?: (item: chatData) => void
+  onOpen?: (item: chatData, options?: { autoVoiceCallAction?: 'accept' | 'reject' }) => void
   onEdit?: () => void
   onMenu?: () => void
   title?: string
@@ -193,6 +194,7 @@ export default function ChatList({
 	const presenceProbeAtRef = useRef(0)
 	const routeRefreshAtRef = useRef(0)
 	const tagEnrichAtRef = useRef(0)
+	const [browserCallMuted, setBrowserCallMuted] = useState(false)
 
 	const applyChatDataPatches = useCallback(
 		async (patchByAddr: Map<string, NonNullable<chatData["chatData"]>>) => {
@@ -344,6 +346,35 @@ export default function ChatList({
 		return sorted
 	}, [profiles])
 
+	const browserIncomingCall = useMemo(() => {
+		if (isCashTreesNativeWebView()) return null
+		for (const item of items) {
+			const last = item.messages?.[item.messages.length - 1]
+			const signal = last?.from === 'them' && last.text ? parseVoiceCallSignal(last.text) : null
+			if (signal?.type === 'voice_call_offer_v1' && Number(signal.expiresAt) > Date.now()) {
+				return { item, signal }
+			}
+		}
+		return null
+	}, [items])
+
+	useEffect(() => {
+		if (
+			!browserIncomingCall ||
+			typeof window === 'undefined' ||
+			!('Notification' in window) ||
+			Notification.permission !== 'granted'
+		) {
+			return
+		}
+		const notification = new Notification('Incoming voice call', {
+			body: `${formatChatListTitle(browserIncomingCall.item.beamio, browserIncomingCall.item.address)} is calling`,
+			tag: `beamio-voice-${browserIncomingCall.signal.sessionId}`,
+			requireInteraction: true,
+		})
+		return () => notification.close()
+	}, [browserIncomingCall])
+
 	// After recover / history restore, chats often only have EOA stubs — hydrate @beamioTag from Tag DB + remote.
 	useEffect(() => {
 		if (!items.length) return
@@ -416,6 +447,45 @@ export default function ChatList({
 
   return (
     <div className="min-h-full min-w-0 bg-[#F1F8ED]">
+      {browserIncomingCall ? (
+        <div className="pointer-events-none fixed inset-x-4 top-[max(5rem,calc(env(safe-area-inset-top)+4.5rem))] z-[130] mx-auto max-w-lg">
+          <div className="pointer-events-auto rounded-3xl border border-[#dce2f7] bg-white/95 p-4 shadow-[0_18px_50px_rgba(15,23,42,0.22)] backdrop-blur-xl">
+            <div className="flex items-center gap-3">
+              <Avatar address={browserIncomingCall.item.address} beamio={browserIncomingCall.item.beamio} online />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-bold text-slate-900">
+                  {formatChatListTitle(browserIncomingCall.item.beamio, browserIncomingCall.item.address)}
+                </p>
+                <p className="mt-0.5 text-xs text-slate-500">Incoming voice call</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setBrowserCallMuted((value) => !value)}
+                className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-600"
+                aria-pressed={browserCallMuted}
+              >
+                {browserCallMuted ? 'Unmute' : 'Mute'}
+              </button>
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => onOpen?.(browserIncomingCall.item, { autoVoiceCallAction: 'reject' })}
+                className="rounded-full bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-700"
+              >
+                Decline
+              </button>
+              <button
+                type="button"
+                onClick={() => onOpen?.(browserIncomingCall.item, { autoVoiceCallAction: 'accept' })}
+                className="rounded-full bg-[#1562f0] px-4 py-2.5 text-sm font-semibold text-white"
+              >
+                Accept
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       {/* 顶部栏（贴近 iOS 列表页风格；父级已提供 刘海+3.5rem 留白，此处不再重复 safe-area） */}
       <div
         className="sticky top-0 z-20 bg-[#F1F8ED]/90 backdrop-blur-xl"

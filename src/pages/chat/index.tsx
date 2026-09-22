@@ -27,6 +27,7 @@ const Home = () => {
   	} = useDaemonContext()
 	const { resolveTagPlain, avatarImgUrl } = useBeamioTagDatabase()
 	const [chatData, setChatData] = useState<chatData> ()
+	const [autoVoiceCallAction, setAutoVoiceCallAction] = useState<'accept' | 'reject' | null>(null)
 	const [privateKey, setPrivate] = useState('')
 	const didInitRef = useRef(false)
 	const {
@@ -112,12 +113,13 @@ const Home = () => {
 					/>
 					<ChatList
 						title="" // 你如果不要 tu('messages') 大标题就留空
-						onOpen={item => {
+						onOpen={(item, options) => {
 							// User picked another thread from the list — drop Discover return target.
 							const state = location.state as ChatRouteLocationState
 							if (state?.chatBackToDiscoverMerchantCard) {
 								navigate(location.pathname, { replace: true, state: {} })
 							}
+							setAutoVoiceCallAction(options?.autoVoiceCallAction ?? null)
 							setChatData(item)      // ✅ 打开某个会话
 							setShowFooter(false)
 						}}
@@ -131,6 +133,7 @@ const Home = () => {
 			<Chat
 				onBack={() => {
 					const state = location.state as ChatRouteLocationState
+					setAutoVoiceCallAction(null)
 					const backCard = state?.chatBackToDiscoverMerchantCard?.trim() ?? ''
 					const returnTo = state?.discoverDetailReturnTo?.trim()
 					setChatData(undefined)
@@ -152,6 +155,7 @@ const Home = () => {
 				chatData={chatData}
 				allNodes={allNodes}
 				privateKey={privateKey}
+				autoVoiceCallAction={autoVoiceCallAction}
 			/>
 		)}
 		</div>

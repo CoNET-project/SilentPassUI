@@ -432,7 +432,7 @@
   "programs_coupon_share_default_subtitle": "Open in the Beamio app.",
   "programs_coupon_default_title": "Beamio Coupon",
   "programs_coupon_editor_close": "Close coupon editor",
-  "programs_coupon_issued_locked": "This coupon has already been issued on-chain. Coupon name, claim method, total issuance, and validity period are locked. You can still update the coupon icon, optional wide background photo (hides tile background color), description, and tile background color when no photo is set.",
+  "programs_coupon_issued_locked": "This coupon has already been issued on-chain. Coupon name, claim method, total issuance, and validity period are locked. The ticket icon uses your merchant card logo. You can still update the optional wide background photo (hides tile background color), description, and tile background color when no photo is set.",
   "programs_coupon_name_label": "Coupon name",
   "programs_catalog_item_live_locked": "This item is live on-chain. Name{{salesFields}} are locked. You can still update optional background media{{tileColor}}, and description.",
   "programs_catalog_item_live_locked_sales": ", claim method, and total issuance",

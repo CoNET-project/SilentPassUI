@@ -12003,6 +12003,13 @@ function cardIssuanceCouponIconLooksLikeImageUrl(raw: string): boolean {
   return t.startsWith('http://') || t.startsWith('https://') || t.startsWith('ipfs://');
 }
 
+/** Ticket round-crop uses the merchant card logo already set on the program card. */
+function merchantCardLogoForCouponTicket(raw: string): string {
+  const logo = raw.trim();
+  if (cardIssuanceCouponIconLooksLikeImageUrl(logo) || logo.startsWith('data:image')) return logo;
+  return '';
+}
+
 /** Remember last non-empty catalog item icon input for the next Add item form. */
 function rememberCardIssuanceProductionLastIconInput(raw: string, ref: React.MutableRefObject<string>): void {
   const trimmed = raw.trim();
@@ -14128,7 +14135,6 @@ const [cardIssuanceSocialExchangeIssueTotal, setCardIssuanceSocialExchangeIssueT
 const [cardIssuanceSocialExchangeDescription, setCardIssuanceSocialExchangeDescription] = useState(
   cardIssuanceCouponDescriptionDefault()
 );
-const [cardIssuanceSocialExchangeIcon, setCardIssuanceSocialExchangeIcon] = useState('');
 const [cardIssuanceSocialExchangeImage, setCardIssuanceSocialExchangeImage] = useState('');
 const [cardIssuanceSocialExchangeBackgroundColor, setCardIssuanceSocialExchangeBackgroundColor] =
   useState('#0051d1');
@@ -14140,10 +14146,7 @@ const [cardIssuanceSocialExchangeValidFromYmd, setCardIssuanceSocialExchangeVali
 const [cardIssuanceSocialExchangeValidToYmd, setCardIssuanceSocialExchangeValidToYmd] = useState(
   () => couponDefaultValidToYmd()
 );
-const cardIssuanceSocialExchangeIconFileRef = useRef<HTMLInputElement>(null);
 const cardIssuanceSocialExchangeImageFileRef = useRef<HTMLInputElement>(null);
-const [cardIssuanceSocialExchangeIconUploading, setCardIssuanceSocialExchangeIconUploading] =
-  useState(false);
 const [cardIssuanceSocialExchangeImageUploading, setCardIssuanceSocialExchangeImageUploading] =
   useState(false);
 const cardIssuanceSocialExchangeIssueTotalWheelRef = useMemo(
@@ -14183,7 +14186,6 @@ const [cardIssuanceEditingCouponId, setCardIssuanceEditingCouponId] = useState<s
 const [cardIssuanceCouponName, setCardIssuanceCouponName] = useState(cardIssuanceCouponNameDefault());
 const [cardIssuanceCouponIcon, setCardIssuanceCouponIcon] = useState('');
 const [cardIssuanceCouponImage, setCardIssuanceCouponImage] = useState('');
-const [cardIssuanceCouponMediaTab, setCardIssuanceCouponMediaTab] = useState<'icon' | 'background'>('icon');
 const [cardIssuanceCouponBackgroundColor, setCardIssuanceCouponBackgroundColor] = useState('#0051d1');
 const [cardIssuanceCouponDescription, setCardIssuanceCouponDescription] = useState(
   cardIssuanceCouponDescriptionDefault()
@@ -14197,9 +14199,7 @@ const [cardIssuanceCouponRewardPtCost, setCardIssuanceCouponRewardPtCost] = useS
 const [cardIssuanceCouponDateRestriction, setCardIssuanceCouponDateRestriction] = useState<'none' | 'range'>('none');
 const [cardIssuanceCouponValidFromYmd, setCardIssuanceCouponValidFromYmd] = useState(() => couponDefaultValidFromYmd());
 const [cardIssuanceCouponValidToYmd, setCardIssuanceCouponValidToYmd] = useState(() => couponDefaultValidToYmd());
-const cardIssuanceCouponIconFileRef = useRef<HTMLInputElement>(null);
 const cardIssuanceCouponImageFileRef = useRef<HTMLInputElement>(null);
-const [cardIssuanceCouponIconUploading, setCardIssuanceCouponIconUploading] = useState(false);
 const [cardIssuanceCouponImageUploading, setCardIssuanceCouponImageUploading] = useState(false);
 const [cardIssuanceCouponEditorError, setCardIssuanceCouponEditorError] = useState('');
 const [cardIssuanceCouponShareOpenId, setCardIssuanceCouponShareOpenId] = useState<string | null>(null);
@@ -17040,11 +17040,7 @@ const cardIssuanceEffectiveMerchantLogo = useMemo(() => {
  const cardIssuanceCouponEditorLivePreview = useMemo(() => {
    const offerTitle = cardIssuanceCouponName.trim();
    const subtitle = cardIssuanceCouponDescription.trim();
-   const couponIcon = cardIssuanceCouponIcon.trim();
-   const hasRenderableCouponIcon =
-     couponIcon.length > 0 &&
-     (cardIssuanceCouponIconLooksLikeImageUrl(couponIcon) || couponIcon.startsWith('data:image'));
-   const iconUrl = hasRenderableCouponIcon ? couponIcon : '';
+   const iconUrl = merchantCardLogoForCouponTicket(cardIssuanceEffectiveMerchantLogo);
    const hex =
      tierBackgroundColorForPayload(cardIssuanceCouponBackgroundColor) ?? '#0051d1';
    const banner = cardIssuanceCouponImage.trim();
@@ -17087,7 +17083,7 @@ const cardIssuanceEffectiveMerchantLogo = useMemo(() => {
  }, [
    cardIssuanceCouponName,
    cardIssuanceCouponDescription,
-   cardIssuanceCouponIcon,
+   cardIssuanceEffectiveMerchantLogo,
    cardIssuanceCouponBackgroundColor,
    cardIssuanceCouponImage,
    cardIssuanceCouponDateRestriction,
@@ -17101,11 +17097,7 @@ const cardIssuanceEffectiveMerchantLogo = useMemo(() => {
    }
    const offerTitle = cardIssuanceSocialExchangeName.trim();
    const subtitle = cardIssuanceSocialExchangeDescription.trim();
-   const couponIcon = cardIssuanceSocialExchangeIcon.trim();
-   const hasRenderableCouponIcon =
-     couponIcon.length > 0 &&
-     (cardIssuanceCouponIconLooksLikeImageUrl(couponIcon) || couponIcon.startsWith('data:image'));
-   const iconUrl = hasRenderableCouponIcon ? couponIcon : '';
+   const iconUrl = merchantCardLogoForCouponTicket(cardIssuanceEffectiveMerchantLogo);
    const hex =
      tierBackgroundColorForPayload(cardIssuanceSocialExchangeBackgroundColor) ?? '#0051d1';
    const banner = cardIssuanceSocialExchangeImage.trim();
@@ -17150,7 +17142,7 @@ const cardIssuanceEffectiveMerchantLogo = useMemo(() => {
    cardIssuanceSocialExchangeDateRestriction,
    cardIssuanceSocialExchangeDescription,
    cardIssuanceSocialExchangeDraft.kind,
-   cardIssuanceSocialExchangeIcon,
+   cardIssuanceEffectiveMerchantLogo,
    cardIssuanceSocialExchangeImage,
    cardIssuanceSocialExchangeName,
    cardIssuanceSocialExchangeValidToYmd,
@@ -18245,7 +18237,6 @@ const openCardIssuanceCouponCreate = useCallback(() => {
   setCardIssuanceCouponName(cardIssuanceCouponNameDefault());
   setCardIssuanceCouponIcon('');
   setCardIssuanceCouponImage('');
-  setCardIssuanceCouponMediaTab('icon');
   setCardIssuanceCouponClaimMode('open');
   setCardIssuanceCouponRewardPtCost('10');
   setCardIssuanceCouponBackgroundColor('#0051d1');
@@ -18271,9 +18262,8 @@ const openCardIssuanceCouponEdit = useCallback((couponId: string) => {
   );
   setCardIssuanceCouponName(row.name);
   setCardIssuanceCouponIssueTotal(row.issueTotal || String(CARD_ISSUANCE_COUPON_ISSUE_TOTAL_DEFAULT));
-  setCardIssuanceCouponIcon(row.icon || '');
+  setCardIssuanceCouponIcon('');
   setCardIssuanceCouponImage((row.couponImage ?? '').trim());
-  setCardIssuanceCouponMediaTab((row.couponImage ?? '').trim() ? 'background' : 'icon');
   const inferredRewardPtCost =
     row.socialExchange?.kind === 'coupon'
       ? String(row.socialExchange.pointsCost ?? 10)
@@ -18499,8 +18489,7 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
   const name = lockIssuedOnChainFields
     ? (editingCouponExistingRow?.name?.trim() ?? '')
     : cardIssuanceCouponName.trim();
-  const icon = cardIssuanceCouponIcon.trim();
-  const couponIconForMetadata = icon || cardIssuanceEffectiveMerchantLogo.trim();
+  const couponIconForMetadata = cardIssuanceEffectiveMerchantLogo.trim();
   const couponImageTrim = cardIssuanceCouponImage.trim();
   const backgroundColorRaw = cardIssuanceCouponBackgroundColor.trim();
   const backgroundColor = tierBackgroundColorForPayload(backgroundColorRaw);
@@ -18633,7 +18622,7 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
             couponDateRestriction: item.issued ? item.couponDateRestriction : dr,
             couponValidFromYmd: item.issued ? item.couponValidFromYmd : vfStore,
             couponValidToYmd: item.issued ? item.couponValidToYmd : vtStore,
-            icon,
+            icon: couponIconForMetadata,
             couponImage: couponImageTrim,
             backgroundColor: backgroundColor ?? '#0051d1',
             description,
@@ -19057,7 +19046,6 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
   cardIssuanceExistingCard?.cardAddress,
   cardIssuanceCouponBackgroundColor,
   cardIssuanceCouponDescription,
-  cardIssuanceCouponIcon,
   cardIssuanceCouponImage,
   cardIssuanceCouponIssueTotal,
   cardIssuanceCouponRequiresRedeemCode,
@@ -20123,7 +20111,7 @@ const toggleCardIssuanceCouponListed = useCallback(
         cardAddress: cardAddrRaw,
         couponId: coupon.id,
         issuedTokenId: coupon.issuedTokenId,
-        icon: coupon.icon,
+        icon: cardIssuanceEffectiveMerchantLogo.trim(),
         backgroundColor: bgColor,
         description: coupon.description,
         couponImage: coupon.couponImage ?? '',
@@ -20137,7 +20125,11 @@ const toggleCardIssuanceCouponListed = useCallback(
         return;
       }
       setCardIssuanceCoupons((prev) =>
-        prev.map((item) => (item.id === couponId ? { ...item, disabled: !listed } : item))
+        prev.map((item) =>
+          item.id === couponId
+            ? { ...item, disabled: !listed, icon: cardIssuanceEffectiveMerchantLogo.trim() }
+            : item
+        )
       );
       setCardIssuanceOwnerAdminNotice({
         kind: 'ok',
@@ -20149,7 +20141,7 @@ const toggleCardIssuanceCouponListed = useCallback(
       setCardIssuanceCouponListingToggleId(null);
     }
   },
-  [cardIssuanceCoupons, cardIssuanceExistingCard?.cardAddress]
+  [cardIssuanceCoupons, cardIssuanceExistingCard?.cardAddress, cardIssuanceEffectiveMerchantLogo]
 );
 
 const registerCardIssuanceCouponRedeemCodes = useCallback(
@@ -22983,35 +22975,6 @@ const clearCardIssuanceProductionImage = useCallback(() => {
   setCardIssuanceProductionImageStartSec(0);
 }, [cardIssuanceProductionImageUploading, revokeProductionVideoDraft]);
 
-const handleCardIssuanceCouponIconPick: React.ChangeEventHandler<HTMLInputElement> = useCallback(
-  async (e) => {
-    const input = e.currentTarget;
-    const file = input.files?.[0];
-    input.value = '';
-    if (!file || !file.type.startsWith('image/')) return;
-    const p0 = profiles?.[0];
-    if (!p0?.privateKeyArmor) {
-      setCardIssuanceCouponEditorError('Profile not available for upload. Open Settings and ensure your wallet is ready.');
-      return;
-    }
-    setCardIssuanceCouponEditorError('');
-    setCardIssuanceCouponIconUploading(true);
-    try {
-      const hash = await uploadImageFileToIpfsWithRetry(file, (dataUrl) => postToIPFS(p0, dataUrl));
-      if (hash) {
-        setCardIssuanceCouponIcon(`${IPFS_GET_FRAGMENT}${hash}&t=${Date.now()}`);
-      } else {
-        setCardIssuanceCouponEditorError('Coupon icon upload failed.');
-      }
-    } catch (err: any) {
-      setCardIssuanceCouponEditorError(err?.message ?? 'Coupon icon upload failed.');
-    } finally {
-      setCardIssuanceCouponIconUploading(false);
-     }
-   },
-   [profiles]
- );
-
 const handleCardIssuanceCouponImagePick: React.ChangeEventHandler<HTMLInputElement> = useCallback(
   async (e) => {
     const input = e.currentTarget;
@@ -23036,38 +22999,6 @@ const handleCardIssuanceCouponImagePick: React.ChangeEventHandler<HTMLInputEleme
       setCardIssuanceCouponEditorError(err?.message ?? 'Coupon background image upload failed.');
     } finally {
       setCardIssuanceCouponImageUploading(false);
-    }
-  },
-  [profiles]
-);
-
-const handleCardIssuanceSocialExchangeIconPick: React.ChangeEventHandler<HTMLInputElement> = useCallback(
-  async (e) => {
-    const input = e.currentTarget;
-    const file = input.files?.[0];
-    input.value = '';
-    if (!file || !file.type.startsWith('image/')) return;
-    const p0 = profiles?.[0];
-    if (!p0?.privateKeyArmor) {
-      setCardIssuanceSocialExchangeEditorError(
-        'Profile not available for upload. Open Settings and ensure your wallet is ready.'
-      );
-      return;
-    }
-    setCardIssuanceSocialExchangeEditorError('');
-    setCardIssuanceSocialExchangeIconUploading(true);
-    try {
-      const hash = await uploadImageFileToIpfsWithRetry(file, (dataUrl) => postToIPFS(p0, dataUrl));
-      if (hash) {
-        setCardIssuanceSocialExchangeIcon(`${IPFS_GET_FRAGMENT}${hash}&t=${Date.now()}`);
-      } else {
-        setCardIssuanceSocialExchangeEditorError('Coupon icon upload failed.');
-      }
-    } catch (err: unknown) {
-      const message = (err as { message?: string })?.message ?? 'Coupon icon upload failed.';
-      setCardIssuanceSocialExchangeEditorError(message);
-    } finally {
-      setCardIssuanceSocialExchangeIconUploading(false);
     }
   },
   [profiles]
@@ -25293,7 +25224,6 @@ const openCardIssuanceSocialExchangeEditor = useCallback(() => {
   setCardIssuanceSocialExchangeName(cardIssuanceCouponNameDefault());
   setCardIssuanceSocialExchangeIssueTotal(String(CARD_ISSUANCE_COUPON_ISSUE_TOTAL_DEFAULT));
   setCardIssuanceSocialExchangeDescription(cardIssuanceCouponDescriptionDefault());
-  setCardIssuanceSocialExchangeIcon('');
   setCardIssuanceSocialExchangeImage('');
   setCardIssuanceSocialExchangeBackgroundColor('#0051d1');
   setCardIssuanceSocialExchangeDateRestriction('none');
@@ -25314,14 +25244,12 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
     return;
   }
   const isCouponReward = socialPayload.kind === 'coupon';
-  const icon = isCouponReward ? cardIssuanceSocialExchangeIcon.trim() : '';
   const couponImageTrim = isCouponReward ? cardIssuanceSocialExchangeImage.trim() : '';
   const backgroundColorRaw = isCouponReward
     ? cardIssuanceSocialExchangeBackgroundColor.trim()
     : '#0051d1';
   const backgroundColor = tierBackgroundColorForPayload(backgroundColorRaw) ?? '#0051d1';
-  const couponIconForMetadata =
-    icon || (isCouponReward ? cardIssuanceEffectiveMerchantLogo.trim() : '');
+  const couponIconForMetadata = isCouponReward ? cardIssuanceEffectiveMerchantLogo.trim() : '';
   const name = cardIssuanceSocialExchangeName.trim();
   const description = cardIssuanceSocialExchangeDescription.trim();
   const issueTotalRaw = cardIssuanceSocialExchangeIssueTotal.replace(/,/g, '').trim();
@@ -25528,7 +25456,6 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
   cardIssuanceSocialExchangeDescription,
   cardIssuanceSocialExchangeDraft,
   cardIssuanceSocialExchangeEditorValidationError,
-  cardIssuanceSocialExchangeIcon,
   cardIssuanceSocialExchangeImage,
   cardIssuanceSocialExchangeIssueTotal,
   cardIssuanceSocialExchangeName,
@@ -44091,15 +44018,20 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                               <div className="flex items-center justify-between gap-3 p-3 sm:p-4">
                               <div className="min-w-0">
                                 <div className="mb-1 flex min-w-0 items-center gap-2">
-                                  {cardIssuanceCouponIconLooksLikeImageUrl(coupon.icon) ? (
+                                  {(() => {
+                                    const couponListIcon = merchantCardLogoForCouponTicket(
+                                      cardIssuanceEffectiveMerchantLogo
+                                    );
+                                    return couponListIcon ? (
                                     <span
                                       className="inline-flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full text-sm text-white shadow-sm"
                                       style={{ backgroundColor: tierBackgroundColorForPayload(coupon.backgroundColor) ?? '#0051d1' }}
                                       aria-hidden
                                     >
-                                      <IpfsImg src={coupon.icon} alt="" className="h-6 w-6 rounded-full object-cover" />
+                                      <IpfsImg src={couponListIcon} alt="" className="h-6 w-6 rounded-full object-cover" />
                                     </span>
-                                  ) : null}
+                                    ) : null;
+                                  })()}
                                   <p className="truncate font-manrope text-sm font-bold text-[#2c2f31] sm:text-base">{coupon.name}</p>
                                 </div>
                                 <p className="text-[10px] font-semibold uppercase tracking-wider text-[#595c5e]">
@@ -45032,89 +44964,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                     {!cardIssuanceCouponEditorIsSocialExchange ||
                     cardIssuanceCouponSocialExchangeDraft?.kind === 'coupon' ? (
                     <>
-                    <div className="mb-3 inline-flex rounded-full bg-[#eef1f3] p-1" role="tablist" aria-label="Coupon media">
-                      <button
-                        type="button"
-                        role="tab"
-                        aria-selected={cardIssuanceCouponMediaTab === 'icon'}
-                        onClick={() => {
-                          setCardIssuanceCouponMediaTab('icon');
-                          setCardIssuanceCouponImage('');
-                          if (cardIssuanceCouponImageFileRef.current) cardIssuanceCouponImageFileRef.current.value = '';
-                        }}
-                        className={`rounded-full px-4 py-2 text-xs font-bold transition ${
-                          cardIssuanceCouponMediaTab === 'icon'
-                            ? 'bg-white text-[#1562f0] shadow-sm'
-                            : 'text-[#747779]'
-                        }`}
-                      >
-                        Coupon icon
-                      </button>
-                      <button
-                        type="button"
-                        role="tab"
-                        aria-selected={cardIssuanceCouponMediaTab === 'background'}
-                        onClick={() => {
-                          setCardIssuanceCouponMediaTab('background');
-                          setCardIssuanceCouponIcon('');
-                          if (cardIssuanceCouponIconFileRef.current) cardIssuanceCouponIconFileRef.current.value = '';
-                        }}
-                        className={`rounded-full px-4 py-2 text-xs font-bold transition ${
-                          cardIssuanceCouponMediaTab === 'background'
-                            ? 'bg-white text-[#1562f0] shadow-sm'
-                            : 'text-[#747779]'
-                        }`}
-                      >
-                        Background image
-                      </button>
-                    </div>
-                    <div className={cardIssuanceCouponMediaTab === 'icon' ? '' : 'hidden'}>
-                      <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">{tu('programs_coupon_icon_label')}</label>
-                      <p className="mb-2 text-[11px] font-medium leading-relaxed text-[#747779]">
-                        Recommended: square image, 512 × 512 px or larger, 1:1 ratio. Keep the artwork centered inside a
-                        circular safe area because the ticket displays this icon as a round crop.
-                      </p>
-                      <input
-                        ref={cardIssuanceCouponIconFileRef}
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={handleCardIssuanceCouponIconPick}
-                      />
-                      {!cardIssuanceCouponIcon ? (
-                        <button
-                          type="button"
-                          onClick={() => cardIssuanceCouponIconFileRef.current?.click()}
-                          disabled={cardIssuanceCouponIconUploading}
-                          className={`flex min-h-[112px] w-full cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[#abadaf]/40 bg-[#eef1f3] transition-colors hover:bg-[#dfe3e6] disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
-                        >
-                          {cardIssuanceCouponIconUploading ? (
-                            <Loader2 className="h-7 w-7 animate-spin text-[#747779]" strokeWidth={2} aria-hidden />
-                          ) : (
-                            <ImagePlus className="h-7 w-7 text-[#747779]" strokeWidth={2} aria-hidden />
-                          )}
-                          <span className="mt-2 text-[11px] font-bold text-[#747779]">
-                            {cardIssuanceCouponIconUploading ? 'Uploading…' : 'Upload icon (PNG, JPEG, or SVG)'}
-                          </span>
-                        </button>
-                      ) : (
-                        <div className="relative h-[112px] w-full overflow-hidden rounded-2xl border-2 border-dashed border-[#abadaf]/40 bg-[#eef1f3]">
-                          <IpfsImg src={cardIssuanceCouponIcon} alt="" className="h-full w-full object-contain" />
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setCardIssuanceCouponIcon('');
-                              if (cardIssuanceCouponIconFileRef.current) cardIssuanceCouponIconFileRef.current.value = '';
-                            }}
-                            className={`absolute right-2 top-2 inline-flex h-8 w-8 items-center justify-center rounded-full bg-[#2c2f31]/45 text-white backdrop-blur-[2px] transition hover:bg-[#2c2f31]/60 ${bizFocusRingClass}`}
-                            aria-label={tu('programs_coupon_remove_icon_aria')}
-                          >
-                            <Trash2 className="h-4 w-4" strokeWidth={2} aria-hidden />
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                    <div className={cardIssuanceCouponMediaTab === 'background' ? '' : 'hidden'}>
+                    <div>
                       <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">
                         Coupon background image (optional)
                       </label>
@@ -45169,8 +45019,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                         Applies only to this coupon ticket. Your program-wide merchant banner is not used here.
                       </p>
                     </div>
-                    {cardIssuanceCouponMediaTab === 'icon' &&
-                    tileBackgroundColorApplies(cardIssuanceCouponImage) ? (
+                    {tileBackgroundColorApplies(cardIssuanceCouponImage) ? (
                     <div className="space-y-2">
                       <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">{tu('programs_coupon_bg_color')}</label>
                       <div className="flex flex-wrap gap-2">
@@ -45317,19 +45166,19 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                       type="button"
                       onClick={submitCardIssuanceCouponEditor}
                       disabled={
-                        cardIssuanceCouponIconUploading ||
+                        cardIssuanceCouponImageUploading ||
                         cardIssuanceCouponEditorPublishing ||
                         Boolean(cardIssuanceCouponSocialExchangeEditorValidationError)
                       }
                       className={`mt-2 flex w-full items-center justify-center gap-2 rounded-full bg-[#0051d1] py-4 font-manrope text-base font-bold text-white shadow-lg shadow-[#0051d1]/20 transition-transform active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 ${CARD_SETUP_MOBILE_CTA_TOUCH_CLASS} ${bizFocusRingClass}`}
                     >
-                      {cardIssuanceCouponIconUploading || cardIssuanceCouponEditorPublishing ? (
+                      {cardIssuanceCouponImageUploading || cardIssuanceCouponEditorPublishing ? (
                         <Loader2 className="h-5 w-5 animate-spin" strokeWidth={2} aria-hidden />
                       ) : (
                         <PlusCircle className="h-5 w-5" strokeWidth={2} aria-hidden />
                       )}
-                      {cardIssuanceCouponIconUploading
-                        ? 'Uploading icon…'
+                      {cardIssuanceCouponImageUploading
+                        ? 'Uploading…'
                         : cardIssuanceCouponEditorPublishing
                           ? 'Saving…'
                           : cardIssuanceEditingCouponId
@@ -47733,62 +47582,6 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                          <>
                            <div>
                              <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">
-                               {tu('programs_coupon_icon_label')}
-                             </label>
-                             <p className="mb-2 text-[11px] font-medium leading-relaxed text-[#747779]">
-                               Recommended: square image, 512 × 512 px or larger, 1:1 ratio. Keep the artwork centered inside a
-                               circular safe area because the ticket displays this icon as a round crop.
-                             </p>
-                             <input
-                               ref={cardIssuanceSocialExchangeIconFileRef}
-                               type="file"
-                               accept="image/*"
-                               className="hidden"
-                               onChange={handleCardIssuanceSocialExchangeIconPick}
-                             />
-                             {!cardIssuanceSocialExchangeIcon ? (
-                               <button
-                                 type="button"
-                                 onClick={() => cardIssuanceSocialExchangeIconFileRef.current?.click()}
-                                 disabled={cardIssuanceSocialExchangeIconUploading}
-                                 className={`flex min-h-[112px] w-full cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[#abadaf]/40 bg-[#eef1f3] transition-colors hover:bg-[#dfe3e6] disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
-                               >
-                                 {cardIssuanceSocialExchangeIconUploading ? (
-                                   <Loader2 className="h-7 w-7 animate-spin text-[#747779]" strokeWidth={2} aria-hidden />
-                                 ) : (
-                                   <ImagePlus className="h-7 w-7 text-[#747779]" strokeWidth={2} aria-hidden />
-                                 )}
-                                 <span className="mt-2 text-[11px] font-bold text-[#747779]">
-                                   {cardIssuanceSocialExchangeIconUploading
-                                     ? 'Uploading…'
-                                     : 'Upload icon (PNG, JPEG, or SVG)'}
-                                 </span>
-                               </button>
-                             ) : (
-                               <div className="relative h-[112px] w-full overflow-hidden rounded-2xl border-2 border-dashed border-[#abadaf]/40 bg-[#eef1f3]">
-                                 <IpfsImg
-                                   src={cardIssuanceSocialExchangeIcon}
-                                   alt=""
-                                   className="h-full w-full object-contain"
-                                 />
-                                 <button
-                                   type="button"
-                                   onClick={() => {
-                                     setCardIssuanceSocialExchangeIcon('');
-                                     if (cardIssuanceSocialExchangeIconFileRef.current) {
-                                       cardIssuanceSocialExchangeIconFileRef.current.value = '';
-                                     }
-                                   }}
-                                   className={`absolute right-2 top-2 inline-flex h-8 w-8 items-center justify-center rounded-full bg-[#2c2f31]/45 text-white backdrop-blur-[2px] transition hover:bg-[#2c2f31]/60 ${bizFocusRingClass}`}
-                                   aria-label={tu('programs_coupon_remove_icon_aria')}
-                                 >
-                                   <Trash2 className="h-4 w-4" strokeWidth={2} aria-hidden />
-                                 </button>
-                               </div>
-                             )}
-                           </div>
-                           <div>
-                             <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#595c5e]">
                                Coupon background image (optional)
                              </label>
                              <p className="mb-2 text-[11px] font-medium leading-relaxed text-[#747779]">
@@ -47982,19 +47775,17 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                          disabled={
                            Boolean(cardIssuanceSocialExchangeEditorValidationError) ||
                            cardIssuanceSocialExchangeEditorPublishing ||
-                           cardIssuanceSocialExchangeIconUploading ||
                            cardIssuanceSocialExchangeImageUploading
                          }
                          className={`mt-2 flex w-full items-center justify-center gap-2 rounded-full bg-[#0051d1] py-4 font-manrope text-base font-bold text-white shadow-lg shadow-[#0051d1]/20 transition-transform active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 ${CARD_SETUP_MOBILE_CTA_TOUCH_CLASS} ${bizFocusRingClass}`}
                        >
                          {cardIssuanceSocialExchangeEditorPublishing ||
-                         cardIssuanceSocialExchangeIconUploading ||
                          cardIssuanceSocialExchangeImageUploading ? (
                            <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
                          ) : (
                            <PlusCircle className="h-5 w-5" strokeWidth={2} aria-hidden />
                          )}
-                         {cardIssuanceSocialExchangeIconUploading || cardIssuanceSocialExchangeImageUploading
+                         {cardIssuanceSocialExchangeImageUploading
                            ? 'Uploading…'
                            : cardIssuanceSocialExchangeEditorPublishing
                              ? tu('programs_social_exchange_creating')
@@ -51395,7 +51186,10 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
           <div className="space-y-5 px-5 py-5 sm:px-6 sm:py-6">
             <div ref={cardIssuanceCouponShareImageRef} className="rounded-[22px] bg-white px-5 py-4 sm:px-7 sm:py-5">
               <ProgramsCouponShareCardPreview
-                coupon={cardIssuanceCouponShareRow}
+                coupon={{
+                  ...cardIssuanceCouponShareRow,
+                  icon: merchantCardLogoForCouponTicket(cardIssuanceEffectiveMerchantLogo),
+                }}
                 shareUrl={cardIssuanceCouponShareUrl}
                 merchantName={programsOverviewDisplayName}
                 shareKind="open_claim"
@@ -51507,7 +51301,10 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
               className="rounded-[22px] bg-[#f3f4f5] px-5 py-4 sm:px-7 sm:py-5"
             >
               <ProgramsCouponShareCardPreview
-                coupon={cardIssuanceCouponRedeemShareRow}
+                coupon={{
+                  ...cardIssuanceCouponRedeemShareRow,
+                  icon: merchantCardLogoForCouponTicket(cardIssuanceEffectiveMerchantLogo),
+                }}
                 shareUrl={cardIssuanceCouponRedeemShareUrl}
                 merchantName={programsOverviewDisplayName}
                 shareKind="redeem"

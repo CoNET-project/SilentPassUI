@@ -432,7 +432,7 @@
   "programs_coupon_share_default_subtitle": "在 Beamio App 中打开。",
   "programs_coupon_default_title": "Beamio 优惠券",
   "programs_coupon_editor_close": "关闭优惠券编辑器",
-  "programs_coupon_issued_locked": "此优惠券已在链上发行。名称、领取方式、发行总量与有效期已锁定。您仍可更新图标、可选宽屏背景图（有图时隐藏磁贴背景色）、描述，以及无背景图时的磁贴背景色。",
+  "programs_coupon_issued_locked": "此优惠券已在链上发行。名称、领取方式、发行总量与有效期已锁定。票面图标使用商家卡已设定的 logo。您仍可更新可选宽屏背景图（有图时隐藏磁贴背景色）、描述，以及无背景图时的磁贴背景色。",
   "programs_coupon_name_label": "优惠券名称",
   "programs_catalog_item_live_locked": "此条目已在链上上线。名称{{salesFields}}已锁定。您仍可更新可选背景媒体{{tileColor}}及描述。",
   "programs_catalog_item_live_locked_sales": "、领取方式与发行总量",

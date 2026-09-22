@@ -88,6 +88,7 @@ export function createVoiceCallController(options: VoiceCallControllerOptions) {
 	const tempWallet = ethers.Wallet.createRandom()
 	let activeSessionId: string | null = null
 	let activeSessionKey: Uint8Array | null = null
+	let activeSignal: VoiceCallSignal | null = null
 	let selectedEntries = getRandomNodes(options.allNodes, Math.min(4, options.allNodes.length))
 
 	const startOutgoing = async (): Promise<VoiceCallChannel | null> => {
@@ -138,6 +139,7 @@ export function createVoiceCallController(options: VoiceCallControllerOptions) {
 		}
 		activeSessionId = sessionId
 		activeSessionKey = sessionKey
+		activeSignal = signal
 		return { callId: signal.callId, sessionId, tempWalletAddress: tempWallet.address, entryDomains: signal.entryDomains || [], signal, sessionKey }
 	}
 
@@ -169,6 +171,7 @@ export function createVoiceCallController(options: VoiceCallControllerOptions) {
 		}
 		activeSessionId = sessionId
 		activeSessionKey = sessionKey
+		activeSignal = answer
 		return { callId: answer.callId, sessionId, tempWalletAddress: tempWallet.address, entryDomains: answer.entryDomains || [], signal: answer, sessionKey }
 	}
 
@@ -186,10 +189,26 @@ export function createVoiceCallController(options: VoiceCallControllerOptions) {
 		return sendMessage(options.peerPgp, JSON.stringify(reject), options.privateKey, selectedEntries.length ? selectedEntries : options.allNodes)
 	}
 
-	const end = async (): Promise<void> => {
+	const end = async (notifyPeer = true): Promise<void> => {
+		if (notifyPeer && activeSignal && activeSessionId) {
+			const signal = makeVoiceCallSignal({
+				type: 'voice_end_v1',
+				callId: activeSignal.callId,
+				sessionId: activeSessionId,
+				from: new ethers.Wallet(options.privateKey).address,
+				to: options.peerEoa,
+			})
+			await sendMessage(
+				options.peerPgp,
+				JSON.stringify(signal),
+				options.privateKey,
+				selectedEntries.length ? selectedEntries : options.allNodes,
+			)
+		}
 		if (activeSessionId) await stopWorkerVoiceListen(activeSessionId)
 		activeSessionId = null
 		activeSessionKey = null
+		activeSignal = null
 	}
 
 	return {

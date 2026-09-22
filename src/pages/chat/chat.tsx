@@ -2261,12 +2261,15 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		void rejectVoiceCall()
 	})
 
-	const endVoiceCall = useCallback(async (requestedStatus?: PhoneCallRecord['status']) => {
+	const endVoiceCall = useCallback(async (
+		requestedStatus?: PhoneCallRecord['status'],
+		notifyPeer = true,
+	) => {
 		const sessionId = voiceCallSessionRef.current
 		const callId = voiceCallOfferRef.current?.callId
 		const callSessionId = voiceCallOfferRef.current?.sessionId || sessionId || ''
 		if (voiceControllerRef.current) {
-			await voiceControllerRef.current.end()
+			await voiceControllerRef.current.end(notifyPeer)
 			voiceControllerRef.current = null
 		} else if (sessionId) {
 			await stopWorkerVoiceListen(sessionId)
@@ -2311,6 +2314,19 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		window.setTimeout(() => setVoiceCallState('idle'), 300)
 	}, [profiles, toAddress, upsertPhoneCallRecord])
 
+	useEffect(() => {
+		const latest = [...messages].reverse().find((message) => message.from === 'them' && message.text)
+		if (!latest?.text || !incomingVoiceOffer) return
+		const signal = parseVoiceCallSignal(latest.text)
+		if (
+			signal?.type === 'voice_end_v1' &&
+			signal.sessionId === incomingVoiceOffer.sessionId
+		) {
+			setIncomingVoiceOffer(null)
+			void endVoiceCall('cancelled', false)
+		}
+	}, [endVoiceCall, incomingVoiceOffer, messages])
+
 	const toggleVoiceCallMute = useCallback(() => {
 		const nextMuted = !voiceCallMuted
 		voiceCallStreamRef.current?.getAudioTracks().forEach(track => {
@@ -2354,7 +2370,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				remoteRejectHandledRef.current === (signal.sessionId || signal.callId)
 			) return
 			remoteRejectHandledRef.current = signal.sessionId || signal.callId || null
-			void endVoiceCall('declined')
+				void endVoiceCall('declined', false)
 		} catch {
 			// Ordinary chat message.
 		}
@@ -2464,7 +2480,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 						return
 					}
 					const callId = control.callId || voiceCallOfferRef.current?.callId || ''
-					await voiceControllerRef.current?.end()
+					await voiceControllerRef.current?.end(false)
 					voiceControllerRef.current = null
 					voiceCaptureStopRef.current?.()
 					voiceCaptureStopRef.current = null

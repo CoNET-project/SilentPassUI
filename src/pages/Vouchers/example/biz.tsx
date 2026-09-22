@@ -18785,23 +18785,25 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
   if (!cardIssuanceExistingCard?.cardAddress) {
     let nextCoupons: CardIssuanceCouponRow[] = [];
     setCardIssuanceCoupons((prev) => {
+      const draftRow = makeCardIssuanceCouponRow(
+        name,
+        couponIconForMetadata,
+        backgroundColor ?? '#0051d1',
+        description,
+        couponImageTrim,
+        issueTotalFixed,
+        requiresRedeemCodeFinal,
+        dr,
+        vfStore,
+        vtStore,
+        false,
+        undefined,
+        undefined
+      );
+      if (socialPayloadForSave) draftRow.socialExchange = socialPayloadForSave;
       nextCoupons = [
         ...prev,
-        makeCardIssuanceCouponRow(
-          name,
-          couponIconForMetadata,
-          backgroundColor ?? '#0051d1',
-          description,
-          couponImageTrim,
-          issueTotalFixed,
-          requiresRedeemCodeFinal,
-          dr,
-          vfStore,
-          vtStore,
-          false,
-          undefined,
-          undefined
-        ),
+        draftRow,
       ];
       return nextCoupons;
     });
@@ -18863,11 +18865,12 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
         couponId: couponRowDraft.id,
         ...(name ? { name } : {}),
         issueTotal: issueTotalN,
-        requiresRedeemCode: cardIssuanceCouponRequiresRedeemCode,
+        requiresRedeemCode: requiresRedeemCodeFinal,
         ...(dr === 'range' && vfStore && vtStore ? { validFrom: vfStore, validTo: vtStore } : {}),
         ...(couponIconForMetadata ? { icon: couponIconForMetadata } : {}),
         ...(couponTileBg ? { backgroundColor: couponTileBg } : {}),
         ...(couponImageTrim ? { couponImage: couponImageTrim } : {}),
+        ...(socialPayloadForSave ? { socialExchange: socialPayloadForSave } : {}),
         ...(description ? { description } : {}),
       },
     };

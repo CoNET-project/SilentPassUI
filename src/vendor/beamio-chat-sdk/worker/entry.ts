@@ -205,6 +205,15 @@ async function handle(cmd: WorkerInbound): Promise<void> {
 			}
 			return
 		}
+		case 'ownMailboxCommand': {
+			try {
+				const ok = await gossip!.postOwnMailboxCommand(cmd.command)
+				post({ type: 'ack', reqId: cmd.reqId, ok: true, result: { sent: ok } })
+			} catch (ex) {
+				post({ type: 'ack', reqId: cmd.reqId, ok: false, error: (ex as Error)?.message ?? String(ex) })
+			}
+			return
+		}
 		case 'voiceFrame': {
 			try {
 				const ok = await gossip!.sendVoiceFrame(cmd.routerArmoredPublicKey, cmd.frame)

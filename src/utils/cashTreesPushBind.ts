@@ -8,6 +8,7 @@ import { beamioApi } from '@/utils/constants'
 import { resolveSigningPrivateKeyArmor } from '@/utils/resolveSigningPrivateKeyArmor'
 import { getCashTreesNativeNfcHost, isCashTreesNativeWebView } from '@/utils/cashTreesNativeNfc'
 import { CoNET_Data } from '@/utils/globals'
+import { postWorkerOwnMailboxCommand } from '@/services/chatWorkerBridge'
 
 const IOS_BUNDLE_ID = 'com.beamio.beamio'
 const ANDROID_BUNDLE_ID = 'com.beamio.app'
@@ -21,6 +22,8 @@ type PushTokenDetail = {
 	pgpKeyId?: string
 	platform?: string
 	bundleId?: string
+	fullScreenIntent?: boolean
+	callKit?: boolean
 }
 
 let listenerAttached = false
@@ -34,6 +37,11 @@ function buildRegisterMessage(params: {
 	platform: string
 	bundleId: string
 	timestamp: number
+	capabilities: {
+		nativeCallUi: boolean
+		fullScreenIntent: boolean
+		callKit: boolean
+	}
 }): string {
 	return [
 		'Beamio registerPushDevice',
@@ -41,6 +49,7 @@ function buildRegisterMessage(params: {
 		`deviceToken:${params.deviceToken}`,
 		`platform:${params.platform}`,
 		`bundleId:${params.bundleId}`,
+		`capabilities:${JSON.stringify(params.capabilities)}`,
 		`timestamp:${params.timestamp}`,
 	].join('\n')
 }
@@ -83,7 +92,13 @@ function defaultBundleId(platform: PushPlatform, fromNative?: string): string {
 
 async function registerDeviceToken(
 	deviceToken: string,
-	opts?: { pgpKeyId?: string; platform?: PushPlatform; bundleId?: string },
+	opts?: {
+		pgpKeyId?: string
+		platform?: PushPlatform
+		bundleId?: string
+		fullScreenIntent?: boolean
+		callKit?: boolean
+	},
 ): Promise<boolean> {
 	const host = getCashTreesNativeNfcHost()
 	const platform = opts?.platform || (host === 'android' ? 'android' : host === 'ios' ? 'ios' : null)
@@ -96,6 +111,11 @@ async function registerDeviceToken(
 	if (token === lastRegisteredToken) return true
 
 	const bundleId = defaultBundleId(platform, opts?.bundleId)
+	const capabilities = {
+		nativeCallUi: true,
+		fullScreenIntent: opts?.fullScreenIntent === true,
+		callKit: opts?.callKit === true,
+	}
 	const timestamp = Math.floor(Date.now() / 1000)
 	const profileEoa = CoNET_Data?.profiles?.[0]?.keyID
 	if (!profileEoa || !ethers.isAddress(profileEoa)) return false
@@ -106,34 +126,31 @@ async function registerDeviceToken(
 		platform,
 		bundleId,
 		timestamp,
+		capabilities,
 	})
 	const signed = await signMessage(message)
 	if (!signed) return false
 
-	try {
-		const res = await fetch(`${beamioApi}/api/registerPushDevice`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({
-				eoa: signed.eoa,
-				deviceToken: token,
-				platform,
-				bundleId,
-				pgpKeyId: opts?.pgpKeyId || undefined,
-				timestamp,
-				signature: signed.signature,
-			}),
-		})
-		if (!res.ok) return false
-		const json = (await res.json().catch(() => null)) as { success?: boolean } | null
-		if (json?.success) {
-			lastRegisteredToken = token
-			return true
-		}
-		return false
-	} catch {
-		return false
+	const command = {
+		command: 'push_device_register',
+		walletAddress: signed.eoa,
+		deviceToken: token,
+		platform,
+		bundleId,
+		pgpKeyId: opts?.pgpKeyId || undefined,
+		timestamp,
+		registrationSignature: signed.signature,
+		capabilities,
 	}
+	let sent = false
+	for (let attempt = 0; attempt < 8 && !sent; attempt += 1) {
+		sent = await postWorkerOwnMailboxCommand(command)
+		if (!sent && attempt < 7) {
+			await new Promise<void>((resolve) => window.setTimeout(resolve, 1_000))
+		}
+	}
+	if (sent) lastRegisteredToken = token
+	return sent
 }
 
 function onNativePushEvent(ev: Event): void {
@@ -147,6 +164,8 @@ function onNativePushEvent(ev: Event): void {
 		pgpKeyId: detail.pgpKeyId,
 		platform,
 		bundleId: detail.bundleId,
+		fullScreenIntent: detail.fullScreenIntent,
+		callKit: detail.callKit,
 	})
 }
 

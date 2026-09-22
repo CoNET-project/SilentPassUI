@@ -170,6 +170,16 @@ class BeamioChatClientImpl implements BeamioChatClient {
 		return !!r?.sent
 	}
 
+	/** Encrypt and post a command to this wallet's own mailbox route. */
+	async postOwnMailboxCommand(command: Record<string, unknown>): Promise<boolean> {
+		const r = await this.request<{ sent: boolean }>({
+			type: 'ownMailboxCommand',
+			reqId: 0,
+			command,
+		})
+		return !!r?.sent
+	}
+
 	async sendVoiceFrame(routerArmoredPublicKey: string, frame: Record<string, unknown>): Promise<boolean> {
 		const r = await this.request<{ sent: boolean }>({
 			type: 'voiceFrame',

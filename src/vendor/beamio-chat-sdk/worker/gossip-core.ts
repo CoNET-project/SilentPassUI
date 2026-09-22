@@ -645,6 +645,12 @@ export class GossipCore {
 		}
 	}
 
+	async postOwnMailboxCommand(command: Record<string, unknown>): Promise<boolean> {
+		const route = this.cfg?.identity.ownRouteArmoredPublicKey || ''
+		if (!route) return false
+		return this.postMailboxCommand(route, command)
+	}
+
 	async sendVoiceFrame(routerArmoredPublicKey: string, frame: Record<string, unknown>): Promise<boolean> {
 		const command = { command: 'voice_uplink', ...frame, timestamp: Math.floor(Date.now() / 1000) }
 		return this.postMailboxCommand(routerArmoredPublicKey, command)

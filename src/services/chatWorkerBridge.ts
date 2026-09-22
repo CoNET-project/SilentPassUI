@@ -313,6 +313,18 @@ export const startWorkerVoiceListen = async (
 	}
 }
 
+/** Post a signed command to the current wallet's own mailbox through the worker. */
+export const postWorkerOwnMailboxCommand = async (
+	command: Record<string, unknown>,
+): Promise<boolean> => {
+	if (!activeClient) return false
+	try {
+		return await activeClient.postOwnMailboxCommand(command)
+	} catch {
+		return false
+	}
+}
+
 export const stopWorkerVoiceListen = async (sessionId: string): Promise<boolean> => {
 	if (!activeClient) return false
 	try {

@@ -54,6 +54,11 @@ export type WorkerCommand =
 			command: Record<string, unknown>
 	  }
 	| {
+			type: 'ownMailboxCommand'
+			reqId: number
+			command: Record<string, unknown>
+	  }
+	| {
 			type: 'voiceFrame'
 			reqId: number
 			routerArmoredPublicKey: string

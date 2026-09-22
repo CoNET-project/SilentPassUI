@@ -284,6 +284,7 @@ export interface BeamioChatClient {
 		routerArmoredPublicKey: string,
 		command: Record<string, unknown>,
 	): Promise<boolean>
+	postOwnMailboxCommand(command: Record<string, unknown>): Promise<boolean>
 	sendVoiceFrame(routerArmoredPublicKey: string, frame: Record<string, unknown>): Promise<boolean>
 	startVoiceListen(
 		sessionId: string,

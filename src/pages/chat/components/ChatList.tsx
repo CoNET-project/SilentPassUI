@@ -358,23 +358,6 @@ export default function ChatList({
 		return null
 	}, [items])
 
-	useEffect(() => {
-		if (
-			!browserIncomingCall ||
-			typeof window === 'undefined' ||
-			!('Notification' in window) ||
-			Notification.permission !== 'granted'
-		) {
-			return
-		}
-		const notification = new Notification('Incoming voice call', {
-			body: `${formatChatListTitle(browserIncomingCall.item.beamio, browserIncomingCall.item.address)} is calling`,
-			tag: `beamio-voice-${browserIncomingCall.signal.sessionId}`,
-			requireInteraction: true,
-		})
-		return () => notification.close()
-	}, [browserIncomingCall])
-
 	// After recover / history restore, chats often only have EOA stubs — hydrate @beamioTag from Tag DB + remote.
 	useEffect(() => {
 		if (!items.length) return

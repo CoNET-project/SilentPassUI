@@ -5,7 +5,7 @@ import { useDaemonContext } from "./providers/DaemonProvider"
 import { useBeamioTagDatabase } from "./providers/BeamioTagDatabaseProvider"
 import Footer from "@/components/Footer"
 import EoaUsdcStripeReturnHost from "@/components/addUSDC/EoaUsdcStripeReturnHost"
-import { dispatchNativeSystemCallAction, openExternalUrl } from "@/utils/cashTreesNativeNfc"
+import { dispatchNativeSystemCallAction, isCashTreesNativeWebView, openExternalUrl } from "@/utils/cashTreesNativeNfc"
 import { clearOfflineChatAlertsViaBridge } from "@/utils/cashTreesNativeAppStateBridge"
 import SearchInputWithDropdown from "@/components/Home/SearchBarWithResults"
 import AppEntryGate from "@/components/AppEntryGate"
@@ -159,6 +159,7 @@ function AppShell() {
   const {
     searchRemoteAndIngest,
     resolvePeerSearchResult,
+    avatarImgUrl,
     ensureProfilesForAddresses,
   } = useBeamioTagDatabase()
 
@@ -175,11 +176,41 @@ function AppShell() {
   const [couponClaimSubmitting, setCouponClaimSubmitting] = useState(false)
   /** Already-claimed open-claim → OpenContainer QR for POS 核销. */
   const [couponClaimShowPayOpen, setCouponClaimShowPayOpen] = useState(false)
+  const [globalIncomingVoiceCall, setGlobalIncomingVoiceCall] = useState<{
+    signal: ReturnType<typeof parseVoiceCallSignal>
+    from: string
+  } | null>(null)
+  const [globalIncomingVoiceMuted, setGlobalIncomingVoiceMuted] = useState(false)
   const [redeemClaimIntent, setRedeemClaimIntent] = useState<{
     cardAddress?: string
     redeemCode: string
     giftImageUrl?: string
   } | null>(null)
+
+  useEffect(() => {
+    if (
+      !globalIncomingVoiceCall ||
+      typeof window === 'undefined' ||
+      !('Notification' in window) ||
+      Notification.permission !== 'granted'
+    ) {
+      return
+    }
+    const peer = resolvePeerSearchResult(globalIncomingVoiceCall.from)
+    const label = peer?.username
+      ? (peer.username.startsWith('@') ? peer.username : `@${peer.username}`)
+      : `${globalIncomingVoiceCall.from.slice(0, 6)}…${globalIncomingVoiceCall.from.slice(-4)}`
+    const notification = new Notification('Incoming voice call', {
+      body: `${label} is calling`,
+      tag: `beamio-global-voice-${globalIncomingVoiceCall.signal?.sessionId ?? globalIncomingVoiceCall.from}`,
+      requireInteraction: true,
+    })
+    notification.onclick = () => {
+      window.focus()
+      notification.close()
+    }
+    return () => notification.close()
+  }, [globalIncomingVoiceCall, resolvePeerSearchResult])
   /** 扫码 beamio URL 中的 wallet 参数：{ beamioAccount, wallet }，PayScreen 优先使用此地址 */
   const [preferredPayeeWallet, setPreferredPayeeWallet] = useState<{ beamioAccount: string; wallet: string } | null>(null)
   const runningRef = useRef(false)
@@ -1359,6 +1390,10 @@ function AppShell() {
 						!terminalStatuses.has(String(previousCall?.status || '')) &&
 						claimIncomingVoiceCallReport(signal.callId, signal.sessionId)
 					) {
+						if (!isCashTreesNativeWebView()) {
+							setGlobalIncomingVoiceCall({ signal, from: signAddr })
+							setGlobalIncomingVoiceMuted(false)
+						}
 						dispatchNativeSystemCallAction('reportIncomingSystemCall', {
 							callId: signal.callId,
 							sessionId: signal.sessionId,
@@ -2048,6 +2083,75 @@ function AppShell() {
 				document.body
 			)}
 			<EoaUsdcStripeReturnHost />
+
+			{globalIncomingVoiceCall && !location.pathname.startsWith('/chat')
+				? createPortal(
+					(() => {
+						const peer = resolvePeerSearchResult(globalIncomingVoiceCall.from)
+						const fallback: searchResult = {
+							address: globalIncomingVoiceCall.from,
+							created_at: 0,
+							first_name: '',
+							last_name: '',
+							username: '',
+							follow_count: '',
+							follower_count: '',
+							image: '',
+						}
+						const contact = peer || fallback
+						const tag = contact.username
+							? (contact.username.startsWith('@') ? contact.username : `@${contact.username}`)
+							: `${globalIncomingVoiceCall.from.slice(0, 6)}…${globalIncomingVoiceCall.from.slice(-4)}`
+						const openChatWithAction = (action: 'accept' | 'reject') => {
+							setGlobalIncomingVoiceCall(null)
+							setChatHomeItem(contact)
+							navigate('/chat', { state: { autoVoiceCallAction: action } })
+						}
+						return (
+							<div className="pointer-events-none fixed inset-x-4 top-[max(1rem,env(safe-area-inset-top,0px))] z-[250] mx-auto max-w-lg">
+								<div className="pointer-events-auto rounded-3xl border border-[#dce2f7] bg-white/95 p-4 shadow-[0_18px_50px_rgba(15,23,42,0.24)] backdrop-blur-xl">
+									<div className="flex items-center gap-3">
+										<img
+											src={avatarImgUrl(contact.image || undefined, contact.address)}
+											alt=""
+											className="h-12 w-12 shrink-0 rounded-full object-cover ring-2 ring-white"
+										/>
+										<div className="min-w-0 flex-1">
+											<p className="truncate text-base font-bold text-slate-900">{tag}</p>
+											<p className="mt-0.5 text-xs text-slate-500">Incoming voice call</p>
+										</div>
+										<button
+											type="button"
+											onClick={() => setGlobalIncomingVoiceMuted(value => !value)}
+											className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-600"
+											aria-pressed={globalIncomingVoiceMuted}
+										>
+											{globalIncomingVoiceMuted ? 'Unmute' : 'Mute'}
+										</button>
+									</div>
+									<div className="mt-3 grid grid-cols-2 gap-2">
+										<button
+											type="button"
+											onClick={() => openChatWithAction('reject')}
+											className="rounded-full bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-700"
+										>
+											Decline
+										</button>
+										<button
+											type="button"
+											onClick={() => openChatWithAction('accept')}
+											className="rounded-full bg-[#1562f0] px-4 py-2.5 text-sm font-semibold text-white"
+										>
+											Accept
+										</button>
+									</div>
+								</div>
+							</div>
+						)
+					})(),
+					document.body,
+				)
+				: null}
 
 			{/* 全局 Search：任意页面点击 footer 的 search 图标后，直接显示/隐藏（无滑动动画）
 				当 search 控件执行关闭（返回按钮/选择结果）后，父容器必须执行 setChatSearchOpen(false) 隐藏 search */}

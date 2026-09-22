@@ -14,6 +14,7 @@ import { useBeamioTagDatabase } from '@/providers/BeamioTagDatabaseProvider'
 type ChatRouteLocationState = {
 	chatBackToDiscoverMerchantCard?: string
 	discoverDetailReturnTo?: string
+	autoVoiceCallAction?: 'accept' | 'reject'
 } | null
 
 const Home = () => {
@@ -69,6 +70,7 @@ const Home = () => {
 		const chatData1 = await initMessage(profile, item11)
 		if (!chatData1) return
 
+		setAutoVoiceCallAction((location.state as ChatRouteLocationState)?.autoVoiceCallAction ?? null)
 		setChatData({...chatData1})
 		setShowFooter(false)
 	}

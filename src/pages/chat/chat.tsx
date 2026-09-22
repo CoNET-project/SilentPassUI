@@ -2318,6 +2318,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 	}, [voiceCallMuted])
 
 	const autoVoiceCallActionHandledRef = useRef<string | null>(null)
+	const remoteRejectHandledRef = useRef<string | null>(null)
 	useEffect(() => {
 		const offer = incomingVoiceOffer
 		if (!autoVoiceCallAction || !offer?.sessionId) return
@@ -2330,6 +2331,23 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			void rejectVoiceCall()
 		}
 	}, [acceptVoiceCall, autoVoiceCallAction, incomingVoiceOffer, rejectVoiceCall])
+
+	useEffect(() => {
+		const latest = [...messages].reverse().find((message) => message.from === 'them' && message.text)
+		if (!latest?.text || voiceCallState !== 'outgoing') return
+		try {
+			const signal = JSON.parse(latest.text) as { type?: string; callId?: string; sessionId?: string }
+			if (
+				signal.type !== 'voice_call_reject_v1' ||
+				signal.callId !== voiceCallOfferRef.current?.callId ||
+				remoteRejectHandledRef.current === (signal.sessionId || signal.callId)
+			) return
+			remoteRejectHandledRef.current = signal.sessionId || signal.callId || null
+			void endVoiceCall('declined')
+		} catch {
+			// Ordinary chat message.
+		}
+	}, [endVoiceCall, messages, voiceCallState])
 
 	useEffect(() => {
 		const onNativeCallAction = (event: Event) => {
@@ -4456,7 +4474,12 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 											<div className="max-w-[78%] sm:max-w-[62%]">
 											{hasCallRecord && m.callRecord ? (
 												(() => {
-													const record = m.callRecord
+													const record =
+														(Array.isArray(profiles?.[0]?.phoneCalls)
+															? profiles[0].phoneCalls.find(
+																(item: PhoneCallRecord) => item.sessionId === m.callRecord?.sessionId,
+															)
+															: null) ?? m.callRecord
 													const statusText =
 														record.status === 'ringing'
 															? record.direction === 'outgoing' ? 'Calling…' : 'Incoming call'

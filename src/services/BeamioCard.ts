@@ -1104,7 +1104,11 @@ export async function readUserSocialPoints13BalanceOnCard(
 		}
 		// Dashboard batch is an optimization only. A direct card view is the
 		// trusted fallback so a dashboard outage cannot block a valid PT claim.
-		const cardRead = await openClaimCardReadContract(cardNorm)
+		const cardRead = new ethers.Contract(
+			cardNorm,
+			['function balanceOf(address account, uint256 id) view returns (uint256)'],
+			conetDepinProvider,
+		)
 		const balances = await Promise.all(
 			accounts.map((account) => cardRead.balanceOf(account, REWARD_VOUCHER_TOKEN_ID) as Promise<bigint>),
 		)

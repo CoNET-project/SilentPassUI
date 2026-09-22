@@ -197,7 +197,12 @@ export default function CouponClaimTicketPreview({
 
 	const rewardPtCost = useMemo(() => {
 		const exchange = readSocialExchangeFromMetadata(seriesRaw?.metadata ?? null)
-		return exchange?.kind === 'coupon' ? exchange.pointsCost : null
+		if (exchange?.kind !== 'coupon') return null
+		const raw = Number(exchange.pointsCost)
+		if (!Number.isFinite(raw) || raw <= 0) return null
+		return Number.isSafeInteger(raw) && raw < 10_000
+			? raw.toFixed(2)
+			: (raw / 1_000_000).toFixed(2)
 	}, [seriesRaw])
 
 	if (row === undefined) {

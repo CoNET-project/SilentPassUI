@@ -2508,24 +2508,51 @@ export default function Chat({ onBack, chatData, privateKey }: ChatProps) {
 
 	/** 仅展示“正文”消息（含文字或 paymentCard）；带 reply 的 reaction 消息不单独成行，用于在目标消息上显示 icon */
 	const displayableMessages = useMemo(() => {
-		const existingCallSessionIds = new Set(
-			(messages || [])
-				.map(message => message.callRecord?.sessionId)
-				.filter((sessionId): sessionId is string => !!sessionId),
-		)
 		const currentChatCalls = (Array.isArray(profiles?.[0]?.phoneCalls) ? profiles[0].phoneCalls : [])
 			.filter((record: PhoneCallRecord) => record.peerAddress?.toLowerCase() === chatData.address?.toLowerCase())
-			.filter((record: PhoneCallRecord) => !existingCallSessionIds.has(record.sessionId))
-			.map((record: PhoneCallRecord) => ({
+		const currentCallBySessionId = new Map<string, PhoneCallRecord>(
+			currentChatCalls.map((record: PhoneCallRecord) => [record.sessionId, record] as const),
+		)
+		const seenCallSessionIds = new Set<string>()
+		const mergedMessages: ChatMessage[] = []
+
+		for (const message of messages || []) {
+			const callRecord = message.callRecord
+			const sessionId = callRecord?.sessionId
+			if (!sessionId) {
+				mergedMessages.push(message)
+				continue
+			}
+
+			// A status transition is mirrored as a new history entry. Treat all
+			// entries for one voice session as one chat bubble and prefer the
+			// current phone-call record (which contains the newest status).
+			if (seenCallSessionIds.has(sessionId)) continue
+			seenCallSessionIds.add(sessionId)
+			const currentRecord = currentCallBySessionId.get(sessionId)
+			mergedMessages.push({
+				...message,
+				id: `phone_${sessionId}`,
+				sendId: `phone:${sessionId}`,
+				from: (currentRecord || callRecord).direction === 'outgoing' ? 'me' : 'them',
+				callRecord: currentRecord || callRecord,
+			})
+		}
+
+		for (const record of currentChatCalls) {
+			if (seenCallSessionIds.has(record.sessionId)) continue
+			seenCallSessionIds.add(record.sessionId)
+			mergedMessages.push({
 				id: `phone_${record.sessionId}`,
-				sendId: `phone:${record.sessionId}:${record.status}`,
+				sendId: `phone:${record.sessionId}`,
 				from: record.direction === 'outgoing' ? 'me' : 'them',
 				text: '',
 				createdAt: record.createdAt,
 				callRecord: record,
-			} satisfies ChatMessage))
+			} satisfies ChatMessage)
+		}
 
-		return [...(messages || []), ...currentChatCalls].filter(m => {
+		return mergedMessages.filter(m => {
 			if (m.text) {
 				if (isVoiceCallProtocolMessage(m.text)) return false
 			}

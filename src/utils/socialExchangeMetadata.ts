@@ -66,7 +66,10 @@ export function readSocialExchangeFromMetadata(
 }
 
 export function socialExchangeSummaryLabel(exchange: SocialExchangeConfig): string {
-	const pts = exchange.pointsCost
+	const raw = Number(exchange.pointsCost)
+	const pts = Number.isSafeInteger(raw) && raw > 0 && raw < 10_000
+		? raw.toFixed(2)
+		: (raw / 1_000_000).toFixed(2)
 	if (exchange.kind === 'usdc' && exchange.usdcReward6 > 0n) {
 		const usdc = (Number(exchange.usdcReward6) / 1_000_000).toFixed(2)
 		return `Use ${pts} Reward PT → $${usdc} USDC`

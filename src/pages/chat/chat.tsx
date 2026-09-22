@@ -2340,6 +2340,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			if (
 				signal.type !== 'voice_call_reject_v1' ||
 				signal.callId !== voiceCallOfferRef.current?.callId ||
+				signal.sessionId !== voiceCallOfferRef.current?.sessionId ||
 				remoteRejectHandledRef.current === (signal.sessionId || signal.callId)
 			) return
 			remoteRejectHandledRef.current = signal.sessionId || signal.callId || null

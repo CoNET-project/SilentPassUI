@@ -1412,6 +1412,22 @@ function AppShell() {
 							peerAddress: signAddr,
 							displayName: signAddr,
 						})
+						const callRows = Array.isArray(profile.phoneCalls) ? profile.phoneCalls : []
+						if (!callRows.some((item: PhoneCallRecord) => item.sessionId === signal.sessionId)) {
+							profile.phoneCalls = [
+								...callRows,
+								{
+									callId: signal.callId,
+									sessionId: signal.sessionId,
+									peerAddress: signAddr,
+									direction: 'incoming',
+									status: 'ringing',
+									createdAt: Number(signal.createdAt) || msg.timestamp,
+									answeredAt: undefined,
+									endedAt: undefined,
+								},
+							]
+						}
 					}
 				} else if (
 					signal?.type === 'voice_end_v1' &&
@@ -1420,6 +1436,20 @@ function AppShell() {
 					setGlobalIncomingVoiceCall((current) =>
 						current?.signal?.sessionId === signal.sessionId ? null : current,
 					)
+					const callRows = Array.isArray(profile.phoneCalls) ? profile.phoneCalls : []
+					const existing = callRows.find((item: PhoneCallRecord) => item.sessionId === signal.sessionId)
+					profile.phoneCalls = [
+						...callRows.filter((item: PhoneCallRecord) => item.sessionId !== signal.sessionId),
+						{
+							callId: signal.callId,
+							sessionId: signal.sessionId,
+							peerAddress: signAddr,
+							direction: existing?.direction ?? 'incoming',
+							status: 'cancelled',
+							createdAt: existing?.createdAt ?? msg.timestamp,
+							endedAt: Number(signal.timestamp) || msg.timestamp,
+						},
+					]
 				}
 			} catch {
 				/* Ordinary chat text is not a voice offer. */

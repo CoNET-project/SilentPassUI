@@ -1096,7 +1096,18 @@ export async function readUserSocialPoints13BalanceOnCard(
 	userAA?: string | null,
 ): Promise<bigint | null> {
 	try {
-		const accounts = await resolveMyBrandsCouponHolderAccountsForCard(cardNorm, userNorm, userAA)
+		let accounts: string[] = []
+		try {
+			accounts = await resolveMyBrandsCouponHolderAccountsForCard(cardNorm, userNorm, userAA)
+		} catch {
+			// Keep explicit wallet identities usable even when AA factory resolution is degraded.
+			accounts = []
+		}
+		for (const account of [userAA, userNorm]) {
+			if (account && ethers.isAddress(account) && !accounts.some((x) => x.toLowerCase() === account.toLowerCase())) {
+				accounts.push(ethers.getAddress(account))
+			}
+		}
 		if (!accounts.length) return 0n
 		const batch = await fetchMyBrandsBalanceBatch(cardNorm, accounts, [REWARD_VOUCHER_TOKEN_ID])
 		if (batch && batch.length === accounts.length) {

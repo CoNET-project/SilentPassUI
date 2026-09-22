@@ -2028,6 +2028,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 					targetSessionId,
 					targetWallet: toAddress,
 					seq: voiceFrameSeqRef.current++,
+					timestamp: Math.floor(Date.now() / 1000),
 					payload,
 				})
 			})

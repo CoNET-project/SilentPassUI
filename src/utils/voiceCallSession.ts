@@ -6,6 +6,7 @@ export type VoiceCallSignal = {
 	to: string
 	createdAt: number
 	expiresAt: number
+	timestamp: number
 	sessionKey?: string
 	tempWalletAddress?: string
 	entryDomains?: string[]
@@ -97,11 +98,12 @@ export const voiceSessionKeyFromBase64 = (value: string): Uint8Array => {
 }
 
 export const makeVoiceCallSignal = (
-	signal: Omit<VoiceCallSignal, 'createdAt' | 'expiresAt'> & { expiresAt?: number },
+	signal: Omit<VoiceCallSignal, 'createdAt' | 'expiresAt' | 'timestamp'> & { expiresAt?: number },
 ): VoiceCallSignal => ({
 	...signal,
 	createdAt: Date.now(),
 	expiresAt: signal.expiresAt ?? Date.now() + VOICE_CALL_MAX_DURATION_MS,
+	timestamp: Date.now(),
 })
 
 export const encryptVoiceFrame = async (key: Uint8Array, plain: Uint8Array): Promise<string> => {

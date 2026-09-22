@@ -1811,7 +1811,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 	const [voiceCallMuted, setVoiceCallMuted] = useState(false)
 	const [incomingVoiceAction, setIncomingVoiceAction] = useState<'idle' | 'accepting' | 'declining'>('idle')
 	const voiceCallSessionRef = useRef<string | null>(null)
-	const voiceCallOfferRef = useRef<{ callId: string; sessionId: string; sessionKey: string; expiresAt?: number } | null>(null)
+	const voiceCallOfferRef = useRef<{ callId: string; sessionId: string; sessionKey: string; timestamp?: number; expiresAt?: number } | null>(null)
 	const voiceCallKeyRef = useRef<Uint8Array | null>(null)
 	const voiceCallPeerSessionRef = useRef<string | null>(null)
 	const voiceCaptureStopRef = useRef<(() => void) | null>(null)
@@ -2075,6 +2075,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			callId: signal.callId,
 			sessionId,
 			sessionKey: signal.sessionKey || '',
+			timestamp: signal.timestamp,
 			expiresAt: signal.expiresAt,
 		}
 		upsertPhoneCallRecord({
@@ -2194,6 +2195,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				callId: channel.callId,
 				sessionId: offer.sessionId,
 				sessionKey: offer.sessionKey,
+				timestamp: offer.timestamp,
 				expiresAt: offer.expiresAt,
 			}
 			setIncomingVoiceOffer(null)
@@ -2336,11 +2338,19 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		const latest = [...messages].reverse().find((message) => message.from === 'them' && message.text)
 		if (!latest?.text || voiceCallState !== 'outgoing') return
 		try {
-			const signal = JSON.parse(latest.text) as { type?: string; callId?: string; sessionId?: string }
+			const signal = JSON.parse(latest.text) as {
+				type?: string
+				callId?: string
+				sessionId?: string
+				timestamp?: number
+			}
 			if (
 				signal.type !== 'voice_call_reject_v1' ||
 				signal.callId !== voiceCallOfferRef.current?.callId ||
 				signal.sessionId !== voiceCallOfferRef.current?.sessionId ||
+				!Number.isFinite(Number(signal.timestamp)) ||
+				Number(signal.timestamp) <= Number(voiceCallOfferRef.current?.timestamp || 0) ||
+				Number(signal.timestamp) > Date.now() + 60_000 ||
 				remoteRejectHandledRef.current === (signal.sessionId || signal.callId)
 			) return
 			remoteRejectHandledRef.current = signal.sessionId || signal.callId || null
@@ -2436,7 +2446,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 					voiceCallKeyRef.current || new Uint8Array(),
 					frame.payload as string,
 				)
-				let control: { type?: string; callId?: string } | null = null
+				let control: { type?: string; callId?: string; sessionId?: string; timestamp?: number } | null = null
 				try {
 					control = JSON.parse(new TextDecoder().decode(plain)) as {
 						type?: string
@@ -2446,6 +2456,13 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 					// Audio frames are binary; only JSON payloads are control frames.
 				}
 				if (control?.type === 'voice_call_reject_v1') {
+					if (
+						control.sessionId !== voiceCallOfferRef.current?.sessionId ||
+						!Number.isFinite(Number(control.timestamp)) ||
+						Number(control.timestamp) <= Number(voiceCallOfferRef.current?.timestamp || 0)
+					) {
+						return
+					}
 					const callId = control.callId || voiceCallOfferRef.current?.callId || ''
 					await voiceControllerRef.current?.end()
 					voiceControllerRef.current = null

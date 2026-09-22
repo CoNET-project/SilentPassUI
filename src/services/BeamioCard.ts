@@ -1030,13 +1030,24 @@ async function userHoldsIssuedCouponNft(
 	cardAddress: string,
 	userNorm: string,
 	tokenIdN: bigint,
+	userAA?: string | null,
 ): Promise<boolean | null> {
 	try {
-		const accounts = await resolveMyBrandsCouponHolderAccountsForCard(cardAddress, userNorm, null)
+		const accounts = await resolveMyBrandsCouponHolderAccountsForCard(cardAddress, userNorm, userAA)
 		if (!accounts.length) return false
 		const batch = await fetchMyBrandsBalanceBatch(cardAddress, accounts, [tokenIdN])
-		if (!batch || batch.length !== accounts.length) return null
-		return batch.some((b) => (b ?? 0n) > 0n)
+		if (batch && batch.length === accounts.length) {
+			return batch.some((b) => (b ?? 0n) > 0n)
+		}
+		const card = new ethers.Contract(
+			ethers.getAddress(cardAddress),
+			['function balanceOf(address account, uint256 id) view returns (uint256)'],
+			conetDepinProvider,
+		)
+		const balances = await Promise.all(
+			accounts.map((account) => card.balanceOf(account, tokenIdN) as Promise<bigint>),
+		)
+		return balances.some((balance) => balance > 0n)
 	} catch {
 		return null
 	}
@@ -1171,7 +1182,7 @@ export async function resolveCouponOpenClaimEligibility(
 			cardRead.issuedNftUserSigClaimUsed(userNorm, tokenIdN) as Promise<boolean>,
 			cardRead.issuedNftMaxSupply(tokenIdN) as Promise<bigint>,
 			cardRead.issuedNftMintedCount(tokenIdN) as Promise<bigint>,
-			userHoldsIssuedCouponNft(row.cardAddress, userNorm, tokenIdN),
+			userHoldsIssuedCouponNft(row.cardAddress, userNorm, tokenIdN, userAA),
 		])
 		if (holdsNft === true) {
 			saveCouponOpenClaimLocalStatus({

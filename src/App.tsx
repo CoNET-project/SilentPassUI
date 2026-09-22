@@ -181,6 +181,9 @@ function AppShell() {
     from: string
   } | null>(null)
   const [globalIncomingVoiceMuted, setGlobalIncomingVoiceMuted] = useState(false)
+  const [browserNotificationPermission, setBrowserNotificationPermission] = useState<NotificationPermission | 'unsupported'>(() =>
+    typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'unsupported',
+  )
   const [redeemClaimIntent, setRedeemClaimIntent] = useState<{
     cardAddress?: string
     redeemCode: string
@@ -210,7 +213,16 @@ function AppShell() {
       notification.close()
     }
     return () => notification.close()
-  }, [globalIncomingVoiceCall, resolvePeerSearchResult])
+  }, [browserNotificationPermission, globalIncomingVoiceCall, resolvePeerSearchResult])
+
+  const enableBrowserCallNotifications = useCallback(async () => {
+    if (typeof window === 'undefined' || !('Notification' in window)) {
+      setBrowserNotificationPermission('unsupported')
+      return
+    }
+    const permission = await Notification.requestPermission()
+    setBrowserNotificationPermission(permission)
+  }, [])
   /** 扫码 beamio URL 中的 wallet 参数：{ beamioAccount, wallet }，PayScreen 优先使用此地址 */
   const [preferredPayeeWallet, setPreferredPayeeWallet] = useState<{ beamioAccount: string; wallet: string } | null>(null)
   const runningRef = useRef(false)
@@ -1401,6 +1413,13 @@ function AppShell() {
 							displayName: signAddr,
 						})
 					}
+				} else if (
+					signal?.type === 'voice_end_v1' &&
+					signal.sessionId
+				) {
+					setGlobalIncomingVoiceCall((current) =>
+						current?.signal?.sessionId === signal.sessionId ? null : current,
+					)
 				}
 			} catch {
 				/* Ordinary chat text is not a voice offer. */
@@ -2145,6 +2164,16 @@ function AppShell() {
 											Accept
 										</button>
 									</div>
+									{browserNotificationPermission !== 'granted' &&
+									browserNotificationPermission !== 'unsupported' ? (
+										<button
+											type="button"
+											onClick={() => void enableBrowserCallNotifications()}
+											className="mt-2 w-full rounded-full bg-[#e9edff] px-4 py-2 text-xs font-semibold text-[#0051d1]"
+										>
+											Enable system call notifications
+										</button>
+									) : null}
 								</div>
 							</div>
 						)

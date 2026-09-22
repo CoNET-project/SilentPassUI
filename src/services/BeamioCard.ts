@@ -1099,8 +1099,16 @@ export async function readUserSocialPoints13BalanceOnCard(
 		const accounts = await resolveMyBrandsCouponHolderAccountsForCard(cardNorm, userNorm, userAA)
 		if (!accounts.length) return 0n
 		const batch = await fetchMyBrandsBalanceBatch(cardNorm, accounts, [REWARD_VOUCHER_TOKEN_ID])
-		if (!batch || batch.length !== accounts.length) return null
-		return batch.reduce((sum, b) => sum + (b ?? 0n), 0n)
+		if (batch && batch.length === accounts.length) {
+			return batch.reduce((sum, b) => sum + (b ?? 0n), 0n)
+		}
+		// Dashboard batch is an optimization only. A direct card view is the
+		// trusted fallback so a dashboard outage cannot block a valid PT claim.
+		const cardRead = await openClaimCardReadContract(cardNorm)
+		const balances = await Promise.all(
+			accounts.map((account) => cardRead.balanceOf(account, REWARD_VOUCHER_TOKEN_ID) as Promise<bigint>),
+		)
+		return balances.reduce((sum, balance) => sum + balance, 0n)
 	} catch {
 		return null
 	}

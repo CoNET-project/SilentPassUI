@@ -2314,6 +2314,7 @@ function AppShell() {
 								onShowPay={() => setCouponClaimShowPayOpen(true)}
 								referrerEoa={couponClaimIntent.referrerEoa ?? null}
 								userEoa={profiles?.[0]?.keyID ?? null}
+								userAa={profiles?.[0]?.aaAccount ?? null}
 								getPrivateKeyArmor={() => resolveSigningPrivateKeyArmor(profiles?.[0]) || undefined}
 								onWalletUnlock={() => navigate('/settings')}
 							/>

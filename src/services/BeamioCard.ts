@@ -1093,9 +1093,10 @@ export type CouponOpenClaimEligibility =
 export async function readUserSocialPoints13BalanceOnCard(
 	cardNorm: string,
 	userNorm: string,
+	userAA?: string | null,
 ): Promise<bigint | null> {
 	try {
-		const accounts = await resolveMyBrandsCouponHolderAccountsForCard(cardNorm, userNorm, null)
+		const accounts = await resolveMyBrandsCouponHolderAccountsForCard(cardNorm, userNorm, userAA)
 		if (!accounts.length) return 0n
 		const batch = await fetchMyBrandsBalanceBatch(cardNorm, accounts, [REWARD_VOUCHER_TOKEN_ID])
 		if (!batch || batch.length !== accounts.length) return null
@@ -1113,6 +1114,7 @@ export async function readUserSocialPoints13BalanceOnCard(
 export async function resolveCouponOpenClaimEligibility(
 	row: CardActiveIssuedCouponSeriesItem,
 	userEOA: string | null | undefined,
+	userAA?: string | null,
 ): Promise<CouponOpenClaimEligibility> {
 	if (readCouponDisabledFromMetadata(row.metadata ?? null)) return 'not_open_claim'
 	if (readCouponRequiresRedeemCode(row.metadata ?? null)) return 'not_open_claim'
@@ -1176,7 +1178,7 @@ export async function resolveCouponOpenClaimEligibility(
 		if (localEligibility) return localEligibility
 		const socialExchange = readSocialExchangeFromMetadata(row.metadata ?? null)
 		if (socialExchange) {
-			const pointsBal = await readUserSocialPoints13BalanceOnCard(row.cardAddress, userNorm)
+			const pointsBal = await readUserSocialPoints13BalanceOnCard(row.cardAddress, userNorm, userAA)
 			if (pointsBal == null) return 'unknown'
 			if (pointsBal < BigInt(socialExchange.pointsCost)) return 'insufficient_social_points'
 		}

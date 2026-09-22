@@ -7865,7 +7865,11 @@ function DiscoverMerchantDetailFullScreen({
 		void (async () => {
 			const entries = await Promise.all(
 				merchantCoupons.map(async (offer) => {
-					const eligibility = await resolveCouponOpenClaimEligibility(offer.seriesRow, userEOA)
+					const eligibility = await resolveCouponOpenClaimEligibility(
+						offer.seriesRow,
+						userEOA,
+						profiles?.[0]?.aaAccount ?? null,
+					)
 					if (eligibility === 'already_claimed' || eligibility === 'already_redeemed') {
 						const card = offer.seriesRow.cardAddress || offer.coupon.cardAddress
 						const tid = offer.seriesRow.tokenId || offer.coupon.tokenId
@@ -7903,7 +7907,7 @@ function DiscoverMerchantDetailFullScreen({
 		}
 		// couponOpenClaimStatusByKey intentionally omitted: register+resolve on list change;
 		// daemon map merges via dedicated effect below.
-	}, [merchantCoupons, resolveUserEoa, registerCouponOpenClaimFeedTargets, applyCouponOpenClaimStatus])
+	}, [merchantCoupons, profiles?.[0]?.aaAccount, resolveUserEoa, registerCouponOpenClaimFeedTargets, applyCouponOpenClaimStatus])
 
 	/** Daemon map updates (optimistic claim / background chain) → Coupons eligibility without remount. */
 	useEffect(() => {

@@ -32,6 +32,8 @@ type Props = {
 	referrerEoa?: string | null
 	/** Current wallet EOA (preferred over deriving from private key). */
 	userEoa?: string | null
+	/** Current CoNET Smart Wallet used for Reward PT (#13) balance. */
+	userAa?: string | null
 	getPrivateKeyArmor?: () => string | undefined
 	onWalletUnlock?: () => void
 }
@@ -69,6 +71,7 @@ export default function CouponClaimTicketPreview({
 	onShowPay,
 	referrerEoa = null,
 	userEoa: userEoaProp = null,
+	userAa = null,
 	getPrivateKeyArmor,
 	onWalletUnlock,
 }: Props) {
@@ -172,7 +175,7 @@ export default function CouponClaimTicketPreview({
 			},
 		])
 
-		void resolveCouponOpenClaimEligibility(seriesRaw, userEoa).then((next) => {
+		void resolveCouponOpenClaimEligibility(seriesRaw, userEoa, userAa).then((next) => {
 			if (cancelled) return
 			setEligibility(next)
 			onEligibilityChangeRef.current?.(next)
@@ -187,6 +190,7 @@ export default function CouponClaimTicketPreview({
 		row?.couponId,
 		seriesRaw,
 		userEoa,
+		userAa,
 		getCouponOpenClaimStatus,
 		registerCouponOpenClaimFeedTargets,
 	])

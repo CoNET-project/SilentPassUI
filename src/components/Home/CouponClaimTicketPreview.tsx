@@ -15,6 +15,7 @@ import {
 } from '@/services/BeamioCard'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { ethers } from 'ethers'
+import { readSocialExchangeFromMetadata } from '@/utils/socialExchangeMetadata'
 
 type Props = {
 	cardAddress: string
@@ -190,6 +191,11 @@ export default function CouponClaimTicketPreview({
 		registerCouponOpenClaimFeedTargets,
 	])
 
+	const rewardPtCost = useMemo(() => {
+		const exchange = readSocialExchangeFromMetadata(seriesRaw?.metadata ?? null)
+		return exchange?.kind === 'coupon' ? exchange.pointsCost : null
+	}, [seriesRaw])
+
 	if (row === undefined) {
 		return (
 			<div className="flex min-h-[7.5rem] items-center justify-center py-6">
@@ -203,6 +209,7 @@ export default function CouponClaimTicketPreview({
 	const isExpired = eligibility === 'expired'
 	const isSoldOut = eligibility === 'sold_out'
 	const insufficientSocialPoints = eligibility === 'insufficient_social_points'
+	const isRewardPtCoupon = rewardPtCost != null
 	const canClaim =
 		Boolean(onClaim) &&
 		(eligibility == null || eligibility === 'claimable' || eligibility === 'unknown')
@@ -227,8 +234,10 @@ export default function CouponClaimTicketPreview({
 					? tu('expired')
 					: isSoldOut
 						? 'Sold out'
-						: insufficientSocialPoints
-							? tu('claim')
+					: insufficientSocialPoints
+						? 'Use Reward PT'
+						: isRewardPtCoupon
+							? 'Use Reward PT'
 							: tu('claim')
 
 	const ticketActionStatus: 'idle' | 'loading' | 'success' | 'error' = submitting
@@ -256,7 +265,9 @@ export default function CouponClaimTicketPreview({
 							? `Show Pay for coupon ${row.title}`
 							: isAlreadyClaimed
 								? `Coupon ${row.title} already claimed`
-								: `Claim coupon ${row.title}`
+								: isRewardPtCoupon
+									? `Use ${rewardPtCost} Reward PT for coupon ${row.title}`
+									: `Claim coupon ${row.title}`
 				}
 				punchBgClassName="bg-white dark:bg-slate-900"
 				metadataBelowBackgroundImage
@@ -270,7 +281,12 @@ export default function CouponClaimTicketPreview({
 			/>
 			{insufficientSocialPoints ? (
 				<p className="px-1 text-[11px] font-semibold text-amber-600 dark:text-amber-400">
-					Not enough social points for this exchange.
+					You need {rewardPtCost ?? 'the required amount'} Reward PT to claim this coupon.
+				</p>
+			) : null}
+			{isRewardPtCoupon && !insufficientSocialPoints && !isAlreadyClaimed && !isAlreadyRedeemed ? (
+				<p className="px-1 text-[11px] font-semibold text-[#8d3a8b]">
+					Requires {rewardPtCost} Reward PT. Your wallet will sign the claim and burn the PT.
 				</p>
 			) : null}
 			{isAlreadyClaimed ? (

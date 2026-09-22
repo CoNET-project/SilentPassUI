@@ -11357,6 +11357,13 @@ function cardIssuanceCouponNameDefault(): string {
 function cardIssuanceCouponDescriptionDefault(): string {
   return tu('programs_coupon_default_desc');
 }
+
+/** Legacy merchant copies used "Claim with N PT" before socialExchange metadata was written. */
+function inferCouponRewardPtCostFromDescription(raw: string): string | null {
+  const match = String(raw || '').match(/(?:claim\s+with|exchange\s+in|use)\s+([\d,]+)\s*PT\b/i);
+  const value = match?.[1]?.replace(/,/g, '');
+  return value && Number.isInteger(Number(value)) && Number(value) > 0 ? value : null;
+}
 const CARD_ISSUANCE_COUPON_ISSUE_TOTAL_MAX = 9_999_999;
 /** Issued coupon NFT metadata category — distinguishes coupon series from membership / tier NFTs. */
 const CARD_ISSUANCE_COUPON_NFT_CATEGORY = 'Coupon';
@@ -18267,11 +18274,15 @@ const openCardIssuanceCouponEdit = useCallback((couponId: string) => {
   setCardIssuanceCouponIcon(row.icon || '');
   setCardIssuanceCouponImage((row.couponImage ?? '').trim());
   setCardIssuanceCouponMediaTab((row.couponImage ?? '').trim() ? 'background' : 'icon');
+  const inferredRewardPtCost =
+    row.socialExchange?.kind === 'coupon'
+      ? String(row.socialExchange.pointsCost ?? 10)
+      : inferCouponRewardPtCostFromDescription(row.description);
   setCardIssuanceCouponClaimMode(
-    row.socialExchange?.kind === 'coupon' ? 'rewardPt' : row.requiresRedeemCode ? 'redeem' : 'open'
+    inferredRewardPtCost ? 'rewardPt' : row.requiresRedeemCode ? 'redeem' : 'open'
   );
   setCardIssuanceCouponRewardPtCost(
-    row.socialExchange?.kind === 'coupon' ? String(row.socialExchange.pointsCost ?? 10) : '10'
+    inferredRewardPtCost ?? '10'
   );
   setCardIssuanceCouponBackgroundColor(
     tierBackgroundColorForPayload(row.backgroundColor) ?? (row.backgroundColor.trim() || '#0051d1')
@@ -18579,7 +18590,7 @@ const submitCardIssuanceCouponEditor = useCallback(async () => {
     ? (dr === 'range' ? editingCouponExistingRow?.couponValidToYmd ?? '' : '')
     : (dr === 'range' ? parseCouponYmd(cardIssuanceCouponValidToYmd) ?? '' : '');
   const socialPayloadForSave =
-    (isSocialExchangeEdit || isRewardPtCoupon) && !lockIssuedOnChainFields
+    isSocialExchangeEdit || isRewardPtCoupon
       ? socialExchangeDraftToPayload(cardIssuanceCouponSocialExchangeDraft ?? rewardPtDraft!)
       : editingCouponExistingRow?.socialExchange ?? undefined;
   const issuedTokenIdForPromo = editingCouponExistingRow?.issuedTokenId?.trim() ?? '';

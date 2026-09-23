@@ -968,7 +968,7 @@ function DiscoverMerchantHealthBeautyLoyaltyPassPanel({
 				Top Up
 			</button>
 
-			<DiscoverMerchantHowPointsWorkPanel
+			<DiscoverMerchantHowPointsWorkDisclosure
 				pct={pct}
 				enabled={customerLoyaltyPointsEnabled}
 				fiatLabel={fiatLabel}
@@ -1036,11 +1036,8 @@ const DISCOVER_FOOD_BEVERAGE_GIFT_ACCENT = '#ea580c'
 const DISCOVER_FOOD_BEVERAGE_PASS_FALLBACK = '#5c554b'
 
 function DiscoverMerchantHowPointsWorkPanel({
-	pct,
 	enabled,
-	fiatLabel,
 	accent,
-	rewardContext,
 }: {
 	pct: string | null
 	enabled: boolean
@@ -1048,12 +1045,7 @@ function DiscoverMerchantHowPointsWorkPanel({
 	accent: string
 	rewardContext: string
 }) {
-	if (!enabled || pct == null) return null
-
-	const isDiningReward = rewardContext === 'dining order'
-	const headingContext = isDiningReward
-		? 'Every Meal'
-		: `Every ${rewardContext.charAt(0).toUpperCase()}${rewardContext.slice(1)}`
+	if (!enabled) return null
 
 	return (
 		<section className="rounded-2xl border border-[#ebe6df] bg-[#faf8f5] px-4 py-4 dark:border-slate-700 dark:bg-slate-900/80">
@@ -1071,16 +1063,43 @@ function DiscoverMerchantHowPointsWorkPanel({
 				</span>
 				<div className="min-w-0 flex-1">
 					<p className="text-[15px] font-bold tracking-tight text-[#1f2328] dark:text-slate-100">
-						How Reward PT Works{pct ? ` · ${pct}% Back on ${headingContext}` : ''}
+						How Reward PT Works
 					</p>
 				</div>
 			</div>
 			<p className="mt-3 text-[13px] leading-relaxed text-[#5c6570] dark:text-slate-400">
-				{isDiningReward
-					? `Earn while you eat! Reward PT acts as real cash (1 PT = ${fiatLabel}1.00) and never expires. Use it for your favorite dishes here, or seamlessly across our Alliance network.`
-					: `Earn Reward PT on every ${rewardContext}. PT acts as real cash (1 PT = ${fiatLabel}1.00) and never expires, and can be used here or across the Alliance network.`}
+				Earn Reward PT on every purchase. PT acts as real cash (1 PT = CA$1.00) and never
+				expires, and can be used here or across the Alliance network.
 			</p>
 		</section>
+	)
+}
+
+function DiscoverMerchantHowPointsWorkDisclosure(props: {
+	pct: string | null
+	enabled: boolean
+	fiatLabel: string
+	accent: string
+	rewardContext: string
+}) {
+	const [open, setOpen] = useState(false)
+	if (!props.enabled) return null
+
+	return (
+		<>
+			<div className="mt-2 flex justify-center">
+				<button
+					type="button"
+					onClick={() => setOpen((current) => !current)}
+					aria-label="Show how Reward PT works"
+					aria-expanded={open}
+					className="inline-flex h-8 w-8 items-center justify-center rounded-full text-[#5c6570] transition hover:bg-black/5 hover:text-[#2c2f31] dark:text-slate-400 dark:hover:bg-white/10 dark:hover:text-slate-100"
+				>
+					<Info className="h-4 w-4" strokeWidth={2.25} aria-hidden />
+				</button>
+			</div>
+			{open ? <DiscoverMerchantHowPointsWorkPanel {...props} /> : null}
+		</>
 	)
 }
 
@@ -1541,6 +1560,14 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 				</div>
 			) : null}
 
+			<DiscoverMerchantHowPointsWorkDisclosure
+				pct={pct}
+				enabled={customerLoyaltyPointsEnabled}
+				fiatLabel={fiatLabel}
+				accent={DISCOVER_FOOD_BEVERAGE_GIFT_ACCENT}
+				rewardContext="dining order"
+			/>
+
 			<button
 				type="button"
 				onClick={onActivateTopUp}
@@ -1563,14 +1590,6 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 					First Dining Order &amp; Spend
 				</button>
 			</p>
-
-			<DiscoverMerchantHowPointsWorkPanel
-				pct={pct}
-				enabled={customerLoyaltyPointsEnabled}
-				fiatLabel={fiatLabel}
-				accent={DISCOVER_FOOD_BEVERAGE_GIFT_ACCENT}
-				rewardContext="dining order"
-			/>
 
 			<DiscoverMerchantVisitActionsBlock
 				brandColor={brand}
@@ -1726,7 +1745,7 @@ function DiscoverMerchantFoodBeverageLoyaltyPassPanel({
 				Top Up
 			</button>
 
-			<DiscoverMerchantHowPointsWorkPanel
+			<DiscoverMerchantHowPointsWorkDisclosure
 				pct={pct}
 				enabled={customerLoyaltyPointsEnabled}
 				fiatLabel={fiatLabel}
@@ -1875,6 +1894,7 @@ function DiscoverMerchantMemberRechargePrivilegesPanel({
 	backgroundColor?: string | null
 }) {
 	const [selectedCardId, setSelectedCardId] = useState<string | null>(null)
+	const [howPointsOpen, setHowPointsOpen] = useState(false)
 	useEffect(() => {
 		if (!multiplierCards.length) {
 			setSelectedCardId(null)
@@ -2031,9 +2051,28 @@ function DiscoverMerchantMemberRechargePrivilegesPanel({
 								<span className={promotionLine ? 'mt-1 block' : 'block'}>{rewardPtEarnLine}</span>
 							) : null}
 						</p>
+						<button
+							type="button"
+							onClick={() => setHowPointsOpen((current) => !current)}
+							aria-label="Show how Reward PT works"
+							aria-expanded={howPointsOpen}
+							className="ml-auto inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition hover:bg-white/10"
+						>
+							<Info className="h-4 w-4" strokeWidth={2.25} aria-hidden />
+						</button>
 					</div>
 				) : null}
 			</div>
+
+			{howPointsOpen ? (
+				<DiscoverMerchantHowPointsWorkPanel
+					pct={chargePercent != null ? String(chargePercent) : null}
+					enabled
+					fiatLabel={balancePrefix}
+					accent={DISCOVER_FOOD_BEVERAGE_GIFT_ACCENT}
+					rewardContext={isDining ? 'dining order' : 'purchase'}
+				/>
+			) : null}
 
 			<DiscoverStoreCreditMultiplierOffersRow
 				cards={multiplierCards}
@@ -7177,7 +7216,7 @@ function DiscoverMerchantDetailFullScreen({
 		/>
 	)
 	const renderHowPointsWorkPanel = () => (
-		<DiscoverMerchantHowPointsWorkPanel
+		<DiscoverMerchantHowPointsWorkDisclosure
 			pct={merchantRewardPtPercent}
 			enabled={customerLoyaltyPointsEnabled}
 			fiatLabel={balancePrefix || 'CA$'}
@@ -8445,7 +8484,7 @@ function DiscoverMerchantDetailFullScreen({
 									</button>
 								</div>
 							) : null}
-							{renderHowPointsWorkPanel()}
+							{!showMemberRechargePrivileges ? renderHowPointsWorkPanel() : null}
 							{renderVisitActions()}
 						</>
 					) : null}

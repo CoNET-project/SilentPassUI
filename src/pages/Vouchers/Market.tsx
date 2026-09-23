@@ -636,23 +636,10 @@ function discoverMerchantAboutPanelForDisplay(
 }
 
 const DISCOVER_VISIT_BRAND_FALLBACK = '#4b4537'
-const DISCOVER_VISIT_BOOKING_ICON = '#e4c9a0'
-const DISCOVER_VISIT_MUTED_ICON = '#8a8f98'
 
 /** Booking / Gifting / Contact. Brand chrome follows the merchant color. */
 function DiscoverMerchantVisitActionsBlock({
-	brandColor,
-	onBooking,
-	onGifting,
-	onContact,
-	contactBusy,
-	actionsDisabled,
 	error,
-	bookingLabel = 'Booking',
-	giftingLabel = 'Gifting',
-	giftAccentColor,
-	primaryActionIcon = 'calendar',
-	contactIcon = 'headphones',
 }: {
 	brandColor: string
 	onBooking: () => void
@@ -669,66 +656,15 @@ function DiscoverMerchantVisitActionsBlock({
 	primaryActionIcon?: 'calendar' | 'bag'
 	contactIcon?: 'headphones' | 'store'
 }) {
-	const brand = brandColor.trim() || DISCOVER_VISIT_BRAND_FALLBACK
-	const giftColor = giftAccentColor?.trim() || DISCOVER_VISIT_MUTED_ICON
-	const actionBtnClass =
-		'flex min-h-[5.5rem] flex-col items-center justify-center gap-2 rounded-[22px] px-2 py-4 ring-1 transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60'
-	const PrimaryIcon = primaryActionIcon === 'bag' ? ShoppingBag : Calendar
-	const ContactIconEl = contactIcon === 'store' ? Store : Headphones
-
-	return (
-		<div className="flex flex-col gap-3">
-			<div className="grid grid-cols-3 gap-3">
-				<button
-					type="button"
-					onClick={onBooking}
-					disabled={actionsDisabled}
-					aria-label={bookingLabel}
-					className={`${actionBtnClass} ring-transparent`}
-					style={{ backgroundColor: brand, color: '#ffffff', borderColor: 'transparent' }}
-				>
-					<PrimaryIcon
-						className="h-6 w-6"
-						style={{ color: primaryActionIcon === 'bag' ? '#ffffff' : DISCOVER_VISIT_BOOKING_ICON }}
-						strokeWidth={1.8}
-						aria-hidden
-					/>
-				</button>
-				<button
-					type="button"
-					onClick={onGifting}
-					disabled={actionsDisabled}
-					aria-label={giftingLabel}
-					className={`${actionBtnClass} bg-white ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800`}
-				>
-					<Gift className="h-6 w-6" style={{ color: giftColor }} strokeWidth={1.8} aria-hidden />
-				</button>
-				<button
-					type="button"
-					onClick={onContact}
-					disabled={actionsDisabled || contactBusy}
-					aria-busy={contactBusy}
-					aria-label="Contact"
-					className={`${actionBtnClass} bg-white ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800`}
-				>
-					{contactBusy ? (
-						<Loader2 className="h-6 w-6 animate-spin" style={{ color: DISCOVER_VISIT_MUTED_ICON }} strokeWidth={2} aria-hidden />
-					) : (
-						<ContactIconEl className="h-6 w-6" style={{ color: DISCOVER_VISIT_MUTED_ICON }} strokeWidth={1.8} aria-hidden />
-					)}
-				</button>
-			</div>
-			{error ? (
-				<div
-					role="alert"
-					className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-100"
-				>
-					<AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
-					<p className="min-w-0 flex-1 leading-snug">{error}</p>
-				</div>
-			) : null}
+	return error ? (
+		<div
+			role="alert"
+			className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-100"
+		>
+			<AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
+			<p className="min-w-0 flex-1 leading-snug">{error}</p>
 		</div>
-	)
+	) : null
 }
 
 const DISCOVER_HEALTH_BEAUTY_ACCENT = '#e67e22'
@@ -1081,24 +1017,30 @@ function DiscoverMerchantHowPointsWorkDisclosure(props: {
 	fiatLabel: string
 	accent: string
 	rewardContext: string
+	inline?: boolean
 }) {
 	const [open, setOpen] = useState(false)
 	if (!props.enabled) return null
+	const trigger = (
+		<button
+			type="button"
+			onClick={() => setOpen((current) => !current)}
+			aria-label="Show how Reward PT works"
+			aria-expanded={open}
+			className="inline-flex h-8 w-8 items-center justify-center rounded-full text-[#5c6570] transition hover:bg-black/5 hover:text-[#2c2f31] dark:text-slate-400 dark:hover:bg-white/10 dark:hover:text-slate-100"
+		>
+			<Info className="h-4 w-4" strokeWidth={2.25} aria-hidden />
+		</button>
+	)
 
 	return (
 		<>
-			<div className="mt-2 flex justify-center">
-				<button
-					type="button"
-					onClick={() => setOpen((current) => !current)}
-					aria-label="Show how Reward PT works"
-					aria-expanded={open}
-					className="inline-flex h-8 w-8 items-center justify-center rounded-full text-[#5c6570] transition hover:bg-black/5 hover:text-[#2c2f31] dark:text-slate-400 dark:hover:bg-white/10 dark:hover:text-slate-100"
-				>
-					<Info className="h-4 w-4" strokeWidth={2.25} aria-hidden />
-				</button>
-			</div>
-			{open ? <DiscoverMerchantHowPointsWorkPanel {...props} /> : null}
+			{props.inline ? trigger : <div className="mt-2 flex justify-center">{trigger}</div>}
+			{open ? (
+				<div className={props.inline ? 'basis-full' : ''}>
+					<DiscoverMerchantHowPointsWorkPanel {...props} />
+				</div>
+			) : null}
 		</>
 	)
 }
@@ -1553,20 +1495,22 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 						{renderDiscoverNumericEmphasis(welcomeRewardLine)}
 					</p>
 					{topupLine && chargeWelcomeLine ? (
-						<p className="mt-2 text-[11px] font-semibold leading-snug text-[#5c6570] dark:text-slate-400">
-							{renderDiscoverNumericEmphasis(chargeWelcomeLine)}
-						</p>
+						<div className="mt-2 flex flex-wrap items-center justify-center gap-1.5">
+							<p className="text-[11px] font-semibold leading-snug text-[#5c6570] dark:text-slate-400">
+								{renderDiscoverNumericEmphasis(chargeWelcomeLine)}
+							</p>
+							<DiscoverMerchantHowPointsWorkDisclosure
+								pct={pct}
+								enabled={customerLoyaltyPointsEnabled}
+								fiatLabel={fiatLabel}
+								accent={DISCOVER_FOOD_BEVERAGE_GIFT_ACCENT}
+								rewardContext="dining order"
+								inline
+							/>
+						</div>
 					) : null}
 				</div>
 			) : null}
-
-			<DiscoverMerchantHowPointsWorkDisclosure
-				pct={pct}
-				enabled={customerLoyaltyPointsEnabled}
-				fiatLabel={fiatLabel}
-				accent={DISCOVER_FOOD_BEVERAGE_GIFT_ACCENT}
-				rewardContext="dining order"
-			/>
 
 			<button
 				type="button"
@@ -8224,6 +8168,17 @@ function DiscoverMerchantDetailFullScreen({
 								referrerEoa={shareReferrerEoa}
 							/>
 						) : null}
+						<BeamioHeroGlassIconButton
+							onClick={() => void onMerchantVisitContact()}
+							disabled={supportChatOpening || issuerProfileOpening}
+							ariaLabel="Contact"
+						>
+							{supportChatOpening || issuerProfileOpening ? (
+								<Loader2 className="h-[17px] w-[17px] animate-spin" strokeWidth={2.5} aria-hidden />
+							) : (
+								<Headphones className="h-[17px] w-[17px]" strokeWidth={2} aria-hidden />
+							)}
+						</BeamioHeroGlassIconButton>
 						<BeamioHeroGlassIconButton
 							onClick={onMerchantLikeHeartClick}
 							disabled={likeLoading || Boolean(userLiked)}

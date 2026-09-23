@@ -70,7 +70,6 @@ export const sendVoiceCallRejectionToTemporaryRelay = async (
 			callId: offer.callId,
 			sessionId: randomVoiceId('reject'),
 			targetSessionId: offer.sessionId,
-			targetWallet: offer.from,
 			seq: 0,
 			payload,
 		})
@@ -106,24 +105,15 @@ export function createVoiceCallController(options: VoiceCallControllerOptions) {
 			entryDomains: selectedEntries.map(node => node.domain),
 			codec: 'audio/webm;codecs=opus',
 		})
-		const callerWallet = new ethers.Wallet(options.privateKey)
 		const pushTimestamp = Math.floor(Date.now() / 1000)
-		const pushMessage = [
-			'Beamio voiceCallPush',
-			`callId:${signal.callId}`,
-			`sessionId:${signal.sessionId}`,
-			`callerEoa:${callerWallet.address.toLowerCase()}`,
-			`calleeEoa:${ethers.getAddress(signal.to).toLowerCase()}`,
-			`expiresAt:${signal.expiresAt}`,
-			`timestamp:${pushTimestamp}`,
-		].join('\n')
-		const pushSignature = await callerWallet.signMessage(pushMessage)
 		if (!await startWorkerVoiceListen(sessionId, {
-			callId: signal.callId,
+			// The mailbox must never receive the caller's BeamioTag or wallet.
+			// This reference is only for the native wake-up and is unrelated to
+			// the recipient-visible signed call offer.
+			callId: randomVoiceId('wake'),
 			calleeEoa: signal.to,
 			expiresAt: signal.expiresAt,
 			timestamp: pushTimestamp,
-			signature: pushSignature,
 		})) return null
 		const sent = await sendVoiceCallOffer({
 			recipientPgp: options.peerPgp,

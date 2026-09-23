@@ -65,7 +65,8 @@ import {
 } from '@/services/chatWorkerBridge'
 import { PlusActionMenu } from "./components/PlusActionMenu"
 import { useDaemonContext } from "@/providers/DaemonProvider"
-import { searchUsername, storeSystemData, AuthorizationSign } from '@/services/beamio'
+import { storeSystemData, AuthorizationSign } from '@/services/beamio'
+import { useBeamioTagDatabase } from '@/providers/BeamioTagDatabaseProvider'
 import { fiatPrefix } from '@/services/currency'
 import { dispatchNativeSystemCallAction, getCashTreesNativeNfcBridge, openExternalUrl, requestNativeCameraCapture, requestNativePhotoPicker, saveFileToNative } from '@/utils/cashTreesNativeNfc'
 import { MessageSendReceiveCard } from "./components/messageSendReceiveCard"
@@ -1768,6 +1769,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		usdcbalance = 0,
 		setScanData,
 	} = useDaemonContext()
+	const { resolvePeerSearchResult, ensureProfilesForAddresses } = useBeamioTagDatabase()
 	
 
 
@@ -3992,14 +3994,8 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 
 		findingRef.current = true
 		try {
-			let account: searchResult|undefined = undefined
-				const _account = await searchUsername(chatData.address)
-				if (_account?.results?.[0]) account = _account.results[0]
-			
-
-			if (!account) {
-				account = unknowAcc(chatData.address) 
-			} 
+			await ensureProfilesForAddresses([chatData.address])
+			const account = resolvePeerSearchResult(chatData.address) ?? unknowAcc(chatData.address)
 			//@ts-ignore
 			setbBeamioUsers(prev => {
 			const addr = (account?.address || '').toLowerCase()
@@ -4015,11 +4011,11 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			findingRef.current = false
 			
 		}
-	}, [chatData])
+	}, [chatData, ensureProfilesForAddresses, resolvePeerSearchResult])
 
 	useEffect(() => {
 		findUser()
-	}, [chatData])
+	}, [findUser])
 
 	const clearedRef = useRef(false)
 	// 距离底部多少 px 视为“已到最底”

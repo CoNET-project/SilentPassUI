@@ -293,7 +293,6 @@ export interface BeamioChatClient {
 			calleeEoa: string
 			expiresAt: number
 			timestamp: number
-			signature: string
 		},
 	): Promise<boolean>
 	stopVoiceListen(sessionId: string): Promise<boolean>

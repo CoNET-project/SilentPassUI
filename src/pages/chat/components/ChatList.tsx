@@ -14,7 +14,7 @@ import {
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import { useBeamioTagDatabase } from "@/providers/BeamioTagDatabaseProvider"
 import { dedupeChatsByAddress, refreshChatRoutes, refreshChatMailboxPresence } from '@/services/chat' 
-import {searchUsername, storeSystemData} from '@/services/beamio'
+import {storeSystemData} from '@/services/beamio'
 import { tu } from '@/locale/beamioLocale'
 import { chatShareLinkListPreview } from '@/utils/chatShareLinkPreview'
 import { chatGenericLinkListPreview } from '@/utils/chatGenericLinkPreview'
@@ -107,6 +107,7 @@ function Avatar({
 	online?: boolean
 }) {
 	const {beamioUsers, setbBeamioUsers} = useDaemonContext()
+	const { resolvePeerSearchResult, ensureProfilesForAddresses } = useBeamioTagDatabase()
 	const [fromBeamio, setfromBeamio] = useState<searchResult|undefined> (beamioProp)
 	const [userImg, setUserImg] = useState('')
 
@@ -123,16 +124,12 @@ function Avatar({
 		if (findingRef.current || !address) return
 		findingRef.current = true
 		try {
-			// 与 Chat 一致：始终从 searchUsername 获取最新，不依赖 beamioUsers 缓存
-			let account: searchResult|undefined
-			const _account = await searchUsername(address)
-			if (_account?.results?.[0]) {
-				account = _account.results[0]
-			} else {
-				account = beamioUsers.find(n => (n?.address || '').toLowerCase() === address.toLowerCase()) ?? beamioProp ?? unknowAcc(address)
-			}
-			if (!account) account = unknowAcc(address)
-
+			await ensureProfilesForAddresses([address])
+			const account =
+				resolvePeerSearchResult(address) ??
+				beamioUsers.find(n => (n?.address || '').toLowerCase() === address.toLowerCase()) ??
+				beamioProp ??
+				unknowAcc(address)
 			//@ts-ignore
 			setbBeamioUsers(prev => {
 				const addr = (account!.address || '').toLowerCase()
@@ -147,7 +144,7 @@ function Avatar({
 		} finally {
 			findingRef.current = false
 		}
-	}, [address, beamioProp])
+	}, [address, beamioProp, beamioUsers, ensureProfilesForAddresses, resolvePeerSearchResult])
 
 	useEffect(() => {
 		if (beamioProp && (beamioProp.address || '').toLowerCase() === (address || '').toLowerCase()) {

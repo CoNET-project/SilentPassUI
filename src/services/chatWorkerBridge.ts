@@ -302,7 +302,6 @@ export const startWorkerVoiceListen = async (
 		calleeEoa: string
 		expiresAt: number
 		timestamp: number
-		signature: string
 	},
 ): Promise<boolean> => {
 	if (!activeClient) return false

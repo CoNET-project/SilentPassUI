@@ -73,7 +73,6 @@ export type WorkerCommand =
 				calleeEoa: string
 				expiresAt: number
 				timestamp: number
-				signature: string
 			}
 	  }
 	| { type: 'voiceUnlisten'; reqId: number; sessionId: string }

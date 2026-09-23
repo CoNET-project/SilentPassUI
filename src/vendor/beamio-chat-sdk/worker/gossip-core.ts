@@ -44,7 +44,7 @@ import {
 	postWithTimeout,
 } from '../nodes'
 import { base64ToUtf8, keccakUtf8, utf8ToBase64 } from '../crypto'
-import { buildPostBody, encryptRouteCommand, wrapArmorToEntryRoute, wrapArmorToMailboxWork } from '../envelope'
+import { buildPostBody, encryptOpaqueVoiceCommand, encryptRouteCommand, wrapArmorToEntryRoute, wrapArmorToMailboxWork } from '../envelope'
 
 /** Callbacks the worker entry wires to `postMessage`. */
 export interface GossipEmit {
@@ -653,7 +653,11 @@ export class GossipCore {
 
 	async sendVoiceFrame(routerArmoredPublicKey: string, frame: Record<string, unknown>): Promise<boolean> {
 		const command = { command: 'voice_uplink', ...frame, timestamp: Math.floor(Date.now() / 1000) }
-		return this.postMailboxCommand(routerArmoredPublicKey, command)
+		const innerArmor = await encryptOpaqueVoiceCommand(command, routerArmoredPublicKey)
+		const mailboxDomains = new Set(
+			pickRouteNodesByArmoredKey(this.nodes, routerArmoredPublicKey).map((n) => n.domain),
+		)
+		return this.postToEntries(innerArmor, mailboxDomains)
 	}
 
 	async startVoiceListen(
@@ -663,7 +667,6 @@ export class GossipCore {
 			calleeEoa: string
 			expiresAt: number
 			timestamp: number
-			signature: string
 		},
 	): Promise<boolean> {
 		if (this.paused || !this.cfg || !this.wallet || !sessionId) return false
@@ -673,9 +676,8 @@ export class GossipCore {
 		const mailboxDomains = new Set(routeNodes.map((n) => n.domain))
 		const entries = await pickHealthyGossipNodes(this.nodes.filter((n) => !mailboxDomains.has(n.domain)))
 		if (!route || !entries.length) return false
-		const inner = await encryptRouteCommand(this.wallet, {
+		const inner = await encryptOpaqueVoiceCommand({
 			command: 'voice_listen',
-			walletAddress: this.wallet.address,
 			sessionId,
 			timestamp: Math.floor(Date.now() / 1000),
 			...(pushWakeup ? {
@@ -683,7 +685,6 @@ export class GossipCore {
 				targetWallet: pushWakeup.calleeEoa,
 				expiresAt: pushWakeup.expiresAt,
 				pushTimestamp: pushWakeup.timestamp,
-				pushSignature: pushWakeup.signature,
 			} : {}),
 		}, route)
 		const controller = new AbortController()
@@ -733,11 +734,13 @@ export class GossipCore {
 		this.voiceListenController?.abort('voice_stop')
 		this.voiceListenController = null
 		if (!route || !wallet) return true
-		return this.postMailboxCommand(route, {
+		const innerArmor = await encryptOpaqueVoiceCommand({
 			command: 'voice_unlisten',
-			walletAddress: wallet.address,
 			sessionId,
 			timestamp: Math.floor(Date.now() / 1000),
-		})
+		}, route)
+		return this.postToEntries(innerArmor, new Set(
+			pickRouteNodesByArmoredKey(this.nodes, route).map((n) => n.domain),
+		))
 	}
 }

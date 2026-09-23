@@ -1953,7 +1953,8 @@ function AppShell() {
             results = [localPeer]
           } else {
             const user = await searchRemoteAndIngest(addr)
-            results = (user as { results?: searchResult[] } | null)?.results || []
+            results = ((user as { results?: searchResult[] } | null)?.results || [])
+              .filter((item) => item?.address?.toLowerCase() === addr.toLowerCase())
           }
           const searchResultItem: searchResult = results[0] ?? {
             address: addr,

@@ -5544,7 +5544,20 @@ function DiscoverMerchantDetailFullScreen({
 }) {
 	const navigate = useNavigate()
 	const location = useLocation()
-	const { profiles, setProfiles, setShowFooter, discoverMerchantStatByCard, registerDiscoverMerchantStatFeedCards, applyDiscoverMerchantLikeCountDelta, couponOpenClaimStatusByKey, registerCouponOpenClaimFeedTargets, applyCouponOpenClaimStatus, myBrandCardDetails, setChatHomeItem } = useDaemonContext()
+	const {
+		profiles,
+		setProfiles,
+		setShowFooter,
+		discoverMerchantStatByCard,
+		registerDiscoverMerchantStatFeedCards,
+		applyDiscoverMerchantLikeCountDelta,
+		couponOpenClaimStatusByKey,
+		registerCouponOpenClaimFeedTargets,
+		applyCouponOpenClaimStatus,
+		refreshCouponSocialStatsFeed,
+		myBrandCardDetails,
+		setChatHomeItem,
+	} = useDaemonContext()
 	const { registerCardAddresses, resolveName, lookupByAddress, ensureCardsForAddresses, peekMetadata } =
 		useMerchantCardDatabase()
 	const {
@@ -7708,6 +7721,9 @@ function DiscoverMerchantDetailFullScreen({
 					setCouponClaimEligibilityById((s) => ({ ...s, [row.id]: 'already_claimed' }))
 					setCouponClaimStatusById((s) => ({ ...s, [row.id]: 'success' }))
 					scheduleCouponClaimStatusReset(row.id)
+					window.setTimeout(() => {
+						void refreshCouponSocialStatsFeed()
+					}, 6_000)
 					// Claim success stays on the ticket (claimed state). Do not use auto-dismiss Toast.
 				} else {
 					const err = ret.error ?? 'Coupon claim failed'
@@ -7752,7 +7768,15 @@ function DiscoverMerchantDetailFullScreen({
 				setCouponClaimErrorById((s) => ({ ...s, [row.id]: mapServerError(err) }))
 			}
 		},
-		[couponClaimStatusById, profile, scheduleCouponClaimStatusReset, setProfiles, shareReferrerFromUrl, applyCouponOpenClaimStatus],
+		[
+			couponClaimStatusById,
+			profile,
+			scheduleCouponClaimStatusReset,
+			setProfiles,
+			shareReferrerFromUrl,
+			applyCouponOpenClaimStatus,
+			refreshCouponSocialStatsFeed,
+		],
 	)
 
 	const daemonCardAssets = item.cardAddress

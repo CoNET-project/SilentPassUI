@@ -387,6 +387,7 @@ export function ActiveCouponTicketItem({
 	actionError,
 	onAction,
 	actionLabel = tu('claim'),
+	claimState,
 	disabled = false,
 	ariaLabel,
 	punchBgClassName = 'bg-[#f9f9fe]',
@@ -411,6 +412,7 @@ export function ActiveCouponTicketItem({
 	actionError?: string
 	onAction?: () => void
 	actionLabel?: string
+	claimState?: 'claimed' | 'redeemed' | null
 	disabled?: boolean
 	ariaLabel?: string
 	punchBgClassName?: string
@@ -574,8 +576,8 @@ export function ActiveCouponTicketItem({
 
 	const usesPosClaimGiftButton = actionLabel === tu('claim')
 	const usesClaimedStatusCapsule =
-		actionLabel === tu('owned') || actionLabel === tu('claimed')
-	const usesRedeemedStatusCapsule = actionLabel === tu('redeemed')
+		claimState === 'claimed' || (!claimState && (actionLabel === tu('owned') || actionLabel === tu('claimed')))
+	const usesRedeemedStatusCapsule = claimState === 'redeemed' || (!claimState && actionLabel === tu('redeemed'))
 	const claimActionAriaLabel =
 		ariaLabel ??
 		(actionStatus === 'success'

@@ -3564,6 +3564,7 @@ function DiscoverMerchantCouponOfferRow({
 					actionLabel={ticketActionLabel}
 					actionStatus={ticketActionStatus}
 					actionError={claimError}
+					claimState={isAlreadyRedeemed ? 'redeemed' : isAlreadyClaimed ? 'claimed' : null}
 					claimCostLabel={
 						socialExchange
 							? `${formatSocialPoints13Display(socialExchange.pointsCost)} PT`

@@ -392,6 +392,7 @@ export function ActiveCouponTicketItem({
 	punchBgClassName = 'bg-[#f9f9fe]',
 	showCardAddress = false,
 	showActionButton = true,
+	claimCostLabel,
 	/** My Brands owned coupon — show Open Claim Distribution share icon beside NFT capsule. */
 	showOpenClaimShareButton = false,
 	/** biz Coupon preview parity: banner ticket shows icon only; title/subtitle/expiry below. */
@@ -415,6 +416,7 @@ export function ActiveCouponTicketItem({
 	punchBgClassName?: string
 	showCardAddress?: boolean
 	showActionButton?: boolean
+	claimCostLabel?: string | null
 	showOpenClaimShareButton?: boolean
 	metadataBelowBackgroundImage?: boolean
 	showUserLike?: boolean
@@ -751,9 +753,16 @@ export function ActiveCouponTicketItem({
 			{ticketShell}
 			<div className="mt-3 w-full">
 				{title ? (
-					<p className="truncate font-manrope text-[1.05rem] font-extrabold leading-tight tracking-tight text-[#2c2f31] dark:text-slate-100 sm:text-lg">
-						{title}
-					</p>
+					<div className="flex min-w-0 items-start justify-between gap-3">
+						<p className="min-w-0 flex-1 truncate font-manrope text-[1.05rem] font-extrabold leading-tight tracking-tight text-[#2c2f31] dark:text-slate-100 sm:text-lg">
+							{title}
+						</p>
+						{claimCostLabel ? (
+							<span className="shrink-0 pt-0.5 text-[11px] font-bold text-[#5c6570] dark:text-slate-400">
+								{claimCostLabel}
+							</span>
+						) : null}
+					</div>
 				) : null}
 				{renderDetailSubtitle(
 					'text-sm text-[#595c5e] dark:text-slate-400',

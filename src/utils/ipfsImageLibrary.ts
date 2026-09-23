@@ -19,6 +19,37 @@ export type IpfsImageLibraryRecord = {
 
 const inflightByHash = new Map<string, Promise<IpfsImageLibraryRecord | null>>()
 
+async function isDecodableImageBlob(blob: Blob): Promise<boolean> {
+  if (!blob || blob.size <= 0) return false
+
+  if (typeof createImageBitmap === 'function') {
+    try {
+      const bitmap = await createImageBitmap(blob)
+      const valid = bitmap.width > 0 && bitmap.height > 0
+      bitmap.close()
+      return valid
+    } catch {
+      // Fall through to the HTMLImageElement path for Safari/WebView variants.
+    }
+  }
+
+  if (typeof Image === 'undefined' || typeof URL?.createObjectURL !== 'function') {
+    return true
+  }
+
+  const objectUrl = URL.createObjectURL(blob)
+  try {
+    return await new Promise<boolean>((resolve) => {
+      const image = new Image()
+      image.onload = () => resolve(image.naturalWidth > 0 && image.naturalHeight > 0)
+      image.onerror = () => resolve(false)
+      image.src = objectUrl
+    })
+  } finally {
+    URL.revokeObjectURL(objectUrl)
+  }
+}
+
 export function normalizeFragmentHash(raw: string | undefined | null): string | null {
   const trimmed = String(raw ?? '').trim()
   if (!trimmed) return null
@@ -86,7 +117,32 @@ export async function getLocalIpfsImageRecord(
         resolve(null)
         return
       }
-      resolve(row)
+      void isDecodableImageBlob(row.blob).then(async (valid) => {
+        if (valid) {
+          resolve(row)
+          return
+        }
+        await deleteLocalIpfsImageRecord(norm).catch(() => {})
+        resolve(null)
+      })
+    }
+    req.onerror = () => {
+      db.close()
+      reject(req.error)
+    }
+  })
+}
+
+async function deleteLocalIpfsImageRecord(hash: string): Promise<void> {
+  const norm = normalizeFragmentHash(hash)
+  if (!norm) return
+  const db = await openDb()
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, 'readwrite')
+    const req = tx.objectStore(STORE).delete(norm)
+    req.onsuccess = () => {
+      db.close()
+      resolve()
     }
     req.onerror = () => {
       db.close()

@@ -736,6 +736,8 @@ function DiscoverLoyaltyPassIncentiveLine({
 	pct,
 	earnWithPct,
 	howPointsWork,
+	howPointsWorkOpen,
+	onHowPointsWorkToggle,
 }: {
 	topupPromotionCapsule?: string | null
 	pct: string | null
@@ -747,6 +749,8 @@ function DiscoverLoyaltyPassIncentiveLine({
 		accent: string
 		rewardContext: string
 	}
+	howPointsWorkOpen?: boolean
+	onHowPointsWorkToggle?: () => void
 }) {
 	const promo = topupPromotionCapsule?.trim()
 	const rewardLine = pct == null ? null : earnWithPct
@@ -765,8 +769,11 @@ function DiscoverLoyaltyPassIncentiveLine({
 					}
 				>
 					<p className="min-w-0 text-[13px] font-medium leading-snug text-white/90">{rewardLine}</p>
-					{howPointsWork ? (
-						<DiscoverMerchantHowPointsWorkDisclosure {...howPointsWork} inline />
+					{howPointsWork && onHowPointsWorkToggle ? (
+						<DiscoverMerchantHowPointsWorkTrigger
+							open={Boolean(howPointsWorkOpen)}
+							onToggle={onHowPointsWorkToggle}
+						/>
 					) : null}
 				</div>
 			) : null}
@@ -829,6 +836,7 @@ function DiscoverMerchantHealthBeautyLoyaltyPassPanel({
 		pointsNum: rewardPtsNum,
 		fiatLabel,
 	})
+	const [howPointsWorkOpen, setHowPointsWorkOpen] = useState(false)
 
 	return (
 		<div className="flex flex-col gap-4" aria-label="Active member pass">
@@ -894,8 +902,20 @@ function DiscoverMerchantHealthBeautyLoyaltyPassPanel({
 						accent: DISCOVER_HEALTH_BEAUTY_ACCENT,
 						rewardContext: "purchase",
 					}}
+					howPointsWorkOpen={howPointsWorkOpen}
+					onHowPointsWorkToggle={() => setHowPointsWorkOpen((current) => !current)}
 				/>
 			</section>
+
+			{howPointsWorkOpen ? (
+				<DiscoverMerchantHowPointsWorkPanel
+					pct={pct}
+					enabled={customerLoyaltyPointsEnabled}
+					fiatLabel={fiatLabel}
+					accent={DISCOVER_HEALTH_BEAUTY_ACCENT}
+					rewardContext="purchase"
+				/>
+			) : null}
 
 			<button
 				type="button"
@@ -1018,15 +1038,10 @@ function DiscoverMerchantHowPointsWorkDisclosure(props: {
 	const [open, setOpen] = useState(false)
 	if (!props.enabled) return null
 	const trigger = (
-		<button
-			type="button"
-			onClick={() => setOpen((current) => !current)}
-			aria-label="Show how Reward PT works"
-			aria-expanded={open}
-			className="inline-flex h-8 w-8 items-center justify-center rounded-full text-amber-500 transition hover:bg-amber-50 hover:text-amber-600 dark:text-amber-400 dark:hover:bg-amber-950/30 dark:hover:text-amber-300"
-		>
-			<Info className="h-4 w-4" strokeWidth={2.25} aria-hidden />
-		</button>
+		<DiscoverMerchantHowPointsWorkTrigger
+			open={open}
+			onToggle={() => setOpen((current) => !current)}
+		/>
 	)
 
 	return (
@@ -1038,6 +1053,26 @@ function DiscoverMerchantHowPointsWorkDisclosure(props: {
 				</div>
 			) : null}
 		</>
+	)
+}
+
+function DiscoverMerchantHowPointsWorkTrigger({
+	open,
+	onToggle,
+}: {
+	open: boolean
+	onToggle: () => void
+}) {
+	return (
+		<button
+			type="button"
+			onClick={onToggle}
+			aria-label="Show how Reward PT works"
+			aria-expanded={open}
+			className="inline-flex h-8 w-8 items-center justify-center rounded-full text-amber-500 transition hover:bg-amber-50 hover:text-amber-600 dark:text-amber-400 dark:hover:bg-amber-950/30 dark:hover:text-amber-300"
+		>
+			<Info className="h-4 w-4" strokeWidth={2.25} aria-hidden />
+		</button>
 	)
 }
 
@@ -1603,6 +1638,7 @@ function DiscoverMerchantFoodBeverageLoyaltyPassPanel({
 		pointsNum: rewardPtsNum,
 		fiatLabel,
 	})
+	const [howPointsWorkOpen, setHowPointsWorkOpen] = useState(false)
 
 	return (
 		<div className="flex flex-col gap-4" aria-label="Active dining member pass">
@@ -1658,8 +1694,20 @@ function DiscoverMerchantFoodBeverageLoyaltyPassPanel({
 						accent: DISCOVER_FOOD_BEVERAGE_GIFT_ACCENT,
 						rewardContext: "dining order",
 					}}
+					howPointsWorkOpen={howPointsWorkOpen}
+					onHowPointsWorkToggle={() => setHowPointsWorkOpen((current) => !current)}
 				/>
 			</section>
+
+			{howPointsWorkOpen ? (
+				<DiscoverMerchantHowPointsWorkPanel
+					pct={pct}
+					enabled={customerLoyaltyPointsEnabled}
+					fiatLabel={fiatLabel}
+					accent={DISCOVER_FOOD_BEVERAGE_GIFT_ACCENT}
+					rewardContext="dining order"
+				/>
+			) : null}
 
 			<button
 				type="button"
@@ -2067,6 +2115,7 @@ function DiscoverMerchantProspectJoinPanel({
 		return multiplierCards.find((c) => c.isBestValue)?.id ?? multiplierCards[0]?.id ?? ''
 	}, [multiplierCards, showMultiplierCarousel])
 	const [selectedCardId, setSelectedCardId] = useState(defaultSelectedId)
+	const [howPointsWorkOpen, setHowPointsWorkOpen] = useState(false)
 	useEffect(() => {
 		if (!showMultiplierCarousel) return
 		setSelectedCardId((prev) =>
@@ -2310,7 +2359,10 @@ function DiscoverMerchantProspectJoinPanel({
 						{bonusBadge}
 					</span>
 					{howPointsWork ? (
-						<DiscoverMerchantHowPointsWorkDisclosure {...howPointsWork} inline />
+						<DiscoverMerchantHowPointsWorkTrigger
+							open={howPointsWorkOpen}
+							onToggle={() => setHowPointsWorkOpen((current) => !current)}
+						/>
 					) : null}
 				</div>
 			) : null}
@@ -2327,7 +2379,8 @@ function DiscoverMerchantProspectJoinPanel({
 	) : null
 
 	return (
-		<section
+		<>
+			<section
 			className={[
 				'relative overflow-hidden rounded-[22px] p-4 shadow-[0_8px_22px_rgba(15,23,42,0.06)] sm:p-5',
 				!hasImage ? 'pb-16 sm:pb-16' : '',
@@ -2384,7 +2437,11 @@ function DiscoverMerchantProspectJoinPanel({
 				</svg>
 				{chargeFooter ?? 'CoNET L1 smart vault • Never expires & 100% redeemable'}
 			</p>
-		</section>
+			</section>
+			{howPointsWorkOpen && howPointsWork ? (
+				<DiscoverMerchantHowPointsWorkPanel {...howPointsWork} />
+			) : null}
+		</>
 	)
 }
 
@@ -3507,6 +3564,11 @@ function DiscoverMerchantCouponOfferRow({
 					actionLabel={ticketActionLabel}
 					actionStatus={ticketActionStatus}
 					actionError={claimError}
+					claimCostLabel={
+						socialExchange
+							? `${formatSocialPoints13Display(socialExchange.pointsCost)} PT`
+							: null
+					}
 					disabled={claimDisabled}
 					onAction={canClaim ? onClaim : undefined}
 					aria-label={
@@ -3520,11 +3582,6 @@ function DiscoverMerchantCouponOfferRow({
 					}
 				/>
 				{claimError ? <DiscoverPayPanelError message={claimError} /> : null}
-				{socialExchange ? (
-					<p className="px-1 text-[11px] font-semibold text-[#5c6570] dark:text-slate-400">
-						Claim cost: {formatSocialPoints13Display(socialExchange.pointsCost)} Reward PT
-					</p>
-				) : null}
 				{insufficientSocialPoints ? (
 					<p className="px-1 text-[11px] font-semibold text-amber-600 dark:text-amber-400">
 						Not enough Reward PT for this claim.

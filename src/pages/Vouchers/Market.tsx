@@ -734,10 +734,18 @@ function DiscoverLoyaltyPassIncentiveLine({
 	topupPromotionCapsule,
 	pct,
 	earnWithPct,
+	howPointsWork,
 }: {
 	topupPromotionCapsule?: string | null
 	pct: string | null
 	earnWithPct: string
+	howPointsWork?: {
+		pct: string | null
+		enabled: boolean
+		fiatLabel: string
+		accent: string
+		rewardContext: string
+	}
 }) {
 	const promo = topupPromotionCapsule?.trim()
 	const rewardLine = pct == null ? null : earnWithPct
@@ -748,9 +756,18 @@ function DiscoverLoyaltyPassIncentiveLine({
 				<p className="min-w-0 text-[13px] font-medium leading-snug text-white/90">{promo}</p>
 			) : null}
 			{rewardLine ? (
-				<p className={promo ? 'mt-1 min-w-0 text-[13px] font-medium leading-snug text-white/90' : 'min-w-0 text-[13px] font-medium leading-snug text-white/90'}>
-					{rewardLine}
-				</p>
+				<div
+					className={
+						promo
+							? 'mt-1 flex flex-wrap items-center gap-1.5'
+							: 'flex flex-wrap items-center gap-1.5'
+					}
+				>
+					<p className="min-w-0 text-[13px] font-medium leading-snug text-white/90">{rewardLine}</p>
+					{howPointsWork ? (
+						<DiscoverMerchantHowPointsWorkDisclosure {...howPointsWork} inline />
+					) : null}
+				</div>
 			) : null}
 		</div>
 	)
@@ -814,27 +831,6 @@ function DiscoverMerchantHealthBeautyLoyaltyPassPanel({
 
 	return (
 		<div className="flex flex-col gap-4" aria-label="Active member pass">
-			<div className="flex items-center gap-2.5">
-				<span
-					className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
-					style={{ backgroundColor: `${DISCOVER_HEALTH_BEAUTY_ACCENT}22` }}
-					aria-hidden
-				>
-					<Star
-						className="h-4 w-4"
-						style={{ color: DISCOVER_HEALTH_BEAUTY_ACCENT }}
-						fill={DISCOVER_HEALTH_BEAUTY_ACCENT}
-						strokeWidth={0}
-					/>
-				</span>
-				<p
-					className="min-w-0 flex-1 truncate text-[15px] font-semibold tracking-tight"
-					style={{ color: DISCOVER_HEALTH_BEAUTY_ACCENT }}
-				>
-					{nameDisplay}
-				</p>
-			</div>
-
 			<section
 				className="overflow-hidden rounded-[1.35rem] px-5 pb-5 pt-5 text-white shadow-[0_16px_40px_rgba(45,40,35,0.28)]"
 				style={{ backgroundColor: brand }}
@@ -890,6 +886,13 @@ function DiscoverMerchantHealthBeautyLoyaltyPassPanel({
 					topupPromotionCapsule={topupPromotionCapsule}
 					pct={pct}
 					earnWithPct={`Earn ${pct}% back on every visit & purchase`}
+					howPointsWork={{
+						pct,
+						enabled: customerLoyaltyPointsEnabled,
+						fiatLabel,
+						accent: DISCOVER_HEALTH_BEAUTY_ACCENT,
+						rewardContext: "purchase",
+					}}
 				/>
 			</section>
 
@@ -903,14 +906,6 @@ function DiscoverMerchantHealthBeautyLoyaltyPassPanel({
 				<Wallet className="h-5 w-5 shrink-0 opacity-90" strokeWidth={2.25} aria-hidden />
 				Top Up
 			</button>
-
-			<DiscoverMerchantHowPointsWorkDisclosure
-				pct={pct}
-				enabled={customerLoyaltyPointsEnabled}
-				fiatLabel={fiatLabel}
-				accent={DISCOVER_HEALTH_BEAUTY_ACCENT}
-				rewardContext="purchase"
-			/>
 
 			<DiscoverMerchantVisitActionsBlock
 				brandColor={brand}
@@ -1027,7 +1022,7 @@ function DiscoverMerchantHowPointsWorkDisclosure(props: {
 			onClick={() => setOpen((current) => !current)}
 			aria-label="Show how Reward PT works"
 			aria-expanded={open}
-			className="inline-flex h-8 w-8 items-center justify-center rounded-full text-[#5c6570] transition hover:bg-black/5 hover:text-[#2c2f31] dark:text-slate-400 dark:hover:bg-white/10 dark:hover:text-slate-100"
+			className="inline-flex h-8 w-8 items-center justify-center rounded-full text-amber-500 transition hover:bg-amber-50 hover:text-amber-600 dark:text-amber-400 dark:hover:bg-amber-950/30 dark:hover:text-amber-300"
 		>
 			<Info className="h-4 w-4" strokeWidth={2.25} aria-hidden />
 		</button>
@@ -1610,26 +1605,6 @@ function DiscoverMerchantFoodBeverageLoyaltyPassPanel({
 
 	return (
 		<div className="flex flex-col gap-4" aria-label="Active dining member pass">
-			<div className="flex items-center gap-2.5">
-				<span
-					className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
-					style={{ backgroundColor: `${DISCOVER_FOOD_BEVERAGE_GIFT_ACCENT}22` }}
-					aria-hidden
-				>
-					<UtensilsCrossed
-						className="h-4 w-4"
-						style={{ color: DISCOVER_FOOD_BEVERAGE_GIFT_ACCENT }}
-						strokeWidth={2}
-					/>
-				</span>
-				<p
-					className="min-w-0 flex-1 truncate text-[15px] font-semibold tracking-tight"
-					style={{ color: DISCOVER_FOOD_BEVERAGE_GIFT_ACCENT }}
-				>
-					{nameDisplay}
-				</p>
-			</div>
-
 			<section
 				className="overflow-hidden rounded-[1.35rem] px-5 pb-5 pt-5 text-white shadow-[0_16px_40px_rgba(45,40,35,0.28)]"
 				style={{ backgroundColor: brand }}
@@ -1675,6 +1650,13 @@ function DiscoverMerchantFoodBeverageLoyaltyPassPanel({
 					topupPromotionCapsule={topupPromotionCapsule}
 					pct={pct}
 					earnWithPct={`Earn ${pct}% back on every dining order`}
+					howPointsWork={{
+						pct,
+						enabled: customerLoyaltyPointsEnabled,
+						fiatLabel,
+						accent: DISCOVER_FOOD_BEVERAGE_GIFT_ACCENT,
+						rewardContext: "dining order",
+					}}
 				/>
 			</section>
 
@@ -1688,14 +1670,6 @@ function DiscoverMerchantFoodBeverageLoyaltyPassPanel({
 				<Wallet className="h-5 w-5 shrink-0 opacity-90" strokeWidth={2.25} aria-hidden />
 				Top Up
 			</button>
-
-			<DiscoverMerchantHowPointsWorkDisclosure
-				pct={pct}
-				enabled={customerLoyaltyPointsEnabled}
-				fiatLabel={fiatLabel}
-				accent={DISCOVER_FOOD_BEVERAGE_GIFT_ACCENT}
-				rewardContext="dining order"
-			/>
 
 			<DiscoverMerchantVisitActionsBlock
 				brandColor={brand}
@@ -2053,6 +2027,7 @@ function DiscoverMerchantProspectJoinPanel({
 	body,
 	bonusBadge,
 	chargeFooter,
+	howPointsWork,
 	ctaLabel,
 	membershipPrice,
 	membershipDuration,
@@ -2066,6 +2041,13 @@ function DiscoverMerchantProspectJoinPanel({
 	body: string
 	bonusBadge?: string | null
 	chargeFooter?: string | null
+	howPointsWork?: {
+		pct: string | null
+		enabled: boolean
+		fiatLabel: string
+		accent: string
+		rewardContext: string
+	}
 	ctaLabel: string
 	membershipPrice?: string | null
 	membershipDuration?: string | null
@@ -2321,10 +2303,15 @@ function DiscoverMerchantProspectJoinPanel({
 				</p>
 			) : null}
 			{bonusBadge ? (
-				<span className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-[#14532d] px-3 py-1 text-[12px] font-semibold text-[#bbf7d0]">
-					<Flame className="h-3.5 w-3.5 shrink-0" strokeWidth={2.25} aria-hidden />
-					{bonusBadge}
-				</span>
+				<div className="mt-3 flex flex-wrap items-center gap-1.5">
+					<span className="inline-flex items-center gap-1.5 rounded-full bg-[#14532d] px-3 py-1 text-[12px] font-semibold text-[#bbf7d0]">
+						<Flame className="h-3.5 w-3.5 shrink-0" strokeWidth={2.25} aria-hidden />
+						{bonusBadge}
+					</span>
+					{howPointsWork ? (
+						<DiscoverMerchantHowPointsWorkDisclosure {...howPointsWork} inline />
+					) : null}
+				</div>
 			) : null}
 		</>
 	) : null
@@ -8369,6 +8356,13 @@ function DiscoverMerchantDetailFullScreen({
 							body={prospectJoinPanelCopy.body}
 							bonusBadge={prospectJoinPanelCopy.bonusBadge}
 							chargeFooter={prospectJoinPanelCopy.chargeFooter}
+							howPointsWork={{
+								pct: merchantRewardPtPercent,
+								enabled: customerLoyaltyPointsEnabled,
+								fiatLabel: balancePrefix || 'CA$',
+								accent: DISCOVER_FOOD_BEVERAGE_GIFT_ACCENT,
+								rewardContext: item.category === 'food-beverage' ? 'dining order' : 'purchase',
+							}}
 							membershipPrice={prospectJoinMembershipPrice.price}
 							membershipDuration={prospectJoinMembershipPrice.duration}
 							multiplierCards={prospectJoinPanelCopy.multiplierCards}
@@ -8449,7 +8443,9 @@ function DiscoverMerchantDetailFullScreen({
 					!showHealthBeautyLoyaltyPass &&
 					!showFoodBeverageProspectPass &&
 					!showFoodBeverageLoyaltyPass
-						? renderHowPointsWorkPanel()
+						? showProspectJoinPanel
+							? null
+							: renderHowPointsWorkPanel()
 						: null}
 					{!isConetGenesisCard &&
 					!hasActiveMembership &&

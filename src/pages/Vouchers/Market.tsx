@@ -224,6 +224,7 @@ import {
 	type DiscoverStoreCreditMultiplierCard,
 	type DiscoverTopupPromotionPresentation,
 } from '@/utils/discoverMerchantPromotions'
+import { readSocialExchangeFromMetadata } from '@/utils/socialExchangeMetadata'
 import {
 	actorPercentFromSocialEvent,
 	readCardSocialPromotionFromChain,
@@ -3447,6 +3448,7 @@ function DiscoverMerchantCouponOfferRow({
 	const isAlreadyClaimed = claimEligibility === 'already_claimed'
 	const isAlreadyRedeemed = claimEligibility === 'already_redeemed'
 	const insufficientSocialPoints = claimEligibility === 'insufficient_social_points'
+	const socialExchange = readSocialExchangeFromMetadata(row.seriesRow.metadata ?? null)
 	// Claim CTA, or claimed / redeemed status capsule (not clickable).
 	const showClaimButton =
 		claimEligibility === 'claimable' ||
@@ -3513,14 +3515,19 @@ function DiscoverMerchantCouponOfferRow({
 							: isAlreadyClaimed
 								? `Coupon ${row.coupon.title} already claimed`
 								: insufficientSocialPoints
-									? `Coupon ${row.coupon.title} requires more social points`
+									? `Coupon ${row.coupon.title} requires more Reward PT`
 									: `Claim coupon ${row.coupon.title}`
 					}
 				/>
 				{claimError ? <DiscoverPayPanelError message={claimError} /> : null}
+				{socialExchange ? (
+					<p className="px-1 text-[11px] font-semibold text-[#5c6570] dark:text-slate-400">
+						Claim cost: {formatSocialPoints13Display(socialExchange.pointsCost)} Reward PT
+					</p>
+				) : null}
 				{insufficientSocialPoints ? (
 					<p className="px-1 text-[11px] font-semibold text-amber-600 dark:text-amber-400">
-						Not enough social points for this exchange.
+						Not enough Reward PT for this claim.
 					</p>
 				) : null}
 			</div>

@@ -51,6 +51,8 @@ function iconFromRoot(metaJson: Record<string, unknown> | null | undefined): str
 	if (!metaJson) return undefined
 	const share = recordFromUnknown(metaJson.shareTokenMetadata)
 	return pickNonFactoryMerchantAssetUrl(
+		pickString(share, ['merchantImage', 'merchant_image']),
+		pickString(metaJson, ['merchantImage', 'merchant_image']),
 		pickString(share, ['icon', 'iconUrl', 'logoUrl', 'logo']),
 		pickString(metaJson, ['icon', 'iconUrl', 'logoUrl', 'logo']),
 		pickString(share, ['image']),

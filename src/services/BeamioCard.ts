@@ -4356,13 +4356,15 @@ function merchantFallbackIconFromShareCatalog(share: Record<string, unknown> | n
 	return undefined
 }
 
-/** Merchant program icon — share first, then top-level; skip factory default swirl. */
+/** Merchant program logo — merchantImage first, then icon/image fallbacks. */
 export function merchantIconUrlFromMetadataRoot(
 	metaJson: Record<string, unknown> | null | undefined
 ): string | undefined {
 	if (!metaJson || typeof metaJson !== 'object') return undefined
 	const share = recordFromUnknown(metaJson.shareTokenMetadata)
 	const candidates = [
+		readCardMetadataStringField(share, ['merchantImage', 'merchant_image']),
+		readCardMetadataStringField(metaJson, ['merchantImage', 'merchant_image']),
 		readCardMetadataStringField(share, ['icon', 'iconUrl', 'logoUrl', 'logo']),
 		readCardMetadataStringField(metaJson, ['icon', 'iconUrl', 'logoUrl', 'logo']),
 		readCardMetadataStringField(share, ['image']),

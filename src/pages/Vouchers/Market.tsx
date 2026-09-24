@@ -333,7 +333,9 @@ function DiscoverFeaturedBrandHeroImage({
 				muted
 				loop
 				playsInline
-				preload="metadata"
+				preload="auto"
+				crossOrigin="anonymous"
+				disablePictureInPicture
 			/>
 		)
 	}

@@ -192,6 +192,13 @@ export default function ChatList({
 	const routeRefreshAtRef = useRef(0)
 	const tagEnrichAtRef = useRef(0)
 	const [browserCallMuted, setBrowserCallMuted] = useState(false)
+	const touchGestureRef = useRef<{
+		address: string
+		x: number
+		y: number
+		cancelled: boolean
+	} | null>(null)
+	const suppressSyntheticClickUntilRef = useRef(0)
 
 	const applyChatDataPatches = useCallback(
 		async (patchByAddr: Map<string, NonNullable<chatData["chatData"]>>) => {
@@ -425,6 +432,41 @@ export default function ChatList({
 	
 
 
+	const openConversation = useCallback((item: chatData) => {
+		const ps = Array.isArray(profiles) ? profiles : []
+		const p0: profile = ps[0]
+		const addr = String(item.address || "").toLowerCase()
+		let shouldPersistReadState = false
+
+		if (p0 && Array.isArray(p0.chats)) {
+			const idx = p0.chats.findIndex(c => String(c?.address || "").toLowerCase() === addr)
+			if (idx >= 0) {
+				const nextChats = [...p0.chats]
+				nextChats[idx] = { ...nextChats[idx], unreadCount: 0, lastReadTs: Date.now() }
+
+				const nextProfiles = [...ps]
+				nextProfiles[0] = { ...p0, chats: nextChats }
+				setProfiles(nextProfiles)
+
+				const temp = CoNET_Data
+				if (temp) {
+					temp.profiles = nextProfiles
+					setCoNET_Data(temp)
+				}
+				shouldPersistReadState = true
+			}
+		}
+
+		// Navigation is the tap's synchronous result. Persistence stays off the critical path.
+		onOpen?.(item)
+
+		if (shouldPersistReadState) {
+			void storeSystemData().catch(error => {
+				console.warn('[ChatList] Failed to persist read state', error)
+			})
+		}
+	}, [onOpen, profiles, setProfiles])
+
   return (
     <div className="min-h-full min-w-0 bg-[#F1F8ED]">
       {browserIncomingCall ? (
@@ -541,43 +583,47 @@ export default function ChatList({
               <button
                 key={it.address}
                 type="button"
+				onTouchStart={event => {
+					const touch = event.changedTouches[0]
+					if (!touch || event.touches.length !== 1) {
+						touchGestureRef.current = null
+						return
+					}
+					// WKWebView can defer or drop the synthetic click inside a momentum scroll view.
+					// Handle a stationary touch on touchend and suppress its later synthetic click.
+					suppressSyntheticClickUntilRef.current = Date.now() + 1_200
+					touchGestureRef.current = {
+						address: String(it.address || "").toLowerCase(),
+						x: touch.clientX,
+						y: touch.clientY,
+						cancelled: false,
+					}
+				}}
+				onTouchMove={event => {
+					const gesture = touchGestureRef.current
+					const touch = event.changedTouches[0]
+					if (!gesture || !touch) return
+					if (
+						Math.abs(touch.clientX - gesture.x) > 10 ||
+						Math.abs(touch.clientY - gesture.y) > 10
+					) {
+						gesture.cancelled = true
+					}
+				}}
+				onTouchCancel={() => {
+					touchGestureRef.current = null
+				}}
+				onTouchEnd={event => {
+					const gesture = touchGestureRef.current
+					touchGestureRef.current = null
+					const address = String(it.address || "").toLowerCase()
+					if (!gesture || gesture.cancelled || gesture.address !== address) return
+					event.preventDefault()
+					openConversation(it)
+				}}
                 onClick={() => {
-					const ps = Array.isArray(profiles) ? profiles : []
-					const p0: profile = ps[0]
-					const addr = String(it.address || "").toLowerCase()
-					let shouldPersistReadState = false
-
-					if (p0 && Array.isArray(p0.chats)) {
-						const idx2 = p0.chats.findIndex(c => String(c?.address || "").toLowerCase() === addr)
-						if (idx2 >= 0) {
-							const nextChats = [...p0.chats]
-							nextChats[idx2] = { ...nextChats[idx2], unreadCount: 0, lastReadTs: Date.now() }
-
-							const nextProfile = { ...p0, chats: nextChats }
-							const nextProfiles = [...ps]
-							nextProfiles[0] = nextProfile
-
-							// 1) UI state
-							setProfiles(nextProfiles)
-
-							// 2) ✅ 同步全局快照（storeSystemData 读这个）
-							const temp = CoNET_Data
-							if (temp) {
-								temp.profiles = nextProfiles
-								setCoNET_Data(temp)
-							}
-							shouldPersistReadState = true
-						}
-					}
-
-					// Open immediately. IndexedDB persistence must not delay navigation in WKWebView.
-					onOpen?.(it)
-
-					if (shouldPersistReadState) {
-						void storeSystemData().catch(error => {
-							console.warn('[ChatList] Failed to persist read state', error)
-						})
-					}
+					if (Date.now() < suppressSyntheticClickUntilRef.current) return
+					openConversation(it)
 				}}
                 className={[
                   "w-full min-w-0 max-w-full touch-manipulation select-none text-left transition-[transform,background-color] duration-150 overflow-hidden",

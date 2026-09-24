@@ -4356,19 +4356,17 @@ function merchantFallbackIconFromShareCatalog(share: Record<string, unknown> | n
 	return undefined
 }
 
-/** Merchant program logo — merchantImage first, then icon/image fallbacks. */
+/** Merchant program logo — card image first, then icon fallbacks. `merchantImage` is a wide hero. */
 export function merchantIconUrlFromMetadataRoot(
 	metaJson: Record<string, unknown> | null | undefined
 ): string | undefined {
 	if (!metaJson || typeof metaJson !== 'object') return undefined
 	const share = recordFromUnknown(metaJson.shareTokenMetadata)
 	const candidates = [
-		readCardMetadataStringField(share, ['merchantImage', 'merchant_image']),
-		readCardMetadataStringField(metaJson, ['merchantImage', 'merchant_image']),
-		readCardMetadataStringField(share, ['icon', 'iconUrl', 'logoUrl', 'logo']),
-		readCardMetadataStringField(metaJson, ['icon', 'iconUrl', 'logoUrl', 'logo']),
 		readCardMetadataStringField(share, ['image']),
 		readCardMetadataStringField(metaJson, ['image']),
+		readCardMetadataStringField(share, ['icon', 'iconUrl', 'logoUrl', 'logo']),
+		readCardMetadataStringField(metaJson, ['icon', 'iconUrl', 'logoUrl', 'logo']),
 	]
 	for (const raw of candidates) {
 		const url = acceptMerchantAssetUrl(raw)

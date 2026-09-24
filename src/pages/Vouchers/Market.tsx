@@ -317,17 +317,31 @@ function DiscoverFeaturedBrandHeroImage({
 	alt,
 	className,
 	videoSrc,
+	videoPoster,
 }: {
 	src: string
 	alt: string
 	className?: string
 	videoSrc?: string | null
+	videoPoster?: string | null
 }) {
 	const trimmed = src.trim()
+	const [videoFailed, setVideoFailed] = useState(false)
+	useEffect(() => {
+		setVideoFailed(false)
+	}, [videoSrc])
 	if (videoSrc?.trim()) {
+		if (videoFailed) {
+			if (!trimmed) return <div className={className} aria-hidden />
+			if (!isIpfsFragmentImageUrl(trimmed)) {
+				return <img src={trimmed} alt={alt} className={className} draggable={false} />
+			}
+			return <IpfsImg src={trimmed} alt={alt} className={className} draggable={false} />
+		}
 		return (
 			<video
 				src={videoSrc.trim()}
+				poster={videoPoster?.trim() || undefined}
 				className={className}
 				autoPlay
 				muted
@@ -336,6 +350,7 @@ function DiscoverFeaturedBrandHeroImage({
 				preload="auto"
 				crossOrigin="anonymous"
 				disablePictureInPicture
+				onError={() => setVideoFailed(true)}
 			/>
 		)
 	}
@@ -350,7 +365,7 @@ function DiscoverFeaturedBrandHeroImage({
 
 function discoverMerchantHeroVideoFromMetadata(
 	metadataRoot: Record<string, unknown> | null | undefined,
-): string | null {
+): { url: string; poster: string | null } | null {
 	const share = readDiscoverNestedObject(metadataRoot ?? null, 'shareTokenMetadata')
 	const rawRows = Array.isArray(share?.merchantMedia)
 		? share?.merchantMedia ?? []
@@ -361,7 +376,13 @@ function discoverMerchantHeroVideoFromMetadata(
 		.filter((raw): raw is Record<string, unknown> => Boolean(raw && typeof raw === 'object' && !Array.isArray(raw)))
 		.filter(row => row.kind === 'video' && typeof row.url === 'string' && row.url.trim())
 		.sort((a, b) => Number(b.createdAt ?? 0) - Number(a.createdAt ?? 0))
-	return videos.length ? String(videos[0].url).trim() : null
+	if (videos.length === 0) return null
+	const video = videos[0]
+	const thumbnailRaw = typeof video.thumbnailUrl === 'string' ? video.thumbnailUrl.trim() : ''
+	return {
+		url: String(video.url).trim(),
+		poster: thumbnailRaw ? discoverResolveTierBackgroundImageUrl(thumbnailRaw) : null,
+	}
 }
 
 /** Featured Brands list logo — bundled assets sync; IPFS shows letter until blob ready or on failure. */
@@ -8189,7 +8210,10 @@ function DiscoverMerchantDetailFullScreen({
 					<DiscoverFeaturedBrandHeroImage
 						src={item.image}
 						alt=""
-						videoSrc={discoverMerchantHeroVideoFromMetadata(item.metadataRoot)}
+						videoSrc={discoverMerchantHeroVideoFromMetadata(item.metadataRoot)?.url}
+						videoPoster={
+							discoverMerchantHeroVideoFromMetadata(item.metadataRoot)?.poster ?? item.image
+						}
 						className="pointer-events-none absolute inset-0 h-full w-full object-cover"
 					/>
 					<div
@@ -9708,7 +9732,10 @@ export default function Market() {
 							<DiscoverFeaturedBrandHeroImage
 								src={item.image}
 								alt={item.title}
-								videoSrc={discoverMerchantHeroVideoFromMetadata(item.metadataRoot)}
+								videoSrc={discoverMerchantHeroVideoFromMetadata(item.metadataRoot)?.url}
+								videoPoster={
+									discoverMerchantHeroVideoFromMetadata(item.metadataRoot)?.poster ?? item.image
+								}
 								className="w-full aspect-[16/9] object-cover"
 							/>
 							{item.rechargeBonusSidePill ? (

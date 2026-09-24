@@ -758,7 +758,7 @@ export function ActiveCouponTicketItem({
 							{title}
 						</p>
 						{subtitle ? (
-							<p className="min-w-0 shrink-0 truncate pt-0.5 text-right font-manrope text-sm font-semibold text-[#595c5e] dark:text-slate-400">
+							<p className="w-0 min-w-0 flex-1 truncate pt-0.5 text-right font-manrope text-sm font-semibold text-[#595c5e] dark:text-slate-400">
 								{subtitle}
 							</p>
 						) : null}

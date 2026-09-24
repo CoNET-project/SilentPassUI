@@ -541,10 +541,11 @@ export default function ChatList({
               <button
                 key={it.address}
                 type="button"
-                onClick={async () => {
+                onClick={() => {
 					const ps = Array.isArray(profiles) ? profiles : []
 					const p0: profile = ps[0]
 					const addr = String(it.address || "").toLowerCase()
+					let shouldPersistReadState = false
 
 					if (p0 && Array.isArray(p0.chats)) {
 						const idx2 = p0.chats.findIndex(c => String(c?.address || "").toLowerCase() === addr)
@@ -565,16 +566,21 @@ export default function ChatList({
 								temp.profiles = nextProfiles
 								setCoNET_Data(temp)
 							}
-
-							// 3) 持久化
-							await storeSystemData()
+							shouldPersistReadState = true
 						}
 					}
 
+					// Open immediately. IndexedDB persistence must not delay navigation in WKWebView.
 					onOpen?.(it)
+
+					if (shouldPersistReadState) {
+						void storeSystemData().catch(error => {
+							console.warn('[ChatList] Failed to persist read state', error)
+						})
+					}
 				}}
                 className={[
-                  "w-full min-w-0 max-w-full text-left transition overflow-hidden",
+                  "w-full min-w-0 max-w-full touch-manipulation select-none text-left transition-[transform,background-color] duration-150 overflow-hidden",
                   "mb-3 rounded-2xl bg-white shadow-sm",
                   "active:scale-[0.98] active:bg-slate-50/80",
                   noRoute ? "ring-2 ring-amber-400/50" : ""

@@ -5056,6 +5056,7 @@ function ConetGenesisNodeDiscoverSection({
 	return (
 		<>
 			{/* Genesis Node Offers */}
+			{false ? (
 			<div className="rounded-[22px] bg-white p-4 shadow-[0_8px_22px_rgba(15,23,42,0.06)] ring-1 ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800">
 				<div className="mb-4 flex items-center gap-2">
 					<span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-amber-100 text-amber-500 dark:bg-amber-500/15">
@@ -5421,8 +5422,8 @@ function ConetGenesisNodeDiscoverSection({
 								{successTxHash && successTxExplorer ? (
 									<div className="mt-3">
 										<GenesisSeatTxHashCapsule
-											txHash={successTxHash}
-											explorerUrl={successTxExplorer}
+											txHash={successTxHash!}
+											explorerUrl={successTxExplorer!}
 											label="Tx"
 										/>
 									</div>
@@ -5453,10 +5454,11 @@ function ConetGenesisNodeDiscoverSection({
 				)}
 				{purchasePhase.kind === 'error' ? (
 					<p className="mt-2 text-center text-[12px] font-medium text-amber-600 dark:text-amber-400" role="alert">
-						{purchasePhase.message}
+						{(purchasePhase as { message?: string }).message ?? ''}
 					</p>
 				) : null}
 			</div>
+			) : null}
 		</>
 	)
 }

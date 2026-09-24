@@ -1,5 +1,6 @@
 import { IpfsImg } from '@/components/IpfsImg';
 import { useObjectImgSrc } from '@/components/card/useObjectImgSrc';
+import { useIpfsMediaSrc } from '@/hooks/useIpfsMediaSrc'
 import {
 	CardPassBackgroundImage,
 	normalizeCardPassBackgroundImageFit,
@@ -311,6 +312,41 @@ function resolveDiscoverFeaturedHeroImage(
 	)
 }
 
+function LocalFirstIpfsVideo({
+	src,
+	poster,
+	className,
+	controls = false,
+	preload = 'metadata',
+	onError,
+}: {
+	src: string
+	poster?: string | null
+	className?: string
+	controls?: boolean
+	preload?: 'none' | 'metadata' | 'auto'
+	onError?: () => void
+}) {
+	const localFirstSrc = useIpfsMediaSrc(src)
+	const localFirstPoster = useObjectImgSrc(poster ?? undefined)
+	return (
+		<video
+			src={localFirstSrc || undefined}
+			poster={localFirstPoster || undefined}
+			className={className}
+			autoPlay
+			muted
+			loop
+			controls={controls}
+			playsInline
+			preload={preload}
+			crossOrigin="anonymous"
+			disablePictureInPicture
+			onError={onError}
+		/>
+	)
+}
+
 /** Featured Brands list hero — bundled assets render synchronously (no IPFS hook flash). */
 function DiscoverFeaturedBrandHeroImage({
 	src,
@@ -339,17 +375,11 @@ function DiscoverFeaturedBrandHeroImage({
 			return <IpfsImg src={trimmed} alt={alt} className={className} draggable={false} />
 		}
 		return (
-			<video
+			<LocalFirstIpfsVideo
 				src={videoSrc.trim()}
-				poster={videoPoster?.trim() || undefined}
+				poster={videoPoster?.trim()}
 				className={className}
-				autoPlay
-				muted
-				loop
-				playsInline
 				preload="auto"
-				crossOrigin="anonymous"
-				disablePictureInPicture
 				onError={() => setVideoFailed(true)}
 			/>
 		)
@@ -1159,15 +1189,11 @@ function DiscoverMerchantMediaCarousel({
 					<div key={`${item.kind}:${item.url}`} className="w-[min(78vw,23rem)] shrink-0 snap-start overflow-hidden rounded-xl bg-slate-100 dark:bg-slate-800">
 						<div className="aspect-[4/3] overflow-hidden rounded-xl">
 							{item.kind === 'video' ? (
-								<video
+								<LocalFirstIpfsVideo
 									src={item.url}
 									poster={item.thumbnailUrl}
 									className="h-full w-full rounded-xl object-cover"
-									autoPlay
-									muted
-									loop
 									controls
-									playsInline
 									preload="metadata"
 								/>
 							) : (

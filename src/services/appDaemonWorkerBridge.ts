@@ -261,11 +261,16 @@ export async function registerAppDaemonDiscoverCards(cardAddresses: string[]): P
 	await getClient().registerDiscoverCards(cardAddresses)
 }
 
-export async function registerAppDaemonCouponTargets(
+export async function startAppDaemonCouponDetailSession(
 	targets: { cardAddress: string; tokenId: string; couponId?: string }[],
 ): Promise<void> {
 	await initAppDaemonWorker(activeSession)
-	await getClient().registerCouponTargets(targets)
+	await getClient().startCouponDetailSession(targets)
+}
+
+export async function stopAppDaemonCouponDetailSession(): Promise<void> {
+	await initAppDaemonWorker(activeSession)
+	await getClient().stopCouponDetailSession()
 }
 
 export async function registerAppDaemonGenesisAccounts(accounts: string[]): Promise<void> {

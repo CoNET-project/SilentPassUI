@@ -17,6 +17,7 @@ import {
 	APP_DAEMON_ORACLE_FEED_MS,
 	APP_DAEMON_SIDE_FEED_MS,
 	APP_DAEMON_AA_PENDING_FEED_MS,
+	APP_DAEMON_COUPON_DETAIL_FEED_MS,
 	APP_DAEMON_WALLET_FEED_MS,
 	APP_DAEMON_UNIFIED_FEED_MS,
 } from './protocol'
@@ -73,6 +74,9 @@ let oracleRunning = false
 
 /** When dashboard snapshot feeds L0/referrer on 6s, side tick skips those. */
 let dashboardCoversHeavy = false
+let couponDetailTimer: ReturnType<typeof setTimeout> | undefined
+let couponDetailRunning = false
+let couponDetailTargets: { cardAddress: string; tokenId: string; couponId?: string }[] = []
 
 let nextMainTickId = 1
 const pendingMainTicks = new Map<
@@ -81,7 +85,6 @@ const pendingMainTicks = new Map<
 >()
 
 const discoverCards = new Set<string>()
-const couponTargets: { cardAddress: string; tokenId: string; couponId?: string }[] = []
 const genesisAccounts = new Set<string>()
 
 function normalizeAddr(raw: string | undefined): string | null {
@@ -124,6 +127,33 @@ function scheduleSide(delay = APP_DAEMON_SIDE_FEED_MS): void {
 	sideTimer = setTimeout(() => {
 		void runSideTick()
 	}, delay)
+}
+
+function scheduleCouponDetail(delay = APP_DAEMON_COUPON_DETAIL_FEED_MS): void {
+	if (destroyed || couponDetailTargets.length === 0) return
+	if (couponDetailTimer !== undefined) clearTimeout(couponDetailTimer)
+	couponDetailTimer = setTimeout(() => {
+		void runCouponDetailTick()
+	}, delay)
+}
+
+async function runCouponDetailTick(): Promise<void> {
+	if (destroyed || couponDetailRunning || couponDetailTargets.length === 0) return
+	couponDetailRunning = true
+	const targets = [...couponDetailTargets]
+	try {
+		const social = await fetchWorkerCouponSocialStats(targets)
+		if (social.length > 0) post({ type: 'event:couponSocial', stats: social })
+		if (session?.eoa) {
+			const claims = await fetchWorkerCouponOpenClaimStatuses(session.eoa, targets)
+			if (claims.length > 0) {
+				post({ type: 'event:couponOpenClaim', eoa: session.eoa, results: claims })
+			}
+		}
+	} finally {
+		couponDetailRunning = false
+		scheduleCouponDetail()
+	}
 }
 
 function scheduleUnified(delay = APP_DAEMON_UNIFIED_FEED_MS): void {
@@ -290,19 +320,6 @@ async function runSideTick(): Promise<void> {
 			}
 		}
 
-		if (couponTargets.length > 0) {
-			const social = await fetchWorkerCouponSocialStats(couponTargets)
-			if (social.length > 0) {
-				post({ type: 'event:couponSocial', stats: social })
-			}
-			if (session?.eoa) {
-				const claims = await fetchWorkerCouponOpenClaimStatuses(session.eoa, couponTargets)
-				if (claims.length > 0) {
-					post({ type: 'event:couponOpenClaim', eoa: session.eoa, results: claims })
-				}
-			}
-		}
-
 		const kinds: AppDaemonMainTickKind[] = []
 		if (session?.eoa) {
 			kinds.push('myBrands', 'recentActivity')
@@ -395,6 +412,9 @@ function stopSchedulers(): void {
 	if (unifiedTimer !== undefined) clearTimeout(unifiedTimer)
 	if (aaPendingTimer !== undefined) clearTimeout(aaPendingTimer)
 	if (oracleTimer !== undefined) clearTimeout(oracleTimer)
+	if (couponDetailTimer !== undefined) clearTimeout(couponDetailTimer)
+	couponDetailTargets = []
+	couponDetailTimer = undefined
 	walletTimer = sideTimer = unifiedTimer = aaPendingTimer = oracleTimer = undefined
 }
 
@@ -447,25 +467,30 @@ ctx.onmessage = (ev: MessageEvent<AppDaemonWorkerInbound>) => {
 					if (discoverCards.size > 0) scheduleSide(0)
 					break
 				}
-				case 'registerCouponTargets': {
+				case 'startCouponDetailSession': {
+					const next: typeof couponDetailTargets = []
+					const seen = new Set<string>()
 					for (const t of msg.targets) {
 						const card = normalizeAddr(t.cardAddress)
-						if (!card) continue
 						const tokenId = String(t.tokenId ?? '').trim()
-						if (!tokenId) continue
-						const exists = couponTargets.some(
-							(x) => x.cardAddress === card && x.tokenId === tokenId,
-						)
-						if (!exists) {
-							couponTargets.push({
-								cardAddress: card,
-								tokenId,
-								couponId: t.couponId,
-							})
-						}
+						if (!card || !tokenId) continue
+						const key = `${card}:${tokenId}`
+						if (seen.has(key)) continue
+						seen.add(key)
+						next.push({ cardAddress: card, tokenId, couponId: t.couponId })
 					}
+					couponDetailTargets = next
+					if (couponDetailTimer !== undefined) clearTimeout(couponDetailTimer)
+					couponDetailTimer = undefined
 					ackOk(msg.reqId)
-					if (couponTargets.length > 0) scheduleSide(0)
+					if (couponDetailTargets.length > 0) scheduleCouponDetail(0)
+					break
+				}
+				case 'stopCouponDetailSession': {
+					couponDetailTargets = []
+					if (couponDetailTimer !== undefined) clearTimeout(couponDetailTimer)
+					couponDetailTimer = undefined
+					ackOk(msg.reqId)
 					break
 				}
 				case 'registerGenesisAccounts': {

@@ -7,6 +7,7 @@
 
 /** Light wallet tick: CoNET dashboard snapshot + Base USDC (EOA+AA) */
 export const APP_DAEMON_WALLET_FEED_MS = 6_000
+export const APP_DAEMON_COUPON_DETAIL_FEED_MS = 6_000
 export const APP_DAEMON_AA_PENDING_FEED_MS = 15_000
 /** Side + heavy: Discover/Coupon + mining/L0/referrer + My Brands / Recent Activity main tick */
 export const APP_DAEMON_SIDE_FEED_MS = 30_000
@@ -123,7 +124,8 @@ export type AppDaemonWorkerInbound =
 	| { type: 'init'; reqId: number; payload: AppDaemonWorkerInitPayload }
 	| { type: 'setSession'; reqId: number; session: AppDaemonSession | null }
 	| { type: 'registerDiscoverCards'; reqId: number; cardAddresses: string[] }
-	| { type: 'registerCouponTargets'; reqId: number; targets: { cardAddress: string; tokenId: string; couponId?: string }[] }
+	| { type: 'startCouponDetailSession'; reqId: number; targets: { cardAddress: string; tokenId: string; couponId?: string }[] }
+	| { type: 'stopCouponDetailSession'; reqId: number }
 	| { type: 'registerGenesisAccounts'; reqId: number; accounts: string[] }
 	| { type: 'mainTickDone'; reqId: number; tickId: number; kinds: AppDaemonMainTickKind[]; ok: boolean }
 	| { type: 'refreshNow'; reqId: number; scope?: 'wallet' | 'all' }

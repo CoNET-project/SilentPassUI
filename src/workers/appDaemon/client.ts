@@ -187,10 +187,14 @@ export class AppDaemonWorkerClient {
 		await this.request({ type: 'registerDiscoverCards', reqId: 0, cardAddresses })
 	}
 
-	async registerCouponTargets(
+	async startCouponDetailSession(
 		targets: { cardAddress: string; tokenId: string; couponId?: string }[],
 	): Promise<void> {
-		await this.request({ type: 'registerCouponTargets', reqId: 0, targets })
+		await this.request({ type: 'startCouponDetailSession', reqId: 0, targets })
+	}
+
+	async stopCouponDetailSession(): Promise<void> {
+		await this.request({ type: 'stopCouponDetailSession', reqId: 0 })
 	}
 
 	async registerGenesisAccounts(accounts: string[]): Promise<void> {

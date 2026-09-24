@@ -5598,7 +5598,8 @@ function DiscoverMerchantDetailFullScreen({
 		registerDiscoverMerchantStatFeedCards,
 		applyDiscoverMerchantLikeCountDelta,
 		couponOpenClaimStatusByKey,
-		registerCouponOpenClaimFeedTargets,
+		startCouponDetailSession,
+		stopCouponDetailSession,
 		applyCouponOpenClaimStatus,
 		refreshCouponSocialStatsFeed,
 		myBrandCardDetails,
@@ -7944,14 +7945,13 @@ function DiscoverMerchantDetailFullScreen({
 		}
 		let cancelled = false
 		const userEOA = resolveUserEoa()
-		// Register with global daemon so all Coupons UIs share claimed/redeemed refreshes.
-		registerCouponOpenClaimFeedTargets(
-			merchantCoupons.map((offer) => ({
-				cardAddress: offer.seriesRow.cardAddress || offer.coupon.cardAddress,
-				tokenId: String(offer.seriesRow.tokenId || offer.coupon.tokenId),
-				couponId: offer.coupon.couponId,
-			})),
-		)
+		// This merchant detail owns a scoped Worker session; it is stopped on exit.
+		const detailTargets = merchantCoupons.map((offer) => ({
+			cardAddress: offer.seriesRow.cardAddress || offer.coupon.cardAddress,
+			tokenId: String(offer.seriesRow.tokenId || offer.coupon.tokenId),
+			couponId: offer.coupon.couponId,
+		}))
+		void startCouponDetailSession(detailTargets)
 		// Sync hydrate from daemon EOA map (local-first) so remount shows claimed/redeemed immediately.
 		const fromDaemon: Record<string, CouponOpenClaimEligibility> = {}
 		for (const offer of merchantCoupons) {
@@ -8009,10 +8009,11 @@ function DiscoverMerchantDetailFullScreen({
 		})()
 		return () => {
 			cancelled = true
+			void stopCouponDetailSession()
 		}
 		// couponOpenClaimStatusByKey intentionally omitted: register+resolve on list change;
 		// daemon map merges via dedicated effect below.
-	}, [merchantCoupons, profiles?.[0]?.aaAccount, resolveUserEoa, registerCouponOpenClaimFeedTargets, applyCouponOpenClaimStatus])
+	}, [merchantCoupons, profiles?.[0]?.aaAccount, resolveUserEoa, startCouponDetailSession, stopCouponDetailSession, applyCouponOpenClaimStatus])
 
 	/** Daemon map updates (optimistic claim / background chain) → Coupons eligibility without remount. */
 	useEffect(() => {

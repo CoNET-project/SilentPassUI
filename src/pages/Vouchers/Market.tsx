@@ -354,12 +354,15 @@ function DiscoverFeaturedBrandHeroImage({
 	className,
 	videoSrc,
 	videoPoster,
+	playing = true,
 }: {
 	src: string
 	alt: string
 	className?: string
 	videoSrc?: string | null
 	videoPoster?: string | null
+	/** When false, a video background is not mounted, so playback stops. */
+	playing?: boolean
 }) {
 	const trimmed = src.trim()
 	const [videoFailed, setVideoFailed] = useState(false)
@@ -367,6 +370,7 @@ function DiscoverFeaturedBrandHeroImage({
 		setVideoFailed(false)
 	}, [videoSrc])
 	if (videoSrc?.trim()) {
+		if (!playing) return null
 		if (videoFailed) {
 			if (!trimmed) return <div className={className} aria-hidden />
 			if (!isIpfsFragmentImageUrl(trimmed)) {
@@ -8171,6 +8175,9 @@ function DiscoverMerchantDetailFullScreen({
 		return () => window.removeEventListener('keydown', onKey)
 	}, [onClose, giftSheetOpen, closeGiftSheet, supportChatPickerOpen, supportChatOpening])
 
+	const merchantHeroCollapsed = merchantHeroHeight === 64
+	const merchantHeroCollapsedBg = merchantDetailBrandColor ?? merchantDetailPageSurface
+
 	const animateMerchantHeroTo = (target: 'expanded' | 'collapsed') => {
 		const expandedHeight =
 			merchantHeroExpandedHeightRef.current ??
@@ -8214,15 +8221,22 @@ function DiscoverMerchantDetailFullScreen({
 				className="relative shrink-0 bg-[color:var(--discover-merchant-hero-bg)] dark:bg-slate-950"
 				style={
 					{
-						// Same mixed surface as the scroll body — do not use raw brand hex here.
-						['--discover-merchant-hero-bg' as string]: merchantDetailPageSurface,
+						['--discover-merchant-hero-bg' as string]: merchantHeroCollapsed
+							? merchantHeroCollapsedBg
+							: merchantDetailPageSurface,
+						...(merchantHeroCollapsed ? { backgroundColor: merchantHeroCollapsedBg } : {}),
 					} as React.CSSProperties
 				}
 			>
 				<div
 					className="relative w-full overflow-hidden rounded-b-[28px] transition-[height] duration-300 ease-out"
-					style={{ height: merchantHeroHeight ?? 'min(42vh, 320px)' }}
+					style={{
+						height: merchantHeroHeight ?? 'min(42vh, 320px)',
+						...(merchantHeroCollapsed ? { backgroundColor: merchantHeroCollapsedBg } : {}),
+					}}
 				>
+					{merchantHeroCollapsed ? null : (
+					<>
 					<div
 						className="pointer-events-none absolute inset-0 dark:hidden"
 						style={{ backgroundColor: merchantDetailPageSurface }}
@@ -8231,6 +8245,7 @@ function DiscoverMerchantDetailFullScreen({
 					<DiscoverFeaturedBrandHeroImage
 						src={item.image}
 						alt=""
+						playing
 						videoSrc={discoverMerchantHeroVideoFromMetadata(item.metadataRoot)?.url}
 						videoPoster={
 							discoverMerchantHeroVideoFromMetadata(item.metadataRoot)?.poster ?? item.image
@@ -8268,6 +8283,8 @@ function DiscoverMerchantDetailFullScreen({
 							</span>
 						) : null}
 					</div>
+					</>
+					)}
 				</div>
 				{/* Chrome outside overflow-hidden so safe-area / WebKit hit targets are not clipped. */}
 				<div className={BEAMIO_HERO_FLOATING_BACK_ROW_CLASS} style={beamioHeroFloatingBackTopStyle}>

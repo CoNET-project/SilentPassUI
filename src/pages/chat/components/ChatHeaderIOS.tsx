@@ -55,7 +55,7 @@ export function ChatHeaderIOS({
     <div ref={layerRef} className="fixed top-0 left-0 right-0 z-[80] transition-opacity duration-300">
       <div className="pt-[calc(env(safe-area-inset-top)+4px)]">
         {/* Back：玻璃圆 */}
-        <div className="px-4 h-14 flex items-center justify-between">
+        <div className="relative z-20 px-4 h-14 flex items-center justify-between">
           <button
             type="button"
             onClick={onBack}
@@ -103,7 +103,7 @@ export function ChatHeaderIOS({
         </div>
 
         {/* ✅ 头像（无外圈） + 下方紧凑胶囊（同一中线居中） */}
-			<div className="pointer-events-none relative -mt-[54px] flex justify-center">
+			<div className="pointer-events-none relative z-10 -mt-[54px] flex justify-center">
 			<motion.div
 				initial={{ opacity: 0, y: -6, scale: 0.985 }}
 				animate={{ opacity: 1, y: 0, scale: 1 }}

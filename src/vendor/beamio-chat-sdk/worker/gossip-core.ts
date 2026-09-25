@@ -669,13 +669,22 @@ export class GossipCore {
 			timestamp: number
 		},
 	): Promise<boolean> {
-		if (this.paused || !this.cfg || !this.wallet || !sessionId) return false
+		if (this.paused || !this.cfg || !this.wallet || !sessionId) {
+			this.emit.log('warn', `voice listen refused early: paused=${this.paused} cfg=${!!this.cfg} wallet=${!!this.wallet} session=${!!sessionId}`)
+			return false
+		}
 		this.voiceListenController?.abort('voice_replace')
 		const route = this.cfg.identity.ownRouteArmoredPublicKey || ''
 		const routeNodes = pickRouteNodesByArmoredKey(this.nodes, route)
 		const mailboxDomains = new Set(routeNodes.map((n) => n.domain))
-		const entries = await pickHealthyGossipNodes(this.nodes.filter((n) => !mailboxDomains.has(n.domain)))
-		if (!route || !entries.length) return false
+		const pool = this.nodes.filter((n) => !mailboxDomains.has(n.domain))
+		const candidates = pool.length ? pool : this.nodes
+		const healthy = await pickHealthyGossipNodes(candidates)
+		const entries = healthy.length ? healthy : candidates
+		if (!route || !entries.length) {
+			this.emit.log('warn', `voice listen refused: route=${!!route} nodes=${this.nodes.length} entries=${entries.length}`)
+			return false
+		}
 		const inner = await encryptOpaqueVoiceCommand({
 			command: 'voice_listen',
 			sessionId,

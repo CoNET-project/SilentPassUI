@@ -224,13 +224,21 @@ async function handle(cmd: WorkerInbound): Promise<void> {
 			return
 		}
 		case 'voiceListen': {
-			const ok = await gossip!.startVoiceListen(cmd.sessionId, cmd.pushWakeup)
-			post({ type: 'ack', reqId: cmd.reqId, ok: true, result: { started: ok } })
+			try {
+				const ok = await gossip!.startVoiceListen(cmd.sessionId, cmd.pushWakeup)
+				post({ type: 'ack', reqId: cmd.reqId, ok: true, result: { started: ok } })
+			} catch (ex) {
+				post({ type: 'ack', reqId: cmd.reqId, ok: false, error: (ex as Error)?.message ?? String(ex) })
+			}
 			return
 		}
 		case 'voiceUnlisten': {
-			const ok = await gossip!.stopVoiceListen(cmd.sessionId)
-			post({ type: 'ack', reqId: cmd.reqId, ok: true, result: { stopped: ok } })
+			try {
+				const ok = await gossip!.stopVoiceListen(cmd.sessionId)
+				post({ type: 'ack', reqId: cmd.reqId, ok: true, result: { stopped: ok } })
+			} catch (ex) {
+				post({ type: 'ack', reqId: cmd.reqId, ok: false, error: (ex as Error)?.message ?? String(ex) })
+			}
 			return
 		}
 		case 'pause':

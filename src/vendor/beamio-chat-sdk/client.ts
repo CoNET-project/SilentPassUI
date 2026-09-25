@@ -236,12 +236,26 @@ class BeamioChatClientImpl implements BeamioChatClient {
 	}
 
 	// ---- internals ------------------------------------------------------------
-	request<T>(cmd: WorkerInbound & { reqId: number }): Promise<T> {
+	request<T>(cmd: WorkerInbound & { reqId: number }, timeoutMs = 20_000): Promise<T> {
 		if (!this.worker) return Promise.reject(new Error('client not initialised'))
 		const reqId = this.reqSeq++
 		const message = { ...cmd, reqId } as WorkerInbound
 		return new Promise<T>((resolve, reject) => {
-			this.pending.set(reqId, { resolve: resolve as (v: unknown) => void, reject })
+			const timer = setTimeout(() => {
+				if (!this.pending.has(reqId)) return
+				this.pending.delete(reqId)
+				reject(new Error('Chat worker did not respond'))
+			}, timeoutMs)
+			this.pending.set(reqId, {
+				resolve: (value) => {
+					clearTimeout(timer)
+					resolve(value as T)
+				},
+				reject: (error) => {
+					clearTimeout(timer)
+					reject(error)
+				},
+			})
 			this.worker!.postMessage(message)
 		})
 	}

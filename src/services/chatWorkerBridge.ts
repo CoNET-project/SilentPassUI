@@ -304,10 +304,16 @@ export const startWorkerVoiceListen = async (
 		timestamp: number
 	},
 ): Promise<boolean> => {
-	if (!activeClient) return false
+	if (!activeClient) {
+		console.warn('[voiceListen] gossip worker is not listening')
+		return false
+	}
 	try {
-		return await activeClient.startVoiceListen(sessionId, pushWakeup)
-	} catch {
+		const started = await activeClient.startVoiceListen(sessionId, pushWakeup)
+		if (!started) console.warn('[voiceListen] worker refused to open the voice relay')
+		return started
+	} catch (ex) {
+		console.warn('[voiceListen] worker error', (ex as Error)?.message ?? String(ex))
 		return false
 	}
 }

@@ -1829,6 +1829,8 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 	const voicePlaybackRef = useRef<VoicePlaybackBuffer | null>(null)
 	const voiceFrameSeqRef = useRef(0)
 	const voiceControllerRef = useRef<VoiceCallController | null>(null)
+	const voiceCallStartingRef = useRef(false)
+	const [voiceCallConnecting, setVoiceCallConnecting] = useState(false)
 	const [incomingVoiceOffer, setIncomingVoiceOffer] = useState<Record<string, any> | null>(null)
 	const [incomingCaller, setIncomingCaller] = useState<{
 		address: string
@@ -2054,62 +2056,76 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 	}, [chatData.chatData, toAddress])
 
 	const startVoiceCall = useCallback(async () => {
-		if (voiceCallState !== 'idle') return
+		if (voiceCallStartingRef.current || voiceCallState !== 'idle') return
+		voiceCallStartingRef.current = true
+		setVoiceError(null)
+		setVoiceCallConnecting(true)
+		setVoiceCallState('outgoing')
 		const route = chatData.chatData?.routersArmoreds?.trim()
 		const recipientPgp = chatData.chatData?.publicArmored?.trim()
 		if (!route || !recipientPgp) {
 			setVoiceError('Voice calling requires the contact to have an active Chat route.')
+			setVoiceCallConnecting(false)
+			voiceCallStartingRef.current = false
 			return
 		}
-		const callerWallet = new ethers.Wallet(privateKey).address
-		const callerCallId = String(
-			CoNET_Data?.beamio?.accountName ||
-			callerWallet,
-		).trim() || callerWallet
-		const controller = createVoiceCallController({
-			privateKey,
-			localCallId: callerCallId,
-			peerEoa: toAddress,
-			peerPgp: recipientPgp,
-			peerRoute: route,
-			allNodes,
-		})
-		const channel = await controller.startOutgoing()
-		if (!channel) {
-			setVoiceError('Voice call could not open a temporary relay.')
-			return
+		try {
+			const callerWallet = new ethers.Wallet(privateKey).address
+			const callerCallId = String(
+				CoNET_Data?.beamio?.accountName ||
+				callerWallet,
+			).trim() || callerWallet
+			const controller = createVoiceCallController({
+				privateKey,
+				localCallId: callerCallId,
+				peerEoa: toAddress,
+				peerPgp: recipientPgp,
+				peerRoute: route,
+				allNodes,
+			})
+			const channel = await controller.startOutgoing()
+			if (!channel) {
+				setVoiceError('Voice call could not open a temporary relay.')
+				setVoiceCallConnecting(false)
+				return
+			}
+			voiceControllerRef.current = controller
+			const sessionId = channel.sessionId
+			const key = channel.sessionKey
+			voiceCallSessionRef.current = sessionId
+			voiceCallKeyRef.current = key
+			setVoiceCallMuted(false)
+			setVoiceLevelSamples([])
+			const signal = channel.signal
+			voiceCallOfferRef.current = {
+				callId: signal.callId,
+				sessionId,
+				sessionKey: signal.sessionKey || '',
+				timestamp: signal.timestamp,
+				expiresAt: signal.expiresAt,
+			}
+			upsertPhoneCallRecord({
+				callId: signal.callId,
+				sessionId,
+				peerAddress: toAddress,
+				direction: 'outgoing',
+				status: 'ringing',
+				createdAt: Date.now(),
+				expiresAt: signal.expiresAt,
+			})
+			dispatchNativeSystemCallAction('startSystemCall', {
+				callId: signal.callId,
+				sessionId,
+				peerAddress: toAddress,
+				displayName: chatData.beamio?.username || toAddress,
+			})
+			setVoiceCallConnecting(false)
+		} catch (error) {
+			setVoiceError(error instanceof Error ? error.message : 'Voice call could not start.')
+			setVoiceCallConnecting(false)
+		} finally {
+			voiceCallStartingRef.current = false
 		}
-		voiceControllerRef.current = controller
-		const sessionId = channel.sessionId
-		const key = channel.sessionKey
-		voiceCallSessionRef.current = sessionId
-		voiceCallKeyRef.current = key
-		setVoiceCallMuted(false)
-		setVoiceLevelSamples([])
-		setVoiceCallState('outgoing')
-		const signal = channel.signal
-		voiceCallOfferRef.current = {
-			callId: signal.callId,
-			sessionId,
-			sessionKey: signal.sessionKey || '',
-			timestamp: signal.timestamp,
-			expiresAt: signal.expiresAt,
-		}
-		upsertPhoneCallRecord({
-			callId: signal.callId,
-			sessionId,
-			peerAddress: toAddress,
-			direction: 'outgoing',
-			status: 'ringing',
-			createdAt: Date.now(),
-			expiresAt: signal.expiresAt,
-		})
-		dispatchNativeSystemCallAction('startSystemCall', {
-			callId: signal.callId,
-			sessionId,
-			peerAddress: toAddress,
-			displayName: chatData.beamio?.username || toAddress,
-		})
 	}, [allNodes, chatData, privateKey, toAddress, upsertPhoneCallRecord, voiceCallState])
 
 	useEffect(() => {
@@ -2369,6 +2385,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			})
 			dispatchNativeSystemCallAction('endSystemCall', { callId, sessionId: callSessionId })
 		}
+		setVoiceCallConnecting(false)
 		setVoiceCallState('ended')
 		window.setTimeout(() => setVoiceCallState('idle'), 300)
 	}, [profiles, toAddress, upsertPhoneCallRecord])
@@ -2560,6 +2577,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 						})
 						dispatchNativeSystemCallAction('endSystemCall', { callId })
 					}
+					setVoiceCallConnecting(false)
 					setVoiceCallState('ended')
 					window.setTimeout(() => setVoiceCallState('idle'), 300)
 					return
@@ -4316,7 +4334,11 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 					<div className="flex flex-1 flex-col items-center">
 						<p className="text-[11px] font-semibold tracking-[0.24em] text-emerald-300/80">BEAMIO VOICE CALL</p>
 						<h1 className="mt-5 text-3xl font-semibold tracking-tight">
-							{activeVoiceCallRecord?.status === 'answered' ? 'Voice call' : 'Calling'}
+							{voiceCallConnecting
+								? 'Connecting'
+								: activeVoiceCallRecord?.status === 'answered'
+									? 'Voice call'
+									: 'Calling'}
 						</h1>
 						<div className="mt-6 inline-flex max-w-full items-center rounded-full border border-white/20 bg-white/10 px-5 py-2.5 text-lg font-semibold shadow-lg backdrop-blur-xl">
 							<span className="truncate">{activeVoicePeerLabel}</span>
@@ -4344,9 +4366,19 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 								<path d={voiceWaveformPath(voiceLevelSamples.length ? voiceLevelSamples : Array(64).fill(0.04))} fill="rgba(52,211,153,0.55)" />
 							</svg>
 						</div>
-						<p className="mt-4 text-center text-sm text-slate-300">
-							{voiceCallMuted ? 'Your microphone is muted.' : 'Speak normally. Your microphone is active.'}
-						</p>
+						{voiceError ? (
+							<div role="alert" className="mt-4 max-w-md rounded-xl border border-rose-300/40 bg-rose-500/15 px-4 py-3 text-center text-sm text-rose-100">
+								{voiceError}
+							</div>
+						) : (
+							<p className="mt-4 text-center text-sm text-slate-300">
+								{voiceCallConnecting
+									? 'Opening the voice relay.'
+									: voiceCallMuted
+										? 'Your microphone is muted.'
+										: 'Speak normally. Your microphone is active.'}
+							</p>
+						)}
 					</div>
 					<div className="flex items-center justify-center gap-5">
 						<button

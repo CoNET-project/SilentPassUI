@@ -9061,21 +9061,28 @@ function DiscoverMerchantDetailFullScreen({
 					!showFoodBeverageLoyaltyPass
 						? renderVisitActions()
 						: null}
+					{!isConetGenesisCard && showCouponsCard ? (
+						<DiscoverClaimEarnPointsRail
+							sectionRef={couponsSectionRef}
+							rows={swipeCoupons}
+							loading={showCouponsLoading || merchantCoupons == null}
+							claimEligibilityById={couponClaimEligibilityById}
+							claimStatusById={couponClaimStatusById}
+							claimErrorById={couponClaimErrorById}
+							onClaim={(row) => void handleDiscoverCouponClaim(row)}
+							referrerEoa={shareReferrerFromUrl}
+							getPrivateKeyArmor={getPrivateKeyArmorForLike}
+						/>
+					) : null}
+					<DiscoverMerchantMembershipTiersPanel
+						merchantName={passTitle}
+						brandColor={merchantDetailBrandColor ?? DISCOVER_VISIT_BRAND_FALLBACK}
+						balancePrefix={balancePrefix || 'CA$'}
+						tiers={discoverMembershipTiers}
+						activeTierIndex={activeMembershipTierIndex}
+					/>
 					{!isConetGenesisCard ? (
 						<>
-							{showCouponsCard ? (
-								<DiscoverClaimEarnPointsRail
-									sectionRef={couponsSectionRef}
-									rows={swipeCoupons}
-									loading={showCouponsLoading || merchantCoupons == null}
-									claimEligibilityById={couponClaimEligibilityById}
-									claimStatusById={couponClaimStatusById}
-									claimErrorById={couponClaimErrorById}
-									onClaim={(row) => void handleDiscoverCouponClaim(row)}
-									referrerEoa={shareReferrerFromUrl}
-									getPrivateKeyArmor={getPrivateKeyArmorForLike}
-								/>
-							) : null}
 							<DiscoverMerchantTreatAFriendPanel
 								merchantName={passTitle}
 								brandColor={merchantDetailBrandColor ?? DISCOVER_VISIT_BRAND_FALLBACK}
@@ -9085,13 +9092,6 @@ function DiscoverMerchantDetailFullScreen({
 							<DiscoverMerchantMediaCarousel metadataRoot={merchantMetadataRoot} />
 						</>
 					) : null}
-					<DiscoverMerchantMembershipTiersPanel
-						merchantName={passTitle}
-						brandColor={merchantDetailBrandColor ?? DISCOVER_VISIT_BRAND_FALLBACK}
-						balancePrefix={balancePrefix || 'CA$'}
-						tiers={discoverMembershipTiers}
-						activeTierIndex={activeMembershipTierIndex}
-					/>
 					{isConetGenesisCard ? (
 						<ConetGenesisNodeDiscoverSection
 							onLockSeat={lockConetGenesisSeat}

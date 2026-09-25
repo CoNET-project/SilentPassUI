@@ -18,7 +18,7 @@ import {storeSystemData} from '@/services/beamio'
 import { tu } from '@/locale/beamioLocale'
 import { chatShareLinkListPreview } from '@/utils/chatShareLinkPreview'
 import { chatGenericLinkListPreview } from '@/utils/chatGenericLinkPreview'
-import { parseVoiceCallSignal } from '@/utils/voiceCallSession'
+import { isVoiceCallOfferActive, parseVoiceCallSignal } from '@/utils/voiceCallSession'
 import { isCashTreesNativeWebView } from '@/utils/cashTreesNativeNfc'
 
 // 注意：不再接受 `list` prop。ChatList 内部直接从 useDaemonContext().profiles[0].chats
@@ -355,7 +355,7 @@ export default function ChatList({
 		for (const item of items) {
 			const last = item.messages?.[item.messages.length - 1]
 			const signal = last?.from === 'them' && last.text ? parseVoiceCallSignal(last.text) : null
-			if (signal?.type === 'voice_call_offer_v1' && Number(signal.expiresAt) > Date.now()) {
+			if (signal?.type === 'voice_call_offer_v1' && isVoiceCallOfferActive(signal)) {
 				return { item, signal }
 			}
 		}

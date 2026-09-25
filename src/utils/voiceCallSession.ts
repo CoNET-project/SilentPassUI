@@ -143,6 +143,20 @@ export function isVoiceCallProtocolMessage(raw: unknown): boolean {
 }
 
 const reportedIncomingVoiceCallIds = new Set<string>()
+const nativeIncomingVoiceRetryTimers = new Map<string, ReturnType<typeof setTimeout>>()
+
+/** Accept both browser millisecond timestamps and mailbox/FCM unix-second timestamps. */
+export function normalizeVoiceTimestampMs(value: unknown): number {
+	const numeric = Number(value)
+	if (!Number.isFinite(numeric) || numeric <= 0) return 0
+	return numeric < 100_000_000_000 ? numeric * 1000 : numeric
+}
+
+/** Accept both millisecond and Unix-second expiry values from mailbox/FCM paths. */
+export function isVoiceCallOfferActive(signal: { expiresAt?: unknown } | null | undefined): boolean {
+	const expiresAtMs = normalizeVoiceTimestampMs(signal?.expiresAt)
+	return expiresAtMs > Date.now()
+}
 
 export function claimIncomingVoiceCallReport(callId: string, sessionId: string): boolean {
 	const key = `${callId.trim()}:${sessionId.trim()}`
@@ -162,32 +176,88 @@ export function hasReportedIncomingVoiceCall(callId: string, sessionId: string):
  */
 export function applyNativeIncomingVoiceOfferFromLine(raw: string): boolean {
 	const signal = parseVoiceCallSignal(raw)
-	if (
-		signal?.type !== 'voice_call_offer_v1' ||
-		typeof signal.callId !== 'string' ||
-		typeof signal.sessionId !== 'string' ||
-		!(Number(signal.expiresAt) > Date.now())
-	) {
+	if (!signal) {
+		console.info('[voice] incoming line ignored: not a voice protocol message')
+		return false
+	}
+	if (signal.type !== 'voice_call_offer_v1') {
+		console.info(`[voice] incoming signal ignored: type=${signal.type}`)
+		return false
+	}
+	if (typeof signal.callId !== 'string' || !signal.callId.trim() ||
+		typeof signal.sessionId !== 'string' || !signal.sessionId.trim()) {
+		console.warn(
+			`[voice] incoming offer ignored: missing handle callId=${typeof signal.callId === 'string'} ` +
+			`sessionId=${typeof signal.sessionId === 'string'}`,
+		)
+		return false
+	}
+	const expiresAtMs = normalizeVoiceTimestampMs(signal.expiresAt)
+	if (expiresAtMs <= Date.now()) {
+		console.warn(
+			`[voice] incoming offer ignored: expired expiresAtPresent=${Boolean(signal.expiresAt)} ` +
+			`normalizedMs=${expiresAtMs > 0}`,
+		)
 		return false
 	}
 	const callerEoa = recoverVoiceCallOfferSigner(signal)
 	const proven = callerEoa || claimedVoiceCallerAddress(signal)
 	const claimedTag = claimedVoiceCallerTag(signal)
-	if (!proven && !claimedTag) return false
+	if (!proven && !claimedTag) {
+		console.warn('[voice] incoming offer ignored: no verified caller or claimed tag')
+		return false
+	}
 	const mismatch = voiceCallClaimMismatchesKey(signal, callerEoa, '')
-	const delivered = dispatchNativeSystemCallAction('reportIncomingSystemCall', {
+	const callKey = `${signal.callId.trim()}:${signal.sessionId.trim()}`
+	// Prefer the verified/claimed BeamioTag for the native call surface. The
+	// address remains separately available as peerAddress and is used as the
+	// fallback only when no tag is present.
+	const displayName = claimedTag || proven
+	const payload = {
 		callId: signal.callId,
 		sessionId: signal.sessionId,
 		peerAddress: proven,
-		displayName: proven || claimedTag,
+		displayName,
 		claimedTag: mismatch ? claimedTag : '',
 		claimedAddress: mismatch ? claimedVoiceCallerAddress(signal) : '',
 		identityWarning: mismatch ? VOICE_CALL_IDENTITY_WARNING : '',
-	})
+	}
+	console.info(
+		`[voice] decrypted incoming offer callId=${Boolean(signal.callId)} ` +
+			`sessionId=${Boolean(signal.sessionId)} verifiedPeer=${Boolean(proven)} ` +
+			`displayName=${Boolean(displayName)}`,
+	)
+	const delivered = dispatchNativeSystemCallAction('reportIncomingSystemCall', payload)
+	console.info(
+		`[voice] native report dispatch=${delivered ? 'accepted' : 'unavailable'} ` +
+		`callIdPresent=${Boolean(signal.callId)} sessionIdPresent=${Boolean(signal.sessionId)}`,
+	)
+	if (delivered) {
+		const timer = nativeIncomingVoiceRetryTimers.get(callKey)
+		if (timer !== undefined) clearTimeout(timer)
+		nativeIncomingVoiceRetryTimers.delete(callKey)
+	} else if (!nativeIncomingVoiceRetryTimers.has(callKey)) {
+		// The PWA can decrypt the offer while the WebView bridge is being
+		// recreated after an Android cold start. Retry a few times without
+		// using an interval; the native side stores the payload in its pool.
+		let attempt = 0
+		const retry = () => {
+			attempt += 1
+			const ok = dispatchNativeSystemCallAction('reportIncomingSystemCall', payload)
+			if (ok || attempt >= 8) {
+				nativeIncomingVoiceRetryTimers.delete(callKey)
+				return
+			}
+			const next = setTimeout(retry, Math.min(1500, 150 + attempt * 150))
+			nativeIncomingVoiceRetryTimers.set(callKey, next)
+		}
+		const timer = setTimeout(retry, 150)
+		nativeIncomingVoiceRetryTimers.set(callKey, timer)
+	}
 	console.info(
 		delivered
-			? '[voice] incoming offer delivered to native shell'
-			: '[voice] incoming offer could not reach the native shell',
+			? `[voice] incoming offer delivered to native shell (${displayName || 'address'})`
+			: `[voice] incoming offer queued for native bridge (${displayName || 'address'})`,
 	)
 	return delivered
 }

@@ -238,43 +238,60 @@ export const initChat = async (setProfiles: (val: profile[]) => void, setAllNode
 		//	寻找链上信息
 		const rr = await getKeysFromCoNETPGPSC(profile.keyID, profile.privateKeyArmor)
 		routes = rr?.routersArmoreds||''
+		// The chain record is the recipient key used by the mailbox.  If reading
+		// it failed (or the encrypted private key could not be recovered), do not
+		// continue with a locally generated/stale key: the mailbox would accept
+		// the message but this PWA could never decrypt it.  Re-register the
+		// current local key and verify the chain record before opening SSE.
+		const localKeyID = await getPublicKeyArmoredKeyID(chatManager.pgpKey.publicKey || '').catch(() => '')
+		const chainKeyID = (rr?.userPgpKeyID || '').toUpperCase()
+		const chainPrivateKeyAvailable = Boolean(rr?.privateArmored?.trim())
+		const chainKeyMatchesLocal = Boolean(
+			localKeyID &&
+			chainKeyID &&
+			localKeyID === chainKeyID,
+		)
+		if (!chainPrivateKeyAvailable || !chainKeyMatchesLocal) {
+			const node = getRandomNode(allNodes)
+			if (node) {
+				chatBootLog(
+					`PGP chain/local mismatch; registering current key (chain=${Boolean(chainKeyID)} private=${chainPrivateKeyAvailable})`,
+					'warn',
+				)
+				const registered = await regiestChatRoute(
+					profile.privateKeyArmor,
+					chatManager.pgpKey.publicKey,
+					localKeyID || chatManager.pgpKey.keyID,
+					chatManager.pgpKey.privateKey,
+					node.domain,
+				)
+				if (registered) {
+					await new Promise(resolve => setTimeout(resolve, 1500))
+					const verified = await getKeysFromCoNETPGPSC(
+						profile.keyID,
+						profile.privateKeyArmor,
+					)
+					const verifiedKeyID = (verified?.userPgpKeyID || '').toUpperCase()
+					if (
+						verified?.privateArmored?.trim() &&
+						localKeyID &&
+						verifiedKeyID === localKeyID
+					) {
+						routes = verified.routersArmoreds || ''
+						chatBootLog('PGP chain/local key verified before gossip listen')
+					} else {
+						chatBootLog(
+							'PGP registration could not be verified; gossip listen will use the current key only if the route is valid',
+							'error',
+						)
+					}
+				}
+			}
+		}
 
 		//	链上route信息
 		if (routes) {
 			chatManager.router = routes
-		}
-
-		// 检测：本地 PGP 与链上不一致时，说明用户在本地更换了密钥对但未重新登记，需调用 regiestChatRoute 同步
-		if (rr?.userPgpKeyID && chatManager.pgpKey.publicKey) {
-			try {
-				const localKeyID = await getPublicKeyArmoredKeyID(chatManager.pgpKey.publicKey)
-				const chainKeyID = (rr.userPgpKeyID || '').toUpperCase()
-				if (localKeyID && chainKeyID && localKeyID !== chainKeyID) {
-					console.warn('[initChat] 本地 PGP KeyID 与链上不一致，重新登记', { localKeyID, chainKeyID })
-					const node = getRandomNode(allNodes)
-					if (node) {
-						const ok = await regiestChatRoute(
-							profile.privateKeyArmor,
-							chatManager.pgpKey.publicKey,
-							localKeyID,
-							chatManager.pgpKey.privateKey,
-							node.domain
-						)
-						if (ok) {
-							await new Promise(r => setTimeout(r, 5000))
-							const rr2 = await getKeysFromCoNETPGPSC(profile.keyID, profile.privateKeyArmor)
-							const chainKeyID2 = (rr2?.userPgpKeyID || '').toUpperCase()
-							if (chainKeyID2 === localKeyID) {
-								console.log('[initChat] 重新登记验证成功', { localKeyID, chainKeyID2 })
-							} else {
-								console.warn('[initChat] 重新登记 5 秒后验证失败：链上仍为', chainKeyID2, '，期望', localKeyID)
-							}
-						}
-					}
-				}
-			} catch (e: any) {
-				console.warn('[initChat] 检测 PGP KeyID 时出错', e?.message ?? e)
-			}
 		}
 
 		if (!routes) {
@@ -809,40 +826,9 @@ export const pauseGossipListenOnBackground = (
 	setGossip(false)
 }
 
-let voiceOfferBounceAt = 0
-let voiceOfferBounceTimer: ReturnType<typeof setTimeout> | undefined
-const VOICE_OFFER_BOUNCE_COOLDOWN_MS = 8_000
-const VOICE_OFFER_BOUNCE_RETRY_MS = 250
-
-const retryVoiceOfferBounceAfterInit = (
-	setProfiles: (val: profile[]) => void,
-	setAllNodes: (val: nodeInfo[]) => void,
-	setGossip: (val: boolean) => void,
-	newMessage: (val: string) => void,
-	staleMs: number,
-): void => {
-	if (voiceOfferBounceTimer !== undefined) clearTimeout(voiceOfferBounceTimer)
-	voiceOfferBounceTimer = setTimeout(() => {
-		voiceOfferBounceTimer = undefined
-		void resumeGossipListenOnForeground(
-			setProfiles,
-			setAllNodes,
-			setGossip,
-			newMessage,
-			staleMs,
-			{ force: true },
-		)
-	}, VOICE_OFFER_BOUNCE_RETRY_MS)
-}
-
 /**
  * Foreground / pageshow resume: if listen looks dead, abort + re-initChat(gossip=false).
  * Safe to call often; no-ops when the stream recently received bytes or is still connecting.
- *
- * `force` is used for a native voice-call wake. Even a live SSE may not yet have
- * drained the mailbox-saved one-packet offer, so a bounded reconnect is used to
- * flush it through the worker. A stream that has not yet received its first
- * bytes is left alone until that initial connection settles.
  */
 export const resumeGossipListenOnForeground = async (
 	setProfiles: (val: profile[]) => void,
@@ -850,74 +836,7 @@ export const resumeGossipListenOnForeground = async (
 	setGossip: (val: boolean) => void,
 	newMessage: (val: string) => void,
 	staleMs = 45_000,
-	opts?: { force?: boolean },
 ): Promise<void> => {
-	const force = opts?.force === true
-	if (force) {
-		const live = Boolean(currentGossipAbortController && !currentGossipAbortController.signal.aborted)
-		const fresh = lastGossipActivityAt > 0 && Date.now() - lastGossipActivityAt < staleMs
-		if (live && fresh) {
-			// The initial AppShell init may still be hydrating the chat manager while
-			// the native voice push wakes the PWA. Do not call initChat here: its
-			// mutex would skip the reconnect and leave the mailbox offer unread.
-			if (initChatInProgress) {
-				chatBootLog('pullVoiceOffer deferred: initChat still in progress', 'info')
-				retryVoiceOfferBounceAfterInit(
-					setProfiles,
-					setAllNodes,
-					setGossip,
-					newMessage,
-					staleMs,
-				)
-				return
-			}
-			// A voice push can arrive while the existing SSE is healthy but before
-			// that stream has delivered the mailbox-saved offer. Reusing the stream
-			// here leaves the native CallStyle on its generic title forever. The
-			// mailbox saves the encrypted offer before forwarding it, so a controlled
-			// reconnect is safe and flushes the pending offer through the worker.
-			chatBootLog('pullVoiceOffer: bounce live listen to flush the mailbox offer', 'info')
-			if (Date.now() - voiceOfferBounceAt < VOICE_OFFER_BOUNCE_COOLDOWN_MS) {
-				chatBootLog('pullVoiceOffer skipped: listen bounce already in progress', 'info')
-				return
-			}
-			voiceOfferBounceAt = Date.now()
-			prepareGossipListenResume('pullVoiceOffer_live')
-			setGossip(false)
-			await initChat(setProfiles, setAllNodes, setGossip, false, newMessage)
-			return
-		}
-		if (live && !lastGossipActivityAt) {
-			chatBootLog('pullVoiceOffer deferred: listen still connecting', 'info')
-			if (voiceOfferBounceTimer !== undefined) clearTimeout(voiceOfferBounceTimer)
-			voiceOfferBounceTimer = setTimeout(() => {
-				voiceOfferBounceTimer = undefined
-				void resumeGossipListenOnForeground(setProfiles, setAllNodes, setGossip, newMessage, staleMs, { force: true })
-			}, 1_500)
-			return
-		}
-		if (Date.now() - voiceOfferBounceAt < VOICE_OFFER_BOUNCE_COOLDOWN_MS) {
-			chatBootLog('pullVoiceOffer skipped: listen bounce already in progress', 'info')
-			return
-		}
-		if (initChatInProgress) {
-			chatBootLog('pullVoiceOffer deferred: initChat in progress', 'info')
-			retryVoiceOfferBounceAfterInit(
-				setProfiles,
-				setAllNodes,
-				setGossip,
-				newMessage,
-				staleMs,
-			)
-			return
-		}
-		voiceOfferBounceAt = Date.now()
-		chatBootLog('pullVoiceOffer: bounce listen so mailbox flushes the saved offer', 'info')
-		prepareGossipListenResume('pullVoiceOffer')
-		setGossip(false)
-		await initChat(setProfiles, setAllNodes, setGossip, false, newMessage)
-		return
-	}
 	if (!shouldResumeGossipListen(staleMs)) {
 		chatBootLog('foreground resume skipped: gossip stream still active or connecting', 'info')
 		return

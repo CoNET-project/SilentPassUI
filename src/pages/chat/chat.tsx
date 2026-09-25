@@ -110,6 +110,7 @@ import {
 	claimedVoiceCallerAddress,
 	claimedVoiceCallerTag,
 	formatLookedUpBeamioTag,
+	isVoiceCallOfferActive,
 	parseVoiceCallSignal,
 	randomVoiceId,
 	recoverVoiceCallOfferSigner,
@@ -2129,11 +2130,12 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 	}, [allNodes, chatData, privateKey, toAddress, upsertPhoneCallRecord, voiceCallState])
 
 	useEffect(() => {
-		const latest = [...messages].reverse().find((message) => message.from === 'them' && message.text)
-		if (!latest?.text) return
-		try {
+		const inboundMessages = messages.filter((message) => message.from === 'them' && message.text)
+		if (inboundMessages.length === 0) return
+		for (const latest of inboundMessages) {
+			try {
 			const signal = parseVoiceCallSignal(latest.text)
-			if (!signal) return
+			if (!signal) continue
 			const callerEoa = recoverVoiceCallOfferSigner(signal)
 			if (
 				signal.type === 'voice_call_offer_v1' &&
@@ -2141,7 +2143,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				typeof signal.callId === 'string' &&
 				typeof signal.sessionId === 'string' &&
 				typeof signal.sessionKey === 'string' &&
-				Number(signal.expiresAt) > Date.now()
+				isVoiceCallOfferActive(signal)
 			) {
 				const persistedPhoneCalls = Array.isArray(profiles?.[0]?.phoneCalls)
 					? profiles[0].phoneCalls
@@ -2151,7 +2153,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				)
 				const terminalCallStatuses = new Set(['declined', 'ended', 'answered', 'missed'])
 				if (terminalCallStatuses.has(String(previousCall?.status || ''))) {
-					return
+					continue
 				}
 				setIncomingVoiceOffer(previous => previous?.sessionId === signal.sessionId ? previous : signal)
 				const provenAddress = callerEoa || ''
@@ -2233,8 +2235,9 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				})
 				void startVoiceMedia()
 			}
-		} catch {
-			/* ordinary Chat text */
+			} catch {
+				/* ordinary Chat text */
+			}
 		}
 	}, [chatData, messages, profiles, startVoiceMedia, toAddress, upsertPhoneCallRecord])
 

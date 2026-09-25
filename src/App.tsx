@@ -106,7 +106,7 @@ import { ingestAaMultisigFromChat } from '@/utils/aaMultisigIngest'
 import { tu } from '@/locale/beamioLocale'
 import { mapServerError } from '@/locale/mapServerError'
 import { installPwaLifecycleRecovery } from '@/utils/pwaLifecycleRecovery'
-import { applyNativeIncomingVoiceOfferFromLine, claimIncomingVoiceCallReport, claimedVoiceCallerAddress, claimedVoiceCallerTag, formatLookedUpBeamioTag, parseVoiceCallSignal, recoverVoiceCallOfferSigner, VOICE_CALL_IDENTITY_WARNING, voiceCallClaimMismatchesKey } from '@/utils/voiceCallSession'
+import { applyNativeIncomingVoiceOfferFromLine, claimIncomingVoiceCallReport, claimedVoiceCallerAddress, claimedVoiceCallerTag, formatLookedUpBeamioTag, isVoiceCallOfferActive, parseVoiceCallSignal, recoverVoiceCallOfferSigner, VOICE_CALL_IDENTITY_WARNING, voiceCallClaimMismatchesKey } from '@/utils/voiceCallSession'
 
 global.Buffer = require("buffer").Buffer
 
@@ -1008,6 +1008,13 @@ function AppShell() {
 				)
 			})
 		}
+		const onNativeMailboxWake = (event: Event) => {
+			const detail = (event as CustomEvent<{ action?: string }>).detail
+			if (detail?.action !== 'mailboxWake') return
+			publishNativePwaLog('info', '[AppShell] native mailbox wake — resuming gossip listen')
+			onForegroundResume()
+		}
+		window.addEventListener('cashtreesandroid', onNativeMailboxWake)
 		const onVisibility = () => {
 			if (document.visibilityState === 'visible') {
 				onForegroundResume()
@@ -1017,34 +1024,8 @@ function AppShell() {
 			// bfcache restore or shell bring-to-front — do not abort a connecting stream
 			if (ev.persisted || document.visibilityState === 'visible') onForegroundResume()
 		}
-		const onPullVoiceOffer = (event: Event) => {
-			const action = (event as CustomEvent<{ action?: string }>).detail?.action
-			if (action !== 'pullVoiceOffer') return
-			getCashTreesNativeNfcBridge()?.acknowledgePendingSystemCallAction?.(action)
-			publishNativePwaLog('info', '[AppShell] pullVoiceOffer received; refreshing mailbox listen')
-			void resumeGossipListenOnForeground(
-				setProfiles,
-				setAllNodes,
-				setGossip,
-				message => {
-					applyNativeIncomingVoiceOfferFromLine(message)
-					setChartsRef.current((prev: string[]) => [...prev, message])
-				},
-				45_000,
-				{ force: true },
-			).catch(err => {
-				publishNativePwaLog(
-					'warn',
-					`[AppShell] pullVoiceOffer listen bounce failed: ${(err as Error)?.message ?? String(err)}`,
-				)
-			})
-		}
 		document.addEventListener('visibilitychange', onVisibility)
 		window.addEventListener('pageshow', onPageShow)
-		window.addEventListener('cashtreesandroid', onPullVoiceOffer)
-		// FCM may have woken the native Activity before this listener mounted.
-		// Ask the shell to replay its persisted action after the PWA is ready.
-		getCashTreesNativeNfcBridge()?.requestPendingSystemCallAction?.()
 		const onPageHide = () => {
 			// True unload / bfcache — drop listen so mailbox can saveLocal + APNs for killed app.
 			pauseGossipListenOnBackground(setGossip)
@@ -1058,7 +1039,7 @@ function AppShell() {
 			document.removeEventListener('visibilitychange', onVisibility)
 			window.removeEventListener('pageshow', onPageShow)
 			window.removeEventListener('pagehide', onPageHide)
-			window.removeEventListener('cashtreesandroid', onPullVoiceOffer)
+			window.removeEventListener('cashtreesandroid', onNativeMailboxWake)
 			removePwaLifecycleRecovery()
 			// Do NOT abort gossip / setGossip(false) here.
 			// React StrictMode remount + LoadingPage/AppShell dual init previously killed the
@@ -1433,7 +1414,7 @@ function AppShell() {
 					(callerEoa || claimedVoiceCallerTag(signal) || claimedVoiceCallerAddress(signal)) &&
 					typeof signal.callId === 'string' &&
 					typeof signal.sessionId === 'string' &&
-					Number(signal.expiresAt) > Date.now()
+					isVoiceCallOfferActive(signal)
 				) {
 					const previousCall = (Array.isArray(profile.phoneCalls) ? profile.phoneCalls : []).find(
 						(item: any) => item.sessionId === signal.sessionId,
@@ -1462,6 +1443,11 @@ function AppShell() {
 							})
 							setGlobalIncomingVoiceMuted(false)
 						}
+						// Keep a bridge retry independent from the chat-row claim
+						// guard. If Android is still recreating the WebView, the
+						// first direct dispatch can fail even though this offer
+						// was already accepted by the chat ingest path.
+						applyNativeIncomingVoiceOfferFromLine(displayText)
 						dispatchNativeSystemCallAction('reportIncomingSystemCall', {
 							callId: signal.callId,
 							sessionId: signal.sessionId,

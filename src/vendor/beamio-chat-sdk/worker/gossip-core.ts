@@ -88,6 +88,69 @@ function isGossipListingLivenessFrame(payload: unknown): boolean {
 	return typeof row.ipaddress === 'string' || 'nodeWallets' in row
 }
 
+const INBOUND_WRAPPER_KEYS = ['data', 'message', 'payload', 'body', 'text'] as const
+
+function findInboundArmor(value: unknown, depth = 0): string {
+	if (depth > 5) return ''
+	if (typeof value === 'string') {
+		const text = value.trim()
+		if (/^-----BEGIN PGP MESSAGE-----/i.test(text)) return text
+		if (text.startsWith('{') || text.startsWith('[')) {
+			try {
+				return findInboundArmor(JSON.parse(text), depth + 1)
+			} catch {
+				return ''
+			}
+		}
+		// A few mailbox relays wrap the armor in base64 before placing it in
+		// their JSON envelope. Decode only bounded, plausible base64 strings;
+		// never treat arbitrary text as a candidate.
+		if (text.length >= 32 && /^[A-Za-z0-9+/=_-]+$/.test(text)) {
+			try {
+				const normalized = text.replace(/-/g, '+').replace(/_/g, '/')
+				const decoded = base64ToUtf8(normalized).trim()
+				if (decoded && decoded !== text) {
+					return findInboundArmor(decoded, depth + 1)
+				}
+			} catch {
+				/* not base64 */
+			}
+		}
+	}
+	if (!value || typeof value !== 'object') return ''
+	const row = value as Record<string, unknown>
+	for (const key of INBOUND_WRAPPER_KEYS) {
+		const found = findInboundArmor(row[key], depth + 1)
+		if (found) return found
+	}
+	return ''
+}
+
+function parseInboundJson(value: string): unknown {
+	let current: unknown = value
+	for (let depth = 0; depth <= 5; depth += 1) {
+		if (typeof current !== 'string') return current
+		const text = current.trim()
+		try {
+			const parsed = JSON.parse(text) as unknown
+			if (parsed && typeof parsed === 'object') return parsed
+		} catch {
+			/* try base64 below */
+		}
+		try {
+			const decoded = base64ToUtf8(text).trim()
+			if (decoded && decoded !== text) {
+				current = decoded
+				continue
+			}
+		} catch {
+			/* not base64 */
+		}
+		return current
+	}
+	return current
+}
+
 export class GossipCore {
 	private cfg: WorkerInitPayload | null = null
 	private nodes: NodeInfo[] = []
@@ -111,14 +174,20 @@ export class GossipCore {
 		this.cfg = payload
 		this.nodes = payload.nodes || []
 		this.routes = payload.routes || []
+		this.emit.log(
+			'info',
+			`chat worker init pgpArmor=${payload.identity.pgpPrivateKeyArmored.length} passphrase=${payload.identity.pgpPassphrase ? 'set' : 'empty'}`,
+		)
 		const pkHex = payload.identity.privateKeyHex.startsWith('0x')
 			? payload.identity.privateKeyHex
 			: `0x${payload.identity.privateKeyHex}`
 		this.wallet = new ethers.Wallet(pkHex)
 		const pk = await readPrivateKey({ armoredKey: payload.identity.pgpPrivateKeyArmored })
+		this.emit.log('info', `chat worker pgp key decrypted=${pk.isDecrypted()}`)
 		this.pgpPrivateKey = pk.isDecrypted()
 			? pk
 			: await decryptKey({ privateKey: pk, passphrase: payload.identity.pgpPassphrase || '' })
+		this.emit.log('info', 'chat worker pgp decrypt ready')
 		if (payload.identity.pgpPublicKeyArmored) {
 			try {
 				const keyObj = await readKey({ armoredKey: payload.identity.pgpPublicKeyArmored })
@@ -406,13 +475,19 @@ export class GossipCore {
 	}
 
 	private async handleInbound(rawData: string, viaDomain: string, _rootSignal: AbortSignal): Promise<void> {
-		let data: Record<string, unknown>
+		const trimmedRaw = rawData.trim()
+		let data: Record<string, unknown> | null = null
 		try {
-			data = JSON.parse(rawData)
+			const parsed = JSON.parse(trimmedRaw) as unknown
+			if (parsed && typeof parsed === 'object') {
+				data = parsed as Record<string, unknown>
+			}
 		} catch {
-			return
+			// Some mailbox/entry implementations deliver the SSE `data:` value
+			// as the armored PGP message itself. Keep that compatibility path;
+			// do not require JSON before attempting decryption.
 		}
-		if (isGossipListingLivenessFrame(data) && extractGossipListingBlockHeight(data)) {
+		if (data && isGossipListingLivenessFrame(data) && extractGossipListingBlockHeight(data)) {
 			// Liveness/listing frame: no business payload, but proves the SSE is alive.
 			// Refresh internal activity + surface a heartbeat so the host can keep its
 			// own foreground/background staleness timer fresh (parity with the old
@@ -421,26 +496,39 @@ export class GossipCore {
 			this.emit.status('listening', 'heartbeat')
 			return
 		}
-		if (data.type === 'mailbox_keepalive') {
+		if (data?.type === 'mailbox_keepalive') {
 			this.lastActivityAt = Date.now()
 			this.emit.status('listening', 'heartbeat')
 			return
 		}
 		try {
-			if (data.type === 'voice_frame_v1') {
+			if (data?.type === 'voice_frame_v1') {
 				this.emit.voiceFrame(data)
 				return
 			}
-			const armored = typeof data.data === 'string' ? data.data : ''
+			// Mailbox relays can add several JSON envelopes. Walk only a bounded
+			// set of wrapper keys; never log or forward the plaintext/ciphertext.
+			const armored = findInboundArmor(data ?? trimmedRaw)
 			if (armored && /^-----BEGIN PGP MESSAGE-----/i.test(armored)) {
+				this.emit.log('info', `inbound PGP candidate bytes=${armored.length} via=${viaDomain}`)
 				const msg = await readMessage({ armoredMessage: armored })
 				const { data: decrypted } = await decrypt({ message: msg, decryptionKeys: this.pgpPrivateKey! })
 				const decryptedString = typeof decrypted === 'string' ? decrypted : String(decrypted)
-				const kkk = base64ToUtf8(decryptedString)
+				// Senders historically used both base64(JSON) and JSON directly.
+				// Normalize both, including bounded nested data/message wrappers.
+				const parsed = parseInboundJson(decryptedString)
+				const kkk =
+					typeof parsed === 'string'
+						? parsed
+						: JSON.stringify(parsed)
+				this.emit.log(
+					'info',
+					`inbound PGP decrypted chars=${kkk.length} json=${kkk.trim().startsWith('{')}`,
+				)
 				const armorHash = keccakUtf8(armored)
 				let line = kkk
 				try {
-					const env = JSON.parse(kkk)
+					const env = JSON.parse(kkk) as Record<string, unknown>
 					if (env && typeof env === 'object') {
 						env._beamioPgpArmorHash = armorHash
 						line = JSON.stringify(env)
@@ -449,7 +537,7 @@ export class GossipCore {
 					/* keep raw */
 				}
 				this.emit.message(line, armorHash, false, viaDomain)
-			} else if (data.from && data.text != null && data.signMessage) {
+			} else if (data && data.from && data.text != null && data.signMessage) {
 				this.emit.message(JSON.stringify(data), undefined, true, viaDomain)
 			}
 		} catch (ex: unknown) {

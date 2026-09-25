@@ -14,6 +14,8 @@ export type CashTreesNativeNfcBridge = {
 	startSystemCall?: (payload: Record<string, unknown>) => void
 	reportIncomingSystemCall?: (payload: Record<string, unknown>) => void
 	endSystemCall?: (payload: Record<string, unknown>) => void
+	requestPendingSystemCallAction?: () => void
+	acknowledgePendingSystemCallAction?: (action: string) => void
 	/** iOS WK bridge — object payload. Android `@JavascriptInterface` accepts a plain URL string (use `openExternalUrl`). */
 	openURL?: (payload: { url: string }) => void
 	/** PWA catalog → native install probe. iOS uses `{ requestId, queries }` + `cashtreesios`. */

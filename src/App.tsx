@@ -5,7 +5,12 @@ import { useDaemonContext } from "./providers/DaemonProvider"
 import { useBeamioTagDatabase } from "./providers/BeamioTagDatabaseProvider"
 import Footer from "@/components/Footer"
 import EoaUsdcStripeReturnHost from "@/components/addUSDC/EoaUsdcStripeReturnHost"
-import { dispatchNativeSystemCallAction, isCashTreesNativeWebView, openExternalUrl } from "@/utils/cashTreesNativeNfc"
+import {
+	dispatchNativeSystemCallAction,
+	getCashTreesNativeNfcBridge,
+	isCashTreesNativeWebView,
+	openExternalUrl,
+} from "@/utils/cashTreesNativeNfc"
 import { clearOfflineChatAlertsViaBridge } from "@/utils/cashTreesNativeAppStateBridge"
 import SearchInputWithDropdown from "@/components/Home/SearchBarWithResults"
 import AppEntryGate from "@/components/AppEntryGate"
@@ -1015,6 +1020,7 @@ function AppShell() {
 		const onPullVoiceOffer = (event: Event) => {
 			const action = (event as CustomEvent<{ action?: string }>).detail?.action
 			if (action !== 'pullVoiceOffer') return
+			getCashTreesNativeNfcBridge()?.acknowledgePendingSystemCallAction?.(action)
 			publishNativePwaLog('info', '[AppShell] pullVoiceOffer received; refreshing mailbox listen')
 			void resumeGossipListenOnForeground(
 				setProfiles,
@@ -1036,6 +1042,9 @@ function AppShell() {
 		document.addEventListener('visibilitychange', onVisibility)
 		window.addEventListener('pageshow', onPageShow)
 		window.addEventListener('cashtreesandroid', onPullVoiceOffer)
+		// FCM may have woken the native Activity before this listener mounted.
+		// Ask the shell to replay its persisted action after the PWA is ready.
+		getCashTreesNativeNfcBridge()?.requestPendingSystemCallAction?.()
 		const onPageHide = () => {
 			// True unload / bfcache — drop listen so mailbox can saveLocal + APNs for killed app.
 			pauseGossipListenOnBackground(setGossip)

@@ -812,6 +812,28 @@ export const pauseGossipListenOnBackground = (
 let voiceOfferBounceAt = 0
 let voiceOfferBounceTimer: ReturnType<typeof setTimeout> | undefined
 const VOICE_OFFER_BOUNCE_COOLDOWN_MS = 8_000
+const VOICE_OFFER_BOUNCE_RETRY_MS = 250
+
+const retryVoiceOfferBounceAfterInit = (
+	setProfiles: (val: profile[]) => void,
+	setAllNodes: (val: nodeInfo[]) => void,
+	setGossip: (val: boolean) => void,
+	newMessage: (val: string) => void,
+	staleMs: number,
+): void => {
+	if (voiceOfferBounceTimer !== undefined) clearTimeout(voiceOfferBounceTimer)
+	voiceOfferBounceTimer = setTimeout(() => {
+		voiceOfferBounceTimer = undefined
+		void resumeGossipListenOnForeground(
+			setProfiles,
+			setAllNodes,
+			setGossip,
+			newMessage,
+			staleMs,
+			{ force: true },
+		)
+	}, VOICE_OFFER_BOUNCE_RETRY_MS)
+}
 
 /**
  * Foreground / pageshow resume: if listen looks dead, abort + re-initChat(gossip=false).
@@ -835,6 +857,20 @@ export const resumeGossipListenOnForeground = async (
 		const live = Boolean(currentGossipAbortController && !currentGossipAbortController.signal.aborted)
 		const fresh = lastGossipActivityAt > 0 && Date.now() - lastGossipActivityAt < staleMs
 		if (live && fresh) {
+			// The initial AppShell init may still be hydrating the chat manager while
+			// the native voice push wakes the PWA. Do not call initChat here: its
+			// mutex would skip the reconnect and leave the mailbox offer unread.
+			if (initChatInProgress) {
+				chatBootLog('pullVoiceOffer deferred: initChat still in progress', 'info')
+				retryVoiceOfferBounceAfterInit(
+					setProfiles,
+					setAllNodes,
+					setGossip,
+					newMessage,
+					staleMs,
+				)
+				return
+			}
 			// A voice push can arrive while the existing SSE is healthy but before
 			// that stream has delivered the mailbox-saved offer. Reusing the stream
 			// here leaves the native CallStyle on its generic title forever. The
@@ -866,11 +902,13 @@ export const resumeGossipListenOnForeground = async (
 		}
 		if (initChatInProgress) {
 			chatBootLog('pullVoiceOffer deferred: initChat in progress', 'info')
-			if (voiceOfferBounceTimer !== undefined) clearTimeout(voiceOfferBounceTimer)
-			voiceOfferBounceTimer = setTimeout(() => {
-				voiceOfferBounceTimer = undefined
-				void resumeGossipListenOnForeground(setProfiles, setAllNodes, setGossip, newMessage, staleMs, { force: true })
-			}, 500)
+			retryVoiceOfferBounceAfterInit(
+				setProfiles,
+				setAllNodes,
+				setGossip,
+				newMessage,
+				staleMs,
+			)
 			return
 		}
 		voiceOfferBounceAt = Date.now()

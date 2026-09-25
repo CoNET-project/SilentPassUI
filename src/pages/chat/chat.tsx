@@ -54,7 +54,8 @@ import {
 	getKeysFromCoNETPGPSC,
 	connectToGossipNode,
 	sendMessage,
-	makeMessage
+	makeMessage,
+	refreshChatMailboxPresence,
 
 } from '@/services/chat'
 import {
@@ -2705,6 +2706,76 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 
 
 	const hasRoute = !!(chatData.chatData?.routersArmoreds?.trim())
+	const [peerOnline, setPeerOnline] = useState(!!chatData.chatData?.online)
+
+	// This thread stays mounted without ChatList, so the list's one-shot probe
+	// never updates the call button. Re-query this peer's mailbox until unmount.
+	useEffect(() => {
+		const addr = (chatData.address || '').trim().toLowerCase()
+		const route = chatData.chatData?.routersArmoreds?.trim() || ''
+		const key = (privateKey || CoNET_Data?.profiles?.[0]?.privateKeyArmor || '').trim()
+		if (!addr || !route || !key) return
+		let cancelled = false
+		let timer: number | undefined
+		const PRESENCE_MS = 15_000
+
+		const persistOnline = (online: boolean) => {
+			const apply = (chats: chatData[]): { next: chatData[]; changed: boolean } => {
+				let changed = false
+				const next = chats.map(row => {
+					if (String(row?.address || '').toLowerCase() !== addr) return row
+					if ((row.chatData?.online ?? false) === online) return row
+					changed = true
+					return { ...row, chatData: { ...row.chatData, online } }
+				})
+				return { next, changed }
+			}
+			setProfiles(prev => {
+				if (!prev?.length) return prev
+				const cur = prev[0]
+				const chats = Array.isArray(cur?.chats) ? cur.chats : []
+				const { next, changed } = apply(chats)
+				if (!changed) return prev
+				const nextProfiles = [...prev]
+				nextProfiles[0] = { ...cur, chats: next }
+				return nextProfiles
+			})
+			const stored = CoNET_Data
+			if (!stored?.profiles?.length) return
+			const cur = stored.profiles[0]
+			const chats = Array.isArray(cur?.chats) ? cur.chats : []
+			const { next, changed } = apply(chats)
+			if (!changed) return
+			const nextProfiles = [...stored.profiles]
+			nextProfiles[0] = { ...cur, chats: next }
+			stored.profiles = nextProfiles
+			setCoNET_Data(stored)
+			void storeSystemData()
+		}
+
+		const tick = async () => {
+			if (cancelled) return
+			try {
+				const onlineByAddr = await refreshChatMailboxPresence(
+					[{ address: addr, chatData: { ...chatData.chatData, routersArmoreds: route } } as chatData],
+					key,
+				)
+				if (cancelled || !onlineByAddr.has(addr)) return
+				const online = onlineByAddr.get(addr)!
+				setPeerOnline(current => (current === online ? current : online))
+				persistOnline(online)
+			} finally {
+				if (!cancelled) {
+					timer = window.setTimeout(() => { void tick() }, PRESENCE_MS)
+				}
+			}
+		}
+		void tick()
+		return () => {
+			cancelled = true
+			if (timer !== undefined) window.clearTimeout(timer)
+		}
+	}, [chatData.address, chatData.chatData?.routersArmoreds, privateKey, setProfiles])
 
 	const canSend = useMemo(() => {
 		return !!toAddress && !!hasRoute && (text.trim().length > 0 || !!voiceDraftBlob || fileJobs.some(job => job.status === 'ready'))
@@ -4165,7 +4236,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				onCenterClick={() => {
 					if (fromBeamio) setShowContactProfile(true)
 				}}
-				online={chatData.chatData.online}
+				online={peerOnline}
 				avatarSrc={userImg}
 				onCall={voiceCallState === 'outgoing' ? endVoiceCall : startVoiceCall}
 				onPhoneHistory={() => navigate('/phone')}

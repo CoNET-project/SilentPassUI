@@ -106,13 +106,15 @@ export function createVoiceCallController(options: VoiceCallControllerOptions) {
 			codec: 'audio/webm;codecs=opus',
 		})
 		const pushTimestamp = Math.floor(Date.now() / 1000)
+		// Ring window must stay inside the mailbox/API 10-minute cap.
+		// signal.expiresAt is the 15-minute call lifetime and is rejected, so
+		// the callee never receives type=voiceCall and Android never opens
+		// the full-screen incoming window.
+		const ringExpiresAt = Date.now() + 2 * 60 * 1000
 		if (!await startWorkerVoiceListen(sessionId, {
-			// The mailbox must never receive the caller's BeamioTag or wallet.
-			// This reference is only for the native wake-up and is unrelated to
-			// the recipient-visible signed call offer.
-			callId: randomVoiceId('wake'),
+			callId: signal.callId,
 			calleeEoa: signal.to,
-			expiresAt: signal.expiresAt,
+			expiresAt: ringExpiresAt,
 			timestamp: pushTimestamp,
 		})) return null
 		const sent = await sendVoiceCallOffer({

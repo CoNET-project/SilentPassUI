@@ -2188,7 +2188,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 						callId: signal.callId,
 						sessionId: signal.sessionId,
 						peerAddress: provenAddress,
-						displayName: tag || 'Incoming voice call',
+						displayName: tag || provenAddress || 'Incoming voice call',
 						...nextClaim,
 					})
 				})()
@@ -2208,7 +2208,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 						callId: signal.callId,
 						sessionId: signal.sessionId,
 						peerAddress: provenAddress,
-						displayName: localTag || 'Incoming voice call',
+						displayName: localTag || provenAddress || 'Incoming voice call',
 						...claim,
 					})
 				}
@@ -4404,6 +4404,8 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				</div>
 			) : null}
 			{incomingVoiceOffer ? (
+				<>
+				<div className="fixed inset-0 z-[99] bg-[#808080]/50" aria-hidden />
 				<div
 					className="pointer-events-auto fixed isolate left-4 right-4 top-[max(5.5rem,calc(env(safe-area-inset-top)+5rem))] z-[100] rounded-2xl border border-white/80 bg-white/85 px-4 py-3 shadow-[0_12px_30px_rgba(15,23,42,0.16)] backdrop-blur-xl"
 					role="dialog"
@@ -4456,6 +4458,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 						</button>
 					</div>
 				</div>
+				</>
 			) : null}
 			<audio ref={voicePlaybackAudioRef} className="hidden" preload="none" aria-hidden />
 

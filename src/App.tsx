@@ -101,7 +101,7 @@ import { ingestAaMultisigFromChat } from '@/utils/aaMultisigIngest'
 import { tu } from '@/locale/beamioLocale'
 import { mapServerError } from '@/locale/mapServerError'
 import { installPwaLifecycleRecovery } from '@/utils/pwaLifecycleRecovery'
-import { claimIncomingVoiceCallReport, claimedVoiceCallerAddress, claimedVoiceCallerTag, formatLookedUpBeamioTag, parseVoiceCallSignal, recoverVoiceCallOfferSigner, VOICE_CALL_IDENTITY_WARNING, voiceCallClaimMismatchesKey } from '@/utils/voiceCallSession'
+import { applyNativeIncomingVoiceOfferFromLine, claimIncomingVoiceCallReport, claimedVoiceCallerAddress, claimedVoiceCallerTag, formatLookedUpBeamioTag, parseVoiceCallSignal, recoverVoiceCallOfferSigner, VOICE_CALL_IDENTITY_WARNING, voiceCallClaimMismatchesKey } from '@/utils/voiceCallSession'
 
 global.Buffer = require("buffer").Buffer
 
@@ -948,6 +948,7 @@ function AppShell() {
 		}
 
 		await initChat(setProfiles,setAllNodes, setGossip, gossipActiveRef.current, message => {
+			applyNativeIncomingVoiceOfferFromLine(message)
 			setChartsRef.current((prev: string[]) => [...prev, message])
 		})
 
@@ -992,6 +993,7 @@ function AppShell() {
 				setAllNodes,
 				setGossip,
 				message => {
+					applyNativeIncomingVoiceOfferFromLine(message)
 					setChartsRef.current((prev: string[]) => [...prev, message])
 				},
 			).catch(err => {
@@ -1018,6 +1020,7 @@ function AppShell() {
 				setAllNodes,
 				setGossip,
 				message => {
+					applyNativeIncomingVoiceOfferFromLine(message)
 					setChartsRef.current((prev: string[]) => [...prev, message])
 				},
 				45_000,
@@ -2231,7 +2234,9 @@ function AppShell() {
 							navigate('/chat', { state: { autoVoiceCallAction: action } })
 						}
 						return (
-							<div className="pointer-events-none fixed inset-x-4 top-[max(1rem,env(safe-area-inset-top,0px))] z-[250] mx-auto max-w-lg">
+							<div className="fixed inset-0 z-[250]">
+								<div className="absolute inset-0 bg-[#808080]/50" aria-hidden />
+								<div className="pointer-events-none absolute inset-x-4 top-[max(1rem,env(safe-area-inset-top,0px))] mx-auto max-w-lg">
 								<div className="pointer-events-auto rounded-3xl border border-[#dce2f7] bg-white/95 p-4 shadow-[0_18px_50px_rgba(15,23,42,0.24)] backdrop-blur-xl">
 									<div className="flex items-center gap-3">
 										<img
@@ -2289,6 +2294,7 @@ function AppShell() {
 											Enable system call notifications
 										</button>
 									) : null}
+								</div>
 								</div>
 							</div>
 						)

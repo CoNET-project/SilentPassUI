@@ -254,12 +254,20 @@ export function dispatchNativeSystemCallAction(
 	const bridge = (w.CashTreesAndroid || w.CashTreesIOS) as
 		| (Record<string, unknown> & { __android?: boolean })
 		| undefined
-	const fn = bridge?.[action]
-	if (typeof fn !== 'function') return false
 	try {
 		if (w.CashTreesAndroid) {
-			;(fn as unknown as (json: string) => void)(JSON.stringify({ action, ...payload }))
+			const android = w.CashTreesAndroid as Record<string, unknown>
+			const fn = android[action]
+			const json = JSON.stringify({ action, ...payload })
+			// Android WebView sometimes hides a Java method from `typeof`.
+			if (typeof fn === 'function') {
+				;(fn as (value: string) => void)(json)
+			} else {
+				;(android as unknown as Record<string, (value: string) => void>)[action](json)
+			}
 		} else {
+			const fn = bridge?.[action]
+			if (typeof fn !== 'function') return false
 			;(fn as unknown as (value: Record<string, unknown>) => void)({ action, ...payload })
 		}
 		return true

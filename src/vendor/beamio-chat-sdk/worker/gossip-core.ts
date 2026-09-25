@@ -405,8 +405,7 @@ export class GossipCore {
 		return 'unknown'
 	}
 
-	private async handleInbound(rawData: string, viaDomain: string, rootSignal: AbortSignal): Promise<void> {
-		if (rootSignal.aborted) return
+	private async handleInbound(rawData: string, viaDomain: string, _rootSignal: AbortSignal): Promise<void> {
 		let data: Record<string, unknown>
 		try {
 			data = JSON.parse(rawData)

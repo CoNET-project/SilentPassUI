@@ -817,10 +817,10 @@ const VOICE_OFFER_BOUNCE_COOLDOWN_MS = 8_000
  * Foreground / pageshow resume: if listen looks dead, abort + re-initChat(gossip=false).
  * Safe to call often; no-ops when the stream recently received bytes or is still connecting.
  *
- * `force` is only for a native voice-call wake. Heartbeats keep a live SSE looking fresh,
- * so the normal skip never asks mailbox B to flush the saved offer. A forced bounce closes
- * that socket and opens a new listen, which is when B replays saveLocal. A stream that has
- * not yet received its first bytes is left alone until that drain finishes.
+ * `force` is only for a native voice-call wake. A live SSE already receives the
+ * one-packet offer, so closing it drops the caller identity. Bounce only when the
+ * listen is dead or stale, which is when mailbox B still holds the offer in saveLocal.
+ * A stream that has not yet received its first bytes is left alone until that drain finishes.
  */
 export const resumeGossipListenOnForeground = async (
 	setProfiles: (val: profile[]) => void,
@@ -833,6 +833,11 @@ export const resumeGossipListenOnForeground = async (
 	const force = opts?.force === true
 	if (force) {
 		const live = Boolean(currentGossipAbortController && !currentGossipAbortController.signal.aborted)
+		const fresh = lastGossipActivityAt > 0 && Date.now() - lastGossipActivityAt < staleMs
+		if (live && fresh) {
+			chatBootLog('pullVoiceOffer: live listen kept so the offer on this SSE can show the caller', 'info')
+			return
+		}
 		if (live && !lastGossipActivityAt) {
 			chatBootLog('pullVoiceOffer deferred: listen still connecting', 'info')
 			if (voiceOfferBounceTimer !== undefined) clearTimeout(voiceOfferBounceTimer)
@@ -954,8 +959,9 @@ export const connectToGossipNode = async (
         pgpPublicKeyArmored: pgpPublicArmored,
         nodes,
         rootSignal,
-        onLine: (line) => {
-          if (rootSignal.aborted) return
+		onLine: (line) => {
+          // A wake bounce may abort this signal while the offer is already decrypted.
+          // Deliver the line first; dropping it leaves CallStyle on the generic title.
           newMessage(line)
         },
         onActivity: () => {

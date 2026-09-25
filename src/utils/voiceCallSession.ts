@@ -1,4 +1,5 @@
 import { Wallet, verifyMessage } from 'ethers'
+import { dispatchNativeSystemCallAction } from './cashTreesNativeNfc'
 
 export type VoiceCallSignal = {
 	type: 'voice_call_offer_v1' | 'voice_call_accept_v1' | 'voice_call_reject_v1' | 'voice_end_v1'
@@ -152,6 +153,43 @@ export function claimIncomingVoiceCallReport(callId: string, sessionId: string):
 
 export function hasReportedIncomingVoiceCall(callId: string, sessionId: string): boolean {
 	return reportedIncomingVoiceCallIds.has(`${callId.trim()}:${sessionId.trim()}`)
+}
+
+/**
+ * Update the native incoming-call UI as soon as a decrypted offer line exists.
+ * This does not claim the in-app report, so the Chat ingest path can still
+ * record the call and replace the address with a looked-up BeamioTag.
+ */
+export function applyNativeIncomingVoiceOfferFromLine(raw: string): boolean {
+	const signal = parseVoiceCallSignal(raw)
+	if (
+		signal?.type !== 'voice_call_offer_v1' ||
+		typeof signal.callId !== 'string' ||
+		typeof signal.sessionId !== 'string' ||
+		!(Number(signal.expiresAt) > Date.now())
+	) {
+		return false
+	}
+	const callerEoa = recoverVoiceCallOfferSigner(signal)
+	const proven = callerEoa || claimedVoiceCallerAddress(signal)
+	const claimedTag = claimedVoiceCallerTag(signal)
+	if (!proven && !claimedTag) return false
+	const mismatch = voiceCallClaimMismatchesKey(signal, callerEoa, '')
+	const delivered = dispatchNativeSystemCallAction('reportIncomingSystemCall', {
+		callId: signal.callId,
+		sessionId: signal.sessionId,
+		peerAddress: proven,
+		displayName: proven || claimedTag,
+		claimedTag: mismatch ? claimedTag : '',
+		claimedAddress: mismatch ? claimedVoiceCallerAddress(signal) : '',
+		identityWarning: mismatch ? VOICE_CALL_IDENTITY_WARNING : '',
+	})
+	console.info(
+		delivered
+			? '[voice] incoming offer delivered to native shell'
+			: '[voice] incoming offer could not reach the native shell',
+	)
+	return delivered
 }
 
 export const VOICE_MAX_FRAME_B64 = 12_000

@@ -217,9 +217,9 @@ export const startWorkerGossipListen = async (p: StartWorkerGossipParams): Promi
 	const unsubs: Array<() => void> = []
 	unsubs.push(
 		client.on('message', (env) => {
+			if (env.line) p.onLine(env.line)
 			if (p.rootSignal.aborted) return
 			p.onActivity()
-			if (env.line) p.onLine(env.line)
 		}),
 	)
 	unsubs.push(

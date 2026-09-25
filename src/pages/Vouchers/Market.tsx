@@ -3666,9 +3666,8 @@ function discoverClaimEarnActionLabel(
 ): string {
 	if (eligibility === 'already_redeemed') return 'Redeemed'
 	if (eligibility === 'already_claimed') return 'Claimed'
-	if (eligibility === 'insufficient_social_points') {
-		return formatCouponClaimPointsPrice(pointsCost) ?? 'PT to Claim'
-	}
+	const priceLabel = formatCouponClaimPointsPrice(pointsCost)
+	if (priceLabel) return priceLabel
 	const off = title.match(/(\d+(?:\.\d+)?)\s*OFF/i)
 	if (off) return `Claim ${off[1]} OFF`
 	if (/\bfree\b/i.test(title)) return 'Claim Free'
@@ -3677,7 +3676,6 @@ function discoverClaimEarnActionLabel(
 
 function DiscoverClaimEarnSwipeCard({
 	row,
-	primary,
 	claimEligibility,
 	claimStatus = 'idle',
 	onClaim,
@@ -3685,7 +3683,6 @@ function DiscoverClaimEarnSwipeCard({
 	getPrivateKeyArmor,
 }: {
 	row: DiscoverMerchantCouponOffer
-	primary: boolean
 	claimEligibility: CouponOpenClaimEligibility | undefined
 	claimStatus?: DiscoverCouponClaimButtonStatus
 	onClaim?: () => void
@@ -3721,7 +3718,7 @@ function DiscoverClaimEarnSwipeCard({
 	const label = busy
 		? 'Claiming…'
 		: discoverClaimEarnActionLabel(row.coupon.title, claimEligibility, claimPointsCost)
-	const buttonClass = primary && canClaim && !busy
+	const buttonClass = canClaim && !busy
 		? 'bg-[#1562f0] text-white shadow-sm'
 		: 'bg-[#eef1f4] text-[#3a3f45] dark:bg-slate-800 dark:text-slate-200'
 	return (
@@ -3838,10 +3835,6 @@ function DiscoverClaimEarnPointsRail({
 	sectionRef: React.Ref<HTMLDivElement>
 }) {
 	const scrollerRef = useRef<HTMLDivElement | null>(null)
-	const firstClaimableId = rows.find((row) => {
-		const eligibility = claimEligibilityById[row.coupon.id]
-		return eligibility === 'claimable' || eligibility === 'unknown' || eligibility == null
-	})?.coupon.id
 	const railError = rows.map((row) => claimErrorById[row.coupon.id]).find((msg) => Boolean(msg)) ?? null
 	const needsRewardPt = rows.some((row) => claimEligibilityById[row.coupon.id] === 'insufficient_social_points')
 	const swipeNext = useCallback(() => {
@@ -3878,7 +3871,6 @@ function DiscoverClaimEarnPointsRail({
 						<DiscoverClaimEarnSwipeCard
 							key={row.coupon.id}
 							row={row}
-							primary={row.coupon.id === firstClaimableId}
 							claimEligibility={claimEligibilityById[row.coupon.id]}
 							claimStatus={claimStatusById[row.coupon.id] ?? 'idle'}
 							onClaim={() => onClaim(row)}

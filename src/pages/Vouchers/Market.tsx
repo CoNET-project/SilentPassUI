@@ -1041,7 +1041,6 @@ const DISCOVER_FOOD_BEVERAGE_GIFT_ACCENT = '#ea580c'
 const DISCOVER_FOOD_BEVERAGE_PASS_FALLBACK = '#5c554b'
 
 function DiscoverMerchantHowPointsWorkPanel({
-	enabled,
 	accent,
 }: {
 	pct: string | null
@@ -1050,8 +1049,6 @@ function DiscoverMerchantHowPointsWorkPanel({
 	accent: string
 	rewardContext: string
 }) {
-	if (!enabled) return null
-
 	return (
 		<section className="rounded-2xl border border-[#ebe6df] bg-[#faf8f5] px-4 py-4 dark:border-slate-700 dark:bg-slate-900/80">
 			<div className="flex items-center gap-3">

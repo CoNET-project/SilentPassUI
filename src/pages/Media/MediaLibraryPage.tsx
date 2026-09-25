@@ -44,6 +44,37 @@ export function MediaLibraryPage({ cardAddress, initialMedia = [] }: MediaLibrar
 	}, [setShowFooter])
 
 	useEffect(() => {
+		if (!normalizedCardAddress || initialMedia.length > 0) return
+		let cancelled = false
+		void fetch(
+			`https://beamio.app/api/cardMetadata?cardAddress=${encodeURIComponent(normalizedCardAddress)}`,
+			{ credentials: 'omit' },
+		)
+			.then(async (response) => {
+				if (!response.ok) throw new Error(`metadata_http_${response.status}`)
+				const payload = (await response.json()) as {
+					metadata?: { shareTokenMetadata?: { merchantMedia?: unknown } } | null
+				}
+				const raw = payload.metadata?.shareTokenMetadata?.merchantMedia
+				if (!Array.isArray(raw)) throw new Error('invalid_merchant_media')
+				const remoteMedia = raw.filter(
+					(item): item is MediaInput =>
+						Boolean(item && typeof item === 'object' && typeof (item as { url?: unknown }).url === 'string'),
+				)
+				if (cancelled) return
+				const resolved = resolveMerchantMediaItems(remoteMedia, address)
+				setItems(resolved)
+				if (address) saveMedia(address, resolved)
+			})
+			.catch(() => {
+				// Keep local trusted media when the remote read is unavailable.
+			})
+		return () => {
+			cancelled = true
+		}
+	}, [address, initialMedia.length, normalizedCardAddress])
+
+	useEffect(() => {
 		if (!selectedFile) {
 			setSelectedPreviewUrl('')
 			return

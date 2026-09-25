@@ -73,6 +73,9 @@ export type WorkerCommand =
 				calleeEoa: string
 				expiresAt: number
 				timestamp: number
+				/** Signed offer JSON. The worker encrypts it to the callee user PGP. */
+				offerText?: string
+				recipientPgp?: string
 			}
 	  }
 	| { type: 'voiceUnlisten'; reqId: number; sessionId: string }

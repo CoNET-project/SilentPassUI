@@ -44,7 +44,7 @@ import {
 	postWithTimeout,
 } from '../nodes'
 import { base64ToUtf8, keccakUtf8, utf8ToBase64 } from '../crypto'
-import { buildPostBody, encryptOpaqueVoiceCommand, encryptRouteCommand, wrapArmorToEntryRoute, wrapArmorToMailboxWork } from '../envelope'
+import { armorToString, buildPostBody, encryptOpaqueVoiceCommand, encryptRouteCommand, wrapArmorToEntryRoute, wrapArmorToMailboxWork } from '../envelope'
 
 /** Callbacks the worker entry wires to `postMessage`. */
 export interface GossipEmit {
@@ -667,10 +667,13 @@ export class GossipCore {
 			calleeEoa: string
 			expiresAt: number
 			timestamp: number
+			offerText?: string
+			recipientPgp?: string
 		},
 	): Promise<boolean> {
-		if (this.paused || !this.cfg || !this.wallet || !sessionId) {
-			this.emit.log('warn', `voice listen refused early: paused=${this.paused} cfg=${!!this.cfg} wallet=${!!this.wallet} session=${!!sessionId}`)
+		const wallet = this.wallet
+		if (this.paused || !this.cfg || !wallet || !sessionId) {
+			this.emit.log('warn', `voice listen refused early: paused=${this.paused} cfg=${!!this.cfg} wallet=${!!wallet} session=${!!sessionId}`)
 			return false
 		}
 		this.voiceListenController?.abort('voice_replace')
@@ -685,6 +688,32 @@ export class GossipCore {
 			this.emit.log('warn', `voice listen refused: route=${!!route} nodes=${this.nodes.length} entries=${entries.length}`)
 			return false
 		}
+		let offerArmor = ''
+		const offerText = pushWakeup?.offerText?.trim() || ''
+		const recipientPgp = pushWakeup?.recipientPgp?.trim() || ''
+		if (offerText && recipientPgp) {
+			try {
+				const signMessage = await wallet.signMessage(offerText)
+				const envelope = {
+					timestamp: Date.now(),
+					text: offerText,
+					from: wallet.address,
+					signMessage,
+				}
+				offerArmor = armorToString(await encrypt({
+					message: await createMessage({ text: utf8ToBase64(JSON.stringify(envelope)) }),
+					encryptionKeys: await readKey({ armoredKey: recipientPgp }),
+					config: { preferredCompressionAlgorithm: enums.compression.zlib },
+				}))
+			} catch (ex) {
+				this.emit.log('warn', `voice offer encrypt failed: ${(ex as Error)?.message ?? String(ex)}`)
+				return false
+			}
+			if (!offerArmor.includes('-----BEGIN PGP MESSAGE-----') || offerArmor.length > 48_000) {
+				this.emit.log('warn', 'voice offer armor missing or too large')
+				return false
+			}
+		}
 		const inner = await encryptOpaqueVoiceCommand({
 			command: 'voice_listen',
 			sessionId,
@@ -695,6 +724,7 @@ export class GossipCore {
 				expiresAt: pushWakeup.expiresAt,
 				pushTimestamp: pushWakeup.timestamp,
 			} : {}),
+			...(offerArmor ? { offerArmor } : {}),
 		}, route)
 		const controller = new AbortController()
 		this.voiceListenController = controller

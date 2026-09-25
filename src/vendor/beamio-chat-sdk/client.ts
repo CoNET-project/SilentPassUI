@@ -197,6 +197,8 @@ class BeamioChatClientImpl implements BeamioChatClient {
 			calleeEoa: string
 			expiresAt: number
 			timestamp: number
+			offerText?: string
+			recipientPgp?: string
 		},
 	): Promise<boolean> {
 		const r = await this.request<{ started: boolean }>({ type: 'voiceListen', reqId: 0, sessionId, pushWakeup })

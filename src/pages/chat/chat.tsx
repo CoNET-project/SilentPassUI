@@ -107,8 +107,14 @@ import {
 	claimIncomingVoiceCallReport,
 	hasReportedIncomingVoiceCall,
 	isVoiceCallProtocolMessage,
+	claimedVoiceCallerAddress,
+	claimedVoiceCallerTag,
+	formatLookedUpBeamioTag,
 	parseVoiceCallSignal,
 	randomVoiceId,
+	recoverVoiceCallOfferSigner,
+	VOICE_CALL_IDENTITY_WARNING,
+	voiceCallClaimMismatchesKey,
 	type VoiceCallSignal,
 } from '@/utils/voiceCallSession'
 import { startVoiceCapture, VoicePlaybackBuffer } from '@/services/voiceCallMedia'
@@ -1770,7 +1776,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		usdcbalance = 0,
 		setScanData,
 	} = useDaemonContext()
-	const { resolvePeerSearchResult, ensureProfilesForAddresses } = useBeamioTagDatabase()
+	const { resolvePeerSearchResult, ensureProfilesForAddresses, searchRemoteAndIngest } = useBeamioTagDatabase()
 	
 
 
@@ -1824,6 +1830,13 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 	const voiceFrameSeqRef = useRef(0)
 	const voiceControllerRef = useRef<VoiceCallController | null>(null)
 	const [incomingVoiceOffer, setIncomingVoiceOffer] = useState<Record<string, any> | null>(null)
+	const [incomingCaller, setIncomingCaller] = useState<{
+		address: string
+		tag: string
+		claimedTag: string
+		claimedAddress: string
+		identityWarning: string
+	} | null>(null)
 	const [fileJobs, setFileJobs] = useState<ChatFileJob[]>([])
 	const fileControllersRef = useRef(new Map<string, AbortController>())
 	const storageDataRef = useRef<(() => Promise<void>) | null>(null)
@@ -2105,8 +2118,10 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		try {
 			const signal = parseVoiceCallSignal(latest.text)
 			if (!signal) return
+			const callerEoa = recoverVoiceCallOfferSigner(signal)
 			if (
 				signal.type === 'voice_call_offer_v1' &&
+				(callerEoa || claimedVoiceCallerTag(signal) || claimedVoiceCallerAddress(signal)) &&
 				typeof signal.callId === 'string' &&
 				typeof signal.sessionId === 'string' &&
 				typeof signal.sessionKey === 'string' &&
@@ -2123,13 +2138,51 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 					return
 				}
 				setIncomingVoiceOffer(previous => previous?.sessionId === signal.sessionId ? previous : signal)
+				const provenAddress = callerEoa || ''
+				const localTag = provenAddress
+					? formatLookedUpBeamioTag(resolvePeerSearchResult(provenAddress)?.username)
+					: ''
+				const mismatch = voiceCallClaimMismatchesKey(signal, provenAddress || null, localTag)
+				const claim = {
+					claimedTag: mismatch ? claimedVoiceCallerTag(signal) : '',
+					claimedAddress: mismatch ? claimedVoiceCallerAddress(signal) : '',
+					identityWarning: mismatch ? VOICE_CALL_IDENTITY_WARNING : '',
+				}
+				setIncomingCaller({ address: provenAddress, tag: localTag, ...claim })
+				void (async () => {
+					if (!provenAddress) return
+					await ensureProfilesForAddresses([provenAddress])
+					let username = resolvePeerSearchResult(provenAddress)?.username
+					if (!username) {
+						const res = await searchRemoteAndIngest(provenAddress)
+						const rows = res && typeof res === 'object' && Array.isArray((res as { results?: unknown }).results)
+							? (res as { results: { address?: string; username?: string }[] }).results
+							: []
+						username = rows.find((row) => (row.address || '').toLowerCase() === provenAddress)?.username
+					}
+					const tag = formatLookedUpBeamioTag(username)
+					const nextMismatch = voiceCallClaimMismatchesKey(signal, provenAddress, tag, true)
+					const nextClaim = {
+						claimedTag: nextMismatch ? claimedVoiceCallerTag(signal) : '',
+						claimedAddress: nextMismatch ? claimedVoiceCallerAddress(signal) : '',
+						identityWarning: nextMismatch ? VOICE_CALL_IDENTITY_WARNING : '',
+					}
+					setIncomingCaller({ address: provenAddress, tag, ...nextClaim })
+					dispatchNativeSystemCallAction('reportIncomingSystemCall', {
+						callId: signal.callId,
+						sessionId: signal.sessionId,
+						peerAddress: provenAddress,
+						displayName: tag || 'Incoming voice call',
+						...nextClaim,
+					})
+				})()
 				const alreadyReported = hasReportedIncomingVoiceCall(signal.callId, signal.sessionId)
 				if (!alreadyReported) {
 					claimIncomingVoiceCallReport(signal.callId, signal.sessionId)
 					upsertPhoneCallRecord({
 						callId: signal.callId,
 						sessionId: signal.sessionId,
-						peerAddress: chatData.address,
+						peerAddress: provenAddress || claimedVoiceCallerAddress(signal),
 						direction: 'incoming',
 						status: 'ringing',
 						createdAt: Date.now(),
@@ -2137,9 +2190,10 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 					})
 					dispatchNativeSystemCallAction('reportIncomingSystemCall', {
 						callId: signal.callId,
-					sessionId: signal.sessionId,
-						peerAddress: chatData.address,
-						displayName: chatData.beamio?.username || chatData.address,
+						sessionId: signal.sessionId,
+						peerAddress: provenAddress,
+						displayName: localTag || 'Incoming voice call',
+						...claim,
 					})
 				}
 			}
@@ -2170,14 +2224,15 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 
 	const acceptVoiceCall = useCallback(async () => {
 		const offer = incomingVoiceOffer
-		if (!offer || incomingVoiceAction !== 'idle') return
+		const callerEoa = recoverVoiceCallOfferSigner(offer as VoiceCallSignal | null)
+		if (!offer || !callerEoa || incomingVoiceAction !== 'idle') return
 		setIncomingVoiceAction('accepting')
 		try {
 			const localWallet = new ethers.Wallet(privateKey).address
 			const controller = createVoiceCallController({
 				privateKey,
 				localCallId: String(CoNET_Data?.beamio?.accountName || localWallet).trim() || localWallet,
-				peerEoa: offer.from,
+				peerEoa: callerEoa,
 				peerPgp: chatData.chatData.publicArmored,
 				peerRoute: chatData.chatData.routersArmoreds,
 				allNodes,
@@ -4327,7 +4382,25 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 						<Phone className="h-5 w-5 text-[#1652f0]" aria-hidden />
 						<div className="min-w-0 flex-1">
 							<p className="text-sm font-semibold text-slate-800">Incoming voice call</p>
-							<p className="text-xs text-slate-500">Accept to open a temporary encrypted relay.</p>
+							{incomingCaller?.tag ? (
+								<p className="truncate text-xs font-semibold text-slate-700">
+									{incomingCaller.tag}
+								</p>
+							) : null}
+							{incomingCaller?.address ? (
+								<p className="mt-1 inline-flex max-w-full break-all rounded-full border border-[#dce2f7] bg-[#e9edff] px-2 py-0.5 font-mono text-[11px] text-[#424655]">
+									{incomingCaller.address}
+								</p>
+							) : null}
+							{incomingCaller?.identityWarning ? (
+								<div className="mt-1">
+									<p className="truncate text-xs font-semibold text-red-600">{incomingCaller.claimedTag || 'Unknown tag'}</p>
+									{incomingCaller.claimedAddress ? (
+										<p className="mt-1 inline-flex max-w-full break-all rounded-full border border-red-200 bg-red-50 px-2 py-0.5 font-mono text-[11px] text-red-700">{incomingCaller.claimedAddress}</p>
+									) : null}
+									<p className="text-[11px] font-semibold text-red-600">{incomingCaller.identityWarning}</p>
+								</div>
+							) : null}
 						</div>
 						<button
 							type="button"

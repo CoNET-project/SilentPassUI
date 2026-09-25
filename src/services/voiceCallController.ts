@@ -3,6 +3,9 @@ import {
 	createVoiceSessionKey,
 	encryptVoiceFrame,
 	makeVoiceCallSignal,
+	recoverVoiceCallOfferSigner,
+	signVoiceCallOffer,
+	randomMailboxVoiceSessionId,
 	randomVoiceId,
 	voiceSessionKeyFromBase64,
 	voiceSessionKeyToBase64,
@@ -91,12 +94,13 @@ export function createVoiceCallController(options: VoiceCallControllerOptions) {
 	let selectedEntries = getRandomNodes(options.allNodes, Math.min(4, options.allNodes.length))
 
 	const startOutgoing = async (): Promise<VoiceCallChannel | null> => {
-		const sessionId = randomVoiceId('voice')
+		const sessionId = randomMailboxVoiceSessionId()
 		const sessionKey = createVoiceSessionKey()
 		selectedEntries = getRandomNodes(options.allNodes, Math.min(4, options.allNodes.length))
-		const signal = makeVoiceCallSignal({
+		const callerTag = options.localCallId.trim().replace(/^@/, '')
+		const signal = await signVoiceCallOffer(makeVoiceCallSignal({
 			type: 'voice_call_offer_v1',
-			callId: options.localCallId,
+			callId: randomMailboxVoiceSessionId(),
 			sessionId,
 			from: new ethers.Wallet(options.privateKey).address,
 			to: options.peerEoa,
@@ -104,12 +108,14 @@ export function createVoiceCallController(options: VoiceCallControllerOptions) {
 			tempWalletAddress: tempWallet.address,
 			entryDomains: selectedEntries.map(node => node.domain),
 			codec: 'audio/webm;codecs=opus',
-		})
+			...( /^[A-Za-z0-9_]{1,32}$/.test(callerTag) && !/^[0-9a-fA-F]{16,32}$/.test(callerTag)
+				? { callerTag }
+				: {}),
+		}), options.privateKey)
 		const pushTimestamp = Math.floor(Date.now() / 1000)
 		// Ring window must stay inside the mailbox/API 10-minute cap.
-		// signal.expiresAt is the 15-minute call lifetime and is rejected, so
-		// the callee never receives type=voiceCall and Android never opens
-		// the full-screen incoming window.
+		// The listen command and push carry only an opaque call id. Caller tag
+		// and EOA stay inside the offer encrypted to the callee.
 		const ringExpiresAt = Date.now() + 2 * 60 * 1000
 		if (!await startWorkerVoiceListen(sessionId, {
 			callId: signal.callId,
@@ -136,17 +142,18 @@ export function createVoiceCallController(options: VoiceCallControllerOptions) {
 	}
 
 	const acceptIncoming = async (offer: VoiceCallSignal): Promise<VoiceCallChannel | null> => {
-		const sessionId = randomVoiceId('voice')
+		const sessionId = randomMailboxVoiceSessionId()
 		const sessionKey = voiceSessionKeyFromBase64(offer.sessionKey || '')
 		selectedEntries = getRandomNodes(options.allNodes, Math.min(4, options.allNodes.length))
 		if (!await startWorkerVoiceListen(sessionId)) return null
+		const callerEoa = recoverVoiceCallOfferSigner(offer)
 		const answer = makeVoiceCallSignal({
 			type: 'voice_call_accept_v1',
 			callId: offer.callId,
 			sessionId,
 			peerSessionId: offer.sessionId,
 			from: new ethers.Wallet(options.privateKey).address,
-			to: offer.from,
+			to: callerEoa || options.peerEoa,
 			tempWalletAddress: tempWallet.address,
 			entryDomains: selectedEntries.map(node => node.domain),
 			codec: offer.codec || 'audio/webm;codecs=opus',

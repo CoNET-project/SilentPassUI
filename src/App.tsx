@@ -101,7 +101,7 @@ import { ingestAaMultisigFromChat } from '@/utils/aaMultisigIngest'
 import { tu } from '@/locale/beamioLocale'
 import { mapServerError } from '@/locale/mapServerError'
 import { installPwaLifecycleRecovery } from '@/utils/pwaLifecycleRecovery'
-import { claimIncomingVoiceCallReport, parseVoiceCallSignal } from '@/utils/voiceCallSession'
+import { claimIncomingVoiceCallReport, claimedVoiceCallerAddress, claimedVoiceCallerTag, formatLookedUpBeamioTag, parseVoiceCallSignal, recoverVoiceCallOfferSigner, VOICE_CALL_IDENTITY_WARNING, voiceCallClaimMismatchesKey } from '@/utils/voiceCallSession'
 
 global.Buffer = require("buffer").Buffer
 
@@ -179,6 +179,10 @@ function AppShell() {
   const [globalIncomingVoiceCall, setGlobalIncomingVoiceCall] = useState<{
     signal: ReturnType<typeof parseVoiceCallSignal>
     from: string
+    displayTag: string
+    claimedTag: string
+    claimedAddress: string
+    identityWarning: string
   } | null>(null)
   const [globalIncomingVoiceMuted, setGlobalIncomingVoiceMuted] = useState(false)
   const [browserNotificationPermission, setBrowserNotificationPermission] = useState<NotificationPermission | 'unsupported'>(() =>
@@ -200,9 +204,8 @@ function AppShell() {
       return
     }
     const peer = resolvePeerSearchResult(globalIncomingVoiceCall.from)
-    const label = peer?.username
-      ? (peer.username.startsWith('@') ? peer.username : `@${peer.username}`)
-      : `${globalIncomingVoiceCall.from.slice(0, 6)}…${globalIncomingVoiceCall.from.slice(-4)}`
+    const tag = globalIncomingVoiceCall.displayTag || formatLookedUpBeamioTag(peer?.username)
+    const label = tag ? `${tag} ${globalIncomingVoiceCall.from}` : globalIncomingVoiceCall.from
     const notification = new Notification('Incoming voice call', {
       body: `${label} is calling`,
       tag: `beamio-global-voice-${globalIncomingVoiceCall.signal?.sessionId ?? globalIncomingVoiceCall.from}`,
@@ -1388,8 +1391,12 @@ function AppShell() {
 			// mounting the conversation page first.
 			try {
 				const signal = parseVoiceCallSignal(displayText)
+				const callerEoa = signal?.type === 'voice_call_offer_v1'
+					? recoverVoiceCallOfferSigner(signal)
+					: null
 				if (
 					signal?.type === 'voice_call_offer_v1' &&
+					(callerEoa || claimedVoiceCallerTag(signal) || claimedVoiceCallerAddress(signal)) &&
 					typeof signal.callId === 'string' &&
 					typeof signal.sessionId === 'string' &&
 					Number(signal.expiresAt) > Date.now()
@@ -1402,16 +1409,63 @@ function AppShell() {
 						!terminalStatuses.has(String(previousCall?.status || '')) &&
 						claimIncomingVoiceCallReport(signal.callId, signal.sessionId)
 					) {
+						const provenAddress = callerEoa || ''
+						const localTag = provenAddress
+							? formatLookedUpBeamioTag(resolvePeerSearchResult(provenAddress)?.username)
+							: ''
+						const mismatch = voiceCallClaimMismatchesKey(signal, provenAddress || null, localTag)
+						const claim = {
+							claimedTag: mismatch ? claimedVoiceCallerTag(signal) : '',
+							claimedAddress: mismatch ? claimedVoiceCallerAddress(signal) : '',
+							identityWarning: mismatch ? VOICE_CALL_IDENTITY_WARNING : '',
+						}
 						if (!isCashTreesNativeWebView()) {
-							setGlobalIncomingVoiceCall({ signal, from: signAddr })
+							setGlobalIncomingVoiceCall({
+								signal,
+								from: provenAddress,
+								displayTag: localTag,
+								...claim,
+							})
 							setGlobalIncomingVoiceMuted(false)
 						}
 						dispatchNativeSystemCallAction('reportIncomingSystemCall', {
 							callId: signal.callId,
 							sessionId: signal.sessionId,
-							peerAddress: signAddr,
-							displayName: signAddr,
+							peerAddress: provenAddress,
+							displayName: localTag || 'Incoming voice call',
+							...claim,
 						})
+						void (async () => {
+							if (!provenAddress) return
+							await ensureProfilesForAddresses([provenAddress])
+							let username = resolvePeerSearchResult(provenAddress)?.username
+							if (!username) {
+								const res = await searchRemoteAndIngest(provenAddress)
+								const rows = res && typeof res === 'object' && Array.isArray((res as { results?: unknown }).results)
+									? (res as { results: { address?: string; username?: string }[] }).results
+									: []
+								username = rows.find((row) => (row.address || '').toLowerCase() === provenAddress)?.username
+							}
+							const tag = formatLookedUpBeamioTag(username)
+							const nextMismatch = voiceCallClaimMismatchesKey(signal, provenAddress, tag, true)
+							const nextClaim = {
+								claimedTag: nextMismatch ? claimedVoiceCallerTag(signal) : '',
+								claimedAddress: nextMismatch ? claimedVoiceCallerAddress(signal) : '',
+								identityWarning: nextMismatch ? VOICE_CALL_IDENTITY_WARNING : '',
+							}
+							setGlobalIncomingVoiceCall((current) =>
+								current?.signal?.callId === signal.callId
+									? { ...current, from: provenAddress, displayTag: tag, ...nextClaim }
+									: current,
+							)
+							dispatchNativeSystemCallAction('reportIncomingSystemCall', {
+								callId: signal.callId,
+								sessionId: signal.sessionId,
+								peerAddress: provenAddress,
+								displayName: tag || 'Incoming voice call',
+								...nextClaim,
+							})
+						})()
 						const callRows = Array.isArray(profile.phoneCalls) ? profile.phoneCalls : []
 						if (!callRows.some((item: PhoneCallRecord) => item.sessionId === signal.sessionId)) {
 							profile.phoneCalls = [
@@ -1419,7 +1473,7 @@ function AppShell() {
 								{
 									callId: signal.callId,
 									sessionId: signal.sessionId,
-									peerAddress: signAddr,
+									peerAddress: provenAddress || claimedVoiceCallerAddress(signal),
 									direction: 'incoming',
 									status: 'ringing',
 									createdAt: Number(signal.createdAt) || msg.timestamp,
@@ -2149,9 +2203,7 @@ function AppShell() {
 							image: '',
 						}
 						const contact = peer || fallback
-						const tag = contact.username
-							? (contact.username.startsWith('@') ? contact.username : `@${contact.username}`)
-							: `${globalIncomingVoiceCall.from.slice(0, 6)}…${globalIncomingVoiceCall.from.slice(-4)}`
+						const tag = globalIncomingVoiceCall.displayTag || formatLookedUpBeamioTag(contact.username)
 						const openChatWithAction = (action: 'accept' | 'reject') => {
 							setGlobalIncomingVoiceCall(null)
 							setChatHomeItem(contact)
@@ -2167,8 +2219,19 @@ function AppShell() {
 											className="h-12 w-12 shrink-0 rounded-full object-cover ring-2 ring-white"
 										/>
 										<div className="min-w-0 flex-1">
-											<p className="truncate text-base font-bold text-slate-900">{tag}</p>
-											<p className="mt-0.5 text-xs text-slate-500">Incoming voice call</p>
+											<p className="truncate text-base font-bold text-slate-900">{tag || 'Incoming voice call'}</p>
+											{globalIncomingVoiceCall.from ? (
+												<p className="mt-1 inline-flex max-w-full break-all rounded-full border border-[#dce2f7] bg-[#e9edff] px-2.5 py-1 font-mono text-[11px] text-[#424655]">{globalIncomingVoiceCall.from}</p>
+											) : null}
+											{globalIncomingVoiceCall.identityWarning ? (
+												<div className="mt-2">
+													<p className="truncate text-sm font-semibold text-red-600">{globalIncomingVoiceCall.claimedTag || 'Unknown tag'}</p>
+													{globalIncomingVoiceCall.claimedAddress ? (
+														<p className="mt-1 inline-flex max-w-full break-all rounded-full border border-red-200 bg-red-50 px-2.5 py-1 font-mono text-[11px] text-red-700">{globalIncomingVoiceCall.claimedAddress}</p>
+													) : null}
+													<p className="mt-1 text-xs font-semibold text-red-600">{globalIncomingVoiceCall.identityWarning}</p>
+												</div>
+											) : null}
 										</div>
 										<button
 											type="button"

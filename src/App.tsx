@@ -1015,6 +1015,7 @@ function AppShell() {
 		const onPullVoiceOffer = (event: Event) => {
 			const action = (event as CustomEvent<{ action?: string }>).detail?.action
 			if (action !== 'pullVoiceOffer') return
+			publishNativePwaLog('info', '[AppShell] pullVoiceOffer received; refreshing mailbox listen')
 			void resumeGossipListenOnForeground(
 				setProfiles,
 				setAllNodes,

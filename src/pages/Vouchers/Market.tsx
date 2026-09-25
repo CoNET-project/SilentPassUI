@@ -2951,7 +2951,7 @@ function DiscoverMerchantOwnerBeamioTagCapsule({
 	const interactive = Boolean(onOpenProfile)
 
 	const shellClass = [
-		"inline-flex max-w-[min(100%,14rem)] min-w-0 shrink-0 items-center gap-1.5 rounded-full border border-white/25 bg-white/15 py-1 pl-1 pr-2.5 text-white shadow-sm backdrop-blur-sm",
+		"inline-flex max-w-[min(100%,14rem)] min-w-0 shrink-0 items-center gap-1.5 rounded-full border border-white/25 bg-white/15 py-1 pl-1 pr-2.5 text-white shadow-[0_2px_10px_rgba(0,0,0,0.28),0_1px_3px_rgba(0,0,0,0.18)] backdrop-blur-sm",
 		interactive ? "cursor-pointer transition hover:bg-white/20 active:scale-[0.98] disabled:cursor-wait disabled:opacity-80" : "",
 	].join(" ")
 
@@ -3650,6 +3650,76 @@ function discoverCouponSupplyFraction(
 }
 
 /** Coupon claim price from metadata `pointsCost` (6-decimal raw, or legacy whole PT). */
+function readCouponMetadataYmd(meta: unknown, key: 'validFrom' | 'validTo'): string | null {
+	if (!meta || typeof meta !== 'object') return null
+	const sources: unknown[] = [meta]
+	const props = (meta as Record<string, unknown>).properties
+	if (props && typeof props === 'object') {
+		sources.push((props as Record<string, unknown>).beamioCoupon)
+	}
+	for (const src of sources) {
+		if (!src || typeof src !== 'object') continue
+		const raw = (src as Record<string, unknown>)[key]
+		if (typeof raw !== 'string') continue
+		const matched = raw.trim().match(/^(\d{4})-(\d{2})-(\d{2})/)
+		if (!matched) continue
+		const y = Number(matched[1])
+		const m = Number(matched[2])
+		const d = Number(matched[3])
+		if (y >= 1970 && m >= 1 && m <= 12 && d >= 1 && d <= 31) return `${matched[1]}-${matched[2]}-${matched[3]}`
+	}
+	return null
+}
+
+/** Compact title-row validity: `9/25–27`, `9/27`, or chain `12D` / `5H` / `30M`. */
+function formatDiscoverClaimCardValidity(
+	meta: unknown,
+	validBeforeSec: number | null,
+): { label: string; title: string } | null {
+	const fromYmd = readCouponMetadataYmd(meta, 'validFrom')
+	const toYmd = readCouponMetadataYmd(meta, 'validTo')
+	const parse = (ymd: string) => {
+		const [y, m, d] = ymd.split('-').map((part) => Number(part))
+		if (!y || !m || !d) return null
+		return { y, m, d }
+	}
+	const from = fromYmd ? parse(fromYmd) : null
+	const to = toYmd ? parse(toYmd) : null
+	const md = (part: { m: number; d: number }) => `${part.m}/${part.d}`
+	if (from && to) {
+		const sameDay = from.y === to.y && from.m === to.m && from.d === to.d
+		const label = sameDay
+			? md(to)
+			: from.y === to.y && from.m === to.m
+				? `${from.m}/${from.d}–${to.d}`
+				: from.y === to.y
+					? `${md(from)}–${md(to)}`
+					: `${md(from)}/${String(from.y).slice(2)}–${md(to)}/${String(to.y).slice(2)}`
+		return { label, title: sameDay ? `Valid ${md(to)}` : `Valid ${md(from)}–${md(to)}` }
+	}
+	const one = to ?? from
+	if (one) {
+		const thisYear = new Date().getFullYear()
+		const label = one.y === thisYear ? md(one) : `${md(one)}/${String(one.y).slice(2)}`
+		return { label, title: to ? `Until ${label}` : `From ${label}` }
+	}
+	if (!Number.isFinite(validBeforeSec ?? NaN) || (validBeforeSec ?? 0) <= 0) return null
+	const now = Math.floor(Date.now() / 1000)
+	const exp = validBeforeSec ?? 0
+	if (exp <= now) return { label: 'EXP', title: 'Expired' }
+	const delta = exp - now
+	if (delta >= 86_400) {
+		const count = Math.ceil(delta / 86_400)
+		return { label: `${count}D`, title: `Expires in ${count}D` }
+	}
+	if (delta >= 3_600) {
+		const count = Math.ceil(delta / 3_600)
+		return { label: `${count}H`, title: `Expires in ${count}H` }
+	}
+	const count = Math.max(1, Math.ceil(delta / 60))
+	return { label: `${count}M`, title: `Expires in ${count}M` }
+}
+
 function formatCouponClaimPointsPrice(pointsCost: number | null | undefined): string | null {
 	const n = Number(pointsCost)
 	if (!Number.isFinite(n) || n <= 0) return null
@@ -3718,12 +3788,14 @@ function DiscoverClaimEarnSwipeCard({
 	const label = busy
 		? 'Claiming…'
 		: discoverClaimEarnActionLabel(row.coupon.title, claimEligibility, claimPointsCost)
+	const validity = formatDiscoverClaimCardValidity(row.seriesRow.metadata ?? null, row.coupon.validBeforeSec)
 	const buttonClass = canClaim && !busy
 		? 'bg-[#1562f0] text-white shadow-sm'
 		: 'bg-[#eef1f4] text-[#3a3f45] dark:bg-slate-800 dark:text-slate-200'
 	return (
 		<article className="w-[168px] shrink-0 snap-start">
-			<div className="overflow-hidden rounded-[18px] bg-white shadow-[0_8px_22px_rgba(15,23,42,0.08)] ring-1 ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800">
+			<div className="rounded-[18px] bg-white shadow-[0_8px_22px_rgba(15,23,42,0.08)] ring-1 ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800">
+				<div className="overflow-hidden rounded-[18px]">
 				<div
 					className="relative aspect-[4/3] overflow-hidden bg-[#e8edf2] dark:bg-slate-800"
 					style={row.coupon.backgroundColorHex ? { backgroundColor: row.coupon.backgroundColorHex } : undefined}
@@ -3787,9 +3859,19 @@ function DiscoverClaimEarnSwipeCard({
 					) : null}
 				</div>
 				<div className="px-2.5 pb-2.5 pt-2">
-					<h4 className="truncate text-[15px] font-bold leading-tight text-[#1f2328] dark:text-slate-100">
-						{row.coupon.title}
-					</h4>
+					<div className="flex min-w-0 items-baseline gap-1.5">
+						<h4 className="min-w-0 flex-1 truncate text-[15px] font-bold leading-tight text-[#1f2328] dark:text-slate-100">
+							{row.coupon.title}
+						</h4>
+						{validity ? (
+							<span
+								className="shrink-0 text-right text-[11px] font-semibold leading-none tabular-nums text-[#8b919a] dark:text-slate-400"
+								title={validity.title}
+							>
+								{validity.label}
+							</span>
+						) : null}
+					</div>
 					<p className="mt-0.5 truncate text-[12px] font-semibold text-emerald-600 dark:text-emerald-400">
 						{row.coupon.subtitle}
 					</p>
@@ -3807,6 +3889,7 @@ function DiscoverClaimEarnSwipeCard({
 					>
 						{busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : label}
 					</button>
+				</div>
 				</div>
 			</div>
 		</article>
@@ -3865,8 +3948,9 @@ function DiscoverClaimEarnPointsRail({
 			) : (
 				<div
 					ref={scrollerRef}
-					className="-mx-4 flex gap-3 overflow-x-auto overscroll-x-contain px-4 pb-1 snap-x snap-mandatory [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+					className="overflow-x-auto overscroll-x-contain snap-x snap-mandatory [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
 				>
+					<div className="flex gap-3 pb-8">
 					{rows.map((row) => (
 						<DiscoverClaimEarnSwipeCard
 							key={row.coupon.id}
@@ -3878,6 +3962,7 @@ function DiscoverClaimEarnPointsRail({
 							getPrivateKeyArmor={getPrivateKeyArmor}
 						/>
 					))}
+					</div>
 				</div>
 			)}
 			{needsRewardPt ? (

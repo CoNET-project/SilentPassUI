@@ -817,10 +817,10 @@ const VOICE_OFFER_BOUNCE_COOLDOWN_MS = 8_000
  * Foreground / pageshow resume: if listen looks dead, abort + re-initChat(gossip=false).
  * Safe to call often; no-ops when the stream recently received bytes or is still connecting.
  *
- * `force` is only for a native voice-call wake. A live SSE already receives the
- * one-packet offer, so closing it drops the caller identity. Bounce only when the
- * listen is dead or stale, which is when mailbox B still holds the offer in saveLocal.
- * A stream that has not yet received its first bytes is left alone until that drain finishes.
+ * `force` is used for a native voice-call wake. Even a live SSE may not yet have
+ * drained the mailbox-saved one-packet offer, so a bounded reconnect is used to
+ * flush it through the worker. A stream that has not yet received its first
+ * bytes is left alone until that initial connection settles.
  */
 export const resumeGossipListenOnForeground = async (
 	setProfiles: (val: profile[]) => void,
@@ -835,7 +835,20 @@ export const resumeGossipListenOnForeground = async (
 		const live = Boolean(currentGossipAbortController && !currentGossipAbortController.signal.aborted)
 		const fresh = lastGossipActivityAt > 0 && Date.now() - lastGossipActivityAt < staleMs
 		if (live && fresh) {
-			chatBootLog('pullVoiceOffer: live listen kept so the offer on this SSE can show the caller', 'info')
+			// A voice push can arrive while the existing SSE is healthy but before
+			// that stream has delivered the mailbox-saved offer. Reusing the stream
+			// here leaves the native CallStyle on its generic title forever. The
+			// mailbox saves the encrypted offer before forwarding it, so a controlled
+			// reconnect is safe and flushes the pending offer through the worker.
+			chatBootLog('pullVoiceOffer: bounce live listen to flush the mailbox offer', 'info')
+			if (Date.now() - voiceOfferBounceAt < VOICE_OFFER_BOUNCE_COOLDOWN_MS) {
+				chatBootLog('pullVoiceOffer skipped: listen bounce already in progress', 'info')
+				return
+			}
+			voiceOfferBounceAt = Date.now()
+			prepareGossipListenResume('pullVoiceOffer_live')
+			setGossip(false)
+			await initChat(setProfiles, setAllNodes, setGossip, false, newMessage)
 			return
 		}
 		if (live && !lastGossipActivityAt) {

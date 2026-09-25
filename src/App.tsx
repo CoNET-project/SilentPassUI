@@ -1013,7 +1013,21 @@ function AppShell() {
 		const onPullVoiceOffer = (event: Event) => {
 			const action = (event as CustomEvent<{ action?: string }>).detail?.action
 			if (action !== 'pullVoiceOffer') return
-			onForegroundResume()
+			void resumeGossipListenOnForeground(
+				setProfiles,
+				setAllNodes,
+				setGossip,
+				message => {
+					setChartsRef.current((prev: string[]) => [...prev, message])
+				},
+				45_000,
+				{ force: true },
+			).catch(err => {
+				publishNativePwaLog(
+					'warn',
+					`[AppShell] pullVoiceOffer listen bounce failed: ${(err as Error)?.message ?? String(err)}`,
+				)
+			})
 		}
 		document.addEventListener('visibilitychange', onVisibility)
 		window.addEventListener('pageshow', onPageShow)
@@ -1439,7 +1453,7 @@ function AppShell() {
 							callId: signal.callId,
 							sessionId: signal.sessionId,
 							peerAddress: provenAddress,
-							displayName: localTag || 'Incoming voice call',
+							displayName: localTag || provenAddress || 'Incoming voice call',
 							...claim,
 						})
 						void (async () => {
@@ -1469,7 +1483,7 @@ function AppShell() {
 								callId: signal.callId,
 								sessionId: signal.sessionId,
 								peerAddress: provenAddress,
-								displayName: tag || 'Incoming voice call',
+								displayName: tag || provenAddress || 'Incoming voice call',
 								...nextClaim,
 							})
 						})()

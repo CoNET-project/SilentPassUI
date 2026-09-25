@@ -739,26 +739,41 @@ function DiscoverDynamicPassTitle({ title }: { title: string }) {
 		const container = containerRef.current
 		if (!element || !container) return
 
+		const maxFontSize = 26.4
+		const minFontSize = 13
+		let lastWidth = -1
+		let frame = 0
+
 		const fitTitle = () => {
-			const maxFontSize = 26.4
-			const minFontSize = 13
-			element.style.fontSize = `${maxFontSize}px`
 			const availableWidth = container.clientWidth
+			if (!availableWidth || availableWidth === lastWidth) return
+			lastWidth = availableWidth
+			element.style.fontSize = `${maxFontSize}px`
 			const requiredWidth = element.scrollWidth
-			if (!availableWidth || !requiredWidth) return
+			if (!requiredWidth) return
 			const nextFontSize = Math.max(
 				minFontSize,
 				Math.min(maxFontSize, maxFontSize * (availableWidth / requiredWidth)),
 			)
-			if (Math.abs(Number.parseFloat(element.style.fontSize) - nextFontSize) > 0.05) {
-				element.style.fontSize = `${nextFontSize}px`
-			}
+			element.style.fontSize = `${Math.round(nextFontSize * 100) / 100}px`
 		}
 
-		fitTitle()
-		const observer = new ResizeObserver(fitTitle)
+		const scheduleFit = () => {
+			cancelAnimationFrame(frame)
+			frame = requestAnimationFrame(fitTitle)
+		}
+
+		scheduleFit()
+		const observer = new ResizeObserver((entries) => {
+			const width = entries[0]?.contentRect.width ?? container.clientWidth
+			if (Math.round(width) === Math.round(lastWidth)) return
+			scheduleFit()
+		})
 		observer.observe(container)
-		return () => observer.disconnect()
+		return () => {
+			cancelAnimationFrame(frame)
+			observer.disconnect()
+		}
 	}, [title])
 
 	return (
@@ -3564,6 +3579,23 @@ function discoverCouponPhotoBadge(row: DiscoverMerchantCouponOffer): string | nu
 	return null
 }
 
+function discoverCouponSupplyFraction(
+	social: { maxSupply?: string | null; remainingSupply?: string | null } | null | undefined,
+	series: DiscoverCouponSeriesRow,
+	fallbackSummary: string | null,
+): string | null {
+	const clean = (raw: string | null | undefined) => raw?.replace(/,/g, '').trim() || ''
+	const total = clean(social?.maxSupply) || clean(series.issuedNftMaxSupply)
+	const left = clean(social?.remainingSupply) || clean(series.issuedNftRemainingSupply)
+	if (social?.maxSupply === null && !clean(series.issuedNftMaxSupply)) {
+		return left || null
+	}
+	if (left && total) return `${left}/${total}`
+	const matched = fallbackSummary?.match(/TOTAL\s+([0-9,]+|--)\s*·\s*LEFT\s+([0-9,]+|--)/i)
+	if (matched) return `${matched[2].replace(/,/g, '')}/${matched[1].replace(/,/g, '')}`
+	return null
+}
+
 function discoverClaimEarnActionLabel(
 	title: string,
 	eligibility: CouponOpenClaimEligibility | undefined,
@@ -3598,8 +3630,11 @@ function DiscoverClaimEarnSwipeCard({
 		typeof social?.likeCount === 'number' && Number.isFinite(social.likeCount)
 			? Math.max(0, Math.trunc(social.likeCount))
 			: null
-	const supplyLine =
-		formatCouponSupplySummary(row.coupon.cardAddress, row.coupon.tokenId) ?? row.supplySummary
+	const supplyCapsule = discoverCouponSupplyFraction(
+		social,
+		row.seriesRow,
+		formatCouponSupplySummary(row.coupon.cardAddress, row.coupon.tokenId) ?? row.supplySummary,
+	)
 	const photo = row.coupon.backgroundImage || row.coupon.iconUrl
 	const badge = discoverCouponPhotoBadge(row)
 	const insufficient = claimEligibility === 'insufficient_social_points'
@@ -3634,9 +3669,30 @@ function DiscoverClaimEarnSwipeCard({
 						/>
 					</div>
 					{badge ? (
-						<span className="absolute bottom-2 left-2 max-w-[78%] truncate rounded-md bg-black/55 px-2 py-0.5 text-[11px] font-semibold text-white">
+						<span className="absolute bottom-2 left-2 max-w-[42%] truncate rounded-md bg-black/55 px-2 py-0.5 text-[11px] font-semibold text-white">
 							{badge}
 						</span>
+					) : null}
+					{likeCount != null || supplyCapsule ? (
+						<div className="absolute bottom-2 right-2 flex max-w-[70%] flex-col items-end gap-1">
+							{likeCount != null ? (
+								<span
+									className="inline-flex items-center gap-1 rounded-full bg-black/55 px-2 py-0.5 text-[11px] font-bold text-white"
+									aria-label={`${formatDiscoverLikeCount(likeCount)} likes`}
+								>
+									<Heart className="h-3 w-3 text-rose-300" strokeWidth={2.25} fill="currentColor" aria-hidden />
+									{formatDiscoverLikeCount(likeCount)}
+								</span>
+							) : null}
+							{supplyCapsule ? (
+								<span
+									className="inline-flex rounded-full bg-black/55 px-2 py-0.5 text-[11px] font-bold leading-tight text-white"
+									title={supplyCapsule}
+								>
+									{supplyCapsule}
+								</span>
+							) : null}
+						</div>
 					) : null}
 				</div>
 				<div className="px-2.5 pb-2.5 pt-2">
@@ -3646,27 +3702,6 @@ function DiscoverClaimEarnSwipeCard({
 					<p className="mt-0.5 truncate text-[12px] font-semibold text-emerald-600 dark:text-emerald-400">
 						{row.coupon.subtitle}
 					</p>
-					{likeCount != null || supplyLine ? (
-						<div className="mt-1.5 flex flex-col gap-1">
-							{likeCount != null ? (
-								<span
-									className="inline-flex w-fit items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-bold text-rose-500 ring-1 ring-rose-100 dark:bg-rose-950/40 dark:text-rose-300 dark:ring-rose-900/50"
-									aria-label={`${formatDiscoverLikeCount(likeCount)} likes`}
-								>
-									<Heart className="h-3 w-3" strokeWidth={2.25} fill="currentColor" aria-hidden />
-									{formatDiscoverLikeCount(likeCount)}
-								</span>
-							) : null}
-							{supplyLine ? (
-								<span
-									className="text-[11px] font-bold leading-tight tracking-tight text-[#334155] dark:text-slate-300"
-									title={supplyLine}
-								>
-									{supplyLine}
-								</span>
-							) : null}
-						</div>
-					) : null}
 					<button
 						type="button"
 						disabled={!canClaim || busy}
@@ -8851,6 +8886,18 @@ function DiscoverMerchantDetailFullScreen({
 						: null}
 					{!isConetGenesisCard ? (
 						<>
+							{showCouponsCard ? (
+								<DiscoverClaimEarnPointsRail
+									sectionRef={couponsSectionRef}
+									rows={swipeCoupons}
+									loading={showCouponsLoading || merchantCoupons == null}
+									claimEligibilityById={couponClaimEligibilityById}
+									claimStatusById={couponClaimStatusById}
+									claimErrorById={couponClaimErrorById}
+									onClaim={(row) => void handleDiscoverCouponClaim(row)}
+									referrerEoa={shareReferrerFromUrl}
+								/>
+							) : null}
 							<DiscoverMerchantTreatAFriendPanel
 								merchantName={passTitle}
 								brandColor={merchantDetailBrandColor ?? DISCOVER_VISIT_BRAND_FALLBACK}
@@ -9177,20 +9224,6 @@ function DiscoverMerchantDetailFullScreen({
 						{!showCouponsCard && !isConetGenesisCard && wellnessPointsPanel ? (
 							<h2 className="text-lg font-bold text-[#1f2328] dark:text-slate-100">Available Offers</h2>
 						) : null}
-
-						{showCouponsCard ? (
-							<DiscoverClaimEarnPointsRail
-								sectionRef={couponsSectionRef}
-								rows={swipeCoupons}
-								loading={showCouponsLoading || merchantCoupons == null}
-								claimEligibilityById={couponClaimEligibilityById}
-								claimStatusById={couponClaimStatusById}
-								claimErrorById={couponClaimErrorById}
-								onClaim={(row) => void handleDiscoverCouponClaim(row)}
-								referrerEoa={shareReferrerFromUrl}
-							/>
-						) : null}
-
 
 						{!isConetGenesisCard && wellnessPointsPanel ? (
 							<DiscoverMerchantWellnessPointsCard

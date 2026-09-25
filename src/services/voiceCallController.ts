@@ -117,12 +117,9 @@ export function createVoiceCallController(options: VoiceCallControllerOptions) {
 		// The listen command and push carry only an opaque call id. Caller tag
 		// and EOA stay inside the offer encrypted to the callee.
 		const ringExpiresAt = Date.now() + 2 * 60 * 1000
-		if (!await startWorkerVoiceListen(sessionId, {
-			callId: signal.callId,
-			calleeEoa: signal.to,
-			expiresAt: ringExpiresAt,
-			timestamp: pushTimestamp,
-		})) return null
+		// Store the encrypted offer before the wake. FCM only carries an opaque
+		// call id, so the callee must already have this ciphertext in the mailbox
+		// when the full-screen window opens and listen reconnects.
 		const sent = await sendVoiceCallOffer({
 			recipientPgp: options.peerPgp,
 			recipientRoute: options.peerRoute,
@@ -131,10 +128,13 @@ export function createVoiceCallController(options: VoiceCallControllerOptions) {
 			allNodes: options.allNodes,
 			entryNodes: selectedEntries,
 		})
-		if (!sent) {
-			await stopWorkerVoiceListen(sessionId)
-			return null
-		}
+		if (!sent) return null
+		if (!await startWorkerVoiceListen(sessionId, {
+			callId: signal.callId,
+			calleeEoa: signal.to,
+			expiresAt: ringExpiresAt,
+			timestamp: pushTimestamp,
+		})) return null
 		activeSessionId = sessionId
 		activeSessionKey = sessionKey
 		activeSignal = signal

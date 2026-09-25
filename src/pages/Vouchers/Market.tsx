@@ -1,4 +1,5 @@
 import { IpfsImg } from '@/components/IpfsImg';
+import CouponOpenClaimShareButton from '@/components/CouponOpenClaimShareButton'
 import { useObjectImgSrc } from '@/components/card/useObjectImgSrc';
 import { useIpfsMediaSrc } from '@/hooks/useIpfsMediaSrc'
 import {
@@ -3529,6 +3530,242 @@ function normalizeDiscoverCouponSubtitle(subtitle: string): string {
 	return raw
 }
 
+/** Still claimable on the swipe rail: not expired, and remaining supply is not zero. */
+function discoverCouponOfferIsValid(row: DiscoverMerchantCouponOffer): boolean {
+	const exp = row.coupon.validBeforeSec
+	if (exp != null && exp > 0 && exp <= Math.floor(Date.now() / 1000)) return false
+	const left = row.seriesRow.issuedNftRemainingSupply?.replace(/,/g, '').trim()
+	if (left && left !== '--') {
+		const n = Number(left)
+		if (Number.isFinite(n) && n <= 0) return false
+	}
+	return true
+}
+
+function discoverCouponPhotoBadge(row: DiscoverMerchantCouponOffer): string | null {
+	const meta = row.seriesRow.metadata
+	if (!meta || typeof meta !== 'object') return null
+	const props = meta.properties
+	const beamio =
+		props && typeof props === 'object'
+			? (props as Record<string, unknown>).beamioCoupon
+			: null
+	const sources = [meta, beamio && typeof beamio === 'object' ? (beamio as Record<string, unknown>) : null]
+	for (const src of sources) {
+		if (!src) continue
+		for (const key of ['badge', 'tag', 'label'] as const) {
+			const raw = src[key]
+			if (typeof raw === 'string') {
+				const text = raw.trim()
+				if (text && text.length <= 16) return text
+			}
+		}
+	}
+	return null
+}
+
+function discoverClaimEarnActionLabel(
+	title: string,
+	eligibility: CouponOpenClaimEligibility | undefined,
+): string {
+	if (eligibility === 'already_redeemed') return 'Redeemed'
+	if (eligibility === 'already_claimed') return 'Claimed'
+	if (eligibility === 'insufficient_social_points') return 'Need Reward PT'
+	const off = title.match(/(\d+(?:\.\d+)?)\s*OFF/i)
+	if (off) return `Claim ${off[1]} OFF`
+	if (/\bfree\b/i.test(title)) return 'Claim Free'
+	return 'Claim Item'
+}
+
+function DiscoverClaimEarnSwipeCard({
+	row,
+	primary,
+	claimEligibility,
+	claimStatus = 'idle',
+	onClaim,
+	referrerEoa = null,
+}: {
+	row: DiscoverMerchantCouponOffer
+	primary: boolean
+	claimEligibility: CouponOpenClaimEligibility | undefined
+	claimStatus?: DiscoverCouponClaimButtonStatus
+	onClaim?: () => void
+	referrerEoa?: string | null
+}) {
+	const { formatCouponSupplySummary, getCouponSocialStat } = useDaemonContext()
+	const social = getCouponSocialStat(row.coupon.cardAddress, row.coupon.tokenId)
+	const likeCount =
+		typeof social?.likeCount === 'number' && Number.isFinite(social.likeCount)
+			? Math.max(0, Math.trunc(social.likeCount))
+			: null
+	const supplyLine =
+		formatCouponSupplySummary(row.coupon.cardAddress, row.coupon.tokenId) ?? row.supplySummary
+	const photo = row.coupon.backgroundImage || row.coupon.iconUrl
+	const badge = discoverCouponPhotoBadge(row)
+	const insufficient = claimEligibility === 'insufficient_social_points'
+	const canClaim =
+		!insufficient &&
+		(claimEligibility === 'claimable' || claimEligibility === 'unknown' || claimEligibility == null)
+	const busy = claimStatus === 'loading'
+	const label = busy
+		? 'Claiming…'
+		: discoverClaimEarnActionLabel(row.coupon.title, claimEligibility)
+	const buttonClass = primary && canClaim && !busy
+		? 'bg-[#1562f0] text-white shadow-sm'
+		: 'bg-[#eef1f4] text-[#3a3f45] dark:bg-slate-800 dark:text-slate-200'
+	return (
+		<article className="w-[168px] shrink-0 snap-start">
+			<div className="overflow-hidden rounded-[18px] bg-white shadow-[0_8px_22px_rgba(15,23,42,0.08)] ring-1 ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800">
+				<div
+					className="relative aspect-[4/3] overflow-hidden bg-[#e8edf2] dark:bg-slate-800"
+					style={row.coupon.backgroundColorHex ? { backgroundColor: row.coupon.backgroundColorHex } : undefined}
+				>
+					{photo ? (
+						<IpfsImg src={photo} alt="" className="h-full w-full object-cover" draggable={false} />
+					) : null}
+					<div className="absolute right-2 top-2">
+						<CouponOpenClaimShareButton
+							cardAddress={row.coupon.cardAddress}
+							couponId={row.coupon.couponId}
+							couponTitle={row.coupon.title}
+							referrerEoa={referrerEoa}
+							variant="onDark"
+							className="!h-8 !w-8 !justify-center !rounded-full !bg-black/45 !p-0 !text-white !ring-0 hover:!bg-black/60"
+						/>
+					</div>
+					{badge ? (
+						<span className="absolute bottom-2 left-2 max-w-[78%] truncate rounded-md bg-black/55 px-2 py-0.5 text-[11px] font-semibold text-white">
+							{badge}
+						</span>
+					) : null}
+				</div>
+				<div className="px-2.5 pb-2.5 pt-2">
+					<h4 className="truncate text-[15px] font-bold leading-tight text-[#1f2328] dark:text-slate-100">
+						{row.coupon.title}
+					</h4>
+					<p className="mt-0.5 truncate text-[12px] font-semibold text-emerald-600 dark:text-emerald-400">
+						{row.coupon.subtitle}
+					</p>
+					{likeCount != null || supplyLine ? (
+						<div className="mt-1.5 flex flex-col gap-1">
+							{likeCount != null ? (
+								<span
+									className="inline-flex w-fit items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-bold text-rose-500 ring-1 ring-rose-100 dark:bg-rose-950/40 dark:text-rose-300 dark:ring-rose-900/50"
+									aria-label={`${formatDiscoverLikeCount(likeCount)} likes`}
+								>
+									<Heart className="h-3 w-3" strokeWidth={2.25} fill="currentColor" aria-hidden />
+									{formatDiscoverLikeCount(likeCount)}
+								</span>
+							) : null}
+							{supplyLine ? (
+								<span
+									className="text-[11px] font-bold leading-tight tracking-tight text-[#334155] dark:text-slate-300"
+									title={supplyLine}
+								>
+									{supplyLine}
+								</span>
+							) : null}
+						</div>
+					) : null}
+					<button
+						type="button"
+						disabled={!canClaim || busy}
+						onClick={canClaim ? onClaim : undefined}
+						aria-busy={busy}
+						aria-label={`${label}: ${row.coupon.title}`}
+						className={[
+							'mt-2.5 flex h-9 w-full items-center justify-center rounded-full text-[13px] font-bold transition active:scale-[0.98]',
+							'disabled:cursor-not-allowed disabled:opacity-70',
+							buttonClass,
+						].join(' ')}
+					>
+						{busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : label}
+					</button>
+				</div>
+			</div>
+		</article>
+	)
+}
+
+function DiscoverClaimEarnPointsRail({
+	rows,
+	loading,
+	claimEligibilityById,
+	claimStatusById,
+	claimErrorById,
+	onClaim,
+	referrerEoa,
+	sectionRef,
+}: {
+	rows: DiscoverMerchantCouponOffer[]
+	loading: boolean
+	claimEligibilityById: Record<string, CouponOpenClaimEligibility | undefined>
+	claimStatusById: Record<string, DiscoverCouponClaimButtonStatus | undefined>
+	claimErrorById: Record<string, string | undefined>
+	onClaim: (row: DiscoverMerchantCouponOffer) => void
+	referrerEoa: string | null
+	sectionRef: React.Ref<HTMLDivElement>
+}) {
+	const scrollerRef = useRef<HTMLDivElement | null>(null)
+	const firstClaimableId = rows.find((row) => {
+		const eligibility = claimEligibilityById[row.coupon.id]
+		return eligibility === 'claimable' || eligibility === 'unknown' || eligibility == null
+	})?.coupon.id
+	const railError = rows.map((row) => claimErrorById[row.coupon.id]).find((msg) => Boolean(msg)) ?? null
+	const needsRewardPt = rows.some((row) => claimEligibilityById[row.coupon.id] === 'insufficient_social_points')
+	const swipeNext = useCallback(() => {
+		const scroller = scrollerRef.current
+		if (!scroller) return
+		scroller.scrollBy({ left: 180, behavior: 'smooth' })
+	}, [])
+	return (
+		<div ref={sectionRef} className="space-y-3">
+			<div className="flex items-center justify-between gap-3">
+				<h2 className="flex min-w-0 items-center gap-1.5 text-[17px] font-bold text-[#1f2328] dark:text-slate-100">
+					<Sparkles className="h-4 w-4 shrink-0 text-amber-400" strokeWidth={2.2} aria-hidden />
+					<span className="truncate">Claim & Earn Points</span>
+				</h2>
+				<button
+					type="button"
+					onClick={swipeNext}
+					className="shrink-0 text-[13px] font-semibold text-[#1562f0]"
+				>
+					Swipe to explore &gt;
+				</button>
+			</div>
+			{loading ? (
+				<div className="flex items-center justify-center gap-2 py-8 text-slate-500">
+					<Loader2 className="h-5 w-5 animate-spin" aria-hidden />
+					<span className="text-[14px] font-medium">Loading coupons…</span>
+				</div>
+			) : (
+				<div
+					ref={scrollerRef}
+					className="-mx-4 flex gap-3 overflow-x-auto overscroll-x-contain px-4 pb-1 snap-x snap-mandatory [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+				>
+					{rows.map((row) => (
+						<DiscoverClaimEarnSwipeCard
+							key={row.coupon.id}
+							row={row}
+							primary={row.coupon.id === firstClaimableId}
+							claimEligibility={claimEligibilityById[row.coupon.id]}
+							claimStatus={claimStatusById[row.coupon.id] ?? 'idle'}
+							onClaim={() => onClaim(row)}
+							referrerEoa={referrerEoa}
+						/>
+					))}
+				</div>
+			)}
+			{needsRewardPt ? (
+				<p className="px-1 text-[12px] font-semibold text-amber-600 dark:text-amber-400">
+					Not enough Reward PT for this claim.
+				</p>
+			) : null}
+			{railError ? <DiscoverPayPanelError message={railError} /> : null}
+		</div>
+	)
+}
+
 /** POS / iOS `POSBizCouponPreviewTicket` parity — ticket notches + expiry pill. */
 function DiscoverMerchantCouponOfferRow({
 	row,
@@ -6148,8 +6385,12 @@ function DiscoverMerchantDetailFullScreen({
 		couponsSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
 	}, [])
 	const showCouponsLoading = merchantOffersLoading && merchantCoupons == null
-	const hasCouponsContent = merchantCoupons != null && merchantCoupons.length > 0
-	const showCouponsCard = showCouponsLoading || hasCouponsContent
+	const swipeCoupons = (merchantCoupons ?? []).filter((row) => {
+		if (!discoverCouponOfferIsValid(row)) return false
+		const eligibility = couponClaimEligibilityById[row.coupon.id]
+		return eligibility !== 'expired' && eligibility !== 'sold_out' && eligibility !== 'not_open_claim'
+	})
+	const showCouponsCard = showCouponsLoading || swipeCoupons.length > 0
 	const wellnessPointsPanel =
 		item.cardAddress != null
 			? DISCOVER_MERCHANT_WELLNESS_POINTS_PANELS[resolveDiscoverCardPanelKey(item.cardAddress)]
@@ -8933,46 +9174,21 @@ function DiscoverMerchantDetailFullScreen({
 								onOpenMyNetwork={() => setShowMyNetwork(true)}
 							/>
 						) : null}
-						{showCouponsCard || (!isConetGenesisCard && wellnessPointsPanel) ? (
+						{!showCouponsCard && !isConetGenesisCard && wellnessPointsPanel ? (
 							<h2 className="text-lg font-bold text-[#1f2328] dark:text-slate-100">Available Offers</h2>
 						) : null}
 
 						{showCouponsCard ? (
-						<div
-							ref={couponsSectionRef}
-							className="rounded-[22px] bg-white px-6 py-4 shadow-[0_8px_22px_rgba(15,23,42,0.06)] ring-1 ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800 sm:px-7"
-						>
-							<header className="mb-3 flex items-center justify-between gap-2">
-								<h3 className="text-base font-bold text-[#1f2328] dark:text-slate-100">Coupons</h3>
-								{merchantCoupons != null ? (
-									<span className="rounded-full border border-[#1562f0]/15 bg-[#1562f0]/10 px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[#1562f0]">
-										{merchantCoupons.length.toLocaleString()} total
-									</span>
-								) : null}
-							</header>
-							{showCouponsLoading ? (
-								<div className="flex items-center justify-center gap-2 py-6 text-slate-500 dark:text-slate-400">
-									<Loader2 className="h-5 w-5 animate-spin" strokeWidth={2} aria-hidden />
-									<span className="text-[14px] font-medium">Loading coupons…</span>
-								</div>
-							) : (
-								<div className="space-y-3">
-									{merchantCoupons!.map((row) => (
-										<DiscoverMerchantCouponOfferRow
-											key={row.coupon.id}
-											row={row}
-											claimEligibility={couponClaimEligibilityById[row.coupon.id]}
-											claimStatus={couponClaimStatusById[row.coupon.id] ?? 'idle'}
-											claimError={couponClaimErrorById[row.coupon.id]}
-											onClaim={() => void handleDiscoverCouponClaim(row)}
-											referrerEoa={shareReferrerFromUrl}
-											getPrivateKeyArmor={getPrivateKeyArmorForLike}
-											onWalletUnlock={() => navigate('/settings')}
-										/>
-									))}
-								</div>
-							)}
-						</div>
+							<DiscoverClaimEarnPointsRail
+								sectionRef={couponsSectionRef}
+								rows={swipeCoupons}
+								loading={showCouponsLoading || merchantCoupons == null}
+								claimEligibilityById={couponClaimEligibilityById}
+								claimStatusById={couponClaimStatusById}
+								claimErrorById={couponClaimErrorById}
+								onClaim={(row) => void handleDiscoverCouponClaim(row)}
+								referrerEoa={shareReferrerFromUrl}
+							/>
 						) : null}
 
 

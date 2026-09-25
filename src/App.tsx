@@ -1010,8 +1010,14 @@ function AppShell() {
 			// bfcache restore or shell bring-to-front — do not abort a connecting stream
 			if (ev.persisted || document.visibilityState === 'visible') onForegroundResume()
 		}
+		const onPullVoiceOffer = (event: Event) => {
+			const action = (event as CustomEvent<{ action?: string }>).detail?.action
+			if (action !== 'pullVoiceOffer') return
+			onForegroundResume()
+		}
 		document.addEventListener('visibilitychange', onVisibility)
 		window.addEventListener('pageshow', onPageShow)
+		window.addEventListener('cashtreesandroid', onPullVoiceOffer)
 		const onPageHide = () => {
 			// True unload / bfcache — drop listen so mailbox can saveLocal + APNs for killed app.
 			pauseGossipListenOnBackground(setGossip)
@@ -1025,6 +1031,7 @@ function AppShell() {
 			document.removeEventListener('visibilitychange', onVisibility)
 			window.removeEventListener('pageshow', onPageShow)
 			window.removeEventListener('pagehide', onPageHide)
+			window.removeEventListener('cashtreesandroid', onPullVoiceOffer)
 			removePwaLifecycleRecovery()
 			// Do NOT abort gossip / setGossip(false) here.
 			// React StrictMode remount + LoadingPage/AppShell dual init previously killed the

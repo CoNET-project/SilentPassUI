@@ -2145,7 +2145,7 @@ const Home = (_props: HomeProps) => {
 									</div>
 								</section>
 
-								<section className="grid shrink-0 grid-cols-1 gap-3 min-[480px]:grid-cols-3 min-[480px]:gap-4">
+								<section className="grid shrink-0 grid-cols-3 gap-2 min-[480px]:gap-4">
 									<button
 										type="button"
 										data-touch-priority="1"

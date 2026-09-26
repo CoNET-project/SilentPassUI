@@ -9,6 +9,7 @@ import React, {
   type ReactNode,
 } from 'react';
 import { useDaemonContext } from '@/providers/DaemonProvider';
+import { startBeamioTagMailboxRefresh } from '@/services/beamioTagMailboxRefresh';
 import {
   type BeamioAddressProfileRecord,
   avatarImgUrlFromDb,
@@ -127,7 +128,17 @@ export function BeamioTagDatabaseProvider({ children }: { children: ReactNode })
         const next = { ...prev };
         for (const [k, v] of Object.entries(incoming)) {
           if (!v) continue;
-          next[k.toLowerCase()] = v;
+          const key = k.toLowerCase();
+          const old = prev[key];
+          next[key] = {
+            ...old,
+            ...v,
+            addressLower: key,
+            online: v.online !== undefined ? v.online : old?.online,
+            onlineAt: v.onlineAt ?? old?.onlineAt,
+            nativeWakeable: v.nativeWakeable !== undefined ? v.nativeWakeable : old?.nativeWakeable,
+            nativeWakeAt: v.nativeWakeAt ?? old?.nativeWakeAt,
+          };
         }
         return next;
       });
@@ -176,6 +187,16 @@ export function BeamioTagDatabaseProvider({ children }: { children: ReactNode })
     }
     void setBeamioTagWarmTargets([...out]);
   }, [partition, profiles, myAddress]);
+
+  const mailboxProfileRef = useRef(profiles?.[0]);
+  mailboxProfileRef.current = profiles?.[0];
+  useEffect(() => {
+    if (!partition) return;
+    return startBeamioTagMailboxRefresh(() => mailboxProfileRef.current as {
+      privateKeyArmor?: string
+      chats?: Array<{ address?: string; chatData?: { routersArmoreds?: string } }>
+    } | undefined);
+  }, [partition]);
 
   const lookupByAddress = useCallback(
     (address: string | undefined) => lookupProfileLocal(profileMap, address),

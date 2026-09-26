@@ -44,6 +44,7 @@ export type WorkerCommand =
 	| { type: 'setNodes'; nodes: NodeInfo[] }
 	| { type: 'send'; reqId: number; to: ChatRoute; payload: string; sendId: string; beamioNoPush?: boolean }
 	| { type: 'queryPresence'; reqId: number; contacts: ChatRoute[] }
+	| { type: 'queryNativeWake'; reqId: number; contact: ChatRoute }
 	| { type: 'historyLoad'; reqId: number; options?: HistoryLoadOptions }
 	| { type: 'historyAppend'; reqId: number; entry: Omit<HistoryEntry, 'seq'> }
 	/** Encrypt an arbitrary mailbox command (e.g. gossip_delivery_ack) to route B and POST via entry C ≠ B. */

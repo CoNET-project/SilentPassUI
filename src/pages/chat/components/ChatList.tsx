@@ -13,7 +13,7 @@ import {
 } from "lucide-react"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import { useBeamioTagDatabase } from "@/providers/BeamioTagDatabaseProvider"
-import { dedupeChatsByAddress, refreshChatRoutes, refreshChatMailboxPresence } from '@/services/chat' 
+import { dedupeChatsByAddress, refreshChatRoutes } from '@/services/chat' 
 import {storeSystemData} from '@/services/beamio'
 import { tu } from '@/locale/beamioLocale'
 import { chatShareLinkListPreview } from '@/utils/chatShareLinkPreview'
@@ -188,7 +188,6 @@ export default function ChatList({
 }: ChatListProps) {
 	const { profiles, setProfiles } = useDaemonContext()
 	const { resolvePeerSearchResult, ensureProfilesForAddresses, profileMap } = useBeamioTagDatabase()
-	const presenceProbeAtRef = useRef(0)
 	const routeRefreshAtRef = useRef(0)
 	const tagEnrichAtRef = useRef(0)
 	const [browserCallMuted, setBrowserCallMuted] = useState(false)
@@ -258,7 +257,7 @@ export default function ChatList({
 		[setProfiles],
 	)
 
-	// 进入 /chat：刷新链上路由 + 向各联系人 mailbox 咨询 listen 在线状态（非 chain routeOnline）。
+	// 进入 /chat：只刷新链上路由。在线状态读全局 BeamioTag 记录（本地优先，180 秒补网）。
 	// ⚠️ 数据竞态：只合并 chatData patch，不得用整表覆盖 messages/unreadCount。
 	useEffect(() => {
 		const p0 = profiles?.[0]
@@ -266,7 +265,6 @@ export default function ChatList({
 		let cancelled = false
 		;(async () => {
 			const now = Date.now()
-			// Route RPC: throttle — profiles 更新会重入 effect
 			if (now - routeRefreshAtRef.current > 20_000) {
 				routeRefreshAtRef.current = now
 				const updated = await refreshChatRoutes({ ...p0 })
@@ -281,35 +279,6 @@ export default function ChatList({
 					await applyChatDataPatches(patchByAddr)
 				}
 			}
-
-			if (cancelled) return
-			if (now - presenceProbeAtRef.current < 15_000) return
-			presenceProbeAtRef.current = Date.now()
-
-			const chatsForProbe: chatData[] = Array.isArray(CoNET_Data?.profiles?.[0]?.chats)
-				? (CoNET_Data!.profiles[0].chats as chatData[])
-				: Array.isArray(p0.chats)
-					? p0.chats
-					: []
-			const onlineByAddr = await refreshChatMailboxPresence(chatsForProbe, p0.privateKeyArmor)
-			if (cancelled || onlineByAddr.size === 0) return
-
-			const onlinePatch = new Map<string, NonNullable<chatData["chatData"]>>()
-			for (const c of chatsForProbe) {
-				const addr = String(c?.address || "").toLowerCase()
-				if (!addr || !onlineByAddr.has(addr)) continue
-				const online = onlineByAddr.get(addr)!
-				const cd = c.chatData
-				if ((cd?.online ?? false) === online) continue
-				onlinePatch.set(addr, {
-					privateArmored: cd?.privateArmored ?? '',
-					publicArmored: cd?.publicArmored ?? '',
-					routersArmoreds: cd?.routersArmoreds ?? '',
-					routePgpKeyID: cd?.routePgpKeyID ?? '',
-					online,
-				})
-			}
-			await applyChatDataPatches(onlinePatch)
 		})()
 		return () => {
 			cancelled = true
@@ -637,7 +606,9 @@ export default function ChatList({
                     <Avatar
 						address={it.address}
 						beamio={listBeamio}
-						online={!!it.chatData?.online}
+						online={typeof profileMap[String(it.address || '').toLowerCase()]?.online === 'boolean'
+							? !!profileMap[String(it.address || '').toLowerCase()]?.online
+							: !!it.chatData?.online}
 					/>
 
                     <div className="min-w-0 flex-1">

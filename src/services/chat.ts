@@ -1589,10 +1589,11 @@ export const queryMailboxWalletOnline = async (opts: {
 		})
 		const armored = typeof postData === 'string' ? postData : String((postData as any)?.data ?? postData)
 		const payload = JSON.stringify({ data: armored })
-		const candidates = entryNodes.filter(n => n?.domain && !mailboxDomains.has(n.domain))
-		const pool = candidates.length ? candidates : entryNodes.filter(n => n?.domain)
+		const pool = entryNodes.filter(n => n?.domain && !mailboxDomains.has(n.domain))
+		if (!pool.length) return null
 		const entries = await pickGossipEntryNodesForSend(pool, 4, mailboxDomains)
 		const targets = entries.length ? entries : getRandomNodes(pool, Math.min(4, pool.length))
+		if (!targets.length) return null
 		const results = await Promise.all(
 			targets.map(async node => {
 				const url = `https://${node.domain}.conet.network/post`
@@ -1636,6 +1637,99 @@ export const queryMailboxWalletOnline = async (opts: {
 		return null
 	} catch (e: any) {
 		console.warn('[queryMailboxWalletOnline]', e?.message ?? e)
+		return null
+	}
+}
+
+/**
+ * Ask the contact mailbox whether that wallet has a registered native shell
+ * (iOS, Android, Windows, Linux, or macOS) that push can wake.
+ * Encrypt to mailbox B route PGP; HTTP via entry C ≠ B.
+ * Trusted only when ok === true. Failure returns null and must not clear the last value.
+ * Call this after wallet_online_query.
+ */
+export const queryMailboxNativeWakeable = async (opts: {
+	targetWallet: string
+	routerArmoredPublicKey: string
+	privateKeyArmor: string
+	entryNodes: nodeInfo[]
+	mailboxDomains: Set<string>
+}): Promise<{ nativeWakeable: boolean; ok: boolean } | null> => {
+	const { targetWallet, routerArmoredPublicKey, privateKeyArmor, entryNodes, mailboxDomains } = opts
+	if (!ethers.isAddress(targetWallet) || !routerArmoredPublicKey?.trim() || !privateKeyArmor?.trim()) {
+		return null
+	}
+	if (!entryNodes?.length) return null
+	try {
+		const wallet = new ethers.Wallet(privateKeyArmor)
+		const timestamp = Math.floor(Date.now() / 1000)
+		const command = {
+			command: 'wallet_native_wake_query',
+			walletAddress: wallet.address,
+			targetWallet: ethers.getAddress(targetWallet),
+			timestamp,
+		}
+		const message = JSON.stringify(command)
+		const signMessage = await wallet.signMessage(message)
+		const encryptionKeys = await readKey({ armoredKey: routerArmoredPublicKey })
+		const pgpMsg = await createMessage({
+			text: Buffer.from(JSON.stringify({ message, signMessage })).toString('base64'),
+		})
+		const postData = await encrypt({
+			message: pgpMsg,
+			encryptionKeys,
+			config: { preferredCompressionAlgorithm: enums.compression.zlib },
+		})
+		const armored = typeof postData === 'string' ? postData : String((postData as any)?.data ?? postData)
+		const payload = JSON.stringify({ data: armored })
+		const pool = entryNodes.filter(n => n?.domain && !mailboxDomains.has(n.domain))
+		if (!pool.length) return null
+		const entries = await pickGossipEntryNodesForSend(pool, 4, mailboxDomains)
+		const targets = entries.length ? entries : getRandomNodes(pool, Math.min(4, pool.length))
+		if (!targets.length) return null
+		const results = await Promise.all(
+			targets.map(async node => {
+				const url = `https://${node.domain}.conet.network/post`
+				try {
+					const res = await postWithTimeout(
+						url,
+						{
+							method: 'POST',
+							headers: { 'Content-Type': 'application/json' },
+							body: payload,
+							referrerPolicy: 'no-referrer',
+						},
+						10_000,
+					)
+					const text = await res.text()
+					const trimmed = (text || '').trim()
+					if (!trimmed) return null
+					try {
+						return JSON.parse(trimmed)
+					} catch {
+						const m = trimmed.match(/\{[\s\S]*\}/)
+						if (m) {
+							try {
+								return JSON.parse(m[0])
+							} catch {
+								return null
+							}
+						}
+						return null
+					}
+				} catch {
+					return null
+				}
+			}),
+		)
+		for (const r of results) {
+			if (r && typeof r === 'object' && (r as { ok?: boolean }).ok === true) {
+				return { ok: true, nativeWakeable: !!(r as { nativeWakeable?: boolean }).nativeWakeable }
+			}
+		}
+		return null
+	} catch (e: any) {
+		console.warn('[queryMailboxNativeWakeable]', e?.message ?? e)
 		return null
 	}
 }
@@ -1694,6 +1788,30 @@ export const refreshChatMailboxPresence = async (
 		}),
 	)
 	return out
+}
+
+/** Probe one contact after presence. Trusted ok:true only. */
+export const refreshPeerNativeWakeable = async (
+	targetWallet: string,
+	routerArmoredPublicKey: string,
+	privateKeyArmor: string,
+): Promise<{ ok: true; nativeWakeable: boolean } | null> => {
+	const addr = (targetWallet || '').trim()
+	const route = (routerArmoredPublicKey || '').trim()
+	if (!addr || !ethers.isAddress(addr) || !route || !privateKeyArmor) return null
+	const nodes = await getCoNETNodesForChat()
+	if (!nodes.length) return null
+	const routeNodes = pickRouteNodesByArmoredKey(nodes, route)
+	const mailboxDomains = new Set(routeNodes.map(n => n.domain).filter(Boolean))
+	const r = await queryMailboxNativeWakeable({
+		targetWallet: addr,
+		routerArmoredPublicKey: route,
+		privateKeyArmor,
+		entryNodes: nodes,
+		mailboxDomains,
+	})
+	if (!r?.ok) return null
+	return { ok: true, nativeWakeable: r.nativeWakeable }
 }
 
 export const initMessage = async (profile: profile, beamioer: searchResult): Promise<chatData|null> => {

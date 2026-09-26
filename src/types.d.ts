@@ -81,6 +81,8 @@ interface Region {
 			publicArmored: string;
 			routersArmoreds: string;
 			online: boolean;
+			/** Last trusted mailbox answer: a native shell can be woken. */
+			nativeWakeable?: boolean;
 			routePgpKeyID: string;
 		}
 		pin: boolean

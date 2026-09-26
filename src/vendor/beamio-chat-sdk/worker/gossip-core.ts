@@ -654,6 +654,23 @@ export class GossipCore {
 		return out
 	}
 
+	/**
+	 * After presence: whether the contact mailbox has a registered native shell
+	 * (iOS, Android, Windows, Linux, or macOS) that push can wake.
+	 * null = untrusted; do not clear the last trusted answer.
+	 */
+	async queryNativeWake(contact: ChatRoute): Promise<boolean | null> {
+		if (!this.wallet) return null
+		const addr = (contact.address || '').trim()
+		const route = (contact.routerArmoredPublicKey || '').trim()
+		if (!addr || !ethers.isAddress(addr) || !route) return null
+		const routeNodes = pickRouteNodesByArmoredKey(this.nodes, route)
+		const mailboxDomains = new Set(routeNodes.map((n) => n.domain).filter(Boolean))
+		const r = await this.walletNativeWakeQuery(addr, route, mailboxDomains)
+		if (!r?.ok) return null
+		return r.nativeWakeable
+	}
+
 	private async walletOnlineQuery(
 		targetWallet: string,
 		routerArmoredPublicKey: string,
@@ -670,8 +687,10 @@ export class GossipCore {
 			}
 			const innerArmor = await encryptRouteCommand(this.wallet, command, routerArmoredPublicKey)
 			const pool = this.nodes.filter((n) => n?.domain && !mailboxDomains.has(n.domain))
-			const entries = await pickGossipEntryNodesForSend(pool.length ? pool : this.nodes, 4, mailboxDomains)
-			const targets = entries.length ? entries : getRandomNodes(pool.length ? pool : this.nodes, 4)
+			if (!pool.length) return null
+			const entries = await pickGossipEntryNodesForSend(pool, 4, mailboxDomains)
+			const targets = entries.length ? entries : getRandomNodes(pool, Math.min(4, pool.length))
+			if (!targets.length) return null
 			const results = await Promise.all(
 				targets.map(async (node) => {
 					const url = postUrl(node.domain)
@@ -706,6 +725,68 @@ export class GossipCore {
 			for (const r of results) {
 				if (r && typeof r === 'object' && (r as { ok?: boolean }).ok === true) {
 					return { ok: true, online: !!(r as { online?: boolean }).online }
+				}
+			}
+			return null
+		} catch {
+			return null
+		}
+	}
+
+	private async walletNativeWakeQuery(
+		targetWallet: string,
+		routerArmoredPublicKey: string,
+		mailboxDomains: Set<string>,
+	): Promise<{ ok: boolean; nativeWakeable: boolean } | null> {
+		if (!this.wallet) return null
+		try {
+			const timestamp = Math.floor(Date.now() / 1000)
+			const command = {
+				command: 'wallet_native_wake_query',
+				walletAddress: this.wallet.address,
+				targetWallet: ethers.getAddress(targetWallet),
+				timestamp,
+			}
+			const innerArmor = await encryptRouteCommand(this.wallet, command, routerArmoredPublicKey)
+			const pool = this.nodes.filter((n) => n?.domain && !mailboxDomains.has(n.domain))
+			if (!pool.length) return null
+			const entries = await pickGossipEntryNodesForSend(pool, 4, mailboxDomains)
+			const targets = entries.length ? entries : getRandomNodes(pool, Math.min(4, pool.length))
+			if (!targets.length) return null
+			const results = await Promise.all(
+				targets.map(async (node) => {
+					const url = postUrl(node.domain)
+					try {
+						const armored =
+							this.cfg?.runtime.outerWrap === false
+								? innerArmor
+								: await wrapArmorToEntryRoute(innerArmor, node.armoredPublicKey)
+						const res = await postWithTimeout(
+							url,
+							{
+								method: 'POST',
+								headers: { 'Content-Type': 'application/json' },
+								body: JSON.stringify(buildPostBody(armored)),
+								referrerPolicy: 'no-referrer',
+							},
+							10_000,
+						)
+						const text = (await res.text()).trim()
+						if (!text) return null
+						try {
+							return JSON.parse(text)
+						} catch {
+							const m = text.match(/\{[\s\S]*\}/)
+							return m ? JSON.parse(m[0]) : null
+						}
+					} catch {
+						return null
+					}
+				}),
+			)
+			for (const r of results) {
+				if (r && typeof r === 'object' && (r as { ok?: boolean }).ok === true) {
+					return { ok: true, nativeWakeable: !!(r as { nativeWakeable?: boolean }).nativeWakeable }
 				}
 			}
 			return null

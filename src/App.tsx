@@ -2220,7 +2220,7 @@ function AppShell() {
 			)}
 			<EoaUsdcStripeReturnHost />
 
-			{globalIncomingVoiceCall && !location.pathname.startsWith('/chat')
+			{globalIncomingVoiceCall && !location.pathname.startsWith('/chat') && !isCashTreesNativeWebView()
 				? createPortal(
 					(() => {
 						const peer = resolvePeerSearchResult(globalIncomingVoiceCall.from)

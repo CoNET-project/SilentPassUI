@@ -5,6 +5,7 @@
 import { ethers } from 'ethers'
 import type { BeamioAddressProfileRecord } from './protocol'
 import {
+	BEAMIO_TAG_DISPLAY_FRESH_MS,
 	BEAMIO_TAG_FETCH_MAX_PER_TICK,
 	BEAMIO_TAG_PROFILE_STALE_MS,
 	BEAMIO_TAG_SEARCH_USERS_URL,
@@ -64,6 +65,26 @@ export function isProfileStale(rec: BeamioAddressProfileRecord | undefined, now 
 	return now - rec.updatedAt > BEAMIO_TAG_PROFILE_STALE_MS
 }
 
+function mailboxFromIncomingOrPrev(
+	incoming: BeamioAddressProfileRecord,
+	prev: BeamioAddressProfileRecord | undefined,
+): Pick<BeamioAddressProfileRecord, 'online' | 'onlineAt' | 'nativeWakeable' | 'nativeWakeAt'> {
+	return {
+		online: incoming.online !== undefined ? incoming.online : prev?.online,
+		onlineAt: incoming.onlineAt ?? prev?.onlineAt,
+		nativeWakeable: incoming.nativeWakeable !== undefined ? incoming.nativeWakeable : prev?.nativeWakeable,
+		nativeWakeAt: incoming.nativeWakeAt ?? prev?.nativeWakeAt,
+	}
+}
+
+function mailboxFieldsFrom(
+	incoming: BeamioAddressProfileRecord,
+	prev: BeamioAddressProfileRecord | undefined,
+): Pick<BeamioAddressProfileRecord, 'online' | 'onlineAt' | 'nativeWakeable' | 'nativeWakeAt'> | null {
+	if (incoming.online === undefined && incoming.nativeWakeable === undefined) return null
+	return mailboxFromIncomingOrPrev(incoming, prev)
+}
+
 export function mergeTrustedProfiles(
 	current: Record<string, BeamioAddressProfileRecord>,
 	incoming: Record<string, BeamioAddressProfileRecord | null | undefined>,
@@ -74,10 +95,20 @@ export function mergeTrustedProfiles(
 		if (!v) continue
 		const key = k.toLowerCase()
 		const prev = next[key]
+		const mailbox = mailboxFieldsFrom(v, prev)
 		if (prev && prev.updatedAt > v.updatedAt && String(prev.accountName || '').trim()) {
+			if (mailbox) {
+				next[key] = { ...prev, ...mailbox }
+				patch[key] = next[key]
+			}
 			continue
 		}
-		next[key] = { ...v, addressLower: key }
+		next[key] = {
+			...(prev || {}),
+			...v,
+			addressLower: key,
+			...mailboxFromIncomingOrPrev(v, prev),
+		}
 		patch[key] = next[key]
 	}
 	return { next, patch }
@@ -330,7 +361,13 @@ export class TagServerDb {
 		const asAddr = normalizeAddressKey(q)
 		if (asAddr) {
 			const local = this.map[asAddr]
-			if (local && !isProfileStale(local)) {
+			const tag = String(local?.accountName || local?.username || '').trim()
+			const displayFresh =
+				!!local &&
+				!!tag &&
+				Number.isFinite(local.updatedAt) &&
+				Date.now() - local.updatedAt <= BEAMIO_TAG_DISPLAY_FRESH_MS
+			if (displayFresh && local) {
 				return {
 					results: [recordToSearchHit(local)],
 					ingested: { [asAddr]: local },

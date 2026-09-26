@@ -178,6 +178,15 @@ async function handle(cmd: WorkerInbound): Promise<void> {
 			}
 			return
 		}
+		case 'queryNativeWake': {
+			try {
+				const result = await gossip!.queryNativeWake(cmd.contact)
+				post({ type: 'ack', reqId: cmd.reqId, ok: true, result })
+			} catch (ex) {
+				post({ type: 'ack', reqId: cmd.reqId, ok: false, error: (ex as Error)?.message ?? String(ex) })
+			}
+			return
+		}
 		case 'historyLoad': {
 			try {
 				await history!.load(cmd.options)

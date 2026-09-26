@@ -16,6 +16,12 @@ export type BeamioAddressProfileRecord = {
   lastName?: string;
   image?: string;
   updatedAt: number;
+  /** Mailbox listen-pool answer. Absent until a trusted query succeeds. */
+  online?: boolean;
+  onlineAt?: number;
+  /** Registered native shell that push can wake. Absent until a trusted query succeeds. */
+  nativeWakeable?: boolean;
+  nativeWakeAt?: number;
 };
 
 const SP_LS_PREFIX = 'beamio:silentpass:';
@@ -133,7 +139,17 @@ export function mergeProfileMap(
   for (const [k, v] of Object.entries(incoming)) {
     if (!k) continue;
     if (v == null) continue;
-    next[k.toLowerCase()] = v;
+    const key = k.toLowerCase();
+    const old = prev[key];
+    next[key] = {
+      ...old,
+      ...v,
+      addressLower: key,
+      online: v.online !== undefined ? v.online : old?.online,
+      onlineAt: v.onlineAt ?? old?.onlineAt,
+      nativeWakeable: v.nativeWakeable !== undefined ? v.nativeWakeable : old?.nativeWakeable,
+      nativeWakeAt: v.nativeWakeAt ?? old?.nativeWakeAt,
+    };
   }
   return next;
 }

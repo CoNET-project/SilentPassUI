@@ -9,6 +9,8 @@ import type { MerchantCardRecord } from '../../utils/merchantCardRegistry'
 export type { BeamioAddressProfileRecord, MerchantCardRecord }
 
 export const BEAMIO_TAG_PROFILE_STALE_MS = 7 * 24 * 60 * 60 * 1000
+/** Exact-address display refresh (tag, image, names). Background warm stays on the 7-day stale window. */
+export const BEAMIO_TAG_DISPLAY_FRESH_MS = 180_000
 export const BEAMIO_TAG_FETCH_MAX_PER_TICK = 28
 export const BEAMIO_TAG_BACKGROUND_TICK_MS = 60_000
 export const BEAMIO_TAG_SEARCH_USERS_URL = 'https://beamio.app/api/search-users'

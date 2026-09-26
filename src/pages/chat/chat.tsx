@@ -56,8 +56,8 @@ import {
 	sendMessage,
 	makeMessage,
 	refreshChatMailboxPresence,
-
 } from '@/services/chat'
+import { claimChatOnlineQuery, releaseChatOnlineQuery, rememberPeerOnline } from '@/services/beamioTagMailboxRefresh'
 import {
 	startWorkerVoiceListen,
 	stopWorkerVoiceListen,
@@ -69,7 +69,7 @@ import { useDaemonContext } from "@/providers/DaemonProvider"
 import { storeSystemData, AuthorizationSign } from '@/services/beamio'
 import { useBeamioTagDatabase } from '@/providers/BeamioTagDatabaseProvider'
 import { fiatPrefix } from '@/services/currency'
-import { dispatchNativeSystemCallAction, getCashTreesNativeNfcBridge, openExternalUrl, requestNativeCameraCapture, requestNativePhotoPicker, saveFileToNative } from '@/utils/cashTreesNativeNfc'
+import { dispatchNativeSystemCallAction, getCashTreesNativeNfcBridge, isCashTreesNativeWebView, openExternalUrl, requestNativeCameraCapture, requestNativePhotoPicker, saveFileToNative } from '@/utils/cashTreesNativeNfc'
 import { MessageSendReceiveCard } from "./components/messageSendReceiveCard"
 import { AaMultisigChatRequestCard } from '@/components/chat/AaMultisigChatRequestCard'
 import { ChatShareLinkPreviewCard } from '@/components/chat/ChatShareLinkPreviewCard'
@@ -1777,7 +1777,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		usdcbalance = 0,
 		setScanData,
 	} = useDaemonContext()
-	const { resolvePeerSearchResult, ensureProfilesForAddresses, searchRemoteAndIngest } = useBeamioTagDatabase()
+	const { resolvePeerSearchResult, ensureProfilesForAddresses, searchRemoteAndIngest, lookupByAddress } = useBeamioTagDatabase()
 	
 
 
@@ -2782,18 +2782,36 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 
 
 	const hasRoute = !!(chatData.chatData?.routersArmoreds?.trim())
-	const [peerOnline, setPeerOnline] = useState(!!chatData.chatData?.online)
+	const peerTag = lookupByAddress(chatData.address)
+	const [peerOnline, setPeerOnline] = useState(
+		typeof peerTag?.online === 'boolean' ? peerTag.online : !!chatData.chatData?.online,
+	)
+	const [peerNativeWakeable, setPeerNativeWakeable] = useState(
+		typeof peerTag?.nativeWakeable === 'boolean' ? peerTag.nativeWakeable : !!chatData.chatData?.nativeWakeable,
+	)
 
-	// This thread stays mounted without ChatList, so the list's one-shot probe
-	// never updates the call button. Re-query this peer's mailbox until unmount.
+	useEffect(() => {
+		if (typeof peerTag?.online === 'boolean') {
+			setPeerOnline(current => (current === peerTag.online ? current : !!peerTag.online))
+		}
+		if (typeof peerTag?.nativeWakeable === 'boolean') {
+			setPeerNativeWakeable(current => (current === peerTag.nativeWakeable ? current : !!peerTag.nativeWakeable))
+		}
+		const image = peerTag?.image?.trim()
+		if (image) setUserImg(image)
+	}, [peerTag?.online, peerTag?.nativeWakeable, peerTag?.onlineAt, peerTag?.nativeWakeAt, peerTag?.image])
+
+	// Open thread owns this wallet's online query. The global BeamioTag record
+	// still supplies native-shell wakeability and the tag image.
 	useEffect(() => {
 		const addr = (chatData.address || '').trim().toLowerCase()
 		const route = chatData.chatData?.routersArmoreds?.trim() || ''
 		const key = (privateKey || CoNET_Data?.profiles?.[0]?.privateKeyArmor || '').trim()
 		if (!addr || !route || !key) return
+		claimChatOnlineQuery(addr)
 		let cancelled = false
 		let timer: number | undefined
-		const PRESENCE_MS = 15_000
+		const PRESENCE_MS = 6_000
 
 		const persistOnline = (online: boolean) => {
 			const apply = (chats: chatData[]): { next: chatData[]; changed: boolean } => {
@@ -2836,10 +2854,12 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 					[{ address: addr, chatData: { ...chatData.chatData, routersArmoreds: route } } as chatData],
 					key,
 				)
-				if (cancelled || !onlineByAddr.has(addr)) return
-				const online = onlineByAddr.get(addr)!
-				setPeerOnline(current => (current === online ? current : online))
-				persistOnline(online)
+				if (!cancelled && onlineByAddr.has(addr)) {
+					const online = onlineByAddr.get(addr)!
+					setPeerOnline(current => (current === online ? current : online))
+					persistOnline(online)
+					void rememberPeerOnline(addr, online)
+				}
 			} finally {
 				if (!cancelled) {
 					timer = window.setTimeout(() => { void tick() }, PRESENCE_MS)
@@ -2849,6 +2869,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		void tick()
 		return () => {
 			cancelled = true
+			releaseChatOnlineQuery(addr)
 			if (timer !== undefined) window.clearTimeout(timer)
 		}
 	}, [chatData.address, chatData.chatData?.routersArmoreds, privateKey, setProfiles])
@@ -4313,6 +4334,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 					if (fromBeamio) setShowContactProfile(true)
 				}}
 				online={peerOnline}
+				nativeWakeable={peerNativeWakeable}
 				avatarSrc={userImg}
 				onCall={voiceCallState === 'outgoing' ? endVoiceCall : startVoiceCall}
 				onPhoneHistory={() => navigate('/phone')}
@@ -4406,7 +4428,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 					</div>
 				</div>
 			) : null}
-			{incomingVoiceOffer ? (
+			{incomingVoiceOffer && !isCashTreesNativeWebView() ? (
 				<>
 				<div className="fixed inset-0 z-[99] bg-[#808080]/50" aria-hidden />
 				<div

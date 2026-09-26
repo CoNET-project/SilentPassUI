@@ -301,6 +301,8 @@ export interface BeamioChatClient {
 	on<K extends ChatEventName>(event: K, cb: ChatEventListener<K>): Unsubscribe
 	/** Probe mailbox listen-pool presence for the given contacts. */
 	queryPresence(contacts: ChatRoute[]): Promise<Record<string, boolean>>
+	/** Trusted native-wake answer, or null when the mailbox lookup failed. */
+	queryNativeWake(contact: ChatRoute): Promise<boolean | null>
 	/** Update the set of contacts to listen for and probe. */
 	setRoutes(routes: ChatRoute[]): void
 	history: BeamioChatHistory

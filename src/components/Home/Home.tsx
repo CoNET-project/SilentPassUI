@@ -1886,11 +1886,11 @@ const Home = (_props: HomeProps) => {
 			if (isCardExcludedFromDisplay(cardKey)) continue
 			total += rewardPointsTotal(entry?.assets)
 		}
-		const formatted = total.toLocaleString('en-US', {
+		const formatted = Math.max(0, total).toLocaleString('en-US', {
 			maximumFractionDigits: 2,
-			minimumFractionDigits: 0,
+			minimumFractionDigits: 2,
 		})
-		return `${formatted} ${tu('pts_unit')}`
+		return `${formatted} PT`
 	}, [myBrandCardDetails])
 
 	const merchantGiftCardOptions = useMemo((): MerchantGiftCardOption[] => {
@@ -2096,108 +2096,86 @@ const Home = (_props: HomeProps) => {
 							{/* Content — 浅底、白卡片、青柠强调 */}
 							<div className="space-y-8 px-5 pt-4">
 
-							{/* Universal Pay Hub（codingTemp.html）：NFC 独立 + 渐变卡 + 白底 Show Pay Code + Quick Actions */}
+							{/* Universal Cash — balance card and the three primary cash actions. */}
 							<div className="mb-10 flex flex-col gap-6 min-[480px]:gap-8">
-								{/* Premium Universal Pay Hub — signature gradient */}
 								<section className="shrink-0">
-									<div className="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-[#1562f0] to-[#4c1d95] text-white shadow-2xl">
+									<div className="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-[#1562f0] via-[#3154cf] to-[#4c1d95] text-white shadow-[0_24px_60px_rgba(37,54,145,0.28)]">
 										<div
 											aria-hidden
 											className="pointer-events-none absolute inset-0 opacity-[0.12] bg-[radial-gradient(ellipse_at_80%_0%,rgba(255,255,255,0.45),transparent_55%)]"
 										/>
 										<div className="relative z-10">
-											<div className="p-8 pb-6 pt-7 min-[480px]:p-8">
-												<div className="mb-6 flex items-start justify-between">
+											<div className="p-7 pb-6 pt-7 min-[480px]:p-9">
+												<div className="mb-7 flex items-start justify-between">
 													<div className="space-y-1">
-														<p className="text-[10px] font-bold uppercase tracking-widest text-white/60">
+														<p className="text-[11px] font-bold uppercase tracking-[0.22em] text-white/70">
 															{tu('universal_cash')}
 														</p>
 														{/* Own compositor layer: avoid subpixel text shake when parent re-rasterizes */}
 														<h2 className="flex items-baseline gap-2 [transform:translateZ(0)] [-webkit-font-smoothing:antialiased]">
-															<span className="text-4xl font-extrabold tabular-nums tracking-tight">
+															<span className="text-5xl font-extrabold tabular-nums tracking-tight min-[480px]:text-6xl">
 																{homeHubWalletUsdcDisplay}
 															</span>
-															<span className="text-xl font-bold tracking-tight text-white/90">
+															<span className="text-xl font-bold tracking-tight text-white/90 min-[480px]:text-2xl">
 																USDC
 															</span>
 														</h2>
 													</div>
 												</div>
-												<div className="grid grid-cols-2 gap-4 [transform:translateZ(0)] [-webkit-font-smoothing:antialiased]">
+												<div className="grid grid-cols-2 gap-6 [transform:translateZ(0)] [-webkit-font-smoothing:antialiased]">
 													<div className="space-y-1 text-left">
-														<p className="text-[10px] font-bold uppercase tracking-widest text-white/50">
+														<p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/55">
 															{tu('merchant_assets')}
 														</p>
-														<p className="text-lg font-bold tabular-nums">
+														<p className="text-xl font-bold tabular-nums min-[480px]:text-2xl">
 															CA$ {homeHubMerchantCad.whole}.{homeHubMerchantCad.frac}
 														</p>
 													</div>
-													<div className="space-y-1 text-right">
-														<p className="text-[10px] font-bold uppercase tracking-widest text-white/50">
-															{tu('my_points')}
+													<div className="space-y-1 text-left">
+														<p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/55">
+															REWARD PT
 														</p>
-														<p className="text-lg font-bold tabular-nums">
+														<p className="text-xl font-bold tabular-nums min-[480px]:text-2xl">
 															{homeHubRewardPtsDisplay}
 														</p>
 													</div>
 												</div>
 											</div>
-											<div className="space-y-6 px-8 pb-8">
-												<div className="py-2 text-center">
-													<p className="text-sm font-medium leading-relaxed text-white/80">
-														{tu('tap_at_any_beamio_softpos_to_pay_seamlessly')}
-													</p>
-												</div>
-												<button
-													type="button"
-													data-touch-priority="1"
-													{...openPayCodeSheetTap}
-													className={`relative z-10 flex w-full min-h-[48px] items-center justify-center gap-3 rounded-full bg-white px-8 py-4 text-[#1562f0] shadow-xl shadow-black/20 transition-transform duration-300 active:scale-[0.98] active:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[#1562f0] ${HOME_TOUCH_BUTTON_CLASS}`}
-													aria-label={tu('show_pay_code')}
-												>
-													<QrCode className="h-6 w-6 shrink-0" strokeWidth={2.2} aria-hidden />
-												</button>
-											</div>
 										</div>
 									</div>
 								</section>
 
-								{/* Quick Actions — 与 codingTemp.html 同结构 */}
-								<section className="shrink-0 flex gap-2 min-[480px]:gap-3 [@media(max-height:700px)]:gap-2">
+								<section className="grid shrink-0 grid-cols-1 gap-3 min-[480px]:grid-cols-3 min-[480px]:gap-4">
 									<button
 										type="button"
 										data-touch-priority="1"
 										{...openReceiveSheetTap}
-										className={`flex flex-1 flex-col items-start gap-2 rounded-2xl bg-[#f3f4f5] p-3 text-left transition-transform active:scale-95 active:bg-[#e7e8e9] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/50 focus-visible:ring-offset-2 min-[480px]:gap-3 min-[480px]:p-4 dark:bg-slate-800/90 dark:active:bg-slate-800 dark:focus-visible:ring-offset-slate-900 [@media(max-height:700px)]:gap-1.5 [@media(max-height:700px)]:p-2.5 ${HOME_TOUCH_BUTTON_CLASS}`}
-										aria-label={tu('fund_wallet')}
+										className={`flex min-h-[96px] flex-1 flex-col items-center justify-center gap-2 rounded-2xl bg-[#1562f0] p-4 text-center text-white shadow-[0_12px_28px_rgba(21,98,240,0.2)] transition-transform active:scale-[0.98] active:bg-[#0e4cbb] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/50 focus-visible:ring-offset-2 ${HOME_TOUCH_BUTTON_CLASS}`}
+										aria-label="Deposit"
 									>
-									<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-[#b3c5ff]/30 text-[#004bc3] dark:bg-[#1562f0]/25 dark:text-[#6ba3ff]">
-										<Wallet size={22} strokeWidth={2} aria-hidden />
-									</div>
-									<div>
-										<p className="text-sm font-bold text-[#191c1d] dark:text-slate-100">{tu('fund_wallet')}</p>
-										<p className="mt-0.5 text-[11px] font-medium text-[#424655] dark:text-slate-400">{tu('add_cash_balance')}</p>
-									</div>
+										<Plus className="h-9 w-9" strokeWidth={2.3} aria-hidden />
+										<span className="text-sm font-bold">Deposit</span>
 									</button>
 									<button
 										type="button"
 										data-touch-priority="1"
-										{...openMerchantGiftSheetTap}
-										disabled={!merchantGiftEnabled || merchantGiftCardOptions.length === 0}
-										className={`flex flex-1 flex-col items-start gap-2 rounded-2xl bg-[#f3f4f5] p-3 text-left transition-transform focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/50 focus-visible:ring-offset-2 min-[480px]:gap-3 min-[480px]:p-4 dark:bg-slate-800/90 dark:active:bg-slate-800 dark:focus-visible:ring-offset-slate-900 [@media(max-height:700px)]:gap-1.5 [@media(max-height:700px)]:p-2.5 ${HOME_TOUCH_BUTTON_CLASS} ${
-											merchantGiftEnabled && merchantGiftCardOptions.length > 0
-												? 'active:scale-95 active:bg-[#e7e8e9] dark:active:bg-slate-800'
-												: 'cursor-not-allowed opacity-45'
-										}`}
-										aria-label={tu('gift_merchant_balance')}
+										{...openPayCodeSheetTap}
+										className={`flex min-h-[96px] flex-1 flex-col items-center justify-center gap-2 rounded-2xl border-2 border-[#1562f0] bg-white p-4 text-center text-[#1562f0] shadow-sm transition-transform active:scale-[0.98] active:bg-blue-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/50 focus-visible:ring-offset-2 dark:bg-slate-900 ${HOME_TOUCH_BUTTON_CLASS}`}
+										aria-label="Top up and pay"
 									>
-										<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-[#b3c5ff]/30 text-[#004bc3] dark:bg-[#1562f0]/25 dark:text-[#6ba3ff]">
-											<Gift size={22} strokeWidth={2} aria-hidden />
-										</div>
-										<div>
-											<p className="text-sm font-bold text-[#191c1d] dark:text-slate-100">{tu('gift')}</p>
-											<p className="mt-0.5 text-[11px] font-medium text-[#424655] dark:text-slate-400">{tu('share_with_friends')}</p>
-										</div>
+										<QrCode className="h-9 w-9" strokeWidth={2.2} aria-hidden />
+										<span className="text-sm font-bold">Top up &amp; Pay</span>
+									</button>
+									<button
+										type="button"
+										disabled
+										className={`flex min-h-[96px] flex-1 cursor-not-allowed flex-col items-center justify-center gap-2 rounded-2xl border-2 border-[#1562f0]/35 bg-white p-4 text-center text-[#1562f0]/45 shadow-sm dark:bg-slate-900 ${HOME_TOUCH_BUTTON_CLASS}`}
+										aria-label="Swap"
+										aria-disabled="true"
+										title="Swap is not available yet"
+									>
+										<ArrowRightLeft className="h-9 w-9" strokeWidth={2.2} aria-hidden />
+										<span className="text-sm font-bold">Swap</span>
 									</button>
 								</section>
 							</div>

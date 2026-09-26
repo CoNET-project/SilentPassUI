@@ -156,6 +156,11 @@ class BeamioChatClientImpl implements BeamioChatClient {
 		return this.request<Record<string, boolean>>({ type: 'queryPresence', reqId: 0, contacts })
 	}
 
+	/** After presence: true/false when the mailbox lookup is trusted; null when it is not. */
+	async queryNativeWake(contact: ChatRoute): Promise<boolean | null> {
+		return this.request<boolean | null>({ type: 'queryNativeWake', reqId: 0, contact })
+	}
+
 	/** Encrypt & POST an arbitrary mailbox command (e.g. gossip_delivery_ack) to route B via entry C ≠ B. */
 	async postMailboxCommand(
 		routerArmoredPublicKey: string,

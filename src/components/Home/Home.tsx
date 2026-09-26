@@ -2150,32 +2150,32 @@ const Home = (_props: HomeProps) => {
 										type="button"
 										data-touch-priority="1"
 										{...openReceiveSheetTap}
-										className={`flex min-h-[96px] flex-1 flex-col items-center justify-center gap-2 rounded-2xl bg-[#1562f0] p-4 text-center text-white shadow-[0_12px_28px_rgba(21,98,240,0.2)] transition-transform active:scale-[0.98] active:bg-[#0e4cbb] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/50 focus-visible:ring-offset-2 ${HOME_TOUCH_BUTTON_CLASS}`}
+										className={`flex min-h-[72px] flex-1 flex-col items-center justify-center gap-1 rounded-xl bg-[#1562f0] p-2 text-center text-white shadow-[0_8px_18px_rgba(21,98,240,0.18)] transition-transform active:scale-[0.98] active:bg-[#0e4cbb] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/50 focus-visible:ring-offset-2 ${HOME_TOUCH_BUTTON_CLASS}`}
 										aria-label="Deposit"
 									>
-										<Plus className="h-9 w-9" strokeWidth={2.3} aria-hidden />
-										<span className="text-sm font-bold">Deposit</span>
+										<Plus className="h-7 w-7" strokeWidth={2.3} aria-hidden />
+										<span className="text-xs font-bold">Deposit</span>
 									</button>
 									<button
 										type="button"
 										data-touch-priority="1"
 										{...openPayCodeSheetTap}
-										className={`flex min-h-[96px] flex-1 flex-col items-center justify-center gap-2 rounded-2xl border-2 border-[#1562f0] bg-white p-4 text-center text-[#1562f0] shadow-sm transition-transform active:scale-[0.98] active:bg-blue-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/50 focus-visible:ring-offset-2 dark:bg-slate-900 ${HOME_TOUCH_BUTTON_CLASS}`}
+										className={`flex min-h-[72px] flex-1 flex-col items-center justify-center gap-1 rounded-xl border-2 border-[#1562f0] bg-white p-2 text-center text-[#1562f0] shadow-sm transition-transform active:scale-[0.98] active:bg-blue-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/50 focus-visible:ring-offset-2 dark:bg-slate-900 ${HOME_TOUCH_BUTTON_CLASS}`}
 										aria-label="Top up and pay"
 									>
-										<QrCode className="h-9 w-9" strokeWidth={2.2} aria-hidden />
-										<span className="text-sm font-bold">Top up &amp; Pay</span>
+										<QrCode className="h-7 w-7" strokeWidth={2.2} aria-hidden />
+										<span className="text-xs font-bold">Top up &amp; Pay</span>
 									</button>
 									<button
 										type="button"
 										disabled
-										className={`flex min-h-[96px] flex-1 cursor-not-allowed flex-col items-center justify-center gap-2 rounded-2xl border-2 border-[#1562f0]/35 bg-white p-4 text-center text-[#1562f0]/45 shadow-sm dark:bg-slate-900 ${HOME_TOUCH_BUTTON_CLASS}`}
+										className={`flex min-h-[72px] flex-1 cursor-not-allowed flex-col items-center justify-center gap-1 rounded-xl border-2 border-[#1562f0]/35 bg-white p-2 text-center text-[#1562f0]/45 shadow-sm dark:bg-slate-900 ${HOME_TOUCH_BUTTON_CLASS}`}
 										aria-label="Swap"
 										aria-disabled="true"
 										title="Swap is not available yet"
 									>
-										<ArrowRightLeft className="h-9 w-9" strokeWidth={2.2} aria-hidden />
-										<span className="text-sm font-bold">Swap</span>
+										<ArrowRightLeft className="h-7 w-7" strokeWidth={2.2} aria-hidden />
+										<span className="text-xs font-bold">Swap</span>
 									</button>
 								</section>
 							</div>

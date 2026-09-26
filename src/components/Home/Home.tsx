@@ -2881,7 +2881,7 @@ const Home = (_props: HomeProps) => {
 							<motion.div
 								className={
 									payReceiveUsesFundChrome
-										? 'fixed bottom-0 left-0 right-0 z-[10021] flex max-h-[92dvh] flex-col items-center overflow-hidden overscroll-contain rounded-t-2xl bg-[#f3f4f5] pb-[calc(env(safe-area-inset-bottom)+1.25rem)] shadow-[0_-20px_50px_rgba(0,0,0,0.1)] dark:bg-slate-900'
+											? 'fixed bottom-0 left-0 right-0 z-[10021] flex max-h-[92dvh] flex-col items-center overflow-hidden overscroll-contain rounded-t-2xl bg-white pb-[calc(env(safe-area-inset-bottom)+1.25rem)] shadow-[0_-20px_50px_rgba(0,0,0,0.14)] dark:bg-slate-900'
 										: payReceiveUsesPayChrome
 										? 'fixed bottom-0 left-0 right-0 z-[10021] flex max-h-[92dvh] flex-col items-center overflow-hidden overscroll-contain rounded-t-xl bg-[#f3f4f5] pb-[calc(env(safe-area-inset-bottom)+1.5rem)] shadow-[0_-20px_60px_rgba(0,0,0,0.1)] dark:bg-slate-900'
 										: 'fixed bottom-0 left-0 right-0 z-[10021] flex flex-col items-center overflow-hidden overscroll-contain rounded-t-2xl bg-white pb-[calc(env(safe-area-inset-bottom)+1.25rem)] shadow-[0_-20px_50px_rgba(0,0,0,0.1)] dark:bg-slate-900'
@@ -2898,9 +2898,14 @@ const Home = (_props: HomeProps) => {
 											<div className="h-1.5 w-12 rounded-full bg-gray-200 dark:bg-slate-600" />
 										</div>
 										<div className="mb-5 flex items-center justify-between gap-3">
-											<h2 className="text-[1.375rem] font-bold tracking-tight text-[#191c1d] dark:text-slate-100">
-												{tu('fund_your_wallet')}
-											</h2>
+											<div className="min-w-0">
+												<h2 className="text-[1.75rem] font-bold tracking-tight text-[#191c1d] dark:text-slate-100">
+													{tu('fund_your_wallet')}
+												</h2>
+												<p className="mt-1 text-base text-[#737687] dark:text-slate-400">
+													Add funds to your Universal Cash.
+												</p>
+											</div>
 											<button
 												type="button"
 												tabIndex={-1}
@@ -2926,7 +2931,7 @@ const Home = (_props: HomeProps) => {
 														{tu('pay_with_your_debit_card')}
 													</span>
 												</span>
-												<CreditCard className="h-7 w-7 shrink-0 text-[#191c1d] dark:text-slate-100" strokeWidth={1.75} aria-hidden />
+												<CreditCard className="h-8 w-8 shrink-0 text-[#0051d1] dark:text-blue-400" strokeWidth={1.75} aria-hidden />
 											</button>
 											<button
 												type="button"
@@ -2941,7 +2946,7 @@ const Home = (_props: HomeProps) => {
 														Buy USDC on Base and send it to this wallet
 													</span>
 												</span>
-												<img src={baseIcon} alt="" className="h-8 w-8 shrink-0 rounded-full object-contain" />
+												<img src={baseIcon} alt="" className="h-9 w-9 shrink-0 rounded-full object-contain" />
 											</button>
 											<button
 												type="button"
@@ -2956,17 +2961,7 @@ const Home = (_props: HomeProps) => {
 														{tu('transfer_crypto')}
 													</span>
 												</span>
-												<span className="relative h-10 w-[4.25rem] shrink-0" aria-hidden>
-													<span className="absolute left-0 top-1/2 h-8 w-8 -translate-y-1/2 overflow-hidden rounded-full border-2 border-white bg-white dark:border-slate-800">
-														<img src={usdcIcon} alt="" className="h-full w-full object-contain" />
-													</span>
-													<span className="absolute left-4 top-1/2 h-8 w-8 -translate-y-1/2 overflow-hidden rounded-full border-2 border-white bg-white dark:border-slate-800">
-														<img src={baseIcon} alt="" className="h-full w-full object-contain" />
-													</span>
-													<span className="absolute left-8 top-1/2 h-8 w-8 -translate-y-1/2 overflow-hidden rounded-full border-2 border-white bg-white dark:border-slate-800">
-														<img src={conetTokenIcon} alt="" className="h-full w-full object-contain" />
-													</span>
-												</span>
+												<Wallet className="h-9 w-9 shrink-0 text-[#0051d1] dark:text-blue-400" strokeWidth={1.75} aria-hidden />
 											</button>
 										</div>
 									</div>

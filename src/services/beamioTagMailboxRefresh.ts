@@ -103,7 +103,7 @@ export function startBeamioTagMailboxRefresh(
 		try {
 			const profile = getProfile()
 			const key = (profile?.privateKeyArmor || '').trim()
-			const chats = Array.isArray(profile?.chats) ? profile.chats : []
+			const chats = profile && Array.isArray(profile.chats) ? profile.chats : []
 			const now = Date.now()
 			const batch = chats.slice(cursor, cursor + MAX_PER_TICK)
 			cursor = cursor + MAX_PER_TICK >= chats.length ? 0 : cursor + MAX_PER_TICK

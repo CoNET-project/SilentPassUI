@@ -12,11 +12,12 @@ import type {
 	HistoryBufferEvent,
 	HistoryEntry,
 	HistoryLoadOptions,
+	HistoryReadOptions,
 	InboundEnvelope,
 	NodeInfo,
 	PresenceEvent,
 	StatusEvent,
-} from './types'
+} from './types.js'
 
 /** Serialisable subset of config passed into the worker at init. */
 export interface WorkerInitPayload {
@@ -46,6 +47,7 @@ export type WorkerCommand =
 	| { type: 'queryPresence'; reqId: number; contacts: ChatRoute[] }
 	| { type: 'queryNativeWake'; reqId: number; contact: ChatRoute }
 	| { type: 'historyLoad'; reqId: number; options?: HistoryLoadOptions }
+	| { type: 'historyRead'; reqId: number; options?: HistoryReadOptions }
 	| { type: 'historyAppend'; reqId: number; entry: Omit<HistoryEntry, 'seq'> }
 	/** Encrypt an arbitrary mailbox command (e.g. gossip_delivery_ack) to route B and POST via entry C ≠ B. */
 	| {

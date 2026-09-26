@@ -12,7 +12,7 @@
  * JSON-with-sendId outbound message to `from:'them'`). `ChatMessage.from` already encodes the
  * direction, so restore is fully symmetric for both inbound and outbound.
  */
-import type { HistoryEntry } from '../vendor/beamio-chat-sdk/types'
+import type { HistoryEntry } from '@conet.project/chat-sdk'
 import { appendWorkerHistory } from './chatWorkerBridge'
 
 /** Stable dedup key for a rendered chat message (mirrors `makeMessage` semantics). */

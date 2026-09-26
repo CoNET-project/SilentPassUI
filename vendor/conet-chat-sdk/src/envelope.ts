@@ -19,8 +19,8 @@ import {
 } from 'openpgp'
 import type { Wallet } from 'ethers'
 
-import { utf8ToBase64 } from './crypto'
-import { normalizeArmoredKey } from './nodes'
+import { utf8ToBase64 } from './crypto.js'
+import { normalizeArmoredKey } from './nodes.js'
 
 export function armorToString(armored: unknown): string {
 	if (typeof armored === 'string') return armored

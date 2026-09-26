@@ -16,8 +16,8 @@
  * ```
  */
 
-export { createBeamioChatClient } from './client'
-export type { BeamioChatClientOptions } from './client'
+export { createBeamioChatClient } from './client.js'
+export type { BeamioChatClientOptions } from './client.js'
 
 export {
 	armorToString,
@@ -26,9 +26,9 @@ export {
 	wrapArmorToEntryRoute,
 	wrapArmorToMailboxWork,
 	wrapWouldHitSameNode,
-} from './envelope'
-export type { MailboxWorkEnvelope } from './envelope'
-export { postUrl } from './nodes'
+} from './envelope.js'
+export type { MailboxWorkEnvelope } from './envelope.js'
+export { postUrl } from './nodes.js'
 
 export type {
 	BeamioChatClient,
@@ -46,6 +46,7 @@ export type {
 	HistoryBufferEvent,
 	HistoryEntry,
 	HistoryLoadOptions,
+	HistoryReadOptions,
 	InboundEnvelope,
 	NodeInfo,
 	PersistenceAdapter,
@@ -53,4 +54,4 @@ export type {
 	SendMessageOptions,
 	StatusEvent,
 	Unsubscribe,
-} from './types'
+} from './types.js'

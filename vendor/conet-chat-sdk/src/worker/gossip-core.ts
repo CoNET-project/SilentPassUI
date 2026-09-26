@@ -30,8 +30,8 @@ import {
 } from 'openpgp'
 import { ethers } from 'ethers'
 
-import type { ChatRoute, NodeInfo, PresenceEvent, StatusEvent } from '../types'
-import type { WorkerInitPayload } from '../protocol'
+import type { ChatRoute, NodeInfo, PresenceEvent, StatusEvent } from '../types.js'
+import type { WorkerInitPayload } from '../protocol.js'
 import {
 	getRandomNode,
 	getRandomNodes,
@@ -42,9 +42,9 @@ import {
 	pickRouteNodesByArmoredKey,
 	postUrl,
 	postWithTimeout,
-} from '../nodes'
-import { base64ToUtf8, keccakUtf8, utf8ToBase64 } from '../crypto'
-import { armorToString, buildPostBody, encryptOpaqueVoiceCommand, encryptRouteCommand, wrapArmorToEntryRoute, wrapArmorToMailboxWork } from '../envelope'
+} from '../nodes.js'
+import { base64ToUtf8, keccakUtf8, utf8ToBase64 } from '../crypto.js'
+import { armorToString, buildPostBody, encryptOpaqueVoiceCommand, encryptRouteCommand, wrapArmorToEntryRoute, wrapArmorToMailboxWork } from '../envelope.js'
 
 /** Callbacks the worker entry wires to `postMessage`. */
 export interface GossipEmit {

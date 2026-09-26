@@ -8,7 +8,7 @@
  * `X-CoNET-Hop-Sigs` on these requests.
  */
 
-import type { NodeInfo } from './types'
+import type { NodeInfo } from './types.js'
 
 /** `{https|http}://{domain}.conet.network/post` — SI developer guide `postUrl`. */
 export function postUrl(domain: string, https = true): string {

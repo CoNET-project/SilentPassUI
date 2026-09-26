@@ -120,40 +120,78 @@ function Avatar({
 	  }, [fromBeamio])
 
 	const findingRef = useRef(false)
-	const findUser = useCallback(async () => {
-		if (findingRef.current || !address) return
-		findingRef.current = true
-		try {
-			await ensureProfilesForAddresses([address])
-			const account =
-				resolvePeerSearchResult(address) ??
-				beamioUsers.find(n => (n?.address || '').toLowerCase() === address.toLowerCase()) ??
-				beamioProp ??
-				unknowAcc(address)
-			//@ts-ignore
-			setbBeamioUsers(prev => {
-				const addr = (account!.address || '').toLowerCase()
-				//@ts-ignore
-				if (prev.some(u => (u.address || '').toLowerCase() === addr)) return prev
-				return [...prev, account!]
-			})
-
-			setfromBeamio(account)
-			const img = (account.image || "").trim()
-			setUserImg(img || getImg(account.username || account.address || "beamio"))
-		} finally {
-			findingRef.current = false
-		}
-	}, [address, beamioProp, beamioUsers, ensureProfilesForAddresses, resolvePeerSearchResult])
+	const profileUsername = beamioProp?.username || ""
+	const profileImage = (beamioProp?.image || "").trim()
+	const tagApiRef = useRef({
+		ensureProfilesForAddresses,
+		resolvePeerSearchResult,
+		beamioUsers,
+		setbBeamioUsers,
+		beamioProp,
+	})
+	tagApiRef.current = {
+		ensureProfilesForAddresses,
+		resolvePeerSearchResult,
+		beamioUsers,
+		setbBeamioUsers,
+		beamioProp,
+	}
 
 	useEffect(() => {
-		if (beamioProp && (beamioProp.address || '').toLowerCase() === (address || '').toLowerCase()) {
-			setfromBeamio(beamioProp)
-			const img = (beamioProp.image || "").trim()
-			setUserImg(img || getImg(beamioProp.username || beamioProp.address || "beamio"))
+		if (!address) return
+		let cancelled = false
+		const run = async () => {
+			if (findingRef.current) return
+			findingRef.current = true
+			try {
+				const api = tagApiRef.current
+				const seeded =
+					api.beamioProp &&
+					(api.beamioProp.address || "").toLowerCase() === address.toLowerCase()
+						? api.beamioProp
+						: undefined
+				if (seeded) {
+					setfromBeamio((prev) =>
+						prev?.username === seeded.username && (prev?.image || "") === (seeded.image || "")
+							? prev
+							: seeded,
+					)
+					const seededImg = (seeded.image || "").trim()
+					setUserImg(seededImg || getImg(seeded.username || seeded.address || "beamio"))
+				}
+				const known = api.resolvePeerSearchResult(address)
+				if (!known?.username?.trim()) {
+					await api.ensureProfilesForAddresses([address])
+				}
+				if (cancelled) return
+				const latest = tagApiRef.current
+				const account =
+					latest.resolvePeerSearchResult(address) ??
+					latest.beamioUsers.find(n => (n?.address || "").toLowerCase() === address.toLowerCase()) ??
+					seeded ??
+					unknowAcc(address)
+				const setUsers = latest.setbBeamioUsers as unknown as React.Dispatch<React.SetStateAction<searchResult[]>>
+				setUsers(prev => {
+					const addr = (account.address || "").toLowerCase()
+					if (prev.some(u => (u.address || "").toLowerCase() === addr)) return prev
+					return [...prev, account]
+				})
+				setfromBeamio((prev) =>
+					prev?.username === account.username && (prev?.image || "") === (account.image || "")
+						? prev
+						: account,
+				)
+				const img = (account.image || "").trim()
+				setUserImg(img || getImg(account.username || account.address || "beamio"))
+			} finally {
+				findingRef.current = false
+			}
 		}
-		findUser()
-	}, [address, findUser, beamioProp])
+		void run()
+		return () => {
+			cancelled = true
+		}
+	}, [address, profileUsername, profileImage])
 	return (
 		<div className="relative h-12 w-12 flex-shrink-0">
 		{avatarSrc ? (

@@ -8,7 +8,7 @@ import {ethers} from 'ethers'
 import {aesGcmEncrypt, aesGcmDecrypt, toBase64, fromBase64, storeSystemData } from '@/services/beamio'
 import { publishNativePwaLog } from '@/utils/cashTreesNativePwaLog'
 import { startWorkerGossipListen, stopWorkerGossip } from '@/services/chatWorkerBridge'
-import { wrapArmorToMailboxWork } from '@/vendor/beamio-chat-sdk/envelope'
+import { wrapArmorToMailboxWork } from '@conet.project/chat-sdk'
 
 function chatBootLog(message: string, level: 'info' | 'warn' | 'error' = 'info'): void {
 	publishNativePwaLog(level, `[Chat] ${message}`)

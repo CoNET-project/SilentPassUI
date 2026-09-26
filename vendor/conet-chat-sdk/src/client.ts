@@ -19,10 +19,11 @@ import type {
 	HistoryBufferEvent,
 	HistoryEntry,
 	HistoryLoadOptions,
+	HistoryReadOptions,
 	NodeInfo,
 	Unsubscribe,
-} from './types'
-import type { WorkerInbound, WorkerInitPayload, WorkerOutbound } from './protocol'
+} from './types.js'
+import type { WorkerInbound, WorkerInitPayload, WorkerOutbound } from './protocol.js'
 
 export interface BeamioChatClientOptions {
 	/**
@@ -54,6 +55,10 @@ class ChatHistoryBridge implements BeamioChatHistory {
 
 	append(entry: Omit<HistoryEntry, 'seq'>): Promise<void> {
 		return this.client.request<void>({ type: 'historyAppend', reqId: 0, entry })
+	}
+
+	read(options?: HistoryReadOptions): Promise<HistoryEntry[]> {
+		return this.client.request<HistoryEntry[]>({ type: 'historyRead', reqId: 0, options }, 60_000)
 	}
 
 	onBuffer(cb: (batch: HistoryBufferEvent) => void): Unsubscribe {

@@ -6,6 +6,9 @@
 # Node artifact files
 node_modules/
 dist/
+# Vendored chat-sdk ships its build output; the global dist/ rule must not drop it.
+!vendor/conet-chat-sdk/dist/
+!vendor/conet-chat-sdk/dist/**
 public/.*
 # Compiled Java class files
 *.class

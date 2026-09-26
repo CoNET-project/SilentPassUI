@@ -33,8 +33,8 @@ import {
 } from "@/utils/chatDeliveryReceipt"
 import { ensureNativePushBoundForWallet, ensurePushDeviceTokenListener } from "@/utils/cashTreesPushBind"
 import { mirrorChatMessageToHistory, mergeHistoryEntriesIntoMessages } from "@/services/chatHistoryMirror"
-import { onHistoryBuffer, loadWorkerHistory } from "@/services/chatWorkerBridge"
-import type { HistoryEntry } from "./vendor/beamio-chat-sdk/types"
+import { onHistoryBuffer, loadWorkerHistory, onDecryptedChatHistory, readDecryptedChatHistory } from "@/services/chatWorkerBridge"
+import type { HistoryEntry } from "@conet.project/chat-sdk"
 import { checkStorage, storeSystemData, runAutoBUnitFreeClaimIfEligible, handleNfcLinkAppDeepLinkScan, ensureProfilePrivateKeyArmorFromMnemonic, bootstrapProfileLocaleCurrencyIfUnset, mergeLocalLocaleLanguageOntoChainProfile } from "@/services/beamio"
 import { hasLocalPlaintextMnemonic } from "@/utils/consumerWalletGate"
 import { ensureEphemeralWalletForCouponClaim } from "@/utils/ephemeralCouponClaimWallet"
@@ -1060,24 +1060,32 @@ function AppShell() {
 		}
 	}, [])
 
+	const resolvePeerSearchResultRef = useRef(resolvePeerSearchResult)
+	const ensureProfilesForAddressesRef = useRef(ensureProfilesForAddresses)
+	resolvePeerSearchResultRef.current = resolvePeerSearchResult
+	ensureProfilesForAddressesRef.current = ensureProfilesForAddresses
+	const restoredHistorySigRef = useRef('')
+
 	// Restore encrypted chat history on a fresh device (post account delete/restore):
 	// decrypt (worker) → create missing peer sessions → dedup-merge into `profile.chats[].messages`.
 	// Recover wipes local chats[]; history must be allowed to CREATE sessions (not only merge).
 	//
 	// Critical: do NOT await AddressPGP / searchUsername for every peer on the main thread —
 	// that froze the whole UI for seconds after launch (jitter + dead buttons until done).
+	// Tag-db callbacks must stay in refs: an online/tag refresh must not re-read the corpus.
 	useEffect(() => {
 		let cancelled = false
 		/** Serialize batches so tail + backfill cannot stack concurrent merges. */
 		let chain: Promise<void> = Promise.resolve()
 		const yieldToUi = () => new Promise<void>((r) => window.setTimeout(r, 0))
 
-		const unsub = onHistoryBuffer((batch) => {
-			const entries = batch?.entries
+		const applyEntries = (entries: HistoryEntry[]) => {
 			if (!entries?.length) return
+			const sig = entries.map((e) => `${e.sendId || ''}|${e.seq}|${e.ts}`).join(';')
+			if (restoredHistorySigRef.current === sig) return
 			const byPeer = new Map<string, HistoryEntry[]>()
 			for (const e of entries) {
-				const p = (e?.peer || batch?.peer || '').toLowerCase()
+				const p = (e?.peer || '').toLowerCase()
 				if (!p || p === 'all' || !ethers.isAddress(p)) continue
 				const arr = byPeer.get(p) || []
 				arr.push(e)
@@ -1086,7 +1094,7 @@ function AppShell() {
 			if (byPeer.size === 0) return
 
 			chain = chain.then(async () => {
-				if (cancelled) return
+				if (cancelled || restoredHistorySigRef.current === sig) return
 				const profile0 = CoNET_Data?.profiles?.[0]
 				const pk =
 					resolveSigningPrivateKeyArmor(profile0) ||
@@ -1095,6 +1103,7 @@ function AppShell() {
 					console.warn('[historyRestore] skip: no signing key yet')
 					return
 				}
+				restoredHistorySigRef.current = sig
 
 				publishNativePwaLog(
 					'info',
@@ -1110,7 +1119,7 @@ function AppShell() {
 					const has = existing.some((c) => (c?.address || '').toLowerCase() === peer)
 					if (has) continue
 					// Local tag DB only — never block restore on remote searchUsername.
-					const acc: searchResult | null = resolvePeerSearchResult(peer)
+					const acc: searchResult | null = resolvePeerSearchResultRef.current(peer)
 					try {
 						created.set(
 							peer,
@@ -1151,9 +1160,17 @@ function AppShell() {
 									const callRecord = (JSON.parse(entry.body) as ChatMessage)?.callRecord
 									if (!callRecord?.callId) continue
 									const old = phoneCalls.find(item => item.callId === callRecord.callId)
+									const nextCall = { ...old, ...callRecord }
+									if (
+										old &&
+										old.status === nextCall.status &&
+										old.createdAt === nextCall.createdAt &&
+										old.endedAt === nextCall.endedAt &&
+										old.direction === nextCall.direction
+									) continue
 									phoneCalls = [
 										...phoneCalls.filter(item => item.callId !== callRecord.callId),
-										{ ...old, ...callRecord },
+										nextCall,
 									].sort((a, b) => b.createdAt - a.createdAt).slice(0, 200)
 									localChanged = true
 								} catch {
@@ -1198,11 +1215,11 @@ function AppShell() {
 
 				// Hydrate @beamioTag for peers restored as address-only stubs (local DB empty after recover).
 				const peersNeedingTag = [...byPeer.keys()].filter((peer) => {
-					const hit = resolvePeerSearchResult(peer)
+					const hit = resolvePeerSearchResultRef.current(peer)
 					return !hit?.username?.trim()
 				})
 				if (peersNeedingTag.length && !cancelled) {
-					void ensureProfilesForAddresses(peersNeedingTag, { maxPerTick: 28 })
+					void ensureProfilesForAddressesRef.current(peersNeedingTag, { maxPerTick: 28 })
 						.then((map) => {
 							if (cancelled || !map) return
 							startTransition(() => {
@@ -1249,12 +1266,23 @@ function AppShell() {
 						.catch(() => {})
 				}
 			})
+		}
+		const unsub = onHistoryBuffer((batch) => {
+			applyEntries(batch?.entries || [])
+		})
+		const unsubCorpus = onDecryptedChatHistory((entries) => {
+			if (!cancelled) applyEntries(entries)
+		})
+		void readDecryptedChatHistory().then((entries) => {
+			if (cancelled || !entries?.length) return
+			applyEntries(entries)
 		})
 		return () => {
 			cancelled = true
 			unsub()
+			unsubCorpus()
 		}
-	}, [setProfiles, resolvePeerSearchResult, ensureProfilesForAddresses])
+	}, [setProfiles])
 
 	// Kick history restore once gossip worker is live; re-run when EOA is ready after recover.
 	const historyEoa = (profiles?.[0]?.keyID || '').toLowerCase()

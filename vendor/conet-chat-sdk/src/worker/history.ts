@@ -19,7 +19,7 @@
 
 import { ethers } from 'ethers'
 
-import type { HistoryEntry, HistoryLoadOptions, PersistenceAdapter } from '../types'
+import type { HistoryEntry, HistoryLoadOptions, HistoryReadOptions, PersistenceAdapter } from '../types.js'
 import {
 	aesGcmDecryptString,
 	aesGcmEncryptString,
@@ -28,7 +28,7 @@ import {
 	hexToBytes,
 	hkdf,
 	keccakUtf8,
-} from '../crypto'
+} from '../crypto.js'
 
 /** ChatIndexRegistry lives only on CoNET L1; EIP-712 domain chainId is fixed. */
 const REGISTRY_CHAIN_ID = 224422
@@ -71,7 +71,48 @@ export interface HistoryEmit {
 
 const LOCAL_INDEX_KEY_PREFIX = 'beamio.chat.history.index:'
 const LOCAL_FRAG_KEY_PREFIX = 'beamio.chat.history.frag:'
+const LOCAL_PLAIN_KEY_PREFIX = 'beamio.chat.history.plain:'
 const FRAGMENT_GENESIS_INFO = 'frag-genesis'
+
+interface PlainRecord {
+	entry: HistoryEntry
+	searchText: string
+}
+
+function extractSearchText(body: string): string {
+	const parts: string[] = []
+	const push = (value: unknown) => {
+		if (typeof value === 'string' && value.trim()) parts.push(value)
+	}
+	try {
+		const msg = JSON.parse(body) as Record<string, unknown>
+		push(msg.text)
+		const call = msg.callRecord as Record<string, unknown> | undefined
+		push(call?.status)
+		const file = msg.fileMessage as Record<string, unknown> | undefined
+		push(file?.filename)
+		push(file?.archiveName)
+		if (msg.voiceMessage) parts.push('voice message')
+		const payment = msg.paymentCard as Record<string, unknown> | undefined
+		push(payment?.title)
+	} catch {
+		push(body)
+	}
+	return parts.join('\n').toLowerCase()
+}
+
+function isPlainRecord(value: unknown): value is PlainRecord {
+	if (!value || typeof value !== 'object') return false
+	const row = value as PlainRecord
+	const entry = row.entry
+	return (
+		!!entry &&
+		typeof entry.body === 'string' &&
+		typeof entry.peer === 'string' &&
+		(entry.dir === 'in' || entry.dir === 'out') &&
+		typeof row.searchText === 'string'
+	)
+}
 
 function diagnosticCid(cid: string): string {
 	return typeof cid === 'string' && cid.length > 12
@@ -92,6 +133,10 @@ export class HistoryStore {
 	/** Lazily-created read-only CoNET provider (RPC-first pointer reads). */
 	private provider: ethers.JsonRpcProvider | null = null
 	private mutationChain: Promise<void> = Promise.resolve()
+	/** Decrypted corpus. Keyed by fragment cid so a known body is never fetched again. */
+	private corpus = new Map<string, PlainRecord>()
+	/** Last on-chain index hash already merged into the local manifest. */
+	private syncedIndexHash = ''
 
 	constructor(
 		private readonly emit: HistoryEmit,
@@ -236,6 +281,11 @@ export class HistoryStore {
 		})
 	}
 
+	private async decryptRecord(record: IndexRecord): Promise<HistoryEntry | null> {
+		const { entry } = await this.materializeRecord(record)
+		return entry
+	}
+
 	private async relinearizeAndReencrypt(records: IndexRecord[]): Promise<IndexRecord[] | null> {
 		const decrypted = await Promise.all(
 			records.map(async (record) => ({ record, body: await this.decryptRecord(record) })),
@@ -277,6 +327,7 @@ export class HistoryStore {
 		await this.loadLocalManifest()
 		const pointer = await this.readOnchainPointer()
 		if (!pointer || !this.indexKey) return false
+		if (this.syncedIndexHash && pointer.indexHash === this.syncedIndexHash && this.manifest) return false
 		const cipher = await this.fetchIndexCipherByHash(pointer.indexHash)
 		if (!cipher) return false
 		try {
@@ -301,9 +352,14 @@ export class HistoryStore {
 			}
 			const changed =
 				records.length !== local.length || records.some((record, index) => record.cid !== local[index]?.cid)
-			if (!changed) return false
+			if (!changed) {
+				this.syncedIndexHash = pointer.indexHash
+				return false
+			}
 			const nextManifest = { ...parsed, updatedAt: Date.now(), records }
-			return await this.persistManifest(nextManifest, { requireRemoteCommit: Boolean(this.opts.apiBaseUrl) })
+			const persisted = await this.persistManifest(nextManifest, { requireRemoteCommit: Boolean(this.opts.apiBaseUrl) })
+			if (persisted) this.syncedIndexHash = pointer.indexHash
+			return persisted
 		} catch (ex) {
 			this.emit.log('warn', `[history] index decrypt/parse failed: ${(ex as Error)?.message ?? String(ex)}`)
 			return false
@@ -452,23 +508,59 @@ export class HistoryStore {
 		return hkdf(this.master, `frag|${seq}|${prevCid}`, 32)
 	}
 
-	private async decryptRecord(rec: IndexRecord): Promise<HistoryEntry | null> {
+	private plainKey(cid: string): string {
+		return `${LOCAL_PLAIN_KEY_PREFIX}${this.eoaLower}:${cid}`
+	}
+
+	private async rememberPlain(cid: string, entry: HistoryEntry): Promise<void> {
+		const row: PlainRecord = { entry, searchText: extractSearchText(entry.body) }
+		this.corpus.set(cid, row)
+		if (this.opts.persistence) await this.opts.persistence.set(this.plainKey(cid), row)
+	}
+
+	/** Memory, then local plaintext, then local cipher, then IPFS. A hit never reaches the next step. */
+	private async materializeRecord(rec: IndexRecord): Promise<{ entry: HistoryEntry | null; fresh: boolean }> {
+		const known = this.corpus.get(rec.cid)
+		if (known) return { entry: known.entry, fresh: false }
+		if (this.opts.persistence) {
+			const stored = await this.opts.persistence.get(this.plainKey(rec.cid))
+			if (isPlainRecord(stored)) {
+				this.corpus.set(rec.cid, stored)
+				return { entry: stored.entry, fresh: false }
+			}
+		}
 		const cipher = await this.downloadFragment(rec.cid)
 		if (!cipher) {
 			this.emit.log('warn', `[history] record unavailable seq=${rec.seq} cid=${diagnosticCid(rec.cid)}`)
-			return null
+			return { entry: null, fresh: false }
 		}
 		try {
 			const key = await this.fragmentKey(rec.seq, rec.prevCid)
 			const body = await aesGcmDecryptString(key, cipher)
-			return { seq: rec.seq, ts: rec.ts, peer: rec.peer, dir: rec.dir, sendId: rec.sendId, body }
+			const entry: HistoryEntry = {
+				seq: rec.seq,
+				ts: rec.ts,
+				peer: rec.peer,
+				dir: rec.dir,
+				sendId: rec.sendId,
+				body,
+			}
+			await this.rememberPlain(rec.cid, entry)
+			return { entry, fresh: true }
 		} catch (ex) {
 			this.emit.log(
 				'warn',
 				`[history] record decrypt failed seq=${rec.seq} cid=${diagnosticCid(rec.cid)} prev=${diagnosticCid(rec.prevCid)}: ${(ex as Error)?.message ?? String(ex)}`,
 			)
-			return null
+			return { entry: null, fresh: false }
 		}
+	}
+
+	private matchesQuery(cid: string, query: string): boolean {
+		const terms = query.toLowerCase().split(/\s+/).filter(Boolean)
+		if (!terms.length) return true
+		const text = this.corpus.get(cid)?.searchText ?? ''
+		return terms.every((term) => text.includes(term))
 	}
 
 	// ---- Public: load / append -----------------------------------------------
@@ -476,6 +568,7 @@ export class HistoryStore {
 		await this.init()
 		const tailCount = options?.tailCount ?? 60
 		const localOnly = options?.localOnly ?? false
+		const emitMode = options?.emit ?? 'fresh'
 		const peerFilter = options?.peer ? options.peer.toLowerCase() : undefined
 
 		await this.loadLocalManifest()
@@ -499,35 +592,72 @@ export class HistoryStore {
 			`[history] load peer=${peerFilter ?? 'all'} records=${ordered.length} tail=${tail.length} older=${older.length}`,
 		)
 
-		// Eagerly decrypt the last ~2 screens in parallel.
-		const tailEntries = (await Promise.all(tail.map((r) => this.decryptRecord(r)))).filter(
-			(e): e is HistoryEntry => !!e,
-		)
-		this.emit.log(
-			tailEntries.length === tail.length ? 'info' : 'warn',
-			`[history] tail decrypted=${tailEntries.length}/${tail.length}`,
-		)
-		this.emit.buffer(peerFilter ?? 'all', tailEntries, true)
+		const publish = async (recordsToOpen: IndexRecord[], isTail: boolean): Promise<void> => {
+			const opened = await Promise.all(recordsToOpen.map((record) => this.materializeRecord(record)))
+			const entries = opened
+				.filter((row) => row.entry && (emitMode === 'all' || row.fresh))
+				.map((row) => row.entry!)
+			const freshCount = opened.filter((row) => row.fresh).length
+			this.emit.log(
+				'info',
+				`[history] corpus ${isTail ? 'tail' : 'backfill'} records=${recordsToOpen.length} fresh=${freshCount} emitted=${entries.length}`,
+			)
+			if (entries.length) this.emit.buffer(peerFilter ?? 'all', entries, isTail)
+		}
 
-		// Backfill older entries in the background, newest-first, in small batches.
-		void (async () => {
-			const batchSize = 20
-			for (let i = older.length; i > 0; i -= batchSize) {
-				const slice = older.slice(Math.max(0, i - batchSize), i)
-				const entries = (await Promise.all(slice.map((r) => this.decryptRecord(r)))).filter(
-					(e): e is HistoryEntry => !!e,
-				)
-				this.emit.log(
-					entries.length === slice.length ? 'info' : 'warn',
-					`[history] backfill decrypted=${entries.length}/${slice.length}`,
-				)
-				if (entries.length) this.emit.buffer(peerFilter ?? 'all', entries, false)
+		await publish(tail, true)
+		const batchSize = 20
+		for (let i = older.length; i > 0; i -= batchSize) {
+			const slice = older.slice(Math.max(0, i - batchSize), i)
+			await publish(slice, false)
+		}
+	}
+
+	/**
+	 * Global read of the decrypted corpus. Does not refresh the on-chain pointer.
+	 * Missing bodies are decrypted once and stored; later reads stay local.
+	 */
+	async read(options?: HistoryReadOptions): Promise<HistoryEntry[]> {
+		let result: HistoryEntry[] = []
+		this.mutationChain = this.mutationChain.catch(() => undefined).then(async () => {
+			await this.init()
+			await this.loadLocalManifest()
+			const peer = options?.peer?.toLowerCase()
+			const query = options?.query?.trim() ?? ''
+			const records = (this.manifest?.records ?? []).filter((record) => !peer || record.peer.toLowerCase() === peer)
+			const entries: HistoryEntry[] = []
+			let fresh = 0
+			for (const record of records) {
+				const opened = await this.materializeRecord(record)
+				if (opened.fresh) fresh += 1
+				if (!opened.entry) continue
+				if (query && !this.matchesQuery(record.cid, query)) continue
+				entries.push(opened.entry)
 			}
-		})()
+			entries.sort((a, b) => a.ts - b.ts || a.seq - b.seq)
+			const limit = options?.limit
+			result = limit && limit > 0 ? entries.slice(-limit) : entries
+			this.emit.log(
+				'info',
+				`[history] read records=${records.length} fresh=${fresh} matches=${result.length}${query ? ' query=1' : ''}`,
+			)
+		})
+		await this.mutationChain
+		return result
+	}
+
+	private hasSendId(sendId: string | undefined): boolean {
+		if (!sendId || !this.manifest?.records?.length) return false
+		return this.manifest.records.some((record) => record.sendId === sendId)
 	}
 
 	async append(entry: Omit<HistoryEntry, 'seq'>): Promise<void> {
 		this.mutationChain = this.mutationChain.catch(() => undefined).then(async () => {
+			// A conversation refresh re-mirrors every local bubble. Those sendIds are
+			// already in the in-memory index after the first load — do not pull the
+			// on-chain pointer or the IPFS index again for each one.
+			if (!this.manifest) await this.loadLocalManifest()
+			if (this.hasSendId(entry.sendId)) return
 			await this.syncFromHeadUnlocked()
 			if (!this.manifest) this.manifest = { v: 1, eoa: this.eoaLower, updatedAt: Date.now(), records: [] }
 			const records = this.manifest.records
@@ -551,6 +681,14 @@ export class HistoryStore {
 				sendId: entry.sendId,
 				preview: entry.body.slice(0, 80),
 			})
+			await this.rememberPlain(cid, {
+				seq,
+				ts: entry.ts,
+				peer: entry.peer.toLowerCase(),
+				dir: entry.dir,
+				sendId: entry.sendId,
+				body: entry.body,
+			})
 			this.manifest.updatedAt = Date.now()
 			await this.persistManifest()
 		})
@@ -561,6 +699,8 @@ export class HistoryStore {
 		this.master = null
 		this.indexKey = null
 		this.manifest = null
+		this.corpus.clear()
+		this.syncedIndexHash = ''
 		this.provider?.destroy?.()
 		this.provider = null
 		this.ready = false

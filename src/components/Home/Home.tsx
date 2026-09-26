@@ -2131,7 +2131,7 @@ const Home = (_props: HomeProps) => {
 															CA$ {homeHubMerchantCad.whole}.{homeHubMerchantCad.frac}
 														</p>
 													</div>
-													<div className="space-y-1 text-left">
+													<div className="space-y-1 text-right">
 														<p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/55">
 															REWARD PT
 														</p>

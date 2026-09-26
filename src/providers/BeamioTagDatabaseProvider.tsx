@@ -78,6 +78,35 @@ const defaultValue: BeamioTagDatabaseContextValue = {
 
 const BeamioTagDatabaseContext = createContext<BeamioTagDatabaseContextValue>(defaultValue);
 
+/** Keep the previous map when a worker snapshot has the same display fields. */
+function profileSnapshotUnchanged(
+  prev: Record<string, BeamioAddressProfileRecord>,
+  next: Record<string, BeamioAddressProfileRecord>,
+): boolean {
+  const prevKeys = Object.keys(prev);
+  const nextKeys = Object.keys(next);
+  if (prevKeys.length !== nextKeys.length) return false;
+  for (const key of nextKeys) {
+    const a = prev[key];
+    const b = next[key];
+    if (!a || !b) return false;
+    if (a === b) continue;
+    if (
+      a.username !== b.username ||
+      a.accountName !== b.accountName ||
+      a.image !== b.image ||
+      a.online !== b.online ||
+      a.nativeWakeable !== b.nativeWakeable ||
+      a.first_name !== b.first_name ||
+      a.last_name !== b.last_name ||
+      a.updatedAt !== b.updatedAt
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 export function useBeamioTagDatabase(): BeamioTagDatabaseContextValue {
   return useContext(BeamioTagDatabaseContext);
 }
@@ -101,7 +130,9 @@ export function BeamioTagDatabaseProvider({ children }: { children: ReactNode })
 
   useEffect(() => {
     return onBeamioTagProfilesUpdated((ev) => {
-      setProfileMap({ ...ev.snapshot });
+      setProfileMap((prev) =>
+        profileSnapshotUnchanged(prev, ev.snapshot) ? prev : { ...ev.snapshot },
+      );
     });
   }, []);
 
@@ -262,7 +293,8 @@ export function BeamioTagDatabaseProvider({ children }: { children: ReactNode })
     async (addresses: string[], opts?: { maxPerTick?: number }) => {
       if (!partition) return profileMapRef.current;
       const map = await ensureBeamioTagProfiles(addresses, opts);
-      setProfileMap({ ...getBeamioTagMirrorMap() });
+      const mirror = getBeamioTagMirrorMap();
+      setProfileMap((prev) => (profileSnapshotUnchanged(prev, mirror) ? prev : { ...mirror }));
       return map;
     },
     [partition],

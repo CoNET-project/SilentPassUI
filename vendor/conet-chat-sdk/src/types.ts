@@ -260,6 +260,28 @@ export interface HistoryLoadOptions {
 	tailCount?: number
 	/** When true, skip network and only read the local IndexedDB mirror (instant open). */
 	localOnly?: boolean
+	/**
+	 * `all` replays every decrypted entry to `historyBuffer`.
+	 * `fresh` emits only entries that were not already in the local plaintext corpus.
+	 * Default `fresh` so a later sync does not re-deliver the corpus.
+	 */
+	emit?: 'all' | 'fresh'
+}
+
+/**
+ * Read the chat module's local decrypted history. Already-decrypted entries come
+ * from the worker corpus and are not fetched from IPFS again.
+ */
+export interface HistoryReadOptions {
+	/** Contact EOA. Omit to read every peer. */
+	peer?: string
+	/**
+	 * Full-text query over extracted message text (body, call status, file name).
+	 * Whitespace-separated terms are AND-matched, case-insensitive.
+	 */
+	query?: string
+	/** Keep the newest matches when set. */
+	limit?: number
 }
 
 export interface BeamioChatHistory {
@@ -271,6 +293,11 @@ export interface BeamioChatHistory {
 	load(options?: HistoryLoadOptions): Promise<void>
 	/** Append (persist) a new sent/received entry to encrypted history + local mirror. */
 	append(entry: Omit<HistoryEntry, 'seq'>): Promise<void>
+	/**
+	 * Global read of the decrypted corpus. UI must use this instead of fetching
+	 * fragments itself. A `query` runs full-text search over the whole local history.
+	 */
+	read(options?: HistoryReadOptions): Promise<HistoryEntry[]>
 	/** Subscribe to incremental buffer batches during restore/append. */
 	onBuffer(cb: (batch: HistoryBufferEvent) => void): Unsubscribe
 }

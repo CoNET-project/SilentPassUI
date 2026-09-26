@@ -1,5 +1,5 @@
 /**
- * Bridge between SilentPassUI `services/chat.ts` and the vendored Beamio Chat SDK
+ * Bridge between SilentPassUI `services/chat.ts` and `@conet.project/chat-sdk`
  * worker client. The Web Worker performs ALL inbound openpgp decryption + ethers
  * signing, so the main thread no longer blocks for seconds after startup (root
  * cause of the "app frozen ~10s after launch" bug).
@@ -18,14 +18,15 @@
  * `listenKind:'chat'`; never direct-connect mailbox B.
  */
 
-import { createBeamioChatClient } from '../vendor/beamio-chat-sdk'
-import type {
-	BeamioChatConfig,
-	HistoryBufferEvent,
-	HistoryEntry,
-	HistoryLoadOptions,
-	NodeInfo,
-} from '../vendor/beamio-chat-sdk/types'
+import {
+	createBeamioChatClient,
+	type BeamioChatConfig,
+	type HistoryBufferEvent,
+	type HistoryEntry,
+	type HistoryLoadOptions,
+	type HistoryReadOptions,
+	type NodeInfo,
+} from '@conet.project/chat-sdk'
 import { CONET_ADDRESS_PGP, CONET_CHAT_INDEX_REGISTRY } from '../config/chainAddresses'
 
 const CONET_RPC_URL = 'https://rpc1.conet.network'
@@ -109,6 +110,15 @@ export const loadWorkerHistory = async (options?: HistoryLoadOptions): Promise<v
 	historyLoadInFlight = run
 	try {
 		await run
+		const entries = await readDecryptedChatHistory()
+		if (!entries) return
+		for (const cb of decryptedHistoryListeners) {
+			try {
+				cb(entries)
+			} catch {
+				/* isolate subscriber */
+			}
+		}
 	} finally {
 		if (historyLoadInFlight === run) historyLoadInFlight = null
 	}
@@ -131,14 +141,47 @@ export const appendWorkerHistory = async (
 }
 
 /**
- * Build the gossip Worker from the vendored Beamio Chat SDK source. Webpack 5
- * (CRA/Craco) statically detects the `new Worker(new URL(specifier,
- * import.meta.url))` pattern, resolves the relative worker entry and emits it as
- * a separate worker chunk (side effects preserved because entry chunks are never
- * tree-shaken).
+ * Global decrypted history. UI must call this instead of fetching IPFS fragments.
+ * `null` means the worker is not ready — keep the last trusted transcript.
+ * A `query` searches the whole local corpus (message text, call status, file name).
+ */
+export const readDecryptedChatHistory = async (
+	options?: HistoryReadOptions,
+): Promise<HistoryEntry[] | null> => {
+	if (!activeClient) return null
+	try {
+		return await activeClient.history.read(options)
+	} catch {
+		return null
+	}
+}
+
+export const searchDecryptedChatHistory = async (
+	query: string,
+	options?: Omit<HistoryReadOptions, 'query'>,
+): Promise<HistoryEntry[] | null> => {
+	const text = query.trim()
+	if (!text) return readDecryptedChatHistory(options)
+	return readDecryptedChatHistory({ ...options, query: text })
+}
+
+const decryptedHistoryListeners = new Set<(entries: HistoryEntry[]) => void>()
+
+/** Fired after a history load with the full local decrypted corpus. */
+export const onDecryptedChatHistory = (
+	cb: (entries: HistoryEntry[]) => void,
+): (() => void) => {
+	decryptedHistoryListeners.add(cb)
+	return () => decryptedHistoryListeners.delete(cb)
+}
+
+/**
+ * Build the gossip Worker from the published `@conet.project/chat-sdk` package.
+ * Webpack 5 (CRA/Craco) statically detects `new Worker(new URL(specifier,
+ * import.meta.url))` and emits a separate worker chunk.
  */
 function makeGossipWorker(): Worker {
-	return new Worker(new URL('../vendor/beamio-chat-sdk/worker/entry.ts', import.meta.url), {
+	return new Worker(new URL('@conet.project/chat-sdk/worker', import.meta.url), {
 		type: 'module',
 		name: 'beamio-chat-gossip',
 	})

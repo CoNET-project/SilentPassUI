@@ -7,10 +7,10 @@
  * events via `postMessage`.
  */
 
-import type { WorkerInbound, WorkerInitPayload, WorkerOutbound } from '../protocol'
-import type { HistoryEntry, PresenceEvent, StatusEvent } from '../types'
-import { GossipCore } from './gossip-core'
-import { HistoryStore } from './history'
+import type { WorkerInbound, WorkerInitPayload, WorkerOutbound } from '../protocol.js'
+import type { HistoryEntry, PresenceEvent, StatusEvent } from '../types.js'
+import { GossipCore } from './gossip-core.js'
+import { HistoryStore } from './history.js'
 
 const ctx = globalThis as unknown as {
 	postMessage: (msg: WorkerOutbound) => void
@@ -41,9 +41,9 @@ function scheduleHistorySync(): void {
 		historySyncTimer = null
 		if (!history) return
 		try {
-			await history.syncFromHead()
-			// Emit newly merged records to the host without performing a second network read.
-			await history.load({ localOnly: true })
+			const changed = await history.syncFromHead()
+			// Publish only bodies that were not already in the plaintext corpus.
+			if (changed) await history.load({ localOnly: true, emit: 'fresh' })
 		} catch (ex) {
 			post({ type: 'event:log', level: 'warn', message: `history sync failed: ${(ex as Error)?.message ?? String(ex)}` })
 		} finally {
@@ -191,6 +191,15 @@ async function handle(cmd: WorkerInbound): Promise<void> {
 			try {
 				await history!.load(cmd.options)
 				post({ type: 'ack', reqId: cmd.reqId, ok: true })
+			} catch (ex) {
+				post({ type: 'ack', reqId: cmd.reqId, ok: false, error: (ex as Error)?.message ?? String(ex) })
+			}
+			return
+		}
+		case 'historyRead': {
+			try {
+				const entries = await history!.read(cmd.options)
+				post({ type: 'ack', reqId: cmd.reqId, ok: true, result: entries })
 			} catch (ex) {
 				post({ type: 'ack', reqId: cmd.reqId, ok: false, error: (ex as Error)?.message ?? String(ex) })
 			}

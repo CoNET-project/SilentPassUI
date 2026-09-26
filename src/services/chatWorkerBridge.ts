@@ -41,6 +41,8 @@ type ChatWorkerClient = ReturnType<typeof createBeamioChatClient>
 
 /** Only one worker listen client is alive per process. A new session replaces the old. */
 let activeClient: ChatWorkerClient | null = null
+let workerInitPromise: Promise<boolean> | null = null
+let lastGossipParams: StartWorkerGossipParams | null = null
 
 /**
  * Host subscribers to encrypted-history restore/append buffer batches. Registered
@@ -184,7 +186,8 @@ export const isWorkerGossipActive = (): boolean => activeClient !== null
  * `init` (its internal `startListen()` then owns SSE connect/reconnect). Any prior
  * client is destroyed first (a new connection replaces the old).
  */
-export const startWorkerGossipListen = async (p: StartWorkerGossipParams): Promise<boolean> => {
+const startWorkerGossipListenInternal = async (p: StartWorkerGossipParams): Promise<boolean> => {
+	lastGossipParams = p
 	stopWorkerGossip()
 	if (p.rootSignal.aborted) return false
 
@@ -295,6 +298,17 @@ export const startWorkerGossipListen = async (p: StartWorkerGossipParams): Promi
 	}
 }
 
+export const startWorkerGossipListen = async (p: StartWorkerGossipParams): Promise<boolean> => {
+	if (workerInitPromise) return workerInitPromise
+	const promise = startWorkerGossipListenInternal(p)
+	workerInitPromise = promise
+	try {
+		return await promise
+	} finally {
+		if (workerInitPromise === promise) workerInitPromise = null
+	}
+}
+
 export const startWorkerVoiceListen = async (
 	sessionId: string,
 	pushWakeup?: {
@@ -306,9 +320,26 @@ export const startWorkerVoiceListen = async (
 		recipientPgp?: string
 	},
 ): Promise<boolean> => {
+	if (workerInitPromise) {
+		const ready = await workerInitPromise
+		if (!ready || !activeClient) {
+			console.warn('[voiceListen] gossip worker initialization failed before voice relay')
+			return false
+		}
+	}
 	if (!activeClient) {
-		console.warn('[voiceListen] gossip worker is not listening')
-		return false
+		const retryParams = lastGossipParams
+		if (retryParams && !retryParams.rootSignal.aborted) {
+			console.warn('[voiceListen] gossip worker is not ready; waiting for/restarting the last listen session')
+			const restarted = await startWorkerGossipListen(retryParams)
+			if (!restarted || !activeClient) {
+				console.warn('[voiceListen] gossip worker could not be made ready for voice relay')
+				return false
+			}
+		} else {
+			console.warn('[voiceListen] gossip worker is not listening and no valid listen session is available')
+			return false
+		}
 	}
 	try {
 		const started = await activeClient.startVoiceListen(sessionId, pushWakeup)

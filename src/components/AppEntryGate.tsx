@@ -5,7 +5,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Outlet } from 'react-router-dom'
 import { useDaemonContext } from '@/providers/DaemonProvider'
-import { checkStorageWithTimeout } from '@/services/beamio'
+import { checkStorageWithStatusWithTimeout } from '@/services/beamio'
 import SplashScreen from '@/components/SplashScreen'
 import { EmbeddedPwaUpdateBanner } from '@/components/EmbeddedPwaUpdateBanner'
 import BeamioOnboardingModal from '@/pages/Home/LoadingPage'
@@ -41,6 +41,7 @@ export default function AppEntryGate() {
 	// 门闸已读到的本地存储快照（含超时降级结果），下传给 onboarding 弹窗避免二次读 IndexedDB 再次挂起。
 	const [bootCoNETData, setBootCoNETData] = useState<encrypt_keys_object | null>(null)
 	const [bootResolved, setBootResolved] = useState(false)
+	const [storageUnavailable, setStorageUnavailable] = useState<string | null>(null)
 	// 任一终态（进入 App / onboarding / recover）已确定；用于 Splash 兜底时安全降级。
 	const decisionMadeRef = useRef(false)
 
@@ -58,10 +59,26 @@ export default function AppEntryGate() {
 		setShowBeamioOnboardingModal(true)
 	}
 
+	const showStorageUnavailable = (reason: string) => {
+		decisionMadeRef.current = true
+		setSplashVisible(false)
+		setStorageUnavailable(reason)
+	}
+
 	const init = async () => {
 		try {
-			// checkStorage / ephemeral 读本地都加超时；私密模式挂起时按未注册处理。
-			let CoNETData = await checkStorageWithTimeout()
+			// A timeout/error is not an empty wallet. Never enter onboarding until
+			// storage has either loaded or truthfully reported a missing init doc.
+			const storageResult = await checkStorageWithStatusWithTimeout()
+			if (storageResult.status === 'unavailable') {
+				publishNativePwaLog(
+					'error',
+					`[AppEntryGate] local wallet storage unavailable: ${storageResult.reason}`,
+				)
+				showStorageUnavailable(storageResult.reason)
+				return
+			}
+			let CoNETData = storageResult.status === 'loaded' ? storageResult.data : null
 			const provisioned = await withTimeout(
 				ensureEphemeralWalletForCouponClaim().catch(() => null),
 				EPHEMERAL_WALLET_TIMEOUT_MS,
@@ -86,14 +103,14 @@ export default function AppEntryGate() {
 				enterApp()
 				return
 			}
-			// 未完成注册（无 profiles / EOA 非法 / 无 Beamio 账号名 / 本地读超时）必须走 onboarding。
+			// Only a trusted empty result enters first-time onboarding.
 			goOnboarding(false)
 		} catch (err) {
 			publishNativePwaLog(
 				'error',
 				`[AppEntryGate] init failed: ${err instanceof Error ? err.message : String(err)}`,
 			)
-			goOnboarding(false)
+			showStorageUnavailable('read_error')
 		}
 	}
 
@@ -105,14 +122,14 @@ export default function AppEntryGate() {
 
 		const splashTimer = window.setTimeout(() => {
 			setSplashVisible(false)
-			// 兜底：若到此仍未判定（如 IndexedDB 完全挂起），安全降级到 onboarding，
-			// 而不是撤掉 Splash 暴露默认 /home（无 EOA 的 App 壳）。
+			// If storage is still unresolved, keep the wallet gate blocked instead
+			// of exposing /home or manufacturing a new onboarding session.
 			if (!decisionMadeRef.current) {
 				publishNativePwaLog(
 					'warn',
-					`[AppEntryGate] splash force-dismiss after ${SPLASH_FORCE_DISMISS_MS}ms → fallback onboarding`,
+					`[AppEntryGate] splash force-dismiss after ${SPLASH_FORCE_DISMISS_MS}ms → storage unavailable`,
 				)
-				goOnboarding(false)
+				showStorageUnavailable('timeout')
 			} else {
 				publishNativePwaLog('warn', `[AppEntryGate] splash force-dismiss after ${SPLASH_FORCE_DISMISS_MS}ms`)
 			}
@@ -134,7 +151,26 @@ export default function AppEntryGate() {
 		<div className="flex h-full min-h-[100dvh] w-full flex-col">
 			<EmbeddedPwaUpdateBanner />
 			{splashVisible && <SplashScreen />}
-			{showBeamioOnboardingModal ? (
+			{storageUnavailable ? (
+				<div className="flex min-h-0 flex-1 flex-col items-center justify-center bg-[#071126] px-6 text-center text-white">
+					<div className="w-full max-w-md rounded-3xl border border-white/15 bg-white/10 p-6 shadow-2xl backdrop-blur-xl">
+						<h1 className="text-xl font-semibold">Wallet storage is unavailable</h1>
+						<p className="mt-3 text-sm leading-6 text-white/75">
+							Beamio could not read the existing local wallet data. Your data was not deleted.
+							Keep this app origin unchanged and retry.
+						</p>
+						<div className="mt-5 flex justify-center">
+							<button
+								type="button"
+								className="rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-[#071126]"
+								onClick={() => window.location.reload()}
+							>
+								Retry
+							</button>
+						</div>
+					</div>
+				</div>
+			) : showBeamioOnboardingModal ? (
 				<BeamioOnboardingModal
 					requireWalletRecover={requireWalletRecover}
 					bootResolved={bootResolved}

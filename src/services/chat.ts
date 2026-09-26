@@ -836,12 +836,19 @@ export const resumeGossipListenOnForeground = async (
 	setGossip: (val: boolean) => void,
 	newMessage: (val: string) => void,
 	staleMs = 45_000,
+	force = false,
 ): Promise<void> => {
-	if (!shouldResumeGossipListen(staleMs)) {
+	if (!force && !shouldResumeGossipListen(staleMs)) {
 		chatBootLog('foreground resume skipped: gossip stream still active or connecting', 'info')
 		return
 	}
-	prepareGossipListenResume('foreground_resume')
+	chatBootLog(
+		force
+			? 'foreground resume forced by native mailbox wake'
+			: 'foreground resume restarting stale gossip stream',
+		'info',
+	)
+	prepareGossipListenResume(force ? 'native_mailbox_wake' : 'foreground_resume')
 	setGossip(false)
 	await initChat(setProfiles, setAllNodes, setGossip, false, newMessage)
 }

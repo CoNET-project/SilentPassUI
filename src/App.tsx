@@ -992,7 +992,13 @@ function AppShell() {
 		// Home / app-switcher: keep gossip listen alive so the still-running PWA can receive
 		// chat into UI. System push is SI mailbox → APNs/FCM (do not also bridge local notify).
 		// Only tear down listen on pagehide / bfcache (true unload) so offline saveLocal works.
-		const onForegroundResume = () => {
+		let mailboxWakeResumeInFlight = false
+		const onForegroundResume = (force = false) => {
+			if (force && mailboxWakeResumeInFlight) {
+				publishNativePwaLog('info', '[AppShell] native mailbox wake already resuming gossip listen')
+				return
+			}
+			if (force) mailboxWakeResumeInFlight = true
 			void resumeGossipListenOnForeground(
 				setProfiles,
 				setAllNodes,
@@ -1001,18 +1007,24 @@ function AppShell() {
 					applyNativeIncomingVoiceOfferFromLine(message)
 					setChartsRef.current((prev: string[]) => [...prev, message])
 				},
-			).catch(err => {
-				publishNativePwaLog(
-					'warn',
-					`[AppShell] gossip foreground resume failed: ${(err as Error)?.message ?? String(err)}`,
-				)
-			})
+				45_000,
+				force,
+			)
+				.catch(err => {
+					publishNativePwaLog(
+						'warn',
+						`[AppShell] gossip foreground resume failed: ${(err as Error)?.message ?? String(err)}`,
+					)
+				})
+				.finally(() => {
+					if (force) mailboxWakeResumeInFlight = false
+				})
 		}
 		const onNativeMailboxWake = (event: Event) => {
 			const detail = (event as CustomEvent<{ action?: string }>).detail
 			if (detail?.action !== 'mailboxWake') return
-			publishNativePwaLog('info', '[AppShell] native mailbox wake — resuming gossip listen')
-			onForegroundResume()
+			publishNativePwaLog('info', '[AppShell] native mailbox wake — forcing gossip listen resume')
+			onForegroundResume(true)
 		}
 		window.addEventListener('cashtreesandroid', onNativeMailboxWake)
 		const onVisibility = () => {

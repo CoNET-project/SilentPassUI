@@ -1302,25 +1302,55 @@ export const createOrGetWallet = async (secretPhrase: string | null, initAccount
 	return tmpData
 }
 
-export const checkStorage = async () => {
+export type CheckStorageResult =
+  | { status: 'loaded'; data: encrypt_keys_object }
+  | { status: 'empty' }
+  | { status: 'unavailable'; reason: 'timeout' | 'indexeddb' | 'invalid_document' }
+
+/**
+ * Read the local wallet without collapsing storage failures into "new user".
+ *
+ * This distinction is important for the Android embedded WebView: a temporary
+ * IndexedDB/PouchDB failure must never send an existing wallet to onboarding.
+ */
+export const checkStorageWithStatus = async (): Promise<CheckStorageResult> => {
   try {
-    const database = PouchDB(localDatabaseName, { auto_compaction: true });
-    const doc = await database.get("init", { latest: true });
-    const data = JSON.parse(Buffer.from(doc.title, "base64").toString());
-    const hydrated = ensureProfilePrivateKeyArmorFromMnemonic(data);
-    setCoNET_Data(hydrated);
+    const database = PouchDB(localDatabaseName, { auto_compaction: true })
+    let doc: { title?: string }
+    try {
+      doc = await database.get("init", { latest: true })
+    } catch (error: any) {
+      if (error?.status === 404 || error?.name === 'not_found') return { status: 'empty' }
+      return { status: 'unavailable', reason: 'indexeddb' }
+    }
+    if (typeof doc.title !== 'string' || !doc.title) {
+      return { status: 'unavailable', reason: 'invalid_document' }
+    }
+    let data: encrypt_keys_object
+    try {
+      data = JSON.parse(Buffer.from(doc.title, "base64").toString())
+    } catch {
+      return { status: 'unavailable', reason: 'invalid_document' }
+    }
+    const hydrated = ensureProfilePrivateKeyArmorFromMnemonic(data)
+    if (!hydrated) {
+      return { status: 'unavailable', reason: 'invalid_document' }
+    }
+    setCoNET_Data(hydrated)
     const storedLang = hydrated?.beamio?.language
     if (storedLang) {
       writeBeamioUiLanguageBootstrap(normalizeBeamioUiLocale(storedLang))
       await applyBeamioUiLanguageFromProfile(storedLang)
     }
-    return hydrated
+    return { status: 'loaded', data: hydrated }
   } catch {
-    // IndexedDB（_pouch_conet）取不到 init 文档即视为未注册，直接进入 onboarding；
-    // 不再从 Cache Storage 回填：Cache 残留可能让用户以"空 EOA"或不完整账号
-    // 误入 App，且用户主动清空 _pouch_conet 时也会被 cache 兜底覆盖。
-    return null
+    return { status: 'unavailable', reason: 'indexeddb' }
   }
+}
+
+export const checkStorage = async () => {
+  const result = await checkStorageWithStatus()
+  return result.status === 'loaded' ? result.data : null
 }
 
 /** Safari 私密浏览等环境 IndexedDB 可能永不 resolve；超时按「无本地钱包」处理。 */
@@ -1331,9 +1361,21 @@ export async function checkStorageWithTimeout(
 ): Promise<encrypt_keys_object | null> {
   if (typeof window === 'undefined') return null
   return Promise.race([
-    checkStorage().catch(() => null),
+    checkStorageWithStatus().then((result) => result.status === 'loaded' ? result.data : null),
     new Promise<null>((resolve) => {
       window.setTimeout(() => resolve(null), timeoutMs)
+    }),
+  ])
+}
+
+export async function checkStorageWithStatusWithTimeout(
+  timeoutMs = CHECK_STORAGE_TIMEOUT_MS,
+): Promise<CheckStorageResult> {
+  if (typeof window === 'undefined') return { status: 'unavailable', reason: 'indexeddb' }
+  return Promise.race([
+    checkStorageWithStatus(),
+    new Promise<CheckStorageResult>((resolve) => {
+      window.setTimeout(() => resolve({ status: 'unavailable', reason: 'timeout' }), timeoutMs)
     }),
   ])
 }

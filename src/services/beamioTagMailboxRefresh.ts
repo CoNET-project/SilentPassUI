@@ -45,8 +45,6 @@ async function writeRecord(
 ): Promise<void> {
 	const prev = getBeamioTagMirrorMap()[addressLower]
 	const next: BeamioAddressProfileRecord = {
-		addressLower,
-		updatedAt: prev?.updatedAt || Date.now(),
 		...prev,
 		...patch,
 		addressLower,

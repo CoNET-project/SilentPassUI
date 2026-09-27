@@ -314,7 +314,11 @@ import {
   programTabFromPath,
   type ProgramTabId,
 } from './programMenuNav';
-import { ProgramKycEnrollmentPage } from './ProgramKycEnrollmentPage';
+import {
+  ProgramKycEnrollmentPage,
+  type KycEnrollmentModel,
+  type KycEnrollmentTier,
+} from './ProgramKycEnrollmentPage';
 import {
   ProgramLivePreviewInlineField,
   ProgramLivePreviewInlineSelect,
@@ -17266,6 +17270,62 @@ const cardIssuanceEffectiveMerchantLogo = useMemo(() => {
      coerceSelectableCardIssuanceTierRule(cardIssuanceTierRule),
    [programsOverviewTierRuleOption, cardIssuanceTierRule]
  );
+
+ const programsKycEnrollmentModel = useMemo((): KycEnrollmentModel => {
+   if (cardIssuanceMembershipFeeMode || cardIssuanceRewardsMembershipFeeEnabled) return 'membershipFee';
+   if (programsOverviewTierRuleKey === 'cumulative') return 'cumulative';
+   return 'singleTopup';
+ }, [
+   cardIssuanceMembershipFeeMode,
+   cardIssuanceRewardsMembershipFeeEnabled,
+   programsOverviewTierRuleKey,
+ ]);
+
+ const programsKycEnrollmentTiers = useMemo((): KycEnrollmentTier[] => {
+   const prefix = cardIssuanceDisplayMoneyPrefix || '';
+   const money = (raw: string) => {
+     const n = Number(String(raw).replace(/,/g, '').trim());
+     if (!Number.isFinite(n) || n <= 0) return '';
+     return `${prefix}${n.toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
+   };
+   const benefit = (raw: string) => {
+     const n = Number(String(raw).replace(/,/g, '').trim());
+     return Number.isFinite(n) && n > 0 ? String(n) : '';
+   };
+   if (programsKycEnrollmentModel === 'membershipFee') {
+     const rows: KycEnrollmentTier[] = [];
+     const seen = new Set<string>();
+     const pushTier = (tier: CardIssuanceTierRow, fallbackName: string) => {
+       const amount = money(tier.membershipFee);
+       if (!amount || seen.has(tier.id)) return;
+       seen.add(tier.id);
+       const kind = normalizeMembershipDurationKind(tier.membershipDurationKind);
+       rows.push({
+         name: tier.name.trim() || fallbackName,
+         amountLabel: amount,
+         benefitPercent: benefit(tier.discountPercent),
+         detail: kind ? tu(membershipDurationTuKey(kind)) : '',
+       });
+     };
+     if (cardIssuanceBaseTier) pushTier(cardIssuanceBaseTier, 'Membership');
+     for (const tier of programsOverviewTierRowsSortedAscending) pushTier(tier, 'Membership');
+     return rows;
+   }
+   return programsOverviewTierRowsSortedAscending
+     .filter((tier) => tier.name.trim())
+     .map((tier) => ({
+       name: tier.name.trim(),
+       amountLabel: money(String(cardIssuanceTierThresholdToInt(tier.threshold))),
+       benefitPercent: benefit(tier.discountPercent),
+       detail: '',
+     }));
+ }, [
+   programsKycEnrollmentModel,
+   cardIssuanceDisplayMoneyPrefix,
+   cardIssuanceBaseTier,
+   programsOverviewTierRowsSortedAscending,
+   tu,
+ ]);
 
  /** Loyalty Logic first row: same wording as Basic Info → Loyalty rule type (or Membership Fee). */
  const programsLoyaltyLogicTiersEntryTitle = useMemo(() => {
@@ -42442,6 +42502,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                <ProgramKycEnrollmentPage
                  merchantName={programsOverviewDisplayName || 'Merchant'}
                  cardKey={(cardIssuanceExistingCard?.cardAddress || 'workspace').toLowerCase()}
+                 enrollmentModel={programsKycEnrollmentModel}
+                 tiers={programsKycEnrollmentTiers}
                />
              ) : !cardIssuanceShowConfiguratorStudio && cardIssuanceExistingCard && cardIssuanceProgramSection !== 'business' ? (
                <div className="max-w-7xl space-y-5 pb-5">

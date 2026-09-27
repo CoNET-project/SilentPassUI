@@ -57,6 +57,7 @@ import PayScreen from '@/pages/Pay/send'
 import HistoryAll from '@/pages/History/components/HistoryAll'
 import BeamioNavBack from '@/components/Setting/BeamioNavBack'
 import Market from "@/pages/Vouchers/Market"
+import KycPreviewPage from "@/pages/KycPreviewPage"
 import VouchersExample from "@/pages/Vouchers/example/index"
 import Express from "@/pages/Vouchers/example/express"
 import ExampleExpress from "@/pages/Vouchers/example/exampleExpress"
@@ -2281,6 +2282,7 @@ function AppShell() {
 				<Route path="/Onboarding" element={<BeamioInstallOnboarding />} />
 				{/* Stripe returns in a fresh tab and must be visible even before wallet boot. */}
 				<Route path="/stripe-payment-return" element={<StripePaymentReturnPage />} />
+				<Route path="/kyc-preview" element={<KycPreviewPage />} />
 				<Route element={<AppEntryGate />}>
 					<Route path="/" element={<Home />} />
 					<Route path="/wallet" element={<WalletOverview />} />

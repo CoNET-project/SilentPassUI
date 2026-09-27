@@ -19,6 +19,8 @@ import { useMerchantCardDatabase } from '@/providers/MerchantCardDatabaseProvide
 import { postCardRedeem } from '@/services/BeamioCard'
 import { mapServerError } from '@/locale/mapServerError'
 import { resolveSigningPrivateKeyArmor } from '@/utils/resolveSigningPrivateKeyArmor'
+import { BecomeMemberSheet } from '@/components/Home/BecomeMemberSheet'
+import { loadMembershipKycPolicy, membershipIssueNeedsKyc, type MembershipKycFormPolicy } from '@/utils/membershipKyc'
 import { pickMerchantCardListTitle } from '@/utils/merchantCardDatabase'
 import { IpfsImg } from '@/components/IpfsImg'
 
@@ -54,6 +56,12 @@ export default function MerchantGiftClaimSheet({
 	const [panelError, setPanelError] = useState<string | null>(null)
 	const [txHash, setTxHash] = useState<string | null>(null)
 	const inFlightRef = useRef(false)
+	const kycDone = useRef<((ok: boolean) => void) | null>(null)
+	const [kycSheet, setKycSheet] = useState<null | {
+		policy: MembershipKycFormPolicy
+		key: string
+		wallet: string
+	}>(null)
 
 	const card = useMemo(() => {
 		const raw = cardAddress.trim()
@@ -118,6 +126,16 @@ export default function MerchantGiftClaimSheet({
 		inFlightRef.current = true
 		setSubmitting(true)
 		try {
+			if (await membershipIssueNeedsKyc(card, toUserEOA)) {
+				const policy = await loadMembershipKycPolicy(card)
+				if (policy) {
+					const accepted = await new Promise<boolean>((resolve) => {
+						kycDone.current = resolve
+						setKycSheet({ policy, key: privateKeyArmor, wallet: toUserEOA })
+					})
+					if (!accepted) return
+				}
+			}
 			const ret = await postCardRedeem(card, code, ethers.getAddress(toUserEOA))
 			if (!ret.success) {
 				setPanelError(mapServerError(ret.error, 'redeemFailed'))
@@ -139,6 +157,7 @@ export default function MerchantGiftClaimSheet({
 		code.length > 14 ? `${code.slice(0, 6)}…${code.slice(-4)}` : code || '—'
 
 	return (
+		<>
 		<div
 			className="fixed inset-0 z-[10000] bg-[#faf9fe] transition-transform duration-300 ease-out dark:bg-slate-950"
 			style={{
@@ -355,5 +374,25 @@ export default function MerchantGiftClaimSheet({
 				</main>
 			</div>
 		</div>
+		{kycSheet ? (
+			<BecomeMemberSheet
+				policy={kycSheet.policy}
+				cardAddress={card}
+				privateKey={kycSheet.key}
+				subjectWallet={kycSheet.wallet}
+				signerKind="wallet"
+				onClose={() => {
+					kycDone.current?.(false)
+					kycDone.current = null
+					setKycSheet(null)
+				}}
+				onLinked={() => {
+					kycDone.current?.(true)
+					kycDone.current = null
+					setKycSheet(null)
+				}}
+			/>
+		) : null}
+		</>
 	)
 }

@@ -79,6 +79,8 @@ import { beamioApi } from "@/utils/constants"
 import { openExternalUrl } from "@/utils/cashTreesNativeNfc"
 import { DiscoverDescriptionTextWithUrlCapsules } from "@/components/discover/DiscoverDescriptionTextWithUrlCapsules"
 import { resolveSigningPrivateKeyArmor } from "@/utils/resolveSigningPrivateKeyArmor"
+import { BecomeMemberSheet } from "@/components/Home/BecomeMemberSheet"
+import { loadMembershipKycPolicy, membershipKycAlreadyLinked, type MembershipKycFormPolicy } from "@/utils/membershipKyc"
 import { checkStorage, searchUsername } from "@/services/beamio"
 import BeamioContactProfilePreview from "@/components/Home/BeamioContactProfilePreview"
 import DiscoverMerchantGiftSheet from "@/components/Home/DiscoverMerchantGiftSheet"
@@ -7564,9 +7566,44 @@ function DiscoverMerchantDetailFullScreen({
 		setDiscoverTopUpOpen(true)
 	}, [freezeMerchantProgramPresentation])
 
+	const membershipKycDone = useRef<((ok: boolean) => void) | null>(null)
+	const [membershipKyc, setMembershipKyc] = useState<null | {
+		policy: MembershipKycFormPolicy
+		card: string
+		key: string
+		wallet: string
+	}>(null)
+
 	const openDiscoverMembershipPay = useCallback((kind: 'join' | 'upgrade') => {
 		const tier = kind === 'join' ? membershipUi.joinTier : membershipUi.upgradeTier
 		if (!tier) return
+		void (async () => {
+			const card = item.cardAddress
+			const profile = profiles?.[0]
+			const eoa = profile?.keyID
+			const key = resolveSigningPrivateKeyArmor(profile)
+			if (card && eoa && key) {
+				const policy = await loadMembershipKycPolicy(card).catch(() => null)
+				if (policy?.enabled) {
+					const linked = await membershipKycAlreadyLinked(card, eoa)
+					if (!linked) {
+						const feeHuman = membershipPurchaseApiAmountHuman(tier.feeE6)
+						const durationLabel =
+							tier.durationKind != null ? MEMBERSHIP_DURATION_LABELS[tier.durationKind] ?? '' : ''
+						const shown = {
+							...policy,
+							offerLabel: 'Membership',
+							offerValue: feeHuman ? `${balancePrefix || ''}${feeHuman}` : '',
+							offerReward: durationLabel,
+						}
+						const accepted = await new Promise<boolean>((resolve) => {
+							membershipKycDone.current = resolve
+							setMembershipKyc({ policy: shown, card, key, wallet: eoa })
+						})
+						if (!accepted) return
+					}
+				}
+			}
 		freezeMerchantProgramPresentation()
 		const prefill = membershipPurchaseApiAmountHuman(tier.feeE6)
 		setUsdcTopupError('')
@@ -7593,11 +7630,14 @@ function DiscoverMerchantDetailFullScreen({
 		setDiscoverTopUpPrefill(prefill)
 		setUsdcTopupPhase('idle')
 		setDiscoverTopUpOpen(true)
+		})()
 	}, [
 		balancePrefix,
 		freezeMerchantProgramPresentation,
+		item.cardAddress,
 		membershipUi.joinTier,
 		membershipUi.upgradeTier,
+		profiles,
 	])
 
 	/** New Customer Bonus CTA — top-up with suggested min (or selected multiplier tier), or join membership when required. */
@@ -9698,6 +9738,25 @@ function DiscoverMerchantDetailFullScreen({
 					document.body,
 				)
 			: null}
+		{membershipKyc ? (
+			<BecomeMemberSheet
+				policy={membershipKyc.policy}
+				cardAddress={membershipKyc.card}
+				privateKey={membershipKyc.key}
+				subjectWallet={membershipKyc.wallet}
+				signerKind="wallet"
+				onClose={() => {
+					membershipKycDone.current?.(false)
+					membershipKycDone.current = null
+					setMembershipKyc(null)
+				}}
+				onLinked={() => {
+					membershipKycDone.current?.(true)
+					membershipKycDone.current = null
+					setMembershipKyc(null)
+				}}
+			/>
+		) : null}
 		</>
 	)
 }

@@ -1322,6 +1322,7 @@ function AppShell() {
 					<Route path="/Terminals" element={<MerchantOS />} />
 					<Route path="/Program" element={<Navigate to="/Program/Basic" replace />} />
 					<Route path="/Program/Basic" element={<MerchantOS />} />
+					<Route path="/Program/KYC" element={<MerchantOS />} />
 					<Route path="/Program/Promotion" element={<MerchantOS />} />
 					<Route path="/Program/Vouchers" element={<MerchantOS />} />
 					<Route path="/Program/Business" element={<MerchantOS />} />

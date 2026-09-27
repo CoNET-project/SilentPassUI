@@ -94,6 +94,8 @@ export type OnboardingBusinessDiscoveryFormProps = {
 	onSelectLookupCandidate?: (candidate: OnboardingBusinessLookupCandidate) => void
 	/** Category, location, terms, and Next stay hidden until a lookup candidate is chosen. */
 	detailsVisible?: boolean
+	/** Show those fields without an AI lookup result. */
+	onShowDetailsManually?: () => void
 	/** Skip refetch after a pick; focus still reopens the last suggestion list. */
 	lookupSkipValue?: string
 	/** After a lookup pick, Cluster prepares Card Setup logo / background / brand color / Discover copy. */
@@ -126,6 +128,7 @@ export function OnboardingBusinessDiscoveryForm({
 	onSubmit,
 	onSelectLookupCandidate,
 	detailsVisible = false,
+	onShowDetailsManually,
 	lookupSkipValue = '',
 	cardSetupPreparing = false,
 	cardSetupPrepareError = '',
@@ -195,6 +198,8 @@ export function OnboardingBusinessDiscoveryForm({
 							skipLookupValue={lookupSkipValue}
 							hintFilled={detailsVisible}
 							hintLocationMissing={detailsVisible && !country.trim()}
+							detailsOpen={detailsVisible}
+							onSkipToDetails={onShowDetailsManually}
 						/>
 					) : (
 						<>

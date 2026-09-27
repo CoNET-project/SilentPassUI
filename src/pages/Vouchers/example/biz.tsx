@@ -314,6 +314,7 @@ import {
   programTabFromPath,
   type ProgramTabId,
 } from './programMenuNav';
+import { ProgramKycEnrollmentPage } from './ProgramKycEnrollmentPage';
 import {
   ProgramLivePreviewInlineField,
   ProgramLivePreviewInlineSelect,
@@ -42437,6 +42438,11 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                 ) : null}
               </AnimatePresence>
              </div>
+             ) : cardIssuanceProgramSection === 'kyc' ? (
+               <ProgramKycEnrollmentPage
+                 merchantName={programsOverviewDisplayName || 'Merchant'}
+                 cardKey={(cardIssuanceExistingCard?.cardAddress || 'workspace').toLowerCase()}
+               />
              ) : !cardIssuanceShowConfiguratorStudio && cardIssuanceExistingCard && cardIssuanceProgramSection !== 'business' ? (
                <div className="max-w-7xl space-y-5 pb-5">
                 <section className="flex flex-col gap-5">

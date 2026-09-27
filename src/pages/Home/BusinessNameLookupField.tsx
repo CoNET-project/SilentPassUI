@@ -78,6 +78,10 @@ type Props = {
 	hintFilled?: boolean
 	/** Filled hint when Country is still blank (no invented location). */
 	hintLocationMissing?: boolean
+	/** Toggle detailed setup (category, organization, location) without an AI lookup result. */
+	onSkipToDetails?: () => void
+	/** Detailed setup is currently open. */
+	detailsOpen?: boolean
 }
 
 export function BusinessNameLookupField({
@@ -90,6 +94,8 @@ export function BusinessNameLookupField({
 	skipLookupValue = '',
 	hintFilled = false,
 	hintLocationMissing: _hintLocationMissing = false,
+	onSkipToDetails,
+	detailsOpen = false,
 }: Props): React.ReactElement {
 	const { tu } = useTu()
 	const listboxId = useId()
@@ -474,6 +480,18 @@ export function BusinessNameLookupField({
 					</div>
 				) : null}
 			</div>
+			{onSkipToDetails ? (
+				<button
+					type="button"
+					aria-pressed={detailsOpen}
+					className={`mt-3 w-full rounded-xl border px-4 py-3 text-[15px] font-semibold text-[#1562f0] transition hover:border-[#1562f0]/50 hover:bg-[#1562f0]/5 ${
+						detailsOpen ? 'border-[#1562f0] bg-[#1562f0]/10' : 'border-[#c3c6d8] bg-white'
+					}`}
+					onClick={onSkipToDetails}
+				>
+					{tu(detailsOpen ? 'onb_lookup_hide_details' : 'onb_lookup_skip_ai')}
+				</button>
+			) : null}
 			{errorKey ? (
 				<p role="alert" className="mt-1.5 text-[13px] leading-snug text-[#92400e]">
 					{tu(errorKey)}

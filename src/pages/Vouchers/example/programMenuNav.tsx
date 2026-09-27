@@ -5,18 +5,21 @@ import {
   Briefcase,
   ChevronDown,
   ChevronRight,
+  Contact,
   Info,
   Megaphone,
   Ticket,
 } from 'lucide-react';
 
 export const PROGRAM_TAB_BASIC = 'Program Basic Info';
+export const PROGRAM_TAB_KYC = 'Program KYC';
 export const PROGRAM_TAB_PROMOTION = 'Program Promotion';
 export const PROGRAM_TAB_VOUCHERS = 'Program Vouchers';
 export const PROGRAM_TAB_BUSINESS = 'Program Business';
 
 export const PROGRAM_TABS = [
   PROGRAM_TAB_BASIC,
+  PROGRAM_TAB_KYC,
   PROGRAM_TAB_PROMOTION,
   PROGRAM_TAB_VOUCHERS,
   PROGRAM_TAB_BUSINESS,
@@ -24,9 +27,10 @@ export const PROGRAM_TABS = [
 
 export type ProgramTabId = (typeof PROGRAM_TABS)[number];
 
-export type ProgramMenuSection = 'basic' | 'promotion' | 'vouchers' | 'business';
+export type ProgramMenuSection = 'basic' | 'kyc' | 'promotion' | 'vouchers' | 'business';
 
 export const PROGRAM_ROUTE_BASIC = '/Program/Basic';
+export const PROGRAM_ROUTE_KYC = '/Program/KYC';
 export const PROGRAM_ROUTE_PROMOTION = '/Program/Promotion';
 export const PROGRAM_ROUTE_VOUCHERS = '/Program/Vouchers';
 export const PROGRAM_ROUTE_BUSINESS = '/Program/Business';
@@ -39,6 +43,8 @@ export function normalizeProgramTab(tab: string): ProgramTabId | null {
     case PROGRAM_TAB_BASIC:
     case LEGACY_PROGRAM_TAB:
       return PROGRAM_TAB_BASIC;
+    case PROGRAM_TAB_KYC:
+      return PROGRAM_TAB_KYC;
     case PROGRAM_TAB_PROMOTION:
       return PROGRAM_TAB_PROMOTION;
     case PROGRAM_TAB_VOUCHERS:
@@ -55,6 +61,8 @@ export function programSectionFromTab(tab: string): ProgramMenuSection | null {
   switch (normalizeProgramTab(tab)) {
     case PROGRAM_TAB_BASIC:
       return 'basic';
+    case PROGRAM_TAB_KYC:
+      return 'kyc';
     case PROGRAM_TAB_PROMOTION:
       return 'promotion';
     case PROGRAM_TAB_VOUCHERS:
@@ -72,6 +80,7 @@ export function isProgramAreaTab(tab: string): boolean {
 
 export function programTabFromPath(pathname: string): ProgramTabId | null {
   if (pathname === '/Business' || pathname.endsWith('/Business')) return PROGRAM_TAB_BUSINESS;
+  if (pathname.endsWith('/Program/KYC')) return PROGRAM_TAB_KYC;
   if (pathname.endsWith('/Program/Promotion')) return PROGRAM_TAB_PROMOTION;
   if (pathname.endsWith('/Program/Vouchers')) return PROGRAM_TAB_VOUCHERS;
   if (pathname.endsWith('/Program/Business')) return PROGRAM_TAB_BUSINESS;
@@ -81,6 +90,8 @@ export function programTabFromPath(pathname: string): ProgramTabId | null {
 
 export function programPathFromTab(tab: string): string {
   switch (normalizeProgramTab(tab)) {
+    case PROGRAM_TAB_KYC:
+      return PROGRAM_ROUTE_KYC;
     case PROGRAM_TAB_PROMOTION:
       return PROGRAM_ROUTE_PROMOTION;
     case PROGRAM_TAB_VOUCHERS:
@@ -96,6 +107,8 @@ export function programPathFromTab(tab: string): string {
 
 export function programMenuTitleKey(tab: string): string {
   switch (normalizeProgramTab(tab)) {
+    case PROGRAM_TAB_KYC:
+      return 'program_menu_kyc';
     case PROGRAM_TAB_PROMOTION:
       return 'program_menu_promotion';
     case PROGRAM_TAB_VOUCHERS:
@@ -116,6 +129,7 @@ type ProgramSubItem = {
 
 const PROGRAM_SUB_ITEMS: ProgramSubItem[] = [
   { tab: PROGRAM_TAB_BASIC, labelKey: 'program_menu_basic', icon: Info },
+  { tab: PROGRAM_TAB_KYC, labelKey: 'program_menu_kyc', icon: Contact },
   { tab: PROGRAM_TAB_PROMOTION, labelKey: 'program_menu_promotion', icon: Megaphone },
   { tab: PROGRAM_TAB_VOUCHERS, labelKey: 'program_menu_vouchers', icon: Ticket },
   { tab: PROGRAM_TAB_BUSINESS, labelKey: 'program_menu_business', icon: Briefcase },

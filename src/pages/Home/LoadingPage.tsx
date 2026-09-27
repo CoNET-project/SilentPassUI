@@ -92,6 +92,7 @@ function parseDraftChannelKind(raw: unknown): VerraBusinessChannelKind | '' {
 
 function sessionHasUnlockedCoverDetails(d: ReturnType<typeof loadSessionOnboardingBusinessDraft>): boolean {
 	if (!d) return false
+	if (d.coverDetailsUnlocked === false) return false
 	if (d.coverDetailsUnlocked === true) return true
 	return Boolean(d.channelKind && d.category?.trim() && d.storeName?.trim() && d.country?.trim())
 }
@@ -423,6 +424,7 @@ export default function BeamioOnboardingModal({
 		setDetailPublicBio('')
 		setCoverTermsAccepted(false)
 		saveSessionOnboardingBusinessDraft({
+			coverDetailsUnlocked: false,
 			streetAddress: '',
 			postalCode: '',
 			supportEmail: '',
@@ -456,6 +458,13 @@ export default function BeamioOnboardingModal({
 		setTermsAccepted: setCoverTermsAccepted,
 		onOpenLegalDoc: openOnboardingLegalDoc,
 		detailsVisible: coverDetailsUnlocked,
+		onShowDetailsManually: () => {
+			setCoverDetailsUnlocked((open) => {
+				const next = !open
+				saveSessionOnboardingBusinessDraft({ coverDetailsUnlocked: next })
+				return next
+			})
+		},
 		lookupSkipValue: lookupSkipName,
 		cardSetupPreparing,
 		cardSetupPrepareError,
@@ -805,9 +814,30 @@ export default function BeamioOnboardingModal({
 								{tu('onb_lite_hero_suffix')}
 							</span>
 						</h1>
-						<p className="mb-10 text-base font-medium leading-relaxed text-[#595c5e] md:text-lg">
+						<p className="mb-8 text-base font-medium leading-relaxed text-[#595c5e] md:text-lg">
 							{tu('onb_lite_hero_sub')}
 						</p>
+						<button
+							type="button"
+							onClick={() => setShowBizLogin(true)}
+							className={`group relative mb-10 w-full overflow-hidden rounded-2xl bg-white p-6 text-left shadow-[0_8px_28px_rgba(15,23,42,0.06)] transition-all duration-300 hover:shadow-[0_16px_40px_rgba(15,23,42,0.1)] active:scale-[0.98] ${bizBrandFocusRingClass}`}
+						>
+							<div className="relative z-10">
+								<div className="mb-5 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#e8eaed]">
+									<History className="h-6 w-6 text-[#747779]" strokeWidth={2} aria-hidden />
+								</div>
+								<h3 className="mb-2 text-xl font-bold tracking-tight text-[#2c2f31]" style={headlineFont}>
+									{tu('onb_lite_restore_title')}
+								</h3>
+								<p className="mb-5 text-sm font-medium leading-relaxed text-[#595c5e]">
+									{tu('onb_lite_restore_desc')}
+								</p>
+								<div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-[#1562f0]">
+									<span>{tu('onb_lite_restore_cta')}</span>
+									<ArrowRight className="h-3.5 w-3.5 shrink-0" strokeWidth={2.5} aria-hidden />
+								</div>
+							</div>
+						</button>
 						<div className="relative">
 							<div className="relative aspect-[16/10] overflow-hidden rounded-2xl bg-[#050b1d]">
 								<div

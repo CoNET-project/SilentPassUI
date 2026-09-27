@@ -1,4 +1,4 @@
-import type { VerraBusinessChannelKind } from '@/utils/verraBusinessProfileLocal'
+import { normalizeVerraBusinessChannelKind, type VerraBusinessChannelKind } from '@/utils/verraBusinessProfileLocal'
 
 const BEAMIO_API_BASE_URL = 'https://beamio.app/api'
 export const ONBOARDING_WEB_CANDIDATE_SESSION_KEY = 'verra_onboarding_web_candidate_v1'
@@ -125,6 +125,8 @@ const PHYSICAL_CATS = [
 ] as const
 const DIGITAL_CATS = ['ecommerce-store', 'creator-kol', 'digital-services', 'freelance-agency'] as const
 const APP_CATS = ['saas-platform', 'mobile-application', 'ai-ml-service', 'api-provider'] as const
+const GOVERNMENT_CATS = ['public-agency', 'municipality', 'public-services'] as const
+const NGO_CATS = ['nonprofit', 'charity', 'community-organization'] as const
 
 const CATEGORY_ALIASES: Record<string, string> = {
 	cafe: 'food-beverage',
@@ -199,14 +201,18 @@ function channelForCategory(cat: string): VerraBusinessChannelKind | '' {
 	if ((PHYSICAL_CATS as readonly string[]).includes(cat)) return 'physical'
 	if ((DIGITAL_CATS as readonly string[]).includes(cat)) return 'digital'
 	if ((APP_CATS as readonly string[]).includes(cat)) return 'app'
+	if ((GOVERNMENT_CATS as readonly string[]).includes(cat)) return 'government'
+	if ((NGO_CATS as readonly string[]).includes(cat)) return 'ngo'
 	return ''
 }
 
 function catsForChannel(kind: VerraBusinessChannelKind | ''): readonly string[] {
 	if (kind === 'digital') return DIGITAL_CATS
 	if (kind === 'app') return APP_CATS
+	if (kind === 'government') return GOVERNMENT_CATS
+	if (kind === 'ngo') return NGO_CATS
 	if (kind === 'physical') return PHYSICAL_CATS
-	return [...PHYSICAL_CATS, ...DIGITAL_CATS, ...APP_CATS]
+	return [...PHYSICAL_CATS, ...DIGITAL_CATS, ...APP_CATS, ...GOVERNMENT_CATS, ...NGO_CATS]
 }
 
 export function normalizeOnboardingCategory(kind: VerraBusinessChannelKind | '', raw: string): string {
@@ -257,8 +263,7 @@ function mapCandidate(raw: unknown): OnboardingBusinessLookupCandidate | null {
 	const name = String(o.name ?? '').trim()
 	if (name.length < 2) return null
 	const channelRaw = String(o.channelKind ?? '').trim()
-	const channelKind: VerraBusinessChannelKind | '' =
-		channelRaw === 'physical' || channelRaw === 'digital' || channelRaw === 'app' ? channelRaw : ''
+	const channelKind: VerraBusinessChannelKind | '' = normalizeVerraBusinessChannelKind(channelRaw) ?? ''
 	const orgRaw = String(o.orgType ?? '').trim()
 	const orgType: 'sme' | 'franchise' | 'ngo' | '' =
 		orgRaw === 'sme' || orgRaw === 'franchise' || orgRaw === 'ngo' ? orgRaw : ''

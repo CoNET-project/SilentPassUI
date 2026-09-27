@@ -63,6 +63,7 @@ import {
 	loadSessionOnboardingBusinessDraft,
 	mergeSessionOnboardingDraftIntoEoa,
 	patchBusinessProfileDraftForEoa,
+	normalizeVerraBusinessChannelKind,
 	pickVerraBusinessFieldsFromRecover,
 	saveSessionOnboardingBusinessDraft,
 	setLiteBusinessChainAck,
@@ -87,7 +88,7 @@ const DEFAULT_ONBOARDING_DETAIL_COUNTRY = ''
 type OnboardingCoverMobilePhase = 'entry' | 'businessForm'
 
 function parseDraftChannelKind(raw: unknown): VerraBusinessChannelKind | '' {
-	return raw === 'physical' || raw === 'digital' || raw === 'app' ? raw : ''
+	return normalizeVerraBusinessChannelKind(raw) ?? ''
 }
 
 function sessionHasUnlockedCoverDetails(d: ReturnType<typeof loadSessionOnboardingBusinessDraft>): boolean {

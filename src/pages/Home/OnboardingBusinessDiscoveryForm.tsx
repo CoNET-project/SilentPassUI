@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react'
-import { AlertTriangle, ArrowRight, Bot, ChevronDown, Globe, Loader2, ShieldCheck, Store } from 'lucide-react'
+import { AlertTriangle, ArrowRight, Bot, ChevronDown, Globe, HeartHandshake, Landmark, Loader2, ShieldCheck, Store } from 'lucide-react'
 import { bizBrandFocusRingClass } from '@/pages/Home/brandUi'
 import {
 	onboardingCountrySelectOptionElements,
@@ -55,9 +55,36 @@ export const APP_SUBS = [
 	{ value: 'api-provider', labelKey: 'onb_cat_api_provider' },
 ] as const
 
+export const GOVERNMENT_SUBS = [
+	{ value: 'public-agency', labelKey: 'onb_cat_public_agency' },
+	{ value: 'municipality', labelKey: 'onb_cat_municipality' },
+	{ value: 'public-services', labelKey: 'onb_cat_public_services' },
+] as const
+
+export const NGO_SUBS = [
+	{ value: 'nonprofit', labelKey: 'onb_cat_nonprofit' },
+	{ value: 'charity', labelKey: 'onb_cat_charity' },
+	{ value: 'community-organization', labelKey: 'onb_cat_community' },
+] as const
+
+export const ONBOARDING_BUSINESS_CHANNELS: {
+	id: VerraBusinessChannelKind
+	titleKey: string
+	descKey: string
+	Icon: typeof Store
+}[] = [
+	{ id: 'physical', titleKey: 'onb_channel_physical_title', descKey: 'onb_channel_physical_desc', Icon: Store },
+	{ id: 'digital', titleKey: 'onb_channel_digital_title', descKey: 'onb_channel_digital_desc', Icon: Globe },
+	{ id: 'app', titleKey: 'onb_channel_app_title', descKey: 'onb_channel_app_desc', Icon: Bot },
+	{ id: 'government', titleKey: 'onb_channel_government_title', descKey: 'onb_channel_government_desc', Icon: Landmark },
+	{ id: 'ngo', titleKey: 'onb_channel_ngo_title', descKey: 'onb_channel_ngo_desc', Icon: HeartHandshake },
+]
+
 export function subsForChannel(kind: VerraBusinessChannelKind | '') {
 	if (kind === 'digital') return DIGITAL_SUBS
 	if (kind === 'app') return APP_SUBS
+	if (kind === 'government') return GOVERNMENT_SUBS
+	if (kind === 'ngo') return NGO_SUBS
 	if (kind === 'physical') return PHYSICAL_SUBS
 	return []
 }
@@ -148,17 +175,6 @@ export function OnboardingBusinessDiscoveryForm({
 		Boolean(province.trim()) &&
 		termsAccepted
 
-	const channels: {
-		id: VerraBusinessChannelKind
-		titleKey: string
-		descKey: string
-		Icon: typeof Store
-	}[] = [
-		{ id: 'physical', titleKey: 'onb_channel_physical_title', descKey: 'onb_channel_physical_desc', Icon: Store },
-		{ id: 'digital', titleKey: 'onb_channel_digital_title', descKey: 'onb_channel_digital_desc', Icon: Globe },
-		{ id: 'app', titleKey: 'onb_channel_app_title', descKey: 'onb_channel_app_desc', Icon: Bot },
-	]
-
 	const onPickChannel = (next: VerraBusinessChannelKind) => {
 		setChannelKind(next)
 		const allowed = new Set(subsForChannel(next).map((s) => s.value))
@@ -224,7 +240,7 @@ export function OnboardingBusinessDiscoveryForm({
 				<div className="space-y-3">
 					<p className={fieldLabel}>{tu('onb_business_category')}</p>
 					<div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-						{channels.map(({ id, titleKey, descKey, Icon }) => {
+						{ONBOARDING_BUSINESS_CHANNELS.map(({ id, titleKey, descKey, Icon }) => {
 							const selected = channelKind === id
 							return (
 								<button

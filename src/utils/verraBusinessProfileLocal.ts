@@ -10,8 +10,9 @@ const STORAGE_PREFIX = 'verra_business_profile_draft_v1:'
 
 export type VerraBusinessProfileBusinessType = 'solo' | 'chain' | 'ngo'
 
-/** Discover onboarding channel (Physical / Digital / App). */
-export type VerraBusinessChannelKind = 'physical' | 'digital' | 'app'
+/** Discover onboarding channel (Physical / Digital / App / Government / NGO). */
+export const VERRA_BUSINESS_CHANNEL_KINDS = ['physical', 'digital', 'app', 'government', 'ngo'] as const
+export type VerraBusinessChannelKind = (typeof VERRA_BUSINESS_CHANNEL_KINDS)[number]
 
 export type VerraBusinessProfileDraft = {
   businessType?: VerraBusinessProfileBusinessType
@@ -22,7 +23,7 @@ export type VerraBusinessProfileDraft = {
   country?: string
   city?: string
   province?: string
-  /** Business channel from discovery form (physical / digital / app). */
+  /** Business channel from discovery form (physical / digital / app / government / ngo). */
   channelKind?: VerraBusinessChannelKind
   /** Session-only: cover extra fields shown after a lookup candidate is chosen. Strip before EOA merge. */
   coverDetailsUnlocked?: boolean
@@ -177,8 +178,10 @@ export type ShareTokenBusinessProfile = {
 }
 
 export function normalizeVerraBusinessChannelKind(raw: unknown): VerraBusinessChannelKind | undefined {
-  if (raw === 'physical' || raw === 'digital' || raw === 'app') return raw
-  return undefined
+  if (typeof raw !== 'string') return undefined
+  return (VERRA_BUSINESS_CHANNEL_KINDS as readonly string[]).includes(raw)
+    ? (raw as VerraBusinessChannelKind)
+    : undefined
 }
 
 export function mapOnboardingCategoryToCardIssuanceId(raw: unknown): string {
@@ -188,13 +191,13 @@ export function mapOnboardingCategoryToCardIssuanceId(raw: unknown): string {
   return ONBOARDING_TO_CARD_ISSUANCE_CATEGORY_ALIASES[t] ?? t
 }
 
-/** Physical Store → show PROGRAM CATEGORY. Digital / App never count as a storefront. */
+/** Physical Store → show PROGRAM CATEGORY. Digital, App, Government, and NGO are not storefronts. */
 export function isPhysicalStoreMerchantChannel(
   p: { channelKind?: unknown; category?: unknown } | null | undefined,
 ): boolean {
   const ck = normalizeVerraBusinessChannelKind(p?.channelKind)
   if (ck === 'physical') return true
-  if (ck === 'digital' || ck === 'app') return false
+  if (ck === 'digital' || ck === 'app' || ck === 'government' || ck === 'ngo') return false
   const aliased = mapOnboardingCategoryToCardIssuanceId(p?.category)
   if (!aliased) return false
   return (CARD_ISSUANCE_PHYSICAL_CATEGORY_IDS as readonly string[]).includes(aliased)
@@ -332,9 +335,8 @@ export function pickVerraBusinessFieldsFromRecover(recovered: unknown): Partial<
   for (const k of ['storeName', 'category', 'country', 'city', 'province'] as const) {
     pull(k)
   }
-  if (r.channelKind === 'physical' || r.channelKind === 'digital' || r.channelKind === 'app') {
-    next.channelKind = r.channelKind
-  }
+  const recoveredChannel = normalizeVerraBusinessChannelKind(r.channelKind)
+  if (recoveredChannel) next.channelKind = recoveredChannel
 
   const formJson = r.onboardingFormJson
   if (typeof formJson === 'string' && formJson.trim()) {

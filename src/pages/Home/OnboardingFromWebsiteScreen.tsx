@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { ArrowRight, Bot, ChevronDown, Globe, ShieldCheck, Store } from 'lucide-react'
+import { ArrowRight, ChevronDown, ShieldCheck } from 'lucide-react'
 import {
 	BeamioCircularBackButton,
 	BEAMIO_CIRCULAR_BACK_ROW_CLASS,
@@ -8,6 +8,7 @@ import { MerchantLegalDocumentOverlay } from '@/pages/Vouchers/example/MerchantL
 import { bizBrandFocusRingClass } from '@/pages/Home/brandUi'
 import { BizOnboardingLocalePicker } from '@/pages/Home/BizOnboardingLocalePicker'
 import {
+	ONBOARDING_BUSINESS_CHANNELS,
 	subsForChannel,
 	type OrgTypeSelect,
 } from '@/pages/Home/OnboardingBusinessDiscoveryForm'
@@ -141,17 +142,6 @@ export function OnboardingFromWebsiteScreen({
 		${bizBrandFocusRingClass}
 	`
 
-	const channels: {
-		id: VerraBusinessChannelKind
-		titleKey: string
-		descKey: string
-		Icon: typeof Store
-	}[] = [
-		{ id: 'physical', titleKey: 'onb_channel_physical_title', descKey: 'onb_channel_physical_desc', Icon: Store },
-		{ id: 'digital', titleKey: 'onb_channel_digital_title', descKey: 'onb_channel_digital_desc', Icon: Globe },
-		{ id: 'app', titleKey: 'onb_channel_app_title', descKey: 'onb_channel_app_desc', Icon: Bot },
-	]
-
 	const openLegal = (docId: BeamioLegalDocId) => (e: React.MouseEvent) => {
 		e.preventDefault()
 		e.stopPropagation()
@@ -244,7 +234,7 @@ export function OnboardingFromWebsiteScreen({
 					<div className="space-y-3">
 						<p className={fieldLabel}>{tu('onb_business_category')}</p>
 						<div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-							{channels.map(({ id, titleKey, descKey, Icon }) => {
+							{ONBOARDING_BUSINESS_CHANNELS.map(({ id, titleKey, descKey, Icon }) => {
 								const selected = channelKind === id
 								return (
 									<button

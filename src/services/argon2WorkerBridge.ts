@@ -102,8 +102,23 @@ export async function argon2idAsync(
 	const passwordCopy = password.slice()
 	const saltCopy = salt.slice()
 
+	let timer: number | undefined
 	return new Promise<Uint8Array>((resolve, reject) => {
-		pending.set(reqId, { resolve, reject })
+		timer = window.setTimeout(() => {
+			if (!pending.has(reqId)) return
+			pending.delete(reqId)
+			reject(new Error('argon2_worker_timeout'))
+		}, 20_000)
+		pending.set(reqId, {
+			resolve: (hash) => {
+				if (timer !== undefined) window.clearTimeout(timer)
+				resolve(hash)
+			},
+			reject: (error) => {
+				if (timer !== undefined) window.clearTimeout(timer)
+				reject(error)
+			},
+		})
 		const payload: Argon2idWorkerRequest = {
 			type: 'argon2id',
 			reqId,
@@ -118,6 +133,7 @@ export async function argon2idAsync(
 			w.postMessage(payload, [passwordCopy.buffer, saltCopy.buffer])
 		} catch (err) {
 			pending.delete(reqId)
+			if (timer !== undefined) window.clearTimeout(timer)
 			reject(err instanceof Error ? err : new Error(String(err)))
 		}
 	}).catch((err) => {

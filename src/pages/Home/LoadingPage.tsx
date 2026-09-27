@@ -1282,7 +1282,12 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 												return
 											}
 											if (requireWalletRecover) {
-												await init(temp)
+												await Promise.race([
+													init(temp),
+													new Promise<void>((resolve) => {
+														window.setTimeout(resolve, 45_000)
+													}),
+												])
 												home()
 												return
 											}

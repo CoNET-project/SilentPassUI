@@ -138,35 +138,42 @@ export const getKeysFromCoNETPGPSC = async (keyIDOrAddress: string, privateKeyAr
 
 
 /** 获取 CoNET 节点列表（供 sendMessage 等使用），可单独调用无需 initChat */
-export const getCoNETNodesForChat = (): Promise<nodeInfo[]> => new Promise(async resolve=> {
-	const Guardian_Nodes: nodeInfo[] = []
-    const _nodes1 = await GuardianNodesMainnet.getAllNodes(0, 400)
-    const _nodes2 = await GuardianNodesMainnet.getAllNodes(400, 800)
-    const _nodes = [..._nodes1, ..._nodes2]
-
-    for (let i = 0; i < _nodes.length; i ++) {
-        const node = _nodes[i]
-        const id = parseInt(node[0].toString())
-        const pgpString: string = Buffer.from( node[1], 'base64').toString()
-        const domain: string = node[2]
-        const ipAddr: string = node[3]
-        const region: string = node[4]
-        
-        
-
-        const itemNode: nodeInfo = {
-            ip_addr: ipAddr,
-            armoredPublicKey: pgpString,
-            domain: domain,
-            nftNumber: id,
-            region: region
-        }
-    
-        Guardian_Nodes.push(itemNode)
-    }
-    
-    resolve(Guardian_Nodes)
-})
+export const getCoNETNodesForChat = async (): Promise<nodeInfo[]> => {
+	let timer: ReturnType<typeof setTimeout> | undefined
+	try {
+		const _nodes = await Promise.race([
+			(async () => {
+				const _nodes1 = await GuardianNodesMainnet.getAllNodes(0, 400)
+				const _nodes2 = await GuardianNodesMainnet.getAllNodes(400, 800)
+				return [..._nodes1, ..._nodes2]
+			})(),
+			new Promise<never>((_, reject) => {
+				timer = setTimeout(() => reject(new Error('getAllNodes timeout')), 15_000)
+			}),
+		])
+		const Guardian_Nodes: nodeInfo[] = []
+		for (let i = 0; i < _nodes.length; i++) {
+			const node = _nodes[i]
+			const id = parseInt(node[0].toString())
+			const pgpString: string = Buffer.from(node[1], 'base64').toString()
+			const domain: string = node[2]
+			const ipAddr: string = node[3]
+			const region: string = node[4]
+			Guardian_Nodes.push({
+				ip_addr: ipAddr,
+				armoredPublicKey: pgpString,
+				domain,
+				nftNumber: id,
+				region,
+			})
+		}
+		return Guardian_Nodes
+	} catch {
+		return []
+	} finally {
+		if (timer !== undefined) clearTimeout(timer)
+	}
+}
 
 const getAllNodes = getCoNETNodesForChat
 

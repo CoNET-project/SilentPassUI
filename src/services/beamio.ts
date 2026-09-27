@@ -13,7 +13,7 @@ import {
 	writeBeamioUiLanguageBootstrap,
 	type BeamioUiLocale,
 } from '@/utils/beamioProfileLocaleCurrency'
-import {ethers, keccak256, toUtf8Bytes} from 'ethers' 
+import {ethers, FetchRequest, keccak256, Network, toUtf8Bytes} from 'ethers' 
 import usdc_abi from './ABI/usdc_abi.json'
 import {
 	customJsonStringify,
@@ -1650,12 +1650,22 @@ const listenning = async (listenningProcess: boolean, setListenningProcess: (val
 	// })
 }
 
+/** ethers 默认等满 5 分钟。恢复全屏不能跟着一条挂起的 eth_call 一直转。 */
+const REGISTRY_READ_TIMEOUT_MS = 12_000
+
+const conetJsonRpcProvider = (url: string, timeoutMs = REGISTRY_READ_TIMEOUT_MS) => {
+	const req = new FetchRequest(url)
+	req.timeout = timeoutMs
+	return new ethers.JsonRpcProvider(req, CONET_MAINNET_CHAIN_ID, {
+		staticNetwork: Network.from(CONET_MAINNET_CHAIN_ID),
+	})
+}
+
 const beamioAccountContract = {
 	address: CONET_ACCOUNT_REGISTRY,
 	network: 'CONET DePIN',
 	abi: beamioAccountABI,
-	provider: new ethers.JsonRpcProvider(CONET_RPC_URL),
-	
+	provider: conetJsonRpcProvider(CONET_RPC_URL),
 }
 
 const beamioAccountSC = new ethers.Contract(beamioAccountContract.address, beamioAccountContract.abi, beamioAccountContract.provider)
@@ -1667,8 +1677,22 @@ const LEGACY_ACCOUNT_REGISTRY_ADDRESS = '0x4afaca09cf8307070a83836223Ae129073eC9
 const legacyBeamioAccountSC = new ethers.Contract(
 	LEGACY_ACCOUNT_REGISTRY_ADDRESS,
 	beamioAccountABI,
-	new ethers.JsonRpcProvider(LEGACY_ACCOUNT_REGISTRY_RPC)
+	conetJsonRpcProvider(LEGACY_ACCOUNT_REGISTRY_RPC, 8_000)
 )
+
+const withRegistryReadTimeout = async <T>(work: Promise<T>, ms = REGISTRY_READ_TIMEOUT_MS): Promise<T> => {
+	let timer: number | undefined
+	try {
+		return await Promise.race([
+			work,
+			new Promise<T>((_, reject) => {
+				timer = window.setTimeout(() => reject(new Error('registry_read_timeout')), ms)
+			}),
+		])
+	} finally {
+		if (timer !== undefined) window.clearTimeout(timer)
+	}
+}
 
 type RecoverStoragePayload = {
 	stored?: Argon2idHash
@@ -1704,7 +1728,7 @@ const fetchRecoverPayloadByAccountName = async (
 	registry: ethers.Contract
 ): Promise<{ encoded: string; payload: ValidRecoverStoragePayload } | null> => {
 	try {
-		const encoded: string = await registry.getBase64ByAccountName(accountName)
+		const encoded: string = await withRegistryReadTimeout(registry.getBase64ByAccountName(accountName))
 		if (!encoded?.trim()) return null
 		const payload = decodeRecoverStoragePayload(encoded)
 		if (!isValidRecoverStoragePayload(payload)) return null
@@ -1770,7 +1794,7 @@ const getUserInfoFromRegistry = async (
 	keyID: string
 ): Promise<beamio | null> => {
 	try {
-		const userInfo = await registry.getAccount(keyID)
+		const userInfo = await withRegistryReadTimeout(registry.getAccount(keyID))
 		return parseRegistryAccountToBeamio(userInfo)
 	} catch {
 		return null

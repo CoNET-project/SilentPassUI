@@ -22,13 +22,38 @@ import type { Wallet } from 'ethers'
 import { utf8ToBase64 } from './crypto.js'
 import { normalizeArmoredKey } from './nodes.js'
 
-export function armorToString(armored: unknown): string {
-	if (typeof armored === 'string') return armored
-	if (armored && typeof armored === 'object' && 'data' in (armored as object)) {
-		const data = (armored as { data?: unknown }).data
-		if (typeof data === 'string') return data
+async function readMaybeText(value: unknown): Promise<string> {
+	if (typeof value === 'string') return value
+	if (value && typeof (value as Promise<unknown>).then === 'function') {
+		return readMaybeText(await value)
 	}
-	return String(armored ?? '')
+	const reader = value && typeof (value as ReadableStream<Uint8Array | string>).getReader === 'function'
+		? (value as ReadableStream<Uint8Array | string>).getReader()
+		: null
+	if (!reader) return ''
+	const decoder = new TextDecoder()
+	let text = ''
+	while (true) {
+		const chunk = await reader.read()
+		if (chunk.done) break
+		text += typeof chunk.value === 'string' ? chunk.value : decoder.decode(chunk.value, { stream: true })
+	}
+	return text
+}
+
+/** OpenPGP.js 6 `encrypt()` / `Message.armor()` may be a string, a thenable, or a stream. */
+export async function armorToString(armored: unknown): Promise<string> {
+	if (typeof armored === 'string') return armored
+	if (armored && typeof armored === 'object') {
+		const record = armored as { data?: unknown; armor?: () => unknown }
+		if (typeof record.data === 'string' && record.data.includes('BEGIN PGP')) return record.data
+		if (typeof record.armor === 'function') {
+			const text = await readMaybeText(record.armor())
+			if (text.includes('BEGIN PGP')) return text
+		}
+	}
+	const text = await readMaybeText(armored)
+	return text || String(armored ?? '')
 }
 
 /** JSON body for `POST /post`. Wire is only `{ data }`. Never add sibling fields. */

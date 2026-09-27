@@ -45,6 +45,22 @@ let activeClient: ChatWorkerClient | null = null
 let workerInitPromise: Promise<boolean> | null = null
 let lastGossipParams: StartWorkerGossipParams | null = null
 
+type VoiceRelayRequest = {
+	sessionId: string
+	pushWakeup?: {
+		callId: string
+		calleeEoa: string
+		expiresAt: number
+		timestamp: number
+		offerText?: string
+		recipientPgp?: string
+	}
+}
+
+/** Survives a gossip-worker restart so an in-progress call can reopen its mailbox SSE. */
+let activeVoiceRelay: VoiceRelayRequest | null = null
+let voiceRelayOpen: Promise<boolean> | null = null
+
 /**
  * Host subscribers to encrypted-history restore/append buffer batches. Registered
  * independently of the worker session lifecycle so a page can `onHistoryBuffer(...)`
@@ -224,6 +240,10 @@ export const stopWorkerGossip = (): void => {
 /** True when a worker listen client is currently alive. */
 export const isWorkerGossipActive = (): boolean => activeClient !== null
 
+/** Route public key the live worker encrypts voice_listen to. Empty when listen is down. */
+export const getWorkerGossipRouteArmor = (): string =>
+	lastGossipParams?.ownRouteArmoredPublicKey?.trim() || ''
+
 /**
  * Start the worker-based gossip LISTEN. Resolves true when the worker acknowledged
  * `init` (its internal `startListen()` then owns SSE connect/reconnect). Any prior
@@ -333,6 +353,7 @@ const startWorkerGossipListenInternal = async (p: StartWorkerGossipParams): Prom
 		// (2) recover with empty local chats (AppShell skips re-initChat).
 		p.onLog?.('info', 'chat history: worker ready — loading on-chain/IPFS index')
 		void loadWorkerHistory()
+		if (activeVoiceRelay) void openActiveVoiceRelay()
 		return true
 	} catch (ex) {
 		p.onLog?.('error', `worker gossip init failed: ${(ex as Error)?.message ?? String(ex)}`)
@@ -352,6 +373,67 @@ export const startWorkerGossipListen = async (p: StartWorkerGossipParams): Promi
 	}
 }
 
+/**
+ * Point an already-running listen at the current chain mailbox route.
+ * Restarts the worker with the same session signal and node snapshot.
+ */
+export const retargetWorkerGossipRoute = async (
+	ownRouteArmoredPublicKey: string,
+	nodes?: StartWorkerGossipParams['nodes'],
+): Promise<boolean> => {
+	const prev = lastGossipParams
+	const next = ownRouteArmoredPublicKey.trim()
+	if (!prev || !next || prev.rootSignal.aborted) return false
+	if (prev.ownRouteArmoredPublicKey === next && !nodes?.length) return true
+	return startWorkerGossipListen({
+		...prev,
+		ownRouteArmoredPublicKey: next,
+		nodes: nodes?.length ? nodes : prev.nodes,
+	})
+}
+
+const wait = (ms: number) => new Promise<void>((resolve) => {
+	setTimeout(resolve, ms)
+})
+
+const waitForVoiceWorker = async (): Promise<ChatWorkerClient | null> => {
+	const deadline = Date.now() + 8_000
+	while (Date.now() < deadline) {
+		const starting = workerInitPromise
+		if (starting) await starting.catch(() => false)
+		if (activeClient && !workerInitPromise) return activeClient
+		const retryParams = lastGossipParams
+		if (retryParams && !retryParams.rootSignal.aborted && !workerInitPromise) {
+			await startWorkerGossipListen(retryParams)
+			if (activeClient) return activeClient
+		}
+		await wait(200)
+	}
+	return activeClient
+}
+
+const openActiveVoiceRelay = async (): Promise<boolean> => {
+	if (voiceRelayOpen) return voiceRelayOpen
+	const run = (async () => {
+		const relay = activeVoiceRelay
+		if (!relay) return false
+		const client = await waitForVoiceWorker()
+		if (!client || activeVoiceRelay?.sessionId !== relay.sessionId) return false
+		try {
+			const started = await client.startVoiceListen(relay.sessionId, relay.pushWakeup)
+			if (!started) console.warn('[voiceListen] worker refused to open the voice relay')
+			return started && activeVoiceRelay?.sessionId === relay.sessionId
+		} catch (ex) {
+			console.warn('[voiceListen] worker error', (ex as Error)?.message ?? String(ex))
+			return false
+		}
+	})()
+	voiceRelayOpen = run.finally(() => {
+		if (voiceRelayOpen === run) voiceRelayOpen = null
+	})
+	return voiceRelayOpen
+}
+
 export const startWorkerVoiceListen = async (
 	sessionId: string,
 	pushWakeup?: {
@@ -363,35 +445,16 @@ export const startWorkerVoiceListen = async (
 		recipientPgp?: string
 	},
 ): Promise<boolean> => {
-	if (workerInitPromise) {
-		const ready = await workerInitPromise
-		if (!ready || !activeClient) {
-			console.warn('[voiceListen] gossip worker initialization failed before voice relay')
-			return false
-		}
+	activeVoiceRelay = { sessionId, pushWakeup }
+	for (let attempt = 0; attempt < 3; attempt += 1) {
+		if (activeVoiceRelay?.sessionId !== sessionId) return false
+		const started = await openActiveVoiceRelay()
+		if (started) return true
+		if (activeVoiceRelay?.sessionId !== sessionId) return false
+		console.warn(`[voiceListen] relay open attempt ${attempt + 1} failed; waiting for the chat worker`)
+		await wait(400)
 	}
-	if (!activeClient) {
-		const retryParams = lastGossipParams
-		if (retryParams && !retryParams.rootSignal.aborted) {
-			console.warn('[voiceListen] gossip worker is not ready; waiting for/restarting the last listen session')
-			const restarted = await startWorkerGossipListen(retryParams)
-			if (!restarted || !activeClient) {
-				console.warn('[voiceListen] gossip worker could not be made ready for voice relay')
-				return false
-			}
-		} else {
-			console.warn('[voiceListen] gossip worker is not listening and no valid listen session is available')
-			return false
-		}
-	}
-	try {
-		const started = await activeClient.startVoiceListen(sessionId, pushWakeup)
-		if (!started) console.warn('[voiceListen] worker refused to open the voice relay')
-		return started
-	} catch (ex) {
-		console.warn('[voiceListen] worker error', (ex as Error)?.message ?? String(ex))
-		return false
-	}
+	return false
 }
 
 /** Post a signed command to the current wallet's own mailbox through the worker. */
@@ -407,6 +470,7 @@ export const postWorkerOwnMailboxCommand = async (
 }
 
 export const stopWorkerVoiceListen = async (sessionId: string): Promise<boolean> => {
+	if (activeVoiceRelay?.sessionId === sessionId) activeVoiceRelay = null
 	if (!activeClient) return false
 	try {
 		return await activeClient.stopVoiceListen(sessionId)

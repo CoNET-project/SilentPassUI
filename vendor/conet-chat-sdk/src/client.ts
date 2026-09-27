@@ -211,7 +211,7 @@ class BeamioChatClientImpl implements BeamioChatClient {
 			recipientPgp?: string
 		},
 	): Promise<boolean> {
-		const r = await this.request<{ started: boolean }>({ type: 'voiceListen', reqId: 0, sessionId, pushWakeup })
+		const r = await this.request<{ started: boolean }>({ type: 'voiceListen', reqId: 0, sessionId, pushWakeup }, 25_000)
 		return !!r?.started
 	}
 

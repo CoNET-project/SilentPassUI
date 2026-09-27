@@ -1,8 +1,12 @@
 import { Wallet, verifyMessage } from 'ethers'
 import { dispatchNativeSystemCallAction } from './cashTreesNativeNfc'
+import { publishNativePwaLog } from './cashTreesNativePwaLog'
+
+/** Unanswered incoming-call window. The Android shell closes at this mark and tells the caller. */
+export const INCOMING_CALL_RING_TIMEOUT_MS = 180_000
 
 export type VoiceCallSignal = {
-	type: 'voice_call_offer_v1' | 'voice_call_accept_v1' | 'voice_call_reject_v1' | 'voice_end_v1'
+	type: 'voice_call_offer_v1' | 'voice_call_accept_v1' | 'voice_call_reject_v1' | 'voice_call_timeout_v1' | 'voice_end_v1'
 	callId: string
 	sessionId: string
 	from: string
@@ -111,6 +115,7 @@ export function parseVoiceCallSignal(raw: unknown): VoiceCallSignal | null {
 			(candidate.type === 'voice_call_offer_v1'
 				|| candidate.type === 'voice_call_accept_v1'
 				|| candidate.type === 'voice_call_reject_v1'
+				|| candidate.type === 'voice_call_timeout_v1'
 				|| candidate.type === 'voice_end_v1')
 			&& typeof candidate.callId === 'string'
 			&& typeof candidate.sessionId === 'string'
@@ -143,6 +148,25 @@ export function isVoiceCallProtocolMessage(raw: unknown): boolean {
 }
 
 const reportedIncomingVoiceCallIds = new Set<string>()
+const incomingVoiceOffersByHandle = new Map<string, VoiceCallSignal>()
+
+/** Keep the decrypted offer so a later native Decline can reject the caller. */
+export function rememberIncomingVoiceOffer(signal: VoiceCallSignal | null | undefined): void {
+	if (!signal || signal.type !== 'voice_call_offer_v1') return
+	if (signal.callId) incomingVoiceOffersByHandle.set(signal.callId, signal)
+	if (signal.sessionId) incomingVoiceOffersByHandle.set(signal.sessionId, signal)
+}
+
+export function lookupIncomingVoiceOffer(callId: string, sessionId: string): VoiceCallSignal | null {
+	return incomingVoiceOffersByHandle.get(callId) || incomingVoiceOffersByHandle.get(sessionId) || null
+}
+
+export function forgetIncomingVoiceOffer(callId: string, sessionId: string): void {
+	const signal = lookupIncomingVoiceOffer(callId, sessionId)
+	if (!signal) return
+	incomingVoiceOffersByHandle.delete(signal.callId)
+	incomingVoiceOffersByHandle.delete(signal.sessionId)
+}
 const nativeIncomingVoiceRetryTimers = new Map<string, ReturnType<typeof setTimeout>>()
 
 /** Accept both browser millisecond timestamps and mailbox/FCM unix-second timestamps. */
@@ -177,7 +201,10 @@ export function hasReportedIncomingVoiceCall(callId: string, sessionId: string):
 export function applyNativeIncomingVoiceOfferFromLine(raw: string): boolean {
 	const signal = parseVoiceCallSignal(raw)
 	if (!signal) {
-		console.info('[voice] incoming line ignored: not a voice protocol message')
+		publishNativePwaLog(
+			'info',
+			`[voice] incoming line ignored chars=${raw.length} voiceOffer=${raw.includes('voice_call_offer_v1')}`,
+		)
 		return false
 	}
 	if (signal.type !== 'voice_call_offer_v1') {
@@ -201,18 +228,17 @@ export function applyNativeIncomingVoiceOfferFromLine(raw: string): boolean {
 		return false
 	}
 	const callerEoa = recoverVoiceCallOfferSigner(signal)
-	const proven = callerEoa || claimedVoiceCallerAddress(signal)
 	const claimedTag = claimedVoiceCallerTag(signal)
-	if (!proven && !claimedTag) {
+	if (!callerEoa && !claimedTag) {
 		console.warn('[voice] incoming offer ignored: no verified caller or claimed tag')
 		return false
 	}
 	const mismatch = voiceCallClaimMismatchesKey(signal, callerEoa, '')
 	const callKey = `${signal.callId.trim()}:${signal.sessionId.trim()}`
-	// Prefer the verified/claimed BeamioTag for the native call surface. The
-	// address remains separately available as peerAddress and is used as the
-	// fallback only when no tag is present.
-	const displayName = claimedTag || proven
+	// Banner title stays the recovered wallet until a looked-up BeamioTag
+	// replaces it. The offer's callerTag is a claim, not the caller.
+	const proven = callerEoa || ''
+	const displayName = proven
 	const payload = {
 		callId: signal.callId,
 		sessionId: signal.sessionId,
@@ -228,9 +254,10 @@ export function applyNativeIncomingVoiceOfferFromLine(raw: string): boolean {
 			`displayName=${Boolean(displayName)}`,
 	)
 	const delivered = dispatchNativeSystemCallAction('reportIncomingSystemCall', payload)
-	console.info(
+	publishNativePwaLog(
+		'info',
 		`[voice] native report dispatch=${delivered ? 'accepted' : 'unavailable'} ` +
-		`callIdPresent=${Boolean(signal.callId)} sessionIdPresent=${Boolean(signal.sessionId)}`,
+			`verifiedPeer=${Boolean(proven)} tagClaim=${Boolean(claimedTag)}`,
 	)
 	if (delivered) {
 		const timer = nativeIncomingVoiceRetryTimers.get(callKey)

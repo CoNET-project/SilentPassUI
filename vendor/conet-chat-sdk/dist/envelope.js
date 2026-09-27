@@ -12,15 +12,43 @@
 import { createMessage, encrypt, enums, readKey, readMessage, } from 'openpgp';
 import { utf8ToBase64 } from './crypto.js';
 import { normalizeArmoredKey } from './nodes.js';
-export function armorToString(armored) {
+async function readMaybeText(value) {
+    if (typeof value === 'string')
+        return value;
+    if (value && typeof value.then === 'function') {
+        return readMaybeText(await value);
+    }
+    const reader = value && typeof value.getReader === 'function'
+        ? value.getReader()
+        : null;
+    if (!reader)
+        return '';
+    const decoder = new TextDecoder();
+    let text = '';
+    while (true) {
+        const chunk = await reader.read();
+        if (chunk.done)
+            break;
+        text += typeof chunk.value === 'string' ? chunk.value : decoder.decode(chunk.value, { stream: true });
+    }
+    return text;
+}
+/** OpenPGP.js 6 `encrypt()` / `Message.armor()` may be a string, a thenable, or a stream. */
+export async function armorToString(armored) {
     if (typeof armored === 'string')
         return armored;
-    if (armored && typeof armored === 'object' && 'data' in armored) {
-        const data = armored.data;
-        if (typeof data === 'string')
-            return data;
+    if (armored && typeof armored === 'object') {
+        const record = armored;
+        if (typeof record.data === 'string' && record.data.includes('BEGIN PGP'))
+            return record.data;
+        if (typeof record.armor === 'function') {
+            const text = await readMaybeText(record.armor());
+            if (text.includes('BEGIN PGP'))
+                return text;
+        }
     }
-    return String(armored ?? '');
+    const text = await readMaybeText(armored);
+    return text || String(armored ?? '');
 }
 /** JSON body for `POST /post`. Wire is only `{ data }`. Never add sibling fields. */
 export function buildPostBody(armored) {

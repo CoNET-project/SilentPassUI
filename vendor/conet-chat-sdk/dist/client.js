@@ -150,7 +150,7 @@ class BeamioChatClientImpl {
         return !!r?.sent;
     }
     async startVoiceListen(sessionId, pushWakeup) {
-        const r = await this.request({ type: 'voiceListen', reqId: 0, sessionId, pushWakeup });
+        const r = await this.request({ type: 'voiceListen', reqId: 0, sessionId, pushWakeup }, 25000);
         return !!r?.started;
     }
     async stopVoiceListen(sessionId) {

@@ -10,7 +10,8 @@
  * - Clients **must not** set `X-CoNET-Hop-Sigs` (SI appends that only on SI→SI).
  */
 import type { Wallet } from 'ethers';
-export declare function armorToString(armored: unknown): string;
+/** OpenPGP.js 6 `encrypt()` / `Message.armor()` may be a string, a thenable, or a stream. */
+export declare function armorToString(armored: unknown): Promise<string>;
 /** JSON body for `POST /post`. Wire is only `{ data }`. Never add sibling fields. */
 export declare function buildPostBody(armored: string): {
     data: string;

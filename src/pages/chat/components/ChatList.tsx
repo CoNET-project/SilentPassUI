@@ -577,7 +577,9 @@ export default function ChatList({
                   ? 'Voice call answered'
                   : voiceSignal.type === 'voice_call_reject_v1'
                     ? 'Voice call declined'
-                    : 'Voice call ended'
+                    : voiceSignal.type === 'voice_call_timeout_v1'
+                      ? 'Call timed out'
+                      : 'Voice call ended'
               : null
             const sharePreview = !voicePreview && rawLast ? chatShareLinkListPreview(rawLast) : null
             const genericPreview =

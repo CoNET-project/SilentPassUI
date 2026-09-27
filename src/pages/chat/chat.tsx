@@ -59,6 +59,7 @@ import {
 	sendMessage,
 	makeMessage,
 	refreshChatMailboxPresence,
+	alignLiveGossipRouteToChain,
 } from '@/services/chat'
 import { claimChatOnlineQuery, releaseChatOnlineQuery, rememberPeerOnline } from '@/services/beamioTagMailboxRefresh'
 import {
@@ -108,6 +109,7 @@ import {
 import {
 	decryptVoiceFrame,
 	claimIncomingVoiceCallReport,
+	applyNativeIncomingVoiceOfferFromLine,
 	hasReportedIncomingVoiceCall,
 	isVoiceCallProtocolMessage,
 	claimedVoiceCallerAddress,
@@ -117,12 +119,14 @@ import {
 	parseVoiceCallSignal,
 	randomVoiceId,
 	recoverVoiceCallOfferSigner,
+	INCOMING_CALL_RING_TIMEOUT_MS,
+	rememberIncomingVoiceOffer,
 	VOICE_CALL_IDENTITY_WARNING,
 	voiceCallClaimMismatchesKey,
 	type VoiceCallSignal,
 } from '@/utils/voiceCallSession'
 import { startVoiceCapture, VoicePlaybackBuffer } from '@/services/voiceCallMedia'
-import { createVoiceCallController, type VoiceCallController } from '@/services/voiceCallController'
+import { createVoiceCallController, declineIncomingVoiceOffer, timeoutIncomingVoiceOffer, type VoiceCallController } from '@/services/voiceCallController'
 import { useReliableTapHandler, RELIABLE_TAP_BUTTON_CLASS } from '@/utils/reliableTap'
 import {
 	createChatFileArchive,
@@ -2105,10 +2109,18 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		if (!route || !recipientPgp) {
 			setVoiceError('Voice calling requires the contact to have an active Chat route.')
 			setVoiceCallConnecting(false)
+			setVoiceCallState('idle')
 			voiceCallStartingRef.current = false
 			return
 		}
 		try {
+			const mailboxAligned = await alignLiveGossipRouteToChain(privateKey, allNodes)
+			if (!mailboxAligned) {
+				setVoiceError('Voice call could not use your current Chat mailbox. Try again.')
+				setVoiceCallConnecting(false)
+				setVoiceCallState('idle')
+				return
+			}
 			const callerWallet = new ethers.Wallet(privateKey).address
 			const callerCallId = String(
 				CoNET_Data?.beamio?.accountName ||
@@ -2126,6 +2138,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			if (!channel) {
 				setVoiceError('Voice call could not open a temporary relay.')
 				setVoiceCallConnecting(false)
+				setVoiceCallState('idle')
 				return
 			}
 			voiceControllerRef.current = controller
@@ -2162,6 +2175,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		} catch (error) {
 			setVoiceError(error instanceof Error ? error.message : 'Voice call could not start.')
 			setVoiceCallConnecting(false)
+			setVoiceCallState('idle')
 		} finally {
 			voiceCallStartingRef.current = false
 		}
@@ -2189,11 +2203,12 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				const previousCall = persistedPhoneCalls.find(
 					(item: any) => item.sessionId === signal.sessionId,
 				)
-				const terminalCallStatuses = new Set(['declined', 'ended', 'answered', 'missed'])
+				const terminalCallStatuses = new Set(['declined', 'ended', 'answered', 'missed', 'timed_out'])
 				if (terminalCallStatuses.has(String(previousCall?.status || ''))) {
 					continue
 				}
 				setIncomingVoiceOffer(previous => previous?.sessionId === signal.sessionId ? previous : signal)
+				rememberIncomingVoiceOffer(signal)
 				const provenAddress = callerEoa || ''
 				const localTag = provenAddress
 					? formatLookedUpBeamioTag(resolvePeerSearchResult(provenAddress)?.username)
@@ -2244,6 +2259,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 						createdAt: Date.now(),
 						expiresAt: signal.expiresAt,
 					})
+					applyNativeIncomingVoiceOfferFromLine(latest.text)
 					dispatchNativeSystemCallAction('reportIncomingSystemCall', {
 						callId: signal.callId,
 						sessionId: signal.sessionId,
@@ -2345,15 +2361,14 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		setIncomingVoiceAction('declining')
 		const localWallet = new ethers.Wallet(privateKey).address
 		try {
-			const controller = createVoiceCallController({
+			await declineIncomingVoiceOffer({
 				privateKey,
 				localCallId: String(CoNET_Data?.beamio?.accountName || localWallet).trim() || localWallet,
 				peerEoa: offer.from,
 				peerPgp: chatData.chatData.publicArmored,
 				peerRoute: chatData.chatData.routersArmoreds,
 				allNodes,
-			})
-			await controller.rejectIncoming(offer as VoiceCallSignal)
+			}, offer as VoiceCallSignal)
 			upsertPhoneCallRecord({
 				callId: offer.callId,
 				sessionId: offer.sessionId,
@@ -2384,9 +2399,31 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		const sessionId = voiceCallSessionRef.current
 		const callId = voiceCallOfferRef.current?.callId
 		const callSessionId = voiceCallOfferRef.current?.sessionId || sessionId || ''
-		if (voiceControllerRef.current) {
-			await voiceControllerRef.current.end(notifyPeer)
-			voiceControllerRef.current = null
+		const controller = voiceControllerRef.current
+		voiceControllerRef.current = null
+		if (callId) {
+			const previous = (Array.isArray(profiles?.[0]?.phoneCalls) ? profiles[0].phoneCalls : [])
+				.find((item: PhoneCallRecord) => item.sessionId === callSessionId)
+			const status = requestedStatus
+				|| (previous?.status === 'ringing' ? 'cancelled' : previous?.status === 'missed' ? 'missed' : 'ended')
+			const endedAt = Date.now()
+			upsertPhoneCallRecord({
+				callId,
+				sessionId: callSessionId,
+				peerAddress: previous?.peerAddress || toAddress,
+				direction: previous?.direction || 'outgoing',
+				status,
+				createdAt: previous?.createdAt || endedAt,
+				endedAt,
+				durationMs: previous?.answeredAt ? Math.max(0, endedAt - previous.answeredAt) : previous?.durationMs,
+			})
+			dispatchNativeSystemCallAction('endSystemCall', { callId, sessionId: callSessionId })
+		}
+		setVoiceCallConnecting(false)
+		setVoiceCallState('ended')
+		window.setTimeout(() => setVoiceCallState('idle'), 300)
+		if (controller) {
+			await controller.end(notifyPeer)
 		} else if (sessionId) {
 			await stopWorkerVoiceListen(sessionId)
 		}
@@ -2412,27 +2449,6 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		voiceCallKeyRef.current = null
 		voiceCallPeerSessionRef.current = null
 		voiceCallSessionRef.current = null
-		if (callId) {
-			const previous = (Array.isArray(profiles?.[0]?.phoneCalls) ? profiles[0].phoneCalls : [])
-				.find((item: PhoneCallRecord) => item.sessionId === callSessionId)
-			const status = requestedStatus
-				|| (previous?.status === 'ringing' ? 'cancelled' : previous?.status === 'missed' ? 'missed' : 'ended')
-			const endedAt = Date.now()
-			upsertPhoneCallRecord({
-				callId,
-				sessionId: callSessionId,
-				peerAddress: previous?.peerAddress || toAddress,
-				direction: previous?.direction || 'outgoing',
-				status,
-				createdAt: previous?.createdAt || endedAt,
-				endedAt,
-				durationMs: previous?.answeredAt ? Math.max(0, endedAt - previous.answeredAt) : previous?.durationMs,
-			})
-			dispatchNativeSystemCallAction('endSystemCall', { callId, sessionId: callSessionId })
-		}
-		setVoiceCallConnecting(false)
-		setVoiceCallState('ended')
-		window.setTimeout(() => setVoiceCallState('idle'), 300)
 	}, [profiles, toAddress, upsertPhoneCallRecord])
 
 	useEffect(() => {
@@ -2472,30 +2488,72 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 	}, [acceptVoiceCall, autoVoiceCallAction, incomingVoiceOffer, rejectVoiceCall])
 
 	useEffect(() => {
-		const latest = [...messages].reverse().find((message) => message.from === 'them' && message.text)
-		if (!latest?.text || voiceCallState !== 'outgoing') return
-		try {
-			const signal = JSON.parse(latest.text) as {
-				type?: string
-				callId?: string
-				sessionId?: string
-				timestamp?: number
-			}
+		if (voiceCallState !== 'outgoing') return
+		const offer = voiceCallOfferRef.current
+		if (!offer) return
+		for (let index = messages.length - 1; index >= 0; index -= 1) {
+			const message = messages[index]
+			if (message.from !== 'them' || !message.text) continue
+			const signal = parseVoiceCallSignal(message.text)
+			const peerStatus = signal?.type === 'voice_call_reject_v1'
+				? 'declined'
+				: signal?.type === 'voice_call_timeout_v1'
+					? 'timed_out'
+					: null
 			if (
-				signal.type !== 'voice_call_reject_v1' ||
-				signal.callId !== voiceCallOfferRef.current?.callId ||
-				signal.sessionId !== voiceCallOfferRef.current?.sessionId ||
-				!Number.isFinite(Number(signal.timestamp)) ||
-				Number(signal.timestamp) <= Number(voiceCallOfferRef.current?.timestamp || 0) ||
-				Number(signal.timestamp) > Date.now() + 60_000 ||
-				remoteRejectHandledRef.current === (signal.sessionId || signal.callId)
-			) return
-			remoteRejectHandledRef.current = signal.sessionId || signal.callId || null
-				void endVoiceCall('declined', false)
-		} catch {
-			// Ordinary chat message.
+				!peerStatus ||
+				!signal ||
+				signal.callId !== offer.callId ||
+				signal.sessionId !== offer.sessionId
+			) continue
+			const mark = Number(signal.timestamp || signal.createdAt)
+			if (
+				!Number.isFinite(mark) ||
+				mark <= Number(offer.timestamp || 0) ||
+				mark > Date.now() + 60_000 ||
+				remoteRejectHandledRef.current === signal.sessionId
+			) continue
+			remoteRejectHandledRef.current = signal.sessionId
+			void endVoiceCall(peerStatus, false)
+			return
 		}
 	}, [endVoiceCall, messages, voiceCallState])
+
+	useEffect(() => {
+		if (voiceCallState !== 'outgoing') return
+		const offer = voiceCallOfferRef.current
+		if (!offer?.sessionId) return
+		const started = Number(offer.timestamp || Date.now())
+		const delay = Math.max(0, started + INCOMING_CALL_RING_TIMEOUT_MS + 15_000 - Date.now())
+		const timer = window.setTimeout(() => {
+			if (voiceCallOfferRef.current?.sessionId !== offer.sessionId) return
+			if (remoteRejectHandledRef.current === offer.sessionId) return
+			remoteRejectHandledRef.current = offer.sessionId
+			void endVoiceCall('timed_out', false)
+		}, delay)
+		return () => window.clearTimeout(timer)
+	}, [endVoiceCall, voiceCallState])
+
+	useEffect(() => {
+		const onPeerStopped = (status: 'declined' | 'timed_out') => (event: Event) => {
+			const detail = (event as CustomEvent<{ callId?: string; sessionId?: string }>).detail
+			const offer = voiceCallOfferRef.current
+			if (!offer || voiceCallState !== 'outgoing') return
+			if (detail?.sessionId && detail.sessionId !== offer.sessionId) return
+			if (detail?.callId && detail.callId !== offer.callId) return
+			if (remoteRejectHandledRef.current === offer.sessionId) return
+			remoteRejectHandledRef.current = offer.sessionId
+			void endVoiceCall(status, false)
+		}
+		const onPeerDeclined = onPeerStopped('declined')
+		const onPeerTimedOut = onPeerStopped('timed_out')
+		window.addEventListener('beamio-voice-peer-declined', onPeerDeclined)
+		window.addEventListener('beamio-voice-peer-timed-out', onPeerTimedOut)
+		return () => {
+			window.removeEventListener('beamio-voice-peer-declined', onPeerDeclined)
+			window.removeEventListener('beamio-voice-peer-timed-out', onPeerTimedOut)
+		}
+	}, [endVoiceCall, voiceCallState])
 
 	useEffect(() => {
 		const onNativeCallAction = (event: Event) => {
@@ -2513,6 +2571,27 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				void acceptVoiceCall()
 			} else if (detail.action === 'callRejected' && matchesIncoming) {
 				void rejectVoiceCall()
+			} else if (detail.action === 'callTimedOut' && matchesIncoming && incomingVoiceOffer && privateKey) {
+				const offer = incomingVoiceOffer
+				const localWallet = new ethers.Wallet(privateKey).address
+				void timeoutIncomingVoiceOffer({
+					privateKey,
+					localCallId: String(CoNET_Data?.beamio?.accountName || localWallet).trim() || localWallet,
+					peerEoa: offer.from,
+					peerPgp: chatData.chatData.publicArmored,
+					peerRoute: chatData.chatData.routersArmoreds,
+					allNodes,
+				}, offer as VoiceCallSignal)
+				upsertPhoneCallRecord({
+					callId: offer.callId,
+					sessionId: offer.sessionId,
+					peerAddress: offer.from,
+					direction: 'incoming',
+					status: 'missed',
+					createdAt: Number(offer.createdAt) || Date.now(),
+					endedAt: Date.now(),
+				})
+				setIncomingVoiceOffer(null)
 			} else if (detail.action === 'callEnded') {
 				void endVoiceCall()
 			}
@@ -2523,7 +2602,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			window.removeEventListener('cashtreesios', onNativeCallAction)
 			window.removeEventListener('cashtreesandroid', onNativeCallAction)
 		}
-	}, [acceptVoiceCall, endVoiceCall, incomingVoiceOffer, rejectVoiceCall])
+	}, [acceptVoiceCall, allNodes, chatData.chatData.publicArmored, chatData.chatData.routersArmoreds, endVoiceCall, incomingVoiceOffer, privateKey, rejectVoiceCall, upsertPhoneCallRecord])
 
 	// Turn an unanswered offer into an explicit chat record instead of leaving
 	// the protocol message as an empty bubble.
@@ -2553,7 +2632,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			if (!callId) return
 			const current = (Array.isArray(profiles?.[0]?.phoneCalls) ? profiles[0].phoneCalls : [])
 				.find((item: PhoneCallRecord) => item.sessionId === outgoing?.sessionId)
-			if (current?.status === 'ringing') void endVoiceCall('missed')
+			if (current?.status === 'ringing') void endVoiceCall('timed_out', false)
 		}, Math.max(0, expiresAt - Date.now()))
 
 		return () => window.clearTimeout(timer)
@@ -2604,48 +2683,33 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 					voiceCallKeyRef.current || new Uint8Array(),
 					frame.payload as string,
 				)
-				let control: { type?: string; callId?: string; sessionId?: string; timestamp?: number } | null = null
+				let control: { type?: string; callId?: string; sessionId?: string; timestamp?: number; createdAt?: number } | null = null
 				try {
 					control = JSON.parse(new TextDecoder().decode(plain)) as {
 						type?: string
 						callId?: string
+						sessionId?: string
+						timestamp?: number
+						createdAt?: number
 					}
 				} catch {
 					// Audio frames are binary; only JSON payloads are control frames.
 				}
-				if (control?.type === 'voice_call_reject_v1') {
+				if (control?.type === 'voice_call_reject_v1' || control?.type === 'voice_call_timeout_v1') {
+					const mark = Number(control.timestamp || control.createdAt)
 					if (
 						control.sessionId !== voiceCallOfferRef.current?.sessionId ||
-						!Number.isFinite(Number(control.timestamp)) ||
-						Number(control.timestamp) <= Number(voiceCallOfferRef.current?.timestamp || 0)
+						!Number.isFinite(mark) ||
+						mark <= Number(voiceCallOfferRef.current?.timestamp || 0) ||
+						remoteRejectHandledRef.current === voiceCallOfferRef.current?.sessionId
 					) {
 						return
 					}
-					const callId = control.callId || voiceCallOfferRef.current?.callId || ''
-					await voiceControllerRef.current?.end(false)
-					voiceControllerRef.current = null
-					voiceCaptureStopRef.current?.()
-					voiceCaptureStopRef.current = null
-					voicePlaybackRef.current?.destroy()
-					voicePlaybackRef.current = null
-					voiceCallKeyRef.current = null
-					voiceCallPeerSessionRef.current = null
-					voiceCallSessionRef.current = null
-					if (callId) {
-						upsertPhoneCallRecord({
-							callId,
-							sessionId: voiceCallOfferRef.current?.sessionId || '',
-							peerAddress: toAddress,
-							direction: 'outgoing',
-							status: 'declined',
-							createdAt: Date.now(),
-							endedAt: Date.now(),
-						})
-						dispatchNativeSystemCallAction('endSystemCall', { callId })
-					}
-					setVoiceCallConnecting(false)
-					setVoiceCallState('ended')
-					window.setTimeout(() => setVoiceCallState('idle'), 300)
+					remoteRejectHandledRef.current = voiceCallOfferRef.current?.sessionId || ''
+					void endVoiceCall(
+						control.type === 'voice_call_timeout_v1' ? 'timed_out' : 'declined',
+						false,
+					)
 					return
 				}
 				voicePlaybackRef.current?.setKey(voiceCallKeyRef.current || new Uint8Array())
@@ -2654,7 +2718,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				setVoiceError('Incoming voice audio could not be decoded.')
 			}
 		})()
-	}), [toAddress, upsertPhoneCallRecord, voiceCallState])
+	}), [endVoiceCall, voiceCallState])
 
 	const openMultisigFromChat = useCallback(
 		(messageText: string, isMeMessage: boolean, taskId: string, aaAccount?: string) => {
@@ -4403,7 +4467,9 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		? 'Connecting'
 		: activeVoiceCallRecord?.status === 'answered'
 			? 'Voice call'
-			: 'Ringing'
+			: activeVoiceCallRecord?.status === 'timed_out'
+				? 'Timed out'
+				: 'Ringing'
 	
 
 
@@ -4876,7 +4942,9 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 																? 'No answer'
 																: record.status === 'declined'
 																	? 'Recipient declined'
-																	: record.status === 'cancelled'
+																	: record.status === 'timed_out'
+																		? 'Timed out'
+																		: record.status === 'cancelled'
 																		? 'Call cancelled'
 																		: record.status === 'failed'
 																			? 'Call failed'
@@ -4884,7 +4952,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 																				? record.durationMs ? `Voice call · ${formatVoiceDuration(record.durationMs)}` : 'Voice call'
 																				: record.durationMs ? `Call ended · ${formatVoiceDuration(record.durationMs)}` : 'Call ended'
 													const statusClass =
-														record.status === 'missed' || record.status === 'declined' || record.status === 'failed'
+														record.status === 'missed' || record.status === 'declined' || record.status === 'timed_out' || record.status === 'failed'
 															? 'text-rose-600'
 															: record.status === 'ringing'
 																? 'text-[#1652f0]'
@@ -4892,7 +4960,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 													return (
 														<div className="flex min-w-[190px] items-center gap-3 rounded-2xl bg-white/90 px-4 py-3 shadow-[0_4px_16px_rgba(15,23,42,0.08)] ring-1 ring-black/5">
 															<div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
-																record.status === 'missed' || record.status === 'declined'
+																record.status === 'missed' || record.status === 'declined' || record.status === 'timed_out'
 																	? 'bg-rose-50'
 																	: 'bg-[#e9edff]'
 															}`}>

@@ -7,7 +7,7 @@ import contracts from '@/utils/contracts'
 import {ethers} from 'ethers'
 import {aesGcmEncrypt, aesGcmDecrypt, toBase64, fromBase64, storeSystemData } from '@/services/beamio'
 import { publishNativePwaLog } from '@/utils/cashTreesNativePwaLog'
-import { startWorkerGossipListen, stopWorkerGossip } from '@/services/chatWorkerBridge'
+import { getWorkerGossipRouteArmor, retargetWorkerGossipRoute, startWorkerGossipListen, stopWorkerGossip } from '@/services/chatWorkerBridge'
 import { wrapArmorToMailboxWork } from '@conet.project/chat-sdk'
 
 function chatBootLog(message: string, level: 'info' | 'warn' | 'error' = 'info'): void {
@@ -755,6 +755,71 @@ let gossipDeliveryAckContext: {
 	entryNodes: nodeInfo[]
 	mailboxDomains: string[]
 } | null = null
+
+const mailboxKeyId = (domain: string): string =>
+	domain.split('.')[0].trim().toUpperCase()
+
+/**
+ * Voice listen encrypts to the route key frozen when gossip started.
+ * A long-lived tab keeps that key after the chain mailbox moves, so the
+ * offer lands on a stale node and the callee never sees it. Re-read the
+ * chain route and retarget before a call. Returns false when the worker
+ * still is not encrypting to that mailbox — the caller must not open a relay.
+ */
+export async function alignLiveGossipRouteToChain(
+	privateKeyArmor: string,
+	nodes: nodeInfo[],
+): Promise<boolean> {
+	const normalizeRouteArmor = (value?: string) => (value || '').replace(/\r/g, '').trim()
+	const live = mailboxKeyId(gossipDeliveryAckContext?.mailboxDomains?.[0] || '')
+	const chain = await getKeysFromCoNETPGPSC(
+		new ethers.Wallet(privateKeyArmor).address,
+		privateKeyArmor,
+	)
+	const chainId = mailboxKeyId(String(chain?.routePgpKeyID || ''))
+	const workerArmor = normalizeRouteArmor(getWorkerGossipRouteArmor())
+	chatBootLog(`voice route live=${live || 'none'} chain=${chainId || 'none'} worker=${workerArmor ? 'set' : 'none'}`)
+	if (!chainId) {
+		chatBootLog('voice route chain mailbox unavailable', 'warn')
+		return false
+	}
+	const mailbox = nodes.find((node) => mailboxKeyId(node.domain || '') === chainId)
+	const targetArmor = normalizeRouteArmor(mailbox?.armoredPublicKey)
+	if (!mailbox?.domain || !targetArmor) {
+		chatBootLog(`voice route chain mailbox ${chainId} is not in the node list`, 'warn')
+		return false
+	}
+	const workerMatches = workerArmor === targetArmor
+	if (workerMatches && live === chainId) return true
+	if (workerMatches && gossipDeliveryAckContext) {
+		gossipDeliveryAckContext = {
+			...gossipDeliveryAckContext,
+			routerArmoredPublicKey: mailbox.armoredPublicKey,
+			mailboxDomains: [mailbox.domain],
+		}
+		return true
+	}
+	if (!getWorkerGossipRouteArmor()) {
+		chatBootLog('voice route listen is not running', 'warn')
+		return false
+	}
+	chatBootLog(`voice route retarget ${live || 'none'} -> ${chainId}`)
+	const ok = await retargetWorkerGossipRoute(mailbox.armoredPublicKey, nodes)
+	if (!ok) {
+		chatBootLog('voice route retarget failed', 'warn')
+		return false
+	}
+	if (gossipDeliveryAckContext) {
+		gossipDeliveryAckContext = {
+			...gossipDeliveryAckContext,
+			routerArmoredPublicKey: mailbox.armoredPublicKey,
+			mailboxDomains: [mailbox.domain],
+		}
+	}
+	const aligned = normalizeRouteArmor(getWorkerGossipRouteArmor()) === targetArmor
+	if (!aligned) chatBootLog('voice route worker still on the previous mailbox', 'warn')
+	return aligned
+}
 
 export function getGossipDeliveryAckContext(): {
 	routerArmoredPublicKey: string

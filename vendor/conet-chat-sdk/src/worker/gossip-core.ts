@@ -523,7 +523,7 @@ export class GossipCore {
 						: JSON.stringify(parsed)
 				this.emit.log(
 					'info',
-					`inbound PGP decrypted chars=${kkk.length} json=${kkk.trim().startsWith('{')}`,
+					`inbound PGP decrypted chars=${kkk.length} json=${kkk.trim().startsWith('{')} voiceOffer=${kkk.includes('voice_call_offer_v1')}`,
 				)
 				const armorHash = keccakUtf8(armored)
 				let line = kkk
@@ -852,8 +852,8 @@ export class GossipCore {
 		const candidates = pool.length ? pool : this.nodes
 		const healthy = await pickHealthyGossipNodes(candidates)
 		const entries = healthy.length ? healthy : candidates
-		if (!route || !entries.length) {
-			this.emit.log('warn', `voice listen refused: route=${!!route} nodes=${this.nodes.length} entries=${entries.length}`)
+		if (!route || !routeNodes.length || !entries.length) {
+			this.emit.log('warn', `voice listen refused: route=${!!route} mailbox=${routeNodes.length} entries=${entries.length}`)
 			return false
 		}
 		let offerArmor = ''
@@ -868,7 +868,7 @@ export class GossipCore {
 					from: wallet.address,
 					signMessage,
 				}
-				offerArmor = armorToString(await encrypt({
+				offerArmor = await armorToString(await encrypt({
 					message: await createMessage({ text: utf8ToBase64(JSON.stringify(envelope)) }),
 					encryptionKeys: await readKey({ armoredKey: recipientPgp }),
 					config: { preferredCompressionAlgorithm: enums.compression.zlib },
@@ -894,45 +894,98 @@ export class GossipCore {
 			} : {}),
 			...(offerArmor ? { offerArmor } : {}),
 		}, route)
+		if (!inner.includes('-----BEGIN PGP MESSAGE-----')) {
+			this.emit.log('warn', 'voice listen armor missing')
+			return false
+		}
 		const controller = new AbortController()
 		this.voiceListenController = controller
 		const node = getRandomNode(entries)!
-		void (async () => {
-			try {
-				const armored = this.cfg?.runtime.outerWrap === false ? inner : await wrapArmorToEntryRoute(inner, node.armoredPublicKey)
-				const res = await fetch(postUrl(node.domain), {
-					method: 'POST',
-					headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', Connection: 'keep-alive' },
-					body: JSON.stringify(buildPostBody(armored)),
-					signal: controller.signal,
-					cache: 'no-store',
-				})
-				if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`)
-				const reader = res.body.getReader()
-				const decoder = new TextDecoder()
-				let buffer = ''
-				while (!controller.signal.aborted) {
-					const { value, done } = await reader.read()
-					if (done) break
-					buffer += decoder.decode(value, { stream: true })
-					let idx: number
-					while ((idx = buffer.indexOf('\n\n')) >= 0) {
-						const block = buffer.slice(0, idx)
-						buffer = buffer.slice(idx + 2)
-						const payload = block.split('\n').filter(line => line.startsWith('data:')).map(line => line.slice(5).trimStart()).join('\n').trim()
-						if (!payload) continue
-						try {
-							const frame = JSON.parse(payload) as Record<string, unknown>
-							if (frame.type === 'voice_frame_v1') this.emit.voiceFrame(frame)
-						} catch { /* malformed frame */ }
-					}
-				}
-				await reader.cancel()
-			} catch (ex) {
-				if (!controller.signal.aborted) this.emit.log('warn', `voice SSE failed: ${(ex as Error)?.message ?? String(ex)}`)
+		this.emit.log('info', `voice listen entry=${node.domain} mailbox=${routeNodes[0]?.domain ?? ''}`)
+		let handshakeSettled = false
+		const handshake = new Promise<boolean>((resolve) => {
+			const timer = setTimeout(() => {
+				if (handshakeSettled) return
+				handshakeSettled = true
+				this.emit.log('warn', 'voice relay handshake timed out')
+				resolve(false)
+			}, 12_000)
+			controller.signal.addEventListener('abort', () => {
+				if (handshakeSettled) return
+				handshakeSettled = true
+				clearTimeout(timer)
+				resolve(false)
+			}, { once: true })
+			const markReady = () => {
+				if (handshakeSettled) return
+				handshakeSettled = true
+				clearTimeout(timer)
+				resolve(true)
 			}
-		})()
-		return true
+			void (async () => {
+				try {
+					const armored = this.cfg?.runtime.outerWrap === false ? inner : await wrapArmorToEntryRoute(inner, node.armoredPublicKey)
+					const res = await fetch(postUrl(node.domain), {
+						method: 'POST',
+						headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', Connection: 'keep-alive' },
+						body: JSON.stringify(buildPostBody(armored)),
+						signal: controller.signal,
+						cache: 'no-store',
+					})
+					if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`)
+					const reader = res.body.getReader()
+					const decoder = new TextDecoder()
+					let buffer = ''
+					const takeBlock = (): string | null => {
+						const crlf = buffer.indexOf('\r\n\r\n')
+						const lf = buffer.indexOf('\n\n')
+						if (crlf < 0 && lf < 0) return null
+						const cut = crlf >= 0 && (lf < 0 || crlf <= lf) ? crlf : lf
+						const width = cut === crlf ? 4 : 2
+						const block = buffer.slice(0, cut)
+						buffer = buffer.slice(cut + width)
+						return block
+					}
+					while (!controller.signal.aborted) {
+						const { value, done } = await reader.read()
+						if (done) break
+						buffer += decoder.decode(value, { stream: true })
+						let block: string | null
+						while ((block = takeBlock()) !== null) {
+							const payload = block.split(/\r?\n/).filter(line => line.startsWith('data:')).map(line => line.slice(5).trimStart()).join('\n').trim()
+							if (!payload) continue
+							try {
+								const frame = JSON.parse(payload) as Record<string, unknown>
+								if (frame.type === 'voice_ready') {
+									this.emit.log('info', `voice ready wallet=${String(frame.nodeWallet ?? '')}`)
+									markReady()
+								}
+								if (frame.type === 'voice_frame_v1') this.emit.voiceFrame(frame)
+							} catch { /* malformed frame */ }
+						}
+					}
+					if (!handshakeSettled) {
+						handshakeSettled = true
+						clearTimeout(timer)
+						resolve(false)
+					}
+					await reader.cancel()
+				} catch (ex) {
+					if (!handshakeSettled) {
+						handshakeSettled = true
+						clearTimeout(timer)
+						resolve(false)
+					}
+					if (!controller.signal.aborted) this.emit.log('warn', `voice SSE failed: ${(ex as Error)?.message ?? String(ex)}`)
+				}
+			})()
+		})
+		const opened = await handshake
+		if (!opened && this.voiceListenController === controller) {
+			controller.abort('voice_stop')
+			this.voiceListenController = null
+		}
+		return opened
 	}
 
 	async stopVoiceListen(sessionId: string): Promise<boolean> {

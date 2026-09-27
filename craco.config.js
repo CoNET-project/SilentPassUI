@@ -48,18 +48,18 @@ module.exports = {
             webpackConfig.plugins = webpackConfig.plugins || [];
             webpackConfig.plugins.push(new BuildProgressPlugin());
 
-            // CRA source-map-loader breaks on missing maps / ESM paths in node_modules.
-            webpackConfig.module.rules.forEach((rule) => {
-                if (!rule.oneOf) return;
-                rule.oneOf.forEach((oneOfRule) => {
-                    if (
-                        oneOfRule.loader &&
-                        String(oneOfRule.loader).includes('source-map-loader')
-                    ) {
-                        oneOfRule.exclude = /node_modules/;
-                    }
-                });
-            });
+            // CRA puts source-map-loader on a top-level rule, not inside oneOf.
+            // Missing maps under hoisted node_modules (bs58 → base-x) fail the compile.
+            const excludeNodeSourceMaps = (rule) => {
+                if (!rule || typeof rule !== 'object') return;
+                if (rule.loader && String(rule.loader).includes('source-map-loader')) {
+                    rule.exclude = /node_modules/;
+                }
+                for (const key of ['oneOf', 'rules', 'use']) {
+                    if (Array.isArray(rule[key])) rule[key].forEach(excludeNodeSourceMaps);
+                }
+            };
+            webpackConfig.module.rules.forEach(excludeNodeSourceMaps);
             webpackConfig.ignoreWarnings = [
                 ...(webpackConfig.ignoreWarnings || []),
                 /Failed to parse source map/,

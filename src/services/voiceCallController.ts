@@ -2,6 +2,7 @@ import { ethers } from 'ethers'
 import {
 	createVoiceSessionKey,
 	encryptVoiceFrame,
+	INCOMING_CALL_RING_TIMEOUT_MS,
 	makeVoiceCallSignal,
 	recoverVoiceCallOfferSigner,
 	signVoiceCallOffer,
@@ -48,30 +49,33 @@ export type VoiceCallChannel = {
  * depending only on the normal Chat mailbox, which may be paused while the
  * native call UI is in the foreground.
  */
-export const sendVoiceCallRejectionToTemporaryRelay = async (
+const sendVoiceCallControlToTemporaryRelay = async (
 	options: VoiceCallControllerOptions,
 	offer: VoiceCallSignal,
+	control: { type: 'voice_call_reject_v1' | 'voice_call_timeout_v1'; reason: string; framePrefix: string },
 ): Promise<boolean> => {
 	if (!offer.sessionId || !offer.from || !offer.callId || !offer.sessionKey) return false
 	try {
 		const sessionKey = voiceSessionKeyFromBase64(offer.sessionKey)
-		const rejection = JSON.stringify({
-			type: 'voice_call_reject_v1',
+		const now = Date.now()
+		const body = JSON.stringify({
+			type: control.type,
 			callId: offer.callId,
 			sessionId: offer.sessionId,
 			from: new ethers.Wallet(options.privateKey).address,
 			to: offer.from,
-			reason: 'declined',
-			createdAt: Date.now(),
+			reason: control.reason,
+			createdAt: now,
+			timestamp: now,
 		})
 		const payload = await encryptVoiceFrame(
 			sessionKey,
-			new TextEncoder().encode(rejection),
+			new TextEncoder().encode(body),
 		)
 		return await sendWorkerVoiceFrame(options.peerRoute, {
 			type: 'voice_frame_v1',
 			callId: offer.callId,
-			sessionId: randomVoiceId('reject'),
+			sessionId: randomVoiceId(control.framePrefix),
 			targetSessionId: offer.sessionId,
 			seq: 0,
 			payload,
@@ -81,11 +85,78 @@ export const sendVoiceCallRejectionToTemporaryRelay = async (
 	}
 }
 
+export const sendVoiceCallRejectionToTemporaryRelay = async (
+	options: VoiceCallControllerOptions,
+	offer: VoiceCallSignal,
+): Promise<boolean> => sendVoiceCallControlToTemporaryRelay(options, offer, {
+	type: 'voice_call_reject_v1',
+	reason: 'declined',
+	framePrefix: 'reject',
+})
+
 /**
  * Chat-only voice controller. It owns temporary in-memory channel identity,
  * route-compatible mailbox use, random entry selection, signaling, and teardown.
  * The temporary wallet is never registered on-chain and never persisted.
  */
+const declinedVoiceOfferKeys = new Set<string>()
+
+export type PeerVoiceMaterial = {
+	peerPgp: string
+	peerRoute: string
+}
+
+export function peerVoiceMaterial(
+	chats: Array<{ address?: string; chatData?: { publicArmored?: string; routersArmoreds?: string } }> | undefined,
+	peerAddress: string,
+): PeerVoiceMaterial {
+	const want = peerAddress.trim().toLowerCase()
+	const row = (chats || []).find((chat) => (chat.address || '').trim().toLowerCase() === want)
+	return {
+		peerPgp: String(row?.chatData?.publicArmored || '').trim(),
+		peerRoute: String(row?.chatData?.routersArmoreds || '').trim(),
+	}
+}
+
+/**
+ * Native Decline and the in-app Decline button share this send.
+ * The temporary relay reaches a live ringing page immediately. The chat
+ * message is always sent as well, so the caller still ends if that relay
+ * session is already gone.
+ */
+export async function declineIncomingVoiceOffer(
+	options: VoiceCallControllerOptions,
+	offer: VoiceCallSignal,
+): Promise<boolean> {
+	if (!offer.callId || !offer.sessionId) return false
+	const key = `${offer.callId}:${offer.sessionId}`
+	if (declinedVoiceOfferKeys.has(key)) return true
+	declinedVoiceOfferKeys.add(key)
+	const controller = createVoiceCallController(options)
+	const sent = await controller.rejectIncoming(offer)
+	if (!sent) declinedVoiceOfferKeys.delete(key)
+	return sent
+}
+
+/**
+ * Android unanswered-ring timeout and any later native timeout share this send.
+ * Same dual path as Decline: temporary relay when the caller SSE is still up,
+ * plus a user-PGP chat message because Telecom can outlive that relay.
+ */
+export async function timeoutIncomingVoiceOffer(
+	options: VoiceCallControllerOptions,
+	offer: VoiceCallSignal,
+): Promise<boolean> {
+	if (!offer.callId || !offer.sessionId) return false
+	const key = `${offer.callId}:${offer.sessionId}`
+	if (declinedVoiceOfferKeys.has(key)) return true
+	declinedVoiceOfferKeys.add(key)
+	const controller = createVoiceCallController(options)
+	const sent = await controller.timeoutIncoming(offer)
+	if (!sent) declinedVoiceOfferKeys.delete(key)
+	return sent
+}
+
 export function createVoiceCallController(options: VoiceCallControllerOptions) {
 	const tempWallet = ethers.Wallet.createRandom()
 	let activeSessionId: string | null = null
@@ -117,7 +188,7 @@ export function createVoiceCallController(options: VoiceCallControllerOptions) {
 		// One voice_listen carries the wake fields and the offer already
 		// encrypted to the callee user PGP. The caller's mailbox forwards that
 		// ciphertext; the caller does not POST the offer again.
-		const ringExpiresAt = Date.now() + 2 * 60 * 1000
+		const ringExpiresAt = Date.now() + INCOMING_CALL_RING_TIMEOUT_MS
 		if (!await startWorkerVoiceListen(sessionId, {
 			callId: signal.callId,
 			calleeEoa: signal.to,
@@ -176,8 +247,40 @@ export function createVoiceCallController(options: VoiceCallControllerOptions) {
 			reason: 'declined',
 		})
 		const sentToTemporaryRelay = await sendVoiceCallRejectionToTemporaryRelay(options, offer)
-		if (sentToTemporaryRelay) return true
-		return sendMessage(options.peerPgp, JSON.stringify(reject), options.privateKey, selectedEntries.length ? selectedEntries : options.allNodes)
+		const sentToCaller = options.peerPgp
+			? await sendMessage(
+				options.peerPgp,
+				JSON.stringify(reject),
+				options.privateKey,
+				selectedEntries.length ? selectedEntries : options.allNodes,
+			)
+			: false
+		return sentToTemporaryRelay || sentToCaller
+	}
+
+	const timeoutIncoming = async (offer: VoiceCallSignal): Promise<boolean> => {
+		const timeout = makeVoiceCallSignal({
+			type: 'voice_call_timeout_v1',
+			callId: offer.callId,
+			sessionId: offer.sessionId,
+			from: new ethers.Wallet(options.privateKey).address,
+			to: offer.from,
+			reason: 'timeout',
+		})
+		const sentToTemporaryRelay = await sendVoiceCallControlToTemporaryRelay(options, offer, {
+			type: 'voice_call_timeout_v1',
+			reason: 'timeout',
+			framePrefix: 'timeout',
+		})
+		const sentToCaller = options.peerPgp
+			? await sendMessage(
+				options.peerPgp,
+				JSON.stringify(timeout),
+				options.privateKey,
+				selectedEntries.length ? selectedEntries : options.allNodes,
+			)
+			: false
+		return sentToTemporaryRelay || sentToCaller
 	}
 
 	const end = async (notifyPeer = true): Promise<void> => {
@@ -206,6 +309,7 @@ export function createVoiceCallController(options: VoiceCallControllerOptions) {
 		startOutgoing,
 		acceptIncoming,
 		rejectIncoming,
+		timeoutIncoming,
 		end,
 		get activeSessionId() { return activeSessionId },
 		get activeSessionKey() { return activeSessionKey },

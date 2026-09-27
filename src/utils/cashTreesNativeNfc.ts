@@ -256,15 +256,11 @@ export function dispatchNativeSystemCallAction(
 		| undefined
 	try {
 		if (w.CashTreesAndroid) {
-			const android = w.CashTreesAndroid as Record<string, unknown>
-			const fn = android[action]
+			const android = w.CashTreesAndroid as unknown as Record<string, (value: string) => void>
 			const json = JSON.stringify({ action, ...payload })
-			// Android WebView sometimes hides a Java method from `typeof`.
-			if (typeof fn === 'function') {
-				;(fn as (value: string) => void)(json)
-			} else {
-				;(android as unknown as Record<string, (value: string) => void>)[action](json)
-			}
+			// Call on the Java object. A detached `fn(json)` drops the WebView
+			// receiver and throws before the @JavascriptInterface method runs.
+			android[action](json)
 		} else {
 			const fn = bridge?.[action]
 			if (typeof fn !== 'function') return false

@@ -8,6 +8,7 @@ import EoaUsdcStripeReturnHost from "@/components/addUSDC/EoaUsdcStripeReturnHos
 import {
 	dispatchNativeSystemCallAction,
 	getCashTreesNativeNfcBridge,
+	getCashTreesNativeNfcHost,
 	isCashTreesNativeWebView,
 	openExternalUrl,
 } from "@/utils/cashTreesNativeNfc"
@@ -100,13 +101,14 @@ import { parseDiscoverMerchantFromParams, stripDiscoverMerchantDeepLinkParams } 
 import { readDiscoverShareReferrer, stashDiscoverShareReferrer } from "@/utils/discoverShareReferrerStash"
 import { applyPendingConsumerDeepLinkIfNeeded } from "@/utils/pendingConsumerDeepLink"
 import { publishNativePwaLog } from "@/utils/cashTreesNativePwaLog"
+import { declineIncomingVoiceOffer, peerVoiceMaterial, timeoutIncomingVoiceOffer } from '@/services/voiceCallController'
 import { BEAMIO_WALLET_READY_EVENT } from "@/utils/beamioWalletReadyEvent"
 import { ensureConetAaForProfileAndPersist } from "@/utils/ensureConetAa"
 import { ingestAaMultisigFromChat } from '@/utils/aaMultisigIngest'
 import { tu } from '@/locale/beamioLocale'
 import { mapServerError } from '@/locale/mapServerError'
 import { installPwaLifecycleRecovery } from '@/utils/pwaLifecycleRecovery'
-import { applyNativeIncomingVoiceOfferFromLine, claimIncomingVoiceCallReport, claimedVoiceCallerAddress, claimedVoiceCallerTag, formatLookedUpBeamioTag, isVoiceCallOfferActive, parseVoiceCallSignal, recoverVoiceCallOfferSigner, VOICE_CALL_IDENTITY_WARNING, voiceCallClaimMismatchesKey } from '@/utils/voiceCallSession'
+import { applyNativeIncomingVoiceOfferFromLine, claimIncomingVoiceCallReport, claimedVoiceCallerAddress, claimedVoiceCallerTag, forgetIncomingVoiceOffer, formatLookedUpBeamioTag, isVoiceCallOfferActive, lookupIncomingVoiceOffer, parseVoiceCallSignal, recoverVoiceCallOfferSigner, rememberIncomingVoiceOffer, VOICE_CALL_IDENTITY_WARNING, voiceCallClaimMismatchesKey } from '@/utils/voiceCallSession'
 
 global.Buffer = require("buffer").Buffer
 
@@ -1023,6 +1025,17 @@ function AppShell() {
 		const onNativeMailboxWake = (event: Event) => {
 			const detail = (event as CustomEvent<{ action?: string }>).detail
 			if (detail?.action !== 'mailboxWake') return
+			// Android's live SSE is the path that delivers the callee user-PGP
+			// offer. Forcing a reconnect aborts that stream after the mailbox
+			// has already counted the write as delivered, so the system banner
+			// never receives the recovered wallet or BeamioTag. Resume only when
+			// the listen is actually down. iOS WKWebView can freeze a fetch that
+			// still looks open, so that shell still forces a new listen.
+			if (getCashTreesNativeNfcHost() === 'android') {
+				publishNativePwaLog('info', '[AppShell] native mailbox wake — keeping live Android gossip listen')
+				onForegroundResume(false)
+				return
+			}
 			publishNativePwaLog('info', '[AppShell] native mailbox wake — forcing gossip listen resume')
 			onForegroundResume(true)
 		}
@@ -1057,6 +1070,48 @@ function AppShell() {
 			// React StrictMode remount + LoadingPage/AppShell dual init previously killed the
 			// SSE, which made mailbox B call setUserOnlineOnMe true/false in a tight loop.
 			// Gossip is process-lifetime; only replace via connectToGossipNode when dead.
+		}
+	}, [])
+
+	const profilesForVoiceDeclineRef = useRef(profiles)
+	const allNodesForVoiceDeclineRef = useRef(allNodes)
+	profilesForVoiceDeclineRef.current = profiles
+	allNodesForVoiceDeclineRef.current = allNodes
+	useEffect(() => {
+		const onNativeDecline = (event: Event) => {
+			const detail = (event as CustomEvent<{
+				action?: string
+				callId?: string
+				sessionId?: string
+			}>).detail
+			if (detail?.action !== 'callRejected' && detail?.action !== 'callTimedOut') return
+			const offer = lookupIncomingVoiceOffer(detail.callId || '', detail.sessionId || '')
+			const privateKey = resolveSigningPrivateKeyArmor(profilesForVoiceDeclineRef.current?.[0])
+			if (!offer || !privateKey) return
+			const caller = offer.from || ''
+			const chats = profilesForVoiceDeclineRef.current?.[0]?.chats as
+				| Array<{ address?: string; chatData?: { publicArmored?: string; routersArmoreds?: string } }>
+				| undefined
+			const { peerPgp, peerRoute } = peerVoiceMaterial(chats, caller)
+			if (!peerPgp && !peerRoute) return
+			const localWallet = new ethers.Wallet(privateKey).address
+			const notify = detail.action === 'callTimedOut'
+				? timeoutIncomingVoiceOffer
+				: declineIncomingVoiceOffer
+			void notify({
+				privateKey,
+				localCallId: localWallet,
+				peerEoa: caller,
+				peerPgp,
+				peerRoute,
+				allNodes: allNodesForVoiceDeclineRef.current || [],
+			}, offer)
+		}
+		window.addEventListener('cashtreesandroid', onNativeDecline)
+		window.addEventListener('cashtreesios', onNativeDecline)
+		return () => {
+			window.removeEventListener('cashtreesandroid', onNativeDecline)
+			window.removeEventListener('cashtreesios', onNativeDecline)
 		}
 	}, [])
 
@@ -1440,6 +1495,7 @@ function AppShell() {
 				continue
 			}
 			const signAddr = sign
+			let voiceControlConsumed = false
 
 			// Voice offers can arrive while the user is on the Chat list (or another
 			// page). Report them globally so Android Telecom is not dependent on
@@ -1459,11 +1515,9 @@ function AppShell() {
 					const previousCall = (Array.isArray(profile.phoneCalls) ? profile.phoneCalls : []).find(
 						(item: any) => item.sessionId === signal.sessionId,
 					)
-					const terminalStatuses = new Set(['declined', 'ended', 'answered', 'missed'])
-					if (
-						!terminalStatuses.has(String(previousCall?.status || '')) &&
-						claimIncomingVoiceCallReport(signal.callId, signal.sessionId)
-					) {
+					const terminalStatuses = new Set(['declined', 'ended', 'answered', 'missed', 'timed_out'])
+					if (!terminalStatuses.has(String(previousCall?.status || ''))) {
+						rememberIncomingVoiceOffer(signal)
 						const provenAddress = callerEoa || ''
 						const localTag = provenAddress
 							? formatLookedUpBeamioTag(resolvePeerSearchResult(provenAddress)?.username)
@@ -1474,19 +1528,9 @@ function AppShell() {
 							claimedAddress: mismatch ? claimedVoiceCallerAddress(signal) : '',
 							identityWarning: mismatch ? VOICE_CALL_IDENTITY_WARNING : '',
 						}
-						if (!isCashTreesNativeWebView()) {
-							setGlobalIncomingVoiceCall({
-								signal,
-								from: provenAddress,
-								displayTag: localTag,
-								...claim,
-							})
-							setGlobalIncomingVoiceMuted(false)
-						}
-						// Keep a bridge retry independent from the chat-row claim
-						// guard. If Android is still recreating the WebView, the
-						// first direct dispatch can fail even though this offer
-						// was already accepted by the chat ingest path.
+						// Native banner update is not gated on the in-app claim.
+						// Chat can claim the same offer first; the system card
+						// still needs the recovered wallet and looked-up tag.
 						applyNativeIncomingVoiceOfferFromLine(displayText)
 						dispatchNativeSystemCallAction('reportIncomingSystemCall', {
 							callId: signal.callId,
@@ -1526,23 +1570,54 @@ function AppShell() {
 								...nextClaim,
 							})
 						})()
-						const callRows = Array.isArray(profile.phoneCalls) ? profile.phoneCalls : []
-						if (!callRows.some((item: PhoneCallRecord) => item.sessionId === signal.sessionId)) {
-							profile.phoneCalls = [
-								...callRows,
-								{
-									callId: signal.callId,
-									sessionId: signal.sessionId,
-									peerAddress: provenAddress || claimedVoiceCallerAddress(signal),
-									direction: 'incoming',
-									status: 'ringing',
-									createdAt: Number(signal.createdAt) || msg.timestamp,
-									answeredAt: undefined,
-									endedAt: undefined,
-								},
-							]
+						if (claimIncomingVoiceCallReport(signal.callId, signal.sessionId)) {
+							if (!isCashTreesNativeWebView()) {
+								setGlobalIncomingVoiceCall({
+									signal,
+									from: provenAddress,
+									displayTag: localTag,
+									...claim,
+								})
+								setGlobalIncomingVoiceMuted(false)
+							}
+							const callRows = Array.isArray(profile.phoneCalls) ? profile.phoneCalls : []
+							if (!callRows.some((item: PhoneCallRecord) => item.sessionId === signal.sessionId)) {
+								profile.phoneCalls = [
+									...callRows,
+									{
+										callId: signal.callId,
+										sessionId: signal.sessionId,
+										peerAddress: provenAddress || claimedVoiceCallerAddress(signal),
+										direction: 'incoming',
+										status: 'ringing',
+										createdAt: Number(signal.createdAt) || msg.timestamp,
+										answeredAt: undefined,
+										endedAt: undefined,
+									},
+								]
+							}
 						}
 					}
+				} else if (
+					signal?.type === 'voice_call_reject_v1' &&
+					signal.callId &&
+					signal.sessionId
+				) {
+					forgetIncomingVoiceOffer(signal.callId, signal.sessionId)
+					window.dispatchEvent(new CustomEvent('beamio-voice-peer-declined', {
+						detail: { callId: signal.callId, sessionId: signal.sessionId },
+					}))
+					voiceControlConsumed = true
+				} else if (
+					signal?.type === 'voice_call_timeout_v1' &&
+					signal.callId &&
+					signal.sessionId
+				) {
+					forgetIncomingVoiceOffer(signal.callId, signal.sessionId)
+					window.dispatchEvent(new CustomEvent('beamio-voice-peer-timed-out', {
+						detail: { callId: signal.callId, sessionId: signal.sessionId },
+					}))
+					voiceControlConsumed = true
 				} else if (
 					signal?.type === 'voice_end_v1' &&
 					signal.sessionId
@@ -1568,6 +1643,7 @@ function AppShell() {
 			} catch {
 				/* Ordinary chat text is not a voice offer. */
 			}
+			if (voiceControlConsumed) continue
 
 			// Delivery receipt → mark sender bubble Delivered; never a chat bubble / unread.
 			// Still mailbox-ACK this armor (cancels offline APNs); do NOT emit another sender receipt.

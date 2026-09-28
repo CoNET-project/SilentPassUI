@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Check, ChevronDown, Circle, Loader2, Plus, X } from 'lucide-react';
 import { updateBeamioCardShareMetadata } from '@/services/BeamioCard';
 
@@ -106,6 +106,83 @@ function defaultDraft(): KycDraft {
     mailingAddress: '',
     approved: false,
   };
+}
+
+function collectMode(raw: unknown): CollectMode {
+  return raw === 'required' || raw === 'optional' || raw === 'off' ? raw : 'off';
+}
+
+function draftFromPublishedKyc(kyc: Record<string, unknown>): KycDraft {
+  const base = defaultDraft();
+  const fields = (kyc.fields ?? {}) as Record<string, unknown>;
+  const purposes = (kyc.purposes ?? {}) as Record<string, unknown>;
+  const additional = Array.isArray(kyc.additionalFields) ? kyc.additionalFields as ExtraField[] : [];
+  const policyMode = kyc.policyMode === 'custom' ? 'custom' : 'template';
+  const collectionPurpose = kyc.collectionPurpose === 'service' ? 'service' : 'profile';
+  return {
+    ...base,
+    enabled: kyc.enabled === true,
+    fields: {
+      name: collectMode(fields.name),
+      phone: collectMode(fields.phone),
+      email: collectMode(fields.email),
+    },
+    purposes: {
+      name: typeof purposes.name === 'string' ? purposes.name : '',
+      phone: typeof purposes.phone === 'string' ? purposes.phone : '',
+      email: typeof purposes.email === 'string' ? purposes.email : '',
+    },
+    additionalFields: additional,
+    policyMode,
+    entity: typeof kyc.entity === 'string' ? kyc.entity : '',
+    phone: typeof kyc.contactPhone === 'string' ? kyc.contactPhone : '',
+    email: typeof kyc.contactEmail === 'string' ? kyc.contactEmail : '',
+    address: typeof kyc.address === 'string' ? kyc.address : '',
+    collectionPurpose,
+    locations: typeof kyc.locations === 'string' ? kyc.locations : '',
+    refunds: typeof kyc.refunds === 'string' ? kyc.refunds : '',
+    expiry: typeof kyc.expiry === 'string' ? kyc.expiry : base.expiry,
+    useRules: typeof kyc.useRules === 'string' ? kyc.useRules : '',
+    fees: typeof kyc.fees === 'string' ? kyc.fees : base.fees,
+    customPrivacy: typeof kyc.privacyNotice === 'string' ? kyc.privacyNotice : '',
+    customTerms: typeof kyc.terms === 'string' ? kyc.terms : '',
+    marketing: kyc.marketing === true,
+    mailingAddress: typeof kyc.mailingAddress === 'string' ? kyc.mailingAddress : '',
+    approved: true,
+  };
+}
+
+function kycPayload(draft: KycDraft) {
+  return {
+    enabled: collectionEnabled(draft.fields, draft.additionalFields),
+    fields: draft.fields,
+    purposes: draft.purposes,
+    additionalFields: draft.additionalFields,
+    policyMode: draft.policyMode,
+    entity: draft.entity,
+    contactPhone: draft.phone,
+    contactEmail: draft.email,
+    address: draft.address,
+    collectionPurpose: draft.collectionPurpose,
+    locations: draft.locations,
+    refunds: draft.refunds,
+    expiry: draft.expiry,
+    useRules: draft.useRules,
+    fees: draft.fees,
+    privacyNotice: draft.customPrivacy,
+    terms: draft.customTerms,
+    marketing: draft.marketing,
+    mailingAddress: draft.mailingAddress,
+  };
+}
+
+async function publishKycFields(cardKey: string, draft: KycDraft): Promise<string> {
+  if (!/^0x[0-9a-fA-F]{40}$/.test(cardKey)) return '';
+  const saved = await updateBeamioCardShareMetadata({
+    cardAddress: cardKey,
+    shareTokenMetadata: { kyc: kycPayload(draft) } as never,
+  });
+  return saved.success ? '' : (saved.error || 'Could not save which details to collect.');
 }
 
 function storageKeyFor(cardKey: string): string {
@@ -490,16 +567,47 @@ export function ProgramKycEnrollmentPage({
   const [customOptions, setCustomOptions] = useState('');
   const [customPurpose, setCustomPurpose] = useState('');
   const [extraError, setExtraError] = useState('');
+  const editedRef = useRef(false);
 
   useEffect(() => {
+    let cancelled = false;
+    editedRef.current = false;
     const stored = readStored(cardKey);
-    setDraft(stored?.draft ?? defaultDraft());
-    setPublished(stored?.published ?? null);
     setError('');
-    setFooterNote('Changes take effect when published.');
+    setFooterNote('Press Confirm & Publish to save these settings.');
     setReviewOpen(false);
     setBuilderOpen(false);
     setExtraError('');
+    const applyRemote = (remote: KycDraft) => {
+      if (cancelled || editedRef.current) return;
+      setPublished(remote);
+      setDraft(remote);
+      writeStored(cardKey, { draft: remote, published: remote });
+    };
+    if (!/^0x[0-9a-fA-F]{40}$/.test(cardKey)) {
+      setDraft(stored?.draft ?? defaultDraft());
+      setPublished(stored?.published ?? null);
+      return () => { cancelled = true; };
+    }
+    void (async () => {
+      try {
+        const response = await fetch(`https://beamio.app/api/cardMetadata?cardAddress=${cardKey}`);
+        if (!response.ok) throw new Error('metadata');
+        const body = await response.json() as { metadata_json?: unknown; metadata?: unknown };
+        const meta = (body.metadata_json ?? body.metadata ?? body) as { shareTokenMetadata?: { kyc?: Record<string, unknown> } };
+        const kyc = meta.shareTokenMetadata?.kyc;
+        if (kyc && typeof kyc === 'object') {
+          applyRemote(draftFromPublishedKyc(kyc));
+          return;
+        }
+      } catch {
+        /* keep the local draft when the card cannot be read */
+      }
+      if (cancelled) return;
+      setDraft(stored?.draft ?? defaultDraft());
+      setPublished(stored?.published ?? null);
+    })();
+    return () => { cancelled = true; };
   }, [cardKey]);
 
   useEffect(() => {
@@ -509,6 +617,7 @@ export function ProgramKycEnrollmentPage({
   }, [preview]);
 
   const patch = useCallback((partial: Partial<KycDraft>) => {
+    editedRef.current = true;
     setDraft((current) => ({ ...current, ...partial }));
     setError('');
   }, []);
@@ -629,35 +738,23 @@ export function ProgramKycEnrollmentPage({
       return;
     }
     setPublishing(true);
-    const next = { ...draft };
+    const next = {
+      ...draft,
+      enabled: collectionEnabled(draft.fields, draft.additionalFields),
+    };
     void (async () => {
-      writeStored(cardKey, { draft: next, published: next });
-      setPublished(next);
       if (/^0x[0-9a-fA-F]{40}$/.test(cardKey)) {
-        const saved = await updateBeamioCardShareMetadata({
-          cardAddress: cardKey,
-          shareTokenMetadata: {
-            kyc: {
-              enabled: next.enabled,
-              fields: next.fields,
-              additionalFields: next.additionalFields,
-              entity: next.entity,
-              contactPhone: next.phone,
-              contactEmail: next.email,
-              address: next.address,
-              purposes: next.purposes,
-              privacyNotice: next.customPrivacy,
-              terms: next.customTerms,
-            },
-          } as never,
-        });
-        if (!saved.success) {
-          setError(saved.error || 'Could not publish membership information settings.');
+        const message = await publishKycFields(cardKey, next);
+        if (message) {
+          setError(message);
           setPublishing(false);
           return;
         }
       }
-      setFooterNote('Published. The enrollment step uses these settings.');
+      writeStored(cardKey, { draft: next, published: next });
+      setDraft(next);
+      setPublished(next);
+      setFooterNote('Published. The app uses these settings.');
       setError('');
       setPublishing(false);
     })();

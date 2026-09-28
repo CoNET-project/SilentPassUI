@@ -39,6 +39,19 @@ export function membershipFeeE6ToHuman(e6: string | number | undefined | null): 
 	}
 }
 
+/** Two decimals, including `0.00` when the published membership fee is zero. */
+export function formatMembershipFeeE6Display(e6: string | number | undefined | null): string {
+	const shown = membershipFeeE6ToHuman(e6)
+	if (shown) return shown
+	try {
+		const bi = BigInt(String(e6 ?? '0').replace(/,/g, '').trim() || '0')
+		if (bi === 0n) return '0.00'
+	} catch {
+		return ''
+	}
+	return ''
+}
+
 /** Charge / API amount = locked membership fee only (two decimals). `minUsdc6` is unused. */
 export function membershipPurchaseApiAmountHuman(
 	feeFiat6: string,

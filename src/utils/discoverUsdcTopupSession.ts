@@ -152,7 +152,7 @@ function applyDiscoverMembershipPayFields(
 ): void {
 	if (fields?.membershipTierIndex == null || fields.membershipTierIndex < 0) return
 	const fee = String(fields.membershipFeeFiat6 ?? '').trim()
-	if (!fee || !/^\d+$/.test(fee) || BigInt(fee) <= 0n) return
+	if (!fee || !/^\d+$/.test(fee) || BigInt(fee) < 0n) return
 	if ('set' in target && typeof target.set === 'function') {
 		target.set('membershipTierIndex', String(fields.membershipTierIndex))
 		target.set('membershipFeeFiat6', fee)

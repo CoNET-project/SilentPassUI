@@ -17,6 +17,7 @@ import { isGenericMerchantCardDisplayName } from '@/utils/isGenericMerchantCardD
 import { pickNonFactoryMerchantAssetUrl } from '@/utils/isFactoryDefaultMerchantAssetUrl'
 import { resolveSigningPrivateKeyArmor } from '@/utils/resolveSigningPrivateKeyArmor'
 import { displayFiatPrefixFromCode } from '@/services/currency'
+import { formatMembershipFeeE6Display } from '@/utils/discoverMembershipFee'
 import {
 	CoverLeg,
 	estimateCoverUsdc6,
@@ -513,6 +514,16 @@ export default function MerchantCardTopUpFlow({
 
 	const prefix = displayFiatPrefixFromCode(cardCurrency, 'USD')
 	const fiatHuman = amountInput.replace(/,/g, '').trim() || '0'
+	const memberFeeHuman =
+		stripeKind === 'membership' ? formatMembershipFeeE6Display(membershipFeeFiat6) : ''
+	const memberFeeNumber = memberFeeHuman ? Number(memberFeeHuman) : 0
+	const topupCreditNumber = Math.max(0, Number(fiatHuman) - (Number.isFinite(memberFeeNumber) ? memberFeeNumber : 0))
+	const amountBelowMemberFee =
+		Boolean(memberFeeHuman) && Number.isFinite(Number(fiatHuman)) && Number(fiatHuman) < memberFeeNumber
+	const membershipPayFields =
+		stripeKind === 'membership' && membershipTierIndex != null && memberFeeHuman
+			? { membershipTierIndex, membershipFeeFiat6 }
+			: {}
 	const amountFiat6 = useMemo(() => {
 		const normalized = fiatHuman.trim()
 		if (!/^(?:\d+)(?:\.\d{1,6})?$/.test(normalized)) return null
@@ -575,13 +586,13 @@ export default function MerchantCardTopUpFlow({
 		[merchantBrandActionColor],
 	)
 	const creditQuote = useMemo(() => {
-		const amount = Number(fiatHuman)
+		const amount = memberFeeHuman ? topupCreditNumber : Number(fiatHuman)
 		return quoteDiscoverStoreCreditTopupBonus({
 			metadataRoot,
 			currency: String(cardCurrency || 'USD'),
 			amount,
 		})
-	}, [metadataRoot, cardCurrency, fiatHuman])
+	}, [metadataRoot, cardCurrency, fiatHuman, memberFeeHuman, topupCreditNumber])
 
 	const stripeOnSuccessRef = useRef<typeof onSuccess>(onSuccess)
 	const stripeCreditQuoteRef = useRef<typeof creditQuote>(creditQuote)
@@ -1319,6 +1330,7 @@ export default function MerchantCardTopUpFlow({
 	const merchantCount = usableRows.length
 
 	const goPay = () => {
+		if (amountBelowMemberFee) return
 		if (Number(fiatHuman) <= 0) return
 		setStep('pay')
 	}
@@ -1454,6 +1466,7 @@ export default function MerchantCardTopUpFlow({
 								amount: cashAmount,
 								currency: String(cardCurrency || 'USD'),
 								quotedUsdc6: settleQuotedUsdc6,
+								...membershipPayFields,
 							})
 							if (!localPay.ok) {
 								return { ok: false, error: localPay.error || 'USDC top-up failed' }
@@ -1540,6 +1553,7 @@ export default function MerchantCardTopUpFlow({
 						amount: fiatHuman,
 						currency: String(cardCurrency || 'USD'),
 						quotedUsdc6: settleQuotedUsdc6,
+						...membershipPayFields,
 					})
 					if (localPay.ok) {
 						assets = await refreshMyAssetsAfterSuccessfulTopup(profile, cardAddress)
@@ -1562,7 +1576,7 @@ export default function MerchantCardTopUpFlow({
 						setEoaUsdc6(refreshedConet)
 					}
 				}
-				if (conetBal !== null && conetBal >= cashUsdc6) {
+				if (conetBal !== null && conetBal >= cashUsdc6 && !memberFeeHuman) {
 					const buy = await postBuyCardPoints(
 						ethers.formatUnits(cashUsdc6, 6),
 						{ ...profile, privateKeyArmor: armor },
@@ -1595,6 +1609,7 @@ export default function MerchantCardTopUpFlow({
 						amount: fiatHuman,
 						currency: String(cardCurrency || 'USD'),
 						recipientAa: userAa,
+						...membershipPayFields,
 					})
 					openExternalUrl(payUrl)
 					return
@@ -1707,7 +1722,7 @@ export default function MerchantCardTopUpFlow({
 								className="pointer-events-none absolute inset-x-12 top-[max(1rem,env(safe-area-inset-top,0px))] flex h-11 items-center justify-center text-center text-[22px] font-semibold tracking-tight dark:text-slate-100"
 								style={{ color: merchantBrandActionColor }}
 							>
-								Top Up
+								{memberFeeHuman ? 'Join or Top Up' : 'Top Up'}
 							</h1>
 						) : null}
 						{step === 'select' ? (
@@ -1846,6 +1861,33 @@ export default function MerchantCardTopUpFlow({
 										style={{ width: `${heroDigitsWidth}ch`, color: merchantBrandActionColor }}
 									/>
 								</div>
+								{memberFeeHuman ? (
+									<div className="mt-6 w-full max-w-md space-y-2 text-[15px]">
+										<div className="flex items-center justify-between">
+											<span className="font-medium" style={{ color: merchantBrandMutedColor }}>
+												Member fee
+											</span>
+											<span className="font-semibold" style={{ color: merchantBrandActionColor }}>
+												{prefix}
+												{memberFeeHuman}
+											</span>
+										</div>
+										<div className="flex items-center justify-between">
+											<span className="font-medium" style={{ color: merchantBrandMutedColor }}>
+												Top up
+											</span>
+											<span className="font-semibold" style={{ color: merchantBrandActionColor }}>
+												{prefix}
+												{topupCreditNumber.toFixed(2)}
+											</span>
+										</div>
+										{amountBelowMemberFee ? (
+											<p role="alert" className="text-[13px] font-medium text-amber-700 dark:text-amber-300">
+												Amount must be at least the member fee.
+											</p>
+										) : null}
+									</div>
+								) : null}
 								{creditQuote && creditQuote.bonus > 0 ? (
 									<div
 										className="relative mt-5 w-full max-w-md overflow-hidden rounded-2xl border bg-white p-4 shadow-sm dark:bg-slate-900"
@@ -2022,7 +2064,7 @@ export default function MerchantCardTopUpFlow({
 							<div className="mt-6 bg-gradient-to-t from-white via-white/95 to-transparent pb-1 pt-4 dark:from-slate-950 dark:via-slate-950/95">
 								<button
 									type="button"
-									disabled={Number(fiatHuman) <= 0}
+									disabled={Number(fiatHuman) <= 0 || amountBelowMemberFee}
 									onClick={goPay}
 									className="flex w-full items-center justify-center gap-2 rounded-xl py-4 text-[17px] font-bold shadow-[0_10px_20px_rgba(15,23,42,0.18)] transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
 									style={{

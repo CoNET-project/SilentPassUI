@@ -69,6 +69,7 @@ import {
 	Store,
 	Send,
 	HelpCircle,
+	Users,
 } from "lucide-react"
 import { useNavigate, useLocation } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
@@ -85,7 +86,7 @@ import { checkStorage, searchUsername } from "@/services/beamio"
 import BeamioContactProfilePreview from "@/components/Home/BeamioContactProfilePreview"
 import DiscoverMerchantGiftSheet from "@/components/Home/DiscoverMerchantGiftSheet"
 import { fiatPrefix, formatAmount } from "@/services/currency"
-import { getMyAssetsAggregated, getMyAssets, peekGetMyAssetsCache, getCardTiersFromContract, getCardUpgradeTypeFromContract, quoteUSDCToCAD, postUSDCUserCardTopup, postClaimFreeMembership, safeUsdc6ToAmountString, currencyAmountToSafeUsdc6, fetchCardActiveIssuedCouponSeriesTrusted, postCardCouponOpenClaimWithCurrentWallet, postCardRecordUserLikeWithCurrentWallet, resolveCouponOpenClaimEligibility, merchantBackgroundImageFromMetadataRoot, merchantIconUrlFromMetadataRoot, getCardOwner, getCardPosAdminEoas, readUserSocialPoints13BalanceOnCard, type CardActiveIssuedCouponSeriesItem, type CardMetadataFromUri, type CouponOpenClaimEligibility, type USDCUserCardTopupIntent } from "@/services/BeamioCard"
+import { getMyAssetsAggregated, getMyAssets, peekGetMyAssetsCache, getCardTiersFromContract, getCardUpgradeTypeFromContract, quoteUSDCToCAD, postUSDCUserCardTopup, safeUsdc6ToAmountString, currencyAmountToSafeUsdc6, fetchCardActiveIssuedCouponSeriesTrusted, postCardCouponOpenClaimWithCurrentWallet, postCardRecordUserLikeWithCurrentWallet, resolveCouponOpenClaimEligibility, merchantBackgroundImageFromMetadataRoot, merchantIconUrlFromMetadataRoot, getCardOwner, getCardPosAdminEoas, readUserSocialPoints13BalanceOnCard, type CardActiveIssuedCouponSeriesItem, type CardMetadataFromUri, type CouponOpenClaimEligibility, type USDCUserCardTopupIntent } from "@/services/BeamioCard"
 import {
 	couponOpenClaimEligibilityFromLocal,
 	pickCouponOpenClaimStatusFromMap,
@@ -116,6 +117,7 @@ import {
 } from "@/utils/discoverUsdcTopupSession"
 import {
 	customerHasValidMembershipFromAssets,
+	formatMembershipFeeE6Display,
 	membershipFeeE6ToHuman,
 	membershipPurchaseApiAmountHuman,
 	pickActiveDiscoverMembershipNft,
@@ -594,6 +596,17 @@ function parseDiscoverAboutFromShare(
 	return { welcomeTitle, detail, openingHours, contact, location, aboutTitle }
 }
 
+/** Card headings stay short. A paragraph stored in welcomeTitle belongs on About. */
+const DISCOVER_WELCOME_CARD_HEADING_MAX = 120
+
+function isDiscoverWelcomeCardHeading(raw: string): boolean {
+	const t = raw.trim()
+	if (!t) return false
+	if (t.length > DISCOVER_WELCOME_CARD_HEADING_MAX) return false
+	if (/[.!?]\s+\S/.test(t)) return false
+	return true
+}
+
 function resolveDiscoverMerchantInfoPanel(
 	cardAddress: string,
 	discoverAbout: ShareTokenMetadataDiscoverAbout | null | undefined,
@@ -601,8 +614,11 @@ function resolveDiscoverMerchantInfoPanel(
 ): DiscoverMerchantInfoPanel | undefined {
 	const legacy = DISCOVER_MERCHANT_INFO_PANELS[resolveDiscoverCardPanelKey(cardAddress)]
 	if (discoverAbout) {
-		const welcomeFromMeta = discoverAbout.welcomeTitle?.trim()
-		const aboutText = discoverAbout.detail?.trim()
+		const welcomeRaw = discoverAbout.welcomeTitle?.trim()
+		const welcomeIsHeading = Boolean(welcomeRaw && isDiscoverWelcomeCardHeading(welcomeRaw))
+		const welcomeFromMeta = welcomeIsHeading ? welcomeRaw : undefined
+		const aboutFromMisplacedHeading = welcomeRaw && !welcomeIsHeading ? welcomeRaw : undefined
+		const aboutText = discoverAbout.detail?.trim() || aboutFromMisplacedHeading
 		const openingHours = discoverAbout.openingHours?.trim()
 		const contact = discoverAbout.contact?.trim()
 		const location = discoverAbout.location?.trim()
@@ -1513,6 +1529,7 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 	activateBusy = false,
 	activateError = '',
 	hideDiningAutoActivate = false,
+	showMemberAccess = false,
 }: {
 	passTitle: string
 	chargePercent: number | null
@@ -1538,6 +1555,8 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 	activateBusy?: boolean
 	activateError?: string
 	hideDiningAutoActivate?: boolean
+	/** Fee-membership merchants, including a published zero fee. */
+	showMemberAccess?: boolean
 }) {
 	const brand = brandColor.trim() || DISCOVER_FOOD_BEVERAGE_PASS_FALLBACK
 	const brandTheme = cardTierGradientTheme(brand)
@@ -1572,7 +1591,11 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 					color: brandTheme.primary,
 					minHeight: 'min(256px, calc((100vw - 2rem) / 2))',
 				}}
-				aria-label={`${nameDisplay} VIP digital dining pass`}
+				aria-label={
+					hideDiningAutoActivate
+						? `${nameDisplay} member pass`
+						: `${nameDisplay} VIP digital dining pass`
+				}
 			>
 				{hasImage ? (
 					<div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
@@ -1595,6 +1618,12 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 						</h3>
 					</div>
 				)}
+				{showMemberAccess ? (
+					<div className="absolute bottom-5 right-5 z-10 flex items-center gap-2 text-white">
+						<Users className="h-6 w-6 shrink-0" strokeWidth={2} aria-hidden />
+						<span className="text-[16px] font-bold leading-none tracking-tight">Member access</span>
+					</div>
+				) : null}
 			</section>
 
 			{welcomeRewardLine ? (
@@ -6811,6 +6840,16 @@ function DiscoverMerchantDetailFullScreen({
 		sessionHasSingleMultiplierLane &&
 		foodBeveragePassLane === 'loyalty' &&
 		usdcTopupPhase === 'idle'
+	/**
+	 * Every industry, non-member with no program holdings: the same logo pass
+	 * and Top Up button as the dining prospect card. Membership-fee cards keep
+	 * the Claim Offer action. Dining auto-activate stays on food-beverage only.
+	 */
+	const showProspectActivatePass =
+		!isConetGenesisCard &&
+		!hasActiveMembership &&
+		!hasMerchantProgramHoldings &&
+		!(item.category === 'food-beverage' && foodBeveragePassLane === 'loyalty')
 	const showProspectJoinPanel =
 		!isConetGenesisCard &&
 		!hasActiveMembership &&
@@ -6818,6 +6857,7 @@ function DiscoverMerchantDetailFullScreen({
 		!showHealthBeautyLoyaltyPass &&
 		!showFoodBeverageProspectPass &&
 		!showFoodBeverageLoyaltyPass &&
+		!showProspectActivatePass &&
 		foodBeveragePassLane !== 'prospect'
 	/**
 	 * Member + Store Credit Multiplier (≥2 tiers): premium recharge layout.
@@ -6841,14 +6881,14 @@ function DiscoverMerchantDetailFullScreen({
 		return resolved
 	}, [showHealthBeautyLoyaltyPass, merchantMetadataRoot, chainCardSocialPromotion])
 	const foodBeverageChargePercent = useMemo(() => {
-		if (!showFoodBeverageProspectPass && !showFoodBeverageLoyaltyPass) return null
+		if (!showProspectActivatePass && !showFoodBeverageLoyaltyPass) return null
 		const { chargePercent } = parseDiscoverActorRewardPercentsFromMetadata(merchantMetadataRoot)
 		const chainChargePercent = actorPercentFromSocialEvent(chainCardSocialPromotion?.events?.charge)
 		const resolved = chargePercent ?? chainChargePercent
 		if (resolved == null || !Number.isFinite(resolved) || resolved <= 0) return null
 		return resolved
 	}, [
-		showFoodBeverageProspectPass,
+		showProspectActivatePass,
 		showFoodBeverageLoyaltyPass,
 		merchantMetadataRoot,
 		chainCardSocialPromotion,
@@ -6883,21 +6923,21 @@ function DiscoverMerchantDetailFullScreen({
 	}, [merchantMetadataRoot, chainCardSocialPromotion])
 	/** Percent top-up only — hide fixed / fixedTiers on F&B prospect Welcome Reward. */
 	const foodBeveragePercentTopupWelcomeLine = useMemo(() => {
-		if (!showFoodBeverageProspectPass) return null
+		if (!showProspectActivatePass) return null
 		return resolveDiscoverPercentTopupPromotionWelcomeLine({
 			metadataRoot: merchantMetadataRoot,
 			currency: displayCurrency,
 		})
-	}, [showFoodBeverageProspectPass, merchantMetadataRoot, displayCurrency])
+	}, [showProspectActivatePass, merchantMetadataRoot, displayCurrency])
 	const foodBeverageTopupRewardPtPercent = useMemo(() => {
-		if (!showFoodBeverageProspectPass) return null
+		if (!showProspectActivatePass) return null
 		const { topupPercent } = parseDiscoverActorRewardPercentsFromMetadata(merchantMetadataRoot)
 		const chainTopupPercent = actorPercentFromSocialEvent(chainCardSocialPromotion?.events?.topup)
 		const resolved = topupPercent ?? chainTopupPercent
 		return resolved != null && Number.isFinite(resolved) && resolved > 0
 			? resolved
 			: null
-	}, [showFoodBeverageProspectPass, merchantMetadataRoot, chainCardSocialPromotion])
+	}, [showProspectActivatePass, merchantMetadataRoot, chainCardSocialPromotion])
 	const memberRechargeFooterTip = useMemo(() => {
 		const { chargePercent } = parseDiscoverActorRewardPercentsFromMetadata(merchantMetadataRoot)
 		if (chargePercent != null && Number.isFinite(chargePercent) && chargePercent > 0) {
@@ -7611,9 +7651,6 @@ function DiscoverMerchantDetailFullScreen({
 	}, [freezeMerchantProgramPresentation])
 
 	const membershipKycDone = useRef<((ok: boolean) => void) | null>(null)
-	const freeMembershipClaimInFlight = useRef(false)
-	const [freeMembershipClaiming, setFreeMembershipClaiming] = useState(false)
-	const [freeMembershipClaimError, setFreeMembershipClaimError] = useState('')
 	const [membershipKyc, setMembershipKyc] = useState<null | {
 		policy: MembershipKycFormPolicy
 		card: string
@@ -7634,13 +7671,13 @@ function DiscoverMerchantDetailFullScreen({
 				if (policy?.enabled) {
 					const linked = await membershipKycAlreadyLinked(card, eoa)
 					if (!linked) {
-						const feeHuman = membershipPurchaseApiAmountHuman(tier.feeE6)
+						const feeHuman = formatMembershipFeeE6Display(tier.feeE6) || '0.00'
 						const durationLabel =
 							tier.durationKind != null ? MEMBERSHIP_DURATION_LABELS[tier.durationKind] ?? '' : ''
 						const shown = {
 							...policy,
-							offerLabel: 'Membership',
-							offerValue: feeHuman ? `${balancePrefix || ''}${feeHuman}` : '',
+							offerLabel: 'Member fee',
+							offerValue: `${balancePrefix || ''}${feeHuman}`,
 							offerReward: durationLabel,
 						}
 						const accepted = await new Promise<boolean>((resolve) => {
@@ -7652,29 +7689,33 @@ function DiscoverMerchantDetailFullScreen({
 				}
 			}
 		freezeMerchantProgramPresentation()
-		const prefill = membershipPurchaseApiAmountHuman(tier.feeE6)
+		const feeHuman = formatMembershipFeeE6Display(tier.feeE6) || '0.00'
+		const feeNum = Number(feeHuman)
 		setUsdcTopupError('')
-		setUsdcTopupAmountText(prefill)
 		setUsdcTopupIntent(kind === 'join' ? 'first_purchase' : 'upgrade')
 		setUsdcTopupIntentLocked(true)
 		setMembershipPurchaseTierIndex(tier.tierIndex)
 		setMembershipPurchaseFeeFiat6(tier.feeE6)
 		setMembershipPurchaseMinUsdc6(tier.minUsdc6)
-		const feeHuman = membershipFeeE6ToHuman(tier.feeE6)
 		const durationLabel =
 			tier.durationKind != null ? MEMBERSHIP_DURATION_LABELS[tier.durationKind] ?? '' : ''
 		const prefix = balancePrefix || ''
-		const feePart = feeHuman ? `${prefix}${feeHuman}` : ''
+		const feePart = `${prefix}${feeHuman}`
 		setUsdcTopupRulesHint(
 			kind === 'join'
-				? `First purchase includes membership fee ${feePart}${durationLabel ? ` · ${durationLabel}` : ''}.`
-				: `Upgrade to ${tier.name} includes membership fee ${feePart}${durationLabel ? ` · ${durationLabel}` : ''}.`,
+				? `Member fee ${feePart}${durationLabel ? ` · ${durationLabel}` : ''}. Top up in the same payment.`
+				: `Upgrade to ${tier.name} includes member fee ${feePart}${durationLabel ? ` · ${durationLabel}` : ''}. Top up in the same payment.`,
 		)
-		// Membership payment uses the full payment overlay so the user can
-		// choose USDC or the merchant's Stripe gateway. The inline amount
-		// panel is only for ordinary top-ups and cannot complete membership
-		// fulfillment.
-		setDiscoverTopUpPrefill(prefill)
+		const suggestedTopup = membershipPurchaseApiAmountHuman(tier.feeE6)
+		const suggestedNum = Number(suggestedTopup)
+		const initialAmount =
+			Number.isFinite(feeNum) && feeNum > 50
+				? feeHuman
+				: Number.isFinite(suggestedNum) && suggestedNum > 50
+					? suggestedTopup
+					: undefined
+		setUsdcTopupAmountText(initialAmount ?? '50.00')
+		setDiscoverTopUpPrefill(initialAmount)
 		setUsdcTopupPhase('idle')
 		setDiscoverTopUpOpen(true)
 		})()
@@ -7687,70 +7728,10 @@ function DiscoverMerchantDetailFullScreen({
 		profiles,
 	])
 
-	const claimDiscoverFreeMembership = useCallback(() => {
-		const tier = membershipUi.joinTier
-		if (!tier || freeMembershipClaimInFlight.current) return
-		if (BigInt(tier.feeE6) !== 0n) return
-		freeMembershipClaimInFlight.current = true
-		setFreeMembershipClaiming(true)
-		setFreeMembershipClaimError('')
-		void (async () => {
-			try {
-				const card = item.cardAddress
-				const profile = profiles?.[0]
-				const eoa = profile?.keyID
-				const key = resolveSigningPrivateKeyArmor(profile)
-				if (!card || !eoa || !key) {
-					setFreeMembershipClaimError('Sign in to claim membership.')
-					return
-				}
-				const policy = await loadMembershipKycPolicy(card).catch(() => null)
-				if (policy?.enabled) {
-					const linked = await membershipKycAlreadyLinked(card, eoa)
-					if (!linked) {
-						const durationLabel =
-							tier.durationKind != null ? MEMBERSHIP_DURATION_LABELS[tier.durationKind] ?? '' : ''
-						const shown = {
-							...policy,
-							offerLabel: 'Membership',
-							offerValue: 'Free',
-							offerReward: durationLabel,
-						}
-						const accepted = await new Promise<boolean>((resolve) => {
-							membershipKycDone.current = resolve
-							setMembershipKyc({ policy: shown, card, key, wallet: eoa })
-						})
-						if (!accepted) return
-					}
-				}
-				const claimed = await postClaimFreeMembership({
-					cardAddress: card,
-					tierIndex: tier.tierIndex,
-					wallet: eoa,
-					privateKeyArmor: key,
-				})
-				if (!claimed.success) {
-					setFreeMembershipClaimError(claimed.error || 'Membership claim failed')
-					return
-				}
-				await refreshMerchantAssets({ force: true })
-			} catch (e: unknown) {
-				setFreeMembershipClaimError(e instanceof Error ? e.message : 'Membership claim failed')
-			} finally {
-				freeMembershipClaimInFlight.current = false
-				setFreeMembershipClaiming(false)
-			}
-		})()
-	}, [item.cardAddress, membershipUi.joinTier, profiles, refreshMerchantAssets])
-
-	/** New Customer Bonus CTA — top-up with suggested min (or selected multiplier tier), or join membership when required. */
+	/** New Customer Bonus CTA — top-up with suggested min, or join and top up together. */
 	const claimDiscoverTopupPromotion = useCallback(
 		(suggestedAmount?: string) => {
 			if (membershipUi.mode === 'need_member' && membershipUi.joinTier) {
-				if (BigInt(membershipUi.joinTier.feeE6) === 0n) {
-					claimDiscoverFreeMembership()
-					return
-				}
 				openDiscoverMembershipPay('join')
 				return
 			}
@@ -7759,7 +7740,6 @@ function DiscoverMerchantDetailFullScreen({
 			openDiscoverTopupAmount(amount)
 		},
 		[
-			claimDiscoverFreeMembership,
 			membershipUi.joinTier,
 			membershipUi.mode,
 			openDiscoverMembershipPay,
@@ -9074,7 +9054,7 @@ function DiscoverMerchantDetailFullScreen({
 							visitError={merchantVisitError}
 						/>
 					) : null}
-					{showFoodBeverageProspectPass ? (
+					{showProspectActivatePass ? (
 						<DiscoverMerchantFoodBeverageProspectPassPanel
 							passTitle={passTitle}
 							chargePercent={foodBeverageChargePercent}
@@ -9088,21 +9068,17 @@ function DiscoverMerchantDetailFullScreen({
 							backgroundImageFit={prospectJoinPanelBackground.imageFit}
 							activateLabel={
 								membershipUi.mode === 'need_member' && membershipUi.joinTier
-									? BigInt(membershipUi.joinTier.feeE6) === 0n
-										? 'Become a Member'
-										: 'Claim Offer & Become a Member'
+									? 'Join or Top Up'
 									: 'Top Up to Activate'
 							}
-							activateBusy={freeMembershipClaiming}
-							activateError={freeMembershipClaimError}
-							hideDiningAutoActivate={membershipUi.mode === 'need_member' && Boolean(membershipUi.joinTier)}
+							hideDiningAutoActivate={
+								item.category !== 'food-beverage' ||
+								(membershipUi.mode === 'need_member' && Boolean(membershipUi.joinTier))
+							}
+							showMemberAccess={membershipFeeMode}
 							onActivateTopUp={() => {
-								if (usdcTopupPhase !== 'idle' || discoverTopUpOpen || freeMembershipClaiming) return
+								if (usdcTopupPhase !== 'idle' || discoverTopUpOpen) return
 								if (membershipUi.mode === 'need_member' && membershipUi.joinTier) {
-									if (BigInt(membershipUi.joinTier.feeE6) === 0n) {
-										claimDiscoverFreeMembership()
-										return
-									}
 									openDiscoverMembershipPay('join')
 									return
 								}
@@ -9116,10 +9092,9 @@ function DiscoverMerchantDetailFullScreen({
 							topUpDisabled={
 								giftSheetOpen ||
 								usdcTopupPhase !== 'idle' ||
-								discoverTopUpOpen ||
-								freeMembershipClaiming
+								discoverTopUpOpen
 							}
-							actionsDisabled={giftSheetOpen || freeMembershipClaiming}
+							actionsDisabled={giftSheetOpen}
 							visitError={merchantVisitError}
 						/>
 					) : null}
@@ -9214,6 +9189,7 @@ function DiscoverMerchantDetailFullScreen({
 					!hasActiveMembership &&
 					!showMemberRechargePrivileges &&
 					!showHealthBeautyLoyaltyPass &&
+					!showProspectActivatePass &&
 					!showFoodBeverageProspectPass &&
 					!showFoodBeverageLoyaltyPass
 						? showProspectJoinPanel
@@ -9224,6 +9200,7 @@ function DiscoverMerchantDetailFullScreen({
 					!hasActiveMembership &&
 					!showMemberRechargePrivileges &&
 					!showHealthBeautyLoyaltyPass &&
+					!showProspectActivatePass &&
 					!showFoodBeverageProspectPass &&
 					!showFoodBeverageLoyaltyPass
 						? renderVisitActions()

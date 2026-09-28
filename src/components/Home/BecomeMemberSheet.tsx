@@ -34,16 +34,27 @@ export function BecomeMemberSheet({
 	const [terms, setTerms] = useState(false)
 	const [emailOffers, setEmailOffers] = useState(false)
 	const [smsOffers, setSmsOffers] = useState(false)
+	const [extraAnswers, setExtraAnswers] = useState<Record<string, string>>({})
+	const [extraMulti, setExtraMulti] = useState<Record<string, string[]>>({})
 	const [busy, setBusy] = useState(false)
 	const [error, setError] = useState('')
 	const merchant = policy.merchantName || 'This merchant'
 	const accent = brandColor?.trim() || '#9a2d4a'
 	const surface = pageSurface?.trim() || '#eef3fb'
 
+	const additionalFields = policy.additionalFields ?? []
+	const showEmailOffers = policy.marketing === true && policy.fields.email !== 'off'
+	const showSmsOffers = policy.marketing === true && policy.fields.phone !== 'off'
+	const extraMissing = additionalFields.some((field) => {
+		if (field.state !== 'required') return false
+		if (field.type === 'multi') return (extraMulti[field.id] ?? []).length === 0
+		return !(extraAnswers[field.id] ?? '').trim()
+	})
 	const missing =
 		(policy.fields.name === 'required' && !fullName.trim()) ||
 		(policy.fields.phone === 'required' && !phone.trim()) ||
 		(policy.fields.email === 'required' && !email.trim()) ||
+		extraMissing ||
 		!consent ||
 		!terms
 
@@ -58,8 +69,16 @@ export function BecomeMemberSheet({
 				fullName,
 				phone,
 				email,
-				emailOffers,
-				smsOffers,
+				emailOffers: showEmailOffers && emailOffers,
+				smsOffers: showSmsOffers && smsOffers,
+				additional: Object.fromEntries([
+					...additionalFields
+						.filter((field) => field.type !== 'multi')
+						.map((field) => [field.id, (extraAnswers[field.id] ?? '').trim()]),
+					...additionalFields
+						.filter((field) => field.type === 'multi')
+						.map((field) => [field.id, extraMulti[field.id] ?? []]),
+				]),
 				signerKind,
 				subjectWallet,
 			})
@@ -70,14 +89,20 @@ export function BecomeMemberSheet({
 		}
 	}
 
-	const phoneOff = policy.fields.phone === 'off'
-	const emailOff = policy.fields.email === 'off'
-	const detailTail =
-		phoneOff && emailOff
-			? '.'
-			: policy.fields.phone !== 'required' && policy.fields.email !== 'required'
-				? '; phone and email are optional.'
-				: '; phone and email follow the merchant’s request.'
+	const detailNotes = [
+		policy.fields.name !== 'off' ? 'Your name identifies your member profile' : '',
+		policy.fields.phone === 'required'
+			? 'your phone number is required'
+			: policy.fields.phone === 'optional'
+				? 'your phone number is optional'
+				: '',
+		policy.fields.email === 'required'
+			? 'your email is required'
+			: policy.fields.email === 'optional'
+				? 'your email is optional'
+				: '',
+	].filter(Boolean)
+	const detailTail = detailNotes.length ? ` ${detailNotes.join('; ')}.` : ''
 
 	return (
 		<div
@@ -96,8 +121,7 @@ export function BecomeMemberSheet({
 						<path d="M14.5 6.5 9 12l5.5 5.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
 					</svg>
 				</button>
-				<p className="text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: accent }}>{merchant}</p>
-				<h1 className="mt-1 text-[28px] font-semibold tracking-tight text-[#1c1c1e]">Become a member</h1>
+				<h1 className="text-[28px] font-semibold tracking-tight text-[#1c1c1e]">Become a member</h1>
 				<p className="mt-1 text-[15px] text-[#6b7076]">Add your details to set up your membership.</p>
 				{policy.offerValue ? (
 					<div className="mt-4 flex items-center justify-between rounded-2xl border bg-white px-3 py-3" style={{ borderColor: accent }}>
@@ -119,8 +143,8 @@ export function BecomeMemberSheet({
 					</div>
 				) : null}
 				<p className="mt-4 text-[13px] leading-5 text-[#5c6570]">
-					{merchant} collects these details to create your profile and provide membership services. Your name
-					identifies your member profile{detailTail}
+					{merchant} collects these details to create your profile and provide membership services.
+					{detailTail}
 				</p>
 				<div className="mt-3 rounded-2xl bg-white px-3 py-3 text-[13px] leading-5 text-[#3d4a57]">
 					Your wallet is your member ID. You control your private key. {merchant} accesses its member
@@ -175,15 +199,84 @@ export function BecomeMemberSheet({
 						I have read and agree to the <span style={{ color: accent }}>{merchant} Membership Terms</span>.
 					</span>
 				</label>
+				{additionalFields.map((field) => (
+					<div key={field.id} className="mt-4">
+						<p className="text-[14px] font-semibold text-[#1c1c1e]">
+							{field.label}{' '}
+							{field.state === 'required' ? (
+								<span style={{ color: accent }}>*</span>
+							) : (
+								<span className="font-normal text-[#6b7076]">(optional)</span>
+							)}
+						</p>
+						{field.purpose ? <p className="mt-1 text-[12px] text-[#6b7076]">{field.purpose}</p> : null}
+						{field.type === 'multi' ? (
+							<div className="mt-2 flex flex-wrap gap-3">
+								{field.options.map((option) => {
+									const selected = (extraMulti[field.id] ?? []).includes(option)
+									return (
+										<label key={option} className="inline-flex items-center gap-2 text-[14px] text-[#1c1c1e]">
+											<input
+												type="checkbox"
+												checked={selected}
+												onChange={(event) => {
+													setExtraMulti((current) => {
+														const prev = current[field.id] ?? []
+														const next = event.target.checked
+															? [...prev, option]
+															: prev.filter((item) => item !== option)
+														return { ...current, [field.id]: next }
+													})
+												}}
+											/>
+											{option}
+										</label>
+									)
+								})}
+							</div>
+						) : field.type === 'single' || field.type === 'gender' || field.type === 'language' ? (
+							<select
+								value={extraAnswers[field.id] ?? ''}
+								onChange={(event) => setExtraAnswers((current) => ({ ...current, [field.id]: event.target.value }))}
+								className="mt-2 w-full rounded-xl border border-[#e6e8ee] bg-white px-3 py-3 text-[15px]"
+							>
+								<option value="">Select</option>
+								{(field.type === 'gender'
+									? ['Woman', 'Man', 'Non-binary', 'Self-describe', 'Prefer not to say']
+									: field.type === 'language'
+										? ['English', '简体中文', '繁體中文', 'Français', 'Other']
+										: field.options
+								).map((option) => (
+									<option key={option} value={option}>{option}</option>
+								))}
+							</select>
+						) : (
+							<input
+								value={extraAnswers[field.id] ?? ''}
+								onChange={(event) => setExtraAnswers((current) => ({ ...current, [field.id]: event.target.value }))}
+								className="mt-2 w-full rounded-xl border border-[#e6e8ee] bg-white px-3 py-3 text-[15px] font-normal"
+							/>
+						)}
+					</div>
+				))}
+				{showEmailOffers ? (
 				<label className="mt-3 flex items-start gap-2 text-[13px] leading-5 text-[#3d4a57]">
 					<input type="checkbox" checked={emailOffers} onChange={(event) => setEmailOffers(event.target.checked)} />
 					<span>Send me offers and updates from {merchant} by email. (Optional. Unsubscribe anytime.)</span>
 				</label>
+				) : null}
+				{showSmsOffers ? (
 				<label className="mt-3 flex items-start gap-2 text-[13px] leading-5 text-[#3d4a57]">
 					<input type="checkbox" checked={smsOffers} onChange={(event) => setSmsOffers(event.target.checked)} />
 					<span>Send me offers and updates from {merchant} by SMS. (Optional. Unsubscribe anytime.)</span>
 				</label>
-				<p className="mt-4 text-[12px] text-[#6b7076]">Sent by {merchant} · Merchant contact details</p>
+				) : null}
+				{showEmailOffers || showSmsOffers ? (
+				<p className="mt-4 text-[12px] text-[#6b7076]">
+					Sent by {merchant}
+					{policy.mailingAddress ? ` · ${policy.mailingAddress}` : ''}
+				</p>
+				) : null}
 				{error ? (
 					<p role="alert" className="mt-3 rounded-xl bg-[#fff4e5] px-3 py-2 text-[13px] text-[#9a3412]">
 						{error}

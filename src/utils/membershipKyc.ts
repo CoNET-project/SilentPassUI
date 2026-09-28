@@ -4,10 +4,23 @@ import { CONET_ADDRESS_PGP, CONET_CARD_FACTORY, CONET_RPC_URL } from '@/config/c
 
 export type KycFieldMode = 'off' | 'optional' | 'required'
 
+export type MembershipKycExtraField = {
+	id: string
+	label: string
+	purpose: string
+	type: string
+	options: string[]
+	state: KycFieldMode
+}
+
 export type MembershipKycFormPolicy = {
 	enabled: boolean
 	merchantName: string
 	fields: { name: KycFieldMode; phone: KycFieldMode; email: KycFieldMode }
+	/** Biz “Show opt-in options”. Absent or false means do not ask for email or SMS marketing. */
+	marketing: boolean
+	mailingAddress: string
+	additionalFields: MembershipKycExtraField[]
 	offerLabel: string
 	offerValue: string
 	offerReward: string
@@ -64,6 +77,23 @@ export async function loadMembershipKycPolicy(cardAddress: string): Promise<Memb
 	const kyc = share?.kyc
 	if (!kyc || kyc.enabled !== true) return null
 	const fields = (kyc.fields ?? {}) as Record<string, unknown>
+	const additionalFields = Array.isArray(kyc.additionalFields)
+		? kyc.additionalFields.flatMap((row) => {
+				if (!row || typeof row !== 'object') return []
+				const item = row as Record<string, unknown>
+				const state = fieldMode(item.state, 'off')
+				const label = typeof item.label === 'string' ? item.label.trim() : ''
+				if (state === 'off' || !label) return []
+				return [{
+					id: typeof item.id === 'string' && item.id.trim() ? item.id : label,
+					label,
+					purpose: typeof item.purpose === 'string' ? item.purpose.trim() : '',
+					type: typeof item.type === 'string' ? item.type : 'text',
+					options: Array.isArray(item.options) ? item.options.filter((option): option is string => typeof option === 'string' && option.trim().length > 0) : [],
+					state,
+				}]
+			})
+		: []
 	const merchantName = String(
 		share?.businessProfile?.storeName ||
 			share?.displayName ||
@@ -82,6 +112,9 @@ export async function loadMembershipKycPolicy(cardAddress: string): Promise<Memb
 			phone: fieldMode(fields.phone, 'off'),
 			email: fieldMode(fields.email, 'optional'),
 		},
+		marketing: kyc.marketing === true,
+		mailingAddress: typeof kyc.mailingAddress === 'string' ? kyc.mailingAddress.trim() : '',
+		additionalFields,
 		offerLabel: 'Store Credits',
 		offerValue: '',
 		offerReward: '',
@@ -102,6 +135,12 @@ async function walletAlreadyHoldsMembership(cardAddress: string, wallet: string)
 export async function membershipJoinShouldShowKyc(cardAddress: string, wallets: string[]): Promise<boolean> {
 	const policy = await loadMembershipKycPolicy(cardAddress).catch(() => null)
 	if (!policy?.enabled) return false
+	const collects =
+		policy.fields.name !== 'off' ||
+		policy.fields.phone !== 'off' ||
+		policy.fields.email !== 'off' ||
+		policy.additionalFields.length > 0
+	if (!collects) return false
 	for (const wallet of wallets) {
 		if (!wallet) continue
 		if (await walletAlreadyHoldsMembership(cardAddress, wallet)) return false
@@ -153,6 +192,7 @@ export async function saveMembershipKycAndLink(params: {
 	email: string
 	emailOffers: boolean
 	smsOffers: boolean
+	additional?: Record<string, string | string[]>
 	signerKind: 'wallet' | 'admin'
 	subjectWallet: string
 }): Promise<void> {
@@ -167,6 +207,7 @@ export async function saveMembershipKycAndLink(params: {
 		email: params.email.trim(),
 		emailOffers: params.emailOffers,
 		smsOffers: params.smsOffers,
+		additional: params.additional ?? {},
 		savedAt: Date.now(),
 	})
 	const keys = await adminEncryptionKeys(params.cardAddress)

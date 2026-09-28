@@ -167,7 +167,33 @@ export function forgetIncomingVoiceOffer(callId: string, sessionId: string): voi
 	incomingVoiceOffersByHandle.delete(signal.callId)
 	incomingVoiceOffersByHandle.delete(signal.sessionId)
 }
+
 const nativeIncomingVoiceRetryTimers = new Map<string, ReturnType<typeof setTimeout>>()
+
+/**
+ * Caller hung up. Stop any pending native banner retry, then ask this app's
+ * own shell to remove the CallStyle card. The shell is not exported, so an
+ * outside Decline broadcast cannot do this.
+ */
+export function dismissNativeIncomingVoiceCall(callId: string, sessionId: string): void {
+	const signal = lookupIncomingVoiceOffer(callId, sessionId)
+	const nativeCallId = String(signal?.callId || callId || sessionId || '').trim()
+	const nativeSessionId = String(signal?.sessionId || sessionId || callId || '').trim()
+	const keys = new Set<string>()
+	if (nativeCallId && nativeSessionId) keys.add(`${nativeCallId}:${nativeSessionId}`)
+	if (callId.trim() && sessionId.trim()) keys.add(`${callId.trim()}:${sessionId.trim()}`)
+	keys.forEach((key) => {
+		const timer = nativeIncomingVoiceRetryTimers.get(key)
+		if (timer !== undefined) clearTimeout(timer)
+		nativeIncomingVoiceRetryTimers.delete(key)
+	})
+	forgetIncomingVoiceOffer(nativeCallId, nativeSessionId)
+	if (!nativeCallId && !nativeSessionId) return
+	dispatchNativeSystemCallAction('endSystemCall', {
+		callId: nativeCallId || nativeSessionId,
+		sessionId: nativeSessionId,
+	})
+}
 
 /** Accept both browser millisecond timestamps and mailbox/FCM unix-second timestamps. */
 export function normalizeVoiceTimestampMs(value: unknown): number {
@@ -314,6 +340,54 @@ export const voiceSessionKeyFromBase64 = (value: string): Uint8Array => {
 	const key = Uint8Array.from(raw, char => char.charCodeAt(0))
 	if (key.length !== 32) throw new Error('voice_session_key_invalid')
 	return key
+}
+
+const PHONE_CALL_STATUS_RANK: Record<PhoneCallRecord['status'], number> = {
+	ringing: 0,
+	answered: 2,
+	cancelled: 3,
+	declined: 3,
+	failed: 3,
+	missed: 3,
+	timed_out: 3,
+	ended: 4,
+}
+
+/**
+ * Keep the further-along status when two snapshots of the same call arrive out
+ * of order. A later `ringing` history row must not paint the bubble back to
+ * "Calling…" after the ring already timed out.
+ */
+/** Chat stores some call timestamps in seconds. Compare them as milliseconds. */
+export const phoneCallStampMs = (raw: unknown): number => {
+	const n = Number(raw || 0)
+	if (!Number.isFinite(n) || n <= 0) return 0
+	return n < 1e12 ? n * 1000 : n
+}
+
+export const mergePhoneCallRecord = (
+	current: PhoneCallRecord | null | undefined,
+	incoming: PhoneCallRecord | null | undefined,
+): PhoneCallRecord | null => {
+	if (!incoming?.callId && !incoming?.sessionId) return current ?? null
+	if (!current) return incoming ?? null
+	const sameCall = current.callId === incoming.callId || current.sessionId === incoming.sessionId
+	if (!sameCall) return incoming
+	const keepCurrent = (PHONE_CALL_STATUS_RANK[current.status] ?? 0) >= (PHONE_CALL_STATUS_RANK[incoming.status] ?? 0)
+	const status = keepCurrent ? current.status : incoming.status
+	return {
+		...current,
+		...incoming,
+		status,
+		direction: current.direction || incoming.direction,
+		peerAddress: current.peerAddress || incoming.peerAddress,
+		createdAt: current.createdAt || incoming.createdAt,
+		answeredAt: current.answeredAt ?? incoming.answeredAt,
+		endedAt: status === 'ringing'
+			? undefined
+			: (keepCurrent ? current.endedAt ?? incoming.endedAt : incoming.endedAt ?? current.endedAt),
+		durationMs: keepCurrent ? current.durationMs ?? incoming.durationMs : incoming.durationMs ?? current.durationMs,
+	}
 }
 
 export const makeVoiceCallSignal = (

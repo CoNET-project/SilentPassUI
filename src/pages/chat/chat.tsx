@@ -73,7 +73,7 @@ import { useDaemonContext } from "@/providers/DaemonProvider"
 import { storeSystemData, AuthorizationSign } from '@/services/beamio'
 import { useBeamioTagDatabase } from '@/providers/BeamioTagDatabaseProvider'
 import { fiatPrefix } from '@/services/currency'
-import { dispatchNativeSystemCallAction, getCashTreesNativeNfcBridge, isCashTreesNativeWebView, openExternalUrl, requestNativeCameraCapture, requestNativePhotoPicker, saveFileToNative } from '@/utils/cashTreesNativeNfc'
+import { dispatchNativeSystemCallAction, getCashTreesNativeNfcBridge, getCashTreesNativeNfcHost, isCashTreesNativeWebView, openExternalUrl, requestNativeCameraCapture, requestNativePhotoPicker, saveFileToNative } from '@/utils/cashTreesNativeNfc'
 import { MessageSendReceiveCard } from "./components/messageSendReceiveCard"
 import { AaMultisigChatRequestCard } from '@/components/chat/AaMultisigChatRequestCard'
 import { ChatShareLinkPreviewCard } from '@/components/chat/ChatShareLinkPreviewCard'
@@ -120,6 +120,8 @@ import {
 	randomVoiceId,
 	recoverVoiceCallOfferSigner,
 	INCOMING_CALL_RING_TIMEOUT_MS,
+	mergePhoneCallRecord,
+	phoneCallStampMs,
 	rememberIncomingVoiceOffer,
 	VOICE_CALL_IDENTITY_WARNING,
 	voiceCallClaimMismatchesKey,
@@ -1802,12 +1804,11 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		setGossip,
 		gossip,
 		charts,
-		setbBeamioUsers,
 		currencyData = {} as Record<string, number>,
 		usdcbalance = 0,
 		setScanData,
 	} = useDaemonContext()
-	const { resolvePeerSearchResult, ensureProfilesForAddresses, searchRemoteAndIngest, lookupByAddress } = useBeamioTagDatabase()
+	const { resolvePeerSearchResult, ensureProfilesForAddresses, searchRemoteAndIngest, lookupByAddress, avatarImgUrl } = useBeamioTagDatabase()
 	
 
 
@@ -1858,6 +1859,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 	const [incomingVoiceAction, setIncomingVoiceAction] = useState<'idle' | 'accepting' | 'declining'>('idle')
 	const voiceCallSessionRef = useRef<string | null>(null)
 	const voiceCallOfferRef = useRef<{ callId: string; sessionId: string; sessionKey: string; timestamp?: number; expiresAt?: number } | null>(null)
+	const locallyEndedVoiceSessionsRef = useRef<Set<string>>(new Set())
 	const voiceCallKeyRef = useRef<Uint8Array | null>(null)
 	const voiceCallPeerSessionRef = useRef<string | null>(null)
 	const voiceCaptureStopRef = useRef<(() => void) | null>(null)
@@ -1902,16 +1904,16 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		const currentProfiles = Array.isArray(profiles) ? profiles : []
 		if (!currentProfiles.length) return
 		const current: PhoneCallRecord[] = Array.isArray(currentProfiles[0].phoneCalls) ? currentProfiles[0].phoneCalls : []
-		const previous = current.find(item => item.sessionId === patch.sessionId)
-		const merged: PhoneCallRecord = {
-			...previous,
+		const previous = current.find(item => item.sessionId === patch.sessionId || item.callId === patch.callId)
+		const merged = mergePhoneCallRecord(previous, {
 			...patch,
 			createdAt: previous?.createdAt ?? patch.createdAt,
-		}
+		})
+		if (!merged) return
 		const nextProfiles = currentProfiles.slice()
 		nextProfiles[0] = {
 			...currentProfiles[0],
-			phoneCalls: [...current.filter(item => item.sessionId !== patch.sessionId), merged]
+			phoneCalls: [...current.filter(item => item.sessionId !== merged.sessionId && item.callId !== merged.callId), merged]
 				.sort((a, b) => b.createdAt - a.createdAt)
 				.slice(0, 200),
 		}
@@ -2272,7 +2274,9 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			if (
 				signal.type === 'voice_call_accept_v1' &&
 				voiceCallOfferRef.current?.sessionId === signal.peerSessionId &&
-				typeof signal.peerSessionId === 'string'
+				typeof signal.peerSessionId === 'string' &&
+				!locallyEndedVoiceSessionsRef.current.has(signal.peerSessionId) &&
+				!locallyEndedVoiceSessionsRef.current.has(String(signal.sessionId || ''))
 			) {
 				// The relay is now paired. Media capture is intentionally owned by
 				// the call controller, not the normal Chat message stream.
@@ -2341,12 +2345,16 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				createdAt: Number(offer.createdAt) || Date.now(),
 				answeredAt: Date.now(),
 			})
-			dispatchNativeSystemCallAction('startSystemCall', {
-				callId: offer.callId,
-				sessionId: offer.sessionId,
-				peerAddress: offer.from,
-				displayName: offer.from,
-			})
+			// Android Answer already set the incoming Telecom connection active and
+			// removed the system card. placeCall here would open another system call.
+			if (getCashTreesNativeNfcHost() !== 'android') {
+				dispatchNativeSystemCallAction('startSystemCall', {
+					callId: offer.callId,
+					sessionId: offer.sessionId,
+					peerAddress: offer.from,
+					displayName: offer.from,
+				})
+			}
 			void startVoiceMedia()
 		} catch {
 			setVoiceError('This voice call request is invalid or expired.')
@@ -2399,8 +2407,17 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		const sessionId = voiceCallSessionRef.current
 		const callId = voiceCallOfferRef.current?.callId
 		const callSessionId = voiceCallOfferRef.current?.sessionId || sessionId || ''
+		if (callSessionId) locallyEndedVoiceSessionsRef.current.add(callSessionId)
+		if (callId) locallyEndedVoiceSessionsRef.current.add(callId)
+		voiceCallOfferRef.current = null
+		voiceCallSessionRef.current = null
+		voiceCallPeerSessionRef.current = null
 		const controller = voiceControllerRef.current
 		voiceControllerRef.current = null
+		setVoiceError(null)
+		setVoiceCallConnecting(false)
+		setVoiceCallMinimized(false)
+		setVoiceCallState('idle')
 		if (callId) {
 			const previous = (Array.isArray(profiles?.[0]?.phoneCalls) ? profiles[0].phoneCalls : [])
 				.find((item: PhoneCallRecord) => item.sessionId === callSessionId)
@@ -2419,11 +2436,13 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			})
 			dispatchNativeSystemCallAction('endSystemCall', { callId, sessionId: callSessionId })
 		}
-		setVoiceCallConnecting(false)
-		setVoiceCallState('ended')
-		window.setTimeout(() => setVoiceCallState('idle'), 300)
 		if (controller) {
-			await controller.end(notifyPeer)
+			if (requestedStatus === 'timed_out' && notifyPeer) {
+				await controller.notifyRingTimeout()
+				await controller.end(false)
+			} else {
+				await controller.end(notifyPeer)
+			}
 		} else if (sessionId) {
 			await stopWorkerVoiceListen(sessionId)
 		}
@@ -2440,7 +2459,6 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		if (voiceAudioContext) void voiceAudioContext.close().catch(() => {})
 		setVoiceLevelSamples([])
 		setRemoteVoiceLevelSamples([])
-		setVoiceCallMinimized(false)
 		setVoiceSpeakerOn(true)
 		setVoiceVideoNote(null)
 		setVoiceCallMuted(false)
@@ -2449,6 +2467,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		voiceCallKeyRef.current = null
 		voiceCallPeerSessionRef.current = null
 		voiceCallSessionRef.current = null
+		setVoiceCallState('idle')
 	}, [profiles, toAddress, upsertPhoneCallRecord])
 
 	useEffect(() => {
@@ -2519,6 +2538,8 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		}
 	}, [endVoiceCall, messages, voiceCallState])
 
+	const endVoiceCallRef = useRef(endVoiceCall)
+	endVoiceCallRef.current = endVoiceCall
 	useEffect(() => {
 		if (voiceCallState !== 'outgoing') return
 		const offer = voiceCallOfferRef.current
@@ -2529,18 +2550,53 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			if (voiceCallOfferRef.current?.sessionId !== offer.sessionId) return
 			if (remoteRejectHandledRef.current === offer.sessionId) return
 			remoteRejectHandledRef.current = offer.sessionId
-			void endVoiceCall('timed_out', false)
+			void endVoiceCallRef.current('timed_out', true)
 		}, delay)
 		return () => window.clearTimeout(timer)
-	}, [endVoiceCall, voiceCallState])
+	}, [voiceCallState])
+
+	useEffect(() => {
+		const currentProfiles = Array.isArray(profiles) ? profiles : []
+		if (!currentProfiles.length) return
+		const rows: PhoneCallRecord[] = Array.isArray(currentProfiles[0].phoneCalls) ? currentProfiles[0].phoneCalls : []
+		const cutoff = Date.now() - INCOMING_CALL_RING_TIMEOUT_MS - 15_000
+		let changed = false
+		const nextRows = rows.map(item => {
+			const started = phoneCallStampMs(item.createdAt)
+			if (item.status !== 'ringing' || (started > 0 && started > cutoff)) return item
+			changed = true
+			return { ...item, status: 'timed_out' as const, endedAt: item.endedAt || Date.now() }
+		})
+		if (!changed) return
+		const nextProfiles = currentProfiles.slice()
+		nextProfiles[0] = { ...currentProfiles[0], phoneCalls: nextRows }
+		setProfiles(nextProfiles)
+		if (CoNET_Data) {
+			CoNET_Data.profiles = nextProfiles
+			setCoNET_Data(CoNET_Data)
+		}
+		void storeSystemData()
+	}, [profiles, setProfiles])
 
 	useEffect(() => {
 		const onPeerStopped = (status: 'declined' | 'timed_out') => (event: Event) => {
 			const detail = (event as CustomEvent<{ callId?: string; sessionId?: string }>).detail
+			const sessionId = detail?.sessionId || ''
+			const callId = detail?.callId || ''
+			const rows: PhoneCallRecord[] = Array.isArray(profiles?.[0]?.phoneCalls) ? profiles[0].phoneCalls : []
+			const previous = rows.find(item =>
+				(sessionId && item.sessionId === sessionId) || (callId && item.callId === callId))
+			if (previous && (previous.status === 'ringing' || previous.status === 'answered')) {
+				upsertPhoneCallRecord({
+					...previous,
+					status,
+					endedAt: Date.now(),
+				})
+			}
 			const offer = voiceCallOfferRef.current
 			if (!offer || voiceCallState !== 'outgoing') return
-			if (detail?.sessionId && detail.sessionId !== offer.sessionId) return
-			if (detail?.callId && detail.callId !== offer.callId) return
+			if (sessionId && sessionId !== offer.sessionId) return
+			if (callId && callId !== offer.callId) return
 			if (remoteRejectHandledRef.current === offer.sessionId) return
 			remoteRejectHandledRef.current = offer.sessionId
 			void endVoiceCall(status, false)
@@ -2553,7 +2609,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			window.removeEventListener('beamio-voice-peer-declined', onPeerDeclined)
 			window.removeEventListener('beamio-voice-peer-timed-out', onPeerTimedOut)
 		}
-	}, [endVoiceCall, voiceCallState])
+	}, [endVoiceCall, profiles, upsertPhoneCallRecord, voiceCallState])
 
 	useEffect(() => {
 		const onNativeCallAction = (event: Event) => {
@@ -2587,7 +2643,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 					sessionId: offer.sessionId,
 					peerAddress: offer.from,
 					direction: 'incoming',
-					status: 'missed',
+					status: 'timed_out',
 					createdAt: Number(offer.createdAt) || Date.now(),
 					endedAt: Date.now(),
 				})
@@ -2619,7 +2675,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				if (current?.status === 'ringing') {
 					upsertPhoneCallRecord({
 						...current,
-						status: 'missed',
+						status: 'timed_out',
 						endedAt: Date.now(),
 					})
 					dispatchNativeSystemCallAction('endSystemCall', { callId: incoming.callId })
@@ -2750,9 +2806,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 	const messagesRef = useRef<ChatMessage[]>(chatData.messages || [])
 	const liveFileMessagesRef = useRef(new Map<string, ChatMessage>())
 	const skipNextReflashdataRef = useRef(false)
-	const [fromBeamio, setfromBeamio] = useState<searchResult|undefined> ()
 	const [showContactProfile, setShowContactProfile] = useState(false)
-	const [userImg, setUserImg] = useState('')
 	const [plusOpen, setPlusOpen] = useState(false)
 	const plusBtnRef = useRef<HTMLButtonElement | null>(null)
 	const [reactionUI, setReactionUI] = useState<{
@@ -2801,15 +2855,27 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			// A status transition is mirrored as a new history entry. Treat all
 			// entries for one voice session as one chat bubble and prefer the
 			// current phone-call record (which contains the newest status).
-			if (seenCallSessionIds.has(sessionId)) continue
-			seenCallSessionIds.add(sessionId)
 			const currentRecord = currentCallBySessionId.get(sessionId)
+			const bestRecord = mergePhoneCallRecord(currentRecord, callRecord) || callRecord
+			if (seenCallSessionIds.has(sessionId)) {
+				const existingIndex = mergedMessages.findIndex(item => item.callRecord?.sessionId === sessionId)
+				if (existingIndex >= 0) {
+					const kept = mergePhoneCallRecord(mergedMessages[existingIndex].callRecord, bestRecord) || bestRecord
+					mergedMessages[existingIndex] = {
+						...mergedMessages[existingIndex],
+						from: kept.direction === 'outgoing' ? 'me' : 'them',
+						callRecord: kept,
+					}
+				}
+				continue
+			}
+			seenCallSessionIds.add(sessionId)
 			mergedMessages.push({
 				...message,
 				id: `phone_${sessionId}`,
 				sendId: `phone:${sessionId}`,
-				from: (currentRecord || callRecord).direction === 'outgoing' ? 'me' : 'them',
-				callRecord: currentRecord || callRecord,
+				from: bestRecord.direction === 'outgoing' ? 'me' : 'them',
+				callRecord: bestRecord,
 			})
 		}
 
@@ -2924,9 +2990,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		if (typeof peerTag?.nativeWakeable === 'boolean') {
 			setPeerNativeWakeable(current => (current === peerTag.nativeWakeable ? current : !!peerTag.nativeWakeable))
 		}
-		const image = peerTag?.image?.trim()
-		if (image) setUserImg(image)
-	}, [peerTag?.online, peerTag?.nativeWakeable, peerTag?.onlineAt, peerTag?.nativeWakeAt, peerTag?.image])
+	}, [peerTag?.online, peerTag?.nativeWakeable, peerTag?.onlineAt, peerTag?.nativeWakeAt])
 
 	// Open thread owns this wallet's online query. The global BeamioTag record
 	// still supplies native-shell wakeability and the tag image.
@@ -4300,36 +4364,45 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		}
 	}, [messages])
 
-	const findingRef = useRef(false)
-
-	const findUser = useCallback(async () => {
-		if (findingRef.current) return
-		if (fromBeamio) return
-
-		findingRef.current = true
-		try {
-			await ensureProfilesForAddresses([chatData.address])
-			const account = resolvePeerSearchResult(chatData.address) ?? unknowAcc(chatData.address)
-			//@ts-ignore
-			setbBeamioUsers(prev => {
-			const addr = (account?.address || '').toLowerCase()
-			//@ts-ignore
-			if (prev.some(u => (u.address || '').toLowerCase() === addr)) return prev
-				return [...prev, account!]
-			})
-			
-			setfromBeamio(account)
-
-			setUserImg(account.image||getImg(account.username))
-		} finally {
-			findingRef.current = false
-			
+	const peerProfile = useMemo((): searchResult | undefined => {
+		const address = String(chatData.address || '').trim()
+		const fromDb = address ? resolvePeerSearchResult(address) : null
+		if (fromDb?.address) return fromDb
+		const stored = chatData.beamio
+		const storedName = (stored?.username || '').trim()
+		if (stored && storedName && storedName !== '未知') {
+			return { ...stored, address: stored.address || address }
 		}
-	}, [chatData, ensureProfilesForAddresses, resolvePeerSearchResult])
+		const tag = (peerTag?.username || peerTag?.accountName || '').replace(/^@+/, '').trim()
+		if (peerTag && (tag || address)) {
+			return {
+				address,
+				username: tag || '未知',
+				first_name: peerTag.first_name || peerTag.firstName || '',
+				last_name: peerTag.last_name || peerTag.lastName || '',
+				image: peerTag.image || '',
+				created_at: 0,
+				follow_count: '',
+				follower_count: '',
+			}
+		}
+		if (address) return unknowAcc(address)
+		return stored
+	}, [chatData.address, chatData.beamio, peerTag, resolvePeerSearchResult])
+
+	const peerAvatar = useMemo(() => {
+		const img = (peerProfile?.image || '').trim()
+		if (img) return img
+		return avatarImgUrl(peerProfile?.username, peerProfile?.address || chatData.address)
+	}, [avatarImgUrl, chatData.address, peerProfile])
 
 	useEffect(() => {
-		findUser()
-	}, [findUser])
+		const address = String(chatData.address || '').trim()
+		if (!address) return
+		const known = resolvePeerSearchResult(address)
+		if (known?.username && known.username !== '未知') return
+		void ensureProfilesForAddresses([address]).catch(() => {})
+	}, [chatData.address, ensureProfilesForAddresses, resolvePeerSearchResult])
 
 	const clearedRef = useRef(false)
 	// 距离底部多少 px 视为“已到最底”
@@ -4451,14 +4524,14 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 	const activeVoiceCallRecord = (Array.isArray(profiles?.[0]?.phoneCalls) ? profiles[0].phoneCalls : [])
 		.find((item: PhoneCallRecord) => item.sessionId === activeVoiceSessionId)
 	const activeVoicePeerTag = (
+		peerProfile?.username ||
 		chatData.beamio?.username ||
-		fromBeamio?.username ||
 		(activeVoiceCallRecord?.peerAddress || toAddress)
 	).trim()
 	const activeVoicePeerLabel = activeVoicePeerTag
 		? activeVoicePeerTag.startsWith('@') ? activeVoicePeerTag : `@${activeVoicePeerTag}`
 		: '@Beamio'
-	const voicePeerProfile = fromBeamio || chatData.beamio
+	const voicePeerProfile = peerProfile || chatData.beamio
 	const voicePeerLastRaw = String(voicePeerProfile?.last_name || '').split('\r\n')[0] || ''
 	const voicePeerLastName = voicePeerLastRaw.trim().startsWith('{') ? '' : voicePeerLastRaw.trim()
 	const voicePeerFirstName = String(voicePeerProfile?.first_name || '').trim()
@@ -4483,23 +4556,23 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		>
 			<ChatHeaderIOS
 				layerRef={setHeaderLayerRef}
-				beamioer={fromBeamio}
+				beamioer={peerProfile}
 				onBack={onBack}
 				onCenterClick={() => {
-					if (fromBeamio) setShowContactProfile(true)
+					if (peerProfile?.address) setShowContactProfile(true)
 				}}
 				online={peerOnline}
 				nativeWakeable={peerNativeWakeable}
-				avatarSrc={userImg}
+				avatarSrc={peerAvatar}
 				onCall={voiceCallState === 'outgoing' ? endVoiceCall : startVoiceCall}
 				onPhoneHistory={() => navigate('/phone')}
 				callBusy={voiceCallState === 'outgoing'}
 			/>
-			{showContactProfile && fromBeamio ? (
+			{showContactProfile && peerProfile?.address ? (
 				<div className="fixed inset-0 z-[9999] flex flex-col overflow-hidden bg-white dark:bg-slate-900">
 					<div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
 						<BeamioContactProfilePreview
-							item={fromBeamio}
+							item={peerProfile}
 							close={() => setShowContactProfile(false)}
 						/>
 					</div>
@@ -4514,8 +4587,8 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 					aria-label="Return to voice call"
 				>
 					<span className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-full bg-[#10233f] ring-2 ring-white/50">
-						{userImg ? (
-							<IpfsImg src={userImg} alt="" className="h-full w-full object-cover" />
+						{peerAvatar ? (
+							<IpfsImg src={peerAvatar} alt="" className="h-full w-full object-cover" />
 						) : (
 							<span className="text-sm font-semibold">{activeVoicePeerName.slice(0, 1).toUpperCase()}</span>
 						)}
@@ -4544,8 +4617,8 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 					</button>
 					<div className="flex flex-1 flex-col items-center justify-center px-6">
 						<div className="grid h-36 w-36 place-items-center overflow-hidden rounded-full bg-[#10233f] ring-4 ring-white/45 shadow-[0_16px_40px_rgba(15,23,42,0.28)]">
-							{userImg ? (
-								<IpfsImg src={userImg} alt="" className="h-full w-full object-cover" />
+							{peerAvatar ? (
+								<IpfsImg src={peerAvatar} alt="" className="h-full w-full object-cover" />
 							) : (
 								<span className="text-4xl font-semibold">{activeVoicePeerName.slice(0, 1).toUpperCase()}</span>
 							)}
@@ -4929,12 +5002,18 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 											<div className="max-w-[78%] sm:max-w-[62%]">
 											{hasCallRecord && m.callRecord ? (
 												(() => {
-													const record =
-														(Array.isArray(profiles?.[0]?.phoneCalls)
-															? profiles[0].phoneCalls.find(
-																(item: PhoneCallRecord) => item.sessionId === m.callRecord?.sessionId,
-															)
-															: null) ?? m.callRecord
+													const liveRecord = Array.isArray(profiles?.[0]?.phoneCalls)
+														? profiles[0].phoneCalls.find(
+															(item: PhoneCallRecord) => item.sessionId === m.callRecord?.sessionId,
+														)
+														: null
+													const mergedRecord = mergePhoneCallRecord(liveRecord, m.callRecord) ?? m.callRecord
+													const startedMs = phoneCallStampMs(mergedRecord.createdAt)
+													const ringExpired = mergedRecord.status === 'ringing'
+														&& (startedMs === 0 || Date.now() - startedMs > INCOMING_CALL_RING_TIMEOUT_MS + 15_000)
+													const record = ringExpired
+														? { ...mergedRecord, status: 'timed_out' as const, endedAt: mergedRecord.endedAt || Date.now() }
+														: mergedRecord
 													const statusText =
 														record.status === 'ringing'
 															? record.direction === 'outgoing' ? 'Calling…' : 'Incoming call'

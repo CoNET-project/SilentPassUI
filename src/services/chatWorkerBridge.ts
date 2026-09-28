@@ -60,6 +60,7 @@ type VoiceRelayRequest = {
 /** Survives a gossip-worker restart so an in-progress call can reopen its mailbox SSE. */
 let activeVoiceRelay: VoiceRelayRequest | null = null
 let voiceRelayOpen: Promise<boolean> | null = null
+let voiceRelayOpenSessionId = ''
 
 /**
  * Host subscribers to encrypted-history restore/append buffer batches. Registered
@@ -194,11 +195,13 @@ export const onDecryptedChatHistory = (
 /**
  * Build the gossip Worker from the published `@conet.project/chat-sdk` package.
  * Webpack 5 (CRA/Craco) statically detects `new Worker(new URL(specifier,
- * import.meta.url))` and emits a separate worker chunk.
+ * import.meta.url))` and emits a classic worker chunk that loads openpgp/ethers
+ * with `importScripts`. Module workers reject `importScripts`, so the chunk
+ * never installs `onmessage` and voice listen times out. Keep this a classic
+ * Worker (no `type: 'module'`).
  */
 function makeGossipWorker(): Worker {
 	return new Worker(new URL('@conet.project/chat-sdk/worker', import.meta.url), {
-		type: 'module',
 		name: 'beamio-chat-gossip',
 	})
 }
@@ -235,6 +238,8 @@ export const stopWorkerGossip = (): void => {
 		}
 		activeClient = null
 	}
+	voiceRelayOpen = null
+	voiceRelayOpenSessionId = ''
 }
 
 /** True when a worker listen client is currently alive. */
@@ -353,7 +358,7 @@ const startWorkerGossipListenInternal = async (p: StartWorkerGossipParams): Prom
 		// (2) recover with empty local chats (AppShell skips re-initChat).
 		p.onLog?.('info', 'chat history: worker ready — loading on-chain/IPFS index')
 		void loadWorkerHistory()
-		if (activeVoiceRelay) void openActiveVoiceRelay()
+		if (activeVoiceRelay) void openActiveVoiceRelay(activeVoiceRelay.sessionId)
 		return true
 	} catch (ex) {
 		p.onLog?.('error', `worker gossip init failed: ${(ex as Error)?.message ?? String(ex)}`)
@@ -412,26 +417,44 @@ const waitForVoiceWorker = async (): Promise<ChatWorkerClient | null> => {
 	return activeClient
 }
 
-const openActiveVoiceRelay = async (): Promise<boolean> => {
-	if (voiceRelayOpen) return voiceRelayOpen
-	const run = (async () => {
+const openActiveVoiceRelay = (sessionId: string): Promise<boolean> => {
+	if (voiceRelayOpen && voiceRelayOpenSessionId === sessionId) return voiceRelayOpen
+	const run = (async (): Promise<boolean> => {
 		const relay = activeVoiceRelay
-		if (!relay) return false
+		if (!relay || relay.sessionId !== sessionId) {
+			console.warn(`[voiceListen] relay missing before open session=${sessionId}`)
+			return false
+		}
 		const client = await waitForVoiceWorker()
-		if (!client || activeVoiceRelay?.sessionId !== relay.sessionId) return false
+		if (!client) {
+			console.warn(`[voiceListen] chat worker was not ready session=${sessionId}`)
+			return false
+		}
+		if (activeVoiceRelay?.sessionId !== sessionId) {
+			console.warn(`[voiceListen] relay replaced while the worker started session=${sessionId}`)
+			return false
+		}
 		try {
-			const started = await client.startVoiceListen(relay.sessionId, relay.pushWakeup)
+			const started = await client.startVoiceListen(sessionId, relay.pushWakeup)
 			if (!started) console.warn('[voiceListen] worker refused to open the voice relay')
-			return started && activeVoiceRelay?.sessionId === relay.sessionId
+			if (started && activeVoiceRelay?.sessionId !== sessionId) {
+				console.warn(`[voiceListen] relay cleared after the worker accepted session=${sessionId}`)
+			}
+			return started && activeVoiceRelay?.sessionId === sessionId
 		} catch (ex) {
 			console.warn('[voiceListen] worker error', (ex as Error)?.message ?? String(ex))
 			return false
 		}
 	})()
-	voiceRelayOpen = run.finally(() => {
-		if (voiceRelayOpen === run) voiceRelayOpen = null
+	const tracked = run.finally(() => {
+		if (voiceRelayOpen === tracked) {
+			voiceRelayOpen = null
+			voiceRelayOpenSessionId = ''
+		}
 	})
-	return voiceRelayOpen
+	voiceRelayOpen = tracked
+	voiceRelayOpenSessionId = sessionId
+	return tracked
 }
 
 export const startWorkerVoiceListen = async (
@@ -447,10 +470,16 @@ export const startWorkerVoiceListen = async (
 ): Promise<boolean> => {
 	activeVoiceRelay = { sessionId, pushWakeup }
 	for (let attempt = 0; attempt < 3; attempt += 1) {
-		if (activeVoiceRelay?.sessionId !== sessionId) return false
-		const started = await openActiveVoiceRelay()
+		if (activeVoiceRelay?.sessionId !== sessionId) {
+			console.warn(`[voiceListen] session changed before open attempt ${attempt + 1}`)
+			return false
+		}
+		const started = await openActiveVoiceRelay(sessionId)
 		if (started) return true
-		if (activeVoiceRelay?.sessionId !== sessionId) return false
+		if (activeVoiceRelay?.sessionId !== sessionId) {
+			console.warn(`[voiceListen] session changed after open attempt ${attempt + 1}`)
+			return false
+		}
 		console.warn(`[voiceListen] relay open attempt ${attempt + 1} failed; waiting for the chat worker`)
 		await wait(400)
 	}

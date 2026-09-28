@@ -108,7 +108,7 @@ import { ingestAaMultisigFromChat } from '@/utils/aaMultisigIngest'
 import { tu } from '@/locale/beamioLocale'
 import { mapServerError } from '@/locale/mapServerError'
 import { installPwaLifecycleRecovery } from '@/utils/pwaLifecycleRecovery'
-import { applyNativeIncomingVoiceOfferFromLine, claimIncomingVoiceCallReport, claimedVoiceCallerAddress, claimedVoiceCallerTag, forgetIncomingVoiceOffer, formatLookedUpBeamioTag, isVoiceCallOfferActive, lookupIncomingVoiceOffer, parseVoiceCallSignal, recoverVoiceCallOfferSigner, rememberIncomingVoiceOffer, VOICE_CALL_IDENTITY_WARNING, voiceCallClaimMismatchesKey } from '@/utils/voiceCallSession'
+import { applyNativeIncomingVoiceOfferFromLine, claimIncomingVoiceCallReport, claimedVoiceCallerAddress, claimedVoiceCallerTag, dismissNativeIncomingVoiceCall, forgetIncomingVoiceOffer, formatLookedUpBeamioTag, isVoiceCallOfferActive, lookupIncomingVoiceOffer, mergePhoneCallRecord, parseVoiceCallSignal, recoverVoiceCallOfferSigner, rememberIncomingVoiceOffer, VOICE_CALL_IDENTITY_WARNING, voiceCallClaimMismatchesKey } from '@/utils/voiceCallSession'
 
 global.Buffer = require("buffer").Buffer
 
@@ -1075,8 +1075,10 @@ function AppShell() {
 
 	const profilesForVoiceDeclineRef = useRef(profiles)
 	const allNodesForVoiceDeclineRef = useRef(allNodes)
+	const setProfilesForVoiceRef = useRef(setProfiles)
 	profilesForVoiceDeclineRef.current = profiles
 	allNodesForVoiceDeclineRef.current = allNodes
+	setProfilesForVoiceRef.current = setProfiles
 	useEffect(() => {
 		const onNativeDecline = (event: Event) => {
 			const detail = (event as CustomEvent<{
@@ -1085,6 +1087,38 @@ function AppShell() {
 				sessionId?: string
 			}>).detail
 			if (detail?.action !== 'callRejected' && detail?.action !== 'callTimedOut') return
+			const terminalStatus = detail.action === 'callTimedOut' ? 'timed_out' : 'declined'
+			const sessionId = detail.sessionId || ''
+			const callId = detail.callId || ''
+			const currentProfiles = profilesForVoiceDeclineRef.current
+			if (Array.isArray(currentProfiles) && currentProfiles[0] && (sessionId || callId)) {
+				const rows: PhoneCallRecord[] = Array.isArray(currentProfiles[0].phoneCalls) ? currentProfiles[0].phoneCalls : []
+				const existing = rows.find(item =>
+					(sessionId && item.sessionId === sessionId) || (callId && item.callId === callId))
+				const merged = mergePhoneCallRecord(existing, {
+					callId: callId || existing?.callId || sessionId,
+					sessionId: sessionId || existing?.sessionId || callId,
+					peerAddress: existing?.peerAddress || '',
+					direction: existing?.direction || 'incoming',
+					status: terminalStatus,
+					createdAt: existing?.createdAt ?? Date.now(),
+					endedAt: Date.now(),
+				})
+				if (merged && existing?.status !== merged.status) {
+					const next = currentProfiles.slice()
+					next[0] = {
+						...currentProfiles[0],
+						phoneCalls: [
+							...rows.filter(item => item.sessionId !== merged.sessionId && item.callId !== merged.callId),
+							merged,
+						],
+					}
+					profilesForVoiceDeclineRef.current = next
+					setProfilesForVoiceRef.current(next)
+					if (CoNET_Data) CoNET_Data.profiles = next
+					void storeSystemData()
+				}
+			}
 			const offer = lookupIncomingVoiceOffer(detail.callId || '', detail.sessionId || '')
 			const privateKey = resolveSigningPrivateKeyArmor(profilesForVoiceDeclineRef.current?.[0])
 			if (!offer || !privateKey) return
@@ -1214,8 +1248,9 @@ function AppShell() {
 								try {
 									const callRecord = (JSON.parse(entry.body) as ChatMessage)?.callRecord
 									if (!callRecord?.callId) continue
-									const old = phoneCalls.find(item => item.callId === callRecord.callId)
-									const nextCall = { ...old, ...callRecord }
+									const old = phoneCalls.find(item => item.callId === callRecord.callId || item.sessionId === callRecord.sessionId)
+									const nextCall = mergePhoneCallRecord(old, callRecord)
+									if (!nextCall) continue
 									if (
 										old &&
 										old.status === nextCall.status &&
@@ -1224,7 +1259,7 @@ function AppShell() {
 										old.direction === nextCall.direction
 									) continue
 									phoneCalls = [
-										...phoneCalls.filter(item => item.callId !== callRecord.callId),
+										...phoneCalls.filter(item => item.callId !== nextCall.callId && item.sessionId !== nextCall.sessionId),
 										nextCall,
 									].sort((a, b) => b.createdAt - a.createdAt).slice(0, 200)
 									localChanged = true
@@ -1599,46 +1634,60 @@ function AppShell() {
 						}
 					}
 				} else if (
-					signal?.type === 'voice_call_reject_v1' &&
+					(signal?.type === 'voice_call_reject_v1' || signal?.type === 'voice_call_timeout_v1') &&
 					signal.callId &&
 					signal.sessionId
 				) {
 					forgetIncomingVoiceOffer(signal.callId, signal.sessionId)
-					window.dispatchEvent(new CustomEvent('beamio-voice-peer-declined', {
-						detail: { callId: signal.callId, sessionId: signal.sessionId },
-					}))
-					voiceControlConsumed = true
-				} else if (
-					signal?.type === 'voice_call_timeout_v1' &&
-					signal.callId &&
-					signal.sessionId
-				) {
-					forgetIncomingVoiceOffer(signal.callId, signal.sessionId)
-					window.dispatchEvent(new CustomEvent('beamio-voice-peer-timed-out', {
-						detail: { callId: signal.callId, sessionId: signal.sessionId },
-					}))
+					const terminalStatus = signal.type === 'voice_call_timeout_v1' ? 'timed_out' : 'declined'
+					const callRows = Array.isArray(profile.phoneCalls) ? profile.phoneCalls : []
+					const existing = callRows.find((item: PhoneCallRecord) =>
+						item.sessionId === signal.sessionId || item.callId === signal.callId)
+					const merged = mergePhoneCallRecord(existing, {
+						callId: signal.callId,
+						sessionId: signal.sessionId,
+						peerAddress: existing?.peerAddress || signAddr,
+						direction: existing?.direction || 'incoming',
+						status: terminalStatus,
+						createdAt: existing?.createdAt ?? msg.timestamp,
+						endedAt: Number(signal.timestamp) || msg.timestamp,
+					})
+					if (merged) {
+						profile.phoneCalls = [
+							...callRows.filter((item: PhoneCallRecord) => item.sessionId !== merged.sessionId && item.callId !== merged.callId),
+							merged,
+						]
+					}
+					window.dispatchEvent(new CustomEvent(
+						signal.type === 'voice_call_timeout_v1' ? 'beamio-voice-peer-timed-out' : 'beamio-voice-peer-declined',
+						{ detail: { callId: signal.callId, sessionId: signal.sessionId } },
+					))
 					voiceControlConsumed = true
 				} else if (
 					signal?.type === 'voice_end_v1' &&
 					signal.sessionId
 				) {
+					dismissNativeIncomingVoiceCall(String(signal.callId || ''), signal.sessionId)
 					setGlobalIncomingVoiceCall((current) =>
 						current?.signal?.sessionId === signal.sessionId ? null : current,
 					)
 					const callRows = Array.isArray(profile.phoneCalls) ? profile.phoneCalls : []
 					const existing = callRows.find((item: PhoneCallRecord) => item.sessionId === signal.sessionId)
-					profile.phoneCalls = [
-						...callRows.filter((item: PhoneCallRecord) => item.sessionId !== signal.sessionId),
-						{
-							callId: signal.callId,
-							sessionId: signal.sessionId,
-							peerAddress: signAddr,
-							direction: existing?.direction ?? 'incoming',
-							status: 'cancelled',
-							createdAt: existing?.createdAt ?? msg.timestamp,
-							endedAt: Number(signal.timestamp) || msg.timestamp,
-						},
-					]
+					const merged = mergePhoneCallRecord(existing, {
+						callId: signal.callId || existing?.callId || signal.sessionId,
+						sessionId: signal.sessionId,
+						peerAddress: existing?.peerAddress || signAddr,
+						direction: existing?.direction ?? 'incoming',
+						status: 'cancelled',
+						createdAt: existing?.createdAt ?? msg.timestamp,
+						endedAt: Number(signal.timestamp) || msg.timestamp,
+					})
+					if (merged) {
+						profile.phoneCalls = [
+							...callRows.filter((item: PhoneCallRecord) => item.sessionId !== merged.sessionId),
+							merged,
+						]
+					}
 				}
 			} catch {
 				/* Ordinary chat text is not a voice offer. */

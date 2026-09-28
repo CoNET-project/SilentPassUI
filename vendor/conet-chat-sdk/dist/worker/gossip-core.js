@@ -895,9 +895,12 @@ export class GossipCore {
                                 continue;
                             try {
                                 const frame = JSON.parse(payload);
-                                if (frame.type === 'voice_ready') {
+                                if (frame.type === 'voice_ready' && frame.ok === true && String(frame.sessionId || '') === sessionId) {
                                     this.emit.log('info', `voice ready wallet=${String(frame.nodeWallet ?? '')}`);
                                     markReady();
+                                }
+                                else if (frame.type === 'voice_ready') {
+                                    this.emit.log('warn', 'voice ready ignored');
                                 }
                                 if (frame.type === 'voice_frame_v1')
                                     this.emit.voiceFrame(frame);

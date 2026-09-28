@@ -283,6 +283,24 @@ export function createVoiceCallController(options: VoiceCallControllerOptions) {
 		return sentToTemporaryRelay || sentToCaller
 	}
 
+	const notifyRingTimeout = async (): Promise<boolean> => {
+		if (!activeSignal?.callId || !activeSignal.sessionId || !options.peerPgp) return false
+		const timeout = makeVoiceCallSignal({
+			type: 'voice_call_timeout_v1',
+			callId: activeSignal.callId,
+			sessionId: activeSignal.sessionId,
+			from: new ethers.Wallet(options.privateKey).address,
+			to: options.peerEoa,
+			reason: 'timeout',
+		})
+		return sendMessage(
+			options.peerPgp,
+			JSON.stringify(timeout),
+			options.privateKey,
+			selectedEntries.length ? selectedEntries : options.allNodes,
+		)
+	}
+
 	const end = async (notifyPeer = true): Promise<void> => {
 		if (notifyPeer && activeSignal && activeSessionId) {
 			const signal = makeVoiceCallSignal({
@@ -310,6 +328,7 @@ export function createVoiceCallController(options: VoiceCallControllerOptions) {
 		acceptIncoming,
 		rejectIncoming,
 		timeoutIncoming,
+		notifyRingTimeout,
 		end,
 		get activeSessionId() { return activeSessionId },
 		get activeSessionKey() { return activeSessionKey },

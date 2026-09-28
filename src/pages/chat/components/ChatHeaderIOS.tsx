@@ -17,9 +17,6 @@ export type searchResult = {
   
 }
 
-const getImg = (avatarSeed: string) =>
-  `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed).toString()}`
-
 const fmtAddr = (a = "") =>
   a && a !== ethers.ZeroAddress ? `${a.slice(0, 6)}…${a.slice(-4)}` : "—"
 
@@ -117,10 +114,11 @@ export function ChatHeaderIOS({
 				{/* ✅ 关键：用 flex-col items-center，保证头像与胶囊同一中线居中 */}
 				<div className="flex flex-col items-center">
 					<div className="relative z-10">
-						{beamioer?.address ? (
+						{avatarSrc ? (
+							/getFragment|ipfs\.conet\.network/i.test(avatarSrc) ? (
 							<IpfsImg
 							src={avatarSrc}
-							alt="avatar"
+							alt=""
 							className="
 								w-[44px] h-[44px]
 								rounded-full
@@ -129,6 +127,19 @@ export function ChatHeaderIOS({
 								shadow-[0_10px_24px_rgba(15,23,42,0.18)]
 							"
 							/>
+							) : (
+							<img
+							src={avatarSrc}
+							alt=""
+							className="
+								w-[44px] h-[44px]
+								rounded-full
+								object-cover
+								bg-slate-200
+								shadow-[0_10px_24px_rgba(15,23,42,0.18)]
+							"
+							/>
+							)
 						) : (
 							<div
 							className="

@@ -19,7 +19,11 @@ import { pickNonFactoryMerchantAssetUrl } from '@/utils/isFactoryDefaultMerchant
 import { resolveSigningPrivateKeyArmor } from '@/utils/resolveSigningPrivateKeyArmor'
 import { displayFiatPrefixFromCode } from '@/services/currency'
 import { BecomeMemberSheet } from '@/components/Home/BecomeMemberSheet'
-import { formatMembershipFeeE6Display } from '@/utils/discoverMembershipFee'
+import {
+	formatMembershipFeeE6Display,
+	pickActiveDiscoverMembershipNft,
+} from '@/utils/discoverMembershipFee'
+import { formatWalletMembershipMemberNo } from '@/pages/Wallet/walletMerchantPassDisplay'
 import {
 	loadMembershipKycPolicy,
 	membershipJoinShouldShowKyc,
@@ -109,7 +113,7 @@ function forgetPendingStripeSession(key: string): void {
 
 const QUICK = ['10', '20', '50', '100'] as const
 
-type Step = 'amount' | 'pay' | 'select' | 'confirm' | 'stripeWaiting' | 'success' | 'failed'
+type Step = 'amount' | 'pay' | 'select' | 'confirm' | 'stripeWaiting' | 'claiming' | 'success' | 'failed'
 type PaymentMethod = 'card' | 'usdc'
 
 type SeedReward13Assets = {
@@ -197,6 +201,18 @@ async function refreshMyAssetsAfterSuccessfulTopup(
 	} catch {
 		return undefined
 	}
+}
+
+function formatMembershipValidUntil(expiry: string | undefined): string {
+	const raw = expiry?.trim() ?? ''
+	if (!raw || raw === 'Never' || raw === '0') return 'Lifetime'
+	const parsed = new Date(raw)
+	if (Number.isNaN(parsed.getTime())) return raw
+	return new Intl.DateTimeFormat('en-US', {
+		month: 'short',
+		day: 'numeric',
+		year: 'numeric',
+	}).format(parsed)
 }
 
 function merchantInitials(name: string): string {
@@ -521,6 +537,8 @@ export default function MerchantCardTopUpFlow({
 	const stripeBusinessKeyRef = useRef<string | null>(null)
 	const [mintedLabel, setMintedLabel] = useState('0.00')
 	const [successNote, setSuccessNote] = useState('')
+	const [successAssets, setSuccessAssets] = useState<MyCardAssets | null>(null)
+	const [successAssetsPending, setSuccessAssetsPending] = useState(false)
 	const [usedManual, setUsedManual] = useState(false)
 	const [legs, setLegs] = useState<CoverLeg[]>([])
 	const [sharing, setSharing] = useState(false)
@@ -701,7 +719,12 @@ export default function MerchantCardTopUpFlow({
 						setStripePaymentMessage('Payment completed. Your store credits are now available.')
 						const currentQuote = stripeCreditQuoteRef.current
 						setMintedLabel(currentQuote ? currentQuote.total.toFixed(2) : Number(stripeFiatHumanRef.current).toFixed(2))
+						setSuccessAssetsPending(true)
 						setStep('success')
+						void refreshMyAssetsAfterSuccessfulTopup(profile, cardAddress).then((assets) => {
+							if (assets) setSuccessAssets(assets)
+							setSuccessAssetsPending(false)
+						})
 						stripeOnSuccessRef.current?.()
 					} else if (body.fulfillmentStatus === 'fulfillment_failed' || body.status === 'failed') {
 						forgetPendingStripeSession(stripePendingStorageKey)
@@ -819,7 +842,12 @@ export default function MerchantCardTopUpFlow({
 					setStripePaymentOutcome('success')
 					const currentQuote = stripeCreditQuoteRef.current
 					setMintedLabel(currentQuote ? currentQuote.total.toFixed(2) : Number(stripeFiatHumanRef.current).toFixed(2))
+					setSuccessAssetsPending(true)
 					setStep('success')
+					void refreshMyAssetsAfterSuccessfulTopup(profile, cardAddress).then((assets) => {
+						if (assets) setSuccessAssets(assets)
+						setSuccessAssetsPending(false)
+					})
 					stripeOnSuccessRef.current?.()
 					return
 				}
@@ -994,6 +1022,8 @@ export default function MerchantCardTopUpFlow({
 		setPayError('')
 		setPayBusy(false)
 		setSuccessNote('')
+		setSuccessAssets(null)
+		setSuccessAssetsPending(false)
 		setStripePaymentOutcome('pending')
 		setSharing(false)
 		setShareCopied(false)
@@ -1379,28 +1409,45 @@ export default function MerchantCardTopUpFlow({
 		const wallet = profile.keyID?.trim()
 		if (!key || !wallet) {
 			setPayError('Sign in to claim membership.')
+			setStep('failed')
 			return
 		}
-		setPayBusy(true)
 		setPayError('')
+		setStep('claiming')
+		setPayBusy(true)
 		void (async () => {
 			try {
-				const claimed = await postClaimFreeMembership({
+				const kycNotLinked = 'Add your membership details before this membership can be issued.'
+				let claimed = await postClaimFreeMembership({
 					cardAddress,
 					tierIndex,
 					wallet,
 					privateKeyArmor: key,
 				})
+				for (let attempt = 0; !claimed.success && claimed.error === kycNotLinked && attempt < 4; attempt += 1) {
+					await new Promise((resolve) => {
+						window.setTimeout(resolve, 2000)
+					})
+					claimed = await postClaimFreeMembership({
+						cardAddress,
+						tierIndex,
+						wallet,
+						privateKeyArmor: key,
+					})
+				}
 				if (!claimed.success) {
 					setPayError(claimed.error || 'Membership claim failed')
 					setStep('failed')
 					return
 				}
-				const assets = await getMyAssets(profile, cardAddress).catch(() => undefined)
 				setMintedLabel('0.00')
 				setSuccessNote('Membership is active.')
+				setSuccessAssetsPending(true)
 				setStep('success')
-				onSuccess?.(assets || undefined)
+				const assets = await refreshMyAssetsAfterSuccessfulTopup(profile, cardAddress)
+				if (assets) setSuccessAssets(assets)
+				setSuccessAssetsPending(false)
+				onSuccess?.(assets)
 			} catch (e: unknown) {
 				setPayError(e instanceof Error ? e.message : 'Membership claim failed')
 				setStep('failed')
@@ -1692,6 +1739,7 @@ export default function MerchantCardTopUpFlow({
 					})
 					if (localPay.ok) {
 						assets = await refreshMyAssetsAfterSuccessfulTopup(profile, cardAddress)
+						if (assets) setSuccessAssets(assets)
 						setMintedLabel(creditQuote ? creditQuote.total.toFixed(2) : Number(fiatHuman).toFixed(2))
 						setStep('success')
 						onSuccess?.(assets)
@@ -1753,6 +1801,7 @@ export default function MerchantCardTopUpFlow({
 				throw new Error('Nothing to top up')
 			}
 
+			if (assets) setSuccessAssets(assets)
 			setMintedLabel(creditQuote ? creditQuote.total.toFixed(2) : Number(fiatHuman).toFixed(2))
 			setStep('success')
 			onSuccess?.(assets)
@@ -1812,6 +1861,23 @@ export default function MerchantCardTopUpFlow({
 	}
 
 	const membershipCongrats = Boolean(successNote) && mintedLabel === '0.00'
+	const successMembership = pickActiveDiscoverMembershipNft(successAssets?.nfts)
+	const successMemberNo = successMembership
+		? formatWalletMembershipMemberNo(successMembership.tokenId)
+		: ''
+	const successValidUntil = successMembership
+		? formatMembershipValidUntil(successMembership.expiry)
+		: ''
+	const refreshedCredits = Number(successAssets?.points)
+	const previousCredits = Number(storeCreditsPoints || 0)
+	const addedCredits = Number(mintedLabel || 0)
+	const successCreditsAmount = Number.isFinite(refreshedCredits)
+		? refreshedCredits.toFixed(2)
+		: (
+				(Number.isFinite(previousCredits) ? previousCredits : 0) +
+				(membershipCongrats || !Number.isFinite(addedCredits) ? 0 : addedCredits)
+			).toFixed(2)
+	const showSuccessMembership = Boolean(successMemberNo) || successAssetsPending
 	const title =
 		step === 'amount'
 			? stripeKind === 'membership' ? 'Join or Top Up' : 'Top Up'
@@ -3133,6 +3199,25 @@ export default function MerchantCardTopUpFlow({
 						</div>
 					)}
 
+					{step === 'claiming' && (
+						<div className="flex flex-1 flex-col items-center px-1 pt-16 text-center">
+							<Loader2
+								className="h-14 w-14 animate-spin"
+								style={{ color: merchantBrandActionColor }}
+								aria-hidden
+							/>
+							<h1 className="mt-7 text-[1.75rem] font-bold tracking-tight text-[#1c1c1e] dark:text-slate-100">
+								Claiming your membership
+							</h1>
+							<p
+								className="mt-3 max-w-sm text-[15px] leading-relaxed dark:text-slate-400"
+								style={{ color: merchantBrandMutedColor }}
+							>
+								This takes a moment. You will see the result on this screen.
+							</p>
+						</div>
+					)}
+
 					{step === 'failed' && (
 						<div className="flex flex-1 flex-col items-center px-1 pt-16 text-center">
 							<AlertTriangle className="h-16 w-16 text-amber-500" aria-hidden />
@@ -3198,7 +3283,66 @@ export default function MerchantCardTopUpFlow({
 								</p>
 							) : null}
 
-							<div className="mt-10 w-full max-w-sm rounded-[28px] bg-white px-5 py-7 text-center shadow-[0_12px_40px_rgba(15,23,42,0.08)] dark:bg-slate-900 dark:shadow-none">
+							<div
+								className="mt-8 w-full max-w-sm overflow-hidden rounded-[1.75rem] p-5 text-left shadow-[0_16px_40px_rgba(15,23,42,0.16)]"
+								style={{
+									backgroundColor: merchantBrandActionColor,
+									color: merchantBrandTextColor,
+								}}
+							>
+								<div className="flex items-start justify-between gap-3">
+									<div className="flex min-w-0 items-center gap-3">
+										{displayMerchantIcon ? (
+											<IpfsImg
+												src={displayMerchantIcon}
+												alt=""
+												className="h-11 w-11 shrink-0 rounded-full object-cover"
+											/>
+										) : (
+											<div
+												className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-sm font-bold"
+												style={{ backgroundColor: 'rgba(255,255,255,0.18)' }}
+												aria-hidden
+											>
+												{merchantInitials(displayMerchantName)}
+											</div>
+										)}
+										<p className="min-w-0 truncate text-[17px] font-bold leading-tight">
+											{displayMerchantName}
+										</p>
+									</div>
+									{showSuccessMembership ? (
+										<p className="shrink-0 text-lg font-black tabular-nums tracking-tight">
+											{successMemberNo || '…'}
+										</p>
+									) : null}
+								</div>
+								<div className="mt-8 flex items-end justify-between gap-4">
+									{showSuccessMembership ? (
+										<div className="min-w-0">
+											<p className="text-[11px] font-semibold uppercase tracking-[0.14em] opacity-80">
+												{successValidUntil === 'Lifetime' ? 'Validity' : 'Valid until'}
+											</p>
+											<p className="mt-1 text-[17px] font-semibold">
+												{successValidUntil || '…'}
+											</p>
+										</div>
+									) : (
+										<div className="min-w-0" />
+									)}
+									<div className="shrink-0 text-right">
+										<p className="text-[11px] font-semibold uppercase tracking-[0.14em] opacity-80">
+											Store Credits
+										</p>
+										<p className="mt-1 text-[17px] font-semibold tabular-nums">
+											{prefix}
+											{successCreditsAmount}
+										</p>
+									</div>
+								</div>
+							</div>
+
+							<div className="mt-6 w-full max-w-sm rounded-[28px] bg-white px-5 py-7 text-center shadow-[0_12px_40px_rgba(15,23,42,0.08)] dark:bg-slate-900 dark:shadow-none">
 								<div
 									className="mx-auto flex h-12 w-12 items-center justify-center rounded-full"
 									style={{

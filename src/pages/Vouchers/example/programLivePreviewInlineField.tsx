@@ -24,6 +24,11 @@ type ProgramLivePreviewInlineFieldProps = {
    * Leaving without typing does not write the seed back (avoids a false dirty state).
    */
   emptyEditSeed?: string;
+  /**
+   * Seed the editor from this string on the same click, including an explicit "0".
+   * `onEditStart` setState does not reach `editDraft` until the next render.
+   */
+  editSeed?: string;
   /** Called when edit mode closes (blur or Escape). */
   onCommit?: () => void;
   /** Called immediately before entering edit mode (e.g. sync draft from displayed tier). */
@@ -48,6 +53,7 @@ export function ProgramLivePreviewInlineField({
   displayClassName = '',
   emptyDisplay = 'Empty',
   emptyEditSeed,
+  editSeed,
   onCommit,
   onEditStart,
 }: ProgramLivePreviewInlineFieldProps) {
@@ -139,7 +145,10 @@ export function ProgramLivePreviewInlineField({
       disabled={disabled}
       onClick={() => {
         onEditStart?.();
-        setEditDraft(value.trim() ? value : (emptyEditSeed ?? value));
+        const preferred = editSeed != null ? editSeed.replace(/,/g, '') : value;
+        const seeded = preferred.trim() ? preferred : (emptyEditSeed ?? preferred);
+        setEditDraft(seeded);
+        if (editSeed != null && seeded !== value) onChange(seeded);
         setEditing(true);
       }}
       className={`group w-full rounded-lg text-left transition-colors hover:bg-[#1562f0]/[0.04] disabled:cursor-not-allowed disabled:opacity-60 ${className} ${focusRingClass}`}

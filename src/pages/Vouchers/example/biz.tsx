@@ -13274,18 +13274,33 @@ function cardIssuanceMembershipRowsFromMetadata(
 ): CardIssuanceTierRow[] {
   const higherRows = cardIssuanceTierRowsFromMetadata(tiers ?? []);
   if (!baseMembership) return higherRows;
+  const feeFromE6 = membershipFeeE6ToHuman(baseMembership.membershipFeeE6);
+  const feeFromHuman =
+    baseMembership.membershipFee != null && String(baseMembership.membershipFee).trim() !== ''
+      ? String(baseMembership.membershipFee).replace(/,/g, '').trim()
+      : '';
+  const durationKind = normalizeMembershipDurationKind(baseMembership.membershipDurationKind);
+  let explicitZeroFee = false;
+  try {
+    explicitZeroFee =
+      baseMembership.membershipFeeE6 != null &&
+      String(baseMembership.membershipFeeE6).trim() !== '' &&
+      BigInt(String(baseMembership.membershipFeeE6).replace(/,/g, '').trim() || '0') === 0n;
+  } catch {
+    explicitZeroFee = false;
+  }
   const feeHuman =
-    membershipFeeE6ToHuman(baseMembership.membershipFeeE6) ||
-    (baseMembership.membershipFee != null ? String(baseMembership.membershipFee).replace(/,/g, '').trim() : '');
+    feeFromE6 || feeFromHuman || (explicitZeroFee && durationKind >= 1 ? '0' : '');
+  const freeClaim =
+    membershipFeeInputKeepsDuration(feeHuman) && Number(feeHuman) === 0 && durationKind >= 1;
   const baseRow = makeCardIssuanceTierRow({
     id: CARD_ISSUANCE_SINGLE_TIER_ID,
     name: 'Base',
     preset: 'silver',
-    threshold: String(CARD_ISSUANCE_MIN_TOPUP_DEFAULT),
+    threshold: CARD_ISSUANCE_REWARDS_SETUP_AMOUNT_DEFAULT,
     membershipFee: feeHuman,
-    membershipDurationKind: BigInt(membershipFeeHumanToE6(feeHuman)) > 0n
-      ? normalizeMembershipDurationKind(baseMembership.membershipDurationKind) || 3
-      : 0,
+    membershipDurationKind:
+      BigInt(membershipFeeHumanToE6(feeHuman)) > 0n || freeClaim ? durationKind || 3 : 0,
   });
   return [
     baseRow,
@@ -14409,6 +14424,8 @@ const cardIssuanceCouponEditingIssued = Boolean(cardIssuanceEditingCouponRow?.is
  const [cardIssuancePointSystemEnabled, setCardIssuancePointSystemEnabled] = useState(false);
  const [cardIssuancePointRatioInput, setCardIssuancePointRatioInput] = useState('100');
  const [cardIssuanceMerchantTextSaving, setCardIssuanceMerchantTextSaving] = useState(false);
+ /** True after the merchant edits Membership fee, so an explicit 1 is not treated as the unset placeholder. */
+ const programBasicMembershipFeeEditedRef = useRef(false);
  const [cardIssuanceMinTopup, setCardIssuanceMinTopup] = useState(CARD_ISSUANCE_REWARDS_SETUP_AMOUNT_DEFAULT);
  const [cardIssuanceMaxTopup, setCardIssuanceMaxTopup] = useState(String(CARD_ISSUANCE_MAX_TOPUP_DEFAULT));
  /** `{ passive: false }` wheel listeners — React `onWheel` alone may not block number input step (Chromium). */
@@ -16303,7 +16320,7 @@ useEffect(() => {
   cardIssuanceTierRule,
 ]);
 
-/** Existing membership-fee cards: keep Rewards setup amount aligned with base tier metadata (default is $1). */
+/** Existing membership-fee cards: the editor amount is the published fee, including an explicit 0. */
 useEffect(() => {
   if (!cardIssuanceExistingCard?.cardAddress) return;
   if (!cardIssuanceMembershipFeeMode || !cardIssuanceBaseTier) return;
@@ -16319,14 +16336,17 @@ useEffect(() => {
    setCardIssuanceRewardsSetupAmount((prev) => {
     const prevNorm = prev.replace(/,/g, '').trim();
     if (prevNorm === feeRaw) return prev;
-    if (prevNorm === CARD_ISSUANCE_REWARDS_SETUP_AMOUNT_DEFAULT) return feeRaw;
-    return prev;
+    return feeRaw;
   });
 }, [
   cardIssuanceExistingCard?.cardAddress,
   cardIssuanceMembershipFeeMode,
   cardIssuanceBaseTier?.membershipFee,
 ]);
+
+useEffect(() => {
+  programBasicMembershipFeeEditedRef.current = false;
+}, [cardIssuanceExistingCard?.cardAddress]);
 
 useEffect(() => {
   if (!cardIssuanceExistingCard?.cardAddress || !cardIssuanceExistingCard.meta) return;
@@ -17401,7 +17421,7 @@ const cardIssuanceEffectiveMerchantLogo = useMemo(() => {
      threshold > 0
        ? `${cardIssuanceDisplayMoneyPrefix}${threshold.toLocaleString('en-US')}`
        : null;
-   return { feeDisplay, durationLabel, minCreditDisplay, durationKind };
+   return { feeDisplay, durationLabel, minCreditDisplay, durationKind, feeEditSeed: feeRaw };
  }, [
    cardIssuanceMembershipFeeMode,
    cardIssuanceBaseTier,
@@ -17432,7 +17452,9 @@ const cardIssuanceEffectiveMerchantLogo = useMemo(() => {
      const amountDraft = opts?.amount ?? cardIssuanceRewardsSetupAmount;
      const amountNorm = amountDraft.replace(/,/g, '').trim();
      const resolvedAmount =
-       amountNorm === CARD_ISSUANCE_REWARDS_SETUP_AMOUNT_DEFAULT && tierFeeRaw
+       !programBasicMembershipFeeEditedRef.current &&
+       amountNorm === CARD_ISSUANCE_REWARDS_SETUP_AMOUNT_DEFAULT &&
+       tierFeeRaw
          ? tierFeeRaw
          : amountDraft;
      applyCardIssuanceRewardsSetup({
@@ -17907,8 +17929,15 @@ const merchantPanelTextDirty = useMemo(() => {
   const meta = cardIssuanceExistingCard?.meta;
   if (!meta) return false;
   const savedName = (meta.name ?? cardIssuanceExistingCard?.userCard.name ?? '').trim();
-  const savedDesc = (meta.description ?? '').trim();
-  const savedDisplay = (meta.displayName ?? '').trim();
+  const savedDesc = (meta.description ?? '').trim().slice(0, CARD_ISSUANCE_CONFIGURATION_MAX_CHARS);
+  const savedDisplay = (meta.displayName ?? '').trim().slice(0, CARD_ISSUANCE_STORE_DISPLAY_NAME_MAX);
+  const savedAbout = buildDiscoverAboutMetadataPayload({
+    welcomeTitle: meta.discoverAbout?.welcomeTitle ?? '',
+    detail: meta.discoverAbout?.detail ?? '',
+    openingHours: meta.discoverAbout?.openingHours ?? '',
+    contact: meta.discoverAbout?.contact ?? '',
+    location: meta.discoverAbout?.location ?? '',
+  });
   const draftAbout = buildDiscoverAboutMetadataPayload({
     welcomeTitle: cardIssuanceDiscoverWelcomeTitle,
     detail: cardIssuanceDiscoverAboutDetail,
@@ -17919,8 +17948,8 @@ const merchantPanelTextDirty = useMemo(() => {
   return (
     cardIssuanceProgramName.trim() !== savedName ||
     cardIssuanceDescription.trim() !== savedDesc ||
-    cardIssuanceStoreDisplayName.trim() !== savedDisplay ||
-    !discoverAboutFieldsEqual(draftAbout, meta.discoverAbout)
+    cardIssuanceStoreDisplayName.trim().slice(0, CARD_ISSUANCE_STORE_DISPLAY_NAME_MAX) !== savedDisplay ||
+    !discoverAboutFieldsEqual(draftAbout, savedAbout)
   );
 }, [
   cardIssuanceExistingCard?.meta,
@@ -17984,7 +18013,36 @@ const programBasicTiersDirty = useMemo(() => {
   });
 }, [cardIssuanceExistingCard?.meta?.tiers, cardIssuanceTiers]);
 
-const programBasicPanelDirty = merchantPanelTextDirty || programBasicReloadDirty || programBasicTiersDirty;
+/** Membership fee + Valid for, compared with the published base plan (including an explicit 0). */
+const programBasicMembershipScheduleDirty = useMemo(() => {
+  if (!cardIssuanceMembershipFeeMode || !cardIssuanceBaseTier || !cardIssuanceExistingCard?.meta) {
+    return false;
+  }
+  const baseline = cardIssuanceMembershipRowsFromMetadata(
+    cardIssuanceExistingCard.meta.baseMembership,
+    cardIssuanceExistingCard.meta.tiers,
+  )[0];
+  if (!baseline) return false;
+  const normFee = (raw: string | undefined) => (raw ?? '').replace(/,/g, '').trim();
+  const savedFee = normFee(baseline.membershipFee);
+  const draftFee = normFee(cardIssuanceBaseTier.membershipFee);
+  const typedFee = normFee(cardIssuanceRewardsSetupAmount);
+  const savedDuration = normalizeMembershipDurationKind(baseline.membershipDurationKind);
+  const draftDuration = normalizeMembershipDurationKind(cardIssuanceBaseTier.membershipDurationKind);
+  const typedFeeDirty =
+    programBasicMembershipFeeEditedRef.current && typedFee !== '' && typedFee !== savedFee;
+  return draftFee !== savedFee || draftDuration !== savedDuration || typedFeeDirty;
+}, [
+  cardIssuanceMembershipFeeMode,
+  cardIssuanceBaseTier,
+  cardIssuanceExistingCard?.meta,
+  cardIssuanceRewardsSetupAmount,
+]);
+
+const programBasicPanelDirty =
+  merchantPanelTextDirty ||
+  programBasicMembershipScheduleDirty ||
+  (!cardIssuanceMembershipFeeMode && (programBasicReloadDirty || programBasicTiersDirty));
 
 const confirmLeavingProgramBasic = useCallback(
   (nextTab?: string) => {
@@ -25603,6 +25661,7 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
     const membershipFeeAmountRaw = (() => {
       const tierFee = cardIssuanceBaseTier?.membershipFee.replace(/,/g, '').trim() ?? '';
       const draft = cardIssuanceRewardsSetupAmount.replace(/,/g, '').trim();
+      if (programBasicMembershipFeeEditedRef.current && draft !== '') return draft;
       if (draft && draft !== CARD_ISSUANCE_REWARDS_SETUP_AMOUNT_DEFAULT) return draft;
       if (tierFee) return tierFee;
       return CARD_ISSUANCE_REWARDS_SETUP_AMOUNT_DEFAULT;
@@ -25614,8 +25673,21 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
           normalizeMembershipDurationKind(cardIssuanceBaseTier?.membershipDurationKind) || 3
         )
       : undefined;
+    const publishedBaseRow = tiersOverrideForMembershipFee?.[0];
+    const publishedBaseMembership = publishedBaseRow
+      ? {
+          ...(cardIssuanceExistingCard?.meta?.baseMembership ?? {}),
+          membershipFee: publishedBaseRow.membershipFee,
+          membershipFeeE6: membershipFeeHumanToE6(publishedBaseRow.membershipFee),
+          membershipDurationKind: normalizeMembershipDurationKind(
+            publishedBaseRow.membershipDurationKind,
+          ),
+        }
+      : undefined;
     const metadataOk = await handlePublishCardIssuanceRef.current({
-      metadataOnly: !programBasicReloadDirty && !programBasicTiersDirty,
+      metadataOnly: cardIssuanceMembershipFeeMode
+        ? !programBasicMembershipScheduleDirty
+        : !programBasicReloadDirty && !programBasicTiersDirty,
       loadingScope: 'bonusEditor',
       skipOnChainRefresh: true,
       ...(membershipFeePublishCtx
@@ -25659,6 +25731,7 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
                    ...(discoverAboutSaved
                      ? { discoverAbout: discoverAboutSaved }
                      : { discoverAbout: undefined }),
+                   ...(publishedBaseMembership ? { baseMembership: publishedBaseMembership } : {}),
                    ...(programBasicReloadDirty && Number.isFinite(parsedMin)
                      ? { minimumTopupCad: parsedMin }
                      : {}),
@@ -25682,6 +25755,7 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
                    ...(trimmedDesc ? { description: trimmedDesc } : {}),
                    ...(trimmedDisplay ? { displayName: trimmedDisplay } : {}),
                    ...(discoverAboutSaved ? { discoverAbout: discoverAboutSaved } : {}),
+                   ...(publishedBaseMembership ? { baseMembership: publishedBaseMembership } : {}),
                    ...(programBasicReloadDirty && Number.isFinite(parsedMin)
                      ? { minimumTopupCad: parsedMin }
                      : {}),
@@ -25703,9 +25777,10 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
            }
          : prev
      );
+     programBasicMembershipFeeEditedRef.current = false;
      setCardIssuanceOwnerAdminNotice({
        kind: 'ok',
-      text: programBasicReloadDirty || programBasicTiersDirty
+      text: programBasicReloadDirty || programBasicTiersDirty || programBasicMembershipScheduleDirty
          ? 'Program profile and reload limits published. Discover and consumer apps will refresh after a short cache delay.'
          : 'Merchant profile published. Discover and consumer apps will refresh after a short cache delay.',
      });
@@ -25726,6 +25801,7 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
    cardIssuanceDiscoverAboutLocation,
    programBasicReloadDirty,
   programBasicTiersDirty,
+  programBasicMembershipScheduleDirty,
    cardIssuanceRechargeLimitError,
    cardIssuanceMinTopup,
    cardIssuanceMaxTopup,
@@ -42980,6 +43056,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                              <ProgramLivePreviewInlineField
                                label={tu('programs_overview_membership_fee_amount')}
                                value={cardIssuanceRewardsSetupAmount}
+                               editSeed={programsOverviewMembershipFeeDisplay.feeEditSeed}
                                onChange={(v) => {
                                  const raw = v.replace(/,/g, '');
                                  if (raw !== '' && !/^\d*\.?\d*$/.test(raw)) return;
@@ -43266,7 +43343,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                            !programBasicPanelDirty ||
                            !cardIssuanceProgramName.trim()
                          }
-                         className={`inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-[#1562f0] px-4 py-2.5 text-xs font-black uppercase tracking-wider text-white shadow-sm transition-colors hover:bg-[#0d4ec4] disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
+                         className={`inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-[#1562f0] px-4 py-2.5 text-xs font-black uppercase tracking-wider text-white shadow-sm transition-colors hover:bg-[#0d4ec4] disabled:cursor-not-allowed disabled:bg-[#d7dbe3] disabled:text-[#5c5f66] disabled:shadow-none disabled:hover:bg-[#d7dbe3] ${bizFocusRingClass}`}
                        >
                          {cardIssuanceMerchantTextSaving ? (
                            <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.4} aria-hidden />
@@ -44541,9 +44618,11 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                          <ProgramLivePreviewInlineField
                            label={tu('programs_overview_membership_fee_amount')}
                            value={cardIssuanceRewardsSetupAmount}
+                           editSeed={programsOverviewMembershipFeeDisplay?.feeEditSeed}
                            onChange={(v) => {
                              const raw = v.replace(/,/g, '');
                              if (raw !== '' && !/^\d*\.?\d*$/.test(raw)) return;
+                             programBasicMembershipFeeEditedRef.current = true;
                              setCardIssuanceRewardsSetupAmount(raw);
                            }}
                            onEditStart={syncMembershipFeeRewardsSetupAmountFromTier}

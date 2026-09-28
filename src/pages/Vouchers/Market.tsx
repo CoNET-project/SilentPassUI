@@ -85,7 +85,7 @@ import { checkStorage, searchUsername } from "@/services/beamio"
 import BeamioContactProfilePreview from "@/components/Home/BeamioContactProfilePreview"
 import DiscoverMerchantGiftSheet from "@/components/Home/DiscoverMerchantGiftSheet"
 import { fiatPrefix, formatAmount } from "@/services/currency"
-import { getMyAssetsAggregated, getMyAssets, peekGetMyAssetsCache, getCardTiersFromContract, getCardUpgradeTypeFromContract, quoteUSDCToCAD, postUSDCUserCardTopup, safeUsdc6ToAmountString, currencyAmountToSafeUsdc6, fetchCardActiveIssuedCouponSeriesTrusted, postCardCouponOpenClaimWithCurrentWallet, postCardRecordUserLikeWithCurrentWallet, resolveCouponOpenClaimEligibility, merchantBackgroundImageFromMetadataRoot, merchantIconUrlFromMetadataRoot, getCardOwner, getCardPosAdminEoas, readUserSocialPoints13BalanceOnCard, type CardActiveIssuedCouponSeriesItem, type CardMetadataFromUri, type CouponOpenClaimEligibility, type USDCUserCardTopupIntent } from "@/services/BeamioCard"
+import { getMyAssetsAggregated, getMyAssets, peekGetMyAssetsCache, getCardTiersFromContract, getCardUpgradeTypeFromContract, quoteUSDCToCAD, postUSDCUserCardTopup, postClaimFreeMembership, safeUsdc6ToAmountString, currencyAmountToSafeUsdc6, fetchCardActiveIssuedCouponSeriesTrusted, postCardCouponOpenClaimWithCurrentWallet, postCardRecordUserLikeWithCurrentWallet, resolveCouponOpenClaimEligibility, merchantBackgroundImageFromMetadataRoot, merchantIconUrlFromMetadataRoot, getCardOwner, getCardPosAdminEoas, readUserSocialPoints13BalanceOnCard, type CardActiveIssuedCouponSeriesItem, type CardMetadataFromUri, type CouponOpenClaimEligibility, type USDCUserCardTopupIntent } from "@/services/BeamioCard"
 import {
 	couponOpenClaimEligibilityFromLocal,
 	pickCouponOpenClaimStatusFromMap,
@@ -1509,6 +1509,10 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 	topUpDisabled,
 	actionsDisabled,
 	visitError,
+	activateLabel = 'Top Up to Activate',
+	activateBusy = false,
+	activateError = '',
+	hideDiningAutoActivate = false,
 }: {
 	passTitle: string
 	chargePercent: number | null
@@ -1530,6 +1534,10 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 	topUpDisabled: boolean
 	actionsDisabled: boolean
 	visitError: string | null
+	activateLabel?: string
+	activateBusy?: boolean
+	activateError?: string
+	hideDiningAutoActivate?: boolean
 }) {
 	const brand = brandColor.trim() || DISCOVER_FOOD_BEVERAGE_PASS_FALLBACK
 	const brandTheme = cardTierGradientTheme(brand)
@@ -1615,14 +1623,31 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 			<button
 				type="button"
 				onClick={onActivateTopUp}
-				disabled={topUpDisabled}
+				disabled={topUpDisabled || activateBusy}
+				aria-busy={activateBusy}
+				aria-label={activateLabel}
 				className="flex w-full items-center justify-center gap-2.5 rounded-2xl px-4 py-3.5 text-[15px] font-bold text-white shadow-[0_10px_28px_rgba(75,69,61,0.35)] transition-colors duration-150 hover:brightness-110 disabled:opacity-60"
 				style={{ backgroundColor: brand }}
 			>
-				<Wallet className="h-5 w-5 shrink-0 opacity-90" strokeWidth={2.25} aria-hidden />
-				Top Up to Activate
+				{activateBusy ? (
+					<Loader2 className="h-5 w-5 shrink-0 animate-spin" aria-hidden />
+				) : (
+					<Wallet className="h-5 w-5 shrink-0 opacity-90" strokeWidth={2.25} aria-hidden />
+				)}
+				{activateLabel}
 			</button>
 
+			{activateError ? (
+				<div
+					role="alert"
+					className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] font-medium text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-100"
+				>
+					<AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+					<p>{activateError}</p>
+				</div>
+			) : null}
+
+			{hideDiningAutoActivate ? null : (
 			<p className="text-center text-[12px] leading-snug text-[#5c6570] dark:text-slate-400">
 				or auto-activates on your{' '}
 				<button
@@ -1634,6 +1659,7 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 					First Dining Order &amp; Spend
 				</button>
 			</p>
+			)}
 
 			<DiscoverMerchantVisitActionsBlock
 				brandColor={brand}
@@ -3397,7 +3423,9 @@ function discoverMetadataHasMembershipFee(meta: Record<string, unknown> | null):
 		} else {
 			feeE6 = membershipFeeHumanToE6(o.membershipFee as string | number | undefined)
 		}
+		const durationKind = Number(o.membershipDurationKind ?? 0)
 		if (BigInt(feeE6) > 0n) return true
+		if (BigInt(feeE6) === 0n && durationKind >= 1 && durationKind <= 6) return true
 	}
 	const raw = meta.tiers
 	if (!Array.isArray(raw)) return false
@@ -3414,7 +3442,9 @@ function discoverMetadataHasMembershipFee(meta: Record<string, unknown> | null):
 		} else {
 			feeE6 = membershipFeeHumanToE6(o.membershipFee as string | number | undefined)
 		}
+		const durationKind = Number(o.membershipDurationKind ?? 0)
 		if (BigInt(feeE6) > 0n) return true
+		if (BigInt(feeE6) === 0n && durationKind >= 1 && durationKind <= 6) return true
 	}
 	return false
 }
@@ -3506,7 +3536,19 @@ function parseDiscoverAllTiersFromMeta(meta: Record<string, unknown> | null): Di
 			const row = parseOne(item, i + 1, `Tier ${i + 1}`)
 			if (row) higher.push({ ...row, index: row.index ?? i + 1 })
 		})
-		if (base && BigInt(discoverTierMembershipFeeE6(base)) > 0n) {
+		const baseFeeE6 = base ? discoverTierMembershipFeeE6(base) : '0'
+		const basePublished =
+			base != null &&
+			(() => {
+				try {
+					const fee = BigInt(baseFeeE6)
+					const durationKind = base.membershipDurationKind ?? 0
+					return fee > 0n || (fee === 0n && durationKind >= 1 && durationKind <= 6)
+				} catch {
+					return false
+				}
+			})()
+		if (base && basePublished) {
 			return [{ ...base, index: 0, name: base.name || 'Membership', minUsdc6: base.minUsdc6 > 0n ? base.minUsdc6 : 1n }, ...higher]
 		}
 		return higher
@@ -6627,7 +6669,10 @@ function DiscoverMerchantDetailFullScreen({
 		allTiers.forEach((t, i) => {
 			const feeE6 = discoverTierMembershipFeeE6(t)
 			try {
-				if (BigInt(feeE6) <= 0n) return
+				const fee = BigInt(feeE6)
+				const durationKind = t.membershipDurationKind ?? 0
+				if (fee < 0n) return
+				if (fee === 0n && (durationKind < 1 || durationKind > 6)) return
 			} catch {
 				return
 			}
@@ -6654,11 +6699,10 @@ function DiscoverMerchantDetailFullScreen({
 		Boolean(item.cardAddress) &&
 		usdcTopupPhase === 'idle' &&
 		!discoverTopUpOpen &&
-		(!merchantAssetsLoading || membershipUi.mode === 'need_member') &&
+		!merchantAssetsLoading &&
 		(membershipUi.mode === 'no_fee' ||
 			membershipUi.mode === 'member_topup_only' ||
-			membershipUi.mode === 'can_upgrade' ||
-			membershipUi.mode === 'need_member')
+			membershipUi.mode === 'can_upgrade')
 	const storeCreditsPromoBadge = useMemo(
 		() =>
 			resolveDiscoverTopupPromotionStoreCreditsBadge({
@@ -7281,7 +7325,7 @@ function DiscoverMerchantDetailFullScreen({
 
 	const refreshMerchantAssets = useCallback((opts?: { force?: boolean }) => {
 		if (!profile?.keyID || !item.cardAddress) return
-		getMyAssets(profile, item.cardAddress)
+		return getMyAssets(profile, item.cardAddress)
 			.then((res) => {
 				if (res == null) return
 				const incoming = discoverMerchantProgramPresentationFromAssets(res)
@@ -7567,6 +7611,9 @@ function DiscoverMerchantDetailFullScreen({
 	}, [freezeMerchantProgramPresentation])
 
 	const membershipKycDone = useRef<((ok: boolean) => void) | null>(null)
+	const freeMembershipClaimInFlight = useRef(false)
+	const [freeMembershipClaiming, setFreeMembershipClaiming] = useState(false)
+	const [freeMembershipClaimError, setFreeMembershipClaimError] = useState('')
 	const [membershipKyc, setMembershipKyc] = useState<null | {
 		policy: MembershipKycFormPolicy
 		card: string
@@ -7640,10 +7687,70 @@ function DiscoverMerchantDetailFullScreen({
 		profiles,
 	])
 
+	const claimDiscoverFreeMembership = useCallback(() => {
+		const tier = membershipUi.joinTier
+		if (!tier || freeMembershipClaimInFlight.current) return
+		if (BigInt(tier.feeE6) !== 0n) return
+		freeMembershipClaimInFlight.current = true
+		setFreeMembershipClaiming(true)
+		setFreeMembershipClaimError('')
+		void (async () => {
+			try {
+				const card = item.cardAddress
+				const profile = profiles?.[0]
+				const eoa = profile?.keyID
+				const key = resolveSigningPrivateKeyArmor(profile)
+				if (!card || !eoa || !key) {
+					setFreeMembershipClaimError('Sign in to claim membership.')
+					return
+				}
+				const policy = await loadMembershipKycPolicy(card).catch(() => null)
+				if (policy?.enabled) {
+					const linked = await membershipKycAlreadyLinked(card, eoa)
+					if (!linked) {
+						const durationLabel =
+							tier.durationKind != null ? MEMBERSHIP_DURATION_LABELS[tier.durationKind] ?? '' : ''
+						const shown = {
+							...policy,
+							offerLabel: 'Membership',
+							offerValue: 'Free',
+							offerReward: durationLabel,
+						}
+						const accepted = await new Promise<boolean>((resolve) => {
+							membershipKycDone.current = resolve
+							setMembershipKyc({ policy: shown, card, key, wallet: eoa })
+						})
+						if (!accepted) return
+					}
+				}
+				const claimed = await postClaimFreeMembership({
+					cardAddress: card,
+					tierIndex: tier.tierIndex,
+					wallet: eoa,
+					privateKeyArmor: key,
+				})
+				if (!claimed.success) {
+					setFreeMembershipClaimError(claimed.error || 'Membership claim failed')
+					return
+				}
+				await refreshMerchantAssets({ force: true })
+			} catch (e: unknown) {
+				setFreeMembershipClaimError(e instanceof Error ? e.message : 'Membership claim failed')
+			} finally {
+				freeMembershipClaimInFlight.current = false
+				setFreeMembershipClaiming(false)
+			}
+		})()
+	}, [item.cardAddress, membershipUi.joinTier, profiles, refreshMerchantAssets])
+
 	/** New Customer Bonus CTA — top-up with suggested min (or selected multiplier tier), or join membership when required. */
 	const claimDiscoverTopupPromotion = useCallback(
 		(suggestedAmount?: string) => {
 			if (membershipUi.mode === 'need_member' && membershipUi.joinTier) {
+				if (BigInt(membershipUi.joinTier.feeE6) === 0n) {
+					claimDiscoverFreeMembership()
+					return
+				}
 				openDiscoverMembershipPay('join')
 				return
 			}
@@ -7652,6 +7759,7 @@ function DiscoverMerchantDetailFullScreen({
 			openDiscoverTopupAmount(amount)
 		},
 		[
+			claimDiscoverFreeMembership,
 			membershipUi.joinTier,
 			membershipUi.mode,
 			openDiscoverMembershipPay,
@@ -8978,8 +9086,26 @@ function DiscoverMerchantDetailFullScreen({
 							iconUrl={item.logo}
 							backgroundImageUrl={prospectJoinPanelBackground.backgroundImageUrl}
 							backgroundImageFit={prospectJoinPanelBackground.imageFit}
+							activateLabel={
+								membershipUi.mode === 'need_member' && membershipUi.joinTier
+									? BigInt(membershipUi.joinTier.feeE6) === 0n
+										? 'Become a Member'
+										: 'Claim Offer & Become a Member'
+									: 'Top Up to Activate'
+							}
+							activateBusy={freeMembershipClaiming}
+							activateError={freeMembershipClaimError}
+							hideDiningAutoActivate={membershipUi.mode === 'need_member' && Boolean(membershipUi.joinTier)}
 							onActivateTopUp={() => {
-								if (usdcTopupPhase !== 'idle' || discoverTopUpOpen) return
+								if (usdcTopupPhase !== 'idle' || discoverTopUpOpen || freeMembershipClaiming) return
+								if (membershipUi.mode === 'need_member' && membershipUi.joinTier) {
+									if (BigInt(membershipUi.joinTier.feeE6) === 0n) {
+										claimDiscoverFreeMembership()
+										return
+									}
+									openDiscoverMembershipPay('join')
+									return
+								}
 								openDiscoverTopupAmount()
 							}}
 							onFirstDiningSpend={onMerchantVisitBooking}
@@ -8990,9 +9116,10 @@ function DiscoverMerchantDetailFullScreen({
 							topUpDisabled={
 								giftSheetOpen ||
 								usdcTopupPhase !== 'idle' ||
-								discoverTopUpOpen
+								discoverTopUpOpen ||
+								freeMembershipClaiming
 							}
-							actionsDisabled={giftSheetOpen}
+							actionsDisabled={giftSheetOpen || freeMembershipClaiming}
 							visitError={merchantVisitError}
 						/>
 					) : null}
@@ -9745,6 +9872,8 @@ function DiscoverMerchantDetailFullScreen({
 				privateKey={membershipKyc.key}
 				subjectWallet={membershipKyc.wallet}
 				signerKind="wallet"
+				brandColor={merchantDetailBrandColor}
+				pageSurface={merchantDetailPageSurface}
 				onClose={() => {
 					membershipKycDone.current?.(false)
 					membershipKycDone.current = null

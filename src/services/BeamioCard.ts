@@ -944,6 +944,7 @@ export const quotePointsForUSDC = async (
 
 const purchasingCardEndpoint = `${beamioApi}/api/purchasingCard`
 const usdcTopupEndpoint = `${beamioApi}/api/usdcTopup`
+const claimFreeMembershipEndpoint = `${beamioApi}/api/claimFreeMembership`
 const usdcTopupPreviewEndpoint = `${beamioApi}/api/usdcTopupPreview`
 const createCardEndpoint = `${beamioApi}/api/createCard`
 
@@ -3147,6 +3148,68 @@ export const postUSDCUserCardTopup = async (params: {
 		return { success: true, txHash: data?.USDC_tx, assets }
 	} catch (e: any) {
 		return { success: false, error: e?.message ?? String(e) }
+	}
+}
+
+function buildFreeMembershipClaimMessage(params: {
+	cardAddress: string
+	tierIndex: number
+	wallet: string
+	deadline: number
+}): string {
+	return [
+		'Beamio free membership claim',
+		`card:${ethers.getAddress(params.cardAddress)}`,
+		`tier:${params.tierIndex}`,
+		'feeE6:0',
+		`wallet:${ethers.getAddress(params.wallet)}`,
+		`deadline:${params.deadline}`,
+	].join('\n')
+}
+
+/** Fee-0 membership: customer EOA signs; Cluster prechecks and Master relays stage + mint. */
+export const postClaimFreeMembership = async (params: {
+	cardAddress: string
+	tierIndex: number
+	wallet: string
+	privateKeyArmor: string
+}): Promise<{ success: boolean; error?: string; hash?: string }> => {
+	try {
+		const cardAddress = ethers.getAddress(params.cardAddress)
+		const wallet = ethers.getAddress(params.wallet)
+		const deadline = Math.floor(Date.now() / 1000) + 10 * 60
+		const message = buildFreeMembershipClaimMessage({
+			cardAddress,
+			tierIndex: params.tierIndex,
+			wallet,
+			deadline,
+		})
+		const signer = new ethers.Wallet(params.privateKeyArmor)
+		if (signer.address.toLowerCase() !== wallet.toLowerCase()) {
+			return { success: false, error: 'Wallet does not match the signing key.' }
+		}
+		const signature = await signer.signMessage(message)
+		const response = await fetch(claimFreeMembershipEndpoint, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				cardAddress,
+				tierIndex: params.tierIndex,
+				wallet,
+				deadline,
+				signature,
+			}),
+		})
+		const data = await response.json().catch(() => ({}))
+		if (!response.ok || data?.success === false) {
+			const apiError =
+				(typeof data?.error === 'string' && data.error.trim()) ||
+				'Membership claim failed'
+			return { success: false, error: apiError }
+		}
+		return { success: true, hash: typeof data?.hash === 'string' ? data.hash : undefined }
+	} catch (e: any) {
+		return { success: false, error: e?.message ?? 'Membership claim failed' }
 	}
 }
 

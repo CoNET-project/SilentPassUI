@@ -88,18 +88,34 @@ export function customerHasValidMembershipFromAssets(params: {
 	return pickActiveDiscoverMembershipNft(params.nfts) != null
 }
 
+/** Fee 0 with duration 1–6 is a published free-claim membership, not “no membership”. */
+export function publishedMembershipFeeTier(tier: {
+	feeE6: string
+	durationKind?: number
+}): boolean {
+	try {
+		const fee = BigInt(tier.feeE6)
+		if (fee < 0n) return false
+		if (fee > 0n) return true
+		const durationKind = Number(tier.durationKind ?? 0)
+		return fee === 0n && durationKind >= 1 && durationKind <= 6
+	} catch {
+		return false
+	}
+}
+
 export function pickLowestMembershipFeeTier(
 	tiers: DiscoverMembershipFeeTier[],
 ): DiscoverMembershipFeeTier | null {
 	let best: DiscoverMembershipFeeTier | null = null
 	for (const t of tiers) {
+		if (!publishedMembershipFeeTier(t)) continue
 		let fee: bigint
 		try {
 			fee = BigInt(t.feeE6)
 		} catch {
 			continue
 		}
-		if (fee <= 0n) continue
 		if (!best) {
 			best = t
 			continue
@@ -149,10 +165,9 @@ export function resolveCurrentMembershipFeeE6(
 	const idx = Number(active.tier)
 	if (Number.isFinite(idx) && idx >= 0) {
 		const matched = tiers.find((t) => t.tierIndex === idx)
-		if (matched) {
+		if (matched && publishedMembershipFeeTier(matched)) {
 			try {
-				const fee = BigInt(matched.feeE6)
-				if (fee > 0n) return fee
+				return BigInt(matched.feeE6)
 			} catch {
 				/* fall through */
 			}
@@ -172,13 +187,7 @@ export function resolveDiscoverMembershipUiState(params: {
 	hasValidMembership: boolean
 	nfts?: DiscoverMembershipNftLike[] | null
 }): DiscoverMembershipUiState {
-	const feeTiers = params.feeTiers.filter((t) => {
-		try {
-			return BigInt(t.feeE6) > 0n
-		} catch {
-			return false
-		}
-	})
+	const feeTiers = params.feeTiers.filter((t) => publishedMembershipFeeTier(t))
 	if (feeTiers.length === 0) {
 		return {
 			mode: 'no_fee',

@@ -1440,7 +1440,7 @@ export default function MerchantCardTopUpFlow({
 				const needsKyc = await membershipJoinShouldShowKyc(cardAddress, [wallet, profileAa, resolvedAa])
 				if (needsKyc) {
 					const policy = await loadMembershipKycPolicy(cardAddress).catch(() => null)
-					if (policy?.enabled) {
+					if (policy) {
 						const active = (membershipJoinTiers ?? []).find((tier) => tier.tierIndex === resolvedTierIndex)
 						const feeHuman = formatMembershipFeeE6Display(active?.feeE6 ?? membershipFeeFiat6) || '0.00'
 						const durationLabel =

@@ -21,6 +21,8 @@ export type MembershipKycFormPolicy = {
 	marketing: boolean
 	mailingAddress: string
 	additionalFields: MembershipKycExtraField[]
+	privacyNotice: string
+	terms: string
 	offerLabel: string
 	offerValue: string
 	offerReward: string
@@ -75,8 +77,8 @@ export async function loadMembershipKycPolicy(cardAddress: string): Promise<Memb
 	}
 	const share = meta.shareTokenMetadata
 	const kyc = share?.kyc
-	if (!kyc || kyc.enabled !== true) return null
-	const fields = (kyc.fields ?? {}) as Record<string, unknown>
+	if (!kyc || typeof kyc !== 'object' || !kyc.fields || typeof kyc.fields !== 'object') return null
+	const fields = kyc.fields as Record<string, unknown>
 	const additionalFields = Array.isArray(kyc.additionalFields)
 		? kyc.additionalFields.flatMap((row) => {
 				if (!row || typeof row !== 'object') return []
@@ -108,13 +110,15 @@ export async function loadMembershipKycPolicy(cardAddress: string): Promise<Memb
 		enabled: true,
 		merchantName,
 		fields: {
-			name: fieldMode(fields.name, 'optional'),
+			name: fieldMode(fields.name, 'off'),
 			phone: fieldMode(fields.phone, 'off'),
-			email: fieldMode(fields.email, 'optional'),
+			email: fieldMode(fields.email, 'off'),
 		},
 		marketing: kyc.marketing === true,
 		mailingAddress: typeof kyc.mailingAddress === 'string' ? kyc.mailingAddress.trim() : '',
 		additionalFields,
+		privacyNotice: typeof kyc.privacyNotice === 'string' ? kyc.privacyNotice.trim() : '',
+		terms: typeof kyc.terms === 'string' ? kyc.terms.trim() : '',
 		offerLabel: 'Store Credits',
 		offerValue: '',
 		offerReward: '',
@@ -134,13 +138,7 @@ async function walletAlreadyHoldsMembership(cardAddress: string, wallet: string)
 /** First membership on a KYC card. A previously stored ciphertext hash does not skip the form. */
 export async function membershipJoinShouldShowKyc(cardAddress: string, wallets: string[]): Promise<boolean> {
 	const policy = await loadMembershipKycPolicy(cardAddress).catch(() => null)
-	if (!policy?.enabled) return false
-	const collects =
-		policy.fields.name !== 'off' ||
-		policy.fields.phone !== 'off' ||
-		policy.fields.email !== 'off' ||
-		policy.additionalFields.length > 0
-	if (!collects) return false
+	if (!policy) return false
 	for (const wallet of wallets) {
 		if (!wallet) continue
 		if (await walletAlreadyHoldsMembership(cardAddress, wallet)) return false

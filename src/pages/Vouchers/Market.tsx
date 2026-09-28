@@ -2446,7 +2446,7 @@ function DiscoverMerchantProspectJoinPanel({
 			{body ? (
 				<p
 					className={[
-						'mt-2 text-[14px] leading-relaxed',
+						'mt-2 whitespace-pre-line text-[14px] leading-relaxed',
 						hasImage
 							? 'text-[color:var(--join-body)] dark:text-[color:var(--join-body-dark)]'
 							: '',
@@ -3395,12 +3395,12 @@ type DiscoverOfferTierRow = {
 }
 
 const MEMBERSHIP_DURATION_LABELS: Record<number, string> = {
-	1: 'Day',
-	2: 'Week',
-	3: 'Month',
-	4: 'Quarter',
-	5: 'Year',
-	6: 'Forever',
+	1: 'Daily',
+	2: 'Weekly',
+	3: 'Monthly',
+	4: 'Quarterly',
+	5: 'Annually',
+	6: 'Lifetime',
 }
 
 function membershipFeeHumanToE6(raw: string | number | undefined | null): string {
@@ -10336,7 +10336,7 @@ export default function Market() {
 									<DiscoverFeaturedShareClickCountBadge count={shareClickCount} />
 								</div>
 							</div>
-							<p className="text-[#4b5361] dark:text-slate-300 text-[15px] leading-tight line-clamp-2">
+							<p className="whitespace-pre-line text-[#4b5361] dark:text-slate-300 text-[15px] leading-tight line-clamp-2">
 								{item.subtitle}
 							</p>
 						</div>

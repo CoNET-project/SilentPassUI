@@ -444,12 +444,12 @@ function isInsufficientConetUsdcError(raw: string): boolean {
 }
 
 const MEMBERSHIP_DURATION_LABELS: Record<number, string> = {
-	1: 'Day',
-	2: 'Week',
-	3: 'Month',
-	4: 'Quarter',
-	5: 'Year',
-	6: 'Forever',
+	1: 'Daily',
+	2: 'Weekly',
+	3: 'Monthly',
+	4: 'Quarterly',
+	5: 'Annually',
+	6: 'Lifetime',
 }
 
 function formatUnfundableDualCashAlert(conetHave6: bigint, baseHave6: bigint, need6: bigint): string {

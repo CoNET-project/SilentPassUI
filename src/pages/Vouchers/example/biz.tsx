@@ -13082,9 +13082,9 @@ type CardIssuanceTierRow = {
   backgroundImageFit: CardIssuanceBackgroundImageFit;
   /** Maps to `TierMetadata.logoDisplayScale` — top-left logo 2x/4x/6x/8x/hidden. */
   logoDisplayScale: TierLogoDisplayScale;
-  /** Membership fee in card currency units (human string). Empty or 0 = no fee. */
+  /** Membership fee in card currency units (human string). Empty = no fee. Explicit 0 with a duration is a free claim. */
   membershipFee: string;
-  /** 1=day … 6=forever; 0 when no fee. */
+  /** 1=day … 6=forever. Required for a membership tier, including a free claim. 0 when this row is not a membership. */
   membershipDurationKind: number;
 };
 
@@ -13149,8 +13149,27 @@ function membershipFeeE6ToHuman(e6: string | number | undefined | null): string 
   }
 }
 
+/** Explicit 0 still keeps a membership duration. An empty amount does not. */
+function membershipFeeInputKeepsDuration(raw: string): boolean {
+  const s = String(raw ?? '').replace(/,/g, '').trim();
+  if (s === '') return false;
+  const n = Number(s);
+  return Number.isFinite(n) && n >= 0;
+}
+
+/** Positive price, or explicit 0 plus a validity period (anyone can claim the membership). */
+function cardIssuanceRowIsMembershipSchedule(row: {
+  membershipFee?: string;
+  membershipDurationKind?: number;
+}): boolean {
+  const raw = String(row.membershipFee ?? '').replace(/,/g, '').trim();
+  if (!membershipFeeInputKeepsDuration(raw)) return false;
+  if (Number(raw) > 0) return true;
+  return normalizeMembershipDurationKind(row.membershipDurationKind) >= 1;
+}
+
 function cardIssuanceRowsHaveMembershipFee(rows: CardIssuanceTierRow[]): boolean {
-  return rows.some((t) => BigInt(membershipFeeHumanToE6(t.membershipFee)) > 0n);
+  return rows.some((t) => cardIssuanceRowIsMembershipSchedule(t));
 }
 
 const CARD_ISSUANCE_TIER_COLOR_PRESETS = ['#94a3b8', '#f59e0b', '#6366f1', '#0051d1', '#9333ea', '#059669', '#ec4899'];
@@ -13223,10 +13242,19 @@ function cardIssuanceTierRowsFromMetadata(tiers: CardTierMetadata[]): CardIssuan
         (t as { logoDisplayScale?: unknown }).logoDisplayScale ??
           (t as { logoScale?: unknown }).logoScale
       ),
-      membershipFee: feeHuman,
-      membershipDurationKind: BigInt(membershipFeeHumanToE6(feeHuman)) > 0n
-        ? durationKind || 3
-        : 0,
+      membershipFee: feeHuman || (
+        t.membershipFeeE6 != null &&
+        String(t.membershipFeeE6).trim() !== '' &&
+        BigInt(String(t.membershipFeeE6).replace(/,/g, '').trim() || '0') === 0n &&
+        durationKind >= 1
+          ? '0'
+          : ''
+      ),
+      membershipDurationKind:
+        BigInt(membershipFeeHumanToE6(feeHuman)) > 0n ||
+        (membershipFeeInputKeepsDuration(feeHuman) && Number(feeHuman) === 0 && durationKind >= 1)
+          ? durationKind || 3
+          : 0,
     });
   });
 }
@@ -14828,9 +14856,11 @@ useEffect(() => {
    }) => {
      const amountRaw = opts.amount.replace(/,/g, '').trim();
      const amount =
-       amountRaw && Number.isFinite(Number(amountRaw)) && Number(amountRaw) > 0
+       opts.membershipFeeEnabled && membershipFeeInputKeepsDuration(amountRaw)
          ? amountRaw
-         : CARD_ISSUANCE_REWARDS_SETUP_AMOUNT_DEFAULT;
+         : amountRaw && Number.isFinite(Number(amountRaw)) && Number(amountRaw) > 0
+           ? amountRaw
+           : CARD_ISSUANCE_REWARDS_SETUP_AMOUNT_DEFAULT;
      const rule = coerceSelectableCardIssuanceTierRule(
        opts.tierRule ?? cardIssuanceTierRuleRef.current,
      );
@@ -16278,9 +16308,15 @@ useEffect(() => {
   if (!cardIssuanceExistingCard?.cardAddress) return;
   if (!cardIssuanceMembershipFeeMode || !cardIssuanceBaseTier) return;
   const feeRaw = cardIssuanceBaseTier.membershipFee.replace(/,/g, '').trim();
-  if (!feeRaw || !Number.isFinite(Number(feeRaw)) || Number(feeRaw) <= 0) return;
-  setCardIssuanceRewardsMembershipFeeEnabled(true);
-  setCardIssuanceRewardsSetupAmount((prev) => {
+   if (!feeRaw || !Number.isFinite(Number(feeRaw)) || Number(feeRaw) < 0) return;
+   if (
+     Number(feeRaw) === 0 &&
+     !normalizeMembershipDurationKind(cardIssuanceBaseTier.membershipDurationKind)
+   ) {
+     return;
+   }
+   setCardIssuanceRewardsMembershipFeeEnabled(true);
+   setCardIssuanceRewardsSetupAmount((prev) => {
     const prevNorm = prev.replace(/,/g, '').trim();
     if (prevNorm === feeRaw) return prev;
     if (prevNorm === CARD_ISSUANCE_REWARDS_SETUP_AMOUNT_DEFAULT) return feeRaw;
@@ -17285,7 +17321,8 @@ const cardIssuanceEffectiveMerchantLogo = useMemo(() => {
    const prefix = cardIssuanceDisplayMoneyPrefix || '';
    const money = (raw: string) => {
      const n = Number(String(raw).replace(/,/g, '').trim());
-     if (!Number.isFinite(n) || n <= 0) return '';
+     if (!Number.isFinite(n) || n < 0) return '';
+     if (n === 0) return `${prefix}0`;
      return `${prefix}${n.toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
    };
    const benefit = (raw: string) => {
@@ -17350,7 +17387,7 @@ const cardIssuanceEffectiveMerchantLogo = useMemo(() => {
    const feeRaw = cardIssuanceBaseTier.membershipFee.replace(/,/g, '').trim();
    const feeNum = Number(feeRaw);
    const feeDisplay =
-     feeRaw && Number.isFinite(feeNum) && feeNum > 0
+     feeRaw && Number.isFinite(feeNum) && feeNum >= 0
        ? `${cardIssuanceDisplayMoneyPrefix}${feeNum.toLocaleString('en-US', {
            minimumFractionDigits: 0,
            maximumFractionDigits: 2,
@@ -17417,7 +17454,13 @@ const cardIssuanceEffectiveMerchantLogo = useMemo(() => {
  const syncMembershipFeeRewardsSetupAmountFromTier = useCallback(() => {
    if (!cardIssuanceMembershipFeeMode || !cardIssuanceBaseTier) return;
    const feeRaw = cardIssuanceBaseTier.membershipFee.replace(/,/g, '').trim();
-   if (!feeRaw || !Number.isFinite(Number(feeRaw)) || Number(feeRaw) <= 0) return;
+   if (!feeRaw || !Number.isFinite(Number(feeRaw)) || Number(feeRaw) < 0) return;
+   if (
+     Number(feeRaw) === 0 &&
+     !normalizeMembershipDurationKind(cardIssuanceBaseTier.membershipDurationKind)
+   ) {
+     return;
+   }
    setCardIssuanceRewardsMembershipFeeEnabled(true);
    setCardIssuanceRewardsSetupAmount(feeRaw);
  }, [cardIssuanceMembershipFeeMode, cardIssuanceBaseTier]);
@@ -18043,7 +18086,7 @@ const merchantPanelDiscoverAssetLabel = useMemo(() => {
     const feeRaw = cardIssuanceBaseTier.membershipFee.replace(/,/g, '').trim();
     const feeNum = Number(feeRaw);
     const feeStr =
-      feeRaw && Number.isFinite(feeNum) && feeNum > 0
+      feeRaw && Number.isFinite(feeNum) && feeNum >= 0
         ? `${cardIssuanceDisplayMoneyPrefix}${feeNum.toLocaleString('en-US')}`
         : '';
     const durationTuKey = membershipDurationTuKey(cardIssuanceBaseTier.membershipDurationKind);
@@ -18218,10 +18261,9 @@ const applyCardIssuanceTierEditor = useCallback(async () => {
         ? cardIssuanceTiers.find((tier) => tier.id === cardIssuanceEditingTierId)?.logoDisplayScale
         : undefined) ?? TIER_LOGO_DISPLAY_SCALE_DEFAULT,
     membershipFee: cardIssuanceTierEditorMembershipFee,
-    membershipDurationKind:
-      BigInt(membershipFeeHumanToE6(cardIssuanceTierEditorMembershipFee)) > 0n
-        ? normalizeMembershipDurationKind(cardIssuanceTierEditorMembershipDurationKind) || 3
-        : 0,
+    membershipDurationKind: membershipFeeInputKeepsDuration(cardIssuanceTierEditorMembershipFee)
+      ? normalizeMembershipDurationKind(cardIssuanceTierEditorMembershipDurationKind) || 3
+      : 0,
     tierDescriptionOpen: false,
   });
     const merged = cardIssuanceEditingTierId
@@ -20815,13 +20857,18 @@ const membershipFeeTierListItems = useMemo((): MembershipFeeTierListItem[] => {
     const isBase = membershipFeeTierRowIsBase(row, i, membershipFeeTierWorkingRows);
     const feeN = parseMembershipFeeHumanNumber(row.membershipFee);
     const hasFee = Number.isFinite(feeN) && feeN > 0;
+    const freeClaim =
+      cardIssuanceMembershipFeeMode &&
+      Number.isFinite(feeN) &&
+      feeN === 0 &&
+      Boolean(durationTu);
     const durationKind = normalizeMembershipDurationKind(row.membershipDurationKind);
     const durationTu = membershipDurationTuKey(durationKind);
     return {
       id: row.id,
       name: (row.name || '').trim() || (isBase ? 'Base' : 'Higher Membership'),
-      feeLabel: hasFee
-        ? `${cardIssuanceDisplayMoneyPrefix}${String(row.membershipFee).trim()}`
+      feeLabel: hasFee || freeClaim
+        ? `${cardIssuanceDisplayMoneyPrefix}${hasFee ? String(row.membershipFee).trim() : '0'}`
         : `${tu(getCardIssuanceTierThresholdLabel()[programsOverviewTierRuleKey])}: ${row.threshold || '0'} · ${tu('programs_membership_fee_tier_discount_off', { percent: row.discountPercent || '0' })}`,
       durationLabel: cardIssuanceMembershipFeeMode && durationTu ? tu(durationTu) : '',
       isBase,
@@ -20843,7 +20890,11 @@ const membershipFeeTierListCanAddHigher = useMemo(() => {
     membershipFeeTierWorkingRows.find((r) => r.id === CARD_ISSUANCE_SINGLE_TIER_ID) ??
     membershipFeeTierWorkingRows[0];
   const feeN = parseMembershipFeeHumanNumber(base?.membershipFee);
-  return Number.isFinite(feeN) && feeN > 0;
+  return (
+    Number.isFinite(feeN) &&
+    feeN >= 0 &&
+    normalizeMembershipDurationKind(base?.membershipDurationKind) >= 1
+  );
 }, [cardIssuanceMembershipFeeMode, membershipFeeTierWorkingRows]);
 
 const openCardIssuanceMembershipFeeTierList = useCallback(() => {
@@ -20877,12 +20928,12 @@ const openCardIssuanceMembershipFeeTierEditor = useCallback(
     const isBase = membershipFeeTierRowIsBase(row, idx, rows);
     let draft = membershipFeeDraftFromTierRow(row, isBase);
     // New unpublished program: seed Unlock Fee defaults only when configuring membership fee.
-    const feeN = Number(String(draft.membershipFee).replace(/,/g, '').trim());
+    const feeRaw = String(draft.membershipFee).replace(/,/g, '').trim();
     const needsMembershipFeeSeed =
       cardIssuanceMembershipFeeMode &&
       !cardIssuanceExistingCard?.cardAddress &&
       isBase &&
-      !(Number.isFinite(feeN) && feeN > 0);
+      feeRaw === '';
     if (needsMembershipFeeSeed) {
       draft = {
         ...draft,
@@ -21108,7 +21159,7 @@ const cardIssuanceMembershipFeeTierEditorValidationError = useMemo(() => {
   const feeN = Number(draft.membershipFee.replace(/,/g, '').trim());
   const requireMembershipFee = cardIssuanceMembershipFeeTierShowFeeFields;
   if (requireMembershipFee) {
-    if (!Number.isFinite(feeN) || feeN <= 0) return 'Membership fee must be greater than 0.';
+    if (!Number.isFinite(feeN) || feeN < 0) return 'Membership fee cannot be negative. Set it to 0 to let anyone claim this membership for free.';
     if (!normalizeMembershipDurationKind(draft.membershipDurationKind)) {
       return 'Select a membership duration.';
     }
@@ -21158,7 +21209,7 @@ const cardIssuanceMembershipFeeTierEditorValidationError = useMemo(() => {
     for (let i = 0; i < rows.length; i++) {
       if (membershipFeeTierRowIsBase(rows[i], i, rows)) continue;
       const higherFee = parseMembershipFeeHumanNumber(rows[i].membershipFee);
-      if (Number.isFinite(higherFee) && higherFee > 0 && feeN >= higherFee) {
+      if (Number.isFinite(higherFee) && higherFee >= 0 && feeN >= higherFee) {
         return 'Base membership fee must be strictly lower than higher membership tiers.';
       }
     }
@@ -21209,7 +21260,9 @@ const buildMembershipFeeTierRowsFromEditorDraft = useCallback(
     const pending = cardIssuanceMembershipFeePendingNewTier;
     const feeHuman = draft.membershipFee.replace(/,/g, '').trim();
     const feeNum = Number(feeHuman.replace(/,/g, '').trim());
-    const hasMembershipFee = Number.isFinite(feeNum) && feeNum > 0;
+    const hasMembershipFee =
+      (Number.isFinite(feeNum) && feeNum > 0) ||
+      (feeHuman === '0' && normalizeMembershipDurationKind(draft.membershipDurationKind) >= 1);
     // Charge / top-up base with no Unlock Fee: keep duration 0 (do not invent Month).
     const durationKind = hasMembershipFee
       ? normalizeMembershipDurationKind(draft.membershipDurationKind) || 3
@@ -21377,15 +21430,16 @@ const disableCardIssuanceTopupPromotion = useCallback(() => {
    loyaltyOpts?: { upgradeByBalance?: boolean; upgradeByCharge?: boolean },
  ): TierMetadata[] | undefined => {
    if (rows.length === 0) return undefined;
-   const anyMembershipFee = rows.some((t) => BigInt(membershipFeeHumanToE6(t.membershipFee)) > 0n);
+   const anyMembershipFee = rows.some((t) => cardIssuanceRowIsMembershipSchedule(t));
    const namedRows = rows.filter((t) => t.name.trim() !== '');
    if (namedRows.length === 0) return undefined;
    const loyaltyUpgradeByBalance = !anyMembershipFee && Boolean(loyaltyOpts?.upgradeByBalance);
    const loyaltyUpgradeByCharge = !anyMembershipFee && Boolean(loyaltyOpts?.upgradeByCharge);
 
    const buildTierMetaFields = (t: CardIssuanceTierRow) => {
+     const schedule = cardIssuanceRowIsMembershipSchedule(t);
      const membershipFeeE6 = membershipFeeHumanToE6(t.membershipFee);
-     const hasMembershipFee = BigInt(membershipFeeE6) > 0n;
+     const hasMembershipFee = schedule || BigInt(membershipFeeE6) > 0n;
      const customDesc = t.tierDescription.trim();
      const discountPct = Number.parseInt(
        String(t.discountPercent ?? '')
@@ -21433,7 +21487,9 @@ const disableCardIssuanceTopupPromotion = useCallback(() => {
        upgradeByBalance: anyMembershipFee ? false : loyaltyUpgradeByBalance,
        upgradeByCharge: anyMembershipFee ? false : loyaltyUpgradeByCharge,
        membershipFeeE6,
-       membershipFee: membershipFeeE6ToHuman(membershipFeeE6) || undefined,
+       membershipFee: schedule
+         ? membershipFeeE6ToHuman(membershipFeeE6) || '0'
+         : membershipFeeE6ToHuman(membershipFeeE6) || undefined,
        membershipDurationKind,
        ...(description ? { description } : {}),
        ...(backgroundColor ? { backgroundColor } : {}),
@@ -23300,7 +23356,7 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
        );
      }
      const feeE6 = membershipFeeHumanToE6(row.membershipFee);
-     if (BigInt(feeE6) > 0n) {
+     if (cardIssuanceRowIsMembershipSchedule(row) || BigInt(feeE6) > 0n) {
        const kind = normalizeMembershipDurationKind(row.membershipDurationKind);
        if (kind < 1 || kind > 6) {
          return publishFail(
@@ -26061,7 +26117,10 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
             typeof (t as { membershipFee?: string }).membershipFee === 'string'
               ? (t as { membershipFee?: string }).membershipFee
               : '';
-          return BigInt(membershipFeeHumanToE6(fee)) > 0n;
+          return cardIssuanceRowIsMembershipSchedule({
+            membershipFee: fee,
+            membershipDurationKind: (t as { membershipDurationKind?: number }).membershipDurationKind,
+          });
         });
         setCardIssuanceRewardsMembershipFeeEnabled(feeOn);
         if (feeOn && !draftRewardsAmount) {
@@ -40642,6 +40701,9 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                  className={`w-full rounded-lg border border-transparent bg-[#eeedf3] py-2 pl-12 pr-3 text-[15px] leading-5 text-[#1a1b1f] outline-none transition-colors focus:border-[#004bc3] ${bizFocusRingClass} ${bizNumericNoSpinnerClass}`}
                                />
                              </div>
+                             <p className="mt-1 text-xs leading-4 text-[#595c5e]">
+                               Set the amount to 0 to let anyone claim this membership for free.
+                             </p>
                            </div>
                            <div className="flex flex-col gap-2">
                              <label
@@ -42324,7 +42386,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                   }
                                   if (!/^\d*\.?\d*$/.test(raw)) return;
                                   setCardIssuanceTierEditorMembershipFee(raw);
-                                  if (BigInt(membershipFeeHumanToE6(raw)) > 0n) {
+                                  if (membershipFeeInputKeepsDuration(raw)) {
                                     setCardIssuanceTierEditorMembershipDurationKind((prev) =>
                                       prev >= 1 && prev <= 6 ? prev : 3
                                     );
@@ -42348,7 +42410,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                           <select
                             id="card-issuance-tier-membership-duration"
                             value={
-                              BigInt(membershipFeeHumanToE6(cardIssuanceTierEditorMembershipFee)) > 0n
+                              membershipFeeInputKeepsDuration(cardIssuanceTierEditorMembershipFee)
                                 ? String(
                                     normalizeMembershipDurationKind(
                                       cardIssuanceTierEditorMembershipDurationKind
@@ -42357,7 +42419,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                 : ''
                             }
                             disabled={
-                              BigInt(membershipFeeHumanToE6(cardIssuanceTierEditorMembershipFee)) <= 0n
+                              !membershipFeeInputKeepsDuration(cardIssuanceTierEditorMembershipFee)
                             }
                             onChange={(e) => {
                               const v = Number(e.target.value);
@@ -45392,7 +45454,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                 }
                                 if (!/^\d*\.?\d*$/.test(raw)) return;
                                 setCardIssuanceTierEditorMembershipFee(raw);
-                                if (BigInt(membershipFeeHumanToE6(raw)) > 0n) {
+                                if (membershipFeeInputKeepsDuration(raw)) {
                                   setCardIssuanceTierEditorMembershipDurationKind((prev) =>
                                     prev >= 1 && prev <= 6 ? prev : 3
                                   );
@@ -45415,18 +45477,18 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                         </label>
                         <select
                           id="programs-overview-tier-membership-duration"
-                          value={
-                            BigInt(membershipFeeHumanToE6(cardIssuanceTierEditorMembershipFee)) > 0n
-                              ? String(
-                                  normalizeMembershipDurationKind(
-                                    cardIssuanceTierEditorMembershipDurationKind
-                                  ) || 3
-                                )
-                              : ''
-                          }
-                          disabled={
-                            BigInt(membershipFeeHumanToE6(cardIssuanceTierEditorMembershipFee)) <= 0n
-                          }
+                            value={
+                              membershipFeeInputKeepsDuration(cardIssuanceTierEditorMembershipFee)
+                                ? String(
+                                    normalizeMembershipDurationKind(
+                                      cardIssuanceTierEditorMembershipDurationKind
+                                    ) || 3
+                                  )
+                                : ''
+                            }
+                            disabled={
+                              !membershipFeeInputKeepsDuration(cardIssuanceTierEditorMembershipFee)
+                            }
                           onChange={(e) => {
                             const v = Number(e.target.value);
                             setCardIssuanceTierEditorMembershipDurationKind(

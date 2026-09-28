@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react'
-import { AlertTriangle, ArrowRight, Bot, ChevronDown, Globe, HeartHandshake, Landmark, Loader2, ShieldCheck, Store } from 'lucide-react'
+import { AlertTriangle, ArrowRight, Bot, ChevronDown, Globe, Landmark, Loader2, ShieldCheck, Store } from 'lucide-react'
 import { bizBrandFocusRingClass } from '@/pages/Home/brandUi'
 import {
 	onboardingCountrySelectOptionElements,
@@ -15,21 +15,33 @@ import type {
 
 const HEADLINE_FONT = { fontFamily: 'Manrope, ui-sans-serif, system-ui, sans-serif' } as const
 
-export type OrgTypeSelect = 'sme' | 'franchise' | 'ngo' | ''
+export type OrgTypeSelect = 'sme' | 'franchise' | 'government' | 'ngo' | 'other' | ''
 
 export function orgTypeToBusinessType(org: OrgTypeSelect): VerraBusinessProfileBusinessType | null {
 	if (org === 'sme') return 'solo'
 	if (org === 'franchise') return 'chain'
+	if (org === 'government') return 'government'
 	if (org === 'ngo') return 'ngo'
+	if (org === 'other') return 'other'
 	return null
 }
 
 export function businessTypeToOrgType(bt: VerraBusinessProfileBusinessType | undefined): OrgTypeSelect {
 	if (bt === 'solo') return 'sme'
 	if (bt === 'chain') return 'franchise'
+	if (bt === 'government') return 'government'
 	if (bt === 'ngo') return 'ngo'
+	if (bt === 'other') return 'other'
 	return ''
 }
+
+export const ORG_TYPE_OPTIONS: { value: Exclude<OrgTypeSelect, ''>; labelKey: string }[] = [
+	{ value: 'sme', labelKey: 'onb_org_sme' },
+	{ value: 'franchise', labelKey: 'onb_org_franchise' },
+	{ value: 'government', labelKey: 'onb_org_government' },
+	{ value: 'ngo', labelKey: 'onb_org_ngo' },
+	{ value: 'other', labelKey: 'onb_org_other' },
+]
 
 export const PHYSICAL_SUBS = [
 	{ value: 'food-beverage', labelKey: 'onb_cat_food_beverage' },
@@ -62,13 +74,19 @@ export const GOVERNMENT_SUBS = [
 ] as const
 
 export const NGO_SUBS = [
-	{ value: 'nonprofit', labelKey: 'onb_cat_nonprofit' },
 	{ value: 'charity', labelKey: 'onb_cat_charity' },
 	{ value: 'community-organization', labelKey: 'onb_cat_community' },
+	{ value: 'nonprofit', labelKey: 'onb_cat_nonprofit' },
 ] as const
 
+const CIVIC_SUBS = [...GOVERNMENT_SUBS, ...NGO_SUBS] as const
+const GOVERNMENT_CAT_VALUES = new Set<string>(GOVERNMENT_SUBS.map((s) => s.value))
+const NGO_CAT_VALUES = new Set<string>(NGO_SUBS.map((s) => s.value))
+
+export type OnboardingChannelCardId = 'physical' | 'digital' | 'app' | 'civic'
+
 export const ONBOARDING_BUSINESS_CHANNELS: {
-	id: VerraBusinessChannelKind
+	id: OnboardingChannelCardId
 	titleKey: string
 	descKey: string
 	Icon: typeof Store
@@ -76,15 +94,45 @@ export const ONBOARDING_BUSINESS_CHANNELS: {
 	{ id: 'physical', titleKey: 'onb_channel_physical_title', descKey: 'onb_channel_physical_desc', Icon: Store },
 	{ id: 'digital', titleKey: 'onb_channel_digital_title', descKey: 'onb_channel_digital_desc', Icon: Globe },
 	{ id: 'app', titleKey: 'onb_channel_app_title', descKey: 'onb_channel_app_desc', Icon: Bot },
-	{ id: 'government', titleKey: 'onb_channel_government_title', descKey: 'onb_channel_government_desc', Icon: Landmark },
-	{ id: 'ngo', titleKey: 'onb_channel_ngo_title', descKey: 'onb_channel_ngo_desc', Icon: HeartHandshake },
+	{ id: 'civic', titleKey: 'onb_channel_civic_title', descKey: 'onb_channel_civic_desc', Icon: Landmark },
 ]
+
+export function isCivicChannelKind(kind: VerraBusinessChannelKind | ''): boolean {
+	return kind === 'government' || kind === 'ngo'
+}
+
+export function channelCardSelected(cardId: OnboardingChannelCardId, kind: VerraBusinessChannelKind | ''): boolean {
+	if (cardId === 'civic') return isCivicChannelKind(kind)
+	return cardId === kind
+}
+
+export function civicPickForCategory(
+	category: string,
+): { channelKind: 'government' | 'ngo'; orgType: 'government' | 'ngo' } | null {
+	if (GOVERNMENT_CAT_VALUES.has(category)) return { channelKind: 'government', orgType: 'government' }
+	if (NGO_CAT_VALUES.has(category)) return { channelKind: 'ngo', orgType: 'ngo' }
+	return null
+}
+
+export function applyOnboardingChannelCardPick(
+	next: OnboardingChannelCardId,
+	channelKind: VerraBusinessChannelKind | '',
+	category: string,
+): { channelKind: VerraBusinessChannelKind; category: string } {
+	if (next === 'civic') {
+		if (isCivicChannelKind(channelKind)) {
+			return { channelKind: channelKind as 'government' | 'ngo', category }
+		}
+		return { channelKind: 'government', category: '' }
+	}
+	const allowed = new Set<string>(subsForChannel(next).map((s) => s.value))
+	return { channelKind: next, category: allowed.has(category) ? category : '' }
+}
 
 export function subsForChannel(kind: VerraBusinessChannelKind | '') {
 	if (kind === 'digital') return DIGITAL_SUBS
 	if (kind === 'app') return APP_SUBS
-	if (kind === 'government') return GOVERNMENT_SUBS
-	if (kind === 'ngo') return NGO_SUBS
+	if (kind === 'government' || kind === 'ngo') return CIVIC_SUBS
 	if (kind === 'physical') return PHYSICAL_SUBS
 	return []
 }
@@ -175,10 +223,18 @@ export function OnboardingBusinessDiscoveryForm({
 		Boolean(province.trim()) &&
 		termsAccepted
 
-	const onPickChannel = (next: VerraBusinessChannelKind) => {
-		setChannelKind(next)
-		const allowed = new Set(subsForChannel(next).map((s) => s.value))
-		if (!allowed.has(category as never)) setCategory('')
+	const onPickChannel = (next: OnboardingChannelCardId) => {
+		const picked = applyOnboardingChannelCardPick(next, channelKind, category)
+		setChannelKind(picked.channelKind)
+		if (picked.category !== category) setCategory(picked.category)
+	}
+
+	const onPickCategory = (value: string) => {
+		setCategory(value)
+		const civic = isCivicChannelKind(channelKind) ? civicPickForCategory(value) : null
+		if (!civic) return
+		if (civic.channelKind !== channelKind) setChannelKind(civic.channelKind)
+		setOrgType(civic.orgType)
 	}
 
 	const fieldLabel = 'ml-1 block text-[12px] font-semibold uppercase tracking-[0.05em] text-[#424655]'
@@ -241,7 +297,7 @@ export function OnboardingBusinessDiscoveryForm({
 					<p className={fieldLabel}>{tu('onb_business_category')}</p>
 					<div className="grid grid-cols-1 gap-3 md:grid-cols-3">
 						{ONBOARDING_BUSINESS_CHANNELS.map(({ id, titleKey, descKey, Icon }) => {
-							const selected = channelKind === id
+							const selected = channelCardSelected(id, channelKind)
 							return (
 								<button
 									key={id}
@@ -268,7 +324,9 @@ export function OnboardingBusinessDiscoveryForm({
 
 					{channelKind ? (
 					<div className="mt-4">
-						<p className={`${fieldLabel} mb-2`}>{tu('onb_select_subcategory')}</p>
+						<p className={`${fieldLabel} mb-2`}>
+							{tu(isCivicChannelKind(channelKind) ? 'onb_select_org_category' : 'onb_select_subcategory')}
+						</p>
 						<div className="flex flex-wrap gap-2">
 							{subOptions.map(({ value, labelKey }) => {
 								const selected = category === value
@@ -276,7 +334,7 @@ export function OnboardingBusinessDiscoveryForm({
 									<button
 										key={value}
 										type="button"
-										onClick={() => setCategory(value)}
+										onClick={() => onPickCategory(value)}
 										aria-pressed={selected}
 										className={`
 											inline-block whitespace-nowrap rounded-full border px-4 py-2 text-[15px] transition-colors
@@ -313,9 +371,11 @@ export function OnboardingBusinessDiscoveryForm({
 									<option value="" disabled>
 										{tu('onb_select_org_type')}
 									</option>
-									<option value="sme">{tu('onb_org_sme')}</option>
-									<option value="franchise">{tu('onb_org_franchise')}</option>
-									<option value="ngo">{tu('onb_org_ngo')}</option>
+									{ORG_TYPE_OPTIONS.map((opt) => (
+										<option key={opt.value} value={opt.value}>
+											{tu(opt.labelKey)}
+										</option>
+									))}
 								</select>
 								<SelectChevron />
 							</div>

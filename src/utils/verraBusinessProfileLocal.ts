@@ -8,7 +8,12 @@ export const VERRA_BUSINESS_PROFILE_SESSION_KEY = 'verra_business_profile_onboar
 
 const STORAGE_PREFIX = 'verra_business_profile_draft_v1:'
 
-export type VerraBusinessProfileBusinessType = 'solo' | 'chain' | 'ngo'
+export const VERRA_BUSINESS_PROFILE_BUSINESS_TYPES = ['solo', 'chain', 'ngo', 'government', 'other'] as const
+export type VerraBusinessProfileBusinessType = (typeof VERRA_BUSINESS_PROFILE_BUSINESS_TYPES)[number]
+
+export function isVerraBusinessProfileBusinessType(raw: unknown): raw is VerraBusinessProfileBusinessType {
+  return typeof raw === 'string' && (VERRA_BUSINESS_PROFILE_BUSINESS_TYPES as readonly string[]).includes(raw)
+}
 
 /** Discover onboarding channel (Physical / Digital / App / Government / NGO). */
 export const VERRA_BUSINESS_CHANNEL_KINDS = ['physical', 'digital', 'app', 'government', 'ngo'] as const
@@ -228,7 +233,7 @@ export function parseShareTokenBusinessProfileFromUnknown(raw: unknown): ShareTo
   if (city) next.city = city
   const province = trimBusinessProfileStr(o.province, 64)
   if (province) next.province = province
-  if (o.businessType === 'solo' || o.businessType === 'chain' || o.businessType === 'ngo') {
+  if (isVerraBusinessProfileBusinessType(o.businessType)) {
     next.businessType = o.businessType
   }
   return Object.keys(next).length > 0 ? next : undefined
@@ -322,7 +327,7 @@ export function pickVerraBusinessFieldsFromRecover(recovered: unknown): Partial<
   const r = recovered as Record<string, unknown>
   const next: Partial<VerraBusinessProfileDraft> = {}
 
-  if (r.businessType === 'solo' || r.businessType === 'chain' || r.businessType === 'ngo') {
+  if (isVerraBusinessProfileBusinessType(r.businessType)) {
     next.businessType = r.businessType
   }
   if (typeof r.onboardingTermsAccepted === 'boolean') {
@@ -354,7 +359,7 @@ export function pickVerraBusinessFieldsFromRecover(recovered: unknown): Partial<
         const ck = normalizeVerraBusinessChannelKind(j.channelKind)
         if (ck) next.channelKind = ck
       }
-      if (!next.businessType && (j.businessType === 'solo' || j.businessType === 'chain' || j.businessType === 'ngo')) {
+      if (!next.businessType && isVerraBusinessProfileBusinessType(j.businessType)) {
         next.businessType = j.businessType
       }
     } catch {

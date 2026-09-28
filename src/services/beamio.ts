@@ -51,7 +51,10 @@ import { BASE_MAINNET_FACTORIES, BEAMIO_ORACLE_CONET, CONET_ACCOUNT_REGISTRY, CO
 import { eip712ChainIdForBeamioUserCard, getCardFactoryGatewayForEip712 } from '@/utils/beamioUserCardChain'
 import { isRpcDegraded, reportRpcFailure, isRpcQuotaOrNetworkError } from '@/utils/rpcStatus'
 import { withBaseRpc } from '../utils/baseRpc'
-import type { VerraBusinessProfileDraft } from '@/utils/verraBusinessProfileLocal'
+import {
+	isVerraBusinessProfileBusinessType,
+	type VerraBusinessProfileDraft,
+} from '@/utils/verraBusinessProfileLocal'
 
 export type x402Response = {
 	timestamp: string
@@ -1676,7 +1679,7 @@ const sanitizeRecoverBusinessDraft = (
 ): RecoverBusinessDraft | null => {
 	if (!input || typeof input !== 'object') return null
 	const next: RecoverBusinessDraft = {}
-	if (input.businessType === 'solo' || input.businessType === 'chain' || input.businessType === 'ngo') {
+	if (isVerraBusinessProfileBusinessType(input.businessType)) {
 		next.businessType = input.businessType
 	}
 	if (typeof input.onboardingTermsAccepted === 'boolean') {
@@ -1691,10 +1694,7 @@ const sanitizeRecoverBusinessDraft = (
 	}
 	const formSnapshot = {
 		schemaVersion: 'verra_lite_v1' as const,
-		businessType:
-			input.businessType === 'solo' || input.businessType === 'chain' || input.businessType === 'ngo'
-				? input.businessType
-				: null,
+		businessType: isVerraBusinessProfileBusinessType(input.businessType) ? input.businessType : null,
 		onboardingTermsAccepted: typeof input.onboardingTermsAccepted === 'boolean' ? input.onboardingTermsAccepted : null,
 		storeName: typeof input.storeName === 'string' ? input.storeName : '',
 		category: typeof input.category === 'string' ? input.category : '',

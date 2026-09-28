@@ -63,6 +63,7 @@ import {
 	loadSessionOnboardingBusinessDraft,
 	mergeSessionOnboardingDraftIntoEoa,
 	patchBusinessProfileDraftForEoa,
+	isVerraBusinessProfileBusinessType,
 	normalizeVerraBusinessChannelKind,
 	pickVerraBusinessFieldsFromRecover,
 	saveSessionOnboardingBusinessDraft,
@@ -149,7 +150,7 @@ export default function BeamioOnboardingModal({
 	const [coverBusinessType, setCoverBusinessType] = useState<VerraBusinessProfileBusinessType>(() => {
 		const d = loadSessionOnboardingBusinessDraft()
 		const bt = d?.businessType
-		return bt === 'chain' || bt === 'ngo' || bt === 'solo' ? bt : 'solo'
+		return isVerraBusinessProfileBusinessType(bt) ? bt : 'solo'
 	})
 	const [coverTermsAccepted, setCoverTermsAccepted] = useState(() =>
 		Boolean(loadSessionOnboardingBusinessDraft()?.onboardingTermsAccepted)

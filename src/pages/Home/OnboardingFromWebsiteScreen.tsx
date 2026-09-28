@@ -8,8 +8,14 @@ import { MerchantLegalDocumentOverlay } from '@/pages/Vouchers/example/MerchantL
 import { bizBrandFocusRingClass } from '@/pages/Home/brandUi'
 import { BizOnboardingLocalePicker } from '@/pages/Home/BizOnboardingLocalePicker'
 import {
+	applyOnboardingChannelCardPick,
+	channelCardSelected,
+	civicPickForCategory,
+	isCivicChannelKind,
 	ONBOARDING_BUSINESS_CHANNELS,
+	ORG_TYPE_OPTIONS,
 	subsForChannel,
+	type OnboardingChannelCardId,
 	type OrgTypeSelect,
 } from '@/pages/Home/OnboardingBusinessDiscoveryForm'
 import { normalizeOnboardingCountryCode } from '@/pages/Home/onboardingCountries'
@@ -128,10 +134,18 @@ export function OnboardingFromWebsiteScreen({
 		Boolean(province.trim()) &&
 		termsAccepted
 
-	const onPickChannel = (next: VerraBusinessChannelKind) => {
-		setChannelKind(next)
-		const allowed = new Set(subsForChannel(next).map((s) => s.value))
-		if (!allowed.has(category as never)) setCategory('')
+	const onPickChannel = (next: OnboardingChannelCardId) => {
+		const picked = applyOnboardingChannelCardPick(next, channelKind, category)
+		setChannelKind(picked.channelKind)
+		if (picked.category !== category) setCategory(picked.category)
+	}
+
+	const onPickCategory = (value: string) => {
+		setCategory(value)
+		const civic = isCivicChannelKind(channelKind) ? civicPickForCategory(value) : null
+		if (!civic) return
+		if (civic.channelKind !== channelKind) setChannelKind(civic.channelKind)
+		setOrgType(civic.orgType)
 	}
 
 	const fieldLabel = 'ml-1 block text-[12px] font-semibold uppercase tracking-[0.05em] text-[#424655]'
@@ -235,7 +249,7 @@ export function OnboardingFromWebsiteScreen({
 						<p className={fieldLabel}>{tu('onb_business_category')}</p>
 						<div className="grid grid-cols-1 gap-3 md:grid-cols-3">
 							{ONBOARDING_BUSINESS_CHANNELS.map(({ id, titleKey, descKey, Icon }) => {
-								const selected = channelKind === id
+								const selected = channelCardSelected(id, channelKind)
 								return (
 									<button
 										key={id}
@@ -261,7 +275,9 @@ export function OnboardingFromWebsiteScreen({
 						</div>
 						{channelKind ? (
 							<div className="mt-4">
-								<p className={`${fieldLabel} mb-2`}>{tu('onb_select_subcategory')}</p>
+								<p className={`${fieldLabel} mb-2`}>
+									{tu(isCivicChannelKind(channelKind) ? 'onb_select_org_category' : 'onb_select_subcategory')}
+								</p>
 								<div className="flex flex-wrap gap-2">
 									{subOptions.map(({ value, labelKey }) => {
 										const selected = category === value
@@ -269,7 +285,7 @@ export function OnboardingFromWebsiteScreen({
 											<button
 												key={value}
 												type="button"
-												onClick={() => setCategory(value)}
+												onClick={() => onPickCategory(value)}
 												aria-pressed={selected}
 												className={`
 													inline-block whitespace-nowrap rounded-full border px-4 py-2 text-[15px] transition-colors
@@ -306,9 +322,11 @@ export function OnboardingFromWebsiteScreen({
 										<option value="" disabled>
 											{tu('onb_select_org_type')}
 										</option>
-										<option value="sme">{tu('onb_org_sme')}</option>
-										<option value="franchise">{tu('onb_org_franchise')}</option>
-										<option value="ngo">{tu('onb_org_ngo')}</option>
+										{ORG_TYPE_OPTIONS.map((opt) => (
+											<option key={opt.value} value={opt.value}>
+												{tu(opt.labelKey)}
+											</option>
+										))}
 									</select>
 									<SelectChevron />
 								</div>

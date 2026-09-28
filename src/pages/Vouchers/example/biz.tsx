@@ -217,6 +217,7 @@ import {
   VERRA_LITE_DEFAULT_CATEGORY_VALUE,
   buildShareTokenBusinessProfileFromDraft,
   isPhysicalStoreMerchantChannel,
+  isVerraBusinessProfileBusinessType,
   mapOnboardingCategoryToCardIssuanceId,
   mergeShareTokenBusinessProfile,
   parseShareTokenBusinessProfileFromUnknown,
@@ -3405,10 +3406,9 @@ function MobileNoAaLiteMemberSelectionPage(props: {
       setPushError('Complete all required fields.');
       return;
     }
-    const businessType =
-      snapshot.businessType === 'solo' || snapshot.businessType === 'chain' || snapshot.businessType === 'ngo'
-        ? snapshot.businessType
-        : 'solo';
+    const businessType = isVerraBusinessProfileBusinessType(snapshot.businessType)
+      ? snapshot.businessType
+      : 'solo';
     const snapshotForChain: VerraBusinessProfileDraft = { ...snapshot, businessType };
     setPushError('');
     setPushBusy(true);

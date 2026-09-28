@@ -10,7 +10,7 @@ export type OnboardingBusinessLookupCandidate = {
 	snippet: string
 	channelKind: VerraBusinessChannelKind | ''
 	category: string
-	orgType: 'sme' | 'franchise' | 'ngo' | ''
+	orgType: 'sme' | 'franchise' | 'government' | 'ngo' | 'other' | ''
 	country: string
 	city: string
 	province: string
@@ -209,8 +209,7 @@ function channelForCategory(cat: string): VerraBusinessChannelKind | '' {
 function catsForChannel(kind: VerraBusinessChannelKind | ''): readonly string[] {
 	if (kind === 'digital') return DIGITAL_CATS
 	if (kind === 'app') return APP_CATS
-	if (kind === 'government') return GOVERNMENT_CATS
-	if (kind === 'ngo') return NGO_CATS
+	if (kind === 'government' || kind === 'ngo') return [...GOVERNMENT_CATS, ...NGO_CATS]
 	if (kind === 'physical') return PHYSICAL_CATS
 	return [...PHYSICAL_CATS, ...DIGITAL_CATS, ...APP_CATS, ...GOVERNMENT_CATS, ...NGO_CATS]
 }
@@ -253,7 +252,15 @@ export function enrichLookupCandidateFromPublicName(
 		...c,
 		channelKind: channel,
 		category: c.category || cat,
-		orgType: c.orgType || (channel === 'physical' ? 'sme' : c.orgType),
+		orgType:
+			c.orgType ||
+			((GOVERNMENT_CATS as readonly string[]).includes(cat)
+				? 'government'
+				: (NGO_CATS as readonly string[]).includes(cat)
+					? 'ngo'
+					: channel === 'physical'
+						? 'sme'
+						: ''),
 	}
 }
 
@@ -265,8 +272,14 @@ function mapCandidate(raw: unknown): OnboardingBusinessLookupCandidate | null {
 	const channelRaw = String(o.channelKind ?? '').trim()
 	const channelKind: VerraBusinessChannelKind | '' = normalizeVerraBusinessChannelKind(channelRaw) ?? ''
 	const orgRaw = String(o.orgType ?? '').trim()
-	const orgType: 'sme' | 'franchise' | 'ngo' | '' =
-		orgRaw === 'sme' || orgRaw === 'franchise' || orgRaw === 'ngo' ? orgRaw : ''
+	const orgType: 'sme' | 'franchise' | 'government' | 'ngo' | 'other' | '' =
+		orgRaw === 'sme' ||
+		orgRaw === 'franchise' ||
+		orgRaw === 'government' ||
+		orgRaw === 'ngo' ||
+		orgRaw === 'other'
+			? orgRaw
+			: ''
 	return enrichLookupCandidateFromPublicName({
 		id: String(o.id ?? name).trim() || name,
 		name,

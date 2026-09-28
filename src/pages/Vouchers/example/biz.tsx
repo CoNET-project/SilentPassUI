@@ -11532,7 +11532,7 @@ function parseCouponDisabledFromHydration(meta: CardIssuanceCouponMetaHydrationS
   return false;
 }
 /** Consumer app card title (`shareTokenMetadata.displayName`). */
-const CARD_ISSUANCE_STORE_DISPLAY_NAME_MAX = 20;
+const CARD_ISSUANCE_STORE_DISPLAY_NAME_MAX = 50;
 const CARD_ISSUANCE_BONUS_RULE_PAYMENT_DEFAULT = 100;
 const CARD_ISSUANCE_BONUS_RULE_BONUS_DEFAULT = 10;
 /** Unified consumption / charge Reward PT = #13 (not legacy #2). */
@@ -13089,12 +13089,12 @@ type CardIssuanceTierRow = {
 };
 
 const MEMBERSHIP_DURATION_OPTIONS: Array<{ value: number; label: string }> = [
-  { value: 1, label: 'Day' },
-  { value: 2, label: 'Week' },
-  { value: 3, label: 'Month' },
-  { value: 4, label: 'Quarter' },
-  { value: 5, label: 'Year' },
-  { value: 6, label: 'Forever' },
+  { value: 1, label: 'Daily' },
+  { value: 2, label: 'Weekly' },
+  { value: 3, label: 'Monthly' },
+  { value: 4, label: 'Quarterly' },
+  { value: 5, label: 'Annually' },
+  { value: 6, label: 'Lifetime' },
 ];
 
 function normalizeMembershipDurationKind(raw: unknown): number {
@@ -42991,15 +42991,14 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                              value={
                                cardIssuanceStoreDisplayName.trim() || cardIssuanceProgramName
                              }
-                             onChange={(v) => {
-                               if (cardIssuanceStoreDisplayName.trim()) {
-                                 setCardIssuanceStoreDisplayName(
-                                   v.slice(0, CARD_ISSUANCE_STORE_DISPLAY_NAME_MAX)
-                                 );
-                               } else {
-                                 setCardIssuanceProgramName(v);
-                               }
-                             }}
+                            onChange={(v) => {
+                              const next = v.slice(0, CARD_ISSUANCE_STORE_DISPLAY_NAME_MAX);
+                              if (cardIssuanceStoreDisplayName.trim()) {
+                                setCardIssuanceStoreDisplayName(next);
+                              } else {
+                                setCardIssuanceProgramName(next);
+                              }
+                            }}
                              maxLength={CARD_ISSUANCE_STORE_DISPLAY_NAME_MAX}
                              displayValue={programsOverviewDisplayName}
                              displayClassName="line-clamp-1 text-[19px] font-bold leading-none tracking-tight text-[#1f2328]"

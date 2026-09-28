@@ -20857,13 +20857,13 @@ const membershipFeeTierListItems = useMemo((): MembershipFeeTierListItem[] => {
     const isBase = membershipFeeTierRowIsBase(row, i, membershipFeeTierWorkingRows);
     const feeN = parseMembershipFeeHumanNumber(row.membershipFee);
     const hasFee = Number.isFinite(feeN) && feeN > 0;
+    const durationKind = normalizeMembershipDurationKind(row.membershipDurationKind);
+    const durationTu = membershipDurationTuKey(durationKind);
     const freeClaim =
       cardIssuanceMembershipFeeMode &&
       Number.isFinite(feeN) &&
       feeN === 0 &&
       Boolean(durationTu);
-    const durationKind = normalizeMembershipDurationKind(row.membershipDurationKind);
-    const durationTu = membershipDurationTuKey(durationKind);
     return {
       id: row.id,
       name: (row.name || '').trim() || (isBase ? 'Base' : 'Higher Membership'),

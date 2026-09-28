@@ -1235,23 +1235,13 @@ function DiscoverMerchantTreatAFriendPanel({
 	brandColor,
 	onSendGift,
 	actionsDisabled,
-	zeroPlatformFee = false,
-	readyImmediately = false,
 }: {
 	merchantName: string
 	brandColor: string
 	onSendGift: () => void
 	actionsDisabled: boolean
-	/** Shown on its own line only when Discover gifts add no Beamio platform fee. */
-	zeroPlatformFee?: boolean
-	/** Shown on its own line only when the gift can be claimed as soon as it is issued. */
-	readyImmediately?: boolean
 }) {
 	const brand = brandColor.trim() || DISCOVER_VISIT_BRAND_FALLBACK
-	const ruleNotes = [
-		zeroPlatformFee ? 'Zero platform fees' : null,
-		readyImmediately ? 'Ready to use immediately' : null,
-	].filter((note): note is string => Boolean(note))
 
 	return (
 		<section className="overflow-hidden rounded-2xl border border-[#ebe6df] bg-white shadow-[0_8px_24px_rgba(31,35,40,0.06)] dark:border-slate-700 dark:bg-slate-900">
@@ -1289,11 +1279,6 @@ function DiscoverMerchantTreatAFriendPanel({
 				<p className="mt-3 line-clamp-2 text-[12px] leading-relaxed text-[#5c6570] dark:text-slate-400">
 					Choose an amount, add a personal message, and send a little something to brighten their day.
 				</p>
-				{ruleNotes.length ? (
-					<p className="mt-1 text-[12px] leading-snug text-[#6b7280] dark:text-slate-500">
-						{ruleNotes.join(' · ')}
-					</p>
-				) : null}
 			</div>
 		</section>
 	)
@@ -9194,8 +9179,6 @@ function DiscoverMerchantDetailFullScreen({
 								brandColor={merchantDetailBrandColor ?? DISCOVER_VISIT_BRAND_FALLBACK}
 								onSendGift={openGiftSheet}
 								actionsDisabled={giftSheetOpen}
-								zeroPlatformFee
-								readyImmediately
 							/>
 							<DiscoverMerchantMediaCarousel metadataRoot={merchantMetadataRoot} />
 						</>

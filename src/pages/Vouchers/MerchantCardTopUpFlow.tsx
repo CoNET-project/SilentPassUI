@@ -109,7 +109,7 @@ function forgetPendingStripeSession(key: string): void {
 
 const QUICK = ['10', '20', '50', '100'] as const
 
-type Step = 'amount' | 'pay' | 'select' | 'confirm' | 'stripeWaiting' | 'success'
+type Step = 'amount' | 'pay' | 'select' | 'confirm' | 'stripeWaiting' | 'success' | 'failed'
 type PaymentMethod = 'card' | 'usdc'
 
 type SeedReward13Assets = {
@@ -709,7 +709,7 @@ export default function MerchantCardTopUpFlow({
 						setStripePaymentOutcome('failed')
 						setStripePaymentMessage(body.error || 'Stripe payment could not be completed.')
 						setPayError(body.error || 'Stripe payment could not be completed.')
-						setStep('stripeWaiting')
+						setStep('failed')
 					} else {
 						setStripeSessionId(rememberedSessionId)
 						setStripeBusy(true)
@@ -777,6 +777,7 @@ export default function MerchantCardTopUpFlow({
 		} catch (error) {
 			setPayError(error instanceof Error ? error.message : 'Unable to start Stripe payment.')
 			setStripeBusy(false)
+			setStep('failed')
 		}
 	}, [
 		amountFiat6,
@@ -829,7 +830,7 @@ export default function MerchantCardTopUpFlow({
 					setStripeSessionId(null)
 					setStripePaymentOutcome('failed')
 					setPayError(body.error || 'Stripe payment was canceled or could not be completed.')
-					setStep('stripeWaiting')
+					setStep('failed')
 					return
 				}
 				setStripePaymentMessage(
@@ -970,8 +971,14 @@ export default function MerchantCardTopUpFlow({
 		}
 	}, [sharing, shareUrl, cardAddress, merchantName, resolveName])
 
+	const flowSessionRef = useRef(false)
 	useEffect(() => {
-		if (!open) return
+		if (!open) {
+			flowSessionRef.current = false
+			return
+		}
+		if (flowSessionRef.current) return
+		flowSessionRef.current = true
 		setIsEntered(false)
 		setIsClosing(false)
 		closeStartedRef.current = false
@@ -1386,6 +1393,7 @@ export default function MerchantCardTopUpFlow({
 				})
 				if (!claimed.success) {
 					setPayError(claimed.error || 'Membership claim failed')
+					setStep('failed')
 					return
 				}
 				const assets = await getMyAssets(profile, cardAddress).catch(() => undefined)
@@ -1395,6 +1403,7 @@ export default function MerchantCardTopUpFlow({
 				onSuccess?.(assets || undefined)
 			} catch (e: unknown) {
 				setPayError(e instanceof Error ? e.message : 'Membership claim failed')
+				setStep('failed')
 			} finally {
 				setPayBusy(false)
 			}
@@ -1749,6 +1758,7 @@ export default function MerchantCardTopUpFlow({
 			onSuccess?.(assets)
 		} catch (e: unknown) {
 			setPayError(friendlyTopupContainerError(e instanceof Error ? e.message : String(e)))
+			setStep('failed')
 		} finally {
 			setPayBusy(false)
 		}
@@ -1801,9 +1811,10 @@ export default function MerchantCardTopUpFlow({
 		else close()
 	}
 
+	const membershipCongrats = Boolean(successNote) && mintedLabel === '0.00'
 	const title =
 		step === 'amount'
-			? 'Top Up'
+			? stripeKind === 'membership' ? 'Join or Top Up' : 'Top Up'
 			: step === 'pay'
 				? 'Payment'
 				: step === 'select'
@@ -1812,7 +1823,11 @@ export default function MerchantCardTopUpFlow({
 						? 'Confirm Top-Up'
 						: step === 'stripeWaiting'
 							? 'Stripe Payment'
-						: 'Top-Up Successful'
+						: step === 'failed'
+							? stripeKind === 'membership' ? 'Membership was not completed' : 'Top-up was not completed'
+						: membershipCongrats
+							? "You're a member"
+							: 'Top-Up Successful'
 
 	return (
 		<div
@@ -3118,6 +3133,29 @@ export default function MerchantCardTopUpFlow({
 						</div>
 					)}
 
+					{step === 'failed' && (
+						<div className="flex flex-1 flex-col items-center px-1 pt-16 text-center">
+							<AlertTriangle className="h-16 w-16 text-amber-500" aria-hidden />
+							<h1 className="mt-6 text-[1.75rem] font-bold tracking-tight text-[#1c1c1e] dark:text-slate-100">
+								{stripeKind === 'membership' ? 'Membership was not completed' : 'Top-up was not completed'}
+							</h1>
+							<div
+								role="alert"
+								className="mt-5 w-full max-w-sm rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-left text-[15px] leading-6 text-amber-900"
+							>
+								{payError || 'Something went wrong. Please try again.'}
+							</div>
+							<button
+								type="button"
+								onClick={close}
+								className="mt-8 w-full max-w-sm rounded-2xl py-4 text-[17px] font-bold text-white"
+								style={{ backgroundColor: merchantBrandActionColor }}
+							>
+								Done
+							</button>
+						</div>
+					)}
+
 					{step === 'success' && (
 						<div className="flex flex-1 flex-col items-center px-1 pt-10 text-center">
 							<div className="relative flex h-28 w-28 items-center justify-center">
@@ -3141,14 +3179,16 @@ export default function MerchantCardTopUpFlow({
 								className="mt-7 text-[1.75rem] font-bold tracking-tight dark:text-slate-100"
 								style={{ color: merchantBrandActionColor }}
 							>
-								Top-Up Successful!
+								{membershipCongrats ? "You're a member" : 'Top-Up Successful!'}
 							</h1>
+							{membershipCongrats ? null : (
 							<p
 								className="mt-2 text-base font-semibold"
 								style={{ color: merchantBrandSavedColor }}
 							>
 								+{formatPrefixedFiat(prefix, mintedLabel)} Store Credits Minted
 							</p>
+							)}
 							{successNote ? (
 								<p
 									className="mt-2 max-w-sm text-sm"

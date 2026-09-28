@@ -80,8 +80,6 @@ import { beamioApi } from "@/utils/constants"
 import { openExternalUrl } from "@/utils/cashTreesNativeNfc"
 import { DiscoverDescriptionTextWithUrlCapsules } from "@/components/discover/DiscoverDescriptionTextWithUrlCapsules"
 import { resolveSigningPrivateKeyArmor } from "@/utils/resolveSigningPrivateKeyArmor"
-import { BecomeMemberSheet } from "@/components/Home/BecomeMemberSheet"
-import { loadMembershipKycPolicy, membershipKycAlreadyLinked, type MembershipKycFormPolicy } from "@/utils/membershipKyc"
 import { checkStorage, searchUsername } from "@/services/beamio"
 import BeamioContactProfilePreview from "@/components/Home/BeamioContactProfilePreview"
 import DiscoverMerchantGiftSheet from "@/components/Home/DiscoverMerchantGiftSheet"
@@ -1034,7 +1032,7 @@ function DiscoverMerchantHealthBeautyLoyaltyPassPanel({
 
 			<section className="overflow-hidden rounded-2xl border border-[#ebe6df] bg-white shadow-[0_8px_24px_rgba(31,35,40,0.06)] dark:border-slate-700 dark:bg-slate-900">
 				<div className="px-4 py-4">
-					<div className="flex items-start gap-3">
+					<div className="flex items-center justify-between gap-3">
 						<span
 							className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
 							style={{ backgroundColor: '#f5e6a8' }}
@@ -1043,33 +1041,23 @@ function DiscoverMerchantHealthBeautyLoyaltyPassPanel({
 							<Gift className="h-5 w-5 text-[#8a6a10]" strokeWidth={2.25} />
 						</span>
 						<div className="min-w-0 flex-1">
-							<p className="text-[13px] font-bold uppercase tracking-[0.12em] text-[#1f2328] dark:text-slate-100">
-								Gift Wellness to Friends
-							</p>
-							<p className="mt-1 text-[12px] font-medium leading-snug text-[#5c6570] dark:text-slate-400">
-								Share the {passTitle.trim() || 'merchant'} experience with instant digital delivery
-							</p>
-							<p className="mt-1.5 text-[12px] leading-relaxed text-[#6b7280] dark:text-slate-500">
-								Send custom treatment vouchers or prepaid credits directly to friends via link or
-								BeamioTag with zero platform fees. Recipient can redeem or merge into their own member
-								pass immediately.
+							<p className="text-[15px] font-bold leading-snug tracking-tight text-[#1f2328] dark:text-slate-100">
+								A Gift for Someone Special
 							</p>
 						</div>
-					</div>
-					<div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[#f0ebe4] pt-3 dark:border-slate-700">
-						<span className="text-[11px] font-semibold text-[#5c6570] dark:text-slate-400">
-							Instant transfer &amp; non-expiring
-						</span>
 						<button
 							type="button"
 							onClick={onSendGift}
 							disabled={actionsDisabled}
-							className="inline-flex items-center justify-center rounded-full px-4 py-2 text-[12px] font-bold text-white transition hover:brightness-110 active:scale-[0.98] disabled:opacity-60"
+							className="inline-flex shrink-0 items-center justify-center rounded-full px-4 py-2 text-[12px] font-bold text-white transition hover:brightness-110 active:scale-[0.98] disabled:opacity-60"
 							style={{ backgroundColor: brand }}
 						>
-							Send as Gift
+							Send a Gift Card
 						</button>
 					</div>
+					<p className="mt-3 line-clamp-2 text-[12px] leading-relaxed text-[#5c6570] dark:text-slate-400">
+						Choose an amount, add a personal message, and send a little something to brighten their day.
+					</p>
 				</div>
 			</section>
 		</div>
@@ -1244,18 +1232,26 @@ function DiscoverMerchantMediaCarousel({
 }
 
 function DiscoverMerchantTreatAFriendPanel({
-	merchantName,
 	brandColor,
 	onSendGift,
 	actionsDisabled,
+	zeroPlatformFee = false,
+	readyImmediately = false,
 }: {
 	merchantName: string
 	brandColor: string
 	onSendGift: () => void
 	actionsDisabled: boolean
+	/** Shown on its own line only when Discover gifts add no Beamio platform fee. */
+	zeroPlatformFee?: boolean
+	/** Shown on its own line only when the gift can be claimed as soon as it is issued. */
+	readyImmediately?: boolean
 }) {
-	const name = merchantName.trim() || 'merchant'
 	const brand = brandColor.trim() || DISCOVER_VISIT_BRAND_FALLBACK
+	const ruleNotes = [
+		zeroPlatformFee ? 'Zero platform fees' : null,
+		readyImmediately ? 'Ready to use immediately' : null,
+	].filter((note): note is string => Boolean(note))
 
 	return (
 		<section className="overflow-hidden rounded-2xl border border-[#ebe6df] bg-white shadow-[0_8px_24px_rgba(31,35,40,0.06)] dark:border-slate-700 dark:bg-slate-900">
@@ -1276,24 +1272,28 @@ function DiscoverMerchantTreatAFriendPanel({
 						/>
 					</span>
 					<div className="min-w-0 flex-1">
-						<p className="text-[15px] font-bold tracking-tight text-[#1f2328] dark:text-slate-100">
-							Treat a Friend
+						<p className="text-[15px] font-bold leading-snug tracking-tight text-[#1f2328] dark:text-slate-100">
+							A Gift for Someone Special
 						</p>
 					</div>
 					<button
 						type="button"
 						onClick={onSendGift}
 						disabled={actionsDisabled}
-						className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-full px-4 py-2 text-[12px] font-bold text-white transition hover:brightness-110 active:scale-[0.98] disabled:opacity-60"
+						className="inline-flex shrink-0 items-center justify-center rounded-full px-4 py-2 text-[12px] font-bold text-white transition hover:brightness-110 active:scale-[0.98] disabled:opacity-60"
 						style={{ backgroundColor: brand }}
 					>
-						<span aria-hidden>💌</span>
-						Send as Gift
+						Send a Gift Card
 					</button>
 				</div>
-				<p className="mt-3 text-[12px] leading-relaxed text-[#5c6570] dark:text-slate-400">
-					Share the fresh {name} experience with instant digital delivery. Zero platform fees, ready to use immediately.
+				<p className="mt-3 line-clamp-2 text-[12px] leading-relaxed text-[#5c6570] dark:text-slate-400">
+					Choose an amount, add a personal message, and send a little something to brighten their day.
 				</p>
+				{ruleNotes.length ? (
+					<p className="mt-1 text-[12px] leading-snug text-[#6b7280] dark:text-slate-500">
+						{ruleNotes.join(' · ')}
+					</p>
+				) : null}
 			</div>
 		</section>
 	)
@@ -7650,44 +7650,9 @@ function DiscoverMerchantDetailFullScreen({
 		setDiscoverTopUpOpen(true)
 	}, [freezeMerchantProgramPresentation])
 
-	const membershipKycDone = useRef<((ok: boolean) => void) | null>(null)
-	const [membershipKyc, setMembershipKyc] = useState<null | {
-		policy: MembershipKycFormPolicy
-		card: string
-		key: string
-		wallet: string
-	}>(null)
-
 	const openDiscoverMembershipPay = useCallback((kind: 'join' | 'upgrade') => {
 		const tier = kind === 'join' ? membershipUi.joinTier : membershipUi.upgradeTier
 		if (!tier) return
-		void (async () => {
-			const card = item.cardAddress
-			const profile = profiles?.[0]
-			const eoa = profile?.keyID
-			const key = resolveSigningPrivateKeyArmor(profile)
-			if (card && eoa && key) {
-				const policy = await loadMembershipKycPolicy(card).catch(() => null)
-				if (policy?.enabled) {
-					const linked = await membershipKycAlreadyLinked(card, eoa)
-					if (!linked) {
-						const feeHuman = formatMembershipFeeE6Display(tier.feeE6) || '0.00'
-						const durationLabel =
-							tier.durationKind != null ? MEMBERSHIP_DURATION_LABELS[tier.durationKind] ?? '' : ''
-						const shown = {
-							...policy,
-							offerLabel: 'Member fee',
-							offerValue: `${balancePrefix || ''}${feeHuman}`,
-							offerReward: durationLabel,
-						}
-						const accepted = await new Promise<boolean>((resolve) => {
-							membershipKycDone.current = resolve
-							setMembershipKyc({ policy: shown, card, key, wallet: eoa })
-						})
-						if (!accepted) return
-					}
-				}
-			}
 		freezeMerchantProgramPresentation()
 		const feeHuman = formatMembershipFeeE6Display(tier.feeE6) || '0.00'
 		const feeNum = Number(feeHuman)
@@ -7718,14 +7683,11 @@ function DiscoverMerchantDetailFullScreen({
 		setDiscoverTopUpPrefill(initialAmount)
 		setUsdcTopupPhase('idle')
 		setDiscoverTopUpOpen(true)
-		})()
 	}, [
 		balancePrefix,
 		freezeMerchantProgramPresentation,
-		item.cardAddress,
 		membershipUi.joinTier,
 		membershipUi.upgradeTier,
-		profiles,
 	])
 
 	/** New Customer Bonus CTA — top-up with suggested min, or join and top up together. */
@@ -9232,6 +9194,8 @@ function DiscoverMerchantDetailFullScreen({
 								brandColor={merchantDetailBrandColor ?? DISCOVER_VISIT_BRAND_FALLBACK}
 								onSendGift={openGiftSheet}
 								actionsDisabled={giftSheetOpen}
+								zeroPlatformFee
+								readyImmediately
 							/>
 							<DiscoverMerchantMediaCarousel metadataRoot={merchantMetadataRoot} />
 						</>
@@ -9825,6 +9789,16 @@ function DiscoverMerchantDetailFullScreen({
 						}
 						membershipTierIndex={membershipPurchaseTierIndex ?? undefined}
 						membershipFeeFiat6={membershipPurchaseFeeFiat6 || undefined}
+						membershipJoinTiers={
+							usdcTopupIntent === 'first_purchase' || usdcTopupIntent === 'upgrade'
+								? membershipUi.feeTiers.map((tier) => ({
+										tierIndex: tier.tierIndex,
+										name: tier.name,
+										feeE6: tier.feeE6,
+										durationKind: tier.durationKind,
+									}))
+								: undefined
+						}
 						seedAssets={merchantAssets}
 						seedPoints13={myPoints13Num > 0 ? myPoints13Num : userSocialPoints13}
 						onClose={() => {
@@ -9842,27 +9816,6 @@ function DiscoverMerchantDetailFullScreen({
 					document.body,
 				)
 			: null}
-		{membershipKyc ? (
-			<BecomeMemberSheet
-				policy={membershipKyc.policy}
-				cardAddress={membershipKyc.card}
-				privateKey={membershipKyc.key}
-				subjectWallet={membershipKyc.wallet}
-				signerKind="wallet"
-				brandColor={merchantDetailBrandColor}
-				pageSurface={merchantDetailPageSurface}
-				onClose={() => {
-					membershipKycDone.current?.(false)
-					membershipKycDone.current = null
-					setMembershipKyc(null)
-				}}
-				onLinked={() => {
-					membershipKycDone.current?.(true)
-					membershipKycDone.current = null
-					setMembershipKyc(null)
-				}}
-			/>
-		) : null}
 		</>
 	)
 }

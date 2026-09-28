@@ -51,13 +51,29 @@ export async function loadMembershipKycPolicy(cardAddress: string): Promise<Memb
 	const body = (await response.json()) as { metadata_json?: unknown; metadata?: unknown; name?: string }
 	const meta = (body.metadata_json ?? body.metadata ?? body) as {
 		name?: string
-		shareTokenMetadata?: { kyc?: Record<string, unknown>; storeName?: string; businessName?: string }
+		shareTokenMetadata?: {
+			kyc?: Record<string, unknown>
+			name?: string
+			displayName?: string
+			storeName?: string
+			businessName?: string
+			businessProfile?: { storeName?: string }
+		}
 	}
-	const kyc = meta.shareTokenMetadata?.kyc
+	const share = meta.shareTokenMetadata
+	const kyc = share?.kyc
 	if (!kyc || kyc.enabled !== true) return null
 	const fields = (kyc.fields ?? {}) as Record<string, unknown>
-	const merchantName =
-		String(meta.shareTokenMetadata?.storeName || meta.shareTokenMetadata?.businessName || meta.name || 'Merchant')
+	const merchantName = String(
+		share?.businessProfile?.storeName ||
+			share?.displayName ||
+			share?.storeName ||
+			share?.businessName ||
+			kyc.entity ||
+			share?.name ||
+			meta.name ||
+			'Merchant',
+	)
 	return {
 		enabled: true,
 		merchantName,
@@ -72,16 +88,29 @@ export async function loadMembershipKycPolicy(cardAddress: string): Promise<Memb
 	}
 }
 
-export async function membershipIssueNeedsKyc(cardAddress: string, wallet: string): Promise<boolean> {
-	const policy = await loadMembershipKycPolicy(cardAddress).catch(() => null)
-	if (!policy?.enabled) return false
+async function walletAlreadyHoldsMembership(cardAddress: string, wallet: string): Promise<boolean> {
 	try {
 		const card = new Contract(getAddress(cardAddress), CARD_ABI, provider)
 		const id = (await card.activeMembershipId(getAddress(wallet))) as bigint
-		if (id >= 100n) return false
+		return id >= 100n
 	} catch {
 		return false
 	}
+}
+
+/** First membership on a KYC card. A previously stored ciphertext hash does not skip the form. */
+export async function membershipJoinShouldShowKyc(cardAddress: string, wallets: string[]): Promise<boolean> {
+	const policy = await loadMembershipKycPolicy(cardAddress).catch(() => null)
+	if (!policy?.enabled) return false
+	for (const wallet of wallets) {
+		if (!wallet) continue
+		if (await walletAlreadyHoldsMembership(cardAddress, wallet)) return false
+	}
+	return true
+}
+
+export async function membershipIssueNeedsKyc(cardAddress: string, wallet: string): Promise<boolean> {
+	if (!(await membershipJoinShouldShowKyc(cardAddress, [wallet]))) return false
 	return !(await membershipKycAlreadyLinked(cardAddress, wallet))
 }
 

@@ -12,12 +12,19 @@ import {
 	getMyAssets,
 	peekGetMyAssetsCache,
 	postBuyCardPoints,
+	postClaimFreeMembership,
 } from '@/services/BeamioCard'
 import { isGenericMerchantCardDisplayName } from '@/utils/isGenericMerchantCardDisplayName'
 import { pickNonFactoryMerchantAssetUrl } from '@/utils/isFactoryDefaultMerchantAssetUrl'
 import { resolveSigningPrivateKeyArmor } from '@/utils/resolveSigningPrivateKeyArmor'
 import { displayFiatPrefixFromCode } from '@/services/currency'
+import { BecomeMemberSheet } from '@/components/Home/BecomeMemberSheet'
 import { formatMembershipFeeE6Display } from '@/utils/discoverMembershipFee'
+import {
+	loadMembershipKycPolicy,
+	membershipJoinShouldShowKyc,
+	type MembershipKycFormPolicy,
+} from '@/utils/membershipKyc'
 import {
 	CoverLeg,
 	estimateCoverUsdc6,
@@ -142,6 +149,8 @@ type Props = {
 	stripeKind?: 'topup' | 'membership'
 	membershipTierIndex?: number
 	membershipFeeFiat6?: string
+	/** Membership-only amounts (top-up is zero), including a published zero fee. */
+	membershipJoinTiers?: { tierIndex: number; name: string; feeE6: string; durationKind?: number }[]
 	/** Discover / My Brands already-loaded #13. First-paint Smart Pay cover — do not wait for planner RPC. */
 	seedAssets?: SeedReward13Assets | null
 	/** Discover My Points #13 (human). Used when `seedAssets` still lacks chargeRewardPoints. */
@@ -434,6 +443,15 @@ function isInsufficientConetUsdcError(raw: string): boolean {
 	return /Insufficient CONET-USDC/i.test(raw) || /CONET-USDC on CoNET/i.test(raw)
 }
 
+const MEMBERSHIP_DURATION_LABELS: Record<number, string> = {
+	1: 'Day',
+	2: 'Week',
+	3: 'Month',
+	4: 'Quarter',
+	5: 'Year',
+	6: 'Forever',
+}
+
 function formatUnfundableDualCashAlert(conetHave6: bigint, baseHave6: bigint, need6: bigint): string {
 	const totalHave6 = conetHave6 + baseHave6
 	return `You have $${formatUsdc(totalHave6)} USDC; the remaining cash needs $${formatUsdc(need6)}. Add USDC to continue, or turn off Use PT to pay the full amount after funding.`
@@ -450,6 +468,7 @@ export default function MerchantCardTopUpFlow({
 	stripeKind,
 	membershipTierIndex,
 	membershipFeeFiat6,
+	membershipJoinTiers,
 	seedAssets,
 	seedPoints13,
 	onSuccess,
@@ -466,6 +485,7 @@ export default function MerchantCardTopUpFlow({
 	const [isClosing, setIsClosing] = useState(false)
 	const [step, setStep] = useState<Step>('amount')
 	const [amountInput, setAmountInput] = useState('50.00')
+	const [activeTierIndex, setActiveTierIndex] = useState<number | null>(membershipTierIndex ?? null)
 	const [smartPay, setSmartPay] = useState(true)
 	const [rows, setRows] = useState<Reward13Row[]>([])
 	const [rowsLoading, setRowsLoading] = useState(false)
@@ -481,6 +501,12 @@ export default function MerchantCardTopUpFlow({
 	const [merchantIcon, setMerchantIcon] = useState<string | undefined>()
 	const [payBusy, setPayBusy] = useState(false)
 	const [payError, setPayError] = useState('')
+	const afterKycRef = useRef<(() => void) | null>(null)
+	const [membershipKyc, setMembershipKyc] = useState<null | {
+		policy: MembershipKycFormPolicy
+		key: string
+		wallet: string
+	}>(null)
 	const [stripeReady, setStripeReady] = useState(false)
 	const [stripeBusy, setStripeBusy] = useState(false)
 	const [stripeSessionId, setStripeSessionId] = useState<string | null>(null)
@@ -514,15 +540,24 @@ export default function MerchantCardTopUpFlow({
 
 	const prefix = displayFiatPrefixFromCode(cardCurrency, 'USD')
 	const fiatHuman = amountInput.replace(/,/g, '').trim() || '0'
+	const resolvedTierIndex = activeTierIndex ?? membershipTierIndex ?? null
+	const activeFeeE6 =
+		(membershipJoinTiers ?? []).find((tier) => tier.tierIndex === resolvedTierIndex)?.feeE6
+		?? membershipFeeFiat6
 	const memberFeeHuman =
-		stripeKind === 'membership' ? formatMembershipFeeE6Display(membershipFeeFiat6) : ''
+		stripeKind === 'membership' ? formatMembershipFeeE6Display(activeFeeE6) : ''
 	const memberFeeNumber = memberFeeHuman ? Number(memberFeeHuman) : 0
 	const topupCreditNumber = Math.max(0, Number(fiatHuman) - (Number.isFinite(memberFeeNumber) ? memberFeeNumber : 0))
 	const amountBelowMemberFee =
 		Boolean(memberFeeHuman) && Number.isFinite(Number(fiatHuman)) && Number(fiatHuman) < memberFeeNumber
+	const zeroFeeMembershipOnly =
+		stripeKind === 'membership' &&
+		resolvedTierIndex != null &&
+		memberFeeNumber === 0 &&
+		Number(fiatHuman) === 0
 	const membershipPayFields =
-		stripeKind === 'membership' && membershipTierIndex != null && memberFeeHuman
-			? { membershipTierIndex, membershipFeeFiat6 }
+		stripeKind === 'membership' && resolvedTierIndex != null && memberFeeHuman
+			? { membershipTierIndex: resolvedTierIndex, membershipFeeFiat6: activeFeeE6 }
 			: {}
 	const amountFiat6 = useMemo(() => {
 		const normalized = fiatHuman.trim()
@@ -942,6 +977,9 @@ export default function MerchantCardTopUpFlow({
 		closeStartedRef.current = false
 		setStep('amount')
 		setAmountInput(initialAmount?.trim() || '50.00')
+		setActiveTierIndex(membershipTierIndex ?? null)
+		afterKycRef.current = null
+		setMembershipKyc(null)
 		smartPayUserOptOutRef.current = false
 		setSmartPay(true)
 		setUsedManual(false)
@@ -960,7 +998,7 @@ export default function MerchantCardTopUpFlow({
 			closeTimer.current = undefined
 			if (shareResetTimer.current) clearTimeout(shareResetTimer.current)
 		}
-	}, [open, initialAmount])
+	}, [open, initialAmount, membershipTierIndex])
 
 	useEffect(() => {
 		if (!open || !cardAddress) return
@@ -1329,10 +1367,98 @@ export default function MerchantCardTopUpFlow({
 	const availablePts6 = usableRows.reduce((sum, row) => sum + row.redeemablePoints6, 0n)
 	const merchantCount = usableRows.length
 
-	const goPay = () => {
-		if (amountBelowMemberFee) return
+	const claimZeroFeeMembership = (tierIndex: number) => {
+		const key = resolveSigningPrivateKeyArmor(profile)
+		const wallet = profile.keyID?.trim()
+		if (!key || !wallet) {
+			setPayError('Sign in to claim membership.')
+			return
+		}
+		setPayBusy(true)
+		setPayError('')
+		void (async () => {
+			try {
+				const claimed = await postClaimFreeMembership({
+					cardAddress,
+					tierIndex,
+					wallet,
+					privateKeyArmor: key,
+				})
+				if (!claimed.success) {
+					setPayError(claimed.error || 'Membership claim failed')
+					return
+				}
+				const assets = await getMyAssets(profile, cardAddress).catch(() => undefined)
+				setMintedLabel('0.00')
+				setSuccessNote('Membership is active.')
+				setStep('success')
+				onSuccess?.(assets || undefined)
+			} catch (e: unknown) {
+				setPayError(e instanceof Error ? e.message : 'Membership claim failed')
+			} finally {
+				setPayBusy(false)
+			}
+		})()
+	}
+
+	const continueAfterMembershipGate = () => {
+		if (zeroFeeMembershipOnly && resolvedTierIndex != null) {
+			claimZeroFeeMembership(resolvedTierIndex)
+			return
+		}
 		if (Number(fiatHuman) <= 0) return
 		setStep('pay')
+	}
+
+	const goPay = () => {
+		if (payBusy || amountBelowMemberFee) return
+		if (stripeKind !== 'membership') {
+			if (Number(fiatHuman) <= 0) return
+			setStep('pay')
+			return
+		}
+		const key = resolveSigningPrivateKeyArmor(profile)
+		const wallet = profile.keyID?.trim()
+		if (!key || !wallet) {
+			setPayError('Sign in to claim membership.')
+			return
+		}
+		setPayBusy(true)
+		setPayError('')
+		void (async () => {
+			let next: 'kyc' | 'continue' | null = null
+			try {
+				const needsKyc = await membershipJoinShouldShowKyc(cardAddress, [wallet, profileAa, resolvedAa])
+				if (needsKyc) {
+					const policy = await loadMembershipKycPolicy(cardAddress).catch(() => null)
+					if (policy?.enabled) {
+						const active = (membershipJoinTiers ?? []).find((tier) => tier.tierIndex === resolvedTierIndex)
+						const feeHuman = formatMembershipFeeE6Display(active?.feeE6 ?? membershipFeeFiat6) || '0.00'
+						const durationLabel =
+							active?.durationKind != null ? MEMBERSHIP_DURATION_LABELS[active.durationKind] ?? '' : ''
+						afterKycRef.current = continueAfterMembershipGate
+						setMembershipKyc({
+							policy: {
+								...policy,
+								offerLabel: 'Member fee',
+								offerValue: `${prefix}${feeHuman}`,
+								offerReward: durationLabel,
+							},
+							key,
+							wallet,
+						})
+						next = 'kyc'
+						return
+					}
+				}
+				next = 'continue'
+			} catch (e: unknown) {
+				setPayError(e instanceof Error ? e.message : 'Could not check membership details.')
+			} finally {
+				setPayBusy(false)
+			}
+			if (next === 'continue') continueAfterMembershipGate()
+		})()
 	}
 
 	const toggleSelect = (addr: string) => {
@@ -1976,6 +2102,51 @@ export default function MerchantCardTopUpFlow({
 										Quick amount
 									</p>
 									<div className="mt-3 grid grid-cols-2 gap-3">
+										{(stripeKind === 'membership' ? membershipJoinTiers ?? [] : []).map((tier) => {
+											const feeLabel = formatMembershipFeeE6Display(tier.feeE6) || '0.00'
+											const feeNumber = Number(feeLabel)
+											const selected =
+												resolvedTierIndex === tier.tierIndex &&
+												Number.isFinite(feeNumber) &&
+												Number(fiatHuman) === feeNumber
+											const tierName = tier.name.trim() || 'Membership'
+											return (
+												<button
+													key={`membership-${tier.tierIndex}`}
+													type="button"
+													onClick={() => {
+														setActiveTierIndex(tier.tierIndex)
+														setAmountInput(feeLabel)
+														setPayError('')
+													}}
+													className={`relative rounded-2xl py-3.5 text-[16px] font-semibold shadow-[0_4px_12px_rgba(15,23,42,0.10)] transition ${
+														selected
+															? 'border dark:text-slate-100'
+															: 'border border-transparent'
+													}`}
+													style={
+														selected
+															? {
+																	borderColor: merchantBrandBorder,
+																	backgroundColor: merchantBrandTint,
+																	color: merchantBrandActionColor,
+																}
+															: {
+																	backgroundColor: merchantBrandIdleSurface,
+																	color: merchantBrandActionColor,
+																}
+													}
+												>
+													<span className="block">{prefix} {feeLabel}</span>
+													<span
+														className="mt-0.5 block truncate px-2 text-[10px] font-medium dark:text-slate-400"
+														style={{ color: merchantBrandMutedColor }}
+													>
+														{tierName}
+													</span>
+												</button>
+											)
+										})}
 										{quickAmounts.map((q, index) => {
 											const selected = amountMatchesQuick(q)
 											const multiplierCard =
@@ -2062,9 +2233,19 @@ export default function MerchantCardTopUpFlow({
 								</div>
 							</div>
 							<div className="mt-6 bg-gradient-to-t from-white via-white/95 to-transparent pb-1 pt-4 dark:from-slate-950 dark:via-slate-950/95">
+								{payError ? (
+									<p role="alert" className="mb-2 text-center text-[13px] font-medium text-amber-700 dark:text-amber-300">
+										{payError}
+									</p>
+								) : null}
 								<button
 									type="button"
-									disabled={Number(fiatHuman) <= 0 || amountBelowMemberFee}
+									disabled={
+										payBusy ||
+										amountBelowMemberFee ||
+										(Number(fiatHuman) <= 0 && !zeroFeeMembershipOnly)
+									}
+									aria-busy={payBusy}
 									onClick={goPay}
 									className="flex w-full items-center justify-center gap-2 rounded-xl py-4 text-[17px] font-bold shadow-[0_10px_20px_rgba(15,23,42,0.18)] transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
 									style={{
@@ -2073,7 +2254,9 @@ export default function MerchantCardTopUpFlow({
 									}}
 								>
 									<span>
-										Continue with {prefix} {(creditQuote?.total ?? Number(fiatHuman)).toFixed(2)} Credit
+										{zeroFeeMembershipOnly
+											? 'Continue'
+											: `Continue with ${prefix} ${(creditQuote?.total ?? (Number(fiatHuman) || 0)).toFixed(2)} Credit`}
 									</span>
 									<ChevronRight className="h-5 w-5" aria-hidden />
 								</button>
@@ -3041,6 +3224,27 @@ export default function MerchantCardTopUpFlow({
 					)}
 				</div>
 			</div>
+			{membershipKyc ? (
+				<BecomeMemberSheet
+					policy={membershipKyc.policy}
+					cardAddress={cardAddress}
+					privateKey={membershipKyc.key}
+					subjectWallet={membershipKyc.wallet}
+					signerKind="wallet"
+					brandColor={merchantBrandActionColor}
+					pageSurface={pageSurface}
+					onClose={() => {
+						afterKycRef.current = null
+						setMembershipKyc(null)
+					}}
+					onLinked={() => {
+						const next = afterKycRef.current
+						afterKycRef.current = null
+						setMembershipKyc(null)
+						next?.()
+					}}
+				/>
+			) : null}
 		</div>
 	)
 }

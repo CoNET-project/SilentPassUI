@@ -3204,7 +3204,9 @@ export const postClaimFreeMembership = async (params: {
 		if (!response.ok || data?.success === false) {
 			const apiError =
 				(typeof data?.error === 'string' && data.error.trim()) ||
-				'Membership claim failed'
+				(response.status === 404
+					? 'Free membership claim is not available right now.'
+					: 'Membership claim failed')
 			return { success: false, error: apiError }
 		}
 		return { success: true, hash: typeof data?.hash === 'string' ? data.hash : undefined }

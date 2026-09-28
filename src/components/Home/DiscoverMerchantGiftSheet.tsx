@@ -13,11 +13,15 @@ import {
 	Loader2,
 	MessageSquare,
 	Search,
-	ExternalLink,
 	Share2,
 	ShieldCheck,
 	Sparkles,
 	Utensils,
+	ShoppingBag,
+	ShoppingBasket,
+	GraduationCap,
+	Dumbbell,
+	Users,
 	Wallet,
 	X,
 	Lock,
@@ -166,50 +170,50 @@ const FOOD_OCCASIONS: GiftThemedOccasion[] = [
 		id: 'just-because',
 		emoji: '✨',
 		label: 'Just Because',
-		subtitle: 'Warm comfort',
-		message: (m) => `Lunch is on me! Enjoy the best dishes at ${m}.`,
+		subtitle: 'A little surprise',
+		message: () => 'A little something just for you. Hope it brings a smile to your day!',
 	},
 	{
 		id: 'birthday',
 		emoji: '🎂',
-		label: 'Birthday Treat',
-		subtitle: 'Sweet surprise',
-		message: (m) => `Happy birthday! Enjoy a delicious meal at ${m} — my treat.`,
+		label: 'Happy Birthday',
+		subtitle: 'Your special day',
+		message: () => 'Happy birthday! Wishing you a wonderful day filled with things you love.',
 	},
 	{
-		id: 'coffee',
-		emoji: '☕',
-		label: 'Coffee Break',
-		subtitle: 'Casual sip',
-		message: (m) => `Coffee is on me at ${m}. Enjoy a casual sip!`,
+		id: 'thinking',
+		emoji: '💛',
+		label: 'Thinking of You',
+		subtitle: 'Sending a little care',
+		message: () => "You've been on my mind. Sending a little something to brighten your day.",
 	},
 	{
 		id: 'celebrate',
 		emoji: '🎉',
 		label: 'Celebrate',
-		subtitle: 'Big milestone',
-		message: (m) => `Let’s celebrate at ${m}. Dinner is on me!`,
+		subtitle: 'A moment to remember',
+		message: () => "Here's to a moment worth celebrating! Enjoy this little gift from me to you.",
 	},
 	{
 		id: 'thanks',
 		emoji: '🙏',
 		label: 'Thank You',
-		subtitle: 'Gratitude gift',
-		message: (m) => `Thank you — enjoy this meal at ${m}. You deserve it!`,
+		subtitle: 'A little appreciation',
+		message: () => 'Thank you for all you do. This little gift comes with a lot of appreciation.',
 	},
 	{
-		id: 'cheers',
-		emoji: '🥂',
-		label: 'Cheers',
-		subtitle: 'Toast together',
-		message: (m) => `Cheers! Let’s toast together at ${m} — on me.`,
+		id: 'congrats',
+		emoji: '🌟',
+		label: 'Congrats',
+		subtitle: "Here's to you",
+		message: () => "Congratulations! So happy for you and excited for what's ahead.",
 	},
 	{
-		id: 'special-feast',
-		emoji: '🍷',
-		label: 'Special Feast',
-		subtitle: 'Gourmet night',
-		message: (m) => `A special feast awaits at ${m}. Enjoy a gourmet night — on me.`,
+		id: 'something-special',
+		emoji: '🎁',
+		label: 'Something Special',
+		subtitle: 'Chosen with care',
+		message: () => 'A little something for someone special. Hope you enjoy it!',
 	},
 ]
 
@@ -262,19 +266,19 @@ type GiftNoteChip = { id: string; label: string; text: string }
 
 const FOOD_NOTE_CHIPS: GiftNoteChip[] = [
 	{
-		id: 'lunch',
-		label: '🍽️ Lunch on me!',
-		text: 'Lunch is on me! Treat yourself today 🍽️',
+		id: 'just-for-you',
+		label: 'Just for you',
+		text: 'A little something just for you. Enjoy!',
 	},
 	{
-		id: 'enjoy',
-		label: '😋 Enjoy the meal',
-		text: 'Enjoy every bite of your meal! 😋',
+		id: 'with-thanks',
+		label: 'With thanks',
+		text: 'A small gift with a big thank you.',
 	},
 	{
-		id: 'treat',
-		label: '✨ Special treat',
-		text: 'A little special treat just for you ✨',
+		id: 'sending-smiles',
+		label: 'Sending smiles',
+		text: 'Hope this brings a smile to your day!',
 	},
 ]
 
@@ -303,36 +307,45 @@ function themeNoteChips(kind: GiftStep1Kind): GiftNoteChip[] {
 }
 
 function occasionEmojiTileClass(emoji: string): string {
-	if (emoji === '✨' || emoji === '🙏' || emoji === '🍽️' || emoji === '🛁') return 'bg-amber-100'
+	if (emoji === '✨' || emoji === '🙏' || emoji === '🍽️' || emoji === '🛁' || emoji === '💛' || emoji === '🌟' || emoji === '🎁') return 'bg-amber-100'
 	if (emoji === '🎂') return 'bg-pink-100'
 	if (emoji === '☕' || emoji === '🌿' || emoji === '🍷') return 'bg-orange-100'
 	return 'bg-purple-100'
 }
 
+function giftIndustryMark(rawCategory: string | null, classified: DiscoverCategoryTab) {
+	const raw = (rawCategory || '').toLowerCase()
+	if (raw === 'community-organization' || raw === 'nonprofit' || raw === 'ngo') return Users
+	switch (classified) {
+		case 'food-beverage':
+			return Utensils
+		case 'grocery-convenience':
+			return ShoppingBasket
+		case 'retail-shopping':
+			return ShoppingBag
+		case 'education-training':
+			return GraduationCap
+		case 'health-beauty':
+			return Flower2
+		case 'fitness-wellness':
+			return Dumbbell
+		case 'entertainment-leisure':
+			return Ticket
+		case 'local-services':
+			return Store
+		default:
+			return Gift
+	}
+}
+
 function resolveGiftStep1Kind(
-	category?: DiscoverCategoryTab | string | null,
-	merchantTitle?: string,
-	metadataRoot?: Record<string, unknown> | null,
-	programDescriptionHint?: string | null,
+	_category?: DiscoverCategoryTab | string | null,
+	_merchantTitle?: string,
+	_metadataRoot?: Record<string, unknown> | null,
+	_programDescriptionHint?: string | null,
 ): GiftStep1Kind {
-	const rawCategoryId = parseDiscoverPrimaryCategoryId(metadataRoot ?? null)
-	const classified = classifyDiscoverMerchantCategory({
-		name: merchantTitle?.trim() || '',
-		programDescription: [
-			discoverProgramDescriptionFromMetadata(metadataRoot ?? null),
-			typeof programDescriptionHint === 'string' ? programDescriptionHint.trim() : '',
-		]
-			.filter(Boolean)
-			.join('\n'),
-		// Only raw metadata ids. A Discover tab like `local-services` is already classified
-		// and must not short-circuit dining copy in the program description.
-		categoryId: rawCategoryId,
-	})
-	if (classified === 'food-beverage') return 'food-beverage'
-	if (classified === 'health-beauty') return 'health-beauty'
-	if (category === 'food-beverage' || category === 'food') return 'food-beverage'
-	if (category === 'health-beauty') return 'health-beauty'
-	return 'generic'
+	// Every merchant uses the same gift page: occasion themes and greeting notes.
+	return 'food-beverage'
 }
 
 function themeAmountChips(kind: GiftStep1Kind): GiftAmountChip[] {
@@ -352,10 +365,13 @@ function giftOccasionDefaultBackground(occasion: GiftOccasion, kind: GiftStep1Ki
 		'just-because': ['#f6d7c8', '#d98772', '#7a4039'],
 		birthday: ['#f7d5ea', '#d77bae', '#79375e'],
 		coffee: ['#ead8c3', '#a87955', '#513828'],
+		thinking: ['#f8e7b8', '#e2b84a', '#8a6420'],
 		celebrate: ['#e2d6f7', '#9474cf', '#4e397d'],
 		thanks: ['#f5e4b8', '#c99a42', '#6c4d1f'],
 		cheers: ['#ecd8bd', '#ad7d46', '#593d23'],
+		congrats: ['#f7e3a8', '#d7a441', '#7a5418'],
 		'special-feast': ['#e7c7c7', '#9f4d52', '#4e2328'],
+		'something-special': ['#f3d2cf', '#d87a78', '#7a3d48'],
 		'self-care': ['#d9ece8', '#72aaa1', '#315e58'],
 		recovery: ['#dcebd2', '#79a66a', '#365e31'],
 		wellness: ['#dcebd2', '#79a66a', '#365e31'],
@@ -683,6 +699,22 @@ export default function DiscoverMerchantGiftSheet({
 		() => resolveGiftStep1Kind(category, merchantTitle, metadataRoot, programDescription),
 		[category, merchantTitle, metadataRoot, programDescription],
 	)
+	const GiftIndustryIcon = useMemo(() => {
+		const raw =
+			parseDiscoverPrimaryCategoryId(metadataRoot ?? null) ??
+			(typeof category === 'string' ? category : null)
+		const classified = classifyDiscoverMerchantCategory({
+			name: merchantTitle?.trim() || '',
+			programDescription: [
+				discoverProgramDescriptionFromMetadata(metadataRoot ?? null),
+				typeof programDescription === 'string' ? programDescription.trim() : '',
+			]
+				.filter(Boolean)
+				.join('\n'),
+			categoryId: raw,
+		})
+		return giftIndustryMark(raw, classified)
+	}, [category, merchantTitle, metadataRoot, programDescription])
 	const occasionCatalog = themeOccasionCatalog(step1Kind)
 	const spotlightUrl = pickNonFactoryMerchantAssetUrl(merchantImage)
 	const giftCardImageOptions = useMemo(() => discoverGiftCardImageOptions(metadataRoot), [metadataRoot])
@@ -772,8 +804,9 @@ export default function DiscoverMerchantGiftSheet({
 	const [giftNote, setGiftNote] = useState(() => {
 		const occ =
 			occasionCatalog.find((o) => o.id === themeDefaultOccasionId(step1Kind)) ?? occasionCatalog[0]!
-		return occ.message(merchantTitle.trim() || 'this merchant')
+		return occ.message('')
 	})
+	const giftNoteEditedRef = useRef(false)
 	const [presetAmount, setPresetAmount] = useState<number | null>(() => themeDefaultAmount(step1Kind))
 	const [customAmountOpen, setCustomAmountOpen] = useState(false)
 	const [amountText, setAmountText] = useState(() => {
@@ -828,6 +861,9 @@ export default function DiscoverMerchantGiftSheet({
 	const [issuedGiftValueE6, setIssuedGiftValueE6] = useState<string | null>(null)
 	const [copyCodeStatus, setCopyCodeStatus] = useState<'idle' | 'ok'>('idle')
 	const [copyLinkStatus, setCopyLinkStatus] = useState<'idle' | 'ok'>('idle')
+	const [giftLinkMenuOpen, setGiftLinkMenuOpen] = useState(false)
+	const [giftPurchaseLinkCopied, setGiftPurchaseLinkCopied] = useState(false)
+	const giftLinkMenuRef = useRef<HTMLDivElement | null>(null)
 
 	const merchantLabel = merchantTitle.trim() || 'this merchant'
 	const previewAmount = formatPreviewAmount(amountText)
@@ -884,7 +920,8 @@ export default function DiscoverMerchantGiftSheet({
 			const catalog = themeOccasionCatalog(step1Kind)
 			const occ = catalog.find((o) => o.id === occId) ?? catalog[0]!
 			setOccasionId(occId)
-			setGiftNote(occ.message(merchantTitle.trim() || 'this merchant'))
+			giftNoteEditedRef.current = false
+			setGiftNote(occ.message(''))
 		}
 		const floor = isFeeCard ? Number(minHuman) || 0 : 0
 		const start = recommendedGiftAmount(step1Kind, floor, multiplierCards, minNum)
@@ -1380,12 +1417,57 @@ export default function DiscoverMerchantGiftSheet({
 		[cardAddress],
 	)
 
-	const handleOpenGiftPurchaseUrl = () => {
-		setPanelError(null)
-		if (!openExternalUrl(giftPurchaseUrl)) {
-			setPanelError('Could not open the Gift purchase page.')
+	const copyGiftPurchaseLink = async () => {
+		const markCopied = () => {
+			setGiftPurchaseLinkCopied(true)
+			window.setTimeout(() => setGiftPurchaseLinkCopied(false), 2000)
+		}
+		try {
+			await navigator.clipboard.writeText(giftPurchaseUrl)
+			markCopied()
+			return
+		} catch {
+			/* Fall through to a document selection copy. */
+		}
+		const field = document.createElement('textarea')
+		field.value = giftPurchaseUrl
+		field.setAttribute('readonly', '')
+		field.style.position = 'fixed'
+		field.style.left = '-9999px'
+		document.body.appendChild(field)
+		field.select()
+		const copied = document.execCommand('copy')
+		field.remove()
+		if (copied) {
+			markCopied()
+			return
+		}
+		setPanelError('Could not copy the gift link.')
+	}
+
+	const shareGiftPurchaseLink = async () => {
+		try {
+			if (typeof navigator.share === 'function') {
+				await navigator.share({ title: 'Send a Gift Card', url: giftPurchaseUrl })
+				setGiftLinkMenuOpen(false)
+				return
+			}
+			await copyGiftPurchaseLink()
+		} catch {
+			/* The share sheet was cancelled. */
 		}
 	}
+
+	useEffect(() => {
+		if (!giftLinkMenuOpen) return
+		const closeOutside = (event: PointerEvent) => {
+			const target = event.target
+			if (target instanceof Node && giftLinkMenuRef.current?.contains(target)) return
+			setGiftLinkMenuOpen(false)
+		}
+		document.addEventListener('pointerdown', closeOutside, true)
+		return () => document.removeEventListener('pointerdown', closeOutside, true)
+	}, [giftLinkMenuOpen])
 
 	const openGiftFriendChat = () => {
 		if (!selectedFriend) return
@@ -1466,7 +1548,8 @@ export default function DiscoverMerchantGiftSheet({
 
 	const selectOccasion = (occ: GiftOccasion) => {
 		setOccasionId(occ.id)
-		setGiftNote(occ.message(merchantLabel))
+		if (giftNoteEditedRef.current) return
+		setGiftNote(occ.message('').slice(0, noteMax))
 	}
 
 	const handlePurchase = async () => {
@@ -2089,14 +2172,10 @@ export default function DiscoverMerchantGiftSheet({
 					<div className="pointer-events-none absolute inset-0 bg-black/20" />
 					<div className="pointer-events-none absolute -right-8 -bottom-8 h-44 w-44 rounded-full bg-white/10 blur-xl" />
 					<div
-						className="pointer-events-none absolute right-4 top-4 opacity-15"
+						className="pointer-events-none absolute right-4 top-4 opacity-20"
 						aria-hidden
 					>
-						{step1Kind === 'health-beauty' ? (
-							<Flower2 className="h-[72px] w-[72px]" strokeWidth={1.25} />
-						) : (
-							<Utensils className="h-[72px] w-[72px]" strokeWidth={1.25} />
-						)}
+						<GiftIndustryIcon className="h-[72px] w-[72px]" strokeWidth={1.25} />
 					</div>
 				</>
 			) : null}
@@ -2804,7 +2883,6 @@ export default function DiscoverMerchantGiftSheet({
 
 	/* ─── Step 1: Configure ─── */
 	if (step === 1 && step1Kind !== 'generic') {
-		const isDining = step1Kind === 'food-beverage'
 		const noteChips = themeNoteChips(step1Kind)
 		const customBounds = giftBounds
 		const customMin = Math.max(Number(minHuman) || 0, customBounds?.min ?? 0)
@@ -2817,36 +2895,52 @@ export default function DiscoverMerchantGiftSheet({
 						className="inline-flex items-center gap-1.5 rounded-full px-3 py-1"
 						style={{ backgroundColor: brandTint, color: brandControl }}
 					>
-						{isDining ? (
-							<Utensils className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />
-						) : (
-							<Flower2 className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />
-						)}
-						<span className="text-[12px] font-semibold uppercase tracking-[0.05em]">
-							{isDining ? 'Gourmet Dining Gift' : 'Wellness & Self-Care Gift'}
-						</span>
+						<Gift className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />
+						<span className="text-[12px] font-semibold uppercase tracking-[0.05em]">Gift Card</span>
 					</div>
 				</div>
 				<div className="flex items-start justify-between gap-3">
 					<h2 className="min-w-0 flex-1 text-[28px] font-bold leading-tight tracking-tight text-[#0F172A] dark:text-slate-100">
-						{isDining ? 'Treat a Friend 🍽️' : 'Gift of Wellness ✨'}
+						Send a Gift Card
 					</h2>
-					<button
-						type="button"
-						onClick={handleOpenGiftPurchaseUrl}
-						className="mt-1 inline-flex max-w-[46%] shrink-0 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 shadow-sm transition hover:bg-slate-50 active:scale-95 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
-						aria-label="Open Gift purchase page"
-						title={giftPurchaseUrl}
-					>
-						<Link2 className="h-3.5 w-3.5 shrink-0" aria-hidden />
-						<span className="truncate">{`beamio.app/gift/${cardAddress.slice(0, 6)}…${cardAddress.slice(-4)}`}</span>
-						<ExternalLink className="h-3.5 w-3.5 shrink-0" aria-hidden />
-					</button>
+					<div className="relative mt-1 shrink-0" ref={giftLinkMenuRef}>
+						<button
+							type="button"
+							onClick={() => setGiftLinkMenuOpen((open) => !open)}
+							className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:bg-slate-50 active:scale-95 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+							aria-label="Share gift link"
+							aria-expanded={giftLinkMenuOpen}
+						>
+							<Share2 className="h-4 w-4" strokeWidth={2.25} aria-hidden />
+						</button>
+						{giftLinkMenuOpen ? (
+							<div className="absolute right-0 z-20 mt-2 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-700 dark:bg-slate-900">
+								<button
+									type="button"
+									onClick={() => void copyGiftPurchaseLink()}
+									className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-[14px] font-semibold text-[#1a1b1f] hover:bg-slate-50 dark:text-slate-100 dark:hover:bg-slate-800"
+								>
+									{giftPurchaseLinkCopied ? (
+										<Check className="h-4 w-4 text-emerald-500" strokeWidth={2.25} aria-hidden />
+									) : (
+										<Copy className="h-4 w-4" strokeWidth={2.25} aria-hidden />
+									)}
+									{giftPurchaseLinkCopied ? 'Link copied' : 'Copy link'}
+								</button>
+								<button
+									type="button"
+									onClick={() => void shareGiftPurchaseLink()}
+									className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-[14px] font-semibold text-[#1a1b1f] hover:bg-slate-50 dark:text-slate-100 dark:hover:bg-slate-800"
+								>
+									<Share2 className="h-4 w-4" strokeWidth={2.25} aria-hidden />
+									Share
+								</button>
+							</div>
+						) : null}
+					</div>
 				</div>
-				<p className="mt-0.5 text-[15px] text-[#5d5e63] dark:text-slate-400">
-					{isDining
-						? `Send a delicious experience at ${merchantLabel}.`
-						: `Send a relaxing experience at ${merchantLabel}.`}
+				<p className="mt-0.5 line-clamp-2 text-[15px] leading-snug text-[#5d5e63] dark:text-slate-400">
+					A little something from you, to enjoy at {merchantLabel}.
 				</p>
 
 				<div className="mt-3">{themedGiftCard}</div>
@@ -2888,7 +2982,7 @@ export default function DiscoverMerchantGiftSheet({
 				<section className="mt-6">
 					<div className="mb-2.5 flex items-center justify-between gap-2">
 						<h3 className="text-[18px] font-semibold tracking-tight text-[#1a1b1f] dark:text-slate-100">
-							{isDining ? 'Select Dining Gift Amount' : 'Select Wellness Gift Amount'}
+							Select gift amount
 						</h3>
 						<span className="text-[12px] font-semibold uppercase tracking-[0.05em] text-[#5d5e63]">
 							{ccy} currency
@@ -2995,7 +3089,7 @@ export default function DiscoverMerchantGiftSheet({
 
 				<section className="mt-6 min-w-0">
 					<h3 className="mb-2.5 text-[18px] font-semibold tracking-tight text-[#1a1b1f] dark:text-slate-100">
-						Select Occasion Theme
+						Choose an occasion
 					</h3>
 					<div
 						className="min-w-0 w-full overflow-x-auto overscroll-x-contain p-1 [-ms-overflow-style:none] [scrollbar-width:none] [scroll-snap-type:x_mandatory] [&::-webkit-scrollbar]:hidden"
@@ -3036,11 +3130,11 @@ export default function DiscoverMerchantGiftSheet({
 											) : null}
 										</div>
 										<div className="flex min-w-0 flex-col">
-											<span className="truncate text-[14px] font-semibold leading-snug text-[#1a1b1f] dark:text-slate-100">
+											<span className="line-clamp-2 text-[14px] font-semibold leading-snug text-[#1a1b1f] dark:text-slate-100">
 												{occ.label}
 											</span>
 											{subtitle ? (
-												<span className="mt-0.5 truncate text-[11px] font-medium leading-snug text-[#5d5e63]">
+												<span className="mt-0.5 line-clamp-2 text-[11px] font-medium leading-snug text-[#5d5e63]">
 													{subtitle}
 												</span>
 											) : null}
@@ -3058,7 +3152,7 @@ export default function DiscoverMerchantGiftSheet({
 							className="text-[18px] font-semibold tracking-tight text-[#1a1b1f] dark:text-slate-100"
 							htmlFor="discover-gift-note"
 						>
-							Personal Greeting Note
+							Add a message
 						</label>
 						<span className="text-[12px] font-semibold uppercase tracking-[0.05em] text-[#5d5e63]">
 							{giftNote.length} / {noteMax}
@@ -3070,12 +3164,11 @@ export default function DiscoverMerchantGiftSheet({
 							rows={3}
 							maxLength={noteMax}
 							value={giftNote}
-							onChange={(e) => setGiftNote(e.target.value)}
-							placeholder={
-								isDining
-									? `e.g. Lunch is on me! Enjoy the best dishes at ${merchantLabel}`
-									: 'e.g. Take some time to relax and recharge. You deserve it!'
-							}
+							onChange={(e) => {
+								giftNoteEditedRef.current = true
+								setGiftNote(e.target.value)
+							}}
+							placeholder="Write a little something..."
 							className="w-full resize-none bg-transparent text-[15px] leading-relaxed text-[#1a1b1f] outline-none placeholder:text-[#737687] dark:text-slate-100"
 						/>
 						{noteChips.length ? (
@@ -3084,7 +3177,10 @@ export default function DiscoverMerchantGiftSheet({
 									<button
 										key={chip.id}
 										type="button"
-										onClick={() => setGiftNote(chip.text.slice(0, noteMax))}
+										onClick={() => {
+											giftNoteEditedRef.current = true
+											setGiftNote(chip.text.slice(0, noteMax))
+										}}
 										className="shrink-0 rounded-full bg-[#eeedf3] px-2.5 py-1 text-[12px] text-[#424655] transition hover:bg-[#e3e2e7] dark:bg-slate-700 dark:text-slate-200"
 									>
 										{chip.label}
@@ -3128,10 +3224,10 @@ export default function DiscoverMerchantGiftSheet({
 		return (
 			<section className="mx-auto flex w-full max-w-lg flex-col gap-1 pb-4" aria-label="Configure gift">
 				<h2 className="text-[28px] font-bold leading-tight tracking-tight text-[#0F172A] dark:text-slate-100">
-					Send a Gift Card
+					A Gift for Someone Special
 				</h2>
-				<p className="mt-0.5 text-[15px] text-[#5d5e63] dark:text-slate-400">
-					Curated store credit for {merchantLabel}
+				<p className="mt-0.5 line-clamp-2 text-[15px] leading-snug text-[#5d5e63] dark:text-slate-400">
+					Choose an amount, add a personal message, and send a little something to brighten their day.
 				</p>
 
 				<div className="mt-4">{themedGiftCard}</div>

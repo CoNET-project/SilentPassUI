@@ -161,6 +161,21 @@ function requiredFields(draft: KycDraft): FieldKey[] {
   return (['name', 'phone', 'email'] as const).filter((key) => draft.fields[key] === 'required');
 }
 
+function collectedFieldSummary(draft: KycDraft): string {
+  const items = [
+    ...collectedFields(draft).map((key) => `${FIELD_LABEL[key]} (${draft.fields[key]})`),
+    ...draft.additionalFields.filter((field) => field.state !== 'off').map((field) => `${field.label} (${field.state})`),
+  ];
+  return items.join(' · ') || 'Wallet ID and membership records only · No additional details';
+}
+
+function requiredPurposeCopy(draft: KycDraft): string {
+  return requiredFields(draft)
+    .filter((key) => draft.purposes[key])
+    .map((key) => PURPOSE_COPY[key])
+    .join(' ');
+}
+
 function usageCopy(draft: KycDraft, merchantName: string): string {
   const merchant = draft.entity.trim() || merchantName || 'the merchant';
   const contact = contactLine(draft) || 'the merchant contact shown in this notice';
@@ -169,18 +184,12 @@ function usageCopy(draft: KycDraft, merchantName: string): string {
       ? 'Name: Used by the merchant to address you by name.'
       : `${FIELD_LABEL[key]}: Used by the merchant to contact you about your membership and respond to support requests.`
   );
-  const purpose =
-    draft.collectionPurpose === 'profile'
-      ? 'manage your membership'
-      : 'manage your membership and respond to membership-related requests';
-  const necessity = requiredFields(draft)
-    .filter((key) => draft.purposes[key])
-    .map((key) => PURPOSE_COPY[key])
-    .join(' ');
+  const extra = draft.additionalFields
+    .filter((field) => field.state !== 'off')
+    .map((field) => `${field.label}: ${field.purpose || 'Requested by the merchant for membership services.'}`);
   return [
-    lines.join('\n'),
-    necessity,
-    `Your information is used by ${merchant} to ${purpose}. Promotional messages require a separate opt-in.`,
+    [...lines, ...extra].join('\n'),
+    `Your information is used by ${merchant} to manage your membership and assist with membership-related requests. Marketing messages are sent only if you opt in.`,
     `The merchant accesses its member information through Business OS using its own private key on CoNET L1. Withdrawing consent does not erase existing on-chain records. Contact ${contact} about your information or future use.`,
   ]
     .filter(Boolean)
@@ -190,42 +199,51 @@ function usageCopy(draft: KycDraft, merchantName: string): string {
 function privacyDocument(draft: KycDraft, merchantName: string): string {
   if (draft.policyMode === 'custom') return draft.customPrivacy.trim();
   const entity = draft.entity.trim() || '[Legal business name required]';
+  const tradingAs = merchantName || 'this business';
   const contact = contactLine(draft) || '[Phone or email required]';
   const address = draft.address.trim() || '[Business address required]';
-  const purpose =
-    draft.collectionPurpose === 'profile'
-      ? 'create and manage your member profile'
-      : 'manage your membership and provide customer support';
+  const purpose = 'create and manage memberships and provide customer support';
+  const collected = collectedFieldSummary(draft);
+  const asksDetails = collectedFields(draft).length > 0 || draft.additionalFields.some((field) => field.state !== 'off');
+  const necessity = requiredPurposeCopy(draft);
+  const opening = asksDetails
+    ? `We collect ${collected} to ${purpose}. Required fields are marked on the form. Optional fields may be left blank.`
+    : `We do not request your name, phone number, or email during enrollment. Your wallet ID and membership records are used to ${purpose}.`;
   return [
     'MEMBERSHIP PRIVACY NOTICE',
-    `${entity} · trading as ${merchantName || 'this business'}`,
+    `${entity} · trading as ${tradingAs}`,
     '',
-    '1. Who collects member information',
-    `${entity} collects the details you choose to provide when you join. Contact: ${contact}. Mailing address: ${address}.`,
+    '1. Information and purpose',
+    [opening, necessity].filter(Boolean).join(' '),
     '',
-    '2. What is collected',
-    [
-      ...collectedFields(draft).map((key) => `${FIELD_LABEL[key]} (${draft.fields[key]})`),
-      ...draft.additionalFields.filter((field) => field.state !== 'off').map((field) => `${field.label} (${field.state})`),
-    ].join('\n') || 'Wallet ID and membership records only. No additional details.',
+    'Membership identifiers, top-up and redemption records, balances, and consent records are processed to administer the membership. Providing contact details does not enroll you in marketing.',
     '',
-    '3. Why it is used',
-    `Information is used to ${purpose}.`,
+    '2. Wallet identity and merchant access',
+    'Your wallet address is your membership ID on CoNET L1. You control your own private key. We access our member information through Business OS using our business private key. Beamio provides the decentralized technology and tools; it does not hold customer or merchant private keys or operate a centralized member-data processing service. We, the merchant, determine the collection purposes and membership rules. Contact us about our use of your information.',
+    '',
+    '3. Merchant data-use rules and on-chain records',
     usageCopy(draft, merchantName),
+    'Information is recorded on CoNET L1. Withdrawal of consent or membership closure does not erase existing on-chain records. We do not promise deletion of immutable records. Requests concerning future use are handled by our business in accordance with applicable requirements and supported technical controls.',
     '',
-    '4. Wallet identity',
-    'Wallet addresses identify members on CoNET L1. Customers control their own private keys. The business accesses member information in Business OS with its own private key. Beamio provides technical tools and does not hold those private keys.',
+    '4. Your choices',
+    'Contact our business to request access, correction where technically supported, or withdrawal of consent for future use, subject to applicable restrictions. We will explain any effect on membership services. Unsubscribing from marketing does not cancel your membership or remove store credits.',
+    '',
+    '5. Changes and contact',
+    'We will communicate material changes and obtain fresh consent where required.',
+    `Privacy contact: ${contact}`,
+    `Business: ${entity}`,
+    `Address: ${address}`,
   ].join('\n');
 }
 
 function eligibilityCopy(model: KycEnrollmentModel): string {
   if (model === 'membershipFee') {
-    return 'Membership starts after the one-time membership fee for the selected tier is paid successfully. It lasts for the duration set on that tier. There is no automatic renewal.';
+    return 'Membership starts after the one-time membership fee for the selected tier is paid successfully. It lasts for the duration set on that tier. There is no automatic renewal. The fee does not include store credits. A lifetime duration lasts while the merchant operates the program.';
   }
   if (model === 'cumulative') {
-    return 'Membership starts when confirmed eligible spending reaches a tier threshold. Refunded purchases are excluded. The tier is reassessed if net qualifying spend falls below the threshold. Membership does not expire.';
+    return 'Membership starts when calendar-year net eligible purchases reach a published tier threshold. Taxes, tips, top-ups, cancelled orders, and refunds are excluded. The tier is reassessed if net qualifying spend falls below the threshold. Membership does not expire.';
   }
-  return 'Membership starts after a successful top-up that meets a tier threshold. It does not expire. A later top-up can qualify the customer for a higher tier.';
+  return 'Membership starts after a successful top-up that meets a published tier threshold. It does not expire. A later top-up can qualify the customer for a higher tier. Membership duration and store-credit expiry are separate.';
 }
 
 function refundCopy(model: KycEnrollmentModel, draft: KycDraft): string {
@@ -278,6 +296,7 @@ function termsDocument(
     '',
     '2. Benefits',
     benefits,
+    "All tier thresholds and benefits shown here are the merchant's published settings.",
     '',
     '3. Refunds and qualification changes',
     refundCopy(model, draft),
@@ -285,7 +304,7 @@ function termsDocument(
     '4. Expiry and renewal',
     model === 'membershipFee'
       ? 'No automatic renewal. Membership duration follows the tier the customer joined. Membership duration and store-credit expiry are separate.'
-      : 'This membership does not expire. Membership duration and store-credit expiry are separate.',
+      : 'Single top-up and cumulative-spending memberships do not expire. Membership and credit expiry must not be conflated.',
     '',
     '5. Merchant and technology roles',
     'The merchant sets, approves, and issues the membership. Beamio provides the technology and tools on CoNET L1. Wallet addresses identify members. Each party controls its own private key.',
@@ -296,12 +315,23 @@ function termsDocument(
   ].join('\n');
 }
 
+function validBusinessPhone(value: string): boolean {
+  return /^[+()0-9 .\-]{7,}$/.test(value.trim());
+}
+
+function validPrivacyEmail(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+}
+
 function validatePublish(draft: KycDraft, model: KycEnrollmentModel): string {
-  if (!draft.entity.trim()) return 'Add the legal business name before publishing.';
-  if (!draft.phone.trim() && !draft.email.trim()) return 'Add a phone number or email for the privacy contact.';
-  if (!draft.address.trim()) return 'Add the business mailing address before publishing.';
-  for (const key of requiredFields(draft)) {
-    if (!draft.purposes[key]) return `Choose a purpose for the required ${FIELD_LABEL[key].toLowerCase()} field.`;
+  if (!draft.entity.trim() || !draft.address.trim()) return 'Review your legal business name and mailing address.';
+  if (!draft.phone.trim() && !draft.email.trim()) {
+    return 'Add a phone number or email so customers can contact your business.';
+  }
+  if (draft.phone.trim() && !validBusinessPhone(draft.phone)) return 'Enter a valid business phone number.';
+  if (draft.email.trim() && !validPrivacyEmail(draft.email)) return 'Enter a valid privacy contact email.';
+  if (requiredFields(draft).some((key) => !draft.purposes[key])) {
+    return 'Choose a necessary purpose for each required field, or make it optional.';
   }
   if (draft.additionalFields.some((field) => field.state === 'required' && !field.necessity.trim())) {
     return 'Explain the necessity of each required additional field, or leave it optional.';
@@ -486,7 +516,7 @@ export function ProgramKycEnrollmentPage({
   const dirty = useMemo(() => JSON.stringify(draft) !== JSON.stringify(published ?? null), [draft, published]);
 
   const draftLabel = !published || dirty ? 'Draft' : published.enabled ? 'Published' : 'Collection off';
-  const status = `${draftLabel} · ${MODEL_LABEL[enrollmentModel]}`;
+  const status = published && dirty ? 'Unpublished changes' : `${draftLabel} · ${MODEL_LABEL[enrollmentModel]}`;
   const namedTiers = tiers.filter((tier) => tier.name.trim());
   const showDuration = enrollmentModel === 'membershipFee';
 
@@ -494,10 +524,7 @@ export function ProgramKycEnrollmentPage({
     (key: FieldKey, mode: CollectMode) => {
       const fields = { ...draft.fields, [key]: mode };
       const purposes = { ...draft.purposes };
-      if (mode === 'required' && !purposes[key]) {
-        const purpose = PURPOSE_OPTIONS[key].find((option) => option.value);
-        if (purpose) purposes[key] = purpose.value;
-      }
+      if (mode !== 'required') purposes[key] = '';
       const enabled = collectionEnabled(fields, draft.additionalFields);
       patch({ fields, purposes, enabled });
     },
@@ -592,8 +619,12 @@ export function ProgramKycEnrollmentPage({
     const message = validatePublish(draft, enrollmentModel);
     if (message) {
       setError(message);
-      setReviewOpen(true);
-      if (draft.policyMode === 'template' && !draft.useRules.trim()) setRulesOpen(true);
+      const contactMissing = !draft.phone.trim() && !draft.email.trim();
+      const contactInvalid =
+        (draft.phone.trim() && !validBusinessPhone(draft.phone))
+        || (draft.email.trim() && !validPrivacyEmail(draft.email));
+      if (!draft.entity.trim() || !draft.address.trim() || contactMissing || contactInvalid) setReviewOpen(true);
+      if (draft.policyMode === 'template' && enrollmentModel === 'singleTopup' && !draft.useRules.trim()) setRulesOpen(true);
       if (draft.policyMode === 'custom') setAdvancedOpen(true);
       return;
     }
@@ -715,6 +746,36 @@ export function ProgramKycEnrollmentPage({
           <span className="inline-flex items-center gap-1"><Circle className="h-3.5 w-3.5" aria-hidden /> Optional</span>
           <span className="inline-flex items-center gap-1"><X className="h-3.5 w-3.5" aria-hidden /> Do not collect</span>
         </p>
+        {requiredFields(draft).length ? (
+          <div className="mt-4 rounded-xl bg-[#f6f7f8] p-4">
+            <p className="text-sm font-semibold text-[#1c1e21]">Purpose of required fields</p>
+            <p className="mt-1 text-xs leading-5 text-[#6b7076]">
+              Choose a purpose only when the service genuinely depends on this information. Otherwise keep the field optional. No explanation to write.
+            </p>
+            <div className="mt-3 space-y-3">
+              {requiredFields(draft).map((key) => (
+                <label key={key} className="block text-sm font-medium text-[#1c1e21]">
+                  {FIELD_LABEL[key]}
+                  <span className="relative mt-2 block">
+                    <select
+                      className={selectClass}
+                      value={draft.purposes[key]}
+                      onChange={(event) => patch({ purposes: { ...draft.purposes, [key]: event.target.value } })}
+                    >
+                      {PURPOSE_OPTIONS[key].map((option) => (
+                        <option key={option.value || 'empty'} value={option.value}>{option.label}</option>
+                      ))}
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6b7076]" aria-hidden />
+                  </span>
+                </label>
+              ))}
+            </div>
+            <p className="mt-3 whitespace-pre-wrap text-xs leading-5 text-[#6b7076]">
+              {requiredPurposeCopy(draft) || 'Select a purpose above to generate the explanation.'}
+            </p>
+          </div>
+        ) : null}
         <div className="divide-y divide-[#eef0f2]">
           {draft.additionalFields.map((field) => {
             const status = COLLECT_MODE_BUTTONS.find((item) => item.mode === field.state) ?? COLLECT_MODE_BUTTONS[1];
@@ -998,42 +1059,12 @@ export function ProgramKycEnrollmentPage({
               </div>
             ) : null}
 
-            <label className="block">
-              <span className="text-sm font-semibold text-[#1c1e21]">Collection purpose</span>
-              <span className="relative mt-2 block">
-                <select
-                  className={selectClass}
-                  value={draft.collectionPurpose}
-                  onChange={(event) => patch({ collectionPurpose: event.target.value as CollectionPurpose })}
-                >
-                  <option value="profile">Create and manage member profiles</option>
-                  <option value="service">Manage membership and provide customer support</option>
-                </select>
-                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6b7076]" aria-hidden />
-              </span>
-            </label>
-
-            <div className="rounded-xl bg-[#f6f7f8] p-4">
-              <p className="text-sm font-semibold text-[#1c1e21]">Wallet identity & merchant access</p>
-              <p className="mt-1 text-sm leading-relaxed text-[#5f6368]">
-                Wallet addresses identify members on CoNET L1. Customers control their own private keys. Your business accesses its member information in Business OS using its own private key. Beamio provides technical tools and does not hold your private keys.
-              </p>
-            </div>
-
-            <div>
-              <div className="flex items-center gap-2">
-                <p className="text-sm font-semibold text-[#1c1e21]">How member information is used</p>
-                <span className="rounded-full bg-[#eceff1] px-2 py-0.5 text-[11px] font-medium text-[#5f6368]">Automatically generated</span>
-              </div>
-              <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[#5f6368]">{usageCopy(draft, merchantName)}</p>
-            </div>
-
             <div className="space-y-3">
               {[
                 {
                   kind: 'privacy' as const,
                   title: `${merchantName || 'Merchant'} Privacy Notice`,
-                  detail: 'Generated from your selected fields',
+                  detail: collectedFieldSummary(draft),
                 },
                 {
                   kind: 'terms' as const,
@@ -1064,8 +1095,9 @@ export function ProgramKycEnrollmentPage({
             {enrollmentModel === 'singleTopup' ? (
             <div className="border-t border-[#eef0f2] pt-3">
               <button type="button" className="text-sm font-semibold text-[#1c1e21]" onClick={() => setRulesOpen((open) => !open)}>
-                Review store-credit rules
+                Review membership rules
               </button>
+              <p className="mt-1 text-xs text-[#6b7076]">Match these rules to the membership program before publishing.</p>
               {rulesOpen ? (
                 <div className="mt-3 space-y-3">
                   <label className="block text-sm font-medium text-[#1c1e21]">
@@ -1109,6 +1141,9 @@ export function ProgramKycEnrollmentPage({
                         onChange={() => patch({ policyMode: 'custom' })}
                       />
                       Use my own policies
+                    </span>
+                    <span className="mt-1 block pl-6 text-sm font-normal text-[#5f6368]">
+                      Provide your existing privacy notice and membership terms.
                     </span>
                   </label>
                   <label className="block text-sm font-medium text-[#1c1e21]">
@@ -1201,13 +1236,22 @@ export function ProgramKycEnrollmentPage({
             className="absolute inset-y-0 right-0 flex w-full max-w-[540px] flex-col bg-white shadow-2xl transition-transform duration-300 ease-out"
             style={{ transform: drawerClosing || !drawerEntered ? 'translateX(100%)' : 'translateX(0)' }}
           >
-            <div className="flex items-center justify-between border-b border-[#eef0f2] px-5 py-4">
-              <h2 className="text-base font-semibold text-[#1c1e21]">
-                {preview === 'privacy' ? 'Privacy Notice' : preview === 'terms' ? 'Membership Terms' : 'Consumer fields'}
-              </h2>
-              <button type="button" className="text-sm font-semibold text-[#1562f0]" onClick={closePreview}>
-                Close
-              </button>
+            <div className="border-b border-[#eef0f2] px-5 py-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-base font-semibold text-[#1c1e21]">
+                  {preview === 'privacy'
+                    ? `${merchantName || 'Merchant'} Privacy Notice`
+                    : preview === 'terms'
+                      ? `${merchantName || 'Merchant'} Membership Terms`
+                      : 'Consumer fields'}
+                </h2>
+                <button type="button" className="text-sm font-semibold text-[#1562f0]" onClick={closePreview}>
+                  Close
+                </button>
+              </div>
+              {preview !== 'consumer' ? (
+                <p className="mt-1 text-xs text-[#6b7076]">Draft preview · Generated from current settings</p>
+              ) : null}
             </div>
             {preview === 'consumer' ? (
               <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4 text-sm text-[#1c1e21]">

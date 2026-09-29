@@ -22,6 +22,29 @@ let worker: Worker | null = null
 let workerFailed = false
 let nextReqId = 1
 const pending = new Map<number, Pending>()
+/** A live worker posts `ready` as soon as the script loads. A dead worker never does. */
+const WORKER_READY_MS = 2_500
+const WORKER_HASH_MS = 20_000
+let readyTimer: number | undefined
+
+function failWorker(reason: string): void {
+	if (workerFailed && !worker && pending.size === 0) return
+	console.warn(`[argon2Worker] ${reason}`)
+	workerFailed = true
+	if (readyTimer !== undefined) {
+		window.clearTimeout(readyTimer)
+		readyTimer = undefined
+	}
+	const queued = [...pending.values()]
+	pending.clear()
+	for (const item of queued) item.reject(new Error(reason))
+	try {
+		worker?.terminate()
+	} catch {
+		/* ignore */
+	}
+	worker = null
+}
 
 function runSync(
 	password: Uint8Array,
@@ -48,7 +71,13 @@ function ensureWorker(): Worker | null {
 		worker.onmessage = (ev: MessageEvent<Argon2idWorkerResponse>) => {
 			const msg = ev.data
 			if (!msg || typeof msg !== 'object') return
-			if (msg.type === 'ready') return
+			if (msg.type === 'ready') {
+				if (readyTimer !== undefined) {
+					window.clearTimeout(readyTimer)
+					readyTimer = undefined
+				}
+				return
+			}
 			if (msg.type !== 'argon2id-result') return
 			const p = pending.get(msg.reqId)
 			if (!p) return
@@ -57,19 +86,11 @@ function ensureWorker(): Worker | null {
 			else p.reject(new Error(msg.error || 'argon2id_failed'))
 		}
 		worker.onerror = (err) => {
-			console.warn('[argon2Worker] error — falling back to main thread', err.message)
-			workerFailed = true
-			for (const [, p] of pending) {
-				p.reject(new Error(err.message || 'argon2_worker_error'))
-			}
-			pending.clear()
-			try {
-				worker?.terminate()
-			} catch {
-				/* ignore */
-			}
-			worker = null
+			failWorker(err.message || 'argon2_worker_error')
 		}
+		readyTimer = window.setTimeout(() => {
+			failWorker('ready timed out — using main thread')
+		}, WORKER_READY_MS)
 		return worker
 	} catch (err) {
 		console.warn('[argon2Worker] unavailable — using main-thread argon2id', err)
@@ -106,9 +127,10 @@ export async function argon2idAsync(
 	return new Promise<Uint8Array>((resolve, reject) => {
 		timer = window.setTimeout(() => {
 			if (!pending.has(reqId)) return
-			pending.delete(reqId)
+			// One dead worker must not add another 20s wait to the next hash.
+			failWorker('argon2_worker_timeout')
 			reject(new Error('argon2_worker_timeout'))
-		}, 20_000)
+		}, WORKER_HASH_MS)
 		pending.set(reqId, {
 			resolve: (hash) => {
 				if (timer !== undefined) window.clearTimeout(timer)

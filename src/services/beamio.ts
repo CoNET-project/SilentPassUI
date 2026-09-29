@@ -1738,7 +1738,7 @@ const fetchRecoverPayloadByAccountName = async (
 	}
 }
 
-const buildMinimalBeamioFromAccountName = (accountName: string): beamio => ({
+export const buildMinimalBeamioFromAccountName = (accountName: string): beamio => ({
 	accountName,
 	firstName: '',
 	lastName: '',

@@ -438,9 +438,13 @@ const RecoveryQRScreen = ({
             <AppButton
               fullWidth
               rightIcon={<ArrowRight className="h-5 w-5" strokeWidth={2.25} aria-hidden />}
-              onClick={async () => {
+              onClick={() => {
+                if (isRedeemFlow) {
+                  void Promise.resolve(close?.())
+                  return
+                }
                 setLoading(true)
-                await Promise.resolve(close?.())
+                void Promise.resolve(close?.()).finally(() => setLoading(false))
               }}
               loading={loading && !isRedeemFlow}
               disabled={!isConfirmed}

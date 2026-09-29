@@ -2,6 +2,7 @@ import { IpfsImg } from '@/components/IpfsImg';
 import { FormEvent, useEffect, useState } from 'react'
 import { AppButton } from '@/components/button/AppButton'
 import { RegenerateRecover, onWalletEvent, restoreWithRedeem, restoreWithUserPin } from '@/services/beamio'
+import { warmArgon2Worker } from '@/services/argon2WorkerBridge'
 import ScanBtn from '@/components/scanBtn/ScanButton'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { getCashTreesNativeNfcBridge, getCashTreesNativeNfcHost } from '@/utils/cashTreesNativeNfc'
@@ -119,6 +120,11 @@ export default function RestoreWalletUnifiedScreen({
 			setTab('recovery')
 		}
 	}, [initialRecoveryCode])
+
+	// Fail a dead Argon2 worker before Unlock, so decrypt does not wait 20s per hash.
+	useEffect(() => {
+		warmArgon2Worker()
+	}, [])
 
 	useEffect(() => {
 		if (!loginLoading) {

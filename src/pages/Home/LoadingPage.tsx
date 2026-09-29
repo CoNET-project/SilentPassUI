@@ -38,7 +38,7 @@ import { ReactComponent as LightDrakModeBlue } from "@/components/Footer/assets/
 import styles from '@/components/Home/home.module.scss'
 import ScanBtn from '@/components/scanBtn/ScanButton'
 import { CoNET_Data, setCoNET_Data } from '../../utils/globals'
-import { getUserInfo, storeSystemData, checkStorageWithTimeout, restoreWithRedeem, ensureProfilePrivateKeyArmorFromMnemonic } from "@/services/beamio"
+import { getUserInfo, storeSystemData, checkStorageWithTimeout, restoreWithRedeem, ensureProfilePrivateKeyArmorFromMnemonic, buildMinimalBeamioFromAccountName } from "@/services/beamio"
 import {
 	beamioTagFromUrlSearch,
 	consumerAppNeedsWalletRecover,
@@ -562,7 +562,7 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 		return () => setShowFooter?.(true)
 	}, [setShowFooter])
 
-	const init = async (temp?: encrypt_keys_object, opts?: { dontClose?: boolean }) => {
+	const init = async (temp?: encrypt_keys_object, opts?: { dontClose?: boolean; deferChat?: boolean; accountName?: string }) => {
 		// 显式传入的 restore/create 结果优先；仅缺失时才读本地（带超时，避免 Safari 私密模式挂起）。
 		let working = temp?.profiles?.length ? temp : null
 		if (!working) {
@@ -597,23 +597,62 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 
 		setProfiles(profiles)
 
+		const accountName = (opts?.accountName || working.beamio?.accountName || '').trim().replace(/^@+/, '')
 		let userInfo: beamio | null = null
-		for (let attempt = 0; attempt < 20; attempt++) {
-			userInfo = await getUserInfo(profiles[0].keyID)
-			if (userInfo) break
-			await new Promise((resolve) => setTimeout(resolve, 1000))
-		}
-		if (!userInfo) {
-			userInfo = working.beamio ?? null
+		// Recovery Next must not sit on the spinner while registry and chat
+		// gossip are still starting. The local tag is enough to leave this page.
+		if (opts?.deferChat) {
+			userInfo = working.beamio ?? (accountName ? buildMinimalBeamioFromAccountName(accountName) : null)
+		} else {
+			for (let attempt = 0; attempt < 20; attempt++) {
+				userInfo = await getUserInfo(profiles[0].keyID)
+				if (userInfo) break
+				await new Promise((resolve) => setTimeout(resolve, 1000))
+			}
+			if (!userInfo) userInfo = working.beamio ?? null
 		}
 		if (!userInfo) return
 
 		const bo: beamio = userInfo
-
-		SetLoading(true)
-		await initChat(setProfiles, setAllNodes, setGossip, gossip, message => {
+		const startChat = () => initChat(setProfiles, setAllNodes, setGossip, gossip, message => {
 			setCharts((prev: string[]) => [...prev, message])
 		})
+
+		SetLoading(true)
+		if (opts?.deferChat) {
+			// Persist the wallet, then open the next screen. Chat PGP registration
+			// and the gossip worker keep running after the button is released.
+			bo.initialLoading = true
+			setDarkModle(bo.darkTheme)
+			setBeamio(bo)
+			working.beamio = bo
+			setCoNET_Data(working)
+			await storeSystemData()
+			const eoaNow = profiles[0]?.keyID?.trim()
+			if (eoaNow && ethers.isAddress(eoaNow)) {
+				setEoaAddress(eoaNow)
+				setMyAddress(eoaNow)
+				void ensureConetAaForProfileAndPersist(profiles[0], setProfiles).catch(() => {})
+			}
+			ensureNativePushBoundForWallet(profiles[0])
+			dispatchBeamioWalletReady('loading-page-init')
+			SetLoading(false)
+			setIsInitialEntry(false)
+			setIsInitialLoading(false)
+			onInitComplete?.()
+			void startChat()
+			void getUserInfo(profiles[0].keyID).then(async (fresh) => {
+				if (!fresh) return
+				const current = CoNET_Data
+				if (!current) return
+				current.beamio = fresh
+				setBeamio(fresh)
+				setCoNET_Data(current)
+				await storeSystemData()
+			})
+			return
+		}
+		await startChat()
 
 		bo.initialLoading = true
 
@@ -1186,13 +1225,7 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 										// redeem 流程下 init+redeem 已在进入时完成，此处仅关闭
 										setSettingsOpen('')
 									} : async () => {
-										await init(temp, { dontClose: true })
-										const profile = CoNET_Data?.profiles?.[0]
-										if (profile?.keyID && ethers.isAddress(profile.keyID)) {
-											void ensureConetAaForProfileAndPersist(profile, setProfiles).then((aa) => {
-												if (aa) setWalletAddr(aa)
-											})
-										}
+										await init(temp, { dontClose: true, deferChat: true, accountName: beamioTag })
 										setSettingsOpen('OnboardingWelcomeScreen')
 									}} />
 							}
@@ -1282,12 +1315,13 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 												return
 											}
 											if (requireWalletRecover) {
-												await Promise.race([
-													init(temp),
-													new Promise<void>((resolve) => {
-														window.setTimeout(resolve, 45_000)
-													}),
-												])
+												// Same as Recovery Next: persist locally and enter the app.
+												// Do not hold Unlock on registry retries or the chat worker.
+												await init(temp, {
+													dontClose: true,
+													deferChat: true,
+													accountName: beamioTag,
+												})
 												home()
 												return
 											}

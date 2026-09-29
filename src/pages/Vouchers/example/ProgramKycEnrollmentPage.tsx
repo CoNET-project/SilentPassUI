@@ -62,27 +62,6 @@ const FIELD_HINT: Record<FieldKey, string> = {
   email: 'Contact customers about membership services',
 };
 
-const PURPOSE_OPTIONS: Record<FieldKey, { value: string; label: string }[]> = {
-  name: [
-    { value: '', label: 'Select a necessary purpose' },
-    { value: 'named', label: 'Issue a named, non-transferable membership' },
-  ],
-  phone: [
-    { value: '', label: 'Select a necessary purpose' },
-    { value: 'phone', label: 'Provide membership services that require phone contact' },
-  ],
-  email: [
-    { value: '', label: 'Select a necessary purpose' },
-    { value: 'email', label: 'Deliver membership services by email' },
-  ],
-};
-
-const PURPOSE_COPY: Record<FieldKey, string> = {
-  name: 'Your name is required because the merchant issues a named, non-transferable membership.',
-  phone: 'Your phone number is required to provide the phone-based membership service selected by the merchant.',
-  email: 'Your email is required to deliver the email-based membership service selected by the merchant.',
-};
-
 function defaultDraft(): KycDraft {
   return {
     enabled: false,
@@ -152,7 +131,8 @@ function draftFromPublishedKyc(kyc: Record<string, unknown>): KycDraft {
   };
 }
 
-function kycPayload(draft: KycDraft) {
+function kycPayload(draft: KycDraft, documents: { privacyNotice: string; terms: string }) {
+  const custom = draft.policyMode === 'custom';
   return {
     enabled: collectionEnabled(draft.fields, draft.additionalFields),
     fields: draft.fields,
@@ -169,18 +149,22 @@ function kycPayload(draft: KycDraft) {
     expiry: draft.expiry,
     useRules: draft.useRules,
     fees: draft.fees,
-    privacyNotice: draft.customPrivacy,
-    terms: draft.customTerms,
+    privacyNotice: custom ? draft.customPrivacy : documents.privacyNotice,
+    terms: custom ? draft.customTerms : documents.terms,
     marketing: draft.marketing,
     mailingAddress: draft.mailingAddress,
   };
 }
 
-async function publishKycFields(cardKey: string, draft: KycDraft): Promise<string> {
+async function publishKycFields(
+  cardKey: string,
+  draft: KycDraft,
+  documents: { privacyNotice: string; terms: string },
+): Promise<string> {
   if (!/^0x[0-9a-fA-F]{40}$/.test(cardKey)) return '';
   const saved = await updateBeamioCardShareMetadata({
     cardAddress: cardKey,
-    shareTokenMetadata: { kyc: kycPayload(draft) } as never,
+    shareTokenMetadata: { kyc: kycPayload(draft, documents) } as never,
   });
   return saved.success ? '' : (saved.error || 'Could not save which details to collect.');
 }
@@ -234,23 +218,12 @@ function collectedFields(draft: KycDraft): FieldKey[] {
   return (['name', 'phone', 'email'] as const).filter((key) => draft.fields[key] !== 'off');
 }
 
-function requiredFields(draft: KycDraft): FieldKey[] {
-  return (['name', 'phone', 'email'] as const).filter((key) => draft.fields[key] === 'required');
-}
-
 function collectedFieldSummary(draft: KycDraft): string {
   const items = [
     ...collectedFields(draft).map((key) => `${FIELD_LABEL[key]} (${draft.fields[key]})`),
     ...draft.additionalFields.filter((field) => field.state !== 'off').map((field) => `${field.label} (${field.state})`),
   ];
   return items.join(' · ') || 'Wallet ID and membership records only · No additional details';
-}
-
-function requiredPurposeCopy(draft: KycDraft): string {
-  return requiredFields(draft)
-    .filter((key) => draft.purposes[key])
-    .map((key) => PURPOSE_COPY[key])
-    .join(' ');
 }
 
 function usageCopy(draft: KycDraft, merchantName: string): string {
@@ -282,7 +255,6 @@ function privacyDocument(draft: KycDraft, merchantName: string): string {
   const purpose = 'create and manage memberships and provide customer support';
   const collected = collectedFieldSummary(draft);
   const asksDetails = collectedFields(draft).length > 0 || draft.additionalFields.some((field) => field.state !== 'off');
-  const necessity = requiredPurposeCopy(draft);
   const opening = asksDetails
     ? `We collect ${collected} to ${purpose}. Required fields are marked on the form. Optional fields may be left blank.`
     : `We do not request your name, phone number, or email during enrollment. Your wallet ID and membership records are used to ${purpose}.`;
@@ -291,7 +263,7 @@ function privacyDocument(draft: KycDraft, merchantName: string): string {
     `${entity} · trading as ${tradingAs}`,
     '',
     '1. Information and purpose',
-    [opening, necessity].filter(Boolean).join(' '),
+    opening,
     '',
     'Membership identifiers, top-up and redemption records, balances, and consent records are processed to administer the membership. Providing contact details does not enroll you in marketing.',
     '',
@@ -407,9 +379,6 @@ function validatePublish(draft: KycDraft, model: KycEnrollmentModel): string {
   }
   if (draft.phone.trim() && !validBusinessPhone(draft.phone)) return 'Enter a valid business phone number.';
   if (draft.email.trim() && !validPrivacyEmail(draft.email)) return 'Enter a valid privacy contact email.';
-  if (requiredFields(draft).some((key) => !draft.purposes[key])) {
-    return 'Choose a necessary purpose for each required field, or make it optional.';
-  }
   if (draft.additionalFields.some((field) => field.state === 'required' && !field.necessity.trim())) {
     return 'Explain the necessity of each required additional field, or leave it optional.';
   }
@@ -744,7 +713,12 @@ export function ProgramKycEnrollmentPage({
     };
     void (async () => {
       if (/^0x[0-9a-fA-F]{40}$/.test(cardKey)) {
-        const message = await publishKycFields(cardKey, next);
+        const message = await publishKycFields(cardKey, next, {
+          privacyNotice: next.policyMode === 'custom' ? next.customPrivacy : privacyDocument(next, merchantName),
+          terms: next.policyMode === 'custom'
+            ? next.customTerms
+            : termsDocument(next, merchantName, enrollmentModel, namedTiers),
+        });
         if (message) {
           setError(message);
           setPublishing(false);
@@ -758,7 +732,7 @@ export function ProgramKycEnrollmentPage({
       setError('');
       setPublishing(false);
     })();
-  }, [cardKey, draft, enrollmentModel, publishing]);
+  }, [cardKey, draft, enrollmentModel, merchantName, namedTiers, publishing]);
 
   const previewText =
     preview === 'privacy'
@@ -843,36 +817,6 @@ export function ProgramKycEnrollmentPage({
           <span className="inline-flex items-center gap-1"><Circle className="h-3.5 w-3.5" aria-hidden /> Optional</span>
           <span className="inline-flex items-center gap-1"><X className="h-3.5 w-3.5" aria-hidden /> Do not collect</span>
         </p>
-        {requiredFields(draft).length ? (
-          <div className="mt-4 rounded-xl bg-[#f6f7f8] p-4">
-            <p className="text-sm font-semibold text-[#1c1e21]">Purpose of required fields</p>
-            <p className="mt-1 text-xs leading-5 text-[#6b7076]">
-              Choose a purpose only when the service genuinely depends on this information. Otherwise keep the field optional. No explanation to write.
-            </p>
-            <div className="mt-3 space-y-3">
-              {requiredFields(draft).map((key) => (
-                <label key={key} className="block text-sm font-medium text-[#1c1e21]">
-                  {FIELD_LABEL[key]}
-                  <span className="relative mt-2 block">
-                    <select
-                      className={selectClass}
-                      value={draft.purposes[key]}
-                      onChange={(event) => patch({ purposes: { ...draft.purposes, [key]: event.target.value } })}
-                    >
-                      {PURPOSE_OPTIONS[key].map((option) => (
-                        <option key={option.value || 'empty'} value={option.value}>{option.label}</option>
-                      ))}
-                    </select>
-                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6b7076]" aria-hidden />
-                  </span>
-                </label>
-              ))}
-            </div>
-            <p className="mt-3 whitespace-pre-wrap text-xs leading-5 text-[#6b7076]">
-              {requiredPurposeCopy(draft) || 'Select a purpose above to generate the explanation.'}
-            </p>
-          </div>
-        ) : null}
         <div className="divide-y divide-[#eef0f2]">
           {draft.additionalFields.map((field) => {
             const status = COLLECT_MODE_BUTTONS.find((item) => item.mode === field.state) ?? COLLECT_MODE_BUTTONS[1];

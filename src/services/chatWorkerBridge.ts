@@ -202,7 +202,9 @@ export const onDecryptedChatHistory = (
  */
 function makeGossipWorker(): Worker {
 	return new Worker(new URL('@conet.project/chat-sdk/worker', import.meta.url), {
-		name: 'beamio-chat-gossip',
+		// Chunk name is the worker name. A new name bypasses a cached worker
+		// that never finished opening the PGP key and left voice listen with no relay.
+		name: 'beamio-chat-gossip-relay',
 	})
 }
 
@@ -244,6 +246,10 @@ export const stopWorkerGossip = (): void => {
 
 /** True when a worker listen client is currently alive. */
 export const isWorkerGossipActive = (): boolean => activeClient !== null
+
+/** True while gossip init or a voice relay open must not be torn down. */
+export const isWorkerGossipBusy = (): boolean =>
+	workerInitPromise !== null || activeVoiceRelay !== null
 
 /** Route public key the live worker encrypts voice_listen to. Empty when listen is down. */
 export const getWorkerGossipRouteArmor = (): string => {
@@ -410,9 +416,14 @@ const wait = (ms: number) => new Promise<void>((resolve) => {
 const waitForVoiceWorker = async (): Promise<ChatWorkerClient | null> => {
 	const deadline = Date.now() + 8_000
 	while (Date.now() < deadline) {
+		// The client is assigned before init() completes. Its postMessage queue
+		// preserves init -> voiceListen ordering, so do not await a stale
+		// workerInitPromise here; that promise can remain pending while the
+		// worker is already able to process the queued relay command.
+		if (activeClient) return activeClient
 		const starting = workerInitPromise
 		if (starting) await starting.catch(() => false)
-		if (activeClient && !workerInitPromise) return activeClient
+		if (activeClient) return activeClient
 		const retryParams = lastGossipParams
 		if (retryParams && !retryParams.rootSignal.aborted && !workerInitPromise) {
 			await startWorkerGossipListen(retryParams)
@@ -480,21 +491,23 @@ export const startWorkerVoiceListen = async (
 	},
 ): Promise<boolean> => {
 	activeVoiceRelay = { sessionId, pushWakeup }
-	for (let attempt = 0; attempt < 3; attempt += 1) {
-		if (activeVoiceRelay?.sessionId !== sessionId) {
-			console.warn(`[voiceListen] session changed before open attempt ${attempt + 1}`)
-			return false
-		}
-		const started = await openActiveVoiceRelay(sessionId)
-		if (started) return true
-		if (activeVoiceRelay?.sessionId !== sessionId) {
-			console.warn(`[voiceListen] session changed after open attempt ${attempt + 1}`)
-			return false
-		}
-		console.warn(`[voiceListen] relay open attempt ${attempt + 1} failed; waiting for the chat worker`)
-		await wait(400)
+	const started = await openActiveVoiceRelay(sessionId)
+	if (started) return true
+	if (activeVoiceRelay?.sessionId !== sessionId) {
+		console.warn('[voiceListen] session changed before the worker retry')
+		return false
 	}
-	return false
+	// One recovery. Restart only when the worker is actually gone. Restarting
+	// a live worker aborts the handshake that is still opening.
+	if (!isWorkerGossipActive()) {
+		const prev = lastGossipParams
+		if (prev && !prev.rootSignal.aborted) {
+			console.warn('[voiceListen] restarting the chat worker before one more relay open')
+			await startWorkerGossipListen(prev)
+		}
+	}
+	if (activeVoiceRelay?.sessionId !== sessionId) return false
+	return openActiveVoiceRelay(sessionId)
 }
 
 /** Post a signed command to the current wallet's own mailbox through the worker. */

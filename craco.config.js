@@ -2,6 +2,35 @@ const TerserPlugin = require('terser-webpack-plugin');
 const webpack = require('webpack');
 const path = require('path');
 
+function ForceAsyncSplitPlugin() {}
+ForceAsyncSplitPlugin.prototype.apply = function (compiler) {
+    compiler.hooks.environment.tap('ForceAsyncSplitPlugin', () => {
+        // No shared async chunks. The chat worker's importScripts of those
+        // chunks never finishes, so the relay cannot open.
+        compiler.options.optimization = compiler.options.optimization || {}
+        if (process.env.NODE_ENV !== 'production') {
+            compiler.options.optimization.splitChunks = false
+            process.stderr.write('[Build] dev splitChunks disabled so the chat worker is one script\n')
+        }
+    })
+}
+
+function WholeChatWorkerPlugin() {}
+WholeChatWorkerPlugin.prototype.apply = function (compiler) {
+    compiler.hooks.compilation.tap('WholeChatWorkerPlugin', (compilation) => {
+        compilation.hooks.childCompiler.tap('WholeChatWorkerPlugin', (childCompiler, compilerName) => {
+            if (!/worker/i.test(String(compilerName))) return
+            const optimization = childCompiler.options.optimization || {}
+            childCompiler.options.optimization = {
+                ...optimization,
+                splitChunks: false,
+                runtimeChunk: false,
+            }
+            process.stderr.write('[Build] inline chat worker chunks (' + compilerName + ')\n')
+        })
+    })
+}
+
 function BuildProgressPlugin() {
     this.startTime = null;
 }
@@ -47,6 +76,16 @@ module.exports = {
             webpackConfig.cache = { type: 'filesystem' };
             webpackConfig.plugins = webpackConfig.plugins || [];
             webpackConfig.plugins.push(new BuildProgressPlugin());
+            webpackConfig.plugins.push(new WholeChatWorkerPlugin());
+            webpackConfig.plugins.push(new ForceAsyncSplitPlugin());
+            webpackConfig.plugins.forEach((plugin) => {
+                const name = plugin && plugin.constructor && plugin.constructor.name
+                if (name !== 'ReactRefreshPlugin') return
+                plugin.options = plugin.options || {}
+                const prev = plugin.options.exclude
+                const extra = [/conet-chat-sdk[\\/]dist[\\/]worker/]
+                plugin.options.exclude = Array.isArray(prev) ? prev.concat(extra) : prev ? [prev].concat(extra) : extra
+            })
 
             // CRA puts source-map-loader on a top-level rule, not inside oneOf.
             // Missing maps under hoisted node_modules (bs58 → base-x) fail the compile.
@@ -64,6 +103,19 @@ module.exports = {
                 ...(webpackConfig.ignoreWarnings || []),
                 /Failed to parse source map/,
             ];
+            // The chat worker must be one classic script. Split vendor chunks
+            // are loaded with importScripts and never finish, so voice listen
+            // has no worker and the call reports that the relay could not open.
+            webpackConfig.optimization = webpackConfig.optimization || {}
+            // Keep OpenPGP inside the chat worker script. Shared async vendor
+            // chunks do not finish loading in that worker, so voice listen
+            // never starts and the call says the relay could not open.
+            // A classic Worker cannot rely on CRA's async vendor chunks:
+            // importScripts() in the emitted worker never completes there.
+            // Keep the worker and its OpenPGP/ethers dependencies in one
+            // executable script in development and production.
+            webpackConfig.optimization.splitChunks = false
+            webpackConfig.optimization.runtimeChunk = false
             if (process.env.NODE_ENV === 'production') {
                 webpackConfig.optimization.minimizer = [
                     new TerserPlugin({

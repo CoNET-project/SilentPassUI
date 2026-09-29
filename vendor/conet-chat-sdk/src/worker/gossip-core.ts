@@ -162,6 +162,7 @@ export class GossipCore {
 	private voiceListenController: AbortController | null = null
 	private lastActivityAt = 0
 	private paused = false
+	private pgpReady: Promise<void> = Promise.resolve()
 	private ackContext: {
 		routerArmoredPublicKey: string
 		entryNodes: NodeInfo[]
@@ -174,15 +175,30 @@ export class GossipCore {
 		this.cfg = payload
 		this.nodes = payload.nodes || []
 		this.routes = payload.routes || []
-		this.emit.log(
-			'info',
-			`chat worker init pgpArmor=${payload.identity.pgpPrivateKeyArmored.length} passphrase=${payload.identity.pgpPassphrase ? 'set' : 'empty'}`,
-		)
 		const pkHex = payload.identity.privateKeyHex.startsWith('0x')
 			? payload.identity.privateKeyHex
 			: `0x${payload.identity.privateKeyHex}`
 		this.wallet = new ethers.Wallet(pkHex)
-		const pk = await readPrivateKey({ armoredKey: payload.identity.pgpPrivateKeyArmored })
+		this.paused = false
+		// Unlocking the PGP key can take longer than the client init budget.
+		// Returning here lets the worker stay alive; voice listen waits for
+		// the same promise instead of being told the relay could not open.
+		this.emit.log('info', 'chat worker accepted init')
+		this.pgpReady = this.openPgpAndListen(payload)
+		void this.pgpReady
+	}
+
+	private async openPgpAndListen(payload: WorkerInitPayload): Promise<void> {
+		this.emit.log(
+			'info',
+			`chat worker init pgpArmor=${payload.identity.pgpPrivateKeyArmored.length} passphrase=${payload.identity.pgpPassphrase ? 'set' : 'empty'}`,
+		)
+		const pk = await Promise.race([
+			readPrivateKey({ armoredKey: payload.identity.pgpPrivateKeyArmored }),
+			new Promise<never>((_, reject) => {
+				setTimeout(() => reject(new Error('pgp key open timed out')), 20_000)
+			}),
+		])
 		this.emit.log('info', `chat worker pgp key decrypted=${pk.isDecrypted()}`)
 		this.pgpPrivateKey = pk.isDecrypted()
 			? pk
@@ -196,8 +212,7 @@ export class GossipCore {
 				/* keyID optional */
 			}
 		}
-		this.paused = false
-		await this.startListen()
+		if (!this.paused) await this.startListen()
 	}
 
 	setNodes(nodes: NodeInfo[]): void {
@@ -842,6 +857,12 @@ export class GossipCore {
 		const wallet = this.wallet
 		if (this.paused || !this.cfg || !wallet || !sessionId) {
 			this.emit.log('warn', `voice listen refused early: paused=${this.paused} cfg=${!!this.cfg} wallet=${!!wallet} session=${!!sessionId}`)
+			return false
+		}
+		try {
+			await this.pgpReady
+		} catch (ex) {
+			this.emit.log('warn', `voice listen refused: pgp key did not open (${(ex as Error)?.message ?? String(ex)})`)
 			return false
 		}
 		this.voiceListenController?.abort('voice_replace')

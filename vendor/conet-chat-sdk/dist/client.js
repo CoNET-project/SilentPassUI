@@ -89,7 +89,10 @@ class BeamioChatClientImpl {
             nodes: this.nodes,
             routes: this.routes,
         };
-        await this.request({ type: 'init', reqId: 0, payload });
+        // PGP unlock plus the first mailbox listen can exceed the default 20s
+        // worker RPC budget. Destroying the worker at that point leaves the
+        // next voice call with no live listen.
+        await this.request({ type: 'init', reqId: 0, payload }, 180000);
     }
     setRoutes(routes) {
         this.routes = routes || [];
@@ -150,7 +153,10 @@ class BeamioChatClientImpl {
         return !!r?.sent;
     }
     async startVoiceListen(sessionId, pushWakeup) {
-        const r = await this.request({ type: 'voiceListen', reqId: 0, sessionId, pushWakeup }, 25000);
+        // Offer encryption plus the 12s mailbox handshake can run past 25s.
+        // Timing out here makes the call screen say the relay failed while
+        // the worker is still opening it.
+        const r = await this.request({ type: 'voiceListen', reqId: 0, sessionId, pushWakeup }, 45000);
         return !!r?.started;
     }
     async stopVoiceListen(sessionId) {

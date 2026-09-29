@@ -7,7 +7,7 @@ import contracts from '@/utils/contracts'
 import {ethers} from 'ethers'
 import {aesGcmEncrypt, aesGcmDecrypt, toBase64, fromBase64, storeSystemData } from '@/services/beamio'
 import { publishNativePwaLog } from '@/utils/cashTreesNativePwaLog'
-import { getWorkerGossipListenParams, getWorkerGossipRouteArmor, isWorkerGossipActive, retargetWorkerGossipRoute, startWorkerGossipListen, stopWorkerGossip } from '@/services/chatWorkerBridge'
+import { getWorkerGossipListenParams, getWorkerGossipRouteArmor, isWorkerGossipActive, isWorkerGossipBusy, retargetWorkerGossipRoute, startWorkerGossipListen, stopWorkerGossip } from '@/services/chatWorkerBridge'
 import { wrapArmorToMailboxWork } from '@conet.project/chat-sdk'
 
 function chatBootLog(message: string, level: 'info' | 'warn' | 'error' = 'info'): void {
@@ -896,6 +896,9 @@ const clearGossipListenSession = (reason: string) => {
  * SI offline flush and drops messages.
  */
 export const shouldResumeGossipListen = (staleMs = 45_000): boolean => {
+	// A second visible/pageshow event was aborting the worker while it was
+	// still opening, so the voice relay found no listen and failed.
+	if (isWorkerGossipBusy()) return false
 	if (!currentGossipAbortController || currentGossipAbortController.signal.aborted) return true
 	// Connecting / draining offline — do not abort
 	if (!lastGossipActivityAt) return false
@@ -934,6 +937,8 @@ export const pauseGossipListenOnBackground = (
  * Foreground / pageshow resume: if listen looks dead, abort + re-initChat(gossip=false).
  * Safe to call often; no-ops when the stream recently received bytes or is still connecting.
  */
+let gossipResumeInFlight = false
+
 export const resumeGossipListenOnForeground = async (
 	setProfiles: (val: profile[]) => void,
 	setAllNodes: (val: nodeInfo[]) => void,
@@ -942,19 +947,28 @@ export const resumeGossipListenOnForeground = async (
 	staleMs = 45_000,
 	force = false,
 ): Promise<void> => {
+	if (gossipResumeInFlight) {
+		chatBootLog('foreground resume skipped: restart already running', 'info')
+		return
+	}
 	if (!force && !shouldResumeGossipListen(staleMs)) {
 		chatBootLog('foreground resume skipped: gossip stream still active or connecting', 'info')
 		return
 	}
-	chatBootLog(
-		force
-			? 'foreground resume forced by native mailbox wake'
-			: 'foreground resume restarting stale gossip stream',
-		'info',
-	)
-	prepareGossipListenResume(force ? 'native_mailbox_wake' : 'foreground_resume')
-	setGossip(false)
-	await initChat(setProfiles, setAllNodes, setGossip, false, newMessage)
+	gossipResumeInFlight = true
+	try {
+		chatBootLog(
+			force
+				? 'foreground resume forced by native mailbox wake'
+				: 'foreground resume restarting stale gossip stream',
+			'info',
+		)
+		prepareGossipListenResume(force ? 'native_mailbox_wake' : 'foreground_resume')
+		setGossip(false)
+		await initChat(setProfiles, setAllNodes, setGossip, false, newMessage)
+	} finally {
+		gossipResumeInFlight = false
+	}
 }
 
 export const connectToGossipNode = async (

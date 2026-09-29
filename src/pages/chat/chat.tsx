@@ -1889,6 +1889,35 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		if (location.pathname.toLowerCase() === '/chat') return
 		setVoiceCallMinimized(true)
 	}, [location.pathname, voiceCallState])
+
+	const pendingShowActiveCallRef = useRef(false)
+	const revealActiveVoiceCall = useCallback(() => {
+		onShowThread?.()
+		setVoiceCallMinimized(false)
+		navigate('/chat')
+	}, [navigate, onShowThread])
+	useEffect(() => {
+		const onShowActiveCall = (event: Event) => {
+			const detail = (event as CustomEvent<{ action?: string }>).detail
+			if (detail?.action !== 'showActiveVoiceCall') return
+			if (voiceCallState !== 'outgoing') {
+				pendingShowActiveCallRef.current = true
+				return
+			}
+			revealActiveVoiceCall()
+		}
+		window.addEventListener('cashtreesandroid', onShowActiveCall)
+		window.addEventListener('cashtreesios', onShowActiveCall)
+		return () => {
+			window.removeEventListener('cashtreesandroid', onShowActiveCall)
+			window.removeEventListener('cashtreesios', onShowActiveCall)
+		}
+	}, [revealActiveVoiceCall, voiceCallState])
+	useEffect(() => {
+		if (voiceCallState !== 'outgoing' || !pendingShowActiveCallRef.current) return
+		pendingShowActiveCallRef.current = false
+		revealActiveVoiceCall()
+	}, [revealActiveVoiceCall, voiceCallState])
 	const [incomingVoiceOffer, setIncomingVoiceOffer] = useState<Record<string, any> | null>(null)
 	const [incomingCaller, setIncomingCaller] = useState<{
 		address: string

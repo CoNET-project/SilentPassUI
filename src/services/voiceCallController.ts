@@ -178,7 +178,7 @@ export function createVoiceCallController(options: VoiceCallControllerOptions) {
 			sessionKey: voiceSessionKeyToBase64(sessionKey),
 			tempWalletAddress: tempWallet.address,
 			entryDomains: selectedEntries.map(node => node.domain),
-			codec: 'audio/webm;codecs=opus',
+			codec: 'audio/pcm;rate=16000',
 			...( /^[A-Za-z0-9_]{1,32}$/.test(callerTag) && !/^[0-9a-fA-F]{16,32}$/.test(callerTag)
 				? { callerTag }
 				: {}),
@@ -219,7 +219,7 @@ export function createVoiceCallController(options: VoiceCallControllerOptions) {
 			to: callerEoa || options.peerEoa,
 			tempWalletAddress: tempWallet.address,
 			entryDomains: selectedEntries.map(node => node.domain),
-			codec: offer.codec || 'audio/webm;codecs=opus',
+			codec: 'audio/pcm;rate=16000',
 		})
 		const sent = await sendMessage(
 			options.peerPgp,

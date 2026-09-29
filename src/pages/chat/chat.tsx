@@ -1870,7 +1870,6 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 	const voiceCallPeerSessionRef = useRef<string | null>(null)
 	const voiceCaptureStopRef = useRef<(() => void) | null>(null)
 	const voiceCallStreamRef = useRef<MediaStream | null>(null)
-	const voicePlaybackAudioRef = useRef<HTMLAudioElement | null>(null)
 	const voicePlaybackRef = useRef<VoicePlaybackBuffer | null>(null)
 	const voiceFrameSeqRef = useRef(0)
 	const voiceControllerRef = useRef<VoiceCallController | null>(null)
@@ -2074,7 +2073,9 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			return
 		}
 		try {
-			const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+			const stream = await navigator.mediaDevices.getUserMedia({
+				audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+			})
 			const key = voiceCallKeyRef.current
 			const targetSessionId = voiceCallPeerSessionRef.current
 			const callId = voiceCallOfferRef.current?.callId || ''
@@ -2119,6 +2120,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 
 	const startVoiceCall = useCallback(async () => {
 		if (voiceCallStartingRef.current || voiceCallState !== 'idle') return
+		voicePlaybackRef.current?.resume()
 		voiceCallStartingRef.current = true
 		setVoiceError(null)
 		setVoiceVideoNote(null)
@@ -2297,9 +2299,9 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				!locallyEndedVoiceSessionsRef.current.has(signal.peerSessionId) &&
 				!locallyEndedVoiceSessionsRef.current.has(String(signal.sessionId || ''))
 			) {
-				// The relay is now paired. Media capture is intentionally owned by
-				// the call controller, not the normal Chat message stream.
-				voiceCallPeerSessionRef.current = signal.peerSessionId
+				// Accept.sessionId is the callee's voice listen. peerSessionId is our own.
+				// Frames must be addressed to the callee, or their mailbox drops them.
+				voiceCallPeerSessionRef.current = signal.sessionId
 				setVoiceCallState('outgoing')
 				upsertPhoneCallRecord({
 					callId: signal.callId,
@@ -2322,6 +2324,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		const offer = incomingVoiceOffer
 		const callerEoa = recoverVoiceCallOfferSigner(offer as VoiceCallSignal | null)
 		if (!offer || !callerEoa || incomingVoiceAction !== 'idle') return
+		voicePlaybackRef.current?.resume()
 		setIncomingVoiceAction('accepting')
 		setVoiceError(null)
 		setVoiceCallMinimized(false)
@@ -2489,8 +2492,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		setVoiceSpeakerOn(true)
 		setVoiceVideoNote(null)
 		setVoiceCallMuted(false)
-		voicePlaybackRef.current?.destroy()
-		voicePlaybackRef.current = null
+		voicePlaybackRef.current?.reset()
 		voiceCallKeyRef.current = null
 		voiceCallPeerSessionRef.current = null
 		voiceCallSessionRef.current = null
@@ -2734,34 +2736,15 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 	}, [allNodes, chatData.chatData?.publicArmored, chatData.chatData?.routersArmoreds, endVoiceCall, incomingVoiceOffer, privateKey, profiles, upsertPhoneCallRecord, voiceCallState])
 
 	useEffect(() => {
-		const audio = voicePlaybackAudioRef.current
-		if (!audio) return
-		const playback = new VoicePlaybackBuffer(audio)
+		const playback = new VoicePlaybackBuffer()
 		voicePlaybackRef.current = playback
-		const AudioContextCtor =
-			window.AudioContext ||
-			(window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
-		let remoteContext: AudioContext | null = null
-		if (AudioContextCtor) {
-			try {
-				remoteContext = new AudioContextCtor()
-				const source = remoteContext.createMediaElementSource(audio)
-				const analyser = remoteContext.createAnalyser()
-				analyser.fftSize = 256
-				source.connect(analyser)
-				analyser.connect(remoteContext.destination)
-				remoteVoiceAudioContextRef.current = remoteContext
-				remoteVoiceAnalyserRef.current = analyser
-			} catch {
-				remoteVoiceAnalyserRef.current = null
-			}
-		}
+		remoteVoiceAudioContextRef.current = playback.context
+		remoteVoiceAnalyserRef.current = playback.analyser
 		return () => {
 			playback.destroy()
 			if (voicePlaybackRef.current === playback) voicePlaybackRef.current = null
 			remoteVoiceAnalyserRef.current = null
 			remoteVoiceAudioContextRef.current = null
-			if (remoteContext) void remoteContext.close().catch(() => {})
 		}
 	}, [])
 
@@ -4707,8 +4690,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 							onClick={() => {
 								setVoiceSpeakerOn(previous => {
 									const next = !previous
-									const audio = voicePlaybackAudioRef.current
-									if (audio) audio.volume = next ? 1 : 0.25
+									voicePlaybackRef.current?.setOutputGain(next ? 1 : 0.25)
 									return next
 								})
 							}}
@@ -4815,8 +4797,6 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				</div>
 				</>
 			) : null}
-			<audio ref={voicePlaybackAudioRef} className="hidden" preload="none" aria-hidden />
-
 			{/* iOS 风格 Message Reaction 菜单：仅对收到的消息显示，在 message 上方，内容可左右滚动；一点展开/收缩动画 */}
 			<AnimatePresence>
 			{reactionUI.open && (

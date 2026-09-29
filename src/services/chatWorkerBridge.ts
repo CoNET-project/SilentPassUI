@@ -246,8 +246,14 @@ export const stopWorkerGossip = (): void => {
 export const isWorkerGossipActive = (): boolean => activeClient !== null
 
 /** Route public key the live worker encrypts voice_listen to. Empty when listen is down. */
-export const getWorkerGossipRouteArmor = (): string =>
-	lastGossipParams?.ownRouteArmoredPublicKey?.trim() || ''
+export const getWorkerGossipRouteArmor = (): string => {
+	if (!activeClient || !lastGossipParams || lastGossipParams.rootSignal.aborted) return ''
+	return lastGossipParams.ownRouteArmoredPublicKey?.trim() || ''
+}
+
+/** Last listen parameters, including a session whose signal has already aborted. */
+export const getWorkerGossipListenParams = (): StartWorkerGossipParams | null =>
+	lastGossipParams
 
 /**
  * Start the worker-based gossip LISTEN. Resolves true when the worker acknowledged
@@ -411,6 +417,11 @@ const waitForVoiceWorker = async (): Promise<ChatWorkerClient | null> => {
 		if (retryParams && !retryParams.rootSignal.aborted && !workerInitPromise) {
 			await startWorkerGossipListen(retryParams)
 			if (activeClient) return activeClient
+		}
+		// An aborted session cannot be restarted from here. Spinning the full
+		// deadline only delays the relay error; the caller restarts listen first.
+		if (!activeClient && !workerInitPromise && (!retryParams || retryParams.rootSignal.aborted)) {
+			return null
 		}
 		await wait(200)
 	}

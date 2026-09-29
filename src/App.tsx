@@ -19,7 +19,7 @@ import Home from "@/components/Home/Home"
 import History from "./pages/History/MyWalletDashboardNew"
 import Pay from "./pages/Pay"
 import QrOperationPage from "./pages/Pay/QrOperationPage"
-import Chat from "./pages/chat"
+import MinimizedVoiceCallWindow from "@/components/MinimizedVoiceCallWindow"
 import ChatDetail from "./pages/chatDetail"
 import PhoneHistoryPage from "./pages/Phone"
 import BeamioInstallOnboarding from "@/components/launchPage"
@@ -2345,7 +2345,8 @@ function AppShell() {
 					<Route path="/BountyBoard/genesis-referral/redeem" element={<GenesisL0RedeemManagePage />} />
 					<Route path="/BountyBoard/genesis-referral/l1" element={<GenesisL1EvangelistManagePage />} />
 					<Route path="/qr" element={<QrOperationPage />} />
-					<Route path="/Chat" element={<Chat />} />
+					<Route path="/Chat" element={null} />
+					<Route path="/chat" element={null} />
 					<Route path="/chat/:id" element={<ChatDetail />} />
 					<Route path="/phone" element={<PhoneHistoryPage />} />
 					<Route path="/settings" element={<MyWallet />} />
@@ -2367,6 +2368,7 @@ function AppShell() {
 				</div>
 			</div>
 
+			<MinimizedVoiceCallWindow />
 			{createPortal(
 				<Footer visible={showFooter && footerVisible} peek={false} />,
 				document.body

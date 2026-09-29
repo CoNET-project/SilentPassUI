@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState, useLayoutEffect, useCallback } from "react"
 import { flushSync } from "react-dom"
-import { useNavigate } from "react-router-dom"
+import { useLocation, useNavigate } from "react-router-dom"
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
 import { motion, AnimatePresence } from "framer-motion"
 import { ethers } from "ethers"
@@ -8,6 +8,7 @@ import { getDocument, GlobalWorkerOptions } from "pdfjs-dist/legacy/build/pdf"
 import { checkSign, emitReactionAsNewMessage, createMembershipActivatedCard, sendVoiceCallOffer } from '@/services/chat'
 import { backfillChatMessagesToHistory, mirrorChatMessageToHistory } from '@/services/chatHistoryMirror'
 import { IpfsImg } from '@/components/IpfsImg'
+import { publishMinimizedVoiceCallWindow } from '@/utils/minimizedVoiceCallWindow'
 import {
   ArrowUp,
   ChevronLeft,
@@ -1705,7 +1706,9 @@ type ChatProps = {
 	chatData: chatData
 	privateKey: string
 	autoVoiceCallAction?: 'accept' | 'reject' | null
-
+	onVoiceCallActive?: (active: boolean) => void
+	onShowThread?: () => void
+	threadHidden?: boolean
 }
 
 function fmtTime(ts: number) {
@@ -1792,8 +1795,11 @@ type ChatListProps = {
 
 
 
-export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction }: ChatProps) {
+const VOICE_RELAY_OPEN_ERROR = 'Voice call could not open a temporary relay.'
+
+export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction, onVoiceCallActive, onShowThread, threadHidden = false }: ChatProps) {
 	const navigate = useNavigate()
+	const location = useLocation()
 	const [text, setText] = useState("")
 	 
   	const {
@@ -1870,6 +1876,20 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 	const voiceControllerRef = useRef<VoiceCallController | null>(null)
 	const voiceCallStartingRef = useRef(false)
 	const [voiceCallConnecting, setVoiceCallConnecting] = useState(false)
+
+	useEffect(() => {
+		onVoiceCallActive?.(voiceCallState === 'outgoing')
+	}, [onVoiceCallActive, voiceCallState])
+
+	useEffect(() => {
+		if (threadHidden && voiceCallState === 'outgoing') setVoiceCallMinimized(true)
+	}, [threadHidden, voiceCallState])
+
+	useEffect(() => {
+		if (voiceCallState !== 'outgoing') return
+		if (location.pathname.toLowerCase() === '/chat') return
+		setVoiceCallMinimized(true)
+	}, [location.pathname, voiceCallState])
 	const [incomingVoiceOffer, setIncomingVoiceOffer] = useState<Record<string, any> | null>(null)
 	const [incomingCaller, setIncomingCaller] = useState<{
 		address: string
@@ -2138,9 +2158,8 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			})
 			const channel = await controller.startOutgoing()
 			if (!channel) {
-				setVoiceError('Voice call could not open a temporary relay.')
+				setVoiceError(VOICE_RELAY_OPEN_ERROR)
 				setVoiceCallConnecting(false)
-				setVoiceCallState('idle')
 				return
 			}
 			voiceControllerRef.current = controller
@@ -2304,6 +2323,10 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		const callerEoa = recoverVoiceCallOfferSigner(offer as VoiceCallSignal | null)
 		if (!offer || !callerEoa || incomingVoiceAction !== 'idle') return
 		setIncomingVoiceAction('accepting')
+		setVoiceError(null)
+		setVoiceCallMinimized(false)
+		setVoiceCallConnecting(true)
+		setVoiceCallState('outgoing')
 		try {
 			const localWallet = new ethers.Wallet(privateKey).address
 			const controller = createVoiceCallController({
@@ -2316,7 +2339,9 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			})
 			const channel = await controller.acceptIncoming(offer as VoiceCallSignal)
 			if (!channel) {
-				setVoiceError('Voice call could not open a temporary relay.')
+				setVoiceError(VOICE_RELAY_OPEN_ERROR)
+				setVoiceCallConnecting(false)
+				setIncomingVoiceOffer(null)
 				return
 			}
 			voiceControllerRef.current = controller
@@ -2358,6 +2383,8 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			void startVoiceMedia()
 		} catch {
 			setVoiceError('This voice call request is invalid or expired.')
+			setVoiceCallConnecting(false)
+			setVoiceCallState('idle')
 		} finally {
 			setIncomingVoiceAction('idle')
 		}
@@ -2673,12 +2700,24 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				const current = (Array.isArray(profiles?.[0]?.phoneCalls) ? profiles[0].phoneCalls : [])
 					.find((item: PhoneCallRecord) => item.sessionId === incoming.sessionId)
 				if (current?.status === 'ringing') {
+					const localWallet = new ethers.Wallet(privateKey).address
+					void timeoutIncomingVoiceOffer({
+						privateKey,
+						localCallId: String(CoNET_Data?.beamio?.accountName || localWallet).trim() || localWallet,
+						peerEoa: incoming.from,
+						peerPgp: chatData.chatData?.publicArmored?.trim() || '',
+						peerRoute: chatData.chatData?.routersArmoreds?.trim() || '',
+						allNodes,
+					}, incoming as VoiceCallSignal)
 					upsertPhoneCallRecord({
 						...current,
 						status: 'timed_out',
 						endedAt: Date.now(),
 					})
-					dispatchNativeSystemCallAction('endSystemCall', { callId: incoming.callId })
+					dispatchNativeSystemCallAction('endSystemCall', {
+						callId: incoming.callId,
+						sessionId: incoming.sessionId,
+					})
 					setIncomingVoiceOffer(null)
 				}
 				return
@@ -2692,7 +2731,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		}, Math.max(0, expiresAt - Date.now()))
 
 		return () => window.clearTimeout(timer)
-	}, [endVoiceCall, incomingVoiceOffer, profiles, upsertPhoneCallRecord, voiceCallState])
+	}, [allNodes, chatData.chatData?.publicArmored, chatData.chatData?.routersArmoreds, endVoiceCall, incomingVoiceOffer, privateKey, profiles, upsertPhoneCallRecord, voiceCallState])
 
 	useEffect(() => {
 		const audio = voicePlaybackAudioRef.current
@@ -3994,9 +4033,9 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 	}, [messages])
 
 	useLayoutEffect(() => {
-		setShowFooter(false)
+		setShowFooter(voiceCallState === 'outgoing' && voiceCallMinimized)
 		return () => setShowFooter(true)
-	}, [])
+	}, [setShowFooter, voiceCallMinimized, voiceCallState])
 
 	const statusRank = (s?: ChatMessage["status"]) => {
 	if (s === "delivered") return 4
@@ -4536,15 +4575,34 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 	const voicePeerLastName = voicePeerLastRaw.trim().startsWith('{') ? '' : voicePeerLastRaw.trim()
 	const voicePeerFirstName = String(voicePeerProfile?.first_name || '').trim()
 	const activeVoicePeerName = `${voicePeerFirstName} ${voicePeerLastName}`.trim() || activeVoicePeerLabel
-	const voiceCallStatusLabel = voiceCallConnecting
+	const voiceRelayOpenFailed = voiceError === VOICE_RELAY_OPEN_ERROR
+	const voiceCallStatusLabel = voiceRelayOpenFailed
+		? 'Call failed'
+		: voiceCallConnecting
 		? 'Connecting'
 		: activeVoiceCallRecord?.status === 'answered'
 			? 'Voice call'
 			: activeVoiceCallRecord?.status === 'timed_out'
 				? 'Timed out'
 				: 'Ringing'
-	
 
+	useEffect(() => {
+		if (voiceCallState !== 'outgoing' || !voiceCallMinimized) {
+			publishMinimizedVoiceCallWindow(null)
+			return
+		}
+		publishMinimizedVoiceCallWindow({
+			peerName: activeVoicePeerName,
+			avatarSrc: peerAvatar || '',
+			statusLabel: voiceCallStatusLabel,
+			onRestore: () => {
+				onShowThread?.()
+				setVoiceCallMinimized(false)
+				navigate('/chat')
+			},
+		})
+		return () => publishMinimizedVoiceCallWindow(null)
+	}, [activeVoicePeerName, navigate, onShowThread, peerAvatar, voiceCallMinimized, voiceCallState, voiceCallStatusLabel])
 
   return (
 		<div
@@ -4578,27 +4636,6 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 					</div>
 				</div>
 			) : null}
-			{voiceCallState === 'outgoing' && voiceCallMinimized ? (
-				<button
-					type="button"
-					onClick={() => setVoiceCallMinimized(false)}
-					className="fixed left-4 right-4 z-[170] flex items-center gap-3 rounded-full border border-white/30 bg-[#3d7fe8]/95 px-3 py-2 text-left text-white shadow-[0_10px_28px_rgba(15,23,42,0.28)]"
-					style={{ top: 'max(0.75rem, env(safe-area-inset-top, 0px))' }}
-					aria-label="Return to voice call"
-				>
-					<span className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-full bg-[#10233f] ring-2 ring-white/50">
-						{peerAvatar ? (
-							<IpfsImg src={peerAvatar} alt="" className="h-full w-full object-cover" />
-						) : (
-							<span className="text-sm font-semibold">{activeVoicePeerName.slice(0, 1).toUpperCase()}</span>
-						)}
-					</span>
-					<span className="min-w-0 flex-1">
-						<span className="block truncate text-sm font-semibold">{activeVoicePeerName}</span>
-						<span className="block text-xs text-white/80">{voiceCallStatusLabel}</span>
-					</span>
-				</button>
-			) : null}
 			{voiceCallState === 'outgoing' && !voiceCallMinimized ? (
 				<div
 					className="fixed inset-0 z-[170] flex flex-col overflow-hidden bg-gradient-to-b from-[#8fd0fb] via-[#5aa6f0] to-[#3d6ad8] text-white"
@@ -4626,7 +4663,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 						<h1 className="mt-6 text-center text-[2rem] font-medium tracking-tight">{activeVoicePeerName}</h1>
 						<p className="mt-2 text-lg text-white/90">
 							{voiceCallStatusLabel}
-							{voiceCallStatusLabel !== 'Voice call' ? (
+							{voiceCallStatusLabel === 'Connecting' || voiceCallStatusLabel === 'Ringing' ? (
 								<span className="ml-2 inline-flex gap-1" aria-hidden>
 									<span className="animate-pulse">·</span>
 									<span className="animate-pulse [animation-delay:200ms]">·</span>
@@ -5636,7 +5673,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 								<button type="button" className="ml-2 underline" onClick={() => setChatError(null)}>Dismiss</button>
 							</div>
 						)}
-						{voiceError && (
+						{voiceError && !voiceRelayOpenFailed && (
 							<div role="alert" className="mb-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-[13px] text-rose-700">
 								{voiceError}
 								<button type="button" className="ml-2 underline" onClick={() => setVoiceError(null)}>Dismiss</button>

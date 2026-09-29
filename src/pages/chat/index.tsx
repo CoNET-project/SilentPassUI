@@ -29,13 +29,15 @@ const Home = () => {
 	const { resolveTagPlain, avatarImgUrl } = useBeamioTagDatabase()
 	const [chatData, setChatData] = useState<chatData> ()
 	const [autoVoiceCallAction, setAutoVoiceCallAction] = useState<'accept' | 'reject' | null>(null)
+	const [voiceCallActive, setVoiceCallActive] = useState(false)
+	const [threadHidden, setThreadHidden] = useState(false)
 	const [privateKey, setPrivate] = useState('')
 	const didInitRef = useRef(false)
 	const {
 		onScroll: onCapsuleScroll,
 		setRef: setScrollRef,
 		setLayerRef: setChatCapsuleLayerRef,
-	} = useScrollCapsuleOpacity(!chatData)
+	} = useScrollCapsuleOpacity(!chatData || threadHidden)
 	const ownEoa = profiles?.[0]?.keyID?.trim() ?? ''
 	const resolvedOwnTag = resolveTagPlain(ownEoa)
 	const ownTag = resolvedOwnTag || '@Beamio'
@@ -50,8 +52,19 @@ const Home = () => {
 		if (didInitRef.current) return
 		didInitRef.current = true
 		setPrivate(profile.privateKeyArmor)
+	}, [profiles])
+
+	useEffect(() => {
+		if (location.pathname.toLowerCase() !== '/chat' || chatData) return
 		setShowFooter(true)
-	}, [profiles, setShowFooter])
+	}, [chatData, location.pathname, setShowFooter])
+
+	useEffect(() => {
+		if (voiceCallActive || !threadHidden) return
+		setThreadHidden(false)
+		setChatData(undefined)
+		setShowFooter(true)
+	}, [setShowFooter, threadHidden, voiceCallActive])
 
 	// 从全局 Search 选中用户后：chatHomeItem 由 App 设置并 navigate('/chat')，此处统一处理
 	useEffect(() => {
@@ -78,8 +91,8 @@ const Home = () => {
 
   return (
 		<div className="w-full h-full min-h-0 h-screen bg-[#F1F8ED] overflow-hidden relative flex flex-col pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
-		{/* ✅ 当没选中聊天对象时：固定胶囊 + ChatList */}
-		{!chatData && (
+		{/* ✅ 当没选中聊天对象时：固定胶囊 + ChatList。通话进行中返回列表时仍保留会话，避免卸掉通话。 */}
+		{(!chatData || threadHidden) && (
 			<>
 				{/* 与 Home / Wallet / Discover：Footer 同款图标 + 胶囊样式，随滚动渐隐 */}
 				<div
@@ -116,13 +129,19 @@ const Home = () => {
 					<ChatList
 						title="" // 你如果不要 tu('messages') 大标题就留空
 						onOpen={(item, options) => {
+							if (voiceCallActive) {
+								setThreadHidden(false)
+								setShowFooter(false)
+								return
+							}
 							// User picked another thread from the list — drop Discover return target.
 							const state = location.state as ChatRouteLocationState
 							if (state?.chatBackToDiscoverMerchantCard) {
 								navigate(location.pathname, { replace: true, state: {} })
 							}
 							setAutoVoiceCallAction(options?.autoVoiceCallAction ?? null)
-							setChatData(item)      // ✅ 打开某个会话
+							setChatData(item)
+							setThreadHidden(false)
 							setShowFooter(false)
 						}}
 					/>
@@ -132,8 +151,14 @@ const Home = () => {
 
 		{/* ✅ 选中后：Chat 全屏浮层 */}
 		{chatData && (
+			<div className={threadHidden ? 'hidden' : 'contents'} aria-hidden={threadHidden}>
 			<Chat
 				onBack={() => {
+					if (voiceCallActive) {
+						setThreadHidden(true)
+						setShowFooter(true)
+						return
+					}
 					const state = location.state as ChatRouteLocationState
 					setAutoVoiceCallAction(null)
 					const backCard = state?.chatBackToDiscoverMerchantCard?.trim() ?? ''
@@ -154,11 +179,18 @@ const Home = () => {
 					}
 					setShowFooter(true)
 				}}
+				onVoiceCallActive={setVoiceCallActive}
+				onShowThread={() => {
+					setThreadHidden(false)
+					setShowFooter(false)
+				}}
+				threadHidden={threadHidden}
 				chatData={chatData}
 				allNodes={allNodes}
 				privateKey={privateKey}
 				autoVoiceCallAction={autoVoiceCallAction}
 			/>
+			</div>
 		)}
 		</div>
 	)

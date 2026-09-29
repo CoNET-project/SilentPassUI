@@ -382,6 +382,10 @@ const Home = (_props: HomeProps) => {
 	const [nfcLinkActionTagId, setNfcLinkActionTagId] = useState<string | null>(null)
 	const [cardMgmtError, setCardMgmtError] = useState<string | null>(null)
 	const cashTreesNfcReq = useRef(0)
+	/** Ignore the opening tap that would otherwise hit the new full-screen layer. */
+	const nfcScanOpenedAtRef = useRef(0)
+	/** A timed-out scan already shows an error; ignore the native cancel that follows. */
+	const nfcScanDismissSuppressedRef = useRef(false)
 	const [activateGiftVoucherScreen, setActivateGiftVoucherScreen] = useState<'' | 'activeCoupons' | 'redeemVoucher'>('')
 	const [homeStoreCards, setHomeStoreCards] = useState<HomeStoreCardRow[]>(INITIAL_HOME_STORE_CARDS)
 	const [selectedHomeStoreCard, setSelectedHomeStoreCard] = useState<HomeStoreCardRow | null>(null)
@@ -1363,6 +1367,10 @@ const Home = (_props: HomeProps) => {
 			if (d.ok === false) {
 				const err = typeof d.error === 'string' ? d.error : 'NFC error'
 				if (err === 'cancelled' || err === 'paused') {
+					if (nfcScanDismissSuppressedRef.current) {
+						nfcScanDismissSuppressedRef.current = false
+						return
+					}
 					cashTreesNfcReq.current++
 					setCashTreesNfcOverlay({ phase: 'hidden' })
 					return
@@ -1479,10 +1487,29 @@ const Home = (_props: HomeProps) => {
 		return () => window.removeEventListener('cashtreesnfc', onNfc)
 	}, [profiles, refreshLinkedNfcCards])
 
+	useEffect(() => {
+		if (cashTreesNfcOverlay.phase !== 'scanning') return
+		const android = (window as Window & { CashTreesAndroid?: { startPhysicalCardBind?: () => void } })
+			.CashTreesAndroid
+		if (typeof android?.startPhysicalCardBind !== 'function') return
+		const timer = window.setTimeout(() => {
+			nfcScanDismissSuppressedRef.current = true
+			getCashTreesNativeNfcBridge()?.cancelPhysicalCardBind?.()
+			cashTreesNfcReq.current++
+			setCashTreesNfcOverlay({
+				phase: 'error',
+				errorMsg: 'No NFC card was detected. Hold the card against the back of the phone and try again.',
+			})
+		}, 20_000)
+		return () => window.clearTimeout(timer)
+	}, [cashTreesNfcOverlay.phase])
+
 	const startCashTreesPhysicalCardBind = useCallback(() => {
 		const native = getCashTreesNativeNfcBridge()
 		if (native?.startPhysicalCardBind) {
 			cashTreesNfcReq.current++
+			nfcScanOpenedAtRef.current = Date.now()
+			nfcScanDismissSuppressedRef.current = false
 			/** 含 iOS：先显示 scanning 加载层，提示等待读卡；系统全屏 NFC UI 仍由原生承载 */
 			setCashTreesNfcOverlay({ phase: 'scanning' })
 			try {
@@ -2513,12 +2540,14 @@ const Home = (_props: HomeProps) => {
 								} bg-gray-900/45 dark:bg-black/55 backdrop-blur-md`}
 								aria-label="Dismiss"
 								onClick={() => {
+									if (cashTreesNfcOverlay.phase === 'fetch') return
 									if (
-										cashTreesNfcOverlay.phase !== 'fetch' &&
-										cashTreesNfcOverlay.phase !== 'scanning'
+										cashTreesNfcOverlay.phase === 'scanning' &&
+										Date.now() - nfcScanOpenedAtRef.current < 600
 									) {
-										cancelCashTreesNfcBind()
+										return
 									}
+									cancelCashTreesNfcBind()
 								}}
 							/>
 							<div className="relative z-10 w-full max-w-[300px] rounded-[2rem] border-2 border-[#1562f0]/45 dark:border-[#1562f0]/50 bg-white dark:bg-slate-900 shadow-xl shadow-[#1562f0]/15 overflow-hidden min-h-[280px] flex flex-col">
@@ -2533,8 +2562,18 @@ const Home = (_props: HomeProps) => {
 														aria-hidden
 													/>
 													<p className="text-lg font-bold text-gray-900 dark:text-slate-100 text-center">
-														Waiting...
+														Hold your card near the phone
 													</p>
+													<p className="text-xs text-gray-500 dark:text-slate-400 text-center mt-2 px-2">
+														Keep the NFC card against the back of the phone to link it to this account.
+													</p>
+													<button
+														type="button"
+														onClick={() => cancelCashTreesNfcBind()}
+														className="mt-5 rounded-full border border-gray-200 bg-gray-100 px-5 py-2 text-sm font-bold text-gray-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+													>
+														Cancel
+													</button>
 												</>
 											) : (
 												<>

@@ -7,7 +7,7 @@ import contracts from '@/utils/contracts'
 import {ethers} from 'ethers'
 import {aesGcmEncrypt, aesGcmDecrypt, toBase64, fromBase64, storeSystemData } from '@/services/beamio'
 import { publishNativePwaLog } from '@/utils/cashTreesNativePwaLog'
-import { getWorkerGossipRouteArmor, retargetWorkerGossipRoute, startWorkerGossipListen, stopWorkerGossip } from '@/services/chatWorkerBridge'
+import { getWorkerGossipListenParams, getWorkerGossipRouteArmor, isWorkerGossipActive, retargetWorkerGossipRoute, startWorkerGossipListen, stopWorkerGossip } from '@/services/chatWorkerBridge'
 import { wrapArmorToMailboxWork } from '@conet.project/chat-sdk'
 
 function chatBootLog(message: string, level: 'info' | 'warn' | 'error' = 'info'): void {
@@ -796,7 +796,39 @@ export async function alignLiveGossipRouteToChain(
 		chatBootLog(`voice route chain mailbox ${chainId} is not in the node list`, 'warn')
 		return false
 	}
-	const workerMatches = workerArmor === targetArmor
+	const workerLive = isWorkerGossipActive()
+		&& !!currentGossipAbortController
+		&& !currentGossipAbortController.signal.aborted
+	if (!workerLive) {
+		chatBootLog('voice route gossip worker is down; restarting listen', 'warn')
+		const prev = getWorkerGossipListenParams()
+		if (!prev) {
+			chatBootLog('voice route listen is not running', 'warn')
+			return false
+		}
+		const controller = new AbortController()
+		currentGossipAbortController = controller
+		let started = await startWorkerGossipListen({
+			...prev,
+			nodes: nodes.length ? nodes : prev.nodes,
+			ownRouteArmoredPublicKey: targetArmor,
+			rootSignal: controller.signal,
+		})
+		if (!started) {
+			started = await startWorkerGossipListen({
+				...prev,
+				nodes: nodes.length ? nodes : prev.nodes,
+				ownRouteArmoredPublicKey: targetArmor,
+				rootSignal: controller.signal,
+			})
+		}
+		if (!started || !isWorkerGossipActive()) {
+			chatBootLog('voice route gossip restart failed', 'warn')
+			return false
+		}
+	}
+	const liveWorkerArmor = normalizeRouteArmor(getWorkerGossipRouteArmor())
+	const workerMatches = liveWorkerArmor === targetArmor
 	if (workerMatches && live === chainId) return true
 	if (workerMatches && gossipDeliveryAckContext) {
 		gossipDeliveryAckContext = {

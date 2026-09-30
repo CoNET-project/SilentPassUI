@@ -1700,6 +1700,8 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
  */
 function DiscoverMerchantFoodBeverageLoyaltyPassPanel({
 	passTitle,
+	membershipMemberNo,
+	membershipTierName,
 	chargePercent,
 	customerLoyaltyPointsEnabled,
 	balancePrefix,
@@ -1718,6 +1720,10 @@ function DiscoverMerchantFoodBeverageLoyaltyPassPanel({
 	visitError,
 }: {
 	passTitle: string
+	/** Held membership NFT, e.g. `M-000100`. Empty until assets resolve. */
+	membershipMemberNo: string
+	/** Custom tier title, including a renamed base tier. Generic base stays number-only. */
+	membershipTierName?: string | null
 	chargePercent: number | null
 	customerLoyaltyPointsEnabled: boolean
 	balancePrefix: string
@@ -1748,6 +1754,13 @@ function DiscoverMerchantFoodBeverageLoyaltyPassPanel({
 		fiatLabel,
 	})
 	const [howPointsWorkOpen, setHowPointsWorkOpen] = useState(false)
+	const memberNo = membershipMemberNo.trim()
+	const higherTierName = membershipTierName?.trim() ?? ''
+	const membershipLine = memberNo
+		? higherTierName
+			? `${higherTierName} · ${memberNo}`
+			: memberNo
+		: ''
 
 	return (
 		<div className="flex flex-col gap-4" aria-label="Active dining member pass">
@@ -1758,9 +1771,11 @@ function DiscoverMerchantFoodBeverageLoyaltyPassPanel({
 				<div className="flex items-start justify-between gap-3">
 					<div className="min-w-0">
 						<DiscoverDynamicPassTitle title={nameDisplay} />
-						<p className="mt-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/55">
-							Digital Dining &amp; Loyalty Pass
-						</p>
+						{membershipLine ? (
+							<p className="mt-1.5 truncate text-[12px] font-semibold tracking-tight text-white/80">
+								{membershipLine}
+							</p>
+						) : null}
 					</div>
 					<UtensilsCrossed className="mt-1 h-8 w-8 shrink-0 text-white/75" strokeWidth={1.6} aria-hidden />
 				</div>
@@ -3574,6 +3589,27 @@ function parseDiscoverAllTiersFromMeta(meta: Record<string, unknown> | null): Di
 		if (row) rows.push(row)
 	})
 	return rows
+}
+
+/** Custom tier title for the held membership. Generic base labels stay hidden. */
+function discoverMembershipTierDisplayName(
+	tiers: DiscoverOfferTierRow[],
+	tierIndex: number | null,
+): string | null {
+	if (tierIndex == null || !Number.isFinite(tierIndex) || tierIndex < 0) return null
+	const matched = tiers.find((tier) => tier.index === tierIndex)
+	const name = matched?.name?.trim() ?? ''
+	if (!matched?.hasExplicitName || !name) return null
+	const normalized = name.toLowerCase()
+	if (
+		normalized === 'membership' ||
+		normalized === 'base' ||
+		normalized === 'base tier' ||
+		normalized === 'tier'
+	) {
+		return null
+	}
+	return name
 }
 
 type DiscoverMerchantCouponOffer = {
@@ -6643,6 +6679,14 @@ function DiscoverMerchantDetailFullScreen({
 		const rawTierIndex = activeNft != null ? Number(activeNft.tier) : NaN
 		return Number.isFinite(rawTierIndex) && rawTierIndex >= 0 ? rawTierIndex : null
 	}, [hasActiveMembership, merchantAssets])
+	const activeMembershipTierLabel = useMemo(
+		() =>
+			discoverMembershipTierDisplayName(
+				parseDiscoverAllTiersFromMeta(merchantMetadataRoot),
+				activeMembershipTierIndex,
+			),
+		[merchantMetadataRoot, activeMembershipTierIndex],
+	)
 	const curatedOffersPanel = useMemo(() => {
 		if (item.cardAddress == null) return undefined
 		return DISCOVER_MERCHANT_CURATED_OFFERS[resolveDiscoverCardPanelKey(item.cardAddress)]
@@ -8976,6 +9020,10 @@ function DiscoverMerchantDetailFullScreen({
 					{showFoodBeverageLoyaltyPass ? (
 						<DiscoverMerchantFoodBeverageLoyaltyPassPanel
 							passTitle={passTitle}
+							membershipMemberNo={formatWalletMembershipMemberNo(
+								pickActiveDiscoverMembershipNft(merchantAssets?.nfts)?.tokenId ?? '',
+							)}
+							membershipTierName={activeMembershipTierLabel}
 							chargePercent={foodBeverageChargePercent}
 							customerLoyaltyPointsEnabled={customerLoyaltyPointsEnabled}
 							balancePrefix={balancePrefix || 'CA$'}

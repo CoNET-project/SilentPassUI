@@ -136,9 +136,13 @@ export function BecomeMemberSheet({
 		setDocumentKind(kind)
 	}
 
+	const handleBack = () => {
+		onClose()
+	}
+
 	return (
 		<div
-			className="fixed inset-0 z-[320] overflow-y-auto bg-[color:var(--membership-kyc-page-bg)] px-4 py-6 dark:bg-slate-950"
+			className="fixed inset-0 z-[320] pointer-events-auto overflow-y-auto bg-[color:var(--membership-kyc-page-bg)] px-4 py-6 dark:bg-slate-950"
 			style={{ ['--membership-kyc-page-bg' as string]: surface } as CSSProperties}
 		>
 			<div className="mx-auto w-full max-w-lg">
@@ -146,8 +150,12 @@ export function BecomeMemberSheet({
 					type="button"
 					aria-label="Back"
 					tabIndex={-1}
-					onClick={onClose}
-					className="mb-4 flex h-9 w-9 items-center justify-center rounded-full bg-white text-[#2c2f31] shadow"
+					onClick={handleBack}
+					onTouchEnd={(event) => {
+						event.preventDefault()
+						handleBack()
+					}}
+					className="relative z-10 mb-4 flex h-9 w-9 touch-manipulation items-center justify-center rounded-full bg-white text-[#2c2f31] shadow"
 				>
 					<svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden>
 						<path d="M14.5 6.5 9 12l5.5 5.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -356,11 +364,6 @@ export function BecomeMemberSheet({
 				>
 					{busy ? 'Saving…' : 'Continue to checkout →'}
 				</button>
-				<p className="mt-3 text-center text-[12px] leading-5 text-[#6b7076]">
-					You'll review the total before confirming. No payment is made at this step.
-					<br />
-					Powered by Beamio
-				</p>
 			</div>
 			{documentKind ? (
 				<div className="fixed inset-0 z-[330] flex items-end justify-center bg-black/40 px-4 py-6 sm:items-center">

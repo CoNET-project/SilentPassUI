@@ -36,7 +36,7 @@ import { resolveStripeDepositEoa } from '@/utils/eoaUsdcStripe'
 import usdcIcon from '@/components/assets/usdc.png'
 import baseIcon from '@/components/assets/base-logo.png'
 import conetTokenIcon from './assets/conet-token.svg'
-import spendToEarnArt from './assets/spend-to-earn.jpg'
+import spendToEarnNetworkArt from './assets/spend-to-earn-network.jpg'
 import senPhoCafeStoreCardBg from '@/components/assets/senPhoCafeStoreCardBg.png'
 import luminaRoastersStoreCardBg from '@/components/assets/luminaRoastersStoreCardBg.png'
 import PayScreen from '@/pages/Pay/send'
@@ -79,6 +79,11 @@ import { tu } from '@/locale/beamioLocale'
 import { HomeLanguageSelector } from './HomeLanguageSelector'
 import { useMerchantCardDatabase } from '@/providers/MerchantCardDatabaseProvider'
 import { pickMerchantCardListIconUrl, pickMerchantCardListTitle } from '@/utils/merchantCardDatabase'
+import {
+	discoverMixCssColorWithBlack,
+	discoverMixCssColorWithWhite,
+	parseDiscoverMerchantBrandColor,
+} from '@/utils/discoverMerchantPromotions'
 import { pickNonFactoryMerchantAssetUrl } from '@/utils/isFactoryDefaultMerchantAssetUrl'
 import {
 	type ReceiveWalletAppRow,
@@ -261,18 +266,175 @@ const INITIAL_HOME_STORE_CARDS: HomeStoreCardRow[] = [
 	{ id: 'lumina', name: 'Lumina Roasters', type: 'Green Card', color: 'from-amber-900 to-stone-900', borderColor: 'border-amber-950/50', iconColor: 'text-amber-200', bgColor: 'bg-amber-950/30', icon: CreditCard, balanceCad: 10.0, backgroundImage: LUMINA_STORE_CARD_ART_URL },
 ]
 
+type StoreCardArtTone = 'light' | 'dark' | 'opaque'
+
+const storeCardArtToneCache = new Map<string, StoreCardArtTone>()
+
+/** Transparent artwork: light ink needs a dark brand field, dark ink a light one. */
+async function readStoreCardArtTone(src: string): Promise<StoreCardArtTone> {
+	const cached = storeCardArtToneCache.get(src)
+	if (cached) return cached
+	let result: StoreCardArtTone = 'opaque'
+	try {
+		const res = await fetch(src)
+		if (!res.ok) return result
+		const blob = await res.blob()
+		if (blob.type === 'image/jpeg' || blob.type === 'image/jpg') {
+			storeCardArtToneCache.set(src, result)
+			return result
+		}
+		const bitmap = await createImageBitmap(blob)
+		const size = 24
+		const canvas = document.createElement('canvas')
+		canvas.width = size
+		canvas.height = size
+		const ctx = canvas.getContext('2d', { willReadFrequently: true })
+		if (!ctx) {
+			bitmap.close()
+			return result
+		}
+		ctx.clearRect(0, 0, size, size)
+		ctx.drawImage(bitmap, 0, 0, size, size)
+		bitmap.close()
+		const data = ctx.getImageData(0, 0, size, size).data
+		let transparent = 0
+		let ink = 0
+		let lumSum = 0
+		const total = size * size
+		for (let i = 0; i < data.length; i += 4) {
+			const alpha = data[i + 3]
+			if (alpha < 240) transparent += 1
+			if (alpha < 24) continue
+			const lum = (0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]) / 255
+			const weight = alpha / 255
+			lumSum += lum * weight
+			ink += weight
+		}
+		if (transparent / total >= 0.08) {
+			const average = ink > 0.02 ? lumSum / ink : 1
+			result = average >= 0.62 ? 'light' : 'dark'
+		}
+	} catch {
+		result = 'opaque'
+	}
+	storeCardArtToneCache.set(src, result)
+	return result
+}
+
+function useStoreCardArtTone(src: string | null | undefined): StoreCardArtTone | null {
+	const [tone, setTone] = useState<StoreCardArtTone | null>(() => (src ? storeCardArtToneCache.get(src) ?? null : null))
+	useEffect(() => {
+		if (!src) {
+			setTone(null)
+			return
+		}
+		const cached = storeCardArtToneCache.get(src)
+		if (cached) {
+			setTone(cached)
+			return
+		}
+		let cancelled = false
+		void readStoreCardArtTone(src).then((next) => {
+			if (!cancelled) setTone(next)
+		})
+		return () => {
+			cancelled = true
+		}
+	}, [src])
+	return tone
+}
+
+function storeCardBrandBackdrop(brand: string, tone: StoreCardArtTone | null): string | null {
+	if (tone !== 'light' && tone !== 'dark') return null
+	if (tone === 'light') return discoverMixCssColorWithBlack(brand, 0.58) ?? '#1e293b'
+	return discoverMixCssColorWithWhite(brand, 0.82) ?? '#e8eef8'
+}
+
+function HomeStoreBrandCard({
+	photo,
+	brandColor,
+	title,
+	balanceLine,
+	ptLine,
+	onOpen,
+}: {
+	photo: string | null
+	brandColor: string
+	title: string
+	balanceLine: string
+	ptLine: string
+	onOpen: () => void
+}) {
+	const tone = useStoreCardArtTone(photo)
+	const backdrop = storeCardBrandBackdrop(brandColor, tone)
+	return (
+		<button
+			type="button"
+			onClick={onOpen}
+			className="relative flex h-[164px] w-[116px] shrink-0 flex-col justify-end overflow-hidden rounded-[14px] p-3 text-left text-white"
+		>
+			{backdrop ? <div className="absolute inset-0" style={{ backgroundColor: backdrop }} aria-hidden /> : null}
+			{photo ? (
+				<IpfsImg
+					src={photo}
+					alt=""
+					className={
+						backdrop
+							? 'absolute inset-0 h-full w-full object-contain p-3'
+							: 'absolute inset-0 h-full w-full object-cover'
+					}
+				/>
+			) : (
+				<div className="absolute inset-0 bg-gradient-to-br from-[#07552d] to-[#86a638]" aria-hidden />
+			)}
+			<div className="absolute inset-0" style={{ background: 'linear-gradient(180deg, transparent 30%, rgba(0,0,0,.64))' }} aria-hidden />
+			<div className="relative z-[1] [text-shadow:0_1px_2px_rgba(0,0,0,0.9),0_0_8px_rgba(0,0,0,0.65)]">
+				<p className="mb-3 line-clamp-2 text-[13px] font-extrabold leading-tight">{title}</p>
+				<p className="mt-[5px] flex items-center gap-1 text-[11px]">
+					<Wallet className="h-3 w-3 shrink-0" strokeWidth={2.2} aria-hidden />
+					<span className="truncate">{balanceLine}</span>
+				</p>
+				<p className="mt-[5px] flex items-center gap-1 text-[11px] text-[#ffd34d]">
+					<Crown className="h-3 w-3 shrink-0" strokeWidth={2.2} aria-hidden />
+					<span className="truncate">{ptLine}</span>
+				</p>
+			</div>
+		</button>
+	)
+}
+
 function HomeHeroQrRings() {
 	return (
 		<div
-			className="pointer-events-none absolute left-1/2 top-[-37px] h-[230px] w-[230px] -translate-x-1/2 rounded-full"
+			className="pointer-events-none absolute left-1/2 top-1/2 z-0 h-[392px] w-[392px] -translate-x-1/2 -translate-y-1/2 rounded-full"
 			style={{
-				background: 'repeating-radial-gradient(circle, transparent 0 21px, rgba(255,255,255,.35) 22px 23px)',
-				filter: 'drop-shadow(0 0 15px rgba(39,142,255,.35))',
+				background:
+					'repeating-radial-gradient(circle at center, rgba(255,255,255,0) 0px, rgba(255,255,255,0) 27px, rgba(255,255,255,0.38) 28px, rgba(255,255,255,0.60) 29px, rgba(80,165,255,0.10) 31px, rgba(80,165,255,0) 56px)',
+				filter: 'drop-shadow(0 0 22px rgba(72, 161, 255, 0.18))',
 			}}
 			aria-hidden
 		/>
 	)
 }
+
+type HomeOfferPanel = {
+	id: string
+	art: string
+	title: string
+	accent: string
+	body: string
+}
+
+/** Add another object to show another swipeable home offer. */
+const HOME_OFFER_PANELS: HomeOfferPanel[] = [
+	{
+		id: 'spend-to-earn',
+		art: spendToEarnNetworkArt,
+		title: 'Spend to Earn',
+		accent: 'Earn Reward PT. Use Anywhere.',
+		body: 'Get Reward PT when you spend at participating merchants, and use your Reward PT at any merchant across the network.',
+	},
+]
 
 const HOME_DUMMY_QR_VALUE = 'https://beamio.app/'
 const HOME_DUMMY_QR_SIZE = 132
@@ -366,6 +528,7 @@ const Home = (_props: HomeProps) => {
 	const [ccsaAssets, setCcsaAssets] = useState<Awaited<ReturnType<typeof getMyAssetsAggregated>> | null>(null)
 	const [bUnitBalance, setBUnitBalance] = useState<{ total: number; free: number; paid: number } | null>(null)
 	const [storeCardDot, setStoreCardDot] = useState(0)
+	const [offerPanelIndex, setOfferPanelIndex] = useState(0)
 
 
 
@@ -2048,7 +2211,7 @@ const Home = (_props: HomeProps) => {
 					<button
 						type="button"
 						onClick={() => navigate('/myWallet')}
-						className="pointer-events-auto flex min-w-0 max-w-full items-center justify-self-start overflow-hidden"
+						className="pointer-events-auto flex min-w-0 max-w-full items-center justify-self-start"
 						data-capsule-interactive
 						data-touch-priority="1"
 						aria-label="Open wallet"
@@ -2178,7 +2341,7 @@ const Home = (_props: HomeProps) => {
 					}
 				>
 					{!openSearch && (
-						<>
+						<div className="w-full overflow-hidden">
 							{/* 顶部留白：与固定胶囊 top 同源 max(1rem, safe-area) + 5rem；避免 WebView 下 safe-area=0 时面板贴顶 */}
 							<div
 								className="shrink-0"
@@ -2187,8 +2350,8 @@ const Home = (_props: HomeProps) => {
 								}}
 							/>
 
-							<div className="relative mx-auto w-full min-w-0 max-w-lg space-y-8 px-3 pt-2 sm:px-5">
-							<section className="relative mb-[50px] grid min-h-[230px] min-w-0 grid-cols-[minmax(0,1fr)_166px] items-center gap-2 overflow-hidden">
+							<div className="relative mx-auto w-full min-w-0 max-w-lg self-center space-y-8 px-3 pt-2 sm:px-5">
+							<section className="relative mb-[50px] grid min-h-[230px] min-w-0 grid-cols-[minmax(0,1fr)_166px] items-center gap-2">
 								<div className="relative z-10 min-w-0">
 									<h2 className="m-0 text-[35px] font-extrabold leading-[1.03] tracking-[-1.6px] text-[#080b58] dark:text-slate-100">
 										One QR.
@@ -2222,7 +2385,7 @@ const Home = (_props: HomeProps) => {
 							</section>
 
 							<section>
-								<div className="mb-3.5 flex items-center justify-between px-1">
+								<div className="mb-3.5 flex items-center justify-between">
 									<h2 className="m-0 text-[23px] font-extrabold tracking-[-0.8px] text-[#080b58] dark:text-slate-100">My Store Cards</h2>
 									<button
 										type="button"
@@ -2239,8 +2402,9 @@ const Home = (_props: HomeProps) => {
 									</p>
 								) : (
 									<>
+									<div style={{ filter: 'drop-shadow(0 12px 25px rgba(26,53,94,0.14))' }}>
 									<div
-										className="-mx-3 flex max-w-full gap-2 overflow-x-auto overscroll-x-contain px-3 pb-3 [scrollbar-width:none] sm:-mx-5 sm:px-5 [&::-webkit-scrollbar]:hidden"
+										className="flex gap-2 overflow-x-auto overscroll-x-contain pb-10 pt-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
 										style={{ touchAction: 'pan-x pan-y' }}
 										onScroll={(event) => {
 											const next = Math.max(
@@ -2271,36 +2435,25 @@ const Home = (_props: HomeProps) => {
 											const ptLine = detail === undefined
 												? '…'
 												: `${ptTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} PT`
+											const brandColor = parseDiscoverMerchantBrandColor(
+												detail?.meta as Record<string, unknown> | null | undefined,
+											) ?? '#1562f0'
 											return (
-												<button
+												<HomeStoreBrandCard
 													key={uc.cardAddress}
-													type="button"
-													onClick={() => navigate('/discover', { state: { openDiscoverMerchantCard: uc.cardAddress } })}
-													className="relative flex h-[164px] w-[116px] shrink-0 flex-col justify-end overflow-hidden rounded-[14px] p-3 text-left text-white shadow-[0_12px_25px_rgba(26,53,94,0.14)]"
-												>
-													{photo ? (
-														<IpfsImg src={photo} alt="" className="absolute inset-0 h-full w-full object-cover" />
-													) : (
-														<div className="absolute inset-0 bg-gradient-to-br from-[#07552d] to-[#86a638]" aria-hidden />
-													)}
-													<div className="absolute inset-0" style={{ background: 'linear-gradient(180deg, transparent 30%, rgba(0,0,0,.64))' }} aria-hidden />
-													<div className="relative z-[1]">
-														<p className="mb-3 line-clamp-2 text-[13px] font-extrabold leading-tight">{title}</p>
-														<p className="mt-[5px] flex items-center gap-1 text-[11px]">
-															<Wallet className="h-3 w-3 shrink-0" strokeWidth={2.2} aria-hidden />
-															<span className="truncate">{balanceLine}</span>
-														</p>
-														<p className="mt-[5px] flex items-center gap-1 text-[11px] text-[#ffd34d]">
-															<Crown className="h-3 w-3 shrink-0" strokeWidth={2.2} aria-hidden />
-															<span className="truncate">{ptLine}</span>
-														</p>
-													</div>
-												</button>
+													photo={photo ?? null}
+													brandColor={brandColor}
+													title={title}
+													balanceLine={balanceLine}
+													ptLine={ptLine}
+													onOpen={() => navigate('/discover', { state: { openDiscoverMerchantCard: uc.cardAddress } })}
+												/>
 											)
 										})}
 									</div>
+									</div>
 									{myBrandCardsPreview.length > 1 ? (
-										<div className="mt-3 flex items-center justify-center gap-1.5" aria-hidden>
+										<div className="mt-1 flex items-center justify-center gap-1.5" aria-hidden>
 											{myBrandCardsPreview.slice(0, 6).map((uc, index) => (
 												<span
 													key={uc.cardAddress}
@@ -2317,27 +2470,69 @@ const Home = (_props: HomeProps) => {
 								)}
 							</section>
 
-							<section className="relative min-h-[190px] overflow-hidden rounded-[28px] border border-white/90 bg-[#eef6ff] shadow-[0_20px_45px_rgba(57,126,205,0.10)]">
-								<img
-									src={spendToEarnArt}
-									alt=""
-									className="pointer-events-none absolute inset-0 h-full w-full object-cover [object-position:70%_center]"
-									draggable={false}
-								/>
-								<div className="relative z-10 w-[48%] px-5 py-6">
-									<h2 className="m-0 text-[24px] font-extrabold leading-[1.05] tracking-[-0.6px] text-[#07064d] dark:text-slate-100">Spend to Earn</h2>
-									<p className="mt-2 text-[13px] leading-snug text-[#62709d] dark:text-slate-400">
-										Get more Reward PT at your favourite merchants.
-									</p>
-									<button
-										type="button"
-										onClick={() => navigate('/discover')}
-										className="mt-3 inline-flex items-center gap-1 whitespace-nowrap text-[16px] font-medium text-[#0768ff]"
-									>
-										Explore Offers
-										<ChevronRight size={18} strokeWidth={2.5} />
-									</button>
+							<section>
+								<div
+									className="flex w-[calc(100%+7rem)] -mx-14 snap-x snap-mandatory overflow-x-auto overscroll-x-contain px-14 pb-16 pt-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+									style={{ touchAction: 'pan-x pan-y' }}
+									onScroll={(event) => {
+										const slide = event.currentTarget.firstElementChild
+										const width = slide instanceof HTMLElement ? slide.offsetWidth : event.currentTarget.clientWidth
+										if (width <= 0) return
+										const next = Math.max(
+											0,
+											Math.min(HOME_OFFER_PANELS.length - 1, Math.round(event.currentTarget.scrollLeft / width)),
+										)
+										setOfferPanelIndex((prev) => (prev === next ? prev : next))
+									}}
+								>
+									{HOME_OFFER_PANELS.map((panel) => (
+										<article
+											key={panel.id}
+											className="relative min-h-[232px] w-full min-w-full shrink-0 snap-start overflow-hidden rounded-[28px] border border-white/90 bg-[#e7f4ff] shadow-[0_20px_45px_rgba(57,126,205,0.10)]"
+										>
+											<img
+												src={panel.art}
+												alt=""
+												className="pointer-events-none absolute inset-y-0 -right-8 h-full w-[70%] max-w-none object-cover object-right"
+												draggable={false}
+											/>
+											<div
+												className="pointer-events-none absolute inset-y-0 left-0 w-[52%] bg-gradient-to-r from-[#e7f4ff] from-40% via-[#e7f4ff]/95 to-transparent"
+												aria-hidden
+											/>
+											<div className="relative z-10 flex min-h-[232px] w-[48%] flex-col justify-center py-5 pl-5 pr-1">
+												<h2 className="m-0 text-[22px] font-extrabold leading-[1.05] tracking-[-0.5px] text-[#07064d]">
+													{panel.title}
+												</h2>
+												<p className="mt-1 text-[15px] font-extrabold leading-tight text-[#0768ff]">
+													{panel.accent}
+												</p>
+												<p className="mt-2 text-[12px] leading-snug text-[#62709d]">{panel.body}</p>
+												<button
+													type="button"
+													onClick={() => navigate('/discover')}
+													className="mt-3 inline-flex w-fit items-center rounded-full bg-[#0866ff] px-4 py-2 text-[14px] font-semibold text-white"
+												>
+													Explore Offers
+												</button>
+											</div>
+										</article>
+									))}
 								</div>
+								{HOME_OFFER_PANELS.length > 1 ? (
+									<div className="mt-3 flex items-center justify-center gap-1.5" aria-hidden>
+										{HOME_OFFER_PANELS.map((panel, index) => (
+											<span
+												key={panel.id}
+												className={
+													index === offerPanelIndex
+														? 'h-2 w-2 rounded-full bg-[#0866ff]'
+														: 'h-2 w-2 rounded-full bg-[#c7d5e9]'
+												}
+											/>
+										))}
+									</div>
+								) : null}
 							</section>
 
 							{show200OK && (
@@ -2365,7 +2560,7 @@ const Home = (_props: HomeProps) => {
 						</div>
 
 							<div className="pointer-events-none h-[128px] shrink-0 pb-[env(safe-area-inset-bottom,0px)]" />
-						</>
+						</div>
 					)}
 				</div>
 			</div>

@@ -154,7 +154,18 @@ export function BecomeMemberSheet({
 				/>
 				<h1 className="text-[32px] font-semibold tracking-tight text-[#1c1c1e]">Become a member</h1>
 				<div className="mt-5 rounded-2xl border border-[#dedde8] bg-white px-5 py-5 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
-					<p className="max-w-[85%] text-[20px] font-semibold leading-7" style={{ color: accent }}>{merchant}</p>
+					<p
+						className={`whitespace-nowrap font-semibold leading-7 ${
+							merchant.trim().length > 30
+								? 'text-[16px] sm:text-[18px]'
+								: merchant.trim().length > 22
+									? 'text-[18px] sm:text-[20px]'
+									: 'text-[20px]'
+						}`}
+						style={{ color: accent }}
+					>
+						{merchant}
+					</p>
 					{feeValue ? (
 						<div className="mt-7 flex items-start justify-between gap-4 text-[16px]">
 							<span className="text-[#66666f]">{feeLabel}</span>

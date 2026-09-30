@@ -8845,8 +8845,18 @@ function DiscoverMerchantDetailFullScreen({
 								<MerchantCategoryIcon className="h-5 w-5" strokeWidth={2} aria-hidden />
 							</span>
 						</div>
-						<div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
-							<h1 className="text-2xl font-bold leading-tight text-white drop-shadow-sm">{item.title}</h1>
+						<div className="min-w-0 flex items-center">
+							<h1
+								className={`max-w-full whitespace-nowrap font-bold leading-tight text-white drop-shadow-sm ${
+									item.title.trim().length > 30
+										? 'text-lg sm:text-xl'
+										: item.title.trim().length > 22
+											? 'text-xl sm:text-2xl'
+											: 'text-2xl'
+								}`}
+							>
+								{item.title}
+							</h1>
 						</div>
 						<div
 							className="transition-opacity duration-150"

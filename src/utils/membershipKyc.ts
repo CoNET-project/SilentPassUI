@@ -338,6 +338,7 @@ export async function saveMembershipKycAndLink(params: {
 	fullName: string
 	phone: string
 	email: string
+	privacyConsent: boolean
 	emailOffers: boolean
 	smsOffers: boolean
 	additional?: Record<string, string | string[]>
@@ -353,6 +354,7 @@ export async function saveMembershipKycAndLink(params: {
 		fullName: params.fullName.trim(),
 		phone: params.phone.trim(),
 		email: params.email.trim(),
+		privacyConsent: params.privacyConsent,
 		emailOffers: params.emailOffers,
 		smsOffers: params.smsOffers,
 		additional: params.additional ?? {},

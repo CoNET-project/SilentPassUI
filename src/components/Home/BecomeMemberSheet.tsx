@@ -57,6 +57,7 @@ export function BecomeMemberSheet({
 	const [fullName, setFullName] = useState('')
 	const [phone, setPhone] = useState('')
 	const [email, setEmail] = useState('')
+	const [privacyConsent, setPrivacyConsent] = useState(false)
 	const [terms, setTerms] = useState(false)
 	const [emailOffers, setEmailOffers] = useState(false)
 	const [smsOffers, setSmsOffers] = useState(false)
@@ -74,25 +75,17 @@ export function BecomeMemberSheet({
 		policy.fields.phone !== 'off' ||
 		policy.fields.email !== 'off' ||
 		additionalFields.length > 0
-	const anyRequired =
-		policy.fields.name === 'required' ||
-		policy.fields.phone === 'required' ||
-		policy.fields.email === 'required' ||
-		additionalFields.some((field) => field.state === 'required')
-	const subtitle = !collecting
-		? ''
-		: anyRequired
-			? 'Complete your member details and accept the terms to continue.'
-			: 'Add optional details, then accept the terms to continue.'
 	const showEmailOffers = policy.marketing === true && policy.fields.email !== 'off' && validEmail(email)
 	const showSmsOffers = policy.marketing === true && policy.fields.phone !== 'off' && validPhone(phone)
 	const topUpSummary = /top-?up/i.test(policy.offerLabel)
 	const feeLabel = topUpSummary ? 'Top-up amount' : 'Membership fee'
-	const feeValue = policy.offerValue
-		? topUpSummary
-			? policy.offerValue
-			: `${policy.offerValue} · One-time payment`
-		: ''
+	const rawFeeValue = policy.offerValue.trim()
+	const feeIsFree = !rawFeeValue || Number(rawFeeValue.replace(/[^\d.-]/g, '')) === 0
+	const feeValue = topUpSummary
+		? rawFeeValue
+		: feeIsFree
+			? 'Free'
+			: rawFeeValue.replace(/\s*·\s*One-time payment\s*$/i, '')
 	const validity = validityPhrase(policy.offerReward)
 	const extraMissing = additionalFields.some((field) => {
 		if (field.state !== 'required') return false
@@ -104,6 +97,7 @@ export function BecomeMemberSheet({
 		(policy.fields.phone === 'required' && !phone.trim()) ||
 		(policy.fields.email === 'required' && !email.trim()) ||
 		extraMissing ||
+		(collecting && !privacyConsent) ||
 		!terms
 
 	const continueNext = async () => {
@@ -117,6 +111,7 @@ export function BecomeMemberSheet({
 				fullName: policy.fields.name === 'off' ? '' : fullName,
 				phone: policy.fields.phone === 'off' ? '' : phone,
 				email: policy.fields.email === 'off' ? '' : email,
+				privacyConsent: collecting && privacyConsent,
 				emailOffers: showEmailOffers && emailOffers,
 				smsOffers: showSmsOffers && smsOffers,
 				additional: Object.fromEntries([
@@ -158,31 +153,32 @@ export function BecomeMemberSheet({
 						<path d="M14.5 6.5 9 12l5.5 5.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
 					</svg>
 				</button>
-				<h1 className="text-[28px] font-semibold tracking-tight text-[#1c1c1e]">Become a member</h1>
-				{subtitle ? <p className="mt-1 text-[15px] text-[#6b7076]">{subtitle}</p> : null}
-				<div className="mt-4 rounded-2xl border bg-white px-4 py-3" style={{ borderColor: accent }}>
-					<p className="text-[15px] font-semibold" style={{ color: accent }}>{merchant}</p>
+				<h1 className="text-[32px] font-semibold tracking-tight text-[#1c1c1e]">Become a member</h1>
+				<div className="mt-5 rounded-2xl border border-[#dedde8] bg-white px-5 py-5 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
+					<p className="max-w-[85%] text-[20px] font-semibold leading-7" style={{ color: accent }}>{merchant}</p>
 					{feeValue ? (
-						<div className="mt-3 flex items-start justify-between gap-4 text-[13px]">
-							<span className="text-[#6b7076]">{feeLabel}</span>
+						<div className="mt-7 flex items-start justify-between gap-4 text-[16px]">
+							<span className="text-[#66666f]">{feeLabel}</span>
 							<span className="text-right font-semibold text-[#1c1c1e]">{feeValue}</span>
 						</div>
 					) : null}
 					{validity ? (
-						<div className="mt-2 flex items-start justify-between gap-4 text-[13px]">
-							<span className="text-[#6b7076]">Membership validity</span>
+						<div className="mt-5 flex items-start justify-between gap-4 text-[16px]">
+							<span className="text-[#66666f]">{topUpSummary ? 'Membership validity' : 'Valid for'}</span>
 							<span className="text-right font-semibold text-[#1c1c1e]">{validity}</span>
 						</div>
 					) : null}
 				</div>
 				{collecting ? (
 					<>
-						<h2 className="mt-5 text-[15px] font-semibold text-[#1c1c1e]">Your member details</h2>
+						<div className="mt-6 flex items-center gap-2">
+							<h2 className="text-[19px] font-semibold text-[#1c1c1e]">Member details</h2>
+							<svg viewBox="0 0 24 24" className="h-4 w-4 text-[#667085]" aria-hidden>
+								<path d="M7 10V8a5 5 0 0 1 10 0v2M6 10h12v10H6V10Z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+							</svg>
+						</div>
 						<p className="mt-1 text-[13px] leading-5 text-[#5c6570]">
-							{merchant} requests the details below to set up and manage your membership. Optional fields can be left blank.
-						</p>
-						<p className="mt-2 text-[13px] leading-5 text-[#5c6570]">
-							Only {merchant} can view the information you submit here. Beamio cannot view its contents.
+							Only this organization can read these details. Beamio cannot.
 						</p>
 						{policy.fields.name !== 'off' ? (
 							<label className="mt-4 block text-[14px] font-semibold text-[#1c1c1e]">
@@ -291,13 +287,21 @@ export function BecomeMemberSheet({
 								<span>Send me offers and updates from {merchant} by SMS. (Optional. Unsubscribe anytime.)</span>
 							</label>
 						) : null}
-						<p className="mt-4 text-[13px] leading-5 text-[#5c6570]">
-							See how {merchant} uses your information in its{' '}
-							<button type="button" className="font-semibold underline" style={{ color: accent }} onClick={() => openDocument('privacy')}>
-								Privacy Notice
-							</button>
-							.
-						</p>
+						<label className="mt-5 flex items-start gap-3 border-t border-[#e7e5ec] pt-5 text-[13px] leading-5 text-[#3d4a57]">
+							<input
+								type="checkbox"
+								checked={privacyConsent}
+								onChange={(event) => setPrivacyConsent(event.target.checked)}
+								className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--membership-accent)]"
+								style={{ ['--membership-accent' as string]: accent } as CSSProperties}
+							/>
+							<span>
+								I consent to this organization collecting and using the details I provide to manage my membership.{' '}
+								<button type="button" className="font-semibold underline" style={{ color: accent }} onClick={() => openDocument('privacy')}>
+									Privacy Notice
+								</button>
+							</span>
+						</label>
 					</>
 				) : (
 					<div className="mt-5">
@@ -313,7 +317,7 @@ export function BecomeMemberSheet({
 				<label className="mt-4 flex items-start gap-2 text-[13px] leading-5 text-[#3d4a57]">
 					<input type="checkbox" checked={terms} onChange={(event) => setTerms(event.target.checked)} />
 					<span>
-						I agree to the{' '}
+						I agree to this organization’s{' '}
 						<button
 							type="button"
 							className="font-semibold underline"
@@ -326,7 +330,7 @@ export function BecomeMemberSheet({
 						>
 							Membership Terms
 						</button>
-						{' '}of {merchant}.
+						.
 					</span>
 				</label>
 				{!collecting ? (

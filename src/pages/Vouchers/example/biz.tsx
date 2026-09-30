@@ -13269,6 +13269,11 @@ function cardIssuanceMembershipRowsFromMetadata(
     membershipFeeE6?: string;
     membershipFee?: string | number;
     membershipDurationKind?: number;
+    name?: string;
+    backgroundColor?: string;
+    image?: string;
+    imageFit?: 'width' | 'height';
+    logoDisplayScale?: TierLogoDisplayScale;
   } | undefined,
   tiers: CardTierMetadata[] | undefined,
 ): CardIssuanceTierRow[] {
@@ -13295,9 +13300,23 @@ function cardIssuanceMembershipRowsFromMetadata(
     membershipFeeInputKeepsDuration(feeHuman) && Number(feeHuman) === 0 && durationKind >= 1;
   const baseRow = makeCardIssuanceTierRow({
     id: CARD_ISSUANCE_SINGLE_TIER_ID,
-    name: 'Base',
+    name: typeof baseMembership.name === 'string' && baseMembership.name.trim()
+      ? baseMembership.name.trim()
+      : 'Base',
     preset: 'silver',
     threshold: CARD_ISSUANCE_REWARDS_SETUP_AMOUNT_DEFAULT,
+    backgroundColor:
+      typeof baseMembership.backgroundColor === 'string' && baseMembership.backgroundColor.trim()
+        ? baseMembership.backgroundColor
+        : undefined,
+    backgroundImage:
+      typeof baseMembership.image === 'string' && baseMembership.image.trim()
+        ? baseMembership.image
+        : '',
+    backgroundImageFit:
+      baseMembership.imageFit === 'height' ? 'height' : 'width',
+    logoDisplayScale:
+      baseMembership.logoDisplayScale ?? TIER_LOGO_DISPLAY_SCALE_DEFAULT,
     membershipFee: feeHuman,
     membershipDurationKind:
       BigInt(membershipFeeHumanToE6(feeHuman)) > 0n || freeClaim ? durationKind || 3 : 0,
@@ -23739,12 +23758,19 @@ const handleCardIssuanceSocialExchangeImagePick: React.ChangeEventHandler<HTMLIn
      // card-level metadata object. Add-tier rows begin at index 1.
      const baseMembershipForPublish = membershipFeeModeForPublish && tiersPayload?.[0]
        ? {
+           ...(tiersPayload[0].name?.trim() ? { name: tiersPayload[0].name.trim() } : {}),
+           ...(tiersPayload[0].backgroundColor
+             ? { backgroundColor: tiersPayload[0].backgroundColor }
+             : {}),
            membershipFeeE6: tiersPayload[0].membershipFeeE6,
            membershipFee: tiersPayload[0].membershipFee,
            membershipDurationKind: tiersPayload[0].membershipDurationKind,
            ...(tiersPayload[0].image ? { image: tiersPayload[0].image } : {}),
            ...(tiersPayload[0].image
              ? { imageFit: tiersPayload[0].imageFit }
+             : {}),
+           ...(tiersPayload[0].logoDisplayScale
+             ? { logoDisplayScale: tiersPayload[0].logoDisplayScale }
              : {}),
          }
        : undefined;
@@ -25677,6 +25703,19 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
     const publishedBaseMembership = publishedBaseRow
       ? {
           ...(cardIssuanceExistingCard?.meta?.baseMembership ?? {}),
+          ...(publishedBaseRow.name?.trim() ? { name: publishedBaseRow.name.trim() } : {}),
+          ...(publishedBaseRow.backgroundColor
+            ? { backgroundColor: publishedBaseRow.backgroundColor }
+            : {}),
+          ...(publishedBaseRow.backgroundImage
+            ? { image: publishedBaseRow.backgroundImage }
+            : {}),
+          ...(publishedBaseRow.backgroundImage
+            ? { imageFit: publishedBaseRow.backgroundImageFit }
+            : {}),
+          ...(publishedBaseRow.logoDisplayScale
+            ? { logoDisplayScale: publishedBaseRow.logoDisplayScale }
+            : {}),
           membershipFee: publishedBaseRow.membershipFee,
           membershipFeeE6: membershipFeeHumanToE6(publishedBaseRow.membershipFee),
           membershipDurationKind: normalizeMembershipDurationKind(

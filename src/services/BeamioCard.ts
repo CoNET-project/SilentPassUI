@@ -1605,9 +1605,12 @@ export type CreateBeamioCardParams = {
 		membershipFeeE6?: string
 		membershipFee?: string | number
 		membershipDurationKind?: MembershipDurationKind | number
+		name?: string
 		/** Base-tier visual chrome when the canonical tier is not in `tiers[]`. */
+		backgroundColor?: string
 		image?: string
 		imageFit?: 'width' | 'height'
+		logoDisplayScale?: '2x' | '4x' | '6x' | '8x' | 'hidden'
 	}
 	/** Tier 类型 metadata（如 Gold Card 说明），存于 0x{owner}.json，回送 NFT metadata 时包含 */
 	tiers?: TierMetadata[]
@@ -1622,9 +1625,12 @@ export type UpdateBeamioCardShareMetadataParams = {
 		membershipFeeE6?: string
 		membershipFee?: string | number
 		membershipDurationKind?: MembershipDurationKind | number
+		name?: string
 		/** Base-tier visual chrome when the canonical tier is not in `tiers[]`. */
+		backgroundColor?: string
 		image?: string
 		imageFit?: 'width' | 'height'
+		logoDisplayScale?: '2x' | '4x' | '6x' | '8x' | 'hidden'
 	} | null
 	tiers?: TierMetadata[]
 	upgradeType?: 0 | 1 | 2
@@ -4138,8 +4144,11 @@ export type CardMetadataFromUri = {
 		membershipFeeE6?: string
 		membershipFee?: string | number
 		membershipDurationKind?: MembershipDurationKind | number
+		name?: string
+		backgroundColor?: string
 		image?: string
 		imageFit?: 'width' | 'height'
+		logoDisplayScale?: '2x' | '4x' | '6x' | '8x' | 'hidden'
 	}
 	tiers?: CardTierMetadata[]
 	cardOwner?: string

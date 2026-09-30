@@ -1,7 +1,10 @@
 import { useState, type CSSProperties } from 'react'
 import type { MembershipKycFormPolicy } from '@/utils/membershipKyc'
 import { saveMembershipKycAndLink } from '@/utils/membershipKyc'
-import { BeamioCircularBackButton } from '@/components/BeamioCircularBackButton'
+import {
+	BeamioCircularBackButton,
+	beamioHeroFloatingBackTopStyle,
+} from '@/components/BeamioCircularBackButton'
 
 type Props = {
 	policy: MembershipKycFormPolicy
@@ -146,13 +149,21 @@ export function BecomeMemberSheet({
 			className="fixed inset-0 z-[320] pointer-events-auto overflow-y-auto bg-[color:var(--membership-kyc-page-bg)] px-4 py-6 dark:bg-slate-950"
 			style={{ ['--membership-kyc-page-bg' as string]: surface } as CSSProperties}
 		>
-			<div className="mx-auto w-full max-w-lg">
+			{/* Keep Back chrome fixed above the scrolling KYC content, like merchant detail. */}
+			<div
+				className="pointer-events-none fixed inset-x-0 top-0 z-50"
+				style={beamioHeroFloatingBackTopStyle}
+			>
 				<BeamioCircularBackButton
 					variant="onLight"
 					onClick={handleBack}
-					className="z-10 mb-4"
+					className="pointer-events-auto absolute left-4 top-0"
 				/>
-				<h1 className="text-[32px] font-semibold tracking-tight text-[#1c1c1e]">Become a member</h1>
+			</div>
+			<div className="mx-auto w-full max-w-lg">
+				<h1 className="text-center text-[32px] font-semibold tracking-tight text-[#1c1c1e]">
+					Become a member
+				</h1>
 				<div className="mt-5 rounded-2xl border border-[#dedde8] bg-white px-5 py-5 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
 					<p
 						className={`whitespace-nowrap font-semibold leading-7 ${

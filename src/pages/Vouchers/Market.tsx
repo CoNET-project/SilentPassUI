@@ -781,15 +781,14 @@ function DiscoverDynamicPassTitle({ title }: { title: string }) {
 		}
 
 		scheduleFit()
-		const observer = new ResizeObserver((entries) => {
-			const width = entries[0]?.contentRect.width ?? container.clientWidth
-			if (Math.round(width) === Math.round(lastWidth)) return
-			scheduleFit()
-		})
-		observer.observe(container)
+		// Do not observe the container here. Fitting the child changes its
+		// intrinsic layout, which can synchronously retrigger ResizeObserver
+		// during Webpack's dev overlay processing. Viewport changes cover the
+		// actual responsive cases and are safely coalesced into one frame.
+		window.addEventListener('resize', scheduleFit)
 		return () => {
 			cancelAnimationFrame(frame)
-			observer.disconnect()
+			window.removeEventListener('resize', scheduleFit)
 		}
 	}, [title])
 

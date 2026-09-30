@@ -21003,6 +21003,10 @@ const openCardIssuanceMembershipFeeTierEditor = useCallback(
     const row = idx >= 0 ? rows[idx] : null;
     if (!row) return;
     const isBase = membershipFeeTierRowIsBase(row, idx, rows);
+    // Editing an existing row must never retain the transient "new higher
+    // tier" draft. Otherwise a later Base edit can be appended as a second
+    // tier instead of patching the existing Base row.
+    setCardIssuanceMembershipFeePendingNewTier(null);
     let draft = membershipFeeDraftFromTierRow(row, isBase);
     // New unpublished program: seed Unlock Fee defaults only when configuring membership fee.
     const feeRaw = String(draft.membershipFee).replace(/,/g, '').trim();
@@ -21399,7 +21403,11 @@ const buildMembershipFeeTierRowsFromEditorDraft = useCallback(
       membershipDurationKind: durationKind,
     });
 
-    if (pending && editingId === pending.id) {
+    if (
+      pending &&
+      editingId === pending.id &&
+      editingId !== CARD_ISSUANCE_SINGLE_TIER_ID
+    ) {
       const without = source.filter((r) => r.id !== pending.id);
       return [...without, patchRow({ ...pending })];
     }
@@ -21423,6 +21431,20 @@ const buildMembershipFeeTierRowsFromEditorDraft = useCallback(
         threshold: isBase ? '0' : row.threshold,
       });
     });
+    if (!sawMatch && editingId === CARD_ISSUANCE_SINGLE_TIER_ID && mapped.length) {
+      // Base is always the first canonical membership row. If an older
+      // in-memory shape used another id, patch that row in place instead of
+      // appending a second Base tier.
+      const [first, ...rest] = mapped;
+      return [
+        patchRow({
+          ...first,
+          id: CARD_ISSUANCE_SINGLE_TIER_ID,
+          threshold: '0',
+        }),
+        ...rest,
+      ];
+    }
     if (!sawMatch && editingId) {
       return [
         ...mapped,
@@ -24211,13 +24233,40 @@ const submitCardIssuanceMembershipFeeTierEditor = useCallback(async () => {
       if (!ok) return;
       const loyaltyFlags = cardIssuanceLoyaltyUpgradeFlags(isMembershipFeeMode, selectedTierRule);
       const tiersPayload = buildCardIssuanceTiersPayloadFromRows(nextTiers, loyaltyFlags);
+      const baseMembershipPayload =
+        isMembershipFeeMode && tiersPayload?.[0]
+          ? {
+              ...(tiersPayload[0].name?.trim()
+                ? { name: tiersPayload[0].name.trim() }
+                : {}),
+              ...(tiersPayload[0].backgroundColor
+                ? { backgroundColor: tiersPayload[0].backgroundColor }
+                : {}),
+              membershipFeeE6: tiersPayload[0].membershipFeeE6,
+              membershipFee: tiersPayload[0].membershipFee,
+              membershipDurationKind: tiersPayload[0].membershipDurationKind,
+              ...(tiersPayload[0].image ? { image: tiersPayload[0].image } : {}),
+              ...(tiersPayload[0].image
+                ? { imageFit: tiersPayload[0].imageFit }
+                : {}),
+              ...(tiersPayload[0].logoDisplayScale
+                ? { logoDisplayScale: tiersPayload[0].logoDisplayScale }
+                : {}),
+            }
+          : undefined;
+      const metadataTiersForLocalState = isMembershipFeeMode
+        ? (tiersPayload?.slice(1) ?? [])
+        : tiersPayload;
       setCardIssuanceExistingCard((prev) => {
         if (!prev?.meta) return prev;
         return {
           ...prev,
           meta: {
             ...prev.meta,
-            ...(tiersPayload?.length ? { tiers: tiersPayload } : {}),
+            ...(metadataTiersForLocalState ? { tiers: metadataTiersForLocalState } : {}),
+            ...(baseMembershipPayload
+              ? { baseMembership: baseMembershipPayload }
+              : {}),
             ...(brandColorForPublish ? { backgroundColor: brandColorForPublish } : {}),
           },
         };

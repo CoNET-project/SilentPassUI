@@ -462,7 +462,7 @@ function DiscoverFeaturedBrandLogoImage({
 /** All-filter list: pinned to top first (in array order). */
 const DISCOVER_ALL_TOP_CARD_ADDRESSES = [
 	LONGDHANG_VIP_DISCOVER_CARD_ADDRESS,
-	LONGDHANG_DISCOVER_CARD_ADDRESS,
+	'0xA87Ba4441Cf2E9DbBB1903C3aD1ED10a6f0dFEaF',
 	"0xe8e146e7752906db36c2aaa5bf699284ee3582b4",
 ] as const
 
@@ -10170,7 +10170,9 @@ export default function Market() {
 				metadataRoot: card.metadataRoot,
 			}
 		})
-		if (rows.length > 0) return [...rows].reverse()
+		// Preserve the trusted API order. The all-category view applies the
+		// explicit merchandising pins below without reversing the remaining rows.
+		if (rows.length > 0) return rows
 		// No placeholder brands when API list is empty (Discover is driven by real `latestCards` only).
 		return []
 	}, [latestCardsRows, resolveName, resolveImage])

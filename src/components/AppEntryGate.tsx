@@ -3,8 +3,7 @@
  * 先 Splash + BeamioOnboardingModal，任意深层路由（/wallet、/Chat 等）均不可跳过。
  */
 import { useEffect, useRef, useState } from 'react'
-import { Outlet, useLocation } from 'react-router-dom'
-import ChatHome from '@/pages/chat'
+import { Outlet } from 'react-router-dom'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { checkStorageWithStatusWithTimeout } from '@/services/beamio'
 import SplashScreen from '@/components/SplashScreen'
@@ -34,8 +33,6 @@ function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T
 
 export default function AppEntryGate() {
 	const { setIsInitialLoading } = useDaemonContext()
-	const location = useLocation()
-	const onChatRoute = location.pathname.toLowerCase() === '/chat'
 	const [showBeamioOnboardingModal, setShowBeamioOnboardingModal] = useState(false)
 	const [requireWalletRecover, setRequireWalletRecover] = useState(false)
 	const [splashVisible, setSplashVisible] = useState(true)
@@ -190,12 +187,7 @@ export default function AppEntryGate() {
 				/>
 			) : gateDecided ? (
 				<div className="flex min-h-0 w-full flex-1 flex-col">
-					<div className={onChatRoute ? 'flex min-h-0 w-full flex-1 flex-col' : 'hidden'} aria-hidden={!onChatRoute}>
-						<ChatHome />
-					</div>
-					<div className={onChatRoute ? 'hidden' : 'flex min-h-0 w-full flex-1 flex-col'}>
-						<Outlet />
-					</div>
+					<Outlet />
 				</div>
 			) : null}
 		</div>

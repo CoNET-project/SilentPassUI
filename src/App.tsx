@@ -16,6 +16,7 @@ import { clearOfflineChatAlertsViaBridge } from "@/utils/cashTreesNativeAppState
 import SearchInputWithDropdown from "@/components/Home/SearchBarWithResults"
 import AppEntryGate from "@/components/AppEntryGate"
 import Home from "@/components/Home/Home"
+import Chat from "@/pages/chat"
 import History from "./pages/History/MyWalletDashboardNew"
 import Pay from "./pages/Pay"
 import QrOperationPage from "./pages/Pay/QrOperationPage"
@@ -2345,8 +2346,8 @@ function AppShell() {
 					<Route path="/BountyBoard/genesis-referral/redeem" element={<GenesisL0RedeemManagePage />} />
 					<Route path="/BountyBoard/genesis-referral/l1" element={<GenesisL1EvangelistManagePage />} />
 					<Route path="/qr" element={<QrOperationPage />} />
-					<Route path="/Chat" element={null} />
-					<Route path="/chat" element={null} />
+					<Route path="/Chat" element={<Chat />} />
+					<Route path="/chat" element={<Chat />} />
 					<Route path="/chat/:id" element={<ChatDetail />} />
 					<Route path="/phone" element={<PhoneHistoryPage />} />
 					<Route path="/settings" element={<MyWallet />} />

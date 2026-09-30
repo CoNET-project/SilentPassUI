@@ -1077,6 +1077,20 @@ export const connectToGossipNode = async (
   }
 }
 
+async function withChatTimeout<T>(work: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+	let timer: ReturnType<typeof setTimeout> | undefined
+	try {
+		return await Promise.race([
+			work,
+			new Promise<T>((_, reject) => {
+				timer = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs)
+			}),
+		])
+	} finally {
+		if (timer) clearTimeout(timer)
+	}
+}
+
 async function postWithTimeout(url: string, init: RequestInit, timeoutMs = 12_000) {
   const ctrl = new AbortController()
   const t = setTimeout(() => ctrl.abort(), timeoutMs)
@@ -1278,10 +1292,10 @@ export const sendMessage = async (
 	let encryptObj: any
 	try {
 		encryptObj = {
-			message: await createMessage({
+			message: await withChatTimeout(createMessage({
 				text: Buffer.from(JSON.stringify(message)).toString("base64")
-			}),
-			encryptionKeys: await readKey({ armoredKey: pgpPublic }),
+			}), 15_000, 'Chat message preparation'),
+			encryptionKeys: await withChatTimeout(readKey({ armoredKey: pgpPublic }), 15_000, 'Chat recipient-key parsing'),
 			config: { preferredCompressionAlgorithm: enums.compression.zlib }
 		}
 	} catch (ex: any) {
@@ -1291,7 +1305,7 @@ export const sendMessage = async (
 
 	let postData: string
 	try {
-		postData = await encrypt(encryptObj)
+		postData = await withChatTimeout(encrypt(encryptObj), 20_000, 'Chat message encryption')
 	} catch (ex: any) {
 		console.error(`[sendMessage] encrypt Error! ${ex?.message || ex}`)
 		return false

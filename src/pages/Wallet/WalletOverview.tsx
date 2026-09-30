@@ -366,7 +366,7 @@ export default function WalletOverview() {
 							<QuickAction
 								label="Swap"
 								tone="blue"
-								onClick={() => navigate('/myWallet')}
+								disabled
 								icon={
 									<svg viewBox="0 0 48 48" className="h-7 w-7" aria-hidden>
 										<path d="M11 17h24" />
@@ -497,11 +497,13 @@ function QuickAction({
 	tone,
 	icon,
 	onClick,
+	disabled = false,
 }: {
 	label: string
 	tone: 'blue' | 'green' | 'purple'
 	icon: React.ReactNode
-	onClick: () => void
+	onClick?: () => void
+	disabled?: boolean
 }) {
 	const toneClass =
 		tone === 'green'
@@ -512,8 +514,10 @@ function QuickAction({
 	return (
 		<button
 			type="button"
-			onClick={onClick}
-			className="relative flex min-w-0 flex-col items-center gap-[7px] border-0 bg-transparent px-[5px] pb-2.5 pt-[11px] text-[#777da8] [&:not(:last-child)]:after:absolute [&:not(:last-child)]:after:right-0 [&:not(:last-child)]:after:top-[22px] [&:not(:last-child)]:after:h-[52px] [&:not(:last-child)]:after:w-px [&:not(:last-child)]:after:bg-[rgba(204,211,228,0.65)]"
+			disabled={disabled}
+			onClick={disabled ? undefined : onClick}
+			aria-disabled={disabled || undefined}
+			className={`relative flex min-w-0 flex-col items-center gap-[7px] border-0 bg-transparent px-[5px] pb-2.5 pt-[11px] text-[#777da8] [&:not(:last-child)]:after:absolute [&:not(:last-child)]:after:right-0 [&:not(:last-child)]:after:top-[22px] [&:not(:last-child)]:after:h-[52px] [&:not(:last-child)]:after:w-px [&:not(:last-child)]:after:bg-[rgba(204,211,228,0.65)] ${disabled ? 'cursor-not-allowed opacity-40' : ''}`}
 		>
 			<span className={`grid h-[45px] w-[45px] place-items-center rounded-full [&_svg]:h-7 [&_svg]:w-7 [&_svg]:fill-none [&_svg]:stroke-current [&_svg]:stroke-[2.5] [&_svg]:[stroke-linecap:round] [&_svg]:[stroke-linejoin:round] ${toneClass}`}>
 				{icon}

@@ -237,7 +237,9 @@ const SearchInputWithDropdown =
 		}
 
 		// 2) search() 内部不要再用 hasQuery（它是旧的 render 值），改成用传入 q 的长度控制 dropdown
+		const searchGenRef = useRef(0)
 		const search = async (q: string) => {
+		const gen = ++searchGenRef.current
 		// Gift / redeem share links: strip soft line-breaks before URL parse
 		const qq = normalizeDeepLinkInput(q.trim().replace('@', ''))
 
@@ -250,6 +252,13 @@ const SearchInputWithDropdown =
 		}
 
 		setLoading(true)
+		// Open the list immediately. Waiting for the worker left the bar with a
+		// query and no candidates when search-users never returned.
+		if (containerRef.current && !dropdownDownward) {
+			const rect = containerRef.current.getBoundingClientRect()
+			setDropdownUpwards(window.innerHeight - rect.bottom < rect.top)
+		}
+		setShowDropdown(true)
 
 		// URL 逻辑：只有长度>=2才会走到这里（符合你的要求）
 		try {
@@ -308,8 +317,9 @@ const SearchInputWithDropdown =
 		const lower = qq.toLowerCase()
 
 		const data = await searchUsername(qq)
+		if (gen !== searchGenRef.current) return
 		const result: searchResult[] = data?.results || []
-		const filted = result.filter(n => n.address.toLowerCase() !== myAddress)
+		const filted = result.filter((n) => (n.address || '').toLowerCase() !== myAddress)
 
 		if (filted.length) {
 			const index = searchKeysHistory.findIndex(
@@ -325,6 +335,7 @@ const SearchInputWithDropdown =
 		}
 
 		setResults(sortSearchResultsExactFirst(filted, qq))
+		if (gen !== searchGenRef.current) return
 		setLoading(false)
 
 		// ✅ 只有 >=2 才打开 dropdown
@@ -426,6 +437,7 @@ const SearchInputWithDropdown =
 
 		// ✅ 清空：隐藏 dropdown & 清数据
 		if (!q) {
+			searchGenRef.current += 1
 			if (select) setShowDropdown(false)
 			setResults([])
 			setLoading(false)
@@ -435,6 +447,7 @@ const SearchInputWithDropdown =
 
 		// ✅ 第1个字符：不搜索、不下拉
 		if (q.length < 2) {
+			searchGenRef.current += 1
 			setResults([])
 			setLoading(false)
 			setShowDropdown(false)
@@ -445,16 +458,6 @@ const SearchInputWithDropdown =
 		}, [query])
 
 
-
-		// 下拉框显示/关闭时，保持 focus 在 input（切换分支会挂载新 input，需主动 focus）
-		useEffect(() => {
-			if (readonly) return
-			// 延迟一帧确保新 input 已挂载、ref 已绑定
-			const id = requestAnimationFrame(() => {
-				inputRef.current?.focus()
-			})
-			return () => cancelAnimationFrame(id)
-		}, [showDropdown, readonly])
 
 		useEffect(() => {
 			if (readonly) setShowDropdown(false)
@@ -468,13 +471,12 @@ const SearchInputWithDropdown =
 		useLayoutEffect(() => {
 			if (!showDropdown || !containerRef.current) return
 			if (dropdownDownward) {
-				setDropdownUpwards(false)
+				setDropdownUpwards((prev) => (prev ? false : prev))
 				return
 			}
 			const rect = containerRef.current.getBoundingClientRect()
-			const spaceBelow = window.innerHeight - rect.bottom
-			const spaceAbove = rect.top
-			setDropdownUpwards(spaceBelow < spaceAbove)
+			const up = window.innerHeight - rect.bottom < rect.top
+			setDropdownUpwards((prev) => (prev === up ? prev : up))
 		}, [showDropdown, dropdownDownward])
 
 		const handleSelect = (item: searchResult) => {
@@ -514,20 +516,19 @@ const SearchInputWithDropdown =
 		const [initialHeight, setInitialHeight] = useState(window.innerHeight);
 
 		// ✅ FIX 2: 核心修复函数 - 处理 iOS 键盘弹起时的视口滚动
-        const handleInputFocus = (e: React.FocusEvent<HTMLInputElement>) => {
-            // 只有在移动端才需要修正，或者全局修正
-            // 延时 300ms 是为了等待 iOS 键盘完全弹起，视口高度变化完成
-           const checkHeight = () => {
+        const handleInputFocus = () => {
+			// One short check after the keyboard settles. An open rAF loop
+			// kept calling scrollIntoView and shook the dropdown.
+			let frames = 0
+			const checkHeight = () => {
+				frames += 1
 				if (window.innerHeight < initialHeight) {
-				// 键盘已弹起（视口高度变小）
-				if (inputRef.current) {
-					inputRef.current.scrollIntoView({ block: 'center' });
+					inputRef.current?.scrollIntoView({ block: 'nearest' })
+					return
 				}
-				} else {
-				requestAnimationFrame(checkHeight);
-				}
-			};
-			requestAnimationFrame(checkHeight);
+				if (frames < 8) requestAnimationFrame(checkHeight)
+			}
+			requestAnimationFrame(checkHeight)
         }
 
 
@@ -648,8 +649,8 @@ const SearchInputWithDropdown =
 
 				<div ref={containerRef} className="relative w-full h-11"
 				>
-					{/* 没输入：普通 pill 输入框 */}
-					{!sideSlide && !showDropdown && (
+					{/* 输入条固定在原位。候选列表是旁边的浮层，不再把输入框搬进会平移的卡片。 */}
+					{!sideSlide && (
 						<>
 						<div className={pillClass}>
 							{/* ← 返回按钮 */}
@@ -737,7 +738,7 @@ const SearchInputWithDropdown =
 							{renderQrScanButton()}
 						</div>
 						
-							{!readonly && showHistory && (
+							{!readonly && showHistory && !showDropdown && (
 								<div className=" mt-6">
 									<CardContent className="p-4 space-y-4">
 										{recentBeamios()}
@@ -749,97 +750,25 @@ const SearchInputWithDropdown =
 
 					)}
 
-					{/* 有输入：Google 风格大卡片，input + 下拉合在一起 */}
+					{/* 候选列表贴在输入条外侧，高度变化只向上或向下长，不移动输入条。 */}
 					{!sideSlide && showDropdown && (
 						<div
 							className={[
-								"absolute inset-x-0",
+								"absolute inset-x-0 z-30",
 								"rounded-3xl bg-white",
 								"shadow-xl shadow-slate-200/80",
 								"border border-slate-200/80",
 								"overflow-hidden",
-								"z-30",
-								"flex flex-col",
-								dropdownUpwards ? "top-0 -translate-y-full flex-col-reverse mb-1" : "top-0",
+								dropdownUpwards ? "bottom-full mb-2" : "top-full mt-2",
 							].join(" ")}
 						>
-							{/* 输入行：固定高度，不参与 flex 伸缩 */}
-							<div
-								className={[
-									pillClass,
-									"!flex-none !h-11 !min-h-11",
-								].join(" ")}
-								style={{ height: 44, minHeight: 44 }}
-							>
-								{/* ← 返回按钮 */}
-								{
-									!readonly && showBackIcon && (
-										<button
-											type="button"
-											onClick={() => closeWindow('/')}
-											className="
-											w-7 h-7
-											mr-2
-											flex items-center justify-center
-											rounded-full
-											hover:bg-slate-200
-											active:scale-95
-											transition
-											flex-shrink-0
-											"
-										>
-											<ChevronLeft className="w-4 h-4 text-slate-700" />
-										</button>
-									)
-								}
-								
-
-								{/* Search icon */}
-								<Search
-									className="w-4 h-4 text-slate-400 mr-2 flex-shrink-0"
-									strokeWidth={2}
-								/>
-
-								{/* 输入框 */}
-									<input
-										ref={inputRef}
-										className={[
-											"flex-1",
-											"bg-transparent",
-											"text-[13px]",
-											"placeholder-slate-400",
-											"focus:outline-none",
-
-											
-										].join(" ")}
-										placeholder="Search for @BeamioTag or wallet address"
-										value={query}
-										inputMode="search"
-										
-										readOnly={readonly}
-										onChange={e => setQuery(e.currentTarget.value)}
-										// ✅ FIX 7: 下拉模式下的 Input 也要绑定
-										onFocus={handleInputFocus}
-									/>
-								{renderQrScanButton()}
-							</div>
-
-							{/* 下方：search 行 + 结果列表 */}
 							<div className="max-h-72 overflow-y-auto py-1">
-								{/* 第一行：Beamio search 行 */}
-								<button
-									type="button"
-									className="
-										w-full flex items-center gap-2
-										px-3 py-2.5 text-left
-										hover:bg-slate-50
-									"
-								>
+								<div className="flex w-full items-center gap-2 px-3 py-2.5 text-left">
 									<Search
-										className="w-4 h-4 text-slate-500 flex-shrink-0"
+										className="h-4 w-4 flex-shrink-0 text-slate-500"
 										strokeWidth={2}
 									/>
-									<span className="flex-1 text-[13px] text-slate-700 truncate">
+									<span className="flex-1 truncate text-[13px] text-slate-700">
 										{query ? `${query} Beamio search` : 'Beamio search'}
 									</span>
 									{loading && (
@@ -847,18 +776,16 @@ const SearchInputWithDropdown =
 											Searching…
 										</span>
 									)}
-								</button>
+								</div>
 
-								{/* 结果列表 */}
-								{!loading &&
-									results.map((item) => (
-										<BeamioSearchResultRow
-											key={item.address}
-											item={item}
-											query={query}
-											onSelect={handleSelect}
-										/>
-									))}
+								{results.map((item) => (
+									<BeamioSearchResultRow
+										key={item.address || item.username}
+										item={item}
+										query={query}
+										onSelect={handleSelect}
+									/>
+								))}
 
 								{!loading && results.length === 0 && (
 									<div className="px-3 py-2.5 text-[12px] text-slate-400">

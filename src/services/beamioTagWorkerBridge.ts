@@ -254,34 +254,50 @@ export async function searchBeamioTagRemote(query: string): Promise<{
 		const r = await c.searchRemote(q)
 		return { results: r.results, ingested: r.ingested }
 	}
-
-	if (initPromise) {
+	const withTimeout = <T,>(work: Promise<T>, ms: number): Promise<T> =>
+		new Promise((resolve, reject) => {
+			const timer = window.setTimeout(() => reject(new Error('beamio_tag_search_timeout')), ms)
+			work.then(
+				(value) => {
+					window.clearTimeout(timer)
+					resolve(value)
+				},
+				(error) => {
+					window.clearTimeout(timer)
+					reject(error)
+				},
+			)
+		})
+	/** Worker messages can stall. The candidate list must still come from search-users. */
+	const networkOnly = async () => {
 		try {
-			await initPromise
-			return await run()
-		} catch {
-			/* fall through */
-		}
-	}
-
-	if (activePartition && c.isReady) {
-		try {
-			return await run()
+			const params = new URLSearchParams({ keyward: q }).toString()
+			const res = await fetch(`https://beamio.app/api/search-users?${params}`, { method: 'GET' })
+			if (!res.ok) return null
+			const json = (await res.json()) as { results?: Array<Record<string, unknown>> }
+			return { results: json?.results ?? [], ingested: {} }
 		} catch {
 			return null
 		}
 	}
 
-	/** Pre-wallet / worker not ready: network-only; no hang on pending queue. */
-	try {
-		const params = new URLSearchParams({ keyward: q }).toString()
-		const res = await fetch(`https://beamio.app/api/search-users?${params}`, { method: 'GET' })
-		if (!res.ok) return null
-		const json = (await res.json()) as { results?: Array<Record<string, unknown>> }
-		return { results: json?.results ?? [], ingested: {} }
-	} catch {
-		return null
+	if (initPromise) {
+		try {
+			await withTimeout(initPromise, 2_500)
+		} catch {
+			return networkOnly()
+		}
 	}
+
+	if (activePartition && c.isReady) {
+		try {
+			return await withTimeout(run(), 4_000)
+		} catch {
+			return networkOnly()
+		}
+	}
+
+	return networkOnly()
 }
 
 export async function lookupBeamioTagProfile(

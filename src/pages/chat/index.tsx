@@ -22,6 +22,7 @@ const Home = () => {
 	const location = useLocation()
 	const {
 		profiles,
+		beamio,
 		setShowFooter,
 		setMessageCount,
 		allNodes, chatHomeItem, setChatHomeItem,
@@ -39,9 +40,14 @@ const Home = () => {
 		setLayerRef: setChatCapsuleLayerRef,
 	} = useScrollCapsuleOpacity(!chatData || threadHidden)
 	const ownEoa = profiles?.[0]?.keyID?.trim() ?? ''
-	const resolvedOwnTag = resolveTagPlain(ownEoa)
-	const ownTag = resolvedOwnTag || '@Beamio'
-	const ownAvatar = avatarImgUrl(undefined, ownEoa)
+	// The signed-in tag lives on the wallet profile. The tag database is only a
+	// lookup for other addresses and is empty until that address has been searched.
+	const accountTag = (beamio?.accountName ?? '').trim().replace(/^@+/, '')
+	const resolvedOwnTag = resolveTagPlain(ownEoa).replace(/^@+/, '')
+	const plainTag = accountTag || resolvedOwnTag
+	const ownTag = plainTag ? `@${plainTag}` : '@Beamio'
+	const profileImage = beamio?.image != null ? String(beamio.image).trim() : ''
+	const ownAvatar = profileImage || avatarImgUrl(plainTag || undefined, ownEoa)
 
 
 

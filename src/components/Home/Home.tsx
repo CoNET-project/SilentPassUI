@@ -25,7 +25,7 @@ import BeamioLearnHowItWorksCard from './BeamioLearnHowItWorksCard'
 import BeamioAlphaDropConfirm from './BeamioAlphaDropConfirm'
 import BeamioTestBalanceDetailsCard from './BeamioTestBalanceDetailsCard'
 import {motion, AnimatePresence } from "framer-motion"
-import { Settings, Check, ArrowDownCircle, PlusCircle , X, Zap, Shield, ShieldCheck, Clock, Sparkles, Wallet, Circle, RefreshCw, BadgeCheck, Plus, Send, QrCode, Store, Radio, CreditCard, Loader2, Copy, Star, Key, Home as HomeHardwareIcon, Ban, Smartphone, ChevronRight, ChevronLeft, ArrowDownToLine, ArrowRightLeft, AlertTriangle, Gift }
+import { Settings, Check, ArrowDownCircle, PlusCircle , X, Zap, Shield, ShieldCheck, Clock, Sparkles, Wallet, Circle, RefreshCw, BadgeCheck, Plus, Send, QrCode, Store, Radio, CreditCard, Loader2, Copy, Star, Key, Home as HomeHardwareIcon, Ban, Smartphone, ChevronRight, ChevronLeft, ArrowDownToLine, ArrowRightLeft, AlertTriangle, Gift, Crown, Lock }
 	from "lucide-react"
 import OnrampOfframpGuide from './OnrampOfframpGuide'
 import BeamioSearch from './BeamioSearch'
@@ -36,6 +36,7 @@ import { resolveStripeDepositEoa } from '@/utils/eoaUsdcStripe'
 import usdcIcon from '@/components/assets/usdc.png'
 import baseIcon from '@/components/assets/base-logo.png'
 import conetTokenIcon from './assets/conet-token.svg'
+import spendToEarnArt from './assets/spend-to-earn.jpg'
 import senPhoCafeStoreCardBg from '@/components/assets/senPhoCafeStoreCardBg.png'
 import luminaRoastersStoreCardBg from '@/components/assets/luminaRoastersStoreCardBg.png'
 import PayScreen from '@/pages/Pay/send'
@@ -60,8 +61,8 @@ import {
 import ActiveHistoryPannelNew from '@/pages/History/components/activeHistoryPannelNew'
 import { MyBrandsFullScreenDrawer } from '@/pages/Brands/MyBrandsFullScreenDrawer'
 import {
-	MyBrandListEntries,
 	buildMyBrandLatestEventMsByCard,
+	formatMyBrandBalanceLine,
 	sortMyBrandCardsForList,
 } from '@/pages/Brands/MyBrandsListSection'
 import { RECENT_ACTIVITY_PREVIEW_COUNT } from '@/pages/History/recentActivityIndexerMerge'
@@ -77,7 +78,8 @@ import { ensureConetAaForProfileAndPersist } from '@/utils/ensureConetAa'
 import { tu } from '@/locale/beamioLocale'
 import { HomeLanguageSelector } from './HomeLanguageSelector'
 import { useMerchantCardDatabase } from '@/providers/MerchantCardDatabaseProvider'
-import { pickMerchantCardListTitle } from '@/utils/merchantCardDatabase'
+import { pickMerchantCardListIconUrl, pickMerchantCardListTitle } from '@/utils/merchantCardDatabase'
+import { pickNonFactoryMerchantAssetUrl } from '@/utils/isFactoryDefaultMerchantAssetUrl'
 import {
 	type ReceiveWalletAppRow,
 	buildReceiveEoaQrUri,
@@ -259,6 +261,54 @@ const INITIAL_HOME_STORE_CARDS: HomeStoreCardRow[] = [
 	{ id: 'lumina', name: 'Lumina Roasters', type: 'Green Card', color: 'from-amber-900 to-stone-900', borderColor: 'border-amber-950/50', iconColor: 'text-amber-200', bgColor: 'bg-amber-950/30', icon: CreditCard, balanceCad: 10.0, backgroundImage: LUMINA_STORE_CARD_ART_URL },
 ]
 
+function HomeHeroQrRings() {
+	return (
+		<div
+			className="pointer-events-none absolute left-1/2 top-[-37px] h-[230px] w-[230px] -translate-x-1/2 rounded-full"
+			style={{
+				background: 'repeating-radial-gradient(circle, transparent 0 21px, rgba(255,255,255,.35) 22px 23px)',
+				filter: 'drop-shadow(0 0 15px rgba(39,142,255,.35))',
+			}}
+			aria-hidden
+		/>
+	)
+}
+
+const HOME_DUMMY_QR_VALUE = 'https://beamio.app/'
+const HOME_DUMMY_QR_SIZE = 132
+/** Center modules cleared for the lock. Stays under the level-H recovery budget. */
+const HOME_DUMMY_QR_CLEARANCE = 52
+const HOME_DUMMY_QR_CLEARANCE_PIXEL =
+	'data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw=='
+
+function HomeDecorativeQrMark() {
+	return (
+		<div
+			className="relative mx-auto box-content h-[132px] w-[132px] rounded-lg border-4 border-white bg-white"
+			aria-hidden
+		>
+			<QRCodeCanvas
+				value={HOME_DUMMY_QR_VALUE}
+				size={HOME_DUMMY_QR_SIZE}
+				level="H"
+				includeMargin={false}
+				bgColor="#ffffff"
+				fgColor="#1a2744"
+				className="block"
+				imageSettings={{
+					src: HOME_DUMMY_QR_CLEARANCE_PIXEL,
+					width: HOME_DUMMY_QR_CLEARANCE,
+					height: HOME_DUMMY_QR_CLEARANCE,
+					excavate: true,
+				}}
+			/>
+			<span className="pointer-events-none absolute left-1/2 top-1/2 z-[1] grid h-11 w-11 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-white text-[#0b3f87] shadow-[0_0_0_4px_#fff]">
+				<Lock className="h-5 w-5" strokeWidth={2.4} />
+			</span>
+		</div>
+	)
+}
+
 /** CashTrees 大卡 points（程序卡）；Base USDC 读 Worker 6s daemon，勿在页面 balanceOf */
 const APP_LOGO_SRC = `${process.env.PUBLIC_URL ?? ''}/logo192.png`
 
@@ -288,7 +338,7 @@ const Home = (_props: HomeProps) => {
 		aaAccountUsdcBalance, refreshRecentActivityNoAa, conetWalletBalances,
 		conetAaWalletBalances,
 	} = useDaemonContext()
-	const { resolveName, registerCardAddresses } = useMerchantCardDatabase()
+	const { resolveName, resolveImage, registerCardAddresses } = useMerchantCardDatabase()
 	const navigate = useNavigate()
 
 	useEffect(() => {
@@ -315,6 +365,7 @@ const Home = (_props: HomeProps) => {
 	const [itemTx, setItemtx] = useState<TransferHistork>()
 	const [ccsaAssets, setCcsaAssets] = useState<Awaited<ReturnType<typeof getMyAssetsAggregated>> | null>(null)
 	const [bUnitBalance, setBUnitBalance] = useState<{ total: number; free: number; paid: number } | null>(null)
+	const [storeCardDot, setStoreCardDot] = useState(0)
 
 
 
@@ -1963,8 +2014,11 @@ const Home = (_props: HomeProps) => {
 	return (
 		<div
 			className="
-		box-border flex min-h-[100dvh] w-full flex-1 flex-col bg-[#f8f9fa] pb-[env(safe-area-inset-bottom,0px)] pl-[env(safe-area-inset-left,0px)] pr-[env(safe-area-inset-right,0px)] text-slate-900 dark:bg-slate-950
+		relative box-border flex min-h-[100dvh] w-full flex-1 flex-col overflow-hidden bg-[#eef7ff] pb-[env(safe-area-inset-bottom,0px)] pl-[env(safe-area-inset-left,0px)] pr-[env(safe-area-inset-right,0px)] text-[#080b58] dark:text-slate-100
 		"
+			style={{
+				backgroundImage: 'radial-gradient(circle at 70% 17%, rgba(77,166,255,.34), transparent 24%), radial-gradient(circle at 70% 72%, rgba(74,151,255,.16), transparent 25%), linear-gradient(150deg, #f8fcff 0%, #eef8ff 52%, #f8fbff 100%)',
+			}}
 		>
 			{/* <div className="px-5 pt-6 flex flex-col gap-2">
 				<button
@@ -1981,13 +2035,15 @@ const Home = (_props: HomeProps) => {
 			{/* 顶部栏：指针事件由 useScrollCapsuleOpacity 按 opacity 同步控制，兼容原生 WebView。 */}
 			{!openSearch && (
 				<div
-					ref={setCapsuleLayerRef}
-					className="fixed left-4 right-4 z-30 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 transition-opacity duration-300"
+					className="pointer-events-none fixed inset-x-0 z-30 px-3 sm:px-5"
 					style={{
 						// 与下方主内容顶部占位一致；WebView 常返回 safe-area 0，需至少 1rem 与浏览器+PWA 视觉对齐
 						top: 'max(1rem, env(safe-area-inset-top, 0px))',
-						// opacity 由 useScrollCapsuleOpacity 写 DOM，勿在此写死 opacity:1（会与 fade / pe 同步打架）
 					}}
+				>
+				<div
+					ref={setCapsuleLayerRef}
+					className="mx-auto grid w-full max-w-lg grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 transition-opacity duration-300"
 				>
 					<button
 						type="button"
@@ -2083,6 +2139,7 @@ const Home = (_props: HomeProps) => {
 						) : null}
 					</div>
 				</div>
+				</div>
 			)}
 
 			{/*
@@ -2120,118 +2177,157 @@ const Home = (_props: HomeProps) => {
 								}}
 							/>
 
-							{/* Content — 浅底、白卡片、青柠强调 */}
-							<div className="space-y-8 px-5 pt-4">
-
-							{/* Universal Cash — balance card and the three primary cash actions. */}
-							<div className="mb-10 flex flex-col gap-6 min-[480px]:gap-8">
-								<section className="shrink-0">
-									<div className="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-[#1562f0] via-[#3154cf] to-[#4c1d95] text-white shadow-[0_24px_60px_rgba(37,54,145,0.28)]">
-										<div
-											aria-hidden
-											className="pointer-events-none absolute inset-0 opacity-[0.12] bg-[radial-gradient(ellipse_at_80%_0%,rgba(255,255,255,0.45),transparent_55%)]"
-										/>
-										<div className="relative z-10">
-											<div className="p-7 pb-6 pt-7 min-[480px]:p-9">
-												<div className="mb-7 flex items-start justify-between">
-													<div className="space-y-1">
-														<p className="text-[11px] font-bold uppercase tracking-[0.22em] text-white/70">
-															{tu('universal_cash')}
-														</p>
-														{/* Own compositor layer: avoid subpixel text shake when parent re-rasterizes */}
-														<h2 className="flex items-baseline gap-2 [transform:translateZ(0)] [-webkit-font-smoothing:antialiased]">
-															<span className="text-5xl font-extrabold tabular-nums tracking-tight min-[480px]:text-6xl">
-																{homeHubWalletUsdcDisplay}
-															</span>
-															<span className="text-xl font-bold tracking-tight text-white/90 min-[480px]:text-2xl">
-																USDC
-															</span>
-														</h2>
-													</div>
-												</div>
-												<div className="grid grid-cols-2 gap-6 [transform:translateZ(0)] [-webkit-font-smoothing:antialiased]">
-													<div className="space-y-1 text-left">
-														<p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/55">
-															{tu('merchant_assets')}
-														</p>
-														<p className="text-xl font-bold tabular-nums min-[480px]:text-2xl">
-															CA$ {homeHubMerchantCad.whole}.{homeHubMerchantCad.frac}
-														</p>
-													</div>
-													<div className="space-y-1 text-right">
-														<p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/55">
-															REWARD PT
-														</p>
-														<p className="text-xl font-bold tabular-nums min-[480px]:text-2xl">
-															{homeHubRewardPtsDisplay}
-														</p>
-													</div>
-												</div>
-											</div>
-										</div>
-									</div>
-								</section>
-
-								<section className="grid shrink-0 grid-cols-3 gap-2 min-[480px]:gap-4">
-									<button
-										type="button"
-										data-touch-priority="1"
-										{...openReceiveSheetTap}
-										className={`flex min-h-[72px] flex-1 flex-col items-center justify-center gap-1 rounded-xl bg-[#1562f0] p-2 text-center text-white shadow-[0_8px_18px_rgba(21,98,240,0.18)] transition-transform active:scale-[0.98] active:bg-[#0e4cbb] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/50 focus-visible:ring-offset-2 ${HOME_TOUCH_BUTTON_CLASS}`}
-										aria-label="Deposit"
-									>
-										<Plus className="h-7 w-7" strokeWidth={2.3} aria-hidden />
-										<span className="text-xs font-bold">Deposit</span>
-									</button>
+							<div className="relative mx-auto w-full max-w-lg space-y-8 px-3 pt-2 sm:px-5">
+							<section className="relative mb-[50px] grid min-h-[230px] grid-cols-[minmax(0,1fr)_166px] items-center gap-2">
+								<div className="relative z-10 min-w-0">
+									<h2 className="m-0 text-[35px] font-extrabold leading-[1.03] tracking-[-1.6px] text-[#080b58] dark:text-slate-100">
+										One QR.
+										<span className="block bg-gradient-to-b from-[#63b9ff] to-[#0560f6] bg-clip-text text-transparent">
+											More
+											<br />
+											Possibilities.
+										</span>
+									</h2>
+									<p className="mb-4 mt-[11px] text-[13px] text-[#66749d] dark:text-slate-400 min-[400px]:text-[15px]">
+										Pay. Top up. Earn. Connect.
+									</p>
+									<span className="block h-1 w-[30px] rounded bg-[#0866ff]" aria-hidden />
+								</div>
+								<div className="relative flex justify-center">
+									<HomeHeroQrRings />
 									<button
 										type="button"
 										data-touch-priority="1"
 										{...openPayCodeSheetTap}
-										className={`flex min-h-[72px] flex-1 flex-col items-center justify-center gap-1 rounded-xl border-2 border-[#1562f0] bg-white p-2 text-center text-[#1562f0] shadow-sm transition-transform active:scale-[0.98] active:bg-blue-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1562f0]/50 focus-visible:ring-offset-2 dark:bg-slate-900 ${HOME_TOUCH_BUTTON_CLASS}`}
-										aria-label="Top up and pay"
+										className={`relative z-[1] w-[166px] rounded-[28px] bg-white/80 px-[13px] pb-[14px] pt-[19px] text-center shadow-[0_22px_42px_rgba(53,133,205,0.18)] backdrop-blur-[18px] dark:bg-slate-900/90 ${HOME_TOUCH_BUTTON_CLASS}`}
+										aria-label="Generate your secure QR code"
 									>
-										<QrCode className="h-7 w-7" strokeWidth={2.2} aria-hidden />
-										<span className="text-xs font-bold">Top up &amp; Pay</span>
+										<HomeDecorativeQrMark />
+										<p className="mt-2 text-[13px] font-extrabold text-[#080b58] dark:text-slate-100">Tap to activate</p>
+										<p className="mt-[3px] text-[10px] leading-snug text-[#66749d] dark:text-slate-400">
+											Generate your secure QR code
+										</p>
 									</button>
+								</div>
+							</section>
+
+							<section>
+								<div className="mb-3.5 flex items-center justify-between px-1">
+									<h2 className="m-0 text-[23px] font-extrabold tracking-[-0.8px] text-[#080b58] dark:text-slate-100">My Store Cards</h2>
 									<button
 										type="button"
-										disabled
-										className={`flex min-h-[72px] flex-1 cursor-not-allowed flex-col items-center justify-center gap-1 rounded-xl border-2 border-[#1562f0]/35 bg-white p-2 text-center text-[#1562f0]/45 shadow-sm dark:bg-slate-900 ${HOME_TOUCH_BUTTON_CLASS}`}
-										aria-label="Swap"
-										aria-disabled="true"
-										title="Swap is not available yet"
+										onClick={() => setShowMyBrandsDrawer(true)}
+										className="flex items-center gap-0.5 border-0 bg-transparent text-[14px] font-medium text-[#0866ff]"
 									>
-										<ArrowRightLeft className="h-7 w-7" strokeWidth={2.2} aria-hidden />
-										<span className="text-xs font-bold">Swap</span>
+										See All
+										<ChevronRight size={16} strokeWidth={2.5} />
 									</button>
-								</section>
-							</div>
+								</div>
+								{myBrandCardsPreview.length === 0 ? (
+									<p className="rounded-2xl bg-white px-4 py-5 text-sm font-medium text-[#424655] shadow-sm dark:bg-slate-900 dark:text-slate-400">
+										{tu('no_merchant_brands_yet')}
+									</p>
+								) : (
+									<>
+									<div
+										className="-mx-3 flex gap-2 overflow-x-auto px-3 pb-3 [scrollbar-width:none] sm:-mx-5 sm:px-5 [&::-webkit-scrollbar]:hidden"
+										onScroll={(event) => {
+											const next = Math.max(
+												0,
+												Math.min(
+													myBrandCardsPreview.length - 1,
+													Math.round(event.currentTarget.scrollLeft / 124),
+												),
+											)
+											setStoreCardDot((prev) => (prev === next ? prev : next))
+										}}
+									>
+										{myBrandCardsPreview.map((uc) => {
+											const detail = myBrandCardDetails[uc.cardAddress.toLowerCase()]
+											const title = pickMerchantCardListTitle({
+												workerName: resolveName(uc.cardAddress),
+												metaName: detail?.meta?.name,
+												chainName: uc.name,
+											})
+											const photo = pickNonFactoryMerchantAssetUrl(
+												pickMerchantCardListIconUrl({
+													workerImage: resolveImage(uc.cardAddress),
+													meta: detail?.meta,
+												}),
+											)
+											const balanceLine = formatMyBrandBalanceLine(detail, uc.currency ?? 'CAD')
+											const ptTotal = rewardPointsTotal(detail?.assets)
+											const ptLine = detail === undefined
+												? '…'
+												: `${ptTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} PT`
+											return (
+												<button
+													key={uc.cardAddress}
+													type="button"
+													onClick={() => navigate('/discover', { state: { openDiscoverMerchantCard: uc.cardAddress } })}
+													className="relative flex h-[164px] w-[116px] shrink-0 flex-col justify-end overflow-hidden rounded-[14px] p-3 text-left text-white shadow-[0_12px_25px_rgba(26,53,94,0.14)]"
+												>
+													{photo ? (
+														<IpfsImg src={photo} alt="" className="absolute inset-0 h-full w-full object-cover" />
+													) : (
+														<div className="absolute inset-0 bg-gradient-to-br from-[#07552d] to-[#86a638]" aria-hidden />
+													)}
+													<div className="absolute inset-0" style={{ background: 'linear-gradient(180deg, transparent 30%, rgba(0,0,0,.64))' }} aria-hidden />
+													<div className="relative z-[1]">
+														<p className="mb-3 line-clamp-2 text-[13px] font-extrabold leading-tight">{title}</p>
+														<p className="mt-[5px] flex items-center gap-1 text-[11px]">
+															<Wallet className="h-3 w-3 shrink-0" strokeWidth={2.2} aria-hidden />
+															<span className="truncate">{balanceLine}</span>
+														</p>
+														<p className="mt-[5px] flex items-center gap-1 text-[11px] text-[#ffd34d]">
+															<Crown className="h-3 w-3 shrink-0" strokeWidth={2.2} aria-hidden />
+															<span className="truncate">{ptLine}</span>
+														</p>
+													</div>
+												</button>
+											)
+										})}
+									</div>
+									{myBrandCardsPreview.length > 1 ? (
+										<div className="mt-3 flex items-center justify-center gap-1.5" aria-hidden>
+											{myBrandCardsPreview.slice(0, 6).map((uc, index) => (
+												<span
+													key={uc.cardAddress}
+													className={
+														index === Math.min(storeCardDot, 5)
+															? 'h-2 w-2 rounded-full bg-[#0866ff]'
+															: 'h-2 w-2 rounded-full bg-[#c7d5e9]'
+													}
+												/>
+											))}
+										</div>
+									) : null}
+									</>
+								)}
+							</section>
 
-							<section className="mb-10">
-									<div className="mb-4 flex items-end justify-between px-1">
-										<h2 className="text-xl font-extrabold tracking-tight text-[#191c1d] dark:text-slate-100">{tu('my_brands')}</h2>
-										<button
-											type="button"
-											onClick={() => setShowMyBrandsDrawer(true)}
-											className="flex items-center gap-1 text-[12px] font-semibold text-[#1562f0] transition-colors hover:text-[#0e4cbb]"
-										>
-											{tu('see_all')}
-											<ChevronRight size={16} strokeWidth={2.5} />
-										</button>
-									</div>
-									<div className="flex flex-col gap-2 rounded-lg bg-[#f3f4f5] p-2 [transform:translateZ(0)] [-webkit-font-smoothing:antialiased] dark:bg-slate-800/80">
-										{myBrandCardsPreview.length === 0 ? (
-											<div className="rounded-lg p-3 text-sm font-medium text-[#424655] dark:text-slate-400">
-												{tu('no_merchant_brands_yet')}
-											</div>
-										) : (
-											<MyBrandListEntries
-												cards={myBrandCardsPreview}
-												details={myBrandCardDetails}
-											/>
-										)}
-									</div>
-								</section>
+							<section className="relative min-h-[190px] overflow-hidden rounded-[28px] border border-white/90 bg-[#eef6ff] shadow-[0_20px_45px_rgba(57,126,205,0.10)]">
+								<img
+									src={spendToEarnArt}
+									alt=""
+									className="pointer-events-none absolute inset-0 h-full w-full object-cover [object-position:70%_center]"
+									draggable={false}
+								/>
+								<div className="relative z-10 w-[48%] px-5 py-6">
+									<h2 className="m-0 text-[24px] font-extrabold leading-[1.05] tracking-[-0.6px] text-[#07064d] dark:text-slate-100">Spend to Earn</h2>
+									<p className="mt-2 text-[13px] leading-snug text-[#62709d] dark:text-slate-400">
+										Get more Reward PT at your favourite merchants.
+									</p>
+									<button
+										type="button"
+										onClick={() => navigate('/discover')}
+										className="mt-3 inline-flex items-center gap-1 whitespace-nowrap text-[16px] font-medium text-[#0768ff]"
+									>
+										Explore Offers
+										<ChevronRight size={18} strokeWidth={2.5} />
+									</button>
+								</div>
+							</section>
 
 							{show200OK && (
 								<div className="bg-white rounded-[28px] p-5 shadow-sm border border-gray-100">

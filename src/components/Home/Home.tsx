@@ -2014,7 +2014,7 @@ const Home = (_props: HomeProps) => {
 	return (
 		<div
 			className="
-		relative box-border flex min-h-[100dvh] w-full flex-1 flex-col overflow-hidden bg-[#eef7ff] pb-[env(safe-area-inset-bottom,0px)] pl-[env(safe-area-inset-left,0px)] pr-[env(safe-area-inset-right,0px)] text-[#080b58] dark:text-slate-100
+		relative box-border flex min-h-[100dvh] w-full min-w-0 max-w-full flex-1 flex-col overflow-x-hidden overflow-y-hidden overscroll-x-none bg-[#eef7ff] pb-[env(safe-area-inset-bottom,0px)] pl-[env(safe-area-inset-left,0px)] pr-[env(safe-area-inset-right,0px)] text-[#080b58] dark:text-slate-100
 		"
 			style={{
 				backgroundImage: 'radial-gradient(circle at 70% 17%, rgba(77,166,255,.34), transparent 24%), radial-gradient(circle at 70% 72%, rgba(74,151,255,.16), transparent 25%), linear-gradient(150deg, #f8fcff 0%, #eef8ff 52%, #f8fbff 100%)',
@@ -2149,8 +2149,8 @@ const Home = (_props: HomeProps) => {
 			<div
 				className={
 					homeScrollUsesSingleFlexChain
-						? 'flex min-h-0 flex-1 flex-col'
-						: 'flex min-h-0 flex-1 flex-col overflow-hidden'
+						? 'flex min-h-0 w-full min-w-0 max-w-full flex-1 flex-col overflow-x-hidden'
+						: 'flex min-h-0 w-full min-w-0 max-w-full flex-1 flex-col overflow-hidden'
 				}
 			>
 				<div
@@ -2158,13 +2158,23 @@ const Home = (_props: HomeProps) => {
 					onScroll={onCapsuleScroll}
 					className={
 						homeScrollUsesSingleFlexChain
-							? 'flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-y-contain pb-24 [overflow-anchor:none]'
-							: 'flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-y-contain pb-44 [overflow-anchor:none]'
+							? 'flex min-h-0 w-full min-w-0 max-w-full flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-x-none overscroll-y-contain pb-24 [overflow-anchor:none]'
+							: 'flex min-h-0 w-full min-w-0 max-w-full flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-x-none overscroll-y-contain pb-44 [overflow-anchor:none]'
 					}
 					style={
 						homeScrollUsesSingleFlexChain
-							? { WebkitOverflowScrolling: 'touch', flex: '1 1 0%', minHeight: 0 }
-							: { WebkitOverflowScrolling: 'touch' }
+							? {
+									WebkitOverflowScrolling: 'touch',
+									flex: '1 1 0%',
+									minHeight: 0,
+									overflowX: 'hidden',
+									overscrollBehaviorX: 'none',
+								}
+							: {
+									WebkitOverflowScrolling: 'touch',
+									overflowX: 'hidden',
+									overscrollBehaviorX: 'none',
+								}
 					}
 				>
 					{!openSearch && (
@@ -2177,8 +2187,8 @@ const Home = (_props: HomeProps) => {
 								}}
 							/>
 
-							<div className="relative mx-auto w-full max-w-lg space-y-8 px-3 pt-2 sm:px-5">
-							<section className="relative mb-[50px] grid min-h-[230px] grid-cols-[minmax(0,1fr)_166px] items-center gap-2">
+							<div className="relative mx-auto w-full min-w-0 max-w-lg space-y-8 px-3 pt-2 sm:px-5">
+							<section className="relative mb-[50px] grid min-h-[230px] min-w-0 grid-cols-[minmax(0,1fr)_166px] items-center gap-2 overflow-hidden">
 								<div className="relative z-10 min-w-0">
 									<h2 className="m-0 text-[35px] font-extrabold leading-[1.03] tracking-[-1.6px] text-[#080b58] dark:text-slate-100">
 										One QR.
@@ -2230,7 +2240,8 @@ const Home = (_props: HomeProps) => {
 								) : (
 									<>
 									<div
-										className="-mx-3 flex gap-2 overflow-x-auto px-3 pb-3 [scrollbar-width:none] sm:-mx-5 sm:px-5 [&::-webkit-scrollbar]:hidden"
+										className="-mx-3 flex max-w-full gap-2 overflow-x-auto overscroll-x-contain px-3 pb-3 [scrollbar-width:none] sm:-mx-5 sm:px-5 [&::-webkit-scrollbar]:hidden"
+										style={{ touchAction: 'pan-x pan-y' }}
 										onScroll={(event) => {
 											const next = Math.max(
 												0,

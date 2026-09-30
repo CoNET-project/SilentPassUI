@@ -12117,6 +12117,19 @@ function buildProgramsCatalogOpenClaimShareUrl(
   return buildProgramsCouponOpenClaimShareUrl(cardAddress, productionId, cacheBustV);
 }
 
+function buildProgramsMerchantCardShareUrl(
+  cardAddress: string,
+  cacheBustV = String(Date.now()),
+): string {
+  const addr = cardAddress?.trim() ?? '';
+  if (!addr || !ethers.isAddress(addr)) return '';
+  const appUrl = `https://beamio.app/app/?beamiocard=${encodeURIComponent(
+    ethers.getAddress(addr),
+  )}&discover=open`;
+  const base = `https://beamio.app/app-download?target=${encodeURIComponent(appUrl)}`;
+  return appendAppDownloadShareCacheBust(base, cacheBustV);
+}
+
 function buildProgramsCouponRedeemShareUrl(
   cardAddress: string,
   redeemCode: string,
@@ -14281,6 +14294,7 @@ const [cardIssuanceProductionShareUrlCopied, setCardIssuanceProductionShareUrlCo
 const [cardIssuanceProductionShareImageStatus, setCardIssuanceProductionShareImageStatus] =
   useState<ProgramsCouponShareImageStatus>('idle');
 const cardIssuanceProductionShareImageRef = useRef<HTMLDivElement>(null);
+const [merchantCardShareQrUrl, setMerchantCardShareQrUrl] = useState('');
 const [cardIssuanceCouponRedeemShareCacheBustV, setCardIssuanceCouponRedeemShareCacheBustV] = useState('');
 const [cardIssuanceCouponRedeemShareOpen, setCardIssuanceCouponRedeemShareOpen] = useState<{
   couponId: string;
@@ -42981,7 +42995,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                      />
 
                      <div
-                       className="w-full min-w-0 overflow-hidden rounded-[30px] border border-[#e8ecf0] bg-white shadow-[0_8px_22px_rgba(15,23,42,0.06)]"
+                       className="relative w-full min-w-0 overflow-hidden rounded-[30px] border border-[#e8ecf0] bg-white shadow-[0_8px_22px_rgba(15,23,42,0.06)]"
                        aria-label={tu('programs_overview_discover_preview_aria')}
                      >
                        <div className="relative">
@@ -43071,7 +43085,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                            </div>
                          </div>
                        </div>
-                       <div className="px-6 pb-6 pt-11">
+                       <div className="px-6 pb-16 pt-11">
                          <div className="mb-1 flex items-start justify-between gap-3">
                            <ProgramLivePreviewInlineField
                              hideLabel
@@ -43126,6 +43140,21 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                            </span>
                          </div>
                        </div>
+                     <button
+                       type="button"
+                       aria-label="Share merchant card QR code"
+                       onClick={(event) => {
+                         event.stopPropagation();
+                         const url = buildProgramsMerchantCardShareUrl(
+                           cardIssuanceExistingCard?.cardAddress ?? '',
+                         );
+                         if (url) setMerchantCardShareQrUrl(url);
+                       }}
+                       disabled={!cardIssuanceExistingCard?.cardAddress}
+                       className="absolute bottom-4 right-4 z-10 inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#1562f0] text-white shadow-lg transition hover:bg-[#0051d1] disabled:cursor-not-allowed disabled:opacity-50"
+                     >
+                       <QrCode className="h-5 w-5" strokeWidth={2.2} aria-hidden />
+                     </button>
                      </div>
 
                      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-1 pt-1">
@@ -52128,6 +52157,37 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
     />
 
      {/* TxDisplayRow JSON modal (`raw` = full indexer Transaction + mapped UI fields) */}
+     {merchantCardShareQrUrl ? (
+       <div
+         className="fixed inset-0 z-[180] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm"
+         role="presentation"
+         onClick={() => setMerchantCardShareQrUrl('')}
+       >
+         <div
+           className="relative w-full max-w-sm rounded-3xl bg-white p-6 text-center shadow-2xl"
+           role="dialog"
+           aria-modal="true"
+           aria-label="Merchant card QR code"
+           onClick={(event) => event.stopPropagation()}
+         >
+           <button
+             type="button"
+             aria-label="Close merchant card QR code"
+             onClick={() => setMerchantCardShareQrUrl('')}
+             className="absolute right-3 top-3 inline-flex h-9 w-9 items-center justify-center rounded-full text-[#2c2f31] transition hover:bg-slate-100"
+           >
+             <X className="h-5 w-5" strokeWidth={2.2} aria-hidden />
+           </button>
+           <h2 className="pr-8 text-lg font-bold text-[#2c2f31]">Share merchant card</h2>
+           <div className="mt-5 flex justify-center rounded-2xl bg-white p-3">
+             <QRCodeCanvas value={merchantCardShareQrUrl} size={240} includeMargin />
+           </div>
+           <p className="mt-4 text-sm leading-5 text-slate-600">
+             Scan to open this merchant card in Beamio.
+           </p>
+         </div>
+       </div>
+     ) : null}
      {rawTxJsonModal && (
        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 font-sans">
          <button

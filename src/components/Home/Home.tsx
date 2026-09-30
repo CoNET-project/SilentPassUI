@@ -2341,7 +2341,7 @@ const Home = (_props: HomeProps) => {
 					}
 				>
 					{!openSearch && (
-						<div className="w-full overflow-hidden">
+						<div className="w-full shrink-0 overflow-x-hidden">
 							{/* 顶部留白：与固定胶囊 top 同源 max(1rem, safe-area) + 5rem；避免 WebView 下 safe-area=0 时面板贴顶 */}
 							<div
 								className="shrink-0"

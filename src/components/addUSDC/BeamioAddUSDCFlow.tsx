@@ -40,6 +40,8 @@ type BeamioAddUSDCFlowProps = {
 	onCancel?: () => void
 	/** 入金 / 出金（影响 Coinbase session；默认 onramp） */
 	initialMode?: RampMode
+	/** 打开时直接进入某一入金方式；默认 hub */
+	initialScreen?: Screen
 }
 
 export default function BeamioAddUSDCFlow({
@@ -47,8 +49,9 @@ export default function BeamioAddUSDCFlow({
 	embedInSheet,
 	onCancel,
 	initialMode,
+	initialScreen,
 }: BeamioAddUSDCFlowProps = {}) {
-	const [screen, setScreen] = useState<Screen>('hub')
+	const [screen, setScreen] = useState<Screen>(initialScreen ?? 'hub')
 	const { setDarkModle, profiles,
 		power, setProfiles, setBeamio, setPaymentLink, setSecureCode,  secureCode, ignoreUrl, setMyAddress, myAddress, beamio,
 		setPayTag, setSendToMemo, setUsdcbalance, listenningProcess, setListenningProcess, setUsdcToUSD, usdcToUSD, usdcbalance, setPaymentLinkCode

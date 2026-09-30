@@ -6988,7 +6988,7 @@ function DiscoverMerchantDetailFullScreen({
 	const prospectJoinMembershipPrice = useMemo(() => {
 		const joinTier = membershipUi.joinTier
 		if (!joinTier) return { price: null as string | null, duration: null as string | null }
-		const feeHuman = membershipFeeE6ToHuman(joinTier.feeE6)
+		const feeHuman = formatMembershipFeeE6Display(joinTier.feeE6)
 		if (!feeHuman) return { price: null, duration: null }
 		const prefix = balancePrefix || ''
 		const duration =
@@ -7680,6 +7680,13 @@ function DiscoverMerchantDetailFullScreen({
 	}, [freezeMerchantProgramPresentation])
 
 	const openDiscoverMembershipPay = useCallback((kind: 'join' | 'upgrade') => {
+		if (
+			(kind === 'join' && membershipUi.mode !== 'need_member') ||
+			(kind === 'upgrade' &&
+				(membershipUi.mode !== 'can_upgrade' || membershipUi.upgradeTier == null))
+		) {
+			return
+		}
 		const tier = kind === 'join' ? membershipUi.joinTier : membershipUi.upgradeTier
 		if (!tier) return
 		freezeMerchantProgramPresentation()
@@ -7703,12 +7710,12 @@ function DiscoverMerchantDetailFullScreen({
 		const suggestedTopup = membershipPurchaseApiAmountHuman(tier.feeE6)
 		const suggestedNum = Number(suggestedTopup)
 		const initialAmount =
-			Number.isFinite(feeNum) && feeNum > 50
+			Number.isFinite(feeNum) && feeNum >= 0
 				? feeHuman
-				: Number.isFinite(suggestedNum) && suggestedNum > 50
+				: Number.isFinite(suggestedNum) && suggestedNum >= 0
 					? suggestedTopup
-					: undefined
-		setUsdcTopupAmountText(initialAmount ?? '50.00')
+					: '0.00'
+		setUsdcTopupAmountText(initialAmount)
 		setDiscoverTopUpPrefill(initialAmount)
 		setUsdcTopupPhase('idle')
 		setDiscoverTopUpOpen(true)
@@ -7716,6 +7723,7 @@ function DiscoverMerchantDetailFullScreen({
 		balancePrefix,
 		freezeMerchantProgramPresentation,
 		membershipUi.joinTier,
+		membershipUi.mode,
 		membershipUi.upgradeTier,
 	])
 

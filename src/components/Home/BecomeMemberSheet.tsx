@@ -1,6 +1,7 @@
 import { useState, type CSSProperties } from 'react'
 import type { MembershipKycFormPolicy } from '@/utils/membershipKyc'
 import { saveMembershipKycAndLink } from '@/utils/membershipKyc'
+import { BeamioCircularBackButton } from '@/components/BeamioCircularBackButton'
 
 type Props = {
 	policy: MembershipKycFormPolicy
@@ -146,21 +147,11 @@ export function BecomeMemberSheet({
 			style={{ ['--membership-kyc-page-bg' as string]: surface } as CSSProperties}
 		>
 			<div className="mx-auto w-full max-w-lg">
-				<button
-					type="button"
-					aria-label="Back"
-					tabIndex={-1}
+				<BeamioCircularBackButton
+					variant="onLight"
 					onClick={handleBack}
-					onTouchEnd={(event) => {
-						event.preventDefault()
-						handleBack()
-					}}
-					className="relative z-10 mb-4 flex h-9 w-9 touch-manipulation items-center justify-center rounded-full bg-white text-[#2c2f31] shadow"
-				>
-					<svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden>
-						<path d="M14.5 6.5 9 12l5.5 5.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-					</svg>
-				</button>
+					className="z-10 mb-4"
+				/>
 				<h1 className="text-[32px] font-semibold tracking-tight text-[#1c1c1e]">Become a member</h1>
 				<div className="mt-5 rounded-2xl border border-[#dedde8] bg-white px-5 py-5 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
 					<p className="max-w-[85%] text-[20px] font-semibold leading-7" style={{ color: accent }}>{merchant}</p>

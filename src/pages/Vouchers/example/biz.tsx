@@ -12119,13 +12119,19 @@ function buildProgramsCatalogOpenClaimShareUrl(
 
 function buildProgramsMerchantCardShareUrl(
   cardAddress: string,
+  referrerEoa?: string,
   cacheBustV = String(Date.now()),
 ): string {
   const addr = cardAddress?.trim() ?? '';
   if (!addr || !ethers.isAddress(addr)) return '';
-  const appUrl = `https://beamio.app/app/?beamiocard=${encodeURIComponent(
-    ethers.getAddress(addr),
-  )}&discover=open`;
+  const params = new URLSearchParams({
+    beamiocard: ethers.getAddress(addr),
+    discover: 'open',
+  });
+  if (referrerEoa?.trim() && ethers.isAddress(referrerEoa.trim())) {
+    params.set('ref', ethers.getAddress(referrerEoa.trim()));
+  }
+  const appUrl = `https://beamio.app/app/?${params.toString()}`;
   const base = `https://beamio.app/app-download?target=${encodeURIComponent(appUrl)}`;
   return appendAppDownloadShareCacheBust(base, cacheBustV);
 }
@@ -14295,6 +14301,7 @@ const [cardIssuanceProductionShareImageStatus, setCardIssuanceProductionShareIma
   useState<ProgramsCouponShareImageStatus>('idle');
 const cardIssuanceProductionShareImageRef = useRef<HTMLDivElement>(null);
 const [merchantCardShareQrUrl, setMerchantCardShareQrUrl] = useState('');
+const [merchantCardShareQrUrlCopied, setMerchantCardShareQrUrlCopied] = useState(false);
 const [cardIssuanceCouponRedeemShareCacheBustV, setCardIssuanceCouponRedeemShareCacheBustV] = useState('');
 const [cardIssuanceCouponRedeemShareOpen, setCardIssuanceCouponRedeemShareOpen] = useState<{
   couponId: string;
@@ -43147,8 +43154,12 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                          event.stopPropagation();
                          const url = buildProgramsMerchantCardShareUrl(
                            cardIssuanceExistingCard?.cardAddress ?? '',
+                           profiles?.[0]?.keyID ?? myAddress,
                          );
-                         if (url) setMerchantCardShareQrUrl(url);
+                         if (url) {
+                           setMerchantCardShareQrUrlCopied(false);
+                           setMerchantCardShareQrUrl(url);
+                         }
                        }}
                        disabled={!cardIssuanceExistingCard?.cardAddress}
                        className="absolute bottom-4 right-4 z-10 inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#1562f0] text-white shadow-lg transition hover:bg-[#0051d1] disabled:cursor-not-allowed disabled:opacity-50"
@@ -52163,8 +52174,8 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
          role="presentation"
          onClick={() => setMerchantCardShareQrUrl('')}
        >
-         <div
-           className="relative w-full max-w-sm rounded-3xl bg-white p-6 text-center shadow-2xl"
+        <div
+          className="relative w-full max-w-sm overflow-hidden rounded-[30px] bg-white text-center shadow-2xl"
            role="dialog"
            aria-modal="true"
            aria-label="Merchant card QR code"
@@ -52178,13 +52189,78 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
            >
              <X className="h-5 w-5" strokeWidth={2.2} aria-hidden />
            </button>
-           <h2 className="pr-8 text-lg font-bold text-[#2c2f31]">Share merchant card</h2>
-           <div className="mt-5 flex justify-center rounded-2xl bg-white p-3">
-             <QRCodeCanvas value={merchantCardShareQrUrl} size={240} includeMargin />
+          <div
+            className="px-6 pb-5 pt-7 text-white"
+            style={{ backgroundColor: cardIssuanceBrandColor.trim() || '#1562f0' }}
+          >
+            <div className="mx-auto flex h-16 w-16 items-center justify-center overflow-hidden rounded-full border-4 border-white/80 bg-white shadow-lg">
+              {(cardIssuanceShareImageUrl.trim() || cardIssuanceExistingCard?.meta?.image?.trim()) ? (
+                <img
+                  src={cardIssuanceShareImageUrl.trim() || cardIssuanceExistingCard?.meta?.image?.trim() || ''}
+                  alt=""
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <span className="text-2xl font-bold" aria-hidden>
+                  {programsOverviewDisplayName.trim().charAt(0).toUpperCase() || 'B'}
+                </span>
+              )}
+            </div>
+            <p className="mt-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/80">
+              Scan to join
+            </p>
+            <h2 className="mt-1 truncate px-5 text-xl font-bold tracking-tight">
+              {programsOverviewDisplayName || 'Merchant card'}
+            </h2>
+            {merchantPanelDiscoverSubtitle ? (
+              <p className="mt-1 line-clamp-2 text-sm leading-5 text-white/85">
+                {merchantPanelDiscoverSubtitle}
+              </p>
+            ) : null}
+          </div>
+          <div className="px-6 pb-6 pt-5">
+            <div className="mx-auto flex w-fit rounded-[26px] bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,0.10)] ring-1 ring-slate-100">
+              <QRCodeCanvas
+                value={merchantCardShareQrUrl}
+                size={240}
+                includeMargin
+                bgColor="#FFFFFF"
+                fgColor={cardIssuanceBrandColor.trim() || '#1562f0'}
+              />
+            </div>
+            <p className="mt-4 text-sm font-medium leading-5 text-slate-600">
+              Scan to open this merchant card in Beamio.
+            </p>
+            <div className="mt-4 flex items-center justify-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+              <span>Scan</span>
+              <span aria-hidden>→</span>
+              <span>Sign up / Unlock</span>
+              <span aria-hidden>→</span>
+              <span>Join</span>
+            </div>
+            <button
+              type="button"
+              aria-label={merchantCardShareQrUrlCopied ? 'URL copied' : 'Copy URL'}
+              disabled={merchantCardShareQrUrlCopied}
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(merchantCardShareQrUrl);
+                  setMerchantCardShareQrUrlCopied(true);
+                  window.setTimeout(() => setMerchantCardShareQrUrlCopied(false), 2000);
+                } catch {
+                  // Clipboard access can be unavailable in an embedded browser.
+                }
+              }}
+              className="mx-auto mt-4 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-[#2c2f31] shadow-sm transition hover:bg-slate-50 disabled:cursor-default"
+            >
+              {merchantCardShareQrUrlCopied ? (
+                <Check className="h-4 w-4 text-emerald-500" strokeWidth={2.5} aria-hidden />
+              ) : (
+                <Copy className="h-4 w-4" strokeWidth={2.2} aria-hidden />
+              )}
+              <span>{merchantCardShareQrUrlCopied ? 'Copied' : 'Copy URL'}</span>
+            </button>
            </div>
-           <p className="mt-4 text-sm leading-5 text-slate-600">
-             Scan to open this merchant card in Beamio.
-           </p>
          </div>
        </div>
      ) : null}

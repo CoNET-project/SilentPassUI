@@ -52214,6 +52214,17 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                 -webkit-print-color-adjust: exact;
                 print-color-adjust: exact;
               }
+              .merchant-card-share-qr-dialog .merchant-card-share-qr-header p,
+              .merchant-card-share-qr-dialog .merchant-card-share-qr-header h2 {
+                /*
+                 * Chromium's print compositor can rasterize translucent
+                 * text-shadow as opaque black rectangles in generated PDFs.
+                 * Keep the shadow for the live dialog, but disable it for
+                 * print output so the text remains clean and selectable.
+                 */
+                text-shadow: none !important;
+                -webkit-text-stroke: 0 !important;
+              }
               .merchant-card-share-qr-dialog .merchant-card-share-qr-code {
                 margin-top: 2rem !important;
                 box-shadow: none !important;

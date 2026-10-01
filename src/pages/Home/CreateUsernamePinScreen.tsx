@@ -8,6 +8,7 @@ import {
 	EyeOff,
 	AlertTriangle,
 	Check,
+	LockKeyhole,
 	RefreshCw,
 	Shield,
 	ArrowRight,
@@ -128,12 +129,11 @@ const CreateUsernamePinScreen = forwardRef<
 	const isVeryCompactHeight = viewportHeight > 0 && viewportHeight <= 620
 	const isUltraCompactHeight = viewportHeight > 0 && viewportHeight <= 560
 	const shouldHideInfoCards = isCompactHeight
-	const shouldHideNonCustodialNote = viewportHeight > 0 && viewportHeight <= 540
 	const topInsetPadding = isUltraCompactHeight
-		? "calc(env(safe-area-inset-top) + 2.9rem)"
+		? "calc(env(safe-area-inset-top) + 3.75rem)"
 		: isVeryCompactHeight
-			? "calc(env(safe-area-inset-top) + 3.2rem)"
-			: "calc(env(safe-area-inset-top) + 3.75rem)"
+			? "calc(env(safe-area-inset-top) + 4.25rem)"
+			: "calc(env(safe-area-inset-top) + 4.75rem)"
 
 	const localValidateTag = (raw: string) => {
 		const trimmed = normalizeBeamioTagInput(raw)
@@ -619,33 +619,16 @@ const CreateUsernamePinScreen = forwardRef<
 						</div>
 
 						{!shouldHideInfoCards ? (
-						<div className="mt-2 grid grid-cols-2 gap-4 pt-2 [@media(max-height:780px)]:pt-1 [@media(max-height:700px)]:gap-3 [@media(max-height:640px)]:gap-2 [@media(max-height:560px)]:hidden">
-							<div className="flex flex-col gap-3 rounded-xl bg-white p-4 shadow-[0_4px_20px_rgba(0,0,0,0.05)] [@media(max-height:700px)]:gap-2 [@media(max-height:700px)]:p-3.5 [@media(max-height:640px)]:p-3">
-								<div className="flex h-8 w-8 items-center justify-center text-[#004bc3]">
-									<Shield className="h-6 w-6 shrink-0" fill="currentColor" strokeWidth={0} aria-hidden />
+							<div className="mx-auto mt-2 flex w-full max-w-md items-center justify-center gap-4 rounded-2xl bg-[#f1f6fd] px-4 py-3.5 text-center [@media(max-height:640px)]:gap-3 [@media(max-height:640px)]:px-3.5 [@media(max-height:640px)]:py-3">
+								<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#1562f0] text-white shadow-[0_4px_10px_rgba(21,98,240,0.18)]">
+									<LockKeyhole className="h-6 w-6" strokeWidth={2.5} aria-hidden />
 								</div>
-								<div className="flex flex-col gap-1">
-									<p className="text-xs font-semibold uppercase tracking-[0.05em] text-[#424655]">{tu('vault')}</p>
-									<p className="text-sm font-medium leading-5 text-[#151c27] [@media(max-height:640px)]:text-[13px]">{tu('encrypted_local_storage')}</p>
-								</div>
+								<p className="max-w-[260px] text-center text-sm font-medium leading-[1.35] text-[#3f51a5] [@media(max-height:640px)]:text-[13px]">
+									{tu('password_encryption_notice')}
+								</p>
 							</div>
-							<div className="flex flex-col gap-3 rounded-xl bg-white p-4 shadow-[0_4px_20px_rgba(0,0,0,0.05)] [@media(max-height:700px)]:gap-2 [@media(max-height:700px)]:p-3.5 [@media(max-height:640px)]:p-3">
-								<div className="flex h-8 w-8 items-center justify-center text-[#004bc3]">
-									<RefreshCw className="h-6 w-6 shrink-0" strokeWidth={2.25} aria-hidden />
-								</div>
-								<div className="flex flex-col gap-1">
-									<p className="text-xs font-semibold uppercase tracking-[0.05em] text-[#424655]">{tu('sync')}</p>
-									<p className="text-sm font-medium leading-5 text-[#151c27] [@media(max-height:640px)]:text-[13px]">{tu('multi_device_continuity')}</p>
-								</div>
-							</div>
-						</div>
 						) : null}
 
-						{!shouldHideNonCustodialNote ? (
-						<p className="px-4 text-center text-sm font-medium leading-5 text-[#737687] [@media(max-height:640px)]:px-2 [@media(max-height:640px)]:text-[12px] [@media(max-height:560px)]:text-[11px] [@media(max-height:520px)]:hidden">
-							{tu('beamio_is_non_custodial_we_cannot_reset_this_password_for_you')}
-						</p>
-						) : null}
 						</div>
 
 					<div className="mt-auto flex w-full shrink-0 flex-col items-center px-0 pt-2 [@media(max-height:700px)]:pt-1.5 [@media(max-height:640px)]:pt-1 [@media(max-height:560px)]:pt-0.5">

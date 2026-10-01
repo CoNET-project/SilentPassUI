@@ -204,7 +204,7 @@ import { DiscoverMerchantInviteFriendsPanel } from '@/components/discover/Discov
 import { DiscoverReferrerDownlinePage } from '@/pages/Vouchers/DiscoverReferrerDownlinePage'
 import { tu } from '@/locale/beamioLocale'
 import { mapServerError } from '@/locale/mapServerError'
-import { parseDiscoverMerchantFromParams, buildDiscoverMerchantShareUrl, shareDiscoverMerchantUrl, stripDiscoverMerchantDeepLinkParams } from '@/utils/discoverMerchantShare'
+import { consumePendingDiscoverMerchantIntent, parseDiscoverMerchantFromParams, peekPendingDiscoverMerchantIntent, buildDiscoverMerchantShareUrl, shareDiscoverMerchantUrl, stripDiscoverMerchantDeepLinkParams } from '@/utils/discoverMerchantShare'
 import { recordDiscoverShareClickIfNeeded } from '@/utils/discoverShareClickEvent'
 import { loadReward13RowsForAa, resolveAaHoldingReward13, sameStoreHasPositiveCover } from '@/utils/topupReward13Plan'
 import { readDiscoverShareReferrer, stashDiscoverShareReferrer } from '@/utils/discoverShareReferrerStash'
@@ -3132,7 +3132,8 @@ function resolveDiscoverMerchantDeepLinkTarget(
 	const state = location.state as { openDiscoverMerchantCard?: string } | null
 	const fromState = state?.openDiscoverMerchantCard?.trim() ?? ''
 	const fromUrl = parseDiscoverMerchantFromParams(collectDeepLinkSearchParams(window.location.href))
-	const targetAddr = (fromState || fromUrl?.cardAddress || '').trim()
+	const fromPending = peekPendingDiscoverMerchantIntent()
+	const targetAddr = (fromState || fromUrl?.cardAddress || fromPending || '').trim()
 	if (!targetAddr || !ethers.isAddress(targetAddr)) return null
 	return ethers.getAddress(targetAddr)
 }
@@ -3434,6 +3435,15 @@ function asDiscoverMetadataRoot(raw: unknown): Record<string, unknown> | null {
 function discoverTierMembershipFeeE6(row: DiscoverOfferTierRow): string {
 	if (row.membershipFeeE6 && BigInt(row.membershipFeeE6) > 0n) return row.membershipFeeE6
 	return membershipFeeHumanToE6(row.membershipFee)
+}
+
+function isZeroMembershipFeeE6(raw: unknown): boolean {
+	if (raw == null || String(raw).trim() === '') return false
+	try {
+		return BigInt(String(raw).replace(/,/g, '').trim()) === 0n
+	} catch {
+		return false
+	}
 }
 
 function discoverMetadataHasMembershipFee(meta: Record<string, unknown> | null): boolean {
@@ -6114,6 +6124,7 @@ function DiscoverMerchantDetailFullScreen({
 	discoverDetailReturnTo,
 	initialMerchantAssets,
 	onMerchantAssetsConfirmed,
+	fromMerchantDeepLink,
 }: {
 	item: DiscoverFeaturedCard
 	onClose: () => void
@@ -6123,6 +6134,7 @@ function DiscoverMerchantDetailFullScreen({
 	discoverDetailReturnTo?: string | null
 	/** Reuse the last trusted result while the detail overlay is remounted. */
 	initialMerchantAssets?: Awaited<ReturnType<typeof getMyAssets>> | null
+	fromMerchantDeepLink?: boolean
 	onMerchantAssetsConfirmed?: (
 		cardAddress: string,
 		assets: Awaited<ReturnType<typeof getMyAssets>>,
@@ -6226,6 +6238,9 @@ function DiscoverMerchantDetailFullScreen({
 		merchantProgramPresentationLockedRef.current = true
 	}, [])
 	const [merchantAssetsLoading, setMerchantAssetsLoading] = useState(false)
+	const [merchantAssetsTrustedForMembership, setMerchantAssetsTrustedForMembership] =
+		useState(() => initialMerchantAssets != null)
+	const autoMembershipJoinStartedRef = useRef(false)
 	const [cardTopupSuccessBalance, setCardTopupSuccessBalance] = useState<string | null>(null)
 	const [cardTopupOverlayPhase, setCardTopupOverlayPhase] = useState<'idle' | 'listening' | 'success'>('idle')
 	const [cardTopupSuccessKind, setCardTopupSuccessKind] = useState<USDCUserCardTopupIntent>('topup')
@@ -6523,7 +6538,11 @@ function DiscoverMerchantDetailFullScreen({
 		let cancelled = false
 		const cardAddress = item.cardAddress
 		void fetch(`${beamioApi}/api/cardMetadata?cardAddress=${encodeURIComponent(cardAddress)}`)
-			.then(async (res) => (res.ok ? ((await res.json()) as { metadata?: Record<string, unknown> | null; cardOwner?: string }) : null))
+			.then(async (res) => (res.ok ? ((await res.json()) as {
+				metadata?: Record<string, unknown> | null
+				metadata_json?: Record<string, unknown> | null
+				cardOwner?: string
+			}) : null))
 			.then((data) => {
 				if (cancelled || !data) return
 				if (data.cardOwner && ethers.isAddress(data.cardOwner)) {
@@ -6533,10 +6552,11 @@ function DiscoverMerchantDetailFullScreen({
 						/* ignore invalid owner */
 					}
 				}
-				if (!data?.metadata || typeof data.metadata !== "object") return
-				setMerchantMetadataRoot(data.metadata)
+				const metadata = data.metadata_json ?? data.metadata
+				if (!metadata || typeof metadata !== "object") return
+				setMerchantMetadataRoot(metadata)
 				const about = parseDiscoverAboutFromShare(
-					readDiscoverNestedObject(data.metadata, "shareTokenMetadata"),
+					readDiscoverNestedObject(metadata, "shareTokenMetadata"),
 				)
 				if (about) setResolvedDiscoverAbout(about)
 			})
@@ -6720,7 +6740,10 @@ function DiscoverMerchantDetailFullScreen({
 	)
 	const isConetGenesisCard = isConetGenesisDiscoverCard(item.cardAddress)
 	const membershipFeeTiers = useMemo((): DiscoverMembershipFeeTier[] => {
-		if (isConetGenesisCard || !membershipFeeMode) return []
+		// The metadata is the authoritative source for published membership
+		// tiers. Do not gate this read on the chain-side mode flag: a valid
+		// zero-fee membership can be present before that flag is hydrated.
+		if (isConetGenesisCard) return []
 		const allTiers = parseDiscoverAllTiersFromMeta(merchantMetadataRoot)
 		const mapped: DiscoverMembershipFeeTier[] = []
 		allTiers.forEach((t, i) => {
@@ -6742,7 +6765,7 @@ function DiscoverMerchantDetailFullScreen({
 			})
 		})
 		return mapped
-	}, [isConetGenesisCard, membershipFeeMode, merchantMetadataRoot])
+	}, [isConetGenesisCard, merchantMetadataRoot])
 	const membershipUi = useMemo(
 		() =>
 			resolveDiscoverMembershipUiState({
@@ -6752,6 +6775,48 @@ function DiscoverMerchantDetailFullScreen({
 			}),
 		[hasActiveMembership, membershipFeeTiers, merchantAssets?.nfts],
 	)
+	const deepLinkZeroFeeMembership =
+		fromMerchantDeepLink &&
+		merchantAssetsTrustedForMembership &&
+		!merchantAssetsLoading &&
+		membershipUi.mode === 'need_member' &&
+		membershipUi.joinTier?.tierIndex === 0 &&
+		isZeroMembershipFeeE6(membershipUi.joinTier?.feeE6) &&
+		(membershipUi.joinTier?.durationKind ?? 0) >= 1 &&
+		(membershipUi.joinTier?.durationKind ?? 0) <= 6
+	useEffect(() => {
+		const tier = membershipUi.joinTier
+		const durationKind = tier?.durationKind ?? 0
+		if (
+			!deepLinkZeroFeeMembership ||
+			discoverTopUpOpen ||
+			usdcTopupPhase !== 'idle' ||
+			membershipUi.mode !== 'need_member' ||
+			tier?.tierIndex !== 0 ||
+			!isZeroMembershipFeeE6(tier?.feeE6) ||
+			durationKind < 1 ||
+			durationKind > 6 ||
+			autoMembershipJoinStartedRef.current
+		) {
+			return
+		}
+		autoMembershipJoinStartedRef.current = true
+		setUsdcTopupIntent('first_purchase')
+		setMembershipPurchaseTierIndex(0)
+		setMembershipPurchaseFeeFiat6('0')
+		setDiscoverTopUpPrefill('0')
+		setDiscoverTopUpOpen(true)
+	}, [
+		discoverTopUpOpen,
+		fromMerchantDeepLink,
+		hasActiveMembership,
+		merchantAssetsLoading,
+		membershipUi.joinTier,
+		membershipUi.mode,
+			deepLinkZeroFeeMembership,
+			profiles,
+		usdcTopupPhase,
+	])
 	const canDiscoverTopUp =
 		Boolean(item.cardAddress) &&
 		usdcTopupPhase === 'idle' &&
@@ -8434,6 +8499,7 @@ function DiscoverMerchantDetailFullScreen({
 			merchantAssetsSeedAppliedRef.current = true
 			if (seedMatchesSession) {
 				setMerchantAssets(seeded)
+				setMerchantAssetsTrustedForMembership(true)
 				if (seededHasHoldings) adoptMerchantProgramPresentation(seeded)
 			}
 			setMerchantAssetsLoading(false)
@@ -8487,6 +8553,7 @@ function DiscoverMerchantDetailFullScreen({
 						bypassCache: true,
 					})
 					if (!cancelled && res != null) {
+						setMerchantAssetsTrustedForMembership(true)
 						const incoming = discoverMerchantProgramPresentationFromAssets(res)
 						if (!discoverMerchantProgramPresentationIsDowngrade(incoming, sessionPresentation)) {
 							setMerchantAssets(res)
@@ -9831,14 +9898,25 @@ function DiscoverMerchantDetailFullScreen({
 						profile={profiles[0]}
 						initialAmount={discoverTopUpPrefill}
 						stripeKind={
-							usdcTopupIntent === 'first_purchase' || usdcTopupIntent === 'upgrade'
+							deepLinkZeroFeeMembership ||
+							usdcTopupIntent === 'first_purchase' ||
+							usdcTopupIntent === 'upgrade'
 								? 'membership'
 								: 'topup'
 						}
-						membershipTierIndex={membershipPurchaseTierIndex ?? undefined}
-						membershipFeeFiat6={membershipPurchaseFeeFiat6 || undefined}
+						membershipTierIndex={
+							membershipPurchaseTierIndex ??
+							(deepLinkZeroFeeMembership ? 0 : undefined)
+						}
+						membershipFeeFiat6={
+							membershipPurchaseFeeFiat6 ||
+							(deepLinkZeroFeeMembership ? '0' : undefined)
+						}
+						autoStartMembershipJoin={deepLinkZeroFeeMembership}
 						membershipJoinTiers={
-							usdcTopupIntent === 'first_purchase' || usdcTopupIntent === 'upgrade'
+							fromMerchantDeepLink ||
+							usdcTopupIntent === 'first_purchase' ||
+							usdcTopupIntent === 'upgrade'
 								? membershipUi.feeTiers.map((tier) => ({
 										tierIndex: tier.tierIndex,
 										name: tier.name,
@@ -9905,6 +9983,7 @@ export default function Market() {
 	const discoverCategoryScrollerRef = useRef<HTMLDivElement | null>(null)
 	const [discoverMerchantDetail, setDiscoverMerchantDetail] = useState<DiscoverFeaturedCard | null>(null)
 	const [discoverDetailEnterImmediate, setDiscoverDetailEnterImmediate] = useState(false)
+	const [discoverDetailFromMerchantDeepLink, setDiscoverDetailFromMerchantDeepLink] = useState(false)
 	const {
 		onScroll: onDiscoverScroll,
 		setRef: setDiscoverScrollRef,
@@ -10084,8 +10163,9 @@ export default function Market() {
 	}
 
 	const openDiscoverMerchantDetail = useCallback(
-		(card: DiscoverFeaturedCard, opts?: { immediate?: boolean }) => {
+		(card: DiscoverFeaturedCard, opts?: { immediate?: boolean; fromMerchantDeepLink?: boolean }) => {
 			if (opts?.immediate) setDiscoverDetailEnterImmediate(true)
+			setDiscoverDetailFromMerchantDeepLink(Boolean(opts?.fromMerchantDeepLink))
 			setDiscoverMerchantDetail(card)
 			setShowFooter(false)
 		},
@@ -10110,6 +10190,7 @@ export default function Market() {
 		stripDiscoverMerchantDeepLinkParams()
 		setDiscoverMerchantDetail(null)
 		setDiscoverDetailEnterImmediate(false)
+		setDiscoverDetailFromMerchantDeepLink(false)
 		if (returnTo) {
 			navigate(returnTo, { replace: true })
 			setShowFooter(true)
@@ -10214,7 +10295,8 @@ export default function Market() {
 		const match = discoverFeaturedCards.find((c) => c.cardAddress?.toLowerCase() === cardNorm)
 		if (match) {
 			discoverDeepLinkHandledForRef.current = cardNorm
-			openDiscoverMerchantDetail(match, { immediate: true })
+			openDiscoverMerchantDetail(match, { immediate: true, fromMerchantDeepLink: true })
+			consumePendingDiscoverMerchantIntent()
 			stripDiscoverMerchantDeepLinkParams()
 			navigate('.', { replace: true, state: {} })
 			return
@@ -10228,7 +10310,8 @@ export default function Market() {
 			lookupByAddress(discoverDeepLinkTarget)?.metadataRoot,
 		)
 		discoverDeepLinkHandledForRef.current = cardNorm
-		openDiscoverMerchantDetail(fallback, { immediate: true })
+		openDiscoverMerchantDetail(fallback, { immediate: true, fromMerchantDeepLink: true })
+		consumePendingDiscoverMerchantIntent()
 		stripDiscoverMerchantDeepLinkParams()
 		navigate('.', { replace: true, state: {} })
 	}, [
@@ -10260,7 +10343,8 @@ export default function Market() {
 				lookupByAddress(discoverDeepLinkTarget)?.metadataRoot,
 			)
 			discoverDeepLinkHandledForRef.current = cardNorm
-			openDiscoverMerchantDetail(fallback, { immediate: true })
+			openDiscoverMerchantDetail(fallback, { immediate: true, fromMerchantDeepLink: true })
+			consumePendingDiscoverMerchantIntent()
 			stripDiscoverMerchantDeepLinkParams()
 			navigate('.', { replace: true, state: {} })
 		})()
@@ -10474,6 +10558,7 @@ export default function Market() {
 								: null
 						}
 						onMerchantAssetsConfirmed={rememberDiscoverMerchantAssets}
+						fromMerchantDeepLink={discoverDetailFromMerchantDeepLink}
 					/>
 				</motion.div>
 			) : null}

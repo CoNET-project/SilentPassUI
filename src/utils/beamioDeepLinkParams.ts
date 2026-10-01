@@ -7,6 +7,23 @@ export function parseDiscoverReferrerFromParams(sp: URLSearchParams): string | n
 	return ethers.getAddress(raw)
 }
 
+export function parseDiscoverMerchantFromParams(
+	sp: URLSearchParams,
+): { cardAddress: string; referrerEoa: string | null } | null {
+	const redeemcode = (sp.get('redeemcode') ?? sp.get('Redeemcode') ?? '').trim()
+	if (redeemcode) return null
+	const couponId = decodeURIComponent((sp.get('couponId') ?? sp.get('couponid') ?? '').trim())
+	if (couponId) return null
+	const cardAddress = (sp.get('beamiocard') ?? sp.get('Beamiocard') ?? '').trim()
+	const discover = (sp.get('discover') ?? '').trim().toLowerCase()
+	if (!cardAddress || !ethers.isAddress(cardAddress)) return null
+	if (discover !== 'open' && discover !== '1' && discover !== 'true') return null
+	return {
+		cardAddress: ethers.getAddress(cardAddress),
+		referrerEoa: parseDiscoverReferrerFromParams(sp),
+	}
+}
+
 /** Resolve referrer from current href and optional router state (Discover / coupon open-claim). */
 export function resolveDiscoverShareReferrerEoa(opts?: {
 	href?: string
@@ -58,6 +75,32 @@ export function collectDeepLinkSearchParams(raw: string): URLSearchParams {
 		})
 	}
 
+	// Some share handlers encode the complete query as one query key:
+	// `?beamiocard%3D0x...%26discover%3Dopen&v=...`.
+	// Decode query keys/values that contain a nested query before returning.
+	const appendNestedEncodedParams = (sp: URLSearchParams) => {
+		sp.forEach((value, key) => {
+			for (const raw of [key, value]) {
+				let decoded = raw
+				for (let i = 0; i < 2; i += 1) {
+					try {
+						const next = decodeURIComponent(decoded)
+						if (next === decoded) break
+						decoded = next
+					} catch {
+						break
+					}
+				}
+				if (!/[=&]/.test(decoded)) continue
+				try {
+					appendParams(new URLSearchParams(decoded.replace(/^[?]/, '')))
+				} catch {
+					// Ignore malformed nested query fragments.
+				}
+			}
+		})
+	}
+
 	const appendWrappedTargetParams = (sp: URLSearchParams) => {
 		const target = sp.get('target')?.trim() ?? ''
 		if (!target) return
@@ -79,6 +122,7 @@ export function collectDeepLinkSearchParams(raw: string): URLSearchParams {
 	try {
 		const u = input.startsWith('http') ? new URL(input) : new URL(input, 'https://beamio.app')
 		appendParams(u.searchParams)
+		appendNestedEncodedParams(u.searchParams)
 		appendWrappedTargetParams(u.searchParams)
 		const hash = u.hash || ''
 		if (hash.includes('?')) {
@@ -86,6 +130,7 @@ export function collectDeepLinkSearchParams(raw: string): URLSearchParams {
 			if (hashQuery) {
 				const hashParams = new URLSearchParams(hashQuery)
 				appendParams(hashParams)
+				appendNestedEncodedParams(hashParams)
 				appendWrappedTargetParams(hashParams)
 			}
 		}
@@ -95,6 +140,7 @@ export function collectDeepLinkSearchParams(raw: string): URLSearchParams {
 		const q = input.startsWith('?') ? input.slice(1) : input
 		const params = new URLSearchParams(q)
 		appendParams(params)
+		appendNestedEncodedParams(params)
 		appendWrappedTargetParams(params)
 		return merged
 	}

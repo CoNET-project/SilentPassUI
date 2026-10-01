@@ -83,7 +83,6 @@ const RecoveryQRScreen = ({
 }: RecoveryQRScreenProps) => {
   const [copied, setCopied] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [isConfirmed, setIsConfirmed] = useState(false)
   const [activatingStep, setActivatingStep] = useState(0)
   // 新增状态：是否已经执行过备份操作（保存或复制）
   const [hasBackedUp, setHasBackedUp] = useState(false)
@@ -343,17 +342,29 @@ const RecoveryQRScreen = ({
               <span className="min-w-0 flex-1 select-all break-all font-mono text-xs font-semibold tracking-widest text-[#171c26] [@media(max-height:560px)]:text-[11px]">
                 {recoveryCode || '—'}
               </span>
-              <Lock className="h-[18px] w-[18px] shrink-0 text-[#1562f0]" strokeWidth={2.25} aria-hidden />
+              <button
+                type="button"
+                onClick={() => void handleCopyCode()}
+                disabled={!recoveryCode}
+                aria-label={copied ? tu('copied') : tu('copy_recovery_code')}
+                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[#1562f0] transition-colors hover:bg-white/70 active:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {copied ? (
+                  <Check className="h-[18px] w-[18px] text-emerald-600" strokeWidth={2.5} aria-hidden />
+                ) : (
+                  <Copy className="h-[18px] w-[18px]" strokeWidth={2.25} aria-hidden />
+                )}
+              </button>
             </div>
           </div>
 
-          {/* Actions: disable after confirm so only Next advances */}
+          {/* Saving or copying the recovery code unlocks Next. */}
           <div className="mb-2 flex w-full shrink-0 flex-col gap-3 [@media(max-height:700px)]:gap-2.5 [@media(max-height:560px)]:gap-2">
             <button
               type="button"
               onClick={() => void handleSaveImage()}
-              disabled={isConfirmed || !qrDataUrl}
-              aria-disabled={isConfirmed || !qrDataUrl}
+              disabled={!qrDataUrl}
+              aria-disabled={!qrDataUrl}
               className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#1562f0] py-4 text-[15px] font-semibold text-white shadow-md transition-colors hover:bg-[#0f52d4] active:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 [@media(max-height:700px)]:py-3.5 [@media(max-height:560px)]:py-3 [@media(max-height:560px)]:text-sm"
             >
               <Download className="h-5 w-5 shrink-0" strokeWidth={2.25} aria-hidden />
@@ -366,25 +377,6 @@ const RecoveryQRScreen = ({
               </p>
             ) : null}
 
-            <button
-              type="button"
-              onClick={() => void handleCopyCode()}
-              disabled={!recoveryCode || isConfirmed}
-              aria-disabled={!recoveryCode || isConfirmed}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#e9edfb] py-4 text-[15px] font-semibold text-[#171c26] transition-colors hover:bg-[#e1e7f6] active:bg-[#d9e0f3] disabled:cursor-not-allowed disabled:opacity-50 [@media(max-height:700px)]:py-3.5 [@media(max-height:560px)]:py-3 [@media(max-height:560px)]:text-sm"
-            >
-              {copied ? (
-                <>
-                  <Check className="h-5 w-5 shrink-0 text-emerald-600" strokeWidth={2.5} aria-hidden />
-                  {tu('copied')}
-                </>
-              ) : (
-                <>
-                  <Copy className="h-5 w-5 shrink-0 text-[#414754]" strokeWidth={2.25} aria-hidden />
-                  {tu('copy_recovery_code')}
-                </>
-              )}
-            </button>
           </div>
         </div>
 
@@ -397,43 +389,6 @@ const RecoveryQRScreen = ({
             '[@media(max-height:560px)]:px-5 [@media(max-height:560px)]:pt-3',
           ].join(' ')}
         >
-          <label
-            className={[
-              'mb-4 flex cursor-pointer items-center justify-center gap-3 rounded-xl border border-[#d9e0f3] bg-[#f0f3ff] px-4 py-3 transition select-none',
-              '[@media(max-height:700px)]:mb-3 [@media(max-height:560px)]:mb-2.5 [@media(max-height:560px)]:gap-2.5 [@media(max-height:560px)]:py-2.5',
-              hasBackedUp ? 'text-[#414754]' : 'cursor-not-allowed opacity-60',
-            ].join(' ')}
-            onClick={(e) => {
-              e.preventDefault()
-              if (hasBackedUp) setIsConfirmed((v) => !v)
-            }}
-          >
-            <input
-              type="checkbox"
-              className="peer sr-only"
-              checked={isConfirmed}
-              readOnly
-              disabled={!hasBackedUp}
-              tabIndex={-1}
-            />
-            <span
-              className={[
-                'flex h-5 w-5 shrink-0 items-center justify-center rounded border-2 transition',
-                isConfirmed
-                  ? 'border-[#1562f0] bg-[#1562f0] text-white'
-                  : hasBackedUp
-                    ? 'border-[#c1c6d6] bg-white'
-                    : 'border-[#d9e0f3] bg-[#e9edfb]',
-              ].join(' ')}
-              aria-hidden
-            >
-              {isConfirmed ? <Check className="h-3.5 w-3.5" strokeWidth={3} /> : null}
-            </span>
-            <span className="text-sm font-medium leading-snug [@media(max-height:560px)]:text-[13px]">
-              {tu('i_have_securely_saved_my_recovery_code')}
-            </span>
-          </label>
-
           {showButton ? (
             <AppButton
               fullWidth
@@ -447,12 +402,12 @@ const RecoveryQRScreen = ({
                 void Promise.resolve(close?.()).finally(() => setLoading(false))
               }}
               loading={loading && !isRedeemFlow}
-              disabled={!isConfirmed}
+              disabled={!hasBackedUp}
               className={[
                 'group !h-auto !min-h-0 !rounded-xl !py-4 !text-[15px] !font-semibold !shadow-none',
                 '[@media(max-height:700px)]:!py-3.5 [@media(max-height:560px)]:!py-3 [@media(max-height:560px)]:!text-sm',
                 'transition-colors',
-                isConfirmed
+                hasBackedUp
                   ? '!bg-[#1562f0] !text-white !shadow-md hover:!bg-[#0f52d4] active:!bg-blue-700 focus-visible:!ring-2 focus-visible:!ring-[#1562f0]/55 focus-visible:!ring-offset-2'
                   : '!cursor-not-allowed !bg-[#d9e0f3] !text-[#727786]',
               ].join(' ')}

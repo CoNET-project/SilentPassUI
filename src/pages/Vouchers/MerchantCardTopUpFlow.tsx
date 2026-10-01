@@ -155,6 +155,8 @@ type Props = {
 	membershipFeeFiat6?: string
 	/** Membership-only amounts (top-up is zero), including a published zero fee. */
 	membershipJoinTiers?: { tierIndex: number; name: string; feeE6: string; durationKind?: number }[]
+	/** Deep-link membership entry: open the existing membership gate once. */
+	autoStartMembershipJoin?: boolean
 	/** Discover / My Brands already-loaded #13. First-paint Smart Pay cover — do not wait for planner RPC. */
 	seedAssets?: SeedReward13Assets | null
 	/** Discover My Points #13 (human). Used when `seedAssets` still lacks chargeRewardPoints. */
@@ -485,6 +487,7 @@ export default function MerchantCardTopUpFlow({
 	membershipTierIndex,
 	membershipFeeFiat6,
 	membershipJoinTiers,
+	autoStartMembershipJoin,
 	seedAssets,
 	seedPoints13,
 	onSuccess,
@@ -500,7 +503,7 @@ export default function MerchantCardTopUpFlow({
 	const [isEntered, setIsEntered] = useState(false)
 	const [isClosing, setIsClosing] = useState(false)
 	const [step, setStep] = useState<Step>('amount')
-	const [amountInput, setAmountInput] = useState('50.00')
+	const [amountInput, setAmountInput] = useState(initialAmount?.trim() || '50.00')
 	const [activeTierIndex, setActiveTierIndex] = useState<number | null>(membershipTierIndex ?? null)
 	const [smartPay, setSmartPay] = useState(true)
 	const [rows, setRows] = useState<Reward13Row[]>([])
@@ -546,11 +549,22 @@ export default function MerchantCardTopUpFlow({
 	const [shareAlert, setShareAlert] = useState('')
 	const closeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 	const closeStartedRef = useRef(false)
+	const autoStartedMembershipRef = useRef(false)
 	const shareResetTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 	const legsPlanGen = useRef(0)
 	const rowsReadyRef = useRef(false)
 	/** Only user toggle-off; auto cash-only while #13 loads must not stick after PT arrives. */
 	const smartPayUserOptOutRef = useRef(false)
+	// Deep-link membership flows open with a zero amount. Keep the controlled
+	// amount field aligned before autoStartMembershipJoin evaluates; otherwise
+	// the default 50.00 value blocks the automatic KYC/claim hand-off.
+	useEffect(() => {
+		if (!open || initialAmount == null) return
+		setAmountInput(initialAmount.trim() || '50.00')
+	}, [open, initialAmount])
+	useEffect(() => {
+		if (!open) autoStartedMembershipRef.current = false
+	}, [open])
 	const shareUrl = useMemo(
 		() => buildDiscoverMerchantShareUrl(cardAddress, profile.keyID),
 		[cardAddress, profile.keyID],
@@ -1003,6 +1017,7 @@ export default function MerchantCardTopUpFlow({
 	useEffect(() => {
 		if (!open) {
 			flowSessionRef.current = false
+			autoStartedMembershipRef.current = false
 			return
 		}
 		if (flowSessionRef.current) return
@@ -1010,6 +1025,7 @@ export default function MerchantCardTopUpFlow({
 		setIsEntered(false)
 		setIsClosing(false)
 		closeStartedRef.current = false
+		autoStartedMembershipRef.current = false
 		setStep('amount')
 		setAmountInput(initialAmount?.trim() || '50.00')
 		setActiveTierIndex(membershipTierIndex ?? null)
@@ -1467,26 +1483,22 @@ export default function MerchantCardTopUpFlow({
 	}
 
 	const goPay = () => {
-		if (payBusy || amountBelowMemberFee) return
+		if (payBusy || (amountBelowMemberFee && !zeroFeeMembershipOnly)) return
 		if (stripeKind !== 'membership') {
 			if (Number(fiatHuman) <= 0) return
 			setStep('pay')
 			return
 		}
 		const key = resolveSigningPrivateKeyArmor(profile)
-		const wallet = profile.keyID?.trim()
-		if (!key || !wallet) {
-			setPayError('Sign in to claim membership.')
-			return
-		}
 		setPayBusy(true)
 		setPayError('')
 		void (async () => {
 			let next: 'kyc' | 'continue' | null = null
 			try {
+				const wallet = profile.keyID?.trim() ?? ''
 				const needsKyc = await membershipJoinShouldShowKyc(cardAddress, [wallet, profileAa, resolvedAa])
 				if (needsKyc) {
-					const policy = await loadMembershipKycPolicy(cardAddress).catch(() => null)
+					const policy = await loadMembershipKycPolicy(cardAddress)
 					if (policy) {
 						const active = (membershipJoinTiers ?? []).find((tier) => tier.tierIndex === resolvedTierIndex)
 						const feeHuman = formatMembershipFeeE6Display(active?.feeE6 ?? membershipFeeFiat6) || '0.00'
@@ -1500,12 +1512,19 @@ export default function MerchantCardTopUpFlow({
 								offerValue: `${prefix}${feeHuman}`,
 								offerReward: durationLabel,
 							},
-							key,
+							key: key ?? '',
 							wallet,
 						})
 						next = 'kyc'
 						return
 					}
+				}
+				// KYC can be shown before the signing identity is hydrated. The
+				// direct claim path still requires the local signing wallet.
+				if (!wallet || !key) {
+					setPayError('Sign in to claim membership.')
+					next = null
+					return
 				}
 				next = 'continue'
 			} catch (e: unknown) {
@@ -1516,6 +1535,53 @@ export default function MerchantCardTopUpFlow({
 			if (next === 'continue') continueAfterMembershipGate()
 		})()
 	}
+
+	useEffect(() => {
+		if (!open) {
+			// The flow component can remain mounted while its overlay is closed.
+			// Allow a later deep-link open to run the automatic membership hand-off
+			// again instead of retaining the previous open-cycle guard.
+			autoStartedMembershipRef.current = false
+			return
+		}
+		if (
+			!autoStartMembershipJoin ||
+			stripeKind !== 'membership' ||
+			resolvedTierIndex == null ||
+			autoStartedMembershipRef.current
+		) {
+			return
+		}
+		const timer = window.setTimeout(() => {
+			if (autoStartedMembershipRef.current) return
+			// Deep-link membership flows normalize zero to `0.00` in the
+			// controlled input. Compare numeric values so that `0` and
+			// `0.00` cannot block the automatic KYC/claim hand-off.
+			if (initialAmount != null) {
+				const expectedInitialAmount = Number(initialAmount)
+				const currentAmount = Number(amountInput)
+				if (
+					!Number.isFinite(expectedInitialAmount) ||
+					!Number.isFinite(currentAmount) ||
+					expectedInitialAmount !== currentAmount
+				) {
+					return
+				}
+			}
+			autoStartedMembershipRef.current = true
+			goPay()
+		}, 0)
+		return () => window.clearTimeout(timer)
+	}, [
+		open,
+		autoStartMembershipJoin,
+		stripeKind,
+		resolvedTierIndex,
+		initialAmount,
+		amountInput,
+		profile,
+		goPay,
+	])
 
 	const toggleSelect = (addr: string) => {
 		const key = addr.toLowerCase()

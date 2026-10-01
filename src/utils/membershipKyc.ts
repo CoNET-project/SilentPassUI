@@ -195,7 +195,9 @@ function armorFromStored(raw: string): string {
 export async function loadMembershipKycPolicy(cardAddress: string): Promise<MembershipKycFormPolicy | null> {
 	const card = getAddress(cardAddress)
 	const response = await fetch(`https://beamio.app/api/cardMetadata?cardAddress=${card}`)
-	if (!response.ok) return null
+	if (!response.ok) {
+		throw new Error('Could not load membership details.')
+	}
 	const body = (await response.json()) as {
 		metadata_json?: unknown
 		metadata?: unknown
@@ -220,6 +222,10 @@ export async function loadMembershipKycPolicy(cardAddress: string): Promise<Memb
 	const kyc = share?.kyc
 	if (!kyc || typeof kyc !== 'object' || !kyc.fields || typeof kyc.fields !== 'object') return null
 	const fields = kyc.fields as Record<string, unknown>
+	const hasConfiguredCoreField = (['name', 'phone', 'email'] as const).some((field) => {
+		const mode = fieldMode(fields[field], 'off')
+		return mode === 'required' || mode === 'optional'
+	})
 	const additionalFields = Array.isArray(kyc.additionalFields)
 		? kyc.additionalFields.flatMap((row) => {
 				if (!row || typeof row !== 'object') return []
@@ -237,6 +243,9 @@ export async function loadMembershipKycPolicy(cardAddress: string): Promise<Memb
 				}]
 			})
 		: []
+	// A published KYC block with every field turned off is not a KYC
+	// requirement. Keep the zero-fee deep-link flow on the direct claim path.
+	if (!hasConfiguredCoreField && additionalFields.length === 0) return null
 	const merchantName = String(
 		share?.businessProfile?.storeName ||
 			share?.displayName ||
@@ -287,7 +296,10 @@ async function walletAlreadyHoldsMembership(cardAddress: string, wallet: string)
 
 /** First membership on a KYC card. A previously stored ciphertext hash does not skip the form. */
 export async function membershipJoinShouldShowKyc(cardAddress: string, wallets: string[]): Promise<boolean> {
-	const policy = await loadMembershipKycPolicy(cardAddress).catch(() => null)
+	// A failed metadata request is not evidence that the merchant has no KYC
+	// policy. Let the caller keep the membership flow blocked until the policy
+	// can be trusted.
+	const policy = await loadMembershipKycPolicy(cardAddress)
 	if (!policy) return false
 	for (const wallet of wallets) {
 		if (!wallet) continue

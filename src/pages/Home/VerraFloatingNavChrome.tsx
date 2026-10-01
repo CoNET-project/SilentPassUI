@@ -1,11 +1,6 @@
-import { useTranslation } from 'react-i18next'
 import { IpfsImg } from '@/components/IpfsImg'
-import { BeamioLocalePicker } from '@/components/locale/BeamioLocalePicker'
 import { ChevronLeft } from 'lucide-react'
 import { useTu } from '@/locale/beamioLocale'
-import { applyBeamioUiLanguageFromProfile } from '@/locale/i18n'
-import type { BeamioUiLocale } from '@/utils/beamioProfileLocaleCurrency'
-import { writeBeamioUiLanguageBootstrap } from '@/utils/beamioProfileLocaleCurrency'
 
 const APP_LOGO_SRC = `${process.env.PUBLIC_URL ?? ''}/logo192.png`
 
@@ -16,7 +11,7 @@ const FLOATING_BACK_BTN: Record<'create' | 'restore', string> = {
 		'border border-[#1a1c1f]/10 bg-[#f9f9fe]/92 text-[#1a1c1f] shadow-sm backdrop-blur-md hover:bg-[#f9f9fe]',
 }
 
-/** Create: Back · Beamio · locale. Restore: Back · locale · app logo (no center title bar). */
+/** Create: Back · Beamio. Restore: Back · app logo (no center title bar). */
 export function VerraFloatingNavChrome({
 	onBack,
 	tone = 'create',
@@ -26,9 +21,7 @@ export function VerraFloatingNavChrome({
 	tone?: 'create' | 'restore'
 	compact?: boolean
 }) {
-	const { i18n } = useTranslation()
 	const { tu } = useTu()
-	const locale = (i18n.language === 'en' ? 'en' : 'zh-CN') as BeamioUiLocale
 
 	if (tone === 'create') {
 		return (
@@ -62,17 +55,6 @@ export function VerraFloatingNavChrome({
 				>
 					Beamio
 				</div>
-				<div className="pointer-events-auto shrink-0">
-					<BeamioLocalePicker
-						variant="create"
-						menuAlign="right"
-						locale={locale}
-						onSelect={async (next) => {
-							writeBeamioUiLanguageBootstrap(next)
-							await applyBeamioUiLanguageFromProfile(next)
-						}}
-					/>
-				</div>
 			</header>
 		)
 	}
@@ -98,15 +80,6 @@ export function VerraFloatingNavChrome({
 				<ChevronLeft className={compact ? 'h-5 w-5' : 'h-6 w-6'} strokeWidth={2} aria-hidden />
 			</button>
 			<div className="pointer-events-auto flex shrink-0 items-center gap-2">
-				<BeamioLocalePicker
-					variant="create"
-					menuAlign="right"
-					locale={locale}
-					onSelect={async (next) => {
-						writeBeamioUiLanguageBootstrap(next)
-						await applyBeamioUiLanguageFromProfile(next)
-					}}
-				/>
 				<IpfsImg
 					src={APP_LOGO_SRC}
 					alt="Beamio"

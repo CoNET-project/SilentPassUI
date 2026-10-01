@@ -8,12 +8,13 @@ import { useDaemonContext } from '@/providers/DaemonProvider'
 import { getCashTreesNativeNfcBridge, getCashTreesNativeNfcHost } from '@/utils/cashTreesNativeNfc'
 import {
 	AlertCircle,
+	ArrowRight,
 	Check,
 	Eye,
 	EyeOff,
+	KeyRound,
 	QrCode,
 	RefreshCw,
-	ShieldCheck,
 } from 'lucide-react'
 import { VerraFloatingNavChrome } from './VerraFloatingNavChrome'
 import { APP_FLOATING_CHROME_MAIN_TOP_PT, APP_TITLE_BLOCK_TO_FIRST_CONTROL_MB } from '@/ui/appContentSpacing'
@@ -418,8 +419,6 @@ export default function RestoreWalletUnifiedScreen({
 	/** `ring-inset`: outer focus ring is clipped by parent `overflow-x-hidden` (left/right only). */
 	const fieldInputClass =
 		'w-full rounded-lg border-none bg-[#e2e2e7] text-base font-semibold text-[#1a1c1f] outline-none transition-all placeholder:text-[#737687]/50 focus:ring-2 focus:ring-inset focus:ring-[#004bc3]/40 disabled:opacity-70'
-	const fieldInputPadClass =
-		'py-5 [@media(max-height:780px)]:py-4 [@media(max-height:700px)]:py-3.5 [@media(max-height:640px)]:py-3 [@media(max-height:640px)]:text-[15px] [@media(max-height:560px)]:rounded-[14px] [@media(max-height:560px)]:py-2.5 [@media(max-height:560px)]:text-[14px]'
 
 	return (
 		<div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-[#f3f3f8] font-[Inter,system-ui,sans-serif] text-[#1a1c1f]">
@@ -430,44 +429,6 @@ export default function RestoreWalletUnifiedScreen({
 			>
 				<div className={`shrink-0 text-center ${APP_TITLE_BLOCK_TO_FIRST_CONTROL_MB}`}>
 					<h1 className="text-3xl font-extrabold tracking-tight text-[#1a1c1f] sm:text-3xl">{tu('welcome_back')}</h1>
-					<p className="mt-0.5 text-base font-medium text-[#424655] [@media(max-height:640px)]:text-sm">
-						{tu('access_your_local_community_vault')}
-					</p>
-				</div>
-
-				<div className="mt-2 flex h-12 shrink-0 rounded-2xl bg-[#e8e8ed] p-1" role="tablist" aria-label={tu('restore_method')}>
-					<button
-						type="button"
-						role="tab"
-						aria-selected={tab === 'login'}
-						onClick={() => {
-							setTab('login')
-							setLoginError('')
-						}}
-						className={`flex flex-1 items-center justify-center rounded-xl text-sm font-semibold transition ${
-							tab === 'login'
-								? 'bg-white text-[#1a1c1f] shadow-sm'
-								: 'text-[#424655]'
-						}`}
-					>
-						{tu('id_and_password')}
-					</button>
-					<button
-						type="button"
-						role="tab"
-						aria-selected={tab === 'recovery'}
-						onClick={() => {
-							setTab('recovery')
-							setRecoveryError('')
-						}}
-						className={`flex flex-1 items-center justify-center rounded-xl text-sm font-semibold transition ${
-							tab === 'recovery'
-								? 'bg-white text-[#1a1c1f] shadow-sm'
-								: 'text-[#424655]'
-						}`}
-					>
-						{tu('recovery_key')}
-					</button>
 				</div>
 
 				<div className="hidden" aria-hidden>
@@ -477,7 +438,7 @@ export default function RestoreWalletUnifiedScreen({
 				<div className="relative mt-4 flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden">
 					{tab === 'login' ? (
 						<form onSubmit={handleLoginSubmit} className="flex flex-col" noValidate>
-							<div className="flex flex-col gap-5 [@media(max-height:700px)]:gap-4 [@media(max-height:640px)]:gap-3">
+							<div className="flex flex-col gap-3 [@media(max-height:700px)]:gap-2.5 [@media(max-height:640px)]:gap-2">
 								<div className="space-y-2">
 									<label htmlFor="welcome-back-beamio-id" className={fieldLabelClass}>
 										{tu('beamio_id')}
@@ -496,8 +457,7 @@ export default function RestoreWalletUnifiedScreen({
 											enterKeyHint="next"
 											className={[
 												fieldInputClass,
-												fieldInputPadClass,
-												'pl-12 pr-5 [@media(max-height:560px)]:pl-10 [@media(max-height:560px)]:pr-4',
+												'rounded-[10px] py-2.5 pl-12 pr-5 text-[15px] [@media(max-height:560px)]:pl-10 [@media(max-height:560px)]:pr-4',
 												loginError && !username.trim()
 													? 'ring-2 ring-inset ring-orange-400/80 focus:ring-orange-400/40'
 													: '',
@@ -526,8 +486,7 @@ export default function RestoreWalletUnifiedScreen({
 											enterKeyHint="done"
 											className={[
 												fieldInputClass,
-												fieldInputPadClass,
-												'pl-5 pr-14 [@media(max-height:560px)]:pl-4 [@media(max-height:560px)]:pr-12',
+												'rounded-[10px] py-2.5 pl-5 pr-14 text-[15px] [@media(max-height:560px)]:pl-4 [@media(max-height:560px)]:pr-12',
 												loginError && !pin.trim()
 													? 'ring-2 ring-inset ring-orange-400/80 focus:ring-orange-400/40'
 													: '',
@@ -547,9 +506,9 @@ export default function RestoreWalletUnifiedScreen({
 											aria-label={peekPin ? tu('hide_password') : tu('show_password')}
 										>
 											{peekPin ? (
-												<EyeOff className="h-6 w-6 [@media(max-height:560px)]:h-5 [@media(max-height:560px)]:w-5" strokeWidth={2} />
+											<EyeOff className="h-5 w-5 [@media(max-height:560px)]:h-4 [@media(max-height:560px)]:w-4" strokeWidth={2} />
 											) : (
-												<Eye className="h-6 w-6 [@media(max-height:560px)]:h-5 [@media(max-height:560px)]:w-5" strokeWidth={2} />
+												<Eye className="h-5 w-5 [@media(max-height:560px)]:h-4 [@media(max-height:560px)]:w-4" strokeWidth={2} />
 											)}
 										</button>
 									</div>
@@ -566,61 +525,74 @@ export default function RestoreWalletUnifiedScreen({
 										fullWidth
 										disabled={loginLoading}
 										loading={loginLoading}
-										className="h-14 rounded-full text-base font-bold !bg-gradient-to-br !from-[#004bc3] !to-[#1562f0] !text-white shadow-[0_4px_24px_rgba(21,98,240,0.15)] hover:!opacity-90 active:!scale-[0.98] focus-visible:!ring-2 focus-visible:!ring-[#004bc3]/40"
+									className="h-10 rounded-full text-[15px] font-bold !bg-gradient-to-br !from-[#004bc3] !to-[#1562f0] !text-white shadow-[0_4px_24px_rgba(21,98,240,0.15)] hover:!opacity-90 active:!scale-[0.98] focus-visible:!ring-2 focus-visible:!ring-[#004bc3]/40"
 									>
+									<span className="inline-flex items-center gap-2">
 										{tu('unlock')}
+										<ArrowRight className="h-4 w-4" strokeWidth={2.25} aria-hidden />
+									</span>
 									</AppButton>
 								</div>
+							<div className="mt-1 flex flex-col items-center gap-2">
+								<div className="flex w-full items-center gap-2 text-[11px] text-[#727786]">
+									<div className="h-px flex-1 bg-[#d9dce6]" />
+									<span>{tu('or')}</span>
+									<div className="h-px flex-1 bg-[#d9dce6]" />
+								</div>
+								<span className="text-[13px] font-medium text-[#004bc3]">
+									{tu('forgot_password')}
+								</span>
+								<button
+									type="button"
+									tabIndex={-1}
+									className="flex h-9 w-full items-center justify-center gap-2 rounded-[10px] border border-[#d9e0f3] bg-[#f0f3ff] text-[13px] font-medium text-[#243b8f] transition-colors hover:bg-[#e7edff] active:scale-[0.98]"
+									onClick={() => {
+										setTab('recovery')
+										setRecoveryError('')
+									}}
+								>
+									<KeyRound className="h-4 w-4 text-[#1562f0]" strokeWidth={2.25} aria-hidden />
+									{tu('restore_with_recovery_code')}
+								</button>
+							</div>
 							</div>
 						</form>
 					) : (
 						<form onSubmit={handleRecoverySubmit} className="flex flex-col" noValidate>
 							<div className="flex flex-col gap-5 [@media(max-height:700px)]:gap-4 [@media(max-height:640px)]:gap-3">
-								<div className="shrink-0 rounded-lg bg-white px-4 py-3 shadow-[0_4px_24px_rgba(0,0,0,0.02)]">
-									<p className="text-center text-sm font-medium leading-snug text-[#424655]">
-										{tu('use_your_securely_saved_recovery_qr')}
-									</p>
-								</div>
-								<button
-									type="button"
-									onClick={onOpenScanner}
-									className="flex h-[100px] max-h-[22vmin] shrink-0 flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-[#c3c6d8] bg-white transition hover:bg-[#f9f9fe] active:scale-[0.98]"
-								>
-									<div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#1562f0]/10">
-										<QrCode className="h-6 w-6 text-[#1562f0]" strokeWidth={2.25} />
-									</div>
-									<div className="text-center px-3">
-										<p className="text-sm font-bold text-[#1a1c1f]">{tu('tap_to_scan_recovery_qr')}</p>
-										<p className="text-[10px] text-[#424655]">{tu('from_camera_or_photos')}</p>
-									</div>
-								</button>
-								<div className="flex shrink-0 items-center gap-2 py-0.5">
-									<div className="h-px flex-1 bg-[#e8e8ed]" />
-									<span className="text-[9px] font-bold uppercase tracking-[0.18em] text-[#424655]">{tu('or')}</span>
-									<div className="h-px flex-1 bg-[#e8e8ed]" />
-								</div>
-								<div className="flex w-full shrink-0 flex-col space-y-2">
-									<label htmlFor="welcome-back-recovery-code" className={fieldLabelClass}>
+								<div className="flex w-full shrink-0 flex-col gap-2">
+									<label htmlFor="welcome-back-recovery-code" className="sr-only">
 										{tu('enter_recovery_code')}
 									</label>
-									<textarea
-										id="welcome-back-recovery-code"
+									<div
 										className={[
-											fieldInputClass,
-											'min-h-[5.5rem] resize-none px-5 py-4 leading-relaxed [@media(max-height:560px)]:px-4 [@media(max-height:560px)]:py-3 [@media(max-height:560px)]:text-[14px]',
-											recoveryError
-												? 'ring-2 ring-inset ring-orange-400/80 focus:ring-orange-400/40'
-												: '',
+											'flex min-h-14 w-full items-center gap-3 rounded-2xl border bg-white px-4 py-2.5 shadow-sm transition focus-within:border-[#004bc3] focus-within:ring-2 focus-within:ring-[#004bc3]/10',
+											recoveryError ? 'border-orange-400 ring-2 ring-orange-400/15' : 'border-[#d9e0f3]',
 										].join(' ')}
-										placeholder={tu('enter_your_recovery_code_here')}
-										value={recoveryCode}
-										onChange={e => {
-											setRecoveryCode(e.target.value)
-											setRecoveryError('')
-										}}
-										rows={3}
-										autoComplete="off"
-									/>
+									>
+										<KeyRound className="h-5 w-5 shrink-0 text-[#1562f0]" strokeWidth={2.25} aria-hidden />
+										<input
+											id="welcome-back-recovery-code"
+											type="text"
+											className="min-w-0 flex-1 bg-transparent text-[15px] font-medium text-[#1a1c1f] outline-none placeholder:text-[#727786]"
+											placeholder={tu('enter_recovery_code')}
+											value={recoveryCode}
+											onChange={e => {
+												setRecoveryCode(e.target.value)
+												setRecoveryError('')
+											}}
+											autoComplete="off"
+										/>
+										<button
+											type="button"
+											onClick={onOpenScanner}
+											aria-label={tu('tap_to_scan_recovery_qr')}
+											tabIndex={-1}
+											className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#e9edfb] text-[#1562f0] transition-colors hover:bg-[#dce5fb] active:scale-[0.96]"
+										>
+											<QrCode className="h-5 w-5" strokeWidth={2.25} aria-hidden />
+										</button>
+									</div>
 									{recoveryError ? (
 										<div className="flex items-center gap-2 px-4 text-orange-600">
 											<AlertCircle className="h-4 w-4 shrink-0" strokeWidth={2.5} aria-hidden />
@@ -633,29 +605,25 @@ export default function RestoreWalletUnifiedScreen({
 											fullWidth
 											disabled={recoveryLoading || !recoveryCode.trim()}
 											loading={recoveryLoading}
-											className={`h-14 rounded-full text-base font-bold transition active:!scale-[0.98] focus-visible:!ring-2 focus-visible:!ring-[#004bc3]/40 ${
+											className={`!flex !items-center !justify-center !py-0 h-14 rounded-full text-base font-bold leading-none transition active:!scale-[0.98] focus-visible:!ring-2 focus-visible:!ring-[#004bc3]/40 ${
 												!recoveryCode.trim() && !recoveryLoading
 													? '!cursor-not-allowed !bg-slate-300 !text-slate-500 !shadow-none'
 													: '!bg-[#004bc3] !text-white shadow-[0_8px_30px_rgb(0,75,195,0.2)] hover:!bg-[#1562f0]'
 											}`}
 										>
-											{tu('restore_vault')}
+											<span className="flex h-full items-center justify-center leading-none">{tu('restore')}</span>
+											<ArrowRight className="h-5 w-5" strokeWidth={2.25} aria-hidden />
 										</AppButton>
 									</div>
+									<p className="pt-1 text-center text-xs font-medium text-[#727786]">
+										{tu('recovery_password_after_restore')}
+									</p>
 								</div>
 							</div>
 						</form>
 					)}
 				</div>
 
-				<div className="mt-6 flex shrink-0 justify-center pt-2">
-					<div className="flex items-center gap-2 rounded-full border border-[#e8e8ed] bg-white px-3 py-1.5 shadow-sm">
-						<ShieldCheck className="h-4 w-4 shrink-0 text-[#1562f0]" strokeWidth={2.25} />
-						<span className="text-[9px] font-bold uppercase tracking-widest text-[#1a1c1f]">
-							{tu('end_to_end_encrypted')}
-						</span>
-					</div>
-				</div>
 			</div>
 		</div>
 	)

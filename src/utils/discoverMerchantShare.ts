@@ -1,9 +1,64 @@
 import { ethers } from 'ethers'
 import {
 	collectDeepLinkSearchParams,
+	parseDiscoverMerchantFromParams,
 	parseDiscoverReferrerFromParams,
 } from '@/utils/beamioDeepLinkParams'
 import { appendAppDownloadShareCacheBust } from './appDownloadShareCacheBust'
+
+export { parseDiscoverMerchantFromParams }
+
+export const PENDING_DISCOVER_MERCHANT_INTENT_KEY =
+	'beamio:silentpass:pending-discover-merchant:v1'
+
+/**
+ * Preserve a public merchant deep-link while onboarding rewrites the URL to
+ * `beamioTag + MasterKey`. Only the merchant card address is stored.
+ */
+export function rememberPendingDiscoverMerchantIntent(rawHref?: string): string | null {
+	if (typeof window === 'undefined') return null
+	const parsed = parseDiscoverMerchantFromParams(
+		collectDeepLinkSearchParams(rawHref?.trim() || window.location.href),
+	)
+	if (!parsed) return null
+	try {
+		window.sessionStorage.setItem(
+			PENDING_DISCOVER_MERCHANT_INTENT_KEY,
+			JSON.stringify({ cardAddress: parsed.cardAddress }),
+		)
+	} catch {
+		/* ignore unavailable session storage */
+	}
+	return parsed.cardAddress
+}
+
+export function consumePendingDiscoverMerchantIntent(): string | null {
+	if (typeof window === 'undefined') return null
+	try {
+		const raw = window.sessionStorage.getItem(PENDING_DISCOVER_MERCHANT_INTENT_KEY)
+		window.sessionStorage.removeItem(PENDING_DISCOVER_MERCHANT_INTENT_KEY)
+		if (!raw) return null
+		const parsed = JSON.parse(raw) as { cardAddress?: unknown }
+		const cardAddress = typeof parsed.cardAddress === 'string' ? parsed.cardAddress.trim() : ''
+		return cardAddress && ethers.isAddress(cardAddress) ? ethers.getAddress(cardAddress) : null
+	} catch {
+		return null
+	}
+}
+
+/** Read the pending merchant destination without consuming it. */
+export function peekPendingDiscoverMerchantIntent(): string | null {
+	if (typeof window === 'undefined') return null
+	try {
+		const raw = window.sessionStorage.getItem(PENDING_DISCOVER_MERCHANT_INTENT_KEY)
+		if (!raw) return null
+		const parsed = JSON.parse(raw) as { cardAddress?: unknown }
+		const cardAddress = typeof parsed.cardAddress === 'string' ? parsed.cardAddress.trim() : ''
+		return cardAddress && ethers.isAddress(cardAddress) ? ethers.getAddress(cardAddress) : null
+	} catch {
+		return null
+	}
+}
 
 /**
  * Discover merchant share URL — aligned with x402sdk `buildDiscoverMerchantAppDownloadUrl`.
@@ -50,23 +105,6 @@ export async function shareDiscoverMerchantUrl(
 		return 'copied'
 	} catch {
 		return 'failed'
-	}
-}
-
-export function parseDiscoverMerchantFromParams(
-	sp: URLSearchParams
-): { cardAddress: string; referrerEoa: string | null } | null {
-	const redeemcode = (sp.get('redeemcode') ?? sp.get('Redeemcode') ?? '').trim()
-	if (redeemcode) return null
-	const couponId = decodeURIComponent((sp.get('couponId') ?? sp.get('couponid') ?? '').trim())
-	if (couponId) return null
-	const cardAddress = (sp.get('beamiocard') ?? sp.get('Beamiocard') ?? '').trim()
-	const discover = (sp.get('discover') ?? '').trim().toLowerCase()
-	if (!cardAddress || !ethers.isAddress(cardAddress)) return null
-	if (discover !== 'open' && discover !== '1' && discover !== 'true') return null
-	return {
-		cardAddress: ethers.getAddress(cardAddress),
-		referrerEoa: parseDiscoverReferrerFromParams(sp),
 	}
 }
 

@@ -68,6 +68,10 @@ import { applyBeamioUiLanguageFromProfile, type BeamioUiLocale } from '@/locale/
 import { useTranslation } from 'react-i18next'
 import { BeamioLocalePicker } from '@/components/locale/BeamioLocalePicker'
 import { writeBeamioUiLanguageBootstrap } from '@/utils/beamioProfileLocaleCurrency'
+import {
+	peekPendingDiscoverMerchantIntent,
+	rememberPendingDiscoverMerchantIntent,
+} from '@/utils/discoverMerchantShare'
 
 
 const APP_VERSION = (packageJson as { version?: string }).version ?? ''
@@ -377,14 +381,14 @@ function InitialEntrySplash({
 							className="inline-flex items-center gap-1 border-b border-white/30 pb-0.5 text-sm font-medium tracking-wide text-white/80 transition-colors hover:border-white hover:text-white focus:outline-none focus-visible:border-white"
 						>
 							{tu('already_have_a_beamio_id')}{' '}
-							<span>{tu('restore_wallet')}</span>
+							<span>{tu('unlock_wallet')}</span>
 						</button>
 					</div>
 				</div>
 			</main>
 
 			<footer className="relative z-30 w-full shrink-0 px-6 pt-1 text-center pb-[calc(2rem+env(safe-area-inset-bottom))] [@media(max-height:720px)]:pt-0.5">
-				<p className="text-[10px] font-bold uppercase tracking-[0.3em] text-white/50">{tu('powered_by_beamio')}</p>
+				<p className="text-[10px] font-bold uppercase tracking-[0.3em] text-white/50">{tu('your_keys_your_control')}</p>
 			</footer>
 		</div>
 	)
@@ -530,6 +534,7 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 	const createUsernameRef = useRef<CreateUsernamePinScreenRef>(null)
 	const homeCalledRef = useRef(false)
 	const enterHomeInFlightRef = useRef(false)
+	const merchantDeepLinkRoutingRef = useRef(false)
 	const [redeemActivating, setRedeemActivating] = useState(false)
 	const [redeemPostCreateInProgress, setRedeemPostCreateInProgress] = useState(false)
 	/** Create Wallet 加密中：全屏居中 loading，隐藏 BeamioNavBack，避免顶光晕被裁切 */
@@ -683,6 +688,29 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 
 	let first = true
 
+	// Capture the public merchant destination before onboarding rewrites the
+	// URL to `beamioTag` and `MasterKey`.
+	useLayoutEffect(() => {
+		rememberPendingDiscoverMerchantIntent()
+	}, [])
+
+	// A merchant deep link must never render the generic onboarding-complete
+	// screen. Route from the layout phase so React does not paint that screen
+	// for one frame before Discover opens the requested merchant.
+	useLayoutEffect(() => {
+		if (settingsOpen !== 'OnboardingWelcomeScreen') return
+		const pendingMerchantCard = peekPendingDiscoverMerchantIntent()
+		if (!pendingMerchantCard || merchantDeepLinkRoutingRef.current) return
+		merchantDeepLinkRoutingRef.current = true
+		setSettingsOpen('')
+		setIsInitialEntry(false)
+		setIsInitialLoading(false)
+		navigate('/discover', {
+			replace: true,
+			state: { openDiscoverMerchantCard: pendingMerchantCard },
+		})
+	}, [settingsOpen, home, navigate, setIsInitialLoading])
+
 	// 仅适用于首次启动（本地存储无 beamio 信息）时的启动 URL 参数，不适用于 scan QR workflow
 	useEffect(() => {
 		if (!first) return
@@ -795,6 +823,13 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 		if (settingsOpen && ONBOARDING_MODAL_SCREENS.has(settingsOpen)) return
 		if (consumerAppNeedsWalletRecover(CoNET_Data)) return
 		if (homeCalledRef.current) return
+		const pendingMerchantCard = peekPendingDiscoverMerchantIntent()
+		if (pendingMerchantCard) {
+			// Mark the hand-off before clearing onboarding state. This prevents
+			// the intermediate WalletReady screen from painting while the router
+			// switches to Discover.
+			merchantDeepLinkRoutingRef.current = true
+		}
 		if (redeemFromUrl !== null) {
 			setRedeemFromUrl(null)
 		}
@@ -802,12 +837,32 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 		setIsInitialEntry(false)
 		setIsInitialLoading(false)
 		home()
+		if (pendingMerchantCard) {
+			navigate('/discover', {
+				replace: true,
+				state: { openDiscoverMerchantCard: pendingMerchantCard },
+			})
+			return
+		}
 	}, [isInitialEntry, hasCheckedUrl, redeemFromUrl, loading, settingsOpen, home])
 
 	/** 已有 AA 时跳过 STEP 05（WalletReadyScreen），直接进入首页 */
 	const finishOnboardingToHome = () => {
+		const pendingMerchantCard = peekPendingDiscoverMerchantIntent()
+		if (pendingMerchantCard) {
+			// Set the routing latch first; otherwise clearing settingsOpen can
+			// render WalletReady for one frame before Discover mounts.
+			merchantDeepLinkRoutingRef.current = true
+		}
 		setSettingsOpen('')
 		home()
+		if (pendingMerchantCard) {
+			navigate('/discover', {
+				replace: true,
+				state: { openDiscoverMerchantCard: pendingMerchantCard },
+			})
+			return
+		}
 		navigate('/')
 	}
 
@@ -1226,11 +1281,27 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 										setSettingsOpen('')
 									} : async () => {
 										await init(temp, { dontClose: true, deferChat: true, accountName: beamioTag })
-										setSettingsOpen('OnboardingWelcomeScreen')
+								// A merchant deep link is a destination, not an intermediate
+								// onboarding success screen. Complete initialization and route
+								// directly to the requested merchant so the welcome screen
+								// cannot flash while Discover is opening.
+								const pendingMerchantCard = peekPendingDiscoverMerchantIntent()
+								if (pendingMerchantCard) {
+									merchantDeepLinkRoutingRef.current = true
+									setSettingsOpen('')
+									home()
+									navigate('/discover', {
+										replace: true,
+										state: { openDiscoverMerchantCard: pendingMerchantCard },
+									})
+									return
+								}
+								setSettingsOpen('OnboardingWelcomeScreen')
 									}} />
 							}
 							{
-								settingsOpen === 'OnboardingWelcomeScreen' && (
+								settingsOpen === 'OnboardingWelcomeScreen' &&
+								!peekPendingDiscoverMerchantIntent() && (
 									<OnboardingWelcomeScreen
 										beamioTag={beamioTag || undefined}
 										onEnterHome={() => void handleOnboardingEnterHome()}
@@ -1238,7 +1309,9 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 								)
 							}
 							{
-								settingsOpen === 'WalletReadyScreen' && (
+								settingsOpen === 'WalletReadyScreen' &&
+								!peekPendingDiscoverMerchantIntent() &&
+								(
 									<WalletReadyScreen
 										usdcBalance={formatWithThousands(usdcBal || '0')}
 										onCashierTopUp={() => {

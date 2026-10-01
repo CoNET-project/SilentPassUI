@@ -24,7 +24,7 @@ export function rememberPendingDiscoverMerchantIntent(rawHref?: string): string 
 	try {
 		window.sessionStorage.setItem(
 			PENDING_DISCOVER_MERCHANT_INTENT_KEY,
-			JSON.stringify({ cardAddress: parsed.cardAddress }),
+			JSON.stringify({ cardAddress: parsed.cardAddress, referrerEoa: parsed.referrerEoa }),
 		)
 	} catch {
 		/* ignore unavailable session storage */
@@ -41,6 +41,27 @@ export function consumePendingDiscoverMerchantIntent(): string | null {
 		const parsed = JSON.parse(raw) as { cardAddress?: unknown }
 		const cardAddress = typeof parsed.cardAddress === 'string' ? parsed.cardAddress.trim() : ''
 		return cardAddress && ethers.isAddress(cardAddress) ? ethers.getAddress(cardAddress) : null
+	} catch {
+		return null
+	}
+}
+
+/** Pending merchant destination plus the sharer `ref=` (when the link carried one). */
+export function peekPendingDiscoverMerchantIntentDetail():
+	| { cardAddress: string; referrerEoa: string | null }
+	| null {
+	if (typeof window === 'undefined') return null
+	try {
+		const raw = window.sessionStorage.getItem(PENDING_DISCOVER_MERCHANT_INTENT_KEY)
+		if (!raw) return null
+		const parsed = JSON.parse(raw) as { cardAddress?: unknown; referrerEoa?: unknown }
+		const cardAddress = typeof parsed.cardAddress === 'string' ? parsed.cardAddress.trim() : ''
+		if (!cardAddress || !ethers.isAddress(cardAddress)) return null
+		const ref = typeof parsed.referrerEoa === 'string' ? parsed.referrerEoa.trim() : ''
+		return {
+			cardAddress: ethers.getAddress(cardAddress),
+			referrerEoa: ref && ethers.isAddress(ref) ? ethers.getAddress(ref) : null,
+		}
 	} catch {
 		return null
 	}

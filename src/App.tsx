@@ -101,6 +101,7 @@ import {
 import { parseDiscoverMerchantFromParams, stripDiscoverMerchantDeepLinkParams } from "@/utils/discoverMerchantShare"
 import { readDiscoverShareReferrer, stashDiscoverShareReferrer } from "@/utils/discoverShareReferrerStash"
 import { applyPendingConsumerDeepLinkIfNeeded } from "@/utils/pendingConsumerDeepLink"
+import { routeDiscoverMerchantDeepLink } from "@/utils/routeDiscoverMerchantDeepLink"
 import { publishNativePwaLog } from "@/utils/cashTreesNativePwaLog"
 import { declineIncomingVoiceOffer, peerVoiceMaterial, timeoutIncomingVoiceOffer } from '@/services/voiceCallController'
 import { BEAMIO_WALLET_READY_EVENT } from "@/utils/beamioWalletReadyEvent"
@@ -343,20 +344,14 @@ function AppShell() {
     if (!parsed) return
 
     initialDiscoverMerchantUrlProcessedRef.current = true
-    stashDiscoverShareReferrer(parsed.cardAddress, parsed.referrerEoa)
-    const privateKeyArmor = resolveSigningPrivateKeyArmor(profiles?.[0])
-    if (privateKeyArmor) {
-      void bindStashedShareRefereesIfNeeded(privateKeyArmor)
-    }
-    setShowFooter(false)
-    navigate('/discover', {
-      state: {
-        openDiscoverMerchantCard: parsed.cardAddress,
-        discoverShareReferrerEoa: parsed.referrerEoa,
-      },
+    // Same hand-off as pasting the link into global search (stash ref, bind, open detail).
+    routeDiscoverMerchantDeepLink({
+      cardAddress: parsed.cardAddress,
+      referrerEoa: parsed.referrerEoa,
+      profile: profiles?.[0],
+      navigate,
+      setShowFooter,
     })
-    /** Clear `?beamiocard=&discover=open` so Discover Back cannot leave main UI `invisible`. */
-    stripDiscoverMerchantDeepLinkParams()
   }, [isInitialLoading, navigate, profiles?.[0], setShowFooter])
 
   const couponShareClickRecordedRef = useRef(false)

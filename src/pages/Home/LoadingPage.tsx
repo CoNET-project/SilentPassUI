@@ -70,8 +70,10 @@ import { BeamioLocalePicker } from '@/components/locale/BeamioLocalePicker'
 import { writeBeamioUiLanguageBootstrap } from '@/utils/beamioProfileLocaleCurrency'
 import {
 	peekPendingDiscoverMerchantIntent,
+	peekPendingDiscoverMerchantIntentDetail,
 	rememberPendingDiscoverMerchantIntent,
 } from '@/utils/discoverMerchantShare'
+import { routeDiscoverMerchantDeepLink } from '@/utils/routeDiscoverMerchantDeepLink'
 
 
 const APP_VERSION = (packageJson as { version?: string }).version ?? ''
@@ -688,6 +690,25 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 
 	let first = true
 
+	/**
+	 * First launch with a merchant deep link: run the same hand-off as pasting the link
+	 * into global search (stash `ref=`, bind, open `/discover` detail, which then
+	 * auto-starts the free-membership join). Returns true when a link was routed.
+	 */
+	const routePendingMerchantDeepLink = (): boolean => {
+		const pending = peekPendingDiscoverMerchantIntentDetail()
+		if (!pending) return false
+		routeDiscoverMerchantDeepLink({
+			cardAddress: pending.cardAddress,
+			referrerEoa: pending.referrerEoa,
+			profile: CoNET_Data?.profiles?.[0],
+			navigate,
+			setShowFooter,
+			replace: true,
+		})
+		return true
+	}
+
 	// Capture the public merchant destination before onboarding rewrites the
 	// URL to `beamioTag` and `MasterKey`.
 	useLayoutEffect(() => {
@@ -705,10 +726,7 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 		setSettingsOpen('')
 		setIsInitialEntry(false)
 		setIsInitialLoading(false)
-		navigate('/discover', {
-			replace: true,
-			state: { openDiscoverMerchantCard: pendingMerchantCard },
-		})
+		routePendingMerchantDeepLink()
 	}, [settingsOpen, home, navigate, setIsInitialLoading])
 
 	// 仅适用于首次启动（本地存储无 beamio 信息）时的启动 URL 参数，不适用于 scan QR workflow
@@ -838,10 +856,7 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 		setIsInitialLoading(false)
 		home()
 		if (pendingMerchantCard) {
-			navigate('/discover', {
-				replace: true,
-				state: { openDiscoverMerchantCard: pendingMerchantCard },
-			})
+			routePendingMerchantDeepLink()
 			return
 		}
 	}, [isInitialEntry, hasCheckedUrl, redeemFromUrl, loading, settingsOpen, home])
@@ -857,10 +872,7 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 		setSettingsOpen('')
 		home()
 		if (pendingMerchantCard) {
-			navigate('/discover', {
-				replace: true,
-				state: { openDiscoverMerchantCard: pendingMerchantCard },
-			})
+			routePendingMerchantDeepLink()
 			return
 		}
 		navigate('/')
@@ -1290,10 +1302,7 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 									merchantDeepLinkRoutingRef.current = true
 									setSettingsOpen('')
 									home()
-									navigate('/discover', {
-										replace: true,
-										state: { openDiscoverMerchantCard: pendingMerchantCard },
-									})
+									routePendingMerchantDeepLink()
 									return
 								}
 								setSettingsOpen('OnboardingWelcomeScreen')

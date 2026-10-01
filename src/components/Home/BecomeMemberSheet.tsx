@@ -375,7 +375,11 @@ export function BecomeMemberSheet({
 					className="mt-4 w-full rounded-xl py-3 text-[16px] font-semibold text-white disabled:opacity-50"
 					style={{ backgroundColor: accent }}
 				>
-					{busy ? 'Saving…' : 'Continue to checkout →'}
+					{busy
+						? 'Saving…'
+						: feeIsFree && !topUpSummary
+							? 'Continue to Join →'
+							: 'Continue to checkout →'}
 				</button>
 			</div>
 			{documentKind ? (

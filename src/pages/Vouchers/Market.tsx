@@ -6241,6 +6241,12 @@ function DiscoverMerchantDetailFullScreen({
 	const [merchantAssetsTrustedForMembership, setMerchantAssetsTrustedForMembership] =
 		useState(() => initialMerchantAssets != null)
 	const autoMembershipJoinStartedRef = useRef(false)
+	/**
+	 * Deep-link entry: while we decide whether to auto-start the free-membership join
+	 * (needs trusted assets + published tiers), cover the detail page so it never
+	 * flashes before the claim / KYC page. Latched once the decision is made.
+	 */
+	const [deepLinkJoinCheckDone, setDeepLinkJoinCheckDone] = useState(false)
 	const [cardTopupSuccessBalance, setCardTopupSuccessBalance] = useState<string | null>(null)
 	const [cardTopupOverlayPhase, setCardTopupOverlayPhase] = useState<'idle' | 'listening' | 'success'>('idle')
 	const [cardTopupSuccessKind, setCardTopupSuccessKind] = useState<USDCUserCardTopupIntent>('topup')
@@ -6779,6 +6785,9 @@ function DiscoverMerchantDetailFullScreen({
 		fromMerchantDeepLink &&
 		merchantAssetsTrustedForMembership &&
 		!merchantAssetsLoading &&
+		// Auto-join is only for a non-member whose lowest published tier is free.
+		// Paid tiers and existing members stay on the Join or Top Up page.
+		!hasActiveMembership &&
 		membershipUi.mode === 'need_member' &&
 		membershipUi.joinTier?.tierIndex === 0 &&
 		isZeroMembershipFeeE6(membershipUi.joinTier?.feeE6) &&
@@ -6817,6 +6826,23 @@ function DiscoverMerchantDetailFullScreen({
 			profiles,
 		usdcTopupPhase,
 	])
+	const deepLinkJoinDecisionReady =
+		merchantAssetsTrustedForMembership && !merchantAssetsLoading && merchantMetadataRoot != null
+	useEffect(() => {
+		if (!fromMerchantDeepLink || deepLinkJoinCheckDone) return
+		// Decision made: not an auto-join case (member, paid tier, no fee) → reveal the page.
+		if (deepLinkJoinDecisionReady && !deepLinkZeroFeeMembership) setDeepLinkJoinCheckDone(true)
+	}, [fromMerchantDeepLink, deepLinkJoinCheckDone, deepLinkJoinDecisionReady, deepLinkZeroFeeMembership])
+	useEffect(() => {
+		// The auto-join flow is open and covers the page → the overlay is no longer needed.
+		if (discoverTopUpOpen && autoMembershipJoinStartedRef.current) setDeepLinkJoinCheckDone(true)
+	}, [discoverTopUpOpen])
+	useEffect(() => {
+		if (!fromMerchantDeepLink || deepLinkJoinCheckDone) return
+		// Never trap the user behind the overlay if data cannot be trusted in time.
+		const timer = window.setTimeout(() => setDeepLinkJoinCheckDone(true), 12_000)
+		return () => window.clearTimeout(timer)
+	}, [fromMerchantDeepLink, deepLinkJoinCheckDone])
 	const canDiscoverTopUp =
 		Boolean(item.cardAddress) &&
 		usdcTopupPhase === 'idle' &&
@@ -8855,6 +8881,17 @@ function DiscoverMerchantDetailFullScreen({
 
 	return (
 		<>
+		{fromMerchantDeepLink && !deepLinkJoinCheckDone ? (
+			<div
+				className="fixed inset-0 z-[125] flex items-center justify-center bg-black/60 backdrop-blur-[1px]"
+				role="status"
+				aria-live="polite"
+				aria-busy="true"
+				aria-label="Checking membership"
+			>
+				<Loader2 className="h-10 w-10 animate-spin text-white" aria-hidden />
+			</div>
+		) : null}
 		<div
 			className="flex h-full min-h-0 flex-col bg-[color:var(--discover-merchant-page-bg)] text-[#1f2328] dark:bg-slate-950 dark:text-slate-100"
 			style={

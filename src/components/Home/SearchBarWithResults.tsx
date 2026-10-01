@@ -20,11 +20,8 @@ import {
 import {
 	isDiscoverMerchantDeepLink,
 	parseDiscoverMerchantFromParams,
-	stripDiscoverMerchantDeepLinkParams,
 } from '@/utils/discoverMerchantShare'
-import { stashDiscoverShareReferrer } from '@/utils/discoverShareReferrerStash'
-import { bindStashedShareRefereesIfNeeded } from '@/utils/discoverShareClickEvent'
-import { resolveSigningPrivateKeyArmor } from '@/utils/resolveSigningPrivateKeyArmor'
+import { routeDiscoverMerchantDeepLink } from '@/utils/routeDiscoverMerchantDeepLink'
 import ScanButton, { type ScanButtonHandle } from '@/components/scanBtn/ScanButton'
 import { isCashTreesNativeWebView, scanQrViaCashTreesNative } from '@/utils/cashTreesIOSBridge'
 import { tu } from '@/locale/beamioLocale'
@@ -170,23 +167,18 @@ const SearchInputWithDropdown =
 			// → /discover detail + stash ref= so opener EOA binds as downline of referee EOA.
 			const parsedDiscover = parseDiscoverMerchantFromParams(searchParams)
 			if (parsedDiscover) {
-				stashDiscoverShareReferrer(parsedDiscover.cardAddress, parsedDiscover.referrerEoa)
-				const privateKeyArmor = resolveSigningPrivateKeyArmor(profiles?.[0])
-				if (privateKeyArmor) {
-					void bindStashedShareRefereesIfNeeded(privateKeyArmor)
-				}
 				setScanIntent('')
-				setShowFooter(false)
 				setLoading(false)
 				setShowDropdown(false)
 				closeWindow('/discover')
-				navigate('/discover', {
-					state: {
-						openDiscoverMerchantCard: parsedDiscover.cardAddress,
-						discoverShareReferrerEoa: parsedDiscover.referrerEoa,
-					},
+				// Shared hand-off: also used by cold start and first-launch onboarding.
+				routeDiscoverMerchantDeepLink({
+					cardAddress: parsedDiscover.cardAddress,
+					referrerEoa: parsedDiscover.referrerEoa,
+					profile: profiles?.[0],
+					navigate,
+					setShowFooter,
 				})
-				stripDiscoverMerchantDeepLinkParams()
 				return
 			}
 

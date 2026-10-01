@@ -520,6 +520,8 @@ export default function MerchantCardTopUpFlow({
 	const [merchantIcon, setMerchantIcon] = useState<string | undefined>()
 	const [payBusy, setPayBusy] = useState(false)
 	const [payError, setPayError] = useState('')
+	/** Membership claim failed; the error is shown inside the claim loading page. */
+	const [claimFailed, setClaimFailed] = useState(false)
 	const afterKycRef = useRef<(() => void) | null>(null)
 	const [membershipKyc, setMembershipKyc] = useState<null | {
 		policy: MembershipKycFormPolicy
@@ -550,6 +552,8 @@ export default function MerchantCardTopUpFlow({
 	const closeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 	const closeStartedRef = useRef(false)
 	const autoStartedMembershipRef = useRef(false)
+	/** True while this open-cycle is a deep-link zero-fee membership auto-join. */
+	const autoJoinSessionRef = useRef(false)
 	const shareResetTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 	const legsPlanGen = useRef(0)
 	const rowsReadyRef = useRef(false)
@@ -1026,7 +1030,10 @@ export default function MerchantCardTopUpFlow({
 		setIsClosing(false)
 		closeStartedRef.current = false
 		autoStartedMembershipRef.current = false
-		setStep('amount')
+		autoJoinSessionRef.current = Boolean(autoStartMembershipJoin) && stripeKind === 'membership'
+		// A deep-link zero-fee membership must never show the amount page.
+		// Start on the claim loader; the KYC sheet or the result page replaces it.
+		setStep(autoJoinSessionRef.current ? 'claiming' : 'amount')
 		setAmountInput(initialAmount?.trim() || '50.00')
 		setActiveTierIndex(membershipTierIndex ?? null)
 		afterKycRef.current = null
@@ -1036,6 +1043,7 @@ export default function MerchantCardTopUpFlow({
 		setUsedManual(false)
 		setSelected(new Set())
 		setPayError('')
+		setClaimFailed(false)
 		setPayBusy(false)
 		setSuccessNote('')
 		setSuccessAssets(null)
@@ -1423,13 +1431,14 @@ export default function MerchantCardTopUpFlow({
 	const claimZeroFeeMembership = (tierIndex: number) => {
 		const key = resolveSigningPrivateKeyArmor(profile)
 		const wallet = profile.keyID?.trim()
+		setStep('claiming')
 		if (!key || !wallet) {
 			setPayError('Sign in to claim membership.')
-			setStep('failed')
+			setClaimFailed(true)
 			return
 		}
 		setPayError('')
-		setStep('claiming')
+		setClaimFailed(false)
 		setPayBusy(true)
 		void (async () => {
 			try {
@@ -1452,8 +1461,9 @@ export default function MerchantCardTopUpFlow({
 					})
 				}
 				if (!claimed.success) {
+					// Keep the error inside the claim loading page.
 					setPayError(claimed.error || 'Membership claim failed')
-					setStep('failed')
+					setClaimFailed(true)
 					return
 				}
 				setMintedLabel('0.00')
@@ -1466,7 +1476,7 @@ export default function MerchantCardTopUpFlow({
 				onSuccess?.(assets)
 			} catch (e: unknown) {
 				setPayError(e instanceof Error ? e.message : 'Membership claim failed')
-				setStep('failed')
+				setClaimFailed(true)
 			} finally {
 				setPayBusy(false)
 			}
@@ -1492,11 +1502,21 @@ export default function MerchantCardTopUpFlow({
 		const key = resolveSigningPrivateKeyArmor(profile)
 		setPayBusy(true)
 		setPayError('')
+		setClaimFailed(false)
+		if (autoJoinSessionRef.current) setStep('claiming')
 		void (async () => {
 			let next: 'kyc' | 'continue' | null = null
 			try {
 				const wallet = profile.keyID?.trim() ?? ''
-				const needsKyc = await membershipJoinShouldShowKyc(cardAddress, [wallet, profileAa, resolvedAa])
+				// Development-only test switch: skip the KYC gate to exercise the claim page.
+				// `process.env.NODE_ENV` is inlined, so production bundles drop this branch.
+				const debugSkipKyc =
+					process.env.NODE_ENV !== 'production' &&
+					typeof window !== 'undefined' &&
+					window.localStorage.getItem('beamio:debug:skipMembershipKyc') === '1'
+				const needsKyc =
+					!debugSkipKyc &&
+					(await membershipJoinShouldShowKyc(cardAddress, [wallet, profileAa, resolvedAa]))
 				if (needsKyc) {
 					const policy = await loadMembershipKycPolicy(cardAddress)
 					if (policy) {
@@ -1516,6 +1536,8 @@ export default function MerchantCardTopUpFlow({
 							wallet,
 						})
 						next = 'kyc'
+						// KYC required: leave the claim loader and stay on the KYC sheet.
+						if (autoJoinSessionRef.current) setStep('amount')
 						return
 					}
 				}
@@ -1523,12 +1545,15 @@ export default function MerchantCardTopUpFlow({
 				// direct claim path still requires the local signing wallet.
 				if (!wallet || !key) {
 					setPayError('Sign in to claim membership.')
+					if (autoJoinSessionRef.current) setClaimFailed(true)
 					next = null
 					return
 				}
 				next = 'continue'
 			} catch (e: unknown) {
 				setPayError(e instanceof Error ? e.message : 'Could not check membership details.')
+				// Auto-join has no amount form to show the error on; keep it in the claim page.
+				if (autoJoinSessionRef.current) setClaimFailed(true)
 			} finally {
 				setPayBusy(false)
 			}
@@ -3267,20 +3292,58 @@ export default function MerchantCardTopUpFlow({
 
 					{step === 'claiming' && (
 						<div className="flex flex-1 flex-col items-center px-1 pt-16 text-center">
-							<Loader2
-								className="h-14 w-14 animate-spin"
-								style={{ color: merchantBrandActionColor }}
-								aria-hidden
-							/>
+							{claimFailed ? (
+								<AlertTriangle className="h-14 w-14 text-amber-500" aria-hidden />
+							) : (
+								<Loader2
+									className="h-14 w-14 animate-spin"
+									style={{ color: merchantBrandActionColor }}
+									aria-hidden
+								/>
+							)}
 							<h1 className="mt-7 text-[1.75rem] font-bold tracking-tight text-[#1c1c1e] dark:text-slate-100">
-								Claiming your membership
+								{claimFailed ? 'Membership was not completed' : 'Claiming your membership'}
 							</h1>
-							<p
-								className="mt-3 max-w-sm text-[15px] leading-relaxed dark:text-slate-400"
-								style={{ color: merchantBrandMutedColor }}
-							>
-								This takes a moment. You will see the result on this screen.
-							</p>
+							{claimFailed ? (
+								<>
+									<div
+										role="alert"
+										className="mt-5 w-full max-w-sm rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-left text-[15px] leading-6 text-amber-900"
+									>
+										{payError || 'Something went wrong. Please try again.'}
+									</div>
+									<button
+										type="button"
+										disabled={payBusy}
+										onClick={() => {
+											if (resolvedTierIndex != null && zeroFeeMembershipOnly) claimZeroFeeMembership(resolvedTierIndex)
+											else goPay()
+										}}
+										className="mt-8 w-full max-w-sm rounded-2xl py-4 text-[17px] font-bold text-white disabled:opacity-50"
+										style={{ backgroundColor: merchantBrandActionColor }}
+									>
+										Try again
+									</button>
+									<button
+										type="button"
+										onClick={close}
+										className="mt-3 w-full max-w-sm rounded-2xl py-4 text-[17px] font-semibold"
+										style={{
+											backgroundColor: merchantBrandIdleSurface,
+											color: merchantBrandActionColor,
+										}}
+									>
+										Done
+									</button>
+								</>
+							) : (
+								<p
+									className="mt-3 max-w-sm text-[15px] leading-relaxed dark:text-slate-400"
+									style={{ color: merchantBrandMutedColor }}
+								>
+									This takes a moment. You will see the result on this screen.
+								</p>
+							)}
 						</div>
 					)}
 

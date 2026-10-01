@@ -612,6 +612,7 @@ import {
   MapPin,
   Phone,
   ClipboardPaste,
+  Printer,
 } from 'lucide-react';
 import jsQR from 'jsqr';
 import { QRCodeCanvas } from 'qrcode.react';
@@ -52170,10 +52171,66 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
      {/* TxDisplayRow JSON modal (`raw` = full indexer Transaction + mapped UI fields) */}
      {merchantCardShareQrUrl ? (
        <div
-         className="fixed inset-0 z-[180] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm"
+         className="merchant-card-share-qr-dialog fixed inset-0 z-[180] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm"
          role="presentation"
          onClick={() => setMerchantCardShareQrUrl('')}
        >
+        <style>
+          {`
+            @media print {
+              body * {
+                visibility: hidden !important;
+              }
+              .merchant-card-share-qr-dialog,
+              .merchant-card-share-qr-dialog * {
+                visibility: visible !important;
+              }
+              .merchant-card-share-qr-dialog {
+                position: absolute !important;
+                inset: 0 !important;
+                display: block !important;
+                padding: 0 !important;
+                background: #fff !important;
+                backdrop-filter: none !important;
+              }
+              .merchant-card-share-qr-dialog > div {
+                position: static !important;
+                width: 100% !important;
+                max-width: none !important;
+                min-height: 100vh !important;
+                border: 0 !important;
+                border-radius: 0 !important;
+                box-shadow: none !important;
+              }
+              .merchant-card-share-qr-dialog .merchant-card-share-qr-close,
+              .merchant-card-share-qr-dialog .merchant-card-share-qr-actions,
+              .merchant-card-share-qr-dialog .merchant-card-share-qr-hint,
+              .merchant-card-share-qr-dialog .merchant-card-share-qr-url {
+                display: none !important;
+              }
+              .merchant-card-share-qr-dialog .merchant-card-share-qr-header {
+                padding-top: 2rem !important;
+                color: #fff !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+              }
+              .merchant-card-share-qr-dialog .merchant-card-share-qr-code {
+                margin-top: 2rem !important;
+                box-shadow: none !important;
+                break-inside: avoid;
+              }
+              .merchant-card-share-qr-dialog .merchant-card-share-qr-code canvas {
+                width: 280px !important;
+                height: 280px !important;
+              }
+              .merchant-card-share-qr-dialog .merchant-card-share-qr-print-note {
+                display: block !important;
+                margin-top: 1.25rem !important;
+                color: #475569 !important;
+              }
+            }
+          `}
+        </style>
         <div
           className="relative w-full max-w-sm overflow-hidden rounded-[30px] bg-white text-center shadow-2xl"
            role="dialog"
@@ -52185,81 +52242,99 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
              type="button"
              aria-label="Close merchant card QR code"
              onClick={() => setMerchantCardShareQrUrl('')}
-             className="absolute right-3 top-3 inline-flex h-9 w-9 items-center justify-center rounded-full text-[#2c2f31] transition hover:bg-slate-100"
+             className="merchant-card-share-qr-close absolute right-3 top-3 inline-flex h-9 w-9 items-center justify-center rounded-full text-[#2c2f31] transition hover:bg-slate-100"
            >
              <X className="h-5 w-5" strokeWidth={2.2} aria-hidden />
            </button>
           <div
-            className="px-6 pb-5 pt-7 text-white"
+            className="merchant-card-share-qr-header px-6 pb-5 pt-7 text-white"
             style={{ backgroundColor: cardIssuanceBrandColor.trim() || '#1562f0' }}
           >
-            <div className="mx-auto flex h-16 w-16 items-center justify-center overflow-hidden rounded-full border-4 border-white/80 bg-white shadow-lg">
-              {(cardIssuanceShareImageUrl.trim() || cardIssuanceExistingCard?.meta?.image?.trim()) ? (
-                <img
-                  src={cardIssuanceShareImageUrl.trim() || cardIssuanceExistingCard?.meta?.image?.trim() || ''}
-                  alt=""
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                <span className="text-2xl font-bold" aria-hidden>
-                  {programsOverviewDisplayName.trim().charAt(0).toUpperCase() || 'B'}
-                </span>
-              )}
-            </div>
-            <p className="mt-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/80">
+            <p
+              className="mt-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/80"
+              style={{ textShadow: '0 1px 3px rgba(15, 23, 42, 0.42)' }}
+            >
               Scan to join
             </p>
-            <h2 className="mt-1 truncate px-5 text-xl font-bold tracking-tight">
+            <h2
+              className="mt-1 whitespace-nowrap px-2 text-[clamp(0.875rem,3.8vw,1.25rem)] font-bold tracking-tight"
+              style={{ textShadow: '0 2px 4px rgba(15, 23, 42, 0.48)' }}
+            >
               {programsOverviewDisplayName || 'Merchant card'}
             </h2>
             {merchantPanelDiscoverSubtitle ? (
-              <p className="mt-1 line-clamp-2 text-sm leading-5 text-white/85">
+              <p
+                className="mt-1 line-clamp-2 text-sm leading-5 text-white/85"
+                style={{ textShadow: '0 1px 3px rgba(15, 23, 42, 0.42)' }}
+              >
                 {merchantPanelDiscoverSubtitle}
               </p>
             ) : null}
           </div>
           <div className="px-6 pb-6 pt-5">
-            <div className="mx-auto flex w-fit rounded-[26px] bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,0.10)] ring-1 ring-slate-100">
+            <div className="merchant-card-share-qr-code mx-auto flex w-fit rounded-[26px] bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,0.10)] ring-1 ring-slate-100">
               <QRCodeCanvas
                 value={merchantCardShareQrUrl}
                 size={240}
                 includeMargin
                 bgColor="#FFFFFF"
                 fgColor={cardIssuanceBrandColor.trim() || '#1562f0'}
+                imageSettings={
+                  (cardIssuanceShareImageUrl.trim() || cardIssuanceExistingCard?.meta?.image?.trim())
+                    ? {
+                        src: cardIssuanceShareImageUrl.trim() || cardIssuanceExistingCard?.meta?.image?.trim() || '',
+                        width: 48,
+                        height: 48,
+                        excavate: true,
+                      }
+                    : undefined
+                }
               />
             </div>
-            <p className="mt-4 text-sm font-medium leading-5 text-slate-600">
+            <p className="merchant-card-share-qr-print-note mt-4 hidden text-sm font-medium leading-5 text-slate-600">
               Scan to open this merchant card in Beamio.
             </p>
-            <div className="mt-4 flex items-center justify-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+            <div className="merchant-card-share-qr-hint mt-4 flex items-center justify-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
               <span>Scan</span>
               <span aria-hidden>→</span>
               <span>Sign up / Unlock</span>
               <span aria-hidden>→</span>
               <span>Join</span>
             </div>
-            <button
-              type="button"
-              aria-label={merchantCardShareQrUrlCopied ? 'URL copied' : 'Copy URL'}
-              disabled={merchantCardShareQrUrlCopied}
-              onClick={async () => {
-                try {
-                  await navigator.clipboard.writeText(merchantCardShareQrUrl);
-                  setMerchantCardShareQrUrlCopied(true);
-                  window.setTimeout(() => setMerchantCardShareQrUrlCopied(false), 2000);
-                } catch {
-                  // Clipboard access can be unavailable in an embedded browser.
-                }
-              }}
-              className="mx-auto mt-4 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-[#2c2f31] shadow-sm transition hover:bg-slate-50 disabled:cursor-default"
-            >
-              {merchantCardShareQrUrlCopied ? (
-                <Check className="h-4 w-4 text-emerald-500" strokeWidth={2.5} aria-hidden />
-              ) : (
-                <Copy className="h-4 w-4" strokeWidth={2.2} aria-hidden />
-              )}
-              <span>{merchantCardShareQrUrlCopied ? 'Copied' : 'Copy URL'}</span>
-            </button>
+            <div className="merchant-card-share-qr-actions mt-4 flex items-center justify-center gap-2">
+              <button
+                type="button"
+                aria-label={merchantCardShareQrUrlCopied ? 'URL copied' : 'Copy URL'}
+                disabled={merchantCardShareQrUrlCopied}
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(merchantCardShareQrUrl);
+                    setMerchantCardShareQrUrlCopied(true);
+                    window.setTimeout(() => setMerchantCardShareQrUrlCopied(false), 2000);
+                  } catch {
+                    // Clipboard access can be unavailable in an embedded browser.
+                  }
+                }}
+                className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-[#2c2f31] shadow-sm transition hover:bg-slate-50 disabled:cursor-default"
+              >
+                {merchantCardShareQrUrlCopied ? (
+                  <Check className="h-4 w-4 text-emerald-500" strokeWidth={2.5} aria-hidden />
+                ) : (
+                  <Copy className="h-4 w-4" strokeWidth={2.2} aria-hidden />
+                )}
+                <span>{merchantCardShareQrUrlCopied ? 'Copied' : 'Copy URL'}</span>
+              </button>
+              <button
+                type="button"
+                aria-label="Print merchant card QR code"
+                title="Print merchant card QR code"
+                onClick={() => window.print()}
+                className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-[#2c2f31] shadow-sm transition hover:bg-slate-50"
+              >
+                <Printer className="h-4 w-4" strokeWidth={2.2} aria-hidden />
+                <span>Print</span>
+              </button>
+            </div>
            </div>
          </div>
        </div>

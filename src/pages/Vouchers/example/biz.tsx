@@ -396,6 +396,7 @@ import {
   preventNumericInputStepKeys,
   preventNumericInputWheelStep,
 } from '@/utils/numericInputStepKeys';
+import { ensureQrForegroundContrast } from '@/utils/qrContrast';
 import {
   EMPTY_TOPUP_PROMOTION_DRAFT,
   TOPUP_PROMOTION_FIXED_TIERS_MAX,
@@ -52289,7 +52290,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                 size={240}
                 includeMargin
                 bgColor="#FFFFFF"
-                fgColor={cardIssuanceBrandColor.trim() || '#1562f0'}
+                fgColor={ensureQrForegroundContrast(cardIssuanceBrandColor)}
                 imageSettings={
                   (cardIssuanceShareImageUrl.trim() || cardIssuanceExistingCard?.meta?.image?.trim())
                     ? {

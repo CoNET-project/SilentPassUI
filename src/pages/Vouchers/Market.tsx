@@ -10416,7 +10416,7 @@ export default function Market() {
 										<DiscoverFeaturedBrandLogoImage
 											src={item.logo}
 											fallbackLetter={item.title}
-											className="w-11 h-11 rounded-xl object-cover"
+											className="w-14 h-14 rounded-xl object-cover"
 										/>
 									) : (
 										<span className="text-[20px] font-semibold text-[#94afff] leading-none">
@@ -10428,7 +10428,7 @@ export default function Market() {
 						</div>
 						<div className="px-5 pb-5 pt-10" style={{ backgroundColor: featuredBrandTint }}>
 							<div className="flex items-start justify-between gap-3 mb-1">
-								<h4 className="font-bold text-[19px] leading-none tracking-tight text-[#1f2328] dark:text-slate-100 line-clamp-1">
+								<h4 className="font-bold text-[19px] leading-[1.15] tracking-tight text-[#1f2328] dark:text-slate-100 line-clamp-1">
 									{item.title}
 								</h4>
 								<div className="flex shrink-0 -translate-y-10 items-center gap-2">

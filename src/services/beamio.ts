@@ -2180,55 +2180,6 @@ export const createRecover = async (BeamioName: string, pin: string) => {
 	return obj
 }
 
-/**
- * Coupon open-claim deep link: auto 12-word wallet + `temp_${uuid}` registry, no user PIN/tag input.
- * Replaces incomplete local wallet (no mnemonic) via `createOrGetWallet(null, true)`.
- */
-export const provisionTempCouponClaimWallet = async (): Promise<encrypt_keys_object | null> => {
-	const temp = await createOrGetWallet(null, true)
-	if (!temp?.mnemonicPhrase || !temp?.profiles?.length) return null
-
-	const wallet = temp.profiles[0].privateKeyArmor
-	if (!isValidEthersPrivateKey(wallet)) return null
-
-	const beamioTag = `temp_${uuid62.v4()}`
-	const recoverCode = generateCODE('')
-	const pin = uuid62.v4()
-	const stored = await hashPasswordBrowser(pin)
-	const phraseBase64 = toBase64(temp.mnemonicPhrase)
-	const img = await aesGcmEncryptWithStored(phraseBase64, recoverCode.code, stored)
-	const img1 = await aesGcmEncryptWithStored(phraseBase64, pin, stored)
-	const storageEncryptedImg = toBase64(JSON.stringify({ stored, img }))
-	temp.encryptedString = recoverCode.code
-	const hash = ethers.solidityPackedKeccak256(['string'], [beamioTag])
-	const storageEncryptedImg1 = toBase64(JSON.stringify({ stored, img: img1 }))
-
-	const registered = await newUser(
-		beamioTag,
-		[
-			{ hash: recoverCode.hash, encrypto: storageEncryptedImg },
-			{ hash, encrypto: storageEncryptedImg1 },
-		],
-		wallet,
-	)
-	if (!registered) return null
-
-	const keyID = temp.profiles[0].keyID
-	let userInfo: beamio | null = null
-	for (let attempt = 0; attempt < 20; attempt++) {
-		userInfo = await getUserInfo(keyID)
-		if (userInfo) break
-		await new Promise((resolve) => setTimeout(resolve, 1000))
-	}
-
-	temp.beamio = userInfo ?? buildMinimalBeamioFromAccountName(beamioTag)
-	temp.beamio.accountName = beamioTag
-	setCoNET_Data(temp)
-	await storeSystemData()
-	return temp
-}
-
-
 export const restoreWithRedeem = async (recoveryCode: string, pin: string) => {
 	const hash = ethers.solidityPackedKeccak256(['string'], [recoveryCode])
 

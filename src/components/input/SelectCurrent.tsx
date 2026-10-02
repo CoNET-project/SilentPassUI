@@ -50,17 +50,29 @@ const CurrencyPicker = ({ setCurrentCurrency, currentCurrency }: Props) => {
 		const itemWidth = 120; // 每个胶囊的估计宽度（包括间距）
 		const newCols = Math.max(2, Math.floor(width / itemWidth));
 
-		setCols(newCols);
+		setCols((previous) => (previous === newCols ? previous : newCols));
 		};
 
 		calculateCols();
 
-		const resizeObserver = new ResizeObserver(calculateCols);
+		let frame: number | null = null;
+		const scheduleCalculateCols = () => {
+			if (frame !== null) return;
+			frame = requestAnimationFrame(() => {
+				frame = null;
+				calculateCols();
+			});
+		};
+
+		const resizeObserver = new ResizeObserver(scheduleCalculateCols);
 		if (containerRef.current) {
 		resizeObserver.observe(containerRef.current);
 		}
 
-		return () => resizeObserver.disconnect();
+		return () => {
+			if (frame !== null) cancelAnimationFrame(frame);
+			resizeObserver.disconnect();
+		};
 	}, []);
 
   return (

@@ -46,12 +46,27 @@ export function Onetime_reuse_Drag({
     const el = rootRef.current
     if (!el) return
 
-    const update = () => setW(el.clientWidth || 0)
+    const update = () => {
+      const nextWidth = el.clientWidth || 0
+      setW((previous) => (previous === nextWidth ? previous : nextWidth))
+    }
     update()
 
-    const ro = new ResizeObserver(() => update())
+    let frame: number | null = null
+    const scheduleUpdate = () => {
+      if (frame !== null) return
+      frame = requestAnimationFrame(() => {
+        frame = null
+        update()
+      })
+    }
+
+    const ro = new ResizeObserver(scheduleUpdate)
     ro.observe(el)
-    return () => ro.disconnect()
+    return () => {
+      if (frame !== null) cancelAnimationFrame(frame)
+      ro.disconnect()
+    }
   }, [])
 
   // 外部 value 改变，同步滑块位置

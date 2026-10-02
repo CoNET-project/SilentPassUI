@@ -142,6 +142,7 @@ function useFitScaleX(containerRef: React.RefObject<HTMLElement>, contentRef: Re
 	  const container = containerRef.current
 	  const content = contentRef.current
 	  if (!container || !content) return
+	  let computeFrame: number | null = null
   
 	  const compute = () => {
 		// 容器可用宽度
@@ -165,13 +166,21 @@ function useFitScaleX(containerRef: React.RefObject<HTMLElement>, contentRef: Re
 		  return { scaleX: next, ready: true }
 		})
 	  }
+
+	  const scheduleCompute = () => {
+		if (computeFrame !== null) return
+		computeFrame = requestAnimationFrame(() => {
+		  computeFrame = null
+		  compute()
+		})
+	  }
   
 	  // 初次 + 字体加载后再算一次
 	  compute()
-	  const raf = requestAnimationFrame(compute)
+	  scheduleCompute()
   
 	  // 监听容器/内容尺寸变化
-	  const ro = new ResizeObserver(() => compute())
+	  const ro = new ResizeObserver(scheduleCompute)
 	  ro.observe(container)
 	  ro.observe(content)
   
@@ -179,11 +188,11 @@ function useFitScaleX(containerRef: React.RefObject<HTMLElement>, contentRef: Re
 	  // @ts-ignore
 	  if (document?.fonts?.ready) {
 		// @ts-ignore
-		document.fonts.ready.then(() => compute()).catch(() => {})
+		document.fonts.ready.then(scheduleCompute).catch(() => {})
 	  }
   
 	  return () => {
-		cancelAnimationFrame(raf)
+		if (computeFrame !== null) cancelAnimationFrame(computeFrame)
 		ro.disconnect()
 	  }
 	}, [containerRef, contentRef])

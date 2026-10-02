@@ -2044,18 +2044,30 @@ const ActiveHistoryPannelNew = ({
 
 		const measure = () => {
 			const rect = node.getBoundingClientRect()
-			onFloatingTopControlsSpaceChange(Math.ceil(rect.bottom + 16))
+			const nextSpace = Math.ceil(rect.bottom + 16)
+			if (nextSpace === lastSpace) return
+			lastSpace = nextSpace
+			onFloatingTopControlsSpaceChange(nextSpace)
 		}
 
-		measure()
-		const frame = window.requestAnimationFrame(measure)
-		const ro = new ResizeObserver(measure)
+		let lastSpace: number | null = null
+		let frame: number | null = null
+		const scheduleMeasure = () => {
+			if (frame !== null) return
+			frame = window.requestAnimationFrame(() => {
+				frame = null
+				measure()
+			})
+		}
+
+		scheduleMeasure()
+		const ro = new ResizeObserver(scheduleMeasure)
 		ro.observe(node)
-		window.addEventListener('resize', measure)
+		window.addEventListener('resize', scheduleMeasure)
 		return () => {
-			window.cancelAnimationFrame(frame)
+			if (frame !== null) window.cancelAnimationFrame(frame)
 			ro.disconnect()
-			window.removeEventListener('resize', measure)
+			window.removeEventListener('resize', scheduleMeasure)
 		}
 	}, [onFloatingTopControlsSpaceChange, useFloatingTopControls])
 

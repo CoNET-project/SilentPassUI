@@ -109,6 +109,7 @@ function OnboardHeroMarquee() {
 		let segmentPx = 0
 		let offsetPx = 0
 		let raf = 0
+		let layoutFrame: number | null = null
 		let last = performance.now()
 
 		const applyLayout = () => {
@@ -138,9 +139,17 @@ function OnboardHeroMarquee() {
 			track.style.transform = `translate3d(${offsetPx}px,0,0.01px)`
 		}
 
-		applyLayout()
+		const scheduleLayout = () => {
+			if (layoutFrame !== null) return
+			layoutFrame = requestAnimationFrame(() => {
+				layoutFrame = null
+				applyLayout()
+			})
+		}
 
-		const ro = new ResizeObserver(applyLayout)
+		scheduleLayout()
+
+		const ro = new ResizeObserver(scheduleLayout)
 		ro.observe(vp)
 
 		const tick = (now: number) => {
@@ -163,6 +172,7 @@ function OnboardHeroMarquee() {
 
 		return () => {
 			cancelAnimationFrame(raf)
+			if (layoutFrame !== null) cancelAnimationFrame(layoutFrame)
 			ro.disconnect()
 		}
 	}, [])

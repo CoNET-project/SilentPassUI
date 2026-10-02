@@ -541,7 +541,7 @@
   "programs_merchant_welcome_title_label": "Welcome title (Discover)",
   "programs_merchant_welcome_title_hint": "Exclusive Welcome Offer heading. Leave blank to use “Welcome to {store display name}”.",
   "programs_merchant_welcome_title_ph": "Welcome to …",
-  "programs_merchant_about_detail_label": "Detail (max {{max}} chars)",
+  "programs_merchant_about_detail_label": "Detail",
   "programs_merchant_about_detail_ph": "Long-form description for the About section…",
   "programs_merchant_about_opening_hours": "Opening Hours",
   "programs_merchant_about_opening_hours_ph": "Mon–Fri: 11 am – 9 pm\nSat–Sun: 10 am – 10 pm",

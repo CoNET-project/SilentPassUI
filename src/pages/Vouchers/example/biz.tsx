@@ -11303,8 +11303,6 @@ const CARD_ISSUANCE_LEGACY_MIN_TOPUP_DEFAULT = 10;
 const CARD_ISSUANCE_CONFIGURATION_MAX_CHARS = 200;
 /** Discover Exclusive Welcome Offer heading (optional; consumer defaults to Welcome to {displayName}). */
 const CARD_ISSUANCE_DISCOVER_WELCOME_TITLE_MAX = 200;
-/** Discover detail About block — long-form detail paragraph. */
-const CARD_ISSUANCE_DISCOVER_ABOUT_DETAIL_MAX = 2000;
 const CARD_ISSUANCE_DISCOVER_ABOUT_OPENING_HOURS_MAX = 500;
 const CARD_ISSUANCE_DISCOVER_ABOUT_CONTACT_MAX = 120;
 const CARD_ISSUANCE_DISCOVER_ABOUT_LOCATION_MAX = 500;
@@ -11319,7 +11317,7 @@ function buildDiscoverAboutMetadataPayload(fields: {
   const welcomeTitle = (fields.welcomeTitle ?? '')
     .trim()
     .slice(0, CARD_ISSUANCE_DISCOVER_WELCOME_TITLE_MAX);
-  const detail = fields.detail.trim().slice(0, CARD_ISSUANCE_DISCOVER_ABOUT_DETAIL_MAX);
+  const detail = fields.detail.trim();
   const openingHours = fields.openingHours.trim().slice(0, CARD_ISSUANCE_DISCOVER_ABOUT_OPENING_HOURS_MAX);
   const contact = fields.contact.trim().slice(0, CARD_ISSUANCE_DISCOVER_ABOUT_CONTACT_MAX);
   const location = fields.location.trim().slice(0, CARD_ISSUANCE_DISCOVER_ABOUT_LOCATION_MAX);
@@ -16314,9 +16312,7 @@ const cardIssuancePreviewLiveLogoIconClass = useMemo(
    setCardIssuanceDiscoverWelcomeTitle(
      (about?.welcomeTitle ?? '').trim().slice(0, CARD_ISSUANCE_DISCOVER_WELCOME_TITLE_MAX)
    );
-   setCardIssuanceDiscoverAboutDetail(
-     (about?.detail ?? '').trim().slice(0, CARD_ISSUANCE_DISCOVER_ABOUT_DETAIL_MAX)
-   );
+   setCardIssuanceDiscoverAboutDetail((about?.detail ?? '').trim());
    setCardIssuanceDiscoverAboutOpeningHours(
      (about?.openingHours ?? '').trim().slice(0, CARD_ISSUANCE_DISCOVER_ABOUT_OPENING_HOURS_MAX)
    );
@@ -43371,18 +43367,11 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                        />
                        <ProgramLivePreviewInlineField
                          hideLabel
-                         label={tu('programs_merchant_about_detail_label', {
-                           max: String(CARD_ISSUANCE_DISCOVER_ABOUT_DETAIL_MAX),
-                         })}
+                         label={tu('programs_merchant_about_detail_label')}
                          value={cardIssuanceDiscoverAboutDetail}
-                         onChange={(v) =>
-                           setCardIssuanceDiscoverAboutDetail(
-                             v.slice(0, CARD_ISSUANCE_DISCOVER_ABOUT_DETAIL_MAX)
-                           )
-                         }
+                         onChange={setCardIssuanceDiscoverAboutDetail}
                          multiline
                          rows={3}
-                         maxLength={CARD_ISSUANCE_DISCOVER_ABOUT_DETAIL_MAX}
                          placeholder={tu('programs_merchant_about_detail_ph')}
                          displayValue={
                            cardIssuanceDiscoverAboutDetail.trim()

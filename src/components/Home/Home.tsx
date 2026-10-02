@@ -10,8 +10,6 @@ import {formatAmountReadable, formatWithThousands, onWalletEvent, emitWalletEven
 import { refreshAppDaemonNow } from '@/services/appDaemonWorkerBridge'
 import { formatDigitalAssetDisplay } from '@/utils/formatDigitalAssetDisplay'
 import base_icon from '@/components/assets/base-logo.png'
-import ScanBtn, { type ScanButtonHandle } from '@/components/scanBtn/ScanButton'
-import { scanQrViaCashTreesNative } from '@/utils/cashTreesIOSBridge'
 import { beamioWalletAccent } from '@/utils/beamioWalletAccent'
 import { CoNET_Data, setCoNET_Data } from '../../utils/globals'
 import { detectDeviceNfcCapability, getCashTreesNativeNfcBridge, isCashTreesNativeWebView } from '@/utils/cashTreesNativeNfc'
@@ -549,7 +547,6 @@ const Home = (_props: HomeProps) => {
 	const [openingReceiveWalletId, setOpeningReceiveWalletId] = useState<string | null>(null)
 	const [receiveWalletOpenError, setReceiveWalletOpenError] = useState('')
 	const [receiveWalletUsdcAmount, setReceiveWalletUsdcAmount] = useState('')
-	const homeScanBtnRef = useRef<ScanButtonHandle>(null)
 	/** Pay 模式：与 MyWalletDashboardNew AA relay QR 同源（OpenContainer relay 签名 JSON） */
 	const [payRelayQRPayload, setPayRelayQRPayload] = useState<OpenContainerRelayPayload | null>(null)
 	const [payRelayQRLoading, setPayRelayQRLoading] = useState(false)
@@ -1926,32 +1923,11 @@ const Home = (_props: HomeProps) => {
 		if (state?.fundSheetFromWallet) navigate('/wallet', { replace: true })
 	}, [location.state, navigate, resetPayReceiveAuxState, setShowFooter])
 
-	const startHomeQrScan = useCallback(async () => {
-		closePayReceiveSheet()
-		if (isCashTreesNativeWebView()) {
-			try {
-				const result = await scanQrViaCashTreesNative()
-				if (result.ok) {
-					setScanData(result.text)
-					emitWalletEvent('scan:url', result.text)
-				}
-			} catch {
-				/* camera / cancel — keep last trusted UI, no toast */
-			}
-			return
-		}
-		homeScanBtnRef.current?.start({ hideModeSwitcher: true })
-	}, [closePayReceiveSheet, setScanData])
-
 	const closePayReceiveSheetTap = useReliableTapHandler(closePayReceiveSheet)
 	const payReceiveUsesPayChrome = payReceiveView === 'tabs' && payReceiveQrMode === 'pay'
 	const payReceiveUsesFundChrome =
 		payReceiveView === 'fund' || payReceiveView === 'qr' || payReceiveView === 'wallets'
 	const fundWalletOptionClass = `flex w-full items-center justify-between gap-4 rounded-2xl border border-[#e8eaed] bg-white px-4 py-4 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition active:scale-[0.99] active:bg-gray-50 dark:border-slate-700 dark:bg-slate-800 dark:active:bg-slate-700 ${HOME_TOUCH_BUTTON_CLASS}`
-	const payReceiveTabClass = (active: boolean) =>
-		active
-			? 'flex-1 rounded-full bg-white py-2 text-center text-sm font-semibold text-[#191c1d] shadow-sm dark:bg-slate-700 dark:text-slate-100'
-			: 'flex-1 rounded-full py-2 text-center text-sm font-medium text-[#737687] dark:text-slate-400'
 
 	const payRelayDeadlineUnix = useMemo(() => {
 		if (!payRelayQRPayload?.deadline) return NaN
@@ -3552,37 +3528,6 @@ const Home = (_props: HomeProps) => {
 												<X className="h-4 w-4" aria-hidden />
 											</button>
 										</div>
-										<div className="mx-auto w-full max-w-lg shrink-0 px-5 pb-3">
-											<div className="flex rounded-full bg-[#edeeef] p-1 dark:bg-slate-800" role="tablist" aria-label="Wallet receive">
-												<button
-													type="button"
-													role="tab"
-													aria-selected={payReceiveQrMode === 'receive'}
-													className={payReceiveTabClass(payReceiveQrMode === 'receive')}
-													onClick={() => setPayReceiveQrMode('receive')}
-												>
-													{tu('receive')}
-												</button>
-												<button
-													type="button"
-													role="tab"
-													aria-selected={payReceiveQrMode === 'pay'}
-													className={payReceiveTabClass(payReceiveQrMode === 'pay')}
-													onClick={() => setPayReceiveQrMode('pay')}
-												>
-													{tu('show_to_pay')}
-												</button>
-												<button
-													type="button"
-													role="tab"
-													aria-selected={false}
-													className={payReceiveTabClass(false)}
-													onClick={() => void startHomeQrScan()}
-												>
-													{tu('scan')}
-												</button>
-											</div>
-										</div>
 										<div
 											className={
 												payReceiveUsesPayChrome
@@ -4365,8 +4310,6 @@ const Home = (_props: HomeProps) => {
 				</div>,
 				document.body
 			)}
-
-			<ScanBtn ref={homeScanBtnRef} hidden />
 
 			{/* 底部向上弹出窗口 */}
 			{settingsOpen ? (

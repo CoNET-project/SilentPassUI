@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState, useLayoutEffect, useCallback } from "react"
 import { flushSync } from "react-dom"
-import { useLocation, useNavigate } from "react-router-dom"
+import { useNavigate } from "react-router-dom"
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
 import { motion, AnimatePresence } from "framer-motion"
 import { ethers } from "ethers"
@@ -1799,7 +1799,6 @@ const VOICE_RELAY_OPEN_ERROR = 'Voice call could not open a temporary relay.'
 
 export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction, onVoiceCallActive, onShowThread, threadHidden = false }: ChatProps) {
 	const navigate = useNavigate()
-	const location = useLocation()
 	const [text, setText] = useState("")
 	 
   	const {
@@ -1880,15 +1879,11 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		onVoiceCallActive?.(voiceCallState === 'outgoing')
 	}, [onVoiceCallActive, voiceCallState])
 
-	useEffect(() => {
-		if (threadHidden && voiceCallState === 'outgoing') setVoiceCallMinimized(true)
-	}, [threadHidden, voiceCallState])
-
-	useEffect(() => {
-		if (voiceCallState !== 'outgoing') return
-		if (location.pathname.toLowerCase() === '/chat') return
-		setVoiceCallMinimized(true)
-	}, [location.pathname, voiceCallState])
+	// The call surface is owned by this mounted Chat instance.  Do not infer
+	// "minimized" from a transient thread/router state: opening the call can
+	// update the parent chat state before the relay has finished, which used to
+	// hide the PWA call surface and leave only the "Calling…" bubble visible.
+	// Minimize is now changed only by the explicit minimize/reveal actions.
 
 	const pendingShowActiveCallRef = useRef(false)
 	const revealActiveVoiceCall = useCallback(() => {

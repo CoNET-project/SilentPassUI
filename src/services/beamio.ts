@@ -1307,13 +1307,15 @@ export type CheckStorageResult =
   | { status: 'empty' }
   | { status: 'unavailable'; reason: 'timeout' | 'indexeddb' | 'invalid_document' }
 
+let checkStorageInFlight: Promise<CheckStorageResult> | null = null
+
 /**
  * Read the local wallet without collapsing storage failures into "new user".
  *
  * This distinction is important for the Android embedded WebView: a temporary
  * IndexedDB/PouchDB failure must never send an existing wallet to onboarding.
  */
-export const checkStorageWithStatus = async (): Promise<CheckStorageResult> => {
+const readStorageWithStatus = async (): Promise<CheckStorageResult> => {
   try {
     const database = PouchDB(localDatabaseName, { auto_compaction: true })
     let doc: { title?: string }
@@ -1348,6 +1350,22 @@ export const checkStorageWithStatus = async (): Promise<CheckStorageResult> => {
   }
 }
 
+export const checkStorageWithStatus = (): Promise<CheckStorageResult> => {
+  // A slow IndexedDB read must not be duplicated by the retry path.
+  if (checkStorageInFlight) return checkStorageInFlight
+  const read = readStorageWithStatus()
+  checkStorageInFlight = read
+  read.then(
+    () => {
+      if (checkStorageInFlight === read) checkStorageInFlight = null
+    },
+    () => {
+      if (checkStorageInFlight === read) checkStorageInFlight = null
+    },
+  )
+  return read
+}
+
 export const checkStorage = async () => {
   const result = await checkStorageWithStatus()
   return result.status === 'loaded' ? result.data : null
@@ -1378,6 +1396,32 @@ export async function checkStorageWithStatusWithTimeout(
       window.setTimeout(() => resolve({ status: 'unavailable', reason: 'timeout' }), timeoutMs)
     }),
   ])
+}
+
+/**
+ * iOS WebViews can briefly reject IndexedDB/PouchDB reads while a newly
+ * promoted embedded bundle is settling. Retry only transient read failures;
+ * malformed wallet documents remain a hard failure. The read itself is
+ * single-flight, so retries never create concurrent PouchDB operations.
+ */
+export async function checkStorageWithTransientRetry(
+  timeoutMs = 5_000,
+  maxAttempts = 2,
+): Promise<CheckStorageResult> {
+  let result = await checkStorageWithStatusWithTimeout(timeoutMs)
+  for (let attempt = 1; attempt < maxAttempts; attempt += 1) {
+    if (
+      result.status !== 'unavailable' ||
+      result.reason === 'invalid_document'
+    ) {
+      return result
+    }
+    await new Promise<void>((resolve) => {
+      window.setTimeout(resolve, 350 * attempt)
+    })
+    result = await checkStorageWithStatusWithTimeout(timeoutMs)
+  }
+  return result
 }
 
 /** Cache 用的绝对 URL（Safari / PWA 路径不同，必须用 origin 级别 key 确保一致）

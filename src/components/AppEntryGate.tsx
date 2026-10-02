@@ -5,7 +5,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Outlet } from 'react-router-dom'
 import { useDaemonContext } from '@/providers/DaemonProvider'
-import { checkStorageWithStatusWithTimeout } from '@/services/beamio'
+import { checkStorageWithTransientRetry } from '@/services/beamio'
 import SplashScreen from '@/components/SplashScreen'
 import { EmbeddedPwaUpdateBanner } from '@/components/EmbeddedPwaUpdateBanner'
 import BeamioOnboardingModal from '@/pages/Home/LoadingPage'
@@ -69,7 +69,7 @@ export default function AppEntryGate() {
 		try {
 			// A timeout/error is not an empty wallet. Never enter onboarding until
 			// storage has either loaded or truthfully reported a missing init doc.
-			const storageResult = await checkStorageWithStatusWithTimeout()
+			const storageResult = await checkStorageWithTransientRetry()
 			if (storageResult.status === 'unavailable') {
 				publishNativePwaLog(
 					'error',

@@ -338,12 +338,18 @@ export default function WalletOverview() {
 
 					<section className="mt-7">
 						<h2 className="mb-3 ml-0.5 mt-0 text-[21px] font-extrabold leading-none tracking-[-0.7px]">Quick Actions</h2>
-						<div className="grid min-h-[98px] grid-cols-4 overflow-hidden rounded-[21px] border border-[rgba(213,225,239,0.72)] bg-white/75 shadow-[0_12px_35px_rgba(71,112,156,0.055)] backdrop-blur-[20px] dark:border-slate-700 dark:bg-slate-900/80">
+						<div className="grid min-h-[98px] grid-cols-[1fr_1fr_0.8fr_1.2fr] overflow-hidden rounded-[21px] border border-[rgba(213,225,239,0.72)] bg-white/75 shadow-[0_12px_35px_rgba(71,112,156,0.055)] backdrop-blur-[20px] dark:border-slate-700 dark:bg-slate-900/80">
 							<QuickAction
 								label="Deposit"
 								tone="blue"
 								onClick={() => openDeposit()}
-								icon={<span className="grid h-[31px] w-[31px] place-items-center rounded-full bg-[#0878f9] text-[28px] font-light leading-none text-white">+</span>}
+								icon={
+									<span className="grid h-[31px] w-[31px] place-items-center rounded-full bg-[#0878f9] text-white">
+										<svg viewBox="0 0 24 24" className="h-7 w-7" aria-hidden>
+											<path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="2.25" />
+										</svg>
+									</span>
+								}
 							/>
 							<QuickAction
 								label="Top up & Pay"

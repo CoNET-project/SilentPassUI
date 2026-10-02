@@ -1874,6 +1874,9 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 	const voicePlaybackRef = useRef<VoicePlaybackBuffer | null>(null)
 	const voiceFrameSeqRef = useRef(0)
 	const voiceFrameSendFailuresRef = useRef(0)
+	const voiceReceiveSessionRef = useRef<string | null>(null)
+	const voiceReceivedSeqRef = useRef(-1)
+	const voiceReceivedSeqsRef = useRef<Set<number>>(new Set())
 	const voiceControllerRef = useRef<VoiceCallController | null>(null)
 	const voiceCallStartingRef = useRef(false)
 	const [voiceCallConnecting, setVoiceCallConnecting] = useState(false)
@@ -2127,6 +2130,12 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			}
 			voiceFrameSeqRef.current = 0
 			voiceFrameSendFailuresRef.current = 0
+			const receiveSessionId = voiceCallPeerSessionRef.current
+			if (voiceReceiveSessionRef.current !== receiveSessionId) {
+				voiceReceiveSessionRef.current = receiveSessionId
+				voiceReceivedSeqRef.current = -1
+				voiceReceivedSeqsRef.current.clear()
+			}
 			voiceCaptureStopRef.current = await startVoiceCapture(stream, key, async (payload) => {
 				const route = chatData.chatData?.routersArmoreds?.trim()
 				if (!route || !callId || !targetSessionId) return
@@ -2531,6 +2540,9 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		voiceCallKeyRef.current = null
 		voiceCallPeerSessionRef.current = null
 		voiceCallSessionRef.current = null
+		voiceReceiveSessionRef.current = null
+		voiceReceivedSeqRef.current = -1
+		voiceReceivedSeqsRef.current.clear()
 		setVoiceCallState('idle')
 	}, [profiles, toAddress, upsertPhoneCallRecord])
 
@@ -2790,8 +2802,25 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			voiceCallState !== 'outgoing' ||
 			frame.type !== 'voice_frame_v1' ||
 			typeof frame.payload !== 'string' ||
-			frame.callId !== voiceCallOfferRef.current?.callId
+			frame.callId !== voiceCallOfferRef.current?.callId ||
+			(frame.sessionId !== voiceCallPeerSessionRef.current)
 		) return
+		const seq = Number(frame.seq)
+		if (!Number.isSafeInteger(seq) || seq < 0) return
+		// Fan-out through multiple entry nodes can deliver the same frame more
+		// than once. Never enqueue duplicates or old frames into the PCM player.
+		if (
+			voiceReceivedSeqsRef.current.has(seq) ||
+			seq <= voiceReceivedSeqRef.current
+		) return
+		voiceReceivedSeqsRef.current.add(seq)
+		voiceReceivedSeqRef.current = seq
+		if (voiceReceivedSeqsRef.current.size > 256) {
+			const floor = seq - 128
+			for (const seen of voiceReceivedSeqsRef.current) {
+				if (seen < floor) voiceReceivedSeqsRef.current.delete(seen)
+			}
+		}
 		void (async () => {
 			try {
 				const plain = await decryptVoiceFrame(

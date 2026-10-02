@@ -186,7 +186,11 @@ export class VoicePlaybackBuffer {
 		source.buffer = buffer
 		source.connect(this.analyser)
 		const now = this.context.currentTime
-		if (this.nextTime < now + 0.02) this.nextTime = now + 0.05
+		// Keep a small jitter buffer, but never play an old burst seconds late.
+		// Duplicate/fan-out frames are filtered by chat.tsx before this point.
+		if (this.nextTime < now + 0.02 || this.nextTime > now + 0.45) {
+			this.nextTime = now + 0.05
+		}
 		source.start(this.nextTime)
 		this.nextTime += buffer.duration
 		this.sources.push(source)

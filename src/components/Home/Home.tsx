@@ -451,11 +451,19 @@ const HOME_DUMMY_QR_CLEARANCE = 52
 const HOME_DUMMY_QR_CLEARANCE_PIXEL =
 	'data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw=='
 
-function HomeDecorativeQrMark() {
+function HomeDecorativeQrMark({
+	activateProps,
+}: {
+	activateProps?: {
+		onClick: () => void
+		onTouchEnd: (event: TouchEvent<HTMLButtonElement>) => void
+	}
+}) {
+	const interactive = Boolean(activateProps)
 	return (
 		<div
 			className="relative mx-auto box-content h-[132px] w-[132px] rounded-lg border-4 border-white bg-white"
-			aria-hidden
+			aria-hidden={!interactive}
 		>
 			<QRCodeCanvas
 				value={HOME_DUMMY_QR_VALUE}
@@ -464,7 +472,7 @@ function HomeDecorativeQrMark() {
 				includeMargin={false}
 				bgColor="#ffffff"
 				fgColor="#1a2744"
-				className="block"
+				className="pointer-events-none block"
 				imageSettings={{
 					src: HOME_DUMMY_QR_CLEARANCE_PIXEL,
 					width: HOME_DUMMY_QR_CLEARANCE,
@@ -472,9 +480,25 @@ function HomeDecorativeQrMark() {
 					excavate: true,
 				}}
 			/>
-			<span className="pointer-events-none absolute left-1/2 top-1/2 z-[1] grid h-11 w-11 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-white text-[#0b3f87] shadow-[0_0_0_4px_#fff]">
-				<Lock className="h-5 w-5" strokeWidth={2.4} />
-			</span>
+			{/* Center circle only: ink-red lock @ 50% + ring = tappable QR affordance */}
+			{interactive ? (
+				<button
+					type="button"
+					data-touch-priority="1"
+					{...activateProps}
+					className={`absolute left-1/2 top-1/2 z-[1] grid h-14 w-14 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border-2 border-[#8B1A2B]/50 bg-white text-[#8B1A2B]/50 shadow-[0_0_0_4px_#fff] ${HOME_TOUCH_BUTTON_CLASS}`}
+					aria-label="Generate your secure QR code"
+				>
+					<Lock className="h-5 w-5" strokeWidth={2.4} aria-hidden />
+				</button>
+			) : (
+				<span
+					className="pointer-events-none absolute left-1/2 top-1/2 z-[1] grid h-14 w-14 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border-2 border-[#8B1A2B]/50 bg-white text-[#8B1A2B]/50 shadow-[0_0_0_4px_#fff]"
+					aria-hidden
+				>
+					<Lock className="h-5 w-5" strokeWidth={2.4} />
+				</span>
+			)}
 		</div>
 	)
 }
@@ -2363,19 +2387,13 @@ const Home = (_props: HomeProps) => {
 								</div>
 								<div className="relative flex justify-center">
 									<HomeHeroQrRings />
-									<button
-										type="button"
-										data-touch-priority="1"
-										{...openPayCodeSheetTap}
-										className={`relative z-[1] w-[166px] rounded-[28px] bg-white/80 px-[13px] pb-[14px] pt-[19px] text-center shadow-[0_22px_42px_rgba(53,133,205,0.18)] backdrop-blur-[18px] dark:bg-slate-900/90 ${HOME_TOUCH_BUTTON_CLASS}`}
-										aria-label="Generate your secure QR code"
-									>
-										<HomeDecorativeQrMark />
+									<div className="relative z-[1] w-[166px] rounded-[28px] bg-white/80 px-[13px] pb-[14px] pt-[19px] text-center shadow-[0_22px_42px_rgba(53,133,205,0.18)] backdrop-blur-[18px] dark:bg-slate-900/90">
+										<HomeDecorativeQrMark activateProps={openPayCodeSheetTap} />
 										<p className="mt-2 text-[13px] font-extrabold text-[#080b58] dark:text-slate-100">Tap to activate</p>
 										<p className="mt-[3px] text-[10px] leading-snug text-[#66749d] dark:text-slate-400">
 											Generate your secure QR code
 										</p>
-									</button>
+									</div>
 								</div>
 							</section>
 

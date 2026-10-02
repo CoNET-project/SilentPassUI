@@ -5,6 +5,7 @@ import {
 	BeamioCircularBackButton,
 	beamioHeroFloatingBackTopStyle,
 } from '@/components/BeamioCircularBackButton'
+import { APP_FLOATING_CHROME_MAIN_TOP_PT } from '@/ui/appContentSpacing'
 
 type Props = {
 	policy: MembershipKycFormPolicy
@@ -146,7 +147,7 @@ export function BecomeMemberSheet({
 
 	return (
 		<div
-			className="fixed inset-0 z-[320] pointer-events-auto overflow-y-auto bg-[color:var(--membership-kyc-page-bg)] px-4 py-6 dark:bg-slate-950"
+			className={`fixed inset-0 z-[320] pointer-events-auto overflow-y-auto bg-[color:var(--membership-kyc-page-bg)] px-4 pb-6 ${APP_FLOATING_CHROME_MAIN_TOP_PT} dark:bg-slate-950`}
 			style={{ ['--membership-kyc-page-bg' as string]: surface } as CSSProperties}
 		>
 			{/* Keep Back chrome fixed above the scrolling KYC content, like merchant detail. */}

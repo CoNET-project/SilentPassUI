@@ -82,7 +82,7 @@ export function BecomeMemberSheet({
 	const showEmailOffers = policy.marketing === true && policy.fields.email !== 'off' && validEmail(email)
 	const showSmsOffers = policy.marketing === true && policy.fields.phone !== 'off' && validPhone(phone)
 	const topUpSummary = /top-?up/i.test(policy.offerLabel)
-	const feeLabel = topUpSummary ? 'Top-up amount' : 'Membership fee'
+	const feeLabel = topUpSummary ? 'Top-up amount' : 'Associate fee'
 	const rawFeeValue = policy.offerValue.trim()
 	const feeIsFree = !rawFeeValue || Number(rawFeeValue.replace(/[^\d.-]/g, '')) === 0
 	const feeValue = topUpSummary
@@ -162,7 +162,7 @@ export function BecomeMemberSheet({
 			</div>
 			<div className="mx-auto w-full max-w-lg">
 				<h1 className="text-center text-[32px] font-semibold tracking-tight text-[#1c1c1e]">
-					Become a member
+					Become a Associate
 				</h1>
 				<div className="mt-5 rounded-2xl border border-[#dedde8] bg-white px-5 py-5 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
 					<p
@@ -335,8 +335,14 @@ export function BecomeMemberSheet({
 						</p>
 					</div>
 				)}
-				<label className="mt-4 flex items-start gap-2 text-[13px] leading-5 text-[#3d4a57]">
-					<input type="checkbox" checked={terms} onChange={(event) => setTerms(event.target.checked)} />
+				<label className="mt-5 flex items-start gap-3 border-t border-[#e7e5ec] pt-5 text-[13px] leading-5 text-[#3d4a57]">
+					<input
+						type="checkbox"
+						checked={terms}
+						onChange={(event) => setTerms(event.target.checked)}
+						className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--membership-accent)]"
+						style={{ ['--membership-accent' as string]: accent } as CSSProperties}
+					/>
 					<span>
 						I agree to this organization’s{' '}
 						<button

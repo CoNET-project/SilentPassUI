@@ -2,7 +2,10 @@ import type { NavigateFunction } from 'react-router-dom'
 import { stashDiscoverShareReferrer } from '@/utils/discoverShareReferrerStash'
 import { bindStashedShareRefereesIfNeeded } from '@/utils/discoverShareClickEvent'
 import { resolveSigningPrivateKeyArmor } from '@/utils/resolveSigningPrivateKeyArmor'
-import { stripDiscoverMerchantDeepLinkParams } from '@/utils/discoverMerchantShare'
+import {
+	rememberPendingDiscoverMerchantIntentFor,
+	stripDiscoverMerchantDeepLinkParams,
+} from '@/utils/discoverMerchantShare'
 
 /**
  * Single hand-off for a Discover merchant deep link
@@ -27,6 +30,10 @@ export function routeDiscoverMerchantDeepLink(opts: {
 	const privateKeyArmor = resolveSigningPrivateKeyArmor(opts.profile)
 	if (privateKeyArmor) {
 		void bindStashedShareRefereesIfNeeded(privateKeyArmor)
+	} else {
+		// No wallet yet: the params are stripped below, so keep the destination
+		// for onboarding to resume at this merchant after the visitor creates a key.
+		rememberPendingDiscoverMerchantIntentFor(opts.cardAddress, referrerEoa)
 	}
 	opts.setShowFooter?.(false)
 	opts.navigate('/discover', {

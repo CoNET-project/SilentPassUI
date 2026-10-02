@@ -32,6 +32,29 @@ export function rememberPendingDiscoverMerchantIntent(rawHref?: string): string 
 	return parsed.cardAddress
 }
 
+/**
+ * Persist a merchant destination for the post-onboarding hand-off. Used when the
+ * cold-start router strips the deep-link params before the visitor has a wallet.
+ */
+export function rememberPendingDiscoverMerchantIntentFor(
+	cardAddress: string,
+	referrerEoa?: string | null,
+): void {
+	if (typeof window === 'undefined') return
+	if (!cardAddress || !ethers.isAddress(cardAddress)) return
+	try {
+		window.sessionStorage.setItem(
+			PENDING_DISCOVER_MERCHANT_INTENT_KEY,
+			JSON.stringify({
+				cardAddress: ethers.getAddress(cardAddress),
+				referrerEoa: referrerEoa ?? null,
+			}),
+		)
+	} catch {
+		/* ignore unavailable session storage */
+	}
+}
+
 export function consumePendingDiscoverMerchantIntent(): string | null {
 	if (typeof window === 'undefined') return null
 	try {

@@ -10250,7 +10250,7 @@ export default function Market() {
 		if (match) {
 			discoverDeepLinkHandledForRef.current = cardNorm
 			openDiscoverMerchantDetail(match, { immediate: true, fromMerchantDeepLink: true })
-			consumePendingDiscoverMerchantIntent()
+			if (resolveSigningPrivateKeyArmor()) consumePendingDiscoverMerchantIntent()
 			stripDiscoverMerchantDeepLinkParams()
 			navigate('.', { replace: true, state: {} })
 			return
@@ -10265,7 +10265,7 @@ export default function Market() {
 		)
 		discoverDeepLinkHandledForRef.current = cardNorm
 		openDiscoverMerchantDetail(fallback, { immediate: true, fromMerchantDeepLink: true })
-		consumePendingDiscoverMerchantIntent()
+		if (resolveSigningPrivateKeyArmor()) consumePendingDiscoverMerchantIntent()
 		stripDiscoverMerchantDeepLinkParams()
 		navigate('.', { replace: true, state: {} })
 	}, [
@@ -10298,7 +10298,7 @@ export default function Market() {
 			)
 			discoverDeepLinkHandledForRef.current = cardNorm
 			openDiscoverMerchantDetail(fallback, { immediate: true, fromMerchantDeepLink: true })
-			consumePendingDiscoverMerchantIntent()
+			if (resolveSigningPrivateKeyArmor()) consumePendingDiscoverMerchantIntent()
 			stripDiscoverMerchantDeepLinkParams()
 			navigate('.', { replace: true, state: {} })
 		})()

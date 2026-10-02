@@ -124,6 +124,7 @@ import {
 	INCOMING_CALL_RING_TIMEOUT_MS,
 	mergePhoneCallRecord,
 	phoneCallStampMs,
+	markVoiceCallTerminal,
 	rememberIncomingVoiceOffer,
 	VOICE_CALL_IDENTITY_WARNING,
 	voiceCallClaimMismatchesKey,
@@ -2398,6 +2399,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				createdAt: Number(offer.createdAt) || Date.now(),
 				answeredAt: Date.now(),
 			})
+			markVoiceCallTerminal(offer.callId, offer.sessionId)
 			// Android Answer already set the incoming Telecom connection active and
 			// removed the system card. placeCall here would open another system call.
 			if (getCashTreesNativeNfcHost() !== 'android') {
@@ -2441,6 +2443,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				createdAt: Number(offer.createdAt) || Date.now(),
 				endedAt: Date.now(),
 			})
+			markVoiceCallTerminal(offer.callId, offer.sessionId)
 			dispatchNativeSystemCallAction('endSystemCall', { callId: offer.callId })
 			setIncomingVoiceOffer(null)
 		} finally {
@@ -2464,6 +2467,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		const callSessionId = voiceCallOfferRef.current?.sessionId || sessionId || ''
 		if (callSessionId) locallyEndedVoiceSessionsRef.current.add(callSessionId)
 		if (callId) locallyEndedVoiceSessionsRef.current.add(callId)
+		if (callId && callSessionId) markVoiceCallTerminal(callId, callSessionId)
 		voiceCallOfferRef.current = null
 		voiceCallSessionRef.current = null
 		voiceCallPeerSessionRef.current = null
@@ -2532,6 +2536,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			signal?.type === 'voice_end_v1' &&
 			signal.sessionId === incomingVoiceOffer.sessionId
 		) {
+			markVoiceCallTerminal(signal.callId, signal.sessionId)
 			setIncomingVoiceOffer(null)
 			void endVoiceCall('cancelled', false)
 		}

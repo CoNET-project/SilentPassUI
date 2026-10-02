@@ -110,7 +110,7 @@ import { ingestAaMultisigFromChat } from '@/utils/aaMultisigIngest'
 import { tu } from '@/locale/beamioLocale'
 import { mapServerError } from '@/locale/mapServerError'
 import { installPwaLifecycleRecovery } from '@/utils/pwaLifecycleRecovery'
-import { applyNativeIncomingVoiceOfferFromLine, claimIncomingVoiceCallReport, claimedVoiceCallerAddress, claimedVoiceCallerTag, dismissNativeIncomingVoiceCall, forgetIncomingVoiceOffer, formatLookedUpBeamioTag, isVoiceCallOfferActive, lookupIncomingVoiceOffer, mergePhoneCallRecord, parseVoiceCallSignal, recoverVoiceCallOfferSigner, rememberIncomingVoiceOffer, VOICE_CALL_IDENTITY_WARNING, voiceCallClaimMismatchesKey } from '@/utils/voiceCallSession'
+import { applyNativeIncomingVoiceOfferFromLine, claimIncomingVoiceCallReport, claimedVoiceCallerAddress, claimedVoiceCallerTag, dismissNativeIncomingVoiceCall, forgetIncomingVoiceOffer, formatLookedUpBeamioTag, isVoiceCallOfferActive, lookupIncomingVoiceOffer, markVoiceCallTerminal, mergePhoneCallRecord, parseVoiceCallSignal, recoverVoiceCallOfferSigner, rememberIncomingVoiceOffer, VOICE_CALL_IDENTITY_WARNING, voiceCallClaimMismatchesKey } from '@/utils/voiceCallSession'
 
 global.Buffer = require("buffer").Buffer
 
@@ -1718,7 +1718,13 @@ function AppShell() {
 					signal.callId &&
 					signal.sessionId
 				) {
+					markVoiceCallTerminal(signal.callId, signal.sessionId)
 					forgetIncomingVoiceOffer(signal.callId, signal.sessionId)
+					setGlobalIncomingVoiceCall(current =>
+						current?.signal?.sessionId === signal.sessionId || current?.signal?.callId === signal.callId
+							? null
+							: current,
+					)
 					const terminalStatus = signal.type === 'voice_call_timeout_v1' ? 'timed_out' : 'declined'
 					const callRows = Array.isArray(profile.phoneCalls) ? profile.phoneCalls : []
 					const existing = callRows.find((item: PhoneCallRecord) =>
@@ -1747,6 +1753,7 @@ function AppShell() {
 					signal?.type === 'voice_end_v1' &&
 					signal.sessionId
 				) {
+					markVoiceCallTerminal(signal.callId, signal.sessionId)
 					dismissNativeIncomingVoiceCall(String(signal.callId || ''), signal.sessionId)
 					setGlobalIncomingVoiceCall((current) =>
 						current?.signal?.sessionId === signal.sessionId ? null : current,

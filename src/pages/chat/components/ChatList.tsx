@@ -18,7 +18,7 @@ import {storeSystemData} from '@/services/beamio'
 import { tu } from '@/locale/beamioLocale'
 import { chatShareLinkListPreview } from '@/utils/chatShareLinkPreview'
 import { chatGenericLinkListPreview } from '@/utils/chatGenericLinkPreview'
-import { isVoiceCallOfferActive, parseVoiceCallSignal } from '@/utils/voiceCallSession'
+import { isVoiceCallOfferActive, isVoiceCallTerminal, parseVoiceCallSignal } from '@/utils/voiceCallSession'
 import { isCashTreesNativeWebView } from '@/utils/cashTreesNativeNfc'
 
 // 注意：不再接受 `list` prop。ChatList 内部直接从 useDaemonContext().profiles[0].chats
@@ -362,7 +362,18 @@ export default function ChatList({
 		for (const item of items) {
 			const last = item.messages?.[item.messages.length - 1]
 			const signal = last?.from === 'them' && last.text ? parseVoiceCallSignal(last.text) : null
-			if (signal?.type === 'voice_call_offer_v1' && isVoiceCallOfferActive(signal)) {
+			const phoneCall = signal
+				? (profiles?.[0]?.phoneCalls || []).find((row: PhoneCallRecord) =>
+					row.callId === signal.callId || row.sessionId === signal.sessionId)
+				: null
+			const phoneCallTerminal = ['declined', 'cancelled', 'ended', 'missed', 'timed_out', 'failed']
+				.includes(String(phoneCall?.status || ''))
+			if (
+				signal?.type === 'voice_call_offer_v1' &&
+				!isVoiceCallTerminal(signal) &&
+				!phoneCallTerminal &&
+				isVoiceCallOfferActive(signal)
+			) {
 				return { item, signal }
 			}
 		}

@@ -149,6 +149,54 @@ export function isVoiceCallProtocolMessage(raw: unknown): boolean {
 
 const reportedIncomingVoiceCallIds = new Set<string>()
 const incomingVoiceOffersByHandle = new Map<string, VoiceCallSignal>()
+const terminalVoiceCallHandles = new Set<string>()
+const TERMINAL_VOICE_CALL_STORAGE_KEY = 'beamio:voice-call-terminal-handles:v1'
+
+function voiceCallHandleKey(callId: unknown, sessionId: unknown): string {
+	const call = String(callId || '').trim()
+	const session = String(sessionId || '').trim()
+	return call && session ? `${call}:${session}` : ''
+}
+
+function loadTerminalVoiceCallHandles(): void {
+	if (terminalVoiceCallHandles.size > 0 || typeof window === 'undefined') return
+	try {
+		const raw = window.localStorage.getItem(TERMINAL_VOICE_CALL_STORAGE_KEY)
+		const values = raw ? JSON.parse(raw) : []
+		if (Array.isArray(values)) {
+			values
+				.filter((value): value is string => typeof value === 'string' && value.includes(':'))
+				.slice(-200)
+				.forEach(value => terminalVoiceCallHandles.add(value))
+		}
+	} catch {
+		/* local storage is best effort; in-memory suppression still applies */
+	}
+}
+
+/** Persist a terminal state so replaying an old Chat line cannot ring again. */
+export function markVoiceCallTerminal(callId: string, sessionId: string): void {
+	const key = voiceCallHandleKey(callId, sessionId)
+	if (!key) return
+	loadTerminalVoiceCallHandles()
+	terminalVoiceCallHandles.add(key)
+	if (typeof window === 'undefined') return
+	try {
+		window.localStorage.setItem(
+			TERMINAL_VOICE_CALL_STORAGE_KEY,
+			JSON.stringify(Array.from(terminalVoiceCallHandles).slice(-200)),
+		)
+	} catch {
+		/* local storage is best effort */
+	}
+}
+
+export function isVoiceCallTerminal(signal: { callId?: unknown; sessionId?: unknown } | null | undefined): boolean {
+	if (!signal) return false
+	loadTerminalVoiceCallHandles()
+	const key = voiceCallHandleKey(signal.callId, signal.sessionId)
+	return Boolean(key && terminalVoiceCallHandles.has(key))
+}
 
 /** Keep the decrypted offer so a later native Decline can reject the caller. */
 export function rememberIncomingVoiceOffer(signal: VoiceCallSignal | null | undefined): void {
@@ -203,7 +251,12 @@ export function normalizeVoiceTimestampMs(value: unknown): number {
 }
 
 /** Accept both millisecond and Unix-second expiry values from mailbox/FCM paths. */
-export function isVoiceCallOfferActive(signal: { expiresAt?: unknown } | null | undefined): boolean {
+export function isVoiceCallOfferActive(signal: {
+	expiresAt?: unknown
+	callId?: unknown
+	sessionId?: unknown
+} | null | undefined): boolean {
+	if (isVoiceCallTerminal(signal)) return false
 	const expiresAtMs = normalizeVoiceTimestampMs(signal?.expiresAt)
 	return expiresAtMs > Date.now()
 }

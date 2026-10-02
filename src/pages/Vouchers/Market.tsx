@@ -84,7 +84,7 @@ import { checkStorage, searchUsername } from "@/services/beamio"
 import BeamioContactProfilePreview from "@/components/Home/BeamioContactProfilePreview"
 import DiscoverMerchantGiftSheet from "@/components/Home/DiscoverMerchantGiftSheet"
 import { fiatPrefix, formatAmount } from "@/services/currency"
-import { getMyAssetsAggregated, getMyAssets, peekGetMyAssetsCache, getCardTiersFromContract, getCardUpgradeTypeFromContract, quoteUSDCToCAD, postUSDCUserCardTopup, safeUsdc6ToAmountString, currencyAmountToSafeUsdc6, fetchCardActiveIssuedCouponSeriesTrusted, postCardCouponOpenClaimWithCurrentWallet, postCardRecordUserLikeWithCurrentWallet, resolveCouponOpenClaimEligibility, merchantBackgroundImageFromMetadataRoot, merchantIconUrlFromMetadataRoot, getCardOwner, getCardPosAdminEoas, readUserSocialPoints13BalanceOnCard, type CardActiveIssuedCouponSeriesItem, type CardMetadataFromUri, type CouponOpenClaimEligibility, type USDCUserCardTopupIntent } from "@/services/BeamioCard"
+import { getMyAssetsAggregated, getMyAssets, peekGetMyAssetsCache, getCardTiersFromContract, getCardUpgradeTypeFromContract, quoteUSDCToCAD, postUSDCUserCardTopup, safeUsdc6ToAmountString, currencyAmountToSafeUsdc6, fetchCardActiveIssuedCouponSeriesTrusted, postCardCouponOpenClaimWithCurrentWallet, postCardRecordUserLikeWithCurrentWallet, resolveCouponOpenClaimEligibility, merchantBackgroundImageFromMetadataRoot, merchantIconUrlFromMetadataRoot, merchantProgramCardDisplayNameFromMetadataRoot, getCardOwner, getCardPosAdminEoas, readUserSocialPoints13BalanceOnCard, type CardActiveIssuedCouponSeriesItem, type CardMetadataFromUri, type CouponOpenClaimEligibility, type USDCUserCardTopupIntent } from "@/services/BeamioCard"
 import {
 	couponOpenClaimEligibilityFromLocal,
 	pickCouponOpenClaimStatusFromMap,
@@ -193,12 +193,16 @@ import USDCUserCardTopupControl from "./USDCUserCardTopupControl"
 import ShowPayQR from "./showPayQR"
 import greenCard from "./assets/greenCard.png"
 import blackCard from "./assets/BlackCard.png"
-import longdhangStoreCardBg from "@/components/assets/longdhangStoreCardBg.png"
 import { isIpfsFragmentImageUrl } from "@/utils/ipfsImageLibrary"
 import DiscoverMerchantShareButton from '@/components/DiscoverMerchantShareButton'
 import { DiscoverCouponSharePromotionCard } from '@/components/discover/DiscoverCouponSharePromotionCard'
 import { useBeamioTagDatabase } from '@/providers/BeamioTagDatabaseProvider'
 import { formatBeamioTagDisplayLine } from '@/utils/aaMultisigTaskUi'
+import {
+	beamioTagFromRecord,
+	pickPeerFromSearchUsernameResponse,
+	recordFromSearchPeer,
+} from '@/utils/beamioAddressProfileRegistry'
 import { DiscoverTopupPromotionCapsule } from '@/components/discover/DiscoverTopupPromotionCapsule'
 import { DiscoverMerchantInviteFriendsPanel } from '@/components/discover/DiscoverMerchantInviteFriendsPanel'
 import { DiscoverReferrerDownlinePage } from '@/pages/Vouchers/DiscoverReferrerDownlinePage'
@@ -289,14 +293,6 @@ const DISCOVER_FEATURE_FALLBACK_IMAGES = [
 	"https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=1200&q=80",
 ] as const
 
-/**
- * Curated Featured Brands hero (large card image). Key: card address lowercased.
- * Takes precedence over on-chain `merchantImage` / metadata background to avoid load-time flicker.
- */
-const DISCOVER_CARD_HERO_OVERRIDES: Record<string, string> = {
-	[LONGDHANG_DISCOVER_CARD_ADDRESS.toLowerCase()]: longdhangStoreCardBg,
-}
-
 function resolveDiscoverFeaturedHeroImage(
 	cardAddress: string,
 	opts: {
@@ -306,13 +302,28 @@ function resolveDiscoverFeaturedHeroImage(
 		fallbackIndex: number
 	},
 ): string {
-	const override = DISCOVER_CARD_HERO_OVERRIDES[resolveDiscoverCardPanelKey(cardAddress)]?.trim()
-	if (override) return override
 	return (
 		opts.programBackgroundImage?.trim() ||
 		opts.merchantImage?.trim() ||
 		opts.dbImage?.trim() ||
 		DISCOVER_FEATURE_FALLBACK_IMAGES[opts.fallbackIndex % DISCOVER_FEATURE_FALLBACK_IMAGES.length]
+	)
+}
+
+function discoverHeroUsesStockFallback(src: string | null | undefined): boolean {
+	const value = (src ?? '').trim()
+	return DISCOVER_FEATURE_FALLBACK_IMAGES.some((url) => url === value)
+}
+
+/** Deep-link first paint before card metadata: factory/generic name or stock hero. */
+function discoverCardUsesPlaceholderPresentation(card: DiscoverFeaturedCard): boolean {
+	const title = card.title.trim()
+	return (
+		!title ||
+		title === 'Merchant' ||
+		title === 'User Card' ||
+		isGenericMerchantCardDisplayName(title) ||
+		discoverHeroUsesStockFallback(card.image)
 	)
 }
 
@@ -2996,19 +3007,41 @@ function DiscoverMerchantOwnerBeamioTagCapsule({
 	onOpenProfile?: () => void
 	profileOpening?: boolean
 }) {
-	const { lookupByAddress, resolveTag, avatarImgUrl, ensureProfilesForAddresses } = useBeamioTagDatabase()
+	const { lookupByAddress, resolveTag, avatarImgUrl, ensureProfilesForAddresses, ingestSearchResponse } =
+		useBeamioTagDatabase()
+	const [fetchedTag, setFetchedTag] = useState('')
+	const [fetchedImage, setFetchedImage] = useState('')
 
 	useEffect(() => {
+		setFetchedTag('')
+		setFetchedImage('')
 		if (!ownerEoa || !ethers.isAddress(ownerEoa)) return
+		let cancelled = false
 		void ensureProfilesForAddresses([ownerEoa])
-	}, [ownerEoa, ensureProfilesForAddresses])
+		void (async () => {
+			const res = await searchUsername(ownerEoa).catch(() => null)
+			if (cancelled || !res) return
+			ingestSearchResponse(res, ownerEoa)
+			const peer = pickPeerFromSearchUsernameResponse(res, ownerEoa.toLowerCase())
+			const rec = recordFromSearchPeer(ownerEoa.toLowerCase(), peer)
+			const tag = beamioTagFromRecord(rec).replace(/^@+/, '').trim()
+			if (cancelled || !tag) return
+			setFetchedTag(tag)
+			setFetchedImage(rec?.image?.trim() ?? '')
+		})()
+		return () => {
+			cancelled = true
+		}
+	}, [ownerEoa, ensureProfilesForAddresses, ingestSearchResponse])
 
 	if (!ownerEoa || !ethers.isAddress(ownerEoa)) return null
 
 	const record = lookupByAddress(ownerEoa)
-	const tagRaw = resolveTag(ownerEoa)
+	const mirrorTag = resolveTag(ownerEoa).replace(/^@+/, '').trim()
+	const tagRaw = mirrorTag || fetchedTag
+	if (!tagRaw) return null
 	const tagLine = formatBeamioTagDisplayLine(tagRaw)
-	const avatarSrc = avatarImgUrl(record?.accountName ?? tagRaw, ownerEoa)
+	const avatarSrc = fetchedImage || avatarImgUrl(record?.accountName ?? tagRaw, ownerEoa)
 	const interactive = Boolean(onOpenProfile)
 
 	const shellClass = [
@@ -3085,7 +3118,14 @@ function buildDiscoverFeaturedCardFromMerchantDb(
 	metadataRoot?: Record<string, unknown> | null,
 ): DiscoverFeaturedCard {
 	const dbImage = resolveImage(cardAddress)?.trim() || ''
-	const programName = meta?.name?.trim() || resolveName(cardAddress) || 'Merchant'
+	const metaRecord = (metadataRoot ?? meta) as Record<string, unknown> | null
+	const displayName = merchantProgramCardDisplayNameFromMetadataRoot(metaRecord)
+	const workerName = resolveName(cardAddress)?.trim() || ''
+	const programName =
+		displayName ||
+		(!isGenericMerchantCardDisplayName(workerName) ? workerName : '') ||
+		(!isGenericMerchantCardDisplayName(meta?.name) ? meta?.name?.trim() || '' : '') ||
+		'Merchant'
 	const category = classifyDiscoverMerchantCategory({
 		name: programName,
 		programDescription: discoverClassifyProgramDescription(cardAddress, meta?.programDescription ?? ''),
@@ -3094,18 +3134,26 @@ function buildDiscoverFeaturedCardFromMerchantDb(
 	const subtitleOverride =
 		DISCOVER_CARD_SUBTITLE_OVERRIDES[resolveDiscoverCardPanelKey(cardAddress)]
 	const hero = resolveDiscoverFeaturedHeroImage(cardAddress, {
-		programBackgroundImage: merchantBackgroundImageFromMetadataRoot(meta as Record<string, unknown> | null),
-		merchantImage: merchantBackgroundImageFromMetadataRoot(meta as Record<string, unknown> | null),
+		programBackgroundImage: merchantBackgroundImageFromMetadataRoot(metaRecord),
+		merchantImage: parseDiscoverMerchantImage(metaRecord),
 		dbImage: dbImage || meta?.image || meta?.icon || null,
 		fallbackIndex: 0,
 	})
-	const metaRecord = meta as Record<string, unknown> | null
+	const ownerRaw = typeof meta?.cardOwner === 'string' ? meta.cardOwner.trim() : ''
+	let cardOwner: string | null = null
+	if (ownerRaw && ethers.isAddress(ownerRaw)) {
+		try {
+			cardOwner = ethers.getAddress(ownerRaw)
+		} catch {
+			cardOwner = null
+		}
+	}
 	const currency = 'CAD'
 	const topupPresentation = resolveDiscoverFeaturedTopupPresentation(cardAddress, metaRecord, currency)
 	return {
 		id: cardAddress,
 		cardAddress,
-		cardOwner: null,
+		cardOwner,
 		category,
 		title: programName,
 		programName,
@@ -6162,7 +6210,7 @@ function DiscoverMerchantDetailFullScreen({
 		myBrandCardDetails,
 		setChatHomeItem,
 	} = useDaemonContext()
-	const { registerCardAddresses, resolveName, lookupByAddress, ensureCardsForAddresses, peekMetadata } =
+	const { registerCardAddresses, resolveName, resolveImage, lookupByAddress, ensureCardsForAddresses, peekMetadata } =
 		useMerchantCardDatabase()
 	const {
 		lookupByAddress: lookupProfileByAddress,
@@ -6343,9 +6391,29 @@ function DiscoverMerchantDetailFullScreen({
 	const usdcTopupPollAbortRef = useRef<AbortController | null>(null)
 	const usdcTopupUrlCopiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 	const ccy = (item.currency || "CAD").toUpperCase()
+	const merchantHeroTitle = useMemo(() => {
+		const fromMetadata = merchantProgramCardDisplayNameFromMetadataRoot(merchantMetadataRoot)
+		return pickMerchantCardListTitle({
+			workerName: fromMetadata,
+			metaName: resolveName(item.cardAddress ?? ''),
+			chainName: item.programName || item.title,
+			fallback: discoverCardUsesPlaceholderPresentation(item) ? '' : item.title,
+		})
+	}, [item, merchantMetadataRoot, resolveName])
+	const merchantHeroImage = useMemo(() => {
+		const fromMetadata = resolveDiscoverFeaturedHeroImage(item.cardAddress ?? '', {
+			programBackgroundImage: merchantBackgroundImageFromMetadataRoot(merchantMetadataRoot),
+			merchantImage: parseDiscoverMerchantImage(merchantMetadataRoot),
+			dbImage: item.cardAddress ? resolveImage(item.cardAddress) : null,
+			fallbackIndex: 0,
+		})
+		if (!discoverHeroUsesStockFallback(fromMetadata)) return fromMetadata
+		if (!discoverHeroUsesStockFallback(item.image)) return item.image
+		return fromMetadata
+	}, [item.cardAddress, item.image, merchantMetadataRoot, resolveImage])
 	const passTitle = pickMerchantCardListTitle({
 		workerName: resolveName(item.cardAddress ?? ''),
-		metaName: item.programName,
+		metaName: merchantHeroTitle || item.programName,
 		chainName: item.title,
 		fallback: '',
 	})
@@ -6574,7 +6642,6 @@ function DiscoverMerchantDetailFullScreen({
 
 	useEffect(() => {
 		if (!item.cardAddress || issuerOwnerEoa) return
-		if (!smartPayPrefetchDone) return
 		let cancelled = false
 		void getCardOwner(item.cardAddress)
 			.then((owner) => {
@@ -8851,12 +8918,12 @@ function DiscoverMerchantDetailFullScreen({
 						aria-hidden
 					/>
 					<DiscoverFeaturedBrandHeroImage
-						src={item.image}
+						src={merchantHeroImage}
 						alt=""
 						playing
-						videoSrc={discoverMerchantHeroVideoFromMetadata(item.metadataRoot)?.url}
+						videoSrc={discoverMerchantHeroVideoFromMetadata(merchantMetadataRoot ?? item.metadataRoot)?.url}
 						videoPoster={
-							discoverMerchantHeroVideoFromMetadata(item.metadataRoot)?.poster ?? item.image
+							discoverMerchantHeroVideoFromMetadata(merchantMetadataRoot ?? item.metadataRoot)?.poster ?? merchantHeroImage
 						}
 						className="pointer-events-none absolute inset-0 h-full w-full object-cover"
 					/>
@@ -8876,14 +8943,14 @@ function DiscoverMerchantDetailFullScreen({
 						<div className="min-w-0 flex items-center">
 							<h1
 								className={`max-w-full whitespace-nowrap font-bold leading-tight text-white drop-shadow-sm ${
-									item.title.trim().length > 30
+									merchantHeroTitle.trim().length > 30
 										? 'text-lg sm:text-xl'
-										: item.title.trim().length > 22
+										: merchantHeroTitle.trim().length > 22
 											? 'text-xl sm:text-2xl'
 											: 'text-2xl'
 								}`}
 							>
-								{item.title}
+								{merchantHeroTitle}
 							</h1>
 						</div>
 						<div
@@ -8922,7 +8989,7 @@ function DiscoverMerchantDetailFullScreen({
 						{item.cardAddress ? (
 							<DiscoverMerchantShareButton
 								cardAddress={item.cardAddress}
-								merchantTitle={item.title}
+								merchantTitle={merchantHeroTitle || item.title}
 								referrerEoa={shareReferrerEoa}
 							/>
 						) : null}
@@ -10247,24 +10314,19 @@ export default function Market() {
 		if (discoverDeepLinkHandledForRef.current === cardNorm) return
 
 		const match = discoverFeaturedCards.find((c) => c.cardAddress?.toLowerCase() === cardNorm)
-		if (match) {
-			discoverDeepLinkHandledForRef.current = cardNorm
-			openDiscoverMerchantDetail(match, { immediate: true, fromMerchantDeepLink: true })
-			if (resolveSigningPrivateKeyArmor()) consumePendingDiscoverMerchantIntent()
-			stripDiscoverMerchantDeepLinkParams()
-			navigate('.', { replace: true, state: {} })
-			return
-		}
-
-		const fallback = buildDiscoverFeaturedCardFromMerchantDb(
+		const cached = match ?? buildDiscoverFeaturedCardFromMerchantDb(
 			discoverDeepLinkTarget,
 			peekMetadata(discoverDeepLinkTarget),
 			resolveName,
 			resolveImage,
 			lookupByAddress(discoverDeepLinkTarget)?.metadataRoot,
 		)
+		// A fresh wallet has no merchant cache yet. Opening here paints the stock
+		// hero, generic name, and @Beamio tag. Wait for card metadata instead.
+		if (discoverCardUsesPlaceholderPresentation(cached)) return
+
 		discoverDeepLinkHandledForRef.current = cardNorm
-		openDiscoverMerchantDetail(fallback, { immediate: true, fromMerchantDeepLink: true })
+		openDiscoverMerchantDetail(cached, { immediate: true, fromMerchantDeepLink: true })
 		if (resolveSigningPrivateKeyArmor()) consumePendingDiscoverMerchantIntent()
 		stripDiscoverMerchantDeepLinkParams()
 		navigate('.', { replace: true, state: {} })
@@ -10283,7 +10345,6 @@ export default function Market() {
 		if (!discoverDeepLinkTarget) return
 		const cardNorm = discoverDeepLinkTarget.toLowerCase()
 		if (discoverDeepLinkHandledForRef.current === cardNorm) return
-		if (latestCardsLoading) return
 
 		let cancelled = false
 		void (async () => {
@@ -10309,7 +10370,6 @@ export default function Market() {
 	}, [
 		discoverDeepLinkTarget,
 		ensureCardMetadata,
-		latestCardsLoading,
 		lookupByAddress,
 		navigate,
 		openDiscoverMerchantDetail,

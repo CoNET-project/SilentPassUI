@@ -20,6 +20,8 @@ import { rewardPointsTotal } from '@/utils/myBrandsFeedState'
 import { formatDigitalAssetDisplay } from '@/utils/formatDigitalAssetDisplay'
 import FuelView from '@/components/Home/FuelView'
 import WalletAssetDetail, { type WalletAssetActionId, type WalletAssetKind } from '@/pages/Wallet/WalletAssetDetail'
+import storeCreditsLogo from '@/assets/store-credits-logo.png'
+import rewardPtLogo from '@/assets/reward-pt-logo.png'
 
 const headerCircleButtonClass =
 	'flex h-[47px] w-[47px] shrink-0 items-center justify-center rounded-full border border-[rgba(210,224,241,0.75)] bg-white/75 text-[#080817] shadow-[0_8px_24px_rgba(84,126,170,0.07)] backdrop-blur-[16px] transition-transform active:scale-[0.98] dark:border-slate-700 dark:bg-slate-800/80'
@@ -36,19 +38,12 @@ function formatWalletAssetAmount(value: number): string {
 	})
 }
 
-function WalletAssetIcon({
-	className,
-	children,
-}: {
-	className: string
-	children: React.ReactNode
-}) {
-	return (
-		<div className={`grid h-12 w-12 shrink-0 place-items-center rounded-full text-white ${className}`}>
-			{children}
-		</div>
-	)
-}
+const assetHeaderClass = 'mb-[13px] flex h-8 items-center gap-2 sm:h-12'
+const assetTitleClass =
+	'min-w-0 flex-1 whitespace-nowrap text-[clamp(10px,7.2cqi,16px)] font-bold leading-none tracking-[-0.35px] text-black/50 dark:text-white/50'
+const assetAmountClass =
+	'max-w-full whitespace-nowrap text-[clamp(12px,10cqi,22px)] font-extrabold leading-none tracking-[-0.8px] text-black/70 dark:text-white/70'
+const assetNoteClass = 'mt-[7px] whitespace-nowrap text-[clamp(12px,3.2vw,15px)] leading-snug tracking-[-0.25px]'
 
 export default function WalletOverview() {
 	const navigate = useNavigate()
@@ -270,75 +265,71 @@ export default function WalletOverview() {
 						</div>
 					</header>
 
-					<section className="grid grid-cols-2 gap-[13px]">
-						<button type="button" onClick={() => setAssetKind('usdc')} className="relative min-h-[144px] w-full overflow-hidden rounded-[18px] border border-white/55 bg-gradient-to-br from-[#edf6ff] to-[#e5f1ff] p-[15px] text-left font-[inherit] text-inherit dark:border-slate-700 dark:from-slate-900 dark:to-slate-800">
-							<div className="mb-[13px] flex items-center gap-[11px]">
-								<WalletAssetIcon className="bg-gradient-to-br from-[#1088ff] to-[#0866e8]">
-									<span className="grid h-8 w-8 place-items-center rounded-full border-2 border-white text-[21px] font-bold leading-none">
-										$
-									</span>
-								</WalletAssetIcon>
-								<div className="min-w-0 whitespace-nowrap text-[16px] font-bold tracking-[-0.5px] text-black/50 dark:text-white/50">USDC</div>
+					<section className="grid grid-cols-2 items-start gap-[13px]">
+						<button type="button" onClick={() => setAssetKind('usdc')} className="relative min-h-[144px] w-full overflow-hidden rounded-[18px] border border-white/55 bg-gradient-to-br from-[#edf6ff] to-[#e5f1ff] p-3 text-left font-[inherit] text-inherit [container-type:inline-size] sm:p-[15px] dark:border-slate-700 dark:from-slate-900 dark:to-slate-800">
+							<div className={assetHeaderClass}>
+								<span className="grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-full sm:h-12 sm:w-12">
+									<img
+										src="https://mainnet.conet.network/usdc/erc20/USDC.svg"
+										alt=""
+										className="h-full w-full object-cover"
+									/>
+								</span>
+								<div className={assetTitleClass}>USDC</div>
 							</div>
-							<div className="whitespace-nowrap text-[clamp(25px,6vw,31px)] font-extrabold leading-[1.05] tracking-[-1.5px] text-black/70 dark:text-white/70">
+							<div className={assetAmountClass}>
 								{usdcLabel} USDC
 							</div>
-							<div className="mt-[7px] text-[15px] leading-snug tracking-[-0.25px] text-[#356b9d]/80 dark:text-slate-300/80">
+							<div className={`${assetNoteClass} text-[#356b9d]/80 dark:text-slate-300/80`}>
 								{usdcCadLabel}
 							</div>
 						</button>
 
-						<button type="button" onClick={() => setAssetKind('credits')} className="relative min-h-[144px] w-full overflow-hidden rounded-[18px] border border-white/55 bg-gradient-to-br from-[#edfdf7] to-[#e8f9f3] p-[15px] text-left font-[inherit] text-inherit dark:border-slate-700 dark:from-slate-900 dark:to-slate-800">
-							<div className="mb-[13px] flex items-center gap-[11px]">
-								<WalletAssetIcon className="bg-gradient-to-br from-[#04d3ad] to-[#00af86]">
-									<svg viewBox="0 0 48 48" className="h-[31px] w-[31px]" aria-hidden>
-										<path d="M12 17h24l-2-6H14l-2 6Z" fill="currentColor" />
-										<rect x="13" y="19" width="22" height="16" rx="2" fill="none" stroke="currentColor" strokeWidth="3" />
-										<circle cx="20" cy="27" r="2" fill="currentColor" />
-										<circle cx="29" cy="27" r="2" fill="currentColor" />
-									</svg>
-								</WalletAssetIcon>
-								<div className="min-w-0 whitespace-nowrap text-[16px] font-bold tracking-[-0.5px] text-black/50 dark:text-white/50">Store Credits</div>
+						<button type="button" onClick={() => setAssetKind('credits')} className="relative min-h-[144px] w-full overflow-hidden rounded-[18px] border border-white/55 bg-gradient-to-br from-[#edfdf7] to-[#e8f9f3] p-3 text-left font-[inherit] text-inherit [container-type:inline-size] sm:p-[15px] dark:border-slate-700 dark:from-slate-900 dark:to-slate-800">
+							<div className={assetHeaderClass}>
+								<span className="grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-full sm:h-12 sm:w-12">
+									<img src={storeCreditsLogo} alt="" className="h-full w-full object-cover" />
+								</span>
+								<div className={assetTitleClass}>Store Credits</div>
 							</div>
-							<div className="whitespace-nowrap text-[clamp(25px,6vw,31px)] font-extrabold leading-[1.05] tracking-[-1.5px] text-black/70 dark:text-white/70">
+							<div className={assetAmountClass}>
 								{storeLabel}
 							</div>
-							<div className="mt-[7px] text-[15px] leading-snug tracking-[-0.25px] text-[#2c876f]/80 dark:text-slate-300/80">
+							<div className={`${assetNoteClass} text-[#2c876f]/80 dark:text-slate-300/80`}>
 								Across your merchants
 							</div>
 						</button>
 
-						<button type="button" onClick={() => setAssetKind('points')} className="relative min-h-[144px] w-full overflow-hidden rounded-[18px] border border-white/55 bg-gradient-to-br from-[#fff8e9] to-[#fff3db] p-[15px] text-left font-[inherit] text-inherit dark:border-slate-700 dark:from-slate-900 dark:to-slate-800">
-							<div className="mb-[13px] flex items-center gap-[11px]">
-								<WalletAssetIcon className="bg-gradient-to-br from-[#ffc24c] to-[#ff9f21]">
-									<svg viewBox="0 0 48 48" className="h-[31px] w-[31px]" aria-hidden>
-										<path d="M11 20l7 7 6-14 7 14 7-7-3 17H14L11 20Z" fill="none" stroke="currentColor" strokeWidth="3" strokeLinejoin="round" />
-										<path d="M16 39h17" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
-									</svg>
-								</WalletAssetIcon>
-								<div className="min-w-0 whitespace-nowrap text-[16px] font-bold tracking-[-0.5px] text-black/50 dark:text-white/50">Reward PT</div>
+						<button type="button" onClick={() => setAssetKind('points')} className="relative min-h-[144px] w-full overflow-hidden rounded-[18px] border border-white/55 bg-gradient-to-br from-[#fff8e9] to-[#fff3db] p-3 text-left font-[inherit] text-inherit [container-type:inline-size] sm:p-[15px] dark:border-slate-700 dark:from-slate-900 dark:to-slate-800">
+							<div className={assetHeaderClass}>
+								<span className="grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-full sm:h-12 sm:w-12">
+									<img src={rewardPtLogo} alt="" className="h-full w-full object-cover" />
+								</span>
+								<div className={assetTitleClass}>Reward PT</div>
 							</div>
-							<div className="whitespace-nowrap text-[clamp(25px,6vw,31px)] font-extrabold leading-[1.05] tracking-[-1.5px] text-black/70 dark:text-white/70">
+							<div className={assetAmountClass}>
 								{rewardLabel}
 							</div>
-							<div className="mt-[7px] text-[15px] leading-snug tracking-[-0.25px] text-[#a06e12]/80 dark:text-slate-300/80">
+							<div className={`${assetNoteClass} text-[#a06e12]/80 dark:text-slate-300/80`}>
 								Earn more rewards
 							</div>
 						</button>
 
-						<button type="button" onClick={() => setAssetKind('units')} className="relative min-h-[144px] w-full overflow-hidden rounded-[18px] border border-white/55 bg-gradient-to-br from-[#f7efff] to-[#f0e8ff] p-[15px] text-left font-[inherit] text-inherit dark:border-slate-700 dark:from-slate-900 dark:to-slate-800">
-							<div className="mb-[13px] flex items-center gap-[11px]">
-								<WalletAssetIcon className="bg-gradient-to-br from-[#ae4cff] to-[#8429e7]">
-									<svg viewBox="0 0 48 48" className="h-[31px] w-[31px]" aria-hidden>
-										<path d="M24 10 35 17v14L24 38 13 31V17L24 10Z" fill="none" stroke="currentColor" strokeWidth="3" />
-									</svg>
-								</WalletAssetIcon>
-								<div className="min-w-0 whitespace-nowrap text-[16px] font-bold tracking-[-0.5px] text-black/50 dark:text-white/50">Service Credits</div>
+						<button type="button" onClick={() => setAssetKind('units')} className="relative min-h-[144px] w-full overflow-hidden rounded-[18px] border border-white/55 bg-gradient-to-br from-[#f7efff] to-[#f0e8ff] p-3 text-left font-[inherit] text-inherit [container-type:inline-size] sm:p-[15px] dark:border-slate-700 dark:from-slate-900 dark:to-slate-800">
+							<div className={assetHeaderClass}>
+								<span className="grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-full sm:h-12 sm:w-12">
+									<img
+										src="https://mainnet.conet.network/bunit/erc20/BUNIT-256.png"
+										alt=""
+										className="h-full w-full origin-center scale-[1.65] object-cover"
+									/>
+								</span>
+								<div className={assetTitleClass}>Service Credits</div>
 							</div>
-							<div className="whitespace-nowrap text-[clamp(22px,5.2vw,31px)] font-extrabold leading-[1.05] tracking-[-1.5px] text-black/70 dark:text-white/70">
+							<div className={assetAmountClass}>
 								{bUnitLabel}
 							</div>
-							<div className="mt-[7px] text-[15px] leading-snug tracking-[-0.25px] text-[#7140a8]/80 dark:text-slate-300/80">
+							<div className={`${assetNoteClass} text-[#7140a8]/80 dark:text-slate-300/80`}>
 								{bUnitUsdLabel}
 							</div>
 						</button>
@@ -350,7 +341,7 @@ export default function WalletOverview() {
 							<QuickAction
 								label="Deposit"
 								tone="blue"
-								onClick={() => openDeposit()}
+								onClick={() => navigate('/', { state: { openFundWalletSheet: true } })}
 								icon={
 									<span className="grid h-[31px] w-[31px] place-items-center rounded-full bg-[#0878f9] text-white">
 										<svg viewBox="0 0 24 24" className="h-7 w-7" aria-hidden>

@@ -4,6 +4,8 @@
  */
 
 import React, { useEffect, useState } from 'react'
+import storeCreditsLogo from '@/assets/store-credits-logo.png'
+import rewardPtLogo from '@/assets/reward-pt-logo.png'
 import { BeamioCircularBackButton } from '@/components/BeamioCircularBackButton'
 import { getBUnitLedgerFromIndexer, type BUnitLedgerEntry } from '@/services/BeamioCard'
 import type { TxView } from '@/pages/History/recentActivityIndexerMerge'
@@ -33,6 +35,19 @@ type ActivityRow = {
 	value: string
 	positive: boolean
 	icon: string
+}
+
+const ASSET_LOGO_WASH_STYLE = {
+	background: 'linear-gradient(145deg, rgba(255,255,255,.95) 0%, rgba(255,255,255,.42) 34%, transparent 62%)',
+}
+
+function AssetLogoWash({ className, children }: { className: string; children: React.ReactNode }) {
+	return (
+		<span className={`relative z-[5] -translate-y-1 ${className}`}>
+			{children}
+			<span className="pointer-events-none absolute inset-0 rounded-full" style={ASSET_LOGO_WASH_STYLE} aria-hidden />
+		</span>
+	)
 }
 
 const THEME: Record<WalletAssetKind, { accent: string; soft: string; glow: string; pageA: string; pageB: string }> = {
@@ -312,25 +327,42 @@ export default function WalletAssetDetail({
 						<div className="mt-[13px] min-h-6 text-[15px] text-[#6672bd]">{copy.subBalance}</div>
 					</div>
 					<div className="absolute right-[-3px] top-[17px] flex h-[155px] w-[155px] items-center justify-center">
-						<div
-							className="absolute h-[140px] w-[140px] rounded-full blur-[4px]"
-							style={{ background: `radial-gradient(circle, ${theme.glow}, transparent 70%)` }}
-							aria-hidden
-						/>
-						<div
-							className={`relative z-[2] grid h-[92px] w-[92px] -translate-y-2.5 place-items-center p-2 shadow-[0_18px_25px_var(--accent-glow)] ${kind === 'units' ? 'rotate-[30deg] rounded-[25px]' : '-rotate-[5deg] rounded-full'}`}
-							style={{
-								background: `linear-gradient(145deg, rgba(255,255,255,.95), ${theme.accent}, ${theme.accent})`,
-								boxShadow: `0 18px 25px ${theme.glow}, inset 4px 4px 10px rgba(255,255,255,.7), inset -5px -6px 10px rgba(0,0,0,.15)`,
-							}}
-						>
-							<div
-								className={`grid h-full w-full place-items-center border-4 border-white/75 text-[45px] font-extrabold text-white ${kind === 'units' ? '-rotate-[30deg] rounded-[19px]' : 'rounded-full'}`}
-								style={{ textShadow: '0 2px 5px rgba(0,0,0,.15)' }}
-							>
-								{copy.symbol}
-							</div>
-						</div>
+						{kind === 'credits' || kind === 'points' ? (
+							<AssetLogoWash className="grid h-[132px] w-[132px] place-items-center">
+								<img
+									src={kind === 'credits' ? storeCreditsLogo : rewardPtLogo}
+									alt=""
+									className="h-full w-full object-contain"
+								/>
+							</AssetLogoWash>
+						) : kind === 'units' ? (
+							<AssetLogoWash className="grid h-[120px] w-[120px] place-items-center overflow-hidden rounded-full">
+								<img
+									src="https://mainnet.conet.network/bunit/erc20/BUNIT-256.png"
+									alt=""
+									className="h-full w-full origin-center scale-[1.65] object-cover"
+								/>
+							</AssetLogoWash>
+						) : (
+							<>
+								<div
+									className="absolute h-[140px] w-[140px] rounded-full blur-[4px]"
+									style={{ background: `radial-gradient(circle, ${theme.glow}, transparent 70%)` }}
+									aria-hidden
+								/>
+								<div
+									className="relative z-[2] h-[92px] w-[92px] -translate-y-2.5 -rotate-[5deg] overflow-hidden rounded-full"
+									style={{ boxShadow: `0 18px 25px ${theme.glow}` }}
+								>
+									<img
+										src="https://mainnet.conet.network/usdc/erc20/USDC.svg"
+										alt=""
+										className="h-full w-full object-cover"
+									/>
+									<div className="pointer-events-none absolute inset-0" style={ASSET_LOGO_WASH_STYLE} aria-hidden />
+								</div>
+							</>
+						)}
 						<div
 							className="absolute bottom-[5px] h-[42px] w-[118px] rounded-[50%_50%_10px_10px]"
 							style={{

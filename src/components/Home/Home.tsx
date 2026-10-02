@@ -17,7 +17,7 @@ import { CoNET_Data, setCoNET_Data } from '../../utils/globals'
 import { detectDeviceNfcCapability, getCashTreesNativeNfcBridge, isCashTreesNativeWebView } from '@/utils/cashTreesNativeNfc'
 import { WALLET_READY_INTENT_KEY } from '@/pages/Home/walletReadyIntent'
 import type { LucideIcon } from "lucide-react"
-import { useNavigate } from "react-router-dom"
+import { useLocation, useNavigate } from "react-router-dom"
 import { createOrGetWallet, storeSystemData, postBeamio} from "@/services/beamio"
 import BeamioAlphaHowItWorks from './BeamioAlphaHowItWorks'
 import BeamioNavBack from '@/components/Setting/BeamioNavBack'
@@ -502,6 +502,7 @@ const Home = (_props: HomeProps) => {
 	} = useDaemonContext()
 	const { resolveName, resolveImage, registerCardAddresses } = useMerchantCardDatabase()
 	const navigate = useNavigate()
+	const location = useLocation()
 
 	useEffect(() => {
 		const addrs = myBrandCards.map((c) => c.cardAddress).filter(Boolean)
@@ -1073,6 +1074,13 @@ const Home = (_props: HomeProps) => {
 		setShowPayReceiveSheet(true)
 		setShowFooter(false)
 	}
+
+	useEffect(() => {
+		const state = location.state as { openFundWalletSheet?: boolean } | null
+		if (!state?.openFundWalletSheet) return
+		handleAddFunds()
+		navigate('/', { replace: true, state: { fundSheetFromWallet: true } })
+	}, [location.state, navigate, resetPayReceiveAuxState, setShowFooter])
 
 	const dismissPayReceiveThenOpenAddCash = useCallback((mode: 'stripe' | 'coinbase') => {
 		setShowPayReceiveSheet(false)
@@ -1914,7 +1922,9 @@ const Home = (_props: HomeProps) => {
 		setPayReceiveQrMode('receive')
 		resetPayReceiveAuxState()
 		setShowFooter(true)
-	}, [resetPayReceiveAuxState, setShowFooter])
+		const state = location.state as { fundSheetFromWallet?: boolean } | null
+		if (state?.fundSheetFromWallet) navigate('/wallet', { replace: true })
+	}, [location.state, navigate, resetPayReceiveAuxState, setShowFooter])
 
 	const startHomeQrScan = useCallback(async () => {
 		closePayReceiveSheet()

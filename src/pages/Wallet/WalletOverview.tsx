@@ -28,6 +28,14 @@ function formatFiat2(n: number): string {
 	return Math.max(0, n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
+function formatWalletAssetAmount(value: number): string {
+	return formatDigitalAssetDisplay(value, {
+		maxChars: 7,
+		kThreshold: 10_000,
+		mThreshold: 1_000_000,
+	})
+}
+
 function WalletAssetIcon({
 	className,
 	children,
@@ -185,11 +193,11 @@ export default function WalletOverview() {
 	}, [navigate, openDeposit, setShowFooter])
 
 	const bUnits = bUnitBalance?.total ?? null
-	const usdcLabel = formatDigitalAssetDisplay(usdcTotal)
+	const usdcLabel = formatWalletAssetAmount(usdcTotal)
 	const usdcCadLabel = `≈ CA$ ${formatFiat2(usdcTotal * cadPerUsdc)}`
-	const storeLabel = `CA$ ${formatFiat2(storeCreditsCad)}`
-	const rewardLabel = `${formatFiat2(rewardPt)} PT`
-	const bUnitLabel = bUnits == null ? '…' : `${formatFiat2(bUnits)} B-Units`
+	const storeLabel = `CA$ ${formatWalletAssetAmount(storeCreditsCad)}`
+	const rewardLabel = `${formatWalletAssetAmount(rewardPt)} PT`
+	const bUnitLabel = bUnits == null ? '…' : `${formatWalletAssetAmount(bUnits)} B-Units`
 	const bUnitUsdLabel = bUnits == null ? '…' : `≈ $${formatFiat2(bUnits * 0.01)}`
 
 	return (
@@ -270,12 +278,12 @@ export default function WalletOverview() {
 										$
 									</span>
 								</WalletAssetIcon>
-								<div className="min-w-0 whitespace-nowrap text-[16px] font-bold tracking-[-0.5px]">USDC</div>
+								<div className="min-w-0 whitespace-nowrap text-[16px] font-bold tracking-[-0.5px] text-black/50 dark:text-white/50">USDC</div>
 							</div>
-							<div className="whitespace-nowrap text-[clamp(25px,6vw,31px)] font-extrabold leading-[1.05] tracking-[-1.5px]">
+							<div className="whitespace-nowrap text-[clamp(25px,6vw,31px)] font-extrabold leading-[1.05] tracking-[-1.5px] text-black/70 dark:text-white/70">
 								{usdcLabel} USDC
 							</div>
-							<div className="mt-[7px] text-[15px] leading-snug tracking-[-0.25px] text-[#777da8] dark:text-slate-400">
+							<div className="mt-[7px] text-[15px] leading-snug tracking-[-0.25px] text-[#356b9d]/80 dark:text-slate-300/80">
 								{usdcCadLabel}
 							</div>
 						</button>
@@ -290,12 +298,12 @@ export default function WalletOverview() {
 										<circle cx="29" cy="27" r="2" fill="currentColor" />
 									</svg>
 								</WalletAssetIcon>
-								<div className="min-w-0 whitespace-nowrap text-[16px] font-bold tracking-[-0.5px]">Store Credits</div>
+								<div className="min-w-0 whitespace-nowrap text-[16px] font-bold tracking-[-0.5px] text-black/50 dark:text-white/50">Store Credits</div>
 							</div>
-							<div className="whitespace-nowrap text-[clamp(25px,6vw,31px)] font-extrabold leading-[1.05] tracking-[-1.5px]">
+							<div className="whitespace-nowrap text-[clamp(25px,6vw,31px)] font-extrabold leading-[1.05] tracking-[-1.5px] text-black/70 dark:text-white/70">
 								{storeLabel}
 							</div>
-							<div className="mt-[7px] text-[15px] leading-snug tracking-[-0.25px] text-[#777da8] dark:text-slate-400">
+							<div className="mt-[7px] text-[15px] leading-snug tracking-[-0.25px] text-[#2c876f]/80 dark:text-slate-300/80">
 								Across your merchants
 							</div>
 						</button>
@@ -308,12 +316,12 @@ export default function WalletOverview() {
 										<path d="M16 39h17" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
 									</svg>
 								</WalletAssetIcon>
-								<div className="min-w-0 whitespace-nowrap text-[16px] font-bold tracking-[-0.5px]">Reward PT</div>
+								<div className="min-w-0 whitespace-nowrap text-[16px] font-bold tracking-[-0.5px] text-black/50 dark:text-white/50">Reward PT</div>
 							</div>
-							<div className="whitespace-nowrap text-[clamp(25px,6vw,31px)] font-extrabold leading-[1.05] tracking-[-1.5px]">
+							<div className="whitespace-nowrap text-[clamp(25px,6vw,31px)] font-extrabold leading-[1.05] tracking-[-1.5px] text-black/70 dark:text-white/70">
 								{rewardLabel}
 							</div>
-							<div className="mt-[7px] text-[15px] leading-snug tracking-[-0.25px] text-[#777da8] dark:text-slate-400">
+							<div className="mt-[7px] text-[15px] leading-snug tracking-[-0.25px] text-[#a06e12]/80 dark:text-slate-300/80">
 								Earn more rewards
 							</div>
 						</button>
@@ -325,12 +333,12 @@ export default function WalletOverview() {
 										<path d="M24 10 35 17v14L24 38 13 31V17L24 10Z" fill="none" stroke="currentColor" strokeWidth="3" />
 									</svg>
 								</WalletAssetIcon>
-								<div className="min-w-0 whitespace-nowrap text-[16px] font-bold tracking-[-0.5px]">Service Credits</div>
+								<div className="min-w-0 whitespace-nowrap text-[16px] font-bold tracking-[-0.5px] text-black/50 dark:text-white/50">Service Credits</div>
 							</div>
-							<div className="whitespace-nowrap text-[clamp(22px,5.2vw,31px)] font-extrabold leading-[1.05] tracking-[-1.5px]">
+							<div className="whitespace-nowrap text-[clamp(22px,5.2vw,31px)] font-extrabold leading-[1.05] tracking-[-1.5px] text-black/70 dark:text-white/70">
 								{bUnitLabel}
 							</div>
-							<div className="mt-[7px] text-[15px] leading-snug tracking-[-0.25px] text-[#777da8] dark:text-slate-400">
+							<div className="mt-[7px] text-[15px] leading-snug tracking-[-0.25px] text-[#7140a8]/80 dark:text-slate-300/80">
 								{bUnitUsdLabel}
 							</div>
 						</button>

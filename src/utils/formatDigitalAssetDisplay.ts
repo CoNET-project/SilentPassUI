@@ -20,6 +20,10 @@ export type FormatDigitalAssetDisplayOptions = {
 	maxChars?: number
 	/** Prefer this many fractional digits when space allows. Default 4. */
 	fractionDigits?: number
+	/** K suffix threshold. Default 100,000. */
+	kThreshold?: number
+	/** M suffix threshold. Default 10,000,000. */
+	mThreshold?: number
 	/** Optional leading prefix (e.g. "+" or "≈ ") — not counted in maxChars. */
 	prefix?: string
 }
@@ -105,6 +109,8 @@ export function formatDigitalAssetDisplay(
 	const n = parseFiniteNumber(value)
 	const maxSig = options?.maxChars ?? DIGITAL_ASSET_DISPLAY_MAX_CHARS
 	const fractionDigits = options?.fractionDigits ?? DIGITAL_ASSET_DISPLAY_DECIMALS
+	const kThreshold = options?.kThreshold ?? DIGITAL_ASSET_K_THRESHOLD
+	const mThreshold = options?.mThreshold ?? DIGITAL_ASSET_M_THRESHOLD
 	const prefix = options?.prefix ?? ''
 
 	if (n === null) {
@@ -120,9 +126,9 @@ export function formatDigitalAssetDisplay(
 	const abs = Math.abs(n)
 
 	let body: string
-	if (abs >= DIGITAL_ASSET_M_THRESHOLD) {
+	if (abs >= mThreshold) {
 		body = formatGroupedScaledBody(abs / 1_000_000, 'M', maxSig, fractionDigits)
-	} else if (abs >= DIGITAL_ASSET_K_THRESHOLD) {
+	} else if (abs >= kThreshold) {
 		body = formatGroupedScaledBody(abs / 1_000, 'K', maxSig, fractionDigits)
 	} else {
 		body = formatGroupedAmountBody(abs, maxSig, fractionDigits)

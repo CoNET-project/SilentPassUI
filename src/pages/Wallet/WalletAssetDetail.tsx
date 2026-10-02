@@ -294,14 +294,17 @@ export default function WalletAssetDetail({
 	const pageBackground = `radial-gradient(circle at 95% 22%, ${theme.glow}, transparent 27%), radial-gradient(circle at 15% 75%, rgba(255,255,255,.95), transparent 35%), linear-gradient(150deg, ${theme.pageA}, ${theme.pageB})`
 
 	return (
-		<div
-			className="fixed inset-0 z-[120] overflow-y-auto text-[#080b3b]"
-			style={{ background: pageBackground }}
-		>
+		<div className="fixed inset-0 z-[120] overflow-hidden">
 			<div
-				className="relative mx-auto min-h-[100dvh] w-full max-w-[480px] overflow-hidden bg-transparent px-4 pb-[calc(env(safe-area-inset-bottom)+18px)] pt-[calc(env(safe-area-inset-top)+16px)] transition-transform duration-300 ease-out"
+				className="absolute inset-0 overflow-y-auto text-[#080b3b] transition-transform duration-300 ease-out will-change-transform"
 				style={{
-					transform: shifted ? 'translateX(100%)' : 'translateX(0)',
+					background: pageBackground,
+					transform: shifted ? 'translate3d(100%, 0, 0)' : 'translate3d(0, 0, 0)',
+				}}
+			>
+			<div
+				className="relative mx-auto min-h-[100dvh] w-full max-w-[480px] overflow-hidden bg-transparent px-4 pb-[calc(env(safe-area-inset-bottom)+18px)] pt-[calc(env(safe-area-inset-top)+16px)]"
+				style={{
 					['--accent' as string]: theme.accent,
 					['--accent-soft' as string]: theme.soft,
 				}}
@@ -461,6 +464,7 @@ export default function WalletAssetDetail({
 						More
 					</button>
 				</section>
+			</div>
 			</div>
 		</div>
 	)

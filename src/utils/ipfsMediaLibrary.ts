@@ -1,13 +1,17 @@
 import {
   IPFS_GET_FRAGMENT_BASE,
+  LOCAL_LIBRARY_READ_TIMEOUT_MS,
   normalizeFragmentHash,
   parseFragmentHashFromUrl,
+  raceWithTimeout,
 } from '@/utils/ipfsImageLibrary'
 
 const DB_NAME = 'beamio_ipfs_media_library_v1'
 const DB_VERSION = 1
 const STORE = 'fragments'
 const BEAMIO_FRAGMENT_PROXY_BASE = 'https://beamio.app/api/fragment?hash='
+/** Videos are tens of MB; this only bounds a stalled connection, not a slow download. */
+const IPFS_MEDIA_FETCH_TIMEOUT_MS = 120000
 
 export type IpfsMediaLibraryRecord = {
   hash: string
@@ -165,16 +169,22 @@ async function fetchIpfsMediaFromNetwork(
     `${BEAMIO_FRAGMENT_PROXY_BASE}${encodeURIComponent(normalized)}`,
   ]
   for (const url of urls) {
-    const response = await fetch(url, { cache: 'force-cache' }).catch(() => null)
-    if (!response?.ok) continue
-    const parsed = await parseMediaResponse(response).catch(() => null)
-    if (!parsed) continue
-    return {
-      hash: normalized,
-      blob: parsed.blob,
-      mime: parsed.mime,
-      savedAt: Date.now(),
-      byteLength: parsed.blob.size,
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), IPFS_MEDIA_FETCH_TIMEOUT_MS)
+    try {
+      const response = await fetch(url, { cache: 'force-cache', signal: controller.signal }).catch(() => null)
+      if (!response?.ok) continue
+      const parsed = await parseMediaResponse(response).catch(() => null)
+      if (!parsed) continue
+      return {
+        hash: normalized,
+        blob: parsed.blob,
+        mime: parsed.mime,
+        savedAt: Date.now(),
+        byteLength: parsed.blob.size,
+      }
+    } finally {
+      clearTimeout(timer)
     }
   }
   return null
@@ -185,7 +195,11 @@ export async function resolveIpfsMediaRecord(
 ): Promise<IpfsMediaLibraryRecord | null> {
   const normalized = normalizeFragmentHash(hash)
   if (!normalized) return null
-  const local = await getLocalIpfsMediaRecord(normalized).catch(() => null)
+  const local = await raceWithTimeout(
+    getLocalIpfsMediaRecord(normalized).catch(() => null),
+    LOCAL_LIBRARY_READ_TIMEOUT_MS,
+    null,
+  )
   if (local) return local
   const inflight = inflightByHash.get(normalized)
   if (inflight) return inflight
@@ -194,7 +208,8 @@ export async function resolveIpfsMediaRecord(
     try {
       const remote = await fetchIpfsMediaFromNetwork(normalized)
       if (!remote) return null
-      await putLocalIpfsMedia(normalized, remote.blob, remote.mime).catch(() => {})
+      // Persisting is best-effort; a stalled IndexedDB write must not delay playback.
+      void putLocalIpfsMedia(normalized, remote.blob, remote.mime).catch(() => {})
       return remote
     } finally {
       inflightByHash.delete(normalized)

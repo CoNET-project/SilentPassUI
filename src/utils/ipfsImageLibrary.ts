@@ -19,6 +19,30 @@ export type IpfsImageLibraryRecord = {
 
 const inflightByHash = new Map<string, Promise<IpfsImageLibraryRecord | null>>()
 
+/**
+ * IndexedDB can stall on first launch (iOS WebView right after install / onboarding).
+ * A local read must never block the network path, and a failed local read is a miss,
+ * not a reason to delete or ignore the stored record.
+ */
+export const LOCAL_LIBRARY_READ_TIMEOUT_MS = 1500
+const IPFS_IMAGE_FETCH_TIMEOUT_MS = 15000
+
+export function raceWithTimeout<T>(task: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return new Promise<T>((resolve) => {
+    const timer = setTimeout(() => resolve(fallback), ms)
+    task.then(
+      (value) => {
+        clearTimeout(timer)
+        resolve(value)
+      },
+      () => {
+        clearTimeout(timer)
+        resolve(fallback)
+      },
+    )
+  })
+}
+
 async function isDecodableImageBlob(blob: Blob): Promise<boolean> {
   if (!blob || blob.size <= 0) return false
 
@@ -271,18 +295,25 @@ export async function fetchIpfsFragmentFromNetwork(
   ]
 
   for (const url of candidateUrls) {
-    const res = await fetch(url, { cache: 'force-cache' }).catch(() => null)
-    if (!res?.ok) continue
+    // A stalled first host must not keep the beamio.app proxy from being tried.
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), IPFS_IMAGE_FETCH_TIMEOUT_MS)
+    try {
+      const res = await fetch(url, { cache: 'force-cache', signal: controller.signal }).catch(() => null)
+      if (!res?.ok) continue
 
-    const parsed = await parseFragmentResponseToBlob(res).catch(() => null)
-    if (!parsed) continue
+      const parsed = await parseFragmentResponseToBlob(res).catch(() => null)
+      if (!parsed) continue
 
-    return {
-      hash: norm,
-      blob: parsed.blob,
-      mime: parsed.mime,
-      savedAt: Date.now(),
-      byteLength: parsed.blob.size,
+      return {
+        hash: norm,
+        blob: parsed.blob,
+        mime: parsed.mime,
+        savedAt: Date.now(),
+        byteLength: parsed.blob.size,
+      }
+    } finally {
+      clearTimeout(timer)
     }
   }
 
@@ -297,7 +328,11 @@ export async function resolveIpfsFragmentRecord(hash: string): Promise<IpfsImage
   const norm = normalizeFragmentHash(hash)
   if (!norm) return null
 
-  const local = await getLocalIpfsImageRecord(norm).catch(() => null)
+  const local = await raceWithTimeout(
+    getLocalIpfsImageRecord(norm).catch(() => null),
+    LOCAL_LIBRARY_READ_TIMEOUT_MS,
+    null,
+  )
   if (local) return local
 
   const inflight = inflightByHash.get(norm)
@@ -307,7 +342,8 @@ export async function resolveIpfsFragmentRecord(hash: string): Promise<IpfsImage
     try {
       const remote = await fetchIpfsFragmentFromNetwork(norm)
       if (remote) {
-        await putLocalIpfsImage(norm, remote.blob, remote.mime).catch(() => {})
+        // Persisting is best-effort; a stalled IndexedDB write must not delay the picture.
+        void putLocalIpfsImage(norm, remote.blob, remote.mime).catch(() => {})
         return remote
       }
       return null

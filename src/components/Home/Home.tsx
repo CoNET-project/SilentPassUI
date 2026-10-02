@@ -2361,9 +2361,9 @@ const Home = (_props: HomeProps) => {
 							/>
 
 							<div className="relative mx-auto w-full min-w-0 max-w-lg self-center space-y-8 px-3 pt-2 sm:px-5">
-							<section className="relative mb-[50px] grid min-h-[230px] min-w-0 grid-cols-[minmax(0,1fr)_166px] items-center gap-2">
+							<section className="relative mb-[50px] flex min-w-0 flex-col items-stretch gap-6 min-[480px]:grid min-[480px]:min-h-[230px] min-[480px]:grid-cols-[minmax(0,1fr)_166px] min-[480px]:items-center min-[480px]:gap-2">
 								<div className="relative z-10 min-w-0">
-									<h2 className="m-0 text-[35px] font-extrabold leading-[1.03] tracking-[-1.6px] text-[#080b58] dark:text-slate-100">
+									<h2 className="m-0 max-w-full text-[clamp(28px,8.2vw,35px)] font-extrabold leading-[1.03] tracking-[-1.2px] text-[#080b58] min-[480px]:text-[35px] min-[480px]:tracking-[-1.6px] dark:text-slate-100">
 										One QR.
 										<span className="block bg-gradient-to-b from-[#63b9ff] to-[#0560f6] bg-clip-text text-transparent">
 											More

@@ -342,7 +342,13 @@ function LocalFirstIpfsVideo({
 	preload?: 'none' | 'metadata' | 'auto'
 	onError?: () => void
 }) {
-	const localFirstSrc = useIpfsMediaSrc(src)
+	// Merchant videos are tens of MB: play from the network while it downloads instead of
+	// waiting for the whole fragment. A local library hit is still used first.
+	const [libraryMode, setLibraryMode] = useState(false)
+	useEffect(() => {
+		setLibraryMode(false)
+	}, [src])
+	const localFirstSrc = useIpfsMediaSrc(src, { streamFirst: !libraryMode })
 	const localFirstPoster = useObjectImgSrc(poster ?? undefined)
 	return (
 		<video
@@ -357,8 +363,62 @@ function LocalFirstIpfsVideo({
 			preload={preload}
 			crossOrigin="anonymous"
 			disablePictureInPicture
-			onError={onError}
+			onError={() => {
+				// Some legacy fragments are stored as base64 text, which cannot be streamed;
+				// retry once through the media library that decodes them.
+				if (!libraryMode && isIpfsFragmentImageUrl(src)) {
+					setLibraryMode(true)
+					return
+				}
+				onError?.()
+			}}
 		/>
+	)
+}
+
+/** Mounts the video only near the viewport so a long Stories row does not stream every clip at once. */
+function DiscoverCarouselVideoTile({
+	url,
+	thumbnailUrl,
+	root,
+}: {
+	url: string
+	thumbnailUrl?: string
+	root: Element | null
+}) {
+	const holderRef = useRef<HTMLDivElement | null>(null)
+	const [near, setNear] = useState(false)
+	useEffect(() => {
+		const holder = holderRef.current
+		if (!holder) return
+		if (typeof IntersectionObserver === 'undefined') {
+			setNear(true)
+			return
+		}
+		const observer = new IntersectionObserver(
+			entries => {
+				const last = entries[entries.length - 1]
+				if (last) setNear(last.isIntersecting)
+			},
+			{ root, rootMargin: '0px 240px 0px 240px' },
+		)
+		observer.observe(holder)
+		return () => observer.disconnect()
+	}, [root])
+	return (
+		<div ref={holderRef} className="h-full w-full">
+			{near ? (
+				<LocalFirstIpfsVideo
+					src={url}
+					poster={thumbnailUrl}
+					className="h-full w-full rounded-xl object-cover"
+					controls
+					preload="metadata"
+				/>
+			) : thumbnailUrl ? (
+				<IpfsImg src={thumbnailUrl} alt="" className="h-full w-full rounded-xl object-cover" draggable={false} />
+			) : null}
+		</div>
 	)
 }
 
@@ -1210,6 +1270,7 @@ function DiscoverMerchantMediaCarousel({
 	metadataRoot: Record<string, unknown> | null | undefined
 }) {
 	const items = useMemo(() => discoverMerchantMediaItems(metadataRoot), [metadataRoot])
+	const [scroller, setScroller] = useState<HTMLDivElement | null>(null)
 	if (items.length === 0) return null
 	return (
 		<section className="overflow-hidden rounded-2xl border border-[#ebe6df] bg-white shadow-[0_8px_24px_rgba(31,35,40,0.06)] dark:border-slate-700 dark:bg-slate-900">
@@ -1218,18 +1279,15 @@ function DiscoverMerchantMediaCarousel({
 					Stories
 				</p>
 			</div>
-			<div className="flex snap-x snap-mandatory touch-pan-x gap-3 overflow-x-auto overscroll-x-contain px-4 pb-4 pt-3 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+			<div
+				ref={setScroller}
+				className="flex snap-x snap-mandatory touch-pan-x gap-3 overflow-x-auto overscroll-x-contain px-4 pb-4 pt-3 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+			>
 				{items.map((item) => (
 					<div key={`${item.kind}:${item.url}`} className="w-[min(78vw,23rem)] shrink-0 snap-start overflow-hidden rounded-xl bg-slate-100 dark:bg-slate-800">
 						<div className="aspect-[4/3] overflow-hidden rounded-xl">
 							{item.kind === 'video' ? (
-								<LocalFirstIpfsVideo
-									src={item.url}
-									poster={item.thumbnailUrl}
-									className="h-full w-full rounded-xl object-cover"
-									controls
-									preload="metadata"
-								/>
+								<DiscoverCarouselVideoTile url={item.url} thumbnailUrl={item.thumbnailUrl} root={scroller} />
 							) : (
 								<IpfsImg src={item.url} alt={item.title} className="h-full w-full rounded-xl object-cover" />
 							)}

@@ -1584,7 +1584,6 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 				{hasImage ? (
 					<div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
 						<CardPassBackgroundImage src={imageUrl} fit={backgroundImageFit} />
-						<div className="absolute inset-0 bg-slate-950/20" />
 					</div>
 				) : null}
 				{hasImage ? null : logoUrl ? (
@@ -1604,8 +1603,14 @@ function DiscoverMerchantFoodBeverageProspectPassPanel({
 				)}
 				{showMemberAccess ? (
 					<div className="absolute bottom-5 right-5 z-10 flex items-center gap-2 text-white">
-						<Users className="h-6 w-6 shrink-0" strokeWidth={2} aria-hidden />
-						<span className="text-[16px] font-bold leading-none tracking-tight">Member access</span>
+						<Users
+							className="h-6 w-6 shrink-0 drop-shadow-[0_1px_3px_rgba(15,23,42,0.9)]"
+							strokeWidth={2}
+							aria-hidden
+						/>
+						<span className="text-[16px] font-bold leading-none tracking-tight [text-shadow:0_1px_3px_rgba(15,23,42,0.9),0_0_8px_rgba(15,23,42,0.55)]">
+							Member access
+						</span>
 					</div>
 				) : null}
 			</section>

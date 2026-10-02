@@ -462,7 +462,7 @@ function HomeDecorativeQrMark({
 	const interactive = Boolean(activateProps)
 	return (
 		<div
-			className="relative mx-auto box-content h-[132px] w-[132px] rounded-lg border-4 border-white bg-white"
+			className="relative mx-auto aspect-square w-full max-w-[132px] rounded-lg border-4 border-white bg-white"
 			aria-hidden={!interactive}
 		>
 			<QRCodeCanvas
@@ -472,7 +472,8 @@ function HomeDecorativeQrMark({
 				includeMargin={false}
 				bgColor="#ffffff"
 				fgColor="#1a2744"
-				className="pointer-events-none block"
+				className="pointer-events-none !block !h-full !w-full !max-h-full !max-w-full"
+				style={{ width: '100%', height: '100%' }}
 				imageSettings={{
 					src: HOME_DUMMY_QR_CLEARANCE_PIXEL,
 					width: HOME_DUMMY_QR_CLEARANCE,
@@ -486,17 +487,17 @@ function HomeDecorativeQrMark({
 					type="button"
 					data-touch-priority="1"
 					{...activateProps}
-					className={`absolute left-1/2 top-1/2 z-[1] grid h-14 w-14 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border-2 border-[#8B1A2B]/50 bg-white text-[#8B1A2B]/50 shadow-[0_0_0_4px_#fff] ${HOME_TOUCH_BUTTON_CLASS}`}
+					className={`absolute left-1/2 top-1/2 z-[1] grid aspect-square w-[42%] max-w-14 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border-2 border-[#8B1A2B]/50 bg-white text-[#8B1A2B]/50 shadow-[0_0_0_4px_#fff] ${HOME_TOUCH_BUTTON_CLASS}`}
 					aria-label="Generate your secure QR code"
 				>
-					<Lock className="h-5 w-5" strokeWidth={2.4} aria-hidden />
+					<Lock className="h-[42%] w-[42%] min-h-4 min-w-4" strokeWidth={2.4} aria-hidden />
 				</button>
 			) : (
 				<span
-					className="pointer-events-none absolute left-1/2 top-1/2 z-[1] grid h-14 w-14 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border-2 border-[#8B1A2B]/50 bg-white text-[#8B1A2B]/50 shadow-[0_0_0_4px_#fff]"
+					className="pointer-events-none absolute left-1/2 top-1/2 z-[1] grid aspect-square w-[42%] max-w-14 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border-2 border-[#8B1A2B]/50 bg-white text-[#8B1A2B]/50 shadow-[0_0_0_4px_#fff]"
 					aria-hidden
 				>
-					<Lock className="h-5 w-5" strokeWidth={2.4} />
+					<Lock className="h-[42%] w-[42%] min-h-4 min-w-4" strokeWidth={2.4} />
 				</span>
 			)}
 		</div>
@@ -2370,9 +2371,9 @@ const Home = (_props: HomeProps) => {
 							/>
 
 							<div className="relative mx-auto w-full min-w-0 max-w-lg self-center space-y-8 px-3 pt-2 sm:px-5">
-							<section className="relative mb-[50px] flex min-w-0 flex-col items-stretch gap-6 min-[480px]:grid min-[480px]:min-h-[230px] min-[480px]:grid-cols-[minmax(0,1fr)_166px] min-[480px]:items-center min-[480px]:gap-2">
+							<section className="relative mb-[50px] grid w-full min-w-0 grid-cols-[minmax(0,1.15fr)_minmax(5.75rem,42%)] items-center gap-2">
 								<div className="relative z-10 min-w-0">
-									<h2 className="m-0 max-w-full text-[clamp(28px,8.2vw,35px)] font-extrabold leading-[1.03] tracking-[-1.2px] text-[#080b58] min-[480px]:text-[35px] min-[480px]:tracking-[-1.6px] dark:text-slate-100">
+									<h2 className="m-0 max-w-full text-[clamp(1.35rem,6.4vw,2.1875rem)] font-extrabold leading-[1.03] tracking-[-0.06em] text-[#080b58] dark:text-slate-100">
 										One QR.
 										<span className="block bg-gradient-to-b from-[#63b9ff] to-[#0560f6] bg-clip-text text-transparent">
 											More
@@ -2380,17 +2381,17 @@ const Home = (_props: HomeProps) => {
 											Possibilities.
 										</span>
 									</h2>
-									<p className="mb-4 mt-[11px] text-[13px] text-[#66749d] dark:text-slate-400 min-[400px]:text-[15px]">
+									<p className="mb-3 mt-[0.45em] text-[clamp(0.7rem,3.1vw,0.9375rem)] text-[#66749d] dark:text-slate-400">
 										Pay. Top up. Earn. Connect.
 									</p>
 									<span className="block h-1 w-[30px] rounded bg-[#0866ff]" aria-hidden />
 								</div>
-								<div className="relative flex justify-center">
+								<div className="relative flex w-full min-w-0 justify-center">
 									<HomeHeroQrRings />
-									<div className="relative z-[1] w-[166px] rounded-[28px] bg-white/80 px-[13px] pb-[14px] pt-[19px] text-center shadow-[0_22px_42px_rgba(53,133,205,0.18)] backdrop-blur-[18px] dark:bg-slate-900/90">
+									<div className="relative z-[1] w-full max-w-[166px] rounded-[clamp(1rem,4.5vw,1.75rem)] bg-white/80 px-[8%] pb-[8%] pt-[11%] text-center shadow-[0_22px_42px_rgba(53,133,205,0.18)] backdrop-blur-[18px] dark:bg-slate-900/90">
 										<HomeDecorativeQrMark activateProps={openPayCodeSheetTap} />
-										<p className="mt-2 text-[13px] font-extrabold text-[#080b58] dark:text-slate-100">Tap to activate</p>
-										<p className="mt-[3px] text-[10px] leading-snug text-[#66749d] dark:text-slate-400">
+										<p className="mt-[0.4em] text-[clamp(0.65rem,2.8vw,0.8125rem)] font-extrabold leading-tight text-[#080b58] dark:text-slate-100">Tap to activate</p>
+										<p className="mt-[0.15em] text-[clamp(0.5rem,2.2vw,0.625rem)] leading-snug text-[#66749d] dark:text-slate-400">
 											Generate your secure QR code
 										</p>
 									</div>

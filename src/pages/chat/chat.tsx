@@ -1873,6 +1873,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 	const voiceCallStreamRef = useRef<MediaStream | null>(null)
 	const voicePlaybackRef = useRef<VoicePlaybackBuffer | null>(null)
 	const voiceFrameSeqRef = useRef(0)
+	const voiceFrameSendFailuresRef = useRef(0)
 	const voiceControllerRef = useRef<VoiceCallController | null>(null)
 	const voiceCallStartingRef = useRef(false)
 	const [voiceCallConnecting, setVoiceCallConnecting] = useState(false)
@@ -2125,10 +2126,11 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				voiceLevelRafRef.current = window.requestAnimationFrame(sampleVoiceLevel)
 			}
 			voiceFrameSeqRef.current = 0
+			voiceFrameSendFailuresRef.current = 0
 			voiceCaptureStopRef.current = await startVoiceCapture(stream, key, async (payload) => {
 				const route = chatData.chatData?.routersArmoreds?.trim()
 				if (!route || !callId || !targetSessionId) return
-				await sendWorkerVoiceFrame(route, {
+				const sent = await sendWorkerVoiceFrame(route, {
 					type: 'voice_frame_v1',
 					callId,
 					sessionId: voiceCallSessionRef.current,
@@ -2138,6 +2140,10 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 					timestamp: Math.floor(Date.now() / 1000),
 					payload,
 				})
+				if (!sent && voiceFrameSendFailuresRef.current < 3) {
+					voiceFrameSendFailuresRef.current += 1
+					setVoiceError('Voice audio relay is unavailable. Please try the call again.')
+				}
 			})
 		} catch {
 			setVoiceError('Microphone access was denied or unavailable.')

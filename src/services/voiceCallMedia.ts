@@ -97,7 +97,10 @@ export const startVoiceCapture = async (
 	}
 	const processor = context.createScriptProcessor(4096, 1, 1)
 	const sink = context.createGain()
-	sink.gain.value = 0
+	// Keep the ScriptProcessor graph alive on Android WebView.  A fully muted
+	// destination can be optimized away by mobile audio implementations, which
+	// leaves the local analyser moving while no PCM frames are emitted.
+	sink.gain.value = 0.0001
 	let closed = false
 	let pending = new Int16Array(0)
 	const samplesPerFrame = Math.round(VOICE_PCM_SAMPLE_RATE * VOICE_PCM_FRAME_MS / 1000)

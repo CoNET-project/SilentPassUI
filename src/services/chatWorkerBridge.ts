@@ -205,6 +205,7 @@ function makeGossipWorker(): Worker {
 		// Chunk name is the worker name. A new name bypasses a cached worker
 		// that never finished opening the PGP key and left voice listen with no relay.
 		name: 'beamio-chat-gossip-relay',
+		type: 'classic',
 	})
 }
 

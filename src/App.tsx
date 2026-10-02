@@ -197,6 +197,7 @@ function AppShell() {
   const [browserNotificationPermission, setBrowserNotificationPermission] = useState<NotificationPermission | 'unsupported'>(() =>
     typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'unsupported',
   )
+  const nativeVoiceAnswerKeyRef = useRef<string | null>(null)
   const [redeemClaimIntent, setRedeemClaimIntent] = useState<{
     cardAddress?: string
     redeemCode: string
@@ -1144,6 +1145,89 @@ function AppShell() {
 			window.removeEventListener('cashtreesios', onNativeDecline)
 		}
 	}, [])
+
+	/**
+	 * Android can answer the native call window while this Chat instance is
+	 * unmounted (cold start, Chat list, or another PWA page).  In that case
+	 * chat.tsx cannot observe `callAnswered`, so the native event used to be
+	 * consumed without opening the peer thread or sending the accept signal.
+	 *
+	 * Keep the action local and retry briefly until the decrypted offer has
+	 * reached the PWA's voice-session registry.  The offer remains the only
+	 * source of caller identity; native code supplies handles only.
+	 */
+	useEffect(() => {
+		let retryTimer: number | undefined
+		let cancelled = false
+		let attempts = 0
+
+		const onNativeAnswer = (event: Event) => {
+			const detail = (event as CustomEvent<{
+				action?: string
+				callId?: string
+				sessionId?: string
+			}>).detail
+			if (detail?.action !== 'callAnswered') return
+
+			const callId = String(detail.callId || '').trim()
+			const sessionId = String(detail.sessionId || '').trim()
+			const key = `${callId}:${sessionId}`
+			if (!callId && !sessionId) return
+			if (nativeVoiceAnswerKeyRef.current === key) return
+			nativeVoiceAnswerKeyRef.current = key
+			attempts = 0
+
+			const openChatAndAccept = () => {
+				if (cancelled) return
+				const offer = lookupIncomingVoiceOffer(callId, sessionId)
+				if (!offer) {
+					attempts += 1
+					if (attempts < 24) {
+						retryTimer = window.setTimeout(openChatAndAccept, 500)
+					} else {
+						nativeVoiceAnswerKeyRef.current = null
+					}
+					return
+				}
+
+				const caller = String(offer.from || '').trim()
+				if (!ethers.isAddress(caller)) {
+					nativeVoiceAnswerKeyRef.current = null
+					return
+				}
+				const existingChat = (profilesForVoiceDeclineRef.current?.[0]?.chats || [])
+					.find((item: chatData) => item.address?.toLowerCase() === caller.toLowerCase())
+				const resolved = resolvePeerSearchResult(caller)
+				const contact: searchResult = existingChat?.beamio || resolved || {
+					address: caller,
+					created_at: 0,
+					first_name: '',
+					last_name: '',
+					username: '',
+					follow_count: '',
+					follower_count: '',
+					image: '',
+				}
+
+				setGlobalIncomingVoiceCall(null)
+				setChatHomeItem(contact)
+				navigate('/chat', {
+					state: { autoVoiceCallAction: 'accept' },
+				})
+			}
+
+			openChatAndAccept()
+		}
+
+		window.addEventListener('cashtreesandroid', onNativeAnswer)
+		window.addEventListener('cashtreesios', onNativeAnswer)
+		return () => {
+			cancelled = true
+			if (retryTimer !== undefined) window.clearTimeout(retryTimer)
+			window.removeEventListener('cashtreesandroid', onNativeAnswer)
+			window.removeEventListener('cashtreesios', onNativeAnswer)
+		}
+	}, [navigate, resolvePeerSearchResult, setChatHomeItem])
 
 	const resolvePeerSearchResultRef = useRef(resolvePeerSearchResult)
 	const ensureProfilesForAddressesRef = useRef(ensureProfilesForAddresses)

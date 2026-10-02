@@ -120,6 +120,7 @@ import {
 	parseVoiceCallSignal,
 	randomVoiceId,
 	recoverVoiceCallOfferSigner,
+	lookupIncomingVoiceOffer,
 	INCOMING_CALL_RING_TIMEOUT_MS,
 	mergePhoneCallRecord,
 	phoneCallStampMs,
@@ -2344,8 +2345,8 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		}
 	}, [chatData, messages, profiles, startVoiceMedia, toAddress, upsertPhoneCallRecord])
 
-	const acceptVoiceCall = useCallback(async () => {
-		const offer = incomingVoiceOffer
+	const acceptVoiceCall = useCallback(async (offerOverride?: VoiceCallSignal | null) => {
+		const offer = offerOverride || incomingVoiceOffer
 		const callerEoa = recoverVoiceCallOfferSigner(offer as VoiceCallSignal | null)
 		if (!offer || !callerEoa || incomingVoiceAction !== 'idle') return
 		voicePlaybackRef.current?.resume()
@@ -2672,12 +2673,13 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				sessionId?: string
 			}>).detail
 			if (!detail?.action || (!detail.callId && !detail.sessionId)) return
+			const nativeOffer = incomingVoiceOffer || lookupIncomingVoiceOffer(detail.callId || '', detail.sessionId || '')
 			const matchesIncoming =
-				Boolean(incomingVoiceOffer) &&
-				((detail.sessionId && incomingVoiceOffer?.sessionId === detail.sessionId) ||
-					(detail.callId && incomingVoiceOffer?.callId === detail.callId))
+				Boolean(nativeOffer) &&
+				((detail.sessionId && nativeOffer?.sessionId === detail.sessionId) ||
+					(detail.callId && nativeOffer?.callId === detail.callId))
 			if (detail.action === 'callAnswered' && matchesIncoming) {
-				void acceptVoiceCall()
+				void acceptVoiceCall(nativeOffer as VoiceCallSignal)
 			} else if (detail.action === 'callRejected' && matchesIncoming) {
 				void rejectVoiceCall()
 			} else if (detail.action === 'callTimedOut' && matchesIncoming && incomingVoiceOffer && privateKey) {

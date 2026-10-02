@@ -6,12 +6,13 @@ import { stripDiscoverMerchantDeepLinkParams } from '@/utils/discoverMerchantSha
 
 /**
  * Single hand-off for a Discover merchant deep link
- * (`?beamiocard=…&discover=open[&ref=…]`, also wrapped by `/app-download?target=`).
+ * (`?beamiocard=…[&discover=open][&ref=…]`, also wrapped by `/app-download?target=`).
  *
  * Used by the global search bar paste, the cold-start URL effect, and first-launch
  * onboarding so that all three entries run the same workflow:
- * stash `ref=` → try the referee bind → hide the footer → open `/discover` detail
- * (which auto-starts the free-membership join) → strip the deep-link params.
+ * stash `ref=` → try the referee bind → hide the footer → open the merchant detail
+ * page on `/discover` → strip the deep-link params. Visitors without a local wallet
+ * first finish onboarding (own @beamioTag + password), then land on that detail page.
  */
 export function routeDiscoverMerchantDeepLink(opts: {
 	cardAddress: string

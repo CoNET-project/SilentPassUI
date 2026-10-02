@@ -17,7 +17,9 @@ export function parseDiscoverMerchantFromParams(
 	const cardAddress = (sp.get('beamiocard') ?? sp.get('Beamiocard') ?? '').trim()
 	const discover = (sp.get('discover') ?? '').trim().toLowerCase()
 	if (!cardAddress || !ethers.isAddress(cardAddress)) return null
-	if (discover !== 'open' && discover !== '1' && discover !== 'true') return null
+	// A bare `beamiocard` (no redeemcode / couponId) is a merchant link too; `discover`
+	// is optional and only an explicit non-open value opts out.
+	if (discover && discover !== 'open' && discover !== '1' && discover !== 'true') return null
 	return {
 		cardAddress: ethers.getAddress(cardAddress),
 		referrerEoa: parseDiscoverReferrerFromParams(sp),

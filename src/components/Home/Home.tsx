@@ -80,6 +80,7 @@ import { pickMerchantCardListIconUrl, pickMerchantCardListTitle } from '@/utils/
 import {
 	discoverMixCssColorWithBlack,
 	discoverMixCssColorWithWhite,
+	discoverParseCssRgb,
 	parseDiscoverMerchantBrandColor,
 } from '@/utils/discoverMerchantPromotions'
 import { pickNonFactoryMerchantAssetUrl } from '@/utils/isFactoryDefaultMerchantAssetUrl'
@@ -348,6 +349,14 @@ function storeCardBrandBackdrop(brand: string, tone: StoreCardArtTone | null): s
 	return discoverMixCssColorWithWhite(brand, 0.82) ?? '#e8eef8'
 }
 
+/** Bottom scrim: dark brand tint (not pure black) so logo stays branded while text stays readable. */
+function storeCardBrandScrimGradient(brand: string): string {
+	const darkBrand = discoverMixCssColorWithBlack(brand, 0.52) ?? brand
+	const rgb = discoverParseCssRgb(darkBrand) ?? discoverParseCssRgb(brand)
+	if (!rgb) return 'linear-gradient(180deg, transparent 30%, rgba(0,0,0,.64))'
+	return `linear-gradient(180deg, transparent 30%, rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.78))`
+}
+
 function HomeStoreBrandCard({
 	photo,
 	brandColor,
@@ -365,6 +374,7 @@ function HomeStoreBrandCard({
 }) {
 	const tone = useStoreCardArtTone(photo)
 	const backdrop = storeCardBrandBackdrop(brandColor, tone)
+	const scrim = storeCardBrandScrimGradient(brandColor)
 	return (
 		<button
 			type="button"
@@ -385,7 +395,7 @@ function HomeStoreBrandCard({
 			) : (
 				<div className="absolute inset-0 bg-gradient-to-br from-[#07552d] to-[#86a638]" aria-hidden />
 			)}
-			<div className="absolute inset-0" style={{ background: 'linear-gradient(180deg, transparent 30%, rgba(0,0,0,.64))' }} aria-hidden />
+			<div className="absolute inset-0" style={{ background: scrim }} aria-hidden />
 			<div className="relative z-[1] [text-shadow:0_1px_2px_rgba(0,0,0,0.9),0_0_8px_rgba(0,0,0,0.65)]">
 				<p className="mb-3 line-clamp-2 text-[13px] font-extrabold leading-tight">{title}</p>
 				<p className="mt-[5px] flex items-center gap-1 text-[11px]">
@@ -526,7 +536,6 @@ const Home = (_props: HomeProps) => {
 	const [itemTx, setItemtx] = useState<TransferHistork>()
 	const [ccsaAssets, setCcsaAssets] = useState<Awaited<ReturnType<typeof getMyAssetsAggregated>> | null>(null)
 	const [bUnitBalance, setBUnitBalance] = useState<{ total: number; free: number; paid: number } | null>(null)
-	const [storeCardDot, setStoreCardDot] = useState(0)
 	const [offerPanelIndex, setOfferPanelIndex] = useState(0)
 
 
@@ -2387,21 +2396,10 @@ const Home = (_props: HomeProps) => {
 										{tu('no_merchant_brands_yet')}
 									</p>
 								) : (
-									<>
 									<div style={{ filter: 'drop-shadow(0 12px 25px rgba(26,53,94,0.14))' }}>
 									<div
 										className="flex gap-2 overflow-x-auto overscroll-x-contain pb-10 pt-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
 										style={{ touchAction: 'pan-x pan-y' }}
-										onScroll={(event) => {
-											const next = Math.max(
-												0,
-												Math.min(
-													myBrandCardsPreview.length - 1,
-													Math.round(event.currentTarget.scrollLeft / 124),
-												),
-											)
-											setStoreCardDot((prev) => (prev === next ? prev : next))
-										}}
 									>
 										{myBrandCardsPreview.map((uc) => {
 											const detail = myBrandCardDetails[uc.cardAddress.toLowerCase()]
@@ -2438,21 +2436,6 @@ const Home = (_props: HomeProps) => {
 										})}
 									</div>
 									</div>
-									{myBrandCardsPreview.length > 1 ? (
-										<div className="mt-1 flex items-center justify-center gap-1.5" aria-hidden>
-											{myBrandCardsPreview.slice(0, 6).map((uc, index) => (
-												<span
-													key={uc.cardAddress}
-													className={
-														index === Math.min(storeCardDot, 5)
-															? 'h-2 w-2 rounded-full bg-[#0866ff]'
-															: 'h-2 w-2 rounded-full bg-[#c7d5e9]'
-													}
-												/>
-											))}
-										</div>
-									) : null}
-									</>
 								)}
 							</section>
 

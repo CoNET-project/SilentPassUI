@@ -1,7 +1,7 @@
 import { ethers } from 'ethers'
 import { beamioApi } from '@/utils/constants'
 
-const CACHE_KEY = 'beamio:silentpass:global:reward-pt-usdc-merchants:v1'
+const CACHE_KEY = 'beamio:silentpass:global:reward-pt-usdc-merchants:v2'
 
 /** Lowercase card addresses that publish a Reward PT → USDC exchange. `null` means the last read was untrusted. */
 export function loadRewardPtUsdcMerchantAddresses(): Set<string> | null {
@@ -45,8 +45,6 @@ export async function fetchRewardPtUsdcMerchantAddresses(): Promise<Set<string> 
 		if (!row || typeof row !== 'object') continue
 		const cardRaw = String((row as { cardAddress?: unknown }).cardAddress ?? '').trim()
 		if (!ethers.isAddress(cardRaw)) continue
-		const offers = (row as { offers?: unknown }).offers
-		if (!Array.isArray(offers) || offers.length === 0) continue
 		out.add(cardRaw.toLowerCase())
 	}
 	saveRewardPtUsdcMerchantAddresses(out)

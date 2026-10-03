@@ -10119,6 +10119,28 @@ export default function Market() {
 		if (rewardPtUsdcOnly) setDiscoverCategory("all")
 	}, [rewardPtUsdcOnly])
 
+	useEffect(() => {
+		if (!rewardPtUsdcOnly) return
+		if (
+			discoverMerchantDetail ||
+			showCardDetail ||
+			settingsOpen ||
+			merchantTopUpOpen ||
+			purchaseSheetOpen
+		) {
+			return
+		}
+		setShowFooter(true)
+	}, [
+		discoverMerchantDetail,
+		merchantTopUpOpen,
+		purchaseSheetOpen,
+		rewardPtUsdcOnly,
+		setShowFooter,
+		settingsOpen,
+		showCardDetail,
+	])
+
 	const renderDiscoverFilterChip = (tab: DiscoverCategoryOption) => {
 		const Icon = tab.Icon
 		const active = discoverCategory === tab.id

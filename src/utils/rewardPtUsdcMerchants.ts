@@ -1,7 +1,7 @@
 import { ethers } from 'ethers'
 import { beamioApi } from '@/utils/constants'
 
-const CACHE_KEY = 'beamio:silentpass:global:reward-pt-usdc-merchants:v2'
+const CACHE_KEY = 'beamio:silentpass:global:reward-pt-usdc-merchants:v3'
 
 /** Lowercase card addresses that publish a Reward PT → USDC exchange. `null` means the last read was untrusted. */
 export function loadRewardPtUsdcMerchantAddresses(): Set<string> | null {

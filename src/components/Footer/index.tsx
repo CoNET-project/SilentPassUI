@@ -87,6 +87,17 @@ function sampleLuminanceUnderPoint(clientX: number, clientY: number): number | n
 }
 
 const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
+	const location = useLocation()
+	const { pathname } = location
+	/** Explore Offers list: keep the global bar and search tappable with or without rows. */
+	const pinRewardPtDiscoverBar = useMemo(() => {
+		const p = (pathname || '/').toLowerCase()
+		const onDiscover = p === '/discover' || p.startsWith('/discover?')
+		const rewardPtOnly = Boolean(
+			(location.state as { rewardPtUsdcOnly?: boolean } | null)?.rewardPtUsdcOnly,
+		)
+		return onDiscover && rewardPtOnly
+	}, [pathname, location.state])
 	const barControls = useAnimation()
 	const wasVisibleRef = useRef(visible)
 	const [scrollHidden, setScrollHidden] = useState(false)
@@ -145,6 +156,17 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 
 	useEffect(() => {
 		if (!visible || typeof window === 'undefined') return
+		if (pinRewardPtDiscoverBar) {
+			setScrollHidden(false)
+			scrollFadeTargetRef.current = 'shown'
+			scrollFadeRequestedTargetRef.current = 'shown'
+			void barControls.start({
+				opacity: 1,
+				y: 0,
+				transition: { duration: 0.2, ease: [0.2, 0.8, 0.2, 1] },
+			})
+			return
+		}
 		let cancelled = false
 		scrollTopShowHoldUntilRef.current = 0
 
@@ -210,11 +232,9 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 			window.removeEventListener('scroll', handleScrollDirection, true)
 			scrollPositionsRef.current.clear()
 		}
-	}, [visible, barControls])
+	}, [visible, barControls, pinRewardPtDiscoverBar])
 
 	const navigate = useNavigate()
-	const location = useLocation()
-	const { pathname } = location
 	const footerRef = useRef<HTMLDivElement>(null)
 	const [isDarkUnderneath, setIsDarkUnderneath] = useState(true)
 	const lastDarkRef = useRef(true)
@@ -262,7 +282,7 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 	const [animId, setAnimId] = useState(0)
 	const totalDur = 0.62
 	const { hasNewVersion, darkModle, isInitialLoading, messageCount, setMessageCount, setShowFooter, setChatSearchOpen } = useDaemonContext()
-	const interactiveVisible = visible && !scrollHidden
+	const interactiveVisible = visible && (pinRewardPtDiscoverBar || !scrollHidden)
 
 	const [showBar, setShowBar] = useState(true)
 

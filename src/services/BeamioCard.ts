@@ -4109,8 +4109,8 @@ export const getTierIndexForRedeemAmount = (
 /** Discover detail About block (`shareTokenMetadata.discoverAbout`). */
 export type ShareTokenMetadataDiscoverAbout = {
 	/**
-	 * Exclusive Welcome Offer heading on Discover merchant detail.
-	 * When unset, consumer defaults to `Welcome to {displayName}`.
+	 * @deprecated Exclusive Welcome Offer heading — no longer edited in Merchant OS.
+	 * Legacy metadata may still contain this field; new publishes omit it.
 	 */
 	welcomeTitle?: string
 	/** Long-form About paragraph on Discover merchant detail */

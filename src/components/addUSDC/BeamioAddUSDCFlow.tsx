@@ -40,10 +40,18 @@ type BeamioAddUSDCFlowProps = {
 	onCancel?: () => void
 	/** 入金 / 出金（影响 Coinbase session；默认 onramp） */
 	initialMode?: RampMode
-	/** 打开时直接进入某一入金方式；默认 hub */
+	/**
+	 * @deprecated Full-page hub / stripe / receive screens. Wallet Add USDC must open the
+	 * Home Fund upward drawer (`openFundWalletSheet`). Keep only for `embedInSheet` Coinbase.
+	 */
 	initialScreen?: Screen
 }
 
+/**
+ * @deprecated Full-page Add USDC hub (no `embedInSheet`). Use Home Fund upward drawer
+ * (`openFundWalletSheet` → debit / Base onramp / receive-from-wallet). `embedInSheet`
+ * Coinbase confirm inside the Add Cash sheet is still the in-drawer Coinbase path.
+ */
 export default function BeamioAddUSDCFlow({
 	autoStartCoinbase,
 	embedInSheet,

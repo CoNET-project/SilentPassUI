@@ -141,6 +141,7 @@ export default function WalletOverview() {
 		void refreshReferralRole()
 	}, [refreshReferralRole])
 
+	/** @deprecated Full-page `BeamioAddUSDCFlow`. Add USDC must use Home Fund upward drawer (`openFundWalletSheet`). */
 	const openDeposit = useCallback((start: 'hub' | 'stripe' | 'coinbase' | 'transfer' | 'receive' = 'hub') => {
 		setShowFooter(false)
 		setDepositStart(start)
@@ -173,6 +174,11 @@ export default function WalletOverview() {
 	}, [myBrandCardDetails])
 
 	const handleAssetAction = useCallback((id: WalletAssetActionId) => {
+		// Canonical Add USDC: Home Fund upward drawer (debit / Base onramp / receive-from-wallet).
+		if (id === 'add-usdc') {
+			navigate('/', { state: { openFundWalletSheet: true } })
+			return
+		}
 		if (id === 'buy-card') { openDeposit('stripe'); return }
 		if (id === 'buy-coinbase') { openDeposit('coinbase'); return }
 		if (id === 'from-wallet') { openDeposit('transfer'); return }
@@ -448,6 +454,7 @@ export default function WalletOverview() {
 				/>
 			) : null}
 
+			{/* @deprecated Page-version Add USDC hub. Do not open for Add USDC — use Home Fund upward drawer. */}
 			{depositStart
 				? createPortal(
 					<div className="fixed inset-0 z-[130] overflow-y-auto bg-[#f8fbff] dark:bg-slate-950">

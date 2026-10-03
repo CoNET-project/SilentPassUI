@@ -4,6 +4,7 @@
  */
 
 import React, { useEffect, useState } from 'react'
+import { Plus, QrCode } from 'lucide-react'
 import storeCreditsLogo from '@/assets/store-credits-logo.png'
 import rewardPtLogo from '@/assets/reward-pt-logo.png'
 import { BeamioCircularBackButton } from '@/components/BeamioCircularBackButton'
@@ -13,6 +14,7 @@ import type { TxView } from '@/pages/History/recentActivityIndexerMerge'
 export type WalletAssetKind = 'usdc' | 'credits' | 'points' | 'units'
 
 export type WalletAssetActionId =
+	| 'add-usdc'
 	| 'buy-card'
 	| 'buy-coinbase'
 	| 'from-wallet'
@@ -228,12 +230,7 @@ export default function WalletAssetDetail({
 			statValue1: usdcFiat.replace(/^≈\s*/, ''),
 			statLabel2: usdcRateLabel,
 			statValue2: '',
-			actions: [
-				['buy-card', 'Buy with\nBank Card'],
-				['buy-coinbase', 'Buy with\nCoinbase'],
-				['from-wallet', 'From Another\nWallet'],
-				['receive-usdc', 'Receive\nUSDC'],
-			] as const,
+			actions: [] as const,
 		}
 		: kind === 'credits'
 			? {
@@ -400,30 +397,56 @@ export default function WalletAssetDetail({
 					</div>
 				</section>
 
-				<section className="mt-3.5 grid grid-cols-2 gap-[7px]">
-					{copy.actions.map(([id, label]) => (
+				{kind === 'usdc' ? (
+					<section className="mt-3.5 grid grid-cols-2 gap-2.5">
+						{/* Add USDC → Home Fund upward onramp drawer (not deprecated page BeamioAddUSDCFlow). */}
 						<button
-							key={`${id}-${label}`}
 							type="button"
-							onClick={() => onAction(id)}
-							className="flex min-h-[107px] flex-col items-center justify-center rounded-[17px] border border-white/80 bg-white/75 px-2 py-[11px] text-[#08105a] shadow-[0_8px_25px_rgba(56,78,150,0.045)] backdrop-blur-[18px] active:scale-[0.975]"
+							onClick={() => onAction('add-usdc')}
+							className="flex min-h-[108px] flex-col items-center justify-center rounded-[22px] bg-white px-3 py-4 text-[#0a0d43] shadow-[0_8px_28px_rgba(56,78,150,0.08)] active:scale-[0.975]"
 						>
-							<span
-								className="mb-[3px] grid h-[54px] w-[54px] place-items-center rounded-full text-[27px] font-extrabold"
-								style={{
-									color: theme.accent,
-									background: `linear-gradient(145deg, rgba(255,255,255,.7), ${theme.soft})`,
-								}}
-								aria-hidden
-							>
-								{actionMark(id, label)}
+							<span className="mb-2.5 grid h-12 w-12 place-items-center rounded-full bg-[#e8f1ff]" aria-hidden>
+								<Plus className="h-6 w-6 text-[#2b6cff]" strokeWidth={2.4} />
 							</span>
-							<span className="flex min-h-9 items-center whitespace-pre-line text-center text-[15px] font-medium leading-[17px]">
-								{label}
-							</span>
+							<span className="text-center text-[15px] font-medium leading-5">Add USDC</span>
 						</button>
-					))}
-				</section>
+						<button
+							type="button"
+							onClick={() => onAction('receive-usdc')}
+							className="flex min-h-[108px] flex-col items-center justify-center rounded-[22px] bg-white px-3 py-4 text-[#0a0d43] shadow-[0_8px_28px_rgba(56,78,150,0.08)] active:scale-[0.975]"
+						>
+							<span className="mb-2.5 grid h-12 w-12 place-items-center rounded-full bg-[#e8f1ff]" aria-hidden>
+								<QrCode className="h-6 w-6 text-[#2b6cff]" strokeWidth={2.1} />
+							</span>
+							<span className="text-center text-[15px] font-medium leading-5">Receive USDC</span>
+						</button>
+					</section>
+				) : (
+					<section className="mt-3.5 grid grid-cols-2 gap-[7px]">
+						{copy.actions.map(([id, label]) => (
+							<button
+								key={`${id}-${label}`}
+								type="button"
+								onClick={() => onAction(id)}
+								className="flex min-h-[107px] flex-col items-center justify-center rounded-[17px] border border-white/80 bg-white/75 px-2 py-[11px] text-[#08105a] shadow-[0_8px_25px_rgba(56,78,150,0.045)] backdrop-blur-[18px] active:scale-[0.975]"
+							>
+								<span
+									className="mb-[3px] grid h-[54px] w-[54px] place-items-center rounded-full text-[27px] font-extrabold"
+									style={{
+										color: theme.accent,
+										background: `linear-gradient(145deg, rgba(255,255,255,.7), ${theme.soft})`,
+									}}
+									aria-hidden
+								>
+									{actionMark(id, label)}
+								</span>
+								<span className="flex min-h-9 items-center whitespace-pre-line text-center text-[15px] font-medium leading-[17px]">
+									{label}
+								</span>
+							</button>
+						))}
+					</section>
+				)}
 
 				<section className="mt-[26px]">
 					<h2 className="mx-[5px] mb-2.5 mt-0 text-[20px] tracking-[-0.4px]">Recent Activity</h2>

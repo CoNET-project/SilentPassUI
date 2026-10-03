@@ -1,6 +1,6 @@
 // App.tsx
 import { useCallback, useEffect, useMemo, useRef, useState, useLayoutEffect, startTransition } from "react"
-import { Route, Routes, useNavigate, useLocation } from "react-router-dom"
+import { Navigate, Route, Routes, useNavigate, useLocation } from "react-router-dom"
 import { useDaemonContext } from "./providers/DaemonProvider"
 import { useBeamioTagDatabase } from "./providers/BeamioTagDatabaseProvider"
 import Footer from "@/components/Footer"
@@ -2438,6 +2438,7 @@ function AppShell() {
 					<Route path="/phone" element={<PhoneHistoryPage />} />
 					<Route path="/settings" element={<MyWallet />} />
 					<Route path="/discover" element={<Market />} />
+					<Route path="/reward-pt-merchants" element={<Navigate to="/discover" replace state={{ rewardPtUsdcOnly: true }} />} />
 					<Route path="/browser" element={<Browser />} />
 					<Route path="/myWallet" element={<MyWallet />} />
 					<Route path="/myBrands" element={<MyBrandsPage />} />

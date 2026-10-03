@@ -213,7 +213,8 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 	}, [visible, barControls])
 
 	const navigate = useNavigate()
-	const { pathname } = useLocation()
+	const location = useLocation()
+	const { pathname } = location
 	const footerRef = useRef<HTMLDivElement>(null)
 	const [isDarkUnderneath, setIsDarkUnderneath] = useState(true)
 	const lastDarkRef = useRef(true)
@@ -379,6 +380,13 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 			(k === '/pay' && (p === '/bountyboard' || p.startsWith('/bountyboard?')))
 
 		if (alreadyOnMainTab) {
+			const rewardPtOnly = Boolean(
+				(location.state as { rewardPtUsdcOnly?: boolean } | null)?.rewardPtUsdcOnly,
+			)
+			if (k === '/settings' && rewardPtOnly) {
+				navigate('/discover', { replace: true, state: {} })
+				return
+			}
 			scrollMainContentToTop()
 			return
 		}

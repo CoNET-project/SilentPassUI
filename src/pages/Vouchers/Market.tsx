@@ -133,6 +133,10 @@ import {
 import { plainBeamioTagSeed } from "@/utils/beamioTagDatabase"
 import { useMerchantCardDatabase } from "@/providers/MerchantCardDatabaseProvider"
 import {
+	fetchRewardPtUsdcMerchantAddresses,
+	loadRewardPtUsdcMerchantAddresses,
+} from "@/utils/rewardPtUsdcMerchants"
+import {
 	merchantCardRecordFromLatestCardsRaw,
 	pickMerchantCardListTitle,
 } from "@/utils/merchantCardDatabase"
@@ -10059,6 +10063,16 @@ export default function Market() {
 	const [purchasingGenesis, setPurchasingGenesis] = useState(false)
 	const [qrPayload, setQrPayload] = useState<string>("")
 	const [discoverCategory, setDiscoverCategory] = useState<DiscoverFilterTab>("all")
+	const rewardPtUsdcOnly = Boolean(
+		(location.state as { rewardPtUsdcOnly?: boolean } | null)?.rewardPtUsdcOnly,
+	)
+	const [rewardPtAddresses, setRewardPtAddresses] = useState<Set<string> | null>(
+		() => loadRewardPtUsdcMerchantAddresses(),
+	)
+	const [rewardPtTrusted, setRewardPtTrusted] = useState(
+		() => loadRewardPtUsdcMerchantAddresses() != null,
+	)
+	const [rewardPtLoading, setRewardPtLoading] = useState(false)
 	const discoverCategoryScrollerRef = useRef<HTMLDivElement | null>(null)
 	const [discoverMerchantDetail, setDiscoverMerchantDetail] = useState<DiscoverFeaturedCard | null>(null)
 	const [discoverDetailEnterImmediate, setDiscoverDetailEnterImmediate] = useState(false)
@@ -10080,12 +10094,30 @@ export default function Market() {
 			parseDiscoverMerchantFromParams(collectDeepLinkSearchParams(window.location.href))?.referrerEoa ?? null
 		stashDiscoverShareReferrer(discoverDeepLinkTarget, fromUrl ?? state?.discoverShareReferrerEoa ?? null)
 	}, [discoverDeepLinkTarget, location.state])
-	const discoverCategoryTabsOrdered = useMemo<DiscoverCategoryOption[]>(() => {
-		if (discoverCategory === "all") return DISCOVER_CATEGORY_OPTIONS
-		const selected = DISCOVER_CATEGORY_OPTIONS.find((o) => o.id === discoverCategory)
-		if (!selected) return DISCOVER_CATEGORY_OPTIONS
-		return [selected, ...DISCOVER_CATEGORY_OPTIONS.filter((o) => o.id !== discoverCategory)]
-	}, [discoverCategory])
+	useEffect(() => {
+		if (!rewardPtUsdcOnly) return
+		let cancelled = false
+		setRewardPtLoading(true)
+		void fetchRewardPtUsdcMerchantAddresses()
+			.then((next) => {
+				if (cancelled || next == null) return
+				setRewardPtAddresses(next)
+				setRewardPtTrusted(true)
+			})
+			.catch(() => {
+				/* untrusted: keep the last address set */
+			})
+			.finally(() => {
+				if (!cancelled) setRewardPtLoading(false)
+			})
+		return () => {
+			cancelled = true
+		}
+	}, [rewardPtUsdcOnly])
+
+	useEffect(() => {
+		if (rewardPtUsdcOnly) setDiscoverCategory("all")
+	}, [rewardPtUsdcOnly])
 
 	const renderDiscoverFilterChip = (tab: DiscoverCategoryOption) => {
 		const Icon = tab.Icon
@@ -10346,6 +10378,28 @@ export default function Market() {
 		return []
 	}, [latestCardsRows, resolveName, resolveImage])
 
+	const discoverCardsForView = useMemo(() => {
+		if (!rewardPtUsdcOnly) return discoverFeaturedCards
+		if (!rewardPtTrusted || !rewardPtAddresses) return []
+		return discoverFeaturedCards.filter((item) => {
+			const cardAddress = item.cardAddress
+			if (!cardAddress) return false
+			return rewardPtAddresses.has(cardAddress.toLowerCase())
+		})
+	}, [discoverFeaturedCards, rewardPtAddresses, rewardPtTrusted, rewardPtUsdcOnly])
+
+	const discoverCategoryTabsOrdered = useMemo<DiscoverCategoryOption[]>(() => {
+		const present = rewardPtUsdcOnly
+			? DISCOVER_CATEGORY_OPTIONS.filter((option) =>
+					discoverCardsForView.some((item) => item.category === option.id),
+				)
+			: DISCOVER_CATEGORY_OPTIONS
+		if (discoverCategory === "all") return present
+		const selected = present.find((option) => option.id === discoverCategory)
+		if (!selected) return present
+		return [selected, ...present.filter((option) => option.id !== discoverCategory)]
+	}, [discoverCardsForView, discoverCategory, rewardPtUsdcOnly])
+
 	const discoverDeepLinkHandledForRef = useRef<string | null>(null)
 	const discoverDetailReturnToRef = useRef<string | null>(null)
 
@@ -10440,14 +10494,19 @@ export default function Market() {
 		() => {
 			const list =
 				discoverCategory === "all"
-					? discoverFeaturedCards
-					: discoverFeaturedCards.filter((item: DiscoverFeaturedCard) => item.category === discoverCategory)
+					? discoverCardsForView
+					: discoverCardsForView.filter((item: DiscoverFeaturedCard) => item.category === discoverCategory)
 			return discoverCategory === "all" ? orderDiscoverAllWithPinnedTop(list) : list
 		},
-		[discoverCategory, discoverFeaturedCards]
+		[discoverCategory, discoverCardsForView]
 	)
 
-	const showDiscoverEmpty = !latestCardsLoading && filteredFeaturedCards.length === 0
+	const rewardPtFilterBlocked = rewardPtUsdcOnly && !rewardPtTrusted
+	const showDiscoverEmpty =
+		!rewardPtFilterBlocked &&
+		!rewardPtLoading &&
+		(rewardPtUsdcOnly || !latestCardsLoading) &&
+		filteredFeaturedCards.length === 0
 	/**
 	 * Hide Featured Brands list only while a deep link is pending open.
 	 * After we have opened (handled ref) or while detail is showing, never keep `invisible`
@@ -10500,6 +10559,20 @@ export default function Market() {
 				{/* loading 文案：仅在没有任何 trusted rows 可显示时出现；有 cache 立即跳过 */}
 				{latestCardsLoading && latestCardsRows.length === 0 ? (
 					<p className="text-[7px] text-slate-500 dark:text-slate-400 mb-4">正在加载新卡…</p>
+				) : null}
+				{rewardPtUsdcOnly && rewardPtLoading && !rewardPtTrusted ? (
+					<p className="mb-3 text-[13px] text-slate-500 dark:text-slate-400">Loading Reward PT merchants…</p>
+				) : null}
+				{rewardPtUsdcOnly && rewardPtFilterBlocked && !rewardPtLoading ? (
+					<div role="alert" className="mb-4 flex items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-3 text-[13px] leading-snug text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200">
+						<AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
+						<p>Reward PT merchants could not be loaded. Try again in a moment.</p>
+					</div>
+				) : null}
+				{rewardPtUsdcOnly && rewardPtTrusted ? (
+					<p className="mb-3 text-[13px] font-semibold text-[#4b5361] dark:text-slate-300">
+						Merchants exchanging Reward PT for USDC
+					</p>
 				) : null}
 
 				<div className="grid grid-cols-1 gap-4">
@@ -10568,8 +10641,10 @@ export default function Market() {
 				})}
 
 				{showDiscoverEmpty ? (
-					<p className="col-span-full text-center text-[7px] text-slate-500 dark:text-slate-400 py-10 px-4">
-						No cards match your search.
+					<p className="col-span-full text-center text-[13px] text-slate-500 dark:text-slate-400 py-10 px-4">
+						{rewardPtUsdcOnly
+							? "No merchants are exchanging Reward PT for USDC yet."
+							: "No cards match your search."}
 					</p>
 				) : null}
 			</div>

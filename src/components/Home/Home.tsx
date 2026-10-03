@@ -75,6 +75,11 @@ import { encodeOpenContainerRelayQrPayload, readContainerNonceFromAAStorage, sig
 import { ensureConetAaForProfileAndPersist } from '@/utils/ensureConetAa'
 import { tu } from '@/locale/beamioLocale'
 import { HomeLanguageSelector } from './HomeLanguageSelector'
+import {
+	CoinbaseCMark,
+	ReceiveWalletClusterMark,
+	VisaMastercardMark,
+} from './FundDepositMethodIcons'
 import { useMerchantCardDatabase } from '@/providers/MerchantCardDatabaseProvider'
 import { pickMerchantCardListIconUrl, pickMerchantCardListTitle } from '@/utils/merchantCardDatabase'
 import {
@@ -414,7 +419,7 @@ function HomeStoreBrandCard({
 function HomeHeroQrRings() {
 	return (
 		<div
-			className="pointer-events-none absolute left-1/2 top-1/2 z-0 h-[392px] w-[392px] -translate-x-1/2 -translate-y-1/2 rounded-full"
+			className="pointer-events-none absolute left-1/2 top-1/2 z-0 h-[392px] w-[392px] -translate-x-1/2 -translate-y-1/2 scale-50 rounded-full"
 			style={{
 				background:
 					'repeating-radial-gradient(circle at center, rgba(255,255,255,0) 0px, rgba(255,255,255,0) 27px, rgba(255,255,255,0.38) 28px, rgba(255,255,255,0.60) 29px, rgba(80,165,255,0.10) 31px, rgba(80,165,255,0) 56px)',
@@ -445,9 +450,9 @@ const HOME_OFFER_PANELS: HomeOfferPanel[] = [
 ]
 
 const HOME_DUMMY_QR_VALUE = 'https://beamio.app/'
-const HOME_DUMMY_QR_SIZE = 132
+const HOME_DUMMY_QR_SIZE = 220
 /** Center modules cleared for the lock. Stays under the level-H recovery budget. */
-const HOME_DUMMY_QR_CLEARANCE = 52
+const HOME_DUMMY_QR_CLEARANCE = 72
 const HOME_DUMMY_QR_CLEARANCE_PIXEL =
 	'data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw=='
 
@@ -462,7 +467,7 @@ function HomeDecorativeQrMark({
 	const interactive = Boolean(activateProps)
 	return (
 		<div
-			className="relative mx-auto aspect-square w-full max-w-[132px] rounded-lg border-4 border-white bg-white"
+			className="relative mx-auto aspect-square w-full rounded-lg border-4 border-white bg-white"
 			aria-hidden={!interactive}
 		>
 			<QRCodeCanvas
@@ -1961,7 +1966,7 @@ const Home = (_props: HomeProps) => {
 	const payReceiveUsesPayChrome = payReceiveView === 'tabs' && payReceiveQrMode === 'pay'
 	const payReceiveUsesFundChrome =
 		payReceiveView === 'fund' || payReceiveView === 'qr' || payReceiveView === 'wallets'
-	const fundWalletOptionClass = `flex w-full items-center justify-between gap-4 rounded-2xl border border-[#e8eaed] bg-white px-4 py-4 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition active:scale-[0.99] active:bg-gray-50 dark:border-slate-700 dark:bg-slate-800 dark:active:bg-slate-700 ${HOME_TOUCH_BUTTON_CLASS}`
+	const fundWalletOptionClass = `flex w-full items-center justify-between gap-4 rounded-[1.35rem] border border-[#e8eaed] bg-white px-4 py-[1.05rem] text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition active:scale-[0.99] active:bg-gray-50 dark:border-slate-700 dark:bg-slate-800 dark:active:bg-slate-700 ${HOME_TOUCH_BUTTON_CLASS}`
 
 	const payRelayDeadlineUnix = useMemo(() => {
 		if (!payRelayQRPayload?.deadline) return NaN
@@ -2371,9 +2376,15 @@ const Home = (_props: HomeProps) => {
 							/>
 
 							<div className="relative mx-auto w-full min-w-0 max-w-lg self-center space-y-8 px-3 pt-2 sm:px-5">
-							<section className="relative mb-[50px] grid w-full min-w-0 grid-cols-[minmax(0,1.15fr)_minmax(5.75rem,42%)] items-center gap-2">
-								<div className="relative z-10 min-w-0">
-									<h2 className="m-0 max-w-full text-[clamp(1.35rem,6.4vw,2.1875rem)] font-extrabold leading-[1.03] tracking-[-0.06em] text-[#080b58] dark:text-slate-100">
+							<section
+								className="relative mb-[50px] grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3"
+								style={{ containerType: 'inline-size' }}
+							>
+								<div className="relative z-10 min-w-0" style={{ containerType: 'inline-size' }}>
+									<h2
+										className="m-0 max-w-full text-[1.85rem] font-extrabold leading-[1.03] tracking-[-0.06em] text-[#080b58] dark:text-slate-100"
+										style={{ fontSize: 'clamp(1.7rem, 17.5cqi, 3.75rem)' }}
+									>
 										One QR.
 										<span className="block bg-gradient-to-b from-[#63b9ff] to-[#0560f6] bg-clip-text text-transparent">
 											More
@@ -2381,17 +2392,20 @@ const Home = (_props: HomeProps) => {
 											Possibilities.
 										</span>
 									</h2>
-									<p className="mb-3 mt-[0.45em] text-[clamp(0.7rem,3.1vw,0.9375rem)] text-[#66749d] dark:text-slate-400">
+									<p
+										className="mb-3 mt-[0.45em] text-[0.875rem] text-[#66749d] dark:text-slate-400"
+										style={{ fontSize: 'clamp(0.75rem, 7cqi, 1.5rem)' }}
+									>
 										Pay. Top up. Earn. Connect.
 									</p>
-									<span className="block h-1 w-[30px] rounded bg-[#0866ff]" aria-hidden />
+									<span className="block h-1 w-10 rounded bg-[#0866ff]" aria-hidden />
 								</div>
-								<div className="relative flex w-full min-w-0 justify-center">
+								<div className="relative flex w-[min(9.25rem,46cqw)] shrink-0 justify-center">
 									<HomeHeroQrRings />
-									<div className="relative z-[1] w-full max-w-[166px] rounded-[clamp(1rem,4.5vw,1.75rem)] bg-white/80 px-[8%] pb-[8%] pt-[11%] text-center shadow-[0_22px_42px_rgba(53,133,205,0.18)] backdrop-blur-[18px] dark:bg-slate-900/90">
+									<div className="relative z-[1] w-full rounded-[clamp(0.75rem,3vw,1.25rem)] bg-white/80 px-[8%] pb-[8%] pt-[11%] text-center shadow-[0_22px_42px_rgba(53,133,205,0.18)] backdrop-blur-[18px] dark:bg-slate-900/90">
 										<HomeDecorativeQrMark activateProps={openPayCodeSheetTap} />
-										<p className="mt-[0.4em] text-[clamp(0.65rem,2.8vw,0.8125rem)] font-extrabold leading-tight text-[#080b58] dark:text-slate-100">Tap to activate</p>
-										<p className="mt-[0.15em] text-[clamp(0.5rem,2.2vw,0.625rem)] leading-snug text-[#66749d] dark:text-slate-400">
+										<p className="mt-[0.35em] text-[0.625rem] font-extrabold leading-tight text-[#080b58] dark:text-slate-100">Tap to activate</p>
+										<p className="mt-[0.1em] text-[0.5rem] leading-snug text-[#66749d] dark:text-slate-400">
 											Generate your secure QR code
 										</p>
 									</div>
@@ -2498,7 +2512,7 @@ const Home = (_props: HomeProps) => {
 												<p className="mt-2 text-[12px] leading-snug text-[#62709d]">{panel.body}</p>
 												<button
 													type="button"
-													onClick={() => navigate('/discover')}
+													onClick={() => navigate('/discover', { state: { rewardPtUsdcOnly: true } })}
 													className="mt-3 inline-flex w-fit items-center rounded-full bg-[#0866ff] px-4 py-2 text-[14px] font-semibold text-white"
 												>
 													Explore Offers
@@ -3226,27 +3240,38 @@ const Home = (_props: HomeProps) => {
 										<div className="flex justify-center pb-3 pt-2">
 											<div className="h-1.5 w-12 rounded-full bg-gray-200 dark:bg-slate-600" />
 										</div>
-										<div className="mb-5 flex items-center justify-between gap-3">
-											<div className="min-w-0">
-												<h2 className="text-[1.75rem] font-bold tracking-tight text-[#191c1d] dark:text-slate-100">
-													{tu('fund_your_wallet')}
-												</h2>
-												<p className="mt-1 text-base text-[#737687] dark:text-slate-400">
-													Add funds to your Universal Cash.
-												</p>
-											</div>
+										<div className="mb-3 flex items-center justify-between gap-3">
+											<h2 className="min-w-0 text-[1.65rem] font-bold tracking-tight text-[#191c1d] dark:text-slate-100">
+												{tu('fund_your_wallet')}
+											</h2>
 											<button
 												type="button"
 												tabIndex={-1}
 												data-touch-priority="1"
 												{...closePayReceiveSheetTap}
-												className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-[#191c1d] shadow-[0_1px_2px_rgba(15,23,42,0.06)] transition-colors active:bg-gray-100 dark:bg-slate-700 dark:text-slate-100 dark:active:bg-slate-600 ${HOME_TOUCH_BUTTON_CLASS}`}
+												className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#eceef2] text-[#191c1d] transition-colors active:bg-gray-200 dark:bg-slate-700 dark:text-slate-100 dark:active:bg-slate-600 ${HOME_TOUCH_BUTTON_CLASS}`}
 												aria-label={tu('close')}
 											>
 												<X className="h-4 w-4" aria-hidden />
 											</button>
 										</div>
+										<div className="mb-4 h-px w-full bg-[#eceef2] dark:bg-slate-700" />
 										<div className="flex flex-col gap-3">
+											<button
+												type="button"
+												className={fundWalletOptionClass}
+												onClick={() => dismissPayReceiveThenOpenAddCash('coinbase')}
+											>
+												<span className="min-w-0">
+													<span className="block text-base font-semibold text-[#191c1d] dark:text-slate-100">
+														{tu('coinbase')}
+													</span>
+													<span className="mt-0.5 block text-sm text-[#737687] dark:text-slate-400">
+														{tu('use_your_coinbase_account')}
+													</span>
+												</span>
+												<CoinbaseCMark />
+											</button>
 											<button
 												type="button"
 												className={fundWalletOptionClass}
@@ -3260,22 +3285,7 @@ const Home = (_props: HomeProps) => {
 														{tu('pay_with_your_debit_card')}
 													</span>
 												</span>
-												<CreditCard className="h-8 w-8 shrink-0 text-[#0051d1] dark:text-blue-400" strokeWidth={1.75} aria-hidden />
-											</button>
-											<button
-												type="button"
-												className={fundWalletOptionClass}
-												onClick={() => dismissPayReceiveThenOpenAddCash('coinbase')}
-											>
-												<span className="min-w-0">
-													<span className="block text-base font-semibold text-[#191c1d] dark:text-slate-100">
-														Base Onramp
-													</span>
-													<span className="mt-0.5 block text-sm text-[#737687] dark:text-slate-400">
-														Buy USDC on Base and send it to this wallet
-													</span>
-												</span>
-												<img src={baseIcon} alt="" className="h-9 w-9 shrink-0 rounded-full object-contain" />
+												<VisaMastercardMark />
 											</button>
 											<button
 												type="button"
@@ -3290,7 +3300,7 @@ const Home = (_props: HomeProps) => {
 														{tu('transfer_crypto')}
 													</span>
 												</span>
-												<Wallet className="h-9 w-9 shrink-0 text-[#0051d1] dark:text-blue-400" strokeWidth={1.75} aria-hidden />
+												<ReceiveWalletClusterMark />
 											</button>
 										</div>
 									</div>
@@ -4262,6 +4272,7 @@ const Home = (_props: HomeProps) => {
 								}}
 							/>}
 							{showAlphaHowItWorks === 'OnrampOfframpGuide' && <OnrampOfframpGuide />}
+							{/* @deprecated Page-version Add USDC hub. Prefer Fund upward drawer + Add Cash embedInSheet. */}
 							{showAlphaHowItWorks === 'CoinbaseRamps' && <BeamioAddUSDCFlow />}
 							{showAlphaHowItWorks === 'BeamioContactProfilePreview' && userPreviewItem && 
 								<BeamioContactProfilePreview 

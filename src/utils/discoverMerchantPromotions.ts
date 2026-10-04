@@ -794,14 +794,11 @@ export function resolveDiscoverProspectJoinPanelCopy(params: {
 		heading = `Welcome to ${subject}`
 	}
 
-	const privilegePhrase = /dining/i.test(welcomeBody)
-		? 'seamless dining'
-		: 'exclusive digital privileges'
 	let body = welcomeBody
 	if (amounts?.minLabel && bonusPercent != null && bonusPercent > 0) {
-		body = `Top up ${amounts.minLabel} today to unlock ${privilegePhrase} and an instant ${formatBonusRuleAmount(bonusPercent)}% bonus points match.`
+		body = `Top up ${amounts.minLabel} today to unlock exclusive member privileges and an instant ${formatBonusRuleAmount(bonusPercent)}% bonus points match.`
 	} else if (amounts?.minLabel && amounts.receiveLabel) {
-		body = `Top up ${amounts.minLabel} today to unlock ${privilegePhrase} and get ${amounts.receiveLabel} instantly.`
+		body = `Top up ${amounts.minLabel} today to unlock exclusive member privileges and get ${amounts.receiveLabel} instantly.`
 	} else if (!body && hasTopupPromotion) {
 		body = 'Top up this merchant Pass to enjoy instant bonus rewards.'
 	}

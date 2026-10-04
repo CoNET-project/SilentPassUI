@@ -16,17 +16,10 @@ import {
 	Share2,
 	ShieldCheck,
 	Sparkles,
-	Utensils,
-	ShoppingBag,
-	ShoppingBasket,
-	GraduationCap,
-	Dumbbell,
-	Users,
 	Wallet,
 	X,
 	Lock,
 	CheckCircle2,
-	Flower2,
 	Receipt,
 	MessageCircle,
 	Store,
@@ -34,12 +27,6 @@ import {
 	Star,
 	Ticket,
 } from 'lucide-react'
-import {
-	classifyDiscoverMerchantCategory,
-	discoverProgramDescriptionFromMetadata,
-	parseDiscoverPrimaryCategoryId,
-	type DiscoverCategoryTab,
-} from '@/utils/discoverMerchantCategory'
 import { pickNonFactoryMerchantAssetUrl } from '@/utils/isFactoryDefaultMerchantAssetUrl'
 import { generateCODE } from '@/services/beamio'
 import { fiatPrefix, formatAmount } from '@/services/currency'
@@ -129,43 +116,13 @@ type GiftOccasion = {
 	message: (merchant: string) => string
 }
 
-const GIFT_OCCASIONS: GiftOccasion[] = [
-	{
-		id: 'wellness',
-		emoji: '🌿',
-		label: 'Wellness Reset',
-		message: (m) =>
-			`Take time to relax, reset and recharge at ${m}. Enjoy this special treat on me! 🌿`,
-	},
-	{
-		id: 'birthday',
-		emoji: '🎂',
-		label: 'Birthday Joy',
-		message: (m) => `Happy birthday! Here's a little something to enjoy at ${m}. 🎂`,
-	},
-	{
-		id: 'thanks',
-		emoji: '✨',
-		label: 'Thank You',
-		message: (m) => `Thank you — enjoy this gift at ${m}. You deserve it! ✨`,
-	},
-	{
-		id: 'just-because',
-		emoji: '🌸',
-		label: 'Just Because',
-		message: (m) => `Just because. Treat yourself at ${m} — on me! 🌸`,
-	},
-]
-
-type GiftStep1Kind = 'generic' | 'food-beverage' | 'health-beauty'
-
 type GiftThemedOccasion = GiftOccasion & {
 	subtitle: string
 }
 
 type GiftAmountChip = { value: number; caption: string }
 
-const FOOD_OCCASIONS: GiftThemedOccasion[] = [
+const GIFT_THEME_OCCASIONS: GiftThemedOccasion[] = [
 	{
 		id: 'just-because',
 		emoji: '✨',
@@ -217,54 +174,16 @@ const FOOD_OCCASIONS: GiftThemedOccasion[] = [
 	},
 ]
 
-const HEALTH_OCCASIONS: GiftThemedOccasion[] = [
-	{
-		id: 'self-care',
-		emoji: '🛁',
-		label: 'Self-Care Day',
-		subtitle: 'Warm pampering',
-		message: (m) => `Take some time to relax and recharge at ${m}. You deserve it!`,
-	},
-	{
-		id: 'birthday',
-		emoji: '🎂',
-		label: 'Happy Birthday',
-		subtitle: 'Sweet glow surprise',
-		message: (m) => `Happy birthday! A little pampering at ${m} — enjoy glowing self-care.`,
-	},
-	{
-		id: 'recovery',
-		emoji: '🌿',
-		label: 'Recovery & Reset',
-		subtitle: 'Post-workout / therapy',
-		message: (m) => `Wishing you full recovery and deep renewal at ${m}.`,
-	},
-	{
-		id: 'just-because',
-		emoji: '💝',
-		label: 'Just Because',
-		subtitle: 'A thoughtful treat',
-		message: (m) => `Just because. Enjoy this wellness gift at ${m}.`,
-	},
-]
-
-const FOOD_AMOUNT_CHIPS: GiftAmountChip[] = [
-	{ value: 25, caption: 'Quick bite' },
+const GIFT_THEME_AMOUNT_CHIPS: GiftAmountChip[] = [
+	{ value: 25, caption: 'Small' },
 	{ value: 50, caption: 'Most Popular' },
-	{ value: 100, caption: 'Full dinner' },
-	{ value: 150, caption: 'Feast for two' },
-]
-
-const HEALTH_AMOUNT_CHIPS: GiftAmountChip[] = [
-	{ value: 50, caption: 'Quick Refresh' },
-	{ value: 100, caption: 'Signature Care' },
-	{ value: 200, caption: 'Deep Rebalance' },
-	{ value: 300, caption: 'Full Transform' },
+	{ value: 100, caption: 'Popular' },
+	{ value: 150, caption: 'Generous' },
 ]
 
 type GiftNoteChip = { id: string; label: string; text: string }
 
-const FOOD_NOTE_CHIPS: GiftNoteChip[] = [
+const GIFT_THEME_NOTE_CHIPS: GiftNoteChip[] = [
 	{
 		id: 'just-for-you',
 		label: 'Just for you',
@@ -282,76 +201,11 @@ const FOOD_NOTE_CHIPS: GiftNoteChip[] = [
 	},
 ]
 
-const HEALTH_NOTE_CHIPS: GiftNoteChip[] = [
-	{
-		id: 'relax',
-		label: '✨ Relax & recharge',
-		text: 'Take some time to relax and recharge. You deserve this moment of calm! ✨🌿',
-	},
-	{
-		id: 'pamper',
-		label: '🌸 Little pampering',
-		text: 'A little pampering session just for you! Enjoy glowing self-care 🌸',
-	},
-	{
-		id: 'renewal',
-		label: '🌿 Deep renewal',
-		text: 'Wishing you full recovery, tension release and deep renewal 🌿✨',
-	},
-]
-
-function themeNoteChips(kind: GiftStep1Kind): GiftNoteChip[] {
-	if (kind === 'food-beverage') return FOOD_NOTE_CHIPS
-	if (kind === 'health-beauty') return HEALTH_NOTE_CHIPS
-	return []
-}
-
 function occasionEmojiTileClass(emoji: string): string {
-	if (emoji === '✨' || emoji === '🙏' || emoji === '🍽️' || emoji === '🛁' || emoji === '💛' || emoji === '🌟' || emoji === '🎁') return 'bg-amber-100'
+	if (emoji === '✨' || emoji === '🙏' || emoji === '💛' || emoji === '🌟' || emoji === '🎁') return 'bg-amber-100'
 	if (emoji === '🎂') return 'bg-pink-100'
-	if (emoji === '☕' || emoji === '🌿' || emoji === '🍷') return 'bg-orange-100'
+	if (emoji === '🎉') return 'bg-orange-100'
 	return 'bg-purple-100'
-}
-
-function giftIndustryMark(rawCategory: string | null, classified: DiscoverCategoryTab) {
-	const raw = (rawCategory || '').toLowerCase()
-	if (raw === 'community-organization' || raw === 'nonprofit' || raw === 'ngo') return Users
-	switch (classified) {
-		case 'food-beverage':
-			return Utensils
-		case 'grocery-convenience':
-			return ShoppingBasket
-		case 'retail-shopping':
-			return ShoppingBag
-		case 'education-training':
-			return GraduationCap
-		case 'health-beauty':
-			return Flower2
-		case 'fitness-wellness':
-			return Dumbbell
-		case 'entertainment-leisure':
-			return Ticket
-		case 'local-services':
-			return Store
-		default:
-			return Gift
-	}
-}
-
-function resolveGiftStep1Kind(
-	_category?: DiscoverCategoryTab | string | null,
-	_merchantTitle?: string,
-	_metadataRoot?: Record<string, unknown> | null,
-	_programDescriptionHint?: string | null,
-): GiftStep1Kind {
-	// Every merchant uses the same gift page: occasion themes and greeting notes.
-	return 'food-beverage'
-}
-
-function themeAmountChips(kind: GiftStep1Kind): GiftAmountChip[] {
-	if (kind === 'food-beverage') return FOOD_AMOUNT_CHIPS
-	if (kind === 'health-beauty') return HEALTH_AMOUNT_CHIPS
-	return AMOUNT_PRESETS.map((value) => ({ value, caption: '' }))
 }
 
 function occasionSubtitle(occ: GiftOccasion): string {
@@ -360,27 +214,17 @@ function occasionSubtitle(occ: GiftOccasion): string {
 		: ''
 }
 
-function giftOccasionDefaultBackground(occasion: GiftOccasion, kind: GiftStep1Kind): string {
+function giftOccasionDefaultBackground(occasion: GiftOccasion): string {
 	const palettes: Record<string, [string, string, string]> = {
 		'just-because': ['#f6d7c8', '#d98772', '#7a4039'],
 		birthday: ['#f7d5ea', '#d77bae', '#79375e'],
-		coffee: ['#ead8c3', '#a87955', '#513828'],
 		thinking: ['#f8e7b8', '#e2b84a', '#8a6420'],
 		celebrate: ['#e2d6f7', '#9474cf', '#4e397d'],
 		thanks: ['#f5e4b8', '#c99a42', '#6c4d1f'],
-		cheers: ['#ecd8bd', '#ad7d46', '#593d23'],
 		congrats: ['#f7e3a8', '#d7a441', '#7a5418'],
-		'special-feast': ['#e7c7c7', '#9f4d52', '#4e2328'],
 		'something-special': ['#f3d2cf', '#d87a78', '#7a3d48'],
-		'self-care': ['#d9ece8', '#72aaa1', '#315e58'],
-		recovery: ['#dcebd2', '#79a66a', '#365e31'],
-		wellness: ['#dcebd2', '#79a66a', '#365e31'],
 	}
-	const [light, mid, dark] =
-		palettes[occasion.id] ??
-		(kind === 'health-beauty'
-			? ['#dcebdc', '#7aa780', '#365b3c']
-			: ['#eadfc9', '#a58a62', '#55452f'])
+	const [light, mid, dark] = palettes[occasion.id] ?? ['#eadfc9', '#a58a62', '#55452f']
 	const subtitle = occasionSubtitle(occasion)
 	const safeLabel = occasion.label.replace(/[&<>"']/g, '')
 	const safeSubtitle = subtitle.replace(/[&<>"']/g, '')
@@ -388,15 +232,10 @@ function giftOccasionDefaultBackground(occasion: GiftOccasion, kind: GiftStep1Ki
 	return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`
 }
 
-function themeDefaultAmount(kind: GiftStep1Kind): number {
-	return kind === 'food-beverage' ? 50 : 100
-}
-
-function themeCustomBounds(kind: GiftStep1Kind): { min: number; max: number } | null {
-	if (kind === 'food-beverage') return { min: 10, max: 1000 }
-	if (kind === 'health-beauty') return { min: 20, max: 1500 }
-	return null
-}
+const GIFT_THEME_DEFAULT_AMOUNT = 50
+const GIFT_THEME_CUSTOM_BOUNDS = { min: 10, max: 1000 } as const
+const GIFT_THEME_NOTE_MAX = 140
+const GIFT_THEME_DEFAULT_OCCASION_ID = GIFT_THEME_OCCASIONS[0]!.id
 
 function formatGiftBonusPercent(pct: number): string {
 	if (!Number.isFinite(pct) || pct <= 0) return ''
@@ -420,7 +259,6 @@ function giftAmountChipsFromMultiplierCards(
 }
 
 function recommendedGiftAmount(
-	kind: GiftStep1Kind,
 	floor: number,
 	cards: DiscoverStoreCreditMultiplierCard[],
 	minNum: number,
@@ -430,36 +268,16 @@ function recommendedGiftAmount(
 		const best = eligible.find((card) => card.isBestValue) ?? eligible[0]
 		if (best) return Math.max(best.topupAmount, floor)
 	}
-	return Math.max(themeDefaultAmount(kind), floor)
+	return Math.max(GIFT_THEME_DEFAULT_AMOUNT, floor)
 }
 
-function giftCustomBounds(
-	kind: GiftStep1Kind,
-	promoAmounts: number[],
-): { min: number; max: number } | null {
-	const base = themeCustomBounds(kind)
-	if (!base) return null
-	if (!promoAmounts.length) return base
+function giftCustomBounds(promoAmounts: number[]): { min: number; max: number } {
+	const base = GIFT_THEME_CUSTOM_BOUNDS
+	if (!promoAmounts.length) return { min: base.min, max: base.max }
 	return {
 		min: Math.min(base.min, Math.min(...promoAmounts)),
 		max: Math.max(base.max, Math.max(...promoAmounts)),
 	}
-}
-
-function themeNoteMax(kind: GiftStep1Kind): number {
-	return kind === 'generic' ? 200 : 140
-}
-
-function themeDefaultOccasionId(kind: GiftStep1Kind): string {
-	if (kind === 'food-beverage') return FOOD_OCCASIONS[0]!.id
-	if (kind === 'health-beauty') return HEALTH_OCCASIONS[0]!.id
-	return GIFT_OCCASIONS[0]!.id
-}
-
-function themeOccasionCatalog(kind: GiftStep1Kind): GiftOccasion[] {
-	if (kind === 'food-beverage') return FOOD_OCCASIONS
-	if (kind === 'health-beauty') return HEALTH_OCCASIONS
-	return GIFT_OCCASIONS
 }
 
 function formatGiftStartAmount(start: number): string {
@@ -467,16 +285,8 @@ function formatGiftStartAmount(start: number): string {
 	return Number.isInteger(start) ? String(start) : start.toFixed(2)
 }
 
-function themeStep3PassTitle(kind: GiftStep1Kind): string {
-	if (kind === 'food-beverage') return 'Dining Gift Pass'
-	if (kind === 'health-beauty') return 'Wellness & Spa Pass'
-	return 'Digital Gift Pass'
-}
-
-function themeStep3VoucherBadge(kind: GiftStep1Kind): string {
-	if (kind === 'health-beauty') return 'Wellness voucher'
-	return 'Gift voucher'
-}
+const GIFT_STEP3_PASS_TITLE = 'Gift Pass'
+const GIFT_STEP3_VOUCHER_BADGE = 'Gift voucher'
 
 function chatToFriendSearchResult(chat: chatData): searchResult | null {
 	const addr = String(chat.address ?? '').trim()
@@ -671,10 +481,7 @@ type Props = {
 	registerBackHandler?: (handler: (() => boolean) | null) => void
 	/** When non-null, parent chrome shows a floating Confirm (Select PT). */
 	registerConfirmHandler?: (handler: (() => void) | null) => void
-	category?: DiscoverCategoryTab | string | null
 	merchantImage?: string | null
-	/** Extra dining / About copy when metadata category is missing or generic. */
-	programDescription?: string | null
 }
 
 export default function DiscoverMerchantGiftSheet({
@@ -687,35 +494,13 @@ export default function DiscoverMerchantGiftSheet({
 	onSuccess,
 	registerBackHandler,
 	registerConfirmHandler,
-	category,
 	merchantImage,
-	programDescription,
 }: Props) {
 	const { profiles, setProfiles, allNodes, setChatHomeItem, myBrandCardDetails } = useDaemonContext()
 	const navigate = useNavigate()
 	const profileRef = useRef(profile)
 	profileRef.current = profile
-	const step1Kind = useMemo(
-		() => resolveGiftStep1Kind(category, merchantTitle, metadataRoot, programDescription),
-		[category, merchantTitle, metadataRoot, programDescription],
-	)
-	const GiftIndustryIcon = useMemo(() => {
-		const raw =
-			parseDiscoverPrimaryCategoryId(metadataRoot ?? null) ??
-			(typeof category === 'string' ? category : null)
-		const classified = classifyDiscoverMerchantCategory({
-			name: merchantTitle?.trim() || '',
-			programDescription: [
-				discoverProgramDescriptionFromMetadata(metadataRoot ?? null),
-				typeof programDescription === 'string' ? programDescription.trim() : '',
-			]
-				.filter(Boolean)
-				.join('\n'),
-			categoryId: raw,
-		})
-		return giftIndustryMark(raw, classified)
-	}, [category, merchantTitle, metadataRoot, programDescription])
-	const occasionCatalog = themeOccasionCatalog(step1Kind)
+	const occasionCatalog = GIFT_THEME_OCCASIONS
 	const spotlightUrl = pickNonFactoryMerchantAssetUrl(merchantImage)
 	const giftCardImageOptions = useMemo(() => discoverGiftCardImageOptions(metadataRoot), [metadataRoot])
 	const [selectedGiftCardImage, setSelectedGiftCardImage] = useState<string | null>(
@@ -800,18 +585,18 @@ export default function DiscoverMerchantGiftSheet({
 
 	const [step, setStep] = useState<GiftFlowStep>(1)
 	const [deliveryMode, setDeliveryMode] = useState<DeliveryMode>('link')
-	const [occasionId, setOccasionId] = useState(() => themeDefaultOccasionId(step1Kind))
+	const [occasionId, setOccasionId] = useState(() => GIFT_THEME_DEFAULT_OCCASION_ID)
 	const [giftNote, setGiftNote] = useState(() => {
 		const occ =
-			occasionCatalog.find((o) => o.id === themeDefaultOccasionId(step1Kind)) ?? occasionCatalog[0]!
+			occasionCatalog.find((o) => o.id === GIFT_THEME_DEFAULT_OCCASION_ID) ?? occasionCatalog[0]!
 		return occ.message('')
 	})
 	const giftNoteEditedRef = useRef(false)
-	const [presetAmount, setPresetAmount] = useState<number | null>(() => themeDefaultAmount(step1Kind))
+	const [presetAmount, setPresetAmount] = useState<number | null>(() => GIFT_THEME_DEFAULT_AMOUNT)
 	const [customAmountOpen, setCustomAmountOpen] = useState(false)
 	const [amountText, setAmountText] = useState(() => {
 		const floor = isFeeCard ? Number(minHuman) || 0 : 0
-		const start = Math.max(themeDefaultAmount(step1Kind), floor)
+		const start = Math.max(GIFT_THEME_DEFAULT_AMOUNT, floor)
 		return formatGiftStartAmount(start)
 	})
 	const [showDigitalReceipt, setShowDigitalReceipt] = useState(false)
@@ -869,8 +654,8 @@ export default function DiscoverMerchantGiftSheet({
 	const previewAmount = formatPreviewAmount(amountText)
 	const activeOccasion = occasionCatalog.find((o) => o.id === occasionId) ?? occasionCatalog[0]!
 	const defaultOccasionBackground = useMemo(
-		() => giftOccasionDefaultBackground(activeOccasion, step1Kind),
-		[activeOccasion, step1Kind],
+		() => giftOccasionDefaultBackground(activeOccasion),
+		[activeOccasion],
 	)
 
 	const multiplierCards = useMemo(
@@ -886,18 +671,14 @@ export default function DiscoverMerchantGiftSheet({
 			const promoChips = giftAmountChipsFromMultiplierCards(multiplierCards, minNum)
 			if (promoChips.length > 0) return promoChips
 		}
-		return themeAmountChips(step1Kind).filter((chip) => chip.value >= minNum || minNum <= 0)
-	}, [minNum, multiplierCards, step1Kind])
+		return GIFT_THEME_AMOUNT_CHIPS.filter((chip) => chip.value >= minNum || minNum <= 0)
+	}, [minNum, multiplierCards])
 	const promoAmounts = useMemo(
 		() => (multiplierCards.length >= 2 ? multiplierCards.map((card) => card.topupAmount) : []),
 		[multiplierCards],
 	)
-	const giftBounds = useMemo(
-		() => giftCustomBounds(step1Kind, promoAmounts),
-		[promoAmounts, step1Kind],
-	)
-	const noteMax = themeNoteMax(step1Kind)
-	const appliedStep1KindRef = useRef(step1Kind)
+	const giftBounds = useMemo(() => giftCustomBounds(promoAmounts), [promoAmounts])
+	const noteMax = GIFT_THEME_NOTE_MAX
 	const appliedAmountSourceRef = useRef('')
 
 	useEffect(() => {
@@ -907,24 +688,14 @@ export default function DiscoverMerchantGiftSheet({
 						.map((card) => `${card.topupAmount}:${card.bonusPercent}:${card.isBestValue ? 1 : 0}`)
 						.join('|')
 				: ''
-		const sourceKey = `${step1Kind}|${promoKey}|${minHuman}`
-		const kindChanged = appliedStep1KindRef.current !== step1Kind
+		const sourceKey = `${promoKey}|${minHuman}`
 		const sourceChanged = appliedAmountSourceRef.current !== sourceKey
-		if (!kindChanged && !sourceChanged) return
-		appliedStep1KindRef.current = step1Kind
+		if (!sourceChanged) return
 		appliedAmountSourceRef.current = sourceKey
 		if (step !== 1 || issuedCode) return
-		if (!kindChanged && customAmountOpen) return
-		if (kindChanged) {
-			const occId = themeDefaultOccasionId(step1Kind)
-			const catalog = themeOccasionCatalog(step1Kind)
-			const occ = catalog.find((o) => o.id === occId) ?? catalog[0]!
-			setOccasionId(occId)
-			giftNoteEditedRef.current = false
-			setGiftNote(occ.message(''))
-		}
+		if (customAmountOpen) return
 		const floor = isFeeCard ? Number(minHuman) || 0 : 0
-		const start = recommendedGiftAmount(step1Kind, floor, multiplierCards, minNum)
+		const start = recommendedGiftAmount(floor, multiplierCards, minNum)
 		setPresetAmount(start)
 		setCustomAmountOpen(false)
 		setAmountText(formatGiftStartAmount(start))
@@ -932,12 +703,10 @@ export default function DiscoverMerchantGiftSheet({
 		customAmountOpen,
 		isFeeCard,
 		issuedCode,
-		merchantTitle,
 		minHuman,
 		minNum,
 		multiplierCards,
 		step,
-		step1Kind,
 	])
 
 	useEffect(() => {
@@ -2080,24 +1849,14 @@ export default function DiscoverMerchantGiftSheet({
 							className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
 							style={{ backgroundColor: 'rgba(255,255,255,0.15)' }}
 						>
-							{step1Kind === 'food-beverage' ? (
-								<Utensils className="h-5 w-5" strokeWidth={2} aria-hidden />
-							) : step1Kind === 'health-beauty' ? (
-								<Flower2 className="h-5 w-5" strokeWidth={2} aria-hidden />
-							) : (
-								<Gift className="h-5 w-5" strokeWidth={2} aria-hidden />
-							)}
+							<Gift className="h-5 w-5" strokeWidth={2} aria-hidden />
 						</div>
 						<div className="min-w-0">
 							<p className="truncate text-[17px] font-semibold leading-tight" style={{ color: onBrandText }}>
 								{merchantLabel}
 							</p>
 							<span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: onBrandMuted }}>
-								{step1Kind === 'food-beverage'
-									? 'Dining Gift Pass'
-									: step1Kind === 'health-beauty'
-										? 'Wellness Gift Pass'
-										: 'Digital gift voucher'}
+								Gift Pass
 							</span>
 						</div>
 					</div>
@@ -2175,7 +1934,7 @@ export default function DiscoverMerchantGiftSheet({
 						className="pointer-events-none absolute right-4 top-4 opacity-20"
 						aria-hidden
 					>
-						<GiftIndustryIcon className="h-[72px] w-[72px]" strokeWidth={1.25} />
+						<Gift className="h-[72px] w-[72px]" strokeWidth={1.25} />
 					</div>
 				</>
 			) : null}
@@ -2375,515 +2134,180 @@ export default function DiscoverMerchantGiftSheet({
 			</div>
 		) : null
 
-		if (step1Kind === 'food-beverage') {
-			return (
-				<section className="mx-auto flex w-full max-w-lg flex-col" aria-label="Dining gift ready">
-					<div className="flex flex-col items-center px-2 pb-6 pt-1 text-center">
-						<div className="relative mb-4 flex h-24 w-24 items-center justify-center">
-							<div
-								className="absolute inset-0 rounded-full blur-xl"
-								style={{ backgroundColor: brandControl, opacity: 0.28 }}
-								aria-hidden
-							/>
-							<div className="relative flex h-20 w-20 items-center justify-center overflow-hidden rounded-full bg-white shadow-md dark:bg-slate-900">
-								<Utensils className="h-11 w-11" strokeWidth={1.75} style={{ color: brandControl }} aria-hidden />
-							</div>
-							<div
-								className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full shadow-sm"
-								style={{ backgroundColor: brandControl, color: onBrandText }}
-							>
-								<Check className="h-3.5 w-3.5" strokeWidth={2.75} aria-hidden />
-							</div>
-						</div>
-						<h2 className="text-[28px] font-bold leading-[34px] tracking-tight text-[#0F172A] dark:text-slate-100">
-							Table is Set!
-						</h2>
-						<p className="mt-2 max-w-xs px-2 text-[15px] leading-relaxed text-[#424655] dark:text-slate-400">
-							{successDirect ? (
-								<>
-									Your treat for{' '}
-									<span className="font-semibold" style={{ color: brandControl }}>
-										{friendHandle}
-									</span>{' '}
-									at <span className="font-semibold text-[#0F172A] dark:text-slate-100">{merchantLabel}</span> is
-									ready to be enjoyed.
-								</>
-							) : (
-								<>
-									Your treat at{' '}
-									<span className="font-semibold text-[#0F172A] dark:text-slate-100">{merchantLabel}</span> is ready
-									to share.
-								</>
-							)}
-						</p>
-						{chatHintAlert ? <div className="mt-3 w-full max-w-sm">{chatHintAlert}</div> : null}
-					</div>
-
-					<div
-						className="relative mb-5 overflow-hidden rounded-2xl p-6 shadow-xl"
-						style={{ backgroundColor: brandColor, color: onBrandText, boxShadow: brandShadow }}
-					>
-						<div className="relative z-10 mb-6 flex items-center justify-between gap-2">
-							<div className="flex min-w-0 items-center gap-2">
-								<div
-									className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg"
-									style={{ backgroundColor: 'rgba(255,255,255,0.12)' }}
-								>
-									<Utensils className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden />
-								</div>
-								<span
-									className="truncate text-[12px] font-semibold uppercase tracking-wider"
-									style={{ color: onBrandMuted }}
-								>
-									{merchantLabel}
-								</span>
-							</div>
-							<span
-								className="shrink-0 rounded-full px-2.5 py-1 text-[12px] font-semibold uppercase tracking-wider"
-								style={{ backgroundColor: 'rgba(255,255,255,0.16)', color: onBrandText }}
-							>
-								Dining Gift Pass
-							</span>
-						</div>
-						<div className="relative z-10 mb-6">
-							<span
-								className="mb-1 block text-[12px] font-semibold uppercase tracking-widest"
-								style={{ color: onBrandMuted }}
-							>
-								Pass Value
-							</span>
-							<div className="flex items-baseline gap-1">
-								<span className="text-[22px] font-bold" style={{ color: onBrandText }}>
-									{prefix}
-								</span>
-								<span className="text-[34px] font-bold leading-none tracking-tight" style={{ color: onBrandText }}>
-									{previewAmount}
-								</span>
-							</div>
+		return (
+			<section className="mx-auto flex w-full max-w-lg flex-col" aria-label="Gift ready">
+				<div className="flex flex-col items-center px-2 pb-6 pt-1 text-center">
+					<div className="relative mb-4 flex h-24 w-24 items-center justify-center">
+						<div
+							className="absolute inset-0 rounded-full blur-xl"
+							style={{ backgroundColor: brandControl, opacity: 0.28 }}
+							aria-hidden
+						/>
+						<div className="relative flex h-20 w-20 items-center justify-center overflow-hidden rounded-full bg-white shadow-md dark:bg-slate-900">
+							<Gift className="h-11 w-11" strokeWidth={1.75} style={{ color: brandControl }} aria-hidden />
 						</div>
 						<div
-							className="relative z-10 flex items-center justify-between gap-3 border-t pt-4"
-							style={{ borderColor: 'rgba(255,255,255,0.12)' }}
+							className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full shadow-sm"
+							style={{ backgroundColor: brandControl, color: onBrandText }}
 						>
-							{successDirect ? (
-								<div className="flex min-w-0 items-center gap-2">
-									<div
-										className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold"
-										style={{ backgroundColor: brandControl, color: onBrandText }}
-									>
-										{friendInitial}
-									</div>
-									<div className="min-w-0 text-left">
-										<p className="truncate text-[15px] font-semibold">{friendHandle}</p>
-										<p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: onBrandMuted }}>
-											Beamio Smart Tag
-										</p>
-									</div>
-								</div>
-							) : (
-								<p className="text-[12px] font-semibold" style={{ color: onBrandMuted }}>
-									Share the claim link or code
-								</p>
-							)}
-							<div className="shrink-0 text-right">
-								<span className="block text-[12px] font-semibold uppercase" style={{ color: onBrandMuted }}>
-									Power
-								</span>
-								<span className="text-[12px] font-semibold">100% face value</span>
-							</div>
+							<Check className="h-3.5 w-3.5" strokeWidth={2.75} aria-hidden />
 						</div>
 					</div>
+					<h2 className="text-[28px] font-bold leading-[34px] tracking-tight text-[#0F172A] dark:text-slate-100">
+						Gift Ready!
+					</h2>
+					<p className="mt-2 max-w-xs px-2 text-[15px] leading-relaxed text-[#424655] dark:text-slate-400">
+						{successDirect ? (
+							<>
+								Your gift for{' '}
+								<span className="font-semibold" style={{ color: brandControl }}>
+									{friendHandle}
+								</span>{' '}
+								at <span className="font-semibold text-[#0F172A] dark:text-slate-100">{merchantLabel}</span> is
+								ready to claim.
+							</>
+						) : (
+							<>
+								Your gift at{' '}
+								<span className="font-semibold text-[#0F172A] dark:text-slate-100">{merchantLabel}</span> is ready
+								to share.
+							</>
+						)}
+					</p>
+					{chatHintAlert ? <div className="mt-3 w-full max-w-sm">{chatHintAlert}</div> : null}
+				</div>
 
-					{chatSent ? (
-						<div className="mb-4 flex items-center gap-3 rounded-2xl bg-[#f4f3f8] p-4 dark:bg-slate-800">
+				<div
+					className="relative mb-5 overflow-hidden rounded-2xl p-6 shadow-xl"
+					style={{ backgroundColor: brandColor, color: onBrandText, boxShadow: brandShadow }}
+				>
+					<div className="relative z-10 mb-6 flex items-center justify-between gap-2">
+						<div className="flex min-w-0 items-center gap-2">
 							<div
-								className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full"
-								style={{ backgroundColor: `${brandControl}22`, color: brandControl }}
-							>
-								<MessageSquare className="h-5 w-5" strokeWidth={2} aria-hidden />
-							</div>
-							<div className="min-w-0 flex-1 text-left">
-								<p className="text-[15px] font-semibold text-[#0F172A] dark:text-slate-100">
-									Card bubble dispatched
-								</p>
-								<p className="mt-0.5 text-[12px] font-semibold text-[#424655] dark:text-slate-400">
-									A greeting card bubble was sent to {friendHandle} in peer messages.
-								</p>
-							</div>
-						</div>
-					) : null}
-
-					<div className="mb-6 space-y-3 rounded-2xl bg-[#eeedf3] p-4 dark:bg-slate-800">
-						<div className="flex items-start gap-3">
-							<div
-								className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
-								style={{ backgroundColor: `${brandControl}22`, color: brandControl }}
-							>
-								<Wallet className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden />
-							</div>
-							<div className="min-w-0 flex-1 text-left">
-								<p className="text-[15px] font-semibold text-[#0F172A] dark:text-slate-100">Ready to claim</p>
-								<p className="text-[13px] text-[#424655] dark:text-slate-400">
-									Store credit unlocks on this merchant card when they redeem
-									{creditHuman ? ` — about ${prefix}${creditHuman} after claim` : ''}.
-								</p>
-							</div>
-						</div>
-					</div>
-
-					{themedActions}
-
-					<div className="mt-6 flex flex-col items-center space-y-2 px-4 text-center">
-						<div className="flex items-center gap-1.5 text-[#424655]/80">
-							<Lock className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
-							<span className="text-[11px] font-semibold uppercase tracking-wider">Protected by Beamio</span>
-						</div>
-						<p className="text-[11px] font-semibold leading-tight text-[#737687]">
-							Unclaimed gifts return automatically in 24h. Valid for dine-in and takeout.
-						</p>
-					</div>
-					{panelErrorAlert ? <div className="mt-4">{panelErrorAlert}</div> : null}
-				</section>
-			)
-		}
-
-		if (step1Kind === 'health-beauty') {
-			return (
-				<section className="mx-auto flex w-full max-w-lg flex-col" aria-label="Wellness gift ready">
-					<div className="flex flex-col items-center px-1 pb-4 pt-2 text-center">
-						<div className="relative mb-3 flex h-24 w-24 items-center justify-center">
-							<div
-								className="absolute inset-0 rounded-full blur-xl"
-								style={{ backgroundColor: brandControl, opacity: 0.28 }}
-								aria-hidden
-							/>
-							<div className="relative flex h-16 w-16 items-center justify-center rounded-full bg-white shadow-md dark:bg-slate-900">
-								<Flower2 className="h-8 w-8" strokeWidth={1.75} style={{ color: brandControl }} aria-hidden />
-							</div>
-							<div
-								className="absolute -bottom-0.5 -right-0.5 flex h-6 w-6 items-center justify-center rounded-full shadow-sm"
-								style={{ backgroundColor: brandControl, color: onBrandText }}
-							>
-								<Check className="h-3.5 w-3.5" strokeWidth={2.75} aria-hidden />
-							</div>
-						</div>
-						<h2 className="text-[28px] font-bold leading-[34px] tracking-tight text-[#0F172A] dark:text-slate-100">
-							A Touch of Care
-						</h2>
-						<p className="mt-1 max-w-[280px] text-[15px] text-[#424655] dark:text-slate-400">
-							{successDirect ? (
-								<>
-									Your wellness gift for{' '}
-									<span className="font-semibold" style={{ color: brandControl }}>
-										{friendHandle}
-									</span>{' '}
-									at <span className="font-semibold text-[#0F172A] dark:text-slate-100">{merchantLabel}</span> is
-									ready.
-								</>
-							) : (
-								<>
-									Your wellness gift at{' '}
-									<span className="font-semibold text-[#0F172A] dark:text-slate-100">{merchantLabel}</span> is ready
-									to share.
-								</>
-							)}
-						</p>
-						{chatHintAlert ? <div className="mt-3 w-full max-w-sm">{chatHintAlert}</div> : null}
-					</div>
-
-					<div
-						className="relative mb-4 overflow-hidden rounded-2xl p-6 shadow-xl"
-						style={{ backgroundColor: wellnessPassBg, color: onBrandText, boxShadow: brandShadow }}
-					>
-						<div className="pointer-events-none absolute -bottom-6 -right-6 opacity-10" aria-hidden>
-							<Flower2 className="h-40 w-40" strokeWidth={1} />
-						</div>
-						<div className="relative z-10 mb-6 flex items-start justify-between gap-3">
-							<div className="min-w-0 text-left">
-								<span
-									className="mb-0.5 block text-[12px] font-semibold uppercase tracking-wider"
-									style={{ color: onBrandMuted }}
-								>
-									Wellness Gift Pass
-								</span>
-								<h3 className="truncate text-[22px] font-semibold tracking-tight">{merchantLabel}</h3>
-							</div>
-							<div
-								className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full"
+								className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg"
 								style={{ backgroundColor: 'rgba(255,255,255,0.12)' }}
 							>
-								<Flower2 className="h-[22px] w-[22px]" strokeWidth={2} aria-hidden />
+								<Gift className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden />
 							</div>
+							<span
+								className="truncate text-[12px] font-semibold uppercase tracking-wider"
+								style={{ color: onBrandMuted }}
+							>
+								{merchantLabel}
+							</span>
 						</div>
-						<div className="relative z-10 mb-5 text-left">
-							<div className="flex flex-wrap items-baseline gap-1.5">
-								<span className="text-[15px]" style={{ color: onBrandMuted }}>
-									{prefix}
-								</span>
-								<span className="text-[34px] font-bold leading-none tracking-tight">{previewAmount}</span>
-								<span
-									className="ml-1 rounded-full px-2 py-0.5 text-[12px] font-semibold"
-									style={{ backgroundColor: 'rgba(255,255,255,0.16)' }}
-								>
-									Face value
-								</span>
-							</div>
-							{successDirect ? (
-								<p className="mt-1 flex items-center gap-1 text-[15px]" style={{ color: onBrandMuted }}>
-									<Lock className="h-[15px] w-[15px]" strokeWidth={2} aria-hidden />
-									Delivered for <strong style={{ color: onBrandText }}>{friendHandle}</strong>
-								</p>
-							) : null}
-						</div>
-						<div
-							className="relative z-10 flex items-center justify-between border-t pt-3"
-							style={{ borderColor: 'rgba(255,255,255,0.12)' }}
+						<span
+							className="shrink-0 rounded-full px-2.5 py-1 text-[12px] font-semibold uppercase tracking-wider"
+							style={{ backgroundColor: 'rgba(255,255,255,0.16)', color: onBrandText }}
 						>
-							<div className="flex items-center gap-1.5">
-								<span
-									className="h-2 w-2 rounded-full"
-									style={{ backgroundColor: brandControl }}
-									aria-hidden
-								/>
-								<span className="text-[12px] font-semibold" style={{ color: onBrandMuted }}>
-									Open redeem ready
-								</span>
-							</div>
-							<span className="text-[12px] font-semibold uppercase tracking-wider" style={{ color: onBrandMuted }}>
-								Protected
+							Gift Pass
+						</span>
+					</div>
+					<div className="relative z-10 mb-6">
+						<span
+							className="mb-1 block text-[12px] font-semibold uppercase tracking-widest"
+							style={{ color: onBrandMuted }}
+						>
+							Pass Value
+						</span>
+						<div className="flex items-baseline gap-1">
+							<span className="text-[22px] font-bold" style={{ color: onBrandText }}>
+								{prefix}
+							</span>
+							<span className="text-[34px] font-bold leading-none tracking-tight" style={{ color: onBrandText }}>
+								{previewAmount}
 							</span>
 						</div>
 					</div>
-
-					<div className="mb-4 space-y-2">
-						<div className="flex items-center justify-between px-1 text-[12px] font-semibold uppercase tracking-wider text-[#5d5e63]">
-							<span>Delivery verification</span>
-							<span className="inline-flex items-center gap-1" style={{ color: brandControl }}>
-								<CheckCircle2 className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
-								Ready
-							</span>
-						</div>
-						{chatSent ? (
-							<div className="flex items-start gap-3 rounded-xl bg-white p-4 shadow-sm dark:bg-slate-900">
+					<div
+						className="relative z-10 flex items-center justify-between gap-3 border-t pt-4"
+						style={{ borderColor: 'rgba(255,255,255,0.12)' }}
+					>
+						{successDirect ? (
+							<div className="flex min-w-0 items-center gap-2">
 								<div
-									className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full"
-									style={{ backgroundColor: `${brandControl}22`, color: brandControl }}
+									className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold"
+									style={{ backgroundColor: brandControl, color: onBrandText }}
 								>
-									<MessageSquare className="h-5 w-5" strokeWidth={2} aria-hidden />
+									{friendInitial}
 								</div>
-								<div className="min-w-0 flex-1 text-left">
-									<h4 className="text-[17px] font-semibold text-[#0F172A] dark:text-slate-100">
-										Care voucher dispatched
-									</h4>
-									<p className="mt-0.5 text-[15px] text-[#424655] dark:text-slate-400">
-										A wellness greeting was delivered to {friendHandle} via Beamio chat.
+								<div className="min-w-0 text-left">
+									<p className="truncate text-[15px] font-semibold">{friendHandle}</p>
+									<p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: onBrandMuted }}>
+										Beamio Smart Tag
 									</p>
 								</div>
 							</div>
-						) : null}
-						<div className="flex items-start gap-3 rounded-xl bg-white p-4 shadow-sm dark:bg-slate-900">
-							<div
-								className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full"
-								style={{ backgroundColor: `${brandControl}22`, color: brandControl }}
-							>
-								<Wallet className="h-5 w-5" strokeWidth={2} aria-hidden />
-							</div>
-							<div className="min-w-0 flex-1 text-left">
-								<h4 className="text-[17px] font-semibold text-[#0F172A] dark:text-slate-100">Ready to claim</h4>
-								<p className="mt-0.5 text-[15px] text-[#424655] dark:text-slate-400">
-									After they claim, the gift becomes store credit at {merchantLabel}
-									{creditHuman ? ` — about ${prefix}${creditHuman}` : ''}.
-								</p>
-							</div>
-						</div>
-					</div>
-
-					{spotlightUrl ? (
-						<div className="mb-4 overflow-hidden rounded-2xl bg-[#f4f3f8] p-4 dark:bg-slate-800">
-							<p className="mb-3 text-[12px] font-semibold uppercase tracking-wider text-[#5d5e63]">
-								Merchant spotlight
-							</p>
-							<div className="overflow-hidden rounded-xl bg-white shadow-sm dark:bg-slate-900">
-								<IpfsImg
-									src={spotlightUrl}
-									alt=""
-									className="h-28 w-full object-cover"
-								/>
-							</div>
-						</div>
-					) : null}
-
-					{themedActions}
-
-					<div className="mt-4 space-y-1.5 px-2 text-center">
-						<div className="inline-flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-wider text-[#5d5e63]">
-							<Lock className="h-[15px] w-[15px]" strokeWidth={2} style={{ color: brandControl }} aria-hidden />
-							<span>Protected by Beamio</span>
-						</div>
-						<p className="text-[12px] font-semibold leading-relaxed text-[#424655] dark:text-slate-400">
-							Unclaimed gifts return automatically in 24h. Valid for in-clinic treatments and sessions.
-						</p>
-					</div>
-					{panelErrorAlert ? <div className="mt-4">{panelErrorAlert}</div> : null}
-				</section>
-			)
-		}
-
-		return (
-			<section className="mx-auto flex w-full max-w-lg flex-col gap-5" aria-label="Gift ready">
-				<header className="flex flex-col items-center px-0.5 pt-1 text-center">
-					<div className="relative mb-3 flex h-16 w-16 items-center justify-center">
-						<span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-200/50" />
-						<div
-							className="relative flex h-14 w-14 items-center justify-center rounded-full shadow-lg"
-							style={{ backgroundColor: brandControl, color: onBrandText, boxShadow: brandControlShadow }}
-						>
-							<Check className="h-7 w-7" strokeWidth={2.5} aria-hidden />
-						</div>
-					</div>
-					<div className="mb-2 inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-						<span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden />
-						{successDirect ? 'Direct gift ready' : 'Claim link ready'}
-					</div>
-					<h2 className="text-[22px] font-bold tracking-tight text-[#0F172A] dark:text-slate-100 sm:text-[24px]">
-						{successDirect && friendTag ? `Gift ready for @${friendTag}` : 'Gift voucher ready'}
-					</h2>
-					<p className="mt-2 max-w-sm text-[13px] leading-relaxed text-[#6b7280] dark:text-slate-400">
-						{prefix}
-						{issuedGiftValueHuman} {merchantLabel} gift
-						{creditHuman ? ` — about ${prefix}${creditHuman} store credit after claim` : ''}
-						{successDirect && friendName ? `. Share with ${friendName}.` : '. Share the link or code.'}
-					</p>
-					{chatHintAlert}
-				</header>
-
-				{successDirect && selectedFriend ? (
-					<div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-						<GiftFriendCapsule
-							item={selectedFriend}
-							onClear={() => setSelectedFriend(null)}
-							accentColor={brandControl}
-						/>
-						<p className="mt-2 text-[12px] text-slate-500 dark:text-slate-400">
-							Anyone with the claim link or code can redeem — share privately with your friend.
-						</p>
-					</div>
-				) : null}
-
-				<div
-					className="overflow-hidden rounded-[20px] px-4 pb-4 pt-3.5"
-					style={{ backgroundColor: brandColor, color: onBrandText, boxShadow: brandShadow }}
-				>
-					<div className="flex items-center justify-between gap-2">
-						<span
-							className="shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em]"
-							style={{ backgroundColor: brandControl, color: onBrandText }}
-						>
-							Gift
-						</span>
-						<p className="min-w-0 flex-1 truncate text-center text-[15px] font-semibold tracking-tight">
-							{merchantLabel}
-						</p>
-						<span className="w-[4.5rem] shrink-0" aria-hidden />
-					</div>
-					{giftNote.trim() ? (
-						<p className="mt-3 line-clamp-3 text-[13px] italic leading-snug" style={{ color: onBrandMuted }}>
-							“{giftNote.trim()}”
-						</p>
-					) : null}
-					<p
-						className="mt-4 break-all rounded-xl bg-white/[0.08] px-4 py-3 font-mono text-[15px] font-semibold tracking-wide ring-1 ring-white/10"
-						style={{ color: onBrandText }}
-					>
-						{issuedCode}
-					</p>
-				</div>
-
-				{claimUrl ? (
-					<div className="flex flex-col items-center gap-3 rounded-[20px] border border-[#e8ecf0] bg-white px-4 py-5 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-						<p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#9ca3af]">
-							Instant claim link
-						</p>
-						<div className="rounded-[20px] bg-white p-3 shadow-[0_12px_28px_rgba(15,23,42,0.12)] ring-1 ring-slate-100">
-							<QRCodeCanvas
-								value={claimUrl}
-								size={200}
-								level="H"
-								includeMargin={false}
-								bgColor="#ffffff"
-								fgColor="#0F172A"
-								imageSettings={{
-									src: beamioQrLogo,
-									height: 48,
-									width: 48,
-									excavate: true,
-								}}
-								className="block"
-							/>
-						</div>
-						<p className="w-full break-all px-1 text-center text-[11px] leading-snug text-[#6b7280] dark:text-slate-400">
-							{claimUrl}
-						</p>
-					</div>
-				) : null}
-
-				<div className="flex flex-col gap-2.5">
-					{claimUrl ? (
-						<button
-							type="button"
-							onClick={() => void handleCopyClaimLink()}
-							className="inline-flex w-full items-center justify-center gap-2 rounded-2xl px-5 py-3.5 text-[15px] font-bold transition active:scale-[0.98]"
-							style={{
-								backgroundColor: brandControl,
-								color: onBrandText,
-								boxShadow: brandControlShadow,
-							}}
-						>
-							{copyLinkStatus === 'ok' ? (
-								<Check className="h-5 w-5 shrink-0" strokeWidth={2.25} aria-hidden />
-							) : (
-								<Link2 className="h-5 w-5 shrink-0" strokeWidth={2.25} aria-hidden />
-							)}
-							<span>{copyLinkStatus === 'ok' ? 'Claim link copied' : 'Copy claim link'}</span>
-						</button>
-					) : null}
-					<button
-						type="button"
-						onClick={() => void handleShare()}
-						className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-[#e8ecf0] bg-white px-5 py-3 text-[14px] font-semibold text-[#0F172A] shadow-sm transition active:scale-[0.98] dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-					>
-						<Share2 className="h-4 w-4 text-[#6b7280]" strokeWidth={2.25} aria-hidden />
-						Share
-					</button>
-					<button
-						type="button"
-						onClick={() => void handleCopyCode()}
-						className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-[#e8ecf0] bg-white px-5 py-3 text-[14px] font-semibold text-[#0F172A] shadow-sm transition active:scale-[0.98] dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-					>
-						{copyCodeStatus === 'ok' ? (
-							<Check className="h-4 w-4 shrink-0 text-emerald-500" strokeWidth={2.25} aria-hidden />
 						) : (
-							<Copy className="h-4 w-4 shrink-0 text-[#6b7280]" strokeWidth={2.25} aria-hidden />
+							<p className="text-[12px] font-semibold" style={{ color: onBrandMuted }}>
+								Share the claim link or code
+							</p>
 						)}
-						<span>{copyCodeStatus === 'ok' ? 'Code copied' : 'Copy gift code'}</span>
-					</button>
-					<button
-						type="button"
-						onClick={onClose}
-						className="inline-flex w-full items-center justify-center px-5 py-2 text-[14px] font-semibold text-[#6b7280] dark:text-slate-400"
-					>
-						Done
-					</button>
+						<div className="shrink-0 text-right">
+							<span className="block text-[12px] font-semibold uppercase" style={{ color: onBrandMuted }}>
+								Power
+							</span>
+							<span className="text-[12px] font-semibold">100% face value</span>
+						</div>
+					</div>
 				</div>
 
-				{panelErrorAlert}
+				{chatSent ? (
+					<div className="mb-4 flex items-center gap-3 rounded-2xl bg-[#f4f3f8] p-4 dark:bg-slate-800">
+						<div
+							className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full"
+							style={{ backgroundColor: `${brandControl}22`, color: brandControl }}
+						>
+							<MessageSquare className="h-5 w-5" strokeWidth={2} aria-hidden />
+						</div>
+						<div className="min-w-0 flex-1 text-left">
+							<p className="text-[15px] font-semibold text-[#0F172A] dark:text-slate-100">
+								Card bubble dispatched
+							</p>
+							<p className="mt-0.5 text-[12px] font-semibold text-[#424655] dark:text-slate-400">
+								A greeting card bubble was sent to {friendHandle} in peer messages.
+							</p>
+						</div>
+					</div>
+				) : null}
+
+				<div className="mb-6 space-y-3 rounded-2xl bg-[#eeedf3] p-4 dark:bg-slate-800">
+					<div className="flex items-start gap-3">
+						<div
+							className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
+							style={{ backgroundColor: `${brandControl}22`, color: brandControl }}
+						>
+							<Wallet className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden />
+						</div>
+						<div className="min-w-0 flex-1 text-left">
+							<p className="text-[15px] font-semibold text-[#0F172A] dark:text-slate-100">Ready to claim</p>
+							<p className="text-[13px] text-[#424655] dark:text-slate-400">
+								Store credit unlocks on this merchant card when they redeem
+								{creditHuman ? ` — about ${prefix}${creditHuman} after claim` : ''}.
+							</p>
+						</div>
+					</div>
+				</div>
+
+				{themedActions}
+
+				<div className="mt-6 flex flex-col items-center space-y-2 px-4 text-center">
+					<div className="flex items-center gap-1.5 text-[#424655]/80">
+						<Lock className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
+						<span className="text-[11px] font-semibold uppercase tracking-wider">Protected by Beamio</span>
+					</div>
+					<p className="text-[11px] font-semibold leading-tight text-[#737687]">
+						Unclaimed gifts return automatically in 24h. Redeemable as store credit at this merchant.
+					</p>
+				</div>
+				{panelErrorAlert ? <div className="mt-4">{panelErrorAlert}</div> : null}
 			</section>
 		)
 	}
 
 	/* ─── Step 1: Configure ─── */
-	if (step === 1 && step1Kind !== 'generic') {
-		const noteChips = themeNoteChips(step1Kind)
+	if (step === 1) {
+		const noteChips = GIFT_THEME_NOTE_CHIPS
 		const customBounds = giftBounds
 		const customMin = Math.max(Number(minHuman) || 0, customBounds?.min ?? 0)
 		const customMax = customBounds?.max
@@ -3220,235 +2644,6 @@ export default function DiscoverMerchantGiftSheet({
 		)
 	}
 
-	if (step === 1) {
-		return (
-			<section className="mx-auto flex w-full max-w-lg flex-col gap-1 pb-4" aria-label="Configure gift">
-				<h2 className="text-[28px] font-bold leading-tight tracking-tight text-[#0F172A] dark:text-slate-100">
-					A Gift for Someone Special
-				</h2>
-				<p className="mt-0.5 line-clamp-2 text-[15px] leading-snug text-[#5d5e63] dark:text-slate-400">
-					Choose an amount, add a personal message, and send a little something to brighten their day.
-				</p>
-
-				<div className="mt-4">{themedGiftCard}</div>
-				{giftCardImageOptions.length > 1 ? (
-					<div className="mb-2">
-						<h3 className="mb-2.5 text-[18px] font-semibold tracking-tight text-[#1a1b1f] dark:text-slate-100">
-							Choose gift card design
-						</h3>
-						<div
-							className="flex w-full snap-x snap-mandatory touch-pan-x gap-2.5 overflow-x-auto overscroll-x-contain pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-							role="listbox"
-							aria-label="Gift card design"
-						>
-							{giftCardImageOptions.map((image, index) => {
-								const selected = image === selectedGiftCardImage
-								return (
-									<button
-										key={`${image}-${index}`}
-										type="button"
-										role="option"
-										aria-selected={selected}
-										aria-label={`Use gift card design ${index + 1}`}
-										onClick={() => setSelectedGiftCardImage(image)}
-										className={`h-24 w-36 shrink-0 snap-start overflow-hidden rounded-xl border-2 bg-slate-900 object-cover transition ${
-											selected
-												? 'ring-2 ring-offset-1'
-												: 'border-transparent opacity-80 hover:opacity-100'
-										}`}
-										style={selected ? { borderColor: brandControl, boxShadow: `0 0 0 2px ${brandControl}` } : undefined}
-									>
-										<IpfsImg src={image} alt="" className="h-full w-full object-cover" />
-									</button>
-								)
-							})}
-						</div>
-					</div>
-				) : null}
-
-				<section className="mb-6 flex flex-col gap-3">
-					<div className="flex items-center justify-between">
-						<label className="flex items-center gap-1 text-[12px] font-semibold uppercase tracking-wider text-[#5d5e63]">
-							<span style={{ color: brandControl }}>1.</span> Select gift amount
-						</label>
-						<span
-							className="flex items-center gap-0.5 text-[12px] font-semibold"
-							style={{ color: brandControl }}
-						>
-							Instant mint
-						</span>
-					</div>
-					<div
-						className={`grid gap-2 ${
-							visiblePresets.length <= 2
-								? 'grid-cols-2'
-								: visiblePresets.length === 3
-									? 'grid-cols-3'
-									: 'grid-cols-4'
-						}`}
-					>
-						{visiblePresets.map((chip) => {
-							const n = chip.value
-							const active = presetAmount === n && !Number.isNaN(Number(amountText)) && Number(amountText) === n
-							return (
-								<button
-									key={n}
-									type="button"
-									onClick={() => selectPreset(n)}
-									className={`flex flex-col items-center justify-center rounded-xl px-1 py-3 transition ${
-										active ? 'scale-[1.02] shadow-md' : 'bg-[#f4f3f8] text-[#1a1b1f] hover:bg-[#eeedf3] dark:bg-slate-800 dark:text-slate-100'
-									}`}
-									style={
-										active
-											? { backgroundColor: brandControl, color: onBrandText, boxShadow: brandControlShadow }
-											: undefined
-									}
-								>
-									<span
-										className={`text-[12px] font-semibold ${active ? '' : 'text-[#5d5e63]'}`}
-										style={active ? { color: onBrandMuted } : undefined}
-									>
-										{prefix}
-									</span>
-									<span className="text-[22px] font-semibold leading-none">
-										{formatGiftStartAmount(n)}
-									</span>
-									{chip.caption ? (
-										<span
-											className="mt-1 text-center text-[9px] font-semibold uppercase leading-tight tracking-wide"
-											style={active ? { color: onBrandMuted } : undefined}
-										>
-											{chip.caption}
-										</span>
-									) : null}
-								</button>
-							)
-						})}
-					</div>
-					<div className="relative w-full">
-						<div className="flex items-center rounded-xl bg-white px-4 py-3 shadow-sm ring-1 ring-slate-100 dark:bg-slate-900 dark:ring-slate-700">
-							<span className="mr-2 text-[17px] text-[#5d5e63]">{prefix}</span>
-							<input
-								id="discover-gift-amount"
-								type="number"
-								inputMode="decimal"
-								autoComplete="off"
-								enterKeyHint="done"
-								min={minHuman}
-								step="0.01"
-								value={amountText}
-								onChange={(e) => {
-									setPresetAmount(null)
-									setAmountText(e.target.value)
-									setPanelError(null)
-								}}
-								onKeyDown={preventNumericInputStepKeys}
-								onWheel={preventNumericInputWheelStep}
-								className="w-full bg-transparent text-[17px] text-[#1a1b1f] outline-none placeholder:text-[#5d5e63]/60 dark:text-slate-100 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]"
-								placeholder="Or enter custom amount"
-							/>
-							<span className="rounded bg-[#eeedf3] px-2 py-0.5 text-[11px] font-semibold uppercase text-[#5d5e63] dark:bg-slate-700 dark:text-slate-300">
-								Custom
-							</span>
-						</div>
-					</div>
-					<div className="flex items-center gap-1.5 px-1">
-						<Check className="h-4 w-4 shrink-0" strokeWidth={2.5} style={{ color: brandControl }} aria-hidden />
-						<p className="text-[15px] text-[#5d5e63] dark:text-slate-400">
-							100% face value received by your recipient
-							{isFeeCard ? ` · min ${prefix}${minHuman}` : ''}
-						</p>
-					</div>
-				</section>
-
-				<section className="mb-6 flex flex-col gap-3">
-					<label className="flex items-center gap-1 text-[12px] font-semibold uppercase tracking-wider text-[#5d5e63]">
-						<span style={{ color: brandControl }}>2.</span> Personal message & occasion
-					</label>
-					<div className="flex items-center gap-2 overflow-x-auto pb-1.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-						{occasionCatalog.map((occ) => {
-							const active = occasionId === occ.id
-							return (
-								<button
-									key={occ.id}
-									type="button"
-									onClick={() => selectOccasion(occ)}
-									className={`flex shrink-0 items-center gap-1.5 rounded-2xl px-3.5 py-2 text-[15px] transition ${
-										active
-											? 'shadow-sm'
-											: 'bg-[#f4f3f8] text-[#1a1b1f] hover:bg-[#eeedf3] dark:bg-slate-800 dark:text-slate-100'
-									}`}
-									style={
-										active
-											? { backgroundColor: brandControl, color: onBrandText }
-											: undefined
-									}
-								>
-									<span>{occ.emoji}</span>
-									<span>{occ.label}</span>
-								</button>
-							)
-						})}
-					</div>
-					<div className="rounded-2xl bg-white p-3.5 shadow-sm ring-1 ring-slate-100 dark:bg-slate-900 dark:ring-slate-700">
-						<label
-							className="mb-1.5 block text-[12px] font-semibold uppercase tracking-wider text-[#5d5e63]"
-							htmlFor="discover-gift-note-generic"
-						>
-							Note to recipient
-						</label>
-						<textarea
-							id="discover-gift-note-generic"
-							rows={3}
-							maxLength={noteMax}
-							value={giftNote}
-							onChange={(e) => setGiftNote(e.target.value)}
-							className="w-full resize-none bg-transparent text-[15px] leading-relaxed text-[#1a1b1f] outline-none dark:text-slate-100"
-						/>
-						<div className="mt-2 flex items-center justify-between pt-2">
-							<button
-								type="button"
-								onClick={() => setGiftNote(activeOccasion.message(merchantLabel))}
-								className="flex items-center gap-1 text-[12px] font-semibold uppercase tracking-wide transition"
-								style={{ color: brandControl }}
-							>
-								<Sparkles className="h-4 w-4" aria-hidden />
-								Reset template
-							</button>
-							<span className="text-[12px] font-semibold text-[#5d5e63]">
-								{giftNote.length}/{noteMax}
-							</span>
-						</div>
-					</div>
-				</section>
-
-				{panelError ? (
-					<div
-						role="alert"
-						className="mb-3 flex gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-[13px] text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100"
-					>
-						<AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-						<p>{panelError}</p>
-					</div>
-				) : null}
-
-				<button
-					type="button"
-					onClick={goStep2}
-					className="inline-flex w-full items-center justify-center gap-2 rounded-2xl px-6 py-4 text-[17px] font-semibold shadow-lg transition active:scale-[0.99]"
-					style={{
-						backgroundColor: brandControl,
-						color: onBrandText,
-						boxShadow: brandControlShadow,
-					}}
-				>
-					<span>Continue to delivery method</span>
-					<ChevronRight className="h-5 w-5" strokeWidth={2.25} aria-hidden />
-				</button>
-			</section>
-		)
-	}
-
 	/* ─── Select PT (Reward PT sources) — same chrome as Top-up Select PT ─── */
 	if (step === 'select') {
 		return (
@@ -3534,8 +2729,7 @@ export default function DiscoverMerchantGiftSheet({
 	/* ─── Step 2: Delivery ─── */
 	if (step === 2) {
 		const merchantInitial = merchantLabel.replace(/^@/, '').trim().charAt(0).toUpperCase() || '?'
-		const SummaryKindIcon =
-			step1Kind === 'food-beverage' ? Utensils : step1Kind === 'health-beauty' ? Flower2 : Gift
+		const SummaryKindIcon = Gift
 		const selectRecentFriend = (item: searchResult) => {
 			setSelectedFriend(item)
 			setFriendQuery('')
@@ -3860,8 +3054,6 @@ export default function DiscoverMerchantGiftSheet({
 				? `@${selectedFriend.username.trim()}`
 				: beamioSearchDisplayName(selectedFriend) || beamioSearchShortAddress(selectedFriend.address)
 			: null
-	const Step3KindIcon =
-		step1Kind === 'food-beverage' ? Utensils : step1Kind === 'health-beauty' ? Flower2 : Gift
 	const creditAvailLabel =
 		aaPoints0Loading
 			? 'Checking Smart Wallet store credit…'
@@ -3982,7 +3174,7 @@ export default function DiscoverMerchantGiftSheet({
 								{selectedGiftCardImage ? (
 									<IpfsImg src={selectedGiftCardImage} alt="" className="h-full w-full object-cover" />
 								) : (
-									<Step3KindIcon className="h-6 w-6" strokeWidth={2} aria-hidden />
+									<Gift className="h-6 w-6" strokeWidth={2} aria-hidden />
 								)}
 							</div>
 							<div className="flex min-w-0 flex-col">
@@ -3990,7 +3182,7 @@ export default function DiscoverMerchantGiftSheet({
 									{merchantLabel}
 								</span>
 								<span className="text-[22px] font-semibold leading-7 tracking-tight text-[#1a1b1f] dark:text-slate-100">
-									{themeStep3PassTitle(step1Kind)}
+									{GIFT_STEP3_PASS_TITLE}
 								</span>
 							</div>
 						</div>
@@ -3998,7 +3190,7 @@ export default function DiscoverMerchantGiftSheet({
 							className="shrink-0 rounded-full px-2.5 py-1 text-[12px] font-semibold uppercase tracking-[0.05em]"
 							style={{ backgroundColor: brandTint, color: brandControl }}
 						>
-							{themeStep3VoucherBadge(step1Kind)}
+							{GIFT_STEP3_VOUCHER_BADGE}
 						</span>
 					</div>
 					<div className="relative my-3 flex items-center justify-between">

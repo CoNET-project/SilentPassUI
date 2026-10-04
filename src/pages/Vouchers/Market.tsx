@@ -123,6 +123,7 @@ import {
 	resolveDiscoverMembershipUiState,
 	type DiscoverMembershipFeeTier,
 } from "@/utils/discoverMembershipFee"
+import { formatWalletMembershipMemberNo } from "@/pages/Wallet/walletMerchantPassDisplay"
 import { loadMyBrandsFeedLocalCache } from "@/utils/myBrandsFeedLocalCache"
 import type { MyBrandCardFeedDetailsMap } from "@/utils/myBrandsFeedState"
 import {
@@ -1587,6 +1588,8 @@ function DiscoverMerchantProspectPassPanel({
  * Visit / Gift Voucher / Contact — same for every industry.
  */
 function DiscoverMerchantLoyaltyPassPanel({
+	membershipMemberNo,
+	membershipTierName,
 	chargePercent,
 	customerLoyaltyPointsEnabled,
 	balancePrefix,
@@ -1604,6 +1607,10 @@ function DiscoverMerchantLoyaltyPassPanel({
 	actionsDisabled,
 	visitError,
 }: {
+	/** Held membership NFT, e.g. `M-000100`. Empty when the viewer is not a member. */
+	membershipMemberNo?: string
+	/** Membership tier title. Empty when the viewer is not a member. */
+	membershipTierName?: string | null
 	chargePercent: number | null
 	customerLoyaltyPointsEnabled: boolean
 	balancePrefix: string
@@ -1636,6 +1643,10 @@ function DiscoverMerchantLoyaltyPassPanel({
 		fiatLabel,
 	})
 	const [howPointsWorkOpen, setHowPointsWorkOpen] = useState(false)
+	const memberNo = membershipMemberNo?.trim() ?? ''
+	const tierName = membershipTierName?.trim() ?? ''
+	const membershipLine =
+		tierName && memberNo ? `${tierName} · ${memberNo}` : tierName || memberNo
 
 	return (
 		<div className="flex flex-col gap-4" aria-label="Active member pass">
@@ -1643,6 +1654,11 @@ function DiscoverMerchantLoyaltyPassPanel({
 				className="overflow-hidden rounded-[1.35rem] px-5 pb-5 pt-5 text-white shadow-[0_16px_40px_rgba(45,40,35,0.28)]"
 				style={{ backgroundColor: brand }}
 			>
+				{membershipLine ? (
+					<p className="mb-3.5 truncate text-[12px] font-semibold tracking-tight text-white/80">
+						{membershipLine}
+					</p>
+				) : null}
 				<div className="grid grid-cols-2 gap-0">
 					<div className="min-w-0 pr-4">
 						<p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/50">
@@ -8821,6 +8837,15 @@ function DiscoverMerchantDetailFullScreen({
 					) : null}
 					{showMerchantLoyaltyPass ? (
 						<DiscoverMerchantLoyaltyPassPanel
+							membershipMemberNo={
+								hasActiveMembership
+									? formatWalletMembershipMemberNo(
+											pickActiveDiscoverMembershipNft(merchantAssets?.nfts)?.tokenId ??
+												'',
+										)
+									: ''
+							}
+							membershipTierName={hasActiveMembership ? activeMembershipTierName : ''}
 							chargePercent={merchantLoyaltyChargePercent}
 							customerLoyaltyPointsEnabled={customerLoyaltyPointsEnabled}
 							balancePrefix={balancePrefix || 'CA$'}

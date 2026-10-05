@@ -50,13 +50,17 @@ function OkxOfficialMark({ className = tileClass }: { className?: string }) {
 
 export function CoinbaseCMark({ className = 'h-9 w-9' }: { className?: string }) {
 	return (
-		<svg viewBox="0 0 36 36" className={`shrink-0 ${className}`} aria-hidden>
-			<circle cx="18" cy="18" r="18" fill="#0052FF" />
+		<svg
+			xmlns="http://www.w3.org/2000/svg"
+			fill="none"
+			viewBox="0 0 40 40"
+			className={`shrink-0 ${className}`}
+			aria-hidden
+		>
 			<path
-				fill="#fff"
-				d="M18 8.4c5.3 0 9.6 4.3 9.6 9.6s-4.3 9.6-9.6 9.6-9.6-4.3-9.6-9.6 4.3-9.6 9.6-9.6Zm0 5.1c-2.48 0-4.5 2.02-4.5 4.5s2.02 4.5 4.5 4.5 4.5-2.02 4.5-4.5-2.02-4.5-4.5-4.5Z"
+				fill="#0052FF"
+				d="M20.032 28.5c-4.705 0-8.516-3.804-8.516-8.5s3.81-8.5 8.516-8.5a8.51 8.51 0 0 1 8.388 7.083H37C36.276 9.857 28.96 3 20.032 3 10.629 3 3 10.615 3 20s7.629 17 17.032 17C28.959 37 36.276 30.143 37 21.417h-8.58a8.51 8.51 0 0 1-8.388 7.083"
 			/>
-			<rect x="16.05" y="16.2" width="7.7" height="3.6" fill="#0052FF" />
 		</svg>
 	)
 }

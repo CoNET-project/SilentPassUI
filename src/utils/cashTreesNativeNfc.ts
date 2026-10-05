@@ -386,6 +386,92 @@ export function openExternalUrl(rawUrl: string): boolean {
 let reservedBrowserWindow: Window | null = null
 
 /**
+ * True after `reserveExternalBrowserWindow` in this click, even if the Window
+ * handle is null. Cursor/Electron can still create the named tab and later
+ * `window.open(url, '_blank')` would add a second Coinbase tab.
+ */
+let reservedNamedHandoff = false
+
+/** Same name so the later Coinbase URL reuses the click-reserved tab. */
+const EXTERNAL_HANDOFF_WINDOW_NAME = 'beamio_external_handoff'
+
+function reservedWindowStillBlank(reserved: Window): boolean {
+	try {
+		const href = reserved.location.href
+		return !href || href === 'about:blank'
+	} catch {
+		// Cross-origin: this tab already left about:blank (usually Coinbase).
+		return false
+	}
+}
+
+/**
+ * Same-origin `about:blank` can still run this document. Coinbase COOP often
+ * ignores `location.replace` from the opener and opens a sibling tab, leaving
+ * the reserved window blank. Writing a same-document redirect uses that tab.
+ */
+function navigateReservedDocument(target: Window, url: string): void {
+	try {
+		const doc = target.document
+		doc.open()
+		doc.write(
+			`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Opening Coinbase</title>` +
+				`<script>location.replace(${JSON.stringify(url)})</script></head><body></body></html>`
+		)
+		doc.close()
+		return
+	} catch {
+		/* document may already be closed */
+	}
+	try {
+		target.location.replace(url)
+	} catch {
+		try {
+			target.location.href = url
+		} catch {
+			/* COOP */
+		}
+	}
+}
+
+/** Blocking GET for a click handler so Coinbase can open without an about:blank placeholder. */
+export function fetchJsonSync<T>(url: string): T | null {
+	if (typeof XMLHttpRequest === 'undefined') return null
+	try {
+		const xhr = new XMLHttpRequest()
+		xhr.open('GET', url, false)
+		xhr.setRequestHeader('Accept', 'application/json')
+		xhr.send(null)
+		if (xhr.status < 200 || xhr.status >= 300) return null
+		const text = xhr.responseText
+		if (!text) return null
+		return JSON.parse(text) as T
+	} catch {
+		return null
+	}
+}
+
+function openNamedExternalHandoff(url: string): boolean {
+	reservedNamedHandoff = false
+	reservedBrowserWindow = null
+	try {
+		const named = window.open(url, EXTERNAL_HANDOFF_WINDOW_NAME)
+		if (named && !named.closed) {
+			try {
+				named.opener = null
+			} catch {
+				/* already navigated */
+			}
+		}
+		// A null handle still counts as success: the named tab often already
+		// received the Coinbase URL. Do not fall through to `_blank`.
+		return true
+	} catch {
+		return openExternalUrl(url)
+	}
+}
+
+/**
  * Call synchronously inside a click handler so a later async URL can navigate
  * the same tab. Native shells skip this and use `openExternalUrl` after the URL exists.
  */
@@ -393,11 +479,13 @@ export function reserveExternalBrowserWindow(): Window | null {
 	if (typeof window === 'undefined' || isCashTreesNativeWebView()) return null
 	closeReservedExternalWindow(reservedBrowserWindow)
 	try {
-		const opened = window.open('about:blank', '_blank')
+		const opened = window.open('about:blank', EXTERNAL_HANDOFF_WINDOW_NAME)
 		reservedBrowserWindow = opened
+		reservedNamedHandoff = true
 		return opened
 	} catch {
 		reservedBrowserWindow = null
+		reservedNamedHandoff = false
 		return null
 	}
 }
@@ -414,25 +502,42 @@ export function peekReservedExternalWindow(): Window | null {
 
 export function consumeReservedExternalWindow(): void {
 	reservedBrowserWindow = null
+	reservedNamedHandoff = false
 }
 
 export function navigateReservedOrOpenExternal(reserved: Window | null | undefined, rawUrl: string): boolean {
 	const url = typeof rawUrl === 'string' ? rawUrl.trim() : ''
 	if (!url) return false
-	if (!isCashTreesNativeWebView() && reserved && !reserved.closed) {
-		try {
-			reserved.location.href = url
+	if (isCashTreesNativeWebView()) return openExternalUrl(url)
+
+	const target = reserved && !reserved.closed ? reserved : peekReservedExternalWindow()
+	if (target && !target.closed) {
+		navigateReservedDocument(target, url)
+		if (!reservedWindowStillBlank(target)) {
 			try {
-				reserved.opener = null
+				target.opener = null
 			} catch {
 				/* already navigated */
 			}
-			if (reservedBrowserWindow === reserved) reservedBrowserWindow = null
+			if (reservedBrowserWindow === target) reservedBrowserWindow = null
+			reservedNamedHandoff = false
 			return true
-		} catch {
-			/* fall through */
 		}
+		// Coinbase Cross-Origin-Opener-Policy often opens the onramp in a *new*
+		// tab and leaves this click-reserved window on about:blank. Closing the
+		// leftover blank is required — a second window.open would add another Coinbase tab.
+		try {
+			target.close()
+		} catch {
+			/* ignore */
+		}
+		if (reservedBrowserWindow === target) reservedBrowserWindow = null
+		reservedNamedHandoff = false
+		return true
 	}
+
+	if (reservedNamedHandoff) return openNamedExternalHandoff(url)
+
 	return openExternalUrl(url)
 }
 
@@ -451,4 +556,5 @@ export function closeReservedExternalWindow(reserved: Window | null | undefined)
 		/* ignore */
 	}
 	if (reservedBrowserWindow === reserved) reservedBrowserWindow = null
+	reservedNamedHandoff = false
 }

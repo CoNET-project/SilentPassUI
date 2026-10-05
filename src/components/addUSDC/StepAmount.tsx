@@ -11,7 +11,7 @@ import {
 	DollarSign,
 	XCircle
 } from "lucide-react";
-import { closeReservedExternalWindow, navigateReservedOrOpenExternal, reserveExternalBrowserWindow } from '@/utils/cashTreesNativeNfc'
+import { closeReservedExternalWindow, fetchJsonSync, navigateReservedOrOpenExternal, openExternalUrl, reserveExternalBrowserWindow } from '@/utils/cashTreesNativeNfc'
 
 export type RampMode = "onramp" | "offramp"
 
@@ -57,13 +57,21 @@ const StepAmount: React.FC<{
 		}
 		const clickNext = async () => {
 			if (!myAddress) return
-			const popup = reserveExternalBrowserWindow()
 			setLoading(true)
 			
 			const params = new URLSearchParams({address: myAddress, paymentAmount: amount}).toString()
+			const tokenUrl = `${remote}/api/coinbase-token?${params}`
 
+			let popup: Window | null = null
 			try {
-				const res = await fetch(`${remote}/api/coinbase-token?${params}`, {
+				const payload = fetchJsonSync<{ onrampUrl?: string }>(tokenUrl)
+				if (payload?.onrampUrl) {
+					openExternalUrl(payload.onrampUrl)
+					onNext(payload.onrampUrl)
+					return
+				}
+				popup = reserveExternalBrowserWindow()
+				const res = await fetch(tokenUrl, {
 					method: 'GET',
 					headers: { 'Content-Type': 'application/json' }
 				})

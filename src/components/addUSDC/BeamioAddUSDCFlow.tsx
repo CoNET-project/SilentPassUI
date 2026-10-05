@@ -24,6 +24,7 @@ import bIcon from '@/components/assets/32x32.svg'
 import StepAmount, { type RampMode } from './StepAmount'
 import { AppButton } from "../button/AppButton";
 import { tu } from '@/locale/beamioLocale'
+import { closeReservedExternalWindow, navigateReservedOrOpenExternal, peekReservedExternalWindow, reserveExternalBrowserWindow } from '@/utils/cashTreesNativeNfc'
 const remote = 'https://beamio.app'
 
 
@@ -34,10 +35,14 @@ const fmtAddr = (a = '') => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '—')
 type BeamioAddUSDCFlowProps = {
 	/** 来自 BankingBridge Add Cash：挂载后直接执行 Add funds via Coinbase 流程 */
 	autoStartCoinbase?: boolean
-	/** 底部 sheet 嵌入模式：仅显示 Coinbase 确认内容 (204-221)，无 Header/hub */
+	/** 底部 sheet 嵌入模式：取到 Coinbase 地址后直接打开，无确认页 */
 	embedInSheet?: boolean
+	/** 点击当下预留的浏览器窗口，避免异步后再 open 被拦截 */
+	handoffWindow?: Window | null
 	/** embedInSheet 时 Cancel 的回调 */
 	onCancel?: () => void
+	/** Coinbase 页面已打开 */
+	onOpened?: () => void
 	/** 入金 / 出金（影响 Coinbase session；默认 onramp） */
 	initialMode?: RampMode
 	/**
@@ -50,12 +55,14 @@ type BeamioAddUSDCFlowProps = {
 /**
  * @deprecated Full-page Add USDC hub (no `embedInSheet`). Use Home Fund upward drawer
  * (`openFundWalletSheet` → debit / Base onramp / receive-from-wallet). `embedInSheet`
- * Coinbase confirm inside the Add Cash sheet is still the in-drawer Coinbase path.
+ * Coinbase inside the Add Cash sheet opens the onramp URL directly.
  */
 export default function BeamioAddUSDCFlow({
 	autoStartCoinbase,
 	embedInSheet,
+	handoffWindow,
 	onCancel,
+	onOpened,
 	initialMode,
 	initialScreen,
 }: BeamioAddUSDCFlowProps = {}) {
@@ -73,6 +80,12 @@ export default function BeamioAddUSDCFlow({
 	const [amount, setAmount] = useState('0')
 	const [coinbaseUrl, setCoinbaseUrl] = useState('')
 	const [loading, setLoading] = useState(false)
+	const handoffRef = useRef<Window | null>(null)
+	const handoffAdopted = useRef(false)
+	if (!handoffAdopted.current && handoffWindow) {
+		handoffRef.current = handoffWindow
+		handoffAdopted.current = true
+	}
 
 	// Fee policy (only mention once, where it matters)
 	const feeText = "0.8% (min 0.02 USDC / max 2 USDC)";
@@ -95,68 +108,77 @@ export default function BeamioAddUSDCFlow({
 		return setScreen("hub");
 	}
 
-	const clickNext = async () => {
+	const clickGen = useRef(0)
+	const clickNext = async (gestureWindow?: Window | null, isCancelled?: () => boolean) => {
 		if (!myAddress) return
+		const gen = ++clickGen.current
+		const popup = gestureWindow !== undefined
+			? gestureWindow
+			: (handoffRef.current ?? peekReservedExternalWindow())
 		setLoading(true)
-		await new Promise(executor => setTimeout(() => executor(true), 500))
-		
 		const params = new URLSearchParams({address: myAddress}).toString()
+		const stillCurrent = () => clickGen.current === gen && !isCancelled?.()
 
 		try {
-			const res = mode === 'onramp' ? await fetch(`${remote}/api/coinbase-token?${params}`, {
-				method: 'GET',
-				headers: { 'Content-Type': 'application/json' }
-			}) : await fetch(`${remote}/api/coinbase-token?${params}`, {
+			const res = await fetch(`${remote}/api/coinbase-token?${params}`, {
 				method: 'GET',
 				headers: { 'Content-Type': 'application/json' }
 			})
+			if (!stillCurrent()) return
 			
 			if (!res.ok) {
-				setLoading(false)
+				closeReservedExternalWindow(popup)
 				console.error('Failed to create onramp session', await res.text())
 				setScreen('coinbase_error')
 				return 
 			}
 
 			const { onrampUrl } = await res.json() as { onrampUrl: string }
-			setLoading(false)
+			if (!stillCurrent()) return
 			if (!onrampUrl) {
+				closeReservedExternalWindow(popup)
 				console.error('No onrampUrl in response')
 				setScreen('coinbase_error')
 				return 
 			}
 			setCoinbaseUrl(onrampUrl)
+			const opened = navigateReservedOrOpenExternal(popup ?? peekReservedExternalWindow(), onrampUrl)
+			if (!stillCurrent()) return
+			// 入金面板：window.open 已发出。部分 WebView 会打开页面但返回 null，
+			// 此时再留拦截提示会多一层面板。真正被拦截时，用户可再点 Coinbase。
+			if (opened || onOpened) {
+				handoffRef.current = null
+				handoffAdopted.current = true
+				if (onOpened) onOpened()
+				else setScreen('hub')
+				return
+			}
+			closeReservedExternalWindow(popup)
 			setScreen('coinbase')
-			// ⭐ 直接打开 Coinbase 返回的安全 URL（已包含 sessionToken）
-			
-			
 		} catch (e) {
-			setLoading(false)
+			if (!stillCurrent()) return
+			closeReservedExternalWindow(popup)
 			console.error('open coinbase onramp error', e)
 			setScreen('coinbase_error')
-			return 
+		} finally {
+			if (clickGen.current === gen) setLoading(false)
 		}
 	}
 
-	// 来自 BankingBridge Add Cash：挂载后直接执行 Add funds via Coinbase 流程
-	const hasAutoStarted = useRef(false)
+	// 来自 BankingBridge Add Cash：挂载后直接执行 Add funds via Coinbase 流程。
+	// Strict Mode 会立刻卸载再挂载；被取消的那次不得关掉点击时预留的窗口。
 	useEffect(() => {
-		if ((!autoStartCoinbase && !embedInSheet) || !myAddress || hasAutoStarted.current) return
-		hasAutoStarted.current = true
-		clickNext()
+		if ((!autoStartCoinbase && !embedInSheet) || !myAddress) return
+		let cancelled = false
+		void clickNext(undefined, () => cancelled)
+		return () => { cancelled = true }
 	}, [autoStartCoinbase, embedInSheet, myAddress])
 
 	const openUrl = () => {
-		const a = document.createElement('a')
-		a.href = coinbaseUrl
-		a.target = '_blank'
-		a.rel = 'noopener noreferrer'
-		document.body.appendChild(a)
-		a.click()
-		a.remove()
+		navigateReservedOrOpenExternal(null, coinbaseUrl)
 	}
 
-	// embedInSheet：仅显示 Coinbase 确认 (204-221)，无 Header/hub
+	// embedInSheet：加载会话并直接打开 Coinbase；仅在浏览器拦截窗口时留下打开按钮
 	if (embedInSheet) {
 		return (
 			<div className="px-4 pt-4 pb-4">
@@ -171,14 +193,10 @@ export default function BeamioAddUSDCFlow({
 				{screen === "coinbase" && !loading && (
 					<div className="px-0 pt-4 pb-2">
 						<div className="text-sm text-slate-600">
-							You’ll complete checkout with Coinbase. Verification may be required.
+							Your browser blocked the Coinbase window.
 						</div>
-						<div className="mt-4 grid grid-cols-2 gap-3">
-							<ButtonSecondary onClick={() => onCancel?.()}>{tu('cancel')}</ButtonSecondary>
+						<div className="mt-4">
 							<ButtonPrimary onClick={openUrl}>Open Coinbase</ButtonPrimary>
-						</div>
-						<div className="mt-4 rounded-2xl bg-slate-50 p-4 text-xs text-slate-600">
-							If Coinbase fails, you can still add USDC by transferring from another wallet/exchange.
 						</div>
 					</div>
 				)}
@@ -189,8 +207,8 @@ export default function BeamioAddUSDCFlow({
 							<div className="text-sm">Coinbase couldn’t complete this step. Try again, or use another method.</div>
 						</div>
 						<div className="mt-4 grid grid-cols-2 gap-3">
-							<ButtonSecondary onClick={() => onCancel?.()}>返回</ButtonSecondary>
-							<ButtonPrimary onClick={() => { hasAutoStarted.current = false; clickNext() }}>{tu('try_again')}</ButtonPrimary>
+							<ButtonSecondary onClick={() => onCancel?.()}>{tu('cancel')}</ButtonSecondary>
+							<ButtonPrimary onClick={() => { void clickNext(reserveExternalBrowserWindow()) }}>{tu('try_again')}</ButtonPrimary>
 						</div>
 					</Card>
 				)}
@@ -228,9 +246,7 @@ export default function BeamioAddUSDCFlow({
                 <div className="mt-4 grid grid-cols-2 gap-3">
                   <PrimaryPill
 				  	loading={loading}
-				   onClick={() => {
-						clickNext()
-				   }} label={tu('add_funds')} sub="via Coinbase" 
+				   onClick={() => { void clickNext(reserveExternalBrowserWindow()) }} label={tu('add_funds')} sub="via Coinbase" 
 				   />
                   <SecondaryPill onClick={() => setScreen("receive")} label="Receive" sub="from someone" />
                 </div>
@@ -290,18 +306,10 @@ export default function BeamioAddUSDCFlow({
 			<div className="px-4 pt-4">
 				<Card>
 					<div className="text-sm text-slate-600">
-						You’ll complete checkout with Coinbase. Verification may be required.
+						Your browser blocked the Coinbase window.
 					</div>
-
-					<div className="mt-4 grid grid-cols-2 gap-3">
-						<ButtonSecondary onClick={() => setScreen("hub")}>{tu('cancel')}</ButtonSecondary>
-						<ButtonPrimary onClick={() => {
-							openUrl()
-						}}>Open Coinbase</ButtonPrimary>
-					</div>
-
-					<div className="mt-4 rounded-2xl bg-slate-50 p-4 text-xs text-slate-600">
-							If Coinbase fails, you can still add USDC by transferring from another wallet/exchange.
+					<div className="mt-4">
+						<ButtonPrimary onClick={openUrl}>Open Coinbase</ButtonPrimary>
 					</div>
 				</Card>
 			</div>
@@ -316,7 +324,7 @@ export default function BeamioAddUSDCFlow({
 								return setScreen('coinbase_error')
 							}
 							setCoinbaseUrl(url)
-							setScreen('coinbase')
+							setScreen('hub')
 
 						}} />
 					</Card>

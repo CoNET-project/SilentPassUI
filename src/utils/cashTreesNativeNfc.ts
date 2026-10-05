@@ -367,8 +367,88 @@ export function openExternalUrl(rawUrl: string): boolean {
 	}
 
 	try {
-		return window.open(url, '_blank', 'noopener,noreferrer') != null
+		// `noopener` makes a successful open return null, which looks like a blocked popup.
+		// Null `opener` after the window exists so the return value stays trustworthy.
+		const opened = window.open(url, '_blank')
+		if (!opened) return false
+		try {
+			opened.opener = null
+		} catch {
+			/* cross-origin already */
+		}
+		return true
 	} catch {
 		return false
 	}
+}
+
+/** Browser-only placeholder opened in the click that starts Coinbase checkout. */
+let reservedBrowserWindow: Window | null = null
+
+/**
+ * Call synchronously inside a click handler so a later async URL can navigate
+ * the same tab. Native shells skip this and use `openExternalUrl` after the URL exists.
+ */
+export function reserveExternalBrowserWindow(): Window | null {
+	if (typeof window === 'undefined' || isCashTreesNativeWebView()) return null
+	closeReservedExternalWindow(reservedBrowserWindow)
+	try {
+		const opened = window.open('about:blank', '_blank')
+		reservedBrowserWindow = opened
+		return opened
+	} catch {
+		reservedBrowserWindow = null
+		return null
+	}
+}
+
+/** The placeholder from the latest click, if it is still a blank tab. */
+export function peekReservedExternalWindow(): Window | null {
+	const opened = reservedBrowserWindow
+	if (!opened || opened.closed) {
+		reservedBrowserWindow = null
+		return null
+	}
+	return opened
+}
+
+export function consumeReservedExternalWindow(): void {
+	reservedBrowserWindow = null
+}
+
+export function navigateReservedOrOpenExternal(reserved: Window | null | undefined, rawUrl: string): boolean {
+	const url = typeof rawUrl === 'string' ? rawUrl.trim() : ''
+	if (!url) return false
+	if (!isCashTreesNativeWebView() && reserved && !reserved.closed) {
+		try {
+			reserved.location.href = url
+			try {
+				reserved.opener = null
+			} catch {
+				/* already navigated */
+			}
+			if (reservedBrowserWindow === reserved) reservedBrowserWindow = null
+			return true
+		} catch {
+			/* fall through */
+		}
+	}
+	return openExternalUrl(url)
+}
+
+export function closeReservedExternalWindow(reserved: Window | null | undefined): void {
+	if (!reserved || reserved.closed) return
+	try {
+		const href = reserved.location.href
+		if (href && href !== 'about:blank') return
+	} catch {
+		// Cross-origin means the tab already left about:blank for Coinbase.
+		return
+	}
+	try {
+		reserved.close()
+	} catch {
+		/* ignore */
+	}
+	if (reservedBrowserWindow === reserved) reservedBrowserWindow = null
 }

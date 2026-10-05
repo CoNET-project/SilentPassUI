@@ -12,7 +12,7 @@ import { formatDigitalAssetDisplay } from '@/utils/formatDigitalAssetDisplay'
 import base_icon from '@/components/assets/base-logo.png'
 import { beamioWalletAccent } from '@/utils/beamioWalletAccent'
 import { CoNET_Data, setCoNET_Data } from '../../utils/globals'
-import { detectDeviceNfcCapability, getCashTreesNativeNfcBridge, isCashTreesNativeWebView } from '@/utils/cashTreesNativeNfc'
+import { closeReservedExternalWindow, detectDeviceNfcCapability, getCashTreesNativeNfcBridge, isCashTreesNativeWebView, reserveExternalBrowserWindow } from '@/utils/cashTreesNativeNfc'
 import { WALLET_READY_INTENT_KEY } from '@/pages/Home/walletReadyIntent'
 import type { LucideIcon } from "lucide-react"
 import { useLocation, useNavigate } from "react-router-dom"
@@ -597,6 +597,7 @@ const Home = (_props: HomeProps) => {
 	const [showFuelView, setShowFuelView] = useState(false)
 	/** Coinbase：methods 内进入后展示 BeamioAddUSDCFlow */
 	const [showAddUsdcInSheet, setShowAddUsdcInSheet] = useState(false)
+	const coinbaseHandoffRef = useRef<Window | null>(null)
 	const [addCashMode, setAddCashMode] = useState<AddCashSheetMode>('methods')
 	const [addCashAmountCad, setAddCashAmountCad] = useState('')
 	const [topUpStore, setTopUpStore] = useState<HomeStoreCardRow>(() => INITIAL_HOME_STORE_CARDS[0]!)
@@ -1044,6 +1045,8 @@ const Home = (_props: HomeProps) => {
 	}, [showAddCashSheet, addCashMode, refreshTopUpOracleRate])
 
 	const closeAddCashSheet = useCallback(() => {
+		closeReservedExternalWindow(coinbaseHandoffRef.current)
+		coinbaseHandoffRef.current = null
 		setShowAddCashSheet(false)
 		setShowAddUsdcInSheet(false)
 		setAddCashOpenedAsStripe(false)
@@ -1125,7 +1128,7 @@ const Home = (_props: HomeProps) => {
 		resetPayReceiveAuxState()
 		setAddCashOpenedAsStripe(true)
 		setAddCashMode(mode)
-		if (mode === 'coinbase') setShowAddUsdcInSheet(false)
+		if (mode === 'coinbase') setShowAddUsdcInSheet(true)
 		setShowAddCashSheet(true)
 		setShowFooter(false)
 	}, [resetPayReceiveAuxState, setShowFooter])
@@ -3260,7 +3263,11 @@ const Home = (_props: HomeProps) => {
 											<button
 												type="button"
 												className={fundWalletOptionClass}
-												onClick={() => dismissPayReceiveThenOpenAddCash('coinbase')}
+												onClick={() => {
+													closeReservedExternalWindow(coinbaseHandoffRef.current)
+													coinbaseHandoffRef.current = reserveExternalBrowserWindow()
+													dismissPayReceiveThenOpenAddCash('coinbase')
+												}}
 											>
 												<span className="min-w-0">
 													<span className="block text-base font-semibold text-[#191c1d] dark:text-slate-100">
@@ -3806,7 +3813,16 @@ const Home = (_props: HomeProps) => {
 										<>
 											<BeamioAddUSDCFlow
 												embedInSheet
-												onCancel={() => setShowAddUsdcInSheet(false)}
+												handoffWindow={coinbaseHandoffRef.current}
+												onOpened={() => {
+													coinbaseHandoffRef.current = null
+													closeAddCashSheet()
+												}}
+												onCancel={() => {
+													closeReservedExternalWindow(coinbaseHandoffRef.current)
+													coinbaseHandoffRef.current = null
+													closeAddCashSheet()
+												}}
 											/>
 										</>
 									) : addCashMode === 'methods' ? (
@@ -3974,7 +3990,11 @@ const Home = (_props: HomeProps) => {
 												</div>
 												<button
 													type="button"
-													onClick={() => setShowAddUsdcInSheet(true)}
+													onClick={() => {
+														closeReservedExternalWindow(coinbaseHandoffRef.current)
+														coinbaseHandoffRef.current = reserveExternalBrowserWindow()
+														setShowAddUsdcInSheet(true)
+													}}
 													className="w-full max-w-[280px] py-4 rounded-2xl font-bold bg-[#0052FF] text-white hover:bg-[#0047e0] active:scale-[0.98] transition-all shadow-lg"
 												>
 													Continue with Coinbase

@@ -11,9 +11,9 @@ import {
 	DollarSign,
 	XCircle
 } from "lucide-react";
+import { closeReservedExternalWindow, navigateReservedOrOpenExternal, reserveExternalBrowserWindow } from '@/utils/cashTreesNativeNfc'
 
 export type RampMode = "onramp" | "offramp"
-
 
 const remote = 'https://beamio.app'
 
@@ -57,38 +57,42 @@ const StepAmount: React.FC<{
 		}
 		const clickNext = async () => {
 			if (!myAddress) return
+			const popup = reserveExternalBrowserWindow()
 			setLoading(true)
-			// await new Promise(executor => setTimeout(() => executor(true), 1000))
 			
 			const params = new URLSearchParams({address: myAddress, paymentAmount: amount}).toString()
 
 			try {
-				const res = mode === 'onramp' ? await fetch(`${remote}/api/coinbase-token?${params}`, {
-					method: 'GET',
-					headers: { 'Content-Type': 'application/json' }
-				}) : await fetch(`${remote}/api/coinbase-token?${params}`, {
+				const res = await fetch(`${remote}/api/coinbase-token?${params}`, {
 					method: 'GET',
 					headers: { 'Content-Type': 'application/json' }
 				})
 				
 				if (!res.ok) {
+					closeReservedExternalWindow(popup)
 					console.error('Failed to create onramp session', await res.text())
+					onNext('')
 					return 
 				}
 
 				const { onrampUrl } = await res.json() as { onrampUrl: string }
 
 				if (!onrampUrl) {
+					closeReservedExternalWindow(popup)
 					console.error('No onrampUrl in response')
+					onNext('')
 					return 
 				}
 
-				// ⭐ 直接打开 Coinbase 返回的安全 URL（已包含 sessionToken）
-				onNext( onrampUrl )
+				const opened = navigateReservedOrOpenExternal(popup, onrampUrl)
+				onNext(opened ? onrampUrl : '')
 				
 			} catch (e) {
+				closeReservedExternalWindow(popup)
 				console.error('open coinbase onramp error', e)
-				return 
+				onNext('')
+			} finally {
+				setLoading(false)
 			}
 		}
 

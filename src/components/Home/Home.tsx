@@ -12,7 +12,7 @@ import { formatDigitalAssetDisplay } from '@/utils/formatDigitalAssetDisplay'
 import base_icon from '@/components/assets/base-logo.png'
 import { beamioWalletAccent } from '@/utils/beamioWalletAccent'
 import { CoNET_Data, setCoNET_Data } from '../../utils/globals'
-import { closeReservedExternalWindow, detectDeviceNfcCapability, getCashTreesNativeNfcBridge, isCashTreesNativeWebView, reserveExternalBrowserWindow } from '@/utils/cashTreesNativeNfc'
+import { closeReservedExternalWindow, detectDeviceNfcCapability, getCashTreesNativeNfcBridge, isCashTreesNativeWebView, navigateReservedOrOpenExternal, reserveExternalBrowserWindow } from '@/utils/cashTreesNativeNfc'
 import { WALLET_READY_INTENT_KEY } from '@/pages/Home/walletReadyIntent'
 import type { LucideIcon } from "lucide-react"
 import { useLocation, useNavigate } from "react-router-dom"
@@ -78,6 +78,7 @@ import { HomeLanguageSelector } from './HomeLanguageSelector'
 import {
 	CoinbaseCMark,
 	ReceiveWalletClusterMark,
+	ReceiveWalletRowIcon,
 	VisaMastercardMark,
 } from './FundDepositMethodIcons'
 import { useMerchantCardDatabase } from '@/providers/MerchantCardDatabaseProvider'
@@ -125,6 +126,18 @@ function preventNumericInputStepKeys(e: KeyboardEvent<HTMLInputElement>): void {
 function preventNumericInputWheelStep(e: WheelEvent<HTMLInputElement>): void {
 	e.preventDefault()
 	e.stopPropagation()
+}
+
+function applyCoinbaseOnrampPaymentAmount(onrampUrl: string, amountHuman: string): string {
+	try {
+		const u = new URL(onrampUrl)
+		u.searchParams.set('presetFiatAmount', amountHuman)
+		if (!u.searchParams.get('fiatCurrency')) u.searchParams.set('fiatCurrency', 'USD')
+		return u.toString()
+	} catch {
+		const join = onrampUrl.includes('?') ? '&' : '?'
+		return `${onrampUrl}${join}presetFiatAmount=${encodeURIComponent(amountHuman)}`
+	}
 }
 
 const formatMoney = (n: number) =>
@@ -578,7 +591,7 @@ const Home = (_props: HomeProps) => {
 	const [showMerchantGiftSheet, setShowMerchantGiftSheet] = useState(false)
 	/** Home Pay/Receive 底栏（对齐 renderAction Pay|Receive 交互） */
 	const [showPayReceiveSheet, setShowPayReceiveSheet] = useState(false)
-	const [payReceiveView, setPayReceiveView] = useState<'fund' | 'tabs' | 'qr' | 'wallets'>('fund')
+	const [payReceiveView, setPayReceiveView] = useState<'fund' | 'tabs' | 'qr' | 'wallets' | 'coinbase'>('fund')
 	const [payReceiveQrMode, setPayReceiveQrMode] = useState<'pay' | 'receive'>('receive')
 	const [receiveWalletCopied, setReceiveWalletCopied] = useState(false)
 	const [installedReceiveWallets, setInstalledReceiveWallets] = useState<ReceiveWalletAppRow[]>([])
@@ -586,6 +599,9 @@ const Home = (_props: HomeProps) => {
 	const [openingReceiveWalletId, setOpeningReceiveWalletId] = useState<string | null>(null)
 	const [receiveWalletOpenError, setReceiveWalletOpenError] = useState('')
 	const [receiveWalletUsdcAmount, setReceiveWalletUsdcAmount] = useState('')
+	const [coinbaseOnrampAmount, setCoinbaseOnrampAmount] = useState('')
+	const [coinbaseOnrampError, setCoinbaseOnrampError] = useState('')
+	const [coinbaseOnrampOpening, setCoinbaseOnrampOpening] = useState(false)
 	/** Pay 模式：与 MyWalletDashboardNew AA relay QR 同源（OpenContainer relay 签名 JSON） */
 	const [payRelayQRPayload, setPayRelayQRPayload] = useState<OpenContainerRelayPayload | null>(null)
 	const [payRelayQRLoading, setPayRelayQRLoading] = useState(false)
@@ -598,6 +614,7 @@ const Home = (_props: HomeProps) => {
 	/** Coinbase：methods 内进入后展示 BeamioAddUSDCFlow */
 	const [showAddUsdcInSheet, setShowAddUsdcInSheet] = useState(false)
 	const coinbaseHandoffRef = useRef<Window | null>(null)
+	const closePayReceiveSheetRef = useRef<() => void>(() => {})
 	const [addCashMode, setAddCashMode] = useState<AddCashSheetMode>('methods')
 	const [addCashAmountCad, setAddCashAmountCad] = useState('')
 	const [topUpStore, setTopUpStore] = useState<HomeStoreCardRow>(() => INITIAL_HOME_STORE_CARDS[0]!)
@@ -1104,6 +1121,9 @@ const Home = (_props: HomeProps) => {
 		setReceiveWalletOpenError('')
 		setReceiveWalletsLooking(false)
 		setReceiveWalletUsdcAmount('')
+		setCoinbaseOnrampAmount('')
+		setCoinbaseOnrampError('')
+		setCoinbaseOnrampOpening(false)
 	}, [])
 
 	const handleAddFunds = () => {
@@ -1134,17 +1154,82 @@ const Home = (_props: HomeProps) => {
 	}, [resetPayReceiveAuxState, setShowFooter])
 
 	const backToFundView = useCallback(() => {
-		if (openingReceiveWalletId) return
+		if (openingReceiveWalletId || coinbaseOnrampOpening) return
 		setPayReceiveView('fund')
 		setPayReceiveQrMode('receive')
 		setReceiveWalletOpenError('')
 		setOpeningReceiveWalletId(null)
-	}, [openingReceiveWalletId])
+		setCoinbaseOnrampError('')
+	}, [openingReceiveWalletId, coinbaseOnrampOpening])
 
 	const openReceiveFromWallet = useCallback(() => {
 		setReceiveWalletOpenError('')
 		setPayReceiveView('wallets')
 	}, [])
+
+	const openCoinbaseAmountView = useCallback(() => {
+		setCoinbaseOnrampError('')
+		setPayReceiveView('coinbase')
+	}, [])
+
+	const openCoinbaseOnrampFromFund = useCallback(async () => {
+		if (coinbaseOnrampOpening) return
+		const parsed = parseReceiveUsdcAmount6(coinbaseOnrampAmount)
+		if (!parsed.ok) {
+			setCoinbaseOnrampError(parsed.error)
+			return
+		}
+		const address = receiveWalletEoa || myAddress
+		if (!address) {
+			setCoinbaseOnrampError(tu('wallet_address_unavailable'))
+			return
+		}
+		const amountHuman = ethers.formatUnits(parsed.amount6, 6).replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '')
+		closeReservedExternalWindow(coinbaseHandoffRef.current)
+		const popup = reserveExternalBrowserWindow()
+		coinbaseHandoffRef.current = popup
+		setCoinbaseOnrampOpening(true)
+		setCoinbaseOnrampError('')
+		try {
+			const params = new URLSearchParams({
+				address,
+				paymentAmount: amountHuman,
+			}).toString()
+			const res = await fetch(`https://beamio.app/api/coinbase-token?${params}`, {
+				method: 'GET',
+				headers: { 'Content-Type': 'application/json' },
+			})
+			if (!res.ok) {
+				closeReservedExternalWindow(popup)
+				coinbaseHandoffRef.current = null
+				setCoinbaseOnrampError(tu('coinbase_could_not_open'))
+				return
+			}
+			const { onrampUrl } = (await res.json()) as { onrampUrl?: string }
+			if (!onrampUrl) {
+				closeReservedExternalWindow(popup)
+				coinbaseHandoffRef.current = null
+				setCoinbaseOnrampError(tu('coinbase_could_not_open'))
+				return
+			}
+			const urlWithAmount = applyCoinbaseOnrampPaymentAmount(onrampUrl, amountHuman)
+			const opened = navigateReservedOrOpenExternal(popup, urlWithAmount)
+			if (!opened) {
+				closeReservedExternalWindow(popup)
+				coinbaseHandoffRef.current = null
+				setCoinbaseOnrampError(tu('coinbase_window_blocked'))
+				return
+			}
+			coinbaseHandoffRef.current = null
+			closePayReceiveSheetRef.current()
+		} catch {
+			closeReservedExternalWindow(popup)
+			coinbaseHandoffRef.current = null
+			setCoinbaseOnrampError(tu('coinbase_could_not_open'))
+		} finally {
+			setCoinbaseOnrampOpening(false)
+		}
+	}, [coinbaseOnrampAmount, coinbaseOnrampOpening, myAddress, receiveWalletEoa])
 
 	const openInstalledReceiveWallet = useCallback(async (row: ReceiveWalletAppRow) => {
 		if (openingReceiveWalletId) return
@@ -1175,6 +1260,7 @@ const Home = (_props: HomeProps) => {
 
 	const openReceiveSheetTap = useReliableTapHandler(handleAddFunds)
 	const openReceiveFromWalletTap = useReliableTapHandler(openReceiveFromWallet)
+	const openCoinbaseAmountViewTap = useReliableTapHandler(openCoinbaseAmountView)
 	const openPayCodeSheet = useCallback(() => {
 		setPayReceiveView('tabs')
 		setPayReceiveQrMode('pay')
@@ -1964,11 +2050,15 @@ const Home = (_props: HomeProps) => {
 		const state = location.state as { fundSheetFromWallet?: boolean } | null
 		if (state?.fundSheetFromWallet) navigate('/wallet', { replace: true })
 	}, [location.state, navigate, resetPayReceiveAuxState, setShowFooter])
+	closePayReceiveSheetRef.current = closePayReceiveSheet
 
 	const closePayReceiveSheetTap = useReliableTapHandler(closePayReceiveSheet)
 	const payReceiveUsesPayChrome = payReceiveView === 'tabs' && payReceiveQrMode === 'pay'
 	const payReceiveUsesFundChrome =
-		payReceiveView === 'fund' || payReceiveView === 'qr' || payReceiveView === 'wallets'
+		payReceiveView === 'fund' ||
+		payReceiveView === 'qr' ||
+		payReceiveView === 'wallets' ||
+		payReceiveView === 'coinbase'
 	const fundWalletOptionClass = `flex w-full items-center justify-between gap-4 rounded-[1.35rem] border border-[#e8eaed] bg-white px-4 py-[1.05rem] text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition active:scale-[0.99] active:bg-gray-50 dark:border-slate-700 dark:bg-slate-800 dark:active:bg-slate-700 ${HOME_TOUCH_BUTTON_CLASS}`
 
 	const payRelayDeadlineUnix = useMemo(() => {
@@ -3263,11 +3353,7 @@ const Home = (_props: HomeProps) => {
 											<button
 												type="button"
 												className={fundWalletOptionClass}
-												onClick={() => {
-													closeReservedExternalWindow(coinbaseHandoffRef.current)
-													coinbaseHandoffRef.current = reserveExternalBrowserWindow()
-													dismissPayReceiveThenOpenAddCash('coinbase')
-												}}
+												{...openCoinbaseAmountViewTap}
 											>
 												<span className="min-w-0">
 													<span className="block text-base font-semibold text-[#191c1d] dark:text-slate-100">
@@ -3500,24 +3586,114 @@ const Home = (_props: HomeProps) => {
 															</span>
 															{opening ? (
 																<Loader2 className="h-7 w-7 shrink-0 animate-spin text-[#0051d1]" aria-hidden />
-															) : row.iconUrl ? (
-																<span className="h-10 w-10 shrink-0 overflow-hidden rounded-full bg-white">
-																	<img src={row.iconUrl} alt="" className="h-full w-full object-contain" />
-																</span>
 															) : (
-																<span
-																	className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold"
-																	style={{ backgroundColor: row.brandBg, color: row.brandFg }}
-																	aria-hidden
-																>
-																	{row.brandLetter}
-																</span>
+																<ReceiveWalletRowIcon
+																	brandId={row.brandId}
+																	iconUrl={row.iconUrl}
+																	brandLetter={row.brandLetter}
+																	brandBg={row.brandBg}
+																	brandFg={row.brandFg}
+																/>
 															)}
 														</button>
 													)
 												})}
 											</div>
 										)}
+									</div>
+								) : payReceiveView === 'coinbase' ? (
+									<div className="mx-auto w-full max-w-lg overflow-y-auto overscroll-contain px-5 pb-3">
+										<div className={`${BEAMIO_CIRCULAR_BACK_ROW_CLASS} relative`}>
+											<BeamioCircularBackButton
+												variant="onLight"
+												onClick={backToFundView}
+												className="absolute left-0 top-0"
+												disabled={coinbaseOnrampOpening}
+											/>
+										</div>
+										<header className="pb-5 pt-6">
+											<p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#737687]">
+												{tu('fund_your_wallet')}
+											</p>
+											<h2 className="mt-1 text-[1.375rem] font-bold tracking-tight text-[#191c1d]">
+												{tu('coinbase')}
+											</h2>
+											<p className="mt-1 text-sm leading-snug text-[#737687]">
+												{tu('use_your_coinbase_account')}
+											</p>
+										</header>
+										<label htmlFor="coinbase-onramp-usdc-amount" className="mb-4 block">
+											<span className="mb-1.5 flex items-center gap-2 text-sm font-semibold text-[#191c1d]">
+												<span className="relative h-4 w-4 min-h-[16px] min-w-[16px] shrink-0">
+													<img src={usdcIcon} alt="USDC" className="block h-4 w-4 rounded-full object-contain" />
+													<img
+														src={baseIcon}
+														alt=""
+														className="absolute -bottom-0.5 -right-0.5 block h-2.5 w-2.5 rounded-full border border-white bg-white"
+													/>
+												</span>
+												{tu('receive_wallet_usdc_amount_label')}
+											</span>
+											<div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2.5">
+												<span className="text-sm font-semibold text-[#737687]" aria-hidden>
+													$
+												</span>
+												<input
+													id="coinbase-onramp-usdc-amount"
+													type="number"
+													inputMode="decimal"
+													autoComplete="off"
+													enterKeyHint="done"
+													min={0}
+													step="any"
+													tabIndex={1}
+													disabled={coinbaseOnrampOpening}
+													placeholder={tu('receive_wallet_usdc_amount_placeholder')}
+													aria-label={tu('receive_wallet_usdc_amount_label')}
+													value={coinbaseOnrampAmount}
+													onChange={(e) => {
+														setCoinbaseOnrampAmount(e.target.value)
+														if (coinbaseOnrampError) setCoinbaseOnrampError('')
+													}}
+													onKeyDown={(e) => {
+														preventNumericInputStepKeys(e)
+														if (e.key === 'Enter') {
+															e.preventDefault()
+															void openCoinbaseOnrampFromFund()
+														}
+													}}
+													onWheel={preventNumericInputWheelStep}
+													className="w-full bg-white text-base text-[#191c1d] outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]"
+												/>
+											</div>
+											<p className="mt-1.5 text-xs leading-snug text-[#737687]">
+												{tu('coinbase_usdc_amount_hint')}
+											</p>
+										</label>
+										{coinbaseOnrampError ? (
+											<div
+												role="alert"
+												className="mb-3 flex items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800"
+											>
+												<AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+												<p>{coinbaseOnrampError}</p>
+											</div>
+										) : null}
+										<button
+											type="button"
+											tabIndex={2}
+											disabled={coinbaseOnrampOpening}
+											aria-busy={coinbaseOnrampOpening}
+											aria-label={tu('continue_to_coinbase')}
+											onClick={() => void openCoinbaseOnrampFromFund()}
+											className={`flex w-full items-center justify-center gap-2 rounded-full bg-[#0052FF] px-4 py-3.5 text-base font-semibold text-white transition active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 ${HOME_TOUCH_BUTTON_CLASS}`}
+										>
+											{coinbaseOnrampOpening ? (
+												<Loader2 className="h-5 w-5 animate-spin" aria-hidden />
+											) : (
+												tu('continue_to_coinbase')
+											)}
+										</button>
 									</div>
 								) : (
 									<>

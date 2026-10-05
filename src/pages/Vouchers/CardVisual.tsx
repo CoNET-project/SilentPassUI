@@ -179,10 +179,10 @@ function useFitScaleX(containerRef: React.RefObject<HTMLElement>, contentRef: Re
 	  compute()
 	  scheduleCompute()
   
-	  // 监听容器/内容尺寸变化
+	  // Observe the container only. Observing `content` while applying scaleX
+	  // retriggers ResizeObserver in the same delivery (webpack overlay).
 	  const ro = new ResizeObserver(scheduleCompute)
 	  ro.observe(container)
-	  ro.observe(content)
   
 	  // 字体加载（可选，但很建议）
 	  // @ts-ignore

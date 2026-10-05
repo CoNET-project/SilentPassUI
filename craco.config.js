@@ -56,7 +56,23 @@ BuildProgressPlugin.prototype.apply = function (compiler) {
     });
 };
 
+function shouldShowRuntimeOverlayError(error) {
+    const message = error && error.message ? String(error.message) : '';
+    // Chromium ResizeObserver loop is benign; the overlay otherwise covers Discover.
+    return !/ResizeObserver loop/i.test(message);
+}
+
 module.exports = {
+    devServer: (devServerConfig) => {
+        const client = devServerConfig.client || {};
+        const overlay =
+            typeof client.overlay === 'object' && client.overlay
+                ? { ...client.overlay }
+                : { errors: true, warnings: false };
+        overlay.runtimeErrors = shouldShowRuntimeOverlayError;
+        devServerConfig.client = { ...client, overlay };
+        return devServerConfig;
+    },
     style: {
         css: {
             loaderOptions: (options) => {

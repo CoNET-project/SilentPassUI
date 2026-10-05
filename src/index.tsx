@@ -1,5 +1,6 @@
 //	index.tsx
 
+import './utils/ignoreResizeObserverLoopError'
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './locale/i18n';

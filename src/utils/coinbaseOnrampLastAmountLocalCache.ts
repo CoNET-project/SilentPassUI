@@ -4,6 +4,15 @@ export const COINBASE_ONRAMP_DEFAULT_AMOUNT = '2'
 
 export type CoinbaseOnrampPayMethod = 'usdc' | 'card'
 
+/** Fund Coinbase checkout drawer status (hosted Onramp opens externally). */
+export type CoinbaseOnrampStatus =
+	| 'idle'
+	| 'opening'
+	| 'waiting'
+	| 'success'
+	| 'error'
+	| 'canceled'
+
 export const COINBASE_ONRAMP_DEFAULT_PAY_METHOD: CoinbaseOnrampPayMethod = 'usdc'
 
 function storageKey(eoa: string): string {

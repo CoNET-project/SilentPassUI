@@ -360,15 +360,22 @@ function isUserRejectedRequest(err: unknown): boolean {
 	return code === 4001 || /user rejected|user denied|rejected the request/i.test(msg)
 }
 
+function isOkxInjectedProvider(provider: InjectedWalletChoice['provider']): boolean {
+	return Boolean(provider.isOkxWallet || provider.isOKExWallet)
+}
+
 function resolveBrowserInjectedProvider(
 	row: ReceiveWalletAppRow,
 ): InjectedWalletChoice['provider'] | null {
 	requestEip6963ProvidersNow()
+	const fromNamespace = readBrandNamespaceProviderOnGesture(row.brandId)
+	if (row.brandId === 'okx' && fromNamespace && typeof fromNamespace.request === 'function') {
+		return fromNamespace
+	}
 	const live = findInjectedWalletByBrand(row.brandId)
 	if (live?.provider && typeof live.provider.request === 'function') {
 		return live.provider
 	}
-	const fromNamespace = readBrandNamespaceProviderOnGesture(row.brandId)
 	if (fromNamespace && typeof fromNamespace.request === 'function') {
 		return fromNamespace
 	}
@@ -380,16 +387,21 @@ function resolveBrowserInjectedProvider(
 
 async function requestAccountsUnlockingExtension(
 	provider: InjectedWalletChoice['provider'],
+	brandId?: InjectedWalletChoiceId,
 ): Promise<unknown> {
-	try {
-		await provider.request({
-			method: 'wallet_requestPermissions',
-			params: [{ eth_accounts: {} }],
-		})
-	} catch (err) {
-		if (isUserRejectedRequest(err)) throw err
+	const isOkx = brandId === 'okx' || isOkxInjectedProvider(provider)
+	if (!isOkx) {
+		try {
+			await provider.request({
+				method: 'wallet_requestPermissions',
+				params: [{ eth_accounts: {} }],
+			})
+		} catch (err) {
+			if (isUserRejectedRequest(err)) throw err
+		}
+		return provider.request({ method: 'eth_requestAccounts', params: [] })
 	}
-	return provider.request({ method: 'eth_requestAccounts', params: [] })
+	return provider.request({ method: 'eth_requestAccounts' })
 }
 
 function firstAccountFromRequest(accounts: unknown): string {
@@ -401,8 +413,9 @@ function firstAccountFromRequest(accounts: unknown): string {
 
 async function connectAndSwitchBaseOnInjected(
 	provider: InjectedWalletChoice['provider'],
+	brandId?: InjectedWalletChoiceId,
 ): Promise<string> {
-	const accounts = await requestAccountsUnlockingExtension(provider)
+	const accounts = await requestAccountsUnlockingExtension(provider, brandId)
 	const from = firstAccountFromRequest(accounts)
 	if (!from) {
 		throw new Error('Could not open this wallet')
@@ -495,7 +508,7 @@ export async function openReceiveWalletApp(
 			return { ok: false, error: 'Could not open this wallet' }
 		}
 		try {
-			const from = await connectAndSwitchBaseOnInjected(provider)
+			const from = await connectAndSwitchBaseOnInjected(provider, row.brandId)
 			if (amount6 != null && amount6 > 0n) {
 				await sendUsdcFromInjected(provider, from, address, amount6)
 			}

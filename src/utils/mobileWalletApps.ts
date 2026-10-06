@@ -86,12 +86,22 @@ type Eip6963AnnounceDetail = {
 type WindowWithWalletNamespaces = Window & {
 	ethereum?: Eip1193Provider
 	okxwallet?: Eip1193Provider & { ethereum?: Eip1193Provider }
+	okexchain?: Eip1193Provider
 	coinbaseWalletExtension?: Eip1193Provider
 	phantom?: { ethereum?: Eip1193Provider; solana?: unknown }
 	tokenpocket?: Eip1193Provider
 	tp?: Eip1193Provider
 	trustwallet?: Eip1193Provider & { ethereum?: Eip1193Provider }
 	trustWallet?: Eip1193Provider
+}
+
+/**
+ * Official OKX EVM API is `window.okxwallet.request`. Nested `.ethereum` is a
+ * compatibility shim and does not always open the Chrome extension popup.
+ */
+function readOkxInjectedProvider(win: WindowWithWalletNamespaces): Eip1193Provider | null {
+	const ns = win.okxwallet
+	return asProvider(ns) ?? asProvider(ns?.ethereum) ?? asProvider(win.okexchain)
 }
 
 function asProvider(raw: unknown): Eip1193Provider | null {
@@ -134,8 +144,8 @@ function collectLegacyNamespaceProviders(win: WindowWithWalletNamespaces): Injec
 		out.push(choice)
 	}
 
-	const okx = asProvider(win.okxwallet?.ethereum) ?? asProvider(win.okxwallet)
-	if (okx) push({ id: 'okx', label: 'OKX Wallet', provider: okx, rdns: 'com.okx.wallet' })
+	const okx = readOkxInjectedProvider(win)
+	if (okx) push({ id: 'okx', label: 'OKX Wallet', provider: okx, rdns: 'com.okex.wallet' })
 
 	const trust =
 		asProvider(win.trustwallet?.ethereum) ?? asProvider(win.trustwallet) ?? asProvider(win.trustWallet)
@@ -185,10 +195,15 @@ function collectSafeBrowserExtensionProviders(win: WindowWithWalletNamespaces): 
 		out.push(choice)
 	}
 
-	const okxRaw = readWindowDataProperty(win, 'okxwallet') as { ethereum?: unknown } | undefined
-	const okx = asProvider(okxRaw?.ethereum) ?? asProvider(okxRaw)
+	const okxRaw = readWindowDataProperty(win, 'okxwallet') as
+		| (Eip1193Provider & { ethereum?: unknown })
+		| undefined
+	const okx =
+		asProvider(okxRaw) ??
+		asProvider(okxRaw?.ethereum) ??
+		asProvider(readWindowDataProperty(win, 'okexchain'))
 	if (okx) {
-		push({ id: 'okx', label: 'OKX Wallet', provider: okx, rdns: 'com.okx.wallet' })
+		push({ id: 'okx', label: 'OKX Wallet', provider: okx, rdns: 'com.okex.wallet' })
 	}
 
 	const trustRaw = readWindowDataProperty(win, 'trustwallet') as { ethereum?: unknown } | undefined
@@ -308,7 +323,7 @@ export function readBrandNamespaceProviderOnGesture(
 	try {
 		switch (brandId) {
 			case 'okx':
-				return asProvider(win.okxwallet?.ethereum) ?? asProvider(win.okxwallet)
+				return readOkxInjectedProvider(win)
 			case 'trust':
 				return (
 					asProvider(win.trustwallet?.ethereum) ??

@@ -13,8 +13,10 @@ import {
 import {
 	type InjectedWalletChoice,
 	type InjectedWalletChoiceId,
-	isMobileDeviceForWalletApps,
+	findInjectedWalletByBrand,
 	listInstalledInjectedWallets,
+	readBrandNamespaceProviderOnGesture,
+	requestEip6963ProvidersNow,
 	subscribeInstalledInjectedWallets,
 } from './mobileWalletApps'
 
@@ -351,6 +353,45 @@ function injectedWalletErrorMessage(err: unknown): string {
 	return 'Could not open this wallet'
 }
 
+function isUserRejectedRequest(err: unknown): boolean {
+	const rec = err as { code?: number | string; message?: string } | null
+	const code = rec?.code
+	const msg = typeof rec?.message === 'string' ? rec.message : ''
+	return code === 4001 || /user rejected|user denied|rejected the request/i.test(msg)
+}
+
+function resolveBrowserInjectedProvider(
+	row: ReceiveWalletAppRow,
+): InjectedWalletChoice['provider'] | null {
+	requestEip6963ProvidersNow()
+	const live = findInjectedWalletByBrand(row.brandId)
+	if (live?.provider && typeof live.provider.request === 'function') {
+		return live.provider
+	}
+	const fromNamespace = readBrandNamespaceProviderOnGesture(row.brandId)
+	if (fromNamespace && typeof fromNamespace.request === 'function') {
+		return fromNamespace
+	}
+	if (row.provider && typeof row.provider.request === 'function') {
+		return row.provider
+	}
+	return null
+}
+
+async function requestAccountsUnlockingExtension(
+	provider: InjectedWalletChoice['provider'],
+): Promise<unknown> {
+	try {
+		await provider.request({
+			method: 'wallet_requestPermissions',
+			params: [{ eth_accounts: {} }],
+		})
+	} catch (err) {
+		if (isUserRejectedRequest(err)) throw err
+	}
+	return provider.request({ method: 'eth_requestAccounts', params: [] })
+}
+
 function firstAccountFromRequest(accounts: unknown): string {
 	if (!Array.isArray(accounts) || typeof accounts[0] !== 'string' || !ethers.isAddress(accounts[0])) {
 		return ''
@@ -361,7 +402,7 @@ function firstAccountFromRequest(accounts: unknown): string {
 async function connectAndSwitchBaseOnInjected(
 	provider: InjectedWalletChoice['provider'],
 ): Promise<string> {
-	const accounts = await provider.request({ method: 'eth_requestAccounts' })
+	const accounts = await requestAccountsUnlockingExtension(provider)
 	const from = firstAccountFromRequest(accounts)
 	if (!from) {
 		throw new Error('Could not open this wallet')
@@ -447,16 +488,16 @@ export async function openReceiveWalletApp(
 	}
 
 	const amount6 = opts?.amount6
-	const desktopInjected =
-		Boolean(row.provider && typeof row.provider.request === 'function') &&
-		!isMobileDeviceForWalletApps() &&
-		!isCashTreesNativeWebView()
 
-	if (desktopInjected && row.provider) {
+	if (!isCashTreesNativeWebView()) {
+		const provider = resolveBrowserInjectedProvider(row)
+		if (!provider) {
+			return { ok: false, error: 'Could not open this wallet' }
+		}
 		try {
-			const from = await connectAndSwitchBaseOnInjected(row.provider)
+			const from = await connectAndSwitchBaseOnInjected(provider)
 			if (amount6 != null && amount6 > 0n) {
-				await sendUsdcFromInjected(row.provider, from, address, amount6)
+				await sendUsdcFromInjected(provider, from, address, amount6)
 			}
 			return { ok: true }
 		} catch (err) {
@@ -464,7 +505,7 @@ export async function openReceiveWalletApp(
 		}
 	}
 
-	if (isCashTreesNativeWebView() && hasNativeWalletListApi()) {
+	if (hasNativeWalletListApi()) {
 		const scheme = receiveWalletNativeSchemeUrl(row, address, amount6)
 		if (scheme && openExternalUrl(scheme)) {
 			return { ok: true }

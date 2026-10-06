@@ -54,6 +54,8 @@ export type Eip1193Provider = {
 	isPhantom?: boolean
 	isRabby?: boolean
 	isBraveWallet?: boolean
+	isTrust?: boolean
+	isTrustWallet?: boolean
 	providers?: Eip1193Provider[]
 }
 
@@ -88,6 +90,8 @@ type WindowWithWalletNamespaces = Window & {
 	phantom?: { ethereum?: Eip1193Provider; solana?: unknown }
 	tokenpocket?: Eip1193Provider
 	tp?: Eip1193Provider
+	trustwallet?: Eip1193Provider & { ethereum?: Eip1193Provider }
+	trustWallet?: Eip1193Provider
 }
 
 function asProvider(raw: unknown): Eip1193Provider | null {
@@ -101,6 +105,7 @@ function classifyByFlags(p: Eip1193Provider): InjectedWalletChoice {
 	if (p.isPhantom) return { id: 'phantom', label: 'Phantom', provider: p }
 	if (p.isCoinbaseWallet) return { id: 'base', label: 'Base / Coinbase Wallet', provider: p }
 	if (p.isOkxWallet || p.isOKExWallet) return { id: 'okx', label: 'OKX Wallet', provider: p }
+	if (p.isTrust || p.isTrustWallet) return { id: 'trust', label: 'Trust Wallet', provider: p }
 	if (p.isTokenPocket || p.isTP || p.isTokenPocketProvider) {
 		return { id: 'tp', label: 'TokenPocket', provider: p }
 	}
@@ -131,6 +136,10 @@ function collectLegacyNamespaceProviders(win: WindowWithWalletNamespaces): Injec
 
 	const okx = asProvider(win.okxwallet?.ethereum) ?? asProvider(win.okxwallet)
 	if (okx) push({ id: 'okx', label: 'OKX Wallet', provider: okx, rdns: 'com.okx.wallet' })
+
+	const trust =
+		asProvider(win.trustwallet?.ethereum) ?? asProvider(win.trustwallet) ?? asProvider(win.trustWallet)
+	if (trust) push({ id: 'trust', label: 'Trust Wallet', provider: trust, rdns: 'com.trustwallet.app' })
 
 	const coinbase = asProvider(win.coinbaseWalletExtension)
 	if (coinbase) {
@@ -182,6 +191,15 @@ function collectSafeBrowserExtensionProviders(win: WindowWithWalletNamespaces): 
 		push({ id: 'okx', label: 'OKX Wallet', provider: okx, rdns: 'com.okx.wallet' })
 	}
 
+	const trustRaw = readWindowDataProperty(win, 'trustwallet') as { ethereum?: unknown } | undefined
+	const trust =
+		asProvider(trustRaw?.ethereum) ??
+		asProvider(trustRaw) ??
+		asProvider(readWindowDataProperty(win, 'trustWallet'))
+	if (trust) {
+		push({ id: 'trust', label: 'Trust Wallet', provider: trust, rdns: 'com.trustwallet.app' })
+	}
+
 	const coinbaseExt = asProvider(readWindowDataProperty(win, 'coinbaseWalletExtension'))
 	if (coinbaseExt) {
 		push({ id: 'base', label: 'Coinbase Wallet', provider: coinbaseExt, rdns: 'com.coinbase.wallet' })
@@ -224,16 +242,109 @@ function collectBrowserInjectedWallets(win: WindowWithWalletNamespaces): Injecte
 	return mergeWalletChoices([...announcedEip6963ByRdns.values(), ...legacy])
 }
 
-function ensureEip6963Warm(): void {
-	if (typeof window === 'undefined' || eip6963WarmStarted) return
-	eip6963WarmStarted = true
-	window.addEventListener('eip6963:announceProvider', ((event: Event) => {
-		rememberEip6963Announcement((event as CustomEvent<Eip6963AnnounceDetail>).detail)
-	}) as EventListener)
+function dispatchEip6963RequestProvider(): void {
+	if (typeof window === 'undefined') return
 	try {
 		window.dispatchEvent(new Event('eip6963:requestProvider'))
 	} catch {
 		/* ignore */
+	}
+	try {
+		window.dispatchEvent(new CustomEvent('eip6963:requestProvider'))
+	} catch {
+		/* ignore */
+	}
+}
+
+function ensureEip6963Warm(): void {
+	if (typeof window === 'undefined' || eip6963WarmStarted) return
+	eip6963WarmStarted = true
+	window.addEventListener(
+		'eip6963:announceProvider',
+		((event: Event) => {
+			rememberEip6963Announcement((event as CustomEvent<Eip6963AnnounceDetail>).detail)
+		}) as EventListener,
+		true,
+	)
+	dispatchEip6963RequestProvider()
+}
+
+/** Re-announce EIP-6963 providers (sync during dispatch). Call from a user click. */
+export function requestEip6963ProvidersNow(): void {
+	ensureEip6963Warm()
+	dispatchEip6963RequestProvider()
+}
+
+const PREFERRED_RDNS: Partial<Record<InjectedWalletChoiceId, readonly string[]>> = {
+	metamask: ['io.metamask', 'io.metamask.flask'],
+	okx: ['com.okex.wallet', 'com.okx.wallet'],
+	trust: ['com.trustwallet.app', 'com.trustwallet'],
+	phantom: ['app.phantom'],
+	base: ['com.coinbase.wallet'],
+	tp: ['pro.tokenpocket'],
+}
+
+export function findInjectedWalletByBrand(brandId: InjectedWalletChoiceId): InjectedWalletChoice | null {
+	requestEip6963ProvidersNow()
+	const matches = listInstalledInjectedWallets().filter((wallet) => wallet.id === brandId)
+	if (matches.length === 0) return null
+	const preferred = PREFERRED_RDNS[brandId] ?? []
+	for (const rdns of preferred) {
+		const hit = matches.find((wallet) => (wallet.rdns || '').toLowerCase() === rdns)
+		if (hit) return hit
+	}
+	return matches.find((wallet) => wallet.rdns) ?? matches[0]
+}
+
+/**
+ * Click-time namespace read. Accessors are allowed here because this is a user gesture.
+ * Discovery still skips getters so listing does not auto-open login UI.
+ */
+export function readBrandNamespaceProviderOnGesture(
+	brandId: InjectedWalletChoiceId,
+): Eip1193Provider | null {
+	if (typeof window === 'undefined') return null
+	const win = window as WindowWithWalletNamespaces
+	try {
+		switch (brandId) {
+			case 'okx':
+				return asProvider(win.okxwallet?.ethereum) ?? asProvider(win.okxwallet)
+			case 'trust':
+				return (
+					asProvider(win.trustwallet?.ethereum) ??
+					asProvider(win.trustwallet) ??
+					asProvider(win.trustWallet)
+				)
+			case 'phantom':
+				return asProvider(win.phantom?.ethereum)
+			case 'base':
+				return asProvider(win.coinbaseWalletExtension)
+			case 'metamask': {
+				const eth = asProvider(win.ethereum)
+				if (!eth) return null
+				const multi = Array.isArray(eth.providers)
+					? eth.providers.map((item) => asProvider(item)).filter((item): item is Eip1193Provider => item != null)
+					: []
+				const list = multi.length > 0 ? multi : [eth]
+				const owned = list.find((provider) => {
+					const id = classifyByFlags(provider).id
+					return (
+						id === 'metamask' &&
+						!provider.isPhantom &&
+						!provider.isCoinbaseWallet &&
+						!provider.isOkxWallet &&
+						!provider.isOKExWallet &&
+						!provider.isTrust &&
+						!provider.isTrustWallet
+					)
+				})
+				return owned ?? null
+			}
+			default:
+				return null
+		}
+	} catch {
+		return null
 	}
 }
 
@@ -332,32 +443,20 @@ export function subscribeInstalledInjectedWallets(
 		publish()
 	}
 
-	window.addEventListener('eip6963:announceProvider', onAnnounce as EventListener)
-	try {
-		window.dispatchEvent(new Event('eip6963:requestProvider'))
-	} catch {
-		/* ignore */
-	}
+	window.addEventListener('eip6963:announceProvider', onAnnounce as EventListener, true)
+	dispatchEip6963RequestProvider()
 	publish()
 
 	const earlyRetry = window.setTimeout(() => {
-		try {
-			window.dispatchEvent(new Event('eip6963:requestProvider'))
-		} catch {
-			/* ignore */
-		}
+		dispatchEip6963RequestProvider()
 	}, 200)
 	const retryTimer = window.setTimeout(() => {
-		try {
-			window.dispatchEvent(new Event('eip6963:requestProvider'))
-		} catch {
-			/* ignore */
-		}
+		dispatchEip6963RequestProvider()
 		publish()
 	}, 1200)
 
 	return () => {
-		window.removeEventListener('eip6963:announceProvider', onAnnounce as EventListener)
+		window.removeEventListener('eip6963:announceProvider', onAnnounce as EventListener, true)
 		window.clearTimeout(earlyRetry)
 		window.clearTimeout(retryTimer)
 	}

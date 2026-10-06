@@ -57,7 +57,7 @@ export type Eip1193Provider = {
 	providers?: Eip1193Provider[]
 }
 
-export type InjectedWalletChoiceId = MobileWalletId | 'phantom' | 'other'
+export type InjectedWalletChoiceId = MobileWalletId | 'phantom' | 'trust' | 'other'
 
 export type InjectedWalletChoice = {
 	id: InjectedWalletChoiceId
@@ -119,6 +119,7 @@ function classifyByRdns(rdns: string, name: string, provider: Eip1193Provider, i
 	if (r.includes('okx') || r.includes('okex')) return { id: 'okx', label: n || 'OKX Wallet', provider, iconUrl, rdns: r }
 	if (r.includes('tokenpocket')) return { id: 'tp', label: n || 'TokenPocket', provider, iconUrl, rdns: r }
 	if (r.includes('phantom')) return { id: 'phantom', label: n || 'Phantom', provider, iconUrl, rdns: r }
+	if (r.includes('trust')) return { id: 'trust', label: n || 'Trust Wallet', provider, iconUrl, rdns: r }
 	return { id: 'other', label: n, provider, iconUrl, rdns: r }
 }
 
@@ -260,7 +261,7 @@ function mergeWalletChoices(parts: InjectedWalletChoice[]): InjectedWalletChoice
 		byBrand.set(c.id, prev ? preferWalletChoice(prev, c) : c)
 	}
 
-	const order: InjectedWalletChoiceId[] = ['metamask', 'base', 'okx', 'tp', 'phantom', 'other']
+	const order: InjectedWalletChoiceId[] = ['metamask', 'base', 'okx', 'tp', 'phantom', 'trust', 'other']
 	const out: InjectedWalletChoice[] = []
 	for (const id of order) {
 		if (id === 'other') {

@@ -101,6 +101,19 @@ function TokenPocketOfficialMark({ className = tileClass }: { className?: string
 	)
 }
 
+/** Official Trust Wallet shield on brand blue. */
+function TrustWalletOfficialMark({ className = tileClass }: { className?: string }) {
+	return (
+		<svg viewBox="0 0 24 24" className={className} aria-hidden>
+			<rect width="24" height="24" rx="5.5" fill="#3375BB" />
+			<path
+				fill="#fff"
+				d="M12 4.4 6.4 6.55v4.62c0 3.7 2.42 7.16 5.6 8.43 3.18-1.27 5.6-4.73 5.6-8.43V6.55Zm3.55 6.37-4.05 4.05a.6.6 0 0 1-.85 0L8.45 12.6a.6.6 0 0 1 .85-.85l1.73 1.73 3.62-3.62a.6.6 0 1 1 .85.85Z"
+			/>
+		</svg>
+	)
+}
+
 const listTileClass = 'block h-10 w-10 overflow-hidden rounded-[0.7rem]'
 
 /** Official app icon for a Receive-from-wallet catalog brand. */
@@ -122,6 +135,8 @@ export function ReceiveWalletBrandMark({
 			return <CoinbaseCMark className={className} />
 		case 'tp':
 			return <TokenPocketOfficialMark className={className} />
+		case 'trust':
+			return <TrustWalletOfficialMark className={className} />
 		default:
 			return null
 	}
@@ -140,7 +155,15 @@ export function ReceiveWalletRowIcon({
 	brandBg: string
 	brandFg: string
 }) {
-	if (brandId === 'metamask' || brandId === 'phantom' || brandId === 'okx' || brandId === 'base' || brandId === 'tp') {
+	if (
+		brandId === 'metamask' ||
+		brandId === 'phantom' ||
+		brandId === 'okx' ||
+		brandId === 'base' ||
+		brandId === 'tp' ||
+		brandId === 'trust' ||
+		brandId === 'receive_funds'
+	) {
 		return <ReceiveWalletBrandMark brandId={brandId} />
 	}
 	if (iconUrl) {

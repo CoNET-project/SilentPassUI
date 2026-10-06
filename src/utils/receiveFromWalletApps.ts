@@ -13,11 +13,8 @@ import {
 import {
 	type InjectedWalletChoice,
 	type InjectedWalletChoiceId,
-	type MobileWalletId,
-	isLikelyWalletInAppBrowser,
 	isMobileDeviceForWalletApps,
 	listInstalledInjectedWallets,
-	probeMobileWalletInstallations,
 	subscribeInstalledInjectedWallets,
 } from './mobileWalletApps'
 
@@ -41,6 +38,7 @@ const BRAND_CHROME: Record<
 	base: { letter: 'C', bg: '#0052FF', fg: '#ffffff' },
 	tp: { letter: 'T', bg: '#2980FE', fg: '#ffffff' },
 	phantom: { letter: 'P', bg: '#AB9FF2', fg: '#111111' },
+	trust: { letter: 'T', bg: '#3375BB', fg: '#ffffff' },
 	other: { letter: 'W', bg: '#334155', fg: '#ffffff' },
 }
 
@@ -59,20 +57,19 @@ export const RECEIVE_WALLET_NATIVE_QUERIES: NativeInstalledAppQuery[] = [
 	},
 	{ id: 'tp', schemes: ['tpdapp', 'tpoutside'], packages: ['vip.mytokenpocket'] },
 	{ id: 'phantom', schemes: ['phantom'], packages: ['app.phantom'] },
+	{ id: 'trust', schemes: [], packages: ['com.wallet.crypto.trustapp'] },
 ]
 
 const RECEIVE_WALLET_CATALOG_IDS = new Set(RECEIVE_WALLET_NATIVE_QUERIES.map((q) => q.id))
 
 const RECEIVE_WALLET_BRAND_ORDER: InjectedWalletChoiceId[] = [
-	'metamask',
-	'base',
-	'okx',
-	'tp',
 	'phantom',
+	'metamask',
+	'okx',
+	'trust',
+	'base',
+	'tp',
 ]
-
-/** Browser scheme probe only — omit Phantom (Safari can false-positive all-on). */
-const MOBILE_PROBE_ORDER: MobileWalletId[] = ['metamask', 'base', 'okx', 'tp']
 
 const LABEL_FOR_BRAND: Record<InjectedWalletChoiceId, string> = {
 	metamask: 'MetaMask',
@@ -80,14 +77,29 @@ const LABEL_FOR_BRAND: Record<InjectedWalletChoiceId, string> = {
 	base: 'Coinbase Wallet',
 	tp: 'TokenPocket',
 	phantom: 'Phantom',
+	trust: 'Trust Wallet',
 	other: 'Wallet',
 }
+
+export type ReceiveWalletPickerId = InjectedWalletChoiceId
+
+/** Native-shell catalog (installed-app deep links). Browser never uses this list. */
+export const RECEIVE_WALLET_PICKER_CATALOG: ReadonlyArray<{
+	id: ReceiveWalletPickerId
+	brandId: ReceiveWalletPickerId
+	label: string
+}> = [
+	{ id: 'phantom', brandId: 'phantom', label: 'Phantom' },
+	{ id: 'metamask', brandId: 'metamask', label: 'MetaMask' },
+	{ id: 'okx', brandId: 'okx', label: 'OKX Wallet' },
+	{ id: 'trust', brandId: 'trust', label: 'Trust Wallet' },
+]
 
 function brandChrome(id: InjectedWalletChoiceId) {
 	return BRAND_CHROME[id] ?? BRAND_CHROME.other
 }
 
-function rowFromBrand(
+export function receiveWalletRowFromBrand(
 	brandId: InjectedWalletChoiceId,
 	overrides?: Partial<ReceiveWalletAppRow>,
 ): ReceiveWalletAppRow {
@@ -101,10 +113,6 @@ function rowFromBrand(
 		brandFg: chrome.fg,
 		...overrides,
 	}
-}
-
-function installedIdsFromProbe(probed: Record<MobileWalletId, boolean>): MobileWalletId[] {
-	return MOBILE_PROBE_ORDER.filter((id) => probed[id])
 }
 
 export function mergeReceiveWalletAppRows(
@@ -130,7 +138,7 @@ export function mergeReceiveWalletAppRows(
 	for (const brandId of installedMobileIds) {
 		if (brandId === 'other') continue
 		if ([...byId.values()].some((row) => row.brandId === brandId)) continue
-		byId.set(brandId, rowFromBrand(brandId))
+		byId.set(brandId, receiveWalletRowFromBrand(brandId))
 	}
 
 	const rows = [...byId.values()]
@@ -142,14 +150,20 @@ export function mergeReceiveWalletAppRows(
 	return rows
 }
 
-export function defaultInstalledMobileWalletIds(): MobileWalletId[] {
-	return [...MOBILE_PROBE_ORDER]
+/** Native shell: always the four catalog brands (deep-link even if probe missed). */
+export function nativeReceiveWalletPickerRows(
+	installed: ReceiveWalletAppRow[],
+): ReceiveWalletAppRow[] {
+	return RECEIVE_WALLET_PICKER_CATALOG.map((entry) => {
+		const found = installed.find((row) => row.brandId === entry.brandId)
+		return found ?? receiveWalletRowFromBrand(entry.brandId)
+	})
 }
 
 /**
  * Shell vs browser — pick one path, never mix.
- * 1. Native WebView (`isCashTreesNativeWebView`) → queryInstalledApps / listInstalledWalletApps only.
- * 2. Ordinary browser → EIP-6963 + safe extension namespaces. Desktop never runs custom-scheme probes.
+ * 1. Native WebView → queryInstalledApps / listInstalledWalletApps only.
+ * 2. Ordinary browser → only EIP-6963 / injected extensions that are actually present.
  */
 export function subscribeReceiveWalletApps(
 	onRows: (rows: ReceiveWalletAppRow[]) => void,
@@ -183,24 +197,7 @@ export function subscribeReceiveWalletApps(
 		lastInjected = choices
 		publish()
 	})
-
-	if (isMobileDeviceForWalletApps() && !isLikelyWalletInAppBrowser()) {
-		void (async () => {
-			try {
-				const probed = await probeMobileWalletInstallations()
-				if (cancelled) return
-				const ids = installedIdsFromProbe(probed)
-				lastMobile = ids.length > 0 ? ids : defaultInstalledMobileWalletIds()
-				publish()
-			} catch {
-				if (cancelled) return
-				lastMobile = defaultInstalledMobileWalletIds()
-				publish()
-			}
-		})()
-	} else {
-		publish()
-	}
+	publish()
 
 	return () => {
 		cancelled = true
@@ -270,6 +267,18 @@ function phantomBrowseUrl(eoa: string, amount6?: bigint): string {
 	return `https://phantom.app/ul/browse/${encodeURIComponent(receiveEip681UsdcTransfer(eoa, amount6))}`
 }
 
+/** Trust Wallet universal https (native `openURL` does not allow a `trust:` scheme). */
+function trustWalletSendUrl(eoa: string, amount6?: bigint): string {
+	const params = new URLSearchParams({
+		asset: `c${BASE_MAINNET_CHAIN_ID}_t${USDC_BASE}`,
+		address: eoa,
+	})
+	if (amount6 != null && amount6 > 0n) {
+		params.set('amount', ethers.formatUnits(amount6, 6))
+	}
+	return `https://link.trustwallet.com/send?${params.toString()}`
+}
+
 /** PWA-owned deep link. Native must open this URL as-is (do not invent package/scheme URLs). */
 function receiveWalletNativeSchemeUrlByBrand(
 	brandId: InjectedWalletChoiceId,
@@ -322,6 +331,8 @@ export function receiveWalletHttpsOpenUrl(
 			return tokenPocketHttpsFallback()
 		case 'phantom':
 			return phantomBrowseUrl(eoa, amount6)
+		case 'trust':
+			return trustWalletSendUrl(eoa, amount6)
 		default:
 			return metamaskSendUsdcUrl(eoa, amount6)
 	}
@@ -442,12 +453,11 @@ export async function openReceiveWalletApp(
 		!isCashTreesNativeWebView()
 
 	if (desktopInjected && row.provider) {
-		if (amount6 == null || amount6 <= 0n) {
-			return { ok: false, error: 'Enter a USDC amount' }
-		}
 		try {
 			const from = await connectAndSwitchBaseOnInjected(row.provider)
-			await sendUsdcFromInjected(row.provider, from, address, amount6)
+			if (amount6 != null && amount6 > 0n) {
+				await sendUsdcFromInjected(row.provider, from, address, amount6)
+			}
 			return { ok: true }
 		} catch (err) {
 			return { ok: false, error: injectedWalletErrorMessage(err) }

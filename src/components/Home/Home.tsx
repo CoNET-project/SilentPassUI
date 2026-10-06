@@ -1,6 +1,6 @@
 // Home.tsx
 
-import { useEffect, useRef, useState, useMemo, useCallback, type KeyboardEvent, type TouchEvent, type WheelEvent } from "react"
+import { useEffect, useRef, useState, useMemo, useCallback, type TouchEvent } from "react"
 import { useScrollCapsuleOpacity } from "@/hooks/useScrollCapsuleOpacity"
 import { useReliableTapHandler, RELIABLE_TAP_BUTTON_CLASS } from '@/utils/reliableTap'
 import { createPortal } from 'react-dom';
@@ -93,11 +93,11 @@ import { pickNonFactoryMerchantAssetUrl } from '@/utils/isFactoryDefaultMerchant
 import {
 	type ReceiveWalletAppRow,
 	buildReceiveEoaQrUri,
+	nativeReceiveWalletPickerRows,
 	openReceiveWalletApp,
 	parseReceiveUsdcAmount6,
 	subscribeReceiveWalletApps,
 } from '@/utils/receiveFromWalletApps'
-import { isMobileDeviceForWalletApps } from '@/utils/mobileWalletApps'
 import {
 	COINBASE_ONRAMP_DEFAULT_AMOUNT,
 	COINBASE_ONRAMP_DEFAULT_PAY_METHOD,
@@ -122,25 +122,6 @@ const fmtAddr = (a = '') => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '—')
 
 /** Mobile home CTAs: single-tap reliability (pairs with App.tsx touch-gesture guard). */
 const HOME_TOUCH_BUTTON_CLASS = RELIABLE_TAP_BUTTON_CLASS
-
-function preventNumericInputStepKeys(e: KeyboardEvent<HTMLInputElement>): void {
-	if (
-		e.key === 'ArrowUp' ||
-		e.key === 'ArrowDown' ||
-		e.key === 'PageUp' ||
-		e.key === 'PageDown' ||
-		e.key === 'Home' ||
-		e.key === 'End'
-	) {
-		e.preventDefault()
-		e.stopPropagation()
-	}
-}
-
-function preventNumericInputWheelStep(e: WheelEvent<HTMLInputElement>): void {
-	e.preventDefault()
-	e.stopPropagation()
-}
 
 type CoinbaseAmountPadKey = '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | '.' | 'back'
 
@@ -652,7 +633,6 @@ const Home = (_props: HomeProps) => {
 	const [receiveWalletsLooking, setReceiveWalletsLooking] = useState(false)
 	const [openingReceiveWalletId, setOpeningReceiveWalletId] = useState<string | null>(null)
 	const [receiveWalletOpenError, setReceiveWalletOpenError] = useState('')
-	const [receiveWalletUsdcAmount, setReceiveWalletUsdcAmount] = useState('')
 	const [coinbaseOnrampAmount, setCoinbaseOnrampAmount] = useState(COINBASE_ONRAMP_DEFAULT_AMOUNT)
 	const [coinbaseOnrampLastAmount, setCoinbaseOnrampLastAmount] = useState(COINBASE_ONRAMP_DEFAULT_AMOUNT)
 	const [coinbaseOnrampPayMethod, setCoinbaseOnrampPayMethod] = useState<CoinbaseOnrampPayMethod>(
@@ -840,6 +820,13 @@ const Home = (_props: HomeProps) => {
 			setReceiveWalletsLooking(false)
 		}
 	}, [showPayReceiveSheet, payReceiveView])
+
+	const receiveWalletVisibleRows = useMemo(() => {
+		if (isCashTreesNativeWebView()) {
+			return nativeReceiveWalletPickerRows(installedReceiveWallets)
+		}
+		return installedReceiveWallets
+	}, [installedReceiveWallets])
 
 	useEffect(() => {
 		if (!activateGiftVoucherScreen) return
@@ -1201,7 +1188,6 @@ const Home = (_props: HomeProps) => {
 		setOpeningReceiveWalletId(null)
 		setReceiveWalletOpenError('')
 		setReceiveWalletsLooking(false)
-		setReceiveWalletUsdcAmount('')
 		setCoinbaseOnrampAmount('')
 		setCoinbaseOnrampError('')
 		setCoinbaseOnrampOpening(false)
@@ -1470,30 +1456,15 @@ const Home = (_props: HomeProps) => {
 
 	const openInstalledReceiveWallet = useCallback(async (row: ReceiveWalletAppRow) => {
 		if (openingReceiveWalletId) return
-		const desktopInjected = Boolean(
-			row.provider &&
-				typeof row.provider.request === 'function' &&
-				!isMobileDeviceForWalletApps() &&
-				!isCashTreesNativeWebView(),
-		)
-		let amount6: bigint | undefined
-		if (desktopInjected || receiveWalletUsdcAmount.trim()) {
-			const parsed = parseReceiveUsdcAmount6(receiveWalletUsdcAmount)
-			if (!parsed.ok) {
-				setReceiveWalletOpenError(parsed.error)
-				return
-			}
-			amount6 = parsed.amount6
-		}
 		setOpeningReceiveWalletId(row.id)
 		setReceiveWalletOpenError('')
 		try {
-			const result = await openReceiveWalletApp(row, receiveWalletEoa, { amount6 })
+			const result = await openReceiveWalletApp(row, receiveWalletEoa)
 			if (!result.ok) setReceiveWalletOpenError(result.error)
 		} finally {
 			setOpeningReceiveWalletId(null)
 		}
-	}, [openingReceiveWalletId, receiveWalletEoa, receiveWalletUsdcAmount])
+	}, [openingReceiveWalletId, receiveWalletEoa])
 
 	const openReceiveSheetTap = useReliableTapHandler(handleAddFunds)
 	const openReceiveFromWalletTap = useReliableTapHandler(openReceiveFromWallet)
@@ -2299,6 +2270,7 @@ const Home = (_props: HomeProps) => {
 		payReceiveView === 'wallets' ||
 		payReceiveView === 'coinbase'
 	const fundWalletOptionClass = `flex w-full items-center justify-between gap-4 rounded-[1.35rem] border border-[#e8eaed] bg-white px-4 py-[1.05rem] text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition active:scale-[0.99] active:bg-gray-50 dark:border-slate-700 dark:bg-slate-800 dark:active:bg-slate-700 ${HOME_TOUCH_BUTTON_CLASS}`
+	const receiveWalletPickerRowClass = `flex w-full items-center justify-between gap-4 rounded-[1.35rem] bg-[#f2f2f7] px-5 py-[1.15rem] text-left transition active:scale-[0.99] active:bg-[#e8e8ed] dark:bg-slate-800 dark:active:bg-slate-700 ${HOME_TOUCH_BUTTON_CLASS}`
 
 	const payRelayDeadlineUnix = useMemo(() => {
 		if (!payRelayQRPayload?.deadline) return NaN
@@ -3714,66 +3686,18 @@ const Home = (_props: HomeProps) => {
 										<div className="flex justify-center pb-3 pt-2">
 											<div className="h-1.5 w-12 rounded-full bg-gray-200 dark:bg-slate-600" />
 										</div>
-										<div className="flex items-center">
+										<div className="relative flex items-center">
 											<BeamioCircularBackButton
 												variant="onLight"
 												onClick={backToFundView}
 												disabled={!!openingReceiveWalletId}
+												className="relative z-10"
 											/>
-										</div>
-										<header className="pb-5 pt-6">
-											<p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#737687] dark:text-slate-400">
-												{tu('fund_your_wallet')}
-											</p>
-											<h2 className="mt-1 text-[1.375rem] font-bold tracking-tight text-[#191c1d] dark:text-slate-100">
+											<h2 className="pointer-events-none absolute inset-x-0 text-center text-[17px] font-semibold tracking-tight text-[#191c1d] dark:text-slate-100">
 												{tu('receive_from_a_wallet')}
 											</h2>
-											<p className="mt-1 text-sm leading-snug text-[#737687] dark:text-slate-400">
-												{tu('transfer_crypto')}
-											</p>
-										</header>
-										<label htmlFor="receive-wallet-usdc-amount" className="mb-4 block">
-											<span className="mb-1.5 flex items-center gap-2 text-sm font-semibold text-[#191c1d] dark:text-slate-100">
-												<span className="relative h-4 w-4 min-h-[16px] min-w-[16px] shrink-0">
-													<img src={usdcIcon} alt="" className="block h-4 w-4 rounded-full object-contain" />
-													<img
-														src={baseIcon}
-														alt=""
-														className="absolute -bottom-0.5 -right-0.5 block h-2.5 w-2.5 rounded-full border border-white bg-white dark:border-slate-900"
-													/>
-												</span>
-												{tu('receive_wallet_usdc_amount_label')}
-											</span>
-											<div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2.5 dark:border-slate-600 dark:bg-slate-800">
-												<span className="text-sm font-semibold text-[#737687] dark:text-slate-400" aria-hidden>
-													$
-												</span>
-												<input
-													id="receive-wallet-usdc-amount"
-													type="number"
-													inputMode="decimal"
-													autoComplete="off"
-													enterKeyHint="done"
-													min={0}
-													step="any"
-													tabIndex={1}
-													disabled={!!openingReceiveWalletId}
-													placeholder={tu('receive_wallet_usdc_amount_placeholder')}
-													aria-label={tu('receive_wallet_usdc_amount_label')}
-													value={receiveWalletUsdcAmount}
-													onChange={(e) => {
-														setReceiveWalletUsdcAmount(e.target.value)
-														if (receiveWalletOpenError) setReceiveWalletOpenError('')
-													}}
-													onKeyDown={preventNumericInputStepKeys}
-													onWheel={preventNumericInputWheelStep}
-													className="w-full bg-transparent text-base text-[#191c1d] outline-none dark:text-slate-100 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]"
-												/>
-											</div>
-											<p className="mt-1.5 text-xs leading-snug text-[#737687] dark:text-slate-400">
-												{tu('receive_wallet_usdc_amount_hint')}
-											</p>
-										</label>
+										</div>
+										<div className="mb-5 mt-4 h-px w-full bg-[#e8eaed] dark:bg-slate-700" aria-hidden />
 										{receiveWalletOpenError ? (
 											<div
 												role="alert"
@@ -3786,59 +3710,57 @@ const Home = (_props: HomeProps) => {
 										{!receiveWalletEoa ? (
 											<div
 												role="alert"
-												className="flex items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-200"
+												className="mb-3 flex items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-200"
 											>
 												<AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
 												<p>{tu('wallet_address_unavailable')}</p>
 											</div>
-										) : receiveWalletsLooking && installedReceiveWallets.length === 0 ? (
-											<div className="flex flex-col items-center gap-3 py-10">
-												<Loader2 className="h-8 w-8 animate-spin text-[#0051d1]" aria-hidden />
-												<p className="text-sm text-[#737687] dark:text-slate-400">{tu('looking_for_wallets')}</p>
-											</div>
-										) : !receiveWalletsLooking && installedReceiveWallets.length === 0 ? (
+										) : null}
+										<div className="flex flex-col gap-3">
+											{receiveWalletVisibleRows.map((row) => {
+												const opening = openingReceiveWalletId === row.id
+												const rowDisabled = !!openingReceiveWalletId || !receiveWalletEoa
+												return (
+													<button
+														key={row.id}
+														type="button"
+														disabled={rowDisabled}
+														aria-busy={opening}
+														aria-label={row.label}
+														onClick={() => void openInstalledReceiveWallet(row)}
+														className={`${receiveWalletPickerRowClass} disabled:cursor-not-allowed disabled:opacity-60`}
+													>
+														<span className="min-w-0">
+															<span className="block text-base font-semibold text-[#191c1d] dark:text-slate-100">
+																{row.label}
+															</span>
+														</span>
+														{opening ? (
+															<Loader2 className="h-10 w-10 shrink-0 animate-spin text-[#0051d1]" aria-hidden />
+														) : (
+															<ReceiveWalletRowIcon
+																brandId={row.brandId}
+																brandLetter={row.brandLetter}
+																brandBg={row.brandBg}
+																brandFg={row.brandFg}
+															/>
+														)}
+													</button>
+												)
+											})}
+										</div>
+										{!isCashTreesNativeWebView() &&
+										receiveWalletEoa &&
+										!receiveWalletsLooking &&
+										receiveWalletVisibleRows.length === 0 ? (
 											<div
 												role="alert"
-												className="flex items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-200"
+												className="mt-3 flex items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-200"
 											>
 												<AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
 												<p>{tu('no_wallets_found')}</p>
 											</div>
-										) : (
-											<div className="flex flex-col gap-3">
-												{installedReceiveWallets.map((row) => {
-													const opening = openingReceiveWalletId === row.id
-													return (
-														<button
-															key={row.id}
-															type="button"
-															disabled={!!openingReceiveWalletId}
-															aria-busy={opening}
-															aria-label={row.label}
-															onClick={() => void openInstalledReceiveWallet(row)}
-															className={`${fundWalletOptionClass} disabled:cursor-not-allowed disabled:opacity-60`}
-														>
-															<span className="min-w-0">
-																<span className="block text-base font-semibold text-[#191c1d] dark:text-slate-100">
-																	{row.label}
-																</span>
-															</span>
-															{opening ? (
-																<Loader2 className="h-7 w-7 shrink-0 animate-spin text-[#0051d1]" aria-hidden />
-															) : (
-																<ReceiveWalletRowIcon
-																	brandId={row.brandId}
-																	iconUrl={row.iconUrl}
-																	brandLetter={row.brandLetter}
-																	brandBg={row.brandBg}
-																	brandFg={row.brandFg}
-																/>
-															)}
-														</button>
-													)
-												})}
-											</div>
-										)}
+										) : null}
 									</div>
 								) : payReceiveView === 'coinbase' ? (
 									<div className="mx-auto flex min-h-0 w-full max-w-lg flex-1 flex-col overflow-hidden px-5 pb-1">

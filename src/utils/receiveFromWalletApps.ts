@@ -59,7 +59,7 @@ export const RECEIVE_WALLET_NATIVE_QUERIES: NativeInstalledAppQuery[] = [
 	},
 	{ id: 'tp', schemes: ['tpdapp', 'tpoutside'], packages: ['vip.mytokenpocket'] },
 	{ id: 'phantom', schemes: ['phantom'], packages: ['app.phantom'] },
-	{ id: 'trust', schemes: [], packages: ['com.wallet.crypto.trustapp'] },
+	{ id: 'trust', schemes: ['trust'], packages: ['com.wallet.crypto.trustapp'] },
 ]
 
 const RECEIVE_WALLET_CATALOG_IDS = new Set(RECEIVE_WALLET_NATIVE_QUERIES.map((q) => q.id))
@@ -85,17 +85,10 @@ const LABEL_FOR_BRAND: Record<InjectedWalletChoiceId, string> = {
 
 export type ReceiveWalletPickerId = InjectedWalletChoiceId
 
-/** Native-shell catalog (installed-app deep links). Browser never uses this list. */
-export const RECEIVE_WALLET_PICKER_CATALOG: ReadonlyArray<{
-	id: ReceiveWalletPickerId
-	brandId: ReceiveWalletPickerId
-	label: string
-}> = [
-	{ id: 'phantom', brandId: 'phantom', label: 'Phantom' },
-	{ id: 'metamask', brandId: 'metamask', label: 'MetaMask' },
-	{ id: 'okx', brandId: 'okx', label: 'OKX Wallet' },
-	{ id: 'trust', brandId: 'trust', label: 'Trust Wallet' },
-]
+/** True when Receive-from-wallet must use native install probe, not browser extensions. */
+export function isReceiveFromWalletNativeShell(): boolean {
+	return isCashTreesNativeWebView() || hasNativeWalletListApi()
+}
 
 function brandChrome(id: InjectedWalletChoiceId) {
 	return BRAND_CHROME[id] ?? BRAND_CHROME.other
@@ -152,14 +145,11 @@ export function mergeReceiveWalletAppRows(
 	return rows
 }
 
-/** Native shell: always the four catalog brands (deep-link even if probe missed). */
+/** Native shell: only wallets the host confirmed as installed. Never invent missing brands. */
 export function nativeReceiveWalletPickerRows(
 	installed: ReceiveWalletAppRow[],
 ): ReceiveWalletAppRow[] {
-	return RECEIVE_WALLET_PICKER_CATALOG.map((entry) => {
-		const found = installed.find((row) => row.brandId === entry.brandId)
-		return found ?? receiveWalletRowFromBrand(entry.brandId)
-	})
+	return installed.filter((row) => row.brandId !== 'other')
 }
 
 /**
@@ -180,11 +170,12 @@ export function subscribeReceiveWalletApps(
 		onRows(mergeReceiveWalletAppRows(lastInjected, lastMobile))
 	}
 
-	if (isCashTreesNativeWebView()) {
+	if (isReceiveFromWalletNativeShell()) {
 		void (async () => {
 			const nativeIds = await listInstalledWalletAppsFromNative(RECEIVE_WALLET_NATIVE_QUERIES)
 			if (cancelled) return
-			lastMobile = (nativeIds ?? []).filter(
+			if (nativeIds == null) return
+			lastMobile = nativeIds.filter(
 				(id): id is InjectedWalletChoiceId => RECEIVE_WALLET_CATALOG_IDS.has(id),
 			)
 			publish()
@@ -269,7 +260,7 @@ function phantomBrowseUrl(eoa: string, amount6?: bigint): string {
 	return `https://phantom.app/ul/browse/${encodeURIComponent(receiveEip681UsdcTransfer(eoa, amount6))}`
 }
 
-/** Trust Wallet universal https (native `openURL` does not allow a `trust:` scheme). */
+/** Trust Wallet universal https (browser / HTTPS fallback). Native shells use `trust://`. */
 function trustWalletSendUrl(eoa: string, amount6?: bigint): string {
 	const params = new URLSearchParams({
 		asset: `c${BASE_MAINNET_CHAIN_ID}_t${USDC_BASE}`,
@@ -304,6 +295,10 @@ function receiveWalletNativeSchemeUrlByBrand(
 			}))}`
 		case 'phantom':
 			return `phantom://ul/browse/${encodeURIComponent(eip681)}`
+		case 'trust':
+			return `trust://send?asset=c${BASE_MAINNET_CHAIN_ID}_t${USDC_BASE}&address=${eoa}${
+				amount6 != null && amount6 > 0n ? `&amount=${ethers.formatUnits(amount6, 6)}` : ''
+			}`
 		default:
 			return ''
 	}
@@ -368,19 +363,20 @@ function resolveBrowserInjectedProvider(
 	row: ReceiveWalletAppRow,
 ): InjectedWalletChoice['provider'] | null {
 	requestEip6963ProvidersNow()
+	// Click-time namespace first: EIP-6963 cache can hold a stale/other extension
+	// provider that overwrites the wallet the user actually unlocked (MetaMask /
+	// OKX / Trust / …). Gesture-time `window.ethereum` / brand namespace is the
+	// unlockable surface for ordinary browser extensions.
 	const fromNamespace = readBrandNamespaceProviderOnGesture(row.brandId)
-	if (row.brandId === 'okx' && fromNamespace && typeof fromNamespace.request === 'function') {
-		return fromNamespace
-	}
-	const live = findInjectedWalletByBrand(row.brandId)
-	if (live?.provider && typeof live.provider.request === 'function') {
-		return live.provider
-	}
 	if (fromNamespace && typeof fromNamespace.request === 'function') {
 		return fromNamespace
 	}
 	if (row.provider && typeof row.provider.request === 'function') {
 		return row.provider
+	}
+	const live = findInjectedWalletByBrand(row.brandId)
+	if (live?.provider && typeof live.provider.request === 'function') {
+		return live.provider
 	}
 	return null
 }
@@ -490,11 +486,15 @@ export function buildReceiveEoaQrUri(eoa: string): string {
 	}
 }
 
+export type OpenReceiveWalletAppResult =
+	| { ok: true }
+	| { ok: false; error: string; canceled?: boolean }
+
 export async function openReceiveWalletApp(
 	row: ReceiveWalletAppRow,
 	eoa: string,
 	opts?: { amount6?: bigint },
-): Promise<{ ok: true } | { ok: false; error: string }> {
+): Promise<OpenReceiveWalletAppResult> {
 	const address = eoa?.trim()
 	if (!address) {
 		return { ok: false, error: 'Wallet address unavailable' }
@@ -502,19 +502,25 @@ export async function openReceiveWalletApp(
 
 	const amount6 = opts?.amount6
 
-	if (!isCashTreesNativeWebView()) {
+	if (!isReceiveFromWalletNativeShell()) {
 		const provider = resolveBrowserInjectedProvider(row)
 		if (!provider) {
 			return { ok: false, error: 'Could not open this wallet' }
 		}
 		try {
 			const from = await connectAndSwitchBaseOnInjected(provider, row.brandId)
-			if (amount6 != null && amount6 > 0n) {
-				await sendUsdcFromInjected(provider, from, address, amount6)
+			if (amount6 == null || amount6 <= 0n) {
+				return { ok: false, error: 'Enter a USDC amount' }
 			}
+			await sendUsdcFromInjected(provider, from, address, amount6)
 			return { ok: true }
 		} catch (err) {
-			return { ok: false, error: injectedWalletErrorMessage(err) }
+			const error = injectedWalletErrorMessage(err)
+			return {
+				ok: false,
+				error,
+				canceled: isUserRejectedRequest(err) || /rejected in wallet/i.test(error),
+			}
 		}
 	}
 

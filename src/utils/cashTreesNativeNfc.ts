@@ -353,7 +353,7 @@ export function detectDeviceNfcCapability(): boolean {
  *
  * All user-initiated external http(s) / mailto / tel opens MUST go through this helper.
  * Known wallet custom schemes (`ethereum` EIP-681 / `metamask` / `cbwallet` /
- * `coinbase` / `base` / `okx` / `okex` / `tpdapp` / `tpoutside` / `phantom`) are
+ * `coinbase` / `base` / `okx` / `okex` / `tpdapp` / `tpoutside` / `phantom` / `trust`) are
  * also allowed when the native `openURL` allowlist includes them
  * (see `.cursor/rules/beamio-native-external-url-bridge.mdc`).
  */

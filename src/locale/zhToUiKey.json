@@ -583,6 +583,7 @@
   "请对方用 MetaMask 或 Coinbase Wallet 扫描此二维码，向本钱包发送 USDC。": "receive_qr_hint",
   "正在查找钱包…": "looking_for_wallets",
   "未找到已安装的钱包。请先安装 MetaMask 或 Coinbase Wallet 后再试。": "no_wallets_found",
+  "未找到已安装的钱包。": "no_wallets_found_native",
   "钱包地址不可用": "wallet_address_unavailable",
   "从钱包收款": "receive_from_a_wallet",
   "转入加密资产": "transfer_crypto",

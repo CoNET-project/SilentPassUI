@@ -93,6 +93,7 @@ import { pickNonFactoryMerchantAssetUrl } from '@/utils/isFactoryDefaultMerchant
 import {
 	type ReceiveWalletAppRow,
 	buildReceiveEoaQrUri,
+	isReceiveFromWalletNativeShell,
 	nativeReceiveWalletPickerRows,
 	openReceiveWalletApp,
 	parseReceiveUsdcAmount6,
@@ -626,13 +627,21 @@ const Home = (_props: HomeProps) => {
 	const [showMerchantGiftSheet, setShowMerchantGiftSheet] = useState(false)
 	/** Home Pay/Receive 底栏（对齐 renderAction Pay|Receive 交互） */
 	const [showPayReceiveSheet, setShowPayReceiveSheet] = useState(false)
-	const [payReceiveView, setPayReceiveView] = useState<'fund' | 'tabs' | 'qr' | 'wallets' | 'coinbase'>('fund')
+	const [payReceiveView, setPayReceiveView] = useState<'fund' | 'tabs' | 'qr' | 'wallets' | 'wallet-amount' | 'coinbase'>('fund')
 	const [payReceiveQrMode, setPayReceiveQrMode] = useState<'pay' | 'receive'>('receive')
 	const [receiveWalletCopied, setReceiveWalletCopied] = useState(false)
 	const [installedReceiveWallets, setInstalledReceiveWallets] = useState<ReceiveWalletAppRow[]>([])
 	const [receiveWalletsLooking, setReceiveWalletsLooking] = useState(false)
 	const [openingReceiveWalletId, setOpeningReceiveWalletId] = useState<string | null>(null)
 	const [receiveWalletOpenError, setReceiveWalletOpenError] = useState('')
+	const [selectedReceiveWallet, setSelectedReceiveWallet] = useState<ReceiveWalletAppRow | null>(null)
+	const [receiveWalletAmount, setReceiveWalletAmount] = useState(COINBASE_ONRAMP_DEFAULT_AMOUNT)
+	const [receiveWalletTransferStatus, setReceiveWalletTransferStatus] = useState<
+		'idle' | 'signing' | 'waiting' | 'success' | 'error' | 'canceled'
+	>('idle')
+	const [receiveWalletStatusError, setReceiveWalletStatusError] = useState('')
+	const [receiveWalletNewBalance, setReceiveWalletNewBalance] = useState('')
+	const receiveWalletAbortRef = useRef<AbortController | null>(null)
 	const [coinbaseOnrampAmount, setCoinbaseOnrampAmount] = useState(COINBASE_ONRAMP_DEFAULT_AMOUNT)
 	const [coinbaseOnrampLastAmount, setCoinbaseOnrampLastAmount] = useState(COINBASE_ONRAMP_DEFAULT_AMOUNT)
 	const [coinbaseOnrampPayMethod, setCoinbaseOnrampPayMethod] = useState<CoinbaseOnrampPayMethod>(
@@ -808,7 +817,7 @@ const Home = (_props: HomeProps) => {
 	useEffect(() => {
 		if (!showPayReceiveSheet || payReceiveView !== 'wallets') return
 		setReceiveWalletsLooking(true)
-		const inShell = isCashTreesNativeWebView()
+		const inShell = isReceiveFromWalletNativeShell()
 		const unsub = subscribeReceiveWalletApps((rows) => {
 			setInstalledReceiveWallets(rows)
 			if (rows.length > 0 || inShell) setReceiveWalletsLooking(false)
@@ -822,7 +831,7 @@ const Home = (_props: HomeProps) => {
 	}, [showPayReceiveSheet, payReceiveView])
 
 	const receiveWalletVisibleRows = useMemo(() => {
-		if (isCashTreesNativeWebView()) {
+		if (isReceiveFromWalletNativeShell()) {
 			return nativeReceiveWalletPickerRows(installedReceiveWallets)
 		}
 		return installedReceiveWallets
@@ -1180,14 +1189,25 @@ const Home = (_props: HomeProps) => {
 		coinbaseOnrampAbortRef.current = null
 	}, [])
 
+	const abortReceiveWalletWatch = useCallback(() => {
+		receiveWalletAbortRef.current?.abort()
+		receiveWalletAbortRef.current = null
+	}, [])
+
 	const resetPayReceiveAuxState = useCallback(() => {
 		abortCoinbaseOnrampWatch()
+		abortReceiveWalletWatch()
 		setReceiveWalletCopied(false)
 		setPayRelayQRPayload(null)
 		setPayRelayQRLoading(false)
 		setOpeningReceiveWalletId(null)
 		setReceiveWalletOpenError('')
 		setReceiveWalletsLooking(false)
+		setSelectedReceiveWallet(null)
+		setReceiveWalletAmount(COINBASE_ONRAMP_DEFAULT_AMOUNT)
+		setReceiveWalletTransferStatus('idle')
+		setReceiveWalletStatusError('')
+		setReceiveWalletNewBalance('')
 		setCoinbaseOnrampAmount('')
 		setCoinbaseOnrampError('')
 		setCoinbaseOnrampOpening(false)
@@ -1196,7 +1216,7 @@ const Home = (_props: HomeProps) => {
 		setCoinbaseOnrampStatusError('')
 		setCoinbaseOnrampNewBalance('')
 		setCoinbaseOnrampPayMethodPickerOpen(false)
-	}, [abortCoinbaseOnrampWatch])
+	}, [abortCoinbaseOnrampWatch, abortReceiveWalletWatch])
 
 	const handleAddFunds = () => {
 		setPayReceiveView('fund')
@@ -1216,6 +1236,8 @@ const Home = (_props: HomeProps) => {
 	useEffect(() => () => {
 		coinbaseOnrampAbortRef.current?.abort()
 		coinbaseOnrampAbortRef.current = null
+		receiveWalletAbortRef.current?.abort()
+		receiveWalletAbortRef.current = null
 	}, [])
 
 	const dismissPayReceiveThenOpenAddCash = useCallback((mode: 'stripe' | 'coinbase') => {
@@ -1233,17 +1255,30 @@ const Home = (_props: HomeProps) => {
 	const backToFundView = useCallback(() => {
 		if (openingReceiveWalletId || coinbaseOnrampOpening) return
 		if (coinbaseOnrampStatus === 'opening' || coinbaseOnrampStatus === 'waiting') return
+		if (receiveWalletTransferStatus === 'signing' || receiveWalletTransferStatus === 'waiting') return
+		abortReceiveWalletWatch()
 		setPayReceiveView('fund')
 		setPayReceiveQrMode('receive')
 		setReceiveWalletOpenError('')
 		setOpeningReceiveWalletId(null)
+		setSelectedReceiveWallet(null)
+		setReceiveWalletAmount(COINBASE_ONRAMP_DEFAULT_AMOUNT)
+		setReceiveWalletTransferStatus('idle')
+		setReceiveWalletStatusError('')
+		setReceiveWalletNewBalance('')
 		setCoinbaseOnrampError('')
 		setCoinbaseOnrampCheckoutUrl('')
 		setCoinbaseOnrampStatus('idle')
 		setCoinbaseOnrampStatusError('')
 		setCoinbaseOnrampNewBalance('')
 		setCoinbaseOnrampPayMethodPickerOpen(false)
-	}, [coinbaseOnrampOpening, coinbaseOnrampStatus, openingReceiveWalletId])
+	}, [
+		abortReceiveWalletWatch,
+		coinbaseOnrampOpening,
+		coinbaseOnrampStatus,
+		openingReceiveWalletId,
+		receiveWalletTransferStatus,
+	])
 
 	const closeCoinbaseOnrampCheckout = useCallback(() => {
 		if (coinbaseOnrampStatus === 'opening' || coinbaseOnrampStatus === 'waiting') {
@@ -1454,17 +1489,159 @@ const Home = (_props: HomeProps) => {
 		usdcbalance,
 	])
 
-	const openInstalledReceiveWallet = useCallback(async (row: ReceiveWalletAppRow) => {
+	const selectReceiveWalletForAmount = useCallback((row: ReceiveWalletAppRow) => {
 		if (openingReceiveWalletId) return
-		setOpeningReceiveWalletId(row.id)
+		if (receiveWalletTransferStatus === 'signing' || receiveWalletTransferStatus === 'waiting') return
+		setSelectedReceiveWallet(row)
+		setReceiveWalletAmount(COINBASE_ONRAMP_DEFAULT_AMOUNT)
 		setReceiveWalletOpenError('')
+		setReceiveWalletTransferStatus('idle')
+		setReceiveWalletStatusError('')
+		setReceiveWalletNewBalance('')
+		setPayReceiveView('wallet-amount')
+	}, [openingReceiveWalletId, receiveWalletTransferStatus])
+
+	const backToReceiveWalletPicker = useCallback(() => {
+		if (openingReceiveWalletId) return
+		if (receiveWalletTransferStatus === 'signing' || receiveWalletTransferStatus === 'waiting') return
+		abortReceiveWalletWatch()
+		setSelectedReceiveWallet(null)
+		setReceiveWalletOpenError('')
+		setReceiveWalletAmount(COINBASE_ONRAMP_DEFAULT_AMOUNT)
+		setReceiveWalletTransferStatus('idle')
+		setReceiveWalletStatusError('')
+		setReceiveWalletNewBalance('')
+		setPayReceiveView('wallets')
+	}, [abortReceiveWalletWatch, openingReceiveWalletId, receiveWalletTransferStatus])
+
+	const applyReceiveWalletAmountPad = useCallback((key: CoinbaseAmountPadKey) => {
+		if (openingReceiveWalletId) return
+		if (receiveWalletTransferStatus === 'signing' || receiveWalletTransferStatus === 'waiting') return
+		setReceiveWalletAmount((prev) => applyCoinbaseAmountPadKey(prev, key))
+		if (receiveWalletOpenError) setReceiveWalletOpenError('')
+	}, [openingReceiveWalletId, receiveWalletOpenError, receiveWalletTransferStatus])
+
+	const closeReceiveWalletTransferStatus = useCallback(() => {
+		// Functional update avoids stale closures when Done is tapped after a
+		// failed open (browser automation / late fiber onClick can see old status).
+		setReceiveWalletTransferStatus((prev) => {
+			if (prev === 'signing' || prev === 'waiting') {
+				abortReceiveWalletWatch()
+				setOpeningReceiveWalletId(null)
+				setReceiveWalletStatusError('')
+				return 'canceled'
+			}
+			abortReceiveWalletWatch()
+			setOpeningReceiveWalletId(null)
+			setReceiveWalletStatusError('')
+			setReceiveWalletNewBalance('')
+			setReceiveWalletOpenError('')
+			return 'idle'
+		})
+	}, [abortReceiveWalletWatch])
+
+	const submitReceiveWalletTransfer = useCallback(async () => {
+		if (!selectedReceiveWallet || openingReceiveWalletId) return
+		if (receiveWalletTransferStatus === 'signing' || receiveWalletTransferStatus === 'waiting') return
+		const address = receiveWalletEoa
+		if (!address) {
+			setReceiveWalletOpenError(tu('wallet_address_unavailable'))
+			return
+		}
+		const parsed = parseReceiveUsdcAmount6(receiveWalletAmount)
+		if (!parsed.ok) {
+			setReceiveWalletOpenError(parsed.error)
+			return
+		}
+
+		abortReceiveWalletWatch()
+		const abort = new AbortController()
+		receiveWalletAbortRef.current = abort
+		setOpeningReceiveWalletId(selectedReceiveWallet.id)
+		setReceiveWalletOpenError('')
+		setReceiveWalletStatusError('')
+		setReceiveWalletNewBalance('')
+		setReceiveWalletTransferStatus('signing')
+
 		try {
-			const result = await openReceiveWalletApp(row, receiveWalletEoa)
-			if (!result.ok) setReceiveWalletOpenError(result.error)
+			let baselineRaw = await readBaseUsdcBalance6(address)
+			if (baselineRaw == null) {
+				try {
+					baselineRaw = ethers.parseUnits(String(Math.max(0, Number(usdcbalance) || 0)), 6)
+				} catch {
+					baselineRaw = 0n
+				}
+			}
+
+			const result = await openReceiveWalletApp(selectedReceiveWallet, address, {
+				amount6: parsed.amount6,
+			})
+			if (abort.signal.aborted) {
+				setReceiveWalletTransferStatus('canceled')
+				return
+			}
+			if (!result.ok) {
+				if (result.canceled) {
+					setReceiveWalletTransferStatus('canceled')
+					setReceiveWalletStatusError('')
+				} else {
+					setReceiveWalletTransferStatus('error')
+					setReceiveWalletStatusError(result.error)
+				}
+				return
+			}
+
+			setReceiveWalletTransferStatus('waiting')
+			const outcome = await waitForBaseUsdcArrival({
+				eoa: address,
+				baselineRaw,
+				minIncrease6: parsed.amount6,
+				signal: abort.signal,
+			})
+			if (abort.signal.aborted || outcome.status === 'cancelled') {
+				setReceiveWalletTransferStatus((prev) => (prev === 'canceled' ? prev : 'canceled'))
+				return
+			}
+			if (outcome.status === 'arrived') {
+				const display = Number.parseFloat(outcome.balanceDisplay)
+				setReceiveWalletNewBalance(
+					Number.isFinite(display) ? display.toFixed(2) : outcome.balanceDisplay,
+				)
+				setReceiveWalletTransferStatus('success')
+				void refreshAppDaemonNow('wallet').catch(() => {})
+				return
+			}
+			if (outcome.status === 'timeout') {
+				setReceiveWalletTransferStatus('error')
+				setReceiveWalletStatusError(tu('receive_wallet_timeout'))
+				return
+			}
+			setReceiveWalletTransferStatus('error')
+			setReceiveWalletStatusError(outcome.message || tu('receive_wallet_error_title'))
+		} catch (err) {
+			if (abort.signal.aborted) {
+				setReceiveWalletTransferStatus('canceled')
+				return
+			}
+			setReceiveWalletTransferStatus('error')
+			setReceiveWalletStatusError(
+				err instanceof Error && err.message ? err.message : tu('receive_wallet_error_title'),
+			)
 		} finally {
+			if (receiveWalletAbortRef.current === abort) {
+				receiveWalletAbortRef.current = null
+			}
 			setOpeningReceiveWalletId(null)
 		}
-	}, [openingReceiveWalletId, receiveWalletEoa])
+	}, [
+		abortReceiveWalletWatch,
+		openingReceiveWalletId,
+		receiveWalletAmount,
+		receiveWalletEoa,
+		receiveWalletTransferStatus,
+		selectedReceiveWallet,
+		usdcbalance,
+	])
 
 	const openReceiveSheetTap = useReliableTapHandler(handleAddFunds)
 	const openReceiveFromWalletTap = useReliableTapHandler(openReceiveFromWallet)
@@ -2268,7 +2445,10 @@ const Home = (_props: HomeProps) => {
 		payReceiveView === 'fund' ||
 		payReceiveView === 'qr' ||
 		payReceiveView === 'wallets' ||
+		payReceiveView === 'wallet-amount' ||
 		payReceiveView === 'coinbase'
+	const receiveWalletTransferStatusOpen = receiveWalletTransferStatus !== 'idle'
+	const closeReceiveWalletTransferStatusTap = useReliableTapHandler(closeReceiveWalletTransferStatus)
 	const fundWalletOptionClass = `flex w-full items-center justify-between gap-4 rounded-[1.35rem] border border-[#e8eaed] bg-white px-4 py-[1.05rem] text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition active:scale-[0.99] active:bg-gray-50 dark:border-slate-700 dark:bg-slate-800 dark:active:bg-slate-700 ${HOME_TOUCH_BUTTON_CLASS}`
 	const receiveWalletPickerRowClass = `flex w-full items-center justify-between gap-4 rounded-[1.35rem] bg-[#f2f2f7] px-5 py-[1.15rem] text-left transition active:scale-[0.99] active:bg-[#e8e8ed] dark:bg-slate-800 dark:active:bg-slate-700 ${HOME_TOUCH_BUTTON_CLASS}`
 
@@ -3727,7 +3907,7 @@ const Home = (_props: HomeProps) => {
 														disabled={rowDisabled}
 														aria-busy={opening}
 														aria-label={row.label}
-														onClick={() => void openInstalledReceiveWallet(row)}
+														onClick={() => selectReceiveWalletForAmount(row)}
 														className={`${receiveWalletPickerRowClass} disabled:cursor-not-allowed disabled:opacity-60`}
 													>
 														<span className="min-w-0">
@@ -3749,8 +3929,7 @@ const Home = (_props: HomeProps) => {
 												)
 											})}
 										</div>
-										{!isCashTreesNativeWebView() &&
-										receiveWalletEoa &&
+										{receiveWalletEoa &&
 										!receiveWalletsLooking &&
 										receiveWalletVisibleRows.length === 0 ? (
 											<div
@@ -3758,9 +3937,116 @@ const Home = (_props: HomeProps) => {
 												className="mt-3 flex items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-200"
 											>
 												<AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-												<p>{tu('no_wallets_found')}</p>
+												<p>
+													{isReceiveFromWalletNativeShell()
+														? tu('no_wallets_found_native')
+														: tu('no_wallets_found')}
+												</p>
 											</div>
 										) : null}
+									</div>
+								) : payReceiveView === 'wallet-amount' && selectedReceiveWallet ? (
+									<div className="mx-auto flex min-h-0 w-full max-w-lg flex-1 flex-col overflow-hidden bg-white px-5 pb-1">
+										<div className="flex shrink-0 justify-center pb-3 pt-2">
+											<div className="h-1.5 w-12 rounded-full bg-gray-200" />
+										</div>
+										<div className="relative flex shrink-0 items-center">
+											<BeamioCircularBackButton
+												variant="onLight"
+												onClick={backToReceiveWalletPicker}
+												disabled={!!openingReceiveWalletId}
+												className="relative z-10"
+											/>
+											<h2 className="pointer-events-none absolute inset-x-0 text-center text-[17px] font-semibold tracking-tight text-[#191c1d]">
+												{selectedReceiveWallet.label}
+											</h2>
+										</div>
+										<div className="mb-4 mt-4 h-px w-full bg-[#e8eaed]" aria-hidden />
+										<div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+											<div className="relative mb-3 overflow-hidden rounded-[1.75rem] bg-[#f4f6f8] px-4 pb-5 pt-4">
+												<div className="flex items-center gap-2.5">
+													<ReceiveWalletRowIcon
+														brandId={selectedReceiveWallet.brandId}
+														brandLetter={selectedReceiveWallet.brandLetter}
+														brandBg={selectedReceiveWallet.brandBg}
+														brandFg={selectedReceiveWallet.brandFg}
+													/>
+													<div className="min-w-0">
+														<p className="truncate text-sm font-semibold text-[#191c1d]">
+															{selectedReceiveWallet.label}
+														</p>
+														<p className="truncate text-xs text-[#737687]">
+															{tu('receive_wallet_usdc_amount_hint')}
+														</p>
+													</div>
+												</div>
+												<p
+													className="mt-5 text-center text-[3.25rem] font-semibold leading-none tracking-tight text-[#191c1d]"
+													aria-live="polite"
+													aria-label={tu('receive_wallet_usdc_amount_label')}
+												>
+													<span className="mr-0.5 text-[2.15rem] font-medium text-[#737687]" aria-hidden>
+														$
+													</span>
+													{receiveWalletAmount || '0'}
+												</p>
+												<p className="mt-3 flex items-center justify-center gap-1 text-sm text-[#737687]">
+													<img src={usdcIcon} alt="" className="h-4 w-4 rounded-full object-contain" />
+													{tu('receive_wallet_usdc_preview', {
+														amount: receiveWalletAmount || '0',
+													})}
+												</p>
+											</div>
+										</div>
+										<div className="grid shrink-0 grid-cols-3 py-0.5">
+											{COINBASE_AMOUNT_PAD_KEYS.map((key) => (
+												<button
+													key={key}
+													type="button"
+													tabIndex={-1}
+													disabled={!!openingReceiveWalletId}
+													aria-label={
+														key === 'back'
+															? tu('coinbase_keypad_delete')
+															: key === '.'
+																? tu('coinbase_keypad_decimal')
+																: key
+													}
+													onClick={() => applyReceiveWalletAmountPad(key)}
+													className={`flex h-11 items-center justify-center text-[1.55rem] font-medium text-[#191c1d] disabled:opacity-50 ${HOME_TOUCH_BUTTON_CLASS}`}
+												>
+													{key === 'back' ? (
+														<Delete className="h-6 w-6" strokeWidth={1.75} aria-hidden />
+													) : (
+														key
+													)}
+												</button>
+											))}
+										</div>
+										{receiveWalletOpenError ? (
+											<div
+												role="alert"
+												className="mb-2 flex shrink-0 items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800"
+											>
+												<AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+												<p>{receiveWalletOpenError}</p>
+											</div>
+										) : null}
+										<button
+											type="button"
+											tabIndex={1}
+											disabled={!!openingReceiveWalletId || !receiveWalletEoa}
+											aria-busy={!!openingReceiveWalletId}
+											aria-label={tu('next')}
+											onClick={() => void submitReceiveWalletTransfer()}
+											className={`flex w-full shrink-0 items-center justify-center gap-2 rounded-full bg-[#0051d1] px-4 py-3.5 text-base font-semibold text-white transition active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 ${HOME_TOUCH_BUTTON_CLASS}`}
+										>
+											{openingReceiveWalletId ? (
+												<Loader2 className="h-5 w-5 animate-spin" aria-hidden />
+											) : (
+												tu('next')
+											)}
+										</button>
 									</div>
 								) : payReceiveView === 'coinbase' ? (
 									<div className="mx-auto flex min-h-0 w-full max-w-lg flex-1 flex-col overflow-hidden px-5 pb-1">
@@ -4422,6 +4708,177 @@ const Home = (_props: HomeProps) => {
 												aria-label={tu('done')}
 												data-touch-priority="1"
 												onClick={closeCoinbaseOnrampCheckout}
+											>
+												{tu('done')}
+											</button>
+										</div>
+									)}
+								</div>
+							</motion.div>
+						</>
+					) : null}
+				</AnimatePresence>,
+				document.body
+			)}
+
+			{createPortal(
+				<AnimatePresence>
+					{showPayReceiveSheet && receiveWalletTransferStatusOpen && selectedReceiveWallet ? (
+						<>
+							<motion.div
+								className="fixed inset-0 z-[10022] bg-black/40 backdrop-blur-md"
+								initial={{ opacity: 0 }}
+								animate={{ opacity: 1 }}
+								exit={{ opacity: 0 }}
+								transition={{ duration: 0.2 }}
+								role="button"
+								tabIndex={-1}
+								aria-label={tu('close')}
+								data-touch-priority="1"
+								{...closeReceiveWalletTransferStatusTap}
+							/>
+							<motion.div
+								className="fixed bottom-0 left-0 right-0 z-[10023] flex h-[92dvh] max-h-[92dvh] flex-col overflow-hidden overscroll-contain rounded-t-2xl bg-white shadow-[0_-20px_50px_rgba(0,0,0,0.14)]"
+								initial={{ y: '100%' }}
+								animate={{ y: 0 }}
+								exit={{ y: '100%' }}
+								transition={{ duration: 0.3, ease: 'easeOut' }}
+								role="dialog"
+								aria-modal="true"
+								aria-label={selectedReceiveWallet.label}
+							>
+								<div className="flex shrink-0 justify-center pb-1 pt-2">
+									<div className="h-1.5 w-12 rounded-full bg-gray-300" />
+								</div>
+								<div
+									className="relative flex shrink-0 items-center px-4"
+									style={{ paddingTop: 'max(0.25rem, env(safe-area-inset-top, 0px))' }}
+								>
+									<BeamioCircularBackButton
+										variant="onLight"
+										onClick={closeReceiveWalletTransferStatus}
+										tabIndex={-1}
+									/>
+								</div>
+								<header className="shrink-0 px-5 pb-3 pt-4">
+									<p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#737687]">
+										{tu('receive_from_a_wallet')}
+									</p>
+									<h2 className="mt-1 text-[1.375rem] font-bold tracking-tight text-[#191c1d]">
+										{selectedReceiveWallet.label}
+									</h2>
+								</header>
+								<div className="flex min-h-0 flex-1 flex-col px-5 pb-[max(1.5rem,env(safe-area-inset-bottom,0px))]">
+									{(receiveWalletTransferStatus === 'signing' ||
+										receiveWalletTransferStatus === 'waiting') && (
+										<div className="flex flex-1 flex-col items-center justify-center gap-4 px-2 text-center">
+											<div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#e9edff]">
+												<Loader2 className="h-8 w-8 animate-spin text-[#0051d1]" aria-hidden />
+											</div>
+											<div className="space-y-2">
+												<p className="text-lg font-semibold text-[#191c1d]">
+													{receiveWalletTransferStatus === 'signing'
+														? tu('receive_wallet_signing_title')
+														: tu('receive_wallet_waiting_title')}
+												</p>
+												<p className="text-[15px] leading-snug text-[#737687]">
+													{receiveWalletTransferStatus === 'signing'
+														? tu('receive_wallet_signing_hint')
+														: tu('receive_wallet_waiting_hint')}
+												</p>
+												{receiveWalletTransferStatus === 'waiting' ? (
+													<p className="text-sm font-medium text-[#0051d1]">
+														{tu('receive_wallet_waiting_progress')}
+													</p>
+												) : null}
+											</div>
+										</div>
+									)}
+
+									{receiveWalletTransferStatus === 'canceled' && (
+										<div className="flex flex-1 flex-col items-center justify-center gap-4 px-2 text-center">
+											<div className="flex h-16 w-16 items-center justify-center rounded-full bg-slate-100">
+												<Ban className="h-8 w-8 text-slate-500" aria-hidden />
+											</div>
+											<div className="space-y-2">
+												<p className="text-lg font-semibold text-[#191c1d]">
+													{tu('receive_wallet_canceled_title')}
+												</p>
+												<p className="text-[15px] leading-snug text-[#737687]">
+													{tu('receive_wallet_canceled_hint')}
+												</p>
+											</div>
+											<button
+												type="button"
+												className={`${HOME_TOUCH_BUTTON_CLASS} mt-2 flex h-12 w-full max-w-sm items-center justify-center rounded-full bg-[#0051d1] text-[15px] font-semibold text-white`}
+												aria-label={tu('done')}
+												data-touch-priority="1"
+												onClick={closeReceiveWalletTransferStatus}
+											>
+												{tu('done')}
+											</button>
+										</div>
+									)}
+
+									{receiveWalletTransferStatus === 'error' && (
+										<div className="flex flex-1 flex-col items-center justify-center gap-4 px-2 text-center">
+											<div className="flex h-16 w-16 items-center justify-center rounded-full bg-amber-50">
+												<AlertTriangle className="h-8 w-8 text-amber-500" aria-hidden />
+											</div>
+											<div className="space-y-2">
+												<p className="text-lg font-semibold text-[#191c1d]">
+													{tu('receive_wallet_error_title')}
+												</p>
+												<p
+													role="alert"
+													className="text-[15px] leading-snug text-[#737687]"
+												>
+													{receiveWalletStatusError || tu('receive_wallet_error_title')}
+												</p>
+											</div>
+											<button
+												type="button"
+												className={`${HOME_TOUCH_BUTTON_CLASS} mt-2 flex h-12 w-full max-w-sm items-center justify-center rounded-full bg-[#0051d1] text-[15px] font-semibold text-white`}
+												aria-label={tu('done')}
+												data-touch-priority="1"
+												onClick={closeReceiveWalletTransferStatus}
+											>
+												{tu('done')}
+											</button>
+										</div>
+									)}
+
+									{receiveWalletTransferStatus === 'success' && (
+										<div className="flex flex-1 flex-col items-center justify-center gap-4 px-2 text-center">
+											<div className="flex h-16 w-16 items-center justify-center rounded-full bg-emerald-50">
+												<Check className="h-8 w-8 text-emerald-500" strokeWidth={2.5} aria-hidden />
+											</div>
+											<div className="space-y-2">
+												<p className="text-lg font-semibold text-[#191c1d]">
+													{tu('receive_wallet_success_title')}
+												</p>
+												<p className="text-[15px] leading-snug text-[#737687]">
+													{tu('receive_wallet_success_subtitle')}
+												</p>
+											</div>
+											<div className="mt-1 w-full max-w-sm rounded-2xl border border-[#dce2f7] bg-[#e9edff] px-5 py-4">
+												<p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#737687]">
+													USDC
+												</p>
+												<p className="mt-1 text-3xl font-bold tracking-tight text-[#191c1d]">
+													$
+													{receiveWalletNewBalance ||
+														(Number.isFinite(Number(usdcbalance))
+															? Number(usdcbalance).toFixed(2)
+															: '0.00')}
+												</p>
+											</div>
+											<button
+												type="button"
+												className={`${HOME_TOUCH_BUTTON_CLASS} mt-2 flex h-12 w-full max-w-sm items-center justify-center rounded-full bg-[#0051d1] text-[15px] font-semibold text-white`}
+												aria-label={tu('done')}
+												data-touch-priority="1"
+												onClick={closeReceiveWalletTransferStatus}
 											>
 												{tu('done')}
 											</button>

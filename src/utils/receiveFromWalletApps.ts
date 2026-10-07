@@ -234,18 +234,29 @@ function metamaskSendUsdcUrl(eoa: string, amount6?: bigint): string {
 }
 
 /**
- * Coinbase Wallet send URI.
+ * Coinbase Wallet / Base app send URI.
  *
- * Do **not** wrap EIP-681 in `https://go.cb-w.com/dapp?cb_url=` or `cbwallet://dapp?url=` —
- * those endpoints only load **https** dapp pages. Passing `ethereum:…/transfer?…` makes the
- * in-app browser spin forever on a non-web URL (MetaMask uses a dedicated `metamask://send/…`
- * path and does not hit this bug).
+ * Never open raw EIP-681 (`ethereum:…`) for this brand: on iOS several apps (e.g. Tangem)
+ * register the `ethereum` scheme, so `UIApplication.open` can prompt
+ * “Beamio wants to open Tangem” even when the user tapped Coinbase Wallet.
  *
- * Opening the raw EIP-681 URI lets iOS/Android hand off to Coinbase Wallet (or the system
- * wallet picker). Native shells must allow the `ethereum` scheme in `openURL`.
+ * Also never wrap EIP-681 in `https://go.cb-w.com/dapp?cb_url=` / `cbwallet://dapp?url=` —
+ * those only load **https** dapp pages and spin forever on `ethereum:`.
+ *
+ * Use Coinbase’s owned universal link so the shell always wakes Coinbase Wallet.
+ * Prefill of address / amount / asset is best-effort (Coinbase does not document
+ * stable send query params); the Receive status sheet still listens for USDC.
  */
 function coinbaseWalletSendUrl(eoa: string, amount6?: bigint): string {
-	return receiveEip681UsdcTransfer(eoa, amount6)
+	const params = new URLSearchParams({
+		address: eoa,
+		asset: 'USDC',
+		chainId: String(BASE_MAINNET_CHAIN_ID),
+	})
+	if (amount6 != null && amount6 > 0n) {
+		params.set('amount', ethers.formatUnits(amount6, 6))
+	}
+	return `https://go.cb-w.com/send?${params.toString()}`
 }
 
 function okxWalletDownloadUrl(eoa: string, amount6?: bigint): string {
@@ -283,8 +294,8 @@ function receiveWalletNativeSchemeUrlByBrand(
 		case 'metamask':
 			return `metamask://send/${USDC_BASE}@${BASE_MAINNET_CHAIN_ID}/transfer?address=${eoa}${eip681Uint256Suffix(amount6)}`
 		case 'base':
-			// Raw EIP-681 — never `cbwallet://dapp?url=` (that only loads https pages).
-			return eip681
+			// Coinbase-owned HTTPS only — never raw `ethereum:` (Tangem steals that scheme).
+			return coinbaseWalletSendUrl(eoa, amount6)
 		case 'okx':
 			return `okx://wallet/dapp/url?dappUrl=${encodeURIComponent(eip681)}`
 		case 'tp':

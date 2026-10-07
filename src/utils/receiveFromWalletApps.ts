@@ -19,6 +19,10 @@ import {
 	requestEip6963ProvidersNow,
 	subscribeInstalledInjectedWallets,
 } from './mobileWalletApps'
+import {
+	type ReceiveUsdc3009Auth,
+	buildReceiveUsdc3009TypedData,
+} from './receiveUsdc3009'
 
 export type ReceiveWalletAppRow = {
 	id: string
@@ -198,10 +202,6 @@ export function subscribeReceiveWalletApps(
 	}
 }
 
-const USDC_TRANSFER_IFACE = new ethers.Interface([
-	'function transfer(address to, uint256 amount)',
-])
-
 const BASE_CHAIN_HEX = '0x2105'
 
 export function parseReceiveUsdcAmount6(
@@ -221,24 +221,20 @@ export function parseReceiveUsdcAmount6(
 	}
 }
 
-function eip681Uint256Suffix(amount6?: bigint): string {
-	return amount6 != null && amount6 > 0n ? `&uint256=${amount6.toString()}` : ''
-}
-
-function receiveEip681UsdcTransfer(eoa: string, amount6?: bigint): string {
-	return `ethereum:${USDC_BASE}@${BASE_MAINNET_CHAIN_ID}/transfer?address=${eoa}${eip681Uint256Suffix(amount6)}`
-}
-
-function metamaskSendUsdcUrl(eoa: string, amount6?: bigint): string {
-	return `https://metamask.app.link/send/${USDC_BASE}@${BASE_MAINNET_CHAIN_ID}/transfer?address=${eoa}${eip681Uint256Suffix(amount6)}`
-}
-
 /**
- * Live HTTPS page that Coinbase Wallet’s dapp browser can load and then call
- * `eth_sendTransaction` for Base USDC.transfer (address + amount visible).
+ * Live HTTPS handoff: third-party wallet signs EIP-3009 TransferWithAuthorization
+ * (to = Beamio EOA), then redirects `beamio://open?receiveUsdcAuth=…`.
  * Always use the production `/app/` host — embedded OTA origins are not public HTTPS.
  */
 const RECEIVE_WALLET_SEND_PAGE = 'https://beamio.app/app/receive-wallet-send.html'
+
+function receiveWalletHandoffPageUrl(eoa: string, amount6?: bigint): string {
+	const params = new URLSearchParams({ to: eoa })
+	if (amount6 != null && amount6 > 0n) {
+		params.set('amount6', amount6.toString())
+	}
+	return `${RECEIVE_WALLET_SEND_PAGE}?${params.toString()}`
+}
 
 /**
  * Coinbase Wallet / Base app open URI.
@@ -250,72 +246,43 @@ const RECEIVE_WALLET_SEND_PAGE = 'https://beamio.app/app/receive-wallet-send.htm
  * Never wrap EIP-681 in `go.cb-w.com/dapp?cb_url=` — that endpoint only loads **https**
  * pages and spins forever on `ethereum:`.
  *
- * `go.cb-w.com/send?address=&amount=` wakes Coinbase but ignores query params
- * (coinbase-wallet-sdk#1679). Instead open Coinbase’s dapp browser on our HTTPS
- * handoff page, which shows the Beamio EOA + amount and requests USDC transfer.
+ * Open Coinbase’s dapp browser on our HTTPS handoff page for EIP-3009 offline sign.
  */
 function coinbaseWalletSendUrl(eoa: string, amount6?: bigint): string {
-	const params = new URLSearchParams({ to: eoa })
-	if (amount6 != null && amount6 > 0n) {
-		params.set('amount6', amount6.toString())
-	}
-	const pageUrl = `${RECEIVE_WALLET_SEND_PAGE}?${params.toString()}`
+	const pageUrl = receiveWalletHandoffPageUrl(eoa, amount6)
 	return `https://go.cb-w.com/dapp?cb_url=${encodeURIComponent(pageUrl)}`
 }
 
-function okxWalletDownloadUrl(eoa: string, amount6?: bigint): string {
-	return `https://web3.okx.com/download?deeplink=${encodeURIComponent(receiveWalletNativeSchemeUrlByBrand('okx', eoa, amount6))}`
-}
-
-function tokenPocketHttpsFallback(): string {
-	return 'https://www.tokenpocket.pro/'
-}
-
-function phantomBrowseUrl(eoa: string, amount6?: bigint): string {
-	return `https://phantom.app/ul/browse/${encodeURIComponent(receiveEip681UsdcTransfer(eoa, amount6))}`
-}
-
-/** Trust Wallet universal https (browser / HTTPS fallback). Native shells use `trust://`. */
-function trustWalletSendUrl(eoa: string, amount6?: bigint): string {
-	const params = new URLSearchParams({
-		asset: `c${BASE_MAINNET_CHAIN_ID}_t${USDC_BASE}`,
-		address: eoa,
-	})
-	if (amount6 != null && amount6 > 0n) {
-		params.set('amount', ethers.formatUnits(amount6, 6))
-	}
-	return `https://link.trustwallet.com/send?${params.toString()}`
-}
-
-/** PWA-owned deep link. Native must open this URL as-is (do not invent package/scheme URLs). */
+/**
+ * Native deep link / HTTPS open URL for Receive-from-wallet.
+ * All brands use the EIP-3009 HTTPS handoff (Coinbase via go.cb-w.com).
+ * Never raw `ethereum:` EIP-681 (Tangem steals that scheme).
+ */
 function receiveWalletNativeSchemeUrlByBrand(
 	brandId: InjectedWalletChoiceId,
 	eoa: string,
 	amount6?: bigint,
 ): string {
-	const eip681 = receiveEip681UsdcTransfer(eoa, amount6)
+	const handoff = receiveWalletHandoffPageUrl(eoa, amount6)
 	switch (brandId) {
-		case 'metamask':
-			return `metamask://send/${USDC_BASE}@${BASE_MAINNET_CHAIN_ID}/transfer?address=${eoa}${eip681Uint256Suffix(amount6)}`
 		case 'base':
-			// Coinbase-owned HTTPS only — never raw `ethereum:` (Tangem steals that scheme).
 			return coinbaseWalletSendUrl(eoa, amount6)
+		case 'metamask':
+			return `https://metamask.app.link/dapp/${handoff.replace(/^https:\/\//i, '')}`
 		case 'okx':
-			return `okx://wallet/dapp/url?dappUrl=${encodeURIComponent(eip681)}`
+			return `okx://wallet/dapp/url?dappUrl=${encodeURIComponent(handoff)}`
 		case 'tp':
 			return `tpdapp://open?params=${encodeURIComponent(JSON.stringify({
-				url: eip681,
+				url: handoff,
 				chain: 'ETH',
 				source: 'beamio',
 			}))}`
 		case 'phantom':
-			return `phantom://ul/browse/${encodeURIComponent(eip681)}`
+			return `https://phantom.app/ul/browse/${encodeURIComponent(handoff)}`
 		case 'trust':
-			return `trust://send?asset=c${BASE_MAINNET_CHAIN_ID}_t${USDC_BASE}&address=${eoa}${
-				amount6 != null && amount6 > 0n ? `&amount=${ethers.formatUnits(amount6, 6)}` : ''
-			}`
+			return `https://link.trustwallet.com/open_url?coin_id=60&url=${encodeURIComponent(handoff)}`
 		default:
-			return ''
+			return handoff
 	}
 }
 
@@ -333,20 +300,10 @@ export function receiveWalletHttpsOpenUrl(
 	amount6?: bigint,
 ): string {
 	switch (row.brandId) {
-		case 'metamask':
-			return metamaskSendUsdcUrl(eoa, amount6)
 		case 'base':
 			return coinbaseWalletSendUrl(eoa, amount6)
-		case 'okx':
-			return okxWalletDownloadUrl(eoa, amount6)
-		case 'tp':
-			return tokenPocketHttpsFallback()
-		case 'phantom':
-			return phantomBrowseUrl(eoa, amount6)
-		case 'trust':
-			return trustWalletSendUrl(eoa, amount6)
 		default:
-			return metamaskSendUsdcUrl(eoa, amount6)
+			return receiveWalletHandoffPageUrl(eoa, amount6)
 	}
 }
 
@@ -470,24 +427,74 @@ async function connectAndSwitchBaseOnInjected(
 	return from
 }
 
-async function sendUsdcFromInjected(
+async function readUsdcEip712NameVersion(
+	provider: InjectedWalletChoice['provider'],
+): Promise<{ name: string; version: string }> {
+	let name = 'USD Coin'
+	let version = '2'
+	try {
+		const nameHex = await provider.request({
+			method: 'eth_call',
+			params: [{ to: USDC_BASE, data: '0x06fdde03' }, 'latest'],
+		})
+		if (typeof nameHex === 'string' && nameHex.length > 2) {
+			name = String(ethers.AbiCoder.defaultAbiCoder().decode(['string'], nameHex)[0] || name)
+		}
+	} catch {
+		/* keep default */
+	}
+	try {
+		const versionHex = await provider.request({
+			method: 'eth_call',
+			params: [{ to: USDC_BASE, data: '0x54fd4d50' }, 'latest'],
+		})
+		if (typeof versionHex === 'string' && versionHex.length > 2) {
+			version = String(ethers.AbiCoder.defaultAbiCoder().decode(['string'], versionHex)[0] || version)
+		}
+	} catch {
+		/* keep default */
+	}
+	return { name, version }
+}
+
+/** Browser-injected wallet: EIP-3009 eth_signTypedData_v4 (no eth_sendTransaction). */
+async function signUsdc3009FromInjected(
 	provider: InjectedWalletChoice['provider'],
 	from: string,
 	to: string,
 	amount6: bigint,
-): Promise<void> {
-	const data = USDC_TRANSFER_IFACE.encodeFunctionData('transfer', [ethers.getAddress(to), amount6])
-	await provider.request({
-		method: 'eth_sendTransaction',
-		params: [
-			{
-				from,
-				to: USDC_BASE,
-				data,
-				value: '0x0',
-			},
-		],
+): Promise<ReceiveUsdc3009Auth> {
+	const { name, version } = await readUsdcEip712NameVersion(provider)
+	const validAfter = '0'
+	const validBefore = String(Math.floor(Date.now() / 1000) + 3600)
+	const nonce = ethers.hexlify(ethers.randomBytes(32))
+	const value = amount6.toString()
+	const typed = buildReceiveUsdc3009TypedData({
+		from,
+		to: ethers.getAddress(to),
+		value,
+		validAfter,
+		validBefore,
+		nonce,
+		tokenName: name,
+		tokenVersion: version,
 	})
+	const signatureRaw = await provider.request({
+		method: 'eth_signTypedData_v4',
+		params: [from, JSON.stringify(typed)],
+	})
+	if (typeof signatureRaw !== 'string' || !/^0x[0-9a-fA-F]{130}$/.test(signatureRaw)) {
+		throw new Error('Wallet did not return a signature')
+	}
+	return {
+		from: ethers.getAddress(from),
+		to: ethers.getAddress(to),
+		value,
+		validAfter,
+		validBefore,
+		nonce: nonce.toLowerCase(),
+		signature: signatureRaw,
+	}
 }
 
 /** EIP-681 receive URI for MetaMask / Coinbase Wallet scanners (checksum EOA on Base). */
@@ -502,7 +509,7 @@ export function buildReceiveEoaQrUri(eoa: string): string {
 }
 
 export type OpenReceiveWalletAppResult =
-	| { ok: true }
+	| { ok: true; auth?: ReceiveUsdc3009Auth }
 	| { ok: false; error: string; canceled?: boolean }
 
 export async function openReceiveWalletApp(
@@ -527,8 +534,8 @@ export async function openReceiveWalletApp(
 			if (amount6 == null || amount6 <= 0n) {
 				return { ok: false, error: 'Enter a USDC amount' }
 			}
-			await sendUsdcFromInjected(provider, from, address, amount6)
-			return { ok: true }
+			const auth = await signUsdc3009FromInjected(provider, from, address, amount6)
+			return { ok: true, auth }
 		} catch (err) {
 			const error = injectedWalletErrorMessage(err)
 			return {

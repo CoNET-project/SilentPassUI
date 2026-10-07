@@ -7,7 +7,7 @@
 		content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
 	/>
 	<meta name="theme-color" content="#f8f9fa" />
-	<title>Send USDC to Beamio</title>
+	<title>Sign USDC for Beamio</title>
 	<style>
 		:root {
 			--bg: #f4f6f8;
@@ -108,8 +108,8 @@
 </head>
 <body>
 	<main>
-		<h1>Send USDC</h1>
-		<p class="sub">Confirm this transfer in Coinbase Wallet. Funds go to your Beamio Main Wallet (EOA) on Base.</p>
+		<h1>Sign USDC transfer</h1>
+		<p class="sub">Sign an authorization in your wallet. Beamio submits the Base USDC transfer — you do not pay gas here.</p>
 		<div class="card">
 			<div class="row-label">Amount</div>
 			<div class="amount" id="amountLabel">—</div>
@@ -118,15 +118,16 @@
 			<div class="row-label">To (Beamio EOA)</div>
 			<div class="addr" id="toLabel">—</div>
 		</div>
-		<p id="status">Preparing transfer…</p>
-		<button type="button" id="sendBtn" disabled>Confirm in wallet</button>
-		<p class="hint">Stay in Coinbase Wallet until the transaction is submitted. You can return to Beamio afterward — your balance updates automatically.</p>
+		<p id="status">Preparing signature…</p>
+		<button type="button" id="sendBtn" disabled>Sign and return to Beamio</button>
+		<p class="hint">After you sign, you return to Beamio automatically. Your Main Wallet USDC updates when Beamio confirms the transfer.</p>
 	</main>
 	<script>
 		(function () {
 			var USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
 			var BASE_HEX = '0x2105'
-			var TRANSFER_SELECTOR = '0xa9059cbb'
+			var BASE_CHAIN_ID = 8453
+			var AUTH_TTL_SEC = 3600
 
 			var params = new URLSearchParams(window.location.search)
 			var toRaw = (params.get('to') || '').trim()
@@ -146,16 +147,6 @@
 				return /^0x[0-9a-fA-F]{40}$/.test(v)
 			}
 
-			function pad32(hexNo0x) {
-				return ('0000000000000000000000000000000000000000000000000000000000000000' + hexNo0x).slice(-64)
-			}
-
-			function encodeTransfer(to, amount6) {
-				var toPad = pad32(to.slice(2).toLowerCase())
-				var amtHex = BigInt(amount6).toString(16)
-				return TRANSFER_SELECTOR + toPad + pad32(amtHex)
-			}
-
 			function formatUsdc(amount6) {
 				var s = amount6.toString()
 				if (s.length <= 6) {
@@ -165,6 +156,61 @@
 				var whole = s.slice(0, -6)
 				var frac = s.slice(-6).replace(/0+$/, '')
 				return frac ? whole + '.' + frac : whole
+			}
+
+			function randomBytes32() {
+				var bytes = new Uint8Array(32)
+				if (window.crypto && window.crypto.getRandomValues) {
+					window.crypto.getRandomValues(bytes)
+				} else {
+					for (var i = 0; i < 32; i++) bytes[i] = Math.floor(Math.random() * 256)
+				}
+				var hex = ''
+				for (var j = 0; j < bytes.length; j++) {
+					hex += ('0' + bytes[j].toString(16)).slice(-2)
+				}
+				return '0x' + hex
+			}
+
+			function bytesToBase64Url(bytes) {
+				var bin = ''
+				for (var i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i])
+				var b64 = btoa(bin)
+				return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
+			}
+
+			function encodeAuthPayload(obj) {
+				var json = JSON.stringify(obj)
+				var bytes = new TextEncoder().encode(json)
+				return bytesToBase64Url(bytes)
+			}
+
+			function isNativeShell() {
+				try {
+					if (window.CashTreesIOS && typeof window.CashTreesIOS === 'object') return true
+					if (window.CashTreesAndroid && typeof window.CashTreesAndroid === 'object') return true
+					if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.CashTreesIOS) {
+						return true
+					}
+				} catch (_) {}
+				return false
+			}
+
+			function returnToBeamio(authB64) {
+				var q = 'receiveUsdcAuth=' + encodeURIComponent(authB64)
+				var nativeUrl = 'beamio://open?' + q
+				var webUrl = 'https://beamio.app/app/?' + q
+				setStatus('Signed. Returning to Beamio…', 'ok')
+				btn.textContent = 'Returning…'
+				btn.disabled = true
+				if (isNativeShell()) {
+					window.location.href = nativeUrl
+					window.setTimeout(function () {
+						window.location.href = webUrl
+					}, 800)
+					return
+				}
+				window.location.href = webUrl
 			}
 
 			if (!isAddress(toRaw)) {
@@ -231,69 +277,149 @@
 				}
 			}
 
-			async function send() {
+			async function readTokenDomain(provider) {
+				var name = 'USD Coin'
+				var version = '2'
+				try {
+					var nameData = '0x06fdde03'
+					var nameRaw = await provider.request({
+						method: 'eth_call',
+						params: [{ to: USDC, data: nameData }, 'latest'],
+					})
+					if (typeof nameRaw === 'string' && nameRaw.length >= 130) {
+						var nameHex = nameRaw.slice(2)
+						var offset = parseInt(nameHex.slice(0, 64), 16)
+						var len = parseInt(nameHex.slice(offset * 2, offset * 2 + 64), 16)
+						var strHex = nameHex.slice(offset * 2 + 64, offset * 2 + 64 + len * 2)
+						var decoded = ''
+						for (var i = 0; i < strHex.length; i += 2) {
+							var c = parseInt(strHex.slice(i, i + 2), 16)
+							if (c) decoded += String.fromCharCode(c)
+						}
+						if (decoded.trim()) name = decoded.trim()
+					}
+				} catch (_) {}
+				try {
+					var verData = '0x54fd4d50'
+					var verRaw = await provider.request({
+						method: 'eth_call',
+						params: [{ to: USDC, data: verData }, 'latest'],
+					})
+					if (typeof verRaw === 'string' && verRaw.length >= 130) {
+						var verHex = verRaw.slice(2)
+						var vOffset = parseInt(verHex.slice(0, 64), 16)
+						var vLen = parseInt(verHex.slice(vOffset * 2, vOffset * 2 + 64), 16)
+						var vStrHex = verHex.slice(vOffset * 2 + 64, vOffset * 2 + 64 + vLen * 2)
+						var vDecoded = ''
+						for (var j = 0; j < vStrHex.length; j += 2) {
+							var vc = parseInt(vStrHex.slice(j, j + 2), 16)
+							if (vc) vDecoded += String.fromCharCode(vc)
+						}
+						if (vDecoded.trim()) version = vDecoded.trim()
+					}
+				} catch (_) {}
+				return { name: name, version: version }
+			}
+
+			async function sign() {
 				var provider = getProvider()
 				if (!provider || typeof provider.request !== 'function') {
-					setStatus('Open this page inside Coinbase Wallet to confirm the transfer.', 'err')
+					setStatus('Open this page inside your wallet to sign.', 'err')
 					btn.disabled = false
 					btn.textContent = 'Try again'
 					return
 				}
 				btn.disabled = true
-				btn.textContent = 'Confirm in wallet…'
-				setStatus('Requesting wallet confirmation…')
+				btn.textContent = 'Sign in wallet…'
+				setStatus('Requesting signature…')
 				try {
 					var accounts = await provider.request({ method: 'eth_requestAccounts' })
 					var from = Array.isArray(accounts) && typeof accounts[0] === 'string' ? accounts[0] : ''
 					if (!isAddress(from)) throw new Error('No wallet account')
 					await ensureBase(provider)
-					var data = encodeTransfer(to, amount6)
-					var txHash = await provider.request({
-						method: 'eth_sendTransaction',
-						params: [{
+					var domainMeta = await readTokenDomain(provider)
+					var nowSec = Math.floor(Date.now() / 1000)
+					var validAfter = '0'
+					var validBefore = String(nowSec + AUTH_TTL_SEC)
+					var nonce = randomBytes32()
+					var typedData = {
+						types: {
+							EIP712Domain: [
+								{ name: 'name', type: 'string' },
+								{ name: 'version', type: 'string' },
+								{ name: 'chainId', type: 'uint256' },
+								{ name: 'verifyingContract', type: 'address' },
+							],
+							TransferWithAuthorization: [
+								{ name: 'from', type: 'address' },
+								{ name: 'to', type: 'address' },
+								{ name: 'value', type: 'uint256' },
+								{ name: 'validAfter', type: 'uint256' },
+								{ name: 'validBefore', type: 'uint256' },
+								{ name: 'nonce', type: 'bytes32' },
+							],
+						},
+						primaryType: 'TransferWithAuthorization',
+						domain: {
+							name: domainMeta.name,
+							version: domainMeta.version,
+							chainId: BASE_CHAIN_ID,
+							verifyingContract: USDC,
+						},
+						message: {
 							from: from,
-							to: USDC,
-							data: data,
-							value: '0x0',
-						}],
+							to: to,
+							value: amount6,
+							validAfter: validAfter,
+							validBefore: validBefore,
+							nonce: nonce,
+						},
+					}
+					var signature = await provider.request({
+						method: 'eth_signTypedData_v4',
+						params: [from, JSON.stringify(typedData)],
 					})
-					setStatus(
-						typeof txHash === 'string' && txHash
-							? 'Submitted. You can return to Beamio — USDC updates when confirmed.'
-							: 'Submitted. You can return to Beamio.',
-						'ok',
-					)
-					btn.textContent = 'Done'
-					btn.disabled = true
+					if (typeof signature !== 'string' || !/^0x[0-9a-fA-F]{130}$/.test(signature)) {
+						throw new Error('Invalid signature from wallet')
+					}
+					var authB64 = encodeAuthPayload({
+						from: from,
+						to: to,
+						value: amount6,
+						validAfter: validAfter,
+						validBefore: validBefore,
+						nonce: nonce,
+						signature: signature,
+					})
+					returnToBeamio(authB64)
 				} catch (err) {
 					var msg = err && typeof err.message === 'string' ? err.message : ''
 					var code = err && err.code
 					if (code === 4001 || /user rejected|user denied|rejected the request/i.test(msg)) {
-						setStatus('Request rejected. Tap below to try again.', 'err')
+						setStatus('Signature rejected. Tap below to try again.', 'err')
 					} else {
-						setStatus(msg || 'Could not send USDC. Tap below to try again.', 'err')
+						setStatus(msg || 'Could not sign. Tap below to try again.', 'err')
 					}
 					btn.disabled = false
-					btn.textContent = 'Confirm in wallet'
+					btn.textContent = 'Sign and return to Beamio'
 				}
 			}
 
 			btn.disabled = false
-			btn.textContent = 'Confirm in wallet'
-			btn.addEventListener('click', function () { void send() })
+			btn.textContent = 'Sign and return to Beamio'
+			btn.addEventListener('click', function () { void sign() })
 
-			// Auto-start once Coinbase injects the provider (dapp browser).
 			var tries = 0
 			function maybeAuto() {
 				tries += 1
 				if (getProvider()) {
-					void send()
+					void sign()
 					return
 				}
 				if (tries < 40) {
 					window.setTimeout(maybeAuto, 150)
 				} else {
-					setStatus('Tap Confirm to open the wallet transfer screen.', '')
+					setStatus('Tap below to sign in your wallet.', '')
 				}
 			}
 			window.setTimeout(maybeAuto, 80)

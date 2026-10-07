@@ -100,6 +100,11 @@ import {
 	subscribeReceiveWalletApps,
 } from '@/utils/receiveFromWalletApps'
 import {
+	type ReceiveUsdc3009Auth,
+	submitReceiveUsdc3009,
+	subscribeReceiveUsdcAuth,
+} from '@/utils/receiveUsdc3009'
+import {
 	COINBASE_ONRAMP_DEFAULT_AMOUNT,
 	COINBASE_ONRAMP_DEFAULT_PAY_METHOD,
 	loadCoinbaseOnrampLastAmount,
@@ -1563,8 +1568,53 @@ const Home = (_props: HomeProps) => {
 		setReceiveWalletNewBalance('')
 		setReceiveWalletTransferStatus('signing')
 
+		const finishSuccessFromBalance = (balanceDisplay: string) => {
+			const display = Number.parseFloat(balanceDisplay)
+			setReceiveWalletNewBalance(
+				Number.isFinite(display) ? display.toFixed(2) : balanceDisplay,
+			)
+			setReceiveWalletTransferStatus('success')
+			void refreshAppDaemonNow('wallet').catch(() => {})
+		}
+
+		const postAuth = async (auth: ReceiveUsdc3009Auth): Promise<boolean> => {
+			if (auth.to.toLowerCase() !== address.toLowerCase()) {
+				setReceiveWalletTransferStatus('error')
+				setReceiveWalletStatusError('Authorization is not for this Beamio wallet')
+				return false
+			}
+			if (auth.value !== parsed.amount6.toString()) {
+				setReceiveWalletTransferStatus('error')
+				setReceiveWalletStatusError('Authorization amount does not match')
+				return false
+			}
+			setReceiveWalletTransferStatus('waiting')
+			const submit = await submitReceiveUsdc3009(auth)
+			if (abort.signal.aborted) {
+				setReceiveWalletTransferStatus('canceled')
+				return false
+			}
+			if (!submit.ok) {
+				setReceiveWalletTransferStatus('error')
+				setReceiveWalletStatusError(submit.error || tu('receive_wallet_error_title'))
+				return false
+			}
+			let nextBal = await readBaseUsdcBalance6(address)
+			if (nextBal == null) {
+				try {
+					nextBal =
+						(baselineRaw ?? 0n) + parsed.amount6
+				} catch {
+					nextBal = parsed.amount6
+				}
+			}
+			finishSuccessFromBalance(ethers.formatUnits(nextBal, 6))
+			return true
+		}
+
+		let baselineRaw: bigint | null = null
 		try {
-			let baselineRaw = await readBaseUsdcBalance6(address)
+			baselineRaw = await readBaseUsdcBalance6(address)
 			if (baselineRaw == null) {
 				try {
 					baselineRaw = ethers.parseUnits(String(Math.max(0, Number(usdcbalance) || 0)), 6)
@@ -1591,33 +1641,78 @@ const Home = (_props: HomeProps) => {
 				return
 			}
 
+			if (result.auth) {
+				await postAuth(result.auth)
+				return
+			}
+
+			// Native shell: wait for beamio:// / CustomEvent auth; balance watch is weak fallback.
 			setReceiveWalletTransferStatus('waiting')
-			const outcome = await waitForBaseUsdcArrival({
-				eoa: address,
-				baselineRaw,
-				minIncrease6: parsed.amount6,
-				signal: abort.signal,
+			type Race =
+				| { kind: 'auth'; auth: ReceiveUsdc3009Auth }
+				| { kind: 'balance'; display: string }
+				| { kind: 'timeout' }
+				| { kind: 'aborted' }
+				| { kind: 'balance_error'; message: string }
+
+			const race = await new Promise<Race>((resolve) => {
+				let settled = false
+				const done = (value: Race) => {
+					if (settled) return
+					settled = true
+					unsubAuth()
+					abort.signal.removeEventListener('abort', onAbort)
+					resolve(value)
+				}
+				const unsubAuth = subscribeReceiveUsdcAuth((auth) => {
+					done({ kind: 'auth', auth })
+				})
+				const onAbort = () => done({ kind: 'aborted' })
+				abort.signal.addEventListener('abort', onAbort)
+				void waitForBaseUsdcArrival({
+					eoa: address,
+					baselineRaw: baselineRaw ?? 0n,
+					minIncrease6: parsed.amount6,
+					signal: abort.signal,
+				}).then((outcome) => {
+					if (outcome.status === 'cancelled') {
+						done({ kind: 'aborted' })
+						return
+					}
+					if (outcome.status === 'arrived') {
+						done({ kind: 'balance', display: outcome.balanceDisplay })
+						return
+					}
+					if (outcome.status === 'timeout') {
+						done({ kind: 'timeout' })
+						return
+					}
+					done({
+						kind: 'balance_error',
+						message: outcome.message || tu('receive_wallet_error_title'),
+					})
+				})
 			})
-			if (abort.signal.aborted || outcome.status === 'cancelled') {
+
+			if (race.kind === 'aborted') {
 				setReceiveWalletTransferStatus((prev) => (prev === 'canceled' ? prev : 'canceled'))
 				return
 			}
-			if (outcome.status === 'arrived') {
-				const display = Number.parseFloat(outcome.balanceDisplay)
-				setReceiveWalletNewBalance(
-					Number.isFinite(display) ? display.toFixed(2) : outcome.balanceDisplay,
-				)
-				setReceiveWalletTransferStatus('success')
-				void refreshAppDaemonNow('wallet').catch(() => {})
+			if (race.kind === 'auth') {
+				await postAuth(race.auth)
 				return
 			}
-			if (outcome.status === 'timeout') {
+			if (race.kind === 'balance') {
+				finishSuccessFromBalance(race.display)
+				return
+			}
+			if (race.kind === 'timeout') {
 				setReceiveWalletTransferStatus('error')
 				setReceiveWalletStatusError(tu('receive_wallet_timeout'))
 				return
 			}
 			setReceiveWalletTransferStatus('error')
-			setReceiveWalletStatusError(outcome.message || tu('receive_wallet_error_title'))
+			setReceiveWalletStatusError(race.message)
 		} catch (err) {
 			if (abort.signal.aborted) {
 				setReceiveWalletTransferStatus('canceled')

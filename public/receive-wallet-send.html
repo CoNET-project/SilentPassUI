@@ -185,6 +185,82 @@
 				return bytesToBase64Url(bytes)
 			}
 
+			/** secp256k1 curve order — used to force low-s (Coinbase often returns high-s). */
+			var SECP256K1_N = BigInt('0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141')
+			var SECP256K1_HALF_N = SECP256K1_N / BigInt(2)
+
+			function padHex64(hexNo0x) {
+				var h = hexNo0x.replace(/^0x/i, '').toLowerCase()
+				if (h.length > 64) return null
+				while (h.length < 64) h = '0' + h
+				return h
+			}
+
+			/**
+			 * Coinbase / WalletLink often return:
+			 * - object / { result } / { signature }
+			 * - missing 0x
+			 * - EIP-2098 compact (64 bytes / 128 hex)
+			 * - high-s (non-canonical) 65-byte ECDSA
+			 * Normalize to 0x + 130 hex (r||s||v) with low-s and v in {27,28}.
+			 */
+			function normalizeWalletSignature(raw) {
+				var candidate = raw
+				if (candidate && typeof candidate === 'object') {
+					if (typeof candidate.result === 'string') candidate = candidate.result
+					else if (typeof candidate.signature === 'string') candidate = candidate.signature
+					else if (typeof candidate.data === 'string') candidate = candidate.data
+					else if (Array.isArray(candidate) && typeof candidate[0] === 'string') candidate = candidate[0]
+					else if (
+						typeof candidate.r === 'string' &&
+						typeof candidate.s === 'string' &&
+						(candidate.v !== undefined || candidate.yParity !== undefined)
+					) {
+						var vr = padHex64(candidate.r)
+						var vs = padHex64(candidate.s)
+						if (!vr || !vs) return null
+						var vv = Number(candidate.v !== undefined ? candidate.v : Number(candidate.yParity) + 27)
+						if (vv === 0 || vv === 1) vv += 27
+						candidate = '0x' + vr + vs + (vv === 28 ? '1c' : '1b')
+					} else {
+						return null
+					}
+				}
+				if (typeof candidate !== 'string') return null
+				var hex = candidate.trim()
+				if (!hex) return null
+				if (!hex.startsWith('0x') && !hex.startsWith('0X')) hex = '0x' + hex
+				if (!/^0x[0-9a-fA-F]+$/.test(hex)) return null
+				var body = hex.slice(2)
+				var rHex
+				var sBig
+				var vNum
+				if (body.length === 128) {
+					/* EIP-2098 compact: r || yParityAndS */
+					rHex = body.slice(0, 64)
+					var yParityAndS = BigInt('0x' + body.slice(64, 128))
+					var yParity = Number((yParityAndS >> BigInt(255)) & BigInt(1))
+					sBig = yParityAndS & ((BigInt(1) << BigInt(255)) - BigInt(1))
+					vNum = 27 + yParity
+				} else if (body.length === 130) {
+					rHex = body.slice(0, 64)
+					sBig = BigInt('0x' + body.slice(64, 128))
+					vNum = parseInt(body.slice(128, 130), 16)
+					if (vNum === 0 || vNum === 1) vNum += 27
+				} else {
+					return null
+				}
+				if (vNum !== 27 && vNum !== 28) return null
+				if (sBig <= BigInt(0) || sBig >= SECP256K1_N) return null
+				if (sBig > SECP256K1_HALF_N) {
+					sBig = SECP256K1_N - sBig
+					vNum = vNum === 27 ? 28 : 27
+				}
+				var sHex = padHex64(sBig.toString(16))
+				if (!sHex) return null
+				return '0x' + rHex.toLowerCase() + sHex + (vNum === 28 ? '1c' : '1b')
+			}
+
 			function isNativeShell() {
 				try {
 					if (window.CashTreesIOS && typeof window.CashTreesIOS === 'object') return true
@@ -342,14 +418,9 @@
 					var validAfter = '0'
 					var validBefore = String(nowSec + AUTH_TTL_SEC)
 					var nonce = randomBytes32()
+					/* MetaMask / Coinbase eth_signTypedData_v4: omit EIP712Domain from types. */
 					var typedData = {
 						types: {
-							EIP712Domain: [
-								{ name: 'name', type: 'string' },
-								{ name: 'version', type: 'string' },
-								{ name: 'chainId', type: 'uint256' },
-								{ name: 'verifyingContract', type: 'address' },
-							],
 							TransferWithAuthorization: [
 								{ name: 'from', type: 'address' },
 								{ name: 'to', type: 'address' },
@@ -375,12 +446,26 @@
 							nonce: nonce,
 						},
 					}
-					var signature = await provider.request({
-						method: 'eth_signTypedData_v4',
-						params: [from, JSON.stringify(typedData)],
-					})
-					if (typeof signature !== 'string' || !/^0x[0-9a-fA-F]{130}$/.test(signature)) {
-						throw new Error('Invalid signature from wallet')
+					var rawSig
+					try {
+						rawSig = await provider.request({
+							method: 'eth_signTypedData_v4',
+							params: [from, JSON.stringify(typedData)],
+						})
+					} catch (signErr) {
+						/* Some Coinbase builds accept the object form instead of a JSON string. */
+						rawSig = await provider.request({
+							method: 'eth_signTypedData_v4',
+							params: [from, typedData],
+						})
+					}
+					var signature = normalizeWalletSignature(rawSig)
+					if (!signature) {
+						var preview =
+							typeof rawSig === 'string'
+								? rawSig.slice(0, 18) + (rawSig.length > 18 ? '…' : '')
+								: Object.prototype.toString.call(rawSig)
+						throw new Error('Invalid signature from wallet (' + preview + ')')
 					}
 					var authB64 = encodeAuthPayload({
 						from: from,

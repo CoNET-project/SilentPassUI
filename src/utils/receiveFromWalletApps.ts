@@ -22,6 +22,7 @@ import {
 import {
 	type ReceiveUsdc3009Auth,
 	buildReceiveUsdc3009TypedData,
+	normalizeReceiveUsdcWalletSignature,
 } from './receiveUsdc3009'
 
 export type ReceiveWalletAppRow = {
@@ -469,9 +470,10 @@ async function signUsdc3009FromInjected(
 	const validBefore = String(Math.floor(Date.now() / 1000) + 3600)
 	const nonce = ethers.hexlify(ethers.randomBytes(32))
 	const value = amount6.toString()
+	const toChecksum = ethers.getAddress(to)
 	const typed = buildReceiveUsdc3009TypedData({
 		from,
-		to: ethers.getAddress(to),
+		to: toChecksum,
 		value,
 		validAfter,
 		validBefore,
@@ -479,21 +481,63 @@ async function signUsdc3009FromInjected(
 		tokenName: name,
 		tokenVersion: version,
 	})
-	const signatureRaw = await provider.request({
-		method: 'eth_signTypedData_v4',
-		params: [from, JSON.stringify(typed)],
-	})
-	if (typeof signatureRaw !== 'string' || !/^0x[0-9a-fA-F]{130}$/.test(signatureRaw)) {
+	const typedWithDomain = {
+		...typed,
+		types: {
+			EIP712Domain: [
+				{ name: 'name', type: 'string' },
+				{ name: 'version', type: 'string' },
+				{ name: 'chainId', type: 'uint256' },
+				{ name: 'verifyingContract', type: 'address' },
+			],
+			TransferWithAuthorization: typed.types.TransferWithAuthorization,
+		},
+	}
+	const attempts: Array<() => Promise<unknown>> = [
+		() =>
+			provider.request({
+				method: 'eth_signTypedData_v4',
+				params: [from, JSON.stringify(typed)],
+			}),
+		() =>
+			provider.request({
+				method: 'eth_signTypedData_v4',
+				params: [from, typed],
+			}),
+		() =>
+			provider.request({
+				method: 'eth_signTypedData_v4',
+				params: [from, JSON.stringify(typedWithDomain)],
+			}),
+		() =>
+			provider.request({
+				method: 'eth_signTypedData_v4',
+				params: [from, typedWithDomain],
+			}),
+	]
+	let signature: string | null = null
+	let lastErr: unknown = null
+	for (const attempt of attempts) {
+		try {
+			const raw = await attempt()
+			signature = normalizeReceiveUsdcWalletSignature(raw)
+			if (signature) break
+		} catch (err) {
+			lastErr = err
+		}
+	}
+	if (!signature) {
+		if (lastErr) throw lastErr
 		throw new Error('Wallet did not return a signature')
 	}
 	return {
 		from: ethers.getAddress(from),
-		to: ethers.getAddress(to),
+		to: toChecksum,
 		value,
 		validAfter,
 		validBefore,
 		nonce: nonce.toLowerCase(),
-		signature: signatureRaw,
+		signature,
 	}
 }
 

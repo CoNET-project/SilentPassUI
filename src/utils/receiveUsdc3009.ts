@@ -38,7 +38,7 @@ export function encodeReceiveUsdcAuthPayload(auth: ReceiveUsdc3009Auth): string 
 	return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
 }
 
-/** secp256k1 — Coinbase often returns high-s / compact / unprefixed. */
+/** secp256k1 — Coinbase often returns high-s / compact / EIP-155 v / unprefixed. */
 const SECP256K1_N = 0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141n
 const SECP256K1_HALF_N = SECP256K1_N / 2n
 
@@ -49,16 +49,55 @@ function padHex64(hexNo0x: string): string | null {
 	return h
 }
 
+function bytesToHex(bytes: ArrayLike<number>): string {
+	let out = '0x'
+	for (let i = 0; i < bytes.length; i++) {
+		out += (bytes[i]! & 0xff).toString(16).padStart(2, '0')
+	}
+	return out
+}
+
+/** Map wallet v (0/1, 27/28, or EIP-155) → 27 | 28. */
+function recoverV27(vNum: number): number | null {
+	if (!Number.isFinite(vNum) || vNum < 0) return null
+	const n = Math.trunc(vNum)
+	if (n === 0 || n === 1) return 27 + n
+	if (n === 27 || n === 28) return n
+	if (n >= 35) return 27 + ((n - 35) % 2)
+	return null
+}
+
 /** Normalize wallet sig → 0x + 130 hex low-s (independent of x402sdk). */
 export function normalizeReceiveUsdcWalletSignature(raw: unknown): string | null {
 	let candidate: unknown = raw
+	if (candidate instanceof Uint8Array) {
+		candidate = bytesToHex(candidate)
+	} else if (ArrayBuffer.isView(candidate) && (candidate as ArrayBufferView).byteLength > 0) {
+		const view = candidate as ArrayBufferView
+		candidate = bytesToHex(new Uint8Array(view.buffer, view.byteOffset, view.byteLength))
+	} else if (candidate instanceof ArrayBuffer) {
+		candidate = bytesToHex(new Uint8Array(candidate))
+	}
 	if (candidate && typeof candidate === 'object') {
 		const obj = candidate as Record<string, unknown>
 		if (typeof obj.result === 'string') candidate = obj.result
 		else if (typeof obj.signature === 'string') candidate = obj.signature
 		else if (typeof obj.data === 'string') candidate = obj.data
-		else if (Array.isArray(candidate) && typeof candidate[0] === 'string') candidate = candidate[0]
 		else if (
+			obj.type === 'Buffer' &&
+			Array.isArray(obj.data) &&
+			obj.data.every((x) => typeof x === 'number')
+		) {
+			candidate = bytesToHex(obj.data as number[])
+		} else if (Array.isArray(candidate) && typeof candidate[0] === 'string') {
+			candidate = candidate[0]
+		} else if (
+			Array.isArray(candidate) &&
+			candidate.length >= 65 &&
+			candidate.every((x) => typeof x === 'number')
+		) {
+			candidate = bytesToHex(candidate as number[])
+		} else if (
 			typeof obj.r === 'string' &&
 			typeof obj.s === 'string' &&
 			(obj.v !== undefined || obj.yParity !== undefined)
@@ -66,9 +105,9 @@ export function normalizeReceiveUsdcWalletSignature(raw: unknown): string | null
 			const vr = padHex64(obj.r)
 			const vs = padHex64(obj.s)
 			if (!vr || !vs) return null
-			let vv = Number(obj.v !== undefined ? obj.v : Number(obj.yParity) + 27)
-			if (vv === 0 || vv === 1) vv += 27
-			candidate = `0x${vr}${vs}${vv === 28 ? '1c' : '1b'}`
+			const recovered = recoverV27(Number(obj.v !== undefined ? obj.v : Number(obj.yParity) + 27))
+			if (recovered == null) return null
+			candidate = `0x${vr}${vs}${recovered === 28 ? '1c' : '1b'}`
 		} else {
 			return null
 		}
@@ -92,12 +131,19 @@ export function normalizeReceiveUsdcWalletSignature(raw: unknown): string | null
 		rHex = body.slice(0, 64)
 		sBig = BigInt(`0x${body.slice(64, 128)}`)
 		vNum = parseInt(body.slice(128, 130), 16)
-		if (vNum === 0 || vNum === 1) vNum += 27
+	} else if (body.length >= 132 && body.length <= 194 && body.length % 2 === 0) {
+		/* Coinbase EIP-155 v (Base → 132+ hex). Leading-zero r is valid. */
+		rHex = body.slice(0, 64)
+		sBig = BigInt(`0x${body.slice(64, 128)}`)
+		vNum = parseInt(body.slice(128), 16)
 	} else {
 		return null
 	}
-	if (vNum !== 27 && vNum !== 28) return null
+	const v27 = recoverV27(vNum)
+	if (v27 == null) return null
+	vNum = v27
 	if (sBig <= 0n || sBig >= SECP256K1_N) return null
+	if (BigInt(`0x${rHex}`) === 0n) return null
 	if (sBig > SECP256K1_HALF_N) {
 		sBig = SECP256K1_N - sBig
 		vNum = vNum === 27 ? 28 : 27

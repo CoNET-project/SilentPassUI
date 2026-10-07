@@ -198,20 +198,64 @@
 
 			/**
 			 * Coinbase / WalletLink often return:
-			 * - object / { result } / { signature }
+			 * - object / { result } / { signature } / Uint8Array
 			 * - missing 0x
 			 * - EIP-2098 compact (64 bytes / 128 hex)
+			 * - EIP-155 v with Base chainId (132+ hex: r||s||0x422d) — r may start with zeros
 			 * - high-s (non-canonical) 65-byte ECDSA
 			 * Normalize to 0x + 130 hex (r||s||v) with low-s and v in {27,28}.
 			 */
+			function bytesToHex(bytes) {
+				var out = '0x'
+				for (var i = 0; i < bytes.length; i++) {
+					out += (bytes[i] & 0xff).toString(16).padStart(2, '0')
+				}
+				return out
+			}
+			function recoverV27(vNum) {
+				if (!Number.isFinite(vNum) || vNum < 0) return null
+				var n = Math.trunc(vNum)
+				if (n === 0 || n === 1) return 27 + n
+				if (n === 27 || n === 28) return n
+				if (n >= 35) return 27 + ((n - 35) % 2)
+				return null
+			}
 			function normalizeWalletSignature(raw) {
 				var candidate = raw
+				if (candidate instanceof Uint8Array) {
+					candidate = bytesToHex(candidate)
+				} else if (candidate && typeof ArrayBuffer !== 'undefined' && candidate instanceof ArrayBuffer) {
+					candidate = bytesToHex(new Uint8Array(candidate))
+				} else if (
+					candidate &&
+					typeof candidate === 'object' &&
+					typeof candidate.byteLength === 'number' &&
+					typeof candidate.buffer === 'object'
+				) {
+					try {
+						candidate = bytesToHex(
+							new Uint8Array(candidate.buffer, candidate.byteOffset || 0, candidate.byteLength)
+						)
+					} catch (_) {}
+				}
 				if (candidate && typeof candidate === 'object') {
 					if (typeof candidate.result === 'string') candidate = candidate.result
 					else if (typeof candidate.signature === 'string') candidate = candidate.signature
 					else if (typeof candidate.data === 'string') candidate = candidate.data
-					else if (Array.isArray(candidate) && typeof candidate[0] === 'string') candidate = candidate[0]
 					else if (
+						candidate.type === 'Buffer' &&
+						Array.isArray(candidate.data)
+					) {
+						candidate = bytesToHex(candidate.data)
+					} else if (Array.isArray(candidate) && typeof candidate[0] === 'string') {
+						candidate = candidate[0]
+					} else if (
+						Array.isArray(candidate) &&
+						candidate.length >= 65 &&
+						typeof candidate[0] === 'number'
+					) {
+						candidate = bytesToHex(candidate)
+					} else if (
 						typeof candidate.r === 'string' &&
 						typeof candidate.s === 'string' &&
 						(candidate.v !== undefined || candidate.yParity !== undefined)
@@ -219,9 +263,11 @@
 						var vr = padHex64(candidate.r)
 						var vs = padHex64(candidate.s)
 						if (!vr || !vs) return null
-						var vv = Number(candidate.v !== undefined ? candidate.v : Number(candidate.yParity) + 27)
-						if (vv === 0 || vv === 1) vv += 27
-						candidate = '0x' + vr + vs + (vv === 28 ? '1c' : '1b')
+						var recoveredObj = recoverV27(
+							Number(candidate.v !== undefined ? candidate.v : Number(candidate.yParity) + 27)
+						)
+						if (recoveredObj == null) return null
+						candidate = '0x' + vr + vs + (recoveredObj === 28 ? '1c' : '1b')
 					} else {
 						return null
 					}
@@ -246,12 +292,19 @@
 					rHex = body.slice(0, 64)
 					sBig = BigInt('0x' + body.slice(64, 128))
 					vNum = parseInt(body.slice(128, 130), 16)
-					if (vNum === 0 || vNum === 1) vNum += 27
+				} else if (body.length >= 132 && body.length <= 194 && body.length % 2 === 0) {
+					/* Coinbase EIP-155 v (Base → 132+ hex). Leading-zero r is valid. */
+					rHex = body.slice(0, 64)
+					sBig = BigInt('0x' + body.slice(64, 128))
+					vNum = parseInt(body.slice(128), 16)
 				} else {
 					return null
 				}
-				if (vNum !== 27 && vNum !== 28) return null
+				var v27 = recoverV27(vNum)
+				if (v27 == null) return null
+				vNum = v27
 				if (sBig <= BigInt(0) || sBig >= SECP256K1_N) return null
+				if (BigInt('0x' + rHex) === BigInt(0)) return null
 				if (sBig > SECP256K1_HALF_N) {
 					sBig = SECP256K1_N - sBig
 					vNum = vNum === 27 ? 28 : 27
@@ -414,56 +467,115 @@
 					if (!isAddress(from)) throw new Error('No wallet account')
 					await ensureBase(provider)
 					var domainMeta = await readTokenDomain(provider)
+					/* Prefer canonical Base USDC domain when RPC decode looks wrong. */
+					var domainName =
+						domainMeta.name && /usd\s*coin/i.test(domainMeta.name)
+							? domainMeta.name
+							: 'USD Coin'
+					var domainVersion =
+						domainMeta.version && String(domainMeta.version).length <= 8
+							? String(domainMeta.version)
+							: '2'
 					var nowSec = Math.floor(Date.now() / 1000)
 					var validAfter = '0'
 					var validBefore = String(nowSec + AUTH_TTL_SEC)
 					var nonce = randomBytes32()
-					/* MetaMask / Coinbase eth_signTypedData_v4: omit EIP712Domain from types. */
-					var typedData = {
+					var fromChecksum = from
+					try {
+						/* ethers.getAddress-style checksum when available via provider; else keep as-is. */
+						if (typeof from === 'string' && from.length === 42) fromChecksum = from
+					} catch (_) {}
+					var transferTypes = [
+						{ name: 'from', type: 'address' },
+						{ name: 'to', type: 'address' },
+						{ name: 'value', type: 'uint256' },
+						{ name: 'validAfter', type: 'uint256' },
+						{ name: 'validBefore', type: 'uint256' },
+						{ name: 'nonce', type: 'bytes32' },
+					]
+					var eip712DomainTypes = [
+						{ name: 'name', type: 'string' },
+						{ name: 'version', type: 'string' },
+						{ name: 'chainId', type: 'uint256' },
+						{ name: 'verifyingContract', type: 'address' },
+					]
+					var message = {
+						from: fromChecksum,
+						to: to,
+						value: amount6,
+						validAfter: validAfter,
+						validBefore: validBefore,
+						nonce: nonce,
+					}
+					var domain = {
+						name: domainName,
+						version: domainVersion,
+						chainId: BASE_CHAIN_ID,
+						verifyingContract: USDC,
+					}
+					/* MetaMask omits EIP712Domain; some Coinbase builds need it or the object form. */
+					var typedWithoutDomain = {
+						types: { TransferWithAuthorization: transferTypes },
+						primaryType: 'TransferWithAuthorization',
+						domain: domain,
+						message: message,
+					}
+					var typedWithDomain = {
 						types: {
-							TransferWithAuthorization: [
-								{ name: 'from', type: 'address' },
-								{ name: 'to', type: 'address' },
-								{ name: 'value', type: 'uint256' },
-								{ name: 'validAfter', type: 'uint256' },
-								{ name: 'validBefore', type: 'uint256' },
-								{ name: 'nonce', type: 'bytes32' },
-							],
+							EIP712Domain: eip712DomainTypes,
+							TransferWithAuthorization: transferTypes,
 						},
 						primaryType: 'TransferWithAuthorization',
-						domain: {
-							name: domainMeta.name,
-							version: domainMeta.version,
-							chainId: BASE_CHAIN_ID,
-							verifyingContract: USDC,
-						},
-						message: {
-							from: from,
-							to: to,
-							value: amount6,
-							validAfter: validAfter,
-							validBefore: validBefore,
-							nonce: nonce,
-						},
+						domain: domain,
+						message: message,
 					}
-					var rawSig
-					try {
-						rawSig = await provider.request({
-							method: 'eth_signTypedData_v4',
-							params: [from, JSON.stringify(typedData)],
-						})
-					} catch (signErr) {
-						/* Some Coinbase builds accept the object form instead of a JSON string. */
-						rawSig = await provider.request({
-							method: 'eth_signTypedData_v4',
-							params: [from, typedData],
-						})
+					var attempts = [
+						function () {
+							return provider.request({
+								method: 'eth_signTypedData_v4',
+								params: [from, JSON.stringify(typedWithoutDomain)],
+							})
+						},
+						function () {
+							return provider.request({
+								method: 'eth_signTypedData_v4',
+								params: [from, typedWithoutDomain],
+							})
+						},
+						function () {
+							return provider.request({
+								method: 'eth_signTypedData_v4',
+								params: [from, JSON.stringify(typedWithDomain)],
+							})
+						},
+						function () {
+							return provider.request({
+								method: 'eth_signTypedData_v4',
+								params: [from, typedWithDomain],
+							})
+						},
+					]
+					var rawSig = null
+					var signature = null
+					var lastErr = null
+					for (var ai = 0; ai < attempts.length; ai++) {
+						try {
+							rawSig = await attempts[ai]()
+							signature = normalizeWalletSignature(rawSig)
+							if (signature) break
+						} catch (signErr) {
+							lastErr = signErr
+							rawSig = null
+						}
 					}
-					var signature = normalizeWalletSignature(rawSig)
 					if (!signature) {
+						if (lastErr && !rawSig) throw lastErr
 						var preview =
 							typeof rawSig === 'string'
-								? rawSig.slice(0, 18) + (rawSig.length > 18 ? '…' : '')
+								? rawSig.slice(0, 18) +
+									'…(len=' +
+									rawSig.length +
+									')'
 								: Object.prototype.toString.call(rawSig)
 						throw new Error('Invalid signature from wallet (' + preview + ')')
 					}

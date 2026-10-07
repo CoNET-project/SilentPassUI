@@ -103,6 +103,7 @@ import {
 	type ReceiveUsdc3009Auth,
 	submitReceiveUsdc3009,
 	subscribeReceiveUsdcAuth,
+	subscribeReceiveUsdcTx,
 } from '@/utils/receiveUsdc3009'
 import {
 	COINBASE_ONRAMP_DEFAULT_AMOUNT,
@@ -1646,10 +1647,11 @@ const Home = (_props: HomeProps) => {
 				return
 			}
 
-			// Native shell: wait for beamio:// / CustomEvent auth; balance watch is weak fallback.
+			// Native shell: wait for auth (EOA EIP-3009) or tx (Smart Wallet transfer); balance is fallback.
 			setReceiveWalletTransferStatus('waiting')
 			type Race =
 				| { kind: 'auth'; auth: ReceiveUsdc3009Auth }
+				| { kind: 'tx'; txHash: string }
 				| { kind: 'balance'; display: string }
 				| { kind: 'timeout' }
 				| { kind: 'aborted' }
@@ -1661,11 +1663,15 @@ const Home = (_props: HomeProps) => {
 					if (settled) return
 					settled = true
 					unsubAuth()
+					unsubTx()
 					abort.signal.removeEventListener('abort', onAbort)
 					resolve(value)
 				}
 				const unsubAuth = subscribeReceiveUsdcAuth((auth) => {
 					done({ kind: 'auth', auth })
+				})
+				const unsubTx = subscribeReceiveUsdcTx((txHash) => {
+					done({ kind: 'tx', txHash })
 				})
 				const onAbort = () => done({ kind: 'aborted' })
 				abort.signal.addEventListener('abort', onAbort)
@@ -1700,6 +1706,31 @@ const Home = (_props: HomeProps) => {
 			}
 			if (race.kind === 'auth') {
 				await postAuth(race.auth)
+				return
+			}
+			if (race.kind === 'tx') {
+				// Smart Wallet already broadcast USDC.transfer; wait for Beamio EOA credit.
+				const outcome = await waitForBaseUsdcArrival({
+					eoa: address,
+					baselineRaw: baselineRaw ?? 0n,
+					minIncrease6: parsed.amount6,
+					signal: abort.signal,
+				})
+				if (abort.signal.aborted || outcome.status === 'cancelled') {
+					setReceiveWalletTransferStatus((prev) => (prev === 'canceled' ? prev : 'canceled'))
+					return
+				}
+				if (outcome.status === 'arrived') {
+					finishSuccessFromBalance(outcome.balanceDisplay)
+					return
+				}
+				if (outcome.status === 'timeout') {
+					setReceiveWalletTransferStatus('error')
+					setReceiveWalletStatusError(tu('receive_wallet_timeout'))
+					return
+				}
+				setReceiveWalletTransferStatus('error')
+				setReceiveWalletStatusError(outcome.message || tu('receive_wallet_error_title'))
 				return
 			}
 			if (race.kind === 'balance') {

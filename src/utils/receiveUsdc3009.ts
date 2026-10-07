@@ -5,6 +5,9 @@ const BEAMIO_API = 'https://beamio.app'
 
 export const RECEIVE_USDC_AUTH_QUERY = 'receiveUsdcAuth'
 export const RECEIVE_USDC_AUTH_EVENT = 'beamioReceiveUsdcAuth'
+/** Smart Wallet / contract account: external wallet already sent USDC via transfer. */
+export const RECEIVE_USDC_TX_QUERY = 'receiveUsdcTx'
+export const RECEIVE_USDC_TX_EVENT = 'beamioReceiveUsdcTx'
 
 export type ReceiveUsdc3009Auth = {
 	from: string
@@ -125,9 +128,6 @@ export function ecdsaCandidatesFromErc6492(hex: string): string[] {
 	}
 	return out
 }
-
-export const RECEIVE_USDC_SMART_WALLET_SIG_HINT =
-	'This wallet returned a Smart Wallet signature. Gasless USDC receive needs an EOA. Open Coinbase → switch to your private key wallet, or send USDC directly to your Beamio address.'
 
 function normalizePlainEcdsaHexBody(hexIn: string): string | null {
 	let hex = hexIn.trim()
@@ -359,6 +359,101 @@ export function subscribeReceiveUsdcAuth(
 
 	return () => {
 		window.removeEventListener(RECEIVE_USDC_AUTH_EVENT, onEvent as EventListener)
+		window.removeEventListener('popstate', onHashOrPop)
+		window.removeEventListener('beamio:deeplink', onHashOrPop as EventListener)
+	}
+}
+
+function normalizeReceiveUsdcTxHash(raw: unknown): string | null {
+	if (typeof raw !== 'string') return null
+	const trimmed = raw.trim()
+	if (!trimmed) return null
+	try {
+		const decoded = decodeURIComponent(trimmed)
+		const hex = decoded.startsWith('0x') || decoded.startsWith('0X') ? decoded : `0x${decoded}`
+		return /^0x[0-9a-fA-F]{64}$/.test(hex) ? hex.toLowerCase() : null
+	} catch {
+		return /^0x[0-9a-fA-F]{64}$/.test(trimmed) ? trimmed.toLowerCase() : null
+	}
+}
+
+export function readReceiveUsdcTxFromSearch(
+	search: string = typeof window !== 'undefined' ? window.location.search : '',
+): string | null {
+	try {
+		const params = new URLSearchParams(search.startsWith('?') ? search.slice(1) : search)
+		return normalizeReceiveUsdcTxHash(params.get(RECEIVE_USDC_TX_QUERY))
+	} catch {
+		return null
+	}
+}
+
+export function stripReceiveUsdcTxFromUrl(): void {
+	if (typeof window === 'undefined') return
+	try {
+		const url = new URL(window.location.href)
+		if (!url.searchParams.has(RECEIVE_USDC_TX_QUERY)) return
+		url.searchParams.delete(RECEIVE_USDC_TX_QUERY)
+		window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`)
+	} catch {
+		/* ignore */
+	}
+}
+
+const seenTxHashes = new Set<string>()
+
+export function claimReceiveUsdcTxOnce(txHash: string): boolean {
+	const key = txHash.toLowerCase()
+	if (seenTxHashes.has(key)) return false
+	seenTxHashes.add(key)
+	return true
+}
+
+function readReceiveUsdcTxFromSessionStorage(): string | null {
+	try {
+		const raw = sessionStorage.getItem('beamio:receiveUsdcTx')
+		if (!raw) return null
+		sessionStorage.removeItem('beamio:receiveUsdcTx')
+		return normalizeReceiveUsdcTxHash(raw)
+	} catch {
+		return null
+	}
+}
+
+/** Smart Wallet handoff: `beamio://open?receiveUsdcTx=0x…` after eth_sendTransaction. */
+export function subscribeReceiveUsdcTx(onTx: (txHash: string) => void): () => void {
+	const deliver = (txHash: string | null) => {
+		if (!txHash) return
+		if (!claimReceiveUsdcTxOnce(txHash)) return
+		onTx(txHash)
+	}
+
+	const fromUrl = readReceiveUsdcTxFromSearch()
+	if (fromUrl) {
+		stripReceiveUsdcTxFromUrl()
+		queueMicrotask(() => deliver(fromUrl))
+	} else {
+		const fromSession = readReceiveUsdcTxFromSessionStorage()
+		if (fromSession) queueMicrotask(() => deliver(fromSession))
+	}
+
+	const onEvent = (ev: Event) => {
+		const detail = (ev as CustomEvent<unknown>).detail
+		deliver(normalizeReceiveUsdcTxHash(detail))
+	}
+	window.addEventListener(RECEIVE_USDC_TX_EVENT, onEvent as EventListener)
+
+	const onHashOrPop = () => {
+		const txHash = readReceiveUsdcTxFromSearch()
+		if (!txHash) return
+		stripReceiveUsdcTxFromUrl()
+		deliver(txHash)
+	}
+	window.addEventListener('popstate', onHashOrPop)
+	window.addEventListener('beamio:deeplink', onHashOrPop as EventListener)
+
+	return () => {
+		window.removeEventListener(RECEIVE_USDC_TX_EVENT, onEvent as EventListener)
 		window.removeEventListener('popstate', onHashOrPop)
 		window.removeEventListener('beamio:deeplink', onHashOrPop as EventListener)
 	}

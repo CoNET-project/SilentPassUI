@@ -111,7 +111,7 @@
 <body>
 	<main>
 		<h1>Sign USDC transfer</h1>
-		<p class="sub">Sign an authorization in your wallet. Beamio submits the Base USDC transfer — you do not pay gas here.</p>
+		<p class="sub" id="sub">Confirm in your wallet. EOA wallets sign a gasless authorization; Smart Wallets send Base USDC directly to your Beamio address.</p>
 		<div class="card">
 			<div class="row-label">Amount</div>
 			<div class="amount" id="amountLabel">—</div>
@@ -210,9 +210,6 @@
 			 */
 			var ERC6492_MAGIC =
 				'6492649264926492649264926492649264926492649264926492649264926492'
-			var SMART_WALLET_SIG_HINT =
-				'This wallet returned a Smart Wallet signature. Gasless USDC receive needs an EOA. Open Coinbase → switch to your private key wallet, or send USDC directly to your Beamio address.'
-
 			function bytesToHex(bytes) {
 				var out = '0x'
 				for (var i = 0; i < bytes.length; i++) {
@@ -388,29 +385,27 @@
 				if (typeof candidate !== 'string') return null
 				return normalizeEcdsaHexBody(candidate)
 			}
-			function invalidSigMessage(rawSig) {
+			function coerceSigToHex(rawSig) {
+				if (typeof rawSig === 'string') return rawSig
+				if (!rawSig) return ''
+				if (typeof rawSig === 'object') {
+					if (typeof rawSig.signature === 'string') return rawSig.signature
+					if (typeof rawSig.result === 'string') return rawSig.result
+					if (typeof rawSig.data === 'string') return rawSig.data
+				}
+				return ''
+			}
+
+			function looksLikeSmartWalletSig(rawSig) {
 				var hex =
 					typeof rawSig === 'string'
 						? rawSig
 						: rawSig && typeof rawSig.signature === 'string'
 							? rawSig.signature
-							: ''
-				try {
-					console.warn(
-						'[receive-wallet-send] invalid sig',
-						typeof hex === 'string' ? hex.slice(0, 24) + '…len=' + hex.length : typeof rawSig,
-						hex && isErc6492Hex(hex) ? 'erc6492' : ''
-					)
-				} catch (_) {}
-				if (hex && isErc6492Hex(hex)) return SMART_WALLET_SIG_HINT
-				if (typeof hex === 'string' && hex.replace(/^0x/i, '').length > 194) {
-					return SMART_WALLET_SIG_HINT
-				}
-				var preview =
-					typeof rawSig === 'string'
-						? rawSig.slice(0, 18) + '…(len=' + rawSig.length + ')'
-						: Object.prototype.toString.call(rawSig)
-				return 'Invalid signature from wallet (' + preview + ')'
+							: coerceSigToHex(rawSig)
+				if (!hex || typeof hex !== 'string') return false
+				if (isErc6492Hex(hex)) return true
+				return hex.replace(/^0x/i, '').length > 194
 			}
 
 			function isNativeShell() {
@@ -427,28 +422,39 @@
 			var SIGN_DONE_KEY = 'beamio:receiveUsdc3009:signed'
 			var signState = { inFlight: false, done: false }
 
-			function rememberSignedAuth(authB64) {
+			function rememberSignedResult(result) {
 				try {
 					sessionStorage.setItem(
 						SIGN_DONE_KEY,
-						JSON.stringify({ to: toRaw, amount6: amount6Raw, authB64: authB64, at: Date.now() })
+						JSON.stringify({
+							to: toRaw,
+							amount6: amount6Raw,
+							authB64: result && result.authB64 ? result.authB64 : null,
+							txHash: result && result.txHash ? result.txHash : null,
+							at: Date.now(),
+						})
 					)
 				} catch (_) {}
 			}
 
-			function loadSignedAuth() {
+			function loadSignedResult() {
 				try {
 					var raw = sessionStorage.getItem(SIGN_DONE_KEY)
 					if (!raw) return null
 					var parsed = JSON.parse(raw)
-					if (!parsed || typeof parsed.authB64 !== 'string') return null
+					if (!parsed) return null
 					if (parsed.to !== toRaw || String(parsed.amount6) !== String(amount6Raw)) return null
-					/* Stale after 10 minutes — allow a fresh sign. */
 					if (typeof parsed.at === 'number' && Date.now() - parsed.at > 10 * 60 * 1000) {
 						sessionStorage.removeItem(SIGN_DONE_KEY)
 						return null
 					}
-					return parsed.authB64
+					if (typeof parsed.txHash === 'string' && /^0x[0-9a-fA-F]{64}$/.test(parsed.txHash)) {
+						return { kind: 'tx', txHash: parsed.txHash }
+					}
+					if (typeof parsed.authB64 === 'string' && parsed.authB64) {
+						return { kind: 'auth', authB64: parsed.authB64 }
+					}
+					return null
 				} catch (_) {
 					return null
 				}
@@ -460,13 +466,10 @@
 				return code === 4001 || /user rejected|user denied|rejected the request/i.test(msg)
 			}
 
-			function returnToBeamio(authB64) {
+			function navigateBackToBeamio(query) {
 				signState.done = true
-				rememberSignedAuth(authB64)
-				var q = 'receiveUsdcAuth=' + encodeURIComponent(authB64)
-				var nativeUrl = 'beamio://open?' + q
-				var webUrl = 'https://beamio.app/app/?' + q
-				setStatus('Signed. Returning to Beamio…', 'ok')
+				var nativeUrl = 'beamio://open?' + query
+				var webUrl = 'https://beamio.app/app/?' + query
 				btn.textContent = 'Open Beamio'
 				btn.disabled = false
 				btn.onclick = function () {
@@ -487,6 +490,178 @@
 					return
 				}
 				window.location.href = webUrl
+			}
+
+			function returnToBeamioAuth(authB64) {
+				rememberSignedResult({ authB64: authB64 })
+				setStatus('Signed. Returning to Beamio…', 'ok')
+				navigateBackToBeamio('receiveUsdcAuth=' + encodeURIComponent(authB64))
+			}
+
+			function returnToBeamioTx(txHash) {
+				rememberSignedResult({ txHash: txHash })
+				setStatus('USDC sent. Returning to Beamio…', 'ok')
+				navigateBackToBeamio('receiveUsdcTx=' + encodeURIComponent(txHash))
+			}
+
+			function returnSignedResult(result) {
+				if (!result) return
+				if (result.kind === 'tx') returnToBeamioTx(result.txHash)
+				else if (result.kind === 'auth') returnToBeamioAuth(result.authB64)
+			}
+
+			function padHex(hex, bytes) {
+				var h = String(hex || '').replace(/^0x/i, '').toLowerCase()
+				while (h.length < bytes * 2) h = '0' + h
+				return h.slice(-bytes * 2)
+			}
+
+			function encodeUsdcTransfer(toAddr, value6) {
+				return '0xa9059cbb' + padHex(toAddr, 32) + padHex(BigInt(value6).toString(16), 32)
+			}
+
+			async function isContractAccount(provider, addr) {
+				try {
+					var code = await provider.request({
+						method: 'eth_getCode',
+						params: [addr, 'latest'],
+					})
+					return typeof code === 'string' && code !== '0x' && code !== '0x0' && code.length > 2
+				} catch (_) {
+					return false
+				}
+			}
+
+			/**
+			 * Coinbase Smart Wallet (and similar SCW) often have empty bytecode until the
+			 * first UserOp. Prefer USDC.transfer / wallet_sendCalls over EIP-3009.
+			 */
+			async function shouldPreferUsdcTransfer(provider, addr) {
+				if (await isContractAccount(provider, addr)) return true
+				try {
+					var caps = await provider.request({
+						method: 'wallet_getCapabilities',
+						params: [addr],
+					})
+					if (caps && typeof caps === 'object') {
+						var base =
+							caps['0x2105'] ||
+							caps['8453'] ||
+							caps[8453] ||
+							caps['0x2105'.toLowerCase()]
+						if (base && typeof base === 'object') {
+							var atomic = base.atomicBatch || base.atomic
+							var paymaster = base.paymasterService
+							var atomicOn =
+								atomic === true ||
+								(atomic &&
+									(atomic.supported === true || atomic.supported === 'true'))
+							var paymasterOn =
+								paymaster === true ||
+								(paymaster &&
+									(paymaster.supported === true || paymaster.supported === 'true'))
+							if (atomicOn || paymasterOn) return true
+						}
+					}
+				} catch (_) {}
+				// Also try EIP-5792 with explicit Base chain filter (Coinbase Smart Wallet).
+				try {
+					var caps2 = await provider.request({
+						method: 'wallet_getCapabilities',
+						params: [addr, ['0x2105']],
+					})
+					if (caps2 && typeof caps2 === 'object') {
+						var base2 = caps2['0x2105'] || caps2['8453'] || caps2[8453]
+						if (base2 && typeof base2 === 'object') {
+							var a2 = base2.atomicBatch || base2.atomic
+							var p2 = base2.paymasterService
+							if (
+								a2 === true ||
+								(a2 && a2.supported) ||
+								p2 === true ||
+								(p2 && p2.supported)
+							) {
+								return true
+							}
+						}
+					}
+				} catch (_) {}
+				return false
+			}
+
+			async function sendUsdcTransfer(provider, from) {
+				var data = encodeUsdcTransfer(to, amount6)
+				var lastErr = null
+				try {
+					var hash = await provider.request({
+						method: 'eth_sendTransaction',
+						params: [{ from: from, to: USDC, data: data, value: '0x0' }],
+					})
+					if (typeof hash === 'string' && /^0x[0-9a-fA-F]{64}$/.test(hash)) return hash
+				} catch (err) {
+					lastErr = err
+					if (isUserRejected(err)) throw err
+				}
+				try {
+					var callsId = await provider.request({
+						method: 'wallet_sendCalls',
+						params: [
+							{
+								version: '2.0.0',
+								from: from,
+								chainId: BASE_HEX,
+								atomicRequired: true,
+								calls: [{ to: USDC, value: '0x0', data: data }],
+							},
+						],
+					})
+					var id =
+						typeof callsId === 'string'
+							? callsId
+							: callsId && typeof callsId.id === 'string'
+								? callsId.id
+								: ''
+					if (!id) throw lastErr || new Error('Wallet did not return a transaction')
+					for (var i = 0; i < 40; i++) {
+						await new Promise(function (r) {
+							window.setTimeout(r, 500)
+						})
+						var status = await provider.request({
+							method: 'wallet_getCallsStatus',
+							params: [id],
+						})
+						var st =
+							status && typeof status.status === 'number'
+								? status.status
+								: status && status.status
+						if (st === 200 || st === 'CONFIRMED') {
+							var receipts = status.receipts || []
+							var tx =
+								receipts[0] &&
+								(receipts[0].transactionHash || receipts[0].transactionhash)
+							if (typeof tx === 'string' && /^0x[0-9a-fA-F]{64}$/.test(tx)) return tx
+							return '0x' + padHex(id.replace(/^0x/i, '').slice(0, 64) || '1', 32)
+						}
+						if (st === 100 || st === 'FAILED' || st === 'REVERTED') {
+							throw new Error('USDC transfer failed in wallet')
+						}
+					}
+					return '0x' + padHex(id.replace(/^0x/i, '').slice(0, 64) || '1', 32)
+				} catch (err2) {
+					if (isUserRejected(err2)) throw err2
+					throw err2 || lastErr || new Error('Could not send USDC from this wallet')
+				}
+			}
+
+			function setSmartWalletCopy() {
+				try {
+					var subEl = document.getElementById('sub')
+					if (subEl) {
+						subEl.textContent =
+							'Confirm the USDC transfer in your wallet. Your Smart Wallet sends Base USDC to your Beamio address (network fee paid in the wallet).'
+					}
+				} catch (_) {}
+				btn.textContent = 'Send USDC and return to Beamio'
 			}
 
 			if (!isAddress(toRaw)) {
@@ -599,9 +774,9 @@
 
 			async function sign() {
 				if (signState.done || signState.inFlight) return
-				var existing = loadSignedAuth()
+				var existing = loadSignedResult()
 				if (existing) {
-					returnToBeamio(existing)
+					returnSignedResult(existing)
 					return
 				}
 				var provider = getProvider()
@@ -613,15 +788,26 @@
 				}
 				signState.inFlight = true
 				btn.disabled = true
-				btn.textContent = 'Sign in wallet…'
-				setStatus('Requesting signature…')
+				btn.textContent = 'Connecting…'
+				setStatus('Connecting wallet…')
 				try {
 					var accounts = await provider.request({ method: 'eth_requestAccounts' })
 					var from = Array.isArray(accounts) && typeof accounts[0] === 'string' ? accounts[0] : ''
 					if (!isAddress(from)) throw new Error('No wallet account')
 					await ensureBase(provider)
+
+					if (await shouldPreferUsdcTransfer(provider, from)) {
+						setSmartWalletCopy()
+						btn.textContent = 'Confirm in wallet…'
+						setStatus('Confirm the USDC transfer in your wallet…')
+						var txHash = await sendUsdcTransfer(provider, from)
+						returnToBeamioTx(txHash)
+						return
+					}
+
+					btn.textContent = 'Sign in wallet…'
+					setStatus('Requesting signature…')
 					var domainMeta = await readTokenDomain(provider)
-					/* Prefer canonical Base USDC domain when RPC decode looks wrong. */
 					var domainName =
 						domainMeta.name && /usd\s*coin/i.test(domainMeta.name)
 							? domainMeta.name
@@ -634,7 +820,6 @@
 					var validAfter = '0'
 					var validBefore = String(nowSec + AUTH_TTL_SEC)
 					var nonce = randomBytes32()
-					var fromChecksum = from
 					var transferTypes = [
 						{ name: 'from', type: 'address' },
 						{ name: 'to', type: 'address' },
@@ -644,7 +829,7 @@
 						{ name: 'nonce', type: 'bytes32' },
 					]
 					var message = {
-						from: fromChecksum,
+						from: from,
 						to: to,
 						value: amount6,
 						validAfter: validAfter,
@@ -657,11 +842,6 @@
 						chainId: BASE_CHAIN_ID,
 						verifyingContract: USDC,
 					}
-					/*
-					 * One primary prompt only. Extra eth_signTypedData_v4 attempts reopen Coinbase's
-					 * sign sheet after the user already approved (infinite-loop feel).
-					 * Fallback runs only when the first request throws before a signature is returned.
-					 */
 					var typedWithoutDomain = {
 						types: { TransferWithAuthorization: transferTypes },
 						primaryType: 'TransferWithAuthorization',
@@ -683,31 +863,30 @@
 						message: message,
 					}
 					var rawSig = null
-					var lastErr = null
 					try {
 						rawSig = await provider.request({
 							method: 'eth_signTypedData_v4',
 							params: [from, JSON.stringify(typedWithoutDomain)],
 						})
 					} catch (firstErr) {
-						lastErr = firstErr
 						if (isUserRejected(firstErr)) throw firstErr
-						try {
-							rawSig = await provider.request({
-								method: 'eth_signTypedData_v4',
-								params: [from, JSON.stringify(typedWithDomain)],
-							})
-							lastErr = null
-						} catch (secondErr) {
-							lastErr = secondErr
-							if (isUserRejected(secondErr)) throw secondErr
-							throw secondErr
-						}
+						rawSig = await provider.request({
+							method: 'eth_signTypedData_v4',
+							params: [from, JSON.stringify(typedWithDomain)],
+						})
 					}
-					/* Wallet returned a value — never issue another sign prompt. */
+					// ERC-6492 / long SCW sigs must NOT be peeled into a fake 65-byte EIP-3009 sig.
+					if (looksLikeSmartWalletSig(rawSig)) {
+						setSmartWalletCopy()
+						btn.textContent = 'Confirm in wallet…'
+						setStatus('Smart Wallet detected — confirm the USDC transfer…')
+						var txHash2 = await sendUsdcTransfer(provider, from)
+						returnToBeamioTx(txHash2)
+						return
+					}
 					var signature = normalizeWalletSignature(rawSig)
 					if (!signature) {
-						throw new Error(invalidSigMessage(rawSig))
+						throw new Error('Invalid signature from wallet')
 					}
 					var authB64 = encodeAuthPayload({
 						from: from,
@@ -718,33 +897,35 @@
 						nonce: nonce,
 						signature: signature,
 					})
-					returnToBeamio(authB64)
+					returnToBeamioAuth(authB64)
 				} catch (err) {
 					signState.inFlight = false
 					var msg = err && typeof err.message === 'string' ? err.message : ''
 					if (isUserRejected(err)) {
-						setStatus('Signature rejected. Tap below to try again.', 'err')
+						setStatus('Request rejected. Tap below to try again.', 'err')
 					} else {
-						setStatus(msg || 'Could not sign. Tap below to try again.', 'err')
+						setStatus(msg || 'Could not complete. Tap below to try again.', 'err')
 					}
 					btn.disabled = false
 					btn.textContent = 'Sign and return to Beamio'
 				}
 			}
 
+
 			btn.disabled = false
 			btn.textContent = 'Sign and return to Beamio'
 			btn.addEventListener('click', function () { void sign() })
 
-			var existingOnLoad = loadSignedAuth()
+			var existingOnLoad = loadSignedResult()
 			if (existingOnLoad) {
-				returnToBeamio(existingOnLoad)
+				returnSignedResult(existingOnLoad)
 			} else {
 				var tries = 0
 				function maybeAuto() {
 					if (signState.done || signState.inFlight) return
-					if (loadSignedAuth()) {
-						returnToBeamio(loadSignedAuth())
+					var again = loadSignedResult()
+					if (again) {
+						returnSignedResult(again)
 						return
 					}
 					tries += 1

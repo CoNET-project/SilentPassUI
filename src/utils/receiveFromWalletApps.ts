@@ -238,7 +238,7 @@ function receiveWalletHandoffPageUrl(eoa: string, amount6?: bigint): string {
 		params.set('amount6', amount6.toString())
 	}
 	/* Keep in sync with package.json version after each OTA bump. */
-	params.set('v', '0.52.811')
+	params.set('v', '0.52.812')
 	return `${RECEIVE_WALLET_SEND_PAGE}?${params.toString()}`
 }
 

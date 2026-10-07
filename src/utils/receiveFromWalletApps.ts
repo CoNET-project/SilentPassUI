@@ -25,6 +25,7 @@ import {
 	isErc6492SignatureHex,
 	normalizeReceiveUsdcWalletSignature,
 } from './receiveUsdc3009'
+import packageJson from '../../package.json'
 
 export type ReceiveWalletAppRow = {
 	id: string
@@ -224,20 +225,21 @@ export function parseReceiveUsdcAmount6(
 }
 
 /**
- * Live HTTPS handoff: third-party wallet signs EIP-3009 TransferWithAuthorization
- * (to = Beamio EOA), then redirects `beamio://open?receiveUsdcAuth=…`.
+ * Live HTTPS handoff: Coinbase / Smart Wallet → USDC.transfer; EOA → EIP-3009.
+ * New filename breaks Coinbase in-app WebView cache of the old SMART/EOA error page.
  * Always use the production `/app/` host — embedded OTA origins are not public HTTPS.
  */
-const RECEIVE_WALLET_SEND_PAGE = 'https://beamio.app/app/receive-wallet-send.html'
+const RECEIVE_WALLET_SEND_PAGE = 'https://beamio.app/app/receive-wallet-send-sw.html'
+const RECEIVE_WALLET_HANDOFF_CACHE_TAG = 'sw-transfer'
 
-/** Cache-bust Coinbase in-app WebView (stale handoff showed old Invalid-sig UX). */
+/** Cache-bust Coinbase in-app WebView (stale handoff showed SMART/EOA error). */
 function receiveWalletHandoffPageUrl(eoa: string, amount6?: bigint): string {
 	const params = new URLSearchParams({ to: eoa })
 	if (amount6 != null && amount6 > 0n) {
 		params.set('amount6', amount6.toString())
 	}
-	/* Keep in sync with package.json version after each OTA bump. */
-	params.set('v', '0.52.812')
+	const ver = (packageJson as { version?: string }).version || '0'
+	params.set('v', `${ver}-${RECEIVE_WALLET_HANDOFF_CACHE_TAG}`)
 	return `${RECEIVE_WALLET_SEND_PAGE}?${params.toString()}`
 }
 
@@ -528,9 +530,9 @@ async function signUsdc3009FromInjected(
 					? (raw as { signature: string }).signature
 					: ''
 		if (hex && (isErc6492SignatureHex(hex) || hex.replace(/^0x/i, '').length > 194)) {
-			/* Smart Wallet / ERC-6492 cannot EIP-3009; handoff HTML sends USDC.transfer. */
+			/* Stale Coinbase WebView may still return ERC-6492; new handoff uses USDC.transfer. */
 			throw new Error(
-				'This wallet is a Smart Wallet. Open Coinbase again from Receive — Beamio will send a Base USDC transfer instead of a gasless authorization.',
+				'Update needed: close Coinbase, reopen Receive from a wallet in Beamio, then try Coinbase again.',
 			)
 		}
 		throw new Error('Wallet did not return a valid signature')

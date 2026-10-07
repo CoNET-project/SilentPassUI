@@ -231,11 +231,14 @@ export function parseReceiveUsdcAmount6(
  */
 const RECEIVE_WALLET_SEND_PAGE = 'https://beamio.app/app/receive-wallet-send.html'
 
+/** Cache-bust Coinbase in-app WebView (stale handoff showed old Invalid-sig UX). */
 function receiveWalletHandoffPageUrl(eoa: string, amount6?: bigint): string {
 	const params = new URLSearchParams({ to: eoa })
 	if (amount6 != null && amount6 > 0n) {
 		params.set('amount6', amount6.toString())
 	}
+	/* Keep in sync with package.json version after each OTA bump. */
+	params.set('v', '0.52.811')
 	return `${RECEIVE_WALLET_SEND_PAGE}?${params.toString()}`
 }
 

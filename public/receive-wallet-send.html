@@ -7,6 +7,8 @@
 		content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
 	/>
 	<meta name="theme-color" content="#f8f9fa" />
+	<meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate" />
+	<meta http-equiv="Pragma" content="no-cache" />
 	<title>Sign USDC for Beamio</title>
 	<style>
 		:root {
@@ -248,21 +250,40 @@
 				if (inner.length !== sigLen * 2 || !/^[0-9a-f]+$/.test(inner)) return null
 				return '0x' + inner
 			}
-			function normalizeEcdsaHexBody(hexIn) {
+			/** Standard unwrap + trailing r||s||v before magic (Coinbase nested blobs). */
+			function ecdsaCandidatesFrom6492(hex) {
+				var body = String(hex || '').replace(/^0x/i, '').toLowerCase()
+				if (body.slice(-64) !== ERC6492_MAGIC || body.length < 256) return []
+				var out = []
+				var seen = {}
+				function push(c) {
+					if (!c) return
+					var n = String(c).toLowerCase()
+					if (seen[n]) return
+					seen[n] = true
+					out.push(n.indexOf('0x') === 0 ? c : '0x' + c)
+				}
+				push(unwrapErc6492(hex))
+				var encoded = body.slice(0, -64)
+				if (encoded.length >= 130) {
+					push('0x' + encoded.slice(-130))
+					push('0x' + encoded.slice(-128))
+				}
+				var inner = unwrapErc6492(hex)
+				if (inner) {
+					var ib = inner.replace(/^0x/i, '')
+					if (ib.length > 130) {
+						push('0x' + ib.slice(-130))
+						push('0x' + ib.slice(-128))
+					}
+				}
+				return out
+			}
+			function normalizePlainEcdsa(hexIn) {
 				var hex = String(hexIn || '').trim()
 				if (!hex) return null
 				if (!hex.startsWith('0x') && !hex.startsWith('0X')) hex = '0x' + hex
 				if (!/^0x[0-9a-fA-F]+$/.test(hex)) return null
-				if (isErc6492Hex(hex)) {
-					var unwrapped = unwrapErc6492(hex)
-					if (!unwrapped) return null
-					hex = unwrapped
-					if (isErc6492Hex(hex)) {
-						var nested = unwrapErc6492(hex)
-						if (!nested) return null
-						hex = nested
-					}
-				}
 				var body = hex.slice(2)
 				var rHex
 				var sBig
@@ -296,6 +317,21 @@
 				var sHex = padHex64(sBig.toString(16))
 				if (!sHex) return null
 				return '0x' + rHex.toLowerCase() + sHex + (vNum === 28 ? '1c' : '1b')
+			}
+			function normalizeEcdsaHexBody(hexIn) {
+				var hex = String(hexIn || '').trim()
+				if (!hex) return null
+				if (!hex.startsWith('0x') && !hex.startsWith('0X')) hex = '0x' + hex
+				if (!/^0x[0-9a-fA-F]+$/.test(hex)) return null
+				if (isErc6492Hex(hex)) {
+					var cands = ecdsaCandidatesFrom6492(hex)
+					for (var i = 0; i < cands.length; i++) {
+						var n = normalizePlainEcdsa(cands[i])
+						if (n) return n
+					}
+					return null
+				}
+				return normalizePlainEcdsa(hex)
 			}
 			function normalizeWalletSignature(raw) {
 				var candidate = raw
@@ -359,6 +395,13 @@
 						: rawSig && typeof rawSig.signature === 'string'
 							? rawSig.signature
 							: ''
+				try {
+					console.warn(
+						'[receive-wallet-send] invalid sig',
+						typeof hex === 'string' ? hex.slice(0, 24) + '…len=' + hex.length : typeof rawSig,
+						hex && isErc6492Hex(hex) ? 'erc6492' : ''
+					)
+				} catch (_) {}
 				if (hex && isErc6492Hex(hex)) return SMART_WALLET_SIG_HINT
 				if (typeof hex === 'string' && hex.replace(/^0x/i, '').length > 194) {
 					return SMART_WALLET_SIG_HINT

@@ -96,24 +96,44 @@ export function unwrapErc6492Signature(hex: string): string | null {
 	return `0x${inner}`
 }
 
+/** ECDSA candidates from ERC-6492 (unwrap + trailing r||s||v; Coinbase nested blobs). */
+export function ecdsaCandidatesFromErc6492(hex: string): string[] {
+	const body = hex.replace(/^0x/i, '').toLowerCase()
+	if (!body.endsWith(ERC6492_MAGIC_SUFFIX) || body.length < 192 + 64) return []
+	const out: string[] = []
+	const seen = new Set<string>()
+	const push = (c: string | null) => {
+		if (!c) return
+		const n = c.toLowerCase()
+		if (seen.has(n)) return
+		seen.add(n)
+		out.push(c.startsWith('0x') ? c : `0x${c}`)
+	}
+	push(unwrapErc6492Signature(hex))
+	const encoded = body.slice(0, -64)
+	if (encoded.length >= 130) {
+		push(`0x${encoded.slice(-130)}`)
+		push(`0x${encoded.slice(-128)}`)
+	}
+	const inner = unwrapErc6492Signature(hex)
+	if (inner) {
+		const ib = inner.replace(/^0x/i, '')
+		if (ib.length > 130) {
+			push(`0x${ib.slice(-130)}`)
+			push(`0x${ib.slice(-128)}`)
+		}
+	}
+	return out
+}
+
 export const RECEIVE_USDC_SMART_WALLET_SIG_HINT =
 	'This wallet returned a Smart Wallet signature. Gasless USDC receive needs an EOA. Open Coinbase → switch to your private key wallet, or send USDC directly to your Beamio address.'
 
-function normalizeEcdsaHexBody(hexIn: string): string | null {
+function normalizePlainEcdsaHexBody(hexIn: string): string | null {
 	let hex = hexIn.trim()
 	if (!hex) return null
 	if (!hex.startsWith('0x') && !hex.startsWith('0X')) hex = `0x${hex}`
 	if (!/^0x[0-9a-fA-F]+$/.test(hex)) return null
-	if (isErc6492SignatureHex(hex)) {
-		const inner = unwrapErc6492Signature(hex)
-		if (!inner) return null
-		hex = inner
-		if (isErc6492SignatureHex(hex)) {
-			const nested = unwrapErc6492Signature(hex)
-			if (!nested) return null
-			hex = nested
-		}
-	}
 	const body = hex.slice(2)
 	let rHex: string
 	let sBig: bigint
@@ -148,6 +168,21 @@ function normalizeEcdsaHexBody(hexIn: string): string | null {
 	const sHex = padHex64(sBig.toString(16))
 	if (!sHex) return null
 	return `0x${rHex.toLowerCase()}${sHex}${vNum === 28 ? '1c' : '1b'}`
+}
+
+function normalizeEcdsaHexBody(hexIn: string): string | null {
+	let hex = hexIn.trim()
+	if (!hex) return null
+	if (!hex.startsWith('0x') && !hex.startsWith('0X')) hex = `0x${hex}`
+	if (!/^0x[0-9a-fA-F]+$/.test(hex)) return null
+	if (isErc6492SignatureHex(hex)) {
+		for (const c of ecdsaCandidatesFromErc6492(hex)) {
+			const n = normalizePlainEcdsaHexBody(c)
+			if (n) return n
+		}
+		return null
+	}
+	return normalizePlainEcdsaHexBody(hex)
 }
 
 /** Normalize wallet sig → 0x + 130 hex low-s (independent of x402sdk). */

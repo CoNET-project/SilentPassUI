@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8" />
+	<meta
+		name="viewport"
+		content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+	/>
+	<meta name="theme-color" content="#f8f9fa" />
+	<title>Send USDC to Beamio</title>
+	<style>
+		:root {
+			--bg: #f4f6f8;
+			--card: #ffffff;
+			--text: #0f172a;
+			--muted: #64748b;
+			--accent: #0051d1;
+			--border: #e2e8f0;
+			--ok: #059669;
+			--warn: #b45309;
+		}
+		* { box-sizing: border-box; }
+		html, body {
+			margin: 0;
+			min-height: 100%;
+			background: var(--bg);
+			color: var(--text);
+			font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+			-webkit-text-size-adjust: 100%;
+			touch-action: pan-x pan-y;
+		}
+		main {
+			max-width: 28rem;
+			margin: 0 auto;
+			padding: max(1.25rem, env(safe-area-inset-top, 0px)) 1.25rem max(1.5rem, env(safe-area-inset-bottom, 0px));
+		}
+		h1 {
+			margin: 0 0 0.35rem;
+			font-size: 1.35rem;
+			font-weight: 700;
+			letter-spacing: -0.02em;
+		}
+		.sub {
+			margin: 0 0 1.25rem;
+			color: var(--muted);
+			font-size: 0.95rem;
+			line-height: 1.45;
+		}
+		.card {
+			background: var(--card);
+			border: 1px solid var(--border);
+			border-radius: 1rem;
+			padding: 1rem 1.1rem;
+			margin-bottom: 1rem;
+		}
+		.row-label {
+			font-size: 0.75rem;
+			font-weight: 600;
+			letter-spacing: 0.04em;
+			text-transform: uppercase;
+			color: var(--muted);
+			margin-bottom: 0.35rem;
+		}
+		.amount {
+			font-size: 1.75rem;
+			font-weight: 700;
+			letter-spacing: -0.03em;
+			word-break: break-all;
+		}
+		.addr {
+			font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+			font-size: 0.9rem;
+			line-height: 1.45;
+			word-break: break-all;
+		}
+		#status {
+			min-height: 1.35rem;
+			margin: 0 0 1rem;
+			font-size: 0.9rem;
+			line-height: 1.4;
+			color: var(--muted);
+		}
+		#status.ok { color: var(--ok); }
+		#status.err { color: var(--warn); }
+		button {
+			display: block;
+			width: 100%;
+			border: 0;
+			border-radius: 999px;
+			padding: 0.95rem 1.25rem;
+			font-size: 1rem;
+			font-weight: 650;
+			color: #fff;
+			background: var(--accent);
+			cursor: pointer;
+		}
+		button:disabled {
+			opacity: 0.55;
+			cursor: not-allowed;
+		}
+		.hint {
+			margin-top: 0.85rem;
+			font-size: 0.8rem;
+			color: var(--muted);
+			line-height: 1.4;
+		}
+	</style>
+</head>
+<body>
+	<main>
+		<h1>Send USDC</h1>
+		<p class="sub">Confirm this transfer in Coinbase Wallet. Funds go to your Beamio Main Wallet (EOA) on Base.</p>
+		<div class="card">
+			<div class="row-label">Amount</div>
+			<div class="amount" id="amountLabel">—</div>
+		</div>
+		<div class="card">
+			<div class="row-label">To (Beamio EOA)</div>
+			<div class="addr" id="toLabel">—</div>
+		</div>
+		<p id="status">Preparing transfer…</p>
+		<button type="button" id="sendBtn" disabled>Confirm in wallet</button>
+		<p class="hint">Stay in Coinbase Wallet until the transaction is submitted. You can return to Beamio afterward — your balance updates automatically.</p>
+	</main>
+	<script>
+		(function () {
+			var USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
+			var BASE_HEX = '0x2105'
+			var TRANSFER_SELECTOR = '0xa9059cbb'
+
+			var params = new URLSearchParams(window.location.search)
+			var toRaw = (params.get('to') || '').trim()
+			var amount6Raw = (params.get('amount6') || '').trim()
+
+			var amountEl = document.getElementById('amountLabel')
+			var toEl = document.getElementById('toLabel')
+			var statusEl = document.getElementById('status')
+			var btn = document.getElementById('sendBtn')
+
+			function setStatus(text, kind) {
+				statusEl.textContent = text
+				statusEl.className = kind || ''
+			}
+
+			function isAddress(v) {
+				return /^0x[0-9a-fA-F]{40}$/.test(v)
+			}
+
+			function pad32(hexNo0x) {
+				return ('0000000000000000000000000000000000000000000000000000000000000000' + hexNo0x).slice(-64)
+			}
+
+			function encodeTransfer(to, amount6) {
+				var toPad = pad32(to.slice(2).toLowerCase())
+				var amtHex = BigInt(amount6).toString(16)
+				return TRANSFER_SELECTOR + toPad + pad32(amtHex)
+			}
+
+			function formatUsdc(amount6) {
+				var s = amount6.toString()
+				if (s.length <= 6) {
+					s = ('000000' + s).slice(-6)
+					return '0.' + s
+				}
+				var whole = s.slice(0, -6)
+				var frac = s.slice(-6).replace(/0+$/, '')
+				return frac ? whole + '.' + frac : whole
+			}
+
+			if (!isAddress(toRaw)) {
+				setStatus('Missing or invalid Beamio wallet address.', 'err')
+				amountEl.textContent = '—'
+				toEl.textContent = toRaw || '—'
+				return
+			}
+			if (!/^\d+$/.test(amount6Raw) || amount6Raw === '0') {
+				setStatus('Missing or invalid USDC amount.', 'err')
+				toEl.textContent = toRaw
+				return
+			}
+
+			var to = toRaw
+			var amount6 = amount6Raw
+			toEl.textContent = to
+			amountEl.textContent = formatUsdc(amount6) + ' USDC'
+
+			function getProvider() {
+				return window.ethereum || null
+			}
+
+			async function ensureBase(provider) {
+				var chainId = ''
+				try {
+					var raw = await provider.request({ method: 'eth_chainId' })
+					chainId = typeof raw === 'string' ? raw.toLowerCase() : ''
+				} catch (_) {}
+				if (chainId === BASE_HEX) return
+				try {
+					await provider.request({
+						method: 'wallet_switchEthereumChain',
+						params: [{ chainId: BASE_HEX }],
+					})
+				} catch (err) {
+					var code = err && err.code
+					var nested = err && err.data && err.data.originalError && err.data.originalError.code
+					if (code === 4902 || nested === 4902) {
+						await provider.request({
+							method: 'wallet_addEthereumChain',
+							params: [{
+								chainId: BASE_HEX,
+								chainName: 'Base',
+								nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+								rpcUrls: ['https://base-rpc.conet.network'],
+								blockExplorerUrls: ['https://basescan.org'],
+							}],
+						})
+						var after = ''
+						try {
+							var rawAfter = await provider.request({ method: 'eth_chainId' })
+							after = typeof rawAfter === 'string' ? rawAfter.toLowerCase() : ''
+						} catch (_) {}
+						if (after !== BASE_HEX) {
+							await provider.request({
+								method: 'wallet_switchEthereumChain',
+								params: [{ chainId: BASE_HEX }],
+							})
+						}
+					} else {
+						throw err
+					}
+				}
+			}
+
+			async function send() {
+				var provider = getProvider()
+				if (!provider || typeof provider.request !== 'function') {
+					setStatus('Open this page inside Coinbase Wallet to confirm the transfer.', 'err')
+					btn.disabled = false
+					btn.textContent = 'Try again'
+					return
+				}
+				btn.disabled = true
+				btn.textContent = 'Confirm in wallet…'
+				setStatus('Requesting wallet confirmation…')
+				try {
+					var accounts = await provider.request({ method: 'eth_requestAccounts' })
+					var from = Array.isArray(accounts) && typeof accounts[0] === 'string' ? accounts[0] : ''
+					if (!isAddress(from)) throw new Error('No wallet account')
+					await ensureBase(provider)
+					var data = encodeTransfer(to, amount6)
+					var txHash = await provider.request({
+						method: 'eth_sendTransaction',
+						params: [{
+							from: from,
+							to: USDC,
+							data: data,
+							value: '0x0',
+						}],
+					})
+					setStatus(
+						typeof txHash === 'string' && txHash
+							? 'Submitted. You can return to Beamio — USDC updates when confirmed.'
+							: 'Submitted. You can return to Beamio.',
+						'ok',
+					)
+					btn.textContent = 'Done'
+					btn.disabled = true
+				} catch (err) {
+					var msg = err && typeof err.message === 'string' ? err.message : ''
+					var code = err && err.code
+					if (code === 4001 || /user rejected|user denied|rejected the request/i.test(msg)) {
+						setStatus('Request rejected. Tap below to try again.', 'err')
+					} else {
+						setStatus(msg || 'Could not send USDC. Tap below to try again.', 'err')
+					}
+					btn.disabled = false
+					btn.textContent = 'Confirm in wallet'
+				}
+			}
+
+			btn.disabled = false
+			btn.textContent = 'Confirm in wallet'
+			btn.addEventListener('click', function () { void send() })
+
+			// Auto-start once Coinbase injects the provider (dapp browser).
+			var tries = 0
+			function maybeAuto() {
+				tries += 1
+				if (getProvider()) {
+					void send()
+					return
+				}
+				if (tries < 40) {
+					window.setTimeout(maybeAuto, 150)
+				} else {
+					setStatus('Tap Confirm to open the wallet transfer screen.', '')
+				}
+			}
+			window.setTimeout(maybeAuto, 80)
+		})()
+	</script>
+</body>
+</html>

@@ -234,29 +234,33 @@ function metamaskSendUsdcUrl(eoa: string, amount6?: bigint): string {
 }
 
 /**
- * Coinbase Wallet / Base app send URI.
+ * Live HTTPS page that Coinbase Wallet’s dapp browser can load and then call
+ * `eth_sendTransaction` for Base USDC.transfer (address + amount visible).
+ * Always use the production `/app/` host — embedded OTA origins are not public HTTPS.
+ */
+const RECEIVE_WALLET_SEND_PAGE = 'https://beamio.app/app/receive-wallet-send.html'
+
+/**
+ * Coinbase Wallet / Base app open URI.
  *
  * Never open raw EIP-681 (`ethereum:…`) for this brand: on iOS several apps (e.g. Tangem)
  * register the `ethereum` scheme, so `UIApplication.open` can prompt
  * “Beamio wants to open Tangem” even when the user tapped Coinbase Wallet.
  *
- * Also never wrap EIP-681 in `https://go.cb-w.com/dapp?cb_url=` / `cbwallet://dapp?url=` —
- * those only load **https** dapp pages and spin forever on `ethereum:`.
+ * Never wrap EIP-681 in `go.cb-w.com/dapp?cb_url=` — that endpoint only loads **https**
+ * pages and spins forever on `ethereum:`.
  *
- * Use Coinbase’s owned universal link so the shell always wakes Coinbase Wallet.
- * Prefill of address / amount / asset is best-effort (Coinbase does not document
- * stable send query params); the Receive status sheet still listens for USDC.
+ * `go.cb-w.com/send?address=&amount=` wakes Coinbase but ignores query params
+ * (coinbase-wallet-sdk#1679). Instead open Coinbase’s dapp browser on our HTTPS
+ * handoff page, which shows the Beamio EOA + amount and requests USDC transfer.
  */
 function coinbaseWalletSendUrl(eoa: string, amount6?: bigint): string {
-	const params = new URLSearchParams({
-		address: eoa,
-		asset: 'USDC',
-		chainId: String(BASE_MAINNET_CHAIN_ID),
-	})
+	const params = new URLSearchParams({ to: eoa })
 	if (amount6 != null && amount6 > 0n) {
-		params.set('amount', ethers.formatUnits(amount6, 6))
+		params.set('amount6', amount6.toString())
 	}
-	return `https://go.cb-w.com/send?${params.toString()}`
+	const pageUrl = `${RECEIVE_WALLET_SEND_PAGE}?${params.toString()}`
+	return `https://go.cb-w.com/dapp?cb_url=${encodeURIComponent(pageUrl)}`
 }
 
 function okxWalletDownloadUrl(eoa: string, amount6?: bigint): string {

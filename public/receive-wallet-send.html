@@ -203,8 +203,14 @@
 			 * - EIP-2098 compact (64 bytes / 128 hex)
 			 * - EIP-155 v with Base chainId (132+ hex: r||s||0x422d) — r may start with zeros
 			 * - high-s (non-canonical) 65-byte ECDSA
+			 * - ERC-6492 wraps (~1218 hex, leading 0x0000… + Multicall3) from Smart Wallet
 			 * Normalize to 0x + 130 hex (r||s||v) with low-s and v in {27,28}.
 			 */
+			var ERC6492_MAGIC =
+				'6492649264926492649264926492649264926492649264926492649264926492'
+			var SMART_WALLET_SIG_HINT =
+				'This wallet returned a Smart Wallet signature. Gasless USDC receive needs an EOA. Open Coinbase → switch to your private key wallet, or send USDC directly to your Beamio address.'
+
 			function bytesToHex(bytes) {
 				var out = '0x'
 				for (var i = 0; i < bytes.length; i++) {
@@ -219,6 +225,77 @@
 				if (n === 27 || n === 28) return n
 				if (n >= 35) return 27 + ((n - 35) % 2)
 				return null
+			}
+			function isErc6492Hex(hex) {
+				var body = String(hex || '').replace(/^0x/i, '').toLowerCase()
+				return body.length >= 256 && body.slice(-64) === ERC6492_MAGIC
+			}
+			function unwrapErc6492(hex) {
+				var body = String(hex || '').replace(/^0x/i, '').toLowerCase()
+				if (!isErc6492Hex('0x' + body)) return null
+				var encoded = body.slice(0, -64)
+				if (encoded.length < 192 || encoded.length % 2 !== 0) return null
+				var sigOffset = parseInt(encoded.slice(128, 192), 16)
+				if (!Number.isFinite(sigOffset) || sigOffset < 96) return null
+				var sigOffsetHex = sigOffset * 2
+				if (sigOffsetHex + 64 > encoded.length) return null
+				var sigLen = parseInt(encoded.slice(sigOffsetHex, sigOffsetHex + 64), 16)
+				if (!Number.isFinite(sigLen) || sigLen <= 0 || sigLen > 2048) return null
+				var sigStart = sigOffsetHex + 64
+				var sigEnd = sigStart + sigLen * 2
+				if (sigEnd > encoded.length) return null
+				var inner = encoded.slice(sigStart, sigEnd)
+				if (inner.length !== sigLen * 2 || !/^[0-9a-f]+$/.test(inner)) return null
+				return '0x' + inner
+			}
+			function normalizeEcdsaHexBody(hexIn) {
+				var hex = String(hexIn || '').trim()
+				if (!hex) return null
+				if (!hex.startsWith('0x') && !hex.startsWith('0X')) hex = '0x' + hex
+				if (!/^0x[0-9a-fA-F]+$/.test(hex)) return null
+				if (isErc6492Hex(hex)) {
+					var unwrapped = unwrapErc6492(hex)
+					if (!unwrapped) return null
+					hex = unwrapped
+					if (isErc6492Hex(hex)) {
+						var nested = unwrapErc6492(hex)
+						if (!nested) return null
+						hex = nested
+					}
+				}
+				var body = hex.slice(2)
+				var rHex
+				var sBig
+				var vNum
+				if (body.length === 128) {
+					rHex = body.slice(0, 64)
+					var yParityAndS = BigInt('0x' + body.slice(64, 128))
+					var yParity = Number((yParityAndS >> BigInt(255)) & BigInt(1))
+					sBig = yParityAndS & ((BigInt(1) << BigInt(255)) - BigInt(1))
+					vNum = 27 + yParity
+				} else if (body.length === 130) {
+					rHex = body.slice(0, 64)
+					sBig = BigInt('0x' + body.slice(64, 128))
+					vNum = parseInt(body.slice(128, 130), 16)
+				} else if (body.length >= 132 && body.length <= 194 && body.length % 2 === 0) {
+					rHex = body.slice(0, 64)
+					sBig = BigInt('0x' + body.slice(64, 128))
+					vNum = parseInt(body.slice(128), 16)
+				} else {
+					return null
+				}
+				var v27 = recoverV27(vNum)
+				if (v27 == null) return null
+				vNum = v27
+				if (sBig <= BigInt(0) || sBig >= SECP256K1_N) return null
+				if (BigInt('0x' + rHex) === BigInt(0)) return null
+				if (sBig > SECP256K1_HALF_N) {
+					sBig = SECP256K1_N - sBig
+					vNum = vNum === 27 ? 28 : 27
+				}
+				var sHex = padHex64(sBig.toString(16))
+				if (!sHex) return null
+				return '0x' + rHex.toLowerCase() + sHex + (vNum === 28 ? '1c' : '1b')
 			}
 			function normalizeWalletSignature(raw) {
 				var candidate = raw
@@ -273,45 +350,24 @@
 					}
 				}
 				if (typeof candidate !== 'string') return null
-				var hex = candidate.trim()
-				if (!hex) return null
-				if (!hex.startsWith('0x') && !hex.startsWith('0X')) hex = '0x' + hex
-				if (!/^0x[0-9a-fA-F]+$/.test(hex)) return null
-				var body = hex.slice(2)
-				var rHex
-				var sBig
-				var vNum
-				if (body.length === 128) {
-					/* EIP-2098 compact: r || yParityAndS */
-					rHex = body.slice(0, 64)
-					var yParityAndS = BigInt('0x' + body.slice(64, 128))
-					var yParity = Number((yParityAndS >> BigInt(255)) & BigInt(1))
-					sBig = yParityAndS & ((BigInt(1) << BigInt(255)) - BigInt(1))
-					vNum = 27 + yParity
-				} else if (body.length === 130) {
-					rHex = body.slice(0, 64)
-					sBig = BigInt('0x' + body.slice(64, 128))
-					vNum = parseInt(body.slice(128, 130), 16)
-				} else if (body.length >= 132 && body.length <= 194 && body.length % 2 === 0) {
-					/* Coinbase EIP-155 v (Base → 132+ hex). Leading-zero r is valid. */
-					rHex = body.slice(0, 64)
-					sBig = BigInt('0x' + body.slice(64, 128))
-					vNum = parseInt(body.slice(128), 16)
-				} else {
-					return null
+				return normalizeEcdsaHexBody(candidate)
+			}
+			function invalidSigMessage(rawSig) {
+				var hex =
+					typeof rawSig === 'string'
+						? rawSig
+						: rawSig && typeof rawSig.signature === 'string'
+							? rawSig.signature
+							: ''
+				if (hex && isErc6492Hex(hex)) return SMART_WALLET_SIG_HINT
+				if (typeof hex === 'string' && hex.replace(/^0x/i, '').length > 194) {
+					return SMART_WALLET_SIG_HINT
 				}
-				var v27 = recoverV27(vNum)
-				if (v27 == null) return null
-				vNum = v27
-				if (sBig <= BigInt(0) || sBig >= SECP256K1_N) return null
-				if (BigInt('0x' + rHex) === BigInt(0)) return null
-				if (sBig > SECP256K1_HALF_N) {
-					sBig = SECP256K1_N - sBig
-					vNum = vNum === 27 ? 28 : 27
-				}
-				var sHex = padHex64(sBig.toString(16))
-				if (!sHex) return null
-				return '0x' + rHex.toLowerCase() + sHex + (vNum === 28 ? '1c' : '1b')
+				var preview =
+					typeof rawSig === 'string'
+						? rawSig.slice(0, 18) + '…(len=' + rawSig.length + ')'
+						: Object.prototype.toString.call(rawSig)
+				return 'Invalid signature from wallet (' + preview + ')'
 			}
 
 			function isNativeShell() {
@@ -608,11 +664,7 @@
 					/* Wallet returned a value — never issue another sign prompt. */
 					var signature = normalizeWalletSignature(rawSig)
 					if (!signature) {
-						var preview =
-							typeof rawSig === 'string'
-								? rawSig.slice(0, 18) + '…(len=' + rawSig.length + ')'
-								: Object.prototype.toString.call(rawSig)
-						throw new Error('Invalid signature from wallet (' + preview + ')')
+						throw new Error(invalidSigMessage(rawSig))
 					}
 					var authB64 = encodeAuthPayload({
 						from: from,

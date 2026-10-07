@@ -21,7 +21,9 @@ import {
 } from './mobileWalletApps'
 import {
 	type ReceiveUsdc3009Auth,
+	RECEIVE_USDC_SMART_WALLET_SIG_HINT,
 	buildReceiveUsdc3009TypedData,
+	isErc6492SignatureHex,
 	normalizeReceiveUsdcWalletSignature,
 } from './receiveUsdc3009'
 
@@ -517,6 +519,15 @@ async function signUsdc3009FromInjected(
 	}
 	const signature = normalizeReceiveUsdcWalletSignature(raw)
 	if (!signature) {
+		const hex =
+			typeof raw === 'string'
+				? raw
+				: raw && typeof raw === 'object' && typeof (raw as { signature?: string }).signature === 'string'
+					? (raw as { signature: string }).signature
+					: ''
+		if (hex && (isErc6492SignatureHex(hex) || hex.replace(/^0x/i, '').length > 194)) {
+			throw new Error(RECEIVE_USDC_SMART_WALLET_SIG_HINT)
+		}
 		throw new Error('Wallet did not return a valid signature')
 	}
 	return {

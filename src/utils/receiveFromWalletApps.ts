@@ -21,7 +21,6 @@ import {
 } from './mobileWalletApps'
 import {
 	type ReceiveUsdc3009Auth,
-	RECEIVE_USDC_SMART_WALLET_SIG_HINT,
 	buildReceiveUsdc3009TypedData,
 	isErc6492SignatureHex,
 	normalizeReceiveUsdcWalletSignature,
@@ -529,7 +528,10 @@ async function signUsdc3009FromInjected(
 					? (raw as { signature: string }).signature
 					: ''
 		if (hex && (isErc6492SignatureHex(hex) || hex.replace(/^0x/i, '').length > 194)) {
-			throw new Error(RECEIVE_USDC_SMART_WALLET_SIG_HINT)
+			/* Smart Wallet / ERC-6492 cannot EIP-3009; handoff HTML sends USDC.transfer. */
+			throw new Error(
+				'This wallet is a Smart Wallet. Open Coinbase again from Receive — Beamio will send a Base USDC transfer instead of a gasless authorization.',
+			)
 		}
 		throw new Error('Wallet did not return a valid signature')
 	}

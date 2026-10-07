@@ -493,42 +493,31 @@ async function signUsdc3009FromInjected(
 			TransferWithAuthorization: typed.types.TransferWithAuthorization,
 		},
 	}
-	const attempts: Array<() => Promise<unknown>> = [
-		() =>
-			provider.request({
-				method: 'eth_signTypedData_v4',
-				params: [from, JSON.stringify(typed)],
-			}),
-		() =>
-			provider.request({
-				method: 'eth_signTypedData_v4',
-				params: [from, typed],
-			}),
-		() =>
-			provider.request({
+	/*
+	 * One primary eth_signTypedData_v4 prompt. Extra strategies reopen Coinbase's
+	 * sign sheet after the user already approved. Fallback only when the first
+	 * request throws before a signature is returned (never after a raw response).
+	 */
+	let raw: unknown
+	try {
+		raw = await provider.request({
+			method: 'eth_signTypedData_v4',
+			params: [from, JSON.stringify(typed)],
+		})
+	} catch (firstErr) {
+		if (isUserRejectedRequest(firstErr)) throw firstErr
+		try {
+			raw = await provider.request({
 				method: 'eth_signTypedData_v4',
 				params: [from, JSON.stringify(typedWithDomain)],
-			}),
-		() =>
-			provider.request({
-				method: 'eth_signTypedData_v4',
-				params: [from, typedWithDomain],
-			}),
-	]
-	let signature: string | null = null
-	let lastErr: unknown = null
-	for (const attempt of attempts) {
-		try {
-			const raw = await attempt()
-			signature = normalizeReceiveUsdcWalletSignature(raw)
-			if (signature) break
-		} catch (err) {
-			lastErr = err
+			})
+		} catch (secondErr) {
+			throw secondErr
 		}
 	}
+	const signature = normalizeReceiveUsdcWalletSignature(raw)
 	if (!signature) {
-		if (lastErr) throw lastErr
-		throw new Error('Wallet did not return a signature')
+		throw new Error('Wallet did not return a valid signature')
 	}
 	return {
 		from: ethers.getAddress(from),

@@ -325,13 +325,61 @@
 				return false
 			}
 
+			var SIGN_DONE_KEY = 'beamio:receiveUsdc3009:signed'
+			var signState = { inFlight: false, done: false }
+
+			function rememberSignedAuth(authB64) {
+				try {
+					sessionStorage.setItem(
+						SIGN_DONE_KEY,
+						JSON.stringify({ to: toRaw, amount6: amount6Raw, authB64: authB64, at: Date.now() })
+					)
+				} catch (_) {}
+			}
+
+			function loadSignedAuth() {
+				try {
+					var raw = sessionStorage.getItem(SIGN_DONE_KEY)
+					if (!raw) return null
+					var parsed = JSON.parse(raw)
+					if (!parsed || typeof parsed.authB64 !== 'string') return null
+					if (parsed.to !== toRaw || String(parsed.amount6) !== String(amount6Raw)) return null
+					/* Stale after 10 minutes — allow a fresh sign. */
+					if (typeof parsed.at === 'number' && Date.now() - parsed.at > 10 * 60 * 1000) {
+						sessionStorage.removeItem(SIGN_DONE_KEY)
+						return null
+					}
+					return parsed.authB64
+				} catch (_) {
+					return null
+				}
+			}
+
+			function isUserRejected(err) {
+				var code = err && err.code
+				var msg = err && typeof err.message === 'string' ? err.message : ''
+				return code === 4001 || /user rejected|user denied|rejected the request/i.test(msg)
+			}
+
 			function returnToBeamio(authB64) {
+				signState.done = true
+				rememberSignedAuth(authB64)
 				var q = 'receiveUsdcAuth=' + encodeURIComponent(authB64)
 				var nativeUrl = 'beamio://open?' + q
 				var webUrl = 'https://beamio.app/app/?' + q
 				setStatus('Signed. Returning to Beamio…', 'ok')
-				btn.textContent = 'Returning…'
-				btn.disabled = true
+				btn.textContent = 'Open Beamio'
+				btn.disabled = false
+				btn.onclick = function () {
+					if (isNativeShell()) {
+						window.location.href = nativeUrl
+						window.setTimeout(function () {
+							window.location.href = webUrl
+						}, 400)
+					} else {
+						window.location.href = webUrl
+					}
+				}
 				if (isNativeShell()) {
 					window.location.href = nativeUrl
 					window.setTimeout(function () {
@@ -451,6 +499,12 @@
 			}
 
 			async function sign() {
+				if (signState.done || signState.inFlight) return
+				var existing = loadSignedAuth()
+				if (existing) {
+					returnToBeamio(existing)
+					return
+				}
 				var provider = getProvider()
 				if (!provider || typeof provider.request !== 'function') {
 					setStatus('Open this page inside your wallet to sign.', 'err')
@@ -458,6 +512,7 @@
 					btn.textContent = 'Try again'
 					return
 				}
+				signState.inFlight = true
 				btn.disabled = true
 				btn.textContent = 'Sign in wallet…'
 				setStatus('Requesting signature…')
@@ -481,10 +536,6 @@
 					var validBefore = String(nowSec + AUTH_TTL_SEC)
 					var nonce = randomBytes32()
 					var fromChecksum = from
-					try {
-						/* ethers.getAddress-style checksum when available via provider; else keep as-is. */
-						if (typeof from === 'string' && from.length === 42) fromChecksum = from
-					} catch (_) {}
 					var transferTypes = [
 						{ name: 'from', type: 'address' },
 						{ name: 'to', type: 'address' },
@@ -492,12 +543,6 @@
 						{ name: 'validAfter', type: 'uint256' },
 						{ name: 'validBefore', type: 'uint256' },
 						{ name: 'nonce', type: 'bytes32' },
-					]
-					var eip712DomainTypes = [
-						{ name: 'name', type: 'string' },
-						{ name: 'version', type: 'string' },
-						{ name: 'chainId', type: 'uint256' },
-						{ name: 'verifyingContract', type: 'address' },
 					]
 					var message = {
 						from: fromChecksum,
@@ -513,7 +558,11 @@
 						chainId: BASE_CHAIN_ID,
 						verifyingContract: USDC,
 					}
-					/* MetaMask omits EIP712Domain; some Coinbase builds need it or the object form. */
+					/*
+					 * One primary prompt only. Extra eth_signTypedData_v4 attempts reopen Coinbase's
+					 * sign sheet after the user already approved (infinite-loop feel).
+					 * Fallback runs only when the first request throws before a signature is returned.
+					 */
 					var typedWithoutDomain = {
 						types: { TransferWithAuthorization: transferTypes },
 						primaryType: 'TransferWithAuthorization',
@@ -522,60 +571,46 @@
 					}
 					var typedWithDomain = {
 						types: {
-							EIP712Domain: eip712DomainTypes,
+							EIP712Domain: [
+								{ name: 'name', type: 'string' },
+								{ name: 'version', type: 'string' },
+								{ name: 'chainId', type: 'uint256' },
+								{ name: 'verifyingContract', type: 'address' },
+							],
 							TransferWithAuthorization: transferTypes,
 						},
 						primaryType: 'TransferWithAuthorization',
 						domain: domain,
 						message: message,
 					}
-					var attempts = [
-						function () {
-							return provider.request({
-								method: 'eth_signTypedData_v4',
-								params: [from, JSON.stringify(typedWithoutDomain)],
-							})
-						},
-						function () {
-							return provider.request({
-								method: 'eth_signTypedData_v4',
-								params: [from, typedWithoutDomain],
-							})
-						},
-						function () {
-							return provider.request({
+					var rawSig = null
+					var lastErr = null
+					try {
+						rawSig = await provider.request({
+							method: 'eth_signTypedData_v4',
+							params: [from, JSON.stringify(typedWithoutDomain)],
+						})
+					} catch (firstErr) {
+						lastErr = firstErr
+						if (isUserRejected(firstErr)) throw firstErr
+						try {
+							rawSig = await provider.request({
 								method: 'eth_signTypedData_v4',
 								params: [from, JSON.stringify(typedWithDomain)],
 							})
-						},
-						function () {
-							return provider.request({
-								method: 'eth_signTypedData_v4',
-								params: [from, typedWithDomain],
-							})
-						},
-					]
-					var rawSig = null
-					var signature = null
-					var lastErr = null
-					for (var ai = 0; ai < attempts.length; ai++) {
-						try {
-							rawSig = await attempts[ai]()
-							signature = normalizeWalletSignature(rawSig)
-							if (signature) break
-						} catch (signErr) {
-							lastErr = signErr
-							rawSig = null
+							lastErr = null
+						} catch (secondErr) {
+							lastErr = secondErr
+							if (isUserRejected(secondErr)) throw secondErr
+							throw secondErr
 						}
 					}
+					/* Wallet returned a value — never issue another sign prompt. */
+					var signature = normalizeWalletSignature(rawSig)
 					if (!signature) {
-						if (lastErr && !rawSig) throw lastErr
 						var preview =
 							typeof rawSig === 'string'
-								? rawSig.slice(0, 18) +
-									'…(len=' +
-									rawSig.length +
-									')'
+								? rawSig.slice(0, 18) + '…(len=' + rawSig.length + ')'
 								: Object.prototype.toString.call(rawSig)
 						throw new Error('Invalid signature from wallet (' + preview + ')')
 					}
@@ -590,9 +625,9 @@
 					})
 					returnToBeamio(authB64)
 				} catch (err) {
+					signState.inFlight = false
 					var msg = err && typeof err.message === 'string' ? err.message : ''
-					var code = err && err.code
-					if (code === 4001 || /user rejected|user denied|rejected the request/i.test(msg)) {
+					if (isUserRejected(err)) {
 						setStatus('Signature rejected. Tap below to try again.', 'err')
 					} else {
 						setStatus(msg || 'Could not sign. Tap below to try again.', 'err')
@@ -606,20 +641,30 @@
 			btn.textContent = 'Sign and return to Beamio'
 			btn.addEventListener('click', function () { void sign() })
 
-			var tries = 0
-			function maybeAuto() {
-				tries += 1
-				if (getProvider()) {
-					void sign()
-					return
+			var existingOnLoad = loadSignedAuth()
+			if (existingOnLoad) {
+				returnToBeamio(existingOnLoad)
+			} else {
+				var tries = 0
+				function maybeAuto() {
+					if (signState.done || signState.inFlight) return
+					if (loadSignedAuth()) {
+						returnToBeamio(loadSignedAuth())
+						return
+					}
+					tries += 1
+					if (getProvider()) {
+						void sign()
+						return
+					}
+					if (tries < 40) {
+						window.setTimeout(maybeAuto, 150)
+					} else {
+						setStatus('Tap below to sign in your wallet.', '')
+					}
 				}
-				if (tries < 40) {
-					window.setTimeout(maybeAuto, 150)
-				} else {
-					setStatus('Tap below to sign in your wallet.', '')
-				}
+				window.setTimeout(maybeAuto, 80)
 			}
-			window.setTimeout(maybeAuto, 80)
 		})()
 	</script>
 </body>

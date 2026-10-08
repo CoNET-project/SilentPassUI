@@ -123,6 +123,10 @@
 			<div class="amount" id="amountLabel">—</div>
 		</div>
 		<div class="card">
+			<div class="row-label">From (signing wallet)</div>
+			<div class="addr" id="fromLabel">—</div>
+		</div>
+		<div class="card">
 			<div class="row-label">To (Beamio EOA)</div>
 			<div class="addr" id="toLabel">—</div>
 		</div>
@@ -563,16 +567,32 @@
 			var AUTH_ALREADY_USED_RE = /already used|authorization is used|duplicate/i
 			var submitState = { inFlight: false, done: false }
 
-			function showSubmitRetry(authB64, statusOk) {
+			function showSubmitRetry(authB64, statusOk, opts) {
 				if (document.getElementById('retrySubmitBtn')) return
+				var resign = !!(opts && opts.resign)
 				var retry = document.createElement('button')
 				retry.type = 'button'
 				retry.id = 'retrySubmitBtn'
-				retry.textContent = 'Retry payment'
+				retry.textContent = resign ? 'Sign again' : 'Retry payment'
 				retry.addEventListener('click', function () {
 					try {
 						retry.parentNode && retry.parentNode.removeChild(retry)
 					} catch (_) {}
+					if (resign) {
+						try {
+							sessionStorage.removeItem(SIGN_DONE_KEY)
+						} catch (_) {}
+						signState.done = false
+						signState.inFlight = false
+						submitState.inFlight = false
+						submitState.done = false
+						try {
+							btn.disabled = false
+							btn.textContent = 'Sign and return to Beamio'
+						} catch (_) {}
+						sign()
+						return
+					}
 					submitAuthFromWalletBrowser(authB64, statusOk)
 				})
 				var statusEl = document.getElementById('status')
@@ -616,8 +636,16 @@
 							showReturnGuidance((statusOk || 'Signed.') + ' Payment submitted.')
 							return
 						}
-						setStatus('Payment was not submitted: ' + (errText || 'HTTP ' + r.res.status) + '. Tap Retry payment.', 'err')
-						showSubmitRetry(authB64, statusOk)
+						var resign =
+							/signer mismatch|EIP-3009 signer/i.test(errText) ||
+							/recovered=.*from=/i.test(errText)
+						setStatus(
+							'Payment was not submitted: ' +
+								(errText || 'HTTP ' + r.res.status) +
+								(resign ? '. Tap Sign again with the same account shown in MetaMask.' : '. Tap Retry payment.'),
+							'err',
+						)
+						showSubmitRetry(authB64, statusOk, resign ? { resign: true } : null)
 					})
 					.catch(function (e) {
 						submitState.inFlight = false
@@ -964,6 +992,21 @@
 				return { name: name, version: version }
 			}
 
+			async function resolveSigningAccount(provider) {
+				await provider.request({ method: 'eth_requestAccounts' })
+				var selected =
+					typeof provider.selectedAddress === 'string' ? provider.selectedAddress : ''
+				if (isAddress(selected)) return selected
+				try {
+					var accounts = await provider.request({ method: 'eth_accounts' })
+					var a0 = Array.isArray(accounts) && typeof accounts[0] === 'string' ? accounts[0] : ''
+					if (isAddress(a0)) return a0
+				} catch (_) {}
+				var requested = await provider.request({ method: 'eth_requestAccounts' })
+				var r0 = Array.isArray(requested) && typeof requested[0] === 'string' ? requested[0] : ''
+				return r0
+			}
+
 			async function sign() {
 				if (signState.done || signState.inFlight) return
 				var existing = loadSignedResult()
@@ -983,9 +1026,12 @@
 				btn.textContent = 'Connecting…'
 				setStatus('Connecting wallet…')
 				try {
-					var accounts = await provider.request({ method: 'eth_requestAccounts' })
-					var from = Array.isArray(accounts) && typeof accounts[0] === 'string' ? accounts[0] : ''
+					var from = await resolveSigningAccount(provider)
 					if (!isAddress(from)) throw new Error('No wallet account')
+					try {
+						var fromEl = document.getElementById('fromLabel')
+						if (fromEl) fromEl.textContent = from
+					} catch (_) {}
 					await ensureBase(provider)
 
 					if (await shouldPreferUsdcTransfer(provider, from)) {

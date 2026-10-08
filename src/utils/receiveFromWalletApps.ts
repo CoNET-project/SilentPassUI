@@ -230,7 +230,7 @@ export function parseReceiveUsdcAmount6(
  * Always use the production `/app/` host — embedded OTA origins are not public HTTPS.
  */
 const RECEIVE_WALLET_SEND_PAGE = 'https://beamio.app/app/receive-wallet-send-sw.html'
-const RECEIVE_WALLET_HANDOFF_CACHE_TAG = 'direct-submit-return'
+const RECEIVE_WALLET_HANDOFF_CACHE_TAG = 'mm-signer-cold-fix'
 
 /** Cache-bust Coinbase in-app WebView (stale handoff showed SMART/EOA error). */
 function receiveWalletHandoffPageUrl(eoa: string, amount6?: bigint): string {
@@ -275,7 +275,9 @@ function receiveWalletNativeSchemeUrlByBrand(
 		case 'base':
 			return coinbaseWalletSendUrl(eoa, amount6)
 		case 'metamask':
-			return `https://metamask.app.link/dapp/${handoff.replace(/^https:\/\//i, '')}`
+			// Custom scheme delivers the dapp on cold start. Universal Links often only
+			// wake MetaMask home without opening the handoff when MM was killed.
+			return `metamask://dapp/${handoff}`
 		case 'okx':
 			return `okx://wallet/dapp/url?dappUrl=${encodeURIComponent(handoff)}`
 		case 'tp':
@@ -306,11 +308,15 @@ export function receiveWalletHttpsOpenUrl(
 	eoa: string,
 	amount6?: bigint,
 ): string {
+	const handoff = receiveWalletHandoffPageUrl(eoa, amount6)
 	switch (row.brandId) {
 		case 'base':
 			return coinbaseWalletSendUrl(eoa, amount6)
+		case 'metamask':
+			// Keep full https:// so MetaMask cold-starts into the handoff (not just the app home).
+			return `https://link.metamask.io/dapp/${handoff}`
 		default:
-			return receiveWalletHandoffPageUrl(eoa, amount6)
+			return handoff
 	}
 }
 

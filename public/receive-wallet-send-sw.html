@@ -122,7 +122,7 @@
 		</div>
 		<p id="status">Preparing signature…</p>
 		<button type="button" id="sendBtn" disabled>Sign and return to Beamio</button>
-		<p class="hint">After you sign, Beamio opens via the app link when installed. If you stay in this wallet browser, tap Open Beamio. Your Main Wallet USDC updates when Beamio confirms the transfer.</p>
+		<p class="hint">After you sign, tap Open Beamio to return (wallet browsers block automatic app opens). Your Main Wallet USDC updates when Beamio confirms the transfer.</p>
 	</main>
 	<script>
 		(function () {
@@ -517,7 +517,7 @@
 				return code === 4001 || /user rejected|user denied|rejected the request/i.test(msg)
 			}
 
-			function navigateBackToBeamio(query) {
+			function navigateBackToBeamio(query, statusOk) {
 				signState.done = true
 				var nativeUrl = 'beamio://open?' + query
 				var webUrl = 'https://beamio.app/app/?' + query
@@ -525,8 +525,8 @@
 				btn.textContent = 'Open Beamio'
 				btn.disabled = false
 				btn.onclick = function () {
+					// User gesture — MetaMask/Coinbase allow opening the app from a tap.
 					tryOpenBeamioNative(nativeUrl)
-					// Plain browser / desktop only: soft HTTPS fallback if the app is not installed.
 					if (!walletBrowser && !isNativeShell()) {
 						window.setTimeout(function () {
 							if (document.visibilityState === 'visible') {
@@ -535,8 +535,21 @@
 						}, 1200)
 					}
 				}
+				/*
+				 * MetaMask (and some other wallet WebViews) block programmatic
+				 * beamio:// opens with "blocked from automatically opening an
+				 * external application". Only auto-open outside wallet browsers.
+				 */
+				if (walletBrowser) {
+					setStatus(
+						(statusOk || 'Signed.') + ' Tap Open Beamio to continue.',
+						'ok'
+					)
+					return
+				}
+				setStatus((statusOk || 'Signed.') + ' Opening Beamio…', 'ok')
 				tryOpenBeamioNative(nativeUrl)
-				if (!walletBrowser && !isNativeShell()) {
+				if (!isNativeShell()) {
 					window.setTimeout(function () {
 						if (document.visibilityState === 'visible') {
 							window.location.href = webUrl
@@ -547,14 +560,18 @@
 
 			function returnToBeamioAuth(authB64) {
 				rememberSignedResult({ authB64: authB64 })
-				setStatus('Signed. Returning to Beamio…', 'ok')
-				navigateBackToBeamio('receiveUsdcAuth=' + encodeURIComponent(authB64))
+				navigateBackToBeamio(
+					'receiveUsdcAuth=' + encodeURIComponent(authB64),
+					'Signed.'
+				)
 			}
 
 			function returnToBeamioTx(txHash) {
 				rememberSignedResult({ txHash: txHash })
-				setStatus('USDC sent. Returning to Beamio…', 'ok')
-				navigateBackToBeamio('receiveUsdcTx=' + encodeURIComponent(txHash))
+				navigateBackToBeamio(
+					'receiveUsdcTx=' + encodeURIComponent(txHash),
+					'USDC sent.'
+				)
 			}
 
 			function returnSignedResult(result) {

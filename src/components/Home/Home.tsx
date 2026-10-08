@@ -117,6 +117,14 @@ import {
 	type CoinbaseOnrampStatus,
 } from '@/utils/coinbaseOnrampLastAmountLocalCache'
 import {
+	COINBASE_WALLET_FREE_SEND_OPEN_URL,
+	clearCoinbaseOnrampWaitingSession,
+	loadCoinbaseOnrampWaitingSession,
+	resolveCoinbaseOnrampWaitingBootstrap,
+	saveCoinbaseOnrampWaitingSession,
+	type CoinbaseOnrampWaitingSession,
+} from '@/utils/coinbaseOnrampWaitingSession'
+import {
 	readBaseUsdcBalance6,
 	waitForBaseUsdcArrival,
 } from '@/utils/baseUsdcArrivalWatch'
@@ -631,9 +639,15 @@ const Home = (_props: HomeProps) => {
 		''|'BeamioAlphaDropConfirm'|'BeamioTestBalance'|'OnrampOfframpGuide'|'搜索'|'BeamioContactProfilePreview'|'CoinbaseRamps'|'PayMe'>('')
 	const [showPayMeSheet, setShowPayMeSheet] = useState(false)
 	const [showMerchantGiftSheet, setShowMerchantGiftSheet] = useState(false)
+	/** Sync LS hydrate so Coinbase return remount shows waiting overlay on first paint (no /HOME flash). */
+	const [coinbaseWaitingBoot] = useState<CoinbaseOnrampWaitingSession | null>(() =>
+		resolveCoinbaseOnrampWaitingBootstrap(profiles?.[0]?.keyID || myAddress || null),
+	)
 	/** Home Pay/Receive 底栏（对齐 renderAction Pay|Receive 交互） */
-	const [showPayReceiveSheet, setShowPayReceiveSheet] = useState(false)
-	const [payReceiveView, setPayReceiveView] = useState<'fund' | 'tabs' | 'qr' | 'wallets' | 'wallet-amount' | 'coinbase'>('fund')
+	const [showPayReceiveSheet, setShowPayReceiveSheet] = useState(() => Boolean(coinbaseWaitingBoot))
+	const [payReceiveView, setPayReceiveView] = useState<'fund' | 'tabs' | 'qr' | 'wallets' | 'wallet-amount' | 'coinbase'>(
+		'fund',
+	)
 	const [payReceiveQrMode, setPayReceiveQrMode] = useState<'pay' | 'receive'>('receive')
 	const [receiveWalletCopied, setReceiveWalletCopied] = useState(false)
 	const [installedReceiveWallets, setInstalledReceiveWallets] = useState<ReceiveWalletAppRow[]>([])
@@ -648,16 +662,26 @@ const Home = (_props: HomeProps) => {
 	const [receiveWalletStatusError, setReceiveWalletStatusError] = useState('')
 	const [receiveWalletNewBalance, setReceiveWalletNewBalance] = useState('')
 	const receiveWalletAbortRef = useRef<AbortController | null>(null)
-	const [coinbaseOnrampAmount, setCoinbaseOnrampAmount] = useState(COINBASE_ONRAMP_DEFAULT_AMOUNT)
-	const [coinbaseOnrampLastAmount, setCoinbaseOnrampLastAmount] = useState(COINBASE_ONRAMP_DEFAULT_AMOUNT)
+	const [coinbaseOnrampAmount, setCoinbaseOnrampAmount] = useState(
+		() => coinbaseWaitingBoot?.amountHuman ?? COINBASE_ONRAMP_DEFAULT_AMOUNT,
+	)
+	const [coinbaseOnrampLastAmount, setCoinbaseOnrampLastAmount] = useState(
+		() => coinbaseWaitingBoot?.amountHuman ?? COINBASE_ONRAMP_DEFAULT_AMOUNT,
+	)
 	const [coinbaseOnrampPayMethod, setCoinbaseOnrampPayMethod] = useState<CoinbaseOnrampPayMethod>(
-		COINBASE_ONRAMP_DEFAULT_PAY_METHOD,
+		() => coinbaseWaitingBoot?.payMethod ?? COINBASE_ONRAMP_DEFAULT_PAY_METHOD,
 	)
 	const [coinbaseOnrampPayMethodPickerOpen, setCoinbaseOnrampPayMethodPickerOpen] = useState(false)
 	const [coinbaseOnrampError, setCoinbaseOnrampError] = useState('')
 	const [coinbaseOnrampOpening, setCoinbaseOnrampOpening] = useState(false)
-	const [coinbaseOnrampCheckoutUrl, setCoinbaseOnrampCheckoutUrl] = useState('')
-	const [coinbaseOnrampStatus, setCoinbaseOnrampStatus] = useState<CoinbaseOnrampStatus>('idle')
+	const [coinbaseOnrampCheckoutUrl, setCoinbaseOnrampCheckoutUrl] = useState(
+		() =>
+			coinbaseWaitingBoot?.checkoutUrl ||
+			(coinbaseWaitingBoot?.payMethod === 'usdc' ? COINBASE_WALLET_FREE_SEND_OPEN_URL : ''),
+	)
+	const [coinbaseOnrampStatus, setCoinbaseOnrampStatus] = useState<CoinbaseOnrampStatus>(() =>
+		coinbaseWaitingBoot ? 'waiting' : 'idle',
+	)
 	const [coinbaseOnrampStatusError, setCoinbaseOnrampStatusError] = useState('')
 	const [coinbaseOnrampNewBalance, setCoinbaseOnrampNewBalance] = useState('')
 	const coinbaseOnrampAbortRef = useRef<AbortController | null>(null)
@@ -1203,6 +1227,8 @@ const Home = (_props: HomeProps) => {
 	const resetPayReceiveAuxState = useCallback(() => {
 		abortCoinbaseOnrampWatch()
 		abortReceiveWalletWatch()
+		const eoa = receiveWalletEoa || myAddress
+		if (eoa) clearCoinbaseOnrampWaitingSession(eoa)
 		setReceiveWalletCopied(false)
 		setPayRelayQRPayload(null)
 		setPayRelayQRLoading(false)
@@ -1222,7 +1248,7 @@ const Home = (_props: HomeProps) => {
 		setCoinbaseOnrampStatusError('')
 		setCoinbaseOnrampNewBalance('')
 		setCoinbaseOnrampPayMethodPickerOpen(false)
-	}, [abortCoinbaseOnrampWatch, abortReceiveWalletWatch])
+	}, [abortCoinbaseOnrampWatch, abortReceiveWalletWatch, myAddress, receiveWalletEoa])
 
 	const handleAddFunds = () => {
 		setPayReceiveView('fund')
@@ -1287,14 +1313,17 @@ const Home = (_props: HomeProps) => {
 	])
 
 	const closeCoinbaseOnrampCheckout = useCallback(() => {
+		const eoa = receiveWalletEoa || myAddress
 		if (coinbaseOnrampStatus === 'opening' || coinbaseOnrampStatus === 'waiting') {
 			abortCoinbaseOnrampWatch()
+			if (eoa) clearCoinbaseOnrampWaitingSession(eoa)
 			setCoinbaseOnrampOpening(false)
 			setCoinbaseOnrampStatus('canceled')
 			setCoinbaseOnrampStatusError('')
 			return
 		}
 		abortCoinbaseOnrampWatch()
+		if (eoa) clearCoinbaseOnrampWaitingSession(eoa)
 		setCoinbaseOnrampOpening(false)
 		setCoinbaseOnrampCheckoutUrl('')
 		setCoinbaseOnrampStatus('idle')
@@ -1304,7 +1333,7 @@ const Home = (_props: HomeProps) => {
 		setCoinbaseOnrampPayMethodPickerOpen(false)
 		setPayReceiveView('fund')
 		setPayReceiveQrMode('receive')
-	}, [abortCoinbaseOnrampWatch, coinbaseOnrampStatus])
+	}, [abortCoinbaseOnrampWatch, coinbaseOnrampStatus, myAddress, receiveWalletEoa])
 
 	const continueCoinbaseOnrampCheckout = useCallback(() => {
 		if (!coinbaseOnrampCheckoutUrl) return
@@ -1318,6 +1347,8 @@ const Home = (_props: HomeProps) => {
 
 	const openCoinbaseAmountView = useCallback(() => {
 		abortCoinbaseOnrampWatch()
+		const eoa = receiveWalletEoa || myAddress
+		if (eoa) clearCoinbaseOnrampWaitingSession(eoa)
 		const last = loadCoinbaseOnrampLastAmount(receiveWalletEoa)
 		setCoinbaseOnrampLastAmount(last)
 		setCoinbaseOnrampAmount(last)
@@ -1329,7 +1360,7 @@ const Home = (_props: HomeProps) => {
 		setCoinbaseOnrampStatusError('')
 		setCoinbaseOnrampNewBalance('')
 		setPayReceiveView('coinbase')
-	}, [abortCoinbaseOnrampWatch, receiveWalletEoa])
+	}, [abortCoinbaseOnrampWatch, myAddress, receiveWalletEoa])
 
 	const selectCoinbaseOnrampPayMethod = useCallback((method: CoinbaseOnrampPayMethod) => {
 		if (coinbaseOnrampOpening) return
@@ -1352,6 +1383,83 @@ const Home = (_props: HomeProps) => {
 		})
 		if (coinbaseOnrampError) setCoinbaseOnrampError('')
 	}, [coinbaseOnrampError, coinbaseOnrampOpening, receiveWalletEoa])
+
+	const runCoinbaseUsdcArrivalWatch = useCallback(
+		async (opts: {
+			address: string
+			baselineRaw: bigint
+			amountHuman: string
+			payMethod: CoinbaseOnrampPayMethod
+			checkoutUrl: string
+			abort: AbortController
+			startedAt?: number
+		}) => {
+			const { address, baselineRaw, amountHuman, payMethod, checkoutUrl, abort } = opts
+			saveCoinbaseOnrampWaitingSession({
+				eoa: address,
+				amountHuman,
+				payMethod,
+				baselineRaw: baselineRaw.toString(),
+				checkoutUrl,
+				startedAt: opts.startedAt ?? Date.now(),
+				status: 'waiting',
+			})
+			setCoinbaseOnrampStatus('waiting')
+			setCoinbaseOnrampOpening(false)
+			try {
+				const outcome = await waitForBaseUsdcArrival({
+					eoa: address,
+					baselineRaw,
+					signal: abort.signal,
+				})
+				if (abort.signal.aborted || outcome.status === 'cancelled') {
+					setCoinbaseOnrampStatus((prev) => (prev === 'canceled' ? prev : 'canceled'))
+					return
+				}
+				if (outcome.status === 'timeout') {
+					setCoinbaseOnrampStatus('error')
+					setCoinbaseOnrampStatusError(tu('coinbase_onramp_timeout'))
+					return
+				}
+				if (outcome.status === 'error') {
+					setCoinbaseOnrampStatus('error')
+					setCoinbaseOnrampStatusError(outcome.message || tu('coinbase_could_not_open'))
+					return
+				}
+				clearCoinbaseOnrampWaitingSession(address)
+				const display = Number.parseFloat(outcome.balanceDisplay)
+				setCoinbaseOnrampNewBalance(
+					Number.isFinite(display) ? display.toFixed(2) : outcome.balanceDisplay,
+				)
+				setCoinbaseOnrampStatus('success')
+				void refreshAppDaemonNow('wallet')
+			} catch (err) {
+				if (abort.signal.aborted) {
+					setCoinbaseOnrampStatus((prev) => (prev === 'canceled' ? prev : 'canceled'))
+					return
+				}
+				const message =
+					err instanceof Error && err.name === 'AbortError'
+						? ''
+						: err instanceof Error && err.message
+							? err.message
+							: tu('coinbase_could_not_open')
+				if (!message) {
+					setCoinbaseOnrampStatus('canceled')
+					return
+				}
+				setCoinbaseOnrampStatus('error')
+				setCoinbaseOnrampStatusError(message)
+				setCoinbaseOnrampError(tu('coinbase_could_not_open'))
+			} finally {
+				if (coinbaseOnrampAbortRef.current === abort) {
+					coinbaseOnrampAbortRef.current = null
+				}
+				setCoinbaseOnrampOpening(false)
+			}
+		},
+		[],
+	)
 
 	const openCoinbaseOnrampFromFund = useCallback(async () => {
 		if (coinbaseOnrampOpening || coinbaseOnrampStatus === 'opening' || coinbaseOnrampStatus === 'waiting') {
@@ -1382,11 +1490,6 @@ const Home = (_props: HomeProps) => {
 		setCoinbaseOnrampNewBalance('')
 		setCoinbaseOnrampPayMethodPickerOpen(false)
 		setCoinbaseOnrampStatus('opening')
-		const params = new URLSearchParams({
-			address,
-			paymentAmount: amountHuman,
-		}).toString()
-		const tokenUrl = `https://beamio.app/api/coinbase-token?${params}`
 		try {
 			const baselineRaw =
 				(await readBaseUsdcBalance6(address)) ??
@@ -1399,6 +1502,39 @@ const Home = (_props: HomeProps) => {
 				})()
 			if (abort.signal.aborted) return
 
+			// USDC path: open Coinbase Wallet for free in-app send — no x402 / coinbase-token.
+			if (coinbaseOnrampPayMethod === 'usdc') {
+				const checkoutUrl = COINBASE_WALLET_FREE_SEND_OPEN_URL
+				// Persist before openExternalUrl — native switch can remount Home before watch starts.
+				saveCoinbaseOnrampWaitingSession({
+					eoa: address,
+					amountHuman,
+					payMethod: 'usdc',
+					baselineRaw: baselineRaw.toString(),
+					checkoutUrl,
+					startedAt: Date.now(),
+					status: 'waiting',
+				})
+				setCoinbaseOnrampCheckoutUrl(checkoutUrl)
+				openExternalUrl(checkoutUrl)
+				if (abort.signal.aborted) return
+				await runCoinbaseUsdcArrivalWatch({
+					address,
+					baselineRaw,
+					amountHuman,
+					payMethod: 'usdc',
+					checkoutUrl,
+					abort,
+				})
+				return
+			}
+
+			// Card path: Coinbase Onramp (buy with card) via Beamio token session.
+			const params = new URLSearchParams({
+				address,
+				paymentAmount: amountHuman,
+			}).toString()
+			const tokenUrl = `https://beamio.app/api/coinbase-token?${params}`
 			let onrampUrl: string | undefined
 			if (!isCashTreesNativeWebView()) {
 				onrampUrl = fetchJsonSync<{ onrampUrl?: string }>(tokenUrl)?.onrampUrl
@@ -1424,42 +1560,27 @@ const Home = (_props: HomeProps) => {
 				setCoinbaseOnrampError(tu('coinbase_could_not_open'))
 				return
 			}
-			const checkoutUrl = applyCoinbaseOnrampCheckoutUrl(
-				onrampUrl,
+			const checkoutUrl = applyCoinbaseOnrampCheckoutUrl(onrampUrl, amountHuman, 'card')
+			saveCoinbaseOnrampWaitingSession({
+				eoa: address,
 				amountHuman,
-				coinbaseOnrampPayMethod,
-			)
+				payMethod: 'card',
+				baselineRaw: baselineRaw.toString(),
+				checkoutUrl,
+				startedAt: Date.now(),
+				status: 'waiting',
+			})
 			setCoinbaseOnrampCheckoutUrl(checkoutUrl)
 			openExternalUrl(checkoutUrl)
 			if (abort.signal.aborted) return
-			setCoinbaseOnrampStatus('waiting')
-			setCoinbaseOnrampOpening(false)
-
-			const outcome = await waitForBaseUsdcArrival({
-				eoa: address,
+			await runCoinbaseUsdcArrivalWatch({
+				address,
 				baselineRaw,
-				signal: abort.signal,
+				amountHuman,
+				payMethod: 'card',
+				checkoutUrl,
+				abort,
 			})
-			if (abort.signal.aborted || outcome.status === 'cancelled') {
-				setCoinbaseOnrampStatus((prev) => (prev === 'canceled' ? prev : 'canceled'))
-				return
-			}
-			if (outcome.status === 'timeout') {
-				setCoinbaseOnrampStatus('error')
-				setCoinbaseOnrampStatusError(tu('coinbase_onramp_timeout'))
-				return
-			}
-			if (outcome.status === 'error') {
-				setCoinbaseOnrampStatus('error')
-				setCoinbaseOnrampStatusError(outcome.message || tu('coinbase_could_not_open'))
-				return
-			}
-			const display = Number.parseFloat(outcome.balanceDisplay)
-			setCoinbaseOnrampNewBalance(
-				Number.isFinite(display) ? display.toFixed(2) : outcome.balanceDisplay,
-			)
-			setCoinbaseOnrampStatus('success')
-			void refreshAppDaemonNow('wallet')
 		} catch (err) {
 			if (abort.signal.aborted) {
 				setCoinbaseOnrampStatus((prev) => (prev === 'canceled' ? prev : 'canceled'))
@@ -1492,8 +1613,88 @@ const Home = (_props: HomeProps) => {
 		coinbaseOnrampStatus,
 		myAddress,
 		receiveWalletEoa,
+		runCoinbaseUsdcArrivalWatch,
 		usdcbalance,
 	])
+
+	/**
+	 * After Coinbase return: sync hydrate may already set status=waiting + Fund sheet.
+	 * This effect only arms the balance watch (and fills UI if still idle).
+	 * Skip error/canceled/opening/success to avoid re-arm loops.
+	 */
+	useEffect(() => {
+		if (coinbaseOnrampStatus !== 'idle' && coinbaseOnrampStatus !== 'waiting') return
+		if (coinbaseOnrampAbortRef.current) return
+
+		const address =
+			receiveWalletEoa ||
+			myAddress ||
+			coinbaseWaitingBoot?.eoa ||
+			''
+		if (!address) return
+
+		const session =
+			loadCoinbaseOnrampWaitingSession(address) ||
+			(coinbaseWaitingBoot?.eoa?.toLowerCase() === address.toLowerCase()
+				? coinbaseWaitingBoot
+				: null)
+		if (!session) return
+
+		let baselineRaw: bigint
+		try {
+			baselineRaw = BigInt(session.baselineRaw)
+		} catch {
+			clearCoinbaseOnrampWaitingSession(address)
+			return
+		}
+
+		abortCoinbaseOnrampWatch()
+		const abort = new AbortController()
+		coinbaseOnrampAbortRef.current = abort
+		setShowPayReceiveSheet(true)
+		setShowFooter(false)
+		setPayReceiveView('fund')
+		setPayReceiveQrMode('receive')
+		setCoinbaseOnrampAmount(session.amountHuman)
+		setCoinbaseOnrampLastAmount(session.amountHuman)
+		setCoinbaseOnrampPayMethod(session.payMethod)
+		setCoinbaseOnrampCheckoutUrl(
+			session.checkoutUrl ||
+				(session.payMethod === 'usdc' ? COINBASE_WALLET_FREE_SEND_OPEN_URL : ''),
+		)
+		setCoinbaseOnrampError('')
+		setCoinbaseOnrampStatusError('')
+		setCoinbaseOnrampNewBalance('')
+		setCoinbaseOnrampOpening(false)
+		if (coinbaseOnrampStatus === 'idle') {
+			setCoinbaseOnrampStatus('waiting')
+		}
+		void runCoinbaseUsdcArrivalWatch({
+			address: session.eoa || address,
+			baselineRaw,
+			amountHuman: session.amountHuman,
+			payMethod: session.payMethod,
+			checkoutUrl:
+				session.checkoutUrl ||
+				(session.payMethod === 'usdc' ? COINBASE_WALLET_FREE_SEND_OPEN_URL : ''),
+			abort,
+			startedAt: session.startedAt,
+		})
+	}, [
+		abortCoinbaseOnrampWatch,
+		coinbaseOnrampStatus,
+		coinbaseWaitingBoot,
+		myAddress,
+		receiveWalletEoa,
+		runCoinbaseUsdcArrivalWatch,
+		setShowFooter,
+	])
+
+	/** Hide global footer immediately when sync-hydrated into Coinbase waiting. */
+	useEffect(() => {
+		if (!coinbaseWaitingBoot) return
+		setShowFooter(false)
+	}, [coinbaseWaitingBoot, setShowFooter])
 
 	const selectReceiveWalletForAmount = useCallback((row: ReceiveWalletAppRow) => {
 		if (openingReceiveWalletId) return
@@ -4708,9 +4909,67 @@ const Home = (_props: HomeProps) => {
 												</p>
 												<p className="text-[15px] leading-snug text-[#737687] dark:text-slate-400">
 													{coinbaseOnrampStatus === 'opening'
-														? tu('coinbase_onramp_opening_hint')
-														: tu('coinbase_onramp_waiting_hint')}
+														? coinbaseOnrampPayMethod === 'usdc'
+															? tu('coinbase_onramp_opening_hint_usdc')
+															: tu('coinbase_onramp_opening_hint')
+														: coinbaseOnrampPayMethod === 'usdc'
+															? tu('coinbase_onramp_waiting_hint_usdc')
+															: tu('coinbase_onramp_waiting_hint')}
 												</p>
+												{coinbaseOnrampStatus === 'waiting' &&
+												coinbaseOnrampPayMethod === 'usdc' ? (
+													<div className="mx-auto flex w-full max-w-sm flex-col gap-2 pt-1">
+														<p className="text-base font-semibold text-[#191c1d] dark:text-slate-100">
+															{tu('coinbase_onramp_waiting_send_amount', {
+																amount: coinbaseOnrampAmount || coinbaseOnrampLastAmount,
+															})}
+														</p>
+														<p className="text-xs font-medium uppercase tracking-wide text-[#737687] dark:text-slate-400">
+															{tu('coinbase_onramp_waiting_to_address')}
+														</p>
+														<button
+															type="button"
+															disabled={!receiveWalletEoa}
+															onClick={() => void copyReceiveWalletAddress()}
+															className={`flex w-full items-center gap-2 rounded-full border px-3 py-2 text-left ${HOME_TOUCH_BUTTON_CLASS}`}
+															style={{
+																borderColor: receiveWalletEoaAccent.border,
+																backgroundColor: receiveWalletEoaAccent.surfaceBg,
+																color: receiveWalletEoaAccent.bodyText,
+															}}
+															aria-label={tu('copy_wallet_address')}
+														>
+															<Wallet
+																className="h-3.5 w-3.5 shrink-0"
+																style={{ color: receiveWalletEoaAccent.accent }}
+																strokeWidth={2.25}
+																aria-hidden
+															/>
+															<span className="min-w-0 flex-1 truncate font-mono text-sm font-semibold">
+																{receiveWalletEoa
+																	? fmtAddr(receiveWalletEoa)
+																	: 'EOA unavailable'}
+															</span>
+															{receiveWalletCopied ? (
+																<Check
+																	className="h-4 w-4 shrink-0 text-emerald-500"
+																	aria-hidden
+																/>
+															) : (
+																<Copy
+																	className="h-4 w-4 shrink-0"
+																	style={{ color: receiveWalletEoaAccent.accent }}
+																	aria-hidden
+																/>
+															)}
+														</button>
+														{receiveWalletCopied ? (
+															<p className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
+																{tu('coinbase_onramp_waiting_address_copied')}
+															</p>
+														) : null}
+													</div>
+												) : null}
 												{coinbaseOnrampStatus === 'waiting' ? (
 													<p className="text-sm font-medium text-[#0051d1] dark:text-[#6ba3ff]">
 														{tu('coinbase_onramp_waiting_progress')}

@@ -494,7 +494,106 @@
 			}
 
 			var SIGN_DONE_KEY = 'beamio:receiveUsdc3009:signed'
-			var signState = { inFlight: false, done: false }
+			/** MetaMask often reports selectedAddress ≠ the key that actually signs EIP-712. */
+			var FORCE_FROM_KEY = 'beamio:receiveUsdc3009:forceFrom'
+			var signState = { inFlight: false, done: false, resignOnce: false }
+			var ethersLoadPromise = null
+
+			function shortAddr(a) {
+				var s = String(a || '')
+				if (s.length < 12) return s
+				return s.slice(0, 6) + '…' + s.slice(-4)
+			}
+
+			function sameAddr(a, b) {
+				try {
+					return String(a || '').toLowerCase() === String(b || '').toLowerCase()
+				} catch (_) {
+					return false
+				}
+			}
+
+			function parseRecoveredFromError(text) {
+				var m = /recovered=(0x[a-fA-F0-9]{40})/i.exec(String(text || ''))
+				return m && isAddress(m[1]) ? m[1] : ''
+			}
+
+			function getForceFrom() {
+				try {
+					var v = sessionStorage.getItem(FORCE_FROM_KEY)
+					return isAddress(v) ? v : ''
+				} catch (_) {
+					return ''
+				}
+			}
+
+			function setForceFrom(addr) {
+				if (!isAddress(addr)) return
+				try {
+					sessionStorage.setItem(FORCE_FROM_KEY, addr)
+				} catch (_) {}
+			}
+
+			function clearForceFrom() {
+				try {
+					sessionStorage.removeItem(FORCE_FROM_KEY)
+				} catch (_) {}
+			}
+
+			function loadEthersLib() {
+				if (ethersLoadPromise) return ethersLoadPromise
+				ethersLoadPromise = new Promise(function (resolve) {
+					try {
+						if (window.ethers && (window.ethers.verifyTypedData || (window.ethers.utils && window.ethers.utils.verifyTypedData))) {
+							resolve(window.ethers)
+							return
+						}
+					} catch (_) {}
+					var s = document.createElement('script')
+					s.src = 'https://cdn.jsdelivr.net/npm/ethers@6.13.5/dist/ethers.umd.min.js'
+					s.async = true
+					s.onload = function () {
+						try {
+							resolve(window.ethers || null)
+						} catch (_) {
+							resolve(null)
+						}
+					}
+					s.onerror = function () {
+						resolve(null)
+					}
+					try {
+						document.head.appendChild(s)
+					} catch (_) {
+						resolve(null)
+					}
+				})
+				return ethersLoadPromise
+			}
+
+			async function recoverTypedSigner(domain, message, signature) {
+				var eth = await loadEthersLib()
+				if (!eth) return ''
+				var types = {
+					TransferWithAuthorization: [
+						{ name: 'from', type: 'address' },
+						{ name: 'to', type: 'address' },
+						{ name: 'value', type: 'uint256' },
+						{ name: 'validAfter', type: 'uint256' },
+						{ name: 'validBefore', type: 'uint256' },
+						{ name: 'nonce', type: 'bytes32' },
+					],
+				}
+				try {
+					if (typeof eth.verifyTypedData === 'function') {
+						return eth.verifyTypedData(domain, types, message, signature)
+					}
+					if (eth.utils && typeof eth.utils.verifyTypedData === 'function') {
+						return eth.utils.verifyTypedData(domain, types, message, signature)
+					}
+				} catch (_) {}
+				return ''
+			}
 
 			function rememberSignedResult(result) {
 				try {
@@ -565,11 +664,40 @@
 			}
 
 			var AUTH_ALREADY_USED_RE = /already used|authorization is used|duplicate/i
-			var submitState = { inFlight: false, done: false }
+			var submitState = { inFlight: false, done: false, autoResignTried: false }
+
+			function beginResignWithRecovered(recovered, statusHint) {
+				if (isAddress(recovered)) setForceFrom(recovered)
+				try {
+					sessionStorage.removeItem(SIGN_DONE_KEY)
+				} catch (_) {}
+				signState.done = false
+				signState.inFlight = false
+				signState.resignOnce = false
+				submitState.inFlight = false
+				submitState.done = false
+				try {
+					var retryEl = document.getElementById('retrySubmitBtn')
+					if (retryEl && retryEl.parentNode) retryEl.parentNode.removeChild(retryEl)
+				} catch (_) {}
+				try {
+					btn.disabled = false
+					btn.textContent = 'Sign in wallet…'
+					var fromEl = document.getElementById('fromLabel')
+					if (fromEl && isAddress(recovered)) fromEl.textContent = recovered
+				} catch (_) {}
+				setStatus(
+					statusHint ||
+						('Re-signing with ' + shortAddr(recovered) + ' so the payment matches MetaMask…'),
+					'ok',
+				)
+				void sign()
+			}
 
 			function showSubmitRetry(authB64, statusOk, opts) {
 				if (document.getElementById('retrySubmitBtn')) return
 				var resign = !!(opts && opts.resign)
+				var recoveredHint = opts && isAddress(opts.recovered) ? opts.recovered : ''
 				var retry = document.createElement('button')
 				retry.type = 'button'
 				retry.id = 'retrySubmitBtn'
@@ -579,24 +707,15 @@
 						retry.parentNode && retry.parentNode.removeChild(retry)
 					} catch (_) {}
 					if (resign) {
-						try {
-							sessionStorage.removeItem(SIGN_DONE_KEY)
-						} catch (_) {}
-						signState.done = false
-						signState.inFlight = false
-						submitState.inFlight = false
-						submitState.done = false
-						try {
-							btn.disabled = false
-							btn.textContent = 'Sign and return to Beamio'
-						} catch (_) {}
-						sign()
+						var statusEl = document.getElementById('status')
+						var fromStatus = parseRecoveredFromError(statusEl ? statusEl.textContent : '')
+						beginResignWithRecovered(recoveredHint || fromStatus || getForceFrom())
 						return
 					}
 					submitAuthFromWalletBrowser(authB64, statusOk)
 				})
-				var statusEl = document.getElementById('status')
-				if (statusEl) statusEl.insertAdjacentElement('afterend', retry)
+				var statusEl2 = document.getElementById('status')
+				if (statusEl2) statusEl2.insertAdjacentElement('afterend', retry)
 			}
 
 			function submitAuthFromWalletBrowser(authB64, statusOk) {
@@ -633,19 +752,35 @@
 						var errText = String((r.j && (r.j.error || r.j.message)) || '')
 						if ((r.res.ok && r.j.success !== false) || r.j.alreadyUsed || AUTH_ALREADY_USED_RE.test(errText)) {
 							submitState.done = true
+							clearForceFrom()
 							showReturnGuidance((statusOk || 'Signed.') + ' Payment submitted.')
 							return
 						}
 						var resign =
 							/signer mismatch|EIP-3009 signer/i.test(errText) ||
 							/recovered=.*from=/i.test(errText)
+						var recovered = parseRecoveredFromError(errText)
+						if (resign && isAddress(recovered) && !submitState.autoResignTried) {
+							submitState.autoResignTried = true
+							beginResignWithRecovered(
+								recovered,
+								'MetaMask signed with ' +
+									shortAddr(recovered) +
+									'. Requesting a matching signature — confirm in MetaMask…',
+							)
+							return
+						}
 						setStatus(
 							'Payment was not submitted: ' +
 								(errText || 'HTTP ' + r.res.status) +
-								(resign ? '. Tap Sign again with the same account shown in MetaMask.' : '. Tap Retry payment.'),
+								(resign
+									? '. Tap Sign again — Beamio will use the account MetaMask signed with (' +
+										shortAddr(recovered || getForceFrom()) +
+										').'
+									: '. Tap Retry payment.'),
 							'err',
 						)
-						showSubmitRetry(authB64, statusOk, resign ? { resign: true } : null)
+						showSubmitRetry(authB64, statusOk, resign ? { resign: true, recovered: recovered } : null)
 					})
 					.catch(function (e) {
 						submitState.inFlight = false
@@ -994,6 +1129,8 @@
 			}
 
 			async function resolveSigningAccount(provider) {
+				var forced = getForceFrom()
+				if (isAddress(forced)) return forced
 				await provider.request({ method: 'eth_requestAccounts' })
 				var selected =
 					typeof provider.selectedAddress === 'string' ? provider.selectedAddress : ''
@@ -1006,6 +1143,76 @@
 				var requested = await provider.request({ method: 'eth_requestAccounts' })
 				var r0 = Array.isArray(requested) && typeof requested[0] === 'string' ? requested[0] : ''
 				return r0
+			}
+
+			async function signEip3009Auth(provider, from, domainName, domainVersion) {
+				var nowSec = Math.floor(Date.now() / 1000)
+				var validAfter = '0'
+				var validBefore = String(nowSec + AUTH_TTL_SEC)
+				var nonce = randomBytes32()
+				var transferTypes = [
+					{ name: 'from', type: 'address' },
+					{ name: 'to', type: 'address' },
+					{ name: 'value', type: 'uint256' },
+					{ name: 'validAfter', type: 'uint256' },
+					{ name: 'validBefore', type: 'uint256' },
+					{ name: 'nonce', type: 'bytes32' },
+				]
+				var message = {
+					from: from,
+					to: to,
+					value: amount6,
+					validAfter: validAfter,
+					validBefore: validBefore,
+					nonce: nonce,
+				}
+				var domain = {
+					name: domainName,
+					version: domainVersion,
+					chainId: BASE_CHAIN_ID,
+					verifyingContract: USDC,
+				}
+				var typedWithoutDomain = {
+					types: { TransferWithAuthorization: transferTypes },
+					primaryType: 'TransferWithAuthorization',
+					domain: domain,
+					message: message,
+				}
+				var typedWithDomain = {
+					types: {
+						EIP712Domain: [
+							{ name: 'name', type: 'string' },
+							{ name: 'version', type: 'string' },
+							{ name: 'chainId', type: 'uint256' },
+							{ name: 'verifyingContract', type: 'address' },
+						],
+						TransferWithAuthorization: transferTypes,
+					},
+					primaryType: 'TransferWithAuthorization',
+					domain: domain,
+					message: message,
+				}
+				var rawSig = null
+				try {
+					rawSig = await provider.request({
+						method: 'eth_signTypedData_v4',
+						params: [from, JSON.stringify(typedWithoutDomain)],
+					})
+				} catch (firstErr) {
+					if (isUserRejected(firstErr)) throw firstErr
+					rawSig = await provider.request({
+						method: 'eth_signTypedData_v4',
+						params: [from, JSON.stringify(typedWithDomain)],
+					})
+				}
+				return {
+					rawSig: rawSig,
+					domain: domain,
+					message: message,
+					validAfter: validAfter,
+					validBefore: validBefore,
+					nonce: nonce,
+				}
 			}
 
 			async function sign() {
@@ -1055,93 +1262,83 @@
 						domainMeta.version && String(domainMeta.version).length <= 8
 							? String(domainMeta.version)
 							: '2'
-					var nowSec = Math.floor(Date.now() / 1000)
-					var validAfter = '0'
-					var validBefore = String(nowSec + AUTH_TTL_SEC)
-					var nonce = randomBytes32()
-					var transferTypes = [
-						{ name: 'from', type: 'address' },
-						{ name: 'to', type: 'address' },
-						{ name: 'value', type: 'uint256' },
-						{ name: 'validAfter', type: 'uint256' },
-						{ name: 'validBefore', type: 'uint256' },
-						{ name: 'nonce', type: 'bytes32' },
-					]
-					var message = {
-						from: from,
-						to: to,
-						value: amount6,
-						validAfter: validAfter,
-						validBefore: validBefore,
-						nonce: nonce,
-					}
-					var domain = {
-						name: domainName,
-						version: domainVersion,
-						chainId: BASE_CHAIN_ID,
-						verifyingContract: USDC,
-					}
-					var typedWithoutDomain = {
-						types: { TransferWithAuthorization: transferTypes },
-						primaryType: 'TransferWithAuthorization',
-						domain: domain,
-						message: message,
-					}
-					var typedWithDomain = {
-						types: {
-							EIP712Domain: [
-								{ name: 'name', type: 'string' },
-								{ name: 'version', type: 'string' },
-								{ name: 'chainId', type: 'uint256' },
-								{ name: 'verifyingContract', type: 'address' },
-							],
-							TransferWithAuthorization: transferTypes,
-						},
-						primaryType: 'TransferWithAuthorization',
-						domain: domain,
-						message: message,
-					}
-					var rawSig = null
-					try {
-						rawSig = await provider.request({
-							method: 'eth_signTypedData_v4',
-							params: [from, JSON.stringify(typedWithoutDomain)],
+
+					var attempt = 0
+					var authB64 = null
+					while (attempt < 2) {
+						attempt += 1
+						from = await resolveSigningAccount(provider)
+						if (!isAddress(from)) throw new Error('No wallet account')
+						try {
+							var fromEl2 = document.getElementById('fromLabel')
+							if (fromEl2) fromEl2.textContent = from
+						} catch (_) {}
+						var signed = await signEip3009Auth(provider, from, domainName, domainVersion)
+						if (looksLikeSmartWalletSig(signed.rawSig)) {
+							setSmartWalletCopy()
+							btn.textContent = 'Confirm in wallet…'
+							setStatus('Smart Wallet detected — confirm the USDC transfer…')
+							var txHash2 = await sendUsdcTransfer(provider, from)
+							returnToBeamioTx(txHash2)
+							return
+						}
+						var signature = normalizeWalletSignature(signed.rawSig)
+						if (!signature) {
+							throw new Error('Invalid signature from wallet')
+						}
+						var recovered = await recoverTypedSigner(signed.domain, signed.message, signature)
+						if (isAddress(recovered) && !sameAddr(recovered, from)) {
+							setForceFrom(recovered)
+							setStatus(
+								'MetaMask signed with ' +
+									shortAddr(recovered) +
+									' (not ' +
+									shortAddr(from) +
+									'). Requesting a matching signature — confirm again…',
+								'ok',
+							)
+							btn.textContent = 'Sign again…'
+							if (attempt >= 2) {
+								throw new Error(
+									'EIP-3009 signer mismatch (recovered=' +
+										recovered +
+										' from=' +
+										from +
+										')',
+								)
+							}
+							continue
+						}
+						authB64 = encodeAuthPayload({
+							from: from,
+							to: to,
+							value: amount6,
+							validAfter: signed.validAfter,
+							validBefore: signed.validBefore,
+							nonce: signed.nonce,
+							signature: signature,
 						})
-					} catch (firstErr) {
-						if (isUserRejected(firstErr)) throw firstErr
-						rawSig = await provider.request({
-							method: 'eth_signTypedData_v4',
-							params: [from, JSON.stringify(typedWithDomain)],
-						})
+						break
 					}
-					// ERC-6492 / long SCW sigs must NOT be peeled into a fake 65-byte EIP-3009 sig.
-					if (looksLikeSmartWalletSig(rawSig)) {
-						setSmartWalletCopy()
-						btn.textContent = 'Confirm in wallet…'
-						setStatus('Smart Wallet detected — confirm the USDC transfer…')
-						var txHash2 = await sendUsdcTransfer(provider, from)
-						returnToBeamioTx(txHash2)
-						return
-					}
-					var signature = normalizeWalletSignature(rawSig)
-					if (!signature) {
-						throw new Error('Invalid signature from wallet')
-					}
-					var authB64 = encodeAuthPayload({
-						from: from,
-						to: to,
-						value: amount6,
-						validAfter: validAfter,
-						validBefore: validBefore,
-						nonce: nonce,
-						signature: signature,
-					})
+					if (!authB64) throw new Error('Could not build authorization')
 					returnToBeamioAuth(authB64)
 				} catch (err) {
 					signState.inFlight = false
 					var msg = err && typeof err.message === 'string' ? err.message : ''
+					var recoveredCatch = parseRecoveredFromError(msg)
+					if (isAddress(recoveredCatch)) setForceFrom(recoveredCatch)
 					if (isUserRejected(err)) {
 						setStatus('Request rejected. Tap below to try again.', 'err')
+					} else if (/signer mismatch|EIP-3009 signer/i.test(msg)) {
+						setStatus(
+							'Payment was not submitted: ' +
+								msg +
+								'. Tap Sign again — Beamio will use the account MetaMask signed with' +
+								(isAddress(recoveredCatch) ? ' (' + shortAddr(recoveredCatch) + ')' : '') +
+								'.',
+							'err',
+						)
+						showSubmitRetry('', '', { resign: true, recovered: recoveredCatch })
 					} else {
 						setStatus(msg || 'Could not complete. Tap below to try again.', 'err')
 					}

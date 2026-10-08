@@ -20,8 +20,10 @@ export type ReceiveUsdc3009Auth = {
 }
 
 export type ReceiveUsdc3009SubmitResult =
-	| { ok: true; txHash: string }
+	| { ok: true; txHash?: string; alreadyUsed?: boolean }
 	| { ok: false; error: string }
+
+const AUTH_ALREADY_USED_RE = /already used|authorization is used|duplicate/i
 
 function base64UrlToUtf8(raw: string): string {
 	const padded = raw.replace(/-/g, '+').replace(/_/g, '/')
@@ -481,6 +483,7 @@ export async function submitReceiveUsdc3009(
 			success?: boolean
 			txHash?: string
 			hash?: string
+			alreadyUsed?: boolean
 			error?: string
 			message?: string
 		} | null
@@ -489,8 +492,10 @@ export async function submitReceiveUsdc3009(
 				(typeof body?.error === 'string' && body.error) ||
 				(typeof body?.message === 'string' && body.message) ||
 				`Request failed (${res.status})`
+			if (AUTH_ALREADY_USED_RE.test(err)) return { ok: true, alreadyUsed: true }
 			return { ok: false, error: err }
 		}
+		if (body.alreadyUsed) return { ok: true, alreadyUsed: true }
 		const txHash =
 			(typeof body.txHash === 'string' && body.txHash) ||
 			(typeof body.hash === 'string' && body.hash) ||

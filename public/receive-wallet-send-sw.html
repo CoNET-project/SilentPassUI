@@ -128,7 +128,7 @@
 		</div>
 		<p id="status">Preparing signature…</p>
 		<button type="button" id="sendBtn" disabled>Sign and return to Beamio</button>
-		<p class="hint">After you sign, tap Open Beamio to return (wallet browsers block automatic app opens). Your Main Wallet USDC updates when Beamio confirms the transfer.</p>
+		<p class="hint">After you sign, Beamio submits the payment for you. Then tap ◀ Beamio at the top-left of your screen to return to the Beamio app.</p>
 	</main>
 	<script>
 		(function () {
@@ -474,28 +474,11 @@
 				openLink.textContent = 'Open Beamio'
 				openLink.setAttribute('role', 'button')
 				openLink.addEventListener('click', function () {
-					// Do not preventDefault — MetaMask must see a real link navigation.
+					// Do not preventDefault — the tap must be a real link navigation.
 					window.setTimeout(function () {
 						try {
 							if (document.visibilityState !== 'visible') return
-							setStatus(
-								walletBrowser
-									? 'Still here? Tap Allow on the Warning, or use Open in Safari below.'
-									: 'Still here? Tap Open Beamio again.',
-								'err'
-							)
-							if (walletBrowser && !document.getElementById('openSafariLink')) {
-								var safari = document.createElement('a')
-								safari.id = 'openSafariLink'
-								safari.className = 'cta'
-								safari.href = webUrl
-								safari.target = '_blank'
-								safari.rel = 'noopener noreferrer'
-								safari.textContent = 'Open in Safari → Beamio'
-								safari.style.marginTop = '0.65rem'
-								safari.style.background = '#334155'
-								openLink.insertAdjacentElement('afterend', safari)
-							}
+							setStatus('Still here? Tap Open Beamio again.', 'err')
 						} catch (_) {}
 					}, 1600)
 				})
@@ -553,29 +536,116 @@
 				return code === 4001 || /user rejected|user denied|rejected the request/i.test(msg)
 			}
 
-			function navigateBackToBeamio(query, statusOk) {
+			function decodeAuthPayload(b64url) {
+				var b64 = String(b64url).replace(/-/g, '+').replace(/_/g, '/')
+				while (b64.length % 4) b64 += '='
+				var bin = atob(b64)
+				var bytes = new Uint8Array(bin.length)
+				for (var k = 0; k < bin.length; k++) bytes[k] = bin.charCodeAt(k)
+				return JSON.parse(new TextDecoder().decode(bytes))
+			}
+
+			function showReturnGuidance(prefix) {
+				setStatus(
+					(prefix || 'Payment submitted.') +
+						' Tap ◀ Beamio at the top-left of your screen to return to the Beamio app.',
+					'ok'
+				)
+				try {
+					hint.textContent =
+						'Your payment is on its way. Your Main Wallet USDC updates in Beamio once it confirms on-chain.'
+				} catch (_) {}
+				try {
+					if (btn && btn.parentNode) btn.parentNode.removeChild(btn)
+				} catch (_) {}
+			}
+
+			var AUTH_ALREADY_USED_RE = /already used|authorization is used|duplicate/i
+			var submitState = { inFlight: false, done: false }
+
+			function showSubmitRetry(authB64, statusOk) {
+				if (document.getElementById('retrySubmitBtn')) return
+				var retry = document.createElement('button')
+				retry.type = 'button'
+				retry.id = 'retrySubmitBtn'
+				retry.textContent = 'Retry payment'
+				retry.addEventListener('click', function () {
+					try {
+						retry.parentNode && retry.parentNode.removeChild(retry)
+					} catch (_) {}
+					submitAuthFromWalletBrowser(authB64, statusOk)
+				})
+				var statusEl = document.getElementById('status')
+				if (statusEl) statusEl.insertAdjacentElement('afterend', retry)
+			}
+
+			function submitAuthFromWalletBrowser(authB64, statusOk) {
+				if (submitState.inFlight || submitState.done) return
+				var auth
+				try {
+					auth = decodeAuthPayload(authB64)
+				} catch (_) {
+					setStatus('Could not read the signed payment. Please sign again.', 'err')
+					return
+				}
+				submitState.inFlight = true
+				try {
+					if (btn) btn.disabled = true
+				} catch (_) {}
+				setStatus('Submitting payment…', 'ok')
+				fetch('https://beamio.app/api/receiveUsdc3009', {
+					method: 'POST',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify(Object.assign({}, auth, { token: auth.token || USDC })),
+				})
+					.then(function (res) {
+						return res
+							.json()
+							.catch(function () {
+								return {}
+							})
+							.then(function (j) {
+								return { res: res, j: j || {} }
+							})
+					})
+					.then(function (r) {
+						submitState.inFlight = false
+						var errText = String((r.j && (r.j.error || r.j.message)) || '')
+						if ((r.res.ok && r.j.success !== false) || r.j.alreadyUsed || AUTH_ALREADY_USED_RE.test(errText)) {
+							submitState.done = true
+							showReturnGuidance((statusOk || 'Signed.') + ' Payment submitted.')
+							return
+						}
+						setStatus('Payment was not submitted: ' + (errText || 'HTTP ' + r.res.status) + '. Tap Retry payment.', 'err')
+						showSubmitRetry(authB64, statusOk)
+					})
+					.catch(function (e) {
+						submitState.inFlight = false
+						setStatus('Network error while submitting the payment. Tap Retry payment.', 'err')
+						showSubmitRetry(authB64, statusOk)
+					})
+			}
+
+			function navigateBackToBeamio(query, statusOk, authB64) {
 				signState.done = true
 				var nativeUrl = 'beamio://open?' + query
 				var webUrl = 'https://beamio.app/app/?' + query
 				var walletBrowser = isLikelyWalletInAppBrowser()
 				/*
-				 * MetaMask blocks iframe/JS “automatic” beamio:// opens with Warning.
-				 * Always use a real <a href="beamio://…"> so the tap is a link navigation.
-				 * In wallet browsers: never auto-open. If Warning appears, user taps Allow.
+				 * Wallet in-app browsers (MetaMask iOS) block beamio://, Universal Links and _blank,
+				 * so we never try to open Beamio from here. The signed auth is submitted straight to
+				 * the API; Beamio's waiting page confirms via balance polling. The user returns with
+				 * the iOS "◀ Beamio" breadcrumb.
 				 */
-				replaceSendBtnWithOpenBeamioAnchor(nativeUrl, webUrl, walletBrowser)
 				if (walletBrowser) {
-					setStatus(
-						(statusOk || 'Signed.') +
-							' Tap Open Beamio. If MetaMask shows Warning, tap Allow.',
-						'ok'
-					)
-					try {
-						hint.textContent =
-							'Tap Open Beamio. If a Warning appears, choose Allow — that returns you to the Beamio app. Your Main Wallet USDC updates when Beamio confirms the transfer.'
-					} catch (_) {}
+					if (authB64) {
+						submitAuthFromWalletBrowser(authB64, statusOk)
+					} else {
+						showReturnGuidance(statusOk || 'USDC sent.')
+					}
 					return
 				}
+				replaceSendBtnWithOpenBeamioAnchor(nativeUrl, webUrl, walletBrowser)
 				setStatus((statusOk || 'Signed.') + ' Opening Beamio…', 'ok')
 				tryOpenBeamioNative(nativeUrl)
 				if (!isNativeShell()) {
@@ -591,7 +661,8 @@
 				rememberSignedResult({ authB64: authB64 })
 				navigateBackToBeamio(
 					'receiveUsdcAuth=' + encodeURIComponent(authB64),
-					'Signed.'
+					'Signed.',
+					authB64
 				)
 			}
 

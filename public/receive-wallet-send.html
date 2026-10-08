@@ -84,7 +84,8 @@
 		}
 		#status.ok { color: var(--ok); }
 		#status.err { color: var(--warn); }
-		button {
+		button,
+		a.cta {
 			display: block;
 			width: 100%;
 			border: 0;
@@ -95,10 +96,15 @@
 			color: #fff;
 			background: var(--accent);
 			cursor: pointer;
+			text-align: center;
+			text-decoration: none;
+			box-sizing: border-box;
 		}
-		button:disabled {
+		button:disabled,
+		a.cta[aria-disabled='true'] {
 			opacity: 0.55;
 			cursor: not-allowed;
+			pointer-events: none;
 		}
 		.hint {
 			margin-top: 0.85rem;
@@ -139,6 +145,7 @@
 			var toEl = document.getElementById('toLabel')
 			var statusEl = document.getElementById('status')
 			var btn = document.getElementById('sendBtn')
+			var hint = document.querySelector('.hint')
 
 			function setStatus(text, kind) {
 				statusEl.textContent = text
@@ -448,26 +455,55 @@
 			}
 
 			/**
-			 * Always prefer beamio:// so iOS/Android shell can reclaim focus after sign.
-			 * Do not auto-navigate to HTTPS inside a wallet WebView — that pins the user on
-			 * beamio.app/app inside Coinbase/MetaMask instead of opening Beamio.
+			 * Prefer beamio:// so iOS/Android shell can reclaim focus after sign.
+			 * MetaMask iOS treats hidden iframe custom-scheme loads as “automatically
+			 * opening an external application” and shows Warning even after a button tap.
+			 * Never use iframes — only location.href (non-wallet auto) or a real <a> tap.
 			 */
 			function tryOpenBeamioNative(nativeUrl) {
 				try {
-					var iframe = document.createElement('iframe')
-					iframe.setAttribute('style', 'display:none;width:0;height:0;border:0;visibility:hidden')
-					iframe.setAttribute('aria-hidden', 'true')
-					iframe.src = nativeUrl
-					document.body.appendChild(iframe)
-					window.setTimeout(function () {
-						try {
-							document.body.removeChild(iframe)
-						} catch (_) {}
-					}, 1500)
-				} catch (_) {}
-				try {
 					window.location.href = nativeUrl
 				} catch (_) {}
+			}
+
+			function replaceSendBtnWithOpenBeamioAnchor(nativeUrl, webUrl, walletBrowser) {
+				var openLink = document.createElement('a')
+				openLink.id = 'sendBtn'
+				openLink.className = 'cta'
+				openLink.href = nativeUrl
+				openLink.textContent = 'Open Beamio'
+				openLink.setAttribute('role', 'button')
+				openLink.addEventListener('click', function () {
+					// Do not preventDefault — MetaMask must see a real link navigation.
+					window.setTimeout(function () {
+						try {
+							if (document.visibilityState !== 'visible') return
+							setStatus(
+								walletBrowser
+									? 'Still here? Tap Allow on the Warning, or use Open in Safari below.'
+									: 'Still here? Tap Open Beamio again.',
+								'err'
+							)
+							if (walletBrowser && !document.getElementById('openSafariLink')) {
+								var safari = document.createElement('a')
+								safari.id = 'openSafariLink'
+								safari.className = 'cta'
+								safari.href = webUrl
+								safari.target = '_blank'
+								safari.rel = 'noopener noreferrer'
+								safari.textContent = 'Open in Safari → Beamio'
+								safari.style.marginTop = '0.65rem'
+								safari.style.background = '#334155'
+								openLink.insertAdjacentElement('afterend', safari)
+							}
+						} catch (_) {}
+					}, 1600)
+				})
+				if (btn && btn.parentNode) {
+					btn.parentNode.replaceChild(openLink, btn)
+				}
+				btn = openLink
+				return openLink
 			}
 
 			var SIGN_DONE_KEY = 'beamio:receiveUsdc3009:signed'
@@ -522,29 +558,22 @@
 				var nativeUrl = 'beamio://open?' + query
 				var webUrl = 'https://beamio.app/app/?' + query
 				var walletBrowser = isLikelyWalletInAppBrowser()
-				btn.textContent = 'Open Beamio'
-				btn.disabled = false
-				btn.onclick = function () {
-					// User gesture — MetaMask/Coinbase allow opening the app from a tap.
-					tryOpenBeamioNative(nativeUrl)
-					if (!walletBrowser && !isNativeShell()) {
-						window.setTimeout(function () {
-							if (document.visibilityState === 'visible') {
-								window.location.href = webUrl
-							}
-						}, 1200)
-					}
-				}
 				/*
-				 * MetaMask (and some other wallet WebViews) block programmatic
-				 * beamio:// opens with "blocked from automatically opening an
-				 * external application". Only auto-open outside wallet browsers.
+				 * MetaMask blocks iframe/JS “automatic” beamio:// opens with Warning.
+				 * Always use a real <a href="beamio://…"> so the tap is a link navigation.
+				 * In wallet browsers: never auto-open. If Warning appears, user taps Allow.
 				 */
+				replaceSendBtnWithOpenBeamioAnchor(nativeUrl, webUrl, walletBrowser)
 				if (walletBrowser) {
 					setStatus(
-						(statusOk || 'Signed.') + ' Tap Open Beamio to continue.',
+						(statusOk || 'Signed.') +
+							' Tap Open Beamio. If MetaMask shows Warning, tap Allow.',
 						'ok'
 					)
+					try {
+						hint.textContent =
+							'Tap Open Beamio. If a Warning appears, choose Allow — that returns you to the Beamio app. Your Main Wallet USDC updates when Beamio confirms the transfer.'
+					} catch (_) {}
 					return
 				}
 				setStatus((statusOk || 'Signed.') + ' Opening Beamio…', 'ok')

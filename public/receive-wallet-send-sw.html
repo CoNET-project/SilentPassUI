@@ -540,6 +540,39 @@
 				} catch (_) {}
 			}
 
+			function isPermittedAddressError(err) {
+				var msg = err && typeof err.message === 'string' ? err.message : String(err || '')
+				return /permitted Ethereum address|must provide a permitted/i.test(msg)
+			}
+
+			function findInAccounts(accounts, preferred) {
+				if (!Array.isArray(accounts) || !isAddress(preferred)) return ''
+				var want = String(preferred).toLowerCase()
+				for (var i = 0; i < accounts.length; i++) {
+					if (typeof accounts[i] === 'string' && accounts[i].toLowerCase() === want) {
+						return accounts[i]
+					}
+				}
+				return ''
+			}
+
+			async function listPermittedAccounts(provider) {
+				var accounts = []
+				try {
+					var requested = await provider.request({ method: 'eth_requestAccounts' })
+					if (Array.isArray(requested)) accounts = requested
+				} catch (_) {}
+				if (!accounts.length) {
+					try {
+						var listed = await provider.request({ method: 'eth_accounts' })
+						if (Array.isArray(listed)) accounts = listed
+					} catch (_) {}
+				}
+				return accounts.filter(function (a) {
+					return typeof a === 'string' && isAddress(a)
+				})
+			}
+
 			function loadEthersLib() {
 				if (ethersLoadPromise) return ethersLoadPromise
 				ethersLoadPromise = new Promise(function (resolve) {
@@ -666,8 +699,7 @@
 			var AUTH_ALREADY_USED_RE = /already used|authorization is used|duplicate/i
 			var submitState = { inFlight: false, done: false, autoResignTried: false }
 
-			function beginResignWithRecovered(recovered, statusHint) {
-				if (isAddress(recovered)) setForceFrom(recovered)
+			async function beginResignWithRecovered(recovered, statusHint) {
 				try {
 					sessionStorage.removeItem(SIGN_DONE_KEY)
 				} catch (_) {}
@@ -680,18 +712,40 @@
 					var retryEl = document.getElementById('retrySubmitBtn')
 					if (retryEl && retryEl.parentNode) retryEl.parentNode.removeChild(retryEl)
 				} catch (_) {}
+				var provider = getProvider()
+				var permitted = ''
+				if (provider && isAddress(recovered)) {
+					try {
+						permitted = findInAccounts(await listPermittedAccounts(provider), recovered)
+					} catch (_) {}
+				}
+				if (permitted) {
+					setForceFrom(permitted)
+					try {
+						btn.disabled = false
+						btn.textContent = 'Sign in wallet…'
+						var fromEl = document.getElementById('fromLabel')
+						if (fromEl) fromEl.textContent = permitted
+					} catch (_) {}
+					setStatus(
+						statusHint ||
+							('Re-signing with ' + shortAddr(permitted) + ' so the payment matches MetaMask…'),
+						'ok',
+					)
+					void sign()
+					return
+				}
+				clearForceFrom()
 				try {
 					btn.disabled = false
-					btn.textContent = 'Sign in wallet…'
-					var fromEl = document.getElementById('fromLabel')
-					if (fromEl && isAddress(recovered)) fromEl.textContent = recovered
+					btn.textContent = 'Sign and return to Beamio'
 				} catch (_) {}
 				setStatus(
-					statusHint ||
-						('Re-signing with ' + shortAddr(recovered) + ' so the payment matches MetaMask…'),
-					'ok',
+					'MetaMask signed with ' +
+						shortAddr(recovered) +
+						', which is not connected to this page. In MetaMask, switch to that account (or connect it), then tap Sign again.',
+					'err',
 				)
-				void sign()
 			}
 
 			function showSubmitRetry(authB64, statusOk, opts) {
@@ -709,7 +763,7 @@
 					if (resign) {
 						var statusEl = document.getElementById('status')
 						var fromStatus = parseRecoveredFromError(statusEl ? statusEl.textContent : '')
-						beginResignWithRecovered(recoveredHint || fromStatus || getForceFrom())
+						void beginResignWithRecovered(recoveredHint || fromStatus || getForceFrom())
 						return
 					}
 					submitAuthFromWalletBrowser(authB64, statusOk)
@@ -762,7 +816,7 @@
 						var recovered = parseRecoveredFromError(errText)
 						if (resign && isAddress(recovered) && !submitState.autoResignTried) {
 							submitState.autoResignTried = true
-							beginResignWithRecovered(
+							void beginResignWithRecovered(
 								recovered,
 								'MetaMask signed with ' +
 									shortAddr(recovered) +
@@ -1128,20 +1182,16 @@
 			}
 
 			async function resolveSigningAccount(provider) {
+				var accounts = await listPermittedAccounts(provider)
+				if (!accounts.length) throw new Error('No wallet account')
 				var forced = getForceFrom()
-				if (isAddress(forced)) return forced
-				await provider.request({ method: 'eth_requestAccounts' })
-				var selected =
-					typeof provider.selectedAddress === 'string' ? provider.selectedAddress : ''
-				if (isAddress(selected)) return selected
-				try {
-					var accounts = await provider.request({ method: 'eth_accounts' })
-					var a0 = Array.isArray(accounts) && typeof accounts[0] === 'string' ? accounts[0] : ''
-					if (isAddress(a0)) return a0
-				} catch (_) {}
-				var requested = await provider.request({ method: 'eth_requestAccounts' })
-				var r0 = Array.isArray(requested) && typeof requested[0] === 'string' ? requested[0] : ''
-				return r0
+				var matchedForce = findInAccounts(accounts, forced)
+				if (matchedForce) return matchedForce
+				if (forced) clearForceFrom()
+				var selected = typeof provider.selectedAddress === 'string' ? provider.selectedAddress : ''
+				var matchedSelected = findInAccounts(accounts, selected)
+				if (matchedSelected) return matchedSelected
+				return accounts[0]
 			}
 
 			async function signEip3009Auth(provider, from) {
@@ -1261,34 +1311,29 @@
 				btn.textContent = 'Connecting…'
 				setStatus('Connecting wallet…')
 				try {
-					var from = await resolveSigningAccount(provider)
-					if (!isAddress(from)) throw new Error('No wallet account')
-					try {
-						var fromEl = document.getElementById('fromLabel')
-						if (fromEl) fromEl.textContent = from
-					} catch (_) {}
 					await ensureBase(provider)
-
-					if (await shouldPreferUsdcTransfer(provider, from)) {
-						setSmartWalletCopy()
-						btn.textContent = 'Confirm in wallet…'
-						setStatus('Confirm the USDC transfer in your wallet…')
-						var txHash = await sendUsdcTransfer(provider, from)
-						returnToBeamioTx(txHash)
-						return
-					}
-
 					btn.textContent = 'Sign in wallet…'
 					setStatus('Requesting signature…')
 					void loadEthersLib()
 					var attempt = 0
 					var authResult = null
+					var from = ''
 					while (attempt < 2) {
 						attempt += 1
+						from = await resolveSigningAccount(provider)
+						if (!isAddress(from)) throw new Error('No wallet account')
 						try {
-							var fromEl2 = document.getElementById('fromLabel')
-							if (fromEl2) fromEl2.textContent = from
+							var fromEl = document.getElementById('fromLabel')
+							if (fromEl) fromEl.textContent = from
 						} catch (_) {}
+						if (attempt === 1 && (await shouldPreferUsdcTransfer(provider, from))) {
+							setSmartWalletCopy()
+							btn.textContent = 'Confirm in wallet…'
+							setStatus('Confirm the USDC transfer in your wallet…')
+							var txHash = await sendUsdcTransfer(provider, from)
+							returnToBeamioTx(txHash)
+							return
+						}
 						if (attempt > 1) {
 							btn.textContent = 'Sign in wallet…'
 							setStatus(
@@ -1296,7 +1341,17 @@
 								'ok',
 							)
 						}
-						authResult = await signEip3009Auth(provider, from)
+						try {
+							authResult = await signEip3009Auth(provider, from)
+						} catch (signErr) {
+							if (isPermittedAddressError(signErr)) {
+								clearForceFrom()
+								throw new Error(
+									'MetaMask rejected that signing account. Switch to a connected account that holds your USDC, then tap Sign again.',
+								)
+							}
+							throw signErr
+						}
 						if (authResult.smartWallet) {
 							setSmartWalletCopy()
 							btn.textContent = 'Confirm in wallet…'
@@ -1306,22 +1361,21 @@
 							return
 						}
 						if (authResult.ok) break
-						if (authResult.mismatch && isAddress(authResult.recovered) && attempt < 2) {
-							setForceFrom(authResult.recovered)
-							from = authResult.recovered
-							signState.resignOnce = true
-							continue
-						}
-						if (authResult.mismatch) {
-							setForceFrom(authResult.recovered)
+						if (authResult.mismatch && isAddress(authResult.recovered)) {
+							var permittedRecovered = findInAccounts(
+								await listPermittedAccounts(provider),
+								authResult.recovered,
+							)
+							if (permittedRecovered && attempt < 2) {
+								setForceFrom(permittedRecovered)
+								signState.resignOnce = true
+								continue
+							}
+							clearForceFrom()
 							throw new Error(
-								'EIP-3009 signer mismatch (recovered=' +
-									authResult.recovered +
-									', from=' +
-									authResult.from +
-									'). Tap Sign again and confirm with ' +
+								'MetaMask signed with ' +
 									shortAddr(authResult.recovered) +
-									' in MetaMask.',
+									', which is not connected to this page. In MetaMask, switch to that account (or connect it), then tap Sign again.',
 							)
 						}
 						break
@@ -1342,7 +1396,13 @@
 				} catch (err) {
 					signState.inFlight = false
 					var msg = err && typeof err.message === 'string' ? err.message : ''
-					if (isUserRejected(err)) {
+					if (isPermittedAddressError(err)) {
+						clearForceFrom()
+						setStatus(
+							'MetaMask rejected that signing account. Switch to a connected account that holds your USDC, then tap Sign again.',
+							'err',
+						)
+					} else if (isUserRejected(err)) {
 						setStatus('Request rejected. Tap below to try again.', 'err')
 					} else {
 						setStatus(msg || 'Could not complete. Tap below to try again.', 'err')
@@ -1350,7 +1410,10 @@
 					btn.disabled = false
 					btn.textContent = 'Sign and return to Beamio'
 					var recoveredErr = parseRecoveredFromError(msg)
-					if (isAddress(recoveredErr)) {
+					if (
+						isAddress(recoveredErr) ||
+						/not connected to this page|rejected that signing account/i.test(msg)
+					) {
 						showSubmitRetry('', '', { resign: true, recovered: recoveredErr })
 					}
 				}

@@ -122,7 +122,7 @@
 		</div>
 		<p id="status">Preparing signature…</p>
 		<button type="button" id="sendBtn" disabled>Sign and return to Beamio</button>
-		<p class="hint">After you sign, you return to Beamio automatically. Your Main Wallet USDC updates when Beamio confirms the transfer.</p>
+		<p class="hint">After you sign, Beamio opens via the app link when installed. If you stay in this wallet browser, tap Open Beamio. Your Main Wallet USDC updates when Beamio confirms the transfer.</p>
 	</main>
 	<script>
 		(function () {
@@ -419,6 +419,57 @@
 				return false
 			}
 
+			/** Coinbase / MetaMask (etc.) dapp browser — CashTreesIOS is absent here. */
+			function isLikelyWalletInAppBrowser() {
+				try {
+					var ua = String(navigator.userAgent || '')
+					if (
+						/MetaMask|CoinbaseWallet|Coinbase|CBWallet|Base.?Wallet|Trust|Rainbow|imToken|TokenPocket|OKApp|OKX/i.test(
+							ua
+						)
+					) {
+						return true
+					}
+				} catch (_) {}
+				try {
+					var p = window.ethereum
+					if (
+						p &&
+						(p.isMetaMask ||
+							p.isCoinbaseWallet ||
+							p.isBaseWallet ||
+							p.isCoinbaseBrowser ||
+							p.isCoinbaseWalletExtension)
+					) {
+						return true
+					}
+				} catch (_) {}
+				return false
+			}
+
+			/**
+			 * Always prefer beamio:// so iOS/Android shell can reclaim focus after sign.
+			 * Do not auto-navigate to HTTPS inside a wallet WebView — that pins the user on
+			 * beamio.app/app inside Coinbase/MetaMask instead of opening Beamio.
+			 */
+			function tryOpenBeamioNative(nativeUrl) {
+				try {
+					var iframe = document.createElement('iframe')
+					iframe.setAttribute('style', 'display:none;width:0;height:0;border:0;visibility:hidden')
+					iframe.setAttribute('aria-hidden', 'true')
+					iframe.src = nativeUrl
+					document.body.appendChild(iframe)
+					window.setTimeout(function () {
+						try {
+							document.body.removeChild(iframe)
+						} catch (_) {}
+					}, 1500)
+				} catch (_) {}
+				try {
+					window.location.href = nativeUrl
+				} catch (_) {}
+			}
+
 			var SIGN_DONE_KEY = 'beamio:receiveUsdc3009:signed'
 			var signState = { inFlight: false, done: false }
 
@@ -470,26 +521,28 @@
 				signState.done = true
 				var nativeUrl = 'beamio://open?' + query
 				var webUrl = 'https://beamio.app/app/?' + query
+				var walletBrowser = isLikelyWalletInAppBrowser()
 				btn.textContent = 'Open Beamio'
 				btn.disabled = false
 				btn.onclick = function () {
-					if (isNativeShell()) {
-						window.location.href = nativeUrl
+					tryOpenBeamioNative(nativeUrl)
+					// Plain browser / desktop only: soft HTTPS fallback if the app is not installed.
+					if (!walletBrowser && !isNativeShell()) {
 						window.setTimeout(function () {
-							window.location.href = webUrl
-						}, 400)
-					} else {
-						window.location.href = webUrl
+							if (document.visibilityState === 'visible') {
+								window.location.href = webUrl
+							}
+						}, 1200)
 					}
 				}
-				if (isNativeShell()) {
-					window.location.href = nativeUrl
+				tryOpenBeamioNative(nativeUrl)
+				if (!walletBrowser && !isNativeShell()) {
 					window.setTimeout(function () {
-						window.location.href = webUrl
-					}, 800)
-					return
+						if (document.visibilityState === 'visible') {
+							window.location.href = webUrl
+						}
+					}, 1500)
 				}
-				window.location.href = webUrl
 			}
 
 			function returnToBeamioAuth(authB64) {

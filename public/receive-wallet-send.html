@@ -573,6 +573,30 @@
 				})
 			}
 
+			/** Open MetaMask account picker so a recovered/selected signer can be connected. */
+			async function ensurePermittedAccount(provider, preferred) {
+				if (!provider || typeof provider.request !== 'function' || !isAddress(preferred)) return ''
+				var hit = findInAccounts(await listPermittedAccounts(provider), preferred)
+				if (hit) return hit
+				try {
+					await provider.request({
+						method: 'wallet_requestPermissions',
+						params: [{ eth_accounts: {} }],
+					})
+				} catch (permErr) {
+					if (isUserRejected(permErr)) throw permErr
+				}
+				hit = findInAccounts(await listPermittedAccounts(provider), preferred)
+				if (hit) return hit
+				try {
+					var again = await provider.request({ method: 'eth_requestAccounts' })
+					hit = findInAccounts(Array.isArray(again) ? again : [], preferred)
+				} catch (reqErr) {
+					if (isUserRejected(reqErr)) throw reqErr
+				}
+				return hit || ''
+			}
+
 			function loadEthersLib() {
 				if (ethersLoadPromise) return ethersLoadPromise
 				ethersLoadPromise = new Promise(function (resolve) {
@@ -717,7 +741,24 @@
 				if (provider && isAddress(recovered)) {
 					try {
 						permitted = findInAccounts(await listPermittedAccounts(provider), recovered)
-					} catch (_) {}
+						if (!permitted) {
+							setStatus(
+								'Connect ' + shortAddr(recovered) + ' in MetaMask so we can re-sign…',
+								'ok',
+							)
+							permitted = await ensurePermittedAccount(provider, recovered)
+						}
+					} catch (connectErr) {
+						if (isUserRejected(connectErr)) {
+							clearForceFrom()
+							try {
+								btn.disabled = false
+								btn.textContent = 'Sign and return to Beamio'
+							} catch (_) {}
+							setStatus('Connection cancelled. Tap Sign again when ready.', 'err')
+							return
+						}
+					}
 				}
 				if (permitted) {
 					setForceFrom(permitted)
@@ -743,7 +784,7 @@
 				setStatus(
 					'MetaMask signed with ' +
 						shortAddr(recovered) +
-						', which is not connected to this page. In MetaMask, switch to that account (or connect it), then tap Sign again.',
+						'. Connect that account when MetaMask asks, then tap Sign again.',
 					'err',
 				)
 			}
@@ -1188,7 +1229,15 @@
 				var forced = getForceFrom()
 				var matchedForce = findInAccounts(accounts, forced)
 				if (matchedForce) return matchedForce
-				if (forced) clearForceFrom()
+				if (forced && isAddress(forced)) {
+					var connectedForce = await ensurePermittedAccount(provider, forced)
+					if (connectedForce) return connectedForce
+					clearForceFrom()
+					accounts = await listPermittedAccounts(provider)
+					if (!accounts.length) throw new Error('No wallet account')
+				} else if (forced) {
+					clearForceFrom()
+				}
 				var selected = typeof provider.selectedAddress === 'string' ? provider.selectedAddress : ''
 				var matchedSelected = findInAccounts(accounts, selected)
 				if (matchedSelected) return matchedSelected
@@ -1360,6 +1409,17 @@
 								await listPermittedAccounts(provider),
 								recovered,
 							)
+							if (!permittedRecovered && attempt < 2) {
+								setStatus(
+									'Connect ' + shortAddr(recovered) + ' in MetaMask so we can re-sign…',
+									'ok',
+								)
+								try {
+									permittedRecovered = await ensurePermittedAccount(provider, recovered)
+								} catch (connectErr) {
+									if (isUserRejected(connectErr)) throw connectErr
+								}
+							}
 							if (permittedRecovered && attempt < 2) {
 								setForceFrom(permittedRecovered)
 								setStatus(
@@ -1377,7 +1437,7 @@
 							throw new Error(
 								'MetaMask signed with ' +
 									shortAddr(recovered) +
-									', which is not connected to this page. In MetaMask, switch to that account (or connect it), then tap Sign again.',
+									'. Connect that account when MetaMask asks, then tap Sign again.',
 							)
 						}
 						authB64 = encodeAuthPayload({
@@ -1406,7 +1466,9 @@
 					} else if (isUserRejected(err)) {
 						setStatus('Request rejected. Tap below to try again.', 'err')
 					} else if (
-						/signer mismatch|EIP-3009 signer|not connected to this page/i.test(msg)
+						/signer mismatch|EIP-3009 signer|not connected to this page|Connect that account when MetaMask asks/i.test(
+							msg,
+						)
 					) {
 						clearForceFrom()
 						setStatus(msg || 'Could not complete. Tap below to try again.', 'err')

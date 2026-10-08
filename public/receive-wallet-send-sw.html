@@ -573,6 +573,30 @@
 				})
 			}
 
+			/** Open MetaMask account picker so a recovered/selected signer can be connected. */
+			async function ensurePermittedAccount(provider, preferred) {
+				if (!provider || typeof provider.request !== 'function' || !isAddress(preferred)) return ''
+				var hit = findInAccounts(await listPermittedAccounts(provider), preferred)
+				if (hit) return hit
+				try {
+					await provider.request({
+						method: 'wallet_requestPermissions',
+						params: [{ eth_accounts: {} }],
+					})
+				} catch (permErr) {
+					if (isUserRejected(permErr)) throw permErr
+				}
+				hit = findInAccounts(await listPermittedAccounts(provider), preferred)
+				if (hit) return hit
+				try {
+					var again = await provider.request({ method: 'eth_requestAccounts' })
+					hit = findInAccounts(Array.isArray(again) ? again : [], preferred)
+				} catch (reqErr) {
+					if (isUserRejected(reqErr)) throw reqErr
+				}
+				return hit || ''
+			}
+
 			function loadEthersLib() {
 				if (ethersLoadPromise) return ethersLoadPromise
 				ethersLoadPromise = new Promise(function (resolve) {
@@ -717,7 +741,24 @@
 				if (provider && isAddress(recovered)) {
 					try {
 						permitted = findInAccounts(await listPermittedAccounts(provider), recovered)
-					} catch (_) {}
+						if (!permitted) {
+							setStatus(
+								'Connect ' + shortAddr(recovered) + ' in MetaMask so we can re-sign…',
+								'ok',
+							)
+							permitted = await ensurePermittedAccount(provider, recovered)
+						}
+					} catch (connectErr) {
+						if (isUserRejected(connectErr)) {
+							clearForceFrom()
+							try {
+								btn.disabled = false
+								btn.textContent = 'Sign and return to Beamio'
+							} catch (_) {}
+							setStatus('Connection cancelled. Tap Sign again when ready.', 'err')
+							return
+						}
+					}
 				}
 				if (permitted) {
 					setForceFrom(permitted)
@@ -743,7 +784,7 @@
 				setStatus(
 					'MetaMask signed with ' +
 						shortAddr(recovered) +
-						', which is not connected to this page. In MetaMask, switch to that account (or connect it), then tap Sign again.',
+						'. Connect that account when MetaMask asks, then tap Sign again.',
 					'err',
 				)
 			}
@@ -1187,7 +1228,15 @@
 				var forced = getForceFrom()
 				var matchedForce = findInAccounts(accounts, forced)
 				if (matchedForce) return matchedForce
-				if (forced) clearForceFrom()
+				if (forced && isAddress(forced)) {
+					var connectedForce = await ensurePermittedAccount(provider, forced)
+					if (connectedForce) return connectedForce
+					clearForceFrom()
+					accounts = await listPermittedAccounts(provider)
+					if (!accounts.length) throw new Error('No wallet account')
+				} else if (forced) {
+					clearForceFrom()
+				}
 				var selected = typeof provider.selectedAddress === 'string' ? provider.selectedAddress : ''
 				var matchedSelected = findInAccounts(accounts, selected)
 				if (matchedSelected) return matchedSelected
@@ -1366,16 +1415,39 @@
 								await listPermittedAccounts(provider),
 								authResult.recovered,
 							)
+							if (!permittedRecovered && attempt < 2) {
+								setStatus(
+									'Connect ' +
+										shortAddr(authResult.recovered) +
+										' in MetaMask so we can re-sign…',
+									'ok',
+								)
+								try {
+									permittedRecovered = await ensurePermittedAccount(
+										provider,
+										authResult.recovered,
+									)
+								} catch (connectErr) {
+									if (isUserRejected(connectErr)) throw connectErr
+								}
+							}
 							if (permittedRecovered && attempt < 2) {
 								setForceFrom(permittedRecovered)
 								signState.resignOnce = true
+								setStatus(
+									'MetaMask signed with ' +
+										shortAddr(permittedRecovered) +
+										'. Requesting a matching signature — confirm again…',
+									'ok',
+								)
+								btn.textContent = 'Sign again…'
 								continue
 							}
 							clearForceFrom()
 							throw new Error(
 								'MetaMask signed with ' +
 									shortAddr(authResult.recovered) +
-									', which is not connected to this page. In MetaMask, switch to that account (or connect it), then tap Sign again.',
+									'. Connect that account when MetaMask asks, then tap Sign again.',
 							)
 						}
 						break
@@ -1412,7 +1484,9 @@
 					var recoveredErr = parseRecoveredFromError(msg)
 					if (
 						isAddress(recoveredErr) ||
-						/not connected to this page|rejected that signing account/i.test(msg)
+						/not connected to this page|Connect that account when MetaMask asks|rejected that signing account/i.test(
+							msg,
+						)
 					) {
 						showSubmitRetry('', '', { resign: true, recovered: recoveredErr })
 					}

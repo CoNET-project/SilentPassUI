@@ -496,7 +496,7 @@
 			var SIGN_DONE_KEY = 'beamio:receiveUsdc3009:signed'
 			/** MetaMask often reports selectedAddress ≠ the key that actually signs EIP-712. */
 			var FORCE_FROM_KEY = 'beamio:receiveUsdc3009:forceFrom'
-			var signState = { inFlight: false, done: false, resignOnce: false }
+			var signState = { inFlight: false, done: false, resignOnce: false, walletConfirmed: false }
 			var ethersLoadPromise = null
 
 			function shortAddr(a) {
@@ -713,6 +713,7 @@
 				signState.done = false
 				signState.inFlight = false
 				signState.resignOnce = false
+				signState.walletConfirmed = false
 				submitState.inFlight = false
 				submitState.done = false
 				try {
@@ -810,16 +811,6 @@
 							/signer mismatch|EIP-3009 signer/i.test(errText) ||
 							/recovered=.*from=/i.test(errText)
 						var recovered = parseRecoveredFromError(errText)
-						if (resign && isAddress(recovered) && !submitState.autoResignTried) {
-							submitState.autoResignTried = true
-							void beginResignWithRecovered(
-								recovered,
-								'MetaMask signed with ' +
-									shortAddr(recovered) +
-									'. Requesting a matching signature — confirm in MetaMask…',
-							)
-							return
-						}
 						setStatus(
 							'Payment was not submitted: ' +
 								(errText || 'HTTP ' + r.res.status) +
@@ -1183,16 +1174,7 @@
 				var forced = getForceFrom()
 				var matchedForce = findInAccounts(accounts, forced)
 				if (matchedForce) return matchedForce
-				if (forced && isAddress(forced)) {
-					var preferredForce = preferSigningAccount(accounts, forced)
-					if (preferredForce && preferredForce.toLowerCase() === forced.toLowerCase()) {
-						return preferredForce
-					}
-					// Keep FORCE_FROM and try eth_signTypedData_v4 with that account — no Connect UI.
-					return forced
-				} else if (forced) {
-					clearForceFrom()
-				}
+				if (forced) clearForceFrom()
 				var selected = typeof provider.selectedAddress === 'string' ? provider.selectedAddress : ''
 				var matchedSelected = findInAccounts(accounts, selected)
 				if (matchedSelected) return matchedSelected
@@ -1262,12 +1244,18 @@
 						params: [from, JSON.stringify(typedWithoutDomain)],
 					})
 				} catch (firstErr) {
-					if (isUserRejected(firstErr)) throw firstErr
+					if (isUserRejected(firstErr) || isPermittedAddressError(firstErr)) throw firstErr
+					var firstMsg =
+						firstErr && typeof firstErr.message === 'string'
+							? firstErr.message
+							: String(firstErr || '')
+					if (!/EIP712Domain|must include|primaryType|types/i.test(firstMsg)) throw firstErr
 					rawSig = await provider.request({
 						method: 'eth_signTypedData_v4',
 						params: [from, JSON.stringify(typedWithDomain)],
 					})
 				}
+				if (rawSig) signState.walletConfirmed = true
 				if (looksLikeSmartWalletSig(rawSig)) {
 					return { smartWallet: true, from: from }
 				}
@@ -1320,73 +1308,59 @@
 					btn.textContent = 'Sign in wallet…'
 					setStatus('Requesting signature…')
 					void loadEthersLib()
-					var attempt = 0
-					var authResult = null
-					var from = ''
-					while (attempt < 2) {
-						attempt += 1
-						from = await resolveSigningAccount(provider)
-						if (!isAddress(from)) throw new Error('No wallet account')
-						try {
-							var fromEl = document.getElementById('fromLabel')
-							if (fromEl) fromEl.textContent = from
-						} catch (_) {}
-						if (attempt === 1 && (await shouldPreferUsdcTransfer(provider, from))) {
-							setSmartWalletCopy()
-							btn.textContent = 'Confirm in wallet…'
-							setStatus('Confirm the USDC transfer in your wallet…')
-							var txHash = await sendUsdcTransfer(provider, from)
-							returnToBeamioTx(txHash)
-							return
-						}
-						if (attempt > 1) {
-							btn.textContent = 'Sign in wallet…'
-							setStatus(
-								'Re-signing as ' + shortAddr(from) + ' so EIP-3009 matches MetaMask…',
-								'ok',
-							)
-						}
-						try {
-							authResult = await signEip3009Auth(provider, from)
-						} catch (signErr) {
-							if (isPermittedAddressError(signErr)) {
-								clearForceFrom()
-								throw new Error(
-									'MetaMask rejected that signing account. Switch to a connected account that holds your USDC, then tap Sign again.',
-								)
-							}
-							throw signErr
-						}
-						if (authResult.smartWallet) {
-							setSmartWalletCopy()
-							btn.textContent = 'Confirm in wallet…'
-							setStatus('Smart Wallet detected — confirm the USDC transfer…')
-							var txHash2 = await sendUsdcTransfer(provider, from)
-							returnToBeamioTx(txHash2)
-							return
-						}
-						if (authResult.ok) break
-						if (authResult.mismatch && isAddress(authResult.recovered)) {
-							if (attempt < 2) {
-								setForceFrom(authResult.recovered)
-								signState.resignOnce = true
-								setStatus(
-									'MetaMask signed with ' +
-										shortAddr(authResult.recovered) +
-										'. Requesting a matching signature — confirm again…',
-									'ok',
-								)
-								btn.textContent = 'Sign again…'
-								continue
-							}
+					var from = await resolveSigningAccount(provider)
+					if (!isAddress(from)) throw new Error('No wallet account')
+					try {
+						var fromEl = document.getElementById('fromLabel')
+						if (fromEl) fromEl.textContent = from
+					} catch (_) {}
+					if (await shouldPreferUsdcTransfer(provider, from)) {
+						setSmartWalletCopy()
+						btn.textContent = 'Confirm in wallet…'
+						setStatus('Confirm the USDC transfer in your wallet…')
+						var txHash = await sendUsdcTransfer(provider, from)
+						returnToBeamioTx(txHash)
+						return
+					}
+					var authResult
+					try {
+						authResult = await signEip3009Auth(provider, from)
+					} catch (signErr) {
+						if (isPermittedAddressError(signErr)) {
 							clearForceFrom()
 							throw new Error(
-								'MetaMask signed with ' +
-									shortAddr(authResult.recovered) +
-									'. In MetaMask, switch to that account, then tap Sign again.',
+								'MetaMask is not connected to that account. In MetaMask, switch to the account you want to send from, then tap Sign again.',
 							)
 						}
-						break
+						throw signErr
+					}
+					if (authResult.smartWallet) {
+						setSmartWalletCopy()
+						btn.textContent = 'Confirm in wallet…'
+						setStatus('Smart Wallet detected — confirm the USDC transfer…')
+						var txHash2 = await sendUsdcTransfer(provider, from)
+						returnToBeamioTx(txHash2)
+						return
+					}
+					if (authResult.mismatch && isAddress(authResult.recovered)) {
+						var recoveredPermitted = findInAccounts(
+							await listPermittedAccounts(provider),
+							authResult.recovered,
+						)
+						signState.inFlight = false
+						if (recoveredPermitted) setForceFrom(recoveredPermitted)
+						else clearForceFrom()
+						try {
+							var fromElMismatch = document.getElementById('fromLabel')
+							if (fromElMismatch) fromElMismatch.textContent = recoveredPermitted || authResult.recovered
+						} catch (_) {}
+						setStatus(
+							'MetaMask signed. Tap Sign again to finish with ' + shortAddr(authResult.recovered) + '.',
+							'ok',
+						)
+						btn.disabled = false
+						btn.textContent = 'Sign again'
+						return
 					}
 					if (!authResult || !authResult.ok) {
 						throw new Error('Could not obtain a matching EIP-3009 signature')
@@ -1402,12 +1376,23 @@
 					})
 					returnToBeamioAuth(authB64)
 				} catch (err) {
+					if (signState.done || loadSignedResult()) return
 					signState.inFlight = false
 					var msg = err && typeof err.message === 'string' ? err.message : ''
+					if (signState.walletConfirmed && isPermittedAddressError(err)) {
+						clearForceFrom()
+						setStatus(
+							'MetaMask signed. Tap Sign again to finish with the account shown in MetaMask.',
+							'ok',
+						)
+						btn.disabled = false
+						btn.textContent = 'Sign again'
+						return
+					}
 					if (isPermittedAddressError(err)) {
 						clearForceFrom()
 						setStatus(
-							'MetaMask rejected that signing account. Switch to a connected account that holds your USDC, then tap Sign again.',
+							'MetaMask is not connected to that account. In MetaMask, switch to the account you want to send from, then tap Sign again.',
 							'err',
 						)
 					} else if (isUserRejected(err)) {
@@ -1420,7 +1405,7 @@
 					var recoveredErr = parseRecoveredFromError(msg)
 					if (
 						isAddress(recoveredErr) ||
-						/not connected to this page|In MetaMask, switch to that account|rejected that signing account/i.test(
+						/not connected to this page|not connected to that account|In MetaMask, switch to that account|rejected that signing account/i.test(
 							msg,
 						)
 					) {
@@ -1436,7 +1421,10 @@
 			if (isCoinbaseLikeProvider(getProvider()) || isCoinbaseLikeProvider({})) {
 				setSmartWalletCopy()
 			}
-			btn.addEventListener('click', function () { void sign() })
+			btn.addEventListener('click', function () {
+				signState.walletConfirmed = false
+				void sign()
+			})
 
 			var existingOnLoad = loadSignedResult()
 			if (existingOnLoad) {
@@ -1444,7 +1432,7 @@
 			} else {
 				var tries = 0
 				function maybeAuto() {
-					if (signState.done || signState.inFlight) return
+					if (signState.done || signState.inFlight || signState.walletConfirmed) return
 					var again = loadSignedResult()
 					if (again) {
 						returnSignedResult(again)

@@ -230,7 +230,7 @@ export function parseReceiveUsdcAmount6(
  * Always use the production `/app/` host — embedded OTA origins are not public HTTPS.
  */
 const RECEIVE_WALLET_SEND_PAGE = 'https://beamio.app/app/receive-wallet-send-sw.html'
-const RECEIVE_WALLET_HANDOFF_CACHE_TAG = 'mm-signer-resign-v5'
+const RECEIVE_WALLET_HANDOFF_CACHE_TAG = 'mm-lock-success-v8'
 
 /** Cache-bust Coinbase in-app WebView (stale handoff showed SMART/EOA error). */
 function receiveWalletHandoffPageUrl(eoa: string, amount6?: bigint): string {

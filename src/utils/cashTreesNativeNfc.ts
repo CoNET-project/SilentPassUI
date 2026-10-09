@@ -16,6 +16,11 @@ export type CashTreesNativeNfcBridge = {
 	endSystemCall?: (payload: Record<string, unknown>) => void
 	/** iOS WK bridge — object payload. Android `@JavascriptInterface` accepts a plain URL string (use `openExternalUrl`). */
 	openURL?: (payload: { url: string }) => void
+	/**
+	 * Full-screen in-app WebView (bottom → top). Top Back closes; title = URL domain.
+	 * iOS: `{ url }`. Android: plain URL string (use `openInAppBrowser`).
+	 */
+	openInAppBrowser?: (payload: { url: string }) => void
 	/** PWA catalog → native install probe. iOS uses `{ requestId, queries }` + `cashtreesios`. */
 	queryInstalledApps?: (payload?: { requestId: string; queries?: NativeInstalledAppQuery[] }) => void
 	/** Legacy alias of `queryInstalledApps`. iOS uses `{ requestId, queries? }` + `cashtreesios`. */
@@ -26,6 +31,9 @@ export type CashTreesNativeNfcBridge = {
 	clearOfflineChatAlerts?: () => void
 	/** @deprecated Shell may still expose; PWA must not call for inbound chat (SI push only). */
 	notifyBackgroundChat?: (payload: Record<string, unknown> | string) => void
+	/** Android: mic opened — promote Telecom to ACTIVE (cancel deferred setActive). */
+	notifyVoiceMicReady?: (json: string) => void
+	debugLog?: (level: string, message: string) => void
 }
 
 /** One catalog row the PWA asks native to probe. Native returns only installed `id`s. */
@@ -38,6 +46,7 @@ export type NativeInstalledAppQuery = {
 /** Android bridge variant: `openURL(url: string)` + `publishAppState(json: string)` */
 type CashTreesAndroidOpenUrlBridge = CashTreesNativeNfcBridge & {
 	openURL?: ((url: string) => void) | ((payload: { url: string }) => void)
+	openInAppBrowser?: ((url: string) => void) | ((payload: { url: string }) => void)
 	publishAppState?: (json: string) => void
 	queryInstalledApps?: (json: string) => string
 	listInstalledWalletApps?: () => string
@@ -173,13 +182,51 @@ function cashTreesNativeWindow(): CashTreesNativeWindow | null {
 	return window as CashTreesNativeWindow
 }
 
+/** True when the Android WebView bridge is present (any known method). */
+function hasCashTreesAndroidBridge(w: CashTreesNativeWindow): boolean {
+	const a = w.CashTreesAndroid
+	if (!a || typeof a !== 'object') return false
+	return (
+		typeof a.getNfcStatus === 'function' ||
+		typeof a.debugLog === 'function' ||
+		typeof a.notifyVoiceMicReady === 'function' ||
+		typeof a.endSystemCall === 'function' ||
+		typeof a.openURL === 'function'
+	)
+}
+
 /** 当前原生壳：由宿主注入的全局决定，优于 UA 猜测。 */
 export function getCashTreesNativeNfcHost(): 'android' | 'ios' | null {
 	const w = cashTreesNativeWindow()
 	if (!w) return null
-	if (typeof w.CashTreesAndroid?.getNfcStatus === 'function') return 'android'
+	if (hasCashTreesAndroidBridge(w)) return 'android'
 	if (typeof w.CashTreesIOS?.getNfcStatus === 'function') return 'ios'
 	return null
+}
+
+/**
+ * Tell Android Telecom the mic is open so it can setActive() now
+ * (MODE_IN_COMMUNICATION) instead of waiting for the Answer fallback timer.
+ */
+export function notifyNativeVoiceMicReady(payload: {
+	callId?: string
+	sessionId?: string
+}): boolean {
+	const w = cashTreesNativeWindow()
+	if (!w?.CashTreesAndroid || typeof w.CashTreesAndroid.notifyVoiceMicReady !== 'function') {
+		return false
+	}
+	try {
+		w.CashTreesAndroid.notifyVoiceMicReady(
+			JSON.stringify({
+				callId: String(payload.callId || ''),
+				sessionId: String(payload.sessionId || ''),
+			}),
+		)
+		return true
+	} catch {
+		return false
+	}
 }
 
 /** PWA 是否运行在 iOS / Android 原生 WebView 壳内（CashTreesIOS / CashTreesAndroid 已注入）。 */
@@ -190,7 +237,7 @@ export function isCashTreesNativeWebView(): boolean {
 export function getCashTreesNativeNfcBridge(): CashTreesNativeNfcBridge | null {
 	const w = cashTreesNativeWindow()
 	if (!w) return null
-	if (typeof w.CashTreesAndroid?.getNfcStatus === 'function') return w.CashTreesAndroid
+	if (hasCashTreesAndroidBridge(w)) return w.CashTreesAndroid ?? null
 	if (typeof w.CashTreesIOS?.getNfcStatus === 'function') return w.CashTreesIOS
 	return null
 }
@@ -297,6 +344,31 @@ function tryNativeOpenUrl(url: string): boolean {
 	return false
 }
 
+function tryNativeOpenInAppBrowser(url: string): boolean {
+	const w = cashTreesNativeWindow()
+	if (!w) return false
+
+	if (typeof w.CashTreesIOS?.openInAppBrowser === 'function') {
+		try {
+			w.CashTreesIOS.openInAppBrowser({ url })
+			return true
+		} catch {
+			return false
+		}
+	}
+
+	if (typeof w.CashTreesAndroid?.openInAppBrowser === 'function') {
+		try {
+			;(w.CashTreesAndroid.openInAppBrowser as (url: string) => void)(url)
+			return true
+		} catch {
+			return false
+		}
+	}
+
+	return false
+}
+
 export function saveFileToNative(payload: {
 	dataUrl: string
 	filename?: string
@@ -380,6 +452,31 @@ export function openExternalUrl(rawUrl: string): boolean {
 	} catch {
 		return false
 	}
+}
+
+/**
+ * Open http(s) in the native shell's full-screen in-app WebView (slides up from bottom).
+ * Top Back closes; chrome title = URL domain (no title param).
+ * - Native shell with `openInAppBrowser`: in-app overlay / modal.
+ * - Older shell / browser: falls back to [openExternalUrl] (system browser / new tab).
+ */
+export function openInAppBrowser(rawUrl: string): boolean {
+	const url = typeof rawUrl === 'string' ? rawUrl.trim() : ''
+	if (!url || typeof window === 'undefined') return false
+
+	let scheme = ''
+	try {
+		scheme = new URL(url).protocol.replace(':', '').toLowerCase()
+	} catch {
+		return false
+	}
+	if (scheme !== 'http' && scheme !== 'https') return false
+
+	if (tryNativeOpenInAppBrowser(url)) {
+		return true
+	}
+
+	return openExternalUrl(url)
 }
 
 /** Browser-only placeholder opened in the click that starts Coinbase checkout. */

@@ -74,7 +74,7 @@ import { useDaemonContext } from "@/providers/DaemonProvider"
 import { storeSystemData, AuthorizationSign } from '@/services/beamio'
 import { useBeamioTagDatabase } from '@/providers/BeamioTagDatabaseProvider'
 import { fiatPrefix } from '@/services/currency'
-import { dispatchNativeSystemCallAction, getCashTreesNativeNfcBridge, getCashTreesNativeNfcHost, isCashTreesNativeWebView, openExternalUrl, requestNativeCameraCapture, requestNativePhotoPicker, saveFileToNative } from '@/utils/cashTreesNativeNfc'
+import { dispatchNativeSystemCallAction, getCashTreesNativeNfcBridge, getCashTreesNativeNfcHost, isCashTreesNativeWebView, notifyNativeVoiceMicReady, openExternalUrl, requestNativeCameraCapture, requestNativePhotoPicker, saveFileToNative } from '@/utils/cashTreesNativeNfc'
 import { MessageSendReceiveCard } from "./components/messageSendReceiveCard"
 import { AaMultisigChatRequestCard } from '@/components/chat/AaMultisigChatRequestCard'
 import { ChatShareLinkPreviewCard } from '@/components/chat/ChatShareLinkPreviewCard'
@@ -1864,6 +1864,17 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 	const [voiceCallState, setVoiceCallState] = useState<'idle' | 'outgoing' | 'ended'>('idle')
 	const [voiceCallMuted, setVoiceCallMuted] = useState(false)
 	const [incomingVoiceAction, setIncomingVoiceAction] = useState<'idle' | 'accepting' | 'declining'>('idle')
+
+	// Safety net: permanent "No microphone" must never stick inside CashTrees shell
+	// (Telecom NotFound / empty enumerate). Rewrite to the temporary banner.
+	useEffect(() => {
+		if (
+			voiceError === 'No microphone was found on this device.' &&
+			isCashTreesNativeWebView()
+		) {
+			setVoiceError('Microphone is temporarily unavailable. End the call and try again.')
+		}
+	}, [voiceError])
 	const voiceCallSessionRef = useRef<string | null>(null)
 	const voiceCallOfferRef = useRef<{ callId: string; sessionId: string; sessionKey: string; timestamp?: number; expiresAt?: number } | null>(null)
 	const locallyEndedVoiceSessionsRef = useRef<Set<string>>(new Set())
@@ -1872,6 +1883,9 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 	const voicePeerRouteRef = useRef<string>('')
 	const voiceCaptureStopRef = useRef<(() => void) | null>(null)
 	const voiceCallStreamRef = useRef<MediaStream | null>(null)
+	/** Android: open mic while Telecom is still RINGING (MODE_RINGTONE). */
+	const androidIncomingMicPrewarmRef = useRef<MediaStream | null>(null)
+	const androidIncomingMicPrewarmSessionRef = useRef<string | null>(null)
 	const voicePlaybackRef = useRef<VoicePlaybackBuffer | null>(null)
 	const voiceFrameSeqRef = useRef(0)
 	const voiceFrameSendFailuresRef = useRef(0)
@@ -1880,7 +1894,34 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 	const voiceReceivedSeqsRef = useRef<Set<number>>(new Set())
 	const voiceControllerRef = useRef<VoiceCallController | null>(null)
 	const voiceCallStartingRef = useRef(false)
+	const voiceMediaStartingRef = useRef(false)
 	const [voiceCallConnecting, setVoiceCallConnecting] = useState(false)
+
+	const stopAndroidIncomingMicPrewarm = useCallback((onlySessionId?: string | null) => {
+		const session = androidIncomingMicPrewarmSessionRef.current
+		if (onlySessionId && session && session !== onlySessionId) return
+		const stream = androidIncomingMicPrewarmRef.current
+		androidIncomingMicPrewarmRef.current = null
+		androidIncomingMicPrewarmSessionRef.current = null
+		stream?.getTracks().forEach((track) => {
+			try {
+				track.stop()
+			} catch {
+				/* ignore */
+			}
+		})
+	}, [])
+
+	const takeAndroidIncomingMicPrewarm = useCallback((sessionId: string): MediaStream | null => {
+		const stream = androidIncomingMicPrewarmRef.current
+		const live =
+			androidIncomingMicPrewarmSessionRef.current === sessionId &&
+			Boolean(stream?.getAudioTracks().some((t) => t.readyState === 'live'))
+		if (!live || !stream) return null
+		androidIncomingMicPrewarmRef.current = null
+		androidIncomingMicPrewarmSessionRef.current = null
+		return stream
+	}, [])
 
 	useEffect(() => {
 		onVoiceCallActive?.(voiceCallState === 'outgoing')
@@ -2097,24 +2138,182 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 	const toAddress = chatData.address
 	const walletEoa = (profiles[0]?.keyID ?? '').trim()
 
-	const startVoiceMedia = useCallback(async () => {
-		if (voiceCaptureStopRef.current || !voiceCallKeyRef.current || !voiceCallPeerSessionRef.current) return
+	const startVoiceMedia = useCallback(async (preopenedStream?: MediaStream | null) => {
+		const logMicDiag = (phase: string, detail: Record<string, unknown>) => {
+			// Production CRA drops console.* (craco drop_console). Always push to
+			// native CashTrees logcat bridges so Android mirror can diagnose mic.
+			const line = `[voice-mic] ${phase} ${JSON.stringify(detail)}`
+			try {
+				console.warn(`[voice-mic] ${phase}`, detail)
+			} catch {
+				/* ignore */
+			}
+			try {
+				const w = window as Window & {
+					CashTreesAndroid?: { debugLog?: (level: string, message: string) => void }
+					CashTreesWebConsole?: { relay?: (level: string, message: string) => void }
+				}
+				w.CashTreesWebConsole?.relay?.('warn', line)
+				w.CashTreesAndroid?.debugLog?.('warn', line)
+			} catch {
+				/* ignore */
+			}
+		}
+		if (voiceCaptureStopRef.current || !voiceCallKeyRef.current || !voiceCallPeerSessionRef.current) {
+			logMicDiag('skip_missing_session', {
+				hasCaptureStop: Boolean(voiceCaptureStopRef.current),
+				hasKey: Boolean(voiceCallKeyRef.current),
+				hasPeerSession: Boolean(voiceCallPeerSessionRef.current),
+			})
+			preopenedStream?.getTracks().forEach((track) => track.stop())
+			return
+		}
+		if (voiceMediaStartingRef.current) {
+			logMicDiag('skip_already_starting', {})
+			preopenedStream?.getTracks().forEach((track) => track.stop())
+			return
+		}
 		if (!navigator.mediaDevices?.getUserMedia) {
 			setVoiceError('Voice calling is not supported by this browser.')
+			preopenedStream?.getTracks().forEach((track) => track.stop())
 			return
 		}
 		const route = voicePeerRouteRef.current || chatData.chatData?.routersArmoreds?.trim() || ''
 		if (!route) {
 			setVoiceError('Voice audio relay is unavailable. Please try the call again.')
+			preopenedStream?.getTracks().forEach((track) => track.stop())
 			return
 		}
-		try {
-			const stream = await navigator.mediaDevices.getUserMedia({
-				audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+		voiceMediaStartingRef.current = true
+		const sleepMs = (ms: number) =>
+			new Promise<void>((resolve) => {
+				window.setTimeout(resolve, ms)
 			})
+		const isTransientMicError = (error: unknown): boolean => {
+			const name = error instanceof DOMException ? error.name : ''
+			return (
+				name === 'NotFoundError' ||
+				name === 'DevicesNotFoundError' ||
+				name === 'NotReadableError' ||
+				name === 'TrackStartError' ||
+				name === 'OverconstrainedError' ||
+				name === 'ConstraintNotSatisfiedError' ||
+				name === 'AbortError'
+			)
+		}
+		const summarizeMicDevices = async (): Promise<string> => {
+			try {
+				const devices = await navigator.mediaDevices.enumerateDevices()
+				return devices
+					.map((d) => `${d.kind}:${d.label ? 'labeled' : 'blank'}:${d.deviceId ? 'id' : 'noId'}`)
+					.join(',')
+			} catch {
+				return 'enumerate_failed'
+			}
+		}
+		const openMicStreamOnce = async (): Promise<MediaStream> => {
+			const androidShell = getCashTreesNativeNfcHost() === 'android'
+			const preferred: MediaStreamConstraints = {
+				audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+			}
+			const plain: MediaStreamConstraints = { audio: true }
+			// Android WebView + Telecom MODE_IN_COMMUNICATION often maps
+			// AEC/NS/AGC constraints to NotFoundError even when a mic exists.
+			// Prefer unconstrained audio first in the native shell.
+			const primary = androidShell ? plain : preferred
+			const secondary = androidShell ? preferred : plain
+			try {
+				logMicDiag('getUserMedia_primary', { androidShell, primary: androidShell ? 'plain' : 'preferred' })
+				return await navigator.mediaDevices.getUserMedia(primary)
+			} catch (primaryError) {
+				const name = primaryError instanceof DOMException ? primaryError.name : ''
+				const message = primaryError instanceof Error ? primaryError.message : String(primaryError)
+				const retryable = isTransientMicError(primaryError)
+				logMicDiag('primary_getUserMedia_failed', {
+					name,
+					message,
+					retryable,
+					androidShell,
+					deviceSummary: await summarizeMicDevices(),
+				})
+				if (!retryable) throw primaryError
+				logMicDiag('fallback_getUserMedia_secondary', {
+					secondary: androidShell ? 'preferred' : 'plain',
+				})
+				return await navigator.mediaDevices.getUserMedia(secondary)
+			}
+		}
+		const openMicStream = async (): Promise<MediaStream> => {
+			const livePreopened = preopenedStream?.getAudioTracks().some((t) => t.readyState === 'live')
+				? preopenedStream
+				: null
+			if (livePreopened) {
+				logMicDiag('reuse_preopened_stream', {
+					tracks: livePreopened.getAudioTracks().map((t) => t.label || t.id).join(',') || '0',
+				})
+				return livePreopened
+			}
+			preopenedStream?.getTracks().forEach((track) => track.stop())
+			// Self-managed Telecom Answer flips MODE_IN_COMMUNICATION a few
+			// hundred ms before WebView getUserMedia is stable. First attempts
+			// often surface as NotFound/NotReadable even though a mic exists.
+			const androidShell = getCashTreesNativeNfcHost() === 'android'
+			const maxAttempts = androidShell ? 10 : 2
+			// Android ConnectionServiceFocus flips MODE_IN_COMMUNICATION ~3.4s after
+			// Answer even when setActive is deferred 12s. Retries must span past that.
+			const delaysMs = androidShell
+				? [0, 150, 350, 700, 1200, 2000, 3200, 4500, 6000, 8000]
+				: [0, 400]
+			let lastError: unknown
+			for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+				const delay = delaysMs[attempt] ?? 400
+				if (delay > 0) await sleepMs(delay)
+				try {
+					logMicDiag('getUserMedia_attempt', { attempt: attempt + 1, maxAttempts, delay, androidShell })
+					return await openMicStreamOnce()
+				} catch (error) {
+					lastError = error
+					const name = error instanceof DOMException ? error.name : ''
+					const message = error instanceof Error ? error.message : String(error)
+					const canRetry = isTransientMicError(error) && attempt + 1 < maxAttempts
+					logMicDiag('getUserMedia_attempt_failed', {
+						attempt: attempt + 1,
+						name,
+						message,
+						canRetry,
+						deviceSummary: await summarizeMicDevices(),
+					})
+					if (!canRetry) throw error
+				}
+			}
+			throw lastError instanceof Error ? lastError : new Error('getUserMedia_failed')
+		}
+		try {
+			const stream = await openMicStream()
+			logMicDiag('getUserMedia_ok', {
+				tracks: stream.getAudioTracks().map((t) => t.label || t.id).join(',') || '0',
+			})
+			// A prior attempt (or concurrent peer-accept path) may have already
+			// painted the NotFound banner; clear it once the mic is open.
+			setVoiceError(null)
 			const key = voiceCallKeyRef.current
 			const targetSessionId = voiceCallPeerSessionRef.current
 			const callId = voiceCallOfferRef.current?.callId || ''
+			if (!key || !targetSessionId) {
+				stream.getTracks().forEach((track) => track.stop())
+				return
+			}
+			// Promote Android Telecom to ACTIVE only after mic is live — not after
+			// early GUM alone (route/acceptIncoming can still be in flight).
+			const notified = notifyNativeVoiceMicReady({
+				callId,
+				sessionId: voiceCallSessionRef.current || targetSessionId,
+			})
+			logMicDiag('notify_voice_mic_ready', {
+				notified,
+				callId: callId ? 'set' : '',
+				sessionId: voiceCallSessionRef.current ? 'local' : 'peer',
+			})
 			voiceCallStreamRef.current = stream
 			setVoiceCallMuted(false)
 			setVoiceLevelSamples([])
@@ -2163,10 +2362,35 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		} catch (error) {
 			const name = error instanceof DOMException ? error.name : ''
 			const message = error instanceof Error ? error.message : ''
+			let deviceSummary = ''
+			try {
+				deviceSummary = await summarizeMicDevices()
+			} catch {
+				deviceSummary = 'enumerate_failed'
+			}
+			logMicDiag('getUserMedia_fatal', { name, message, deviceSummary })
 			if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
 				setVoiceError('Microphone access was denied. Allow microphone access and try again.')
 			} else if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
-				setVoiceError('No microphone was found on this device.')
+				// Android/iOS WebView: enumerateDevices is often empty / enumerate_failed
+				// until the first successful GUM, and Telecom MODE_IN_COMMUNICATION
+				// maps to NotFound even when hardware exists. Never show the permanent
+				// "No microphone" banner inside any CashTrees native shell.
+				const nativeShell = isCashTreesNativeWebView()
+				const hasAudioInput =
+					deviceSummary.includes('audioinput:') || deviceSummary === 'enumerate_failed'
+				const useTemporary = nativeShell || hasAudioInput
+				logMicDiag('not_found_banner', {
+					nativeShell,
+					hasAudioInput,
+					useTemporary,
+					deviceSummary,
+				})
+				setVoiceError(
+					useTemporary
+						? 'Microphone is temporarily unavailable. End the call and try again.'
+						: 'No microphone was found on this device.',
+				)
 			} else if (name === 'NotReadableError' || name === 'TrackStartError') {
 				setVoiceError('Microphone is already in use by another app.')
 			} else if (message === 'voice_media_recorder_unsupported') {
@@ -2174,6 +2398,8 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			} else {
 				setVoiceError('Microphone access was denied or unavailable.')
 			}
+		} finally {
+			voiceMediaStartingRef.current = false
 		}
 	}, [chatData.chatData, toAddress])
 
@@ -2408,6 +2634,83 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		setVoiceCallMinimized(false)
 		setVoiceCallConnecting(true)
 		setVoiceCallState('outgoing')
+		// Android: prefer mic opened while Telecom was still RINGING (prewarm).
+		// Otherwise open ASAP before route/PGP work. ConnectionServiceFocus may
+		// flip MODE_IN_COMMUNICATION ~3.4s after Answer even with deferred setActive.
+		let earlyMicStream: MediaStream | null = null
+		if (getCashTreesNativeNfcHost() === 'android' && navigator.mediaDevices?.getUserMedia) {
+			const relayEarly = (line: string) => {
+				try {
+					const w = window as Window & {
+						CashTreesAndroid?: { debugLog?: (level: string, message: string) => void }
+						CashTreesWebConsole?: { relay?: (level: string, message: string) => void }
+					}
+					w.CashTreesWebConsole?.relay?.('warn', line)
+					w.CashTreesAndroid?.debugLog?.('warn', line)
+				} catch {
+					/* ignore */
+				}
+			}
+			const sleepEarly = (ms: number) =>
+				new Promise<void>((resolve) => {
+					window.setTimeout(resolve, ms)
+				})
+			const isTransientEarly = (error: unknown): boolean => {
+				const name = error instanceof DOMException ? error.name : ''
+				return (
+					name === 'NotFoundError' ||
+					name === 'DevicesNotFoundError' ||
+					name === 'NotReadableError' ||
+					name === 'TrackStartError' ||
+					name === 'AbortError'
+				)
+			}
+			const offerSessionId = String(offer.sessionId || '')
+			const prewarmed = takeAndroidIncomingMicPrewarm(offerSessionId)
+			if (prewarmed) {
+				earlyMicStream = prewarmed
+				voiceCallStreamRef.current = earlyMicStream
+				relayEarly(
+					`[voice-mic] early_reuse_prewarm ${JSON.stringify({
+						tracks:
+							earlyMicStream.getAudioTracks().map((t) => t.label || t.id).join(',') || '0',
+					})}`,
+				)
+			} else {
+				relayEarly(`[voice-mic] early_getUserMedia_begin ${JSON.stringify({ host: 'android' })}`)
+				const earlyDelaysMs = [0, 200, 500, 1000, 2000, 3500, 5000]
+				for (let attempt = 0; attempt < earlyDelaysMs.length; attempt += 1) {
+					const delay = earlyDelaysMs[attempt] ?? 0
+					if (delay > 0) await sleepEarly(delay)
+					try {
+						earlyMicStream = await navigator.mediaDevices.getUserMedia({ audio: true })
+						voiceCallStreamRef.current = earlyMicStream
+						relayEarly(
+							`[voice-mic] early_getUserMedia_ok ${JSON.stringify({
+								attempt: attempt + 1,
+								tracks:
+									earlyMicStream.getAudioTracks().map((t) => t.label || t.id).join(',') || '0',
+							})}`,
+						)
+						break
+					} catch (earlyError) {
+						const name = earlyError instanceof DOMException ? earlyError.name : ''
+						const message = earlyError instanceof Error ? earlyError.message : String(earlyError)
+						const canRetry = isTransientEarly(earlyError) && attempt + 1 < earlyDelaysMs.length
+						relayEarly(
+							`[voice-mic] early_getUserMedia_failed ${JSON.stringify({
+								attempt: attempt + 1,
+								name,
+								message,
+								canRetry,
+							})}`,
+						)
+						earlyMicStream = null
+						if (!canRetry) break
+					}
+				}
+			}
+		}
 		let route = chatData.chatData?.routersArmoreds?.trim() || ''
 		let recipientPgp = chatData.chatData?.publicArmored?.trim() || ''
 		// Same race as startVoiceCall: ChatList may still be refreshing the
@@ -2422,6 +2725,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			}
 		}
 		if (!route || !recipientPgp) {
+			earlyMicStream?.getTracks().forEach((track) => track.stop())
 			setVoiceError(
 				!recipientPgp
 					? 'Voice calling requires the contact to register Chat encryption first.'
@@ -2436,6 +2740,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		try {
 			const mailboxAligned = await alignLiveGossipRouteToChain(privateKey, allNodes)
 			if (!mailboxAligned) {
+				earlyMicStream?.getTracks().forEach((track) => track.stop())
 				setVoiceError('Voice call could not use your current Chat mailbox. Try again.')
 				setVoiceCallConnecting(false)
 				setVoiceCallState('idle')
@@ -2452,6 +2757,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			})
 			const channel = await controller.acceptIncoming(offer as VoiceCallSignal)
 			if (!channel) {
+				earlyMicStream?.getTracks().forEach((track) => track.stop())
 				setVoiceError(VOICE_RELAY_OPEN_ERROR)
 				setVoiceCallConnecting(false)
 				setIncomingVoiceOffer(null)
@@ -2495,20 +2801,90 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 					displayName: offer.from,
 				})
 			}
-			await startVoiceMedia()
+			await startVoiceMedia(earlyMicStream)
+			earlyMicStream = null
 			setVoiceCallConnecting(false)
 		} catch {
+			earlyMicStream?.getTracks().forEach((track) => track.stop())
 			setVoiceError('This voice call request is invalid or expired.')
 			setVoiceCallConnecting(false)
 			setVoiceCallState('idle')
 		} finally {
 			setIncomingVoiceAction('idle')
 		}
-	}, [allNodes, chatData.chatData, incomingVoiceAction, incomingVoiceOffer, privateKey, startVoiceMedia, upsertPhoneCallRecord])
+	}, [
+		allNodes,
+		chatData.chatData,
+		incomingVoiceAction,
+		incomingVoiceOffer,
+		privateKey,
+		startVoiceMedia,
+		takeAndroidIncomingMicPrewarm,
+		upsertPhoneCallRecord,
+	])
+
+	// Android: open mic while Telecom is still RINGING (MODE_RINGTONE). Answer
+	// later flips MODE_IN_COMMUNICATION (~3.4s) and WebView getUserMedia NotFounds.
+	useEffect(() => {
+		const sessionId = typeof incomingVoiceOffer?.sessionId === 'string' ? incomingVoiceOffer.sessionId : ''
+		if (getCashTreesNativeNfcHost() !== 'android' || !sessionId || !navigator.mediaDevices?.getUserMedia) {
+			return
+		}
+		const liveSameSession =
+			androidIncomingMicPrewarmSessionRef.current === sessionId &&
+			Boolean(androidIncomingMicPrewarmRef.current?.getAudioTracks().some((t) => t.readyState === 'live'))
+		if (liveSameSession) return
+
+		let cancelled = false
+		const relay = (line: string) => {
+			try {
+				const w = window as Window & {
+					CashTreesAndroid?: { debugLog?: (level: string, message: string) => void }
+					CashTreesWebConsole?: { relay?: (level: string, message: string) => void }
+				}
+				w.CashTreesWebConsole?.relay?.('warn', line)
+				w.CashTreesAndroid?.debugLog?.('warn', line)
+			} catch {
+				/* ignore */
+			}
+		}
+		relay(`[voice-mic] prewarm_begin ${JSON.stringify({ sessionId: 'set' })}`)
+		void (async () => {
+			try {
+				const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+				if (cancelled) {
+					stream.getTracks().forEach((track) => {
+						try {
+							track.stop()
+						} catch {
+							/* ignore */
+						}
+					})
+					return
+				}
+				stopAndroidIncomingMicPrewarm()
+				androidIncomingMicPrewarmRef.current = stream
+				androidIncomingMicPrewarmSessionRef.current = sessionId
+				relay(
+					`[voice-mic] prewarm_ok ${JSON.stringify({
+						tracks: stream.getAudioTracks().map((t) => t.label || t.id).join(',') || '0',
+					})}`,
+				)
+			} catch (error) {
+				const name = error instanceof DOMException ? error.name : ''
+				const message = error instanceof Error ? error.message : String(error)
+				relay(`[voice-mic] prewarm_failed ${JSON.stringify({ name, message })}`)
+			}
+		})()
+		return () => {
+			cancelled = true
+		}
+	}, [incomingVoiceOffer?.sessionId, stopAndroidIncomingMicPrewarm])
 
 	const rejectVoiceCall = useCallback(async () => {
 		const offer = incomingVoiceOffer
 		if (!offer || incomingVoiceAction !== 'idle') return
+		stopAndroidIncomingMicPrewarm(String(offer.sessionId || ''))
 		setIncomingVoiceAction('declining')
 		const localWallet = new ethers.Wallet(privateKey).address
 		try {
@@ -2535,7 +2911,16 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		} finally {
 			setIncomingVoiceAction('idle')
 		}
-	}, [allNodes, chatData.chatData.publicArmored, incomingVoiceAction, incomingVoiceOffer, privateKey, upsertPhoneCallRecord])
+	}, [
+		allNodes,
+		chatData.chatData.publicArmored,
+		chatData.chatData.routersArmoreds,
+		incomingVoiceAction,
+		incomingVoiceOffer,
+		privateKey,
+		stopAndroidIncomingMicPrewarm,
+		upsertPhoneCallRecord,
+	])
 
 	const acceptVoiceCallTap = useReliableTapHandler(() => {
 		void acceptVoiceCall()

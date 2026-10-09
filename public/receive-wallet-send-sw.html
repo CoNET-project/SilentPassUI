@@ -900,10 +900,55 @@
 						method: 'eth_getCode',
 						params: [addr, 'latest'],
 					})
-					return typeof code === 'string' && code !== '0x' && code !== '0x0' && code.length > 2
+					if (typeof code !== 'string') return false
+					var body = code.replace(/^0x/i, '')
+					if (!body || body === '0' || /^0+$/.test(body)) return false
+					return true
 				} catch (_) {
 					return false
 				}
+			}
+
+			function capabilityEnabled(cap) {
+				if (cap === true) return true
+				if (!cap || typeof cap !== 'object') return false
+				if (cap.supported === true || cap.supported === 'true') return true
+				var st = String(cap.status || '').toLowerCase()
+				return st === 'ready' || st === 'supported' || st === 'enabled'
+			}
+
+			function chainCapsLookSmart(chainCaps) {
+				if (!chainCaps || typeof chainCaps !== 'object') return false
+				if (capabilityEnabled(chainCaps.atomicBatch)) return true
+				if (capabilityEnabled(chainCaps.atomic)) return true
+				if (capabilityEnabled(chainCaps.paymasterService)) return true
+				if (capabilityEnabled(chainCaps.eip7702)) return true
+				if (capabilityEnabled(chainCaps.delegation)) return true
+				return false
+			}
+
+			function capsObjectLooksSmart(caps) {
+				if (!caps || typeof caps !== 'object') return false
+				if (chainCapsLookSmart(caps)) return true
+				var keys = Object.keys(caps)
+				for (var i = 0; i < keys.length; i++) {
+					if (chainCapsLookSmart(caps[keys[i]])) return true
+				}
+				return false
+			}
+
+			async function walletCapabilitiesLookSmart(provider, addr) {
+				var attempts = [[addr], [addr, [BASE_HEX]], [addr, BASE_HEX]]
+				for (var i = 0; i < attempts.length; i++) {
+					try {
+						var caps = await provider.request({
+							method: 'wallet_getCapabilities',
+							params: attempts[i],
+						})
+						if (capsObjectLooksSmart(caps)) return true
+					} catch (_) {}
+				}
+				return false
 			}
 
 			/** Coinbase Wallet / Base app in-app browser — always USDC.transfer (never EIP-3009). */
@@ -929,60 +974,22 @@
 			}
 
 			/**
-			 * Coinbase Smart Wallet (and similar SCW) often have empty bytecode until the
-			 * first UserOp. Prefer USDC.transfer / wallet_sendCalls over EIP-3009.
+			 * Pre-check before EIP-3009: Coinbase, contract / EIP-7702 code, or
+			 * MetaMask Smart Account capabilities (atomic.status ready|supported).
 			 */
 			async function shouldPreferUsdcTransfer(provider, addr) {
 				if (isCoinbaseLikeProvider(provider)) return true
 				if (await isContractAccount(provider, addr)) return true
-				try {
-					var caps = await provider.request({
-						method: 'wallet_getCapabilities',
-						params: [addr],
-					})
-					if (caps && typeof caps === 'object') {
-						var base =
-							caps['0x2105'] ||
-							caps['8453'] ||
-							caps[8453] ||
-							caps['0x2105'.toLowerCase()]
-						if (base && typeof base === 'object') {
-							var atomic = base.atomicBatch || base.atomic
-							var paymaster = base.paymasterService
-							var atomicOn =
-								atomic === true ||
-								(atomic &&
-									(atomic.supported === true || atomic.supported === 'true'))
-							var paymasterOn =
-								paymaster === true ||
-								(paymaster &&
-									(paymaster.supported === true || paymaster.supported === 'true'))
-							if (atomicOn || paymasterOn) return true
-						}
-					}
-				} catch (_) {}
-				try {
-					var caps2 = await provider.request({
-						method: 'wallet_getCapabilities',
-						params: [addr, ['0x2105']],
-					})
-					if (caps2 && typeof caps2 === 'object') {
-						var base2 = caps2['0x2105'] || caps2['8453'] || caps2[8453]
-						if (base2 && typeof base2 === 'object') {
-							var a2 = base2.atomicBatch || base2.atomic
-							var p2 = base2.paymasterService
-							if (
-								a2 === true ||
-								(a2 && a2.supported) ||
-								p2 === true ||
-								(p2 && p2.supported)
-							) {
-								return true
-							}
-						}
-					}
-				} catch (_) {}
+				if (await walletCapabilitiesLookSmart(provider, addr)) return true
 				return false
+			}
+
+			async function requestUsdcTransferNow(provider, from, statusMsg) {
+				setSmartWalletCopy()
+				btn.textContent = 'Confirm in wallet…'
+				setStatus(statusMsg || 'Confirm the USDC transfer in your wallet…')
+				var txHash = await sendUsdcTransfer(provider, from)
+				returnToBeamioTx(txHash)
 			}
 
 			async function sendUsdcTransfer(provider, from) {
@@ -1315,11 +1322,7 @@
 						if (fromEl) fromEl.textContent = from
 					} catch (_) {}
 					if (await shouldPreferUsdcTransfer(provider, from)) {
-						setSmartWalletCopy()
-						btn.textContent = 'Confirm in wallet…'
-						setStatus('Confirm the USDC transfer in your wallet…')
-						var txHash = await sendUsdcTransfer(provider, from)
-						returnToBeamioTx(txHash)
+						await requestUsdcTransferNow(provider, from)
 						return
 					}
 					var authResult
@@ -1335,31 +1338,19 @@
 						throw signErr
 					}
 					if (authResult.smartWallet) {
-						setSmartWalletCopy()
-						btn.textContent = 'Confirm in wallet…'
-						setStatus('Smart Wallet detected — confirm the USDC transfer…')
-						var txHash2 = await sendUsdcTransfer(provider, from)
-						returnToBeamioTx(txHash2)
+						await requestUsdcTransferNow(
+							provider,
+							from,
+							'Smart Wallet detected — confirm the USDC transfer…',
+						)
 						return
 					}
 					if (authResult.mismatch && isAddress(authResult.recovered)) {
-						var recoveredPermitted = findInAccounts(
-							await listPermittedAccounts(provider),
-							authResult.recovered,
+						await requestUsdcTransferNow(
+							provider,
+							from,
+							'Smart account detected — confirm the USDC transfer…',
 						)
-						signState.inFlight = false
-						if (recoveredPermitted) setForceFrom(recoveredPermitted)
-						else clearForceFrom()
-						try {
-							var fromElMismatch = document.getElementById('fromLabel')
-							if (fromElMismatch) fromElMismatch.textContent = recoveredPermitted || authResult.recovered
-						} catch (_) {}
-						setStatus(
-							'MetaMask signed. Tap Sign again to finish with ' + shortAddr(authResult.recovered) + '.',
-							'ok',
-						)
-						btn.disabled = false
-						btn.textContent = 'Sign again'
 						return
 					}
 					if (!authResult || !authResult.ok) {
@@ -1379,15 +1370,26 @@
 					if (signState.done || loadSignedResult()) return
 					signState.inFlight = false
 					var msg = err && typeof err.message === 'string' ? err.message : ''
-					if (signState.walletConfirmed && isPermittedAddressError(err)) {
-						clearForceFrom()
-						setStatus(
-							'MetaMask signed. Tap Sign again to finish with the account shown in MetaMask.',
-							'ok',
-						)
-						btn.disabled = false
-						btn.textContent = 'Sign again'
-						return
+					if (signState.walletConfirmed && isAddress(from)) {
+						try {
+							signState.inFlight = true
+							await requestUsdcTransferNow(
+								provider,
+								from,
+								'Smart account detected — confirm the USDC transfer…',
+							)
+							return
+						} catch (txErr) {
+							signState.inFlight = false
+							if (isUserRejected(txErr)) {
+								setStatus('Request rejected. Tap below to try again.', 'err')
+								btn.disabled = false
+								btn.textContent = 'Sign and return to Beamio'
+								return
+							}
+							err = txErr
+							msg = txErr && typeof txErr.message === 'string' ? txErr.message : msg
+						}
 					}
 					if (isPermittedAddressError(err)) {
 						clearForceFrom()

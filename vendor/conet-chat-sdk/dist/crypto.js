@@ -55,20 +55,28 @@ function subtle() {
         throw new Error('SubtleCrypto unavailable in this runtime');
     return c.subtle;
 }
+function toBufferSource(bytes) {
+    return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+}
 /**
  * HKDF-SHA256 domain-separated derivation.
  * @returns `length`-byte derived key.
  */
 export async function hkdf(masterBytes, info, length = 32, salt = new Uint8Array(0)) {
-    const baseKey = await subtle().importKey('raw', masterBytes, 'HKDF', false, ['deriveBits']);
-    const bits = await subtle().deriveBits({ name: 'HKDF', hash: 'SHA-256', salt, info: textEncoder.encode(info) }, baseKey, length * 8);
+    const baseKey = await subtle().importKey('raw', toBufferSource(masterBytes), 'HKDF', false, ['deriveBits']);
+    const bits = await subtle().deriveBits({
+        name: 'HKDF',
+        hash: 'SHA-256',
+        salt: toBufferSource(salt),
+        info: toBufferSource(textEncoder.encode(info)),
+    }, baseKey, length * 8);
     return new Uint8Array(bits);
 }
 /** AES-256-GCM encrypt. Returns base64 of `nonce(12) || ciphertext||tag`. */
 export async function aesGcmEncryptBytes(key, plaintext) {
     const iv = globalThis.crypto.getRandomValues(new Uint8Array(12));
-    const cryptoKey = await subtle().importKey('raw', key, 'AES-GCM', false, ['encrypt']);
-    const ct = new Uint8Array(await subtle().encrypt({ name: 'AES-GCM', iv }, cryptoKey, plaintext));
+    const cryptoKey = await subtle().importKey('raw', toBufferSource(key), 'AES-GCM', false, ['encrypt']);
+    const ct = new Uint8Array(await subtle().encrypt({ name: 'AES-GCM', iv: toBufferSource(iv) }, cryptoKey, toBufferSource(plaintext)));
     const combined = new Uint8Array(iv.length + ct.length);
     combined.set(iv, 0);
     combined.set(ct, iv.length);
@@ -79,8 +87,8 @@ export async function aesGcmDecryptBytes(key, b64) {
     const combined = base64ToBytes(b64);
     const iv = combined.subarray(0, 12);
     const ct = combined.subarray(12);
-    const cryptoKey = await subtle().importKey('raw', key, 'AES-GCM', false, ['decrypt']);
-    const pt = await subtle().decrypt({ name: 'AES-GCM', iv }, cryptoKey, ct);
+    const cryptoKey = await subtle().importKey('raw', toBufferSource(key), 'AES-GCM', false, ['decrypt']);
+    const pt = await subtle().decrypt({ name: 'AES-GCM', iv: toBufferSource(iv) }, cryptoKey, toBufferSource(ct));
     return new Uint8Array(pt);
 }
 export async function aesGcmEncryptString(key, plaintext) {

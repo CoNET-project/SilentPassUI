@@ -909,21 +909,30 @@
 				}
 			}
 
+			/**
+			 * True only when the wallet reports the account is already smart /
+			 * atomic-capable (EIP-5792 status "supported").
+			 * MetaMask "ready" = plain EOA that *can* upgrade via EIP-7702 — still
+			 * EOA; must NOT force USDC.transfer (allow EIP-3009 / x402).
+			 * @see https://docs.metamask.io/metamask-connect/evm/reference/json-rpc-api/wallet_getCapabilities/
+			 */
 			function capabilityEnabled(cap) {
 				if (cap === true) return true
 				if (!cap || typeof cap !== 'object') return false
 				if (cap.supported === true || cap.supported === 'true') return true
 				var st = String(cap.status || '').toLowerCase()
-				return st === 'ready' || st === 'supported' || st === 'enabled'
+				return st === 'supported' || st === 'enabled'
 			}
 
 			function chainCapsLookSmart(chainCaps) {
 				if (!chainCaps || typeof chainCaps !== 'object') return false
+				// Only atomic / atomicBatch indicate an already-smart account
+				// (MetaMask atomic.status "supported", Coinbase atomicBatch).
+				// Do not treat eip7702/delegation/paymasterService as smart —
+				// those can mean wallet feature support, not an upgraded EOA.
+				// Real EIP-7702 code is detected via eth_getCode above.
 				if (capabilityEnabled(chainCaps.atomicBatch)) return true
 				if (capabilityEnabled(chainCaps.atomic)) return true
-				if (capabilityEnabled(chainCaps.paymasterService)) return true
-				if (capabilityEnabled(chainCaps.eip7702)) return true
-				if (capabilityEnabled(chainCaps.delegation)) return true
 				return false
 			}
 
@@ -974,8 +983,9 @@
 			}
 
 			/**
-			 * Pre-check before EIP-3009: Coinbase, contract / EIP-7702 code, or
-			 * MetaMask Smart Account capabilities (atomic.status ready|supported).
+			 * Pre-check before EIP-3009: Coinbase, on-chain contract / EIP-7702
+			 * delegation code, or wallet capabilities already "supported"
+			 * (not MetaMask "ready" — that is still a plain EOA).
 			 */
 			async function shouldPreferUsdcTransfer(provider, addr) {
 				if (isCoinbaseLikeProvider(provider)) return true

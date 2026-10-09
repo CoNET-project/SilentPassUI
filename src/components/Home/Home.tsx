@@ -1,6 +1,6 @@
 // Home.tsx
 
-import { useEffect, useRef, useState, useMemo, useCallback, type TouchEvent } from "react"
+import { useEffect, useRef, useState, useMemo, useCallback, type SyntheticEvent, type TouchEvent } from "react"
 import { useScrollCapsuleOpacity } from "@/hooks/useScrollCapsuleOpacity"
 import { useReliableTapHandler, RELIABLE_TAP_BUTTON_CLASS } from '@/utils/reliableTap'
 import { createPortal } from 'react-dom';
@@ -511,6 +511,23 @@ const HOME_OFFER_PANELS: HomeOfferPanel[] = [
 		body: 'Get Reward PT when you spend at participating merchants, and use your Reward PT at any merchant across the network.',
 	},
 ]
+
+function retryHomeOfferArtWithAlternateBase(event: SyntheticEvent<HTMLImageElement>): void {
+	const image = event.currentTarget
+	if (image.dataset.alternateBaseTried === 'true') {
+		image.style.display = 'none'
+		return
+	}
+
+	const source = image.currentSrc || image.src
+	const url = new URL(source, window.location.origin)
+	const alternatePath = url.pathname.startsWith('/app/')
+		? url.pathname.slice('/app'.length)
+		: `/app${url.pathname.startsWith('/') ? '' : '/'}${url.pathname}`
+
+	image.dataset.alternateBaseTried = 'true'
+	image.src = `${alternatePath}${url.search}${url.hash}`
+}
 
 const HOME_DUMMY_QR_VALUE = 'https://beamio.app/'
 const HOME_DUMMY_QR_SIZE = 220
@@ -3306,6 +3323,7 @@ const Home = (_props: HomeProps) => {
 											<img
 												src={panel.art}
 												alt=""
+												onError={retryHomeOfferArtWithAlternateBase}
 												className="pointer-events-none absolute inset-y-0 -right-8 h-full w-[70%] max-w-none object-cover object-right"
 												draggable={false}
 											/>

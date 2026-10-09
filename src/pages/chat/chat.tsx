@@ -1869,6 +1869,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 	const locallyEndedVoiceSessionsRef = useRef<Set<string>>(new Set())
 	const voiceCallKeyRef = useRef<Uint8Array | null>(null)
 	const voiceCallPeerSessionRef = useRef<string | null>(null)
+	const voicePeerRouteRef = useRef<string>('')
 	const voiceCaptureStopRef = useRef<(() => void) | null>(null)
 	const voiceCallStreamRef = useRef<MediaStream | null>(null)
 	const voicePlaybackRef = useRef<VoicePlaybackBuffer | null>(null)
@@ -2102,6 +2103,11 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			setVoiceError('Voice calling is not supported by this browser.')
 			return
 		}
+		const route = voicePeerRouteRef.current || chatData.chatData?.routersArmoreds?.trim() || ''
+		if (!route) {
+			setVoiceError('Voice audio relay is unavailable. Please try the call again.')
+			return
+		}
 		try {
 			const stream = await navigator.mediaDevices.getUserMedia({
 				audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
@@ -2137,9 +2143,9 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				voiceReceivedSeqsRef.current.clear()
 			}
 			voiceCaptureStopRef.current = await startVoiceCapture(stream, key, async (payload) => {
-				const route = chatData.chatData?.routersArmoreds?.trim()
-				if (!route || !callId || !targetSessionId) return
-				const sent = await sendWorkerVoiceFrame(route, {
+				const frameRoute = voicePeerRouteRef.current || chatData.chatData?.routersArmoreds?.trim() || ''
+				if (!frameRoute || !callId || !targetSessionId) return
+				const sent = await sendWorkerVoiceFrame(frameRoute, {
 					type: 'voice_frame_v1',
 					callId,
 					sessionId: voiceCallSessionRef.current,
@@ -2154,8 +2160,20 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 					setVoiceError('Voice audio relay is unavailable. Please try the call again.')
 				}
 			})
-		} catch {
-			setVoiceError('Microphone access was denied or unavailable.')
+		} catch (error) {
+			const name = error instanceof DOMException ? error.name : ''
+			const message = error instanceof Error ? error.message : ''
+			if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+				setVoiceError('Microphone access was denied. Allow microphone access and try again.')
+			} else if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+				setVoiceError('No microphone was found on this device.')
+			} else if (name === 'NotReadableError' || name === 'TrackStartError') {
+				setVoiceError('Microphone is already in use by another app.')
+			} else if (message === 'voice_media_recorder_unsupported') {
+				setVoiceError('Voice capture is not supported by this browser.')
+			} else {
+				setVoiceError('Microphone access was denied or unavailable.')
+			}
 		}
 	}, [chatData.chatData, toAddress])
 
@@ -2169,15 +2187,34 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		setVoiceSpeakerOn(true)
 		setVoiceCallConnecting(true)
 		setVoiceCallState('outgoing')
-		const route = chatData.chatData?.routersArmoreds?.trim()
-		const recipientPgp = chatData.chatData?.publicArmored?.trim()
+		let route = chatData.chatData?.routersArmoreds?.trim() || ''
+		let recipientPgp = chatData.chatData?.publicArmored?.trim() || ''
+		// ChatList refreshes peer routes in the background. A call can be
+		// started before that refresh finishes, so resolve the peer's current
+		// trusted AddressPGP record once at the action boundary instead of
+		// treating the stale local mirror as authoritative.
 		if (!route || !recipientPgp) {
-			setVoiceError('Voice calling requires the contact to have an active Chat route.')
+			try {
+				const refreshed = await getKeysFromCoNETPGPSC(chatData.address, privateKey)
+				route = refreshed?.routersArmoreds?.trim() || route
+				recipientPgp = refreshed?.publicArmored?.trim() || recipientPgp
+			} catch {
+				// Keep the last trusted local values; an untrusted refresh must
+				// never clear them or turn a transient RPC failure into state.
+			}
+		}
+		if (!route || !recipientPgp) {
+			setVoiceError(
+				!recipientPgp
+					? 'Voice calling requires the contact to register Chat encryption first.'
+					: 'Voice calling could not resolve the contact mailbox route. Please try again.',
+			)
 			setVoiceCallConnecting(false)
 			setVoiceCallState('idle')
 			voiceCallStartingRef.current = false
 			return
 		}
+		voicePeerRouteRef.current = route
 		try {
 			const mailboxAligned = await alignLiveGossipRouteToChain(privateKey, allNodes)
 			if (!mailboxAligned) {
@@ -2371,14 +2408,46 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		setVoiceCallMinimized(false)
 		setVoiceCallConnecting(true)
 		setVoiceCallState('outgoing')
+		let route = chatData.chatData?.routersArmoreds?.trim() || ''
+		let recipientPgp = chatData.chatData?.publicArmored?.trim() || ''
+		// Same race as startVoiceCall: ChatList may still be refreshing the
+		// peer AddressPGP mirror when Answer is tapped.
+		if (!route || !recipientPgp) {
+			try {
+				const refreshed = await getKeysFromCoNETPGPSC(callerEoa, privateKey)
+				route = refreshed?.routersArmoreds?.trim() || route
+				recipientPgp = refreshed?.publicArmored?.trim() || recipientPgp
+			} catch {
+				// Keep last trusted local values on untrusted refresh failure.
+			}
+		}
+		if (!route || !recipientPgp) {
+			setVoiceError(
+				!recipientPgp
+					? 'Voice calling requires the contact to register Chat encryption first.'
+					: 'Voice calling could not resolve the contact mailbox route. Please try again.',
+			)
+			setVoiceCallConnecting(false)
+			setVoiceCallState('idle')
+			setIncomingVoiceAction('idle')
+			return
+		}
+		voicePeerRouteRef.current = route
 		try {
+			const mailboxAligned = await alignLiveGossipRouteToChain(privateKey, allNodes)
+			if (!mailboxAligned) {
+				setVoiceError('Voice call could not use your current Chat mailbox. Try again.')
+				setVoiceCallConnecting(false)
+				setVoiceCallState('idle')
+				return
+			}
 			const localWallet = new ethers.Wallet(privateKey).address
 			const controller = createVoiceCallController({
 				privateKey,
 				localCallId: String(CoNET_Data?.beamio?.accountName || localWallet).trim() || localWallet,
 				peerEoa: callerEoa,
-				peerPgp: chatData.chatData.publicArmored,
-				peerRoute: chatData.chatData.routersArmoreds,
+				peerPgp: recipientPgp,
+				peerRoute: route,
 				allNodes,
 			})
 			const channel = await controller.acceptIncoming(offer as VoiceCallSignal)
@@ -2386,6 +2455,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				setVoiceError(VOICE_RELAY_OPEN_ERROR)
 				setVoiceCallConnecting(false)
 				setIncomingVoiceOffer(null)
+				setVoiceCallState('idle')
 				return
 			}
 			voiceControllerRef.current = controller
@@ -2425,7 +2495,8 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 					displayName: offer.from,
 				})
 			}
-			void startVoiceMedia()
+			await startVoiceMedia()
+			setVoiceCallConnecting(false)
 		} catch {
 			setVoiceError('This voice call request is invalid or expired.')
 			setVoiceCallConnecting(false)
@@ -2540,6 +2611,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		voiceCallKeyRef.current = null
 		voiceCallPeerSessionRef.current = null
 		voiceCallSessionRef.current = null
+		voicePeerRouteRef.current = ''
 		voiceReceiveSessionRef.current = null
 		voiceReceivedSeqRef.current = -1
 		voiceReceivedSeqsRef.current.clear()

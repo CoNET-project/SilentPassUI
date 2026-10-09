@@ -54,4 +54,8 @@ export type {
 	SendMessageOptions,
 	StatusEvent,
 	Unsubscribe,
+	VoiceCallSignal,
+	VoiceCallSignalType,
+	VoiceFrame,
 } from './types.js'
+export type { VoiceConflictEvent, VoiceGapEvent, VoiceFrameChunk } from './voice-reorder.js'

@@ -16,12 +16,15 @@
  * encrypted to mailbox B route key. Each POST wraps inner armor to **that entry's**
  * route public key. Clients never set `X-CoNET-Hop-Sigs`.
  */
-import type { ChatRoute, NodeInfo, PresenceEvent, StatusEvent } from '../types.js';
+import { type ChatRoute, type NodeInfo, type PresenceEvent, type StatusEvent, type VoiceFrame } from '../types.js';
 import type { WorkerInitPayload } from '../protocol.js';
+import { type VoiceConflictEvent, type VoiceGapEvent } from '../voice-reorder.js';
 /** Callbacks the worker entry wires to `postMessage`. */
 export interface GossipEmit {
     message(line: string, armorHash: string | undefined, plain: boolean, viaDomain?: string): void;
-    voiceFrame(payload: Record<string, unknown>): void;
+    voiceFrame(payload: VoiceFrame): void;
+    voiceGap(payload: VoiceGapEvent): void;
+    voiceConflict(payload: VoiceConflictEvent): void;
     status(status: StatusEvent['status'], detail?: string): void;
     log(level: 'info' | 'warn' | 'error', message: string): void;
     presence(payload: PresenceEvent): void;
@@ -36,11 +39,14 @@ export declare class GossipCore {
     private userPgpKeyID;
     private listenController;
     private voiceListenController;
+    private readonly voiceReorder;
     private lastActivityAt;
     private paused;
+    private pgpReady;
     private ackContext;
     constructor(emit: GossipEmit);
     init(payload: WorkerInitPayload): Promise<void>;
+    private openPgpAndListen;
     setNodes(nodes: NodeInfo[]): void;
     setRoutes(routes: ChatRoute[]): void;
     pause(): void;

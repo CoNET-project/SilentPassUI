@@ -30,7 +30,7 @@ import {
 } from 'openpgp'
 import { ethers } from 'ethers'
 
-import type { ChatRoute, NodeInfo, PresenceEvent, StatusEvent } from '../types.js'
+import { VOICE_MAX_FRAME_B64, type ChatRoute, type NodeInfo, type PresenceEvent, type StatusEvent, type VoiceFrame } from '../types.js'
 import type { WorkerInitPayload } from '../protocol.js'
 import {
 	getRandomNode,
@@ -45,11 +45,14 @@ import {
 } from '../nodes.js'
 import { base64ToUtf8, keccakUtf8, utf8ToBase64 } from '../crypto.js'
 import { armorToString, buildPostBody, encryptOpaqueVoiceCommand, encryptRouteCommand, wrapArmorToEntryRoute, wrapArmorToMailboxWork } from '../envelope.js'
+import { VoiceFrameReorderBuffer, type VoiceConflictEvent, type VoiceFrameChunk, type VoiceGapEvent } from '../voice-reorder.js'
 
 /** Callbacks the worker entry wires to `postMessage`. */
 export interface GossipEmit {
 	message(line: string, armorHash: string | undefined, plain: boolean, viaDomain?: string): void
-	voiceFrame(payload: Record<string, unknown>): void
+	voiceFrame(payload: VoiceFrame): void
+	voiceGap(payload: VoiceGapEvent): void
+	voiceConflict(payload: VoiceConflictEvent): void
 	status(status: StatusEvent['status'], detail?: string): void
 	log(level: 'info' | 'warn' | 'error', message: string): void
 	presence(payload: PresenceEvent): void
@@ -160,6 +163,13 @@ export class GossipCore {
 	private userPgpKeyID = ''
 	private listenController: AbortController | null = null
 	private voiceListenController: AbortController | null = null
+	private readonly voiceReorder = new VoiceFrameReorderBuffer({
+		onEvent: (event) => {
+			if (event.type === 'frame') this.emit.voiceFrame(event.frame as VoiceFrame)
+			if (event.type === 'gap') this.emit.voiceGap(event.gap)
+			if (event.type === 'conflict') this.emit.voiceConflict(event.conflict)
+		},
+	})
 	private lastActivityAt = 0
 	private paused = false
 	private pgpReady: Promise<void> = Promise.resolve()
@@ -227,6 +237,7 @@ export class GossipCore {
 		this.paused = true
 		this.clearListen('background_pause')
 		this.voiceListenController?.abort('voice_stop')
+		this.voiceReorder.clear()
 		this.lastActivityAt = 0
 		this.emit.status('paused')
 	}
@@ -240,6 +251,7 @@ export class GossipCore {
 	destroy(): void {
 		this.clearListen('destroy')
 		this.voiceListenController?.abort('voice_stop')
+		this.voiceReorder.clear()
 		this.wallet = null
 		this.pgpPrivateKey = null
 		this.cfg = null
@@ -518,7 +530,8 @@ export class GossipCore {
 		}
 		try {
 			if (data?.type === 'voice_frame_v1') {
-				this.emit.voiceFrame(data)
+				const frame = typeof data.frameTimestamp === 'number' ? { ...data, timestamp: data.frameTimestamp } : data
+				this.voiceReorder.push(frame as unknown as VoiceFrameChunk)
 				return
 			}
 			// Mailbox relays can add several JSON envelopes. Walk only a bounded
@@ -835,7 +848,33 @@ export class GossipCore {
 	}
 
 	async sendVoiceFrame(routerArmoredPublicKey: string, frame: Record<string, unknown>): Promise<boolean> {
-		const command = { command: 'voice_uplink', ...frame, timestamp: Math.floor(Date.now() / 1000) }
+		const candidate = frame as Partial<VoiceFrame>
+		if (
+			typeof candidate.callId !== 'string' || !candidate.callId ||
+			typeof candidate.sessionId !== 'string' || !candidate.sessionId ||
+			typeof candidate.to !== 'string' || !candidate.to ||
+			!Number.isSafeInteger(candidate.seq) || (candidate.seq as number) < 0 ||
+			typeof candidate.timestamp !== 'number' || !Number.isFinite(candidate.timestamp) ||
+			typeof candidate.payload !== 'string' || !candidate.payload ||
+			candidate.payload.length > VOICE_MAX_FRAME_B64
+		) return false
+		const command = {
+			command: 'voice_uplink',
+			type: 'voice_frame_v1',
+			walletAddress: this.wallet?.address,
+			from: this.wallet?.address,
+			callId: candidate.callId,
+			sessionId: candidate.sessionId,
+			to: candidate.to,
+			direction: candidate.direction || 'uplink',
+			seq: candidate.seq,
+			frameTimestamp: candidate.timestamp,
+			payload: candidate.payload,
+			...(candidate.frameId ? { frameId: candidate.frameId } : {}),
+			...(candidate.chunkIndex !== undefined ? { chunkIndex: candidate.chunkIndex } : {}),
+			...(candidate.chunkCount !== undefined ? { chunkCount: candidate.chunkCount } : {}),
+			timestamp: Math.floor(Date.now() / 1000),
+		}
 		const innerArmor = await encryptOpaqueVoiceCommand(command, routerArmoredPublicKey)
 		const mailboxDomains = new Set(
 			pickRouteNodesByArmoredKey(this.nodes, routerArmoredPublicKey).map((n) => n.domain),
@@ -983,7 +1022,10 @@ export class GossipCore {
 								} else if (frame.type === 'voice_ready') {
 									this.emit.log('warn', 'voice ready ignored')
 								}
-								if (frame.type === 'voice_frame_v1') this.emit.voiceFrame(frame)
+								if (frame.type === 'voice_frame_v1') {
+									const normalized = typeof frame.frameTimestamp === 'number' ? { ...frame, timestamp: frame.frameTimestamp } : frame
+									this.voiceReorder.push(normalized as unknown as VoiceFrameChunk)
+								}
 							} catch { /* malformed frame */ }
 						}
 					}

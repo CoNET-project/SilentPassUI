@@ -57,6 +57,8 @@ class BeamioChatClientImpl {
             log: new Set(),
             historyBuffer: new Set(),
             voiceFrame: new Set(),
+            voiceGap: new Set(),
+            voiceConflict: new Set(),
         };
         this.routes = [];
         this.nodes = [];
@@ -72,7 +74,14 @@ class BeamioChatClientImpl {
         this.worker = this.options.workerFactory();
         this.worker.addEventListener('message', (ev) => this.onWorkerMessage(ev.data));
         this.worker.addEventListener('error', (ev) => {
-            this.emit('log', { level: 'error', message: `worker error: ${ev.message}` });
+            const detail = ev.message || 'unknown worker error';
+            this.emit('log', { level: 'error', message: `worker error: ${detail}` });
+            this.rejectPending(new Error(`Chat worker failed: ${detail}`));
+        });
+        this.worker.addEventListener('messageerror', () => {
+            const error = new Error('Chat worker message could not be deserialized');
+            this.emit('log', { level: 'error', message: error.message });
+            this.rejectPending(error);
         });
         this.nodes = await this.config.getNodes().catch(() => []);
         this.routes = [];
@@ -212,8 +221,20 @@ class BeamioChatClientImpl {
                     reject(error);
                 },
             });
-            this.worker.postMessage(message);
+            try {
+                this.worker.postMessage(message);
+            }
+            catch (error) {
+                this.pending.delete(reqId);
+                clearTimeout(timer);
+                reject(error instanceof Error ? error : new Error(String(error)));
+            }
         });
+    }
+    rejectPending(error) {
+        for (const { reject } of this.pending.values())
+            reject(error);
+        this.pending.clear();
     }
     postCommand(cmd) {
         this.worker?.postMessage(cmd);
@@ -267,6 +288,12 @@ class BeamioChatClientImpl {
                 return;
             case 'event:voiceFrame':
                 this.emit('voiceFrame', msg.payload);
+                return;
+            case 'event:voiceGap':
+                this.emit('voiceGap', msg.payload);
+                return;
+            case 'event:voiceConflict':
+                this.emit('voiceConflict', msg.payload);
                 return;
             case 'event:log':
                 this.emit('log', { level: msg.level, message: msg.message });

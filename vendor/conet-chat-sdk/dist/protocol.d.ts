@@ -3,7 +3,8 @@
  * gossip Worker. All heavy crypto (openpgp encrypt/decrypt, ethers verify/sign)
  * runs in the worker; the main thread only marshals commands and re-emits events.
  */
-import type { ChatIdentity, ChatRoute, ChatRuntimeOptions, DeliveryReceiptEvent, HistoryBufferEvent, HistoryEntry, HistoryLoadOptions, HistoryReadOptions, InboundEnvelope, NodeInfo, PresenceEvent, StatusEvent } from './types.js';
+import type { ChatIdentity, ChatRoute, ChatRuntimeOptions, DeliveryReceiptEvent, HistoryBufferEvent, HistoryEntry, HistoryLoadOptions, HistoryReadOptions, InboundEnvelope, NodeInfo, PresenceEvent, StatusEvent, VoiceFrame } from './types.js';
+import type { VoiceConflictEvent, VoiceGapEvent } from './voice-reorder.js';
 /** Serialisable subset of config passed into the worker at init. */
 export interface WorkerInitPayload {
     identity: ChatIdentity;
@@ -131,7 +132,13 @@ export type WorkerOutbound = {
     payload: HistoryBufferEvent;
 } | {
     type: 'event:voiceFrame';
-    payload: Record<string, unknown>;
+    payload: VoiceFrame;
+} | {
+    type: 'event:voiceGap';
+    payload: VoiceGapEvent;
+} | {
+    type: 'event:voiceConflict';
+    payload: VoiceConflictEvent;
 } | {
     type: 'event:log';
     level: 'info' | 'warn' | 'error';

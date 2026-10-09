@@ -87,8 +87,12 @@ export interface VoiceFrame {
 	from: string
 	to: string
 	seq: number
+	direction?: 'uplink' | 'downlink' | 'inbound' | 'outbound'
 	timestamp: number
 	payload: string
+	frameId?: string
+	chunkIndex?: number
+	chunkCount?: number
 }
 
 export const VOICE_MAX_FRAME_B64 = 12_000
@@ -173,7 +177,9 @@ export interface ChatEventMap {
 	status: StatusEvent
 	log: ChatLogEvent
 	historyBuffer: HistoryBufferEvent
-	voiceFrame: Record<string, unknown>
+	voiceFrame: VoiceFrame
+	voiceGap: import('./voice-reorder.js').VoiceGapEvent
+	voiceConflict: import('./voice-reorder.js').VoiceConflictEvent
 }
 
 export type ChatEventName = keyof ChatEventMap

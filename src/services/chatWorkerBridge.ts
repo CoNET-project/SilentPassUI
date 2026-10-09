@@ -26,6 +26,9 @@ import {
 	type HistoryLoadOptions,
 	type HistoryReadOptions,
 	type NodeInfo,
+	type VoiceConflictEvent,
+	type VoiceFrame,
+	type VoiceGapEvent,
 } from '@conet.project/chat-sdk'
 import { CONET_ADDRESS_PGP, CONET_CHAT_INDEX_REGISTRY } from '../config/chainAddresses'
 
@@ -68,7 +71,9 @@ let voiceRelayOpenSessionId = ''
  * before or after `startWorkerGossipListen()`; the active client fans batches here.
  */
 const historyBufferListeners = new Set<(batch: HistoryBufferEvent) => void>()
-const voiceFrameListeners = new Set<(frame: Record<string, unknown>) => void>()
+const voiceFrameListeners = new Set<(frame: VoiceFrame) => void>()
+const voiceGapListeners = new Set<(event: VoiceGapEvent) => void>()
+const voiceConflictListeners = new Set<(event: VoiceConflictEvent) => void>()
 
 /**
  * Race fix: `initChat` sets React `gossip=true` *before* the worker client exists.
@@ -89,9 +94,17 @@ export const onHistoryBuffer = (cb: (batch: HistoryBufferEvent) => void): (() =>
 	}
 }
 
-export const onVoiceFrame = (cb: (frame: Record<string, unknown>) => void): (() => void) => {
+export const onVoiceFrame = (cb: (frame: VoiceFrame) => void): (() => void) => {
 	voiceFrameListeners.add(cb)
 	return () => voiceFrameListeners.delete(cb)
+}
+export const onVoiceGap = (cb: (event: VoiceGapEvent) => void): (() => void) => {
+	voiceGapListeners.add(cb)
+	return () => voiceGapListeners.delete(cb)
+}
+export const onVoiceConflict = (cb: (event: VoiceConflictEvent) => void): (() => void) => {
+	voiceConflictListeners.add(cb)
+	return () => voiceConflictListeners.delete(cb)
 }
 
 const runHistoryLoad = async (options?: HistoryLoadOptions): Promise<void> => {
@@ -224,7 +237,9 @@ export interface StartWorkerGossipParams {
 	rootSignal: AbortSignal
 	/** Decrypted host-ready line → existing addNewMessage serial queue. */
 	onLine: (line: string) => void
-	onVoiceFrame?: (frame: Record<string, unknown>) => void
+	onVoiceFrame?: (frame: VoiceFrame) => void
+	onVoiceGap?: (event: VoiceGapEvent) => void
+	onVoiceConflict?: (event: VoiceConflictEvent) => void
 	/** Any inbound / liveness activity → refresh main-thread staleness timer. */
 	onActivity: () => void
 	/** Optional structured log sink (never logs key material / plaintext / ciphertext). */
@@ -325,6 +340,18 @@ const startWorkerGossipListenInternal = async (p: StartWorkerGossipParams): Prom
 			try { cb(frame) } catch { /* isolate voice UI listeners */ }
 		}
 		p.onVoiceFrame?.(frame)
+	}))
+	unsubs.push(client.on('voiceGap', (event) => {
+		for (const cb of voiceGapListeners) {
+			try { cb(event) } catch { /* isolate voice UI listeners */ }
+		}
+		p.onVoiceGap?.(event)
+	}))
+	unsubs.push(client.on('voiceConflict', (event) => {
+		for (const cb of voiceConflictListeners) {
+			try { cb(event) } catch { /* isolate voice UI listeners */ }
+		}
+		p.onVoiceConflict?.(event)
 	}))
 	// Fan encrypted-history restore/append batches to host subscribers (ChatList / chat page).
 	unsubs.push(

@@ -20,5 +20,6 @@ export type { BeamioChatClientOptions } from './client.js';
 export { armorToString, buildPostBody, encryptRouteCommand, wrapArmorToEntryRoute, wrapArmorToMailboxWork, wrapWouldHitSameNode, } from './envelope.js';
 export type { MailboxWorkEnvelope } from './envelope.js';
 export { postUrl } from './nodes.js';
-export type { BeamioChatClient, BeamioChatConfig, BeamioChatHistory, ChatEventListener, ChatEventMap, ChatEventName, ChatIdentity, ChatLogEvent, ChatRoute, ChatRuntimeOptions, ChatStatus, DeliveryReceiptEvent, HistoryBufferEvent, HistoryEntry, HistoryLoadOptions, HistoryReadOptions, InboundEnvelope, NodeInfo, PersistenceAdapter, PresenceEvent, SendMessageOptions, StatusEvent, Unsubscribe, } from './types.js';
+export type { BeamioChatClient, BeamioChatConfig, BeamioChatHistory, ChatEventListener, ChatEventMap, ChatEventName, ChatIdentity, ChatLogEvent, ChatRoute, ChatRuntimeOptions, ChatStatus, DeliveryReceiptEvent, HistoryBufferEvent, HistoryEntry, HistoryLoadOptions, HistoryReadOptions, InboundEnvelope, NodeInfo, PersistenceAdapter, PresenceEvent, SendMessageOptions, StatusEvent, Unsubscribe, VoiceCallSignal, VoiceCallSignalType, VoiceFrame, } from './types.js';
+export type { VoiceConflictEvent, VoiceGapEvent, VoiceFrameChunk } from './voice-reorder.js';
 //# sourceMappingURL=index.d.ts.map

@@ -18,9 +18,11 @@
  */
 import { createMessage, decrypt, decryptKey, encrypt, enums, readKey, readMessage, readPrivateKey, } from 'openpgp';
 import { ethers } from 'ethers';
+import { VOICE_MAX_FRAME_B64 } from '../types.js';
 import { getRandomNode, getRandomNodes, markGossipNodeBad, markGossipNodeHealthy, pickGossipEntryNodesForSend, pickHealthyGossipNodes, pickRouteNodesByArmoredKey, postUrl, postWithTimeout, } from '../nodes.js';
 import { base64ToUtf8, keccakUtf8, utf8ToBase64 } from '../crypto.js';
 import { armorToString, buildPostBody, encryptOpaqueVoiceCommand, encryptRouteCommand, wrapArmorToEntryRoute, wrapArmorToMailboxWork } from '../envelope.js';
+import { VoiceFrameReorderBuffer } from '../voice-reorder.js';
 const GOSSIP_STOP_REASONS = new Set([
     'root_stop',
     'replaced_by_new_connection',
@@ -130,6 +132,16 @@ export class GossipCore {
         this.userPgpKeyID = '';
         this.listenController = null;
         this.voiceListenController = null;
+        this.voiceReorder = new VoiceFrameReorderBuffer({
+            onEvent: (event) => {
+                if (event.type === 'frame')
+                    this.emit.voiceFrame(event.frame);
+                if (event.type === 'gap')
+                    this.emit.voiceGap(event.gap);
+                if (event.type === 'conflict')
+                    this.emit.voiceConflict(event.conflict);
+            },
+        });
         this.lastActivityAt = 0;
         this.paused = false;
         this.pgpReady = Promise.resolve();
@@ -187,6 +199,7 @@ export class GossipCore {
         this.paused = true;
         this.clearListen('background_pause');
         this.voiceListenController?.abort('voice_stop');
+        this.voiceReorder.clear();
         this.lastActivityAt = 0;
         this.emit.status('paused');
     }
@@ -199,6 +212,7 @@ export class GossipCore {
     destroy() {
         this.clearListen('destroy');
         this.voiceListenController?.abort('voice_stop');
+        this.voiceReorder.clear();
         this.wallet = null;
         this.pgpPrivateKey = null;
         this.cfg = null;
@@ -482,7 +496,8 @@ export class GossipCore {
         }
         try {
             if (data?.type === 'voice_frame_v1') {
-                this.emit.voiceFrame(data);
+                const frame = typeof data.frameTimestamp === 'number' ? { ...data, timestamp: data.frameTimestamp } : data;
+                this.voiceReorder.push(frame);
                 return;
             }
             // Mailbox relays can add several JSON envelopes. Walk only a bounded
@@ -779,7 +794,32 @@ export class GossipCore {
         return this.postMailboxCommand(route, command);
     }
     async sendVoiceFrame(routerArmoredPublicKey, frame) {
-        const command = { command: 'voice_uplink', ...frame, timestamp: Math.floor(Date.now() / 1000) };
+        const candidate = frame;
+        if (typeof candidate.callId !== 'string' || !candidate.callId ||
+            typeof candidate.sessionId !== 'string' || !candidate.sessionId ||
+            typeof candidate.to !== 'string' || !candidate.to ||
+            !Number.isSafeInteger(candidate.seq) || candidate.seq < 0 ||
+            typeof candidate.timestamp !== 'number' || !Number.isFinite(candidate.timestamp) ||
+            typeof candidate.payload !== 'string' || !candidate.payload ||
+            candidate.payload.length > VOICE_MAX_FRAME_B64)
+            return false;
+        const command = {
+            command: 'voice_uplink',
+            type: 'voice_frame_v1',
+            walletAddress: this.wallet?.address,
+            from: this.wallet?.address,
+            callId: candidate.callId,
+            sessionId: candidate.sessionId,
+            to: candidate.to,
+            direction: candidate.direction || 'uplink',
+            seq: candidate.seq,
+            frameTimestamp: candidate.timestamp,
+            payload: candidate.payload,
+            ...(candidate.frameId ? { frameId: candidate.frameId } : {}),
+            ...(candidate.chunkIndex !== undefined ? { chunkIndex: candidate.chunkIndex } : {}),
+            ...(candidate.chunkCount !== undefined ? { chunkCount: candidate.chunkCount } : {}),
+            timestamp: Math.floor(Date.now() / 1000),
+        };
         const innerArmor = await encryptOpaqueVoiceCommand(command, routerArmoredPublicKey);
         const mailboxDomains = new Set(pickRouteNodesByArmoredKey(this.nodes, routerArmoredPublicKey).map((n) => n.domain));
         return this.postToEntries(innerArmor, mailboxDomains);
@@ -805,8 +845,8 @@ export class GossipCore {
         const candidates = pool.length ? pool : this.nodes;
         const healthy = await pickHealthyGossipNodes(candidates);
         const entries = healthy.length ? healthy : candidates;
-        if (!route || !entries.length) {
-            this.emit.log('warn', `voice listen refused: route=${!!route} nodes=${this.nodes.length} entries=${entries.length}`);
+        if (!route || !routeNodes.length || !entries.length) {
+            this.emit.log('warn', `voice listen refused: route=${!!route} mailbox=${routeNodes.length} entries=${entries.length}`);
             return false;
         }
         let offerArmor = '';
@@ -924,8 +964,10 @@ export class GossipCore {
                                 else if (frame.type === 'voice_ready') {
                                     this.emit.log('warn', 'voice ready ignored');
                                 }
-                                if (frame.type === 'voice_frame_v1')
-                                    this.emit.voiceFrame(frame);
+                                if (frame.type === 'voice_frame_v1') {
+                                    const normalized = typeof frame.frameTimestamp === 'number' ? { ...frame, timestamp: frame.frameTimestamp } : frame;
+                                    this.voiceReorder.push(normalized);
+                                }
                             }
                             catch { /* malformed frame */ }
                         }

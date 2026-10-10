@@ -481,13 +481,39 @@ function nativeBridgeDebugLog(level: string, message: string): void {
 	}
 }
 
+/** Coinbase Wallet free-send trampoline — redirects to market:// / intent://; never load in WebView. */
+export function isCoinbaseWalletTrampolineUrl(rawUrl: string): boolean {
+	try {
+		const host = new URL(rawUrl.trim()).hostname.toLowerCase()
+		return host === 'go.cb-w.com' || host.endsWith('.cb-w.com')
+	} catch {
+		return false
+	}
+}
+
+/**
+ * Coinbase Fund checkout: card onramp → in-app WebView; USDC free-send trampoline → system / openURL
+ * (Android WebView + market:// causes infinite store "Open with" chooser shake).
+ */
+export function openCoinbaseCheckoutUrl(rawUrl: string): boolean {
+	const url = typeof rawUrl === 'string' ? rawUrl.trim() : ''
+	if (!url) return false
+	if (isCoinbaseWalletTrampolineUrl(url)) {
+		return openExternalUrl(url)
+	}
+	return openInAppBrowser(url)
+}
+
 export function openInAppBrowser(rawUrl: string): boolean {
 	const url = typeof rawUrl === 'string' ? rawUrl.trim() : ''
 	if (!url || typeof window === 'undefined') return false
 
 	let scheme = ''
+	let host = ''
 	try {
-		scheme = new URL(url).protocol.replace(':', '').toLowerCase()
+		const parsed = new URL(url)
+		scheme = parsed.protocol.replace(':', '').toLowerCase()
+		host = parsed.hostname.toLowerCase()
 	} catch {
 		nativeBridgeDebugLog('error', `openInAppBrowser invalid url`)
 		return false
@@ -495,6 +521,11 @@ export function openInAppBrowser(rawUrl: string): boolean {
 	if (scheme !== 'http' && scheme !== 'https') {
 		nativeBridgeDebugLog('error', `openInAppBrowser reject scheme=${scheme}`)
 		return false
+	}
+	// Defense: go.cb-w.com must not open the in-app drawer (store chooser loop on Android).
+	if (host === 'go.cb-w.com' || host.endsWith('.cb-w.com')) {
+		nativeBridgeDebugLog('warn', `openInAppBrowser refuse trampoline host=${host} → openExternalUrl`)
+		return openExternalUrl(url)
 	}
 
 	if (tryNativeOpenInAppBrowser(url)) {

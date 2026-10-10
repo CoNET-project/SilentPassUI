@@ -12,7 +12,7 @@ import { formatDigitalAssetDisplay } from '@/utils/formatDigitalAssetDisplay'
 import base_icon from '@/components/assets/base-logo.png'
 import { beamioWalletAccent } from '@/utils/beamioWalletAccent'
 import { CoNET_Data, setCoNET_Data } from '../../utils/globals'
-import { closeReservedExternalWindow, detectDeviceNfcCapability, fetchJsonSync, getCashTreesNativeNfcBridge, isCashTreesNativeWebView, openInAppBrowser, reserveExternalBrowserWindow } from '@/utils/cashTreesNativeNfc'
+import { closeReservedExternalWindow, detectDeviceNfcCapability, fetchJsonSync, getCashTreesNativeNfcBridge, isCashTreesNativeWebView, openCoinbaseCheckoutUrl, reserveExternalBrowserWindow } from '@/utils/cashTreesNativeNfc'
 import { WALLET_READY_INTENT_KEY } from '@/pages/Home/walletReadyIntent'
 import type { LucideIcon } from "lucide-react"
 import { useLocation, useNavigate } from "react-router-dom"
@@ -1354,8 +1354,8 @@ const Home = (_props: HomeProps) => {
 
 	const continueCoinbaseOnrampCheckout = useCallback(() => {
 		if (!coinbaseOnrampCheckoutUrl) return
-		// Native shell: always in-app WebView drawer (openInAppBrowser). Browser falls back to tab.
-		openInAppBrowser(coinbaseOnrampCheckoutUrl)
+		// Card onramp → in-app WebView; USDC go.cb-w.com trampoline → openURL (no market:// shake).
+		openCoinbaseCheckoutUrl(coinbaseOnrampCheckoutUrl)
 	}, [coinbaseOnrampCheckoutUrl])
 
 	const openReceiveFromWallet = useCallback(() => {
@@ -1520,8 +1520,8 @@ const Home = (_props: HomeProps) => {
 				})()
 			if (abort.signal.aborted) return
 
-			// USDC path: open Coinbase Wallet free-send URL — no x402 / coinbase-token.
-			// Native shell: in-app WebView drawer (openInAppBrowser); older shell / browser falls back.
+			// USDC path: Coinbase Wallet free-send trampoline (go.cb-w.com) — must use openURL /
+			// system browser, not in-app WebView (Android market:// → infinite "Open with" shake).
 			if (coinbaseOnrampPayMethod === 'usdc') {
 				const checkoutUrl = COINBASE_WALLET_FREE_SEND_OPEN_URL
 				// Persist before open — native switch can remount Home before watch starts.
@@ -1535,7 +1535,7 @@ const Home = (_props: HomeProps) => {
 					status: 'waiting',
 				})
 				setCoinbaseOnrampCheckoutUrl(checkoutUrl)
-				openInAppBrowser(checkoutUrl)
+				openCoinbaseCheckoutUrl(checkoutUrl)
 				if (abort.signal.aborted) return
 				await runCoinbaseUsdcArrivalWatch({
 					address,
@@ -1590,7 +1590,7 @@ const Home = (_props: HomeProps) => {
 				status: 'waiting',
 			})
 			setCoinbaseOnrampCheckoutUrl(checkoutUrl)
-			openInAppBrowser(checkoutUrl)
+			openCoinbaseCheckoutUrl(checkoutUrl)
 			if (abort.signal.aborted) return
 			await runCoinbaseUsdcArrivalWatch({
 				address,

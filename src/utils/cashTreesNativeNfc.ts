@@ -492,8 +492,9 @@ export function isCoinbaseWalletTrampolineUrl(rawUrl: string): boolean {
 }
 
 /**
- * Coinbase Fund checkout: card onramp → in-app WebView; USDC free-send trampoline → system / openURL
- * (Android WebView + market:// causes infinite store "Open with" chooser shake).
+ * Deposit → Coinbase: open Onramp HTTPS in the in-app WebView drawer.
+ * go.cb-w.com trampolines must never load in WebView (Android store "Open with" loop);
+ * if one is passed, fall back to openExternalUrl (Receive-from-wallet Coinbase Wallet only).
  */
 export function openCoinbaseCheckoutUrl(rawUrl: string): boolean {
 	const url = typeof rawUrl === 'string' ? rawUrl.trim() : ''

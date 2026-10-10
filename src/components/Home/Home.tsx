@@ -117,7 +117,6 @@ import {
 	type CoinbaseOnrampStatus,
 } from '@/utils/coinbaseOnrampLastAmountLocalCache'
 import {
-	COINBASE_WALLET_FREE_SEND_OPEN_URL,
 	clearCoinbaseOnrampWaitingSession,
 	loadCoinbaseOnrampWaitingSession,
 	resolveCoinbaseOnrampWaitingBootstrap,
@@ -692,9 +691,7 @@ const Home = (_props: HomeProps) => {
 	const [coinbaseOnrampError, setCoinbaseOnrampError] = useState('')
 	const [coinbaseOnrampOpening, setCoinbaseOnrampOpening] = useState(false)
 	const [coinbaseOnrampCheckoutUrl, setCoinbaseOnrampCheckoutUrl] = useState(
-		() =>
-			coinbaseWaitingBoot?.checkoutUrl ||
-			(coinbaseWaitingBoot?.payMethod === 'usdc' ? COINBASE_WALLET_FREE_SEND_OPEN_URL : ''),
+		() => coinbaseWaitingBoot?.checkoutUrl || '',
 	)
 	const [coinbaseOnrampStatus, setCoinbaseOnrampStatus] = useState<CoinbaseOnrampStatus>(() =>
 		coinbaseWaitingBoot ? 'waiting' : 'idle',
@@ -1520,35 +1517,9 @@ const Home = (_props: HomeProps) => {
 				})()
 			if (abort.signal.aborted) return
 
-			// USDC path: Coinbase Wallet free-send trampoline (go.cb-w.com) — must use openURL /
-			// system browser, not in-app WebView (Android market:// → infinite "Open with" shake).
-			if (coinbaseOnrampPayMethod === 'usdc') {
-				const checkoutUrl = COINBASE_WALLET_FREE_SEND_OPEN_URL
-				// Persist before open — native switch can remount Home before watch starts.
-				saveCoinbaseOnrampWaitingSession({
-					eoa: address,
-					amountHuman,
-					payMethod: 'usdc',
-					baselineRaw: baselineRaw.toString(),
-					checkoutUrl,
-					startedAt: Date.now(),
-					status: 'waiting',
-				})
-				setCoinbaseOnrampCheckoutUrl(checkoutUrl)
-				openCoinbaseCheckoutUrl(checkoutUrl)
-				if (abort.signal.aborted) return
-				await runCoinbaseUsdcArrivalWatch({
-					address,
-					baselineRaw,
-					amountHuman,
-					payMethod: 'usdc',
-					checkoutUrl,
-					abort,
-				})
-				return
-			}
-
-			// Card path: Coinbase Onramp (buy with card) via Beamio token session.
+			// Deposit → Coinbase: always Coinbase Onramp HTTPS (URL / in-app WebView).
+			// Never go.cb-w.com / Coinbase Wallet APP — that path is Receive-from-wallet only.
+			const payMethod = coinbaseOnrampPayMethod
 			const params = new URLSearchParams({
 				address,
 				paymentAmount: amountHuman,
@@ -1579,11 +1550,11 @@ const Home = (_props: HomeProps) => {
 				setCoinbaseOnrampError(tu('coinbase_could_not_open'))
 				return
 			}
-			const checkoutUrl = applyCoinbaseOnrampCheckoutUrl(onrampUrl, amountHuman, 'card')
+			const checkoutUrl = applyCoinbaseOnrampCheckoutUrl(onrampUrl, amountHuman, payMethod)
 			saveCoinbaseOnrampWaitingSession({
 				eoa: address,
 				amountHuman,
-				payMethod: 'card',
+				payMethod,
 				baselineRaw: baselineRaw.toString(),
 				checkoutUrl,
 				startedAt: Date.now(),
@@ -1596,7 +1567,7 @@ const Home = (_props: HomeProps) => {
 				address,
 				baselineRaw,
 				amountHuman,
-				payMethod: 'card',
+				payMethod,
 				checkoutUrl,
 				abort,
 			})
@@ -1677,10 +1648,7 @@ const Home = (_props: HomeProps) => {
 		setCoinbaseOnrampAmount(session.amountHuman)
 		setCoinbaseOnrampLastAmount(session.amountHuman)
 		setCoinbaseOnrampPayMethod(session.payMethod)
-		setCoinbaseOnrampCheckoutUrl(
-			session.checkoutUrl ||
-				(session.payMethod === 'usdc' ? COINBASE_WALLET_FREE_SEND_OPEN_URL : ''),
-		)
+		setCoinbaseOnrampCheckoutUrl(session.checkoutUrl || '')
 		setCoinbaseOnrampError('')
 		setCoinbaseOnrampStatusError('')
 		setCoinbaseOnrampNewBalance('')
@@ -1693,9 +1661,7 @@ const Home = (_props: HomeProps) => {
 			baselineRaw,
 			amountHuman: session.amountHuman,
 			payMethod: session.payMethod,
-			checkoutUrl:
-				session.checkoutUrl ||
-				(session.payMethod === 'usdc' ? COINBASE_WALLET_FREE_SEND_OPEN_URL : ''),
+			checkoutUrl: session.checkoutUrl || '',
 			abort,
 			startedAt: session.startedAt,
 		})

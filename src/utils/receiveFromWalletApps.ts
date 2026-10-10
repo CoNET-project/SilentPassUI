@@ -603,16 +603,17 @@ export async function openReceiveWalletApp(
 		}
 	}
 
-	if (hasNativeWalletListApi()) {
-		const scheme = receiveWalletNativeSchemeUrl(row, address, amount6)
-		if (scheme && openExternalUrl(scheme)) {
+	// Native shell: open the third-party wallet APP (custom scheme / UL), never bare beamio.app.
+	const scheme = receiveWalletNativeSchemeUrl(row, address, amount6)
+	if (scheme && openExternalUrl(scheme)) {
+		return { ok: true }
+	}
+	// MetaMask cold-start https deep link still targets the MetaMask APP (not Beamio base URL).
+	if (row.brandId === 'metamask') {
+		const httpsOpen = receiveWalletHttpsOpenUrl(row, address, amount6)
+		if (httpsOpen && openExternalUrl(httpsOpen)) {
 			return { ok: true }
 		}
 	}
-
-	const opened = openExternalUrl(receiveWalletHttpsOpenUrl(row, address, amount6))
-	if (!opened) {
-		return { ok: false, error: 'Could not open this wallet' }
-	}
-	return { ok: true }
+	return { ok: false, error: 'Could not open this wallet' }
 }

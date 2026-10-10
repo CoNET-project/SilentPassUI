@@ -14,6 +14,12 @@ import {
 /** Align with Base USDC arrival poll max (15 min). */
 export const COINBASE_ONRAMP_WAITING_MAX_AGE_MS = 15 * 60 * 1000
 
+/**
+ * After in-shell WebView Back (`inAppBrowserClosed`, non-external), wait this long
+ * for Base USDC arrival before treating the deposit wait as failed.
+ */
+export const COINBASE_WEBVIEW_CLOSE_GRACE_MS = 6_000
+
 export type CoinbaseOnrampWaitingSession = {
 	eoa: string
 	amountHuman: string
@@ -24,6 +30,11 @@ export type CoinbaseOnrampWaitingSession = {
 	checkoutUrl: string
 	startedAt: number
 	status: 'waiting'
+	/**
+	 * Set when the native in-app WebView is dismissed (Back).
+	 * After {@link COINBASE_WEBVIEW_CLOSE_GRACE_MS} with no USDC success, waiting fails.
+	 */
+	webviewClosedAt?: number
 }
 
 function storageKey(eoa: string): string {
@@ -42,6 +53,10 @@ export function saveCoinbaseOnrampWaitingSession(session: CoinbaseOnrampWaitingS
 		normalizeCoinbaseOnrampAmount(session.amountHuman) ?? COINBASE_ONRAMP_DEFAULT_AMOUNT
 	const baselineRaw = parseBaselineRaw(session.baselineRaw)
 	if (!baselineRaw) return
+	const webviewClosedAt =
+		typeof session.webviewClosedAt === 'number' && Number.isFinite(session.webviewClosedAt)
+			? session.webviewClosedAt
+			: undefined
 	const payload: CoinbaseOnrampWaitingSession = {
 		eoa: eoa.toLowerCase(),
 		amountHuman,
@@ -50,6 +65,7 @@ export function saveCoinbaseOnrampWaitingSession(session: CoinbaseOnrampWaitingS
 		checkoutUrl: typeof session.checkoutUrl === 'string' ? session.checkoutUrl : '',
 		startedAt: Number.isFinite(session.startedAt) ? session.startedAt : Date.now(),
 		status: 'waiting',
+		...(webviewClosedAt !== undefined ? { webviewClosedAt } : {}),
 	}
 	try {
 		window.localStorage.setItem(storageKey(eoa), JSON.stringify(payload))
@@ -79,6 +95,10 @@ export function loadCoinbaseOnrampWaitingSession(eoa: string): CoinbaseOnrampWai
 			clearCoinbaseOnrampWaitingSession(eoa)
 			return null
 		}
+		const webviewClosedAt =
+			typeof parsed.webviewClosedAt === 'number' && Number.isFinite(parsed.webviewClosedAt)
+				? parsed.webviewClosedAt
+				: undefined
 		return {
 			eoa: eoa.toLowerCase(),
 			amountHuman,
@@ -87,10 +107,23 @@ export function loadCoinbaseOnrampWaitingSession(eoa: string): CoinbaseOnrampWai
 			checkoutUrl: typeof parsed.checkoutUrl === 'string' ? parsed.checkoutUrl : '',
 			startedAt,
 			status: 'waiting',
+			...(webviewClosedAt !== undefined ? { webviewClosedAt } : {}),
 		}
 	} catch {
 		return null
 	}
+}
+
+/** Mark in-shell WebView dismiss so remount can enforce the post-close grace window. */
+export function markCoinbaseOnrampWebViewClosed(eoa: string): CoinbaseOnrampWaitingSession | null {
+	const session = loadCoinbaseOnrampWaitingSession(eoa)
+	if (!session) return null
+	const next: CoinbaseOnrampWaitingSession = {
+		...session,
+		webviewClosedAt: Date.now(),
+	}
+	saveCoinbaseOnrampWaitingSession(next)
+	return next
 }
 
 export function clearCoinbaseOnrampWaitingSession(eoa: string): void {

@@ -12,7 +12,7 @@ import { formatDigitalAssetDisplay } from '@/utils/formatDigitalAssetDisplay'
 import base_icon from '@/components/assets/base-logo.png'
 import { beamioWalletAccent } from '@/utils/beamioWalletAccent'
 import { CoNET_Data, setCoNET_Data } from '../../utils/globals'
-import { closeReservedExternalWindow, detectDeviceNfcCapability, fetchJsonSync, getCashTreesNativeNfcBridge, isCashTreesNativeWebView, openCoinbaseCheckoutUrl, reserveExternalBrowserWindow } from '@/utils/cashTreesNativeNfc'
+import { closeReservedExternalWindow, detectDeviceNfcCapability, fetchJsonSync, getCashTreesNativeNfcBridge, isCashTreesNativeWebView, openCoinbaseCheckoutUrl, reserveExternalBrowserWindow, type InAppBrowserClosedDetail } from '@/utils/cashTreesNativeNfc'
 import { WALLET_READY_INTENT_KEY } from '@/pages/Home/walletReadyIntent'
 import type { LucideIcon } from "lucide-react"
 import { useLocation, useNavigate } from "react-router-dom"
@@ -117,8 +117,10 @@ import {
 	type CoinbaseOnrampStatus,
 } from '@/utils/coinbaseOnrampLastAmountLocalCache'
 import {
+	COINBASE_WEBVIEW_CLOSE_GRACE_MS,
 	clearCoinbaseOnrampWaitingSession,
 	loadCoinbaseOnrampWaitingSession,
+	markCoinbaseOnrampWebViewClosed,
 	resolveCoinbaseOnrampWaitingBootstrap,
 	saveCoinbaseOnrampWaitingSession,
 	type CoinbaseOnrampWaitingSession,
@@ -699,6 +701,14 @@ const Home = (_props: HomeProps) => {
 	const [coinbaseOnrampStatusError, setCoinbaseOnrampStatusError] = useState('')
 	const [coinbaseOnrampNewBalance, setCoinbaseOnrampNewBalance] = useState('')
 	const coinbaseOnrampAbortRef = useRef<AbortController | null>(null)
+	/** Post–WebView-Back grace timer: fail waiting UI if no USDC within {@link COINBASE_WEBVIEW_CLOSE_GRACE_MS}. */
+	const coinbaseWebViewCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+	/** True when waiting was aborted because the post-close grace elapsed (not user Cancel). */
+	const coinbaseWebViewCloseFailRef = useRef(false)
+	const coinbaseOnrampStatusRef = useRef(coinbaseOnrampStatus)
+	useEffect(() => {
+		coinbaseOnrampStatusRef.current = coinbaseOnrampStatus
+	}, [coinbaseOnrampStatus])
 	/** Pay 模式：与 MyWalletDashboardNew AA relay QR 同源（OpenContainer relay 签名 JSON） */
 	const [payRelayQRPayload, setPayRelayQRPayload] = useState<OpenContainerRelayPayload | null>(null)
 	const [payRelayQRLoading, setPayRelayQRLoading] = useState(false)
@@ -1228,17 +1238,64 @@ const Home = (_props: HomeProps) => {
 		closeAddCashSheet()
 	}, [addCashAmountCad, addCashTopUpCadPerUsdc, addCashVaultUsdc, closeAddCashSheet, topUpStore.id])
 
+	const clearCoinbaseWebViewCloseTimer = useCallback(() => {
+		if (coinbaseWebViewCloseTimerRef.current != null) {
+			clearTimeout(coinbaseWebViewCloseTimerRef.current)
+			coinbaseWebViewCloseTimerRef.current = null
+		}
+	}, [])
+
 	const abortCoinbaseOnrampWatch = useCallback(() => {
+		clearCoinbaseWebViewCloseTimer()
 		coinbaseOnrampAbortRef.current?.abort()
 		coinbaseOnrampAbortRef.current = null
-	}, [])
+	}, [clearCoinbaseWebViewCloseTimer])
 
 	const abortReceiveWalletWatch = useCallback(() => {
 		receiveWalletAbortRef.current?.abort()
 		receiveWalletAbortRef.current = null
 	}, [])
 
+	const failCoinbaseWaitingAfterWebViewClose = useCallback(() => {
+		clearCoinbaseWebViewCloseTimer()
+		coinbaseWebViewCloseFailRef.current = true
+		const eoa = receiveWalletEoa || myAddress
+		if (eoa) clearCoinbaseOnrampWaitingSession(eoa)
+		coinbaseOnrampAbortRef.current?.abort()
+		coinbaseOnrampAbortRef.current = null
+		setCoinbaseOnrampOpening(false)
+		setCoinbaseOnrampStatus('error')
+		setCoinbaseOnrampStatusError(tu('coinbase_onramp_timeout'))
+	}, [clearCoinbaseWebViewCloseTimer, myAddress, receiveWalletEoa])
+
+	/**
+	 * In-shell WebView Back → `inAppBrowserClosed` (reason ≠ external).
+	 * Grace period for USDC; then leave Waiting for Coinbase / spinner.
+	 * Trampoline `reason: 'external'` keeps the long arrival watch (user left to Coinbase app).
+	 */
+	const scheduleCoinbaseFailAfterWebViewClose = useCallback(
+		(
+			detail?: InAppBrowserClosedDetail,
+			opts?: { delayMs?: number; markClosed?: boolean },
+		) => {
+			if (detail?.reason === 'external') return
+			clearCoinbaseWebViewCloseTimer()
+			const markClosed = opts?.markClosed !== false
+			const eoa = receiveWalletEoa || myAddress
+			if (markClosed && eoa) markCoinbaseOnrampWebViewClosed(eoa)
+			const ms = Math.max(0, opts?.delayMs ?? COINBASE_WEBVIEW_CLOSE_GRACE_MS)
+			coinbaseWebViewCloseTimerRef.current = setTimeout(() => {
+				coinbaseWebViewCloseTimerRef.current = null
+				const status = coinbaseOnrampStatusRef.current
+				if (status !== 'waiting' && status !== 'opening') return
+				failCoinbaseWaitingAfterWebViewClose()
+			}, ms)
+		},
+		[clearCoinbaseWebViewCloseTimer, failCoinbaseWaitingAfterWebViewClose, myAddress, receiveWalletEoa],
+	)
+
 	const resetPayReceiveAuxState = useCallback(() => {
+		coinbaseWebViewCloseFailRef.current = false
 		abortCoinbaseOnrampWatch()
 		abortReceiveWalletWatch()
 		const eoa = receiveWalletEoa || myAddress
@@ -1280,6 +1337,10 @@ const Home = (_props: HomeProps) => {
 	}, [location.state, navigate, resetPayReceiveAuxState, setShowFooter])
 
 	useEffect(() => () => {
+		if (coinbaseWebViewCloseTimerRef.current != null) {
+			clearTimeout(coinbaseWebViewCloseTimerRef.current)
+			coinbaseWebViewCloseTimerRef.current = null
+		}
 		coinbaseOnrampAbortRef.current?.abort()
 		coinbaseOnrampAbortRef.current = null
 		receiveWalletAbortRef.current?.abort()
@@ -1399,14 +1460,18 @@ const Home = (_props: HomeProps) => {
 			startedAt?: number
 		}) => {
 			const { address, baselineRaw, amountHuman, payMethod, checkoutUrl, abort } = opts
+			const existing = loadCoinbaseOnrampWaitingSession(address)
 			saveCoinbaseOnrampWaitingSession({
 				eoa: address,
 				amountHuman,
 				payMethod,
 				baselineRaw: baselineRaw.toString(),
 				checkoutUrl,
-				startedAt: opts.startedAt ?? Date.now(),
+				startedAt: opts.startedAt ?? existing?.startedAt ?? Date.now(),
 				status: 'waiting',
+				...(existing?.webviewClosedAt !== undefined
+					? { webviewClosedAt: existing.webviewClosedAt }
+					: {}),
 			})
 			setCoinbaseOnrampStatus('waiting')
 			setCoinbaseOnrampOpening(false)
@@ -1417,19 +1482,27 @@ const Home = (_props: HomeProps) => {
 					signal: abort.signal,
 				})
 				if (abort.signal.aborted || outcome.status === 'cancelled') {
+					if (coinbaseWebViewCloseFailRef.current) {
+						// Post–WebView-close grace already set error + cleared waiting UI.
+						return
+					}
 					setCoinbaseOnrampStatus((prev) => (prev === 'canceled' ? prev : 'canceled'))
 					return
 				}
 				if (outcome.status === 'timeout') {
+					clearCoinbaseWebViewCloseTimer()
 					setCoinbaseOnrampStatus('error')
 					setCoinbaseOnrampStatusError(tu('coinbase_onramp_timeout'))
 					return
 				}
 				if (outcome.status === 'error') {
+					clearCoinbaseWebViewCloseTimer()
 					setCoinbaseOnrampStatus('error')
 					setCoinbaseOnrampStatusError(outcome.message || tu('coinbase_could_not_open'))
 					return
 				}
+				clearCoinbaseWebViewCloseTimer()
+				coinbaseWebViewCloseFailRef.current = false
 				clearCoinbaseOnrampWaitingSession(address)
 				const display = Number.parseFloat(outcome.balanceDisplay)
 				setCoinbaseOnrampNewBalance(
@@ -1439,6 +1512,7 @@ const Home = (_props: HomeProps) => {
 				void refreshAppDaemonNow('wallet')
 			} catch (err) {
 				if (abort.signal.aborted) {
+					if (coinbaseWebViewCloseFailRef.current) return
 					setCoinbaseOnrampStatus((prev) => (prev === 'canceled' ? prev : 'canceled'))
 					return
 				}
@@ -1452,6 +1526,7 @@ const Home = (_props: HomeProps) => {
 					setCoinbaseOnrampStatus('canceled')
 					return
 				}
+				clearCoinbaseWebViewCloseTimer()
 				setCoinbaseOnrampStatus('error')
 				setCoinbaseOnrampStatusError(message)
 				setCoinbaseOnrampError(tu('coinbase_could_not_open'))
@@ -1462,7 +1537,7 @@ const Home = (_props: HomeProps) => {
 				setCoinbaseOnrampOpening(false)
 			}
 		},
-		[],
+		[clearCoinbaseWebViewCloseTimer],
 	)
 
 	const openCoinbaseOnrampFromFund = useCallback(async () => {
@@ -1486,6 +1561,7 @@ const Home = (_props: HomeProps) => {
 		closeReservedExternalWindow(coinbaseHandoffRef.current)
 		coinbaseHandoffRef.current = null
 		abortCoinbaseOnrampWatch()
+		coinbaseWebViewCloseFailRef.current = false
 		const abort = new AbortController()
 		coinbaseOnrampAbortRef.current = abort
 		setCoinbaseOnrampOpening(true)
@@ -1551,9 +1627,10 @@ const Home = (_props: HomeProps) => {
 			})
 			setCoinbaseOnrampCheckoutUrl(checkoutUrl)
 			openCoinbaseCheckoutUrl(checkoutUrl, {
-				onClosed: () => {
+				onClosed: (detail) => {
 					if (abort.signal.aborted) return
 					setCoinbaseOnrampStatus((prev) => (prev === 'opening' ? 'waiting' : prev))
+					scheduleCoinbaseFailAfterWebViewClose(detail)
 					void refreshAppDaemonNow('wallet')
 				},
 			})
@@ -1568,6 +1645,7 @@ const Home = (_props: HomeProps) => {
 			})
 		} catch (err) {
 			if (abort.signal.aborted) {
+				if (coinbaseWebViewCloseFailRef.current) return
 				setCoinbaseOnrampStatus((prev) => (prev === 'canceled' ? prev : 'canceled'))
 				return
 			}
@@ -1599,6 +1677,7 @@ const Home = (_props: HomeProps) => {
 		myAddress,
 		receiveWalletEoa,
 		runCoinbaseUsdcArrivalWatch,
+		scheduleCoinbaseFailAfterWebViewClose,
 		usdcbalance,
 	])
 
@@ -1631,6 +1710,7 @@ const Home = (_props: HomeProps) => {
 		setCoinbaseOnrampLastAmount(amountHuman)
 		saveCoinbaseOnrampLastPayMethod(receiveWalletEoa, payMethod)
 		abortCoinbaseOnrampWatch()
+		coinbaseWebViewCloseFailRef.current = false
 		const abort = new AbortController()
 		coinbaseOnrampAbortRef.current = abort
 		setCoinbaseOnrampOpening(true)
@@ -1689,9 +1769,10 @@ const Home = (_props: HomeProps) => {
 			})
 			setCoinbaseOnrampCheckoutUrl(checkoutUrl)
 			openCoinbaseCheckoutUrl(checkoutUrl, {
-				onClosed: () => {
+				onClosed: (detail) => {
 					if (abort.signal.aborted) return
 					setCoinbaseOnrampStatus((prev) => (prev === 'opening' ? 'waiting' : prev))
+					scheduleCoinbaseFailAfterWebViewClose(detail)
 					void refreshAppDaemonNow('wallet')
 				},
 			})
@@ -1706,6 +1787,7 @@ const Home = (_props: HomeProps) => {
 			})
 		} catch (err) {
 			if (abort.signal.aborted) {
+				if (coinbaseWebViewCloseFailRef.current) return
 				setCoinbaseOnrampStatus((prev) => (prev === 'canceled' ? prev : 'canceled'))
 				return
 			}
@@ -1736,6 +1818,7 @@ const Home = (_props: HomeProps) => {
 		myAddress,
 		receiveWalletEoa,
 		runCoinbaseUsdcArrivalWatch,
+		scheduleCoinbaseFailAfterWebViewClose,
 		usdcbalance,
 	])
 
@@ -1770,7 +1853,17 @@ const Home = (_props: HomeProps) => {
 			return
 		}
 
-		abortCoinbaseOnrampWatch()
+		const closedAt = session.webviewClosedAt
+		if (typeof closedAt === 'number' && Number.isFinite(closedAt)) {
+			const elapsed = Date.now() - closedAt
+			if (elapsed >= COINBASE_WEBVIEW_CLOSE_GRACE_MS) {
+				failCoinbaseWaitingAfterWebViewClose()
+				return
+			}
+		}
+
+		// Abort ref is null here (early-return above if already armed).
+		// Do not use abortCoinbaseOnrampWatch — it clears the post-close grace timer.
 		const abort = new AbortController()
 		coinbaseOnrampAbortRef.current = abort
 		setShowPayReceiveSheet(true)
@@ -1797,13 +1890,21 @@ const Home = (_props: HomeProps) => {
 			abort,
 			startedAt: session.startedAt,
 		})
+		if (typeof closedAt === 'number' && Number.isFinite(closedAt)) {
+			const remaining = COINBASE_WEBVIEW_CLOSE_GRACE_MS - (Date.now() - closedAt)
+			scheduleCoinbaseFailAfterWebViewClose(undefined, {
+				delayMs: remaining,
+				markClosed: false,
+			})
+		}
 	}, [
-		abortCoinbaseOnrampWatch,
 		coinbaseOnrampStatus,
 		coinbaseWaitingBoot,
+		failCoinbaseWaitingAfterWebViewClose,
 		myAddress,
 		receiveWalletEoa,
 		runCoinbaseUsdcArrivalWatch,
+		scheduleCoinbaseFailAfterWebViewClose,
 		setShowFooter,
 	])
 

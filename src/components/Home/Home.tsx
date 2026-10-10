@@ -1352,7 +1352,13 @@ const Home = (_props: HomeProps) => {
 	const continueCoinbaseOnrampCheckout = useCallback(() => {
 		if (!coinbaseOnrampCheckoutUrl) return
 		// Card onramp → in-app WebView; USDC go.cb-w.com trampoline → openURL (no market:// shake).
-		openCoinbaseCheckoutUrl(coinbaseOnrampCheckoutUrl)
+		// When the native drawer closes, ensure waiting UI + refresh wallet balances.
+		openCoinbaseCheckoutUrl(coinbaseOnrampCheckoutUrl, {
+			onClosed: () => {
+				setCoinbaseOnrampStatus((prev) => (prev === 'opening' ? 'waiting' : prev))
+				void refreshAppDaemonNow('wallet')
+			},
+		})
 	}, [coinbaseOnrampCheckoutUrl])
 
 	const openReceiveFromWallet = useCallback(() => {
@@ -1561,7 +1567,13 @@ const Home = (_props: HomeProps) => {
 				status: 'waiting',
 			})
 			setCoinbaseOnrampCheckoutUrl(checkoutUrl)
-			openCoinbaseCheckoutUrl(checkoutUrl)
+			openCoinbaseCheckoutUrl(checkoutUrl, {
+				onClosed: () => {
+					if (abort.signal.aborted) return
+					setCoinbaseOnrampStatus((prev) => (prev === 'opening' ? 'waiting' : prev))
+					void refreshAppDaemonNow('wallet')
+				},
+			})
 			if (abort.signal.aborted) return
 			await runCoinbaseUsdcArrivalWatch({
 				address,

@@ -18,9 +18,10 @@ export type CashTreesNativeNfcBridge = {
 	openURL?: (payload: { url: string }) => void
 	/**
 	 * Full-screen in-app WebView (bottom → top). Top Back closes; title = URL domain.
-	 * iOS: `{ url }`. Android: plain URL string (use `openInAppBrowser`).
+	 * iOS: `{ url, requestId? }`. Android: plain URL or JSON `{"url","requestId"}`.
+	 * On dismiss, shell dispatches `inAppBrowserClosed` on `cashtreesios` / `cashtreesandroid`.
 	 */
-	openInAppBrowser?: (payload: { url: string }) => void
+	openInAppBrowser?: (payload: { url: string; requestId?: string }) => void
 	/** PWA catalog → native install probe. iOS uses `{ requestId, queries }` + `cashtreesios`. */
 	queryInstalledApps?: (payload?: { requestId: string; queries?: NativeInstalledAppQuery[] }) => void
 	/** Legacy alias of `queryInstalledApps`. iOS uses `{ requestId, queries? }` + `cashtreesios`. */
@@ -46,11 +47,139 @@ export type NativeInstalledAppQuery = {
 /** Android bridge variant: `openURL(url: string)` + `publishAppState(json: string)` */
 type CashTreesAndroidOpenUrlBridge = CashTreesNativeNfcBridge & {
 	openURL?: ((url: string) => void) | ((payload: { url: string }) => void)
-	openInAppBrowser?: ((url: string) => void) | ((payload: { url: string }) => void)
+	openInAppBrowser?: ((url: string) => void) | ((payload: { url: string; requestId?: string }) => void)
 	publishAppState?: (json: string) => void
 	queryInstalledApps?: (json: string) => string
 	listInstalledWalletApps?: () => string
 	saveFile?: (json: string) => void
+}
+
+/** Fired when the native in-app WebView overlay/modal is dismissed. */
+export type InAppBrowserClosedDetail = {
+	action: 'inAppBrowserClosed'
+	ok?: boolean
+	requestId?: string
+	url?: string
+	reason?: string
+}
+
+export type OpenInAppBrowserOptions = {
+	/** Echoed on `inAppBrowserClosed` so callers can match concurrent opens. */
+	requestId?: string
+	/** Invoked once when the native drawer closes (or immediately on external fallback). */
+	onClosed?: (detail: InAppBrowserClosedDetail) => void
+}
+
+type PendingInAppBrowserClose = {
+	requestId: string
+	url: string
+	onClosed: (detail: InAppBrowserClosedDetail) => void
+}
+
+const pendingInAppBrowserCloses = new Map<string, PendingInAppBrowserClose>()
+let inAppBrowserCloseListenerInstalled = false
+let inAppBrowserCloseSeq = 0
+
+function nextInAppBrowserRequestId(): string {
+	inAppBrowserCloseSeq += 1
+	return `iab-${Date.now().toString(36)}-${inAppBrowserCloseSeq.toString(36)}`
+}
+
+function settleInAppBrowserClosed(detail: InAppBrowserClosedDetail): void {
+	const rid = typeof detail.requestId === 'string' ? detail.requestId.trim() : ''
+	const pending = rid ? pendingInAppBrowserCloses.get(rid) : undefined
+	if (pending) {
+		pendingInAppBrowserCloses.delete(rid)
+		try {
+			pending.onClosed({
+				...detail,
+				action: 'inAppBrowserClosed',
+				requestId: rid,
+				url: detail.url || pending.url,
+			})
+		} catch {
+			/* ignore listener errors */
+		}
+		return
+	}
+	// No requestId match: notify the most recent pending (single-drawer shells).
+	if (!rid && pendingInAppBrowserCloses.size === 1) {
+		const only = pendingInAppBrowserCloses.values().next().value as PendingInAppBrowserClose | undefined
+		if (only) {
+			pendingInAppBrowserCloses.delete(only.requestId)
+			try {
+				only.onClosed({
+					...detail,
+					action: 'inAppBrowserClosed',
+					requestId: only.requestId,
+					url: detail.url || only.url,
+				})
+			} catch {
+				/* ignore */
+			}
+		}
+	}
+}
+
+function ensureInAppBrowserCloseListener(): void {
+	if (inAppBrowserCloseListenerInstalled || typeof window === 'undefined') return
+	inAppBrowserCloseListenerInstalled = true
+	const onNative = (ev: Event) => {
+		const detail = (ev as CustomEvent<InAppBrowserClosedDetail>).detail
+		if (!detail || detail.action !== 'inAppBrowserClosed') return
+		settleInAppBrowserClosed(detail)
+	}
+	window.addEventListener('cashtreesios', onNative as EventListener)
+	window.addEventListener('cashtreesandroid', onNative as EventListener)
+}
+
+/**
+ * Register a one-shot listener for native `inAppBrowserClosed` (any requestId).
+ * Prefer [openInAppBrowser] `onClosed` for open→close pairing.
+ */
+export function onInAppBrowserClosed(
+	handler: (detail: InAppBrowserClosedDetail) => void,
+): () => void {
+	ensureInAppBrowserCloseListener()
+	const wrap = (ev: Event) => {
+		const detail = (ev as CustomEvent<InAppBrowserClosedDetail>).detail
+		if (!detail || detail.action !== 'inAppBrowserClosed') return
+		handler(detail)
+	}
+	window.addEventListener('cashtreesios', wrap as EventListener)
+	window.addEventListener('cashtreesandroid', wrap as EventListener)
+	return () => {
+		window.removeEventListener('cashtreesios', wrap as EventListener)
+		window.removeEventListener('cashtreesandroid', wrap as EventListener)
+	}
+}
+
+/**
+ * Promise that resolves when the matching in-app browser closes.
+ * Use with a `requestId` returned from [openInAppBrowser].
+ */
+export function waitForInAppBrowserClosed(requestId: string, timeoutMs = 0): Promise<InAppBrowserClosedDetail> {
+	ensureInAppBrowserCloseListener()
+	const rid = requestId.trim()
+	return new Promise((resolve, reject) => {
+		let timer: ReturnType<typeof setTimeout> | undefined
+		const finish = (detail: InAppBrowserClosedDetail) => {
+			if (timer !== undefined) clearTimeout(timer)
+			unsub()
+			resolve(detail)
+		}
+		const unsub = onInAppBrowserClosed((detail) => {
+			const dRid = typeof detail.requestId === 'string' ? detail.requestId.trim() : ''
+			if (rid && dRid && dRid !== rid) return
+			finish(detail)
+		})
+		if (timeoutMs > 0) {
+			timer = setTimeout(() => {
+				unsub()
+				reject(new Error('inAppBrowserClosed timeout'))
+			}, timeoutMs)
+		}
+	})
 }
 
 const LEGACY_RECEIVE_WALLET_NATIVE_IDS = new Set(['metamask', 'base'])
@@ -344,13 +473,14 @@ function tryNativeOpenUrl(url: string): boolean {
 	return false
 }
 
-function tryNativeOpenInAppBrowser(url: string): boolean {
+function tryNativeOpenInAppBrowser(url: string, requestId?: string): boolean {
 	const w = cashTreesNativeWindow()
 	if (!w) return false
+	const rid = typeof requestId === 'string' ? requestId.trim() : ''
 
 	if (typeof w.CashTreesIOS?.openInAppBrowser === 'function') {
 		try {
-			w.CashTreesIOS.openInAppBrowser({ url })
+			w.CashTreesIOS.openInAppBrowser(rid ? { url, requestId: rid } : { url })
 			return true
 		} catch {
 			return false
@@ -359,7 +489,9 @@ function tryNativeOpenInAppBrowser(url: string): boolean {
 
 	if (typeof w.CashTreesAndroid?.openInAppBrowser === 'function') {
 		try {
-			;(w.CashTreesAndroid.openInAppBrowser as (url: string) => void)(url)
+			const androidOpen = w.CashTreesAndroid.openInAppBrowser as (arg: string) => void
+			// Prefer JSON so requestId is available; plain URL remains valid for older shells.
+			androidOpen(rid ? JSON.stringify({ url, requestId: rid }) : url)
 			return true
 		} catch {
 			return false
@@ -495,17 +627,38 @@ export function isCoinbaseWalletTrampolineUrl(rawUrl: string): boolean {
  * Deposit → Coinbase: open Onramp HTTPS in the in-app WebView drawer.
  * go.cb-w.com trampolines must never load in WebView (Android store "Open with" loop);
  * if one is passed, fall back to openExternalUrl (Receive-from-wallet Coinbase Wallet only).
+ * Pass `onClosed` to run the next step after the native drawer is dismissed.
  */
-export function openCoinbaseCheckoutUrl(rawUrl: string): boolean {
+export function openCoinbaseCheckoutUrl(rawUrl: string, options?: OpenInAppBrowserOptions): boolean {
 	const url = typeof rawUrl === 'string' ? rawUrl.trim() : ''
 	if (!url) return false
 	if (isCoinbaseWalletTrampolineUrl(url)) {
-		return openExternalUrl(url)
+		const opened = openExternalUrl(url)
+		if (opened && options?.onClosed) {
+			options.onClosed({
+				action: 'inAppBrowserClosed',
+				ok: true,
+				requestId: options.requestId || '',
+				url,
+				reason: 'external',
+			})
+		}
+		return opened
 	}
-	return openInAppBrowser(url)
+	return openInAppBrowser(url, options)
 }
 
-export function openInAppBrowser(rawUrl: string): boolean {
+/**
+ * Open http(s) in the native shell's full-screen in-app WebView (slides up from bottom).
+ * Top Back closes; chrome title = URL domain (no title param).
+ * - Native shell with `openInAppBrowser`: in-app overlay / modal; dismiss → `onClosed` / `inAppBrowserClosed`.
+ * - Older shell / browser: falls back to [openExternalUrl]; `onClosed` fires immediately with `reason: 'external'`.
+ * @returns `requestId` when a close callback was registered (or generated); `true`/`false` for legacy callers via boolean coercion.
+ */
+export function openInAppBrowser(
+	rawUrl: string,
+	options?: OpenInAppBrowserOptions,
+): boolean {
 	const url = typeof rawUrl === 'string' ? rawUrl.trim() : ''
 	if (!url || typeof window === 'undefined') return false
 
@@ -526,31 +679,55 @@ export function openInAppBrowser(rawUrl: string): boolean {
 	// Defense: go.cb-w.com must not open the in-app drawer (store chooser loop on Android).
 	if (host === 'go.cb-w.com' || host.endsWith('.cb-w.com')) {
 		nativeBridgeDebugLog('warn', `openInAppBrowser refuse trampoline host=${host} → openExternalUrl`)
-		return openExternalUrl(url)
+		const opened = openExternalUrl(url)
+		if (opened && options?.onClosed) {
+			options.onClosed({
+				action: 'inAppBrowserClosed',
+				ok: true,
+				requestId: options.requestId || '',
+				url,
+				reason: 'external',
+			})
+		}
+		return opened
 	}
 
-	if (tryNativeOpenInAppBrowser(url)) {
-		nativeBridgeDebugLog('info', `openInAppBrowser native drawer ok host=${(() => {
-			try {
-				return new URL(url).host
-			} catch {
-				return '?'
-			}
-		})()}`)
+	const wantClose = typeof options?.onClosed === 'function'
+	const requestId =
+		(typeof options?.requestId === 'string' && options.requestId.trim()) ||
+		(wantClose ? nextInAppBrowserRequestId() : '')
+
+	if (wantClose && requestId) {
+		ensureInAppBrowserCloseListener()
+		pendingInAppBrowserCloses.set(requestId, {
+			requestId,
+			url,
+			onClosed: options!.onClosed!,
+		})
+	}
+
+	if (tryNativeOpenInAppBrowser(url, requestId || undefined)) {
+		nativeBridgeDebugLog('info', `openInAppBrowser native drawer ok host=${host} requestId=${requestId || '-'}`)
 		return true
 	}
 
+	// Bridge missing — clear pending and fall back; invoke onClosed as external.
+	if (requestId) pendingInAppBrowserCloses.delete(requestId)
 	nativeBridgeDebugLog(
 		'warn',
-		`openInAppBrowser bridge missing — fallback openExternalUrl host=${(() => {
-			try {
-				return new URL(url).host
-			} catch {
-				return '?'
-			}
-		})()}`,
+		`openInAppBrowser bridge missing — fallback openExternalUrl host=${host}`,
 	)
-	return openExternalUrl(url)
+	const opened = openExternalUrl(url)
+	if (opened && options?.onClosed) {
+		options.onClosed({
+			action: 'inAppBrowserClosed',
+			ok: true,
+			requestId,
+			url,
+			reason: 'external',
+		})
+	}
+	return opened
 }
 
 /** Browser-only placeholder opened in the click that starts Coinbase checkout. */

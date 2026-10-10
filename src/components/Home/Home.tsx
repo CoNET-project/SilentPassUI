@@ -1328,14 +1328,6 @@ const Home = (_props: HomeProps) => {
 
 	const closeCoinbaseOnrampCheckout = useCallback(() => {
 		const eoa = receiveWalletEoa || myAddress
-		if (coinbaseOnrampStatus === 'opening' || coinbaseOnrampStatus === 'waiting') {
-			abortCoinbaseOnrampWatch()
-			if (eoa) clearCoinbaseOnrampWaitingSession(eoa)
-			setCoinbaseOnrampOpening(false)
-			setCoinbaseOnrampStatus('canceled')
-			setCoinbaseOnrampStatusError('')
-			return
-		}
 		abortCoinbaseOnrampWatch()
 		if (eoa) clearCoinbaseOnrampWaitingSession(eoa)
 		setCoinbaseOnrampOpening(false)
@@ -1345,21 +1337,12 @@ const Home = (_props: HomeProps) => {
 		setCoinbaseOnrampNewBalance('')
 		setCoinbaseOnrampError('')
 		setCoinbaseOnrampPayMethodPickerOpen(false)
+		setShowPayReceiveSheet(false)
 		setPayReceiveView('fund')
 		setPayReceiveQrMode('receive')
-	}, [abortCoinbaseOnrampWatch, coinbaseOnrampStatus, myAddress, receiveWalletEoa])
-
-	const continueCoinbaseOnrampCheckout = useCallback(() => {
-		if (!coinbaseOnrampCheckoutUrl) return
-		// Card onramp → in-app WebView; USDC go.cb-w.com trampoline → openURL (no market:// shake).
-		// When the native drawer closes, ensure waiting UI + refresh wallet balances.
-		openCoinbaseCheckoutUrl(coinbaseOnrampCheckoutUrl, {
-			onClosed: () => {
-				setCoinbaseOnrampStatus((prev) => (prev === 'opening' ? 'waiting' : prev))
-				void refreshAppDaemonNow('wallet')
-			},
-		})
-	}, [coinbaseOnrampCheckoutUrl])
+		setShowFooter(true)
+		navigate('/wallet', { replace: true })
+	}, [abortCoinbaseOnrampWatch, myAddress, navigate, receiveWalletEoa, setShowFooter])
 
 	const openReceiveFromWallet = useCallback(() => {
 		setReceiveWalletOpenError('')
@@ -1613,6 +1596,143 @@ const Home = (_props: HomeProps) => {
 		coinbaseOnrampOpening,
 		coinbaseOnrampPayMethod,
 		coinbaseOnrampStatus,
+		myAddress,
+		receiveWalletEoa,
+		runCoinbaseUsdcArrivalWatch,
+		usdcbalance,
+	])
+
+	/** Re-fetch a fresh Coinbase onramp URL from the API, then open in-app + re-arm balance watch. */
+	const continueCoinbaseOnrampCheckout = useCallback(async () => {
+		if (coinbaseOnrampOpening) return
+		const amountSource =
+			normalizeCoinbaseOnrampAmount(coinbaseOnrampAmount) ||
+			normalizeCoinbaseOnrampAmount(coinbaseOnrampLastAmount) ||
+			coinbaseOnrampLastAmount ||
+			COINBASE_ONRAMP_DEFAULT_AMOUNT
+		const parsed = parseReceiveUsdcAmount6(String(amountSource).replace(/\.$/, ''))
+		if (!parsed.ok) {
+			setCoinbaseOnrampStatus('error')
+			setCoinbaseOnrampStatusError(parsed.error)
+			return
+		}
+		const address = receiveWalletEoa || myAddress
+		if (!address) {
+			setCoinbaseOnrampStatus('error')
+			setCoinbaseOnrampStatusError(tu('wallet_address_unavailable'))
+			return
+		}
+		const amountHuman = ethers
+			.formatUnits(parsed.amount6, 6)
+			.replace(/(\.\d*?)0+$/, '$1')
+			.replace(/\.$/, '')
+		const payMethod = coinbaseOnrampPayMethod
+		saveCoinbaseOnrampLastAmount(receiveWalletEoa, amountHuman)
+		setCoinbaseOnrampLastAmount(amountHuman)
+		saveCoinbaseOnrampLastPayMethod(receiveWalletEoa, payMethod)
+		abortCoinbaseOnrampWatch()
+		const abort = new AbortController()
+		coinbaseOnrampAbortRef.current = abort
+		setCoinbaseOnrampOpening(true)
+		setCoinbaseOnrampStatusError('')
+		setCoinbaseOnrampError('')
+		setCoinbaseOnrampStatus('opening')
+		try {
+			const baselineRaw =
+				(await readBaseUsdcBalance6(address)) ??
+				(() => {
+					try {
+						return ethers.parseUnits(String(Math.max(0, Number(usdcbalance) || 0)), 6)
+					} catch {
+						return 0n
+					}
+				})()
+			if (abort.signal.aborted) return
+
+			const params = new URLSearchParams({
+				address,
+				paymentAmount: amountHuman,
+			}).toString()
+			const tokenUrl = `https://beamio.app/api/coinbase-token?${params}`
+			let onrampUrl: string | undefined
+			if (!isCashTreesNativeWebView()) {
+				onrampUrl = fetchJsonSync<{ onrampUrl?: string }>(tokenUrl)?.onrampUrl
+			}
+			if (!onrampUrl) {
+				const res = await fetch(tokenUrl, {
+					method: 'GET',
+					headers: { 'Content-Type': 'application/json' },
+					signal: abort.signal,
+				})
+				if (!res.ok) {
+					setCoinbaseOnrampStatus('error')
+					setCoinbaseOnrampStatusError(tu('coinbase_could_not_open'))
+					return
+				}
+				onrampUrl = ((await res.json()) as { onrampUrl?: string }).onrampUrl
+			}
+			if (abort.signal.aborted) return
+			if (!onrampUrl) {
+				setCoinbaseOnrampStatus('error')
+				setCoinbaseOnrampStatusError(tu('coinbase_could_not_open'))
+				return
+			}
+			const checkoutUrl = applyCoinbaseOnrampCheckoutUrl(onrampUrl, amountHuman, payMethod)
+			saveCoinbaseOnrampWaitingSession({
+				eoa: address,
+				amountHuman,
+				payMethod,
+				baselineRaw: baselineRaw.toString(),
+				checkoutUrl,
+				startedAt: Date.now(),
+				status: 'waiting',
+			})
+			setCoinbaseOnrampCheckoutUrl(checkoutUrl)
+			openCoinbaseCheckoutUrl(checkoutUrl, {
+				onClosed: () => {
+					if (abort.signal.aborted) return
+					setCoinbaseOnrampStatus((prev) => (prev === 'opening' ? 'waiting' : prev))
+					void refreshAppDaemonNow('wallet')
+				},
+			})
+			if (abort.signal.aborted) return
+			await runCoinbaseUsdcArrivalWatch({
+				address,
+				baselineRaw,
+				amountHuman,
+				payMethod,
+				checkoutUrl,
+				abort,
+			})
+		} catch (err) {
+			if (abort.signal.aborted) {
+				setCoinbaseOnrampStatus((prev) => (prev === 'canceled' ? prev : 'canceled'))
+				return
+			}
+			const message =
+				err instanceof Error && err.name === 'AbortError'
+					? ''
+					: err instanceof Error && err.message
+						? err.message
+						: tu('coinbase_could_not_open')
+			if (!message) {
+				setCoinbaseOnrampStatus('canceled')
+				return
+			}
+			setCoinbaseOnrampStatus('error')
+			setCoinbaseOnrampStatusError(message)
+		} finally {
+			if (coinbaseOnrampAbortRef.current === abort) {
+				coinbaseOnrampAbortRef.current = null
+			}
+			setCoinbaseOnrampOpening(false)
+		}
+	}, [
+		abortCoinbaseOnrampWatch,
+		coinbaseOnrampAmount,
+		coinbaseOnrampLastAmount,
+		coinbaseOnrampOpening,
+		coinbaseOnrampPayMethod,
 		myAddress,
 		receiveWalletEoa,
 		runCoinbaseUsdcArrivalWatch,
@@ -2763,7 +2883,9 @@ const Home = (_props: HomeProps) => {
 
 	const closePayReceiveSheetTap = useReliableTapHandler(closePayReceiveSheet)
 	const closeCoinbaseOnrampCheckoutTap = useReliableTapHandler(closeCoinbaseOnrampCheckout)
-	const continueCoinbaseOnrampCheckoutTap = useReliableTapHandler(continueCoinbaseOnrampCheckout)
+	const continueCoinbaseOnrampCheckoutTap = useReliableTapHandler(() => {
+		void continueCoinbaseOnrampCheckout()
+	})
 	const payReceiveUsesPayChrome = payReceiveView === 'tabs' && payReceiveQrMode === 'pay'
 	const payReceiveUsesFundChrome =
 		payReceiveView === 'fund' ||
@@ -4974,11 +5096,13 @@ const Home = (_props: HomeProps) => {
 													</p>
 												) : null}
 											</div>
-											{coinbaseOnrampStatus === 'waiting' && coinbaseOnrampCheckoutUrl ? (
+											{coinbaseOnrampStatus === 'waiting' ? (
 												<button
 													type="button"
-													className={`${HOME_TOUCH_BUTTON_CLASS} mt-2 flex h-12 w-full max-w-sm items-center justify-center gap-2 rounded-full bg-[#0052ff] text-[15px] font-semibold text-white`}
+													className={`${HOME_TOUCH_BUTTON_CLASS} mt-2 flex h-12 w-full max-w-sm items-center justify-center gap-2 rounded-full bg-[#0052ff] text-[15px] font-semibold text-white disabled:opacity-60`}
 													aria-label={tu('continue_in_coinbase')}
+													aria-busy={coinbaseOnrampOpening}
+													disabled={coinbaseOnrampOpening}
 													data-touch-priority="1"
 													{...continueCoinbaseOnrampCheckoutTap}
 												>
@@ -5004,15 +5128,6 @@ const Home = (_props: HomeProps) => {
 													{tu('coinbase_onramp_canceled_hint')}
 												</p>
 											</div>
-											<button
-												type="button"
-												className={`${HOME_TOUCH_BUTTON_CLASS} mt-2 flex h-12 w-full max-w-sm items-center justify-center rounded-full bg-[#0051d1] text-[15px] font-semibold text-white`}
-												aria-label={tu('done')}
-												data-touch-priority="1"
-												onClick={closeCoinbaseOnrampCheckout}
-											>
-												{tu('done')}
-											</button>
 										</div>
 									)}
 
@@ -5032,31 +5147,20 @@ const Home = (_props: HomeProps) => {
 													{coinbaseOnrampStatusError || tu('coinbase_could_not_open')}
 												</p>
 											</div>
-											<div className="mt-2 flex w-full max-w-sm flex-col gap-3">
-												{coinbaseOnrampCheckoutUrl ? (
-													<button
-														type="button"
-														className={`${HOME_TOUCH_BUTTON_CLASS} flex h-12 w-full items-center justify-center gap-2 rounded-full bg-[#0052ff] text-[15px] font-semibold text-white`}
-														aria-label={tu('continue_in_coinbase')}
-														data-touch-priority="1"
-														{...continueCoinbaseOnrampCheckoutTap}
-													>
-														<span className="flex h-6 w-6 items-center justify-center rounded-full bg-white">
-															<CoinbaseCMark className="h-5 w-5" />
-														</span>
-														{tu('continue_in_coinbase')}
-													</button>
-												) : null}
-												<button
-													type="button"
-													className={`${HOME_TOUCH_BUTTON_CLASS} flex h-12 w-full items-center justify-center rounded-full border border-slate-200 bg-white text-[15px] font-semibold text-[#191c1d] dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100`}
-													aria-label={tu('done')}
-													data-touch-priority="1"
-													onClick={closeCoinbaseOnrampCheckout}
-												>
-													{tu('done')}
-												</button>
-											</div>
+											<button
+												type="button"
+												className={`${HOME_TOUCH_BUTTON_CLASS} mt-2 flex h-12 w-full max-w-sm items-center justify-center gap-2 rounded-full bg-[#0052ff] text-[15px] font-semibold text-white disabled:opacity-60`}
+												aria-label={tu('continue_in_coinbase')}
+												aria-busy={coinbaseOnrampOpening}
+												disabled={coinbaseOnrampOpening}
+												data-touch-priority="1"
+												{...continueCoinbaseOnrampCheckoutTap}
+											>
+												<span className="flex h-6 w-6 items-center justify-center rounded-full bg-white">
+													<CoinbaseCMark className="h-5 w-5" />
+												</span>
+												{tu('continue_in_coinbase')}
+											</button>
 										</div>
 									)}
 
@@ -5085,15 +5189,6 @@ const Home = (_props: HomeProps) => {
 															: '0.00')}
 												</p>
 											</div>
-											<button
-												type="button"
-												className={`${HOME_TOUCH_BUTTON_CLASS} mt-2 flex h-12 w-full max-w-sm items-center justify-center rounded-full bg-[#0051d1] text-[15px] font-semibold text-white`}
-												aria-label={tu('done')}
-												data-touch-priority="1"
-												onClick={closeCoinbaseOnrampCheckout}
-											>
-												{tu('done')}
-											</button>
 										</div>
 									)}
 								</div>

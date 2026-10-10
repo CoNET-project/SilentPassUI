@@ -460,6 +460,27 @@ export function openExternalUrl(rawUrl: string): boolean {
  * - Native shell with `openInAppBrowser`: in-app overlay / modal.
  * - Older shell / browser: falls back to [openExternalUrl] (system browser / new tab).
  */
+function nativeBridgeDebugLog(level: string, message: string): void {
+	try {
+		console[level === 'error' ? 'error' : 'info'](`[CashTreesBridge] ${message}`)
+	} catch {
+		/* ignore */
+	}
+	const w = cashTreesNativeWindow()
+	if (!w) return
+	try {
+		if (typeof w.CashTreesAndroid?.debugLog === 'function') {
+			w.CashTreesAndroid.debugLog(level, message)
+			return
+		}
+		if (typeof w.CashTreesIOS?.debugLog === 'function') {
+			w.CashTreesIOS.debugLog(level, message)
+		}
+	} catch {
+		/* ignore */
+	}
+}
+
 export function openInAppBrowser(rawUrl: string): boolean {
 	const url = typeof rawUrl === 'string' ? rawUrl.trim() : ''
 	if (!url || typeof window === 'undefined') return false
@@ -468,14 +489,35 @@ export function openInAppBrowser(rawUrl: string): boolean {
 	try {
 		scheme = new URL(url).protocol.replace(':', '').toLowerCase()
 	} catch {
+		nativeBridgeDebugLog('error', `openInAppBrowser invalid url`)
 		return false
 	}
-	if (scheme !== 'http' && scheme !== 'https') return false
+	if (scheme !== 'http' && scheme !== 'https') {
+		nativeBridgeDebugLog('error', `openInAppBrowser reject scheme=${scheme}`)
+		return false
+	}
 
 	if (tryNativeOpenInAppBrowser(url)) {
+		nativeBridgeDebugLog('info', `openInAppBrowser native drawer ok host=${(() => {
+			try {
+				return new URL(url).host
+			} catch {
+				return '?'
+			}
+		})()}`)
 		return true
 	}
 
+	nativeBridgeDebugLog(
+		'warn',
+		`openInAppBrowser bridge missing — fallback openExternalUrl host=${(() => {
+			try {
+				return new URL(url).host
+			} catch {
+				return '?'
+			}
+		})()}`,
+	)
 	return openExternalUrl(url)
 }
 

@@ -245,7 +245,11 @@ export function listInstalledWalletAppsFromNative(
 					: `wallets-${Date.now()}`
 			return Promise.resolve(
 				parseNativeWalletIds(
-					w.CashTreesAndroid.queryInstalledApps(JSON.stringify({ requestId, queries })),
+					callAndroidBridge(
+						w.CashTreesAndroid,
+						'queryInstalledApps',
+						JSON.stringify({ requestId, queries }),
+					),
 					allowed,
 				),
 			)
@@ -256,7 +260,12 @@ export function listInstalledWalletAppsFromNative(
 
 	if (typeof w.CashTreesAndroid?.listInstalledWalletApps === 'function') {
 		try {
-			return Promise.resolve(parseNativeWalletIds(w.CashTreesAndroid.listInstalledWalletApps(), allowed))
+			return Promise.resolve(
+				parseNativeWalletIds(
+					callAndroidBridge(w.CashTreesAndroid, 'listInstalledWalletApps'),
+					allowed,
+				),
+			)
 		} catch {
 			return Promise.resolve(null)
 		}
@@ -320,8 +329,25 @@ function hasCashTreesAndroidBridge(w: CashTreesNativeWindow): boolean {
 		typeof a.debugLog === 'function' ||
 		typeof a.notifyVoiceMicReady === 'function' ||
 		typeof a.endSystemCall === 'function' ||
-		typeof a.openURL === 'function'
+		typeof a.openURL === 'function' ||
+		typeof a.openInAppBrowser === 'function'
 	)
+}
+
+/**
+ * Invoke an Android `@JavascriptInterface` method with the injected object as `this`.
+ *
+ * Extracting the function (`const fn = android.openX; fn(...)`) or Babel/Terser
+ * `(0, android.openX)(...)` throws:
+ * `Java bridge method can't be invoked on a non-injected object`.
+ * `Reflect.apply(fn, android, args)` keeps the WebView receiver and survives minify.
+ */
+function callAndroidBridge(android: object, method: string, ...args: unknown[]): unknown {
+	const fn = (android as Record<string, unknown>)[method]
+	if (typeof fn !== 'function') {
+		throw new Error(`CashTreesAndroid.${method} missing`)
+	}
+	return Reflect.apply(fn as (...a: unknown[]) => unknown, android, args)
 }
 
 /** 当前原生壳：由宿主注入的全局决定，优于 UA 猜测。 */
@@ -346,7 +372,9 @@ export function notifyNativeVoiceMicReady(payload: {
 		return false
 	}
 	try {
-		w.CashTreesAndroid.notifyVoiceMicReady(
+		callAndroidBridge(
+			w.CashTreesAndroid,
+			'notifyVoiceMicReady',
 			JSON.stringify({
 				callId: String(payload.callId || ''),
 				sessionId: String(payload.sessionId || ''),
@@ -380,9 +408,7 @@ export function requestNativeCameraCapture(payload: {
 	if (!w) return false
 	if (typeof w.CashTreesAndroid?.requestCameraCapture === 'function') {
 		try {
-			;(w.CashTreesAndroid.requestCameraCapture as unknown as (json: string) => void)(
-				JSON.stringify(payload),
-			)
+			callAndroidBridge(w.CashTreesAndroid, 'requestCameraCapture', JSON.stringify(payload))
 			return true
 		} catch {
 			return false
@@ -412,7 +438,7 @@ export function requestNativePhotoPicker(payload: { requestId?: string }): boole
 	}
 	if (typeof w.CashTreesAndroid?.requestPhotoPicker === 'function') {
 		try {
-			;(w.CashTreesAndroid.requestPhotoPicker as unknown as (json: string) => void)(JSON.stringify(payload))
+			callAndroidBridge(w.CashTreesAndroid, 'requestPhotoPicker', JSON.stringify(payload))
 			return true
 		} catch {
 			return false
@@ -432,11 +458,10 @@ export function dispatchNativeSystemCallAction(
 		| undefined
 	try {
 		if (w.CashTreesAndroid) {
-			const android = w.CashTreesAndroid as unknown as Record<string, (value: string) => void>
 			const json = JSON.stringify({ action, ...payload })
 			// Call on the Java object. A detached `fn(json)` drops the WebView
 			// receiver and throws before the @JavascriptInterface method runs.
-			android[action](json)
+			callAndroidBridge(w.CashTreesAndroid, action, json)
 		} else {
 			const fn = bridge?.[action]
 			if (typeof fn !== 'function') return false
@@ -463,7 +488,7 @@ function tryNativeOpenUrl(url: string): boolean {
 
 	if (typeof w.CashTreesAndroid?.openURL === 'function') {
 		try {
-			;(w.CashTreesAndroid.openURL as (url: string) => void)(url)
+			callAndroidBridge(w.CashTreesAndroid, 'openURL', url)
 			return true
 		} catch {
 			return false
@@ -489,9 +514,13 @@ function tryNativeOpenInAppBrowser(url: string, requestId?: string): boolean {
 
 	if (typeof w.CashTreesAndroid?.openInAppBrowser === 'function') {
 		try {
-			const androidOpen = w.CashTreesAndroid.openInAppBrowser as (arg: string) => void
 			// Prefer JSON so requestId is available; plain URL remains valid for older shells.
-			androidOpen(rid ? JSON.stringify({ url, requestId: rid }) : url)
+			// Must use Reflect.apply — extracted/minified `(0, bridge.fn)(...)` fails on Android.
+			callAndroidBridge(
+				w.CashTreesAndroid,
+				'openInAppBrowser',
+				rid ? JSON.stringify({ url, requestId: rid }) : url,
+			)
 			return true
 		} catch {
 			return false
@@ -519,7 +548,7 @@ export function saveFileToNative(payload: {
 	}
 	if (typeof w.CashTreesAndroid?.saveFile === 'function') {
 		try {
-			w.CashTreesAndroid.saveFile(JSON.stringify(payload))
+			callAndroidBridge(w.CashTreesAndroid, 'saveFile', JSON.stringify(payload))
 			return true
 		} catch {
 			return false
@@ -602,7 +631,7 @@ function nativeBridgeDebugLog(level: string, message: string): void {
 	if (!w) return
 	try {
 		if (typeof w.CashTreesAndroid?.debugLog === 'function') {
-			w.CashTreesAndroid.debugLog(level, message)
+			callAndroidBridge(w.CashTreesAndroid, 'debugLog', level, message)
 			return
 		}
 		if (typeof w.CashTreesIOS?.debugLog === 'function') {

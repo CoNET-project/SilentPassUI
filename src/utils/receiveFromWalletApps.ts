@@ -554,12 +554,22 @@ async function signUsdc3009FromInjected(
 	}
 }
 
-/** EIP-681 receive URI for MetaMask / Coinbase Wallet scanners (checksum EOA on Base). */
-export function buildReceiveEoaQrUri(eoa: string): string {
+/**
+ * EIP-681 URI for any third-party wallet scanner.
+ * With amount: ERC-20 transfer of USDC to the EOA (`/transfer?address=&uint256=`).
+ * Without amount: pay-to-EOA on the payment chain (scanner asks for amount).
+ * Do not open this URI via native `openURL` for branded wallet rows (Tangem steals `ethereum:`).
+ */
+export function buildReceiveEoaQrUri(eoa: string, amount6?: bigint): string {
 	const raw = eoa?.trim() ?? ''
 	if (!/^0x[0-9a-fA-F]{40}$/.test(raw)) return ''
 	try {
-		return `ethereum:${ethers.getAddress(raw)}@${BASE_MAINNET_CHAIN_ID}`
+		const recipient = ethers.getAddress(raw)
+		if (amount6 != null && amount6 > 0n) {
+			const token = ethers.getAddress(USDC_BASE)
+			return `ethereum:${token}@${BASE_MAINNET_CHAIN_ID}/transfer?address=${recipient}&uint256=${amount6.toString()}`
+		}
+		return `ethereum:${recipient}@${BASE_MAINNET_CHAIN_ID}`
 	} catch {
 		return ''
 	}

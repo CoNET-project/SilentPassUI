@@ -29,6 +29,18 @@ export {
 } from './envelope.js'
 export type { MailboxWorkEnvelope } from './envelope.js'
 export { postUrl } from './nodes.js'
+export {
+	GROUP_V1_DEFAULT_PADDING_BUCKET_BYTES,
+	GROUP_V1_MAX_BODY_BYTES,
+	GROUP_V1_MAX_MEMBERS,
+	GroupStateV1,
+	assertGroupAdminProposalV1,
+	assertGroupMessageV1,
+	assertGroupRosterV1,
+	assertNextGroupRosterV1,
+	classifyGroupPlaintext,
+	groupRosterHash,
+} from './group.js'
 
 export type {
 	BeamioChatClient,
@@ -51,6 +63,18 @@ export type {
 	NodeInfo,
 	PersistenceAdapter,
 	PresenceEvent,
+	GroupAdminProposalV1,
+	GroupInboundEvent,
+	GroupIssueRosterRequest,
+	GroupIssueRosterResult,
+	GroupIssueTombstoneRequest,
+	GroupIssueTombstoneResult,
+	GroupMemberV1,
+	GroupMessageV1,
+	GroupRosterV1,
+	GroupSendRequest,
+	GroupSendResult,
+	GroupTombstoneV1,
 	SendMessageOptions,
 	StatusEvent,
 	Unsubscribe,

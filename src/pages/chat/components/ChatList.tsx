@@ -26,6 +26,7 @@ import { isCashTreesNativeWebView } from '@/utils/cashTreesNativeNfc'
 // （历史 bug：index.tsx 错传 `list={profiles[0]?.chat}` typo 导致死代码）。
 type ChatListProps = {
   onOpen?: (item: chatData, options?: { autoVoiceCallAction?: 'accept' | 'reject' }) => void
+  onOpenGroups?: () => void
   onEdit?: () => void
   onMenu?: () => void
   title?: string
@@ -222,7 +223,8 @@ function Avatar({
 
 export default function ChatList({
 	title = "",
-	onOpen
+	onOpen,
+	onOpenGroups,
 }: ChatListProps) {
 	const { profiles, setProfiles } = useDaemonContext()
 	const { resolvePeerSearchResult, ensureProfilesForAddresses, profileMap } = useBeamioTagDatabase()
@@ -557,6 +559,16 @@ export default function ChatList({
       {/* 列表 */}
       <div className="px-4 pt-2 pb-[env(safe-area-inset-bottom)]">
         <div className="mx-auto w-full max-w-[820px] min-w-0">
+          {onOpenGroups ? (
+            <button
+              type="button"
+              onClick={onOpenGroups}
+              className="mb-3 flex w-full items-center justify-between rounded-2xl bg-white px-4 py-3 text-left shadow-sm"
+            >
+              <span className="font-semibold text-slate-900">Group chats</span>
+              <span className="text-sm text-slate-500">Up to 10</span>
+            </button>
+          ) : null}
           {items.map((it, idx) => {
             const last = it.messages?.[it.messages.length - 1]
 			const dir = last ? (last.from === "me" ? "out" : "in") : null

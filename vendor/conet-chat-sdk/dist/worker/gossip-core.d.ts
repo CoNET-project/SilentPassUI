@@ -16,12 +16,13 @@
  * encrypted to mailbox B route key. Each POST wraps inner armor to **that entry's**
  * route public key. Clients never set `X-CoNET-Hop-Sigs`.
  */
-import { type ChatRoute, type NodeInfo, type PresenceEvent, type StatusEvent, type VoiceFrame } from '../types.js';
+import { type ChatRoute, type GroupInboundEvent, type GroupIssueRosterRequest, type GroupIssueRosterResult, type GroupIssueTombstoneRequest, type GroupIssueTombstoneResult, type GroupSendRequest, type GroupSendResult, type NodeInfo, type PresenceEvent, type StatusEvent, type VoiceFrame } from '../types.js';
 import type { WorkerInitPayload } from '../protocol.js';
 import { type VoiceConflictEvent, type VoiceGapEvent } from '../voice-reorder.js';
 /** Callbacks the worker entry wires to `postMessage`. */
 export interface GossipEmit {
     message(line: string, armorHash: string | undefined, plain: boolean, viaDomain?: string): void;
+    group(payload: GroupInboundEvent): void;
     voiceFrame(payload: VoiceFrame): void;
     voiceGap(payload: VoiceGapEvent): void;
     voiceConflict(payload: VoiceConflictEvent): void;
@@ -60,6 +61,18 @@ export declare class GossipCore {
     send(to: ChatRoute, text: string, opts?: {
         beamioNoPush?: boolean;
     }): Promise<boolean>;
+    /**
+     * V1 group send: one user-PGP armor per recipient. Never build a
+     * multi-recipient OpenPGP message — its key-id list would reveal membership.
+     */
+    sendGroup(request: GroupSendRequest): Promise<GroupSendResult>;
+    issueGroupRoster(request: GroupIssueRosterRequest): Promise<GroupIssueRosterResult>;
+    issueGroupTombstone(request: GroupIssueTombstoneRequest): Promise<GroupIssueTombstoneResult>;
+    private routeMap;
+    private fanOutGroupPlaintext;
+    private sendSingleRecipientGroupDelivery;
+    /** Drop group objects out of the 1:1 message stream after the outer EIP-191 check. */
+    private tryConsumeGroupInbound;
     private postToEntries;
     queryPresence(contacts: ChatRoute[]): Promise<Record<string, boolean>>;
     /**

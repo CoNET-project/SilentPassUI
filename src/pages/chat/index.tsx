@@ -9,7 +9,9 @@ import { useScrollCapsuleOpacity } from "@/hooks/useScrollCapsuleOpacity"
 import Chat from './chat'
 
 import ChatList from './components/ChatList'
+import GroupChatScreen from './GroupChatScreen'
 import { useBeamioTagDatabase } from '@/providers/BeamioTagDatabaseProvider'
+import { loadGroupChats, startGroupChatInbound } from '@/services/conetGroupChat'
 
 type ChatRouteLocationState = {
 	chatBackToDiscoverMerchantCard?: string
@@ -32,6 +34,7 @@ const Home = () => {
 	const [autoVoiceCallAction, setAutoVoiceCallAction] = useState<'accept' | 'reject' | null>(null)
 	const [voiceCallActive, setVoiceCallActive] = useState(false)
 	const [threadHidden, setThreadHidden] = useState(false)
+	const [groupsOpen, setGroupsOpen] = useState(false)
 	const [privateKey, setPrivate] = useState('')
 	const didInitRef = useRef(false)
 	const {
@@ -61,9 +64,15 @@ const Home = () => {
 	}, [profiles])
 
 	useEffect(() => {
-		if (location.pathname.toLowerCase() !== '/chat' || chatData) return
+		if (location.pathname.toLowerCase() !== '/chat' || chatData || groupsOpen) return
 		setShowFooter(true)
-	}, [chatData, location.pathname, setShowFooter])
+	}, [chatData, groupsOpen, location.pathname, setShowFooter])
+
+	useEffect(() => {
+		startGroupChatInbound()
+		if (!ownEoa) return
+		void loadGroupChats(ownEoa)
+	}, [ownEoa])
 
 	useEffect(() => {
 		if (voiceCallActive || !threadHidden) return
@@ -98,7 +107,17 @@ const Home = () => {
   return (
 		<div className="w-full h-full min-h-0 h-screen bg-[#F1F8ED] overflow-hidden relative flex flex-col pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
 		{/* ✅ 当没选中聊天对象时：固定胶囊 + ChatList。通话进行中返回列表时仍保留会话，避免卸掉通话。 */}
-		{(!chatData || threadHidden) && (
+		{groupsOpen && !chatData ? (
+			<GroupChatScreen
+				chats={profiles?.[0]?.chats ?? []}
+				ownEoa={ownEoa}
+				onClose={() => {
+					setGroupsOpen(false)
+					setShowFooter(true)
+				}}
+			/>
+		) : null}
+		{(!chatData || threadHidden) && !groupsOpen && (
 			<>
 				{/* 与 Home / Wallet / Discover：Footer 同款图标 + 胶囊样式，随滚动渐隐 */}
 				<div
@@ -134,6 +153,10 @@ const Home = () => {
 					/>
 					<ChatList
 						title="" // 你如果不要 tu('messages') 大标题就留空
+						onOpenGroups={() => {
+							setGroupsOpen(true)
+							setShowFooter(false)
+						}}
 						onOpen={(item, options) => {
 							if (voiceCallActive) {
 								setThreadHidden(false)

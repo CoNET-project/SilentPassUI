@@ -30,7 +30,23 @@ import {
 } from 'openpgp'
 import { ethers } from 'ethers'
 
-import { VOICE_MAX_FRAME_B64, type ChatRoute, type NodeInfo, type PresenceEvent, type StatusEvent, type VoiceFrame } from '../types.js'
+import {
+	VOICE_MAX_FRAME_B64,
+	type ChatRoute,
+	type GroupInboundEvent,
+	type GroupIssueRosterRequest,
+	type GroupIssueRosterResult,
+	type GroupIssueTombstoneRequest,
+	type GroupIssueTombstoneResult,
+	type GroupMemberV1,
+	type GroupSendRequest,
+	type GroupSendResult,
+	type GroupRosterV1,
+	type NodeInfo,
+	type PresenceEvent,
+	type StatusEvent,
+	type VoiceFrame,
+} from '../types.js'
 import type { WorkerInitPayload } from '../protocol.js'
 import {
 	getRandomNode,
@@ -44,12 +60,25 @@ import {
 	postWithTimeout,
 } from '../nodes.js'
 import { base64ToUtf8, keccakUtf8, utf8ToBase64 } from '../crypto.js'
+import {
+	GROUP_V1_MAX_MEMBERS,
+	assertGroupRosterV1,
+	classifyGroupPlaintext,
+	createGroupMessageV1,
+	createPaddedGroupDeliveryPacket,
+	groupRosterHash,
+	looksLikeGroupText,
+	normalizeGroupAddress,
+	signGroupObject,
+} from '../group.js'
+import type { GroupTombstoneV1 } from '../types.js'
 import { armorToString, buildPostBody, encryptOpaqueVoiceCommand, encryptRouteCommand, wrapArmorToEntryRoute, wrapArmorToMailboxWork } from '../envelope.js'
 import { VoiceFrameReorderBuffer, type VoiceConflictEvent, type VoiceFrameChunk, type VoiceGapEvent } from '../voice-reorder.js'
 
 /** Callbacks the worker entry wires to `postMessage`. */
 export interface GossipEmit {
 	message(line: string, armorHash: string | undefined, plain: boolean, viaDomain?: string): void
+	group(payload: GroupInboundEvent): void
 	voiceFrame(payload: VoiceFrame): void
 	voiceGap(payload: VoiceGapEvent): void
 	voiceConflict(payload: VoiceConflictEvent): void
@@ -553,6 +582,7 @@ export class GossipCore {
 					'info',
 					`inbound PGP decrypted chars=${kkk.length} json=${kkk.trim().startsWith('{')} voiceOffer=${kkk.includes('voice_call_offer_v1')}`,
 				)
+				if (this.tryConsumeGroupInbound(kkk)) return
 				const armorHash = keccakUtf8(armored)
 				let line = kkk
 				try {
@@ -566,7 +596,9 @@ export class GossipCore {
 				}
 				this.emit.message(line, armorHash, false, viaDomain)
 			} else if (data && data.from && data.text != null && data.signMessage) {
-				this.emit.message(JSON.stringify(data), undefined, true, viaDomain)
+				const plainLine = JSON.stringify(data)
+				if (this.tryConsumeGroupInbound(plainLine)) return
+				this.emit.message(plainLine, undefined, true, viaDomain)
 			}
 		} catch (ex: unknown) {
 			const msg = (ex as Error)?.message ?? String(ex)
@@ -615,6 +647,228 @@ export class GossipCore {
 		}
 		const mailboxDomains = new Set(pickRouteNodesByArmoredKey(this.nodes, to.routerArmoredPublicKey || '').map((n) => n.domain))
 		return this.postToEntries(innerArmor, mailboxDomains)
+	}
+
+	/**
+	 * V1 group send: one user-PGP armor per recipient. Never build a
+	 * multi-recipient OpenPGP message — its key-id list would reveal membership.
+	 */
+	async sendGroup(request: GroupSendRequest): Promise<GroupSendResult> {
+		if (!this.wallet) throw new Error('not initialised')
+		if (request.maxMembers != null && request.maxMembers !== GROUP_V1_MAX_MEMBERS) {
+			throw new Error('V1 group membership limit is fixed at 10')
+		}
+		assertGroupRosterV1(request.roster, GROUP_V1_MAX_MEMBERS)
+		if (request.roster.expiresAt <= Date.now()) throw new Error('group roster has expired')
+		const sender = normalizeGroupAddress(this.wallet.address)
+		if (!request.roster.members.some((member) => normalizeGroupAddress(member.eoa) === sender)) {
+			throw new Error('group sender is not an active member')
+		}
+		const now = Date.now()
+		if (request.expiresAt <= now || request.expiresAt > now + 24 * 60 * 60 * 1000) {
+			throw new Error('group message expiry must be within 24 hours')
+		}
+		const sendId = request.sendId || `${now}-${Math.random().toString(36).slice(2, 10)}`
+		const message = await createGroupMessageV1(this.wallet, {
+			groupId: request.roster.groupId,
+			rosterHash: groupRosterHash(request.roster),
+			sendId,
+			seq: request.seq,
+			createdAt: now,
+			expiresAt: request.expiresAt,
+			body: request.body,
+		})
+		const plaintext = JSON.stringify(createPaddedGroupDeliveryPacket(message, request.paddingBucketBytes))
+		const counts = await this.fanOutGroupPlaintext(request.roster, plaintext, request.routes, request.maxConcurrency)
+		this.emit.log('info', `group send completed: accepted=${counts.acceptedRecipients} failed=${counts.failedRecipients}`)
+		return { sendId, message, ...counts }
+	}
+
+	async issueGroupRoster(request: GroupIssueRosterRequest): Promise<GroupIssueRosterResult> {
+		if (!this.wallet) throw new Error('not initialised')
+		const owner = normalizeGroupAddress(this.wallet.address)
+		const previous = request.previous ?? null
+		if (previous) assertGroupRosterV1(previous)
+		const wanted = (previous ? request.nextMemberEoas ?? previous.members.map((member) => member.eoa) : request.memberEoas)
+			.map((eoa) => normalizeGroupAddress(eoa))
+		if (!wanted.includes(owner)) wanted.unshift(owner)
+		const unique = [...new Set(wanted)]
+		if (unique.length < 1 || unique.length > GROUP_V1_MAX_MEMBERS) throw new Error('unsupported group member count')
+		const routes = this.routeMap(request.routes)
+		const ownArmor = this.cfg?.identity.pgpPublicKeyArmored?.trim()
+		if (!ownArmor) throw new Error('group owner PGP public key unavailable')
+		const members: GroupMemberV1[] = []
+		for (const eoa of unique) {
+			const prior = previous?.members.find((member) => normalizeGroupAddress(member.eoa) === eoa)
+			const armored = eoa === owner ? ownArmor : routes.get(eoa)?.userPublicKeyArmored?.trim()
+			if (!armored) throw new Error('missing encrypted route for one or more group members')
+			const key = await readKey({ armoredKey: armored })
+			members.push({
+				eoa,
+				pgpFingerprint: key.getFingerprint().toLowerCase(),
+				keyEpoch: prior?.keyEpoch ?? 0,
+			})
+		}
+		const admins = (previous ? request.nextAdmins ?? previous.policy.admins : []).map((admin) => normalizeGroupAddress(admin))
+		const now = Date.now()
+		const roster = await signGroupObject<GroupRosterV1>(this.wallet, 'group roster', {
+			type: 'conet_group_roster_v1' as const,
+			groupId: previous?.groupId || request.groupId || crypto.randomUUID(),
+			version: previous ? previous.version + 1 : 1,
+			prevRosterHash: previous ? groupRosterHash(previous) : null,
+			issuedAt: now,
+			expiresAt: request.expiresAt,
+			policy: {
+				name: (previous && request.name.trim() === '' ? previous.policy.name : request.name).trim(),
+				owner,
+				admins,
+			},
+			members,
+		})
+		assertGroupRosterV1(roster)
+		const counts = await this.fanOutGroupPlaintext(roster, JSON.stringify(roster), request.routes)
+		this.emit.log('info', `group roster issued: accepted=${counts.acceptedRecipients} failed=${counts.failedRecipients}`)
+		return { roster, ...counts }
+	}
+
+	async issueGroupTombstone(request: GroupIssueTombstoneRequest): Promise<GroupIssueTombstoneResult> {
+		if (!this.wallet) throw new Error('not initialised')
+		assertGroupRosterV1(request.roster)
+		if (normalizeGroupAddress(request.roster.policy.owner) !== normalizeGroupAddress(this.wallet.address)) {
+			throw new Error('only the group owner may issue a tombstone')
+		}
+		const tombstone = await signGroupObject<GroupTombstoneV1>(this.wallet, 'group tombstone', {
+			type: 'conet_group_tombstone_v1',
+			groupId: request.roster.groupId,
+			removedAtVersion: request.roster.version + 1,
+			previousRosterHash: groupRosterHash(request.roster),
+			issuedAt: Date.now(),
+		})
+		const counts = await this.fanOutGroupPlaintext(request.roster, JSON.stringify(tombstone), request.routes)
+		this.emit.log('info', `group tombstone issued: accepted=${counts.acceptedRecipients} failed=${counts.failedRecipients}`)
+		return { tombstone, ...counts }
+	}
+
+	private routeMap(extra: ChatRoute[] | undefined): Map<string, ChatRoute> {
+		const map = new Map<string, ChatRoute>()
+		for (const route of [...this.routes, ...(extra ?? [])]) {
+			if (route?.address && ethers.isAddress(route.address)) map.set(normalizeGroupAddress(route.address), route)
+		}
+		return map
+	}
+
+	private async fanOutGroupPlaintext(
+		roster: GroupSendRequest['roster'],
+		plaintext: string,
+		routes: ChatRoute[] | undefined,
+		maxConcurrency = 2,
+	): Promise<{ acceptedRecipients: number; failedRecipients: number }> {
+		if (!this.wallet) throw new Error('not initialised')
+		const sender = normalizeGroupAddress(this.wallet.address)
+		const routeByAddress = this.routeMap(routes)
+		const recipients = roster.members
+			.filter((member) => normalizeGroupAddress(member.eoa) !== sender)
+			.map((member) => ({ member, route: routeByAddress.get(normalizeGroupAddress(member.eoa)) }))
+		if (recipients.some(({ route }) => !route?.userPublicKeyArmored)) {
+			throw new Error('missing encrypted route for one or more group members')
+		}
+		const concurrency = Math.min(4, Math.max(1, maxConcurrency))
+		let acceptedRecipients = 0
+		let failedRecipients = 0
+		let next = 0
+		const sendOne = async (): Promise<void> => {
+			while (next < recipients.length) {
+				const current = recipients[next++]
+				await new Promise<void>((resolve) => setTimeout(resolve, 60 + Math.floor(Math.random() * 141)))
+				try {
+					const ok = await this.sendSingleRecipientGroupDelivery(
+						current.member.pgpFingerprint,
+						current.route!,
+						plaintext,
+					)
+					if (ok) acceptedRecipients += 1
+					else failedRecipients += 1
+				} catch {
+					failedRecipients += 1
+				}
+			}
+		}
+		if (recipients.length) {
+			await Promise.all(Array.from({ length: Math.min(concurrency, recipients.length) }, () => sendOne()))
+		}
+		return { acceptedRecipients, failedRecipients }
+	}
+
+	private async sendSingleRecipientGroupDelivery(
+		expectedFingerprint: string,
+		to: ChatRoute,
+		payload: string,
+	): Promise<boolean> {
+		if (!this.wallet) throw new Error('not initialised')
+		const pgpPublic = to.userPublicKeyArmored?.trim()
+		const routeKey = to.routerArmoredPublicKey?.trim()
+		if (!pgpPublic) throw new Error('group recipient user PGP key unavailable')
+		if (!routeKey) throw new Error('group recipient mailbox route unavailable')
+		const key = await readKey({ armoredKey: pgpPublic })
+		if (key.getFingerprint().toLowerCase() !== expectedFingerprint.toLowerCase()) {
+			throw new Error('group recipient PGP key no longer matches the active roster')
+		}
+		const signMessage = await this.wallet.signMessage(payload)
+		const envelope = { timestamp: Date.now(), text: payload, from: this.wallet.address, signMessage }
+		const innerArmor = await encrypt({
+			message: await createMessage({ text: utf8ToBase64(JSON.stringify(envelope)) }),
+			encryptionKeys: key,
+			config: { preferredCompressionAlgorithm: enums.compression.uncompressed },
+		})
+		const mailboxDomains = new Set(pickRouteNodesByArmoredKey(this.nodes, routeKey).map((n) => n.domain))
+		return this.postToEntries(innerArmor, mailboxDomains)
+	}
+
+	/** Drop group objects out of the 1:1 message stream after the outer EIP-191 check. */
+	private tryConsumeGroupInbound(line: string): boolean {
+		let env: Record<string, unknown>
+		try {
+			env = JSON.parse(line) as Record<string, unknown>
+		} catch {
+			return false
+		}
+		const text = typeof env.text === 'string' ? env.text : ''
+		const signMessage = typeof env.signMessage === 'string' ? env.signMessage : ''
+		const from = typeof env.from === 'string' ? env.from : ''
+		if (!text || !signMessage || !from || !looksLikeGroupText(text)) return false
+		let recovered = ''
+		try {
+			recovered = normalizeGroupAddress(ethers.verifyMessage(text, signMessage))
+		} catch {
+			this.emit.log('warn', 'group inbound rejected: outer signature')
+			return true
+		}
+		if (!ethers.isAddress(from) || recovered !== normalizeGroupAddress(from)) {
+			this.emit.log('warn', 'group inbound rejected: signer mismatch')
+			return true
+		}
+		let parsed: ReturnType<typeof classifyGroupPlaintext>
+		try {
+			parsed = classifyGroupPlaintext(text)
+		} catch {
+			this.emit.log('warn', 'group inbound rejected: malformed object')
+			return true
+		}
+		if (!parsed || !ethers.isAddress(parsed.signer) || normalizeGroupAddress(parsed.signer) !== recovered) {
+			this.emit.log('warn', 'group inbound rejected: object signer')
+			return true
+		}
+		const payload: GroupInboundEvent = {
+			kind: parsed.kind,
+			recoveredFrom: recovered,
+			receivedAt: Date.now(),
+		}
+		if (parsed.kind === 'roster') payload.roster = parsed.roster
+		if (parsed.kind === 'proposal') payload.proposal = parsed.proposal
+		if (parsed.kind === 'tombstone') payload.tombstone = parsed.tombstone
+		if (parsed.kind === 'message') payload.message = parsed.message
+		this.emit.group(payload)
+		return true
 	}
 
 	private async postToEntries(
@@ -848,16 +1102,31 @@ export class GossipCore {
 	}
 
 	async sendVoiceFrame(routerArmoredPublicKey: string, frame: Record<string, unknown>): Promise<boolean> {
-		const candidate = frame as Partial<VoiceFrame>
+		const candidate = frame as Partial<VoiceFrame> & { targetWallet?: string; targetSessionId?: string }
+		// Accept legacy UI alias `targetWallet` → canonical VoiceFrame.`to`.
+		const to =
+			(typeof candidate.to === 'string' && candidate.to.trim()) ||
+			(typeof candidate.targetWallet === 'string' && candidate.targetWallet.trim()) ||
+			''
+		// Mailbox delivers only when targetSessionId matches the peer voice_listen.
+		const targetSessionId =
+			typeof candidate.targetSessionId === 'string' ? candidate.targetSessionId.trim() : ''
+		const targetSessionOk = /^[0-9a-fA-F-]{16,64}$/.test(targetSessionId)
 		if (
 			typeof candidate.callId !== 'string' || !candidate.callId ||
 			typeof candidate.sessionId !== 'string' || !candidate.sessionId ||
-			typeof candidate.to !== 'string' || !candidate.to ||
+			!targetSessionOk ||
 			!Number.isSafeInteger(candidate.seq) || (candidate.seq as number) < 0 ||
 			typeof candidate.timestamp !== 'number' || !Number.isFinite(candidate.timestamp) ||
 			typeof candidate.payload !== 'string' || !candidate.payload ||
 			candidate.payload.length > VOICE_MAX_FRAME_B64
-		) return false
+		) {
+			this.emit.log(
+				'warn',
+				`sendVoiceFrame rejected: callId=${!!candidate.callId} session=${!!candidate.sessionId} to=${!!to} targetSession=${targetSessionOk} seq=${candidate.seq} payload=${typeof candidate.payload === 'string' ? candidate.payload.length : 0}`,
+			)
+			return false
+		}
 		const command = {
 			command: 'voice_uplink',
 			type: 'voice_frame_v1',
@@ -865,7 +1134,8 @@ export class GossipCore {
 			from: this.wallet?.address,
 			callId: candidate.callId,
 			sessionId: candidate.sessionId,
-			to: candidate.to,
+			targetSessionId,
+			...(to ? { to } : {}),
 			direction: candidate.direction || 'uplink',
 			seq: candidate.seq,
 			frameTimestamp: candidate.timestamp,

@@ -71,6 +71,7 @@ import {TransactionsItemDetail} from '@/pages/History/TransactionsItemDetail'
 import BeamioPayMe from '@/pages/Pay/BeamioPayMe'
 import FuelView from './FuelView'
 import MerchantAssetGiftSheet, { type MerchantGiftCardOption } from './MerchantAssetGiftSheet'
+import ReceiveFundsPanel from '@/components/ReceiveFundsPanel'
 import { encodeOpenContainerRelayQrPayload, readContainerNonceFromAAStorage, signAAtoEOA_USDC_with_BeamioContainerMainRelayedOpenOnConet, type OpenContainerRelayPayload } from '@/services/AAaccount'
 import { ensureConetAaForProfileAndPersist } from '@/utils/ensureConetAa'
 import { tu } from '@/locale/beamioLocale'
@@ -1954,20 +1955,6 @@ const Home = (_props: HomeProps) => {
 		setReceiveWalletNewBalance('')
 		setPayReceiveView('wallets')
 	}, [abortReceiveWalletWatch, openingReceiveWalletId, receiveWalletTransferStatus])
-
-	const submitReceiveEoaQr = useCallback(() => {
-		const parsed = parseReceiveUsdcAmount6(receiveWalletAmount.replace(/\.$/, ''))
-		if (!parsed.ok) {
-			setReceiveWalletOpenError(parsed.error)
-			return
-		}
-		if (!receiveWalletEoa) {
-			setReceiveWalletOpenError(tu('wallet_address_unavailable'))
-			return
-		}
-		setReceiveWalletOpenError('')
-		setPayReceiveView('qr')
-	}, [receiveWalletAmount, receiveWalletEoa, tu])
 
 	const applyReceiveWalletAmountPad = useCallback((key: CoinbaseAmountPadKey) => {
 		if (openingReceiveWalletId) return
@@ -4366,99 +4353,17 @@ const Home = (_props: HomeProps) => {
 											</button>
 										</div>
 									</div>
-								) : payReceiveView === 'qr' ? (
-									<div className="mx-auto flex w-full max-w-lg flex-col overflow-y-auto px-5 pb-1">
-										<div className="flex justify-center pb-3 pt-2">
+								) : receiveEoaQrFlow &&
+								  (payReceiveView === 'wallet-amount' || payReceiveView === 'qr') ? (
+									<div className="mx-auto flex min-h-0 w-full max-w-lg flex-1 flex-col overflow-hidden bg-white pb-1 dark:bg-slate-900">
+										<div className="flex shrink-0 justify-center px-5 pb-3 pt-2">
 											<div className="h-1.5 w-12 rounded-full bg-gray-200 dark:bg-slate-600" />
 										</div>
-										<div className="flex items-center">
-											<BeamioCircularBackButton
-												variant="onLight"
-												onClick={() => {
-													if (receiveEoaQrFlow) {
-														setPayReceiveView('wallet-amount')
-														return
-													}
-													backToFundView()
-												}}
-											/>
-										</div>
-										<header className="pb-5 pt-6">
-											<p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#737687] dark:text-slate-400">
-												{tu('fund_your_wallet')}
-											</p>
-											<h2 className="mt-1 text-[1.375rem] font-bold tracking-tight text-[#191c1d] dark:text-slate-100">
-												{tu('receive_funds')}
-											</h2>
-											<p className="mt-1 text-sm leading-snug text-[#737687] dark:text-slate-400">
-												{tu('scan_to_send_to_this_wallet')}
-											</p>
-										</header>
-										{!receiveWalletEoa || !receiveQrUri ? (
-											<div
-												role="alert"
-												className="flex items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-200"
-											>
-												<AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-												<p>{tu('wallet_address_unavailable')}</p>
-											</div>
-										) : (
-											<>
-												<div className="flex justify-center">
-													<div className="rounded-xl border border-[#e8eaed] bg-white p-3 shadow-sm dark:border-slate-700 dark:bg-slate-800">
-														<QRCodeCanvas
-															value={receiveQrUri}
-															size={200}
-															level="M"
-															includeMargin={false}
-															bgColor="#ffffff"
-															fgColor="#000000"
-															className="block rounded-sm"
-														/>
-													</div>
-												</div>
-												<p className="mt-4 text-center text-[1.75rem] font-semibold leading-none tracking-tight text-[#191c1d] dark:text-slate-100">
-													<span className="mr-0.5 text-[1.15rem] font-medium text-[#737687]" aria-hidden>
-														$
-													</span>
-													{receiveWalletAmount || '0'}
-												</p>
-												<p className="mt-2 flex items-center justify-center gap-1 text-sm text-[#737687] dark:text-slate-400">
-													<img src={usdcIcon} alt="" className="h-4 w-4 rounded-full object-contain" />
-													{tu('receive_wallet_usdc_preview', {
-														amount: receiveWalletAmount || '0',
-													})}
-												</p>
-												<button
-													type="button"
-													onClick={() => void copyReceiveWalletAddress()}
-													className={`mt-5 flex w-full items-center gap-2 rounded-full border px-3 py-2.5 text-left ${HOME_TOUCH_BUTTON_CLASS}`}
-													style={{
-														borderColor: receiveWalletEoaAccent.border,
-														backgroundColor: receiveWalletEoaAccent.surfaceBg,
-														color: receiveWalletEoaAccent.bodyText,
-													}}
-													aria-label={tu('copy_wallet_address')}
-												>
-													<Wallet
-														className="h-3.5 w-3.5 shrink-0 text-[#0051d1]"
-														strokeWidth={2.25}
-														aria-hidden
-													/>
-													<span className="min-w-0 flex-1 truncate font-mono text-sm font-semibold">
-														{fmtAddr(receiveWalletEoa)}
-													</span>
-													{receiveWalletCopied ? (
-														<Check className="h-4 w-4 shrink-0 text-emerald-500" aria-hidden />
-													) : (
-														<Copy className="h-4 w-4 shrink-0 text-[#0051d1]" aria-hidden />
-													)}
-												</button>
-												<p className="mt-4 text-center text-sm leading-snug text-[#737687] dark:text-slate-400">
-													{tu('receive_qr_hint')}
-												</p>
-											</>
-										)}
+										<ReceiveFundsPanel
+											eoa={receiveWalletEoa || ''}
+											onBack={backToReceiveWalletPicker}
+											initialMode="request-amount"
+										/>
 									</div>
 								) : payReceiveView === 'wallets' ? (
 									<div className="mx-auto flex min-h-0 w-full max-w-lg flex-1 flex-col overflow-y-auto px-5 pb-1">
@@ -4566,7 +4471,7 @@ const Home = (_props: HomeProps) => {
 											</div>
 										) : null}
 									</div>
-								) : payReceiveView === 'wallet-amount' && (selectedReceiveWallet || receiveEoaQrFlow) ? (
+								) : payReceiveView === 'wallet-amount' && selectedReceiveWallet ? (
 									<div className="mx-auto flex min-h-0 w-full max-w-lg flex-1 flex-col overflow-hidden bg-white px-5 pb-1">
 										<div className="flex shrink-0 justify-center pb-3 pt-2">
 											<div className="h-1.5 w-12 rounded-full bg-gray-200" />
@@ -4579,42 +4484,25 @@ const Home = (_props: HomeProps) => {
 												className="relative z-10"
 											/>
 											<h2 className="pointer-events-none absolute inset-x-0 text-center text-[17px] font-semibold tracking-tight text-[#191c1d]">
-												{receiveEoaQrFlow ? tu('receive_funds') : selectedReceiveWallet?.label}
+												{selectedReceiveWallet.label}
 											</h2>
 										</div>
 										<div className="mb-4 mt-4 h-px w-full bg-[#e8eaed]" aria-hidden />
 										<div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
 											<div className="relative mb-3 overflow-hidden rounded-[1.75rem] bg-[#f4f6f8] px-4 pb-5 pt-4">
 												<div className="flex items-center gap-2.5">
-													{receiveEoaQrFlow ? (
-														<ReceiveWalletRowIcon
-															brandId="receive_funds"
-															brandLetter="Ξ"
-															brandBg="#627EEA"
-															brandFg="#ffffff"
-														/>
-													) : selectedReceiveWallet ? (
-														<ReceiveWalletRowIcon
-															brandId={selectedReceiveWallet.brandId}
-															brandLetter={selectedReceiveWallet.brandLetter}
-															brandBg={selectedReceiveWallet.brandBg}
-															brandFg={selectedReceiveWallet.brandFg}
-														/>
-													) : null}
+													<ReceiveWalletRowIcon
+														brandId={selectedReceiveWallet.brandId}
+														brandLetter={selectedReceiveWallet.brandLetter}
+														brandBg={selectedReceiveWallet.brandBg}
+														brandFg={selectedReceiveWallet.brandFg}
+													/>
 													<div className="min-w-0">
 														<p className="truncate text-sm font-semibold text-[#191c1d]">
-															{receiveEoaQrFlow ? tu('receive_funds') : selectedReceiveWallet?.label}
+															{selectedReceiveWallet.label}
 														</p>
-														<p
-															className={
-																receiveEoaQrFlow
-																	? 'text-xs leading-snug text-[#737687]'
-																	: 'truncate text-xs text-[#737687]'
-															}
-														>
-															{receiveEoaQrFlow
-																? tu('receive_eoa_qr_amount_hint')
-																: tu('receive_wallet_usdc_amount_hint')}
+														<p className="truncate text-xs text-[#737687]">
+															{tu('receive_wallet_usdc_amount_hint')}
 														</p>
 													</div>
 												</div>
@@ -4675,20 +4563,14 @@ const Home = (_props: HomeProps) => {
 											tabIndex={1}
 											disabled={!!openingReceiveWalletId || !receiveWalletEoa}
 											aria-busy={!!openingReceiveWalletId}
-											aria-label={receiveEoaQrFlow ? tu('receive_eoa_show_qr') : tu('next')}
+											aria-label={tu('next')}
 											onClick={() => {
-												if (receiveEoaQrFlow) {
-													submitReceiveEoaQr()
-													return
-												}
 												void submitReceiveWalletTransfer()
 											}}
 											className={`flex w-full shrink-0 items-center justify-center gap-2 rounded-full bg-[#0051d1] px-4 py-3.5 text-base font-semibold text-white transition active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 ${HOME_TOUCH_BUTTON_CLASS}`}
 										>
 											{openingReceiveWalletId ? (
 												<Loader2 className="h-5 w-5 animate-spin" aria-hidden />
-											) : receiveEoaQrFlow ? (
-												tu('receive_eoa_show_qr')
 											) : (
 												tu('next')
 											)}

@@ -46,6 +46,7 @@ function scheduleHistorySync() {
 function makeGossip() {
     return new GossipCore({
         message: (line, armorHash, plain, viaDomain) => post({ type: 'event:message', payload: { line, armorHash, plain, viaDomain, receivedAt: Date.now() } }),
+        group: (payload) => post({ type: 'event:group', payload }),
         voiceFrame: (payload) => post({ type: 'event:voiceFrame', payload }),
         voiceGap: (payload) => post({ type: 'event:voiceGap', payload }),
         voiceConflict: (payload) => post({ type: 'event:voiceConflict', payload }),
@@ -154,6 +155,36 @@ async function handle(cmd) {
             try {
                 const ok = await gossip.send(cmd.to, cmd.payload, { beamioNoPush: cmd.beamioNoPush });
                 post({ type: 'ack', reqId: cmd.reqId, ok: true, result: { sent: ok, sendId: cmd.sendId } });
+            }
+            catch (ex) {
+                post({ type: 'ack', reqId: cmd.reqId, ok: false, error: ex?.message ?? String(ex) });
+            }
+            return;
+        }
+        case 'sendGroup': {
+            try {
+                const result = await gossip.sendGroup(cmd.request);
+                post({ type: 'ack', reqId: cmd.reqId, ok: true, result });
+            }
+            catch (ex) {
+                post({ type: 'ack', reqId: cmd.reqId, ok: false, error: ex?.message ?? String(ex) });
+            }
+            return;
+        }
+        case 'issueGroupRoster': {
+            try {
+                const result = await gossip.issueGroupRoster(cmd.request);
+                post({ type: 'ack', reqId: cmd.reqId, ok: true, result });
+            }
+            catch (ex) {
+                post({ type: 'ack', reqId: cmd.reqId, ok: false, error: ex?.message ?? String(ex) });
+            }
+            return;
+        }
+        case 'issueGroupTombstone': {
+            try {
+                const result = await gossip.issueGroupTombstone(cmd.request);
+                post({ type: 'ack', reqId: cmd.reqId, ok: true, result });
             }
             catch (ex) {
                 post({ type: 'ack', reqId: cmd.reqId, ok: false, error: ex?.message ?? String(ex) });

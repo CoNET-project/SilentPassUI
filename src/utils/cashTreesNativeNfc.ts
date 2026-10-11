@@ -34,6 +34,9 @@ export type CashTreesNativeNfcBridge = {
 	notifyBackgroundChat?: (payload: Record<string, unknown> | string) => void
 	/** Android: mic opened — promote Telecom to ACTIVE (cancel deferred setActive). */
 	notifyVoiceMicReady?: (json: string) => void
+	/** Android: AudioRecord outside WebView. Returns true when recording starts. */
+	startNativeVoiceMic?: () => boolean
+	stopNativeVoiceMic?: () => void
 	debugLog?: (level: string, message: string) => void
 }
 
@@ -383,6 +386,30 @@ export function notifyNativeVoiceMicReady(payload: {
 		return true
 	} catch {
 		return false
+	}
+}
+
+/** Start the Android AudioRecord uplink. False when the shell has no bridge. */
+export function startNativeVoiceMic(): boolean {
+	const w = cashTreesNativeWindow()
+	if (!w?.CashTreesAndroid || typeof w.CashTreesAndroid.startNativeVoiceMic !== 'function') {
+		return false
+	}
+	try {
+		const started = callAndroidBridge(w.CashTreesAndroid, 'startNativeVoiceMic')
+		return started === true || started === 'true'
+	} catch {
+		return false
+	}
+}
+
+export function stopNativeVoiceMic(): void {
+	const w = cashTreesNativeWindow()
+	if (!w?.CashTreesAndroid || typeof w.CashTreesAndroid.stopNativeVoiceMic !== 'function') return
+	try {
+		callAndroidBridge(w.CashTreesAndroid, 'stopNativeVoiceMic')
+	} catch {
+		/* already stopped */
 	}
 }
 

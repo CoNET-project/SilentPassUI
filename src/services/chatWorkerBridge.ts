@@ -29,6 +29,13 @@ import {
 	type VoiceConflictEvent,
 	type VoiceFrame,
 	type VoiceGapEvent,
+	type GroupInboundEvent,
+	type GroupIssueRosterRequest,
+	type GroupIssueRosterResult,
+	type GroupIssueTombstoneRequest,
+	type GroupIssueTombstoneResult,
+	type GroupSendRequest,
+	type GroupSendResult,
 } from '@conet.project/chat-sdk'
 import { CONET_ADDRESS_PGP, CONET_CHAT_INDEX_REGISTRY } from '../config/chainAddresses'
 
@@ -74,6 +81,7 @@ const historyBufferListeners = new Set<(batch: HistoryBufferEvent) => void>()
 const voiceFrameListeners = new Set<(frame: VoiceFrame) => void>()
 const voiceGapListeners = new Set<(event: VoiceGapEvent) => void>()
 const voiceConflictListeners = new Set<(event: VoiceConflictEvent) => void>()
+const groupInboundListeners = new Set<(event: GroupInboundEvent) => void>()
 
 /**
  * Race fix: `initChat` sets React `gossip=true` *before* the worker client exists.
@@ -105,6 +113,33 @@ export const onVoiceGap = (cb: (event: VoiceGapEvent) => void): (() => void) => 
 export const onVoiceConflict = (cb: (event: VoiceConflictEvent) => void): (() => void) => {
 	voiceConflictListeners.add(cb)
 	return () => voiceConflictListeners.delete(cb)
+}
+
+export const onGroupInbound = (cb: (event: GroupInboundEvent) => void): (() => void) => {
+	groupInboundListeners.add(cb)
+	return () => groupInboundListeners.delete(cb)
+}
+
+export const issueWorkerGroupRoster = async (
+	request: GroupIssueRosterRequest,
+): Promise<GroupIssueRosterResult> => {
+	const client = activeClient
+	if (!client) throw new Error('Chat is not connected')
+	return client.issueGroupRoster(request)
+}
+
+export const sendWorkerGroupMessage = async (request: GroupSendRequest): Promise<GroupSendResult> => {
+	const client = activeClient
+	if (!client) throw new Error('Chat is not connected')
+	return client.sendGroupMessage(request)
+}
+
+export const issueWorkerGroupTombstone = async (
+	request: GroupIssueTombstoneRequest,
+): Promise<GroupIssueTombstoneResult> => {
+	const client = activeClient
+	if (!client) throw new Error('Chat is not connected')
+	return client.issueGroupTombstone(request)
 }
 
 const runHistoryLoad = async (options?: HistoryLoadOptions): Promise<void> => {
@@ -346,6 +381,11 @@ const startWorkerGossipListenInternal = async (p: StartWorkerGossipParams): Prom
 			try { cb(event) } catch { /* isolate voice UI listeners */ }
 		}
 		p.onVoiceGap?.(event)
+	}))
+	unsubs.push(client.on('group', (event) => {
+		for (const cb of groupInboundListeners) {
+			try { cb(event) } catch { /* isolate group UI listeners */ }
+		}
 	}))
 	unsubs.push(client.on('voiceConflict', (event) => {
 		for (const cb of voiceConflictListeners) {

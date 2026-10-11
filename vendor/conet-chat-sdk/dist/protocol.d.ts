@@ -3,7 +3,7 @@
  * gossip Worker. All heavy crypto (openpgp encrypt/decrypt, ethers verify/sign)
  * runs in the worker; the main thread only marshals commands and re-emits events.
  */
-import type { ChatIdentity, ChatRoute, ChatRuntimeOptions, DeliveryReceiptEvent, HistoryBufferEvent, HistoryEntry, HistoryLoadOptions, HistoryReadOptions, InboundEnvelope, NodeInfo, PresenceEvent, StatusEvent, VoiceFrame } from './types.js';
+import type { ChatIdentity, ChatRoute, ChatRuntimeOptions, DeliveryReceiptEvent, HistoryBufferEvent, HistoryEntry, HistoryLoadOptions, HistoryReadOptions, GroupInboundEvent, GroupIssueRosterRequest, GroupIssueTombstoneRequest, GroupSendRequest, InboundEnvelope, NodeInfo, PresenceEvent, StatusEvent, VoiceFrame } from './types.js';
 import type { VoiceConflictEvent, VoiceGapEvent } from './voice-reorder.js';
 /** Serialisable subset of config passed into the worker at init. */
 export interface WorkerInitPayload {
@@ -41,6 +41,18 @@ export type WorkerCommand = {
     payload: string;
     sendId: string;
     beamioNoPush?: boolean;
+} | {
+    type: 'sendGroup';
+    reqId: number;
+    request: GroupSendRequest;
+} | {
+    type: 'issueGroupRoster';
+    reqId: number;
+    request: GroupIssueRosterRequest;
+} | {
+    type: 'issueGroupTombstone';
+    reqId: number;
+    request: GroupIssueTombstoneRequest;
 } | {
     type: 'queryPresence';
     reqId: number;
@@ -118,6 +130,9 @@ export type WorkerOutbound = {
 } | {
     type: 'event:message';
     payload: InboundEnvelope;
+} | {
+    type: 'event:group';
+    payload: GroupInboundEvent;
 } | {
     type: 'event:delivery';
     payload: DeliveryReceiptEvent;

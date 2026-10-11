@@ -59,6 +59,7 @@ class BeamioChatClientImpl {
             voiceFrame: new Set(),
             voiceGap: new Set(),
             voiceConflict: new Set(),
+            group: new Set(),
         };
         this.routes = [];
         this.nodes = [];
@@ -113,6 +114,15 @@ class BeamioChatClientImpl {
             return;
         this.nodes = nodes;
         this.postCommand({ type: 'setNodes', nodes });
+    }
+    async sendGroupMessage(request) {
+        return this.request({ type: 'sendGroup', reqId: 0, request }, 60000);
+    }
+    async issueGroupRoster(request) {
+        return this.request({ type: 'issueGroupRoster', reqId: 0, request }, 60000);
+    }
+    async issueGroupTombstone(request) {
+        return this.request({ type: 'issueGroupTombstone', reqId: 0, request }, 60000);
     }
     async sendMessage(to, payload, opts) {
         const sendId = opts?.sendId || `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
@@ -272,6 +282,9 @@ class BeamioChatClientImpl {
             }
             case 'event:message':
                 this.emit('message', msg.payload);
+                return;
+            case 'event:group':
+                this.emit('group', msg.payload);
                 return;
             case 'event:delivery':
                 this.emit('delivery', msg.payload);

@@ -13,6 +13,10 @@ import type {
 	HistoryEntry,
 	HistoryLoadOptions,
 	HistoryReadOptions,
+	GroupInboundEvent,
+	GroupIssueRosterRequest,
+	GroupIssueTombstoneRequest,
+	GroupSendRequest,
 	InboundEnvelope,
 	NodeInfo,
 	PresenceEvent,
@@ -46,6 +50,9 @@ export type WorkerCommand =
 	| { type: 'setRoutes'; routes: ChatRoute[] }
 	| { type: 'setNodes'; nodes: NodeInfo[] }
 	| { type: 'send'; reqId: number; to: ChatRoute; payload: string; sendId: string; beamioNoPush?: boolean }
+	| { type: 'sendGroup'; reqId: number; request: GroupSendRequest }
+	| { type: 'issueGroupRoster'; reqId: number; request: GroupIssueRosterRequest }
+	| { type: 'issueGroupTombstone'; reqId: number; request: GroupIssueTombstoneRequest }
 	| { type: 'queryPresence'; reqId: number; contacts: ChatRoute[] }
 	| { type: 'queryNativeWake'; reqId: number; contact: ChatRoute }
 	| { type: 'historyLoad'; reqId: number; options?: HistoryLoadOptions }
@@ -94,6 +101,7 @@ export type WorkerOutbound =
 	| { type: 'ack'; reqId: number; ok: true; result?: unknown }
 	| { type: 'ack'; reqId: number; ok: false; error: string }
 	| { type: 'event:message'; payload: InboundEnvelope }
+	| { type: 'event:group'; payload: GroupInboundEvent }
 	| { type: 'event:delivery'; payload: DeliveryReceiptEvent }
 	| { type: 'event:presence'; payload: PresenceEvent }
 	| { type: 'event:status'; payload: StatusEvent }

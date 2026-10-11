@@ -154,6 +154,7 @@ export interface ChatEventMap {
     voiceFrame: VoiceFrame;
     voiceGap: import('./voice-reorder.js').VoiceGapEvent;
     voiceConflict: import('./voice-reorder.js').VoiceConflictEvent;
+    group: GroupInboundEvent;
 }
 export type ChatEventName = keyof ChatEventMap;
 export type ChatEventListener<K extends ChatEventName> = (payload: ChatEventMap[K]) => void;
@@ -192,6 +193,118 @@ export interface SendMessageOptions {
      * HTTP `POST /post` stays `{ data }` only.
      */
     beamioNoPush?: boolean;
+}
+export interface GroupMemberV1 {
+    eoa: string;
+    pgpFingerprint: string;
+    keyEpoch: number;
+}
+export interface GroupPolicyV1 {
+    name: string;
+    owner: string;
+    admins: string[];
+}
+export interface GroupRosterV1 {
+    type: 'conet_group_roster_v1';
+    groupId: string;
+    version: number;
+    prevRosterHash: string | null;
+    issuedAt: number;
+    expiresAt: number;
+    policy: GroupPolicyV1;
+    members: GroupMemberV1[];
+    signer: string;
+    signature: string;
+}
+export interface GroupAdminProposalV1 {
+    type: 'conet_group_admin_proposal_v1';
+    groupId: string;
+    rosterHash: string;
+    proposalId: string;
+    createdAt: number;
+    expiresAt: number;
+    action: 'add_member' | 'remove_member' | 'add_admin' | 'remove_admin' | 'rename';
+    value: Record<string, unknown>;
+    signer: string;
+    signature: string;
+}
+export interface GroupTombstoneV1 {
+    type: 'conet_group_tombstone_v1';
+    groupId: string;
+    removedAtVersion: number;
+    previousRosterHash: string;
+    issuedAt: number;
+    signer: string;
+    signature: string;
+}
+export interface GroupMessageV1 {
+    type: 'conet_group_message_v1';
+    groupId: string;
+    rosterHash: string;
+    sendId: string;
+    seq: number;
+    createdAt: number;
+    expiresAt: number;
+    body: string;
+    signer: string;
+    signature: string;
+}
+export interface GroupDeliveryPacketV1 {
+    type: 'conet_group_delivery_v1';
+    message: GroupMessageV1;
+    padding: string;
+}
+export interface GroupSendRequest {
+    roster: GroupRosterV1;
+    body: string;
+    seq: number;
+    expiresAt: number;
+    sendId?: string;
+    maxMembers?: number;
+    paddingBucketBytes?: number;
+    maxConcurrency?: number;
+    /** Member routes used for this fan-out. Mailbox B is excluded per recipient. */
+    routes: ChatRoute[];
+}
+export interface GroupSendResult {
+    sendId: string;
+    acceptedRecipients: number;
+    failedRecipients: number;
+    message: GroupMessageV1;
+}
+export interface GroupIssueRosterRequest {
+    name: string;
+    /** Other members. The worker adds the signing owner. */
+    memberEoas: string[];
+    routes: ChatRoute[];
+    expiresAt: number;
+    groupId?: string;
+    previous?: GroupRosterV1 | null;
+    nextMemberEoas?: string[];
+    nextAdmins?: string[];
+}
+export interface GroupIssueRosterResult {
+    roster: GroupRosterV1;
+    acceptedRecipients: number;
+    failedRecipients: number;
+}
+export interface GroupIssueTombstoneRequest {
+    roster: GroupRosterV1;
+    routes: ChatRoute[];
+}
+export interface GroupIssueTombstoneResult {
+    tombstone: GroupTombstoneV1;
+    acceptedRecipients: number;
+    failedRecipients: number;
+}
+export interface GroupInboundEvent {
+    kind: 'roster' | 'proposal' | 'tombstone' | 'message';
+    recoveredFrom: string;
+    receivedAt: number;
+    roster?: GroupRosterV1;
+    proposal?: GroupAdminProposalV1;
+    tombstone?: GroupTombstoneV1;
+    message?: GroupMessageV1;
 }
 export interface BeamioChatConfig {
     identity: ChatIdentity;
@@ -279,6 +392,15 @@ export interface BeamioChatClient {
     sendMessage(to: ChatRoute, payload: string, opts?: SendMessageOptions): Promise<{
         sendId: string;
     }>;
+    /**
+     * Deliver a V1 group message as independent single-recipient user-PGP armors.
+     * This never creates multi-recipient OpenPGP armor.
+     */
+    sendGroupMessage(request: GroupSendRequest): Promise<GroupSendResult>;
+    /** Owner-sign a roster and fan it out one armor per other member. */
+    issueGroupRoster(request: GroupIssueRosterRequest): Promise<GroupIssueRosterResult>;
+    /** Owner-sign a tombstone and fan it out. Local state is the host's job. */
+    issueGroupTombstone(request: GroupIssueTombstoneRequest): Promise<GroupIssueTombstoneResult>;
     /** Encrypt a mailbox command (e.g. gossip_delivery_ack) to route B and POST via entry C ≠ B. */
     postMailboxCommand(routerArmoredPublicKey: string, command: Record<string, unknown>): Promise<boolean>;
     postOwnMailboxCommand(command: Record<string, unknown>): Promise<boolean>;

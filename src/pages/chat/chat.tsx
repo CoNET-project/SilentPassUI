@@ -130,7 +130,7 @@ import {
 	voiceCallClaimMismatchesKey,
 	type VoiceCallSignal,
 } from '@/utils/voiceCallSession'
-import { startVoiceCapture, VoicePlaybackBuffer } from '@/services/voiceCallMedia'
+import { startAndroidNativeMicCapture, startVoiceCapture, VoicePlaybackBuffer, voiceCaptureConstraints, voiceLevelFromPcmBytes } from '@/services/voiceCallMedia'
 import { createVoiceCallController, declineIncomingVoiceOffer, timeoutIncomingVoiceOffer, type VoiceCallController } from '@/services/voiceCallController'
 import { useReliableTapHandler, RELIABLE_TAP_BUTTON_CLASS } from '@/utils/reliableTap'
 import {
@@ -1878,6 +1878,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 	const voiceCallSessionRef = useRef<string | null>(null)
 	const voiceCallOfferRef = useRef<{ callId: string; sessionId: string; sessionKey: string; timestamp?: number; expiresAt?: number } | null>(null)
 	const locallyEndedVoiceSessionsRef = useRef<Set<string>>(new Set())
+	const voiceAcceptHandledRef = useRef('')
 	const voiceCallKeyRef = useRef<Uint8Array | null>(null)
 	const voiceCallPeerSessionRef = useRef<string | null>(null)
 	const voicePeerRouteRef = useRef<string>('')
@@ -1895,6 +1896,9 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 	const voiceControllerRef = useRef<VoiceCallController | null>(null)
 	const voiceCallStartingRef = useRef(false)
 	const voiceMediaStartingRef = useRef(false)
+	const voiceCallLiveRef = useRef(false)
+	/** Desktop: open the mic on the Call click, not when the peer answers. */
+	const outgoingMicPreopenRef = useRef<MediaStream | null>(null)
 	const [voiceCallConnecting, setVoiceCallConnecting] = useState(false)
 
 	const stopAndroidIncomingMicPrewarm = useCallback((onlySessionId?: string | null) => {
@@ -2159,9 +2163,15 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				/* ignore */
 			}
 		}
-		if (voiceCaptureStopRef.current || !voiceCallKeyRef.current || !voiceCallPeerSessionRef.current) {
+		// Play the other side even when this device has no microphone.
+		void remoteVoiceAudioContextRef.current?.resume().catch(() => {})
+		if (voiceCaptureStopRef.current) {
+			try { voiceCaptureStopRef.current() } catch { /* already stopped */ }
+			voiceCaptureStopRef.current = null
+		}
+		if (!voiceCallKeyRef.current || !voiceCallPeerSessionRef.current) {
 			logMicDiag('skip_missing_session', {
-				hasCaptureStop: Boolean(voiceCaptureStopRef.current),
+				hasCaptureStop: false,
 				hasKey: Boolean(voiceCallKeyRef.current),
 				hasPeerSession: Boolean(voiceCallPeerSessionRef.current),
 			})
@@ -2213,13 +2223,11 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		}
 		const openMicStreamOnce = async (): Promise<MediaStream> => {
 			const androidShell = getCashTreesNativeNfcHost() === 'android'
-			const preferred: MediaStreamConstraints = {
-				audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-			}
-			const plain: MediaStreamConstraints = { audio: true }
+			const preferred = voiceCaptureConstraints(false)
+			const plain: MediaStreamConstraints = voiceCaptureConstraints(true)
 			// Android WebView + Telecom MODE_IN_COMMUNICATION often maps
-			// AEC/NS/AGC constraints to NotFoundError even when a mic exists.
-			// Prefer unconstrained audio first in the native shell.
+			// enabled AEC/NS/AGC to NotFoundError. The uplink also writes
+			// silence to the speaker, so AEC must stay off or it erases the mic.
 			const primary = androidShell ? plain : preferred
 			const secondary = androidShell ? preferred : plain
 			try {
@@ -2244,6 +2252,16 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			}
 		}
 		const openMicStream = async (): Promise<MediaStream> => {
+			const warmed = outgoingMicPreopenRef.current
+			if (warmed?.getAudioTracks().some((track) => track.readyState === 'live')) {
+				outgoingMicPreopenRef.current = null
+				logMicDiag('reuse_dial_mic', {
+					tracks: warmed.getAudioTracks().map((t) => t.label || t.id).join(',') || '0',
+				})
+				return warmed
+			}
+			warmed?.getTracks().forEach((track) => track.stop())
+			outgoingMicPreopenRef.current = null
 			const livePreopened = preopenedStream?.getAudioTracks().some((t) => t.readyState === 'live')
 				? preopenedStream
 				: null
@@ -2289,7 +2307,8 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			throw lastError instanceof Error ? lastError : new Error('getUserMedia_failed')
 		}
 		try {
-			const stream = await openMicStream()
+			void voicePlaybackRef.current?.resume()
+			let stream = await openMicStream()
 			logMicDiag('getUserMedia_ok', {
 				tracks: stream.getAudioTracks().map((t) => t.label || t.id).join(',') || '0',
 			})
@@ -2314,6 +2333,104 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				callId: callId ? 'set' : '',
 				sessionId: voiceCallSessionRef.current ? 'local' : 'peer',
 			})
+			let loggedSentFrame = false
+			const sendEncryptedVoiceFrame = async (payload: string) => {
+				const frameRoute = voicePeerRouteRef.current || chatData.chatData?.routersArmoreds?.trim() || ''
+				const localSessionId = voiceCallSessionRef.current?.trim() || ''
+				const peerWallet = typeof toAddress === 'string' ? toAddress.trim() : ''
+				if (!frameRoute || !callId || !targetSessionId || !localSessionId || !peerWallet) {
+					if (voiceFrameSendFailuresRef.current < 3) {
+						voiceFrameSendFailuresRef.current += 1
+						logMicDiag('frame_not_sent', {
+							route: Boolean(frameRoute),
+							callId: Boolean(callId),
+							targetSession: Boolean(targetSessionId),
+							localSession: Boolean(localSessionId),
+							peer: Boolean(peerWallet),
+						})
+					}
+					return
+				}
+				const sent = await sendWorkerVoiceFrame(frameRoute, {
+					type: 'voice_frame_v1',
+					callId,
+					sessionId: localSessionId,
+					targetSessionId,
+					to: peerWallet,
+					seq: voiceFrameSeqRef.current++,
+					timestamp: Math.floor(Date.now() / 1000),
+					payload,
+				})
+				if (!sent && voiceFrameSendFailuresRef.current < 3) {
+					voiceFrameSendFailuresRef.current += 1
+					setVoiceError('Voice audio relay is unavailable. Please try the call again.')
+				} else if (sent) {
+					voiceFrameSendFailuresRef.current = 0
+					if (!loggedSentFrame) {
+						loggedSentFrame = true
+						logMicDiag('frame_sent', { seq: voiceFrameSeqRef.current })
+					}
+				}
+			}
+			// WebView getUserMedia is digital silence in MODE_IN_COMMUNICATION.
+			// Release those tracks, then record with the app AudioRecord.
+			if (getCashTreesNativeNfcHost() === 'android') {
+				androidIncomingMicPrewarmRef.current?.getTracks().forEach((track) => track.stop())
+				androidIncomingMicPrewarmRef.current = null
+				androidIncomingMicPrewarmSessionRef.current = null
+				voiceCallStreamRef.current?.getTracks().forEach((track) => track.stop())
+				stream.getTracks().forEach((track) => track.stop())
+				await sleepMs(200)
+				const stopNative = startAndroidNativeMicCapture(
+					key,
+					sendEncryptedVoiceFrame,
+					(level) => {
+						setVoiceLevelSamples((previous) => [...previous.slice(-119), level])
+					},
+					logMicDiag,
+				)
+				if (stopNative) {
+					voiceCaptureStopRef.current = stopNative
+					voiceCallStreamRef.current = null
+					setVoiceCallMuted(false)
+					setVoiceLevelSamples([])
+					setRemoteVoiceLevelSamples([])
+					setVoiceCallMinimized(false)
+					void remoteVoiceAudioContextRef.current?.resume().catch(() => {})
+					voiceFrameSeqRef.current = 0
+					voiceFrameSendFailuresRef.current = 0
+					const receiveSessionId = voiceCallPeerSessionRef.current
+					if (voiceReceiveSessionRef.current !== receiveSessionId) {
+						voiceReceiveSessionRef.current = receiveSessionId
+						voiceReceivedSeqRef.current = -1
+						voiceReceivedSeqsRef.current.clear()
+					}
+					return
+				}
+			}
+			// setActive switches the phone into communication mode and silences
+			// a microphone track that was opened while the call was still ringing.
+			// Open a new track after that switch; keep the old one if the new
+			// open is rejected.
+			if (getCashTreesNativeNfcHost() === 'android') {
+				await sleepMs(600)
+				try {
+					const fresh = await navigator.mediaDevices.getUserMedia(voiceCaptureConstraints(true))
+					const previous = stream
+					stream = fresh
+					previous.getTracks().forEach((track) => track.stop())
+					const track = fresh.getAudioTracks()[0]
+					logMicDiag('reopen_after_active', {
+						tracks: track?.label || track?.id || '0',
+						muted: track?.muted ?? null,
+						ready: track?.readyState || '',
+					})
+				} catch (error) {
+					const name = error instanceof DOMException ? error.name : ''
+					const message = error instanceof Error ? error.message : ''
+					logMicDiag('reopen_after_active_failed', { name, message })
+				}
+			}
 			voiceCallStreamRef.current = stream
 			setVoiceCallMuted(false)
 			setVoiceLevelSamples([])
@@ -2323,15 +2440,20 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			const AudioContextCtor =
 				window.AudioContext ||
 				(window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+			let captureGraph: { context: AudioContext; source: MediaStreamAudioSourceNode } | undefined
 			if (AudioContextCtor) {
 				const audioContext = new AudioContextCtor()
+				void audioContext.resume().catch(() => {})
 				const source = audioContext.createMediaStreamSource(stream)
 				const analyser = audioContext.createAnalyser()
 				analyser.fftSize = 256
+				// Same source feeds the visible meter and the uplink. A second
+				// AudioContext on this MediaStream gets silence on Android WebView.
 				source.connect(analyser)
 				voiceAudioContextRef.current = audioContext
 				voiceAnalyserRef.current = analyser
 				voiceLevelRafRef.current = window.requestAnimationFrame(sampleVoiceLevel)
+				captureGraph = { context: audioContext, source }
 			}
 			voiceFrameSeqRef.current = 0
 			voiceFrameSendFailuresRef.current = 0
@@ -2341,24 +2463,13 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				voiceReceivedSeqRef.current = -1
 				voiceReceivedSeqsRef.current.clear()
 			}
-			voiceCaptureStopRef.current = await startVoiceCapture(stream, key, async (payload) => {
-				const frameRoute = voicePeerRouteRef.current || chatData.chatData?.routersArmoreds?.trim() || ''
-				if (!frameRoute || !callId || !targetSessionId) return
-				const sent = await sendWorkerVoiceFrame(frameRoute, {
-					type: 'voice_frame_v1',
-					callId,
-					sessionId: voiceCallSessionRef.current,
-					targetSessionId,
-					targetWallet: toAddress,
-					seq: voiceFrameSeqRef.current++,
-					timestamp: Math.floor(Date.now() / 1000),
-					payload,
-				})
-				if (!sent && voiceFrameSendFailuresRef.current < 3) {
-					voiceFrameSendFailuresRef.current += 1
-					setVoiceError('Voice audio relay is unavailable. Please try the call again.')
-				}
-			})
+			voiceCaptureStopRef.current = await startVoiceCapture(
+				stream,
+				key,
+				sendEncryptedVoiceFrame,
+				captureGraph,
+				logMicDiag,
+			)
 		} catch (error) {
 			const name = error instanceof DOMException ? error.name : ''
 			const message = error instanceof Error ? error.message : ''
@@ -2403,9 +2514,30 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		}
 	}, [chatData.chatData, toAddress])
 
+	const armVoicePlayback = useCallback(() => {
+		const playback = voicePlaybackRef.current
+		if (!playback) return
+		playback.armOutput()
+		remoteVoiceAudioContextRef.current = playback.context
+		remoteVoiceAnalyserRef.current = playback.analyser
+	}, [])
+
 	const startVoiceCall = useCallback(async () => {
 		if (voiceCallStartingRef.current || voiceCallState !== 'idle') return
-		voicePlaybackRef.current?.resume()
+		voiceCallLiveRef.current = true
+		// Must run before any await so the browser unlocks the speaker.
+		armVoicePlayback()
+		if (getCashTreesNativeNfcHost() !== 'android' && navigator.mediaDevices?.getUserMedia) {
+			void navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
+				if (!voiceCallLiveRef.current) {
+					stream.getTracks().forEach((track) => track.stop())
+					return
+				}
+				const previous = outgoingMicPreopenRef.current
+				outgoingMicPreopenRef.current = stream
+				previous?.getTracks().forEach((track) => track.stop())
+			}).catch(() => { /* answer-time open is the fallback */ })
+		}
 		voiceCallStartingRef.current = true
 		setVoiceError(null)
 		setVoiceVideoNote(null)
@@ -2506,7 +2638,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		} finally {
 			voiceCallStartingRef.current = false
 		}
-	}, [allNodes, chatData, privateKey, toAddress, upsertPhoneCallRecord, voiceCallState])
+	}, [allNodes, armVoicePlayback, chatData, privateKey, toAddress, upsertPhoneCallRecord, voiceCallState])
 
 	useEffect(() => {
 		const inboundMessages = messages.filter((message) => message.from === 'them' && message.text)
@@ -2603,10 +2735,18 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				!locallyEndedVoiceSessionsRef.current.has(signal.peerSessionId) &&
 				!locallyEndedVoiceSessionsRef.current.has(String(signal.sessionId || ''))
 			) {
+				// The inbound effect re-runs whenever messages or profiles change.
+				// Handling the same accept again restarts the speaker from the beginning.
+				const acceptKey = String(signal.sessionId || '')
+				if (voiceAcceptHandledRef.current === acceptKey) continue
+				voiceAcceptHandledRef.current = acceptKey
 				// Accept.sessionId is the callee's voice listen. peerSessionId is our own.
 				// Frames must be addressed to the callee, or their mailbox drops them.
 				voiceCallPeerSessionRef.current = signal.sessionId
+				voiceCallLiveRef.current = true
+				setVoiceCallMinimized(false)
 				setVoiceCallState('outgoing')
+				void voicePlaybackRef.current?.resume()
 				upsertPhoneCallRecord({
 					callId: signal.callId,
 					sessionId: voiceCallOfferRef.current?.sessionId || signal.sessionId,
@@ -2628,7 +2768,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		const offer = offerOverride || incomingVoiceOffer
 		const callerEoa = recoverVoiceCallOfferSigner(offer as VoiceCallSignal | null)
 		if (!offer || !callerEoa || incomingVoiceAction !== 'idle') return
-		voicePlaybackRef.current?.resume()
+		armVoicePlayback()
 		setIncomingVoiceAction('accepting')
 		setVoiceError(null)
 		setVoiceCallMinimized(false)
@@ -2683,7 +2823,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 					const delay = earlyDelaysMs[attempt] ?? 0
 					if (delay > 0) await sleepEarly(delay)
 					try {
-						earlyMicStream = await navigator.mediaDevices.getUserMedia({ audio: true })
+						earlyMicStream = await navigator.mediaDevices.getUserMedia(voiceCaptureConstraints(true))
 						voiceCallStreamRef.current = earlyMicStream
 						relayEarly(
 							`[voice-mic] early_getUserMedia_ok ${JSON.stringify({
@@ -2818,6 +2958,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		incomingVoiceAction,
 		incomingVoiceOffer,
 		privateKey,
+		armVoicePlayback,
 		startVoiceMedia,
 		takeAndroidIncomingMicPrewarm,
 		upsertPhoneCallRecord,
@@ -2851,7 +2992,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		relay(`[voice-mic] prewarm_begin ${JSON.stringify({ sessionId: 'set' })}`)
 		void (async () => {
 			try {
-				const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+				const stream = await navigator.mediaDevices.getUserMedia(voiceCaptureConstraints(true))
 				if (cancelled) {
 					stream.getTracks().forEach((track) => {
 						try {
@@ -2933,6 +3074,10 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		requestedStatus?: PhoneCallRecord['status'],
 		notifyPeer = true,
 	) => {
+		voiceCallLiveRef.current = false
+		voiceAcceptHandledRef.current = ''
+		outgoingMicPreopenRef.current?.getTracks().forEach((track) => track.stop())
+		outgoingMicPreopenRef.current = null
 		const sessionId = voiceCallSessionRef.current
 		const callId = voiceCallOfferRef.current?.callId
 		const callSessionId = voiceCallOfferRef.current?.sessionId || sessionId || ''
@@ -3261,7 +3406,18 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			typeof frame.payload !== 'string' ||
 			frame.callId !== voiceCallOfferRef.current?.callId ||
 			(frame.sessionId !== voiceCallPeerSessionRef.current)
-		) return
+		) {
+			if (frame?.type === 'voice_frame_v1') {
+				console.warn('[voice-rx] drop', {
+					state: voiceCallState,
+					call: frame.callId === voiceCallOfferRef.current?.callId,
+					session: frame.sessionId,
+					peer: voiceCallPeerSessionRef.current,
+				})
+			}
+			return
+		}
+		console.warn('[voice-rx] take', frame.seq)
 		const seq = Number(frame.seq)
 		if (!Number.isSafeInteger(seq) || seq < 0) return
 		// Fan-out through multiple entry nodes can deliver the same frame more
@@ -3313,9 +3469,17 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 					)
 					return
 				}
+				const level = voiceLevelFromPcmBytes(plain)
+				if (level !== null) {
+					setRemoteVoiceLevelSamples(previous => [...previous.slice(-119), level])
+				}
 				voicePlaybackRef.current?.setKey(voiceCallKeyRef.current || new Uint8Array())
 				await voicePlaybackRef.current?.push(frame.payload as string)
-			} catch {
+				setVoiceError(null)
+			} catch (error) {
+				const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error)
+				;(window as Window & { __voiceDecodeFail?: string }).__voiceDecodeFail = message
+				console.warn('[voice-rx] decode_fail', message)
 				setVoiceError('Incoming voice audio could not be decoded.')
 			}
 		})()
@@ -3933,6 +4097,10 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 	}, [])
 
 	const sampleVoiceLevel = useCallback(() => {
+		if (!voiceCallLiveRef.current) {
+			voiceLevelRafRef.current = null
+			return
+		}
 		const readLevel = (analyser: AnalyserNode | null) => {
 			if (!analyser) return null
 			const values = new Uint8Array(analyser.fftSize)
@@ -3945,19 +4113,15 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			return Math.min(1, Math.sqrt(sum / values.length) * 3.5)
 		}
 		const local = readLevel(voiceAnalyserRef.current)
-		const remote = readLevel(remoteVoiceAnalyserRef.current)
-		if (local === null && remote === null) {
-			voiceLevelRafRef.current = null
-			return
-		}
 		if (local !== null) setVoiceLevelSamples(previous => [...previous.slice(-119), local])
-		if (remote !== null) setRemoteVoiceLevelSamples(previous => [...previous.slice(-119), remote])
 		voiceLevelRafRef.current = window.requestAnimationFrame(sampleVoiceLevel)
 	}, [])
 
 	useEffect(() => {
+		voiceCallLiveRef.current = voiceCallState === 'outgoing'
 		if (voiceCallState !== 'outgoing') return
 		void remoteVoiceAudioContextRef.current?.resume().catch(() => {})
+		void voicePlaybackRef.current?.resume()
 		if (voiceLevelRafRef.current === null) {
 			voiceLevelRafRef.current = window.requestAnimationFrame(sampleVoiceLevel)
 		}
@@ -5211,9 +5375,10 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 						<button
 							type="button"
 							onClick={() => {
+								voicePlaybackRef.current?.resume()
 								setVoiceSpeakerOn(previous => {
 									const next = !previous
-									voicePlaybackRef.current?.setOutputGain(next ? 1 : 0.25)
+									voicePlaybackRef.current?.setOutputGain(next ? 4 : 1)
 									return next
 								})
 							}}

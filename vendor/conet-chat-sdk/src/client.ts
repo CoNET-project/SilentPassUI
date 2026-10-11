@@ -15,6 +15,12 @@ import type {
 	ChatEventListener,
 	ChatEventName,
 	ChatRoute,
+	GroupIssueRosterRequest,
+	GroupIssueRosterResult,
+	GroupIssueTombstoneRequest,
+	GroupIssueTombstoneResult,
+	GroupSendRequest,
+	GroupSendResult,
 	SendMessageOptions,
 	HistoryBufferEvent,
 	HistoryEntry,
@@ -91,6 +97,7 @@ class BeamioChatClientImpl implements BeamioChatClient {
 		voiceFrame: new Set(),
 		voiceGap: new Set(),
 		voiceConflict: new Set(),
+		group: new Set(),
 	}
 	private historyBridge: ChatHistoryBridge
 	private routes: ChatRoute[] = []
@@ -154,6 +161,18 @@ class BeamioChatClientImpl implements BeamioChatClient {
 		if (!nodes?.length) return
 		this.nodes = nodes
 		this.postCommand({ type: 'setNodes', nodes })
+	}
+
+	async sendGroupMessage(request: GroupSendRequest): Promise<GroupSendResult> {
+		return this.request<GroupSendResult>({ type: 'sendGroup', reqId: 0, request }, 60_000)
+	}
+
+	async issueGroupRoster(request: GroupIssueRosterRequest): Promise<GroupIssueRosterResult> {
+		return this.request<GroupIssueRosterResult>({ type: 'issueGroupRoster', reqId: 0, request }, 60_000)
+	}
+
+	async issueGroupTombstone(request: GroupIssueTombstoneRequest): Promise<GroupIssueTombstoneResult> {
+		return this.request<GroupIssueTombstoneResult>({ type: 'issueGroupTombstone', reqId: 0, request }, 60_000)
 	}
 
 	async sendMessage(to: ChatRoute, payload: string, opts?: SendMessageOptions): Promise<{ sendId: string }> {
@@ -331,6 +350,9 @@ class BeamioChatClientImpl implements BeamioChatClient {
 			}
 			case 'event:message':
 				this.emit('message', msg.payload)
+				return
+			case 'event:group':
+				this.emit('group', msg.payload)
 				return
 			case 'event:delivery':
 				this.emit('delivery', msg.payload)

@@ -7,7 +7,6 @@ import {
 	recoverVoiceCallOfferSigner,
 	signVoiceCallOffer,
 	randomMailboxVoiceSessionId,
-	randomVoiceId,
 	voiceSessionKeyFromBase64,
 	voiceSessionKeyToBase64,
 	type VoiceCallSignal,
@@ -75,9 +74,11 @@ const sendVoiceCallControlToTemporaryRelay = async (
 		return await sendWorkerVoiceFrame(options.peerRoute, {
 			type: 'voice_frame_v1',
 			callId: offer.callId,
-			sessionId: randomVoiceId(control.framePrefix),
+			sessionId: randomMailboxVoiceSessionId(),
 			targetSessionId: offer.sessionId,
+			to: offer.from,
 			seq: 0,
+			timestamp: Math.floor(Date.now() / 1000),
 			payload,
 		})
 	} catch {

@@ -353,7 +353,7 @@ export default function WalletOverview() {
 								}
 							/>
 							<QuickAction
-								label="Receive"
+								label="Receive Funds"
 								tone="green"
 								onClick={() => setShowReceiveEoaSheet(true)}
 								icon={

@@ -114,6 +114,19 @@ function TrustWalletOfficialMark({ className = tileClass }: { className?: string
 	)
 }
 
+/** Ethereum diamond mark on periwinkle tile (Receive Funds / EOA QR row). */
+function EthereumOfficialMark({ className = tileClass }: { className?: string }) {
+	return (
+		<svg viewBox="0 0 24 24" className={className} aria-hidden>
+			<rect width="24" height="24" rx="5.5" fill="#627EEA" />
+			<path fill="#fff" fillOpacity="0.6" d="M12 3.4 6.75 12.1 12 15.15l5.25-3.05z" />
+			<path fill="#fff" d="M12 3.4v11.75l5.25-3.05z" />
+			<path fill="#fff" fillOpacity="0.6" d="M12 16.35 6.75 13.25 12 20.6z" />
+			<path fill="#fff" d="M12 20.6v-4.25l5.25-3.1z" />
+		</svg>
+	)
+}
+
 const listTileClass = 'block h-10 w-10 overflow-hidden rounded-[0.7rem]'
 
 /** Official app icon for a Receive-from-wallet catalog brand. */
@@ -137,6 +150,8 @@ export function ReceiveWalletBrandMark({
 			return <TokenPocketOfficialMark className={className} />
 		case 'trust':
 			return <TrustWalletOfficialMark className={className} />
+		case 'receive_funds':
+			return <EthereumOfficialMark className={className} />
 		default:
 			return null
 	}

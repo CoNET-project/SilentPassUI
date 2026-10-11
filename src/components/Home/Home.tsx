@@ -4388,7 +4388,7 @@ const Home = (_props: HomeProps) => {
 												{tu('fund_your_wallet')}
 											</p>
 											<h2 className="mt-1 text-[1.375rem] font-bold tracking-tight text-[#191c1d] dark:text-slate-100">
-												{tu('show_eoa_qr')}
+												{tu('receive_funds')}
 											</h2>
 											<p className="mt-1 text-sm leading-snug text-[#737687] dark:text-slate-400">
 												{tu('scan_to_send_to_this_wallet')}
@@ -4496,28 +4496,6 @@ const Home = (_props: HomeProps) => {
 											</div>
 										) : null}
 										<div className="flex flex-col gap-3">
-											<button
-												type="button"
-												disabled={!receiveWalletEoa}
-												aria-label={tu('show_eoa_qr')}
-												onClick={openReceiveEoaQr}
-												className={`${receiveWalletPickerRowClass} disabled:cursor-not-allowed disabled:opacity-60`}
-											>
-												<span className="flex min-w-0 items-center gap-3.5">
-													<span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[0.7rem] bg-[#e9edff] text-[#0051d1]">
-														<QrCode className="h-5 w-5" strokeWidth={2.25} aria-hidden />
-													</span>
-													<span className="min-w-0">
-														<span className="block text-base font-semibold text-[#191c1d] dark:text-slate-100">
-															{tu('show_eoa_qr')}
-														</span>
-														<span className="mt-0.5 block text-[13px] leading-snug text-[#737687] dark:text-slate-400">
-															{tu('show_eoa_qr_hint')}
-														</span>
-													</span>
-												</span>
-												<ChevronRight className="h-5 w-5 shrink-0 text-[#9aa0a6]" aria-hidden />
-											</button>
 											{receiveWalletVisibleRows.map((row) => {
 												const opening = openingReceiveWalletId === row.id
 												const rowDisabled = !!openingReceiveWalletId || !receiveWalletEoa
@@ -4549,6 +4527,28 @@ const Home = (_props: HomeProps) => {
 													</button>
 												)
 											})}
+											<button
+												type="button"
+												disabled={!receiveWalletEoa}
+												aria-label={tu('receive_funds')}
+												onClick={openReceiveEoaQr}
+												className={`${receiveWalletPickerRowClass} disabled:cursor-not-allowed disabled:opacity-60`}
+											>
+												<span className="min-w-0">
+													<span className="block text-base font-semibold text-[#191c1d] dark:text-slate-100">
+														{tu('receive_funds')}
+													</span>
+													<span className="mt-0.5 block text-[13px] leading-snug text-[#737687] dark:text-slate-400">
+														{tu('receive_funds_hint')}
+													</span>
+												</span>
+												<ReceiveWalletRowIcon
+													brandId="receive_funds"
+													brandLetter="Ξ"
+													brandBg="#627EEA"
+													brandFg="#ffffff"
+												/>
+											</button>
 										</div>
 										{receiveWalletEoa &&
 										!receiveWalletsLooking &&
@@ -4579,7 +4579,7 @@ const Home = (_props: HomeProps) => {
 												className="relative z-10"
 											/>
 											<h2 className="pointer-events-none absolute inset-x-0 text-center text-[17px] font-semibold tracking-tight text-[#191c1d]">
-												{receiveEoaQrFlow ? tu('show_eoa_qr') : selectedReceiveWallet?.label}
+												{receiveEoaQrFlow ? tu('receive_funds') : selectedReceiveWallet?.label}
 											</h2>
 										</div>
 										<div className="mb-4 mt-4 h-px w-full bg-[#e8eaed]" aria-hidden />
@@ -4587,9 +4587,12 @@ const Home = (_props: HomeProps) => {
 											<div className="relative mb-3 overflow-hidden rounded-[1.75rem] bg-[#f4f6f8] px-4 pb-5 pt-4">
 												<div className="flex items-center gap-2.5">
 													{receiveEoaQrFlow ? (
-														<span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[0.7rem] bg-[#e9edff] text-[#0051d1]">
-															<QrCode className="h-5 w-5" strokeWidth={2.25} aria-hidden />
-														</span>
+														<ReceiveWalletRowIcon
+															brandId="receive_funds"
+															brandLetter="Ξ"
+															brandBg="#627EEA"
+															brandFg="#ffffff"
+														/>
 													) : selectedReceiveWallet ? (
 														<ReceiveWalletRowIcon
 															brandId={selectedReceiveWallet.brandId}
@@ -4600,7 +4603,7 @@ const Home = (_props: HomeProps) => {
 													) : null}
 													<div className="min-w-0">
 														<p className="truncate text-sm font-semibold text-[#191c1d]">
-															{receiveEoaQrFlow ? tu('show_eoa_qr') : selectedReceiveWallet?.label}
+															{receiveEoaQrFlow ? tu('receive_funds') : selectedReceiveWallet?.label}
 														</p>
 														<p
 															className={

@@ -4,7 +4,6 @@
  */
 
 import React, { useEffect, useState } from 'react'
-import { Plus, QrCode } from 'lucide-react'
 import storeCreditsLogo from '@/assets/store-credits-logo.png'
 import rewardPtLogo from '@/assets/reward-pt-logo.png'
 import { BeamioCircularBackButton } from '@/components/BeamioCircularBackButton'
@@ -14,11 +13,9 @@ import type { TxView } from '@/pages/History/recentActivityIndexerMerge'
 export type WalletAssetKind = 'usdc' | 'credits' | 'points' | 'units'
 
 export type WalletAssetActionId =
-	| 'add-usdc'
 	| 'buy-card'
 	| 'buy-coinbase'
 	| 'from-wallet'
-	| 'receive-usdc'
 	| 'topup-pay'
 	| 'discover'
 	| 'store-cards'
@@ -397,31 +394,7 @@ export default function WalletAssetDetail({
 					</div>
 				</section>
 
-				{kind === 'usdc' ? (
-					<section className="mt-3.5 grid grid-cols-2 gap-2.5">
-						{/* Add USDC → Home Fund upward onramp drawer (not deprecated page BeamioAddUSDCFlow). */}
-						<button
-							type="button"
-							onClick={() => onAction('add-usdc')}
-							className="flex min-h-[108px] flex-col items-center justify-center rounded-[22px] bg-white px-3 py-4 text-[#0a0d43] shadow-[0_8px_28px_rgba(56,78,150,0.08)] active:scale-[0.975]"
-						>
-							<span className="mb-2.5 grid h-12 w-12 place-items-center rounded-full bg-[#e8f1ff]" aria-hidden>
-								<Plus className="h-6 w-6 text-[#2b6cff]" strokeWidth={2.4} />
-							</span>
-							<span className="text-center text-[15px] font-medium leading-5">Add USDC</span>
-						</button>
-						<button
-							type="button"
-							onClick={() => onAction('receive-usdc')}
-							className="flex min-h-[108px] flex-col items-center justify-center rounded-[22px] bg-white px-3 py-4 text-[#0a0d43] shadow-[0_8px_28px_rgba(56,78,150,0.08)] active:scale-[0.975]"
-						>
-							<span className="mb-2.5 grid h-12 w-12 place-items-center rounded-full bg-[#e8f1ff]" aria-hidden>
-								<QrCode className="h-6 w-6 text-[#2b6cff]" strokeWidth={2.1} />
-							</span>
-							<span className="text-center text-[15px] font-medium leading-5">Receive USDC</span>
-						</button>
-					</section>
-				) : (
+				{copy.actions.length > 0 ? (
 					<section className="mt-3.5 grid grid-cols-2 gap-[7px]">
 						{copy.actions.map(([id, label]) => (
 							<button
@@ -446,7 +419,7 @@ export default function WalletAssetDetail({
 							</button>
 						))}
 					</section>
-				)}
+				) : null}
 
 				<section className="mt-[26px]">
 					<h2 className="mx-[5px] mb-2.5 mt-0 text-[20px] tracking-[-0.4px]">Recent Activity</h2>
@@ -504,8 +477,6 @@ function actionMark(id: WalletAssetActionId, label: string): string {
 		case 'from-wallet':
 		case 'topup-pay':
 			return '▱'
-		case 'receive-usdc':
-			return '▦'
 		case 'discover':
 		case 'bunit-learn':
 			return '▥'

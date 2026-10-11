@@ -13,6 +13,7 @@ import { useReferralRegistryRole } from '@/hooks/useReferralRegistryRole'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { resolveSigningPrivateKeyArmor } from '@/utils/resolveSigningPrivateKeyArmor'
 import ReferralRedeemClaimSheet from '@/pages/Wallet/ReferralRedeemClaimSheet'
+import WalletReceiveEoaSheet from '@/pages/Wallet/WalletReceiveEoaSheet'
 import { BeamioCircularBackButton } from '@/components/BeamioCircularBackButton'
 import BeamioAddUSDCFlow from '@/components/addUSDC/BeamioAddUSDCFlow'
 import { getBUnitBalanceOnConet, isCardExcludedFromDisplay, type BUnitBalanceOnConet } from '@/services/BeamioCard'
@@ -72,6 +73,7 @@ export default function WalletOverview() {
 	const showReferralClaimIcon = referralSnapshot?.isAdmin !== true && referralSnapshot?.role === 'none'
 
 	const [showReferralClaimSheet, setShowReferralClaimSheet] = useState(false)
+	const [showReceiveEoaSheet, setShowReceiveEoaSheet] = useState(false)
 	const [depositStart, setDepositStart] = useState<null | 'hub' | 'stripe' | 'coinbase' | 'transfer' | 'receive'>(null)
 	const [assetKind, setAssetKind] = useState<WalletAssetKind | null>(null)
 	const [showFuel, setShowFuel] = useState(false)
@@ -174,15 +176,9 @@ export default function WalletOverview() {
 	}, [myBrandCardDetails])
 
 	const handleAssetAction = useCallback((id: WalletAssetActionId) => {
-		// Canonical Add USDC: Home Fund upward drawer (debit / Base onramp / receive-from-wallet).
-		if (id === 'add-usdc') {
-			navigate('/', { state: { openFundWalletSheet: true } })
-			return
-		}
 		if (id === 'buy-card') { openDeposit('stripe'); return }
 		if (id === 'buy-coinbase') { openDeposit('coinbase'); return }
 		if (id === 'from-wallet') { openDeposit('transfer'); return }
-		if (id === 'receive-usdc') { openDeposit('receive'); return }
 		if (id === 'bunit-topup') { setShowFuel(true); return }
 		setAssetKind(null)
 		setShowFooter(true)
@@ -357,9 +353,9 @@ export default function WalletOverview() {
 								}
 							/>
 							<QuickAction
-								label="Top up & Pay"
+								label="Receive"
 								tone="green"
-								onClick={() => navigate('/qr', { state: { tab: 'mycode' } })}
+								onClick={() => setShowReceiveEoaSheet(true)}
 								icon={
 									<svg viewBox="0 0 48 48" className="h-7 w-7" aria-hidden>
 										<path d="M10 19v-7h7" />
@@ -500,6 +496,13 @@ export default function WalletOverview() {
 					onClaimed={handleReferralClaimed}
 				/>
 			) : null}
+
+			<WalletReceiveEoaSheet
+				eoa={eoa}
+				open={showReceiveEoaSheet}
+				onClose={() => setShowReceiveEoaSheet(false)}
+				setShowFooter={setShowFooter}
+			/>
 		</div>
 	)
 }

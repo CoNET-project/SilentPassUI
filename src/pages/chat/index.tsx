@@ -218,6 +218,7 @@ const Home = () => {
 				allNodes={allNodes}
 				privateKey={privateKey}
 				autoVoiceCallAction={autoVoiceCallAction}
+				onAutoVoiceCallActionHandled={() => setAutoVoiceCallAction(null)}
 			/>
 			</div>
 		)}

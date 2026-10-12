@@ -124,6 +124,7 @@ import {
 	INCOMING_CALL_RING_TIMEOUT_MS,
 	mergePhoneCallRecord,
 	phoneCallStampMs,
+	normalizeVoiceTimestampMs,
 	markVoiceCallTerminal,
 	rememberIncomingVoiceOffer,
 	VOICE_CALL_IDENTITY_WARNING,
@@ -1708,6 +1709,7 @@ type ChatProps = {
 	chatData: chatData
 	privateKey: string
 	autoVoiceCallAction?: 'accept' | 'reject' | null
+	onAutoVoiceCallActionHandled?: () => void
 	onVoiceCallActive?: (active: boolean) => void
 	onShowThread?: () => void
 	threadHidden?: boolean
@@ -1799,7 +1801,7 @@ type ChatListProps = {
 
 const VOICE_RELAY_OPEN_ERROR = 'Voice call could not open a temporary relay.'
 
-export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction, onVoiceCallActive, onShowThread, threadHidden = false }: ChatProps) {
+export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction, onAutoVoiceCallActionHandled, onVoiceCallActive, onShowThread, threadHidden = false }: ChatProps) {
 	const navigate = useNavigate()
 	const [text, setText] = useState("")
 	 
@@ -1878,7 +1880,8 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 	const voiceCallSessionRef = useRef<string | null>(null)
 	const voiceCallOfferRef = useRef<{ callId: string; sessionId: string; sessionKey: string; timestamp?: number; expiresAt?: number } | null>(null)
 	const locallyEndedVoiceSessionsRef = useRef<Set<string>>(new Set())
-	const voiceAcceptHandledRef = useRef('')
+	const voiceAcceptHandledRef = useRef<Set<string>>(new Set())
+	const [liveVoiceSessionId, setLiveVoiceSessionId] = useState('')
 	const voiceCallKeyRef = useRef<Uint8Array | null>(null)
 	const voiceCallPeerSessionRef = useRef<string | null>(null)
 	const voicePeerRouteRef = useRef<string>('')
@@ -2615,6 +2618,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				timestamp: signal.timestamp,
 				expiresAt: signal.expiresAt,
 			}
+			setLiveVoiceSessionId(sessionId)
 			upsertPhoneCallRecord({
 				callId: signal.callId,
 				sessionId,
@@ -2640,9 +2644,64 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		}
 	}, [allNodes, armVoicePlayback, chatData, privateKey, toAddress, upsertPhoneCallRecord, voiceCallState])
 
+	const detachLocalVoiceCall = useCallback(() => {
+		voiceCallLiveRef.current = false
+		const offer = voiceCallOfferRef.current
+		const localSession = voiceCallSessionRef.current
+		const peerSession = voiceCallPeerSessionRef.current
+		if (offer?.sessionId) locallyEndedVoiceSessionsRef.current.add(offer.sessionId)
+		if (offer?.callId) locallyEndedVoiceSessionsRef.current.add(offer.callId)
+		if (localSession) locallyEndedVoiceSessionsRef.current.add(localSession)
+		if (peerSession) locallyEndedVoiceSessionsRef.current.add(peerSession)
+		if (offer?.callId && offer.sessionId) markVoiceCallTerminal(offer.callId, offer.sessionId)
+		voiceCallOfferRef.current = null
+		voiceCallSessionRef.current = null
+		voiceCallPeerSessionRef.current = null
+		voiceCallKeyRef.current = null
+		voicePeerRouteRef.current = ''
+		voiceReceiveSessionRef.current = null
+		voiceReceivedSeqRef.current = -1
+		voiceReceivedSeqsRef.current.clear()
+		voiceMediaStartingRef.current = false
+		const controller = voiceControllerRef.current
+		voiceControllerRef.current = null
+		try { voiceCaptureStopRef.current?.() } catch { /* already stopped */ }
+		voiceCaptureStopRef.current = null
+		outgoingMicPreopenRef.current?.getTracks().forEach((track) => track.stop())
+		outgoingMicPreopenRef.current = null
+		voiceCallStreamRef.current?.getTracks().forEach((track) => track.stop())
+		voiceCallStreamRef.current = null
+		voicePlaybackRef.current?.reset()
+		setVoiceCallConnecting(false)
+		setVoiceCallMinimized(false)
+		setLiveVoiceSessionId('')
+		setVoiceCallState('idle')
+		if (controller) void controller.end(false)
+		else if (localSession) void stopWorkerVoiceListen(localSession)
+	}, [])
+
 	useEffect(() => {
 		const inboundMessages = messages.filter((message) => message.from === 'them' && message.text)
 		if (inboundMessages.length === 0) return
+		let newestActiveOffer: VoiceCallSignal | null = null
+		for (const message of inboundMessages) {
+			const signal = parseVoiceCallSignal(message.text)
+			if (signal?.type !== 'voice_call_offer_v1' || !isVoiceCallOfferActive(signal)) continue
+			const timestamp = normalizeVoiceTimestampMs(signal.timestamp || signal.createdAt)
+			const previousTimestamp = newestActiveOffer
+				? normalizeVoiceTimestampMs(newestActiveOffer.timestamp || newestActiveOffer.createdAt)
+				: 0
+			if (!newestActiveOffer || timestamp >= previousTimestamp) newestActiveOffer = signal
+		}
+		if (newestActiveOffer) {
+			const liveSessions = new Set([
+				voiceCallOfferRef.current?.sessionId || '',
+				voiceCallPeerSessionRef.current || '',
+				voiceCallSessionRef.current || '',
+			].filter(Boolean))
+			const replacesLiveCall = liveSessions.size > 0 && !liveSessions.has(newestActiveOffer.sessionId)
+			if (replacesLiveCall) detachLocalVoiceCall()
+		}
 		for (const latest of inboundMessages) {
 			try {
 			const signal = parseVoiceCallSignal(latest.text)
@@ -2738,12 +2797,19 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				// The inbound effect re-runs whenever messages or profiles change.
 				// Handling the same accept again restarts the speaker from the beginning.
 				const acceptKey = String(signal.sessionId || '')
-				if (voiceAcceptHandledRef.current === acceptKey) continue
-				voiceAcceptHandledRef.current = acceptKey
+				if (
+					voiceAcceptHandledRef.current.has(acceptKey) ||
+					locallyEndedVoiceSessionsRef.current.has(acceptKey) ||
+					locallyEndedVoiceSessionsRef.current.has(String(signal.peerSessionId || '')) ||
+					locallyEndedVoiceSessionsRef.current.has(String(signal.callId || '')) ||
+					(newestActiveOffer && signal.peerSessionId !== newestActiveOffer.sessionId)
+				) continue
+				voiceAcceptHandledRef.current.add(acceptKey)
 				// Accept.sessionId is the callee's voice listen. peerSessionId is our own.
 				// Frames must be addressed to the callee, or their mailbox drops them.
 				voiceCallPeerSessionRef.current = signal.sessionId
 				voiceCallLiveRef.current = true
+				setLiveVoiceSessionId(voiceCallOfferRef.current?.sessionId || signal.peerSessionId || '')
 				setVoiceCallMinimized(false)
 				setVoiceCallState('outgoing')
 				void voicePlaybackRef.current?.resume()
@@ -2762,7 +2828,12 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				/* ordinary Chat text */
 			}
 		}
-	}, [chatData, messages, profiles, startVoiceMedia, toAddress, upsertPhoneCallRecord])
+		if (newestActiveOffer) {
+			const incomingOffer = newestActiveOffer
+			setIncomingVoiceOffer(previous => previous?.sessionId === incomingOffer.sessionId ? previous : incomingOffer)
+			rememberIncomingVoiceOffer(incomingOffer)
+		}
+	}, [chatData, detachLocalVoiceCall, messages, profiles, startVoiceMedia, toAddress, upsertPhoneCallRecord])
 
 	const acceptVoiceCall = useCallback(async (offerOverride?: VoiceCallSignal | null) => {
 		const offer = offerOverride || incomingVoiceOffer
@@ -2919,6 +2990,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				timestamp: offer.timestamp,
 				expiresAt: offer.expiresAt,
 			}
+			setLiveVoiceSessionId(offer.sessionId)
 			setIncomingVoiceOffer(null)
 			setVoiceCallState('outgoing')
 			upsertPhoneCallRecord({
@@ -3075,14 +3147,16 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		notifyPeer = true,
 	) => {
 		voiceCallLiveRef.current = false
-		voiceAcceptHandledRef.current = ''
 		outgoingMicPreopenRef.current?.getTracks().forEach((track) => track.stop())
 		outgoingMicPreopenRef.current = null
 		const sessionId = voiceCallSessionRef.current
 		const callId = voiceCallOfferRef.current?.callId
 		const callSessionId = voiceCallOfferRef.current?.sessionId || sessionId || ''
+		const peerSessionId = voiceCallPeerSessionRef.current || ''
 		if (callSessionId) locallyEndedVoiceSessionsRef.current.add(callSessionId)
 		if (callId) locallyEndedVoiceSessionsRef.current.add(callId)
+		if (sessionId) locallyEndedVoiceSessionsRef.current.add(sessionId)
+		if (peerSessionId) locallyEndedVoiceSessionsRef.current.add(peerSessionId)
 		if (callId && callSessionId) markVoiceCallTerminal(callId, callSessionId)
 		voiceCallOfferRef.current = null
 		voiceCallSessionRef.current = null
@@ -3092,6 +3166,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		setVoiceError(null)
 		setVoiceCallConnecting(false)
 		setVoiceCallMinimized(false)
+		setLiveVoiceSessionId('')
 		setVoiceCallState('idle')
 		if (callId) {
 			const previous = (Array.isArray(profiles?.[0]?.phoneCalls) ? profiles[0].phoneCalls : [])
@@ -3145,6 +3220,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		voiceReceiveSessionRef.current = null
 		voiceReceivedSeqRef.current = -1
 		voiceReceivedSeqsRef.current.clear()
+		setLiveVoiceSessionId('')
 		setVoiceCallState('idle')
 	}, [profiles, toAddress, upsertPhoneCallRecord])
 
@@ -3178,12 +3254,13 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		const key = `${offer.sessionId}:${autoVoiceCallAction}`
 		if (autoVoiceCallActionHandledRef.current === key) return
 		autoVoiceCallActionHandledRef.current = key
+		onAutoVoiceCallActionHandled?.()
 		if (autoVoiceCallAction === 'accept') {
 			void acceptVoiceCall()
 		} else {
 			void rejectVoiceCall()
 		}
-	}, [acceptVoiceCall, autoVoiceCallAction, incomingVoiceOffer, rejectVoiceCall])
+	}, [acceptVoiceCall, autoVoiceCallAction, incomingVoiceOffer, onAutoVoiceCallActionHandled, rejectVoiceCall])
 
 	useEffect(() => {
 		if (voiceCallState !== 'outgoing') return
@@ -5306,7 +5383,10 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 					</div>
 				</div>
 			) : null}
-			{voiceCallState === 'outgoing' && !voiceCallMinimized ? (
+			{voiceCallState === 'outgoing' && !voiceCallMinimized && !(
+				incomingVoiceOffer?.sessionId &&
+				incomingVoiceOffer.sessionId !== liveVoiceSessionId
+			) ? (
 				<div
 					className="fixed inset-0 z-[170] flex flex-col overflow-hidden bg-gradient-to-b from-[#8fd0fb] via-[#5aa6f0] to-[#3d6ad8] text-white"
 					role="dialog"

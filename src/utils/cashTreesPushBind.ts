@@ -27,7 +27,8 @@ type PushTokenDetail = {
 }
 
 let listenerAttached = false
-let lastRegisteredToken = ''
+/** Per-platform last token — ios and ios_voip are different APNs tokens and must both register. */
+const lastRegisteredTokenByPlatform: Partial<Record<PushPlatform, string>> = {}
 let lastSyncedUnread = -1
 let syncInFlight = false
 
@@ -108,13 +109,15 @@ async function registerDeviceToken(
 		? deviceToken.trim().toLowerCase()
 		: deviceToken.trim()
 	if (!isValidDeviceToken(platform, token)) return false
-	if (token === lastRegisteredToken) return true
+	if (token === lastRegisteredTokenByPlatform[platform]) return true
 
 	const bundleId = defaultBundleId(platform, opts?.bundleId)
+	// PushKit voip token always implies CallKit Incoming; native may omit the flag.
+	const callKit = platform === 'ios_voip' ? true : opts?.callKit === true
 	const capabilities = {
 		nativeCallUi: true,
 		fullScreenIntent: opts?.fullScreenIntent === true,
-		callKit: opts?.callKit === true,
+		callKit,
 	}
 	const timestamp = Math.floor(Date.now() / 1000)
 	const profileEoa = CoNET_Data?.profiles?.[0]?.keyID
@@ -142,24 +145,68 @@ async function registerDeviceToken(
 		registrationSignature: signed.signature,
 		capabilities,
 	}
-	let sent = false
-	for (let attempt = 0; attempt < 8 && !sent; attempt += 1) {
-		sent = await postWorkerOwnMailboxCommand(command)
-		if (!sent && attempt < 7) {
-			await new Promise<void>((resolve) => window.setTimeout(resolve, 1_000))
+	// Prefer mailbox when gossip is up, but CallKit force-quit wake needs the
+	// token in beamio_push_devices. CoNET-SI may not implement push_device_register,
+	// so always fall back to signed HTTP (same contract as POS PWA).
+	let mailboxOk = false
+	for (let attempt = 0; attempt < 3 && !mailboxOk; attempt += 1) {
+		mailboxOk = await postWorkerOwnMailboxCommand(command)
+		if (!mailboxOk && attempt < 2) {
+			await new Promise<void>((resolve) => window.setTimeout(resolve, 500))
 		}
 	}
-	if (sent) lastRegisteredToken = token
-	return sent
+
+	let httpOk = false
+	try {
+		const res = await fetch(`${beamioApi}/api/registerPushDevice`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				eoa: signed.eoa,
+				deviceToken: token,
+				platform,
+				bundleId,
+				pgpKeyId: opts?.pgpKeyId || undefined,
+				timestamp,
+				signature: signed.signature,
+				capabilities,
+			}),
+		})
+		if (res.ok) {
+			const json = (await res.json().catch(() => null)) as { success?: boolean } | null
+			httpOk = json?.success === true
+		} else {
+			console.warn('[push] registerPushDevice HTTP', res.status, platform)
+		}
+	} catch (e) {
+		console.warn('[push] registerPushDevice failed', e)
+	}
+
+	if (httpOk) {
+		lastRegisteredTokenByPlatform[platform] = token
+		console.info('[push] registerPushDevice ok', platform, bundleId, mailboxOk ? 'mailbox+http' : 'http')
+		return true
+	}
+	// Do not mark lastRegistered on mailbox-only success — SI may ACK without
+	// writing beamio_push_devices, which leaves force-quit CallKit unable to wake.
+	if (mailboxOk) {
+		console.warn('[push] mailbox accepted but HTTP register failed — will retry', platform)
+	}
+	return false
 }
 
 function onNativePushEvent(ev: Event): void {
 	const detail = (ev as CustomEvent<PushTokenDetail>).detail
 	if (!detail || detail.action !== 'pushDeviceToken') return
 	const token = String(detail.deviceToken || '').trim()
-	if (!token) return
 	const platform = normalizePlatform(detail.platform, getCashTreesNativeNfcHost())
 	if (!platform) return
+	// Native cleared a stale VoIP/alert token — drop local dedupe so the next
+	// fresh hex from PushKit/APNs is registered to the mailbox again.
+	if (!token) {
+		delete lastRegisteredTokenByPlatform[platform]
+		return
+	}
 	void registerDeviceToken(token, {
 		pgpKeyId: detail.pgpKeyId,
 		platform,

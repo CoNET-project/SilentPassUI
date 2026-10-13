@@ -6,7 +6,7 @@ import type { UnlockMerchantWorkspaceDeps } from '@/utils/unlockMerchantWorkspac
 export function useUnlockMerchantWorkspaceDeps(): UnlockMerchantWorkspaceDeps {
 	const {
 		setProfiles,
-		setaAllNodes,
+		setAllNodes,
 		setGossip,
 		gossip,
 		setBeamio,
@@ -17,13 +17,13 @@ export function useUnlockMerchantWorkspaceDeps(): UnlockMerchantWorkspaceDeps {
 	return useMemo(
 		() => ({
 			setProfiles,
-			setAllNodes: setaAllNodes,
+			setAllNodes,
 			setGossip,
 			gossip: !!gossip,
 			setBeamio: (val) => setBeamio(val),
 			setCharts,
 			setMyAddress,
 		}),
-		[setProfiles, setaAllNodes, setGossip, gossip, setBeamio, setCharts, setMyAddress],
+		[setProfiles, setAllNodes, setGossip, gossip, setBeamio, setCharts, setMyAddress],
 	)
 }

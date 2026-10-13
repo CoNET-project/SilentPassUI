@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef } from "react";
+import { useNavigate } from "react-router-dom"
 import { IpfsImg } from '@/components/IpfsImg';
 import beamio_icon from '@/components/assets/32x32.svg'
 import { useDaemonContext } from "@/providers/DaemonProvider"
@@ -22,9 +23,15 @@ import { ensureConetAaForProfileAndPersist } from "@/utils/ensureConetAa"
 import {AppButton} from '@/components/button/AppButton'
 import {motion, AnimatePresence } from "framer-motion"
 import BusinessIdentityForm, { type BusinessIdentitySuccess } from './BusinessIdentityForm'
+import AgentIdentityForm from './AgentIdentityForm'
+import OnboardingRoleChoiceScreen from './OnboardingRoleChoiceScreen'
 import RecoveryQRScreen from './RecoveryQRScreen'
 import RestoreEntryScreen from './RestoreEntryScreen'
 import BizHome from './bizHome'
+import { setBizWorkspaceRole, ensureAgentWorkspace, type BizWorkspaceRole } from '@/utils/agentWorkspaceLocal'
+import { setSessionAgentAccessPassword } from '@/utils/agentSessionSecrets'
+import { unlockMerchantWorkspaceSession } from '@/utils/unlockMerchantWorkspaceSession'
+import { useUnlockMerchantWorkspaceDeps } from '@/hooks/useUnlockMerchantWorkspaceDeps'
 import ccsabackphoto from '../Vouchers/assets/ccsacard.avif'
 import packageJson from '../../../package.json'
 import { parseRedeemAdminFromUrl } from '@/utils/parseRedeemAdminFromUrl'
@@ -135,6 +142,8 @@ export default function BeamioOnboardingModal({
 	bootCoNETData = null,
 }: Props) {
 	const { tu } = useTu()
+	const navigate = useNavigate()
+	const unlockDeps = useUnlockMerchantWorkspaceDeps()
 	const { setDarkModle, darkModle, beamio, power, setProfiles, setBeamio, setPayTag, isInitialLoading,
 		setAllNodes, setGossip, gossip,
 		setIsInitialLoading, myAddress, setMyAddress, usdcbalance, setShowFooter, setCharts } = useDaemonContext()
@@ -145,6 +154,9 @@ export default function BeamioOnboardingModal({
 	const [showBizLogin, setShowBizLogin] = useState(false)
 	const [settingsOpen, setSettingsOpen] = useState<''|'RecoveryQRScreen'|'RestoreEntryScreen'>('')
 	const [isInitialEntry, setIsInitialEntry] = useState(true)
+	/** First step: choose Merchant vs Agent before existing merchant cover / agent identity. */
+	const [showRoleChoice, setShowRoleChoice] = useState(true)
+	const [showAgentIdentity, setShowAgentIdentity] = useState(false)
 	/** Cover splash（newOnloading.html 风格）— 在进入 InitialEntryScreen 前展示 */
 	const [showOnboardingCover, setShowOnboardingCover] = useState(true)
 	const [coverBusinessType, setCoverBusinessType] = useState<VerraBusinessProfileBusinessType>(() => {
@@ -285,6 +297,8 @@ export default function BeamioOnboardingModal({
 			clearSessionOnboardingBusinessDraft()
 			setIsInitialLoading(true)
 			setIsInitialEntry(true)
+			setShowRoleChoice(true)
+			setShowAgentIdentity(false)
 			setShowOnboardingCover(true)
 			setShowOnboardingBusinessDetails(false)
 			setCoverBusinessType("solo")
@@ -1054,6 +1068,99 @@ export default function BeamioOnboardingModal({
 
 	if (showBizLogin) {
 		return <BizHome />
+	}
+
+	const onChooseWorkspaceRole = (role: BizWorkspaceRole) => {
+		setBizWorkspaceRole(role)
+		setShowRoleChoice(false)
+		if (role === 'agent') {
+			setShowOnboardingCover(false)
+			setShowOnboardingBusinessDetails(false)
+			setShowAgentIdentity(true)
+			return
+		}
+		setShowAgentIdentity(false)
+		setShowOnboardingCover(true)
+	}
+
+	if (isInitialEntry && !settingsOpen && showRoleChoice) {
+		return (
+			<OnboardingRoleChoiceScreen
+				appVersion={APP_VERSION}
+				onChoose={onChooseWorkspaceRole}
+			/>
+		)
+	}
+
+	if (isInitialEntry && !settingsOpen && showAgentIdentity) {
+		return (
+			<div
+				className="
+					relative flex min-h-[100dvh] w-full flex-col overflow-x-hidden bg-[#F5F6F8] font-[Inter,ui-sans-serif,system-ui,sans-serif] text-[#121212]
+					pt-[env(safe-area-inset-top)]
+					pb-[env(safe-area-inset-bottom)]
+					pl-[env(safe-area-inset-left)]
+					pr-[env(safe-area-inset-right)]
+				"
+				style={{
+					backgroundImage: 'radial-gradient(circle, rgba(148,163,184,0.35) 0.7px, transparent 0.7px)',
+					backgroundSize: '18px 18px',
+				}}
+			>
+				<div
+					className="pointer-events-none absolute inset-x-0 top-0 h-48 bg-gradient-to-b from-[#f5ecff]/90 to-transparent"
+					aria-hidden
+				/>
+				{APP_VERSION ? (
+					<div className="pointer-events-none absolute top-[calc(env(safe-area-inset-top)+0.5rem)] left-6 z-[5] text-[11px] font-medium text-[#abadaf] lg:left-8">
+						v{APP_VERSION}
+					</div>
+				) : null}
+				<header className="relative z-30 flex shrink-0 items-center justify-between gap-3 overflow-visible px-5 pt-5 lg:px-8">
+					<button
+						type="button"
+						onClick={() => {
+							setShowAgentIdentity(false)
+							setShowRoleChoice(true)
+						}}
+						className="text-sm font-semibold text-[#8d3a8b] underline-offset-2 hover:underline"
+					>
+						{tu('onb_role_back')}
+					</button>
+					<BizOnboardingLocalePicker />
+				</header>
+				<main className="relative z-0 flex min-h-0 flex-1 flex-grow items-start justify-center px-4 pb-8 pt-6 sm:pt-10">
+					<div className="w-full max-w-md rounded-3xl border border-white/80 bg-white p-5 shadow-[0_8px_40px_rgba(15,23,42,0.06)] sm:p-8">
+						<AgentIdentityForm
+							onWorkspaceCreatingChange={setWorkspaceCreating}
+							onSuccess={(qr: BusinessIdentitySuccess) => {
+								void (async () => {
+									setWorkspaceCreating(true)
+									try {
+										setBizWorkspaceRole('agent')
+										setSessionAgentAccessPassword(qr.pin)
+										const createEoa = qr.temp?.profiles?.[0]?.keyID?.trim()
+										if (createEoa && ethers.isAddress(createEoa)) {
+											ensureAgentWorkspace(ethers.getAddress(createEoa), qr.beamioTag)
+										}
+										const unlocked = await unlockMerchantWorkspaceSession(qr.temp, unlockDeps)
+										if (!unlocked) {
+											setWorkspaceCreating(false)
+											return
+										}
+										home()
+										navigate('/agent', { replace: true })
+									} finally {
+										window.setTimeout(() => setWorkspaceCreating(false), 200)
+									}
+								})()
+							}}
+						/>
+					</div>
+				</main>
+				{workspaceCreating ? <WorkspaceCreatingOverlay /> : null}
+			</div>
+		)
 	}
 
 	// 首次进入（无钱包）：Select Type → Details（单列）→ Identity（Create/Restore）

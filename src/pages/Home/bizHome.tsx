@@ -3,27 +3,20 @@ import { useNavigate } from 'react-router-dom'
 import { Shield, ArrowRight, Eye, EyeOff, Info, HelpCircle, Fingerprint, QrCode, Check } from 'lucide-react'
 import { APP_VERSION } from '@/version'
 import { ethers } from 'ethers'
-import { restoreWithRedeem, restoreWithUserPin, getUserInfo, storeSystemData, bootstrapProfileLocaleCurrencyIfUnset, mergeLocalLocaleLanguageOntoChainProfile, checkStorageWithTimeout } from '@/services/beamio'
-import { getCoNET_Data, setCoNET_Data } from '@/utils/globals'
-import { initChat } from '@/services/chat'
-import { fetchTrustedCanonicalAaFromRpc } from '@/services/BeamioCard'
-import { ensureConetAaForProfileAndPersist } from '@/utils/ensureConetAa'
-import { conetDepinProvider } from '@/utils/constants'
+import { restoreWithRedeem, restoreWithUserPin, checkStorageWithTimeout } from '@/services/beamio'
+import { getCoNET_Data } from '@/utils/globals'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import NewMerchantOS from '@/pages/Vouchers/example/newBiz'
 import { BIZ_BRAND_HEX, bizBrandFocusRingClass, bizBrandPrimarySolidClass } from '@/pages/Home/brandUi'
 import { BEAMIO_TAG_ALLOWED_RE, normalizeBeamioTagInput } from '@/utils/beamioTagRules'
 import RestoreAccessPage from '@/pages/Home/RestoreAccessPage'
 import { BizOnboardingLocalePicker } from '@/pages/Home/BizOnboardingLocalePicker'
-import { markWorkspaceSessionUnlocked } from '@/utils/beamioWorkspaceLock'
 import { useTu } from '@/locale/beamioLocale'
-import {
-	hydrateProfilesWithSessionSecrets,
-	ingestSessionPrivateKeyFromProfiles,
-	hasSessionPrivateKeyArmor,
-	getSessionPrivateKeyArmor,
-} from '@/utils/beamioSessionSecrets'
+import { hasSessionPrivateKeyArmor } from '@/utils/beamioSessionSecrets'
 import { isWorkspaceAccessGranted } from '@/utils/beamioWorkspaceLock'
+import { unlockMerchantWorkspaceSession } from '@/utils/unlockMerchantWorkspaceSession'
+import { getBizWorkspaceRole, loadAgentWorkspace } from '@/utils/agentWorkspaceLocal'
+import { setSessionAgentAccessPassword } from '@/utils/agentSessionSecrets'
 
 /** Data attribute + selection tint — matches `biz.tsx` Merchant OS */
 const BIZ_UI_PRIMARY = BIZ_BRAND_HEX
@@ -31,7 +24,6 @@ const BIZ_UI_PRIMARY = BIZ_BRAND_HEX
 /** Login shell (Initialize your commerce node) */
 const headlineFont = "font-['Manrope',ui-sans-serif,system-ui,sans-serif]"
 
-/** Assemble encrypt_keys_object after login (mirror App.tsx init): load beamio, initChat, persist */
 const assembleEncryptKeysObject = async (
 	temp: encrypt_keys_object,
 	setProfiles: (val: profile[]) => void,
@@ -43,116 +35,29 @@ const assembleEncryptKeysObject = async (
 	setMyAddress: (val: string) => void,
 	onProgress?: (step: number) => void
 ): Promise<boolean> => {
-	const profiles = temp?.profiles
-	if (!temp || !profiles?.length) return false
-
-	if (!ingestSessionPrivateKeyFromProfiles(profiles)) return false
-	// Unlock workspace as soon as password restore succeeds — before slow getUserInfo/initChat.
-	markWorkspaceSessionUnlocked()
-	const hydratedProfiles = hydrateProfilesWithSessionSecrets(profiles)
-	temp.profiles = hydratedProfiles
-
-	const USERINFO_POLL_MS = 1000
-	const USERINFO_MAX_POLLS = 60
-	const fallbackBeamio = temp.beamio?.accountName?.trim() ? temp.beamio : null
-
-	const loadUserInfo = async (): Promise<beamio | null> => {
-		if (fallbackBeamio) {
-			const fresh = await getUserInfo(profiles[0].keyID).catch(() => null)
-			if (fresh?.accountName?.trim()) return fresh
-			return fallbackBeamio
-		}
-		for (let attempt = 0; attempt < USERINFO_MAX_POLLS; attempt++) {
-			const userInfo = await getUserInfo(profiles[0].keyID).catch(() => null)
-			if (userInfo?.accountName?.trim()) return userInfo
-			if (attempt < USERINFO_MAX_POLLS - 1) {
-				await new Promise((resolve) => setTimeout(resolve, USERINFO_POLL_MS))
-			}
-		}
-		return null
-	}
-
-	const userInfo = await loadUserInfo()
-	if (!userInfo?.accountName?.trim()) return false
-
-	let bo: beamio = mergeLocalLocaleLanguageOntoChainProfile(userInfo, temp.beamio)
-	bo.initialLoading = false
-	temp.beamio = bo
-
-	const pk = getSessionPrivateKeyArmor()?.trim() ?? profiles[0]?.privateKeyArmor?.trim()
-	if (pk) {
-		bo = await bootstrapProfileLocaleCurrencyIfUnset(bo, pk)
-		temp.beamio = bo
-	}
-
-	// Trusted RPC：与本地缓存比对，不一致则更新（含链上无 AA 时清除无 bytecode 的错误缓存）
-	try {
-		const eoa0 = profiles[0]?.keyID?.trim()
-		if (eoa0 && ethers.isAddress(eoa0)) {
-			const r = await fetchTrustedCanonicalAaFromRpc(eoa0)
-			if (r.trusted) {
-				let nextProfiles = profiles
-				let changed = false
-				if (r.aa) {
-					const chainAa = ethers.getAddress(r.aa)
-					const cached = profiles[0].aaAccount?.trim()
-					if (
-						!cached ||
-						!ethers.isAddress(cached) ||
-						ethers.getAddress(cached).toLowerCase() !== chainAa.toLowerCase()
-					) {
-						nextProfiles = profiles.map((p, i) => (i === 0 ? { ...p, aaAccount: chainAa } : p))
-						changed = true
-					}
-				} else {
-					const cached = profiles[0].aaAccount?.trim()
-					if (cached && ethers.isAddress(cached)) {
-						const code = await conetDepinProvider.getCode(cached)
-						if (!code || code === '0x' || code.length <= 2) {
-							nextProfiles = profiles.map((p, i) => (i === 0 ? { ...p, aaAccount: undefined } : p))
-							changed = true
-						}
-					}
-				}
-				if (changed) {
-					temp.profiles = hydrateProfilesWithSessionSecrets(nextProfiles)
-					setProfiles(temp.profiles)
-				}
-			}
-		}
-	} catch {
-		// Keep last trusted; RPC failure does not overwrite
-	}
-
-	try {
-		const ensuredAa = await ensureConetAaForProfileAndPersist(temp.profiles[0], setProfiles)
-		if (ensuredAa) {
-			temp.profiles = hydrateProfilesWithSessionSecrets(
-				(temp.profiles ?? []).map((p, i) => (i === 0 ? { ...p, aaAccount: ensuredAa } : p))
-			)
-		}
-	} catch {
-		/* non-fatal */
-	}
-
-	setCoNET_Data(temp)
-	setBeamio(bo)
-	onProgress?.(2) // Securing done, starting sync
-
-	await initChat(setProfiles, setAllNodes, setGossip, gossip, (message) => {
-		setCharts((prev) => [...prev, message])
+	return unlockMerchantWorkspaceSession(temp, {
+		setProfiles,
+		setAllNodes,
+		setGossip,
+		gossip,
+		setBeamio,
+		setCharts,
+		setMyAddress,
+		onProgress,
 	})
+}
 
-	await storeSystemData()
-	const finalProfiles = hydrateProfilesWithSessionSecrets(temp.profiles)
-	temp.profiles = finalProfiles
-	setCoNET_Data(temp)
-	const eoa = finalProfiles[0]?.keyID?.trim()
+function postLoginPathForWallet(temp: encrypt_keys_object | null | undefined, pin?: string): string {
+	const eoa = temp?.profiles?.[0]?.keyID?.trim()
 	if (eoa && ethers.isAddress(eoa)) {
-		setMyAddress(eoa)
+		const role = getBizWorkspaceRole()
+		const agentWs = loadAgentWorkspace(eoa)
+		if (role === 'agent' || agentWs) {
+			if (pin?.trim()) setSessionAgentAccessPassword(pin.trim())
+			return '/agent'
+		}
 	}
-	setProfiles(finalProfiles)
-	return true
+	return '/native-pos'
 }
 
 /** Decrypt → Activating Node loading (Gateway submit). Status rotation: setTimeout chain only. */
@@ -376,13 +281,13 @@ const BizHome = () => {
 	)
 
 	useEffect(() => {
-		// Mid-login `setProfiles` (AA hydrate) must not bounce to /native-pos before
+		// Mid-login `setProfiles` (AA hydrate) must not bounce before
 		// assembleEncryptKeysObject finishes initChat — that race drops gossip listen.
 		if (isLoading) return
 		if (!isWorkspaceAccessGranted() || !hasSessionPrivateKeyArmor()) return
 		const p0 = profiles?.[0]
 		if (!p0?.keyID?.trim() || !ethers.isAddress(p0.keyID)) return
-		navigate('/native-pos', { replace: true })
+		navigate(postLoginPathForWallet(getCoNET_Data() as encrypt_keys_object | null), { replace: true })
 	}, [profiles, navigate, isLoading])
 
 	const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -416,7 +321,7 @@ const BizHome = () => {
 				setLoginError(tu('login_failed_please_try_again_later'))
 				return
 			}
-			navigate('/native-pos', { replace: true })
+			navigate(postLoginPathForWallet(temp, password), { replace: true })
 		} catch {
 			setLoginError(tu('login_failed_please_try_again_later'))
 		} finally {
@@ -448,7 +353,7 @@ const BizHome = () => {
 			if (!ready) {
 				throw new Error(tu('home_restore_err_prepare_failed'))
 			}
-			navigate('/native-pos', { replace: true })
+			navigate(postLoginPathForWallet(temp), { replace: true })
 		} catch (err) {
 			setShowRestoreAccess(true)
 			throw new Error((err as Error)?.message ?? tu('home_restore_err_try_another'))

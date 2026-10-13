@@ -31,7 +31,7 @@ export type BusinessIdentitySuccess = {
 	beamioTag: string
 }
 
-function passwordRuleChecks(password: string) {
+export function passwordRuleChecks(password: string) {
 	const len8 = password.length >= 8
 	const mixed = /[a-z]/.test(password) && /[A-Z]/.test(password)
 	const numbers = /[0-9]/.test(password)

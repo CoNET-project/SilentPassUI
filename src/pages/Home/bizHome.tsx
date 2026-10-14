@@ -15,8 +15,12 @@ import { useTu } from '@/locale/beamioLocale'
 import { hasSessionPrivateKeyArmor } from '@/utils/beamioSessionSecrets'
 import { isWorkspaceAccessGranted } from '@/utils/beamioWorkspaceLock'
 import { unlockMerchantWorkspaceSession } from '@/utils/unlockMerchantWorkspaceSession'
-import { getBizWorkspaceRole, loadAgentWorkspace } from '@/utils/agentWorkspaceLocal'
+import { getBizWorkspaceRole, loadAgentWorkspace, setBizWorkspaceRole } from '@/utils/agentWorkspaceLocal'
 import { setSessionAgentAccessPassword } from '@/utils/agentSessionSecrets'
+import {
+	fetchIsAgentOnChain,
+	loadCachedIsAgent,
+} from '@/utils/agentReferrerRegistryClient'
 
 /** Data attribute + selection tint — matches `biz.tsx` Merchant OS */
 const BIZ_UI_PRIMARY = BIZ_BRAND_HEX
@@ -47,12 +51,23 @@ const assembleEncryptKeysObject = async (
 	})
 }
 
-function postLoginPathForWallet(temp: encrypt_keys_object | null | undefined, pin?: string): string {
+/**
+ * Route after login: prefer on-chain `isAgent(eoa)` (BeamioAgentReferrerRegistry).
+ * Local role / agent workspace remain fallbacks when RPC is untrusted.
+ */
+async function postLoginPathForWallet(
+	temp: encrypt_keys_object | null | undefined,
+	pin?: string,
+): Promise<string> {
 	const eoa = temp?.profiles?.[0]?.keyID?.trim()
 	if (eoa && ethers.isAddress(eoa)) {
+		const chain = await fetchIsAgentOnChain(eoa)
+		const isAgent =
+			chain.ok ? chain.isAgent : (chain.isAgent ?? loadCachedIsAgent(eoa) === true)
 		const role = getBizWorkspaceRole()
 		const agentWs = loadAgentWorkspace(eoa)
-		if (role === 'agent' || agentWs) {
+		if (isAgent || role === 'agent' || agentWs) {
+			if (isAgent) setBizWorkspaceRole('agent')
 			if (pin?.trim()) setSessionAgentAccessPassword(pin.trim())
 			return '/agent'
 		}
@@ -287,7 +302,14 @@ const BizHome = () => {
 		if (!isWorkspaceAccessGranted() || !hasSessionPrivateKeyArmor()) return
 		const p0 = profiles?.[0]
 		if (!p0?.keyID?.trim() || !ethers.isAddress(p0.keyID)) return
-		navigate(postLoginPathForWallet(getCoNET_Data() as encrypt_keys_object | null), { replace: true })
+		let cancelled = false
+		void (async () => {
+			const path = await postLoginPathForWallet(getCoNET_Data() as encrypt_keys_object | null)
+			if (!cancelled) navigate(path, { replace: true })
+		})()
+		return () => {
+			cancelled = true
+		}
 	}, [profiles, navigate, isLoading])
 
 	const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -321,7 +343,8 @@ const BizHome = () => {
 				setLoginError(tu('login_failed_please_try_again_later'))
 				return
 			}
-			navigate(postLoginPathForWallet(temp, password), { replace: true })
+			const path = await postLoginPathForWallet(temp, password)
+			navigate(path, { replace: true })
 		} catch {
 			setLoginError(tu('login_failed_please_try_again_later'))
 		} finally {
@@ -353,7 +376,8 @@ const BizHome = () => {
 			if (!ready) {
 				throw new Error(tu('home_restore_err_prepare_failed'))
 			}
-			navigate(postLoginPathForWallet(temp), { replace: true })
+			const path = await postLoginPathForWallet(temp)
+			navigate(path, { replace: true })
 		} catch (err) {
 			setShowRestoreAccess(true)
 			throw new Error((err as Error)?.message ?? tu('home_restore_err_try_another'))

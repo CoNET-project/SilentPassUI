@@ -7,6 +7,7 @@ import {
 	Copy,
 	Eye,
 	EyeOff,
+	Link2,
 	Loader2,
 	Plus,
 	RefreshCw,
@@ -35,8 +36,18 @@ import {
 	type AgentTempCardRow,
 } from '@/utils/agentTempEoaOps'
 import { getSessionAgentAccessPassword } from '@/utils/agentSessionSecrets'
+import { maybeRegisterMerchantAfterTempHandoff } from '@/utils/agentReferrerRegistryClient'
 import { AddressCapsule } from '@/components/AddressCapsule'
 import { queryBusinessStartKetBalanceOfOnChain } from '@/services/BeamioCard'
+
+/** Consumer invite URL: app-download unwraps `target=` → `/app/?invite=0x…`. */
+function buildAgentInviteAppUrl(introducerEoa: string): string {
+	const addr = introducerEoa?.trim()
+	if (!addr || !ethers.isAddress(addr)) return ''
+	const checksummed = ethers.getAddress(addr)
+	const app = `https://beamio.app/app/?invite=${checksummed}`
+	return `https://beamio.app/app-download?target=${encodeURIComponent(app)}`
+}
 
 async function tempOwnsCreateMerchantCardNft(
 	temp: AgentTempEoaRecord,
@@ -219,6 +230,17 @@ export default function AgentTempEoaDashboard() {
 				)
 				if (agentEoa && ethers.isAddress(agentEoa)) {
 					syncTempKnownCardsFromChain(agentEoa, temp.eoa, rows)
+					// When a card owner left the temp EOA, register that merchant under the agent.
+					for (const row of rows) {
+						if (!row.transferred || !row.owner || !ethers.isAddress(row.owner)) continue
+						void maybeRegisterMerchantAfterTempHandoff({
+							agentEoa,
+							tempEoa: temp.eoa,
+							merchantEoa: row.owner,
+						}).catch(() => {
+							/* best-effort; next refresh retries */
+						})
+					}
 				}
 				setCardsByTemp((prev) => ({
 					...prev,
@@ -475,6 +497,38 @@ export default function AgentTempEoaDashboard() {
 						</p>
 					) : null}
 				</header>
+
+				{agentEoa && ethers.isAddress(agentEoa) ? (
+					<section
+						className="mb-6 rounded-2xl border border-white/10 bg-white/5 px-4 py-4"
+						aria-label={tu('agent_invite_section_label')}
+					>
+						<div className="mb-2 flex items-center gap-2 text-[#c4a0c8]">
+							<Link2 className="h-4 w-4 shrink-0" aria-hidden />
+							<p className="text-sm font-semibold text-white">{tu('agent_invite_title')}</p>
+						</div>
+						<p className="mb-3 text-xs leading-relaxed text-slate-400">
+							{tu('agent_invite_hint')}
+						</p>
+						<button
+							type="button"
+							onClick={() => {
+								const url = buildAgentInviteAppUrl(agentEoa)
+								if (!url) return
+								void copyText('invite', url)
+							}}
+							className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[#eadcf7]/35 bg-[#8d3a8b]/30 px-3 py-2.5 text-sm font-semibold text-[#f5ecff] transition hover:bg-[#8d3a8b]/45"
+							aria-label={tu('agent_invite_copy')}
+						>
+							{copiedKey === 'invite' ? (
+								<Check className="h-4 w-4 text-emerald-400" aria-hidden />
+							) : (
+								<Copy className="h-4 w-4" aria-hidden />
+							)}
+							{copiedKey === 'invite' ? tu('agent_copied') : tu('agent_invite_copy')}
+						</button>
+					</section>
+				) : null}
 
 				{stuckOnTemp || missingAgentPassword ? (
 					<div

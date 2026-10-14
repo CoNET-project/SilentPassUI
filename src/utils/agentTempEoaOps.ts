@@ -36,6 +36,7 @@ import {
 	getSessionAgentAccessPassword,
 	setSessionAgentAccessPassword,
 } from '@/utils/agentSessionSecrets'
+import { registerTempUnderAgent } from '@/utils/agentReferrerRegistryClient'
 
 const AGENT_RETURN_CONTEXT_KEY = 'beamio:biz:agent-return-context:v1'
 
@@ -248,6 +249,12 @@ export async function createAgentTempEoa(
 		knownCardAddresses: [],
 	}
 	const workspace = upsertAgentTempEoa(agentEoa, record)
+	// Best-effort: register temp under agent on BeamioAgentReferrerRegistry.
+	try {
+		await registerTempUnderAgent(ethers.getAddress(agentEoa), tempEoa)
+	} catch {
+		/* local workspace still usable; retry on next create or dashboard refresh */
+	}
 	return { temp: record, workspace }
 }
 

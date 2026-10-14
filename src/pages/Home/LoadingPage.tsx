@@ -30,6 +30,7 @@ import RestoreEntryScreen from './RestoreEntryScreen'
 import BizHome from './bizHome'
 import { setBizWorkspaceRole, ensureAgentWorkspace, type BizWorkspaceRole } from '@/utils/agentWorkspaceLocal'
 import { setSessionAgentAccessPassword } from '@/utils/agentSessionSecrets'
+import { registerAgentOnChain } from '@/utils/agentReferrerRegistryClient'
 import { unlockMerchantWorkspaceSession } from '@/utils/unlockMerchantWorkspaceSession'
 import { useUnlockMerchantWorkspaceDeps } from '@/hooks/useUnlockMerchantWorkspaceDeps'
 import ccsabackphoto from '../Vouchers/assets/ccsacard.avif'
@@ -1147,6 +1148,16 @@ export default function BeamioOnboardingModal({
 										if (!unlocked) {
 											setWorkspaceCreating(false)
 											return
+										}
+										// Best-effort on-chain agent registration (gasless EIP-712).
+										try {
+											await registerAgentOnChain(
+												createEoa && ethers.isAddress(createEoa)
+													? ethers.getAddress(createEoa)
+													: undefined,
+											)
+										} catch {
+											/* local role still routes to /agent; retry on next login */
 										}
 										home()
 										navigate('/agent', { replace: true })

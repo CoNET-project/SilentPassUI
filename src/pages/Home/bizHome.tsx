@@ -15,11 +15,17 @@ import { useTu } from '@/locale/beamioLocale'
 import { hasSessionPrivateKeyArmor } from '@/utils/beamioSessionSecrets'
 import { isWorkspaceAccessGranted } from '@/utils/beamioWorkspaceLock'
 import { unlockMerchantWorkspaceSession } from '@/utils/unlockMerchantWorkspaceSession'
-import { getBizWorkspaceRole, loadAgentWorkspace, setBizWorkspaceRole } from '@/utils/agentWorkspaceLocal'
+import {
+	ensureAgentWorkspace,
+	getBizWorkspaceRole,
+	loadAgentWorkspace,
+	setBizWorkspaceRole,
+} from '@/utils/agentWorkspaceLocal'
 import { setSessionAgentAccessPassword } from '@/utils/agentSessionSecrets'
 import {
 	fetchIsAgentOnChain,
 	loadCachedIsAgent,
+	registerAgentOnChain,
 } from '@/utils/agentReferrerRegistryClient'
 
 /** Data attribute + selection tint — matches `biz.tsx` Merchant OS */
@@ -53,24 +59,50 @@ const assembleEncryptKeysObject = async (
 
 /**
  * Route after login: prefer on-chain `isAgent(eoa)` (BeamioAgentReferrerRegistry).
- * Local role / agent workspace remain fallbacks when RPC is untrusted.
+ * Local role / agent workspace / trusted cache are agent-intent signals. When
+ * intent exists but the registry still returns false, gasless `registerAgentOnChain`
+ * retries so future logins resolve via `isAgent` alone.
  */
 async function postLoginPathForWallet(
 	temp: encrypt_keys_object | null | undefined,
 	pin?: string,
 ): Promise<string> {
-	const eoa = temp?.profiles?.[0]?.keyID?.trim()
-	if (eoa && ethers.isAddress(eoa)) {
+	const eoaRaw = temp?.profiles?.[0]?.keyID?.trim()
+	if (!eoaRaw || !ethers.isAddress(eoaRaw)) return '/native-pos'
+	const eoa = ethers.getAddress(eoaRaw)
+	try {
 		const chain = await fetchIsAgentOnChain(eoa)
-		const isAgent =
-			chain.ok ? chain.isAgent : (chain.isAgent ?? loadCachedIsAgent(eoa) === true)
-		const role = getBizWorkspaceRole()
+		let isAgentOnChain = chain.ok
+			? chain.isAgent === true
+			: loadCachedIsAgent(eoa) === true
+		const role = getBizWorkspaceRole(eoa)
 		const agentWs = loadAgentWorkspace(eoa)
-		if (isAgent || role === 'agent' || agentWs) {
-			if (isAgent) setBizWorkspaceRole('agent')
+		const cachedAgent = loadCachedIsAgent(eoa) === true
+		const localAgentIntent = role === 'agent' || Boolean(agentWs) || cachedAgent
+
+		// Create-time registration is best-effort; retry on login when we know
+		// this wallet is an agent but the registry still returns false.
+		if (!isAgentOnChain && localAgentIntent) {
+			try {
+				const reg = await registerAgentOnChain(eoa)
+				if (reg.success) isAgentOnChain = true
+			} catch {
+				/* still route to /agent on local intent; next login retries */
+			}
+		}
+
+		if (isAgentOnChain || localAgentIntent) {
+			setBizWorkspaceRole('agent', eoa)
+			const tag =
+				agentWs?.agentBeamioTag?.trim() ||
+				temp?.beamio?.accountName?.trim() ||
+				''
+			ensureAgentWorkspace(eoa, tag)
 			if (pin?.trim()) setSessionAgentAccessPassword(pin.trim())
 			return '/agent'
 		}
+	} catch {
+		/* fall through to merchant OS */
 	}
 	return '/native-pos'
 }

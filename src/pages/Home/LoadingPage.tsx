@@ -1138,11 +1138,15 @@ export default function BeamioOnboardingModal({
 								void (async () => {
 									setWorkspaceCreating(true)
 									try {
-										setBizWorkspaceRole('agent')
-										setSessionAgentAccessPassword(qr.pin)
 										const createEoa = qr.temp?.profiles?.[0]?.keyID?.trim()
-										if (createEoa && ethers.isAddress(createEoa)) {
-											ensureAgentWorkspace(ethers.getAddress(createEoa), qr.beamioTag)
+										const createEoaChecksum =
+											createEoa && ethers.isAddress(createEoa)
+												? ethers.getAddress(createEoa)
+												: undefined
+										setBizWorkspaceRole('agent', createEoaChecksum)
+										setSessionAgentAccessPassword(qr.pin)
+										if (createEoaChecksum) {
+											ensureAgentWorkspace(createEoaChecksum, qr.beamioTag)
 										}
 										const unlocked = await unlockMerchantWorkspaceSession(qr.temp, unlockDeps)
 										if (!unlocked) {
@@ -1151,11 +1155,7 @@ export default function BeamioOnboardingModal({
 										}
 										// Best-effort on-chain agent registration (gasless EIP-712).
 										try {
-											await registerAgentOnChain(
-												createEoa && ethers.isAddress(createEoa)
-													? ethers.getAddress(createEoa)
-													: undefined,
-											)
+											await registerAgentOnChain(createEoaChecksum)
 										} catch {
 											/* local role still routes to /agent; retry on next login */
 										}

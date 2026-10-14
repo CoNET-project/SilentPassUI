@@ -32,26 +32,47 @@ export type AgentWorkspaceRecord = {
 	updatedAt: number
 }
 
-const ROLE_KEY = 'beamio:biz:workspace-role:v1'
+const ROLE_KEY_LEGACY = 'beamio:biz:workspace-role:v1'
+const ROLE_KEY_PREFIX = 'beamio:biz:workspace-role:v1:'
 const AGENT_PREFIX = 'beamio:biz:agent-workspace:v1:'
 
 function agentKey(agentEoa: string): string {
 	return `${AGENT_PREFIX}${ethers.getAddress(agentEoa).toLowerCase()}`
 }
 
-export function setBizWorkspaceRole(role: BizWorkspaceRole): void {
+function roleKeyForEoa(eoa: string): string {
+	return `${ROLE_KEY_PREFIX}${ethers.getAddress(eoa).toLowerCase()}`
+}
+
+/**
+ * Persist workspace role. When `eoa` is known, also write an EOA-partitioned key
+ * so merchant vs agent logins on the same browser do not overwrite each other.
+ * Legacy global key remains for mid-onboarding (role chosen before EOA exists).
+ */
+export function setBizWorkspaceRole(role: BizWorkspaceRole, eoa?: string | null): void {
 	if (typeof window === 'undefined') return
 	try {
-		window.localStorage.setItem(ROLE_KEY, role)
+		window.localStorage.setItem(ROLE_KEY_LEGACY, role)
+		if (eoa && ethers.isAddress(eoa)) {
+			window.localStorage.setItem(roleKeyForEoa(eoa), role)
+		}
 	} catch {
 		/* ignore */
 	}
 }
 
-export function getBizWorkspaceRole(): BizWorkspaceRole | null {
+/**
+ * Prefer EOA-partitioned role when `eoa` is provided; fall back to legacy global
+ * when no partitioned value exists (migration / mid-onboarding).
+ */
+export function getBizWorkspaceRole(eoa?: string | null): BizWorkspaceRole | null {
 	if (typeof window === 'undefined') return null
 	try {
-		const v = window.localStorage.getItem(ROLE_KEY)
+		if (eoa && ethers.isAddress(eoa)) {
+			const keyed = window.localStorage.getItem(roleKeyForEoa(eoa))
+			if (keyed === 'merchant' || keyed === 'agent') return keyed
+		}
+		const v = window.localStorage.getItem(ROLE_KEY_LEGACY)
 		if (v === 'merchant' || v === 'agent') return v
 		return null
 	} catch {
@@ -87,7 +108,7 @@ export function saveAgentWorkspace(record: AgentWorkspaceRecord): void {
 			updatedAt: Date.now(),
 		}
 		window.localStorage.setItem(agentKey(next.agentEoa), JSON.stringify(next))
-		setBizWorkspaceRole('agent')
+		setBizWorkspaceRole('agent', next.agentEoa)
 	} catch {
 		/* ignore */
 	}

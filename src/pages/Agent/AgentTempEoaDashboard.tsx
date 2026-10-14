@@ -22,6 +22,7 @@ import {
 	ensureAgentWorkspace,
 	findAgentWorkspaceByTempEoa,
 	loadAgentWorkspace,
+	setBizWorkspaceRole,
 	type AgentTempEoaRecord,
 	type AgentWorkspaceRecord,
 } from '@/utils/agentWorkspaceLocal'
@@ -36,7 +37,11 @@ import {
 	type AgentTempCardRow,
 } from '@/utils/agentTempEoaOps'
 import { getSessionAgentAccessPassword } from '@/utils/agentSessionSecrets'
-import { maybeRegisterMerchantAfterTempHandoff } from '@/utils/agentReferrerRegistryClient'
+import {
+	fetchIsAgentOnChain,
+	maybeRegisterMerchantAfterTempHandoff,
+	registerAgentOnChain,
+} from '@/utils/agentReferrerRegistryClient'
 import { AddressCapsule } from '@/components/AddressCapsule'
 import { queryBusinessStartKetBalanceOfOnChain } from '@/services/BeamioCard'
 
@@ -144,6 +149,33 @@ export default function AgentTempEoaDashboard() {
 	useEffect(() => {
 		hydrate()
 	}, [hydrate])
+
+	/** Ensure agent EOA is on BeamioAgentReferrerRegistry (retries create-time best-effort). */
+	useEffect(() => {
+		if (!agentEoa || !ethers.isAddress(agentEoa)) return
+		const addr = ethers.getAddress(agentEoa)
+		if (findAgentWorkspaceByTempEoa(addr)) return
+		let cancelled = false
+		void (async () => {
+			try {
+				const chain = await fetchIsAgentOnChain(addr)
+				if (cancelled) return
+				if (chain.ok && chain.isAgent) {
+					setBizWorkspaceRole('agent', addr)
+					return
+				}
+				if (chain.ok && !chain.isAgent) {
+					const reg = await registerAgentOnChain(addr)
+					if (!cancelled && reg.success) setBizWorkspaceRole('agent', addr)
+				}
+			} catch {
+				/* next visit / login retries */
+			}
+		})()
+		return () => {
+			cancelled = true
+		}
+	}, [agentEoa])
 
 	useEffect(() => {
 		setShowFooter(false)

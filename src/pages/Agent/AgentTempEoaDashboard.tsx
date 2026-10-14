@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
 	AlertTriangle,
@@ -19,24 +19,50 @@ import { useUnlockMerchantWorkspaceDeps } from '@/hooks/useUnlockMerchantWorkspa
 import { getCoNET_Data } from '@/utils/globals'
 import {
 	ensureAgentWorkspace,
+	findAgentWorkspaceByTempEoa,
 	loadAgentWorkspace,
 	type AgentTempEoaRecord,
 	type AgentWorkspaceRecord,
 } from '@/utils/agentWorkspaceLocal'
 import {
+	claimTempCreateMerchantCardNft,
 	createAgentTempEoa,
 	listTempEoaCardsWithTransferStatus,
 	openTempMerchantCard,
 	openTempMerchantWorkspace,
+	returnToAgentWorkspace,
 	syncTempKnownCardsFromChain,
 	type AgentTempCardRow,
 } from '@/utils/agentTempEoaOps'
 import { getSessionAgentAccessPassword } from '@/utils/agentSessionSecrets'
 import { AddressCapsule } from '@/components/AddressCapsule'
-import { BeamioCircularBackButton } from '@/components/BeamioCircularBackButton'
+import { queryBusinessStartKetBalanceOfOnChain } from '@/services/BeamioCard'
+
+async function tempOwnsCreateMerchantCardNft(
+	temp: AgentTempEoaRecord,
+): Promise<'owns' | 'missing' | 'unavailable'> {
+	const rawTargets = [temp.eoa, temp.aaAccount]
+		.map((a) => (typeof a === 'string' ? a.trim() : ''))
+		.filter((a) => a && ethers.isAddress(a))
+	const targets = [...new Set(rawTargets.map((a) => ethers.getAddress(a)))]
+	if (targets.length === 0) return 'unavailable'
+	let anyOk = false
+	let anyPositive = false
+	for (const addr of targets) {
+		const r = await queryBusinessStartKetBalanceOfOnChain(addr, 0n)
+		if (r.ok) {
+			anyOk = true
+			if (r.balance > 0n) anyPositive = true
+		}
+	}
+	if (!anyOk) return 'unavailable'
+	return anyPositive ? 'owns' : 'missing'
+}
 
 type RevealState = Record<string, boolean>
 type CardsByTemp = Record<string, { loading: boolean; rows: AgentTempCardRow[]; error?: string }>
+type KetByTemp = Record<string, { status: 'loading' | 'owns' | 'missing' | 'unavailable' }>
+type RedeemByTemp = Record<string, string>
 
 export default function AgentTempEoaDashboard() {
 	const { tu } = useTu()
@@ -56,19 +82,51 @@ export default function AgentTempEoaDashboard() {
 	const [revealPw, setRevealPw] = useState<RevealState>({})
 	const [copiedKey, setCopiedKey] = useState<string | null>(null)
 	const [cardsByTemp, setCardsByTemp] = useState<CardsByTemp>({})
+	const [ketByTemp, setKetByTemp] = useState<KetByTemp>({})
+	const [redeemByTemp, setRedeemByTemp] = useState<RedeemByTemp>({})
 	const [openingKey, setOpeningKey] = useState<string | null>(null)
 	const [openError, setOpenError] = useState('')
 	const [missingAgentPassword, setMissingAgentPassword] = useState(false)
+	/** Session wallet is a temp EOA — show return-to-agent recovery UI. */
+	const [stuckOnTemp, setStuckOnTemp] = useState(false)
+	const [returnPassword, setReturnPassword] = useState('')
+	const [returningToAgent, setReturningToAgent] = useState(false)
+	const [returnError, setReturnError] = useState('')
+	const autoReturnAttempted = useRef(false)
+	/**
+	 * Set before openTempMerchantWorkspace when we intentionally leave this page
+	 * (onboarding / Merchant OS). Prevents hydrate from flashing the stuck-on-temp
+	 * password banner and auto-return from racing the navigation.
+	 */
+	const leavingForTempNavRef = useRef(false)
 
 	const hydrate = useCallback(() => {
 		if (!agentEoa || !ethers.isAddress(agentEoa)) {
 			setWorkspace(null)
+			setStuckOnTemp(false)
+			return
+		}
+		const addr = ethers.getAddress(agentEoa)
+		// If the session is still a temp EOA, never write a fake agent workspace under that key.
+		const byTemp = findAgentWorkspaceByTempEoa(addr)
+		if (byTemp) {
+			setWorkspace(byTemp)
+			// Intentional leave (Create merchant card / Open Merchant OS): keep the
+			// card list layout stable until the route unmounts — do not insert the
+			// stuck-on-temp alert (that was the pre-navigate panel shake).
+			if (leavingForTempNavRef.current) {
+				setStuckOnTemp(false)
+				return
+			}
+			setStuckOnTemp(true)
+			setMissingAgentPassword(!getSessionAgentAccessPassword())
 			return
 		}
 		const ws = agentTag
-			? ensureAgentWorkspace(agentEoa, agentTag)
-			: loadAgentWorkspace(agentEoa)
+			? ensureAgentWorkspace(addr, agentTag)
+			: loadAgentWorkspace(addr)
 		setWorkspace(ws)
+		setStuckOnTemp(false)
 		setMissingAgentPassword(!getSessionAgentAccessPassword())
 	}, [agentEoa, agentTag])
 
@@ -80,6 +138,72 @@ export default function AgentTempEoaDashboard() {
 		setShowFooter(false)
 		return () => setShowFooter(true)
 	}, [setShowFooter])
+
+	/** Auto-restore agent when we still have the session password. */
+	useEffect(() => {
+		if (leavingForTempNavRef.current) return
+		if (!stuckOnTemp || autoReturnAttempted.current || returningToAgent) return
+		const pw = getSessionAgentAccessPassword()
+		if (!pw) return
+		autoReturnAttempted.current = true
+		setReturningToAgent(true)
+		setReturnError('')
+		void (async () => {
+			try {
+				if (leavingForTempNavRef.current) return
+				const ok = await returnToAgentWorkspace(unlockDeps)
+				if (leavingForTempNavRef.current) return
+				if (ok) {
+					hydrate()
+					return
+				}
+				setMissingAgentPassword(true)
+				setReturnError(tu('agent_return_failed'))
+			} finally {
+				if (!leavingForTempNavRef.current) setReturningToAgent(false)
+			}
+		})()
+	}, [stuckOnTemp, returningToAgent, unlockDeps, hydrate, tu])
+
+	const handleReturnWithPassword = useCallback(async () => {
+		if (returningToAgent) return
+		const pw = returnPassword.trim()
+		if (!pw) {
+			setReturnError(tu('agent_return_need_password'))
+			return
+		}
+		setReturningToAgent(true)
+		setReturnError('')
+		try {
+			const ok = await returnToAgentWorkspace(unlockDeps, { agentPassword: pw })
+			if (ok) {
+				setReturnPassword('')
+				setStuckOnTemp(false)
+				setMissingAgentPassword(false)
+				hydrate()
+				return
+			}
+			setReturnError(tu('agent_return_failed'))
+		} finally {
+			setReturningToAgent(false)
+		}
+	}, [returningToAgent, returnPassword, unlockDeps, hydrate, tu])
+
+	const loadKetForTemp = useCallback(async (temp: AgentTempEoaRecord) => {
+		const key = temp.eoa.toLowerCase()
+		// Stale-while-revalidate: keep owns/missing/unavailable UI; only show
+		// loading when this temp has never been checked.
+		setKetByTemp((prev) => {
+			const cur = prev[key]?.status
+			if (cur === 'owns' || cur === 'missing' || cur === 'unavailable') return prev
+			return { ...prev, [key]: { status: 'loading' } }
+		})
+		const status = await tempOwnsCreateMerchantCardNft(temp)
+		setKetByTemp((prev) => ({
+			...prev,
+			[key]: { status },
+		}))
+	}, [])
 
 	const loadCardsForTemp = useCallback(
 		async (temp: AgentTempEoaRecord) => {
@@ -100,6 +224,17 @@ export default function AgentTempEoaDashboard() {
 					...prev,
 					[key]: { loading: false, rows },
 				}))
+				const manageable = rows.filter((r) => !r.transferred)
+				if (manageable.length === 0) {
+					void loadKetForTemp(temp)
+				} else {
+					setKetByTemp((prev) => {
+						if (!prev[key]) return prev
+						const next = { ...prev }
+						delete next[key]
+						return next
+					})
+				}
 			} catch (e) {
 				setCardsByTemp((prev) => ({
 					...prev,
@@ -111,12 +246,19 @@ export default function AgentTempEoaDashboard() {
 				}))
 			}
 		},
-		[agentEoa, tu],
+		[agentEoa, loadKetForTemp, tu],
 	)
 
+	const cardsByTempRef = useRef(cardsByTemp)
+	cardsByTempRef.current = cardsByTemp
+
+	// Only auto-load newly added temps. Re-running for every temp on Add would
+	// flip existing panels into loading / ket-checking and cause layout shake.
 	useEffect(() => {
 		if (!workspace?.temps?.length) return
 		for (const t of workspace.temps) {
+			const key = t.eoa.toLowerCase()
+			if (cardsByTempRef.current[key]) continue
 			void loadCardsForTemp(t)
 		}
 	}, [workspace?.temps, loadCardsForTemp])
@@ -147,19 +289,108 @@ export default function AgentTempEoaDashboard() {
 	}
 
 	const handleOpenWorkspace = async (temp: AgentTempEoaRecord) => {
-		if (openingKey) return
+		if (openingKey || missingAgentPassword) return
 		const key = `ws:${temp.eoa}`
 		setOpenError('')
 		setOpeningKey(key)
+		leavingForTempNavRef.current = true
 		try {
 			const result = await openTempMerchantWorkspace(temp, unlockDeps)
 			if (!result.ok) {
-				setOpenError(tu('agent_open_workspace_failed'))
+				leavingForTempNavRef.current = false
+				setOpenError(
+					result.reason === 'missing_agent_password'
+						? tu('agent_password_session_missing')
+						: tu('agent_open_workspace_failed'),
+				)
+				if (result.reason === 'missing_agent_password') setMissingAgentPassword(true)
+				setOpeningKey(null)
 				return
 			}
 			navigate('/native-pos')
+			// Keep busy until unmount — clearing openingKey after session switch
+			// races hydrate and flashes the stuck-on-temp banner.
 		} catch {
+			leavingForTempNavRef.current = false
 			setOpenError(tu('agent_open_workspace_failed'))
+			setOpeningKey(null)
+		}
+	}
+
+	/** Create merchant card — only when temp already holds BusinessStartKet #0. */
+	const handleCreateMerchantCard = async (temp: AgentTempEoaRecord) => {
+		if (openingKey || missingAgentPassword) return
+		const tempKey = temp.eoa.toLowerCase()
+		const key = `create:${temp.eoa}`
+		setOpenError('')
+		setOpeningKey(key)
+		leavingForTempNavRef.current = true
+		try {
+			// Skip re-check when UI already shows owns — avoids ket UI swap mid-click.
+			const known = ketByTemp[tempKey]?.status
+			let ketStatus = known
+			if (ketStatus !== 'owns') {
+				ketStatus = await tempOwnsCreateMerchantCardNft(temp)
+				setKetByTemp((prev) => ({
+					...prev,
+					[tempKey]: { status: ketStatus },
+				}))
+			}
+			if (ketStatus !== 'owns') {
+				leavingForTempNavRef.current = false
+				setOpenError(
+					ketStatus === 'unavailable'
+						? tu('agent_create_nft_check_failed')
+						: tu('agent_temp_needs_create_nft'),
+				)
+				setOpeningKey(null)
+				return
+			}
+			const result = await openTempMerchantWorkspace(temp, unlockDeps)
+			if (!result.ok) {
+				leavingForTempNavRef.current = false
+				setOpenError(
+					result.reason === 'missing_agent_password'
+						? tu('agent_password_session_missing')
+						: tu('agent_open_workspace_failed'),
+				)
+				if (result.reason === 'missing_agent_password') setMissingAgentPassword(true)
+				setOpeningKey(null)
+				return
+			}
+			navigate('/agent/merchant-onboarding')
+		} catch {
+			leavingForTempNavRef.current = false
+			setOpenError(tu('agent_create_nft_check_failed'))
+			setOpeningKey(null)
+		}
+	}
+
+	/** Claim BusinessStartKet #0 onto the temp EOA via redeem / Start Kit code. */
+	const handleClaimCreateNft = async (temp: AgentTempEoaRecord) => {
+		if (openingKey) return
+		const key = `claim:${temp.eoa}`
+		const code = (redeemByTemp[temp.eoa.toLowerCase()] ?? '').trim()
+		if (!code) {
+			setOpenError(tu('agent_redeem_code_required'))
+			return
+		}
+		setOpenError('')
+		setOpeningKey(key)
+		try {
+			const result = await claimTempCreateMerchantCardNft(temp, code, unlockDeps)
+			if (!result.ok) {
+				setOpenError(result.error || tu('agent_redeem_claim_failed'))
+				return
+			}
+			setRedeemByTemp((prev) => {
+				const next = { ...prev }
+				delete next[temp.eoa.toLowerCase()]
+				return next
+			})
+			await loadKetForTemp(temp)
+		} catch {
+			setOpenError(tu('agent_redeem_claim_failed'))
 		} finally {
 			setOpeningKey(null)
 		}
@@ -213,12 +444,7 @@ export default function AgentTempEoaDashboard() {
 			/>
 
 			<div className="relative z-10 mx-auto w-full max-w-2xl px-4">
-				<div className="mb-2 flex items-center justify-between">
-					<BeamioCircularBackButton
-						variant="onDark"
-						onClick={() => navigate('/')}
-						aria-label={tu('agent_back_home')}
-					/>
+				<div className="mb-2 flex items-center justify-end">
 					<button
 						type="button"
 						onClick={() => {
@@ -250,13 +476,52 @@ export default function AgentTempEoaDashboard() {
 					) : null}
 				</header>
 
-				{missingAgentPassword ? (
+				{stuckOnTemp || missingAgentPassword ? (
 					<div
 						role="alert"
-						className="mb-4 flex gap-3 rounded-2xl border border-amber-400/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100"
+						className="mb-4 space-y-3 rounded-2xl border border-amber-400/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100"
 					>
-						<AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-						<p>{tu('agent_password_session_missing')}</p>
+						<div className="flex gap-3">
+							<AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+							<p>
+								{stuckOnTemp
+									? tu('agent_return_need_password')
+									: tu('agent_password_session_missing')}
+							</p>
+						</div>
+						{stuckOnTemp ? (
+							<div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+								<label className="sr-only" htmlFor="agent-return-password">
+									{tu('agent_return_password_label')}
+								</label>
+								<input
+									id="agent-return-password"
+									type="password"
+									autoComplete="current-password"
+									value={returnPassword}
+									onChange={(e) => setReturnPassword(e.target.value)}
+									onKeyDown={(e) => {
+										if (e.key === 'Enter') void handleReturnWithPassword()
+									}}
+									placeholder={tu('agent_return_password_placeholder')}
+									disabled={returningToAgent}
+									className="min-w-0 flex-1 rounded-xl border border-white/15 bg-[#050b1d]/60 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-[#8d3a8b] focus:outline-none"
+								/>
+								<button
+									type="button"
+									onClick={() => void handleReturnWithPassword()}
+									disabled={returningToAgent || !returnPassword.trim()}
+									aria-busy={returningToAgent}
+									className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-[#8d3a8b] px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+								>
+									{returningToAgent ? (
+										<Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+									) : null}
+									{tu('agent_return_retry')}
+								</button>
+							</div>
+						) : null}
+						{returnError ? <p className="text-amber-50/90">{returnError}</p> : null}
 					</div>
 				) : null}
 
@@ -306,91 +571,197 @@ export default function AgentTempEoaDashboard() {
 							const key = temp.eoa.toLowerCase()
 							const cardState = cardsByTemp[key]
 							const showPw = !!revealPw[key]
+							const cardRows = cardState?.rows ?? []
+							const cardsLoading = !!cardState?.loading
+							const manageableCardCount = cardRows.filter((row) => !row.transferred).length
+							// Gate Open Merchant OS until at least one owned (non-transferred) card exists.
+							// Once we have a card snapshot, keep CTA height stable while refreshing
+							// (do not swap redeem / Create for a loading row).
+							const hasCardSnapshot = !!cardState
+							const mustCreateCardFirst = hasCardSnapshot && manageableCardCount === 0
+							const canOpenMerchantOs = manageableCardCount > 0
+							const showCardGateLoading = !hasCardSnapshot && cardsLoading
+							const ketState = ketByTemp[key]
+							const ketStatus = ketState?.status
+							const ketLoading =
+								mustCreateCardFirst && (!ketState || ketStatus === 'loading')
+							const ketOwns = mustCreateCardFirst && ketStatus === 'owns'
+							const ketMissing =
+								mustCreateCardFirst
+								&& (ketStatus === 'missing' || ketStatus === 'unavailable')
+							const redeemCode = redeemByTemp[key] ?? ''
+							const claimBusy = openingKey === `claim:${temp.eoa}`
+							const createBusy = openingKey === `create:${temp.eoa}`
 							return (
 								<li
 									key={key}
 									className="rounded-3xl border border-white/10 bg-white/[0.06] p-4 shadow-lg backdrop-blur-md"
 								>
-									<div className="mb-3 flex flex-wrap items-start justify-between gap-2">
-										<div>
-											<p className="text-base font-semibold text-white">@{temp.beamioTag}</p>
-											<div className="mt-1.5">
-												<AddressCapsule
-													address={temp.eoa}
-													className="max-w-full border-[#dce2f7]/30 bg-[#e9edff]/10 text-slate-200"
-												/>
-											</div>
-										</div>
-										<span className="rounded-full border border-[#eadcf7]/30 bg-[#8d3a8b]/20 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-[#f5ecff]">
-											{tu('agent_temp_badge')}
-										</span>
-									</div>
-
-									<div className="mb-4 rounded-2xl border border-white/10 bg-black/20 px-3 py-2.5">
-										<div className="mb-1 flex items-center justify-between gap-2">
-											<span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-												{tu('agent_access_password')}
-											</span>
-											<div className="flex items-center gap-1">
-												<button
-													type="button"
-													tabIndex={-1}
-													onClick={() =>
-														setRevealPw((prev) => ({ ...prev, [key]: !prev[key] }))
-													}
-													className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-300 hover:bg-white/10"
-													aria-label={showPw ? tu('agent_hide_password') : tu('agent_show_password')}
-												>
-													{showPw ? (
-														<EyeOff className="h-4 w-4" aria-hidden />
-													) : (
-														<Eye className="h-4 w-4" aria-hidden />
-													)}
-												</button>
-												<button
-													type="button"
-													tabIndex={-1}
-													onClick={() => void copyText(`pw:${key}`, temp.accessPassword)}
-													className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-300 hover:bg-white/10"
-													aria-label={tu('agent_copy_password')}
-												>
-													{copiedKey === `pw:${key}` ? (
-														<Check className="h-4 w-4 text-emerald-400" aria-hidden />
-													) : (
-														<Copy className="h-4 w-4" aria-hidden />
-													)}
-												</button>
-											</div>
-										</div>
-										<p className="font-mono text-sm tracking-wide text-slate-100">
-											{showPw ? temp.accessPassword : '••••••••••••'}
-										</p>
+									<div className="mb-3 flex min-w-0 flex-wrap items-center gap-2">
 										<button
 											type="button"
 											tabIndex={-1}
 											onClick={() => void copyText(`tag:${key}`, temp.beamioTag)}
-											className="mt-2 text-left text-xs text-slate-400 underline-offset-2 hover:text-slate-200 hover:underline"
+											className="inline-flex max-w-full items-center gap-2 rounded-full border border-[#eadcf7]/40 bg-[#8d3a8b]/25 py-1.5 pl-3 pr-2 text-[13px] font-semibold text-[#f5ecff] transition hover:bg-[#8d3a8b]/40"
+											aria-label={tu('agent_copy_tag')}
+											title={tu('agent_copy_tag')}
 										>
-											{copiedKey === `tag:${key}`
-												? tu('agent_copied')
-												: tu('agent_copy_tag')}
+											<span className="min-w-0 truncate">@{temp.beamioTag}</span>
+											{copiedKey === `tag:${key}` ? (
+												<Check size={12} className="shrink-0 text-emerald-400" aria-hidden />
+											) : (
+												<Copy size={12} className="shrink-0 opacity-70" aria-hidden />
+											)}
 										</button>
+										<AddressCapsule
+											address={temp.eoa}
+											className="max-w-full border-[#dce2f7]/30 bg-[#e9edff]/10 text-slate-200"
+										/>
+										<div
+											className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-white/15 bg-black/25 py-1.5 pl-3 pr-1.5 font-mono text-[11px] font-semibold text-slate-200"
+											title={tu('agent_access_password')}
+										>
+											<span className="min-w-0 max-w-[9rem] truncate tracking-wide">
+												{showPw ? temp.accessPassword : '••••••••••••'}
+											</span>
+											<button
+												type="button"
+												tabIndex={-1}
+												onClick={() =>
+													setRevealPw((prev) => ({ ...prev, [key]: !prev[key] }))
+												}
+												className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-slate-300 opacity-70 transition hover:bg-white/10 hover:opacity-100"
+												aria-label={
+													showPw ? tu('agent_hide_password') : tu('agent_show_password')
+												}
+											>
+												{showPw ? (
+													<EyeOff size={12} aria-hidden />
+												) : (
+													<Eye size={12} aria-hidden />
+												)}
+											</button>
+											<button
+												type="button"
+												tabIndex={-1}
+												onClick={() => void copyText(`pw:${key}`, temp.accessPassword)}
+												className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-slate-300 opacity-70 transition hover:bg-white/10 hover:opacity-100"
+												aria-label={tu('agent_copy_password')}
+												title={tu('agent_copy_password')}
+											>
+												{copiedKey === `pw:${key}` ? (
+													<Check size={12} className="text-emerald-400" aria-hidden />
+												) : (
+													<Copy size={12} aria-hidden />
+												)}
+											</button>
+										</div>
 									</div>
 
-									<button
-										type="button"
-										onClick={() => void handleOpenWorkspace(temp)}
-										disabled={!!openingKey}
-										aria-busy={openingKey === `ws:${temp.eoa}`}
-										className="mb-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-[#eadcf7]/40 bg-[#8d3a8b]/25 px-3 py-2.5 text-sm font-semibold text-[#f5ecff] transition hover:bg-[#8d3a8b]/40 disabled:cursor-not-allowed disabled:opacity-60"
-									>
-										{openingKey === `ws:${temp.eoa}` ? (
+									{ketLoading ? (
+										<div className="mb-3 flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-slate-400">
 											<Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-										) : (
-											<Wallet className="h-4 w-4" aria-hidden />
-										)}
-										{tu('agent_open_merchant_os')}
-									</button>
+											{tu('agent_checking_create_nft')}
+										</div>
+									) : null}
+
+									{ketMissing ? (
+										<div className="mb-3 space-y-2 rounded-2xl border border-white/10 bg-white/5 p-3">
+											<div className="flex items-center gap-2">
+												<input
+													type="text"
+													value={redeemCode}
+													onChange={(e) =>
+														setRedeemByTemp((prev) => ({
+															...prev,
+															[key]: e.target.value,
+														}))
+													}
+													onKeyDown={(e) => {
+														if (e.key !== 'Enter') return
+														e.preventDefault()
+														if (openingKey || !redeemCode.trim() || claimBusy) return
+														void handleClaimCreateNft(temp)
+													}}
+													placeholder={tu('agent_redeem_code_placeholder')}
+													aria-label={tu('agent_redeem_code_label')}
+													autoComplete="off"
+													spellCheck={false}
+													disabled={!!openingKey}
+													enterKeyHint="done"
+													className="min-w-0 flex-1 rounded-xl border border-white/15 bg-black/30 px-3 py-2.5 font-mono text-sm text-slate-100 placeholder:text-slate-500 outline-none focus:border-[#8d3a8b]/60"
+												/>
+												<button
+													type="button"
+													tabIndex={-1}
+													onClick={() => void handleClaimCreateNft(temp)}
+													disabled={!!openingKey || !redeemCode.trim() || claimBusy}
+													aria-busy={claimBusy}
+													aria-label={tu('agent_claim_create_nft')}
+													title={tu('agent_claim_create_nft')}
+													className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#eadcf7]/40 bg-[#8d3a8b]/25 text-[#f5ecff] transition hover:bg-[#8d3a8b]/40 disabled:cursor-not-allowed disabled:opacity-60"
+												>
+													{claimBusy ? (
+														<Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+													) : (
+														<Check className="h-4 w-4" strokeWidth={2.5} aria-hidden />
+													)}
+												</button>
+											</div>
+											{ketStatus === 'unavailable' ? (
+												<button
+													type="button"
+													tabIndex={-1}
+													onClick={() => void loadKetForTemp(temp)}
+													disabled={!!openingKey}
+													className="w-full text-center text-xs text-[#c4a0c8] hover:underline disabled:opacity-50"
+												>
+													{tu('agent_retry_create_nft_check')}
+												</button>
+											) : null}
+										</div>
+									) : null}
+
+									{ketOwns ? (
+										<button
+											type="button"
+											onClick={() => void handleCreateMerchantCard(temp)}
+											disabled={!!openingKey || missingAgentPassword}
+											aria-busy={createBusy}
+											className="mb-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-[#eadcf7]/40 bg-[#8d3a8b]/25 px-3 py-2.5 text-sm font-semibold text-[#f5ecff] transition hover:bg-[#8d3a8b]/40 disabled:cursor-not-allowed disabled:opacity-60"
+										>
+											{createBusy ? (
+												<Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+											) : (
+												<Plus className="h-4 w-4" aria-hidden />
+											)}
+											{tu('agent_create_merchant_card')}
+										</button>
+									) : null}
+
+									{canOpenMerchantOs ? (
+										<button
+											type="button"
+											onClick={() => void handleOpenWorkspace(temp)}
+											disabled={!!openingKey || missingAgentPassword}
+											aria-busy={openingKey === `ws:${temp.eoa}`}
+											className="mb-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-[#eadcf7]/40 bg-[#8d3a8b]/25 px-3 py-2.5 text-sm font-semibold text-[#f5ecff] transition hover:bg-[#8d3a8b]/40 disabled:cursor-not-allowed disabled:opacity-60"
+										>
+											{openingKey === `ws:${temp.eoa}` ? (
+												<Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+											) : (
+												<Wallet className="h-4 w-4" aria-hidden />
+											)}
+											{tu('agent_open_merchant_os')}
+										</button>
+									) : null}
+
+									{showCardGateLoading ? (
+										<div className="mb-3 flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-slate-400">
+											<Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+											{tu('agent_loading_cards')}
+										</div>
+									) : null}
 
 									<div className="mb-2 flex items-center justify-between">
 										<p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
@@ -407,20 +778,13 @@ export default function AgentTempEoaDashboard() {
 										</button>
 									</div>
 
-									{cardState?.loading && !cardState.rows.length ? (
-										<div className="flex items-center gap-2 py-3 text-sm text-slate-400">
-											<Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-											{tu('agent_loading_cards')}
-										</div>
-									) : null}
-
 									{cardState?.error ? (
 										<p className="py-2 text-sm text-amber-200" role="alert">
 											{cardState.error}
 										</p>
 									) : null}
 
-									{!cardState?.loading && (cardState?.rows?.length ?? 0) === 0 ? (
+									{mustCreateCardFirst && !ketLoading && !ketMissing ? (
 										<p className="py-3 text-sm text-slate-500">{tu('agent_no_cards_for_temp')}</p>
 									) : null}
 

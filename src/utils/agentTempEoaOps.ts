@@ -9,7 +9,15 @@ import {
 	createRecover,
 	restoreWithUserPin,
 } from '@/services/beamio'
-import { getCardsOfOwnerWithDetails, getCardOwner } from '@/services/BeamioCard'
+import {
+	getCardsOfOwnerWithDetails,
+	getCardOwner,
+	isReferralAdminMerchantPackageCode,
+	isReferralMerchantStartKitCode,
+	postBusinessStartKetRedeemRedeem,
+	postReferralAdminMerchantPackageClaim,
+	postReferralMerchantStartKitClaim,
+} from '@/services/BeamioCard'
 import { getCoNET_Data } from '@/utils/globals'
 import {
 	unlockMerchantWorkspaceSession,
@@ -21,12 +29,69 @@ import {
 	updateAgentTempKnownCards,
 	saveLastStaffProgramCardForEoa,
 	loadAgentWorkspace,
+	findAgentWorkspaceByTempEoa,
 	type AgentTempEoaRecord,
 } from '@/utils/agentWorkspaceLocal'
 import {
 	getSessionAgentAccessPassword,
 	setSessionAgentAccessPassword,
 } from '@/utils/agentSessionSecrets'
+
+const AGENT_RETURN_CONTEXT_KEY = 'beamio:biz:agent-return-context:v1'
+
+export type AgentReturnContext = {
+	agentTag: string
+	agentEoa: string
+	at: number
+}
+
+/** Snapshot agent identity before switching into a temp EOA session. */
+export function rememberAgentReturnContext(): void {
+	const data = getCoNET_Data()
+	const eoa = data?.profiles?.[0]?.keyID?.trim()
+	if (!eoa || !ethers.isAddress(eoa)) return
+	const addr = ethers.getAddress(eoa)
+	const byTemp = findAgentWorkspaceByTempEoa(addr)
+	const direct = loadAgentWorkspace(addr)
+	const ws =
+		byTemp
+		?? (direct && direct.agentEoa.toLowerCase() === addr.toLowerCase() ? direct : null)
+	const agentTag = (ws?.agentBeamioTag || data?.beamio?.accountName || '').trim()
+	const agentEoa = ws?.agentEoa || addr
+	if (!agentTag || !ethers.isAddress(agentEoa)) return
+	try {
+		const payload: AgentReturnContext = {
+			agentTag,
+			agentEoa: ethers.getAddress(agentEoa),
+			at: Date.now(),
+		}
+		sessionStorage.setItem(AGENT_RETURN_CONTEXT_KEY, JSON.stringify(payload))
+	} catch {
+		/* ignore quota / private mode */
+	}
+}
+
+export function loadAgentReturnContext(): AgentReturnContext | null {
+	try {
+		const raw = sessionStorage.getItem(AGENT_RETURN_CONTEXT_KEY)
+		if (!raw) return null
+		const parsed = JSON.parse(raw) as AgentReturnContext
+		const tag = typeof parsed?.agentTag === 'string' ? parsed.agentTag.trim() : ''
+		const eoa = typeof parsed?.agentEoa === 'string' ? parsed.agentEoa.trim() : ''
+		if (!tag || !ethers.isAddress(eoa)) return null
+		return { agentTag: tag, agentEoa: ethers.getAddress(eoa), at: Number(parsed.at) || 0 }
+	} catch {
+		return null
+	}
+}
+
+export function clearAgentReturnContext(): void {
+	try {
+		sessionStorage.removeItem(AGENT_RETURN_CONTEXT_KEY)
+	} catch {
+		/* ignore */
+	}
+}
 
 const ALPHANUM = 'abcdefghijklmnopqrstuvwxyz0123456789'
 const PASS_UPPER = 'ABCDEFGHJKLMNPQRSTUVWXYZ'
@@ -193,10 +258,14 @@ export async function createAgentTempEoa(
 export async function openTempMerchantWorkspace(
 	temp: AgentTempEoaRecord,
 	deps: UnlockMerchantWorkspaceDeps,
-): Promise<{ ok: true } | { ok: false; reason: 'restore_failed' | 'invalid' }> {
+): Promise<{ ok: true } | { ok: false; reason: 'restore_failed' | 'invalid' | 'missing_agent_password' }> {
 	if (!ethers.isAddress(temp.eoa) || !temp.beamioTag || !temp.accessPassword) {
 		return { ok: false, reason: 'invalid' }
 	}
+	if (!getSessionAgentAccessPassword()) {
+		return { ok: false, reason: 'missing_agent_password' }
+	}
+	rememberAgentReturnContext()
 	const result = await restoreWithUserPin(temp.beamioTag, temp.accessPassword, false)
 	const wallet = result && typeof result === 'object' && result.profiles ? result : null
 	if (!wallet) return { ok: false, reason: 'restore_failed' }
@@ -229,6 +298,23 @@ export async function openTempMerchantCard(
 		/* proceed; Merchant OS will fail loudly if wrong */
 	}
 
+	if (!getSessionAgentAccessPassword()) {
+		return { ok: false, reason: 'restore_failed' }
+	}
+	rememberAgentReturnContext()
+	const agentEoaBeforeSwitch = (() => {
+		const eoa = getCoNET_Data()?.profiles?.[0]?.keyID
+		if (eoa && ethers.isAddress(eoa)) {
+			const byTemp = findAgentWorkspaceByTempEoa(eoa)
+			if (byTemp) return byTemp.agentEoa
+			const direct = loadAgentWorkspace(eoa)
+			if (direct && direct.agentEoa.toLowerCase() === ethers.getAddress(eoa).toLowerCase()) {
+				return direct.agentEoa
+			}
+		}
+		return loadAgentReturnContext()?.agentEoa
+	})()
+
 	const result = await restoreWithUserPin(temp.beamioTag, temp.accessPassword, false)
 	const wallet = result && typeof result === 'object' && result.profiles ? result : null
 	if (!wallet) return { ok: false, reason: 'restore_failed' }
@@ -238,51 +324,65 @@ export async function openTempMerchantCard(
 
 	saveLastStaffProgramCardForEoa(tempNorm, cardNorm)
 
-	const agentData = getCoNET_Data()
-	const agentWs = agentData?.profiles?.[0]?.keyID
-		? loadAgentWorkspace(agentData.profiles[0].keyID)
-		: null
-	if (agentWs) {
+	if (agentEoaBeforeSwitch && ethers.isAddress(agentEoaBeforeSwitch)) {
 		const known = new Set(temp.knownCardAddresses.map((a) => a.toLowerCase()))
 		known.add(cardNorm.toLowerCase())
-		updateAgentTempKnownCards(agentWs.agentEoa, tempNorm, [...known])
+		updateAgentTempKnownCards(agentEoaBeforeSwitch, tempNorm, [...known])
 	}
 
 	return { ok: true }
 }
 
-/** Restore the agent EOA after managing a temp merchant card. */
+/**
+ * Restore the agent EOA after managing a temp merchant card.
+ * Prefer temp→agent lookup over loadAgentWorkspace(currentEoa): a polluted
+ * workspace key under the temp address must never win.
+ */
 export async function returnToAgentWorkspace(
 	deps: UnlockMerchantWorkspaceDeps,
+	opts?: { agentPassword?: string },
 ): Promise<boolean> {
-	const password = getSessionAgentAccessPassword()
-	const ws = (() => {
-		const data = getCoNET_Data()
-		const eoa = data?.profiles?.[0]?.keyID
-		if (eoa && ethers.isAddress(eoa)) {
-			const direct = loadAgentWorkspace(eoa)
-			if (direct) return direct
-		}
-		return null
-	})()
+	const password = (opts?.agentPassword?.trim() || getSessionAgentAccessPassword() || '').trim()
+	const currentEoa = getCoNET_Data()?.profiles?.[0]?.keyID?.trim()
 
-	// Current session may be a temp — find agent via temp index
-	const currentEoa = getCoNET_Data()?.profiles?.[0]?.keyID
-	let agentTag = ws?.agentBeamioTag
-	let agentEoa = ws?.agentEoa
+	let agentTag: string | undefined
+	let agentEoa: string | undefined
 
-	if (!agentTag && currentEoa && ethers.isAddress(currentEoa)) {
-		const { findAgentWorkspaceByTempEoa } = await import('@/utils/agentWorkspaceLocal')
+	// 1) Current session is a known temp → owning agent workspace
+	if (currentEoa && ethers.isAddress(currentEoa)) {
 		const byTemp = findAgentWorkspaceByTempEoa(currentEoa)
-		if (byTemp) {
+		if (byTemp?.agentBeamioTag) {
 			agentTag = byTemp.agentBeamioTag
 			agentEoa = byTemp.agentEoa
 		}
 	}
 
+	// 2) Current EOA is the agent workspace root (not a polluted temp key)
+	if (!agentTag && currentEoa && ethers.isAddress(currentEoa)) {
+		const addr = ethers.getAddress(currentEoa)
+		const direct = loadAgentWorkspace(addr)
+		if (direct && direct.agentEoa.toLowerCase() === addr.toLowerCase() && direct.agentBeamioTag) {
+			agentTag = direct.agentBeamioTag
+			agentEoa = direct.agentEoa
+		}
+	}
+
+	// 3) sessionStorage snapshot taken before openTemp
+	if (!agentTag) {
+		const hint = loadAgentReturnContext()
+		if (hint?.agentTag) {
+			agentTag = hint.agentTag
+			agentEoa = hint.agentEoa
+		}
+	}
+
 	if (!agentTag || !password) return false
-	void agentEoa
-	return restoreAgentSession(agentTag, password, deps)
+	const ok = await restoreAgentSession(agentTag, password, deps)
+	if (ok) {
+		clearAgentReturnContext()
+		void agentEoa
+	}
+	return ok
 }
 
 export function syncTempKnownCardsFromChain(
@@ -295,4 +395,81 @@ export function syncTempKnownCardsFromChain(
 		tempEoa,
 		rows.map((r) => r.cardAddress),
 	)
+}
+
+/**
+ * Claim create-merchant-card entitlement (BusinessStartKet #0) onto the temp EOA.
+ * Plain Ket codes need only the temp address; Start Kit / admin package codes need
+ * a temp-session EIP-712 signature, then the agent session is restored.
+ */
+export async function claimTempCreateMerchantCardNft(
+	temp: AgentTempEoaRecord,
+	code: string,
+	deps: UnlockMerchantWorkspaceDeps,
+): Promise<{ ok: true; recipient?: string } | { ok: false; error: string }> {
+	const trimmed = code.trim()
+	if (!trimmed) return { ok: false, error: 'Enter a redeem code.' }
+	if (!ethers.isAddress(temp.eoa)) return { ok: false, error: 'Invalid temp EOA.' }
+
+	const isAdminPkg = isReferralAdminMerchantPackageCode(trimmed)
+	const isStartKit = isReferralMerchantStartKitCode(trimmed)
+
+	if (isAdminPkg || isStartKit) {
+		const agentPassword = getSessionAgentAccessPassword()
+		const agentData = getCoNET_Data()
+		const agentTag =
+			loadAgentWorkspace(agentData?.profiles?.[0]?.keyID ?? '')?.agentBeamioTag
+			|| agentData?.beamio?.accountName?.trim()
+			|| ''
+		if (!agentPassword || !agentTag) {
+			return {
+				ok: false,
+				error: 'Agent Access Password is missing from this session. Sign in again.',
+			}
+		}
+
+		const unlocked = await restoreWithUserPin(temp.beamioTag, temp.accessPassword, false)
+		const profiles =
+			unlocked && typeof unlocked === 'object' && Array.isArray(unlocked.profiles)
+				? unlocked.profiles
+				: null
+		const pk =
+			typeof profiles?.[0]?.privateKeyArmor === 'string'
+				? profiles[0].privateKeyArmor.trim()
+				: ''
+		if (!pk) {
+			await restoreAgentSession(agentTag, agentPassword, deps).catch(() => false)
+			return { ok: false, error: 'Could not unlock the temp wallet to sign the claim.' }
+		}
+
+		let signingAddress = ''
+		try {
+			signingAddress = new ethers.Wallet(pk).address
+		} catch {
+			await restoreAgentSession(agentTag, agentPassword, deps).catch(() => false)
+			return { ok: false, error: 'Could not unlock the temp wallet to sign the claim.' }
+		}
+		if (signingAddress.toLowerCase() !== ethers.getAddress(temp.eoa).toLowerCase()) {
+			await restoreAgentSession(agentTag, agentPassword, deps).catch(() => false)
+			return { ok: false, error: 'Temp session wallet does not match this temp EOA.' }
+		}
+
+		try {
+			const res = isAdminPkg
+				? await postReferralAdminMerchantPackageClaim({ privateKeyArmor: pk, code: trimmed })
+				: await postReferralMerchantStartKitClaim({ privateKeyArmor: pk, code: trimmed })
+			if (!res.success) {
+				return { ok: false, error: res.error ?? 'Claim failed. Try again.' }
+			}
+			return { ok: true }
+		} finally {
+			await restoreAgentSession(agentTag, agentPassword, deps).catch(() => false)
+		}
+	}
+
+	const res = await postBusinessStartKetRedeemRedeem(temp.eoa, trimmed)
+	if (!res.success) {
+		return { ok: false, error: res.error ?? 'Claim failed. Try again.' }
+	}
+	return { ok: true, recipient: res.recipient }
 }

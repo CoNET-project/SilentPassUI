@@ -8,7 +8,6 @@ import { useUnlockMerchantWorkspaceDeps } from '@/hooks/useUnlockMerchantWorkspa
 import { getCoNET_Data } from '@/utils/globals'
 import {
 	findAgentWorkspaceByTempEoa,
-	getBizWorkspaceRole,
 	loadAgentWorkspace,
 } from '@/utils/agentWorkspaceLocal'
 import { returnToAgentWorkspace } from '@/utils/agentTempEoaOps'
@@ -29,7 +28,12 @@ export default function AgentTempSessionBanner() {
 
 	useEffect(() => {
 		const path = location.pathname || ''
-		if (path === '/agent' || path === '/' || path === '/Onboarding') {
+		if (
+			path === '/agent'
+			|| path === '/agent/merchant-onboarding'
+			|| path === '/'
+			|| path === '/Onboarding'
+		) {
 			setVisible(false)
 			return
 		}
@@ -38,14 +42,19 @@ export default function AgentTempSessionBanner() {
 			setVisible(false)
 			return
 		}
-		const asAgent = loadAgentWorkspace(eoa)
-		if (asAgent || getBizWorkspaceRole() === 'agent') {
-			// Current session is the agent itself — no banner
+		const addr = ethers.getAddress(eoa)
+		// Prefer temp ownership — a polluted workspace keyed by the temp EOA must not hide the banner.
+		const byTemp = findAgentWorkspaceByTempEoa(addr)
+		if (byTemp) {
+			setVisible(true)
+			return
+		}
+		const direct = loadAgentWorkspace(addr)
+		if (direct && direct.agentEoa.toLowerCase() === addr.toLowerCase()) {
 			setVisible(false)
 			return
 		}
-		const byTemp = findAgentWorkspaceByTempEoa(eoa)
-		setVisible(!!byTemp && !!getSessionAgentAccessPassword())
+		setVisible(false)
 	}, [location.pathname, profiles])
 
 	const onReturn = useCallback(async () => {
@@ -53,7 +62,12 @@ export default function AgentTempSessionBanner() {
 		setReturning(true)
 		try {
 			const ok = await returnToAgentWorkspace(unlockDeps)
-			if (ok) navigate('/agent')
+			if (ok) {
+				navigate('/agent', { replace: true })
+				return
+			}
+			// Still leave Merchant OS so the agent dashboard can show password recovery.
+			navigate('/agent', { replace: true })
 		} finally {
 			setReturning(false)
 		}

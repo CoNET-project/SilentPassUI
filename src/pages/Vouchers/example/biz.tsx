@@ -21,6 +21,10 @@ import { CoNET_Data, setCoNET_Data } from '@/utils/globals';
 import { clearWorkspaceSessionUnlock, isWorkspaceAccessGranted } from '@/utils/beamioWorkspaceLock';
 import { useReliableTapHandler } from '@/utils/reliableTap';
 import { hasSessionPrivateKeyArmor, getSessionPrivateKeyArmor } from '@/utils/beamioSessionSecrets';
+import { getSessionAgentAccessPassword } from '@/utils/agentSessionSecrets';
+import { findAgentWorkspaceByTempEoa, loadAgentWorkspace } from '@/utils/agentWorkspaceLocal';
+import { returnToAgentWorkspace } from '@/utils/agentTempEoaOps';
+import { useUnlockMerchantWorkspaceDeps } from '@/hooks/useUnlockMerchantWorkspaceDeps';
 import { ensureCardUserCumulativeStatInitializedSilent, ensureProfileOwnerCardsUserCumulativeStatInitializedSilent } from '@/utils/beamioCardUserCumulativeStatBootstrap';
 import {
   storeSystemData,
@@ -14012,6 +14016,7 @@ function isAutoApprovePendingTerminalMerchantEoa(eoa: string | undefined | null)
 export default function MerchantOS() {
  const { tu } = useTu();
  const navigate = useNavigate();
+ const unlockMerchantWorkspaceDeps = useUnlockMerchantWorkspaceDeps();
  const location = useLocation();
  const isTerminalsMarketRoute =
    location.pathname === '/Terminals' || location.pathname.endsWith('/Terminals');
@@ -33332,6 +33337,29 @@ useEffect(() => {
    if (!raw || !ethers.isAddress(raw)) return '';
    return ethers.getAddress(raw);
  }, [profiles?.[0]?.keyID, myAddress]);
+ /** Fuel onboarding Back: agent / temp-EOA sessions return to Agent `/home`, not Merchant OS login. */
+	const handleLiteMemberSelectionBack = useCallback(() => {
+		const eoa = merchantEoaForLiteForm;
+		if (eoa) {
+			// Temp sessions keep workspace role = 'agent'; restore agent EOA first.
+			const byTemp =
+				!!findAgentWorkspaceByTempEoa(eoa) && !!getSessionAgentAccessPassword();
+			if (byTemp) {
+				void (async () => {
+					const ok = await returnToAgentWorkspace(unlockMerchantWorkspaceDeps);
+					if (ok) navigate('/agent');
+					else window.location.href = '/';
+				})();
+				return;
+			}
+			// Already unlocked as the agent EOA (not a temp).
+			if (loadAgentWorkspace(eoa)) {
+				navigate('/agent');
+				return;
+			}
+		}
+		window.location.href = '/';
+	}, [merchantEoaForLiteForm, navigate, unlockMerchantWorkspaceDeps]);
  /** Smart Terminal (AA) present — mirrors newBiz `isAaUnlocked` for Market fuel cards */
  const hasAaAccount = Boolean(profiles?.[0]?.aaAccount?.trim());
  /** No eligible merchant program card (factory cardsOfOwner, API-exclude filtered) and no Ket #0 — show Start Kit / first-setup shell. AA presence is not used. */
@@ -36180,9 +36208,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                     beamio={beamio ?? null}
                     privateKeyArmor={profiles?.[0]?.privateKeyArmor}
                     onBusinessDraftUpdated={() => setLiteBusinessFormRevision((n) => n + 1)}
-                    onBack={() => {
-                      window.location.href = '/';
-                    }}
+                    onBack={handleLiteMemberSelectionBack}
                     onLiteBusinessSavedToChain={() => {
                       if (merchantEoaForLiteForm) setLiteBusinessChainAck(merchantEoaForLiteForm);
                       setLiteChainAckRevision((n) => n + 1);
@@ -38898,9 +38924,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                     beamio={beamio ?? null}
                     privateKeyArmor={profiles?.[0]?.privateKeyArmor}
                     onBusinessDraftUpdated={() => setLiteBusinessFormRevision((n) => n + 1)}
-                    onBack={() => {
-                      window.location.href = '/';
-                    }}
+                    onBack={handleLiteMemberSelectionBack}
                     onLiteBusinessSavedToChain={() => {
                       if (merchantEoaForLiteForm) setLiteBusinessChainAck(merchantEoaForLiteForm);
                       setLiteChainAckRevision((n) => n + 1);

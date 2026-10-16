@@ -1,5 +1,9 @@
 import {generateKey, readKey, createMessage, enums, encrypt} from 'openpgp'
-import { ensureNativePushBoundForWallet } from '@/utils/cashTreesPushBind'
+import {
+	ensureNativePushBoundForWallet,
+	injectNativeChatPgpSecretsFromProfile,
+} from '@/utils/cashTreesPushBind'
+import { isCashTreesNativeWebView, postNativePgpCiphertext } from '@/utils/cashTreesNativeNfc'
 import { CoNET_Data, setCoNET_Data } from "@/utils/globals"
 
 import {GuardianNodesMainnet, conetDepinProvider, beamioApi} from '@/utils/constants'
@@ -321,6 +325,18 @@ export const initChat = async (setProfiles: (val: profile[]) => void, setAllNode
 		setProfiles(profiles)
 		setCoNET_Data(temp)
 		storeSystemData()
+
+		// Native shell: permanent user PGP (+ mailbox route / entry domains) for
+		// killed-app voice_offer_fetch + local decrypt → CallKit @tag + short address.
+		// Guardian ip_addr is owned by the shell (getAllNodes). Do not inject it.
+		try {
+			const entryDomains = (allNodes || [])
+				.map((n) => String(n?.domain || '').trim())
+				.filter(Boolean)
+			injectNativeChatPgpSecretsFromProfile(profile, entryDomains)
+		} catch {
+			/* shell may omit bridge on first paint */
+		}
 
 		if (!allNodes?.length) {
 			chatBootLog('initChat abort: no CoNET gossip nodes', 'warn')
@@ -1336,6 +1352,12 @@ export const sendMessage = async (
 
 	const postToNodes = async (nodes: nodeInfo[]): Promise<boolean> => {
 		if (!nodes.length) return false
+		if (isCashTreesNativeWebView()) {
+			const shell = await postNativePgpCiphertext(postData)
+			if (shell.error !== 'no_si_roster' && shell.error !== 'bridge_missing') {
+				return shell.ok
+			}
+		}
 		const results = await Promise.all(
 			nodes.map(async node => {
 				const url = `https://${node.domain}.conet.network/post`
@@ -1686,7 +1708,36 @@ export const refreshChatRoutes = async (profile: profile): Promise<profile> => {
 /**
  * Ask each contact's mailbox whether that wallet has an active listen SSE.
  * Encrypt to mailbox B route PGP; HTTP via entry C ≠ B. Trusted ok:true only updates online.
+ * Inside the native shell the shell picks `http://{ip}/post`. Domain HTTPS is the browser path,
+ * and the fallback when the shell has no IP roster yet.
  */
+async function postQueryViaNativeShell(
+	armored: string,
+	entryNodes: nodeInfo[],
+	mailboxDomains: Set<string>,
+): Promise<unknown | 'fallback'> {
+	if (!isCashTreesNativeWebView()) return 'fallback'
+	const excludeIps = entryNodes
+		.filter((n) => n?.ip_addr && mailboxDomains.has(n.domain))
+		.map((n) => String(n.ip_addr).trim())
+		.filter(Boolean)
+	const shell = await postNativePgpCiphertext(armored, excludeIps)
+	if (shell.error === 'no_si_roster' || shell.error === 'bridge_missing') return 'fallback'
+	const trimmed = (shell.body || '').trim()
+	if (!shell.ok || !trimmed) return null
+	try {
+		return JSON.parse(trimmed)
+	} catch {
+		const m = trimmed.match(/\{[\s\S]*\}/)
+		if (!m) return null
+		try {
+			return JSON.parse(m[0])
+		} catch {
+			return null
+		}
+	}
+}
+
 export const queryMailboxWalletOnline = async (opts: {
 	targetWallet: string
 	routerArmoredPublicKey: string
@@ -1720,6 +1771,13 @@ export const queryMailboxWalletOnline = async (opts: {
 			config: { preferredCompressionAlgorithm: enums.compression.zlib },
 		})
 		const armored = typeof postData === 'string' ? postData : String((postData as any)?.data ?? postData)
+		const viaShell = await postQueryViaNativeShell(armored, entryNodes, mailboxDomains)
+		if (viaShell !== 'fallback') {
+			if (viaShell && typeof viaShell === 'object' && (viaShell as { ok?: boolean }).ok === true) {
+				return { ok: true, online: !!(viaShell as { online?: boolean }).online }
+			}
+			return null
+		}
 		const payload = JSON.stringify({ data: armored })
 		const pool = entryNodes.filter(n => n?.domain && !mailboxDomains.has(n.domain))
 		if (!pool.length) return null
@@ -1813,6 +1871,13 @@ export const queryMailboxNativeWakeable = async (opts: {
 			config: { preferredCompressionAlgorithm: enums.compression.zlib },
 		})
 		const armored = typeof postData === 'string' ? postData : String((postData as any)?.data ?? postData)
+		const viaShell = await postQueryViaNativeShell(armored, entryNodes, mailboxDomains)
+		if (viaShell !== 'fallback') {
+			if (viaShell && typeof viaShell === 'object' && (viaShell as { ok?: boolean }).ok === true) {
+				return { ok: true, nativeWakeable: !!(viaShell as { nativeWakeable?: boolean }).nativeWakeable }
+			}
+			return null
+		}
 		const payload = JSON.stringify({ data: armored })
 		const pool = entryNodes.filter(n => n?.domain && !mailboxDomains.has(n.domain))
 		if (!pool.length) return null

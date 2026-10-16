@@ -1203,13 +1203,15 @@ export class GossipCore {
 					encryptionKeys: await readKey({ armoredKey: recipientPgp }),
 					config: { preferredCompressionAlgorithm: enums.compression.zlib },
 				}))
+				if (!offerArmor.includes('-----BEGIN PGP MESSAGE-----') || offerArmor.length > 48_000) {
+					this.emit.log('warn', 'voice offer armor missing or too large; continuing listen for VoIP push')
+					offerArmor = ''
+				}
 			} catch (ex) {
-				this.emit.log('warn', `voice offer encrypt failed: ${(ex as Error)?.message ?? String(ex)}`)
-				return false
-			}
-			if (!offerArmor.includes('-----BEGIN PGP MESSAGE-----') || offerArmor.length > 48_000) {
-				this.emit.log('warn', 'voice offer armor missing or too large')
-				return false
+				// Do not abort voice_listen: mailbox still needs the SSE attach
+				// so notifyVoiceCallPush can wake a force-quit iOS CallKit UI.
+				this.emit.log('warn', `voice offer encrypt failed; continuing listen for VoIP push: ${(ex as Error)?.message ?? String(ex)}`)
+				offerArmor = ''
 			}
 		}
 		const inner = await encryptOpaqueVoiceCommand({

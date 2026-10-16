@@ -1,5 +1,28 @@
 /** Android：`JavascriptInterface` 注入 `window.CashTreesAndroid`。iOS：WK 注入 `window.CashTreesIOS`（方法签名对齐 Android）。 */
 
+/** Guardian node the shell may POST `http://{ip}/post`. Domain is diagnostic only. */
+export type NativeSiNode = {
+	ip: string
+	domain?: string
+	region?: string
+}
+
+/** PWA → native shell Chat secrets (Keychain / EncryptedSharedPreferences). */
+export type NativeChatPgpSecretsPayload = {
+	privateKeyArmor: string
+	publicKeyArmor?: string
+	pgpKeyId?: string
+	/** Mailbox B route PGP public (encrypt `voice_offer_fetch`). */
+	routePublicKeyArmor?: string
+	/** Legacy domains. Shell HTTP does not use these as URLs. */
+	entryDomains?: string[]
+	/** Guardian IP roster. Shell picks the entry; PWA must not pass a URL. */
+	siNodes?: NativeSiNode[]
+	/** This wallet's mailbox B IP. Shell never POSTs here. */
+	mailboxIp?: string
+	eoa?: string
+}
+
 export type CashTreesNativeNfcBridge = {
 	getNfcStatus: () => string
 	startPhysicalCardBind: () => void
@@ -28,6 +51,11 @@ export type CashTreesNativeNfcBridge = {
 	listInstalledWalletApps?: (payload?: { requestId: string; queries?: NativeInstalledAppQuery[] }) => void | string
 	/** PWA → Native 通用状态（Footer 角标、App 图标 badge 等） */
 	publishAppState?: (state: Record<string, unknown>) => void
+	/**
+	 * iOS: POST already-signed `registerPushDevice` body via URLSession.
+	 * Result: `cashtreesios` `{ action: 'registerPushDeviceHttp', requestId, ok }`.
+	 */
+	registerPushDeviceHttp?: (payload: { requestId: string; url: string; body: string }) => void
 	/** Enter Chat: clear offline tray only; badge stays unread via publishAppState */
 	clearOfflineChatAlerts?: () => void
 	/** @deprecated Shell may still expose; PWA must not call for inbound chat (SI push only). */
@@ -37,6 +65,15 @@ export type CashTreesNativeNfcBridge = {
 	/** Android: AudioRecord outside WebView. Returns true when recording starts. */
 	startNativeVoiceMic?: () => boolean
 	stopNativeVoiceMic?: () => void
+	/**
+	 * Inject recipient **user PGP** private (armored) for killed-app CallKit /
+	 * Incoming identity. Optional mailbox route public + entry domains for
+	 * `voice_offer_fetch`. Never send the EOA mnemonic for display.
+	 */
+	setNativeChatPgpSecrets?: (payload: NativeChatPgpSecretsPayload) => void
+	/** Roster-only update. Shell picks `http://{ip}/post`; PWA does not pass a URL. */
+	setNativeSiNodeRoster?: (payload: { siNodes?: NativeSiNode[]; mailboxIp?: string }) => void
+	postPgpCiphertext?: (payload: { requestId: string; data: string; excludeIps?: string[] }) => void
 	debugLog?: (level: string, message: string) => void
 }
 
@@ -316,6 +353,11 @@ export function listInstalledWalletAppsFromNative(
 type CashTreesNativeWindow = Window & {
 	CashTreesAndroid?: CashTreesAndroidOpenUrlBridge
 	CashTreesIOS?: CashTreesNativeNfcBridge
+	webkit?: {
+		messageHandlers?: {
+			CashTreesIOS?: { postMessage: (message: unknown) => void }
+		}
+	}
 }
 
 function cashTreesNativeWindow(): CashTreesNativeWindow | null {
@@ -359,6 +401,8 @@ export function getCashTreesNativeNfcHost(): 'android' | 'ios' | null {
 	if (!w) return null
 	if (hasCashTreesAndroidBridge(w)) return 'android'
 	if (typeof w.CashTreesIOS?.getNfcStatus === 'function') return 'ios'
+	// Bridge inject may lag documentStart; WK messageHandlers still means iOS shell.
+	if (w.webkit?.messageHandlers?.CashTreesIOS) return 'ios'
 	return null
 }
 
@@ -415,7 +459,181 @@ export function stopNativeVoiceMic(): void {
 
 /** PWA 是否运行在 iOS / Android 原生 WebView 壳内（CashTreesIOS / CashTreesAndroid 已注入）。 */
 export function isCashTreesNativeWebView(): boolean {
-	return getCashTreesNativeNfcHost() !== null
+	if (getCashTreesNativeNfcHost() !== null) return true
+	if (typeof window === 'undefined') return false
+	const w = cashTreesNativeWindow()
+	if (!w) return false
+	// Fallback when NFC host probe is null but WK / Android bridge exists.
+	if (w.webkit?.messageHandlers?.CashTreesIOS) return true
+	if (hasCashTreesAndroidBridge(w)) return true
+	return false
+}
+
+/**
+ * Persist recipient user PGP (and optional mailbox route / entry domains) in
+ * the native shell for killed-app `voice_offer_fetch` + local decrypt.
+ * Idempotent; call after Chat route register and whenever PGP rotates.
+ */
+export function setNativeChatPgpSecrets(payload: NativeChatPgpSecretsPayload): boolean {
+	if (typeof window === 'undefined') return false
+	if (!isCashTreesNativeWebView()) return false
+	const privateKeyArmor = String(payload.privateKeyArmor || '').trim()
+	if (!privateKeyArmor.includes('BEGIN PGP PRIVATE KEY')) return false
+
+	const body: NativeChatPgpSecretsPayload = {
+		privateKeyArmor,
+		publicKeyArmor: payload.publicKeyArmor?.trim() || undefined,
+		pgpKeyId: payload.pgpKeyId?.trim() || undefined,
+		routePublicKeyArmor: payload.routePublicKeyArmor?.trim() || undefined,
+		entryDomains: Array.isArray(payload.entryDomains)
+			? payload.entryDomains.map((d) => String(d || '').trim()).filter(Boolean).slice(0, 64)
+			: undefined,
+		siNodes: normalizeNativeSiNodes(payload.siNodes),
+		mailboxIp: payload.mailboxIp?.trim() || undefined,
+		eoa: payload.eoa?.trim() || undefined,
+	}
+
+	const host = getCashTreesNativeNfcHost()
+	try {
+		if (host === 'ios') {
+			const ios = window.CashTreesIOS as
+				| { setNativeChatPgpSecrets?: (p: NativeChatPgpSecretsPayload) => void }
+				| undefined
+			if (typeof ios?.setNativeChatPgpSecrets === 'function') {
+				ios.setNativeChatPgpSecrets(body)
+				return true
+			}
+			const handler = (
+				window as unknown as {
+					webkit?: { messageHandlers?: { CashTreesIOS?: { postMessage: (m: unknown) => void } } }
+				}
+			).webkit?.messageHandlers?.CashTreesIOS
+			if (!handler?.postMessage) return false
+			handler.postMessage({ action: 'setNativeChatPgpSecrets', ...body })
+			return true
+		}
+		if (host === 'android') {
+			const android = window.CashTreesAndroid as
+				| { setNativeChatPgpSecrets?: (json: string) => void }
+				| undefined
+			if (typeof android?.setNativeChatPgpSecrets !== 'function') return false
+			callAndroidBridge(android, 'setNativeChatPgpSecrets', JSON.stringify(body))
+			return true
+		}
+	} catch {
+		return false
+	}
+	return false
+}
+
+function normalizeNativeSiNodes(nodes: NativeSiNode[] | undefined): NativeSiNode[] | undefined {
+	if (!Array.isArray(nodes) || !nodes.length) return undefined
+	const out: NativeSiNode[] = []
+	for (const node of nodes) {
+		const ip = String(node?.ip || '').trim()
+		if (!ip) continue
+		out.push({
+			ip,
+			domain: node.domain?.trim() || undefined,
+			region: node.region?.trim() || undefined,
+		})
+	}
+	return out.length ? out : undefined
+}
+
+export type NativePgpCipherPostResult = {
+	ok: boolean
+	status: number
+	body: string
+	error: string
+}
+
+/**
+ * Ask the native shell to POST `{ data: armor }` to `http://{ip}/post`.
+ * The shell chooses the entry IP. Returns `bridge_missing` when the shell
+ * has no method yet, and `no_si_roster` when the shell has no IP list.
+ */
+export function postNativePgpCiphertext(
+	armor: string,
+	excludeIps?: string[],
+	timeoutMs = 15_000,
+): Promise<NativePgpCipherPostResult> {
+	const fail = (error: string): NativePgpCipherPostResult => ({
+		ok: false,
+		status: 0,
+		body: '',
+		error,
+	})
+	if (typeof window === 'undefined' || !isCashTreesNativeWebView()) {
+		return Promise.resolve(fail('bridge_missing'))
+	}
+	const data = String(armor || '').trim()
+	if (!data.includes('BEGIN PGP MESSAGE')) return Promise.resolve(fail('not_pgp'))
+	const requestId = `pgp_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
+	const payload = {
+		requestId,
+		data,
+		excludeIps: (excludeIps || []).map((ip) => String(ip || '').trim()).filter(Boolean),
+	}
+	return new Promise((resolve) => {
+		let settled = false
+		const finish = (result: NativePgpCipherPostResult) => {
+			if (settled) return
+			settled = true
+			window.clearTimeout(timer)
+			window.removeEventListener('cashtreesios', onNative as EventListener)
+			window.removeEventListener('cashtreesandroid', onNative as EventListener)
+			resolve(result)
+		}
+		const onNative = (event: Event) => {
+			const detail = (event as CustomEvent).detail as {
+				action?: string
+				requestId?: string
+				ok?: boolean
+				status?: number
+				body?: string
+				error?: string
+			} | null
+			if (!detail || detail.action !== 'postPgpCiphertext' || detail.requestId !== requestId) return
+			finish({
+				ok: detail.ok === true,
+				status: Number(detail.status) || 0,
+				body: typeof detail.body === 'string' ? detail.body : '',
+				error: detail.ok === true ? '' : String(detail.error || 'post_failed'),
+			})
+		}
+		const timer = window.setTimeout(() => finish(fail('timeout')), timeoutMs)
+		window.addEventListener('cashtreesios', onNative as EventListener)
+		window.addEventListener('cashtreesandroid', onNative as EventListener)
+		try {
+			const ios = window.CashTreesIOS as
+				| { postPgpCiphertext?: (p: typeof payload) => void }
+				| undefined
+			if (typeof ios?.postPgpCiphertext === 'function') {
+				ios.postPgpCiphertext(payload)
+				return
+			}
+			const handler = (
+				window as unknown as {
+					webkit?: { messageHandlers?: { CashTreesIOS?: { postMessage: (m: unknown) => void } } }
+				}
+			).webkit?.messageHandlers?.CashTreesIOS
+			if (handler?.postMessage) {
+				handler.postMessage({ action: 'postPgpCiphertext', ...payload })
+				return
+			}
+			const android = window.CashTreesAndroid as
+				| { postPgpCiphertext?: (json: string) => void }
+				| undefined
+			if (typeof android?.postPgpCiphertext === 'function') {
+				callAndroidBridge(android, 'postPgpCiphertext', JSON.stringify(payload))
+				return
+			}
+			finish(fail('bridge_missing'))
+		} catch {
+			finish(fail('bridge_missing'))
+		}
+	})
 }
 
 export function getCashTreesNativeNfcBridge(): CashTreesNativeNfcBridge | null {

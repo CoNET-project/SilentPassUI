@@ -45,6 +45,11 @@ import { resolveSigningPrivateKeyArmor } from "@/utils/resolveSigningPrivateKeyA
 import { searchResultFromProfileRecord } from "@/utils/beamioTagDatabase"
 import { bindStashedShareRefereesIfNeeded, recordDiscoverShareClickIfNeeded } from '@/utils/discoverShareClickEvent'
 import { DISCOVER_SHARE_REFERRER_STASHED_EVENT } from '@/utils/discoverShareReferrerStash'
+import {
+  AGENT_INVITE_INTRODUCER_STASHED_EVENT,
+  stashAgentInviteIntroducerFromCurrentUrl,
+} from '@/utils/agentInviteIntroducerStash'
+import { bindStashedAgentInviteReferrerIfNeeded } from '@/utils/agentInviteReferrerBind'
 import { baseEndpoint, USDCContract_BASE } from "@/utils/constants"
 import usdc_abi from "@/services/ABI/usdc_abi.json"
 import Vouchers from "@/pages/Vouchers/index"
@@ -103,7 +108,7 @@ import { readDiscoverShareReferrer, stashDiscoverShareReferrer } from "@/utils/d
 import { applyPendingConsumerDeepLinkIfNeeded } from "@/utils/pendingConsumerDeepLink"
 import { routeDiscoverMerchantDeepLink } from "@/utils/routeDiscoverMerchantDeepLink"
 import { publishNativePwaLog } from "@/utils/cashTreesNativePwaLog"
-import { declineIncomingVoiceOffer, peerVoiceMaterial, timeoutIncomingVoiceOffer } from '@/services/voiceCallController'
+import { declineIncomingVoiceOffer, resolvePeerVoiceMaterialAsync, timeoutIncomingVoiceOffer } from '@/services/voiceCallController'
 import { BEAMIO_WALLET_READY_EVENT } from "@/utils/beamioWalletReadyEvent"
 import { ensureConetAaForProfileAndPersist } from "@/utils/ensureConetAa"
 import { ingestAaMultisigFromChat } from '@/utils/aaMultisigIngest'
@@ -255,9 +260,10 @@ function AppShell() {
   const navigate = useNavigate()
   const location = useLocation()
 
-  /** Restore merchant/coupon + `ref=` stashed on app-download before App Store install. */
+  /** Restore merchant/coupon + `ref=` / `invite=` stashed on app-download before App Store install. */
   useLayoutEffect(() => {
     applyPendingConsumerDeepLinkIfNeeded()
+    stashAgentInviteIntroducerFromCurrentUrl()
   }, [])
 
   /** 钱包解锁后静默 ensure CoNET AA（任意路由；深链 /discover 不再仅限 Home `/`）。 */
@@ -276,6 +282,25 @@ function AppShell() {
     }
     void ensureConetAaForProfileAndPersist(profile, setProfiles)
   }, [isInitialLoading, profiles?.[0]?.keyID, profiles?.[0]?.aaAccount, setProfiles])
+
+  /** Agent invite `invite=0x…` → offline RegisterReferrer under introducer. */
+  useEffect(() => {
+    if (isInitialLoading) return
+    const eoa = profiles?.[0]?.keyID?.trim()
+    if (!eoa || !ethers.isAddress(eoa)) return
+    void bindStashedAgentInviteReferrerIfNeeded(eoa)
+  }, [isInitialLoading, profiles?.[0]?.keyID])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const onStashed = () => {
+      const eoa = profiles?.[0]?.keyID?.trim()
+      if (!eoa || !ethers.isAddress(eoa)) return
+      void bindStashedAgentInviteReferrerIfNeeded(eoa)
+    }
+    window.addEventListener(AGENT_INVITE_INTRODUCER_STASHED_EVENT, onStashed)
+    return () => window.removeEventListener(AGENT_INVITE_INTRODUCER_STASHED_EVENT, onStashed)
+  }, [profiles?.[0]?.keyID])
 
   /** Share-link `ref=` binds need the opener's AA, which usually appears after the first open. */
   useEffect(() => {
@@ -905,6 +930,12 @@ function AppShell() {
 
 		if (!hasLocalPlaintextMnemonic(temp)) {
 			publishNativePwaLog('info', '[AppShell] init skip: wallet recover required (no local mnemonic) — gossip not started')
+			// Still hydrate profiles + kick push flush so VoIP can register once signing
+			// material exists (or after recover), without waiting for a 60s flush window.
+			setCoNET_Data(temp)
+			setProfiles(profiles)
+			ensurePushDeviceTokenListener()
+			ensureNativePushBoundForWallet(profiles[0])
 			setIsInitialLoading(true)
 			return
 		}
@@ -1076,7 +1107,18 @@ function AppShell() {
 	profilesForVoiceDeclineRef.current = profiles
 	allNodesForVoiceDeclineRef.current = allNodes
 	setProfilesForVoiceRef.current = setProfiles
+	/**
+	 * CallKit Decline / Telecom Decline can fire before gossip decrypt has
+	 * remembered the offer, or before chats[] has the caller's route/PGP.
+	 * Retry like Answer until we can send voice_call_reject_v1 to offer.from —
+	 * never the currently open Chat peer — so the dialer stops "Ringing".
+	 */
 	useEffect(() => {
+		let retryTimer: number | undefined
+		let cancelled = false
+		let attempts = 0
+		let inFlightKey: string | null = null
+
 		const onNativeDecline = (event: Event) => {
 			const detail = (event as CustomEvent<{
 				action?: string
@@ -1085,8 +1127,14 @@ function AppShell() {
 			}>).detail
 			if (detail?.action !== 'callRejected' && detail?.action !== 'callTimedOut') return
 			const terminalStatus = detail.action === 'callTimedOut' ? 'timed_out' : 'declined'
-			const sessionId = detail.sessionId || ''
-			const callId = detail.callId || ''
+			const sessionId = String(detail.sessionId || '').trim()
+			const callId = String(detail.callId || '').trim()
+			if (!sessionId && !callId) return
+			const flightKey = `${callId}:${sessionId}:${detail.action}`
+			if (inFlightKey === flightKey) return
+			inFlightKey = flightKey
+			attempts = 0
+
 			const currentProfiles = profilesForVoiceDeclineRef.current
 			if (Array.isArray(currentProfiles) && currentProfiles[0] && (sessionId || callId)) {
 				const rows: PhoneCallRecord[] = Array.isArray(currentProfiles[0].phoneCalls) ? currentProfiles[0].phoneCalls : []
@@ -1116,31 +1164,63 @@ function AppShell() {
 					void storeSystemData()
 				}
 			}
-			const offer = lookupIncomingVoiceOffer(detail.callId || '', detail.sessionId || '')
-			const privateKey = resolveSigningPrivateKeyArmor(profilesForVoiceDeclineRef.current?.[0])
-			if (!offer || !privateKey) return
-			const caller = offer.from || ''
-			const chats = profilesForVoiceDeclineRef.current?.[0]?.chats as
-				| Array<{ address?: string; chatData?: { publicArmored?: string; routersArmoreds?: string } }>
-				| undefined
-			const { peerPgp, peerRoute } = peerVoiceMaterial(chats, caller)
-			if (!peerPgp && !peerRoute) return
-			const localWallet = new ethers.Wallet(privateKey).address
-			const notify = detail.action === 'callTimedOut'
-				? timeoutIncomingVoiceOffer
-				: declineIncomingVoiceOffer
-			void notify({
-				privateKey,
-				localCallId: localWallet,
-				peerEoa: caller,
-				peerPgp,
-				peerRoute,
-				allNodes: allNodesForVoiceDeclineRef.current || [],
-			}, offer)
+
+			const tryNotifyPeer = async () => {
+				if (cancelled) return
+				const offer = lookupIncomingVoiceOffer(callId, sessionId)
+				const privateKey = resolveSigningPrivateKeyArmor(profilesForVoiceDeclineRef.current?.[0])
+				if (!offer || !privateKey) {
+					attempts += 1
+					if (attempts < 24) {
+						retryTimer = window.setTimeout(() => { void tryNotifyPeer() }, 500)
+					} else {
+						inFlightKey = null
+					}
+					return
+				}
+				const caller = String(offer.from || '').trim()
+				if (!ethers.isAddress(caller)) {
+					inFlightKey = null
+					return
+				}
+				const chats = profilesForVoiceDeclineRef.current?.[0]?.chats as
+					| Array<{ address?: string; chatData?: { publicArmored?: string; routersArmoreds?: string } }>
+					| undefined
+				const { peerPgp, peerRoute } = await resolvePeerVoiceMaterialAsync(chats, caller, privateKey)
+				if (!peerPgp && !peerRoute) {
+					attempts += 1
+					if (attempts < 24) {
+						retryTimer = window.setTimeout(() => { void tryNotifyPeer() }, 500)
+					} else {
+						inFlightKey = null
+					}
+					return
+				}
+				const localWallet = new ethers.Wallet(privateKey).address
+				const notify = detail.action === 'callTimedOut'
+					? timeoutIncomingVoiceOffer
+					: declineIncomingVoiceOffer
+				try {
+					await notify({
+						privateKey,
+						localCallId: localWallet,
+						peerEoa: caller,
+						peerPgp,
+						peerRoute,
+						allNodes: allNodesForVoiceDeclineRef.current || [],
+					}, offer)
+				} finally {
+					inFlightKey = null
+				}
+			}
+
+			void tryNotifyPeer()
 		}
 		window.addEventListener('cashtreesandroid', onNativeDecline)
 		window.addEventListener('cashtreesios', onNativeDecline)
 		return () => {
+			cancelled = true
+			if (retryTimer !== undefined) window.clearTimeout(retryTimer)
 			window.removeEventListener('cashtreesandroid', onNativeDecline)
 			window.removeEventListener('cashtreesios', onNativeDecline)
 		}
@@ -1651,7 +1731,8 @@ function AppShell() {
 							callId: signal.callId,
 							sessionId: signal.sessionId,
 							peerAddress: provenAddress,
-							displayName: localTag || provenAddress || 'Incoming voice call',
+							// Never send EOA as CallKit title — dual EOA/@tag collapses bottom chrome.
+							displayName: localTag || 'Beamio',
 							...claim,
 						})
 						void (async () => {
@@ -1681,7 +1762,7 @@ function AppShell() {
 								callId: signal.callId,
 								sessionId: signal.sessionId,
 								peerAddress: provenAddress,
-								displayName: tag || provenAddress || 'Incoming voice call',
+								displayName: tag || 'Beamio',
 								...nextClaim,
 							})
 						})()

@@ -3,7 +3,8 @@
  * 1) Mailbox ACK — encrypt to mailbox B route PGP (`gossip_delivery_ack`)
  * 2) Sender receipt — encrypt to sender user PGP (`beamio_chat_delivery_receipt_v1`)
  */
-import { createMessage, enums, encrypt, readKey } from 'openpgp'
+import { createMessage, encrypt, enums, readKey } from 'openpgp'
+import { isCashTreesNativeWebView, postNativePgpCiphertext } from '@/utils/cashTreesNativeNfc'
 import { ethers } from 'ethers'
 
 export const BEAMIO_CHAT_DELIVERY_RECEIPT_V1 = 'beamio_chat_delivery_receipt_v1' as const
@@ -123,6 +124,16 @@ async function postEncryptedToMailboxRoute(
 	const candidates = entryNodes.filter(n => !mailboxDomains.has(n.domain))
 	const pool = candidates.length ? candidates : entryNodes
 	if (!pool.length) return false
+	if (isCashTreesNativeWebView()) {
+		const excludeIps = entryNodes
+			.filter(n => n?.ip_addr && mailboxDomains.has(n.domain))
+			.map(n => String(n.ip_addr).trim())
+			.filter(Boolean)
+		const shell = await postNativePgpCiphertext(postData, excludeIps)
+		if (shell.error !== 'no_si_roster' && shell.error !== 'bridge_missing') {
+			return shell.ok
+		}
+	}
 	const payload = JSON.stringify({ data: postData })
 	const results = await Promise.all(
 		pool.slice(0, 6).map(async node => {

@@ -1,4 +1,9 @@
 import { Wallet, verifyMessage } from 'ethers'
+import {
+	ensureBeamioTagProfiles,
+	lookupBeamioTagProfile,
+	searchBeamioTagRemote,
+} from '@/services/beamioTagWorkerBridge'
 import { dispatchNativeSystemCallAction } from './cashTreesNativeNfc'
 import { publishNativePwaLog } from './cashTreesNativePwaLog'
 
@@ -314,10 +319,10 @@ export function applyNativeIncomingVoiceOfferFromLine(raw: string): boolean {
 	}
 	const mismatch = voiceCallClaimMismatchesKey(signal, callerEoa, '')
 	const callKey = `${signal.callId.trim()}:${signal.sessionId.trim()}`
-	// Banner title stays the recovered wallet until a looked-up BeamioTag
-	// replaces it. The offer's callerTag is a claim, not the caller.
+	// CallKit layout collapses when displayName is a short EOA capsule and a
+	// later report swaps in @tag. Never send an address as CallKit title.
 	const proven = callerEoa || ''
-	const displayName = proven
+	const displayName = !mismatch && claimedTag ? claimedTag : 'Beamio'
 	const payload = {
 		callId: signal.callId,
 		sessionId: signal.sessionId,
@@ -360,12 +365,60 @@ export function applyNativeIncomingVoiceOfferFromLine(raw: string): boolean {
 		const timer = setTimeout(retry, 150)
 		nativeIncomingVoiceRetryTimers.set(callKey, timer)
 	}
+	// Glass Incoming title must be the wallet's @beamioTag. When the first
+	// report only has the EOA, look up and re-report so native can refresh.
+	if (proven && (!displayName || displayName === 'Beamio')) {
+		void enrichNativeIncomingDisplayTag({
+			callId: signal.callId,
+			sessionId: signal.sessionId,
+			peerAddress: proven,
+			signal,
+		})
+	}
 	console.info(
 		delivered
 			? `[voice] incoming offer delivered to native shell (${displayName || 'address'})`
 			: `[voice] incoming offer queued for native bridge (${displayName || 'address'})`,
 	)
 	return delivered
+}
+
+async function enrichNativeIncomingDisplayTag(args: {
+	callId: string
+	sessionId: string
+	peerAddress: string
+	signal: VoiceCallSignal
+}): Promise<void> {
+	const peer = args.peerAddress.toLowerCase()
+	try {
+		await ensureBeamioTagProfiles([peer], { maxPerTick: 4 })
+		const local = await lookupBeamioTagProfile(peer)
+		let username = local?.accountName || local?.username || ''
+		if (!username) {
+			const res = await searchBeamioTagRemote(peer)
+			const results = res?.results
+			const rows = Array.isArray(results) ? results : []
+			const hit = rows.find((row: { address?: string }) =>
+				String(row.address || '').toLowerCase() === peer,
+			) as { username?: string; accountName?: string } | undefined
+			username = hit?.username || hit?.accountName || ''
+		}
+		const tag = formatLookedUpBeamioTag(username)
+		if (!tag) return
+		const nextMismatch = voiceCallClaimMismatchesKey(args.signal, peer, tag, true)
+		dispatchNativeSystemCallAction('reportIncomingSystemCall', {
+			callId: args.callId,
+			sessionId: args.sessionId,
+			peerAddress: peer,
+			displayName: tag,
+			claimedTag: nextMismatch ? claimedVoiceCallerTag(args.signal) : '',
+			claimedAddress: nextMismatch ? claimedVoiceCallerAddress(args.signal) : '',
+			identityWarning: nextMismatch ? VOICE_CALL_IDENTITY_WARNING : '',
+		})
+		publishNativePwaLog('info', `[voice] native report tag upgrade tag=${tag}`)
+	} catch {
+		// Keep last native UI; native shell may still enrich via search-users.
+	}
 }
 
 export const VOICE_MAX_FRAME_B64 = 12_000

@@ -60,9 +60,15 @@ import {
 	sendMessage,
 	makeMessage,
 	refreshChatMailboxPresence,
+	refreshPeerNativeWakeable,
 	alignLiveGossipRouteToChain,
 } from '@/services/chat'
-import { claimChatOnlineQuery, releaseChatOnlineQuery, rememberPeerOnline } from '@/services/beamioTagMailboxRefresh'
+import {
+	claimChatOnlineQuery,
+	releaseChatOnlineQuery,
+	rememberPeerOnline,
+	rememberPeerNativeWakeable,
+} from '@/services/beamioTagMailboxRefresh'
 import {
 	startWorkerVoiceListen,
 	stopWorkerVoiceListen,
@@ -132,7 +138,7 @@ import {
 	type VoiceCallSignal,
 } from '@/utils/voiceCallSession'
 import { startAndroidNativeMicCapture, startVoiceCapture, VoicePlaybackBuffer, voiceCaptureConstraints, voiceLevelFromPcmBytes } from '@/services/voiceCallMedia'
-import { createVoiceCallController, declineIncomingVoiceOffer, timeoutIncomingVoiceOffer, type VoiceCallController } from '@/services/voiceCallController'
+import { createVoiceCallController, declineIncomingVoiceOffer, resolvePeerVoiceMaterialAsync, timeoutIncomingVoiceOffer, type VoiceCallController } from '@/services/voiceCallController'
 import { useReliableTapHandler, RELIABLE_TAP_BUTTON_CLASS } from '@/utils/reliableTap'
 import {
 	createChatFileArchive,
@@ -2601,13 +2607,18 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			if (!channel) {
 				setVoiceError(VOICE_RELAY_OPEN_ERROR)
 				setVoiceCallConnecting(false)
+				setVoiceCallState('idle')
+				voiceCallStartingRef.current = false
 				return
 			}
 			voiceControllerRef.current = controller
 			const sessionId = channel.sessionId
 			const key = channel.sessionKey
 			voiceCallSessionRef.current = sessionId
+			voiceCallPeerSessionRef.current = null
 			voiceCallKeyRef.current = key
+			voiceReceivedSeqRef.current = -1
+			voiceReceivedSeqsRef.current.clear()
 			setVoiceCallMuted(false)
 			setVoiceLevelSamples([])
 			const signal = channel.signal
@@ -2761,7 +2772,8 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 						callId: signal.callId,
 						sessionId: signal.sessionId,
 						peerAddress: provenAddress,
-						displayName: tag || provenAddress || 'Incoming voice call',
+						// Never send EOA as CallKit title — dual EOA/@tag collapses bottom chrome.
+						displayName: tag || 'Beamio',
 						...nextClaim,
 					})
 				})()
@@ -2782,7 +2794,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 						callId: signal.callId,
 						sessionId: signal.sessionId,
 						peerAddress: provenAddress,
-						displayName: localTag || provenAddress || 'Incoming voice call',
+						displayName: localTag || 'Beamio',
 						...claim,
 					})
 				}
@@ -3010,7 +3022,8 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 					callId: offer.callId,
 					sessionId: offer.sessionId,
 					peerAddress: offer.from,
-					displayName: offer.from,
+					// Opaque title only — EOA as CallKit name collapses bottom chrome.
+					displayName: 'Beamio',
 				})
 			}
 			await startVoiceMedia(earlyMicStream)
@@ -3094,19 +3107,29 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		}
 	}, [incomingVoiceOffer?.sessionId, stopAndroidIncomingMicPrewarm])
 
-	const rejectVoiceCall = useCallback(async () => {
-		const offer = incomingVoiceOffer
+	const rejectVoiceCall = useCallback(async (offerOverride?: VoiceCallSignal | null) => {
+		const offer = offerOverride || incomingVoiceOffer
 		if (!offer || incomingVoiceAction !== 'idle') return
 		stopAndroidIncomingMicPrewarm(String(offer.sessionId || ''))
 		setIncomingVoiceAction('declining')
 		const localWallet = new ethers.Wallet(privateKey).address
 		try {
+			// Always resolve materials for offer.from — never the open Chat thread.
+			const chats = (profiles?.[0]?.chats || []) as Array<{
+				address?: string
+				chatData?: { publicArmored?: string; routersArmoreds?: string }
+			}>
+			const { peerPgp, peerRoute } = await resolvePeerVoiceMaterialAsync(
+				chats,
+				String(offer.from || ''),
+				privateKey,
+			)
 			await declineIncomingVoiceOffer({
 				privateKey,
 				localCallId: String(CoNET_Data?.beamio?.accountName || localWallet).trim() || localWallet,
 				peerEoa: offer.from,
-				peerPgp: chatData.chatData.publicArmored,
-				peerRoute: chatData.chatData.routersArmoreds,
+				peerPgp,
+				peerRoute,
 				allNodes,
 			}, offer as VoiceCallSignal)
 			upsertPhoneCallRecord({
@@ -3126,11 +3149,10 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		}
 	}, [
 		allNodes,
-		chatData.chatData.publicArmored,
-		chatData.chatData.routersArmoreds,
 		incomingVoiceAction,
 		incomingVoiceOffer,
 		privateKey,
+		profiles,
 		stopAndroidIncomingMicPrewarm,
 		upsertPhoneCallRecord,
 	])
@@ -3383,18 +3405,31 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			if (detail.action === 'callAnswered' && matchesIncoming) {
 				void acceptVoiceCall(nativeOffer as VoiceCallSignal)
 			} else if (detail.action === 'callRejected' && matchesIncoming) {
-				void rejectVoiceCall()
-			} else if (detail.action === 'callTimedOut' && matchesIncoming && incomingVoiceOffer && privateKey) {
-				const offer = incomingVoiceOffer
+				// Pass lookup offer so cold-start Decline still sends voice_call_reject_v1
+				// even when React state has not hydrated incomingVoiceOffer yet.
+				void rejectVoiceCall(nativeOffer as VoiceCallSignal)
+			} else if (detail.action === 'callTimedOut' && matchesIncoming && nativeOffer && privateKey) {
+				const offer = nativeOffer as VoiceCallSignal
 				const localWallet = new ethers.Wallet(privateKey).address
-				void timeoutIncomingVoiceOffer({
-					privateKey,
-					localCallId: String(CoNET_Data?.beamio?.accountName || localWallet).trim() || localWallet,
-					peerEoa: offer.from,
-					peerPgp: chatData.chatData.publicArmored,
-					peerRoute: chatData.chatData.routersArmoreds,
-					allNodes,
-				}, offer as VoiceCallSignal)
+				void (async () => {
+					const chats = (profiles?.[0]?.chats || []) as Array<{
+						address?: string
+						chatData?: { publicArmored?: string; routersArmoreds?: string }
+					}>
+					const { peerPgp, peerRoute } = await resolvePeerVoiceMaterialAsync(
+						chats,
+						String(offer.from || ''),
+						privateKey,
+					)
+					await timeoutIncomingVoiceOffer({
+						privateKey,
+						localCallId: String(CoNET_Data?.beamio?.accountName || localWallet).trim() || localWallet,
+						peerEoa: offer.from,
+						peerPgp,
+						peerRoute,
+						allNodes,
+					}, offer)
+				})()
 				upsertPhoneCallRecord({
 					callId: offer.callId,
 					sessionId: offer.sessionId,
@@ -3406,7 +3441,13 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				})
 				setIncomingVoiceOffer(null)
 			} else if (detail.action === 'callEnded') {
-				void endVoiceCall()
+				// Legacy iOS: unanswered Decline was mis-tagged as callEnded. If we are
+				// still ringing (no active media controller), treat as reject so dialer stops.
+				if (matchesIncoming && !voiceControllerRef.current) {
+					void rejectVoiceCall(nativeOffer as VoiceCallSignal)
+				} else {
+					void endVoiceCall()
+				}
 			}
 		}
 		window.addEventListener('cashtreesios', onNativeCallAction)
@@ -3415,7 +3456,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			window.removeEventListener('cashtreesios', onNativeCallAction)
 			window.removeEventListener('cashtreesandroid', onNativeCallAction)
 		}
-	}, [acceptVoiceCall, allNodes, chatData.chatData.publicArmored, chatData.chatData.routersArmoreds, endVoiceCall, incomingVoiceOffer, privateKey, rejectVoiceCall, upsertPhoneCallRecord])
+	}, [acceptVoiceCall, allNodes, endVoiceCall, incomingVoiceOffer, privateKey, profiles, rejectVoiceCall, upsertPhoneCallRecord])
 
 	// Turn an unanswered offer into an explicit chat record instead of leaving
 	// the protocol message as an empty bubble.
@@ -3431,14 +3472,25 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 					.find((item: PhoneCallRecord) => item.sessionId === incoming.sessionId)
 				if (current?.status === 'ringing') {
 					const localWallet = new ethers.Wallet(privateKey).address
-					void timeoutIncomingVoiceOffer({
-						privateKey,
-						localCallId: String(CoNET_Data?.beamio?.accountName || localWallet).trim() || localWallet,
-						peerEoa: incoming.from,
-						peerPgp: chatData.chatData?.publicArmored?.trim() || '',
-						peerRoute: chatData.chatData?.routersArmoreds?.trim() || '',
-						allNodes,
-					}, incoming as VoiceCallSignal)
+					void (async () => {
+						const chats = (profiles?.[0]?.chats || []) as Array<{
+							address?: string
+							chatData?: { publicArmored?: string; routersArmoreds?: string }
+						}>
+						const { peerPgp, peerRoute } = await resolvePeerVoiceMaterialAsync(
+							chats,
+							String(incoming.from || ''),
+							privateKey,
+						)
+						await timeoutIncomingVoiceOffer({
+							privateKey,
+							localCallId: String(CoNET_Data?.beamio?.accountName || localWallet).trim() || localWallet,
+							peerEoa: incoming.from,
+							peerPgp,
+							peerRoute,
+							allNodes,
+						}, incoming as VoiceCallSignal)
+					})()
 					upsertPhoneCallRecord({
 						...current,
 						status: 'timed_out',
@@ -3461,7 +3513,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		}, Math.max(0, expiresAt - Date.now()))
 
 		return () => window.clearTimeout(timer)
-	}, [allNodes, chatData.chatData?.publicArmored, chatData.chatData?.routersArmoreds, endVoiceCall, incomingVoiceOffer, privateKey, profiles, upsertPhoneCallRecord, voiceCallState])
+	}, [allNodes, endVoiceCall, incomingVoiceOffer, privateKey, profiles, upsertPhoneCallRecord, voiceCallState])
 
 	useEffect(() => {
 		const playback = new VoicePlaybackBuffer()
@@ -3481,8 +3533,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			voiceCallState !== 'outgoing' ||
 			frame.type !== 'voice_frame_v1' ||
 			typeof frame.payload !== 'string' ||
-			frame.callId !== voiceCallOfferRef.current?.callId ||
-			(frame.sessionId !== voiceCallPeerSessionRef.current)
+			frame.callId !== voiceCallOfferRef.current?.callId
 		) {
 			if (frame?.type === 'voice_frame_v1') {
 				console.warn('[voice-rx] drop', {
@@ -3494,23 +3545,28 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			}
 			return
 		}
-		console.warn('[voice-rx] take', frame.seq)
-		const seq = Number(frame.seq)
-		if (!Number.isSafeInteger(seq) || seq < 0) return
-		// Fan-out through multiple entry nodes can deliver the same frame more
-		// than once. Never enqueue duplicates or old frames into the PCM player.
-		if (
-			voiceReceivedSeqsRef.current.has(seq) ||
-			seq <= voiceReceivedSeqRef.current
-		) return
-		voiceReceivedSeqsRef.current.add(seq)
-		voiceReceivedSeqRef.current = seq
-		if (voiceReceivedSeqsRef.current.size > 256) {
-			const floor = seq - 128
-			for (const seen of voiceReceivedSeqsRef.current) {
-				if (seen < floor) voiceReceivedSeqsRef.current.delete(seen)
-			}
+		const peerSession = voiceCallPeerSessionRef.current
+		const offerSession = voiceCallOfferRef.current?.sessionId
+		// During Ringing the dialer has no peerSession yet (accept sets it).
+		// Callee Decline arrives as a temp-relay frame with callId matched and
+		// sessionId either equal to our ring offer or a fresh envelope id —
+		// requiring peerSession here dropped every reject and left desktop
+		// stuck on Ringing.
+		const sessionOk =
+			!peerSession ||
+			frame.sessionId === peerSession ||
+			(!!offerSession && frame.sessionId === offerSession)
+		if (!sessionOk) {
+			console.warn('[voice-rx] drop', {
+				state: voiceCallState,
+				call: true,
+				session: frame.sessionId,
+				peer: peerSession,
+				offer: offerSession,
+			})
+			return
 		}
+		console.warn('[voice-rx] take', frame.seq)
 		void (async () => {
 			try {
 				const plain = await decryptVoiceFrame(
@@ -3545,6 +3601,24 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 						false,
 					)
 					return
+				}
+				// Media only after the callee accept has set peerSession.
+				if (!peerSession) return
+				const seq = Number(frame.seq)
+				if (!Number.isSafeInteger(seq) || seq < 0) return
+				// Fan-out through multiple entry nodes can deliver the same frame more
+				// than once. Never enqueue duplicates or old frames into the PCM player.
+				if (
+					voiceReceivedSeqsRef.current.has(seq) ||
+					seq <= voiceReceivedSeqRef.current
+				) return
+				voiceReceivedSeqsRef.current.add(seq)
+				voiceReceivedSeqRef.current = seq
+				if (voiceReceivedSeqsRef.current.size > 256) {
+					const floor = seq - 128
+					for (const seen of voiceReceivedSeqsRef.current) {
+						if (seen < floor) voiceReceivedSeqsRef.current.delete(seen)
+					}
 				}
 				const level = voiceLevelFromPcmBytes(plain)
 				if (level !== null) {
@@ -3778,8 +3852,9 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		}
 	}, [peerTag?.online, peerTag?.nativeWakeable, peerTag?.onlineAt, peerTag?.nativeWakeAt])
 
-	// Open thread owns this wallet's online query. The global BeamioTag record
-	// still supplies native-shell wakeability and the tag image.
+	// Open thread owns this peer's online + native-shell wake queries (every 6s).
+	// Protocol: green dot = online only; call button = online || nativeWakeable
+	// (iOS/Android native shell can be dialed while listen SSE is offline).
 	useEffect(() => {
 		const addr = (chatData.address || '').trim().toLowerCase()
 		const route = chatData.chatData?.routersArmoreds?.trim() || ''
@@ -3790,14 +3865,27 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		let timer: number | undefined
 		const PRESENCE_MS = 6_000
 
-		const persistOnline = (online: boolean) => {
+		const persistPresence = (patch: { online?: boolean; nativeWakeable?: boolean }) => {
 			const apply = (chats: chatData[]): { next: chatData[]; changed: boolean } => {
 				let changed = false
 				const next = chats.map(row => {
 					if (String(row?.address || '').toLowerCase() !== addr) return row
-					if ((row.chatData?.online ?? false) === online) return row
+					let rowChanged = false
+					const nextChat = { ...row.chatData }
+					if (typeof patch.online === 'boolean' && (row.chatData?.online ?? false) !== patch.online) {
+						nextChat.online = patch.online
+						rowChanged = true
+					}
+					if (
+						typeof patch.nativeWakeable === 'boolean' &&
+						(row.chatData?.nativeWakeable ?? false) !== patch.nativeWakeable
+					) {
+						nextChat.nativeWakeable = patch.nativeWakeable
+						rowChanged = true
+					}
+					if (!rowChanged) return row
 					changed = true
-					return { ...row, chatData: { ...row.chatData, online } }
+					return { ...row, chatData: nextChat }
 				})
 				return { next, changed }
 			}
@@ -3834,8 +3922,18 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				if (!cancelled && onlineByAddr.has(addr)) {
 					const online = onlineByAddr.get(addr)!
 					setPeerOnline(current => (current === online ? current : online))
-					persistOnline(online)
+					persistPresence({ online })
 					void rememberPeerOnline(addr, online)
+				}
+				// After online (or if online failed): still probe native wake so
+				// offline iOS/Android shells keep the call button enabled.
+				const wake = await refreshPeerNativeWakeable(addr, route, key)
+				if (!cancelled && wake?.ok) {
+					setPeerNativeWakeable(current =>
+						current === wake.nativeWakeable ? current : wake.nativeWakeable,
+					)
+					persistPresence({ nativeWakeable: wake.nativeWakeable })
+					void rememberPeerNativeWakeable(addr, wake.nativeWakeable)
 				}
 			} finally {
 				if (!cancelled) {

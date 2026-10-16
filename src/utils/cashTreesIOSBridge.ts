@@ -17,6 +17,25 @@ declare global {
         body?: string
       }) => void
       bindPushIdentity?: (payload: { eoa: string; pgpKeyId?: string }) => void
+      setNativeChatPgpSecrets?: (payload: {
+        privateKeyArmor: string
+        publicKeyArmor?: string
+        pgpKeyId?: string
+        routePublicKeyArmor?: string
+        entryDomains?: string[]
+        siNodes?: { ip: string; domain?: string; region?: string }[]
+        mailboxIp?: string
+        eoa?: string
+      }) => void
+      setNativeSiNodeRoster?: (payload: {
+        siNodes?: { ip: string; domain?: string; region?: string }[]
+        mailboxIp?: string
+      }) => void
+      postPgpCiphertext?: (payload: {
+        requestId: string
+        data: string
+        excludeIps?: string[]
+      }) => void
       debugLog?: (level: string, message: string) => void
       openURL?: (payload: { url: string }) => void
       listInstalledWalletApps?: (payload: { requestId: string }) => void
@@ -38,6 +57,10 @@ declare global {
       notifyBackgroundChat?: (json: string) => void
       /** JSON string `{ eoa, pgpKeyId? }` — FCM bind */
       bindPushIdentity?: (json: string) => void
+      /** JSON string — recipient user PGP + optional route/IP roster for voice_offer_fetch */
+      setNativeChatPgpSecrets?: (json: string) => void
+      setNativeSiNodeRoster?: (json: string) => void
+      postPgpCiphertext?: (json: string) => void
       debugLog?: (level: string, message: string) => void
       listInstalledWalletApps?: () => string
     }

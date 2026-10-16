@@ -40,6 +40,8 @@ export function isMeaningfulConsumerAppDeepLink(raw: string): boolean {
 			if (!(u.pathname === '/' || u.pathname === '')) return false
 		}
 		const sp = collectDeepLinkSearchParams(u.toString())
+		const invite = (sp.get('invite') ?? sp.get('Invite') ?? '').trim()
+		if (invite && /^0x[0-9a-fA-F]{40}$/.test(invite)) return true
 		if (parseDiscoverMerchantFromParams(sp)) return true
 		if (parseCouponOpenClaimFromParams(sp)) return true
 		if (isRedeemDeepLink(u.toString())) return true

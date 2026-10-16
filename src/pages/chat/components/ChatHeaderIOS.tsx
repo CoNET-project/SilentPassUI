@@ -93,8 +93,14 @@ export function ChatHeaderIOS({
                 "pointer-events-auto grid h-11 w-11 place-items-center rounded-full bg-white/50 text-slate-900 shadow-[0_18px_38px_rgba(15,23,42,0.14)] ring-1 ring-white/60 backdrop-blur-xl transition active:scale-[0.98]",
                 !canPlaceCall || callBusy ? "cursor-not-allowed opacity-40" : "",
               ].join(" ")}
-              aria-label={!canPlaceCall ? "Voice call unavailable while offline" : callBusy ? "Calling" : "Start voice call"}
-              title={!canPlaceCall ? "Voice call unavailable while offline" : callBusy ? "Calling" : "Start voice call"}
+              aria-label={!canPlaceCall ? "Voice call unavailable" : callBusy ? "Calling" : "Start voice call"}
+              title={
+                !canPlaceCall
+                  ? "Voice call unavailable (peer offline and not native-wakeable)"
+                  : callBusy
+                    ? "Calling"
+                    : "Start voice call"
+              }
               aria-busy={callBusy}
             >
               <Phone className="h-5 w-5" strokeWidth={2.4} aria-hidden />

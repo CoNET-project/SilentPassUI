@@ -74,7 +74,10 @@ const sendVoiceCallControlToTemporaryRelay = async (
 		return await sendWorkerVoiceFrame(options.peerRoute, {
 			type: 'voice_frame_v1',
 			callId: offer.callId,
-			sessionId: randomMailboxVoiceSessionId(),
+			// Prefer the caller's ring session so the dialer can match before
+			// accept sets voiceCallPeerSessionRef. Fall back to a fresh id
+			// only when the offer has no sessionId (should not happen).
+			sessionId: offer.sessionId || randomMailboxVoiceSessionId(),
 			targetSessionId: offer.sessionId,
 			to: offer.from,
 			seq: 0,
@@ -116,6 +119,34 @@ export function peerVoiceMaterial(
 	return {
 		peerPgp: String(row?.chatData?.publicArmored || '').trim(),
 		peerRoute: String(row?.chatData?.routersArmoreds || '').trim(),
+	}
+}
+
+/**
+ * Decline / timeout must target the *offer caller* (offer.from), never the
+ * currently open Chat thread. Local chats may miss route/PGP on cold start —
+ * fall back to AddressPGP so the temporary voice relay + chat reject both reach
+ * the dialer.
+ */
+export async function resolvePeerVoiceMaterialAsync(
+	chats: Array<{ address?: string; chatData?: { publicArmored?: string; routersArmoreds?: string } }> | undefined,
+	peerAddress: string,
+	privateKey: string,
+): Promise<PeerVoiceMaterial> {
+	const local = peerVoiceMaterial(chats, peerAddress)
+	if (local.peerPgp && local.peerRoute) return local
+	const addr = peerAddress.trim()
+	if (!addr || !privateKey) return local
+	try {
+		const { getKeysFromCoNETPGPSCByAddress } = await import('@/services/chat')
+		const kk = await getKeysFromCoNETPGPSCByAddress(addr, privateKey)
+		if (!kk) return local
+		return {
+			peerPgp: local.peerPgp || String(kk.publicArmored || '').trim(),
+			peerRoute: local.peerRoute || String(kk.routersArmoreds || '').trim(),
+		}
+	} catch {
+		return local
 	}
 }
 

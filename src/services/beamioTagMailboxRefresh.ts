@@ -3,7 +3,7 @@
  * Local record first. Network supplements tag/image/names, listen online, and
  * native-shell wakeability when that field is older than 180 seconds.
  * Queries are encrypted to mailbox B and posted only through an entry C ≠ B.
- * An open chat thread claims online and refreshes that one wallet every 6 seconds.
+ * An open chat thread claims online and refreshes that peer's online + nativeWakeable every 6 seconds.
  */
 
 import { ethers } from 'ethers'

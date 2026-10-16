@@ -112,6 +112,14 @@ export const CONET_CHAT_INDEX_REGISTRY = '0x1511Caa71081C84d8a591490D1b83879088E
 export const CONET_CHAT_INDEX_REGISTRY_IMPL = '0xF94299760E07E62eC33A8e91fA585f0b40d137Ee'
 /** CoNET AccountRegistry（Beamio 社交账户） */
 export const CONET_ACCOUNT_REGISTRY = '0xfFDc8d2021A41F4638Cb3eCf58B5155383EE9f6d'
+/**
+ * CoNET BeamioAgentReferrerRegistry (UUPS proxy). Agent / temp / merchant /
+ * invite-referrer registry. Consumer invite deep-link uses RegisterReferrer.
+ */
+export const CONET_AGENT_REFERRER_REGISTRY = '0x40f1B57280f9195AfEf2B4433CEc8f79d4b58b9A'
+/** @internal Implementation behind {@link CONET_AGENT_REFERRER_REGISTRY}. */
+export const CONET_AGENT_REFERRER_REGISTRY_IMPL = '0xb3535499aBAA9369681e092eAA8d84555eB3fbDe'
+export const CONET_AGENT_REFERRER_REGISTRY_DEPLOY_BLOCK = 1705690
 /** @deprecated ConetGB1155 挖矿记账轨已弃用；勿在新 UI/API 当作用户 GB 余额来源 */
 export const CONET_GB1155 = '0x3Dc53e528d45225e8F38c391Cc6a72CDec435748'
 /** @deprecated ConetGB_total（1155 全网聚合）已弃用 */

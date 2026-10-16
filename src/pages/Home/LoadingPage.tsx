@@ -74,6 +74,8 @@ import {
 	rememberPendingDiscoverMerchantIntent,
 } from '@/utils/discoverMerchantShare'
 import { routeDiscoverMerchantDeepLink } from '@/utils/routeDiscoverMerchantDeepLink'
+import { stashAgentInviteIntroducerFromCurrentUrl } from '@/utils/agentInviteIntroducerStash'
+import { bindStashedAgentInviteReferrerIfNeeded } from '@/utils/agentInviteReferrerBind'
 
 
 const APP_VERSION = (packageJson as { version?: string }).version ?? ''
@@ -720,9 +722,10 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 	}
 
 	// Capture the public merchant destination before onboarding rewrites the
-	// URL to `beamioTag` and `MasterKey`.
+	// URL to `beamioTag` and `MasterKey`. Also stash Agent invite introducer.
 	useLayoutEffect(() => {
 		rememberPendingDiscoverMerchantIntent()
+		stashAgentInviteIntroducerFromCurrentUrl()
 	}, [])
 
 	// A merchant deep link must never render the generic onboarding-complete
@@ -881,6 +884,10 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 		}
 		setSettingsOpen('')
 		home()
+		const eoa = CoNET_Data?.profiles?.[0]?.keyID?.trim()
+		if (eoa && ethers.isAddress(eoa)) {
+			void bindStashedAgentInviteReferrerIfNeeded(eoa)
+		}
 		if (pendingMerchantCard) {
 			routePendingMerchantDeepLink()
 			return

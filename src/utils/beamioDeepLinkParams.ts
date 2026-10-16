@@ -60,7 +60,8 @@ export function normalizeDeepLinkInput(raw: string): string {
 		/redeemcode=/i.test(input) ||
 		/beamiocard=/i.test(input) ||
 		/couponid=/i.test(input) ||
-		/nftRedeemcode=/i.test(input)
+		/nftRedeemcode=/i.test(input) ||
+		/invite=/i.test(input)
 	if (!looksLikeLink) return input
 	return input.replace(/[\s\u200b\u200c\u200d\ufeff]+/g, '')
 }

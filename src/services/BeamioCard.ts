@@ -1116,6 +1116,27 @@ async function fetchCardsForOwner(ownerAddress: string): Promise<UserCardInfo[]>
 	return results
 }
 
+/**
+ * Whether this EOA is indexed as owner of at least one merchant program card.
+ * `true` / `false` only after a successful `cardsOfOwner` read. `null` is untrusted
+ * (RPC failure) and must not be treated as “no cards”.
+ */
+export async function eoaOwnsMerchantProgramCards(ownerAddress: string): Promise<boolean | null> {
+	if (!ownerAddress || !ethers.isAddress(ownerAddress)) return null
+	let sawSuccess = false
+	for (const { factory: factoryAddr, provider } of MERCHANT_CARD_FACTORY_QUERIES) {
+		try {
+			const factory = new ethers.Contract(factoryAddr, FACTORY_CARDS_OF_OWNER_ABI, provider)
+			const cards: string[] = await factory.cardsOfOwner(ownerAddress)
+			if (Array.isArray(cards) && cards.length > 0) return true
+			sawSuccess = true
+		} catch {
+			/* untrusted — try nothing else; caller keeps the previous route */
+		}
+	}
+	return sawSuccess ? false : null
+}
+
 /** 通过 factory.cardsOfOwner 检测用户是否拥有 BeamioUserCard，若有则返回卡列表及详情 */
 export const getCardsOfOwnerWithDetails = async (ownerAddress: string): Promise<UserCardInfo[]> =>
 	fetchCardsForOwner(ownerAddress)

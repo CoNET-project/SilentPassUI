@@ -16,12 +16,14 @@ import { hasSessionPrivateKeyArmor } from '@/utils/beamioSessionSecrets'
 import { isWorkspaceAccessGranted } from '@/utils/beamioWorkspaceLock'
 import { unlockMerchantWorkspaceSession } from '@/utils/unlockMerchantWorkspaceSession'
 import {
+	clearEmptyAgentWorkspace,
 	ensureAgentWorkspace,
 	getBizWorkspaceRole,
 	loadAgentWorkspace,
 	setBizWorkspaceRole,
 } from '@/utils/agentWorkspaceLocal'
 import { setSessionAgentAccessPassword } from '@/utils/agentSessionSecrets'
+import { eoaOwnsMerchantProgramCards } from '@/services/BeamioCard'
 import {
 	fetchIsAgentOnChain,
 	loadCachedIsAgent,
@@ -58,10 +60,12 @@ const assembleEncryptKeysObject = async (
 }
 
 /**
- * Route after login: prefer on-chain `isAgent(eoa)` (BeamioAgentReferrerRegistry).
- * Local role / agent workspace / trusted cache are agent-intent signals. When
- * intent exists but the registry still returns false, gasless `registerAgentOnChain`
- * retries so future logins resolve via `isAgent` alone.
+ * Route after login.
+ * An EOA that already owns merchant program cards always stays on Merchant OS,
+ * even if a previous login submitted RegisterAgent (`isAgent` stuck true).
+ * `/agent` is only for wallets whose own workspace role is agent, or chain
+ * `isAgent` when they do not own program cards. RegisterAgent retries only for
+ * that explicit agent workspace — never from a browser-global role or cache.
  */
 async function postLoginPathForWallet(
 	temp: encrypt_keys_object | null | undefined,
@@ -71,17 +75,21 @@ async function postLoginPathForWallet(
 	if (!eoaRaw || !ethers.isAddress(eoaRaw)) return '/native-pos'
 	const eoa = ethers.getAddress(eoaRaw)
 	try {
+		const ownsCards = await eoaOwnsMerchantProgramCards(eoa)
+		if (ownsCards === true) {
+			clearEmptyAgentWorkspace(eoa)
+			setBizWorkspaceRole('merchant', eoa)
+			return '/native-pos'
+		}
+
 		const chain = await fetchIsAgentOnChain(eoa)
 		let isAgentOnChain = chain.ok
 			? chain.isAgent === true
 			: loadCachedIsAgent(eoa) === true
 		const role = getBizWorkspaceRole(eoa)
 		const agentWs = loadAgentWorkspace(eoa)
-		const cachedAgent = loadCachedIsAgent(eoa) === true
-		const localAgentIntent = role === 'agent' || Boolean(agentWs) || cachedAgent
+		const localAgentIntent = role === 'agent' || Boolean(agentWs && agentWs.temps.length > 0)
 
-		// Create-time registration is best-effort; retry on login when we know
-		// this wallet is an agent but the registry still returns false.
 		if (!isAgentOnChain && localAgentIntent) {
 			try {
 				const reg = await registerAgentOnChain(eoa)

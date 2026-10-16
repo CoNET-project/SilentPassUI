@@ -19,6 +19,7 @@ import { useDaemonContext } from '@/providers/DaemonProvider'
 import { useUnlockMerchantWorkspaceDeps } from '@/hooks/useUnlockMerchantWorkspaceDeps'
 import { getCoNET_Data } from '@/utils/globals'
 import {
+	clearEmptyAgentWorkspace,
 	ensureAgentWorkspace,
 	findAgentWorkspaceByTempEoa,
 	loadAgentWorkspace,
@@ -43,7 +44,7 @@ import {
 	registerAgentOnChain,
 } from '@/utils/agentReferrerRegistryClient'
 import { AddressCapsule } from '@/components/AddressCapsule'
-import { queryBusinessStartKetBalanceOfOnChain } from '@/services/BeamioCard'
+import { eoaOwnsMerchantProgramCards, queryBusinessStartKetBalanceOfOnChain } from '@/services/BeamioCard'
 
 /** Consumer invite URL: app-download unwraps `target=` → `/app/?invite=0x…`. */
 function buildAgentInviteAppUrl(introducerEoa: string): string {
@@ -158,6 +159,14 @@ export default function AgentTempEoaDashboard() {
 		let cancelled = false
 		void (async () => {
 			try {
+				const ownsCards = await eoaOwnsMerchantProgramCards(addr)
+				if (cancelled) return
+				if (ownsCards === true) {
+					clearEmptyAgentWorkspace(addr)
+					setBizWorkspaceRole('merchant', addr)
+					navigate('/native-pos', { replace: true })
+					return
+				}
 				const chain = await fetchIsAgentOnChain(addr)
 				if (cancelled) return
 				if (chain.ok && chain.isAgent) {
@@ -175,7 +184,7 @@ export default function AgentTempEoaDashboard() {
 		return () => {
 			cancelled = true
 		}
-	}, [agentEoa])
+	}, [agentEoa, navigate])
 
 	useEffect(() => {
 		setShowFooter(false)

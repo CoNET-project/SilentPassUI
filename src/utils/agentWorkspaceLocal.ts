@@ -62,8 +62,8 @@ export function setBizWorkspaceRole(role: BizWorkspaceRole, eoa?: string | null)
 }
 
 /**
- * Prefer EOA-partitioned role when `eoa` is provided; fall back to legacy global
- * when no partitioned value exists (migration / mid-onboarding).
+ * EOA-partitioned role when `eoa` is provided. A missing partition is not an
+ * agent: the legacy global key is only read before a wallet exists.
  */
 export function getBizWorkspaceRole(eoa?: string | null): BizWorkspaceRole | null {
 	if (typeof window === 'undefined') return null
@@ -71,6 +71,10 @@ export function getBizWorkspaceRole(eoa?: string | null): BizWorkspaceRole | nul
 		if (eoa && ethers.isAddress(eoa)) {
 			const keyed = window.localStorage.getItem(roleKeyForEoa(eoa))
 			if (keyed === 'merchant' || keyed === 'agent') return keyed
+			// A prior Agent choice on this browser is stored without an EOA.
+			// Do not treat that global flag as this wallet's role (it registered
+			// ordinary merchants via RegisterAgent).
+			return null
 		}
 		const v = window.localStorage.getItem(ROLE_KEY_LEGACY)
 		if (v === 'merchant' || v === 'agent') return v
@@ -109,6 +113,18 @@ export function saveAgentWorkspace(record: AgentWorkspaceRecord): void {
 		}
 		window.localStorage.setItem(agentKey(next.agentEoa), JSON.stringify(next))
 		setBizWorkspaceRole('agent', next.agentEoa)
+	} catch {
+		/* ignore */
+	}
+}
+
+/** Drop an empty agent workspace written by a mistaken login. Keeps records that already hold temp EOAs. */
+export function clearEmptyAgentWorkspace(agentEoa: string | null | undefined): void {
+	if (typeof window === 'undefined' || !agentEoa || !ethers.isAddress(agentEoa)) return
+	const existing = loadAgentWorkspace(agentEoa)
+	if (!existing || existing.temps.length > 0) return
+	try {
+		window.localStorage.removeItem(agentKey(existing.agentEoa))
 	} catch {
 		/* ignore */
 	}

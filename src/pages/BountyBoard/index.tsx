@@ -114,6 +114,11 @@ export default function BountyBoard() {
 		if (d.endsWith('K') || d.endsWith('M')) return ''
 		return 'CNET'
 	}, [miningCnetDisplay])
+	const ownsConetNodes = useMemo(() => {
+		const staked = validatorProfile?.validatorNodeCount ?? 0
+		const depin = validatorProfile?.gbMiningNodeCount ?? 0
+		return staked > 0 || depin > 0
+	}, [validatorProfile?.validatorNodeCount, validatorProfile?.gbMiningNodeCount])
 	const totalNodesDisplay = useMemo(() => {
 		const staked = validatorProfile?.validatorNodeCount ?? 0
 		const depin = validatorProfile?.gbMiningNodeCount ?? 0
@@ -436,7 +441,7 @@ export default function BountyBoard() {
 						</section>
 					) : null}
 
-					{hubView === 'overview' || hubView === 'nodes' ? (
+					{hubView === 'nodes' || (hubView === 'overview' && ownsConetNodes) ? (
 						<>
 							{hubView === 'nodes' ? (
 								<div>

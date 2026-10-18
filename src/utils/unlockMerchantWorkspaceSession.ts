@@ -9,6 +9,7 @@ import {
 	storeSystemData,
 	bootstrapProfileLocaleCurrencyIfUnset,
 	mergeLocalLocaleLanguageOntoChainProfile,
+	raceWithTimeout,
 } from '@/services/beamio'
 import { setCoNET_Data } from '@/utils/globals'
 import { initChat } from '@/services/chat'
@@ -62,12 +63,12 @@ export async function unlockMerchantWorkspaceSession(
 
 	const loadUserInfo = async (): Promise<beamio | null> => {
 		if (fallbackBeamio) {
-			const fresh = await getUserInfo(profiles[0].keyID).catch(() => null)
+			const fresh = await raceWithTimeout(getUserInfo(profiles[0].keyID).catch(() => null), 8_000, null)
 			if (fresh?.accountName?.trim()) return fresh
 			return fallbackBeamio
 		}
 		for (let attempt = 0; attempt < USERINFO_MAX_POLLS; attempt++) {
-			const userInfo = await getUserInfo(profiles[0].keyID).catch(() => null)
+			const userInfo = await raceWithTimeout(getUserInfo(profiles[0].keyID).catch(() => null), 8_000, null)
 			if (userInfo?.accountName?.trim()) return userInfo
 			if (attempt < USERINFO_MAX_POLLS - 1) {
 				await new Promise((resolve) => setTimeout(resolve, USERINFO_POLL_MS))
@@ -92,7 +93,11 @@ export async function unlockMerchantWorkspaceSession(
 	try {
 		const eoa0 = profiles[0]?.keyID?.trim()
 		if (eoa0 && ethers.isAddress(eoa0)) {
-			const r = await fetchTrustedCanonicalAaFromRpc(eoa0)
+			const r = await raceWithTimeout(
+				fetchTrustedCanonicalAaFromRpc(eoa0),
+				8_000,
+				{ trusted: false } as const,
+			)
 			if (r.trusted) {
 				let nextProfiles = profiles
 				let changed = false
@@ -110,8 +115,8 @@ export async function unlockMerchantWorkspaceSession(
 				} else {
 					const cached = profiles[0].aaAccount?.trim()
 					if (cached && ethers.isAddress(cached)) {
-						const code = await conetDepinProvider.getCode(cached)
-						if (!code || code === '0x' || code.length <= 2) {
+						const code = await raceWithTimeout(conetDepinProvider.getCode(cached), 8_000, '')
+						if (code && (code === '0x' || code.length <= 2)) {
 							nextProfiles = profiles.map((p, i) => (i === 0 ? { ...p, aaAccount: undefined } : p))
 							changed = true
 						}
@@ -128,7 +133,11 @@ export async function unlockMerchantWorkspaceSession(
 	}
 
 	try {
-		const ensuredAa = await ensureConetAaForProfileAndPersist(temp.profiles[0], setProfiles)
+		const ensuredAa = await raceWithTimeout(
+			ensureConetAaForProfileAndPersist(temp.profiles[0], setProfiles),
+			15_000,
+			null,
+		)
 		if (ensuredAa) {
 			temp.profiles = hydrateProfilesWithSessionSecrets(
 				(temp.profiles ?? []).map((p, i) => (i === 0 ? { ...p, aaAccount: ensuredAa } : p)),
@@ -142,9 +151,15 @@ export async function unlockMerchantWorkspaceSession(
 	setBeamio(bo)
 	onProgress?.(2)
 
-	await initChat(setProfiles, setAllNodes, setGossip, gossip, (message) => {
-		setCharts((prev) => [...prev, message])
-	})
+	// Gossip / PGP registration must not hold the gateway spinner. The in-flight
+	// initChat keeps running; a second call is skipped while it is in progress.
+	await raceWithTimeout(
+		initChat(setProfiles, setAllNodes, setGossip, gossip, (message) => {
+			setCharts((prev) => [...prev, message])
+		}),
+		12_000,
+		undefined,
+	)
 
 	await storeSystemData()
 	const finalProfiles = hydrateProfilesWithSessionSecrets(temp.profiles)

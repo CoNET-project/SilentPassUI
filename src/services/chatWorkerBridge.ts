@@ -207,7 +207,19 @@ export const startWorkerGossipListen = async (p: StartWorkerGossipParams): Promi
 	p.rootSignal.addEventListener('abort', teardown)
 
 	try {
-		await client.init()
+		await new Promise<void>((resolve, reject) => {
+			const timer = window.setTimeout(() => reject(new Error('gossip worker init timeout')), 12_000)
+			client.init().then(
+				() => {
+					window.clearTimeout(timer)
+					resolve()
+				},
+				(err: unknown) => {
+					window.clearTimeout(timer)
+					reject(err)
+				},
+			)
+		})
 		if (p.rootSignal.aborted) {
 			teardown()
 			return false

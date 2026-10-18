@@ -28,7 +28,6 @@ import {
 	type AgentWorkspaceRecord,
 } from '@/utils/agentWorkspaceLocal'
 import {
-	claimTempCreateMerchantCardNft,
 	createAgentTempEoa,
 	listTempEoaCardsWithTransferStatus,
 	openTempMerchantCard,
@@ -44,7 +43,7 @@ import {
 	registerAgentOnChain,
 } from '@/utils/agentReferrerRegistryClient'
 import { AddressCapsule } from '@/components/AddressCapsule'
-import { eoaOwnsMerchantProgramCards, queryBusinessStartKetBalanceOfOnChain } from '@/services/BeamioCard'
+import { eoaOwnsMerchantProgramCards } from '@/services/BeamioCard'
 
 /** Consumer invite URL: app-download unwraps `target=` → `/app/?invite=0x…`. */
 function buildAgentInviteAppUrl(introducerEoa: string): string {
@@ -55,31 +54,8 @@ function buildAgentInviteAppUrl(introducerEoa: string): string {
 	return `https://beamio.app/app-download?target=${encodeURIComponent(app)}`
 }
 
-async function tempOwnsCreateMerchantCardNft(
-	temp: AgentTempEoaRecord,
-): Promise<'owns' | 'missing' | 'unavailable'> {
-	const rawTargets = [temp.eoa, temp.aaAccount]
-		.map((a) => (typeof a === 'string' ? a.trim() : ''))
-		.filter((a) => a && ethers.isAddress(a))
-	const targets = [...new Set(rawTargets.map((a) => ethers.getAddress(a)))]
-	if (targets.length === 0) return 'unavailable'
-	let anyOk = false
-	let anyPositive = false
-	for (const addr of targets) {
-		const r = await queryBusinessStartKetBalanceOfOnChain(addr, 0n)
-		if (r.ok) {
-			anyOk = true
-			if (r.balance > 0n) anyPositive = true
-		}
-	}
-	if (!anyOk) return 'unavailable'
-	return anyPositive ? 'owns' : 'missing'
-}
-
 type RevealState = Record<string, boolean>
 type CardsByTemp = Record<string, { loading: boolean; rows: AgentTempCardRow[]; error?: string }>
-type KetByTemp = Record<string, { status: 'loading' | 'owns' | 'missing' | 'unavailable' }>
-type RedeemByTemp = Record<string, string>
 
 export default function AgentTempEoaDashboard() {
 	const { tu } = useTu()
@@ -99,8 +75,6 @@ export default function AgentTempEoaDashboard() {
 	const [revealPw, setRevealPw] = useState<RevealState>({})
 	const [copiedKey, setCopiedKey] = useState<string | null>(null)
 	const [cardsByTemp, setCardsByTemp] = useState<CardsByTemp>({})
-	const [ketByTemp, setKetByTemp] = useState<KetByTemp>({})
-	const [redeemByTemp, setRedeemByTemp] = useState<RedeemByTemp>({})
 	const [openingKey, setOpeningKey] = useState<string | null>(null)
 	const [openError, setOpenError] = useState('')
 	const [missingAgentPassword, setMissingAgentPassword] = useState(false)
@@ -241,22 +215,6 @@ export default function AgentTempEoaDashboard() {
 		}
 	}, [returningToAgent, returnPassword, unlockDeps, hydrate, tu])
 
-	const loadKetForTemp = useCallback(async (temp: AgentTempEoaRecord) => {
-		const key = temp.eoa.toLowerCase()
-		// Stale-while-revalidate: keep owns/missing/unavailable UI; only show
-		// loading when this temp has never been checked.
-		setKetByTemp((prev) => {
-			const cur = prev[key]?.status
-			if (cur === 'owns' || cur === 'missing' || cur === 'unavailable') return prev
-			return { ...prev, [key]: { status: 'loading' } }
-		})
-		const status = await tempOwnsCreateMerchantCardNft(temp)
-		setKetByTemp((prev) => ({
-			...prev,
-			[key]: { status },
-		}))
-	}, [])
-
 	const loadCardsForTemp = useCallback(
 		async (temp: AgentTempEoaRecord) => {
 			const key = temp.eoa.toLowerCase()
@@ -287,17 +245,6 @@ export default function AgentTempEoaDashboard() {
 					...prev,
 					[key]: { loading: false, rows },
 				}))
-				const manageable = rows.filter((r) => !r.transferred)
-				if (manageable.length === 0) {
-					void loadKetForTemp(temp)
-				} else {
-					setKetByTemp((prev) => {
-						if (!prev[key]) return prev
-						const next = { ...prev }
-						delete next[key]
-						return next
-					})
-				}
 			} catch (e) {
 				setCardsByTemp((prev) => ({
 					...prev,
@@ -309,7 +256,7 @@ export default function AgentTempEoaDashboard() {
 				}))
 			}
 		},
-		[agentEoa, loadKetForTemp, tu],
+		[agentEoa, tu],
 	)
 
 	const cardsByTempRef = useRef(cardsByTemp)
@@ -380,35 +327,14 @@ export default function AgentTempEoaDashboard() {
 		}
 	}
 
-	/** Create merchant card — only when temp already holds BusinessStartKet #0. */
+	/** Create merchant card — BusinessStartKet #0 is not required. */
 	const handleCreateMerchantCard = async (temp: AgentTempEoaRecord) => {
 		if (openingKey || missingAgentPassword) return
-		const tempKey = temp.eoa.toLowerCase()
 		const key = `create:${temp.eoa}`
 		setOpenError('')
 		setOpeningKey(key)
 		leavingForTempNavRef.current = true
 		try {
-			// Skip re-check when UI already shows owns — avoids ket UI swap mid-click.
-			const known = ketByTemp[tempKey]?.status
-			let ketStatus = known
-			if (ketStatus !== 'owns') {
-				ketStatus = await tempOwnsCreateMerchantCardNft(temp)
-				setKetByTemp((prev) => ({
-					...prev,
-					[tempKey]: { status: ketStatus },
-				}))
-			}
-			if (ketStatus !== 'owns') {
-				leavingForTempNavRef.current = false
-				setOpenError(
-					ketStatus === 'unavailable'
-						? tu('agent_create_nft_check_failed')
-						: tu('agent_temp_needs_create_nft'),
-				)
-				setOpeningKey(null)
-				return
-			}
 			const result = await openTempMerchantWorkspace(temp, unlockDeps)
 			if (!result.ok) {
 				leavingForTempNavRef.current = false
@@ -424,37 +350,7 @@ export default function AgentTempEoaDashboard() {
 			navigate('/agent/merchant-onboarding')
 		} catch {
 			leavingForTempNavRef.current = false
-			setOpenError(tu('agent_create_nft_check_failed'))
-			setOpeningKey(null)
-		}
-	}
-
-	/** Claim BusinessStartKet #0 onto the temp EOA via redeem / Start Kit code. */
-	const handleClaimCreateNft = async (temp: AgentTempEoaRecord) => {
-		if (openingKey) return
-		const key = `claim:${temp.eoa}`
-		const code = (redeemByTemp[temp.eoa.toLowerCase()] ?? '').trim()
-		if (!code) {
-			setOpenError(tu('agent_redeem_code_required'))
-			return
-		}
-		setOpenError('')
-		setOpeningKey(key)
-		try {
-			const result = await claimTempCreateMerchantCardNft(temp, code, unlockDeps)
-			if (!result.ok) {
-				setOpenError(result.error || tu('agent_redeem_claim_failed'))
-				return
-			}
-			setRedeemByTemp((prev) => {
-				const next = { ...prev }
-				delete next[temp.eoa.toLowerCase()]
-				return next
-			})
-			await loadKetForTemp(temp)
-		} catch {
-			setOpenError(tu('agent_redeem_claim_failed'))
-		} finally {
+			setOpenError(tu('agent_open_workspace_failed'))
 			setOpeningKey(null)
 		}
 	}
@@ -676,16 +572,6 @@ export default function AgentTempEoaDashboard() {
 							const mustCreateCardFirst = hasCardSnapshot && manageableCardCount === 0
 							const canOpenMerchantOs = manageableCardCount > 0
 							const showCardGateLoading = !hasCardSnapshot && cardsLoading
-							const ketState = ketByTemp[key]
-							const ketStatus = ketState?.status
-							const ketLoading =
-								mustCreateCardFirst && (!ketState || ketStatus === 'loading')
-							const ketOwns = mustCreateCardFirst && ketStatus === 'owns'
-							const ketMissing =
-								mustCreateCardFirst
-								&& (ketStatus === 'missing' || ketStatus === 'unavailable')
-							const redeemCode = redeemByTemp[key] ?? ''
-							const claimBusy = openingKey === `claim:${temp.eoa}`
 							const createBusy = openingKey === `create:${temp.eoa}`
 							return (
 								<li
@@ -753,71 +639,7 @@ export default function AgentTempEoaDashboard() {
 										</div>
 									</div>
 
-									{ketLoading ? (
-										<div className="mb-3 flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-slate-400">
-											<Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-											{tu('agent_checking_create_nft')}
-										</div>
-									) : null}
-
-									{ketMissing ? (
-										<div className="mb-3 space-y-2 rounded-2xl border border-white/10 bg-white/5 p-3">
-											<div className="flex items-center gap-2">
-												<input
-													type="text"
-													value={redeemCode}
-													onChange={(e) =>
-														setRedeemByTemp((prev) => ({
-															...prev,
-															[key]: e.target.value,
-														}))
-													}
-													onKeyDown={(e) => {
-														if (e.key !== 'Enter') return
-														e.preventDefault()
-														if (openingKey || !redeemCode.trim() || claimBusy) return
-														void handleClaimCreateNft(temp)
-													}}
-													placeholder={tu('agent_redeem_code_placeholder')}
-													aria-label={tu('agent_redeem_code_label')}
-													autoComplete="off"
-													spellCheck={false}
-													disabled={!!openingKey}
-													enterKeyHint="done"
-													className="min-w-0 flex-1 rounded-xl border border-white/15 bg-black/30 px-3 py-2.5 font-mono text-sm text-slate-100 placeholder:text-slate-500 outline-none focus:border-[#8d3a8b]/60"
-												/>
-												<button
-													type="button"
-													tabIndex={-1}
-													onClick={() => void handleClaimCreateNft(temp)}
-													disabled={!!openingKey || !redeemCode.trim() || claimBusy}
-													aria-busy={claimBusy}
-													aria-label={tu('agent_claim_create_nft')}
-													title={tu('agent_claim_create_nft')}
-													className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#eadcf7]/40 bg-[#8d3a8b]/25 text-[#f5ecff] transition hover:bg-[#8d3a8b]/40 disabled:cursor-not-allowed disabled:opacity-60"
-												>
-													{claimBusy ? (
-														<Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-													) : (
-														<Check className="h-4 w-4" strokeWidth={2.5} aria-hidden />
-													)}
-												</button>
-											</div>
-											{ketStatus === 'unavailable' ? (
-												<button
-													type="button"
-													tabIndex={-1}
-													onClick={() => void loadKetForTemp(temp)}
-													disabled={!!openingKey}
-													className="w-full text-center text-xs text-[#c4a0c8] hover:underline disabled:opacity-50"
-												>
-													{tu('agent_retry_create_nft_check')}
-												</button>
-											) : null}
-										</div>
-									) : null}
-
-									{ketOwns ? (
+									{mustCreateCardFirst ? (
 										<button
 											type="button"
 											onClick={() => void handleCreateMerchantCard(temp)}
@@ -879,7 +701,7 @@ export default function AgentTempEoaDashboard() {
 										</p>
 									) : null}
 
-									{mustCreateCardFirst && !ketLoading && !ketMissing ? (
+									{mustCreateCardFirst ? (
 										<p className="py-3 text-sm text-slate-500">{tu('agent_no_cards_for_temp')}</p>
 									) : null}
 

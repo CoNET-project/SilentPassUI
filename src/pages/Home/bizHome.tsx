@@ -1,9 +1,9 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Shield, ArrowRight, Eye, EyeOff, Info, HelpCircle, Fingerprint, QrCode, Check } from 'lucide-react'
 import { APP_VERSION } from '@/version'
 import { ethers } from 'ethers'
-import { restoreWithRedeem, restoreWithUserPin, checkStorageWithTimeout } from '@/services/beamio'
+import { restoreWithRedeem, restoreWithUserPin, checkStorageWithTimeout, raceWithTimeout } from '@/services/beamio'
 import { getCoNET_Data } from '@/utils/globals'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import NewMerchantOS from '@/pages/Vouchers/example/newBiz'
@@ -75,14 +75,18 @@ async function postLoginPathForWallet(
 	if (!eoaRaw || !ethers.isAddress(eoaRaw)) return '/native-pos'
 	const eoa = ethers.getAddress(eoaRaw)
 	try {
-		const ownsCards = await eoaOwnsMerchantProgramCards(eoa)
+		const ownsCards = await raceWithTimeout(eoaOwnsMerchantProgramCards(eoa), 8_000, null)
 		if (ownsCards === true) {
 			clearEmptyAgentWorkspace(eoa)
 			setBizWorkspaceRole('merchant', eoa)
 			return '/native-pos'
 		}
 
-		const chain = await fetchIsAgentOnChain(eoa)
+		const chain = await raceWithTimeout(
+			fetchIsAgentOnChain(eoa),
+			8_000,
+			{ ok: false as const, isAgent: loadCachedIsAgent(eoa) },
+		)
 		let isAgentOnChain = chain.ok
 			? chain.isAgent === true
 			: loadCachedIsAgent(eoa) === true
@@ -92,7 +96,11 @@ async function postLoginPathForWallet(
 
 		if (!isAgentOnChain && localAgentIntent) {
 			try {
-				const reg = await registerAgentOnChain(eoa)
+				const reg = await raceWithTimeout(
+					registerAgentOnChain(eoa),
+					12_000,
+					{ success: false as const, error: 'timeout' },
+				)
 				if (reg.success) isAgentOnChain = true
 			} catch {
 				/* still route to /agent on local intent; next login retries */
@@ -300,6 +308,8 @@ const BizHome = () => {
 		setMyAddress,
 	} = useDaemonContext()
 
+	const loginEpochRef = useRef(0)
+
 	useEffect(() => {
 		const fromDaemon = beamio?.accountName?.trim()
 		const fromMem = getCoNET_Data()?.beamio?.accountName?.trim()
@@ -360,12 +370,26 @@ const BizHome = () => {
 			setLoginError(tu('home_beamio_tag_rule_hint'))
 			return
 		}
+		const epoch = ++loginEpochRef.current
 		setIsLoading(true)
+		const started = Date.now()
+		const escape = window.setTimeout(() => {
+			if (loginEpochRef.current !== epoch) return
+			setIsLoading(false)
+			if (!(isWorkspaceAccessGranted() && hasSessionPrivateKeyArmor())) {
+				setLoginError(tu('login_failed_please_try_again_later'))
+			}
+		}, 25_000)
 		try {
-			const result = await restoreWithUserPin(username, password, false)
+			const result = await raceWithTimeout(restoreWithUserPin(username, password, false), 20_000, null)
+			if (loginEpochRef.current !== epoch) return
 			const temp = result && typeof result === 'object' && result.profiles ? result : null
 			if (!temp) {
-				setLoginError(tu('invalid_beamio_tag_or_recovery_password_please_try_again'))
+				setLoginError(tu(
+					Date.now() - started >= 7_000
+						? 'login_failed_please_try_again_later'
+						: 'invalid_beamio_tag_or_recovery_password_please_try_again',
+				))
 				return
 			}
 			const ready = await assembleEncryptKeysObject(
@@ -379,25 +403,38 @@ const BizHome = () => {
 				setMyAddress,
 				undefined
 			)
+			if (loginEpochRef.current !== epoch) return
 			if (!ready) {
 				setLoginError(tu('login_failed_please_try_again_later'))
 				return
 			}
 			const path = await postLoginPathForWallet(temp, password)
+			if (loginEpochRef.current !== epoch) return
 			navigate(path, { replace: true })
 		} catch {
+			if (loginEpochRef.current !== epoch) return
 			setLoginError(tu('login_failed_please_try_again_later'))
 		} finally {
-			setIsLoading(false)
+			window.clearTimeout(escape)
+			if (loginEpochRef.current === epoch) setIsLoading(false)
 		}
 	}
 
 	const handleRestoreFromCode = async (recoveryCode: string) => {
 		setLoginError('')
 		setShowRestoreAccess(false)
+		const epoch = ++loginEpochRef.current
 		setIsLoading(true)
+		const escape = window.setTimeout(() => {
+			if (loginEpochRef.current !== epoch) return
+			setIsLoading(false)
+			setShowRestoreAccess(true)
+			if (!(isWorkspaceAccessGranted() && hasSessionPrivateKeyArmor())) {
+				setLoginError(tu('login_failed_please_try_again_later'))
+			}
+		}, 25_000)
 		try {
-			const result = await restoreWithRedeem(recoveryCode.trim(), '')
+			const result = await raceWithTimeout(restoreWithRedeem(recoveryCode.trim(), ''), 20_000, null)
 			const temp = result && typeof result === 'object' && result.profiles ? result : null
 			if (!temp) {
 				throw new Error(tu('home_restore_err_invalid_qr'))
@@ -413,16 +450,20 @@ const BizHome = () => {
 				setMyAddress,
 				undefined
 			)
+			if (loginEpochRef.current !== epoch) return
 			if (!ready) {
 				throw new Error(tu('home_restore_err_prepare_failed'))
 			}
 			const path = await postLoginPathForWallet(temp)
+			if (loginEpochRef.current !== epoch) return
 			navigate(path, { replace: true })
 		} catch (err) {
+			if (loginEpochRef.current !== epoch) return
 			setShowRestoreAccess(true)
 			throw new Error((err as Error)?.message ?? tu('home_restore_err_try_another'))
 		} finally {
-			setIsLoading(false)
+			window.clearTimeout(escape)
+			if (loginEpochRef.current === epoch) setIsLoading(false)
 		}
 	}
 

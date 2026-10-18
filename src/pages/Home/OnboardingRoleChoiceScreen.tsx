@@ -1,4 +1,4 @@
-import { Briefcase, Handshake } from 'lucide-react'
+import { Briefcase } from 'lucide-react'
 import { useTu } from '@/locale/beamioLocale'
 import { BIZ_PUBLIC_LOGO512 } from '@/pages/Home/brandUi'
 import { IpfsImg } from '@/components/IpfsImg'
@@ -64,7 +64,7 @@ export default function OnboardingRoleChoiceScreen({ appVersion, onChoose }: Pro
 					<p className="leading-relaxed text-[#666666]">{tu('onb_role_sub')}</p>
 				</div>
 
-				<div className="grid w-full max-w-lg gap-4 sm:grid-cols-2">
+				<div className="grid w-full max-w-md gap-4">
 					<button
 						type="button"
 						onClick={() => onChoose('merchant')}
@@ -81,25 +81,6 @@ export default function OnboardingRoleChoiceScreen({ appVersion, onChoose }: Pro
 						</span>
 						<span className="mt-1 text-[13px] font-bold text-[#1562F0] group-hover:underline">
 							{tu('onb_role_merchant_cta')}
-						</span>
-					</button>
-
-					<button
-						type="button"
-						onClick={() => onChoose('agent')}
-						className="group flex flex-col items-start gap-3 rounded-3xl border border-white/80 bg-white p-6 text-left shadow-[0_8px_40px_rgba(15,23,42,0.06)] transition hover:border-[#8d3a8b]/40 hover:shadow-[0_12px_40px_rgba(141,58,139,0.12)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#8d3a8b]"
-					>
-						<span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#f5ecff] text-[#8d3a8b]">
-							<Handshake className="h-6 w-6" aria-hidden />
-						</span>
-						<span className="text-lg font-extrabold text-[#121212]" style={headlineFont}>
-							{tu('onb_role_agent_title')}
-						</span>
-						<span className="text-sm leading-relaxed text-[#666666]">
-							{tu('onb_role_agent_desc')}
-						</span>
-						<span className="mt-1 text-[13px] font-bold text-[#8d3a8b] group-hover:underline">
-							{tu('onb_role_agent_cta')}
 						</span>
 					</button>
 				</div>

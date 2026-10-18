@@ -2094,11 +2094,19 @@ export const restoreWithUserPin = async (username: string, pin: string, test = f
 		const accountName = username.trim()
 		if (!accountName) return false
 
-		let recoverHit = await fetchRecoverPayloadByAccountName(accountName, beamioAccountSC)
+		let recoverHit = await raceWithTimeout(
+			fetchRecoverPayloadByAccountName(accountName, beamioAccountSC),
+			8_000,
+			null,
+		)
 		let legacyEncodedForMigrate: string | undefined
 
 		if (!recoverHit) {
-			const legacyHit = await fetchRecoverPayloadByAccountName(accountName, legacyBeamioAccountSC)
+			const legacyHit = await raceWithTimeout(
+				fetchRecoverPayloadByAccountName(accountName, legacyBeamioAccountSC),
+				8_000,
+				null,
+			)
 			if (!legacyHit) {
 				return false
 			}
@@ -2144,7 +2152,7 @@ export const restoreWithUserPin = async (username: string, pin: string, test = f
 			}
 		}
 
-		const onchainBeamio = await getUserInfo(profile.keyID)
+		const onchainBeamio = await raceWithTimeout(getUserInfo(profile.keyID), 8_000, null)
 		if (onchainBeamio) {
 			temp.beamio = onchainBeamio
 		} else if (!temp.beamio) {

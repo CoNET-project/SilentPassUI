@@ -15497,9 +15497,8 @@ const loadProgramReferrerList = useCallback(async () => {
  );
  const merchantOwnCardAddressRef = useRef<string | null>(merchantOwnCardAddress);
  merchantOwnCardAddressRef.current = merchantOwnCardAddress;
- /** Ket #0 + no factory card, issuer/Ket reads done — Card Setup on Overview until card is issued */
- const programAreaGateReady =
-   profileOwnsIssuedBeamioCardFetched && ownsBusinessStartKetToken0Fetched;
+ /** Card fetch settled — Card Setup on Overview until a merchant card is issued. Ket #0 is not required. */
+ const programAreaGateReady = profileOwnsIssuedBeamioCardFetched;
  /** Programs routes require a factory-issued merchant card. Ket #0 alone stays on Overview Card Setup.
   * Blacklisted primary address → same as no card (exclude list must be loaded for API names). */
  const canEnterProgramArea = useMemo(() => {
@@ -15514,17 +15513,8 @@ const loadProgramReferrerList = useCallback(async () => {
    return true;
  }, [profileOwnsIssuedBeamioCard, merchantOwnCardAddress]);
  const ketNoCardProgramsEligible = useMemo(
-   () =>
-     profileOwnsIssuedBeamioCardFetched &&
-     ownsBusinessStartKetToken0Fetched &&
-     !profileOwnsIssuedBeamioCard &&
-     ownsBusinessStartKetToken0,
-   [
-     profileOwnsIssuedBeamioCardFetched,
-     ownsBusinessStartKetToken0Fetched,
-     profileOwnsIssuedBeamioCard,
-     ownsBusinessStartKetToken0,
-   ]
+   () => profileOwnsIssuedBeamioCardFetched && !profileOwnsIssuedBeamioCard,
+   [profileOwnsIssuedBeamioCardFetched, profileOwnsIssuedBeamioCard]
  );
  /** Latest ket handoff flag for imperative handlers (e.g. kit thank-you) where state may lag one frame. */
  const ketNoCardProgramsEligibleRef = useRef(false);
@@ -15848,18 +15838,17 @@ useEffect(() => {
   cardIssuanceCouponRedeemStatusQueryKey,
 ]);
 
- /** Logged-in wallet present but factory/Ket gates not settled — avoid one frame of Dashboard before Programs */
+ /** Logged-in wallet present but factory card gate not settled — avoid one frame of Dashboard before Programs */
  const profileAwaitingIssuanceGate = useMemo(() => {
    const p0 = profiles?.[0];
    const hasWallet = Boolean(p0 && (p0.keyID?.trim() || p0.aaAccount?.trim() || p0.privateKeyArmor));
    if (!hasWallet) return false;
-   return !profileOwnsIssuedBeamioCardFetched || !ownsBusinessStartKetToken0Fetched;
+   return !profileOwnsIssuedBeamioCardFetched;
  }, [
    profiles?.[0]?.keyID,
    profiles?.[0]?.aaAccount,
    profiles?.[0]?.privateKeyArmor,
    profileOwnsIssuedBeamioCardFetched,
-   ownsBusinessStartKetToken0Fetched,
  ]);
  const navChromeTab = activeTab;
 
@@ -33362,20 +33351,8 @@ useEffect(() => {
 	}, [merchantEoaForLiteForm, navigate, unlockMerchantWorkspaceDeps]);
  /** Smart Terminal (AA) present — mirrors newBiz `isAaUnlocked` for Market fuel cards */
  const hasAaAccount = Boolean(profiles?.[0]?.aaAccount?.trim());
- /** No eligible merchant program card (factory cardsOfOwner, API-exclude filtered) and no Ket #0 — show Start Kit / first-setup shell. AA presence is not used. */
- const lacksMerchantProgramCardAndKet = useMemo(
-   () =>
-     profileOwnsIssuedBeamioCardFetched &&
-     ownsBusinessStartKetToken0Fetched &&
-     !profileOwnsIssuedBeamioCard &&
-     !ownsBusinessStartKetToken0,
-   [
-     profileOwnsIssuedBeamioCardFetched,
-     ownsBusinessStartKetToken0Fetched,
-     profileOwnsIssuedBeamioCard,
-     ownsBusinessStartKetToken0,
-   ]
- );
+ /** Creating a merchant card no longer requires BusinessStartKet #0, so the Start Kit wall stays closed. */
+ const lacksMerchantProgramCardAndKet = false;
  /** First-time merchant shell on `/home`: no eligible merchant card (+ no Ket) wins over local Lite draft / chain ack. */
  const showBizFirstMembershipOnboarding = lacksMerchantProgramCardAndKet;
 
@@ -40262,7 +40239,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                  </div>
                </footer>
              </div>
-           ) : !profileOwnsIssuedBeamioCardFetched || !ownsBusinessStartKetToken0Fetched ? (
+           ) : !profileOwnsIssuedBeamioCardFetched ? (
              <div className="mx-auto flex min-h-[min(480px,70dvh)] w-full max-w-[1280px] flex-col items-center justify-center gap-3 bg-[#f5f7f9] px-4 py-20">
                <Loader2 className="h-10 w-10 animate-spin text-[#1562f0]" strokeWidth={2} aria-hidden />
                <p className="text-sm font-medium text-[#595c5e]">{tu('programs_config_preparing')}</p>

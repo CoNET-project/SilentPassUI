@@ -101,7 +101,12 @@ export async function fetchIsAgentOnChain(eoa: string): Promise<{ ok: true; isAg
 	const addr = ethers.getAddress(eoa)
 	try {
 		const c = registryContract()
-		const v = Boolean(await c.isAgent(addr))
+		const v = Boolean(await Promise.race([
+			c.isAgent(addr),
+			new Promise<never>((_, reject) => {
+				window.setTimeout(() => reject(new Error('isAgent timeout')), 8_000)
+			}),
+		]))
 		saveCachedIsAgent(addr, v)
 		return { ok: true, isAgent: v }
 	} catch {
@@ -112,7 +117,12 @@ export async function fetchIsAgentOnChain(eoa: string): Promise<{ ok: true; isAg
 export async function fetchNonceOf(eoa: string): Promise<bigint | null> {
 	if (!ethers.isAddress(eoa)) return null
 	try {
-		const n = await registryContract().nonceOf(ethers.getAddress(eoa))
+		const n = await Promise.race([
+			registryContract().nonceOf(ethers.getAddress(eoa)),
+			new Promise<never>((_, reject) => {
+				window.setTimeout(() => reject(new Error('nonce timeout')), 8_000)
+			}),
+		])
 		return BigInt(n.toString())
 	} catch {
 		try {
@@ -133,11 +143,14 @@ type RegisterResult = { success: true; hash?: string } | { success: false; error
 
 async function postRegister(body: Record<string, unknown>): Promise<RegisterResult> {
 	try {
+		const ac = new AbortController()
+		const abortTimer = window.setTimeout(() => ac.abort(), 12_000)
 		const res = await fetch(`${BEAMIO_API}/agentReferrerRegister`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
+			signal: ac.signal,
 			body: JSON.stringify(body),
-		})
+		}).finally(() => window.clearTimeout(abortTimer))
 		const j = (await res.json().catch(() => ({}))) as {
 			success?: boolean
 			hash?: string

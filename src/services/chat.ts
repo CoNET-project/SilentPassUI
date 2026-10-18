@@ -134,11 +134,27 @@ export const getKeysFromCoNETPGPSC = async (keyIDOrAddress: string, privateKeyAr
 
 
 
+function settleWithin<T>(work: Promise<T>, timeoutMs: number, fallback: T): Promise<T> {
+	return new Promise((resolve) => {
+		const timer = window.setTimeout(() => resolve(fallback), timeoutMs)
+		work.then(
+			(value) => {
+				window.clearTimeout(timer)
+				resolve(value)
+			},
+			() => {
+				window.clearTimeout(timer)
+				resolve(fallback)
+			},
+		)
+	})
+}
+
 const getAllNodes = async (): Promise<nodeInfo[]> => {
 	try {
 		const Guardian_Nodes: nodeInfo[] = []
-		const _nodes1 = await GuardianNodesMainnet.getAllNodes(0, 400)
-		const _nodes2 = await GuardianNodesMainnet.getAllNodes(400, 800)
+		const _nodes1 = await settleWithin(GuardianNodesMainnet.getAllNodes(0, 400), 8_000, [])
+		const _nodes2 = await settleWithin(GuardianNodesMainnet.getAllNodes(400, 800), 8_000, [])
 		const _nodes = [..._nodes1, ..._nodes2]
 
 		for (let i = 0; i < _nodes.length; i++) {
@@ -235,7 +251,7 @@ export const initChat = async (setProfiles: (val: profile[]) => void, setAllNode
 
 	// ✅ 如果没有 routes，从链上/SC 找；再不行就随机注册一个
 	//	寻找链上信息
-	const rr = await getKeysFromCoNETPGPSC(profile.keyID, profile.privateKeyArmor)
+	const rr = await settleWithin(getKeysFromCoNETPGPSC(profile.keyID, profile.privateKeyArmor), 8_000, null)
 	routes = rr?.routersArmoreds||''
 
 	//	链上route信息
@@ -261,7 +277,7 @@ export const initChat = async (setProfiles: (val: profile[]) => void, setAllNode
 					)
 					if (ok) {
 						await new Promise(r => setTimeout(r, 5000))
-						const rr2 = await getKeysFromCoNETPGPSC(profile.keyID, profile.privateKeyArmor)
+						const rr2 = await settleWithin(getKeysFromCoNETPGPSC(profile.keyID, profile.privateKeyArmor), 8_000, null)
 						const chainKeyID2 = (rr2?.userPgpKeyID || '').toUpperCase()
 						if (chainKeyID2 === localKeyID) {
 							console.log('[initChat] 重新登记验证成功', { localKeyID, chainKeyID2 })
@@ -302,7 +318,11 @@ export const initChat = async (setProfiles: (val: profile[]) => void, setAllNode
 		return
 	}
 	
-		const started = await connectToGossipNode(chatManager.router, profile.privateKeyArmor, allNodes, chatManager.pgpKey.privateKey, chatManager.pgpKey.publicKey ?? '', newMessage)
+		const started = await settleWithin(
+			connectToGossipNode(chatManager.router, profile.privateKeyArmor, allNodes, chatManager.pgpKey.privateKey, chatManager.pgpKey.publicKey ?? '', newMessage),
+			12_000,
+			false,
+		)
 		if (!started) setGossip(false)
 		gossipLog('info', started ? 'initChat worker listen started' : 'initChat worker listen did not start')
 	} catch (ex: unknown) {
@@ -341,9 +361,12 @@ export const regiestChatRoute = async (privateKey: string, pubArmor: string, key
 	const encryptPri = await aesGcmEncrypt(priArmor, privateKey)
 	const publicKeyArmored = toBase64(pubArmor)
 	try {
+		const ac = new AbortController()
+		const abortTimer = window.setTimeout(() => ac.abort(), 12_000)
 		const res = await fetch(`${beamioApi}/api/regiestChatRoute`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
+			signal: ac.signal,
 			body: JSON.stringify({
 				wallet: Wallet.address,
 				keyID,
@@ -351,7 +374,7 @@ export const regiestChatRoute = async (privateKey: string, pubArmor: string, key
 				encrypKeyArmored: encryptPri,
 				routeKeyID
 			})
-		})
+		}).finally(() => window.clearTimeout(abortTimer))
 		const json = await res.json()
 		if (!res.ok) {
 			console.error('[regiestChatRoute]', res.status, json?.error ?? json)

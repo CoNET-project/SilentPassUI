@@ -15,6 +15,7 @@ import { useTu } from '@/locale/beamioLocale'
 import { hasSessionPrivateKeyArmor } from '@/utils/beamioSessionSecrets'
 import { isWorkspaceAccessGranted } from '@/utils/beamioWorkspaceLock'
 import { unlockMerchantWorkspaceSession } from '@/utils/unlockMerchantWorkspaceSession'
+import { beginMerchantOsHandoffRestore, takeMerchantOsCredentialHandoff } from '@/utils/merchantOsCredentialHandoff'
 
 /** Data attribute + selection tint — matches `biz.tsx` Merchant OS */
 const BIZ_UI_PRIMARY = BIZ_BRAND_HEX
@@ -214,10 +215,11 @@ function GatewayActivatingNodeScreen() {
 const BizHome = () => {
 	const { tu } = useTu()
 	const navigate = useNavigate()
-	const [merchantTag, setMerchantTag] = useState('')
-	const [password, setPassword] = useState('')
+	const handoff = takeMerchantOsCredentialHandoff()
+	const [merchantTag, setMerchantTag] = useState(handoff?.tag ?? '')
+	const [password, setPassword] = useState(handoff?.pin ?? '')
 	const [showPassword, setShowPassword] = useState(false)
-	const [isLoading, setIsLoading] = useState(false)
+	const [isLoading, setIsLoading] = useState(Boolean(handoff))
 	const [loginError, setLoginError] = useState('')
 	const [showNewBiz, setShowNewBiz] = useState(false)
 	const [showRestoreAccess, setShowRestoreAccess] = useState(false)
@@ -236,6 +238,113 @@ const BizHome = () => {
 	} = useDaemonContext()
 
 	const loginEpochRef = useRef(0)
+
+	const unlockWithCredentials = async (usernameRaw: string, accessPassword: string) => {
+		setLoginError('')
+		const username = normalizeBeamioTagInput(usernameRaw)
+		if (!username || !BEAMIO_TAG_ALLOWED_RE.test(username)) {
+			setLoginError(tu('home_beamio_tag_rule_hint'))
+			setIsLoading(false)
+			return
+		}
+		const epoch = ++loginEpochRef.current
+		setIsLoading(true)
+		const started = Date.now()
+		const escape = window.setTimeout(() => {
+			if (loginEpochRef.current !== epoch) return
+			setIsLoading(false)
+			if (!(isWorkspaceAccessGranted() && hasSessionPrivateKeyArmor())) {
+				setLoginError(tu('login_failed_please_try_again_later'))
+			}
+		}, 25_000)
+		try {
+			const result = await raceWithTimeout(restoreWithUserPin(username, accessPassword, false), 20_000, null)
+			if (loginEpochRef.current !== epoch) return
+			const temp = result && typeof result === 'object' && result.profiles ? result : null
+			if (!temp) {
+				setLoginError(tu(
+					Date.now() - started >= 7_000
+						? 'login_failed_please_try_again_later'
+						: 'invalid_beamio_tag_or_recovery_password_please_try_again',
+				))
+				return
+			}
+			const ready = await assembleEncryptKeysObject(
+				temp,
+				setProfiles,
+				setAllNodes,
+				setGossip,
+				gossip,
+				setBeamio,
+				setCharts,
+				setMyAddress,
+				undefined
+			)
+			if (loginEpochRef.current !== epoch) return
+			if (!ready) {
+				setLoginError(tu('login_failed_please_try_again_later'))
+				return
+			}
+			const path = postLoginPathForWallet()
+			if (loginEpochRef.current !== epoch) return
+			navigate(path, { replace: true })
+		} catch {
+			if (loginEpochRef.current !== epoch) return
+			setLoginError(tu('login_failed_please_try_again_later'))
+		} finally {
+			window.clearTimeout(escape)
+			if (loginEpochRef.current === epoch) setIsLoading(false)
+		}
+	}
+
+	useEffect(() => {
+		if (!handoff) return
+		let alive = true
+		setIsLoading(true)
+		const started = Date.now()
+		const flight = beginMerchantOsHandoffRestore((creds) =>
+			raceWithTimeout(restoreWithUserPin(creds.tag, creds.pin, false), 20_000, null),
+		)
+		void (async () => {
+			const result = await flight
+			if (!alive) return
+			const temp = result && typeof result === 'object' && (result as encrypt_keys_object).profiles
+				? (result as encrypt_keys_object)
+				: null
+			if (!temp) {
+				setLoginError(tu(
+					Date.now() - started >= 7_000
+						? 'login_failed_please_try_again_later'
+						: 'invalid_beamio_tag_or_recovery_password_please_try_again',
+				))
+				setIsLoading(false)
+				return
+			}
+			const ready = await assembleEncryptKeysObject(
+				temp,
+				setProfiles,
+				setAllNodes,
+				setGossip,
+				gossip,
+				setBeamio,
+				setCharts,
+				setMyAddress,
+				undefined,
+			)
+			if (!alive) return
+			if (!ready) {
+				setLoginError(tu('login_failed_please_try_again_later'))
+				setIsLoading(false)
+				return
+			}
+			navigate(postLoginPathForWallet(), { replace: true })
+		})()
+		return () => {
+			alive = false
+		}
+		// Invite a business passes tag + access password once. They stay in memory only.
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [])
 
 	useEffect(() => {
 		const fromDaemon = beamio?.accountName?.trim()
@@ -275,7 +384,7 @@ const BizHome = () => {
 	useEffect(() => {
 		// Mid-login `setProfiles` (AA hydrate) must not bounce before
 		// assembleEncryptKeysObject finishes initChat — that race drops gossip listen.
-		if (isLoading) return
+		if (isLoading || handoff) return
 		if (!isWorkspaceAccessGranted() || !hasSessionPrivateKeyArmor()) return
 		const p0 = profiles?.[0]
 		if (!p0?.keyID?.trim() || !ethers.isAddress(p0.keyID)) return
@@ -291,60 +400,7 @@ const BizHome = () => {
 
 	const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
 		e.preventDefault()
-		setLoginError('')
-		const username = normalizeBeamioTagInput(merchantTag)
-		if (!username || !BEAMIO_TAG_ALLOWED_RE.test(username)) {
-			setLoginError(tu('home_beamio_tag_rule_hint'))
-			return
-		}
-		const epoch = ++loginEpochRef.current
-		setIsLoading(true)
-		const started = Date.now()
-		const escape = window.setTimeout(() => {
-			if (loginEpochRef.current !== epoch) return
-			setIsLoading(false)
-			if (!(isWorkspaceAccessGranted() && hasSessionPrivateKeyArmor())) {
-				setLoginError(tu('login_failed_please_try_again_later'))
-			}
-		}, 25_000)
-		try {
-			const result = await raceWithTimeout(restoreWithUserPin(username, password, false), 20_000, null)
-			if (loginEpochRef.current !== epoch) return
-			const temp = result && typeof result === 'object' && result.profiles ? result : null
-			if (!temp) {
-				setLoginError(tu(
-					Date.now() - started >= 7_000
-						? 'login_failed_please_try_again_later'
-						: 'invalid_beamio_tag_or_recovery_password_please_try_again',
-				))
-				return
-			}
-			const ready = await assembleEncryptKeysObject(
-				temp,
-				setProfiles,
-				setAllNodes,
-				setGossip,
-				gossip,
-				setBeamio,
-				setCharts,
-				setMyAddress,
-				undefined
-			)
-			if (loginEpochRef.current !== epoch) return
-			if (!ready) {
-				setLoginError(tu('login_failed_please_try_again_later'))
-				return
-			}
-			const path = postLoginPathForWallet()
-			if (loginEpochRef.current !== epoch) return
-			navigate(path, { replace: true })
-		} catch {
-			if (loginEpochRef.current !== epoch) return
-			setLoginError(tu('login_failed_please_try_again_later'))
-		} finally {
-			window.clearTimeout(escape)
-			if (loginEpochRef.current === epoch) setIsLoading(false)
-		}
+		await unlockWithCredentials(merchantTag, password)
 	}
 
 	const handleRestoreFromCode = async (recoveryCode: string) => {

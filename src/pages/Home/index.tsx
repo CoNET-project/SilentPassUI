@@ -6,6 +6,7 @@ import { useDaemonContext } from "@/providers/DaemonProvider"
 import { checkStorageWithTimeout } from '@/services/beamio'
 import SplashScreen from "@/components/SplashScreen"
 import { isWorkspaceScreenLocked } from '@/utils/beamioWorkspaceLock'
+import { hasMerchantOsCredentialHandoff } from '@/utils/merchantOsCredentialHandoff'
 
 /** Safari Private: IndexedDB/PouchDB may never resolve — force leave splash (align SilentPassUI AppEntryGate). */
 const SPLASH_FORCE_DISMISS_MS = 12_000
@@ -49,6 +50,10 @@ const HomePage = ({}) => {
 
 	const init = async () => {
 		try {
+			if (hasMerchantOsCredentialHandoff()) {
+				enterBizHome()
+				return
+			}
 			if (isWorkspaceScreenLocked()) {
 				enterBizHome()
 				return

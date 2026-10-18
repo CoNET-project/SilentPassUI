@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ChevronRight, Gift, Hexagon, Settings2, Share2, Store, TicketPlus, Users, Wallet } from 'lucide-react'
+import { ArrowUpRight, ChevronRight, Gift, Hexagon, Settings2, Share2, Store, TicketPlus, Users, Wallet } from 'lucide-react'
 import { QRCodeCanvas } from 'qrcode.react'
 import { BeamioCircularBackButton } from '@/components/BeamioCircularBackButton'
 import { AgentBusinessInviteSheet } from '@/pages/BountyBoard/AgentBusinessInviteSheet'
@@ -37,7 +37,7 @@ const HUB_TABS: { id: Exclude<RewardsHubView, 'earnings'>; label: string }[] = [
 	{ id: 'overview', label: 'Overview' },
 	{ id: 'referrals', label: 'Referrals' },
 	{ id: 'merchants', label: 'Merchants' },
-	{ id: 'nodes', label: 'Nodes' },
+	{ id: 'nodes', label: 'Node' },
 ]
 
 const FALLBACK_RATES: Record<string, number> = { USD: 1, CAD: 1.35, JPY: 150, EUR: 0.92, CNY: 7.2, HKD: 7.8, TWD: 31, SGD: 1.35 }
@@ -118,11 +118,6 @@ export default function BountyBoard() {
 		if (d.endsWith('K') || d.endsWith('M')) return ''
 		return 'CNET'
 	}, [miningCnetDisplay])
-	const ownsConetNodes = useMemo(() => {
-		const staked = validatorProfile?.validatorNodeCount ?? 0
-		const depin = validatorProfile?.gbMiningNodeCount ?? 0
-		return staked > 0 || depin > 0
-	}, [validatorProfile?.validatorNodeCount, validatorProfile?.gbMiningNodeCount])
 	const totalNodesDisplay = useMemo(() => {
 		const staked = validatorProfile?.validatorNodeCount ?? 0
 		const depin = validatorProfile?.gbMiningNodeCount ?? 0
@@ -202,7 +197,13 @@ export default function BountyBoard() {
 	}, [eoa])
 
 	return (
-		<div className="flex h-full min-h-0 flex-1 flex-col bg-[#F2F2F7] text-slate-900 dark:bg-slate-950 dark:text-slate-50">
+		<div
+			className="flex h-full min-h-0 flex-1 flex-col bg-[#eef6ff] text-slate-900 dark:bg-slate-950 dark:text-slate-50"
+			style={{
+				backgroundImage: 'radial-gradient(rgba(37,99,235,0.14) 1px, transparent 1px)',
+				backgroundSize: '18px 18px',
+			}}
+		>
 			<div
 				className="fixed left-4 right-4 z-40 flex items-center justify-between gap-2 transition-opacity duration-300"
 				style={{
@@ -268,7 +269,7 @@ export default function BountyBoard() {
 				/>
 				<main className="mx-auto w-full max-w-2xl space-y-5 px-6 pt-2">
 					<div
-						className="flex gap-1 rounded-full bg-white/80 p-1 shadow-sm dark:bg-slate-900/80"
+						className="flex gap-1 rounded-full bg-white/70 p-1 shadow-sm ring-1 ring-white/80 dark:bg-slate-900/80 dark:ring-slate-800"
 						role="tablist"
 						aria-label="Rewards Hub sections"
 					>
@@ -281,9 +282,9 @@ export default function BountyBoard() {
 									role="tab"
 									aria-selected={selected}
 									onClick={() => setHubView(tab.id)}
-									className={`min-w-0 flex-1 rounded-full px-2 py-2 text-[12px] font-semibold transition ${
+									className={`min-w-0 flex-1 rounded-full px-2 py-2 text-[13px] font-semibold transition ${
 										selected
-											? 'bg-white text-[#1562f0] shadow-sm dark:bg-slate-800 dark:text-blue-300'
+											? 'bg-white text-slate-900 shadow-sm dark:bg-slate-800 dark:text-slate-50'
 											: 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100'
 									}`}
 								>
@@ -294,31 +295,30 @@ export default function BountyBoard() {
 					</div>
 
 					{hubView === 'overview' || hubView === 'earnings' ? (
-						<section className="overflow-hidden rounded-3xl bg-gradient-to-br from-[#1d4ed8] to-[#2563eb] text-white shadow-[0_10px_30px_rgba(37,99,235,0.35)]">
-							<div className="p-6 pb-4">
+						<section className="overflow-hidden rounded-[28px] bg-gradient-to-br from-[#3b82f6] via-[#2563eb] to-[#1d4ed8] text-white shadow-[0_16px_40px_rgba(37,99,235,0.28)]">
+							<div className="px-6 pb-5 pt-6">
 								<div className="flex items-center justify-between gap-3">
-									<p className="text-[11px] font-semibold uppercase tracking-widest text-white/70">
-										Total rewards received
-									</p>
-									<span className="rounded-full bg-white/15 px-2.5 py-1 text-[11px] font-semibold text-white/90">
+									<p className="text-sm font-medium text-white/90">Total rewards received</p>
+									<span className="rounded-full bg-white/20 px-3 py-1 text-[12px] font-semibold text-white">
 										All time
 									</span>
 								</div>
-								<p className="mt-3 text-[44px] font-extrabold leading-none tracking-tight tabular-nums">
-									{usdcDisplay} <span className="text-3xl font-bold">USDC</span>
+								<p className="mt-4 text-[42px] font-extrabold leading-none tracking-tight tabular-nums">
+									{usdcDisplay} <span className="text-[28px] font-bold">USDC</span>
 								</p>
-								<p className="mt-2 text-sm text-white/80">{fiatApprox}</p>
-								<p className="mt-3 text-sm text-white/75">From referrals, network contributions and nodes</p>
+								<p className="mt-3 text-sm text-white/80">From referrals, network contributions and nodes</p>
 							</div>
-							<div className="flex items-center justify-between gap-3 bg-[#1e3a8a]/45 px-6 py-3">
-								<p className="text-xs text-white/80">Wallet USDC on this device</p>
+							<div className="flex items-center justify-between gap-3 border-t border-white/20 px-6 py-3.5">
+								<p className="text-sm text-white/90">
+									Pending · <span className="font-semibold tabular-nums">{miningGbUsdcApprox.replace(/^≈\s*/, '')}</span>
+								</p>
 								<button
 									type="button"
 									onClick={() => setHubView(hubView === 'earnings' ? 'overview' : 'earnings')}
-									className="inline-flex items-center gap-0.5 text-xs font-semibold text-white"
+									className="inline-flex shrink-0 items-center gap-0.5 text-sm font-semibold text-white"
 								>
 									{hubView === 'earnings' ? 'Hide breakdown' : 'View breakdown'}
-									<ChevronRight className="h-3.5 w-3.5" aria-hidden />
+									<ChevronRight className="h-4 w-4" aria-hidden />
 								</button>
 							</div>
 						</section>
@@ -333,7 +333,10 @@ export default function BountyBoard() {
 							<dl className="mt-4 space-y-3 text-sm">
 								<div className="flex items-center justify-between gap-3">
 									<dt className="text-slate-500 dark:text-slate-400">Wallet USDC</dt>
-									<dd className="font-semibold tabular-nums text-slate-900 dark:text-slate-50">{usdcDisplay} USDC</dd>
+									<dd className="text-right font-semibold tabular-nums text-slate-900 dark:text-slate-50">
+										{usdcDisplay} USDC
+										<span className="mt-0.5 block text-xs font-medium text-slate-400">{fiatApprox}</span>
+									</dd>
 								</div>
 								<div className="flex items-center justify-between gap-3">
 									<dt className="text-slate-500 dark:text-slate-400">DePIN routing</dt>
@@ -353,27 +356,27 @@ export default function BountyBoard() {
 					{hubView === 'overview' ? (
 						<>
 							<section>
-								<h2 className="mb-3 text-base font-semibold text-slate-900 dark:text-slate-50">Your next steps</h2>
+								<h2 className="mb-3 text-[17px] font-semibold text-slate-900 dark:text-slate-50">Your next steps</h2>
 								<div className="grid grid-cols-2 gap-3">
 									<div className={`${cardChrome} flex flex-col p-4`}>
-										<div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#e9edff] text-[#0051d1]">
+										<div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#eef2ff] text-[#6366f1]">
 											<Users className="h-4 w-4" strokeWidth={2.25} aria-hidden />
 										</div>
 										<h3 className="mt-3 text-sm font-semibold text-slate-900 dark:text-slate-50">Invite friends</h3>
 										<p className="mt-1 flex-1 text-xs leading-snug text-slate-500 dark:text-slate-400">
-											Your personal invitation, ready to share.
+											Your personal QR and link, ready to share.
 										</p>
 										<button
 											type="button"
 											onClick={openInviteQr}
-											className="mt-4 inline-flex items-center justify-center gap-1.5 rounded-full bg-[#1562f0] px-3 py-2 text-xs font-semibold text-white"
+											className="mt-4 inline-flex items-center justify-center gap-1.5 rounded-full bg-[#2563eb] px-3 py-2.5 text-xs font-semibold text-white"
 										>
 											<Share2 className="h-3.5 w-3.5" aria-hidden />
 											Share invite
 										</button>
 									</div>
 									<div className={`${cardChrome} flex flex-col p-4`}>
-										<div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#f5ecff] text-[#8d3a8b]">
+										<div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#f3e8ff] text-[#8d3a8b]">
 											<Store className="h-4 w-4" strokeWidth={2.25} aria-hidden />
 										</div>
 										<h3 className="mt-3 text-sm font-semibold text-slate-900 dark:text-slate-50">Business onboarding</h3>
@@ -383,47 +386,45 @@ export default function BountyBoard() {
 										<button
 											type="button"
 											onClick={openAgentSheet}
-											className="mt-4 inline-flex items-center justify-center gap-1 rounded-full border border-[#1562f0]/30 px-3 py-2 text-xs font-semibold text-[#1562f0]"
+											className="mt-4 inline-flex items-center justify-center gap-1 rounded-full bg-[#e8f1ff] px-3 py-2.5 text-xs font-semibold text-[#2563eb] dark:bg-blue-950/40"
 										>
 											Invite a business
-											<ChevronRight className="h-3.5 w-3.5" aria-hidden />
+											<ArrowUpRight className="h-3.5 w-3.5" aria-hidden />
 										</button>
 									</div>
 								</div>
 							</section>
 
-							<section>
-								<h2 className="mb-3 text-base font-semibold text-slate-900 dark:text-slate-50">Referral offers</h2>
-								<div className={`${cardChrome} p-4`}>
-									<div className="flex items-center gap-3">
-										<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#f5ecff] text-sm font-bold text-[#8d3a8b]">
-											LN
-										</div>
-										<div className="min-w-0">
-											<p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-50">Lao Nong Tang</p>
-											<p className="text-xs text-slate-500 dark:text-slate-400">Restaurant · Merchant-funded reward</p>
-										</div>
+							<section className="overflow-hidden rounded-[28px] bg-gradient-to-br from-[#e8f3ff] via-[#f4f9ff] to-white shadow-[0_8px_24px_rgba(15,23,42,0.06)] ring-1 ring-white/80 dark:from-slate-900 dark:via-slate-900 dark:to-slate-950 dark:ring-slate-800">
+								<div className="flex items-stretch gap-2 p-5">
+									<div className="min-w-0 flex-1">
+										<h2 className="text-[28px] font-extrabold leading-none tracking-tight text-slate-900 dark:text-slate-50">
+											Refer to Earn
+										</h2>
+										<p className="mt-2 text-sm font-semibold text-[#2563eb]">Connect friends. Earn merchant rewards.</p>
+										<p className="mt-2 text-sm leading-snug text-slate-500 dark:text-slate-400">
+											Discover merchants offering referral tasks. Share an offer and earn when its conditions are met.
+										</p>
+										<button
+											type="button"
+											onClick={() => setHubView('referrals')}
+											className="mt-4 inline-flex items-center gap-1 rounded-full bg-[#2563eb] px-4 py-2.5 text-sm font-semibold text-white"
+										>
+											Explore Offers
+											<ArrowUpRight className="h-4 w-4" aria-hidden />
+										</button>
 									</div>
-									<div className="mt-4 flex items-end justify-between gap-3 border-t border-dashed border-slate-200 pt-4 dark:border-slate-700">
-										<div>
-											<p className="text-sm text-slate-600 dark:text-slate-300">Share a top-up. Earn a reward.</p>
-											<span className="mt-2 inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
-												Example offer
-											</span>
+									<div className="relative hidden w-[132px] shrink-0 sm:block" aria-hidden>
+										<div className="absolute right-1 top-2 h-24 w-24 rounded-3xl bg-gradient-to-br from-[#60a5fa] to-[#2563eb] shadow-lg" />
+										<div className="absolute right-4 top-0 h-6 w-16 rounded-full bg-[#1d4ed8]" />
+										<div className="absolute right-8 top-5 h-3 w-8 rounded-sm bg-[#93c5fd]" />
+										<div className="absolute bottom-6 right-0 flex h-10 w-10 items-center justify-center rounded-full bg-amber-300 text-[11px] font-bold text-amber-900 shadow">
+											USDC
 										</div>
-										<p className="shrink-0 text-right text-lg font-bold text-slate-900 dark:text-slate-50">
-											5%
-											<span className="mt-0.5 block text-[11px] font-medium text-slate-500">referral reward</span>
+										<p className="absolute bottom-1 right-0 max-w-[120px] rounded-lg bg-white/90 px-2 py-1 text-[10px] font-medium leading-tight text-slate-600 shadow-sm">
+											Refer a friend. Earn a reward.
 										</p>
 									</div>
-									<button
-										type="button"
-										onClick={() => setHubView('referrals')}
-										className="mt-3 inline-flex items-center gap-0.5 text-sm font-semibold text-[#1562f0]"
-									>
-										View offer
-										<ChevronRight className="h-4 w-4" aria-hidden />
-									</button>
 								</div>
 							</section>
 						</>
@@ -494,26 +495,12 @@ export default function BountyBoard() {
 						</section>
 					) : null}
 
-					{hubView === 'nodes' || (hubView === 'overview' && ownsConetNodes) ? (
+					{hubView === 'nodes' ? (
 						<>
-							{hubView === 'nodes' ? (
-								<div>
-									<h2 className="text-base font-semibold text-slate-900 dark:text-slate-50">CoNET node income</h2>
-									<p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Your CNET balances and node rewards.</p>
-								</div>
-							) : (
-								<div className="flex items-center justify-between">
-									<h2 className="text-base font-semibold text-slate-900 dark:text-slate-50">CoNET node income</h2>
-									<button
-										type="button"
-										onClick={() => setHubView('nodes')}
-										className="inline-flex items-center gap-0.5 text-sm font-semibold text-[#1562f0]"
-									>
-										View details
-										<ChevronRight className="h-4 w-4" aria-hidden />
-									</button>
-								</div>
-							)}
+							<div>
+								<h2 className="text-base font-semibold text-slate-900 dark:text-slate-50">CoNET node income</h2>
+								<p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Your CNET balances and node rewards.</p>
+							</div>
 
 							<section className={`${cardChrome} p-5`}>
 								<p className="text-[11px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">CNET balances</p>

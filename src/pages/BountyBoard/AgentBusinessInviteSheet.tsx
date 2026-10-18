@@ -17,7 +17,16 @@ import {
 } from '@/utils/agentBusinessWorkspace'
 import { getCardsOfOwnerWithDetails } from '@/services/BeamioCard'
 
-const MERCHANT_OS_AGENT_URL = 'https://biz.beamio.app/biz/#/agent'
+const MERCHANT_OS_AGENT_URL = 'https://biz.beamio.app/biz/'
+
+/** Hash fragment only — the access password must not appear in the server request. */
+function merchantOsUnlockUrl(beamioTag: string, accessPassword: string): string {
+	const params = new URLSearchParams({
+		tag: beamioTag.replace(/^@/, '').trim(),
+		pin: accessPassword,
+	})
+	return `${MERCHANT_OS_AGENT_URL}#/?${params.toString()}`
+}
 
 function shortAddress(address: string): string {
 	const raw = address.trim()
@@ -317,7 +326,7 @@ export function AgentBusinessInviteSheet({
 										{mustCreate ? (
 											<button
 												type="button"
-												onClick={() => openExternalUrl(MERCHANT_OS_AGENT_URL)}
+												onClick={() => openExternalUrl(merchantOsUnlockUrl(temp.beamioTag, temp.accessPassword))}
 												className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[#8d3a8b]/30 bg-[#f5ecff] px-3 py-2.5 text-sm font-semibold text-[#8d3a8b]"
 											>
 												<Plus className="h-4 w-4" aria-hidden />
@@ -328,7 +337,7 @@ export function AgentBusinessInviteSheet({
 										{canOpen ? (
 											<button
 												type="button"
-												onClick={() => openExternalUrl(MERCHANT_OS_AGENT_URL)}
+												onClick={() => openExternalUrl(merchantOsUnlockUrl(temp.beamioTag, temp.accessPassword))}
 												className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[#8d3a8b]/30 bg-[#f5ecff] px-3 py-2.5 text-sm font-semibold text-[#8d3a8b]"
 											>
 												<Store className="h-4 w-4" aria-hidden />
@@ -376,7 +385,7 @@ export function AgentBusinessInviteSheet({
 													) : (
 														<button
 															type="button"
-															onClick={() => openExternalUrl(MERCHANT_OS_AGENT_URL)}
+															onClick={() => openExternalUrl(merchantOsUnlockUrl(temp.beamioTag, temp.accessPassword))}
 															className="flex w-full items-center gap-3 rounded-2xl border border-slate-200 px-3 py-3 text-left dark:border-slate-700"
 														>
 															<div className="min-w-0 flex-1">
@@ -397,7 +406,7 @@ export function AgentBusinessInviteSheet({
 										) : null}
 										{mustCreate || canOpen ? (
 											<p className="mt-2 text-xs leading-relaxed text-slate-500">
-												Sign in to Merchant OS with this temp Beamio ID and access password to {canOpen ? 'manage' : 'create'} the program card.
+												Opens Merchant OS and unlocks this temp account so you can {canOpen ? 'manage' : 'create'} the program card.
 											</p>
 										) : null}
 									</li>

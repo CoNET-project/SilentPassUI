@@ -15,20 +15,6 @@ import { useTu } from '@/locale/beamioLocale'
 import { hasSessionPrivateKeyArmor } from '@/utils/beamioSessionSecrets'
 import { isWorkspaceAccessGranted } from '@/utils/beamioWorkspaceLock'
 import { unlockMerchantWorkspaceSession } from '@/utils/unlockMerchantWorkspaceSession'
-import {
-	clearEmptyAgentWorkspace,
-	ensureAgentWorkspace,
-	getBizWorkspaceRole,
-	loadAgentWorkspace,
-	setBizWorkspaceRole,
-} from '@/utils/agentWorkspaceLocal'
-import { setSessionAgentAccessPassword } from '@/utils/agentSessionSecrets'
-import { eoaOwnsMerchantProgramCards } from '@/services/BeamioCard'
-import {
-	fetchIsAgentOnChain,
-	loadCachedIsAgent,
-	registerAgentOnChain,
-} from '@/utils/agentReferrerRegistryClient'
 
 /** Data attribute + selection tint — matches `biz.tsx` Merchant OS */
 const BIZ_UI_PRIMARY = BIZ_BRAND_HEX
@@ -59,67 +45,8 @@ const assembleEncryptKeysObject = async (
 	})
 }
 
-/**
- * Route after login.
- * An EOA that already owns merchant program cards always stays on Merchant OS,
- * even if a previous login submitted RegisterAgent (`isAgent` stuck true).
- * `/agent` is only for wallets whose own workspace role is agent, or chain
- * `isAgent` when they do not own program cards. RegisterAgent retries only for
- * that explicit agent workspace — never from a browser-global role or cache.
- */
-async function postLoginPathForWallet(
-	temp: encrypt_keys_object | null | undefined,
-	pin?: string,
-): Promise<string> {
-	const eoaRaw = temp?.profiles?.[0]?.keyID?.trim()
-	if (!eoaRaw || !ethers.isAddress(eoaRaw)) return '/native-pos'
-	const eoa = ethers.getAddress(eoaRaw)
-	try {
-		const ownsCards = await raceWithTimeout(eoaOwnsMerchantProgramCards(eoa), 8_000, null)
-		if (ownsCards === true) {
-			clearEmptyAgentWorkspace(eoa)
-			setBizWorkspaceRole('merchant', eoa)
-			return '/native-pos'
-		}
-
-		const chain = await raceWithTimeout(
-			fetchIsAgentOnChain(eoa),
-			8_000,
-			{ ok: false as const, isAgent: loadCachedIsAgent(eoa) },
-		)
-		let isAgentOnChain = chain.ok
-			? chain.isAgent === true
-			: loadCachedIsAgent(eoa) === true
-		const role = getBizWorkspaceRole(eoa)
-		const agentWs = loadAgentWorkspace(eoa)
-		const localAgentIntent = role === 'agent' || Boolean(agentWs && agentWs.temps.length > 0)
-
-		if (!isAgentOnChain && localAgentIntent) {
-			try {
-				const reg = await raceWithTimeout(
-					registerAgentOnChain(eoa),
-					12_000,
-					{ success: false as const, error: 'timeout' },
-				)
-				if (reg.success) isAgentOnChain = true
-			} catch {
-				/* still route to /agent on local intent; next login retries */
-			}
-		}
-
-		if (isAgentOnChain || localAgentIntent) {
-			setBizWorkspaceRole('agent', eoa)
-			const tag =
-				agentWs?.agentBeamioTag?.trim() ||
-				temp?.beamio?.accountName?.trim() ||
-				''
-			ensureAgentWorkspace(eoa, tag)
-			if (pin?.trim()) setSessionAgentAccessPassword(pin.trim())
-			return '/agent'
-		}
-	} catch {
-		/* fall through to merchant OS */
-	}
+/** Every successful Merchant OS login opens the merchant workspace. */
+function postLoginPathForWallet(): string {
 	return '/native-pos'
 }
 
@@ -354,7 +281,7 @@ const BizHome = () => {
 		if (!p0?.keyID?.trim() || !ethers.isAddress(p0.keyID)) return
 		let cancelled = false
 		void (async () => {
-			const path = await postLoginPathForWallet(getCoNET_Data() as encrypt_keys_object | null)
+			const path = postLoginPathForWallet()
 			if (!cancelled) navigate(path, { replace: true })
 		})()
 		return () => {
@@ -408,7 +335,7 @@ const BizHome = () => {
 				setLoginError(tu('login_failed_please_try_again_later'))
 				return
 			}
-			const path = await postLoginPathForWallet(temp, password)
+			const path = postLoginPathForWallet()
 			if (loginEpochRef.current !== epoch) return
 			navigate(path, { replace: true })
 		} catch {
@@ -454,7 +381,7 @@ const BizHome = () => {
 			if (!ready) {
 				throw new Error(tu('home_restore_err_prepare_failed'))
 			}
-			const path = await postLoginPathForWallet(temp)
+			const path = postLoginPathForWallet()
 			if (loginEpochRef.current !== epoch) return
 			navigate(path, { replace: true })
 		} catch (err) {

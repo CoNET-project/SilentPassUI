@@ -64,9 +64,6 @@ import BeamioTransactions from '@/pages/Vouchers/example/transfertion'
 import MobilePOS from '@/pages/Vouchers/example/nativeApp'
 import MerchantOS from '@/pages/Vouchers/example/biz'
 import CardManager from '@/pages/cardManager'
-import AgentTempEoaDashboard from '@/pages/Agent/AgentTempEoaDashboard'
-import AgentMerchantOnboardingPage from '@/pages/Agent/AgentMerchantOnboardingPage'
-import AgentTempSessionBanner from '@/components/AgentTempSessionBanner'
 import { getUserInfo } from "@/services/beamio"
 import { AppButton } from "@/components/button/AppButton"
 import { Check } from "lucide-react"
@@ -1321,8 +1318,8 @@ function AppShell() {
 					<Route path="/example-card" element={<EmapmpleCard />} />
 					<Route path="/example-new-card" element={<NewCardExample />} />
 					<Route path="/transfertion" element={<BeamioTransactions />} />
-					<Route path="/agent" element={<AgentTempEoaDashboard />} />
-					<Route path="/agent/merchant-onboarding" element={<AgentMerchantOnboardingPage />} />
+					<Route path="/agent" element={<Navigate to="/native-pos" replace />} />
+					<Route path="/agent/merchant-onboarding" element={<Navigate to="/native-pos" replace />} />
 					<Route path="/native-pos" element={<MerchantOS />} />
 					<Route path="/Terminals" element={<MerchantOS />} />
 					<Route path="/Program" element={<Navigate to="/Program/Basic" replace />} />
@@ -1335,7 +1332,6 @@ function AppShell() {
 					<Route path="/cardManager" element={<CardManager />} />
 				</Route>
 				</Routes>
-				<AgentTempSessionBanner />
 				</div>
 			</div>
 

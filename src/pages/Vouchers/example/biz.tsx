@@ -21,9 +21,6 @@ import { CoNET_Data, setCoNET_Data } from '@/utils/globals';
 import { clearWorkspaceSessionUnlock, isWorkspaceAccessGranted } from '@/utils/beamioWorkspaceLock';
 import { useReliableTapHandler } from '@/utils/reliableTap';
 import { hasSessionPrivateKeyArmor, getSessionPrivateKeyArmor } from '@/utils/beamioSessionSecrets';
-import { getSessionAgentAccessPassword } from '@/utils/agentSessionSecrets';
-import { findAgentWorkspaceByTempEoa, loadAgentWorkspace } from '@/utils/agentWorkspaceLocal';
-import { returnToAgentWorkspace } from '@/utils/agentTempEoaOps';
 import { useUnlockMerchantWorkspaceDeps } from '@/hooks/useUnlockMerchantWorkspaceDeps';
 import { ensureCardUserCumulativeStatInitializedSilent, ensureProfileOwnerCardsUserCumulativeStatInitializedSilent } from '@/utils/beamioCardUserCumulativeStatBootstrap';
 import {
@@ -33326,29 +33323,10 @@ useEffect(() => {
    if (!raw || !ethers.isAddress(raw)) return '';
    return ethers.getAddress(raw);
  }, [profiles?.[0]?.keyID, myAddress]);
- /** Fuel onboarding Back: agent / temp-EOA sessions return to Agent `/home`, not Merchant OS login. */
+ /** Fuel onboarding Back returns to Merchant OS login. */
 	const handleLiteMemberSelectionBack = useCallback(() => {
-		const eoa = merchantEoaForLiteForm;
-		if (eoa) {
-			// Temp sessions keep workspace role = 'agent'; restore agent EOA first.
-			const byTemp =
-				!!findAgentWorkspaceByTempEoa(eoa) && !!getSessionAgentAccessPassword();
-			if (byTemp) {
-				void (async () => {
-					const ok = await returnToAgentWorkspace(unlockMerchantWorkspaceDeps);
-					if (ok) navigate('/agent');
-					else window.location.href = '/';
-				})();
-				return;
-			}
-			// Already unlocked as the agent EOA (not a temp).
-			if (loadAgentWorkspace(eoa)) {
-				navigate('/agent');
-				return;
-			}
-		}
 		window.location.href = '/';
-	}, [merchantEoaForLiteForm, navigate, unlockMerchantWorkspaceDeps]);
+	}, []);
  /** Smart Terminal (AA) present — mirrors newBiz `isAaUnlocked` for Market fuel cards */
  const hasAaAccount = Boolean(profiles?.[0]?.aaAccount?.trim());
  /** Creating a merchant card no longer requires BusinessStartKet #0, so the Start Kit wall stays closed. */

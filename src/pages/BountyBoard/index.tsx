@@ -1,6 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ChevronRight, Gift, Hexagon, Settings2, Share2, Store, Users, Wallet } from 'lucide-react'
+import { ChevronRight, Gift, Hexagon, Settings2, Share2, Store, TicketPlus, Users, Wallet } from 'lucide-react'
+import { QRCodeCanvas } from 'qrcode.react'
+import { BeamioCircularBackButton } from '@/components/BeamioCircularBackButton'
+import { AgentBusinessInviteSheet } from '@/pages/BountyBoard/AgentBusinessInviteSheet'
+import { buildAgentInviteAppUrl } from '@/utils/agentInviteIntroducerStash'
 import { useScrollCapsuleOpacity } from '@/hooks/useScrollCapsuleOpacity'
 import { useConetAaWalletBalances, useConetWalletBalances } from '@/hooks/useConetUsdcBalance'
 import { useDaemonValidatorWalletNodeProfile } from '@/hooks/useDaemonValidatorWalletNodeProfile'
@@ -128,14 +132,51 @@ export default function BountyBoard() {
 	const capsulePointer = capsuleOpacity < 0.05 ? 'none' : 'auto'
 
 	const [hubView, setHubView] = useState<RewardsHubView>('overview')
+	const [inviteQrOpen, setInviteQrOpen] = useState(false)
+	const [inviteQrEntered, setInviteQrEntered] = useState(false)
+	const [inviteQrClosing, setInviteQrClosing] = useState(false)
+	const [inviteQrEpoch, setInviteQrEpoch] = useState(0)
+	const [agentSheetOpen, setAgentSheetOpen] = useState(false)
+	const [agentSheetEpoch, setAgentSheetEpoch] = useState(0)
+	const inviteUrl = useMemo(() => (eoa ? buildAgentInviteAppUrl(eoa) : ''), [eoa])
+	const agentTag = String((beamio as { accountName?: string } | null)?.accountName ?? '').replace(/^@/, '')
+	const openAgentSheet = () => {
+		setAgentSheetEpoch((n) => n + 1)
+		setAgentSheetOpen(true)
+	}
+	const closeInviteQr = () => {
+		if (inviteQrClosing) return
+		setInviteQrClosing(true)
+		window.setTimeout(() => {
+			setInviteQrOpen(false)
+			setInviteQrClosing(false)
+			setInviteQrEntered(false)
+		}, 300)
+	}
+	const openInviteQr = () => {
+		setInviteQrClosing(false)
+		setInviteQrEntered(false)
+		setInviteQrOpen(true)
+		setInviteQrEpoch((n) => n + 1)
+	}
 	const [isGenesisReferralAdmin, setIsGenesisReferralAdmin] = useState(false)
 	const [isGenesisL0, setIsGenesisL0] = useState(false)
 	const [isGenesisL1, setIsGenesisL1] = useState(false)
 
-	// Main tab: always keep global Footer (detail pages hide it and restore on unmount).
+	// Main tab keeps the global Footer. The full-screen agent panel covers it while open.
 	useEffect(() => {
+		if (agentSheetOpen) {
+			setShowFooter(false)
+			return () => setShowFooter(true)
+		}
 		setShowFooter(true)
-	}, [setShowFooter])
+	}, [agentSheetOpen, setShowFooter])
+
+	useEffect(() => {
+		if (!inviteQrOpen) return
+		const frame = window.requestAnimationFrame(() => setInviteQrEntered(true))
+		return () => window.cancelAnimationFrame(frame)
+	}, [inviteQrOpen, inviteQrEpoch])
 
 	useEffect(() => {
 		if (!eoa) {
@@ -182,24 +223,36 @@ export default function BountyBoard() {
 					<span className="text-[15px] font-bold tracking-tight text-[#0F172A] dark:text-slate-100">Rewards Hub</span>
 				</div>
 				{eoa ? (
-					<button
-						type="button"
-						onClick={() => navigate('/BountyBoard/genesis-referral')}
-						className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-100/90 bg-white text-[#1562f0] shadow-[0_4px_24px_rgba(15,23,42,0.08)] transition active:scale-[0.96] hover:bg-slate-50 dark:border-slate-700/80 dark:bg-slate-800 dark:text-blue-300 dark:hover:bg-slate-700"
-						style={{ pointerEvents: capsulePointer }}
-						aria-label={
-							isGenesisReferralAdmin || isGenesisL0 || isGenesisL1
-								? 'Genesis Node referral'
-								: 'Claim Genesis referral redeem code'
-						}
-						title={
-							isGenesisReferralAdmin || isGenesisL0 || isGenesisL1
-								? 'Genesis referral'
-								: 'Claim Genesis code'
-						}
-					>
-						<Share2 className="h-4 w-4" strokeWidth={2.25} aria-hidden />
-					</button>
+					<div className="flex shrink-0 items-center gap-2" style={{ pointerEvents: capsulePointer }}>
+						<button
+							type="button"
+							onClick={openInviteQr}
+							className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-100/90 bg-white text-[#1562f0] shadow-[0_4px_24px_rgba(15,23,42,0.08)] transition active:scale-[0.96] hover:bg-slate-50 dark:border-slate-700/80 dark:bg-slate-800 dark:text-blue-300 dark:hover:bg-slate-700"
+							aria-label="Share invite"
+							title="Share invite"
+							tabIndex={-1}
+						>
+							<Share2 className="h-4 w-4" strokeWidth={2.25} aria-hidden />
+						</button>
+						<button
+							type="button"
+							onClick={() => navigate('/BountyBoard/genesis-referral')}
+							className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-100/90 bg-white text-[#1562f0] shadow-[0_4px_24px_rgba(15,23,42,0.08)] transition active:scale-[0.96] hover:bg-slate-50 dark:border-slate-700/80 dark:bg-slate-800 dark:text-blue-300 dark:hover:bg-slate-700"
+							aria-label={
+								isGenesisReferralAdmin || isGenesisL0 || isGenesisL1
+									? 'Genesis Node referral'
+									: 'Claim Genesis referral redeem code'
+							}
+							title={
+								isGenesisReferralAdmin || isGenesisL0 || isGenesisL1
+									? 'Genesis referral'
+									: 'Claim Genesis code'
+							}
+							tabIndex={-1}
+						>
+							<TicketPlus className="h-4 w-4" strokeWidth={2.25} aria-hidden />
+						</button>
+					</div>
 				) : null}
 			</div>
 
@@ -312,7 +365,7 @@ export default function BountyBoard() {
 										</p>
 										<button
 											type="button"
-											onClick={() => navigate('/BountyBoard/genesis-referral')}
+											onClick={openInviteQr}
 											className="mt-4 inline-flex items-center justify-center gap-1.5 rounded-full bg-[#1562f0] px-3 py-2 text-xs font-semibold text-white"
 										>
 											<Share2 className="h-3.5 w-3.5" aria-hidden />
@@ -329,7 +382,7 @@ export default function BountyBoard() {
 										</p>
 										<button
 											type="button"
-											onClick={() => setHubView('merchants')}
+											onClick={openAgentSheet}
 											className="mt-4 inline-flex items-center justify-center gap-1 rounded-full border border-[#1562f0]/30 px-3 py-2 text-xs font-semibold text-[#1562f0]"
 										>
 											Invite a business
@@ -387,7 +440,7 @@ export default function BountyBoard() {
 								<p className="mt-1 text-sm text-slate-500 dark:text-slate-400">One link to share. Registration follows each program’s rules.</p>
 								<button
 									type="button"
-									onClick={() => navigate('/BountyBoard/genesis-referral')}
+									onClick={openInviteQr}
 									className="mt-4 inline-flex items-center justify-center gap-1.5 rounded-full bg-[#1562f0] px-4 py-2 text-sm font-semibold text-white"
 								>
 									<Share2 className="h-4 w-4" aria-hidden />
@@ -416,7 +469,7 @@ export default function BountyBoard() {
 							</div>
 							<button
 								type="button"
-								onClick={() => navigate('/BountyBoard/genesis-referral')}
+								onClick={openAgentSheet}
 								className="inline-flex items-center justify-center gap-1.5 rounded-full bg-[#1562f0] px-4 py-2 text-sm font-semibold text-white"
 							>
 								Invite a business
@@ -543,6 +596,64 @@ export default function BountyBoard() {
 					) : null}
 				</main>
 			</div>
+			{inviteQrOpen ? (
+				<div className="fixed inset-0 z-[140] flex items-end">
+					<button
+						type="button"
+						aria-label="Close invite"
+						className="absolute inset-0 bg-slate-950/40"
+						onClick={closeInviteQr}
+						tabIndex={-1}
+					/>
+					<div
+						className="relative z-10 flex max-h-[min(92dvh,720px)] w-full flex-col overflow-y-auto rounded-t-[28px] bg-[#F2F2F7] shadow-2xl transition-transform duration-300 ease-out dark:bg-slate-950"
+						style={{
+							transform: inviteQrClosing || !inviteQrEntered ? 'translateY(100%)' : 'translateY(0)',
+							paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom, 0px))',
+						}}
+						role="dialog"
+						aria-modal="true"
+						aria-labelledby="invite-qr-title"
+					>
+						<div className="flex justify-center pt-3" aria-hidden>
+							<span className="h-1 w-10 rounded-full bg-slate-300 dark:bg-slate-600" />
+						</div>
+						<div className="relative flex items-center px-4 pt-3">
+							<BeamioCircularBackButton variant="onLight" onClick={closeInviteQr} aria-label="Back" />
+							<h2
+								id="invite-qr-title"
+								className="pointer-events-none absolute inset-x-16 truncate text-center text-lg font-semibold text-slate-900 dark:text-slate-50"
+							>
+								Invite friends
+							</h2>
+						</div>
+						<div className="flex flex-col items-center px-6 pt-6">
+							<p className="max-w-sm text-center text-sm text-slate-500 dark:text-slate-400">
+								Scan to install Beamio. People who install from this code join with you as their referrer.
+							</p>
+							{inviteUrl ? (
+								<div className="mt-6 rounded-3xl bg-white p-5 shadow-sm dark:bg-slate-900">
+									<QRCodeCanvas value={inviteUrl} size={220} level="M" includeMargin />
+								</div>
+							) : (
+								<div role="alert" className="mt-6 flex items-start gap-2 rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
+									<p>Sign in with your wallet before sharing an invite.</p>
+								</div>
+							)}
+							<p className="mt-5 max-w-sm break-all text-center text-xs text-slate-500 dark:text-slate-400">
+								{inviteUrl || 'https://beamio.app/app-download'}
+							</p>
+						</div>
+					</div>
+				</div>
+			) : null}
+			<AgentBusinessInviteSheet
+				open={agentSheetOpen}
+				epoch={agentSheetEpoch}
+				agentEoa={eoa}
+				agentTag={agentTag}
+				onClose={() => setAgentSheetOpen(false)}
+			/>
 		</div>
 	)
 }

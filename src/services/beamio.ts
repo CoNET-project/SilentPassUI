@@ -2224,6 +2224,57 @@ export const createRecover = async (BeamioName: string, pin: string) => {
 	return obj
 }
 
+/**
+ * Register a fresh BeamioTag + access password on-chain without touching the
+ * signed-in Consumer profile or IndexedDB. Used by agent temp EOA pre-registration.
+ */
+export const createDetachedRecoverAccount = async (BeamioName: string, pin: string) => {
+	const acc = ethers.Wallet.createRandom()
+	const phrase = acc.mnemonic?.phrase
+	if (!phrase) return null
+	const recoverCode = generateCODE('')
+	const stored = await hashPasswordBrowser(pin)
+	const phraseBase64 = toBase64(phrase)
+	const img = await aesGcmEncryptWithStored(phraseBase64, recoverCode.code, stored)
+	const img1 = await aesGcmEncryptWithStored(phraseBase64, pin, stored)
+	const storageEncryptedImg = toBase64(JSON.stringify({ stored, img }))
+	const hash = ethers.solidityPackedKeccak256(['string'], [BeamioName])
+	const storageEncryptedImg1 = toBase64(JSON.stringify({ stored, img: img1 }))
+	const registered = await newUser(
+		BeamioName,
+		[{ hash: recoverCode.hash, encrypto: storageEncryptedImg }, { hash, encrypto: storageEncryptedImg1 }],
+		acc.privateKey,
+	)
+	if (!registered) return null
+	return { eoa: ethers.getAddress(acc.address) }
+}
+
+/** Decrypt a recover package in memory. Does not call createOrGetWallet or storeSystemData. */
+export const unlockDetachedRecoverPrivateKey = async (
+	username: string,
+	pin: string,
+): Promise<string | null> => {
+	const accountName = username.trim()
+	if (!accountName || !pin) return null
+	try {
+		const recoverHit =
+			(await fetchRecoverPayloadByAccountName(accountName, beamioAccountSC))
+			|| (await fetchRecoverPayloadByAccountName(accountName, legacyBeamioAccountSC))
+		if (!recoverHit?.payload?.img || !recoverHit.payload.stored) return null
+		const mnemonicBase64 = await aesGcmDecryptWithStored(
+			recoverHit.payload.img,
+			pin,
+			recoverHit.payload.stored,
+		)
+		const phrase = fromBase64(mnemonicBase64)
+		const key = createKeyHDWallets(phrase)
+		if (!key?.privateKey) return null
+		return key.privateKey
+	} catch {
+		return null
+	}
+}
+
 export const restoreWithRedeem = async (recoveryCode: string, pin: string) => {
 	const hash = ethers.solidityPackedKeccak256(['string'], [recoveryCode])
 

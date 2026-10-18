@@ -23,11 +23,10 @@ import { ensureConetAaForProfileAndPersist } from "@/utils/ensureConetAa"
 import {AppButton} from '@/components/button/AppButton'
 import {motion, AnimatePresence } from "framer-motion"
 import BusinessIdentityForm, { type BusinessIdentitySuccess } from './BusinessIdentityForm'
-import OnboardingRoleChoiceScreen from './OnboardingRoleChoiceScreen'
 import RecoveryQRScreen from './RecoveryQRScreen'
 import RestoreEntryScreen from './RestoreEntryScreen'
 import BizHome from './bizHome'
-import { setBizWorkspaceRole, type BizWorkspaceRole } from '@/utils/agentWorkspaceLocal'
+import { setBizWorkspaceRole } from '@/utils/agentWorkspaceLocal'
 import { unlockMerchantWorkspaceSession } from '@/utils/unlockMerchantWorkspaceSession'
 import { useUnlockMerchantWorkspaceDeps } from '@/hooks/useUnlockMerchantWorkspaceDeps'
 import ccsabackphoto from '../Vouchers/assets/ccsacard.avif'
@@ -152,8 +151,6 @@ export default function BeamioOnboardingModal({
 	const [showBizLogin, setShowBizLogin] = useState(false)
 	const [settingsOpen, setSettingsOpen] = useState<''|'RecoveryQRScreen'|'RestoreEntryScreen'>('')
 	const [isInitialEntry, setIsInitialEntry] = useState(true)
-	/** First step: choose Merchant vs Agent before existing merchant cover / agent identity. */
-	const [showRoleChoice, setShowRoleChoice] = useState(true)
 	/** Cover splash（newOnloading.html 风格）— 在进入 InitialEntryScreen 前展示 */
 	const [showOnboardingCover, setShowOnboardingCover] = useState(true)
 	const [coverBusinessType, setCoverBusinessType] = useState<VerraBusinessProfileBusinessType>(() => {
@@ -230,6 +227,7 @@ export default function BeamioOnboardingModal({
 
 	useEffect(() => {
 		clearOnboardingWebCandidate()
+		setBizWorkspaceRole('merchant')
 	}, [])
 
 	useEffect(() => {
@@ -294,7 +292,7 @@ export default function BeamioOnboardingModal({
 			clearSessionOnboardingBusinessDraft()
 			setIsInitialLoading(true)
 			setIsInitialEntry(true)
-			setShowRoleChoice(true)
+			setBizWorkspaceRole('merchant')
 			setShowOnboardingCover(true)
 			setShowOnboardingBusinessDetails(false)
 			setCoverBusinessType("solo")
@@ -1066,22 +1064,7 @@ export default function BeamioOnboardingModal({
 		return <BizHome />
 	}
 
-	const onChooseWorkspaceRole = (role: BizWorkspaceRole) => {
-		setBizWorkspaceRole(role === 'agent' ? 'merchant' : role)
-		setShowRoleChoice(false)
-		setShowOnboardingCover(true)
-	}
-
-	if (isInitialEntry && !settingsOpen && showRoleChoice) {
-		return (
-			<OnboardingRoleChoiceScreen
-				appVersion={APP_VERSION}
-				onChoose={onChooseWorkspaceRole}
-			/>
-		)
-	}
-
-	// 首次进入（无钱包）：Select Type → Details（单列）→ Identity（Create/Restore）
+	// 首次进入（无钱包）：直接 Merchant 引导（Select Type → Details → Identity）
 	if (isInitialEntry && !settingsOpen && showOnboardingCover) {
 		return onboardingCoverScreen
 	}

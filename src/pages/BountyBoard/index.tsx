@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowUpRight, ChevronRight, Gift, Hexagon, Settings2, Share2, Store, TicketPlus, Users, Wallet } from 'lucide-react'
+import { ArrowUpRight, Check, ChevronRight, Copy, Gift, Hexagon, Settings2, Share2, Store, TicketPlus, Users, Wallet } from 'lucide-react'
 import { QRCodeCanvas } from 'qrcode.react'
 import { BeamioCircularBackButton } from '@/components/BeamioCircularBackButton'
 import { AgentBusinessInviteSheet } from '@/pages/BountyBoard/AgentBusinessInviteSheet'
@@ -82,6 +82,59 @@ function formatConetUsdcDisplay(balance: string): string {
 	return formatDigitalAssetDisplay(Math.max(0, Number(balance) || 0))
 }
 
+function ReferToEarnBanner({ onExplore }: { onExplore: () => void }) {
+	return (
+		<section className="relative isolate overflow-hidden rounded-[26px] border border-white bg-[radial-gradient(ellipse_at_100%_100%,rgba(131,227,212,0.6),transparent_60%),radial-gradient(ellipse_at_90%_0%,rgba(140,200,255,0.69),transparent_64%),linear-gradient(120deg,#edf7ff,#e0efff)] shadow-[0_9px_27px_rgba(68,125,182,0.09)] dark:border-[#4e708e] dark:bg-[radial-gradient(ellipse_at_100%_100%,rgba(40,107,100,0.6),transparent_60%),radial-gradient(ellipse_at_90%_0%,rgba(53,92,146,0.6),transparent_64%),linear-gradient(120deg,#1d314a,#233e5d)] dark:shadow-[0_9px_27px_rgba(0,0,0,0.09)]">
+			<div className="relative z-[1] px-[22px] py-6 sm:min-h-[278px] sm:pr-[168px]">
+				<div className="min-w-0 max-w-[230px]">
+					<h2 className="text-[28px] font-extrabold leading-none tracking-tight text-slate-900 dark:text-slate-50">
+						Refer to Earn
+					</h2>
+					<p className="mt-2 text-[15px] font-semibold leading-snug text-[#2563eb]">
+						Connect friends.
+						<br />
+						Earn merchant rewards.
+					</p>
+					<p className="mt-2 text-sm leading-snug text-slate-500 dark:text-slate-400">
+						Discover merchants offering referral tasks. Share an offer and earn when its conditions are met.
+					</p>
+					<button
+						type="button"
+						onClick={onExplore}
+						className="mt-4 inline-flex items-center gap-1 rounded-full bg-[#2563eb] px-4 py-2.5 text-sm font-semibold text-white"
+					>
+						Explore Offers
+						<ArrowUpRight className="h-4 w-4" aria-hidden />
+					</button>
+				</div>
+			</div>
+			<div className="pointer-events-none absolute bottom-6 right-[-1px] hidden h-[186px] w-[155px] sm:block" aria-hidden>
+				<div className="absolute right-[-10px] top-3 h-[157px] w-[157px] rounded-full bg-white/40 shadow-[0_0_35px_rgba(215,247,255,0.56)] dark:bg-[#a8d4ff]/[0.07] dark:shadow-[0_0_35px_rgba(181,227,255,0.03)]" />
+				<div className="absolute right-[3px] top-[-1px] text-[29px] leading-none text-[#fffbea] dark:text-[#edecb0]">✦</div>
+				<div className="absolute left-[9px] top-[23px] grid h-[43px] w-[39px] -rotate-[14deg] place-items-center rounded-full border-[3px] border-[#ffc94d] bg-[linear-gradient(135deg,#ffeeb0,#ffc344)] text-[22px] font-semibold text-[#d5940b] shadow-[4px_4px_0_#e6a71d,0_9px_15px_rgba(99,165,187,0.14)] dark:border-[#d5a74a] dark:bg-[linear-gradient(135deg,#ffdd8d,#c79a35)] dark:text-[#8c6012] dark:shadow-[4px_4px_0_#976f21,0_9px_15px_rgba(0,0,0,0.14)]">
+					$
+				</div>
+				<div className="absolute bottom-[25px] left-[43px] h-[87px] w-[91px] -rotate-[9deg] rounded-xl bg-[linear-gradient(120deg,#faffff,#c7e5ff)] shadow-[10px_13px_18px_rgba(39,127,198,0.17),inset_-10px_-3px_13px_rgba(106,175,248,0.24)] dark:bg-[linear-gradient(120deg,#bad8f7,#7ea9d9)] dark:shadow-[10px_13px_18px_rgba(0,0,0,0.15),inset_-10px_-3px_13px_rgba(70,132,195,0.24)]">
+					<div className="absolute bottom-0 left-[35px] top-0 w-[21px] bg-[linear-gradient(90deg,#3a96f7,#0766d8,#4ba5ff)] dark:bg-[linear-gradient(90deg,#3c88d8,#295f9d,#64a3df)]" />
+					<div className="absolute left-1 top-[-36px] h-[30px] w-10 rotate-[17deg] rounded-[25px_26px_3px_24px] bg-[linear-gradient(125deg,#9edaff,#0870df)] shadow-[inset_0_-6px_8px_rgba(6,86,182,0.28)] dark:bg-[linear-gradient(125deg,#9bd0f8,#3472b4)] dark:shadow-[inset_0_-6px_8px_rgba(13,61,107,0.28)]" />
+					<div className="absolute left-11 top-[-36px] h-[30px] w-10 -scale-x-100 rotate-[17deg] rounded-[25px_26px_3px_24px] bg-[linear-gradient(125deg,#9edaff,#0870df)] shadow-[inset_0_-6px_8px_rgba(6,86,182,0.28)] dark:bg-[linear-gradient(125deg,#9bd0f8,#3472b4)]" />
+					<div className="absolute -left-1.5 -right-1.5 -top-[7px] h-[21px] rounded-[7px] bg-[linear-gradient(130deg,#ffffff,#c2e2ff)] shadow-[0_4px_5px_rgba(55,133,195,0.13)] dark:bg-[linear-gradient(130deg,#e7f4ff,#99bfe4)]">
+						<div className="absolute left-[41px] top-0 h-[21px] w-[22px] bg-[linear-gradient(90deg,#3a96f7,#0766d8,#4ba5ff)] dark:bg-[linear-gradient(90deg,#3c88d8,#295f9d,#64a3df)]" />
+					</div>
+				</div>
+				<div className="absolute bottom-[5px] right-0 grid h-[29px] w-[26px] rotate-[16deg] place-items-center rounded-full border-[3px] border-[#ffc94d] bg-[linear-gradient(135deg,#ffeeb0,#ffc344)] text-[15px] font-semibold text-[#d5940b] shadow-[4px_4px_0_#e6a71d,0_9px_15px_rgba(99,165,187,0.14)] dark:border-[#d5a74a] dark:text-[#8c6012]">
+					$
+				</div>
+				<p className="absolute bottom-0 left-[22px] w-[132px] rotate-[5deg] rounded-[11px] border border-white bg-white/95 px-2.5 py-2 text-[10px] font-medium leading-[1.45] text-[#2666b2] shadow-[0_5px_15px_rgba(54,127,172,0.08)] dark:border-[#f1f8ff] dark:bg-[#edf5ff]/95 dark:text-[#1e588f]">
+					Refer a friend.
+					<br />
+					Earn a reward.
+				</p>
+			</div>
+		</section>
+	)
+}
+
 export default function BountyBoard() {
 	const navigate = useNavigate()
 	const { opacity: capsuleOpacity, onScroll: onCapsuleScroll, setRef: setScrollRef } = useScrollCapsuleOpacity(true)
@@ -131,6 +184,7 @@ export default function BountyBoard() {
 	const [inviteQrEntered, setInviteQrEntered] = useState(false)
 	const [inviteQrClosing, setInviteQrClosing] = useState(false)
 	const [inviteQrEpoch, setInviteQrEpoch] = useState(0)
+	const [inviteLinkCopied, setInviteLinkCopied] = useState(false)
 	const [agentSheetOpen, setAgentSheetOpen] = useState(false)
 	const [agentSheetEpoch, setAgentSheetEpoch] = useState(0)
 	const inviteUrl = useMemo(() => (eoa ? buildAgentInviteAppUrl(eoa) : ''), [eoa])
@@ -146,8 +200,36 @@ export default function BountyBoard() {
 			setInviteQrOpen(false)
 			setInviteQrClosing(false)
 			setInviteQrEntered(false)
+			setInviteLinkCopied(false)
 		}, 300)
 	}
+	const copyInviteLink = useCallback(async () => {
+		const value = inviteUrl.trim()
+		if (!value) return
+		try {
+			await navigator.clipboard.writeText(value)
+			setInviteLinkCopied(true)
+		} catch {
+			setInviteLinkCopied(false)
+		}
+	}, [inviteUrl])
+	const shareInviteLink = useCallback(async () => {
+		const value = inviteUrl.trim()
+		if (!value) return
+		try {
+			if (typeof navigator.share === 'function') {
+				await navigator.share({
+					title: 'Invite friends to Beamio',
+					text: 'Join Beamio with my invitation.',
+					url: value,
+				})
+				return
+			}
+		} catch (err) {
+			if (err instanceof DOMException && err.name === 'AbortError') return
+		}
+		await copyInviteLink()
+	}, [copyInviteLink, inviteUrl])
 	const openInviteQr = () => {
 		setInviteQrClosing(false)
 		setInviteQrEntered(false)
@@ -158,20 +240,26 @@ export default function BountyBoard() {
 	const [isGenesisL0, setIsGenesisL0] = useState(false)
 	const [isGenesisL1, setIsGenesisL1] = useState(false)
 
-	// Main tab keeps the global Footer. The full-screen agent panel covers it while open.
+	// Main tab keeps the global Footer. Sheets cover it while open.
 	useEffect(() => {
-		if (agentSheetOpen) {
+		if (agentSheetOpen || inviteQrOpen) {
 			setShowFooter(false)
 			return () => setShowFooter(true)
 		}
 		setShowFooter(true)
-	}, [agentSheetOpen, setShowFooter])
+	}, [agentSheetOpen, inviteQrOpen, setShowFooter])
 
 	useEffect(() => {
 		if (!inviteQrOpen) return
 		const frame = window.requestAnimationFrame(() => setInviteQrEntered(true))
 		return () => window.cancelAnimationFrame(frame)
 	}, [inviteQrOpen, inviteQrEpoch])
+
+	useEffect(() => {
+		if (!inviteLinkCopied) return
+		const timer = window.setTimeout(() => setInviteLinkCopied(false), 2000)
+		return () => window.clearTimeout(timer)
+	}, [inviteLinkCopied])
 
 	useEffect(() => {
 		if (!eoa) {
@@ -395,38 +483,7 @@ export default function BountyBoard() {
 								</div>
 							</section>
 
-							<section className="overflow-hidden rounded-[28px] bg-gradient-to-br from-[#e8f3ff] via-[#f4f9ff] to-white shadow-[0_8px_24px_rgba(15,23,42,0.06)] ring-1 ring-white/80 dark:from-slate-900 dark:via-slate-900 dark:to-slate-950 dark:ring-slate-800">
-								<div className="flex items-stretch gap-2 p-5">
-									<div className="min-w-0 flex-1">
-										<h2 className="text-[28px] font-extrabold leading-none tracking-tight text-slate-900 dark:text-slate-50">
-											Refer to Earn
-										</h2>
-										<p className="mt-2 text-sm font-semibold text-[#2563eb]">Connect friends. Earn merchant rewards.</p>
-										<p className="mt-2 text-sm leading-snug text-slate-500 dark:text-slate-400">
-											Discover merchants offering referral tasks. Share an offer and earn when its conditions are met.
-										</p>
-										<button
-											type="button"
-											onClick={() => setHubView('referrals')}
-											className="mt-4 inline-flex items-center gap-1 rounded-full bg-[#2563eb] px-4 py-2.5 text-sm font-semibold text-white"
-										>
-											Explore Offers
-											<ArrowUpRight className="h-4 w-4" aria-hidden />
-										</button>
-									</div>
-									<div className="relative hidden w-[132px] shrink-0 sm:block" aria-hidden>
-										<div className="absolute right-1 top-2 h-24 w-24 rounded-3xl bg-gradient-to-br from-[#60a5fa] to-[#2563eb] shadow-lg" />
-										<div className="absolute right-4 top-0 h-6 w-16 rounded-full bg-[#1d4ed8]" />
-										<div className="absolute right-8 top-5 h-3 w-8 rounded-sm bg-[#93c5fd]" />
-										<div className="absolute bottom-6 right-0 flex h-10 w-10 items-center justify-center rounded-full bg-amber-300 text-[11px] font-bold text-amber-900 shadow">
-											USDC
-										</div>
-										<p className="absolute bottom-1 right-0 max-w-[120px] rounded-lg bg-white/90 px-2 py-1 text-[10px] font-medium leading-tight text-slate-600 shadow-sm">
-											Refer a friend. Earn a reward.
-										</p>
-									</div>
-								</div>
-							</section>
+							<ReferToEarnBanner onExplore={() => setHubView('referrals')} />
 						</>
 					) : null}
 
@@ -448,7 +505,12 @@ export default function BountyBoard() {
 									Show invite
 								</button>
 							</div>
-							<div className={`${cardChrome} p-4`}>
+							<ReferToEarnBanner
+								onExplore={() => {
+									document.getElementById('referral-offers')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+								}}
+							/>
+							<div id="referral-offers" className={`${cardChrome} p-4`}>
 								<h3 className="text-sm font-semibold text-slate-900 dark:text-slate-50">Lao Nong Tang</h3>
 								<p className="mt-1 text-2xl font-bold text-slate-900 dark:text-slate-50">
 									5% <span className="text-sm font-medium text-slate-500">referral reward</span>
@@ -605,30 +667,63 @@ export default function BountyBoard() {
 						<div className="flex justify-center pt-3" aria-hidden>
 							<span className="h-1 w-10 rounded-full bg-slate-300 dark:bg-slate-600" />
 						</div>
-						<div className="relative flex items-center px-4 pt-3">
+						<div className="relative flex items-center px-4 pt-2">
 							<BeamioCircularBackButton variant="onLight" onClick={closeInviteQr} aria-label="Back" />
-							<h2
-								id="invite-qr-title"
-								className="pointer-events-none absolute inset-x-16 truncate text-center text-lg font-semibold text-slate-900 dark:text-slate-50"
-							>
-								Invite friends
-							</h2>
 						</div>
-						<div className="flex flex-col items-center px-6 pt-6">
-							<p className="max-w-sm text-center text-sm text-slate-500 dark:text-slate-400">
-								Scan to install Beamio. People who install from this code join with you as their referrer.
+						<div className="px-5 pb-2 pt-4">
+							<h2 id="invite-qr-title" className="text-[22px] font-semibold tracking-tight text-[#0F172A] dark:text-slate-50">
+								Invite friends to Beamio
+							</h2>
+							<p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+								Let friends scan your QR or open your referral link.
 							</p>
 							{inviteUrl ? (
-								<div className="mt-6 rounded-3xl bg-white p-5 shadow-sm dark:bg-slate-900">
-									<QRCodeCanvas value={inviteUrl} size={220} level="M" includeMargin />
+								<div className="mt-5 rounded-[28px] bg-white px-5 py-6 shadow-[0_8px_30px_rgba(15,23,42,0.08)] dark:bg-slate-900">
+									{agentTag ? (
+										<p className="text-center text-lg font-semibold text-[#0F172A] dark:text-slate-50">@{agentTag}</p>
+									) : null}
+									<div className={`flex justify-center ${agentTag ? 'mt-4' : ''}`}>
+										<QRCodeCanvas value={inviteUrl} size={220} level="M" includeMargin />
+									</div>
+									<p className="mt-3 text-center text-xs text-slate-400 dark:text-slate-500">Your personal invitation</p>
+									<p
+										className="mt-3 truncate rounded-xl bg-[#f3f4f6] px-3 py-2.5 text-center text-xs text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+										title={inviteUrl}
+									>
+										{inviteUrl}
+									</p>
+									<div className="mt-4 grid grid-cols-2 gap-3">
+										<button
+											type="button"
+											onClick={() => void copyInviteLink()}
+											className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#e8f1ff] text-sm font-semibold text-[#1562f0]"
+											aria-label="Copy link"
+										>
+											{inviteLinkCopied ? (
+												<Check className="h-4 w-4 text-emerald-500" strokeWidth={2.5} aria-hidden />
+											) : (
+												<Copy className="h-4 w-4" strokeWidth={2.25} aria-hidden />
+											)}
+											Copy link
+										</button>
+										<button
+											type="button"
+											onClick={() => void shareInviteLink()}
+											className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#2563eb] text-sm font-semibold text-white"
+											aria-label="Share"
+										>
+											<Share2 className="h-4 w-4" strokeWidth={2.25} aria-hidden />
+											Share
+										</button>
+									</div>
 								</div>
 							) : (
-								<div role="alert" className="mt-6 flex items-start gap-2 rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
-									<p>Sign in with your wallet before sharing an invite.</p>
+								<div role="alert" className="mt-5 rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
+									Sign in with your wallet before sharing an invite.
 								</div>
 							)}
-							<p className="mt-5 max-w-sm break-all text-center text-xs text-slate-500 dark:text-slate-400">
-								{inviteUrl || 'https://beamio.app/app-download'}
+							<p className="mt-4 text-center text-xs leading-relaxed text-slate-400 dark:text-slate-500">
+								New users are attributed to your invitation. Rewards depend on qualified activity and the applicable program.
 							</p>
 						</div>
 					</div>

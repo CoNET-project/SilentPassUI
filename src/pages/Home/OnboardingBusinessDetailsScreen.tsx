@@ -1,11 +1,13 @@
 import React, { useState } from "react"
 import {
+	AlertTriangle,
 	ArrowRight,
 	BadgeCheck,
 	ChevronDown,
 	Hexagon,
 	Info,
 	LayoutGrid,
+	Loader2,
 	ShieldCheck,
 	UserRound,
 } from "lucide-react"
@@ -43,6 +45,8 @@ export type OnboardingBusinessDetailsScreenProps = {
 	detailProvince: string
 	setDetailProvince: (v: string) => void
 	onContinue: () => void
+	alertMessage?: string
+	continueBusy?: boolean
 }
 
 /** Module-scoped screen so parent state updates do not remount inputs (stable component identity). */
@@ -59,6 +63,8 @@ export function OnboardingBusinessDetailsScreen({
 	detailProvince,
 	setDetailProvince,
 	onContinue,
+	alertMessage = '',
+	continueBusy = false,
 }: OnboardingBusinessDetailsScreenProps): React.ReactElement {
 	const { tu } = useTu()
 	const canContinue = detailBusinessName.trim().length > 0 && detailCategory.trim().length > 0
@@ -263,9 +269,17 @@ export function OnboardingBusinessDetailsScreen({
 							</div>
 						</div>
 
+						{alertMessage ? (
+							<div role="alert" className="mt-8 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+								<AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" aria-hidden />
+								<p>{alertMessage}</p>
+							</div>
+						) : null}
+
 						<button
 							type="button"
-							disabled={!canContinue}
+							disabled={!canContinue || continueBusy}
+							aria-busy={continueBusy}
 							className={`
 								mt-10 flex w-full items-center justify-center gap-2 rounded-full bg-[#1562f0] px-8 py-5 text-base font-bold text-white
 								shadow-[0_20px_40px_rgba(21,98,240,0.15)] transition-all hover:shadow-[0_20px_40px_rgba(21,98,240,0.25)] active:scale-[0.98]
@@ -273,10 +287,18 @@ export function OnboardingBusinessDetailsScreen({
 								${bizBrandFocusRingClass}
 							`}
 							onClick={() => {
-								if (!canContinue) return
+								if (!canContinue || continueBusy) return
 								onContinue()
 							}}
-						>{tu('continue')}<ArrowRight className="h-5 w-5 shrink-0" strokeWidth={2.25} aria-hidden />
+						>
+							{continueBusy ? (
+								<Loader2 className="h-5 w-5 shrink-0 animate-spin" aria-hidden />
+							) : (
+								<>
+									{tu('continue')}
+									<ArrowRight className="h-5 w-5 shrink-0" strokeWidth={2.25} aria-hidden />
+								</>
+							)}
 						</button>
 					</div>
 				</section>

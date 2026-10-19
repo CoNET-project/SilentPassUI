@@ -18,7 +18,7 @@ import { ReactComponent as LightDrakModeBlue } from "@/components/Footer/assets/
 import styles from '@/components/Home/home.module.scss'
 import ScanBtn from '@/components/scanBtn/ScanButton'
 import { CoNET_Data, setCoNET_Data } from '../../utils/globals'
-import { checkStorageWithTimeout, restoreWithRedeem, fetchUserInfoWithRetry, flushStoreSystemData } from "@/services/beamio"
+import { checkStorageWithTimeout, restoreWithRedeem, restoreWithUserPin, raceWithTimeout, fetchUserInfoWithRetry, flushStoreSystemData } from "@/services/beamio"
 import { ensureConetAaForProfileAndPersist } from "@/utils/ensureConetAa"
 import {AppButton} from '@/components/button/AppButton'
 import {motion, AnimatePresence } from "framer-motion"
@@ -28,6 +28,7 @@ import RestoreEntryScreen from './RestoreEntryScreen'
 import BizHome from './bizHome'
 import { setBizWorkspaceRole } from '@/utils/agentWorkspaceLocal'
 import { unlockMerchantWorkspaceSession } from '@/utils/unlockMerchantWorkspaceSession'
+import { merchantOsHandoffOpensBusinessDetails, takeMerchantOsCredentialHandoff } from '@/utils/merchantOsCredentialHandoff'
 import { useUnlockMerchantWorkspaceDeps } from '@/hooks/useUnlockMerchantWorkspaceDeps'
 import ccsabackphoto from '../Vouchers/assets/ccsacard.avif'
 import packageJson from '../../../package.json'
@@ -77,6 +78,7 @@ import {
 } from '@/utils/verraBusinessProfileLocal'
 import type { VerraBusinessProfileBusinessType } from '@/utils/verraBusinessProfileLocal'
 import {
+	isWorkspaceAccessGranted,
 	isWorkspaceScreenLocked,
 	markWorkspaceSessionUnlocked,
 } from '@/utils/beamioWorkspaceLock'
@@ -152,7 +154,8 @@ export default function BeamioOnboardingModal({
 	const [settingsOpen, setSettingsOpen] = useState<''|'RecoveryQRScreen'|'RestoreEntryScreen'>('')
 	const [isInitialEntry, setIsInitialEntry] = useState(true)
 	/** Cover splash（newOnloading.html 风格）— 在进入 InitialEntryScreen 前展示 */
-	const [showOnboardingCover, setShowOnboardingCover] = useState(true)
+	const invitedBusiness = merchantOsHandoffOpensBusinessDetails()
+	const [showOnboardingCover, setShowOnboardingCover] = useState(!invitedBusiness)
 	const [coverBusinessType, setCoverBusinessType] = useState<VerraBusinessProfileBusinessType>(() => {
 		const d = loadSessionOnboardingBusinessDraft()
 		const bt = d?.businessType
@@ -165,7 +168,9 @@ export default function BeamioOnboardingModal({
 	/** Mobile: entry → Lite 登记页（Continue 即 solo + 进入 Identity，无 Select business type） */
 	const [onboardingCoverMobilePhase, setOnboardingCoverMobilePhase] = useState<OnboardingCoverMobilePhase>('entry')
 	/** Select Type → Details（单列业务资料）→ Identity（InitialEntryScreen） */
-	const [showOnboardingBusinessDetails, setShowOnboardingBusinessDetails] = useState(false)
+	const [showOnboardingBusinessDetails, setShowOnboardingBusinessDetails] = useState(invitedBusiness)
+	const [handoffWalletError, setHandoffWalletError] = useState('')
+	const [handoffWalletBusy, setHandoffWalletBusy] = useState(false)
 	const [detailBusinessName, setDetailBusinessName] = useState(
 		() => loadSessionOnboardingBusinessDraft()?.storeName ?? ''
 	)
@@ -378,6 +383,45 @@ export default function BeamioOnboardingModal({
 		}
 		onInitComplete?.()
   	}
+
+	const continueFromBusinessDetails = async () => {
+		const creds = takeMerchantOsCredentialHandoff()
+		if (!creds?.openBusinessDetails) {
+			setShowOnboardingBusinessDetails(false)
+			return
+		}
+		setHandoffWalletError('')
+		setHandoffWalletBusy(true)
+		setWorkspaceCreating(true)
+		try {
+			const result = await raceWithTimeout(
+				restoreWithUserPin(creds.tag, creds.pin, false),
+				20_000,
+				null,
+			)
+			const restored = result && typeof result === 'object' && 'profiles' in result
+				? result as encrypt_keys_object
+				: null
+			if (!restored?.profiles?.length) {
+				setHandoffWalletError('Could not create the merchant wallet from the provided Beamio ID and access password.')
+				return
+			}
+			await init(restored, { accountName: creds.tag })
+			if (!isWorkspaceAccessGranted()) {
+				setIsInitialEntry(true)
+				setShowOnboardingCover(false)
+				setShowOnboardingBusinessDetails(true)
+				setHandoffWalletError('Could not create the merchant wallet from the provided Beamio ID and access password.')
+				return
+			}
+			home()
+		} catch {
+			setHandoffWalletError('Could not create the merchant wallet from the provided Beamio ID and access password.')
+		} finally {
+			setHandoffWalletBusy(false)
+			setWorkspaceCreating(false)
+		}
+	}
 
 
 	const headlineFont = { fontFamily: "Manrope, ui-sans-serif, system-ui, sans-serif" } as const
@@ -1083,7 +1127,9 @@ export default function BeamioOnboardingModal({
 				setDetailCity={setDetailCity}
 				detailProvince={detailProvince}
 				setDetailProvince={setDetailProvince}
-				onContinue={() => setShowOnboardingBusinessDetails(false)}
+				alertMessage={handoffWalletError}
+				continueBusy={handoffWalletBusy}
+				onContinue={() => { void continueFromBusinessDetails() }}
 			/>
 		)
 	}

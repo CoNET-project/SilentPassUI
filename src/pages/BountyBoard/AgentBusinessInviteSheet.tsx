@@ -20,11 +20,16 @@ import { getCardsOfOwnerWithDetails } from '@/services/BeamioCard'
 const MERCHANT_OS_AGENT_URL = 'https://biz.beamio.app/biz/'
 
 /** Hash fragment only — the access password must not appear in the server request. */
-function merchantOsUnlockUrl(beamioTag: string, accessPassword: string): string {
+function merchantOsUnlockUrl(
+	beamioTag: string,
+	accessPassword: string,
+	flow?: 'business',
+): string {
 	const params = new URLSearchParams({
 		tag: beamioTag.replace(/^@/, '').trim(),
 		pin: accessPassword,
 	})
+	if (flow) params.set('flow', flow)
 	return `${MERCHANT_OS_AGENT_URL}#/?${params.toString()}`
 }
 
@@ -326,7 +331,7 @@ export function AgentBusinessInviteSheet({
 										{mustCreate ? (
 											<button
 												type="button"
-												onClick={() => openExternalUrl(merchantOsUnlockUrl(temp.beamioTag, temp.accessPassword))}
+												onClick={() => openExternalUrl(merchantOsUnlockUrl(temp.beamioTag, temp.accessPassword, 'business'))}
 												className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[#8d3a8b]/30 bg-[#f5ecff] px-3 py-2.5 text-sm font-semibold text-[#8d3a8b]"
 											>
 												<Plus className="h-4 w-4" aria-hidden />

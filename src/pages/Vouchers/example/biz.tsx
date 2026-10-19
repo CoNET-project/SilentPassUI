@@ -11557,6 +11557,23 @@ const CARD_ISSUANCE_SHORT_NAME_MAX_LEN = 4;
 /** Card Configurator · Visual Identity: default Card Unit Name (program name on-chain / metadata). */
 const CARD_ISSUANCE_DEFAULT_UNIT_NAME = 'beamio';
 
+function cardIssuanceProgramNameIsUnset(raw: string): boolean {
+  const cur = raw.trim();
+  return !cur || cur.toLowerCase() === CARD_ISSUANCE_DEFAULT_UNIT_NAME.toLowerCase();
+}
+
+/** Lookup / AI store name. The default unit name is a placeholder, not a merchant choice. */
+function cardIssuanceUnitNameFromOnboarding(eoa: string, sidebarName: string): string {
+  const fromSidebar = sidebarName.trim();
+  if (fromSidebar) return fromSidebar;
+  const key = eoa.trim();
+  if (key) {
+    const fromEoa = (loadBusinessProfileDraftForEoa(key)?.storeName ?? '').trim();
+    if (fromEoa) return fromEoa;
+  }
+  return (loadSessionOnboardingBusinessDraft()?.storeName ?? '').trim();
+}
+
 function cardIssuanceMaxTopupCapForCurrency(
   currencyRaw: string | undefined | null,
   oracleUsdcPerCad: number | null | undefined
@@ -26064,7 +26081,11 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
    const draft = loadCardConfiguratorDraftForEoa(cardConfiguratorDraftEoaKey);
    if (draft) {
      if (typeof draft.programName === 'string' && draft.programName.trim()) {
-       setCardIssuanceProgramName(draft.programName.trim());
+       const fromDraft = draft.programName.trim();
+       const fromOnboarding = cardIssuanceUnitNameFromOnboarding(cardConfiguratorDraftEoaKey, '');
+       setCardIssuanceProgramName(
+         cardIssuanceProgramNameIsUnset(fromDraft) && fromOnboarding ? fromOnboarding : fromDraft,
+       );
      }
      if (typeof draft.storeDisplayName === 'string') {
        setCardIssuanceStoreDisplayName(draft.storeDisplayName.slice(0, CARD_ISSUANCE_STORE_DISPLAY_NAME_MAX));
@@ -26741,6 +26762,19 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
    if (!def) return;
    setCardIssuanceStoreDisplayName((prev) => (prev.trim() === '' ? def : prev));
  }, [cardIssuanceExistingCard?.cardAddress, cardIssuanceDefaultStoreDisplayName]);
+ useEffect(() => {
+   if (cardIssuanceExistingCard?.cardAddress) return;
+   const name = cardIssuanceUnitNameFromOnboarding(
+     businessProfileEoaResolved,
+     sidebarOnboardBusinessName,
+   );
+   if (!name) return;
+   setCardIssuanceProgramName((prev) => (cardIssuanceProgramNameIsUnset(prev) ? name : prev));
+ }, [
+   businessProfileEoaResolved,
+   cardIssuanceExistingCard?.cardAddress,
+   sidebarOnboardBusinessName,
+ ]);
  useEffect(() => {
    if (cardIssuanceExistingCard?.cardAddress) return;
    const hydrateOnboardingCardSetupAssets = () => {

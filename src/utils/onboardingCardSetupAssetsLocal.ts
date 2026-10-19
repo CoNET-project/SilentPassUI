@@ -6,6 +6,7 @@
 
 import {
 	loadBusinessProfileDraftForEoa,
+	loadSessionOnboardingBusinessDraft,
 	patchBusinessProfileDraftForEoa,
 } from '@/utils/verraBusinessProfileLocal'
 import {
@@ -115,10 +116,20 @@ export function applyOnboardingCardSetupAssetsToEoa(
 		publicBio: pickEmptyOnly(prev.publicBio ?? '', assets.discoverCopy),
 	})
 	const cfg = loadCardConfiguratorDraftForEoa(key)
+	const storeName = (
+		prev.storeName ??
+		loadSessionOnboardingBusinessDraft()?.storeName ??
+		''
+	).trim()
+	const currentProgram = (cfg?.programName ?? '').trim()
+	/** Matches CARD_ISSUANCE_DEFAULT_UNIT_NAME. A saved placeholder is not a merchant choice. */
+	const programUnset =
+		!currentProgram || currentProgram.toLowerCase() === 'beamio'
 	patchCardConfiguratorDraftForEoa(key, {
 		shareImageUrl: pickEmptyOnly(cfg?.shareImageUrl ?? '', assets.logoUrl),
 		merchantImageUrl: pickEmptyOnly(cfg?.merchantImageUrl ?? '', assets.backgroundUrl),
 		brandColor: pickEmptyOnly(cfg?.brandColor ?? '', assets.brandColor),
 		description: pickEmptyOnly(cfg?.description ?? '', assets.discoverCopy),
+		...(storeName && programUnset ? { programName: storeName } : {}),
 	})
 }

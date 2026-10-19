@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react'
-import { AlertTriangle, Check, ChevronRight, Copy, Eye, EyeOff, ExternalLink, Loader2, Plus, Store, Wallet } from 'lucide-react'
+import { AlertTriangle, Check, ChevronRight, Copy, Eye, EyeOff, ExternalLink, Loader2, Plus, QrCode, Store, Wallet } from 'lucide-react'
+import { QRCodeCanvas } from 'qrcode.react'
 import { BeamioCircularBackButton } from '@/components/BeamioCircularBackButton'
 import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
+import { buildDiscoverMerchantShareUrl } from '@/utils/discoverMerchantShare'
 import {
 	fetchIsAgent,
 	registerAgentOnChain,
@@ -10,6 +12,7 @@ import {
 } from '@/utils/agentReferrerRegistryClient'
 import {
 	createAgentTempAccount,
+	isHiddenFromAgentInviteSheet,
 	listTempMerchantCards,
 	loadAgentTempAccounts,
 	type AgentTempAccount,
@@ -63,6 +66,9 @@ export function AgentBusinessInviteSheet({
 	const [createError, setCreateError] = useState('')
 	const [revealPw, setRevealPw] = useState<Record<string, boolean>>({})
 	const [copiedKey, setCopiedKey] = useState('')
+	const [shareCard, setShareCard] = useState<AgentTempMerchantCard | null>(null)
+	const [shareEntered, setShareEntered] = useState(false)
+	const [shareClosing, setShareClosing] = useState(false)
 
 	useEffect(() => {
 		if (!open) return
@@ -150,6 +156,27 @@ export function AgentBusinessInviteSheet({
 		setClosing(true)
 		window.setTimeout(onClose, 300)
 	}
+
+	const openShare = (card: AgentTempMerchantCard) => {
+		setShareClosing(false)
+		setShareEntered(false)
+		setShareCard(card)
+		window.requestAnimationFrame(() => setShareEntered(true))
+	}
+
+	const closeShare = () => {
+		if (shareClosing) return
+		setShareClosing(true)
+		window.setTimeout(() => {
+			setShareCard(null)
+			setShareClosing(false)
+			setShareEntered(false)
+		}, 300)
+	}
+
+	const shareUrl = shareCard
+		? buildDiscoverMerchantShareUrl(shareCard.cardAddress, agentEoa)
+		: ''
 
 	const copyText = async (key: string, value: string) => {
 		try {
@@ -277,9 +304,12 @@ export function AgentBusinessInviteSheet({
 							{temps.map((temp) => {
 								const key = temp.eoa.toLowerCase()
 								const cardState = cardsByTemp[key]
-								const cards = cardState?.rows ?? []
+								const ownedCards = cardState?.rows ?? []
+								const cards = ownedCards.filter(
+									(row) => !isHiddenFromAgentInviteSheet(row.cardAddress),
+								)
 								const showPw = !!revealPw[key]
-								const manageable = cards.filter((row) => !row.transferred)
+								const manageable = ownedCards.filter((row) => !row.transferred)
 								const hasSnapshot = !!cardState && !cardState.loading
 								const mustCreate = hasSnapshot && manageable.length === 0
 								const canOpen = manageable.length > 0
@@ -306,27 +336,27 @@ export function AgentBusinessInviteSheet({
 												{shortAddress(temp.eoa)}
 												{copiedKey === `eoa:${key}` ? <Check className="h-3 w-3 text-emerald-500" /> : <Copy className="h-3 w-3" />}
 											</button>
-										</div>
-										<div className="mt-3 flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 font-mono text-xs dark:border-slate-700 dark:bg-slate-800">
-											<span className="min-w-0 flex-1 truncate">{showPw ? temp.accessPassword : '••••••••••••'}</span>
-											<button
-												type="button"
-												tabIndex={-1}
-												aria-label={showPw ? 'Hide access password' : 'Show access password'}
-												onClick={() => setRevealPw((prev) => ({ ...prev, [key]: !prev[key] }))}
-												className="inline-flex h-6 w-6 items-center justify-center"
-											>
-												{showPw ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-											</button>
-											<button
-												type="button"
-												tabIndex={-1}
-												aria-label="Copy access password"
-												onClick={() => void copyText(`pw:${key}`, temp.accessPassword)}
-												className="inline-flex h-6 w-6 items-center justify-center"
-											>
-												{copiedKey === `pw:${key}` ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
-											</button>
+											<div className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 font-mono text-[11px] text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
+												<span className="min-w-0 truncate">{showPw ? temp.accessPassword : '••••••••••••'}</span>
+												<button
+													type="button"
+													tabIndex={-1}
+													aria-label={showPw ? 'Hide access password' : 'Show access password'}
+													onClick={() => setRevealPw((prev) => ({ ...prev, [key]: !prev[key] }))}
+													className="inline-flex h-5 w-5 shrink-0 items-center justify-center"
+												>
+													{showPw ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+												</button>
+												<button
+													type="button"
+													tabIndex={-1}
+													aria-label="Copy access password"
+													onClick={() => void copyText(`pw:${key}`, temp.accessPassword)}
+													className="inline-flex h-5 w-5 shrink-0 items-center justify-center"
+												>
+													{copiedKey === `pw:${key}` ? <Check className="h-3 w-3 text-emerald-500" /> : <Copy className="h-3 w-3" />}
+												</button>
+											</div>
 										</div>
 										{mustCreate ? (
 											<button
@@ -340,15 +370,25 @@ export function AgentBusinessInviteSheet({
 											</button>
 										) : null}
 										{canOpen ? (
-											<button
-												type="button"
-												onClick={() => openExternalUrl(merchantOsUnlockUrl(temp.beamioTag, temp.accessPassword))}
-												className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[#8d3a8b]/30 bg-[#f5ecff] px-3 py-2.5 text-sm font-semibold text-[#8d3a8b]"
-											>
-												<Store className="h-4 w-4" aria-hidden />
-												Open Merchant OS
-												<ExternalLink className="h-3.5 w-3.5" aria-hidden />
-											</button>
+											<div className="mt-3 flex items-stretch gap-2">
+												<button
+													type="button"
+													onClick={() => openExternalUrl(merchantOsUnlockUrl(temp.beamioTag, temp.accessPassword))}
+													className="inline-flex min-w-0 flex-1 items-center justify-center gap-2 rounded-xl border border-[#8d3a8b]/30 bg-[#f5ecff] px-3 py-2.5 text-sm font-semibold text-[#8d3a8b]"
+												>
+													<Store className="h-4 w-4" aria-hidden />
+													Open management page
+													<ExternalLink className="h-3.5 w-3.5" aria-hidden />
+												</button>
+												<button
+													type="button"
+													aria-label="Share merchant card"
+													onClick={() => openShare(manageable[0])}
+													className="inline-flex w-11 shrink-0 items-center justify-center rounded-xl border border-[#8d3a8b]/30 bg-[#f5ecff] text-[#8d3a8b]"
+												>
+													<QrCode className="h-4 w-4" aria-hidden />
+												</button>
+											</div>
 										) : null}
 										{!hasSnapshot && cardState?.loading ? (
 											<div className="mt-3 flex items-center justify-center gap-2 text-sm text-slate-500">
@@ -421,6 +461,63 @@ export function AgentBusinessInviteSheet({
 					)}
 				</div>
 			</div>
+			{shareCard ? (
+				<div className="fixed inset-0 z-[150]">
+					<div
+						className="absolute inset-0 flex h-full w-full flex-col overflow-y-auto bg-[#F2F2F7] transition-transform duration-300 ease-out dark:bg-slate-950"
+						style={{
+							transform: shareClosing || !shareEntered ? 'translateX(100%)' : 'translateX(0)',
+							paddingTop: 'max(1rem, env(safe-area-inset-top, 0px))',
+							paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom, 0px))',
+						}}
+						role="dialog"
+						aria-modal="true"
+						aria-labelledby="share-merchant-card-title"
+					>
+						<div className="relative flex items-center px-4 pb-2 pt-2">
+							<BeamioCircularBackButton variant="onLight" onClick={closeShare} aria-label="Back" />
+							<h2
+								id="share-merchant-card-title"
+								className="pointer-events-none absolute inset-x-16 truncate text-center text-base font-semibold text-slate-900 dark:text-slate-50"
+							>
+								Share merchant card
+							</h2>
+						</div>
+						<div className="flex flex-col items-center px-6 pt-6">
+							<p className="max-w-sm text-center text-sm text-slate-500 dark:text-slate-400">
+								Scan this code to open the merchant card in Beamio, even when it is not on the public list.
+							</p>
+							<p className="mt-3 font-mono text-xs text-slate-500">{shortAddress(shareCard.cardAddress)}</p>
+							{shareUrl ? (
+								<div className="mt-6 rounded-3xl bg-white p-5 shadow-sm dark:bg-slate-900">
+									<QRCodeCanvas value={shareUrl} size={220} level="M" includeMargin />
+								</div>
+							) : (
+								<div role="alert" className="mt-6 rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
+									This card address cannot be shared.
+								</div>
+							)}
+							{shareUrl ? (
+								<button
+									type="button"
+									onClick={() => void copyText(`share:${shareCard.cardAddress.toLowerCase()}`, shareUrl)}
+									className="mt-5 flex w-full max-w-sm items-start gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-3 text-left dark:border-slate-700 dark:bg-slate-900"
+									aria-label="Copy merchant card link"
+								>
+									<span className="min-w-0 flex-1 break-all font-mono text-[11px] leading-relaxed text-slate-600 dark:text-slate-300">
+										{shareUrl}
+									</span>
+									{copiedKey === `share:${shareCard.cardAddress.toLowerCase()}` ? (
+										<Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" aria-hidden />
+									) : (
+										<Copy className="mt-0.5 h-4 w-4 shrink-0 text-[#8d3a8b]" aria-hidden />
+									)}
+								</button>
+							) : null}
+						</div>
+					</div>
+				</div>
+			) : null}
 		</div>
 	)
 }

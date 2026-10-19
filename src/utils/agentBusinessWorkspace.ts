@@ -101,6 +101,17 @@ export type AgentTempMerchantCard = {
 	owner: string
 }
 
+/** Agent invite sheet only. This card stays off that list; it is not an API exclude. */
+const AGENT_INVITE_SHEET_HIDDEN_CARD_ADDRESSES = new Set([
+	'0x56aadb2fe8f48867d8810e4469156c6c16790b55',
+])
+
+export function isHiddenFromAgentInviteSheet(cardAddress: string): boolean {
+	const raw = cardAddress.trim()
+	if (!raw || !ethers.isAddress(raw)) return false
+	return AGENT_INVITE_SHEET_HIDDEN_CARD_ADDRESSES.has(ethers.getAddress(raw).toLowerCase())
+}
+
 export async function listTempMerchantCards(tempEoa: string): Promise<AgentTempMerchantCard[]> {
 	const rows = await getCardsOfOwnerWithDetails(tempEoa)
 	const out: AgentTempMerchantCard[] = []

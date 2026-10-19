@@ -153,10 +153,6 @@ const Home = () => {
 					/>
 					<ChatList
 						title="" // 你如果不要 tu('messages') 大标题就留空
-						onOpenGroups={() => {
-							setGroupsOpen(true)
-							setShowFooter(false)
-						}}
 						onOpen={(item, options) => {
 							if (voiceCallActive) {
 								setThreadHidden(false)

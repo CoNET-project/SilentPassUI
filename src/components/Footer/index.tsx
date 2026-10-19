@@ -93,10 +93,9 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 	const pinRewardPtDiscoverBar = useMemo(() => {
 		const p = (pathname || '/').toLowerCase()
 		const onDiscover = p === '/discover' || p.startsWith('/discover?')
-		const rewardPtOnly = Boolean(
-			(location.state as { rewardPtUsdcOnly?: boolean } | null)?.rewardPtUsdcOnly,
-		)
-		return onDiscover && rewardPtOnly
+		const state = location.state as { rewardPtUsdcOnly?: boolean; referrerRewardOnly?: boolean } | null
+		const filteredDiscover = Boolean(state?.rewardPtUsdcOnly || state?.referrerRewardOnly)
+		return onDiscover && filteredDiscover
 	}, [pathname, location.state])
 	const barControls = useAnimation()
 	const wasVisibleRef = useRef(visible)
@@ -400,10 +399,9 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 			(k === '/pay' && (p === '/bountyboard' || p.startsWith('/bountyboard?')))
 
 		if (alreadyOnMainTab) {
-			const rewardPtOnly = Boolean(
-				(location.state as { rewardPtUsdcOnly?: boolean } | null)?.rewardPtUsdcOnly,
-			)
-			if (k === '/settings' && rewardPtOnly) {
+			const discoverState = location.state as { rewardPtUsdcOnly?: boolean; referrerRewardOnly?: boolean } | null
+			const filteredDiscover = Boolean(discoverState?.rewardPtUsdcOnly || discoverState?.referrerRewardOnly)
+			if (k === '/settings' && filteredDiscover) {
 				navigate('/discover', { replace: true, state: {} })
 				return
 			}

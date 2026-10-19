@@ -483,7 +483,9 @@ export default function BountyBoard() {
 								</div>
 							</section>
 
-							<ReferToEarnBanner onExplore={() => setHubView('referrals')} />
+							<ReferToEarnBanner
+								onExplore={() => navigate('/discover', { state: { referrerRewardOnly: true } })}
+							/>
 						</>
 					) : null}
 
@@ -506,9 +508,7 @@ export default function BountyBoard() {
 								</button>
 							</div>
 							<ReferToEarnBanner
-								onExplore={() => {
-									document.getElementById('referral-offers')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-								}}
+								onExplore={() => navigate('/discover', { state: { referrerRewardOnly: true } })}
 							/>
 							<div id="referral-offers" className={`${cardChrome} p-4`}>
 								<h3 className="text-sm font-semibold text-slate-900 dark:text-slate-50">Lao Nong Tang</h3>

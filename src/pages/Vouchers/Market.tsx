@@ -9698,6 +9698,9 @@ export default function Market() {
 	const rewardPtUsdcOnly = Boolean(
 		(location.state as { rewardPtUsdcOnly?: boolean } | null)?.rewardPtUsdcOnly,
 	)
+	const referrerRewardOnly = Boolean(
+		(location.state as { referrerRewardOnly?: boolean } | null)?.referrerRewardOnly,
+	)
 	const [rewardPtAddresses, setRewardPtAddresses] = useState<Set<string> | null>(
 		() => loadRewardPtUsdcMerchantAddresses(),
 	)
@@ -9748,11 +9751,11 @@ export default function Market() {
 	}, [rewardPtUsdcOnly])
 
 	useEffect(() => {
-		if (rewardPtUsdcOnly) setDiscoverCategory("all")
-	}, [rewardPtUsdcOnly])
+		if (rewardPtUsdcOnly || referrerRewardOnly) setDiscoverCategory("all")
+	}, [rewardPtUsdcOnly, referrerRewardOnly])
 
 	useEffect(() => {
-		if (!rewardPtUsdcOnly) return
+		if (!rewardPtUsdcOnly && !referrerRewardOnly) return
 		if (
 			discoverMerchantDetail ||
 			showCardDetail ||
@@ -9767,6 +9770,7 @@ export default function Market() {
 		discoverMerchantDetail,
 		merchantTopUpOpen,
 		purchaseSheetOpen,
+		referrerRewardOnly,
 		rewardPtUsdcOnly,
 		setShowFooter,
 		settingsOpen,
@@ -10032,17 +10036,36 @@ export default function Market() {
 	}, [latestCardsRows, resolveName, resolveImage])
 
 	const discoverCardsForView = useMemo(() => {
-		if (!rewardPtUsdcOnly) return discoverFeaturedCards
-		if (!rewardPtTrusted || !rewardPtAddresses) return []
-		return discoverFeaturedCards.filter((item) => {
-			const cardAddress = item.cardAddress
-			if (!cardAddress) return false
-			return rewardPtAddresses.has(cardAddress.toLowerCase())
-		})
-	}, [discoverFeaturedCards, rewardPtAddresses, rewardPtTrusted, rewardPtUsdcOnly])
+		let cards = discoverFeaturedCards
+		if (rewardPtUsdcOnly) {
+			if (!rewardPtTrusted || !rewardPtAddresses) return []
+			cards = cards.filter((item) => {
+				const cardAddress = item.cardAddress
+				if (!cardAddress) return false
+				return rewardPtAddresses.has(cardAddress.toLowerCase())
+			})
+		}
+		if (referrerRewardOnly) {
+			cards = cards.filter((item) => {
+				if (!item.cardAddress) return false
+				if (hasDiscoverReferrerRewardSettingFromMetadata(item.metadataRoot)) return true
+				const cached = lookupByAddress(item.cardAddress)?.metadataRoot
+				return hasDiscoverReferrerRewardSettingFromMetadata(cached)
+			})
+		}
+		return cards
+	}, [
+		discoverFeaturedCards,
+		lookupByAddress,
+		referrerRewardOnly,
+		rewardPtAddresses,
+		rewardPtTrusted,
+		rewardPtUsdcOnly,
+	])
 
 	const discoverCategoryTabsOrdered = useMemo<DiscoverCategoryOption[]>(() => {
-		const present = rewardPtUsdcOnly
+		const restrictCategories = rewardPtUsdcOnly || referrerRewardOnly
+		const present = restrictCategories
 			? DISCOVER_CATEGORY_OPTIONS.filter((option) =>
 					discoverCardsForView.some((item) => item.category === option.id),
 				)
@@ -10051,7 +10074,7 @@ export default function Market() {
 		const selected = present.find((option) => option.id === discoverCategory)
 		if (!selected) return present
 		return [selected, ...present.filter((option) => option.id !== discoverCategory)]
-	}, [discoverCardsForView, discoverCategory, rewardPtUsdcOnly])
+	}, [discoverCardsForView, discoverCategory, referrerRewardOnly, rewardPtUsdcOnly])
 
 	const discoverDeepLinkHandledForRef = useRef<string | null>(null)
 	const discoverDetailReturnToRef = useRef<string | null>(null)
@@ -10227,6 +10250,11 @@ export default function Market() {
 						Merchants exchanging Reward PT for USDC
 					</p>
 				) : null}
+				{referrerRewardOnly && !rewardPtUsdcOnly ? (
+					<p className="mb-3 text-[13px] font-semibold text-[#4b5361] dark:text-slate-300">
+						Merchants with a referral Reward PT plan
+					</p>
+				) : null}
 
 				<div className="grid grid-cols-1 gap-4">
 				{filteredFeaturedCards.map((item) => {
@@ -10297,7 +10325,9 @@ export default function Market() {
 					<p className="col-span-full text-center text-[13px] text-slate-500 dark:text-slate-400 py-10 px-4">
 						{rewardPtUsdcOnly
 							? "No merchants are exchanging Reward PT for USDC yet."
-							: "No cards match your search."}
+							: referrerRewardOnly
+								? "No merchants with a referral Reward PT plan yet."
+								: "No cards match your search."}
 					</p>
 				) : null}
 			</div>

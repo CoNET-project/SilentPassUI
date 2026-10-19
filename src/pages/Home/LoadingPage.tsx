@@ -155,7 +155,8 @@ export default function BeamioOnboardingModal({
 	const [isInitialEntry, setIsInitialEntry] = useState(true)
 	/** Cover splash（newOnloading.html 风格）— 在进入 InitialEntryScreen 前展示 */
 	const invitedBusiness = merchantOsHandoffOpensBusinessDetails()
-	const [showOnboardingCover, setShowOnboardingCover] = useState(!invitedBusiness)
+	/** Invite `flow=business`: land on DiscoveryForm ("Tell us about your business"), not DetailsScreen. */
+	const [showOnboardingCover, setShowOnboardingCover] = useState(true)
 	const [coverBusinessType, setCoverBusinessType] = useState<VerraBusinessProfileBusinessType>(() => {
 		const d = loadSessionOnboardingBusinessDraft()
 		const bt = d?.businessType
@@ -165,10 +166,12 @@ export default function BeamioOnboardingModal({
 		Boolean(loadSessionOnboardingBusinessDraft()?.onboardingTermsAccepted)
 	)
 	const [onboardingLegalDocId, setOnboardingLegalDocId] = useState<BeamioLegalDocId | null>(null)
-	/** Mobile: entry → Lite 登记页（Continue 即 solo + 进入 Identity，无 Select business type） */
-	const [onboardingCoverMobilePhase, setOnboardingCoverMobilePhase] = useState<OnboardingCoverMobilePhase>('entry')
-	/** Select Type → Details（单列业务资料）→ Identity（InitialEntryScreen） */
-	const [showOnboardingBusinessDetails, setShowOnboardingBusinessDetails] = useState(invitedBusiness)
+	/** Mobile: entry → Lite 登记页；invite 直接打开 DiscoveryForm */
+	const [onboardingCoverMobilePhase, setOnboardingCoverMobilePhase] = useState<OnboardingCoverMobilePhase>(
+		invitedBusiness ? 'businessForm' : 'entry',
+	)
+	/** Select Type → Details（单列业务资料）→ Identity；invite 不经 DetailsScreen */
+	const [showOnboardingBusinessDetails, setShowOnboardingBusinessDetails] = useState(false)
 	const [handoffWalletError, setHandoffWalletError] = useState('')
 	const [handoffWalletBusy, setHandoffWalletBusy] = useState(false)
 	const [detailBusinessName, setDetailBusinessName] = useState(
@@ -384,6 +387,13 @@ export default function BeamioOnboardingModal({
 		onInitComplete?.()
   	}
 
+	const stayOnInviteDiscoveryForm = () => {
+		setIsInitialEntry(true)
+		setShowOnboardingCover(true)
+		setOnboardingCoverMobilePhase('businessForm')
+		setShowOnboardingBusinessDetails(false)
+	}
+
 	const continueFromBusinessDetails = async () => {
 		const creds = takeMerchantOsCredentialHandoff()
 		if (!creds?.openBusinessDetails) {
@@ -403,19 +413,19 @@ export default function BeamioOnboardingModal({
 				? result as encrypt_keys_object
 				: null
 			if (!restored?.profiles?.length) {
+				stayOnInviteDiscoveryForm()
 				setHandoffWalletError('Could not create the merchant wallet from the provided Beamio ID and access password.')
 				return
 			}
 			await init(restored, { accountName: creds.tag })
 			if (!isWorkspaceAccessGranted()) {
-				setIsInitialEntry(true)
-				setShowOnboardingCover(false)
-				setShowOnboardingBusinessDetails(true)
+				stayOnInviteDiscoveryForm()
 				setHandoffWalletError('Could not create the merchant wallet from the provided Beamio ID and access password.')
 				return
 			}
 			home()
 		} catch {
+			stayOnInviteDiscoveryForm()
 			setHandoffWalletError('Could not create the merchant wallet from the provided Beamio ID and access password.')
 		} finally {
 			setHandoffWalletBusy(false)
@@ -520,8 +530,8 @@ export default function BeamioOnboardingModal({
 			})
 		},
 		lookupSkipValue: lookupSkipName,
-		cardSetupPreparing,
-		cardSetupPrepareError,
+		cardSetupPreparing: cardSetupPreparing || handoffWalletBusy,
+		cardSetupPrepareError: handoffWalletError || cardSetupPrepareError,
 		onSelectLookupCandidate: (candidate: OnboardingBusinessLookupCandidate) => {
 			const seeded = seedOnboardingFormFromCandidate(candidate, detailBusinessName)
 			setLookupSkipName(seeded.storeName.trim())
@@ -629,6 +639,11 @@ export default function BeamioOnboardingModal({
 			merchantImageUrl: pickEmptyOnly(sess.merchantImageUrl ?? '', assets?.backgroundUrl ?? ''),
 			brandHex: pickEmptyOnly(sess.brandHex ?? '', assets?.brandColor ?? ''),
 		})
+		/** Invite: restore wallet after discovery; skip DetailsScreen ("Set up … OS commerce"). */
+		if (takeMerchantOsCredentialHandoff()?.openBusinessDetails) {
+			void continueFromBusinessDetails()
+			return
+		}
 		onboardingCoverContinue(true, true)
 	}
 
@@ -807,14 +822,18 @@ export default function BeamioOnboardingModal({
 								className="fixed top-0 left-0 right-0 z-50 flex w-full items-center gap-3 overflow-visible bg-[#f5f7f9]/70 px-6 py-4 shadow-[0_20px_40px_rgba(21,98,240,0.06)] backdrop-blur-xl"
 								style={{ paddingTop: "max(1rem, env(safe-area-inset-top))" }}
 							>
-								<button
-									type="button"
-									onClick={() => setOnboardingCoverMobilePhase('entry')}
-									className={`-ml-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#1562f0] transition-opacity hover:opacity-80 active:scale-95 ${bizBrandFocusRingClass}`}
-									aria-label={tu('onb_back')}
-								>
-									<ArrowLeft className="h-6 w-6" strokeWidth={2.25} aria-hidden />
-								</button>
+								{invitedBusiness ? (
+									<span className="-ml-1 h-10 w-10 shrink-0" aria-hidden />
+								) : (
+									<button
+										type="button"
+										onClick={() => setOnboardingCoverMobilePhase('entry')}
+										className={`-ml-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#1562f0] transition-opacity hover:opacity-80 active:scale-95 ${bizBrandFocusRingClass}`}
+										aria-label={tu('onb_back')}
+									>
+										<ArrowLeft className="h-6 w-6" strokeWidth={2.25} aria-hidden />
+									</button>
+								)}
 								<span className="min-w-0 flex-1 truncate text-xl font-black tracking-tight text-[#1562f0]" style={headlineFont}>
 									{tu('onb_beamio_business_lite')}
 								</span>

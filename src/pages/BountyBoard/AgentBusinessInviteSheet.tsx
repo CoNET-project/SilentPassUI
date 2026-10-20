@@ -5,7 +5,9 @@ import { BeamioCircularBackButton } from '@/components/BeamioCircularBackButton'
 import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
 import { buildDiscoverMerchantShareUrl } from '@/utils/discoverMerchantShare'
 import {
+	fetchActiveTempCountOf,
 	fetchIsAgent,
+	MAX_ACTIVE_TEMPS_PER_AGENT,
 	registerAgentOnChain,
 	registerMerchantUnderAgent,
 	registerTempUnderAgent,
@@ -18,6 +20,7 @@ import {
 	type AgentTempAccount,
 	type AgentTempMerchantCard,
 } from '@/utils/agentBusinessWorkspace'
+import { buildAgentCardClaimUrlForTemp } from '@/utils/agentCardClaimDeepLink'
 import { getCardsOfOwnerWithDetails } from '@/services/BeamioCard'
 
 const MERCHANT_OS_AGENT_URL = 'https://biz.beamio.app/biz/'
@@ -64,11 +67,22 @@ export function AgentBusinessInviteSheet({
 	const [statusError, setStatusError] = useState('')
 	const [creating, setCreating] = useState(false)
 	const [createError, setCreateError] = useState('')
+	const [activeTempCount, setActiveTempCount] = useState<number | null>(null)
 	const [revealPw, setRevealPw] = useState<Record<string, boolean>>({})
 	const [copiedKey, setCopiedKey] = useState('')
 	const [shareCard, setShareCard] = useState<AgentTempMerchantCard | null>(null)
 	const [shareEntered, setShareEntered] = useState(false)
 	const [shareClosing, setShareClosing] = useState(false)
+	const [claimLoadingKey, setClaimLoadingKey] = useState('')
+
+	const refreshActiveTempCount = async () => {
+		if (!agentEoa) return
+		const count = await fetchActiveTempCountOf(agentEoa)
+		setActiveTempCount(count)
+	}
+
+	const atTempCap =
+		activeTempCount != null && activeTempCount >= MAX_ACTIVE_TEMPS_PER_AGENT
 
 	useEffect(() => {
 		if (!open) return
@@ -120,6 +134,9 @@ export function AgentBusinessInviteSheet({
 	useEffect(() => {
 		if (!open || agentState !== 'agent') return
 		let cancelled = false
+		void refreshActiveTempCount().then(() => {
+			if (cancelled) return
+		})
 		for (const temp of temps) {
 			const key = temp.eoa.toLowerCase()
 			void registerTempUnderAgent(temp.eoa).catch(() => undefined)
@@ -130,10 +147,13 @@ export function AgentBusinessInviteSheet({
 			void listTempMerchantCards(temp.eoa).then(async (rows) => {
 				if (cancelled) return
 				setCardsByTemp((prev) => ({ ...prev, [key]: { loading: false, rows } }))
+				let handedOff = false
 				for (const row of rows) {
 					if (!row.transferred || !row.owner) continue
-					await registerMerchantUnderAgent(row.owner, temp.eoa)
+					const result = await registerMerchantUnderAgent(row.owner, row.cardAddress, temp.eoa)
+					if (result.success) handedOff = true
 				}
+				if (handedOff && !cancelled) void refreshActiveTempCount()
 			}).catch(() => {
 				if (cancelled) return
 				setCardsByTemp((prev) => ({
@@ -149,7 +169,7 @@ export function AgentBusinessInviteSheet({
 		return () => {
 			cancelled = true
 		}
-	}, [open, temps, agentState])
+	}, [open, temps, agentState, agentEoa])
 
 	const close = () => {
 		if (closing) return
@@ -197,10 +217,13 @@ export function AgentBusinessInviteSheet({
 		try {
 			const rows = await listTempMerchantCards(temp.eoa)
 			setCardsByTemp((prev) => ({ ...prev, [key]: { loading: false, rows } }))
+			let handedOff = false
 			for (const row of rows) {
 				if (!row.transferred || !row.owner) continue
-				await registerMerchantUnderAgent(row.owner, temp.eoa)
+				const result = await registerMerchantUnderAgent(row.owner, row.cardAddress, temp.eoa)
+				if (result.success) handedOff = true
 			}
+			if (handedOff) await refreshActiveTempCount()
 		} catch {
 			setCardsByTemp((prev) => ({
 				...prev,
@@ -214,17 +237,50 @@ export function AgentBusinessInviteSheet({
 	}
 
 	const addTemp = async () => {
-		if (creating || agentState !== 'agent') return
+		if (creating || agentState !== 'agent' || atTempCap) return
 		setCreating(true)
 		setCreateError('')
 		try {
 			const created = await createAgentTempAccount(agentEoa)
 			setTemps(loadAgentTempAccounts(agentEoa))
 			setRevealPw((prev) => ({ ...prev, [created.eoa.toLowerCase()]: true }))
+			await refreshActiveTempCount()
 		} catch (err) {
 			setCreateError(err instanceof Error ? err.message : 'Could not create a temp account')
+			await refreshActiveTempCount()
 		} finally {
 			setCreating(false)
+		}
+	}
+
+	const openClaimLink = async (temp: AgentTempAccount, card: AgentTempMerchantCard) => {
+		const claimKey = `${temp.eoa.toLowerCase()}:${card.cardAddress.toLowerCase()}`
+		if (claimLoadingKey || card.transferred) return
+		setClaimLoadingKey(claimKey)
+		setItemError((prev) => {
+			const next = { ...prev }
+			delete next[temp.eoa.toLowerCase()]
+			return next
+		})
+		try {
+			const built = await buildAgentCardClaimUrlForTemp({
+				temp,
+				cardAddress: card.cardAddress,
+				agentEoa,
+			})
+			if (!built.ok) {
+				setItemError((prev) => ({ ...prev, [temp.eoa.toLowerCase()]: built.error }))
+				return
+			}
+			openExternalUrl(built.url)
+		} catch (err) {
+			setItemError((prev) => ({
+				...prev,
+				[temp.eoa.toLowerCase()]:
+					err instanceof Error ? err.message : 'Could not open the claim link.',
+			}))
+		} finally {
+			setClaimLoadingKey('')
 		}
 	}
 
@@ -284,10 +340,20 @@ export function AgentBusinessInviteSheet({
 							<p>{createError}</p>
 						</div>
 					) : null}
+					{atTempCap ? (
+						<p className="text-sm text-slate-500 dark:text-slate-400">
+							You already have {MAX_ACTIVE_TEMPS_PER_AGENT} active temp accounts. Hand one off to a
+							merchant to free a slot.
+						</p>
+					) : activeTempCount != null && agentState === 'agent' ? (
+						<p className="text-sm text-slate-500 dark:text-slate-400">
+							Active temps: {activeTempCount} / {MAX_ACTIVE_TEMPS_PER_AGENT}
+						</p>
+					) : null}
 					<button
 						type="button"
 						onClick={() => void addTemp()}
-						disabled={creating || agentState !== 'agent'}
+						disabled={creating || agentState !== 'agent' || atTempCap}
 						aria-busy={creating}
 						className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#8d3a8b] px-4 py-3.5 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
 					>
@@ -430,14 +496,27 @@ export function AgentBusinessInviteSheet({
 													) : (
 														<button
 															type="button"
-															onClick={() => openExternalUrl(merchantOsUnlockUrl(temp.beamioTag, temp.accessPassword))}
-															className="flex w-full items-center gap-3 rounded-2xl border border-slate-200 px-3 py-3 text-left dark:border-slate-700"
+															onClick={() => void openClaimLink(temp, card)}
+															disabled={
+																claimLoadingKey ===
+																`${temp.eoa.toLowerCase()}:${card.cardAddress.toLowerCase()}`
+															}
+															aria-busy={
+																claimLoadingKey ===
+																`${temp.eoa.toLowerCase()}:${card.cardAddress.toLowerCase()}`
+															}
+															className="flex w-full items-center gap-3 rounded-2xl border border-slate-200 px-3 py-3 text-left dark:border-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
 														>
 															<div className="min-w-0 flex-1">
 																<p className="truncate text-sm font-semibold">{card.name}</p>
 																<p className="mt-1 font-mono text-[11px] text-slate-500">{shortAddress(card.cardAddress)}</p>
 															</div>
-															<ChevronRight className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
+															{claimLoadingKey ===
+															`${temp.eoa.toLowerCase()}:${card.cardAddress.toLowerCase()}` ? (
+																<Loader2 className="h-4 w-4 shrink-0 animate-spin text-slate-400" aria-hidden />
+															) : (
+																<ChevronRight className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
+															)}
 														</button>
 													)}
 												</li>
@@ -449,9 +528,16 @@ export function AgentBusinessInviteSheet({
 												<p>{itemError[key]}</p>
 											</div>
 										) : null}
-										{mustCreate || canOpen ? (
+										{canOpen ? (
 											<p className="mt-2 text-xs leading-relaxed text-slate-500">
-												Opens Merchant OS and unlocks this temp account so you can {canOpen ? 'manage' : 'create'} the program card.
+												Opens Merchant OS so a new merchant can create their wallet, take ownership of
+												this program card, and receive 1,000 free B-Units.
+											</p>
+										) : null}
+										{mustCreate ? (
+											<p className="mt-2 text-xs leading-relaxed text-slate-500">
+												Opens Merchant OS and unlocks this temp account so you can create the program
+												card.
 											</p>
 										) : null}
 									</li>

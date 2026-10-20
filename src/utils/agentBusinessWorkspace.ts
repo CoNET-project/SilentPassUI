@@ -12,7 +12,11 @@ import {
 } from '@/services/beamio'
 import { getCardOwner, getCardsOfOwnerWithDetails } from '@/services/BeamioCard'
 import { claimReferralRedeemCode } from '@/services/referralRegistryRedeem'
-import { registerTempUnderAgent } from '@/utils/agentReferrerRegistryClient'
+import {
+	fetchActiveTempCountOf,
+	MAX_ACTIVE_TEMPS_PER_AGENT,
+	registerTempUnderAgent,
+} from '@/utils/agentReferrerRegistryClient'
 import { beamioApi, conetDepinProvider } from '@/utils/constants'
 
 export type AgentTempAccount = {
@@ -74,6 +78,12 @@ async function generateAvailableTempTag(): Promise<string> {
 
 export async function createAgentTempAccount(agentEoa: string): Promise<AgentTempAccount> {
 	if (!ethers.isAddress(agentEoa)) throw new Error('Sign in before creating a temp account')
+	const activeCount = await fetchActiveTempCountOf(agentEoa)
+	if (activeCount != null && activeCount >= MAX_ACTIVE_TEMPS_PER_AGENT) {
+		throw new Error(
+			`You already have ${MAX_ACTIVE_TEMPS_PER_AGENT} active temp accounts. Hand one off to a merchant to free a slot.`,
+		)
+	}
 	const beamioTag = await generateAvailableTempTag()
 	const accessPassword = generateTempPassword()
 	const created = await createDetachedRecoverAccount(beamioTag, accessPassword)

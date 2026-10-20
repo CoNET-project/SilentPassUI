@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState, type Keyboard
 import { ethers } from 'ethers'
 import { X, Copy, Check, Loader2, AlertTriangle, Ban, TicketPlus, Gift, Building2 } from 'lucide-react'
 import { Toast } from 'antd-mobile'
+import { OverlayPortal } from '@/components/OverlayPortal/OverlayPortal'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { resolveSigningPrivateKeyArmor } from '@/utils/resolveSigningPrivateKeyArmor'
 import { CoNET_Data } from '@/utils/globals'
@@ -93,12 +94,21 @@ export function ValidatorDepositRedeemAdminSheet({ open, onClose, adminEoa, canC
 	const [institutionalPack, setInstitutionalPack] = useState(false)
 	const [submitting, setSubmitting] = useState(false)
 	const [formError, setFormError] = useState('')
+	const [formSuccess, setFormSuccess] = useState('')
 	const [rows, setRows] = useState<ValidatorDepositRedeemIssuedRecord[]>([])
 	const [loadingRows, setLoadingRows] = useState(false)
 	const [copiedId, setCopiedId] = useState<string | null>(null)
 	const [cancellingId, setCancellingId] = useState<string | null>(null)
 	const syncTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 	const syncRunningRef = useRef(false)
+	const createInFlightRef = useRef(false)
+
+	const requestClose = useCallback(() => {
+		// iOS Safari can click-through a mid-gesture `disabled` button onto the
+		// full-screen backdrop; never dismiss while create is in flight.
+		if (createInFlightRef.current || submitting) return
+		onClose()
+	}, [onClose, submitting])
 
 	const validatorCountParsed = useMemo(() => {
 		const n = Number(validatorCountInput)
@@ -138,8 +148,6 @@ export function ValidatorDepositRedeemAdminSheet({ open, onClose, adminEoa, canC
 		}
 	}, [adminLower])
 
-	const createInFlightRef = useRef(false)
-
 	const syncRowStatuses = useCallback(async () => {
 		if (!adminLower || syncRunningRef.current || createInFlightRef.current) return
 		syncRunningRef.current = true
@@ -178,7 +186,13 @@ export function ValidatorDepositRedeemAdminSheet({ open, onClose, adminEoa, canC
 	}, [open, adminLower, syncRowStatuses])
 
 	const handleCreate = useCallback(async () => {
+		if (createInFlightRef.current) return
 		setFormError('')
+		setFormSuccess('')
+		// Dismiss soft keyboard before async work — iOS PWA viewport resize mid-submit
+		// can otherwise look like a full page refresh.
+		const active = document.activeElement
+		if (active instanceof HTMLElement) active.blur()
 		if (!canCreate) {
 			setFormError('Redeem admin role is required to create codes.')
 			return
@@ -308,16 +322,17 @@ export function ValidatorDepositRedeemAdminSheet({ open, onClose, adminEoa, canC
 					setFormError(
 						`Validator redeem was created, but biz Institutional Pack failed: ${packError}`,
 					)
-					Toast.show({ content: 'Validator redeem created; Institutional Pack failed', position: 'top' })
+					setFormSuccess('Validator redeem created. Institutional Pack still needs attention.')
 					return
 				}
 			}
 
 			await reloadRows()
-			Toast.show({
-				content: wantInstitutionalPack ? 'Redeem + Institutional Pack created' : 'Redeem code created',
-				position: 'top',
-			})
+			setFormSuccess(
+				wantInstitutionalPack
+					? 'Redeem code and Institutional Pack created. The secret is stored on this device only.'
+					: 'Redeem code created. The secret is stored on this device only.',
+			)
 		} catch (e: unknown) {
 			await deleteValidatorDepositRedeemIssued(codeHash)
 			const err = e as { message?: string }
@@ -407,19 +422,21 @@ export function ValidatorDepositRedeemAdminSheet({ open, onClose, adminEoa, canC
 		[adminEoa, profiles, reloadRows],
 	)
 
-	if (!open) return null
-
 	return (
+		<OverlayPortal open={open}>
 		<div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/45" role="dialog" aria-modal="true">
 			<button
 				type="button"
 				className="absolute inset-0 cursor-default"
 				aria-label="Close"
-				onClick={onClose}
+				disabled={submitting}
+				onClick={requestClose}
 			/>
 			<div
 				className="relative z-10 flex max-h-[min(92dvh,720px)] flex-col overflow-hidden rounded-t-[28px] bg-[#F2F2F7] shadow-2xl dark:bg-slate-950"
 				style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
+				onClick={(e) => e.stopPropagation()}
+				onPointerDown={(e) => e.stopPropagation()}
 			>
 				<div className="flex items-center justify-between border-b border-slate-200/80 px-5 py-4 dark:border-slate-700">
 					<div className="flex items-center gap-2.5">
@@ -433,8 +450,9 @@ export function ValidatorDepositRedeemAdminSheet({ open, onClose, adminEoa, canC
 					</div>
 					<button
 						type="button"
-						onClick={onClose}
-						className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
+						onClick={requestClose}
+						disabled={submitting}
+						className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
 						aria-label="Close panel"
 					>
 						<X className="h-4 w-4" aria-hidden />
@@ -603,17 +621,39 @@ export function ValidatorDepositRedeemAdminSheet({ open, onClose, adminEoa, canC
 							</div>
 
 							{formError ? (
-								<div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-100">
+								<div
+									role="alert"
+									className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-100"
+								>
 									<AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
 									<span>{formError}</span>
 								</div>
 							) : null}
 
+							{formSuccess ? (
+								<div
+									role="status"
+									className="flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900 dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-100"
+								>
+									<Check className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+									<span>{formSuccess}</span>
+								</div>
+							) : null}
+
 							<button
 								type="button"
-								onClick={() => void handleCreate()}
-								disabled={submitting || !canCreate}
-								className="flex w-full items-center justify-center gap-2 rounded-full bg-[#1562f0] py-3 text-sm font-bold text-white shadow-[0_4px_14px_rgba(21,98,240,0.35)] disabled:opacity-60"
+								onClick={(e) => {
+									e.preventDefault()
+									e.stopPropagation()
+									void handleCreate()
+								}}
+								// Do not set disabled={submitting}: iOS Safari drops the remaining
+								// touch onto the backdrop and closes the sheet mid-create.
+								disabled={!canCreate}
+								aria-busy={submitting}
+								className={`flex w-full items-center justify-center gap-2 rounded-full bg-[#1562f0] py-3 text-sm font-bold text-white shadow-[0_4px_14px_rgba(21,98,240,0.35)] disabled:opacity-60 ${
+									submitting ? 'pointer-events-none opacity-60' : ''
+								}`}
 							>
 								{submitting ? (
 									<>
@@ -734,5 +774,6 @@ export function ValidatorDepositRedeemAdminSheet({ open, onClose, adminEoa, canC
 				</div>
 			</div>
 		</div>
+		</OverlayPortal>
 	)
 }

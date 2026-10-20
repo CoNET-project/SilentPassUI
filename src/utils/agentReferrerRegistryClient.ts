@@ -42,6 +42,7 @@ export const AGENT_REFERRER_TYPES: Record<string, Array<{ name: string; type: st
 		{ name: 'agent', type: 'address' },
 		{ name: 'merchant', type: 'address' },
 		{ name: 'temp', type: 'address' },
+		{ name: 'card', type: 'address' },
 		{ name: 'nonce', type: 'uint256' },
 		{ name: 'deadline', type: 'uint256' },
 	],
@@ -53,7 +54,12 @@ const VIEW_ABI = [
 	'function isAgent(address) view returns (bool)',
 	'function agentOfTemp(address) view returns (address)',
 	'function agentOfMerchant(address) view returns (address)',
+	'function activeTempCountOf(address) view returns (uint256)',
+	'function MAX_ACTIVE_TEMPS_PER_AGENT() view returns (uint256)',
 ] as const
+
+/** Max untransferred temps per agent (mirrors on-chain `MAX_ACTIVE_TEMPS_PER_AGENT`). */
+export const MAX_ACTIVE_TEMPS_PER_AGENT = 5
 
 const DEADLINE_SEC = 30 * 60
 
@@ -187,6 +193,22 @@ export async function fetchIsAgent(agentEoa: string): Promise<boolean | null> {
 	}
 }
 
+/**
+ * Count temps under the agent that are not handed off yet.
+ * `null` = untrusted read (RPC miss / pre-upgrade); do not treat as zero.
+ */
+export async function fetchActiveTempCountOf(agentEoa: string): Promise<number | null> {
+	if (!ethers.isAddress(agentEoa)) return null
+	try {
+		const n = await registryContract().activeTempCountOf(ethers.getAddress(agentEoa))
+		const count = Number(n)
+		if (!Number.isFinite(count) || count < 0) return null
+		return count
+	} catch {
+		return null
+	}
+}
+
 export async function fetchAgentOfMerchant(merchantEoa: string): Promise<string | null> {
 	if (!ethers.isAddress(merchantEoa)) return null
 	try {
@@ -235,6 +257,13 @@ export async function registerTempUnderAgent(tempEoa: string): Promise<RegisterR
 		(v: string) => (v && v !== ethers.ZeroAddress ? ethers.getAddress(v) : null),
 	).catch(() => null)
 	if (bound && bound.toLowerCase() === agent.toLowerCase()) return { success: true }
+	const activeCount = await fetchActiveTempCountOf(agent)
+	if (activeCount != null && activeCount >= MAX_ACTIVE_TEMPS_PER_AGENT) {
+		return {
+			success: false,
+			error: `You already have ${MAX_ACTIVE_TEMPS_PER_AGENT} active temp accounts. Hand one off to a merchant to free a slot.`,
+		}
+	}
 	const nonce = await fetchNonceOf(agent)
 	if (nonce == null) return { success: false, error: 'Unable to read registry nonce' }
 	const deadline = deadlineUnix()
@@ -253,12 +282,18 @@ export async function registerTempUnderAgent(tempEoa: string): Promise<RegisterR
 	})
 }
 
-export async function registerMerchantUnderAgent(merchantEoa: string, tempEoa?: string): Promise<RegisterResult> {
+export async function registerMerchantUnderAgent(
+	merchantEoa: string,
+	cardAddress: string,
+	tempEoa?: string,
+): Promise<RegisterResult> {
 	const wallet = walletFromConsumerKey()
 	if (!wallet) return { success: false, error: 'Wallet signing key is not available' }
 	if (!ethers.isAddress(merchantEoa)) return { success: false, error: 'Invalid merchant account' }
+	if (!ethers.isAddress(cardAddress)) return { success: false, error: 'Invalid merchant card' }
 	const agent = ethers.getAddress(wallet.address)
 	const merchant = ethers.getAddress(merchantEoa)
+	const card = ethers.getAddress(cardAddress)
 	const temp = tempEoa && ethers.isAddress(tempEoa) ? ethers.getAddress(tempEoa) : ethers.ZeroAddress
 	const existing = await fetchAgentOfMerchant(merchant)
 	if (existing && existing.toLowerCase() === agent.toLowerCase()) return { success: true }
@@ -268,13 +303,14 @@ export async function registerMerchantUnderAgent(merchantEoa: string, tempEoa?: 
 	const signature = await wallet.signTypedData(
 		AGENT_REFERRER_EIP712_DOMAIN,
 		{ RegisterMerchant: AGENT_REFERRER_TYPES.RegisterMerchant },
-		{ agent, merchant, temp, nonce, deadline },
+		{ agent, merchant, temp, card, nonce, deadline },
 	)
 	return postRegister({
 		op: 'registerMerchant',
 		agent,
 		merchant,
 		temp,
+		card,
 		nonce: nonce.toString(),
 		deadline: deadline.toString(),
 		signature,

@@ -78,6 +78,8 @@ export function AgentBusinessInviteSheet({
 	const [revealPw, setRevealPw] = useState<Record<string, boolean>>({})
 	const [copiedKey, setCopiedKey] = useState('')
 	const [shareCard, setShareCard] = useState<AgentTempMerchantCard | null>(null)
+	/** Captured once on open — must not rebuild with Date.now() each render (QR dots flicker). */
+	const [shareUrl, setShareUrl] = useState('')
 	const [shareEntered, setShareEntered] = useState(false)
 	const [shareClosing, setShareClosing] = useState(false)
 	const [claimShare, setClaimShare] = useState<{
@@ -218,6 +220,8 @@ export function AgentBusinessInviteSheet({
 		setShareClosing(false)
 		setShareEntered(false)
 		setShareCard(card)
+		// Freeze cache-bust `v=` at open time so QR modules stay stable across re-renders.
+		setShareUrl(buildDiscoverMerchantShareUrl(card.cardAddress, agentEoa))
 		window.requestAnimationFrame(() => setShareEntered(true))
 	}
 
@@ -226,14 +230,11 @@ export function AgentBusinessInviteSheet({
 		setShareClosing(true)
 		window.setTimeout(() => {
 			setShareCard(null)
+			setShareUrl('')
 			setShareClosing(false)
 			setShareEntered(false)
 		}, 300)
 	}
-
-	const shareUrl = shareCard
-		? buildDiscoverMerchantShareUrl(shareCard.cardAddress, agentEoa)
-		: ''
 
 	const copyText = async (key: string, value: string) => {
 		try {

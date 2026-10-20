@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowUpRight, Check, ChevronRight, Copy, Gift, Hexagon, Settings2, Share2, Store, TicketPlus, Users, Wallet } from 'lucide-react'
-import { QRCodeCanvas } from 'qrcode.react'
 import { BeamioCircularBackButton } from '@/components/BeamioCircularBackButton'
+import { QrWithBeamioTagAvatar } from '@/components/QrWithBeamioTagAvatar'
 import { AgentBusinessInviteSheet } from '@/pages/BountyBoard/AgentBusinessInviteSheet'
 import { buildAgentInviteAppUrl } from '@/utils/agentInviteIntroducerStash'
 import { useScrollCapsuleOpacity } from '@/hooks/useScrollCapsuleOpacity'
@@ -688,7 +688,13 @@ export default function BountyBoard() {
 										<p className="text-center text-lg font-semibold text-[#0F172A] dark:text-slate-50">@{agentTag}</p>
 									) : null}
 									<div className={`flex justify-center ${agentTag ? 'mt-4' : ''}`}>
-										<QRCodeCanvas value={inviteUrl} size={220} level="M" includeMargin />
+										<QrWithBeamioTagAvatar
+											value={inviteUrl}
+											size={220}
+											eoa={eoa}
+											accountName={agentTag}
+											includeMargin
+										/>
 									</div>
 									<p className="mt-3 text-center text-xs text-slate-400 dark:text-slate-500">Your personal invitation</p>
 									<p

@@ -1,7 +1,9 @@
-import React, { useEffect, useState } from 'react'
-import { AlertTriangle, Check, ChevronRight, Copy, Eye, EyeOff, ExternalLink, Loader2, Plus, QrCode, Store, Wallet } from 'lucide-react'
+import React, { useEffect, useMemo, useState } from 'react'
+import { AlertTriangle, Check, Copy, Eye, EyeOff, ExternalLink, Loader2, Plus, QrCode, Store, Wallet } from 'lucide-react'
 import { QRCodeCanvas } from 'qrcode.react'
 import { BeamioCircularBackButton } from '@/components/BeamioCircularBackButton'
+import { useMerchantCardDatabase } from '@/providers/MerchantCardDatabaseProvider'
+import { pickMerchantCardListTitle } from '@/utils/merchantCardDatabase'
 import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
 import { buildDiscoverMerchantShareUrl } from '@/utils/discoverMerchantShare'
 import {
@@ -24,6 +26,11 @@ import { buildAgentCardClaimUrlForTemp } from '@/utils/agentCardClaimDeepLink'
 import { getCardsOfOwnerWithDetails } from '@/services/BeamioCard'
 
 const MERCHANT_OS_AGENT_URL = 'https://biz.beamio.app/biz/'
+
+function merchantCardContractCodeUrl(cardAddress: string): string {
+	const raw = cardAddress.trim()
+	return `https://mainnet.conet.network/address/${encodeURIComponent(raw)}?tab=contract`
+}
 
 /** Hash fragment only — the access password must not appear in the server request. */
 function merchantOsUnlockUrl(
@@ -73,7 +80,37 @@ export function AgentBusinessInviteSheet({
 	const [shareCard, setShareCard] = useState<AgentTempMerchantCard | null>(null)
 	const [shareEntered, setShareEntered] = useState(false)
 	const [shareClosing, setShareClosing] = useState(false)
+	const [claimShare, setClaimShare] = useState<{
+		temp: AgentTempAccount
+		card: AgentTempMerchantCard
+		url: string
+	} | null>(null)
+	const [claimShareEntered, setClaimShareEntered] = useState(false)
+	const [claimShareClosing, setClaimShareClosing] = useState(false)
 	const [claimLoadingKey, setClaimLoadingKey] = useState('')
+	const { resolveName, registerCardAddresses } = useMerchantCardDatabase()
+
+	const allCardAddresses = useMemo(() => {
+		const out: string[] = []
+		for (const state of Object.values(cardsByTemp)) {
+			for (const row of state.rows) {
+				if (row.cardAddress) out.push(row.cardAddress)
+			}
+		}
+		return out
+	}, [cardsByTemp])
+
+	useEffect(() => {
+		if (!open || allCardAddresses.length === 0) return
+		registerCardAddresses(allCardAddresses)
+	}, [open, allCardAddresses, registerCardAddresses])
+
+	const merchantCardTitle = (card: AgentTempMerchantCard): string =>
+		pickMerchantCardListTitle({
+			workerName: resolveName(card.cardAddress),
+			metaName: card.name,
+			fallback: 'Merchant card',
+		})
 
 	const refreshActiveTempCount = async () => {
 		if (!agentEoa) return
@@ -253,7 +290,7 @@ export function AgentBusinessInviteSheet({
 		}
 	}
 
-	const openClaimLink = async (temp: AgentTempAccount, card: AgentTempMerchantCard) => {
+	const openClaimShare = async (temp: AgentTempAccount, card: AgentTempMerchantCard) => {
 		const claimKey = `${temp.eoa.toLowerCase()}:${card.cardAddress.toLowerCase()}`
 		if (claimLoadingKey || card.transferred) return
 		setClaimLoadingKey(claimKey)
@@ -272,16 +309,29 @@ export function AgentBusinessInviteSheet({
 				setItemError((prev) => ({ ...prev, [temp.eoa.toLowerCase()]: built.error }))
 				return
 			}
-			openExternalUrl(built.url)
+			setClaimShareClosing(false)
+			setClaimShareEntered(false)
+			setClaimShare({ temp, card, url: built.url })
+			window.requestAnimationFrame(() => setClaimShareEntered(true))
 		} catch (err) {
 			setItemError((prev) => ({
 				...prev,
 				[temp.eoa.toLowerCase()]:
-					err instanceof Error ? err.message : 'Could not open the claim link.',
+					err instanceof Error ? err.message : 'Could not build the claim link.',
 			}))
 		} finally {
 			setClaimLoadingKey('')
 		}
+	}
+
+	const closeClaimShare = () => {
+		if (claimShareClosing) return
+		setClaimShareClosing(true)
+		window.setTimeout(() => {
+			setClaimShare(null)
+			setClaimShareClosing(false)
+			setClaimShareEntered(false)
+		}, 300)
 	}
 
 	if (!open) return null
@@ -481,46 +531,64 @@ export function AgentBusinessInviteSheet({
 											<p className="py-2 text-sm text-slate-500">No program card on this temp account yet.</p>
 										) : null}
 										<ul className="space-y-2">
-											{cards.map((card) => (
+											{cards.map((card) => {
+												const claimKey = `${temp.eoa.toLowerCase()}:${card.cardAddress.toLowerCase()}`
+												const claimBusy = claimLoadingKey === claimKey
+												const title = merchantCardTitle(card)
+												return (
 												<li key={card.cardAddress}>
 													{card.transferred ? (
 														<div className="flex items-start gap-3 rounded-2xl border border-amber-300 bg-amber-50 px-3 py-3">
 															<AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" aria-hidden />
 															<div className="min-w-0">
 																<p className="text-sm font-semibold text-amber-900">Transferred</p>
-																<p className="mt-0.5 truncate text-xs text-amber-800">{card.name}</p>
+																<p className="mt-0.5 truncate text-xs text-amber-800">{title}</p>
 																<p className="mt-1 font-mono text-[11px] text-amber-800">{shortAddress(card.cardAddress)}</p>
 																<p className="mt-2 text-xs text-amber-800">Ownership has moved. This card can no longer be managed from the agent workspace.</p>
 															</div>
 														</div>
 													) : (
-														<button
-															type="button"
-															onClick={() => void openClaimLink(temp, card)}
-															disabled={
-																claimLoadingKey ===
-																`${temp.eoa.toLowerCase()}:${card.cardAddress.toLowerCase()}`
-															}
-															aria-busy={
-																claimLoadingKey ===
-																`${temp.eoa.toLowerCase()}:${card.cardAddress.toLowerCase()}`
-															}
-															className="flex w-full items-center gap-3 rounded-2xl border border-slate-200 px-3 py-3 text-left dark:border-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
-														>
-															<div className="min-w-0 flex-1">
-																<p className="truncate text-sm font-semibold">{card.name}</p>
-																<p className="mt-1 font-mono text-[11px] text-slate-500">{shortAddress(card.cardAddress)}</p>
-															</div>
-															{claimLoadingKey ===
-															`${temp.eoa.toLowerCase()}:${card.cardAddress.toLowerCase()}` ? (
-																<Loader2 className="h-4 w-4 shrink-0 animate-spin text-slate-400" aria-hidden />
-															) : (
-																<ChevronRight className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
-															)}
-														</button>
+														<div className="flex items-stretch gap-2">
+															<button
+																type="button"
+																onClick={() =>
+																	openExternalUrl(merchantCardContractCodeUrl(card.cardAddress))
+																}
+																aria-label={`Open ${title} contract code on CoNET Explorer`}
+																className="flex min-w-0 flex-1 items-center gap-3 rounded-2xl border border-slate-200 px-3 py-3 text-left dark:border-slate-700"
+															>
+																<div className="min-w-0 flex-1">
+																	<p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
+																		{title}
+																	</p>
+																	<p className="mt-1 font-mono text-[11px] text-slate-500">
+																		{shortAddress(card.cardAddress)}
+																	</p>
+																</div>
+																<ExternalLink
+																	className="h-4 w-4 shrink-0 text-slate-400"
+																	aria-hidden
+																/>
+															</button>
+															<button
+																type="button"
+																onClick={() => void openClaimShare(temp, card)}
+																disabled={claimBusy}
+																aria-busy={claimBusy}
+																aria-label="Show claim deep link QR"
+																className="inline-flex w-12 shrink-0 items-center justify-center rounded-2xl border border-slate-200 text-[#8d3a8b] disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700"
+															>
+																{claimBusy ? (
+																	<Loader2 className="h-5 w-5 animate-spin" aria-hidden />
+																) : (
+																	<QrCode className="h-5 w-5" aria-hidden />
+																)}
+															</button>
+														</div>
 													)}
 												</li>
-											))}
+												)
+											})}
 										</ul>
 										{itemError[key] ? (
 											<div role="alert" className="mt-3 flex items-start gap-2 rounded-2xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
@@ -530,8 +598,9 @@ export function AgentBusinessInviteSheet({
 										) : null}
 										{canOpen ? (
 											<p className="mt-2 text-xs leading-relaxed text-slate-500">
-												Opens Merchant OS so a new merchant can create their wallet, take ownership of
-												this program card, and receive 1,000 free B-Units.
+												Tap the card to open its contract Code tab on CoNET Explorer. Tap the QR to show
+												the claim deep link for a new merchant (1,000 free B-Units). Treat that link as a
+												danger zone — anyone with it can claim the card.
 											</p>
 										) : null}
 										{mustCreate ? (
@@ -600,6 +669,76 @@ export function AgentBusinessInviteSheet({
 									)}
 								</button>
 							) : null}
+						</div>
+					</div>
+				</div>
+			) : null}
+			{claimShare ? (
+				<div className="fixed inset-0 z-[150]">
+					<div
+						className="absolute inset-0 flex h-full w-full flex-col overflow-y-auto bg-[#F2F2F7] transition-transform duration-300 ease-out dark:bg-slate-950"
+						style={{
+							transform:
+								claimShareClosing || !claimShareEntered ? 'translateX(100%)' : 'translateX(0)',
+							paddingTop: 'max(1rem, env(safe-area-inset-top, 0px))',
+							paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom, 0px))',
+						}}
+						role="dialog"
+						aria-modal="true"
+						aria-labelledby="claim-merchant-card-title"
+					>
+						<div className="relative flex items-center px-4 pb-2 pt-2">
+							<BeamioCircularBackButton variant="onLight" onClick={closeClaimShare} aria-label="Back" />
+							<h2
+								id="claim-merchant-card-title"
+								className="pointer-events-none absolute inset-x-16 truncate text-center text-base font-semibold text-slate-900 dark:text-slate-50"
+							>
+								Claim deep link
+							</h2>
+						</div>
+						<div className="flex flex-col items-center px-6 pt-4">
+							<div
+								role="alert"
+								className="flex w-full max-w-sm items-start gap-2 rounded-2xl border border-red-300 bg-red-50 px-3 py-3 text-left text-sm text-red-900 dark:border-red-800 dark:bg-red-950/40 dark:text-red-100"
+							>
+								<AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-600 dark:text-red-400" aria-hidden />
+								<div>
+									<p className="font-semibold uppercase tracking-wide">Danger zone</p>
+									<p className="mt-1 text-xs leading-relaxed">
+										If this link is leaked, anyone can claim the merchant card, take ownership, and
+										receive the free B-Units. Share only with the intended merchant.
+									</p>
+								</div>
+							</div>
+							<p className="mt-4 max-w-sm text-center text-sm font-semibold text-slate-900 dark:text-slate-100">
+								{merchantCardTitle(claimShare.card)}
+							</p>
+							<p className="mt-1 font-mono text-xs text-slate-500">
+								{shortAddress(claimShare.card.cardAddress)}
+							</p>
+							<div className="mt-6 rounded-3xl bg-white p-5 shadow-sm dark:bg-slate-900">
+								<QRCodeCanvas value={claimShare.url} size={220} level="M" includeMargin />
+							</div>
+							<button
+								type="button"
+								onClick={() =>
+									void copyText(
+										`claim:${claimShare.card.cardAddress.toLowerCase()}`,
+										claimShare.url,
+									)
+								}
+								className="mt-5 flex w-full max-w-sm items-start gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-3 text-left dark:border-slate-700 dark:bg-slate-900"
+								aria-label="Copy claim deep link"
+							>
+								<span className="min-w-0 flex-1 break-all font-mono text-[11px] leading-relaxed text-slate-600 dark:text-slate-300">
+									{claimShare.url}
+								</span>
+								{copiedKey === `claim:${claimShare.card.cardAddress.toLowerCase()}` ? (
+									<Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" aria-hidden />
+								) : (
+									<Copy className="mt-0.5 h-4 w-4 shrink-0 text-[#8d3a8b]" aria-hidden />
+								)}
+							</button>
 						</div>
 					</div>
 				</div>

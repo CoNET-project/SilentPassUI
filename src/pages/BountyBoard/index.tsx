@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowUpRight, Check, ChevronRight, Copy, Gift, Hexagon, Settings2, Share2, Store, TicketPlus, Users, Wallet } from 'lucide-react'
+import { ArrowUpRight, Check, ChevronRight, Copy, Gift, Hexagon, Network, Settings2, Share2, Store, TicketPlus, Users, Wallet } from 'lucide-react'
 import { BeamioCircularBackButton } from '@/components/BeamioCircularBackButton'
 import { QrWithBeamioTagAvatar } from '@/components/QrWithBeamioTagAvatar'
 import { AgentBusinessInviteSheet } from '@/pages/BountyBoard/AgentBusinessInviteSheet'
@@ -388,33 +388,54 @@ export default function BountyBoard() {
 					</div>
 
 					{hubView === 'overview' || hubView === 'earnings' ? (
-						<section className="overflow-hidden rounded-[28px] bg-gradient-to-br from-[#3b82f6] via-[#2563eb] to-[#1d4ed8] text-white shadow-[0_16px_40px_rgba(37,99,235,0.28)]">
-							<div className="px-6 pb-5 pt-6">
-								<div className="flex items-center justify-between gap-3">
-									<p className="text-sm font-medium text-white/90">Total rewards received</p>
-									<span className="rounded-full bg-white/20 px-3 py-1 text-[12px] font-semibold text-white">
-										All time
-									</span>
+						<>
+							<section className="overflow-hidden rounded-[28px] bg-gradient-to-br from-[#3b82f6] via-[#2563eb] to-[#1d4ed8] text-white shadow-[0_16px_40px_rgba(37,99,235,0.28)]">
+								<div className="px-6 pb-5 pt-6">
+									<div className="flex items-center justify-between gap-3">
+										<p className="text-sm font-medium text-white/90">Total rewards received</p>
+										<span className="rounded-full bg-white/20 px-3 py-1 text-[12px] font-semibold text-white">
+											All time
+										</span>
+									</div>
+									<p className="mt-4 text-[42px] font-extrabold leading-none tracking-tight tabular-nums">
+										{usdcDisplay} <span className="text-[28px] font-bold">USDC</span>
+									</p>
+									<p className="mt-3 text-sm text-white/80">From referrals, network contributions and nodes</p>
 								</div>
-								<p className="mt-4 text-[42px] font-extrabold leading-none tracking-tight tabular-nums">
-									{usdcDisplay} <span className="text-[28px] font-bold">USDC</span>
-								</p>
-								<p className="mt-3 text-sm text-white/80">From referrals, network contributions and nodes</p>
-							</div>
-							<div className="flex items-center justify-between gap-3 border-t border-white/20 px-6 py-3.5">
-								<p className="text-sm text-white/90">
-									Pending · <span className="font-semibold tabular-nums">{miningGbUsdcApprox.replace(/^≈\s*/, '')}</span>
-								</p>
-								<button
-									type="button"
-									onClick={() => setHubView(hubView === 'earnings' ? 'overview' : 'earnings')}
-									className="inline-flex shrink-0 items-center gap-0.5 text-sm font-semibold text-white"
-								>
-									{hubView === 'earnings' ? 'Hide breakdown' : 'View breakdown'}
-									<ChevronRight className="h-4 w-4" aria-hidden />
-								</button>
-							</div>
-						</section>
+								<div className="flex items-center justify-between gap-3 border-t border-white/20 px-6 py-3.5">
+									<p className="text-sm text-white/90">
+										Pending · <span className="font-semibold tabular-nums">{miningGbUsdcApprox.replace(/^≈\s*/, '')}</span>
+									</p>
+									<button
+										type="button"
+										onClick={() => setHubView(hubView === 'earnings' ? 'overview' : 'earnings')}
+										className="inline-flex shrink-0 items-center gap-0.5 text-sm font-semibold text-white"
+									>
+										{hubView === 'earnings' ? 'Hide breakdown' : 'View breakdown'}
+										<ChevronRight className="h-4 w-4" aria-hidden />
+									</button>
+								</div>
+							</section>
+							<button
+								type="button"
+								onClick={() => navigate('/BountyBoard/across-the-network')}
+								className="flex w-full items-center gap-3.5 rounded-[24px] border border-slate-200/80 bg-white px-4 py-3.5 text-left shadow-[0_4px_20px_rgba(15,23,42,0.06)] transition active:scale-[0.99] dark:border-slate-700 dark:bg-slate-900"
+								aria-label="How network rewards work — Across the network"
+							>
+								<span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#dbeafe] text-[#1562f0] dark:bg-blue-950/60 dark:text-blue-300">
+									<Network className="h-5 w-5" strokeWidth={2.25} aria-hidden />
+								</span>
+								<span className="min-w-0 flex-1">
+									<span className="block text-[15px] font-bold tracking-tight text-[#0F172A] dark:text-slate-100">
+										How network rewards work
+									</span>
+									<span className="mt-0.5 block text-[12px] leading-snug text-slate-500 dark:text-slate-400">
+										Funded at top-up. Distributed as activity settles.
+									</span>
+								</span>
+								<ChevronRight className="h-5 w-5 shrink-0 text-slate-300 dark:text-slate-600" aria-hidden />
+							</button>
+						</>
 					) : null}
 
 					{hubView === 'earnings' ? (

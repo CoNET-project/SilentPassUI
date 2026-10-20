@@ -85,6 +85,7 @@ import CoNetMiningDetailPage from '@/pages/BountyBoard/CoNetMiningDetailPage'
 import GenesisNodeReferralPage from '@/pages/BountyBoard/GenesisNodeReferralPage'
 import GenesisL0RedeemManagePage from '@/pages/BountyBoard/GenesisL0RedeemManagePage'
 import GenesisL1EvangelistManagePage from '@/pages/BountyBoard/GenesisL1EvangelistManagePage'
+import NetworkContributionRewardsPage from '@/pages/BountyBoard/NetworkContributionRewardsPage'
 import StripePaymentReturnPage from '@/pages/Vouchers/StripePaymentReturnPage'
 import RenderActionPage from '@/renderAction'
 import { getUserInfo } from "@/services/beamio"
@@ -2512,6 +2513,7 @@ function AppShell() {
 					<Route path="/BountyBoard/genesis-referral" element={<GenesisNodeReferralPage />} />
 					<Route path="/BountyBoard/genesis-referral/redeem" element={<GenesisL0RedeemManagePage />} />
 					<Route path="/BountyBoard/genesis-referral/l1" element={<GenesisL1EvangelistManagePage />} />
+					<Route path="/BountyBoard/across-the-network" element={<NetworkContributionRewardsPage />} />
 					<Route path="/qr" element={<QrOperationPage />} />
 					<Route path="/Chat" element={<Chat />} />
 					<Route path="/chat" element={<Chat />} />

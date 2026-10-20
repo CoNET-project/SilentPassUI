@@ -29,8 +29,6 @@ import BizHome from './bizHome'
 import { setBizWorkspaceRole } from '@/utils/agentWorkspaceLocal'
 import { unlockMerchantWorkspaceSession } from '@/utils/unlockMerchantWorkspaceSession'
 import { merchantOsHandoffOpensBusinessDetails, takeMerchantOsCredentialHandoff } from '@/utils/merchantOsCredentialHandoff'
-import { peekAgentCardClaimHandoff } from '@/utils/agentCardClaimHandoff'
-import { runAgentCardClaim } from '@/utils/runAgentCardClaim'
 import { useUnlockMerchantWorkspaceDeps } from '@/hooks/useUnlockMerchantWorkspaceDeps'
 import ccsabackphoto from '../Vouchers/assets/ccsacard.avif'
 import packageJson from '../../../package.json'
@@ -1071,17 +1069,6 @@ export default function BeamioOnboardingModal({
 							const createEoa = qr.temp?.profiles?.[0]?.keyID?.trim()
 							if (createEoa && ethers.isAddress(createEoa)) {
 								setLiteBusinessChainAck(ethers.getAddress(createEoa))
-								const claim = peekAgentCardClaimHandoff()
-								if (claim) {
-									void runAgentCardClaim({
-										claim,
-										merchantEoa: ethers.getAddress(createEoa),
-									}).then((result) => {
-										if (!result.ok) {
-											console.warn('[agentCardClaim] after createRecover:', result.error)
-										}
-									})
-								}
 							}
 							if (redeemFromUrl) {
 								setRedeemActivating(true)
@@ -1233,17 +1220,6 @@ export default function BeamioOnboardingModal({
 													await ensureConetAaForProfileAndPersist(profileAfterInit, setProfiles)
 												} catch {
 													/* 不可信失败：不阻断进入 Merchant OS */
-												}
-												// Retry agent card claim if createRecover raced ahead of fund/transfer.
-												const claimRetry = peekAgentCardClaimHandoff()
-												if (claimRetry) {
-													const claimResult = await runAgentCardClaim({
-														claim: claimRetry,
-														merchantEoa: ethers.getAddress(profileAfterInit.keyID),
-													})
-													if (!claimResult.ok) {
-														console.warn('[agentCardClaim] before enter Merchant OS:', claimResult.error)
-													}
 												}
 											}
 											// URL 带 redeemAdmin + redeemCode 时：校验 code 有效、EOA 非 admin 后，向 endpoint 完成 redeem admin

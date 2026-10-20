@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ethers } from 'ethers'
 import Home from './bizHome';
 import BeamioOnboardingModal from './LoadingPage'
+import AgentCardClaimPage from './AgentCardClaimPage'
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import { checkStorageWithTimeout } from '@/services/beamio'
 import SplashScreen from "@/components/SplashScreen"
@@ -32,6 +33,7 @@ function profileHasExistingWallet(data: encrypt_keys_object | null): boolean {
 const HomePage = ({}) => {
 	const { setIsInitialLoading } = useDaemonContext()
 	const [showBeamioOnboardingModal, setShowBeamioOnboardingModal] = useState(false)
+	const [showAgentCardClaim, setShowAgentCardClaim] = useState(false)
 	const [splashVisible, setSplashVisible] = useState(true)
 	const [bootCoNETData, setBootCoNETData] = useState<encrypt_keys_object | null>(null)
 	const [bootResolved, setBootResolved] = useState(false)
@@ -40,6 +42,7 @@ const HomePage = ({}) => {
 	const enterBizHome = () => {
 		decisionMadeRef.current = true
 		setShowBeamioOnboardingModal(false)
+		setShowAgentCardClaim(false)
 		setSplashVisible(false)
 	}
 
@@ -48,8 +51,18 @@ const HomePage = ({}) => {
 		setBootCoNETData(data)
 		setBootResolved(true)
 		setIsInitialLoading(true)
+		setShowAgentCardClaim(false)
 		setShowBeamioOnboardingModal(true)
 		setSplashVisible(false)
+	}
+
+	const goAgentCardClaim = () => {
+		decisionMadeRef.current = true
+		setBootResolved(true)
+		setShowBeamioOnboardingModal(false)
+		setShowAgentCardClaim(true)
+		setSplashVisible(false)
+		setIsInitialLoading(false)
 	}
 
 	const init = async () => {
@@ -58,9 +71,9 @@ const HomePage = ({}) => {
 				goOnboarding(null)
 				return
 			}
-			// Agent invite claim: force createRecover so merchant gets a fresh EOA, then transfer card.
+			// Agent invite claim: dedicated create → transfer → success (existing wallets cannot claim).
 			if (hasAgentCardClaimHandoff()) {
-				goOnboarding(null)
+				goAgentCardClaim()
 				return
 			}
 			if (hasMerchantOsCredentialHandoff()) {
@@ -94,9 +107,13 @@ const HomePage = ({}) => {
 			setSplashVisible(false)
 			if (!decisionMadeRef.current) {
 				console.warn(
-					`[HomePage] splash force-dismiss after ${SPLASH_FORCE_DISMISS_MS}ms → fallback onboarding`,
+					`[HomePage] splash force-dismiss after ${SPLASH_FORCE_DISMISS_MS}ms → fallback`,
 				)
-				goOnboarding(null)
+				if (hasAgentCardClaimHandoff()) {
+					goAgentCardClaim()
+				} else {
+					goOnboarding(null)
+				}
 			}
 		}, SPLASH_FORCE_DISMISS_MS)
 
@@ -111,7 +128,16 @@ const HomePage = ({}) => {
 	return (
 		<div className="w-full h-full">
 			{splashVisible && <SplashScreen />}
-			{showBeamioOnboardingModal ? (
+			{showAgentCardClaim ? (
+				<AgentCardClaimPage
+					onEnterHome={() => {
+						setShowAgentCardClaim(false)
+						setShowBeamioOnboardingModal(false)
+						setSplashVisible(false)
+						setIsInitialLoading(false)
+					}}
+				/>
+			) : showBeamioOnboardingModal ? (
 				<BeamioOnboardingModal
 					bootResolved={bootResolved}
 					bootCoNETData={bootCoNETData}

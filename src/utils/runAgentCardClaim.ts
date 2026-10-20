@@ -44,19 +44,29 @@ async function waitTempFunded(tempEoa: string): Promise<boolean> {
 	return false
 }
 
+export type AgentCardClaimProgress =
+	| 'checking'
+	| 'funding'
+	| 'waiting_fund'
+	| 'transferring'
+	| 'completing'
+	| 'done'
+
 /**
  * After Merchant OS createRecover: fund temp → transferOwnership → Master mints 1000 free B-Unit to merchant.
  */
 export async function runAgentCardClaim(input: {
 	claim: AgentCardClaimHandoff
 	merchantEoa: string
+	onProgress?: (step: AgentCardClaimProgress) => void
 }): Promise<{ ok: true; txHash?: string } | { ok: false; error: string }> {
-	const { claim, merchantEoa } = input
+	const { claim, merchantEoa, onProgress } = input
 	if (!ethers.isAddress(merchantEoa)) {
 		return { ok: false, error: 'Invalid merchant wallet.' }
 	}
 	const merchant = ethers.getAddress(merchantEoa)
 
+	onProgress?.('checking')
 	const card = new ethers.Contract(claim.cardAddress, OWNABLE_ABI, conetDepinProvider)
 	let owner: string
 	try {
@@ -66,6 +76,7 @@ export async function runAgentCardClaim(input: {
 	}
 
 	if (owner.toLowerCase() === merchant.toLowerCase()) {
+		onProgress?.('completing')
 		const complete = await postJson('/api/agentCardClaimComplete', {
 			agent: claim.agentEoa,
 			temp: claim.tempEoa,
@@ -74,6 +85,7 @@ export async function runAgentCardClaim(input: {
 		})
 		clearAgentCardClaimHandoff()
 		if (!complete.ok) return complete
+		onProgress?.('done')
 		return { ok: true, txHash: typeof complete.data.txHash === 'string' ? complete.data.txHash : undefined }
 	}
 
@@ -84,6 +96,7 @@ export async function runAgentCardClaim(input: {
 		}
 	}
 
+	onProgress?.('funding')
 	const fund = await postJson('/api/agentCardClaimFundTemp', {
 		agent: claim.agentEoa,
 		temp: claim.tempEoa,
@@ -91,11 +104,13 @@ export async function runAgentCardClaim(input: {
 	})
 	if (!fund.ok) return fund
 
+	onProgress?.('waiting_fund')
 	const funded = await waitTempFunded(claim.tempEoa)
 	if (!funded) {
 		return { ok: false, error: 'Temp wallet did not receive gas in time. Please try again.' }
 	}
 
+	onProgress?.('transferring')
 	try {
 		const pk = claim.tempPrivateKey.startsWith('0x') ? claim.tempPrivateKey : `0x${claim.tempPrivateKey}`
 		const tempWallet = new ethers.Wallet(pk, conetDepinProvider)
@@ -113,6 +128,7 @@ export async function runAgentCardClaim(input: {
 		return { ok: false, error: msg }
 	}
 
+	onProgress?.('completing')
 	const complete = await postJson('/api/agentCardClaimComplete', {
 		agent: claim.agentEoa,
 		temp: claim.tempEoa,
@@ -121,5 +137,6 @@ export async function runAgentCardClaim(input: {
 	})
 	clearAgentCardClaimHandoff()
 	if (!complete.ok) return complete
+	onProgress?.('done')
 	return { ok: true, txHash: typeof complete.data.txHash === 'string' ? complete.data.txHash : undefined }
 }

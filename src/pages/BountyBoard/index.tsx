@@ -85,8 +85,8 @@ function formatConetUsdcDisplay(balance: string): string {
 function ReferToEarnBanner({ onExplore }: { onExplore: () => void }) {
 	return (
 		<section className="relative isolate overflow-hidden rounded-[26px] border border-white bg-[radial-gradient(ellipse_at_100%_100%,rgba(131,227,212,0.6),transparent_60%),radial-gradient(ellipse_at_90%_0%,rgba(140,200,255,0.69),transparent_64%),linear-gradient(120deg,#edf7ff,#e0efff)] shadow-[0_9px_27px_rgba(68,125,182,0.09)] dark:border-[#4e708e] dark:bg-[radial-gradient(ellipse_at_100%_100%,rgba(40,107,100,0.6),transparent_60%),radial-gradient(ellipse_at_90%_0%,rgba(53,92,146,0.6),transparent_64%),linear-gradient(120deg,#1d314a,#233e5d)] dark:shadow-[0_9px_27px_rgba(0,0,0,0.09)]">
-			<div className="relative z-[1] px-[22px] py-6 sm:min-h-[278px] sm:pr-[168px]">
-				<div className="min-w-0 max-w-[230px]">
+			<div className="relative z-[1] flex items-end gap-1 px-3.5 py-5 sm:block sm:min-h-[278px] sm:px-[22px] sm:py-6 sm:pr-[168px]">
+				<div className="min-w-0 flex-1 sm:max-w-[230px]">
 					<h2 className="text-[28px] font-extrabold leading-none tracking-tight text-slate-900 dark:text-slate-50">
 						Refer to Earn
 					</h2>
@@ -107,8 +107,11 @@ function ReferToEarnBanner({ onExplore }: { onExplore: () => void }) {
 						<ArrowUpRight className="h-4 w-4" aria-hidden />
 					</button>
 				</div>
-			</div>
-			<div className="pointer-events-none absolute bottom-6 right-[-1px] hidden h-[186px] w-[155px] sm:block" aria-hidden>
+			<div
+				className="pointer-events-none relative h-[134px] w-[112px] shrink-0 sm:absolute sm:bottom-6 sm:right-[-1px] sm:h-[186px] sm:w-[155px]"
+				aria-hidden
+			>
+				<div className="absolute bottom-0 right-0 h-[186px] w-[155px] origin-bottom-right scale-[0.72] sm:scale-100">
 				<div className="absolute right-[-10px] top-3 h-[157px] w-[157px] rounded-full bg-white/40 shadow-[0_0_35px_rgba(215,247,255,0.56)] dark:bg-[#a8d4ff]/[0.07] dark:shadow-[0_0_35px_rgba(181,227,255,0.03)]" />
 				<div className="absolute right-[3px] top-[-1px] text-[29px] leading-none text-[#fffbea] dark:text-[#edecb0]">✦</div>
 				<div className="absolute left-[9px] top-[23px] grid h-[43px] w-[39px] -rotate-[14deg] place-items-center rounded-full border-[3px] border-[#ffc94d] bg-[linear-gradient(135deg,#ffeeb0,#ffc344)] text-[22px] font-semibold text-[#d5940b] shadow-[4px_4px_0_#e6a71d,0_9px_15px_rgba(99,165,187,0.14)] dark:border-[#d5a74a] dark:bg-[linear-gradient(135deg,#ffdd8d,#c79a35)] dark:text-[#8c6012] dark:shadow-[4px_4px_0_#976f21,0_9px_15px_rgba(0,0,0,0.14)]">
@@ -130,6 +133,8 @@ function ReferToEarnBanner({ onExplore }: { onExplore: () => void }) {
 					<br />
 					Earn a reward.
 				</p>
+				</div>
+			</div>
 			</div>
 		</section>
 	)

@@ -4,6 +4,9 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './index.css';
 import './locale/i18n';
+// Capture hash handoff BEFORE HashRouter can rewrite location.hash.
+import './utils/merchantOsCredentialHandoff'
+import './utils/agentCardClaimHandoff'
 import App from './App';
 import reportWebVitals from './reportWebVitals';
 import { DaemonProvider } from './providers/DaemonProvider'

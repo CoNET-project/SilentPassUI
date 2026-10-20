@@ -34294,11 +34294,13 @@ const topUpsUsdcMintOnly = adminToday ? adminToday.usdc : 0;
 const topUpsQuota = adminMintLimitQuota ?? 0; // denominator: mint limit from chain
 const topUpsUsedFromClear = adminMintCounterFromClear ?? 0; // numerator: mintCounterFromClear from chain
 
-const protocolFuelReserve = protocolFuelReserveBalance ?? 0; // Owner B-Units: CoNET getBUnitBalance(EOA)+AA (block tick)
-  const merchantCardBUnitDisplay =
+const protocolFuelOwner = protocolFuelReserveBalance ?? 0; // Owner EOA+AA B-Units (block tick)
+  const protocolFuelCard =
     merchantCardBUnitBalance != null && Number.isFinite(merchantCardBUnitBalance)
-      ? merchantCardBUnitBalance.toFixed(2)
-      : null;
+      ? merchantCardBUnitBalance
+      : 0;
+  /** Overview B-UNITS KPI: owner + merchant program card combined (no Card/Owner split). */
+  const protocolFuelReserve = protocolFuelOwner + protocolFuelCard;
 const formatTrustedE6Amount = (raw: string | undefined): string => {
   if (raw == null) return 'Not available';
   try {
@@ -36381,15 +36383,6 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                           <p className="mt-0.5 font-manrope text-xl font-extrabold tracking-tight text-[#2c2f31] tabular-nums sm:mt-1 sm:text-2xl">
                             {protocolFuelReserve.toFixed(2)}
                           </p>
-                          {staffProgramBeamioCardAddress && merchantCardBUnitDisplay != null ? (
-                            <p className="mt-0.5 text-[10px] font-semibold tabular-nums text-[#747779]">
-                              {tu('overview_b_units_card_line', { amount: merchantCardBUnitDisplay })}
-                            </p>
-                          ) : staffProgramBeamioCardAddress ? (
-                            <p className="mt-0.5 text-[10px] font-semibold text-[#747779]">
-                              {tu('overview_b_units_card_line', { amount: '—' })}
-                            </p>
-                          ) : null}
                         </div>
                       </div>
                     </div>
@@ -36619,15 +36612,6 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                     {protocolFuelReserve.toFixed(2)}{' '}
                     <span className="text-base font-bold text-slate-400 lg:text-lg">{tu('overview_b_units_label')}</span>
                   </h2>
-                  {staffProgramBeamioCardAddress ? (
-                    <p className="text-xs font-semibold tabular-nums text-[#595c5e]">
-                      {tu('overview_b_units_owner_line', { amount: protocolFuelReserve.toFixed(2) })}
-                      {' · '}
-                      {tu('overview_b_units_card_line', {
-                        amount: merchantCardBUnitDisplay ?? '—',
-                      })}
-                    </p>
-                  ) : null}
                   <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-[#eef1f3] sm:mt-4">
                     <div
                       className="h-full rounded-full bg-[#1562f0]"

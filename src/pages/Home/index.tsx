@@ -10,6 +10,7 @@ import {
 	hasMerchantOsCredentialHandoff,
 	merchantOsHandoffOpensBusinessDetails,
 } from '@/utils/merchantOsCredentialHandoff'
+import { hasAgentCardClaimHandoff } from '@/utils/agentCardClaimHandoff'
 
 /** Safari Private: IndexedDB/PouchDB may never resolve — force leave splash (align SilentPassUI AppEntryGate). */
 const SPLASH_FORCE_DISMISS_MS = 12_000
@@ -54,6 +55,11 @@ const HomePage = ({}) => {
 	const init = async () => {
 		try {
 			if (merchantOsHandoffOpensBusinessDetails()) {
+				goOnboarding(null)
+				return
+			}
+			// Agent invite claim: force createRecover so merchant gets a fresh EOA, then transfer card.
+			if (hasAgentCardClaimHandoff()) {
 				goOnboarding(null)
 				return
 			}

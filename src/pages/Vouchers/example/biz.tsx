@@ -27186,6 +27186,8 @@ useEffect(() => {
  const [adminMintLimitQuota, setAdminMintLimitQuota] = useState<number | null>(null);
  const [adminMintCounterFromClear, setAdminMintCounterFromClear] = useState<number | null>(null);
  const [protocolFuelReserveBalance, setProtocolFuelReserveBalance] = useState<number | null>(null);
+ /** Merchant program card B-Unit balance (fee payer first). Owner EOA+AA stays in `protocolFuelReserveBalance`. */
+ const [merchantCardBUnitBalance, setMerchantCardBUnitBalance] = useState<number | null>(null);
 const [overviewRefreshTrigger, setOverviewRefreshTrigger] = useState(0);
  const [overviewRefreshing, setOverviewRefreshing] = useState(false);
  const [linkedMerchantLookupDone, setLinkedMerchantLookupDone] = useState(() => loadTrustedCache<string[]>(linkedMerchantAdminsCacheKey) !== null);
@@ -28525,6 +28527,7 @@ const [memberDirectoryUserTypeDb, setMemberDirectoryUserTypeDb] = useState<Recor
      setAdminMintLimitQuota(null);
      setAdminMintCounterFromClear(null);
      setProtocolFuelReserveBalance(null);
+     setMerchantCardBUnitBalance(null);
      setMerchantActivationStats(null);
      setAdminRetryCount((c) => c + 1);
      try {
@@ -28648,6 +28651,7 @@ const [memberDirectoryUserTypeDb, setMemberDirectoryUserTypeDb] = useState<Recor
      setAdminMintLimitQuota(null);
      setAdminMintCounterFromClear(null);
      setProtocolFuelReserveBalance(null);
+     setMerchantCardBUnitBalance(null);
      setIndexerTransactions([]);
     setTerminals(loadTrustedCache<TerminalRecord[]>(linkedTerminalsCacheKey) ?? []);
      setSubordinateBalances({});
@@ -32515,12 +32519,20 @@ useEffect(() => {
   walletStoragePartitionLower,
 ]);
 
- /** Dashboard B-Units (Protocol Fuel Reserve): CoNET L1 `block` tick via DaemonProvider; decoupled from 6s Overview feeder. */
+ /** Dashboard B-Units: owner EOA+AA + merchant program card; CoNET L1 `block` tick via DaemonProvider. */
  useEffect(() => {
    let cancelled = false;
    const buintBalanceCacheKey = walletStoragePartitionLower
      ? `eoa:${walletStoragePartitionLower}:buint:balance:v2`
      : '';
+   const merchantCardAddr =
+     staffProgramBeamioCardAddress && ethers.isAddress(staffProgramBeamioCardAddress)
+       ? ethers.getAddress(staffProgramBeamioCardAddress)
+       : null;
+   const merchantCardBuintCacheKey =
+     walletStoragePartitionLower && merchantCardAddr
+       ? `eoa:${walletStoragePartitionLower}:card:${merchantCardAddr.toLowerCase()}:buint:balance:v1`
+       : '';
    const buintReserveTargets: string[] = [];
    const buintTargetSeen = new Set<string>();
    const pushBuintTarget = (raw: string | undefined) => {
@@ -32536,39 +32548,65 @@ useEffect(() => {
    pushBuintTarget(myAddress);
    pushBuintTarget(profiles?.[0]?.aaAccount);
 
+   if (merchantCardBuintCacheKey) {
+     const cachedCard = loadTrustedCache<number>(merchantCardBuintCacheKey);
+     if (cachedCard != null && Number.isFinite(cachedCard)) setMerchantCardBUnitBalance(cachedCard);
+   } else {
+     setMerchantCardBUnitBalance(null);
+   }
+
    const tick = async (): Promise<void> => {
      if (cancelled) return;
+     const stepBuintKey = buintBalanceCacheKey;
+     const stepCardKey = merchantCardBuintCacheKey;
+
      if (buintReserveTargets.length === 0) {
        if (!cancelled) setProtocolFuelReserveBalance(null);
-       return;
-     }
-     const stepBuintKey = buintBalanceCacheKey;
-     try {
-       let sumRaw = 0n;
-       let allOk = true;
-       for (const addr of buintReserveTargets) {
-         if (cancelled) return;
-         try {
-           const display = await fetchConetBUnitBalanceDisplay(addr, conetDepinProvider);
-           sumRaw += BigInt(Math.round(display * 1_000_000));
-         } catch {
-           allOk = false;
-           break;
+     } else {
+       try {
+         let sumRaw = 0n;
+         let allOk = true;
+         for (const addr of buintReserveTargets) {
+           if (cancelled) return;
+           try {
+             const display = await fetchConetBUnitBalanceDisplay(addr, conetDepinProvider);
+             sumRaw += BigInt(Math.round(display * 1_000_000));
+           } catch {
+             allOk = false;
+             break;
+           }
          }
-       }
-       if (cancelled) return;
-       if (allOk) {
-         const balance = Number(sumRaw) / 1_000_000;
-         setProtocolFuelReserveBalance(balance);
-         if (stepBuintKey) saveTrustedCache(stepBuintKey, balance);
-       } else {
+         if (cancelled) return;
+         if (allOk) {
+           const balance = Number(sumRaw) / 1_000_000;
+           setProtocolFuelReserveBalance(balance);
+           if (stepBuintKey) saveTrustedCache(stepBuintKey, balance);
+         } else {
+           const fb = stepBuintKey ? loadTrustedCache<number>(stepBuintKey) : null;
+           if (fb != null) setProtocolFuelReserveBalance(fb);
+         }
+       } catch {
+         if (cancelled) return;
          const fb = stepBuintKey ? loadTrustedCache<number>(stepBuintKey) : null;
          if (fb != null) setProtocolFuelReserveBalance(fb);
        }
+     }
+
+     if (!merchantCardAddr || !stepCardKey) {
+       if (!cancelled) setMerchantCardBUnitBalance(null);
+       return;
+     }
+     try {
+       const cardDisplay = await fetchConetBUnitBalanceDisplay(merchantCardAddr, conetDepinProvider);
+       if (cancelled) return;
+       if (Number.isFinite(cardDisplay)) {
+         setMerchantCardBUnitBalance(cardDisplay);
+         saveTrustedCache(stepCardKey, cardDisplay);
+       }
      } catch {
        if (cancelled) return;
-       const fb = stepBuintKey ? loadTrustedCache<number>(stepBuintKey) : null;
-       if (fb != null) setProtocolFuelReserveBalance(fb);
+       const fb = loadTrustedCache<number>(stepCardKey);
+       if (fb != null) setMerchantCardBUnitBalance(fb);
      }
    };
 
@@ -32584,6 +32622,7 @@ useEffect(() => {
    myAddress,
    profiles?.[0]?.keyID,
    profiles?.[0]?.aaAccount,
+   staffProgramBeamioCardAddress,
  ]);
 
 /**
@@ -34255,7 +34294,11 @@ const topUpsUsdcMintOnly = adminToday ? adminToday.usdc : 0;
 const topUpsQuota = adminMintLimitQuota ?? 0; // denominator: mint limit from chain
 const topUpsUsedFromClear = adminMintCounterFromClear ?? 0; // numerator: mintCounterFromClear from chain
 
-const protocolFuelReserve = protocolFuelReserveBalance ?? 0; // B-Units: CoNET BUint.balanceOf(EOA)+balanceOf(AA) from 6s Overview feeder
+const protocolFuelReserve = protocolFuelReserveBalance ?? 0; // Owner B-Units: CoNET getBUnitBalance(EOA)+AA (block tick)
+  const merchantCardBUnitDisplay =
+    merchantCardBUnitBalance != null && Number.isFinite(merchantCardBUnitBalance)
+      ? merchantCardBUnitBalance.toFixed(2)
+      : null;
 const formatTrustedE6Amount = (raw: string | undefined): string => {
   if (raw == null) return 'Not available';
   try {
@@ -36335,9 +36378,18 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                         </div>
                         <div>
                           <p className="text-[9px] font-bold uppercase tracking-widest text-[#747779] sm:text-[10px]">{tu('overview_b_units_label')}</p>
-                          <p className="mt-0.5 font-manrope text-xl font-extrabold tracking-tight text-[#2c2f31] sm:mt-1 sm:text-2xl">
+                          <p className="mt-0.5 font-manrope text-xl font-extrabold tracking-tight text-[#2c2f31] tabular-nums sm:mt-1 sm:text-2xl">
                             {protocolFuelReserve.toFixed(2)}
                           </p>
+                          {staffProgramBeamioCardAddress && merchantCardBUnitDisplay != null ? (
+                            <p className="mt-0.5 text-[10px] font-semibold tabular-nums text-[#747779]">
+                              {tu('overview_b_units_card_line', { amount: merchantCardBUnitDisplay })}
+                            </p>
+                          ) : staffProgramBeamioCardAddress ? (
+                            <p className="mt-0.5 text-[10px] font-semibold text-[#747779]">
+                              {tu('overview_b_units_card_line', { amount: '—' })}
+                            </p>
+                          ) : null}
                         </div>
                       </div>
                     </div>
@@ -36563,10 +36615,19 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                   <span className="rounded-full bg-[#eef1f3] px-3 py-1 text-[10px] font-bold text-[#595c5e]">{tu('overview_current_badge')}</span>
                 </div>
                 <div className="space-y-1">
-                  <h2 className="font-manrope text-3xl font-extrabold tracking-tight text-[#2c2f31] lg:text-4xl">
+                  <h2 className="font-manrope text-3xl font-extrabold tracking-tight text-[#2c2f31] tabular-nums lg:text-4xl">
                     {protocolFuelReserve.toFixed(2)}{' '}
                     <span className="text-base font-bold text-slate-400 lg:text-lg">{tu('overview_b_units_label')}</span>
                   </h2>
+                  {staffProgramBeamioCardAddress ? (
+                    <p className="text-xs font-semibold tabular-nums text-[#595c5e]">
+                      {tu('overview_b_units_owner_line', { amount: protocolFuelReserve.toFixed(2) })}
+                      {' · '}
+                      {tu('overview_b_units_card_line', {
+                        amount: merchantCardBUnitDisplay ?? '—',
+                      })}
+                    </p>
+                  ) : null}
                   <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-[#eef1f3] sm:mt-4">
                     <div
                       className="h-full rounded-full bg-[#1562f0]"

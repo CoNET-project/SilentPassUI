@@ -542,6 +542,8 @@
     "overview_awaiting_approval": "Awaiting approval",
     "overview_awaiting_transactions": "Awaiting transactions",
     "overview_b_units_label": "B-Units",
+    "overview_b_units_owner_line": "Owner {{amount}}",
+    "overview_b_units_card_line": "Card {{amount}}",
     "overview_beamio_merchant": "Beamio Merchant",
     "overview_business_os": "Business OS",
     "overview_charges": "Charges",

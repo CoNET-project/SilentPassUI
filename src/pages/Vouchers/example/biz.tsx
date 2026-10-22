@@ -11,6 +11,7 @@ import React, {
 import { motion, LayoutGroup, AnimatePresence } from 'framer-motion';
 import { IpfsImg } from '@/components/IpfsImg';
 import MerchantCardStripePanel from '@/components/MerchantCardStripePanel';
+import { BeamioCircularBackButton } from '@/components/BeamioCircularBackButton';
 import type { LucideIcon } from 'lucide-react';
 import { ethers } from 'ethers';
 import html2canvas from 'html2canvas';
@@ -139,6 +140,11 @@ import {
 } from '@/services/BeamioCard';
 import { initMessage } from '@/services/chat';
 import { conetDepinProvider, baseEndpoint } from '@/utils/constants';
+import { getBizWorkspaceRole } from '@/utils/agentWorkspaceLocal';
+import {
+  fetchIsAgentOnChain,
+  loadCachedIsAgent,
+} from '@/utils/agentReferrerRegistryClient';
 import {
   BEAMIO_INDEXER_DIAMOND,
   CONET_BUINT,
@@ -1567,35 +1573,20 @@ type MarketFuelPackage = {
   badge?: string
   /** Short line under the pack name (cover merchandising). */
   tagline?: string
-  /** Dark gold Genesis Partner treatment. */
   theme?: 'standard' | 'partner' | 'muted'
   /**
    * When true, pack is omitted from Market Unit Provisioning / Refill unless
    * `visibleMarketFuelPackages(..., { includeCoverOnly: true })` (Start Kit cover).
-   * Genesis Partner is listed on Market — do not set coverOnly on it.
    */
   coverOnly?: boolean
 }
 
-/** Global SaaS Hashrate Prepayment Matrix (USDC). Dual-pool fields are checkout-only. */
+/** SaaS Fuel packs — must match x402sdk `fuelPackCatalog.ts` (Starter / Growth / Business / Scale). */
 const MARKET_FUEL_PACKAGES: MarketFuelPackage[] = [
   {
-    id: 'genesis_starter',
-    name: 'Newcomer Genesis Pack',
-    desc: 'First-time ice-breaker only. Forcibly establishes the first wave of physical redemption and data flow.',
-    priceUsdc: 15,
-    bUnits: 2000,
-    paidBUnits: 1500,
-    freeBUnits: 500,
-    bonusBps: 3333,
-    usdcAmount: '15',
-    firstTimeOnly: true,
-    tagline: 'Ultimate Ice-Breaker',
-  },
-  {
-    id: 'testing_waters',
-    name: 'Testing the Waters Pack',
-    desc: 'Basic single-point verification for merchants starting to normalize digital asset issuance.',
+    id: 'starter',
+    name: 'Starter',
+    desc: 'Start with everyday business transactions.',
     priceUsdc: 49,
     bUnits: 5145,
     paidBUnits: 4900,
@@ -1605,51 +1596,37 @@ const MARKET_FUEL_PACKAGES: MarketFuelPackage[] = [
   },
   {
     id: 'growth',
-    name: 'Growth Pack',
-    desc: 'For high-frequency active stores and mature IPs. Scale batch pools and high-frequency interaction.',
+    name: 'Growth',
+    desc: 'Keep your growing store running smoothly.',
     priceUsdc: 199,
     bUnits: 21890,
     paidBUnits: 19900,
     freeBUnits: 1990,
     bonusBps: 1000,
     usdcAmount: '199',
+    highlighted: true,
   },
   {
-    id: 'enterprise',
-    name: 'Enterprise Pack',
-    desc: 'Large chains and top direct-sales teams. High-density cross-border traffic and social fission.',
+    id: 'business',
+    name: 'Business',
+    desc: 'A larger reserve for busy teams and multiple locations.',
     priceUsdc: 999,
     bUnits: 114885,
     paidBUnits: 99900,
     freeBUnits: 14985,
     bonusBps: 1500,
     usdcAmount: '999',
-    badge: 'BEST VALUE',
   },
   {
-    id: 'genesis_partner',
-    name: 'Genesis Partner Pack',
-    desc: 'Lock in 3+ years of clearing fuel. Stop paying SaaS fees. Start earning.',
-    priceUsdc: 4000,
-    bUnits: 500000,
-    paidBUnits: 400000,
-    freeBUnits: 100000,
-    bonusBps: 2500,
-    usdcAmount: '4000',
-    theme: 'partner',
-    tagline: 'Lock in 3+ years of clearing fuel. Stop paying SaaS fees. Start earning.',
-  },
-  {
-    id: 'institutional',
-    name: 'Institutional Pack',
-    desc: 'Exclusive for super nodes. Regional agents and large ecosystem integrators.',
+    id: 'scale',
+    name: 'Scale',
+    desc: 'Our largest package for high-volume operations.',
     priceUsdc: 4999,
     bUnits: 599880,
     paidBUnits: 499900,
     freeBUnits: 99980,
     bonusBps: 2000,
     usdcAmount: '4999',
-    theme: 'muted',
   },
 ]
 
@@ -1679,20 +1656,19 @@ function markGenesisFuelPackPurchased(eoa: string | null | undefined): void {
 }
 
 /**
- * Hide Newcomer Genesis when:
- * - local EOA already bought that pack, or
- * - merchant already owns a program card, or
- * - merchant holds Ket #0 (create-card NFT via purchase or redeem).
+ * Filter Market / cover packs. `firstTimeOnly` packs (none in the current
+ * Starter/Growth/Business/Scale catalog) hide when the wallet already bought
+ * them or the merchant has a program card / Ket #0 create NFT.
  */
 function visibleMarketFuelPackages(
   eoa: string | null | undefined,
   opts?: { hasMerchantCardOrCreateNft?: boolean; includeCoverOnly?: boolean },
 ): MarketFuelPackage[] {
-  const hideGenesis =
+  const hideFirstTime =
     hasPurchasedGenesisFuelPack(eoa) || Boolean(opts?.hasMerchantCardOrCreateNft)
   return MARKET_FUEL_PACKAGES.filter((pkg) => {
     if (pkg.coverOnly && !opts?.includeCoverOnly) return false
-    if (pkg.firstTimeOnly && hideGenesis) return false
+    if (pkg.firstTimeOnly && hideFirstTime) return false
     return true
   })
 }
@@ -1716,7 +1692,7 @@ function formatMarketFuelOrdersHint(pkg: MarketFuelPackage): string {
 
 /** Charge = 5 B-Units; social = 0.1 B-Units. Truncate (do not round up). */
 function formatMarketFuelUsageHint(pkg: MarketFuelPackage): string | null {
-  if (pkg.id !== 'growth' && pkg.id !== 'enterprise') return null
+  if (pkg.id !== 'growth' && pkg.id !== 'business') return null
   const txs = Math.floor(pkg.bUnits / 5 / 100) * 100
   const social = pkg.bUnits / 0.1
   const socialLabel =
@@ -3183,83 +3159,21 @@ function LiteFuelCoverPackCard(props: {
 }) {
   const { pkg, selecting, disabled, onSelect } = props
   const usageHint = formatMarketFuelUsageHint(pkg)
-  const selectLabel = `Select ${pkg.name}`
+  const selectLabel = `Buy ${pkg.name}`
   const busy = selecting || disabled
-
-  if (pkg.theme === 'partner') {
-    return (
-      <div className="rounded-xl border border-gray-800 bg-gradient-to-br from-gray-900 to-black p-6 shadow-[0px_10px_30px_rgba(0,0,0,0.5)]">
-        <div className="mb-2 flex items-start justify-between gap-4">
-          <div className="min-w-0">
-            <h3 className="flex items-center gap-2 font-manrope text-[22px] font-semibold leading-7 tracking-[-0.01em] text-white">
-              <Star className="h-5 w-5 shrink-0 fill-yellow-500 text-yellow-500" aria-hidden />
-              <span>Genesis Partner Pack</span>
-              <Crown className="h-5 w-5 shrink-0 text-yellow-500" aria-hidden />
-            </h3>
-            <p className="mt-2 max-w-[80%] text-[15px] leading-5 text-gray-400">
-              Lock in 3+ years of clearing fuel. Stop paying SaaS fees. Start earning.
-            </p>
-          </div>
-          <div className="shrink-0 text-right">
-            <div className="font-manrope text-[34px] font-bold leading-[41px] tracking-[-0.02em] text-yellow-500">
-              {formatMarketFuelPriceUsdc(pkg)}
-            </div>
-            <div className="text-[12px] font-semibold uppercase tracking-[0.05em] text-gray-500">USDC</div>
-          </div>
-        </div>
-        <div className="mb-6 mt-4 space-y-3">
-          <div className="flex items-center gap-2 text-[15px] font-bold text-yellow-500">
-            <AlertTriangle className="h-[18px] w-[18px] shrink-0" strokeWidth={2.25} aria-hidden />
-            <span>Limited to 3,000 benchmark merchants globally.</span>
-          </div>
-          <div className="flex items-center gap-2 text-[15px] text-gray-300">
-            <CheckCircle2 className="h-[18px] w-[18px] shrink-0 text-yellow-500" strokeWidth={2.25} aria-hidden />
-            <span>Includes 1 CoNET Genesis Node to earn lifetime USDC dividends.</span>
-          </div>
-          <div className="flex items-center gap-2 text-[15px] text-gray-300">
-            <CheckCircle2 className="h-[18px] w-[18px] shrink-0 text-yellow-500" strokeWidth={2.25} aria-hidden />
-            <span>Bonus: 500 premium NFC DNA physical cards for your VIPs.</span>
-          </div>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <span className="rounded-full bg-gray-800 px-2 py-1 text-[12px] font-semibold uppercase tracking-[0.05em] text-gray-300">
-              {formatMarketFuelBUnitsTotal(pkg)}
-            </span>
-          </div>
-        </div>
-        <button
-          type="button"
-          disabled={busy}
-          aria-busy={selecting}
-          aria-label={selectLabel}
-          onClick={onSelect}
-          className={`flex w-full items-center justify-center rounded-lg bg-gradient-to-r from-yellow-600 to-yellow-500 py-4 text-[17px] font-semibold text-black transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60 ${bizFocusRingClass}`}
-        >
-          {selecting ? <Loader2 className="h-5 w-5 animate-spin" aria-hidden /> : selectLabel}
-        </button>
-      </div>
-    )
-  }
-
-  const cardClass = pkg.firstTimeOnly
-    ? 'relative overflow-hidden rounded-xl border-2 border-[#004bc3] bg-white p-6 shadow-[0px_4px_12px_rgba(0,75,195,0.08)]'
-    : pkg.theme === 'muted'
-      ? 'relative overflow-hidden rounded-xl border border-[#c3c6d8]/20 bg-[#f4f3f8] p-6 shadow-sm'
-      : 'relative overflow-hidden rounded-xl border border-[#c3c6d8]/30 bg-white p-6 shadow-sm'
+  const cardClass = pkg.highlighted
+    ? 'relative overflow-hidden rounded-xl border-2 border-[#004bc3]/25 bg-white p-6 shadow-[0px_4px_12px_rgba(0,75,195,0.08)]'
+    : 'relative overflow-hidden rounded-xl border border-[#c3c6d8]/30 bg-white p-6 shadow-sm'
 
   return (
     <div className={cardClass}>
-      {pkg.badge ? (
-        <div className="absolute right-0 top-0 rounded-bl-lg bg-[#004bc3] px-4 py-1 text-[12px] font-semibold uppercase tracking-[0.05em] text-white">
-          {pkg.badge}
-        </div>
-      ) : null}
-      <div className={`mb-2 flex items-start justify-between gap-4 ${pkg.badge ? 'mt-4' : ''}`}>
+      <div className="mb-2 flex items-start justify-between gap-4">
         <div className="min-w-0">
           <h3 className="font-manrope text-[22px] font-semibold leading-7 tracking-[-0.01em] text-[#1a1b1f]">
             {pkg.name}
           </h3>
-          {pkg.tagline ? (
-            <p className="mt-1 text-[15px] leading-5 text-[#004bc3]">{pkg.tagline}</p>
+          {pkg.desc ? (
+            <p className="mt-1 text-[15px] leading-5 text-[#595c5e]">{pkg.desc}</p>
           ) : null}
         </div>
         <div className="shrink-0 text-right">
@@ -3294,8 +3208,8 @@ function LiteFuelCoverPackCard(props: {
 }
 
 /**
- * Mobile-only day-0 shell when the merchant profile has no AA yet — matches
- * `marketExample.html` (narrative + business fields + Programs CTA).
+ * Mobile-only day-0 shell when the merchant profile has no AA yet —
+ * Fuel cover (packages + voucher) then Lite business-setup form.
  */
 function MobileNoAaLiteMemberSelectionPage(props: {
   merchantEoa: string;
@@ -3438,35 +3352,35 @@ function MobileNoAaLiteMemberSelectionPage(props: {
     const packSelectBusy = Boolean(pendingPackId) || fuelSelectBusy
     return (
       <div className="relative min-h-[max(884px,100dvh)] bg-[#F2F2F7] text-[#1a1b1f] antialiased">
-        <header className="fixed top-0 z-30 flex h-14 w-full items-center justify-between border-b border-[#dfdfe4]/30 bg-[#faf9fe]/80 px-5 backdrop-blur-xl">
-          <div className="flex min-w-0 items-center gap-4 text-[#004bc3]">
+        <div className="pointer-events-none fixed inset-x-0 top-0 z-30 pt-[max(1rem,env(safe-area-inset-top,0px))]">
+          <div className="pointer-events-none relative mx-auto flex h-11 max-w-3xl items-center justify-between px-5">
+            <BeamioCircularBackButton
+              variant="onLight"
+              onClick={onBack}
+              className="pointer-events-auto"
+              ariaLabel="Back to home"
+            />
             <button
               type="button"
-              onClick={onBack}
-              className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#004bc3] transition-colors hover:bg-[#e3e2e7] ${bizFocusRingClass}`}
-              aria-label="Back to home"
+              tabIndex={-1}
+              onClick={() => onOpenUnderstandingBUnits?.()}
+              className={`pointer-events-auto relative inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full p-1 text-[#2c2f31] transition active:scale-[0.96] ${bizFocusRingClass}`}
+              aria-label="Learn about B-Units"
             >
-              <ArrowLeft className="size-5" strokeWidth={2.2} aria-hidden />
+              <span
+                className="pointer-events-none absolute inset-1 rounded-full border border-black/[0.08] bg-white/90 shadow-[0_2px_10px_rgba(0,0,0,0.16),0_1px_3px_rgba(0,0,0,0.12)] backdrop-blur-md"
+                aria-hidden
+              />
+              <HelpCircle className="relative z-[1] h-[17px] w-[17px]" strokeWidth={2.25} aria-hidden />
             </button>
-            <h1 className="truncate font-manrope text-[22px] font-semibold leading-7 tracking-[-0.01em] text-[#004bc3]">
-              Beamio OS
-            </h1>
           </div>
-          <button
-            type="button"
-            onClick={() => onOpenUnderstandingBUnits?.()}
-            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#424655] transition-colors hover:bg-[#e3e2e7] ${bizFocusRingClass}`}
-            aria-label="Learn about B-Units"
-          >
-            <HelpCircle className="size-5" strokeWidth={2} aria-hidden />
-          </button>
-        </header>
+        </div>
 
-        <main className="mx-auto min-h-screen max-w-3xl space-y-8 px-5 pb-32 pt-20">
-          <section className="space-y-4">
-            <h2 className="font-manrope text-[28px] font-bold leading-[34px] tracking-[-0.02em] text-[#1a1b1f] sm:text-[34px] sm:leading-[41px]">
+        <main className="mx-auto min-h-screen max-w-3xl space-y-8 px-5 pb-32 pt-[calc(max(1rem,env(safe-area-inset-top,0px))+4.5rem)]">
+          <header className="space-y-4">
+            <h1 className="font-manrope text-[28px] font-bold leading-[34px] tracking-[-0.02em] text-[#1a1b1f] sm:text-[34px] sm:leading-[41px]">
               Fuel Your Omnichannel Network
-            </h2>
+            </h1>
             <p className="text-[17px] leading-[22px] tracking-[-0.01em] text-[#424655]">
               Select a SaaS fuel package to power your digital transactions, or enter a BD redeem code.
             </p>
@@ -3478,7 +3392,7 @@ function MobileNoAaLiteMemberSelectionPage(props: {
               <Info className="mr-1 h-4 w-4" strokeWidth={2} aria-hidden />
               100 B-Units = 1.00 USDC ›
             </button>
-          </section>
+          </header>
 
           <div className="space-y-4">
             <MarketHaveAVoucherPanel
@@ -3536,28 +3450,23 @@ function MobileNoAaLiteMemberSelectionPage(props: {
         </div>
       ) : null}
 
-      <header className="sticky top-0 z-10 flex items-center justify-between bg-[#f5f7f9]/70 px-4 py-4 shadow-[0_20px_40px_rgba(21,98,240,0.06)] backdrop-blur-xl">
-        <div className="flex min-w-0 items-center gap-3">
-          <button
-            type="button"
+      <div className="pointer-events-none fixed inset-x-0 top-0 z-30 pt-[max(1rem,env(safe-area-inset-top,0px))]">
+        <div className="pointer-events-none relative mx-auto flex h-11 max-w-md items-center px-4">
+          <BeamioCircularBackButton
+            variant="onLight"
             onClick={() => setShowCover(true)}
-            className={`shrink-0 rounded-xl p-1 text-[#1562f0] transition-opacity hover:opacity-80 ${bizFocusRingClass}`}
-            aria-label="Back to plans"
-          >
-            <ArrowLeft className="size-6" strokeWidth={2} aria-hidden />
-          </button>
-          <div className="min-w-0">
-            <span className="block truncate font-manrope text-lg font-black tracking-tight text-[#1562f0]">Beamio Business Lite</span>
-            <span className="block truncate text-[11px] font-semibold uppercase tracking-[0.15em] text-[#595c5e]">
-              Business setup
-            </span>
-          </div>
+            className="pointer-events-auto"
+            ariaLabel="Back to plans"
+          />
         </div>
-      </header>
+      </div>
 
-      <main className="pb-4">
-        <section className="overflow-hidden bg-[#f5f7f9] px-4 pb-10 pt-6">
+      <main className="pb-4 pt-[calc(max(1rem,env(safe-area-inset-top,0px))+4.5rem)]">
+        <section className="overflow-hidden bg-[#f5f7f9] px-4 pb-10">
           <div className="mx-auto max-w-md">
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.15em] text-[#595c5e]">
+              Business setup
+            </p>
             <h1 className="mb-4 font-manrope text-[2.5rem] font-extrabold leading-[1.1] tracking-tight">
               Set up your business for <span className="text-[#1562f0]">Lite</span> commerce.
             </h1>
@@ -15497,6 +15406,32 @@ const loadProgramReferrerList = useCallback(async () => {
  /** CoNET BusinessStartKetRedeem ERC1155 #0（Ket）余额 >0 */
  const [ownsBusinessStartKetToken0, setOwnsBusinessStartKetToken0] = useState(false);
  const [ownsBusinessStartKetToken0Fetched, setOwnsBusinessStartKetToken0Fetched] = useState(false);
+ /** BeamioAgentReferrerRegistry.isAgent — agents may skip Start Kit NFT before Card Setup. */
+ const cardSetupAgentGateEoa = useMemo(() => {
+   const raw = (profiles?.[0]?.keyID ?? myAddress ?? '').trim();
+   if (!raw || !ethers.isAddress(raw)) return '';
+   try {
+     return ethers.getAddress(raw);
+   } catch {
+     return '';
+   }
+ }, [profiles?.[0]?.keyID, myAddress]);
+ const [viewerIsAgentOnChain, setViewerIsAgentOnChain] = useState<boolean | null>(() => {
+   const raw = (profiles?.[0]?.keyID ?? myAddress ?? '').trim();
+   if (!raw || !ethers.isAddress(raw)) return null;
+   try {
+     const eoa = ethers.getAddress(raw);
+     if (getBizWorkspaceRole(eoa) === 'agent') return true;
+     return loadCachedIsAgent(eoa);
+   } catch {
+     return null;
+   }
+ });
+ const viewerIsAgentExempt = useMemo(() => {
+   if (!cardSetupAgentGateEoa) return false;
+   if (getBizWorkspaceRole(cardSetupAgentGateEoa) === 'agent') return true;
+   return viewerIsAgentOnChain === true;
+ }, [cardSetupAgentGateEoa, viewerIsAgentOnChain]);
  /** Ket welcome cover (`marketExample.html`); persisted per EOA + session; cleared from UI when user taps Start Designing */
  const [cardIssuanceKetWelcomeCoverDismissed, setCardIssuanceKetWelcomeCoverDismissed] = useState(false);
 /** Desktop no-card gate: keep the desktop Overview shell until the merchant opens the shared Lite onboarding flow. */
@@ -15511,8 +15446,10 @@ const loadProgramReferrerList = useCallback(async () => {
  );
  const merchantOwnCardAddressRef = useRef<string | null>(merchantOwnCardAddress);
  merchantOwnCardAddressRef.current = merchantOwnCardAddress;
- /** Card fetch settled — Card Setup on Overview until a merchant card is issued. Ket #0 is not required. */
- const programAreaGateReady = profileOwnsIssuedBeamioCardFetched;
+ /** Card fetch settled; non-agents also need Ket #0 (or agent exemption) before Card Setup. */
+ const programAreaGateReady =
+   profileOwnsIssuedBeamioCardFetched &&
+   (viewerIsAgentExempt || ownsBusinessStartKetToken0Fetched);
  /** Programs routes require a factory-issued merchant card. Ket #0 alone stays on Overview Card Setup.
   * Blacklisted primary address → same as no card (exclude list must be loaded for API names). */
  const canEnterProgramArea = useMemo(() => {
@@ -15526,9 +15463,18 @@ const loadProgramReferrerList = useCallback(async () => {
    }
    return true;
  }, [profileOwnsIssuedBeamioCard, merchantOwnCardAddress]);
+ /** Card Setup without an issued card: hold Start Kit #0, or agent (exempt from NFT). */
  const ketNoCardProgramsEligible = useMemo(
-   () => profileOwnsIssuedBeamioCardFetched && !profileOwnsIssuedBeamioCard,
-   [profileOwnsIssuedBeamioCardFetched, profileOwnsIssuedBeamioCard]
+   () =>
+     programAreaGateReady &&
+     !profileOwnsIssuedBeamioCard &&
+     (viewerIsAgentExempt || ownsBusinessStartKetToken0),
+   [
+     programAreaGateReady,
+     profileOwnsIssuedBeamioCard,
+     viewerIsAgentExempt,
+     ownsBusinessStartKetToken0,
+   ]
  );
  /** Latest ket handoff flag for imperative handlers (e.g. kit thank-you) where state may lag one frame. */
  const ketNoCardProgramsEligibleRef = useRef(false);
@@ -15852,17 +15798,25 @@ useEffect(() => {
   cardIssuanceCouponRedeemStatusQueryKey,
 ]);
 
- /** Logged-in wallet present but factory card gate not settled — avoid one frame of Dashboard before Programs */
+ /** Logged-in wallet present but card / Ket / agent gate not settled — avoid one frame of Dashboard before Programs */
  const profileAwaitingIssuanceGate = useMemo(() => {
    const p0 = profiles?.[0];
    const hasWallet = Boolean(p0 && (p0.keyID?.trim() || p0.aaAccount?.trim() || p0.privateKeyArmor));
    if (!hasWallet) return false;
-   return !profileOwnsIssuedBeamioCardFetched;
+   if (!profileOwnsIssuedBeamioCardFetched) return true;
+   if (viewerIsAgentExempt) return false;
+   if (!ownsBusinessStartKetToken0Fetched) return true;
+   if (cardSetupAgentGateEoa && viewerIsAgentOnChain === null) return true;
+   return false;
  }, [
    profiles?.[0]?.keyID,
    profiles?.[0]?.aaAccount,
    profiles?.[0]?.privateKeyArmor,
    profileOwnsIssuedBeamioCardFetched,
+   viewerIsAgentExempt,
+   ownsBusinessStartKetToken0Fetched,
+   cardSetupAgentGateEoa,
+   viewerIsAgentOnChain,
  ]);
  const navChromeTab = activeTab;
 
@@ -26601,6 +26555,34 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
    };
  }, [profiles?.[0]?.keyID, profiles?.[0]?.aaAccount, myAddress, profiles?.[0]?.privateKeyArmor, cardIssuanceOnChainRefreshNonce]);
 
+ useEffect(() => {
+   if (!cardSetupAgentGateEoa) {
+     setViewerIsAgentOnChain(null);
+     return;
+   }
+   if (getBizWorkspaceRole(cardSetupAgentGateEoa) === 'agent') {
+     setViewerIsAgentOnChain(true);
+     return;
+   }
+   let cancelled = false;
+   void (async () => {
+     const r = await fetchIsAgentOnChain(cardSetupAgentGateEoa);
+     if (cancelled) return;
+     if (r.ok) {
+       setViewerIsAgentOnChain(r.isAgent);
+       return;
+     }
+     if (r.isAgent !== null) {
+       setViewerIsAgentOnChain(r.isAgent);
+       return;
+     }
+     setViewerIsAgentOnChain(false);
+   })();
+   return () => {
+     cancelled = true;
+   };
+ }, [cardSetupAgentGateEoa, cardIssuanceOnChainRefreshNonce]);
+
  const [timeFilter, setTimeFilter] = useState<OverviewTimeFilter>('Today');
  /** Ledger scope toggle removed from Transactions UI; table always uses combined ledger (was `全部`). */
  const activeLedger = '全部' as const;
@@ -27610,21 +27592,29 @@ useEffect(() => {
 const marketFuelPackagesForWallet = useMemo(
   () =>
     visibleMarketFuelPackages(profiles?.[0]?.keyID ?? myAddress, {
-      hasMerchantCardOrCreateNft: profileOwnsIssuedBeamioCard || ownsBusinessStartKetToken0,
+      hasMerchantCardOrCreateNft:
+        profileOwnsIssuedBeamioCard || ownsBusinessStartKetToken0 || viewerIsAgentExempt,
     }),
-  [profiles, myAddress, profileOwnsIssuedBeamioCard, ownsBusinessStartKetToken0],
+  [
+    profiles,
+    myAddress,
+    profileOwnsIssuedBeamioCard,
+    ownsBusinessStartKetToken0,
+    viewerIsAgentExempt,
+  ],
 );
 
 /** Drop Genesis checkout selection once the pack is no longer offered. */
 useEffect(() => {
   if (!selectedCustomFuelPackage?.firstTimeOnly) return
-  if (!(profileOwnsIssuedBeamioCard || ownsBusinessStartKetToken0)) return
+  if (!(profileOwnsIssuedBeamioCard || ownsBusinessStartKetToken0 || viewerIsAgentExempt)) return
   setCustomFuelAmount('')
   if (selectedProduct === 'custom_fuel') setSelectedProduct(null)
 }, [
   selectedCustomFuelPackage,
   profileOwnsIssuedBeamioCard,
   ownsBusinessStartKetToken0,
+  viewerIsAgentExempt,
   selectedProduct,
 ]);
  /** Merchant Program kits (Standard / Custom) — Stripe Checkout from Programs marketing cards */
@@ -28265,7 +28255,7 @@ const [memberDirectoryUserTypeDb, setMemberDirectoryUserTypeDb] = useState<Recor
            setFuelPackStripeUi('succeeded');
            setFuelPackStripeMessage(null);
            const eoa = (profiles?.[0]?.keyID ?? myAddress)?.trim() ?? '';
-           if (pj.packId === 'genesis_starter') markGenesisFuelPackPurchased(eoa);
+           if (pj.packId === 'starter') markGenesisFuelPackPurchased(eoa);
            setOverviewRefreshTrigger((t) => t + 1);
            setLiteChainAckRevision((n) => n + 1);
            return;
@@ -30524,7 +30514,7 @@ const overviewCustomerBalanceFromActivity = useMemo(() => {
          setFuelPackStripeMessage(null);
          const pid = resolvedPackId ?? id;
          setFuelPackStripePackId(pid);
-         if (pid === 'genesis_starter') markGenesisFuelPackPurchased(eoa);
+         if (pid === 'starter') markGenesisFuelPackPurchased(eoa);
          setOverviewRefreshTrigger((t) => t + 1);
          setLiteChainAckRevision((n) => n + 1);
        };
@@ -33402,8 +33392,17 @@ useEffect(() => {
 	}, []);
  /** Smart Terminal (AA) present — mirrors newBiz `isAaUnlocked` for Market fuel cards */
  const hasAaAccount = Boolean(profiles?.[0]?.aaAccount?.trim());
- /** Creating a merchant card no longer requires BusinessStartKet #0, so the Start Kit wall stays closed. */
- const lacksMerchantProgramCardAndKet = false;
+ /**
+  * Start Kit wall: no issued merchant card and no BusinessStartKet #0.
+  * Agents (on-chain isAgent or local workspace role) may skip the NFT and enter Card Setup.
+  */
+ const lacksMerchantProgramCardAndKet =
+   profileOwnsIssuedBeamioCardFetched &&
+   ownsBusinessStartKetToken0Fetched &&
+   (viewerIsAgentExempt || viewerIsAgentOnChain !== null) &&
+   !profileOwnsIssuedBeamioCard &&
+   !ownsBusinessStartKetToken0 &&
+   !viewerIsAgentExempt;
  /** First-time merchant shell on `/home`: no eligible merchant card (+ no Ket) wins over local Lite draft / chain ack. */
  const showBizFirstMembershipOnboarding = lacksMerchantProgramCardAndKet;
 
@@ -38572,11 +38571,11 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                              : 'mb-6 flex size-12 items-center justify-center rounded-2xl bg-[#eef1f3] transition-colors group-hover:bg-[#0051d1]/10'
                          }
                        >
-                         {pkg.id === 'genesis_starter' ? (
+                         {pkg.id === 'starter' ? (
                            <Zap className="size-6 text-[#0051d1]" strokeWidth={2} aria-hidden />
                          ) : pkg.id === 'growth' ? (
                            <Rocket className="size-6 text-[#0051d1]" strokeWidth={2} aria-hidden />
-                         ) : pkg.id === 'institutional' ? (
+                         ) : pkg.id === 'scale' ? (
                            <Gem className="size-6 text-[#0051d1]" strokeWidth={2} aria-hidden />
                          ) : (
                            <Package className="size-6 text-[#0051d1]" strokeWidth={2} aria-hidden />
@@ -38709,7 +38708,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                      <h3 className="font-sans text-2xl font-extrabold text-[#2c2f31]">Refill Packages</h3>
                      <p className="mt-1 text-sm text-slate-500">Select a fuel package to recharge your merchant wallet.</p>
                      <p className="mt-2 text-[11px] font-medium text-slate-500">
-                       Prices in USDC on Base. Newcomer Genesis is only for merchants with no program card and no create-card NFT.
+                       Prices in USDC. Each pack credits the listed B-Units total to this merchant account.
                      </p>
                    </div>
                  </div>

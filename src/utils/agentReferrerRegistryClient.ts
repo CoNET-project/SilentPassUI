@@ -128,6 +128,57 @@ export async function fetchRefereesOfLength(introducerEoa: string): Promise<numb
 	}
 }
 
+export type AgentInviteRefereeRow = {
+	referee: string
+	txHash: string | null
+	registeredAt: string | null
+}
+
+/**
+ * List EOAs that registered under this introducer's invite link (API DB).
+ * Returns null on untrusted failure — do not treat as empty list.
+ */
+export async function fetchAgentInviteReferees(
+	introducerEoa: string,
+	opts?: { limit?: number; offset?: number },
+): Promise<{ total: number; referees: AgentInviteRefereeRow[] } | null> {
+	if (!ethers.isAddress(introducerEoa)) return null
+	const introducer = ethers.getAddress(introducerEoa)
+	const limit = Math.min(Math.max(opts?.limit ?? 50, 1), 100)
+	const offset = Math.max(opts?.offset ?? 0, 0)
+	try {
+		const q = new URLSearchParams({
+			introducer,
+			limit: String(limit),
+			offset: String(offset),
+		})
+		const res = await fetch(`${BEAMIO_API}/agentInviteReferees?${q.toString()}`)
+		const j = (await res.json().catch(() => null)) as {
+			success?: boolean
+			total?: number
+			referees?: Array<{ referee?: string; txHash?: string | null; registeredAt?: string | null }>
+		} | null
+		if (!res.ok || !j?.success || !Array.isArray(j.referees)) return null
+		const total = Number(j.total)
+		return {
+			total: Number.isFinite(total) && total >= 0 ? Math.floor(total) : j.referees.length,
+			referees: j.referees
+				.map((r) => {
+					const referee = String(r.referee ?? '').trim()
+					if (!ethers.isAddress(referee)) return null
+					return {
+						referee: ethers.getAddress(referee),
+						txHash: r.txHash ? String(r.txHash) : null,
+						registeredAt: r.registeredAt ? String(r.registeredAt) : null,
+					}
+				})
+				.filter((r): r is AgentInviteRefereeRow => r != null),
+		}
+	} catch {
+		return null
+	}
+}
+
 async function postRegister(body: Record<string, unknown>): Promise<RegisterResult> {
 	try {
 		const res = await fetch(`${BEAMIO_API}/agentReferrerRegister`, {

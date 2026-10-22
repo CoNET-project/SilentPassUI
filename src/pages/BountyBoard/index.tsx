@@ -4,6 +4,7 @@ import { ArrowUpRight, Check, ChevronRight, Copy, Gift, Hexagon, Network, Settin
 import { BeamioCircularBackButton } from '@/components/BeamioCircularBackButton'
 import { QrWithBeamioTagAvatar } from '@/components/QrWithBeamioTagAvatar'
 import { AgentBusinessInviteSheet } from '@/pages/BountyBoard/AgentBusinessInviteSheet'
+import { AgentInviteRefereesSheet } from '@/pages/BountyBoard/AgentInviteRefereesSheet'
 import { buildAgentInviteAppUrl } from '@/utils/agentInviteIntroducerStash'
 import { fetchRefereesOfLength } from '@/utils/agentReferrerRegistryClient'
 import { useScrollCapsuleOpacity } from '@/hooks/useScrollCapsuleOpacity'
@@ -108,19 +109,44 @@ function saveReferralProgressCountCache(eoa: string, count: number): void {
 	}
 }
 
-function ReferralProgressPanel({ registeredCount }: { registeredCount: number }) {
+function ReferralProgressPanel({
+	registeredCount,
+	onOpen,
+}: {
+	registeredCount: number
+	onOpen?: () => void
+}) {
+	const interactive = typeof onOpen === 'function'
 	return (
 		<section
-			className={`${cardChrome} px-5 py-5`}
+			className={`${cardChrome} px-5 py-5${interactive ? ' cursor-pointer transition hover:border-slate-300 dark:hover:border-slate-600' : ''}`}
 			aria-label="Referral progress"
+			role={interactive ? 'button' : undefined}
+			tabIndex={interactive ? 0 : undefined}
+			onClick={interactive ? onOpen : undefined}
+			onKeyDown={
+				interactive
+					? (e) => {
+							if (e.key === 'Enter' || e.key === ' ') {
+								e.preventDefault()
+								onOpen()
+							}
+						}
+					: undefined
+			}
 		>
 			<div className="flex items-baseline justify-between gap-3">
 				<p className="text-[15px] font-medium text-slate-500 dark:text-slate-400">
 					Registered through your link
 				</p>
-				<p className="shrink-0 text-[22px] font-bold tabular-nums tracking-tight text-[#0F172A] dark:text-slate-50">
-					{registeredCount.toLocaleString('en-US')}
-				</p>
+				<div className="flex shrink-0 items-center gap-1.5">
+					<p className="text-[22px] font-bold tabular-nums tracking-tight text-[#0F172A] dark:text-slate-50">
+						{registeredCount.toLocaleString('en-US')}
+					</p>
+					{interactive ? (
+						<ChevronRight className="h-5 w-5 text-slate-300 dark:text-slate-600" aria-hidden />
+					) : null}
+				</div>
 			</div>
 			<div className="my-4 h-px w-full bg-slate-200/90 dark:bg-slate-700" aria-hidden />
 			<p className="text-[13px] leading-snug text-slate-400 dark:text-slate-500">
@@ -240,10 +266,15 @@ export default function BountyBoard() {
 	const [inviteLinkCopied, setInviteLinkCopied] = useState(false)
 	const [agentSheetOpen, setAgentSheetOpen] = useState(false)
 	const [agentSheetEpoch, setAgentSheetEpoch] = useState(0)
+	const [refereesSheetOpen, setRefereesSheetOpen] = useState(false)
 	const inviteUrl = useMemo(() => (eoa ? buildAgentInviteAppUrl(eoa) : ''), [eoa])
 	const [registeredThroughLinkCount, setRegisteredThroughLinkCount] = useState(() =>
 		eoa ? (loadReferralProgressCountCache(eoa) ?? 0) : 0,
 	)
+	const openRefereesSheet = useCallback(() => {
+		if (!eoa) return
+		setRefereesSheetOpen(true)
+	}, [eoa])
 	useEffect(() => {
 		if (!eoa) {
 			setRegisteredThroughLinkCount(0)
@@ -579,7 +610,10 @@ export default function BountyBoard() {
 							</section>
 
 							<section className="space-y-4">
-								<ReferralProgressPanel registeredCount={registeredThroughLinkCount} />
+								<ReferralProgressPanel
+									registeredCount={registeredThroughLinkCount}
+									onOpen={eoa ? openRefereesSheet : undefined}
+								/>
 								<ReferToEarnBanner
 									onExplore={() => navigate('/discover', { state: { referrerRewardOnly: true } })}
 								/>
@@ -605,7 +639,10 @@ export default function BountyBoard() {
 									Show invite
 								</button>
 							</div>
-							<ReferralProgressPanel registeredCount={registeredThroughLinkCount} />
+							<ReferralProgressPanel
+								registeredCount={registeredThroughLinkCount}
+								onOpen={eoa ? openRefereesSheet : undefined}
+							/>
 							<ReferToEarnBanner
 								onExplore={() => navigate('/discover', { state: { referrerRewardOnly: true } })}
 							/>
@@ -841,6 +878,12 @@ export default function BountyBoard() {
 				agentTag={agentTag}
 				onClose={() => setAgentSheetOpen(false)}
 			/>
+			{refereesSheetOpen && eoa ? (
+				<AgentInviteRefereesSheet
+					introducerEoa={eoa}
+					onClose={() => setRefereesSheetOpen(false)}
+				/>
+			) : null}
 		</div>
 	)
 }

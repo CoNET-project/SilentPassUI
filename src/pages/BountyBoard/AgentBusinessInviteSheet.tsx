@@ -478,7 +478,19 @@ export function AgentBusinessInviteSheet({
 										{mustCreate ? (
 											<button
 												type="button"
-												onClick={() => openExternalUrl(merchantOsUnlockUrl(temp.beamioTag, temp.accessPassword, 'business'))}
+												onClick={() => {
+													void (async () => {
+														// Ensure agentOfTemp is on-chain before Merchant OS unlock (Start Kit exempt).
+														try {
+															await registerTempUnderAgent(temp.eoa)
+														} catch {
+															/* still open — local sponsored flag covers first create */
+														}
+														openExternalUrl(
+															merchantOsUnlockUrl(temp.beamioTag, temp.accessPassword, 'business'),
+														)
+													})()
+												}}
 												className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[#8d3a8b]/30 bg-[#f5ecff] px-3 py-2.5 text-sm font-semibold text-[#8d3a8b]"
 											>
 												<Plus className="h-4 w-4" aria-hidden />

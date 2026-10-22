@@ -111,29 +111,42 @@ export const getKeysFromCoNETPGPSC = async (keyIDOrAddress: string, privateKeyAr
 	// searchKey 接受 address；若传入 keyID，可用 pgpKeyIDHash2Wallet 查 address，此处简化为：若为有效 address 则用，否则用 Wallet.address
 	const lookupAddr = ethers.isAddress(keyIDOrAddress) ? keyIDOrAddress : Wallet.address
 	try {
-		const [info, privateKey] : [searchKeyPGP, string] = await Promise.all([
-			SC.searchKey(lookupAddr),
-			SC.getEncryptedPrivateKey()
-		])
+		// Peer public + mailbox route come only from searchKey. getEncryptedPrivateKey
+		// is the *viewer* AES blob and is optional — decrypt failure must never wipe
+		// peer keys (that produced Chat "No route" for on-chain registered peers).
+		const info: searchKeyPGP = await SC.searchKey(lookupAddr)
 		let privateArmored = ''
 		let publicArmored = ''
-		if (privateKey) {
-			try {
-				privateArmored = await aesGcmDecrypt(privateKey, privateKeyArmor)
-			} catch {
-				return null
-			}
-			
-			
-		}
 		if (info.userPublicKeyArmored) {
 			publicArmored = fromBase64(info.userPublicKeyArmored)
 		}
 		const routersArmoreds = info.routePublicKeyArmored ? fromBase64(info.routePublicKeyArmored) : ''
+		if (!publicArmored && !routersArmoreds) {
+			return null
+		}
+		try {
+			const privateKey: string = await SC.getEncryptedPrivateKey()
+			if (privateKey) {
+				try {
+					privateArmored = await aesGcmDecrypt(privateKey, privateKeyArmor)
+				} catch {
+					// Viewer cannot decrypt own blob — keep peer public/route from searchKey.
+				}
+			}
+		} catch {
+			// Optional viewer private fetch failed — keep peer keys.
+		}
 
 		// Presence is NOT chain routeOnline (SI abandoned setUserOnlineOnMe).
 		// UI online comes from mailbox `wallet_online_query` — see refreshChatMailboxPresence.
-		return {privateArmored, publicArmored, routersArmoreds, online: false, routePgpKeyID: info.routePgpKeyID, userPgpKeyID: info.userPgpKeyID}
+		return {
+			privateArmored,
+			publicArmored,
+			routersArmoreds,
+			online: false,
+			routePgpKeyID: info.routePgpKeyID,
+			userPgpKeyID: info.userPgpKeyID,
+		}
 	} catch (ex) {
 		return null
 	}
@@ -1693,6 +1706,7 @@ export const refreshChatRoutes = async (profile: profile): Promise<profile> => {
 						routePgpKeyID: nextRouteKeyID,
 						// Preserve last mailbox-probe result; never import chain routeOnline.
 						online: cd?.online ?? false,
+						nativeWakeable: cd?.nativeWakeable,
 					}
 				}
 				changed = true

@@ -3,7 +3,7 @@ import { CONET_RPC_URL } from '@/config/chainAddresses'
 import { beamioApi } from '@/utils/constants'
 import { resolveBeamioAaOnConet } from '@/utils/resolveBeamioAaFromCardFactory'
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
-import { storeSystemData } from '@/services/beamio'
+import { flushStoreSystemData } from '@/services/beamio'
 
 const conetProvider = new ethers.JsonRpcProvider(CONET_RPC_URL)
 const conetEnsureInFlight = new Map<string, Promise<string | null>>()
@@ -70,6 +70,7 @@ export async function ensureConetAaForProfileAndPersist(
 	temp.profiles = nextProfiles
 	setCoNET_Data(temp)
 	setProfiles?.(nextProfiles)
-	await storeSystemData()
+	// Immediate PouchDB write — debounced storeSystemData can lose aaAccount on refresh.
+	await flushStoreSystemData()
 	return aa
 }

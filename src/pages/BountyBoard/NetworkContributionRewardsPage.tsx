@@ -1,25 +1,81 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
+	ArrowRight,
+	BadgeCheck,
 	Building2,
+	Calculator,
+	LineChart,
 	Check,
+	ChevronDown,
 	ChevronRight,
-	CheckCircle,
-	Network,
+	Gift,
+	Layers,
+	RotateCcw,
+	Split,
 	Store,
 	UserRound,
 	Users,
+	type LucideIcon,
 } from 'lucide-react'
 import { BeamioCircularBackButton, BEAMIO_CIRCULAR_BACK_ROW_CLASS } from '@/components/BeamioCircularBackButton'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 
 const SLIDE_MS = 300
 
+/** Soft palette aligned with sample Beamio Rewards Hub 2 (`--h-*`). */
+const H = {
+	soft: '#eef3ff',
+	blue: '#165ce9',
+	line: '#e6ebf4',
+	sub: '#72809a',
+	card: '#ffffff',
+	purple: '#865ab6',
+	purpleBg: '#f6effe',
+	shadow: 'rgba(36, 65, 109, 0.035)',
+	roleA: '#165ce9',
+	roleB: '#865ab6',
+	roleC: '#5a91ef',
+	roleD: '#8fafe6',
+} as const
+
 const NETWORK_ROLES = [
-	{ id: 'merchant-referrer', label: 'Merchant referrer', pool: 50, balance: 15, Icon: Store },
-	{ id: 'consumer-referrer', label: 'Consumer referrer', pool: 10, balance: 3, Icon: Users },
-	{ id: 'consumer', label: 'Consumer', pool: 20, balance: 6, Icon: UserRound },
-	{ id: 'merchant', label: 'Merchant', pool: 20, balance: 6, Icon: Building2 },
+	{
+		id: 'merchant-referrer',
+		label: 'Merchant referrer',
+		pool: 50,
+		balance: 15,
+		contribution: 'Introduces businesses',
+		Icon: Store,
+		bar: H.roleA,
+	},
+	{
+		id: 'consumer-referrer',
+		label: 'Consumer referrer',
+		pool: 10,
+		balance: 3,
+		contribution: 'Invites consumers',
+		Icon: Users,
+		bar: H.roleB,
+	},
+	{
+		id: 'consumer',
+		label: 'Consumer',
+		pool: 20,
+		balance: 6,
+		contribution: 'Takes part in activity',
+		Icon: UserRound,
+		bar: H.roleC,
+	},
+	{
+		id: 'merchant',
+		label: 'Merchant',
+		pool: 20,
+		balance: 6,
+		contribution: 'Serves customers',
+		Icon: Building2,
+		bar: H.roleD,
+	},
 ] as const
 
 type NetworkRoleId = (typeof NETWORK_ROLES)[number]['id']
@@ -41,44 +97,13 @@ const REFERRAL_CASES = [
 
 type ReferralCaseId = (typeof REFERRAL_CASES)[number]['id']
 
-const FAQ_ITEMS: { summary: string; body: string }[] = [
-	{
-		summary: 'Is the pool balance a reward I can claim?',
-		body: 'The pool is a shared reward budget, not a personal balance. Only rewards distributed to you count as received income. Campaign rewards follow their own eligibility and payout rules.',
-	},
-	{
-		summary: 'Does a top-up pay rewards immediately?',
-		body: 'A paid B-Units top-up funds the pool; it does not pay individual network rewards. Interaction rewards are calculated and distributed when eligible paid service activity settles. Daily and monthly totals only summarize those records.',
-	},
-	{
-		summary: 'How are direct costs calculated?',
-		body: 'Direct costs = 0.01 USDC per interaction + 5% of that interaction’s Paid B-Units service settlement amount. This calculation uses the service amount, not the customer’s purchase or stored-value top-up amount.',
-	},
-	{
-		summary: 'What happens when there is no referrer?',
-		body: 'If no merchant referrer is recorded, the 50% merchant-referrer share stays in the network reward pool. If no consumer referrer is recorded, the 10% consumer-referrer share stays there. If neither exists, both shares remain in the pool for future redistribution. Other recipients keep their original shares; they do not automatically receive the unassigned portion.',
-	},
-	{
-		summary: 'Why does money remain in the pool?',
-		body: 'The pool receives 30% of paid B-Units top-ups, while interaction rewards use 30% of service amounts after direct costs. The difference and any unassigned referral shares stay in the pool. Unused service credits still require a reward reserve; the remainder after consumption supports future contributor campaigns.',
-	},
-	{
-		summary: 'Do Free B-Units generate distributions?',
-		body: 'No. Complimentary credits generate no cash distribution. Paid usage is valued at the consideration attributable to the consumed credits’ purchase batch, including package bonuses and discounts.',
-	},
-	{
-		summary: 'Who pays the B-Units service fee?',
-		body: 'The fee for a business action is charged to the merchant’s B-Units account when that action settles. A reward record shows the merchant, Paid B-Units consumed, service settlement amount, direct costs and your allocation. B-Units are service credits; your received reward is shown in USDC.',
-	},
-	{
-		summary: 'Which top-ups are included?',
-		body: 'The pool contribution applies to merchant paid B-Units top-ups. Customer stored-value top-ups and purchases are separate. Merchant-funded referral offers, Reward PT and one-time partner awards follow their own rules.',
-	},
-	{
-		summary: 'Which allocation terms apply?',
-		body: 'These role weights apply across all regions. Recorded attribution, applicable published or signed terms, eligibility and account ownership determine each allocation. Campaign rewards do not automatically use the per-interaction role weights.',
-	},
-]
+type PageView = 'rules' | 'allocation'
+
+const FLOW_NODES = [
+	{ label: 'Business\naction', Icon: Store },
+	{ label: 'Paid\nB-Units', Icon: Layers },
+	{ label: 'USDC\nrewards', Icon: Gift },
+] as const
 
 function useSlideOut(onClose: () => void) {
 	const [isClosing, setIsClosing] = useState(false)
@@ -96,26 +121,45 @@ function useSlideOut(onClose: () => void) {
 	return { close, slideStyle: { transform } as React.CSSProperties }
 }
 
-function SectionHeading({ children }: { children: React.ReactNode }) {
+function PilotLabel({ children }: { children: React.ReactNode }) {
 	return (
-		<h2 className="mt-8 text-[17px] font-bold tracking-tight text-[#0F172A] dark:text-slate-100">{children}</h2>
+		<span
+			className="inline-flex rounded-full px-2.5 py-1.5 text-[11px] font-medium"
+			style={{ backgroundColor: H.soft, color: H.blue }}
+		>
+			{children}
+		</span>
 	)
 }
 
-function StatLine({ label, value, muted }: { label: string; value: string; muted?: boolean }) {
+function StatLine({ label, value }: { label: string; value: string }) {
 	return (
-		<div className="flex items-start justify-between gap-3 border-b border-slate-100 py-2.5 last:border-0 dark:border-slate-800">
-			<span className={`text-[13px] ${muted ? 'text-slate-400' : 'text-slate-500 dark:text-slate-400'}`}>
+		<div
+			className="flex items-start justify-between gap-3 border-b py-2.5 last:border-0 dark:border-slate-800"
+			style={{ borderColor: H.line }}
+		>
+			<span className="text-[13px]" style={{ color: H.sub }}>
 				{label}
 			</span>
-			<strong className="shrink-0 text-right text-[13px] font-semibold tabular-nums text-[#0F172A] dark:text-slate-100">
+			<strong className="shrink-0 text-right text-[13px] font-semibold tabular-nums text-[#182238] dark:text-slate-100">
 				{value}
 			</strong>
 		</div>
 	)
 }
 
-function ChipButton({
+function SoftNotice({ children }: { children: React.ReactNode }) {
+	return (
+		<div
+			className="mt-4 rounded-xl px-3 py-3 text-[11px] leading-relaxed dark:bg-slate-800/80 dark:text-slate-300"
+			style={{ backgroundColor: H.soft, color: H.sub }}
+		>
+			{children}
+		</div>
+	)
+}
+
+function SegmentButton({
 	pressed,
 	onClick,
 	children,
@@ -129,10 +173,10 @@ function ChipButton({
 			type="button"
 			aria-pressed={pressed}
 			onClick={onClick}
-			className={`rounded-full px-3.5 py-2 text-[13px] font-semibold transition ${
+			className={`rounded-[10px] px-3 py-2 text-[12px] font-medium transition ${
 				pressed
-					? 'bg-[#1562f0] text-white shadow-sm'
-					: 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
+					? 'bg-white text-[#182238] shadow-sm dark:bg-slate-700 dark:text-slate-100'
+					: 'bg-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400'
 			}`}
 		>
 			{children}
@@ -140,18 +184,65 @@ function ChipButton({
 	)
 }
 
+function GuideDetail({
+	id,
+	open,
+	onToggle,
+	icon: Icon,
+	title,
+	children,
+}: {
+	id: string
+	open: boolean
+	onToggle: () => void
+	icon: LucideIcon
+	title: string
+	children: React.ReactNode
+}) {
+	return (
+		<details
+			id={id}
+			open={open}
+			onToggle={(e) => {
+				const next = (e.currentTarget as HTMLDetailsElement).open
+				if (next !== open) onToggle()
+			}}
+			className="mt-2.5 overflow-hidden rounded-2xl border bg-white dark:border-slate-700 dark:bg-slate-900"
+			style={{ borderColor: H.line }}
+		>
+			<summary className="flex min-h-[52px] cursor-pointer list-none items-center justify-between gap-3 px-3.5 py-4 text-[12px] font-medium text-[#182238] dark:text-slate-100 [&::-webkit-details-marker]:hidden">
+				<span className="inline-flex items-center gap-2.5">
+					<Icon className="h-4 w-4 shrink-0" style={{ color: H.blue }} strokeWidth={2.25} aria-hidden />
+					{title}
+				</span>
+				<ChevronDown
+					className={`h-4 w-4 shrink-0 transition ${open ? 'rotate-180' : ''}`}
+					style={{ color: H.blue }}
+					aria-hidden
+				/>
+			</summary>
+			<div className="border-t px-3.5 py-4 dark:border-slate-700" style={{ borderColor: H.line }}>
+				{children}
+			</div>
+		</details>
+	)
+}
+
 /**
  * Across the network — Network contribution rewards explainer.
- * Secondary page: hide Footer, circular back onLight, slide from right 300ms.
+ * Layout aligned with sample `Beamio-Rewards-Hub 2` `rewardRules` / `roleCards` / `poolExample` / `allocation`.
  */
 export default function NetworkContributionRewardsPage() {
 	const navigate = useNavigate()
 	const { setShowFooter } = useDaemonContext()
 	const { close, slideStyle } = useSlideOut(() => navigate('/BountyBoard'))
+	const calculationRef = useRef<HTMLDivElement | null>(null)
 
+	const [view, setView] = useState<PageView>('rules')
 	const [previewRole, setPreviewRole] = useState<NetworkRoleId>('merchant-referrer')
 	const [poolScenario, setPoolScenario] = useState<PoolScenarioId>('redemptions')
 	const [referralCase, setReferralCase] = useState<ReferralCaseId>('both')
+	const [openGuide, setOpenGuide] = useState<string | null>(null)
 
 	useEffect(() => {
 		setShowFooter(false)
@@ -185,6 +276,25 @@ export default function NetworkContributionRewardsPage() {
 
 	const roleExampleUsdc = ((0.18 * role.balance) / 100).toFixed(4)
 
+	const openCalculation = useCallback(() => {
+		setOpenGuide('network-calculation')
+		window.setTimeout(() => {
+			calculationRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+		}, 50)
+	}, [])
+
+	const onBack = useCallback(() => {
+		if (view === 'allocation') {
+			setView('rules')
+			return
+		}
+		close()
+	}, [view, close])
+
+	const toggleGuide = useCallback((id: string) => {
+		setOpenGuide((prev) => (prev === id ? null : id))
+	}, [])
+
 	return (
 		<div
 			className="fixed inset-0 z-[90] flex min-h-0 flex-col overflow-hidden bg-[#eef6ff] text-slate-900 transition-transform duration-300 ease-out dark:bg-slate-950 dark:text-slate-50"
@@ -201,333 +311,632 @@ export default function NetworkContributionRewardsPage() {
 					<div className={`relative flex items-center ${BEAMIO_CIRCULAR_BACK_ROW_CLASS}`}>
 						<BeamioCircularBackButton
 							variant="onLight"
-							onClick={close}
+							onClick={onBack}
 							className="absolute left-0 top-0"
 						/>
 					</div>
 
-					<header className="pb-5 pt-2">
-						<p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">
-							Across the network
-						</p>
-						<h1 className="mt-2 text-3xl font-semibold tracking-tight text-[#0F172A] dark:text-slate-100">
-							Network contribution rewards
-						</h1>
-						<p className="mt-3 text-[15px] leading-relaxed text-slate-500 dark:text-slate-400">
-							Merchants pay service fees in B-Units. Eligible activity turns those fees into contribution
-							rewards.
-						</p>
-					</header>
+					{view === 'allocation' ? (
+						<AllocationRecordView onBackToRules={() => setView('rules')} />
+					) : (
+						<section className="network-guide pb-6" aria-label="Network contribution rewards">
+							<header className="mb-[19px] pt-2">
+								<PilotLabel>Across the network</PilotLabel>
+								<h1 className="mt-3 text-[25px] font-semibold leading-[1.18] tracking-[-0.8px] text-[#182238] dark:text-slate-100">
+									Network contribution
+									<br />
+									rewards
+								</h1>
+								<p className="mt-2.5 text-[13px] leading-relaxed" style={{ color: H.sub }}>
+									Business activity. Shared rewards.
+								</p>
+							</header>
 
-					{/* Funded at top-up */}
-					<section
-						className="overflow-hidden rounded-[24px] border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900"
-						aria-label="How the network reward pool works"
-					>
-						<div className="flex items-center justify-between gap-3">
-							<h2 className="text-[16px] font-bold text-[#0F172A] dark:text-slate-100">Funded at top-up</h2>
-							<span className="shrink-0 rounded-full bg-[#e9edff] px-3 py-1 text-[12px] font-semibold text-[#0051d1]">
-								30% to the pool
-							</span>
-						</div>
-						<p className="mt-4 text-[36px] font-extrabold leading-none tracking-tight tabular-nums text-[#0F172A] dark:text-slate-100">
-							14.70 <span className="text-[20px] font-bold text-slate-500">USDC</span>
-						</p>
-						<p className="mt-2 text-[13px] text-slate-500 dark:text-slate-400">
-							From a 49 USDC paid B-Units top-up
-						</p>
-						<ol className="mt-5 space-y-4">
-							{[
-								{
-									n: '1',
-									title: 'Top up paid B-Units',
-									body: '30% of the top-up amount is allocated to the network contribution reward pool.',
-								},
-								{
-									n: '2',
-									title: 'Merchant activity earns contribution rewards',
-									body: 'When an eligible business action settles, its B-Units service fee is charged to the merchant. 30% of the service amount after direct costs is shared among eligible roles.',
-								},
-								{
-									n: '3',
-									title: 'Keep the rewards circulating',
-									body: 'Unassigned referral shares stay in the pool for future redistribution. Funds left after service credits are consumed also support future contributor rewards.',
-								},
-							].map((step) => (
-								<li key={step.n} className="flex gap-3">
-									<span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#1562f0] text-[12px] font-bold text-white">
-										{step.n}
-									</span>
+							{/* Funding visual — sample `.funding-visual` */}
+							<section
+								className="rounded-[23px] border p-[19px] dark:border-slate-700"
+								style={{
+									borderColor: H.line,
+									background: `linear-gradient(135deg, ${H.soft}, ${H.card})`,
+								}}
+								aria-label="Funding and distribution"
+							>
+								<div
+									className="flex items-center gap-[17px] border-b pb-[18px] dark:border-slate-700"
+									style={{ borderColor: H.line }}
+								>
+									<div
+										className="shrink-0 whitespace-nowrap text-[48px] font-semibold leading-none tracking-[-2px]"
+										style={{ color: H.blue }}
+									>
+										30<span className="text-[23px] tracking-[-0.5px]">%</span>
+									</div>
 									<div className="min-w-0">
-										<p className="text-[14px] font-semibold text-[#0F172A] dark:text-slate-100">
-											{step.title}
-										</p>
-										<p className="mt-1 text-[13px] leading-relaxed text-slate-500 dark:text-slate-400">
-											{step.body}
+										<h2 className="text-[13px] font-semibold leading-snug text-[#182238] dark:text-slate-100">
+											Reserved for network rewards
+										</h2>
+										<p className="mt-1 text-[11px] leading-relaxed" style={{ color: H.sub }}>
+											From each paid B-Units package purchase
 										</p>
 									</div>
-								</li>
-							))}
-						</ol>
-					</section>
-
-					<div className="mt-4 rounded-[20px] border border-amber-200/80 bg-amber-50 px-4 py-3 text-[13px] leading-relaxed text-amber-900 dark:border-amber-800/50 dark:bg-amber-950/40 dark:text-amber-100">
-						Merchant service fees fund interaction rewards. The calculation uses the B-Units service amount,
-						not the customer’s purchase or stored-value balance.
-					</div>
-
-					{/* Role shares */}
-					<section aria-labelledby="role-choices-title" className="mt-2">
-						<SectionHeading>How each role shares</SectionHeading>
-						<p id="role-choices-title" className="mt-2 text-[13px] text-slate-500 dark:text-slate-400">
-							Choose a role to see its share of each interaction’s reward allocation.
-						</p>
-						<div
-							className="mt-4 grid grid-cols-2 gap-3"
-							role="group"
-							aria-label="Allocation by role"
-						>
-							{NETWORK_ROLES.map((r) => {
-								const pressed = r.id === role.id
-								const Icon = r.Icon
-								return (
-									<button
-										key={r.id}
-										type="button"
-										aria-pressed={pressed}
-										onClick={() => setPreviewRole(r.id)}
-										className={`relative flex flex-col items-start rounded-[20px] border p-4 text-left transition ${
-											pressed
-												? 'border-[#1562f0] bg-[#e9edff] shadow-sm dark:border-blue-400 dark:bg-blue-950/40'
-												: 'border-slate-200 bg-white hover:border-slate-300 dark:border-slate-700 dark:bg-slate-900'
-										}`}
-									>
-										<span
-											className={`relative flex h-10 w-10 items-center justify-center rounded-2xl ${
-												pressed
-													? 'bg-[#1562f0] text-white'
-													: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
-											}`}
-										>
-											<Icon className="h-5 w-5" strokeWidth={2.25} aria-hidden />
-											{pressed ? (
-												<span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500 text-white">
-													<CheckCircle className="h-3 w-3" strokeWidth={3} aria-hidden />
-												</span>
-											) : null}
-										</span>
-										<strong className="mt-3 text-[14px] font-semibold text-[#0F172A] dark:text-slate-100">
-											{r.label}
-										</strong>
-										<span className="mt-1 text-[20px] font-extrabold tabular-nums text-[#1562f0]">
-											{r.pool}%
-										</span>
-										<small className="mt-0.5 text-[11px] font-medium text-slate-400">
-											of the interaction allocation
-										</small>
-									</button>
-								)
-							})}
-						</div>
-
-						<div
-							className="mt-4 flex items-center justify-between gap-4 rounded-[20px] border border-slate-200 bg-white px-5 py-4 dark:border-slate-700 dark:bg-slate-900"
-							aria-live="polite"
-						>
-							<div className="min-w-0">
-								<h3 className="text-[15px] font-bold text-[#0F172A] dark:text-slate-100">{role.label}</h3>
-								<p className="mt-1 text-[13px] leading-snug text-slate-500 dark:text-slate-400">
-									Equivalent share of the service amount
-									<br />
-									after direct costs
-								</p>
-							</div>
-							<strong className="shrink-0 text-[32px] font-extrabold tabular-nums text-[#1562f0]">
-								{role.balance}%
-							</strong>
-						</div>
-
-						<p className="mt-3 text-[13px] leading-relaxed text-slate-500 dark:text-slate-400">
-							30% interaction allocation × {role.pool}% role share = {role.balance}%. If a referrer is not
-							recorded, that share stays in the network reward pool for future redistribution. Other role
-							shares remain unchanged. This preview does not change your eligibility.
-						</p>
-
-						<details className="mt-4 overflow-hidden rounded-[20px] border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
-							<summary className="cursor-pointer list-none px-5 py-3.5 text-[14px] font-semibold text-[#0F172A] dark:text-slate-100 [&::-webkit-details-marker]:hidden">
-								<span className="inline-flex w-full items-center justify-between gap-2">
-									See a 0.20 USDC settlement example
-									<ChevronRight className="h-4 w-4 shrink-0 text-slate-400 transition group-open:rotate-90" />
-								</span>
-							</summary>
-							<div className="border-t border-slate-100 px-5 pb-4 pt-1 dark:border-slate-800">
-								<StatLine label="Paid service settlement" value="0.2000 USDC" />
-								<StatLine label="Direct costs · 0.01 + 0.20 × 5%" value="−0.0200 USDC" />
-								<StatLine label="Amount after direct costs" value="0.1800 USDC" />
-								<StatLine label="Interaction reward allocation · 30%" value="0.0540 USDC" />
-								<div className="mt-3 flex items-center justify-between gap-3 rounded-2xl bg-[#e9edff] px-4 py-3 dark:bg-blue-950/50">
-									<span className="text-[13px] font-semibold text-[#0051d1]">
-										{role.label} · {role.pool}%
-									</span>
-									<strong className="text-[15px] font-bold tabular-nums text-[#0051d1]">
-										{roleExampleUsdc} USDC
-									</strong>
 								</div>
-								<p className="mt-3 text-[12px] leading-relaxed text-slate-500 dark:text-slate-400">
-									Rewards are paid from the network reward pool. Any share without a recorded merchant
-									or consumer referrer stays in the pool for future redistribution.
-								</p>
-							</div>
-						</details>
-					</section>
 
-					{/* Pool example */}
-					<section className="mt-2" aria-labelledby="pool-example-title">
-						<SectionHeading>Follow the pool balance</SectionHeading>
-						<div className="mt-4 rounded-[24px] border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-							<h3
-								id="pool-example-title"
-								className="text-[16px] font-bold text-[#0F172A] dark:text-slate-100"
-							>
-								One top-up. Different activity.
-							</h3>
-							<p className="mt-2 text-[13px] leading-relaxed text-slate-500 dark:text-slate-400">
-								49 USDC in paid service credits, fully consumed. Compare activity and referral
-								attribution.
-							</p>
-
-							<div
-								className="mt-4 flex flex-wrap gap-2"
-								role="group"
-								aria-label="Service activity scenario"
-							>
-								{POOL_SCENARIOS.map((s) => (
-									<ChipButton
-										key={s.id}
-										pressed={s.id === scenario.id}
-										onClick={() => setPoolScenario(s.id)}
-									>
-										{s.label}
-									</ChipButton>
-								))}
-							</div>
-
-							<p className="mt-5 text-[12px] font-semibold uppercase tracking-wide text-slate-400">
-								Example referral attribution
-							</p>
-							<div
-								className="mt-2 flex flex-wrap gap-2"
-								role="group"
-								aria-label="Example referral attribution"
-							>
-								{REFERRAL_CASES.map((c) => (
-									<ChipButton
-										key={c.id}
-										pressed={c.id === referral.id}
-										onClick={() => setReferralCase(c.id)}
-									>
-										{c.label}
-									</ChipButton>
-								))}
-							</div>
-
-							<div className="mt-4" aria-live="polite">
-								<StatLine
-									label="Redemptions · 0.05 USDC each"
-									value={String(scenario.redemptions)}
-								/>
-								<StatLine
-									label="USDC payments · 0.25 USDC each"
-									value={String(scenario.payments)}
-								/>
-								<StatLine label="Total service settlement" value="49.00 USDC" />
-								<StatLine
-									label={`Direct costs · ${poolMath.count} × 0.01 + 49 × 5%`}
-									value={`${poolMath.costs.toFixed(2)} USDC`}
-								/>
-								<StatLine
-									label="After direct costs"
-									value={`${(49 - poolMath.costs).toFixed(2)} USDC`}
-								/>
-								<StatLine label="Added to pool at top-up" value="14.7000 USDC" />
-								<StatLine
-									label="Calculated interaction allocation · 30%"
-									value={`${poolMath.allocation.toFixed(4)} USDC`}
-								/>
-								<div className="flex items-start justify-between gap-3 border-b border-amber-100 py-2.5 dark:border-amber-900/40">
-									<span className="text-[13px] text-amber-700 dark:text-amber-300">
-										Unassigned referral shares · retained
-									</span>
-									<strong className="shrink-0 text-right text-[13px] font-semibold tabular-nums text-amber-800 dark:text-amber-200">
-										{poolMath.retained.toFixed(4)} USDC
-									</strong>
-								</div>
-								<div className="mt-3 flex items-center justify-between gap-3 rounded-2xl bg-[#e9edff] px-4 py-3 dark:bg-blue-950/50">
-									<span className="text-[13px] font-semibold text-[#0051d1]">
-										Actually distributed to recipients
-									</span>
-									<strong className="text-[15px] font-bold tabular-nums text-[#0051d1]">
-										{poolMath.paid.toFixed(4)} USDC
-									</strong>
-								</div>
-								<div className="mt-3 rounded-2xl bg-slate-50 px-4 py-4 text-center dark:bg-slate-800/60">
-									<p className="text-[12px] font-medium text-slate-500 dark:text-slate-400">
-										Remaining in the network reward pool
-									</p>
-									<p className="mt-1 text-[28px] font-extrabold tabular-nums text-[#0F172A] dark:text-slate-100">
-										{poolMath.remaining.toFixed(4)} USDC
-									</p>
-									<p className="mt-2 text-[12px] leading-relaxed text-slate-500 dark:text-slate-400">
-										Includes {poolMath.retained.toFixed(4)} USDC in unassigned referral shares,
-										retained for future redistribution.
-									</p>
-								</div>
-							</div>
-
-							<p className="mt-4 text-[13px] font-medium text-slate-600 dark:text-slate-300">
-								Pool balance = contributions − rewards actually distributed − campaign rewards.
-							</p>
-							<p className="mt-2 text-[12px] leading-relaxed text-slate-500 dark:text-slate-400">
-								Illustrative attribution only. No campaign rewards have been paid in these examples.
-								Unused service credits still require a reserve for future interaction rewards.
-							</p>
-						</div>
-					</section>
-
-					{/* FAQ */}
-					<section className="mt-8 pb-6" aria-label="Frequently asked questions">
-						<div className="overflow-hidden rounded-[24px] border border-slate-200/80 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
-							{FAQ_ITEMS.map((item, i) => (
-								<details
-									key={item.summary}
-									className={`group ${i > 0 ? 'border-t border-slate-100 dark:border-slate-800' : ''}`}
+								<div
+									className="grid grid-cols-3 gap-3.5 pt-[19px]"
+									aria-label="Business action consumes paid service credits and generates a USDC reward"
 								>
-									<summary className="cursor-pointer list-none px-5 py-4 text-[14px] font-semibold text-[#0F172A] dark:text-slate-100 [&::-webkit-details-marker]:hidden">
-										<span className="inline-flex w-full items-center justify-between gap-3">
-											{item.summary}
-											<ChevronRight className="h-4 w-4 shrink-0 text-slate-400 transition group-open:rotate-90" />
-										</span>
-									</summary>
-									<p className="px-5 pb-4 text-[13px] leading-relaxed text-slate-500 dark:text-slate-400">
-										{item.body}
-									</p>
-								</details>
-							))}
-						</div>
-					</section>
+									{FLOW_NODES.map((node, i) => {
+										const Icon = node.Icon
+										return (
+											<div key={node.label} className="relative text-center">
+												<span
+													className="mx-auto mb-2.5 grid h-[43px] w-[43px] place-items-center rounded-[14px] bg-white shadow-[0_3px_9px_rgba(36,65,109,0.09)] dark:bg-slate-800"
+													style={{ color: H.blue }}
+												>
+													<Icon className="h-[18px] w-[18px]" strokeWidth={2.25} aria-hidden />
+												</span>
+												<strong className="block whitespace-pre-line text-[11px] font-medium leading-snug text-[#182238] dark:text-slate-100">
+													{node.label}
+												</strong>
+												{i < FLOW_NODES.length - 1 ? (
+													<span
+														className="pointer-events-none absolute right-[-10px] top-3 text-[15px]"
+														style={{ color: H.sub }}
+														aria-hidden
+													>
+														→
+													</span>
+												) : null}
+											</div>
+										)
+									})}
+								</div>
+								<p className="mt-[15px] text-center text-[11px]" style={{ color: H.sub }}>
+									Shared when eligible activity settles.
+								</p>
+							</section>
 
-					{/* Decorative network mark — matches capsule affordance */}
-					<div className="mb-4 flex items-center justify-center gap-2 text-slate-400" aria-hidden>
-						<span className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#dbeafe] text-[#1562f0]">
-							<Network className="h-4 w-4" strokeWidth={2.25} />
-						</span>
-						<span className="flex items-center gap-1 text-[12px] font-medium">
-							<Check className="h-3.5 w-3.5 text-emerald-500" />
-							Network contribution rewards
-						</span>
-					</div>
+							<div className="flex items-start gap-2.5 px-0.5 pt-[15px]">
+								<Split
+									className="mt-0.5 h-4 w-4 shrink-0"
+									style={{ color: H.blue }}
+									strokeWidth={2.25}
+									aria-hidden
+								/>
+								<p className="text-[11px] leading-relaxed" style={{ color: H.sub }}>
+									<strong className="mb-0.5 block font-medium text-[#182238] dark:text-slate-100">
+										At each settlement
+									</strong>
+									30% of the paid service amount after direct costs is allocated by role.
+								</p>
+							</div>
+
+							{/* Shared by contribution — sample `roleCards` */}
+							<section className="mt-[23px]" aria-labelledby="role-choices-title">
+								<div className="mb-1.5 flex items-end justify-between gap-3">
+									<h2
+										id="role-choices-title"
+										className="text-[17px] font-semibold tracking-tight text-[#182238] dark:text-slate-100"
+									>
+										Shared by contribution
+									</h2>
+									<span className="shrink-0 text-[11px]" style={{ color: H.sub }}>
+										Tap a role
+									</span>
+								</div>
+								<p className="text-[13px]" style={{ color: H.sub }}>
+									Share of each interaction’s reward allocation
+								</p>
+
+								<div
+									className="mt-3.5 flex h-[9px] gap-[3px] overflow-hidden rounded-lg"
+									role="img"
+									aria-label="Merchant referrer 50 percent, consumer referrer 10 percent, consumer 20 percent, merchant 20 percent"
+								>
+									{NETWORK_ROLES.map((r) => (
+										<span
+											key={r.id}
+											className="h-full rounded-sm"
+											style={{ flex: r.pool, backgroundColor: r.bar }}
+											title={`${r.label} · ${r.pool}%`}
+										/>
+									))}
+								</div>
+
+								<div
+									className="mt-3.5 grid grid-cols-2 gap-2.5"
+									role="group"
+									aria-label="Allocation by role"
+								>
+									{NETWORK_ROLES.map((r) => {
+										const pressed = r.id === role.id
+										const Icon = r.Icon
+										return (
+											<button
+												key={r.id}
+												type="button"
+												aria-pressed={pressed}
+												onClick={() => setPreviewRole(r.id)}
+												className="flex min-h-[110px] flex-col items-start gap-1.5 rounded-[17px] border px-3.5 py-3.5 text-left transition dark:border-slate-700 dark:bg-slate-900"
+												style={{
+													borderColor: pressed ? H.blue : H.line,
+													backgroundColor: pressed ? H.soft : H.card,
+												}}
+											>
+												<span
+													className="mb-0.5 flex w-full items-center justify-between"
+													style={{ color: H.blue }}
+												>
+													<Icon className="h-[18px] w-[18px]" strokeWidth={2.25} aria-hidden />
+													<span className="text-[22px] font-semibold tracking-[-0.6px] tabular-nums">
+														{r.pool}%
+													</span>
+												</span>
+												<strong className="text-[12px] font-medium leading-snug text-[#182238] dark:text-slate-100">
+													{r.label}
+												</strong>
+												<small className="text-[11px] leading-snug" style={{ color: H.sub }}>
+													{r.contribution}
+												</small>
+											</button>
+										)
+									})}
+								</div>
+
+								<p
+									className="mt-3.5 flex items-start gap-1.5 text-[11px] leading-relaxed"
+									style={{ color: H.sub }}
+									aria-live="polite"
+								>
+									<Check
+										className="mt-0.5 h-3.5 w-3.5 shrink-0"
+										style={{ color: H.blue }}
+										strokeWidth={2.75}
+										aria-hidden
+									/>
+									<span>
+										{role.label} selected ·{' '}
+										<button
+											type="button"
+											onClick={openCalculation}
+											className="inline-flex items-center gap-1 font-medium"
+											style={{ color: H.blue }}
+										>
+											See calculation
+											<ArrowRight className="h-3 w-3" strokeWidth={2.5} aria-hidden />
+										</button>
+									</span>
+								</p>
+							</section>
+
+							{/* No referrer notice — sample `.retention-visual` */}
+							<aside
+								className="mt-[17px] flex items-start gap-3 rounded-[18px] px-4 py-4 dark:bg-purple-950/40"
+								style={{ backgroundColor: H.purpleBg }}
+							>
+								<span
+									className="grid h-8 w-8 shrink-0 place-items-center rounded-[10px]"
+									style={{ backgroundColor: 'rgba(134, 90, 182, 0.15)', color: H.purple }}
+								>
+									<RotateCcw className="h-4 w-4" strokeWidth={2.25} aria-hidden />
+								</span>
+								<div className="min-w-0">
+									<h3 className="text-[12px] font-semibold leading-snug text-[#182238] dark:text-slate-100">
+										No referrer? The share stays.
+									</h3>
+									<p className="mt-1 text-[11px] leading-relaxed" style={{ color: H.sub }}>
+										Unassigned referral shares remain in the pool for future redistribution.
+									</p>
+								</div>
+							</aside>
+
+							{/* Explore the details — sample `.guide-details` */}
+							<div className="mt-[25px]">
+								<h2 className="mb-3 text-[13px] font-semibold text-[#182238] dark:text-slate-100">
+									Explore the details
+								</h2>
+
+								<div ref={calculationRef}>
+									<GuideDetail
+										id="network-calculation"
+										open={openGuide === 'network-calculation'}
+										onToggle={() => toggleGuide('network-calculation')}
+										icon={Calculator}
+										title="Service fees & your share"
+									>
+										<p className="text-[12px] leading-relaxed" style={{ color: H.sub }}>
+											The merchant pays the business action’s service fee in B-Units. Only eligible Paid
+											B-Units usage generates cash rewards. Customer purchases and stored-value top-ups
+											are separate.
+										</p>
+										<div className="my-3.5">
+											{[
+												['Redemption', '5 B-Units'],
+												['Store Credit top-up', '20 B-Units'],
+												['USDC direct payment', '25 B-Units'],
+											].map(([label, value]) => (
+												<div
+													key={label}
+													className="flex items-center justify-between gap-2.5 border-b py-2.5 text-[11px] dark:border-slate-700"
+													style={{ borderColor: H.line }}
+												>
+													<span style={{ color: H.sub }}>{label}</span>
+													<strong className="font-medium text-[#182238] dark:text-slate-100">
+														{value}
+													</strong>
+												</div>
+											))}
+										</div>
+										<p className="text-[11px] leading-relaxed" style={{ color: H.sub }}>
+											Illustrative service rates. Actual fees and purchase terms apply.
+										</p>
+										<p className="mt-3 text-[12px] leading-relaxed" style={{ color: H.sub }}>
+											Direct costs = 0.01 USDC per interaction + 5% of that interaction’s Paid B-Units
+											service settlement amount. Customer purchases and stored-value top-up amounts are
+											excluded from this cost base.
+										</p>
+										<h4 className="mt-[18px] text-[13px] font-semibold text-[#182238] dark:text-slate-100">
+											One settlement · 0.20 USDC example
+										</h4>
+										<div className="mt-2">
+											<StatLine label="Paid service settlement" value="0.2000 USDC" />
+											<StatLine label="Direct costs · 0.01 + 0.20 × 5%" value="−0.0200 USDC" />
+											<StatLine label="After direct costs" value="0.1800 USDC" />
+											<StatLine label="Interaction reward allocation · 30%" value="0.0540 USDC" />
+										</div>
+										<div
+											className="mt-2.5 flex flex-wrap items-center justify-between gap-2.5 rounded-xl px-3.5 py-3"
+											style={{ backgroundColor: '#edf9f3', color: '#23805e' }}
+										>
+											<span className="text-[13px] font-medium">
+												{role.label} · {role.pool}%
+											</span>
+											<strong className="text-[13px] font-semibold tabular-nums">
+												{roleExampleUsdc} USDC
+											</strong>
+										</div>
+										<p className="mt-3 text-[11px] leading-relaxed" style={{ color: H.sub }}>
+											30% × {role.pool}% ={' '}
+											<span className="font-medium" style={{ color: H.blue }}>
+												{role.balance}%
+											</span>{' '}
+											of the service amount after direct costs. Your recorded role determines
+											eligibility; selecting a card only previews the calculation.
+										</p>
+										<button
+											type="button"
+											onClick={() => setView('allocation')}
+											className="mt-4 flex w-full items-center justify-between gap-3 rounded-[14px] border bg-white px-3.5 py-3 text-left text-[12px] font-medium transition hover:border-[#165ce9]/40 dark:border-slate-700 dark:bg-slate-800"
+											style={{ borderColor: H.line, color: H.blue }}
+										>
+											View sample settlement record
+											<ChevronRight className="h-4 w-4 shrink-0" aria-hidden />
+										</button>
+									</GuideDetail>
+								</div>
+
+								<GuideDetail
+									id="network-package-example"
+									open={openGuide === 'network-package-example'}
+									onToggle={() => toggleGuide('network-package-example')}
+									icon={LineChart}
+									title="Explore a package example"
+								>
+									<p className="mb-2 text-[11px] font-medium" style={{ color: H.purple }}>
+										Illustrative package · not an onboarding fee
+									</p>
+									<p className="text-[12px] leading-relaxed" style={{ color: H.sub }}>
+										Businesses choose a service package for their needs. 49 USDC is one package option;
+										it is not a required or universal onboarding charge. Merchants can onboard for free
+										with the available free credits.
+									</p>
+									<div className="mt-4">
+										<h4 className="text-[13px] font-semibold text-[#182238] dark:text-slate-100">
+											49 USDC package · worked example
+										</h4>
+										<p className="mt-2 text-[12px] leading-relaxed" style={{ color: H.sub }}>
+											All 4,900 Paid B-Units consumed. The package’s 245 bonus Free B-Units are
+											excluded from this reward calculation.
+										</p>
+
+										<div
+											className="mt-4 flex flex-wrap gap-1 rounded-[13px] p-1"
+											style={{ backgroundColor: '#f1f3fa' }}
+											role="group"
+											aria-label="Service activity scenario"
+										>
+											{POOL_SCENARIOS.map((s) => (
+												<SegmentButton
+													key={s.id}
+													pressed={s.id === scenario.id}
+													onClick={() => setPoolScenario(s.id)}
+												>
+													{s.label}
+												</SegmentButton>
+											))}
+										</div>
+
+										<p className="mt-4 text-[12px]" style={{ color: H.sub }}>
+											Example referral attribution
+										</p>
+										<div
+											className="mt-2 flex flex-wrap gap-1 rounded-[13px] p-1"
+											style={{ backgroundColor: '#f1f3fa' }}
+											role="group"
+											aria-label="Example referral attribution"
+										>
+											{REFERRAL_CASES.map((c) => (
+												<SegmentButton
+													key={c.id}
+													pressed={c.id === referral.id}
+													onClick={() => setReferralCase(c.id)}
+												>
+													{c.label}
+												</SegmentButton>
+											))}
+										</div>
+
+										<div className="mt-4" aria-live="polite">
+											<StatLine
+												label="Redemptions · 0.05 USDC each"
+												value={String(scenario.redemptions)}
+											/>
+											<StatLine
+												label="USDC payments · 0.25 USDC each"
+												value={String(scenario.payments)}
+											/>
+											<StatLine label="Total service settlement" value="49.00 USDC" />
+											<StatLine
+												label={`Direct costs · ${poolMath.count} × 0.01 + 49 × 5%`}
+												value={`${poolMath.costs.toFixed(2)} USDC`}
+											/>
+											<StatLine
+												label="After direct costs"
+												value={`${(49 - poolMath.costs).toFixed(2)} USDC`}
+											/>
+											<StatLine label="Added to pool at top-up" value="14.7000 USDC" />
+											<StatLine
+												label="Calculated interaction allocation · 30%"
+												value={`${poolMath.allocation.toFixed(4)} USDC`}
+											/>
+											<div
+												className="flex items-start justify-between gap-3 border-b py-3 text-[12px]"
+												style={{ borderColor: H.line, color: H.purple }}
+											>
+												<span>Unassigned referral shares · retained</span>
+												<strong className="shrink-0 font-medium tabular-nums">
+													{poolMath.retained.toFixed(4)} USDC
+												</strong>
+											</div>
+											<div
+												className="mt-2.5 flex flex-wrap items-center justify-between gap-2.5 rounded-xl px-3.5 py-3"
+												style={{ backgroundColor: '#edf9f3', color: '#23805e' }}
+											>
+												<span className="text-[13px] font-medium">Actually distributed to recipients</span>
+												<strong className="text-[13px] font-semibold tabular-nums">
+													{poolMath.paid.toFixed(4)} USDC
+												</strong>
+											</div>
+											<div
+												className="mt-3 rounded-2xl px-4 py-4 text-center"
+												style={{ backgroundColor: H.soft }}
+											>
+												<p className="text-[12px] font-medium" style={{ color: H.sub }}>
+													Remaining in the network reward pool
+												</p>
+												<p
+													className="mt-1 text-[28px] font-semibold tabular-nums"
+													style={{ color: H.blue }}
+												>
+													{poolMath.remaining.toFixed(4)} USDC
+												</p>
+												<p className="mt-2 text-[12px] leading-relaxed" style={{ color: H.sub }}>
+													Includes {poolMath.retained.toFixed(4)} USDC in unassigned referral shares,
+													retained for future redistribution.
+												</p>
+											</div>
+										</div>
+
+										<p className="mt-4 text-[13px] font-medium text-[#182238] dark:text-slate-200">
+											Pool balance = contributions − rewards actually distributed − campaign rewards.
+										</p>
+										<p className="mt-2 text-[11px] leading-relaxed" style={{ color: H.sub }}>
+											Pure fee example: one CoNET interaction per action. Excludes free-credit usage
+											costs, discounts, refunds and campaign payouts. Actual settlement follows
+											purchase-batch value and precision rules.
+										</p>
+									</div>
+								</GuideDetail>
+
+								<GuideDetail
+									id="network-pool-rules"
+									open={openGuide === 'network-pool-rules'}
+									onToggle={() => toggleGuide('network-pool-rules')}
+									icon={RotateCcw}
+									title="Pool balances & redistribution"
+								>
+									<p className="text-[12px] leading-relaxed" style={{ color: H.sub }}>
+										The pool is a shared reward budget, not a personal balance you can claim. Only
+										rewards distributed to you count as received income; campaign rewards follow their
+										own eligibility and payout rules.
+									</p>
+									<div className="mt-3">
+										<StatLine label="No merchant referrer" value="50% stays in pool" />
+										<StatLine label="No consumer referrer" value="10% stays in pool" />
+									</div>
+									<p className="mt-2 text-[11px] leading-relaxed" style={{ color: H.sub }}>
+										Percentages above refer to the interaction reward allocation. If both referrers are
+										missing, 60% stays in the pool. Other eligible roles retain their original shares.
+									</p>
+									<div
+										className="my-4 flex items-start gap-2.5 rounded-xl px-3 py-3"
+										style={{ backgroundColor: H.soft }}
+									>
+										<BadgeCheck
+											className="mt-0.5 h-4 w-4 shrink-0"
+											style={{ color: H.blue }}
+											strokeWidth={2.25}
+											aria-hidden
+										/>
+										<p className="text-[11px] leading-relaxed" style={{ color: H.sub }}>
+											<strong className="mb-1.5 block font-medium text-[#182238] dark:text-slate-100">
+												Keep service reserves protected
+											</strong>
+											Unused Paid B-Units and triggered but unsettled rewards must remain fully covered.
+											Only unassigned shares and available surplus may be redistributed.
+										</p>
+									</div>
+									<p className="text-[12px] leading-relaxed" style={{ color: H.sub }}>
+										The pool reserves 30% of paid B-Units package purchases, while interaction rewards
+										use 30% of service amounts after direct costs. This difference, together with
+										unassigned referral shares, remains in the pool.
+									</p>
+									<p className="mt-3 text-[12px] leading-relaxed" style={{ color: H.sub }}>
+										Retained funds are unallocated network rewards. They are not company profit or
+										personal earned income. Future distributions follow published contribution and
+										campaign rules.
+									</p>
+								</GuideDetail>
+
+								<GuideDetail
+									id="network-eligibility"
+									open={openGuide === 'network-eligibility'}
+									onToggle={() => toggleGuide('network-eligibility')}
+									icon={BadgeCheck}
+									title="Eligibility & allocation terms"
+								>
+									<p className="text-[12px] leading-relaxed" style={{ color: H.sub }}>
+										These allocation rules apply across regions. A package purchase reserves a budget; it
+										does not immediately pay individual network rewards. Individual rewards arise from
+										qualifying activity at settlement. Daily and monthly totals are summaries, not
+										additional payout triggers.
+									</p>
+									<p className="mt-3 text-[12px] leading-relaxed" style={{ color: H.sub }}>
+										Free B-Units generate no cash distribution. Actual Paid service revenue follows the
+										consumed credits’ purchase batch, including applicable discounts and bonuses.
+									</p>
+									<p className="mt-3 text-[12px] leading-relaxed" style={{ color: H.sub }}>
+										Merchant-funded offers, Reward PT and one-time onboarding or day-60 awards are
+										accounted for separately. Campaigns have their own allocation rules.
+									</p>
+									<p className="mt-3 text-[12px] leading-relaxed" style={{ color: H.sub }}>
+										Recorded attribution, account ownership, applicable eligibility, refunds, reversals
+										and settlement precision follow published and agreed terms.
+									</p>
+								</GuideDetail>
+							</div>
+						</section>
+					)}
 				</div>
 			</div>
 		</div>
+	)
+}
+
+/** Sample `allocation()` — illustrative settlement record. */
+function AllocationRecordView({ onBackToRules }: { onBackToRules: () => void }) {
+	return (
+		<>
+			<header className="pb-5 pt-2">
+				<PilotLabel>Illustrative settlement record</PilotLabel>
+				<h1 className="mt-2.5 text-[22px] font-semibold leading-tight tracking-[-0.6px] text-[#182238] dark:text-slate-100">
+					Network allocation
+				</h1>
+			</header>
+
+			<div
+				className="rounded-[21px] border bg-white p-[17px] shadow-[0_4px_13px_rgba(36,65,109,0.035)] dark:border-slate-700 dark:bg-slate-900"
+				style={{ borderColor: H.line }}
+			>
+				<div className="flex items-center justify-between gap-3">
+					<h2 className="text-[15px] font-semibold text-[#182238] dark:text-slate-100">
+						Store Credit top-up
+					</h2>
+					<span className="rounded-full bg-[#edf9f3] px-3 py-1 text-[12px] font-medium text-[#23805e]">
+						Distributed
+					</span>
+				</div>
+				<p className="mt-2 text-[13px]" style={{ color: H.sub }}>
+					Maple Kitchen · Oct 20, 10:42:18 AM
+				</p>
+				<p
+					className="mt-4 inline-flex rounded-full px-2.5 py-1.5 text-[11px] font-medium"
+					style={{ backgroundColor: H.soft, color: H.blue }}
+				>
+					Merchant referrer
+				</p>
+				<p className="mt-2 text-[28px] font-semibold tabular-nums" style={{ color: H.blue }}>
+					+0.0270 <span className="text-[14px] font-normal">USDC received</span>
+				</p>
+				<div className="mt-3">
+					<StatLine label="Interaction ID" value="DEMO-OP-042" />
+					<StatLine label="When allocated" value="At interaction settlement" />
+					<StatLine label="Applied role share" value="30% × 50% = 15%" />
+				</div>
+			</div>
+
+			<SoftNotice>
+				Example attribution: merchant referrer recorded; no consumer referrer. The unassigned
+				consumer-referrer share remains in the network reward pool.
+			</SoftNotice>
+
+			<h2 className="mt-8 text-[17px] font-semibold tracking-tight text-[#182238] dark:text-slate-100">
+				Service fee &amp; reward calculation
+			</h2>
+			<div
+				className="mt-3 rounded-[21px] border bg-white p-[17px] shadow-[0_4px_13px_rgba(36,65,109,0.035)] dark:border-slate-700 dark:bg-slate-900"
+				style={{ borderColor: H.line }}
+			>
+				<StatLine label="Service fee paid by" value="Merchant · Maple Kitchen" />
+				<StatLine label="Paid B-Units charged" value="20 B-Units" />
+				<StatLine label="Paid B-Units service settlement" value="0.2000 USDC" />
+				<StatLine label="Direct costs · 0.01 + 0.20 × 5%" value="−0.0200 USDC" />
+				<StatLine label="Distributable balance" value="0.1800 USDC" />
+				<StatLine label="Interaction reward allocation · 30%" value="0.0540 USDC" />
+				<StatLine label="Total paid to recorded recipients" value="0.0486 USDC" />
+				<div
+					className="flex items-start justify-between gap-3 border-b py-3 text-[12px]"
+					style={{ borderColor: H.line, color: H.purple }}
+				>
+					<span>No consumer referrer · retained in pool</span>
+					<strong className="shrink-0 font-medium tabular-nums">0.0054 USDC</strong>
+				</div>
+				<div
+					className="mt-3 flex items-center justify-between gap-3 rounded-2xl px-4 py-3"
+					style={{ backgroundColor: '#edf9f3', color: '#23805e' }}
+				>
+					<span className="text-[13px] font-medium">My reward · 50% of interaction allocation</span>
+					<strong className="text-[15px] font-semibold tabular-nums">0.0270 USDC</strong>
+				</div>
+			</div>
+
+			<p className="mt-3 text-[12px] leading-relaxed" style={{ color: H.sub }}>
+				The merchant pays the B-Units service fee. Your USDC reward is paid from the network contribution
+				reward pool. This example values 20 Paid B-Units at 0.2000 USDC; actual value follows their
+				purchase batch, including bonuses and discounts. The customer’s stored-value top-up amount is
+				excluded.
+			</p>
+
+			<SoftNotice>
+				Daily and monthly figures summarize settled records. They do not trigger another allocation.
+			</SoftNotice>
+
+			<button
+				type="button"
+				onClick={onBackToRules}
+				className="mb-6 mt-4 flex w-full items-center justify-between gap-3 rounded-[18px] border bg-white px-4 py-3.5 text-left shadow-sm transition hover:border-[#165ce9]/40 dark:border-slate-700 dark:bg-slate-900"
+				style={{ borderColor: H.line }}
+			>
+				<span className="min-w-0">
+					<strong className="block text-[14px] font-semibold text-[#182238] dark:text-slate-100">
+						View roles &amp; calculation rules
+					</strong>
+					<small className="mt-0.5 block text-[12px]" style={{ color: H.sub }}>
+						Back to network contribution rewards
+					</small>
+				</span>
+				<ChevronRight className="h-5 w-5 shrink-0" style={{ color: H.blue }} aria-hidden />
+			</button>
+		</>
 	)
 }

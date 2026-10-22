@@ -3834,6 +3834,10 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 	)
 
 
+	// Bump after mutating chatData.chatData so hasRoute / presence re-read props
+	// (open-thread chatData is a frozen reference from index.tsx, not live-bound to profiles).
+	const [routeHydrateGen, setRouteHydrateGen] = useState(0)
+	void routeHydrateGen
 	const hasRoute = !!(chatData.chatData?.routersArmoreds?.trim())
 	const peerTag = lookupByAddress(chatData.address)
 	const [peerOnline, setPeerOnline] = useState(
@@ -3851,6 +3855,102 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			setPeerNativeWakeable(current => (current === peerTag.nativeWakeable ? current : !!peerTag.nativeWakeable))
 		}
 	}, [peerTag?.online, peerTag?.nativeWakeable, peerTag?.onlineAt, peerTag?.nativeWakeAt])
+
+	// History restore / skipKeyFetch can open a thread with empty route armor even when
+	// the peer is registered on AddressPGP. Hydrate once on open (same as voice-call path).
+	useEffect(() => {
+		const addr = (chatData.address || '').trim()
+		const key = (privateKey || CoNET_Data?.profiles?.[0]?.privateKeyArmor || '').trim()
+		if (!addr || !key) return
+		if (chatData.chatData?.routersArmoreds?.trim() && chatData.chatData?.publicArmored?.trim()) return
+		let cancelled = false
+		void (async () => {
+			try {
+				const refreshed = await getKeysFromCoNETPGPSC(addr, key)
+				if (cancelled || !refreshed) return
+				const route = refreshed.routersArmoreds?.trim() || ''
+				const pub = refreshed.publicArmored?.trim() || ''
+				if (!route && !pub) return
+				if (!chatData.chatData) {
+					chatData.chatData = {
+						privateArmored: '',
+						publicArmored: '',
+						routersArmoreds: '',
+						online: false,
+						routePgpKeyID: '',
+					}
+				}
+				const cd = chatData.chatData
+				if (route) cd.routersArmoreds = route
+				if (pub) cd.publicArmored = pub
+				if (refreshed.routePgpKeyID) cd.routePgpKeyID = refreshed.routePgpKeyID
+				if (refreshed.privateArmored) cd.privateArmored = refreshed.privateArmored
+				setRouteHydrateGen(g => g + 1)
+
+				const addrLower = addr.toLowerCase()
+				const apply = (chats: chatData[]): { next: chatData[]; changed: boolean } => {
+					let changed = false
+					const next = chats.map(row => {
+						if (String(row?.address || '').toLowerCase() !== addrLower) return row
+						const old = row.chatData
+						if (
+							old?.routersArmoreds === cd.routersArmoreds &&
+							old?.publicArmored === cd.publicArmored &&
+							old?.routePgpKeyID === cd.routePgpKeyID
+						) {
+							return row
+						}
+						changed = true
+						return {
+							...row,
+							chatData: {
+								...(old || {
+									privateArmored: '',
+									publicArmored: '',
+									routersArmoreds: '',
+									online: false,
+									routePgpKeyID: '',
+								}),
+								routersArmoreds: cd.routersArmoreds,
+								publicArmored: cd.publicArmored,
+								routePgpKeyID: cd.routePgpKeyID || old?.routePgpKeyID || '',
+								privateArmored: cd.privateArmored || old?.privateArmored || '',
+							},
+						}
+					})
+					return { next, changed }
+				}
+				setProfiles(prev => {
+					if (!prev?.length) return prev
+					const cur = prev[0]
+					const chats = Array.isArray(cur?.chats) ? cur.chats : []
+					const { next, changed } = apply(chats)
+					if (!changed) return prev
+					const nextProfiles = [...prev]
+					nextProfiles[0] = { ...cur, chats: next }
+					return nextProfiles
+				})
+				const stored = CoNET_Data
+				if (stored?.profiles?.length) {
+					const cur = stored.profiles[0]
+					const chats = Array.isArray(cur?.chats) ? cur.chats : []
+					const { next, changed } = apply(chats)
+					if (changed) {
+						const nextProfiles = [...stored.profiles]
+						nextProfiles[0] = { ...cur, chats: next }
+						stored.profiles = nextProfiles
+						setCoNET_Data(stored)
+						void storeSystemData()
+					}
+				}
+			} catch {
+				// Untrusted refresh must not clear last trusted local route.
+			}
+		})()
+		return () => {
+			cancelled = true
+		}
+	}, [chatData.address, privateKey, setProfiles])
 
 	// Open thread owns this peer's online + native-shell wake queries (every 6s).
 	// Protocol: green dot = online only; call button = online || nativeWakeable

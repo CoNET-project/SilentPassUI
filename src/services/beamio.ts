@@ -47,6 +47,11 @@ import {
 	type BeamioTagBasicMetadata,
 } from '@/utils/beamioTagBasicMetadataGlobalCache'
 import { searchBeamioTagRemote } from '@/services/beamioTagWorkerBridge'
+import {
+	hasCompletedBeamioAccount,
+	hasLocalPlaintextMnemonic,
+	isTrustedEmptyWalletBlob,
+} from '@/utils/consumerWalletGate'
 
 export type x402Response = {
 	timestamp: string
@@ -1290,7 +1295,9 @@ export const createOrGetWallet = async (secretPhrase: string | null, initAccount
   
 	await setCoNET_Data(tmpData)
 
-	await storeSystemData()
+	// Must await a real IndexedDB write. Debounced storeSystemData returns before
+	// PouchDB persists — refresh during onboarding would lose mnemonic/privateKey.
+	await flushStoreSystemData()
 
 	if (tmpData === null) {
 			setTimeout(() => {
@@ -1315,6 +1322,20 @@ let checkStorageInFlight: Promise<CheckStorageResult> | null = null
  * This distinction is important for the Android embedded WebView: a temporary
  * IndexedDB/PouchDB failure must never send an existing wallet to onboarding.
  */
+const isPouchMissingDocError = (error: any): boolean => {
+  const status = error?.status
+  const name = String(error?.name ?? '')
+  const message = String(error?.message ?? '')
+  return (
+    status === 404 ||
+    status === '404' ||
+    name === 'not_found' ||
+    /^not_found/i.test(name) ||
+    /^missing$/i.test(message) ||
+    (/missing/i.test(message) && /not.?found/i.test(name + message))
+  )
+}
+
 const readStorageWithStatus = async (): Promise<CheckStorageResult> => {
   try {
     const database = PouchDB(localDatabaseName, { auto_compaction: true })
@@ -1322,11 +1343,13 @@ const readStorageWithStatus = async (): Promise<CheckStorageResult> => {
     try {
       doc = await database.get("init", { latest: true })
     } catch (error: any) {
-      if (error?.status === 404 || error?.name === 'not_found') return { status: 'empty' }
+      // Missing init doc = trusted empty → onboarding. Never "storage unavailable".
+      if (isPouchMissingDocError(error)) return { status: 'empty' }
       return { status: 'unavailable', reason: 'indexeddb' }
     }
-    if (typeof doc.title !== 'string' || !doc.title) {
-      return { status: 'unavailable', reason: 'invalid_document' }
+    // Empty / stub init row has no wallet secrets — treat as first-time empty.
+    if (typeof doc.title !== 'string' || !doc.title.trim()) {
+      return { status: 'empty' }
     }
     let data: encrypt_keys_object
     try {
@@ -1334,9 +1357,14 @@ const readStorageWithStatus = async (): Promise<CheckStorageResult> => {
     } catch {
       return { status: 'unavailable', reason: 'invalid_document' }
     }
+    if (data == null || typeof data !== 'object') {
+      return { status: 'empty' }
+    }
     const hydrated = ensureProfilePrivateKeyArmorFromMnemonic(data)
-    if (!hydrated) {
-      return { status: 'unavailable', reason: 'invalid_document' }
+    if (!hydrated || isTrustedEmptyWalletBlob(hydrated)) {
+      // No mnemonic / privateKeyArmor / completed Beamio account → first-time onboarding.
+      setCoNET_Data(null)
+      return { status: 'empty' }
     }
     setCoNET_Data(hydrated)
     const storedLang = hydrated?.beamio?.language
@@ -1390,10 +1418,15 @@ export async function checkStorageWithStatusWithTimeout(
   timeoutMs = CHECK_STORAGE_TIMEOUT_MS,
 ): Promise<CheckStorageResult> {
   if (typeof window === 'undefined') return { status: 'unavailable', reason: 'indexeddb' }
+  const read = checkStorageWithStatus()
   return Promise.race([
-    checkStorageWithStatus(),
+    read,
     new Promise<CheckStorageResult>((resolve) => {
-      window.setTimeout(() => resolve({ status: 'unavailable', reason: 'timeout' }), timeoutMs)
+      window.setTimeout(() => {
+        // Drop hung shared in-flight so Retry / remount can start a fresh read.
+        if (checkStorageInFlight === read) checkStorageInFlight = null
+        resolve({ status: 'unavailable', reason: 'timeout' })
+      }, timeoutMs)
     }),
   ])
 }
@@ -1440,39 +1473,56 @@ const cacheStorageBackup = async (data: string) => {
   } catch (_) {}
 }
 
+/**
+ * Durable write of Base64 wallet blob into PouchDB `"conet"` at `_id: init`.
+ * Must throw on failure — silent return previously left Welcome success with empty IndexedDB
+ * so clearing deep-link params + refresh re-entered onboarding.
+ */
 const storageHashData = async (docId: string, data: string) => {
-  const database = PouchDB(localDatabaseName, { auto_compaction: true });
-  const putWithRev = (rev: string) => database.put({ _id: docId, title: data, _rev: rev });
+  const database = PouchDB(localDatabaseName, { auto_compaction: true })
+  const isConflict = (ex: any) =>
+    ex?.status === 409 || ex?.status === '409' || String(ex?.name ?? '').toLowerCase() === 'conflict'
 
-  for (let attempt = 0; attempt < 3; attempt++) {
+  let lastError: unknown = null
+  for (let attempt = 0; attempt < 5; attempt++) {
     try {
-      const doc = await database.get(docId, { latest: true });
-      await putWithRev(doc._rev);
+      let existingRev: string | undefined
+      try {
+        const doc = await database.get(docId, { latest: true })
+        existingRev = typeof doc?._rev === 'string' ? doc._rev : undefined
+      } catch (getEx: any) {
+        if (!isPouchMissingDocError(getEx)) throw getEx
+        existingRev = undefined
+      }
+
+      // Always `put` with a known `_id`. Never `post` — post can soft-fail or leave no
+      // document at `init`, so `get("init")` stays empty after refresh.
+      if (existingRev) {
+        await database.put({ _id: docId, title: data, _rev: existingRev })
+      } else {
+        await database.put({ _id: docId, title: data })
+      }
+
+      // Round-trip verify before claiming success.
+      const written = await database.get(docId, { latest: true })
+      if (typeof written?.title !== 'string' || written.title !== data) {
+        throw new Error(`[storageHashData] verify mismatch for ${docId}`)
+      }
       await cacheStorageBackup(data)
-      return;
+      return
     } catch (ex: any) {
-      if (ex?.status === 409 || ex?.name === 'conflict') {
-        await new Promise((r) => setTimeout(r, 30 + attempt * 50));
-        continue;
+      lastError = ex
+      if (isConflict(ex)) {
+        await new Promise((r) => setTimeout(r, 30 + attempt * 40))
+        continue
       }
-      if (/^not_found/.test(ex?.name ?? '')) {
-        try {
-          await database.post({ _id: docId, title: data });
-          await cacheStorageBackup(data)
-          return;
-        } catch (postEx: any) {
-          if (postEx?.status === 409 || postEx?.name === 'conflict') {
-            await new Promise((r) => setTimeout(r, 30));
-            continue;
-          }
-          console.warn(`[storageHashData] post Error:`, postEx?.message ?? postEx);
-          return;
-        }
-      }
-      console.warn(`[storageHashData] Error:`, ex?.message ?? ex);
-      return;
+      console.warn(`[storageHashData] Error:`, ex?.message ?? ex)
+      throw ex instanceof Error ? ex : new Error(String(ex?.message ?? ex ?? 'storageHashData failed'))
     }
   }
+  throw lastError instanceof Error
+    ? lastError
+    : new Error(`[storageHashData] conflict retries exhausted for ${docId}`)
 }
 
 const ensureFlatProfiles = (p: any): profile[] => {
@@ -1520,11 +1570,55 @@ export const flushStoreSystemData = async () => {
   if ((CoNET_Data as any)?.cardRedeems) (temp as any).cardRedeems = (CoNET_Data as any).cardRedeems
   const dataB64 = Buffer.from(customJsonStringify(temp)).toString("base64")
   cacheStorageBackup(dataB64)
-  try {
-    await storageHashData("init", dataB64)
-  } catch (ex) {
-    console.warn(`[flushStoreSystemData] Error:`, ex)
+  // Drop any in-flight checkStorage so the next read sees this write.
+  checkStorageInFlight = null
+  await storageHashData("init", dataB64)
+}
+
+/**
+ * Flush mnemonic + privateKeyArmor + beamio.accountName to IndexedDB `"conet"`,
+ * then re-read and verify. Call after Create Beamio ID / before Welcome so
+ * stripping deep-link params + refresh still enters the app.
+ */
+export const persistAndVerifyLocalWallet = async (
+  expectedAccountName?: string,
+): Promise<encrypt_keys_object> => {
+  if (!CoNET_Data?.profiles?.length) {
+    throw new Error('[persistAndVerifyLocalWallet] CoNET_Data is empty')
   }
+  const tagWanted = (expectedAccountName || CoNET_Data.beamio?.accountName || '')
+    .trim()
+    .replace(/^@+/, '')
+  if (tagWanted) {
+    const existing = (CoNET_Data.beamio?.accountName || '').trim().replace(/^@+/, '')
+    if (!existing) {
+      CoNET_Data.beamio = buildMinimalBeamioFromAccountName(tagWanted)
+      setCoNET_Data(CoNET_Data)
+    }
+  }
+  if (!hasLocalPlaintextMnemonic(CoNET_Data)) {
+    throw new Error('[persistAndVerifyLocalWallet] missing mnemonicPhrase')
+  }
+  await flushStoreSystemData()
+
+  checkStorageInFlight = null
+  const result = await readStorageWithStatus()
+  if (result.status !== 'loaded' || !result.data) {
+    throw new Error(
+      `[persistAndVerifyLocalWallet] re-read failed: ${result.status}${
+        result.status === 'unavailable' ? `:${result.reason}` : ''
+      }`,
+    )
+  }
+  const loaded = result.data
+  if (!hasLocalPlaintextMnemonic(loaded)) {
+    throw new Error('[persistAndVerifyLocalWallet] IndexedDB missing mnemonicPhrase')
+  }
+  if (tagWanted && !hasCompletedBeamioAccount(loaded)) {
+    throw new Error('[persistAndVerifyLocalWallet] IndexedDB missing beamio.accountName')
+  }
+  setCoNET_Data(loaded)
+  return loaded
 }
 
 
@@ -2220,6 +2314,18 @@ export const createRecover = async (BeamioName: string, pin: string) => {
 	// console.log (mnemonicPhraseB)
 	const registered = await newUser(BeamioName, [{hash: recoverCode.hash, encrypto: storageEncryptedImg}, {hash, encrypto: storageEncryptedImg1}], wallet)
 	if (!registered) return null
+
+	// AppEntryGate requires beamio.accountName + mnemonic in IndexedDB `"conet"`.
+	// Verify round-trip so Welcome is never shown with an empty local wallet.
+	const tag = BeamioName.trim().replace(/^@+/, '')
+	if (tag) {
+		temp.beamio = buildMinimalBeamioFromAccountName(tag)
+		setCoNET_Data(temp)
+		await persistAndVerifyLocalWallet(tag)
+	} else {
+		setCoNET_Data(temp)
+		await persistAndVerifyLocalWallet()
+	}
 
 	return obj
 }

@@ -5,6 +5,7 @@ import { BeamioCircularBackButton } from '@/components/BeamioCircularBackButton'
 import { QrWithBeamioTagAvatar } from '@/components/QrWithBeamioTagAvatar'
 import { AgentBusinessInviteSheet } from '@/pages/BountyBoard/AgentBusinessInviteSheet'
 import { buildAgentInviteAppUrl } from '@/utils/agentInviteIntroducerStash'
+import { fetchRefereesOfLength } from '@/utils/agentReferrerRegistryClient'
 import { useScrollCapsuleOpacity } from '@/hooks/useScrollCapsuleOpacity'
 import { useConetAaWalletBalances, useConetWalletBalances } from '@/hooks/useConetUsdcBalance'
 import { useDaemonValidatorWalletNodeProfile } from '@/hooks/useDaemonValidatorWalletNodeProfile'
@@ -80,6 +81,53 @@ function formatConetUsdcFiatApprox(usdcAmount: string, currency: ICurrency, curr
 
 function formatConetUsdcDisplay(balance: string): string {
 	return formatDigitalAssetDisplay(Math.max(0, Number(balance) || 0))
+}
+
+const REFERRAL_PROGRESS_COUNT_CACHE_PREFIX = 'beamio:agent-invite-referees-count:v1:'
+
+function loadReferralProgressCountCache(eoa: string): number | null {
+	const key = eoa.trim().toLowerCase()
+	if (!key) return null
+	try {
+		const raw = localStorage.getItem(`${REFERRAL_PROGRESS_COUNT_CACHE_PREFIX}${key}`)
+		if (raw == null) return null
+		const n = Number(raw)
+		return Number.isFinite(n) && n >= 0 ? Math.floor(n) : null
+	} catch {
+		return null
+	}
+}
+
+function saveReferralProgressCountCache(eoa: string, count: number): void {
+	const key = eoa.trim().toLowerCase()
+	if (!key) return
+	try {
+		localStorage.setItem(`${REFERRAL_PROGRESS_COUNT_CACHE_PREFIX}${key}`, String(Math.max(0, Math.floor(count))))
+	} catch {
+		/* ignore quota */
+	}
+}
+
+function ReferralProgressPanel({ registeredCount }: { registeredCount: number }) {
+	return (
+		<section
+			className={`${cardChrome} px-5 py-5`}
+			aria-label="Referral progress"
+		>
+			<div className="flex items-baseline justify-between gap-3">
+				<p className="text-[15px] font-medium text-slate-500 dark:text-slate-400">
+					Registered through your link
+				</p>
+				<p className="shrink-0 text-[22px] font-bold tabular-nums tracking-tight text-[#0F172A] dark:text-slate-50">
+					{registeredCount.toLocaleString('en-US')}
+				</p>
+			</div>
+			<div className="my-4 h-px w-full bg-slate-200/90 dark:bg-slate-700" aria-hidden />
+			<p className="text-[13px] leading-snug text-slate-400 dark:text-slate-500">
+				Registration alone does not create a reward. Eligibility follows each program&apos;s rules.
+			</p>
+		</section>
+	)
 }
 
 function ReferToEarnBanner({ onExplore }: { onExplore: () => void }) {
@@ -193,6 +241,27 @@ export default function BountyBoard() {
 	const [agentSheetOpen, setAgentSheetOpen] = useState(false)
 	const [agentSheetEpoch, setAgentSheetEpoch] = useState(0)
 	const inviteUrl = useMemo(() => (eoa ? buildAgentInviteAppUrl(eoa) : ''), [eoa])
+	const [registeredThroughLinkCount, setRegisteredThroughLinkCount] = useState(() =>
+		eoa ? (loadReferralProgressCountCache(eoa) ?? 0) : 0,
+	)
+	useEffect(() => {
+		if (!eoa) {
+			setRegisteredThroughLinkCount(0)
+			return
+		}
+		const cached = loadReferralProgressCountCache(eoa)
+		if (cached != null) setRegisteredThroughLinkCount(cached)
+		let cancelled = false
+		void (async () => {
+			const n = await fetchRefereesOfLength(eoa)
+			if (cancelled || n == null) return
+			setRegisteredThroughLinkCount(n)
+			saveReferralProgressCountCache(eoa, n)
+		})()
+		return () => {
+			cancelled = true
+		}
+	}, [eoa])
 	const agentTag = String((beamio as { accountName?: string } | null)?.accountName ?? '').replace(/^@/, '')
 	const openAgentSheet = () => {
 		setAgentSheetEpoch((n) => n + 1)
@@ -509,9 +578,12 @@ export default function BountyBoard() {
 								</div>
 							</section>
 
-							<ReferToEarnBanner
-								onExplore={() => navigate('/discover', { state: { referrerRewardOnly: true } })}
-							/>
+							<section className="space-y-4">
+								<ReferralProgressPanel registeredCount={registeredThroughLinkCount} />
+								<ReferToEarnBanner
+									onExplore={() => navigate('/discover', { state: { referrerRewardOnly: true } })}
+								/>
+							</section>
 						</>
 					) : null}
 
@@ -533,6 +605,7 @@ export default function BountyBoard() {
 									Show invite
 								</button>
 							</div>
+							<ReferralProgressPanel registeredCount={registeredThroughLinkCount} />
 							<ReferToEarnBanner
 								onExplore={() => navigate('/discover', { state: { referrerRewardOnly: true } })}
 							/>

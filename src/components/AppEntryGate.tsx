@@ -15,6 +15,7 @@ import {
 	consumerAppNeedsWalletRecover,
 	hasCompletedBeamioAccount,
 	hasLocalPlaintextMnemonic,
+	isTrustedEmptyWalletBlob,
 } from '@/utils/consumerWalletGate'
 import { ensureEphemeralWalletForCouponClaim } from '@/utils/ephemeralCouponClaimWallet'
 import { BEAMIO_WALLET_READY_EVENT } from '@/utils/beamioWalletReadyEvent'
@@ -44,6 +45,7 @@ export default function AppEntryGate() {
 	const [storageUnavailable, setStorageUnavailable] = useState<string | null>(null)
 	// 任一终态（进入 App / onboarding / recover）已确定；用于 Splash 兜底时安全降级。
 	const decisionMadeRef = useRef(false)
+	const nativeShellRef = useRef(false)
 
 	const enterApp = () => {
 		decisionMadeRef.current = true
@@ -57,6 +59,7 @@ export default function AppEntryGate() {
 		setRequireWalletRecover(needRecover)
 		setIsInitialLoading(true)
 		setShowBeamioOnboardingModal(true)
+		setSplashVisible(false)
 	}
 
 	const showStorageUnavailable = (reason: string) => {
@@ -65,20 +68,39 @@ export default function AppEntryGate() {
 		setStorageUnavailable(reason)
 	}
 
+	/**
+	 * Browser / PWA preview: no proven local signing material → onboarding.
+	 * Native shell: keep unavailable (protect existing wallets on IDB hang).
+	 */
+	const handleStorageUnavailable = (reason: string) => {
+		const nativeShell = nativeShellRef.current || isCashTreesNativeWebView()
+		if (!nativeShell && reason !== 'invalid_document') {
+			publishNativePwaLog(
+				'warn',
+				`[AppEntryGate] browser storage ${reason} → onboarding (no proven wallet)`,
+			)
+			goOnboarding(false)
+			return
+		}
+		showStorageUnavailable(reason)
+	}
+
 	const init = async () => {
 		try {
-			// A timeout/error is not an empty wallet. Never enter onboarding until
-			// storage has either loaded or truthfully reported a missing init doc.
 			const storageResult = await checkStorageWithTransientRetry()
 			if (storageResult.status === 'unavailable') {
 				publishNativePwaLog(
 					'error',
 					`[AppEntryGate] local wallet storage unavailable: ${storageResult.reason}`,
 				)
-				showStorageUnavailable(storageResult.reason)
+				handleStorageUnavailable(storageResult.reason)
 				return
 			}
 			let CoNETData = storageResult.status === 'loaded' ? storageResult.data : null
+			// Loaded blob with no secrets / no completed account → first-time onboarding.
+			if (CoNETData && isTrustedEmptyWalletBlob(CoNETData)) {
+				CoNETData = null
+			}
 			const provisioned = await withTimeout(
 				ensureEphemeralWalletForCouponClaim().catch(() => null),
 				EPHEMERAL_WALLET_TIMEOUT_MS,
@@ -103,33 +125,34 @@ export default function AppEntryGate() {
 				enterApp()
 				return
 			}
-			// Only a trusted empty result enters first-time onboarding.
+			// Trusted empty (or empty status): Create Beamio ID / onboarding.
 			goOnboarding(false)
 		} catch (err) {
 			publishNativePwaLog(
 				'error',
 				`[AppEntryGate] init failed: ${err instanceof Error ? err.message : String(err)}`,
 			)
-			showStorageUnavailable('read_error')
+			handleStorageUnavailable('read_error')
 		}
 	}
 
 	useEffect(() => {
 		const nativeShell = isCashTreesNativeWebView()
+		nativeShellRef.current = nativeShell
 		const msg = `[PWA] AppEntryGate mounted nativeShell=${nativeShell}`
 		console.log(msg, { nativeShell })
 		publishNativePwaLog('info', msg)
 
 		const splashTimer = window.setTimeout(() => {
 			setSplashVisible(false)
-			// If storage is still unresolved, keep the wallet gate blocked instead
-			// of exposing /home or manufacturing a new onboarding session.
 			if (!decisionMadeRef.current) {
 				publishNativePwaLog(
 					'warn',
-					`[AppEntryGate] splash force-dismiss after ${SPLASH_FORCE_DISMISS_MS}ms → storage unavailable`,
+					`[AppEntryGate] splash force-dismiss after ${SPLASH_FORCE_DISMISS_MS}ms → ${
+						nativeShell ? 'storage unavailable' : 'onboarding'
+					}`,
 				)
-				showStorageUnavailable('timeout')
+				handleStorageUnavailable('timeout')
 			} else {
 				publishNativePwaLog('warn', `[AppEntryGate] splash force-dismiss after ${SPLASH_FORCE_DISMISS_MS}ms`)
 			}

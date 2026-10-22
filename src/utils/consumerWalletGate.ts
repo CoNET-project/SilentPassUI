@@ -5,6 +5,17 @@ export function hasLocalPlaintextMnemonic(data: encrypt_keys_object | null | und
 	return Boolean(typeof data?.mnemonicPhrase === 'string' && data.mnemonicPhrase.trim())
 }
 
+/** Local profile has a derived EOA private key armor (may exist without mnemonicPhrase briefly). */
+export function hasLocalPrivateKeyArmor(data: encrypt_keys_object | null | undefined): boolean {
+	const armor = data?.profiles?.[0]?.privateKeyArmor
+	return Boolean(typeof armor === 'string' && armor.trim())
+}
+
+/** Any local signing material (mnemonic and/or privateKeyArmor). */
+export function hasLocalSigningMaterial(data: encrypt_keys_object | null | undefined): boolean {
+	return hasLocalPlaintextMnemonic(data) || hasLocalPrivateKeyArmor(data)
+}
+
 /** Registered Beamio account in local storage (EOA + @beamioTag), independent of mnemonic presence. */
 export function hasCompletedBeamioAccount(data: encrypt_keys_object | null | undefined): boolean {
 	if (!data) return false
@@ -13,6 +24,15 @@ export function hasCompletedBeamioAccount(data: encrypt_keys_object | null | und
 	const accountName = data.beamio?.accountName
 	if (!accountName || typeof accountName !== 'string' || !accountName.trim()) return false
 	return true
+}
+
+/**
+ * Trusted-empty local wallet blob: no signing secrets and no completed Beamio account.
+ * Must enter first-time onboarding — never "Wallet storage is unavailable".
+ */
+export function isTrustedEmptyWalletBlob(data: encrypt_keys_object | null | undefined): boolean {
+	if (!data) return true
+	return !hasLocalSigningMaterial(data) && !hasCompletedBeamioAccount(data)
 }
 
 /**

@@ -56,6 +56,7 @@ const VIEW_ABI = [
 	'function agentOfMerchant(address) view returns (address)',
 	'function activeTempCountOf(address) view returns (uint256)',
 	'function MAX_ACTIVE_TEMPS_PER_AGENT() view returns (uint256)',
+	'function refereesOfLength(address introducer) view returns (uint256)',
 ] as const
 
 /** Max untransferred temps per agent (mirrors on-chain `MAX_ACTIVE_TEMPS_PER_AGENT`). */
@@ -107,6 +108,21 @@ export async function fetchIntroducerOf(refereeEoa: string): Promise<string | nu
 		const v = await registryContract().introducerOf(ethers.getAddress(refereeEoa))
 		if (!v || v === ethers.ZeroAddress) return null
 		return ethers.getAddress(v)
+	} catch {
+		return null
+	}
+}
+
+/**
+ * Trusted RPC read: how many wallets registered under this introducer's invite link.
+ * Returns null on untrusted failure (do not treat as zero).
+ */
+export async function fetchRefereesOfLength(introducerEoa: string): Promise<number | null> {
+	if (!ethers.isAddress(introducerEoa)) return null
+	try {
+		const n = await registryContract().refereesOfLength(ethers.getAddress(introducerEoa))
+		const v = Number(n)
+		return Number.isFinite(v) && v >= 0 ? Math.floor(v) : null
 	} catch {
 		return null
 	}

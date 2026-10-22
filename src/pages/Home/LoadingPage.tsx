@@ -38,7 +38,7 @@ import { ReactComponent as LightDrakModeBlue } from "@/components/Footer/assets/
 import styles from '@/components/Home/home.module.scss'
 import ScanBtn from '@/components/scanBtn/ScanButton'
 import { CoNET_Data, setCoNET_Data } from '../../utils/globals'
-import { getUserInfo, storeSystemData, checkStorageWithTimeout, restoreWithRedeem, ensureProfilePrivateKeyArmorFromMnemonic, buildMinimalBeamioFromAccountName } from "@/services/beamio"
+import { getUserInfo, persistAndVerifyLocalWallet, checkStorageWithTimeout, restoreWithRedeem, ensureProfilePrivateKeyArmorFromMnemonic, buildMinimalBeamioFromAccountName } from "@/services/beamio"
 import {
 	beamioTagFromUrlSearch,
 	consumerAppNeedsWalletRecover,
@@ -617,11 +617,20 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 		setProfiles(profiles)
 
 		const accountName = (opts?.accountName || working.beamio?.accountName || '').trim().replace(/^@+/, '')
+		const withLocalAccountName = (info: beamio | null): beamio | null => {
+			if (!info) return accountName ? buildMinimalBeamioFromAccountName(accountName) : null
+			if (!accountName) return info
+			const existing = (info.accountName || '').trim().replace(/^@+/, '')
+			if (existing) return info
+			return { ...info, accountName }
+		}
 		let userInfo: beamio | null = null
 		// Recovery Next must not sit on the spinner while registry and chat
 		// gossip are still starting. The local tag is enough to leave this page.
 		if (opts?.deferChat) {
-			userInfo = working.beamio ?? (accountName ? buildMinimalBeamioFromAccountName(accountName) : null)
+			userInfo = withLocalAccountName(
+				working.beamio ?? (accountName ? buildMinimalBeamioFromAccountName(accountName) : null),
+			)
 		} else {
 			for (let attempt = 0; attempt < 20; attempt++) {
 				userInfo = await getUserInfo(profiles[0].keyID)
@@ -629,6 +638,7 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 				await new Promise((resolve) => setTimeout(resolve, 1000))
 			}
 			if (!userInfo) userInfo = working.beamio ?? null
+			userInfo = withLocalAccountName(userInfo)
 		}
 		if (!userInfo) return
 
@@ -639,14 +649,14 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 
 		SetLoading(true)
 		if (opts?.deferChat) {
-			// Persist the wallet, then open the next screen. Chat PGP registration
-			// and the gossip worker keep running after the button is released.
+			// Persist mnemonic + accountName to IndexedDB `"conet"`, verify round-trip,
+			// then open Welcome. Without this, clearing deep-link params + refresh re-onboards.
 			bo.initialLoading = true
 			setDarkModle(bo.darkTheme)
 			setBeamio(bo)
 			working.beamio = bo
 			setCoNET_Data(working)
-			await storeSystemData()
+			await persistAndVerifyLocalWallet(accountName || undefined)
 			const eoaNow = profiles[0]?.keyID?.trim()
 			if (eoaNow && ethers.isAddress(eoaNow)) {
 				setEoaAddress(eoaNow)
@@ -664,10 +674,23 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 				if (!fresh) return
 				const current = CoNET_Data
 				if (!current) return
-				current.beamio = fresh
-				setBeamio(fresh)
+				// Registry lag must not wipe the local BeamioTag — AppEntryGate needs accountName.
+				const keepName = (
+					current.beamio?.accountName ||
+					accountName ||
+					''
+				).trim().replace(/^@+/, '')
+				const merged: beamio = keepName && !(fresh.accountName || '').trim()
+					? { ...fresh, accountName: keepName }
+					: fresh
+				current.beamio = merged
+				setBeamio(merged)
 				setCoNET_Data(current)
-				await storeSystemData()
+				try {
+					await persistAndVerifyLocalWallet(keepName || undefined)
+				} catch (ex) {
+					console.warn('[LoadingPage] post-registry persist failed:', ex)
+				}
 			})
 			return
 		}
@@ -680,7 +703,7 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 		working.beamio = bo
 
 		setCoNET_Data(working)
-		await storeSystemData()
+		await persistAndVerifyLocalWallet(accountName || undefined)
 		const eoa = profiles[0]?.keyID?.trim()
 		if (eoa && ethers.isAddress(eoa)) {
 			setEoaAddress(eoa)
@@ -899,7 +922,25 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 		if (enterHomeInFlightRef.current) return
 		enterHomeInFlightRef.current = true
 		try {
-			const profile = CoNET_Data?.profiles?.[0] ?? temp?.profiles?.[0]
+			const working = CoNET_Data ?? temp
+			const profile = working?.profiles?.[0]
+			const tag = (beamioTag || working?.beamio?.accountName || '').trim().replace(/^@+/, '')
+			if (working) {
+				// Always re-bind module CoNET_Data before flush — flush no-ops when CoNET_Data is null
+				// even if `temp` already holds mnemonic + accountName.
+				if (tag) {
+					const existing = (working.beamio?.accountName || '').trim().replace(/^@+/, '')
+					if (!existing) {
+						working.beamio = buildMinimalBeamioFromAccountName(tag)
+					} else if (!working.beamio) {
+						working.beamio = buildMinimalBeamioFromAccountName(tag)
+					}
+				}
+				setCoNET_Data(working)
+				if (working.beamio) setBeamio(working.beamio)
+			}
+			// Final verified write: mnemonic + accountName must survive refresh without deep-link params.
+			await persistAndVerifyLocalWallet(tag || undefined)
 			if (profile?.keyID && ethers.isAddress(profile.keyID)) {
 				try {
 					const aa = await ensureConetAaForProfileAndPersist(profile, setProfiles)
@@ -909,6 +950,14 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 				}
 			}
 			finishOnboardingToHome()
+		} catch (ex) {
+			console.error('[LoadingPage] Enter Beamio persist failed:', ex)
+			// Stay on Welcome with an in-panel alert rather than entering a half-persisted app.
+			window.alert(
+				ex instanceof Error
+					? ex.message
+					: 'Could not save your wallet locally. Please try Enter Beamio again.',
+			)
 		} finally {
 			enterHomeInFlightRef.current = false
 		}
@@ -1309,7 +1358,17 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 										// redeem 流程下 init+redeem 已在进入时完成，此处仅关闭
 										setSettingsOpen('')
 									} : async () => {
-										await init(temp, { dontClose: true, deferChat: true, accountName: beamioTag })
+										try {
+											await init(temp, { dontClose: true, deferChat: true, accountName: beamioTag })
+										} catch (ex) {
+											console.error('[LoadingPage] onboarding init persist failed:', ex)
+											window.alert(
+												ex instanceof Error
+													? ex.message
+													: 'Could not save your wallet locally. Please try again.',
+											)
+											return
+										}
 								// A merchant deep link is a destination, not an intermediate
 								// onboarding success screen. Complete initialization and route
 								// directly to the requested merchant so the welcome screen

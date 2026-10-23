@@ -157,8 +157,10 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 		if (!visible || typeof window === 'undefined') return
 		if (pinRewardPtDiscoverBar) {
 			setScrollHidden(false)
+			scrollFadeRunningRef.current = false
 			scrollFadeTargetRef.current = 'shown'
 			scrollFadeRequestedTargetRef.current = 'shown'
+			barControls.stop()
 			void barControls.start({
 				opacity: 1,
 				y: 0,
@@ -168,6 +170,9 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 		}
 		let cancelled = false
 		scrollTopShowHoldUntilRef.current = 0
+		scrollFadeRunningRef.current = false
+		/** Ignore sub-pixel noise; match App.tsx footer scroll threshold. */
+		const MIN_SCROLL_DELTA = 8
 
 		const readScrollTop = (target: EventTarget | null): number | null => {
 			if (target instanceof HTMLElement) return target.scrollTop
@@ -177,17 +182,29 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 			return null
 		}
 
+		const shouldIgnoreScrollTarget = (target: EventTarget | null): boolean => {
+			if (!(target instanceof HTMLElement)) return false
+			if (target.closest('[data-ignore-footer-scroll="1"]')) return true
+			// Horizontal-only carousels can still emit tiny scrollTop jitter.
+			const canScrollY = target.scrollHeight > target.clientHeight + 1
+			const canScrollX = target.scrollWidth > target.clientWidth + 1
+			if (!canScrollY && canScrollX) return true
+			return false
+		}
+
 		const startFade = (target: 'shown' | 'hidden') => {
 			if (cancelled) return
 			scrollFadeTargetRef.current = target
+			scrollFadeRequestedTargetRef.current = target
 			scrollFadeRunningRef.current = true
 			setScrollHidden(target === 'hidden')
 
-			// Direction changes do not stop or restart the current animation.
-			// The latest requested endpoint is applied only after this one lands.
+			// Always pin y:0 so a prior App-level hide (y translate) cannot leave
+			// the bar off-screen while opacity alone animates back to 1.
 			void barControls
 				.start({
 					opacity: target === 'hidden' ? 0 : 1,
+					y: 0,
 					transition: { duration: 0.28, ease: [0.2, 0.8, 0.2, 1] },
 				})
 				.finally(() => {
@@ -201,33 +218,63 @@ const Footer = ({ visible, peek }: { visible: boolean; peek: boolean }) => {
 				})
 		}
 
+		/** Upward wake must interrupt an in-flight hide; mutex alone left the bar stuck. */
+		const forceShow = () => {
+			if (cancelled) return
+			scrollFadeRequestedTargetRef.current = 'shown'
+			if (scrollFadeTargetRef.current === 'shown' && !scrollFadeRunningRef.current) {
+				setScrollHidden(false)
+				return
+			}
+			barControls.stop()
+			scrollFadeRunningRef.current = false
+			startFade('shown')
+		}
+
 		const handleScrollDirection = (event: Event) => {
 			const target = event.target
-			if (!target) return
+			if (!target || shouldIgnoreScrollTarget(target)) return
 			const nextScrollTop = readScrollTop(target)
 			if (nextScrollTop == null) return
 
-			const previousScrollTop = scrollPositionsRef.current.get(target) ?? nextScrollTop
+			const previousScrollTop = scrollPositionsRef.current.get(target)
 			scrollPositionsRef.current.set(target, nextScrollTop)
-			if (Math.abs(nextScrollTop - previousScrollTop) < 1) return
+			// First sample for this target only seeds the map (no direction yet).
+			if (previousScrollTop == null) return
+			const delta = nextScrollTop - previousScrollTop
+			if (Math.abs(delta) < MIN_SCROLL_DELTA) return
 
-			const direction = nextScrollTop > previousScrollTop ? 'down' : 'up'
-			// Elastic scrolling can emit a short downward event immediately after
-			// reaching the top. Keep the global search visible for one second so
-			// that bounce does not hide it again.
+			const direction = delta > 0 ? 'down' : 'up'
+			// Elastic bounce at top: keep search visible briefly after up-to-top.
 			if (direction === 'up' && nextScrollTop <= 2) {
 				scrollTopShowHoldUntilRef.current = Date.now() + 1000
+				forceShow()
+				return
 			}
 			const holdSearchVisible = Date.now() < scrollTopShowHoldUntilRef.current
-			const nextTarget = direction === 'down' && !holdSearchVisible ? 'hidden' : 'shown'
-			scrollFadeRequestedTargetRef.current = nextTarget
-			if (scrollFadeRunningRef.current || scrollFadeTargetRef.current === nextTarget) return
-			startFade(nextTarget)
+			if (holdSearchVisible || direction === 'up') {
+				forceShow()
+				return
+			}
+
+			scrollFadeRequestedTargetRef.current = 'hidden'
+			if (scrollFadeRunningRef.current) {
+				// Interrupt an in-flight show so down always wins promptly.
+				if (scrollFadeTargetRef.current === 'shown') {
+					barControls.stop()
+					scrollFadeRunningRef.current = false
+					startFade('hidden')
+				}
+				return
+			}
+			if (scrollFadeTargetRef.current === 'hidden') return
+			startFade('hidden')
 		}
 
 		window.addEventListener('scroll', handleScrollDirection, { passive: true, capture: true })
 		return () => {
 			cancelled = true
+			scrollFadeRunningRef.current = false
 			window.removeEventListener('scroll', handleScrollDirection, true)
 			scrollPositionsRef.current.clear()
 		}

@@ -5,6 +5,7 @@ import { BeamioCircularBackButton } from '@/components/BeamioCircularBackButton'
 import { QrWithBeamioTagAvatar } from '@/components/QrWithBeamioTagAvatar'
 import { AgentBusinessInviteSheet } from '@/pages/BountyBoard/AgentBusinessInviteSheet'
 import { AgentInviteRefereesSheet } from '@/pages/BountyBoard/AgentInviteRefereesSheet'
+import { MerchantsBusinessPanel } from '@/pages/BountyBoard/MerchantsBusinessPanel'
 import { InvitedByIntroducerChip } from '@/components/InvitedByIntroducerChip'
 import { buildAgentInviteAppUrl } from '@/utils/agentInviteIntroducerStash'
 import { fetchRefereesOfLength } from '@/utils/agentReferrerRegistryClient'
@@ -267,6 +268,7 @@ export default function BountyBoard() {
 	const [inviteLinkCopied, setInviteLinkCopied] = useState(false)
 	const [agentSheetOpen, setAgentSheetOpen] = useState(false)
 	const [agentSheetEpoch, setAgentSheetEpoch] = useState(0)
+	const [merchantsTempsRefreshKey, setMerchantsTempsRefreshKey] = useState(0)
 	const [refereesSheetOpen, setRefereesSheetOpen] = useState(false)
 	const inviteUrl = useMemo(() => (eoa ? buildAgentInviteAppUrl(eoa) : ''), [eoa])
 	const [registeredThroughLinkCount, setRegisteredThroughLinkCount] = useState(() =>
@@ -298,6 +300,10 @@ export default function BountyBoard() {
 	const openAgentSheet = () => {
 		setAgentSheetEpoch((n) => n + 1)
 		setAgentSheetOpen(true)
+	}
+	const closeAgentSheet = () => {
+		setAgentSheetOpen(false)
+		setMerchantsTempsRefreshKey((n) => n + 1)
 	}
 	const closeInviteQr = () => {
 		if (inviteQrClosing) return
@@ -390,66 +396,76 @@ export default function BountyBoard() {
 		}
 	}, [eoa])
 
+	const merchantsMode = hubView === 'merchants'
+
 	return (
 		<div
-			className="flex h-full min-h-0 flex-1 flex-col bg-[#eef6ff] text-slate-900 dark:bg-slate-950 dark:text-slate-50"
-			style={{
-				backgroundImage: 'radial-gradient(rgba(37,99,235,0.14) 1px, transparent 1px)',
-				backgroundSize: '18px 18px',
-			}}
+			className={`flex h-full min-h-0 flex-1 flex-col text-slate-900 dark:bg-slate-950 dark:text-slate-50 ${
+				merchantsMode ? 'bg-[#f7f5f8]' : 'bg-[#eef6ff]'
+			}`}
+			style={
+				merchantsMode
+					? undefined
+					: {
+							backgroundImage: 'radial-gradient(rgba(37,99,235,0.14) 1px, transparent 1px)',
+							backgroundSize: '18px 18px',
+						}
+			}
 		>
-			<div
-				className="fixed left-4 right-4 z-40 flex items-center justify-between gap-2 transition-opacity duration-300"
-				style={{
-					top: 'max(1rem, env(safe-area-inset-top, 0px))',
-					opacity: capsuleOpacity,
-				}}
-			>
+			{hubView !== 'merchants' ? (
 				<div
-					className={`flex items-center gap-2.5 py-2 pl-2 pr-4 ${capsuleChrome}`}
-					style={{ pointerEvents: capsulePointer }}
+					className="fixed left-4 right-4 z-40 flex items-center justify-between gap-2 transition-opacity duration-300"
+					style={{
+						top: 'max(1rem, env(safe-area-inset-top, 0px))',
+						opacity: capsuleOpacity,
+					}}
 				>
 					<div
-						className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white"
-						style={{ backgroundColor: BOUNTY_CAPSULE_ACCENT }}
+						className={`flex items-center gap-2.5 py-2 pl-2 pr-4 ${capsuleChrome}`}
+						style={{ pointerEvents: capsulePointer }}
 					>
-						<Gift className="h-5 w-5" strokeWidth={2.25} aria-hidden />
+						<div
+							className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white"
+							style={{ backgroundColor: BOUNTY_CAPSULE_ACCENT }}
+						>
+							<Gift className="h-5 w-5" strokeWidth={2.25} aria-hidden />
+						</div>
+						<span className="text-[15px] font-bold tracking-tight text-[#0F172A] dark:text-slate-100">Rewards Hub</span>
 					</div>
-					<span className="text-[15px] font-bold tracking-tight text-[#0F172A] dark:text-slate-100">Rewards Hub</span>
+					{eoa ? (
+						<div className="flex shrink-0 items-center gap-2" style={{ pointerEvents: capsulePointer }}>
+							<button
+								type="button"
+								onClick={openInviteQr}
+								className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-100/90 bg-white text-[#1562f0] shadow-[0_4px_24px_rgba(15,23,42,0.08)] transition active:scale-[0.96] hover:bg-slate-50 dark:border-slate-700/80 dark:bg-slate-800 dark:text-blue-300 dark:hover:bg-slate-700"
+								aria-label="Share invite"
+								title="Share invite"
+								tabIndex={-1}
+							>
+								<Share2 className="h-4 w-4" strokeWidth={2.25} aria-hidden />
+							</button>
+							<button
+								type="button"
+								onClick={() => navigate('/BountyBoard/genesis-referral')}
+								className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-100/90 bg-white text-[#1562f0] shadow-[0_4px_24px_rgba(15,23,42,0.08)] transition active:scale-[0.96] hover:bg-slate-50 dark:border-slate-700/80 dark:bg-slate-800 dark:text-blue-300 dark:hover:bg-slate-700"
+								aria-label={
+									isGenesisReferralAdmin || isGenesisL0 || isGenesisL1
+										? 'Genesis Node referral'
+										: 'Claim Genesis referral redeem code'
+								}
+								title={
+									isGenesisReferralAdmin || isGenesisL0 || isGenesisL1
+										? 'Genesis referral'
+										: 'Claim Genesis code'
+								}
+								tabIndex={-1}
+							>
+								<TicketPlus className="h-4 w-4" strokeWidth={2.25} aria-hidden />
+							</button>
+						</div>
+					) : null}
 				</div>
-				{eoa ? (
-					<div className="flex shrink-0 items-center gap-2" style={{ pointerEvents: capsulePointer }}>
-						<button
-							type="button"
-							onClick={openInviteQr}
-							className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-100/90 bg-white text-[#1562f0] shadow-[0_4px_24px_rgba(15,23,42,0.08)] transition active:scale-[0.96] hover:bg-slate-50 dark:border-slate-700/80 dark:bg-slate-800 dark:text-blue-300 dark:hover:bg-slate-700"
-							aria-label="Share invite"
-							title="Share invite"
-							tabIndex={-1}
-						>
-							<Share2 className="h-4 w-4" strokeWidth={2.25} aria-hidden />
-						</button>
-						<button
-							type="button"
-							onClick={() => navigate('/BountyBoard/genesis-referral')}
-							className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-100/90 bg-white text-[#1562f0] shadow-[0_4px_24px_rgba(15,23,42,0.08)] transition active:scale-[0.96] hover:bg-slate-50 dark:border-slate-700/80 dark:bg-slate-800 dark:text-blue-300 dark:hover:bg-slate-700"
-							aria-label={
-								isGenesisReferralAdmin || isGenesisL0 || isGenesisL1
-									? 'Genesis Node referral'
-									: 'Claim Genesis referral redeem code'
-							}
-							title={
-								isGenesisReferralAdmin || isGenesisL0 || isGenesisL1
-									? 'Genesis referral'
-									: 'Claim Genesis code'
-							}
-							tabIndex={-1}
-						>
-							<TicketPlus className="h-4 w-4" strokeWidth={2.25} aria-hidden />
-						</button>
-					</div>
-				) : null}
-			</div>
+			) : null}
 
 			<div
 				ref={setScrollRef}
@@ -459,34 +475,41 @@ export default function BountyBoard() {
 			>
 				<div
 					className="shrink-0"
-					style={{ minHeight: 'calc(max(1rem, env(safe-area-inset-top, 0px)) + 5rem)' }}
+					style={{
+						minHeight:
+							hubView === 'merchants'
+								? 'calc(max(1rem, env(safe-area-inset-top, 0px)) + 0.75rem)'
+								: 'calc(max(1rem, env(safe-area-inset-top, 0px)) + 5rem)',
+					}}
 				/>
 				<main className="mx-auto w-full max-w-2xl space-y-5 px-6 pt-2">
-					<div
-						className="flex gap-1 rounded-full bg-white/70 p-1 shadow-sm ring-1 ring-white/80 dark:bg-slate-900/80 dark:ring-slate-800"
-						role="tablist"
-						aria-label="Rewards Hub sections"
-					>
-						{HUB_TABS.map((tab) => {
-							const selected = hubView === tab.id || (hubView === 'earnings' && tab.id === 'overview')
-							return (
-								<button
-									key={tab.id}
-									type="button"
-									role="tab"
-									aria-selected={selected}
-									onClick={() => setHubView(tab.id)}
-									className={`min-w-0 flex-1 rounded-full px-2 py-2 text-[13px] font-semibold transition ${
-										selected
-											? 'bg-white text-slate-900 shadow-sm dark:bg-slate-800 dark:text-slate-50'
-											: 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100'
-									}`}
-								>
-									{tab.label}
-								</button>
-							)
-						})}
-					</div>
+					{hubView !== 'merchants' ? (
+						<div
+							className="flex gap-1 rounded-full bg-white/70 p-1 shadow-sm ring-1 ring-white/80 dark:bg-slate-900/80 dark:ring-slate-800"
+							role="tablist"
+							aria-label="Rewards Hub sections"
+						>
+							{HUB_TABS.map((tab) => {
+								const selected = hubView === tab.id || (hubView === 'earnings' && tab.id === 'overview')
+								return (
+									<button
+										key={tab.id}
+										type="button"
+										role="tab"
+										aria-selected={selected}
+										onClick={() => setHubView(tab.id)}
+										className={`min-w-0 flex-1 rounded-full px-2 py-2 text-[13px] font-semibold transition ${
+											selected
+												? 'bg-white text-slate-900 shadow-sm dark:bg-slate-800 dark:text-slate-50'
+												: 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100'
+										}`}
+									>
+										{tab.label}
+									</button>
+								)
+							})}
+						</div>
+					) : null}
 
 					{hubView === 'overview' || hubView === 'earnings' ? (
 						<>
@@ -600,7 +623,7 @@ export default function BountyBoard() {
 										</p>
 										<button
 											type="button"
-											onClick={openAgentSheet}
+											onClick={() => setHubView('merchants')}
 											className="mt-4 inline-flex items-center justify-center gap-1 rounded-full bg-[#e8f1ff] px-3 py-2.5 text-xs font-semibold text-[#2563eb] dark:bg-blue-950/40"
 										>
 											Invite a business
@@ -661,38 +684,13 @@ export default function BountyBoard() {
 					) : null}
 
 					{hubView === 'merchants' ? (
-						<section className="space-y-4">
-							<div>
-								<h2 className="text-base font-semibold text-slate-900 dark:text-slate-50">Your referred merchants</h2>
-								<p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-									Track onboarding from your invitation. Usage and income appear after a business finishes setup.
-								</p>
-							</div>
-							<button
-								type="button"
-								onClick={openAgentSheet}
-								className="inline-flex items-center justify-center gap-1.5 rounded-full bg-[#1562f0] px-4 py-2 text-sm font-semibold text-white"
-							>
-								Invite a business
-							</button>
-							<div className={`${cardChrome} p-4`}>
-								<div className="flex items-center gap-3">
-									<div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700">
-										<Store className="h-4 w-4" aria-hidden />
-									</div>
-									<div className="min-w-0 flex-1">
-										<h3 className="text-sm font-semibold text-slate-900 dark:text-slate-50">Lao Nong Tang</h3>
-										<p className="text-xs text-slate-500 dark:text-slate-400">Example · referred merchant</p>
-									</div>
-									<span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
-										Example
-									</span>
-								</div>
-								<p className="mt-3 text-sm text-slate-500 dark:text-slate-400">
-									B-Unit usage and income for a referred business show on this card after onboarding.
-								</p>
-							</div>
-						</section>
+						<MerchantsBusinessPanel
+							agentTag={agentTag}
+							agentEoa={eoa}
+							tempsRefreshKey={merchantsTempsRefreshKey}
+							onBack={() => setHubView('overview')}
+							onCreateTemporary={openAgentSheet}
+						/>
 					) : null}
 
 					{hubView === 'nodes' ? (
@@ -878,7 +876,7 @@ export default function BountyBoard() {
 				epoch={agentSheetEpoch}
 				agentEoa={eoa}
 				agentTag={agentTag}
-				onClose={() => setAgentSheetOpen(false)}
+				onClose={closeAgentSheet}
 			/>
 			{refereesSheetOpen && eoa ? (
 				<AgentInviteRefereesSheet

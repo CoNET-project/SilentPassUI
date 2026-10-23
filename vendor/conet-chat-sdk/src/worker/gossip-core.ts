@@ -1175,6 +1175,9 @@ export class GossipCore {
 			return false
 		}
 		this.voiceListenController?.abort('voice_replace')
+		// Drop pending reorder state from the previous listen so a new session
+		// cannot stall behind an old nextSeq / overflowed buffer.
+		this.voiceReorder.clear()
 		const route = this.cfg.identity.ownRouteArmoredPublicKey || ''
 		const routeNodes = pickRouteNodesByArmoredKey(this.nodes, route)
 		const mailboxDomains = new Set(routeNodes.map((n) => n.domain))

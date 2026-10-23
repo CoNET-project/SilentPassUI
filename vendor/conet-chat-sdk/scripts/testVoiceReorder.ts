@@ -33,6 +33,7 @@ assert.deepEqual(buffer.push({ ...frame(4, 'invalid'), seq: -1 }), [])
 const limited = new VoiceFrameReorderBuffer({ maxPendingChunks: 1 })
 limited.push(frame(1, 'a'))
 limited.push(frame(3, 'c'))
-assert.deepEqual(limited.push(frame(4, 'd')), [])
+// Overflow must skip the gap and keep delivering live audio (not stall forever).
+assert.deepEqual(limited.push(frame(4, 'd')).map((item) => item.seq), [3, 4])
 
 console.log('voice reorder tests passed')

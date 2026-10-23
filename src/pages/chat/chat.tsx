@@ -1891,6 +1891,8 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 	const voiceCallKeyRef = useRef<Uint8Array | null>(null)
 	const voiceCallPeerSessionRef = useRef<string | null>(null)
 	const voicePeerRouteRef = useRef<string>('')
+	/** Verified peer EOA for frame metadata (`to`); dialer = page address, callee = recovered caller. */
+	const voicePeerWalletRef = useRef<string>('')
 	const voiceCaptureStopRef = useRef<(() => void) | null>(null)
 	const voiceCallStreamRef = useRef<MediaStream | null>(null)
 	/** Android: open mic while Telecom is still RINGING (MODE_RINGTONE). */
@@ -2178,11 +2180,12 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			try { voiceCaptureStopRef.current() } catch { /* already stopped */ }
 			voiceCaptureStopRef.current = null
 		}
-		if (!voiceCallKeyRef.current || !voiceCallPeerSessionRef.current) {
+		if (!voiceCallKeyRef.current || !voiceCallPeerSessionRef.current || !voiceCallSessionRef.current) {
 			logMicDiag('skip_missing_session', {
 				hasCaptureStop: false,
 				hasKey: Boolean(voiceCallKeyRef.current),
 				hasPeerSession: Boolean(voiceCallPeerSessionRef.current),
+				hasLocalSession: Boolean(voiceCallSessionRef.current),
 			})
 			preopenedStream?.getTracks().forEach((track) => track.stop())
 			return
@@ -2346,8 +2349,12 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			const sendEncryptedVoiceFrame = async (payload: string) => {
 				const frameRoute = voicePeerRouteRef.current || chatData.chatData?.routersArmoreds?.trim() || ''
 				const localSessionId = voiceCallSessionRef.current?.trim() || ''
-				const peerWallet = typeof toAddress === 'string' ? toAddress.trim() : ''
-				if (!frameRoute || !callId || !targetSessionId || !localSessionId || !peerWallet) {
+				// Prefer verified peer EOA from dial/accept; SI routes by targetSessionId
+				// so an empty `to` must not block send when route+sessions are ready.
+				const peerWallet =
+					voicePeerWalletRef.current.trim() ||
+					(typeof toAddress === 'string' ? toAddress.trim() : '')
+				if (!frameRoute || !callId || !targetSessionId || !localSessionId) {
 					if (voiceFrameSendFailuresRef.current < 3) {
 						voiceFrameSendFailuresRef.current += 1
 						logMicDiag('frame_not_sent', {
@@ -2365,7 +2372,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 					callId,
 					sessionId: localSessionId,
 					targetSessionId,
-					to: peerWallet,
+					...(peerWallet ? { to: peerWallet } : {}),
 					seq: voiceFrameSeqRef.current++,
 					timestamp: Math.floor(Date.now() / 1000),
 					payload,
@@ -2582,6 +2589,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			return
 		}
 		voicePeerRouteRef.current = route
+		voicePeerWalletRef.current = typeof toAddress === 'string' ? toAddress.trim() : ''
 		try {
 			const mailboxAligned = await alignLiveGossipRouteToChain(privateKey, allNodes)
 			if (!mailboxAligned) {
@@ -2670,6 +2678,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		voiceCallPeerSessionRef.current = null
 		voiceCallKeyRef.current = null
 		voicePeerRouteRef.current = ''
+		voicePeerWalletRef.current = ''
 		voiceReceiveSessionRef.current = null
 		voiceReceivedSeqRef.current = -1
 		voiceReceivedSeqsRef.current.clear()
@@ -2960,6 +2969,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			return
 		}
 		voicePeerRouteRef.current = route
+		voicePeerWalletRef.current = callerEoa
 		try {
 			const mailboxAligned = await alignLiveGossipRouteToChain(privateKey, allNodes)
 			if (!mailboxAligned) {
@@ -3239,6 +3249,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		voiceCallPeerSessionRef.current = null
 		voiceCallSessionRef.current = null
 		voicePeerRouteRef.current = ''
+		voicePeerWalletRef.current = ''
 		voiceReceiveSessionRef.current = null
 		voiceReceivedSeqRef.current = -1
 		voiceReceivedSeqsRef.current.clear()
@@ -3569,8 +3580,13 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		console.warn('[voice-rx] take', frame.seq)
 		void (async () => {
 			try {
+				const key = voiceCallKeyRef.current
+				if (!(key instanceof Uint8Array) || key.length !== 32) {
+					console.warn('[voice-rx] drop_no_key')
+					return
+				}
 				const plain = await decryptVoiceFrame(
-					voiceCallKeyRef.current || new Uint8Array(),
+					key,
 					frame.payload as string,
 				)
 				let control: { type?: string; callId?: string; sessionId?: string; timestamp?: number; createdAt?: number } | null = null

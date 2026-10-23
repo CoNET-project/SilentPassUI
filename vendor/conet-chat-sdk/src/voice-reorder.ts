@@ -90,8 +90,20 @@ export class VoiceFrameReorderBuffer {
 		}
 		if (frame.seq < state.nextSeq) return []
 		if (state.pending.size >= this.maxPendingChunks || state.pendingPayloadUnits + frame.payload.length > this.maxPendingPayloadUnits) {
+			// Advance past the stalled gap so live audio does not freeze on overflow.
 			this.emit({ type: 'gap', gap: { type: 'voice_gap_v1', sessionId: frame.sessionId, direction: normalizeDirection(frame), missingSeq: [state.nextSeq], reason: 'buffer_overflow' } })
-			return []
+			const advanced = this.skipGap(state)
+			if (state.pending.size >= this.maxPendingChunks || state.pendingPayloadUnits + frame.payload.length > this.maxPendingPayloadUnits) {
+				return advanced
+			}
+			state.pending.set(frame.seq, frame)
+			state.pendingPayloadUnits += frame.payload.length
+			const after = this.drain(state)
+			if (state.pending.size && !after.length) {
+				if (state.gapStartedAt === null) state.gapStartedAt = now
+				this.scheduleTimeout(key, state)
+			}
+			return [...advanced, ...after]
 		}
 		state.pending.set(frame.seq, frame)
 		state.pendingPayloadUnits += frame.payload.length

@@ -438,12 +438,26 @@ export const randomMailboxVoiceSessionId = (): string => {
 
 export const createVoiceSessionKey = (): Uint8Array => crypto.getRandomValues(new Uint8Array(32))
 
-export const voiceSessionKeyToBase64 = (key: Uint8Array): string =>
-	btoa(String.fromCharCode(...key))
+/** Chunked — avoid `String.fromCharCode(...largeUint8Array)` stack overflows in WebView. */
+const bytesToBase64 = (bytes: Uint8Array): string => {
+	let binary = ''
+	for (let i = 0; i < bytes.length; i += 0x8000) {
+		binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+	}
+	return btoa(binary)
+}
+
+const base64ToBytes = (value: string): Uint8Array => {
+	const raw = atob(value)
+	const out = new Uint8Array(raw.length)
+	for (let i = 0; i < raw.length; i += 1) out[i] = raw.charCodeAt(i)
+	return out
+}
+
+export const voiceSessionKeyToBase64 = (key: Uint8Array): string => bytesToBase64(key)
 
 export const voiceSessionKeyFromBase64 = (value: string): Uint8Array => {
-	const raw = atob(value)
-	const key = Uint8Array.from(raw, char => char.charCodeAt(0))
+	const key = base64ToBytes(value)
 	if (key.length !== 32) throw new Error('voice_session_key_invalid')
 	return key
 }
@@ -506,17 +520,19 @@ export const makeVoiceCallSignal = (
 })
 
 export const encryptVoiceFrame = async (key: Uint8Array, plain: Uint8Array): Promise<string> => {
+	if (!(key instanceof Uint8Array) || key.length !== 32) throw new Error('voice_session_key_invalid')
 	const nonce = crypto.getRandomValues(new Uint8Array(12))
 	const cryptoKey = await crypto.subtle.importKey('raw', key, 'AES-GCM', false, ['encrypt'])
 	const cipher = await crypto.subtle.encrypt({ name: 'AES-GCM', iv: nonce }, cryptoKey, plain)
 	const packed = new Uint8Array(nonce.length + cipher.byteLength)
 	packed.set(nonce)
 	packed.set(new Uint8Array(cipher), nonce.length)
-	return btoa(String.fromCharCode(...packed))
+	return bytesToBase64(packed)
 }
 
 export const decryptVoiceFrame = async (key: Uint8Array, payload: string): Promise<Uint8Array> => {
-	const packed = Uint8Array.from(atob(payload), char => char.charCodeAt(0))
+	if (!(key instanceof Uint8Array) || key.length !== 32) throw new Error('voice_session_key_invalid')
+	const packed = base64ToBytes(payload)
 	if (packed.length < 28) throw new Error('voice_frame_too_short')
 	const cryptoKey = await crypto.subtle.importKey('raw', key, 'AES-GCM', false, ['decrypt'])
 	const plain = await crypto.subtle.decrypt(

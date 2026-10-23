@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { createPortal } from 'react-dom'
+import { Navigate } from 'react-router-dom'
 import {
 	ArrowRight,
 	BadgeCheck,
@@ -19,9 +20,15 @@ import {
 	type LucideIcon,
 } from 'lucide-react'
 import { BeamioCircularBackButton, BEAMIO_CIRCULAR_BACK_ROW_CLASS } from '@/components/BeamioCircularBackButton'
-import { useDaemonContext } from '@/providers/DaemonProvider'
 
 const SLIDE_MS = 300
+
+/** Deep-link / bookmark: open overlay on hub so BountyBoard stays mounted (no #000414 black flash). */
+export const ACROSS_THE_NETWORK_OPEN_STATE = { openAcrossTheNetwork: true } as const
+
+export function AcrossTheNetworkRoute() {
+	return <Navigate to="/BountyBoard" replace state={ACROSS_THE_NETWORK_OPEN_STATE} />
+}
 
 /** Soft palette aligned with sample Beamio Rewards Hub 2 (`--h-*`). */
 const H = {
@@ -105,20 +112,51 @@ const FLOW_NODES = [
 	{ label: 'USDC\nrewards', Icon: Gift },
 ] as const
 
+type SlidePhase = 'pre' | 'idle' | 'open' | 'closing'
+
+/**
+ * Enter from right / exit to right without a first-frame full-screen flash.
+ * `pre` keeps the panel off-screen + hidden (no transition) so App `#000414` / dark panel
+ * never paints as a full black frame before the slide starts.
+ */
 function useSlideOut(onClose: () => void) {
-	const [isClosing, setIsClosing] = useState(false)
-	const [isEntered, setIsEntered] = useState(false)
+	const [phase, setPhase] = useState<SlidePhase>('pre')
+	const closeTimerRef = useRef<number | undefined>(undefined)
+
 	useEffect(() => {
-		const frame = window.requestAnimationFrame(() => setIsEntered(true))
-		return () => window.cancelAnimationFrame(frame)
+		let inner = 0
+		const outer = window.requestAnimationFrame(() => {
+			// Paint once at translateX(100%) with transition off, then enable slide-in.
+			setPhase('idle')
+			inner = window.requestAnimationFrame(() => setPhase('open'))
+		})
+		return () => {
+			window.cancelAnimationFrame(outer)
+			window.cancelAnimationFrame(inner)
+			if (closeTimerRef.current !== undefined) {
+				window.clearTimeout(closeTimerRef.current)
+				closeTimerRef.current = undefined
+			}
+		}
 	}, [])
+
 	const close = useCallback(() => {
-		if (isClosing) return
-		setIsClosing(true)
-		window.setTimeout(onClose, SLIDE_MS)
-	}, [isClosing, onClose])
-	const transform = isClosing || !isEntered ? 'translateX(100%)' : 'translateX(0)'
-	return { close, slideStyle: { transform } as React.CSSProperties }
+		if (phase === 'closing' || phase === 'pre') return
+		setPhase('closing')
+		closeTimerRef.current = window.setTimeout(() => {
+			closeTimerRef.current = undefined
+			onClose()
+		}, SLIDE_MS) as unknown as number
+	}, [phase, onClose])
+
+	const slideStyle = {
+		transform: phase === 'open' ? 'translateX(0)' : 'translateX(100%)',
+		visibility: phase === 'pre' ? 'hidden' : 'visible',
+		// Enable transition while still at 100% (`idle`), then move to 0 (`open`) so the browser animates.
+		transition: phase === 'pre' ? 'none' : `transform ${SLIDE_MS}ms ease-out`,
+	} as React.CSSProperties
+
+	return { close, slideStyle }
 }
 
 function PilotLabel({ children }: { children: React.ReactNode }) {
@@ -231,11 +269,12 @@ function GuideDetail({
 /**
  * Across the network — Network contribution rewards explainer.
  * Layout aligned with sample `Beamio-Rewards-Hub 2` `rewardRules` / `roleCards` / `poolExample` / `allocation`.
+ *
+ * Must open as an overlay on BountyBoard (parent stays mounted). Route deep-links use
+ * {@link AcrossTheNetworkRoute} → hub state, so enter/exit never flash App `#000414`.
  */
-export default function NetworkContributionRewardsPage() {
-	const navigate = useNavigate()
-	const { setShowFooter } = useDaemonContext()
-	const { close, slideStyle } = useSlideOut(() => navigate('/BountyBoard'))
+export default function NetworkContributionRewardsPage({ onClose }: { onClose: () => void }) {
+	const { close, slideStyle } = useSlideOut(onClose)
 	const calculationRef = useRef<HTMLDivElement | null>(null)
 
 	const [view, setView] = useState<PageView>('rules')
@@ -243,11 +282,6 @@ export default function NetworkContributionRewardsPage() {
 	const [poolScenario, setPoolScenario] = useState<PoolScenarioId>('redemptions')
 	const [referralCase, setReferralCase] = useState<ReferralCaseId>('both')
 	const [openGuide, setOpenGuide] = useState<string | null>(null)
-
-	useEffect(() => {
-		setShowFooter(false)
-		return () => setShowFooter(true)
-	}, [setShowFooter])
 
 	const role = useMemo(
 		() => NETWORK_ROLES.find((r) => r.id === previewRole) ?? NETWORK_ROLES[0],
@@ -295,9 +329,9 @@ export default function NetworkContributionRewardsPage() {
 		setOpenGuide((prev) => (prev === id ? null : id))
 	}, [])
 
-	return (
+	return createPortal(
 		<div
-			className="fixed inset-0 z-[90] flex min-h-0 flex-col overflow-hidden bg-[#eef6ff] text-slate-900 transition-transform duration-300 ease-out dark:bg-slate-950 dark:text-slate-50"
+			className="fixed inset-0 z-[90] flex min-h-0 flex-col overflow-hidden bg-[#eef6ff] text-slate-900 will-change-transform dark:bg-slate-950 dark:text-slate-50"
 			style={slideStyle}
 			role="dialog"
 			aria-modal="true"
@@ -829,7 +863,8 @@ export default function NetworkContributionRewardsPage() {
 					)}
 				</div>
 			</div>
-		</div>
+		</div>,
+		document.body,
 	)
 }
 

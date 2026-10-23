@@ -1,11 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { ArrowUpRight, Check, ChevronRight, Copy, Gift, Hexagon, Network, Settings2, Share2, Store, TicketPlus, Users, Wallet } from 'lucide-react'
 import { BeamioCircularBackButton } from '@/components/BeamioCircularBackButton'
 import { QrWithBeamioTagAvatar } from '@/components/QrWithBeamioTagAvatar'
 import { AgentBusinessInviteSheet } from '@/pages/BountyBoard/AgentBusinessInviteSheet'
 import { AgentInviteRefereesSheet } from '@/pages/BountyBoard/AgentInviteRefereesSheet'
 import { MerchantsBusinessPanel } from '@/pages/BountyBoard/MerchantsBusinessPanel'
+import NetworkContributionRewardsPage from '@/pages/BountyBoard/NetworkContributionRewardsPage'
 import { InvitedByIntroducerChip } from '@/components/InvitedByIntroducerChip'
 import { buildAgentInviteAppUrl } from '@/utils/agentInviteIntroducerStash'
 import { fetchRefereesOfLength } from '@/utils/agentReferrerRegistryClient'
@@ -218,6 +219,7 @@ function ReferToEarnBanner({ onExplore }: { onExplore: () => void }) {
 
 export default function BountyBoard() {
 	const navigate = useNavigate()
+	const location = useLocation()
 	const { opacity: capsuleOpacity, onScroll: onCapsuleScroll, setRef: setScrollRef } = useScrollCapsuleOpacity(true)
 	const { profiles, currencyData, beamio, setShowFooter } = useDaemonContext()
 	const eoa = profiles?.[0]?.keyID?.trim() ?? ''
@@ -270,7 +272,15 @@ export default function BountyBoard() {
 	const [agentSheetEpoch, setAgentSheetEpoch] = useState(0)
 	const [merchantsTempsRefreshKey, setMerchantsTempsRefreshKey] = useState(0)
 	const [refereesSheetOpen, setRefereesSheetOpen] = useState(false)
+	const [acrossNetworkOpen, setAcrossNetworkOpen] = useState(false)
 	const inviteUrl = useMemo(() => (eoa ? buildAgentInviteAppUrl(eoa) : ''), [eoa])
+
+	useEffect(() => {
+		const st = location.state as { openAcrossTheNetwork?: boolean } | null
+		if (!st?.openAcrossTheNetwork) return
+		setAcrossNetworkOpen(true)
+		navigate(location.pathname, { replace: true, state: {} })
+	}, [location.state, location.pathname, navigate])
 	const [registeredThroughLinkCount, setRegisteredThroughLinkCount] = useState(() =>
 		eoa ? (loadReferralProgressCountCache(eoa) ?? 0) : 0,
 	)
@@ -542,7 +552,7 @@ export default function BountyBoard() {
 							</section>
 							<button
 								type="button"
-								onClick={() => navigate('/BountyBoard/across-the-network')}
+								onClick={() => setAcrossNetworkOpen(true)}
 								className="flex w-full items-center gap-3.5 rounded-[24px] border border-slate-200/80 bg-white px-4 py-3.5 text-left shadow-[0_4px_20px_rgba(15,23,42,0.06)] transition active:scale-[0.99] dark:border-slate-700 dark:bg-slate-900"
 								aria-label="How network rewards work — Across the network"
 							>
@@ -601,13 +611,31 @@ export default function BountyBoard() {
 											<Users className="h-4 w-4" strokeWidth={2.25} aria-hidden />
 										</div>
 										<h3 className="mt-3 text-sm font-semibold text-slate-900 dark:text-slate-50">Invite friends</h3>
-										<p className="mt-1 flex-1 text-xs leading-snug text-slate-500 dark:text-slate-400">
+										<p className="mt-1 text-xs leading-snug text-slate-500 dark:text-slate-400">
 											Your personal QR and link, ready to share.
 										</p>
 										<button
 											type="button"
+											onClick={eoa ? openRefereesSheet : undefined}
+											disabled={!eoa}
+											className={`mt-3 flex w-full items-baseline justify-between gap-2 rounded-xl px-0 text-left ${
+												eoa
+													? 'cursor-pointer transition hover:opacity-80'
+													: 'cursor-default'
+											}`}
+											aria-label={`${registeredThroughLinkCount.toLocaleString('en-US')} registered through your link`}
+										>
+											<span className="text-[11px] font-medium leading-snug text-slate-500 dark:text-slate-400">
+												Registered through your link
+											</span>
+											<span className="shrink-0 text-lg font-bold tabular-nums tracking-tight text-[#0F172A] dark:text-slate-50">
+												{registeredThroughLinkCount.toLocaleString('en-US')}
+											</span>
+										</button>
+										<button
+											type="button"
 											onClick={openInviteQr}
-											className="mt-4 inline-flex items-center justify-center gap-1.5 rounded-full bg-[#2563eb] px-3 py-2.5 text-xs font-semibold text-white"
+											className="mt-3 inline-flex items-center justify-center gap-1.5 rounded-full bg-[#2563eb] px-3 py-2.5 text-xs font-semibold text-white"
 										>
 											<Share2 className="h-3.5 w-3.5" aria-hidden />
 											Share invite
@@ -634,10 +662,6 @@ export default function BountyBoard() {
 							</section>
 
 							<section className="space-y-4">
-								<ReferralProgressPanel
-									registeredCount={registeredThroughLinkCount}
-									onOpen={eoa ? openRefereesSheet : undefined}
-								/>
 								<ReferToEarnBanner
 									onExplore={() => navigate('/discover', { state: { referrerRewardOnly: true } })}
 								/>
@@ -883,6 +907,9 @@ export default function BountyBoard() {
 					introducerEoa={eoa}
 					onClose={() => setRefereesSheetOpen(false)}
 				/>
+			) : null}
+			{acrossNetworkOpen ? (
+				<NetworkContributionRewardsPage onClose={() => setAcrossNetworkOpen(false)} />
 			) : null}
 		</div>
 	)

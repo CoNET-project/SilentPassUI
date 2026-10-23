@@ -19,7 +19,7 @@ import { VerraFloatingNavChrome } from "./VerraFloatingNavChrome"
 import { APP_FLOATING_CHROME_MAIN_TOP_PT, APP_TITLE_BLOCK_TO_FIRST_CONTROL_MB } from "@/ui/appContentSpacing"
 import { useTu } from '@/locale/beamioLocale'
 import { getCurrentBeamioUiLocale } from '@/locale/i18n'
-import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
+import { openInAppBrowser } from '@/utils/cashTreesNativeNfc'
 
 const BEAMIO_TERMS_URL = "https://beamio.app/terms"
 const BEAMIO_PRIVACY_URL = "https://beamio.app/privacy"
@@ -105,6 +105,7 @@ const CreateUsernamePinScreen = forwardRef<
 	const [tagStatus, setTagStatus] = useState<"idle" | "checking" | "valid" | "invalid">("idle")
 	const [tagError, setTagError] = useState("")
 	const [createError, setCreateError] = useState("")
+	const [termsAccepted, setTermsAccepted] = useState(false)
 	const [loading, setLoading] = useState(false)
 	const [creatingStep, setCreatingStep] = useState(0)
 	const [viewportHeight, setViewportHeight] = useState(() =>
@@ -221,7 +222,7 @@ const CreateUsernamePinScreen = forwardRef<
 
 	const { len8, mixed, numbers, hasLower, hasUpper } = passwordRuleChecks(password)
 	const pwdRulesOk = len8 && mixed && numbers
-	const canSubmit = tagValid && pwdRulesOk && !loading && !tagChecking
+	const canSubmit = tagValid && pwdRulesOk && termsAccepted && !loading && !tagChecking
 	// Four meter segments map 1:1 to length / lowercase / uppercase / digit.
 	// Persist is still the original 3 rules (mixed = both cases); all persist → 4/4 = 100%.
 	const passwordStrengthCount = [len8, hasLower, hasUpper, numbers].filter(Boolean).length
@@ -642,6 +643,48 @@ const CreateUsernamePinScreen = forwardRef<
 								<span className="text-[11px] font-semibold leading-snug">{createError}</span>
 							</div>
 						) : null}
+						<div className="mb-4 flex max-w-md items-start gap-3 px-2 text-left text-xs font-semibold uppercase tracking-[0.05em] leading-4 text-[#737687] [@media(max-height:700px)]:mb-3 [@media(max-height:640px)]:mb-2 [@media(max-height:560px)]:mb-1.5 [@media(max-height:560px)]:text-[11px]">
+							<button
+								type="button"
+								role="checkbox"
+								aria-checked={termsAccepted}
+								aria-label="Agree to Terms of Service and Privacy Policy"
+								tabIndex={0}
+								disabled={loading}
+								onClick={() => setTermsAccepted((prev) => !prev)}
+								className={[
+									"mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] border transition",
+									termsAccepted
+										? "border-[#004bc3] bg-[#004bc3] text-white"
+										: "border-[#b8bcd0] bg-white text-transparent",
+									loading ? "cursor-not-allowed opacity-60" : "active:scale-95",
+								].join(" ")}
+							>
+								<Check className="h-3.5 w-3.5" strokeWidth={3} aria-hidden />
+							</button>
+							<p className="min-w-0 flex-1">
+								{tu('by_continuing_you_agree_to_our')}
+								{' '}
+								<button
+									type="button"
+									onClick={() => openInAppBrowser(BEAMIO_TERMS_URL)}
+									className="text-[#004bc3] hover:underline"
+								>
+									{tu('terms_of_service')}
+								</button>
+								{' '}
+								{tu('and')}
+								{' '}
+								<button
+									type="button"
+									onClick={() => openInAppBrowser(BEAMIO_PRIVACY_URL)}
+									className="text-[#004bc3] hover:underline"
+								>
+									{tu('privacy_policy')}
+								</button>
+								.
+							</p>
+						</div>
 						<AppButton
 							fullWidth
 							loading={loading}
@@ -655,30 +698,6 @@ const CreateUsernamePinScreen = forwardRef<
 							].join(" ")}
 							onClick={() => void onSubmitPress()}
 						>{tu('next')}</AppButton>
-						<div className="mt-4 flex max-w-md flex-col gap-1 px-2 text-center text-xs font-semibold uppercase tracking-[0.05em] leading-4 text-[#737687] [@media(max-height:700px)]:mt-3 [@media(max-height:640px)]:mt-2 [@media(max-height:560px)]:mt-1.5 [@media(max-height:560px)]:text-[11px]">
-							<p>
-								{tu('by_continuing_you_agree_to_our')}
-								<br />
-								<button
-									type="button"
-									onClick={() => openExternalUrl(BEAMIO_TERMS_URL)}
-									className="text-[#004bc3] hover:underline"
-								>
-									{tu('terms_of_service')}
-								</button>
-								{' '}
-								{tu('and')}
-								{' '}
-								<button
-									type="button"
-									onClick={() => openExternalUrl(BEAMIO_PRIVACY_URL)}
-									className="text-[#004bc3] hover:underline"
-								>
-									{tu('privacy_policy')}
-								</button>
-								.
-							</p>
-						</div>
 					</div>
 					</div>
 				</div>

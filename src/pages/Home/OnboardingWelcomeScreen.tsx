@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { useTu } from '@/locale/beamioLocale'
 import { Check, ShieldCheck, BookMarked, ArrowRight, Loader2 } from 'lucide-react'
+import { InvitedByIntroducerChip } from '@/components/InvitedByIntroducerChip'
 
 export type OnboardingWelcomeScreenProps = {
   beamioTag?: string
@@ -95,6 +96,7 @@ export default function OnboardingWelcomeScreen({ beamioTag, onEnterHome }: Onbo
           <p className="mx-auto max-w-[280px] text-base font-normal leading-6 text-[#424655]">
             {tu('onboarding_welcome_passport_body')}
           </p>
+          <InvitedByIntroducerChip className="mx-auto mt-4 max-w-md" />
         </div>
 
         {/* Status card */}

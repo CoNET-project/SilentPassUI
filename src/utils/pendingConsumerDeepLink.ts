@@ -23,6 +23,16 @@ function isBeamioAppPath(pathname: string): boolean {
 	return pathname === '/app' || pathname === '/app/' || pathname.startsWith('/app/')
 }
 
+/** Embedded Android/iOS local shell entry (invite may land on `/index.html`). */
+function isEmbeddedLocalShellPath(pathname: string): boolean {
+	return (
+		pathname === '/' ||
+		pathname === '' ||
+		pathname === '/index.html' ||
+		pathname.endsWith('/index.html')
+	)
+}
+
 export function isMeaningfulConsumerAppDeepLink(raw: string): boolean {
 	const input = raw?.trim() ?? ''
 	if (!input) return false
@@ -33,15 +43,21 @@ export function isMeaningfulConsumerAppDeepLink(raw: string): boolean {
 			host === 'beamio.app' ||
 			host === 'www.beamio.app' ||
 			host === 'localhost' ||
+			host === '127.0.0.1' ||
+			host === 'appassets.androidplatform.net' ||
 			u.protocol === 'cashtrees-local:'
 		if (!okHost && u.protocol !== 'http:' && u.protocol !== 'https:') return false
-		if (u.protocol.startsWith('http') && !isBeamioAppPath(u.pathname) && u.pathname !== '/') {
-			// Embedded local often uses `/` with query only.
-			if (!(u.pathname === '/' || u.pathname === '')) return false
-		}
+		// Collect first so `invite=` / nested `target=` win even on `/index.html` shells.
 		const sp = collectDeepLinkSearchParams(u.toString())
 		const invite = (sp.get('invite') ?? sp.get('Invite') ?? '').trim()
 		if (invite && /^0x[0-9a-fA-F]{40}$/.test(invite)) return true
+		if (
+			u.protocol.startsWith('http') &&
+			!isBeamioAppPath(u.pathname) &&
+			!isEmbeddedLocalShellPath(u.pathname)
+		) {
+			return false
+		}
 		if (parseDiscoverMerchantFromParams(sp)) return true
 		if (parseCouponOpenClaimFromParams(sp)) return true
 		if (isRedeemDeepLink(u.toString())) return true
@@ -102,11 +118,11 @@ export function applyPendingConsumerDeepLinkIfNeeded(): boolean {
 	const pending = takePendingConsumerDeepLink()
 	if (!pending) return false
 	try {
-		const pendingUrl = new URL(pending)
 		const next = new URL(window.location.href)
-		// Prefer search params on the document URL (Beamio share links use ?beamiocard= on /app/).
-		pendingUrl.searchParams.forEach((value, key) => {
-			if (key === 'v') return
+		// Flatten nested app-download `target=` / hash query (incl. `invite=`) onto document URL.
+		const flat = collectDeepLinkSearchParams(pending)
+		flat.forEach((value, key) => {
+			if (key === 'v' || key === 'target') return
 			next.searchParams.set(key, value)
 		})
 		window.history.replaceState(window.history.state, '', next.toString())

@@ -287,21 +287,31 @@ function AppShell() {
   /** Agent invite `invite=0x…` → offline RegisterReferrer under introducer. */
   useEffect(() => {
     if (isInitialLoading) return
-    const eoa = profiles?.[0]?.keyID?.trim()
+    const profile = profiles?.[0]
+    const eoa = profile?.keyID?.trim()
     if (!eoa || !ethers.isAddress(eoa)) return
+    // Wait until signing material exists (or bind's brief retry); keep stash otherwise.
+    if (!resolveSigningPrivateKeyArmor(profile)) return
     void bindStashedAgentInviteReferrerIfNeeded(eoa)
-  }, [isInitialLoading, profiles?.[0]?.keyID])
+  }, [
+    isInitialLoading,
+    profiles?.[0]?.keyID,
+    profiles?.[0]?.privateKeyArmor,
+    profiles?.[0]?.mnemonicPhrase,
+  ])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
     const onStashed = () => {
-      const eoa = profiles?.[0]?.keyID?.trim()
+      const profile = profiles?.[0]
+      const eoa = profile?.keyID?.trim()
       if (!eoa || !ethers.isAddress(eoa)) return
+      if (!resolveSigningPrivateKeyArmor(profile)) return
       void bindStashedAgentInviteReferrerIfNeeded(eoa)
     }
     window.addEventListener(AGENT_INVITE_INTRODUCER_STASHED_EVENT, onStashed)
     return () => window.removeEventListener(AGENT_INVITE_INTRODUCER_STASHED_EVENT, onStashed)
-  }, [profiles?.[0]?.keyID])
+  }, [profiles?.[0]?.keyID, profiles?.[0]?.privateKeyArmor, profiles?.[0]?.mnemonicPhrase])
 
   /** Share-link `ref=` binds need the opener's AA, which usually appears after the first open. */
   useEffect(() => {

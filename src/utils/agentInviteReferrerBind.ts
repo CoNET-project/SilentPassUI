@@ -66,7 +66,14 @@ export async function bindStashedAgentInviteReferrerIfNeeded(
 	}
 
 	const work = (async () => {
-		const pk = resolveSigningPrivateKeyArmor(CoNET_Data?.profiles?.[0])
+		// Cold start: mnemonic → armor may land after keyID; brief retry keeps stash intact.
+		let pk = resolveSigningPrivateKeyArmor(CoNET_Data?.profiles?.[0])
+		if (!pk) {
+			await new Promise<void>((r) => {
+				window.setTimeout(() => r(), 450)
+			})
+			pk = resolveSigningPrivateKeyArmor(CoNET_Data?.profiles?.[0])
+		}
 		if (!pk) return
 		const result = await registerReferrerUnderIntroducer(introducer, pk, referee)
 		if (result.success) {

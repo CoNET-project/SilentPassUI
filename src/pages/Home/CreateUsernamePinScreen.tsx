@@ -1,4 +1,5 @@
 import { IpfsImg } from '@/components/IpfsImg';
+import { InvitedByIntroducerChip } from '@/components/InvitedByIntroducerChip'
 import React, { useEffect, useRef, useState, forwardRef, useImperativeHandle } from "react"
 import { AppButton } from "@/components/button/AppButton"
 import { checkBeamioAccountAPI, createRecover } from "@/services/beamio"
@@ -464,6 +465,9 @@ const CreateUsernamePinScreen = forwardRef<
 						<p className="px-4 text-base font-normal leading-6 text-[#424655] [@media(max-height:700px)]:text-[15px] [@media(max-height:640px)]:px-2 [@media(max-height:640px)]:text-sm [@media(max-height:640px)]:leading-snug [@media(max-height:560px)]:text-[12px] [@media(max-height:560px)]:leading-[1.25]">
 							{tu('your_unique_identity_in_the_beamio_network_use_it_to_connect_with_friend')}
 						</p>
+						<div className="mt-4 text-left">
+							<InvitedByIntroducerChip />
+						</div>
 					</div>
 
 					<div className="flex min-h-0 flex-1 flex-col justify-between gap-5 [@media(max-height:780px)]:gap-4 [@media(max-height:700px)]:gap-3 [@media(max-height:640px)]:gap-2.5 [@media(max-height:560px)]:gap-2">

@@ -5,6 +5,7 @@ import { BeamioCircularBackButton } from '@/components/BeamioCircularBackButton'
 import { QrWithBeamioTagAvatar } from '@/components/QrWithBeamioTagAvatar'
 import { AgentBusinessInviteSheet } from '@/pages/BountyBoard/AgentBusinessInviteSheet'
 import { AgentInviteRefereesSheet } from '@/pages/BountyBoard/AgentInviteRefereesSheet'
+import { InvitedByIntroducerChip } from '@/components/InvitedByIntroducerChip'
 import { buildAgentInviteAppUrl } from '@/utils/agentInviteIntroducerStash'
 import { fetchRefereesOfLength } from '@/utils/agentReferrerRegistryClient'
 import { useScrollCapsuleOpacity } from '@/hooks/useScrollCapsuleOpacity'
@@ -627,6 +628,7 @@ export default function BountyBoard() {
 								<h2 className="text-base font-semibold text-slate-900 dark:text-slate-50">Bring friends to Beamio</h2>
 								<p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Share your invitation and see who joins.</p>
 							</div>
+							<InvitedByIntroducerChip refereeEoa={eoa || undefined} />
 							<div className={`${cardChrome} p-4`}>
 								<h3 className="text-sm font-semibold text-slate-900 dark:text-slate-50">Your personal invitation</h3>
 								<p className="mt-1 text-sm text-slate-500 dark:text-slate-400">One link to share. Registration follows each program’s rules.</p>

@@ -1,5 +1,6 @@
 import React, { useEffect, useLayoutEffect, useState, useRef } from "react";
 import { IpfsImg } from '@/components/IpfsImg';
+import { InvitedByIntroducerChip } from '@/components/InvitedByIntroducerChip';
 import { useNavigate } from "react-router-dom"
 import { useDaemonContext } from "@/providers/DaemonProvider"
 import {onWalletEvent} from '@/services/beamio'
@@ -401,7 +402,8 @@ function InitialEntrySplash({
 				</div>
 			</main>
 
-			<footer className="relative z-30 w-full shrink-0 px-6 pt-1 text-center pb-[calc(2rem+env(safe-area-inset-bottom))] [@media(max-height:720px)]:pt-0.5">
+			<footer className="relative z-30 flex w-full shrink-0 flex-col items-center gap-3 px-6 pt-1 text-center pb-[calc(2rem+env(safe-area-inset-bottom))] [@media(max-height:720px)]:pt-0.5">
+				<InvitedByIntroducerChip className="max-w-md" />
 				<p className="text-[10px] font-bold uppercase tracking-[0.3em] text-white/50">{tu('your_keys_your_control')}</p>
 			</footer>
 		</div>
@@ -715,6 +717,9 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 		// Bind push after CoNET_Data is in memory so API register can sign.
 		// Must not rely only on AppShell init — that path skips when gossip is already active.
 		ensureNativePushBoundForWallet(profiles[0])
+		if (eoa && ethers.isAddress(eoa)) {
+			void bindStashedAgentInviteReferrerIfNeeded(eoa)
+		}
 		dispatchBeamioWalletReady('loading-page-init')
 		SetLoading(false)
 		setIsInitialEntry(false)
@@ -907,8 +912,10 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 		}
 		setSettingsOpen('')
 		home()
-		const eoa = CoNET_Data?.profiles?.[0]?.keyID?.trim()
+		const onboardingProfile = CoNET_Data?.profiles?.[0]
+		const eoa = onboardingProfile?.keyID?.trim()
 		if (eoa && ethers.isAddress(eoa)) {
+			// Armor may hydrate a tick later; bind retries briefly and App effect re-runs on armor.
 			void bindStashedAgentInviteReferrerIfNeeded(eoa)
 		}
 		if (pendingMerchantCard) {

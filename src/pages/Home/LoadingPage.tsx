@@ -26,7 +26,7 @@ import BusinessIdentityForm, { type BusinessIdentitySuccess } from './BusinessId
 import RecoveryQRScreen from './RecoveryQRScreen'
 import RestoreEntryScreen from './RestoreEntryScreen'
 import BizHome from './bizHome'
-import { setBizWorkspaceRole } from '@/utils/agentWorkspaceLocal'
+import { markAgentSponsoredMerchantCreate, setBizWorkspaceRole } from '@/utils/agentWorkspaceLocal'
 import { unlockMerchantWorkspaceSession } from '@/utils/unlockMerchantWorkspaceSession'
 import { merchantOsHandoffOpensBusinessDetails, takeMerchantOsCredentialHandoff } from '@/utils/merchantOsCredentialHandoff'
 import { useUnlockMerchantWorkspaceDeps } from '@/hooks/useUnlockMerchantWorkspaceDeps'
@@ -422,6 +422,11 @@ export default function BeamioOnboardingModal({
 				stayOnInviteDiscoveryForm()
 				setHandoffWalletError('Could not create the merchant wallet from the provided Beamio ID and access password.')
 				return
+			}
+			// Agent invite Create merchant card: skip Fuel / Start Kit wall for this temp EOA.
+			const sponsoredEoa = (restored.profiles?.[0]?.keyID ?? '').trim()
+			if (sponsoredEoa && ethers.isAddress(sponsoredEoa)) {
+				markAgentSponsoredMerchantCreate(sponsoredEoa)
 			}
 			home()
 		} catch {

@@ -140,10 +140,16 @@ import {
 } from '@/services/BeamioCard';
 import { initMessage } from '@/services/chat';
 import { conetDepinProvider, baseEndpoint } from '@/utils/constants';
-import { getBizWorkspaceRole } from '@/utils/agentWorkspaceLocal';
+import {
+  clearAgentSponsoredMerchantCreate,
+  getBizWorkspaceRole,
+  isAgentSponsoredMerchantCreate,
+} from '@/utils/agentWorkspaceLocal';
 import {
   fetchIsAgentOnChain,
+  fetchIsAgentTempOnChain,
   loadCachedIsAgent,
+  loadCachedIsAgentTemp,
 } from '@/utils/agentReferrerRegistryClient';
 import {
   BEAMIO_INDEXER_DIAMOND,
@@ -15406,7 +15412,10 @@ const loadProgramReferrerList = useCallback(async () => {
  /** CoNET BusinessStartKetRedeem ERC1155 #0（Ket）余额 >0 */
  const [ownsBusinessStartKetToken0, setOwnsBusinessStartKetToken0] = useState(false);
  const [ownsBusinessStartKetToken0Fetched, setOwnsBusinessStartKetToken0Fetched] = useState(false);
- /** BeamioAgentReferrerRegistry.isAgent — agents may skip Start Kit NFT before Card Setup. */
+ /**
+  * Start Kit / Fuel pack skip: on-chain agent, agent-of-temp, invite-sponsored local flag,
+  * or local workspace role `agent`.
+  */
  const cardSetupAgentGateEoa = useMemo(() => {
    const raw = (profiles?.[0]?.keyID ?? myAddress ?? '').trim();
    if (!raw || !ethers.isAddress(raw)) return '';
@@ -15427,11 +15436,31 @@ const loadProgramReferrerList = useCallback(async () => {
      return null;
    }
  });
+ const [viewerIsAgentTempOnChain, setViewerIsAgentTempOnChain] = useState<boolean | null>(() => {
+   const raw = (profiles?.[0]?.keyID ?? myAddress ?? '').trim();
+   if (!raw || !ethers.isAddress(raw)) return null;
+   try {
+     const eoa = ethers.getAddress(raw);
+     if (isAgentSponsoredMerchantCreate(eoa)) return true;
+     return loadCachedIsAgentTemp(eoa);
+   } catch {
+     return null;
+   }
+ });
  const viewerIsAgentExempt = useMemo(() => {
    if (!cardSetupAgentGateEoa) return false;
    if (getBizWorkspaceRole(cardSetupAgentGateEoa) === 'agent') return true;
-   return viewerIsAgentOnChain === true;
- }, [cardSetupAgentGateEoa, viewerIsAgentOnChain]);
+   if (isAgentSponsoredMerchantCreate(cardSetupAgentGateEoa)) return true;
+   if (viewerIsAgentOnChain === true) return true;
+   if (viewerIsAgentTempOnChain === true) return true;
+   return false;
+ }, [cardSetupAgentGateEoa, viewerIsAgentOnChain, viewerIsAgentTempOnChain]);
+ /** Card / Ket / agent-temp RPC settled enough to decide Start Kit wall (avoid flash). */
+ const agentStartKitGateSettled = useMemo(() => {
+   if (viewerIsAgentExempt) return true;
+   if (!cardSetupAgentGateEoa) return true;
+   return viewerIsAgentOnChain !== null && viewerIsAgentTempOnChain !== null;
+ }, [viewerIsAgentExempt, cardSetupAgentGateEoa, viewerIsAgentOnChain, viewerIsAgentTempOnChain]);
  /** Ket welcome cover (`marketExample.html`); persisted per EOA + session; cleared from UI when user taps Start Designing */
  const [cardIssuanceKetWelcomeCoverDismissed, setCardIssuanceKetWelcomeCoverDismissed] = useState(false);
 /** Desktop no-card gate: keep the desktop Overview shell until the merchant opens the shared Lite onboarding flow. */
@@ -15806,7 +15835,7 @@ useEffect(() => {
    if (!profileOwnsIssuedBeamioCardFetched) return true;
    if (viewerIsAgentExempt) return false;
    if (!ownsBusinessStartKetToken0Fetched) return true;
-   if (cardSetupAgentGateEoa && viewerIsAgentOnChain === null) return true;
+   if (!agentStartKitGateSettled) return true;
    return false;
  }, [
    profiles?.[0]?.keyID,
@@ -15815,8 +15844,7 @@ useEffect(() => {
    profileOwnsIssuedBeamioCardFetched,
    viewerIsAgentExempt,
    ownsBusinessStartKetToken0Fetched,
-   cardSetupAgentGateEoa,
-   viewerIsAgentOnChain,
+   agentStartKitGateSettled,
  ]);
  const navChromeTab = activeTab;
 
@@ -26558,30 +26586,50 @@ const submitCardIssuanceSocialExchangeEditor = useCallback(async () => {
  useEffect(() => {
    if (!cardSetupAgentGateEoa) {
      setViewerIsAgentOnChain(null);
+     setViewerIsAgentTempOnChain(null);
      return;
    }
    if (getBizWorkspaceRole(cardSetupAgentGateEoa) === 'agent') {
      setViewerIsAgentOnChain(true);
+     setViewerIsAgentTempOnChain(true);
      return;
+   }
+   if (isAgentSponsoredMerchantCreate(cardSetupAgentGateEoa)) {
+     setViewerIsAgentTempOnChain(true);
    }
    let cancelled = false;
    void (async () => {
-     const r = await fetchIsAgentOnChain(cardSetupAgentGateEoa);
+     const [agentR, tempR] = await Promise.all([
+       fetchIsAgentOnChain(cardSetupAgentGateEoa),
+       fetchIsAgentTempOnChain(cardSetupAgentGateEoa),
+     ]);
      if (cancelled) return;
-     if (r.ok) {
-       setViewerIsAgentOnChain(r.isAgent);
-       return;
+     if (agentR.ok) {
+       setViewerIsAgentOnChain(agentR.isAgent);
+     } else if (agentR.isAgent !== null) {
+       setViewerIsAgentOnChain(agentR.isAgent);
+     } else {
+       setViewerIsAgentOnChain(false);
      }
-     if (r.isAgent !== null) {
-       setViewerIsAgentOnChain(r.isAgent);
-       return;
+     if (isAgentSponsoredMerchantCreate(cardSetupAgentGateEoa)) {
+       setViewerIsAgentTempOnChain(true);
+     } else if (tempR.ok) {
+       setViewerIsAgentTempOnChain(tempR.isAgentTemp);
+     } else if (tempR.isAgentTemp !== null) {
+       setViewerIsAgentTempOnChain(tempR.isAgentTemp);
+     } else {
+       setViewerIsAgentTempOnChain(false);
      }
-     setViewerIsAgentOnChain(false);
    })();
    return () => {
      cancelled = true;
    };
  }, [cardSetupAgentGateEoa, cardIssuanceOnChainRefreshNonce]);
+
+ useEffect(() => {
+   if (!profileOwnsIssuedBeamioCard || !cardSetupAgentGateEoa) return;
+   clearAgentSponsoredMerchantCreate(cardSetupAgentGateEoa);
+ }, [profileOwnsIssuedBeamioCard, cardSetupAgentGateEoa]);
 
  const [timeFilter, setTimeFilter] = useState<OverviewTimeFilter>('Today');
  /** Ledger scope toggle removed from Transactions UI; table always uses combined ledger (was `全部`). */
@@ -33394,12 +33442,12 @@ useEffect(() => {
  const hasAaAccount = Boolean(profiles?.[0]?.aaAccount?.trim());
  /**
   * Start Kit wall: no issued merchant card and no BusinessStartKet #0.
-  * Agents (on-chain isAgent or local workspace role) may skip the NFT and enter Card Setup.
+  * Agents, agent-temps, and invite-sponsored Create skip Fuel pack / Ket NFT.
   */
  const lacksMerchantProgramCardAndKet =
    profileOwnsIssuedBeamioCardFetched &&
    ownsBusinessStartKetToken0Fetched &&
-   (viewerIsAgentExempt || viewerIsAgentOnChain !== null) &&
+   agentStartKitGateSettled &&
    !profileOwnsIssuedBeamioCard &&
    !ownsBusinessStartKetToken0 &&
    !viewerIsAgentExempt;

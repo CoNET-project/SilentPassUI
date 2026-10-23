@@ -55,6 +55,7 @@ const VIEW_ABI = [
 ] as const
 
 const IS_AGENT_CACHE_PREFIX = 'beamio:biz:agent-referrer-is-agent:v1:'
+const IS_AGENT_TEMP_CACHE_PREFIX = 'beamio:biz:agent-referrer-is-agent-temp:v1:'
 const DEADLINE_SEC = 30 * 60
 
 function registryContract(): ethers.Contract {
@@ -69,6 +70,10 @@ function walletFromSession(): ethers.Wallet {
 
 function isAgentCacheKey(eoa: string): string {
 	return `${IS_AGENT_CACHE_PREFIX}${ethers.getAddress(eoa).toLowerCase()}`
+}
+
+function isAgentTempCacheKey(eoa: string): string {
+	return `${IS_AGENT_TEMP_CACHE_PREFIX}${ethers.getAddress(eoa).toLowerCase()}`
 }
 
 /** Trusted local cache for login routing (RPC-first; failure keeps last trusted). */
@@ -93,6 +98,28 @@ export function saveCachedIsAgent(eoa: string, value: boolean): void {
 	}
 }
 
+/** Trusted cache: `agentOfTemp(eoa) != 0` — temp under an agent (Start Kit exempt). */
+export function loadCachedIsAgentTemp(eoa: string): boolean | null {
+	if (!ethers.isAddress(eoa)) return null
+	try {
+		const raw = localStorage.getItem(isAgentTempCacheKey(eoa))
+		if (raw === '1') return true
+		if (raw === '0') return false
+	} catch {
+		/* ignore */
+	}
+	return null
+}
+
+export function saveCachedIsAgentTemp(eoa: string, value: boolean): void {
+	if (!ethers.isAddress(eoa)) return
+	try {
+		localStorage.setItem(isAgentTempCacheKey(eoa), value ? '1' : '0')
+	} catch {
+		/* ignore */
+	}
+}
+
 /**
  * RPC-first `isAgent`. On failure returns cached value (or null if never trusted).
  */
@@ -111,6 +138,31 @@ export async function fetchIsAgentOnChain(eoa: string): Promise<{ ok: true; isAg
 		return { ok: true, isAgent: v }
 	} catch {
 		return { ok: false, isAgent: loadCachedIsAgent(addr) }
+	}
+}
+
+/**
+ * RPC-first: temp is registered under an agent when `agentOfTemp(eoa) != address(0)`.
+ * Failure keeps last trusted cache (or null).
+ */
+export async function fetchIsAgentTempOnChain(
+	eoa: string,
+): Promise<{ ok: true; isAgentTemp: boolean } | { ok: false; isAgentTemp: boolean | null }> {
+	if (!ethers.isAddress(eoa)) return { ok: false, isAgentTemp: null }
+	const addr = ethers.getAddress(eoa)
+	try {
+		const c = registryContract()
+		const agent = (await Promise.race([
+			c.agentOfTemp(addr),
+			new Promise<never>((_, reject) => {
+				window.setTimeout(() => reject(new Error('agentOfTemp timeout')), 8_000)
+			}),
+		])) as string
+		const v = Boolean(agent && ethers.isAddress(agent) && agent !== ethers.ZeroAddress)
+		saveCachedIsAgentTemp(addr, v)
+		return { ok: true, isAgentTemp: v }
+	} catch {
+		return { ok: false, isAgentTemp: loadCachedIsAgentTemp(addr) }
 	}
 }
 

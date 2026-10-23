@@ -35,6 +35,41 @@ export type AgentWorkspaceRecord = {
 const ROLE_KEY_LEGACY = 'beamio:biz:workspace-role:v1'
 const ROLE_KEY_PREFIX = 'beamio:biz:workspace-role:v1:'
 const AGENT_PREFIX = 'beamio:biz:agent-workspace:v1:'
+/** Agent Business Invite → Create merchant card: skip Start Kit / Fuel pack wall for this temp EOA. */
+const AGENT_SPONSORED_MERCHANT_CREATE_PREFIX = 'beamio:biz:agent-sponsored-merchant-create:v1:'
+
+function agentSponsoredMerchantCreateKey(eoa: string): string {
+	return `${AGENT_SPONSORED_MERCHANT_CREATE_PREFIX}${ethers.getAddress(eoa).toLowerCase()}`
+}
+
+/** Mark temp EOA unlocked via agent invite `flow=business` — free Card Setup (no Fuel pack). */
+export function markAgentSponsoredMerchantCreate(eoa: string): void {
+	if (typeof window === 'undefined' || !ethers.isAddress(eoa)) return
+	try {
+		window.localStorage.setItem(agentSponsoredMerchantCreateKey(eoa), '1')
+	} catch {
+		/* ignore */
+	}
+}
+
+export function isAgentSponsoredMerchantCreate(eoa: string | null | undefined): boolean {
+	if (typeof window === 'undefined' || !eoa || !ethers.isAddress(eoa)) return false
+	try {
+		return window.localStorage.getItem(agentSponsoredMerchantCreateKey(eoa)) === '1'
+	} catch {
+		return false
+	}
+}
+
+/** Clear after the temp owns an issued merchant card (optional housekeeping). */
+export function clearAgentSponsoredMerchantCreate(eoa: string | null | undefined): void {
+	if (typeof window === 'undefined' || !eoa || !ethers.isAddress(eoa)) return
+	try {
+		window.localStorage.removeItem(agentSponsoredMerchantCreateKey(eoa))
+	} catch {
+		/* ignore */
+	}
+}
 
 function agentKey(agentEoa: string): string {
 	return `${AGENT_PREFIX}${ethers.getAddress(agentEoa).toLowerCase()}`

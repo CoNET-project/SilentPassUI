@@ -4045,15 +4045,21 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				const existingIndex = mergedMessages.findIndex(item => callDedupeKey(item.callRecord) === key)
 				if (existingIndex >= 0) {
 					const kept = mergePhoneCallRecord(mergedMessages[existingIndex].callRecord, bestRecord) || bestRecord
-					mergedMessages[existingIndex] = {
-						...mergedMessages[existingIndex],
-						from: kept.direction === 'outgoing' ? 'me' : 'them',
-						callRecord: kept,
+					if (kept) {
+						mergedMessages[existingIndex] = {
+							...mergedMessages[existingIndex],
+							from: kept.direction === 'outgoing' ? 'me' : 'them',
+							callRecord: kept,
+						}
 					}
 				}
 				continue
 			}
 			seenCallKeys.add(key)
+			if (!bestRecord) {
+				mergedMessages.push(message)
+				continue
+			}
 			const bubbleId = sessionId || callId
 			mergedMessages.push({
 				...message,

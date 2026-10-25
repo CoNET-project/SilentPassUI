@@ -1146,6 +1146,9 @@ function AppShell() {
 			inFlightKey = flightKey
 			attempts = 0
 
+			// Snapshot before chat.tsx / other handlers can clear the registry.
+			const offerAtEvent = lookupIncomingVoiceOffer(callId, sessionId)
+
 			// Prefer CoNET_Data — React profiles / ref can lag Chat's upsert in the same tick.
 			const dataProfiles = CoNET_Data?.profiles
 			const currentProfiles = Array.isArray(dataProfiles) && dataProfiles.length
@@ -1159,21 +1162,22 @@ function AppShell() {
 							item.direction === 'outgoing'
 							&& (item.status === 'ringing' || item.status === 'answered'))
 						.sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0))[0]
-				// Dialer / peer reject is outbound for the local user. Prefer outgoing so
-				// a stale incoming mirror cannot leave the chat bubble on "Calling…".
+				// Callee Decline has an incoming offer → keep incoming. Only invent
+				// outgoing when this device is the dialer (no offer in registry).
 				const preferOutgoing = Boolean(
-					!existing
-					|| existing.direction === 'outgoing'
-					|| !lookupIncomingVoiceOffer(callId, sessionId),
+					existing?.direction === 'outgoing'
+					|| (!existing && !offerAtEvent),
 				)
-				const direction = preferOutgoing ? 'outgoing' : (existing?.direction || 'outgoing')
+				const direction = preferOutgoing
+					? 'outgoing'
+					: (existing?.direction || (offerAtEvent ? 'incoming' : 'outgoing'))
 				const merged = mergePhoneCallRecord(existing, {
-					callId: callId || existing?.callId || sessionId,
-					sessionId: sessionId || existing?.sessionId || callId,
-					peerAddress: existing?.peerAddress || '',
+					callId: callId || existing?.callId || offerAtEvent?.callId || sessionId,
+					sessionId: sessionId || existing?.sessionId || offerAtEvent?.sessionId || callId,
+					peerAddress: existing?.peerAddress || offerAtEvent?.from || '',
 					direction,
 					status: terminalStatus,
-					createdAt: existing?.createdAt || Date.now(),
+					createdAt: existing?.createdAt || Number(offerAtEvent?.createdAt) || Date.now(),
 					endedAt: Date.now(),
 				})
 				if (merged && (!existing || existing.status !== merged.status)) {
@@ -1193,7 +1197,7 @@ function AppShell() {
 
 			const tryNotifyPeer = async () => {
 				if (cancelled) return
-				const offer = lookupIncomingVoiceOffer(callId, sessionId)
+				const offer = offerAtEvent || lookupIncomingVoiceOffer(callId, sessionId)
 				const privateKey = resolveSigningPrivateKeyArmor(profilesForVoiceDeclineRef.current?.[0])
 				if (!offer || !privateKey) {
 					attempts += 1

@@ -350,11 +350,6 @@ export function createVoiceCallController(options: VoiceCallControllerOptions) {
 	}
 
 	const rejectIncoming = async (offer: VoiceCallSignal): Promise<boolean> => {
-		// Native shell owns Decline uplink (voice_call_reject_v1 via entry).
-		if (isCashTreesNativeWebView()) {
-			console.warn('[voiceCall] rejectIncoming skipped — native shell owns Decline')
-			return true
-		}
 		const reject = makeVoiceCallSignal({
 			type: 'voice_call_reject_v1',
 			callId: offer.callId,
@@ -363,7 +358,12 @@ export function createVoiceCallController(options: VoiceCallControllerOptions) {
 			to: offer.from,
 			reason: 'declined',
 		})
-		const sentToTemporaryRelay = await sendVoiceCallRejectionToTemporaryRelay(options, offer)
+		// Native shell already sent AES reject on the temporary voice channel.
+		// Still send user-PGP gossip so callers whose dialer listen is not up yet
+		// (SI drops AES with target_voice_session_not_found) still leave Ringing.
+		const sentToTemporaryRelay = isCashTreesNativeWebView()
+			? false
+			: await sendVoiceCallRejectionToTemporaryRelay(options, offer)
 		const sentToCaller = options.peerPgp
 			? await sendMessage(
 				options.peerPgp,
@@ -372,14 +372,13 @@ export function createVoiceCallController(options: VoiceCallControllerOptions) {
 				selectedEntries.length ? selectedEntries : options.allNodes,
 			)
 			: false
-		return sentToTemporaryRelay || sentToCaller
+		if (isCashTreesNativeWebView() && !sentToCaller) {
+			console.warn('[voiceCall] rejectIncoming native — AES owned by shell; gossip reject failed or no peerPgp')
+		}
+		return sentToTemporaryRelay || sentToCaller || isCashTreesNativeWebView()
 	}
 
 	const timeoutIncoming = async (offer: VoiceCallSignal): Promise<boolean> => {
-		if (isCashTreesNativeWebView()) {
-			console.warn('[voiceCall] timeoutIncoming skipped — native shell owns ring timeout')
-			return true
-		}
 		const timeout = makeVoiceCallSignal({
 			type: 'voice_call_timeout_v1',
 			callId: offer.callId,
@@ -388,11 +387,13 @@ export function createVoiceCallController(options: VoiceCallControllerOptions) {
 			to: offer.from,
 			reason: 'timeout',
 		})
-		const sentToTemporaryRelay = await sendVoiceCallControlToTemporaryRelay(options, offer, {
-			type: 'voice_call_timeout_v1',
-			reason: 'timeout',
-			framePrefix: 'timeout',
-		})
+		const sentToTemporaryRelay = isCashTreesNativeWebView()
+			? false
+			: await sendVoiceCallControlToTemporaryRelay(options, offer, {
+				type: 'voice_call_timeout_v1',
+				reason: 'timeout',
+				framePrefix: 'timeout',
+			})
 		const sentToCaller = options.peerPgp
 			? await sendMessage(
 				options.peerPgp,
@@ -401,7 +402,10 @@ export function createVoiceCallController(options: VoiceCallControllerOptions) {
 				selectedEntries.length ? selectedEntries : options.allNodes,
 			)
 			: false
-		return sentToTemporaryRelay || sentToCaller
+		if (isCashTreesNativeWebView() && !sentToCaller) {
+			console.warn('[voiceCall] timeoutIncoming native — AES owned by shell; gossip timeout failed or no peerPgp')
+		}
+		return sentToTemporaryRelay || sentToCaller || isCashTreesNativeWebView()
 	}
 
 	const notifyRingTimeout = async (): Promise<boolean> => {

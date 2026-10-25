@@ -135,6 +135,7 @@ import {
 	rememberIncomingVoiceOffer,
 	VOICE_CALL_IDENTITY_WARNING,
 	voiceCallClaimMismatchesKey,
+	voiceSessionKeyToBase64,
 	type VoiceCallSignal,
 } from '@/utils/voiceCallSession'
 import { startAndroidNativeMicCapture, startVoiceCapture, VoicePlaybackBuffer, voiceCaptureConstraints, voiceLevelFromPcmBytes } from '@/services/voiceCallMedia'
@@ -2647,12 +2648,31 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				createdAt: Date.now(),
 				expiresAt: signal.expiresAt,
 			})
+			const sessionKeyB64 =
+				(typeof signal.sessionKey === 'string' && signal.sessionKey.trim()) ||
+				(key ? voiceSessionKeyToBase64(key) : '')
+			const wake = channel.dialerWake
 			dispatchNativeSystemCallAction('startSystemCall', {
 				callId: signal.callId,
 				sessionId,
+				sessionKey: sessionKeyB64,
 				peerAddress: toAddress,
 				displayName: chatData.beamio?.username || toAddress,
+				...(wake
+					? {
+							dialerWakeCallId: wake.callId,
+							dialerWakeCalleeEoa: wake.calleeEoa,
+							dialerWakeExpiresAt: wake.expiresAt,
+							dialerWakeTimestamp: wake.timestamp,
+							dialerWakeOfferArmor: wake.offerArmor,
+						}
+					: {}),
 			})
+			// Native shell owns dialer voice_listen + VoIP wake (offerArmor never
+			// started on the worker — do not stopWorkerVoiceListen / no conflict).
+			if (isCashTreesNativeWebView()) {
+				voiceControllerRef.current = null
+			}
 			setVoiceCallConnecting(false)
 		} catch (error) {
 			setVoiceError(error instanceof Error ? error.message : 'Voice call could not start.')
@@ -2843,7 +2863,10 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 					createdAt: Date.now(),
 					answeredAt: Date.now(),
 				})
-				void startVoiceMedia()
+				// Native shell dialer owns PCM after accept — do not start PWA media.
+				if (!isCashTreesNativeWebView()) {
+					void startVoiceMedia()
+				}
 			}
 			} catch {
 				/* ordinary Chat text */
@@ -3408,19 +3431,99 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				sessionId?: string
 			}>).detail
 			if (!detail?.action || (!detail.callId && !detail.sessionId)) return
+			const nativeShell = isCashTreesNativeWebView()
 			const nativeOffer = incomingVoiceOffer || lookupIncomingVoiceOffer(detail.callId || '', detail.sessionId || '')
 			const matchesIncoming =
 				Boolean(nativeOffer) &&
 				((detail.sessionId && nativeOffer?.sessionId === detail.sessionId) ||
 					(detail.callId && nativeOffer?.callId === detail.callId))
-			if (detail.action === 'callAnswered' && matchesIncoming) {
-				void acceptVoiceCall(nativeOffer as VoiceCallSignal)
-			} else if (detail.action === 'callRejected' && matchesIncoming) {
-				// Pass lookup offer so cold-start Decline still sends voice_call_reject_v1
-				// even when React state has not hydrated incomingVoiceOffer yet.
-				void rejectVoiceCall(nativeOffer as VoiceCallSignal)
-			} else if (detail.action === 'callTimedOut' && matchesIncoming && nativeOffer && privateKey) {
+			const matchesOutgoing =
+				Boolean(voiceCallOfferRef.current) &&
+				((detail.sessionId && voiceCallOfferRef.current?.sessionId === detail.sessionId) ||
+					(detail.callId && voiceCallOfferRef.current?.callId === detail.callId))
+			if (detail.action === 'callAnswered') {
+				if (matchesIncoming) {
+					// Shell already sent Accept + owns temporary media — UI sync only.
+					if (nativeShell) {
+						const offer = nativeOffer as VoiceCallSignal
+						setIncomingVoiceOffer(null)
+						upsertPhoneCallRecord({
+							callId: offer.callId,
+							sessionId: offer.sessionId,
+							peerAddress: offer.from,
+							direction: 'incoming',
+							status: 'answered',
+							createdAt: Number(offer.createdAt) || Date.now(),
+							answeredAt: Date.now(),
+						})
+						markVoiceCallTerminal(offer.callId, offer.sessionId)
+						setVoiceCallState('outgoing')
+						setVoiceCallConnecting(false)
+						return
+					}
+					void acceptVoiceCall(nativeOffer as VoiceCallSignal)
+					return
+				}
+				if (matchesOutgoing || voiceCallState === 'outgoing') {
+					// Dialer: shell enableMedia after remote accept — no PWA startVoiceMedia.
+					const offer = voiceCallOfferRef.current
+					if (offer?.sessionId) {
+						voiceAcceptHandledRef.current.add(String(detail.sessionId || offer.sessionId))
+						voiceCallLiveRef.current = true
+						setLiveVoiceSessionId(offer.sessionId)
+						upsertPhoneCallRecord({
+							callId: offer.callId,
+							sessionId: offer.sessionId,
+							peerAddress: toAddress,
+							direction: 'outgoing',
+							status: 'answered',
+							createdAt: Date.now(),
+							answeredAt: Date.now(),
+						})
+					}
+					setVoiceCallConnecting(false)
+					setVoiceCallMinimized(false)
+					setVoiceCallState('outgoing')
+				}
+			} else if (detail.action === 'callRejected') {
+				if (matchesIncoming) {
+					if (nativeShell) {
+						const offer = nativeOffer as VoiceCallSignal
+						setIncomingVoiceOffer(null)
+						upsertPhoneCallRecord({
+							callId: offer.callId,
+							sessionId: offer.sessionId,
+							peerAddress: offer.from,
+							direction: 'incoming',
+							status: 'declined',
+							createdAt: Number(offer.createdAt) || Date.now(),
+							endedAt: Date.now(),
+						})
+						markVoiceCallTerminal(offer.callId, offer.sessionId)
+						return
+					}
+					void rejectVoiceCall(nativeOffer as VoiceCallSignal)
+					return
+				}
+				if (matchesOutgoing || voiceCallState === 'outgoing') {
+					void endVoiceCall('declined', false)
+				}
+			} else if (detail.action === 'callTimedOut' && matchesIncoming && nativeOffer) {
 				const offer = nativeOffer as VoiceCallSignal
+				if (nativeShell) {
+					upsertPhoneCallRecord({
+						callId: offer.callId,
+						sessionId: offer.sessionId,
+						peerAddress: offer.from,
+						direction: 'incoming',
+						status: 'timed_out',
+						createdAt: Number(offer.createdAt) || Date.now(),
+						endedAt: Date.now(),
+					})
+					setIncomingVoiceOffer(null)
+					return
+				}
+				if (!privateKey) return
 				const localWallet = new ethers.Wallet(privateKey).address
 				void (async () => {
 					const chats = (profiles?.[0]?.chats || []) as Array<{
@@ -3451,9 +3554,17 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 					endedAt: Date.now(),
 				})
 				setIncomingVoiceOffer(null)
+			} else if (detail.action === 'callTimedOut' && (matchesOutgoing || voiceCallState === 'outgoing')) {
+				void endVoiceCall('timed_out', false)
 			} else if (detail.action === 'callEnded') {
-				// Legacy iOS: unanswered Decline was mis-tagged as callEnded. If we are
-				// still ringing (no active media controller), treat as reject so dialer stops.
+				if (nativeShell) {
+					if (matchesIncoming) {
+						setIncomingVoiceOffer(null)
+					}
+					void endVoiceCall(undefined, false)
+					return
+				}
+				// Legacy iOS: unanswered Decline was mis-tagged as callEnded.
 				if (matchesIncoming && !voiceControllerRef.current) {
 					void rejectVoiceCall(nativeOffer as VoiceCallSignal)
 				} else {
@@ -3467,7 +3578,18 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			window.removeEventListener('cashtreesios', onNativeCallAction)
 			window.removeEventListener('cashtreesandroid', onNativeCallAction)
 		}
-	}, [acceptVoiceCall, allNodes, endVoiceCall, incomingVoiceOffer, privateKey, profiles, rejectVoiceCall, upsertPhoneCallRecord])
+	}, [
+		acceptVoiceCall,
+		allNodes,
+		endVoiceCall,
+		incomingVoiceOffer,
+		privateKey,
+		profiles,
+		rejectVoiceCall,
+		toAddress,
+		upsertPhoneCallRecord,
+		voiceCallState,
+	])
 
 	// Turn an unanswered offer into an explicit chat record instead of leaving
 	// the protocol message as an empty bubble.
@@ -3600,6 +3722,47 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 					}
 				} catch {
 					// Audio frames are binary; only JSON payloads are control frames.
+				}
+				if (control?.type === 'voice_call_accept_v1') {
+					// Native shell Accept arrives on the temporary AES relay (not chat PGP).
+					const acceptSessionId = String(
+						(control as { sessionId?: string }).sessionId || '',
+					)
+					const peerSessionId = String(
+						(control as { peerSessionId?: string }).peerSessionId || '',
+					)
+					const mark = Number(control.timestamp || control.createdAt)
+					if (
+						!acceptSessionId ||
+						peerSessionId !== voiceCallOfferRef.current?.sessionId ||
+						!Number.isFinite(mark) ||
+						mark <= Number(voiceCallOfferRef.current?.timestamp || 0) ||
+						voiceAcceptHandledRef.current.has(acceptSessionId) ||
+						locallyEndedVoiceSessionsRef.current.has(acceptSessionId) ||
+						locallyEndedVoiceSessionsRef.current.has(peerSessionId)
+					) {
+						return
+					}
+					voiceAcceptHandledRef.current.add(acceptSessionId)
+					voiceCallPeerSessionRef.current = acceptSessionId
+					voiceCallLiveRef.current = true
+					setLiveVoiceSessionId(voiceCallOfferRef.current?.sessionId || peerSessionId)
+					setVoiceCallMinimized(false)
+					setVoiceCallState('outgoing')
+					void voicePlaybackRef.current?.resume()
+					upsertPhoneCallRecord({
+						callId: String((control as { callId?: string }).callId || ''),
+						sessionId: voiceCallOfferRef.current?.sessionId || acceptSessionId,
+						peerAddress: toAddress,
+						direction: 'outgoing',
+						status: 'answered',
+						createdAt: Date.now(),
+						answeredAt: Date.now(),
+					})
+					if (!isCashTreesNativeWebView()) {
+						void startVoiceMedia()
+					}
+					return
 				}
 				if (control?.type === 'voice_call_reject_v1' || control?.type === 'voice_call_timeout_v1') {
 					const mark = Number(control.timestamp || control.createdAt)

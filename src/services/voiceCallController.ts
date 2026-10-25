@@ -1,4 +1,5 @@
 import { ethers } from 'ethers'
+import { createMessage, encrypt, enums, readKey } from 'openpgp'
 import {
 	createVoiceSessionKey,
 	encryptVoiceFrame,
@@ -16,6 +17,7 @@ import {
 	getRandomNodes,
 } from '@/services/chat'
 import { ensureNativePushBoundForWallet } from '@/utils/cashTreesPushBind'
+import { isCashTreesNativeWebView } from '@/utils/cashTreesNativeNfc'
 import {
 	startWorkerVoiceListen,
 	stopWorkerVoiceListen,
@@ -31,6 +33,15 @@ export type VoiceCallControllerOptions = {
 	allNodes: nodeInfo[]
 }
 
+/** Wake + offerArmor for native-shell dialer `voice_listen` (mailbox push). */
+export type VoiceDialerWake = {
+	callId: string
+	calleeEoa: string
+	expiresAt: number
+	timestamp: number
+	offerArmor: string
+}
+
 export type VoiceCallChannel = {
 	callId: string
 	sessionId: string
@@ -38,6 +49,37 @@ export type VoiceCallChannel = {
 	entryDomains: string[]
 	signal: VoiceCallSignal
 	sessionKey: Uint8Array
+	/** Present when native shell owns listen; shell posts wake+offerArmor. */
+	dialerWake?: VoiceDialerWake
+}
+
+async function encryptVoiceOfferArmorToCallee(
+	offerText: string,
+	recipientPgp: string,
+	privateKey: string,
+): Promise<string> {
+	const wallet = new ethers.Wallet(privateKey)
+	const signMessage = await wallet.signMessage(offerText)
+	const envelope = {
+		timestamp: Date.now(),
+		text: offerText,
+		from: wallet.address,
+		signMessage,
+	}
+	const opaque = Buffer.from(JSON.stringify(envelope), 'utf8').toString('base64')
+	const postData = await encrypt({
+		message: await createMessage({ text: opaque }),
+		encryptionKeys: await readKey({ armoredKey: recipientPgp }),
+		config: { preferredCompressionAlgorithm: enums.compression.zlib },
+	})
+	const armored =
+		typeof postData === 'string'
+			? postData
+			: String((postData as { data?: unknown })?.data ?? postData)
+	if (!armored.includes('-----BEGIN PGP MESSAGE-----') || armored.length > 48_000) {
+		throw new Error('voice_offer_armor_invalid')
+	}
+	return armored
 }
 
 /**
@@ -217,23 +259,55 @@ export function createVoiceCallController(options: VoiceCallControllerOptions) {
 		}), options.privateKey)
 		const pushTimestamp = Math.floor(Date.now() / 1000)
 		// Ring window must stay inside the mailbox/API 10-minute cap.
-		// One voice_listen carries the wake fields and the offer already
-		// encrypted to the callee user PGP. The caller's mailbox forwards that
-		// ciphertext; the caller does not POST the offer again.
+		// Native shell owns dialer voice_listen + VoIP wake (offerArmor).
+		// Browser / non-shell still uses worker listen with the same wake shape.
 		const ringExpiresAt = Date.now() + INCOMING_CALL_RING_TIMEOUT_MS
-		if (!await startWorkerVoiceListen(sessionId, {
+		const nativeOwnsListen = isCashTreesNativeWebView()
+		let dialerWake: VoiceDialerWake | undefined
+		if (nativeOwnsListen) {
+			try {
+				const offerArmor = await encryptVoiceOfferArmorToCallee(
+					JSON.stringify(signal),
+					options.peerPgp,
+					options.privateKey,
+				)
+				dialerWake = {
+					callId: signal.callId,
+					calleeEoa: signal.to,
+					expiresAt: ringExpiresAt,
+					timestamp: pushTimestamp,
+					offerArmor,
+				}
+			} catch (ex) {
+				console.warn(
+					'[voiceCall] native dialer offerArmor encrypt failed',
+					(ex as Error)?.message ?? ex,
+				)
+				return null
+			}
+		} else if (!await startWorkerVoiceListen(sessionId, {
 			callId: signal.callId,
 			calleeEoa: signal.to,
 			expiresAt: ringExpiresAt,
 			timestamp: pushTimestamp,
 			offerText: JSON.stringify(signal),
 			recipientPgp: options.peerPgp,
-		})) return null
+		})) {
+			return null
+		}
 		ensureNativePushBoundForWallet()
 		activeSessionId = sessionId
 		activeSessionKey = sessionKey
 		activeSignal = signal
-		return { callId: signal.callId, sessionId, tempWalletAddress: tempWallet.address, entryDomains: signal.entryDomains || [], signal, sessionKey }
+		return {
+			callId: signal.callId,
+			sessionId,
+			tempWalletAddress: tempWallet.address,
+			entryDomains: signal.entryDomains || [],
+			signal,
+			sessionKey,
+			dialerWake,
+		}
 	}
 
 	const acceptIncoming = async (offer: VoiceCallSignal): Promise<VoiceCallChannel | null> => {

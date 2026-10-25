@@ -13,6 +13,9 @@ import {
   RefreshCw,
   ArrowLeft,
   ArrowRight,
+  FolderLock,
+  ShieldCheck,
+  Key,
 } from 'lucide-react'
 import { VerraBrandLockup } from '@/components/branding/VerraBrandLockup'
 import { getCashTreesNativeNfcBridge, getCashTreesNativeNfcHost } from '@/utils/cashTreesNativeNfc'
@@ -377,6 +380,26 @@ const RecoveryQRScreen = ({
               </p>
             ) : null}
 
+            <ul className="mt-1 flex w-full flex-col gap-3 px-0.5 [@media(max-height:700px)]:gap-2.5 [@media(max-height:560px)]:mt-0.5 [@media(max-height:560px)]:gap-2">
+              {(
+                [
+                  { Icon: FolderLock, textKey: 'recovery_code_tip_store_copy' as const },
+                  { Icon: ShieldCheck, textKey: 'recovery_code_tip_keep_private' as const },
+                  { Icon: Key, textKey: 'recovery_code_tip_anyone_with_code' as const },
+                ] as const
+              ).map(({ Icon, textKey }) => (
+                <li key={textKey} className="flex items-start gap-3">
+                  <Icon
+                    className="mt-0.5 h-[18px] w-[18px] shrink-0 text-[#5f6778] [@media(max-height:560px)]:h-4 [@media(max-height:560px)]:w-4"
+                    strokeWidth={2}
+                    aria-hidden
+                  />
+                  <span className="min-w-0 flex-1 text-sm leading-snug text-[#414754] [@media(max-height:560px)]:text-[13px]">
+                    {tu(textKey)}
+                  </span>
+                </li>
+              ))}
+            </ul>
           </div>
         </div>
 

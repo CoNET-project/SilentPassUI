@@ -2014,8 +2014,9 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 
 	const upsertPhoneCallRecord = useCallback((patch: PhoneCallRecord) => {
 		// Prefer CoNET_Data — React `profiles` can be stale when reject lands after quiet disconnect.
-		const currentProfiles = Array.isArray(CoNET_Data?.profiles) && CoNET_Data.profiles.length
-			? CoNET_Data.profiles
+		const dataProfiles = CoNET_Data?.profiles
+		const currentProfiles = Array.isArray(dataProfiles) && dataProfiles.length
+			? dataProfiles
 			: (Array.isArray(profiles) ? profiles : [])
 		if (!currentProfiles.length) return
 		const current: PhoneCallRecord[] = Array.isArray(currentProfiles[0].phoneCalls) ? currentProfiles[0].phoneCalls : []

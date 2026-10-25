@@ -559,9 +559,15 @@ export const findPhoneCallByIds = (
 	const callId = nonBlank(ids.callId)
 	const sessionId = nonBlank(ids.sessionId)
 	if (!callId && !sessionId) return undefined
-	return (rows || []).find(item =>
+	const matches = (rows || []).filter(item =>
 		(callId && nonBlank(item.callId) === callId) ||
 		(sessionId && nonBlank(item.sessionId) === sessionId))
+	if (!matches.length) return undefined
+	// Prefer terminal / further-along status when a buggy filter left ringing+declined duplicates.
+	return matches.slice().sort((a, b) =>
+		(PHONE_CALL_STATUS_RANK[b.status] ?? 0) - (PHONE_CALL_STATUS_RANK[a.status] ?? 0)
+		|| Number(b.endedAt || 0) - Number(a.endedAt || 0)
+		|| Number(b.createdAt || 0) - Number(a.createdAt || 0))[0]
 }
 
 /**

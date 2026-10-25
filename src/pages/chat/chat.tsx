@@ -3568,7 +3568,26 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 					setVoiceCallState('outgoing')
 				}
 			} else if (detail.action === 'callRejected') {
-				if (matchesIncoming) {
+				// Dialer reject always carries the outbound callId/sessionId. Prefer
+				// treating that as outgoing so a stale incomingVoiceOffer cannot steal
+				// the event and leave the chat bubble stuck on "Calling…".
+				const detailCallId = String(detail.callId || '').trim()
+				const detailSessionId = String(detail.sessionId || '').trim()
+				const rowsForReject: PhoneCallRecord[] = Array.isArray(CoNET_Data?.profiles?.[0]?.phoneCalls)
+					? CoNET_Data!.profiles[0].phoneCalls
+					: (Array.isArray(profiles?.[0]?.phoneCalls) ? profiles[0].phoneCalls : [])
+				const matchedByIds = findPhoneCallByIds(rowsForReject, {
+					callId: detailCallId,
+					sessionId: detailSessionId,
+				})
+				const treatAsOutgoing = Boolean(
+					matchesOutgoing
+					|| voiceCallState === 'outgoing'
+					|| voiceCallOfferRef.current
+					|| matchedByIds?.direction === 'outgoing'
+					|| (!matchesIncoming && (detailCallId || detailSessionId)),
+				)
+				if (matchesIncoming && !treatAsOutgoing) {
 					if (nativeShell) {
 						const offer = nativeOffer as VoiceCallSignal
 						setIncomingVoiceOffer(null)
@@ -3589,20 +3608,17 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				}
 				// Always force declined onto the outbound bubble — dialer may already
 				// have quiet-disconnected (refs idle / matchesOutgoing false).
-				const detailCallId = String(detail.callId || '').trim()
-				const detailSessionId = String(detail.sessionId || '').trim()
-				const rows: PhoneCallRecord[] = Array.isArray(CoNET_Data?.profiles?.[0]?.phoneCalls)
-					? CoNET_Data!.profiles[0].phoneCalls
-					: (Array.isArray(profiles?.[0]?.phoneCalls) ? profiles[0].phoneCalls : [])
-				const previousOutgoing = findPhoneCallByIds(rows, {
-					callId: detailCallId,
-					sessionId: detailSessionId,
-				}) || [...rows]
-					.filter(item =>
-						item.direction === 'outgoing' &&
-						(item.status === 'ringing' || item.status === 'answered') &&
-						(!toAddress || String(item.peerAddress || '').toLowerCase() === String(toAddress).toLowerCase()))
-					.sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0))[0]
+				const previousOutgoing = (matchedByIds?.direction === 'outgoing' ? matchedByIds : undefined)
+					|| findPhoneCallByIds(rowsForReject, {
+						callId: detailCallId,
+						sessionId: detailSessionId,
+					})
+					|| [...rowsForReject]
+						.filter(item =>
+							item.direction === 'outgoing' &&
+							(item.status === 'ringing' || item.status === 'answered') &&
+							(!toAddress || String(item.peerAddress || '').toLowerCase() === String(toAddress).toLowerCase()))
+						.sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0))[0]
 				const offer = voiceCallOfferRef.current
 				const declineCallId = detailCallId || previousOutgoing?.callId || offer?.callId || ''
 				const declineSessionId = detailSessionId || previousOutgoing?.sessionId || offer?.sessionId || ''
@@ -4072,16 +4088,35 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 
 		for (const record of currentChatCalls) {
 			const key = callDedupeKey(record)
-			if (!key || seenCallKeys.has(key)) continue
+			if (!key) continue
+			// Prefer terminal status when ringing+declined duplicates share a key.
+			const bestSynthetic = findPhoneCallByIds(currentChatCalls, {
+				callId: record.callId,
+				sessionId: record.sessionId,
+			}) || record
+			if (seenCallKeys.has(key)) {
+				const existingIndex = mergedMessages.findIndex(item => callDedupeKey(item.callRecord) === key)
+				if (existingIndex >= 0) {
+					const kept = mergePhoneCallRecord(mergedMessages[existingIndex].callRecord, bestSynthetic) || bestSynthetic
+					if (kept) {
+						mergedMessages[existingIndex] = {
+							...mergedMessages[existingIndex],
+							from: kept.direction === 'outgoing' ? 'me' : 'them',
+							callRecord: kept,
+						}
+					}
+				}
+				continue
+			}
 			seenCallKeys.add(key)
-			const bubbleId = record.sessionId || record.callId
+			const bubbleId = bestSynthetic.sessionId || bestSynthetic.callId
 			mergedMessages.push({
 				id: `phone_${bubbleId}`,
 				sendId: `phone:${bubbleId}`,
-				from: record.direction === 'outgoing' ? 'me' : 'them',
+				from: bestSynthetic.direction === 'outgoing' ? 'me' : 'them',
 				text: '',
-				createdAt: record.createdAt,
-				callRecord: record,
+				createdAt: bestSynthetic.createdAt,
+				callRecord: bestSynthetic,
 			} satisfies ChatMessage)
 		}
 
@@ -6318,12 +6353,15 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 											<div className="max-w-[78%] sm:max-w-[62%]">
 											{hasCallRecord && m.callRecord ? (
 												(() => {
-													const liveRecord = Array.isArray(profiles?.[0]?.phoneCalls)
-														? profiles[0].phoneCalls.find((item: PhoneCallRecord) =>
-															(m.callRecord?.sessionId && item.sessionId === m.callRecord.sessionId) ||
-															(m.callRecord?.callId && item.callId === m.callRecord.callId))
-														: null
-													const mergedRecord = mergePhoneCallRecord(liveRecord, m.callRecord) ?? m.callRecord
+													const liveRecord = findPhoneCallByIds(
+														profiles?.[0]?.phoneCalls,
+														{
+															callId: m.callRecord?.callId,
+															sessionId: m.callRecord?.sessionId,
+														},
+													)
+													// Prefer live terminal (declined) over a stale ringing mirror on the message.
+													const mergedRecord = mergePhoneCallRecord(m.callRecord, liveRecord) ?? liveRecord ?? m.callRecord
 													const startedMs = phoneCallStampMs(mergedRecord.createdAt)
 													const ringExpired = mergedRecord.status === 'ringing'
 														&& (startedMs === 0 || Date.now() - startedMs > INCOMING_CALL_RING_TIMEOUT_MS + 15_000)

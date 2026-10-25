@@ -116,7 +116,7 @@ import { ingestAaMultisigFromChat } from '@/utils/aaMultisigIngest'
 import { tu } from '@/locale/beamioLocale'
 import { mapServerError } from '@/locale/mapServerError'
 import { installPwaLifecycleRecovery } from '@/utils/pwaLifecycleRecovery'
-import { applyNativeIncomingVoiceOfferFromLine, claimIncomingVoiceCallReport, claimedVoiceCallerAddress, claimedVoiceCallerTag, dismissNativeIncomingVoiceCall, forgetIncomingVoiceOffer, formatLookedUpBeamioTag, isVoiceCallOfferActive, lookupIncomingVoiceOffer, markVoiceCallTerminal, mergePhoneCallRecord, nativeIncomingSystemCallPayload, parseVoiceCallSignal, recoverVoiceCallOfferSigner, rememberIncomingVoiceOffer, VOICE_CALL_IDENTITY_WARNING, voiceCallClaimMismatchesKey } from '@/utils/voiceCallSession'
+import { applyNativeIncomingVoiceOfferFromLine, claimIncomingVoiceCallReport, claimedVoiceCallerAddress, claimedVoiceCallerTag, dismissNativeIncomingVoiceCall, findPhoneCallByIds, forgetIncomingVoiceOffer, formatLookedUpBeamioTag, isVoiceCallOfferActive, lookupIncomingVoiceOffer, markVoiceCallTerminal, mergePhoneCallRecord, nativeIncomingSystemCallPayload, parseVoiceCallSignal, recoverVoiceCallOfferSigner, rememberIncomingVoiceOffer, replacePhoneCallInRows, VOICE_CALL_IDENTITY_WARNING, voiceCallClaimMismatchesKey } from '@/utils/voiceCallSession'
 
 global.Buffer = require("buffer").Buffer
 
@@ -1146,38 +1146,48 @@ function AppShell() {
 			inFlightKey = flightKey
 			attempts = 0
 
-			const currentProfiles = profilesForVoiceDeclineRef.current
+			// Prefer CoNET_Data — React profiles / ref can lag Chat's upsert in the same tick.
+			const dataProfiles = CoNET_Data?.profiles
+			const currentProfiles = Array.isArray(dataProfiles) && dataProfiles.length
+				? dataProfiles
+				: profilesForVoiceDeclineRef.current
 			if (Array.isArray(currentProfiles) && currentProfiles[0] && (sessionId || callId)) {
 				const rows: PhoneCallRecord[] = Array.isArray(currentProfiles[0].phoneCalls) ? currentProfiles[0].phoneCalls : []
-				const existing = rows.find(item =>
-					(sessionId && item.sessionId === sessionId) || (callId && item.callId === callId))
-				// Never invent a blank-peer / incoming row — that orphans the chat
-				// bubble (still "Calling…") while dialer already hid after reject.
-				if (existing) {
-					const merged = mergePhoneCallRecord(existing, {
-						callId: callId || existing.callId,
-						sessionId: sessionId || existing.sessionId,
-						peerAddress: existing.peerAddress,
-						direction: existing.direction,
-						status: terminalStatus,
-						createdAt: existing.createdAt,
-						endedAt: Date.now(),
-					})
-					if (merged && existing.status !== merged.status) {
-						const next = currentProfiles.slice()
-						next[0] = {
-							...currentProfiles[0],
-							phoneCalls: [
-								...rows.filter(item =>
-									item.sessionId !== merged.sessionId && item.callId !== merged.callId),
-								merged,
-							],
-						}
-						profilesForVoiceDeclineRef.current = next
-						setProfilesForVoiceRef.current(next)
-						if (CoNET_Data) CoNET_Data.profiles = next
-						void storeSystemData()
+				const existing = findPhoneCallByIds(rows, { callId, sessionId })
+					|| [...rows]
+						.filter(item =>
+							item.direction === 'outgoing'
+							&& (item.status === 'ringing' || item.status === 'answered'))
+						.sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0))[0]
+				// Dialer / peer reject is outbound for the local user. Prefer outgoing so
+				// a stale incoming mirror cannot leave the chat bubble on "Calling…".
+				const preferOutgoing = Boolean(
+					!existing
+					|| existing.direction === 'outgoing'
+					|| !lookupIncomingVoiceOffer(callId, sessionId),
+				)
+				const direction = preferOutgoing ? 'outgoing' : (existing?.direction || 'outgoing')
+				const merged = mergePhoneCallRecord(existing, {
+					callId: callId || existing?.callId || sessionId,
+					sessionId: sessionId || existing?.sessionId || callId,
+					peerAddress: existing?.peerAddress || '',
+					direction,
+					status: terminalStatus,
+					createdAt: existing?.createdAt || Date.now(),
+					endedAt: Date.now(),
+				})
+				if (merged && (!existing || existing.status !== merged.status)) {
+					const next = currentProfiles.slice()
+					next[0] = {
+						...currentProfiles[0],
+						phoneCalls: replacePhoneCallInRows(rows, merged)
+							.sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0))
+							.slice(0, 200),
 					}
+					profilesForVoiceDeclineRef.current = next
+					setProfilesForVoiceRef.current(next)
+					if (CoNET_Data) CoNET_Data.profiles = next
+					void storeSystemData()
 				}
 			}
 
@@ -1832,22 +1842,22 @@ function AppShell() {
 					)
 					const terminalStatus = signal.type === 'voice_call_timeout_v1' ? 'timed_out' : 'declined'
 					const callRows = Array.isArray(profile.phoneCalls) ? profile.phoneCalls : []
-					const existing = callRows.find((item: PhoneCallRecord) =>
-						item.sessionId === signal.sessionId || item.callId === signal.callId)
+					const existing = findPhoneCallByIds(callRows, {
+						callId: signal.callId,
+						sessionId: signal.sessionId,
+					})
 					const merged = mergePhoneCallRecord(existing, {
 						callId: signal.callId,
 						sessionId: signal.sessionId,
 						peerAddress: existing?.peerAddress || signAddr,
-						direction: existing?.direction || 'incoming',
+						// Peer reject of our outbound ring is outgoing for us.
+						direction: existing?.direction || 'outgoing',
 						status: terminalStatus,
 						createdAt: existing?.createdAt ?? msg.timestamp,
 						endedAt: Number(signal.timestamp) || msg.timestamp,
 					})
 					if (merged) {
-						profile.phoneCalls = [
-							...callRows.filter((item: PhoneCallRecord) => item.sessionId !== merged.sessionId && item.callId !== merged.callId),
-							merged,
-						]
+						profile.phoneCalls = replacePhoneCallInRows(callRows, merged)
 					}
 					window.dispatchEvent(new CustomEvent(
 						signal.type === 'voice_call_timeout_v1' ? 'beamio-voice-peer-timed-out' : 'beamio-voice-peer-declined',

@@ -311,6 +311,12 @@ export function createVoiceCallController(options: VoiceCallControllerOptions) {
 	}
 
 	const acceptIncoming = async (offer: VoiceCallSignal): Promise<VoiceCallChannel | null> => {
+		// Native shell owns Accept + temporary media (AES accept + AudioRecord/Track).
+		// PWA must not start worker listen or chat-send accept on shell.
+		if (isCashTreesNativeWebView()) {
+			console.warn('[voiceCall] acceptIncoming skipped — native shell owns Accept + media')
+			return null
+		}
 		const sessionId = randomMailboxVoiceSessionId()
 		const sessionKey = voiceSessionKeyFromBase64(offer.sessionKey || '')
 		selectedEntries = getRandomNodes(options.allNodes, Math.min(4, options.allNodes.length))
@@ -344,6 +350,11 @@ export function createVoiceCallController(options: VoiceCallControllerOptions) {
 	}
 
 	const rejectIncoming = async (offer: VoiceCallSignal): Promise<boolean> => {
+		// Native shell owns Decline uplink (voice_call_reject_v1 via entry).
+		if (isCashTreesNativeWebView()) {
+			console.warn('[voiceCall] rejectIncoming skipped — native shell owns Decline')
+			return true
+		}
 		const reject = makeVoiceCallSignal({
 			type: 'voice_call_reject_v1',
 			callId: offer.callId,
@@ -365,6 +376,10 @@ export function createVoiceCallController(options: VoiceCallControllerOptions) {
 	}
 
 	const timeoutIncoming = async (offer: VoiceCallSignal): Promise<boolean> => {
+		if (isCashTreesNativeWebView()) {
+			console.warn('[voiceCall] timeoutIncoming skipped — native shell owns ring timeout')
+			return true
+		}
 		const timeout = makeVoiceCallSignal({
 			type: 'voice_call_timeout_v1',
 			callId: offer.callId,

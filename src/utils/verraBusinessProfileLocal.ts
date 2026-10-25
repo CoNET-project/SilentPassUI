@@ -6,6 +6,13 @@
 
 export const VERRA_BUSINESS_PROFILE_SESSION_KEY = 'verra_business_profile_onboarding_session_v1'
 
+/**
+ * Agent invite “Create merchant card” (`flow=business`): durable draft keyed by temp @BeamioTag.
+ * Survives leaving Merchant OS and re-opening via Consumer `openExternalUrl` (new tab / shell).
+ * sessionStorage alone is wiped when that browsing context ends.
+ */
+export const VERRA_INVITE_BUSINESS_DRAFT_PREFIX = 'verra_invite_business_draft_v1:'
+
 const STORAGE_PREFIX = 'verra_business_profile_draft_v1:'
 
 export const VERRA_BUSINESS_PROFILE_BUSINESS_TYPES = ['solo', 'chain', 'ngo', 'government', 'other'] as const
@@ -114,6 +121,68 @@ export function clearSessionOnboardingBusinessDraft(): void {
   } catch {
     /* */
   }
+}
+
+function normalizeInviteDraftTag(tag: string): string {
+  return tag.trim().replace(/^@+/, '').toLowerCase()
+}
+
+export function inviteOnboardingBusinessDraftStorageKey(tag: string): string {
+  return `${VERRA_INVITE_BUSINESS_DRAFT_PREFIX}${normalizeInviteDraftTag(tag)}`
+}
+
+export function loadInviteOnboardingBusinessDraft(tag: string): VerraBusinessProfileDraft | null {
+  const keyTag = normalizeInviteDraftTag(tag)
+  if (!keyTag) return null
+  try {
+    const raw = localStorage.getItem(inviteOnboardingBusinessDraftStorageKey(keyTag))
+    if (!raw) return null
+    const p = JSON.parse(raw) as VerraBusinessProfileDraft
+    return p && typeof p === 'object' ? p : null
+  } catch {
+    return null
+  }
+}
+
+export function saveInviteOnboardingBusinessDraft(
+  tag: string,
+  patch: Partial<VerraBusinessProfileDraft>,
+): void {
+  const keyTag = normalizeInviteDraftTag(tag)
+  if (!keyTag) return
+  try {
+    const prev = loadInviteOnboardingBusinessDraft(keyTag) ?? {}
+    localStorage.setItem(
+      inviteOnboardingBusinessDraftStorageKey(keyTag),
+      JSON.stringify({ ...prev, ...patch, updatedAt: Date.now() }),
+    )
+  } catch {
+    /* quota */
+  }
+}
+
+export function clearInviteOnboardingBusinessDraft(tag: string): void {
+  const keyTag = normalizeInviteDraftTag(tag)
+  if (!keyTag) return
+  try {
+    localStorage.removeItem(inviteOnboardingBusinessDraftStorageKey(keyTag))
+  } catch {
+    /* */
+  }
+}
+
+/**
+ * Invite Create-merchant-card: prefer durable tag-keyed draft, then session.
+ * Ordinary onboarding: session only.
+ */
+export function loadOnboardingBusinessDraftForEntry(opts?: {
+  inviteTag?: string | null
+}): VerraBusinessProfileDraft | null {
+  const tag = opts?.inviteTag?.trim()
+  if (tag) {
+    return loadInviteOnboardingBusinessDraft(tag) ?? loadSessionOnboardingBusinessDraft()
+  }
+  return loadSessionOnboardingBusinessDraft()
 }
 
 /** After wallet creation / restore: merge session onboarding into EOA-scoped local draft, then clear session. */

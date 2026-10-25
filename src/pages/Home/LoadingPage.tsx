@@ -28,7 +28,7 @@ import RestoreEntryScreen from './RestoreEntryScreen'
 import BizHome from './bizHome'
 import { markAgentSponsoredMerchantCreate, setBizWorkspaceRole } from '@/utils/agentWorkspaceLocal'
 import { unlockMerchantWorkspaceSession } from '@/utils/unlockMerchantWorkspaceSession'
-import { merchantOsHandoffOpensBusinessDetails, takeMerchantOsCredentialHandoff } from '@/utils/merchantOsCredentialHandoff'
+import { takeMerchantOsCredentialHandoff } from '@/utils/merchantOsCredentialHandoff'
 import { useUnlockMerchantWorkspaceDeps } from '@/hooks/useUnlockMerchantWorkspaceDeps'
 import ccsabackphoto from '../Vouchers/assets/ccsacard.avif'
 import packageJson from '../../../package.json'
@@ -61,16 +61,18 @@ import {
 import { MerchantLegalDocumentOverlay } from '@/pages/Vouchers/example/MerchantLegalDocumentOverlay'
 import type { BeamioLegalDocId } from '@/utils/beamioLegalDocuments'
 import {
+	clearInviteOnboardingBusinessDraft,
 	clearSessionOnboardingBusinessDraft,
 	clearLiteBusinessChainAck,
 	hasVerraLiteBusinessRequiredFields,
 	loadBusinessProfileDraftForEoa,
-	loadSessionOnboardingBusinessDraft,
+	loadOnboardingBusinessDraftForEntry,
 	mergeSessionOnboardingDraftIntoEoa,
 	patchBusinessProfileDraftForEoa,
 	isVerraBusinessProfileBusinessType,
 	normalizeVerraBusinessChannelKind,
 	pickVerraBusinessFieldsFromRecover,
+	saveInviteOnboardingBusinessDraft,
 	saveSessionOnboardingBusinessDraft,
 	setLiteBusinessChainAck,
 	type VerraBusinessChannelKind,
@@ -98,7 +100,7 @@ function parseDraftChannelKind(raw: unknown): VerraBusinessChannelKind | '' {
 	return normalizeVerraBusinessChannelKind(raw) ?? ''
 }
 
-function sessionHasUnlockedCoverDetails(d: ReturnType<typeof loadSessionOnboardingBusinessDraft>): boolean {
+function sessionHasUnlockedCoverDetails(d: VerraBusinessProfileDraft | null): boolean {
 	if (!d) return false
 	if (d.coverDetailsUnlocked === false) return false
 	if (d.coverDetailsUnlocked === true) return true
@@ -154,16 +156,21 @@ export default function BeamioOnboardingModal({
 	const [settingsOpen, setSettingsOpen] = useState<''|'RecoveryQRScreen'|'RestoreEntryScreen'>('')
 	const [isInitialEntry, setIsInitialEntry] = useState(true)
 	/** Cover splash（newOnloading.html 风格）— 在进入 InitialEntryScreen 前展示 */
-	const invitedBusiness = merchantOsHandoffOpensBusinessDetails()
+	const handoffCreds = takeMerchantOsCredentialHandoff()
+	const invitedBusiness = handoffCreds?.openBusinessDetails === true
+	/** Agent invite Create merchant card: durable draft keyed by temp @BeamioTag. */
+	const inviteDraftTag = invitedBusiness ? (handoffCreds?.tag ?? '') : ''
+	const entryDraft = loadOnboardingBusinessDraftForEntry({
+		inviteTag: inviteDraftTag || null,
+	})
 	/** Invite `flow=business`: land on DiscoveryForm ("Tell us about your business"), not DetailsScreen. */
 	const [showOnboardingCover, setShowOnboardingCover] = useState(true)
 	const [coverBusinessType, setCoverBusinessType] = useState<VerraBusinessProfileBusinessType>(() => {
-		const d = loadSessionOnboardingBusinessDraft()
-		const bt = d?.businessType
+		const bt = entryDraft?.businessType
 		return isVerraBusinessProfileBusinessType(bt) ? bt : 'solo'
 	})
 	const [coverTermsAccepted, setCoverTermsAccepted] = useState(() =>
-		Boolean(loadSessionOnboardingBusinessDraft()?.onboardingTermsAccepted)
+		Boolean(entryDraft?.onboardingTermsAccepted)
 	)
 	const [onboardingLegalDocId, setOnboardingLegalDocId] = useState<BeamioLegalDocId | null>(null)
 	/** Mobile: entry → Lite 登记页；invite 直接打开 DiscoveryForm */
@@ -175,36 +182,37 @@ export default function BeamioOnboardingModal({
 	const [handoffWalletError, setHandoffWalletError] = useState('')
 	const [handoffWalletBusy, setHandoffWalletBusy] = useState(false)
 	const [detailBusinessName, setDetailBusinessName] = useState(
-		() => loadSessionOnboardingBusinessDraft()?.storeName ?? ''
+		() => entryDraft?.storeName ?? ''
 	)
 	const [detailChannelKind, setDetailChannelKind] = useState<VerraBusinessChannelKind | ''>(() =>
-		parseDraftChannelKind(loadSessionOnboardingBusinessDraft()?.channelKind),
+		parseDraftChannelKind(entryDraft?.channelKind),
 	)
 	const [detailOrgType, setDetailOrgType] = useState<OrgTypeSelect>(() =>
-		businessTypeToOrgType(loadSessionOnboardingBusinessDraft()?.businessType),
+		businessTypeToOrgType(entryDraft?.businessType),
 	)
 	const [detailCategory, setDetailCategory] = useState(
-		() => loadSessionOnboardingBusinessDraft()?.category?.trim() ?? '',
+		() => entryDraft?.category?.trim() ?? '',
 	)
 	const [detailCountry, setDetailCountry] = useState(
-		() => loadSessionOnboardingBusinessDraft()?.country || DEFAULT_ONBOARDING_DETAIL_COUNTRY,
+		() => entryDraft?.country || DEFAULT_ONBOARDING_DETAIL_COUNTRY,
 	)
-	const [detailCity, setDetailCity] = useState(() => loadSessionOnboardingBusinessDraft()?.city ?? '')
-	const [detailProvince, setDetailProvince] = useState(() => loadSessionOnboardingBusinessDraft()?.province ?? '')
+	const [detailCity, setDetailCity] = useState(() => entryDraft?.city ?? '')
+	const [detailProvince, setDetailProvince] = useState(() => entryDraft?.province ?? '')
 	const [detailWebsite, setDetailWebsite] = useState(
-		() => loadSessionOnboardingBusinessDraft()?.website ?? '',
+		() => entryDraft?.website ?? '',
 	)
 	const [detailPublicBio, setDetailPublicBio] = useState(
-		() => loadSessionOnboardingBusinessDraft()?.publicBio ?? '',
+		() => entryDraft?.publicBio ?? '',
 	)
 	/** Extra cover fields stay hidden until a lookup candidate is chosen (or a prior session already unlocked them). */
 	const [lookupSkipName, setLookupSkipName] = useState(() => {
-		const d = loadSessionOnboardingBusinessDraft()
-		if (sessionHasUnlockedCoverDetails(d) && d?.storeName?.trim()) return d.storeName.trim()
+		if (sessionHasUnlockedCoverDetails(entryDraft) && entryDraft?.storeName?.trim()) {
+			return entryDraft.storeName.trim()
+		}
 		return ''
 	})
 	const [coverDetailsUnlocked, setCoverDetailsUnlocked] = useState(() =>
-		sessionHasUnlockedCoverDetails(loadSessionOnboardingBusinessDraft()),
+		sessionHasUnlockedCoverDetails(entryDraft),
 	)
 	/** Full-screen creating overlay owned here so it survives InitialEntry → Recovery layout swap (avoids flash). */
 	const [workspaceCreating, setWorkspaceCreating] = useState(false)
@@ -248,9 +256,14 @@ export default function BeamioOnboardingModal({
 		return () => setShowFooter?.(true)
 	}, [workspaceCreating, setShowFooter])
 
+	const persistOnboardingDraft = (patch: Partial<VerraBusinessProfileDraft>) => {
+		saveSessionOnboardingBusinessDraft(patch)
+		if (inviteDraftTag) saveInviteOnboardingBusinessDraft(inviteDraftTag, patch)
+	}
+
 	useEffect(() => {
 		if (!isInitialEntry) return
-		saveSessionOnboardingBusinessDraft({
+		persistOnboardingDraft({
 			businessType: coverBusinessType,
 			onboardingTermsAccepted: coverTermsAccepted,
 			storeName: detailBusinessName,
@@ -263,6 +276,7 @@ export default function BeamioOnboardingModal({
 			website: detailWebsite,
 			publicBio: detailPublicBio,
 		})
+		// eslint-disable-next-line react-hooks/exhaustive-deps -- inviteDraftTag is mount-stable from handoff
 	}, [
 		isInitialEntry,
 		coverBusinessType,
@@ -297,27 +311,32 @@ export default function BeamioOnboardingModal({
 		temp = temp || isAcc || undefined
 
 		if (!temp?.profiles?.length) {
-			clearSessionOnboardingBusinessDraft()
 			setIsInitialLoading(true)
 			setIsInitialEntry(true)
 			setBizWorkspaceRole('merchant')
 			setShowOnboardingCover(true)
 			setShowOnboardingBusinessDetails(false)
-			setCoverBusinessType("solo")
-			setCoverTermsAccepted(false)
-			setOnboardingCoverMobilePhase('entry')
-			setDetailBusinessName("")
-			setDetailChannelKind('')
-			setDetailOrgType('')
-			setDetailCategory('')
-			setDetailCountry(DEFAULT_ONBOARDING_DETAIL_COUNTRY)
-			setDetailCity("")
-			setDetailProvince("")
-			setDetailWebsite("")
-			setDetailPublicBio("")
-			setCoverDetailsUnlocked(false)
 			clearOnboardingWebCandidate()
 			setWorkspaceCreating(false)
+			if (inviteDraftTag) {
+				/** Agent invite: keep unfinished DiscoveryForm draft; do not wipe session/localStorage. */
+				setOnboardingCoverMobilePhase('businessForm')
+			} else {
+				clearSessionOnboardingBusinessDraft()
+				setCoverBusinessType('solo')
+				setCoverTermsAccepted(false)
+				setOnboardingCoverMobilePhase('entry')
+				setDetailBusinessName('')
+				setDetailChannelKind('')
+				setDetailOrgType('')
+				setDetailCategory('')
+				setDetailCountry(DEFAULT_ONBOARDING_DETAIL_COUNTRY)
+				setDetailCity('')
+				setDetailProvince('')
+				setDetailWebsite('')
+				setDetailPublicBio('')
+				setCoverDetailsUnlocked(false)
+			}
 			onInitComplete?.()
 			return
 		}
@@ -428,6 +447,8 @@ export default function BeamioOnboardingModal({
 			if (sponsoredEoa && ethers.isAddress(sponsoredEoa)) {
 				markAgentSponsoredMerchantCreate(sponsoredEoa)
 			}
+			clearInviteOnboardingBusinessDraft(creds.tag)
+			clearSessionOnboardingBusinessDraft()
 			home()
 		} catch {
 			stayOnInviteDiscoveryForm()
@@ -465,7 +486,7 @@ export default function BeamioOnboardingModal({
 	const commitPreparedCardSetupAssets = (assets: OnboardingCardSetupAssets) => {
 		persistOnboardingCardSetupAssets(assets)
 		const sess = loadSessionOnboardingBusinessDraft() ?? {}
-		saveSessionOnboardingBusinessDraft({
+		persistOnboardingDraft({
 			logoUrl: pickEmptyOnly(sess.logoUrl ?? '', assets.logoUrl),
 			merchantImageUrl: pickEmptyOnly(sess.merchantImageUrl ?? '', assets.backgroundUrl),
 			brandHex: pickEmptyOnly(sess.brandHex ?? '', assets.brandColor),
@@ -492,7 +513,7 @@ export default function BeamioOnboardingModal({
 		setDetailWebsite('')
 		setDetailPublicBio('')
 		setCoverTermsAccepted(false)
-		saveSessionOnboardingBusinessDraft({
+		persistOnboardingDraft({
 			coverDetailsUnlocked: false,
 			streetAddress: '',
 			postalCode: '',
@@ -530,13 +551,14 @@ export default function BeamioOnboardingModal({
 		onShowDetailsManually: () => {
 			setCoverDetailsUnlocked((open) => {
 				const next = !open
-				saveSessionOnboardingBusinessDraft({ coverDetailsUnlocked: next })
+				persistOnboardingDraft({ coverDetailsUnlocked: next })
 				return next
 			})
 		},
 		lookupSkipValue: lookupSkipName,
 		cardSetupPreparing: cardSetupPreparing || handoffWalletBusy,
 		cardSetupPrepareError: handoffWalletError || cardSetupPrepareError,
+		primaryCtaLabel: invitedBusiness ? tu('onb_invite_continue_create_card') : undefined,
 		onSelectLookupCandidate: (candidate: OnboardingBusinessLookupCandidate) => {
 			const seeded = seedOnboardingFormFromCandidate(candidate, detailBusinessName)
 			setLookupSkipName(seeded.storeName.trim())
@@ -550,7 +572,7 @@ export default function BeamioOnboardingModal({
 			setDetailWebsite(seeded.website)
 			setDetailPublicBio(seeded.publicBio)
 			setCoverDetailsUnlocked(true)
-			saveSessionOnboardingBusinessDraft({
+			persistOnboardingDraft({
 				streetAddress: seeded.street,
 				postalCode: seeded.postalCode,
 				supportEmail: seeded.email,
@@ -628,7 +650,7 @@ export default function BeamioOnboardingModal({
 		setCoverTermsAccepted(true)
 		const assets = loadOnboardingCardSetupAssets()
 		const sess = loadSessionOnboardingBusinessDraft() ?? {}
-		saveSessionOnboardingBusinessDraft({
+		persistOnboardingDraft({
 			businessType: bt,
 			onboardingTermsAccepted: true,
 			storeName: detailBusinessName,
@@ -644,8 +666,8 @@ export default function BeamioOnboardingModal({
 			merchantImageUrl: pickEmptyOnly(sess.merchantImageUrl ?? '', assets?.backgroundUrl ?? ''),
 			brandHex: pickEmptyOnly(sess.brandHex ?? '', assets?.brandColor ?? ''),
 		})
-		/** Invite: restore wallet after discovery; skip DetailsScreen ("Set up … OS commerce"). */
-		if (takeMerchantOsCredentialHandoff()?.openBusinessDetails) {
+		/** Invite: restore wallet after discovery; skip DetailsScreen + Claim @BeamioTag (tag already on temp account). */
+		if (invitedBusiness || takeMerchantOsCredentialHandoff()?.openBusinessDetails) {
 			void continueFromBusinessDetails()
 			return
 		}

@@ -177,6 +177,11 @@ export type OnboardingBusinessDiscoveryFormProps = {
 	cardSetupPreparing?: boolean
 	/** Panel-inline prepare error; Continue stays available. */
 	cardSetupPrepareError?: string
+	/**
+	 * Primary CTA when not preparing. Agent invite Create merchant card uses a Continue label
+	 * (temp account already has @BeamioTag — do not show Claim Tag).
+	 */
+	primaryCtaLabel?: string
 	/** `embedded` = desktop right panel (no sticky footer). `sheet` = mobile sticky CTA. */
 	layout?: 'embedded' | 'sheet'
 	idPrefix?: string
@@ -207,10 +212,12 @@ export function OnboardingBusinessDiscoveryForm({
 	lookupSkipValue = '',
 	cardSetupPreparing = false,
 	cardSetupPrepareError = '',
+	primaryCtaLabel,
 	layout = 'embedded',
 	idPrefix = 'onb-discovery',
 }: OnboardingBusinessDiscoveryFormProps): React.ReactElement {
 	const { tu } = useTu()
+	const submitLabel = primaryCtaLabel?.trim() || tu('onb_next_claim_tag')
 	const subOptions = useMemo(() => subsForChannel(channelKind), [channelKind])
 
 	const canSubmit =
@@ -520,7 +527,7 @@ export function OnboardingBusinessDiscoveryForm({
 					onSubmit()
 				}}
 				aria-busy={cardSetupPreparing}
-				aria-label={cardSetupPreparing ? tu('onb_card_setup_preparing') : tu('onb_next_claim_tag')}
+				aria-label={cardSetupPreparing ? tu('onb_card_setup_preparing') : submitLabel}
 				className={`
 					flex w-full items-center justify-center gap-2 rounded-xl bg-[#1562f0] py-4 text-[17px] font-semibold text-white
 					shadow-[0px_10px_20px_rgba(0,0,0,0.05)] transition-all hover:shadow-md active:scale-[0.98]
@@ -535,7 +542,7 @@ export function OnboardingBusinessDiscoveryForm({
 					</>
 				) : (
 					<>
-						{tu('onb_next_claim_tag')}
+						{submitLabel}
 						<ArrowRight className="h-5 w-5 shrink-0" strokeWidth={2.25} aria-hidden />
 					</>
 				)}

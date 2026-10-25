@@ -129,7 +129,11 @@ import {
 	lookupIncomingVoiceOffer,
 	INCOMING_CALL_RING_TIMEOUT_MS,
 	mergePhoneCallRecord,
+	isPhoneCallTerminalStatus,
 	phoneCallStampMs,
+	phoneCallIdsOverlap,
+	findPhoneCallByIds,
+	replacePhoneCallInRows,
 	normalizeVoiceTimestampMs,
 	markVoiceCallTerminal,
 	nativeIncomingSystemCallPayload,
@@ -2009,10 +2013,13 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 	const [chatError, setChatError] = useState<string | null>(null)
 
 	const upsertPhoneCallRecord = useCallback((patch: PhoneCallRecord) => {
-		const currentProfiles = Array.isArray(profiles) ? profiles : []
+		// Prefer CoNET_Data — React `profiles` can be stale when reject lands after quiet disconnect.
+		const currentProfiles = Array.isArray(CoNET_Data?.profiles) && CoNET_Data.profiles.length
+			? CoNET_Data.profiles
+			: (Array.isArray(profiles) ? profiles : [])
 		if (!currentProfiles.length) return
 		const current: PhoneCallRecord[] = Array.isArray(currentProfiles[0].phoneCalls) ? currentProfiles[0].phoneCalls : []
-		const previous = current.find(item => item.sessionId === patch.sessionId || item.callId === patch.callId)
+		const previous = findPhoneCallByIds(current, patch)
 		const merged = mergePhoneCallRecord(previous, {
 			...patch,
 			createdAt: previous?.createdAt ?? patch.createdAt,
@@ -2021,7 +2028,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		const nextProfiles = currentProfiles.slice()
 		nextProfiles[0] = {
 			...currentProfiles[0],
-			phoneCalls: [...current.filter(item => item.sessionId !== merged.sessionId && item.callId !== merged.callId), merged]
+			phoneCalls: replacePhoneCallInRows(current, merged)
 				.sort((a, b) => b.createdAt - a.createdAt)
 				.slice(0, 200),
 		}
@@ -2031,15 +2038,31 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			setCoNET_Data(CoNET_Data)
 		}
 		void storeSystemData()
+		// Patch live chat bubbles in place so "Calling…" upgrades even before phoneCalls re-merge.
+		setMessages(prev => {
+			let changed = false
+			const next = prev.map(message => {
+				if (!message.callRecord || !phoneCallIdsOverlap(message.callRecord, merged)) return message
+				const nextRecord = mergePhoneCallRecord(message.callRecord, merged)
+				if (!nextRecord || nextRecord === message.callRecord) return message
+				if (nextRecord.status === message.callRecord.status && nextRecord.endedAt === message.callRecord.endedAt) {
+					return message
+				}
+				changed = true
+				return { ...message, callRecord: nextRecord }
+			})
+			if (changed) chatData.messages = next
+			return changed ? next : prev
+		})
 		mirrorChatMessageToHistory(chatData.address, {
-			id: `phone_${patch.sessionId}_${merged.status}_${Date.now()}`,
-			sendId: `phone:${patch.sessionId}:${merged.status}`,
-			from: 'me',
+			id: `phone_${merged.sessionId || merged.callId}_${merged.status}_${Date.now()}`,
+			sendId: `phone:${merged.sessionId || merged.callId}:${merged.status}`,
+			from: merged.direction === 'incoming' ? 'them' : 'me',
 			text: '',
 			createdAt: Date.now(),
 			callRecord: merged,
-		}, 'out')
-	}, [chatData.address, profiles, setProfiles])
+		}, merged.direction === 'incoming' ? 'in' : 'out')
+	}, [chatData, profiles, setProfiles])
 
 	useEffect(() => {
 		const addCapturedMedia = (dataUrl: string, mimeType?: string, filename?: string) => {
@@ -3209,19 +3232,68 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 	const endVoiceCall = useCallback(async (
 		requestedStatus?: PhoneCallRecord['status'],
 		notifyPeer = true,
+		idHint?: { callId?: string; sessionId?: string; peerAddress?: string },
 	) => {
 		voiceCallLiveRef.current = false
 		outgoingMicPreopenRef.current?.getTracks().forEach((track) => track.stop())
 		outgoingMicPreopenRef.current = null
-		const sessionId = voiceCallSessionRef.current
-		const callId = voiceCallOfferRef.current?.callId
-		const callSessionId = voiceCallOfferRef.current?.sessionId || sessionId || ''
+		// Capture IDs before clearing — quiet disconnect may already have wiped refs
+		// when callRejected arrives; idHint keeps the chat bubble updateable.
+		const sessionId = String(idHint?.sessionId || voiceCallSessionRef.current || '').trim()
+		const callId = String(idHint?.callId || voiceCallOfferRef.current?.callId || '').trim()
+		const callSessionId = String(
+			idHint?.sessionId ||
+			voiceCallOfferRef.current?.sessionId ||
+			sessionId ||
+			'',
+		).trim()
 		const peerSessionId = voiceCallPeerSessionRef.current || ''
-		if (callSessionId) locallyEndedVoiceSessionsRef.current.add(callSessionId)
-		if (callId) locallyEndedVoiceSessionsRef.current.add(callId)
+		const hintPeer = String(idHint?.peerAddress || '').trim()
+		const rowsSource = Array.isArray(CoNET_Data?.profiles?.[0]?.phoneCalls)
+			? CoNET_Data!.profiles[0].phoneCalls
+			: (Array.isArray(profiles?.[0]?.phoneCalls) ? profiles[0].phoneCalls : [])
+		const previous = findPhoneCallByIds(rowsSource, { callId, sessionId: callSessionId || sessionId })
+			|| (hintPeer || toAddress
+				? [...rowsSource]
+					.filter((item: PhoneCallRecord) =>
+						item.direction === 'outgoing' &&
+						(item.status === 'ringing' || item.status === 'answered') &&
+						String(item.peerAddress || '').toLowerCase() === String(hintPeer || toAddress).toLowerCase())
+					.sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0))[0]
+				: undefined)
+		const upsertCallId = callId || previous?.callId || ''
+		const upsertSessionId = callSessionId || sessionId || previous?.sessionId || ''
+		const upsertId = String(upsertCallId || upsertSessionId || '').trim()
+		if (upsertSessionId) locallyEndedVoiceSessionsRef.current.add(upsertSessionId)
+		if (upsertCallId) locallyEndedVoiceSessionsRef.current.add(upsertCallId)
 		if (sessionId) locallyEndedVoiceSessionsRef.current.add(sessionId)
 		if (peerSessionId) locallyEndedVoiceSessionsRef.current.add(peerSessionId)
-		if (callId && callSessionId) markVoiceCallTerminal(callId, callSessionId)
+		if (upsertCallId && upsertSessionId) markVoiceCallTerminal(upsertCallId, upsertSessionId)
+		else if (upsertSessionId) markVoiceCallTerminal(upsertSessionId, upsertSessionId)
+		// Write terminal status BEFORE idle / clearing refs so "Calling…" cannot stick
+		// after dialer already hid.
+		if (upsertId) {
+			const terminalAlready = isPhoneCallTerminalStatus(previous?.status)
+			const status = terminalAlready && (!requestedStatus || requestedStatus === 'ended' || requestedStatus === 'cancelled')
+				? previous!.status
+				: (requestedStatus
+					|| (previous?.status === 'ringing' ? 'cancelled' : previous?.status === 'missed' ? 'missed' : 'ended'))
+			const endedAt = Date.now()
+			upsertPhoneCallRecord({
+				callId: upsertCallId || upsertId,
+				sessionId: upsertSessionId || upsertId,
+				peerAddress: previous?.peerAddress || hintPeer || toAddress,
+				direction: previous?.direction || 'outgoing',
+				status,
+				createdAt: previous?.createdAt || endedAt,
+				endedAt,
+				durationMs: previous?.answeredAt ? Math.max(0, endedAt - previous.answeredAt) : previous?.durationMs,
+			})
+			dispatchNativeSystemCallAction('endSystemCall', {
+				callId: upsertCallId || upsertId,
+				sessionId: upsertSessionId || upsertId,
+			})
+		}
 		voiceCallOfferRef.current = null
 		voiceCallSessionRef.current = null
 		voiceCallPeerSessionRef.current = null
@@ -3232,24 +3304,6 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		setVoiceCallMinimized(false)
 		setLiveVoiceSessionId('')
 		setVoiceCallState('idle')
-		if (callId) {
-			const previous = (Array.isArray(profiles?.[0]?.phoneCalls) ? profiles[0].phoneCalls : [])
-				.find((item: PhoneCallRecord) => item.sessionId === callSessionId)
-			const status = requestedStatus
-				|| (previous?.status === 'ringing' ? 'cancelled' : previous?.status === 'missed' ? 'missed' : 'ended')
-			const endedAt = Date.now()
-			upsertPhoneCallRecord({
-				callId,
-				sessionId: callSessionId,
-				peerAddress: previous?.peerAddress || toAddress,
-				direction: previous?.direction || 'outgoing',
-				status,
-				createdAt: previous?.createdAt || endedAt,
-				endedAt,
-				durationMs: previous?.answeredAt ? Math.max(0, endedAt - previous.answeredAt) : previous?.durationMs,
-			})
-			dispatchNativeSystemCallAction('endSystemCall', { callId, sessionId: callSessionId })
-		}
 		if (controller) {
 			if (requestedStatus === 'timed_out' && notifyPeer) {
 				await controller.notifyRingTimeout()
@@ -3402,25 +3456,43 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 	useEffect(() => {
 		const onPeerStopped = (status: 'declined' | 'timed_out') => (event: Event) => {
 			const detail = (event as CustomEvent<{ callId?: string; sessionId?: string }>).detail
-			const sessionId = detail?.sessionId || ''
-			const callId = detail?.callId || ''
-			const rows: PhoneCallRecord[] = Array.isArray(profiles?.[0]?.phoneCalls) ? profiles[0].phoneCalls : []
-			const previous = rows.find(item =>
-				(sessionId && item.sessionId === sessionId) || (callId && item.callId === callId))
-			if (previous && (previous.status === 'ringing' || previous.status === 'answered')) {
+			const sessionId = String(detail?.sessionId || '').trim()
+			const callId = String(detail?.callId || '').trim()
+			const rows: PhoneCallRecord[] = Array.isArray(CoNET_Data?.profiles?.[0]?.phoneCalls)
+				? CoNET_Data!.profiles[0].phoneCalls
+				: (Array.isArray(profiles?.[0]?.phoneCalls) ? profiles[0].phoneCalls : [])
+			const previous = findPhoneCallByIds(rows, { callId, sessionId })
+				|| [...rows]
+					.filter(item => item.direction === 'outgoing' && (item.status === 'ringing' || item.status === 'answered'))
+					.sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0))[0]
+			const offer = voiceCallOfferRef.current
+			const idsMatchOffer = Boolean(offer) && (
+				(sessionId && offer?.sessionId === sessionId) ||
+				(callId && offer?.callId === callId) ||
+				(!sessionId && !callId)
+			)
+			const handledKey = sessionId || callId || offer?.sessionId || ''
+			if (handledKey && remoteRejectHandledRef.current === handledKey) return
+			if (handledKey) remoteRejectHandledRef.current = handledKey
+			const peerAddress = previous?.peerAddress || toAddress
+			if (previous || callId || sessionId) {
 				upsertPhoneCallRecord({
-					...previous,
+					callId: callId || previous?.callId || sessionId,
+					sessionId: sessionId || previous?.sessionId || callId,
+					peerAddress,
+					direction: previous?.direction || 'outgoing',
 					status,
+					createdAt: previous?.createdAt || Date.now(),
 					endedAt: Date.now(),
 				})
 			}
-			const offer = voiceCallOfferRef.current
-			if (!offer || voiceCallState !== 'outgoing') return
-			if (sessionId && sessionId !== offer.sessionId) return
-			if (callId && callId !== offer.callId) return
-			if (remoteRejectHandledRef.current === offer.sessionId) return
-			remoteRejectHandledRef.current = offer.sessionId
-			void endVoiceCall(status, false)
+			if (idsMatchOffer || voiceCallState === 'outgoing' || previous?.direction === 'outgoing') {
+				void endVoiceCall(status, false, {
+					callId: callId || previous?.callId || offer?.callId,
+					sessionId: sessionId || previous?.sessionId || offer?.sessionId,
+					peerAddress,
+				})
+			}
 		}
 		const onPeerDeclined = onPeerStopped('declined')
 		const onPeerTimedOut = onPeerStopped('timed_out')
@@ -3430,7 +3502,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			window.removeEventListener('beamio-voice-peer-declined', onPeerDeclined)
 			window.removeEventListener('beamio-voice-peer-timed-out', onPeerTimedOut)
 		}
-	}, [endVoiceCall, profiles, upsertPhoneCallRecord, voiceCallState])
+	}, [endVoiceCall, profiles, toAddress, upsertPhoneCallRecord, voiceCallState])
 
 	useEffect(() => {
 		const onNativeCallAction = (event: Event) => {
@@ -3514,9 +3586,43 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 					void rejectVoiceCall(nativeOffer as VoiceCallSignal)
 					return
 				}
-				if (matchesOutgoing || voiceCallState === 'outgoing') {
-					void endVoiceCall('declined', false)
+				// Always force declined onto the outbound bubble — dialer may already
+				// have quiet-disconnected (refs idle / matchesOutgoing false).
+				const detailCallId = String(detail.callId || '').trim()
+				const detailSessionId = String(detail.sessionId || '').trim()
+				const rows: PhoneCallRecord[] = Array.isArray(CoNET_Data?.profiles?.[0]?.phoneCalls)
+					? CoNET_Data!.profiles[0].phoneCalls
+					: (Array.isArray(profiles?.[0]?.phoneCalls) ? profiles[0].phoneCalls : [])
+				const previousOutgoing = findPhoneCallByIds(rows, {
+					callId: detailCallId,
+					sessionId: detailSessionId,
+				}) || [...rows]
+					.filter(item =>
+						item.direction === 'outgoing' &&
+						(item.status === 'ringing' || item.status === 'answered') &&
+						(!toAddress || String(item.peerAddress || '').toLowerCase() === String(toAddress).toLowerCase()))
+					.sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0))[0]
+				const offer = voiceCallOfferRef.current
+				const declineCallId = detailCallId || previousOutgoing?.callId || offer?.callId || ''
+				const declineSessionId = detailSessionId || previousOutgoing?.sessionId || offer?.sessionId || ''
+				const peerAddress = previousOutgoing?.peerAddress || toAddress
+				if (declineCallId || declineSessionId) {
+					upsertPhoneCallRecord({
+						callId: declineCallId || declineSessionId,
+						sessionId: declineSessionId || declineCallId,
+						peerAddress,
+						direction: 'outgoing',
+						status: 'declined',
+						createdAt: previousOutgoing?.createdAt || Date.now(),
+						endedAt: Date.now(),
+					})
+					markVoiceCallTerminal(declineCallId || declineSessionId, declineSessionId || declineCallId)
 				}
+				void endVoiceCall('declined', false, {
+					callId: declineCallId,
+					sessionId: declineSessionId,
+					peerAddress,
+				})
 			} else if (detail.action === 'callTimedOut' && matchesIncoming && nativeOffer) {
 				const offer = nativeOffer as VoiceCallSignal
 				if (nativeShell) {
@@ -3570,7 +3676,16 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 					if (matchesIncoming) {
 						setIncomingVoiceOffer(null)
 					}
-					void endVoiceCall(undefined, false)
+					// Quiet disconnect after reject often emits callEnded — do not
+					// overwrite an already-terminal outbound bubble (declined/cancelled).
+					const endRows: PhoneCallRecord[] = Array.isArray(profiles?.[0]?.phoneCalls) ? profiles[0].phoneCalls : []
+					const alreadyTerminal = endRows.some(item =>
+						isPhoneCallTerminalStatus(item.status) &&
+						((detail.sessionId && item.sessionId === detail.sessionId) ||
+							(detail.callId && item.callId === detail.callId)))
+					if (!alreadyTerminal) {
+						void endVoiceCall(undefined, false)
+					}
 					return
 				}
 				// Legacy iOS: unanswered Decline was mis-tagged as callEnded.
@@ -3884,29 +3999,49 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 
 	/** 仅展示“正文”消息（含文字或 paymentCard）；带 reply 的 reaction 消息不单独成行，用于在目标消息上显示 icon */
 	const displayableMessages = useMemo(() => {
-		const currentChatCalls = (Array.isArray(profiles?.[0]?.phoneCalls) ? profiles[0].phoneCalls : [])
-			.filter((record: PhoneCallRecord) => record.peerAddress?.toLowerCase() === chatData.address?.toLowerCase())
-		const currentCallBySessionId = new Map<string, PhoneCallRecord>(
-			currentChatCalls.map((record: PhoneCallRecord) => [record.sessionId, record] as const),
-		)
-		const seenCallSessionIds = new Set<string>()
+		const allPhoneCalls: PhoneCallRecord[] = Array.isArray(profiles?.[0]?.phoneCalls) ? profiles[0].phoneCalls : []
+		const peerLower = String(chatData.address || '').toLowerCase()
+		const currentChatCalls = allPhoneCalls.filter((record: PhoneCallRecord) =>
+			!peerLower || String(record.peerAddress || '').toLowerCase() === peerLower || !record.peerAddress)
+		// Match by callId/sessionId across all rows — peer filter alone can miss a
+		// declined write whose peerAddress was blank during the quiet-disconnect race.
+		const findLiveCall = (sessionId?: string, callId?: string): PhoneCallRecord | undefined => {
+			const byId = findPhoneCallByIds(allPhoneCalls, { callId, sessionId })
+			if (!byId) return undefined
+			if (!peerLower) return byId
+			const byPeer = String(byId.peerAddress || '').toLowerCase()
+			if (!byPeer || byPeer === peerLower) return byId
+			return findPhoneCallByIds(currentChatCalls, { callId, sessionId }) || byId
+		}
+		const callDedupeKey = (record: PhoneCallRecord | undefined): string => {
+			const sid = String(record?.sessionId || '').trim()
+			if (sid) return `s:${sid}`
+			const cid = String(record?.callId || '').trim()
+			return cid ? `c:${cid}` : ''
+		}
+		const seenCallKeys = new Set<string>()
 		const mergedMessages: ChatMessage[] = []
 
 		for (const message of messages || []) {
 			const callRecord = message.callRecord
-			const sessionId = callRecord?.sessionId
-			if (!sessionId) {
+			const sessionId = String(callRecord?.sessionId || '').trim()
+			const callId = String(callRecord?.callId || '').trim()
+			if (!sessionId && !callId) {
 				mergedMessages.push(message)
 				continue
 			}
 
-			// A status transition is mirrored as a new history entry. Treat all
-			// entries for one voice session as one chat bubble and prefer the
-			// current phone-call record (which contains the newest status).
-			const currentRecord = currentCallBySessionId.get(sessionId)
-			const bestRecord = mergePhoneCallRecord(currentRecord, callRecord) || callRecord
-			if (seenCallSessionIds.has(sessionId)) {
-				const existingIndex = mergedMessages.findIndex(item => item.callRecord?.sessionId === sessionId)
+			// Prefer the live phoneCalls row (may already be declined) over a stale
+			// ringing mirror still sitting on the history message.
+			const currentRecord = findLiveCall(sessionId, callId)
+			const bestRecord = mergePhoneCallRecord(callRecord, currentRecord) || currentRecord || callRecord
+			const key = callDedupeKey(bestRecord) || callDedupeKey(callRecord)
+			if (!key) {
+				mergedMessages.push(message)
+				continue
+			}
+			if (seenCallKeys.has(key)) {
+				const existingIndex = mergedMessages.findIndex(item => callDedupeKey(item.callRecord) === key)
 				if (existingIndex >= 0) {
 					const kept = mergePhoneCallRecord(mergedMessages[existingIndex].callRecord, bestRecord) || bestRecord
 					mergedMessages[existingIndex] = {
@@ -3917,22 +4052,25 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				}
 				continue
 			}
-			seenCallSessionIds.add(sessionId)
+			seenCallKeys.add(key)
+			const bubbleId = sessionId || callId
 			mergedMessages.push({
 				...message,
-				id: `phone_${sessionId}`,
-				sendId: `phone:${sessionId}`,
+				id: `phone_${bubbleId}`,
+				sendId: `phone:${bubbleId}`,
 				from: bestRecord.direction === 'outgoing' ? 'me' : 'them',
 				callRecord: bestRecord,
 			})
 		}
 
 		for (const record of currentChatCalls) {
-			if (seenCallSessionIds.has(record.sessionId)) continue
-			seenCallSessionIds.add(record.sessionId)
+			const key = callDedupeKey(record)
+			if (!key || seenCallKeys.has(key)) continue
+			seenCallKeys.add(key)
+			const bubbleId = record.sessionId || record.callId
 			mergedMessages.push({
-				id: `phone_${record.sessionId}`,
-				sendId: `phone:${record.sessionId}`,
+				id: `phone_${bubbleId}`,
+				sendId: `phone:${bubbleId}`,
 				from: record.direction === 'outgoing' ? 'me' : 'them',
 				text: '',
 				createdAt: record.createdAt,
@@ -6174,9 +6312,9 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 											{hasCallRecord && m.callRecord ? (
 												(() => {
 													const liveRecord = Array.isArray(profiles?.[0]?.phoneCalls)
-														? profiles[0].phoneCalls.find(
-															(item: PhoneCallRecord) => item.sessionId === m.callRecord?.sessionId,
-														)
+														? profiles[0].phoneCalls.find((item: PhoneCallRecord) =>
+															(m.callRecord?.sessionId && item.sessionId === m.callRecord.sessionId) ||
+															(m.callRecord?.callId && item.callId === m.callRecord.callId))
 														: null
 													const mergedRecord = mergePhoneCallRecord(liveRecord, m.callRecord) ?? m.callRecord
 													const startedMs = phoneCallStampMs(mergedRecord.createdAt)

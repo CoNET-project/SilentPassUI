@@ -1151,28 +1151,33 @@ function AppShell() {
 				const rows: PhoneCallRecord[] = Array.isArray(currentProfiles[0].phoneCalls) ? currentProfiles[0].phoneCalls : []
 				const existing = rows.find(item =>
 					(sessionId && item.sessionId === sessionId) || (callId && item.callId === callId))
-				const merged = mergePhoneCallRecord(existing, {
-					callId: callId || existing?.callId || sessionId,
-					sessionId: sessionId || existing?.sessionId || callId,
-					peerAddress: existing?.peerAddress || '',
-					direction: existing?.direction || 'incoming',
-					status: terminalStatus,
-					createdAt: existing?.createdAt ?? Date.now(),
-					endedAt: Date.now(),
-				})
-				if (merged && existing?.status !== merged.status) {
-					const next = currentProfiles.slice()
-					next[0] = {
-						...currentProfiles[0],
-						phoneCalls: [
-							...rows.filter(item => item.sessionId !== merged.sessionId && item.callId !== merged.callId),
-							merged,
-						],
+				// Never invent a blank-peer / incoming row — that orphans the chat
+				// bubble (still "Calling…") while dialer already hid after reject.
+				if (existing) {
+					const merged = mergePhoneCallRecord(existing, {
+						callId: callId || existing.callId,
+						sessionId: sessionId || existing.sessionId,
+						peerAddress: existing.peerAddress,
+						direction: existing.direction,
+						status: terminalStatus,
+						createdAt: existing.createdAt,
+						endedAt: Date.now(),
+					})
+					if (merged && existing.status !== merged.status) {
+						const next = currentProfiles.slice()
+						next[0] = {
+							...currentProfiles[0],
+							phoneCalls: [
+								...rows.filter(item =>
+									item.sessionId !== merged.sessionId && item.callId !== merged.callId),
+								merged,
+							],
+						}
+						profilesForVoiceDeclineRef.current = next
+						setProfilesForVoiceRef.current(next)
+						if (CoNET_Data) CoNET_Data.profiles = next
+						void storeSystemData()
 					}
-					profilesForVoiceDeclineRef.current = next
-					setProfilesForVoiceRef.current(next)
-					if (CoNET_Data) CoNET_Data.profiles = next
-					void storeSystemData()
 				}
 			}
 

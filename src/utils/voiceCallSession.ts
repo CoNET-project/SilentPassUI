@@ -505,13 +505,26 @@ const PHONE_CALL_STATUS_RANK: Record<PhoneCallRecord['status'], number> = {
 	failed: 3,
 	missed: 3,
 	timed_out: 3,
-	ended: 4,
+	ended: 3,
 }
+
+const PHONE_CALL_TERMINAL_STATUSES: ReadonlySet<PhoneCallRecord['status']> = new Set([
+	'cancelled',
+	'declined',
+	'failed',
+	'missed',
+	'timed_out',
+	'ended',
+])
+
+export const isPhoneCallTerminalStatus = (status: PhoneCallRecord['status'] | undefined): boolean =>
+	Boolean(status && PHONE_CALL_TERMINAL_STATUSES.has(status))
 
 /**
  * Keep the further-along status when two snapshots of the same call arrive out
  * of order. A later `ringing` history row must not paint the bubble back to
- * "Calling…" after the ring already timed out.
+ * "Calling…" after the ring already timed out. Equal ranks prefer the newer
+ * (incoming) snapshot so decline after a bogus callEnded still shows declined.
  */
 /** Chat stores some call timestamps in seconds. Compare them as milliseconds. */
 export const phoneCallStampMs = (raw: unknown): number => {
@@ -520,22 +533,68 @@ export const phoneCallStampMs = (raw: unknown): number => {
 	return n < 1e12 ? n * 1000 : n
 }
 
+const nonBlank = (value: unknown): string => {
+	const s = String(value || '').trim()
+	return s
+}
+
+/** Match two call snapshots when either non-blank id overlaps. */
+export const phoneCallIdsOverlap = (
+	a: { callId?: string; sessionId?: string } | null | undefined,
+	b: { callId?: string; sessionId?: string } | null | undefined,
+): boolean => {
+	const aCall = nonBlank(a?.callId)
+	const aSession = nonBlank(a?.sessionId)
+	const bCall = nonBlank(b?.callId)
+	const bSession = nonBlank(b?.sessionId)
+	if (aCall && bCall && aCall === bCall) return true
+	if (aSession && bSession && aSession === bSession) return true
+	return false
+}
+
+export const findPhoneCallByIds = (
+	rows: readonly PhoneCallRecord[] | null | undefined,
+	ids: { callId?: string; sessionId?: string },
+): PhoneCallRecord | undefined => {
+	const callId = nonBlank(ids.callId)
+	const sessionId = nonBlank(ids.sessionId)
+	if (!callId && !sessionId) return undefined
+	return (rows || []).find(item =>
+		(callId && nonBlank(item.callId) === callId) ||
+		(sessionId && nonBlank(item.sessionId) === sessionId))
+}
+
+/**
+ * Replace any prior row that shares a non-blank callId or sessionId.
+ * Never use `!== a && !== b` — that drops the wrong row when callId ≠ sessionId.
+ */
+export const replacePhoneCallInRows = (
+	rows: readonly PhoneCallRecord[],
+	merged: PhoneCallRecord,
+): PhoneCallRecord[] => [
+	...rows.filter(item => !phoneCallIdsOverlap(item, merged)),
+	merged,
+]
+
 export const mergePhoneCallRecord = (
 	current: PhoneCallRecord | null | undefined,
 	incoming: PhoneCallRecord | null | undefined,
 ): PhoneCallRecord | null => {
 	if (!incoming?.callId && !incoming?.sessionId) return current ?? null
 	if (!current) return incoming ?? null
-	const sameCall = current.callId === incoming.callId || current.sessionId === incoming.sessionId
+	const sameCall = phoneCallIdsOverlap(current, incoming)
 	if (!sameCall) return incoming
-	const keepCurrent = (PHONE_CALL_STATUS_RANK[current.status] ?? 0) >= (PHONE_CALL_STATUS_RANK[incoming.status] ?? 0)
+	const keepCurrent = (PHONE_CALL_STATUS_RANK[current.status] ?? 0) > (PHONE_CALL_STATUS_RANK[incoming.status] ?? 0)
 	const status = keepCurrent ? current.status : incoming.status
 	return {
 		...current,
 		...incoming,
+		// Never blank-overwrite stable IDs — empty bridge fields orphan history rows.
+		callId: nonBlank(incoming.callId) || nonBlank(current.callId),
+		sessionId: nonBlank(incoming.sessionId) || nonBlank(current.sessionId),
 		status,
 		direction: current.direction || incoming.direction,
-		peerAddress: current.peerAddress || incoming.peerAddress,
+		peerAddress: nonBlank(current.peerAddress) || nonBlank(incoming.peerAddress),
 		createdAt: current.createdAt || incoming.createdAt,
 		answeredAt: current.answeredAt ?? incoming.answeredAt,
 		endedAt: status === 'ringing'

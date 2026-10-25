@@ -132,6 +132,7 @@ import {
 	phoneCallStampMs,
 	normalizeVoiceTimestampMs,
 	markVoiceCallTerminal,
+	nativeIncomingSystemCallPayload,
 	rememberIncomingVoiceOffer,
 	VOICE_CALL_IDENTITY_WARNING,
 	voiceCallClaimMismatchesKey,
@@ -2797,14 +2798,18 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 						identityWarning: nextMismatch ? VOICE_CALL_IDENTITY_WARNING : '',
 					}
 					setIncomingCaller({ address: provenAddress, tag, ...nextClaim })
-					dispatchNativeSystemCallAction('reportIncomingSystemCall', {
-						callId: signal.callId,
-						sessionId: signal.sessionId,
-						peerAddress: provenAddress,
-						// Never send EOA as CallKit title — dual EOA/@tag collapses bottom chrome.
-						displayName: tag || 'Beamio',
-						...nextClaim,
-					})
+					dispatchNativeSystemCallAction(
+						'reportIncomingSystemCall',
+						nativeIncomingSystemCallPayload({
+							callId: signal.callId,
+							sessionId: signal.sessionId,
+							peerAddress: provenAddress,
+							// Never send EOA as CallKit title — dual EOA/@tag collapses bottom chrome.
+							displayName: tag || 'Beamio',
+							...nextClaim,
+							signal,
+						}),
+					)
 				})()
 				const alreadyReported = hasReportedIncomingVoiceCall(signal.callId, signal.sessionId)
 				if (!alreadyReported) {
@@ -2819,13 +2824,17 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 						expiresAt: signal.expiresAt,
 					})
 					applyNativeIncomingVoiceOfferFromLine(latest.text)
-					dispatchNativeSystemCallAction('reportIncomingSystemCall', {
-						callId: signal.callId,
-						sessionId: signal.sessionId,
-						peerAddress: provenAddress,
-						displayName: localTag || 'Beamio',
-						...claim,
-					})
+					dispatchNativeSystemCallAction(
+						'reportIncomingSystemCall',
+						nativeIncomingSystemCallPayload({
+							callId: signal.callId,
+							sessionId: signal.sessionId,
+							peerAddress: provenAddress,
+							displayName: localTag || 'Beamio',
+							...claim,
+							signal,
+						}),
+					)
 				}
 			}
 			if (

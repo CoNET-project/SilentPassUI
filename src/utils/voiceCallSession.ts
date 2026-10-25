@@ -278,6 +278,36 @@ export function hasReportedIncomingVoiceCall(callId: string, sessionId: string):
 }
 
 /**
+ * Native Decline/X encrypts `voice_call_reject_v1` with the offer AES key.
+ * Without `sessionKey` in this payload the shell cannot uplink and the dialer
+ * stays on Ringing. Always include sessionKey (+ optional `to`) from the offer.
+ */
+export function nativeIncomingSystemCallPayload(args: {
+	callId: string
+	sessionId: string
+	peerAddress: string
+	displayName: string
+	claimedTag?: string
+	claimedAddress?: string
+	identityWarning?: string
+	signal?: Pick<VoiceCallSignal, 'sessionKey' | 'to'> | null
+}): Record<string, unknown> {
+	const sessionKey = String(args.signal?.sessionKey || '').trim()
+	const to = String(args.signal?.to || '').trim()
+	return {
+		callId: args.callId,
+		sessionId: args.sessionId,
+		peerAddress: args.peerAddress,
+		displayName: args.displayName,
+		claimedTag: args.claimedTag || '',
+		claimedAddress: args.claimedAddress || '',
+		identityWarning: args.identityWarning || '',
+		...(sessionKey ? { sessionKey } : {}),
+		...(to ? { to } : {}),
+	}
+}
+
+/**
  * Update the native incoming-call UI as soon as a decrypted offer line exists.
  * This does not claim the in-app report, so the Chat ingest path can still
  * record the call and replace the address with a looked-up BeamioTag.
@@ -323,7 +353,7 @@ export function applyNativeIncomingVoiceOfferFromLine(raw: string): boolean {
 	// later report swaps in @tag. Never send an address as CallKit title.
 	const proven = callerEoa || ''
 	const displayName = !mismatch && claimedTag ? claimedTag : 'Beamio'
-	const payload = {
+	const payload = nativeIncomingSystemCallPayload({
 		callId: signal.callId,
 		sessionId: signal.sessionId,
 		peerAddress: proven,
@@ -331,11 +361,12 @@ export function applyNativeIncomingVoiceOfferFromLine(raw: string): boolean {
 		claimedTag: mismatch ? claimedTag : '',
 		claimedAddress: mismatch ? claimedVoiceCallerAddress(signal) : '',
 		identityWarning: mismatch ? VOICE_CALL_IDENTITY_WARNING : '',
-	}
+		signal,
+	})
 	console.info(
 		`[voice] decrypted incoming offer callId=${Boolean(signal.callId)} ` +
 			`sessionId=${Boolean(signal.sessionId)} verifiedPeer=${Boolean(proven)} ` +
-			`displayName=${Boolean(displayName)}`,
+			`displayName=${Boolean(displayName)} sessionKey=${Boolean(signal.sessionKey)}`,
 	)
 	const delivered = dispatchNativeSystemCallAction('reportIncomingSystemCall', payload)
 	publishNativePwaLog(
@@ -406,15 +437,19 @@ async function enrichNativeIncomingDisplayTag(args: {
 		const tag = formatLookedUpBeamioTag(username)
 		if (!tag) return
 		const nextMismatch = voiceCallClaimMismatchesKey(args.signal, peer, tag, true)
-		dispatchNativeSystemCallAction('reportIncomingSystemCall', {
-			callId: args.callId,
-			sessionId: args.sessionId,
-			peerAddress: peer,
-			displayName: tag,
-			claimedTag: nextMismatch ? claimedVoiceCallerTag(args.signal) : '',
-			claimedAddress: nextMismatch ? claimedVoiceCallerAddress(args.signal) : '',
-			identityWarning: nextMismatch ? VOICE_CALL_IDENTITY_WARNING : '',
-		})
+		dispatchNativeSystemCallAction(
+			'reportIncomingSystemCall',
+			nativeIncomingSystemCallPayload({
+				callId: args.callId,
+				sessionId: args.sessionId,
+				peerAddress: peer,
+				displayName: tag,
+				claimedTag: nextMismatch ? claimedVoiceCallerTag(args.signal) : '',
+				claimedAddress: nextMismatch ? claimedVoiceCallerAddress(args.signal) : '',
+				identityWarning: nextMismatch ? VOICE_CALL_IDENTITY_WARNING : '',
+				signal: args.signal,
+			}),
+		)
 		publishNativePwaLog('info', `[voice] native report tag upgrade tag=${tag}`)
 	} catch {
 		// Keep last native UI; native shell may still enrich via search-users.

@@ -116,7 +116,7 @@ import { ingestAaMultisigFromChat } from '@/utils/aaMultisigIngest'
 import { tu } from '@/locale/beamioLocale'
 import { mapServerError } from '@/locale/mapServerError'
 import { installPwaLifecycleRecovery } from '@/utils/pwaLifecycleRecovery'
-import { applyNativeIncomingVoiceOfferFromLine, claimIncomingVoiceCallReport, claimedVoiceCallerAddress, claimedVoiceCallerTag, dismissNativeIncomingVoiceCall, forgetIncomingVoiceOffer, formatLookedUpBeamioTag, isVoiceCallOfferActive, lookupIncomingVoiceOffer, markVoiceCallTerminal, mergePhoneCallRecord, parseVoiceCallSignal, recoverVoiceCallOfferSigner, rememberIncomingVoiceOffer, VOICE_CALL_IDENTITY_WARNING, voiceCallClaimMismatchesKey } from '@/utils/voiceCallSession'
+import { applyNativeIncomingVoiceOfferFromLine, claimIncomingVoiceCallReport, claimedVoiceCallerAddress, claimedVoiceCallerTag, dismissNativeIncomingVoiceCall, forgetIncomingVoiceOffer, formatLookedUpBeamioTag, isVoiceCallOfferActive, lookupIncomingVoiceOffer, markVoiceCallTerminal, mergePhoneCallRecord, nativeIncomingSystemCallPayload, parseVoiceCallSignal, recoverVoiceCallOfferSigner, rememberIncomingVoiceOffer, VOICE_CALL_IDENTITY_WARNING, voiceCallClaimMismatchesKey } from '@/utils/voiceCallSession'
 
 global.Buffer = require("buffer").Buffer
 
@@ -1738,14 +1738,18 @@ function AppShell() {
 						// Chat can claim the same offer first; the system card
 						// still needs the recovered wallet and looked-up tag.
 						applyNativeIncomingVoiceOfferFromLine(displayText)
-						dispatchNativeSystemCallAction('reportIncomingSystemCall', {
-							callId: signal.callId,
-							sessionId: signal.sessionId,
-							peerAddress: provenAddress,
-							// Never send EOA as CallKit title — dual EOA/@tag collapses bottom chrome.
-							displayName: localTag || 'Beamio',
-							...claim,
-						})
+						dispatchNativeSystemCallAction(
+							'reportIncomingSystemCall',
+							nativeIncomingSystemCallPayload({
+								callId: signal.callId,
+								sessionId: signal.sessionId,
+								peerAddress: provenAddress,
+								// Never send EOA as CallKit title — dual EOA/@tag collapses bottom chrome.
+								displayName: localTag || 'Beamio',
+								...claim,
+								signal,
+							}),
+						)
 						void (async () => {
 							if (!provenAddress) return
 							await ensureProfilesForAddresses([provenAddress])
@@ -1769,13 +1773,17 @@ function AppShell() {
 									? { ...current, from: provenAddress, displayTag: tag, ...nextClaim }
 									: current,
 							)
-							dispatchNativeSystemCallAction('reportIncomingSystemCall', {
-								callId: signal.callId,
-								sessionId: signal.sessionId,
-								peerAddress: provenAddress,
-								displayName: tag || 'Beamio',
-								...nextClaim,
-							})
+							dispatchNativeSystemCallAction(
+								'reportIncomingSystemCall',
+								nativeIncomingSystemCallPayload({
+									callId: signal.callId,
+									sessionId: signal.sessionId,
+									peerAddress: provenAddress,
+									displayName: tag || 'Beamio',
+									...nextClaim,
+									signal,
+								}),
+							)
 						})()
 						if (claimIncomingVoiceCallReport(signal.callId, signal.sessionId)) {
 							if (!isCashTreesNativeWebView()) {

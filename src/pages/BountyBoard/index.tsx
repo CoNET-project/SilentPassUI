@@ -41,7 +41,7 @@ type RewardsHubView = 'overview' | 'referrals' | 'merchants' | 'nodes' | 'earnin
 const HUB_TABS: { id: Exclude<RewardsHubView, 'earnings'>; label: string }[] = [
 	{ id: 'overview', label: 'Overview' },
 	{ id: 'referrals', label: 'Referrals' },
-	{ id: 'merchants', label: 'Merchants' },
+	{ id: 'merchants', label: 'Business' },
 	{ id: 'nodes', label: 'Node' },
 ]
 

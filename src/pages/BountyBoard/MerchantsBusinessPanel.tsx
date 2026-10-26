@@ -8,7 +8,9 @@ import {
 	Check,
 	ChevronDown,
 	ChevronRight,
+	Code2,
 	Copy,
+	CreditCard,
 	Eye,
 	EyeOff,
 	ExternalLink,
@@ -25,6 +27,7 @@ import {
 	Share2,
 	Store,
 	UserRound,
+	UserRoundPlus,
 } from 'lucide-react'
 import { QRCodeCanvas } from 'qrcode.react'
 import { BeamioCircularBackButton } from '@/components/BeamioCircularBackButton'
@@ -56,19 +59,20 @@ type CardsState = {
 }
 
 const FEE_ROWS: { label: string; fee: string; note: string }[] = [
-	{ label: 'Create Coupon', fee: '100 B-Units', note: 'per coupon creation' },
-	{ label: 'Create Catalog', fee: '100 B-Units', note: 'per catalog creation' },
-	{ label: 'Charge', fee: '5 B-Units', note: 'per charge' },
-	{ label: 'Top-up', fee: '20 B-Units', note: 'per top-up' },
-	{ label: 'Redeem / Burn', fee: '5 B-Units', note: 'per redeem or burn' },
+	{ label: 'Direct USDC settlement', fee: '25', note: 'Per transaction' },
+	{ label: 'Stored-value / membership top-up', fee: '20', note: 'Per transaction' },
+	{ label: 'Spending, points exchange, coupon claim or redemption', fee: '5', note: 'Per transaction' },
+	{ label: 'Coupon issuance', fee: '100', note: 'Per coupon' },
+	{ label: 'Coupon redemption-code issuance', fee: '10', note: 'Per batch · up to 100 codes' },
+	{ label: 'Social action', fee: '0.1', note: 'Per action' },
 ]
 
 /** Price + total B-Units only — no Paid/Free split (beamio-fuel-pack-display-no-paid-free). */
 const PACKAGE_ROWS: { name: string; priceUsdc: string; totalBUnits: string; badge?: string }[] = [
-	{ name: 'Start Kit', priceUsdc: '49', totalBUnits: '5,000', badge: 'First-time' },
+	{ name: 'Start Kit', priceUsdc: '49', totalBUnits: '5,145', badge: 'First-time' },
 	{ name: 'Growth', priceUsdc: '199', totalBUnits: '21,890', badge: 'Best value' },
-	{ name: 'Scale', priceUsdc: '499', totalBUnits: '59,880' },
-	{ name: 'Enterprise', priceUsdc: '999', totalBUnits: '129,870' },
+	{ name: 'Scale', priceUsdc: '999', totalBUnits: '114,885' },
+	{ name: 'Enterprise', priceUsdc: '4,999', totalBUnits: '599,880' },
 ]
 
 function merchantOsUnlockUrl(
@@ -244,7 +248,8 @@ export function MerchantsBusinessPanel({
 		if (manageable) return merchantCardTitle(manageable)
 		const transferred = visibleCards(selectedCards?.rows ?? []).find((r) => r.transferred)
 		if (transferred) return merchantCardTitle(transferred)
-		return `@${selectedTemp.beamioTag.replace(/^@/, '')}`
+		// No card yet — match sample accountName(): "Temporary account"
+		return 'Temporary account'
 	}, [selectedTemp, manageable, selectedCards, resolveName])
 
 	const agentLabel = useMemo(() => {
@@ -569,180 +574,299 @@ export function MerchantsBusinessPanel({
 	if (view === 'manage' && selectedTemp) {
 		const tagPlain = selectedTemp.beamioTag.replace(/^@/, '')
 		const cardsLoading = !!selectedCards?.loading
+		const identityTitle = ready || claimed ? businessDisplayName : 'Temporary account'
+		const cardInitial =
+			(manageable ? merchantCardTitle(manageable) : 'B').trim().charAt(0).toUpperCase() || 'B'
+
+		const temporaryAccountDetails = (
+			<details className="rounded-[16px] border border-slate-200/90 bg-white open:pb-3 dark:border-slate-700 dark:bg-slate-900">
+				<summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-semibold text-slate-800 dark:text-slate-100 [&::-webkit-details-marker]:hidden">
+					<KeyRound className="h-4 w-4 text-[#64748b]" aria-hidden />
+					<span className="flex-1">Temporary account details</span>
+					<ChevronDown className="h-4 w-4 text-slate-400" aria-hidden />
+				</summary>
+				<div className="space-y-2.5 px-4 pb-1">
+					<div className="flex flex-wrap gap-2">
+						<button
+							type="button"
+							tabIndex={-1}
+							onClick={() => void copyText('tag', selectedTemp.beamioTag)}
+							className="inline-flex max-w-full items-center gap-2 rounded-full border border-[#eadcf7] bg-[#f5ecff] px-3 py-1.5 text-[13px] font-semibold text-[#8d3a8b]"
+							aria-label="Copy temporary BeamioTag"
+						>
+							<span className="truncate">@{tagPlain}</span>
+							{copiedKey === 'tag' ? (
+								<Check className="h-3 w-3 text-emerald-500" />
+							) : (
+								<Copy className="h-3 w-3" />
+							)}
+						</button>
+						<button
+							type="button"
+							tabIndex={-1}
+							onClick={() => void copyText('eoa', selectedTemp.eoa)}
+							className="inline-flex items-center gap-1.5 rounded-full border border-[#dce2f7] bg-[#e9edff] px-3 py-1.5 font-mono text-[11px] text-[#424655]"
+							aria-label="Copy account address"
+						>
+							{shortAddress(selectedTemp.eoa)}
+							{copiedKey === 'eoa' ? (
+								<Check className="h-3 w-3 text-emerald-500" />
+							) : (
+								<Copy className="h-3 w-3" />
+							)}
+						</button>
+					</div>
+					{!claimed ? (
+						<>
+							<p className="text-[11px] font-medium text-slate-400">Temporary password</p>
+							<div className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 font-mono text-[11px] text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
+								<span className="min-w-0 truncate">
+									{revealPw ? selectedTemp.accessPassword : '••••••••••••'}
+								</span>
+								<button
+									type="button"
+									tabIndex={-1}
+									aria-label={revealPw ? 'Hide password' : 'Show password'}
+									onClick={() => setRevealPw((v) => !v)}
+									className="inline-flex h-5 w-5 shrink-0 items-center justify-center"
+								>
+									{revealPw ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+								</button>
+								<button
+									type="button"
+									tabIndex={-1}
+									aria-label="Copy temporary password"
+									onClick={() => void copyText('pw', selectedTemp.accessPassword)}
+									className="inline-flex h-5 w-5 shrink-0 items-center justify-center"
+								>
+									{copiedKey === 'pw' ? (
+										<Check className="h-3 w-3 text-emerald-500" />
+									) : (
+										<Copy className="h-3 w-3" />
+									)}
+								</button>
+							</div>
+							<p className="text-[12px] text-slate-400">
+								Temporary access ends when the owner completes onboarding.
+							</p>
+						</>
+					) : null}
+				</div>
+			</details>
+		)
+
 		return (
-			<div className="space-y-4 pb-4">
-				{panelBack(claimed ? 'Business overview' : 'Manage business', () => setView('main'))}
+			<div className="space-y-3.5 pb-4">
+				{panelBack(claimed ? 'Business overview' : 'Invite a business', () => setView('main'))}
+
+				{/* Identity */}
+				<div className="flex items-start gap-3">
+					<span
+						className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[16px]"
+						style={{ backgroundColor: M_SOFT, color: M_PURPLE }}
+					>
+						{claimed ? (
+							<BadgeCheck className="h-5 w-5" strokeWidth={2.25} aria-hidden />
+						) : (
+							<Store className="h-5 w-5" strokeWidth={2.25} aria-hidden />
+						)}
+					</span>
+					<div className="min-w-0 flex-1">
+						<h2 className="truncate text-[22px] font-bold leading-tight tracking-tight text-slate-900 dark:text-slate-50">
+							{identityTitle}
+						</h2>
+						<p className="mt-0.5 truncate text-[13px] text-slate-500">@{tagPlain}</p>
+					</div>
+					<span
+						className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold ${
+							claimed || ready
+								? 'bg-[#e7f8ef] text-[#0f7a45]'
+								: 'bg-[#fff3d6] text-[#9a6b00]'
+						}`}
+					>
+						{claimed ? 'Active' : ready ? 'Card ready' : 'Temporary'}
+					</span>
+				</div>
 
 				{claimed ? (
 					<>
-						<div className="rounded-[20px] border border-emerald-200 bg-emerald-50 px-4 py-4 dark:border-emerald-900/40 dark:bg-emerald-950/30">
+						<section className="rounded-[20px] border border-[#b7ebd0] bg-gradient-to-br from-[#f3fff8] to-white p-4 shadow-sm dark:border-emerald-900/40 dark:from-emerald-950/30 dark:to-slate-900">
 							<div className="flex items-start gap-3">
-								<span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300">
+								<span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#e7f8ef] text-[#0f7a45]">
 									<BadgeCheck className="h-5 w-5" strokeWidth={2.25} aria-hidden />
 								</span>
 								<div className="min-w-0">
-									<h2 className="text-[17px] font-semibold text-emerald-950 dark:text-emerald-50">
+									<h3 className="text-[15px] font-bold text-slate-900 dark:text-slate-50">
 										Onboarding complete
-									</h2>
-									<p className="mt-1 text-sm text-emerald-800/90 dark:text-emerald-200/90">
-										{businessDisplayName} is managed by its owner.
+									</h3>
+									<p className="mt-1 text-[13px] leading-snug text-slate-600 dark:text-slate-300">
+										{businessDisplayName} is managed by its owner. Temporary access and the owner
+										onboarding link are no longer active.
 									</p>
 								</div>
 							</div>
-						</div>
-						<div className="rounded-[20px] border border-slate-200/90 bg-white px-4 py-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-							<p className="text-[15px] font-semibold text-slate-900 dark:text-slate-50">
-								{businessDisplayName}
-							</p>
-							<p className="mt-0.5 text-xs text-slate-500">Business account</p>
-						</div>
-						<div className="flex gap-3 rounded-[16px] border border-slate-200 bg-slate-50 px-3.5 py-3 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-300">
-							<Lock className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-							<p>
-								Temporary access and the owner onboarding link are no longer active. Your referral remains
-								recorded.
-							</p>
-						</div>
-						{visibleCards(selectedCards?.rows ?? []).map((card) => (
 							<button
-								key={card.cardAddress}
 								type="button"
-								onClick={() => openExternalUrl(merchantCardContractCodeUrl(card.cardAddress))}
-								className="flex w-full items-center gap-3 rounded-[16px] border border-slate-200 bg-white px-3 py-3 text-left dark:border-slate-700 dark:bg-slate-900"
+								onClick={() => void openBusinessOs()}
+								className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-[13px] bg-[#0f172a] px-4 py-3.5 text-[15px] font-bold text-white"
 							>
-								<div className="min-w-0 flex-1">
-									<p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
-										{merchantCardTitle(card)}
-									</p>
-									<p className="mt-0.5 font-mono text-[11px] text-slate-500">
-										{shortAddress(card.cardAddress)}
-									</p>
-								</div>
-								<ExternalLink className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
+								Open Business OS
+								<ExternalLink className="h-4 w-4 opacity-90" aria-hidden />
 							</button>
+						</section>
+
+						{temporaryAccountDetails}
+
+						{visibleCards(selectedCards?.rows ?? []).map((card) => (
+							<details
+								key={card.cardAddress}
+								className="rounded-[16px] border border-slate-200/90 bg-white open:pb-3 dark:border-slate-700 dark:bg-slate-900"
+							>
+								<summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-semibold text-slate-800 dark:text-slate-100 [&::-webkit-details-marker]:hidden">
+									<Code2 className="h-4 w-4 shrink-0 text-[#64748b]" aria-hidden />
+									<span className="min-w-0 flex-1 truncate">Card · {merchantCardTitle(card)}</span>
+									<ChevronDown className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
+								</summary>
+								<div className="space-y-2 px-4 pb-1">
+									<div className="flex items-center justify-between gap-2 text-sm">
+										<span className="text-slate-500">Card contract</span>
+										<strong className="font-mono text-[12px] text-slate-800 dark:text-slate-100">
+											{shortAddress(card.cardAddress)}
+										</strong>
+									</div>
+									<button
+										type="button"
+										onClick={() => openExternalUrl(merchantCardContractCodeUrl(card.cardAddress))}
+										className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#8b3e91]"
+									>
+										View on CoNET Explorer
+										<ExternalLink className="h-3.5 w-3.5" aria-hidden />
+									</button>
+								</div>
+							</details>
 						))}
 					</>
 				) : (
 					<>
-						<div className="flex items-start gap-3 rounded-[20px] border border-slate-200/90 bg-white px-4 py-3.5 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-							<span
-								className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl"
-								style={{ backgroundColor: M_SOFT, color: M_PURPLE }}
-							>
-								<Store className="h-5 w-5" strokeWidth={2.25} aria-hidden />
-							</span>
-							<div className="min-w-0 flex-1">
-								<h2 className="truncate text-[17px] font-semibold text-slate-900 dark:text-slate-50">
-									{businessDisplayName}
-								</h2>
-								<p className="mt-0.5 truncate text-xs text-slate-500">@{tagPlain}</p>
-							</div>
-							<span
-								className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold ${
-									ready
-										? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
-										: 'bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200'
-								}`}
-							>
-								{ready ? 'Card ready' : 'Temporary'}
-							</span>
-						</div>
-
+						{/* Prepare — both no-card & has-card */}
 						<section className="rounded-[20px] border border-slate-200/90 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
 							<div className="flex items-start gap-3">
-								<span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+								<span
+									className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px]"
+									style={{ backgroundColor: M_SOFT, color: M_PURPLE }}
+								>
 									<Pencil className="h-4 w-4" strokeWidth={2.25} aria-hidden />
 								</span>
 								<div className="min-w-0">
-									<h3 className="text-[15px] font-semibold text-slate-900 dark:text-slate-50">
+									<h3 className="text-[15px] font-bold text-slate-900 dark:text-slate-50">
 										Prepare the business
 									</h3>
-									<p className="mt-0.5 text-[12px] text-slate-500">Profile, membership and promotions</p>
+									<p className="mt-0.5 text-[13px] text-slate-500">
+										Profile, membership and promotions
+									</p>
 								</div>
 							</div>
 							<button
 								type="button"
 								onClick={() => void openBusinessOs(ready ? undefined : 'business')}
-								className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-full px-4 py-3 text-sm font-semibold text-white"
+								className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-[13px] px-4 py-3.5 text-[15px] font-bold text-white"
 								style={{ backgroundColor: M_PURPLE }}
 							>
 								Open Business OS
-								<ExternalLink className="h-3.5 w-3.5" aria-hidden />
+								<ExternalLink className="h-4 w-4 opacity-90" aria-hidden />
 							</button>
 						</section>
 
+						{/* Consumer app preview */}
 						<section className="rounded-[20px] border border-slate-200/90 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
 							<div className="flex items-start gap-3">
-								<span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#eef2ff] text-[#4338ca] dark:bg-indigo-950/40 dark:text-indigo-200">
+								<span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] bg-[#eef3ff] text-[#165ce9] dark:bg-indigo-950/40 dark:text-indigo-200">
 									<Eye className="h-4 w-4" strokeWidth={2.25} aria-hidden />
 								</span>
 								<div className="min-w-0 flex-1">
-									<h3 className="text-[15px] font-semibold text-slate-900 dark:text-slate-50">
+									<h3 className="text-[15px] font-bold text-slate-900 dark:text-slate-50">
 										Consumer app preview
 									</h3>
-									<p className="mt-0.5 text-[12px] text-slate-500">
+									<p className="mt-0.5 text-[13px] text-slate-500">
 										See the card as customers will see it.
 									</p>
 								</div>
 							</div>
+
 							{cardsLoading ? (
-								<p className="mt-3 flex items-center gap-2 text-sm text-slate-500">
+								<p className="mt-4 flex items-center gap-2 text-sm text-slate-500">
 									<Loader2 className="h-4 w-4 animate-spin" aria-hidden />
 									Loading card
 								</p>
 							) : ready && manageable ? (
 								<>
-									<div className="mt-3 flex items-center gap-3 rounded-2xl border border-slate-100 bg-slate-50 px-3 py-3 dark:border-slate-800 dark:bg-slate-800/60">
-										<span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#f6edf9] text-[#8b3e91]">
-											<Store className="h-5 w-5" aria-hidden />
-										</span>
-										<div className="min-w-0">
-											<p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-50">
-												{merchantCardTitle(manageable)}
-											</p>
-											<p className="mt-0.5 font-mono text-[11px] text-slate-500">
-												{shortAddress(manageable.cardAddress)}
-											</p>
-										</div>
-									</div>
 									<button
 										type="button"
 										onClick={openCardPreview}
-										className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-full border border-[#c7d2fe] bg-[#eef2ff] px-4 py-3 text-sm font-semibold text-[#4338ca] dark:border-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-200"
+										className="mt-4 w-full overflow-hidden rounded-[18px] border border-white/25 text-left shadow-[0_14px_28px_rgba(15,23,42,0.12)]"
+										style={{
+											background:
+												'linear-gradient(135deg, #1d4ed8 0%, #3b82f6 42%, #7c3aed 100%)',
+										}}
+									>
+										<div className="relative min-h-[132px] p-4 text-white">
+											<div className="flex items-start gap-3">
+												<div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] bg-white/20 text-[18px] font-bold backdrop-blur-sm">
+													{cardInitial}
+												</div>
+												<div className="min-w-0 flex-1">
+													<p className="text-[10px] font-bold uppercase tracking-[0.14em] text-white/75">
+														Beamio Business
+													</p>
+													<p className="mt-1 truncate text-[17px] font-bold leading-tight">
+														{merchantCardTitle(manageable)}
+													</p>
+													<p className="mt-1 text-[12px] font-medium text-white/80">
+														Single Top-up
+													</p>
+												</div>
+												<CreditCard
+													className="mt-1 h-5 w-5 shrink-0 text-white/70"
+													strokeWidth={1.75}
+													aria-hidden
+												/>
+											</div>
+										</div>
+									</button>
+									<button
+										type="button"
+										onClick={openCardPreview}
+										className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-[13px] border border-[#d7e4ff] bg-[#f5f8ff] px-4 py-3 text-[14px] font-bold text-[#165ce9] dark:border-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-200"
 									>
 										<QrCode className="h-4 w-4" aria-hidden />
 										Preview card & QR
 									</button>
 								</>
 							) : (
-								<>
-									<div className="mt-3 flex gap-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-3 py-3 dark:border-slate-700 dark:bg-slate-800/60">
-										<span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-slate-400 dark:bg-slate-900">
-											<Store className="h-4 w-4" aria-hidden />
-										</span>
-										<div>
-											<p className="text-sm font-semibold text-slate-800 dark:text-slate-100">
-												No business card yet
-											</p>
-											<p className="mt-0.5 text-[12px] text-slate-500">
-												Create the card in Business OS, then refresh.
-											</p>
-										</div>
+								<div className="mt-4 rounded-[16px] bg-[#f1f3fa] px-4 py-7 text-center dark:bg-slate-800/60">
+									<div className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-white text-[#94a3b8] shadow-sm dark:bg-slate-900">
+										<CreditCard className="h-5 w-5" strokeWidth={1.75} aria-hidden />
 									</div>
+									<p className="mt-3 text-[14px] font-bold text-slate-900 dark:text-slate-50">
+										No business card yet
+									</p>
+									<p className="mt-1 text-[12px] leading-snug text-slate-500">
+										Create the card in Business OS, then refresh.
+									</p>
 									<button
 										type="button"
 										onClick={() => void refreshCards(selectedTemp)}
 										disabled={cardsLoading}
-										className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+										className="mt-4 inline-flex items-center gap-1.5 text-[13px] font-semibold text-[#165ce9] disabled:opacity-50"
 									>
 										{cardsLoading ? (
-											<Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+											<Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
 										) : (
-											<RefreshCw className="h-4 w-4" aria-hidden />
+											<RefreshCw className="h-3.5 w-3.5" aria-hidden />
 										)}
 										Refresh card
 									</button>
-								</>
+								</div>
 							)}
 							{selectedCards?.error ? (
 								<p className="mt-2 text-sm text-amber-700" role="alert">
@@ -752,16 +876,21 @@ export function MerchantsBusinessPanel({
 						</section>
 
 						{ready ? (
-							<section className="rounded-[20px] border border-amber-200/80 bg-amber-50/80 p-4 dark:border-amber-900/40 dark:bg-amber-950/20">
+							<section
+								className="rounded-[20px] border border-[#f0dfb4] p-4 shadow-sm dark:border-amber-900/40"
+								style={{
+									background: 'linear-gradient(180deg, #fffaf0 0%, #fff6e5 100%)',
+								}}
+							>
 								<div className="flex items-start gap-3">
-									<span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-200">
+									<span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] bg-[#fff1d2] text-[#9e742b]">
 										<KeyRound className="h-4 w-4" strokeWidth={2.25} aria-hidden />
 									</span>
 									<div className="min-w-0">
-										<h3 className="text-[15px] font-semibold text-amber-950 dark:text-amber-50">
+										<h3 className="text-[15px] font-bold text-slate-900 dark:text-slate-50">
 											Hand over to the owner
 										</h3>
-										<p className="mt-0.5 text-[12px] text-amber-800/90 dark:text-amber-200/90">
+										<p className="mt-0.5 text-[13px] text-slate-600">
 											Account setup and recovery-code backup.
 										</p>
 									</div>
@@ -771,7 +900,8 @@ export function MerchantsBusinessPanel({
 									onClick={() => void openHandoff()}
 									disabled={claimBusy}
 									aria-busy={claimBusy}
-									className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-full bg-amber-600 px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
+									className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-[13px] px-4 py-3.5 text-[15px] font-bold text-white disabled:opacity-60"
+									style={{ backgroundColor: M_PURPLE }}
 								>
 									{claimBusy ? (
 										<Loader2 className="h-4 w-4 animate-spin" aria-hidden />
@@ -780,7 +910,7 @@ export function MerchantsBusinessPanel({
 									)}
 									Owner onboarding link & QR
 								</button>
-								<p className="mt-2 flex items-center justify-center gap-1.5 text-[11px] font-medium text-amber-800/80 dark:text-amber-200/80">
+								<p className="mt-3 flex items-center justify-center gap-1.5 text-[11px] font-medium text-[#9a6b00]">
 									<Lock className="h-3 w-3" aria-hidden />
 									Private · intended owner only
 								</p>
@@ -796,80 +926,12 @@ export function MerchantsBusinessPanel({
 							</section>
 						) : null}
 
-						<details className="rounded-[16px] border border-slate-200/90 bg-white open:pb-3 dark:border-slate-700 dark:bg-slate-900">
-							<summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-semibold text-slate-800 dark:text-slate-100 [&::-webkit-details-marker]:hidden">
-								<KeyRound className="h-4 w-4 text-[#8b3e91]" aria-hidden />
-								<span className="flex-1">Temporary account details</span>
-								<ChevronDown className="h-4 w-4 text-slate-400" aria-hidden />
-							</summary>
-							<div className="space-y-2.5 px-4 pb-1">
-								<div className="flex flex-wrap gap-2">
-									<button
-										type="button"
-										tabIndex={-1}
-										onClick={() => void copyText('tag', selectedTemp.beamioTag)}
-										className="inline-flex max-w-full items-center gap-2 rounded-full border border-[#eadcf7] bg-[#f5ecff] px-3 py-1.5 text-[13px] font-semibold text-[#8d3a8b]"
-										aria-label="Copy temporary BeamioTag"
-									>
-										<span className="truncate">@{tagPlain}</span>
-										{copiedKey === 'tag' ? (
-											<Check className="h-3 w-3 text-emerald-500" />
-										) : (
-											<Copy className="h-3 w-3" />
-										)}
-									</button>
-									<button
-										type="button"
-										tabIndex={-1}
-										onClick={() => void copyText('eoa', selectedTemp.eoa)}
-										className="inline-flex items-center gap-1.5 rounded-full border border-[#dce2f7] bg-[#e9edff] px-3 py-1.5 font-mono text-[11px] text-[#424655]"
-										aria-label="Copy account address"
-									>
-										{shortAddress(selectedTemp.eoa)}
-										{copiedKey === 'eoa' ? (
-											<Check className="h-3 w-3 text-emerald-500" />
-										) : (
-											<Copy className="h-3 w-3" />
-										)}
-									</button>
-								</div>
-								<p className="text-[11px] font-medium text-slate-400">Temporary password</p>
-								<div className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 font-mono text-[11px] text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
-									<span className="min-w-0 truncate">
-										{revealPw ? selectedTemp.accessPassword : '••••••••••••'}
-									</span>
-									<button
-										type="button"
-										tabIndex={-1}
-										aria-label={revealPw ? 'Hide password' : 'Show password'}
-										onClick={() => setRevealPw((v) => !v)}
-										className="inline-flex h-5 w-5 shrink-0 items-center justify-center"
-									>
-										{revealPw ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
-									</button>
-									<button
-										type="button"
-										tabIndex={-1}
-										aria-label="Copy temporary password"
-										onClick={() => void copyText('pw', selectedTemp.accessPassword)}
-										className="inline-flex h-5 w-5 shrink-0 items-center justify-center"
-									>
-										{copiedKey === 'pw' ? (
-											<Check className="h-3 w-3 text-emerald-500" />
-										) : (
-											<Copy className="h-3 w-3" />
-										)}
-									</button>
-								</div>
-								<p className="text-[12px] text-slate-400">
-									Temporary access ends when the owner completes onboarding.
-								</p>
-							</div>
-						</details>
+						{temporaryAccountDetails}
 
 						{ready && manageable ? (
 							<details className="rounded-[16px] border border-slate-200/90 bg-white open:pb-3 dark:border-slate-700 dark:bg-slate-900">
 								<summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-semibold text-slate-800 dark:text-slate-100 [&::-webkit-details-marker]:hidden">
+									<Code2 className="h-4 w-4 shrink-0 text-[#64748b]" aria-hidden />
 									<span className="flex-1">Card details</span>
 									<ChevronDown className="h-4 w-4 text-slate-400" aria-hidden />
 								</summary>
@@ -888,6 +950,19 @@ export function MerchantsBusinessPanel({
 										View on CoNET Explorer
 										<ExternalLink className="h-3.5 w-3.5" aria-hidden />
 									</button>
+									<button
+										type="button"
+										onClick={() => void refreshCards(selectedTemp)}
+										disabled={cardsLoading}
+										className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-[#165ce9] disabled:opacity-50"
+									>
+										{cardsLoading ? (
+											<Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+										) : (
+											<RefreshCw className="h-3.5 w-3.5" aria-hidden />
+										)}
+										Refresh card
+									</button>
 								</div>
 							</details>
 						) : null}
@@ -897,88 +972,87 @@ export function MerchantsBusinessPanel({
 		)
 	}
 
+
 	return (
-		<div className="space-y-5 pb-4">
-			<div className="relative flex items-center justify-between">
+		<div className="space-y-0 pb-4">
+			<div className="relative mb-[17px] flex items-center justify-between">
 				<BeamioCircularBackButton variant="onLight" onClick={onBack} aria-label="Back" />
-				<h1 className="pointer-events-none absolute inset-x-12 truncate text-center text-[17px] font-semibold text-[#0F172A] dark:text-slate-100">
-					Merchants Business
+				<h1 className="pointer-events-none absolute inset-x-12 truncate text-center text-[19px] font-semibold tracking-tight text-[#0F172A] dark:text-slate-100">
+					Business
 				</h1>
 				<span className="h-9 w-9 shrink-0" aria-hidden />
 			</div>
 
-			<section className="overflow-hidden rounded-[22px] border border-[#eadcf7] bg-gradient-to-br from-[#faf5fc] via-white to-[#f3e8f8] p-4 shadow-sm dark:border-purple-900/40 dark:from-slate-900 dark:via-slate-900 dark:to-slate-900">
-				<div className="flex items-start gap-3">
-					<span
-						className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-white shadow-sm"
-						style={{ backgroundColor: M_PURPLE }}
-					>
-						<Building2 className="h-5 w-5" strokeWidth={2.25} aria-hidden />
-					</span>
-					<div className="min-w-0 flex-1">
-						<p className="text-[11px] font-bold uppercase tracking-widest text-[#8b3e91]/80">
-							{agentLabel}
-						</p>
-						<h2 className="mt-0.5 text-[18px] font-semibold leading-snug text-slate-900 dark:text-slate-50">
-							Help merchants go live
-						</h2>
-						<p className="mt-1 text-[13px] leading-relaxed text-slate-500 dark:text-slate-400">
-							Create a temporary account, prepare their business card, then hand ownership to the
-							merchant.
-						</p>
-					</div>
-				</div>
-				<div className="mt-4 flex items-center justify-between gap-1 px-1">
+			<div
+				className="mb-3.5 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[11px] font-semibold"
+				style={{ backgroundColor: M_SOFT, color: M_PURPLE }}
+			>
+				<BadgeCheck className="h-3.5 w-3.5 shrink-0" strokeWidth={2.25} aria-hidden />
+				{agentLabel}
+			</div>
+
+			<section className="rounded-[23px] border border-[#eadcf7] bg-gradient-to-br from-white to-[#f6edf9] px-4 py-[19px] shadow-sm dark:border-purple-900/40 dark:from-slate-900 dark:to-[#392a45]/40">
+				<h2 className="max-w-[280px] text-[20px] font-semibold leading-snug tracking-tight text-slate-900 dark:text-slate-50">
+					Help a business get started.
+				</h2>
+				<div
+					className="mt-[22px] mb-[18px] grid grid-cols-3 gap-3"
+					aria-label="Create a temporary account, set up the business in Business OS, then hand over to the owner"
+				>
 					{(
 						[
-							{ Icon: UserRound, label: 'Temp account' },
-							{ Icon: Store, label: 'Prepare card' },
-							{ Icon: KeyRound, label: 'Hand over' },
-							{ Icon: BadgeCheck, label: 'Rewards' },
+							{ Icon: UserRoundPlus, label: 'Create account' },
+							{ Icon: Store, label: 'Set up in OS' },
+							{ Icon: KeyRound, label: 'Owner handover' },
 						] as const
 					).map((step, i) => (
-						<React.Fragment key={step.label}>
-							{i > 0 ? (
-								<span className="mb-5 h-px min-w-[8px] flex-1 bg-[#eadcf7] dark:bg-purple-900/50" aria-hidden />
-							) : null}
-							<div className="flex min-w-0 flex-1 flex-col items-center text-center">
+						<div key={step.label} className="relative text-center">
+							{i < 2 ? (
 								<span
-									className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white shadow-sm ring-1 ring-[#eadcf7] dark:bg-slate-800 dark:ring-purple-800"
-									style={{ color: M_PURPLE }}
+									className="pointer-events-none absolute right-[-11px] top-2.5 z-[1] text-[13px] text-slate-400 dark:text-slate-500"
+									aria-hidden
 								>
-									<step.Icon className="h-5 w-5" strokeWidth={2.25} aria-hidden />
+									→
 								</span>
-								<p className="mt-2 text-[11px] font-semibold leading-snug text-slate-600 dark:text-slate-300">
-									{step.label}
-								</p>
-							</div>
-						</React.Fragment>
+							) : null}
+							<span
+								className="mx-auto mb-2 grid h-[38px] w-[38px] place-items-center rounded-[13px] bg-white shadow-[0_3px_10px_rgba(15,23,42,0.08)] dark:bg-slate-800"
+								style={{ color: M_PURPLE }}
+							>
+								<step.Icon className="h-[18px] w-[18px]" strokeWidth={2.25} aria-hidden />
+							</span>
+							<strong className="block text-[11px] font-medium leading-snug text-slate-700 dark:text-slate-200">
+								{step.label}
+							</strong>
+						</div>
 					))}
 				</div>
 				<button
 					type="button"
 					onClick={onCreateTemporary}
-					className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-full px-4 py-3.5 text-[15px] font-semibold text-white shadow-[0_8px_24px_rgba(139,62,145,0.35)] transition active:scale-[0.99]"
-					style={{ backgroundColor: M_PURPLE }}
+					className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-[15px] px-4 py-3 text-[13px] font-semibold text-white shadow-[0_7px_18px_rgba(139,62,145,0.18)] transition active:scale-[0.99]"
+					style={{
+						background: `linear-gradient(120deg, ${M_PURPLE}, #a04da1)`,
+					}}
 				>
-					<Plus className="h-5 w-5" strokeWidth={2.5} aria-hidden />
+					<Plus className="h-4 w-4" strokeWidth={2.5} aria-hidden />
 					Create temporary account
 				</button>
 			</section>
 
-			<section>
-				<div className="mb-2.5 flex items-center justify-between gap-2">
-					<h2 className="text-[17px] font-semibold text-slate-900 dark:text-slate-50">Business accounts</h2>
-					<span className="rounded-full bg-slate-100 px-2 py-0.5 text-[12px] font-semibold tabular-nums text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+			<section className="mt-[23px]">
+				<div className="mb-[11px] flex items-center justify-between gap-2">
+					<h2 className="text-[13px] font-semibold text-slate-900 dark:text-slate-50">Business accounts</h2>
+					<span className="grid h-[23px] min-w-[23px] place-items-center rounded-lg bg-slate-100 px-1.5 text-[11px] font-semibold tabular-nums text-slate-500 dark:bg-slate-800 dark:text-slate-400">
 						{temps.length}
 					</span>
 				</div>
 				{temps.length === 0 ? (
-					<div className="flex flex-col items-center rounded-[20px] border border-dashed border-slate-200 bg-white px-4 py-8 text-center dark:border-slate-700 dark:bg-slate-900">
-						<span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#f6edf9] text-[#8b3e91]">
-							<Store className="h-6 w-6" strokeWidth={2} aria-hidden />
+					<div className="flex items-center gap-2.5 rounded-2xl border border-slate-200/90 bg-white px-3.5 py-[17px] dark:border-slate-700 dark:bg-slate-900">
+						<span className="grid place-items-center text-slate-400 dark:text-slate-500">
+							<Store className="h-5 w-5" strokeWidth={2} aria-hidden />
 						</span>
-						<p className="mt-3 text-sm font-medium text-slate-500 dark:text-slate-400">
+						<p className="text-[11px] leading-snug text-slate-500 dark:text-slate-400">
 							No accounts yet. Create one to begin.
 						</p>
 					</div>
@@ -1051,27 +1125,37 @@ export function MerchantsBusinessPanel({
 				)}
 			</section>
 
-			<section>
-				<div className="mb-2.5 flex items-end justify-between gap-2">
-					<h2 className="text-[17px] font-semibold text-slate-900 dark:text-slate-50">Referral rewards</h2>
+			<section className="mt-6">
+				<div className="mb-3 flex items-end justify-between gap-2">
+					<h2 className="text-[13px] font-semibold text-slate-900 dark:text-slate-50">Referral rewards</h2>
 					<span className="text-[11px] font-medium text-slate-400">One-time · per location</span>
 				</div>
-				<div className="grid grid-cols-2 gap-3">
-					<div className="rounded-[20px] border border-[#eadcf7] bg-white p-4 shadow-sm dark:border-purple-900/40 dark:bg-slate-900">
-						<span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#f6edf9] text-[#8b3e91]">
+				<div className="grid grid-cols-2 gap-2.5">
+					<div className="rounded-[18px] border border-[#eadcf7] bg-white px-3.5 py-4 shadow-sm dark:border-purple-900/40 dark:bg-slate-900">
+						<span
+							className="mb-2.5 grid h-9 w-9 place-items-center rounded-[12px]"
+							style={{ backgroundColor: M_SOFT, color: M_PURPLE }}
+						>
 							<Store className="h-4 w-4" strokeWidth={2.25} aria-hidden />
 						</span>
-						<p className="mt-3 text-xs font-semibold text-slate-600 dark:text-slate-300">Paid onboarding</p>
-						<p className="mt-1 text-[11px] text-slate-400">Up to</p>
-						<p className="mt-0.5 text-[22px] font-extrabold tabular-nums leading-none text-[#8b3e91]">100 USDC</p>
+						<p className="text-[12px] font-semibold text-slate-700 dark:text-slate-200">Paid onboarding</p>
+						<p className="mt-1 text-[10px] font-medium uppercase tracking-wide text-slate-400">Up to</p>
+						<p className="mt-0.5 text-[26px] font-extrabold tabular-nums leading-none text-[#8b3e91]">
+							100 <span className="text-[12px] font-semibold">USDC</span>
+						</p>
 					</div>
-					<div className="rounded-[20px] border border-[#eadcf7] bg-white p-4 shadow-sm dark:border-purple-900/40 dark:bg-slate-900">
-						<span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#f6edf9] text-[#8b3e91]">
+					<div className="rounded-[18px] border border-[#eadcf7] bg-white px-3.5 py-4 shadow-sm dark:border-purple-900/40 dark:bg-slate-900">
+						<span
+							className="mb-2.5 grid h-9 w-9 place-items-center rounded-[12px]"
+							style={{ backgroundColor: M_SOFT, color: M_PURPLE }}
+						>
 							<CalendarDays className="h-4 w-4" strokeWidth={2.25} aria-hidden />
 						</span>
-						<p className="mt-3 text-xs font-semibold text-slate-600 dark:text-slate-300">Day-60 milestone</p>
-						<p className="mt-1 text-[11px] text-slate-400">One-time</p>
-						<p className="mt-0.5 text-[22px] font-extrabold tabular-nums leading-none text-[#8b3e91]">100 USDC</p>
+						<p className="text-[12px] font-semibold text-slate-700 dark:text-slate-200">Day-60 milestone</p>
+						<p className="mt-1 text-[10px] font-medium uppercase tracking-wide text-slate-400">One-time</p>
+						<p className="mt-0.5 text-[26px] font-extrabold tabular-nums leading-none text-[#8b3e91]">
+							100 <span className="text-[12px] font-semibold">USDC</span>
+						</p>
 					</div>
 				</div>
 				<p className="mt-3 flex items-center gap-1.5 text-[12px] font-semibold text-[#8b3e91]">
@@ -1081,100 +1165,134 @@ export function MerchantsBusinessPanel({
 				<button
 					type="button"
 					onClick={() => setView('partnerPlan')}
-					className="mt-3 inline-flex w-full items-center justify-center gap-1 rounded-full px-4 py-3 text-sm font-semibold transition active:scale-[0.99]"
+					className="mt-3 inline-flex w-full items-center justify-center gap-1 rounded-2xl px-4 py-3 text-[13px] font-semibold transition active:scale-[0.99]"
 					style={{ backgroundColor: M_SOFT, color: M_PURPLE }}
 				>
 					View reward plan
 					<span aria-hidden>→</span>
 				</button>
-				<p className="mt-2.5 text-center text-[11px] leading-relaxed text-slate-400">
+				<p className="mt-2 text-center text-[11px] leading-relaxed text-slate-400">
 					Qualifying locations and enrolled partners only. Conditions apply.
 				</p>
 			</section>
 
-			<section>
-				<h2 className="mb-2.5 text-[17px] font-semibold text-slate-900 dark:text-slate-50">Business essentials</h2>
-				<div className="overflow-hidden rounded-[20px] border border-slate-200/90 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
+			<section className="mt-6">
+				<h2 className="mb-3 text-[13px] font-semibold text-slate-900 dark:text-slate-50">Business essentials</h2>
+				<div className="space-y-2.5">
 					{(
 						[
 							{ key: 'fees' as const, Icon: FileText, title: 'Service fees' },
 							{ key: 'packages' as const, Icon: Layers, title: 'Business packages' },
 							{ key: 'calc' as const, Icon: Calculator, title: 'Reward calculation' },
 						] as const
-					).map((row, idx) => {
+					).map((row) => {
 						const open = essentialsOpen === row.key
 						return (
 							<div
 								key={row.key}
-								className={idx > 0 ? 'border-t border-slate-100 dark:border-slate-800' : undefined}
+								className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900"
 							>
 								<button
 									type="button"
 									onClick={() => toggleEssentials(row.key)}
-									className="flex w-full items-center gap-3 px-4 py-3.5 text-left"
+									className="flex min-h-[52px] w-full items-center gap-2.5 px-3.5 py-4 text-left"
 									aria-expanded={open}
 								>
-									<span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-										<row.Icon className="h-4 w-4" strokeWidth={2.25} aria-hidden />
-									</span>
-									<span className="min-w-0 flex-1 text-[15px] font-semibold text-slate-900 dark:text-slate-50">
-										{row.title}
+									<span className="flex items-center gap-2.5 min-w-0 flex-1">
+										<span className="text-[#0051d1] dark:text-sky-400">
+											<row.Icon className="h-4 w-4" strokeWidth={2.25} aria-hidden />
+										</span>
+										<span className="text-[12px] font-medium text-slate-900 dark:text-slate-50">
+											{row.title}
+										</span>
 									</span>
 									<ChevronDown
-										className={`h-5 w-5 shrink-0 text-slate-400 transition ${open ? 'rotate-180' : ''}`}
+										className={`h-4 w-4 shrink-0 text-slate-400 transition ${open ? 'rotate-180' : ''}`}
 										aria-hidden
 									/>
 								</button>
 								{open && row.key === 'fees' ? (
-									<div className="space-y-2 px-4 pb-4">
-										{FEE_ROWS.map((fee) => (
-											<div
-												key={fee.label}
-												className="flex items-start justify-between gap-3 rounded-xl bg-slate-50 px-3 py-2.5 dark:bg-slate-800/80"
-											>
-												<div className="min-w-0">
-													<p className="text-sm font-semibold text-slate-800 dark:text-slate-100">{fee.label}</p>
-													<p className="text-[11px] text-slate-400">{fee.note}</p>
+									<div className="border-t border-slate-100 px-3.5 pb-4 pt-3 dark:border-slate-800">
+										<div
+											className="mb-2 flex items-center gap-2 rounded-[11px] px-2.5 py-2.5 text-[11px] leading-snug"
+											style={{ backgroundColor: M_SOFT, color: M_PURPLE }}
+										>
+											<Layers className="h-3.5 w-3.5 shrink-0" aria-hidden />
+											1 B-Unit · 0.01 USDC nominal service credit
+										</div>
+										<div className="divide-y divide-slate-100 dark:divide-slate-800">
+											{FEE_ROWS.map((fee) => (
+												<div key={fee.label} className="flex items-center gap-2.5 py-3.5">
+													<div className="min-w-0 flex-1">
+														<p className="text-[12px] font-semibold text-slate-800 dark:text-slate-100">
+															{fee.label}
+														</p>
+														<p className="text-[11px] text-slate-400">{fee.note}</p>
+													</div>
+													<div className="shrink-0 text-right">
+														<p className="text-[15px] font-bold tabular-nums text-slate-900 dark:text-slate-50">
+															{fee.fee}
+														</p>
+														<p className="text-[10px] font-medium text-slate-400">B-Units</p>
+													</div>
 												</div>
-												<p className="shrink-0 text-sm font-bold tabular-nums text-[#8b3e91]">{fee.fee}</p>
-											</div>
-										))}
+											))}
+										</div>
 									</div>
 								) : null}
 								{open && row.key === 'packages' ? (
-									<div className="space-y-2 px-4 pb-4">
+									<div className="space-y-2 border-t border-slate-100 px-3.5 pb-4 pt-3 dark:border-slate-800">
 										{PACKAGE_ROWS.map((pkg) => (
 											<div
 												key={pkg.name}
 												className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-3 dark:border-slate-700 dark:bg-slate-800/80"
 											>
 												<div className="flex items-center justify-between gap-2">
-													<p className="text-sm font-semibold text-slate-900 dark:text-slate-50">{pkg.name}</p>
+													<p className="text-sm font-semibold text-slate-900 dark:text-slate-50">
+														{pkg.name}
+													</p>
 													{pkg.badge ? (
 														<span className="rounded-full bg-[#f6edf9] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#8b3e91]">
 															{pkg.badge}
 														</span>
 													) : null}
 												</div>
-												<p className="mt-1 text-[15px] font-bold tabular-nums text-slate-800 dark:text-slate-100">
-													${pkg.priceUsdc} USDC
+												<p className="mt-1 text-[18px] font-bold tabular-nums text-slate-800 dark:text-slate-100">
+													{pkg.priceUsdc}{' '}
+													<span className="text-[12px] font-semibold text-slate-500">USDC</span>
 												</p>
 												<p className="mt-0.5 text-xs font-medium text-slate-500 dark:text-slate-400">
 													{pkg.totalBUnits} B-Units
 												</p>
 											</div>
 										))}
+										<p className="pt-1 text-[11px] text-slate-400">
+											The business chooses and pays in Business OS.
+										</p>
+										<a
+											href={MERCHANT_OS_AGENT_URL}
+											target="_blank"
+											rel="noopener noreferrer"
+											onClick={(e) => {
+												e.preventDefault()
+												openExternalUrl(MERCHANT_OS_AGENT_URL)
+											}}
+											className="inline-flex w-full items-center justify-center gap-1.5 rounded-2xl border border-slate-200 px-4 py-2.5 text-[13px] font-semibold text-slate-700 dark:border-slate-600 dark:text-slate-200"
+										>
+											View Business OS
+											<ExternalLink className="h-3.5 w-3.5" aria-hidden />
+										</a>
 									</div>
 								) : null}
 								{open && row.key === 'calc' ? (
-									<div className="space-y-2 px-4 pb-4 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+									<div className="space-y-2 border-t border-slate-100 px-3.5 pb-4 pt-3 text-[12px] leading-relaxed text-slate-600 dark:border-slate-800 dark:text-slate-300">
 										<p>
-											One-time partner rewards are paid per qualifying location for paid onboarding and the Day-60
-											milestone (up to 100 USDC each).
+											One-time partner rewards are paid per qualifying location for paid onboarding and the
+											Day-60 milestone (up to 100 USDC each).
 										</p>
 										<p>
-											Recurring rewards follow eligible paid Charge and Top-up usage at enrolled partner locations under
-											the partner program rules.
+											Recurring rewards follow eligible paid Charge and Top-up usage at enrolled partner
+											locations under the partner program rules.
 										</p>
 									</div>
 								) : null}
@@ -1184,7 +1302,7 @@ export function MerchantsBusinessPanel({
 				</div>
 			</section>
 
-			<p className="text-center text-[12px] leading-relaxed text-slate-400">
+			<p className="mt-4 text-center text-[11px] leading-relaxed text-slate-400">
 				Temporary accounts stay separate from your personal account.
 			</p>
 		</div>

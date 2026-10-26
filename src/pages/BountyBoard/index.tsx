@@ -714,6 +714,7 @@ export default function BountyBoard() {
 							tempsRefreshKey={merchantsTempsRefreshKey}
 							onBack={() => setHubView('overview')}
 							onCreateTemporary={openAgentSheet}
+							onViewAllocationRules={() => setAcrossNetworkOpen(true)}
 						/>
 					) : null}
 

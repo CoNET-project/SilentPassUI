@@ -19,6 +19,8 @@ export default function CouponOpenClaimShareButton({
 	referrerEoa = null,
 	count = null,
 	variant = 'light',
+	appearance = 'pill',
+	label,
 	className = '',
 }: {
 	cardAddress: string
@@ -28,6 +30,10 @@ export default function CouponOpenClaimShareButton({
 	/** Aggregate share-click count shown beside the share icon. */
 	count?: number | null
 	variant?: 'light' | 'onDark'
+	/** `text` is a plain icon + label row for the claim-card panel (no pill). */
+	appearance?: 'pill' | 'text'
+	/** Visible label. Pill mode still shows the share-click count when this is omitted. */
+	label?: string
 	className?: string
 }) {
 	const [shared, setShared] = useState(false)
@@ -66,23 +72,36 @@ export default function CouponOpenClaimShareButton({
 			? 'bg-white/15 text-white ring-white/25 hover:bg-white/25'
 			: 'bg-sky-50 text-[#1562f0] ring-sky-100 hover:bg-sky-100 dark:bg-sky-950/40 dark:text-sky-300 dark:ring-sky-900/50 dark:hover:bg-sky-950/60'
 	const countLabel = count != null ? formatDiscoverLikeCount(count) : null
+	const visibleLabel = label?.trim() || (appearance === 'pill' ? countLabel : null)
 	const ariaLabel =
 		countLabel != null ? `Share claim URL · ${countLabel} share clicks` : 'Share claim URL'
+	const buttonClass =
+		appearance === 'text'
+			? 'inline-flex shrink-0 items-center gap-1.5 text-[15px] font-medium text-[#5c6370] transition active:scale-95 dark:text-slate-300'
+			: `inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold ring-1 transition active:scale-95 ${style}`
 
 	return (
 		<button
 			type="button"
 			onClick={(e) => void handleShare(e)}
-			className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold ring-1 transition active:scale-95 ${style} ${className}`}
+			className={`${buttonClass} ${className}`}
 			aria-label={ariaLabel}
 			title="Share claim URL"
 		>
 			{shared ? (
-				<Check className="h-3 w-3 text-emerald-500" strokeWidth={2.4} aria-hidden />
+				<Check
+					className={appearance === 'text' ? 'h-5 w-5 text-emerald-500' : 'h-3 w-3 text-emerald-500'}
+					strokeWidth={2.4}
+					aria-hidden
+				/>
 			) : (
-				<Share2 className="h-3 w-3" strokeWidth={2.25} aria-hidden />
+				<Share2
+					className={appearance === 'text' ? 'h-5 w-5' : 'h-3 w-3'}
+					strokeWidth={2.25}
+					aria-hidden
+				/>
 			)}
-			{countLabel != null ? countLabel : null}
+			{visibleLabel ? <span>{visibleLabel}</span> : null}
 		</button>
 	)
 }

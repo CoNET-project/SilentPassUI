@@ -369,13 +369,18 @@ function cashTreesNativeWindow(): CashTreesNativeWindow | null {
 function hasCashTreesAndroidBridge(w: CashTreesNativeWindow): boolean {
 	const a = w.CashTreesAndroid
 	if (!a || typeof a !== 'object') return false
+	const any = a as Record<string, unknown>
 	return (
 		typeof a.getNfcStatus === 'function' ||
 		typeof a.debugLog === 'function' ||
 		typeof a.notifyVoiceMicReady === 'function' ||
 		typeof a.endSystemCall === 'function' ||
 		typeof a.openURL === 'function' ||
-		typeof a.openInAppBrowser === 'function'
+		typeof a.openInAppBrowser === 'function' ||
+		// Conet Chat Module alone still means native shell — never spawn TS gossip Worker.
+		typeof any.conetChatInit === 'function' ||
+		typeof any.conetChatAvailable === 'function' ||
+		typeof any.conetChatStop === 'function'
 	)
 }
 
@@ -400,8 +405,8 @@ export function getCashTreesNativeNfcHost(): 'android' | 'ios' | null {
 	const w = cashTreesNativeWindow()
 	if (!w) return null
 	if (hasCashTreesAndroidBridge(w)) return 'android'
-	if (typeof w.CashTreesIOS?.getNfcStatus === 'function') return 'ios'
-	// Bridge inject may lag documentStart; WK messageHandlers still means iOS shell.
+	// Any CashTreesIOS inject (NFC optional) or WK messageHandlers = iOS shell.
+	if (w.CashTreesIOS && typeof w.CashTreesIOS === 'object') return 'ios'
 	if (w.webkit?.messageHandlers?.CashTreesIOS) return 'ios'
 	return null
 }

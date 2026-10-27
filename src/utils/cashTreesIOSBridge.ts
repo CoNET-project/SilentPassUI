@@ -36,6 +36,17 @@ declare global {
         data: string
         excludeIps?: string[]
       }) => void
+      /**
+       * iOS Conet Chat Module (1B): PWA posts WorkerCommand JSON; native owns
+       * OpenPGP / SSE / SI. EOA signing stays on the PWA via chatModuleSignRequest.
+       */
+      chatModuleCommand?: (payload: Record<string, unknown>) => void
+      chatModuleSignResponse?: (payload: {
+        reqId: number
+        ok: boolean
+        signature?: string
+        error?: string
+      }) => void
       debugLog?: (level: string, message: string) => void
       openURL?: (payload: { url: string }) => void
       listInstalledWalletApps?: (payload: { requestId: string }) => void
@@ -92,8 +103,13 @@ export function isEmbeddedCashTreesWebView(): boolean {
   return !!webkitBridge?.messageHandlers?.CashTreesIOS
 }
 
+/**
+ * Native WebView shell (CashTreesIOS / CashTreesAndroid / WK handler).
+ * Broader than {@link detectNativeScanPlatform} (which requires `scanQr`).
+ * Chat and other features must use this — never spawn chat-sdk Worker when true.
+ */
 export function isCashTreesNativeWebView(): boolean {
-  return detectNativeScanPlatform() !== null
+  return isEmbeddedCashTreesWebView()
 }
 
 export function scanQrViaCashTreesNative(timeoutMs = 120_000): Promise<CashTreesScanQrResult> {

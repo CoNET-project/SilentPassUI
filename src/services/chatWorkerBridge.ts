@@ -1,25 +1,21 @@
 /**
  * Bridge between SilentPassUI `services/chat.ts` and `@conet.project/chat-sdk`
- * worker client. The Web Worker performs ALL inbound openpgp decryption + ethers
- * signing, so the main thread no longer blocks for seconds after startup (root
- * cause of the "app frozen ~10s after launch" bug).
+ * worker client **or** native Conet Chat Modules:
+ *  - Browser: TS Worker (`makeGossipWorker`)
+ *  - iOS shell (`CashTreesIOS` / WK handler): `nativeConetChatTransport` (1B)
+ *  - Android shell (`CashTreesAndroid`): `androidNativeChatClient`
  *
- * Scope of this wiring (surgical, minimal blast radius):
- *  - The inbound gossip LISTEN loop (SSE connect/reconnect + decrypt) runs in the
- *    worker; decrypted host-ready lines are fed back to the existing `newMessage`
- *    serial queue (App.tsx `addNewMessage`) — unchanged main-thread parsing.
- *  - Outbound send / presence / delivery ACK remain on the main thread (existing
- *    `sendMessage` / `wallet_online_query` / delivery ACK code paths) to keep this
- *    change small; those are not the freeze source (they are user-triggered, not a
- *    continuous background loop).
+ * **Iron rule:** when the PWA runs inside a native WebView shell
+ * (`isCashTreesNativeWebView`), **never** call `makeGossipWorker()` /
+ * `createBeamioChatClient` — chat-sdk must not load into a Worker. Prefer iOS
+ * shell first, else Android.
  *
- * Routing rules preserved by the worker (see repo `conet-p2p-mailbox-routing-protocol`,
- * `beamio-conet-chat-protocol`): listen encrypted to mailbox B via entry C ≠ B with
- * `listenKind:'chat'`; never direct-connect mailbox B.
+ * Routing: listen encrypted to mailbox B via entry C ≠ B; never direct-connect B.
  */
 
 import {
 	createBeamioChatClient,
+	type BeamioChatClient,
 	type BeamioChatConfig,
 	type HistoryBufferEvent,
 	type HistoryEntry,
@@ -38,6 +34,26 @@ import {
 	type GroupSendResult,
 } from '@conet.project/chat-sdk'
 import { CONET_ADDRESS_PGP, CONET_CHAT_INDEX_REGISTRY } from '../config/chainAddresses'
+import {
+	createAndroidNativeChatClient,
+	preferAndroidNativeChatClient,
+} from './androidNativeChatClient'
+import { isCashTreesNativeWebView } from '../utils/cashTreesNativeNfc'
+import {
+	createNativeConetChatClient,
+	isCashTreesIosShell,
+	preferIosNativeChatClient,
+} from './nativeConetChatTransport'
+
+/** True when any native shell path must own Chat (no TS gossip Worker). */
+function mustUseNativeChatBridge(): boolean {
+	if (typeof window === 'undefined') return false
+	return (
+		isCashTreesNativeWebView() ||
+		preferIosNativeChatClient() ||
+		preferAndroidNativeChatClient()
+	)
+}
 
 const CONET_RPC_URL = 'https://rpc1.conet.network'
 const IPFS_BASE_URL = 'https://ipfs.conet.network/api'
@@ -48,9 +64,10 @@ const IPFS_BASE_URL = 'https://ipfs.conet.network/api'
  */
 const BEAMIO_API_BASE_URL = 'https://beamio.app/api'
 
-type ChatWorkerClient = ReturnType<typeof createBeamioChatClient>
+/** TS Worker client or Android native adapter — both implement BeamioChatClient. */
+type ChatWorkerClient = BeamioChatClient
 
-/** Only one worker listen client is alive per process. A new session replaces the old. */
+/** Only one listen client is alive per process. A new session replaces the old. */
 let activeClient: ChatWorkerClient | null = null
 let workerInitPromise: Promise<boolean> | null = null
 let lastGossipParams: StartWorkerGossipParams | null = null
@@ -249,6 +266,10 @@ export const onDecryptedChatHistory = (
  * Worker (no `type: 'module'`).
  */
 function makeGossipWorker(): Worker {
+	// Belt-and-suspenders: native shells must never reach here.
+	if (mustUseNativeChatBridge()) {
+		throw new Error('chat-sdk Worker is disabled inside the native WebView shell')
+	}
 	return new Worker(new URL('@conet.project/chat-sdk/worker', import.meta.url), {
 		// Chunk name is the worker name. A new name bypasses a cached worker
 		// that never finished opening the PGP key and left voice listen with no relay.
@@ -345,7 +366,30 @@ const startWorkerGossipListenInternal = async (p: StartWorkerGossipParams): Prom
 		apiBaseUrl: BEAMIO_API_BASE_URL,
 	}
 
-	const client = createBeamioChatClient(config, { workerFactory: makeGossipWorker })
+	// Native WebView shells: Conet Chat Module owns LISTEN — never load chat-sdk Worker.
+	// Prefer iOS shell first (1B hybrid signing); else Android; browser-only → TS Worker.
+	const inNativeShell = mustUseNativeChatBridge()
+	const useIosNative =
+		preferIosNativeChatClient() || (inNativeShell && isCashTreesIosShell())
+	const useAndroidNative =
+		!useIosNative &&
+		(preferAndroidNativeChatClient() ||
+			(inNativeShell && !isCashTreesIosShell()))
+	// Iron rule: shell present ⇒ native client only. Never call createBeamioChatClient.
+	if (inNativeShell && !useIosNative && !useAndroidNative) {
+		throw new Error('native WebView shell detected but no Conet Chat Module path resolved')
+	}
+	let client: ChatWorkerClient
+	if (useIosNative) {
+		client = createNativeConetChatClient(config)
+		p.onLog?.('info', 'chat listen: iOS native Conet Chat Module (no TS Worker)')
+	} else if (useAndroidNative) {
+		client = createAndroidNativeChatClient(config)
+		p.onLog?.('info', 'chat listen: Android native Conet Chat Module (no TS Worker)')
+	} else {
+		client = createBeamioChatClient(config, { workerFactory: makeGossipWorker })
+		p.onLog?.('info', 'chat listen: TypeScript gossip Worker (browser)')
+	}
 	activeClient = client
 
 	const unsubs: Array<() => void> = []
@@ -362,7 +406,10 @@ const startWorkerGossipListenInternal = async (p: StartWorkerGossipParams): Prom
 			// keep the main-thread staleness timer fresh (parity with the old per-frame
 			// noteGossipActivity()).
 			if (st.status === 'listening') p.onActivity()
-			p.onLog?.('info', `gossip status: ${st.status}${st.detail ? ` (${st.detail})` : ''}`)
+			p.onLog?.(
+				'info',
+				`${useIosNative || useAndroidNative ? 'native' : 'gossip'} status: ${st.status}${st.detail ? ` (${st.detail})` : ''}`,
+			)
 		}),
 	)
 	unsubs.push(
@@ -433,15 +480,33 @@ const startWorkerGossipListenInternal = async (p: StartWorkerGossipParams): Prom
 			teardown()
 			return false
 		}
-		// Always restore encrypted history once the worker identity/RPC is ready.
-		// Covers: (1) loads queued while `gossip=true` before activeClient existed,
-		// (2) recover with empty local chats (AppShell skips re-initChat).
-		p.onLog?.('info', 'chat history: worker ready — loading on-chain/IPFS index')
-		void loadWorkerHistory()
+		// Restore encrypted history once identity/RPC is ready.
+		// Android native MVP is listen-only — history.load is a no-op stub there.
+		// iOS native bridges historyLoad to BeamioConetChatModule; browser uses TS Worker.
+		const transportLabel = useIosNative
+			? 'iOS native'
+			: useAndroidNative
+				? 'Android native'
+				: 'TS Worker'
+		p.onLog?.(
+			'info',
+			useAndroidNative
+				? 'chat listen: Android native ready'
+				: `chat history: ${transportLabel} ready — loading on-chain/IPFS index`,
+		)
+		if (!useAndroidNative) void loadWorkerHistory()
 		if (activeVoiceRelay) void openActiveVoiceRelay(activeVoiceRelay.sessionId)
 		return true
 	} catch (ex) {
-		p.onLog?.('error', `worker gossip init failed: ${(ex as Error)?.message ?? String(ex)}`)
+		const failLabel = useIosNative
+			? 'iOS native'
+			: useAndroidNative
+				? 'Android native'
+				: 'worker'
+		p.onLog?.(
+			'error',
+			`${failLabel} gossip init failed: ${(ex as Error)?.message ?? String(ex)}`,
+		)
 		teardown()
 		return false
 	}

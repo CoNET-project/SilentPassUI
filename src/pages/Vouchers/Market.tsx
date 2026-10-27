@@ -3720,89 +3720,89 @@ function DiscoverClaimEarnSwipeCard({
 	const buttonClass = canClaim && !busy
 		? 'bg-[#1562f0] text-white shadow-sm'
 		: 'bg-[#eef1f4] text-[#3a3f45] dark:bg-slate-800 dark:text-slate-200'
+	const likeLabel =
+		liked
+			? likeCount != null
+				? `Liked · ${formatDiscoverLikeCount(likeCount)} likes`
+				: 'Liked'
+			: likeCount != null
+				? `Like this coupon · ${formatDiscoverLikeCount(likeCount)} likes`
+				: 'Like this coupon'
 	return (
-		<article className="w-[168px] shrink-0 snap-start">
-			<div className="rounded-[18px] bg-white shadow-[0_8px_22px_rgba(15,23,42,0.08)] ring-1 ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800">
-				<div className="overflow-hidden rounded-[18px]">
+		<article className="w-[88%] shrink-0 snap-start">
+			<div className="overflow-hidden rounded-[22px] bg-white shadow-[0_10px_28px_rgba(15,23,42,0.08)] ring-1 ring-[#e8ecf0] dark:bg-slate-900 dark:ring-slate-800">
 				<div
-					className="relative aspect-[4/3] overflow-hidden bg-[#e8edf2] dark:bg-slate-800"
+					className="aspect-[4/3] overflow-hidden bg-[#e8edf2] dark:bg-slate-800"
 					style={row.coupon.backgroundColorHex ? { backgroundColor: row.coupon.backgroundColorHex } : undefined}
 				>
 					{photo ? (
 						<IpfsImg src={photo} alt="" className="h-full w-full object-cover" draggable={false} />
 					) : null}
-					<div className="absolute right-2 top-2 flex items-center gap-1.5">
+				</div>
+				<div className="px-4 pb-4 pt-4">
+					{badge ? (
+						<p className="mb-1 truncate text-[12px] font-semibold text-[#5c6370] dark:text-slate-400">
+							{badge}
+						</p>
+					) : null}
+					<h4 className="line-clamp-2 text-[26px] font-bold leading-tight tracking-tight text-[#1f2328] dark:text-slate-100">
+						{row.coupon.title}
+					</h4>
+					{row.coupon.subtitle ? (
+						<p className="mt-1 line-clamp-2 text-[18px] font-semibold leading-snug text-[#16a34a] dark:text-emerald-400">
+							{row.coupon.subtitle}
+						</p>
+					) : null}
+					{validity || supplyCapsule ? (
+						<div className="mt-4 flex items-center justify-between gap-3 text-[15px] font-medium text-[#5c6370] dark:text-slate-300">
+							{validity ? (
+								<span className="inline-flex min-w-0 items-center gap-2" title={validity.title}>
+									<Calendar className="h-[18px] w-[18px] shrink-0" strokeWidth={2} aria-hidden />
+									<span className="truncate tabular-nums">{validity.label}</span>
+								</span>
+							) : (
+								<span />
+							)}
+							{supplyCapsule ? (
+								<span className="shrink-0 tabular-nums" title={supplyCapsule}>
+									{supplyCapsule}
+								</span>
+							) : null}
+						</div>
+					) : null}
+					<div className="mt-3 flex items-center justify-between gap-3">
 						<button
 							type="button"
 							onClick={couponLike.onHeartClick}
 							disabled={couponLike.likeLoading || liked}
 							aria-busy={couponLike.likeLoading}
 							aria-pressed={liked}
-							aria-label={
-								liked
-									? likeCount != null
-										? `Liked · ${formatDiscoverLikeCount(likeCount)} likes`
-										: 'Liked'
-									: likeCount != null
-										? `Like this coupon · ${formatDiscoverLikeCount(likeCount)} likes`
-										: 'Like this coupon'
-							}
-							className="inline-flex h-8 shrink-0 items-center justify-center gap-1 rounded-full bg-black/45 px-2 text-[11px] font-bold text-white transition active:scale-95 hover:bg-black/60 disabled:cursor-default disabled:opacity-80"
+							aria-label={likeLabel}
+							className="inline-flex min-w-0 items-center gap-2 text-[15px] font-medium text-[#5c6370] transition active:scale-95 disabled:cursor-default dark:text-slate-300"
 						>
 							{couponLike.likeLoading ? (
-								<Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2.25} aria-hidden />
+								<Loader2 className="h-5 w-5 animate-spin" strokeWidth={2.25} aria-hidden />
 							) : (
 								<Heart
-									className="h-3.5 w-3.5 text-rose-300"
-									strokeWidth={2.25}
+									className={liked ? 'h-5 w-5 text-rose-500' : 'h-5 w-5'}
+									strokeWidth={2}
 									fill={liked ? 'currentColor' : 'none'}
 									aria-hidden
 								/>
 							)}
-							{likeCount != null ? formatDiscoverLikeCount(likeCount) : null}
+							{likeCount != null ? (
+								<span className="tabular-nums">{formatDiscoverLikeCount(likeCount)}</span>
+							) : null}
 						</button>
 						<CouponOpenClaimShareButton
 							cardAddress={row.coupon.cardAddress}
 							couponId={row.coupon.couponId}
 							couponTitle={row.coupon.title}
 							referrerEoa={referrerEoa}
-							variant="onDark"
-							className="!h-8 !w-8 !justify-center !rounded-full !bg-black/45 !p-0 !text-white !ring-0 hover:!bg-black/60"
+							appearance="text"
+							label="Share"
 						/>
 					</div>
-					{badge ? (
-						<span className="absolute bottom-2 left-2 max-w-[42%] truncate rounded-md bg-black/55 px-2 py-0.5 text-[11px] font-semibold text-white">
-							{badge}
-						</span>
-					) : null}
-					{supplyCapsule ? (
-						<div className="absolute bottom-2 right-2 flex max-w-[calc(100%-1rem)] flex-row items-center justify-end gap-1">
-							<span
-								className="inline-flex shrink-0 rounded-full bg-black/55 px-2 py-0.5 text-[11px] font-bold leading-tight text-white"
-								title={supplyCapsule}
-							>
-								{supplyCapsule}
-							</span>
-						</div>
-					) : null}
-				</div>
-				<div className="px-2.5 pb-2.5 pt-2">
-					<div className="flex min-w-0 items-baseline gap-1.5">
-						<h4 className="min-w-0 flex-1 truncate text-[15px] font-bold leading-tight text-[#1f2328] dark:text-slate-100">
-							{row.coupon.title}
-						</h4>
-						{validity ? (
-							<span
-								className="shrink-0 text-right text-[11px] font-semibold leading-none tabular-nums text-[#8b919a] dark:text-slate-400"
-								title={validity.title}
-							>
-								{validity.label}
-							</span>
-						) : null}
-					</div>
-					<p className="mt-0.5 truncate text-[12px] font-semibold text-emerald-600 dark:text-emerald-400">
-						{row.coupon.subtitle}
-					</p>
 					<button
 						type="button"
 						disabled={!canClaim || busy}
@@ -3810,14 +3810,13 @@ function DiscoverClaimEarnSwipeCard({
 						aria-busy={busy}
 						aria-label={`${label}: ${row.coupon.title}`}
 						className={[
-							'mt-2.5 flex h-9 w-full items-center justify-center rounded-full text-[13px] font-bold transition active:scale-[0.98]',
+							'mt-4 flex h-12 w-full items-center justify-center rounded-full text-[17px] font-bold transition active:scale-[0.98]',
 							'disabled:cursor-not-allowed disabled:opacity-70',
 							buttonClass,
 						].join(' ')}
 					>
-						{busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : label}
+						{busy ? <Loader2 className="h-5 w-5 animate-spin" aria-hidden /> : label}
 					</button>
-				</div>
 				</div>
 			</div>
 		</article>
@@ -3851,7 +3850,8 @@ function DiscoverClaimEarnPointsRail({
 	const swipeNext = useCallback(() => {
 		const scroller = scrollerRef.current
 		if (!scroller) return
-		scroller.scrollBy({ left: 180, behavior: 'smooth' })
+		const step = Math.max(180, Math.round(scroller.clientWidth * 0.88))
+		scroller.scrollBy({ left: step, behavior: 'smooth' })
 	}, [])
 	return (
 		<div ref={sectionRef} className="space-y-3">

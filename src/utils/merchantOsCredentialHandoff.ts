@@ -10,10 +10,13 @@
  * must be left for `agentCardClaimHandoff` which loads after this module.
  */
 
+import { BEAMIO_TAG_ALLOWED_RE, normalizeBeamioTagInput } from '@/utils/beamioTagRules'
+
 const TAG_KEY = 'tag'
 const PIN_KEY = 'pin'
 const FLOW_KEY = 'flow'
 const FLOW_BUSINESS = 'business'
+const PIN_MAX = 128
 const SESSION_HANDOFF_KEY = 'beamio:merchant-os:credential-handoff:v1'
 
 export type MerchantOsCredentialHandoff = {
@@ -54,12 +57,10 @@ function stripHashCredentials(): void {
 }
 
 function parseHandoffFromParams(params: URLSearchParams): MerchantOsCredentialHandoff | null {
-	const tagRaw = (params.get(TAG_KEY) || '').trim()
+	const tag = normalizeBeamioTagInput(params.get(TAG_KEY) || '')
 	const pin = (params.get(PIN_KEY) || '').trim()
 	const openBusinessDetails = params.get(FLOW_KEY) === FLOW_BUSINESS
-	if (!tagRaw || !pin) return null
-	const tag = tagRaw.replace(/^@+/, '').trim()
-	if (!tag) return null
+	if (!BEAMIO_TAG_ALLOWED_RE.test(tag) || !pin || pin.length > PIN_MAX) return null
 	return { tag, pin, openBusinessDetails }
 }
 
@@ -87,9 +88,10 @@ function readPersistedHandoff(): MerchantOsCredentialHandoff | null {
 		const raw = sessionStorage.getItem(SESSION_HANDOFF_KEY)
 		if (!raw) return null
 		const parsed = JSON.parse(raw) as Partial<MerchantOsCredentialHandoff>
-		const tag = typeof parsed.tag === 'string' ? parsed.tag.replace(/^@+/, '').trim() : ''
+		const tag =
+			typeof parsed.tag === 'string' ? normalizeBeamioTagInput(parsed.tag) : ''
 		const pin = typeof parsed.pin === 'string' ? parsed.pin.trim() : ''
-		if (!tag || !pin) return null
+		if (!BEAMIO_TAG_ALLOWED_RE.test(tag) || !pin || pin.length > PIN_MAX) return null
 		return {
 			tag,
 			pin,
@@ -153,6 +155,15 @@ export function takeMerchantOsCredentialHandoff(): MerchantOsCredentialHandoff |
 	return peekMerchantOsCredentialHandoff()
 }
 
+export function hasMerchantOsCredentialHandoff(): boolean {
+	return takeMerchantOsCredentialHandoff() != null
+}
+
+/** Create merchant card: business details first, then unlock from the handed tag and password. */
+export function merchantOsHandoffOpensBusinessDetails(): boolean {
+	return takeMerchantOsCredentialHandoff()?.openBusinessDetails === true
+}
+
 export function clearMerchantOsCredentialHandoff(): void {
 	held = null
 	pinFlight = null
@@ -161,23 +172,35 @@ export function clearMerchantOsCredentialHandoff(): void {
 
 /**
  * Deduped PIN restore for handoff. Concurrent callers share one Promise.
- * Cleared on success or when clearMerchantOsCredentialHandoff runs.
+ * Cleared on failure or when clearMerchantOsCredentialHandoff runs.
+ * Callers that collect business details (`openBusinessDetails`) skip this path.
  */
 export function beginMerchantOsHandoffRestore(
-	run: (creds: MerchantOsCredentialHandoff) => Promise<unknown>,
-): Promise<unknown> {
-	const creds = peekMerchantOsCredentialHandoff()
-	if (!creds || creds.openBusinessDetails) {
-		return Promise.resolve(null)
+	restore: (creds: MerchantOsCredentialHandoff) => Promise<unknown>,
+): Promise<unknown> | null {
+	const creds = takeMerchantOsCredentialHandoff()
+	if (!creds) return null
+	if (!pinFlight) {
+		pinFlight = Promise.resolve()
+			.then(() => restore(creds))
+			.then((result) => {
+				const ok =
+					result != null &&
+					result !== false &&
+					typeof result === 'object' &&
+					Array.isArray((result as { profiles?: unknown }).profiles) &&
+					((result as { profiles: unknown[] }).profiles.length > 0)
+				if (!ok) {
+					pinFlight = null
+				}
+				// Keep pinFlight resolved on success so StrictMode remounts reuse it;
+				// caller must clearMerchantOsCredentialHandoff after navigate.
+				return result
+			})
+			.catch(() => {
+				pinFlight = null
+				return null
+			})
 	}
-	if (pinFlight) return pinFlight
-	pinFlight = (async () => {
-		try {
-			return await run(creds)
-		} catch (err) {
-			pinFlight = null
-			throw err
-		}
-	})()
 	return pinFlight
 }

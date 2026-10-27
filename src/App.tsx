@@ -1,6 +1,6 @@
 // App.tsx
 import { useCallback, useEffect, useMemo, useRef, useState, useLayoutEffect, startTransition } from "react"
-import { Navigate, Route, Routes, useNavigate, useLocation } from "react-router-dom"
+import { Navigate, Route, Routes, useNavigate, useLocation, useParams } from "react-router-dom"
 import { useDaemonContext } from "./providers/DaemonProvider"
 import { useBeamioTagDatabase } from "./providers/BeamioTagDatabaseProvider"
 import Footer from "@/components/Footer"
@@ -21,11 +21,10 @@ import History from "./pages/History/MyWalletDashboardNew"
 import Pay from "./pages/Pay"
 import QrOperationPage from "./pages/Pay/QrOperationPage"
 import MinimizedVoiceCallWindow from "@/components/MinimizedVoiceCallWindow"
-import ChatDetail from "./pages/chatDetail"
 import PhoneHistoryPage from "./pages/Phone"
 import BeamioInstallOnboarding from "@/components/launchPage"
 import Browser from "@/pages/Browser"
-import { initChat, checkSign, createInboundChatSession, makeMessage, sendMessage, resumeGossipListenOnForeground, pauseGossipListenOnBackground, getGossipDeliveryAckContext, getKeysFromCoNETPGPSC } from "@/services/chat"
+import { initChat, checkSign, createInboundChatSession, makeMessage, sendMessage, resumeGossipListenOnForeground, pauseGossipListenOnBackground, getGossipDeliveryAckContext, getKeysFromCoNETPGPSC, emptySearchResultForAddress } from "@/services/chat"
 import {
 	parseChatDeliveryReceiptV1,
 	markMessageDeliveredBySendId,
@@ -131,6 +130,36 @@ type message = {
 
 // 你原来的 addNewMessage 保持不动（略）
 // ...
+
+/**
+ * Deep link `/chat/:id` used to render a demo stub (chatDetail) with no real
+ * composer/video player — inbound multimodal looked "broken". Redirect into the
+ * real Chat surface via chatHomeItem (same path as Search / voice accept).
+ */
+function ChatAddressDeepLinkRedirect() {
+	const { id } = useParams()
+	const navigate = useNavigate()
+	const { setChatHomeItem } = useDaemonContext()
+	const { resolvePeerSearchResult } = useBeamioTagDatabase()
+	const redirectedRef = useRef(false)
+
+	useEffect(() => {
+		if (redirectedRef.current) return
+		const raw = String(id || '').trim()
+		if (!raw) {
+			navigate('/chat', { replace: true })
+			return
+		}
+		redirectedRef.current = true
+		const contact =
+			resolvePeerSearchResult(raw) ||
+			(ethers.isAddress(raw) ? emptySearchResultForAddress(raw) : null)
+		if (contact) setChatHomeItem(contact)
+		navigate('/chat', { replace: true })
+	}, [id, navigate, resolvePeerSearchResult, setChatHomeItem])
+
+	return null
+}
 
 function AppShell() {
   const ROUTE_LOCK_ENABLED = false
@@ -2554,7 +2583,7 @@ function AppShell() {
 					<Route path="/qr" element={<QrOperationPage />} />
 					<Route path="/Chat" element={<Chat />} />
 					<Route path="/chat" element={<Chat />} />
-					<Route path="/chat/:id" element={<ChatDetail />} />
+					<Route path="/chat/:id" element={<ChatAddressDeepLinkRedirect />} />
 					<Route path="/phone" element={<PhoneHistoryPage />} />
 					<Route path="/settings" element={<MyWallet />} />
 					<Route path="/discover" element={<Market />} />

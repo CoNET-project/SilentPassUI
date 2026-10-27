@@ -1286,6 +1286,8 @@ function ChatFileMessagePlayer({ manifest, isMe }: { manifest: ChatFileMessageMa
 	const [pdfFullscreen, setPdfFullscreen] = useState(false)
 	const videoRef = useRef<HTMLVideoElement | null>(null)
 	const [videoBlob, setVideoBlob] = useState<Blob | null>(null)
+	/** Hide poster after first play so short clips don't look like they never played. */
+	const [showVideoPoster, setShowVideoPoster] = useState(true)
 	const [imageBlob, setImageBlob] = useState<Blob | null>(null)
 	const [pdfBlob, setPdfBlob] = useState<Blob | null>(null)
 	const [archiveBlob, setArchiveBlob] = useState<Blob | null>(null)
@@ -1297,6 +1299,8 @@ function ChatFileMessagePlayer({ manifest, isMe }: { manifest: ChatFileMessageMa
 		setError(null)
 		setFiles(null)
 		setVideoUrl(null)
+		setShowVideoPoster(true)
+		setPlaying(false)
 		setPreviewUrl(null)
 		setPreviewLoadFailed(false)
 		setFullImageUrl(null)
@@ -1403,13 +1407,34 @@ function ChatFileMessagePlayer({ manifest, isMe }: { manifest: ChatFileMessageMa
 		>
 			{manifest.mediaKind === 'video' ? (
 				<div className="relative mb-2 w-full overflow-hidden rounded-xl bg-slate-900" style={{ aspectRatio: mediaAspectRatio }}>
-					{videoUrl ? <video ref={videoRef} src={videoUrl} className="absolute inset-0 block h-full w-full object-contain" onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onEnded={() => setPlaying(false)} controls={false} /> : <div className="absolute inset-0 animate-pulse bg-slate-800/70" aria-hidden />}
+					{videoUrl ? (
+						<video
+							ref={videoRef}
+							src={videoUrl}
+							className="absolute inset-0 block h-full w-full object-contain"
+							playsInline
+							preload="auto"
+							onPlay={() => {
+								setPlaying(true)
+								setShowVideoPoster(false)
+							}}
+							onPause={() => setPlaying(false)}
+							onEnded={() => {
+								// Keep the last frame. Seeking to 0 + re-showing the poster makes
+								// sub-second Android/WebView clips look like play never started.
+								setPlaying(false)
+							}}
+							controls={false}
+						/>
+					) : (
+						<div className="absolute inset-0 animate-pulse bg-slate-800/70" aria-hidden />
+					)}
 					{previewUrl && !previewLoadFailed ? (
 						<img
 							src={previewUrl}
 							alt="Video thumbnail"
-							className="absolute inset-0 h-full w-full object-cover"
-							style={{ opacity: playing ? 0 : 1 }}
+							className="absolute inset-0 h-full w-full object-cover transition-opacity"
+							style={{ opacity: showVideoPoster && !playing ? 1 : 0 }}
 							onError={() => {
 								setPreviewLoadFailed(true)
 								setPreviewUrl(previous => {
@@ -1423,7 +1448,29 @@ function ChatFileMessagePlayer({ manifest, isMe }: { manifest: ChatFileMessageMa
 						<button type="button" onClick={() => {
 							const video = videoRef.current
 							if (!video) return
-							void video.play().catch(() => setError('Video could not be played.'))
+							// Android/WebView often leaves short clips at duration after load/ended;
+							// play() then fires ended immediately and looks like "cannot play".
+							const nearEnd =
+								video.ended ||
+								(Number.isFinite(video.duration) &&
+									video.duration > 0 &&
+									video.currentTime >= video.duration - 0.05)
+							if (nearEnd) {
+								try {
+									video.currentTime = 0
+								} catch {
+									/* some WebViews throw if seek before metadata */
+								}
+							}
+							setShowVideoPoster(false)
+							const tryPlay = () => {
+								void video.play().catch(() => setError('Video could not be played.'))
+							}
+							tryPlay()
+							// Some WebViews ignore the first play() until the seek lands; retry once.
+							if (nearEnd) {
+								window.setTimeout(tryPlay, 50)
+							}
 						}} aria-label="Play video" className="absolute inset-0 grid place-items-center">
 							<span className="grid h-12 w-12 place-items-center rounded-full bg-black/60 text-white shadow-lg"><Play className="ml-1 h-6 w-6 fill-current" /></span>
 						</button>
@@ -4953,13 +5000,26 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			return fileMessage ? { ...message, fileMessage } : message
 		}))
 
-		// 本地 UI 正在显示的消息（可能包含 tmp_ / 更先进的 status）
-		const local = [
-			...(Array.isArray(messagesRef.current) ? messagesRef.current : []),
-			...liveFileMessagesRef.current.values(),
-		]
+		// Local UI rows may include tmp_ / a more advanced status. Outbound file
+		// sends put the same optimistic bubble in both messagesRef and
+		// liveFileMessagesRef — concatenate without sendId/id dedupe used to
+		// stack 2→3 identical photo bubbles until remote caught up.
+		const localKeyOf = (m: ChatMessage | undefined): string =>
+			(m?.sendId && String(m.sendId)) || (m?.id && String(m.id)) || ''
+		const localByKey = new Map<string, ChatMessage>()
+		const rememberLocal = (m: ChatMessage | undefined) => {
+			const key = localKeyOf(m)
+			if (!m || !key) return
+			const prev = localByKey.get(key)
+			if (!prev || statusRank(m.status) >= statusRank(prev.status)) {
+				localByKey.set(key, m)
+			}
+		}
+		for (const m of Array.isArray(messagesRef.current) ? messagesRef.current : []) rememberLocal(m)
+		for (const m of liveFileMessagesRef.current.values()) rememberLocal(m)
+		const local = Array.from(localByKey.values())
 
-		// 建索引：local by id 与 sendId（远端可能用任一来匹配）
+		// Index local by id and sendId (remote may match on either).
 		const localById = new Map<string, ChatMessage>()
 		for (const m of local) {
 			if (m?.id) localById.set(m.id, m)
@@ -5000,13 +5060,37 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			}
 		})
 
-		// ✅ 2) 把 local 里仍然存在但 remote 里没有的 tmp_ 消息追加回去（防止被冲掉）
-		const remoteIdSet = new Set(remote.map(m => m.id ?? m.sendId ?? '').filter(Boolean))
-		const localTempExtras = local.filter(m => (m.id && isTempId(m.id)) && !remoteIdSet.has(m.id))
+		// Remote absorbed an optimistic file send — drop the live-file safety copy.
+		for (const m of merged) {
+			if (m?.sendId) liveFileMessagesRef.current.delete(m.sendId)
+		}
 
-		const next = [...merged, ...localTempExtras]
+		// ✅ 2) 把 local 里仍然存在但 remote 里没有的 tmp_ 消息追加回去（防止被冲掉）
+		const remoteIdSet = new Set<string>()
+		for (const m of remote) {
+			if (m?.id) remoteIdSet.add(String(m.id))
+			if (m?.sendId) remoteIdSet.add(String(m.sendId))
+		}
+		const localTempExtras = local.filter(m => {
+			if (!m?.id || !isTempId(m.id)) return false
+			if (remoteIdSet.has(m.id)) return false
+			if (m.sendId && remoteIdSet.has(String(m.sendId))) return false
+			return true
+		})
+
+		const nextCandidates = [...merged, ...localTempExtras]
 			.slice()
 			.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0))
+		const next: ChatMessage[] = []
+		const seenNext = new Set<string>()
+		for (const m of nextCandidates) {
+			const key = localKeyOf(m)
+			if (key) {
+				if (seenNext.has(key)) continue
+				seenNext.add(key)
+			}
+			next.push(m)
+		}
 
 		const messageViewportSignature = (message: ChatMessage) => JSON.stringify({
 			id: message.id,

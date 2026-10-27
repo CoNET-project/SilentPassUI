@@ -2089,46 +2089,50 @@ export const fetchUserInfoWithRetry = async (
 	return name ? buildMinimalBeamioFromAccountName(name) : null
 }
 
+/** Poll AccountRegistry for PIN recover blob — Master may lag after newUser. */
+const fetchRecoverPayloadByAccountNameWithRetry = async (
+	accountName: string,
+	opts?: { deadlineMs?: number; intervalMs?: number },
+): Promise<{ encoded: string; payload: ValidRecoverStoragePayload; legacy: boolean } | null> => {
+	const deadlineMs = opts?.deadlineMs ?? 25_000
+	const intervalMs = opts?.intervalMs ?? 1_200
+	const deadline = Date.now() + deadlineMs
+	while (Date.now() <= deadline) {
+		const primary = await fetchRecoverPayloadByAccountName(accountName, beamioAccountSC)
+		if (primary) return { ...primary, legacy: false }
+		const legacy = await fetchRecoverPayloadByAccountName(accountName, legacyBeamioAccountSC)
+		if (legacy) return { ...legacy, legacy: true }
+		if (Date.now() + intervalMs > deadline) break
+		await new Promise((resolve) => setTimeout(resolve, intervalMs))
+	}
+	return null
+}
+
 export const restoreWithUserPin = async (username: string, pin: string, test = false) => {
 	try {
 		const accountName = username.trim()
 		if (!accountName) return false
 
-		let recoverHit = await raceWithTimeout(
-			fetchRecoverPayloadByAccountName(accountName, beamioAccountSC),
-			8_000,
-			null,
-		)
-		let legacyEncodedForMigrate: string | undefined
-
+		const recoverHit = await fetchRecoverPayloadByAccountNameWithRetry(accountName)
 		if (!recoverHit) {
-			const legacyHit = await raceWithTimeout(
-				fetchRecoverPayloadByAccountName(accountName, legacyBeamioAccountSC),
-				8_000,
-				null,
-			)
-			if (!legacyHit) {
-				return false
-			}
-			recoverHit = legacyHit
-			legacyEncodedForMigrate = legacyHit.encoded
+			return false
 		}
-
+		const legacyEncodedForMigrate = recoverHit.legacy ? recoverHit.encoded : undefined
 		const obj = recoverHit.payload
 
-		const mnemonicPhrase = await aesGcmDecryptWithStored (obj.img, pin, obj.stored)
+		const mnemonicPhrase = await aesGcmDecryptWithStored(obj.img, pin, obj.stored)
 		const mnemonicPhraseB = fromBase64(mnemonicPhrase)
 
 		const key = createKeyHDWallets(mnemonicPhraseB)
 		if (!key) {
-			return
+			return false
 		}
 		if (test) {
 			return true
 		}
 		const temp = await createOrGetWallet(mnemonicPhraseB)
 
-		if (!temp||!temp?.profiles?.length) {
+		if (!temp || !temp?.profiles?.length) {
 			return false
 		}
 
@@ -2166,7 +2170,7 @@ export const restoreWithUserPin = async (username: string, pin: string, test = f
 		markWorkspaceSessionUnlocked()
 		temp.profiles = hydrateProfilesWithSessionSecrets(temp.profiles)
 		setCoNET_Data(temp)
-		
+
 		return temp
 	} catch (ex: any) {
 		console.log(`checkBeamioAccount error ${ex.message}`)

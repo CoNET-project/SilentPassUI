@@ -18,7 +18,7 @@ import { ReactComponent as LightDrakModeBlue } from "@/components/Footer/assets/
 import styles from '@/components/Home/home.module.scss'
 import ScanBtn from '@/components/scanBtn/ScanButton'
 import { CoNET_Data, setCoNET_Data } from '../../utils/globals'
-import { checkStorageWithTimeout, restoreWithRedeem, restoreWithUserPin, raceWithTimeout, fetchUserInfoWithRetry, flushStoreSystemData } from "@/services/beamio"
+import { checkStorageWithTimeout, restoreWithRedeem, restoreWithUserPin, fetchUserInfoWithRetry, flushStoreSystemData } from "@/services/beamio"
 import { ensureConetAaForProfileAndPersist } from "@/utils/ensureConetAa"
 import {AppButton} from '@/components/button/AppButton'
 import {motion, AnimatePresence } from "framer-motion"
@@ -28,7 +28,10 @@ import RestoreEntryScreen from './RestoreEntryScreen'
 import BizHome from './bizHome'
 import { markAgentSponsoredMerchantCreate, setBizWorkspaceRole } from '@/utils/agentWorkspaceLocal'
 import { unlockMerchantWorkspaceSession } from '@/utils/unlockMerchantWorkspaceSession'
-import { takeMerchantOsCredentialHandoff } from '@/utils/merchantOsCredentialHandoff'
+import {
+	clearMerchantOsCredentialHandoff,
+	takeMerchantOsCredentialHandoff,
+} from '@/utils/merchantOsCredentialHandoff'
 import { useUnlockMerchantWorkspaceDeps } from '@/hooks/useUnlockMerchantWorkspaceDeps'
 import ccsabackphoto from '../Vouchers/assets/ccsacard.avif'
 import packageJson from '../../../package.json'
@@ -424,11 +427,8 @@ export default function BeamioOnboardingModal({
 		setHandoffWalletBusy(true)
 		setWorkspaceCreating(true)
 		try {
-			const result = await raceWithTimeout(
-				restoreWithUserPin(creds.tag, creds.pin, false),
-				20_000,
-				null,
-			)
+			// Await restore fully — never raceWithTimeout (orphans success → Invalid Tag).
+			const result = await restoreWithUserPin(creds.tag, creds.pin, false)
 			const restored = result && typeof result === 'object' && 'profiles' in result
 				? result as encrypt_keys_object
 				: null
@@ -450,6 +450,7 @@ export default function BeamioOnboardingModal({
 			}
 			clearInviteOnboardingBusinessDraft(creds.tag)
 			clearSessionOnboardingBusinessDraft()
+			clearMerchantOsCredentialHandoff()
 			home()
 		} catch {
 			stayOnInviteDiscoveryForm()

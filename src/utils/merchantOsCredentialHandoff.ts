@@ -15,6 +15,7 @@ export type MerchantOsCredentialHandoff = {
 }
 
 let held: MerchantOsCredentialHandoff | null | undefined
+let pinFlight: Promise<unknown> | null = null
 
 function readHashQuery(): URLSearchParams | null {
 	if (typeof window === 'undefined') return null
@@ -41,25 +42,57 @@ function stripHashCredentials(): void {
 	window.history.replaceState(window.history.state, '', url)
 }
 
-function readOnce(): MerchantOsCredentialHandoff | null {
-	const params = readHashQuery()
-	if (!params) return null
+function parseHandoffFromParams(params: URLSearchParams): MerchantOsCredentialHandoff | null {
 	const tag = normalizeBeamioTagInput(params.get(TAG_KEY) || '')
 	const pin = (params.get(PIN_KEY) || '').trim()
 	const openBusinessDetails = params.get(FLOW_KEY) === FLOW_BUSINESS
-	stripHashCredentials()
 	if (!BEAMIO_TAG_ALLOWED_RE.test(tag) || !pin || pin.length > PIN_MAX) return null
 	return { tag, pin, openBusinessDetails }
 }
 
+function sameHandoff(
+	a: MerchantOsCredentialHandoff | null | undefined,
+	b: MerchantOsCredentialHandoff | null,
+): boolean {
+	if (!a || !b) return false
+	return a.tag === b.tag && a.pin === b.pin && a.openBusinessDetails === b.openBusinessDetails
+}
+
+/**
+ * Capture tag+pin from the current hash (and strip them).
+ * Safe to call on every mount / hashchange: Agent may open Merchant OS while the SPA
+ * is already loaded (held=null from a prior visit) — module-level readOnce alone misses that.
+ */
+export function captureMerchantOsCredentialHandoffIfPresent(): MerchantOsCredentialHandoff | null {
+	const params = readHashQuery()
+	if (!params) return held ?? null
+	if (!params.has(TAG_KEY) && !params.has(PIN_KEY) && !params.has(FLOW_KEY)) {
+		return held ?? null
+	}
+	const next = parseHandoffFromParams(params)
+	stripHashCredentials()
+	if (!next) return held ?? null
+	if (sameHandoff(held, next)) return held ?? null
+	held = next
+	// New credentials must allow a fresh unlock attempt.
+	pinFlight = null
+	return held
+}
+
 // Capture before HashRouter's layout effect rewrites `location.hash`.
 if (typeof window !== 'undefined') {
-	held = readOnce()
+	held = captureMerchantOsCredentialHandoffIfPresent()
 }
 
 /** Tag + access password captured from the hash, already removed from the address bar. */
 export function takeMerchantOsCredentialHandoff(): MerchantOsCredentialHandoff | null {
 	return held ?? null
+}
+
+/** Drop held handoff after unlock succeeds (or when already unlocked). */
+export function clearMerchantOsCredentialHandoff(): void {
+	held = null
+	pinFlight = null
 }
 
 export function hasMerchantOsCredentialHandoff(): boolean {
@@ -71,9 +104,7 @@ export function merchantOsHandoffOpensBusinessDetails(): boolean {
 	return takeMerchantOsCredentialHandoff()?.openBusinessDetails === true
 }
 
-let pinFlight: Promise<unknown> | null = null
-
-/** One in-flight unlock shared across a StrictMode remount. */
+/** One in-flight unlock shared across a StrictMode remount. Clears on failure so a later retry can run. */
 export function beginMerchantOsHandoffRestore(
 	restore: (creds: MerchantOsCredentialHandoff) => Promise<unknown>,
 ): Promise<unknown> | null {
@@ -82,7 +113,25 @@ export function beginMerchantOsHandoffRestore(
 	if (!pinFlight) {
 		pinFlight = Promise.resolve()
 			.then(() => restore(creds))
-			.catch(() => null)
+			.then((result) => {
+				const ok =
+					result != null &&
+					result !== false &&
+					typeof result === 'object' &&
+					Array.isArray((result as { profiles?: unknown }).profiles) &&
+					((result as { profiles: unknown[] }).profiles.length > 0)
+				if (!ok) {
+					pinFlight = null
+				} else {
+					// Keep pinFlight resolved so StrictMode remounts reuse success;
+					// caller must clearMerchantOsCredentialHandoff after navigate.
+				}
+				return result
+			})
+			.catch(() => {
+				pinFlight = null
+				return null
+			})
 	}
 	return pinFlight
 }

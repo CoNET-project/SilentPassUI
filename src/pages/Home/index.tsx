@@ -8,6 +8,7 @@ import { checkStorageWithTimeout } from '@/services/beamio'
 import SplashScreen from "@/components/SplashScreen"
 import { isWorkspaceScreenLocked } from '@/utils/beamioWorkspaceLock'
 import {
+	captureMerchantOsCredentialHandoffIfPresent,
 	hasMerchantOsCredentialHandoff,
 	merchantOsHandoffOpensBusinessDetails,
 } from '@/utils/merchantOsCredentialHandoff'
@@ -65,19 +66,26 @@ const HomePage = ({}) => {
 		setIsInitialLoading(false)
 	}
 
+	const adoptAgentHandoffFromHash = (): boolean => {
+		captureMerchantOsCredentialHandoffIfPresent()
+		if (merchantOsHandoffOpensBusinessDetails()) {
+			goOnboarding(null)
+			return true
+		}
+		if (hasMerchantOsCredentialHandoff()) {
+			enterBizHome()
+			return true
+		}
+		return false
+	}
+
 	const init = async () => {
 		try {
-			if (merchantOsHandoffOpensBusinessDetails()) {
-				goOnboarding(null)
-				return
-			}
+			// Agent may set #/?tag=&pin= after SPA load — re-capture before routing.
+			if (adoptAgentHandoffFromHash()) return
 			// Agent invite claim: dedicated create → transfer → success (existing wallets cannot claim).
 			if (hasAgentCardClaimHandoff()) {
 				goAgentCardClaim()
-				return
-			}
-			if (hasMerchantOsCredentialHandoff()) {
-				enterBizHome()
 				return
 			}
 			if (isWorkspaceScreenLocked()) {
@@ -95,10 +103,15 @@ const HomePage = ({}) => {
 			goOnboarding(CoNETData)
 		} catch (err) {
 			console.warn(
-				'[HomePage] init failed → onboarding',
+				'[HomePage] init failed → fallback',
 				err instanceof Error ? err.message : String(err),
 			)
-			goOnboarding(null)
+			if (adoptAgentHandoffFromHash()) return
+			if (hasAgentCardClaimHandoff()) {
+				goAgentCardClaim()
+			} else {
+				goOnboarding(null)
+			}
 		}
 	}
 
@@ -109,6 +122,7 @@ const HomePage = ({}) => {
 				console.warn(
 					`[HomePage] splash force-dismiss after ${SPLASH_FORCE_DISMISS_MS}ms → fallback`,
 				)
+				if (adoptAgentHandoffFromHash()) return
 				if (hasAgentCardClaimHandoff()) {
 					goAgentCardClaim()
 				} else {
@@ -117,10 +131,17 @@ const HomePage = ({}) => {
 			}
 		}, SPLASH_FORCE_DISMISS_MS)
 
+		const onHashChange = () => {
+			// Same-tab Agent open: hash updates without remount — prefer temp unlock over onboarding.
+			void adoptAgentHandoffFromHash()
+		}
+		window.addEventListener('hashchange', onHashChange)
+
 		void init()
 
 		return () => {
 			window.clearTimeout(splashTimer)
+			window.removeEventListener('hashchange', onHashChange)
 		}
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [])

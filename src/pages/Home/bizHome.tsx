@@ -15,7 +15,13 @@ import { useTu } from '@/locale/beamioLocale'
 import { hasSessionPrivateKeyArmor } from '@/utils/beamioSessionSecrets'
 import { isWorkspaceAccessGranted } from '@/utils/beamioWorkspaceLock'
 import { unlockMerchantWorkspaceSession } from '@/utils/unlockMerchantWorkspaceSession'
-import { beginMerchantOsHandoffRestore, takeMerchantOsCredentialHandoff } from '@/utils/merchantOsCredentialHandoff'
+import {
+	beginMerchantOsHandoffRestore,
+	captureMerchantOsCredentialHandoffIfPresent,
+	clearMerchantOsCredentialHandoff,
+	takeMerchantOsCredentialHandoff,
+	type MerchantOsCredentialHandoff,
+} from '@/utils/merchantOsCredentialHandoff'
 
 /** Data attribute + selection tint — matches `biz.tsx` Merchant OS */
 const BIZ_UI_PRIMARY = BIZ_BRAND_HEX
@@ -215,7 +221,10 @@ function GatewayActivatingNodeScreen() {
 const BizHome = () => {
 	const { tu } = useTu()
 	const navigate = useNavigate()
-	const handoff = takeMerchantOsCredentialHandoff()
+	const [handoff, setHandoff] = useState<MerchantOsCredentialHandoff | null>(() => {
+		captureMerchantOsCredentialHandoffIfPresent()
+		return takeMerchantOsCredentialHandoff()
+	})
 	const [merchantTag, setMerchantTag] = useState(handoff?.tag ?? '')
 	const [password, setPassword] = useState(handoff?.pin ?? '')
 	const [showPassword, setShowPassword] = useState(false)
@@ -224,6 +233,31 @@ const BizHome = () => {
 	const [showNewBiz, setShowNewBiz] = useState(false)
 	const [showRestoreAccess, setShowRestoreAccess] = useState(false)
 	const [cachedAccountName, setCachedAccountName] = useState('')
+
+	useEffect(() => {
+		const adopt = () => {
+			const captured = captureMerchantOsCredentialHandoffIfPresent()
+			if (!captured || captured.openBusinessDetails) return
+			setHandoff((prev) => {
+				if (
+					prev &&
+					prev.tag === captured.tag &&
+					prev.pin === captured.pin &&
+					prev.openBusinessDetails === captured.openBusinessDetails
+				) {
+					return prev
+				}
+				return captured
+			})
+			setMerchantTag(captured.tag)
+			setPassword(captured.pin)
+			setLoginError('')
+			setIsLoading(true)
+		}
+		adopt()
+		window.addEventListener('hashchange', adopt)
+		return () => window.removeEventListener('hashchange', adopt)
+	}, [])
 
 	const {
 		profiles,
@@ -239,6 +273,11 @@ const BizHome = () => {
 
 	const loginEpochRef = useRef(0)
 
+	const finishUnlockedNavigate = () => {
+		clearMerchantOsCredentialHandoff()
+		navigate(postLoginPathForWallet(), { replace: true })
+	}
+
 	const unlockWithCredentials = async (usernameRaw: string, accessPassword: string) => {
 		setLoginError('')
 		const username = normalizeBeamioTagInput(usernameRaw)
@@ -249,24 +288,27 @@ const BizHome = () => {
 		}
 		const epoch = ++loginEpochRef.current
 		setIsLoading(true)
-		const started = Date.now()
 		const escape = window.setTimeout(() => {
 			if (loginEpochRef.current !== epoch) return
 			setIsLoading(false)
-			if (!(isWorkspaceAccessGranted() && hasSessionPrivateKeyArmor())) {
-				setLoginError(tu('login_failed_please_try_again_later'))
+			if (isWorkspaceAccessGranted() && hasSessionPrivateKeyArmor()) {
+				finishUnlockedNavigate()
+				return
 			}
-		}, 25_000)
+			setLoginError(tu('login_failed_please_try_again_later'))
+		}, 60_000)
 		try {
-			const result = await raceWithTimeout(restoreWithUserPin(username, accessPassword, false), 20_000, null)
+			// Do not raceWithTimeout — orphaning restore leaves session unlocked while
+			// UI still shows Invalid Beamio Tag / Initialize gateway.
+			const result = await restoreWithUserPin(username, accessPassword, false)
 			if (loginEpochRef.current !== epoch) return
 			const temp = result && typeof result === 'object' && result.profiles ? result : null
 			if (!temp) {
-				setLoginError(tu(
-					Date.now() - started >= 7_000
-						? 'login_failed_please_try_again_later'
-						: 'invalid_beamio_tag_or_recovery_password_please_try_again',
-				))
+				if (isWorkspaceAccessGranted() && hasSessionPrivateKeyArmor()) {
+					finishUnlockedNavigate()
+					return
+				}
+				setLoginError(tu('invalid_beamio_tag_or_recovery_password_please_try_again'))
 				return
 			}
 			const ready = await assembleEncryptKeysObject(
@@ -282,14 +324,21 @@ const BizHome = () => {
 			)
 			if (loginEpochRef.current !== epoch) return
 			if (!ready) {
+				if (isWorkspaceAccessGranted() && hasSessionPrivateKeyArmor()) {
+					finishUnlockedNavigate()
+					return
+				}
 				setLoginError(tu('login_failed_please_try_again_later'))
 				return
 			}
-			const path = postLoginPathForWallet()
 			if (loginEpochRef.current !== epoch) return
-			navigate(path, { replace: true })
+			finishUnlockedNavigate()
 		} catch {
 			if (loginEpochRef.current !== epoch) return
+			if (isWorkspaceAccessGranted() && hasSessionPrivateKeyArmor()) {
+				finishUnlockedNavigate()
+				return
+			}
 			setLoginError(tu('login_failed_please_try_again_later'))
 		} finally {
 			window.clearTimeout(escape)
@@ -298,25 +347,43 @@ const BizHome = () => {
 	}
 
 	useEffect(() => {
-		if (!handoff) return
+		if (!handoff || handoff.openBusinessDetails) return
 		let alive = true
 		setIsLoading(true)
+		setLoginError('')
 		const started = Date.now()
-		const flight = beginMerchantOsHandoffRestore((creds) =>
-			raceWithTimeout(restoreWithUserPin(creds.tag, creds.pin, false), 20_000, null),
-		)
+		const HAND_OFF_DEADLINE_MS = 50_000
 		void (async () => {
-			const result = await flight
+			if (isWorkspaceAccessGranted() && hasSessionPrivateKeyArmor()) {
+				if (!alive) return
+				finishUnlockedNavigate()
+				return
+			}
+			let temp: encrypt_keys_object | null = null
+			while (alive && Date.now() - started < HAND_OFF_DEADLINE_MS) {
+				// Await restore fully — never raceWithTimeout (orphans success → Invalid Tag).
+				const result = await beginMerchantOsHandoffRestore((creds) =>
+					restoreWithUserPin(creds.tag, creds.pin, false),
+				)
+				if (!alive) return
+				temp =
+					result && typeof result === 'object' && (result as encrypt_keys_object).profiles
+						? (result as encrypt_keys_object)
+						: null
+				if (temp) break
+				if (isWorkspaceAccessGranted() && hasSessionPrivateKeyArmor()) {
+					finishUnlockedNavigate()
+					return
+				}
+				await new Promise((r) => setTimeout(r, 1_500))
+			}
 			if (!alive) return
-			const temp = result && typeof result === 'object' && (result as encrypt_keys_object).profiles
-				? (result as encrypt_keys_object)
-				: null
 			if (!temp) {
-				setLoginError(tu(
-					Date.now() - started >= 7_000
-						? 'login_failed_please_try_again_later'
-						: 'invalid_beamio_tag_or_recovery_password_please_try_again',
-				))
+				if (isWorkspaceAccessGranted() && hasSessionPrivateKeyArmor()) {
+					finishUnlockedNavigate()
+					return
+				}
+				setLoginError(tu('login_failed_please_try_again_later'))
 				setIsLoading(false)
 				return
 			}
@@ -333,18 +400,22 @@ const BizHome = () => {
 			)
 			if (!alive) return
 			if (!ready) {
+				if (isWorkspaceAccessGranted() && hasSessionPrivateKeyArmor()) {
+					finishUnlockedNavigate()
+					return
+				}
 				setLoginError(tu('login_failed_please_try_again_later'))
 				setIsLoading(false)
 				return
 			}
-			navigate(postLoginPathForWallet(), { replace: true })
+			finishUnlockedNavigate()
 		})()
 		return () => {
 			alive = false
 		}
-		// Invite a business passes tag + access password once. They stay in memory only.
+		// Agent may set #/?tag=&pin= after SPA mount — re-run when handoff updates.
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [])
+	}, [handoff?.tag, handoff?.pin, handoff?.openBusinessDetails])
 
 	useEffect(() => {
 		const fromDaemon = beamio?.accountName?.trim()
@@ -384,14 +455,15 @@ const BizHome = () => {
 	useEffect(() => {
 		// Mid-login `setProfiles` (AA hydrate) must not bounce before
 		// assembleEncryptKeysObject finishes initChat — that race drops gossip listen.
-		if (isLoading || handoff) return
+		if (isLoading) return
 		if (!isWorkspaceAccessGranted() || !hasSessionPrivateKeyArmor()) return
 		const p0 = profiles?.[0]
 		if (!p0?.keyID?.trim() || !ethers.isAddress(p0.keyID)) return
 		let cancelled = false
 		void (async () => {
-			const path = postLoginPathForWallet()
-			if (!cancelled) navigate(path, { replace: true })
+			if (cancelled) return
+			// Handoff already unlocked (e.g. orphaned race recovery) — clear and enter OS.
+			finishUnlockedNavigate()
 		})()
 		return () => {
 			cancelled = true

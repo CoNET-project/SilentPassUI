@@ -1,8 +1,8 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react'
 import { ethers } from 'ethers'
-import { AlertTriangle, Check, Loader2 } from 'lucide-react'
+import { AlertTriangle, Check, KeyRound, Loader2, Shield, Store, User } from 'lucide-react'
 import BusinessIdentityForm, { type BusinessIdentitySuccess } from '@/pages/Home/BusinessIdentityForm'
-import { AddressCapsule } from '@/components/AddressCapsule'
+import RecoveryQRScreen from '@/pages/Home/RecoveryQRScreen'
 import { useTu } from '@/locale/beamioLocale'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { useUnlockMerchantWorkspaceDeps } from '@/hooks/useUnlockMerchantWorkspaceDeps'
@@ -20,7 +20,8 @@ import { setCoNET_Data } from '@/utils/globals'
 import { setBizWorkspaceRole } from '@/utils/agentWorkspaceLocal'
 import { bizBrandOnboardingPrimaryBtnClass } from '@/pages/Home/brandUi'
 
-type Phase = 'create' | 'processing' | 'success' | 'error'
+type Phase = 'create' | 'backup' | 'processing' | 'success' | 'error'
+type StepId = 'account' | 'backup' | 'complete'
 
 const PROGRESS_COPY: Record<AgentCardClaimProgress, string> = {
 	checking: 'agent_card_claim_step_checking',
@@ -29,6 +30,12 @@ const PROGRESS_COPY: Record<AgentCardClaimProgress, string> = {
 	transferring: 'agent_card_claim_step_transferring',
 	completing: 'agent_card_claim_step_completing',
 	done: 'agent_card_claim_step_done',
+}
+
+function activeStep(phase: Phase): StepId {
+	if (phase === 'create') return 'account'
+	if (phase === 'backup' || phase === 'processing') return 'backup'
+	return 'complete'
 }
 
 export type AgentCardClaimPageProps = {
@@ -49,15 +56,20 @@ export default function AgentCardClaimPage({ onEnterHome }: AgentCardClaimPagePr
 	)
 	const [createdTag, setCreatedTag] = useState('')
 	const [createdTemp, setCreatedTemp] = useState<encrypt_keys_object | null>(null)
+	const [qrDataUrl, setQrDataUrl] = useState('')
+	const [recoveryCode, setRecoveryCode] = useState('')
 	const [enteringHome, setEnteringHome] = useState(false)
 	const transferInFlightRef = useRef(false)
 
-	const cardAddress = claim?.cardAddress ?? ''
+	const businessName =
+		(claim?.businessName || '').trim() || tu('agent_card_claim_business_fallback')
 
 	const progressLabel = useMemo(() => {
 		const key = PROGRESS_COPY[progress]
 		return tu(key)
 	}, [progress, tu])
+
+	const step = activeStep(phase)
 
 	const runTransfer = useCallback(
 		async (temp: encrypt_keys_object, beamioTag: string) => {
@@ -103,12 +115,22 @@ export default function AgentCardClaimPage({ onEnterHome }: AgentCardClaimPagePr
 		[tu],
 	)
 
-	const onCreateSuccess = useCallback(
-		(v: BusinessIdentitySuccess) => {
-			void runTransfer(v.temp as encrypt_keys_object, v.beamioTag)
-		},
-		[runTransfer],
-	)
+	const onCreateSuccess = useCallback((v: BusinessIdentitySuccess) => {
+		setCreatedTag(v.beamioTag)
+		setCreatedTemp(v.temp as encrypt_keys_object)
+		setQrDataUrl(v.qrDataUrl || '')
+		setRecoveryCode(v.passcode || v.pin || '')
+		setPhase('backup')
+	}, [])
+
+	const onBackupDone = useCallback(() => {
+		if (!createdTemp) {
+			setError(tu('agent_card_claim_no_merchant_eoa'))
+			setPhase('error')
+			return
+		}
+		void runTransfer(createdTemp, createdTag)
+	}, [createdTag, createdTemp, runTransfer, tu])
 
 	const onDone = useCallback(async () => {
 		if (enteringHome) return
@@ -154,6 +176,26 @@ export default function AgentCardClaimPage({ onEnterHome }: AgentCardClaimPagePr
 		void runTransfer(createdTemp, createdTag)
 	}, [createdTag, createdTemp, runTransfer])
 
+	const steppers: { id: StepId; labelKey: string; Icon: typeof User }[] = [
+		{ id: 'account', labelKey: 'agent_card_claim_step_account', Icon: User },
+		{ id: 'backup', labelKey: 'agent_card_claim_step_backup', Icon: Shield },
+		{ id: 'complete', labelKey: 'agent_card_claim_step_complete', Icon: Check },
+	]
+	const stepOrder: StepId[] = ['account', 'backup', 'complete']
+	const activeIdx = stepOrder.indexOf(step)
+
+	if (phase === 'backup' && qrDataUrl) {
+		return (
+			<RecoveryQRScreen
+				qrDataUrl={qrDataUrl}
+				recoveryCode={recoveryCode}
+				showButton
+				beamioTag={createdTag}
+				close={onBackupDone}
+			/>
+		)
+	}
+
 	return (
 		<div
 			className="flex min-h-[100dvh] w-full flex-col bg-[#F2F2F7] text-slate-900 dark:bg-slate-950 dark:text-slate-50"
@@ -162,14 +204,43 @@ export default function AgentCardClaimPage({ onEnterHome }: AgentCardClaimPagePr
 				paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom, 0px))',
 			}}
 		>
-			<div className="mx-auto flex w-full max-w-md flex-1 flex-col px-6 pb-8 pt-6">
+			<div className="mx-auto flex w-full max-w-md flex-1 flex-col px-6 pb-8 pt-4">
+				<nav
+					className="mb-8 flex items-start justify-between gap-2 px-1"
+					aria-label={tu('agent_card_claim_stepper_aria')}
+				>
+					{steppers.map(({ id, labelKey, Icon }, i) => {
+						const isActive = id === step
+						const isDone = i < activeIdx
+						const tone = isActive || isDone ? 'text-[#1562F0]' : 'text-slate-400'
+						const ring = isActive
+							? 'bg-[#1562F0] text-white shadow-[0_4px_14px_rgba(21,98,240,0.35)]'
+							: isDone
+								? 'bg-[#1562F0]/15 text-[#1562F0]'
+								: 'bg-slate-200/80 text-slate-400 dark:bg-slate-800'
+						return (
+							<div key={id} className="flex min-w-0 flex-1 flex-col items-center gap-2">
+								<div
+									className={`flex h-10 w-10 items-center justify-center rounded-full ${ring}`}
+									aria-current={isActive ? 'step' : undefined}
+								>
+									<Icon className="h-5 w-5" strokeWidth={2.25} aria-hidden />
+								</div>
+								<span className={`text-center text-[12px] font-semibold ${tone}`}>
+									{tu(labelKey)}
+								</span>
+							</div>
+						)
+					})}
+				</nav>
+
 				{phase === 'create' ? (
 					<>
-						<header className="mb-8 text-center">
+						<header className="mb-6 text-center">
 							<p className="mb-2 text-[11px] font-extrabold uppercase tracking-widest text-[#1562F0]">
 								{tu('agent_card_claim_eyebrow')}
 							</p>
-							<h1 className="mb-3 text-3xl font-extrabold tracking-tight text-[#121212] dark:text-slate-100">
+							<h1 className="mb-2 text-3xl font-extrabold tracking-tight text-[#121212] dark:text-slate-100">
 								{tu('agent_card_claim_title')}
 							</h1>
 							<p className="leading-relaxed text-[#666666] dark:text-slate-400">
@@ -177,27 +248,30 @@ export default function AgentCardClaimPage({ onEnterHome }: AgentCardClaimPagePr
 							</p>
 						</header>
 
-						{cardAddress ? (
-							<div className="mb-6 rounded-2xl border border-slate-200 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-900">
-								<p className="mb-2 text-[11px] font-extrabold uppercase tracking-widest text-slate-500">
-									{tu('agent_card_claim_card_label')}
-								</p>
-								<AddressCapsule
-									address={cardAddress}
-									className="max-w-full border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
-								/>
+						<div className="mb-6 flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3.5 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+							<div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#1562F0]/10">
+								<Store className="h-5 w-5 text-[#1562F0]" strokeWidth={2.25} aria-hidden />
 							</div>
-						) : null}
-
-						<div
-							role="note"
-							className="mb-6 flex gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-100"
-						>
-							<AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-							<p>{tu('agent_card_claim_existing_blocked')}</p>
+							<div className="min-w-0">
+								<p className="truncate text-[15px] font-bold text-[#121212] dark:text-slate-100">
+									{businessName}
+								</p>
+								<p className="text-[13px] text-[#666666] dark:text-slate-400">
+									{tu('agent_card_claim_business_caption')}
+								</p>
+							</div>
 						</div>
 
-						<BusinessIdentityForm showIntroHeader={false} onSuccess={onCreateSuccess} />
+						<BusinessIdentityForm
+							showIntroHeader={false}
+							variant="handover"
+							onSuccess={onCreateSuccess}
+						/>
+
+						<div className="mt-6 flex items-start gap-2.5 px-1 text-[13px] leading-snug text-[#666666] dark:text-slate-400">
+							<KeyRound className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" aria-hidden />
+							<p>{tu('agent_card_claim_footer_note')}</p>
+						</div>
 					</>
 				) : null}
 
@@ -237,17 +311,19 @@ export default function AgentCardClaimPage({ onEnterHome }: AgentCardClaimPagePr
 						) : (
 							<div className="mb-8" />
 						)}
-						{cardAddress ? (
-							<div className="mb-8 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-900">
-								<p className="mb-2 text-[11px] font-extrabold uppercase tracking-widest text-slate-500">
-									{tu('agent_card_claim_card_label')}
-								</p>
-								<AddressCapsule
-									address={cardAddress}
-									className="max-w-full border-slate-200 bg-slate-50 text-slate-700"
-								/>
+						<div className="mb-8 flex w-full items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3.5 dark:border-slate-700 dark:bg-slate-900">
+							<div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#1562F0]/10">
+								<Store className="h-5 w-5 text-[#1562F0]" strokeWidth={2.25} aria-hidden />
 							</div>
-						) : null}
+							<div className="min-w-0 text-left">
+								<p className="truncate text-[15px] font-bold text-[#121212] dark:text-slate-100">
+									{businessName}
+								</p>
+								<p className="text-[13px] text-[#666666] dark:text-slate-400">
+									{tu('agent_card_claim_business_owned')}
+								</p>
+							</div>
+						</div>
 						<button
 							type="button"
 							disabled={enteringHome}

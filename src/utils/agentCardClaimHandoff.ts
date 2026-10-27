@@ -11,12 +11,15 @@ const TEMP_PK_KEY = 'tempPk'
 const CARD_KEY = 'card'
 const AGENT_KEY = 'agent'
 const TEMP_KEY = 'temp'
+const NAME_KEY = 'name'
 
 export type AgentCardClaimHandoff = {
 	tempPrivateKey: string
 	cardAddress: string
 	agentEoa: string
 	tempEoa: string
+	/** Display name of the business being handed over (from Agent claim link). */
+	businessName?: string
 }
 
 let held: AgentCardClaimHandoff | null | undefined
@@ -40,7 +43,8 @@ function stripClaimParams(): void {
 		!params.has(TEMP_PK_KEY) &&
 		!params.has(CARD_KEY) &&
 		!params.has(AGENT_KEY) &&
-		!params.has(TEMP_KEY)
+		!params.has(TEMP_KEY) &&
+		!params.has(NAME_KEY)
 	) {
 		return
 	}
@@ -49,6 +53,7 @@ function stripClaimParams(): void {
 	params.delete(CARD_KEY)
 	params.delete(AGENT_KEY)
 	params.delete(TEMP_KEY)
+	params.delete(NAME_KEY)
 	const path = hash.slice(1, q) || '/'
 	const rest = params.toString()
 	const nextHash = `#${path.startsWith('/') ? path : `/${path}`}${rest ? `?${rest}` : ''}`
@@ -62,17 +67,20 @@ function parseClaim(params: URLSearchParams): AgentCardClaimHandoff | null {
 	const cardRaw = (params.get(CARD_KEY) || '').trim()
 	const agentRaw = (params.get(AGENT_KEY) || '').trim()
 	const tempRaw = (params.get(TEMP_KEY) || '').trim()
+	const nameRaw = (params.get(NAME_KEY) || '').trim()
 	if (!pkRaw || !ethers.isAddress(cardRaw) || !ethers.isAddress(agentRaw) || !ethers.isAddress(tempRaw)) {
 		return null
 	}
 	try {
 		const wallet = new ethers.Wallet(pkRaw.startsWith('0x') ? pkRaw : `0x${pkRaw}`)
 		if (wallet.address.toLowerCase() !== ethers.getAddress(tempRaw).toLowerCase()) return null
+		const businessName = nameRaw ? nameRaw.slice(0, 80) : undefined
 		return {
 			tempPrivateKey: wallet.privateKey,
 			cardAddress: ethers.getAddress(cardRaw),
 			agentEoa: ethers.getAddress(agentRaw),
 			tempEoa: ethers.getAddress(tempRaw),
+			...(businessName ? { businessName } : {}),
 		}
 	} catch {
 		return null

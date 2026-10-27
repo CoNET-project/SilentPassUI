@@ -54,6 +54,13 @@ export type BusinessIdentityFormProps = {
 	 * so Recovery QR does not flash the identity shell underneath.
 	 */
 	onWorkspaceCreatingChange?: (creating: boolean) => void
+	/**
+	 * `handover` — Business handover Account step (single password field, screenshot CTA).
+	 * Default keeps confirm-password + encryption note for standard onboarding.
+	 */
+	variant?: 'default' | 'handover'
+	/** Override primary submit label (e.g. Continue to recovery backup). */
+	submitLabelKey?: string
 }
 
 export default function BusinessIdentityForm({
@@ -63,7 +70,10 @@ export default function BusinessIdentityForm({
 	showIntroHeader = true,
 	trailingAfterSubmit,
 	onWorkspaceCreatingChange,
+	variant = 'default',
+	submitLabelKey,
 }: BusinessIdentityFormProps) {
+	const isHandover = variant === 'handover'
 	const { tu } = useTu()
 	const [beamioName, setBeamioName] = useState("")
 	const [password, setPassword] = useState("")
@@ -254,10 +264,17 @@ export default function BusinessIdentityForm({
 	const { len8, mixed, numbers } = passwordRuleChecks(password)
 	const tagOk = tagStatus === "valid"
 	const isCheckingTag = tagStatus === "checking"
-	const confirmMismatch = confirmPassword.length > 0 && password !== confirmPassword
-	const passwordsMatch = password.length > 0 && password === confirmPassword
+	const effectiveConfirm = isHandover ? password : confirmPassword
+	const confirmMismatch = !isHandover && confirmPassword.length > 0 && password !== confirmPassword
+	const passwordsMatch = password.length > 0 && password === effectiveConfirm
 
-	const canSubmit = tagOk && len8 && mixed && numbers && passwordsMatch && !loading && !isCheckingTag
+	const canSubmit =
+		tagOk &&
+		len8 &&
+		(isHandover ? true : mixed && numbers) &&
+		passwordsMatch &&
+		!loading &&
+		!isCheckingTag
 
 	useEffect(() => {
 		onWorkspaceCreatingChange?.(loading)
@@ -280,7 +297,8 @@ export default function BusinessIdentityForm({
 		const tagOkNow = await validateAndCheckTag()
 		if (!tagOkNow) return
 		const { len8: l, mixed: m, numbers: n } = passwordRuleChecks(password)
-		if (!l || !m || !n || password !== confirmPassword) return
+		const confirmOk = isHandover ? true : password === confirmPassword
+		if (!l || (!isHandover && (!m || !n)) || !confirmOk) return
 
 		const trimmedTag = normalizeBeamioTagInput(beamioName || "")
 		if (!trimmedTag) return
@@ -340,6 +358,10 @@ export default function BusinessIdentityForm({
 		e.preventDefault()
 		e.stopPropagation()
 		if (loading) return
+		if (isHandover) {
+			if (canSubmit) void handleContinue()
+			return
+		}
 		confirmInputRef.current?.focus()
 	}
 
@@ -382,7 +404,7 @@ export default function BusinessIdentityForm({
 			>
 				<div className="space-y-3">
 					<label className="text-[11px] font-extrabold uppercase tracking-widest text-[#121212]/70" htmlFor="biz-identity-handle">
-						{tu('onb_identity_handle_label')}
+						{isHandover ? tu('agent_card_claim_tag_label') : tu('onb_identity_handle_label')}
 					</label>
 					<div className="relative">
 						<span
@@ -410,7 +432,7 @@ export default function BusinessIdentityForm({
 								read-only:opacity-100
 							`}
 							value={beamioName}
-							placeholder={tu('onb_identity_handle_ph')}
+							placeholder={isHandover ? tu('agent_card_claim_tag_ph') : tu('onb_identity_handle_ph')}
 							onChange={(e) => {
 								userEditedHandleRef.current = true
 								const next = normalizeBeamioTagInput(e.currentTarget.value)
@@ -484,7 +506,9 @@ export default function BusinessIdentityForm({
 						) : tagStatus === "checking" ? (
 							<p className="text-[11px] font-medium text-[#666666]/80">{tu('onb_identity_tag_checking')}</p>
 						) : (
-							<p className="text-[11px] font-medium text-[#666666]/70">{tu('onb_identity_handle_permanent_hint')}</p>
+							<p className="text-[11px] font-medium text-[#666666]/70">
+								{isHandover ? tu('agent_card_claim_tag_hint') : tu('onb_identity_handle_permanent_hint')}
+							</p>
 						)}
 					</div>
 				</div>
@@ -496,7 +520,7 @@ export default function BusinessIdentityForm({
 								className="block px-4 text-[11px] font-extrabold uppercase tracking-widest text-[#121212]/70"
 								htmlFor="biz-identity-password"
 							>
-								{tu('onb_identity_password_label')}
+								{isHandover ? tu('agent_card_claim_password_label') : tu('onb_identity_password_label')}
 							</label>
 							<div className="relative">
 								<input
@@ -505,7 +529,7 @@ export default function BusinessIdentityForm({
 									readOnly={loading}
 									type={showPassword ? "text" : "password"}
 									autoComplete="new-password"
-									enterKeyHint="next"
+									enterKeyHint={isHandover ? "done" : "next"}
 									onKeyDown={onPasswordKeyDown}
 									className={[
 										"w-full rounded-2xl border border-[#E5E7EB] bg-white py-4 pl-5 pr-12 text-lg font-medium outline-none transition-all",
@@ -514,8 +538,12 @@ export default function BusinessIdentityForm({
 										bizBrandFocusRingClass,
 									].join(" ")}
 									value={password}
-									placeholder="••••••••••••"
-									onChange={(e) => setPassword(e.currentTarget.value)}
+									placeholder={isHandover ? tu('agent_card_claim_password_ph') : "••••••••••••"}
+									onChange={(e) => {
+										const next = e.currentTarget.value
+										setPassword(next)
+										if (isHandover) setConfirmPassword(next)
+									}}
 								/>
 								<button
 									type="button"
@@ -527,83 +555,91 @@ export default function BusinessIdentityForm({
 									{showPassword ? <EyeOff className="h-5 w-5" strokeWidth={2} /> : <Eye className="h-5 w-5" strokeWidth={2} />}
 								</button>
 							</div>
-							<p className="px-1 text-[12px] leading-snug text-[#666666]/80">
-								{tu('onb_identity_password_hint')}
-							</p>
-						</div>
-						<div className="space-y-2">
-							<label
-								className="block px-4 text-[11px] font-extrabold uppercase tracking-widest text-[#121212]/70"
-								htmlFor="biz-identity-confirm-password"
-							>
-								{tu('onb_identity_confirm_password_label')}
-							</label>
-							<input
-								ref={confirmInputRef}
-								id="biz-identity-confirm-password"
-								readOnly={loading}
-								type={showPassword ? "text" : "password"}
-								autoComplete="new-password"
-								enterKeyHint="done"
-								onKeyDown={onConfirmKeyDown}
-								className={[
-									"w-full rounded-2xl border border-[#E5E7EB] bg-white px-5 py-4 text-lg font-medium outline-none transition-all",
-									"text-[#121212] placeholder:text-[#666666]/40",
-									"disabled:opacity-70",
-									confirmMismatch
-										? "ring-2 ring-orange-400/80 focus:border-orange-400 focus:ring-2 focus:ring-orange-400/30"
-										: "focus:border-[#1562F0] focus:ring-2 focus:ring-[#1562F0]/10 " + bizBrandFocusRingClass,
-								].join(" ")}
-								value={confirmPassword}
-								placeholder="••••••••••••"
-								onChange={(e) => setConfirmPassword(e.currentTarget.value)}
-							/>
-							{confirmMismatch ? (
-								<div className="flex items-center gap-2 px-4 pt-0.5 text-orange-600">
-									<AlertTriangle className="h-4 w-4 shrink-0" strokeWidth={2.5} aria-hidden />
-									<span className="text-[13px] font-semibold leading-snug">{tu('onb_identity_passwords_mismatch')}</span>
-								</div>
+							{!isHandover ? (
+								<p className="px-1 text-[12px] leading-snug text-[#666666]/80">
+									{tu('onb_identity_password_hint')}
+								</p>
 							) : null}
 						</div>
+						{!isHandover ? (
+							<div className="space-y-2">
+								<label
+									className="block px-4 text-[11px] font-extrabold uppercase tracking-widest text-[#121212]/70"
+									htmlFor="biz-identity-confirm-password"
+								>
+									{tu('onb_identity_confirm_password_label')}
+								</label>
+								<input
+									ref={confirmInputRef}
+									id="biz-identity-confirm-password"
+									readOnly={loading}
+									type={showPassword ? "text" : "password"}
+									autoComplete="new-password"
+									enterKeyHint="done"
+									onKeyDown={onConfirmKeyDown}
+									className={[
+										"w-full rounded-2xl border border-[#E5E7EB] bg-white px-5 py-4 text-lg font-medium outline-none transition-all",
+										"text-[#121212] placeholder:text-[#666666]/40",
+										"disabled:opacity-70",
+										confirmMismatch
+											? "ring-2 ring-orange-400/80 focus:border-orange-400 focus:ring-2 focus:ring-orange-400/30"
+											: "focus:border-[#1562F0] focus:ring-2 focus:ring-[#1562F0]/10 " + bizBrandFocusRingClass,
+									].join(" ")}
+									value={confirmPassword}
+									placeholder="••••••••••••"
+									onChange={(e) => setConfirmPassword(e.currentTarget.value)}
+								/>
+								{confirmMismatch ? (
+									<div className="flex items-center gap-2 px-4 pt-0.5 text-orange-600">
+										<AlertTriangle className="h-4 w-4 shrink-0" strokeWidth={2.5} aria-hidden />
+										<span className="text-[13px] font-semibold leading-snug">{tu('onb_identity_passwords_mismatch')}</span>
+									</div>
+								) : null}
+							</div>
+						) : null}
 					</div>
 
-					<ul className="space-y-2.5 px-2 pt-1" aria-label={tu('onb_identity_pw_req_aria')}>
-						{(
-							[
-								{ ok: len8, key: "onb_identity_pw_len8" },
-								{ ok: mixed, key: "onb_identity_pw_mixed" },
-								{ ok: numbers, key: "onb_identity_pw_numbers" },
-							] as const
-						).map(({ ok, key }) => (
-							<li key={key} className="flex items-center gap-2.5">
-								{ok ? (
-									<Check className="h-4 w-4 shrink-0 text-emerald-600" strokeWidth={2.5} aria-hidden />
-								) : (
-									<span className="h-4 w-4 shrink-0 rounded-full border-2 border-[#c3c6d8]" aria-hidden />
-								)}
-								<span className={`text-[13px] font-medium ${ok ? "text-[#121212]" : "text-[#666666]"}`}>{tu(key)}</span>
-							</li>
-						))}
-					</ul>
+					{!isHandover ? (
+						<ul className="space-y-2.5 px-2 pt-1" aria-label={tu('onb_identity_pw_req_aria')}>
+							{(
+								[
+									{ ok: len8, key: "onb_identity_pw_len8" },
+									{ ok: mixed, key: "onb_identity_pw_mixed" },
+									{ ok: numbers, key: "onb_identity_pw_numbers" },
+								] as const
+							).map(({ ok, key }) => (
+								<li key={key} className="flex items-center gap-2.5">
+									{ok ? (
+										<Check className="h-4 w-4 shrink-0 text-emerald-600" strokeWidth={2.5} aria-hidden />
+									) : (
+										<span className="h-4 w-4 shrink-0 rounded-full border-2 border-[#c3c6d8]" aria-hidden />
+									)}
+									<span className={`text-[13px] font-medium ${ok ? "text-[#121212]" : "text-[#666666]"}`}>{tu(key)}</span>
+								</li>
+							))}
+						</ul>
+					) : null}
 				</div>
 
-				<div className="flex items-start gap-3 rounded-2xl border border-[#E5E7EB] bg-[#F8F9FB] px-4 py-4 sm:gap-4 sm:px-5">
-					<div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#1562F0]/10">
-						<ShieldCheck
-							className="h-5 w-5 text-[#1562F0]"
-							strokeWidth={2}
-							aria-hidden
-						/>
+				{!isHandover ? (
+					<div className="flex items-start gap-3 rounded-2xl border border-[#E5E7EB] bg-[#F8F9FB] px-4 py-4 sm:gap-4 sm:px-5">
+						<div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#1562F0]/10">
+							<ShieldCheck
+								className="h-5 w-5 text-[#1562F0]"
+								strokeWidth={2}
+								aria-hidden
+							/>
+						</div>
+						<div className="min-w-0 space-y-1">
+							<p className="text-[11px] font-bold uppercase tracking-wider text-[#121212]">
+								{tu('onb_identity_encryption_title')}
+							</p>
+							<p className="text-[13px] leading-relaxed text-[#666666]">
+								{tu('onb_identity_encryption_body')}
+							</p>
+						</div>
 					</div>
-					<div className="min-w-0 space-y-1">
-						<p className="text-[11px] font-bold uppercase tracking-wider text-[#121212]">
-							{tu('onb_identity_encryption_title')}
-						</p>
-						<p className="text-[13px] leading-relaxed text-[#666666]">
-							{tu('onb_identity_encryption_body')}
-						</p>
-					</div>
-				</div>
+				) : null}
 
 				<div className="space-y-4 pt-4">
 					{submitError ? (
@@ -621,7 +657,9 @@ export default function BusinessIdentityForm({
 							${canSubmit ? `${bizBrandOnboardingPrimaryBtnClass} ${bizBrandFocusRingClass}` : "cursor-not-allowed bg-[#c5d4f5] text-white/90 shadow-none"}
 						`}
 						rightIcon={<ArrowRight className="h-5 w-5 shrink-0" strokeWidth={2.25} aria-hidden />}
-					>{tu('continue')}</AppButton>
+					>
+						{tu(submitLabelKey || (isHandover ? 'agent_card_claim_continue_backup' : 'continue'))}
+					</AppButton>
 					{trailingAfterSubmit}
 				</div>
 			</form>

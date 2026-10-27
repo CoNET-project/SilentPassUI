@@ -34,6 +34,7 @@ import {
 	type AgentTempAccount,
 	type AgentTempMerchantCard,
 } from '@/utils/agentBusinessWorkspace'
+import { unlockDetachedRecoverPrivateKey } from '@/services/beamio'
 
 const M_PURPLE = '#8b3e91'
 const M_SOFT = '#f6edf9'
@@ -47,7 +48,8 @@ export type AgentTempCardsSnapshot = {
 	error?: string
 }
 
-function merchantOsUnlockUrl(beamioTag: string, accessPassword: string, flow?: 'business'): string {
+/** Unlock Merchant OS with temp BeamioTag + access password (hash query; stripped on load). */
+export function merchantOsUnlockUrl(beamioTag: string, accessPassword: string, flow?: 'business'): string {
 	const params = new URLSearchParams({
 		tag: beamioTag.replace(/^@/, '').trim(),
 		pin: accessPassword,
@@ -177,6 +179,15 @@ export function AgentTempAccountStates({
 		} catch {
 			/* still open — local sponsored flag covers first create */
 		}
+		// Unlock-only: wait until AccountRegistry PIN recover is readable (Master lag after create).
+		if (!flow) {
+			const deadline = Date.now() + 20_000
+			while (Date.now() < deadline) {
+				const pk = await unlockDetachedRecoverPrivateKey(temp.beamioTag, temp.accessPassword)
+				if (pk) break
+				await new Promise((resolve) => window.setTimeout(resolve, 1_000))
+			}
+		}
 		openExternalUrl(merchantOsUnlockUrl(temp.beamioTag, temp.accessPassword, flow))
 	}
 
@@ -195,6 +206,7 @@ export function AgentTempAccountStates({
 				temp,
 				cardAddress: manageable.cardAddress,
 				agentEoa,
+				businessName: merchantCardTitle(manageable),
 			})
 			if (!built.ok) {
 				setClaimError(built.error)
@@ -415,7 +427,12 @@ export function AgentTempAccountStates({
 						</div>
 						<button
 							type="button"
-							onClick={() => void openBusinessOs(ready ? undefined : 'business')}
+							onClick={() => {
+								// Always unlock-only with the Agent temp tag+pin. Never open
+								// flow=business (create-wallet / DiscoveryForm) — that page is for
+								// cold invites without a temp account, not post-create handoff.
+								void openBusinessOs()
+							}}
 							className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-[13px] px-4 py-3.5 text-[15px] font-bold text-white"
 							style={{ backgroundColor: M_PURPLE }}
 						>

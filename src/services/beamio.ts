@@ -2352,7 +2352,24 @@ export const createDetachedRecoverAccount = async (BeamioName: string, pin: stri
 		acc.privateKey,
 	)
 	if (!registered) return null
-	return { eoa: ethers.getAddress(acc.address) }
+	const eoa = ethers.getAddress(acc.address)
+	// newUser can return before Master finishes AccountRegistry write — wait until PIN decrypt works.
+	const deadline = Date.now() + 45_000
+	while (Date.now() < deadline) {
+		const hit =
+			(await fetchRecoverPayloadByAccountName(BeamioName, beamioAccountSC)) ||
+			(await fetchRecoverPayloadByAccountName(BeamioName, legacyBeamioAccountSC))
+		if (hit?.payload?.img && hit.payload.stored) {
+			try {
+				await aesGcmDecryptWithStored(hit.payload.img, pin, hit.payload.stored)
+				return { eoa }
+			} catch {
+				/* blob incomplete or still propagating — keep waiting */
+			}
+		}
+		await new Promise((resolve) => window.setTimeout(resolve, 1_500))
+	}
+	return { eoa }
 }
 
 /** Decrypt a recover package in memory. Does not call createOrGetWallet or storeSystemData. */

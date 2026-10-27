@@ -38,8 +38,12 @@ import { BeamioCircularBackButton } from '@/components/BeamioCircularBackButton'
 import { useMerchantCardDatabase } from '@/providers/MerchantCardDatabaseProvider'
 import { pickMerchantCardListTitle } from '@/utils/merchantCardDatabase'
 import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
+import { unlockDetachedRecoverPrivateKey } from '@/services/beamio'
 import { registerMerchantUnderAgent, registerTempUnderAgent } from '@/utils/agentReferrerRegistryClient'
-import { AgentTempAccountStates } from '@/pages/BountyBoard/AgentTempAccountStates'
+import {
+	AgentTempAccountStates,
+	merchantOsUnlockUrl,
+} from '@/pages/BountyBoard/AgentTempAccountStates'
 import {
 	isHiddenFromAgentInviteSheet,
 	listTempMerchantCards,
@@ -50,8 +54,6 @@ import {
 
 const M_PURPLE = '#8b3e91'
 const M_SOFT = '#f6edf9'
-const MERCHANT_OS_AGENT_URL = 'https://biz.beamio.app/biz/'
-
 type PanelView = 'main' | 'partnerPlan' | 'manage'
 type EssentialsKey = 'fees' | 'packages' | 'calc' | null
 
@@ -971,19 +973,42 @@ export function MerchantsBusinessPanel({
 											))}
 										</div>
 										<p className="mt-3 text-[11px] text-slate-400">The business chooses and pays in Business OS.</p>
-										<a
-											href={MERCHANT_OS_AGENT_URL}
-											target="_blank"
-											rel="noopener noreferrer"
-											onClick={(e) => {
-												e.preventDefault()
-												openExternalUrl(MERCHANT_OS_AGENT_URL)
-											}}
-											className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-2xl border border-slate-200 px-4 py-2.5 text-[13px] font-semibold text-slate-700 dark:border-slate-600 dark:text-slate-200"
-										>
-											View Business OS
-											<ExternalLink className="h-3.5 w-3.5" aria-hidden />
-										</a>
+										{selectedTemp ? (
+											<a
+												href={merchantOsUnlockUrl(
+													selectedTemp.beamioTag,
+													selectedTemp.accessPassword,
+												)}
+												target="_blank"
+												rel="noopener noreferrer"
+												onClick={(e) => {
+													e.preventDefault()
+													const temp = selectedTemp
+													const url = merchantOsUnlockUrl(temp.beamioTag, temp.accessPassword)
+													void (async () => {
+														const deadline = Date.now() + 20_000
+														while (Date.now() < deadline) {
+															const pk = await unlockDetachedRecoverPrivateKey(
+																temp.beamioTag,
+																temp.accessPassword,
+															)
+															if (pk) break
+															await new Promise((r) => setTimeout(r, 1_200))
+														}
+														void registerTempUnderAgent(temp.eoa).catch(() => {})
+														openExternalUrl(url)
+													})()
+												}}
+												className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-2xl border border-slate-200 px-4 py-2.5 text-[13px] font-semibold text-slate-700 dark:border-slate-600 dark:text-slate-200"
+											>
+												View Business OS
+												<ExternalLink className="h-3.5 w-3.5" aria-hidden />
+											</a>
+										) : (
+											<p className="mt-3 text-[12px] text-slate-400">
+												Select a temporary account to open Business OS unlocked.
+											</p>
+										)}
 										<EssentialsFinePrint title="Package & verification details">
 											<p>
 												Reference packages; confirm current pricing and terms before purchase. Businesses select

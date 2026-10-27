@@ -14,6 +14,8 @@ export function buildAgentCardClaimUrl(input: {
 	cardAddress: string
 	agentEoa: string
 	tempEoa: string
+	/** Optional display name shown on Merchant OS Business handover. */
+	businessName?: string
 }): string {
 	const pk = input.tempPrivateKey.trim()
 	if (!pk) throw new Error('Missing temp private key')
@@ -28,6 +30,8 @@ export function buildAgentCardClaimUrl(input: {
 		agent: ethers.getAddress(input.agentEoa),
 		temp: ethers.getAddress(input.tempEoa),
 	})
+	const name = (input.businessName || '').trim().slice(0, 80)
+	if (name) params.set('name', name)
 	return `${MERCHANT_OS_BASE}#/?${params.toString()}`
 }
 
@@ -36,6 +40,7 @@ export async function buildAgentCardClaimUrlForTemp(input: {
 	temp: AgentTempAccount
 	cardAddress: string
 	agentEoa: string
+	businessName?: string
 }): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
 	try {
 		if (!ethers.isAddress(input.agentEoa) || !ethers.isAddress(input.cardAddress)) {
@@ -53,6 +58,7 @@ export async function buildAgentCardClaimUrlForTemp(input: {
 			cardAddress: input.cardAddress,
 			agentEoa: input.agentEoa,
 			tempEoa: input.temp.eoa,
+			businessName: input.businessName,
 		})
 		return { ok: true, url }
 	} catch (err) {

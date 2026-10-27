@@ -77,7 +77,7 @@ export default function CouponOpenClaimShareButton({
 		countLabel != null ? `Share claim URL · ${countLabel} share clicks` : 'Share claim URL'
 	const buttonClass =
 		appearance === 'text'
-			? 'inline-flex shrink-0 items-center gap-1.5 text-[15px] font-medium text-[#5c6370] transition active:scale-95 dark:text-slate-300'
+			? 'inline-flex shrink-0 items-center gap-1 text-[11px] font-medium text-[#5c6370] transition active:scale-95 dark:text-slate-300'
 			: `inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold ring-1 transition active:scale-95 ${style}`
 
 	return (
@@ -90,13 +90,13 @@ export default function CouponOpenClaimShareButton({
 		>
 			{shared ? (
 				<Check
-					className={appearance === 'text' ? 'h-5 w-5 text-emerald-500' : 'h-3 w-3 text-emerald-500'}
+					className={appearance === 'text' ? 'h-3.5 w-3.5 text-emerald-500' : 'h-3 w-3 text-emerald-500'}
 					strokeWidth={2.4}
 					aria-hidden
 				/>
 			) : (
 				<Share2
-					className={appearance === 'text' ? 'h-5 w-5' : 'h-3 w-3'}
+					className={appearance === 'text' ? 'h-3.5 w-3.5' : 'h-3 w-3'}
 					strokeWidth={2.25}
 					aria-hidden
 				/>

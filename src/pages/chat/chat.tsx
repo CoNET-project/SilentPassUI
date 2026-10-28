@@ -1394,6 +1394,10 @@ function ChatFileMessagePlayer({ manifest, isMe }: { manifest: ChatFileMessageMa
 		manifest.width && manifest.height && manifest.width > 0 && manifest.height > 0
 			? `${manifest.width} / ${manifest.height}`
 			: '4 / 3'
+	const imageBubbleWidth =
+		isImageMessage && manifest.width && manifest.width > 0
+			? `min(78vw, 280px, ${Math.round(manifest.width)}px)`
+			: undefined
 	return (
 		<div
 			className={[
@@ -1404,6 +1408,11 @@ function ChatFileMessagePlayer({ manifest, isMe }: { manifest: ChatFileMessageMa
 					: 'min-w-[220px] rounded-2xl px-3 py-2 ring-1 ring-black/5',
 				isPdfMessage ? '' : isMe ? 'bg-[#dceaff]/70' : 'bg-white/70',
 			].join(' ')}
+			// Fix the image bubble width from the manifest so the placeholder and
+			// the decoded image have identical height. Previously the pulse
+			// placeholder was min 200px wide and grew to up to 280px once the image
+			// decoded, pushing the newest bubble under the composer.
+			style={imageBubbleWidth ? { width: imageBubbleWidth } : undefined}
 		>
 			{manifest.mediaKind === 'video' ? (
 				<div className="relative mb-2 w-full overflow-hidden rounded-xl bg-slate-900" style={{ aspectRatio: mediaAspectRatio }}>
@@ -1508,7 +1517,7 @@ function ChatFileMessagePlayer({ manifest, isMe }: { manifest: ChatFileMessageMa
 					{previewUrl ? (
 						<img src={previewUrl} alt="" className="block h-full w-full object-cover" style={{ aspectRatio: mediaAspectRatio }} />
 					) : (
-						<div className="min-w-[200px] animate-pulse bg-slate-200/80" style={{ aspectRatio: mediaAspectRatio }} aria-hidden />
+						<div className={imageBubbleWidth ? 'w-full animate-pulse bg-slate-200/80' : 'min-w-[200px] animate-pulse bg-slate-200/80'} style={{ aspectRatio: mediaAspectRatio }} aria-hidden />
 					)}
 				</button>
 			) : manifest.mediaKind === 'video' ? (
@@ -5137,6 +5146,77 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 	el.scrollTo({ top: el.scrollHeight, behavior: mode })
 	}
 
+	/**
+	 * After the local user sends, the newest bubble must stay fully visible.
+	 * A single smooth scroll is not enough: the composer changes height (file
+	 * chip -> sent), image/video bubbles settle, and status rows appear after
+	 * the first scroll, which pushed the last bubble under the input bar.
+	 * While this hold is active, any layout change re-pins the scroller to the
+	 * bottom. A real user scroll gesture (wheel / touchmove) releases it.
+	 */
+	const stickToBottomRef = useRef(false)
+	const stickReleaseTimerRef = useRef<number | null>(null)
+	const releaseBottomPin = useCallback(() => {
+		stickToBottomRef.current = false
+		if (stickReleaseTimerRef.current !== null) {
+			window.clearTimeout(stickReleaseTimerRef.current)
+			stickReleaseTimerRef.current = null
+		}
+	}, [])
+	const holdBottomPin = useCallback((ms = 6000) => {
+		stickToBottomRef.current = true
+		if (stickReleaseTimerRef.current !== null) window.clearTimeout(stickReleaseTimerRef.current)
+		stickReleaseTimerRef.current = window.setTimeout(() => {
+			stickToBottomRef.current = false
+			stickReleaseTimerRef.current = null
+		}, ms)
+		const sc = scrollRef.current
+		if (sc) sc.scrollTop = sc.scrollHeight
+	}, [])
+	const [composerEl, setComposerEl] = useState<HTMLDivElement | null>(null)
+	const [chatContentEl, setChatContentEl] = useState<HTMLDivElement | null>(null)
+
+	useEffect(() => {
+		const scroller = scrollRef.current
+		if (!scroller || typeof ResizeObserver === 'undefined') return
+		const frameHost = scroller.parentElement
+		const pinNow = () => { scroller.scrollTop = scroller.scrollHeight }
+		const observers: ResizeObserver[] = []
+		if (composerEl) {
+			let lastHeight = -1
+			const composerObserver = new ResizeObserver(() => {
+				const height = Math.ceil(composerEl.getBoundingClientRect().height)
+				if (height === lastHeight) return
+				// Measure against the old layout before the spacer follows the
+				// new composer height: were we pinned to the newest bubble?
+				const wasAtBottom = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight <= 24
+				lastHeight = height
+				frameHost?.style.setProperty('--chat-composer-h', `${height}px`)
+				if (stickToBottomRef.current || wasAtBottom) pinNow()
+			})
+			composerObserver.observe(composerEl)
+			observers.push(composerObserver)
+		}
+		if (chatContentEl) {
+			const contentObserver = new ResizeObserver(() => {
+				if (stickToBottomRef.current) pinNow()
+			})
+			contentObserver.observe(chatContentEl)
+			observers.push(contentObserver)
+		}
+		scroller.addEventListener('wheel', releaseBottomPin, { passive: true })
+		scroller.addEventListener('touchmove', releaseBottomPin, { passive: true })
+		return () => {
+			for (const observer of observers) observer.disconnect()
+			scroller.removeEventListener('wheel', releaseBottomPin)
+			scroller.removeEventListener('touchmove', releaseBottomPin)
+		}
+	}, [composerEl, chatContentEl, releaseBottomPin])
+
+	useEffect(() => () => {
+		if (stickReleaseTimerRef.current !== null) window.clearTimeout(stickReleaseTimerRef.current)
+	}, [])
+
 	// ✅ 1) 首次进入：用 useLayoutEffect，避免初次渲染闪烁
 	useLayoutEffect(() => {
 		if (didInitialScrollRef.current) return
@@ -5792,7 +5872,11 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		if (messages.length > prevMessagesLengthRef.current) {
 			const last = messages[messages.length - 1]
 			if (last?.from === 'me') {
-				requestAnimationFrame(() => scrollToBottom('smooth'))
+				// Pin (not smooth-scroll): a smooth scroll aims at the height measured
+				// now and ends short once the bubble / composer settle. holdBottomPin
+				// re-pins on every layout change until the user scrolls away.
+				holdBottomPin(6000)
+				requestAnimationFrame(() => scrollToBottom('auto'))
 			}
 			prevMessagesLengthRef.current = messages.length
 		} else {
@@ -6348,9 +6432,13 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				aria-hidden
 			/>
 			{/* 底部白色渐变蒙版 */}
+			{/* The fade only covers the composer area (+1rem): a taller mask washed out the newest bubble. */}
 			<div
-				className="absolute left-0 right-0 bottom-0 h-[10rem] pointer-events-none z-10"
-				style={{ background: "linear-gradient(to top, rgba(241,248,237,1) 0%, rgba(241,248,237,0) 100%)" }}
+				className="absolute left-0 right-0 bottom-0 pointer-events-none z-10"
+				style={{
+					height: "calc(var(--chat-composer-h, 88px) + 1rem)",
+					background: "linear-gradient(to top, rgba(241,248,237,1) 0%, rgba(241,248,237,0) 100%)",
+				}}
 				aria-hidden
 			/>
 			<div
@@ -6381,7 +6469,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 					</div>
 				) : null}
 				<div className="min-h-full flex flex-col justify-end">
-				<div className="mx-auto w-full max-w-[820px]">
+				<div ref={setChatContentEl} className="mx-auto w-full max-w-[820px]">
 					<div aria-hidden className="h-[96px]" />
 					<AnimatePresence initial={false}>
 							{sections.map(sec => (
@@ -7017,8 +7105,8 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 								))}
 							</AnimatePresence>
 
-					{/* ✅ 关键：底部 spacer */}
-					<div aria-hidden className="h-[96px]" />
+					{/* ✅ 关键：底部 spacer —— 随输入栏实际高度变化（附件 chip / 多行 / 回复条），保证最后一条完整可见 */}
+					<div aria-hidden style={{ height: "max(96px, calc(var(--chat-composer-h, 88px) + 1.5rem))" }} />
 					{/* 长按底部消息时临时增加的额外空间，确保菜单完整显示 */}
 					{menuBottomSpacer > 0 && <div aria-hidden style={{ height: menuBottomSpacer }} />}
 				</div>
@@ -7028,6 +7116,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 
 			{/* 底部：输入栏（iOS 毛玻璃 + pill） */}
 			<div
+				ref={setComposerEl}
 				className={[
 					"fixed left-0 right-0 bottom-0 z-50",
 					"pb-[env(safe-area-inset-bottom)]"

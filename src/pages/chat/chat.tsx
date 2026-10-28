@@ -5156,6 +5156,15 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 	 */
 	const stickToBottomRef = useRef(false)
 	const stickReleaseTimerRef = useRef<number | null>(null)
+	/**
+	 * Follow mode: a conversation opens pinned to its newest bubble and keeps following it
+	 * while the content grows underneath (history restore after a cold start, media settling,
+	 * new messages) until the user deliberately scrolls away. Without it the single initial
+	 * pin ran against the short pre-hydration list, the thread then grew to thousands of px
+	 * and the viewport stayed near the old offset. Released by a user gesture, re-armed when
+	 * the user scrolls back to the very bottom (or sends).
+	 */
+	const followBottomRef = useRef(true)
 	const releaseBottomPin = useCallback(() => {
 		stickToBottomRef.current = false
 		if (stickReleaseTimerRef.current !== null) {
@@ -5165,6 +5174,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 	}, [])
 	const holdBottomPin = useCallback((ms = 6000) => {
 		stickToBottomRef.current = true
+		followBottomRef.current = true
 		if (stickReleaseTimerRef.current !== null) window.clearTimeout(stickReleaseTimerRef.current)
 		stickReleaseTimerRef.current = window.setTimeout(() => {
 			stickToBottomRef.current = false
@@ -5202,17 +5212,39 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		}
 		if (chatContentEl) {
 			const contentObserver = new ResizeObserver(() => {
-				if (stickToBottomRef.current) pinNow()
+				if (stickToBottomRef.current || followBottomRef.current) pinNow()
 			})
 			contentObserver.observe(chatContentEl)
 			observers.push(contentObserver)
 		}
-		scroller.addEventListener('wheel', releaseBottomPin, { passive: true })
-		scroller.addEventListener('touchmove', releaseBottomPin, { passive: true })
+		// Only a truly-at-the-bottom viewport re-arms follow mode; a user gesture disarms it.
+		const settleFollow = () => {
+			if (scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight <= 8) {
+				followBottomRef.current = true
+			}
+		}
+		let wheelSettleTimer: number | null = null
+		const onUserGesture = () => {
+			releaseBottomPin()
+			followBottomRef.current = false
+		}
+		const onWheel = () => {
+			onUserGesture()
+			if (wheelSettleTimer !== null) window.clearTimeout(wheelSettleTimer)
+			wheelSettleTimer = window.setTimeout(settleFollow, 160)
+		}
+		const onTouchEnd = () => { requestAnimationFrame(settleFollow) }
+		scroller.addEventListener('wheel', onWheel, { passive: true })
+		scroller.addEventListener('touchmove', onUserGesture, { passive: true })
+		scroller.addEventListener('touchend', onTouchEnd, { passive: true })
+		scroller.addEventListener('scroll', settleFollow, { passive: true })
 		return () => {
 			for (const observer of observers) observer.disconnect()
-			scroller.removeEventListener('wheel', releaseBottomPin)
-			scroller.removeEventListener('touchmove', releaseBottomPin)
+			if (wheelSettleTimer !== null) window.clearTimeout(wheelSettleTimer)
+			scroller.removeEventListener('wheel', onWheel)
+			scroller.removeEventListener('touchmove', onUserGesture)
+			scroller.removeEventListener('touchend', onTouchEnd)
+			scroller.removeEventListener('scroll', settleFollow)
 		}
 	}, [composerEl, chatContentEl, releaseBottomPin])
 
@@ -5260,6 +5292,9 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 	}
 
 	function openReactionBarForElement(m: ChatMessage, el: HTMLElement, isMe: boolean) {
+		// The menu deliberately scrolls the thread; follow mode must not yank it back down.
+		releaseBottomPin()
+		followBottomRef.current = false
 		const scroller = scrollRef.current
 		const vh = typeof window !== 'undefined' ? window.innerHeight : 667
 		const safeBottom = vh - BOTTOM_RESERVED

@@ -5189,7 +5189,10 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				if (height === lastHeight) return
 				// Measure against the old layout before the spacer follows the
 				// new composer height: were we pinned to the newest bubble?
-				const wasAtBottom = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight <= 24
+				// Opening a conversation can leave the viewport a few px short of the
+				// very end (fractional heights, spacer settling) — be tolerant so
+				// attaching a file chip still lifts the newest bubble above the bar.
+				const wasAtBottom = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight <= 48
 				lastHeight = height
 				frameHost?.style.setProperty('--chat-composer-h', `${height}px`)
 				if (stickToBottomRef.current || wasAtBottom) pinNow()

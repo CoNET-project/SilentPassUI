@@ -5,6 +5,12 @@
  */
 
 type AndroidConetChatHost = {
+	/** chat-sdk-android (same contract as the iOS ConetChatSDK). */
+	chatModuleAvailable?: () => boolean | string
+	chatModuleCommand?: (json: string) => void
+	chatModuleSignResponse?: (json: string) => void
+	chatModuleIsRunning?: () => boolean | string
+	/** Legacy listen-only bridge (shells older than chat-sdk-android). */
 	conetChatAvailable?: () => boolean | string
 	conetChatInit?: (json: string) => boolean | string
 	conetChatStop?: () => void
@@ -12,7 +18,7 @@ type AndroidConetChatHost = {
 	conetChatUpdateNodes?: (json: string) => void
 }
 
-function getAndroidHost(): AndroidConetChatHost | null {
+export function getAndroidChatHost(): AndroidConetChatHost | null {
 	if (typeof window === 'undefined') return null
 	const host = (window as Window & { CashTreesAndroid?: AndroidConetChatHost }).CashTreesAndroid
 	return host && typeof host === 'object' ? host : null
@@ -24,12 +30,19 @@ function getAndroidHost(): AndroidConetChatHost | null {
  * TypeScript gossip Worker — native ConetChat owns LISTEN.
  */
 export function isCashTreesAndroidShell(): boolean {
-	return getAndroidHost() != null
+	return getAndroidChatHost() != null
+}
+
+/** True when the shell ships `chat-sdk-android` (`chatModuleCommand`). */
+export function isCashTreesAndroidChatModuleAvailable(): boolean {
+	const host = getAndroidChatHost()
+	return !!host && typeof host.chatModuleCommand === 'function'
 }
 
 export function isCashTreesAndroidConetChatAvailable(): boolean {
-	const host = getAndroidHost()
+	const host = getAndroidChatHost()
 	if (!host) return false
+	if (typeof host.chatModuleCommand === 'function') return true
 	try {
 		if (typeof host.conetChatAvailable === 'function') {
 			const v = Reflect.apply(host.conetChatAvailable, host, [])
@@ -48,7 +61,7 @@ export function callAndroidBridgeSafe(
 	method: 'conetChatInit' | 'conetChatStop' | 'conetChatIsRunning' | 'conetChatUpdateNodes',
 	arg?: string,
 ): boolean | string | void {
-	const host = getAndroidHost()
+	const host = getAndroidChatHost()
 	if (!host) return false
 	const fn = host[method]
 	if (typeof fn !== 'function') return false

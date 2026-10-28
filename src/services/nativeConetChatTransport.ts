@@ -1,5 +1,9 @@
 /**
- * iOS-shell adapter for `@conet.project/chat-sdk` full WorkerCommand surface.
+ * Native-shell adapter for `@conet.project/chat-sdk` full WorkerCommand surface.
+ * One transport, two shells: iOS (`chat-sdk-ios`) and Android (`chat-sdk-android`) both
+ * implement the same `chatModuleCommand` / `chatModuleEvent` / `chatModuleSignRequest`
+ * contract; only the bridge (how a JSON command reaches native and how events come
+ * back) differs — see {@link NativeChatBridge}.
  *
  * When Beamio PWA runs inside the iOS WebView shell (`CashTreesIOS` /
  * `webkit.messageHandlers.CashTreesIOS`), Chat UI must **never** spawn the
@@ -79,14 +83,39 @@ export function preferIosNativeChatClient(): boolean {
 	return isCashTreesIosShell()
 }
 
-function postNativeCommand(body: Record<string, unknown>): void {
-	const ios = (window as Window & {
-		CashTreesIOS?: { chatModuleCommand?: (p: Record<string, unknown>) => void }
-	}).CashTreesIOS
-	if (typeof ios?.chatModuleCommand !== 'function') {
-		throw new Error('CashTreesIOS.chatModuleCommand unavailable')
-	}
-	ios.chatModuleCommand(body)
+/** How a shell carries `chatModuleCommand` to native and native events back to the PWA. */
+export type NativeChatBridge = {
+	/** Log label, e.g. `ios native chat`. */
+	label: string
+	/** `window` CustomEvent name that carries native payloads in `detail`. */
+	eventName: string
+	/** Deliver a WorkerCommand to the native module. Throws when the bridge is absent. */
+	postCommand(cmd: Record<string, unknown>): void
+	/** Deliver a sign result for a `chatModuleSignRequest`. */
+	signResponse(payload: { reqId: string | number; ok: boolean; signature?: string; error?: string }): void
+}
+
+const IOS_NATIVE_CHAT_BRIDGE: NativeChatBridge = {
+	label: 'ios native chat',
+	eventName: 'cashtreesios',
+	postCommand(cmd) {
+		const ios = (window as Window & {
+			CashTreesIOS?: { chatModuleCommand?: (p: Record<string, unknown>) => void }
+		}).CashTreesIOS
+		if (typeof ios?.chatModuleCommand !== 'function') {
+			throw new Error('CashTreesIOS.chatModuleCommand unavailable')
+		}
+		ios.chatModuleCommand({ action: 'chatModuleCommand', command: cmd })
+	},
+	signResponse(payload) {
+		const ios = (window as Window & {
+			CashTreesIOS?: { chatModuleSignResponse?: (p: typeof payload) => void }
+		}).CashTreesIOS
+		if (typeof ios?.chatModuleSignResponse !== 'function') {
+			throw new Error('chatModuleSignResponse unavailable')
+		}
+		ios.chatModuleSignResponse(payload)
+	},
 }
 
 function stripPrivateKeyFromIdentity(identity: BeamioChatConfig['identity']): BeamioChatConfig['identity'] {
@@ -141,7 +170,10 @@ class NativeConetChatClientImpl implements BeamioChatClient {
 	private nativeListener: ((ev: Event) => void) | null = null
 	private signingKeyHex: string
 
-	constructor(private readonly config: BeamioChatConfig) {
+	constructor(
+		private readonly config: BeamioChatConfig,
+		private readonly bridge: NativeChatBridge,
+	) {
 		this.historyBridge = new NativeHistoryBridge(this)
 		this.signingKeyHex = (config.identity.privateKeyHex || '').replace(/^0x/i, '')
 	}
@@ -355,7 +387,7 @@ class NativeConetChatClientImpl implements BeamioChatClient {
 	}
 
 	private postCommand(cmd: Record<string, unknown>): void {
-		postNativeCommand({ action: 'chatModuleCommand', command: cmd })
+		this.bridge.postCommand(cmd)
 	}
 
 	private emit<K extends ChatEventName>(event: K, payload: ChatEventMap[K]): void {
@@ -374,7 +406,7 @@ class NativeConetChatClientImpl implements BeamioChatClient {
 		this.emit('status', { status, detail })
 		this.emit('log', {
 			level: status === 'error' ? 'error' : 'info',
-			message: `ios native chat: ${status}${detail ? ` (${detail})` : ''}`,
+			message: `${this.bridge.label}: ${status}${detail ? ` (${detail})` : ''}`,
 		})
 	}
 
@@ -405,12 +437,12 @@ class NativeConetChatClientImpl implements BeamioChatClient {
 				this.handleOutbound(detail)
 			}
 		}
-		window.addEventListener('cashtreesios', this.nativeListener)
+		window.addEventListener(this.bridge.eventName, this.nativeListener)
 	}
 
 	private detachNativeListener(): void {
 		if (!this.nativeListener || typeof window === 'undefined') return
-		window.removeEventListener('cashtreesios', this.nativeListener)
+		window.removeEventListener(this.bridge.eventName, this.nativeListener)
 		this.nativeListener = null
 	}
 
@@ -419,20 +451,7 @@ class NativeConetChatClientImpl implements BeamioChatClient {
 		const kind = String(detail.kind || 'eip191')
 		const reply = (ok: boolean, signature?: string, error?: string) => {
 			try {
-				const ios = (window as Window & {
-					CashTreesIOS?: {
-						chatModuleSignResponse?: (p: {
-							reqId: string | number
-							ok: boolean
-							signature?: string
-							error?: string
-						}) => void
-					}
-				}).CashTreesIOS
-				if (typeof ios?.chatModuleSignResponse !== 'function') {
-					throw new Error('chatModuleSignResponse unavailable')
-				}
-				ios.chatModuleSignResponse({
+				this.bridge.signResponse({
 					reqId,
 					ok,
 					signature: signature || '',
@@ -554,6 +573,13 @@ class NativeConetChatClientImpl implements BeamioChatClient {
 	}
 }
 
-export function createNativeConetChatClient(config: BeamioChatConfig): BeamioChatClient {
-	return new NativeConetChatClientImpl(config)
+/**
+ * Native chat client for a shell. Defaults to the iOS bridge; the Android shell passes its own
+ * {@link NativeChatBridge} (see `androidNativeChatClient.ts`).
+ */
+export function createNativeConetChatClient(
+	config: BeamioChatConfig,
+	bridge: NativeChatBridge = IOS_NATIVE_CHAT_BRIDGE,
+): BeamioChatClient {
+	return new NativeConetChatClientImpl(config, bridge)
 }

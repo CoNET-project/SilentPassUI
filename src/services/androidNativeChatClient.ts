@@ -36,9 +36,12 @@ import type {
 } from '@conet.project/chat-sdk'
 import {
 	callAndroidBridgeSafe,
+	getAndroidChatHost,
+	isCashTreesAndroidChatModuleAvailable,
 	isCashTreesAndroidConetChatAvailable,
 	isCashTreesAndroidShell,
 } from '../utils/cashTreesAndroidConetChat'
+import { createNativeConetChatClient, type NativeChatBridge } from './nativeConetChatTransport'
 
 type ListenerBag<K extends ChatEventName> = Set<ChatEventListener<K>>
 
@@ -98,7 +101,43 @@ export function preferAndroidNativeChatClient(): boolean {
 	return isCashTreesAndroidConetChatAvailable() || isCashTreesAndroidShell()
 }
 
+/**
+ * `chat-sdk-android` bridge: JSON strings over `CashTreesAndroid.chatModuleCommand`, events back as
+ * `cashtreesandroid` CustomEvents (`chatModuleEvent` / `chatModuleSignRequest`).
+ */
+const ANDROID_NATIVE_CHAT_BRIDGE: NativeChatBridge = {
+	label: 'android native chat',
+	eventName: 'cashtreesandroid',
+	postCommand(cmd) {
+		const host = getAndroidChatHost()
+		if (!host || typeof host.chatModuleCommand !== 'function') {
+			throw new Error('CashTreesAndroid.chatModuleCommand unavailable')
+		}
+		// Reflect.apply: never detach a Java bridge method from its host (Illegal invocation).
+		Reflect.apply(host.chatModuleCommand, host, [JSON.stringify(cmd)])
+	},
+	signResponse(payload) {
+		const host = getAndroidChatHost()
+		if (!host || typeof host.chatModuleSignResponse !== 'function') {
+			throw new Error('chatModuleSignResponse unavailable')
+		}
+		Reflect.apply(host.chatModuleSignResponse, host, [JSON.stringify(payload)])
+	},
+}
+
+/**
+ * Android shell chat client. With `chat-sdk-android` (`chatModuleCommand`) this is the same native
+ * client the iOS shell uses; older shells fall back to the listen-only bridge below.
+ */
 export function createAndroidNativeChatClient(config: BeamioChatConfig): BeamioChatClient {
+	if (isCashTreesAndroidChatModuleAvailable()) {
+		return createNativeConetChatClient(config, ANDROID_NATIVE_CHAT_BRIDGE)
+	}
+	return createLegacyAndroidListenClient(config)
+}
+
+/** @deprecated Shells without `chatModuleCommand` (listen only; send / history stay main-thread). */
+function createLegacyAndroidListenClient(config: BeamioChatConfig): BeamioChatClient {
 	const listeners: { [K in ChatEventName]?: ListenerBag<K> } = {}
 	let destroyed = false
 	let nativeListener: ((ev: Event) => void) | null = null

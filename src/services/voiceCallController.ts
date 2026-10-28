@@ -93,7 +93,13 @@ async function encryptVoiceOfferArmorToCallee(
 const sendVoiceCallControlToTemporaryRelay = async (
 	options: VoiceCallControllerOptions,
 	offer: VoiceCallSignal,
-	control: { type: 'voice_call_reject_v1' | 'voice_call_timeout_v1'; reason: string; framePrefix: string },
+	control: {
+		type: 'voice_call_reject_v1' | 'voice_call_timeout_v1' | 'voice_call_accept_v1'
+		reason: string
+		framePrefix: string
+		/** Accept only: the callee's own temporary session and codec. */
+		accept?: { sessionId: string; codec: string }
+	},
 ): Promise<boolean> => {
 	if (!offer.sessionId || !offer.from || !offer.callId || !offer.sessionKey) return false
 	try {
@@ -102,7 +108,10 @@ const sendVoiceCallControlToTemporaryRelay = async (
 		const body = JSON.stringify({
 			type: control.type,
 			callId: offer.callId,
-			sessionId: offer.sessionId,
+			// An accept names the callee's session and points at the caller's ring
+			// session with `peerSessionId`; reject / timeout echo the ring session.
+			sessionId: control.accept ? control.accept.sessionId : offer.sessionId,
+			...(control.accept ? { peerSessionId: offer.sessionId, codec: control.accept.codec } : {}),
 			from: new ethers.Wallet(options.privateKey).address,
 			to: offer.from,
 			reason: control.reason,
@@ -292,6 +301,8 @@ export function createVoiceCallController(options: VoiceCallControllerOptions) {
 			timestamp: pushTimestamp,
 			offerText: JSON.stringify(signal),
 			recipientPgp: options.peerPgp,
+			// Lets the worker index the offer on the callee mailbox directly.
+			calleeRoute: options.peerRoute,
 		})) {
 			return null
 		}
@@ -339,6 +350,17 @@ export function createVoiceCallController(options: VoiceCallControllerOptions) {
 			options.privateKey,
 			selectedEntries.length ? selectedEntries : options.allNodes,
 		)
+		// A native-shell caller only listens on its temporary AES relay and never
+		// sees the Chat copy above, so tell it there as well. A web caller accepts
+		// whichever copy arrives first (`voiceAcceptHandledRef` ignores the other).
+		// Best effort: SI answers `target_voice_session_not_found` when the caller
+		// has no listen session, which is fine for a caller that uses Chat.
+		void sendVoiceCallControlToTemporaryRelay(options, offer, {
+			type: 'voice_call_accept_v1',
+			reason: 'accepted',
+			framePrefix: 'accept',
+			accept: { sessionId, codec: 'audio/pcm;rate=16000' },
+		})
 		if (!sent) {
 			await stopWorkerVoiceListen(sessionId)
 			return null

@@ -1101,6 +1101,41 @@ export class GossipCore {
 		return this.postMailboxCommand(route, command)
 	}
 
+	/**
+	 * `voice_offer_store` to the callee mailbox. The command is opaque (sessionId
+	 * is the capability), encrypted to the callee mailbox route key and posted
+	 * through entries that are not that mailbox, like every other mailbox command.
+	 * The mailbox never decrypts `offerArmor`; it is callee user-PGP ciphertext.
+	 */
+	private async indexVoiceOfferOnCalleeMailbox(args: {
+		callId: string
+		sessionId: string
+		expiresAt: number
+		offerArmor: string
+		calleeRoute: string
+	}): Promise<boolean> {
+		try {
+			const inner = await encryptOpaqueVoiceCommand({
+				command: 'voice_offer_store',
+				callId: args.callId,
+				sessionId: args.sessionId,
+				offerArmor: args.offerArmor,
+				expiresAt: args.expiresAt,
+				timestamp: Math.floor(Date.now() / 1000),
+			}, args.calleeRoute)
+			if (!inner.includes('-----BEGIN PGP MESSAGE-----')) return false
+			const mailboxDomains = new Set(
+				pickRouteNodesByArmoredKey(this.nodes, args.calleeRoute).map((n) => n.domain),
+			)
+			const ok = await this.postToEntries(inner, mailboxDomains)
+			this.emit.log(ok ? 'info' : 'warn', `voice offer index ${ok ? 'stored' : 'failed'} callId=${args.callId.slice(0, 8)}`)
+			return ok
+		} catch (ex) {
+			this.emit.log('warn', `voice offer index error: ${(ex as Error)?.message ?? String(ex)}`)
+			return false
+		}
+	}
+
 	async sendVoiceFrame(routerArmoredPublicKey: string, frame: Record<string, unknown>): Promise<boolean> {
 		const candidate = frame as Partial<VoiceFrame> & { targetWallet?: string; targetSessionId?: string }
 		// Accept legacy UI alias `targetWallet` → canonical VoiceFrame.`to`.
@@ -1161,6 +1196,7 @@ export class GossipCore {
 			timestamp: number
 			offerText?: string
 			recipientPgp?: string
+			calleeRoute?: string
 		},
 	): Promise<boolean> {
 		const wallet = this.wallet
@@ -1217,6 +1253,22 @@ export class GossipCore {
 				offerArmor = ''
 			}
 		}
+		// Index the encrypted offer on the callee mailbox ourselves. The caller
+		// mailbox forwards the same armor and indexes it, but that remote leg is
+		// best effort and is missing on mailboxes that predate it. A killed iOS app
+		// reads the caller identity from this index (`voice_offer_fetch`), so
+		// without it the incoming call has no name. Same armor, same ids: storing
+		// twice is harmless. It runs beside the listen encrypt below and is awaited
+		// (capped) before the listen POST, because the ring push follows that POST.
+		const offerIndexed: Promise<boolean> = offerArmor && pushWakeup?.callId && pushWakeup.calleeRoute
+			? this.indexVoiceOfferOnCalleeMailbox({
+				callId: pushWakeup.callId,
+				sessionId,
+				expiresAt: pushWakeup.expiresAt,
+				offerArmor,
+				calleeRoute: pushWakeup.calleeRoute,
+			})
+			: Promise.resolve(false)
 		const inner = await encryptOpaqueVoiceCommand({
 			command: 'voice_listen',
 			sessionId,
@@ -1259,6 +1311,9 @@ export class GossipCore {
 			}
 			void (async () => {
 				try {
+					// The listen POST is what rings the callee. Let the offer index land
+					// first, but never hold the call for more than 3 s.
+					await Promise.race([offerIndexed, new Promise<boolean>((done) => setTimeout(() => done(false), 3_000))])
 					const armored = this.cfg?.runtime.outerWrap === false ? inner : await wrapArmorToEntryRoute(inner, node.armoredPublicKey)
 					const res = await fetch(postUrl(node.domain), {
 						method: 'POST',

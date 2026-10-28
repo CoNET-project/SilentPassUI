@@ -240,6 +240,7 @@ class BeamioChatClientImpl implements BeamioChatClient {
 			timestamp: number
 			offerText?: string
 			recipientPgp?: string
+			calleeRoute?: string
 		},
 	): Promise<boolean> {
 		// Offer encryption plus the 12s mailbox handshake can run past 25s.

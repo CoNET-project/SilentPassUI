@@ -412,6 +412,7 @@ export interface BeamioChatClient {
         timestamp: number;
         offerText?: string;
         recipientPgp?: string;
+        calleeRoute?: string;
     }): Promise<boolean>;
     stopVoiceListen(sessionId: string): Promise<boolean>;
     on<K extends ChatEventName>(event: K, cb: ChatEventListener<K>): Unsubscribe;

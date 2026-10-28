@@ -81,6 +81,7 @@ type VoiceRelayRequest = {
 		timestamp: number
 		offerText?: string
 		recipientPgp?: string
+		calleeRoute?: string
 	}
 }
 
@@ -621,6 +622,7 @@ export const startWorkerVoiceListen = async (
 		timestamp: number
 		offerText?: string
 		recipientPgp?: string
+		calleeRoute?: string
 	},
 ): Promise<boolean> => {
 	activeVoiceRelay = { sessionId, pushWakeup }

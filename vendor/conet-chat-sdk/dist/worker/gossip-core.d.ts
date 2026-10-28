@@ -86,6 +86,13 @@ export declare class GossipCore {
     /** Encrypt a mailbox command (e.g. gossip_delivery_ack) to route B and POST via entry C ≠ B. */
     postMailboxCommand(routerArmoredPublicKey: string, command: Record<string, unknown>): Promise<boolean>;
     postOwnMailboxCommand(command: Record<string, unknown>): Promise<boolean>;
+    /**
+     * `voice_offer_store` to the callee mailbox. The command is opaque (sessionId
+     * is the capability), encrypted to the callee mailbox route key and posted
+     * through entries that are not that mailbox, like every other mailbox command.
+     * The mailbox never decrypts `offerArmor`; it is callee user-PGP ciphertext.
+     */
+    private indexVoiceOfferOnCalleeMailbox;
     sendVoiceFrame(routerArmoredPublicKey: string, frame: Record<string, unknown>): Promise<boolean>;
     startVoiceListen(sessionId: string, pushWakeup?: {
         callId: string;
@@ -94,6 +101,7 @@ export declare class GossipCore {
         timestamp: number;
         offerText?: string;
         recipientPgp?: string;
+        calleeRoute?: string;
     }): Promise<boolean>;
     stopVoiceListen(sessionId: string): Promise<boolean>;
 }

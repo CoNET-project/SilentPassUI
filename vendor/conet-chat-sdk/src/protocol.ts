@@ -88,6 +88,11 @@ export type WorkerCommand =
 				/** Signed offer JSON. The worker encrypts it to the callee user PGP. */
 				offerText?: string
 				recipientPgp?: string
+				/**
+				 * Callee mailbox route public key. With `offerText` the worker also
+				 * indexes the encrypted offer on that mailbox (`voice_offer_store`).
+				 */
+				calleeRoute?: string
 			}
 	  }
 	| { type: 'voiceUnlisten'; reqId: number; sessionId: string }

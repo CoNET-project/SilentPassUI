@@ -1950,6 +1950,13 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 	const locallyEndedVoiceSessionsRef = useRef<Set<string>>(new Set())
 	const voiceAcceptHandledRef = useRef<Set<string>>(new Set())
 	const [liveVoiceSessionId, setLiveVoiceSessionId] = useState('')
+	/**
+	 * The peer accepted (or we accepted) and media may flow. The call screen label
+	 * must follow this, not only the persisted phone-call record: the record is
+	 * written by a separate state update, and the label used to read nothing else,
+	 * so any delay or failure in that write left "Ringing" up for a live call.
+	 */
+	const [voiceCallAnswered, setVoiceCallAnswered] = useState(false)
 	const voiceCallKeyRef = useRef<Uint8Array | null>(null)
 	const voiceCallPeerSessionRef = useRef<string | null>(null)
 	const voicePeerRouteRef = useRef<string>('')
@@ -1968,6 +1975,14 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 	const voiceReceivedSeqsRef = useRef<Set<number>>(new Set())
 	const voiceControllerRef = useRef<VoiceCallController | null>(null)
 	const voiceCallStartingRef = useRef(false)
+	/**
+	 * Bumped by every `endVoiceCall`. A call that is still being set up (route lookup,
+	 * offer, mailbox listen) compares it after each await: pressing Cancel before the
+	 * offer was posted must stop the setup, and pressing it while the offer is being
+	 * posted must still tell the callee, or their phone rings for a call the caller
+	 * has already abandoned.
+	 */
+	const voiceStartTokenRef = useRef(0)
 	const voiceMediaStartingRef = useRef(false)
 	const voiceCallLiveRef = useRef(false)
 	/** Desktop: open the mic on the Call click, not when the peer answers. */
@@ -2637,6 +2652,8 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			}).catch(() => { /* answer-time open is the fallback */ })
 		}
 		voiceCallStartingRef.current = true
+		const startToken = ++voiceStartTokenRef.current
+		const cancelledWhileStarting = () => voiceStartTokenRef.current !== startToken
 		setVoiceError(null)
 		setVoiceVideoNote(null)
 		setVoiceCallMinimized(false)
@@ -2648,7 +2665,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		// ChatList refreshes peer routes in the background. A call can be
 		// started before that refresh finishes, so resolve the peer's current
 		// trusted AddressPGP record once at the action boundary instead of
-		// treating the stale local mirror as authoritative.
+				// treating the stale local mirror as authoritative.
 		if (!route || !recipientPgp) {
 			try {
 				const refreshed = await getKeysFromCoNETPGPSC(chatData.address, privateKey)
@@ -2658,6 +2675,10 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				// Keep the last trusted local values; an untrusted refresh must
 				// never clear them or turn a transient RPC failure into state.
 			}
+		}
+		if (cancelledWhileStarting()) {
+			voiceCallStartingRef.current = false
+			return
 		}
 		if (!route || !recipientPgp) {
 			setVoiceError(
@@ -2674,6 +2695,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		voicePeerWalletRef.current = typeof toAddress === 'string' ? toAddress.trim() : ''
 		try {
 			const mailboxAligned = await alignLiveGossipRouteToChain(privateKey, allNodes)
+			if (cancelledWhileStarting()) return
 			if (!mailboxAligned) {
 				setVoiceError('Voice call could not use your current Chat mailbox. Try again.')
 				setVoiceCallConnecting(false)
@@ -2694,6 +2716,25 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				allNodes,
 			})
 			const channel = await controller.startOutgoing()
+			if (cancelledWhileStarting()) {
+				// Cancel was pressed while the offer was being posted. The callee's
+				// phone may already be ringing, so end the call properly: it tells
+				// the callee, stops the mailbox listen, and records the attempt.
+				if (channel) {
+					const endedAt = Date.now()
+					upsertPhoneCallRecord({
+						callId: channel.signal.callId,
+						sessionId: channel.sessionId,
+						peerAddress: toAddress,
+						direction: 'outgoing',
+						status: 'cancelled',
+						createdAt: endedAt,
+						endedAt,
+					})
+				}
+				void controller.end(true)
+				return
+			}
 			if (!channel) {
 				setVoiceError(VOICE_RELAY_OPEN_ERROR)
 				setVoiceCallConnecting(false)
@@ -2720,6 +2761,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				expiresAt: signal.expiresAt,
 			}
 			setLiveVoiceSessionId(sessionId)
+			setVoiceCallAnswered(false)
 			upsertPhoneCallRecord({
 				callId: signal.callId,
 				sessionId,
@@ -2796,6 +2838,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		setVoiceCallConnecting(false)
 		setVoiceCallMinimized(false)
 		setLiveVoiceSessionId('')
+		setVoiceCallAnswered(false)
 		setVoiceCallState('idle')
 		if (controller) void controller.end(false)
 		else if (localSession) void stopWorkerVoiceListen(localSession)
@@ -2940,6 +2983,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				voiceCallPeerSessionRef.current = signal.sessionId
 				voiceCallLiveRef.current = true
 				setLiveVoiceSessionId(voiceCallOfferRef.current?.sessionId || signal.peerSessionId || '')
+				setVoiceCallAnswered(true)
 				setVoiceCallMinimized(false)
 				setVoiceCallState('outgoing')
 				void voicePlaybackRef.current?.resume()
@@ -3125,6 +3169,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				expiresAt: offer.expiresAt,
 			}
 			setLiveVoiceSessionId(offer.sessionId)
+			setVoiceCallAnswered(true)
 			setIncomingVoiceOffer(null)
 			setVoiceCallState('outgoing')
 			upsertPhoneCallRecord({
@@ -3292,6 +3337,8 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		idHint?: { callId?: string; sessionId?: string; peerAddress?: string },
 	) => {
 		voiceCallLiveRef.current = false
+		// Invalidate a call that is still being set up (see voiceStartTokenRef).
+		voiceStartTokenRef.current += 1
 		outgoingMicPreopenRef.current?.getTracks().forEach((track) => track.stop())
 		outgoingMicPreopenRef.current = null
 		// Capture IDs before clearing — quiet disconnect may already have wiped refs
@@ -3360,6 +3407,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		setVoiceCallConnecting(false)
 		setVoiceCallMinimized(false)
 		setLiveVoiceSessionId('')
+		setVoiceCallAnswered(false)
 		setVoiceCallState('idle')
 		if (controller) {
 			if (requestedStatus === 'timed_out' && notifyPeer) {
@@ -3397,6 +3445,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		voiceReceivedSeqRef.current = -1
 		voiceReceivedSeqsRef.current.clear()
 		setLiveVoiceSessionId('')
+		setVoiceCallAnswered(false)
 		setVoiceCallState('idle')
 	}, [profiles, toAddress, upsertPhoneCallRecord])
 
@@ -3424,6 +3473,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 
 	const autoVoiceCallActionHandledRef = useRef<string | null>(null)
 	const remoteRejectHandledRef = useRef<string | null>(null)
+	const remoteEndHandledRef = useRef<string | null>(null)
 	useEffect(() => {
 		const offer = incomingVoiceOffer
 		if (!autoVoiceCallAction || !offer?.sessionId) return
@@ -3466,6 +3516,32 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			) continue
 			remoteRejectHandledRef.current = signal.sessionId
 			void endVoiceCall(peerStatus, false)
+			return
+		}
+	}, [endVoiceCall, messages, voiceCallState])
+
+	// Peer Hang Up on a live call, Chat copy. The peer's `end()` sends
+	// `voice_end_v1` over the user-PGP Chat path, and its `sessionId` is the
+	// peer's own session, so the call is matched by callId (unique per call).
+	// Without this the call screen stayed up after the other side hung up.
+	useEffect(() => {
+		if (voiceCallState !== 'outgoing') return
+		const offer = voiceCallOfferRef.current
+		if (!offer?.callId) return
+		for (let index = messages.length - 1; index >= 0; index -= 1) {
+			const message = messages[index]
+			if (message.from !== 'them' || !message.text) continue
+			const signal = parseVoiceCallSignal(message.text)
+			if (signal?.type !== 'voice_end_v1' || signal.callId !== offer.callId) continue
+			const mark = Number(signal.timestamp || signal.createdAt)
+			if (
+				!Number.isFinite(mark) ||
+				mark <= Number(offer.timestamp || 0) ||
+				mark > Date.now() + 60_000 ||
+				remoteEndHandledRef.current === offer.callId
+			) continue
+			remoteEndHandledRef.current = offer.callId
+			void endVoiceCall('ended', false)
 			return
 		}
 	}, [endVoiceCall, messages, voiceCallState])
@@ -3609,6 +3685,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 						voiceAcceptHandledRef.current.add(String(detail.sessionId || offer.sessionId))
 						voiceCallLiveRef.current = true
 						setLiveVoiceSessionId(offer.sessionId)
+						setVoiceCallAnswered(true)
 						upsertPhoneCallRecord({
 							callId: offer.callId,
 							sessionId: offer.sessionId,
@@ -3944,6 +4021,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 					voiceCallPeerSessionRef.current = acceptSessionId
 					voiceCallLiveRef.current = true
 					setLiveVoiceSessionId(voiceCallOfferRef.current?.sessionId || peerSessionId)
+					setVoiceCallAnswered(true)
 					setVoiceCallMinimized(false)
 					setVoiceCallState('outgoing')
 					void voicePlaybackRef.current?.resume()
@@ -3978,6 +4056,23 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 					)
 					return
 				}
+				if (control?.type === 'voice_end_v1') {
+					// Hang Up from a native-shell peer arrives on the temporary AES relay.
+					// The frame is authenticated with the call's session key, so the
+					// callId is enough to know it belongs to this call.
+					const endedCallId = String(control.callId || '')
+					const liveCallId = voiceCallOfferRef.current?.callId || ''
+					if (!endedCallId || endedCallId !== liveCallId || remoteEndHandledRef.current === liveCallId) {
+						return
+					}
+					remoteEndHandledRef.current = liveCallId
+					void endVoiceCall('ended', false)
+					return
+				}
+				// Any other JSON control frame is not audio. Never decode it as PCM:
+				// that raised "could not be decoded" for control types this build
+				// does not know yet.
+				if (control && typeof control.type === 'string') return
 				// Media only after the callee accept has set peerSession.
 				if (!peerSession) return
 				const seq = Number(frame.seq)
@@ -6099,7 +6194,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		? 'Call failed'
 		: voiceCallConnecting
 		? 'Connecting'
-		: activeVoiceCallRecord?.status === 'answered'
+		: (activeVoiceCallRecord?.status === 'answered' || voiceCallAnswered)
 			? 'Voice call'
 			: activeVoiceCallRecord?.status === 'timed_out'
 				? 'Timed out'

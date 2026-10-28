@@ -464,6 +464,7 @@ export interface BeamioChatClient {
 			timestamp: number
 			offerText?: string
 			recipientPgp?: string
+			calleeRoute?: string
 		},
 	): Promise<boolean>
 	stopVoiceListen(sessionId: string): Promise<boolean>

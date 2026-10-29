@@ -143,6 +143,7 @@ import {
 	VOICE_CALL_IDENTITY_WARNING,
 	voiceCallClaimMismatchesKey,
 	voiceSessionKeyToBase64,
+	voiceSessionKeyFromBase64,
 	makeVoiceCallSignal,
 	type VoiceCallSignal,
 } from '@/utils/voiceCallSession'
@@ -3400,7 +3401,8 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				allNodes,
 			})
 			const channel = await controller.acceptIncoming(offer as VoiceCallSignal)
-			if (!channel) {
+			const nativeShellOwnsAccept = isCashTreesNativeWebView() && !channel
+			if (!channel && !nativeShellOwnsAccept) {
 				earlyMicStream?.getTracks().forEach((track) => track.stop())
 				setVoiceError(VOICE_RELAY_OPEN_ERROR)
 				setVoiceCallConnecting(false)
@@ -3409,28 +3411,36 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				return
 			}
 			voiceControllerRef.current = controller
-			const key = channel.sessionKey
-			const sessionId = channel.sessionId
-			voiceCallKeyRef.current = key
+			const dialerSessionId = String(offer.sessionId || '').trim()
+			const localSessionId = channel?.sessionId || dialerSessionId
+			try {
+				voiceCallKeyRef.current =
+					channel?.sessionKey ||
+					(offer.sessionKey ? voiceSessionKeyFromBase64(offer.sessionKey) : null)
+			} catch {
+				voiceCallKeyRef.current = channel?.sessionKey || null
+			}
 			setVoiceCallMuted(false)
 			setVoiceLevelSamples([])
-			voiceCallSessionRef.current = sessionId
-			voiceCallPeerSessionRef.current = offer.sessionId
+			voiceCallSessionRef.current = localSessionId
+			// Callee: peer media session is the dialer's offer listen id.
+			voiceCallPeerSessionRef.current = dialerSessionId
+			voiceCallLiveRef.current = true
 			voiceCallOfferRef.current = {
-				callId: channel.callId,
-				sessionId: offer.sessionId,
+				callId: channel?.callId || offer.callId,
+				sessionId: dialerSessionId,
 				sessionKey: offer.sessionKey || '',
 				from: offer.from,
 				timestamp: offer.timestamp,
 				expiresAt: offer.expiresAt,
 			}
-			setLiveVoiceSessionId(offer.sessionId)
+			setLiveVoiceSessionId(dialerSessionId)
 			setVoiceCallAnswered(true)
 			setIncomingVoiceOffer(null)
 			setVoiceCallState('outgoing')
 			upsertPhoneCallRecord({
 				callId: offer.callId,
-				sessionId: offer.sessionId,
+				sessionId: dialerSessionId,
 				peerAddress: offer.from,
 				direction: 'incoming',
 				status: 'answered',
@@ -3449,9 +3459,15 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 					displayName: 'Beamio',
 				})
 			}
-			await startVoiceMedia(earlyMicStream)
+			if (!nativeShellOwnsAccept) {
+				await startVoiceMedia(earlyMicStream)
+			} else {
+				// Shell owns mic uplink + AES Accept; stop unused WebView GUM.
+				earlyMicStream?.getTracks().forEach((track) => track.stop())
+			}
 			earlyMicStream = null
 			setVoiceCallConnecting(false)
+			setVoiceCallMinimized(false)
 		} catch {
 			earlyMicStream?.getTracks().forEach((track) => track.stop())
 			setVoiceError('This voice call request is invalid or expired.')
@@ -3997,23 +4013,39 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				}
 				if (matchesIncoming) {
 					// Shell already sent Accept + owns temporary media — UI sync only.
+					// Still bind peerSession/key/live so PWA RX (Accept AES / video / __voicePeerRx)
+					// is not stuck on no_peer_session when Chat was already mounted.
 					if (nativeShell) {
 						const offer = nativeOffer as VoiceCallSignal
+						const dialerSessionId = String(offer.sessionId || '').trim()
+						const acceptSessionId = String(detail.sessionId || '').trim() || dialerSessionId
 						voiceCallOfferRef.current = {
 							callId: offer.callId,
-							sessionId: offer.sessionId,
+							sessionId: dialerSessionId,
 							sessionKey: offer.sessionKey || '',
 							from: offer.from,
 							timestamp: offer.timestamp,
 							expiresAt: offer.expiresAt,
 						}
-						voiceCallSessionRef.current = offer.sessionId
+						try {
+							if (offer.sessionKey) {
+								voiceCallKeyRef.current = voiceSessionKeyFromBase64(offer.sessionKey)
+							}
+						} catch {
+							/* keep prior key */
+						}
+						// Callee: frames from dialer use offer.sessionId as the peer media id.
+						voiceCallPeerSessionRef.current = dialerSessionId
+						voiceCallSessionRef.current = acceptSessionId
+						voiceCallLiveRef.current = true
 						voicePeerWalletRef.current = String(offer.from || '').trim()
 						forgetIncomingVoiceOffer(offer.callId, offer.sessionId)
 						setIncomingVoiceOffer(null)
+						setLiveVoiceSessionId(dialerSessionId)
+						setVoiceCallAnswered(true)
 						upsertPhoneCallRecord({
 							callId: offer.callId,
-							sessionId: offer.sessionId,
+							sessionId: dialerSessionId,
 							peerAddress: offer.from,
 							direction: 'incoming',
 							status: 'answered',
@@ -4023,6 +4055,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 						markVoiceCallTerminal(offer.callId, offer.sessionId)
 						setVoiceCallState('outgoing')
 						setVoiceCallConnecting(false)
+						setVoiceCallMinimized(false)
 						return
 					}
 					void acceptVoiceCall(nativeOffer as VoiceCallSignal)
@@ -4030,6 +4063,8 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				}
 				if (matchesOutgoing || voiceCallState === 'outgoing') {
 					// Dialer: shell enableMedia after remote accept — no PWA startVoiceMedia.
+					// detail.sessionId is THIS dialer's listenSessionId (shell), NOT the
+					// callee accept session — peerSession must come from AES accept frame.
 					const offer = voiceCallOfferRef.current
 					if (offer?.sessionId) {
 						voiceAcceptHandledRef.current.add(String(detail.sessionId || offer.sessionId))

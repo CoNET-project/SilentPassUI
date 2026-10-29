@@ -145,7 +145,14 @@ import {
 	makeVoiceCallSignal,
 	type VoiceCallSignal,
 } from '@/utils/voiceCallSession'
-import { startAndroidNativeMicCapture, startVoiceCapture, VoicePlaybackBuffer, voiceCaptureConstraints, voiceLevelFromPcmBytes } from '@/services/voiceCallMedia'
+import {
+	isLikelyVoiceMediaPlain,
+	startAndroidNativeMicCapture,
+	startVoiceCapture,
+	VoicePlaybackBuffer,
+	voiceCaptureConstraints,
+	voiceLevelFromPcmBytes,
+} from '@/services/voiceCallMedia'
 import {
 	createVoiceCallController,
 	declineIncomingVoiceOffer,
@@ -4121,16 +4128,20 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 					frame.payload as string,
 				)
 				let control: { type?: string; callId?: string; sessionId?: string; timestamp?: number; createdAt?: number } | null = null
-				try {
-					control = JSON.parse(new TextDecoder().decode(plain)) as {
-						type?: string
-						callId?: string
-						sessionId?: string
-						timestamp?: number
-						createdAt?: number
+				// Android native uplink is raw PCM (no BPCM). Never JSON.parse those
+				// bytes — a rare '{' first byte would discard inbound audio as "control".
+				if (!isLikelyVoiceMediaPlain(plain)) {
+					try {
+						control = JSON.parse(new TextDecoder().decode(plain)) as {
+							type?: string
+							callId?: string
+							sessionId?: string
+							timestamp?: number
+							createdAt?: number
+						}
+					} catch {
+						// Audio frames are binary; only JSON payloads are control frames.
 					}
-				} catch {
-					// Audio frames are binary; only JSON payloads are control frames.
 				}
 				if (control?.type === 'voice_call_accept_v1') {
 					// Native shell Accept arrives on the temporary AES relay (not chat PGP).

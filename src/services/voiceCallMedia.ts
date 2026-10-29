@@ -66,25 +66,64 @@ export const encodePcmVoiceFrame = (pcm: Int16Array, sampleRate: number): Uint8A
 	return bytes
 }
 
+const hasBpcmMagic = (bytes: Uint8Array): boolean => (
+	bytes.length >= 4
+	&& bytes[0] === VOICE_PCM_MAGIC[0]
+	&& bytes[1] === VOICE_PCM_MAGIC[1]
+	&& bytes[2] === VOICE_PCM_MAGIC[2]
+	&& bytes[3] === VOICE_PCM_MAGIC[3]
+)
+
+/** Little-endian int16 mono PCM → float samples (Android native uplink format). */
+const decodeRawPcm16Le = (
+	bytes: Uint8Array,
+	sampleRate: number,
+): { sampleRate: number; samples: Float32Array } | null => {
+	if (bytes.length < 4 || (bytes.length % 2) !== 0) return null
+	const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+	const sampleCount = bytes.length >> 1
+	const samples = new Float32Array(sampleCount)
+	for (let i = 0; i < sampleCount; i++) {
+		samples[i] = view.getInt16(i * 2, true) / 32768
+	}
+	return { sampleRate, samples }
+}
+
+/**
+ * Decode an AES-plain voice payload.
+ * - Preferred: BPCM header (browser ↔ browser, PWA capture).
+ * - Fallback: raw LE int16 @ 16 kHz — Android `BeamioNativeVoiceChannel` encrypts
+ *   bare AudioRecord PCM with no BPCM wrapper; rejecting that left the browser
+ *   dialer with decrypt-ok / decode-fail silence (no level, no speaker).
+ */
 export const decodePcmVoiceFrame = (
 	bytes: Uint8Array,
 ): { sampleRate: number; samples: Float32Array } | null => {
-	if (
-		bytes.length < 10
-		|| bytes[0] !== VOICE_PCM_MAGIC[0]
-		|| bytes[1] !== VOICE_PCM_MAGIC[1]
-		|| bytes[2] !== VOICE_PCM_MAGIC[2]
-		|| bytes[3] !== VOICE_PCM_MAGIC[3]
-	) return null
-	const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
-	const sampleRate = view.getUint32(4, true)
-	if (sampleRate < 8_000 || sampleRate > 48_000) return null
-	const sampleCount = (bytes.length - 8) >> 1
-	const samples = new Float32Array(sampleCount)
-	for (let i = 0; i < sampleCount; i++) {
-		samples[i] = view.getInt16(8 + i * 2, true) / 32768
+	if (hasBpcmMagic(bytes)) {
+		if (bytes.length < 10) return null
+		const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+		const sampleRate = view.getUint32(4, true)
+		if (sampleRate < 8_000 || sampleRate > 48_000) return null
+		const sampleCount = (bytes.length - 8) >> 1
+		const samples = new Float32Array(sampleCount)
+		for (let i = 0; i < sampleCount; i++) {
+			samples[i] = view.getInt16(8 + i * 2, true) / 32768
+		}
+		return { sampleRate, samples }
 	}
-	return { sampleRate, samples }
+	// Native Android callee/dialer uplink (and any peer that skips BPCM).
+	return decodeRawPcm16Le(bytes, VOICE_PCM_SAMPLE_RATE)
+}
+
+/**
+ * True when AES-plain looks like PCM media, not a UTF-8 JSON control frame.
+ * Skip JSON.parse on these so a rare `{`-looking PCM byte never drops audio.
+ */
+export const isLikelyVoiceMediaPlain = (bytes: Uint8Array): boolean => {
+	if (!(bytes instanceof Uint8Array) || bytes.length < 4) return false
+	if (hasBpcmMagic(bytes)) return true
+	// Control JSON always starts with '{'. Raw int16 PCM is even-length.
+	return bytes[0] !== 0x7b && (bytes.length % 2) === 0
 }
 
 /**

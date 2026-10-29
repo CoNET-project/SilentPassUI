@@ -1294,11 +1294,48 @@ function AppShell() {
 	 * Keep the action local and retry briefly until the decrypted offer has
 	 * reached the PWA's voice-session registry.  The offer remains the only
 	 * source of caller identity; native code supplies handles only.
+	 *
+	 * Hang-up / reject / timeout must cancel any in-flight late-accept retry —
+	 * otherwise a late offer hydrate can navigate with autoVoiceCallAction and
+	 * leave the PWA stuck in the full-screen call UI after End Call.
 	 */
 	useEffect(() => {
 		let retryTimer: number | undefined
 		let cancelled = false
 		let attempts = 0
+		let pendingAnswerKey: string | null = null
+
+		const clearLateAccept = () => {
+			if (retryTimer !== undefined) {
+				window.clearTimeout(retryTimer)
+				retryTimer = undefined
+			}
+			attempts = 0
+			pendingAnswerKey = null
+			nativeVoiceAnswerKeyRef.current = null
+		}
+
+		const onNativeHangupCancelsLateAccept = (event: Event) => {
+			const detail = (event as CustomEvent<{
+				action?: string
+				callId?: string
+				sessionId?: string
+			}>).detail
+			if (
+				detail?.action !== 'callEnded'
+				&& detail?.action !== 'callRejected'
+				&& detail?.action !== 'callTimedOut'
+			) {
+				return
+			}
+			const callId = String(detail.callId || '').trim()
+			const sessionId = String(detail.sessionId || '').trim()
+			if (callId || sessionId) {
+				forgetIncomingVoiceOffer(callId || sessionId, sessionId || callId)
+			}
+			setGlobalIncomingVoiceCall(null)
+			clearLateAccept()
+		}
 
 		const onNativeAnswer = (event: Event) => {
 			const detail = (event as CustomEvent<{
@@ -1314,24 +1351,26 @@ function AppShell() {
 			if (!callId && !sessionId) return
 			if (nativeVoiceAnswerKeyRef.current === key) return
 			nativeVoiceAnswerKeyRef.current = key
+			pendingAnswerKey = key
 			attempts = 0
 
 			const openChatAndAccept = () => {
 				if (cancelled) return
+				if (pendingAnswerKey !== key) return
 				const offer = lookupIncomingVoiceOffer(callId, sessionId)
 				if (!offer) {
 					attempts += 1
 					if (attempts < 24) {
 						retryTimer = window.setTimeout(openChatAndAccept, 500)
 					} else {
-						nativeVoiceAnswerKeyRef.current = null
+						clearLateAccept()
 					}
 					return
 				}
 
 				const caller = String(offer.from || '').trim()
 				if (!ethers.isAddress(caller)) {
-					nativeVoiceAnswerKeyRef.current = null
+					clearLateAccept()
 					return
 				}
 				const existingChat = (profilesForVoiceDeclineRef.current?.[0]?.chats || [])
@@ -1360,11 +1399,15 @@ function AppShell() {
 
 		window.addEventListener('cashtreesandroid', onNativeAnswer)
 		window.addEventListener('cashtreesios', onNativeAnswer)
+		window.addEventListener('cashtreesandroid', onNativeHangupCancelsLateAccept)
+		window.addEventListener('cashtreesios', onNativeHangupCancelsLateAccept)
 		return () => {
 			cancelled = true
-			if (retryTimer !== undefined) window.clearTimeout(retryTimer)
+			clearLateAccept()
 			window.removeEventListener('cashtreesandroid', onNativeAnswer)
 			window.removeEventListener('cashtreesios', onNativeAnswer)
+			window.removeEventListener('cashtreesandroid', onNativeHangupCancelsLateAccept)
+			window.removeEventListener('cashtreesios', onNativeHangupCancelsLateAccept)
 		}
 	}, [navigate, resolvePeerSearchResult, setChatHomeItem])
 

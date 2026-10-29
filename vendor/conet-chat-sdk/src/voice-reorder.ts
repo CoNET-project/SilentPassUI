@@ -88,6 +88,13 @@ export class VoiceFrameReorderBuffer {
 			this.emit({ type: 'conflict', conflict: { type: 'voice_conflict_v1', sessionId: frame.sessionId, direction: normalizeDirection(frame), seq: frame.seq, frameId: frame.frameId } })
 			return []
 		}
+		// Control frames (accept / reject / hangup) reuse seq=0 on the ring
+		// sessionId. After Accept advances nextSeq past 0, a later Hang Up with
+		// seq=0 must still reach the UI — do not treat it as stale media.
+		if (frame.seq === 0 && state.nextSeq !== null && state.nextSeq > 0) {
+			this.emit({ type: 'frame', frame })
+			return [frame]
+		}
 		if (frame.seq < state.nextSeq) return []
 		if (state.pending.size >= this.maxPendingChunks || state.pendingPayloadUnits + frame.payload.length > this.maxPendingPayloadUnits) {
 			// Advance past the stalled gap so live audio does not freeze on overflow.

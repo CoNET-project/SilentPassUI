@@ -94,7 +94,7 @@ const sendVoiceCallControlToTemporaryRelay = async (
 	options: VoiceCallControllerOptions,
 	offer: VoiceCallSignal,
 	control: {
-		type: 'voice_call_reject_v1' | 'voice_call_timeout_v1' | 'voice_call_accept_v1'
+		type: 'voice_call_reject_v1' | 'voice_call_timeout_v1' | 'voice_call_accept_v1' | 'voice_end_v1'
 		reason: string
 		framePrefix: string
 		/** Accept only: the callee's own temporary session and codec. */
@@ -148,6 +148,30 @@ export const sendVoiceCallRejectionToTemporaryRelay = async (
 	reason: 'declined',
 	framePrefix: 'reject',
 })
+
+/** AES hangup on the peer's temporary voice SSE (fast path; Chat PGP is backup). */
+export const sendVoiceCallHangupToTemporaryRelay = async (
+	options: Pick<VoiceCallControllerOptions, 'privateKey' | 'peerRoute'>,
+	offer: Pick<VoiceCallSignal, 'callId' | 'sessionId' | 'sessionKey' | 'from'>,
+): Promise<boolean> => {
+	if (!offer.sessionId || !offer.from || !offer.callId || !offer.sessionKey) return false
+	return sendVoiceCallControlToTemporaryRelay(
+		{
+			privateKey: options.privateKey,
+			localCallId: offer.callId,
+			peerEoa: offer.from,
+			peerPgp: '',
+			peerRoute: options.peerRoute,
+			allNodes: [],
+		},
+		offer as VoiceCallSignal,
+		{
+			type: 'voice_end_v1',
+			reason: 'ended',
+			framePrefix: 'hangup',
+		},
+	)
+}
 
 /**
  * Chat-only voice controller. It owns temporary in-memory channel identity,
@@ -450,13 +474,23 @@ export function createVoiceCallController(options: VoiceCallControllerOptions) {
 
 	const end = async (notifyPeer = true): Promise<void> => {
 		if (notifyPeer && activeSignal && activeSessionId) {
+			const selfAddress = new ethers.Wallet(options.privateKey).address
 			const signal = makeVoiceCallSignal({
 				type: 'voice_end_v1',
 				callId: activeSignal.callId,
 				sessionId: activeSessionId,
-				from: new ethers.Wallet(options.privateKey).address,
+				from: selfAddress,
 				to: options.peerEoa,
 			})
+			// Callee hangup: AES on dialer's temporary SSE (offer.from = dialer). Dialer local hangup uses Chat.
+			const inboundOffer =
+				String(activeSignal.from || '').toLowerCase() === String(options.peerEoa || '').toLowerCase()
+			if (inboundOffer && activeSignal.sessionKey && options.peerRoute) {
+				void sendVoiceCallHangupToTemporaryRelay(
+					{ privateKey: options.privateKey, peerRoute: options.peerRoute },
+					activeSignal,
+				)
+			}
 			await sendMessage(
 				options.peerPgp,
 				JSON.stringify(signal),

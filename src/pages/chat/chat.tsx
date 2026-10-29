@@ -136,15 +136,24 @@ import {
 	replacePhoneCallInRows,
 	normalizeVoiceTimestampMs,
 	markVoiceCallTerminal,
+	forgetIncomingVoiceOffer,
 	nativeIncomingSystemCallPayload,
 	rememberIncomingVoiceOffer,
 	VOICE_CALL_IDENTITY_WARNING,
 	voiceCallClaimMismatchesKey,
 	voiceSessionKeyToBase64,
+	makeVoiceCallSignal,
 	type VoiceCallSignal,
 } from '@/utils/voiceCallSession'
 import { startAndroidNativeMicCapture, startVoiceCapture, VoicePlaybackBuffer, voiceCaptureConstraints, voiceLevelFromPcmBytes } from '@/services/voiceCallMedia'
-import { createVoiceCallController, declineIncomingVoiceOffer, resolvePeerVoiceMaterialAsync, timeoutIncomingVoiceOffer, type VoiceCallController } from '@/services/voiceCallController'
+import {
+	createVoiceCallController,
+	declineIncomingVoiceOffer,
+	resolvePeerVoiceMaterialAsync,
+	sendVoiceCallHangupToTemporaryRelay,
+	timeoutIncomingVoiceOffer,
+	type VoiceCallController,
+} from '@/services/voiceCallController'
 import { useReliableTapHandler, RELIABLE_TAP_BUTTON_CLASS } from '@/utils/reliableTap'
 import {
 	createChatFileArchive,
@@ -1946,7 +1955,15 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		}
 	}, [voiceError])
 	const voiceCallSessionRef = useRef<string | null>(null)
-	const voiceCallOfferRef = useRef<{ callId: string; sessionId: string; sessionKey: string; timestamp?: number; expiresAt?: number } | null>(null)
+	const voiceCallOfferRef = useRef<{
+		callId: string
+		sessionId: string
+		sessionKey: string
+		/** Caller EOA on inbound offers; used for hangup peer + temporary-relay path. */
+		from?: string
+		timestamp?: number
+		expiresAt?: number
+	} | null>(null)
 	const locallyEndedVoiceSessionsRef = useRef<Set<string>>(new Set())
 	const voiceAcceptHandledRef = useRef<Set<string>>(new Set())
 	const [liveVoiceSessionId, setLiveVoiceSessionId] = useState('')
@@ -2026,6 +2043,16 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 	// Minimize is now changed only by the explicit minimize/reveal actions.
 
 	const pendingShowActiveCallRef = useRef(false)
+	// Must be declared before any effect that closes over it — TDZ crash blanked
+	// the soft-dial chat thread (`Cannot access 'incomingVoiceOffer' before initialization`).
+	const [incomingVoiceOffer, setIncomingVoiceOffer] = useState<Record<string, any> | null>(null)
+	const [incomingCaller, setIncomingCaller] = useState<{
+		address: string
+		tag: string
+		claimedTag: string
+		claimedAddress: string
+		identityWarning: string
+	} | null>(null)
 	const revealActiveVoiceCall = useCallback(() => {
 		onShowThread?.()
 		setVoiceCallMinimized(false)
@@ -2035,7 +2062,15 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		const onShowActiveCall = (event: Event) => {
 			const detail = (event as CustomEvent<{ action?: string }>).detail
 			if (detail?.action !== 'showActiveVoiceCall') return
+			// After Hang Up, ignore shell "show active" until a real new call starts.
+			// Queuing while idle reopened the full-screen dialer on a late callAnswered.
 			if (voiceCallState !== 'outgoing') {
+				const hasLiveOffer = Boolean(
+					voiceCallOfferRef.current?.sessionId ||
+					voiceCallSessionRef.current ||
+					incomingVoiceOffer?.sessionId,
+				)
+				if (!hasLiveOffer) return
 				pendingShowActiveCallRef.current = true
 				return
 			}
@@ -2047,20 +2082,12 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			window.removeEventListener('cashtreesandroid', onShowActiveCall)
 			window.removeEventListener('cashtreesios', onShowActiveCall)
 		}
-	}, [revealActiveVoiceCall, voiceCallState])
+	}, [incomingVoiceOffer, revealActiveVoiceCall, voiceCallState])
 	useEffect(() => {
 		if (voiceCallState !== 'outgoing' || !pendingShowActiveCallRef.current) return
 		pendingShowActiveCallRef.current = false
 		revealActiveVoiceCall()
 	}, [revealActiveVoiceCall, voiceCallState])
-	const [incomingVoiceOffer, setIncomingVoiceOffer] = useState<Record<string, any> | null>(null)
-	const [incomingCaller, setIncomingCaller] = useState<{
-		address: string
-		tag: string
-		claimedTag: string
-		claimedAddress: string
-		identityWarning: string
-	} | null>(null)
 	const [fileJobs, setFileJobs] = useState<ChatFileJob[]>([])
 	const fileControllersRef = useRef(new Map<string, AbortController>())
 	const storageDataRef = useRef<(() => Promise<void>) | null>(null)
@@ -3165,6 +3192,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				callId: channel.callId,
 				sessionId: offer.sessionId,
 				sessionKey: offer.sessionKey,
+				from: offer.from,
 				timestamp: offer.timestamp,
 				expiresAt: offer.expiresAt,
 			}
@@ -3360,7 +3388,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			|| (hintPeer || toAddress
 				? [...rowsSource]
 					.filter((item: PhoneCallRecord) =>
-						item.direction === 'outgoing' &&
+						(item.direction === 'outgoing' || item.direction === 'incoming') &&
 						(item.status === 'ringing' || item.status === 'answered') &&
 						String(item.peerAddress || '').toLowerCase() === String(hintPeer || toAddress).toLowerCase())
 					.sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0))[0]
@@ -3374,6 +3402,11 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		if (peerSessionId) locallyEndedVoiceSessionsRef.current.add(peerSessionId)
 		if (upsertCallId && upsertSessionId) markVoiceCallTerminal(upsertCallId, upsertSessionId)
 		else if (upsertSessionId) markVoiceCallTerminal(upsertSessionId, upsertSessionId)
+		if (upsertCallId || upsertSessionId) {
+			forgetIncomingVoiceOffer(upsertCallId || upsertSessionId, upsertSessionId || upsertCallId)
+		}
+		// Never reopen the call surface after Hang Up (native showActiveVoiceCall race).
+		pendingShowActiveCallRef.current = false
 		// Write terminal status BEFORE idle / clearing refs so "Calling…" cannot stick
 		// after dialer already hid.
 		if (upsertId) {
@@ -3398,6 +3431,10 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				sessionId: upsertSessionId || upsertId,
 			})
 		}
+		// Snapshot before clearing — native Accept never creates a controller, so
+		// hangup must still reach the dialer via AES + Chat when notifyPeer.
+		const offerForHangup = voiceCallOfferRef.current
+		const peerRouteForHangup = String(voicePeerRouteRef.current || '').trim()
 		voiceCallOfferRef.current = null
 		voiceCallSessionRef.current = null
 		voiceCallPeerSessionRef.current = null
@@ -3408,6 +3445,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		setVoiceCallMinimized(false)
 		setLiveVoiceSessionId('')
 		setVoiceCallAnswered(false)
+		setIncomingVoiceOffer(null)
 		setVoiceCallState('idle')
 		if (controller) {
 			if (requestedStatus === 'timed_out' && notifyPeer) {
@@ -3416,8 +3454,64 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			} else {
 				await controller.end(notifyPeer)
 			}
-		} else if (sessionId) {
-			await stopWorkerVoiceListen(sessionId)
+		} else {
+			if (sessionId) await stopWorkerVoiceListen(sessionId)
+			if (notifyPeer && offerForHangup?.callId && privateKey) {
+				const hangupPeer = String(
+					offerForHangup.from || hintPeer || toAddress || '',
+				).trim()
+				if (hangupPeer) {
+					void (async () => {
+						try {
+							const chats = (profiles?.[0]?.chats || []) as Array<{
+								address?: string
+								chatData?: { publicArmored?: string; routersArmoreds?: string }
+							}>
+							const { peerPgp, peerRoute } = await resolvePeerVoiceMaterialAsync(
+								chats,
+								hangupPeer,
+								privateKey,
+							)
+							const route = peerRoute || peerRouteForHangup
+							const selfAddress = new ethers.Wallet(privateKey).address
+							const inbound =
+								String(offerForHangup.from || '').toLowerCase() ===
+								hangupPeer.toLowerCase()
+							if (inbound && offerForHangup.sessionKey && route) {
+								await sendVoiceCallHangupToTemporaryRelay(
+									{ privateKey, peerRoute: route },
+									{
+										callId: offerForHangup.callId,
+										sessionId: offerForHangup.sessionId,
+										sessionKey: offerForHangup.sessionKey,
+										from: hangupPeer,
+									},
+								)
+							}
+							if (peerPgp) {
+								const signal = makeVoiceCallSignal({
+									type: 'voice_end_v1',
+									callId: offerForHangup.callId,
+									sessionId:
+										offerForHangup.sessionId ||
+										upsertSessionId ||
+										sessionId,
+									from: selfAddress,
+									to: hangupPeer,
+								})
+								await sendMessage(
+									peerPgp,
+									JSON.stringify(signal),
+									privateKey,
+									allNodes,
+								)
+							}
+						} catch {
+							/* best-effort peer hangup */
+						}
+					})()
+				}
+			}
 		}
 		voiceCaptureStopRef.current?.()
 		voiceCaptureStopRef.current = null
@@ -3447,7 +3541,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		setLiveVoiceSessionId('')
 		setVoiceCallAnswered(false)
 		setVoiceCallState('idle')
-	}, [profiles, toAddress, upsertPhoneCallRecord])
+	}, [allNodes, privateKey, profiles, toAddress, upsertPhoneCallRecord])
 
 	useEffect(() => {
 		const latest = [...messages].reverse().find((message) => message.from === 'them' && message.text)
@@ -3477,6 +3571,13 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 	useEffect(() => {
 		const offer = incomingVoiceOffer
 		if (!autoVoiceCallAction || !offer?.sessionId) return
+		const ended =
+			locallyEndedVoiceSessionsRef.current.has(String(offer.sessionId)) ||
+			(offer.callId ? locallyEndedVoiceSessionsRef.current.has(String(offer.callId)) : false)
+		if (ended) {
+			onAutoVoiceCallActionHandled?.()
+			return
+		}
 		const key = `${offer.sessionId}:${autoVoiceCallAction}`
 		if (autoVoiceCallActionHandledRef.current === key) return
 		autoVoiceCallActionHandledRef.current = key
@@ -3656,10 +3757,22 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				((detail.sessionId && voiceCallOfferRef.current?.sessionId === detail.sessionId) ||
 					(detail.callId && voiceCallOfferRef.current?.callId === detail.callId))
 			if (detail.action === 'callAnswered') {
+				const answeredCallId = String(detail.callId || '').trim()
+				const answeredSessionId = String(detail.sessionId || '').trim()
+				if (
+					(answeredSessionId && locallyEndedVoiceSessionsRef.current.has(answeredSessionId)) ||
+					(answeredCallId && locallyEndedVoiceSessionsRef.current.has(answeredCallId))
+				) {
+					return
+				}
 				if (matchesIncoming) {
 					// Shell already sent Accept + owns temporary media — UI sync only.
 					if (nativeShell) {
 						const offer = nativeOffer as VoiceCallSignal
+						voiceCallOfferRef.current = offer
+						voiceCallSessionRef.current = offer.sessionId
+						voicePeerWalletRef.current = String(offer.from || '').trim()
+						forgetIncomingVoiceOffer(offer.callId, offer.sessionId)
 						setIncomingVoiceOffer(null)
 						upsertPhoneCallRecord({
 							callId: offer.callId,
@@ -3723,6 +3836,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				if (matchesIncoming && !treatAsOutgoing) {
 					if (nativeShell) {
 						const offer = nativeOffer as VoiceCallSignal
+						forgetIncomingVoiceOffer(offer.callId, offer.sessionId)
 						setIncomingVoiceOffer(null)
 						upsertPhoneCallRecord({
 							callId: offer.callId,
@@ -3734,6 +3848,13 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 							endedAt: Date.now(),
 						})
 						markVoiceCallTerminal(offer.callId, offer.sessionId)
+						// Must clear full-screen call UI — terminal phoneCalls alone
+						// used to leave voiceCallState stuck on outgoing.
+						void endVoiceCall('declined', false, {
+							callId: offer.callId,
+							sessionId: offer.sessionId,
+							peerAddress: offer.from,
+						})
 						return
 					}
 					void rejectVoiceCall(nativeOffer as VoiceCallSignal)
@@ -3776,6 +3897,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			} else if (detail.action === 'callTimedOut' && matchesIncoming && nativeOffer) {
 				const offer = nativeOffer as VoiceCallSignal
 				if (nativeShell) {
+					forgetIncomingVoiceOffer(offer.callId, offer.sessionId)
 					upsertPhoneCallRecord({
 						callId: offer.callId,
 						sessionId: offer.sessionId,
@@ -3785,7 +3907,13 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 						createdAt: Number(offer.createdAt) || Date.now(),
 						endedAt: Date.now(),
 					})
+					markVoiceCallTerminal(offer.callId, offer.sessionId)
 					setIncomingVoiceOffer(null)
+					void endVoiceCall('timed_out', false, {
+						callId: offer.callId,
+						sessionId: offer.sessionId,
+						peerAddress: offer.from,
+					})
 					return
 				}
 				if (!privateKey) return
@@ -3822,28 +3950,27 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			} else if (detail.action === 'callTimedOut' && (matchesOutgoing || voiceCallState === 'outgoing')) {
 				void endVoiceCall('timed_out', false)
 			} else if (detail.action === 'callEnded') {
-				if (nativeShell) {
-					if (matchesIncoming) {
-						setIncomingVoiceOffer(null)
-					}
-					// Quiet disconnect after reject often emits callEnded — do not
-					// overwrite an already-terminal outbound bubble (declined/cancelled).
-					const endRows: PhoneCallRecord[] = Array.isArray(profiles?.[0]?.phoneCalls) ? profiles[0].phoneCalls : []
-					const alreadyTerminal = endRows.some(item =>
-						isPhoneCallTerminalStatus(item.status) &&
-						((detail.sessionId && item.sessionId === detail.sessionId) ||
-							(detail.callId && item.callId === detail.callId)))
-					if (!alreadyTerminal) {
-						void endVoiceCall(undefined, false)
-					}
-					return
+				const endCallId = String(detail.callId || '').trim()
+				const endSessionId = String(detail.sessionId || '').trim()
+				if (matchesIncoming || endCallId || endSessionId) {
+					forgetIncomingVoiceOffer(endCallId || endSessionId, endSessionId || endCallId)
+					setIncomingVoiceOffer(null)
 				}
-				// Legacy iOS: unanswered Decline was mis-tagged as callEnded.
-				if (matchesIncoming && !voiceControllerRef.current) {
-					void rejectVoiceCall(nativeOffer as VoiceCallSignal)
-				} else {
-					void endVoiceCall()
-				}
+				// Always tear down the full-screen call UI. When the call was live,
+				// notifyPeer so the remote dialer gets voice_end_v1 (AES + Chat);
+				// native sendHangup may race forgetOffer — PWA backup must still fire.
+				const wasLive =
+					voiceCallLiveRef.current ||
+					voiceCallAnswered ||
+					voiceCallState === 'outgoing' ||
+					voiceCallState === 'incoming' ||
+					Boolean(voiceCallOfferRef.current?.sessionId) ||
+					Boolean(nativeOffer?.sessionId)
+				void endVoiceCall(undefined, wasLive, {
+					callId: endCallId || voiceCallOfferRef.current?.callId || nativeOffer?.callId,
+					sessionId: endSessionId || voiceCallOfferRef.current?.sessionId || nativeOffer?.sessionId,
+					peerAddress: String(nativeOffer?.from || toAddress || '').trim() || undefined,
+				})
 			}
 		}
 		window.addEventListener('cashtreesios', onNativeCallAction)
@@ -3862,6 +3989,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		rejectVoiceCall,
 		toAddress,
 		upsertPhoneCallRecord,
+		voiceCallAnswered,
 		voiceCallState,
 	])
 

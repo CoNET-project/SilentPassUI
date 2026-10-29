@@ -3191,7 +3191,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			voiceCallOfferRef.current = {
 				callId: channel.callId,
 				sessionId: offer.sessionId,
-				sessionKey: offer.sessionKey,
+				sessionKey: offer.sessionKey || '',
 				from: offer.from,
 				timestamp: offer.timestamp,
 				expiresAt: offer.expiresAt,
@@ -3769,7 +3769,14 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 					// Shell already sent Accept + owns temporary media — UI sync only.
 					if (nativeShell) {
 						const offer = nativeOffer as VoiceCallSignal
-						voiceCallOfferRef.current = offer
+						voiceCallOfferRef.current = {
+							callId: offer.callId,
+							sessionId: offer.sessionId,
+							sessionKey: offer.sessionKey || '',
+							from: offer.from,
+							timestamp: offer.timestamp,
+							expiresAt: offer.expiresAt,
+						}
 						voiceCallSessionRef.current = offer.sessionId
 						voicePeerWalletRef.current = String(offer.from || '').trim()
 						forgetIncomingVoiceOffer(offer.callId, offer.sessionId)

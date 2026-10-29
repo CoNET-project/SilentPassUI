@@ -117,13 +117,18 @@ export const decodePcmVoiceFrame = (
 
 /**
  * True when AES-plain looks like PCM media, not a UTF-8 JSON control frame.
- * Skip JSON.parse on these so a rare `{`-looking PCM byte never drops audio.
+ * Android uplink is raw PCM16 LE (even length). Control frames are short JSON
+ * starting with `{`. Long even payloads that start with `{` are still PCM —
+ * chat.tsx only JSON.parses when this returns false, then falls through to
+ * media on parse failure; treat long even frames as media so we never drop them.
  */
 export const isLikelyVoiceMediaPlain = (bytes: Uint8Array): boolean => {
 	if (!(bytes instanceof Uint8Array) || bytes.length < 4) return false
 	if (hasBpcmMagic(bytes)) return true
-	// Control JSON always starts with '{'. Raw int16 PCM is even-length.
-	return bytes[0] !== 0x7b && (bytes.length % 2) === 0
+	if ((bytes.length % 2) !== 0) return false
+	// Short `{…}` control (accept/hangup/reject). Media frames are ≥10ms @16k.
+	if (bytes[0] === 0x7b && bytes.length < 640) return false
+	return true
 }
 
 /**
@@ -500,7 +505,8 @@ export class VoicePlaybackBuffer {
 		const merged = new Float32Array(this.pcmPending.length + samples.length)
 		merged.set(this.pcmPending, 0)
 		merged.set(samples, this.pcmPending.length)
-		const flushAt = Math.floor(sampleRate * 0.24)
+		// ~80ms @16k — lower than 240ms so first inbound audio is audible sooner.
+		const flushAt = Math.floor(sampleRate * 0.08)
 		if (merged.length < flushAt) {
 			this.pcmPending = merged
 			this.pcmRate = sampleRate
@@ -520,12 +526,30 @@ export class VoicePlaybackBuffer {
 			const rate = this.pcmRate
 			this.pcmPending = new Float32Array(0)
 			this.playSpeakerClip(pending, rate)
-		}, 200)
+		}, 80)
+	}
+
+	private notePlayFail(detail: Record<string, unknown>): void {
+		try {
+			const w = window as Window & { __voicePlayFail?: Record<string, unknown> }
+			w.__voicePlayFail = { ...detail, at: Date.now() }
+			console.warn('[voice-play]', detail)
+		} catch {
+			/* ignore */
+		}
 	}
 
 	private playSpeakerClip(samples: Float32Array, sampleRate: number): void {
+		// Desktop Chrome often keeps context.destination silent; HTMLAudio is the
+		// audible path. Remount (armOutput) clears speaker — re-unlock if missing.
+		if (!this.speaker && this.prefersElementSpeaker()) {
+			this.unlockSpeaker()
+		}
 		const speaker = this.speaker
-		if (!speaker) return
+		if (!speaker) {
+			this.notePlayFail({ reason: 'no_speaker', samples: samples.length, sampleRate })
+			return
+		}
 		const generation = this.clipGeneration
 		const url = URL.createObjectURL(encodeWavBlob(samples, sampleRate))
 		this.clipTail = this.clipTail.then(() => new Promise<void>((resolve) => {
@@ -550,7 +574,13 @@ export class VoicePlaybackBuffer {
 			speaker.addEventListener('error', done)
 			speaker.src = url
 			const played = speaker.play()
-			if (played) played.catch(() => done())
+			if (played) {
+				played.catch((error: unknown) => {
+					const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error)
+					this.notePlayFail({ reason: 'play_rejected', message, samples: samples.length, sampleRate })
+					done()
+				})
+			}
 		}))
 	}
 
@@ -558,13 +588,39 @@ export class VoicePlaybackBuffer {
 	 * Call from the click / Answer gesture, before any await.
 	 * A context created at page load can run the analyser (the curve moves)
 	 * while the browser still refuses to open the speaker.
+	 * Desktop always remounts WebAudio on the gesture too — HTMLAudio unlock
+	 * alone left inbound PCM with peer level but no audible output when
+	 * element `play()` stayed blocked after Accept.
 	 */
 	armOutput(): void {
+		this.mountGraph()
 		if (this.prefersElementSpeaker()) {
 			this.unlockSpeaker()
-			return
 		}
-		this.mountGraph()
+	}
+
+	/** Schedule PCM on WebAudio → destination (primary audible path). */
+	private scheduleWebAudioPcm(samples: Float32Array, sampleRate: number): void {
+		if (!this.context || !this.analyser || !samples.length) return
+		this.resume()
+		const now = this.context.currentTime
+		if (this.nextTime < now) this.nextTime = now + 0.05
+		// A suspended context never advances currentTime, so a 2s cap would
+		// drop every frame after the first burst and the speaker stays quiet.
+		if (this.nextTime > now + 0.3) this.nextTime = now + 0.05
+		const resampled = resampleFloat32(samples, sampleRate, this.context.sampleRate)
+		const buffer = this.context.createBuffer(1, resampled.length, this.context.sampleRate)
+		buffer.getChannelData(0).set(resampled)
+		const source = this.context.createBufferSource()
+		source.buffer = buffer
+		if (this.gain) source.connect(this.gain)
+		source.connect(this.analyser)
+		source.start(this.nextTime)
+		this.nextTime += buffer.duration
+		this.sources.push(source)
+		source.onended = () => {
+			this.sources = this.sources.filter((item) => item !== source)
+		}
 	}
 
 	private mountGraph(): void {
@@ -616,31 +672,23 @@ export class VoicePlaybackBuffer {
 	setKey(key: Uint8Array): void { this.key = key }
 
 	async push(payload: string): Promise<void> {
-		if (!this.key || !this.context || !this.analyser) throw new Error('voice_playback_key_missing')
+		if (!this.key) throw new Error('voice_playback_key_missing')
+		// Dial already armed the graph; if mid-call remount cleared it, rebuild
+		// without waiting for another gesture (resume may still be suspended).
+		if (!this.context || !this.analyser) {
+			this.mountGraph()
+			if (this.prefersElementSpeaker()) this.unlockSpeaker()
+		}
+		if (!this.context || !this.analyser) throw new Error('voice_playback_key_missing')
 		const decoded = decodePcmVoiceFrame(await decryptVoiceFrame(this.key, payload))
 		if (!decoded || !decoded.samples.length) throw new Error('voice_pcm_frame_invalid')
+		// Always drive WebAudio → destination (gesture-unlocked via armOutput).
+		this.scheduleWebAudioPcm(decoded.samples, decoded.sampleRate)
+		// Desktop: also queue HTMLAudioElement WAV — primary audible path when
+		// context.destination stays silent while the analyser/curve still moves.
 		if (this.prefersElementSpeaker()) {
+			if (!this.speaker) this.unlockSpeaker()
 			this.enqueueSpeakerPcm(decoded.samples, decoded.sampleRate)
-			return
-		}
-		this.resume()
-		const now = this.context.currentTime
-		if (this.nextTime < now) this.nextTime = now + 0.05
-		// A suspended context never advances currentTime, so a 2s cap would
-		// drop every frame after the first burst and the speaker stays quiet.
-		if (this.nextTime > now + 0.3) this.nextTime = now + 0.05
-		const samples = resampleFloat32(decoded.samples, decoded.sampleRate, this.context.sampleRate)
-		const buffer = this.context.createBuffer(1, samples.length, this.context.sampleRate)
-		buffer.getChannelData(0).set(samples)
-		const source = this.context.createBufferSource()
-		source.buffer = buffer
-		if (this.gain) source.connect(this.gain)
-		source.connect(this.analyser)
-		source.start(this.nextTime)
-		this.nextTime += buffer.duration
-		this.sources.push(source)
-		source.onended = () => {
-			this.sources = this.sources.filter((item) => item !== source)
 		}
 	}
 

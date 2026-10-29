@@ -777,24 +777,34 @@ function voiceWaveformPath(samples: number[]): string {
 	return `M ${upper.join(' L ')} L ${lower.join(' L ')} Z`
 }
 
+/**
+ * Dual call waveform: UPPER = local capture meter, LOWER = peer inbound PCM level.
+ * Empty / silent sides pad with 0 (near-flat). Do NOT pad with 0.04 — that drew a
+ * fake “alive” peer lobe while only the dialer mic (or air bleed from Android
+ * loudspeaker music) was moving.
+ */
 function voiceCallDualWaveformPath(localSamples: number[], remoteSamples: number[]): string {
 	const count = 64
 	const take = (samples: number[]) => {
-		const slice = (samples.length ? samples : [0.04]).slice(-count)
-		while (slice.length < count) slice.unshift(0.04)
+		const slice = (samples.length ? samples : [0]).slice(-count)
+		while (slice.length < count) slice.unshift(0)
 		return slice
+	}
+	const lobe = (sample: number) => {
+		if (sample <= 0.02) return 0.35
+		return Math.max(1.5, Math.min(14, sample * 14))
 	}
 	const local = take(localSamples)
 	const remote = take(remoteSamples)
 	const upper = local.map((sample, index) => {
 		const x = (index / (count - 1)) * 240
-		const amplitude = Math.max(1.5, Math.min(14, sample * 14))
+		const amplitude = lobe(sample)
 		return `${x.toFixed(2)} ${(16 - amplitude).toFixed(2)}`
 	})
 	const lower = [...remote].reverse().map((sample, reverseIndex) => {
 		const index = count - 1 - reverseIndex
 		const x = (index / (count - 1)) * 240
-		const amplitude = Math.max(1.5, Math.min(14, sample * 14))
+		const amplitude = lobe(sample)
 		return `${x.toFixed(2)} ${(16 + amplitude).toFixed(2)}`
 	})
 	return `M ${upper.join(' L ')} L ${lower.join(' L ')} Z`
@@ -4116,17 +4126,28 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			return
 		}
 		console.warn('[voice-rx] take', frame.seq)
+		const notePeerRx = (patch: Record<string, unknown>) => {
+			const host = window as Window & { __voicePeerRx?: Record<string, unknown> }
+			host.__voicePeerRx = { ...(host.__voicePeerRx || {}), ...patch, at: Date.now() }
+		}
 		void (async () => {
 			try {
 				const key = voiceCallKeyRef.current
 				if (!(key instanceof Uint8Array) || key.length !== 32) {
 					console.warn('[voice-rx] drop_no_key')
+					notePeerRx({ drop: 'no_key', seq: frame.seq })
 					return
 				}
 				const plain = await decryptVoiceFrame(
 					key,
 					frame.payload as string,
 				)
+				notePeerRx({
+					seq: frame.seq,
+					decrypt: 'ok',
+					plainBytes: plain.byteLength,
+					likelyMedia: isLikelyVoiceMediaPlain(plain),
+				})
 				let control: { type?: string; callId?: string; sessionId?: string; timestamp?: number; createdAt?: number } | null = null
 				// Android native uplink is raw PCM (no BPCM). Never JSON.parse those
 				// bytes — a rare '{' first byte would discard inbound audio as "control".
@@ -4170,6 +4191,8 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 					setVoiceCallAnswered(true)
 					setVoiceCallMinimized(false)
 					setVoiceCallState('outgoing')
+					notePeerRx({ accept: acceptSessionId, peerSessionId })
+					// Soft resume only — remount requires a user gesture (Dial already armed).
 					void voicePlaybackRef.current?.resume()
 					upsertPhoneCallRecord({
 						callId: String((control as { callId?: string }).callId || ''),
@@ -4219,8 +4242,12 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				// that raised "could not be decoded" for control types this build
 				// does not know yet.
 				if (control && typeof control.type === 'string') return
-				// Media only after the callee accept has set peerSession.
-				if (!peerSession) return
+				// Media only after Accept. Re-read ref — Accept may have landed mid-await.
+				const livePeer = voiceCallPeerSessionRef.current
+				if (!livePeer) {
+					notePeerRx({ drop: 'no_peer_session', seq: frame.seq })
+					return
+				}
 				const seq = Number(frame.seq)
 				if (!Number.isSafeInteger(seq) || seq < 0) return
 				// Fan-out through multiple entry nodes can deliver the same frame more
@@ -4241,12 +4268,31 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				if (level !== null) {
 					setRemoteVoiceLevelSamples(previous => [...previous.slice(-119), level])
 				}
-				voicePlaybackRef.current?.setKey(voiceCallKeyRef.current || new Uint8Array())
-				await voicePlaybackRef.current?.push(frame.payload as string)
+				notePeerRx({
+					seq,
+					decode: level === null ? 'level_null' : 'ok',
+					level,
+					peerSession: livePeer,
+					inbound: 'peer',
+					plainBytes: plain.length,
+				})
+				const playback = voicePlaybackRef.current
+				playback?.setKey(voiceCallKeyRef.current || new Uint8Array())
+				// Soft resume before push — Dial armed the graph; Accept must not remount.
+				void playback?.resume()
+				await playback?.push(frame.payload as string)
+				const playFail = (window as Window & { __voicePlayFail?: Record<string, unknown> }).__voicePlayFail
+				notePeerRx({
+					seq,
+					play: playFail && Number(playFail.at || 0) > Date.now() - 2000 ? 'fail' : 'queued',
+					level,
+					playFail: playFail || null,
+				})
 				setVoiceError(null)
 			} catch (error) {
 				const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error)
 				;(window as Window & { __voiceDecodeFail?: string }).__voiceDecodeFail = message
+				notePeerRx({ decodeFail: message, seq: frame.seq })
 				console.warn('[voice-rx] decode_fail', message)
 				setVoiceError('Incoming voice audio could not be decoded.')
 			}

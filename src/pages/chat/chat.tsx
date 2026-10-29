@@ -3966,11 +3966,11 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				// Always tear down the full-screen call UI. When the call was live,
 				// notifyPeer so the remote dialer gets voice_end_v1 (AES + Chat);
 				// native sendHangup may race forgetOffer — PWA backup must still fire.
+				// voiceCallState is only 'idle' | 'outgoing' | 'ended' (incoming is offer-driven).
 				const wasLive =
 					voiceCallLiveRef.current ||
 					voiceCallAnswered ||
 					voiceCallState === 'outgoing' ||
-					voiceCallState === 'incoming' ||
 					Boolean(voiceCallOfferRef.current?.sessionId) ||
 					Boolean(nativeOffer?.sessionId)
 				void endVoiceCall(undefined, wasLive, {

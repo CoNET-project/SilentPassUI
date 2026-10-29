@@ -115,6 +115,7 @@ import {
 } from '@/utils/voiceMessage'
 import {
 	decryptVoiceFrame,
+	encryptVoiceFrame,
 	claimIncomingVoiceCallReport,
 	applyNativeIncomingVoiceOfferFromLine,
 	hasReportedIncomingVoiceCall,
@@ -146,6 +147,9 @@ import {
 	type VoiceCallSignal,
 } from '@/utils/voiceCallSession'
 import {
+	decodeBjpgFrame,
+	encodeBjpgFrame,
+	hasBjpgMagic,
 	isLikelyVoiceMediaPlain,
 	startAndroidNativeMicCapture,
 	startVoiceCapture,
@@ -1954,6 +1958,10 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 	const [voiceCallMinimized, setVoiceCallMinimized] = useState(false)
 	const [voiceSpeakerOn, setVoiceSpeakerOn] = useState(true)
 	const [voiceVideoNote, setVoiceVideoNote] = useState<string | null>(null)
+	/** Soft remote FaceTime surface — object URL of last BJPG JPEG (not soft-seed). */
+	const [remoteVoiceVideoUrl, setRemoteVoiceVideoUrl] = useState<string | null>(null)
+	const [peerVoiceVideoEnabled, setPeerVoiceVideoEnabled] = useState(false)
+	const [softLocalVideoOn, setSoftLocalVideoOn] = useState(false)
 	const [voiceDraftBlob, setVoiceDraftBlob] = useState<Blob | null>(null)
 	const [voiceSending, setVoiceSending] = useState(false)
 	const [voiceError, setVoiceError] = useState<string | null>(null)
@@ -1997,6 +2005,11 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 	/** Verified peer EOA for frame metadata (`to`); dialer = page address, callee = recovered caller. */
 	const voicePeerWalletRef = useRef<string>('')
 	const voiceCaptureStopRef = useRef<(() => void) | null>(null)
+	const softVideoCaptureStopRef = useRef<(() => void) | null>(null)
+	const softLocalVideoStreamRef = useRef<MediaStream | null>(null)
+	const softLocalVideoElRef = useRef<HTMLVideoElement | null>(null)
+	const softVideoFrameIdRef = useRef(0)
+	const remoteVideoBlobUrlRef = useRef<string | null>(null)
 	const voiceCallStreamRef = useRef<MediaStream | null>(null)
 	/** Android: open mic while Telecom is still RINGING (MODE_RINGTONE). */
 	const androidIncomingMicPrewarmRef = useRef<MediaStream | null>(null)
@@ -2850,6 +2863,202 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		}
 	}, [allNodes, armVoicePlayback, chatData, privateKey, toAddress, upsertPhoneCallRecord, voiceCallState])
 
+	const clearSoftRemoteVideo = useCallback(() => {
+		const prev = remoteVideoBlobUrlRef.current
+		remoteVideoBlobUrlRef.current = null
+		if (prev) {
+			try { URL.revokeObjectURL(prev) } catch { /* ignore */ }
+		}
+		setRemoteVoiceVideoUrl(null)
+		setPeerVoiceVideoEnabled(false)
+	}, [])
+
+	// Soft local PiP mounts only when softLocalVideoOn — bind stream after paint.
+	useEffect(() => {
+		if (!softLocalVideoOn) return
+		const el = softLocalVideoElRef.current
+		const stream = softLocalVideoStreamRef.current
+		if (!el || !stream) return
+		el.srcObject = stream
+		el.muted = true
+		el.playsInline = true
+		void el.play().catch(() => {})
+	}, [softLocalVideoOn])
+
+	const stopSoftLocalVideo = useCallback(() => {
+		try { softVideoCaptureStopRef.current?.() } catch { /* already stopped */ }
+		softVideoCaptureStopRef.current = null
+		softLocalVideoStreamRef.current?.getTracks().forEach((track) => track.stop())
+		softLocalVideoStreamRef.current = null
+		if (softLocalVideoElRef.current) {
+			softLocalVideoElRef.current.srcObject = null
+		}
+		setSoftLocalVideoOn(false)
+		setVoiceVideoNote(null)
+	}, [])
+
+	/** Soft BJPG / control uplink — shares seq with PCM; mediaKind marks video. */
+	const sendSoftVoiceUplink = useCallback(async (
+		plain: Uint8Array,
+		mediaKind?: 'video',
+	): Promise<boolean> => {
+		const key = voiceCallKeyRef.current
+		const targetSessionId = voiceCallPeerSessionRef.current
+		const localSessionId = voiceCallSessionRef.current?.trim() || ''
+		const callId = voiceCallOfferRef.current?.callId || ''
+		const frameRoute =
+			voicePeerRouteRef.current || chatData.chatData?.routersArmoreds?.trim() || ''
+		const peerWallet =
+			voicePeerWalletRef.current.trim()
+			|| (typeof toAddress === 'string' ? toAddress.trim() : '')
+		if (
+			!(key instanceof Uint8Array)
+			|| key.length !== 32
+			|| !frameRoute
+			|| !callId
+			|| !targetSessionId
+			|| !localSessionId
+		) {
+			return false
+		}
+		const payload = await encryptVoiceFrame(key, plain)
+		return sendWorkerVoiceFrame(frameRoute, {
+			type: 'voice_frame_v1',
+			callId,
+			sessionId: localSessionId,
+			targetSessionId,
+			...(peerWallet ? { to: peerWallet } : {}),
+			seq: voiceFrameSeqRef.current++,
+			timestamp: Math.floor(Date.now() / 1000),
+			...(mediaKind ? { mediaKind } : {}),
+			payload,
+		})
+	}, [chatData, toAddress])
+
+	const toggleSoftLocalVideo = useCallback(async () => {
+		if (softLocalVideoOn) {
+			const callId = voiceCallOfferRef.current?.callId || ''
+			const localSessionId = voiceCallSessionRef.current?.trim() || ''
+			stopSoftLocalVideo()
+			if (callId && localSessionId) {
+				const body = new TextEncoder().encode(JSON.stringify({
+					type: 'voice_video_disable_v1',
+					callId,
+					sessionId: localSessionId,
+					timestamp: Date.now(),
+				}))
+				void sendSoftVoiceUplink(body)
+			}
+			return
+		}
+		if (voiceCallState !== 'outgoing' || !voiceCallLiveRef.current) {
+			setVoiceVideoNote('Answer the call before starting video.')
+			return
+		}
+		if (!navigator.mediaDevices?.getUserMedia) {
+			setVoiceVideoNote('Camera is not available in this browser.')
+			return
+		}
+		try {
+			const stream = await navigator.mediaDevices.getUserMedia({
+				video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
+				audio: false,
+			})
+			softLocalVideoStreamRef.current = stream
+			setSoftLocalVideoOn(true)
+			setVoiceVideoNote(null)
+			const el = softLocalVideoElRef.current
+			if (el) {
+				el.srcObject = stream
+				el.muted = true
+				el.playsInline = true
+				void el.play().catch(() => {})
+			}
+			const callId = voiceCallOfferRef.current?.callId || ''
+			const localSessionId = voiceCallSessionRef.current?.trim() || ''
+			if (callId && localSessionId) {
+				const body = new TextEncoder().encode(JSON.stringify({
+					type: 'voice_video_enable_v1',
+					callId,
+					sessionId: localSessionId,
+					timestamp: Date.now(),
+				}))
+				void sendSoftVoiceUplink(body)
+			}
+			const videoTrack = stream.getVideoTracks()[0]
+			const settings = videoTrack?.getSettings?.() || {}
+			const canvas = document.createElement('canvas')
+			const ctx = canvas.getContext('2d')
+			const probe = document.createElement('video')
+			probe.muted = true
+			probe.playsInline = true
+			probe.srcObject = stream
+			await probe.play().catch(() => {})
+			let cancelled = false
+			let timer: ReturnType<typeof setTimeout> | undefined
+			const stop = () => {
+				// Cancel capture only — Soft PiP / MediaStream lifecycle is owned by
+				// stopSoftLocalVideo (do not stop tracks here or Soft preview dies early).
+				cancelled = true
+				if (timer !== undefined) clearTimeout(timer)
+				timer = undefined
+				try { probe.pause() } catch { /* ignore */ }
+				probe.srcObject = null
+			}
+			softVideoCaptureStopRef.current = stop
+			const notePeerVideo = (patch: Record<string, unknown>) => {
+				const host = window as Window & { __voicePeerVideo?: Record<string, unknown> }
+				host.__voicePeerVideo = { ...(host.__voicePeerVideo || {}), ...patch, at: Date.now() }
+			}
+			const schedule = () => {
+				timer = setTimeout(() => {
+					void (async () => {
+						if (cancelled) return
+						try {
+							const w = Math.max(1, Math.floor(probe.videoWidth || Number(settings.width) || 320))
+							const h = Math.max(1, Math.floor(probe.videoHeight || Number(settings.height) || 240))
+							if (canvas.width !== w || canvas.height !== h) {
+								canvas.width = w
+								canvas.height = h
+							}
+							if (!ctx || w < 2 || h < 2) return
+							ctx.drawImage(probe, 0, 0, w, h)
+							const blob = await new Promise<Blob | null>((resolve) => {
+								canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.72)
+							})
+							if (!blob || cancelled) return
+							const jpeg = new Uint8Array(await blob.arrayBuffer())
+							softVideoFrameIdRef.current += 1
+							const framed = encodeBjpgFrame(jpeg, w, h, softVideoFrameIdRef.current)
+							const sent = await sendSoftVoiceUplink(framed, 'video')
+							notePeerVideo({
+								localSent: sent,
+								frameId: softVideoFrameIdRef.current,
+								w,
+								h,
+								jpegBytes: jpeg.length,
+							})
+						} catch (error) {
+							notePeerVideo({
+								localCaptureFail: error instanceof Error ? error.message : String(error),
+							})
+						} finally {
+							if (!cancelled) schedule()
+						}
+					})()
+				}, 200)
+			}
+			schedule()
+		} catch (error) {
+			setSoftLocalVideoOn(false)
+			setVoiceVideoNote(
+				error instanceof Error && /Permission|NotAllowed/i.test(error.message)
+					? 'Camera permission was denied.'
+					: 'Camera could not start.',
+			)
+		}
+	}, [sendSoftVoiceUplink, softLocalVideoOn, stopSoftLocalVideo, voiceCallState])
+
 	const detachLocalVoiceCall = useCallback(() => {
 		voiceCallLiveRef.current = false
 		const offer = voiceCallOfferRef.current
@@ -2874,6 +3083,8 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		voiceControllerRef.current = null
 		try { voiceCaptureStopRef.current?.() } catch { /* already stopped */ }
 		voiceCaptureStopRef.current = null
+		stopSoftLocalVideo()
+		clearSoftRemoteVideo()
 		outgoingMicPreopenRef.current?.getTracks().forEach((track) => track.stop())
 		outgoingMicPreopenRef.current = null
 		voiceCallStreamRef.current?.getTracks().forEach((track) => track.stop())
@@ -2886,7 +3097,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		setVoiceCallState('idle')
 		if (controller) void controller.end(false)
 		else if (localSession) void stopWorkerVoiceListen(localSession)
-	}, [])
+	}, [clearSoftRemoteVideo, stopSoftLocalVideo])
 
 	useEffect(() => {
 		const inboundMessages = messages.filter((message) => message.from === 'them' && message.text)
@@ -3532,6 +3743,8 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		}
 		voiceCaptureStopRef.current?.()
 		voiceCaptureStopRef.current = null
+		stopSoftLocalVideo()
+		clearSoftRemoteVideo()
 		voiceCallStreamRef.current = null
 		if (voiceLevelRafRef.current !== null) {
 			window.cancelAnimationFrame(voiceLevelRafRef.current)
@@ -3558,7 +3771,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		setLiveVoiceSessionId('')
 		setVoiceCallAnswered(false)
 		setVoiceCallState('idle')
-	}, [allNodes, privateKey, profiles, toAddress, upsertPhoneCallRecord])
+	}, [allNodes, clearSoftRemoteVideo, privateKey, profiles, stopSoftLocalVideo, toAddress, upsertPhoneCallRecord])
 
 	useEffect(() => {
 		const latest = [...messages].reverse().find((message) => message.from === 'them' && message.text)
@@ -4238,6 +4451,27 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 					void endVoiceCall('ended', false)
 					return
 				}
+				if (control?.type === 'voice_video_enable_v1') {
+					setPeerVoiceVideoEnabled(true)
+					const host = window as Window & { __voicePeerVideo?: Record<string, unknown> }
+					host.__voicePeerVideo = {
+						...(host.__voicePeerVideo || {}),
+						peerEnable: true,
+						at: Date.now(),
+					}
+					return
+				}
+				if (control?.type === 'voice_video_disable_v1') {
+					// Clears remote blob + peerEnable; Soft local camera stays if Soft started it.
+					clearSoftRemoteVideo()
+					const host = window as Window & { __voicePeerVideo?: Record<string, unknown> }
+					host.__voicePeerVideo = {
+						...(host.__voicePeerVideo || {}),
+						peerEnable: false,
+						at: Date.now(),
+					}
+					return
+				}
 				// Any other JSON control frame is not audio. Never decode it as PCM:
 				// that raised "could not be decoded" for control types this build
 				// does not know yet.
@@ -4263,6 +4497,45 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 					for (const seen of voiceReceivedSeqsRef.current) {
 						if (seen < floor) voiceReceivedSeqsRef.current.delete(seen)
 					}
+				}
+				const frameMediaKind = String(
+					(frame as { mediaKind?: string }).mediaKind || '',
+				).toLowerCase()
+				// BJPG / voice video — before PCM. Independent of __voicePeerRx audio gate.
+				if (hasBjpgMagic(plain) || frameMediaKind === 'video') {
+					const decoded = decodeBjpgFrame(plain)
+					const host = window as Window & { __voicePeerVideo?: Record<string, unknown> }
+					if (!decoded) {
+						host.__voicePeerVideo = {
+							...(host.__voicePeerVideo || {}),
+							rxFail: 'bjpg_decode',
+							seq,
+							plainBytes: plain.length,
+							at: Date.now(),
+						}
+						return
+					}
+					const blob = new Blob([decoded.jpeg], { type: 'image/jpeg' })
+					const url = URL.createObjectURL(blob)
+					const prev = remoteVideoBlobUrlRef.current
+					remoteVideoBlobUrlRef.current = url
+					if (prev) {
+						try { URL.revokeObjectURL(prev) } catch { /* ignore */ }
+					}
+					setPeerVoiceVideoEnabled(true)
+					setRemoteVoiceVideoUrl(url)
+					host.__voicePeerVideo = {
+						...(host.__voicePeerVideo || {}),
+						rxOk: true,
+						seq,
+						frameId: decoded.frameId,
+						w: decoded.width,
+						h: decoded.height,
+						jpegBytes: decoded.jpeg.length,
+						source: 'wire_bjpg',
+						at: Date.now(),
+					}
+					return
 				}
 				const level = voiceLevelFromPcmBytes(plain)
 				if (level !== null) {
@@ -4297,7 +4570,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				setVoiceError('Incoming voice audio could not be decoded.')
 			}
 		})()
-	}), [endVoiceCall, voiceCallState])
+	}), [clearSoftRemoteVideo, endVoiceCall, voiceCallState])
 
 	const openMultisigFromChat = useCallback(
 		(messageText: string, isMeMessage: boolean, taskId: string, aaAccount?: string) => {
@@ -6461,43 +6734,81 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 					>
 						<Minimize2 className="h-6 w-6" strokeWidth={2.4} />
 					</button>
-					<div className="flex flex-1 flex-col items-center justify-center px-6">
-						<div className="grid h-36 w-36 place-items-center overflow-hidden rounded-full bg-[#10233f] ring-4 ring-white/45 shadow-[0_16px_40px_rgba(15,23,42,0.28)]">
-							{peerAvatar ? (
-								<IpfsImg src={peerAvatar} alt="" className="h-full w-full object-cover" />
-							) : (
-								<span className="text-4xl font-semibold">{activeVoicePeerName.slice(0, 1).toUpperCase()}</span>
-							)}
-						</div>
-						<h1 className="mt-6 text-center text-[2rem] font-medium tracking-tight">{activeVoicePeerName}</h1>
-						<p className="mt-2 text-lg text-white/90">
-							{voiceCallStatusLabel}
-							{voiceCallStatusLabel === 'Connecting' || voiceCallStatusLabel === 'Ringing' ? (
-								<span className="ml-2 inline-flex gap-1" aria-hidden>
-									<span className="animate-pulse">·</span>
-									<span className="animate-pulse [animation-delay:200ms]">·</span>
-								</span>
-							) : null}
-						</p>
-						<div className="mt-8 w-full max-w-xl rounded-2xl border border-white/25 bg-black/25 px-4 py-3">
-							<p className="text-center text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-100">Microphone</p>
-							<svg
-								viewBox="0 0 240 32"
-								preserveAspectRatio="none"
-								className="mt-1 h-28 w-full"
-								role="img"
-								aria-label="Microphone and incoming audio"
+					<div className="relative flex min-h-0 flex-1 flex-col items-center justify-center px-6">
+						{(remoteVoiceVideoUrl || peerVoiceVideoEnabled) ? (
+							<div
+								className="absolute inset-0 bg-black"
+								aria-label="Remote video"
 							>
-								<path
-									d={voiceCallDualWaveformPath(voiceLevelSamples, remoteVoiceLevelSamples)}
-									fill="rgba(52,211,153,0.62)"
-								/>
-								<path d="M 0 16 L 240 16" stroke="rgba(255,255,255,0.35)" strokeWidth="0.6" />
-							</svg>
-							<p className="text-center text-[11px] font-semibold uppercase tracking-[0.18em] text-sky-100">Incoming</p>
-						</div>
+								{remoteVoiceVideoUrl ? (
+									<img
+										src={remoteVoiceVideoUrl}
+										alt=""
+										className="h-full w-full object-cover"
+										draggable={false}
+									/>
+								) : (
+									<div className="grid h-full w-full place-items-center text-sm text-white/70">
+										Waiting for remote video…
+									</div>
+								)}
+							</div>
+						) : (
+							<>
+								<div className="grid h-36 w-36 place-items-center overflow-hidden rounded-full bg-[#10233f] ring-4 ring-white/45 shadow-[0_16px_40px_rgba(15,23,42,0.28)]">
+									{peerAvatar ? (
+										<IpfsImg src={peerAvatar} alt="" className="h-full w-full object-cover" />
+									) : (
+										<span className="text-4xl font-semibold">{activeVoicePeerName.slice(0, 1).toUpperCase()}</span>
+									)}
+								</div>
+								<h1 className="mt-6 text-center text-[2rem] font-medium tracking-tight">{activeVoicePeerName}</h1>
+								<p className="mt-2 text-lg text-white/90">
+									{voiceCallStatusLabel}
+									{voiceCallStatusLabel === 'Connecting' || voiceCallStatusLabel === 'Ringing' ? (
+										<span className="ml-2 inline-flex gap-1" aria-hidden>
+											<span className="animate-pulse">·</span>
+											<span className="animate-pulse [animation-delay:200ms]">·</span>
+										</span>
+									) : null}
+								</p>
+								<div className="mt-8 w-full max-w-xl rounded-2xl border border-white/25 bg-black/25 px-4 py-3">
+									<p className="text-center text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-100">Microphone</p>
+									<svg
+										viewBox="0 0 240 32"
+										preserveAspectRatio="none"
+										className="mt-1 h-28 w-full"
+										role="img"
+										aria-label="Microphone and incoming audio"
+									>
+										<path
+											d={voiceCallDualWaveformPath(voiceLevelSamples, remoteVoiceLevelSamples)}
+											fill="rgba(52,211,153,0.62)"
+										/>
+										<path d="M 0 16 L 240 16" stroke="rgba(255,255,255,0.35)" strokeWidth="0.6" />
+									</svg>
+									<p className="text-center text-[11px] font-semibold uppercase tracking-[0.18em] text-sky-100">Incoming</p>
+								</div>
+							</>
+						)}
+						{(remoteVoiceVideoUrl || peerVoiceVideoEnabled) ? (
+							<div className="relative z-10 mt-auto mb-4 w-full max-w-xl rounded-2xl border border-white/25 bg-black/35 px-4 py-2 backdrop-blur-sm">
+								<p className="text-center text-sm font-medium text-white">{activeVoicePeerName}</p>
+								<p className="text-center text-xs text-white/80">{voiceCallStatusLabel}</p>
+							</div>
+						) : null}
+						{softLocalVideoOn ? (
+							<video
+								ref={softLocalVideoElRef}
+								className="absolute bottom-4 right-4 z-20 h-36 w-28 rounded-2xl border border-white/40 bg-black object-cover shadow-lg"
+								muted
+								playsInline
+								autoPlay
+								aria-label="Local video preview"
+							/>
+						) : null}
 						{voiceError ? (
-							<div role="alert" className="mt-4 max-w-xl rounded-2xl border border-rose-200/40 bg-rose-500/25 px-4 py-3 text-sm text-white">
+							<div role="alert" className="relative z-10 mt-4 max-w-xl rounded-2xl border border-rose-200/40 bg-rose-500/25 px-4 py-3 text-sm text-white">
 								<div className="flex items-start gap-2">
 									<AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
 									<p>{voiceError}</p>
@@ -6505,12 +6816,12 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 							</div>
 						) : null}
 						{voiceVideoNote ? (
-							<div role="alert" className="mt-4 max-w-xl rounded-2xl border border-white/30 bg-white/15 px-4 py-3 text-sm text-white">
+							<div role="alert" className="relative z-10 mt-4 max-w-xl rounded-2xl border border-white/30 bg-white/15 px-4 py-3 text-sm text-white">
 								{voiceVideoNote}
 							</div>
 						) : null}
 					</div>
-					<div className="grid grid-cols-4 gap-2 px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+					<div className="relative z-10 grid grid-cols-4 gap-2 px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
 						<button
 							type="button"
 							onClick={() => {
@@ -6532,14 +6843,15 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 						</button>
 						<button
 							type="button"
-							onClick={() => setVoiceVideoNote('Video is not available on this call.')}
+							onClick={() => void toggleSoftLocalVideo()}
 							className="flex flex-col items-center gap-2"
-							aria-label="Start video"
+							aria-pressed={softLocalVideoOn}
+							aria-label={softLocalVideoOn ? 'Stop video' : 'Start video'}
 						>
-							<span className="grid h-16 w-16 place-items-center rounded-full bg-white text-[#1e3a5f]">
-								<VideoOff className="h-7 w-7" />
+							<span className={`grid h-16 w-16 place-items-center rounded-full ${softLocalVideoOn ? 'bg-[#2ec8ea] text-white' : 'bg-white text-[#1e3a5f]'}`}>
+								{softLocalVideoOn ? <Video className="h-7 w-7" /> : <VideoOff className="h-7 w-7" />}
 							</span>
-							<span className="text-xs font-medium">Start Video</span>
+							<span className="text-xs font-medium">{softLocalVideoOn ? 'Stop Video' : 'Start Video'}</span>
 						</button>
 						<button
 							type="button"

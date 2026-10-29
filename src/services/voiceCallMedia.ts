@@ -15,6 +15,9 @@ export const voiceCaptureConstraints = (androidShell: boolean): MediaStreamConst
 )
 const VOICE_PCM_FRAME_MS = 80
 const VOICE_PCM_MAGIC = [0x42, 0x50, 0x43, 0x4d] as const // BPCM
+/** Soft / FaceTime JPEG uplink: `BJPG` + u16-LE w/h + u32-LE frameId + JPEG. */
+export const VOICE_BJPG_MAGIC = [0x42, 0x4A, 0x50, 0x47] as const // BJPG
+const VOICE_BJPG_HEADER_BYTES = 12
 
 type AudioContextCtor = typeof AudioContext
 
@@ -74,6 +77,51 @@ const hasBpcmMagic = (bytes: Uint8Array): boolean => (
 	&& bytes[3] === VOICE_PCM_MAGIC[3]
 )
 
+export const hasBjpgMagic = (bytes: Uint8Array): boolean => (
+	bytes.length >= 4
+	&& bytes[0] === VOICE_BJPG_MAGIC[0]
+	&& bytes[1] === VOICE_BJPG_MAGIC[1]
+	&& bytes[2] === VOICE_BJPG_MAGIC[2]
+	&& bytes[3] === VOICE_BJPG_MAGIC[3]
+)
+
+export type BjpgDecodedFrame = {
+	width: number
+	height: number
+	frameId: number
+	jpeg: Uint8Array
+}
+
+/** Decode Soft/FaceTime BJPG wire → JPEG bytes for `<img>` / blob URL. */
+export const decodeBjpgFrame = (bytes: Uint8Array): BjpgDecodedFrame | null => {
+	if (!hasBjpgMagic(bytes) || bytes.length <= VOICE_BJPG_HEADER_BYTES) return null
+	const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+	const width = view.getUint16(4, true)
+	const height = view.getUint16(6, true)
+	const frameId = view.getUint32(8, true) >>> 0
+	if (width < 1 || height < 1 || width > 4096 || height > 4096) return null
+	const jpeg = bytes.subarray(VOICE_BJPG_HEADER_BYTES)
+	if (jpeg.length < 4 || jpeg[0] !== 0xff || jpeg[1] !== 0xd8) return null
+	return { width, height, frameId, jpeg }
+}
+
+/** Encode JPEG + dimensions into BJPG wire (shared Soft ↔ native FaceTime). */
+export const encodeBjpgFrame = (
+	jpeg: Uint8Array,
+	width: number,
+	height: number,
+	frameId: number,
+): Uint8Array => {
+	const out = new Uint8Array(VOICE_BJPG_HEADER_BYTES + jpeg.length)
+	out.set(VOICE_BJPG_MAGIC)
+	const view = new DataView(out.buffer)
+	view.setUint16(4, Math.max(1, Math.min(4096, width | 0)), true)
+	view.setUint16(6, Math.max(1, Math.min(4096, height | 0)), true)
+	view.setUint32(8, frameId >>> 0, true)
+	out.set(jpeg, VOICE_BJPG_HEADER_BYTES)
+	return out
+}
+
 /** Little-endian int16 mono PCM → float samples (Android native uplink format). */
 const decodeRawPcm16Le = (
 	bytes: Uint8Array,
@@ -99,6 +147,8 @@ const decodeRawPcm16Le = (
 export const decodePcmVoiceFrame = (
 	bytes: Uint8Array,
 ): { sampleRate: number; samples: Float32Array } | null => {
+	// BJPG must never fall through to raw-PCM (JPEG bytes are even-length noise).
+	if (hasBjpgMagic(bytes)) return null
 	if (hasBpcmMagic(bytes)) {
 		if (bytes.length < 10) return null
 		const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
@@ -125,6 +175,8 @@ export const decodePcmVoiceFrame = (
 export const isLikelyVoiceMediaPlain = (bytes: Uint8Array): boolean => {
 	if (!(bytes instanceof Uint8Array) || bytes.length < 4) return false
 	if (hasBpcmMagic(bytes)) return true
+	// BJPG is video media — not PCM, but also not JSON control.
+	if (hasBjpgMagic(bytes)) return true
 	if ((bytes.length % 2) !== 0) return false
 	// Short `{…}` control (accept/hangup/reject). Media frames are ≥10ms @16k.
 	if (bytes[0] === 0x7b && bytes.length < 640) return false

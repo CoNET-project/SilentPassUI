@@ -73,7 +73,14 @@ import {
 } from '../group.js'
 import type { GroupTombstoneV1 } from '../types.js'
 import { armorToString, buildPostBody, encryptOpaqueVoiceCommand, encryptRouteCommand, wrapArmorToEntryRoute, wrapArmorToMailboxWork } from '../envelope.js'
-import { VoiceFrameReorderBuffer, type VoiceConflictEvent, type VoiceFrameChunk, type VoiceGapEvent } from '../voice-reorder.js'
+import {
+	DEFAULT_VIDEO_REORDER_DELAY_MS,
+	DEFAULT_VOICE_REORDER_DELAY_MS,
+	VoiceFrameReorderBuffer,
+	type VoiceConflictEvent,
+	type VoiceFrameChunk,
+	type VoiceGapEvent,
+} from '../voice-reorder.js'
 
 /** Callbacks the worker entry wires to `postMessage`. */
 export interface GossipEmit {
@@ -193,6 +200,10 @@ export class GossipCore {
 	private listenController: AbortController | null = null
 	private voiceListenController: AbortController | null = null
 	private readonly voiceReorder = new VoiceFrameReorderBuffer({
+		// Voice jitter ~120ms; video fragment groups ~200ms. Do not skip_ahead
+		// immediately when a later seq arrives first — wait then timeout.
+		reorderDelayMs: DEFAULT_VOICE_REORDER_DELAY_MS,
+		videoReorderDelayMs: DEFAULT_VIDEO_REORDER_DELAY_MS,
 		onEvent: (event) => {
 			if (event.type === 'frame') this.emit.voiceFrame(event.frame as VoiceFrame)
 			if (event.type === 'gap') this.emit.voiceGap(event.gap)

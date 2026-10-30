@@ -11,15 +11,17 @@ import { IpfsImg } from '@/components/IpfsImg'
 import { publishMinimizedVoiceCallWindow } from '@/utils/minimizedVoiceCallWindow'
 import {
   ArrowUp,
+  ChevronDown,
   ChevronLeft,
+  ChevronUp,
   Info,
   Phone,
+  PhoneOff,
   Video,
   CheckCheck,
   Plus,
   Mic,
   MicOff,
-  Minimize2,
   VideoOff,
   AlertTriangle,
   Camera,
@@ -47,7 +49,8 @@ import {
   X,
   CornerUpLeft,
   Trash2,
-  Paperclip
+  Paperclip,
+  UserRound,
 } from "lucide-react"
 import { ChatHeaderIOS } from "./components/ChatHeaderIOS"
 import BeamioContactProfilePreview from "@/components/Home/BeamioContactProfilePreview"
@@ -1958,6 +1961,8 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 	const [remoteVoiceLevelSamples, setRemoteVoiceLevelSamples] = useState<number[]>([])
 	const [voiceCallMinimized, setVoiceCallMinimized] = useState(false)
 	const [voiceSpeakerOn, setVoiceSpeakerOn] = useState(true)
+	const [voiceInCallToolsExpanded, setVoiceInCallToolsExpanded] = useState(true)
+	const [voiceInCallElapsedMs, setVoiceInCallElapsedMs] = useState(0)
 	const [voiceVideoNote, setVoiceVideoNote] = useState<string | null>(null)
 	/** Soft remote FaceTime surface — object URL of last BJPG JPEG (not soft-seed). */
 	const [remoteVoiceVideoUrl, setRemoteVoiceVideoUrl] = useState<string | null>(null)
@@ -6718,6 +6723,47 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		return () => publishMinimizedVoiceCallWindow(null)
 	}, [activeVoicePeerName, navigate, onShowThread, peerAvatar, voiceCallMinimized, voiceCallState, voiceCallStatusLabel])
 
+	useEffect(() => {
+		if (voiceCallState !== 'outgoing') {
+			setVoiceInCallToolsExpanded(true)
+			setVoiceInCallElapsedMs(0)
+			return
+		}
+		const answeredAt = Number(activeVoiceCallRecord?.answeredAt || 0)
+		if (!(voiceCallAnswered || activeVoiceCallRecord?.status === 'answered') || !answeredAt) {
+			setVoiceInCallElapsedMs(0)
+			return
+		}
+		let cancelled = false
+		let timer: number | undefined
+		const tick = () => setVoiceInCallElapsedMs(Math.max(0, Date.now() - answeredAt))
+		const schedule = () => {
+			timer = window.setTimeout(() => {
+				if (cancelled) return
+				tick()
+				schedule()
+			}, 1000) as unknown as number
+		}
+		tick()
+		schedule()
+		return () => {
+			cancelled = true
+			if (timer !== undefined) clearTimeout(timer)
+		}
+	}, [activeVoiceCallRecord?.answeredAt, activeVoiceCallRecord?.status, voiceCallAnswered, voiceCallState])
+
+	const voiceInCallClockLabel = (() => {
+		const total = Math.max(0, Math.floor(voiceInCallElapsedMs / 1000))
+		const mm = String(Math.floor(total / 60)).padStart(2, '0')
+		const ss = String(total % 60).padStart(2, '0')
+		return `${mm}:${ss}`
+	})()
+	const hasPeerVideoBackground = Boolean(remoteVoiceVideoUrl || peerVoiceVideoEnabled)
+	const voicePeerAddress = String(activeVoiceCallRecord?.peerAddress || toAddress || '').trim()
+	const voicePeerAddressShort = voicePeerAddress
+		? `${voicePeerAddress.slice(0, 6)}…${voicePeerAddress.slice(-4)}`
+		: ''
+
   return (
 		<div
 			className="fixed inset-0 bg-[#F1F8ED]"
@@ -6755,95 +6801,66 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				incomingVoiceOffer.sessionId !== liveVoiceSessionId
 			) ? (
 				<div
-					className="fixed inset-0 z-[170] flex flex-col overflow-hidden bg-gradient-to-b from-[#8fd0fb] via-[#5aa6f0] to-[#3d6ad8] text-white"
+					className="fixed inset-0 z-[170] flex flex-col overflow-hidden text-white"
+					style={{
+						background: hasPeerVideoBackground
+							? '#000'
+							: 'linear-gradient(180deg, #2C3A4D 0%, #161E2A 52%, #0A0E15 100%)',
+					}}
 					role="dialog"
 					aria-label="Voice call"
 				>
-					<button
-						type="button"
-						onClick={() => setVoiceCallMinimized(true)}
-						className="absolute left-4 grid h-11 w-11 place-items-center text-white"
-						style={{ top: 'max(0.75rem, env(safe-area-inset-top, 0px))' }}
-						aria-label="Minimize call"
-						tabIndex={-1}
+					{hasPeerVideoBackground ? (
+						<div className="absolute inset-0" aria-label="Remote video">
+							{remoteVoiceVideoUrl ? (
+								<img
+									src={remoteVoiceVideoUrl}
+									alt=""
+									className="h-full w-full object-cover"
+									draggable={false}
+								/>
+							) : (
+								<div className="grid h-full w-full place-items-center bg-[#0A0E15] text-sm text-white/70">
+									Waiting for remote video…
+								</div>
+							)}
+							<div className="absolute inset-0 bg-black/40" aria-hidden />
+						</div>
+					) : null}
+
+					{/* Top chrome: minimize + optional local FaceTime preview (native InCall). */}
+					<div
+						className="relative z-20 flex items-start justify-between px-5"
+						style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top, 0px))' }}
 					>
-						<Minimize2 className="h-6 w-6" strokeWidth={2.4} />
-					</button>
-					<div className="relative flex min-h-0 flex-1 flex-col items-center justify-center px-6">
-						{(remoteVoiceVideoUrl || peerVoiceVideoEnabled) ? (
-							<div
-								className="absolute inset-0 bg-black"
-								aria-label="Remote video"
-							>
-								{remoteVoiceVideoUrl ? (
-									<img
-										src={remoteVoiceVideoUrl}
-										alt=""
-										className="h-full w-full object-cover"
-										draggable={false}
-									/>
-								) : (
-									<div className="grid h-full w-full place-items-center text-sm text-white/70">
-										Waiting for remote video…
-									</div>
-								)}
-							</div>
-						) : (
-							<>
-								<div className="grid h-36 w-36 place-items-center overflow-hidden rounded-full bg-[#10233f] ring-4 ring-white/45 shadow-[0_16px_40px_rgba(15,23,42,0.28)]">
-									{peerAvatar ? (
-										<IpfsImg src={peerAvatar} alt="" className="h-full w-full object-cover" />
-									) : (
-										<span className="text-4xl font-semibold">{activeVoicePeerName.slice(0, 1).toUpperCase()}</span>
-									)}
-								</div>
-								<h1 className="mt-6 text-center text-[2rem] font-medium tracking-tight">{activeVoicePeerName}</h1>
-								<p className="mt-2 text-lg text-white/90">
-									{voiceCallStatusLabel}
-									{voiceCallStatusLabel === 'Connecting' || voiceCallStatusLabel === 'Ringing' ? (
-										<span className="ml-2 inline-flex gap-1" aria-hidden>
-											<span className="animate-pulse">·</span>
-											<span className="animate-pulse [animation-delay:200ms]">·</span>
-										</span>
-									) : null}
-								</p>
-								<div className="mt-8 w-full max-w-xl rounded-2xl border border-white/25 bg-black/25 px-4 py-3">
-									<p className="text-center text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-100">Microphone</p>
-									<svg
-										viewBox="0 0 240 32"
-										preserveAspectRatio="none"
-										className="mt-1 h-28 w-full"
-										role="img"
-										aria-label="Microphone and incoming audio"
-									>
-										<path
-											d={voiceCallDualWaveformPath(voiceLevelSamples, remoteVoiceLevelSamples)}
-											fill="rgba(52,211,153,0.62)"
-										/>
-										<path d="M 0 16 L 240 16" stroke="rgba(255,255,255,0.35)" strokeWidth="0.6" />
-									</svg>
-									<p className="text-center text-[11px] font-semibold uppercase tracking-[0.18em] text-sky-100">Incoming</p>
-								</div>
-							</>
-						)}
-						{(remoteVoiceVideoUrl || peerVoiceVideoEnabled) ? (
-							<div className="relative z-10 mt-auto mb-4 w-full max-w-xl rounded-2xl border border-white/25 bg-black/35 px-4 py-2 backdrop-blur-sm">
-								<p className="text-center text-sm font-medium text-white">{activeVoicePeerName}</p>
-								<p className="text-center text-xs text-white/80">{voiceCallStatusLabel}</p>
-							</div>
-						) : null}
+						<button
+							type="button"
+							onClick={() => setVoiceCallMinimized(true)}
+							className="grid h-11 w-11 place-items-center rounded-full border border-white/20 bg-white/15 text-white/85 backdrop-blur-md"
+							aria-label="Minimize call"
+							tabIndex={-1}
+						>
+							<ChevronDown className="h-5 w-5" strokeWidth={2.5} aria-hidden />
+						</button>
 						{softLocalVideoOn ? (
 							<video
 								ref={softLocalVideoElRef}
-								className="absolute bottom-4 right-4 z-20 h-36 w-28 rounded-2xl border border-white/40 bg-black object-cover shadow-lg"
+								className="h-[7.4rem] w-[5.5rem] rounded-2xl border border-white/35 bg-black object-cover shadow-lg"
 								muted
 								playsInline
 								autoPlay
-								aria-label="Local video preview"
+								aria-label="Local FaceTime preview"
 							/>
-						) : null}
+						) : (
+							<span className="h-11 w-11" aria-hidden />
+						)}
+					</div>
+
+					<div className="relative z-10 flex min-h-0 flex-1 flex-col px-5">
+						<div className="min-h-0 flex-1" aria-hidden />
+
 						{voiceError ? (
-							<div role="alert" className="relative z-10 mt-4 max-w-xl rounded-2xl border border-rose-200/40 bg-rose-500/25 px-4 py-3 text-sm text-white">
+							<div role="alert" className="mb-3 rounded-2xl border border-rose-200/40 bg-rose-500/25 px-4 py-3 text-sm text-white">
 								<div className="flex items-start gap-2">
 									<AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
 									<p>{voiceError}</p>
@@ -6851,66 +6868,168 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 							</div>
 						) : null}
 						{voiceVideoNote ? (
-							<div role="alert" className="relative z-10 mt-4 max-w-xl rounded-2xl border border-white/30 bg-white/15 px-4 py-3 text-sm text-white">
+							<div role="alert" className="mb-3 rounded-2xl border border-white/30 bg-white/15 px-4 py-3 text-sm text-white">
 								{voiceVideoNote}
 							</div>
 						) : null}
-					</div>
-					<div className="relative z-10 grid grid-cols-4 gap-2 px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
-						<button
-							type="button"
-							onClick={() => {
-								voicePlaybackRef.current?.resume()
-								setVoiceSpeakerOn(previous => {
-									const next = !previous
-									voicePlaybackRef.current?.setOutputGain(next ? 4 : 1)
-									return next
-								})
-							}}
-							className="flex flex-col items-center gap-2"
-							aria-pressed={voiceSpeakerOn}
-							aria-label={voiceSpeakerOn ? 'Speaker on' : 'Speaker off'}
-						>
-							<span className={`grid h-16 w-16 place-items-center rounded-full ${voiceSpeakerOn ? 'bg-[#2ec8ea] text-white' : 'bg-white text-[#1e3a5f]'}`}>
-								{voiceSpeakerOn ? <Volume2 className="h-7 w-7" /> : <VolumeX className="h-7 w-7" />}
-							</span>
-							<span className="text-xs font-medium">Speaker</span>
-						</button>
-						<button
-							type="button"
-							onClick={() => void toggleSoftLocalVideo()}
-							className="flex flex-col items-center gap-2"
-							aria-pressed={softLocalVideoOn}
-							aria-label={softLocalVideoOn ? 'Stop video' : 'Start video'}
-						>
-							<span className={`grid h-16 w-16 place-items-center rounded-full ${softLocalVideoOn ? 'bg-[#2ec8ea] text-white' : 'bg-white text-[#1e3a5f]'}`}>
-								{softLocalVideoOn ? <Video className="h-7 w-7" /> : <VideoOff className="h-7 w-7" />}
-							</span>
-							<span className="text-xs font-medium">{softLocalVideoOn ? 'Stop Video' : 'Start Video'}</span>
-						</button>
-						<button
-							type="button"
-							onClick={toggleVoiceCallMute}
-							className="flex flex-col items-center gap-2"
-							aria-pressed={voiceCallMuted}
-							aria-label={voiceCallMuted ? 'Unmute microphone' : 'Mute microphone'}
-						>
-							<span className="grid h-16 w-16 place-items-center rounded-full bg-[#3b82f6] text-white">
-								{voiceCallMuted ? <MicOff className="h-7 w-7" /> : <Mic className="h-7 w-7" />}
-							</span>
-							<span className="text-xs font-medium">Mute</span>
-						</button>
-						<button
-							type="button"
-							onClick={() => void endVoiceCall()}
-							className="flex flex-col items-center gap-2"
-							aria-label="End call"
-						>
-							<span className="grid h-16 w-16 place-items-center rounded-full bg-[#ef4444] text-white">
-								<Phone className="h-7 w-7 rotate-[135deg]" />
-							</span>
-							<span className="text-xs font-medium">End Call</span>
-						</button>
+
+						{hasPeerVideoBackground && !voiceInCallToolsExpanded ? (
+							<button
+								type="button"
+								onClick={() => setVoiceInCallToolsExpanded(true)}
+								className="mb-[max(1.75rem,env(safe-area-inset-bottom))] flex w-full flex-col items-center rounded-[1.75rem] bg-black/50 px-5 py-3.5 backdrop-blur-md"
+								aria-label="Show call controls"
+							>
+								<span className="mb-2 h-1.5 w-10 rounded-full bg-white/35" aria-hidden />
+								<span className="flex items-center gap-2.5">
+									<span className="max-w-[10rem] truncate text-[17px] font-bold">{activeVoicePeerLabel}</span>
+									<span className="font-mono text-[15px] font-bold text-white/75">
+										{voiceCallAnswered || activeVoiceCallRecord?.status === 'answered'
+											? voiceInCallClockLabel
+											: voiceCallStatusLabel}
+									</span>
+									<ChevronUp className="h-4 w-4 text-white/80" aria-hidden />
+								</span>
+							</button>
+						) : (
+							<div
+								className={`mb-[max(0.75rem,env(safe-area-inset-bottom))] w-full ${
+									hasPeerVideoBackground
+										? 'rounded-[1.75rem] bg-black/50 px-2 pb-3 pt-4 backdrop-blur-md'
+										: 'pb-3 pt-4'
+								}`}
+							>
+								{hasPeerVideoBackground ? (
+									<button
+										type="button"
+										onClick={() => setVoiceInCallToolsExpanded(false)}
+										className="mx-auto mb-3 block h-1.5 w-10 rounded-full bg-white/35"
+										aria-label="Hide call controls"
+									/>
+								) : null}
+
+								<div className="flex flex-col items-center pb-5">
+									<p className="text-[28px] font-bold tracking-tight">{activeVoicePeerLabel}</p>
+									<p className="mt-1.5 font-mono text-[22px] font-semibold tracking-wide text-white/85">
+										{voiceCallAnswered || activeVoiceCallRecord?.status === 'answered'
+											? voiceInCallClockLabel
+											: voiceCallStatusLabel}
+										{!(voiceCallAnswered || activeVoiceCallRecord?.status === 'answered')
+											&& (voiceCallStatusLabel === 'Connecting' || voiceCallStatusLabel === 'Ringing') ? (
+											<span className="ml-2 inline-flex gap-1" aria-hidden>
+												<span className="animate-pulse">·</span>
+												<span className="animate-pulse [animation-delay:200ms]">·</span>
+											</span>
+										) : null}
+									</p>
+									{voicePeerAddressShort ? (
+										<div
+											className="mt-1.5 inline-flex items-center gap-1.5 rounded-full border border-[#dce2f7] bg-[#e9edff] px-3 py-1.5 text-[13px] font-medium text-[#424655]"
+											title={voicePeerAddress}
+										>
+											<span className="font-semibold text-[#0051d1]" aria-hidden>◇</span>
+											<span className="font-mono">{voicePeerAddressShort}</span>
+										</div>
+									) : null}
+								</div>
+
+								{/* Native InCall: mute | FaceTime | speaker */}
+								<div className="flex items-start justify-center gap-7">
+									<button
+										type="button"
+										onClick={toggleVoiceCallMute}
+										className="flex w-[4.75rem] flex-col items-center gap-2"
+										aria-pressed={voiceCallMuted}
+										aria-label="mute"
+									>
+										<span
+											className={`grid h-[4.75rem] w-[4.75rem] place-items-center rounded-full ${
+												voiceCallMuted ? 'bg-white text-[#161E2A]' : 'bg-white/20 text-white'
+											}`}
+										>
+											{voiceCallMuted ? <MicOff className="h-7 w-7" /> : <Mic className="h-7 w-7" />}
+										</span>
+										<span className="text-sm">mute</span>
+									</button>
+									<button
+										type="button"
+										onClick={() => void toggleSoftLocalVideo()}
+										className="flex w-[4.75rem] flex-col items-center gap-2"
+										aria-pressed={softLocalVideoOn}
+										aria-label="FaceTime"
+									>
+										<span
+											className={`grid h-[4.75rem] w-[4.75rem] place-items-center rounded-full ${
+												softLocalVideoOn ? 'bg-white text-[#161E2A]' : 'bg-white/20 text-white'
+											}`}
+										>
+											{softLocalVideoOn ? <Video className="h-7 w-7" /> : <VideoOff className="h-7 w-7" />}
+										</span>
+										<span className="text-sm">FaceTime</span>
+									</button>
+									<button
+										type="button"
+										onClick={() => {
+											voicePlaybackRef.current?.resume()
+											setVoiceSpeakerOn(previous => {
+												const next = !previous
+												voicePlaybackRef.current?.setOutputGain(next ? 4 : 1)
+												return next
+											})
+										}}
+										className="flex w-[4.75rem] flex-col items-center gap-2"
+										aria-pressed={voiceSpeakerOn}
+										aria-label="speaker"
+									>
+										<span
+											className={`grid h-[4.75rem] w-[4.75rem] place-items-center rounded-full ${
+												voiceSpeakerOn ? 'bg-white text-[#161E2A]' : 'bg-white/20 text-white'
+											}`}
+										>
+											{voiceSpeakerOn ? <Volume2 className="h-7 w-7" /> : <VolumeX className="h-7 w-7" />}
+										</span>
+										<span className="text-sm">speaker</span>
+									</button>
+								</div>
+
+								{/* Native InCall: add call | End (center) | contacts */}
+								<div className="mt-[1.35rem] flex items-start justify-center gap-7">
+									<button
+										type="button"
+										disabled
+										className="flex w-[4.75rem] flex-col items-center gap-2 opacity-35"
+										aria-label="add call"
+									>
+										<span className="grid h-[4.75rem] w-[4.75rem] place-items-center rounded-full bg-white/20 text-white">
+											<Plus className="h-7 w-7" strokeWidth={2.5} />
+										</span>
+										<span className="text-sm text-white/50">add call</span>
+									</button>
+									<button
+										type="button"
+										onClick={() => void endVoiceCall()}
+										className="flex w-[4.75rem] flex-col items-center gap-2"
+										aria-label="End Call"
+									>
+										<span className="grid h-[4.75rem] w-[4.75rem] place-items-center rounded-full bg-[#FF3B30] text-white">
+											<PhoneOff className="h-8 w-8" strokeWidth={2.25} />
+										</span>
+										<span className="text-sm">end</span>
+									</button>
+									<button
+										type="button"
+										disabled
+										className="flex w-[4.75rem] flex-col items-center gap-2 opacity-35"
+										aria-label="contacts"
+									>
+										<span className="grid h-[4.75rem] w-[4.75rem] place-items-center rounded-full bg-white/20 text-white">
+											<UserRound className="h-7 w-7" />
+										</span>
+										<span className="text-sm text-white/50">contacts</span>
+									</button>
+								</div>
+							</div>
+						)}
 					</div>
 				</div>
 			) : null}

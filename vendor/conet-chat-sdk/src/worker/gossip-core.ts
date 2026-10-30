@@ -871,9 +871,15 @@ export class GossipCore {
 		return true
 	}
 
+	/**
+	 * POST armor to entry nodes. Text gossip may fan out in parallel.
+	 * Voice/video media frames must pass `{ fanout: 1 }` so a single seq is
+	 * delivered once (any one 2xx succeeds; wave2 is retry only, not a duplicate).
+	 */
 	private async postToEntries(
 		innerArmor: string,
 		excludeDomains: Set<string>,
+		options?: { fanout?: number },
 	): Promise<boolean> {
 		const send = async (targets: NodeInfo[]): Promise<boolean> => {
 			if (!targets.length) return false
@@ -909,11 +915,14 @@ export class GossipCore {
 			)
 			return results.some(Boolean)
 		}
-		const fanout = this.cfg?.runtime.sendFanout ?? 3
-		const wave1 = await pickGossipEntryNodesForSend(this.nodes, Math.min(fanout + 1, this.nodes.length), excludeDomains)
+		const fanout = options?.fanout ?? this.cfg?.runtime.sendFanout ?? 3
+		// Media: exactly one entry per wave. Text: historical fanout+1 parallel picks.
+		const pickCount =
+			fanout <= 1 ? 1 : Math.min(fanout + 1, Math.max(1, this.nodes.length))
+		const wave1 = await pickGossipEntryNodesForSend(this.nodes, pickCount, excludeDomains)
 		if (await send(wave1)) return true
 		const tried = new Set([...excludeDomains, ...wave1.map((n) => n.domain)])
-		const wave2 = await pickGossipEntryNodesForSend(this.nodes, Math.min(fanout + 1, this.nodes.length), tried)
+		const wave2 = await pickGossipEntryNodesForSend(this.nodes, pickCount, tried)
 		return send(wave2)
 	}
 
@@ -1184,7 +1193,8 @@ export class GossipCore {
 		const mailboxDomains = new Set(
 			pickRouteNodesByArmoredKey(this.nodes, routerArmoredPublicKey).map((n) => n.domain),
 		)
-		return this.postToEntries(innerArmor, mailboxDomains)
+		// One successful entry POST per frame — never parallel fanout of the same seq.
+		return this.postToEntries(innerArmor, mailboxDomains, { fanout: 1 })
 	}
 
 	async startVoiceListen(

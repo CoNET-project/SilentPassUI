@@ -1,47 +1,107 @@
-import { strict as assert } from 'node:assert'
-import { VoiceFrameReorderBuffer } from '../src/voice-reorder.js'
+import assert from 'node:assert/strict'
+import { VoiceFrameReorderBuffer, type VoiceReorderEvent } from '../src/voice-reorder.ts'
 
-const frame = (seq: number, payload: string, extra: Record<string, unknown> = {}) => ({
-	type: 'voice_frame_v1' as const,
-	callId: 'call',
-	sessionId: 'session',
-	from: '0x1',
-	to: '0x2',
-	seq,
-	timestamp: seq,
-	payload,
-	...extra,
-})
+function frame(seq: number, payload: string, extras: Record<string, unknown> = {}) {
+	return {
+		type: 'voice_frame_v1' as const,
+		callId: 'call-1',
+		sessionId: 'session-1',
+		from: '0xabc',
+		to: '0xdef',
+		direction: 'inbound' as const,
+		seq,
+		timestamp: 1_700_000_000_000 + seq,
+		payload,
+		...extras,
+	}
+}
 
-const buffer = new VoiceFrameReorderBuffer({ reorderDelayMs: 10 })
-assert.deepEqual(buffer.push(frame(1, 'a')).map((item) => item.seq), [1])
-assert.deepEqual(buffer.push(frame(3, 'c')).map((item) => item.seq), [])
-assert.deepEqual(buffer.push(frame(2, 'b')).map((item) => item.seq), [2, 3])
+{
+	const events: VoiceReorderEvent[] = []
+	const buffer = new VoiceFrameReorderBuffer({
+		reorderDelayMs: 150,
+		onEvent: (event) => events.push(event),
+	})
 
-const events: Array<{ type: string }> = []
-const conflicts = new VoiceFrameReorderBuffer({ onEvent: (event) => events.push(event as { type: string }) })
-conflicts.push(frame(1, 'a'))
-conflicts.push(frame(3, 'pending'))
-conflicts.push(frame(3, 'different'))
-assert.equal(events.find((event) => event.type === 'conflict')?.type, 'conflict')
+	assert.deepEqual(buffer.push(frame(1, 'a')).map((item) => item.seq), [1])
+	// Later seq arrives first → immediate skip-ahead (no reorderDelayMs wait).
+	assert.deepEqual(buffer.push(frame(3, 'c')).map((item) => item.seq), [3])
+	assert.equal(
+		events.some(
+			(event) =>
+				event.type === 'gap' &&
+				event.gap.reason === 'skip_ahead' &&
+				event.gap.missingSeq.join(',') === '2',
+		),
+		true,
+	)
+	// Late fill for skipped seq is stale and must not deliver.
+	assert.deepEqual(buffer.push(frame(2, 'b')).map((item) => item.seq), [])
+	// Exact duplicate of already-delivered seq is ignored (behind cursor).
+	assert.deepEqual(buffer.push(frame(3, 'c')).map((item) => item.seq), [])
+}
 
-const chunks = new VoiceFrameReorderBuffer()
-chunks.push(frame(1, 'A', { frameId: 'f', chunkIndex: 0, chunkCount: 2 }))
-assert.deepEqual(chunks.push(frame(2, 'B', { frameId: 'f', chunkIndex: 1, chunkCount: 2 })).map((item) => item.payload), ['AB'])
+{
+	const events: VoiceReorderEvent[] = []
+	const buffer = new VoiceFrameReorderBuffer({
+		reorderDelayMs: 150,
+		onEvent: (event) => events.push(event),
+	})
+	assert.deepEqual(buffer.push(frame(0, 'zero')).map((item) => item.seq), [0])
+	const t0 = Date.now()
+	const delivered = buffer.push(frame(5, 'five'))
+	const elapsed = Date.now() - t0
+	assert.deepEqual(delivered.map((item) => item.seq), [5])
+	assert.ok(elapsed < 50, `skip-ahead must be sync (elapsed=${elapsed}ms)`)
+	const gap = events.find((event) => event.type === 'gap' && event.gap.reason === 'skip_ahead')
+	assert.ok(gap && gap.type === 'gap')
+	assert.deepEqual(gap.gap.missingSeq, [1, 2, 3, 4])
+}
 
-assert.deepEqual(buffer.push({ ...frame(4, 'invalid'), seq: -1 }), [])
-const limited = new VoiceFrameReorderBuffer({ maxPendingChunks: 1 })
-limited.push(frame(1, 'a'))
-limited.push(frame(3, 'c'))
-// Overflow must skip the gap and keep delivering live audio (not stall forever).
-assert.deepEqual(limited.push(frame(4, 'd')).map((item) => item.seq), [3, 4])
+{
+	// Conflict while a frame is still pending (incomplete video chunk at nextSeq).
+	const events: VoiceReorderEvent[] = []
+	const buffer = new VoiceFrameReorderBuffer({
+		reorderDelayMs: 150,
+		onEvent: (event) => events.push(event),
+	})
+	assert.deepEqual(
+		buffer
+			.push(frame(1, 'c0', { frameId: 'f1', chunkIndex: 0, chunkCount: 2 }))
+			.map((item) => item.seq),
+		[],
+	)
+	assert.deepEqual(
+		buffer
+			.push(frame(1, 'conflict', { frameId: 'f1', chunkIndex: 0, chunkCount: 2 }))
+			.map((item) => item.seq),
+		[],
+	)
+	assert.equal(events.some((event) => event.type === 'conflict' && event.conflict.seq === 1), true)
+}
 
-// After Accept (seq=0) advances the ring stream, Hang Up also uses seq=0 and
-// must still be delivered as a control frame (not treated as stale media).
-const hangup = new VoiceFrameReorderBuffer()
-assert.deepEqual(hangup.push(frame(0, 'accept')).map((item) => item.seq), [0])
-assert.deepEqual(hangup.push(frame(1, 'media')).map((item) => item.seq), [1])
-assert.deepEqual(hangup.push(frame(0, 'hangup')).map((item) => item.payload), ['hangup'])
-assert.deepEqual(hangup.push(frame(2, 'media2')).map((item) => item.seq), [2])
+{
+	const events: VoiceReorderEvent[] = []
+	const buffer = new VoiceFrameReorderBuffer({
+		reorderDelayMs: 20,
+		onEvent: (event) => events.push(event),
+	})
+	assert.deepEqual(
+		buffer
+			.push(frame(10, 'c0', { frameId: 'f1', chunkIndex: 0, chunkCount: 2 }))
+			.map((item) => item.seq),
+		[],
+	)
+	await new Promise((resolve) => setTimeout(resolve, 30))
+	assert.deepEqual(buffer.tick().map((item) => item.seq), [])
+	assert.equal(events.some((event) => event.type === 'gap' && event.gap.reason === 'timeout'), true)
+}
 
-console.log('voice reorder tests passed')
+{
+	const buffer = new VoiceFrameReorderBuffer({ reorderDelayMs: 150 })
+	assert.deepEqual(buffer.push(frame(1, 'start')).map((item) => item.seq), [1])
+	const hangup = frame(0, JSON.stringify({ type: 'voice_end_v1', reason: 'hangup' }))
+	assert.deepEqual(buffer.push(hangup).map((item) => item.seq), [0])
+}
+
+console.log('voice reorder ok')

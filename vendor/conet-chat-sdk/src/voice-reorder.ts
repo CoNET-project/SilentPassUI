@@ -13,7 +13,7 @@ export interface VoiceGapEvent {
 	direction: VoiceFrameDirection
 	missingSeq: number[]
 	missingChunks?: number[]
-	reason: 'timeout' | 'buffer_overflow' | 'conflict'
+	reason: 'timeout' | 'buffer_overflow' | 'conflict' | 'skip_ahead'
 }
 export interface VoiceConflictEvent {
 	type: 'voice_conflict_v1'
@@ -39,7 +39,8 @@ interface StreamState {
 	timer: ReturnType<typeof setTimeout> | null
 	gapStartedAt: number | null
 }
-const DEFAULT_REORDER_DELAY_MS = 150
+/** Default for incomplete video-chunk waits only; seq skip-ahead is immediate. */
+const DEFAULT_REORDER_DELAY_MS = 0
 const DEFAULT_MAX_PENDING_CHUNKS = 96
 const DEFAULT_MAX_PENDING_PAYLOAD_UNITS = 1_024 * 1_024
 function normalizeDirection(frame: VoiceFrameChunk): VoiceFrameDirection { return frame.direction || 'inbound' }
@@ -99,7 +100,7 @@ export class VoiceFrameReorderBuffer {
 		if (state.pending.size >= this.maxPendingChunks || state.pendingPayloadUnits + frame.payload.length > this.maxPendingPayloadUnits) {
 			// Advance past the stalled gap so live audio does not freeze on overflow.
 			this.emit({ type: 'gap', gap: { type: 'voice_gap_v1', sessionId: frame.sessionId, direction: normalizeDirection(frame), missingSeq: [state.nextSeq], reason: 'buffer_overflow' } })
-			const advanced = this.skipGap(state)
+			const advanced = this.skipGap(state, 'buffer_overflow')
 			if (state.pending.size >= this.maxPendingChunks || state.pendingPayloadUnits + frame.payload.length > this.maxPendingPayloadUnits) {
 				return advanced
 			}
@@ -107,8 +108,7 @@ export class VoiceFrameReorderBuffer {
 			state.pendingPayloadUnits += frame.payload.length
 			const after = this.drain(state)
 			if (state.pending.size && !after.length) {
-				if (state.gapStartedAt === null) state.gapStartedAt = now
-				this.scheduleTimeout(key, state)
+				return [...advanced, ...this.afterPendingGap(key, state, now)]
 			}
 			return [...advanced, ...after]
 		}
@@ -116,14 +116,13 @@ export class VoiceFrameReorderBuffer {
 		state.pendingPayloadUnits += frame.payload.length
 		const delivered = this.drain(state)
 		if (state.pending.size && !delivered.length) {
-			if (state.gapStartedAt === null) state.gapStartedAt = now
-			this.scheduleTimeout(key, state)
+			return this.afterPendingGap(key, state, now)
 		}
 		return delivered
 	}
 	tick(now = Date.now()): VoiceFrameChunk[] {
 		const delivered: VoiceFrameChunk[] = []
-		for (const [, state] of this.streams) if (state.gapStartedAt !== null && now - state.gapStartedAt >= this.reorderDelayMs) delivered.push(...this.skipGap(state))
+		for (const [, state] of this.streams) if (state.gapStartedAt !== null && now - state.gapStartedAt >= this.reorderDelayMs) delivered.push(...this.skipGap(state, 'timeout'))
 		return delivered
 	}
 	clear(sessionId?: string): void {
@@ -137,6 +136,22 @@ export class VoiceFrameReorderBuffer {
 		const state: StreamState = { nextSeq: null, pending: new Map(), pendingPayloadUnits: 0, timer: null, gapStartedAt: null }
 		this.streams.set(key, state)
 		return state
+	}
+	/**
+	 * When a later seq is already buffered while nextSeq is still missing,
+	 * skip ahead immediately (no reorderDelayMs wait). Incomplete chunk groups
+	 * at nextSeq still use the bounded timer.
+	 */
+	private afterPendingGap(key: string, state: StreamState, now: number): VoiceFrameChunk[] {
+		if (state.nextSeq !== null && state.pending.size) {
+			const firstPendingSeq = Math.min(...state.pending.keys())
+			if (firstPendingSeq > state.nextSeq) {
+				return this.skipGap(state, 'skip_ahead')
+			}
+		}
+		if (state.gapStartedAt === null) state.gapStartedAt = now
+		this.scheduleTimeout(key, state)
+		return []
 	}
 	private drain(state: StreamState): VoiceFrameChunk[] {
 		const delivered: VoiceFrameChunk[] = []
@@ -166,7 +181,7 @@ export class VoiceFrameReorderBuffer {
 		for (const frame of delivered) this.emit({ type: 'frame', frame })
 		return delivered
 	}
-	private skipGap(state: StreamState): VoiceFrameChunk[] {
+	private skipGap(state: StreamState, reason: VoiceGapEvent['reason'] = 'timeout'): VoiceFrameChunk[] {
 		if (state.nextSeq === null || !state.pending.size) return []
 		const firstPendingSeq = Math.min(...state.pending.keys())
 		const first = state.pending.get(state.nextSeq)
@@ -182,7 +197,17 @@ export class VoiceFrameReorderBuffer {
 			state.nextSeq = firstPendingSeq
 		}
 		const sample = [...state.pending.values()][0]
-		this.emit({ type: 'gap', gap: { type: 'voice_gap_v1', sessionId: sample.sessionId, direction: normalizeDirection(sample), missingSeq, ...(missingChunks.length ? { missingChunks } : {}), reason: 'timeout' } })
+		this.emit({
+			type: 'gap',
+			gap: {
+				type: 'voice_gap_v1',
+				sessionId: sample.sessionId,
+				direction: normalizeDirection(sample),
+				missingSeq,
+				...(missingChunks.length ? { missingChunks } : {}),
+				reason: reason === 'buffer_overflow' ? 'buffer_overflow' : reason,
+			},
+		})
 		state.gapStartedAt = null
 		if (state.timer !== null) clearTimeout(state.timer)
 		state.timer = null
@@ -190,7 +215,7 @@ export class VoiceFrameReorderBuffer {
 	}
 	private scheduleTimeout(_key: string, state: StreamState): void {
 		if (state.timer !== null) return
-		state.timer = setTimeout(() => { state.timer = null; this.skipGap(state) }, this.reorderDelayMs)
+		state.timer = setTimeout(() => { state.timer = null; this.skipGap(state, 'timeout') }, this.reorderDelayMs)
 	}
 	private emit(event: VoiceReorderEvent): void { this.onEvent?.(event) }
 }

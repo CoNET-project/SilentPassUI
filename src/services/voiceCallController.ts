@@ -1,3 +1,4 @@
+import { markCallTiming, timeCallStep } from '@/utils/callTiming'
 import { ethers } from 'ethers'
 import { createMessage, encrypt, enums, readKey } from 'openpgp'
 import {
@@ -101,6 +102,7 @@ async function deliverOfferToCalleeMailbox(args: {
 	expiresAt: number
 }): Promise<boolean> {
 	const work = await wrapOfferForCalleeMailbox(args.offerArmor, args.calleeRoute)
+	markCallTiming('offer-wrap-pgp')
 	const store = await encryptOpaqueVoiceCommandToRoute({
 		command: 'voice_offer_store',
 		callId: args.callId,
@@ -109,9 +111,10 @@ async function deliverOfferToCalleeMailbox(args: {
 		expiresAt: args.expiresAt,
 		timestamp: Math.floor(Date.now() / 1000),
 	}, args.calleeRoute)
+	markCallTiming('offer-store-pgp')
 	const [delivered, indexed] = await Promise.all([
-		postNativePgpCiphertext(work, args.calleeMailboxIps),
-		postNativePgpCiphertext(store, args.calleeMailboxIps),
+		timeCallStep('offer-post', () => postNativePgpCiphertext(work, args.calleeMailboxIps)),
+		timeCallStep('offer-store-post', () => postNativePgpCiphertext(store, args.calleeMailboxIps)),
 	])
 	console.info(`[voiceCall] offer to callee mailbox delivered=${delivered.ok} indexed=${indexed.ok}`)
 	return delivered.ok || indexed.ok
@@ -366,6 +369,7 @@ export function createVoiceCallController(options: VoiceCallControllerOptions) {
 				? { callerTag }
 				: {}),
 		}), options.privateKey)
+		markCallTiming('offer-signed')
 		const pushTimestamp = Math.floor(Date.now() / 1000)
 		// Ring window must stay inside the mailbox/API 10-minute cap.
 		// Native shell owns dialer voice_listen + VoIP wake (offerArmor).
@@ -389,11 +393,13 @@ export function createVoiceCallController(options: VoiceCallControllerOptions) {
 					relayIp,
 				}, options.privateKey)
 				Object.assign(signal, relayedSignal)
+				markCallTiming('offer-resigned-relay')
 				const offerArmor = await encryptVoiceOfferArmorToCallee(
 					JSON.stringify(signal),
 					options.peerPgp,
 					options.privateKey,
 				)
+				markCallTiming('offer-callee-pgp')
 				const calleeMailboxIps = options.allNodes
 					.filter((n) => normalizeArmor(n.armoredPublicKey) === normalizeArmor(options.peerRoute))
 					.map((n) => String(n.ip_addr || '').trim())
@@ -427,7 +433,7 @@ export function createVoiceCallController(options: VoiceCallControllerOptions) {
 				)
 				return null
 			}
-		} else if (!await startWorkerVoiceListen(sessionId, {
+		} else if (!await timeCallStep('worker-voice-listen', () => startWorkerVoiceListen(sessionId, {
 			callId: signal.callId,
 			calleeEoa: signal.to,
 			expiresAt: ringExpiresAt,
@@ -436,7 +442,7 @@ export function createVoiceCallController(options: VoiceCallControllerOptions) {
 			recipientPgp: options.peerPgp,
 			// Lets the worker index the offer on the callee mailbox directly.
 			calleeRoute: options.peerRoute,
-		})) {
+		}))) {
 			return null
 		}
 		ensureNativePushBoundForWallet()

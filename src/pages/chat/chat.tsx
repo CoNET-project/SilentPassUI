@@ -84,6 +84,7 @@ import { useDaemonContext } from "@/providers/DaemonProvider"
 import { storeSystemData, AuthorizationSign } from '@/services/beamio'
 import { useBeamioTagDatabase } from '@/providers/BeamioTagDatabaseProvider'
 import { fiatPrefix } from '@/services/currency'
+import { beginCallTiming, markCallTiming, timeCallStep } from '@/utils/callTiming'
 import { dispatchNativeSystemCallAction, getCashTreesNativeNfcBridge, getCashTreesNativeNfcHost, isCashTreesNativeWebView, notifyNativeVoiceMicReady, openExternalUrl, requestNativeCameraCapture, requestNativePhotoPicker, saveFileToNative } from '@/utils/cashTreesNativeNfc'
 import { MessageSendReceiveCard } from "./components/messageSendReceiveCard"
 import { AaMultisigChatRequestCard } from '@/components/chat/AaMultisigChatRequestCard'
@@ -2044,6 +2045,8 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 	/** Desktop: open the mic on the Call click, not when the peer answers. */
 	const outgoingMicPreopenRef = useRef<MediaStream | null>(null)
 	const [voiceCallConnecting, setVoiceCallConnecting] = useState(false)
+	/** Browser: a dial failed before ringing; the call window shows why until End. */
+	const [voiceDialFailed, setVoiceDialFailed] = useState(false)
 
 	const stopAndroidIncomingMicPrewarm = useCallback((onlySessionId?: string | null) => {
 		const session = androidIncomingMicPrewarmSessionRef.current
@@ -2701,29 +2704,15 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		remoteVoiceAnalyserRef.current = playback.analyser
 	}, [])
 
-	const startVoiceCall = useCallback(async () => {
+	const startVoiceCall = useCallback(async (event?: { timeStamp?: number }) => {
 		if (voiceCallStartingRef.current || voiceCallState !== 'idle') return
-		voiceCallLiveRef.current = true
-		// Must run before any await so the browser unlocks the speaker.
-		armVoicePlayback()
-		if (getCashTreesNativeNfcHost() !== 'android' && navigator.mediaDevices?.getUserMedia) {
-			void navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
-				if (!voiceCallLiveRef.current) {
-					stream.getTracks().forEach((track) => track.stop())
-					return
-				}
-				const previous = outgoingMicPreopenRef.current
-				outgoingMicPreopenRef.current = stream
-				previous?.getTracks().forEach((track) => track.stop())
-			}).catch(() => { /* answer-time open is the fallback */ })
-		}
-		voiceCallStartingRef.current = true
-		const startToken = ++voiceStartTokenRef.current
-		const cancelledWhileStarting = () => voiceStartTokenRef.current !== startToken
-		// Inside the shell, show the native call screen ("Calling…") now. Route
-		// lookup and the offer below take seconds; startSystemCall later attaches
-		// the real call to this screen with the same prepareId. Older shells
-		// without this action keep the call-button spinner instead.
+		const timing = beginCallTiming(event?.timeStamp)
+		// Inside the shell, show the native call screen ("Connecting…") before
+		// anything else runs on this tap: creating the audio context and the
+		// mic request below can each take a frame or more. Route lookup and the
+		// offer take seconds; startSystemCall later attaches the real call to
+		// this screen with the same prepareId. Older shells without this action
+		// keep the call-button spinner instead.
 		const prepareId = isCashTreesNativeWebView()
 			? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
 			: ''
@@ -2731,15 +2720,71 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			? dispatchNativeSystemCallAction('prepareSystemCall', {
 					prepareId,
 					peerAddress: typeof toAddress === 'string' ? toAddress.trim() : '',
+					dialId: timing.dialId,
+					tapAt: timing.tapAt,
 				})
 			: false
-		let nativeStarted = false
-		const closePreparedScreen = () => {
-			if (nativePrepared && !nativeStarted) {
-				nativeStarted = true
-				dispatchNativeSystemCallAction('cancelPreparedSystemCall', { prepareId })
+		markCallTiming('prepare-dispatched', `native=${nativePrepared ? 1 : 0}`)
+		voiceCallLiveRef.current = true
+		const prewarmAudio = () => {
+			if (!voiceCallLiveRef.current) return
+			armVoicePlayback()
+			if (getCashTreesNativeNfcHost() !== 'android' && navigator.mediaDevices?.getUserMedia) {
+				void navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
+					if (!voiceCallLiveRef.current) {
+						stream.getTracks().forEach((track) => track.stop())
+						return
+					}
+					const previous = outgoingMicPreopenRef.current
+					outgoingMicPreopenRef.current = stream
+					previous?.getTracks().forEach((track) => track.stop())
+				}).catch(() => { /* answer-time open is the fallback */ })
 			}
 		}
+		if (nativePrepared) {
+			// The shell plays and records the dialed call natively. In WKWebView
+			// the audio context and mic request switch the app's audio session
+			// on the shell's main thread, which held the call screen's first
+			// frame back; run them once the screen has slid in.
+			window.setTimeout(prewarmAudio, 450)
+		} else {
+			// Must run before any await so the browser unlocks the speaker.
+			prewarmAudio()
+		}
+		voiceCallStartingRef.current = true
+		const startToken = ++voiceStartTokenRef.current
+		const cancelledWhileStarting = () => voiceStartTokenRef.current !== startToken
+		let nativeStarted = false
+		// `error` keeps the native screen up with the reason (End closes it);
+		// without it the screen closes at once (cancel). Older shells ignore it.
+		const closePreparedScreen = (error?: string) => {
+			if (nativePrepared && !nativeStarted) {
+				nativeStarted = true
+				dispatchNativeSystemCallAction('cancelPreparedSystemCall', {
+					prepareId,
+					...(error ? { error } : {}),
+				})
+			}
+		}
+		// The dial could not be placed. The reason stays on the call page:
+		// the native screen inside the shell, the in-page call window in a
+		// browser (End closes it). The chat banner keeps it afterwards.
+		const failDial = (message: string) => {
+			markCallTiming('dial-failed')
+			closePreparedScreen(message)
+			setVoiceError(message)
+			setVoiceCallConnecting(false)
+			voiceCallStartingRef.current = false
+			voiceCallLiveRef.current = false
+			outgoingMicPreopenRef.current?.getTracks().forEach((track) => track.stop())
+			outgoingMicPreopenRef.current = null
+			if (isCashTreesNativeWebView()) {
+				setVoiceCallState('idle')
+			} else {
+				setVoiceDialFailed(true)
+			}
+		}
+		setVoiceDialFailed(false)
 		setVoiceError(null)
 		setVoiceVideoNote(null)
 		setVoiceCallMinimized(false)
@@ -2754,6 +2799,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				// treating the stale local mirror as authoritative.
 		if (!route || !recipientPgp) {
 			try {
+				markCallTiming('route-refresh-start')
 				const refreshed = await getKeysFromCoNETPGPSC(chatData.address, privateKey)
 				route = refreshed?.routersArmoreds?.trim() || route
 				recipientPgp = refreshed?.publicArmored?.trim() || recipientPgp
@@ -2768,26 +2814,22 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			return
 		}
 		if (!route || !recipientPgp) {
-			closePreparedScreen()
-			setVoiceError(
+			failDial(
 				!recipientPgp
 					? 'Voice calling requires the contact to register Chat encryption first.'
 					: 'Voice calling could not resolve the contact mailbox route. Please try again.',
 			)
-			setVoiceCallConnecting(false)
-			setVoiceCallState('idle')
-			voiceCallStartingRef.current = false
 			return
 		}
 		voicePeerRouteRef.current = route
 		voicePeerWalletRef.current = typeof toAddress === 'string' ? toAddress.trim() : ''
+		markCallTiming('route-ready')
 		try {
-			const mailboxAligned = await alignLiveGossipRouteToChain(privateKey, allNodes)
+			const mailboxAligned = await timeCallStep('mailbox-aligned', () =>
+				alignLiveGossipRouteToChain(privateKey, allNodes))
 			if (cancelledWhileStarting()) return
 			if (!mailboxAligned) {
-				setVoiceError('Voice call could not use your current Chat mailbox. Try again.')
-				setVoiceCallConnecting(false)
-				setVoiceCallState('idle')
+				failDial('Voice call could not use your current Chat mailbox. Try again.')
 				return
 			}
 			const callerWallet = new ethers.Wallet(privateKey).address
@@ -2803,7 +2845,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				peerRoute: route,
 				allNodes,
 			})
-			const channel = await controller.startOutgoing()
+			const channel = await timeCallStep('offer-ready', () => controller.startOutgoing())
 			if (cancelledWhileStarting()) {
 				// Cancel was pressed while the offer was being posted. The callee's
 				// phone may already be ringing, so end the call properly: it tells
@@ -2824,10 +2866,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				return
 			}
 			if (!channel) {
-				setVoiceError(VOICE_RELAY_OPEN_ERROR)
-				setVoiceCallConnecting(false)
-				setVoiceCallState('idle')
-				voiceCallStartingRef.current = false
+				failDial(VOICE_RELAY_OPEN_ERROR)
 				return
 			}
 			voiceControllerRef.current = controller
@@ -2864,8 +2903,10 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				(key ? voiceSessionKeyToBase64(key) : '')
 			const wake = channel.dialerWake
 			nativeStarted = true
+			markCallTiming('start-dispatch')
 			dispatchNativeSystemCallAction('startSystemCall', {
 				prepareId,
+				dialId: timing.dialId,
 				callId: signal.callId,
 				sessionId,
 				sessionKey: sessionKeyB64,
@@ -2890,15 +2931,23 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			}
 			setVoiceCallConnecting(false)
 		} catch (error) {
-			setVoiceError(error instanceof Error ? error.message : 'Voice call could not start.')
-			setVoiceCallConnecting(false)
-			setVoiceCallState('idle')
+			if (cancelledWhileStarting()) return
+			failDial(error instanceof Error ? error.message : 'Voice call could not start.')
 		} finally {
 			// Any exit without startSystemCall (error, cancel) closes the prepared screen.
 			closePreparedScreen()
 			voiceCallStartingRef.current = false
 		}
 	}, [allNodes, armVoicePlayback, chatData, privateKey, toAddress, upsertPhoneCallRecord, voiceCallState])
+
+	// Browser PWA: first paint of the in-page call screen after a dial.
+	useEffect(() => {
+		if (voiceCallState !== 'outgoing' || isCashTreesNativeWebView()) return
+		if (!voiceCallStartingRef.current) return // answered call, not a dial
+		markCallTiming('pwa-call-page-mounted')
+		const raf = requestAnimationFrame(() => markCallTiming('pwa-call-page-painted'))
+		return () => cancelAnimationFrame(raf)
+	}, [voiceCallState])
 
 	const clearSoftRemoteVideo = useCallback(() => {
 		const prev = remoteVideoBlobUrlRef.current
@@ -3649,6 +3698,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		idHint?: { callId?: string; sessionId?: string; peerAddress?: string },
 	) => {
 		voiceCallLiveRef.current = false
+		setVoiceDialFailed(false)
 		// Invalidate a call that is still being set up (see voiceStartTokenRef).
 		voiceStartTokenRef.current += 1
 		outgoingMicPreopenRef.current?.getTracks().forEach((track) => track.stop())
@@ -3828,6 +3878,16 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		setVoiceCallAnswered(false)
 		setVoiceCallState('idle')
 	}, [allNodes, clearSoftRemoteVideo, privateKey, profiles, stopSoftLocalVideo, toAddress, upsertPhoneCallRecord])
+
+	// A failed browser dial has no call to end: just close the call window.
+	const endOrDismissVoiceCall = useCallback(() => {
+		if (voiceDialFailed && !voiceCallSessionRef.current) {
+			setVoiceDialFailed(false)
+			setVoiceCallState('idle')
+			return
+		}
+		void endVoiceCall()
+	}, [endVoiceCall, voiceDialFailed])
 
 	useEffect(() => {
 		const latest = [...messages].reverse().find((message) => message.from === 'them' && message.text)
@@ -6730,7 +6790,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 	const voicePeerFirstName = String(voicePeerProfile?.first_name || '').trim()
 	const activeVoicePeerName = `${voicePeerFirstName} ${voicePeerLastName}`.trim() || activeVoicePeerLabel
 	const voiceRelayOpenFailed = voiceError === VOICE_RELAY_OPEN_ERROR
-	const voiceCallStatusLabel = voiceRelayOpenFailed
+	const voiceCallStatusLabel = voiceRelayOpenFailed || voiceDialFailed
 		? 'Call failed'
 		: voiceCallConnecting
 		? 'Connecting'
@@ -6819,7 +6879,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				online={peerOnline}
 				nativeWakeable={peerNativeWakeable}
 				avatarSrc={peerAvatar}
-				onCall={voiceCallState === 'outgoing' ? endVoiceCall : startVoiceCall}
+				onCall={voiceCallState === 'outgoing' ? endOrDismissVoiceCall : startVoiceCall}
 				onPhoneHistory={() => navigate('/phone')}
 				callBusy={voiceCallState === 'outgoing'}
 				callLoading={voiceCallConnecting && voiceCallState === 'outgoing'}
@@ -7041,7 +7101,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 								<div className="mt-[1.35rem] flex items-start justify-center">
 									<button
 										type="button"
-										onClick={() => void endVoiceCall()}
+										onClick={endOrDismissVoiceCall}
 										className="flex w-[4.75rem] flex-col items-center gap-2"
 										aria-label="End call"
 									>

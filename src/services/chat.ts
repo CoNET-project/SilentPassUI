@@ -1057,14 +1057,24 @@ export const connectToGossipNode = async (
       chatBootLog(
         `Gossip healthy entry C: ${healthyNodes.length} (mailbox B domains excluded: ${[...mailboxDomains].join(',') || 'none'})`,
       )
-      if (!healthyNodes.length) {
+      let entryNodes = healthyNodes
+      if (!entryNodes.length && entryCandidates.length) {
+        // A launch-time probe can miss every sampled node on a slow network.
+        // Aborting here left chat and voice calls down until the next
+        // foreground resume ("could not use your current Chat mailbox").
+        // The listen rotates and scores its entries itself, so start it on the
+        // unprobed nodes; mailbox B stays excluded (same as gossip send).
+        chatBootLog('Gossip healthy entry C: probe found none; using unprobed entries (mailbox B excluded)', 'warn')
+        entryNodes = entryCandidates
+      }
+      if (!entryNodes.length) {
         return failConnect('connectToGossipNode abort: no healthy entry C for gossip listen')
       }
 
       gossipDeliveryAckContext = {
         routerArmoredPublicKey: nodeArmoredPublicKey,
         privateKeyArmor: privateKeyArmor,
-        entryNodes: healthyNodes,
+        entryNodes,
         mailboxDomains: [...mailboxDomains],
       }
 

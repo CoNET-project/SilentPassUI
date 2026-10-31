@@ -93,11 +93,14 @@ export type NativeChatBridge = {
 	postCommand(cmd: Record<string, unknown>): void
 	/** Deliver a sign result for a `chatModuleSignRequest`. */
 	signResponse(payload: { reqId: string | number; ok: boolean; signature?: string; error?: string }): void
+	/** chat-sdk-ios ≤ 0.1.4 history surface (see `NativeHistoryBridge`). */
+	legacyHistory?: boolean
 }
 
 const IOS_NATIVE_CHAT_BRIDGE: NativeChatBridge = {
 	label: 'ios native chat',
 	eventName: 'cashtreesios',
+	legacyHistory: true,
 	postCommand(cmd) {
 		const ios = (window as Window & {
 			CashTreesIOS?: { chatModuleCommand?: (p: Record<string, unknown>) => void }
@@ -126,21 +129,282 @@ function stripPrivateKeyFromIdentity(identity: BeamioChatConfig['identity']): Be
 	}
 }
 
+/** How long load/append wait for the native history key (two PWA signatures) before trying anyway. */
+const HISTORY_READY_WAIT_MS = 90_000
+/** A native restore downloads every fragment; iOS 0.1.4 does it one by one. */
+const HISTORY_LOAD_TIMEOUT_MS = 300_000
+/** An append uploads a fragment + the index, then relays the head pointer. */
+const HISTORY_APPEND_TIMEOUT_MS = 120_000
+/** iOS 0.1.4 answers a load with only `tailCount` entries: ask for all of them. */
+const LEGACY_HISTORY_LOAD_ALL = 1_000_000
+const LEGACY_APPEND_QUEUE_MAX = 500
+const LEGACY_LOAD_RETRY_MS = 30_000
+const LEGACY_LOAD_RETRY_MAX = 10
+
+const REGISTRY_GET_POINTER_ABI = [
+	'function getPointer(address) view returns (bytes32 indexHash,uint64 ts,uint64 seq,uint64 updatedAt)',
+]
+
+const historyEntryKey = (e: HistoryEntry): string =>
+	e.sendId ? `send:${e.sendId}` : `seq:${e.seq}|${e.ts}|${e.peer}`
+
+/** iOS 0.1.4 answers `{ entries }`; Android and the TS worker answer the array itself. */
+function normalizeHistoryEntries(result: unknown): HistoryEntry[] | null {
+	const raw = Array.isArray(result)
+		? result
+		: result && typeof result === 'object' && Array.isArray((result as { entries?: unknown }).entries)
+			? (result as { entries: unknown[] }).entries
+			: null
+	if (!raw) return null
+	const out: HistoryEntry[] = []
+	for (const row of raw) {
+		if (!row || typeof row !== 'object') continue
+		const r = row as Record<string, unknown>
+		const body = typeof r.body === 'string' ? r.body : ''
+		const peer = String(r.peer || '').toLowerCase()
+		if (!body || !peer) continue
+		out.push({
+			seq: Number(r.seq) || 0,
+			ts: Number(r.ts) || 0,
+			peer,
+			dir: r.dir === 'out' ? 'out' : 'in',
+			sendId: r.sendId != null && String(r.sendId) ? String(r.sendId) : undefined,
+			body,
+		})
+	}
+	return out
+}
+
+/**
+ * History over the native module (`historyLoad` / `historyAppend` / `historyRead`).
+ *
+ * Both native modules derive the history key from two PWA signatures. Android does that
+ * after `init` resolves, so a load or append sent right after init finds no key and is
+ * dropped. Every call here first waits for the module's `[history] ready` log.
+ *
+ * `legacy` (chat-sdk-ios ≤ 0.1.4, whose init does not report `historyApi: 2`) also needs:
+ *  - load/read answer `{ entries }` once and never stream `historyBuffer`: emit the answer.
+ *  - read re-downloads every fragment: answer from the entries the last load returned.
+ *  - append has no sendId dedup, and an append before the first load starts the chain over
+ *    at seq 0 and replaces the head pointer: hold appends until a trusted load finished.
+ *  - every load rewrites the head pointer with the same records: decline that signature.
+ */
 class NativeHistoryBridge implements BeamioChatHistory {
 	private bufferListeners = new Set<(batch: HistoryBufferEvent) => void>()
+	private readyState: 'pending' | 'ready' | 'failed' = 'pending'
+	private readyWaiters = new Set<() => void>()
+	private loadsInFlight = new Map<string, Promise<void>>()
+	private legacyLoads = 0
+	private legacySynced = false
+	private legacyRetries = 0
+	private legacyRetryTimer: ReturnType<typeof setTimeout> | null = null
+	private corpus = new Map<string, HistoryEntry>()
+	private appendQueue: Array<{ entry: Omit<HistoryEntry, 'seq'>; done: () => void }> = []
+	/** Legacy loads and appends run one at a time, so a load's pointer rewrite is told apart. */
+	private lane: Promise<unknown> = Promise.resolve()
 
-	constructor(private readonly client: NativeConetChatClientImpl) {}
+	private legacy: boolean
+
+	constructor(
+		private readonly client: NativeConetChatClientImpl,
+		private readonly legacyShell: boolean,
+	) {
+		this.legacy = legacyShell
+	}
+
+	/** Native init result: modules reporting `historyApi >= 2` stream buffers and dedup appends. */
+	_setHistoryApi(api: number): void {
+		this.legacy = this.legacyShell && !(api >= 2)
+	}
+
+	/** True while a legacy load runs: its head-pointer rewrite is redundant. */
+	get legacyLoadInFlight(): boolean {
+		return this.legacy && this.legacyLoads > 0
+	}
+
+	/** Native log line → history key readiness. */
+	_noteLog(message: string): void {
+		if (/\[history\] ready\b/.test(message)) this.setReady('ready')
+		else if (/\[history\] (prepare failed|domain sign failed|selfSign failed|keccak master failed|hkdf failed)/.test(message)) {
+			this.setReady('failed')
+		}
+	}
+
+	/** A new native session (init) derives the key again. */
+	_resetSession(): void {
+		this.readyState = 'pending'
+		this.legacySynced = false
+		this.legacyRetries = 0
+		this.clearRetry()
+	}
+
+	_destroy(): void {
+		this.clearRetry()
+		this.setReady('failed')
+		for (const item of this.appendQueue.splice(0)) item.done()
+	}
+
+	private setReady(state: 'ready' | 'failed'): void {
+		this.readyState = state
+		for (const wake of [...this.readyWaiters]) wake()
+		this.readyWaiters.clear()
+		if (state === 'ready') this.client.log('info', '[chatHistory] native history key ready')
+	}
+
+	private waitReady(): Promise<boolean> {
+		if (this.readyState !== 'pending') return Promise.resolve(this.readyState === 'ready')
+		return new Promise<boolean>((resolve) => {
+			const wake = () => {
+				clearTimeout(timer)
+				this.readyWaiters.delete(wake)
+				resolve(this.readyState === 'ready')
+			}
+			const timer = setTimeout(() => {
+				this.readyWaiters.delete(wake)
+				this.client.log('warn', '[chatHistory] native history key not confirmed — trying anyway')
+				resolve(false)
+			}, HISTORY_READY_WAIT_MS)
+			this.readyWaiters.add(wake)
+		})
+	}
+
+	private inLane<T>(task: () => Promise<T>): Promise<T> {
+		const run = this.lane.catch(() => undefined).then(task)
+		this.lane = run.catch(() => undefined)
+		return run
+	}
+
+	private clearRetry(): void {
+		if (this.legacyRetryTimer) clearTimeout(this.legacyRetryTimer)
+		this.legacyRetryTimer = null
+	}
 
 	load(options?: HistoryLoadOptions): Promise<void> {
-		return this.client.request<void>({ type: 'historyLoad', reqId: 0, options })
+		const key = JSON.stringify(options ?? {})
+		const running = this.loadsInFlight.get(key)
+		if (running) return running
+		const run = this.waitReady()
+			.then(() => (this.legacy ? this.loadLegacy(options) : this.loadNative(options)))
+			.finally(() => {
+				if (this.loadsInFlight.get(key) === run) this.loadsInFlight.delete(key)
+			})
+		this.loadsInFlight.set(key, run)
+		return run
 	}
 
-	append(entry: Omit<HistoryEntry, 'seq'>): Promise<void> {
-		return this.client.request<void>({ type: 'historyAppend', reqId: 0, entry })
+	private async loadNative(options?: HistoryLoadOptions): Promise<void> {
+		this.client.log('info', '[chatHistory] native history.load → on-chain pointer / IPFS index')
+		await this.client.request<void>({ type: 'historyLoad', reqId: 0, options }, HISTORY_LOAD_TIMEOUT_MS)
 	}
 
-	read(options?: HistoryReadOptions): Promise<HistoryEntry[]> {
-		return this.client.request<HistoryEntry[]>({ type: 'historyRead', reqId: 0, options }, 60_000)
+	private async loadLegacy(options?: HistoryLoadOptions): Promise<void> {
+		const fullLoad = !options?.peer
+		const entries = await this.inLane(async (): Promise<HistoryEntry[] | null> => {
+			this.legacyLoads += 1
+			try {
+				this.client.log('info', '[chatHistory] native history.load (iOS 0.1.4) → on-chain pointer / IPFS index')
+				const result = await this.client.request<unknown>(
+					{
+						type: 'historyLoad',
+						reqId: 0,
+						options: { ...(options ?? {}), tailCount: options?.tailCount ?? LEGACY_HISTORY_LOAD_ALL },
+					},
+					HISTORY_LOAD_TIMEOUT_MS,
+				)
+				return normalizeHistoryEntries(result)
+			} catch (ex) {
+				this.client.log('warn', `[chatHistory] native history.load failed: ${(ex as Error)?.message ?? String(ex)}`)
+				return null
+			} finally {
+				this.legacyLoads -= 1
+			}
+		})
+		if (entries) {
+			for (const e of entries) this.corpus.set(historyEntryKey(e), e)
+			this.client.log('info', `[chatHistory] native history decrypted ${entries.length}`)
+			if (entries.length) {
+				this._emit({ peer: options?.peer?.toLowerCase() || 'all', entries, isTail: true })
+			}
+		}
+		if (fullLoad && !this.legacySynced) await this.settleLegacySync(entries)
+	}
+
+	/**
+	 * Release held appends only after the native index matches the chain: the load returned
+	 * records, or the chain has no pointer yet (first message of this account). Otherwise
+	 * an append would publish an index that drops every earlier record.
+	 */
+	private async settleLegacySync(entries: HistoryEntry[] | null): Promise<void> {
+		let trusted = !!entries && entries.length > 0
+		if (!trusted && entries) trusted = (await this.client.readPointerSeq()) === 0
+		if (trusted) {
+			this.legacySynced = true
+			this.clearRetry()
+			this.flushAppendQueue()
+			return
+		}
+		if (this.legacyRetries >= LEGACY_LOAD_RETRY_MAX || this.legacyRetryTimer) return
+		this.legacyRetries += 1
+		this.client.log('warn', `[chatHistory] native index not synced with the chain — retry ${this.legacyRetries} in ${LEGACY_LOAD_RETRY_MS / 1000}s`)
+		this.legacyRetryTimer = setTimeout(() => {
+			this.legacyRetryTimer = null
+			void this.load().catch(() => undefined)
+		}, LEGACY_LOAD_RETRY_MS)
+	}
+
+	async append(entry: Omit<HistoryEntry, 'seq'>): Promise<void> {
+		await this.waitReady()
+		if (!this.legacy) {
+			await this.client.request<void>({ type: 'historyAppend', reqId: 0, entry }, HISTORY_APPEND_TIMEOUT_MS)
+			return
+		}
+		if (entry.sendId && this.corpus.has(`send:${entry.sendId}`)) return Promise.resolve()
+		return new Promise<void>((resolve) => {
+			if (this.appendQueue.length >= LEGACY_APPEND_QUEUE_MAX) this.appendQueue.shift()?.done()
+			this.appendQueue.push({ entry, done: resolve })
+			if (this.legacySynced) this.flushAppendQueue()
+			else if (!this.loadsInFlight.size && !this.legacyRetryTimer) void this.load().catch(() => undefined)
+		})
+	}
+
+	/** One append at a time; skip sendIds the index already holds. */
+	private flushAppendQueue(): void {
+		for (const item of this.appendQueue.splice(0)) {
+			void this.inLane(async () => {
+				const { entry } = item
+				try {
+					if (entry.sendId && this.corpus.has(`send:${entry.sendId}`)) return
+					await this.client.request<unknown>({ type: 'historyAppend', reqId: 0, entry }, HISTORY_APPEND_TIMEOUT_MS)
+					const stored: HistoryEntry = { ...entry, peer: entry.peer.toLowerCase(), seq: this.corpus.size }
+					this.corpus.set(historyEntryKey(stored), stored)
+				} catch (ex) {
+					this.client.log('warn', `[chatHistory] native history.append failed: ${(ex as Error)?.message ?? String(ex)}`)
+				} finally {
+					item.done()
+				}
+			})
+		}
+	}
+
+	async read(options?: HistoryReadOptions): Promise<HistoryEntry[]> {
+		await this.waitReady()
+		if (!this.legacy) {
+			const result = await this.client.request<unknown>({ type: 'historyRead', reqId: 0, options }, 60_000)
+			return normalizeHistoryEntries(result) ?? []
+		}
+		const pending = [...this.loadsInFlight.values()]
+		if (pending.length) await Promise.allSettled(pending)
+		const peer = options?.peer?.toLowerCase()
+		const terms = (options?.query ?? '').toLowerCase().split(/\s+/).filter(Boolean)
+		const entries = [...this.corpus.values()].filter((e) => {
+			if (peer && e.peer !== peer) return false
+			if (!terms.length) return true
+			const text = e.body.toLowerCase()
+			return terms.every((t) => text.includes(t))
+		})
+		entries.sort((a, b) => a.ts - b.ts || a.seq - b.seq)
+		const limit = options?.limit
+		return limit && limit > 0 ? entries.slice(-limit) : entries
 	}
 
 	onBuffer(cb: (batch: HistoryBufferEvent) => void): Unsubscribe {
@@ -174,7 +438,7 @@ class NativeConetChatClientImpl implements BeamioChatClient {
 		private readonly config: BeamioChatConfig,
 		private readonly bridge: NativeChatBridge,
 	) {
-		this.historyBridge = new NativeHistoryBridge(this)
+		this.historyBridge = new NativeHistoryBridge(this, bridge.legacyHistory === true)
 		this.signingKeyHex = (config.identity.privateKeyHex || '').replace(/^0x/i, '')
 	}
 
@@ -184,6 +448,7 @@ class NativeConetChatClientImpl implements BeamioChatClient {
 
 	async init(): Promise<void> {
 		if (this.destroyed) throw new Error('native chat client destroyed')
+		this.historyBridge._resetSession()
 		this.attachNativeListener()
 		this.nodes = await this.config.getNodes().catch(() => [])
 		this.routes = []
@@ -201,7 +466,32 @@ class NativeConetChatClientImpl implements BeamioChatClient {
 			nodes: this.nodes,
 			routes: this.routes,
 		}
-		await this.request<void>({ type: 'init', reqId: 0, payload }, 180_000)
+		const ready = await this.request<{ historyApi?: unknown } | undefined>({ type: 'init', reqId: 0, payload }, 180_000)
+		this.historyBridge._setHistoryApi(Number(ready && typeof ready === 'object' ? ready.historyApi : 0) || 0)
+	}
+
+	/** Diagnostics into the host log sink (no key material / plaintext). */
+	log(level: 'info' | 'warn' | 'error', message: string): void {
+		this.emit('log', { level, message })
+	}
+
+	/** On-chain history head `seq` (RPC `getPointer`); 0 = no pointer yet, null = unreadable. */
+	async readPointerSeq(): Promise<number | null> {
+		const owner = this.config.identity.eoaAddress
+		const registry = this.config.chatIndexRegistryAddress ?? '0x1511Caa71081C84d8a591490D1b83879088EED72'
+		if (!owner || !this.config.conetRpcUrl) return null
+		const net = new ethers.Network('conet', this.config.chainId ?? 224422)
+		const provider = new ethers.JsonRpcProvider(this.config.conetRpcUrl, net, { staticNetwork: net })
+		try {
+			const contract = new ethers.Contract(registry, REGISTRY_GET_POINTER_ABI, provider)
+			const ptr = await contract.getPointer(owner)
+			if (!ptr?.[0] || /^0x0+$/.test(String(ptr[0]))) return 0
+			return Number(ptr[2])
+		} catch {
+			return null
+		} finally {
+			provider.destroy()
+		}
 	}
 
 	setRoutes(routes: ChatRoute[]): void {
@@ -343,6 +633,7 @@ class NativeConetChatClientImpl implements BeamioChatClient {
 			/* ignore */
 		}
 		this.detachNativeListener()
+		this.historyBridge._destroy()
 		this.rejectPending(new Error('native chat destroyed'))
 		for (const k of Object.keys(this.listeners) as ChatEventName[]) {
 			this.listeners[k]?.clear()
@@ -470,16 +761,29 @@ class NativeConetChatClientImpl implements BeamioChatClient {
 			const wallet = new ethers.Wallet(`0x${hex}`)
 			if (kind === 'eip712') {
 				const td = detail.typedData as
-					| { domain?: ethers.TypedDataDomain; types?: Record<string, Array<ethers.TypedDataField>>; value?: Record<string, unknown> }
+					| {
+							domain?: ethers.TypedDataDomain
+							types?: Record<string, Array<ethers.TypedDataField>>
+							primaryType?: string
+							value?: Record<string, unknown>
+							message?: Record<string, unknown>
+					  }
 					| undefined
-				if (!td?.domain || !td.types || !td.value) {
+				// iOS sends the EIP-712 `message` key, Android sends both `value` and `message`.
+				const value = td?.value ?? td?.message
+				if (!td?.domain || !td.types || !value) {
 					reply(false, undefined, 'bad_typed_data')
+					return
+				}
+				if (td.primaryType === 'SetPointer' && this.historyBridge.legacyLoadInFlight) {
+					// iOS 0.1.4 rewrites the unchanged index on every load; skip that relay write.
+					reply(false, undefined, 'redundant_pointer_write')
 					return
 				}
 				const { EIP712Domain: _omit, ...types } = td.types as Record<string, Array<ethers.TypedDataField>> & {
 					EIP712Domain?: unknown
 				}
-				const sig = await wallet.signTypedData(td.domain, types, td.value)
+				const sig = await wallet.signTypedData(td.domain, types, value)
 				reply(true, sig)
 				return
 			}
@@ -562,6 +866,7 @@ class NativeConetChatClientImpl implements BeamioChatClient {
 				this.emit('voiceConflict', msg.payload as ChatEventMap['voiceConflict'])
 				break
 			case 'event:log':
+				this.historyBridge._noteLog(String(msg.message || ''))
 				this.emit('log', {
 					level: (msg.level as 'info' | 'warn' | 'error') || 'info',
 					message: String(msg.message || ''),

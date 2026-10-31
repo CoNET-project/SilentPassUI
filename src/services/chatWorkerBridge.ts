@@ -481,21 +481,17 @@ const startWorkerGossipListenInternal = async (p: StartWorkerGossipParams): Prom
 			teardown()
 			return false
 		}
-		// Restore encrypted history once identity/RPC is ready.
-		// Android native MVP is listen-only — history.load is a no-op stub there.
-		// iOS native bridges historyLoad to BeamioConetChatModule; browser uses TS Worker.
+		// Restore encrypted history once identity/RPC is ready (also flushes a load queued
+		// before the client existed). iOS and Android native modules own historyLoad; the
+		// native client waits for the module's history key before sending it. Old Android
+		// shells without chatModuleCommand keep a no-op history stub.
 		const transportLabel = useIosNative
 			? 'iOS native'
 			: useAndroidNative
 				? 'Android native'
 				: 'TS Worker'
-		p.onLog?.(
-			'info',
-			useAndroidNative
-				? 'chat listen: Android native ready'
-				: `chat history: ${transportLabel} ready — loading on-chain/IPFS index`,
-		)
-		if (!useAndroidNative) void loadWorkerHistory()
+		p.onLog?.('info', `chat history: ${transportLabel} worker ready — loading on-chain/IPFS index`)
+		void loadWorkerHistory()
 		if (activeVoiceRelay) void openActiveVoiceRelay(activeVoiceRelay.sessionId)
 		return true
 	} catch (ex) {

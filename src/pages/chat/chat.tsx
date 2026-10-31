@@ -164,6 +164,7 @@ import {
 	voiceCaptureConstraints,
 	voiceLevelFromPcmBytes,
 } from '@/services/voiceCallMedia'
+import { CallTonePlayer } from '@/utils/callTones'
 import {
 	createVoiceCallController,
 	declineIncomingVoiceOffer,
@@ -2044,6 +2045,16 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 	/** Desktop: open the mic on the Call click, not when the peer answers. */
 	const outgoingMicPreopenRef = useRef<MediaStream | null>(null)
 	const [voiceCallConnecting, setVoiceCallConnecting] = useState(false)
+	/** Browser call window ringback / busy tone (the native shells play their own). */
+	const callTonesRef = useRef<CallTonePlayer | null>(null)
+	const ensureCallTones = useCallback((): CallTonePlayer => {
+		if (!callTonesRef.current) callTonesRef.current = new CallTonePlayer()
+		return callTonesRef.current
+	}, [])
+	useEffect(() => () => {
+		callTonesRef.current?.destroy()
+		callTonesRef.current = null
+	}, [])
 
 	const stopAndroidIncomingMicPrewarm = useCallback((onlySessionId?: string | null) => {
 		const session = androidIncomingMicPrewarmSessionRef.current
@@ -2706,6 +2717,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		voiceCallLiveRef.current = true
 		// Must run before any await so the browser unlocks the speaker.
 		armVoicePlayback()
+		if (!isCashTreesNativeWebView()) ensureCallTones().unlock()
 		if (getCashTreesNativeNfcHost() !== 'android' && navigator.mediaDevices?.getUserMedia) {
 			void navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
 				if (!voiceCallLiveRef.current) {
@@ -2898,7 +2910,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			closePreparedScreen()
 			voiceCallStartingRef.current = false
 		}
-	}, [allNodes, armVoicePlayback, chatData, privateKey, toAddress, upsertPhoneCallRecord, voiceCallState])
+	}, [allNodes, armVoicePlayback, chatData, ensureCallTones, privateKey, toAddress, upsertPhoneCallRecord, voiceCallState])
 
 	const clearSoftRemoteVideo = useCallback(() => {
 		const prev = remoteVideoBlobUrlRef.current
@@ -3995,6 +4007,9 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			if (handledKey && remoteRejectHandledRef.current === handledKey) return
 			if (handledKey) remoteRejectHandledRef.current = handledKey
 			const peerAddress = previous?.peerAddress || toAddress
+			// Browser dialer still ringing and the callee declined (or is busy):
+			// a short busy tone, like a phone, while the window closes.
+			if (status === 'declined') callTonesRef.current?.busyIfRinging()
 			if (previous || callId || sessionId) {
 				upsertPhoneCallRecord({
 					callId: callId || previous?.callId || sessionId,
@@ -4473,6 +4488,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 						return
 					}
 					voiceAcceptHandledRef.current.add(acceptSessionId)
+					callTonesRef.current?.stopRingback()
 					voiceCallPeerSessionRef.current = acceptSessionId
 					voiceCallLiveRef.current = true
 					setLiveVoiceSessionId(voiceCallOfferRef.current?.sessionId || peerSessionId)
@@ -4507,6 +4523,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 						return
 					}
 					remoteRejectHandledRef.current = voiceCallOfferRef.current?.sessionId || ''
+					if (control.type === 'voice_call_reject_v1') callTonesRef.current?.busyIfRinging()
 					void endVoiceCall(
 						control.type === 'voice_call_timeout_v1' ? 'timed_out' : 'declined',
 						false,
@@ -4557,6 +4574,8 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 					notePeerRx({ drop: 'no_peer_session', seq: frame.seq })
 					return
 				}
+				// Media is flowing: the ringback must be gone even if the accept was missed.
+				callTonesRef.current?.stopRingback()
 				const seq = Number(frame.seq)
 				if (!Number.isSafeInteger(seq) || seq < 0) return
 				// Fan-out through multiple entry nodes can deliver the same frame more
@@ -6739,6 +6758,23 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			: activeVoiceCallRecord?.status === 'timed_out'
 				? 'Timed out'
 				: 'Ringing'
+	// Browser dialer: ringback from the moment the offer is out (record 'ringing')
+	// until Accept, decline, timeout, hang-up or failure changes any of these.
+	const voiceRingbackActive = !isCashTreesNativeWebView()
+		&& voiceCallState === 'outgoing'
+		&& !voiceCallConnecting
+		&& !voiceCallAnswered
+		&& !voiceRelayOpenFailed
+		&& activeVoiceCallRecord?.direction === 'outgoing'
+		&& activeVoiceCallRecord?.status === 'ringing'
+
+	useEffect(() => {
+		if (!voiceRingbackActive) {
+			callTonesRef.current?.stopRingback()
+			return
+		}
+		ensureCallTones().startRingback()
+	}, [ensureCallTones, voiceRingbackActive])
 
 	useEffect(() => {
 		// Inside the native shell the native call screen owns the call UI

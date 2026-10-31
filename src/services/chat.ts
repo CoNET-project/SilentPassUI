@@ -1442,6 +1442,21 @@ export const sendMessage = async (
 }
 
 
+/**
+ * EIP-191 signer of a chat envelope, lowercase, or null when the signature is
+ * malformed. The recovered signer is the only trusted sender; the envelope's
+ * `from` is a claim (see App `addNewMessage`).
+ */
+export const recoverChatSigner = (message: string, signMess: string): string | null => {
+	if (!message || !signMess) return null
+	try {
+		const recovered = ethers.verifyMessage(message, signMess)
+		return recovered ? recovered.toLowerCase() : null
+	} catch {
+		return null
+	}
+}
+
 export const checkSign = (message: string, signMess: string, signWallet: string) => {
 	if (!message || !signMess) {
 		
@@ -1483,7 +1498,9 @@ export const makeMessage = (
 	newChatText: string,
 	timestamp: number,
 	from: "me" | "them",
-	status?: "sending" | "sent" | "delivered" | "failed"
+	status?: "sending" | "sent" | "delivered" | "failed",
+	/** Inbound only: the claimed wallet when it differs from the recovered signer. */
+	meta?: { claimedFrom?: string },
 ) => {
 	// 1) Normalize existing rows — never rewrite sendId-backed ids to createdAt alone
 	//    (that dropped merchantGift when a note shared the same millisecond).
@@ -1505,6 +1522,7 @@ export const makeMessage = (
 	}
 
 	// 2) Merge the inbound payload (JSON card / sendId text / plain text)
+	const resultLenBefore = result.length
 	const ts = Number(timestamp)
 	const text = (newChatText || '').trim()
 	try {
@@ -1547,6 +1565,11 @@ export const makeMessage = (
 		}
 	}
 
+	// Flag only the row this call added (never an older message).
+	if (meta?.claimedFrom && result.length > resultLenBefore) {
+		const added = result[result.length - 1]
+		if (added && added.from === 'them') added.claimedFrom = meta.claimedFrom
+	}
 	result.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0))
 	return result
 }

@@ -8,6 +8,7 @@ import {
 	recoverVoiceCallOfferSigner,
 	signVoiceCallOffer,
 	randomMailboxVoiceSessionId,
+	voiceOfferRelayRoute,
 	voiceSessionKeyFromBase64,
 	voiceSessionKeyToBase64,
 	type VoiceCallSignal,
@@ -17,8 +18,9 @@ import {
 	getRandomNodes,
 } from '@/services/chat'
 import { ensureNativePushBoundForWallet } from '@/utils/cashTreesPushBind'
-import { isCashTreesNativeWebView } from '@/utils/cashTreesNativeNfc'
+import { isCashTreesNativeWebView, postNativePgpCiphertext } from '@/utils/cashTreesNativeNfc'
 import {
+	getWorkerGossipRouteArmor,
 	startWorkerVoiceListen,
 	stopWorkerVoiceListen,
 	sendWorkerVoiceFrame,
@@ -40,6 +42,79 @@ export type VoiceDialerWake = {
 	expiresAt: number
 	timestamp: number
 	offerArmor: string
+	/** Relay node for this call: the shell opens `voice_listen` there, not on its own mailbox. */
+	relayRoute: string
+	relayIp: string
+}
+
+const normalizeArmor = (v?: string) => (v || '').replace(/\r/g, '').trim()
+
+/**
+ * Pick the per-call relay node: a random node that is neither the caller's
+ * mailbox nor the callee's. The caller's session lives there, so neither
+ * mailbox learns this call. Returns null when no node qualifies.
+ */
+function pickVoiceRelayNode(nodes: nodeInfo[], ownRoute: string, peerRoute: string): nodeInfo | null {
+	const own = normalizeArmor(ownRoute)
+	const peer = normalizeArmor(peerRoute)
+	const pool = nodes.filter((n) => {
+		const key = normalizeArmor(n.armoredPublicKey)
+		return !!key && !!String(n.ip_addr || '').trim() && key !== own && key !== peer
+	})
+	if (!pool.length) return null
+	return pool[Math.floor(Math.random() * pool.length)]
+}
+
+/** Opaque voice route command: base64(JSON), encrypted to a node route key. No signature. */
+async function encryptOpaqueVoiceCommandToRoute(command: Record<string, unknown>, routeArmor: string): Promise<string> {
+	const opaque = Buffer.from(JSON.stringify(command), 'utf8').toString('base64')
+	const out = await encrypt({
+		message: await createMessage({ text: opaque }),
+		encryptionKeys: await readKey({ armoredKey: routeArmor }),
+	})
+	return typeof out === 'string' ? out : String((out as { data?: unknown })?.data ?? out)
+}
+
+/** Mailbox work `{ data, NoPush: true }` for the callee's mailbox: store the offer, no badge push. */
+async function wrapOfferForCalleeMailbox(offerArmor: string, calleeRoute: string): Promise<string> {
+	const out = await encrypt({
+		message: await createMessage({ text: JSON.stringify({ data: offerArmor, NoPush: true }) }),
+		encryptionKeys: await readKey({ armoredKey: calleeRoute }),
+	})
+	return typeof out === 'string' ? out : String((out as { data?: unknown })?.data ?? out)
+}
+
+/**
+ * Deliver the offer to the callee's mailbox through a random entry (CoNET
+ * Chat path). The entry reads only the recipient key id; the caller's own
+ * mailbox is never used. Two posts: the offer itself (live callee sessions)
+ * and `voice_offer_store`, which indexes it so a killed shell can fetch it
+ * after the wake push. The shell picks a fresh random entry for each post
+ * and never the callee's mailbox.
+ */
+async function deliverOfferToCalleeMailbox(args: {
+	offerArmor: string
+	calleeRoute: string
+	calleeMailboxIps: string[]
+	callId: string
+	sessionId: string
+	expiresAt: number
+}): Promise<boolean> {
+	const work = await wrapOfferForCalleeMailbox(args.offerArmor, args.calleeRoute)
+	const store = await encryptOpaqueVoiceCommandToRoute({
+		command: 'voice_offer_store',
+		callId: args.callId,
+		sessionId: args.sessionId,
+		offerArmor: args.offerArmor,
+		expiresAt: args.expiresAt,
+		timestamp: Math.floor(Date.now() / 1000),
+	}, args.calleeRoute)
+	const [delivered, indexed] = await Promise.all([
+		postNativePgpCiphertext(work, args.calleeMailboxIps),
+		postNativePgpCiphertext(store, args.calleeMailboxIps),
+	])
+	console.info(`[voiceCall] offer to callee mailbox delivered=${delivered.ok} indexed=${indexed.ok}`)
+	return delivered.ok || indexed.ok
 }
 
 export type VoiceCallChannel = {
@@ -122,7 +197,8 @@ const sendVoiceCallControlToTemporaryRelay = async (
 			sessionKey,
 			new TextEncoder().encode(body),
 		)
-		return await sendWorkerVoiceFrame(options.peerRoute, {
+		// The caller's session lives on its per-call relay node when the offer names one.
+		return await sendWorkerVoiceFrame(voiceOfferRelayRoute(offer) || options.peerRoute, {
 			type: 'voice_frame_v1',
 			callId: offer.callId,
 			// Prefer the caller's ring session so the dialer can match before
@@ -152,7 +228,7 @@ export const sendVoiceCallRejectionToTemporaryRelay = async (
 /** AES hangup on the peer's temporary voice SSE (fast path; Chat PGP is backup). */
 export const sendVoiceCallHangupToTemporaryRelay = async (
 	options: Pick<VoiceCallControllerOptions, 'privateKey' | 'peerRoute'>,
-	offer: Pick<VoiceCallSignal, 'callId' | 'sessionId' | 'sessionKey' | 'from'>,
+	offer: Pick<VoiceCallSignal, 'callId' | 'sessionId' | 'sessionKey' | 'from' | 'relayRoute'>,
 ): Promise<boolean> => {
 	if (!offer.sessionId || !offer.from || !offer.callId || !offer.sessionKey) return false
 	return sendVoiceCallControlToTemporaryRelay(
@@ -299,17 +375,50 @@ export function createVoiceCallController(options: VoiceCallControllerOptions) {
 		let dialerWake: VoiceDialerWake | undefined
 		if (nativeOwnsListen) {
 			try {
+				const relayNode = pickVoiceRelayNode(options.allNodes, getWorkerGossipRouteArmor(), options.peerRoute)
+				if (!relayNode) {
+					console.warn('[voiceCall] no relay node outside both mailboxes')
+					return null
+				}
+				const relayRouteArmor = normalizeArmor(relayNode.armoredPublicKey)
+				const relayIp = String(relayNode.ip_addr || '').trim()
+				// Re-sign with the relay inside the signed text.
+				const relayedSignal = await signVoiceCallOffer({
+					...signal,
+					relayRoute: Buffer.from(relayRouteArmor, 'utf8').toString('base64'),
+					relayIp,
+				}, options.privateKey)
+				Object.assign(signal, relayedSignal)
 				const offerArmor = await encryptVoiceOfferArmorToCallee(
 					JSON.stringify(signal),
 					options.peerPgp,
 					options.privateKey,
 				)
+				const calleeMailboxIps = options.allNodes
+					.filter((n) => normalizeArmor(n.armoredPublicKey) === normalizeArmor(options.peerRoute))
+					.map((n) => String(n.ip_addr || '').trim())
+					.filter(Boolean)
+				// The offer must be on the callee's mailbox before the wake push.
+				const delivered = await deliverOfferToCalleeMailbox({
+					offerArmor,
+					calleeRoute: options.peerRoute,
+					calleeMailboxIps,
+					callId: signal.callId,
+					sessionId,
+					expiresAt: ringExpiresAt,
+				})
+				if (!delivered) {
+					console.warn('[voiceCall] offer delivery to callee mailbox failed')
+					return null
+				}
 				dialerWake = {
 					callId: signal.callId,
 					calleeEoa: signal.to,
 					expiresAt: ringExpiresAt,
 					timestamp: pushTimestamp,
 					offerArmor,
+					relayRoute: relayRouteArmor,
+					relayIp,
 				}
 			} catch (ex) {
 				console.warn(

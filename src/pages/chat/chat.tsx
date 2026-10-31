@@ -132,6 +132,7 @@ import {
 	parseVoiceCallSignal,
 	randomVoiceId,
 	recoverVoiceCallOfferSigner,
+	voiceOfferRelayRoute,
 	lookupIncomingVoiceOffer,
 	INCOMING_CALL_RING_TIMEOUT_MS,
 	mergePhoneCallRecord,
@@ -2877,6 +2878,8 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 							dialerWakeExpiresAt: wake.expiresAt,
 							dialerWakeTimestamp: wake.timestamp,
 							dialerWakeOfferArmor: wake.offerArmor,
+							dialerRelayRoute: wake.relayRoute,
+							dialerRelayIp: wake.relayIp,
 						}
 					: {}),
 			})
@@ -3413,6 +3416,10 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			setIncomingVoiceAction('idle')
 			return
 		}
+		// Media and control go to the caller's session on its per-call relay
+		// node when the offer names one (not the caller's mailbox).
+		const relayRoute = voiceOfferRelayRoute(offer)
+		if (relayRoute) route = relayRoute
 		voicePeerRouteRef.current = route
 		voicePeerWalletRef.current = callerEoa
 		try {
@@ -7889,6 +7896,17 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 												</div>
 											)}
 
+											{!isMe && m.claimedFrom ? (
+												<div
+													role="alert"
+													className="mt-1 flex max-w-full items-start gap-1.5 rounded-xl border border-red-200 bg-red-50 px-2.5 py-1.5 text-[11px] font-semibold text-red-700"
+												>
+													<AlertTriangle className="mt-[1px] h-3.5 w-3.5 shrink-0" aria-hidden />
+													<span className="min-w-0 break-all">
+														Unverified sender claim: this message says it is from {m.claimedFrom}, but it was signed by this contact.
+													</span>
+												</div>
+											) : null}
 											<div className={["mt-1 flex items-center gap-2", isMe ? "justify-end" : "justify-start"].join(" ")}>
 												<span className="text-[11px] text-slate-400">
 												{fmtTime(getMsgTs(m))}

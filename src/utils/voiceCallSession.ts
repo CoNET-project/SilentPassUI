@@ -29,6 +29,14 @@ export type VoiceCallSignal = {
 	callerSignature?: string
 	/** Claim inside the encrypted offer. Display only after comparing it with the signature. */
 	callerTag?: string
+	/**
+	 * Per-call relay node chosen by the caller (not the caller's mailbox): its
+	 * route public key, base64 of the armored key. The callee sends accept,
+	 * control and media frames to the caller's session on this node.
+	 */
+	relayRoute?: string
+	/** IP of the relay node, so the callee never uses it as its entry. */
+	relayIp?: string
 }
 
 export const VOICE_CALL_IDENTITY_WARNING = 'Does not match the signing key'
@@ -69,9 +77,13 @@ export function formatLookedUpBeamioTag(username?: string | null): string {
 /** Canonical text signed by the caller. Identity fields (`from`, tag) are excluded. */
 export function voiceCallOfferSignText(signal: Pick<
 	VoiceCallSignal,
-	'callId' | 'sessionId' | 'to' | 'createdAt' | 'expiresAt' | 'timestamp' | 'sessionKey' | 'tempWalletAddress' | 'entryDomains' | 'codec'
+	'callId' | 'sessionId' | 'to' | 'createdAt' | 'expiresAt' | 'timestamp' | 'sessionKey' | 'tempWalletAddress' | 'entryDomains' | 'codec' | 'relayRoute' | 'relayIp'
 >): string {
 	const domains = Array.isArray(signal.entryDomains) ? signal.entryDomains.join(',') : ''
+	// Relay lines are signed only when present, so older offers still verify.
+	const relay = signal.relayRoute
+		? [`relayRoute:${signal.relayRoute}`, `relayIp:${signal.relayIp || ''}`]
+		: []
 	return [
 		'CoNET voice_call_offer_v1',
 		`callId:${signal.callId}`,
@@ -84,7 +96,25 @@ export function voiceCallOfferSignText(signal: Pick<
 		`tempWalletAddress:${String(signal.tempWalletAddress || '').toLowerCase()}`,
 		`entryDomains:${domains}`,
 		`codec:${signal.codec || ''}`,
+		...relay,
 	].join('\n')
+}
+
+/**
+ * Route public key of the caller's per-call relay node (armored), or '' for
+ * older offers. Callers of this send accept / control / media to that node.
+ */
+export function voiceOfferRelayRoute(signal: { relayRoute?: string } | null | undefined): string {
+	const raw = String(signal?.relayRoute || '').trim()
+	if (!raw) return ''
+	try {
+		const armor = typeof atob === 'function'
+			? decodeURIComponent(escape(atob(raw)))
+			: Buffer.from(raw, 'base64').toString('utf8')
+		return armor.includes('BEGIN PGP PUBLIC KEY') ? armor : ''
+	} catch {
+		return ''
+	}
 }
 
 export async function signVoiceCallOffer(signal: VoiceCallSignal, privateKey: string): Promise<VoiceCallSignal> {
@@ -309,10 +339,14 @@ export function nativeIncomingSystemCallPayload(args: {
 	claimedTag?: string
 	claimedAddress?: string
 	identityWarning?: string
-	signal?: Pick<VoiceCallSignal, 'sessionKey' | 'to'> | null
+	signal?: Pick<VoiceCallSignal, 'sessionKey' | 'to' | 'relayRoute' | 'relayIp'> | null
 }): Record<string, unknown> {
 	const sessionKey = String(args.signal?.sessionKey || '').trim()
 	const to = String(args.signal?.to || '').trim()
+	// Signed relay node (base64 armored route key); the shell sends accept and
+	// media to the caller's session there.
+	const relayRoute = String(args.signal?.relayRoute || '').trim()
+	const relayIp = String(args.signal?.relayIp || '').trim()
 	return {
 		callId: args.callId,
 		sessionId: args.sessionId,
@@ -323,6 +357,7 @@ export function nativeIncomingSystemCallPayload(args: {
 		identityWarning: args.identityWarning || '',
 		...(sessionKey ? { sessionKey } : {}),
 		...(to ? { to } : {}),
+		...(relayRoute ? { relayRoute, relayIp } : {}),
 	}
 }
 

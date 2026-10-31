@@ -755,6 +755,12 @@ type ChatMessage = {
 	text: string
 	createdAt: number
 	status?: "sending" | "sent" | "delivered" | "failed"
+	/**
+	 * Local only. The wallet the envelope claimed (`from`) when it differs from
+	 * the signer recovered from `signMessage`. The signer is the sender; the UI
+	 * shows a warning label for the false claim.
+	 */
+	claimedFrom?: string
 	/** End-to-end encrypted voice metadata; the audio itself is never in the chat payload. */
 	voiceMessage?: import('@/utils/voiceMessage').VoiceMessageManifest
 	fileMessage?: import('@/utils/chatFileMessage').ChatFileMessageManifest

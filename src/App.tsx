@@ -24,7 +24,7 @@ import MinimizedVoiceCallWindow from "@/components/MinimizedVoiceCallWindow"
 import PhoneHistoryPage from "./pages/Phone"
 import BeamioInstallOnboarding from "@/components/launchPage"
 import Browser from "@/pages/Browser"
-import { initChat, checkSign, createInboundChatSession, makeMessage, sendMessage, resumeGossipListenOnForeground, pauseGossipListenOnBackground, getGossipDeliveryAckContext, getKeysFromCoNETPGPSC, emptySearchResultForAddress, rememberRecipientRoute } from "@/services/chat"
+import { initChat, recoverChatSigner, createInboundChatSession, makeMessage, sendMessage, resumeGossipListenOnForeground, pauseGossipListenOnBackground, getGossipDeliveryAckContext, getKeysFromCoNETPGPSC, emptySearchResultForAddress, rememberRecipientRoute } from "@/services/chat"
 import {
 	parseChatDeliveryReceiptV1,
 	markMessageDeliveredBySendId,
@@ -1782,25 +1782,39 @@ function AppShell() {
 		for (const raw of uniqLines) {
 			try {
 			const msg: message = JSON.parse(raw)
-			if (!msg?.from || !msg?.text || !msg?.signMessage) continue
+			if (!msg?.text || !msg?.signMessage) continue
 
-			// 验签：支持外层 text 或内层嵌套 { text } 的格式（部分客户端签 inner.text）
-			let sign = checkSign(msg.text, msg.signMessage, msg.from)
+			// The sender is the wallet recovered from the signature over the
+			// content. The envelope's `from` is only a claim: when it differs,
+			// keep the message under the signer and flag the false claim so the
+			// bubble shows a warning. Legacy clients sign the nested inner.text.
+			const claimedFrom = String(msg.from || '').trim().toLowerCase()
 			let displayText = msg.text
-			if (!sign && typeof msg.text === 'string') {
+			let sign = recoverChatSigner(msg.text, msg.signMessage)
+			if (sign !== claimedFrom && typeof msg.text === 'string') {
 				try {
 					const inner = JSON.parse(msg.text) as { text?: string }
 					if (typeof inner?.text === 'string') {
-						sign = checkSign(inner.text, msg.signMessage, msg.from)
-						if (sign) displayText = inner.text
+						const innerSigner = recoverChatSigner(inner.text, msg.signMessage)
+						if (innerSigner && innerSigner === claimedFrom) {
+							sign = innerSigner
+							displayText = inner.text
+						}
 					}
 				} catch {}
 			}
-			if (!sign) {
-				console.warn('[addNewMessage] skip: signature verify failed', { from: msg.from })
+			if (!sign || !ethers.isAddress(sign)) {
+				console.warn('[addNewMessage] skip: signature invalid', { claimed: msg.from })
 				continue
 			}
 			const signAddr = sign
+			const falseClaim = claimedFrom && claimedFrom !== signAddr ? claimedFrom : ''
+			if (falseClaim) {
+				console.warn('[addNewMessage] claimed sender differs from the signer', {
+					claimed: falseClaim,
+					signer: signAddr,
+				})
+			}
 			let voiceControlConsumed = false
 
 			// Voice offers can arrive while the user is on the Chat list (or another
@@ -2062,7 +2076,8 @@ function AppShell() {
 				displayText,
 				msg.timestamp,
 				"them",
-				"sent"
+				"sent",
+				falseClaim ? { claimedFrom: falseClaim } : undefined,
 			)
 
 			// ✅ 未读 +1（仅当消息确实是新增的才加）

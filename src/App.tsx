@@ -24,7 +24,7 @@ import MinimizedVoiceCallWindow from "@/components/MinimizedVoiceCallWindow"
 import PhoneHistoryPage from "./pages/Phone"
 import BeamioInstallOnboarding from "@/components/launchPage"
 import Browser from "@/pages/Browser"
-import { initChat, checkSign, createInboundChatSession, makeMessage, sendMessage, resumeGossipListenOnForeground, pauseGossipListenOnBackground, getGossipDeliveryAckContext, getKeysFromCoNETPGPSC, emptySearchResultForAddress } from "@/services/chat"
+import { initChat, checkSign, createInboundChatSession, makeMessage, sendMessage, resumeGossipListenOnForeground, pauseGossipListenOnBackground, getGossipDeliveryAckContext, getKeysFromCoNETPGPSC, emptySearchResultForAddress, rememberRecipientRoute } from "@/services/chat"
 import {
 	parseChatDeliveryReceiptV1,
 	markMessageDeliveredBySendId,
@@ -1145,6 +1145,15 @@ function AppShell() {
 	const allNodesForVoiceDeclineRef = useRef(allNodes)
 	const setProfilesForVoiceRef = useRef(setProfiles)
 	profilesForVoiceDeclineRef.current = profiles
+	// Seed recipient → mailbox routes from saved chats so sendMessage can keep
+	// each recipient's mailbox out of the entry pool.
+	useEffect(() => {
+		const chats = profiles?.[0]?.chats
+		if (!Array.isArray(chats)) return
+		for (const chat of chats) {
+			rememberRecipientRoute(chat?.chatData?.publicArmored, chat?.chatData?.routersArmoreds)
+		}
+	}, [profiles])
 	allNodesForVoiceDeclineRef.current = allNodes
 	setProfilesForVoiceRef.current = setProfiles
 	/**

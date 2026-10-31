@@ -137,6 +137,7 @@ export const getKeysFromCoNETPGPSC = async (keyIDOrAddress: string, privateKeyAr
 			// Optional viewer private fetch failed — keep peer keys.
 		}
 
+		rememberRecipientRoute(publicArmored, routersArmoreds)
 		// Presence is NOT chain routeOnline (SI abandoned setUserOnlineOnMe).
 		// UI online comes from mailbox `wallet_online_query` — see refreshChatMailboxPresence.
 		return {
@@ -1150,6 +1151,19 @@ const isGossipNodeHealthy = (domain: string) => {
 
 const normalizeArmoredKey = (v?: string) => (v || '').replace(/\r/g, '').trim()
 
+/**
+ * Recipient user PGP → that recipient's mailbox route PGP. `sendMessage` only
+ * receives the user key, and must keep the recipient's mailbox out of the entry
+ * pool (entry A ≠ mailbox B), otherwise B would see the sender's IP.
+ */
+const recipientRouteByUserKey = new Map<string, string>()
+
+export const rememberRecipientRoute = (userArmored?: string, routeArmored?: string) => {
+	const user = normalizeArmoredKey(userArmored)
+	const route = normalizeArmoredKey(routeArmored)
+	if (user && route) recipientRouteByUserKey.set(user, route)
+}
+
 const pickRouteNodesByArmoredKey = (nodes: nodeInfo[], routerArmoredPublicKey: string) => {
 	const target = normalizeArmoredKey(routerArmoredPublicKey)
 	if (!target) return []
@@ -1298,12 +1312,24 @@ export const sendMessage = async (
 	text: string,
 	privateKeyArmor: string,
 	entryNodes: nodeInfo[],
-	opts?: { beamioNoPush?: boolean; mailboxRoutePublicKey?: string },
+	opts?: { beamioNoPush?: boolean; mailboxRoutePublicKey?: string; recipientRouteArmored?: string },
 ): Promise<boolean> => {
 	if (!entryNodes?.length) {
 		console.error('[sendMessage] no entry nodes')
 		return false
 	}
+	// Entry A must not be the recipient's mailbox B (B would see the sender IP).
+	const recipientRoute = normalizeArmoredKey(opts?.recipientRouteArmored || opts?.mailboxRoutePublicKey)
+		|| recipientRouteByUserKey.get(normalizeArmoredKey(pgpPublic)) || ''
+	const recipientMailboxes = recipientRoute ? pickRouteNodesByArmoredKey(entryNodes, recipientRoute) : []
+	if (!recipientRoute) {
+		console.warn('[sendMessage] recipient mailbox unknown; cannot exclude it from entries')
+	}
+	const recipientMailboxDomains = new Set(recipientMailboxes.map((n) => n.domain))
+	const recipientMailboxIps = recipientMailboxes
+		.map((n) => String(n.ip_addr || '').trim())
+		.filter(Boolean)
+	const entryPool = entryNodes.filter((n) => !recipientMailboxDomains.has(n.domain))
 	if (!pgpPublic?.trim()) {
 		console.error('[sendMessage] missing recipient publicArmored')
 		return false
@@ -1366,7 +1392,7 @@ export const sendMessage = async (
 	const postToNodes = async (nodes: nodeInfo[]): Promise<boolean> => {
 		if (!nodes.length) return false
 		if (isCashTreesNativeWebView()) {
-			const shell = await postNativePgpCiphertext(postData)
+			const shell = await postNativePgpCiphertext(postData, recipientMailboxIps)
 			if (shell.error !== 'no_si_roster' && shell.error !== 'bridge_missing') {
 				return shell.ok
 			}
@@ -1397,11 +1423,15 @@ export const sendMessage = async (
 	}
 
 	// Callers may pass a full Guardian pool or a small sample; prefer healthy entries and retry.
-	const wave1 = await pickGossipEntryNodesForSend(entryNodes, Math.min(4, entryNodes.length))
+	if (!entryPool.length) {
+		console.error('[sendMessage] no entry outside the recipient mailbox')
+		return false
+	}
+	const wave1 = await pickGossipEntryNodesForSend(entryPool, Math.min(4, entryPool.length))
 	if (await postToNodes(wave1)) return true
 
 	const tried = new Set(wave1.map(n => n.domain))
-	const wave2 = await pickGossipEntryNodesForSend(entryNodes, Math.min(4, entryNodes.length), tried)
+	const wave2 = await pickGossipEntryNodesForSend(entryPool, Math.min(4, entryPool.length), tried)
 	if (await postToNodes(wave2)) return true
 
 	console.error(

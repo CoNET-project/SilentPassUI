@@ -22,7 +22,8 @@ import { VOICE_MAX_FRAME_B64, } from '../types.js';
 import { getRandomNode, getRandomNodes, markGossipNodeBad, markGossipNodeHealthy, pickGossipEntryNodesForSend, pickHealthyGossipNodes, pickRouteNodesByArmoredKey, postUrl, postWithTimeout, } from '../nodes.js';
 import { base64ToUtf8, keccakUtf8, utf8ToBase64 } from '../crypto.js';
 import { GROUP_V1_MAX_MEMBERS, assertGroupRosterV1, classifyGroupPlaintext, createGroupMessageV1, createPaddedGroupDeliveryPacket, groupRosterHash, looksLikeGroupText, normalizeGroupAddress, signGroupObject, } from '../group.js';
-import { armorToString, buildPostBody, encryptOpaqueVoiceCommand, encryptRouteCommand, wrapArmorToEntryRoute, wrapArmorToMailboxWork } from '../envelope.js';
+import { armorToString, buildPostBody, encryptOpaqueVoiceCommand, encryptRouteCommand, encryptVoiceChunkLiteral, wrapArmorToEntryRoute, wrapArmorToMailboxWork } from '../envelope.js';
+import { VOICE_KIND_AUDIO, VOICE_KIND_CONTROL, VOICE_KIND_VIDEO, aesDecryptV1, aesEncryptV1, base64ToBytes, bytesToBase64, locatorFromSessionId, openVoiceChunk, randomWriteKey, sealVoiceChunk, } from '../voice-channel-v2.js';
 import { DEFAULT_VIDEO_REORDER_DELAY_MS, DEFAULT_VOICE_REORDER_DELAY_MS, VoiceFrameReorderBuffer, } from '../voice-reorder.js';
 const GOSSIP_STOP_REASONS = new Set([
     'root_stop',
@@ -133,6 +134,14 @@ export class GossipCore {
         this.userPgpKeyID = '';
         this.listenController = null;
         this.voiceListenController = null;
+        /**
+         * Voice channel v2 for the current listen (CoNET Chat rule 23). The UI hands
+         * over the call's AES session key; the worker registers a write key, puts it
+         * into the caps frame, turns outgoing frames into metadata-free chunks once
+         * the peer's caps carry `chan: 2`, and turns incoming chunks back into
+         * ordinary frames for the UI.
+         */
+        this.voiceV2 = null;
         this.voiceReorder = new VoiceFrameReorderBuffer({
             // Voice jitter ~120ms; video fragment groups ~200ms. Do not skip_ahead
             // immediately when a later seq arrives first — wait then timeout.
@@ -1043,6 +1052,12 @@ export class GossipCore {
      * through entries that are not that mailbox, like every other mailbox command.
      * The mailbox never decrypts `offerArmor`; it is callee user-PGP ciphertext.
      */
+    /**
+     * With `push: 1` a v2 callee mailbox also rings the callee itself (it finds
+     * the callee from the offer's recipient key ID) and answers `pushed: true`,
+     * so our voice_listen need not carry the callee wallet. Resolves to whether
+     * it rang; old mailboxes never say so.
+     */
     async indexVoiceOfferOnCalleeMailbox(args) {
         try {
             const inner = await encryptOpaqueVoiceCommand({
@@ -1051,19 +1066,59 @@ export class GossipCore {
                 sessionId: args.sessionId,
                 offerArmor: args.offerArmor,
                 expiresAt: args.expiresAt,
+                push: 1,
+                pushTimestamp: args.pushTimestamp,
                 timestamp: Math.floor(Date.now() / 1000),
             }, args.calleeRoute);
             if (!inner.includes('-----BEGIN PGP MESSAGE-----'))
                 return false;
             const mailboxDomains = new Set(pickRouteNodesByArmoredKey(this.nodes, args.calleeRoute).map((n) => n.domain));
-            const ok = await this.postToEntries(inner, mailboxDomains);
-            this.emit.log(ok ? 'info' : 'warn', `voice offer index ${ok ? 'stored' : 'failed'} callId=${args.callId.slice(0, 8)}`);
-            return ok;
+            const result = await this.postVoiceCommandForJson(inner, mailboxDomains);
+            const rang = result?.pushed === true;
+            this.emit.log(result?.ok ? 'info' : 'warn', `voice offer index ${result?.ok ? 'stored' : 'failed'} pushed=${rang} callId=${args.callId.slice(0, 8)}`);
+            return rang;
         }
         catch (ex) {
             this.emit.log('warn', `voice offer index error: ${ex?.message ?? String(ex)}`);
             return false;
         }
+    }
+    /** One voice command through up to two entries; the node's JSON answer or null. */
+    async postVoiceCommandForJson(innerArmor, excludeDomains) {
+        const tried = new Set(excludeDomains);
+        for (let wave = 0; wave < 2; wave++) {
+            const [node] = await pickGossipEntryNodesForSend(this.nodes, 1, tried);
+            if (!node)
+                return null;
+            tried.add(node.domain);
+            try {
+                const armored = this.cfg?.runtime.outerWrap === false
+                    ? innerArmor
+                    : await wrapArmorToEntryRoute(innerArmor, node.armoredPublicKey);
+                const res = await postWithTimeout(postUrl(node.domain), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(buildPostBody(armored)),
+                    referrerPolicy: 'no-referrer',
+                }, 12000);
+                if (!res.ok) {
+                    markGossipNodeBad(node.domain);
+                    continue;
+                }
+                markGossipNodeHealthy(node.domain);
+                const text = (await res.text()).trim();
+                try {
+                    return JSON.parse(text.slice(text.indexOf('{')));
+                }
+                catch {
+                    return { ok: true };
+                }
+            }
+            catch {
+                markGossipNodeBad(node.domain);
+            }
+        }
+        return null;
     }
     async sendVoiceFrame(routerArmoredPublicKey, frame) {
         const candidate = frame;
@@ -1084,6 +1139,56 @@ export class GossipCore {
             this.emit.log('warn', `sendVoiceFrame rejected: callId=${!!candidate.callId} session=${!!candidate.sessionId} to=${!!to} targetSession=${targetSessionOk} seq=${candidate.seq} payload=${typeof candidate.payload === 'string' ? candidate.payload.length : 0}`);
             return false;
         }
+        let payload = candidate.payload;
+        const mailboxDomains = new Set(pickRouteNodesByArmoredKey(this.nodes, routerArmoredPublicKey).map((n) => n.domain));
+        const v2 = this.voiceV2;
+        if (v2 && candidate.sessionId === v2.sessionId) {
+            v2.peerSessionId = targetSessionId;
+            v2.callId = candidate.callId;
+            try {
+                let plain = await aesDecryptV1(v2.key, payload);
+                const control = parseVoiceControl(plain);
+                // Our node holds a v2 channel: the caps frame tells the peer its write key.
+                if (control && v2.ownV2 && (control.type === 'voice_media_caps_v1' || control.type === 'voice_video_enable_v1')) {
+                    control.chan = 2;
+                    control.wk = bytesToBase64(v2.writeKey);
+                    plain = new TextEncoder().encode(JSON.stringify(control));
+                    payload = await aesEncryptV1(v2.key, plain);
+                }
+                const locator = locatorFromSessionId(targetSessionId);
+                if (v2.peerWriteKey && !v2.disabled && locator) {
+                    const kind = candidate.mediaKind === 'video'
+                        ? VOICE_KIND_VIDEO
+                        : control ? VOICE_KIND_CONTROL : VOICE_KIND_AUDIO;
+                    const literal = await sealVoiceChunk({
+                        sessionKey: v2.key,
+                        locator,
+                        writeKey: v2.peerWriteKey,
+                        kind,
+                        seq: candidate.seq,
+                        captureMs: Date.now(),
+                        data: plain,
+                    });
+                    const inner = await encryptVoiceChunkLiteral(literal, routerArmoredPublicKey);
+                    const result = await this.postVoiceChunk(inner, mailboxDomains);
+                    if (result.ok) {
+                        if (++v2.txOk === 1)
+                            this.emit.log('info', 'voice v2 first chunk accepted');
+                        return true;
+                    }
+                    if (result.error === 'voice_chunk_auth' || result.error === 'target_voice_session_not_found' || result.error === 'invalid_voice_chunk') {
+                        v2.disabled = true;
+                        this.emit.log('warn', `voice v2 chunk refused (${result.error}); v1 for the rest of the call`);
+                    }
+                    else {
+                        return false;
+                    }
+                }
+            }
+            catch (ex) {
+                this.emit.log('warn', `voice v2 send error: ${ex?.message ?? String(ex)}`);
+            }
+        }
         // The peer's mailbox decrypts this command, so it carries only what the
         // relay needs (CoNET Chat protocol): no sender or recipient wallet. The
         // sessionId is the capability; identity stays inside the AES payload.
@@ -1096,18 +1201,101 @@ export class GossipCore {
             direction: candidate.direction || 'uplink',
             seq: candidate.seq,
             frameTimestamp: candidate.timestamp,
-            payload: candidate.payload,
+            payload,
             ...(candidate.frameId ? { frameId: candidate.frameId } : {}),
             ...(candidate.chunkIndex !== undefined ? { chunkIndex: candidate.chunkIndex } : {}),
             ...(candidate.chunkCount !== undefined ? { chunkCount: candidate.chunkCount } : {}),
             timestamp: Math.floor(Date.now() / 1000),
         };
         const innerArmor = await encryptOpaqueVoiceCommand(command, routerArmoredPublicKey);
-        const mailboxDomains = new Set(pickRouteNodesByArmoredKey(this.nodes, routerArmoredPublicKey).map((n) => n.domain));
         // One successful entry POST per frame — never parallel fanout of the same seq.
         return this.postToEntries(innerArmor, mailboxDomains, { fanout: 1 });
     }
-    async startVoiceListen(sessionId, pushWakeup) {
+    /**
+     * One entry POST for a v2 chunk (a second entry only on a network failure).
+     * Reads the node's JSON so a refused chunk can fall back to v1.
+     */
+    async postVoiceChunk(innerArmor, excludeDomains) {
+        const tried = new Set(excludeDomains);
+        for (let wave = 0; wave < 2; wave++) {
+            const [node] = await pickGossipEntryNodesForSend(this.nodes, 1, tried);
+            if (!node)
+                return { ok: false, error: 'no_entry' };
+            tried.add(node.domain);
+            try {
+                const armored = this.cfg?.runtime.outerWrap === false
+                    ? innerArmor
+                    : await wrapArmorToEntryRoute(innerArmor, node.armoredPublicKey);
+                const res = await postWithTimeout(postUrl(node.domain), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(buildPostBody(armored)),
+                    referrerPolicy: 'no-referrer',
+                }, 12000);
+                if (!res.ok) {
+                    markGossipNodeBad(node.domain);
+                    continue;
+                }
+                markGossipNodeHealthy(node.domain);
+                const text = (await res.text()).trim();
+                try {
+                    const body = JSON.parse(text.slice(text.indexOf('{')));
+                    return body.ok === false ? { ok: false, error: body.error || 'refused' } : { ok: true };
+                }
+                catch {
+                    return { ok: true };
+                }
+            }
+            catch {
+                markGossipNodeBad(node.domain);
+            }
+        }
+        return { ok: false, error: 'network' };
+    }
+    /** A v2 chunk on our own channel → the ordinary frame the UI already handles. */
+    async handleVoiceChunk(blobB64) {
+        const v2 = this.voiceV2;
+        if (!v2 || !blobB64)
+            return;
+        try {
+            const opened = await openVoiceChunk(v2.key, v2.locator, base64ToBytes(blobB64));
+            if (++v2.rx === 1)
+                this.emit.log('info', `voice v2 first chunk rx kind=${opened.kind}`);
+            this.notePeerVoiceCaps(opened.data);
+            this.voiceReorder.push({
+                type: 'voice_frame_v1',
+                callId: v2.callId,
+                sessionId: v2.peerSessionId,
+                seq: opened.seq,
+                timestamp: opened.captureMs,
+                payload: await aesEncryptV1(v2.key, opened.data),
+                ...(opened.kind === VOICE_KIND_VIDEO ? { mediaKind: 'video' } : {}),
+            });
+        }
+        catch (ex) {
+            this.emit.log('warn', `voice v2 chunk open failed: ${ex?.message ?? String(ex)}`);
+        }
+    }
+    /** Peer caps with `chan: 2` carry the write key for the peer's channel. */
+    notePeerVoiceCaps(plain) {
+        const v2 = this.voiceV2;
+        if (!v2 || v2.peerWriteKey)
+            return;
+        const control = parseVoiceControl(plain);
+        if (!control || Number(control.chan) !== 2 || typeof control.wk !== 'string')
+            return;
+        try {
+            const wk = base64ToBytes(control.wk);
+            if (wk.length === 32) {
+                v2.peerWriteKey = wk;
+                this.emit.log('info', 'voice v2 peer channel');
+            }
+        }
+        catch { /* ignore */ }
+    }
+    async startVoiceListen(sessionId, pushWakeup, 
+    /** Base64 AES session key of the call: enables voice channel v2. */
+    channelKey) {
         const wallet = this.wallet;
         if (this.paused || !this.cfg || !wallet || !sessionId) {
             this.emit.log('warn', `voice listen refused early: paused=${this.paused} cfg=${!!this.cfg} wallet=${!!wallet} session=${!!sessionId}`);
@@ -1124,6 +1312,23 @@ export class GossipCore {
         // Drop pending reorder state from the previous listen so a new session
         // cannot stall behind an old nextSeq / overflowed buffer.
         this.voiceReorder.clear();
+        this.voiceV2 = null;
+        const locator = locatorFromSessionId(sessionId);
+        if (channelKey && locator) {
+            try {
+                const key = base64ToBytes(channelKey);
+                if (key.length === 32) {
+                    this.voiceV2 = {
+                        sessionId, locator, key, writeKey: randomWriteKey(), ownV2: false,
+                        peerWriteKey: null, peerSessionId: '', callId: '', disabled: false, txOk: 0, rx: 0,
+                    };
+                }
+            }
+            catch { /* v1 only */ }
+        }
+        const v2Setup = this.voiceV2
+            ? { v: 2, wk: bytesToBase64(this.voiceV2.writeKey) }
+            : {};
         const route = this.cfg.identity.ownRouteArmoredPublicKey || '';
         const routeNodes = pickRouteNodesByArmoredKey(this.nodes, route);
         const mailboxDomains = new Set(routeNodes.map((n) => n.domain));
@@ -1178,20 +1383,34 @@ export class GossipCore {
                 expiresAt: pushWakeup.expiresAt,
                 offerArmor,
                 calleeRoute: pushWakeup.calleeRoute,
+                pushTimestamp: pushWakeup.timestamp,
             })
             : Promise.resolve(false);
-        const inner = await encryptOpaqueVoiceCommand({
-            command: 'voice_listen',
-            sessionId,
-            timestamp: Math.floor(Date.now() / 1000),
-            ...(pushWakeup ? {
-                callId: pushWakeup.callId,
-                targetWallet: pushWakeup.calleeEoa,
-                expiresAt: pushWakeup.expiresAt,
-                pushTimestamp: pushWakeup.timestamp,
-            } : {}),
-            ...(offerArmor ? { offerArmor } : {}),
-        }, route);
+        // Both listen variants now; pick after the offer store answers. The
+        // legacy one makes our own node ring the callee, so that node learns the
+        // callee wallet: only when the callee mailbox did not ring it.
+        const [innerBase, innerWake] = await Promise.all([
+            encryptOpaqueVoiceCommand({
+                command: 'voice_listen',
+                sessionId,
+                timestamp: Math.floor(Date.now() / 1000),
+                ...v2Setup,
+            }, route),
+            pushWakeup
+                ? encryptOpaqueVoiceCommand({
+                    command: 'voice_listen',
+                    sessionId,
+                    timestamp: Math.floor(Date.now() / 1000),
+                    ...v2Setup,
+                    callId: pushWakeup.callId,
+                    targetWallet: pushWakeup.calleeEoa,
+                    expiresAt: pushWakeup.expiresAt,
+                    pushTimestamp: pushWakeup.timestamp,
+                    ...(offerArmor ? { offerArmor } : {}),
+                }, route)
+                : Promise.resolve(''),
+        ]);
+        let inner = innerBase;
         if (!inner.includes('-----BEGIN PGP MESSAGE-----')) {
             this.emit.log('warn', 'voice listen armor missing');
             return false;
@@ -1227,7 +1446,11 @@ export class GossipCore {
                 try {
                     // The listen POST is what rings the callee. Let the offer index land
                     // first, but never hold the call for more than 3 s.
-                    await Promise.race([offerIndexed, new Promise((done) => setTimeout(() => done(false), 3000))]);
+                    const rang = await Promise.race([offerIndexed, new Promise((done) => setTimeout(() => done(false), 3000))]);
+                    if (pushWakeup && !rang && innerWake.includes('-----BEGIN PGP MESSAGE-----'))
+                        inner = innerWake;
+                    if (pushWakeup)
+                        this.emit.log('info', `voice callee wake by ${rang ? 'callee-mailbox' : 'legacy-listen'}`);
                     const armored = this.cfg?.runtime.outerWrap === false ? inner : await wrapArmorToEntryRoute(inner, node.armoredPublicKey);
                     const res = await fetch(postUrl(node.domain), {
                         method: 'POST',
@@ -1265,14 +1488,31 @@ export class GossipCore {
                             try {
                                 const frame = JSON.parse(payload);
                                 if (frame.type === 'voice_ready' && frame.ok === true && String(frame.sessionId || '') === sessionId) {
-                                    this.emit.log('info', `voice ready wallet=${String(frame.nodeWallet ?? '')}`);
+                                    const chanV2 = Number(frame.v) === 2 && this.voiceV2?.sessionId === sessionId;
+                                    if (chanV2 && this.voiceV2)
+                                        this.voiceV2.ownV2 = true;
+                                    this.emit.log('info', `voice ready wallet=${String(frame.nodeWallet ?? '')} chan=${chanV2 ? 2 : 1}`);
                                     markReady();
                                 }
                                 else if (frame.type === 'voice_ready') {
                                     this.emit.log('warn', 'voice ready ignored');
                                 }
+                                if (frame.t === 'c' && typeof frame.d === 'string') {
+                                    void this.handleVoiceChunk(frame.d);
+                                    continue;
+                                }
                                 if (frame.type === 'voice_frame_v1') {
                                     const normalized = typeof frame.frameTimestamp === 'number' ? { ...frame, timestamp: frame.frameTimestamp } : frame;
+                                    const v2 = this.voiceV2;
+                                    if (v2 && typeof frame.payload === 'string') {
+                                        if (typeof frame.sessionId === 'string')
+                                            v2.peerSessionId = frame.sessionId;
+                                        if (typeof frame.callId === 'string')
+                                            v2.callId = frame.callId;
+                                        if (!v2.peerWriteKey) {
+                                            void aesDecryptV1(v2.key, frame.payload).then((p) => this.notePeerVoiceCaps(p)).catch(() => { });
+                                        }
+                                    }
                                     this.voiceReorder.push(normalized);
                                 }
                             }
@@ -1309,6 +1549,8 @@ export class GossipCore {
         const wallet = this.wallet;
         this.voiceListenController?.abort('voice_stop');
         this.voiceListenController = null;
+        if (this.voiceV2?.sessionId === sessionId)
+            this.voiceV2 = null;
         if (!route || !wallet)
             return true;
         const innerArmor = await encryptOpaqueVoiceCommand({
@@ -1317,6 +1559,20 @@ export class GossipCore {
             timestamp: Math.floor(Date.now() / 1000),
         }, route);
         return this.postToEntries(innerArmor, new Set(pickRouteNodesByArmoredKey(this.nodes, route).map((n) => n.domain)));
+    }
+}
+/** JSON control frame inside a decrypted voice payload, or null for media. */
+function parseVoiceControl(plain) {
+    if (!plain.length || plain[0] !== 0x7b)
+        return null;
+    try {
+        const obj = JSON.parse(new TextDecoder().decode(plain));
+        return obj && typeof obj === 'object' && typeof obj.type === 'string'
+            ? obj
+            : null;
+    }
+    catch {
+        return null;
     }
 }
 //# sourceMappingURL=gossip-core.js.map

@@ -442,7 +442,7 @@ export function createVoiceCallController(options: VoiceCallControllerOptions) {
 			recipientPgp: options.peerPgp,
 			// Lets the worker index the offer on the callee mailbox directly.
 			calleeRoute: options.peerRoute,
-		}))) {
+		}, voiceSessionKeyToBase64(sessionKey)))) {
 			return null
 		}
 		ensureNativePushBoundForWallet()
@@ -470,7 +470,7 @@ export function createVoiceCallController(options: VoiceCallControllerOptions) {
 		const sessionId = randomMailboxVoiceSessionId()
 		const sessionKey = voiceSessionKeyFromBase64(offer.sessionKey || '')
 		selectedEntries = getRandomNodes(options.allNodes, Math.min(4, options.allNodes.length))
-		if (!await startWorkerVoiceListen(sessionId)) return null
+		if (!await startWorkerVoiceListen(sessionId, undefined, voiceSessionKeyToBase64(sessionKey))) return null
 		const callerEoa = recoverVoiceCallOfferSigner(offer)
 		const answer = makeVoiceCallSignal({
 			type: 'voice_call_accept_v1',

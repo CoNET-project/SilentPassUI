@@ -148,4 +148,15 @@ export async function encryptOpaqueVoiceCommand(command, routePublicKeyArmored) 
         config: { preferredCompressionAlgorithm: enums.compression.zlib },
     }));
 }
+/**
+ * Voice channel v2 chunk → OpenPGP armor (binary literal, no compression: the
+ * chunk is AES output) encrypted to a **route** public key. Unsigned, no wallet.
+ */
+export async function encryptVoiceChunkLiteral(literal, routePublicKeyArmored) {
+    const encryptionKeys = await readKey({ armoredKey: routePublicKeyArmored });
+    return armorToString(await encrypt({
+        message: await createMessage({ binary: literal }),
+        encryptionKeys,
+    }));
+}
 //# sourceMappingURL=envelope.js.map

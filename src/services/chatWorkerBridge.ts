@@ -69,6 +69,35 @@ type ChatWorkerClient = BeamioChatClient
 
 /** Only one listen client is alive per process. A new session replaces the old. */
 let activeClient: ChatWorkerClient | null = null
+
+/**
+ * Inbound line → mailbox armor hashes waiting for the page to store the line.
+ * The native module holds the mailbox ACK until `confirmInboundLines`.
+ */
+const pendingInboundAcks = new Map<string, Set<string>>()
+const PENDING_INBOUND_ACK_MAX = 500
+
+/**
+ * Call after the page has stored (or deliberately discarded) these inbound
+ * lines. The native module then ACKs the mailbox and sends the sender receipt.
+ * Lines that were never stored stay unconfirmed, so the mailbox redelivers them.
+ */
+export const confirmInboundLines = (lines: string[]): void => {
+	const hashes: string[] = []
+	for (const line of lines) {
+		const set = pendingInboundAcks.get(line)
+		if (!set) continue
+		pendingInboundAcks.delete(line)
+		hashes.push(...set)
+	}
+	if (!hashes.length) return
+	const client = activeClient as (ChatWorkerClient & { ackInbound?: (h: string[]) => void }) | null
+	try {
+		client?.ackInbound?.(hashes)
+	} catch {
+		/* the mailbox will redeliver */
+	}
+}
 let workerInitPromise: Promise<boolean> | null = null
 let lastGossipParams: StartWorkerGossipParams | null = null
 
@@ -396,6 +425,15 @@ const startWorkerGossipListenInternal = async (p: StartWorkerGossipParams): Prom
 	const unsubs: Array<() => void> = []
 	unsubs.push(
 		client.on('message', (env) => {
+			if (env.line && env.armorHash) {
+				const set = pendingInboundAcks.get(env.line) ?? new Set<string>()
+				set.add(env.armorHash)
+				pendingInboundAcks.set(env.line, set)
+				if (pendingInboundAcks.size > PENDING_INBOUND_ACK_MAX) {
+					const oldest = pendingInboundAcks.keys().next().value
+					if (oldest !== undefined) pendingInboundAcks.delete(oldest)
+				}
+			}
 			if (env.line) p.onLine(env.line)
 			if (p.rootSignal.aborted) return
 			p.onActivity()

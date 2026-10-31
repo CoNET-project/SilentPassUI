@@ -34,7 +34,7 @@ import {
 } from "@/utils/chatDeliveryReceipt"
 import { ensureNativePushBoundForWallet, ensurePushDeviceTokenListener } from "@/utils/cashTreesPushBind"
 import { mirrorChatMessageToHistory, mergeHistoryEntriesIntoMessages } from "@/services/chatHistoryMirror"
-import { onHistoryBuffer, loadWorkerHistory, onDecryptedChatHistory, readDecryptedChatHistory } from "@/services/chatWorkerBridge"
+import { onHistoryBuffer, loadWorkerHistory, onDecryptedChatHistory, readDecryptedChatHistory, confirmInboundLines } from "@/services/chatWorkerBridge"
 import type { HistoryEntry } from "@conet.project/chat-sdk"
 import { checkStorage, storeSystemData, runAutoBUnitFreeClaimIfEligible, handleNfcLinkAppDeepLinkScan, ensureProfilePrivateKeyArmorFromMnemonic, bootstrapProfileLocaleCurrencyIfUnset, mergeLocalLocaleLanguageOntoChainProfile } from "@/services/beamio"
 import { hasLocalPlaintextMnemonic } from "@/utils/consumerWalletGate"
@@ -2191,6 +2191,10 @@ function AppShell() {
 		temp.profiles = profiles
 		setCoNET_Data(temp)
 		await storeSystemData()
+		// Stored: now the native module may ACK the mailbox (it deletes its
+		// offline copy) and send the sender receipt. An early return above
+		// leaves the lines unconfirmed, so the mailbox redelivers them.
+		confirmInboundLines(lines)
 
 		// ✅ 聆听进入的新 message 后自动回复
 		if (onAutoReply && chatsToAutoReply.length > 0) {

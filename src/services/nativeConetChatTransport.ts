@@ -465,6 +465,9 @@ class NativeConetChatClientImpl implements BeamioChatClient {
 			runtime: { ...DEFAULT_RUNTIME, ...(this.config.runtime ?? {}) },
 			nodes: this.nodes,
 			routes: this.routes,
+			// The page confirms each stored inbound message with `ackInbound`; the
+			// native module holds the mailbox ACK until then. Older SDKs ignore it.
+			deferAck: true,
 		}
 		const ready = await this.request<{ historyApi?: unknown } | undefined>({ type: 'init', reqId: 0, payload }, 180_000)
 		this.historyBridge._setHistoryApi(Number(ready && typeof ready === 'object' ? ready.historyApi : 0) || 0)
@@ -492,6 +495,13 @@ class NativeConetChatClientImpl implements BeamioChatClient {
 		} finally {
 			provider.destroy()
 		}
+	}
+
+	/** The page stored these inbound messages: let the native module ACK the mailbox. */
+	ackInbound(armorHashes: string[]): void {
+		const hashes = (armorHashes || []).filter((h) => typeof h === 'string' && h.length > 0)
+		if (!hashes.length || this.destroyed) return
+		this.postCommand({ type: 'ackInbound', armorHashes: hashes })
 	}
 
 	setRoutes(routes: ChatRoute[]): void {

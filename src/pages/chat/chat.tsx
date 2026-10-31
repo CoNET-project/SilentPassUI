@@ -51,6 +51,7 @@ import {
   Trash2,
   Paperclip,
   UserRound,
+  Wallet,
 } from "lucide-react"
 import { ChatHeaderIOS } from "./components/ChatHeaderIOS"
 import BeamioContactProfilePreview from "@/components/Home/BeamioContactProfilePreview"
@@ -6706,7 +6707,9 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				: 'Ringing'
 
 	useEffect(() => {
-		if (voiceCallState !== 'outgoing' || !voiceCallMinimized) {
+		// Inside the native shell the native call screen owns the call UI
+		// (including its own return pill); the web window stays hidden.
+		if (voiceCallState !== 'outgoing' || !voiceCallMinimized || isCashTreesNativeWebView()) {
 			publishMinimizedVoiceCallWindow(null)
 			return
 		}
@@ -6796,7 +6799,9 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 					</div>
 				</div>
 			) : null}
-			{voiceCallState === 'outgoing' && !voiceCallMinimized && !(
+			{/* Browser PWA only: inside the native shell the native call screen is used
+			    (same design: Beamio Audio header, Mute / Video / Speaker, End). */}
+			{voiceCallState === 'outgoing' && !voiceCallMinimized && !isCashTreesNativeWebView() && !(
 				incomingVoiceOffer?.sessionId &&
 				incomingVoiceOffer.sessionId !== liveVoiceSessionId
 			) ? (
@@ -6842,6 +6847,15 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 						>
 							<ChevronDown className="h-5 w-5" strokeWidth={2.5} aria-hidden />
 						</button>
+						<div className="pointer-events-none absolute left-1/2 top-[max(0.75rem,env(safe-area-inset-top,0px))] flex h-11 -translate-x-1/2 items-center gap-[7px]">
+							<img
+								src={`${process.env.PUBLIC_URL}/beamio-call-mark.png`}
+								alt=""
+								className="h-5 w-5 rounded-full"
+								draggable={false}
+							/>
+							<span className="text-[15px] text-[#EBEBF5]/60">Beamio Audio</span>
+						</div>
 						{softLocalVideoOn ? (
 							<video
 								ref={softLocalVideoElRef}
@@ -6849,7 +6863,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 								muted
 								playsInline
 								autoPlay
-								aria-label="Local FaceTime preview"
+								aria-label="Your camera preview"
 							/>
 						) : (
 							<span className="h-11 w-11" aria-hidden />
@@ -6910,37 +6924,32 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 
 								<div className="flex flex-col items-center pb-5">
 									<p className="text-[28px] font-bold tracking-tight">{activeVoicePeerLabel}</p>
-									<p className="mt-1.5 font-mono text-[22px] font-semibold tracking-wide text-white/85">
+									<p className="mt-1.5 font-mono text-[18px] tracking-wide text-white/70">
 										{voiceCallAnswered || activeVoiceCallRecord?.status === 'answered'
 											? voiceInCallClockLabel
-											: voiceCallStatusLabel}
-										{!(voiceCallAnswered || activeVoiceCallRecord?.status === 'answered')
-											&& (voiceCallStatusLabel === 'Connecting' || voiceCallStatusLabel === 'Ringing') ? (
-											<span className="ml-2 inline-flex gap-1" aria-hidden>
-												<span className="animate-pulse">·</span>
-												<span className="animate-pulse [animation-delay:200ms]">·</span>
-											</span>
-										) : null}
+											: voiceCallStatusLabel === 'Connecting' || voiceCallStatusLabel === 'Ringing'
+												? 'Calling…'
+												: voiceCallStatusLabel}
 									</p>
 									{voicePeerAddressShort ? (
 										<div
 											className="mt-1.5 inline-flex items-center gap-1.5 rounded-full border border-[#dce2f7] bg-[#e9edff] px-3 py-1.5 text-[13px] font-medium text-[#424655]"
 											title={voicePeerAddress}
 										>
-											<span className="font-semibold text-[#0051d1]" aria-hidden>◇</span>
+											<Wallet className="h-3.5 w-3.5 text-[#0051d1]" aria-hidden />
 											<span className="font-mono">{voicePeerAddressShort}</span>
 										</div>
 									) : null}
 								</div>
 
-								{/* Native InCall: mute | FaceTime | speaker */}
+								{/* Mute | Video | Speaker (same as the native call screens). */}
 								<div className="flex items-start justify-center gap-7">
 									<button
 										type="button"
 										onClick={toggleVoiceCallMute}
 										className="flex w-[4.75rem] flex-col items-center gap-2"
 										aria-pressed={voiceCallMuted}
-										aria-label="mute"
+										aria-label="Mute"
 									>
 										<span
 											className={`grid h-[4.75rem] w-[4.75rem] place-items-center rounded-full ${
@@ -6949,14 +6958,15 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 										>
 											{voiceCallMuted ? <MicOff className="h-7 w-7" /> : <Mic className="h-7 w-7" />}
 										</span>
-										<span className="text-sm">mute</span>
+										<span className="text-sm">Mute</span>
 									</button>
 									<button
 										type="button"
 										onClick={() => void toggleSoftLocalVideo()}
-										className="flex w-[4.75rem] flex-col items-center gap-2"
+										disabled={!(voiceCallAnswered || activeVoiceCallRecord?.status === 'answered')}
+										className="flex w-[4.75rem] flex-col items-center gap-2 disabled:opacity-35"
 										aria-pressed={softLocalVideoOn}
-										aria-label="FaceTime"
+										aria-label="Video"
 									>
 										<span
 											className={`grid h-[4.75rem] w-[4.75rem] place-items-center rounded-full ${
@@ -6965,7 +6975,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 										>
 											{softLocalVideoOn ? <Video className="h-7 w-7" /> : <VideoOff className="h-7 w-7" />}
 										</span>
-										<span className="text-sm">FaceTime</span>
+										<span className="text-sm">Video</span>
 									</button>
 									<button
 										type="button"
@@ -6979,7 +6989,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 										}}
 										className="flex w-[4.75rem] flex-col items-center gap-2"
 										aria-pressed={voiceSpeakerOn}
-										aria-label="speaker"
+										aria-label="Speaker"
 									>
 										<span
 											className={`grid h-[4.75rem] w-[4.75rem] place-items-center rounded-full ${
@@ -6988,44 +6998,22 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 										>
 											{voiceSpeakerOn ? <Volume2 className="h-7 w-7" /> : <VolumeX className="h-7 w-7" />}
 										</span>
-										<span className="text-sm">speaker</span>
+										<span className="text-sm">Speaker</span>
 									</button>
 								</div>
 
-								{/* Native InCall: add call | End (center) | contacts */}
-								<div className="mt-[1.35rem] flex items-start justify-center gap-7">
-									<button
-										type="button"
-										disabled
-										className="flex w-[4.75rem] flex-col items-center gap-2 opacity-35"
-										aria-label="add call"
-									>
-										<span className="grid h-[4.75rem] w-[4.75rem] place-items-center rounded-full bg-white/20 text-white">
-											<Plus className="h-7 w-7" strokeWidth={2.5} />
-										</span>
-										<span className="text-sm text-white/50">add call</span>
-									</button>
+								{/* End, centered (same as the native call screens). */}
+								<div className="mt-[1.35rem] flex items-start justify-center">
 									<button
 										type="button"
 										onClick={() => void endVoiceCall()}
 										className="flex w-[4.75rem] flex-col items-center gap-2"
-										aria-label="End Call"
+										aria-label="End call"
 									>
 										<span className="grid h-[4.75rem] w-[4.75rem] place-items-center rounded-full bg-[#FF3B30] text-white">
 											<PhoneOff className="h-8 w-8" strokeWidth={2.25} />
 										</span>
-										<span className="text-sm">end</span>
-									</button>
-									<button
-										type="button"
-										disabled
-										className="flex w-[4.75rem] flex-col items-center gap-2 opacity-35"
-										aria-label="contacts"
-									>
-										<span className="grid h-[4.75rem] w-[4.75rem] place-items-center rounded-full bg-white/20 text-white">
-											<UserRound className="h-7 w-7" />
-										</span>
-										<span className="text-sm text-white/50">contacts</span>
+										<span className="text-sm">End</span>
 									</button>
 								</div>
 							</div>
@@ -7035,56 +7023,66 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			) : null}
 			{incomingVoiceOffer && !isCashTreesNativeWebView() ? (
 				<>
-				<div className="fixed inset-0 z-[99] bg-[#808080]/50" aria-hidden />
+				{/* Same banner as the native shells: Beamio Audio + caller, Decline / Answer. */}
 				<div
-					className="pointer-events-auto fixed isolate left-4 right-4 top-[max(5.5rem,calc(env(safe-area-inset-top)+5rem))] z-[100] rounded-2xl border border-white/80 bg-white/85 px-4 py-3 shadow-[0_12px_30px_rgba(15,23,42,0.16)] backdrop-blur-xl"
+					className="pointer-events-auto fixed isolate left-2 right-2 top-[max(0.5rem,env(safe-area-inset-top))] z-[100] rounded-[14px] bg-[#2C2C2E]/90 px-4 py-4 text-white shadow-[0_12px_30px_rgba(0,0,0,0.25)] backdrop-blur-xl"
 					role="dialog"
 					aria-label="Incoming voice call"
 					style={{ touchAction: 'manipulation' }}
 				>
 					<div className="flex items-center gap-3">
-						<Phone className="h-5 w-5 text-[#1652f0]" aria-hidden />
 						<div className="min-w-0 flex-1">
-							<p className="text-sm font-semibold text-slate-800">Incoming voice call</p>
-							{incomingCaller?.tag ? (
-								<p className="truncate text-xs font-semibold text-slate-700">
-									{incomingCaller.tag}
-								</p>
-							) : null}
+							<div className="flex items-center gap-[7px]">
+								<img
+									src={`${process.env.PUBLIC_URL}/beamio-call-mark.png`}
+									alt=""
+									className="h-5 w-5 rounded-full"
+									draggable={false}
+								/>
+								<span className="truncate text-[12.5px] text-[#EBEBF5]/60">Beamio Audio</span>
+							</div>
+							<p className="mt-[3px] truncate text-[17px] font-bold">
+								{incomingCaller?.tag || 'Incoming voice call'}
+							</p>
 							{incomingCaller?.address ? (
-								<p className="mt-1 inline-flex max-w-full break-all rounded-full border border-[#dce2f7] bg-[#e9edff] px-2 py-0.5 font-mono text-[11px] text-[#424655]">
+								<p className="mt-1 inline-flex max-w-full items-center gap-1 break-all rounded-full border border-[#dce2f7] bg-[#e9edff] px-2 py-0.5 font-mono text-[11px] text-[#424655]">
+									<Wallet className="h-3 w-3 shrink-0 text-[#0051d1]" aria-hidden />
 									{incomingCaller.address}
 								</p>
 							) : null}
 							{incomingCaller?.identityWarning ? (
 								<div className="mt-1">
-									<p className="truncate text-xs font-semibold text-red-600">{incomingCaller.claimedTag || 'Unknown tag'}</p>
+									<p className="truncate text-xs font-semibold text-[#FF453A]">{incomingCaller.claimedTag || 'Unknown tag'}</p>
 									{incomingCaller.claimedAddress ? (
 										<p className="mt-1 inline-flex max-w-full break-all rounded-full border border-red-200 bg-red-50 px-2 py-0.5 font-mono text-[11px] text-red-700">{incomingCaller.claimedAddress}</p>
 									) : null}
-									<p className="text-[11px] font-semibold text-red-600">{incomingCaller.identityWarning}</p>
+									<p className="text-[11px] font-semibold text-[#FF453A]">{incomingCaller.identityWarning}</p>
 								</div>
 							) : null}
 						</div>
 						<button
 							type="button"
-							{...acceptVoiceCallTap}
-							disabled={incomingVoiceAction !== 'idle'}
-							className={`${RELIABLE_TAP_BUTTON_CLASS} pointer-events-auto relative z-10 min-h-11 min-w-[76px] touch-manipulation rounded-full bg-[#1652f0] px-3 py-1.5 text-xs font-semibold text-white disabled:cursor-wait disabled:opacity-60`}
-							aria-label="Accept incoming voice call"
-							aria-busy={incomingVoiceAction === 'accepting'}
-						>
-							{incomingVoiceAction === 'accepting' ? 'Accepting…' : 'Accept'}
-						</button>
-						<button
-							type="button"
 							{...rejectVoiceCallTap}
 							disabled={incomingVoiceAction !== 'idle'}
-							className={`${RELIABLE_TAP_BUTTON_CLASS} pointer-events-auto relative z-10 min-h-11 min-w-[76px] touch-manipulation rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 disabled:cursor-wait disabled:opacity-60`}
+							className={`${RELIABLE_TAP_BUTTON_CLASS} pointer-events-auto relative z-10 grid h-11 w-11 shrink-0 touch-manipulation place-items-center rounded-full bg-[#D81720] text-white disabled:cursor-wait disabled:opacity-60`}
 							aria-label="Decline incoming voice call"
 							aria-busy={incomingVoiceAction === 'declining'}
 						>
-							{incomingVoiceAction === 'declining' ? 'Declining…' : 'Decline'}
+							{incomingVoiceAction === 'declining'
+								? <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
+								: <X className="h-5 w-5" strokeWidth={3} aria-hidden />}
+						</button>
+						<button
+							type="button"
+							{...acceptVoiceCallTap}
+							disabled={incomingVoiceAction !== 'idle'}
+							className={`${RELIABLE_TAP_BUTTON_CLASS} pointer-events-auto relative z-10 grid h-11 w-11 shrink-0 touch-manipulation place-items-center rounded-full bg-[#0754D9] text-white disabled:cursor-wait disabled:opacity-60`}
+							aria-label="Accept incoming voice call"
+							aria-busy={incomingVoiceAction === 'accepting'}
+						>
+							{incomingVoiceAction === 'accepting'
+								? <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
+								: <Check className="h-5 w-5" strokeWidth={3} aria-hidden />}
 						</button>
 					</div>
 				</div>

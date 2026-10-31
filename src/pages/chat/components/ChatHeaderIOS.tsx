@@ -2,7 +2,7 @@ import { IpfsImg } from '@/components/IpfsImg';
 import React, { useMemo } from "react"
 import { ethers } from "ethers"
 import { motion } from "framer-motion"
-import { ChevronLeft, ChevronRight, Phone, PhoneCall } from "lucide-react"
+import { ChevronLeft, ChevronRight, Loader2, Phone, PhoneCall } from "lucide-react"
 import { tu } from '@/locale/beamioLocale'
 
 export type searchResult = {
@@ -31,6 +31,7 @@ export function ChatHeaderIOS({
   onCall,
   onPhoneHistory,
   callBusy,
+  callLoading,
 }: {
   beamioer?: searchResult
   onBack?: () => void
@@ -39,6 +40,8 @@ export function ChatHeaderIOS({
   onCall?: () => void
   onPhoneHistory?: () => void
   callBusy?: boolean
+  /** A dial is being prepared (routes, offer); show a spinner on the call button. */
+  callLoading?: boolean
   online: boolean
   /** Mailbox says a native shell can be woken, including while the listen session is offline. */
   nativeWakeable?: boolean
@@ -91,7 +94,9 @@ export function ChatHeaderIOS({
               disabled={!canPlaceCall || callBusy}
               className={[
                 "pointer-events-auto grid h-11 w-11 place-items-center rounded-full bg-white/50 text-slate-900 shadow-[0_18px_38px_rgba(15,23,42,0.14)] ring-1 ring-white/60 backdrop-blur-xl transition active:scale-[0.98]",
-                !canPlaceCall || callBusy ? "cursor-not-allowed opacity-40" : "",
+                callLoading
+                  ? "cursor-wait"
+                  : !canPlaceCall || callBusy ? "cursor-not-allowed opacity-40" : "",
               ].join(" ")}
               aria-label={!canPlaceCall ? "Voice call unavailable" : callBusy ? "Calling" : "Start voice call"}
               title={
@@ -101,9 +106,13 @@ export function ChatHeaderIOS({
                     ? "Calling"
                     : "Start voice call"
               }
-              aria-busy={callBusy}
+              aria-busy={callBusy || callLoading}
             >
-              <Phone className="h-5 w-5" strokeWidth={2.4} aria-hidden />
+              {callLoading ? (
+                <Loader2 className="h-5 w-5 animate-spin" strokeWidth={2.4} aria-hidden />
+              ) : (
+                <Phone className="h-5 w-5" strokeWidth={2.4} aria-hidden />
+              )}
             </button>
           ) : null}
           </div>

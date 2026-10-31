@@ -115,7 +115,7 @@ import { ingestAaMultisigFromChat } from '@/utils/aaMultisigIngest'
 import { tu } from '@/locale/beamioLocale'
 import { mapServerError } from '@/locale/mapServerError'
 import { installPwaLifecycleRecovery } from '@/utils/pwaLifecycleRecovery'
-import { applyNativeIncomingVoiceOfferFromLine, claimIncomingVoiceCallReport, claimedVoiceCallerAddress, claimedVoiceCallerTag, dismissNativeIncomingVoiceCall, findPhoneCallByIds, forgetIncomingVoiceOffer, formatLookedUpBeamioTag, isVoiceCallOfferActive, lookupIncomingVoiceOffer, markVoiceCallTerminal, mergePhoneCallRecord, nativeIncomingSystemCallPayload, parseVoiceCallSignal, recoverVoiceCallOfferSigner, rememberIncomingVoiceOffer, replacePhoneCallInRows, VOICE_CALL_IDENTITY_WARNING, voiceCallClaimMismatchesKey } from '@/utils/voiceCallSession'
+import { applyNativeIncomingVoiceOfferFromLine, claimIncomingVoiceCallReport, claimedVoiceCallerAddress, claimedVoiceCallerTag, dismissNativeIncomingVoiceCall, findPhoneCallByIds, forgetIncomingVoiceOffer, formatLookedUpBeamioTag, isVoiceCallOfferActive, isVoiceCallOfferRinging, lookupIncomingVoiceOffer, markVoiceCallTerminal, mergePhoneCallRecord, nativeIncomingSystemCallPayload, parseVoiceCallSignal, recoverVoiceCallOfferSigner, rememberIncomingVoiceOffer, replacePhoneCallInRows, VOICE_CALL_IDENTITY_WARNING, voiceCallClaimMismatchesKey } from '@/utils/voiceCallSession'
 
 global.Buffer = require("buffer").Buffer
 
@@ -1807,7 +1807,7 @@ function AppShell() {
 					(callerEoa || claimedVoiceCallerTag(signal) || claimedVoiceCallerAddress(signal)) &&
 					typeof signal.callId === 'string' &&
 					typeof signal.sessionId === 'string' &&
-					isVoiceCallOfferActive(signal)
+					isVoiceCallOfferRinging(signal)
 				) {
 					const previousCall = (Array.isArray(profile.phoneCalls) ? profile.phoneCalls : []).find(
 						(item: any) => item.sessionId === signal.sessionId,

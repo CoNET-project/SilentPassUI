@@ -698,7 +698,12 @@ export function requestNativePhotoPicker(payload: { requestId?: string }): boole
 }
 
 export function dispatchNativeSystemCallAction(
-	action: 'startSystemCall' | 'reportIncomingSystemCall' | 'endSystemCall',
+	action:
+		| 'prepareSystemCall'
+		| 'cancelPreparedSystemCall'
+		| 'startSystemCall'
+		| 'reportIncomingSystemCall'
+		| 'endSystemCall',
 	payload: Record<string, unknown>,
 ): boolean {
 	const w = cashTreesNativeWindow()

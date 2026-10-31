@@ -128,6 +128,7 @@ import {
 	claimedVoiceCallerTag,
 	formatLookedUpBeamioTag,
 	isVoiceCallOfferActive,
+	isVoiceCallOfferRinging,
 	parseVoiceCallSignal,
 	randomVoiceId,
 	recoverVoiceCallOfferSigner,
@@ -2718,6 +2719,26 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		voiceCallStartingRef.current = true
 		const startToken = ++voiceStartTokenRef.current
 		const cancelledWhileStarting = () => voiceStartTokenRef.current !== startToken
+		// Inside the shell, show the native call screen ("Calling…") now. Route
+		// lookup and the offer below take seconds; startSystemCall later attaches
+		// the real call to this screen with the same prepareId. Older shells
+		// without this action keep the call-button spinner instead.
+		const prepareId = isCashTreesNativeWebView()
+			? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+			: ''
+		const nativePrepared = prepareId
+			? dispatchNativeSystemCallAction('prepareSystemCall', {
+					prepareId,
+					peerAddress: typeof toAddress === 'string' ? toAddress.trim() : '',
+				})
+			: false
+		let nativeStarted = false
+		const closePreparedScreen = () => {
+			if (nativePrepared && !nativeStarted) {
+				nativeStarted = true
+				dispatchNativeSystemCallAction('cancelPreparedSystemCall', { prepareId })
+			}
+		}
 		setVoiceError(null)
 		setVoiceVideoNote(null)
 		setVoiceCallMinimized(false)
@@ -2742,9 +2763,11 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		}
 		if (cancelledWhileStarting()) {
 			voiceCallStartingRef.current = false
+			closePreparedScreen()
 			return
 		}
 		if (!route || !recipientPgp) {
+			closePreparedScreen()
 			setVoiceError(
 				!recipientPgp
 					? 'Voice calling requires the contact to register Chat encryption first.'
@@ -2839,7 +2862,9 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				(typeof signal.sessionKey === 'string' && signal.sessionKey.trim()) ||
 				(key ? voiceSessionKeyToBase64(key) : '')
 			const wake = channel.dialerWake
+			nativeStarted = true
 			dispatchNativeSystemCallAction('startSystemCall', {
+				prepareId,
 				callId: signal.callId,
 				sessionId,
 				sessionKey: sessionKeyB64,
@@ -2866,6 +2891,8 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			setVoiceCallConnecting(false)
 			setVoiceCallState('idle')
 		} finally {
+			// Any exit without startSystemCall (error, cancel) closes the prepared screen.
+			closePreparedScreen()
 			voiceCallStartingRef.current = false
 		}
 	}, [allNodes, armVoicePlayback, chatData, privateKey, toAddress, upsertPhoneCallRecord, voiceCallState])
@@ -3139,7 +3166,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				typeof signal.callId === 'string' &&
 				typeof signal.sessionId === 'string' &&
 				typeof signal.sessionKey === 'string' &&
-				isVoiceCallOfferActive(signal)
+				isVoiceCallOfferRinging(signal)
 			) {
 				const persistedPhoneCalls = Array.isArray(profiles?.[0]?.phoneCalls)
 					? profiles[0].phoneCalls
@@ -6788,6 +6815,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				onCall={voiceCallState === 'outgoing' ? endVoiceCall : startVoiceCall}
 				onPhoneHistory={() => navigate('/phone')}
 				callBusy={voiceCallState === 'outgoing'}
+				callLoading={voiceCallConnecting && voiceCallState === 'outgoing'}
 			/>
 			{showContactProfile && peerProfile?.address ? (
 				<div className="fixed inset-0 z-[9999] flex flex-col overflow-hidden bg-white dark:bg-slate-900">

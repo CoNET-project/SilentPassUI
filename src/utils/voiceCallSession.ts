@@ -266,6 +266,25 @@ export function isVoiceCallOfferActive(signal: {
 	return expiresAtMs > Date.now()
 }
 
+/**
+ * An offer that can still be ringing: active, and created within the ring
+ * timeout. `expiresAt` covers the whole call duration, so an unanswered offer
+ * older than the ring window (declined on another surface, missed) must not
+ * be reported to the native shell again when a chat page re-reads history.
+ */
+export function isVoiceCallOfferRinging(signal: {
+	expiresAt?: unknown
+	createdAt?: unknown
+	timestamp?: unknown
+	callId?: unknown
+	sessionId?: unknown
+} | null | undefined): boolean {
+	if (!isVoiceCallOfferActive(signal)) return false
+	const createdMs = normalizeVoiceTimestampMs(signal?.createdAt) || normalizeVoiceTimestampMs(signal?.timestamp)
+	if (!createdMs) return true
+	return Date.now() - createdMs <= INCOMING_CALL_RING_TIMEOUT_MS + 15_000
+}
+
 export function claimIncomingVoiceCallReport(callId: string, sessionId: string): boolean {
 	const key = `${callId.trim()}:${sessionId.trim()}`
 	if (!callId.trim() || !sessionId.trim() || reportedIncomingVoiceCallIds.has(key)) return false

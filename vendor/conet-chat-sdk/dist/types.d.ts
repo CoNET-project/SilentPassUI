@@ -85,6 +85,12 @@ export interface VoiceFrame {
     chunkCount?: number;
 }
 export declare const VOICE_MAX_FRAME_B64 = 12000;
+/**
+ * Split-seq video (negotiated with `voice_media_caps_v1` video ≥ 2) uses seq
+ * ≥ this. Audio and controls count up from 1, so the ranges never meet and a
+ * lost or late video frame cannot stall the audio reorder buffer.
+ */
+export declare const VOICE_VIDEO_SEQ_BASE = 1000000000;
 export declare const VOICE_FRAME_TIMESTAMP_SKEW_SEC = 30;
 export declare const VOICE_CALL_MAX_DURATION_MS: number;
 /** Inbound decrypted line (still to be checkSign'd / parsed by the host). */

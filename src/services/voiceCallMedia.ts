@@ -18,6 +18,21 @@ const VOICE_PCM_MAGIC = [0x42, 0x50, 0x43, 0x4d] as const // BPCM
 /** Soft / FaceTime JPEG uplink: `BJPG` + u16-LE w/h + u32-LE frameId + JPEG. */
 export const VOICE_BJPG_MAGIC = [0x42, 0x4A, 0x50, 0x47] as const // BJPG
 const VOICE_BJPG_HEADER_BYTES = 12
+/**
+ * Video v2: `BJP2` + u16-LE w/h + u32-LE frameId + u64-LE capture time (Unix ms)
+ * + JPEG. The relay keeps only seq/timestamp/payload, so the capture time
+ * rides inside the AES payload. Sent only to peers that announced video ≥ 2.
+ */
+export const VOICE_BJP2_MAGIC = [0x42, 0x4A, 0x50, 0x32] as const // BJP2
+const VOICE_BJP2_HEADER_BYTES = 20
+/** Media capability this build announces in `voice_media_caps_v1`. */
+export const VOICE_LOCAL_VIDEO_CAPS = 2
+/**
+ * Split-seq video uses seq ≥ this (same value as the chat SDK's
+ * `VOICE_VIDEO_SEQ_BASE`). Audio and controls count up from 1, so a lost or late
+ * video frame never stalls audio.
+ */
+export const VOICE_VIDEO_SEQ_BASE = 1_000_000_000
 
 type AudioContextCtor = typeof AudioContext
 
@@ -77,32 +92,58 @@ const hasBpcmMagic = (bytes: Uint8Array): boolean => (
 	&& bytes[3] === VOICE_PCM_MAGIC[3]
 )
 
+/** BJPG or BJP2 video frame. */
 export const hasBjpgMagic = (bytes: Uint8Array): boolean => (
 	bytes.length >= 4
 	&& bytes[0] === VOICE_BJPG_MAGIC[0]
 	&& bytes[1] === VOICE_BJPG_MAGIC[1]
 	&& bytes[2] === VOICE_BJPG_MAGIC[2]
-	&& bytes[3] === VOICE_BJPG_MAGIC[3]
+	&& (bytes[3] === VOICE_BJPG_MAGIC[3] || bytes[3] === VOICE_BJP2_MAGIC[3])
 )
 
 export type BjpgDecodedFrame = {
 	width: number
 	height: number
 	frameId: number
+	/** Sender capture time (Unix ms) for BJP2; 0 for BJPG. */
+	captureMs: number
 	jpeg: Uint8Array
 }
 
-/** Decode Soft/FaceTime BJPG wire → JPEG bytes for `<img>` / blob URL. */
+/** Decode Soft/FaceTime BJPG / BJP2 wire → JPEG bytes for `<img>` / blob URL. */
 export const decodeBjpgFrame = (bytes: Uint8Array): BjpgDecodedFrame | null => {
-	if (!hasBjpgMagic(bytes) || bytes.length <= VOICE_BJPG_HEADER_BYTES) return null
+	if (!hasBjpgMagic(bytes)) return null
+	const v2 = bytes[3] === VOICE_BJP2_MAGIC[3]
+	const header = v2 ? VOICE_BJP2_HEADER_BYTES : VOICE_BJPG_HEADER_BYTES
+	if (bytes.length <= header) return null
 	const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
 	const width = view.getUint16(4, true)
 	const height = view.getUint16(6, true)
 	const frameId = view.getUint32(8, true) >>> 0
+	const captureMs = v2 ? Number(view.getBigUint64(12, true)) : 0
 	if (width < 1 || height < 1 || width > 4096 || height > 4096) return null
-	const jpeg = bytes.subarray(VOICE_BJPG_HEADER_BYTES)
+	const jpeg = bytes.subarray(header)
 	if (jpeg.length < 4 || jpeg[0] !== 0xff || jpeg[1] !== 0xd8) return null
-	return { width, height, frameId, jpeg }
+	return { width, height, frameId, captureMs, jpeg }
+}
+
+/** Encode JPEG into BJP2 wire (capture time inside the encrypted payload). */
+export const encodeBjp2Frame = (
+	jpeg: Uint8Array,
+	width: number,
+	height: number,
+	frameId: number,
+	captureMs: number,
+): Uint8Array => {
+	const out = new Uint8Array(VOICE_BJP2_HEADER_BYTES + jpeg.length)
+	out.set(VOICE_BJP2_MAGIC)
+	const view = new DataView(out.buffer)
+	view.setUint16(4, Math.max(1, Math.min(4096, width | 0)), true)
+	view.setUint16(6, Math.max(1, Math.min(4096, height | 0)), true)
+	view.setUint32(8, frameId >>> 0, true)
+	view.setBigUint64(12, BigInt(Math.max(0, Math.floor(captureMs))), true)
+	out.set(jpeg, VOICE_BJP2_HEADER_BYTES)
+	return out
 }
 
 /** Encode JPEG + dimensions into BJPG wire (shared Soft ↔ native FaceTime). */

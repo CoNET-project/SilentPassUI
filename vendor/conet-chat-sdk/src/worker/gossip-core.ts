@@ -1182,15 +1182,15 @@ export class GossipCore {
 			)
 			return false
 		}
+		// The peer's mailbox decrypts this command, so it carries only what the
+		// relay needs (CoNET Chat protocol): no sender or recipient wallet. The
+		// sessionId is the capability; identity stays inside the AES payload.
 		const command = {
 			command: 'voice_uplink',
 			type: 'voice_frame_v1',
-			walletAddress: this.wallet?.address,
-			from: this.wallet?.address,
 			callId: candidate.callId,
 			sessionId: candidate.sessionId,
 			targetSessionId,
-			...(to ? { to } : {}),
 			direction: candidate.direction || 'uplink',
 			seq: candidate.seq,
 			frameTimestamp: candidate.timestamp,

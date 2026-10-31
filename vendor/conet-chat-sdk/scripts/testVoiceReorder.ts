@@ -5,6 +5,7 @@ import {
 	VoiceFrameReorderBuffer,
 	type VoiceReorderEvent,
 } from '../src/voice-reorder.ts'
+import { VOICE_VIDEO_SEQ_BASE } from '../src/types.ts'
 
 function frame(
 	seq: number,
@@ -112,6 +113,20 @@ function frame(
 	assert.equal(DEFAULT_VOICE_REORDER_DELAY_MS, 120)
 	assert.equal(DEFAULT_VIDEO_REORDER_DELAY_MS, 200)
 	assert.ok(DEFAULT_VOICE_REORDER_DELAY_MS >= 60 && DEFAULT_VOICE_REORDER_DELAY_MS <= 200)
+}
+
+{
+	// Split-seq video (seq ≥ VOICE_VIDEO_SEQ_BASE) bypasses the audio stream:
+	// a lost video frame never makes audio wait, and video never moves nextSeq.
+	const buffer = new VoiceFrameReorderBuffer({ reorderDelayMs: 150 })
+	assert.deepEqual(buffer.push(frame(1, 'a1')).map((item) => item.seq), [1])
+	assert.deepEqual(buffer.push(frame(VOICE_VIDEO_SEQ_BASE + 2, 'v2')).map((item) => item.seq), [VOICE_VIDEO_SEQ_BASE + 2])
+	assert.deepEqual(buffer.push(frame(2, 'a2')).map((item) => item.seq), [2])
+	// Out-of-order video still passes (the UI orders by capture time).
+	assert.deepEqual(buffer.push(frame(VOICE_VIDEO_SEQ_BASE + 1, 'v1')).map((item) => item.seq), [VOICE_VIDEO_SEQ_BASE + 1])
+	// Duplicate video is dropped.
+	assert.deepEqual(buffer.push(frame(VOICE_VIDEO_SEQ_BASE + 2, 'v2')), [])
+	assert.deepEqual(buffer.push(frame(3, 'a3')).map((item) => item.seq), [3])
 }
 
 console.log('voice reorder ok')

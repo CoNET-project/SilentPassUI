@@ -73,6 +73,11 @@ export declare class GossipCore {
     private sendSingleRecipientGroupDelivery;
     /** Drop group objects out of the 1:1 message stream after the outer EIP-191 check. */
     private tryConsumeGroupInbound;
+    /**
+     * POST armor to entry nodes. Text gossip may fan out in parallel.
+     * Voice/video media frames must pass `{ fanout: 1 }` so a single seq is
+     * delivered once (any one 2xx succeeds; wave2 is retry only, not a duplicate).
+     */
     private postToEntries;
     queryPresence(contacts: ChatRoute[]): Promise<Record<string, boolean>>;
     /**

@@ -326,6 +326,52 @@ export function hasReportedIncomingVoiceCall(callId: string, sessionId: string):
 	return reportedIncomingVoiceCallIds.has(`${callId.trim()}:${sessionId.trim()}`)
 }
 
+/** Last identity reported to the native shell per offer (`callId:sessionId`). */
+const nativeIncomingReports = new Map<string, string>()
+
+/**
+ * Report an incoming offer to the native shell once. One offer reaches several
+ * page paths (gossip line, chat ingest, chat page, tag lookup), and each used
+ * to call `reportIncomingSystemCall`: Android then opened one Telecom call per
+ * report and only one was ever disconnected, so the others stayed RINGING and
+ * blocked the next dial. A repeat with the same identity is dropped; a real
+ * update (address → @tag, identity warning) still goes through. Returns true
+ * when the shell has this report (sent now or earlier).
+ */
+export function reportNativeIncomingSystemCall(payload: Record<string, unknown>): boolean {
+	const callId = String(payload.callId || '').trim()
+	const sessionId = String(payload.sessionId || '').trim()
+	const key = `${callId}:${sessionId}`
+	const displayName = String(payload.displayName || '')
+	const peer = String(payload.peerAddress || '').toLowerCase()
+	const signature = JSON.stringify([
+		displayName,
+		peer,
+		payload.claimedTag || '',
+		payload.claimedAddress || '',
+		payload.identityWarning || '',
+	])
+	const previous = nativeIncomingReports.get(key)
+	if (previous !== undefined) {
+		const [prevName, prevPeer] = JSON.parse(previous) as [string, string]
+		// Same identity, or a fallback title after the @tag was already shown.
+		const downgrade = prevName.startsWith('@') && displayName === 'Beamio' && prevPeer === peer
+		if (previous === signature || downgrade) {
+			publishNativePwaLog('info', '[voice] native report repeat skipped')
+			return true
+		}
+	}
+	const delivered = dispatchNativeSystemCallAction('reportIncomingSystemCall', payload)
+	if (delivered && callId && sessionId) {
+		nativeIncomingReports.set(key, signature)
+		if (nativeIncomingReports.size > 50) {
+			const oldest = nativeIncomingReports.keys().next().value
+			if (oldest !== undefined) nativeIncomingReports.delete(oldest)
+		}
+	}
+	return delivered
+}
+
 /**
  * Native Decline/X encrypts `voice_call_reject_v1` with the offer AES key.
  * Without `sessionKey` in this payload the shell cannot uplink and the dialer
@@ -422,7 +468,7 @@ export function applyNativeIncomingVoiceOfferFromLine(raw: string): boolean {
 			`sessionId=${Boolean(signal.sessionId)} verifiedPeer=${Boolean(proven)} ` +
 			`displayName=${Boolean(displayName)} sessionKey=${Boolean(signal.sessionKey)}`,
 	)
-	const delivered = dispatchNativeSystemCallAction('reportIncomingSystemCall', payload)
+	const delivered = reportNativeIncomingSystemCall(payload)
 	publishNativePwaLog(
 		'info',
 		`[voice] native report dispatch=${delivered ? 'accepted' : 'unavailable'} ` +
@@ -439,7 +485,7 @@ export function applyNativeIncomingVoiceOfferFromLine(raw: string): boolean {
 		let attempt = 0
 		const retry = () => {
 			attempt += 1
-			const ok = dispatchNativeSystemCallAction('reportIncomingSystemCall', payload)
+			const ok = reportNativeIncomingSystemCall(payload)
 			if (ok || attempt >= 8) {
 				nativeIncomingVoiceRetryTimers.delete(callKey)
 				return
@@ -491,8 +537,7 @@ async function enrichNativeIncomingDisplayTag(args: {
 		const tag = formatLookedUpBeamioTag(username)
 		if (!tag) return
 		const nextMismatch = voiceCallClaimMismatchesKey(args.signal, peer, tag, true)
-		dispatchNativeSystemCallAction(
-			'reportIncomingSystemCall',
+		reportNativeIncomingSystemCall(
 			nativeIncomingSystemCallPayload({
 				callId: args.callId,
 				sessionId: args.sessionId,

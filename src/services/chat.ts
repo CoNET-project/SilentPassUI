@@ -220,7 +220,10 @@ export const initChat = async (setProfiles: (val: profile[]) => void, setAllNode
 		setGossip(true)
 		const allNodes = await getAllNodes()
 		chatBootLog(`CoNET nodes loaded: ${allNodes?.length ?? 0}`)
-		setAllNodes(allNodes)
+		// An init while offline loads no nodes. Keep the last list instead of
+		// wiping it: an empty list failed the next dial ("chain mailbox is not
+		// in the node list") until a later init reloaded it.
+		if (allNodes?.length) setAllNodes(allNodes)
 		const temp = CoNET_Data
 		if (!temp || !temp?.profiles?.length) {
 			chatBootLog('initChat abort: no profiles in CoNET_Data', 'warn')
@@ -803,6 +806,17 @@ const mailboxKeyId = (domain: string): string =>
  * chain route and retarget before a call. Returns false when the worker
  * still is not encrypting to that mailbox — the caller must not open a relay.
  */
+/** Own mailbox route key from the last chain read in {@link alignLiveGossipRouteToChain}. */
+let lastChainMailboxRouteArmor = ''
+
+/**
+ * Own mailbox route key for excluding it from voice relay / entry choices:
+ * the live listen's key, else the chain mailbox read before the dial.
+ */
+export function getOwnMailboxRouteArmor(): string {
+	return (getWorkerGossipRouteArmor() || lastChainMailboxRouteArmor || '').replace(/\r/g, '').trim()
+}
+
 export async function alignLiveGossipRouteToChain(
 	privateKeyArmor: string,
 	nodes: nodeInfo[],
@@ -825,6 +839,17 @@ export async function alignLiveGossipRouteToChain(
 	if (!mailbox?.domain || !targetArmor) {
 		chatBootLog(`voice route chain mailbox ${chainId} is not in the node list`, 'warn')
 		return false
+	}
+	lastChainMailboxRouteArmor = targetArmor
+	if (isCashTreesNativeWebView()) {
+		// Inside the shells the dialer listens natively on a per-call relay
+		// reached through an entry; the page's own mailbox listen plays no part
+		// in the call. It is down for seconds after every foreground return
+		// (background pause + restart), which failed dials with "could not use
+		// your current Chat mailbox". The chain mailbox is all the call needs:
+		// it is excluded from the relay and entry choices.
+		chatBootLog(`voice route native shell: chain mailbox ${chainId}, page listen not required`)
+		return true
 	}
 	const workerLive = isWorkerGossipActive()
 		&& !!currentGossipAbortController

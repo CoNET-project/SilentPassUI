@@ -17,11 +17,11 @@ import {
 import {
 	sendMessage,
 	getRandomNodes,
+	getOwnMailboxRouteArmor,
 } from '@/services/chat'
 import { ensureNativePushBoundForWallet } from '@/utils/cashTreesPushBind'
 import { isCashTreesNativeWebView, postNativePgpCiphertext } from '@/utils/cashTreesNativeNfc'
 import {
-	getWorkerGossipRouteArmor,
 	startWorkerVoiceListen,
 	stopWorkerVoiceListen,
 	sendWorkerVoiceFrame,
@@ -379,7 +379,13 @@ export function createVoiceCallController(options: VoiceCallControllerOptions) {
 		let dialerWake: VoiceDialerWake | undefined
 		if (nativeOwnsListen) {
 			try {
-				const relayNode = pickVoiceRelayNode(options.allNodes, getWorkerGossipRouteArmor(), options.peerRoute)
+				const ownRoute = getOwnMailboxRouteArmor()
+				if (!ownRoute) {
+					// Without it the relay could be the caller's own mailbox.
+					console.warn('[voiceCall] own mailbox route unknown')
+					return null
+				}
+				const relayNode = pickVoiceRelayNode(options.allNodes, ownRoute, options.peerRoute)
 				if (!relayNode) {
 					console.warn('[voiceCall] no relay node outside both mailboxes')
 					return null
